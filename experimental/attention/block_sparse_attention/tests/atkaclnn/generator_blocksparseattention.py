@@ -1,3 +1,13 @@
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
+
 import random
 import copy
 import math
@@ -43,8 +53,8 @@ class BlockSparseAttentionMxfp4Generator(CaseGenerator):
         # 序列长度/规模: 连续范围随机采样(不写死离散列表)。
         # s1(qs) / s2(kvs) 各自在 [1, s1_hi] / [1, s2_hi] 内随机;
         # batch/g/n2 在各自范围随机, 超预算由 COST_BUDGET 退避。
-        self.s1_hi = 4096   # 查询侧 seq len 上限 (s1 = qs)
-        self.s2_hi = 25000   # KV 侧 seq len 上限 (s2 = kvs)
+        self.s1_hi = 4096  # 查询侧 seq len 上限 (s1 = qs)
+        self.s2_hi = 25000  # KV 侧 seq len 上限 (s2 = kvs)
         self.batch_hi = 8
         self.g_hi = 4
         self.n2_hi = 8
@@ -68,8 +78,15 @@ class BlockSparseAttentionMxfp4Generator(CaseGenerator):
         if kind == "wide":
             return random.randint(1, s_padded)
         if kind == "spread":
-            return random.choice([1, max(1, s_padded // 8), max(1, s_padded // 4),
-                                  max(1, s_padded // 2), s_padded])
+            return random.choice(
+                [
+                    1,
+                    max(1, s_padded // 8),
+                    max(1, s_padded // 4),
+                    max(1, s_padded // 2),
+                    s_padded,
+                ]
+            )
         return random.randint(max(1, s_padded // 2), s_padded)
 
     # def fit_cost_budget(self):
@@ -149,7 +166,9 @@ class BlockSparseAttentionMxfp4Generator(CaseGenerator):
         self.quant_mode = random.choice(self.quant_mode_range)
         if self.quant_mode == 3:
             # quant_mode=3 时 dstTypeMax 可取 0.0 或 [6.0, 12.0] 内的随机值
-            self.dst_type_max = 0.0 if random.random() < 0.5 else round(random.uniform(6.0, 12.0), 2)
+            self.dst_type_max = (
+                0.0 if random.random() < 0.5 else round(random.uniform(6.0, 12.0), 2)
+            )
         else:
             self.dst_type_max = 0.0
 
@@ -178,8 +197,12 @@ class BlockSparseAttentionMxfp4Generator(CaseGenerator):
         if self.is_padded and self.pad_kind not in self.TIGHT_PAD_KINDS:
             self.S1_aligned = self.S1_ceil
             self.S2_aligned = self.S2_ceil
-        self.x_block_num_aligned = (self.S1_aligned + self.block_shape_x - 1) // self.block_shape_x
-        self.y_block_num_aligned = (self.S2_aligned + self.block_shape_y - 1) // self.block_shape_y
+        self.x_block_num_aligned = (
+            self.S1_aligned + self.block_shape_x - 1
+        ) // self.block_shape_x
+        self.y_block_num_aligned = (
+            self.S2_aligned + self.block_shape_y - 1
+        ) // self.block_shape_y
 
         self.q_scale_blocks = (self.D + 31) // 32
         self.kv_scale_blocks_s = (self.S2_aligned + 31) // 32
@@ -202,30 +225,30 @@ class BlockSparseAttentionMxfp4Generator(CaseGenerator):
             for item in case_config.inputs
         }
 
-        query = inputs_map.get('query')
-        key = inputs_map.get('key')
-        value = inputs_map.get('value')
-        attentionOut = inputs_map.get('attentionOut')
-        blockSparseMask = inputs_map.get('blockSparseMask')
-        attenMask = inputs_map.get('attenMask')
-        blockShape = inputs_map.get('blockShape')
-        actualSeqLengths = inputs_map.get('actualSeqLengths')
-        actualSeqLengthsKv = inputs_map.get('actualSeqLengthsKv')
-        blockTable = inputs_map.get('blockTable')
-        softmaxLse = inputs_map.get('softmaxLse')
+        query = inputs_map.get("query")
+        key = inputs_map.get("key")
+        value = inputs_map.get("value")
+        attentionOut = inputs_map.get("attentionOut")
+        blockSparseMask = inputs_map.get("blockSparseMask")
+        attenMask = inputs_map.get("attenMask")
+        blockShape = inputs_map.get("blockShape")
+        actualSeqLengths = inputs_map.get("actualSeqLengths")
+        actualSeqLengthsKv = inputs_map.get("actualSeqLengthsKv")
+        blockTable = inputs_map.get("blockTable")
+        softmaxLse = inputs_map.get("softmaxLse")
 
-        qInputLayout = inputs_map.get('qInputLayout')
-        kvInputLayout = inputs_map.get('kvInputLayout')
-        numKeyValueHeads = inputs_map.get('numKeyValueHeads')
-        maskType = inputs_map.get('maskType')
-        scaleValue = inputs_map.get('scaleValue')
-        innerPrecise = inputs_map.get('innerPrecise')
-        blockSize = inputs_map.get('blockSize')
-        preTokens = inputs_map.get('preTokens')
-        nextTokens = inputs_map.get('nextTokens')
-        softmaxLseFlag = inputs_map.get('softmaxLseFlag')
-        quantMode = inputs_map.get('quantMode')
-        dstTypeMax = inputs_map.get('dstTypeMax')
+        qInputLayout = inputs_map.get("qInputLayout")
+        kvInputLayout = inputs_map.get("kvInputLayout")
+        numKeyValueHeads = inputs_map.get("numKeyValueHeads")
+        maskType = inputs_map.get("maskType")
+        scaleValue = inputs_map.get("scaleValue")
+        innerPrecise = inputs_map.get("innerPrecise")
+        blockSize = inputs_map.get("blockSize")
+        preTokens = inputs_map.get("preTokens")
+        nextTokens = inputs_map.get("nextTokens")
+        softmaxLseFlag = inputs_map.get("softmaxLseFlag")
+        quantMode = inputs_map.get("quantMode")
+        dstTypeMax = inputs_map.get("dstTypeMax")
 
         query.dtype = "uint8"
         key.dtype = "uint8"
@@ -259,19 +282,31 @@ class BlockSparseAttentionMxfp4Generator(CaseGenerator):
             value.shape = [self.B, self.S2_aligned, self.N2, self.D // 2]
 
         blockSparseMask.dtype = "int8"
-        blockSparseMask.shape = [self.B, self.N1, self.x_block_num_aligned, self.y_block_num_aligned]
+        blockSparseMask.shape = [
+            self.B,
+            self.N1,
+            self.x_block_num_aligned,
+            self.y_block_num_aligned,
+        ]
         blockSparseMask.range_values = [0, 1]
 
         self.expand_list_config(blockShape, self.block_shape_list)
         self.expand_list_config(actualSeqLengths, self.q_seq_list)
         self.expand_list_config(actualSeqLengthsKv, self.kv_seq_list)
 
-        attenMask.range_values = ["None"]
+        # attenMask (blockEffRows): int32 [B, N1, maxBlockNum, 2], 末维 [effRowsQ, effRowsKV]。
+        # kernel 只读 KV 槽(index 1); 内容由 function 按 case_seed 重建(且仅在 blockShapeY==128
+        # 时开启), 这里只负责分配形状 —— dim2 须 >= max(xBlockNumAligned, yBlockNumAligned),
+        # 对齐 tiling ParseAttenMask 的 dim2 >= max(maxQBlockNum_, maxKvBlockNum_) 校验。
+        max_block_num = max(self.x_block_num_aligned, self.y_block_num_aligned)
+        attenMask.dtype = "int32"
+        attenMask.shape = [self.B, self.N1, max_block_num, 2]
+        attenMask.range_values = [0, self.block_shape_y]
         blockTable.range_values = ["None"]
 
         numKeyValueHeads.range_values = [self.N2]
         maskType.range_values = [0]
-        scaleValue.range_values = [1 / (self.D ** 0.5)]
+        scaleValue.range_values = [1 / (self.D**0.5)]
         innerPrecise.range_values = [self.inner_prec]
         blockSize.range_values = [0]
         preTokens.range_values = [2147483647]
@@ -288,9 +323,9 @@ class BlockSparseAttentionMxfp4Generator(CaseGenerator):
         qk_scale_d_dim = self.D // 64
         v_scale_s_dim = (self.S2_aligned + 63) // 64
 
-        qDequantScale = inputs_map.get('qDequantScale')
-        kDequantScale = inputs_map.get('kDequantScale')
-        vDequantScale = inputs_map.get('vDequantScale')
+        qDequantScale = inputs_map.get("qDequantScale")
+        kDequantScale = inputs_map.get("kDequantScale")
+        vDequantScale = inputs_map.get("vDequantScale")
 
         qDequantScale.dtype = "uint8"
         kDequantScale.dtype = "uint8"

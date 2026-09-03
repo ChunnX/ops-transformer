@@ -71,10 +71,10 @@ inputs:
     type: tensor
     required: true
     dtypes:
-      values: [ bool ]
+      values: [ int32 ]
     shapes:
       dim_numbers:
-        values: [2]
+        values: [4]
       dim_values:
         values: [ [1, 50] ]
   - name: blockShape

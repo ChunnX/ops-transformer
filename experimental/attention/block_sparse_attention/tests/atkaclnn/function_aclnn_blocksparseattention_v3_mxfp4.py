@@ -1,3 +1,13 @@
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
+
 import logging
 import os
 import sys
@@ -17,8 +27,16 @@ from atk.tasks.api_execute import register
 from atk.tasks.api_execute.base_api import BaseApi
 from atk.tasks.api_execute.aclnn_base_api import AclnnBaseApi
 from atk.tasks.backends.lib_interface.acl_wrapper import (
-    AclDataType, AclFormat, AclIntArray, AclTensorStruct, Int64, TensorPtr,
-    TORCH_TO_ACLTYPE, ACLTYPE_TO_CTYPE, nnopbase, ascendcl,
+    AclDataType,
+    AclFormat,
+    AclIntArray,
+    AclTensorStruct,
+    Int64,
+    TensorPtr,
+    TORCH_TO_ACLTYPE,
+    ACLTYPE_TO_CTYPE,
+    nnopbase,
+    ascendcl,
 )
 from ml_dtypes import bfloat16
 from dataclasses import dataclass
@@ -26,7 +44,12 @@ from dataclasses import dataclass
 logging = Logger().get_logger()
 
 _FLOAT4_TORCH_STORAGE_ATTRS = ("float4_e2m1fn_x2", "float4_e2m1fn", "float4_e2m1")
-_FLOAT4_NPU_STORAGE_ATTRS = ("float4_e2m1fn_x2", "float4_e2m1fn", "float4_e2m1fnu", "float4_e2m1")
+_FLOAT4_NPU_STORAGE_ATTRS = (
+    "float4_e2m1fn_x2",
+    "float4_e2m1fn",
+    "float4_e2m1fnu",
+    "float4_e2m1",
+)
 _NOT_LIMITED = 2147483647
 
 
@@ -71,6 +94,7 @@ def get_float4_storage_dtype():
             return dt
     try:
         import torch_npu
+
         for attr in _FLOAT4_NPU_STORAGE_ATTRS:
             dt = getattr(torch_npu, attr, None)
             if dt is not None:
@@ -107,7 +131,9 @@ def to_float8_e8m0(scale: torch.Tensor) -> torch.Tensor:
     return scale.to(torch.uint8).contiguous().view(e8)
 
 
-def _fp4_logical_shape(storage_shape: Tuple[int, ...], head_dim: int) -> Tuple[int, ...]:
+def _fp4_logical_shape(
+    storage_shape: Tuple[int, ...], head_dim: int
+) -> Tuple[int, ...]:
     logical = list(storage_shape)
     logical[-1] = int(head_dim)
     return tuple(logical)
@@ -120,8 +146,9 @@ def _contiguous_strides(shape: Tuple[int, ...]) -> List[int]:
     return strides
 
 
-def _create_acl_tensor(npu_tensor: torch.Tensor, acl_dtype: int,
-                       logical_shape: Tuple[int, ...]) -> AclTensorStruct:
+def _create_acl_tensor(
+    npu_tensor: torch.Tensor, acl_dtype: int, logical_shape: Tuple[int, ...]
+) -> AclTensorStruct:
     """按给定 ACL dtype 与逻辑 shape 建 aclTensor。
 
     view dims 与 storage dims 都取 logical_shape: FP4 的缓冲区是 uint8 [..., D/2],
@@ -135,12 +162,15 @@ def _create_acl_tensor(npu_tensor: torch.Tensor, acl_dtype: int,
     strides = (Int64 * ndim)(*_contiguous_strides(tuple(int(x) for x in logical_shape)))
     addr = ctypes.c_void_p(npu_tensor.data_ptr())
     acl_tensor = nnopbase.aclCreateTensor(
-        dims, ndim, acl_dtype, strides, 0, AclFormat.ACL_FORMAT_ND, dims, ndim, addr)
+        dims, ndim, acl_dtype, strides, 0, AclFormat.ACL_FORMAT_ND, dims, ndim, addr
+    )
     if not acl_tensor:
         raise RuntimeError(
-            f"aclCreateTensor 失败: dtype={acl_dtype} shape={tuple(logical_shape)}")
-    return AclTensorStruct(acl_tensor, addr.value, npu_tensor,
-                           ascendcl.aclDataTypeSize(acl_dtype))
+            f"aclCreateTensor 失败: dtype={acl_dtype} shape={tuple(logical_shape)}"
+        )
+    return AclTensorStruct(
+        acl_tensor, addr.value, npu_tensor, ascendcl.aclDataTypeSize(acl_dtype)
+    )
 
 
 def create_fp4_acl_tensor(packed_uint8: torch.Tensor, head_dim: int) -> AclTensorStruct:
@@ -158,8 +188,9 @@ def create_e8m0_acl_tensor(scale: torch.Tensor) -> AclTensorStruct:
     """
     u8 = scale.view(torch.uint8) if scale.dtype != torch.uint8 else scale
     npu_t = to_float8_e8m0(u8.contiguous().npu())
-    return _create_acl_tensor(npu_t, AclDataType.ACL_FLOAT8_E8M0,
-                              tuple(int(x) for x in npu_t.shape))
+    return _create_acl_tensor(
+        npu_t, AclDataType.ACL_FLOAT8_E8M0, tuple(int(x) for x in npu_t.shape)
+    )
 
 
 def create_int64_array(values):
@@ -177,7 +208,7 @@ random.seed(21)
 np.random.seed(21)
 torch.manual_seed(21)
 torch.set_printoptions(precision=6, sci_mode=False)
-torch.set_printoptions(threshold=float('inf'))
+torch.set_printoptions(threshold=float("inf"))
 
 DEBUG = False
 if not DEBUG:
@@ -193,17 +224,42 @@ CX_DEFAULT_DST_TYPE_MAX = 6.0
 E8M0_BIAS = 127
 FP4_E2M1_EMAX = 2
 
-FP4_E2M1_VALUES = torch.tensor([
-    0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0,
-    -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0, -6.0,
-], dtype=torch.float32)
+FP4_E2M1_VALUES = torch.tensor(
+    [
+        0.0,
+        0.5,
+        1.0,
+        1.5,
+        2.0,
+        3.0,
+        4.0,
+        6.0,
+        -0.0,
+        -0.5,
+        -1.0,
+        -1.5,
+        -2.0,
+        -3.0,
+        -4.0,
+        -6.0,
+    ],
+    dtype=torch.float32,
+)
 
-_FP4_POS_LEVELS_FP32 = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0], dtype=torch.float32)
-_FP4_POS_MIDPOINTS_FP32 = torch.tensor([0.25, 0.75, 1.25, 1.75, 2.5, 3.5, 5.0], dtype=torch.float32)
+_FP4_POS_LEVELS_FP32 = torch.tensor(
+    [0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0], dtype=torch.float32
+)
+_FP4_POS_MIDPOINTS_FP32 = torch.tensor(
+    [0.25, 0.75, 1.25, 1.75, 2.5, 3.5, 5.0], dtype=torch.float32
+)
 
 
 def _resolve_cx_params(dst_type_max):
-    cx_val = CX_DEFAULT_DST_TYPE_MAX if (dst_type_max is None or dst_type_max == 0) else float(dst_type_max)
+    cx_val = (
+        CX_DEFAULT_DST_TYPE_MAX
+        if (dst_type_max is None or dst_type_max == 0)
+        else float(dst_type_max)
+    )
     log2_cx = math.log2(cx_val)
     ceil_log2_cx = math.ceil(log2_cx)
     return log2_cx, ceil_log2_cx
@@ -215,8 +271,11 @@ def generate_fp4_e2m1_encoding_table():
         for e in range(4):
             for m in range(2):
                 enc = (s << 3) | (e << 1) | m
-                val = (-1) ** s * (2.0 ** (e - 1)) * (1.0 + m / 2.0) if e != 0 \
-                    else (-1) ** s * (2.0 ** 0) * (m / 2.0)
+                val = (
+                    (-1) ** s * (2.0 ** (e - 1)) * (1.0 + m / 2.0)
+                    if e != 0
+                    else (-1) ** s * (2.0**0) * (m / 2.0)
+                )
                 encodings.append(enc)
                 values.append(val)
     fp32_to_encoding = {}
@@ -232,7 +291,9 @@ FP32_TO_FP4 = generate_fp4_e2m1_encoding_table()
 def quantize_fp4(tensor: torch.Tensor) -> torch.Tensor:
     with torch.no_grad():
         expanded = tensor.unsqueeze(-1)
-        idx = torch.argmin(torch.abs(expanded - FP4_E2M1_VALUES.to(tensor.device)), dim=-1)
+        idx = torch.argmin(
+            torch.abs(expanded - FP4_E2M1_VALUES.to(tensor.device)), dim=-1
+        )
         return FP4_E2M1_VALUES.to(tensor.device)[idx]
 
 
@@ -251,24 +312,34 @@ def _quantize_fp4_chunked(blocks: torch.Tensor) -> torch.Tensor:
     return out
 
 
-def compute_e8m0_scale_blocks(blocks: torch.Tensor, mode: str = "baseline",
-                              quant_mode: int = QUANT_MODE_OCP, log2_cx: float = 0.0) -> torch.Tensor:
+def compute_e8m0_scale_blocks(
+    blocks: torch.Tensor,
+    mode: str = "baseline",
+    quant_mode: int = QUANT_MODE_OCP,
+    log2_cx: float = 0.0,
+) -> torch.Tensor:
     """blocks: [n_blk, block_size] -> scales: [n_blk]。逐块版的向量化形式，语义等价。"""
     max_abs = blocks.abs().amax(dim=-1)
     log_max = torch.log2(max_abs)
     if quant_mode == QUANT_MODE_CX:
         exp = torch.ceil(log_max - log2_cx)
     else:
-        exp = (torch.floor(log_max) if mode == "baseline" else torch.ceil(log_max)) - FP4_E2M1_EMAX
+        exp = (
+            torch.floor(log_max) if mode == "baseline" else torch.ceil(log_max)
+        ) - FP4_E2M1_EMAX
     exp = torch.clamp(exp, -127.0, 127.0)
     scales = torch.pow(torch.tensor(2.0, dtype=exp.dtype, device=exp.device), exp)
     # 全零块: log2(0)=-inf 会被 clamp 成 -127, 这里按逐块版语义统一取 1.0
     return torch.where(max_abs < 1e-30, torch.ones_like(scales), scales)
 
 
-
-def mx_quantize(tensor: torch.Tensor, block_size: int = 32, mode: str = "baseline",
-                quant_mode: int = QUANT_MODE_OCP, log2_cx: float = 0.0):
+def mx_quantize(
+    tensor: torch.Tensor,
+    block_size: int = 32,
+    mode: str = "baseline",
+    quant_mode: int = QUANT_MODE_OCP,
+    log2_cx: float = 0.0,
+):
     original_shape = tensor.shape
     if tensor.dim() == 0:
         tensor = tensor.unsqueeze(0)
@@ -278,8 +349,9 @@ def mx_quantize(tensor: torch.Tensor, block_size: int = 32, mode: str = "baselin
         pad = block_size - (last % block_size)
         tensor = torch.nn.functional.pad(tensor, (0, pad), value=0.0)
     reshaped = tensor.reshape(-1, block_size)
-    scales = compute_e8m0_scale_blocks(reshaped, mode=mode,
-                                       quant_mode=quant_mode, log2_cx=log2_cx)
+    scales = compute_e8m0_scale_blocks(
+        reshaped, mode=mode, quant_mode=quant_mode, log2_cx=log2_cx
+    )
     fp4 = _quantize_fp4_chunked(reshaped / scales.unsqueeze(-1))
     fp4 = fp4.view(tensor.shape)
     if pad > 0:
@@ -287,7 +359,9 @@ def mx_quantize(tensor: torch.Tensor, block_size: int = 32, mode: str = "baselin
     return fp4, scales
 
 
-def mx_dequantize(fp4_vals: torch.Tensor, scales: torch.Tensor, block_size: int = 32) -> torch.Tensor:
+def mx_dequantize(
+    fp4_vals: torch.Tensor, scales: torch.Tensor, block_size: int = 32
+) -> torch.Tensor:
     original_shape = fp4_vals.shape
     last = original_shape[-1] if fp4_vals.dim() > 0 else 1
     pad = 0
@@ -302,11 +376,18 @@ def mx_dequantize(fp4_vals: torch.Tensor, scales: torch.Tensor, block_size: int 
     return dq
 
 
-def mxfp4_qdq(t: torch.Tensor, axis: int, block_size: int = 32, mode: str = "baseline",
-              quant_mode: int = QUANT_MODE_OCP, log2_cx: float = 0.0) -> torch.Tensor:
+def mxfp4_qdq(
+    t: torch.Tensor,
+    axis: int,
+    block_size: int = 32,
+    mode: str = "baseline",
+    quant_mode: int = QUANT_MODE_OCP,
+    log2_cx: float = 0.0,
+) -> torch.Tensor:
     t_last = t.movedim(axis, -1).contiguous()
-    fp4_sim, scales = mx_quantize(t_last, block_size=block_size, mode=mode,
-                                  quant_mode=quant_mode, log2_cx=log2_cx)
+    fp4_sim, scales = mx_quantize(
+        t_last, block_size=block_size, mode=mode, quant_mode=quant_mode, log2_cx=log2_cx
+    )
     dq = mx_dequantize(fp4_sim, scales, block_size=block_size)
     return dq.movedim(-1, axis).contiguous()
 
@@ -328,16 +409,28 @@ def pack_fp4_to_uint8(fp4_enc: torch.Tensor) -> torch.Tensor:
     return packed.reshape(*shape[:-1], shape[-1] // 2)
 
 
-def mxfp4_quantize_pack_last(tensor: torch.Tensor, quant_axis: int,
-                             block_size: int = 32, mode: str = "baseline",
-                             quant_mode: int = QUANT_MODE_OCP, log2_cx: float = 0.0):
+def mxfp4_quantize_pack_last(
+    tensor: torch.Tensor,
+    quant_axis: int,
+    block_size: int = 32,
+    mode: str = "baseline",
+    quant_mode: int = QUANT_MODE_OCP,
+    log2_cx: float = 0.0,
+):
     nd = tensor.dim()
     qax = quant_axis % nd
     assert tensor.shape[-1] % 2 == 0, f"last dim must be even, got {tensor.shape[-1]}"
     t_q_last = tensor.movedim(qax, -1).contiguous()
-    fp4_sim, scales_flat = mx_quantize(t_q_last, block_size=block_size, mode=mode,
-                                       quant_mode=quant_mode, log2_cx=log2_cx)
-    codes = convert_fp32_simulated_to_fp4_encoding(fp4_sim).movedim(-1, qax).contiguous()
+    fp4_sim, scales_flat = mx_quantize(
+        t_q_last,
+        block_size=block_size,
+        mode=mode,
+        quant_mode=quant_mode,
+        log2_cx=log2_cx,
+    )
+    codes = (
+        convert_fp32_simulated_to_fp4_encoding(fp4_sim).movedim(-1, qax).contiguous()
+    )
     packed = pack_fp4_to_uint8(codes)
     qdim = tensor.shape[qax]
     n_blk = (qdim + block_size - 1) // block_size
@@ -360,7 +453,12 @@ def _e8m0_v_to_v3(e8m0_uint8):
         pad_block = torch.full((B, N2, 1, D), E8M0_BIAS, dtype=torch.uint8)
         e8m0_uint8 = torch.cat([e8m0_uint8, pad_block], dim=2)
         nb += 1
-    return e8m0_uint8.reshape(B, N2, nb // 2, 2, D).permute(0, 1, 2, 4, 3).contiguous().view(torch.float8_e8m0fnu)
+    return (
+        e8m0_uint8.reshape(B, N2, nb // 2, 2, D)
+        .permute(0, 1, 2, 4, 3)
+        .contiguous()
+        .view(torch.float8_e8m0fnu)
+    )
 
 
 # =====================================================================
@@ -378,12 +476,17 @@ def _pack_fp4_e2m1_along_last(idx_tensor):
     return (high << 4) | low
 
 
-def _blockwise_snap_local_quantize_p_eff(S: torch.Tensor, m_running, seqk_dim: int,
-                                          mx_block_size: int = 32, mx_mode: str = "baseline",
-                                          is_cx: bool = False,
-                                          neg_log2_cx: float = 0.0,
-                                          p_quant_exp_shift: float = 2.0):
-    NEG_INF = float('-inf')
+def _blockwise_snap_local_quantize_p_eff(
+    S: torch.Tensor,
+    m_running,
+    seqk_dim: int,
+    mx_block_size: int = 32,
+    mx_mode: str = "baseline",
+    is_cx: bool = False,
+    neg_log2_cx: float = 0.0,
+    p_quant_exp_shift: float = 2.0,
+):
+    NEG_INF = float("-inf")
     device = S.device
     src_dtype = S.dtype
     ndim = S.dim()
@@ -395,7 +498,9 @@ def _blockwise_snap_local_quantize_p_eff(S: torch.Tensor, m_running, seqk_dim: i
     if pad > 0:
         pshape = list(S.shape)
         pshape[skp] = pad
-        S_padded = torch.cat([S, torch.full(pshape, NEG_INF, dtype=src_dtype, device=device)], dim=skp)
+        S_padded = torch.cat(
+            [S, torch.full(pshape, NEG_INF, dtype=src_dtype, device=device)], dim=skp
+        )
     else:
         S_padded = S
     S_moved = S_padded.movedim(skp, -1)
@@ -404,8 +509,11 @@ def _blockwise_snap_local_quantize_p_eff(S: torch.Tensor, m_running, seqk_dim: i
     S_r = S_moved.reshape(*other, n_blk, mx_block_size)
 
     m_block_raw = S_r.max(dim=-1).values
-    m_block_raw_safe = torch.where(torch.isinf(m_block_raw) & (m_block_raw < 0),
-                                   torch.zeros_like(m_block_raw), m_block_raw)
+    m_block_raw_safe = torch.where(
+        torch.isinf(m_block_raw) & (m_block_raw < 0),
+        torch.zeros_like(m_block_raw),
+        m_block_raw,
+    )
     if is_cx:
         INV_LN2_fp16 = torch.tensor(1.0 / LN2, dtype=torch.float16, device=device)
         LN2_fp16 = torch.tensor(LN2, dtype=torch.float16, device=device)
@@ -433,14 +541,20 @@ def _blockwise_snap_local_quantize_p_eff(S: torch.Tensor, m_running, seqk_dim: i
     K_new_s = m_new.to(src_dtype)
 
     if is_cx:
-        K_diff = (K_block - K_new_s.unsqueeze(-1))
-        corr = torch.exp2(K_diff - torch.tensor(p_quant_exp_shift, dtype=torch.float16, device=device))
+        K_diff = K_block - K_new_s.unsqueeze(-1)
+        corr = torch.exp2(
+            K_diff - torch.tensor(p_quant_exp_shift, dtype=torch.float16, device=device)
+        )
     else:
         K_diff = K_block - K_new_s.unsqueeze(-1)
         corr = torch.exp2(K_diff - 2.0)
 
-    corr_broad = corr.repeat_interleave(mx_block_size, dim=-1)[..., :seqk_len].movedim(-1, skp)
-    P_q_moved = P_q.reshape(*other, n_blk * mx_block_size)[..., :seqk_len].movedim(-1, skp)
+    corr_broad = corr.repeat_interleave(mx_block_size, dim=-1)[..., :seqk_len].movedim(
+        -1, skp
+    )
+    P_q_moved = P_q.reshape(*other, n_blk * mx_block_size)[..., :seqk_len].movedim(
+        -1, skp
+    )
     P_eff = P_q_moved * corr_broad
     return P_eff, m_new
 
@@ -448,19 +562,23 @@ def _blockwise_snap_local_quantize_p_eff(S: torch.Tensor, m_running, seqk_dim: i
 # =====================================================================
 # s_dtype 解析
 # =====================================================================
-_S_DTYPE_MAP = {'fp32': torch.float32, 'fp16': torch.float16, 'bf16': torch.bfloat16}
-_OUT_DTYPE_MAP = {'bfloat16': torch.bfloat16, 'float16': torch.float16}
+_S_DTYPE_MAP = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}
+_OUT_DTYPE_MAP = {"bfloat16": torch.bfloat16, "float16": torch.float16}
 
 
 def _resolve_s_dtype(s_dtype):
     if s_dtype not in _S_DTYPE_MAP:
-        raise ValueError(f"s_dtype must be one of {list(_S_DTYPE_MAP)}, got '{s_dtype}'")
+        raise ValueError(
+            f"s_dtype must be one of {list(_S_DTYPE_MAP)}, got '{s_dtype}'"
+        )
     return _S_DTYPE_MAP[s_dtype]
 
 
 def _resolve_out_dtype(out_dtype):
     if out_dtype not in _OUT_DTYPE_MAP:
-        raise ValueError(f"out_dtype must be one of {list(_OUT_DTYPE_MAP)}, got '{out_dtype}'")
+        raise ValueError(
+            f"out_dtype must be one of {list(_OUT_DTYPE_MAP)}, got '{out_dtype}'"
+        )
     return _OUT_DTYPE_MAP[out_dtype]
 
 
@@ -472,8 +590,9 @@ def _resolve_out_dtype(out_dtype):
 SPARSITY_RATIO_CHOICES = (1.0, 0.9, 0.8, 0.75, 0.5, 0.4, 0.25, 0.1)
 
 
-def build_block_sparse_mask(sparsity_ratio, q_seqlen_list, kv_seqlen_list, block_shape,
-                            batch, num_heads):
+def build_block_sparse_mask(
+    sparsity_ratio, q_seqlen_list, kv_seqlen_list, block_shape, batch, num_heads
+):
     """按 per-batch 实际长度分块生成 blockSparseMask [B, N1, ceil_q, ceil_kv] int8。
 
     每个 q-block 随机 attend ceil(该 batch 的 kv 块数 * sparsity_ratio) 个 kv 块(至少 1 个)。
@@ -514,7 +633,9 @@ def as_dim(value, name="dim"):
     try:
         dim = int(value)
     except (TypeError, ValueError) as exc:
-        raise TypeError(f"{name} 无法转为 int: type={type(value)} value={value!r}") from exc
+        raise TypeError(
+            f"{name} 无法转为 int: type={type(value)} value={value!r}"
+        ) from exc
     if dim < 0:
         raise ValueError(f"{name} 为负数({dim}), 上游传入的维度非法")
     return dim
@@ -526,8 +647,9 @@ def as_shape(shape):
 
 def randn_x(shape, x=1.0, dtype=torch.float32, device=None):
     data_range = [-x, x]
-    return data_range[0] + (data_range[1] - data_range[0]) * torch.rand(as_shape(shape), dtype=dtype,
-                                                                        device=device)
+    return data_range[0] + (data_range[1] - data_range[0]) * torch.rand(
+        as_shape(shape), dtype=dtype, device=device
+    )
 
 
 # 造数幅度。上限取 10.0(与参考脚本默认一致): 再放大后 S=Q·Kᵀ·scale 的量级为 sqrt(D)·x²,
@@ -589,17 +711,34 @@ def zero_degenerate_(kv_parts, n_tokens=32):
     (max_abs≈0 时取 scale=1.0)。只置零一小段而非全部, 输出仍非平凡, 精度指标才有分辨力。
     """
     for t in kv_parts:
-        t[:, :, :min(n_tokens, t.shape[2]), :] = 0.0
+        t[:, :, : min(n_tokens, t.shape[2]), :] = 0.0
 
 
 # =====================================================================
 # CPU golden — BNSD block-sparse MXFP4 分块 flash attention
 # =====================================================================
-def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(query, key, value, block_sparse_mask,
-                                                    block_shape, scale_value, num_kv_heads,
-                                                    p_quant='snap_local', s_dtype='fp16',
-                                                    out_dtype='bfloat16',
-                                                    quant_mode=QUANT_MODE_OCP, dst_type_max=0.0):
+def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(
+    query,
+    key,
+    value,
+    block_sparse_mask,
+    block_shape,
+    scale_value,
+    num_kv_heads,
+    p_quant="snap_local",
+    s_dtype="fp16",
+    out_dtype="bfloat16",
+    quant_mode=QUANT_MODE_OCP,
+    dst_type_max=0.0,
+    eff_rows_kv=None,
+):
+    """CPU 标杆(BNSD, MXFP4, 分块 flash)。
+
+    eff_rows_kv: per-batch 每 KV 块有效行数 [b][j](0<=eff<=block_y), 对齐 kernel arch35
+    mxfp4 的 attenMask(blockEffRows): 大块内行 [eff, 128) 在 VF 前置 MIN_VALUE(-inf),
+    无效行 exp(-inf-max)=0 不污染 max; golden 对齐保留完整 128 行块(32 行 snap 组不错位),
+    仅把超出 eff 的行 S 置 -inf、P 置 0。
+    """
     q = query.to(torch.float32)
     k = key.to(torch.float32)
     v = value.to(torch.float32)
@@ -612,7 +751,7 @@ def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(query, key, value, block_spar
     ceil_kv = (S2 + block_y - 1) // block_y
     s_torch_dtype = _resolve_s_dtype(s_dtype)
 
-    is_cx = (quant_mode == QUANT_MODE_CX)
+    is_cx = quant_mode == QUANT_MODE_CX
     neg_log2_cx = 0.0
     log2_cx = 0.0
     if is_cx:
@@ -627,7 +766,7 @@ def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(query, key, value, block_spar
     v_q = mxfp4_qdq(v, axis=2, quant_mode=quant_mode, log2_cx=log2_cx)
 
     out = torch.zeros((B, N, S, D), dtype=torch.float32)
-    lse = torch.full((B, N, S, 1), float('-inf'), dtype=torch.float32)
+    lse = torch.full((B, N, S, 1), float("-inf"), dtype=torch.float32)
     scale_s = torch.as_tensor(scale_value, dtype=s_torch_dtype)
 
     for b in range(B):
@@ -638,10 +777,12 @@ def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(query, key, value, block_spar
                 q_hi = min(q_lo + block_x, S)
                 if q_lo >= S:
                     break
-                sel_j = [j for j in range(ceil_kv) if block_sparse_mask[b, n, qb, j] != 0]
+                sel_j = [
+                    j for j in range(ceil_kv) if block_sparse_mask[b, n, qb, j] != 0
+                ]
                 if not sel_j:
                     continue
-                chunks = [sel_j[i:i + 2] for i in range(0, len(sel_j), 2)]
+                chunks = [sel_j[i : i + 2] for i in range(0, len(sel_j), 2)]
                 Q_blk = q_q[b, n, q_lo:q_hi]
                 nq = q_hi - q_lo
                 m_run = None
@@ -650,10 +791,27 @@ def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(query, key, value, block_spar
 
                 for chunk in chunks:
                     positions = []
+                    # valid_flags 与 positions 一一对应: 每个 KV 行是否有效(False -> 后续 S 置 -inf)。
+                    # 注意保留完整 128 行块(不截断 positions): kernel 的 snap 组是固定 32 行一组,
+                    # 截短会错位; 只把超出 eff 的行 mask 掉即可。
+                    valid_flags = []
                     for j in chunk:
                         st = j * block_y
                         ed = min(st + block_y, S2)
                         positions.extend(range(st, ed))
+                        if eff_rows_kv is not None:
+                            # attenMask(blockEffRows): 该 KV 块只保留前 eff 行, 之后行 mask 掉,
+                            # 对齐 kernel: validRowsY = attenMask[b,h,oriYBlock,1]。
+                            eff_j = eff_rows_kv[b][j]
+                            assert 0 <= eff_j <= block_y, (
+                                f"eff_rows_kv[b={b}][j={j}]={eff_j} 越界 [0,{block_y}]"
+                            )
+                            valid_hi = min(st + eff_j, ed)
+                            valid_flags.extend(
+                                [True] * (valid_hi - st) + [False] * (ed - valid_hi)
+                            )
+                        else:
+                            valid_flags.extend([True] * (ed - st))
                     if not positions:
                         continue
                     pos = torch.as_tensor(positions, dtype=torch.long)
@@ -662,23 +820,50 @@ def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(query, key, value, block_spar
 
                     S_fp32 = (K_blk @ Q_blk.t()).to(torch.float32)
                     S_s = (S_fp32 * scale_s).to(s_torch_dtype)
+                    if eff_rows_kv is not None:
+                        # attenMask: 无效行 S 置 -inf(对齐 kernel VF 前置 MIN_VALUE 写 s);
+                        # max 不受影响(-inf 不会成为最大值), exp(-inf-max)=0。
+                        invalid_mask = torch.as_tensor(
+                            [not f for f in valid_flags],
+                            dtype=torch.bool,
+                            device=S_s.device,
+                        )
+                        S_s = S_s.masked_fill(invalid_mask.unsqueeze(-1), float("-inf"))
 
-                    if p_quant == 'snap_local':
+                    if p_quant == "snap_local":
                         P_eff_s, m_new = _blockwise_snap_local_quantize_p_eff(
-                            S_s, m_running=m_run, seqk_dim=0,
-                            is_cx=is_cx, neg_log2_cx=neg_log2_cx, p_quant_exp_shift=p_quant_exp_shift)
+                            S_s,
+                            m_running=m_run,
+                            seqk_dim=0,
+                            is_cx=is_cx,
+                            neg_log2_cx=neg_log2_cx,
+                            p_quant_exp_shift=p_quant_exp_shift,
+                        )
                         P_eff_s = torch.nan_to_num(P_eff_s, nan=0.0)
+                        if eff_rows_kv is not None:
+                            # 无效行(attenMask eff 之外): 贡献必为 0, 直接置 0, 不再参与后续计算。
+                            P_eff_s = P_eff_s.masked_fill(
+                                invalid_mask.unsqueeze(-1), 0.0
+                            )
                         P_fp32 = P_eff_s.float()
-                        alpha = (torch.zeros(nq, dtype=torch.float32) if m_run is None
-                                 else torch.exp2(m_run.float() - m_new.float()))
+                        alpha = (
+                            torch.zeros(nq, dtype=torch.float32)
+                            if m_run is None
+                            else torch.exp2(m_run.float() - m_new.float())
+                        )
                     else:
                         m_s = S_s.max(dim=0).values
-                        m_safe_s = torch.where(torch.isinf(m_s) & (m_s < 0), torch.zeros_like(m_s), m_s)
+                        m_safe_s = torch.where(
+                            torch.isinf(m_s) & (m_s < 0), torch.zeros_like(m_s), m_s
+                        )
                         P_ij = torch.exp(S_s - m_safe_s.unsqueeze(0))
                         P_fp32 = torch.nan_to_num(P_ij, nan=0.0).float()
                         m_new = m_safe_s.float()
-                        alpha = (torch.zeros(nq, dtype=torch.float32) if m_run is None
-                                 else torch.exp(m_run - m_new))
+                        alpha = (
+                            torch.zeros(nq, dtype=torch.float32)
+                            if m_run is None
+                            else torch.exp(m_run - m_new)
+                        )
 
                     reduce_sum = P_fp32.sum(dim=0)
                     l_run = alpha * l_run + reduce_sum
@@ -701,12 +886,17 @@ def check_result(expect, result, data_type, pct_thd=0.005):
         return 100.0, "Pass"
     if real_data.size != data_compe.size:
         return 0.0, "Failed"
-    if data_type in ('bfloat16', 'float16'):
+    if data_type in ("bfloat16", "float16"):
         rtol, atol, max_diff_hd = 0.0078125, 0.0001, 10.0
     else:
         rtol, atol, max_diff_hd = 0.005, 0.000025, 10.0
-    diff_result = np.isclose(real_data.astype(np.float32), data_compe.astype(np.float32),
-                             rtol=rtol, atol=atol, equal_nan=True)
+    diff_result = np.isclose(
+        real_data.astype(np.float32),
+        data_compe.astype(np.float32),
+        rtol=rtol,
+        atol=atol,
+        equal_nan=True,
+    )
     err_idx = np.where(diff_result != np.array((True,)))[0]
     split_count = real_data.size
     fulfill_percent = float(split_count - err_idx.size) / float(split_count) * 100.0
@@ -723,7 +913,7 @@ def check_result(expect, result, data_type, pct_thd=0.005):
 # =====================================================================
 # ATK golden 计算类
 # =====================================================================
-class TestBlockSparseAttentionMxfp4GenBmGt():
+class TestBlockSparseAttentionMxfp4GenBmGt:
     @dataclass
     class AuxAttrs:
         num_heads: int
@@ -748,8 +938,11 @@ class TestBlockSparseAttentionMxfp4GenBmGt():
         block_sparse_shape: any
         q_seqlen_list: any
         kv_seqlen_list: any
-        padded_s1: any          # BNSD/BSND 输出张量 S 维(padded 大小); TND 为 None
+        padded_s1: any  # BNSD/BSND 输出张量 S 维(padded 大小); TND 为 None
         aux_attrs: any
+        eff_rows_kv: any = (
+            None  # per-batch 每 KV 块有效行数 [b][j](0<=eff<=block_y), 无则 None
+        )
 
     def compute_output(self, attention_inputs):
         """Benchmark 分支（is_benchmark=False）：MXFP4 qdq + snap_local P量化 分块flash"""
@@ -784,16 +977,40 @@ class TestBlockSparseAttentionMxfp4GenBmGt():
         for bi in range(batch):
             cq_b = (q_seqlen_list[bi] + block_shape_x - 1) // block_shape_x
             ck_b = (kv_seqlen_list[bi] + block_shape_y - 1) // block_shape_y
-            mask_b = mask_tensor[bi:bi + 1, :, :cq_b, :ck_b]
+            mask_b = mask_tensor[bi : bi + 1, :, :cq_b, :ck_b]
             out_b, _ = cpu_block_sparse_attention_bnsd_mxfp4_with_lse(
-                q_parts[bi], k_parts[bi], v_parts[bi], mask_b,
-                [block_shape_x, block_shape_y], scale, kv_heads,
-                p_quant='snap_local', s_dtype='fp16', out_dtype=out_dtype_str,
-                quant_mode=quant_mode, dst_type_max=dst_type_max)
+                q_parts[bi],
+                k_parts[bi],
+                v_parts[bi],
+                mask_b,
+                [block_shape_x, block_shape_y],
+                scale,
+                kv_heads,
+                p_quant="snap_local",
+                s_dtype="fp16",
+                out_dtype=out_dtype_str,
+                quant_mode=quant_mode,
+                dst_type_max=dst_type_max,
+                # eff_rows_kv 是 [batch][block] 的二维列表; golden 按 per-batch 调用(batch 内
+                # B=1, 用 eff_rows_kv[b][j] 索引), 这里切片 [bi:bi+1] 只传当前 batch 的那一行,
+                # 保证 golden 内部 b=0 取到的就是本 batch 的 eff 值。
+                eff_rows_kv=(
+                    attention_inputs.eff_rows_kv[bi : bi + 1]
+                    if attention_inputs.eff_rows_kv is not None
+                    else None
+                ),
+            )
             cpu_chunks.append(out_b)
 
-        return self._assemble_result(cpu_chunks, q_layout, batch, num_heads, embedding_size,
-                                    q_seqlen_list, attention_inputs.padded_s1)
+        return self._assemble_result(
+            cpu_chunks,
+            q_layout,
+            batch,
+            num_heads,
+            embedding_size,
+            q_seqlen_list,
+            attention_inputs.padded_s1,
+        )
 
     def compute_output_benchmark(self, attention_inputs):
         """Benchmark 真值分支（is_benchmark=True）：用量化前的原始 fp32 QKV 做标准 BSA"""
@@ -825,11 +1042,11 @@ class TestBlockSparseAttentionMxfp4GenBmGt():
         for bi in range(batch):
             cq_b = (q_seqlen_list[bi] + block_shape_x - 1) // block_shape_x
             ck_b = (kv_seqlen_list[bi] + block_shape_y - 1) // block_shape_y
-            mask_b = mask_tensor[bi:bi + 1, :, :cq_b, :ck_b]
+            mask_b = mask_tensor[bi : bi + 1, :, :cq_b, :ck_b]
 
-            q_b = q_parts[bi]   # [1, N, S1, D] fp32
-            k_b = k_parts[bi]   # [1, N2, S2, D] fp32
-            v_b = v_parts[bi]   # [1, N2, S2, D] fp32
+            q_b = q_parts[bi]  # [1, N, S1, D] fp32
+            k_b = k_parts[bi]  # [1, N2, S2, D] fp32
+            v_b = v_parts[bi]  # [1, N2, S2, D] fp32
             B_b, N_b, S1_b, D_b = q_b.shape
             N2_b = k_b.shape[1]
             S2_b = k_b.shape[2]
@@ -847,19 +1064,39 @@ class TestBlockSparseAttentionMxfp4GenBmGt():
                     if not sel_j:
                         continue
                     positions = []
+                    valid_flags = []  # 与 positions 一一对应: 该 KV 行是否有效(False -> s 置 -inf)
                     for j in sel_j:
                         st = j * block_shape_y
                         ed = min(st + block_shape_y, S2_b)
                         positions.extend(range(st, ed))
+                        if attention_inputs.eff_rows_kv is not None:
+                            # blockEffRows: 该 KV 块只保留前 eff_j 行, 之后的 [eff_j, block_y) 行无效
+                            eff_j = attention_inputs.eff_rows_kv[bi][j]
+                            valid_hi = min(st + eff_j, ed)
+                            valid_flags.extend(
+                                [True] * (valid_hi - st) + [False] * (ed - valid_hi)
+                            )
+                        else:
+                            valid_flags.extend([True] * (ed - st))
                     if not positions:
                         continue
                     pos = torch.as_tensor(positions, dtype=torch.long)
-                    Q_blk = q_b[0, n, q_lo:q_hi]       # [nq, D]
-                    K_blk = k_b[0, n2][pos]             # [npos, D]
-                    V_blk = v_b[0, n2][pos]             # [npos, D]
+                    Q_blk = q_b[0, n, q_lo:q_hi]  # [nq, D]
+                    K_blk = k_b[0, n2][pos]  # [npos, D]
+                    V_blk = v_b[0, n2][pos]  # [npos, D]
 
                     # fp32 标准 attention
+                    # s 形状 [nq, npos]: dim0=query token, dim1=KV 位置(与 golden 的 DN 布局相反,
+                    # 故这里 mask 必须 unsqueeze(0) 成 [1, npos] 沿 dim1 掩码, 不能像 golden 那样
+                    # unsqueeze(-1))。无效 KV 行 s 置 -inf: max 不受影响, exp(-inf-max)=0。
                     s = (Q_blk.float() @ K_blk.float().t()) * scale
+                    if attention_inputs.eff_rows_kv is not None:
+                        invalid_mask = torch.as_tensor(
+                            [not f for f in valid_flags],
+                            dtype=torch.bool,
+                            device=s.device,
+                        )
+                        s = s.masked_fill(invalid_mask.unsqueeze(0), float("-inf"))
                     row_max = s.max(dim=-1, keepdim=True).values
                     p = torch.exp(s - row_max)
                     p = p / p.sum(dim=-1, keepdim=True)
@@ -868,11 +1105,26 @@ class TestBlockSparseAttentionMxfp4GenBmGt():
 
             cpu_chunks.append(out_b)
 
-        return self._assemble_result(cpu_chunks, q_layout, batch, num_heads, embedding_size,
-                                    q_seqlen_list, attention_inputs.padded_s1)
+        return self._assemble_result(
+            cpu_chunks,
+            q_layout,
+            batch,
+            num_heads,
+            embedding_size,
+            q_seqlen_list,
+            attention_inputs.padded_s1,
+        )
 
-    def _assemble_result(self, cpu_chunks, q_layout, batch, num_heads, embedding_size,
-                         q_seqlen_list, padded_s1=None):
+    def _assemble_result(
+        self,
+        cpu_chunks,
+        q_layout,
+        batch,
+        num_heads,
+        embedding_size,
+        q_seqlen_list,
+        padded_s1=None,
+    ):
         """将 per-batch BNSD 结果拼回原始 layout。
 
         BNSD/BSND 变长(padded)场景: 输出张量 S 维为 padded 大小, [actualSeqLen, S_padded) 区间
@@ -885,16 +1137,20 @@ class TestBlockSparseAttentionMxfp4GenBmGt():
             result = torch.cat(result_parts, dim=0)
         elif q_layout == "BNSD":
             out_s = padded_s1 if padded_s1 is not None else max(q_seqlen_list)
-            result = torch.zeros(as_shape((batch, num_heads, out_s, embedding_size)),
-                                 dtype=cpu_chunks[0].dtype)
+            result = torch.zeros(
+                as_shape((batch, num_heads, out_s, embedding_size)),
+                dtype=cpu_chunks[0].dtype,
+            )
             for bi in range(batch):
-                result[bi, :, :q_seqlen_list[bi]] = cpu_chunks[bi][0]
+                result[bi, :, : q_seqlen_list[bi]] = cpu_chunks[bi][0]
         elif q_layout == "BSND":
             out_s = padded_s1 if padded_s1 is not None else max(q_seqlen_list)
-            result = torch.zeros(as_shape((batch, out_s, num_heads, embedding_size)),
-                                 dtype=cpu_chunks[0].dtype)
+            result = torch.zeros(
+                as_shape((batch, out_s, num_heads, embedding_size)),
+                dtype=cpu_chunks[0].dtype,
+            )
             for bi in range(batch):
-                result[bi, :q_seqlen_list[bi]] = cpu_chunks[bi][0].permute(1, 0, 2)
+                result[bi, : q_seqlen_list[bi]] = cpu_chunks[bi][0].permute(1, 0, 2)
 
         return result.to(torch.float32)
 
@@ -913,7 +1169,7 @@ def numpy_array_to_tensor(arr):
         return None
     if isinstance(arr, list):
         arr = np.array(arr)
-    if arr.dtype.name == 'bfloat16':
+    if arr.dtype.name == "bfloat16":
         return torch.from_numpy(arr.astype(np.float32)).to(torch.bfloat16)
     return torch.from_numpy(arr)
 
@@ -982,12 +1238,17 @@ class BlockSparseAttentionV3Api(BaseApi):
             self.q_seqlen_list = tuple([int(query_packed.shape[s_dim])] * self.batch)
             self.kv_seqlen_list = tuple([int(key_shape[s_dim])] * self.batch)
 
-        assert min(self.q_seqlen_list) >= 1 and min(self.kv_seqlen_list) >= 1, \
-            (f"actualSeqLengths 必须为正: q={self.q_seqlen_list} kv={self.kv_seqlen_list} "
-             f"(上游原值 q={raw_act_q!r} kv={raw_act_kv!r})")
-        assert len(self.q_seqlen_list) == self.batch and len(self.kv_seqlen_list) == self.batch, \
-            (f"actualSeqLengths 长度须等于 batch({self.batch}): "
-             f"q={self.q_seqlen_list} kv={self.kv_seqlen_list}")
+        assert min(self.q_seqlen_list) >= 1 and min(self.kv_seqlen_list) >= 1, (
+            f"actualSeqLengths 必须为正: q={self.q_seqlen_list} kv={self.kv_seqlen_list} "
+            f"(上游原值 q={raw_act_q!r} kv={raw_act_kv!r})"
+        )
+        assert (
+            len(self.q_seqlen_list) == self.batch
+            and len(self.kv_seqlen_list) == self.batch
+        ), (
+            f"actualSeqLengths 长度须等于 batch({self.batch}): "
+            f"q={self.q_seqlen_list} kv={self.kv_seqlen_list}"
+        )
 
         self.log2_cx = 0.0
         if self.quant_mode == QUANT_MODE_CX:
@@ -999,18 +1260,33 @@ class BlockSparseAttentionV3Api(BaseApi):
         # 种子必须只由用例参数决定(cpu/npu 两节点各自造数, 结果要逐位一致), 但不能是常量,
         # 否则所有用例共用同一份数据分布。稀疏率与造数幅度同样由它派生。
         case_seed = case_derived_seed(
-            self.q_input_layout, self.batch, self.num_heads, self.kv_heads, self.headDim,
-            q_s_list, kv_s_list, self.block_shape,
-            self.quant_mode, self.dst_type_max, self.attention_out_dtype_str)
+            self.q_input_layout,
+            self.batch,
+            self.num_heads,
+            self.kv_heads,
+            self.headDim,
+            q_s_list,
+            kv_s_list,
+            self.block_shape,
+            self.quant_mode,
+            self.dst_type_max,
+            self.attention_out_dtype_str,
+        )
         random.seed(case_seed)
         np.random.seed(case_seed)
         torch.manual_seed(case_seed)
 
         sparsity_ratio = SPARSITY_RATIO_CHOICES[case_seed % len(SPARSITY_RATIO_CHOICES)]
-        data_x = DATA_X_CHOICES[(case_seed // len(SPARSITY_RATIO_CHOICES)) % len(DATA_X_CHOICES)]
-        zero_degenerate = (case_seed // (len(SPARSITY_RATIO_CHOICES) * len(DATA_X_CHOICES))) % 4 == 0
-        logging.info(f"=======case_seed:{case_seed};sparsity_ratio:{sparsity_ratio};data_x:{data_x};"
-                     f"zero_degenerate:{zero_degenerate};pass_act_seq:{self.pass_act_seq};========")
+        data_x = DATA_X_CHOICES[
+            (case_seed // len(SPARSITY_RATIO_CHOICES)) % len(DATA_X_CHOICES)
+        ]
+        zero_degenerate = (
+            case_seed // (len(SPARSITY_RATIO_CHOICES) * len(DATA_X_CHOICES))
+        ) % 4 == 0
+        logging.info(
+            f"=======case_seed:{case_seed};sparsity_ratio:{sparsity_ratio};data_x:{data_x};"
+            f"zero_degenerate:{zero_degenerate};pass_act_seq:{self.pass_act_seq};========"
+        )
 
         # BNSD/BSND 变长场景: 张量 S 维为 padded 大小, actualSeqLengths 指示每 batch 实际有效长度
         # (V3 doc: BNSD/BSND 配置 actualSeqLengths 后算子按实际长度处理)。
@@ -1030,9 +1306,24 @@ class BlockSparseAttentionV3Api(BaseApi):
             q_offset, kv_offset = 0, 0
             for bi in range(self.batch):
                 sq, skv = q_s_list[bi], kv_s_list[bi]
-                self.q_parts.append(q_tnd[q_offset:q_offset + sq].unsqueeze(0).permute(0, 2, 1, 3).contiguous())
-                self.k_parts.append(k_tnd[kv_offset:kv_offset + skv].unsqueeze(0).permute(0, 2, 1, 3).contiguous())
-                self.v_parts.append(v_tnd[kv_offset:kv_offset + skv].unsqueeze(0).permute(0, 2, 1, 3).contiguous())
+                self.q_parts.append(
+                    q_tnd[q_offset : q_offset + sq]
+                    .unsqueeze(0)
+                    .permute(0, 2, 1, 3)
+                    .contiguous()
+                )
+                self.k_parts.append(
+                    k_tnd[kv_offset : kv_offset + skv]
+                    .unsqueeze(0)
+                    .permute(0, 2, 1, 3)
+                    .contiguous()
+                )
+                self.v_parts.append(
+                    v_tnd[kv_offset : kv_offset + skv]
+                    .unsqueeze(0)
+                    .permute(0, 2, 1, 3)
+                    .contiguous()
+                )
                 q_offset += sq
                 kv_offset += skv
         else:
@@ -1043,37 +1334,118 @@ class BlockSparseAttentionV3Api(BaseApi):
             else:
                 self.padded_s1 = int(query_packed.shape[1])
                 self.padded_s2 = int(key_packed.shape[1])
-            assert max(q_s_list) <= self.padded_s1 and max(kv_s_list) <= self.padded_s2, \
-                (f"actualSeqLengths 须 <= 张量 S 维: q={q_s_list} vs {self.padded_s1}, "
-                 f"kv={kv_s_list} vs {self.padded_s2}")
-            self.q_parts = [randn_x((1, self.num_heads, q_s_list[bi], self.headDim), data_x)
-                            for bi in range(self.batch)]
-            self.k_parts = [randn_x((1, self.kv_heads, kv_s_list[bi], self.headDim), data_x)
-                            for bi in range(self.batch)]
-            self.v_parts = [randn_x((1, self.kv_heads, kv_s_list[bi], self.headDim), data_x)
-                            for bi in range(self.batch)]
+            assert (
+                max(q_s_list) <= self.padded_s1 and max(kv_s_list) <= self.padded_s2
+            ), (
+                f"actualSeqLengths 须 <= 张量 S 维: q={q_s_list} vs {self.padded_s1}, "
+                f"kv={kv_s_list} vs {self.padded_s2}"
+            )
+            self.q_parts = [
+                randn_x((1, self.num_heads, q_s_list[bi], self.headDim), data_x)
+                for bi in range(self.batch)
+            ]
+            self.k_parts = [
+                randn_x((1, self.kv_heads, kv_s_list[bi], self.headDim), data_x)
+                for bi in range(self.batch)
+            ]
+            self.v_parts = [
+                randn_x((1, self.kv_heads, kv_s_list[bi], self.headDim), data_x)
+                for bi in range(self.batch)
+            ]
 
         if zero_degenerate:
             zero_degenerate_(self.k_parts)
             zero_degenerate_(self.v_parts)
 
         self.block_sparse_mask_np = build_block_sparse_mask(
-            sparsity_ratio, q_s_list, kv_s_list, self.block_shape,
-            self.batch, self.num_heads)
+            sparsity_ratio,
+            q_s_list,
+            kv_s_list,
+            self.block_shape,
+            self.batch,
+            self.num_heads,
+        )
 
         # mask 按 per-batch 实际长度分块生成, 再 0-pad 到 host 校验要求的 CeilDiv(S_padded, block)
         # (host CheckSparsePattern 只校验维度, padding 块内容置 0 表示"无 token 可 attend")
         if self.padded_s1 is not None:
-            ceil_q_pad = (self.padded_s1 + self.block_shape[0] - 1) // self.block_shape[0]
-            ceil_kv_pad = (self.padded_s2 + self.block_shape[1] - 1) // self.block_shape[1]
+            ceil_q_pad = (self.padded_s1 + self.block_shape[0] - 1) // self.block_shape[
+                0
+            ]
+            ceil_kv_pad = (
+                self.padded_s2 + self.block_shape[1] - 1
+            ) // self.block_shape[1]
             pad_q = max(0, ceil_q_pad - self.block_sparse_mask_np.shape[2])
             pad_kv = max(0, ceil_kv_pad - self.block_sparse_mask_np.shape[3])
             if pad_q > 0 or pad_kv > 0:
                 self.block_sparse_mask_np = np.pad(
                     self.block_sparse_mask_np,
-                    ((0, 0), (0, 0), (0, pad_q), (0, pad_kv)), constant_values=0)
+                    ((0, 0), (0, 0), (0, pad_q), (0, pad_kv)),
+                    constant_values=0,
+                )
 
         self.block_sparse_mask_tensor = numpy_array_to_tensor(self.block_sparse_mask_np)
+
+        # attenMask (blockEffRows): per-KV-块有效行数(0<=eff<=block_y), 由 case_seed 派生(cpu/npu 一致)。
+        # 0(整块无效)是 kernel 已知限制, 生成时规避; 覆盖 满块/随机 两种形态。
+        # use_eff_rows 用 seed%4 控制: 约 3/4 用例开启 eff rows, 其余保持原 attenMask=None 的回归路径。
+        # kernel 的 effRows 是按 128 行块语义实现的(blockShapeY=256 时索引会错位), 故只在
+        # blockShapeY==128 时开启; 其余 blockShape 保持 attenMask=None 的原回归路径。
+        block_y = self.block_shape[1]
+        self.use_eff_rows = (case_seed % 4) != 0 and block_y == 128
+        self.eff_rows_kv = None
+        if self.use_eff_rows:
+            # 用独立 Random 实例(case_seed ^ 常量)而非模块级 random: 保证 cpu/pyaclnn 两个节点
+            # 无论各自执行顺序如何, 派生出的 eff 值逐位一致(与 QKV/mask 同源同种)。
+            eff_rng = random.Random(case_seed ^ 0xEFF0)
+            self.eff_rows_kv = []
+            for _bi in range(self.batch):
+                ck_bi = (self.kv_seqlen_list[_bi] + block_y - 1) // block_y
+                eff_b = [
+                    block_y if eff_rng.random() < 0.25 else eff_rng.randint(1, block_y)
+                    for _ in range(ck_bi)
+                ]
+                # 保证非退化: 至少一个块为部分有效(非满块), 否则把最后一块改成随机部分值
+                if eff_b and all(e == block_y for e in eff_b):
+                    eff_b[-1] = eff_rng.randint(1, block_y - 1)
+                self.eff_rows_kv.append(eff_b)
+
+        # V3 attenMask 张量: int32 [B, N1, maxBlockNum, 2], 末维 [effRowsQ, effRowsKV]。
+        # kernel 只读 KV 槽(index 1); dim2 须 >= max(xBlockNumAligned, yBlockNumAligned)。
+        # effRowsQ 槽填 block_x(全量, kernel 不用)。
+        self.atten_mask_t = None
+        if self.eff_rows_kv is not None:
+            # dim2(maxBlockNum) 取 Q/KV 两侧块数的上界, 满足 tiling ParseAttenMask 的
+            # dim2 >= max(maxQBlockNum_, maxKvBlockNum_) 校验; padded 场景按张量 S 维算,
+            # TND 按实际序列长算(与 blockSparseMask 维度一致)。
+            if self.padded_s1 is not None:
+                cq = (self.padded_s1 + self.block_shape[0] - 1) // self.block_shape[0]
+                ck = (self.padded_s2 + self.block_shape[1] - 1) // self.block_shape[1]
+            else:  # TND: 按实际长度
+                cq = max(
+                    (s + self.block_shape[0] - 1) // self.block_shape[0]
+                    for s in self.q_seqlen_list
+                )
+                ck = max(
+                    (s + self.block_shape[1] - 1) // self.block_shape[1]
+                    for s in self.kv_seqlen_list
+                )
+            max_block_num = max(cq, ck)
+            # 初始全填 block_x(等价整块有效); 只往 KV 槽 [..., j, 1] 写每块 eff 值,
+            # 块数之外的位置(该 batch 无 token 的 padding 块)保持全量即可(反正不会被 attend)。
+            att = torch.full(
+                (self.batch, self.num_heads, max_block_num, 2),
+                self.block_shape[0],
+                dtype=torch.int32,
+            )
+            for _bi in range(self.batch):
+                ck_bi = (self.kv_seqlen_list[_bi] + block_y - 1) // block_y
+                for _j in range(ck_bi):
+                    att[_bi, :, _j, 1] = self.eff_rows_kv[_bi][_j]
+            self.atten_mask_t = att
+        logging.info(
+            f"=======use_eff_rows:{self.use_eff_rows};eff_rows_kv:{self.eff_rows_kv};========"
+        )
 
         # 打包 QKV 为 MXFP4 格式（NPU 侧输入）
         if self.q_input_layout == "TND":
@@ -1083,9 +1455,15 @@ class BlockSparseAttentionV3Api(BaseApi):
                 q_b = self.q_parts[bi]
                 k_b = self.k_parts[bi]
                 v_b = self.v_parts[bi]
-                q_p, q_e = mxfp4_quantize_pack_last(q_b, quant_axis=-1, quant_mode=self.quant_mode, log2_cx=self.log2_cx)
-                k_p, k_e = mxfp4_quantize_pack_last(k_b, quant_axis=-1, quant_mode=self.quant_mode, log2_cx=self.log2_cx)
-                v_p, v_e = mxfp4_quantize_pack_last(v_b, quant_axis=-2, quant_mode=self.quant_mode, log2_cx=self.log2_cx)
+                q_p, q_e = mxfp4_quantize_pack_last(
+                    q_b, quant_axis=-1, quant_mode=self.quant_mode, log2_cx=self.log2_cx
+                )
+                k_p, k_e = mxfp4_quantize_pack_last(
+                    k_b, quant_axis=-1, quant_mode=self.quant_mode, log2_cx=self.log2_cx
+                )
+                v_p, v_e = mxfp4_quantize_pack_last(
+                    v_b, quant_axis=-2, quant_mode=self.quant_mode, log2_cx=self.log2_cx
+                )
                 q_p_ch.append(q_p.permute(0, 2, 1, 3).flatten(0, 1))
                 k_p_ch.append(k_p.permute(0, 2, 1, 3).flatten(0, 1))
                 v_p_ch.append(v_p.permute(0, 2, 1, 3).flatten(0, 1))
@@ -1100,19 +1478,43 @@ class BlockSparseAttentionV3Api(BaseApi):
             self.v_scale = torch.cat(v_s_ch, dim=0).contiguous()
         else:
             # per-batch 实际长度数据 0-pad 到张量 S 维后 cat 成 BNSD [B, N, S_padded, D]
-            q_bnsd = torch.cat([
-                torch.nn.functional.pad(self.q_parts[bi], (0, 0, 0, self.padded_s1 - q_s_list[bi]))
-                for bi in range(self.batch)], dim=0).contiguous()
-            k_bnsd = torch.cat([
-                torch.nn.functional.pad(self.k_parts[bi], (0, 0, 0, self.padded_s2 - kv_s_list[bi]))
-                for bi in range(self.batch)], dim=0).contiguous()
-            v_bnsd = torch.cat([
-                torch.nn.functional.pad(self.v_parts[bi], (0, 0, 0, self.padded_s2 - kv_s_list[bi]))
-                for bi in range(self.batch)], dim=0).contiguous()
+            q_bnsd = torch.cat(
+                [
+                    torch.nn.functional.pad(
+                        self.q_parts[bi], (0, 0, 0, self.padded_s1 - q_s_list[bi])
+                    )
+                    for bi in range(self.batch)
+                ],
+                dim=0,
+            ).contiguous()
+            k_bnsd = torch.cat(
+                [
+                    torch.nn.functional.pad(
+                        self.k_parts[bi], (0, 0, 0, self.padded_s2 - kv_s_list[bi])
+                    )
+                    for bi in range(self.batch)
+                ],
+                dim=0,
+            ).contiguous()
+            v_bnsd = torch.cat(
+                [
+                    torch.nn.functional.pad(
+                        self.v_parts[bi], (0, 0, 0, self.padded_s2 - kv_s_list[bi])
+                    )
+                    for bi in range(self.batch)
+                ],
+                dim=0,
+            ).contiguous()
 
-            q_packed_t, q_e8m0 = mxfp4_quantize_pack_last(q_bnsd, quant_axis=-1, quant_mode=self.quant_mode, log2_cx=self.log2_cx)
-            k_packed_t, k_e8m0 = mxfp4_quantize_pack_last(k_bnsd, quant_axis=-1, quant_mode=self.quant_mode, log2_cx=self.log2_cx)
-            v_packed_t, v_e8m0 = mxfp4_quantize_pack_last(v_bnsd, quant_axis=-2, quant_mode=self.quant_mode, log2_cx=self.log2_cx)
+            q_packed_t, q_e8m0 = mxfp4_quantize_pack_last(
+                q_bnsd, quant_axis=-1, quant_mode=self.quant_mode, log2_cx=self.log2_cx
+            )
+            k_packed_t, k_e8m0 = mxfp4_quantize_pack_last(
+                k_bnsd, quant_axis=-1, quant_mode=self.quant_mode, log2_cx=self.log2_cx
+            )
+            v_packed_t, v_e8m0 = mxfp4_quantize_pack_last(
+                v_bnsd, quant_axis=-2, quant_mode=self.quant_mode, log2_cx=self.log2_cx
+            )
             self.q_scale = _e8m0_qk_to_v3(q_e8m0)
             self.k_scale = _e8m0_qk_to_v3(k_e8m0)
             self.v_scale = _e8m0_v_to_v3(v_e8m0)
@@ -1130,21 +1532,38 @@ class BlockSparseAttentionV3Api(BaseApi):
                 self.v_packed = v_packed_t
 
     def __call__(self, input_data: InputDataset, with_output: bool = False):
-        logging.info(f"=======q_input_layout:{self.q_input_layout};self.q_packed:{self.q_packed.shape};q_seqlen_list:{self.q_seqlen_list};;self.k_packed:{self.k_packed.shape};kv_seqlen_list:{self.kv_seqlen_list};padded_s1:{self.padded_s1};padded_s2:{self.padded_s2};========")
+        logging.info(
+            f"=======q_input_layout:{self.q_input_layout};self.q_packed:{self.q_packed.shape};q_seqlen_list:{self.q_seqlen_list};;self.k_packed:{self.k_packed.shape};kv_seqlen_list:{self.kv_seqlen_list};padded_s1:{self.padded_s1};padded_s2:{self.padded_s2};========"
+        )
         if self.device == "cpu":
             testObj = TestBlockSparseAttentionMxfp4GenBmGt()
             aux_attrs = testObj.AuxAttrs(
-                self.num_heads, self.kv_heads, self.headDim,
-                self.inner_precise, self.scale_value,
-                self.q_input_layout, self.kv_input_layout,
+                self.num_heads,
+                self.kv_heads,
+                self.headDim,
+                self.inner_precise,
+                self.scale_value,
+                self.q_input_layout,
+                self.kv_input_layout,
                 self.attention_out_dtype_str,
-                self.quant_mode, self.dst_type_max)
+                self.quant_mode,
+                self.dst_type_max,
+            )
 
             attention_inputs = testObj.AttentionInputs(
-                self.q_parts, self.k_parts, self.v_parts,
+                self.q_parts,
+                self.k_parts,
+                self.v_parts,
                 self.block_sparse_mask_np,
-                self.block_shape, self.q_seqlen_list, self.kv_seqlen_list,
-                self.padded_s1, aux_attrs)
+                self.block_shape,
+                self.q_seqlen_list,
+                self.kv_seqlen_list,
+                self.padded_s1,
+                aux_attrs,
+                # eff_rows_kv 一并传给 golden(benchmark 与真值两条分支都要按 eff 掩码),
+                # 与 DUT 侧 atten_mask 内容严格同源(都由 case_seed 派生)。
+                self.eff_rows_kv,
+            )
 
             if self.task_result.is_benchmark_task:
                 result = testObj.compute_output_benchmark(attention_inputs)
@@ -1154,7 +1573,8 @@ class BlockSparseAttentionV3Api(BaseApi):
 
         raise ValueError(
             f"不支持的 device: {self.device}; pyaclnn 节点请使用 "
-            f"aclnn_api_type=pyaclnn_aclnn_blocksparseattention_v3")
+            f"aclnn_api_type=pyaclnn_aclnn_blocksparseattention_v3"
+        )
 
 
 # =====================================================================
@@ -1185,13 +1605,25 @@ class PyAclnnBlockSparseAttentionV3Api(AclnnBaseApi):
         self.prep = prep
 
         out_shape = _bsa_out_shape(prep)
-        self.out_npu = torch.zeros(out_shape, dtype=prep.attention_out_torch_dtype,
-                                   device="npu")
+        self.out_npu = torch.zeros(
+            out_shape, dtype=prep.attention_out_torch_dtype, device="npu"
+        )
         out_pack = _create_acl_tensor(
-            self.out_npu, TORCH_TO_ACLTYPE[str(prep.attention_out_torch_dtype)], out_shape)
+            self.out_npu,
+            TORCH_TO_ACLTYPE[str(prep.attention_out_torch_dtype)],
+            out_shape,
+        )
 
         act_q = list(prep.q_seqlen_list) if prep.pass_act_seq else None
         act_kv = list(prep.kv_seqlen_list) if prep.pass_act_seq else None
+
+        # attenMask (blockEffRows): 有则传 int32 [B, N1, maxBlockNum, 2] 张量, 无则 nullptr
+        if prep.atten_mask_t is not None:
+            atten_mask_arg = nnopbase.create_acl_tensor(
+                prep.atten_mask_t.contiguous().npu(), AclFormat.ACL_FORMAT_ND
+            )
+        else:
+            atten_mask_arg = TensorPtr()
 
         # 顺序严格对齐 docs/aclnnBlockSparseAttentionV3.md 的一段式原型
         input_args = [
@@ -1199,37 +1631,40 @@ class PyAclnnBlockSparseAttentionV3Api(AclnnBaseApi):
             create_fp4_acl_tensor(prep.k_packed, prep.headDim),
             create_fp4_acl_tensor(prep.v_packed, prep.headDim),
             nnopbase.create_acl_tensor(
-                prep.block_sparse_mask_tensor.contiguous().npu(), AclFormat.ACL_FORMAT_ND),
-            TensorPtr(),                     # attenMaskOptional: 仅支持 nullptr
+                prep.block_sparse_mask_tensor.contiguous().npu(),
+                AclFormat.ACL_FORMAT_ND,
+            ),
+            atten_mask_arg,  # attenMaskOptional (blockEffRows)
             create_int64_array(list(prep.block_shape)),
             create_int64_array(act_q),
             create_int64_array(act_kv),
-            TensorPtr(),                     # blockTableOptional: 仅支持 nullptr
+            TensorPtr(),  # blockTableOptional: 仅支持 nullptr
             create_e8m0_acl_tensor(prep.q_scale),
             create_e8m0_acl_tensor(prep.k_scale),
             create_e8m0_acl_tensor(prep.v_scale),
-            TensorPtr(),                     # pQuantScaleOptional
+            TensorPtr(),  # pQuantScaleOptional
             ctypes.c_char_p(prep.q_input_layout.encode("utf-8")),
             ctypes.c_char_p(prep.kv_input_layout.encode("utf-8")),
             Int64(prep.kv_heads),
-            Int64(0),                        # maskType: 仅支持 0
+            Int64(0),  # maskType: 仅支持 0
             ctypes.c_double(prep.scale_value),
             Int64(prep.inner_precise),
-            Int64(0),                        # blockSize: 仅支持 0
-            Int64(_NOT_LIMITED),             # preTokens
-            Int64(_NOT_LIMITED),             # nextTokens
-            Int64(0),                        # softmaxLseFlag: MXFP4 不支持 lse
+            Int64(0),  # blockSize: 仅支持 0
+            Int64(_NOT_LIMITED),  # preTokens
+            Int64(_NOT_LIMITED),  # nextTokens
+            Int64(0),  # softmaxLseFlag: MXFP4 不支持 lse
             Int64(prep.quant_mode),
             ctypes.c_double(prep.dst_type_max),
             out_pack,
-            TensorPtr(),                     # softmaxLseOptional
+            TensorPtr(),  # softmaxLseOptional
         ]
 
         logging.info(
             f"pyaclnn BSA V3 MXFP4 | layout={prep.q_input_layout} "
             f"q={tuple(prep.q_packed.shape)} k={tuple(prep.k_packed.shape)} "
             f"out={out_shape} quantMode={prep.quant_mode} dstTypeMax={prep.dst_type_max} "
-            f"actSeq={'on' if prep.pass_act_seq else 'off'}")
+            f"actSeq={'on' if prep.pass_act_seq else 'off'}"
+        )
 
         torch.npu.synchronize()
         return input_args, [out_pack]
@@ -1242,7 +1677,9 @@ class PyAclnnBlockSparseAttentionV3Api(AclnnBaseApi):
         省掉一遍量化打包。
         """
         cached = getattr(self.backend, "api_executor", None)
-        if isinstance(cached, BlockSparseAttentionV3Api) and hasattr(cached, "q_packed"):
+        if isinstance(cached, BlockSparseAttentionV3Api) and hasattr(
+            cached, "q_packed"
+        ):
             return cached
         prep = BlockSparseAttentionV3Api(self.task_result)
         prep.init_by_input_data(input_data)
@@ -1264,33 +1701,35 @@ class PyAclnnBlockSparseAttentionV3Api(AclnnBaseApi):
         return [out]
 
     def get_cpp_func_signature_type(self):
-        return ("aclnnStatus aclnnBlockSparseAttentionV3GetWorkspaceSize("
-                "const aclTensor *query, "
-                "const aclTensor *key, "
-                "const aclTensor *value, "
-                "const aclTensor *blockSparseMaskOptional, "
-                "const aclTensor *attenMaskOptional, "
-                "const aclIntArray *blockShapeOptional, "
-                "const aclIntArray *actualSeqLengthsOptional, "
-                "const aclIntArray *actualSeqLengthsKvOptional, "
-                "const aclTensor *blockTableOptional, "
-                "const aclTensor *qDequantScaleOptional, "
-                "const aclTensor *kDequantScaleOptional, "
-                "const aclTensor *vDequantScaleOptional, "
-                "const aclTensor *pQuantScaleOptional, "
-                "char *qInputLayout, "
-                "char *kvInputLayout, "
-                "int64_t numKeyValueHeads, "
-                "int64_t maskType, "
-                "double scaleValue, "
-                "int64_t innerPrecise, "
-                "int64_t blockSize, "
-                "int64_t preTokens, "
-                "int64_t nextTokens, "
-                "int64_t softmaxLseFlag, "
-                "int64_t quantMode, "
-                "double dstTypeMax, "
-                "aclTensor *attentionOut, "
-                "aclTensor *softmaxLseOptional, "
-                "uint64_t *workspaceSize, "
-                "aclOpExecutor **executor)")
+        return (
+            "aclnnStatus aclnnBlockSparseAttentionV3GetWorkspaceSize("
+            "const aclTensor *query, "
+            "const aclTensor *key, "
+            "const aclTensor *value, "
+            "const aclTensor *blockSparseMaskOptional, "
+            "const aclTensor *attenMaskOptional, "
+            "const aclIntArray *blockShapeOptional, "
+            "const aclIntArray *actualSeqLengthsOptional, "
+            "const aclIntArray *actualSeqLengthsKvOptional, "
+            "const aclTensor *blockTableOptional, "
+            "const aclTensor *qDequantScaleOptional, "
+            "const aclTensor *kDequantScaleOptional, "
+            "const aclTensor *vDequantScaleOptional, "
+            "const aclTensor *pQuantScaleOptional, "
+            "char *qInputLayout, "
+            "char *kvInputLayout, "
+            "int64_t numKeyValueHeads, "
+            "int64_t maskType, "
+            "double scaleValue, "
+            "int64_t innerPrecise, "
+            "int64_t blockSize, "
+            "int64_t preTokens, "
+            "int64_t nextTokens, "
+            "int64_t softmaxLseFlag, "
+            "int64_t quantMode, "
+            "double dstTypeMax, "
+            "aclTensor *attentionOut, "
+            "aclTensor *softmaxLseOptional, "
+            "uint64_t *workspaceSize, "
+            "aclOpExecutor **executor)"
+        )
