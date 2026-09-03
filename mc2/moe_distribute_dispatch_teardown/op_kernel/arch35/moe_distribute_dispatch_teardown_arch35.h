@@ -523,46 +523,46 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
         tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr));
         DataCacheCleanAndInvalid<ExpandXOutType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(tokGlobal);
 #if MC2_DTD_OPT_WINCOPY_PIPELINE
-        // 纯 win->UB->expandXOut：EnQue/DeQue 已提供 MTE2->MTE3 同步，原 MTE2_S 多余。
-        // 下一 token 搬入提前一拍，xQueue_ 双 buffer 才能重叠 MTE2/MTE3。地址、长度、顺序不变。
-        if (count > 0U) {
+        // 仅 bs>16 走双缓冲：bs8/bs16 每专家 token 很少，预取只增加排队开销
+        if (axisBS_ > 16U && count > 0U) {
             tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr));
             LocalTensor<ExpandXOutType> preTok = xQueue_.AllocTensor<ExpandXOutType>();
             DataCopyPad(preTok, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
             xQueue_.EnQue(preTok);
-        }
-        for (uint32_t j = 0; j < count; j++) {
-            xTmpTensor_ = xQueue_.DeQue<ExpandXOutType>();
-            if (j + 1U < count) {
-                tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr + (j + 1U) * hAlignWinSize_));
-                LocalTensor<ExpandXOutType> nextTok = xQueue_.AllocTensor<ExpandXOutType>();
-                DataCopyPad(nextTok, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
-                xQueue_.EnQue(nextTok);
+            for (uint32_t j = 0; j < count; j++) {
+                xTmpTensor_ = xQueue_.DeQue<ExpandXOutType>();
+                if (j + 1U < count) {
+                    tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr + (j + 1U) * hAlignWinSize_));
+                    LocalTensor<ExpandXOutType> nextTok = xQueue_.AllocTensor<ExpandXOutType>();
+                    DataCopyPad(nextTok, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
+                    xQueue_.EnQue(nextTok);
+                }
+                CopyScalesToOut(beginIdx + j, xTmpTensor_);
+                expandXOutGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOutGM_) + (beginIdx + j) * axisH_,
+                                                 axisH_);
+                DataCopyPad(expandXOutGlobal, xTmpTensor_, expandXCopyParams_);
+                xQueue_.FreeTensor(xTmpTensor_);
             }
-            CopyScalesToOut(beginIdx + j, xTmpTensor_);
-            expandXOutGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOutGM_) + (beginIdx + j) * axisH_,
-                                             axisH_);
-            DataCopyPad(expandXOutGlobal, xTmpTensor_, expandXCopyParams_);
-            xQueue_.FreeTensor(xTmpTensor_);
-        }
-#else
-        LocalTensor<int32_t> xTmpTensorInt;
-        for (uint32_t j = 0; j < count; j++) {
-            tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr + j * hAlignWinSize_));
-            // 将数据从Window拷贝到UB
-            xTmpTensor_ = xQueue_.AllocTensor<ExpandXOutType>();
-            DataCopyPad(xTmpTensor_, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
-            SyncFunc<AscendC::HardEvent::MTE2_S>();
-            xQueue_.EnQue(xTmpTensor_);
-            xTmpTensor_ = xQueue_.DeQue<ExpandXOutType>();
-            xTmpTensorInt = xTmpTensor_.template ReinterpretCast<int32_t>();
-            CopyScalesToOut(beginIdx + j, xTmpTensor_);
-            expandXOutGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOutGM_) + (beginIdx + j) * axisH_,
-                                             axisH_);
-            DataCopyPad(expandXOutGlobal, xTmpTensor_, expandXCopyParams_);
-            xQueue_.FreeTensor(xTmpTensor_);
-        }
+        } else
 #endif
+        {
+            LocalTensor<int32_t> xTmpTensorInt;
+            for (uint32_t j = 0; j < count; j++) {
+                tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr + j * hAlignWinSize_));
+                // 将数据从Window拷贝到UB
+                xTmpTensor_ = xQueue_.AllocTensor<ExpandXOutType>();
+                DataCopyPad(xTmpTensor_, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
+                SyncFunc<AscendC::HardEvent::MTE2_S>();
+                xQueue_.EnQue(xTmpTensor_);
+                xTmpTensor_ = xQueue_.DeQue<ExpandXOutType>();
+                xTmpTensorInt = xTmpTensor_.template ReinterpretCast<int32_t>();
+                CopyScalesToOut(beginIdx + j, xTmpTensor_);
+                expandXOutGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOutGM_) + (beginIdx + j) * axisH_,
+                                                 axisH_);
+                DataCopyPad(expandXOutGlobal, xTmpTensor_, expandXCopyParams_);
+                xQueue_.FreeTensor(xTmpTensor_);
+            }
+        }
         beginIdx += count;
     }
     totalCnt_ = beginIdx;
