@@ -824,8 +824,10 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
 
             // ---- build merged candidate arrays (all 8 warps cooperate) ----
             {
+                const bool all_seg_cached = (k_len <= kNumTopkWarps * kSegFloats);
                 const uint32_t kCandOffU32 = kSegFloats + 256 + kStageBytes / 4;
                 const int32_t* cand_base = reinterpret_cast<int32_t*>(warp_base);
+                const uint32_t* cache_base = reinterpret_cast<const uint32_t*>(warp_base);
                 #pragma unroll 4
                 for (uint32_t j = warp_idx * 32 + lane_idx; j < kNumCand; j += kNumTopkWarps * 32) {
                     uint32_t w = j / kCandPerWarp;
@@ -833,7 +835,14 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                     int32_t c = cand_base[w * (kPerWarpBytes / 4) + kCandOffU32 + pos];
                     if (c >= 0) {
                         merge_idx[j] = c;
-                        merge_vals[j] = __ldcg(logits_row + (static_cast<uint32_t>(c) - k_start));
+                        if (all_seg_cached) {
+                            // value lives in warp w's SMEM segment cache
+                            const uint32_t cache_pos = static_cast<uint32_t>(c) - k_start - w * segL;
+                            merge_vals[j] = __uint_as_float(
+                                ptx::ld_shared(cache_base + w * (kPerWarpBytes / 4) + cache_pos));
+                        } else {
+                            merge_vals[j] = __ldcg(logits_row + (static_cast<uint32_t>(c) - k_start));
+                        }
                     } else {
                         merge_vals[j] = -CUDART_INF_F;
                         merge_idx[j] = -1;
