@@ -101,33 +101,31 @@ QuantModePair QuantGroupedMatmulAllToAllvTilingBase::GetQuantMode(const gert::Ti
         return QuantModePair::QUANT_PAIR_ERROR;
     }
     // 获取量化模式属性（默认为0，表示非量化）
-    QuantizationMode gmmXQuantMode = QuantizationMode::QUANT_NONE;
-    QuantizationMode gmmWeightQuantMode = QuantizationMode::QUANT_NONE;
+    int64_t gmmXQuantMode = 0;
+    int64_t gmmWeightQuantMode = 0;
     if (const int64_t *ptr = attrs->GetAttrPointer<int64_t>(ATTR_GMM_X_QUANT_MODE_INDEX)) {
-        gmmXQuantMode = static_cast<QuantizationMode>(*ptr);
+        gmmXQuantMode = *ptr;
     }
     if (const int64_t *ptr = attrs->GetAttrPointer<int64_t>(ATTR_GMM_WEIGHT_QUANT_MODE_INDEX)) {
-        gmmWeightQuantMode = static_cast<QuantizationMode>(*ptr);
+        gmmWeightQuantMode = *ptr;
     }
-    OP_LOGD(opName, "gmmXQuantMode=%ld, gmmWeightQuantMode=%ld", static_cast<int64_t>(gmmXQuantMode),
-            static_cast<int64_t>(gmmWeightQuantMode));
+    OP_LOGD(opName, "gmmXQuantMode=%ld, gmmWeightQuantMode=%ld", gmmXQuantMode, gmmWeightQuantMode);
 
-    if (gmmXQuantMode == QuantizationMode::QUANT_NONE && gmmWeightQuantMode == QuantizationMode::QUANT_NONE) {
-        return QuantModePair::QUANT_PAIR_NONE;
-    }
-
-    if (gmmXQuantMode == QuantizationMode::QUANT_PERTENSOR &&
-        gmmWeightQuantMode == QuantizationMode::QUANT_PERTENSOR) {
-        return QuantModePair::QUANT_PAIR_TT;
+    if (gmmXQuantMode == QUANT_NONE && gmmWeightQuantMode == QUANT_NONE) {
+        return QUANT_PAIR_NONE;
     }
 
-    if (gmmXQuantMode == QuantizationMode::QUANT_MX && gmmWeightQuantMode == QuantizationMode::QUANT_MX) {
-        return QuantModePair::QUANT_PAIR_MX;
+    if (gmmXQuantMode == QUANT_PERTENSOR && gmmWeightQuantMode == QUANT_PERTENSOR) {
+        return QUANT_PAIR_TT;
+    }
+
+    if (gmmXQuantMode == QUANT_MX && gmmWeightQuantMode == QUANT_MX) {
+        return QUANT_PAIR_MX;
     } else {
-        OP_LOGD(opName, "Quantization mode error, currently gmmXQuantMode=%d, gmmWeightQuantMode=%d.",
-                static_cast<int>(gmmXQuantMode), static_cast<int>(gmmWeightQuantMode));
+        OP_LOGD(opName, "Quantization mode error, currently gmmXQuantMode=%d, gmmWeightQuantMode=%d.", gmmXQuantMode,
+                gmmWeightQuantMode);
     }
     OP_LOGD(opName, "Detected QUANT_PAIR_ERROR");
-    return QuantModePair::QUANT_PAIR_ERROR;
+    return QUANT_PAIR_ERROR;
 }
 } // namespace Mc2Tiling

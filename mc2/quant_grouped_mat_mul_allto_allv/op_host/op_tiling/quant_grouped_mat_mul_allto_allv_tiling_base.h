@@ -60,7 +60,7 @@ enum GmmA2AvAttrIndex : uint32_t {
     ATTR_COMM_MODE_INDEX
 };
 
-enum class QuantizationMode : uint32_t {
+enum QuantizationMode {
     QUANT_NONE = 0,            // 不量化
     QUANT_PERTENSOR = 1,       // pertensor
     QUANT_PERCHANNEL = 2,      // perchannel
@@ -71,7 +71,7 @@ enum class QuantizationMode : uint32_t {
     QUANT_PERTOKEN_DYNAMIC = 7 // pertoken动态量化
 };
 
-enum class QuantModePair : uint32_t {
+enum QuantModePair {
     QUANT_PAIR_NONE = 0, // 不量化
     QUANT_PAIR_TT = 1,   // pertensor - pertensor
     QUANT_PAIR_KC = 2,   // pertoken - perchannel
