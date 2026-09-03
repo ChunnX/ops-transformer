@@ -102,7 +102,7 @@ CUTLASS_DEVICE void warp_bucket_topk(
     const uint32_t* logits_u = reinterpret_cast<const uint32_t*>(logits);
     auto load_u32 = [&](uint32_t i) -> uint32_t {
         if constexpr (kCached) return ptx::ld_shared(logits_u + i);
-        else return logits_u[i];
+        else return __float_as_uint(__ldcg(reinterpret_cast<const float*>(logits_u) + i));
     };
 
     // SMEM: merged 16-bin histogram (histogram[0..15]) + per-lane sub-histogram
@@ -768,10 +768,11 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
             if (k_len <= kCacheFloats) {
                 // Cached path: load row into own SMEM once
                 const long long dbg_ld0 = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
+                asm volatile("membar.gl;" :: "memory");
                 #pragma unroll 4
                 for (uint32_t i = lane_idx; i < k_len; i += 32)
                     ptx::st_shared(reinterpret_cast<uint32_t*>(my_cache) + i,
-                                   __float_as_uint(logits_row[k_start + i]));
+                                   __float_as_uint(__ldcg(logits_row + k_start + i)));
                 __syncwarp();
                 const long long dbg_ld1 = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
                 warp_bucket_topk<kSparseCount, true>(my_cache, k_start, k_len,
