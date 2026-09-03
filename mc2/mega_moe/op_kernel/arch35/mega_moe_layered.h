@@ -2887,61 +2887,61 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessMo
         if (subBlockIdx_ == 1U) {
             PrepareDispatch(firstWaveExpertCount);
             // 首个宏 Wave 就绪后即可启动计算，不再等待全部专家的二级 Dispatch。
-            //ReceiveDispatchExpertRange(currentWaveBegin, currentWaveEnd);
+            ReceiveDispatchExpertRange(currentWaveBegin, currentWaveEnd);
         }
     }
 
-    // while (currentWaveBegin < moeExpertPerRank_) {
-    //     const uint32_t waveStartBlockIdx = startBlockIdx_;
-    //     const uint32_t nextWaveBegin = currentWaveEnd;
-    //     const uint32_t proposedWaveEnd = nextWaveBegin + steadyWaveExpertCount;
-    //     const uint32_t nextWaveEnd = proposedWaveEnd < moeExpertPerRank_ ?
-    //         proposedWaveEnd : moeExpertPerRank_;
+    while (currentWaveBegin < moeExpertPerRank_) {
+        const uint32_t waveStartBlockIdx = startBlockIdx_;
+        const uint32_t nextWaveBegin = currentWaveEnd;
+        const uint32_t proposedWaveEnd = nextWaveBegin + steadyWaveExpertCount;
+        const uint32_t nextWaveEnd = proposedWaveEnd < moeExpertPerRank_ ?
+            proposedWaveEnd : moeExpertPerRank_;
 
-    //     if constexpr (g_coreType == AIV) {
-    //         if (subBlockIdx_ == 1U && nextWaveBegin < moeExpertPerRank_) {
-    //             // 通信核预取下一宏 Wave；AIC/AIV0 同时计算当前宏 Wave。
-    //             ReceiveDispatchExpertRange(nextWaveBegin, nextWaveEnd);
-    //         }
-    //     }
+        if constexpr (g_coreType == AIV) {
+            if (subBlockIdx_ == 1U && nextWaveBegin < moeExpertPerRank_) {
+                // 通信核预取下一宏 Wave；AIC/AIV0 同时计算当前宏 Wave。
+                ReceiveDispatchExpertRange(nextWaveBegin, nextWaveEnd);
+            }
+        }
 
-    //     for (uint32_t expertIdx = currentWaveBegin; expertIdx < currentWaveEnd; ++expertIdx) {
-    //         RunGmm1ActivationForExpert(
-    //             gmm1State, gmm1AddrInfo, vecSetSyncCom, gmTileSequence, expertIdx);
-    //     }
-    //     const uint32_t gmm1EndBlockIdx = startBlockIdx_;
-    //     ExpertLoopState combineWaveBeginState = gmm2State;
-    //     for (uint32_t expertIdx = currentWaveBegin; expertIdx < currentWaveEnd; ++expertIdx) {
-    //         RunGmm2ForExpert(gmm2State, gmm2AddrInfo, expertIdx);
-    //     }
-    //     ProcessCombineExpertRange(combineWaveBeginState, currentWaveBegin, currentWaveEnd);
-    //     if constexpr (!ENABLE_A8W4) {
-    //         const bool hasNextWave = currentWaveEnd < moeExpertPerRank_;
-    //         const bool fixedRoleResonance =
-    //             startBlockIdx_ == waveStartBlockIdx && gmm1EndBlockIdx != waveStartBlockIdx;
-    //         if (hasNextWave && fixedRoleResonance) {
-    //             startBlockIdx_ = gmm1EndBlockIdx;
-    //         }
-    //     }
-    //     currentWaveBegin = nextWaveBegin;
-    //     currentWaveEnd = nextWaveEnd;
-    // }
+        for (uint32_t expertIdx = currentWaveBegin; expertIdx < currentWaveEnd; ++expertIdx) {
+            RunGmm1ActivationForExpert(
+                gmm1State, gmm1AddrInfo, vecSetSyncCom, gmTileSequence, expertIdx);
+        }
+        const uint32_t gmm1EndBlockIdx = startBlockIdx_;
+        ExpertLoopState combineWaveBeginState = gmm2State;
+        for (uint32_t expertIdx = currentWaveBegin; expertIdx < currentWaveEnd; ++expertIdx) {
+            RunGmm2ForExpert(gmm2State, gmm2AddrInfo, expertIdx);
+        }
+        ProcessCombineExpertRange(combineWaveBeginState, currentWaveBegin, currentWaveEnd);
+        if constexpr (!ENABLE_A8W4) {
+            const bool hasNextWave = currentWaveEnd < moeExpertPerRank_;
+            const bool fixedRoleResonance =
+                startBlockIdx_ == waveStartBlockIdx && gmm1EndBlockIdx != waveStartBlockIdx;
+            if (hasNextWave && fixedRoleResonance) {
+                startBlockIdx_ = gmm1EndBlockIdx;
+            }
+        }
+        currentWaveBegin = nextWaveBegin;
+        currentWaveEnd = nextWaveEnd;
+    }
 
-    // if constexpr (TopkWeightsPrefetch) {
-    //     PublishOrWaitGmm1AllDone();
-    // } else {
-    //     EndSync<GMM1_INTERLEAVED>(vecSetSyncCom, gmm1PingPongIdx_);
-    // }
-    // gmm1PingPongIdx_ = 0U;
-    // if constexpr (g_coreType == AIV) {
-    //     if (subBlockIdx_ == 1U) {
-    //         PipeBarrier<PIPE_ALL>();
-    //         ExpertTokenNumCopyOut();
-    //         DrainAndUnlockOwnedRemoteChannels();
-    //     }
-    //     PipeBarrier<PIPE_ALL>();
-    //     SyncAll<true>();
-    // }
+    if constexpr (TopkWeightsPrefetch) {
+        PublishOrWaitGmm1AllDone();
+    } else {
+        EndSync<GMM1_INTERLEAVED>(vecSetSyncCom, gmm1PingPongIdx_);
+    }
+    gmm1PingPongIdx_ = 0U;
+    if constexpr (g_coreType == AIV) {
+        if (subBlockIdx_ == 1U) {
+            PipeBarrier<PIPE_ALL>();
+            ExpertTokenNumCopyOut();
+            DrainAndUnlockOwnedRemoteChannels();
+        }
+        PipeBarrier<PIPE_ALL>();
+        SyncAll<true>();
+    }
 }
 
 template <TemplateMegaMoeLayeredTypeClass>
@@ -2987,18 +2987,18 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     // URMA Layered 的 A8W8、A4W4 和 A8W4 共用同一专家 Wave 状态机。
     ProcessMoeExpertWave(initShape, initOffset, gmTileSequence);
 
-    // // 3.5: 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
-    // if (sharedExpertNum_ > 0) {
-    //     ProcessSharedExpertGmm2(initShape, initOffset);
-    // }
+    // 3.5: 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
+    if (sharedExpertNum_ > 0) {
+        ProcessSharedExpertGmm2(initShape, initOffset);
+    }
 
-    // // 4. 本卡数据Unpermute
-    // if constexpr (g_coreType == AIV) {
-    //     UnpermuteBuffInit();
-    //     CrossRankSyncInWorldSize(false); // Wave 已释放固定归属锁，同步核重新取得通道后确认 Combine 完成。
-    //     Unpermute();
-    // }
-    // SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    // 4. 本卡数据Unpermute
+    if constexpr (g_coreType == AIV) {
+        UnpermuteBuffInit();
+        CrossRankSyncInWorldSize(false); // Wave 已释放固定归属锁，同步核重新取得通道后确认 Combine 完成。
+        Unpermute();
+    }
+    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
 
 #endif
