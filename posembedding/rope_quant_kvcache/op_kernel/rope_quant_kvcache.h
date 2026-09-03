@@ -23,9 +23,6 @@ constexpr static int64_t QUANTIZE_TENSOR_NUM = 2;
 constexpr static int64_t ROPE_LAST_DIM_SPLIT = 2;
 constexpr static int64_t FP16_ONE_BLOCK_NUM = 16;
 constexpr static int64_t FP16_ONE_REPEAT_NUM = 128;
-#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3510) || (__NPU_ARCH__ == 5102))
-constexpr static DivConfig DIV_PRECISION_0ULP = {DivAlgo::PRECISION_0ULP_FTZ_FALSE};
-#endif
 class RopeQuantKvcache {
 public:
     __aicore__ inline RopeQuantKvcache(const RopeQuantKvcacheTilingData *tilingData)
@@ -173,11 +170,7 @@ private:
         }
         for (uint64_t r = 0; r < this->kvHeadNum; r++) {
             uint64_t rowOffset = r * this->hiddenSize;
-#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3510) || (__NPU_ARCH__ == 5102))
-            Div<float, DIV_PRECISION_0ULP>(vOutUbF32[rowOffset], vOutUbF32[rowOffset], quantScaleUb, this->hiddenSize);
-#else
             Div(vOutUbF32[rowOffset], vOutUbF32[rowOffset], quantScaleUb, this->hiddenSize);
-#endif
         }
         PipeBarrier<PIPE_V>();
         // step 3
@@ -262,11 +255,7 @@ private:
 
         for (uint64_t r = 0; r < this->kvHeadNum; r++) {
             uint64_t rowOffset = r * this->hiddenSize;
-#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3510) || (__NPU_ARCH__ == 5102))
-            Div<float, DIV_PRECISION_0ULP>(kOutUbF32[rowOffset], kOutUbF32[rowOffset], quantScaleUb, this->hiddenSize);
-#else
             Div(kOutUbF32[rowOffset], kOutUbF32[rowOffset], quantScaleUb, this->hiddenSize);
-#endif
         }
         PipeBarrier<PIPE_V>();
 
