@@ -630,15 +630,18 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                             weights[i][j] = ptx::exchange(*reinterpret_cast<const nv_bfloat162*>(&packed), 0);
                         }
                     } else {
-                        // vectorized broadcast load: 4 floats per ld.shared.v4
+                        // vectorized broadcast load: one ld.shared.v4 per 4 weights
+                        const uint32_t* wrow = reinterpret_cast<const uint32_t*>(smem_weights_row);
                         #pragma unroll
                         for (uint32_t j = 0; j < kNumHeads / 4; ++ j) {
-                            const float4 w4 = ptx::ld_shared(
-                                reinterpret_cast<const float4*>(smem_weights_row + j * 4));
-                            weights[i][j * 4 + 0] = w4.x;
-                            weights[i][j * 4 + 1] = w4.y;
-                            weights[i][j * 4 + 2] = w4.z;
-                            weights[i][j * 4 + 3] = w4.w;
+                            uint32_t v0, v1, v2, v3;
+                            asm("ld.shared.v4.u32 {%0, %1, %2, %3}, [%4];"
+                                : "=r"(v0), "=r"(v1), "=r"(v2), "=r"(v3)
+                                : "l"(__cvta_generic_to_shared(wrow + j * 4)));
+                            weights[i][j * 4 + 0] = __uint_as_float(v0);
+                            weights[i][j * 4 + 1] = __uint_as_float(v1);
+                            weights[i][j * 4 + 2] = __uint_as_float(v2);
+                            weights[i][j * 4 + 3] = __uint_as_float(v3);
                         }
                     }
                 }
