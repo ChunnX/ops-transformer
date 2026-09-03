@@ -27,8 +27,7 @@
 #endif
 
 #define LOCAL_TEMPLATE_CLASS_PARAMS \
-    template <class X1Type, class X2Type, class ScaleType, class BiasType, class YType, CubeFormat FormatX1,           \
-              CubeFormat FormatX2, CubeFormat FormatY, bool ATrans, bool BTrans>
+    template <class X1Type, class X2Type, class ScaleType, class BiasType, class YType, CubeFormat FormatX1, \
               CubeFormat FormatX2, CubeFormat FormatY, bool ATrans, bool BTrans>
 #define LOCAL_TEMPLATE_FUNC_PARAMS \
     X1Type, X2Type, ScaleType, BiasType, YType, FormatX1, FormatX2, FormatY, ATrans, BTrans
