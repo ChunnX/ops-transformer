@@ -10,6 +10,7 @@
 
 #include "register/op_def_registry.h"
 
+
 namespace ops {
 
 // 算子定义类：描述算子在 GE 图中的输入、输出与属性规格。
