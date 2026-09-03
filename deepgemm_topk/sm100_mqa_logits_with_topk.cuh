@@ -805,6 +805,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
             const uint32_t my_len = (my_start < k_len) ? ((my_start + segL > k_len) ? k_len - my_start : segL) : 0;
 
             __threadfence();
+            const long long dbg_t1 = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
             if (my_len > 0 && my_len <= kSegFloats) {
                 // load own segment into SMEM cache
                 #pragma unroll 4
@@ -824,6 +825,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                     wcand[i] = -1;
             }
             __syncthreads();
+            const long long dbg_t2 = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
 
             // ---- build merged candidate arrays (all 8 warps cooperate) ----
             {
@@ -853,6 +855,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                 }
             }
             __syncthreads();
+            const long long dbg_t3 = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
 
             // ---- final radix TopK on merged candidates (warp 0 only) ----
             if (warp_idx == 0)
@@ -861,8 +864,9 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
             __syncthreads();
 
             if (threadIdx.x == 0 && blockIdx.x == 0)
-                printf("[TOPK8] token=%u k_len=%u segL=%u total=%lld\n",
-                       q_token, k_len, segL, clock64() - dbg_t0);
+                printf("[TOPK8] token=%u k_len=%u fence=%lld load+local=%lld merge=%lld final=%lld\n",
+                       q_token, k_len,
+                       dbg_t1 - dbg_t0, dbg_t2 - dbg_t1, dbg_t3 - dbg_t2, clock64() - dbg_t3);
         }
     }
 
