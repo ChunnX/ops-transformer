@@ -220,6 +220,12 @@ private:
         CalStepKs(args_, runInfo_);
         CalScaleFactors(args_, platformInfo_, runInfo_, baseASize, baseBSize, baseScaleASize, baseScaleBSize,
                         biasL1Size);
+        printf("[QuantMatmul BiasBudget] hasBias=%d biasL1Size=%llu availL1Size=%llu depthA1=%llu depthB1=%llu "
+               "scaleFactorA=%llu scaleFactorB=%llu\n",
+               static_cast<int>(hasBias_), static_cast<unsigned long long>(biasL1Size),
+               static_cast<unsigned long long>(availL1Size), static_cast<unsigned long long>(runInfo_.depthA1),
+               static_cast<unsigned long long>(runInfo_.depthB1), static_cast<unsigned long long>(runInfo_.scaleFactorA),
+               static_cast<unsigned long long>(runInfo_.scaleFactorB));
     }
 
     void AdjustBasicBlock()
