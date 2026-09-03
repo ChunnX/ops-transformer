@@ -76,7 +76,10 @@ public:
         }
     }
 
-    bool IsTensorNotNull() const { return inner_ == nullptr; }
+    bool IsTensorNotNull() const
+    {
+        return inner_ == nullptr;
+    }
 
 private:
     const aclTensor *inner_;
@@ -103,7 +106,7 @@ aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
         }
     } else {
         if (softmaxMax == nullptr && softmaxSum == nullptr) {
-            softmaxMaxHolder23 =
+            softmaxMaxHolder =
                 std::make_unique<TensorHolder>(softmaxMax, aclDataType::ACL_FLOAT, std::string("softmaxMax"));
             softmaxSumHolder =
                 std::make_unique<TensorHolder>(softmaxSum, aclDataType::ACL_FLOAT, std::string("softmaxSum"));
