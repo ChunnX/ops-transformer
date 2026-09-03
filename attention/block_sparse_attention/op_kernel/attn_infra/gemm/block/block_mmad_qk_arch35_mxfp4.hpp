@@ -139,7 +139,10 @@ public:
         return (numerator + denominator - 1) / denominator;
     }
 
-    __aicore__ inline uint32_t MinU32(uint32_t a, uint32_t b) { return (a < b) ? a : b; }
+    __aicore__ inline uint32_t MinU32(uint32_t a, uint32_t b)
+    {
+        return (a < b) ? a : b;
+    }
 
     // Q 稠密 GM → L1（RowMajor → zN）
     template <class TensorQ, class TensorL1Q>
@@ -306,39 +309,34 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(QK_L0C_EVENT0 + l0cBufId);
     }
 
-    template <class TensorQ, class TensorK, class TensorUB, class TaskInfoT, class TileInfoT>
-    __aicore__ inline void operator()(TensorQ &gQTensorTla, TensorK &gKTensorTla,
-                                      AscendC::GlobalTensor<uint8_t> gQDequantScale,
-                                      AscendC::GlobalTensor<uint8_t> gKDequantScale,
-                                      AscendC::GlobalTensor<int32_t> gSparseBlockIdx, TensorUB &ubSTensorTla,
-                                      TaskInfoT &curTaskInfo, TileInfoT &curTileInfo, uint32_t embed,
-                                      uint32_t kvSBaseTile, uint32_t blockShapeY, uint32_t subBlockIdx,
-                                      uint32_t kvHeadMul, uint32_t qHeadMul)
+    // P0b：只发 GM→L1（Q 首 tile + 每 tile K），不 Wait MTE2、不占 L0、不推进 kBufId。
+    // kernel 在 Wait(V1_C1) 之前调用，让 K 的 MTE2 和 AIV softmax 重叠。
+    template <class TensorQ, class TensorK, class TaskInfoT, class TileInfoT>
+    __aicore__ inline void PrefetchK(TensorQ &gQTensorTla, TensorK &gKTensorTla,
+                                     AscendC::GlobalTensor<uint8_t> gQDequantScale,
+                                     AscendC::GlobalTensor<uint8_t> gKDequantScale,
+                                     AscendC::GlobalTensor<int32_t> gSparseBlockIdx, TaskInfoT &curTaskInfo,
+                                     TileInfoT &curTileInfo, uint32_t embed, uint32_t kvSBaseTile, uint32_t blockShapeY,
+                                     uint32_t kvHeadMul, uint32_t qHeadMul)
     {
         uint32_t qsActBaseTile = curTaskInfo.qsActBaseTile;
+        uint32_t qsActBaseTileAlign16 = curTaskInfo.qsActBaseTileAlign16;
         int64_t kvSeqlen = curTaskInfo.kvSeqlen;
         uint32_t yBlockNumAval = curTaskInfo.yBlockNumAval;
         uint32_t yBlockNumRsvd = curTaskInfo.yBlockNumRsvd;
-        uint32_t qsActBaseTileAlign16 = curTaskInfo.qsActBaseTileAlign16;
-        uint32_t qsActBaseTileAlign128 = curTaskInfo.qsActBaseTileAlign128;
 
         uint32_t kvsActBaseTile = curTileInfo.kvsActBaseTile;
         uint32_t gatheredKvSTileIdx = curTileInfo.pvGatheredKvSTileIdx;
         bool isFirstKvsTile = curTileInfo.isFirstKvsTile;
-        bool isLastKvsTile = curTileInfo.isLastKvsTile;
-        uint32_t kvsActBaseTileAlign16 = curTileInfo.kvsActBaseTileAlign16;
 
         uint32_t scaleK = CeilDivision(embed, MXFP4::FP4_C0_ELEMS) * 2;
         uint32_t l1KEventId = MXFP4::KV_EVENT0 + kBufId;
         uint32_t l1QEventId = Q_EVENT0 + qBufId;
 
-        // [预取] 首个 sparse index 是阻塞式 GM 标量读，且 gather 的第一条 copy 地址依赖它。
-        //   在此提前发起，把访存延迟藏进后面的 Q 搬运 / WaitFlag，
-        //   并让标量单元能继续往前排 MTE2 指令。
         uint32_t firstYBlockIdx = (gatheredKvSTileIdx * kvSBaseTile) / blockShapeY;
         uint32_t firstOriYBlockIdx = static_cast<uint32_t>(gSparseBlockIdx.GetValue(firstYBlockIdx));
 
-        // Q/QScale 仅在 task 首 KV tile 搬 GM → L1，后续 tile 复用
+        // Q 仍只在 task 首 KV tile 搬；copy 后立刻 Wait，不改 Q 双槽 / L0B 常驻。
         if (isFirstKvsTile) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1QEventId);
             auto l1QLayout = tla::MakeLayout<ElementA, layout::zN>(qsActBaseTileAlign16, embed);
@@ -347,11 +345,36 @@ public:
             CopyQScaleGmToL1(qsActBaseTile, scaleK, gQDequantScale, qBufId, qHeadMul);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);
+        }
 
-            // [Q 常驻 L0B] Q 在整个 task 内不变，LoadQToL0B 的实参全是循环不变量；
-            //   而 QK 的 L0B(offset 0..16K) 与 PV 的(16K 起)分属不同区间，无人覆盖，
-            //   故在此一次灌满两个 ping-pong 槽，nSub 循环里不再重复装载。
-            //   原实现每个 nSub 都重装同一份 Q，一个 task 的 518 次装载里 516 次是冗余。
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1KEventId);
+        auto l1KLayout = tla::MakeLayout<ElementA, layout::zN>(kvsActBaseTile, embed);
+        auto l1KTensorTla = tla::MakeTensor(l1ATensor[kBufId], l1KLayout, Arch::PositionL1{});
+        SparseKFusedBaseTileL1FullLoad(gKTensorTla, l1KTensorTla, gKDequantScale, gSparseBlockIdx, gatheredKvSTileIdx,
+                                       kvSeqlen, kvSBaseTile, blockShapeY, yBlockNumAval, yBlockNumRsvd, kvsActBaseTile,
+                                       embed, kBufId, kvHeadMul, firstYBlockIdx, firstOriYBlockIdx);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
+    }
+
+    // P0b：等本拍 K 的 MTE2 完成后 LoadK/mmad。最后一次 LoadK 立刻放 L1，不把槽占到 fixpipe。
+    template <class TensorUB, class TaskInfoT, class TileInfoT>
+    __aicore__ inline void ComputeQK(TensorUB &ubSTensorTla, TaskInfoT &curTaskInfo, TileInfoT &curTileInfo,
+                                     uint32_t embed, uint32_t subBlockIdx)
+    {
+        uint32_t qsActBaseTileAlign16 = curTaskInfo.qsActBaseTileAlign16;
+        uint32_t kvsActBaseTile = curTileInfo.kvsActBaseTile;
+        uint32_t kvsActBaseTileAlign16 = curTileInfo.kvsActBaseTileAlign16;
+        bool isFirstKvsTile = curTileInfo.isFirstKvsTile;
+        bool isLastKvsTile = curTileInfo.isLastKvsTile;
+
+        uint32_t scaleK = CeilDivision(embed, MXFP4::FP4_C0_ELEMS) * 2;
+        uint32_t l1KEventId = MXFP4::KV_EVENT0 + kBufId;
+        uint32_t l1QEventId = Q_EVENT0 + qBufId;
+
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
+
+        if (isFirstKvsTile) {
+            // [Q 常驻 L0B] 仍在 ComputeQK：不把 L0 占用提前到 Wait(V1_C1) 之前。
             for (uint32_t i = 0; i < MXFP4::L0A_QK_BUF_CNT; ++i) {
                 AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(QK_L0AB_EVENT0 + qkL0abBufId);
                 LoadQToL0B(qsActBaseTileAlign16, embed, qsActBaseTileAlign16, qsActBaseTileAlign16, scaleK, qBufId,
@@ -361,24 +384,6 @@ public:
             }
         }
 
-        // 每 tile 稀疏 gather K / K-scale 到 L1
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1KEventId);
-        auto l1KLayout = tla::MakeLayout<ElementA, layout::zN>(kvsActBaseTile, embed);
-        auto l1KTensorTla = tla::MakeTensor(l1ATensor[kBufId], l1KLayout, Arch::PositionL1{});
-        SparseKFusedBaseTileL1FullLoad(gKTensorTla, l1KTensorTla, gKDequantScale, gSparseBlockIdx, gatheredKvSTileIdx,
-                                       kvSeqlen, kvSBaseTile, blockShapeY, yBlockNumAval, yBlockNumRsvd, kvsActBaseTile,
-                                       embed, kBufId, kvHeadMul, firstYBlockIdx, firstOriYBlockIdx);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
-
-        // n 方向按 L0_TILE_N 子切分。
-        // [软流水] fixpipe 延后一拍发射：原实现里 SetFlag/WaitFlag 成对紧挨着（M 等 MTE1、
-        //   FIX 等 M），两次跨流水往返中间没有任何工作可掩盖，实测每个 nSub 白等约 92 cycle。
-        //   改成：mmad(k) 发完只 Set 不 Wait，把 fixpipe(k-1) 插到 LoadK(k) 与 mmad(k) 之间，
-        //   于是 MTE1_M 的往返被 fixpipe 的发射盖住、M_FIX 的往返被 LoadK 盖住。
-        //   L0C 双缓冲天然够用：c_k 的 FIX_M 由 k+1 轮释放，k+2 轮才复用。
-        //   注意不能把 pending 的 fixpipe 带出本次调用——kernel 紧接着会 CrossCoreSetFlag
-        //   通知向量核 S 已就绪，所以循环结束必须 flush。
         uint32_t nLoopNum = CeilDivision(kvsActBaseTile, L0_TILE_N);
         bool fixPending = false;
         uint32_t pendL0cBufId = 0;
@@ -394,11 +399,13 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
 
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
-            // Q 已在 task 首 tile 常驻两个 L0B 槽，此处只需装 K
             LoadKToL0A(nSubRowStart, nCur, embed, kvsActBaseTileAlign16, scaleK, kBufId, qkL0abBufId);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
+            if (nSub + 1 == nLoopNum) {
+                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1KEventId);
+                kBufId = (kBufId + 1) % MXFP4::L1_KV_BUF_CNT;
+            }
 
-            // 上一轮的 fixpipe 插在这里，掩盖刚发出的 MTE1_M 往返
             if (fixPending) {
                 EmitFixpipeMm1(pendL0cBufId, pendNSubRowStart, pendNCur, qsActBaseTileAlign16, ubSTensorTla,
                                subBlockIdx);
@@ -410,7 +417,6 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
             qkL0abBufId = (qkL0abBufId + 1) % MXFP4::L0A_QK_BUF_CNT;
 
-            // 只 Set 不 Wait，本轮的 fixpipe 推迟到下一轮（或循环外的 flush）
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             pendL0cBufId = qkL0cBufId;
             pendNSubRowStart = nSubRowStart;
@@ -421,13 +427,26 @@ public:
         if (fixPending) {
             EmitFixpipeMm1(pendL0cBufId, pendNSubRowStart, pendNCur, qsActBaseTileAlign16, ubSTensorTla, subBlockIdx);
         }
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1KEventId);
-        kBufId = (kBufId + 1) % MXFP4::L1_KV_BUF_CNT;
 
         if (unlikely(isLastKvsTile)) {
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1QEventId);
             qBufId = (qBufId + 1) % MXFP4::L1_Q_BUF_CNT;
         }
+    }
+
+    // 回退路径：Wait(V1_C1) 之后整段调用，等价于 PrefetchK + ComputeQK。
+    template <class TensorQ, class TensorK, class TensorUB, class TaskInfoT, class TileInfoT>
+    __aicore__ inline void operator()(TensorQ &gQTensorTla, TensorK &gKTensorTla,
+                                      AscendC::GlobalTensor<uint8_t> gQDequantScale,
+                                      AscendC::GlobalTensor<uint8_t> gKDequantScale,
+                                      AscendC::GlobalTensor<int32_t> gSparseBlockIdx, TensorUB &ubSTensorTla,
+                                      TaskInfoT &curTaskInfo, TileInfoT &curTileInfo, uint32_t embed,
+                                      uint32_t kvSBaseTile, uint32_t blockShapeY, uint32_t subBlockIdx,
+                                      uint32_t kvHeadMul, uint32_t qHeadMul)
+    {
+        PrefetchK(gQTensorTla, gKTensorTla, gQDequantScale, gKDequantScale, gSparseBlockIdx, curTaskInfo, curTileInfo,
+                  embed, kvSBaseTile, blockShapeY, kvHeadMul, qHeadMul);
+        ComputeQK(ubSTensorTla, curTaskInfo, curTileInfo, embed, subBlockIdx);
     }
 
 protected:

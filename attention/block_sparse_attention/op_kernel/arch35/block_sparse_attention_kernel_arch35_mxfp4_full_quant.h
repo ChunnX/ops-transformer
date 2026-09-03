@@ -21,6 +21,11 @@ namespace GmMXFP4 = Gemm::Block::MXFP4;     // L1 常量别名
 
 namespace BsaKernelArch35 {
 
+// P0b：Wait(V1_C1) 前预取 K。置 0 回到「先 Wait 再 gather」（operator() = PrefetchK+ComputeQK）。
+#ifndef BSA_MXFP4_K_PREFETCH
+#define BSA_MXFP4_K_PREFETCH 1
+#endif
+
 template <class EpilogueMask2Idx, class BlockMmadQK, class EpilogueOnlineSoftmax, class BlockMmadPV,
           class EpilogueRescaleO, class EpilogueComputePScale, class EpilogueCopyGlobalMaxUbToL1,
           class BlockMmadCopyGlobalMaxL1ToUB, Format qFormat, Format kvFormat, bool transposedMm1 = false>
@@ -303,8 +308,6 @@ public:
                 uint32_t subBlockIdx = curTileInfo.loop % 2;
 
                 if ASCEND_IS_AIC {
-                    AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] +
-                                                                      subBlockIdx * 16);
                     auto gQLayoutTla = tla::MakeLayout<ElementQ, LayoutQ>(
                         curTaskInfo.qsActBaseTile, // rows = S1 实际 tile
                         qHeadMul * embed_);        // cols → row-stride（BNSD 时 qHeadMul=1，即 embed_）
@@ -316,11 +319,27 @@ public:
                     auto curUBSTensorTla = GetTile(ubSTensorTla, MakeCoord(0, EpMXFP4::QS_BASE_SIZE * mm1ResBufId),
                                                    MakeShape(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE));
 
-                    // QK：UB S 传当前 ping-pong 槽 TLA；Fixpipe 按 subBlockIdx 写到对应 AIV。
+#ifdef __DAV_CUBE__
+#if BSA_MXFP4_K_PREFETCH
+                    // P0b：K 的 MTE2 在 Wait(V1_C1) 前发出；Wait 留在 kernel，不塞进 QK block。
+                    blockMmadQK.PrefetchK(gQTensorTla, gKTensorTla, gQDequantScale[curTaskInfo.gmOffsetQScale],
+                                          gKDequantScale[curTaskInfo.gmOffsetKScale],
+                                          gSparseIdx[curTaskInfo.gmOffsetSparseIdx], curTaskInfo, curTileInfo, embed_,
+                                          kvBaseTile_, blockShapeY_, kvHeadMul, qHeadMul);
+#endif
+#endif
+                    AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] +
+                                                                      subBlockIdx * 16);
+#ifdef __DAV_CUBE__
+#if BSA_MXFP4_K_PREFETCH
+                    blockMmadQK.ComputeQK(curUBSTensorTla, curTaskInfo, curTileInfo, embed_, subBlockIdx);
+#else
                     blockMmadQK(gQTensorTla, gKTensorTla, gQDequantScale[curTaskInfo.gmOffsetQScale],
                                 gKDequantScale[curTaskInfo.gmOffsetKScale], gSparseIdx[curTaskInfo.gmOffsetSparseIdx],
                                 curUBSTensorTla, curTaskInfo, curTileInfo, embed_, kvBaseTile_, blockShapeY_,
                                 subBlockIdx, kvHeadMul, qHeadMul);
+#endif
+#endif
                     AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] +
                                                                      subBlockIdx * 16);
                 } else {
