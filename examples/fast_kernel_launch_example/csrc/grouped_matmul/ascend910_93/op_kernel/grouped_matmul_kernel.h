@@ -65,8 +65,8 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
             /* [对照实验] 等 Fixpipe 搬出排空后再打点 */ \
             AscendC::PipeBarrier<PIPE_FIX>(); \
             event_t fixDoneEvent = static_cast<event_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::FIX_S)); \
-            AscendC::SetFlag<AscendC::Hard Event::FIX_S>(fixDoneEvent); \
-            AscendC::WaitFlag<AscendC::Hard Event::FIX_S>(fixDoneEvent); \
+            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(fixDoneEvent); \
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(fixDoneEvent); \
             int64_t T2 = AscendC::GetSystemCycle();                                                                    \
             __gm__ int64_t *cycleBuf = (__gm__ int64_t *)cycleData + AscendC::GetBlockIdx() * 3;                        \
             cycleBuf[2] = T2;                                                                                          \
