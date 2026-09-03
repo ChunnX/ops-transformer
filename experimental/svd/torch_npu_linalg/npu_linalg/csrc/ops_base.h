@@ -38,7 +38,6 @@
 #include "torch_npu/csrc/flopcount/FlopCounter.h"
 #include "torch_npu/csrc/custom_dtype/Init.h"
 
-
 typedef struct aclOpExecutor aclOpExecutor;
 typedef struct aclTensor aclTensor;
 typedef struct aclScalar aclScalar;
@@ -68,7 +67,6 @@ typedef int (*_aclDestroyScalarList)(const aclScalarList *array);
 
 using OpApiFunc = int (*)(void *, uint64_t, aclOpExecutor *, const aclrtStream);
 
-
 struct NPUStorageDesc {
 public:
     struct use_byte_size_t {};
@@ -84,12 +82,8 @@ public:
 };
 
 struct NPUStorageImpl : public c10::StorageImpl {
-    explicit NPUStorageImpl(
-        use_byte_size_t use_byte_size,
-        size_t size_bytes,
-        at::DataPtr data_ptr,
-        at::Allocator* allocator,
-        bool resizable);
+    explicit NPUStorageImpl(use_byte_size_t use_byte_size, size_t size_bytes, at::DataPtr data_ptr,
+                            at::Allocator *allocator, bool resizable);
     ~NPUStorageImpl() override = default;
     void release_resources() override;
 
@@ -123,11 +117,11 @@ const int DIM_2 = 2;
 const int DIM_3 = 3;
 
 namespace {
-    constexpr int64_t MAX_DIM_NUM = 5;
-    constexpr int64_t NCL_DIM_NUM = 3;
-    constexpr int64_t NCHW_DIM_NUM = 4;
-    constexpr int64_t NCDHW_DIM_NUM = 5;
-}
+constexpr int64_t MAX_DIM_NUM = 5;
+constexpr int64_t NCL_DIM_NUM = 3;
+constexpr int64_t NCHW_DIM_NUM = 4;
+constexpr int64_t NCDHW_DIM_NUM = 5;
+} // namespace
 
 constexpr int g_hash_buf_size = 8192;
 constexpr int g_hash_buf_max_size = g_hash_buf_size + 1024;
@@ -140,32 +134,31 @@ extern thread_local char g_hashBuf[kHashBufSize];
 extern thread_local int g_hashOffset;
 
 // dtype convert map
-#define AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(_)   \
-    _(at::ScalarType::Byte, ACL_UINT8)                \
-    _(at::ScalarType::Char, ACL_INT8)                 \
-    _(at::ScalarType::Short, ACL_INT16)               \
-    _(at::ScalarType::Int, ACL_INT32)                 \
-    _(at::ScalarType::Long, ACL_INT64)                \
-    _(at::ScalarType::Half, ACL_FLOAT16)              \
-    _(at::ScalarType::Float, ACL_FLOAT)               \
-    _(at::ScalarType::Double, ACL_DOUBLE)             \
-    _(at::ScalarType::ComplexHalf, ACL_DT_UNDEFINED)  \
-    _(at::ScalarType::ComplexFloat, ACL_COMPLEX64)    \
-    _(at::ScalarType::ComplexDouble, ACL_COMPLEX128)  \
-    _(at::ScalarType::Bool, ACL_BOOL)                 \
-    _(at::ScalarType::QInt8, ACL_DT_UNDEFINED)        \
-    _(at::ScalarType::QUInt8, ACL_DT_UNDEFINED)       \
-    _(at::ScalarType::QInt32, ACL_DT_UNDEFINED)       \
-    _(at::ScalarType::BFloat16, ACL_BF16)             \
-    _(at::ScalarType::QUInt4x2, ACL_DT_UNDEFINED)     \
-    _(at::ScalarType::QUInt2x4, ACL_DT_UNDEFINED)     \
-    _(at::ScalarType::Undefined, ACL_DT_UNDEFINED)    \
+#define AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(_) \
+    _(at::ScalarType::Byte, ACL_UINT8) \
+    _(at::ScalarType::Char, ACL_INT8) \
+    _(at::ScalarType::Short, ACL_INT16) \
+    _(at::ScalarType::Int, ACL_INT32) \
+    _(at::ScalarType::Long, ACL_INT64) \
+    _(at::ScalarType::Half, ACL_FLOAT16) \
+    _(at::ScalarType::Float, ACL_FLOAT) \
+    _(at::ScalarType::Double, ACL_DOUBLE) \
+    _(at::ScalarType::ComplexHalf, ACL_DT_UNDEFINED) \
+    _(at::ScalarType::ComplexFloat, ACL_COMPLEX64) \
+    _(at::ScalarType::ComplexDouble, ACL_COMPLEX128) \
+    _(at::ScalarType::Bool, ACL_BOOL) \
+    _(at::ScalarType::QInt8, ACL_DT_UNDEFINED) \
+    _(at::ScalarType::QUInt8, ACL_DT_UNDEFINED) \
+    _(at::ScalarType::QInt32, ACL_DT_UNDEFINED) \
+    _(at::ScalarType::BFloat16, ACL_BF16) \
+    _(at::ScalarType::QUInt4x2, ACL_DT_UNDEFINED) \
+    _(at::ScalarType::QUInt2x4, ACL_DT_UNDEFINED) \
+    _(at::ScalarType::Undefined, ACL_DT_UNDEFINED) \
     _(at::ScalarType::NumOptions, ACL_DT_UNDEFINED)
 
-constexpr aclDataType kATenScalarTypeToAclDataTypeTable
-    [static_cast<int64_t>(at::ScalarType::NumOptions) + 1] = {
+constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at::ScalarType::NumOptions) + 1] = {
 #define DEFINE_ENUM(_1, n) n,
-        AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(DEFINE_ENUM)
+    AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(DEFINE_ENUM)
 #undef DEFINE_ENUM
 };
 
@@ -191,7 +184,7 @@ static bool is_file_exist(const std::string &path)
     return (access(path.c_str(), F_OK) == 0) ? true : false;
 }
 
-inline  std::string real_path(const std::string &path)
+inline std::string real_path(const std::string &path)
 {
     if (path.empty() || path.size() > PATH_MAX) {
         return "";
@@ -275,7 +268,6 @@ extern const std::vector<std::string> g_custom_lib_path;
 extern const std::vector<std::string> g_default_custom_lib_path;
 void *GetOpApiFuncAddrFromFeatureLib(const char *api_name);
 
-
 inline const char *GetOpApiLibName(void)
 {
     return "libopapi.so";
@@ -304,30 +296,28 @@ inline void *GetOpApiLibHandler(const char *libName)
     return handler;
 }
 
-
 // get aclnn api from loaded so
-#define GET_OP_API_FUNC_FROM_FEATURE_LIB(lib_handler, lib_name, api_name)         \
-    static auto lib_handler = GetOpApiLibHandler(lib_name);                       \
-    if ((lib_handler) != nullptr) {                                               \
-        auto funcAddr = GetOpApiFuncAddrInLib(lib_handler, lib_name, api_name);   \
-        if (funcAddr != nullptr) {                                                \
-            return funcAddr;                                                      \
-        }                                                                         \
+#define GET_OP_API_FUNC_FROM_FEATURE_LIB(lib_handler, lib_name, api_name) \
+    static auto lib_handler = GetOpApiLibHandler(lib_name); \
+    if ((lib_handler) != nullptr) { \
+        auto funcAddr = GetOpApiFuncAddrInLib(lib_handler, lib_name, api_name); \
+        if (funcAddr != nullptr) { \
+            return funcAddr; \
+        } \
     }
 
-#define GET_OP_API_FUNC(apiName) \
-  reinterpret_cast<_##apiName>(GetOpApiFuncAddr(#apiName))
+#define GET_OP_API_FUNC(apiName) reinterpret_cast<_##apiName>(GetOpApiFuncAddr(#apiName))
 
 inline void *GetOpApiFuncAddr(const char *apiName)
 {
     if (!g_custom_lib_path.empty()) {
         for (auto &it : g_custom_lib_path) {
             auto cust_opapi_lib = real_path(it + "/" + GetCustOpApiLibName());
-            if (cust_opapi_lib.empty()) continue;
+            if (cust_opapi_lib.empty())
+                continue;
             auto custOpApiHandler = GetOpApiLibHandler(cust_opapi_lib.c_str());
             if (custOpApiHandler != nullptr) {
-                auto funcAddr =
-                    GetOpApiFuncAddrInLib(custOpApiHandler, GetCustOpApiLibName(), apiName);
+                auto funcAddr = GetOpApiFuncAddrInLib(custOpApiHandler, GetCustOpApiLibName(), apiName);
                 if (funcAddr != nullptr) {
                     ASCEND_LOGI("%s is found in %s.", apiName, cust_opapi_lib.c_str());
                     return funcAddr;
@@ -340,7 +330,8 @@ inline void *GetOpApiFuncAddr(const char *apiName)
     if (!g_default_custom_lib_path.empty()) {
         for (auto &it : g_default_custom_lib_path) {
             auto default_cust_opapi_lib = real_path(it + "/" + GetCustOpApiLibName());
-            if (default_cust_opapi_lib.empty()) continue;
+            if (default_cust_opapi_lib.empty())
+                continue;
             auto custOpApiHandler = GetOpApiLibHandler(default_cust_opapi_lib.c_str());
             if (custOpApiHandler != nullptr) {
                 auto funcAddr = GetOpApiFuncAddrInLib(custOpApiHandler, GetCustOpApiLibName(), apiName);
@@ -362,7 +353,8 @@ inline void *GetOpApiFuncAddr(const char *apiName)
     static auto opApiHandler = GetOpApiLibHandler(GetOpApiLibName());
     if (opApiHandler != nullptr) {
         auto funcAddr = GetOpApiFuncAddrInLib(opApiHandler, GetOpApiLibName(), apiName);
-        if (funcAddr != nullptr) return funcAddr;
+        if (funcAddr != nullptr)
+            return funcAddr;
     }
     return GetOpApiFuncAddrFromFeatureLib(apiName);
 }
@@ -417,7 +409,7 @@ inline at::Tensor CopyTensorHostToDevice(const at::Tensor &cpu_tensor)
     at::Tensor cpuPinMemTensor = cpu_tensor.pin_memory();
     int deviceIndex = 0;
     return cpuPinMemTensor.to(c10::Device(torch_npu::utils::get_npu_device_type(), deviceIndex),
-        cpuPinMemTensor.scalar_type(), true, true);
+                              cpuPinMemTensor.scalar_type(), true, true);
 }
 
 inline at::Tensor CopyScalarToDevice(const c10::Scalar &cpu_scalar, at::ScalarType scalar_data_type)
@@ -433,26 +425,27 @@ static bool IsOpInputBaseFormatCommon(const at::Tensor &at_tensor)
     const auto format =
         static_cast<NPUStorageImpl *>(at_tensor.storage().unsafeGetStorageImpl())->npu_desc_.npu_format_;
     return (format == ACL_FORMAT_ND) || (format == ACL_FORMAT_NCHW) || (format == ACL_FORMAT_NHWC) ||
-      (format == ACL_FORMAT_NCDHW);
+           (format == ACL_FORMAT_NCDHW);
 }
 
-inline aclTensor* ConvertType(const at::Tensor& at_tensor)
+inline aclTensor *ConvertType(const at::Tensor &at_tensor)
 {
     static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
-    if (aclCreateTensor == nullptr || !at_tensor.defined()) return nullptr;
+    if (aclCreateTensor == nullptr || !at_tensor.defined())
+        return nullptr;
     at::ScalarType scalar_data_type = at_tensor.scalar_type();
     aclDataType acl_data_type = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalar_data_type)];
-    TORCH_CHECK(acl_data_type != ACL_DT_UNDEFINED, std::string(c10::toString(scalar_data_type)) +
-        " has not been supported")
-        c10::SmallVector<int64_t, SIZE> storageDims;
+    TORCH_CHECK(acl_data_type != ACL_DT_UNDEFINED,
+                std::string(c10::toString(scalar_data_type)) + " has not been supported")
+    c10::SmallVector<int64_t, SIZE> storageDims;
 
     const auto dimNum = at_tensor.sizes().size();
     aclFormat format = ACL_FORMAT_ND;
     if (!IsOpInputBaseFormatCommon(at_tensor)) {
-        format = static_cast<NPUStorageImpl*>(at_tensor.storage().unsafeGetStorageImpl())->npu_desc_.npu_format_;
+        format = static_cast<NPUStorageImpl *>(at_tensor.storage().unsafeGetStorageImpl())->npu_desc_.npu_format_;
         if (acl_data_type != ACL_STRING) {
             storageDims =
-                static_cast<NPUStorageImpl*>(at_tensor.storage().unsafeGetStorageImpl())->npu_desc_.storage_sizes_;
+                static_cast<NPUStorageImpl *>(at_tensor.storage().unsafeGetStorageImpl())->npu_desc_.storage_sizes_;
         }
     } else {
         switch (dimNum) {
@@ -476,21 +469,17 @@ inline aclTensor* ConvertType(const at::Tensor& at_tensor)
     if (at_tensor.unsafeGetTensorImpl()->is_wrapped_number()) {
         c10::Scalar expScalar = at_tensor.item();
         at::Tensor aclInput = CopyScalarToDevice(expScalar, scalar_data_type);
-        return aclCreateTensor(aclInput.sizes().data(), aclInput.sizes().size(),
-            acl_data_type, aclInput.strides().data(),
-            aclInput.storage_offset(), format,
-            storageDims.data(), storageDims.size(),
-            const_cast<void*>(aclInput.storage().data()));
+        return aclCreateTensor(aclInput.sizes().data(), aclInput.sizes().size(), acl_data_type,
+                               aclInput.strides().data(), aclInput.storage_offset(), format, storageDims.data(),
+                               storageDims.size(), const_cast<void *>(aclInput.storage().data()));
     }
 
-    return aclCreateTensor(
-        at_tensor.sizes().data(), at_tensor.sizes().size(), acl_data_type,
-        at_tensor.strides().data(), at_tensor.storage_offset(), format,
-        storageDims.data(), storageDims.size(),
-        const_cast<void*>(at_tensor.storage().data()));
+    return aclCreateTensor(at_tensor.sizes().data(), at_tensor.sizes().size(), acl_data_type,
+                           at_tensor.strides().data(), at_tensor.storage_offset(), format, storageDims.data(),
+                           storageDims.size(), const_cast<void *>(at_tensor.storage().data()));
 }
 
-inline aclIntArray* ConvertType(const at::IntArrayRef& at_array)
+inline aclIntArray *ConvertType(const at::IntArrayRef &at_array)
 {
     static const auto aclCreateIntArray = GET_OP_API_FUNC(aclCreateIntArray);
     if (aclCreateIntArray == nullptr) {
@@ -501,7 +490,7 @@ inline aclIntArray* ConvertType(const at::IntArrayRef& at_array)
 }
 
 template <std::size_t N>
-inline aclBoolArray* ConvertType(const std::array<bool, N>& value)
+inline aclBoolArray *ConvertType(const std::array<bool, N> &value)
 {
     static const auto aclCreateBoolArray = GET_OP_API_FUNC(aclCreateBoolArray);
     if (aclCreateBoolArray == nullptr) {
@@ -512,7 +501,7 @@ inline aclBoolArray* ConvertType(const std::array<bool, N>& value)
     return array;
 }
 
-inline aclIntArray* ConvertType(const c10::OptionalArrayRef<c10::SymInt>& opt_array)
+inline aclIntArray *ConvertType(const c10::OptionalArrayRef<c10::SymInt> &opt_array)
 {
     if (opt_array.has_value()) {
         return ConvertType(opt_array.value());

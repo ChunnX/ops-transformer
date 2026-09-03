@@ -37,7 +37,7 @@ constexpr int64_t MIN_X_RANK = 2;
 constexpr int64_t SPLIT_NUM = 2;
 constexpr size_t ATTR_CUBE_MATH_TYPE = 0;
 
-bool IsUnknownDimNum(const gert::Shape& shape)
+bool IsUnknownDimNum(const gert::Shape &shape)
 {
     return shape.GetDimNum() == 1 && shape.GetDim(0) == ge::UNKNOWN_DIM_NUM;
 }
@@ -47,13 +47,13 @@ bool IsKnownDim(int64_t dim)
     return dim >= 0;
 }
 
-int64_t GetStage(gert::InferShapeContext* context)
+int64_t GetStage(gert::InferShapeContext *context)
 {
-    const gert::RuntimeAttrs* attrs = context->GetAttrs();
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
     if (attrs == nullptr) {
         return 0;
     }
-    const int64_t* stage = attrs->GetAttrPointer<int64_t>(ATTR_CUBE_MATH_TYPE);
+    const int64_t *stage = attrs->GetAttrPointer<int64_t>(ATTR_CUBE_MATH_TYPE);
     if (stage == nullptr) {
         return 0;
     }
@@ -64,34 +64,31 @@ int64_t GetStage(gert::InferShapeContext* context)
     return normalized_stage;
 }
 
-ge::graphStatus ValidateInputRanks(const gert::Shape& x_shape, const gert::Shape& gate_up_weight_shape,
-    const gert::Shape& down_weight_shape)
+ge::graphStatus ValidateInputRanks(const gert::Shape &x_shape, const gert::Shape &gate_up_weight_shape,
+                                   const gert::Shape &down_weight_shape)
 {
     if (x_shape.GetDimNum() < MIN_X_RANK) {
-        OP_LOGE("SwigluGatedMlp",
-                "The rank of input x must be at least %ld, but got %zu.",
-                MIN_X_RANK, x_shape.GetDimNum());
+        OP_LOGE("SwigluGatedMlp", "The rank of input x must be at least %ld, but got %zu.", MIN_X_RANK,
+                x_shape.GetDimNum());
         return ge::GRAPH_FAILED;
     }
 
     if (!IsUnknownDimNum(gate_up_weight_shape) && gate_up_weight_shape.GetDimNum() != WEIGHT_RANK) {
-        OP_LOGE("SwigluGatedMlp",
-                "The rank of input gate_up_weight must be %ld, but got %zu.",
-                WEIGHT_RANK, gate_up_weight_shape.GetDimNum());
+        OP_LOGE("SwigluGatedMlp", "The rank of input gate_up_weight must be %ld, but got %zu.", WEIGHT_RANK,
+                gate_up_weight_shape.GetDimNum());
         return ge::GRAPH_FAILED;
     }
 
     if (!IsUnknownDimNum(down_weight_shape) && down_weight_shape.GetDimNum() != WEIGHT_RANK) {
-        OP_LOGE("SwigluGatedMlp",
-                "The rank of input down_weight must be %ld, but got %zu.",
-                WEIGHT_RANK, down_weight_shape.GetDimNum());
+        OP_LOGE("SwigluGatedMlp", "The rank of input down_weight must be %ld, but got %zu.", WEIGHT_RANK,
+                down_weight_shape.GetDimNum());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferMatmulStageShape(const gert::Shape& x_shape, const gert::Shape& gate_up_weight_shape,
-    gert::Shape* y_shape)
+ge::graphStatus InferMatmulStageShape(const gert::Shape &x_shape, const gert::Shape &gate_up_weight_shape,
+                                      gert::Shape *y_shape)
 {
     if (gate_up_weight_shape.GetDimNum() != WEIGHT_RANK) {
         return ge::GRAPH_FAILED;
@@ -101,7 +98,7 @@ ge::graphStatus InferMatmulStageShape(const gert::Shape& x_shape, const gert::Sh
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferSwigluStageShape(const gert::Shape& x_shape, gert::Shape* y_shape)
+ge::graphStatus InferSwigluStageShape(const gert::Shape &x_shape, gert::Shape *y_shape)
 {
     *y_shape = x_shape;
     const int64_t last_dim = x_shape.GetDim(x_shape.GetDimNum() - 1);
@@ -109,8 +106,7 @@ ge::graphStatus InferSwigluStageShape(const gert::Shape& x_shape, gert::Shape* y
         return ge::GRAPH_SUCCESS;
     }
     if (last_dim <= 0 || last_dim % SPLIT_NUM != 0) {
-        OP_LOGE("SwigluGatedMlp",
-                "The stage swiglu input last dimension [%ld] must be positive and divisible by %ld.",
+        OP_LOGE("SwigluGatedMlp", "The stage swiglu input last dimension [%ld] must be positive and divisible by %ld.",
                 last_dim, SPLIT_NUM);
         return ge::GRAPH_FAILED;
     }
@@ -125,7 +121,7 @@ struct WeightDims {
     int64_t down_out = ge::UNKNOWN_DIM;
 };
 
-WeightDims GetWeightDims(const gert::Shape& gate_up_weight_shape, const gert::Shape& down_weight_shape)
+WeightDims GetWeightDims(const gert::Shape &gate_up_weight_shape, const gert::Shape &down_weight_shape)
 {
     WeightDims dims;
     if (!IsUnknownDimNum(gate_up_weight_shape)) {
@@ -139,24 +135,21 @@ WeightDims GetWeightDims(const gert::Shape& gate_up_weight_shape, const gert::Sh
     return dims;
 }
 
-ge::graphStatus ValidateWeightDims(int64_t x_hidden, const WeightDims& dims)
+ge::graphStatus ValidateWeightDims(int64_t x_hidden, const WeightDims &dims)
 {
     if (IsKnownDim(dims.gate_up_hidden) && IsKnownDim(x_hidden) && dims.gate_up_hidden != x_hidden) {
-        OP_LOGE("SwigluGatedMlp",
-                "The hidden dimension of x [%ld] and gate_up_weight [%ld] must be the same.",
+        OP_LOGE("SwigluGatedMlp", "The hidden dimension of x [%ld] and gate_up_weight [%ld] must be the same.",
                 x_hidden, dims.gate_up_hidden);
         return ge::GRAPH_FAILED;
     }
 
     if (IsKnownDim(dims.gate_up_out) && (dims.gate_up_out <= 0 || dims.gate_up_out % SPLIT_NUM != 0)) {
-        OP_LOGE("SwigluGatedMlp",
-                "The second dimension of gate_up_weight [%ld] must be positive and divisible by %ld.",
+        OP_LOGE("SwigluGatedMlp", "The second dimension of gate_up_weight [%ld] must be positive and divisible by %ld.",
                 dims.gate_up_out, SPLIT_NUM);
         return ge::GRAPH_FAILED;
     }
 
-    if (IsKnownDim(dims.gate_up_out) && IsKnownDim(dims.down_in) &&
-        (dims.gate_up_out / SPLIT_NUM) != dims.down_in) {
+    if (IsKnownDim(dims.gate_up_out) && IsKnownDim(dims.down_in) && (dims.gate_up_out / SPLIT_NUM) != dims.down_in) {
         OP_LOGE("SwigluGatedMlp",
                 "The down_weight input dimension [%ld] must equal gate_up_weight second dimension / %ld [%ld].",
                 dims.down_in, SPLIT_NUM, dims.gate_up_out / SPLIT_NUM);
@@ -164,11 +157,11 @@ ge::graphStatus ValidateWeightDims(int64_t x_hidden, const WeightDims& dims)
     }
     return ge::GRAPH_SUCCESS;
 }
-}  // namespace
+} // namespace
 
 namespace ops {
 
-static ge::graphStatus InferShapeForSwigluGatedMlp(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeForSwigluGatedMlp(gert::InferShapeContext *context)
 {
     auto x_shape = context->GetInputShape(SWIGLU_GATED_MLP_IN_X);
     OP_CHECK_NULL_WITH_CONTEXT(context, x_shape);
@@ -212,7 +205,7 @@ static ge::graphStatus InferShapeForSwigluGatedMlp(gert::InferShapeContext* cont
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeForSwigluGatedMlp(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDataTypeForSwigluGatedMlp(gert::InferDataTypeContext *context)
 {
     const ge::DataType x_dtype = context->GetInputDataType(SWIGLU_GATED_MLP_IN_X);
     const ge::DataType gate_up_weight_dtype = context->GetInputDataType(SWIGLU_GATED_MLP_IN_GATE_UP_WEIGHT);
@@ -220,8 +213,7 @@ static ge::graphStatus InferDataTypeForSwigluGatedMlp(gert::InferDataTypeContext
     if (x_dtype != gate_up_weight_dtype || x_dtype != down_weight_dtype) {
         OP_LOGE("SwigluGatedMlp",
                 "The data types of x, gate_up_weight and down_weight must be the same, but got [%d, %d, %d].",
-                static_cast<int32_t>(x_dtype),
-                static_cast<int32_t>(gate_up_weight_dtype),
+                static_cast<int32_t>(x_dtype), static_cast<int32_t>(gate_up_weight_dtype),
                 static_cast<int32_t>(down_weight_dtype));
         return ge::GRAPH_FAILED;
     }
@@ -233,4 +225,4 @@ IMPL_OP_INFERSHAPE(SwigluGatedMlp)
     .InferShape(InferShapeForSwigluGatedMlp)
     .InferDataType(InferDataTypeForSwigluGatedMlp);
 
-}  // namespace ops
+} // namespace ops

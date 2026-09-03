@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef FLASH_ATTENTION_SCORE_GRAD_TILING_H 
+#ifndef FLASH_ATTENTION_SCORE_GRAD_TILING_H
 #define FLASH_ATTENTION_SCORE_GRAD_TILING_H
 
 #pragma once
@@ -835,7 +835,6 @@ public:
         reserved = 0;
     }
 };
-
 
 class PreSfmgParams {
 public:
@@ -1927,7 +1926,6 @@ public:
     }
 };
 
-
 class FlashAttentionScoreGradS1S2BNGS1S2SplitCoreParams {
 public:
     int64_t s1Outer = 0;
@@ -2112,7 +2110,6 @@ public:
         bandIdx = 0;
     }
 };
-
 
 class BlockNumListParams {
 public:
@@ -3221,7 +3218,6 @@ public:
     }
 };
 
-
 class SplitNSplitCoreParams {
 public:
     int64_t totalBatch = 0;
@@ -3295,7 +3291,6 @@ public:
         reserved = 0;
     }
 };
-
 
 class SplitNSingleCoreParams {
 public:
@@ -4353,7 +4348,6 @@ public:
         tailCoreDpseNum = 0;
     }
 };
-
 
 class MLATensorTilingData {
 public:

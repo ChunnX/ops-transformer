@@ -77,9 +77,15 @@ std::vector<OpAttr> AttrsWith(const std::string &name, const AnyValue &value)
 
 class TurboQuantSparseFlashAttentionTiling : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "TurboQuantSparseFlashAttentionTiling SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "TurboQuantSparseFlashAttentionTiling SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "TurboQuantSparseFlashAttentionTiling TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "TurboQuantSparseFlashAttentionTiling TearDown" << std::endl;
+    }
 };
 
 struct TurboQuantSparseFlashAttentionCompileInfo {};

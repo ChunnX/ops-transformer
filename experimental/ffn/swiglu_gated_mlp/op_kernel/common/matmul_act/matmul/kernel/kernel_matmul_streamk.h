@@ -49,31 +49,45 @@ class KernelMatmulStreamK {
 };
 
 template <class ProblemShape_, class BlockMmadBuilder_, class BlockEpilogue_, class BlockScheduler_>
-class KernelMatmulStreamK<ProblemShape_, BlockMmadBuilder_, BlockEpilogue_, BlockScheduler_, AscendC::Std::enable_if_t<
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, float,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, float,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, bfloat16_t,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, bfloat16_t,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, half,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, half,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, float,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY, true>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, float,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2, true>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, bfloat16_t,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY, true>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, bfloat16_t,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2, true>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, half,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY, true>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, half,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2, true>>>>>{
+class KernelMatmulStreamK<
+    ProblemShape_, BlockMmadBuilder_, BlockEpilogue_, BlockScheduler_,
+    AscendC::Std::enable_if_t<
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_,
+            Block::BlockEpilogueStreamK<float, float, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_,
+            Block::BlockEpilogueStreamK<float, float, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_,
+            Block::BlockEpilogueStreamK<float, bfloat16_t, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_, Block::BlockEpilogueStreamK<float, bfloat16_t,
+                                                        MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_,
+            Block::BlockEpilogueStreamK<float, half, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_,
+            Block::BlockEpilogueStreamK<float, half, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_,
+            Block::BlockEpilogueStreamK<float, float, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY, true>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_, Block::BlockEpilogueStreamK<
+                                float, float, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2, true>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_, Block::BlockEpilogueStreamK<
+                                float, bfloat16_t, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY, true>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_, Block::BlockEpilogueStreamK<
+                                float, bfloat16_t, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2, true>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_,
+            Block::BlockEpilogueStreamK<float, half, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY, true>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_, Block::BlockEpilogueStreamK<
+                                float, half, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2, true>>>>> {
 public:
     __aicore__ inline KernelMatmulStreamK() {}
     __aicore__ inline ~KernelMatmulStreamK() {}
@@ -86,9 +100,10 @@ public:
     static constexpr bool transA = BlockMmadBuilder::transA;
     static constexpr bool transB = BlockMmadBuilder::transB;
     // schedulerOp
-    using BlockSchedulerOp = typename Block::BlockSchedulerSelector<ProblemShape,
-        typename BlockMmadBuilder::L1TileShape, typename BlockMmadBuilder::L0TileShape, BlockScheduler, transA,
-        transB>::SchedulerOp;
+    using BlockSchedulerOp =
+        typename Block::BlockSchedulerSelector<ProblemShape, typename BlockMmadBuilder::L1TileShape,
+                                               typename BlockMmadBuilder::L0TileShape, BlockScheduler, transA,
+                                               transB>::SchedulerOp;
     // mmadOp
     using BlockMmadOp = typename BlockMmadBuilder::BlockMmadOp;
     using BlockMmadArguments = typename BlockMmadBuilder::Arguments;
@@ -148,12 +163,12 @@ public:
         Params() = default;
     };
 
-    __aicore__ inline static TupleShape ToShapeTuple(ProblemShape const& shape)
+    __aicore__ inline static TupleShape ToShapeTuple(ProblemShape const &shape)
     {
         return {shape.m, shape.n, shape.k, shape.b};
     }
 
-    __aicore__ inline void Init(Params const& params)
+    __aicore__ inline void Init(Params const &params)
     {
         problemShape_ = ToShapeTuple(params.problemShape);
         BlockMmadParams blockMmadParams_ = params.mmadParams;
@@ -163,17 +178,17 @@ public:
         k_ = Get<MNK_K>(problemShape_);
         usedCoreNum_ = params.schParams.tilingData->usedCoreNum;
         // Init GlobalTensor
-        aGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ AType*>(blockMmadParams_.aGmAddr));
-        bGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ BType*>(blockMmadParams_.bGmAddr));
-        cGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ CType*>(blockMmadParams_.cGmAddr));
-        workspaceGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(blockMmadParams_.workspaceGmAddr));
+        aGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ AType *>(blockMmadParams_.aGmAddr));
+        bGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ BType *>(blockMmadParams_.bGmAddr));
+        cGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ CType *>(blockMmadParams_.cGmAddr));
+        workspaceGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(blockMmadParams_.workspaceGmAddr));
         if (blockMmadParams_.biasGmAddr != nullptr) {
             isBias_ = true;
-            biasGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ BiasType*>(blockMmadParams_.biasGmAddr));
+            biasGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ BiasType *>(blockMmadParams_.biasGmAddr));
         }
     }
 
-    __aicore__ inline void run(Params const& params)
+    __aicore__ inline void run(Params const &params)
     {
         // Init
         Init(params);
@@ -210,25 +225,26 @@ public:
             for (int64_t tileIdx = curBlockIdx; tileIdx < tileNum; tileIdx += usedCoreNum_) {
                 int64_t tmpTileIdx = tileIdx;
                 if (!bs.CheckIsSkScene(0)) { // SK Preload in DP+SK
-                    if (tileIdx % usedCoreNum_ < tailSKTotalTileNum && (CeilDiv(tileIdx + 1, usedCoreNum_) ==
-                                                                        (CeilDiv(tileNum, usedCoreNum_) - 1))) {
+                    if (tileIdx % usedCoreNum_ < tailSKTotalTileNum &&
+                        (CeilDiv(tileIdx + 1, usedCoreNum_) == (CeilDiv(tileNum, usedCoreNum_) - 1))) {
                         tmpTileIdx = tileIdx + usedCoreNum_;
-                    } else if (tileIdx % usedCoreNum_ < tailSKTotalTileNum && (CeilDiv(tileIdx + 1, usedCoreNum_) ==
-                                                                               CeilDiv(tileNum, usedCoreNum_))) {
+                    } else if (tileIdx % usedCoreNum_ < tailSKTotalTileNum &&
+                               (CeilDiv(tileIdx + 1, usedCoreNum_) == CeilDiv(tileNum, usedCoreNum_))) {
                         tmpTileIdx = tileIdx - usedCoreNum_;
                     }
                 }
                 auto singleCoreShape = bs.GetSingleCoreShape(tmpTileIdx);
                 auto singleCoreCoord = bs.GetSingleCoreCoord(tmpTileIdx);
-                auto blockOffset = GetOffsetStreamK(singleCoreCoord, problemShape_, tileL1,
-                                                    bs.GetCurKSingleCore(tmpTileIdx), aGlobal_, bGlobal_, cGlobal_,
-                                                    transA, transB, isBias_);
+                auto blockOffset =
+                    GetOffsetStreamK(singleCoreCoord, problemShape_, tileL1, bs.GetCurKSingleCore(tmpTileIdx), aGlobal_,
+                                     bGlobal_, cGlobal_, transA, transB, isBias_);
                 int64_t offsetA = Get<MNK_M>(blockOffset);
                 int64_t offsetB = Get<MNK_N>(blockOffset);
                 int64_t offsetC = Get<2>(blockOffset);
                 int64_t offsetBias = Get<3>(blockOffset);
-                int64_t offsetWorkspace = (((tmpTileIdx % usedCoreNum_) / skKTileNum) * skKTileNum +
-                                           Get<MNK_K>(singleCoreCoord)) * BLOCK_BASE_M * BLOCK_BASE_N;
+                int64_t offsetWorkspace =
+                    (((tmpTileIdx % usedCoreNum_) / skKTileNum) * skKTileNum + Get<MNK_K>(singleCoreCoord)) *
+                    BLOCK_BASE_M * BLOCK_BASE_N;
                 blockMmadOp(cGlobal_[offsetC], aGlobal_[offsetA], bGlobal_[offsetB], biasGlobal_[offsetBias],
                             workspaceGlobal_[offsetWorkspace], singleCoreShape, Get<MNK_K>(singleCoreCoord),
                             bs.CheckIsSkScene(tmpTileIdx));
@@ -261,7 +277,7 @@ public:
         }
     }
 
-    __host_aicore__ static Status CheckShape(ProblemShape const& shape)
+    __host_aicore__ static Status CheckShape(ProblemShape const &shape)
     {
         int64_t m = shape.m;
         int64_t n = shape.n;
@@ -292,7 +308,7 @@ public:
         return Status::success;
     }
 
-    __host_aicore__ static Status CheckArgs(Arguments const& args)
+    __host_aicore__ static Status CheckArgs(Arguments const &args)
     {
         // Check shape in kernel
         CHECK_AND_RETURN(CheckShape(args.problemShape));
@@ -311,7 +327,7 @@ public:
         return workSpaceSize;
     }
 
-    __host_aicore__ static Params InitParams(Arguments const& args, GM_ADDR workspace)
+    __host_aicore__ static Params InitParams(Arguments const &args, GM_ADDR workspace)
     {
         BlockMmadParams mmadParams = BlockMmadBuilder::InitParams(args.mmadArgs);
         // mmad params with epiligue takes workspaceGm as output
@@ -319,7 +335,7 @@ public:
         return params;
     }
 
-    __aicore__ inline void operator()(Params const& params)
+    __aicore__ inline void operator()(Params const &params)
     {
         run(params);
     }

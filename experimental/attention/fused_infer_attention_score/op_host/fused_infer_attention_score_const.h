@@ -15,10 +15,10 @@
 #ifndef FUSED_INFER_ATTENTION_SCORE_CONST_H_
 #define FUSED_INFER_ATTENTION_SCORE_CONST_H_
 const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
-    {ge::DT_UNDEFINED, "DT_UNDEFINED"},           // Used to indicate a DataType field has not been set.
-    {ge::DT_FLOAT16, "DT_FLOAT16"},               // fp16 type
-    {ge::DT_BOOL, "DT_BOOL"},                     // bool type
-    {ge::DT_BF16, "DT_BFLOAT16"},                 // dt_bfloat16 type
+    {ge::DT_UNDEFINED, "DT_UNDEFINED"}, // Used to indicate a DataType field has not been set.
+    {ge::DT_FLOAT16, "DT_FLOAT16"},     // fp16 type
+    {ge::DT_BOOL, "DT_BOOL"},           // bool type
+    {ge::DT_BF16, "DT_BFLOAT16"},       // dt_bfloat16 type
 
 };
 constexpr uint32_t NUM_16 = 16;

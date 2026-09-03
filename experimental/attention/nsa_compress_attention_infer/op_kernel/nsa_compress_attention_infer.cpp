@@ -19,11 +19,10 @@
 using namespace AscendC;
 using namespace NSA_COMPRESS_ATTENTION_INFER;
 
-extern "C" __global__ __aicore__ void
-nsa_compress_attention_infer(
-        GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR attentionMaskOptional, GM_ADDR blockTableOptional,
-        GM_ADDR actualQSeqLenOptional, GM_ADDR actualCmpKvSeqLenOptional, GM_ADDR actualSelKvSeqLenOptional,
-        GM_ADDR topkMaskOptional, GM_ADDR output, GM_ADDR topkIndicesOut, GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void nsa_compress_attention_infer(
+    GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR attentionMaskOptional, GM_ADDR blockTableOptional,
+    GM_ADDR actualQSeqLenOptional, GM_ADDR actualCmpKvSeqLenOptional, GM_ADDR actualSelKvSeqLenOptional,
+    GM_ADDR topkMaskOptional, GM_ADDR output, GM_ADDR topkIndicesOut, GM_ADDR workspace, GM_ADDR tiling)
 {
     GM_ADDR user = GetUserWorkspace(workspace);
     if (user == nullptr) {
@@ -35,38 +34,38 @@ nsa_compress_attention_infer(
     if (TILING_KEY_IS(0)) {
         NsaCompressAttentionInfer<NCAIType<half, half, half>> op;
         op.Run(query, key, value, blockTableOptional, actualQSeqLenOptional, actualCmpKvSeqLenOptional,
-                actualSelKvSeqLenOptional, output, topkIndicesOut, user, &tilingData);
+               actualSelKvSeqLenOptional, output, topkIndicesOut, user, &tilingData);
     } else if (TILING_KEY_IS(1)) {
         NsaCompressAttentionInfer<NCAIType<half, half, half, LAYOUT::BSND>> op;
         op.Run(query, key, value, blockTableOptional, actualQSeqLenOptional, actualCmpKvSeqLenOptional,
-                actualSelKvSeqLenOptional, output, topkIndicesOut, user, &tilingData);
+               actualSelKvSeqLenOptional, output, topkIndicesOut, user, &tilingData);
     } else if (TILING_KEY_IS(2)) {
         NsaCompressAttentionInfer<NCAIType<half, half, half, LAYOUT::TND, true>> op;
         op.Run(query, key, value, blockTableOptional, actualQSeqLenOptional, actualCmpKvSeqLenOptional,
-                actualSelKvSeqLenOptional, output, topkIndicesOut, user, &tilingData);
+               actualSelKvSeqLenOptional, output, topkIndicesOut, user, &tilingData);
     } else if (TILING_KEY_IS(3)) {
         NsaCompressAttentionInfer<NCAIType<half, half, half, LAYOUT::BSND, true>> op;
         op.Run(query, key, value, blockTableOptional, actualQSeqLenOptional, actualCmpKvSeqLenOptional,
-                actualSelKvSeqLenOptional, output, topkIndicesOut, user, &tilingData);
+               actualSelKvSeqLenOptional, output, topkIndicesOut, user, &tilingData);
     }
 #endif
 #if (ORIG_DTYPE_QUERY == DT_BF16)
     if (TILING_KEY_IS(0)) {
         NsaCompressAttentionInfer<NCAIType<bfloat16_t, bfloat16_t, bfloat16_t>> op;
         op.Run(query, key, value, blockTableOptional, actualQSeqLenOptional, actualCmpKvSeqLenOptional,
-                actualSelKvSeqLenOptional, output, topkIndicesOut, user, &tilingData);
+               actualSelKvSeqLenOptional, output, topkIndicesOut, user, &tilingData);
     } else if (TILING_KEY_IS(1)) {
         NsaCompressAttentionInfer<NCAIType<bfloat16_t, bfloat16_t, bfloat16_t, LAYOUT::BSND>> op;
         op.Run(query, key, value, blockTableOptional, actualQSeqLenOptional, actualCmpKvSeqLenOptional,
-                actualSelKvSeqLenOptional, output, topkIndicesOut, user, &tilingData);
+               actualSelKvSeqLenOptional, output, topkIndicesOut, user, &tilingData);
     } else if (TILING_KEY_IS(2)) {
         NsaCompressAttentionInfer<NCAIType<bfloat16_t, bfloat16_t, bfloat16_t, LAYOUT::TND, true>> op;
         op.Run(query, key, value, blockTableOptional, actualQSeqLenOptional, actualCmpKvSeqLenOptional,
-                actualSelKvSeqLenOptional, output, topkIndicesOut, user, &tilingData);
+               actualSelKvSeqLenOptional, output, topkIndicesOut, user, &tilingData);
     } else if (TILING_KEY_IS(3)) {
         NsaCompressAttentionInfer<NCAIType<bfloat16_t, bfloat16_t, bfloat16_t, LAYOUT::BSND, true>> op;
         op.Run(query, key, value, blockTableOptional, actualQSeqLenOptional, actualCmpKvSeqLenOptional,
-                actualSelKvSeqLenOptional, output, topkIndicesOut, user, &tilingData);
+               actualSelKvSeqLenOptional, output, topkIndicesOut, user, &tilingData);
     }
 #endif
 }

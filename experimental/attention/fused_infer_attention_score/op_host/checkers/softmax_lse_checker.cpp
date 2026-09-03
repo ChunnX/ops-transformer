@@ -72,29 +72,28 @@ ge::graphStatus SoftmaxLSEChecker::CheckFeatureDimAndShape(const FiaTilingInfo &
                         OP_LOGE(fiaInfo.opName, "TND/NTD SoftmaxLse shape dim(%zu) should be 3!",
                                 lseShape->GetStorageShape().GetDimNum()),
                         return ge::GRAPH_FAILED);
-            OP_CHECK_IF(lseShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.qTSize ||
-                lseShape->GetStorageShape().GetDim(DIM_NUM_1) != fiaInfo.n1Size ||
-                lseShape->GetStorageShape().GetDim(DIM_NUM_2) != SHAPE_PARAMS_CONST,
-                        OP_LOGE(fiaInfo.opName, "SoftmaxLse shape[%ld, %ld, %ld] does not match TN1!",
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_0),
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_1),
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_2)),
-                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                lseShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.qTSize ||
+                    lseShape->GetStorageShape().GetDim(DIM_NUM_1) != fiaInfo.n1Size ||
+                    lseShape->GetStorageShape().GetDim(DIM_NUM_2) != SHAPE_PARAMS_CONST,
+                OP_LOGE(fiaInfo.opName, "SoftmaxLse shape[%ld, %ld, %ld] does not match TN1!",
+                        lseShape->GetStorageShape().GetDim(DIM_NUM_0), lseShape->GetStorageShape().GetDim(DIM_NUM_1),
+                        lseShape->GetStorageShape().GetDim(DIM_NUM_2)),
+                return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(lseShape->GetStorageShape().GetDimNum() != DIM_NUM_4,
                         OP_LOGE(fiaInfo.opName, "SoftmaxLse shape dim(%zu) should be 4!",
                                 lseShape->GetStorageShape().GetDimNum()),
                         return ge::GRAPH_FAILED);
-            OP_CHECK_IF(lseShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize ||
-                lseShape->GetStorageShape().GetDim(DIM_NUM_1) != fiaInfo.n1Size ||
-                lseShape->GetStorageShape().GetDim(DIM_NUM_2) != fiaInfo.s1Size ||
-                lseShape->GetStorageShape().GetDim(DIM_NUM_3) != SHAPE_PARAMS_CONST,
-                        OP_LOGE(fiaInfo.opName, "SoftmaxLse shape[%ld, %ld, %ld, %ld] does not match [B, N, Q_S, 1]!",
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_0),
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_1),
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_2),
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_3)),
-                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                lseShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize ||
+                    lseShape->GetStorageShape().GetDim(DIM_NUM_1) != fiaInfo.n1Size ||
+                    lseShape->GetStorageShape().GetDim(DIM_NUM_2) != fiaInfo.s1Size ||
+                    lseShape->GetStorageShape().GetDim(DIM_NUM_3) != SHAPE_PARAMS_CONST,
+                OP_LOGE(fiaInfo.opName, "SoftmaxLse shape[%ld, %ld, %ld, %ld] does not match [B, N, Q_S, 1]!",
+                        lseShape->GetStorageShape().GetDim(DIM_NUM_0), lseShape->GetStorageShape().GetDim(DIM_NUM_1),
+                        lseShape->GetStorageShape().GetDim(DIM_NUM_2), lseShape->GetStorageShape().GetDim(DIM_NUM_3)),
+                return ge::GRAPH_FAILED);
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -120,7 +119,7 @@ ge::graphStatus SoftmaxLSEChecker::CheckParaExistence(const FiaTilingInfo &fiaIn
 ge::graphStatus SoftmaxLSEChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 {
     if (ge::GRAPH_SUCCESS != CheckFeatureDimAndShape(fiaInfo)) {
-            return ge::GRAPH_FAILED;
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -130,4 +129,4 @@ ge::graphStatus SoftmaxLSEChecker::CheckMultiParaConsistency(const FiaTilingInfo
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+} // namespace optiling

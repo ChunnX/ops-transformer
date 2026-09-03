@@ -87,7 +87,6 @@ TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
     m.impl("npu_fused_infer_attention_score_metadata", &custom::npu_fused_infer_attention_score_metadata_npu);
 }
 
-
 // step5, 为META设备注册前向实现
 TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, Meta, m)
 {

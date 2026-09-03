@@ -22,19 +22,19 @@
 namespace optiling {
 
 BEGIN_TILING_DATA_DEF(TsqrTilingData)
-    TILING_DATA_FIELD_DEF(int32_t, batchSize);
-    TILING_DATA_FIELD_DEF(int32_t, m);
-    TILING_DATA_FIELD_DEF(int32_t, n);
-    TILING_DATA_FIELD_DEF(int32_t, blockSize);
-    TILING_DATA_FIELD_DEF(int32_t, numLevels);
-    TILING_DATA_FIELD_DEF(int32_t, numBlocks);
-    TILING_DATA_FIELD_DEF(int64_t, tmpQSize);
-    TILING_DATA_FIELD_DEF(int64_t, tmpRSize);
-    TILING_DATA_FIELD_DEF(int64_t, bufferQSize);
-    TILING_DATA_FIELD_DEF(int64_t, ubSize);
-    TILING_DATA_FIELD_DEF(int64_t, maxQrWorkspace);
-    TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingData);
-    TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingDataF);
+TILING_DATA_FIELD_DEF(int32_t, batchSize);
+TILING_DATA_FIELD_DEF(int32_t, m);
+TILING_DATA_FIELD_DEF(int32_t, n);
+TILING_DATA_FIELD_DEF(int32_t, blockSize);
+TILING_DATA_FIELD_DEF(int32_t, numLevels);
+TILING_DATA_FIELD_DEF(int32_t, numBlocks);
+TILING_DATA_FIELD_DEF(int64_t, tmpQSize);
+TILING_DATA_FIELD_DEF(int64_t, tmpRSize);
+TILING_DATA_FIELD_DEF(int64_t, bufferQSize);
+TILING_DATA_FIELD_DEF(int64_t, ubSize);
+TILING_DATA_FIELD_DEF(int64_t, maxQrWorkspace);
+TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingData);
+TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingDataF);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(Tsqr, TsqrTilingData)

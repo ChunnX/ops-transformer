@@ -17,7 +17,6 @@
 #include <register/op_impl_registry.h>
 #include "error/ops_error.h"
 
-
 using namespace ge;
 
 namespace ops {
@@ -64,24 +63,24 @@ static ge::graphStatus InferShapeQuantSalsIndexer(gert::InferShapeContext *conte
         sparseCount = totalNCount;
         selectCount = 0;
     } else {
-        selectCount = static_cast<int64_t>(std::ceil((static_cast<double>(totalNCount) - static_cast<double>(*fixedTailCount)) * (std::round((1.0 - *sparse_ratio)*100.0) / 100.0)));
+        selectCount =
+            static_cast<int64_t>(std::ceil((static_cast<double>(totalNCount) - static_cast<double>(*fixedTailCount)) *
+                                           (std::round((1.0 - *sparse_ratio) * 100.0) / 100.0)));
         if (selectCount > 2048) {
             selectCount = 2048;
         }
-        sparseCount =  selectCount + (*fixedTailCount);
+        sparseCount = selectCount + (*fixedTailCount);
     }
 
     gert::Shape *sparseIndicesShape = context->GetOutputShape(OUTPUT_IDX_SPARSE_INDICES);
     OPS_LOG_E_IF_NULL(context, sparseIndicesShape, ge::GRAPH_FAILED);
 
     sparseIndicesShape->SetDimNum(queryShape->GetDimNum());
-    OPS_ERR_IF(
-        queryShape->GetDimNum() != 3,
-        OPS_LOG_E(context, "queryDims (%zu) must be 3!", queryShape->GetDimNum()),
-        return ge::GRAPH_FAILED);
+    OPS_ERR_IF(queryShape->GetDimNum() != 3, OPS_LOG_E(context, "queryDims (%zu) must be 3!", queryShape->GetDimNum()),
+               return ge::GRAPH_FAILED);
     sparseIndicesShape->SetDim(0, queryShape->GetDim(0)); // 0:Dim B
     sparseIndicesShape->SetDim(1, queryShape->GetDim(1)); // 1:Dim N2
-    sparseIndicesShape->SetDim(2, sparseCount);   // 2:Dim K
+    sparseIndicesShape->SetDim(2, sparseCount);           // 2:Dim K
 
     OPS_LOG_D(context->GetNodeName(), "QuantSalsIndexer InferShape end.");
 

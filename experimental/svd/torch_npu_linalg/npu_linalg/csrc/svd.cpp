@@ -15,7 +15,7 @@
 namespace npu_linalg {
 using namespace at_npu::native;
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor> construct_svd_output_tensor(const at::Tensor& x)
+std::tuple<at::Tensor, at::Tensor, at::Tensor> construct_svd_output_tensor(const at::Tensor &x)
 {
     auto xShape = x.sizes();
     int64_t nd = xShape.size();
@@ -37,11 +37,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> construct_svd_output_tensor(const
     return std::tuple<at::Tensor, at::Tensor, at::Tensor>(U, S, V);
 }
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor> svd_npu(const at::Tensor& A, int64_t num_iterations)
+std::tuple<at::Tensor, at::Tensor, at::Tensor> svd_npu(const at::Tensor &A, int64_t num_iterations)
 {
     // construct the output tensor
     auto output_tensors = construct_svd_output_tensor(A);
-    at::Tensor U  = std::get<0>(output_tensors);
+    at::Tensor U = std::get<0>(output_tensors);
     at::Tensor S = std::get<1>(output_tensors);
     at::Tensor V = std::get<2>(output_tensors);
 
@@ -49,11 +49,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> svd_npu(const at::Tensor& A, int6
     return std::tuple<at::Tensor, at::Tensor, at::Tensor>(U, S, V);
 }
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor> svd_meta(const at::Tensor& A, int64_t num_iterations)
+std::tuple<at::Tensor, at::Tensor, at::Tensor> svd_meta(const at::Tensor &A, int64_t num_iterations)
 {
     // construct the output tensor
     auto output_tensors = construct_svd_output_tensor(A);
-    at::Tensor U  = std::get<0>(output_tensors);
+    at::Tensor U = std::get<0>(output_tensors);
     at::Tensor S = std::get<1>(output_tensors);
     at::Tensor V = std::get<2>(output_tensors);
 
@@ -61,12 +61,12 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> svd_meta(const at::Tensor& A, int
 }
 } // namespace npu_linalg
 
-
-TORCH_LIBRARY_IMPL(npu_linalg, PrivateUse1, m) {
+TORCH_LIBRARY_IMPL(npu_linalg, PrivateUse1, m)
+{
     m.impl("svd", &npu_linalg::svd_npu);
 }
 
-
-TORCH_LIBRARY_IMPL(npu_linalg, Meta, m) {
+TORCH_LIBRARY_IMPL(npu_linalg, Meta, m)
+{
     m.impl("svd", &npu_linalg::svd_meta);
 }

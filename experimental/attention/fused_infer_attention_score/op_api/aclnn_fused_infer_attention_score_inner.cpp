@@ -22,7 +22,8 @@ namespace {
 
 const uint64_t INT4_NUMS_IN_INT32 = 8;
 
-void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *&tensorListValue) {
+void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *&tensorListValue)
+{
     if (tensorListKey == nullptr) {
         OP_LOGD("TensorListKey is nullptr,TensorPreProcess exit.");
         return;
@@ -68,8 +69,8 @@ void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *
     OP_LOGD("The conversion of kv from int32 to int4 is completed.");
 }
 
-
-void PrefixTensorPreProcess(const aclTensor *&tensorKey, const aclTensor *&tensorValue) {
+void PrefixTensorPreProcess(const aclTensor *&tensorKey, const aclTensor *&tensorValue)
+{
     if (tensorKey == nullptr) {
         OP_LOGD("TensorListKey is nullptr,TensorPreProcess exit.");
         return;
@@ -103,14 +104,15 @@ void PrefixTensorPreProcess(const aclTensor *&tensorKey, const aclTensor *&tenso
     OP_LOGD("The conversion of kvPrefix from int32 to int4 is completed.");
 }
 
-aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outTensor) {
+aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outTensor)
+{
     OP_LOGD("start fake tensor");
     if (inArray != nullptr) {
         OP_LOGD("input array is not nullptr");
         int64_t size = static_cast<int64_t>(inArray->Size());
         std::vector<int64_t> shape = {size};
-        outTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_INT64, nullptr,
-                                    0, ACL_FORMAT_ND, shape.data(), shape.size(), nullptr);
+        outTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_INT64, nullptr, 0, ACL_FORMAT_ND,
+                                    shape.data(), shape.size(), nullptr);
         if (outTensor == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc tensor failed");
             return ACLNN_ERR_INNER_NULLPTR;
@@ -127,7 +129,7 @@ void FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const aclTen
         std::vector<int64_t> shape = {0};
         int64_t addr = 0xff;
         tempTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(), 0, ACL_FORMAT_ND,
-                                     shape.data(), shape.size(), static_cast<void*>(&addr));
+                                     shape.data(), shape.size(), static_cast<void *>(&addr));
         placeHolder = tempTensor;
     } else {
         placeHolder = softmaxLse;

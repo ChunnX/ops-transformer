@@ -26,12 +26,12 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(QuantLightningIndexerMetadata);
 
-const aclTensor* QuantLightningIndexerMetadata(
-    const aclTensor* actualSeqLengthsQueryOptional, const aclTensor* actualSeqLengthsKeyOptional, int64_t aicCoreNum,
-    int64_t aivCoreNum, const char* socVersion, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim,
+const aclTensor *QuantLightningIndexerMetadata(
+    const aclTensor *actualSeqLengthsQueryOptional, const aclTensor *actualSeqLengthsKeyOptional, int64_t aicCoreNum,
+    int64_t aivCoreNum, const char *socVersion, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim,
     int64_t queryQuantMode, int64_t keyQuantMode, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenK,
-    char* layoutQueryOptional, char* layoutKeyOptional, int64_t sparseCount, int64_t sparseMode, int64_t preTokens,
-    int64_t nextTokens, int64_t cmpRatio, const aclTensor* metadata, aclOpExecutor* executor)
+    char *layoutQueryOptional, char *layoutKeyOptional, int64_t sparseCount, int64_t sparseMode, int64_t preTokens,
+    int64_t nextTokens, int64_t cmpRatio, const aclTensor *metadata, aclOpExecutor *executor)
 {
     L0_DFX(QuantLightningIndexerMetadata, actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional, aicCoreNum,
            aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, queryQuantMode, keyQuantMode, batchSize, maxSeqlenQ,
@@ -46,8 +46,7 @@ const aclTensor* QuantLightningIndexerMetadata(
                        "query_quant_mode", "key_quant_mode", "batch_size", "max_seqlen_q", "max_seqlen_k",
                        "layout_query", "layout_key", "sparse_count", "sparse_mode", "pre_tokens", "next_tokens",
                        "cmp_ratio"}),
-        OP_INPUT(actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional),
-        OP_OUTPUT(metadata),
+        OP_INPUT(actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional), OP_OUTPUT(metadata),
         OP_ATTR(aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, queryQuantMode, keyQuantMode,
                 batchSize, maxSeqlenQ, maxSeqlenK, layoutQueryOptional, layoutKeyOptional, sparseCount, sparseMode,
                 preTokens, nextTokens, cmpRatio));
@@ -56,4 +55,4 @@ const aclTensor* QuantLightningIndexerMetadata(
              return nullptr);
     return metadata;
 }
-}  // namespace l0op
+} // namespace l0op

@@ -91,8 +91,8 @@ protected:
 
     // postquant
     using postQuantGmType = typename std::conditional<POST_QUANT, FaGmTensor<T, PostQuant_FORMAT>, int8_t>::type;
-    using postQuantBf16GmType = typename std::conditional<POST_QUANT,
-        FaGmTensor<bfloat16_t, PostQuant_FORMAT>, int8_t>::type;
+    using postQuantBf16GmType =
+        typename std::conditional<POST_QUANT, FaGmTensor<bfloat16_t, PostQuant_FORMAT>, int8_t>::type;
     postQuantGmType quantScale2GmTensor;
     postQuantGmType quantOffset2GmTensor;
     postQuantBf16GmType quantScale2Bf16GmTensor;
@@ -149,7 +149,8 @@ private:
     TBuf<> fdLseUbBuf;
 
 public:
-    __aicore__ inline FiaBlockVecFlashDecodeFullQuant(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FiaBlockVecFlashDecodeFullQuant(ConstInfoX &constInfo)
+        : constInfo(constInfo){};
 
     __aicore__ inline void InitGlobalTensor(GlobalTensor<float> lseMaxFdGm, GlobalTensor<float> lseSumFdGm,
                                             GlobalTensor<float> accumOutGm, GlobalTensor<OUTPUT_T> attentionOutGm,
@@ -321,8 +322,8 @@ protected:
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize,
-                                              false, 0);
+                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize, false,
+                                              0);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
@@ -330,8 +331,8 @@ protected:
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize,
-                                              false, 0);
+                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize, false,
+                                              0);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
@@ -711,7 +712,7 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
 class FiaBlockVecFlashDecodeFullQuantDummy {
 public:
     using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
-    __aicore__ inline FiaBlockVecFlashDecodeFullQuantDummy(ConstInfoX &constInfo) {};
+    __aicore__ inline FiaBlockVecFlashDecodeFullQuantDummy(ConstInfoX &constInfo){};
 };
 
 } // namespace BaseApi

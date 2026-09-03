@@ -52,7 +52,7 @@ ge::graphStatus InferShape4FlashAttentionScoreGrad(gert::InferShapeContext *cont
     if (inputLayoutStr != "BSH" && inputLayoutStr != "SBH" && inputLayoutStr != "BSND" && inputLayoutStr != "BNSD" &&
         inputLayoutStr != "TND") {
         OP_LOGE_FOR_INVALID_FORMAT("FlashAttentionScoreGrad", "inputLayout", inputLayout,
-            "BSH or SBH or BSND or BNSD or TND");
+                                   "BSH or SBH or BSND or BNSD or TND");
         return GRAPH_FAILED;
     }
 
@@ -77,7 +77,7 @@ ge::graphStatus InferShape4FlashAttentionScoreGrad(gert::InferShapeContext *cont
         sKv = keyShape->GetDim(DIM_NUM_2);
     }
     OP_LOGI(context, "B=%ld, N=%ld, T=%ld, Sq=%ld, Skv=%ld, inputLayout=%s", b, *headNum, t, sQ, sKv,
-              inputLayoutStr.c_str());
+            inputLayoutStr.c_str());
 
     gert::Shape *dqShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, dqShape);
@@ -114,7 +114,7 @@ ge::graphStatus InferShape4FlashAttentionScoreGrad(gert::InferShapeContext *cont
     if (queryRopeShape != nullptr) {
         OP_LOGD(context, "queryRope is not nullptr");
         *dqRopeShape = *queryRopeShape;
-    } 
+    }
     const gert::Shape *keyRopeShape = context->GetOptionalInputShape(23);
     if (keyRopeShape != nullptr) {
         OP_LOGD(context, "keyRope is not nullptr");
@@ -174,7 +174,8 @@ ge::graphStatus InferDataType4FlashAttentionScoreGrad(gert::InferDataTypeContext
             context->SetOutputDataType(INDEX_OUT_6, ge::DT_FLOAT);
         } else {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScoreGrad", "outDtype",
-                std::to_string(outDtype).c_str(), "The value of outDtype must be 0 or 1");
+                                                  std::to_string(outDtype).c_str(),
+                                                  "The value of outDtype must be 0 or 1");
             return GRAPH_FAILED;
         }
         return GRAPH_SUCCESS;

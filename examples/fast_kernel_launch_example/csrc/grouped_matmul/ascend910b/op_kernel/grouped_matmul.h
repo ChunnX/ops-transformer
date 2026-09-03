@@ -32,7 +32,6 @@
 #include "gmm/grouped_matmul/op_kernel/grouped_matmul_utils.h"
 #include "gmm/grouped_matmul/op_kernel/grouped_matmul_tiling_key.h"
 
-
 #include "grouped_matmul_tiling.h"
 
 namespace GROUPED_MATMUL {
@@ -124,9 +123,9 @@ protected:
 
 public:
     /** @brief constructor */
-    __aicore__ inline GMMProcess(ComputeType &computeOp_) : computeOp(computeOp_)
-    {
-    }
+    __aicore__ inline GMMProcess(ComputeType &computeOp_)
+        : computeOp(computeOp_)
+    {}
 
     __aicore__ inline void Init(const GMMBaseParams *__restrict gmmBaseParamsIn,
                                 const TCubeTiling *__restrict mmTilingDataIn, int32_t *gmmArrayAddrIn,
@@ -283,9 +282,9 @@ public:
     constexpr static bool transposeW = mmType::BT::isTrans;
 
     /** @brief constructor */
-    __aicore__ inline GMMCompute(typename mmType::MT &mm_) : mm(mm_)
-    {
-    }
+    __aicore__ inline GMMCompute(typename mmType::MT &mm_)
+        : mm(mm_)
+    {}
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR offset,
                                 GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR groupList,
@@ -294,9 +293,7 @@ public:
                                 const TCubeTiling *__restrict mmTilingData, TPipe *tPipe);
 
     __aicore__ inline void MMCompute(uint32_t groupIdx, MNConfig &mnConfig, uint32_t coreIdx);
-    __aicore__ inline void VectorCompute(MNConfig &mnConfig)
-    {
-    }
+    __aicore__ inline void VectorCompute(MNConfig &mnConfig) {}
 
     __aicore__ inline GlobalTensor<BT> SetGlobalBufferW(uint32_t groupIdx, uint32_t tailN, MNConfig &mnConfig);
 
@@ -382,8 +379,9 @@ __aicore__ inline uint64_t GMMCompute<mmType, sync>::SetWOffset(uint32_t tailN, 
 }
 
 template <typename mmType, bool sync>
-__aicore__ inline GlobalTensor<typename mmType::BT::T>
-GMMCompute<mmType, sync>::SetGlobalBufferW(uint32_t groupIdx, uint32_t tailN, MNConfig &mnConfig)
+__aicore__ inline GlobalTensor<typename mmType::BT::T> GMMCompute<mmType, sync>::SetGlobalBufferW(uint32_t groupIdx,
+                                                                                                  uint32_t tailN,
+                                                                                                  MNConfig &mnConfig)
 {
     uint64_t wOffset = SetWOffset(tailN, mnConfig.k);
 

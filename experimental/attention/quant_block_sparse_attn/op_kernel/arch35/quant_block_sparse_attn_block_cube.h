@@ -206,10 +206,10 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitCubeBlock(TPipe *pipe,
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value,
-                                                                  CVSharedParams<isPa> *sharedParams,
-                                                                  AttenMaskInfo *attenMaskInfo,
-                                                                  __gm__ int32_t *actualSeqQlenAddr,
-                                                                  __gm__ int32_t *actualSeqKvlenAddr)
+                                                                   CVSharedParams<isPa> *sharedParams,
+                                                                   AttenMaskInfo *attenMaskInfo,
+                                                                   __gm__ int32_t *actualSeqQlenAddr,
+                                                                   __gm__ int32_t *actualSeqKvlenAddr)
 {
     if ASCEND_IS_AIC {
         if (sharedParams->fromFused) {
@@ -278,7 +278,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer()
 /* 初始化GmTensor,设置shape信息并计算strides */
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<isPa> *sharedParams,
-                                                                 __gm__ int32_t *actualSeqQlenAddr)
+                                                                  __gm__ int32_t *actualSeqQlenAddr)
 {
     if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
         GlobalTensor<int32_t> actualSeqQLen;
@@ -549,8 +549,8 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitDequantParams(__gm__ uint8_t *deqScaleQ,
-                                                                      __gm__ uint8_t *deqScaleK,
-                                                                      __gm__ uint8_t *deqScaleV)
+                                                                       __gm__ uint8_t *deqScaleK,
+                                                                       __gm__ uint8_t *deqScaleV)
 {
     if constexpr (isFp8) {
         deScaleQGm.SetGlobalBuffer((__gm__ float *)deqScaleQ);

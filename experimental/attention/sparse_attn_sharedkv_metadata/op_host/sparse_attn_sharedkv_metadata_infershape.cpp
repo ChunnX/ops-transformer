@@ -18,16 +18,16 @@
 using namespace ge;
 
 namespace ops {
-static ge::graphStatus InferShapeSparseAttnSharedkvMetadata(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeSparseAttnSharedkvMetadata(gert::InferShapeContext *context)
 {
-    gert::Shape* oShape = context->GetOutputShape(0);
+    gert::Shape *oShape = context->GetOutputShape(0);
     // output shape (SAS_METADATA_T, )
     oShape->SetDimNum(1);
     oShape->SetDim(0, optiling::SAS_META_SIZE);
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDtypeSparseAttnSharedkvMetadata(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDtypeSparseAttnSharedkvMetadata(gert::InferDataTypeContext *context)
 {
     context->SetOutputDataType(0, DT_INT32);
     return GRAPH_SUCCESS;

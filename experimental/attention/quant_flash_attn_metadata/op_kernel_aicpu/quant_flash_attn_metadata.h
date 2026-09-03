@@ -82,7 +82,8 @@ struct QFaMetaData {
     uint32_t *qfaMetadata; // [sectionNum][AIC_CORE_NUM][QFA_METADATA_SIZE];
     uint32_t *qfdMetadata; // [sectionNum][AIV_CORE_NUM][QFD_METADATA_SIZE];
     QFaMetaData(void *metadataPtr, uint32_t sectionNum)
-        : sectionNum(sectionNum), qfaMetadata(static_cast<uint32_t *>(metadataPtr) + 16U),
+        : sectionNum(sectionNum),
+          qfaMetadata(static_cast<uint32_t *>(metadataPtr) + 16U),
           qfdMetadata(static_cast<uint32_t *>(metadataPtr) + 16U + sectionNum * AIC_CORE_NUM * QFA_METADATA_SIZE)
     {
         static_cast<uint32_t *>(metadataPtr)[0] = sectionNum;

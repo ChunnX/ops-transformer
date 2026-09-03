@@ -49,36 +49,38 @@ __global__ __aicore__ void flash_attention_score_grad(
 
 {
     constexpr bool needDeterPrefix = NEED_DETER_PREFIX(DeterType, IsTnd);
-    using fagTiling = optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(DeterType),
-        needDeterPrefix, IsTnd, IsTndSwizzle>;
+    using fagTiling =
+        optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(DeterType), needDeterPrefix,
+                                                                              IsTnd, IsTndSwizzle>;
     REGISTER_TILING_DEFAULT(fagTiling);
     if constexpr (IsEmptyTensor) {
         TPipe tPipe;
-        REGISTER_TILING_FOR_TILINGKEY("(TILING_KEY_VAR & 0x1)", optiling::fag::FlashAttentionScoreGradEmptyTensorTilingDataRegbase);
+        REGISTER_TILING_FOR_TILINGKEY("(TILING_KEY_VAR & 0x1)",
+                                      optiling::fag::FlashAttentionScoreGradEmptyTensorTilingDataRegbase);
         GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreGradEmptyTensorTilingDataRegbase, tiling_data_in, tiling_data);
-        const FlashAttentionScoreGradEmptyTensorTilingDataRegbase *__restrict empty_tensor_tiling_data = &tiling_data_in;
-        #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
-            FlashAttentionScoreGradEmptyTensorRegbase<half> op;
-            op.Init(dq, dk, dv, dpse, dqRope, dkRope, empty_tensor_tiling_data);
-            op.Process();
-        #endif
-        #if (ORIG_DTYPE_QUERY == DT_FLOAT)
-            FlashAttentionScoreGradEmptyTensorRegbase<float> op;
-            op.Init(dq, dk, dv, dpse, dqRope, dkRope, empty_tensor_tiling_data);
-            op.Process();
-        #endif
-        #if (ORIG_DTYPE_QUERY == DT_BF16)
-            FlashAttentionScoreGradEmptyTensorRegbase<bfloat16_t> op;
-            op.Init(dq, dk, dv, dpse, dqRope, dkRope, empty_tensor_tiling_data);
-            op.Process();
-        #endif
+        const FlashAttentionScoreGradEmptyTensorTilingDataRegbase *__restrict empty_tensor_tiling_data =
+            &tiling_data_in;
+#if (ORIG_DTYPE_QUERY == DT_FLOAT16)
+        FlashAttentionScoreGradEmptyTensorRegbase<half> op;
+        op.Init(dq, dk, dv, dpse, dqRope, dkRope, empty_tensor_tiling_data);
+        op.Process();
+#endif
+#if (ORIG_DTYPE_QUERY == DT_FLOAT)
+        FlashAttentionScoreGradEmptyTensorRegbase<float> op;
+        op.Init(dq, dk, dv, dpse, dqRope, dkRope, empty_tensor_tiling_data);
+        op.Process();
+#endif
+#if (ORIG_DTYPE_QUERY == DT_BF16)
+        FlashAttentionScoreGradEmptyTensorRegbase<bfloat16_t> op;
+        op.Init(dq, dk, dv, dpse, dqRope, dkRope, empty_tensor_tiling_data);
+        op.Process();
+#endif
         return;
     } else {
-        RegbaseFAG<SplitAxis, InputDType, IsTnd, IsDrop, IsPse, IsAttenMask, S1TemplateNum, S2TemplateNum, DTemplateNum, DeterType, IsNEqual, IsBn2MultiBlk,
-            IsDNoEqual, IsRope, OutDType, IsNzOut, IsTndSwizzle, IsRegbase>(
-                query, key, value, dy, pse_shift, drop_mask, padding_mask, atten_mask, softmax_max, softmax_sum,
-                softmax_in, attention_in, prefix, actual_seq_qlen, actual_seq_kvlen,
-                deqScaleQ, deqScaleK, deqScaleV, deqScaleDy, dsScale, pScale, queryRope, keyRope, sink,
-                dq, dk, dv, dpse, dqRope, dkRope, dsink, workspace, tiling_data);
+        RegbaseFAG<SplitAxis, InputDType, IsTnd, IsDrop, IsPse, IsAttenMask, S1TemplateNum, S2TemplateNum, DTemplateNum,
+                   DeterType, IsNEqual, IsBn2MultiBlk, IsDNoEqual, IsRope, OutDType, IsNzOut, IsTndSwizzle, IsRegbase>(
+            query, key, value, dy, pse_shift, drop_mask, padding_mask, atten_mask, softmax_max, softmax_sum, softmax_in,
+            attention_in, prefix, actual_seq_qlen, actual_seq_kvlen, deqScaleQ, deqScaleK, deqScaleV, deqScaleDy,
+            dsScale, pScale, queryRope, keyRope, sink, dq, dk, dv, dpse, dqRope, dkRope, dsink, workspace, tiling_data);
     }
 }

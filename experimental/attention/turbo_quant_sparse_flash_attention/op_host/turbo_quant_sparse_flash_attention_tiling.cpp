@@ -219,7 +219,10 @@ void TQSFAMlaTiling::CalcUbBmm()
     qPreSizeMla_ = qsfaInfo_->gSize * (headDimAlign_ + qsfaInfo_->ropeHeadDim) * qsfaInfo_->s1Size;
 }
 
-void TQSFAMlaTiling::CheckUbSpace() { CalcUbBmm(); }
+void TQSFAMlaTiling::CheckUbSpace()
+{
+    CalcUbBmm();
+}
 
 void TQSFAMlaTiling::CalcInnerSize(uint32_t qsfaS2Size)
 {
@@ -254,7 +257,10 @@ void TQSFAMlaTiling::SplitBalanced()
     usedCoreNum_ = aicNum_;
 }
 
-void TQSFAMlaTiling::Split() { SplitBalanced(); }
+void TQSFAMlaTiling::Split()
+{
+    SplitBalanced();
+}
 
 void TQSFAMlaTiling::FillTilingBaseParamsMla()
 {
@@ -297,7 +303,10 @@ void TQSFAMlaTiling::FillTilingSplitKVMla()
     }
 }
 
-void TQSFAMlaTiling::FillTilingSingleCoreParamsMla() { tilingData_.singleCoreParams.set_usedCoreNum(usedCoreNum_); }
+void TQSFAMlaTiling::FillTilingSingleCoreParamsMla()
+{
+    tilingData_.singleCoreParams.set_usedCoreNum(usedCoreNum_);
+}
 
 void TQSFAMlaTiling::FillTilingSingleCoreTensorSizeMla()
 {
@@ -331,7 +340,10 @@ void TQSFAMlaTiling::NormalCalcFDWorkSpace(const uint32_t actCoreNum)
     }
 }
 
-void TQSFAMlaTiling::CalcFDWorkSpace(const uint32_t actCoreNum) { NormalCalcFDWorkSpace(actCoreNum); }
+void TQSFAMlaTiling::CalcFDWorkSpace(const uint32_t actCoreNum)
+{
+    NormalCalcFDWorkSpace(actCoreNum);
+}
 
 void TQSFAMlaTiling::GetWorkspaceSize()
 {
@@ -642,9 +654,15 @@ ge::graphStatus TQSFATilingCheck::CheckParaExistenceMlaAntiquant() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSFATilingCheck::CheckParaExistenceMla() const { return CheckParaExistenceMlaAntiquant(); }
+ge::graphStatus TQSFATilingCheck::CheckParaExistenceMla() const
+{
+    return CheckParaExistenceMlaAntiquant();
+}
 
-ge::graphStatus TQSFATilingCheck::CheckParaExistence() { return CheckParaExistenceMla(); }
+ge::graphStatus TQSFATilingCheck::CheckParaExistence()
+{
+    return CheckParaExistenceMla();
+}
 
 static ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, const std::string &name,
                                            const char *opName)
@@ -996,9 +1014,15 @@ ge::graphStatus TQSFATilingCheck::CheckFeatureMlaAntiquant() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSFATilingCheck::CheckFeatureMla() const { return CheckFeatureMlaAntiquant(); }
+ge::graphStatus TQSFATilingCheck::CheckFeatureMla() const
+{
+    return CheckFeatureMlaAntiquant();
+}
 
-ge::graphStatus TQSFATilingCheck::CheckFeature() const { return CheckFeatureMla(); }
+ge::graphStatus TQSFATilingCheck::CheckFeature() const
+{
+    return CheckFeatureMla();
+}
 
 void TQSFATilingCheck::Init()
 {

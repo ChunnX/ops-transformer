@@ -58,7 +58,6 @@ struct OptionalTensorParaInfo {
     }
 };
 
-
 struct IFAContext {
     const char *opName = nullptr;
     RequiredParaInfo query;

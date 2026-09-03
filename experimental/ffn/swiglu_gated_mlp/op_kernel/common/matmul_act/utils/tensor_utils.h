@@ -65,7 +65,7 @@ namespace Act {
 namespace Gemm {
 
 template <class Layout_, class AGlobalTensor_, class ATensorTrait_, class AType_>
-__aicore__ inline void InitGlobalTensorA(AGlobalTensor_& aGlobal, GM_ADDR aGmAddr, bool transA, int64_t m, int64_t k)
+__aicore__ inline void InitGlobalTensorA(AGlobalTensor_ &aGlobal, GM_ADDR aGmAddr, bool transA, int64_t m, int64_t k)
 {
     Layout_ aLayout;
     if (!transA) {
@@ -76,15 +76,15 @@ __aicore__ inline void InitGlobalTensorA(AGlobalTensor_& aGlobal, GM_ADDR aGmAdd
     aGlobal.SetTensorTrait(ATensorTrait_(aLayout));
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3101)
     AscendC::GlobalTensor<AType_> aTmp;
-    aTmp.SetGlobalBuffer(reinterpret_cast<__gm__ AType_*>(aGmAddr), m * k);
+    aTmp.SetGlobalBuffer(reinterpret_cast<__gm__ AType_ *>(aGmAddr), m * k);
     aGlobal.address_ = aTmp.address_;
 #else
-    aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ AType_*>(aGmAddr), m * k);
+    aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ AType_ *>(aGmAddr), m * k);
 #endif
 }
 
 template <class Layout_, class BGlobalTensor_, class BTensorTrait_, class BType_>
-__aicore__ inline void InitGlobalTensorB(BGlobalTensor_& bGlobal, GM_ADDR bGmAddr, bool transB, int64_t n, int64_t k)
+__aicore__ inline void InitGlobalTensorB(BGlobalTensor_ &bGlobal, GM_ADDR bGmAddr, bool transB, int64_t n, int64_t k)
 {
     Layout_ bLayout;
     if (!transB) {
@@ -95,24 +95,24 @@ __aicore__ inline void InitGlobalTensorB(BGlobalTensor_& bGlobal, GM_ADDR bGmAdd
     bGlobal.SetTensorTrait(BTensorTrait_(bLayout));
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3101)
     AscendC::GlobalTensor<BType_> bTmp;
-    bTmp.SetGlobalBuffer(reinterpret_cast<__gm__ BType_*>(bGmAddr), k * n);
+    bTmp.SetGlobalBuffer(reinterpret_cast<__gm__ BType_ *>(bGmAddr), k * n);
     bGlobal.address_ = bTmp.address_;
 #else
-    bGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ BType_*>(bGmAddr), k * n);
+    bGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ BType_ *>(bGmAddr), k * n);
 #endif
 }
 
 template <class Layout_, class CGlobalTensor_, class CTensorTrait_, class CType_>
-__aicore__ inline void InitGlobalTensorC(CGlobalTensor_& cGlobal, GM_ADDR cGmAddr, int64_t m, int64_t n)
+__aicore__ inline void InitGlobalTensorC(CGlobalTensor_ &cGlobal, GM_ADDR cGmAddr, int64_t m, int64_t n)
 {
     Layout_ cLayout = AscendC::MakeLayout(AscendC::MakeShape(m, n), AscendC::MakeStride(n, static_cast<int64_t>(1)));
     cGlobal.SetTensorTrait(CTensorTrait_(cLayout));
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3101)
     AscendC::GlobalTensor<CType_> cTmp;
-    cTmp.SetGlobalBuffer(reinterpret_cast<__gm__ CType_*>(cGmAddr), m * n);
+    cTmp.SetGlobalBuffer(reinterpret_cast<__gm__ CType_ *>(cGmAddr), m * n);
     cGlobal.address_ = cTmp.address_;
 #else
-    cGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ CType_*>(cGmAddr), m * n);
+    cGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ CType_ *>(cGmAddr), m * n);
 #endif
 }
 
@@ -122,24 +122,24 @@ __aicore__ inline AscendC::GlobalTensor<CTensorTrait_> GetWorkSpaceGlobal(BlockS
     int64_t blockShapeM = Get<0>(blockShape);
     int64_t blockShapeN = Get<1>(blockShape);
     Layout_ cLayout = AscendC::MakeLayout(AscendC::MakeShape(blockShapeM, blockShapeN),
-                        AscendC::MakeStride(blockShapeN, static_cast<int64_t>(1)));
+                                          AscendC::MakeStride(blockShapeN, static_cast<int64_t>(1)));
     CTensorTrait_ cTensorTrait = AscendC::MakeTensorTrait<CType_, AscendC::TPosition::GM>(cLayout);
     AscendC::GlobalTensor<CTensorTrait_> workspaceGlobal;
     workspaceGlobal.SetTensorTrait(cTensorTrait);
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3101)
     AscendC::GlobalTensor<CType_> cTmp;
-    cTmp.SetGlobalBuffer(reinterpret_cast<__gm__ CType_*>(cGmAddr));
+    cTmp.SetGlobalBuffer(reinterpret_cast<__gm__ CType_ *>(cGmAddr));
     workspaceGlobal.address_ = cTmp.address_;
 #else
-    workspaceGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ CType_*>(cGmAddr));
+    workspaceGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ CType_ *>(cGmAddr));
 #endif
     return workspaceGlobal;
 }
 
 template <typename T>
-__aicore__ inline __gm__ T* GetTensorAddr(uint64_t index, GM_ADDR tensorPtr)
+__aicore__ inline __gm__ T *GetTensorAddr(uint64_t index, GM_ADDR tensorPtr)
 {
-    AscendC::ListTensorDesc listTensorDesc(reinterpret_cast<__gm__ void*>(tensorPtr));
+    AscendC::ListTensorDesc listTensorDesc(reinterpret_cast<__gm__ void *>(tensorPtr));
     return listTensorDesc.GetDataPtr<T>(index);
 }
 
@@ -185,7 +185,7 @@ __aicore__ inline constexpr auto MakeTensor(__gm__ T *addr, Layout const &layout
  * @return Return the converted standard tensor
  */
 template <class DataType, class Tensor>
-__aicore__ inline auto ConvertToTensorWithoutLayout(const Tensor& tensor)
+__aicore__ inline auto ConvertToTensorWithoutLayout(const Tensor &tensor)
 {
     typename AscendC::Std::conditional_t<AscendC::is_global_tensor_v<Tensor>, AscendC::GlobalTensor<DataType>,
                                          AscendC::LocalTensor<DataType>>

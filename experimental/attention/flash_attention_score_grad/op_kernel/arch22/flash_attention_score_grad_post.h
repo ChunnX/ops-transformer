@@ -32,20 +32,23 @@ using AscendC::TBuf;
 using AscendC::TPipe;
 using AscendC::TQue;
 
-template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
-          const uint32_t INPUT_FORMAT, const uint32_t HAS_ROPE = 0>
+template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT, const uint32_t INPUT_FORMAT,
+          const uint32_t HAS_ROPE = 0>
 class FlashAttentionScoreGradPost {
 public:
     __aicore__ inline FlashAttentionScoreGradPost(){};
-    __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dqRope, __gm__ uint8_t *dk, __gm__ uint8_t *dkRope, __gm__ uint8_t *dv,
-                         __gm__ uint8_t *actual_seq_qlen, __gm__ uint8_t *actual_seq_kvlen, __gm__ uint8_t *dsink,
-                         __gm__ uint8_t *workspace, const TILING_TYPE *__restrict ordTilingData, TPipe *pipe_in);
+    __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dqRope, __gm__ uint8_t *dk, __gm__ uint8_t *dkRope,
+                                __gm__ uint8_t *dv, __gm__ uint8_t *actual_seq_qlen, __gm__ uint8_t *actual_seq_kvlen,
+                                __gm__ uint8_t *dsink, __gm__ uint8_t *workspace,
+                                const TILING_TYPE *__restrict ordTilingData, TPipe *pipe_in);
     __aicore__ inline void Process();
-    __aicore__ inline void InitIndex(uint64_t startIdx, int64_t curG, int64_t &curS, GM_ADDR seqS, int64_t d, int64_t dAlign);
+    __aicore__ inline void InitIndex(uint64_t startIdx, int64_t curG, int64_t &curS, GM_ADDR seqS, int64_t d,
+                                     int64_t dAlign);
     __aicore__ inline void NZ2ND(LocalTensor<float> &dstTensor, LocalTensor<float> &srcTensor, uint64_t sLen,
-                          uint64_t ubOffset, uint64_t srcUbOffset);
+                                 uint64_t ubOffset, uint64_t srcUbOffset);
     __aicore__ inline void NZVecClc(GlobalTensor<float> srcGm, GlobalTensor<OUT_TYPE> dstGm, uint64_t dataSize,
-                             GM_ADDR seqS, int64_t curG, int64_t &curS, bool needMuls, int64_t flag, int64_t d, int64_t dAlign);
+                                    GM_ADDR seqS, int64_t curG, int64_t &curS, bool needMuls, int64_t flag, int64_t d,
+                                    int64_t dAlign);
     __aicore__ inline void NZProcess();
     __aicore__ inline void ComputeDataCopyOffset(int64_t curG, int64_t &curS, int64_t d, int64_t dAlign);
 
@@ -138,12 +141,13 @@ public:
     uint64_t copyOutDstStride = 0;
 };
 
-template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
-          const uint32_t INPUT_FORMAT, const uint32_t HAS_ROPE>
-__aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, HAS_ROPE>::Init(
-    __gm__ uint8_t *dq, __gm__ uint8_t *dqRope, __gm__ uint8_t *dk, __gm__ uint8_t *dkRope, __gm__ uint8_t *dv, __gm__ uint8_t *actual_seq_qlen,
-    __gm__ uint8_t *actual_seq_kvlen,__gm__ uint8_t *dsink, __gm__ uint8_t *workspace, const TILING_TYPE *__restrict ordTilingData,
-    TPipe *pipe_in)
+template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT, const uint32_t INPUT_FORMAT,
+          const uint32_t HAS_ROPE>
+__aicore__ inline void
+FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, HAS_ROPE>::Init(
+    __gm__ uint8_t *dq, __gm__ uint8_t *dqRope, __gm__ uint8_t *dk, __gm__ uint8_t *dkRope, __gm__ uint8_t *dv,
+    __gm__ uint8_t *actual_seq_qlen, __gm__ uint8_t *actual_seq_kvlen, __gm__ uint8_t *dsink, __gm__ uint8_t *workspace,
+    const TILING_TYPE *__restrict ordTilingData, TPipe *pipe_in)
 {
     cBlockIdx = GetBlockIdx();
 
@@ -233,10 +237,11 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
     }
 }
 
-template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
-          const uint32_t INPUT_FORMAT, const uint32_t HAS_ROPE>
-__aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, HAS_ROPE>::InitIndex(
-    uint64_t startIdx, int64_t curG, int64_t &curS, GM_ADDR seqS, int64_t d, int64_t dAlign)
+template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT, const uint32_t INPUT_FORMAT,
+          const uint32_t HAS_ROPE>
+__aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT,
+                                                   HAS_ROPE>::InitIndex(uint64_t startIdx, int64_t curG, int64_t &curS,
+                                                                        GM_ADDR seqS, int64_t d, int64_t dAlign)
 {
     if constexpr (LAYOUT == TND) {
         uint64_t totalLen = 0;
@@ -269,10 +274,11 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
     }
 }
 
-
-template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
-          const uint32_t INPUT_FORMAT, const uint32_t HAS_ROPE>
-__aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, HAS_ROPE>::ComputeDataCopyOffset(int64_t curG, int64_t &curS, int64_t d, int64_t dAlign)
+template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT, const uint32_t INPUT_FORMAT,
+          const uint32_t HAS_ROPE>
+__aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT,
+                                                   HAS_ROPE>::ComputeDataCopyOffset(int64_t curG, int64_t &curS,
+                                                                                    int64_t d, int64_t dAlign)
 {
     // src BNSD
     scrOffsetBase = bIdx * n2 * curS * curG * dAlign;
@@ -281,23 +287,24 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
     if constexpr (LAYOUT == BSNGD) {
         // BSND
         copyOutDstStride = n2 * curG * d - d;
-        copyOutDstOffset = ((bIdx * curS + sIdx ) * n2 * curG + nIdx) * d;
+        copyOutDstOffset = ((bIdx * curS + sIdx) * n2 * curG + nIdx) * d;
     } else if constexpr (LAYOUT == SBNGD) {
         // SBND
         copyOutDstStride = b * n2 * curG * d - d;
-        copyOutDstOffset = (( sIdx * b + bIdx ) * n2 * curG + nIdx ) * d;
+        copyOutDstOffset = ((sIdx * b + bIdx) * n2 * curG + nIdx) * d;
     } else if constexpr (LAYOUT == BNGSD) {
         // BNSD
         copyOutDstStride = 0;
-        copyOutDstOffset = ((bIdx * n2 * curG + nIdx )* curS + sIdx) * d;
+        copyOutDstOffset = ((bIdx * n2 * curG + nIdx) * curS + sIdx) * d;
     }
 }
 
-template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
-          const uint32_t INPUT_FORMAT, const uint32_t HAS_ROPE>
-__aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, HAS_ROPE>::NZ2ND(
-    LocalTensor<float> &dstTensor, LocalTensor<float> &srcTensor, uint64_t sLen, uint64_t ubOffset,
-    uint64_t srcUbOffset)
+template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT, const uint32_t INPUT_FORMAT,
+          const uint32_t HAS_ROPE>
+__aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT,
+                                                   HAS_ROPE>::NZ2ND(LocalTensor<float> &dstTensor,
+                                                                    LocalTensor<float> &srcTensor, uint64_t sLen,
+                                                                    uint64_t ubOffset, uint64_t srcUbOffset)
 {
     /*
     Func:
@@ -327,9 +334,10 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
     }
 }
 
-template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
-          const uint32_t INPUT_FORMAT, const uint32_t HAS_ROPE>
-__aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, HAS_ROPE>::NZVecClc(
+template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT, const uint32_t INPUT_FORMAT,
+          const uint32_t HAS_ROPE>
+__aicore__ inline void
+FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, HAS_ROPE>::NZVecClc(
     GlobalTensor<float> srcGm, GlobalTensor<OUT_TYPE> dstGm, uint64_t dataSize, GM_ADDR seqS, int64_t curG,
     int64_t &curS, bool needMuls, int64_t flag, int64_t d, int64_t dAlign)
 {
@@ -337,7 +345,6 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
         return;
     }
 
-    
     event_t mte2WaitVPing = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
     event_t mte2WaitVPong = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
     TQue<QuePosition::VECIN, BUFFER_NUM> inQueueCommon;
@@ -395,13 +402,11 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
 
         AscendC::PipeBarrier<PIPE_V>();
         if (needMuls) {
-
             if constexpr (!AscendC::IsSameType<OUT_TYPE, float>::value) {
                 Muls(tmpTensor[ubOffset], tmpTensor[ubOffset], (float)tilingData->postTilingData.scaleValue,
-                 sLen * dAlign);
+                     sLen * dAlign);
             } else {
-                Muls(vecOut[ubOffset], vecOut[ubOffset], (float)tilingData->postTilingData.scaleValue,
-                 sLen * dAlign);
+                Muls(vecOut[ubOffset], vecOut[ubOffset], (float)tilingData->postTilingData.scaleValue, sLen * dAlign);
             }
 
             AscendC::PipeBarrier<PIPE_V>();
@@ -417,14 +422,13 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
 
         if constexpr (LAYOUT == TND) {
             DataCopyPad(dstGm[copyOutDstOffset], vecOut[ubOffset],
-                    {static_cast<uint16_t>(dataLen / dAlign), static_cast<uint32_t>(d * sizeof(OUT_TYPE)), 0,
-                    static_cast<uint32_t>((n2 * curG * d - d) * sizeof(OUT_TYPE)), 0});
+                        {static_cast<uint16_t>(dataLen / dAlign), static_cast<uint32_t>(d * sizeof(OUT_TYPE)), 0,
+                         static_cast<uint32_t>((n2 * curG * d - d) * sizeof(OUT_TYPE)), 0});
         } else {
             DataCopyPad(dstGm[copyOutDstOffset], vecOut[ubOffset],
-                    {static_cast<uint16_t>(dataLen / dAlign), static_cast<uint32_t>(d * sizeof(OUT_TYPE)), 0,
-                    static_cast<uint32_t>(copyOutDstStride * sizeof(OUT_TYPE)), 0});
+                        {static_cast<uint16_t>(dataLen / dAlign), static_cast<uint32_t>(d * sizeof(OUT_TYPE)), 0,
+                         static_cast<uint32_t>(copyOutDstStride * sizeof(OUT_TYPE)), 0});
         }
-
 
         if (sLen + sIdx < curS) {
             sIdx += sLen;
@@ -469,9 +473,10 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
     outQueueCommon.FreeTensor(vecOut);
 }
 
-template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
-          const uint32_t INPUT_FORMAT, const uint32_t HAS_ROPE>
-__aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, HAS_ROPE>::NZProcess()
+template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT, const uint32_t INPUT_FORMAT,
+          const uint32_t HAS_ROPE>
+__aicore__ inline void
+FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, HAS_ROPE>::NZProcess()
 {
     uint64_t qBegin = cBlockIdx * qPostBlockFactor * qPostBaseNum;
     uint64_t qEnd = (cBlockIdx + 1) * qPostBlockFactor * qPostBaseNum;
@@ -480,7 +485,6 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
     }
 
     InitIndex(qBegin, g, s1, actual_seq_qlen_addr, d, dAlign);
-
 
     for (uint64_t i = qBegin; i < qEnd; i = i + 2 * qPostBaseNum) {
         uint64_t dataSize = i + qPostBaseNum < qPostBlockTotal ? qPostBaseNum : qPostTailNum;
@@ -535,7 +539,8 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
             NZVecClc(dkRopeWorkSpaceGm, dkRopeGm, dataSize, actual_seq_kvlen_addr, 1, s2, true, 0, rope_d, rope_dAlign);
             uint64_t dataSize1 = i + 2 * kRopePostBaseNum < kRopePostBlockTotal ? kRopePostBaseNum : kRopePostTailNum;
             dataSize1 = i + kRopePostBaseNum >= kRopePostBlockTotal ? 0 : dataSize1;
-            NZVecClc(dkRopeWorkSpaceGm, dkRopeGm, dataSize1, actual_seq_kvlen_addr, 1, s2, true, 1, rope_d, rope_dAlign);
+            NZVecClc(dkRopeWorkSpaceGm, dkRopeGm, dataSize1, actual_seq_kvlen_addr, 1, s2, true, 1, rope_d,
+                     rope_dAlign);
         }
     }
 
@@ -553,9 +558,10 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
     }
 }
 
-template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
-          const uint32_t INPUT_FORMAT, const uint32_t HAS_ROPE>
-__aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, HAS_ROPE>::Process()
+template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT, const uint32_t INPUT_FORMAT,
+          const uint32_t HAS_ROPE>
+__aicore__ inline void
+FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, HAS_ROPE>::Process()
 {
     if constexpr (INPUT_FORMAT == NZ) {
         NZProcess();
@@ -592,7 +598,7 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
         outQueue.FreeTensor(vecOut);
     }
     AscendC::PipeBarrier<PIPE_ALL>();
-    
+
     if constexpr (HAS_ROPE == ENABLE) {
         // init qRope
         uint64_t qRopeBegin = cBlockIdx * qRopePostBlockFactor * qRopePostBaseNum;
@@ -713,15 +719,17 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
 }
 
 // Partial Specialize for FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb
-template <typename OUT_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
-          const uint32_t INPUT_FORMAT, const uint32_t HAS_ROPE>
+template <typename OUT_TYPE, const bool CAST_DV, const uint32_t LAYOUT, const uint32_t INPUT_FORMAT,
+          const uint32_t HAS_ROPE>
 class FlashAttentionScoreGradPost<OUT_TYPE, FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb, CAST_DV, LAYOUT,
-          INPUT_FORMAT, HAS_ROPE> {
+                                  INPUT_FORMAT, HAS_ROPE> {
 public:
-    __aicore__ inline FlashAttentionScoreGradPost(){}
-    __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dqRope, __gm__ uint8_t *dk, __gm__ uint8_t *dkRope, __gm__ uint8_t *dv,
-                         __gm__ uint8_t *actual_seq_qlen, __gm__ uint8_t *actual_seq_kvlen, __gm__ uint8_t *dsink, 
-                         __gm__ uint8_t *workspace, const FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb *__restrict ordTilingData, TPipe *pipe_in)
+    __aicore__ inline FlashAttentionScoreGradPost() {}
+    __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dqRope, __gm__ uint8_t *dk, __gm__ uint8_t *dkRope,
+                                __gm__ uint8_t *dv, __gm__ uint8_t *actual_seq_qlen, __gm__ uint8_t *actual_seq_kvlen,
+                                __gm__ uint8_t *dsink, __gm__ uint8_t *workspace,
+                                const FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb *__restrict ordTilingData,
+                                TPipe *pipe_in)
     {
         cBlockIdx = GetBlockIdx();
 
@@ -739,7 +747,6 @@ public:
         dvGm.SetGlobalBuffer((__gm__ OUT_TYPE *)dv);
 
         dsinkGm.SetGlobalBuffer((__gm__ float *)dsink);
-
 
         // tiling_data
         usedCoreNum = tilingData->postTilingData.coreNum;
@@ -793,23 +800,23 @@ public:
         }
 
         dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                    tilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
+                                      tilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
         if constexpr (HAS_ROPE == ENABLE) {
             dqRopeWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                                tilingData->postTilingData.dqRopeWorkSpaceOffset / sizeof(float));
+                                              tilingData->postTilingData.dqRopeWorkSpaceOffset / sizeof(float));
         }
         dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                    tilingData->postTilingData.dkWorkSpaceOffset / sizeof(float));
+                                      tilingData->postTilingData.dkWorkSpaceOffset / sizeof(float));
         if constexpr (HAS_ROPE == ENABLE) {
             dkRopeWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                                tilingData->postTilingData.dkRopeWorkSpaceOffset / sizeof(float));
+                                              tilingData->postTilingData.dkRopeWorkSpaceOffset / sizeof(float));
         }
         if constexpr (CAST_DV) {
             dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                        tilingData->postTilingData.dvWorkSpaceOffset / sizeof(float));
+                                          tilingData->postTilingData.dvWorkSpaceOffset / sizeof(float));
         }
         dsinksumWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                    tilingData->postTilingData.dsinksumWorkSpaceOffset / sizeof(float));
+                                            tilingData->postTilingData.dsinksumWorkSpaceOffset / sizeof(float));
 
         if constexpr (INPUT_FORMAT == NZ) {
             pipe->InitBuffer(inQueuePing, 1, ubBaseSize * 2 + nzReservedSize);
@@ -823,7 +830,8 @@ public:
             pipe->InitBuffer(outQueue, 1, ubBaseSize);
         }
     }
-    __aicore__ inline void InitIndex(uint64_t startIdx, int64_t curG, int64_t &curS, GM_ADDR seqS, int64_t d, int64_t dAlign)
+    __aicore__ inline void InitIndex(uint64_t startIdx, int64_t curG, int64_t &curS, GM_ADDR seqS, int64_t d,
+                                     int64_t dAlign)
     {
         if constexpr (LAYOUT == TND) {
             uint64_t totalLen = 0;
@@ -832,7 +840,7 @@ public:
                 if (totalLen > startIdx) {
                     bIdx = bDimIdx;
                     curS = (bIdx == 0) ? ((__gm__ int64_t *)seqS)[bIdx] :
-                                        (((__gm__ int64_t *)seqS)[bIdx] - ((__gm__ int64_t *)seqS)[bIdx - 1]);
+                                         (((__gm__ int64_t *)seqS)[bIdx] - ((__gm__ int64_t *)seqS)[bIdx - 1]);
                     uint64_t bTail = startIdx - (totalLen - n2 * curG * curS * d);
                     nIdx = bTail / (curS * d);
                     uint64_t nTail = bTail % (curS * d);
@@ -907,7 +915,7 @@ public:
             // init qRope
             uint64_t qRopeBegin = cBlockIdx * qRopePostBlockFactor * qRopePostBaseNum;
             uint64_t qRopeEnd = (cBlockIdx + 1) * qRopePostBlockFactor * qRopePostBaseNum;
-    
+
             if (((cBlockIdx + 1) * qRopePostBlockFactor * qRopePostBaseNum) > qRopePostBlockTotal) {
                 qRopeEnd = qRopePostBlockTotal;
             }
@@ -976,7 +984,7 @@ public:
             if (((cBlockIdx + 1) * kRopePostBlockFactor * kRopePostBaseNum) > kRopePostBlockTotal) {
                 kRopeEnd = kRopePostBlockTotal;
             }
-    
+
             for (uint64_t i = kRopeBegin; i < kRopeEnd; i = i + kRopePostBaseNum) {
                 AscendC::LocalTensor<float> vecIn = inQueue.template AllocTensor<float>();
                 AscendC::LocalTensor<OUT_TYPE> vecOut = outQueue.template AllocTensor<OUT_TYPE>();
@@ -1053,9 +1061,8 @@ public:
             int curItemsAlign = (curItems + 7) / 8 * 8;
             int curHeadOffset = headStart + processedHeads;
 
-            DataCopyPad(vecIn, dsinksumWorkSpaceGm[curHeadOffset * coreNumForSink],
-                {1, (uint32_t)curBytes, 0, 0, 0},
-                {curItemsAlign != curItems, 0, (uint8_t)(8 - curItems % 8), 0});
+            DataCopyPad(vecIn, dsinksumWorkSpaceGm[curHeadOffset * coreNumForSink], {1, (uint32_t)curBytes, 0, 0, 0},
+                        {curItemsAlign != curItems, 0, (uint8_t)(8 - curItems % 8), 0});
             inQ.EnQue(vecIn);
             inQ.template DeQue<float>();
 
@@ -1074,7 +1081,7 @@ public:
         outQ.FreeTensor(vecOut);
     }
     __aicore__ inline void NZ2ND(LocalTensor<float> &dstTensor, LocalTensor<float> &srcTensor, uint64_t sLen,
-                          uint64_t ubOffset, uint64_t srcUbOffset, int64_t dAlign)
+                                 uint64_t ubOffset, uint64_t srcUbOffset, int64_t dAlign)
     {
         /*
         Func:
@@ -1093,18 +1100,20 @@ public:
         for (uint16_t i = 0; i < c0_repeat; ++i) {
             for (uint16_t j = 0; j < c1_repeat; ++j) {
                 Copy(dstTensor[ubOffset + i * cal_block_num + j * VEC_REPEAT * C0_SIZE],
-                    srcTensor[srcUbOffset + i * cal_block_num + j * VEC_REPEAT * (sLen * C0_SIZE + cal_block_num)],
-                    VEC_REPEAT * cal_block_num, n_repeat, nz2ndParams);
+                     srcTensor[srcUbOffset + i * cal_block_num + j * VEC_REPEAT * (sLen * C0_SIZE + cal_block_num)],
+                     VEC_REPEAT * cal_block_num, n_repeat, nz2ndParams);
             }
             if (c1_remain > 0) {
                 Copy(dstTensor[ubOffset + i * cal_block_num + c1_repeat * VEC_REPEAT * C0_SIZE],
-                    srcTensor[srcUbOffset + i * cal_block_num + c1_repeat * VEC_REPEAT * (sLen * C0_SIZE + cal_block_num)],
-                    VEC_REPEAT * c1_remain, n_repeat, nz2ndParams);
+                     srcTensor[srcUbOffset + i * cal_block_num +
+                               c1_repeat * VEC_REPEAT * (sLen * C0_SIZE + cal_block_num)],
+                     VEC_REPEAT * c1_remain, n_repeat, nz2ndParams);
             }
         }
     }
     __aicore__ inline void NZVecClc(GlobalTensor<float> srcGm, GlobalTensor<OUT_TYPE> dstGm, uint64_t dataSize,
-                             GM_ADDR seqS, int64_t curG, int64_t &curS, bool needMuls, int64_t flag, int64_t d, int64_t dAlign)
+                                    GM_ADDR seqS, int64_t curG, int64_t &curS, bool needMuls, int64_t flag, int64_t d,
+                                    int64_t dAlign)
     {
         if (dataSize == 0) {
             return;
@@ -1168,10 +1177,10 @@ public:
             if (needMuls) {
                 if constexpr (!AscendC::IsSameType<OUT_TYPE, float>::value) {
                     Muls(tmpTensor[ubOffset], tmpTensor[ubOffset], (float)tilingData->postTilingData.scaleValue,
-                    sLen * dAlign);
+                         sLen * dAlign);
                 } else {
                     Muls(vecOut[ubOffset], vecOut[ubOffset], (float)tilingData->postTilingData.scaleValue,
-                    sLen * dAlign);
+                         sLen * dAlign);
                 }
 
                 AscendC::PipeBarrier<PIPE_V>();
@@ -1187,12 +1196,12 @@ public:
 
             if constexpr (LAYOUT == TND) {
                 DataCopyPad(dstGm[copyOutDstOffset], vecOut[ubOffset],
-                        {static_cast<uint16_t>(dataLen / (dAlign)), static_cast<uint32_t>(d * sizeof(OUT_TYPE)), 0,
-                        static_cast<uint32_t>((n2 * curG * d - d) * sizeof(OUT_TYPE)), 0});
+                            {static_cast<uint16_t>(dataLen / (dAlign)), static_cast<uint32_t>(d * sizeof(OUT_TYPE)), 0,
+                             static_cast<uint32_t>((n2 * curG * d - d) * sizeof(OUT_TYPE)), 0});
             } else {
                 DataCopyPad(dstGm[copyOutDstOffset], vecOut[ubOffset],
-                        {static_cast<uint16_t>(dataLen / (dAlign)), static_cast<uint32_t>(d * sizeof(OUT_TYPE)), 0,
-                        static_cast<uint32_t>(copyOutDstStride * sizeof(OUT_TYPE)), 0});
+                            {static_cast<uint16_t>(dataLen / (dAlign)), static_cast<uint32_t>(d * sizeof(OUT_TYPE)), 0,
+                             static_cast<uint32_t>(copyOutDstStride * sizeof(OUT_TYPE)), 0});
             }
             if (sLen + sIdx < curS) {
                 sIdx += sLen;
@@ -1226,7 +1235,7 @@ public:
             sLen = sLen > 255 ? 255 : sLen;
             dataLen = sLen * dAlign;
             if ((sLen > 0) && (inUbOffset + dataLen + dAlign / C0_SIZE * cal_block_num) * sizeof(float) >
-                                ubBaseSize * 2 + nzReservedSize) {
+                                  ubBaseSize * 2 + nzReservedSize) {
                 inUbOffset = 0;
                 AscendC::SetFlag<HardEvent::V_MTE2>(static_cast<int32_t>(curEventId));
                 AscendC::WaitFlag<HardEvent::V_MTE2>(static_cast<int32_t>(curEventId));
@@ -1260,15 +1269,18 @@ public:
             if (((cBlockIdx + 1) * qRopePostBlockFactor * qRopePostBaseNum) > qRopePostBlockTotal) {
                 qRopeEnd = qRopePostBlockTotal;
             }
-    
+
             InitIndex(qRopeBegin, g, s1, actual_seq_qlen_addr, rope_d, rope_dAlign);
-    
+
             for (uint64_t i = qRopeBegin; i < qRopeEnd; i = i + 2 * qRopePostBaseNum) {
                 uint64_t dataSize = i + qRopePostBaseNum < qRopePostBlockTotal ? qRopePostBaseNum : qRopePostTailNum;
-                NZVecClc(dqRopeWorkSpaceGm, dqRopeGm, dataSize, actual_seq_qlen_addr, g, s1, true, 0, rope_d, rope_dAlign);
-                uint64_t dataSize1 = i + 2 * qRopePostBaseNum < qRopePostBlockTotal ? qRopePostBaseNum : qRopePostTailNum;
+                NZVecClc(dqRopeWorkSpaceGm, dqRopeGm, dataSize, actual_seq_qlen_addr, g, s1, true, 0, rope_d,
+                         rope_dAlign);
+                uint64_t dataSize1 =
+                    i + 2 * qRopePostBaseNum < qRopePostBlockTotal ? qRopePostBaseNum : qRopePostTailNum;
                 dataSize1 = i + qRopePostBaseNum >= qRopePostBlockTotal ? 0 : dataSize1;
-                NZVecClc(dqRopeWorkSpaceGm, dqRopeGm, dataSize1, actual_seq_qlen_addr, g, s1, true, 1, rope_d, rope_dAlign);
+                NZVecClc(dqRopeWorkSpaceGm, dqRopeGm, dataSize1, actual_seq_qlen_addr, g, s1, true, 1, rope_d,
+                         rope_dAlign);
             }
         }
 
@@ -1297,10 +1309,13 @@ public:
             InitIndex(kRopeBegin, 1, s2, actual_seq_kvlen_addr, rope_d, rope_dAlign);
             for (uint64_t i = kRopeBegin; i < kRopeEnd; i = i + 2 * kRopePostBaseNum) {
                 uint64_t dataSize = i + kRopePostBaseNum < kRopePostBlockTotal ? kRopePostBaseNum : kRopePostTailNum;
-                NZVecClc(dkRopeWorkSpaceGm, dkRopeGm, dataSize, actual_seq_kvlen_addr, 1, s2, true, 0, rope_d, rope_dAlign);
-                uint64_t dataSize1 = i + 2 * kRopePostBaseNum < kRopePostBlockTotal ? kRopePostBaseNum : kRopePostTailNum;
+                NZVecClc(dkRopeWorkSpaceGm, dkRopeGm, dataSize, actual_seq_kvlen_addr, 1, s2, true, 0, rope_d,
+                         rope_dAlign);
+                uint64_t dataSize1 =
+                    i + 2 * kRopePostBaseNum < kRopePostBlockTotal ? kRopePostBaseNum : kRopePostTailNum;
                 dataSize1 = i + kRopePostBaseNum >= kRopePostBlockTotal ? 0 : dataSize1;
-                NZVecClc(dkRopeWorkSpaceGm, dkRopeGm, dataSize1, actual_seq_kvlen_addr, 1, s2, true, 1, rope_d, rope_dAlign);
+                NZVecClc(dkRopeWorkSpaceGm, dkRopeGm, dataSize1, actual_seq_kvlen_addr, 1, s2, true, 1, rope_d,
+                         rope_dAlign);
             }
         }
 
@@ -1334,15 +1349,15 @@ public:
         if constexpr (LAYOUT == BSNGD) {
             // BSND
             copyOutDstStride = n2 * curG * d - d;
-            copyOutDstOffset = ((bIdx * curS + sIdx ) * n2 * curG + nIdx) * d;
+            copyOutDstOffset = ((bIdx * curS + sIdx) * n2 * curG + nIdx) * d;
         } else if constexpr (LAYOUT == SBNGD) {
             // SBND
             copyOutDstStride = b * n2 * curG * d - d;
-            copyOutDstOffset = (( sIdx * b + bIdx ) * n2 * curG + nIdx ) * d;
+            copyOutDstOffset = ((sIdx * b + bIdx) * n2 * curG + nIdx) * d;
         } else if constexpr (LAYOUT == BNGSD) {
             // BNSD
             copyOutDstStride = 0;
-            copyOutDstOffset = ((bIdx * n2 * curG + nIdx )* curS + sIdx) * d;
+            copyOutDstOffset = ((bIdx * n2 * curG + nIdx) * curS + sIdx) * d;
         }
     }
 
@@ -1445,15 +1460,17 @@ public:
 
 // EXACT the same with FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb except for class name.
 // Partial Specialize for FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2
-template <typename OUT_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
-          const uint32_t INPUT_FORMAT, const uint32_t HAS_ROPE>
+template <typename OUT_TYPE, const bool CAST_DV, const uint32_t LAYOUT, const uint32_t INPUT_FORMAT,
+          const uint32_t HAS_ROPE>
 class FlashAttentionScoreGradPost<OUT_TYPE, FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2, CAST_DV, LAYOUT,
-          INPUT_FORMAT, HAS_ROPE> {
+                                  INPUT_FORMAT, HAS_ROPE> {
 public:
-    __aicore__ inline FlashAttentionScoreGradPost(){}
-    __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dqRope, __gm__ uint8_t *dk, __gm__ uint8_t *dkRope, __gm__ uint8_t *dv,
-                         __gm__ uint8_t *actual_seq_qlen, __gm__ uint8_t *actual_seq_kvlen,__gm__ uint8_t *dsink,
-                         __gm__ uint8_t *workspace, const FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2 *__restrict ordTilingData, TPipe *pipe_in)
+    __aicore__ inline FlashAttentionScoreGradPost() {}
+    __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dqRope, __gm__ uint8_t *dk, __gm__ uint8_t *dkRope,
+                                __gm__ uint8_t *dv, __gm__ uint8_t *actual_seq_qlen, __gm__ uint8_t *actual_seq_kvlen,
+                                __gm__ uint8_t *dsink, __gm__ uint8_t *workspace,
+                                const FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2 *__restrict ordTilingData,
+                                TPipe *pipe_in)
     {
         cBlockIdx = GetBlockIdx();
 
@@ -1522,20 +1539,20 @@ public:
         }
 
         dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                    tilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
+                                      tilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
         if constexpr (HAS_ROPE == ENABLE) {
             dqRopeWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                                tilingData->postTilingData.dqRopeWorkSpaceOffset / sizeof(float));
+                                              tilingData->postTilingData.dqRopeWorkSpaceOffset / sizeof(float));
         }
         dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                    tilingData->postTilingData.dkWorkSpaceOffset / sizeof(float));
+                                      tilingData->postTilingData.dkWorkSpaceOffset / sizeof(float));
         if constexpr (HAS_ROPE == ENABLE) {
             dkRopeWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                                tilingData->postTilingData.dkRopeWorkSpaceOffset / sizeof(float));
+                                              tilingData->postTilingData.dkRopeWorkSpaceOffset / sizeof(float));
         }
         if constexpr (CAST_DV) {
             dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                        tilingData->postTilingData.dvWorkSpaceOffset / sizeof(float));
+                                          tilingData->postTilingData.dvWorkSpaceOffset / sizeof(float));
         }
 
         if constexpr (INPUT_FORMAT == NZ) {
@@ -1550,7 +1567,8 @@ public:
             pipe->InitBuffer(outQueue, 1, ubBaseSize);
         }
     }
-    __aicore__ inline void InitIndex(uint64_t startIdx, int64_t curG, int64_t &curS, GM_ADDR seqS, int64_t d, int64_t dAlign)
+    __aicore__ inline void InitIndex(uint64_t startIdx, int64_t curG, int64_t &curS, GM_ADDR seqS, int64_t d,
+                                     int64_t dAlign)
     {
         if constexpr (LAYOUT == TND) {
             uint64_t totalLen = 0;
@@ -1559,7 +1577,7 @@ public:
                 if (totalLen > startIdx) {
                     bIdx = bDimIdx;
                     curS = (bIdx == 0) ? ((__gm__ int64_t *)seqS)[bIdx] :
-                                        (((__gm__ int64_t *)seqS)[bIdx] - ((__gm__ int64_t *)seqS)[bIdx - 1]);
+                                         (((__gm__ int64_t *)seqS)[bIdx] - ((__gm__ int64_t *)seqS)[bIdx - 1]);
                     uint64_t bTail = startIdx - (totalLen - n2 * curG * curS * d);
                     nIdx = bTail / (curS * d);
                     uint64_t nTail = bTail % (curS * d);
@@ -1569,7 +1587,7 @@ public:
             }
             // 计算输入、输出的offset
             dstOffsetBase = totalLen - n2 * curG * curS * d;
-            scrOffsetBase = dstOffsetBase / (d) * dAlign;
+            scrOffsetBase = dstOffsetBase / (d)*dAlign;
 
             copyInSrcOffset = scrOffsetBase + nIdx * curS * dAlign + sIdx * C0_SIZE;
             copyOutDstOffset = dstOffsetBase + (sIdx * n2 * curG + nIdx) * d;
@@ -1624,7 +1642,7 @@ public:
             // init qRope
             uint64_t qRopeBegin = cBlockIdx * qRopePostBlockFactor * qRopePostBaseNum;
             uint64_t qRopeEnd = (cBlockIdx + 1) * qRopePostBlockFactor * qRopePostBaseNum;
-    
+
             if (((cBlockIdx + 1) * qRopePostBlockFactor * qRopePostBaseNum) > qRopePostBlockTotal) {
                 qRopeEnd = qRopePostBlockTotal;
             }
@@ -1693,7 +1711,7 @@ public:
             if (((cBlockIdx + 1) * kRopePostBlockFactor * kRopePostBaseNum) > kRopePostBlockTotal) {
                 kRopeEnd = kRopePostBlockTotal;
             }
-    
+
             for (uint64_t i = kRopeBegin; i < kRopeEnd; i = i + kRopePostBaseNum) {
                 AscendC::LocalTensor<float> vecIn = inQueue.template AllocTensor<float>();
                 AscendC::LocalTensor<OUT_TYPE> vecOut = outQueue.template AllocTensor<OUT_TYPE>();
@@ -1744,7 +1762,7 @@ public:
         }
     }
     __aicore__ inline void NZ2ND(LocalTensor<float> &dstTensor, LocalTensor<float> &srcTensor, uint64_t sLen,
-                          uint64_t ubOffset, uint64_t srcUbOffset, int64_t dAlign)
+                                 uint64_t ubOffset, uint64_t srcUbOffset, int64_t dAlign)
     {
         /*
         Func:
@@ -1763,18 +1781,20 @@ public:
         for (uint16_t i = 0; i < c0_repeat; ++i) {
             for (uint16_t j = 0; j < c1_repeat; ++j) {
                 Copy(dstTensor[ubOffset + i * cal_block_num + j * VEC_REPEAT * C0_SIZE],
-                    srcTensor[srcUbOffset + i * cal_block_num + j * VEC_REPEAT * (sLen * C0_SIZE + cal_block_num)],
-                    VEC_REPEAT * cal_block_num, n_repeat, nz2ndParams);
+                     srcTensor[srcUbOffset + i * cal_block_num + j * VEC_REPEAT * (sLen * C0_SIZE + cal_block_num)],
+                     VEC_REPEAT * cal_block_num, n_repeat, nz2ndParams);
             }
             if (c1_remain > 0) {
                 Copy(dstTensor[ubOffset + i * cal_block_num + c1_repeat * VEC_REPEAT * C0_SIZE],
-                    srcTensor[srcUbOffset + i * cal_block_num + c1_repeat * VEC_REPEAT * (sLen * C0_SIZE + cal_block_num)],
-                    VEC_REPEAT * c1_remain, n_repeat, nz2ndParams);
+                     srcTensor[srcUbOffset + i * cal_block_num +
+                               c1_repeat * VEC_REPEAT * (sLen * C0_SIZE + cal_block_num)],
+                     VEC_REPEAT * c1_remain, n_repeat, nz2ndParams);
             }
         }
     }
     __aicore__ inline void NZVecClc(GlobalTensor<float> srcGm, GlobalTensor<OUT_TYPE> dstGm, uint64_t dataSize,
-                             GM_ADDR seqS, int64_t curG, int64_t &curS, bool needMuls, int64_t flag, int64_t d, int64_t dAlign)
+                                    GM_ADDR seqS, int64_t curG, int64_t &curS, bool needMuls, int64_t flag, int64_t d,
+                                    int64_t dAlign)
     {
         if (dataSize == 0) {
             return;
@@ -1838,10 +1858,10 @@ public:
             if (needMuls) {
                 if constexpr (!AscendC::IsSameType<OUT_TYPE, float>::value) {
                     Muls(tmpTensor[ubOffset], tmpTensor[ubOffset], (float)tilingData->postTilingData.scaleValue,
-                    sLen * dAlign);
+                         sLen * dAlign);
                 } else {
                     Muls(vecOut[ubOffset], vecOut[ubOffset], (float)tilingData->postTilingData.scaleValue,
-                    sLen * dAlign);
+                         sLen * dAlign);
                 }
 
                 AscendC::PipeBarrier<PIPE_V>();
@@ -1857,12 +1877,12 @@ public:
 
             if constexpr (LAYOUT == TND) {
                 DataCopyPad(dstGm[copyOutDstOffset], vecOut[ubOffset],
-                        {static_cast<uint16_t>(dataLen / (dAlign)), static_cast<uint32_t>(d * sizeof(OUT_TYPE)), 0,
-                        static_cast<uint32_t>((n2 * curG * d - d) * sizeof(OUT_TYPE)), 0});
+                            {static_cast<uint16_t>(dataLen / (dAlign)), static_cast<uint32_t>(d * sizeof(OUT_TYPE)), 0,
+                             static_cast<uint32_t>((n2 * curG * d - d) * sizeof(OUT_TYPE)), 0});
             } else {
                 DataCopyPad(dstGm[copyOutDstOffset], vecOut[ubOffset],
-                        {static_cast<uint16_t>(dataLen / (dAlign)), static_cast<uint32_t>(d * sizeof(OUT_TYPE)), 0,
-                        static_cast<uint32_t>(copyOutDstStride * sizeof(OUT_TYPE)), 0});
+                            {static_cast<uint16_t>(dataLen / (dAlign)), static_cast<uint32_t>(d * sizeof(OUT_TYPE)), 0,
+                             static_cast<uint32_t>(copyOutDstStride * sizeof(OUT_TYPE)), 0});
             }
             if (sLen + sIdx < curS) {
                 sIdx += sLen;
@@ -1896,7 +1916,7 @@ public:
             sLen = sLen > 255 ? 255 : sLen;
             dataLen = sLen * dAlign;
             if ((sLen > 0) && (inUbOffset + dataLen + dAlign / C0_SIZE * cal_block_num) * sizeof(float) >
-                                ubBaseSize * 2 + nzReservedSize) {
+                                  ubBaseSize * 2 + nzReservedSize) {
                 inUbOffset = 0;
                 AscendC::SetFlag<HardEvent::V_MTE2>(static_cast<int32_t>(curEventId));
                 AscendC::WaitFlag<HardEvent::V_MTE2>(static_cast<int32_t>(curEventId));
@@ -1930,15 +1950,18 @@ public:
             if (((cBlockIdx + 1) * qRopePostBlockFactor * qRopePostBaseNum) > qRopePostBlockTotal) {
                 qRopeEnd = qRopePostBlockTotal;
             }
-    
+
             InitIndex(qRopeBegin, g, s1, actual_seq_qlen_addr, rope_d, rope_dAlign);
-    
+
             for (uint64_t i = qRopeBegin; i < qRopeEnd; i = i + 2 * qRopePostBaseNum) {
                 uint64_t dataSize = i + qRopePostBaseNum < qRopePostBlockTotal ? qRopePostBaseNum : qRopePostTailNum;
-                NZVecClc(dqRopeWorkSpaceGm, dqRopeGm, dataSize, actual_seq_qlen_addr, g, s1, true, 0, rope_d, rope_dAlign);
-                uint64_t dataSize1 = i + 2 * qRopePostBaseNum < qRopePostBlockTotal ? qRopePostBaseNum : qRopePostTailNum;
+                NZVecClc(dqRopeWorkSpaceGm, dqRopeGm, dataSize, actual_seq_qlen_addr, g, s1, true, 0, rope_d,
+                         rope_dAlign);
+                uint64_t dataSize1 =
+                    i + 2 * qRopePostBaseNum < qRopePostBlockTotal ? qRopePostBaseNum : qRopePostTailNum;
                 dataSize1 = i + qRopePostBaseNum >= qRopePostBlockTotal ? 0 : dataSize1;
-                NZVecClc(dqRopeWorkSpaceGm, dqRopeGm, dataSize1, actual_seq_qlen_addr, g, s1, true, 1, rope_d, rope_dAlign);
+                NZVecClc(dqRopeWorkSpaceGm, dqRopeGm, dataSize1, actual_seq_qlen_addr, g, s1, true, 1, rope_d,
+                         rope_dAlign);
             }
         }
 
@@ -1967,10 +1990,13 @@ public:
             InitIndex(kRopeBegin, 1, s2, actual_seq_kvlen_addr, rope_d, rope_dAlign);
             for (uint64_t i = kRopeBegin; i < kRopeEnd; i = i + 2 * kRopePostBaseNum) {
                 uint64_t dataSize = i + kRopePostBaseNum < kRopePostBlockTotal ? kRopePostBaseNum : kRopePostTailNum;
-                NZVecClc(dkRopeWorkSpaceGm, dkRopeGm, dataSize, actual_seq_kvlen_addr, 1, s2, true, 0, rope_d, rope_dAlign);
-                uint64_t dataSize1 = i + 2 * kRopePostBaseNum < kRopePostBlockTotal ? kRopePostBaseNum : kRopePostTailNum;
+                NZVecClc(dkRopeWorkSpaceGm, dkRopeGm, dataSize, actual_seq_kvlen_addr, 1, s2, true, 0, rope_d,
+                         rope_dAlign);
+                uint64_t dataSize1 =
+                    i + 2 * kRopePostBaseNum < kRopePostBlockTotal ? kRopePostBaseNum : kRopePostTailNum;
                 dataSize1 = i + kRopePostBaseNum >= kRopePostBlockTotal ? 0 : dataSize1;
-                NZVecClc(dkRopeWorkSpaceGm, dkRopeGm, dataSize1, actual_seq_kvlen_addr, 1, s2, true, 1, rope_d, rope_dAlign);
+                NZVecClc(dkRopeWorkSpaceGm, dkRopeGm, dataSize1, actual_seq_kvlen_addr, 1, s2, true, 1, rope_d,
+                         rope_dAlign);
             }
         }
 
@@ -2001,15 +2027,15 @@ public:
         if constexpr (LAYOUT == BSNGD) {
             // BSND
             copyOutDstStride = n2 * curG * d - d;
-            copyOutDstOffset = ((bIdx * curS + sIdx ) * n2 * curG + nIdx) * d;
+            copyOutDstOffset = ((bIdx * curS + sIdx) * n2 * curG + nIdx) * d;
         } else if constexpr (LAYOUT == SBNGD) {
             // SBND
             copyOutDstStride = b * n2 * curG * d - d;
-            copyOutDstOffset = (( sIdx * b + bIdx ) * n2 * curG + nIdx ) * d;
+            copyOutDstOffset = ((sIdx * b + bIdx) * n2 * curG + nIdx) * d;
         } else if constexpr (LAYOUT == BNGSD) {
             // BNSD
             copyOutDstStride = 0;
-            copyOutDstOffset = ((bIdx * n2 * curG + nIdx )* curS + sIdx) * d;
+            copyOutDstOffset = ((bIdx * n2 * curG + nIdx) * curS + sIdx) * d;
         }
     }
 

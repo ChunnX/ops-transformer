@@ -98,11 +98,12 @@ __aicore__ inline void MOEW4A16Single<T>::InitWorkspaceTensors(GM_ADDR usrWorksp
 }
 
 template <typename T>
-__aicore__ inline void
-MOEW4A16Single<T>::InitGlobalTensors(GM_ADDR x, GM_ADDR quantized_weight_13, GM_ADDR weight_scale_13,
-                                     GM_ADDR weight_offset_13, GM_ADDR quantized_weight_2, GM_ADDR weight_scale_2,
-                                     GM_ADDR weight_offset_2, GM_ADDR expanded_expert_idx, GM_ADDR sorted_row_idx,
-                                     GM_ADDR expanded_row_idx, GM_ADDR topk_weights, GM_ADDR y)
+__aicore__ inline void MOEW4A16Single<T>::InitGlobalTensors(GM_ADDR x, GM_ADDR quantized_weight_13,
+                                                            GM_ADDR weight_scale_13, GM_ADDR weight_offset_13,
+                                                            GM_ADDR quantized_weight_2, GM_ADDR weight_scale_2,
+                                                            GM_ADDR weight_offset_2, GM_ADDR expanded_expert_idx,
+                                                            GM_ADDR sorted_row_idx, GM_ADDR expanded_row_idx,
+                                                            GM_ADDR topk_weights, GM_ADDR y)
 {
     xGm.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(x), tilingData->originM * tilingData->originK_13);
     yGm.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(y), tilingData->originM * tilingData->originN_2);
@@ -339,7 +340,6 @@ __aicore__ inline void MOEW4A16Single<bfloat16_t>::AntiQuantWeight(uint32_t task
     Cast<half, int4b_t, false>(ubWHalf, ubWInt4, RoundMode::CAST_NONE, MASK_PLACEHOLDER, 1, unaryParams4To16);
     SetFlag<HardEvent::V_MTE2>(eventIdVToMTE2[0]);
 
-
     BinaryRepeatParams binaryParams;
     uint32_t mulOffsetA = 0;
     uint32_t mulOffsetB = 0;
@@ -496,7 +496,6 @@ __aicore__ inline void MOEW4A16Single<T>::ComputeMatMul(uint32_t task_id, uint32
         SetFixpipePreQuantFlag(static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&deqScalar)));
         SetFixpipeNz2ndFlag(1, 0, 0);
         DataCopy<T, float>(mmCGm[offsetM * fracN * 256 + offsetN * 16], L0MatC, repeatParamsC);
-
 
         SetFlag<HardEvent::FIX_M>(eventIdFIXToM);
         WaitFlag<HardEvent::FIX_M>(eventIdFIXToM);

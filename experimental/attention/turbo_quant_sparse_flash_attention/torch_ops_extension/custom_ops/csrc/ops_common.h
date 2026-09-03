@@ -93,11 +93,17 @@ struct NPUStorageImpl : public c10::StorageImpl {
     // not private
     NPUStorageDesc npu_desc_;
 
-    NPUStorageDesc get_npu_desc() const { return npu_desc_; }
+    NPUStorageDesc get_npu_desc() const
+    {
+        return npu_desc_;
+    }
 
     uint64_t unique_id_{0};
 
-    uint64_t get_unique_id() { return unique_id_; }
+    uint64_t get_unique_id()
+    {
+        return unique_id_;
+    }
 
     std::mutex unique_id_mutex_;
 };
@@ -275,9 +281,15 @@ extern const std::vector<std::string> g_custom_lib_path;
 extern const std::vector<std::string> g_default_custom_lib_path;
 void *GetOpApiFuncAddrFromFeatureLib(const char *api_name);
 
-inline const char *GetOpApiLibName(void) { return "libopapi.so"; }
+inline const char *GetOpApiLibName(void)
+{
+    return "libopapi.so";
+}
 
-inline const char *GetCustOpApiLibName(void) { return "libcust_opapi.so"; }
+inline const char *GetCustOpApiLibName(void)
+{
+    return "libcust_opapi.so";
+}
 
 inline void *GetOpApiFuncAddrInLib(void *handler, const char *libName, const char *apiName)
 {
@@ -641,7 +653,10 @@ inline aclIntArray *ConvertType(const c10::OptionalArrayRef<c10::SymInt> &opt_ar
     return nullptr;
 }
 
-inline aclDataType ConvertType(const at::ScalarType scalarType) { return ConvertScalarTypeToAclDataType(scalarType); }
+inline aclDataType ConvertType(const at::ScalarType scalarType)
+{
+    return ConvertScalarTypeToAclDataType(scalarType);
+}
 
 // add declare from other hpp
 typedef struct {

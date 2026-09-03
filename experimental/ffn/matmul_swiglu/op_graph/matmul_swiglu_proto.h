@@ -50,6 +50,6 @@ REG_OP(MatmulSwiglu)
     .OUTPUT(y, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT}))
     .ATTR(transpose_weight, Bool, false)
     .OP_END_FACTORY_REG(MatmulSwiglu)
-}  // namespace ge
+} // namespace ge
 
-#endif  // OPS_OP_PROTO_INC_MATMUL_SWIGLU_H_
+#endif // OPS_OP_PROTO_INC_MATMUL_SWIGLU_H_

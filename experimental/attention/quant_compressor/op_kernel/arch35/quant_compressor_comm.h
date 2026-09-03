@@ -112,7 +112,9 @@ struct COMPType {
 struct CmpBlockInfo {
     __aicore__ inline CmpBlockInfo(){};
     __aicore__ inline CmpBlockInfo(uint32_t bIdx, uint32_t sIdx, bool needReset = false)
-        : bIdx(bIdx), sIdx(sIdx), needReset(needReset){};
+        : bIdx(bIdx),
+          sIdx(sIdx),
+          needReset(needReset){};
 
     uint32_t bIdx = 0U;
     uint32_t sIdx = 0U;
@@ -267,7 +269,9 @@ struct MSplitInfo {
 
 struct BlockInfo {
     __aicore__ inline BlockInfo(uint32_t bIdx, uint32_t sIdx, uint32_t dealSeqSize)
-        : bIdx(bIdx), sIdx(sIdx), dealSeqSize(dealSeqSize){};
+        : bIdx(bIdx),
+          sIdx(sIdx),
+          dealSeqSize(dealSeqSize){};
     uint32_t bIdx = 0U;
     uint32_t sIdx = 0U;
     uint32_t dealSeqSize = 0;

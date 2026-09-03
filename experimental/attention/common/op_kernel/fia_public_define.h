@@ -42,8 +42,7 @@ constexpr SoftmaxConfig FIA_SOFTMAX_FLASHV2_CFG = {false};
 // 将isCheckTiling设置为false, 输入输出的max&sum&exp的shape为(m, 1)
 constexpr SoftmaxConfig FIA_SOFTMAX_FLASHV2_CFG_WITHOUT_BRC = {false, 0, 0, SoftmaxMode::SOFTMAX_OUTPUT_WITHOUT_BRC};
 
-enum class FIA_LAYOUT : uint32_t
-{
+enum class FIA_LAYOUT : uint32_t {
     BSH = 0,
     BSND = 0,
     BNSD = 1,
@@ -171,8 +170,8 @@ struct ConstInfo {
     uint64_t headDim = 0;
     uint64_t headDimRope = 0;
     uint64_t headDimAlign = 0;
-    uint64_t kvSeqSize = 0ULL;        // kv最大S长度
-    uint64_t qSeqSize = 1ULL;         // q最大S长度
+    uint64_t kvSeqSize = 0ULL; // kv最大S长度
+    uint64_t qSeqSize = 1ULL;  // q最大S长度
     int64_t preToken = 0;
     int64_t nextToken = 0;
     uint64_t systemPrefixMaxLen = 0;
@@ -203,8 +202,8 @@ struct ConstInfo {
     bool accumQSeqFlag = false;
     bool accumKVSeqFlag = false;
     bool needInit = false;
-    bool isRowInvalid = false;  // 是否使能行无效
-    bool isExistRowInvalid = false;  // 实际是否存在行无效
+    bool isRowInvalid = false;      // 是否使能行无效
+    bool isExistRowInvalid = false; // 实际是否存在行无效
 
     bool batchContinuous = true;
     bool ropeSplitMode = false;
@@ -249,7 +248,8 @@ struct MSplitInfo {
 };
 
 template <FIA_LAYOUT LAYOUT_T>
-__aicore__ inline void GetGS1Idx(uint32_t gS1Idx, uint32_t &gIdx, uint32_t &s1Idx, AttentionCommon::ConstInfo &constInfo)
+__aicore__ inline void GetGS1Idx(uint32_t gS1Idx, uint32_t &gIdx, uint32_t &s1Idx,
+                                 AttentionCommon::ConstInfo &constInfo)
 {
     // GS1
     if constexpr (LAYOUT_T == FIA_LAYOUT::BNSD || LAYOUT_T == FIA_LAYOUT::NBSD || LAYOUT_T == FIA_LAYOUT::NTD) {
@@ -268,6 +268,6 @@ __aicore__ inline int64_t ClipSInnerToken(int64_t sInnerToken, int64_t minValue,
     sInnerToken = sInnerToken < maxValue ? sInnerToken : maxValue;
     return sInnerToken;
 }
-} // namespace
+} // namespace AttentionCommon
 
 #endif // FIA_PUBLIC_DEFINE_H

@@ -9,9 +9,9 @@
  */
 
 /*!
-* \file quant_lightning_indexer_metadata.h
-* \brief
-*/
+ * \file quant_lightning_indexer_metadata.h
+ * \brief
+ */
 
 #ifndef QUANT_LIGHTNING_INDEXER_METADATA_H
 #define QUANT_LIGHTNING_INDEXER_METADATA_H
@@ -48,7 +48,7 @@ inline constexpr uint32_t LD_WORKSPACE_NUM_INDEX = 4;
 inline constexpr uint32_t LD_M_START_INDEX = 5;
 inline constexpr uint32_t LD_M_NUM_INDEX = 6;
 
- /**
+/**
  * @brief 获取属性的绝对索引
  * @param coreIdx 核索引
  * @param metaIdx 元数据索引
@@ -56,7 +56,7 @@ inline constexpr uint32_t LD_M_NUM_INDEX = 6;
  * @return 返回属性的绝对索引
  */
 #ifdef __CCE_AICORE__
-__aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, bool isAIV=false)
+__aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, bool isAIV = false)
 {
     if (isAIV) {
         return LI_METADATA_SIZE * AIC_CORE_NUM + LD_METADATA_SIZE * coreIdx + metaIdx;
@@ -67,13 +67,13 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, b
 #endif
 
 namespace detail {
-    struct QliMetadata {
-        uint32_t LIMetadata[AIC_CORE_NUM][LI_METADATA_SIZE];
-        uint32_t LDMetadata[AIV_CORE_NUM][LD_METADATA_SIZE];
-    };
+struct QliMetadata {
+    uint32_t LIMetadata[AIC_CORE_NUM][LI_METADATA_SIZE];
+    uint32_t LDMetadata[AIV_CORE_NUM][LD_METADATA_SIZE];
 };
+}; // namespace detail
 
 static_assert(QLI_META_SIZE * sizeof(QLI_METADATA_T) >= sizeof(detail::QliMetadata));
-};
+}; // namespace optiling
 
 #endif

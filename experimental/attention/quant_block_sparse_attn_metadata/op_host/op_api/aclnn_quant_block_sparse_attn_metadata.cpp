@@ -102,10 +102,10 @@ aclnnStatus aclnnQuantBlockSparseAttnMetadataGetWorkspaceSize(
     }
 
     auto output = l0op::QuantBlockSparseAttnMetadata(
-        sparseSeqLenContiguous, cuSeqlensQOptionalContiguous, cuSeqlensKvOptionalContiguous,
-        sequsedQOptionalContiguous, sequsedKvOptionalContiguous, batchSize, numHeadsQ, numHeadsKv, headDim,
-        sparseBlockSizeQ, sparseBlockSizeK, quantMode, maskMode, layoutQOptional, layoutKvOptional,
-        layoutSparseIndicesOptional, socVersion, aicCoreNum, aivCoreNum, metadata, uniqueExecutor.get());
+        sparseSeqLenContiguous, cuSeqlensQOptionalContiguous, cuSeqlensKvOptionalContiguous, sequsedQOptionalContiguous,
+        sequsedKvOptionalContiguous, batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeK,
+        quantMode, maskMode, layoutQOptional, layoutKvOptional, layoutSparseIndicesOptional, socVersion, aicCoreNum,
+        aivCoreNum, metadata, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -113,8 +113,10 @@ aclnnStatus aclnnQuantBlockSparseAttnMetadataGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-__attribute__((visibility("default"))) aclnnStatus aclnnQuantBlockSparseAttnMetadata(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+__attribute__((visibility("default"))) aclnnStatus aclnnQuantBlockSparseAttnMetadata(void *workspace,
+                                                                                     uint64_t workspaceSize,
+                                                                                     aclOpExecutor *executor,
+                                                                                     aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnQuantBlockSparseAttnMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

@@ -233,7 +233,10 @@ torch::Tensor grouped_matmul_npu(
 }
 
 // Register the NPU implementation
-TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m) { m.impl("grouped_matmul", grouped_matmul_npu); }
+TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
+{
+    m.impl("grouped_matmul", grouped_matmul_npu);
+}
 
 } // namespace GroupedMatmul
 } // namespace ascend_ops

@@ -664,11 +664,10 @@ void FiaTilingFullQuantMxArch35::UpdateTilingKeyInfo()
 void FiaTilingFullQuantMxArch35::GenTilingKey()
 {
     UpdateTilingKeyInfo();
-    tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode,
-                                    tilingKeyInfo_.quantMode, tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope,
-                                    1, tilingKeyInfo_.isFd, tilingKeyInfo_.emptyTensor, 0, 0,
-                                    tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
-                                    tilingKeyInfo_.isReconstructTemp);
+    tilingKey_ = GET_TPL_TILING_KEY(
+        tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
+        tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, 1, tilingKeyInfo_.isFd, tilingKeyInfo_.emptyTensor, 0, 0,
+        tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit, tilingKeyInfo_.isReconstructTemp);
 
     OP_LOGI(fiaInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(fiaInfo_->opName,
@@ -802,7 +801,7 @@ void FiaTilingFullQuantMxArch35::SetFATilingData()
         tilingData_.baseTiling.fiaBaseParams.keyStrides.n2Stride = fiaInfo_->keyStrides->GetStride(1);
         tilingData_.baseTiling.fiaBaseParams.valueStrides.bnStride = fiaInfo_->valueStrides->GetStride(0);
         tilingData_.baseTiling.fiaBaseParams.valueStrides.n2Stride = fiaInfo_->valueStrides->GetStride(1);
-        if (fiaInfo_->ropeHeadDim != 0) {  // 传入了rope才赋值
+        if (fiaInfo_->ropeHeadDim != 0) { // 传入了rope才赋值
             tilingData_.baseTiling.fiaBaseParams.kRopeStrides.bnStride = fiaInfo_->kRopeStrides->GetStride(0);
             tilingData_.baseTiling.fiaBaseParams.kRopeStrides.n2Stride = fiaInfo_->kRopeStrides->GetStride(1);
         }

@@ -17,7 +17,6 @@
 #include <algorithm>
 #include "fia_tiling_shape.h"
 
-
 namespace optiling {
 static const std::map<FiaLayout, std::vector<FiaAxis>> FIA_LAYOUT_AXIS_MAP = {
     {FiaLayout::BSH, {FiaAxis::B, FiaAxis::S, FiaAxis::H}},

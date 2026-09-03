@@ -29,9 +29,7 @@ constexpr int BUFFER_NUM = 2;
 template <typename T>
 class bias_sigmoid {
 public:
-    __aicore__ inline bias_sigmoid()
-    {
-    }
+    __aicore__ inline bias_sigmoid() {}
     __aicore__ inline void Init(const GM_ADDR expertX, GM_ADDR sigmoidOut, GM_ADDR biasOut, GM_ADDR expertBias,
                                 int32_t ROWS, int32_t per_count, int32_t block_cnt)
     {
@@ -210,7 +208,6 @@ private:
     int32_t global_core_index_, core_rows_, rows_offset_;
 };
 
-
 extern "C" __global__ __aicore__ void compute_bias_sigmoid(GM_ADDR expertX, GM_ADDR sigmoidOut, GM_ADDR biasOut,
                                                            GM_ADDR expertBias, int32_t ROWS, int32_t per_count,
                                                            int32_t block_cnt, int32_t dtype)
@@ -221,7 +218,6 @@ extern "C" __global__ __aicore__ void compute_bias_sigmoid(GM_ADDR expertX, GM_A
         op.Process();
     });
 }
-
 
 void bias_sigmoid_launch(uint8_t *expertX, uint8_t *sigmoidOut, uint8_t *biasOut, uint8_t *expertBias, int32_t ROWS,
                          int32_t per_count, int32_t blockDim, void *stream, int32_t dtype)

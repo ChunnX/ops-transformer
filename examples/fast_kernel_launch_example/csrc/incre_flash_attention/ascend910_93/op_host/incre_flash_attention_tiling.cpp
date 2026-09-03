@@ -341,9 +341,7 @@ bool IFATiling::IsValidFlag()
     return CheckCommonConditions(cfg);
 }
 
-void IFATiling::IsFdBalanceCase()
-{
-}
+void IFATiling::IsFdBalanceCase() {}
 
 bool IFATiling::IsBalanceSplitCore()
 {
@@ -465,11 +463,11 @@ custom::graphStatus IFATiling::QKVPreProcess()
     if (numKvHeads_ == 0U) {
         numKvHeads_ = numHeads_;
     }
-    OP_CHECK_IF(((numKvHeads_ > numHeads_) || (numHeads_ % numKvHeads_ != 0U)),
-                OP_LOGE(ifaContext_->opName,
-                        "Attr num_key_value_heads is invalid, n: %u, the key/value's heads num: %u", numHeads_,
-                        numKvHeads_),
-                return custom::graphStatus::GRAPH_FAILED);
+    OP_CHECK_IF(
+        ((numKvHeads_ > numHeads_) || (numHeads_ % numKvHeads_ != 0U)),
+        OP_LOGE(ifaContext_->opName, "Attr num_key_value_heads is invalid, n: %u, the key/value's heads num: %u",
+                numHeads_, numKvHeads_),
+        return custom::graphStatus::GRAPH_FAILED);
     nNumOfQInOneGroup_ = numHeads_ / numKvHeads_;
     groupSplitSize_ = nNumOfQInOneGroup_;
     gOuter_ = 1U;
@@ -1232,32 +1230,32 @@ custom::graphStatus IFATiling::ProcessDequant2() const
 custom::graphStatus IFATiling::CheckKVAntiQuantParamsShapeInPagedAttention(const at::IntArrayRef &inputParaShape) const
 {
     if (antiquantPerHeadFlag_ != 0U) { // per-token-head, [block_num, kv_head_num, block_size]
-        OP_CHECK_IF((inputParaShape[0] != totalBlockNum_),
-                    OP_LOGE(ifaContext_->opName,
-                            "The 1st dim of antiquant parameter should be %u instead of the current %ld",
-                            totalBlockNum_, inputParaShape[0]),
-                    return custom::graphStatus::GRAPH_FAILED);
-        OP_CHECK_IF((inputParaShape[1] != numKvHeads_),
-                    OP_LOGE(ifaContext_->opName,
-                            "The 2nd dim of antiquant parameter should be %u instead of the current %ld", numKvHeads_,
-                            inputParaShape[1]),
-                    return custom::graphStatus::GRAPH_FAILED);
-        OP_CHECK_IF((inputParaShape[2] != blockSize_),
-                    OP_LOGE(ifaContext_->opName,
-                            "The 3rd dim of antiquant parameter should be %u instead of the current %ld", blockSize_,
-                            inputParaShape[2]),
-                    return custom::graphStatus::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (inputParaShape[0] != totalBlockNum_),
+            OP_LOGE(ifaContext_->opName, "The 1st dim of antiquant parameter should be %u instead of the current %ld",
+                    totalBlockNum_, inputParaShape[0]),
+            return custom::graphStatus::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (inputParaShape[1] != numKvHeads_),
+            OP_LOGE(ifaContext_->opName, "The 2nd dim of antiquant parameter should be %u instead of the current %ld",
+                    numKvHeads_, inputParaShape[1]),
+            return custom::graphStatus::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (inputParaShape[2] != blockSize_),
+            OP_LOGE(ifaContext_->opName, "The 3rd dim of antiquant parameter should be %u instead of the current %ld",
+                    blockSize_, inputParaShape[2]),
+            return custom::graphStatus::GRAPH_FAILED);
     } else { // per-token, [block_num, block_size]
-        OP_CHECK_IF((inputParaShape[0] != totalBlockNum_),
-                    OP_LOGE(ifaContext_->opName,
-                            "The 1st dim of antiquant parameter should be %u instead of the current %ld",
-                            totalBlockNum_, inputParaShape[0]),
-                    return custom::graphStatus::GRAPH_FAILED);
-        OP_CHECK_IF((inputParaShape[1] != blockSize_),
-                    OP_LOGE(ifaContext_->opName,
-                            "The 2nd dim of antiquant parameter should be %u instead of the current %ld", blockSize_,
-                            inputParaShape[1]),
-                    return custom::graphStatus::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (inputParaShape[0] != totalBlockNum_),
+            OP_LOGE(ifaContext_->opName, "The 1st dim of antiquant parameter should be %u instead of the current %ld",
+                    totalBlockNum_, inputParaShape[0]),
+            return custom::graphStatus::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (inputParaShape[1] != blockSize_),
+            OP_LOGE(ifaContext_->opName, "The 2nd dim of antiquant parameter should be %u instead of the current %ld",
+                    blockSize_, inputParaShape[1]),
+            return custom::graphStatus::GRAPH_FAILED);
     }
     return custom::graphStatus::GRAPH_SUCCESS;
 }

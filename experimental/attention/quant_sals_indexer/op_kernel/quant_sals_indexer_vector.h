@@ -20,7 +20,6 @@
 namespace QSIServiceVec {
 using namespace AscendC;
 
-
 constexpr int32_t INVALID_INDEX = -1;
 constexpr uint8_t VEC_REPEAT_MAX = 255;
 
@@ -29,12 +28,7 @@ constexpr uint8_t B32_VEC_REPEAT_STRIDE = 8;
 constexpr uint64_t VEC_REPEAT_BYTES = 256;
 constexpr int32_t CONST_TWO = 2;
 
-
-
-
-
-__aicore__ inline void CopyIn(LocalTensor<float> &mmOutUb, GlobalTensor<float> &mMoutGm,
-                            int64_t MMout_gmoffset,
+__aicore__ inline void CopyIn(LocalTensor<float> &mmOutUb, GlobalTensor<float> &mMoutGm, int64_t MMout_gmoffset,
                               int64_t groupInner, int64_t s2Inner, int64_t mmUbStride)
 {
     // 将MMout_gmoffset copy到UB上
@@ -48,7 +42,6 @@ __aicore__ inline void CopyIn(LocalTensor<float> &mmOutUb, GlobalTensor<float> &
     AscendC::DataCopyPad(mmOutUb, mMoutGm[MMout_gmoffset], dataCopymMoutParams, padParams);
 }
 
-
 template <typename T>
 __aicore__ inline void CopyOut(const GlobalTensor<T> &dstGm, const LocalTensor<T> &srcUb, int64_t copyCount)
 {
@@ -61,8 +54,7 @@ __aicore__ inline void CopyOut(const GlobalTensor<T> &dstGm, const LocalTensor<T
 }
 
 __aicore__ inline void DoScale(const LocalTensor<float> &reduceCacheBuf, LocalTensor<float> &mmOutUb,
-                               LocalTensor<float> &tmpBuff,
-                               int64_t groupInner, int64_t s2Inner, int32_t outerGidx)
+                               LocalTensor<float> &tmpBuff, int64_t groupInner, int64_t s2Inner, int32_t outerGidx)
 {
     // do scale: [groupInner, 8] * [groupInner, s2Inner]
     uint64_t countPerRepeat = VEC_REPEAT_BYTES / sizeof(float);
@@ -84,7 +76,6 @@ __aicore__ inline void DoScale(const LocalTensor<float> &reduceCacheBuf, LocalTe
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-
 __aicore__ inline uint64_t FindNearestPower2(uint64_t value)
 {
     if (value <= CONST_TWO) {
@@ -94,7 +85,6 @@ __aicore__ inline uint64_t FindNearestPower2(uint64_t value)
         return (1 << pow);
     }
 }
-
 
 // dstTensor 需要初始化0
 __aicore__ inline void DoReduce(const LocalTensor<float> &srcTensor, LocalTensor<float> &dstTensor, int32_t rNum,
@@ -122,7 +112,6 @@ __aicore__ inline void DoReduce(const LocalTensor<float> &srcTensor, LocalTensor
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-
 /**
   src: 传入的初始化空间
   eleNum: 需要初始化的元素个数需为64整数倍，元素将被初始化为交错排布的-inf，-1
@@ -149,7 +138,6 @@ __aicore__ inline void InitSortOutBuf(const LocalTensor<float> &src, int64_t ele
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-
 /**
   dst: 输出全排序的结果，排布方式为value，index
   srcValue：输入的待排序浮点数
@@ -164,7 +152,6 @@ __aicore__ inline void SortAll(LocalTensor<float> &dst, LocalTensor<float> &srcV
     AscendC::Sort<float, true>(dst, srcValue, srcIndex, tmpTensor, sort32Repeats);
     AscendC::PipeBarrier<PIPE_V>();
 }
-
 
 /**
   mrgDst: 合并进的Tensor
@@ -190,7 +177,6 @@ __aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDs
     AscendC::DataCopy(mrgDst, tmpTensor, mrgDstNum * VALUE_AND_INDEX_NUM);
     AscendC::PipeBarrier<PIPE_V>();
 }
-
 
 /**
  * @brief 合并基础块函数
@@ -230,7 +216,6 @@ __aicore__ inline void MrgBasicBlock(const LocalTensor<float> &dst, const LocalT
     // 执行合并排序
     AscendC::MrgSort<float>(dst, srcList, params);
 }
-
 
 /**
  * @brief 从两个队列中选择topk

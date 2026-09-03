@@ -363,7 +363,6 @@ __aicore__ inline void MOEW4A16<bfloat16_t>::AntiQuantWeight(uint32_t task_id, u
     }
     SetFlag<HardEvent::V_MTE2>(eventIdVToMTE2[0]);
 
-
     BinaryRepeatParams binaryParams;
     uint32_t mulOffsetA = 0;
     uint32_t mulOffsetB = 0;

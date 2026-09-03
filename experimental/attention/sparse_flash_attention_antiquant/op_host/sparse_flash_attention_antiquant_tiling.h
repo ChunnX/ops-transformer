@@ -107,7 +107,7 @@ enum class SFAAAxis : uint32_t {
     S = 1,
     N = 2,
     D = 3,
-    K = 3,  // sparse_indices的K和key的D枚举值相同，表达相同位置, 最后一维
+    K = 3, // sparse_indices的K和key的D枚举值相同，表达相同位置, 最后一维
     T = 5,
     Bn = 6, // block number
     Bs = 7, // block size
@@ -188,22 +188,22 @@ BEGIN_TILING_DATA_DEF(SparseFlashAttentionAntiquantSingleCoreParamsMla)
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashAttentionAntiquantSingleCoreParamsMlaOp,
-    SparseFlashAttentionAntiquantSingleCoreParamsMla)
+                           SparseFlashAttentionAntiquantSingleCoreParamsMla)
 
 BEGIN_TILING_DATA_DEF(SparseFlashAttentionAntiquantSingleCoreTensorSizeMla)
 TILING_DATA_FIELD_DEF(uint32_t, mmResUbSize);
 TILING_DATA_FIELD_DEF(uint32_t, bmm2ResUbSize);
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashAttentionAntiquantSingleCoreTensorSizeMlaOp,
-    SparseFlashAttentionAntiquantSingleCoreTensorSizeMla)
+                           SparseFlashAttentionAntiquantSingleCoreTensorSizeMla)
 
 BEGIN_TILING_DATA_DEF(SparseFlashAttentionAntiquantSplitKVParamsMla)
-TILING_DATA_FIELD_DEF(uint32_t, s2)             // S2切分份数
-TILING_DATA_FIELD_DEF(uint32_t, accumOutSize)   // FD workspace
-TILING_DATA_FIELD_DEF(uint32_t, logSumExpSize)  // FD workspace
+TILING_DATA_FIELD_DEF(uint32_t, s2)            // S2切分份数
+TILING_DATA_FIELD_DEF(uint32_t, accumOutSize)  // FD workspace
+TILING_DATA_FIELD_DEF(uint32_t, logSumExpSize) // FD workspace
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashAttentionAntiquantSplitKVParamsMlaOp,
-    SparseFlashAttentionAntiquantSplitKVParamsMla)
+                           SparseFlashAttentionAntiquantSplitKVParamsMla)
 
 // 内切基本块参数
 BEGIN_TILING_DATA_DEF(SparseFlashAttentionAntiquantInnerSplitParams)
@@ -211,7 +211,7 @@ TILING_DATA_FIELD_DEF(uint32_t, mBaseSize)
 TILING_DATA_FIELD_DEF(uint32_t, s2BaseSize)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashAttentionAntiquantInnerSplitParamsOp,
-    SparseFlashAttentionAntiquantInnerSplitParams)
+                           SparseFlashAttentionAntiquantInnerSplitParams)
 
 // 外切分核参数
 BEGIN_TILING_DATA_DEF(SparseFlashAttentionAntiquantOuterSplitParams)
@@ -220,24 +220,30 @@ TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, gS1End)
 TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, s2End)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashAttentionAntiquantOuterSplitParamsOp,
-    SparseFlashAttentionAntiquantOuterSplitParams)
+                           SparseFlashAttentionAntiquantOuterSplitParams)
 
 // FlashDecode规约参数
 BEGIN_TILING_DATA_DEF(SparseFlashAttentionAntiquantFlashDecodeParams)
 TILING_DATA_FIELD_DEF(uint32_t, numOfFdHead)
 TILING_DATA_FIELD_DEF(uint32_t, reserved)
-TILING_DATA_FIELD_DEF(uint32_t, gS1BaseSizeOfFd)                                    // FD负载均衡中，每个FD任务按gS1切分的基本size
-TILING_DATA_FIELD_DEF(uint32_t, usedVecNumOfFd)                                     // FD负载均衡中，用到的vector数
+TILING_DATA_FIELD_DEF(uint32_t, gS1BaseSizeOfFd) // FD负载均衡中，每个FD任务按gS1切分的基本size
+TILING_DATA_FIELD_DEF(uint32_t, usedVecNumOfFd)  // FD负载均衡中，用到的vector数
 TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, bN2IdxOfFdHead)
 TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, gS1IdxOfFdHead)
 TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, s2SplitNumOfFdHead)
 TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, s2SplitStartIdxOfCore)
-TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, gS1SplitNumOfFdHead)          // FD负载均衡中，每个FD任务按gS1基本size切分后的份数
-TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, gS1LastPartSizeOfFdHead)      // FD负载均衡中，每个FD任务按gS1基本size切分后，最后一份的gS1大小，即尾块大小
-TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM * 2, gS1IdxEndOfFdHead)        // FD负载均衡中，每个vector核处理的最后一个FD任务的序号
-TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM * 2, gS1IdxEndOfFdHeadSplit)   // FD负载均衡中，每个vector核处理的最后一个FD任务的子划分的序号
+TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM,
+                          gS1SplitNumOfFdHead) // FD负载均衡中，每个FD任务按gS1基本size切分后的份数
+TILING_DATA_FIELD_DEF_ARR(
+    uint32_t, FIA_MAX_AIC_CORE_NUM,
+    gS1LastPartSizeOfFdHead) // FD负载均衡中，每个FD任务按gS1基本size切分后，最后一份的gS1大小，即尾块大小
+TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM * 2,
+                          gS1IdxEndOfFdHead) // FD负载均衡中，每个vector核处理的最后一个FD任务的序号
+TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM * 2,
+                          gS1IdxEndOfFdHeadSplit) // FD负载均衡中，每个vector核处理的最后一个FD任务的子划分的序号
 END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(SparseFlashAttentionAntiquantFlashDecodeParamsOp, SparseFlashAttentionAntiquantFlashDecodeParams)
+REGISTER_TILING_DATA_CLASS(SparseFlashAttentionAntiquantFlashDecodeParamsOp,
+                           SparseFlashAttentionAntiquantFlashDecodeParams)
 
 BEGIN_TILING_DATA_DEF(SparseFlashAttentionAntiquantTilingDataMla)
 TILING_DATA_FIELD_DEF_STRUCT(SparseFlashAttentionAntiquantBaseParamsMla, baseParams);
@@ -250,9 +256,10 @@ TILING_DATA_FIELD_DEF_STRUCT(SparseFlashAttentionAntiquantFlashDecodeParams, fdP
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashAttentionAntiquant, SparseFlashAttentionAntiquantTilingDataMla)
 
-template <typename T> inline T Align(T num, T rnd)
+template <typename T>
+inline T Align(T num, T rnd)
 {
-    return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
+    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
 template <typename T>
@@ -293,7 +300,7 @@ struct SFAATilingInfo {
     uint32_t vHeadDim = 0;
     uint32_t gSize = 0;
     uint32_t ropeHeadDim = 0;
-    uint32_t qTSize = 0; // 仅TND时生效
+    uint32_t qTSize = 0;  // 仅TND时生效
     uint32_t kvTSize = 0; // 仅TND时生效
     float scaleValue = 0;
     uint32_t sparseShardSize = 0;
@@ -315,7 +322,7 @@ struct SFAATilingInfo {
     bool isSameActualseq = true;
     uint32_t actualLenDimsKV = 0;
     uint32_t sparseLenDimsKV = 0;
-    std::vector<int64_t> kvListSeqLens {};
+    std::vector<int64_t> kvListSeqLens{};
 
     uint32_t sparseMode = 0;
 
@@ -345,7 +352,9 @@ struct SFAATilingInfo {
 // ---------------算子Tiling类---------------
 class SFAAMlaTiling {
 public:
-    explicit SFAAMlaTiling(gert::TilingContext *context) : context_(context) {}
+    explicit SFAAMlaTiling(gert::TilingContext *context)
+        : context_(context)
+    {}
     ge::graphStatus DoOpTiling(SFAATilingInfo *sfaaInfo);
 
 private:
@@ -426,29 +435,32 @@ private:
 // -----------算子Tiling入参信息解析及Check类---------------
 class SFAATilingCheck {
 public:
-    explicit SFAATilingCheck(const SFAATilingInfo &sfaaInfo) : sfaaInfo_(sfaaInfo) {};
+    explicit SFAATilingCheck(const SFAATilingInfo &sfaaInfo)
+        : sfaaInfo_(sfaaInfo) {};
     ~SFAATilingCheck() = default;
     virtual ge::graphStatus Process();
+
 private:
     void Init();
-    void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
-        const ge::DataType &actualDtype, const std::string &name) const;
-    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
-        const std::string &name) const;
-    template <typename T> void LogErrorNumberSupport(const std::vector<T> &expectNumberList,
-        const T &actualValue, const std::string &name, const std::string subName) const;
-    template <typename T> void LogErrorDimNumSupport(const std::vector<T> &expectNumberList,
-        const T &actualValue, const std::string &name) const;
-    ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape,
-        const std::vector<size_t> &expectDimNumList, const std::string &name) const;
-    ge::graphStatus CheckDimNumInLayoutSupport(const SFAALayout &layout,
-        const gert::StorageShape *shape, const std::string &name) const;
-    void LogErrorLayoutSupport(const std::vector<SFAALayout> &expectLayoutList,
-        const SFAALayout &actualLayout, const std::string &name) const;
-    ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected,
-    const SFAATilingShapeCompareParam &param, const SFAALayout &layout) const;
-    ge::graphStatus CompareShape(SFAATilingShapeCompareParam &param,
-        const gert::Shape &shape, const SFAALayout &layout, const std::string &name) const;
+    void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList, const ge::DataType &actualDtype,
+                              const std::string &name) const;
+    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
+    template <typename T>
+    void LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue, const std::string &name,
+                               const std::string subName) const;
+    template <typename T>
+    void LogErrorDimNumSupport(const std::vector<T> &expectNumberList, const T &actualValue,
+                               const std::string &name) const;
+    ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape, const std::vector<size_t> &expectDimNumList,
+                                       const std::string &name) const;
+    ge::graphStatus CheckDimNumInLayoutSupport(const SFAALayout &layout, const gert::StorageShape *shape,
+                                               const std::string &name) const;
+    void LogErrorLayoutSupport(const std::vector<SFAALayout> &expectLayoutList, const SFAALayout &actualLayout,
+                               const std::string &name) const;
+    ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected, const SFAATilingShapeCompareParam &param,
+                                     const SFAALayout &layout) const;
+    ge::graphStatus CompareShape(SFAATilingShapeCompareParam &param, const gert::Shape &shape, const SFAALayout &layout,
+                                 const std::string &name) const;
     ge::graphStatus CheckLayoutSupport(const SFAALayout &actualLayout, const std::string &name) const;
     ge::graphStatus CheckSingleParaQuery() const;
     ge::graphStatus CheckSingleParaKey() const;
@@ -468,15 +480,15 @@ private:
     ge::graphStatus CheckExistsByMap(const std::map<std::string, const void *> &paramMap) const;
     ge::graphStatus CheckNotExistsByMap(const std::map<std::string, const void *> &paramMap) const;
     ge::graphStatus CheckExistenceByMap(std::map<std::string, const void *> &existMap,
-        std::map<std::string, const void *> &notExistMap) const;
-    template <typename T> ge::graphStatus CheckAttrValueByMap(
-        std::map<std::string, std::pair<const T *, T>> &attrMap) const;
+                                        std::map<std::string, const void *> &notExistMap) const;
+    template <typename T>
+    ge::graphStatus CheckAttrValueByMap(std::map<std::string, std::pair<const T *, T>> &attrMap) const;
     ge::graphStatus CheckParaExistenceMlaAntiquant() const;
     ge::graphStatus CheckParaExistenceGqaAntiquant() const;
     ge::graphStatus CheckParaExistenceMla() const;
     ge::graphStatus CheckParaExistence();
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-        const SFAALayout &layout, const std::string &name);
+    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, const SFAALayout &layout,
+                                        const std::string &name);
     void SetSFAAShapeCompare();
     ge::graphStatus CheckKVDType();
     ge::graphStatus CheckKVShapeForBatchContinuous();
@@ -487,8 +499,8 @@ private:
     ge::graphStatus CheckTopK();
     ge::graphStatus CheckTopkShape();
     ge::graphStatus CheckBlockTable() const;
-    ge::graphStatus CheckDTypeConsistency(const ge::DataType &actualDtype,
-    const ge::DataType &expectDtype, const std::string &name) const;
+    ge::graphStatus CheckDTypeConsistency(const ge::DataType &actualDtype, const ge::DataType &expectDtype,
+                                          const std::string &name) const;
 
     ge::graphStatus CheckAttenOut();
     ge::graphStatus CheckAttenOutShape();
@@ -531,7 +543,7 @@ private:
     uint32_t qkHeadDim_ = 0;
     uint32_t vHeadDim_ = 0;
     uint32_t ropeHeadDim_ = 0;
-    uint32_t qTSize_ = 0; // 仅TND时生效
+    uint32_t qTSize_ = 0;  // 仅TND时生效
     uint32_t kvTSize_ = 0; // 仅TND时生效
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     uint32_t sparseBlockCount_ = 0;
@@ -569,15 +581,17 @@ private:
 
 class SFAAInfoParser {
 public:
-    explicit SFAAInfoParser(const gert::TilingContext *context) : context_(context) {}
+    explicit SFAAInfoParser(const gert::TilingContext *context)
+        : context_(context)
+    {}
     ~SFAAInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
 
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-        SFAALayout &layout, const std::string &name);
+    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, SFAALayout &layout,
+                                        const std::string &name);
     ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
@@ -635,7 +649,7 @@ public:
     uint32_t qkHeadDim_ = 0;
     uint32_t vHeadDim_ = 0;
     uint32_t ropeHeadDim_ = 0;
-    uint32_t qTSize_ = 0; // 仅TND时生效
+    uint32_t qTSize_ = 0;  // 仅TND时生效
     uint32_t kvTSize_ = 0; // 仅TND时生效
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     uint32_t sparseBlockCount_ = 0;

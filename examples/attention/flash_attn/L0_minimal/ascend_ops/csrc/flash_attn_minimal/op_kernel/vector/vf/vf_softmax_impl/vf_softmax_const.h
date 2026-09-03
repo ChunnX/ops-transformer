@@ -46,6 +46,6 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitOne = {
 };
 
 #endif
-} // namespace
+} // namespace FaVectorApi
 #endif
 #endif // VF_SOFTMAX_CONST_H

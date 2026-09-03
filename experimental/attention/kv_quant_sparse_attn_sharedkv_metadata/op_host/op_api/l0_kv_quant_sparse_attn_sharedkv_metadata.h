@@ -14,14 +14,14 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* KvQuantSparseAttnSharedkvMetadata(
-    const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional,
-    const aclTensor* cuSeqLensCmpKvOptional, const aclTensor* sequsedQOptional, const aclTensor* sequsedKvOptional,
+const aclTensor *KvQuantSparseAttnSharedkvMetadata(
+    const aclTensor *cuSeqLensQOptional, const aclTensor *cuSeqLensOriKvOptional,
+    const aclTensor *cuSeqLensCmpKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
     int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
     int64_t oriTopK, int64_t cmpTopK, int64_t kvQuantMode, int64_t tileSize, int64_t ropeHeadDim, int64_t cmpRatio,
     int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, char *layoutQOptional,
     char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, const char *socVersion, int64_t aicCoreNum,
-    int64_t aivCoreNum, const aclTensor* metadata, aclOpExecutor* executor);
+    int64_t aivCoreNum, const aclTensor *metadata, aclOpExecutor *executor);
 } // namespace l0op
 
 #endif

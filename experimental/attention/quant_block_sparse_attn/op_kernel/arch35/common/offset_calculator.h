@@ -35,7 +35,6 @@ enum class GmFormat {
     NGTD = 6,
 };
 
-
 template <GmFormat FORMAT>
 struct GmLayout {};
 

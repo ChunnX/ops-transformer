@@ -16,7 +16,6 @@
 #ifndef FLASH_ATTN_TILING_REGBASE_H_
 #define FLASH_ATTN_TILING_REGBASE_H_
 
-
 namespace optiling {
 
 // #if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3510) || (__NPU_ARCH__ == 5102))

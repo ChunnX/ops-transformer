@@ -95,9 +95,9 @@ struct NsaCompressAttentionInferCompileInfo {
     uint32_t inputDataByte = 2;
     ge::DataType inputDataType;
 
-    uint32_t dataNumSingleUb = 1;  // UB空间可处理的最大数据量
+    uint32_t dataNumSingleUb = 1; // UB空间可处理的最大数据量
     uint32_t blockNum = 1;        // 32B对齐使用 //
-    uint32_t cacheLineLen = 1;     // 512B对齐使用
+    uint32_t cacheLineLen = 1;    // 512B对齐使用
 
     uint32_t coreNum = 1;
     uint32_t aivNum = 0;
@@ -110,7 +110,6 @@ struct NsaCompressAttentionInferCompileInfo {
     uint64_t sysWorkspaceSize = 0;
     platform_ascendc::SocVersion socVersion;
 };
-
 
 struct RequiredParaInfo {
     const gert::CompileTimeTensorDesc *desc;
@@ -165,11 +164,10 @@ public:
     ~NCAITiling() = default;
 
     ge::graphStatus GetNCAITiling(NsaCompressAttentionInferContext &ncaiContext,
-                                   NsaCompressAttentionInferTilingData &tilingData, bool isWorkspace = false);
-    ge::graphStatus NSICASetTilingData(gert::TilingContext &context,
-                                       NsaCompressAttentionInferTilingData &tilingData);
-    static ge::graphStatus ConvertContext(gert::TilingContext &context,
-                                          NsaCompressAttentionInferContext &ncaiContext);
+                                  NsaCompressAttentionInferTilingData &tilingData, bool isWorkspace = false);
+    ge::graphStatus NSICASetTilingData(gert::TilingContext &context, NsaCompressAttentionInferTilingData &tilingData);
+    static ge::graphStatus ConvertContext(gert::TilingContext &context, NsaCompressAttentionInferContext &ncaiContext);
+
 private:
     ge::graphStatus GetNpuInfo();
     ge::graphStatus Split();
@@ -266,4 +264,4 @@ private:
 };
 
 } // namespace optiling
-#endif  // NSA_COMPRESS_ATTENTION_INFER_TILING_H
+#endif // NSA_COMPRESS_ATTENTION_INFER_TILING_H

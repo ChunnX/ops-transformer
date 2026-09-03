@@ -27,7 +27,7 @@
 using namespace fa_base_matmul;
 using namespace AttentionCommon;
 
-template <typename FIAT> 
+template <typename FIAT>
 class FiaBlockCubeNonQuantMla {
 public:
     // 中间计算数据类型为float, 高精度模式
@@ -58,8 +58,7 @@ public:
         __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
         __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse);
     __aicore__ inline void InitMm1GlobalTensor(GlobalTensor<MM_OUT_T> mm1ResGm);
-    __aicore__ inline void InitMm2GlobalTensor(GlobalTensor<KV_T> vec1ResGm,
-                                               GlobalTensor<MM_OUT_T> mm2ResGm);
+    __aicore__ inline void InitMm2GlobalTensor(GlobalTensor<KV_T> vec1ResGm, GlobalTensor<MM_OUT_T> mm2ResGm);
     __aicore__ inline void InitBuffers(TPipe *pipe);
 
     __aicore__ inline void AllocEventID();
@@ -68,12 +67,14 @@ public:
     __aicore__ inline void ComputeMm2(const AttentionCommon::RunInfo &info);
 
 protected:
-    template <typename T> __aicore__ inline T Align(T num, T rnd)
+    template <typename T>
+    __aicore__ inline T Align(T num, T rnd)
     {
         return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
     }
 
-    template <typename T> __aicore__ inline size_t BlockAlign(size_t s)
+    template <typename T>
+    __aicore__ inline size_t BlockAlign(size_t s)
     {
         if constexpr (IsSameType<T, int4b_t>::value) {
             return (s + 63) / 64 * 64;
@@ -96,8 +97,8 @@ protected:
     __aicore__ inline void UpdateValue(GlobalTensor<KV_T> valueGm);
     __aicore__ inline void CopyGmToL1(LocalTensor<KV_T> &l1Tensor, GlobalTensor<KV_T> &gmSrcTensor, uint32_t srcN,
                                       uint32_t srcD, uint32_t srcDstride);
-    __aicore__ inline void CopyInMm2AToL1(LocalTensor<KV_T> &aL1Tensor, const AttentionCommon::RunInfo &info, uint32_t mSeqIdx,
-                                          uint32_t subMSizeAct, uint32_t nSize, uint32_t nOffset);
+    __aicore__ inline void CopyInMm2AToL1(LocalTensor<KV_T> &aL1Tensor, const AttentionCommon::RunInfo &info,
+                                          uint32_t mSeqIdx, uint32_t subMSizeAct, uint32_t nSize, uint32_t nOffset);
 
 protected:
     // key和value的TensorList原始地址
@@ -121,6 +122,7 @@ protected:
 
     GlobalTensor<uint64_t> actualSeqLengthsGmQ;
     GlobalTensor<uint64_t> actualSeqLengthsGm;
+
 private:
     FaGmTensor<Q_T, Q_FORMAT> queryGmTensor;
     FaGmTensor<Q_T, Q_FORMAT> queryRopeGmTensor;
@@ -190,21 +192,23 @@ private:
     uint32_t cL0BufIter = 0;
 };
 
-template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::InitParams(const ConstInfo &constInfo)
+template <typename FIAT>
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::InitParams(const ConstInfo &constInfo)
 {
     this->constInfo = constInfo;
 }
 
-template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::Init(
-        __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
-        __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-        __gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
-        __gm__ uint8_t *quantOffset2, __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
-        __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-        __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset, __gm__ uint8_t *valueAntiquantScale,
-        __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
-        __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-        __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse)
+template <typename FIAT>
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::Init(
+    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
+    __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
+    __gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
+    __gm__ uint8_t *quantOffset2, __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
+    __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+    __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset, __gm__ uint8_t *valueAntiquantScale,
+    __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
+    __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
+    __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse)
 {
     queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
     qRopeGm.SetGlobalBuffer((__gm__ Q_T *)queryRope);
@@ -229,8 +233,8 @@ template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::I
                                             constInfo.qSeqSize, qkTensorD, actualSeqLengthsGmQ,
                                             constInfo.actualLenQDims);
         queryRopeGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize,
-                                            constInfo.qSeqSize, constInfo.headDimRope, actualSeqLengthsGmQ,
-                                            constInfo.actualLenQDims);
+                                                constInfo.qSeqSize, constInfo.headDimRope, actualSeqLengthsGmQ,
+                                                constInfo.actualLenQDims);
     } else if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
         queryGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.gSize, qkTensorD, actualSeqLengthsGmQ,
                                             constInfo.actualLenQDims);
@@ -247,10 +251,10 @@ template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::I
             valueGmTensor.gmTensor = valueGm;
             if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
                 keyGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.kvSeqSize,
-                                                    qkTensorD, actualSeqLengthsGm, constInfo.actualLenDims);
+                                                  qkTensorD, actualSeqLengthsGm, constInfo.actualLenDims);
             } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
                 keyGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, qkTensorD, actualSeqLengthsGm,
-                                                    constInfo.actualLenDims);
+                                                  constInfo.actualLenDims);
             }
         }
         valueGmTensor.gmTensor = valueGm;
@@ -265,49 +269,49 @@ template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::I
     }
 
     // init rope params
-        if (constInfo.ropeSplitMode) {
+    if (constInfo.ropeSplitMode) {
         // query rope
-            queryRopeGmTensor.gmTensor = qRopeGm;
-            if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
-                queryRopeGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize,
-                                                        constInfo.qSeqSize, constInfo.headDimRope, actualSeqLengthsGmQ,
-                                                        constInfo.actualLenQDims);
-            } else if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
-                queryRopeGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.gSize, constInfo.headDimRope,
-                                                        actualSeqLengthsGmQ, constInfo.actualLenQDims);
-            }
+        queryRopeGmTensor.gmTensor = qRopeGm;
+        if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
+            queryRopeGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize,
+                                                    constInfo.qSeqSize, constInfo.headDimRope, actualSeqLengthsGmQ,
+                                                    constInfo.actualLenQDims);
+        } else if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
+            queryRopeGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.gSize, constInfo.headDimRope,
+                                                    actualSeqLengthsGmQ, constInfo.actualLenQDims);
+        }
 
         // key rope
         keyRopeGmTensor.gmTensor = kRopeGm;
 
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
             keyRopeGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.kvSeqSize,
-                                                    constInfo.headDimRope, actualSeqLengthsGm, constInfo.actualLenDims);
+                                                  constInfo.headDimRope, actualSeqLengthsGm, constInfo.actualLenDims);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
-            keyRopeGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.headDimRope,
-                                                    actualSeqLengthsGm, constInfo.actualLenDims);
+            keyRopeGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.headDimRope, actualSeqLengthsGm,
+                                                  constInfo.actualLenDims);
         }
     }
 }
 
 template <typename FIAT>
-__aicore__ inline void
-FiaBlockCubeNonQuantMla<FIAT>::InitMm1GlobalTensor(GlobalTensor<MM_OUT_T> mm1ResGm)
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::InitMm1GlobalTensor(GlobalTensor<MM_OUT_T> mm1ResGm)
 {
     // mm1
     this->mm1ResGm = mm1ResGm;
 }
 
 template <typename FIAT>
-__aicore__ inline void
-FiaBlockCubeNonQuantMla<FIAT>::InitMm2GlobalTensor(GlobalTensor<KV_T> vec1ResGm, GlobalTensor<MM_OUT_T> mm2ResGm)
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::InitMm2GlobalTensor(GlobalTensor<KV_T> vec1ResGm,
+                                                                          GlobalTensor<MM_OUT_T> mm2ResGm)
 {
     // mm2
     this->vec1ResGm = vec1ResGm;
     this->mm2ResGm = mm2ResGm;
 }
 
-template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::InitBuffers(TPipe *pipe)
+template <typename FIAT>
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::InitBuffers(TPipe *pipe)
 {
 #ifdef BASE_MM
     l1BufferManager.Init(pipe, 524288);                // L1 total size
@@ -332,15 +336,17 @@ template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::I
     cL0TensorPingPong = tmpBufL0C.Get<MM_OUT_T>();
 }
 
-template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::InitKeyGm(uint32_t bIdx)
+template <typename FIAT>
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::InitKeyGm(uint32_t bIdx)
 {
     ListTensorDesc keyListTensorDesc((__gm__ void *)keyPtr);
     __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
 
     keyGm.SetGlobalBuffer((__gm__ KV_T *)key_);
 }
- 
-template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::InitValueGm(uint32_t bIdx)
+
+template <typename FIAT>
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::InitValueGm(uint32_t bIdx)
 {
     ListTensorDesc valueListTensorDesc((__gm__ void *)valuePtr);
     __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
@@ -348,17 +354,20 @@ template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::I
     valueGm.SetGlobalBuffer((__gm__ KV_T *)value_);
 }
 
-template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::UpdateKey(GlobalTensor<KV_T> keyGm)
+template <typename FIAT>
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::UpdateKey(GlobalTensor<KV_T> keyGm)
 {
     this->keyGm = keyGm;
 }
 
-template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::UpdateValue(GlobalTensor<KV_T> valueGm)
+template <typename FIAT>
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::UpdateValue(GlobalTensor<KV_T> valueGm)
 {
     this->valueGm = valueGm;
 }
 
-template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::AllocEventID()
+template <typename FIAT>
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::AllocEventID()
 {
     CrossCoreSetFlag<ConstInfo::FIA_SYNC_MODE2, PIPE_FIX>(constInfo.syncC2V1);
 #ifdef BASE_MM
@@ -373,7 +382,8 @@ template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::A
 #endif
 }
 
-template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::FreeEventID()
+template <typename FIAT>
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::FreeEventID()
 {
 #ifdef BASE_MM
     l1KV3Buffers.Uninit(l1BufferManager);
@@ -411,7 +421,8 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::CopyGmToL1(LocalTensor<KV_
 }
 
 template <typename FIAT>
-__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::CopyInMm2AToL1(LocalTensor<KV_T> &aL1Tensor, const AttentionCommon::RunInfo &info,
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::CopyInMm2AToL1(LocalTensor<KV_T> &aL1Tensor,
+                                                                     const AttentionCommon::RunInfo &info,
                                                                      uint32_t mSeqIdx, uint32_t subMSizeAct,
                                                                      uint32_t nSize, uint32_t nOffset)
 {
@@ -460,7 +471,8 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ComputeMm2(const RunInfo &
 }
 
 template <typename FIAT>
-__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const AttentionCommon::RunInfo &info, const MSplitInfo mSplitInfo)
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const AttentionCommon::RunInfo &info,
+                                                                 const MSplitInfo mSplitInfo)
 {
     // 最外层还需要一层m的循环
     uint32_t mSize = mSplitInfo.nBufferDealM;
@@ -475,7 +487,7 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
 
     uint32_t kSize = 576;
     uint32_t kL1Size = MM1_K_L1_SPLIT_SIZE; // 288
-    uint32_t kL1Loops = 2; // 2 : 576/288, mla专用 这里不考虑d泛化
+    uint32_t kL1Loops = 2;                  // 2 : 576/288, mla专用 这里不考虑d泛化
 
     uint32_t kL0Size = 96;
     uint32_t kL0Loops = (kL1Size + kL0Size - 1) / kL0Size; // 288 / 96 = 3 kloops
@@ -512,11 +524,8 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
             bL1Tensor = l1KVTensor[kb * L1_BLOCK_OFFSET];
 #endif
             if (kL1 == 0) {
-                FaL1Tensor<KV_T, L1Format::NZ> dstTensor {
-                    .tensor = bL1Tensor,
-                    .rowCount = nL1SizeAlign
-                };
-                GmKvCoord gmCoord {
+                FaL1Tensor<KV_T, L1Format::NZ> dstTensor{.tensor = bL1Tensor, .rowCount = nL1SizeAlign};
+                GmKvCoord gmCoord{
                     .bIdx = constInfo.batchContinuous ? info.bIdx : 0,
                     .n2Idx = info.n2Idx,
                     .s2Idx = info.s2BatchOffset + nL1 * N_L1_SPLIT_SIZE,
@@ -524,11 +533,10 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
                     .s2DealSize = nL1Size,
                     .dDealSize = 256 // D方向上切256
                 };
-                FaL1Tensor<KV_T, L1Format::NZ> dstRopeTensor {
+                FaL1Tensor<KV_T, L1Format::NZ> dstRopeTensor{
                     .tensor = bL1Tensor[nL1SizeAlign * (BlockAlign<KV_T>(constInfo.headDim) >> 1)],
-                    .rowCount = nL1SizeAlign
-                };
-                GmKvCoord gmCoordKRope {
+                    .rowCount = nL1SizeAlign};
+                GmKvCoord gmCoordKRope{
                     .bIdx = constInfo.batchContinuous ? info.bIdx : 0,
                     .n2Idx = info.n2Idx,
                     .s2Idx = info.s2BatchOffset + nL1 * N_L1_SPLIT_SIZE,
@@ -539,11 +547,8 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
                 copyKvGmToL1(dstTensor, keyGmTensor, gmCoord);
                 copyKvGmToL1(dstRopeTensor, keyRopeGmTensor, gmCoordKRope);
             } else {
-                FaL1Tensor<KV_T, L1Format::NZ> dstRopeTensor {
-                    .tensor = bL1Tensor,
-                    .rowCount = nL1SizeAlign
-                };
-                GmKvCoord gmCoordKRope {
+                FaL1Tensor<KV_T, L1Format::NZ> dstRopeTensor{.tensor = bL1Tensor, .rowCount = nL1SizeAlign};
+                GmKvCoord gmCoordKRope{
                     .bIdx = constInfo.batchContinuous ? info.bIdx : 0,
                     .n2Idx = info.n2Idx,
                     .s2Idx = info.s2BatchOffset + nL1 * N_L1_SPLIT_SIZE,
@@ -551,11 +556,9 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
                     .s2DealSize = nL1Size,
                     .dDealSize = 32U // D方向上切32
                 };
-                FaL1Tensor<KV_T, L1Format::NZ> dstTensor {
-                    .tensor = bL1Tensor[32U * nL1SizeAlign],
-                    .rowCount = nL1SizeAlign
-                };
-                GmKvCoord gmCoord {
+                FaL1Tensor<KV_T, L1Format::NZ> dstTensor{.tensor = bL1Tensor[32U * nL1SizeAlign],
+                                                         .rowCount = nL1SizeAlign};
+                GmKvCoord gmCoord{
                     .bIdx = constInfo.batchContinuous ? info.bIdx : 0,
                     .n2Idx = info.n2Idx,
                     .s2Idx = info.s2BatchOffset + nL1 * N_L1_SPLIT_SIZE,
@@ -599,34 +602,25 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
 #else
                 LocalTensor<Q_T> aL1Tensor =
                     l1QPTensor[ka * L1_BLOCK_OFFSET + (1 - kL1) * aL1PaddingSize]; // kL1=0时需要偏移
-                if (nL1 == 0) { // mL1=0, mL1=1两次
+                if (nL1 == 0) {                                                    // mL1=0, mL1=1两次
 #endif
                     if (kL1 == 0) {
-                        FaL1Tensor<Q_T, L1Format::NZ> dstTensor {
-                            .tensor = aL1Tensor,
-                            .rowCount = Align(mL1Size, 16U)
-                        };
-                        GmCoord gmCoord {
-                            .bIdx = info.bIdx,
-                            .n2Idx = info.n2Idx,
-                            .gS1Idx = info.gS1Idx + mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE,
-                            .dIdx = kL1 * 256,
-                            .gS1DealSize = mL1Size,
-                            .dDealSize = 256
-                        };
+                        FaL1Tensor<Q_T, L1Format::NZ> dstTensor{.tensor = aL1Tensor, .rowCount = Align(mL1Size, 16U)};
+                        GmCoord gmCoord{.bIdx = info.bIdx,
+                                        .n2Idx = info.n2Idx,
+                                        .gS1Idx = info.gS1Idx + mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE,
+                                        .dIdx = kL1 * 256,
+                                        .gS1DealSize = mL1Size,
+                                        .dDealSize = 256};
                         LocalTensor<Q_T> qRopeTensor = aL1Tensor[mL1SizeAlign * 256];
-                        FaL1Tensor<Q_T, L1Format::NZ> dstRopeTensor {
-                            .tensor = aL1Tensor[mL1SizeAlign * 256],
-                            .rowCount = Align(mL1Size, 16U)
-                        };
-                        GmCoord gmCoordQRope {
-                            .bIdx = info.bIdx,
-                            .n2Idx = info.n2Idx,
-                            .gS1Idx = info.gS1Idx + mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE,
-                            .dIdx = 0,
-                            .gS1DealSize = mL1Size,
-                            .dDealSize = 64
-                        };
+                        FaL1Tensor<Q_T, L1Format::NZ> dstRopeTensor{.tensor = aL1Tensor[mL1SizeAlign * 256],
+                                                                    .rowCount = Align(mL1Size, 16U)};
+                        GmCoord gmCoordQRope{.bIdx = info.bIdx,
+                                             .n2Idx = info.n2Idx,
+                                             .gS1Idx = info.gS1Idx + mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE,
+                                             .dIdx = 0,
+                                             .gS1DealSize = mL1Size,
+                                             .dDealSize = 64};
 #ifdef BASE_MM
                         auto mm1ANextK = l1QP4Buffers.PeekNextK();
                         mm1A.Wait<HardEvent::MTE1_MTE2>();
@@ -639,21 +633,18 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
                         WaitFlag<HardEvent::MTE1_MTE2>(mte21QPIds[ka + 1]);
                         copyQueryGmToL1(dstTensor, queryGmTensor, gmCoord);
                         // 由于L1里面是NZ, 这里q rope的偏移为整块q nope切k的后大小, 256为headDim的一半
-                        copyQueryGmToL1(dstRopeTensor, queryRopeGmTensor, gmCoordQRope); 
+                        copyQueryGmToL1(dstRopeTensor, queryRopeGmTensor, gmCoordQRope);
 #endif
                     } else {
-                        FaL1Tensor<Q_T, L1Format::NZ> dstTensor {
+                        FaL1Tensor<Q_T, L1Format::NZ> dstTensor{
                             .tensor = aL1Tensor[mL1SizeAlign * 32], // 32 : rope headDim的一半
-                            .rowCount = Align(mL1Size, 16U)
-                        };
-                        GmCoord gmCoord {
-                            .bIdx = info.bIdx,
-                            .n2Idx = info.n2Idx,
-                            .gS1Idx = info.gS1Idx + mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE,
-                            .dIdx = kL1 * 256,
-                            .gS1DealSize = mL1Size,
-                            .dDealSize = 256
-                        };
+                            .rowCount = Align(mL1Size, 16U)};
+                        GmCoord gmCoord{.bIdx = info.bIdx,
+                                        .n2Idx = info.n2Idx,
+                                        .gS1Idx = info.gS1Idx + mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE,
+                                        .dIdx = kL1 * 256,
+                                        .gS1DealSize = mL1Size,
+                                        .dDealSize = 256};
                         copyQueryGmToL1(dstTensor, queryGmTensor, gmCoord);
                     }
 #ifdef BASE_MM
@@ -688,11 +679,11 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
                 param.isLeftTranspose = false;
                 param.isRightTranspose = false;
                 param.isOutKFisrt = (kL1 == 0) ? true : false;
-                param.unitFlag = (kL1 == kL1Loops - 1) ? fa_base_matmul::UNITFLAG_EN_OUTER_LAST :
-                                 fa_base_matmul::UNITFLAG_ENABLE;
+                param.unitFlag =
+                    (kL1 == kL1Loops - 1) ? fa_base_matmul::UNITFLAG_EN_OUTER_LAST : fa_base_matmul::UNITFLAG_ENABLE;
                 fa_base_matmul::MatmulKPP<Q_T, KV_T, MM_OUT_T, M_L1_SPLIT_SIZE, N_L1_SPLIT_SIZE, MM1_K_L0_SPLIT_SIZE,
                                           fa_base_matmul::ABLayout::MK, fa_base_matmul::ABLayout::NK>(
-                                          aL1Tensor, bL1Tensor, mmL0ABuffers, mmL0BBuffers, cL0Tensor, param);
+                    aL1Tensor, bL1Tensor, mmL0ABuffers, mmL0BBuffers, cL0Tensor, param);
 #else
                 fa_base_matmul::MMParam param;
                 param.singleM = mL1SizeAlign;
@@ -701,11 +692,11 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
                 param.isLeftTranspose = false;
                 param.isRightTranspose = false;
                 param.isOutKFisrt = (kL1 == 0) ? true : false;
-                param.unitFlag = (kL1 == kL1Loops - 1) ? fa_base_matmul::UNITFLAG_EN_OUTER_LAST :
-                                 fa_base_matmul::UNITFLAG_ENABLE;
+                param.unitFlag =
+                    (kL1 == kL1Loops - 1) ? fa_base_matmul::UNITFLAG_EN_OUTER_LAST : fa_base_matmul::UNITFLAG_ENABLE;
                 fa_base_matmul::MatmulKPP<Q_T, KV_T, MM_OUT_T, M_L1_SPLIT_SIZE, N_L1_SPLIT_SIZE, MM1_K_L0_SPLIT_SIZE,
                                           fa_base_matmul::ABLayout::MK, fa_base_matmul::ABLayout::NK>(
-                                          aL1Tensor, bL1Tensor, mmL0ABuffers, mmL0BBuffers, cL0Tensor, param);
+                    aL1Tensor, bL1Tensor, mmL0ABuffers, mmL0BBuffers, cL0Tensor, param);
 #endif
 
                 if (nL1 == (nL1Loops - 1)) {
@@ -726,10 +717,11 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
                     fixParams.ndNum = 1; // 输出ND
 
                     // 输出偏移info.loop % (constInfo.preLoadNum)) * mmResUbSize是否在matmul里计算
-                    Fixpipe(mm1ResGm[(info.loop % (constInfo.preLoadNum)) * constInfo.mmResUbSize + nL1 * N_L1_SPLIT_SIZE +
-                                     (mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE) *
-                                         info.actualSingleProcessSInnerSizeAlign],
-                            cL0Tensor, fixParams);
+                    Fixpipe(
+                        mm1ResGm[(info.loop % (constInfo.preLoadNum)) * constInfo.mmResUbSize + nL1 * N_L1_SPLIT_SIZE +
+                                 (mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE) *
+                                     info.actualSingleProcessSInnerSizeAlign],
+                        cL0Tensor, fixParams);
                 }
                 if (mL1Loops == 2) {
                     cL0BufIter++;
@@ -749,7 +741,8 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
 }
 
 template <typename FIAT>
-__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm2(const AttentionCommon::RunInfo &info, const MSplitInfo mSplitInfo)
+__aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm2(const AttentionCommon::RunInfo &info,
+                                                                 const MSplitInfo mSplitInfo)
 {
     uint32_t mSize = mSplitInfo.nBufferDealM;
     uint32_t mSizeAlign = (mSize + 16 - 1) / 16;
@@ -818,18 +811,14 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm2(const Attention
                     kL0Size = kL1Size - (kL0Loops - 1U) * kL0Size;
                     kL0SizeAlign = Align(kL0Size, 16U);
                 }
-                FaL1Tensor<KV_T, L1Format::NZ> dstTensor {
-                    .tensor = bL1Tensor[(kL1 - kOffset) * 128U * N_L1_SPLIT_SIZE],
-                    .rowCount = kL0SizeAlign
-                };
-                GmKvCoord gmCoord {
-                    .bIdx = constInfo.batchContinuous ? info.bIdx : 0,
-                    .n2Idx = info.n2Idx,
-                    .s2Idx = info.s2BatchOffset + (kL1 - kOffset) * 128U + k1 * 256U,
-                    .dIdx = nL1 * N_L1_SPLIT_SIZE,
-                    .s2DealSize = kL0Size,
-                    .dDealSize = N_L1_SPLIT_SIZE
-                };
+                FaL1Tensor<KV_T, L1Format::NZ> dstTensor{.tensor = bL1Tensor[(kL1 - kOffset) * 128U * N_L1_SPLIT_SIZE],
+                                                         .rowCount = kL0SizeAlign};
+                GmKvCoord gmCoord{.bIdx = constInfo.batchContinuous ? info.bIdx : 0,
+                                  .n2Idx = info.n2Idx,
+                                  .s2Idx = info.s2BatchOffset + (kL1 - kOffset) * 128U + k1 * 256U,
+                                  .dIdx = nL1 * N_L1_SPLIT_SIZE,
+                                  .s2DealSize = kL0Size,
+                                  .dDealSize = N_L1_SPLIT_SIZE};
                 copyKvGmToL1(dstTensor, valueGmTensor, gmCoord);
             }
 #ifdef BASE_MM
@@ -902,11 +891,11 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm2(const Attention
                 param.isLeftTranspose = false;
                 param.isRightTranspose = false;
                 param.isOutKFisrt = (k1 == 0) ? true : false;
-                param.unitFlag = (k1 == kL1Loops - 1) ? fa_base_matmul::UNITFLAG_EN_OUTER_LAST :
-                                 fa_base_matmul::UNITFLAG_ENABLE;
+                param.unitFlag =
+                    (k1 == kL1Loops - 1) ? fa_base_matmul::UNITFLAG_EN_OUTER_LAST : fa_base_matmul::UNITFLAG_ENABLE;
                 fa_base_matmul::MatmulKPP<KV_T, KV_T, MM_OUT_T, M_L1_SPLIT_SIZE, N_L1_SPLIT_SIZE, MM2_K_L0_SPLIT_SIZE,
                                           fa_base_matmul::ABLayout::MK, fa_base_matmul::ABLayout::KN>(
-                                          aL1Tensor, bL1Tensor, mmL0ABuffers, mmL0BBuffers, cL0Tensor, param);
+                    aL1Tensor, bL1Tensor, mmL0ABuffers, mmL0BBuffers, cL0Tensor, param);
 
                 if (nL1 == (nL1Loops - 1)) {
 #ifdef BASE_MM
@@ -937,9 +926,11 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm2(const Attention
                     fixParams.unitFlag = 0b11;
                     fixParams.ndNum = 1; // 输出ND
                     uint32_t mStart = mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE;
-                    uint64_t mm2Offset = (mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE) * nSize + nL1 * N_L1_SPLIT_SIZE;
-                    Fixpipe(mm2ResGm[(info.bn2IdxInCurCore % (constInfo.preLoadNum)) * constInfo.bmm2ResUbSize + mm2Offset],
-                            cL0Tensor, fixParams);
+                    uint64_t mm2Offset =
+                        (mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE) * nSize + nL1 * N_L1_SPLIT_SIZE;
+                    Fixpipe(
+                        mm2ResGm[(info.bn2IdxInCurCore % (constInfo.preLoadNum)) * constInfo.bmm2ResUbSize + mm2Offset],
+                        cL0Tensor, fixParams);
 
                     if (!info.isFirstSInnerLoop) {
                         SetAtomicNone();

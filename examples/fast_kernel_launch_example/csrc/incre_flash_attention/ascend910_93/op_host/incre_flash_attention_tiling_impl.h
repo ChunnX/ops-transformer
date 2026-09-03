@@ -361,7 +361,6 @@ private:
     at::ScalarType inputKvType_ = at::ScalarType::Half; // float16
     at::ScalarType outputType_ = at::ScalarType::Half;  // float16
 
-
     size_t ubSize_ = 0;
     size_t l1Size_ = 0;
     size_t l0cSize_ = 0;

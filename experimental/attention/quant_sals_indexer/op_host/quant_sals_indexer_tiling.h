@@ -25,7 +25,7 @@
 #include "platform/platform_info.h"
 
 namespace optiling {
-const uint32_t NCAI_MAX_AIC_CORE_NUM = 24;      // 样例代码，当前仅支持核数24
+const uint32_t NCAI_MAX_AIC_CORE_NUM = 24; // 样例代码，当前仅支持核数24
 // ------------------公共定义--------------------------
 struct TilingRequiredParaInfo {
     const gert::CompileTimeTensorDesc *desc;
@@ -119,7 +119,7 @@ struct QSiParaInfo {
     TilingOptionalParaInfo actualSeqLengths = {nullptr, nullptr};
     TilingOptionalParaInfo blockTable = {nullptr, nullptr};
     TilingRequiredParaInfo sparseIndices = {nullptr, nullptr};
-    
+
     const char *layOutKey = nullptr;
     const int32_t *blockSize = nullptr;
     const int32_t *maxSeqlenKey = nullptr;
@@ -127,7 +127,7 @@ struct QSiParaInfo {
     const float *sparseRatio = nullptr;
     const int32_t *fixedTailCount = nullptr;
 };
-  
+
 // -----------算子Tiling入参信息类---------------
 class QSITilingInfo {
 public:
@@ -160,9 +160,9 @@ public:
 // -----------算子Tiling入参信息解析及Check类---------------
 class QSIInfoParser {
 public:
-    explicit QSIInfoParser(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit QSIInfoParser(gert::TilingContext *context)
+        : context_(context)
+    {}
     ~QSIInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
@@ -227,9 +227,11 @@ public:
 // ---------------算子Tiling类---------------
 class QuantSalsIndexerTiling {
 public:
-    explicit QuantSalsIndexerTiling(gert::TilingContext *context) : context_(context){};
+    explicit QuantSalsIndexerTiling(gert::TilingContext *context)
+        : context_(context) {};
     ge::graphStatus DoTiling(QSITilingInfo *tilingInfo);
     void SplitCoreBN(uint32_t coreNum, QSITilingInfo *siInfo, SplitParams splitParams);
+
 private:
     gert::TilingContext *context_ = nullptr;
     QSITilingData tilingData_;

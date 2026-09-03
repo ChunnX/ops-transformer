@@ -17,32 +17,18 @@ namespace l0op {
 
 OP_TYPE_REGISTER(NsaCompressAttentionInfer);
 
-const std::array<const aclTensor *, 2>
-NsaCompressAttentionInfer(const aclTensor *query,
-    const aclTensor *key,
-    const aclTensor *value,
-    const aclTensor *attentionMaskOptional,
-    const aclTensor *blockTableOptional,
-    const aclIntArray *actualQSeqLenOptional,
-    const aclIntArray *actualCmpKvSeqLenOptional,
-    const aclIntArray *actualSelKvSeqLenOptional,
-    const aclTensor *topKMaskOptional,
-    int64_t numHeads,
-    int64_t numKeyValueHeads,
-    int64_t selectBlockSize,
-    int64_t selectBlockCount,
-    int64_t compressBlockSize,
-    int64_t compressBlockStride,
-    double scaleValue,
-    const char *layoutOptional,
-    int64_t pageBlockSize,
-    int64_t sparseMode,
-    aclOpExecutor *executor)
+const std::array<const aclTensor *, 2> NsaCompressAttentionInfer(
+    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *attentionMaskOptional,
+    const aclTensor *blockTableOptional, const aclIntArray *actualQSeqLenOptional,
+    const aclIntArray *actualCmpKvSeqLenOptional, const aclIntArray *actualSelKvSeqLenOptional,
+    const aclTensor *topKMaskOptional, int64_t numHeads, int64_t numKeyValueHeads, int64_t selectBlockSize,
+    int64_t selectBlockCount, int64_t compressBlockSize, int64_t compressBlockStride, double scaleValue,
+    const char *layoutOptional, int64_t pageBlockSize, int64_t sparseMode, aclOpExecutor *executor)
 {
     L0_DFX(NsaCompressAttentionInfer, query, key, value, attentionMaskOptional, blockTableOptional,
-        actualQSeqLenOptional, actualCmpKvSeqLenOptional, actualSelKvSeqLenOptional, topKMaskOptional, numHeads,
-        numKeyValueHeads, selectBlockSize, selectBlockCount, compressBlockSize, compressBlockStride, scaleValue,
-        layoutOptional, pageBlockSize, sparseMode);
+           actualQSeqLenOptional, actualCmpKvSeqLenOptional, actualSelKvSeqLenOptional, topKMaskOptional, numHeads,
+           numKeyValueHeads, selectBlockSize, selectBlockCount, compressBlockSize, compressBlockStride, scaleValue,
+           layoutOptional, pageBlockSize, sparseMode);
 
     if (attentionMaskOptional == nullptr) {
         attentionMaskOptional = executor->AllocTensor(DataType::DT_BOOL, Format::FORMAT_ND, Format::FORMAT_ND);
@@ -81,25 +67,25 @@ NsaCompressAttentionInfer(const aclTensor *query,
     auto output = executor->AllocTensor(query->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
     auto topKOutput = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
 
-    auto ret = INFER_SHAPE(NsaCompressAttentionInfer,
-                           OP_INPUT(query, key, value, attentionMaskOptional, blockTableOptional, actualSeqQLen,
-                                    actualCmpSeqKvLen, actualSelKvLen, topKMaskOptional),
-                           OP_OUTPUT(output, topKOutput),
-                           OP_ATTR(numHeads, numKeyValueHeads, selectBlockSize, selectBlockCount, compressBlockSize,
-                                   compressBlockStride, static_cast<float>(scaleValue), layoutOptional, pageBlockSize,
-                                   sparseMode));
+    auto ret = INFER_SHAPE(
+        NsaCompressAttentionInfer,
+        OP_INPUT(query, key, value, attentionMaskOptional, blockTableOptional, actualSeqQLen, actualCmpSeqKvLen,
+                 actualSelKvLen, topKMaskOptional),
+        OP_OUTPUT(output, topKOutput),
+        OP_ATTR(numHeads, numKeyValueHeads, selectBlockSize, selectBlockCount, compressBlockSize, compressBlockStride,
+                static_cast<float>(scaleValue), layoutOptional, pageBlockSize, sparseMode));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "NsaCompressAttentionInfer InferShape failed.");
         return {nullptr, nullptr};
     }
 
-    ADD_TO_LAUNCHER_LIST_AICORE(NsaCompressAttentionInfer,
-                                OP_INPUT(query, key, value, attentionMaskOptional, blockTableOptional, actualSeqQLen,
-                                         actualCmpSeqKvLen, actualSelKvLen, topKMaskOptional),
-                                OP_OUTPUT(output, topKOutput),
-                                OP_ATTR(numHeads, numKeyValueHeads, selectBlockSize, selectBlockCount,
-                                        compressBlockSize, compressBlockStride, static_cast<float>(scaleValue),
-                                        layoutOptional, pageBlockSize, sparseMode));
+    ADD_TO_LAUNCHER_LIST_AICORE(
+        NsaCompressAttentionInfer,
+        OP_INPUT(query, key, value, attentionMaskOptional, blockTableOptional, actualSeqQLen, actualCmpSeqKvLen,
+                 actualSelKvLen, topKMaskOptional),
+        OP_OUTPUT(output, topKOutput),
+        OP_ATTR(numHeads, numKeyValueHeads, selectBlockSize, selectBlockCount, compressBlockSize, compressBlockStride,
+                static_cast<float>(scaleValue), layoutOptional, pageBlockSize, sparseMode));
     return {output, topKOutput};
 }
 

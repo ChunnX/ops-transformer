@@ -43,9 +43,9 @@ class FiaTilingBase {
 public:
     FiaTilingBase() = default;
 
-    explicit FiaTilingBase(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit FiaTilingBase(gert::TilingContext *context)
+        : context_(context)
+    {}
 
     virtual ~FiaTilingBase() = default;
 
@@ -86,8 +86,8 @@ protected:
     [[nodiscard]] ge::graphStatus SetWorkspaceSize(uint64_t workspaceSize) const
     {
         OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr,
-            OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "workSpaceSize got from ge is nullptr"),
-            return ge::GRAPH_FAILED);
+                    OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "workSpaceSize got from ge is nullptr"),
+                    return ge::GRAPH_FAILED);
         size_t *workSpaces = context_->GetWorkspaceSizes(1);
         workSpaces[0] = workspaceSize;
         return ge::GRAPH_SUCCESS;
@@ -95,7 +95,8 @@ protected:
 
     [[nodiscard]] ge::graphStatus SetTilingData(TilingDef &tilingData) const
     {
-        OP_CHECK_IF(context_->GetRawTilingData() == nullptr,
+        OP_CHECK_IF(
+            context_->GetRawTilingData() == nullptr,
             OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "RawTilingData got from GE context is nullptr."),
             return ge::GRAPH_FAILED);
 

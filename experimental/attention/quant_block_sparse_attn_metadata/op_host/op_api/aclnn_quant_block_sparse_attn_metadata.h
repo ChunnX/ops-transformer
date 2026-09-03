@@ -25,8 +25,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnQuantBlockSparseAttnMeta
     const char *layoutSparseIndicesOptional, const aclTensor *metadata, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
-__attribute__((visibility("default"))) aclnnStatus aclnnQuantBlockSparseAttnMetadata(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnQuantBlockSparseAttnMetadata(void *workspace,
+                                                                                     uint64_t workspaceSize,
+                                                                                     aclOpExecutor *executor,
+                                                                                     aclrtStream stream);
 
 #ifdef __cplusplus
 }

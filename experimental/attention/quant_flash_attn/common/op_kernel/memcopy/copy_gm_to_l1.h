@@ -155,7 +155,6 @@ private:
         uint64_t queryGmbaseOffset =
             offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, 0, s1IdxStart, gmCoord.dIdx);
 
-
         if (offsetCalculator.GetDimG() == 1) {
             CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[queryGmbaseOffset], s1IdxEnd - s1IdxStart,
                                    gmCoord.dDealSize, offsetCalculator.GetStrideS1(), dstTensor.rowCount);

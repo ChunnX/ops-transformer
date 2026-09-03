@@ -21,16 +21,8 @@
 
 namespace Catlass::Epilogue::Block {
 
-template <
-    class OutputType_,
-    class InputType_,
-    class MaskType_>
-class BlockEpilogue<
-    EpilogueAtlasA2MLATP1Softmax,
-    OutputType_,
-    InputType_,
-    MaskType_>
-{
+template <class OutputType_, class InputType_, class MaskType_>
+class BlockEpilogue<EpilogueAtlasA2MLATP1Softmax, OutputType_, InputType_, MaskType_> {
 public:
     // Type aliases
     using ElementOutput = typename OutputType_::Element;
@@ -142,7 +134,7 @@ public:
         }
         uint64_t subMask = ((uint64_t)1 << len) - 1;
         uint64_t maskValue = subMask;
-        for (int i = 1; i < VECTOR_MASK_WIDTH / VECTOR_OPERAND_WIDTH; i++){
+        for (int i = 1; i < VECTOR_MASK_WIDTH / VECTOR_OPERAND_WIDTH; i++) {
             maskValue += subMask << (i * VECTOR_OPERAND_WIDTH);
         }
 
@@ -183,7 +175,8 @@ public:
                                               1, 1, SRC_REP_STRIDE_8);
         AscendC::PipeBarrier<PIPE_V>();
         SetVecMask(ROW_OPS_SPEC_MASK_32);
-        AscendC::BlockReduceSum<float, false>(tvUbTensor[REDUCE_UB_SIZE], tvUbTensor, numRowsRound, 0, 1, 1, SRC_REP_STRIDE_4);
+        AscendC::BlockReduceSum<float, false>(tvUbTensor[REDUCE_UB_SIZE], tvUbTensor, numRowsRound, 0, 1, 1,
+                                              SRC_REP_STRIDE_4);
         AscendC::PipeBarrier<PIPE_V>();
         SetBlockReduceMask(ROW_OPS_SPEC_MASK_4);
         AscendC::BlockReduceSum<float, false>(
@@ -212,11 +205,13 @@ public:
                 AscendC::PipeBarrier<PIPE_V>();
                 AscendC::BlockReduceSum<float, false>(
                     tvUbTensor[REDUCE_UB_SIZE], tvUbTensor,
-                    (numRowsRound * FLOAT_BLOCK_SIZE + FLOAT_VECTOR_SIZE - 1) / FLOAT_VECTOR_SIZE, 0, 1, 1, SRC_REP_STRIDE_8);
+                    (numRowsRound * FLOAT_BLOCK_SIZE + FLOAT_VECTOR_SIZE - 1) / FLOAT_VECTOR_SIZE, 0, 1, 1,
+                    SRC_REP_STRIDE_8);
                 AscendC::PipeBarrier<PIPE_V>();
                 SetVecMask(numRowsRound);
                 AscendC::Add<float, false>(rowsumUb, rowsumUb, tvUbTensor[REDUCE_UB_SIZE], (uint64_t)0, 1,
-                                           AscendC::BinaryRepeatParams(1, 1, 1, DST_REP_STRIDE_IN_8, SRC0_REP_STRIDE_IN_8, SRC1_REP_STRIDE_IN_8));
+                                           AscendC::BinaryRepeatParams(1, 1, 1, DST_REP_STRIDE_IN_8,
+                                                                       SRC0_REP_STRIDE_IN_8, SRC1_REP_STRIDE_IN_8));
                 AscendC::PipeBarrier<PIPE_V>();
                 AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
             }
@@ -235,11 +230,13 @@ public:
             } else {
                 AscendC::BlockReduceSum<float, false>(
                     tvUbTensor[REDUCE_UB_SIZE], tvUbTensor,
-                    (numRowsRound * FLOAT_BLOCK_SIZE + FLOAT_VECTOR_SIZE - 1) / FLOAT_VECTOR_SIZE, 0, 1, 1, SRC_REP_STRIDE_8);
+                    (numRowsRound * FLOAT_BLOCK_SIZE + FLOAT_VECTOR_SIZE - 1) / FLOAT_VECTOR_SIZE, 0, 1, 1,
+                    SRC_REP_STRIDE_8);
                 AscendC::PipeBarrier<PIPE_V>();
                 SetVecMask(numRowsRound);
                 AscendC::Add<float, false>(rowsumUb, rowsumUb, tvUbTensor[REDUCE_UB_SIZE], (uint64_t)0, 1,
-                                           AscendC::BinaryRepeatParams(1, 1, 1, DST_REP_STRIDE_IN_8, SRC0_REP_STRIDE_IN_8, SRC1_REP_STRIDE_IN_8));
+                                           AscendC::BinaryRepeatParams(1, 1, 1, DST_REP_STRIDE_IN_8,
+                                                                       SRC0_REP_STRIDE_IN_8, SRC1_REP_STRIDE_IN_8));
                 AscendC::PipeBarrier<PIPE_V>();
             }
             AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
@@ -273,7 +270,8 @@ public:
                                               1, 1, SRC_REP_STRIDE_8);
         AscendC::PipeBarrier<PIPE_V>();
         SetVecMask(ROW_OPS_SPEC_MASK_32);
-        AscendC::BlockReduceMax<float, false>(tvUbTensor[REDUCE_UB_SIZE], tvUbTensor, numRowsRound, 0, 1, 1, SRC_REP_STRIDE_4);
+        AscendC::BlockReduceMax<float, false>(tvUbTensor[REDUCE_UB_SIZE], tvUbTensor, numRowsRound, 0, 1, 1,
+                                              SRC_REP_STRIDE_4);
         AscendC::PipeBarrier<PIPE_V>();
         SetBlockReduceMask(ROW_OPS_SPEC_MASK_4);
         AscendC::BlockReduceMax<float, false>(
@@ -302,11 +300,13 @@ public:
                 AscendC::PipeBarrier<PIPE_V>();
                 AscendC::BlockReduceMax<float, false>(
                     tvUbTensor[REDUCE_UB_SIZE], tvUbTensor,
-                    (numRowsRound * FLOAT_BLOCK_SIZE + FLOAT_VECTOR_SIZE - 1) / FLOAT_VECTOR_SIZE, 0, 1, 1, SRC_REP_STRIDE_8);
+                    (numRowsRound * FLOAT_BLOCK_SIZE + FLOAT_VECTOR_SIZE - 1) / FLOAT_VECTOR_SIZE, 0, 1, 1,
+                    SRC_REP_STRIDE_8);
                 AscendC::PipeBarrier<PIPE_V>();
                 SetVecMask(numRowsRound);
                 AscendC::Max<float, false>(rowmaxUb, rowmaxUb, tvUbTensor[REDUCE_UB_SIZE], (uint64_t)0, 1,
-                                           AscendC::BinaryRepeatParams(1, 1, 1, DST_REP_STRIDE_IN_8, SRC0_REP_STRIDE_IN_8, SRC1_REP_STRIDE_IN_8));
+                                           AscendC::BinaryRepeatParams(1, 1, 1, DST_REP_STRIDE_IN_8,
+                                                                       SRC0_REP_STRIDE_IN_8, SRC1_REP_STRIDE_IN_8));
                 AscendC::PipeBarrier<PIPE_V>();
                 AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
             }
@@ -325,11 +325,13 @@ public:
             } else {
                 AscendC::BlockReduceMax<float, false>(
                     tvUbTensor[REDUCE_UB_SIZE], tvUbTensor,
-                    (numRowsRound * FLOAT_BLOCK_SIZE + FLOAT_VECTOR_SIZE - 1) / FLOAT_VECTOR_SIZE, 0, 1, 1, SRC_REP_STRIDE_8);
+                    (numRowsRound * FLOAT_BLOCK_SIZE + FLOAT_VECTOR_SIZE - 1) / FLOAT_VECTOR_SIZE, 0, 1, 1,
+                    SRC_REP_STRIDE_8);
                 AscendC::PipeBarrier<PIPE_V>();
                 SetVecMask(numRowsRound);
                 AscendC::Max<float, false>(rowmaxUb, rowmaxUb, tvUbTensor[REDUCE_UB_SIZE], (uint64_t)0, 1,
-                                           AscendC::BinaryRepeatParams(1, 1, 1, DST_REP_STRIDE_IN_8, SRC0_REP_STRIDE_IN_8, SRC1_REP_STRIDE_IN_8));
+                                           AscendC::BinaryRepeatParams(1, 1, 1, DST_REP_STRIDE_IN_8,
+                                                                       SRC0_REP_STRIDE_IN_8, SRC1_REP_STRIDE_IN_8));
                 AscendC::PipeBarrier<PIPE_V>();
             }
             AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
@@ -380,20 +382,23 @@ public:
         } else {
             SetVecMask(m);
             // *** hm = vmax(lm, gm)
-            AscendC::Max<float, false>(hmUbTensor[rowOffset], lmUbTensor[rowOffset], gmUbTensor[rowOffset], (uint64_t)0,
-                                       1, AscendC::BinaryRepeatParams(1, 1, 1, DST_REP_STRIDE_IN_8, SRC0_REP_STRIDE_IN_8, SRC1_REP_STRIDE_IN_8));
+            AscendC::Max<float, false>(
+                hmUbTensor[rowOffset], lmUbTensor[rowOffset], gmUbTensor[rowOffset], (uint64_t)0, 1,
+                AscendC::BinaryRepeatParams(1, 1, 1, DST_REP_STRIDE_IN_8, SRC0_REP_STRIDE_IN_8, SRC1_REP_STRIDE_IN_8));
 
             AscendC::PipeBarrier<PIPE_V>();
             // *** dm = gm - hm
-            AscendC::Sub<float, false>(dmUbTensor[((nIdx / S_BLOCK_STACK) % DM_UB_MOD_2) * UB_FLOAT_LINE_SIZE + rowOffset],
-                                       gmUbTensor[rowOffset], hmUbTensor[rowOffset], (uint64_t)0, 1,
-                                       AscendC::BinaryRepeatParams(1, 1, 1, DST_REP_STRIDE_IN_8, SRC0_REP_STRIDE_IN_8, SRC1_REP_STRIDE_IN_8));
+            AscendC::Sub<float, false>(
+                dmUbTensor[((nIdx / S_BLOCK_STACK) % DM_UB_MOD_2) * UB_FLOAT_LINE_SIZE + rowOffset],
+                gmUbTensor[rowOffset], hmUbTensor[rowOffset], (uint64_t)0, 1,
+                AscendC::BinaryRepeatParams(1, 1, 1, DST_REP_STRIDE_IN_8, SRC0_REP_STRIDE_IN_8, SRC1_REP_STRIDE_IN_8));
 
             AscendC::PipeBarrier<PIPE_V>();
             // *** dm = exp(dm)
-            AscendC::Exp<float, false>(dmUbTensor[((nIdx / S_BLOCK_STACK) % DM_UB_MOD_2) * UB_FLOAT_LINE_SIZE + rowOffset],
-                                       dmUbTensor[((nIdx / S_BLOCK_STACK) % DM_UB_MOD_2) * UB_FLOAT_LINE_SIZE + rowOffset],
-                                       (uint64_t)0, 1, AscendC::UnaryRepeatParams(1, 1, DST_REP_STRIDE_IN_8, SRC0_REP_STRIDE_IN_8));
+            AscendC::Exp<float, false>(
+                dmUbTensor[((nIdx / S_BLOCK_STACK) % DM_UB_MOD_2) * UB_FLOAT_LINE_SIZE + rowOffset],
+                dmUbTensor[((nIdx / S_BLOCK_STACK) % DM_UB_MOD_2) * UB_FLOAT_LINE_SIZE + rowOffset], (uint64_t)0, 1,
+                AscendC::UnaryRepeatParams(1, 1, DST_REP_STRIDE_IN_8, SRC0_REP_STRIDE_IN_8));
         }
         AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
         AscendC::PipeBarrier<PIPE_V>();
@@ -427,7 +432,7 @@ public:
         AscendC::Exp<float, false>(lsUbTensor[sUbOffset], lsUbTensor[sUbOffset], (uint64_t)0,
                                    (m * nStride + FLOAT_VECTOR_SIZE - 1) / FLOAT_VECTOR_SIZE,
                                    AscendC::UnaryRepeatParams(1, 1, DST_REP_STRIDE_IN_8, SRC0_REP_STRIDE_IN_8));
-        
+
         AscendC::PipeBarrier<PIPE_V>();
         // *** ll = rowsum(ls32)
         if (nReal == SPEC_TILE_512) {
@@ -442,16 +447,19 @@ public:
         if (std::is_same<ElementOutput, bfloat16_t>::value) {
             AscendC::Cast<ElementOutput, float, false>(
                 lpUbTensor[sUbOffset * LP_UB_MUL_2], lsUbTensor[sUbOffset], AscendC::RoundMode::CAST_RINT, (uint64_t)0,
-                (m * nStride + FLOAT_VECTOR_SIZE - 1) / FLOAT_VECTOR_SIZE, AscendC::UnaryRepeatParams(1, 1, DST_REP_STRIDE_IN_4, SRC0_REP_STRIDE_IN_8));
+                (m * nStride + FLOAT_VECTOR_SIZE - 1) / FLOAT_VECTOR_SIZE,
+                AscendC::UnaryRepeatParams(1, 1, DST_REP_STRIDE_IN_4, SRC0_REP_STRIDE_IN_8));
         } else {
             AscendC::Cast<ElementOutput, float, false>(
                 lpUbTensor[sUbOffset * LP_UB_MUL_2], lsUbTensor[sUbOffset], AscendC::RoundMode::CAST_NONE, (uint64_t)0,
-                (m * nStride + FLOAT_VECTOR_SIZE - 1) / FLOAT_VECTOR_SIZE, AscendC::UnaryRepeatParams(1, 1, DST_REP_STRIDE_IN_4, SRC0_REP_STRIDE_IN_8));
+                (m * nStride + FLOAT_VECTOR_SIZE - 1) / FLOAT_VECTOR_SIZE,
+                AscendC::UnaryRepeatParams(1, 1, DST_REP_STRIDE_IN_4, SRC0_REP_STRIDE_IN_8));
         }
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(pingpongFlag);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(pingpongFlag);
-        AscendC::DataCopy(gOutput, lpUbTensor[sUbOffset * LP_UB_MUL_2], AscendC::DataCopyParams(m, nStride * LP_UB_MUL_2 / LP_UB_DIV_32, 0, 0));
+        AscendC::DataCopy(gOutput, lpUbTensor[sUbOffset * LP_UB_MUL_2],
+                          AscendC::DataCopyParams(m, nStride * LP_UB_MUL_2 / LP_UB_DIV_32, 0, 0));
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(pingpongFlag);
         if (nIdx == 0) {
             // *** gl = ll
@@ -462,12 +470,15 @@ public:
             SetVecMask(m);
             // *** gl = dm * gl
             AscendC::Mul<float, false>(
-                glUbTensor[rowOffset], dmUbTensor[((nIdx / S_BLOCK_STACK) % DM_UB_MOD_2) * UB_FLOAT_LINE_SIZE + rowOffset],
-                glUbTensor[rowOffset], (uint64_t)0, 1, AscendC::BinaryRepeatParams(1, 1, 1, DST_REP_STRIDE_IN_8, SRC0_REP_STRIDE_IN_8, SRC1_REP_STRIDE_IN_8));
+                glUbTensor[rowOffset],
+                dmUbTensor[((nIdx / S_BLOCK_STACK) % DM_UB_MOD_2) * UB_FLOAT_LINE_SIZE + rowOffset],
+                glUbTensor[rowOffset], (uint64_t)0, 1,
+                AscendC::BinaryRepeatParams(1, 1, 1, DST_REP_STRIDE_IN_8, SRC0_REP_STRIDE_IN_8, SRC1_REP_STRIDE_IN_8));
             AscendC::PipeBarrier<PIPE_V>();
             // *** gl = ll + gl
-            AscendC::Add<float, false>(glUbTensor[rowOffset], glUbTensor[rowOffset], llUbTensor[rowOffset], (uint64_t)0,
-                                       1, AscendC::BinaryRepeatParams(1, 1, 1, DST_REP_STRIDE_IN_8, SRC0_REP_STRIDE_IN_8, SRC1_REP_STRIDE_IN_8));
+            AscendC::Add<float, false>(
+                glUbTensor[rowOffset], glUbTensor[rowOffset], llUbTensor[rowOffset], (uint64_t)0, 1,
+                AscendC::BinaryRepeatParams(1, 1, 1, DST_REP_STRIDE_IN_8, SRC0_REP_STRIDE_IN_8, SRC1_REP_STRIDE_IN_8));
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
         }

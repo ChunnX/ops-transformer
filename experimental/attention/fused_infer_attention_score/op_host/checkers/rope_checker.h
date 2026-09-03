@@ -24,8 +24,9 @@
 namespace optiling {
 class RopeChecker : public BaseChecker {
 public:
-    RopeChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    RopeChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
+        : BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant)
+    {}
     ~RopeChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) override;
@@ -40,10 +41,10 @@ private:
     ge::graphStatus CheckRopeDtype(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckRopeDtypeConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckKRopeContiguous(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckQKAndQKRopeShapeConsistency(const FiaTilingInfo &fiaInfo,
-        const gert::Shape shape, const gert::Shape ropeShape, const std::string &inputName);
-    ge::graphStatus CheckPAKeyAndKeyRopeShapeConsistency(const FiaTilingInfo &fiaInfo,
-        const gert::Shape &keyShape, const gert::Shape &keyRopeShape);
+    ge::graphStatus CheckQKAndQKRopeShapeConsistency(const FiaTilingInfo &fiaInfo, const gert::Shape shape,
+                                                     const gert::Shape ropeShape, const std::string &inputName);
+    ge::graphStatus CheckPAKeyAndKeyRopeShapeConsistency(const FiaTilingInfo &fiaInfo, const gert::Shape &keyShape,
+                                                         const gert::Shape &keyRopeShape);
     ge::graphStatus CheckTensorlistKeyAndKeyRopeShapeConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckRopeExistence(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFeatureDecodeMLA(const FiaTilingInfo &fiaInfo);

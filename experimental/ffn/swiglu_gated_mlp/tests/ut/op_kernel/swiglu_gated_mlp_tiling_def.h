@@ -37,16 +37,16 @@ inline void InitSwigluGatedMlpTilingData(uint8_t *tiling, SwigluGatedMlpTilingDa
 #undef GET_TILING_DATA
 #endif
 
-#define GET_TILING_DATA(tilingData, tilingArg)                                      \
-    SwigluGatedMlpTilingData tilingData;                                            \
+#define GET_TILING_DATA(tilingData, tilingArg) \
+    SwigluGatedMlpTilingData tilingData; \
     InitSwigluGatedMlpTilingData(reinterpret_cast<uint8_t *>(tilingArg), &tilingData)
 
 #ifdef GET_TILING_DATA_WITH_STRUCT
 #undef GET_TILING_DATA_WITH_STRUCT
 #endif
 
-#define GET_TILING_DATA_WITH_STRUCT(tilingStruct, tilingData, tilingArg)            \
-    tilingStruct tilingData;                                                        \
+#define GET_TILING_DATA_WITH_STRUCT(tilingStruct, tilingData, tilingArg) \
+    tilingStruct tilingData; \
     InitSwigluGatedMlpTilingData(reinterpret_cast<uint8_t *>(tilingArg), &tilingData)
 
-#endif  // TEST_SWIGLU_GATED_MLP_TILING_DEF_H
+#endif // TEST_SWIGLU_GATED_MLP_TILING_DEF_H

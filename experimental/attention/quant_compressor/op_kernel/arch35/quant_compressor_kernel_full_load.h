@@ -31,9 +31,9 @@ class QuantCompressorKernelFullLoad {
 public:
     __aicore__ inline QuantCompressorKernelFullLoad(TPipe *pipe,
                                                     const optiling::QuantCompressorTilingData *__restrict tilingData)
-        : pipe_(pipe), tilingData_(tilingData)
-    {
-    }
+        : pipe_(pipe),
+          tilingData_(tilingData)
+    {}
 
     __aicore__ inline void Init(__gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate,
                                 __gm__ uint8_t *stateCache, __gm__ uint8_t *ape, __gm__ uint8_t *xDescale,

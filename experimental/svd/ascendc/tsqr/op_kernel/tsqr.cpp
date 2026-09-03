@@ -22,37 +22,36 @@ public:
 
 using namespace AscendC;
 
-template <typename T> class TsqrKernel {
+template <typename T>
+class TsqrKernel {
 public:
-
-    __aicore__ inline void Init(GM_ADDR a, GM_ADDR q, GM_ADDR r, GM_ADDR workspace,
-        const TsqrTilingData tiling, TPipe* pipe);
+    __aicore__ inline void Init(GM_ADDR a, GM_ADDR q, GM_ADDR r, GM_ADDR workspace, const TsqrTilingData tiling,
+                                TPipe *pipe);
     __aicore__ inline void Process();
-    __aicore__ inline void ProcessBatch(const GlobalTensor<T>& aGm, const GlobalTensor<T>& qGm,
-                                        const GlobalTensor<T>& rGm, const GlobalTensor<T>& tmpQGm);
-    __aicore__ inline void CallQR(const GlobalTensor<T>& aGm, const GlobalTensor<T>& qGm,
-                                  const GlobalTensor<T>& rGm, int32_t localM, int32_t localN);
-    __aicore__ inline void CopyVec(const GlobalTensor<T>& dst, const GlobalTensor<T>& src,
-                                   int32_t rows, int32_t columns);
-    __aicore__ inline void CopyCube(const GlobalTensor<T>& dst, const GlobalTensor<T>& src,
-                                    int32_t rows, int32_t columns);
-    __aicore__ inline void ForwardZeroStep(const GlobalTensor<T>& aGm, const GlobalTensor<T>& qGm,
-        int rId, int32_t localM, int32_t blockSize);
-    __aicore__ inline void ForwardStep(int aId, const GlobalTensor<T>& qGm,
-                                       int rId, int32_t localM, int32_t blockSize);
-    __aicore__ inline void Forward(const GlobalTensor<T>& aGm, const GlobalTensor<T>& qGm,
-        const GlobalTensor<T>& rGm, const GlobalTensor<T>& tmpQGm, int32_t blockSize);
-    __aicore__ inline void Reorder(const GlobalTensor<T>& qGm, bool onCube);
-    __aicore__ inline void RunMatmul(int M, int N, bool isTransposeB,
-        const GlobalTensor<T>& aGm, const GlobalTensor<T>& bGm, const GlobalTensor<T>& cGm);
-    __aicore__ inline void BackwardStep(const GlobalTensor<T>& resultQGm, const GlobalTensor<T>& leftQGm,
-        const GlobalTensor<T>& rightQGm, int32_t bsLeft, int32_t numBlocksLeft, bool hasTail);
-    __aicore__ inline void Backward(const GlobalTensor<T>& qGm, const GlobalTensor<T>& tmpQGm,
-        int32_t blockSize);
+    __aicore__ inline void ProcessBatch(const GlobalTensor<T> &aGm, const GlobalTensor<T> &qGm,
+                                        const GlobalTensor<T> &rGm, const GlobalTensor<T> &tmpQGm);
+    __aicore__ inline void CallQR(const GlobalTensor<T> &aGm, const GlobalTensor<T> &qGm, const GlobalTensor<T> &rGm,
+                                  int32_t localM, int32_t localN);
+    __aicore__ inline void CopyVec(const GlobalTensor<T> &dst, const GlobalTensor<T> &src, int32_t rows,
+                                   int32_t columns);
+    __aicore__ inline void CopyCube(const GlobalTensor<T> &dst, const GlobalTensor<T> &src, int32_t rows,
+                                    int32_t columns);
+    __aicore__ inline void ForwardZeroStep(const GlobalTensor<T> &aGm, const GlobalTensor<T> &qGm, int rId,
+                                           int32_t localM, int32_t blockSize);
+    __aicore__ inline void ForwardStep(int aId, const GlobalTensor<T> &qGm, int rId, int32_t localM, int32_t blockSize);
+    __aicore__ inline void Forward(const GlobalTensor<T> &aGm, const GlobalTensor<T> &qGm, const GlobalTensor<T> &rGm,
+                                   const GlobalTensor<T> &tmpQGm, int32_t blockSize);
+    __aicore__ inline void Reorder(const GlobalTensor<T> &qGm, bool onCube);
+    __aicore__ inline void RunMatmul(int M, int N, bool isTransposeB, const GlobalTensor<T> &aGm,
+                                     const GlobalTensor<T> &bGm, const GlobalTensor<T> &cGm);
+    __aicore__ inline void BackwardStep(const GlobalTensor<T> &resultQGm, const GlobalTensor<T> &leftQGm,
+                                        const GlobalTensor<T> &rightQGm, int32_t bsLeft, int32_t numBlocksLeft,
+                                        bool hasTail);
+    __aicore__ inline void Backward(const GlobalTensor<T> &qGm, const GlobalTensor<T> &tmpQGm, int32_t blockSize);
     __aicore__ inline GlobalTensor<T> getRBlock(int id);
 
-    GlobalTensor<T> aGlobal_; // Input
-    GlobalTensor<T> qGlobal_, rGlobal_; // Output
+    GlobalTensor<T> aGlobal_;                                 // Input
+    GlobalTensor<T> qGlobal_, rGlobal_;                       // Output
     GlobalTensor<T> tmpQGlobal_, tmpRGlobal_, bufferQGlobal_; // temporary storage in workspace
 
     QRHouseholderSingleVec qrSubkernel;
@@ -65,24 +64,23 @@ public:
     int32_t M_, N_, batchSize_;
     int32_t blockSize_, numLevels_;
     int64_t tmpQSize_, tmpRSize_, bufferQSize_, maxQrWorkspace_;
-    __gm__ uint8_t* qrWorkspace;
+    __gm__ uint8_t *qrWorkspace;
     TsqrTilingData tiling;
-    TPipe* pipe;
+    TPipe *pipe;
 
     bool firstTail = true;
 
-    MatmulImpl <MatmulType<TPosition::GM, CubeFormat::ND, T, true>,
-                MatmulType<TPosition::GM, CubeFormat::ND, T, true>,
-                MatmulType<TPosition::GM, CubeFormat::ND, T>> mm;
-    MatmulImpl <MatmulType<TPosition::GM, CubeFormat::ND, T, true>,
-                MatmulType<TPosition::GM, CubeFormat::ND, T, false>,
-                MatmulType<TPosition::GM, CubeFormat::ND, T>> mmF;
+    MatmulImpl<MatmulType<TPosition::GM, CubeFormat::ND, T, true>, MatmulType<TPosition::GM, CubeFormat::ND, T, true>,
+               MatmulType<TPosition::GM, CubeFormat::ND, T>>
+        mm;
+    MatmulImpl<MatmulType<TPosition::GM, CubeFormat::ND, T, true>, MatmulType<TPosition::GM, CubeFormat::ND, T, false>,
+               MatmulType<TPosition::GM, CubeFormat::ND, T>>
+        mmF;
 };
-
 
 template <typename T>
 __aicore__ inline void TsqrKernel<T>::Init(GM_ADDR a, GM_ADDR q, GM_ADDR r, GM_ADDR workspace,
-    const TsqrTilingData tiling, TPipe* tpipe)
+                                           const TsqrTilingData tiling, TPipe *tpipe)
 {
     M_ = tiling.m;
     N_ = tiling.n;
@@ -97,17 +95,17 @@ __aicore__ inline void TsqrKernel<T>::Init(GM_ADDR a, GM_ADDR q, GM_ADDR r, GM_A
     this->tiling = tiling;
     this->pipe = tpipe;
 
-    aGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(a), batchSize_ * M_ * N_);
-    qGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(q), batchSize_ * M_ * N_);
-    rGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(r), batchSize_ * N_ * N_);
+    aGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(a), batchSize_ * M_ * N_);
+    qGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(q), batchSize_ * M_ * N_);
+    rGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(r), batchSize_ * N_ * N_);
 
-    __gm__ uint8_t* tmpQPtr = workspace;
-    __gm__ uint8_t* tmpRPtr = tmpQPtr + tmpQSize_ * (batchSize_ > 1 ? 2 : 1) * sizeof(T);
-    __gm__ uint8_t* bufferQPtr = tmpRPtr + tmpRSize_ * sizeof(T);
+    __gm__ uint8_t *tmpQPtr = workspace;
+    __gm__ uint8_t *tmpRPtr = tmpQPtr + tmpQSize_ * (batchSize_ > 1 ? 2 : 1) * sizeof(T);
+    __gm__ uint8_t *bufferQPtr = tmpRPtr + tmpRSize_ * sizeof(T);
     qrWorkspace = bufferQPtr + bufferQSize_ * sizeof(T);
-    tmpQGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(tmpQPtr), (tmpQSize_) * (batchSize_ > 1 ? 2 : 1));
-    tmpRGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(tmpRPtr), tmpRSize_);
-    bufferQGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(bufferQPtr), bufferQSize_);
+    tmpQGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(tmpQPtr), (tmpQSize_) * (batchSize_ > 1 ? 2 : 1));
+    tmpRGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(tmpRPtr), tmpRSize_);
+    bufferQGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(bufferQPtr), bufferQSize_);
 }
 
 template <typename T>
@@ -127,8 +125,8 @@ __aicore__ inline void TsqrKernel<T>::Process()
 }
 
 template <typename T>
-__aicore__ inline void TsqrKernel<T>::ProcessBatch(const GlobalTensor<T>& aGm, const GlobalTensor<T>& qGm,
-    const GlobalTensor<T>& rGm, const GlobalTensor<T>& tmpQGm)
+__aicore__ inline void TsqrKernel<T>::ProcessBatch(const GlobalTensor<T> &aGm, const GlobalTensor<T> &qGm,
+                                                   const GlobalTensor<T> &rGm, const GlobalTensor<T> &tmpQGm)
 {
     if ASCEND_IS_AIV {
         Forward(aGm, qGm, rGm, tmpQGm, blockSize_);
@@ -156,8 +154,8 @@ __aicore__ inline void TsqrKernel<T>::ProcessBatch(const GlobalTensor<T>& aGm, c
 }
 
 template <typename T>
-__aicore__ inline void TsqrKernel<T>::CallQR(const GlobalTensor<T>& aGm, const GlobalTensor<T>& qGm,
-    const GlobalTensor<T>& rGm, int32_t localM, int32_t localN)
+__aicore__ inline void TsqrKernel<T>::CallQR(const GlobalTensor<T> &aGm, const GlobalTensor<T> &qGm,
+                                             const GlobalTensor<T> &rGm, int32_t localM, int32_t localN)
 {
     PipeBarrier<PIPE_ALL>();
     pipe->Reset();
@@ -166,17 +164,17 @@ __aicore__ inline void TsqrKernel<T>::CallQR(const GlobalTensor<T>& aGm, const G
     qrTilingData.mDim = localM;
     qrTilingData.kDim = localN;
     qrTilingData.ubSize = tiling.ubSize;
-    __gm__ uint8_t* aGmPtr = reinterpret_cast<__gm__ uint8_t*>(const_cast<__gm__ float*>(aGm.GetPhyAddr()));
-    __gm__ uint8_t* qGmPtr = reinterpret_cast<__gm__ uint8_t*>(const_cast<__gm__ float*>(qGm.GetPhyAddr()));
-    __gm__ uint8_t* rGmPtr = reinterpret_cast<__gm__ uint8_t*>(const_cast<__gm__ float*>(rGm.GetPhyAddr()));
-    __gm__ uint8_t* localWorkspace = qrWorkspace + GetBlockIdx() * maxQrWorkspace_ * sizeof(T);
+    __gm__ uint8_t *aGmPtr = reinterpret_cast<__gm__ uint8_t *>(const_cast<__gm__ float *>(aGm.GetPhyAddr()));
+    __gm__ uint8_t *qGmPtr = reinterpret_cast<__gm__ uint8_t *>(const_cast<__gm__ float *>(qGm.GetPhyAddr()));
+    __gm__ uint8_t *rGmPtr = reinterpret_cast<__gm__ uint8_t *>(const_cast<__gm__ float *>(rGm.GetPhyAddr()));
+    __gm__ uint8_t *localWorkspace = qrWorkspace + GetBlockIdx() * maxQrWorkspace_ * sizeof(T);
     qrSubkernel.Init(aGmPtr, qGmPtr, rGmPtr, localWorkspace, &qrTilingData, pipe);
     qrSubkernel.Process();
 }
 
 template <typename T>
-__aicore__ inline void TsqrKernel<T>::CopyVec(const GlobalTensor<T>& dst, const GlobalTensor<T>& src,
-    int32_t rows, int32_t columns)
+__aicore__ inline void TsqrKernel<T>::CopyVec(const GlobalTensor<T> &dst, const GlobalTensor<T> &src, int32_t rows,
+                                              int32_t columns)
 {
     PipeBarrier<PIPE_ALL>();
     pipe->Reset();
@@ -184,7 +182,7 @@ __aicore__ inline void TsqrKernel<T>::CopyVec(const GlobalTensor<T>& dst, const 
 
     pipe->InitBuffer(vecBuf, rows * columns * sizeof(T));
     LocalTensor localTensor = vecBuf.Get<T>();
-    DataCopyParams params = { static_cast<uint16_t>(columns), static_cast<uint16_t>(rows / 8), 0, 0 };
+    DataCopyParams params = {static_cast<uint16_t>(columns), static_cast<uint16_t>(rows / 8), 0, 0};
     DataCopy(localTensor, src, params);
     int32_t eventIDMTE2ToMTE3 = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
     SetFlag<HardEvent::MTE2_MTE3>(eventIDMTE2ToMTE3);
@@ -193,8 +191,8 @@ __aicore__ inline void TsqrKernel<T>::CopyVec(const GlobalTensor<T>& dst, const 
 }
 
 template <typename T>
-__aicore__ inline void TsqrKernel<T>::CopyCube(const GlobalTensor<T>& dst, const GlobalTensor<T>& src,
-    int32_t rows, int32_t columns)
+__aicore__ inline void TsqrKernel<T>::CopyCube(const GlobalTensor<T> &dst, const GlobalTensor<T> &src, int32_t rows,
+                                               int32_t columns)
 {
     PipeBarrier<PIPE_ALL>();
     pipe->Reset();
@@ -202,7 +200,7 @@ __aicore__ inline void TsqrKernel<T>::CopyCube(const GlobalTensor<T>& dst, const
 
     pipe->InitBuffer(cubeBuf, rows * columns * sizeof(T));
     LocalTensor localTensor = cubeBuf.Get<T>();
-    DataCopyParams params = { static_cast<uint16_t>(columns), static_cast<uint16_t>(rows / 8), 0, 0 };
+    DataCopyParams params = {static_cast<uint16_t>(columns), static_cast<uint16_t>(rows / 8), 0, 0};
     DataCopy(localTensor, src, params);
     int32_t eventIDMTE2ToMTE3 = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
     SetFlag<HardEvent::MTE2_MTE3>(eventIDMTE2ToMTE3);
@@ -212,8 +210,8 @@ __aicore__ inline void TsqrKernel<T>::CopyCube(const GlobalTensor<T>& dst, const
 }
 
 template <typename T>
-__aicore__ inline void TsqrKernel<T>::ForwardZeroStep(const GlobalTensor<T>& aGm, const GlobalTensor<T>& qGm,
-    int rId, int32_t localM, int32_t blockSize)
+__aicore__ inline void TsqrKernel<T>::ForwardZeroStep(const GlobalTensor<T> &aGm, const GlobalTensor<T> &qGm, int rId,
+                                                      int32_t localM, int32_t blockSize)
 {
     int numBlocks = localM / blockSize;
     int coreIdx = AscendC::GetBlockIdx();
@@ -241,8 +239,8 @@ __aicore__ inline void TsqrKernel<T>::ForwardZeroStep(const GlobalTensor<T>& aGm
 }
 
 template <typename T>
-__aicore__ inline void TsqrKernel<T>::ForwardStep(int aId, const GlobalTensor<T>& qGm,
-    int rId, int32_t localM, int32_t blockSize)
+__aicore__ inline void TsqrKernel<T>::ForwardStep(int aId, const GlobalTensor<T> &qGm, int rId, int32_t localM,
+                                                  int32_t blockSize)
 {
     int numBlocks = localM / blockSize;
     int hasTail = numBlocks % 2;
@@ -268,7 +266,8 @@ __aicore__ inline void TsqrKernel<T>::ForwardStep(int aId, const GlobalTensor<T>
             int64_t qOffset = idx * blockSize * N_;
             if (hasTail && (idx == processedBlocks - 1)) {
                 // unpaired block
-                CopyVec(getRBlock(rId + idx), getRBlock(aId + 2 * idx), N_, N_);;
+                CopyVec(getRBlock(rId + idx), getRBlock(aId + 2 * idx), N_, N_);
+                ;
             } else {
                 CallQR(getRBlock(aId + 2 * idx), qGm[qOffset], getRBlock(rId + idx), blockSize, N_);
             }
@@ -278,8 +277,9 @@ __aicore__ inline void TsqrKernel<T>::ForwardStep(int aId, const GlobalTensor<T>
 }
 
 template <typename T>
-__aicore__ inline void TsqrKernel<T>::Forward(const GlobalTensor<T>& aGm, const GlobalTensor<T>& qGm,
-    const GlobalTensor<T>& rGm, const GlobalTensor<T>& tmpQGm, int32_t blockSize)
+__aicore__ inline void TsqrKernel<T>::Forward(const GlobalTensor<T> &aGm, const GlobalTensor<T> &qGm,
+                                              const GlobalTensor<T> &rGm, const GlobalTensor<T> &tmpQGm,
+                                              int32_t blockSize)
 {
     // zero step
     // aGm -> qGm, tmpRGlobal_
@@ -313,7 +313,7 @@ __aicore__ inline void TsqrKernel<T>::Forward(const GlobalTensor<T>& aGm, const 
 }
 
 template <typename T>
-__aicore__ inline void TsqrKernel<T>::Reorder(const GlobalTensor<T>& qGm, bool onCube)
+__aicore__ inline void TsqrKernel<T>::Reorder(const GlobalTensor<T> &qGm, bool onCube)
 {
     PipeBarrier<PIPE_ALL>();
     pipe->Reset();
@@ -342,8 +342,8 @@ __aicore__ inline void TsqrKernel<T>::Reorder(const GlobalTensor<T>& qGm, bool o
     uint16_t n = static_cast<uint16_t>(N_);
     uint16_t blocks = static_cast<uint16_t>(N_ / 8);
 
-    DataCopyParams inParams = { static_cast<uint16_t>(N_), blocks, blocks, 0 };
-    DataCopyParams outParams = { n, static_cast<uint16_t>(2 * n / 8), 0, 0 };
+    DataCopyParams inParams = {static_cast<uint16_t>(N_), blocks, blocks, 0};
+    DataCopyParams outParams = {n, static_cast<uint16_t>(2 * n / 8), 0, 0};
     DataCopy(localTensor, global, inParams);
     DataCopy(localTensor[N_ * N_], global[N_], inParams);
     int32_t eventIDMTE2ToMTE3 = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
@@ -354,8 +354,8 @@ __aicore__ inline void TsqrKernel<T>::Reorder(const GlobalTensor<T>& qGm, bool o
 }
 
 template <typename T>
-__aicore__ inline void TsqrKernel<T>::RunMatmul(int M, int N, bool isTransposeB,
-    const GlobalTensor<T>& aGm, const GlobalTensor<T>& bGm, const GlobalTensor<T>& cGm)
+__aicore__ inline void TsqrKernel<T>::RunMatmul(int M, int N, bool isTransposeB, const GlobalTensor<T> &aGm,
+                                                const GlobalTensor<T> &bGm, const GlobalTensor<T> &cGm)
 {
     PipeBarrier<PIPE_ALL>();
     pipe->Reset();
@@ -382,8 +382,9 @@ __aicore__ inline void TsqrKernel<T>::RunMatmul(int M, int N, bool isTransposeB,
 }
 
 template <typename T>
-__aicore__ inline void TsqrKernel<T>::BackwardStep(const GlobalTensor<T>& outQGm, const GlobalTensor<T>& leftQGm,
-    const GlobalTensor<T>& rightQGm, int32_t bsLeft, int32_t numBlocksLeft, bool hasTail)
+__aicore__ inline void TsqrKernel<T>::BackwardStep(const GlobalTensor<T> &outQGm, const GlobalTensor<T> &leftQGm,
+                                                   const GlobalTensor<T> &rightQGm, int32_t bsLeft,
+                                                   int32_t numBlocksLeft, bool hasTail)
 {
     int coreIdx = AscendC::GetBlockIdx();
     int numCores = GetBlockNum(); // cube cores
@@ -414,8 +415,8 @@ __aicore__ inline void TsqrKernel<T>::BackwardStep(const GlobalTensor<T>& outQGm
                 PipeBarrier<PIPE_ALL>();
                 pipe->Reset();
                 PipeBarrier<PIPE_ALL>();
-                RunMatmul(bsLeft, N_, (isFirstIter || isTransfered),
-                    leftQGm[idx * leftOffset], rightQGm[idx * rightOffset], outQGm[idx * outQOffset]);
+                RunMatmul(bsLeft, N_, (isFirstIter || isTransfered), leftQGm[idx * leftOffset],
+                          rightQGm[idx * rightOffset], outQGm[idx * outQOffset]);
             }
         }
     }
@@ -426,8 +427,8 @@ __aicore__ inline void TsqrKernel<T>::BackwardStep(const GlobalTensor<T>& outQGm
 }
 
 template <typename T>
-__aicore__ inline void TsqrKernel<T>::Backward(const GlobalTensor<T>& qGm, const GlobalTensor<T>& tmpQGm,
-    int32_t blockSize)
+__aicore__ inline void TsqrKernel<T>::Backward(const GlobalTensor<T> &qGm, const GlobalTensor<T> &tmpQGm,
+                                               int32_t blockSize)
 {
     int numBlocks, numPairs, tail, lvl;
     int64_t rightOffset, leftOffset;
@@ -480,8 +481,7 @@ __aicore__ inline void TsqrKernel<T>::Backward(const GlobalTensor<T>& qGm, const
     }
 }
 
-extern "C" __global__ __aicore__ void tsqr(GM_ADDR a, GM_ADDR q, GM_ADDR r,
-    GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void tsqr(GM_ADDR a, GM_ADDR q, GM_ADDR r, GM_ADDR workspace, GM_ADDR tiling)
 {
     GET_TILING_DATA(tilingData, tiling);
     TsqrKernel<float> tsqrKernel;

@@ -38,12 +38,12 @@ ge::graphStatus MaskChecker::CheckSingleParaMaskMode(const QuantFlashAttnTilingI
     const std::vector<uint32_t> supportedMaskModes = {static_cast<uint32_t>(MaskMode::NO_MASK),
                                                       static_cast<uint32_t>(MaskMode::CAUSAL),
                                                       static_cast<uint32_t>(MaskMode::BAND)};
-    OP_CHECK_IF(std::find(supportedMaskModes.begin(), supportedMaskModes.end(), qfaInfo.maskMode) ==
-                    supportedMaskModes.end(),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, MASK_MODE_NAME.c_str(),
-                                                      std::to_string(qfaInfo.maskMode).c_str(),
-                                                      "The value of mask_mode must be in {0, 3, 4}"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        std::find(supportedMaskModes.begin(), supportedMaskModes.end(), qfaInfo.maskMode) == supportedMaskModes.end(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, MASK_MODE_NAME.c_str(),
+                                              std::to_string(qfaInfo.maskMode).c_str(),
+                                              "The value of mask_mode must be in {0, 3, 4}"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -127,8 +127,8 @@ ge::graphStatus MaskChecker::CheckMaskModeQuantMode(const QuantFlashAttnTilingIn
     } else if (quantModeVal == QUANT_MODE_MXFP4) { // MxFP4
         OP_CHECK_IF(qfaInfo.maskMode != static_cast<uint32_t>(MaskMode::NO_MASK),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, MASK_MODE_NAME.c_str(),
-                        std::to_string(qfaInfo.maskMode).c_str(),
-                        "MxFP4 only supports mask_mode 0 (NO_MASK)"),
+                                                          std::to_string(qfaInfo.maskMode).c_str(),
+                                                          "MxFP4 only supports mask_mode 0 (NO_MASK)"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;

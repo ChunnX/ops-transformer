@@ -26,4 +26,4 @@ constexpr int64_t WG_MLP_STAGE_MM2 = 103;
 constexpr int64_t WG_MLP_STAGE_FUSED = 104;
 constexpr int64_t WG_MLP_STAGE_DTYPE_STRIDE = 1000;
 
-#endif  // OP_KERNEL_SWIGLU_GATED_MLP_STAGE_H_
+#endif // OP_KERNEL_SWIGLU_GATED_MLP_STAGE_H_

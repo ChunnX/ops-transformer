@@ -186,7 +186,6 @@ __simd_vf__ void DequantVFCoff2BaseImpl(__ubuf__ float *outputAddr, __ubuf__ flo
     MicroAPI::RegTensor<float> vregMulCoff0;
     MicroAPI::RegTensor<float> vregMulCoff1;
 
-
     MicroAPI::MaskReg mask = MicroAPI::UpdateMask<float>(col);
 
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(vregDescaleCoff0, descaleAddr);
@@ -218,7 +217,6 @@ __simd_vf__ void DequantVFCoff2_128Impl(__ubuf__ float *outputAddr, __ubuf__ flo
     MicroAPI::RegTensor<float> vregDescaleCoff1[2];
     MicroAPI::RegTensor<float> vregMulCoff0[2];
     MicroAPI::RegTensor<float> vregMulCoff1[2];
-
 
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
 
@@ -264,7 +262,6 @@ __simd_vf__ void DequantVFCoff2_256Impl(__ubuf__ float *outputAddr, __ubuf__ flo
     MicroAPI::RegTensor<float> vregDescaleCoff1[4];
     MicroAPI::RegTensor<float> vregMulCoff0[4];
     MicroAPI::RegTensor<float> vregMulCoff1[4];
-
 
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
 
@@ -336,7 +333,6 @@ __simd_vf__ void DequantVFCoff2_512Impl(__ubuf__ float *outputAddr, __ubuf__ flo
     MicroAPI::RegTensor<float> vregDescaleCoff1[8];
     MicroAPI::RegTensor<float> vregMulCoff0[8];
     MicroAPI::RegTensor<float> vregMulCoff1[8];
-
 
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
 

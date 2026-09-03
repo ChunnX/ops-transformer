@@ -17,8 +17,14 @@ namespace StemIndexerUT {
 
 class StemIndexerInferDTypeTest : public testing::TestWithParam<StemIndexerInferDTypeUtParam> {
 protected:
-    static void SetUpTestCase() { std::cout << "StemIndexer InferDTypeTest SetUp" << std::endl; }
-    static void TearDownTestCase() { std::cout << "StemIndexer InferDTypeTest TearDown" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "StemIndexer InferDTypeTest SetUp" << std::endl;
+    }
+    static void TearDownTestCase()
+    {
+        std::cout << "StemIndexer InferDTypeTest TearDown" << std::endl;
+    }
 };
 
 TEST_P(StemIndexerInferDTypeTest, param)

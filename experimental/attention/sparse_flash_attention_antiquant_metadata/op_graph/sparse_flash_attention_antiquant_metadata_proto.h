@@ -38,8 +38,10 @@ namespace ge {
 * @li head_dim: An int. QKV head dim.
 * @li topk_size: An int. topK size.
 * @li sparse_block_size: An int. The block size in the sparse phase. Default: 1.
-* @li layout_query: A string. Specifies the layout of `query`, the value must be one of ["BSND", "TND"]. Default: "BSND".
-* @li layout_kv: A string. Specifies the layout of `key/value`, the value must be one of ["BSND", "TND", "PA_BSND"]. Default: "BSND".
+* @li layout_query: A string. Specifies the layout of `query`, the value must be one of ["BSND", "TND"]. Default:
+"BSND".
+* @li layout_kv: A string. Specifies the layout of `key/value`, the value must be one of ["BSND", "TND", "PA_BSND"].
+Default: "BSND".
 * @li sparse_mode: Sparse mode. Default: 3.
 * - 0: default mask
 * - 3: rightDownCausal make

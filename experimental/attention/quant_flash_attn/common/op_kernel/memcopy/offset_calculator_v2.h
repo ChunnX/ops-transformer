@@ -116,7 +116,6 @@ struct GmLayoutParams<GmFormat::PA_BnBsND> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_KV_PA_BNBD;
 };
 
-
 template <>
 struct GmLayoutParams<GmFormat::PA_BnNBsD> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_KV_PA_BNBD;
@@ -363,7 +362,6 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_NBSGD2, ACTLEN_T, W
     }
 };
 
-
 template <GmFormat FORMAT, typename ACTLEN_T, bool WITH_ZERO_HEAD>
 struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND, ACTLEN_T, WITH_ZERO_HEAD> {
     GmLayout<FORMAT> gmLayout;
@@ -378,9 +376,9 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND, ACTLEN_T, WITH
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g, d);
     }
 
-    __aicore__ inline void
-    Init(uint32_t n2, uint32_t g, uint32_t d,
-         const ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, WITH_ZERO_HEAD> &actualSeqLensQParser)
+    __aicore__ inline void Init(
+        uint32_t n2, uint32_t g, uint32_t d,
+        const ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, WITH_ZERO_HEAD> &actualSeqLensQParser)
     {
         this->actualSeqLensQParser = actualSeqLensQParser;
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g, d);
@@ -541,9 +539,9 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_TND, ACTLEN_T, WITH_ZE
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
     }
 
-    __aicore__ inline void
-    Init(uint32_t n2, uint32_t d,
-         const ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, WITH_ZERO_HEAD> &actualSeqLensKVParser)
+    __aicore__ inline void Init(
+        uint32_t n2, uint32_t d,
+        const ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, WITH_ZERO_HEAD> &actualSeqLensKVParser)
     {
         this->actualSeqLensKVParser = actualSeqLensKVParser;
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
@@ -608,9 +606,9 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_V_SCALE_TND, ACTLEN_T, WI
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
     }
 
-    __aicore__ inline void
-    Init(uint32_t n2, uint32_t d,
-         const ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, WITH_ZERO_HEAD> &actualSeqLensKVParser)
+    __aicore__ inline void Init(
+        uint32_t n2, uint32_t d,
+        const ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, WITH_ZERO_HEAD> &actualSeqLensKVParser)
     {
         this->actualSeqLensKVParser = actualSeqLensKVParser;
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);

@@ -18,7 +18,7 @@ template <class T>
 __inline__ __attribute__((always_inline)) __aicore__ void InitMetaData(const __gm__ uint8_t *p_metadata, T *metadata)
 {
     constexpr uint64_t all_bytes = sizeof(T);
-#if defined(ASCENDC_CPU_DEBUG) || defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__) ||                          \
+#if defined(ASCENDC_CPU_DEBUG) || defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__) || \
     defined(__DAV_310R6_CUBE__) || defined(__GET_CODE_CHANNEL__)
     copy_data_align64((uint8_t *)metadata, (__gm__ uint8_t *)p_metadata, all_bytes);
 #else
@@ -31,44 +31,44 @@ __inline__ __attribute__((always_inline)) __aicore__ void InitMetaData(const __g
 #endif
 }
 
-#define INVOKE_IFA_NO_KFC_DD_OP_IMPL(templateClass, ...)                                                               \
-    do {                                                                                                               \
-        templateClass<IFAType<__VA_ARGS__>> op;                                                                        \
-        const optiling::IncreFlashAttentionTilingData *__restrict tiling_data = &tiling;                               \
-        const IncreFlashAttentionMetaData *__restrict meta_data = nullptr;                                             \
-        IncreFlashAttentionMetaData metaDataTmp;                                                                       \
-        if (metaData != nullptr) {                                                                                     \
-            InitMetaData<IncreFlashAttentionMetaData>(metaData, &metaDataTmp);                                         \
-            meta_data = &metaDataTmp;                                                                                  \
-        }                                                                                                              \
-        op.blockNum = GetBlockNum();                                                                                   \
-        op.Init(query, key, value, pseShift, attenMask, actualSeqLengthsQ, actualSeqLengths, blocktable,               \
-                kvPaddingSize, meta_data, attentionOut, softmaxLse, user, tiling_data, &tPipe);                        \
-        op.InitQuant(deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2, antiquantScale, antiquantOffset,    \
-                     keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset, user);          \
-        op.Process();                                                                                                  \
+#define INVOKE_IFA_NO_KFC_DD_OP_IMPL(templateClass, ...) \
+    do { \
+        templateClass<IFAType<__VA_ARGS__>> op; \
+        const optiling::IncreFlashAttentionTilingData *__restrict tiling_data = &tiling; \
+        const IncreFlashAttentionMetaData *__restrict meta_data = nullptr; \
+        IncreFlashAttentionMetaData metaDataTmp; \
+        if (metaData != nullptr) { \
+            InitMetaData<IncreFlashAttentionMetaData>(metaData, &metaDataTmp); \
+            meta_data = &metaDataTmp; \
+        } \
+        op.blockNum = GetBlockNum(); \
+        op.Init(query, key, value, pseShift, attenMask, actualSeqLengthsQ, actualSeqLengths, blocktable, \
+                kvPaddingSize, meta_data, attentionOut, softmaxLse, user, tiling_data, &tPipe); \
+        op.InitQuant(deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2, antiquantScale, antiquantOffset, \
+                     keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset, user); \
+        op.Process(); \
     } while (0)
 
-#define INVOKE_IFA_NO_KFC_DD_OP_IMPL_SK(templateClass, ...)                                                            \
-    do {                                                                                                               \
-        templateClass<IFAType<__VA_ARGS__>> op;                                                                        \
-        const optiling::IncreFlashAttentionTilingData *__restrict tiling_data = &tiling;                               \
-        const IncreFlashAttentionMetaData *__restrict meta_data = nullptr;                                             \
-        IncreFlashAttentionMetaData metaDataTmp;                                                                       \
-        if (metaData != nullptr) {                                                                                     \
-            InitMetaData<IncreFlashAttentionMetaData>(metaData, &metaDataTmp);                                         \
-            meta_data = &metaDataTmp;                                                                                  \
-        }                                                                                                              \
-        if ASCEND_IS_AIC {                                                                                             \
-            op.blockNum = sysArgs->skNumBlocks;                                                                        \
-        } else {                                                                                                       \
-            op.blockNum = sysArgs->skNumBlocks / 2;                                                                    \
-        }                                                                                                              \
-        op.Init(query, key, value, pseShift, attenMask, actualSeqLengthsQ, actualSeqLengths, blocktable,               \
-                kvPaddingSize, meta_data, attentionOut, softmaxLse, user, tiling_data, &tPipe);                        \
-        op.InitQuant(deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2, antiquantScale, antiquantOffset,    \
-                     keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset, user);          \
-        op.Process();                                                                                                  \
+#define INVOKE_IFA_NO_KFC_DD_OP_IMPL_SK(templateClass, ...) \
+    do { \
+        templateClass<IFAType<__VA_ARGS__>> op; \
+        const optiling::IncreFlashAttentionTilingData *__restrict tiling_data = &tiling; \
+        const IncreFlashAttentionMetaData *__restrict meta_data = nullptr; \
+        IncreFlashAttentionMetaData metaDataTmp; \
+        if (metaData != nullptr) { \
+            InitMetaData<IncreFlashAttentionMetaData>(metaData, &metaDataTmp); \
+            meta_data = &metaDataTmp; \
+        } \
+        if ASCEND_IS_AIC { \
+            op.blockNum = sysArgs->skNumBlocks; \
+        } else { \
+            op.blockNum = sysArgs->skNumBlocks / 2; \
+        } \
+        op.Init(query, key, value, pseShift, attenMask, actualSeqLengthsQ, actualSeqLengths, blocktable, \
+                kvPaddingSize, meta_data, attentionOut, softmaxLse, user, tiling_data, &tPipe); \
+        op.InitQuant(deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2, antiquantScale, antiquantOffset, \
+                     keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset, user); \
+        op.Process(); \
     } while (0)
 
 template <uint8_t FLASH_DECODE, uint8_t LAYOUT_T, uint8_t ANTIQUANT_MODE>
@@ -176,11 +176,11 @@ __sk__ void incre_flash_attention_sk(const SKArgsStruct *args, const sk::SkSyste
     tPipe.DestroyWithoutPipeAll();
 }
 
-#define FA_SK_BIND(FLASH_DECODE, LAYOUT_T, ANTIQUANT_MODE)                                                             \
-    SK_BIND(incre_flash_attention<FLASH_DECODE, LAYOUT_T, ANTIQUANT_MODE>, 4,                                          \
-            incre_flash_attention_sk<FLASH_DECODE, LAYOUT_T, ANTIQUANT_MODE, 0>,                                       \
-            incre_flash_attention_sk<FLASH_DECODE, LAYOUT_T, ANTIQUANT_MODE, 1>,                                       \
-            incre_flash_attention_sk<FLASH_DECODE, LAYOUT_T, ANTIQUANT_MODE, 2>,                                       \
+#define FA_SK_BIND(FLASH_DECODE, LAYOUT_T, ANTIQUANT_MODE) \
+    SK_BIND(incre_flash_attention<FLASH_DECODE, LAYOUT_T, ANTIQUANT_MODE>, 4, \
+            incre_flash_attention_sk<FLASH_DECODE, LAYOUT_T, ANTIQUANT_MODE, 0>, \
+            incre_flash_attention_sk<FLASH_DECODE, LAYOUT_T, ANTIQUANT_MODE, 1>, \
+            incre_flash_attention_sk<FLASH_DECODE, LAYOUT_T, ANTIQUANT_MODE, 2>, \
             incre_flash_attention_sk<FLASH_DECODE, LAYOUT_T, ANTIQUANT_MODE, 3>)
 
 FA_SK_BIND(0, 0, 0);

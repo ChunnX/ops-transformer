@@ -89,7 +89,6 @@ void MoeDistributeCombineV2_api(
     auto workspace_ptr = get_first_tensor_address<at::Tensor>(new_workspace.scalar_type(), new_workspace, false);
     auto mc2Context_ptr = get_first_tensor_address<at::Tensor>(mc2_context.scalar_type(), mc2_context, false);
 
-
     void *xActiveMask_ptr = nullptr;
     if (x_active_mask.has_value()) {
         xActiveMask_ptr =
@@ -133,7 +132,6 @@ void MoeDistributeCombineV2_api(
     void *residualX_ptr = nullptr;
     void *gamma_ptr = nullptr;
     auto XOut_ptr = get_first_tensor_address<at::Tensor>(x_out.scalar_type(), x_out, false);
-
 
     int32_t tilingKey = 100;
     calculate_tilingkey(tilingKey, expand_x.scalar_type(), comm_quant_mode);
@@ -277,11 +275,11 @@ at::Tensor npu_moe_distribute_combine_v2(
     validate_params.copy_expert_num = copy_expert_num;
     validate_params.const_expert_num = const_expert_num;
 
-    TORCH_CHECK(ValidateMoeDistributeCombineV2Input(expand_x, expert_ids, assist_info_for_combine, ep_send_counts,
-                                                    expert_scales, x_active_mask, shared_expert_x, ori_x,
-                                                    const_expert_alpha_1, const_expert_alpha_2, const_expert_v,
-                                                    performance_info, validate_params),
-                "Input validation failed for npu_moe_distribute_combine_v2");
+    TORCH_CHECK(
+        ValidateMoeDistributeCombineV2Input(expand_x, expert_ids, assist_info_for_combine, ep_send_counts,
+                                            expert_scales, x_active_mask, shared_expert_x, ori_x, const_expert_alpha_1,
+                                            const_expert_alpha_2, const_expert_v, performance_info, validate_params),
+        "Input validation failed for npu_moe_distribute_combine_v2");
 
     auto expand_x_size = expand_x.sizes();
     auto expert_ids_size = expert_ids.sizes();

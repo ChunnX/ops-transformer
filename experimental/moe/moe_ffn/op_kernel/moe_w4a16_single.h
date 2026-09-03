@@ -24,9 +24,7 @@ class MOEW4A16Single {
 public:
     TPipe pipe;
 
-    __aicore__ inline MOEW4A16Single()
-    {
-    }
+    __aicore__ inline MOEW4A16Single() {}
     __aicore__ inline void Process();
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR quantized_weight_13, GM_ADDR weight_scale_13,
                                 GM_ADDR weight_offset_13, GM_ADDR quantized_weight_2, GM_ADDR weight_scale_2,

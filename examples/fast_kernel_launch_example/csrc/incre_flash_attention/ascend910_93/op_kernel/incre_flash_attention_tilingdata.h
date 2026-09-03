@@ -110,7 +110,6 @@ public:
     }
 };
 
-
 class IncreFlashAttentionBaseParams {
 public:
     uint32_t batchSize;
@@ -537,7 +536,6 @@ public:
     }
 };
 
-
 class IncreFlashAttentionCoreParams {
 public:
     uint32_t coreSidxEnd[50];
@@ -771,7 +769,6 @@ public:
         return s1SplitSize;
     }
 };
-
 
 class IncreFlashAttentionSingleCoreTensorSize {
 public:

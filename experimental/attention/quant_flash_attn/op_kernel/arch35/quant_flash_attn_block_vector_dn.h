@@ -268,7 +268,10 @@ public:
         Mxfp4Api::InitIndexesAndDuplicateCallVF<half>(nd2nzIndexUB, localGlobalMaxUB);
     }
 
-    __aicore__ inline void ReleaseTensors() { FreeEventID(); }
+    __aicore__ inline void ReleaseTensors()
+    {
+        FreeEventID();
+    }
 
     __aicore__ inline void ComputeVec1(const RunInfo &runInfo)
     {

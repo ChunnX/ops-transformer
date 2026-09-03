@@ -22,18 +22,18 @@
 #include "aclnnop/aclnn_swiglu_gated_mlp.h"
 
 #define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
+#define LOG_PRINT(message, ...) \
+    do { \
         std::printf(message, ##__VA_ARGS__); \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t>& shape)
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
     int64_t shapeSize = 1;
     for (auto dim : shape) {
@@ -42,7 +42,7 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape)
     return shapeSize;
 }
 
-int Init(int32_t deviceId, aclrtStream* stream)
+int Init(int32_t deviceId, aclrtStream *stream)
 {
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
@@ -54,12 +54,8 @@ int Init(int32_t deviceId, aclrtStream* stream)
 }
 
 template <typename T>
-int CreateAclTensor(
-    const std::vector<T>& hostData,
-    const std::vector<int64_t>& shape,
-    void** deviceAddr,
-    aclDataType dataType,
-    aclTensor** tensor)
+int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
+                    aclDataType dataType, aclTensor **tensor)
 {
     auto size = GetShapeSize(shape) * static_cast<int64_t>(sizeof(T));
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -73,9 +69,8 @@ int CreateAclTensor(
         strides[i] = shape[i + 1] * strides[i + 1];
     }
 
-    *tensor = aclCreateTensor(
-        shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-        shape.data(), shape.size(), *deviceAddr);
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
+                              shape.data(), shape.size(), *deviceAddr);
     return 0;
 }
 
@@ -91,32 +86,22 @@ int main()
     std::vector<int64_t> downWeightShape = {4, 2};
     std::vector<int64_t> yShape = {2, 2};
 
-    std::vector<float> xHostData = {
-        0.1F, -0.2F, 0.3F,
-        0.4F, 0.5F, -0.6F
-    };
-    std::vector<float> gateUpWeightHostData = {
-        0.1F, 0.2F, 0.3F, 0.4F, -0.1F, -0.2F, 0.5F, 0.6F,
-        0.2F, 0.1F, -0.4F, 0.3F, 0.7F, -0.3F, 0.2F, 0.1F,
-        -0.5F, 0.4F, 0.2F, -0.1F, 0.3F, 0.8F, -0.2F, 0.5F
-    };
-    std::vector<float> downWeightHostData = {
-        0.5F, -0.1F,
-        0.2F, 0.4F,
-        -0.3F, 0.6F,
-        0.7F, 0.1F
-    };
+    std::vector<float> xHostData = {0.1F, -0.2F, 0.3F, 0.4F, 0.5F, -0.6F};
+    std::vector<float> gateUpWeightHostData = {0.1F,  0.2F, 0.3F,  0.4F,  -0.1F, -0.2F, 0.5F,  0.6F,
+                                               0.2F,  0.1F, -0.4F, 0.3F,  0.7F,  -0.3F, 0.2F,  0.1F,
+                                               -0.5F, 0.4F, 0.2F,  -0.1F, 0.3F,  0.8F,  -0.2F, 0.5F};
+    std::vector<float> downWeightHostData = {0.5F, -0.1F, 0.2F, 0.4F, -0.3F, 0.6F, 0.7F, 0.1F};
     std::vector<float> yHostData(GetShapeSize(yShape), 0.0F);
 
-    void* xDeviceAddr = nullptr;
-    void* gateUpWeightDeviceAddr = nullptr;
-    void* downWeightDeviceAddr = nullptr;
-    void* yDeviceAddr = nullptr;
+    void *xDeviceAddr = nullptr;
+    void *gateUpWeightDeviceAddr = nullptr;
+    void *downWeightDeviceAddr = nullptr;
+    void *yDeviceAddr = nullptr;
 
-    aclTensor* x = nullptr;
-    aclTensor* gateUpWeight = nullptr;
-    aclTensor* downWeight = nullptr;
-    aclTensor* y = nullptr;
+    aclTensor *x = nullptr;
+    aclTensor *gateUpWeight = nullptr;
+    aclTensor *downWeight = nullptr;
+    aclTensor *y = nullptr;
 
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -130,14 +115,13 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     int64_t cubeMathType = 1;
-    ret = aclnnSwigluGatedMlpGetWorkspaceSize(
-        x, gateUpWeight, downWeight, cubeMathType, y, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-        LOG_PRINT("aclnnSwigluGatedMlpGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+    ret = aclnnSwigluGatedMlpGetWorkspaceSize(x, gateUpWeight, downWeight, cubeMathType, y, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSwigluGatedMlpGetWorkspaceSize failed. ERROR: %d\n", ret);
+              return ret);
 
-    void* workspaceAddr = nullptr;
+    void *workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);

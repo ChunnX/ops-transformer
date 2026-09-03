@@ -22,7 +22,6 @@
 #include "fused_infer_attention_score_tiling_index.h"
 #include "fused_infer_attention_score_tiling_info_parser.h"
 
-
 using std::map;
 using std::pair;
 using std::string;
@@ -75,8 +74,7 @@ ge::graphStatus FiaInfoParser::CheckRequiredAttrExistence() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.queryQuantMode == nullptr, OP_LOGE(opName_, "attr queryQuantMode is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.pseType == nullptr, OP_LOGE(opName_, "attr pseType is nullptr"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.pseType == nullptr, OP_LOGE(opName_, "attr pseType is nullptr"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -132,9 +130,9 @@ ge::graphStatus FiaInfoParser::GetEmptyTensorFlag()
 ge::graphStatus FiaInfoParser::GetMaxWorkspaceFlag()
 {
     if ((opParamInfo_.actualSeqLengths.tensor != nullptr &&
-        opParamInfo_.actualSeqLengths.tensor->GetData<int64_t>() == nullptr) ||
+         opParamInfo_.actualSeqLengths.tensor->GetData<int64_t>() == nullptr) ||
         (opParamInfo_.actualSeqLengthsQ.tensor != nullptr &&
-        opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() == nullptr)) {
+         opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() == nullptr)) {
         isMaxWorkspace_ = true;
         OP_LOGI(opName_, "FIA tiling sink");
     } else {
@@ -458,7 +456,6 @@ void FiaInfoParser::GetPreNextToken()
         preToken_ = SPARSE_MODE_INT_MAX;
         nextToken_ = SPARSE_MODE_INT_MAX;
     }
-
 }
 
 ge::graphStatus FiaInfoParser::GetTensorListCache(uint32_t index, const std::string &name,
@@ -908,12 +905,12 @@ ge::graphStatus FiaInfoParser::GetRopeHeadDim()
         }
         uint32_t queryRopeHeadDim = static_cast<uint32_t>(queryRopeShape_->GetShapeD());
         uint32_t keyRopeHeadDim = static_cast<uint32_t>(keyRopeShape_->GetShapeD());
-        OP_CHECK_IF(queryRopeHeadDim != keyRopeHeadDim,
-                    OPS_REPORT_VECTOR_INNER_ERR(
-                        opName_,
-                        "the query Rope Head Dim is (%u) and the key Rope Head Dim is (%u), they should be equal.",
-                        queryRopeHeadDim, keyRopeHeadDim),
-                    return GRAPH_FAILED);
+        OP_CHECK_IF(
+            queryRopeHeadDim != keyRopeHeadDim,
+            OPS_REPORT_VECTOR_INNER_ERR(
+                opName_, "the query Rope Head Dim is (%u) and the key Rope Head Dim is (%u), they should be equal.",
+                queryRopeHeadDim, keyRopeHeadDim),
+            return GRAPH_FAILED);
         ropeHeadDim_ = queryRopeHeadDim;
     }
     return ge::GRAPH_SUCCESS;

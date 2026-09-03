@@ -24,8 +24,7 @@
 
 using AscendC::LocalTensor;
 
-enum class L1Format
-{
+enum class L1Format {
     NZ = 0
 };
 

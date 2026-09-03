@@ -35,6 +35,4 @@ TORCH_LIBRARY(custom, m)
 }
 
 // 通过pybind将c++接口和python接口绑定，这里绑定的是接口不是算子
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
-{
-}
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {}

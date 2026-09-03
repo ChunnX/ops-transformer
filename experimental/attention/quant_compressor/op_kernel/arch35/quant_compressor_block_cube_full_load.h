@@ -161,9 +161,8 @@ __aicore__ inline void QuantCompressorBlockCubeFullLoad<COMP>::InitBuffers(TPipe
 }
 
 template <typename COMP>
-__aicore__ inline void
-QuantCompressorBlockCubeFullLoad<COMP>::InitGlobalBuffers(const GlobalTensor<MM1_OUT_T> &kvMm1ResGm,
-                                                          const GlobalTensor<MM1_OUT_T> &scoreMm1ResGm)
+__aicore__ inline void QuantCompressorBlockCubeFullLoad<COMP>::InitGlobalBuffers(
+    const GlobalTensor<MM1_OUT_T> &kvMm1ResGm, const GlobalTensor<MM1_OUT_T> &scoreMm1ResGm)
 {
     this->kvMm1ResGm = kvMm1ResGm;
     this->scoreMm1ResGm = scoreMm1ResGm;
@@ -243,9 +242,10 @@ __aicore__ inline void QuantCompressorBlockCubeFullLoad<COMP>::CopyWeightGmToL1(
 }
 
 template <typename COMP>
-__aicore__ inline void
-QuantCompressorBlockCubeFullLoad<COMP>::LoadAToL0(LocalTensor<X_T> aL0Tensor, LocalTensor<X_T> xL1Tensor,
-                                                  uint32_t kStart, uint32_t kBase, uint32_t mStart, uint32_t mDealSize)
+__aicore__ inline void QuantCompressorBlockCubeFullLoad<COMP>::LoadAToL0(LocalTensor<X_T> aL0Tensor,
+                                                                         LocalTensor<X_T> xL1Tensor, uint32_t kStart,
+                                                                         uint32_t kBase, uint32_t mStart,
+                                                                         uint32_t mDealSize)
 {
     uint32_t mSize = constInfo_.mEnd - constInfo_.mStart;
 
@@ -265,9 +265,10 @@ QuantCompressorBlockCubeFullLoad<COMP>::LoadAToL0(LocalTensor<X_T> aL0Tensor, Lo
 }
 
 template <typename COMP>
-__aicore__ inline void
-QuantCompressorBlockCubeFullLoad<COMP>::LoadBToL0(LocalTensor<X_T> bL0Tensor, LocalTensor<X_T> wL1Tensor,
-                                                  uint32_t kStart, uint32_t kBase, uint32_t nStart, uint32_t nDealSize)
+__aicore__ inline void QuantCompressorBlockCubeFullLoad<COMP>::LoadBToL0(LocalTensor<X_T> bL0Tensor,
+                                                                         LocalTensor<X_T> wL1Tensor, uint32_t kStart,
+                                                                         uint32_t kBase, uint32_t nStart,
+                                                                         uint32_t nDealSize)
 {
     uint32_t nSize = 2 * constInfo_.dBaseSize;
 
@@ -287,10 +288,11 @@ QuantCompressorBlockCubeFullLoad<COMP>::LoadBToL0(LocalTensor<X_T> bL0Tensor, Lo
 }
 
 template <typename COMP>
-__aicore__ inline void
-QuantCompressorBlockCubeFullLoad<COMP>::MatrixMmad(LocalTensor<T> cL0Tensor, LocalTensor<X_T> aL0Tensor,
-                                                   LocalTensor<X_T> bL0Tensor, uint32_t mActSize, uint32_t nDealSize,
-                                                   uint32_t kActSize, bool isInitL0C)
+__aicore__ inline void QuantCompressorBlockCubeFullLoad<COMP>::MatrixMmad(LocalTensor<T> cL0Tensor,
+                                                                          LocalTensor<X_T> aL0Tensor,
+                                                                          LocalTensor<X_T> bL0Tensor, uint32_t mActSize,
+                                                                          uint32_t nDealSize, uint32_t kActSize,
+                                                                          bool isInitL0C)
 {
     MmadParams mmadParams;
     mmadParams.m = mActSize < 16 ? 16 : mActSize;

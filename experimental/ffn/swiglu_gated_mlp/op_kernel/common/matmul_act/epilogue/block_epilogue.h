@@ -79,7 +79,7 @@ public:
     FusionOp fusionOp_;
     ProblemShape problemShape_;
 
-    __aicore__ inline void Init(Params const& params, int64_t l1M, int64_t l1N, ProblemShape& problemShape)
+    __aicore__ inline void Init(Params const &params, int64_t l1M, int64_t l1N, ProblemShape &problemShape)
     {
         int64_t l1NAlign = AlignBlock<half>(l1N);
         GetTPipePtr()->InitBuffer(tBuf_, AscendC::TOTAL_UB_SIZE);
@@ -90,14 +90,14 @@ public:
         fusionOp_.Init(params.fusionParams, ubLocal_, l1M, l1NAlign, ubOffset, stageSize_);
         outputLocalTmp_ = ubLocal_[ubOffset];
         outputLocal_ = outputLocalTmp_.template ReinterpretCast<DataTypeOut>();
-        outputGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ DataTypeOut*>(params.outGmAddr));
+        outputGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ DataTypeOut *>(params.outGmAddr));
         problemShape_ = problemShape;
         ASCENDC_ASSERT(sizeof(DataTypeIn) >= sizeof(DataTypeOut), {
             KERNEL_LOG(KERNEL_EORROR, "Unsupport dtype size %zu, %zu!", sizeof(DataTypeIn), sizeof(DataTypeOut));
         });
     }
 
-    __aicore__ inline void Run(BlockShape const& blockShape, int64_t dstOffset, bool splitM)
+    __aicore__ inline void Run(BlockShape const &blockShape, int64_t dstOffset, bool splitM)
     {
         int64_t blockShapeM = Get<0>(blockShape);
         int64_t halfBlockShapeM = Act::Gemm::CeilDiv(blockShapeM, AscendC::GetTaskRation());
@@ -127,15 +127,15 @@ public:
             }
             TPipeSetWaitFlag<AscendC::HardEvent::V_MTE3>();
             AscendC::DataCopyExtParams copyParams{static_cast<uint16_t>(stageSize / blockShapeNAlign),
-                                         static_cast<uint32_t>(blockShapeN * sizeof(DataTypeOut)), 0,
-                                         static_cast<uint32_t>((N - blockShapeN) * sizeof(DataTypeOut)), 0};
+                                                  static_cast<uint32_t>(blockShapeN * sizeof(DataTypeOut)), 0,
+                                                  static_cast<uint32_t>((N - blockShapeN) * sizeof(DataTypeOut)), 0};
             AscendC::DataCopyPad<DataTypeOut>(outputGlobal_[offset], outputLocal_, copyParams);
             stageOffset += stageSize;
             loop++;
         }
     }
 
-    __aicore__ inline auto GetTensor(BlockShape const& blockShape)
+    __aicore__ inline auto GetTensor(BlockShape const &blockShape)
     {
         NDLayout inLayout =
             AscendC::MakeLayout(AscendC::MakeShape(Get<0>(blockShape), AlignBlock<half>(Get<1>(blockShape))),
@@ -145,14 +145,14 @@ public:
         return cLocal_;
     }
 
-    __aicore__ inline void operator()(BlockShape const& blockShape, int64_t dstOffset = 0, bool splitM = false)
+    __aicore__ inline void operator()(BlockShape const &blockShape, int64_t dstOffset = 0, bool splitM = false)
     {
         Run(blockShape, dstOffset, splitM);
         return;
     }
 
     // static init
-    __host_aicore__ static Params InitParams(Arguments const& args, GM_ADDR workspaceGm)
+    __host_aicore__ static Params InitParams(Arguments const &args, GM_ADDR workspaceGm)
     {
         FusionParams fusionParams = FusionOp::InitParams(args.fusionArgs, workspaceGm);
         Params params = {args.outGmAddr, fusionParams};
@@ -165,7 +165,7 @@ public:
         return 0;
     }
 
-    __host_aicore__ static Status CanImplement(Arguments const& args)
+    __host_aicore__ static Status CanImplement(Arguments const &args)
     {
         if (l0M * l0N * sizeof(DataTypeIn_) > AscendC::TOTAL_UB_SIZE) {
             return Status::l1L0ErrorExceedsLimit;

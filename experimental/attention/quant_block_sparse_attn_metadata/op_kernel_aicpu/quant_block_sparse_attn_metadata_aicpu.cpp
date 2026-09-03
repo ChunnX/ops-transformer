@@ -228,8 +228,8 @@ uint64_t QuantBlockSparseAttnMetadataCpuKernel::CalcBN1Cost(uint32_t bIdx, uint3
     }
 
     const uint32_t headDim = static_cast<uint32_t>(std::max(headDim_, 0));
-    const uint64_t s1Cost = static_cast<uint64_t>(validS1Rows) * static_cast<uint32_t>(sparseBlockSizeQ_) *
-        headDim * BYTES_PER_ELEM_Q * COST_FACTOR;
+    const uint64_t s1Cost = static_cast<uint64_t>(validS1Rows) * static_cast<uint32_t>(sparseBlockSizeQ_) * headDim *
+                            BYTES_PER_ELEM_Q * COST_FACTOR;
     const uint64_t s2Size = static_cast<uint64_t>(maxS2BlockNum) * static_cast<uint32_t>(sparseBlockSizeK_);
     const uint64_t s2Cost = s2Size * headDim * BYTES_PER_ELEM_KV * COST_FACTOR;
     return s1Cost + s2Cost;

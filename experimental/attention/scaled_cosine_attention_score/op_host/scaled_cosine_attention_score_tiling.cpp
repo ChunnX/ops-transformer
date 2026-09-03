@@ -135,10 +135,10 @@ ge::graphStatus ParseRuntimeParams(gert::TilingContext *context, platform_ascend
     params.alignedHeadDim =
         static_cast<uint32_t>(AlignUp(static_cast<uint64_t>(params.headDim) * inputBytes, ALIGN_BYTES) / inputBytes);
 
-    OP_CHECK_IF(params.batch > std::numeric_limits<uint64_t>::max() / params.heads ||
-                    static_cast<uint64_t>(params.batch) * params.heads >
-                        std::numeric_limits<uint64_t>::max() / params.seqLen,
-                OP_LOGE(context, "B*H*N overflows uint64"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        params.batch > std::numeric_limits<uint64_t>::max() / params.heads ||
+            static_cast<uint64_t>(params.batch) * params.heads > std::numeric_limits<uint64_t>::max() / params.seqLen,
+        OP_LOGE(context, "B*H*N overflows uint64"), return ge::GRAPH_FAILED);
     params.totalQueryRows = static_cast<uint64_t>(params.batch) * params.heads * params.seqLen;
     OP_CHECK_IF(params.totalQueryRows > std::numeric_limits<uint64_t>::max() / params.seqLen,
                 OP_LOGE(context, "output element count overflows uint64"), return ge::GRAPH_FAILED);

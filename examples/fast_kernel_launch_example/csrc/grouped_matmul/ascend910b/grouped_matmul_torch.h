@@ -65,7 +65,6 @@ public:
         return combos;
     }
 
-
     template <typename TensorContainer>
     static bool checkTensorType(const TensorContainer &container, c10::ScalarType expected_type,
                                 const std::string &name = "curTensor", bool allow_empty = true)
@@ -130,7 +129,6 @@ public:
             return true;
         }
     }
-
 
     static int findMatchingCombo(const std::vector<TypeCombo> &combos, const torch::TensorList &x,
                                  const torch::TensorList &weight, const c10::optional<torch::TensorList> &bias,
@@ -298,7 +296,6 @@ void *get_first_tensor_address(c10::ScalarType dataType, const TensorType &input
 {
     return get_first_tensor_address_by_type<TensorType, void>(input, allow_empty);
 }
-
 
 static std::vector<int64_t> getGroupListShape(const c10::optional<torch::Tensor> &groupList)
 {

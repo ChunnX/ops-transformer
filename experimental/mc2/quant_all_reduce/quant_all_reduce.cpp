@@ -24,9 +24,8 @@ using namespace QuantAllReduceImpl;
 #define MTE_ONE_SHOT 1
 
 template <uint32_t quantAllReduceCommMode, typename DTYPE_X, typename DTYPE_SCALES, typename DTYPE_OUT_PUT>
-__attribute__((always_inline)) __aicore__ __inline__ void
-quant_all_reduce_with_mc2context(GM_ADDR x, GM_ADDR scales, GM_ADDR output, GM_ADDR workspaceGM, GM_ADDR mc2Context,
-                                 GM_ADDR tilingGM)
+__attribute__((always_inline)) __aicore__ __inline__ void quant_all_reduce_with_mc2context(
+    GM_ADDR x, GM_ADDR scales, GM_ADDR output, GM_ADDR workspaceGM, GM_ADDR mc2Context, GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     TPipe pipe;

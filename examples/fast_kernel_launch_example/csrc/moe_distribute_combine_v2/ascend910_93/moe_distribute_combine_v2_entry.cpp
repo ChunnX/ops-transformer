@@ -35,12 +35,11 @@ using namespace AscendC;
  */
 
 template <typename ExpandXType, bool IsInt8Quant>
-__attribute__((always_inline)) __aicore__ __inline__ void
-moe_distribute_combine_v2(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR residualX,
-                          GM_ADDR gamma, GM_ADDR expertScales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR oriX,
-                          GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV,
-                          GM_ADDR performanceInfo, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR mc2Context,
-                          MoeDistributeCombineV2Info tilingData)
+__attribute__((always_inline)) __aicore__ __inline__ void moe_distribute_combine_v2(
+    GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR residualX, GM_ADDR gamma,
+    GM_ADDR expertScales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR oriX, GM_ADDR constExpertAlpha1,
+    GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR XOut, GM_ADDR workspaceGM,
+    GM_ADDR mc2Context, MoeDistributeCombineV2Info tilingData)
 {
     TPipe pipe;
     MoeDistributeCombineV2<ExpandXType, IsInt8Quant> op;

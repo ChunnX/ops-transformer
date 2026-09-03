@@ -373,7 +373,10 @@ public:
         peerGlobalMaxUB = LocalTensor<half>(TPosition::VECCALC, 229888, 128 * 4);
     }
 
-    __aicore__ inline void ReleaseTensors() { FreeEventID(); }
+    __aicore__ inline void ReleaseTensors()
+    {
+        FreeEventID();
+    }
 
     __aicore__ inline void ComputeMm1(const RunInfo &info)
     {

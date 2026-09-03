@@ -25,7 +25,6 @@ using AscendC::LocalTensor;
 using namespace AscendC;
 using namespace MicroAPI;
 
-
 template <bool clear_gmax, typename T, typename T2, bool hasAtten = false, uint16_t S2BaseAlign = 32,
           uint16_t S1Base = 128>
 __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_vf(__ubuf__ T2 *pDest, __ubuf__ T *s,
@@ -255,10 +254,11 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_vf(__ubuf__ T2 
 
 template <bool clear_gmax, typename T, typename T2, bool hasAtten = false, uint16_t S2BaseAlign = 32,
           uint16_t S1Base = 128>
-__aicore__ inline void
-SoftmaxWithGroupMaxAlignQs128Kvs32CallVF(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor,
-                                         const LocalTensor<T> &local_group_max, const LocalTensor<T> &global_max,
-                                         const LocalTensor<uint8_t> &indexesBuf, const T scale)
+__aicore__ inline void SoftmaxWithGroupMaxAlignQs128Kvs32CallVF(const LocalTensor<T2> &dstTensor,
+                                                                const LocalTensor<T> &srcTensor,
+                                                                const LocalTensor<T> &local_group_max,
+                                                                const LocalTensor<T> &global_max,
+                                                                const LocalTensor<uint8_t> &indexesBuf, const T scale)
 {
     __ubuf__ T2 *pDest = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ T *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();

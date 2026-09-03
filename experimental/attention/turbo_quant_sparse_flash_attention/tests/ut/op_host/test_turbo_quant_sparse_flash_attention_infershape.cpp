@@ -68,9 +68,15 @@ std::vector<OpAttr> BaseAttrs(const std::string &layoutQuery = "TND", bool retur
 
 class TurboQuantSparseFlashAttentionProto : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "TurboQuantSparseFlashAttentionProto SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "TurboQuantSparseFlashAttentionProto SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "TurboQuantSparseFlashAttentionProto TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "TurboQuantSparseFlashAttentionProto TearDown" << std::endl;
+    }
 };
 
 // attention_out 最后一维 = query 最后一维 - rope_head_dim = 576 - 64 = 512。

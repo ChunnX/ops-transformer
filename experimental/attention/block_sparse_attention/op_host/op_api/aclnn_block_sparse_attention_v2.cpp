@@ -210,7 +210,10 @@ static aclnnStatus ValidateAdditionalParams(int64_t innerPrecise, const aclTenso
     return ACLNN_SUCCESS;
 }
 
-static string ConvertLayoutString(char *layoutStr) { return op::ToString(layoutStr).GetString(); }
+static string ConvertLayoutString(char *layoutStr)
+{
+    return op::ToString(layoutStr).GetString();
+}
 
 } // namespace
 

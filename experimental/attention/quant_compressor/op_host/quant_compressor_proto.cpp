@@ -90,7 +90,7 @@ ge::graphStatus GetQuantCompressorShapeDim(const gert::InferShapeContext *contex
         shapeParam.Sr = (xShape->GetDim(DIM_INDEX_1) + cmpRatio - 1) / cmpRatio;
         shapeParam.H = xShape->GetDim(DIM_INDEX_2);
         shapeParam.T = shapeParam.B * shapeParam.S;
-    } else { // T
+    } else {                                                                          // T
         auto cuSeqlensShape = context->GetRequiredInputShape(CU_SEQ_LEN_INPUT_INDEX); // (B+1,)
         OPS_LOG_E_IF_NULL(context, cuSeqlensShape, return ge::GRAPH_FAILED)
         shapeParam.isBsMerge = true;

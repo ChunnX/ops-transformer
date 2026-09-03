@@ -15,7 +15,7 @@
 
 #ifndef FLASH_ATTENTION_SCORE_GRAD_BLOCK_VEC_FP8_H
 #define FLASH_ATTENTION_SCORE_GRAD_BLOCK_VEC_FP8_H
- 
+
 #include "flash_attention_score_grad_common.h"
 #include "vector_api/vf_anti_quant_compute_p_ds.h"
 namespace FagBaseApi {
@@ -28,34 +28,46 @@ private:
                                                  LocalTensor<CALC_TYPE> &inputTensor,
                                                  TQue<QuePosition::VECOUT, 1> &outQue);
     template <uint8_t MM_IDX>
-    __aicore__ inline void
-    DqkvMulsAndCastFromGM(FagConstInfo &constInfo, FagRunInfo &runInfo, GlobalTensor<CALC_TYPE> &inputTensor,
-                          TQue<QuePosition::VECIN, 1> &inQue, TQue<QuePosition::VECOUT, 1> &outQue);
- 
+    __aicore__ inline void DqkvMulsAndCastFromGM(FagConstInfo &constInfo, FagRunInfo &runInfo,
+                                                 GlobalTensor<CALC_TYPE> &inputTensor,
+                                                 TQue<QuePosition::VECIN, 1> &inQue,
+                                                 TQue<QuePosition::VECOUT, 1> &outQue);
+
 public:
     __aicore__ inline FAGBlockVecQuant(){};
     __aicore__ inline void SetVecBlockParams(TPipe *pipe, FagTilingType tilingData, uint32_t vBlockIdx,
                                              uint32_t cBlockIdx, uint32_t vSubBlockIdx, FagConstInfo &constInfo);
-    __aicore__ inline void InitGlobalBuffer(GM_ADDR value, GM_ADDR dy, GM_ADDR y, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
-                                            GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy,
-                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace, int64_t sfmgWorkSpaceOffset);
+    __aicore__ inline void InitGlobalBuffer(GM_ADDR value, GM_ADDR dy, GM_ADDR y, GM_ADDR softmaxMax,
+                                            GM_ADDR softmaxSum, GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV,
+                                            GM_ADDR deqScaleDy, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace,
+                                            int64_t sfmgWorkSpaceOffset);
     __aicore__ inline void InitUbBuffer(const LocalTensor<CALC_TYPE> &commonTensors);
-    __aicore__ inline void CopyMaxSumD(FagConstInfo &constInfo, FagRunInfo &runInfo, uint16_t firstHalfS1, uint16_t currentRealS1);
+    __aicore__ inline void CopyMaxSumD(FagConstInfo &constInfo, FagRunInfo &runInfo, uint16_t firstHalfS1,
+                                       uint16_t currentRealS1);
     __aicore__ inline void CopyUB2L1(FagRunInfo &runInfo, const LocalTensor<INPUT_TYPE> &dstTensor,
                                      const LocalTensor<CALC_TYPE> &srcTensor, uint16_t realS1, uint16_t realS2);
-    __aicore__ inline void ProcessPDs(const LocalTensor<INPUT_TYPE> &pl1Tensor, const LocalTensor<INPUT_TYPE> &dsl1Tensor, const LocalTensor<CALC_TYPE> &spTensor, const LocalTensor<CALC_TYPE> &dpdsTensor, int8_t sdpId, FagConstInfo &constInfo, FagRunInfo &runInfo);
-    template<uint64_t mode>
-    __aicore__ inline void DequantDqkv(const LocalTensor<CALC_TYPE> &outTensor, const LocalTensor<CALC_TYPE> &outTensor2, FagConstInfo &constInfo, FagRunInfo &runInfo, int64_t i, int64_t id);
+    __aicore__ inline void ProcessPDs(const LocalTensor<INPUT_TYPE> &pl1Tensor,
+                                      const LocalTensor<INPUT_TYPE> &dsl1Tensor, const LocalTensor<CALC_TYPE> &spTensor,
+                                      const LocalTensor<CALC_TYPE> &dpdsTensor, int8_t sdpId, FagConstInfo &constInfo,
+                                      FagRunInfo &runInfo);
+    template <uint64_t mode>
+    __aicore__ inline void DequantDqkv(const LocalTensor<CALC_TYPE> &outTensor,
+                                       const LocalTensor<CALC_TYPE> &outTensor2, FagConstInfo &constInfo,
+                                       FagRunInfo &runInfo, int64_t i, int64_t id);
     __aicore__ inline void DequantOut(const LocalTensor<CALC_TYPE> &outTensor, uint16_t realLength, float scale);
-    template<uint64_t mode>
-    __aicore__ inline void CopyDqkv2GM(FagRunInfo &runInfo, FagConstInfo &constInfo, const GlobalTensor<CALC_TYPE> &outGm, const LocalTensor<CALC_TYPE> &outTensor, const GlobalTensor<CALC_TYPE> &outGm2, const LocalTensor<CALC_TYPE> &outTensor2);
+    template <uint64_t mode>
+    __aicore__ inline void CopyDqkv2GM(FagRunInfo &runInfo, FagConstInfo &constInfo,
+                                       const GlobalTensor<CALC_TYPE> &outGm, const LocalTensor<CALC_TYPE> &outTensor,
+                                       const GlobalTensor<CALC_TYPE> &outGm2, const LocalTensor<CALC_TYPE> &outTensor2);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
-    constexpr static bool IS_FP8_INPUT =
-        IsSameType<INPUT_TYPE, fp8_e5m2_t>::value || IsSameType<INPUT_TYPE, fp8_e4m3fn_t>::value || IsSameType<INPUT_TYPE, hifloat8_t>::value;
+    constexpr static bool IS_FP8_INPUT = IsSameType<INPUT_TYPE, fp8_e5m2_t>::value ||
+                                         IsSameType<INPUT_TYPE, fp8_e4m3fn_t>::value ||
+                                         IsSameType<INPUT_TYPE, hifloat8_t>::value;
     constexpr static bool IS_FP32_INPUT = IsSameType<INPUT_TYPE, float>::value;
-    constexpr static float FP8_MAX = IsSameType<INPUT_TYPE, fp8_e5m2_t>::value ? 57344 : (IsSameType<INPUT_TYPE, fp8_e4m3fn_t>::value ? 448 : 32768);
+    constexpr static float FP8_MAX =
+        IsSameType<INPUT_TYPE, fp8_e5m2_t>::value ? 57344 : (IsSameType<INPUT_TYPE, fp8_e4m3fn_t>::value ? 448 : 32768);
     constexpr static uint32_t DETER_OFFSET_UB_SIZE = 1024 * 3;
     constexpr static uint32_t CUBE_BASEM = static_cast<uint32_t>(s1TemplateType);
     constexpr static uint32_t CUBE_BASEN = static_cast<uint32_t>(s2TemplateType);
@@ -84,29 +96,30 @@ public:
     GlobalTensor<float> softmaxMaxGm, softmaxSumGm;
     GlobalTensor<float> deqScaleQGm, deqScaleKGm, deqScaleVGm, deqScaleDyGm;
     GlobalTensor<float> sfmgWorkspaceGm;
-    
+
     GlobalTensor<OUTDTYPE> dqGm, dkGm, dvGm;
- 
+
     // ub buffer
     TBuf<> vecQue;
-    LocalTensor<float> maxTensor[4]; // 64 * 4 * 4
-    LocalTensor<float> sumTensor[4]; // 64 * 4 * 4
-    LocalTensor<float> dTensor[4]; // 64 * 4 * 4
+    LocalTensor<float> maxTensor[4];  // 64 * 4 * 4
+    LocalTensor<float> sumTensor[4];  // 64 * 4 * 4
+    LocalTensor<float> dTensor[4];    // 64 * 4 * 4
     LocalTensor<uint16_t> permTensor; // 128 * 2
- 
+
     TPipe *pipe;
- 
+
     uint32_t vBlockIdx;
     uint32_t cBlockIdx;
     uint32_t vSubBlockIdx;
 
     uint32_t maxsumIdx = 0;
 };
- 
+
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockVecQuant<TEMPLATE_ARGS>::SetVecBlockParams(TPipe *pipe, FagTilingType tilingData,
-                                                                     uint32_t vBlockIdx, uint32_t cBlockIdx,
-                                                                     uint32_t vSubBlockIdx, FagConstInfo &constInfo)
+                                                                          uint32_t vBlockIdx, uint32_t cBlockIdx,
+                                                                          uint32_t vSubBlockIdx,
+                                                                          FagConstInfo &constInfo)
 {
     this->pipe = pipe;
     this->vBlockIdx = vBlockIdx;
@@ -116,10 +129,11 @@ __aicore__ inline void FAGBlockVecQuant<TEMPLATE_ARGS>::SetVecBlockParams(TPipe 
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockVecQuant<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR value, GM_ADDR dy, GM_ADDR y,
-                                                                    GM_ADDR softmaxMax, GM_ADDR softmaxSum,
-                                                                    GM_ADDR deqScaleQ, GM_ADDR deqScaleK,
-                                                                    GM_ADDR deqScaleV, GM_ADDR deqScaleDy, GM_ADDR dq,
-                                                                    GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace, int64_t sfmgWorkSpaceOffset)
+                                                                         GM_ADDR softmaxMax, GM_ADDR softmaxSum,
+                                                                         GM_ADDR deqScaleQ, GM_ADDR deqScaleK,
+                                                                         GM_ADDR deqScaleV, GM_ADDR deqScaleDy,
+                                                                         GM_ADDR dq, GM_ADDR dk, GM_ADDR dv,
+                                                                         GM_ADDR workspace, int64_t sfmgWorkSpaceOffset)
 {
     valueGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)value);
     dyGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)dy);
@@ -131,7 +145,7 @@ __aicore__ inline void FAGBlockVecQuant<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR
     deqScaleKGm.SetGlobalBuffer((__gm__ float *)deqScaleK);
     deqScaleVGm.SetGlobalBuffer((__gm__ float *)deqScaleV);
     deqScaleDyGm.SetGlobalBuffer((__gm__ float *)deqScaleDy);
-    
+
     dqGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dq);
     dkGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dk);
     dvGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dv);
@@ -358,25 +372,35 @@ __aicore__ inline void FAGBlockVecQuant<TEMPLATE_ARGS>::CopyDqkv2GM(FagRunInfo &
 TEMPLATES_DEF
 class FAGBlockVecQuantDummy {
 public:
-    __aicore__ inline void InitUbBuffer(const LocalTensor<CALC_TYPE> &commonTensors){};
-    __aicore__ inline void InitGlobalBuffer(GM_ADDR value, GM_ADDR dy, GM_ADDR y, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
-                                            GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy,
-                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace, int64_t sfmgWorkSpaceOffset){};
+    __aicore__ inline void InitUbBuffer(const LocalTensor<CALC_TYPE> &commonTensors) {};
+    __aicore__ inline void InitGlobalBuffer(GM_ADDR value, GM_ADDR dy, GM_ADDR y, GM_ADDR softmaxMax,
+                                            GM_ADDR softmaxSum, GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV,
+                                            GM_ADDR deqScaleDy, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace,
+                                            int64_t sfmgWorkSpaceOffset) {};
     __aicore__ inline void SetVecBlockParams(TPipe *pipe, FagTilingType tilingData, uint32_t vBlockIdx,
-                                             uint32_t cBlockIdx, uint32_t vSubBlockIdx, FagConstInfo &constInfo){};
+                                             uint32_t cBlockIdx, uint32_t vSubBlockIdx, FagConstInfo &constInfo) {};
     __aicore__ inline void CopyUB2L1(FagRunInfo &runInfo, const LocalTensor<INPUT_TYPE> &dstTensor,
-                                     const LocalTensor<CALC_TYPE> &srcTensor, uint16_t realS1, uint16_t realS2){};
-    __aicore__ inline void CopyMaxSumD(FagConstInfo &constInfo, FagRunInfo &runInfo, uint16_t firstHalfS1, uint16_t currentRealS1){};
-    __aicore__ inline void ProcessPDs(const LocalTensor<INPUT_TYPE> &pl1Tensor, const LocalTensor<INPUT_TYPE> &dsl1Tensor, const LocalTensor<CALC_TYPE> &spTensor, const LocalTensor<CALC_TYPE> &dpdsTensor, int8_t sdpId, FagConstInfo &constInfo, FagRunInfo &runInfo){};
-    template<uint64_t mode>
-    __aicore__ inline void DequantDqkv(const LocalTensor<CALC_TYPE> &outTensor, const LocalTensor<CALC_TYPE> &outTensor2, FagConstInfo &constInfo, FagRunInfo &runInfo, int64_t i, int64_t id){};
-    __aicore__ inline void DequantOut(const LocalTensor<CALC_TYPE> &outTensor, uint16_t realLength, float scale){};
-    template<uint64_t mode>
-    __aicore__ inline void CopyDqkv2GM(FagRunInfo &runInfo, FagConstInfo &constInfo, const GlobalTensor<CALC_TYPE> &outGm, const LocalTensor<CALC_TYPE> &outTensor, const GlobalTensor<CALC_TYPE> &outGm2, const LocalTensor<CALC_TYPE> &outTensor2){};
-    __aicore__ inline void AllocEventID(){};
-    __aicore__ inline void FreeEventID(){};
+                                     const LocalTensor<CALC_TYPE> &srcTensor, uint16_t realS1, uint16_t realS2) {};
+    __aicore__ inline void CopyMaxSumD(FagConstInfo &constInfo, FagRunInfo &runInfo, uint16_t firstHalfS1,
+                                       uint16_t currentRealS1) {};
+    __aicore__ inline void ProcessPDs(const LocalTensor<INPUT_TYPE> &pl1Tensor,
+                                      const LocalTensor<INPUT_TYPE> &dsl1Tensor, const LocalTensor<CALC_TYPE> &spTensor,
+                                      const LocalTensor<CALC_TYPE> &dpdsTensor, int8_t sdpId, FagConstInfo &constInfo,
+                                      FagRunInfo &runInfo) {};
+    template <uint64_t mode>
+    __aicore__ inline void DequantDqkv(const LocalTensor<CALC_TYPE> &outTensor,
+                                       const LocalTensor<CALC_TYPE> &outTensor2, FagConstInfo &constInfo,
+                                       FagRunInfo &runInfo, int64_t i, int64_t id) {};
+    __aicore__ inline void DequantOut(const LocalTensor<CALC_TYPE> &outTensor, uint16_t realLength, float scale) {};
+    template <uint64_t mode>
+    __aicore__ inline void CopyDqkv2GM(FagRunInfo &runInfo, FagConstInfo &constInfo,
+                                       const GlobalTensor<CALC_TYPE> &outGm, const LocalTensor<CALC_TYPE> &outTensor,
+                                       const GlobalTensor<CALC_TYPE> &outGm2,
+                                       const LocalTensor<CALC_TYPE> &outTensor2) {};
+    __aicore__ inline void AllocEventID() {};
+    __aicore__ inline void FreeEventID() {};
 };
- 
+
 } // namespace FagBaseApi
- 
+
 #endif

@@ -31,18 +31,13 @@ namespace Act {
 namespace Gemm {
 namespace Block {
 /**
-* @class BlockMmadWithLayout
-* @brief The intermediate of Block matrix multiplication class
-*
-* Inheriting from BlockMmadBase, encapsulates and adapts common functions for Layout representation
-*/
-template <
-    class Derived,
-    class DispatchPolicy,
-    class L1Shape, class L0Shape,
-    class AType, class BType, class CType, class BiasType,
-    class TileCopy
->
+ * @class BlockMmadWithLayout
+ * @brief The intermediate of Block matrix multiplication class
+ *
+ * Inheriting from BlockMmadBase, encapsulates and adapts common functions for Layout representation
+ */
+template <class Derived, class DispatchPolicy, class L1Shape, class L0Shape, class AType, class BType, class CType,
+          class BiasType, class TileCopy>
 class BlockMmadWithLayout
     : public BlockMmadBase<Derived, DispatchPolicy, L1Shape, L0Shape, AType, BType, CType, BiasType, TileCopy> {
 public:
@@ -54,26 +49,26 @@ public:
     }
 
     /**
-    * @brief Initialize the matrix multiplication object
-    */
+     * @brief Initialize the matrix multiplication object
+     */
     __aicore__ inline void Init()
     {
-        this->AsDerived().matmul_.Init((TCubeTiling*)(nullptr), (AscendC::TPipe*)(nullptr));
+        this->AsDerived().matmul_.Init((TCubeTiling *)(nullptr), (AscendC::TPipe *)(nullptr));
     }
 
     /**
-    * @brief IterateAll function to perform matrix multiplication iteration
-    * @param [out] CTensor: destination tensor type
-    * @param [in] ATensor: matrix A source tensor type
-    * @param [in] BTensor: matrix B source tensor type
-    * @param [in] Shape: shape type
-    * @param [out] c: destination tensor
-    * @param [in] a: matrix A source tensor
-    * @param [in] b: matrix B source tensor
-    * @param [in] actualShape: actual shape
-    */
+     * @brief IterateAll function to perform matrix multiplication iteration
+     * @param [out] CTensor: destination tensor type
+     * @param [in] ATensor: matrix A source tensor type
+     * @param [in] BTensor: matrix B source tensor type
+     * @param [in] Shape: shape type
+     * @param [out] c: destination tensor
+     * @param [in] a: matrix A source tensor
+     * @param [in] b: matrix B source tensor
+     * @param [in] actualShape: actual shape
+     */
     template <class CTensor, class ATensor, class BTensor, class Shape>
-    __aicore__ inline void IterateAll(CTensor& c, const ATensor& a, const BTensor& b, const Shape& actualShape)
+    __aicore__ inline void IterateAll(CTensor &c, const ATensor &a, const BTensor &b, const Shape &actualShape)
     {
         // Convert a tensor with layout to a normal tensor
         auto aTensor = ConvertToTensorWithoutLayout<typename AType::T>(a);
@@ -85,8 +80,8 @@ public:
 
         SetOrgShape(c, a, b);
 
-        this->AsDerived().matmul_.SetSingleShape(
-            Get<MNK_M>(actualShape), Get<MNK_N>(actualShape), Get<MNK_K>(actualShape));
+        this->AsDerived().matmul_.SetSingleShape(Get<MNK_M>(actualShape), Get<MNK_N>(actualShape),
+                                                 Get<MNK_K>(actualShape));
         this->AsDerived().matmul_.IterateAll(cTensor);
 
         if constexpr (AscendC::is_global_tensor_v<CTensor>) {
@@ -98,27 +93,27 @@ public:
 
 private:
     /**
-    * @brief End the matrix multiplication operation
-    */
+     * @brief End the matrix multiplication operation
+     */
     __aicore__ inline void End()
     {
         this->AsDerived().matmul_.End();
     }
 
     /**
-    * @brief Set the original shape of the matrix
-    *
-    * Calculate and set the original shape of matrix c based on matrixs a and b
-    *
-    * @param [in] CTensor: the destination tensor type
-    * @param [in] ATensor: the source tensor A type
-    * @param [in] BTensor: the source tensor B type
-    * @param [in] c: the destination tensor
-    * @param [in] a: the source tensor A
-    * @param [in] b: the source tensor B
-    */
+     * @brief Set the original shape of the matrix
+     *
+     * Calculate and set the original shape of matrix c based on matrixs a and b
+     *
+     * @param [in] CTensor: the destination tensor type
+     * @param [in] ATensor: the source tensor A type
+     * @param [in] BTensor: the source tensor B type
+     * @param [in] c: the destination tensor
+     * @param [in] a: the source tensor A
+     * @param [in] b: the source tensor B
+     */
     template <class CTensor, class ATensor, class BTensor>
-    __aicore__ inline void SetOrgShape(CTensor& c, const ATensor& a, const BTensor& b)
+    __aicore__ inline void SetOrgShape(CTensor &c, const ATensor &a, const BTensor &b)
     {
         constexpr int32_t mIdx = AType::isTrans ? 1 : 0;
         constexpr int32_t nIdx = BType::isTrans ? 0 : 1;
@@ -127,7 +122,7 @@ private:
 
         int32_t orgM;
         int32_t orgKa;
-        const auto& aShape = a.GetTensorTrait().GetLayout().GetShape();
+        const auto &aShape = a.GetTensorTrait().GetLayout().GetShape();
         if constexpr (IsNDOrAlign<AType>()) {
             orgM = Get<mIdx>(aShape);
             orgKa = Get<kaIdx>(aShape);
@@ -140,7 +135,7 @@ private:
 
         int32_t orgN;
         int32_t orgKb;
-        const auto& bShape = b.GetTensorTrait().GetLayout().GetShape();
+        const auto &bShape = b.GetTensorTrait().GetLayout().GetShape();
         if constexpr (IsNDOrAlign<BType>()) {
             orgN = Get<nIdx>(bShape);
             orgKb = Get<kbIdx>(bShape);
@@ -152,7 +147,7 @@ private:
         }
 
         int32_t orgKc; // Set if matrix C's N != matrix B's N
-        const auto& cShape = c.GetTensorTrait().GetLayout().GetShape();
+        const auto &cShape = c.GetTensorTrait().GetLayout().GetShape();
         if constexpr (IsNDOrAlign<CType>()) {
             orgKc = Get<1>(cShape);
         } else if constexpr (IsNz<CType>()) {
