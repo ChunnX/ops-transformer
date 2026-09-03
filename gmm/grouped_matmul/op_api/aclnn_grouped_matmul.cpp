@@ -3287,7 +3287,7 @@ aclnnStatus aclnnGroupedMatmulWeightNzGetWorkspaceSize(
                    DFX_IN(x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional,
                           antiquantOffsetOptional, perTokenScaleOptional, activationInputOptional,
                           activationQuantScaleOptional, activationQuantOffsetOptional, groupListOptional, splitItem,
-                          groupType, groupListType, actType, tuningConfigOptional),
+                          groupType, groupListType, actType, tuningConfigOptional, quantGroupSize),
                    DFX_OUT(out, activationFeatureOutOptional, dynQuantScaleOutOptional));
     UnpackWeightQuantInputs(x, weight);
     if (IsS8S4PseudoQuantWeightNz(x, weight, scaleOptional)) {

@@ -1247,8 +1247,9 @@ static ge::graphStatus SplitMSingleXSingleWeightSingleY(gert::InferShapeContext 
     OP_CHECK_IF(CheckShapeSameLengthTensorList(context, {1, kAxisOfWeight}, innerAxisDimId, tenorXAndWeight,
                                                paramsInfo.numX) != GRAPH_SUCCESS,
                 OP_LOGE(context->GetNodeName(), "k dim value of x and weight is not matched."), return GRAPH_FAILED);
-    innerAxisDimId = specialWeightFormat ? static_cast<int64_t>(weightAxis.n) :
-                                           (!transposeWeight ? 2 : -1); // 转置 weight 的内轴 K 位于第 3 维（索引 2）
+    innerAxisDimId = specialWeightFormat ?
+                         static_cast<int64_t>(weightAxis.n) :
+                         (!transposeWeight ? 2 : -1); // 非转置时 weight 内轴 N 位于第 3 维（索引 2），转置时置 -1 跳过
     OP_CHECK_IF(
         CheckInnerAxisOfTensorList(context, GMM_INDEX_IN_WEIGHT, innerAxisDimId, paramsInfo.numWeight) != GRAPH_SUCCESS,
         OP_LOGE(context->GetNodeName(), "inner axis size of weight is larger than %ld!", GMM_MAX_INNER_AXIS),
