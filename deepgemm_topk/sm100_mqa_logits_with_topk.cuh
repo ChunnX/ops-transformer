@@ -811,14 +811,20 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
             __threadfence();
 
             // ==== stage 1: per-warp segment local TopK ====
+            const long long dbg_s1a = (blockIdx.x == 0 && warp_idx == 0 && lane_idx == 0) ? clock64() : 0;
             if (i_active && my_len > 0 && my_len <= kSegFloats) {
                 #pragma unroll 4
                 for (uint32_t i = lane_idx; i < my_len; i += 32)
                     ptx::st_shared(reinterpret_cast<uint32_t*>(wcache) + i,
                                    __float_as_uint(__ldcg(logits_row + k_start + my_start + i)));
                 __syncwarp();
+                const long long dbg_s1b = (blockIdx.x == 0 && warp_idx == 0 && lane_idx == 0) ? clock64() : 0;
                 warp_bucket_topk<kSparseCount, true>(wcache, k_start + my_start, my_len,
                                                      wcand, whist, wstage, nullptr, lane_idx);
+                const long long dbg_s1c = (blockIdx.x == 0 && warp_idx == 0 && lane_idx == 0) ? clock64() : 0;
+                if (blockIdx.x == 0 && warp_idx == 0 && lane_idx == 0)
+                    printf("[S1] token=%u load=%lld local=%lld\n",
+                           q_token, dbg_s1b - dbg_s1a, dbg_s1c - dbg_s1b);
             } else if (i_active && my_len > 0) {
                 warp_bucket_topk<kSparseCount, false>(logits_row + k_start + my_start,
                                                       k_start + my_start, my_len,
