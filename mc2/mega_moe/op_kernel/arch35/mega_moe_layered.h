@@ -466,6 +466,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
         rankNumPerServer_ = worldSize_;
     }
     serverNum_ = Ops::Base::CeilDiv(worldSize_, rankNumPerServer_);
+    printf("serverNum_: %d\n", serverNum_);
     serverId_ = rankId_ / rankNumPerServer_;
     rankIdInServer_ = rankId_ % rankNumPerServer_;
     for (int i = 0; i < worldSize_; i++) {
@@ -2941,52 +2942,52 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     SendMaskCal();        // 源卡按全局专家计算掩码，并推送到目标专家卡
     ResetFlagList();      // 清零工作空间中的同步标志
     ResetDispatchState(); // 清零跨 Server URMA Dispatch 队列和中继就绪标志
-    if (sharedExpertNum_ > 0) {
-        SharedExpertCopyInput();
-    }
-    if constexpr (g_coreType == AIV) {
-        PipeBarrier<PIPE_ALL>();
-    }
-    SyncAll<false>(); // AIC 等待同步标志清零完成
+    // if (sharedExpertNum_ > 0) {
+    //     SharedExpertCopyInput();
+    // }
+    // if constexpr (g_coreType == AIV) {
+    //     PipeBarrier<PIPE_ALL>();
+    // }
+    // SyncAll<false>(); // AIC 等待同步标志清零完成
 
-    // 共享专家 GMM1+SwiGLU 前移到 MoE 之前执行，复用 MoE 函数。
-    TupleShape initShape;
-    Get<N_VALUE>(initShape) = hiddenDim_;
-    Get<K_VALUE>(initShape) = k_;
-    BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    int32_t gmTileSequence = 0; // Specialized A8W4/A4W4 GMM1 AIC-AIV1 tile ready sequence.
-    if (sharedExpertNum_ > 0) {
-        ProcessSharedExpertGmm1(initShape, initOffset, gmTileSequence);
-        SyncAll<false>();
-    }
+    // // 共享专家 GMM1+SwiGLU 前移到 MoE 之前执行，复用 MoE 函数。
+    // TupleShape initShape;
+    // Get<N_VALUE>(initShape) = hiddenDim_;
+    // Get<K_VALUE>(initShape) = k_;
+    // BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    // int32_t gmTileSequence = 0; // Specialized A8W4/A4W4 GMM1 AIC-AIV1 tile ready sequence.
+    // if (sharedExpertNum_ > 0) {
+    //     ProcessSharedExpertGmm1(initShape, initOffset, gmTileSequence);
+    //     SyncAll<false>();
+    // }
 
-    if constexpr (g_coreType == AIV) {
-        // 全部物理 AIV 先量化各自 token 分片，再批量发布本 Server ready flag 并构造一级队列。
-        // 量化/flag 的 MTE3 与 Scalar 建队列允许重叠；CrossRankSync 尾部统一排空并同步全部 AIV。
-        DispatchPrepareBuffInit();
-        QuantizeLocalTokensToRelay();
-        SetLocalRelayReadyFlags();
-        BuildDispatchRelayQueues();
-    }
+    // if constexpr (g_coreType == AIV) {
+    //     // 全部物理 AIV 先量化各自 token 分片，再批量发布本 Server ready flag 并构造一级队列。
+    //     // 量化/flag 的 MTE3 与 Scalar 建队列允许重叠；CrossRankSync 尾部统一排空并同步全部 AIV。
+    //     DispatchPrepareBuffInit();
+    //     QuantizeLocalTokensToRelay();
+    //     SetLocalRelayReadyFlags();
+    //     BuildDispatchRelayQueues();
+    // }
 
-    CrossRankSyncInWorldSize(true); // 同一物理 AIV 继续使用 SendMask 已取得的锁，并在同步结束后释放。
+    // CrossRankSyncInWorldSize(true); // 同一物理 AIV 继续使用 SendMask 已取得的锁，并在同步结束后释放。
 
-    // URMA Layered 的 A8W8、A4W4 和 A8W4 共用同一专家 Wave 状态机。
-    // 入口已由 mega_moe_apt.cpp 的 CommModeType 固定，精度路径由类模板选择，不保留旧路径回退开关。
-    ProcessMoeExpertWave(initShape, initOffset, gmTileSequence);
+    // // URMA Layered 的 A8W8、A4W4 和 A8W4 共用同一专家 Wave 状态机。
+    // // 入口已由 mega_moe_apt.cpp 的 CommModeType 固定，精度路径由类模板选择，不保留旧路径回退开关。
+    // ProcessMoeExpertWave(initShape, initOffset, gmTileSequence);
 
-    // 3.5: 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
-    if (sharedExpertNum_ > 0) {
-        ProcessSharedExpertGmm2(initShape, initOffset);
-    }
+    // // 3.5: 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
+    // if (sharedExpertNum_ > 0) {
+    //     ProcessSharedExpertGmm2(initShape, initOffset);
+    // }
 
-    // 4. 本卡数据Unpermute
-    if constexpr (g_coreType == AIV) {
-        UnpermuteBuffInit();
-        CrossRankSyncInWorldSize(false); // Wave 已释放固定归属锁，同步核重新取得通道后确认 Combine 完成。
-        Unpermute();
-    }
-    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    // // 4. 本卡数据Unpermute
+    // if constexpr (g_coreType == AIV) {
+    //     UnpermuteBuffInit();
+    //     CrossRankSyncInWorldSize(false); // Wave 已释放固定归属锁，同步核重新取得通道后确认 Combine 完成。
+    //     Unpermute();
+    // }
+    // SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
 
 #endif
