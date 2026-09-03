@@ -864,6 +864,16 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                                                            lane_idx, gslots);
             __syncthreads();
             const uint32_t kth_full = gslots[0];
+            if (threadIdx.x == 0 && blockIdx.x == 0 && q_token == 0) {
+                uint32_t mdef = 0, meq = 0;
+                for (uint32_t ii = 0; ii < kNumCand; ++ii) {
+                    uint32_t u = __float_as_uint(merge_vals[ii]);
+                    u = (u & 0x80000000u) ? ~u : (u ^ 0x80000000u);
+                    if (u > kth_full) mdef++;
+                    else if (u == kth_full) meq++;
+                }
+                printf("[D2] kth=0x%08x manual_def=%u manual_eq=%u\n", kth_full, mdef, meq);
+            }
 
             // ==== stage 4: distributed selection over 8 slices (block-level prefixes) ====
             {
@@ -907,6 +917,8 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                 }
                 __syncthreads();
                 const uint32_t total_definite = gslots[0];
+                if (threadIdx.x == 0 && blockIdx.x == 0 && q_token == 0)
+                    printf("[D2] prefix_total_def=%u\n", total_definite);
 
                 // write definite (within-warp prefix + block base)
                 if (i_active) {
