@@ -10,19 +10,15 @@
 
 /*!
  * \file reduce_sum_ref.h
- * \brief 使用 AIV 进行 reduce_sum — Te::MakeTensor + pingpong + float32 中间转换累加
+ * \brief 使用 AIV 进行 reduce_sum — pingpong + float32 中间转换累加
  *
- * 参考 ops-transformer ReadRemoteDataAdd 实现:
- *   - Te::MakeTensor + Te::Copy + Te::Transform (不使用 LocalTensor/VECIN)
+ *   - LocalTensor (VECIN) + GlobalTensor + DataCopy/Cast/Add 实现
  *   - pingpong: input buffer 双份交替 (pingPongCount_ & 1)
  *   - float32 中间转换: BF16→Cast float32→Add→Cast 回 BF16 (精度优先)
  *   - self/received 分离读取
  *
- * 方案3优化 (ExecuteReduceSumBatch):
- *   - 批量处理 BATCH_ROWS 行, 减少每行 flag 操作次数 (从 ~10/行 降到 ~10/批)
- *   - 每批内: 先批量清零 sum, 再逐 rank 批量 GM→UB + Add, 最后批量 UB→GM
- *   - flag 操作: 每批每 rank 仅 1 次 SetFlag/WaitFlag (MTE2_V, V_MTE2), 每批仅 1 次 V_MTE3/MTE3_V
- *   - 仅用于 tileCnt=1 + SCALAR BOUND (小 shape) 路径
+ * ExecuteReduceSumBatch 已停用 (多行批量 + 单次 flag 模式存在时序竞态),
+ * 保留实现供后续修复参考; 现统一走逐行同步的 ExecuteReduceSum。
  */
 
 #ifndef REDUCE_SUM_REF_H
@@ -47,14 +43,7 @@ __aicore__ inline uint64_t CeilDiv(uint64_t a, uint64_t b)
 template <typename DataType>
 class ReduceSumForAlltoAll {
 public:
-    using MakeLayoutUB =
-        Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<DataType>>;
-    using CopyMakerGM2UB = decltype(Te::MakeCopy(Te::CopyGM2UB{}));
-    using CopyMakerUB2GM = decltype(Te::MakeCopy(Te::CopyUB2GM{}));
-
-    __aicore__ inline ReduceSumForAlltoAll()
-        : copyGM2UB_(Te::MakeCopy(Te::CopyGM2UB{})),
-          copyUB2GM_(Te::MakeCopy(Te::CopyUB2GM{})) {};
+    __aicore__ inline ReduceSumForAlltoAll(){};
 
     __aicore__ inline void Init(uint64_t outputSize, uint64_t stride, uint64_t rankDim, uint64_t rankId,
                                 uint64_t aivNum, GM_ADDR srcAddr, GM_ADDR selfAddr, GM_ADDR dstAddr)
@@ -79,14 +68,18 @@ public:
         // N 分段: 6 slots × float, UB 上限 180KB
         constexpr uint64_t MAX_UB_BYTES = 180UL * 1024UL;
         uint64_t maxNPerSeg = MAX_UB_BYTES / (6U * sizeof(float));
-        if (maxNPerSeg > paddingN) { maxNPerSeg = paddingN; }
+        if (maxNPerSeg > paddingN) {
+            maxNPerSeg = paddingN;
+        }
         // 对齐到 32B (UB_ALIGN_BYTES / sizeof(float) = 8)
         maxNPerSeg = (maxNPerSeg / 8U) * 8U;
-        if (maxNPerSeg == 0U) { maxNPerSeg = 8U; }
+        if (maxNPerSeg == 0U) {
+            maxNPerSeg = 8U;
+        }
 
         uint32_t startRowId = 0, endRowId = 0, rowNum = 0;
-        SplitToCore(static_cast<uint32_t>(tileM), static_cast<uint32_t>(aivNum_),
-                    static_cast<uint32_t>(GetBlockIdx()), startRowId, endRowId, rowNum);
+        SplitToCore(static_cast<uint32_t>(tileM), static_cast<uint32_t>(aivNum_), static_cast<uint32_t>(GetBlockIdx()),
+                    startRowId, endRowId, rowNum);
 
         constexpr uint64_t TOTAL_UB = 192UL * 1024UL;
         LocalTensor<float> ubF32{TPosition::VECIN, 0, static_cast<uint32_t>(TOTAL_UB / sizeof(float))};
@@ -118,8 +111,8 @@ public:
                     uint64_t curOffset = rankOffset + static_cast<uint64_t>(tokenIndex) * nSize_ + nStart;
 
                     GM_ADDR dataBaseAddr = (curRank == rankId_) ? selfAddr_ : srcAddr_;
-                    __gm__ DataType* gmPtr = reinterpret_cast<__gm__ DataType*>(
-                        dataBaseAddr + curOffset * sizeof(DataType));
+                    __gm__ DataType *gmPtr =
+                        reinterpret_cast<__gm__ DataType *>(dataBaseAddr + curOffset * sizeof(DataType));
 
                     // GM → UB (BF16)
                     GlobalTensor<DataType> gmData;
@@ -129,14 +122,12 @@ public:
                     WaitFlag<HardEvent::MTE2_V>(FLAG_ID_NUM_ONE);
 
                     // Cast BF16 → float32
-                    Cast(ubF32[f32Off[ppId] / sizeof(float)],
-                         ubBF16[bf16Off[ppId] / sizeof(DataType)],
+                    Cast(ubF32[f32Off[ppId] / sizeof(float)], ubBF16[bf16Off[ppId] / sizeof(DataType)],
                          RoundMode::CAST_NONE, nSegLen);
                     PipeBarrier<PIPE_V>();
 
                     // Add sumF32 += inputF32
-                    Add(ubF32[sumOffset / sizeof(float)],
-                        ubF32[sumOffset / sizeof(float)],
+                    Add(ubF32[sumOffset / sizeof(float)], ubF32[sumOffset / sizeof(float)],
                         ubF32[f32Off[ppId] / sizeof(float)], nSegLen);
                     SetFlag<HardEvent::V_MTE2>(FLAG_ID_NUM_ONE);
                     WaitFlag<HardEvent::V_MTE2>(FLAG_ID_NUM_ONE);
@@ -146,14 +137,13 @@ public:
 
                 // 3. Cast float32 → BF16 (输出)
                 PipeBarrier<PIPE_V>();
-                Cast(ubBF16[outOff / sizeof(DataType)],
-                     ubF32[sumOffset / sizeof(float)],
-                     RoundMode::CAST_RINT, nSegLen);
+                Cast(ubBF16[outOff / sizeof(DataType)], ubF32[sumOffset / sizeof(float)], RoundMode::CAST_RINT,
+                     nSegLen);
                 SetFlag<HardEvent::V_MTE3>(FLAG_ID_NUM_ONE);
                 WaitFlag<HardEvent::V_MTE3>(FLAG_ID_NUM_ONE);
 
                 // 4. UB → GM
-                __gm__ DataType* outPtr = reinterpret_cast<__gm__ DataType*>(
+                __gm__ DataType *outPtr = reinterpret_cast<__gm__ DataType *>(
                     dstAddr_ + (static_cast<uint64_t>(tokenIndex) * nSize_ + nStart) * sizeof(DataType));
                 GlobalTensor<DataType> gmOut;
                 gmOut.SetGlobalBuffer(outPtr);
@@ -165,11 +155,11 @@ public:
     }
 
     /*!
-     * \brief 批量 reduceSum — 方案3优化: 减少 flag 操作次数
+     * \brief 批量 reduceSum — 已停用, 保留供后续修复参考
      *
-     * 已停用: 多行 DataCopy 连发 + 单次 SetFlag/WaitFlag 的模式存在时序竞态,
+     * 多行 DataCopy 连发 + 单次 SetFlag/WaitFlag 的模式存在时序竞态,
      * 尾段(非整 maxNPerSeg 段)数据错乱(M=1024,K=128,N=8192,R=2 稳定复现)。
-     * 单 tile 路径已改用逐行同步的 ExecuteReduceSum。保留此实现供后续修复参考。
+     * 单 tile 路径已改用逐行同步的 ExecuteReduceSum。
      *
      * 每批处理 batchRows 行, 将每行 ~10 次 flag 操作降低到每批 ~10 次。
      * 批内处理顺序: 批量清零 → 逐 rank 批量 GM→UB + Cast + Add → 批量 Cast + UB→GM
@@ -185,20 +175,26 @@ public:
 
         // N 分段: 6 slots × float × batchRows, UB 上限 180KB
         constexpr uint64_t MAX_UB_BYTES = 180UL * 1024UL;
-        uint64_t maxNPerSeg = MAX_UB_BYTES / (6U * sizeof(float) * 4U);  // 预留 batchRows=4
-        if (maxNPerSeg > paddingN) { maxNPerSeg = paddingN; }
+        uint64_t maxNPerSeg = MAX_UB_BYTES / (6U * sizeof(float) * 4U); // 预留 batchRows=4
+        if (maxNPerSeg > paddingN) {
+            maxNPerSeg = paddingN;
+        }
         maxNPerSeg = (maxNPerSeg / 8U) * 8U;
-        if (maxNPerSeg == 0U) { maxNPerSeg = 8U; }
+        if (maxNPerSeg == 0U) {
+            maxNPerSeg = 8U;
+        }
 
         // batchRows 自适应 (基于 N 分段后的 per-seg UB)
         uint64_t perRowUbBytes = maxNPerSeg * 6U * sizeof(float);
         uint32_t maxBatchByUb = static_cast<uint32_t>(MAX_UB_BYTES / perRowUbBytes);
         uint32_t batchRows = (maxBatchByUb >= 4U) ? 4U : maxBatchByUb;
-        if (batchRows == 0U) { batchRows = 1U; }
+        if (batchRows == 0U) {
+            batchRows = 1U;
+        }
 
         uint32_t startRowId = 0, endRowId = 0, rowNum = 0;
-        SplitToCore(static_cast<uint32_t>(tileM), static_cast<uint32_t>(aivNum_),
-                    static_cast<uint32_t>(GetBlockIdx()), startRowId, endRowId, rowNum);
+        SplitToCore(static_cast<uint32_t>(tileM), static_cast<uint32_t>(aivNum_), static_cast<uint32_t>(GetBlockIdx()),
+                    startRowId, endRowId, rowNum);
 
         constexpr uint64_t TOTAL_UB = 192UL * 1024UL;
         LocalTensor<float> ubF32{TPosition::VECIN, 0, static_cast<uint32_t>(TOTAL_UB / sizeof(float))};
@@ -239,8 +235,8 @@ public:
                     for (uint32_t r = 0U; r < curBatch; ++r) {
                         uint32_t tokenIndex = startRowId + batchStart + r;
                         uint64_t curOffset = rankOffset + static_cast<uint64_t>(tokenIndex) * nSize_ + nStart;
-                        __gm__ DataType* gmPtr = reinterpret_cast<__gm__ DataType*>(
-                            dataBaseAddr + curOffset * sizeof(DataType));
+                        __gm__ DataType *gmPtr =
+                            reinterpret_cast<__gm__ DataType *>(dataBaseAddr + curOffset * sizeof(DataType));
 
                         uint64_t rowBf16Off = curBf16Off + static_cast<uint64_t>(r) * nSegLen * sizeof(float);
                         GlobalTensor<DataType> gmData;
@@ -256,12 +252,10 @@ public:
                         uint64_t rowF32Off = curF32Off + static_cast<uint64_t>(r) * nSegLen * sizeof(float);
                         uint64_t rowSumOff = sumOffset + static_cast<uint64_t>(r) * nSegLen * sizeof(float);
 
-                        Cast(ubF32[rowF32Off / sizeof(float)],
-                             ubBF16[rowBf16Off / sizeof(DataType)],
+                        Cast(ubF32[rowF32Off / sizeof(float)], ubBF16[rowBf16Off / sizeof(DataType)],
                              RoundMode::CAST_NONE, nSegLen);
                         PipeBarrier<PIPE_V>();
-                        Add(ubF32[rowSumOff / sizeof(float)],
-                            ubF32[rowSumOff / sizeof(float)],
+                        Add(ubF32[rowSumOff / sizeof(float)], ubF32[rowSumOff / sizeof(float)],
                             ubF32[rowF32Off / sizeof(float)], nSegLen);
                     }
                     SetFlag<HardEvent::V_MTE2>(FLAG_ID_NUM_ONE);
@@ -275,16 +269,15 @@ public:
                 for (uint32_t r = 0U; r < curBatch; ++r) {
                     uint64_t rowSumOff = sumOffset + static_cast<uint64_t>(r) * nSegLen * sizeof(float);
                     uint64_t rowOutOff = outOff + static_cast<uint64_t>(r) * nSegLen * sizeof(float);
-                    Cast(ubBF16[rowOutOff / sizeof(DataType)],
-                         ubF32[rowSumOff / sizeof(float)],
-                         RoundMode::CAST_RINT, nSegLen);
+                    Cast(ubBF16[rowOutOff / sizeof(DataType)], ubF32[rowSumOff / sizeof(float)], RoundMode::CAST_RINT,
+                         nSegLen);
                 }
                 SetFlag<HardEvent::V_MTE3>(FLAG_ID_NUM_ONE);
                 WaitFlag<HardEvent::V_MTE3>(FLAG_ID_NUM_ONE);
 
                 for (uint32_t r = 0U; r < curBatch; ++r) {
                     uint32_t tokenIndex = startRowId + batchStart + r;
-                    __gm__ DataType* outPtr = reinterpret_cast<__gm__ DataType*>(
+                    __gm__ DataType *outPtr = reinterpret_cast<__gm__ DataType *>(
                         dstAddr_ + (static_cast<uint64_t>(tokenIndex) * nSize_ + nStart) * sizeof(DataType));
                     uint64_t rowOutOff = outOff + static_cast<uint64_t>(r) * nSegLen * sizeof(float);
                     GlobalTensor<DataType> gmOut;
@@ -298,8 +291,8 @@ public:
     }
 
 private:
-    __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t coreId,
-                                       uint32_t &startId, uint32_t &endId, uint32_t &rowNum)
+    __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t coreId, uint32_t &startId,
+                                       uint32_t &endId, uint32_t &rowNum)
     {
         rowNum = curSendCnt / curUseAivNum;
         uint32_t remainderNum = curSendCnt % curUseAivNum;
@@ -312,9 +305,6 @@ private:
         }
         endId = startId + rowNum;
     }
-
-    CopyMakerGM2UB copyGM2UB_;
-    CopyMakerUB2GM copyUB2GM_;
 
     GM_ADDR srcAddr_{0};
     GM_ADDR selfAddr_{0};
