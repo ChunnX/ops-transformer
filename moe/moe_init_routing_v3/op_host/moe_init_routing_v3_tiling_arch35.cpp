@@ -868,7 +868,7 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::CheckSetEmptyTensor()
         isEmptyTensor_ = true;
     }
 
-    if (!isEmptyTensor_ && cols_ != 0 && activeNum_ != ACTIVE_NUM_MIN_VALUE) {
+    if (activeNum_ != 0 && activeNum_ != ACTIVE_NUM_MIN_VALUE) {
         //! 出于历史调用的兼容性，保留校验activeNum=n*k，但实际上不使用该属性
         OP_CHECK_IF(activeNum_ != totalLength_,
                     OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "active_num", std::to_string(activeNum_),
