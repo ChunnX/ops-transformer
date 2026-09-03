@@ -48,4 +48,7 @@ TEST_PARAMS = {
 
 # 按需选择要启用的测试参数（例如默认启用所有）
 properties = torch.npu.get_device_properties()
-ENABLED_PARAMS = [TEST_PARAMS["li_default_a5"]] 
+ENABLED_PARAMSETS = [
+    ("li_default_a5", TEST_PARAMS["li_default_a5"]),
+]
+ENABLED_PARAMS = [params for _, params in ENABLED_PARAMSETS]
