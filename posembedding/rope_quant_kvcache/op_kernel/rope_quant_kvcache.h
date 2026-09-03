@@ -79,8 +79,7 @@ public:
                             qDataNum * sizeof(half) + kvDataNum * sizeof(half) +
                                 this->hiddenSize * sizeof(half) * ROPE_TENSOR_NUM +
                                 this->hiddenSize * sizeof(float) * QUANTIZE_TENSOR_NUM);
-            pipe.InitBuffer(outQueue, 1,
-                            qDataNum * sizeof(half) + kvDataNum * sizeof(float) + this->hiddenSize * sizeof(float) * 4);
+            pipe.InitBuffer(outQueue, 1, qDataNum * sizeof(half) + kvDataNum * sizeof(float));
         } else if (taskId == 0) {
             inputGm.SetGlobalBuffer((__gm__ half *)qkv + qkvBlockOffset + this->qHiddenSize);
 
@@ -104,7 +103,7 @@ public:
             pipe.InitBuffer(inQueue, 1,
                             kvDataNum * sizeof(half) + this->hiddenSize * sizeof(half) * ROPE_TENSOR_NUM +
                                 this->hiddenSize * sizeof(float) * QUANTIZE_TENSOR_NUM);
-            pipe.InitBuffer(outQueue, 1, kvDataNum * sizeof(float) + this->hiddenSize * sizeof(float) * 3);
+            pipe.InitBuffer(outQueue, 1, kvDataNum * sizeof(float));
         }
     }
 
@@ -137,38 +136,40 @@ private:
         DataCopy(vInUb, inputGm[this->qHiddenSize + this->kHiddenSize], this->kvHeadNum * this->hiddenSize);
         inQueue.EnQue(qInUb);
         qInUb = inQueue.DeQue<half>();
+        Muls(sinUb, sinUb, (half)-1.0, this->hiddenSize / ROPE_LAST_DIM_SPLIT);
         Cast(quantOffsetUb, quantOffsetUbOri, RoundMode::CAST_NONE, this->hiddenSize);
         PipeBarrier<PIPE_V>();
 
         // caculate q
         LocalTensor<half> qOutUb = outQueue.AllocTensor<half>();
-        uint64_t qDataNum = this->qHeadNum * this->hiddenSize;
-        uint64_t kvDataNum = this->kvHeadNum * this->hiddenSize;
-        LocalTensor<float> outUbF32 = qOutUb.ReinterpretCast<float>();
-        LocalTensor<float> vOutUbF32 = outUbF32[qDataNum * sizeof(half) / sizeof(float)];
-        LocalTensor<float> qInUbF32 = vOutUbF32[kvDataNum];
-        LocalTensor<float> cosUbF32 = qInUbF32[this->hiddenSize];
-        LocalTensor<float> sinUbF32 = cosUbF32[this->hiddenSize];
-        LocalTensor<float> qRopeUbF32 = sinUbF32[this->hiddenSize];
+        LocalTensor<half> vOutUb = qOutUb[this->qHeadNum * this->hiddenSize];
+        // step 1
+        if (this->hiddenSize <= FP16_ONE_REPEAT_NUM) {
+            uint64_t halfSize = this->hiddenSize / ROPE_LAST_DIM_SPLIT;
+            uint8_t repeatStride = this->hiddenSize / FP16_ONE_BLOCK_NUM;
+            Mul(qOutUb, qInUb[halfSize], sinUb, halfSize, this->qHeadNum, {1, 1, 1, repeatStride, repeatStride, 0});
+            Mul(qOutUb[halfSize], qInUb, sinUb[halfSize], halfSize, this->qHeadNum,
+                {1, 1, 1, repeatStride, repeatStride, 0});
+        } else {
+            uint64_t halfSize = this->hiddenSize / ROPE_LAST_DIM_SPLIT;
+            for (uint64_t r = 0; r < this->qHeadNum; r++) {
+                uint64_t rowOffset = r * this->hiddenSize;
+                Mul(qOutUb[rowOffset], qInUb[rowOffset + halfSize], sinUb, halfSize);
+                Mul(qOutUb[rowOffset + halfSize], qInUb[rowOffset], sinUb[halfSize], halfSize);
+            }
+        }
+        LocalTensor<float> vOutUbF32 = vOutUb.ReinterpretCast<float>();
         Cast(vOutUbF32, vInUb, RoundMode::CAST_NONE, this->kvHeadNum * this->hiddenSize);
-        Cast(cosUbF32, cosUb, RoundMode::CAST_NONE, this->hiddenSize);
-        Cast(sinUbF32, sinUb, RoundMode::CAST_NONE, this->hiddenSize);
         PipeBarrier<PIPE_V>();
-        uint64_t halfSize = this->hiddenSize / ROPE_LAST_DIM_SPLIT;
-        Muls(sinUbF32, sinUbF32, -1.0f, halfSize);
-        PipeBarrier<PIPE_V>();
-        for (uint64_t r = 0; r < this->qHeadNum; r++) {
-            uint64_t rowOffset = r * this->hiddenSize;
-            Cast(qInUbF32, qInUb[rowOffset], RoundMode::CAST_NONE, this->hiddenSize);
-            PipeBarrier<PIPE_V>();
-            Mul(qRopeUbF32, qInUbF32[halfSize], sinUbF32, halfSize);
-            Mul(qRopeUbF32[halfSize], qInUbF32, sinUbF32[halfSize], halfSize);
-            Mul(qInUbF32, qInUbF32, cosUbF32, this->hiddenSize);
-            PipeBarrier<PIPE_V>();
-            Add(qRopeUbF32, qRopeUbF32, qInUbF32, this->hiddenSize);
-            PipeBarrier<PIPE_V>();
-            Cast(qOutUb[rowOffset], qRopeUbF32, RoundMode::CAST_NONE, this->hiddenSize);
-            PipeBarrier<PIPE_V>();
+        // step 2
+        if (this->hiddenSize <= FP16_ONE_REPEAT_NUM) {
+            uint8_t repeatStride = this->hiddenSize / FP16_ONE_BLOCK_NUM;
+            Mul(qInUb, qInUb, cosUb, this->hiddenSize, this->qHeadNum, {1, 1, 1, repeatStride, repeatStride, 0});
+        } else {
+            for (uint64_t r = 0; r < this->qHeadNum; r++) {
+                uint64_t rowOffset = r * this->hiddenSize;
+                Mul(qInUb[rowOffset], qInUb[rowOffset], cosUb, this->hiddenSize);
+            }
         }
         for (uint64_t r = 0; r < this->kvHeadNum; r++) {
             uint64_t rowOffset = r * this->hiddenSize;
@@ -179,6 +180,8 @@ private:
 #endif
         }
         PipeBarrier<PIPE_V>();
+        // step 3
+        Add(qOutUb, qOutUb, qInUb, this->qHeadNum * this->hiddenSize);
         for (uint64_t r = 0; r < this->kvHeadNum; r++) {
             uint64_t rowOffset = r * this->hiddenSize;
             Add(vOutUbF32[rowOffset], vOutUbF32[rowOffset], quantOffsetUb, this->hiddenSize);
@@ -191,13 +194,13 @@ private:
 
         // caculate v
         PipeBarrier<PIPE_V>();
-        LocalTensor<int16_t> vOutUbS16 = vOutUbF32.ReinterpretCast<int16_t>();
+        LocalTensor<int16_t> vOutUbS16 = vOutUb.ReinterpretCast<int16_t>();
         Cast(vOutUbS16, vOutUbF32, RoundMode::CAST_RINT, this->kvHeadNum * this->hiddenSize);
         PipeBarrier<PIPE_V>();
-        LocalTensor<half> vOutUbF16 = vOutUbF32.ReinterpretCast<half>();
+        LocalTensor<half> vOutUbF16 = vOutUb.ReinterpretCast<half>();
         Cast(vOutUbF16, vOutUbS16, RoundMode::CAST_NONE, this->kvHeadNum * this->hiddenSize);
         PipeBarrier<PIPE_V>();
-        LocalTensor<int8_t> vOutUbS8 = vOutUbF32.ReinterpretCast<int8_t>();
+        LocalTensor<int8_t> vOutUbS8 = vOutUb.ReinterpretCast<int8_t>();
         Cast(vOutUbS8, vOutUbF16, RoundMode::CAST_NONE, this->kvHeadNum * this->hiddenSize);
         SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
         WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
@@ -223,31 +226,39 @@ private:
         inQueue.EnQue(kInUb);
         kInUb = inQueue.DeQue<half>();
 
+        Muls(sinUb, sinUb, (half)-1.0, this->hiddenSize / ROPE_LAST_DIM_SPLIT);
         Cast(quantOffsetUb, quantOffsetUbOri, RoundMode::CAST_NONE, this->hiddenSize);
         PipeBarrier<PIPE_V>();
 
-        LocalTensor<float> kOutUbF32 = outQueue.AllocTensor<float>();
-        uint64_t kvDataNum = this->kvHeadNum * this->hiddenSize;
-        LocalTensor<float> kInUbF32 = kOutUbF32[kvDataNum];
-        LocalTensor<float> cosUbF32 = kInUbF32[this->hiddenSize];
-        LocalTensor<float> sinUbF32 = cosUbF32[this->hiddenSize];
-        Cast(cosUbF32, cosUb, RoundMode::CAST_NONE, this->hiddenSize);
-        Cast(sinUbF32, sinUb, RoundMode::CAST_NONE, this->hiddenSize);
+        LocalTensor<half> kOutUb = outQueue.AllocTensor<half>();
+        if (this->hiddenSize <= FP16_ONE_REPEAT_NUM) {
+            uint64_t halfSize = this->hiddenSize / ROPE_LAST_DIM_SPLIT;
+            uint8_t repeatStride = this->hiddenSize / FP16_ONE_BLOCK_NUM;
+            Mul(kOutUb, kInUb[halfSize], sinUb, halfSize, this->kvHeadNum, {1, 1, 1, repeatStride, repeatStride, 0});
+            Mul(kOutUb[halfSize], kInUb, sinUb[halfSize], halfSize, this->kvHeadNum,
+                {1, 1, 1, repeatStride, repeatStride, 0});
+        } else {
+            uint64_t halfSize = this->hiddenSize / ROPE_LAST_DIM_SPLIT;
+            for (uint64_t r = 0; r < this->kvHeadNum; r++) {
+                uint64_t rowOffset = r * this->hiddenSize;
+                Mul(kOutUb[rowOffset], kInUb[rowOffset + halfSize], sinUb, halfSize);
+                Mul(kOutUb[rowOffset + halfSize], kInUb[rowOffset], sinUb[halfSize], halfSize);
+            }
+        }
         PipeBarrier<PIPE_V>();
-        uint64_t halfSize = this->hiddenSize / ROPE_LAST_DIM_SPLIT;
-        Muls(sinUbF32, sinUbF32, -1.0f, halfSize);
-        PipeBarrier<PIPE_V>();
+
         for (uint64_t r = 0; r < this->kvHeadNum; r++) {
             uint64_t rowOffset = r * this->hiddenSize;
-            Cast(kInUbF32, kInUb[rowOffset], RoundMode::CAST_NONE, this->hiddenSize);
-            PipeBarrier<PIPE_V>();
-            Mul(kOutUbF32[rowOffset], kInUbF32[halfSize], sinUbF32, halfSize);
-            Mul(kOutUbF32[rowOffset + halfSize], kInUbF32, sinUbF32[halfSize], halfSize);
-            Mul(kInUbF32, kInUbF32, cosUbF32, this->hiddenSize);
-            PipeBarrier<PIPE_V>();
-            Add(kOutUbF32[rowOffset], kOutUbF32[rowOffset], kInUbF32, this->hiddenSize);
-            PipeBarrier<PIPE_V>();
+            Mul(kInUb[rowOffset], kInUb[rowOffset], cosUb, this->hiddenSize);
         }
+        PipeBarrier<PIPE_V>();
+
+        Add(kInUb, kOutUb, kInUb, this->hiddenSize * this->kvHeadNum);
+        PipeBarrier<PIPE_V>();
+
+        LocalTensor<float> kOutUbF32 = kOutUb.ReinterpretCast<float>();
+        Cast(kOutUbF32, kInUb, RoundMode::CAST_NONE, this->kvHeadNum * this->hiddenSize);
+        PipeBarrier<PIPE_V>();
 
         for (uint64_t r = 0; r < this->kvHeadNum; r++) {
             uint64_t rowOffset = r * this->hiddenSize;
@@ -265,13 +276,13 @@ private:
         }
         PipeBarrier<PIPE_V>();
 
-        LocalTensor<int16_t> kOutUbS16 = kOutUbF32.ReinterpretCast<int16_t>();
+        LocalTensor<int16_t> kOutUbS16 = kOutUb.ReinterpretCast<int16_t>();
         Cast(kOutUbS16, kOutUbF32, RoundMode::CAST_RINT, this->kvHeadNum * this->hiddenSize);
         PipeBarrier<PIPE_V>();
-        LocalTensor<half> kOutUbF16 = kOutUbF32.ReinterpretCast<half>();
+        LocalTensor<half> kOutUbF16 = kOutUb.ReinterpretCast<half>();
         Cast(kOutUbF16, kOutUbS16, RoundMode::CAST_NONE, this->kvHeadNum * this->hiddenSize);
         PipeBarrier<PIPE_V>();
-        LocalTensor<int8_t> kOutUbS8 = kOutUbF32.ReinterpretCast<int8_t>();
+        LocalTensor<int8_t> kOutUbS8 = kOutUb.ReinterpretCast<int8_t>();
         Cast(kOutUbS8, kOutUbF16, RoundMode::CAST_NONE, this->kvHeadNum * this->hiddenSize);
 
         event_t eventIdVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
