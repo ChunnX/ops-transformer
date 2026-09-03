@@ -181,15 +181,22 @@ CUTLASS_DEVICE void warp_bucket_topk(
         remaining = kSparseCount - definite_count;
     }
 
-    // === Final pass: write definite (value > kth) + boundary (value == kth) ===
+    // === Final pass: count definite + stage boundary in ONE scan ===
     const uint32_t kth_full = kth_value;
+    constexpr uint32_t kPerLane = (kSparseCount + 31) / 32;
 
-    // Count definite
+    // Count definite + collect boundary simultaneously
     uint32_t my_def = 0;
+    uint32_t my_collected = 0;
     #pragma unroll 4
     for (uint32_t i = lane_idx; i < k_len; i += 32) {
         uint32_t u = to_sortable(__uint_as_float(load_u32(i)));
-        if (u > kth_full) my_def++;
+        if (u > kth_full) {
+            my_def++;
+        } else if (u == kth_full && my_collected < kPerLane) {
+            smem_idxs[lane_idx * kPerLane + my_collected] = static_cast<int32_t>(out_base + i);
+            my_collected++;
+        }
     }
 
     // Prefix sum for output offset
@@ -212,18 +219,6 @@ CUTLASS_DEVICE void warp_bucket_topk(
         }
     }
     __syncwarp();
-
-    // Collect boundary (value == kth)
-    constexpr uint32_t kPerLane = (kSparseCount + 31) / 32;
-    uint32_t my_collected = 0;
-    #pragma unroll 4
-    for (uint32_t i = lane_idx; i < k_len && my_collected < kPerLane; i += 32) {
-        uint32_t u = to_sortable(__uint_as_float(load_u32(i)));
-        if (u == kth_full) {
-            smem_idxs[lane_idx * kPerLane + my_collected] = static_cast<int32_t>(out_base + i);
-            my_collected++;
-        }
-    }
 
     uint32_t col_prefix = my_collected;
     for (int s = 1; s < 32; s <<= 1) {
