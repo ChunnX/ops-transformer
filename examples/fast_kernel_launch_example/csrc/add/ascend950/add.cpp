@@ -158,6 +158,11 @@ __global__ __aicore__ void add_kernel(GM_ADDR x, GM_ADDR y, GM_ADDR z, int64_t t
     }
 
     // T2: kernel 末尾（所有计算完成后）
+    // [对照实验] 等 MTE3 搬出排空后再打点: 验证 pmu_end-T2 硬件尾可被同步消除
+    AscendC::PipeBarrier<PIPE_MTE3>();
+    event_t mte3DoneEvent = static_cast<event_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_S));
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(mte3DoneEvent);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(mte3DoneEvent);
     int64_t T2 = AscendC::GetSystemCycle();
     cycleBuf[2] = T2;
 }

@@ -16,6 +16,9 @@
 #   RUN_ADD          是否跑 add (默认: 1)
 #   RUN_GMM          是否跑 grouped_matmul (默认: 1)
 #   REPLAY_SHOTS     replay 多拍次数 (默认: 5, 传给 scan_replay.py; 各拍独立计算指标取 median)
+#   ADD_CORES        add 实际 launch 核数 (默认: 平台满核; 真核数实验用,
+#                    blockLength = totalLength/numBlocks 随核数自适应, 配合 ADD_TOTAL 控制每核 tile 数)
+#   GMM_CORES        gmm 实际 launch 核数 (默认: 平台满核)
 #
 # 输出 (全部归档到 OUTPUT_DIR, 原始/中间/结果数据):
 #   {add,gmm}_full/            msprof 原始数据 (op_summary/stars_soc.data/ffts_profile.data)
@@ -179,6 +182,9 @@ build_wheel() {
     echo "[BUILD] 构建 (add=${add_cores}核, gmm=${gmm_cores}核)..."
 
     # 从原始备份恢复，再 sed 改核数（保证多次调用都从干净状态开始）
+    # 首次运行无 .orig 时从当前源码创建（要求源码为 git 干净态）
+    if [ ! -f "${ADD_CPP}.orig" ]; then cp "$ADD_CPP" "${ADD_CPP}.orig"; fi
+    if [ ! -f "${GMM_CPP}.orig" ]; then cp "$GMM_CPP" "${GMM_CPP}.orig"; fi
     cp "${ADD_CPP}.orig" "$ADD_CPP"
     cp "${GMM_CPP}.orig" "$GMM_CPP"
 
@@ -197,10 +203,55 @@ build_wheel() {
     echo "[CHECK] gmm  blockDim:  $(grep 'blockDim = ' "$GMM_CPP" | head -1)"
 
     export NPU_SOC_VERSION="$SOC_VERSION"
-    python3 setup.py clean --quiet 2>/dev/null
-    python3 -m build --wheel --no-isolation 2>&1 | tail -1
-    python3 -m pip install dist/*.whl --force-reinstall --no-deps --quiet 2>/dev/null
-    echo "[BUILD] wheel 安装完成"
+    # bisheng llvm-objcopy CWD bug workaround:
+    #   bisheng 编译器后处理 (llvm-objcopy/cceld) 在部分环境下按非编译目录的 CWD 解释
+    #   相对路径, 导致 cmake build.make 中的 -MF/-o CMakeFiles/... 报
+    #   "error opening ... No such file or directory"。
+    #   解法: 不走 setup.py 单命令 (其内部 configure+build 无法插桩), 改为
+    #   手动 cmake configure → sed 补丁 build.make 相对路径为绝对路径 → cmake --build → editable 安装。
+    rm -rf build dist ascend_ops.egg-info
+    local TORCH_DIR TORCH_NPU_PATH
+    TORCH_DIR=$(python3 -c "import torch; print(torch.utils.cmake_prefix_path + '/Torch')")
+    TORCH_NPU_PATH=$(python3 -c "import torch_npu, os; print(os.path.dirname(torch_npu.__file__))")
+    local CFG_LOG="$OUTPUT_DIR/cmake_configure.log"
+    if ! cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+        -DTorch_DIR="$TORCH_DIR" \
+        -DTORCH_NPU_PATH="$TORCH_NPU_PATH" \
+        -DNPU_SOC_VERSION="$SOC_VERSION" \
+        -DCANN_3RD_LIB_PATH="$(realpath ../../third_party)" > "$CFG_LOG" 2>&1; then
+        echo "[BUILD][ERROR] cmake configure 失败 (tail, 详见 $CFG_LOG):"
+        tail -10 "$CFG_LOG"
+        return 1
+    fi
+    local mk parent dir
+    for mk in build/csrc/*/"${SRC_SUFFIX}"/CMakeFiles/*_obj.dir/build.make; do
+        [ -f "$mk" ] || continue
+        dir=$(dirname "$mk")
+        parent=$(realpath "$(dirname "$(dirname "$dir")")")
+        sed -i "s|-MF CMakeFiles/|-MF ${parent}/CMakeFiles/|g" "$mk"
+        sed -i "s|-o CMakeFiles/|-o ${parent}/CMakeFiles/|g" "$mk"
+    done
+    local BUILD_LOG="$OUTPUT_DIR/build_wheel.log"
+    if ! cmake --build build --config Release --parallel "$(nproc)" > "$BUILD_LOG" 2>&1; then
+        echo "[BUILD][ERROR] cmake build 失败 (tail, 详见 $BUILD_LOG):"
+        tail -5 "$BUILD_LOG"
+        return 1
+    fi
+    # 安装: 直接复制 ascend_ops 包到 site-packages (cmake POST_BUILD 已把 _C.abi3.so
+    # 复制进源码树 ascend_ops/; 不走 pip install -e —— legacy setuptools backend 无
+    # build_editable hook (PEP 660), 必然失败; 也不走 setup.py bdist_wheel —— 会重新
+    # cmake configure 覆盖 build.make 补丁, 再踩 bisheng 相对路径 bug)
+    local SITE_PKG
+    SITE_PKG=$(python3 -c "import site; print(site.getsitepackages()[0])")
+    if [ ! -f ascend_ops/_C.abi3.so ]; then
+        echo "[BUILD][ERROR] ascend_ops/_C.abi3.so 不存在, 构建产物异常"
+        return 1
+    fi
+    rm -rf "${SITE_PKG}/ascend_ops"
+    cp -r ascend_ops "${SITE_PKG}/"
+    python3 -c "import ascend_ops; print('[CHECK] import ascend_ops OK:', ascend_ops.__file__)" \
+        || { echo "[BUILD][ERROR] 安装后 import 验证失败"; return 1; }
+    echo "[BUILD] 构建完成 (cmake 补丁构建 + 直装 site-packages)"
     echo ""
 }
 
@@ -247,7 +298,11 @@ collect_gmm() {
 # add 用 Vector 核数, gmm 用 Cube 核数
 # ============================================================
 echo "========== 满核 =========="
-build_wheel "${VECTOR_CORES}" "${CUBE_CORES}"
+if [ -z "$SKIP_BUILD" ]; then
+    build_wheel "${ADD_CORES:-$VECTOR_CORES}" "${GMM_CORES:-$CUBE_CORES}"
+else
+    echo "[BUILD] SKIP_BUILD=1, 跳过构建 (使用已安装 wheel)"
+fi
 if [ "$RUN_ADD" = "1" ]; then
     collect_add "满核" "$OUTPUT_DIR/add_full"
     echo ""
@@ -541,13 +596,8 @@ def parse_ffts_pmu(prof_dir):
                          "pmu_start": f[19], "pmu_end": f[20]})
     return recs
 
-def ffts_check(prof_dir, freq, taskdur):
-    """ffts PMU + kernel 打点 + dispatch 三方联合校验:
-    ① dispatch->pmu_end max ≈ TaskDur + STARS 完成上报 (正确校验口径)
-    ② kernel T2 -> pmu_end max = 硬件尾 (MTE 排空; kernel 打点无法覆盖, 这就是
-       T2-stars 不可能等于 TaskDur 的物理原因)
-    注意: kick 拆分已移除——A3 的 ffts f[19] 非 kick 时刻 (实测恒为 dispatch+20cyc,
-    零方差), 拆分口径跨平台不一致; 调度+硬件头统一用 T0-stars 合并口径"""
+def _ffts_common(prof_dir, freq, taskdur):
+    """A3/A5 共用的 PMU 基础解析: 返回 (out_dict, pmu, kcluster, disp, dp) 或 None"""
     pmu = parse_ffts_pmu(prof_dir)
     recs = parse_cycle_blocks(f"{prof_dir}.stderr.log")
     disp = parse_stars_dispatches(prof_dir)
@@ -556,13 +606,11 @@ def ffts_check(prof_dir, freq, taskdur):
     ends = sorted(r["pmu_end"] for r in pmu if r["pmu_end"] > 0)
     if not ends:
         return None
-    # kernel 末拍簇 (T0 聚类, 窗口 1.5us, 与 three_metrics 同口径)
     t0max = max(r[0] for r in recs)
     kcluster = [r for r in recs if r[0] >= t0max - int(1.5 * freq) and r[2] > 0]
     if not kcluster:
         return None
     t2_max = max(r[2] for r in kcluster)
-    # 末拍 dispatch: 簇内 T0 前向匹配的最大 dispatch 时刻
     dps = []
     for r in kcluster:
         j = bisect.bisect_right(disp, r[0]) - 1
@@ -571,18 +619,81 @@ def ffts_check(prof_dir, freq, taskdur):
     if not dps:
         return None
     dp = max(dps)
-    # 硬件尾: 用全量 pmu_end 最大值 (末拍最慢核结束), 与 T2 末拍最大值做差。
-    # 注意 ffts 是滚动采样 (每拍仅记部分核), 末拍样本可能很少, 不做 per-block 配对
-    # (曾因 min(e>=T2) 配到邻拍样本产生 ~2.2us 假尾); 全局 max 两端口径一致且稳定
     pmuend_max = max(ends)
     hw_tail = (pmuend_max - t2_max) / freq
-    # 校验: dispatch -> pmu_end max vs TaskDur (差值 = STARS 完成上报段)
     pmuend_stars = (pmuend_max - dp) / freq
-    return {
+    out = {
         "hw_tail": hw_tail,
         "pmuend_stars": pmuend_stars,
         "diff_vs_taskdur": pmuend_stars - taskdur,
     }
+    return out, pmu, kcluster, disp, dp
+
+def ffts_check_a5(prof_dir, freq, taskdur):
+    """A5: 6 时间点 5 段全量分解
+    Tstars → Tpmu_start(kick) → T0 → T1 → T2 → Tpmu_end
+    段: STARS调度 / 硬件头 / 软件头 / kernel主体 / 硬件尾"""
+    base = _ffts_common(prof_dir, freq, taskdur)
+    if base is None:
+        return None
+    out, pmu, kcluster, disp, dp = base
+    win = int((taskdur + 5.0) * freq)
+    # 段1: STARS调度 (kick) = Tpmu_start - Tstars
+    starts = [r["pmu_start"] for r in pmu
+              if dp <= r["pmu_start"] <= dp + win and r["pmu_start"] > 0]
+    if starts:
+        out.update({"kick_min": (min(starts) - dp) / freq,
+                    "kick_mean": statistics.mean([(s - dp) / freq for s in starts]),
+                    "kick_max": (max(starts) - dp) / freq, "kick_n": len(starts)})
+    # 段2: 硬件头 = T0 - Tpmu_start (按 block_id 匹配)
+    pmu_by_block = {}
+    for r in pmu:
+        if dp <= r["pmu_start"] <= dp + win and r["pmu_start"] > 0 and r["block_id"] < 64:
+            pmu_by_block[r["block_id"]] = r["pmu_start"]
+    boots = _boot_seg_from_log(prof_dir, freq, pmu_by_block)
+    if boots:
+        out.update({"boot_min": min(boots), "boot_mean": statistics.mean(boots),
+                    "boot_max": max(boots), "boot_n": len(boots)})
+    # PMU活跃 = Tpmu_end - Tpmu_start
+    actives = [(r["pmu_end"] - r["pmu_start"]) / freq for r in pmu
+               if dp <= r["pmu_start"] <= dp + win and r["pmu_end"] > r["pmu_start"] > 0]
+    if actives:
+        out.update({"pmu_active_min": min(actives), "pmu_active_mean": statistics.mean(actives),
+                    "pmu_active_max": max(actives), "pmu_active_n": len(actives)})
+    return out
+
+def ffts_check_a3(prof_dir, freq, taskdur):
+    """A3: 仅硬件尾 + 全链路 (f[19] 非 kick, 不拆分)"""
+    base = _ffts_common(prof_dir, freq, taskdur)
+    if base is None:
+        return None
+    out, _, _, _, _ = base
+    return out
+
+def _boot_seg_from_log(prof_dir, freq, pmu_by_block):
+    """硬件头段 (Tpmu_start → T0) 三组统计: 末拍簇内按 block_id 匹配 pmu 记录"""
+    shot_re = re.compile(r"Shot(\d+) Block (\d+): T0=(\d+) T1=(\d+) T2=(\d+)")
+    stderr_log = f"{prof_dir}.stderr.log"
+    if not os.path.exists(stderr_log):
+        return []
+    shots = {}
+    for line in open(stderr_log, errors="ignore"):
+        m = shot_re.search(line)
+        if m:
+            shots.setdefault(int(m.group(1)), {})[int(m.group(2))] = (
+                int(m.group(3)), int(m.group(4)), int(m.group(5)))
+    if not shots:
+        return []
+    last = shots[max(shots)]
+    t0max = max(v[0] for v in last.values()) if last else 0
+    boots = []
+    for bid, (t0, t1, t2) in last.items():
+        if t0 < t0max - int(1.5 * freq) or t0 <= 0:
+            continue
+        ps = pmu_by_block.get(bid)
+        if ps is not None and t0 >= ps:
+            boots.append((t0 - ps) / freq)
+    return boots
 
 def analyze_add(prof_dir, label):
     csvs = glob.glob(os.path.join(prof_dir, "**", "op_summary_*.csv"), recursive=True)
@@ -634,15 +745,59 @@ def fmt(v):
 print()
 print("============================================")
 print("  头开销分段测试结果 (稳态=跳过前2次; 多拍各拍独立计算取 median)")
-print("  指标 (us): 调度+硬件头 T0-stars / 软件头 T1-T0 / 头开销 T1-stars / kernel末指令 T2-stars")
+print("  4时间点: Tstars→T0→T1→T2")
+print("    Tstars      STARS 调度器 dispatch kernel 的时刻")
+print("    T0          kernel 入口第一行 (GetSystemCycle 打点)")
+print("    T1          Init 完成后、首个 MTE2 搬运前")
+print("    T2          kernel 末指令 (同步实验里=等 MTE3/Fixpipe 排空后)")
+print("  3段: 软件头 / kernel主体 / (硬件尾=PMU Tpmu_end-T2, 仅max)")
 print("  核间有快有慢, 每指标三组统计: min=最快核 / mean=核平均 / max=最慢核(墙钟,与TaskDur同语义)")
 print("============================================")
 print()
+print("  Tstars       T0      T1            T2")
+print("    │           │       │             │")
+print("    │←调度+硬件头→│←软件头→│←kernel主体→│")
+print("    └─── 头开销(T1-stars) ───→ │")
+print("    └── kernel末指令(T2-stars) ──→ │")
+print()
 
 def seg_line(name, formula, mn, mean, mx, extra=""):
-    return (f"  {name:10s} {formula:12s} min={fmt(mn):>7s}  mean={fmt(mean):>7s}  max={fmt(mx):>7s} us{extra}")
+    return (f"  {name:10s} {formula:12s} min={fmt(mn)} mean={fmt(mean)} max={fmt(mx)} us{extra}")
 
-def print_op_result(op, typ, cores, r, m, fm):
+def print_op_result_a5(op, typ, cores, r, m, fm):
+    """A5: 调度+硬件头合并口径 + kernel主体 + 硬件尾 + 全链路"""
+    shots = m.get('shots', 1) if m else 1
+    print(f"{op} ({typ}, {cores}核, {shots}拍)  TaskDur={r['mean']:.2f}us")
+    if not m:
+        print("  [无 kernel 打点数据]")
+        print()
+        return
+    # 调度+硬件头 (T0-stars, 合并口径)
+    print(seg_line("调度+硬件头", "T0-stars", m.get('t0_stars_min'), m.get('t0_stars_mean'), m.get('t0_stars')))
+    # 软件头
+    print(seg_line("软件头", "T1-T0", m.get('t1_t0_min'), m.get('t1_t0_mean'), m.get('t1_t0_max')))
+    # kernel主体
+    t2s, t1s = m.get('t2_stars'), m.get('t1_stars')
+    t2s_min, t1s_min = m.get('t2_stars_min'), m.get('t1_stars_min')
+    t2s_mean, t1s_mean = m.get('t2_stars_mean'), m.get('t1_stars_mean')
+    if t2s is not None and t1s is not None:
+        print(seg_line("kernel主体", "T2-T1",
+                       (t2s_min - t1s_min) if (t2s_min and t1s_min) else None,
+                       (t2s_mean - t1s_mean) if (t2s_mean and t1s_mean) else None, t2s - t1s))
+    # 合并口径
+    print(seg_line("头开销", "T1-stars", m.get('t1_stars_min'), m.get('t1_stars_mean'), m['t1_stars']))
+    print(seg_line("kernel末指令", "T2-stars", m.get('t2_stars_min'), m.get('t2_stars_mean'), m['t2_stars']))
+    # PMU 硬件尾 (仅 max, 依赖 ffts)
+    if fm:
+        print(f"  [ffts PMU] 硬件尾(Tpmu_end-T2)={fm['hw_tail']:.2f}us  "
+              f"全链路(Tpmu_end-Tstars)={fm['pmuend_stars']:.2f}us  (vs TaskDur {fm['diff_vs_taskdur']:+.2f})")
+    per = m.get('t1_stars_per_shot')
+    if per and len(per) > 1:
+        print(f"  逐拍 max(T1)-stars: {'/'.join(f'{v:.2f}' for v in per)}  ({m['n']} blocks, 拍间波动观测)")
+    print()
+
+def print_op_result_a3(op, typ, cores, r, m, fm):
+    """A3: 旧格式 (4 段 + PMU 两行)"""
     shots = m.get('shots', 1) if m else 1
     print(f"{op} ({typ}, {cores}核, {shots}拍)  TaskDur={r['mean']:.2f}us")
     if not m:
@@ -651,60 +806,92 @@ def print_op_result(op, typ, cores, r, m, fm):
         return
     print(seg_line("调度+硬件头", "T0-stars", m.get('t0_stars_min'), m.get('t0_stars_mean'),
                    m.get('t0_stars')))
-    print(seg_line("软件头", "T1-T0", m.get('t1_t0_min'), m.get('t1_t0_mean'),
-                   m.get('t1_t0_max')))
-    print(seg_line("头开销", "T1-stars", m.get('t1_stars_min'), m.get('t1_stars_mean'),
-                   m['t1_stars']))
-    print(seg_line("kernel末指令", "T2-stars", m.get('t2_stars_min'), m.get('t2_stars_mean'),
-                   m['t2_stars']))
-    per = m.get('t1_stars_per_shot')
-    if per and len(per) > 1:
-        print(f"  逐拍 max(T1)-stars: {'/'.join(f'{v:.2f}' for v in per)}  ({m['n']} blocks, 拍间波动观测)")
+    print(seg_line("软件头", "T1-T0", m.get('t1_t0_min'), m.get('t1_t0_mean'), m.get('t1_t0_max')))
+    print(seg_line("头开销", "T1-stars", m.get('t1_stars_min'), m.get('t1_stars_mean'), m['t1_stars']))
+    print(seg_line("kernel末指令", "T2-stars", m.get('t2_stars_min'), m.get('t2_stars_mean'), m['t2_stars']))
     if fm:
         print(f"  [ffts PMU] T2->核结束(硬件尾)={fm['hw_tail']:.2f}us  "
               f"dispatch->最慢核结束={fm['pmuend_stars']:.2f}us")
+    per = m.get('t1_stars_per_shot')
+    if per and len(per) > 1:
+        print(f"  逐拍 max(T1)-stars: {'/'.join(f'{v:.2f}' for v in per)}  ({m['n']} blocks, 拍间波动观测)")
     print()
 
 results = []
+is_a5 = (soc_version == "ascend950")
+if is_a5:
+    ffts_fn = ffts_check_a5
+    print_fn = print_op_result_a5
+else:
+    ffts_fn = ffts_check_a3
+    print_fn = print_op_result_a3
 if os.path.isdir(os.path.join(output_dir, 'add_full')):
     prof = os.path.join(output_dir, 'add_full')
     r, m = analyze_add(prof, 'add 满核')
     if r:
-        fm = ffts_check(prof, freq_add, r['mean'])
+        fm = ffts_fn(prof, freq_add, r['mean'])
         dump_intermediates(prof, 'add', freq_add)
-        print_op_result('add', 'Vector', add_cores, r, m, fm)
+        print_fn('add', 'Vector', add_cores, r, m, fm)
         results.append(('add', 'Vector', add_cores, r, m, fm))
 if os.path.isdir(os.path.join(output_dir, 'gmm_full')):
     prof = os.path.join(output_dir, 'gmm_full')
     r, m = analyze_gmm(prof, 'gmm 满核')
     if r:
-        fm = ffts_check(prof, freq_gmm, r['mean'])
+        fm = ffts_fn(prof, freq_gmm, r['mean'])
         dump_intermediates(prof, 'gmm', freq_gmm)
-        print_op_result('grouped_matmul', 'Cube', gmm_cores, r, m, fm)
+        print_fn('grouped_matmul', 'Cube', gmm_cores, r, m, fm)
         results.append(('grouped_matmul', 'Cube', gmm_cores, r, m, fm))
 
-# 生成汇总表 (长表: 每算子 min/mean/max 各一行, 2 算子共 6 行数据)
+# 生成汇总表 (长表: 每算子 min/mean/max 各一行)
 summary_path = os.path.join(output_dir, f'summary_{soc_version}.csv')
 with open(summary_path, 'w') as f:
     w = csv.writer(f)
-    w.writerow(['soc', '算子', '类型', '核数', 'shots', 'blocks', 'TaskDur稳态mean(us)', '统计口径',
-                '调度+硬件头T0-stars(us)',
-                '软件头T1-T0(us)',
-                '头开销T1-stars(us)',
-                'T2-stars(us)'])
-    for op, typ, cores, r, m, fm in results:
-        base = [soc_version, op, typ, cores, m.get('shots', 1) if m else 1,
-                m['n'] if m else '', f"{r['mean']:.2f}"]
-        for stat in ('min', 'mean', 'max'):
-            row = list(base) + [stat]
-            if m:
-                row += [fmt(m.get('t0_stars_' + stat if stat != 'max' else 't0_stars'))]
-                row += [fmt(m.get('t1_t0_' + stat))]
-                row += [fmt(m.get('t1_stars_' + stat if stat != 'max' else 't1_stars'))]
-                row += [fmt(m.get('t2_stars_' + stat if stat != 'max' else 't2_stars'))]
-            else:
-                row += ['N/A'] * 4
-            w.writerow(row)
+    if is_a5:
+        # A5: 纯 kernel 打点 4 段
+        w.writerow(['soc', '算子', '类型', '核数', 'shots', 'blocks', 'TaskDur稳态mean(us)', '统计口径',
+                    '调度+硬件头T0-stars(us)', '软件头T1-T0(us)', '头开销T1-stars(us)', 'T2-stars(us)',
+                    '硬件尾(us)', '全链路(us)'])
+        for op, typ, cores, r, m, fm in results:
+            base = [soc_version, op, typ, cores, m.get('shots', 1) if m else 1,
+                    m['n'] if m else '', f"{r['mean']:.2f}"]
+            for stat in ('min', 'mean', 'max'):
+                row = list(base) + [stat]
+                if m:
+                    row += [fmt(m.get('t0_stars_' + stat if stat != 'max' else 't0_stars'))]
+                    row += [fmt(m.get('t1_t0_' + stat))]
+                    row += [fmt(m.get('t1_stars_' + stat if stat != 'max' else 't1_stars'))]
+                    row += [fmt(m.get('t2_stars_' + stat if stat != 'max' else 't2_stars'))]
+                else:
+                    row += ['N/A'] * 4
+                if fm:
+                    row += [fmt(fm['hw_tail']) if stat == 'max' else 'N/A']
+                    row += [fmt(fm['pmuend_stars']) if stat == 'max' else 'N/A']
+                else:
+                    row += ['N/A'] * 2
+                w.writerow(row)
+    else:
+        # A3: 旧格式 CSV (4 段 + 硬件尾/全链路)
+        w.writerow(['soc', '算子', '类型', '核数', 'shots', 'blocks', 'TaskDur稳态mean(us)', '统计口径',
+                    '调度+硬件头T0-stars(us)', '软件头T1-T0(us)', '头开销T1-stars(us)', 'T2-stars(us)',
+                    '硬件尾(us)', '全链路(us)'])
+        for op, typ, cores, r, m, fm in results:
+            base = [soc_version, op, typ, cores, m.get('shots', 1) if m else 1,
+                    m['n'] if m else '', f"{r['mean']:.2f}"]
+            for stat in ('min', 'mean', 'max'):
+                row = list(base) + [stat]
+                if m:
+                    row += [fmt(m.get('t0_stars_' + stat if stat != 'max' else 't0_stars'))]
+                    row += [fmt(m.get('t1_t0_' + stat))]
+                    row += [fmt(m.get('t1_stars_' + stat if stat != 'max' else 't1_stars'))]
+                    row += [fmt(m.get('t2_stars_' + stat if stat != 'max' else 't2_stars'))]
+                else:
+                    row += ['N/A'] * 4
+                if fm:
+                    row += [fmt(fm['hw_tail']) if stat == 'max' else 'N/A']
+                    row += [fmt(fm['pmuend_stars']) if stat == 'max' else 'N/A']
+                else:
+                    row += ['N/A'] * 2
+                w.writerow(row)
 
 print(f"汇总 CSV: {summary_path}")
 print()

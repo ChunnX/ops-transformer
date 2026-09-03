@@ -158,6 +158,14 @@ __global__ __aicore__ void add_kernel(GM_ADDR x, GM_ADDR y, GM_ADDR z, int64_t t
     }
 
     // T2: kernel 末尾（所有计算完成后）
+    // [对照实验] 等 MTE3 搬出排空后再打点: 验证 pmu_end-T2 硬件尾可被同步消除
+    // 官方仓数据依赖护栏同款原语 (ops-transformer 中 133 处同款写法)
+    {
+        event_t mte3DoneEvent = pipe.AllocEventID<HardEvent::MTE3_S>();
+        SetFlag<HardEvent::MTE3_S>(mte3DoneEvent);
+        WaitFlag<HardEvent::MTE3_S>(mte3DoneEvent);
+        pipe.ReleaseEventID<HardEvent::MTE3_S>(mte3DoneEvent);
+    }
     int64_t T2 = AscendC::GetSystemCycle();
     cycleBuf[2] = T2;
 }
