@@ -132,7 +132,7 @@ def _npu_all_to_all_quant_matmul(
         x2_scale,
         x1_quant_mode,
         x2_quant_mode,
-        group_sizes,
+        group_sizes if group_sizes is not None else [],
         x1_dtype,
         x2_dtype,
         x1_scale_dtype,
