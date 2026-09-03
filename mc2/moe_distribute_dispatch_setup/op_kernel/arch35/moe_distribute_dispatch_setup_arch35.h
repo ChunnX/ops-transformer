@@ -32,6 +32,12 @@
 #include "../moe_distribute_dispatch_setup_common.h"
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
+
+// arch35 性能优化开关：置 0 时 CalMoeStartTokenNum 走原向量 Gather/ReduceSum
+#ifndef MC2_DSU_OPT_PREFIX_TOKEN_SUM
+#define MC2_DSU_OPT_PREFIX_TOKEN_SUM 1
+#endif
+
 namespace Mc2Kernel {
 constexpr uint8_t BUFFER_NUM = 2;       // 多buf
 constexpr uint32_t STATE_OFFSET = 512U; // 状态空间偏移地址
@@ -880,6 +886,17 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::CalMoeSt
     if (startRankId <= sharedExpertRankNum_) {
         return;
     }
+#if MC2_DSU_OPT_PREFIX_TOKEN_SUM
+    // 原实现按卡做向量 Gather/ReduceSum，startRankId 越大的核串行轮次越多。
+    // 累加对象是 statusTensor 上一段连续专家的 token 数，调用前已 MTE2_S，标量前缀和即可。
+    const uint32_t preExpertCnt = (startRankId - sharedExpertRankNum_) * moeExpertNumPerRank_;
+    uint32_t preTokenSum = 0U;
+    for (uint32_t i = 0U; i < preExpertCnt; ++i) {
+        preTokenSum += static_cast<uint32_t>(statusTensor((sharedExpertRankNum_ + i) * 8 + 1));
+    }
+    tokenNum += preTokenSum;
+    return;
+#else
     int32_t moeExpertNumPerRank = moeExpertNumPerRank_;
     tpipe_->InitBuffer(workLocalBuf_, moeExpertNumPerRank * sizeof(int32_t));
     LocalTensor<int32_t> moeExpertIdLT = workLocalBuf_.Get<int32_t>();
@@ -924,6 +941,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::CalMoeSt
         tokenNum += statusGatherLT(0);
     }
     return;
+#endif
 }
 
 template <TemplateMC2TypeClass>

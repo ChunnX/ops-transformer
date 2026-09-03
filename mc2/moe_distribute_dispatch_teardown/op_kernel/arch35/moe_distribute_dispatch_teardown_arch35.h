@@ -31,6 +31,11 @@
 #endif
 #include "../../../common/op_kernel/mc2_moe_context.h"
 
+// arch35 性能优化开关：置 0 时 LocalWindowCopy 走原逐 token 同步搬运
+#ifndef MC2_DTD_OPT_WINCOPY_PIPELINE
+#define MC2_DTD_OPT_WINCOPY_PIPELINE 1
+#endif
+
 namespace Mc2Kernel {
 constexpr uint8_t BUFFER_NUM = 2;       // 多buf
 constexpr uint32_t STATE_OFFSET = 512U; // 状态空间偏移地址
@@ -517,6 +522,30 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
         tokGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
         tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr));
         DataCacheCleanAndInvalid<ExpandXOutType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(tokGlobal);
+#if MC2_DTD_OPT_WINCOPY_PIPELINE
+        // 纯 win->UB->expandXOut：EnQue/DeQue 已提供 MTE2->MTE3 同步，原 MTE2_S 多余。
+        // 下一 token 搬入提前一拍，xQueue_ 双 buffer 才能重叠 MTE2/MTE3。地址、长度、顺序不变。
+        if (count > 0U) {
+            tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr));
+            LocalTensor<ExpandXOutType> preTok = xQueue_.AllocTensor<ExpandXOutType>();
+            DataCopyPad(preTok, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
+            xQueue_.EnQue(preTok);
+        }
+        for (uint32_t j = 0; j < count; j++) {
+            xTmpTensor_ = xQueue_.DeQue<ExpandXOutType>();
+            if (j + 1U < count) {
+                tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr + (j + 1U) * hAlignWinSize_));
+                LocalTensor<ExpandXOutType> nextTok = xQueue_.AllocTensor<ExpandXOutType>();
+                DataCopyPad(nextTok, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
+                xQueue_.EnQue(nextTok);
+            }
+            CopyScalesToOut(beginIdx + j, xTmpTensor_);
+            expandXOutGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOutGM_) + (beginIdx + j) * axisH_,
+                                             axisH_);
+            DataCopyPad(expandXOutGlobal, xTmpTensor_, expandXCopyParams_);
+            xQueue_.FreeTensor(xTmpTensor_);
+        }
+#else
         LocalTensor<int32_t> xTmpTensorInt;
         for (uint32_t j = 0; j < count; j++) {
             tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr + j * hAlignWinSize_));
@@ -533,6 +562,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
             DataCopyPad(expandXOutGlobal, xTmpTensor_, expandXCopyParams_);
             xQueue_.FreeTensor(xTmpTensor_);
         }
+#endif
         beginIdx += count;
     }
     totalCnt_ = beginIdx;
