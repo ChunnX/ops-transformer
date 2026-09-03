@@ -193,4 +193,73 @@ def main():
     print()
 
 if __name__ == '__main__':
-    main()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == 'l2':
+        bench_l2_reuse_experiment()
+    else:
+        main()
+
+
+def bench_l2_reuse_experiment():
+    """A/B: next_n=4 shared-KV vs next_n=1 no-sharing (equal work), Phase 1 only."""
+    import deep_gemm
+    device = 'cuda'
+    num_heads, head_dim, block_kv = 64, 128, 64
+    max_ctx, sparse_count = 8192, 512
+    nq = 624  # total tokens, equal in both cases
+
+    num_sms = torch.cuda.get_device_properties(0).multi_processor_count
+
+    def make_meta(ctx_lens, bk):
+        return deep_gemm.get_paged_mqa_logits_metadata(ctx_lens, bk, num_sms)
+
+    # ===== A: 156 batches x 4 tokens, per-batch shared KV (1MB each, 156MB total) =====
+    ba = 156
+    nb_a = (max_ctx + block_kv - 1) // block_kv      # 128 blocks/batch
+    nblocks_a = ba * nb_a
+    q_a = torch.randn(ba, 4, num_heads, head_dim, device=device).to(torch.float8_e4m3fn)
+    kv_a = torch.randn(nblocks_a, block_kv, 1, head_dim, device=device).to(torch.bfloat16)
+    kv_amax = kv_a.abs().float().amax(dim=3, keepdim=True).clamp(1e-4)
+    sf_a = (kv_amax / 448.0)
+    kv_fp8_a = (kv_a * (1.0 / sf_a)).to(torch.float8_e4m3fn)
+    fused_a = torch.empty(nblocks_a, block_kv, 1, head_dim + 4, device=device, dtype=torch.uint8)
+    fused_a[:, :, 0, :head_dim] = kv_fp8_a.view(torch.uint8).reshape(nblocks_a, block_kv, head_dim)
+    fused_a[:, :, 0, head_dim:head_dim+4] = sf_a.view(torch.uint8).reshape(nblocks_a, block_kv, 4)
+    w_a = torch.randn(ba * 4, num_heads, device=device)
+    cl_a = torch.full((ba, 4), max_ctx, device=device, dtype=torch.int32)
+    bt_a = torch.arange(nblocks_a, device=device, dtype=torch.int32).reshape(ba, -1)
+    meta_a = make_meta(cl_a, block_kv)
+
+    # ===== B: 624 batches x 1 token, each own KV (1MB each, 624MB total) =====
+    bb = 624
+    nb_b = (max_ctx + block_kv - 1) // block_kv
+    nblocks_b = bb * nb_b
+    ku = torch.randn(nblocks_b, block_kv, 1, head_dim, device=device).to(torch.bfloat16)
+    ku_amax = ku.abs().float().amax(dim=3, keepdim=True).clamp(1e-4)
+    sf_b = (ku_amax / 448.0)
+    ku_fp8 = (ku * (1.0 / sf_b)).to(torch.float8_e4m3fn)
+    fused_b = torch.empty(nblocks_b, block_kv, 1, head_dim + 4, device=device, dtype=torch.uint8)
+    fused_b[:, :, 0, :head_dim] = ku_fp8.view(torch.uint8).reshape(nblocks_b, block_kv, head_dim)
+    fused_b[:, :, 0, head_dim:head_dim+4] = sf_b.view(torch.uint8).reshape(nblocks_b, block_kv, 4)
+    q_b = torch.randn(bb, 1, num_heads, head_dim, device=device).to(torch.float8_e4m3fn)
+    w_b = torch.randn(bb * 1, num_heads, device=device)
+    cl_b = torch.full((bb, 1), max_ctx, device=device, dtype=torch.int32)
+    bt_b = torch.arange(nblocks_b, device=device, dtype=torch.int32).reshape(bb, -1)
+    meta_b = make_meta(cl_b, block_kv)
+
+    def t1(q, kv, w, cl, bt, meta):
+        for _ in range(5):
+            deep_gemm.fp8_paged_mqa_logits(q, kv, w, cl, bt, meta, max_ctx)
+        torch.cuda.synchronize()
+        s, e = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+        s.record()
+        for _ in range(50):
+            deep_gemm.fp8_paged_mqa_logits(q, kv, w, cl, bt, meta, max_ctx)
+        e.record(); torch.cuda.synchronize()
+        return s.elapsed_time(e) / 50 * 1000
+
+    ta = t1(q_a, fused_a, w_a, cl_a, bt_a, meta_a)
+    tb = t1(q_b, fused_b, w_b, cl_b, bt_b, meta_b)
+    print(f"[L2REUSE] A(next_n=4 shared KV, 156MB): {ta:.1f} us")
+    print(f"[L2REUSE] B(next_n=1 no-share,   624MB): {tb:.1f} us")
+    print(f"[L2REUSE] A/B = {ta/tb:.2f}  (若显著<1 → 复用已在生效; 若≈1 → 有优化空间)")
