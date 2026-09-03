@@ -203,12 +203,12 @@ private:
     // =================================L1 Buffer=================================
     static constexpr uint32_t L1_Q_SIZE = 128 * 128 / 2;                               // 8K, 2个fp4_e2m1元素为1B
     static constexpr uint32_t L1_Q_DESCALE_SIZE = 128 * (128 / 32) * sizeof(SCALE_T);  // 0.5K
-    static constexpr uint32_t L1_KV_SIZE = 512 * 128 / 2;                              // 32K, 2个fp4_e2m1元素为1B
-    static constexpr uint32_t L1_KV_DESCALE_SIZE = 512 * (128 / 32) * sizeof(SCALE_T); // 2K
+    static constexpr uint32_t L1_KV_SIZE = 256 * 128 / 2;                              // 16K, 2个fp4_e2m1元素为1B, s2单次最大256行
+    static constexpr uint32_t L1_KV_DESCALE_SIZE = 256 * (128 / 32) * sizeof(SCALE_T); // 1K
     static constexpr uint32_t L1_P_SIZE = 128 * 256 / 2;                               // 16K, 2个fp4_e2m1元素为1B
     static constexpr uint32_t L1_P_DESCALE_SIZE = 128 * 2 * (256 / 64 + 1) * sizeof(SCALE_T); // 1.25K
     static constexpr uint32_t L1_Q_BUFCNT = 2;
-    static constexpr uint32_t L1_KV_BUFCNT = 4;
+    static constexpr uint32_t L1_KV_BUFCNT = 7;
     static constexpr uint32_t L1_P_BUFCNT = 20;
 
     static constexpr uint32_t L1_SINGLE_GLOBAL_MAX_SIZE = 128;
@@ -221,6 +221,9 @@ private:
     LocalTensor<DATA_T> kvL1Tensor;
     LocalTensor<SCALE_T> kvDescaleL1Tensor;
     LocalTensor<half> localGlobalMaxL1;
+    // 刷"1"矩阵专用常驻buffer, 避免每次isLastS2Loop重复向L1 Fill
+    LocalTensor<DATA_T> vSumL1Tensor;
+    LocalTensor<SCALE_T> vScaleSumL1Tensor;
 
     // =================================L0 Buffer=================================
     static constexpr uint32_t QK_L0A_SIZE = 128 * 128 / 2;                 // 8K, 2个fp4_e2m1元素为1B
@@ -253,29 +256,27 @@ private:
     LocalTensor<float> mm2ResUB;
     LocalTensor<half> peerGlobalMaxUB;
 
-    // =================================Event&Buffer ID===========================
-    // mte2 <> mte1 EventID
-    static constexpr uint32_t Q_EVENT0 = EVENT_ID2;
-    static constexpr uint32_t Q_EVENT1 = EVENT_ID3;
+    // =================================Mutex ID===========================
+    // 每个 buffer 分配独立的 mutexId，静态分配 0-27 内连续 ID，配合 bufId 偏移使用
+    // Q buffer (L1) : mte2 (producer) <> mte1 (consumer)
+    static constexpr uint32_t Q_MUTEX_ID_BASE = 0;
     uint32_t qBufId = 0;
-    static constexpr uint32_t KV_EVENT0 = EVENT_ID4;
-    static constexpr uint32_t KV_EVENT1 = EVENT_ID5;
-    static constexpr uint32_t KV_EVENT2 = EVENT_ID6;
-    static constexpr uint32_t KV_EVENT3 = EVENT_ID7;
+    // KV buffer (L1) : mte2 (producer) <> mte1 (consumer)
+    static constexpr uint32_t KV_MUTEX_ID_BASE = 2;
     uint32_t kvBufId = 0;
-
-    // mte1 <> mmad EventID
-    static constexpr uint32_t QK_L0AB_EVENT0 = EVENT_ID2;
-    static constexpr uint32_t QK_L0AB_EVENT1 = EVENT_ID3;
-    static constexpr uint32_t PV_L0AB_EVENT0 = EVENT_ID4;
-    static constexpr uint32_t PV_L0AB_EVENT1 = EVENT_ID5;
+    // vSum buffer (L1) : mte2 (Fill常驻) <> mte1 (LoadData到L0A)
+    static constexpr uint32_t VSUM_MUTEX_ID_BASE = 9;
+    // QK L0AB buffer : mte1 (producer) <> m (consumer)
+    static constexpr uint32_t QK_L0AB_MUTEX_ID_BASE = 10;
     uint32_t qkL0abBufId = 0;
+    // PV L0AB buffer : mte1 (producer) <> m (consumer)
+    static constexpr uint32_t PV_L0AB_MUTEX_ID_BASE = 12;
     uint32_t pvL0abBufId = 0;
-    // mmad <> fixpipe EventID
-    static constexpr uint32_t QK_L0C_EVENT0 = EVENT_ID2;
-    static constexpr uint32_t QK_L0C_EVENT1 = EVENT_ID3;
-    static constexpr uint32_t PV_L0C_EVENT0 = EVENT_ID4;
+    // QK L0C buffer : m (producer) <> fix (consumer)
+    static constexpr uint32_t QK_L0C_MUTEX_ID_BASE = 14;
     uint32_t qkL0cBufId = 0;
+    // PV L0C buffer : m (producer) <> fix (consumer)
+    static constexpr uint32_t PV_L0C_MUTEX_ID_BASE = 16;
     uint32_t pvL0cBufId = 0;
 
     uint32_t headDimInt8 = 0;
@@ -314,8 +315,6 @@ public:
 
     __aicore__ inline void InitTensors()
     {
-        AllocEventID();
-
         // L1
         uint32_t addrL1Start = 0;
         pL1Tensor = LocalTensor<DATA_T>(TPosition::A1, addrL1Start, L1_P_SIZE * L1_P_BUFCNT); // 16K * 20 = 320K
@@ -332,13 +331,19 @@ public:
             LocalTensor<SCALE_T>(TPosition::A1, addrL1Start, L1_Q_DESCALE_SIZE * L1_Q_BUFCNT); // 0.5K * 2 = 1K
 
         addrL1Start += L1_Q_DESCALE_SIZE * L1_Q_BUFCNT;
-        kvL1Tensor = LocalTensor<DATA_T>(TPosition::A1, addrL1Start, L1_KV_SIZE * L1_KV_BUFCNT); // 32K * 4 = 128K
+        kvL1Tensor = LocalTensor<DATA_T>(TPosition::A1, addrL1Start, L1_KV_SIZE * L1_KV_BUFCNT); // 16K * 7 = 112K
 
         addrL1Start += L1_KV_SIZE * L1_KV_BUFCNT;
         kvDescaleL1Tensor =
-            LocalTensor<SCALE_T>(TPosition::A1, addrL1Start, L1_KV_DESCALE_SIZE * L1_KV_BUFCNT); // 2K * 4 = 8K
+            LocalTensor<SCALE_T>(TPosition::A1, addrL1Start, L1_KV_DESCALE_SIZE * L1_KV_BUFCNT); // 1K * 7 = 7K
 
         addrL1Start += L1_KV_DESCALE_SIZE * L1_KV_BUFCNT;
+        vSumL1Tensor = LocalTensor<DATA_T>(TPosition::A1, addrL1Start, PV_L0A_SIZE); // 18K * 1 = 18K
+
+        addrL1Start += PV_L0A_SIZE;
+        vScaleSumL1Tensor = LocalTensor<SCALE_T>(TPosition::A1, addrL1Start, V_SCALE_L0A_SIZE); // 1.125K * 1
+
+        addrL1Start += V_SCALE_L0A_SIZE;
         localGlobalMaxL1 = LocalTensor<half>(TPosition::A1, addrL1Start, 256 * 4); // 512b
 
         // L0A
@@ -364,8 +369,9 @@ public:
         pvL0CTensor = LocalTensor<float>(TPosition::CO1, addrL0CStart,
                                          PV_L0C_SIZE * PV_L0C_BUFCNT / sizeof(float)); // 72K * 1 = 72K
 
-        // 刷计算reducesum的L0A buffer
+        // 刷计算reducesum的L0A buffer: "1"矩阵在L1上Fill一次常驻, 并预刷一次到L0A
         InitL0BufferForReduceSum();
+        InitL0MXBufferForReduceSum();
 
         // Vector UB
         mm1ResUB = LocalTensor<half>(TPosition::VECCALC, 0, 256 * 128 * 2);
@@ -373,63 +379,90 @@ public:
         peerGlobalMaxUB = LocalTensor<half>(TPosition::VECCALC, 229888, 128 * 4);
     }
 
-    __aicore__ inline void ReleaseTensors() { FreeEventID(); }
-
     __aicore__ inline void ComputeMm1(const RunInfo &info)
     {
         if (unlikely(info.isFirstS2Loop)) {
-            WaitFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + qBufId);
+            Mutex::Lock<PIPE_MTE2>(Q_MUTEX_ID_BASE + qBufId);
             CopyQGmToL1(info); // 单次最大128行
             CopyQScaleGmToL1(info);
-            SetFlag<HardEvent::MTE2_MTE1>(Q_EVENT0 + qBufId);
-            WaitFlag<HardEvent::MTE2_MTE1>(Q_EVENT0 + qBufId);
+            Mutex::Unlock<PIPE_MTE2>(Q_MUTEX_ID_BASE + qBufId);
+            Mutex::Lock<PIPE_MTE1>(Q_MUTEX_ID_BASE + qBufId);
+            // Q 常驻 L0B: Q 在整个 task 序列内不变, 且 QK 的 L0B([0..16K))与 PV 的 L0B([16K起))分属
+            // 不同区间, mm1/mm2 交错执行也不会覆写 QK L0B, 故首个 s2 loop 一次灌满两个 ping-pong 槽,
+            // 后续 subloop 只装 K, 消除对同一份 Q 的重复 L1->L0 装载(QK 内层 MTE1 流量减半)
+            for (uint32_t i = 0; i < QK_L0AB_BUFCNT; ++i) {
+                Mutex::Lock<PIPE_MTE1>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
+                LoadQToL0(info); // 128 * 128
+                Mutex::Unlock<PIPE_MTE1>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
+                qkL0abBufId = (qkL0abBufId + 1) % 2;
+            }
         }
 
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId);
+        Mutex::Lock<PIPE_MTE2>(KV_MUTEX_ID_BASE + kvBufId);
         CopyKGmToL1(info); // 单次最大256行
         CopyKScaleGmToL1(info);
-        SetFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kvBufId);
-        WaitFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kvBufId);
+        Mutex::Unlock<PIPE_MTE2>(KV_MUTEX_ID_BASE + kvBufId);
+        Mutex::Lock<PIPE_MTE1>(KV_MUTEX_ID_BASE + kvBufId);
         {
             uint32_t loopCnt = CeilDiv((uint32_t)info.actSingleLoopS2Size, (uint32_t)QK_L0_S2_SPLIT_SIZE);
             uint32_t actS2Size = QK_L0_S2_SPLIT_SIZE;
             uint32_t actS2SizeAlign = QK_L0_S2_SPLIT_SIZE;
+            // fixpipe 延后一拍发射: 本轮 fixpipe 只挂 pending, 插到下一轮 LoadKToL0 之后发射,
+            // 用真实工作掩盖 MTE1->M 与 M->FIX 两处裸露的跨流水往返延迟(每 subloop 约92 cycle)
+            bool fixPending = false;
+            uint32_t pendL0cBufId = 0;
+            uint32_t pendSubLoop = 0;
+            uint32_t pendS2Size = 0;
             for (uint32_t loop = 0; loop < loopCnt; ++loop) {
                 if (loop + 1 == loopCnt) {
                     actS2Size = info.actSingleLoopS2Size - loop * QK_L0_S2_SPLIT_SIZE;
                     actS2SizeAlign = info.actSingleLoopS2SizeAlign16 - loop * QK_L0_S2_SPLIT_SIZE;
                 }
 
-                WaitFlag<HardEvent::FIX_M>(QK_L0C_EVENT0 + qkL0cBufId);
+                Mutex::Lock<PIPE_M>(QK_L0C_MUTEX_ID_BASE + qkL0cBufId);
                 {
-                    WaitFlag<HardEvent::M_MTE1>(QK_L0AB_EVENT0 + qkL0abBufId);
-                    LoadQToL0(info);                       // 128 * 128
-                    LoadKToL0(info, loop, actS2SizeAlign); // 128 * 128
-                    SetFlag<HardEvent::MTE1_M>(QK_L0AB_EVENT0 + qkL0abBufId);
-                    WaitFlag<HardEvent::MTE1_M>(QK_L0AB_EVENT0 + qkL0abBufId);
+                    Mutex::Lock<PIPE_MTE1>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
+                    LoadKToL0(info, loop, actS2SizeAlign); // 128 * 128, Q 已常驻 L0B
+                    Mutex::Unlock<PIPE_MTE1>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
+                    // 上一轮 pending 的 fixpipe 在此发射: Lock<FIX> 的等待被刚发出的 LoadK 覆盖
+                    if (fixPending) {
+                        Mutex::Lock<PIPE_FIX>(QK_L0C_MUTEX_ID_BASE + pendL0cBufId);
+                        FixpipeMm1(info, pendSubLoop, pendS2Size, pendL0cBufId); // 128 * 256
+                        Mutex::Unlock<PIPE_FIX>(QK_L0C_MUTEX_ID_BASE + pendL0cBufId);
+                        fixPending = false;
+                    }
+                    Mutex::Lock<PIPE_M>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
                     MatmulQK(info, actS2Size); // 128 * 128 * 128
-                    SetFlag<HardEvent::M_MTE1>(QK_L0AB_EVENT0 + qkL0abBufId);
+                    Mutex::Unlock<PIPE_M>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
                     qkL0abBufId = (qkL0abBufId + 1) % 2;
                 }
-                SetFlag<HardEvent::M_FIX>(QK_L0C_EVENT0 + qkL0cBufId);
-                WaitFlag<HardEvent::M_FIX>(QK_L0C_EVENT0 + qkL0cBufId);
-                FixpipeMm1(info, loop, actS2Size); // 128 * 256
-                SetFlag<HardEvent::FIX_M>(QK_L0C_EVENT0 + qkL0cBufId);
+                Mutex::Unlock<PIPE_M>(QK_L0C_MUTEX_ID_BASE + qkL0cBufId);
+                pendL0cBufId = qkL0cBufId;
+                pendSubLoop = loop;
+                pendS2Size = actS2Size;
+                fixPending = true;
                 qkL0cBufId = (qkL0cBufId + 1) % 2;
             }
+            // 返回前必须 flush: ExecuteTask 随后会用 CROSS_CORE_SYNC_V1_C1 通知 AIV mm1 结果已落 UB,
+            // pending 的 fixpipe 不能带出本次调用, 否则向量核会读到未写完的 UB
+            if (fixPending) {
+                Mutex::Lock<PIPE_FIX>(QK_L0C_MUTEX_ID_BASE + pendL0cBufId);
+                FixpipeMm1(info, pendSubLoop, pendS2Size, pendL0cBufId); // 128 * 256
+                Mutex::Unlock<PIPE_FIX>(QK_L0C_MUTEX_ID_BASE + pendL0cBufId);
+            }
         }
-        SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId);
+        Mutex::Unlock<PIPE_MTE1>(KV_MUTEX_ID_BASE + kvBufId);
         kvBufId = (kvBufId + 1) % L1_KV_BUFCNT;
 
         if (unlikely(info.isLastS2Loop)) {
-            SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + qBufId);
+            Mutex::Unlock<PIPE_MTE1>(Q_MUTEX_ID_BASE + qBufId);
             qBufId = (qBufId + 1) % L1_Q_BUFCNT;
         }
     }
 
     __aicore__ inline void ComputeMm2(const RunInfo &info)
     {
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId);
+        Mutex::Lock<PIPE_MTE2>(KV_MUTEX_ID_BASE + kvBufId);
         if (info.actSingleLoopS2SizeAlign != info.actSingleLoopS2SizeAlign64) {
             InitConstValueParams<uint16_t> PL1InitParams(
                 1, static_cast<uint16_t>(info.actSingleLoopS2SizeAlign64 - info.actSingleLoopS2SizeAlign), 0, 0x0000);
@@ -457,32 +490,32 @@ public:
         }
         CopyVGmToL1(info);
         CopyVScaleGmToL1(info);
-        SetFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kvBufId);
-        WaitFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kvBufId);
+        Mutex::Unlock<PIPE_MTE2>(KV_MUTEX_ID_BASE + kvBufId);
+        if (info.isLastS2Loop) {
+            InitL0MXBufferForReduceSum();
+        }
+        Mutex::Lock<PIPE_MTE1>(KV_MUTEX_ID_BASE + kvBufId);
         {
             if (info.isC2Sync) {
-                WaitFlag<HardEvent::FIX_M>(PV_L0C_EVENT0 + pvL0cBufId);
+                Mutex::Lock<PIPE_M>(PV_L0C_MUTEX_ID_BASE);
             }
             {
-                WaitFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
-                if (info.isLastS2Loop) {
-                    InitL0BufferForReduceSum();
-                }
+                Mutex::Lock<PIPE_MTE1>(PV_L0AB_MUTEX_ID_BASE + pvL0abBufId);
                 LoadPToL0(info);
                 LoadVToL0(info);
-                SetFlag<HardEvent::MTE1_M>(PV_L0AB_EVENT0 + pvL0abBufId);
-                WaitFlag<HardEvent::MTE1_M>(PV_L0AB_EVENT0 + pvL0abBufId);
+                Mutex::Unlock<PIPE_MTE1>(PV_L0AB_MUTEX_ID_BASE + pvL0abBufId);
+                Mutex::Lock<PIPE_M>(PV_L0AB_MUTEX_ID_BASE + pvL0abBufId);
                 MatmulPV(info);
-                SetFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
+                Mutex::Unlock<PIPE_M>(PV_L0AB_MUTEX_ID_BASE + pvL0abBufId);
             }
             if (info.isUpdatePScale) {
-                SetFlag<HardEvent::M_FIX>(PV_L0C_EVENT0 + pvL0cBufId);
-                WaitFlag<HardEvent::M_FIX>(PV_L0C_EVENT0 + pvL0cBufId);
+                Mutex::Unlock<PIPE_M>(PV_L0C_MUTEX_ID_BASE);
+                Mutex::Lock<PIPE_FIX>(PV_L0C_MUTEX_ID_BASE);
                 FixpipeMm2(info);
-                SetFlag<HardEvent::FIX_M>(PV_L0C_EVENT0 + pvL0cBufId);
+                Mutex::Unlock<PIPE_FIX>(PV_L0C_MUTEX_ID_BASE);
             }
         }
-        SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId);
+        Mutex::Unlock<PIPE_MTE1>(KV_MUTEX_ID_BASE + kvBufId);
         kvBufId = (kvBufId + 1) % L1_KV_BUFCNT;
     }
 
@@ -503,44 +536,6 @@ public:
     }
 
 private:
-    __aicore__ inline void AllocEventID()
-    {
-        SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0);
-        SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT1);
-        SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0);
-        SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT1);
-        SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT2);
-        SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT3);
-
-        SetFlag<HardEvent::M_MTE1>(QK_L0AB_EVENT0);
-        SetFlag<HardEvent::M_MTE1>(QK_L0AB_EVENT1);
-        SetFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0);
-        SetFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT1);
-
-        SetFlag<HardEvent::FIX_M>(QK_L0C_EVENT0);
-        SetFlag<HardEvent::FIX_M>(QK_L0C_EVENT1);
-        SetFlag<HardEvent::FIX_M>(PV_L0C_EVENT0);
-    }
-
-    __aicore__ inline void FreeEventID()
-    {
-        WaitFlag<HardEvent::MTE1_MTE2>(Q_EVENT0);
-        WaitFlag<HardEvent::MTE1_MTE2>(Q_EVENT1);
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT0);
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT1);
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT2);
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT3);
-
-        WaitFlag<HardEvent::M_MTE1>(QK_L0AB_EVENT0);
-        WaitFlag<HardEvent::M_MTE1>(QK_L0AB_EVENT1);
-        WaitFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0);
-        WaitFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT1);
-
-        WaitFlag<HardEvent::FIX_M>(QK_L0C_EVENT0);
-        WaitFlag<HardEvent::FIX_M>(QK_L0C_EVENT1);
-        WaitFlag<HardEvent::FIX_M>(PV_L0C_EVENT0);
-    }
-
     __aicore__ inline void InitQBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
                                        uint32_t headDim, const SeqLensTool<LAYOUT_Q, SEQLEN_T> &qSeqLensTool,
                                        FaGmTensor<DATA_T, Q_FORMAT, SEQLEN_T, Q_IS_TND> &qGmTensor, __gm__ uint8_t *gm)
@@ -621,23 +616,24 @@ private:
         }
     }
 
+    // "1"矩阵在L1上Fill一次常驻: 0x6666(fp4值4.0) * 0x7d7d(scale 0.25) = 1.0
     __aicore__ inline void InitL0BufferForReduceSum()
     {
-        uint32_t tmpBufId = (kvBufId + 3) % 4;
-        WaitFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + tmpBufId);
-
+        Mutex::Lock<PIPE_MTE2>(VSUM_MUTEX_ID_BASE);
         InitConstValueParams<uint16_t> vL1InitParams(1, static_cast<uint16_t>(PV_L0A_SIZE / 32), 0, 0x6666);
-        uint32_t l1BaseOffset = tmpBufId * (L1_KV_SIZE / sizeof(DATA_T));
-        Fill(kvL1Tensor[l1BaseOffset].template ReinterpretCast<uint16_t>(), vL1InitParams);
+        Fill(vSumL1Tensor.template ReinterpretCast<uint16_t>(), vL1InitParams);
 
-        PipeBarrier<PIPE_MTE2>();
+        PipeBarrier<PIPE_MTE2>(); // initvalue会被刷到同一个寄存器, 两个Fill需要顺序执行
 
         InitConstValueParams<uint16_t> vScaleL1InitParams(1, static_cast<uint16_t>(V_SCALE_L0A_SIZE / 32), 0, 0x7d7d);
-        uint32_t vScaleL1Offset = tmpBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
-        Fill(kvDescaleL1Tensor[vScaleL1Offset].template ReinterpretCast<uint16_t>(), vScaleL1InitParams);
+        Fill(vScaleSumL1Tensor.template ReinterpretCast<uint16_t>(), vScaleL1InitParams);
+        Mutex::Unlock<PIPE_MTE2>(VSUM_MUTEX_ID_BASE);
+    }
 
-        SetFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + tmpBufId);
-        WaitFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + tmpBufId);
+    // 将常驻"1"矩阵从L1搬运到L0A, 每个problem的isLastS2Loop各刷一次
+    __aicore__ inline void InitL0MXBufferForReduceSum()
+    {
+        Mutex::Lock<PIPE_MTE1>(VSUM_MUTEX_ID_BASE);
 
         LoadData2DParamsV2 loadData2DParamsA;
         loadData2DParamsA.mStartPosition = 0;
@@ -656,14 +652,12 @@ private:
         loadData2DMXParamsA.srcStride = loadData2DMXParamsA.yStep;
         loadData2DMXParamsA.dstStride = loadData2DMXParamsA.yStep;
 
-        WaitFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
+        Mutex::Lock<PIPE_MTE1>(PV_L0AB_MUTEX_ID_BASE + pvL0abBufId);
         uint32_t pvL0AOffset = pvL0abBufId * (PV_L0A_SIZE / sizeof(DATA_T));
-        LoadData(pvL0ATensor[pvL0AOffset].ReinterpretCast<QUANT_T>(),
-                 kvL1Tensor[l1BaseOffset].ReinterpretCast<QUANT_T>(), kvDescaleL1Tensor[vScaleL1Offset],
-                 loadData2DParamsA, loadData2DMXParamsA);
-        SetFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
-        SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + tmpBufId);
-        tmpBufId = (tmpBufId + 1) % L1_KV_BUFCNT;
+        LoadData(pvL0ATensor[pvL0AOffset].ReinterpretCast<QUANT_T>(), vSumL1Tensor.ReinterpretCast<QUANT_T>(),
+                 vScaleSumL1Tensor, loadData2DParamsA, loadData2DMXParamsA);
+        Mutex::Unlock<PIPE_MTE1>(PV_L0AB_MUTEX_ID_BASE + pvL0abBufId);
+        Mutex::Unlock<PIPE_MTE1>(VSUM_MUTEX_ID_BASE);
     }
 
     __aicore__ inline void CopyQGmToL1(const RunInfo &info)
@@ -765,7 +759,7 @@ private:
         loadData2DMxParamsA.srcStride = loadData2DMxParamsA.yStep;
         loadData2DMxParamsA.dstStride = loadData2DMxParamsA.yStep;
 
-        uint32_t qkL0Offset = qkL0abBufId * (QK_L0A_SIZE / sizeof(DATA_T));
+        uint32_t qkL0Offset = qkL0abBufId * (QK_L0B_SIZE / sizeof(DATA_T));
         uint32_t qL1Offset = qBufId * (L1_Q_SIZE / sizeof(DATA_T));
         uint32_t qScaleL1Offset = qBufId * (L1_Q_DESCALE_SIZE / sizeof(SCALE_T));
         LoadData(qkL0BTensor[qkL0Offset].ReinterpretCast<QUANT_T>(), qL1Tensor[qL1Offset].ReinterpretCast<QUANT_T>(),
@@ -791,7 +785,7 @@ private:
         loadData2DMxParamsA.srcStride = loadData2DMxParamsA.yStep;
         loadData2DMxParamsA.dstStride = loadData2DMxParamsA.yStep;
 
-        uint32_t qkL0Offset = qkL0abBufId * (QK_L0B_SIZE / sizeof(DATA_T));
+        uint32_t qkL0Offset = qkL0abBufId * (QK_L0A_SIZE / sizeof(DATA_T));
         uint32_t kvL1Offset = kvBufId * (L1_KV_SIZE / sizeof(DATA_T));
         uint32_t kvScaleL1Offset = kvBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
         LoadData(qkL0ATensor[qkL0Offset].ReinterpretCast<QUANT_T>(), kvL1Tensor[kvL1Offset].ReinterpretCast<QUANT_T>(),
@@ -814,7 +808,7 @@ private:
              qkL0BTensor[qkL0BOffset].ReinterpretCast<QUANT_T>(), mmadParams);
     }
 
-    __aicore__ inline void FixpipeMm1(const RunInfo &info, uint32_t subLoop, uint32_t actS2Size)
+    __aicore__ inline void FixpipeMm1(const RunInfo &info, uint32_t subLoop, uint32_t actS2Size, uint32_t l0cBufId)
     {
         FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixpipeParams;
         // L0C上的bmm1结果矩阵N方向的size大小, 使能NZ2ND, nSize*sizeof(T) 必须是32B的倍数
@@ -825,7 +819,10 @@ private:
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = ((actS2Size + 15) / 16) * 16;
         fixpipeParams.dstStride = 512 / sizeof(half); // mmResUb上两行之间的间隔，单位：element
-        fixpipeParams.quantPre = QuantMode_t::F322F16;
+        // softmax scale 随路乘: L0C fp32结果 * deqScalar(softmax_scale) 后再转fp16,
+        // Vec1 softmax 不再对 mm1Res 逐元素 Muls(dScale), 数据与 group max 均已处于 scale 后的域
+        fixpipeParams.quantPre = QuantMode_t::QF322F16_PRE;
+        fixpipeParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<const int32_t *>(&constInfo.scaleValue));
         fixpipeParams.dualDstCtl = 0; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
         fixpipeParams.subBlockId = info.loop % 2;
 
@@ -833,7 +830,8 @@ private:
         fixpipeParams.params.srcNdStride = (actS2Size + 1) >> 1 << 1;
         fixpipeParams.params.dstNdStride = 512 / sizeof(half);
 
-        uint32_t qkL0COffset = qkL0cBufId * (QK_L0C_SIZE / sizeof(COMPUTE_T));
+        // 注意: 槽号由参数传入, 不能用成员 qkL0cBufId —— fixpipe 延后一拍发射时成员已轮转到下一槽
+        uint32_t qkL0COffset = l0cBufId * (QK_L0C_SIZE / sizeof(COMPUTE_T));
         uint32_t ubOffset = subLoop * QK_L0_S2_SPLIT_SIZE * fixpipeParams.dstStride;
         Fixpipe<half, COMPUTE_T, CFG_ROW_MAJOR_UB>(mm1ResUB[info.loop / 2 % 2 * 128 + ubOffset],
                                                    qkL0CTensor[qkL0COffset], fixpipeParams);
