@@ -63,6 +63,8 @@ protected:
     void SetTilingKeyParams();
     ge::graphStatus CheckGroupSize();
     ge::graphStatus CheckPerBlockScaleInput();
+    ge::graphStatus CheckScaleShapeValid(const char *scaleName, uint64_t firstDim, uint64_t secondDim,
+                                         uint64_t expectFirstDim, uint64_t expectSecondDim);
     ge::graphStatus CheckMXFPScaleInput();
     ge::graphStatus CheckMXFP4Input();
     ge::graphStatus CheckPerTensorScaleInput();
@@ -93,7 +95,7 @@ public:
     const gert::Shape &GetScaleShape(const size_t index) override;
     const gert::StorageShape *GetPertokenShape(const size_t index) override;
     const gert::StorageShape *GetBiasShape(const size_t index) override;
-    const gert::StorageShape *GetOffsetShape(const size_t index);
+    const gert::StorageShape *GetOffsetShape();
     ge::graphStatus GetShapeAttrsInfo() override;
     ge::graphStatus DoLibApiTiling() override;
     void PrintTilingInputParam(Mc2QuantBatchMatmulInfo &quantBatchMatmulInfo);
