@@ -16,21 +16,32 @@ import sys
 from typing import List, Optional
 
 import torch
-import torch_npu
 
 # 复用 quant_flash_attn_golden / quant_flash_attn_fp8_golden 的 layout 转换 / e8m0 打包 / prepare_npu_inputs / 全局变量
 _ASSETS_DIR = os.path.dirname(os.path.abspath(__file__))
 _TESTS_DIR = os.path.join(_ASSETS_DIR, "..")
 if _TESTS_DIR not in sys.path:
     sys.path.insert(0, _TESTS_DIR)
-import quant_flash_attn_golden as mxfp8_golden_mod
-import quant_flash_attn_fp8_golden as fp8_golden_mod
-import quant_flash_attn_hif8_golden as hif8_golden_mod
 
 logger = logging.getLogger(__name__)
 
 
-def _apply_golden_globals(params, quant_mode=1):
+def _load_npu_modules():
+    """懒加载 torch_npu 与三个 golden 模块。
+
+    延迟到 worker (fork 之后) 再 import torch_npu, 避免主进程 fork 前 import
+    torch_npu 导致 fork 子进程 re-init NPU 报错 (Cannot re-initialize NPU in
+    forker subprocess)。与 flash_attn 资产一致: impl 模块不进 torch_npu。
+    """
+    import torch_npu
+    import quant_flash_attn_golden as mxfp8_golden_mod
+    import quant_flash_attn_fp8_golden as fp8_golden_mod
+    import quant_flash_attn_hif8_golden as hif8_golden_mod
+
+    return torch_npu, mxfp8_golden_mod, fp8_golden_mod, hif8_golden_mod
+
+
+def _apply_golden_globals(params, quant_mode, modules):
     """把 case 参数注入 golden 模块全局变量 (按 quant_mode 选择目标模块, 与 qfa_wrapper 一致).
 
     prepare_npu_inputs 读目标 golden_mod 的全局变量 (B/N_q/N_kv/D/ENABLE_PA/...),
@@ -40,6 +51,7 @@ def _apply_golden_globals(params, quant_mode=1):
     quant_mode=0 → hif8_golden_mod (HIF8 per-tensor 量化路径)
     其他 → mxfp8_golden_mod (MXFP8 路径)
     """
+    _, mxfp8_golden_mod, fp8_golden_mod, hif8_golden_mod = modules
     if quant_mode == 6:
         target = fp8_golden_mod
     elif quant_mode == 0:
@@ -101,7 +113,8 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         **kwargs,
     ):
         super().__init__()
-        torch_npu.npu.set_device(int(kwargs.get("device_id", 0)))
+        torch_npu_mod, mxfp8_golden_mod, fp8_golden_mod, hif8_golden_mod = _load_npu_modules()
+        torch_npu_mod.npu.set_device(int(kwargs.get("device_id", 0)))
 
         # ---- 0. 从 op-schema 入参推导配置 (graph 路径拿不到额外 attr) ----
         dequant_scale_q = q_descale
@@ -231,6 +244,7 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
                 "DATA_RANGE_V": kwargs.get("data_range_v", 1.0),
             },
             quant_mode=quant_mode,
+            modules=(torch_npu_mod, mxfp8_golden_mod, fp8_golden_mod, hif8_golden_mod),
         )
 
         # ---- 3. 透传 ----

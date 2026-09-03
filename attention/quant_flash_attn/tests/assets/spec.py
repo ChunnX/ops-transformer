@@ -16,22 +16,26 @@ from pathlib import Path
 
 ASSET_IMPL_DIR = Path(__file__).with_name("impl")
 
+_impl_cache = {}
+
 
 def load_impl_module(stem):
-    path = ASSET_IMPL_DIR / f"{stem}.py"
-    spec = importlib.util.spec_from_file_location(
-        f"qfa_assets_impl_{stem}_{abs(hash(path))}", path
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    """懒加载 impl 模块。
 
-
-golden_module = load_impl_module("golden")
-inputs_module = load_impl_module("inputs")
-compare_module = load_impl_module("compare")
-graph_module = load_impl_module("graph")
-npu_preprocess_module = load_impl_module("npu_preprocess")
+    与 flash_attn 资产一致: 不在 import spec.py 时 (主进程) 级联 import
+    golden/graph (其中会 import torch_npu), 避免 fork 子进程 re-init NPU 报错。
+    改为在 golden/customize_inputs/compare/npu_preprocess 首次被 ttk 调用时
+    (fork 之后的 worker) 才加载。
+    """
+    if stem not in _impl_cache:
+        path = ASSET_IMPL_DIR / f"{stem}.py"
+        spec = importlib.util.spec_from_file_location(
+            f"qfa_assets_impl_{stem}_{abs(hash(path))}", path
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _impl_cache[stem] = module
+    return _impl_cache[stem]
 
 
 # ==============================================================================
@@ -51,6 +55,7 @@ def _resolve_quant_mode(args, kwargs):
 
 
 def _golden_dispatch(*args, **kwargs):
+    golden_module = load_impl_module("golden")
     qm = _resolve_quant_mode(args, kwargs)
     if qm == 6:
         return golden_module.cpu_qfa_gqa_fp8(*args, **kwargs)
@@ -60,6 +65,7 @@ def _golden_dispatch(*args, **kwargs):
 
 
 def _inputs_dispatch(*args, **kwargs):
+    inputs_module = load_impl_module("inputs")
     qm = _resolve_quant_mode(args, kwargs)
     if qm == 6:
         return inputs_module.generate_qfa_gqa_fp8_inputs(*args, **kwargs)
@@ -77,14 +83,23 @@ class QuantFlashAttnSpec:
 
     metadata 由 npu_preprocess 在主算子调用前生成并回填 metadata slot,
     主算子直接由 ttk 调用 torch.ops.cann_ops_transformer.quant_flash_attn。
+
+    golden/customize_inputs/compare/npu_preprocess 均懒加载 impl 模块,
+    避免主进程 fork 前 import torch_npu (与 flash_attn 资产一致)。
     """
 
-    golden = _golden_dispatch
-    customize_inputs = _inputs_dispatch
-    compare = compare_module.compare
-    npu_preprocess = npu_preprocess_module.run
+    golden = staticmethod(_golden_dispatch)
+    customize_inputs = staticmethod(_inputs_dispatch)
 
-    torch_graph = graph_module.QuantFlashAttnAclGraph
+    @staticmethod
+    def compare(*outputs, **kwargs):
+        return load_impl_module("compare").compare(*outputs, **kwargs)
+
+    @staticmethod
+    def npu_preprocess(*args, **kwargs):
+        return load_impl_module("npu_preprocess").run(*args, **kwargs)
+
+    torch_graph = load_impl_module("graph").QuantFlashAttnAclGraph
 
     tolerance = {
         "float16": {
