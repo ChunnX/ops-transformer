@@ -423,8 +423,10 @@ public:
             AscendC::PipeBarrier<PIPE_ALL>();
             AscendC::SyncAll<false>();
 #ifdef __DAV_VEC__
-            GenericBlockSparseAttentionFdCombineArch35<ElementO, Arch::Resource<ArchTag>> combine(resource);
-            combine(meta, tilingData, gPartialLse, gPartialO, gO, gCuSeqLengths, gSequsedQ, hasSequsedQ);
+            using RescaleDispatchPolicy = typename EpilogueRescaleO::DispatchPolicy;
+            constexpr bool OUTPUT_LSE = RescaleDispatchPolicy::LSE_MODE == Epilogue::LseMode::OUT_ONLY;
+            GenericBlockSparseAttentionFdCombineArch35<ElementO, Arch::Resource<ArchTag>, OUTPUT_LSE> combine(resource);
+            combine(meta, tilingData, gPartialLse, gPartialO, gO, gLse, gCuSeqLengths, gSequsedQ, hasSequsedQ);
 #endif
         }
     }

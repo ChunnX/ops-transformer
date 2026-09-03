@@ -83,12 +83,12 @@ constexpr int64_t GBSA_QUANT_TYPE_NONE = 0;
 constexpr int64_t GBSA_QUANT_TYPE_FULL = 5;
 constexpr int64_t GBSA_WIN_DISABLED = -1;
 constexpr float GBSA_DST_TYPE_MAX_DISABLED = 0.0f;
-constexpr uint32_t GSA_MAX_SPARSE_BLOCK_CAPACITY = 256U;
-constexpr uint32_t GSA_FD_MAX_ACTIVE_CORE_NUM = 32U;
-constexpr uint32_t GSA_FD_MAX_COMBINE_TASK_NUM = 32U;
-constexpr uint32_t GSA_FD_BASE_TASK_GATE_NUMERATOR = 3U;
-constexpr uint32_t GSA_FD_BASE_TASK_GATE_DENOMINATOR = 10U;
-constexpr uint64_t GSA_FD_WORKSPACE_ALIGNMENT = 512U;
+constexpr uint32_t GSA_MAX_SPARSE_BLOCK_CAPACITY = 256U;      // Maximum sparse blocks per query block.
+constexpr uint32_t GSA_FD_MAX_ACTIVE_CORE_NUM = 32U;          // Maximum AIC cores used by FD.
+constexpr uint32_t GSA_FD_MAX_COMBINE_TASK_NUM = 32U;         // Maximum FD combine tasks.
+constexpr uint32_t GSA_FD_BASE_TASK_GATE_NUMERATOR = 3U;      // Numerator of the FD base-task gate ratio.
+constexpr uint32_t GSA_FD_BASE_TASK_GATE_DENOMINATOR = 10U;   // Denominator of the FD base-task gate ratio.
+constexpr uint64_t GSA_FD_WORKSPACE_ALIGNMENT = 512U;         // FD workspace alignment in bytes.
 
 namespace {
 uint64_t AlignUp(uint64_t value, uint64_t alignment)
@@ -206,11 +206,12 @@ ge::graphStatus GBSATiling::ParseCapabilityAttrs(gert::TilingContext *context)
     if (lseFlagPtr != nullptr) {
         softmaxLseFlag_ = *lseFlagPtr;
     }
-    if (softmaxLseFlag_ != 0) {
-        OP_LOGE(context->GetNodeName(), "Unsupported returnSoftmaxlse=%ld, only 0 is supported.", softmaxLseFlag_);
+    if (softmaxLseFlag_ != 0 && softmaxLseFlag_ != 1) {
+        OP_LOGE(context->GetNodeName(), "Unsupported returnSoftmaxlse=%ld, only 0 or 1 are supported.",
+                softmaxLseFlag_);
         return ge::GRAPH_FAILED;
     }
-    returnSoftmaxlse_ = false;
+    returnSoftmaxlse_ = softmaxLseFlag_ == 1;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -577,15 +578,13 @@ ge::graphStatus GBSATiling::CalculateWorkSpace(gert::TilingContext *context)
 
     uint64_t userWorkspaceSize = pipelineWorkspaceSize;
     if (fdStaticEnabled_) {
-        // Keep this Bmax formula in sync with the Metadata FD gate:
         // saTotalTaskNum * 10 < physicalAicNum * 3.
         const uint32_t maxNonEmptyBaseTaskNum = aicNum_ == 0U ? 0U :
             std::min(GSA_FD_MAX_COMBINE_TASK_NUM,
                 (aicNum_ * GSA_FD_BASE_TASK_GATE_NUMERATOR - 1U) / GSA_FD_BASE_TASK_GATE_DENOMINATOR);
         const uint32_t maxActiveCoreNum = std::min(aicNum_, GSA_FD_MAX_ACTIVE_CORE_NUM);
         // The base-task intervals and active-core intervals are two continuous
-        // partitions of the same flat task range, so their non-empty intersection
-        // count is bounded by Bmax + Cmax - 1 instead of Bmax * Cmax.
+        // partitions of the same flat task range, count is bounded by Bmax + Cmax - 1.
         fdPartialCapacity_ = maxNonEmptyBaseTaskNum == 0U || maxActiveCoreNum == 0U ?
             0U : maxNonEmptyBaseTaskNum + maxActiveCoreNum - 1U;
         fdLseSubStride_ = ((groupSize_ + 1U) / 2U + 7U) / 8U * 8U;
@@ -722,9 +721,8 @@ ge::graphStatus GBSATiling::CheckQuantConfig(gert::TilingContext *context)
         OP_LOGE(context->GetNodeName(), "returnSoftmaxlse=1 is not supported for FP8 full-quant path.");
         return ge::GRAPH_FAILED;
     }
-    // Runtime FD is selected by metadata. LSE output keeps using the normal path
-    // until FD combine writes the public LSE tensor as part of its contract.
-    fdStaticEnabled_ = topK_ >= 12U && !returnSoftmaxlse_;
+    // Runtime FD is selected by metadata; its combine stage also writes the final LSE when requested.
+    fdStaticEnabled_ = topK_ >= 12U;
     return ge::GRAPH_SUCCESS;
 }
 

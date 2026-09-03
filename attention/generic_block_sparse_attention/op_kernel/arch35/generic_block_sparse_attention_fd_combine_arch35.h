@@ -13,7 +13,7 @@
 
 namespace GbsaKernelArch35 {
 
-template <class ElementO, class Resource>
+template <class ElementO, class Resource, bool OUTPUT_LSE>
 class GenericBlockSparseAttentionFdCombineArch35 {
 public:
     static constexpr uint32_t MAX_SPLIT_NUM = GbsaMetadata::MAX_DECODE_CORE_NUM;
@@ -53,6 +53,7 @@ public:
         AscendC::GlobalTensor<float> &gPartialLse,
         AscendC::GlobalTensor<float> &gPartialO,
         AscendC::GlobalTensor<ElementO> &gO,
+        AscendC::GlobalTensor<float> &gLse,
         CuSeqTensor &gCuSeqLengths,
         SeqUsedTensor &gSeqUsedQ,
         bool hasSeqUsedQ)
@@ -112,6 +113,8 @@ public:
             const uint64_t outputOffset =
                 (static_cast<uint64_t>(qStorageToken) * tilingData->numHeads + kvHeadIdx * groupSize +
                  groupRowStart) * HEAD_DIM;
+            const uint64_t lseOutputOffset =
+                static_cast<uint64_t>(qStorageToken) * tilingData->numHeads + kvHeadIdx * groupSize + groupRowStart;
             const uint32_t tileElems = rowCount * HEAD_DIM;
             AscendC::Duplicate(oAccUb_, 0.0F, tileElems);
             AscendC::PipeBarrier<PIPE_V>();
@@ -145,6 +148,14 @@ public:
                 AscendC::DataCopyExtParams(rowCount, HEAD_DIM * sizeof(ElementO), 0, 0, 0));
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+            if constexpr (OUTPUT_LSE) {
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
+                AscendC::DataCopyPad(gLse[lseOutputOffset], globalLseUb_,
+                    AscendC::DataCopyExtParams(1, rowCount * sizeof(float), 0, 0, 0));
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
+            }
         }
         AscendC::PipeBarrier<PIPE_ALL>();
     }

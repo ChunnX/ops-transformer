@@ -499,8 +499,10 @@ public:
         if (fdEnabled) {
             AscendC::SyncAll<false>();
 #ifdef __DAV_C220_VEC__
-            GenericBlockSparseAttentionFdCombineArch22<ElementO, Arch::Resource<ArchTag>> combine(resource);
-            combine(meta, tilingData, gPartialLse, gPartialO, gO,
+            using RescaleDispatchPolicy = typename EpilogueRescaleO::DispatchPolicy;
+            constexpr bool OUTPUT_LSE = RescaleDispatchPolicy::LSE_MODE == Epilogue::LseMode::OUT_ONLY;
+            GenericBlockSparseAttentionFdCombineArch22<ElementO, Arch::Resource<ArchTag>, OUTPUT_LSE> combine(resource);
+            combine(meta, tilingData, gPartialLse, gPartialO, gO, gLse,
                 gCuSeqLengths, gSequsedQ, hasSequsedQ);
 #endif
         }
