@@ -43,11 +43,13 @@
 #include "../common/mc2_kernel_utils.h"
 #include "../common/mc2_moe_context.h"
 #include "../common/moe_ep_exception_dump_writer.h"
+#include "../common/moe_ep_profiler.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
+#include "../../common/op_kernel/moe_ep_profiler.h"
 #endif
 
 namespace MoeEpDispatchEpilogueImpl {
@@ -73,6 +75,15 @@ static constexpr uint32_t HIT_ENTRY_SIZE = 2U;
 static constexpr uint32_t CACHED_META_TILE = 8192U;
 static constexpr uint32_t ALIGNED_LEN_256 = 256U;
 static constexpr uint32_t SLOTS_TILE = 128U;
+
+enum class MoeEpDispatchEpilogueProfileStage : uint32_t {
+    KERNEL = 0,
+    PREFIX = 1,
+    PAYLOAD_WAIT = 2,
+    WAIT_BARRIER = 3,
+    COUNT_HITS = 4,
+    WINDOW_OUTPUT = 5,
+};
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 class MoeEpDispatchEpilogue {
@@ -109,6 +120,7 @@ private:
     TPipe *tpipe_{nullptr};
     __gm__ Mc2Aclnn::MoeCommContext *mc2Context_{nullptr};
     MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
+    MOE_EP_PROFILE_DECLARE();
     uint32_t epRankId_{0};
     uint32_t aivId_{0};
     GlobalTensor<int32_t> numRecvPerRankGm_;
@@ -223,6 +235,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     epRankId_ = mc2Context_->epRankId;
+    MOE_EP_PROFILE_INIT(mc2Context_, MoeEpProfileOp::DISPATCH_EPILOGUE, aivNum_);
     constexpr size_t metadataOffset = offsetof(MoeEpDispatchEpilogueTilingData, moeEpDispatchEpilogueInfo) +
                                       offsetof(MoeEpDispatchEpilogueInfo, dumpMetadata);
     MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
@@ -332,12 +345,31 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::Process()
 {
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpDispatchEpilogueProfileStage::KERNEL, MoeEpProfileBoundary::BEGIN));
     if constexpr (!IsCached) {
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchEpilogueProfileStage::PREFIX,
+                                                 MoeEpProfileBoundary::BEGIN));
         ComputePrefixSums();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchEpilogueProfileStage::PREFIX, MoeEpProfileBoundary::END));
         WaitDispatch();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::WAIT_BARRIER,
+                                                 MoeEpProfileBoundary::BEGIN));
         SyncAll<true>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::WAIT_BARRIER,
+                                                 MoeEpProfileBoundary::END));
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_WAIT_DONE);
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::VECTOR,
+                                                 MoeEpDispatchEpilogueProfileStage::COUNT_HITS,
+                                                 MoeEpProfileBoundary::BEGIN));
         CountHits();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::VECTOR,
+                                                 MoeEpDispatchEpilogueProfileStage::COUNT_HITS,
+                                                 MoeEpProfileBoundary::END));
         SyncAll<true>();
 
         uint32_t totalHits = 0;
@@ -346,16 +378,37 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         }
 
         if (totalHits != 0) {
+            MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::MTE2,
+                                                     MoeEpDispatchEpilogueProfileStage::WINDOW_OUTPUT,
+                                                     MoeEpProfileBoundary::BEGIN));
             CopyFromWindowByExpert();
+            MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::MTE2,
+                                                     MoeEpDispatchEpilogueProfileStage::WINDOW_OUTPUT,
+                                                     MoeEpProfileBoundary::END));
         }
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_OUTPUT_DONE);
     } else {
         WaitDispatch();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::WAIT_BARRIER,
+                                                 MoeEpProfileBoundary::BEGIN));
         SyncAll<true>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::WAIT_BARRIER,
+                                                 MoeEpProfileBoundary::END));
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_WAIT_DONE);
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::MTE2,
+                                                 MoeEpDispatchEpilogueProfileStage::WINDOW_OUTPUT,
+                                                 MoeEpProfileBoundary::BEGIN));
         CopyFromWindowByCachedMeta();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::MTE2,
+                                                 MoeEpDispatchEpilogueProfileStage::WINDOW_OUTPUT,
+                                                 MoeEpProfileBoundary::END));
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_OUTPUT_DONE);
     }
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpDispatchEpilogueProfileStage::KERNEL, MoeEpProfileBoundary::END));
+    MOE_EP_PROFILE_FLUSH();
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
@@ -364,6 +417,10 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     if (aivId_ != aivNum_ - 1) {
         return;
     }
+
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                             MoeEpDispatchEpilogueProfileStage::PAYLOAD_WAIT,
+                                             MoeEpProfileBoundary::BEGIN));
 
     uint32_t mask = 1;
     int32_t sumOfFlag = 0;
@@ -389,6 +446,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     Duplicate<int32_t>(ubWaitStatus_, 0, totalNotifyCnt_ * UB_ALIGN / sizeof(int32_t));
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(statusGMTensor, ubWaitStatus_, clearStatusCopyParams);
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                             MoeEpDispatchEpilogueProfileStage::PAYLOAD_WAIT,
+                                             MoeEpProfileBoundary::END));
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>

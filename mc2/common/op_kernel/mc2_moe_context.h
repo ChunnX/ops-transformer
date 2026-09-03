@@ -15,6 +15,7 @@
 #ifndef MC2_MOE_CONTEXT_H
 #define MC2_MOE_CONTEXT_H
 #include <cstdint>
+#include <cstddef>
 
 namespace Mc2Aclnn {
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
@@ -33,7 +34,21 @@ struct MoeCommContext {
     uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE];
     uint64_t hcommHandle[HCCL_MAX_RANK_SIZE]; // 支持ROCE或者URMA
     uint32_t channelsPerRank;
+#ifdef ENABLE_MOE_EP_PROFILING
+    // Profiling-only ABI extension. Keep these fields at the tail so a normal
+    // build retains the original context layout exactly.
+    uint64_t moeEpProfilerBuffers[4];
+    uint32_t moeEpProfilerMaxCores;
+    uint32_t moeEpProfilerSlotsPerCore;
+#endif
 };
+#ifdef ENABLE_MOE_EP_PROFILING
+static_assert(offsetof(MoeCommContext, moeEpProfilerBuffers) % sizeof(uint64_t) == 0U,
+              "MoE profiler context tail must stay 8-byte aligned");
+static_assert(sizeof(MoeCommContext) - offsetof(MoeCommContext, moeEpProfilerBuffers) ==
+                  sizeof(uint64_t) * 4U + sizeof(uint32_t) * 2U,
+              "Unexpected device MoE profiler context tail layout");
+#endif
 } // namespace Mc2Aclnn
 
 #endif // MC2_MOE_CONTEXT_H

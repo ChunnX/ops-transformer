@@ -1,0 +1,12 @@
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -63,7 +63,7 @@ python moe_train_test.py
+
+ ## MoeEp cycle profiler
+
+-先在 `ops-transformer` 使用 `bash build.sh --moe-ep-profiler` 构建，然后应用配套补丁后的脚本可直接运行：
++先在 `ops-transformer` 使用 `bash build.sh --pkg --moe-ep-profiler --module=mc2 --soc=ascend950 -j16` 构建，然后应用配套补丁后的脚本可直接运行：
+
+ ```bash
+ OPS_TRANSFORMER_ROOT=/path/to/ops-transformer MOE_EP_CYCLE_PROFILER=1 python moe_train_test.py

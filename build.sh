@@ -89,6 +89,7 @@ else
     DEFAULT_INSTALL_DIR="/usr/local/Ascend/latest"
 fi
 BISHENG_FLAGS=""
+ENABLE_MOE_EP_PROFILING=FALSE
 ENABLE_AICPU_KERNEL=FALSE
 CANN_3RD_LIB_PATH="${CURRENT_DIR}/third_party"
 CUSTOM_OPTION="-DBUILD_OPEN_PROJECT=ON"
@@ -371,6 +372,7 @@ function help_info() {
     echo "    --opkernel build binary kernel"
     echo "    --jit build run package without kernel bin"
     echo "    --pkg build run package with kernel bin"
+    echo "    --moe-ep-profiler Build MoE EP kernels and torch extension with the device cycle profiler"
     echo "    --pkg-type=<TYPE> Specify package type(TYPE options: run/rpm/deb/all), Default: run"
     echo "    --torch_extension           Build torch_extension whl only, support --ops for single op packaging"
     echo "    --torch_extension_only       Build torch_extension whl package only"
@@ -1327,7 +1329,7 @@ set_example_opt() {
 SUPPORTED_LONG_OPTS=(
   "help" "list_soc" "pkg" "pkg-type=" "static" "jit" "noaicpu" "opkernel_aicpu" "opkernel"
   "experimental" "noexec" "torch_extension" "torch_extension_only" "oom" "make_clean"
-  "mssanitizer" "dump_cce"
+  "mssanitizer" "dump_cce" "moe-ep-profiler"
   "ophost" "opapi" "opgraph" "onnxplugin"
   "ophost_test" "opapi_test" "opgraph_test" "opkernel_test"
   "asan" "valgrind" "ubsan" "cov" "clang" "run_example"
@@ -1620,6 +1622,10 @@ assemble_cmake_args() {
     CUSTOM_OPTION="${CUSTOM_OPTION} -DBISHENG_FLAGS=${BISHENG_FLAGS}"
   fi
 
+  if [[ "${ENABLE_MOE_EP_PROFILING}" == "TRUE" ]]; then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_MOE_EP_PROFILING=ON"
+  fi
+
   if [ -n "${ENABLE_AICPU_KERNEL}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_AICPU_KERNEL=${ENABLE_AICPU_KERNEL}"
   fi
@@ -1710,6 +1716,10 @@ while [[ $# -gt 0 ]]; do
     --pkg)
         ENABLE_BUILD_PKG=TRUE
         ENABLE_BUILT_IN=TRUE            # 只输入--pkg时编builtin包
+        shift
+        ;;
+    --moe-ep-profiler)
+        ENABLE_MOE_EP_PROFILING=TRUE
         shift
         ;;
     --static)
@@ -2085,6 +2095,16 @@ done
 set_ut_mode
 
 check_param
+
+if [[ "${ENABLE_MOE_EP_PROFILING}" == "TRUE" ]]; then
+    if [[ "${ENABLE_BUILD_PKG}" != "TRUE" ]]; then
+        echo "[ERROR] --moe-ep-profiler must be used with --pkg"
+        exit 1
+    fi
+    export CANN_OPS_MOE_EP_PROFILING_BUILD=1
+else
+    unset CANN_OPS_MOE_EP_PROFILING_BUILD
+fi
 
 if [[ "$PACKAGE_TYPE_SET" == "TRUE" && "$ENABLE_BUILD_PKG" != "TRUE" ]]; then
     echo "[ERROR] --pkg-type can only be used with --pkg"

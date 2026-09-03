@@ -25,6 +25,8 @@
 #include <atomic>
 #include <cstdint>
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <unordered_map>
 
 // CANN ACL Runtime API
@@ -130,7 +132,23 @@ struct MoeCommContext {
     uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE] = {};
     ChannelHandle hcommHandle[HCCL_MAX_RANK_SIZE] = {};
     uint32_t channelsPerRank = 1;
+#ifdef ENABLE_MOE_EP_PROFILING
+    uint64_t moeEpProfilerBuffers[4] = {};
+    uint32_t moeEpProfilerMaxCores = 0;
+    uint32_t moeEpProfilerSlotsPerCore = 0;
+#endif
 };
+#ifdef ENABLE_MOE_EP_PROFILING
+static_assert(sizeof(ChannelHandle) == sizeof(uint64_t),
+              "Host and device MoeCommContext channel handle widths must match");
+static_assert(alignof(ChannelHandle) == alignof(uint64_t),
+              "Host and device MoeCommContext channel handle alignments must match");
+static_assert(offsetof(MoeCommContext, moeEpProfilerBuffers) % sizeof(uint64_t) == 0U,
+              "MoE profiler context tail must stay 8-byte aligned");
+static_assert(sizeof(MoeCommContext) - offsetof(MoeCommContext, moeEpProfilerBuffers) ==
+                  sizeof(uint64_t) * 4U + sizeof(uint32_t) * 2U,
+              "Unexpected host MoE profiler context tail layout");
+#endif
 
 struct EngramContextResources {
     HcclComm hcclComm = nullptr;
@@ -470,7 +488,13 @@ private:
 
 class MoeContextBuilder : public HcclContextBuilderBase {
 public:
-    at::Tensor Build(const std::string &groupName, int64_t &cclBufferSize, uint32_t &rankSizePerServer)
+    at::Tensor Build(const std::string &groupName, int64_t &cclBufferSize, uint32_t &rankSizePerServer
+#ifdef ENABLE_MOE_EP_PROFILING
+                     ,
+                     const std::array<uint64_t, 4> &profilerBuffers, uint32_t profilerMaxCores,
+                     uint32_t profilerSlotsPerCore
+#endif
+    )
     {
         InitHcclEngineCtxFunctions();
 
@@ -485,10 +509,26 @@ public:
         TORCH_CHECK(rankNumPerServer_ > 0, "rank_num_per_server must be positive after resolving MoE topology");
         context.rankSizePerServer = rankNumPerServer_;
         rankSizePerServer = rankNumPerServer_;
+#ifdef ENABLE_MOE_EP_PROFILING
+        std::copy(profilerBuffers.begin(), profilerBuffers.end(), context.moeEpProfilerBuffers);
+        context.moeEpProfilerMaxCores = profilerMaxCores;
+        context.moeEpProfilerSlotsPerCore = profilerSlotsPerCore;
+#endif
 
         void *ctx = nullptr;
         BuildContext(hcclComm, groupName, "moe_dispatch_combine_multi_channel", protocol, context, cclBufferSize, ctx);
         TORCH_CHECK(ctx != nullptr, "Create MoE context tensor failed: ctx is nullptr");
+#ifdef ENABLE_MOE_EP_PROFILING
+        // HCCL may return a context cached under the same tag. Refresh only the
+        // profiling tail so it always points at this ElasticBuffer's tensors.
+        constexpr size_t profilerOffset = offsetof(MoeCommContext, moeEpProfilerBuffers);
+        constexpr size_t profilerBytes = sizeof(MoeCommContext) - profilerOffset;
+        auto *deviceProfilerTail = reinterpret_cast<uint8_t *>(ctx) + profilerOffset;
+        const auto *hostProfilerTail = reinterpret_cast<const uint8_t *>(&context) + profilerOffset;
+        aclError copyRet =
+            aclrtMemcpy(deviceProfilerTail, profilerBytes, hostProfilerTail, profilerBytes, ACL_MEMCPY_HOST_TO_DEVICE);
+        TORCH_CHECK(copyRet == ACL_SUCCESS, "Copy MoE profiler context failed, ret: ", copyRet);
+#endif
         int64_t numElements = (sizeof(MoeCommContext) + sizeof(int32_t) - 1) / sizeof(int32_t);
         auto options = at::TensorOptions().dtype(at::kInt).device(c10::DeviceType::PrivateUse1);
         // HCCL owns ctx; the tensor only provides a non-owning view of the cached device context.
@@ -529,6 +569,11 @@ private:
         if (hcclRet != HCCL_SUCCESS) {
             CreateContext(commHandle, contextTag, engine, protocol, ctx, &context, hcclBufferSize);
         } else {
+#ifdef ENABLE_MOE_EP_PROFILING
+            TORCH_CHECK(ctxSize >= sizeof(MoeCommContext),
+                        "Cached MoE context is too small for profiler fields: ", ctxSize, " < ", sizeof(MoeCommContext),
+                        ". Restart the process with matching packages.");
+#endif
             GetHcclBufferSize(commHandle, hcclBufferSize);
         }
     }
@@ -853,6 +898,10 @@ public:
                                                    int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank,
                                                    at::Tensor &combinedX,
                                                    const c10::optional<at::Tensor> &combinedTopkWeightsOpt);
+#ifdef ENABLE_MOE_EP_PROFILING
+    void EnableMoeEpProfiler(int64_t slotsPerCore);
+    std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> GetMoeEpProfilerBuffers() const;
+#endif
 
 private:
     void EnsureEngramContext();
@@ -880,6 +929,18 @@ private:
     int64_t moeCclBufferSize_ = 0;
     uint32_t moeRankSizePerServer_ = 2;
     bool moeContextInitialized_ = false;
+#ifdef ENABLE_MOE_EP_PROFILING
+    static constexpr uint32_t MOE_EP_PROFILER_OP_COUNT = 4U;
+    static constexpr uint32_t MOE_EP_PROFILER_MAX_CORES = 128U;
+    static constexpr uint32_t MOE_EP_PROFILER_HEADER_BYTES = 64U;
+    static constexpr uint32_t MOE_EP_PROFILER_CORE_CONTROL_BYTES = 64U;
+    static constexpr uint32_t MOE_EP_PROFILER_RECORD_BYTES = 16U;
+    static constexpr uint32_t MOE_EP_PROFILER_DEFAULT_SLOTS = 4096U;
+    static constexpr uint32_t MOE_EP_PROFILER_MAX_SLOTS = 16384U;
+    std::array<at::Tensor, MOE_EP_PROFILER_OP_COUNT> moeEpProfilerBuffers_;
+    uint32_t moeEpProfilerSlotsPerCore_ = 0U;
+    bool moeEpProfilerEnabled_ = false;
+#endif
 
     int64_t engramHiddenSize_ = 0;
     int64_t engramNumEntries_ = 0;
@@ -953,9 +1014,54 @@ void ElasticBuffer::EnsureMoeContext()
         return;
     }
     MoeContextBuilder builder;
+#ifdef ENABLE_MOE_EP_PROFILING
+    std::array<uint64_t, MOE_EP_PROFILER_OP_COUNT> profilerAddresses{};
+    if (moeEpProfilerEnabled_) {
+        for (uint32_t i = 0U; i < MOE_EP_PROFILER_OP_COUNT; ++i) {
+            profilerAddresses[i] = reinterpret_cast<uint64_t>(moeEpProfilerBuffers_[i].data_ptr());
+        }
+    }
+    moeContextTensor_ = builder.Build(groupName_, moeCclBufferSize_, moeRankSizePerServer_, profilerAddresses,
+                                      MOE_EP_PROFILER_MAX_CORES, moeEpProfilerSlotsPerCore_);
+#else
     moeContextTensor_ = builder.Build(groupName_, moeCclBufferSize_, moeRankSizePerServer_);
+#endif
     moeContextInitialized_ = true;
 }
+
+#ifdef ENABLE_MOE_EP_PROFILING
+void ElasticBuffer::EnableMoeEpProfiler(int64_t slotsPerCore)
+{
+    TORCH_CHECK(!destroyed_, "ElasticBuffer cannot be used after destroy");
+    TORCH_CHECK(!moeContextInitialized_, "enable_cycle_profiler must be called before the first MoE EP operation");
+    TORCH_CHECK(!moeEpProfilerEnabled_, "MoE EP cycle profiler is already enabled");
+    if (slotsPerCore == 0) {
+        slotsPerCore = MOE_EP_PROFILER_DEFAULT_SLOTS;
+    }
+    TORCH_CHECK(slotsPerCore > 0 && slotsPerCore <= MOE_EP_PROFILER_MAX_SLOTS && slotsPerCore % 4 == 0,
+                "slots_per_core must be a multiple of 4 in [4, ", MOE_EP_PROFILER_MAX_SLOTS, "], got ", slotsPerCore);
+    uint64_t coreStride = static_cast<uint64_t>(MOE_EP_PROFILER_CORE_CONTROL_BYTES) +
+                          static_cast<uint64_t>(slotsPerCore) * MOE_EP_PROFILER_RECORD_BYTES;
+    uint64_t bufferBytes = static_cast<uint64_t>(MOE_EP_PROFILER_HEADER_BYTES) +
+                           static_cast<uint64_t>(MOE_EP_PROFILER_MAX_CORES) * coreStride;
+    TORCH_CHECK(bufferBytes <= static_cast<uint64_t>(INT64_MAX), "MoE EP profiler buffer size overflow");
+    auto options = at::TensorOptions().dtype(at::kByte).device(c10::DeviceType::PrivateUse1);
+    for (auto &buffer : moeEpProfilerBuffers_) {
+        // This is the only ring initialization. It is enqueued before the first
+        // profiled kernel and is never repeated between launches.
+        buffer = at::zeros({static_cast<int64_t>(bufferBytes)}, options);
+    }
+    moeEpProfilerSlotsPerCore_ = static_cast<uint32_t>(slotsPerCore);
+    moeEpProfilerEnabled_ = true;
+}
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> ElasticBuffer::GetMoeEpProfilerBuffers() const
+{
+    TORCH_CHECK(moeEpProfilerEnabled_, "MoE EP cycle profiler is not enabled");
+    return std::make_tuple(moeEpProfilerBuffers_[0], moeEpProfilerBuffers_[1], moeEpProfilerBuffers_[2],
+                           moeEpProfilerBuffers_[3]);
+}
+#endif
 
 int64_t ElasticBuffer::ResolveRankNumPerServer(int64_t epWorldSize) const
 {
@@ -1190,6 +1296,13 @@ void ElasticBuffer::Destroy()
     engramContextTensor_ = at::Tensor();
     localStorageAddrTensor_ = at::Tensor();
     moeContextTensor_ = at::Tensor();
+#ifdef ENABLE_MOE_EP_PROFILING
+    for (auto &buffer : moeEpProfilerBuffers_) {
+        buffer = at::Tensor();
+    }
+    moeEpProfilerEnabled_ = false;
+    moeEpProfilerSlotsPerCore_ = 0U;
+#endif
 
     destroyed_ = true;
 }
@@ -1476,6 +1589,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("moe_ep_dispatch_epilogue", &Mc2Api::ElasticBuffer::MoeEpDispatchEpilogue)
         .def("moe_ep_combine", &Mc2Api::ElasticBuffer::MoeEpCombine)
         .def("moe_ep_combine_epilogue", &Mc2Api::ElasticBuffer::MoeEpCombineEpilogue)
+#ifdef ENABLE_MOE_EP_PROFILING
+        .def("enable_moe_ep_profiler", &Mc2Api::ElasticBuffer::EnableMoeEpProfiler,
+             pybind11::arg("slots_per_core") = 4096)
+        .def("get_moe_ep_profiler_buffers", &Mc2Api::ElasticBuffer::GetMoeEpProfilerBuffers)
+#endif
         .def_static("get_engram_storage_size_hint", &Mc2Api::ElasticBuffer::GetEngramStorageSizeHint,
                     pybind11::arg("numEntries"), pybind11::arg("hiddenSize"), pybind11::arg("dtype") = at::kBFloat16);
 }
