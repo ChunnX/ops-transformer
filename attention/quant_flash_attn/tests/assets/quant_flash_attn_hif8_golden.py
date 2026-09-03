@@ -60,6 +60,8 @@ B = 1
 N_q = 1
 N_kv = 1
 D = 128
+# head_dim_v: csv 显式传入则用 csv 值, 否则 None → 算子内默认取 head_dim
+HEAD_DIM_V = None
 
 ENABLE_ROPE = False
 D_rope = 64
@@ -576,7 +578,7 @@ def _call_npu_fa_op(
         cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
         seqused_q=seqused_q_t,
         seqused_kv=seqused_kv_t,
-        v_descale=dequant_scale_v,
+        head_dim_v=HEAD_DIM_V,
         mask_mode=sparse_mode,
         layout_q=layout_q,
         layout_q_descale=layout_q_descale,
@@ -657,17 +659,20 @@ class Network(nn.Module):
         out_dtype,
         max_seqlen_q,
         max_seqlen_kv,
+        batch_size,
     ):
+        is_tnd_q = layout_q == "TND"
+        is_tnd_kv = layout_kv == "TND"
         metadata = quant_flash_attn_metadata(
             num_heads_q=q_n,
             num_heads_kv=kv_n,
             head_dim=q.shape[-1],
             quant_mode=0,
-            cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_kv=cu_seqlens_kv,
+            cu_seqlens_q=cu_seqlens_q if is_tnd_q else None,
+            cu_seqlens_kv=cu_seqlens_kv if is_tnd_kv else None,
             seqused_q=seqused_q,
             seqused_kv=seqused_kv,
-            v_descale=dequant_scale_v,
+            head_dim_v=HEAD_DIM_V,
             mask_mode=sparse_mode,
             layout_q=layout_q,
             layout_q_descale=layout_q_descale,
@@ -675,6 +680,7 @@ class Network(nn.Module):
             layout_out=layout_out,
             max_seqlen_q=max_seqlen_q,
             max_seqlen_kv=max_seqlen_kv,
+            batch_size=batch_size if not is_tnd_q else None,
         )
         main_kwargs = {
             "q": q,
@@ -686,8 +692,8 @@ class Network(nn.Module):
             "quant_mode": 0,
             "block_table": block_table,
             "p_scale": p_scale,
-            "cu_seqlens_q": cu_seqlens_q,
-            "cu_seqlens_kv": cu_seqlens_kv,
+            "cu_seqlens_q": cu_seqlens_q if is_tnd_q else None,
+            "cu_seqlens_kv": cu_seqlens_kv if is_tnd_kv else None,
             "seqused_q": seqused_q,
             "seqused_kv": seqused_kv,
             "attn_mask": mask,
@@ -1077,6 +1083,7 @@ def hif8_fa_torch_npu(
             out_dtype,
             max_seqlen_q,
             max_seqlen_kv,
+            q.shape[0] if layout_q != "TND" else None,
         )
 
         # aclgraph: 直接使用 npugraph_ex backend

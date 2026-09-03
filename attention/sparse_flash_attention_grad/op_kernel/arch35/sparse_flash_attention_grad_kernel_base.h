@@ -29,7 +29,7 @@ public:
                                 GM_ADDR y, GM_ADDR softmaxMax, GM_ADDR softmaxSum, GM_ADDR actualSeqQlen,
                                 GM_ADDR actualSeqKvlen, GM_ADDR queryRope, GM_ADDR keyRope, GM_ADDR dq, GM_ADDR dk,
                                 GM_ADDR dv, GM_ADDR dqRope, GM_ADDR dkRope, GM_ADDR workspace,
-                                SFagTilingType ordTilingData, TPipe *pipeIn);
+                                SFagTilingType ordTilingData, TPipe *pipeIn, GM_ADDR sinks, GM_ADDR dSinks);
     __aicore__ inline void InitCVCommonBuffer();
     __aicore__ inline void InitCVCommonGlobalBuffer(GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace);
     __aicore__ inline void SetConstInfo();
@@ -160,7 +160,7 @@ protected:
     using CubeBlockNLe64Type =
         typename std::conditional<CubeBlockType::IS_CUBE_DUMMY, CubeBlockType,
                                   FAGBlockCubeNLe64<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_DROP, IS_TND, IS_ROPE, IS_DETER,
-                                                    KV_MERGE, s2TemplateType, dTemplateType>>::type;
+                                                    KV_MERGE, IS_SINKS, s2TemplateType, dTemplateType>>::type;
     CubeBlockNLe64Type cubeBlockNLe64;
     VecBlockType vecBlock;
 
@@ -169,6 +169,7 @@ protected:
     int64_t t1Index = 0;
     int64_t n2Index = 0;
     int64_t lastT1Index = -1;
+    uint8_t qDxPingPongSeq = 0; // N<=64 Q/Dy L1 ping-pong，随 S1 翻转
     int64_t usedCoreNum = 0;
     int64_t processBS1ByCore = 0;
 };
@@ -226,7 +227,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR sparseIndices, GM_ADDR dy, GM_ADDR y, GM_ADDR softmaxMax,
     GM_ADDR softmaxSum, GM_ADDR actualSeqQlen, GM_ADDR actualSeqKvlen, GM_ADDR queryRope, GM_ADDR keyRope, GM_ADDR dq,
     GM_ADDR dk, GM_ADDR dv, GM_ADDR dqRope, GM_ADDR dkRope, GM_ADDR workspace, SFagTilingType ordTilingData,
-    TPipe *pipeIn)
+    TPipe *pipeIn, GM_ADDR sinks, GM_ADDR dSinks)
 {
     // init current core tilingInfo
     if ASCEND_IS_AIV {
@@ -262,7 +263,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
                                pseInfo);
     vecBlock.InitUbBuffer();
     vecBlock.InitGlobalBuffer(key, dy, y, sparseIndices, softmaxMax, softmaxSum, keyRope, dq, dk, dv, actualSeqQlen,
-                              actualSeqKvlen, workspace);
+                              actualSeqKvlen, workspace, sinks, dSinks);
 
     if (constInfo.isHeadNLe64) {
         cubeBlockNLe64.SetCubeBlockParams(pipeIn, tilingData, &l1BufferManager);
@@ -326,8 +327,15 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitCVCommonBuffer()
 {
     l1BufferManager.Init(pipe, L1_MAX_SIZE);
-    dSL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
-    pL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
+    if (constInfo.isHeadNLe64) {
+        // gather 64×g：每槽 8KB（g=64 bf16），dS/P 双缓冲合计 32KB
+        uint32_t dsPSize = AlignTo16(constInfo.commonConstInfo.gSize) * SFAG_GATHER_S2_HEAD_N * sizeof(INPUT_TYPE);
+        dSL1Buf.Init(l1BufferManager, dsPSize);
+        pL1Buf.Init(l1BufferManager, dsPSize);
+    } else {
+        dSL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
+        pL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
+    }
 
     pipe->InitBuffer(mm1ResBuf[0], VECTOR_BASEM * VECTOR_BASEN * sizeof(CALC_TYPE));
     pipe->InitBuffer(mm1ResBuf[1], VECTOR_BASEM * VECTOR_BASEN * sizeof(CALC_TYPE));
@@ -494,6 +502,10 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     // 当前S1内执行了一次task后，isS1IdxNoChange置为true
     runInfo.isS1IdxNoChange = t1Index == lastT1Index;
     runInfo.isNextS1IdxNoChange = blkCntOffset + constInfo.selectedCountOffset < actualSelectedBlockCount;
+    if (!runInfo.isS1IdxNoChange && lastT1Index >= 0) {
+        qDxPingPongSeq ^= 1;
+    }
+    runInfo.qDxPingPongIdx = qDxPingPongSeq;
     lastT1Index = t1Index;
 
     GetDerived()->SetUniqueRunInfo(runInfo);

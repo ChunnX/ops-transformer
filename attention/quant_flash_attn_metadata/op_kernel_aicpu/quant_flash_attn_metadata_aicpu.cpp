@@ -41,7 +41,6 @@ bool QuantFlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     cuSeqlensKv_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensKv));
     sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedQ));
     sequsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedKv));
-    vDescale_ = ctx.Input(static_cast<uint32_t>(ParamId::vDescale));
     metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
     bool requiredAttrs =
@@ -62,6 +61,8 @@ bool QuantFlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "layout_q_descale", layoutQDescale_);
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
     GetAttrValueOpt(ctx, "layout_out", layoutOut_);
+    GetAttrValueOpt(ctx, "is_grad_enabled", isGradEnabled_);
+    GetAttrValueOpt(ctx, "head_dim_v", headDimV_);
     return ParamsInit();
 }
 
@@ -225,37 +226,130 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     param.fdOn = 0;
     param.outputLayout = load_balance::OutputLayout::BN2_S1G;
 
-    // 校验 v_descale: quantMode=1(MxFp8) 且 TND layout 下, dim0 应等于 sum(ceil(seqused_kv[i] / 64))
-    // HIF8 (quantMode=0): v_descale 为 per-tensor 标量, 不需要校验
-    if (quantMode_ == 1 && vDescale_ != nullptr && vDescale_->GetTensorShape() != nullptr) {
-        const int64_t V_DESCALE_GROUP_SIZE = 64;
-        bool isTndLayout = (layoutKv_ == "TND");
-        if (isTndLayout) {
-            int64_t vDescaleT = vDescale_->GetTensorShape()->GetDimSize(0) / (numHeadsKv_ * headDim_ * 2);
-            int64_t expectedT = 0;
-            if (baseInfo.isCumulativeKvSeq && batchSize_ > 0 &&
-                static_cast<int64_t>(baseInfo.actualKvSeqSize.size()) >= batchSize_) {
-                int64_t prev = 0;
-                for (int32_t i = 0; i < batchSize_; ++i) {
-                    int64_t seqUsed = baseInfo.actualKvSeqSize[i] - prev;
-                    prev = baseInfo.actualKvSeqSize[i];
-                    expectedT += (seqUsed + V_DESCALE_GROUP_SIZE - 1) / V_DESCALE_GROUP_SIZE;
-                }
-            }
-            if (expectedT > 0 && expectedT != vDescaleT) {
-                KERNEL_LOG_ERROR(
-                    "v_descale dim0 should be sum(ceil(seqused_kv[i]/64)) = %ld when layout is TND, but got %ld",
-                    expectedT, vDescaleT);
-                return false;
-            }
+    if (isGradEnabled_) {
+        int64_t deterMaxRound = CalDeterMaxRound();
+        detail::QuantFAGMetaData quantFAGMetaData(metaData_->GetData());
+        quantFAGMetaData.SetDeterMaxRound(optiling::QUANT_FAG_DETER_MAX_NUM_INDEX, deterMaxRound);
+    }
+    needInitOutput_ = CheckNeedInitOutput();
+    return true;
+}
+
+// 确定性计算最大循环次数
+int64_t QuantFlashAttnMetadataCpuKernel::CalDeterMaxRound()
+{
+    s1Size_ = GetS1SeqSize(0);
+    s2Size_ = GetS2SeqSize(0);
+    // 非TND场景
+    int64_t b = batchSize_ * baseInfo.kvHeadNum;
+    int64_t m = CeilDiv<int64_t>(s1Size_, 512);
+    int64_t n = CeilDiv<int64_t>(s2Size_, 512);
+    int64_t k = aicCoreNum_;
+
+    if (n == 1) {
+        return std::max(CeilDiv<int64_t>(m * b, k), m);
+    } else {
+        return CeilDiv<int64_t>(n * b, std::min(k, m * b)) * m;
+    }
+}
+
+uint32_t QuantFlashAttnMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
+{
+    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
+        const int32_t *seqUsedPtr = static_cast<const int32_t *>(sequsedQ_->GetData());
+        return static_cast<uint32_t>(seqUsedPtr[bIdx]);
+    }
+
+    if (layoutQ_ == "TND") {
+        if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
+            const int32_t *s1Ptr = static_cast<const int32_t *>(cuSeqlensQ_->GetData());
+            return static_cast<uint32_t>(s1Ptr[bIdx + 1U] - s1Ptr[bIdx]);
         }
     }
-    return true;
+    return static_cast<uint32_t>(maxSeqlenQ_);
+}
+
+uint32_t QuantFlashAttnMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
+{
+    if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
+        const int32_t *seqUsedPtr = static_cast<const int32_t *>(sequsedKv_->GetData());
+        return static_cast<uint32_t>(seqUsedPtr[bIdx]);
+    }
+
+    if (layoutKv_ == "TND") {
+        if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
+            const int32_t *s1Ptr = static_cast<const int32_t *>(cuSeqlensKv_->GetData());
+            return static_cast<uint32_t>(s1Ptr[bIdx + 1U] - s1Ptr[bIdx]);
+        }
+    }
+    return static_cast<uint32_t>(maxSeqlenKv_);
 }
 
 bool QuantFlashAttnMetadataCpuKernel::BalanceSchedule(SectionStreamKResult &splitRes)
 {
     return load_balance::SectionStreamK::Compute(deviceInfo, baseInfo, param, splitRes) == SECTION_STREAM_K_SUCCESS;
+}
+
+bool QuantFlashAttnMetadataCpuKernel::CheckNeedInitOutput()
+{
+    const bool hasCuQ = cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr;
+    const bool hasCuKv = cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr;
+    const bool hasSeqQ = sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr;
+    const bool hasSeqKv = sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr;
+    const uint32_t bSize = static_cast<uint32_t>(batchSize_);
+    const bool hasVarlen = hasCuQ || hasCuKv || hasSeqQ || hasSeqKv;
+    if (!hasVarlen || bSize == 0) {
+        // 无 varlen 信息时用全局长度兜底
+        return maskMode_ == 3 && baseInfo.querySeqSize > baseInfo.kvSeqSize;
+    }
+    // 直接读原始 varlen 数据 (cu_seqlens 长度为 b+1 且首元素为 0, seqused 长度为 b),
+    // 不使用 ParamsInit 中被累加覆盖的 actualQuerySeqSize/actualKvSeqSize
+    std::vector<int64_t> cuSeqlensQ;
+    std::vector<int64_t> cuSeqlensKv;
+    std::vector<int64_t> seqUsedQ;
+    std::vector<int64_t> seqUsedKv;
+    if (hasCuQ) {
+        cuSeqlensQ = GetTensorDataAsInt64(cuSeqlensQ_, bSize + 1);
+    }
+    if (hasCuKv) {
+        cuSeqlensKv = GetTensorDataAsInt64(cuSeqlensKv_, bSize + 1);
+    }
+    if (hasSeqQ) {
+        seqUsedQ = GetTensorDataAsInt64(sequsedQ_, bSize);
+    }
+    if (hasSeqKv) {
+        seqUsedKv = GetTensorDataAsInt64(sequsedKv_, bSize);
+    }
+    for (uint32_t bIdx = 0; bIdx < bSize; ++bIdx) {
+        // Q 侧: cu_seqlens_q 差分为 0 → 零长 batch
+        int64_t qAllocLen = hasCuQ ? cuSeqlensQ[bIdx + 1] - cuSeqlensQ[bIdx] : -1;
+        if (qAllocLen == 0) {
+            return true;
+        }
+        // Q 侧: seqused_q 为 0, 或小于 cu_seqlens_q 分配长度 → 输出存在 padding 行, 需要清零
+        int64_t qUsedLen = hasSeqQ ? seqUsedQ[bIdx] : (qAllocLen > 0 ? qAllocLen : baseInfo.querySeqSize);
+        if (qUsedLen == 0) {
+            return true;
+        }
+        if (qAllocLen > 0 && qUsedLen < qAllocLen) {
+            return true;
+        }
+        // KV 侧: cu_seqlens_kv 差分为 0 → 零长 batch
+        int64_t kvAllocLen = hasCuKv ? cuSeqlensKv[bIdx + 1] - cuSeqlensKv[bIdx] : -1;
+        if (kvAllocLen == 0) {
+            return true;
+        }
+        // KV 侧: seqused_kv 为 0 → 该 batch 无有效 kv, 输出应全 0
+        int64_t kvLen = hasSeqKv ? seqUsedKv[bIdx] : (kvAllocLen > 0 ? kvAllocLen : baseInfo.kvSeqSize);
+        if (kvLen == 0) {
+            return true;
+        }
+        // CAUSAL 下单 batch q > kv → 产生全 mask 行, 输出应为 0
+        if (maskMode_ == 3 && qUsedLen > kvLen) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool QuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
@@ -332,6 +426,7 @@ bool QuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_M_NUM_INDEX, fdSplitRes.mLen[i]);
         }
     }
+    faMetadata.SetHeadMedata(optiling::HEAD_NEED_INIT_OUTPUT_INDEX, needInitOutput_ ? 1U : 0U);
     return true;
 }
 

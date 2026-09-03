@@ -13,6 +13,7 @@
 import logging
 import os
 import sys
+from typing import Optional
 
 import torch
 import torch_npu
@@ -52,20 +53,21 @@ def npu_qfa(
     dequant_scale_q: torch.Tensor,
     dequant_scale_k: torch.Tensor,
     dequant_scale_v: torch.Tensor,
-    p_scale: torch.Tensor,
-    block_table: torch.Tensor,
-    cu_seqlens_q_t: torch.Tensor,
-    cu_seqlens_kv_t: torch.Tensor,
-    seqused_q_t: torch.Tensor,
-    seqused_kv_t: torch.Tensor,
-    sinks_t: torch.Tensor,
-    attn_mask_t: torch.Tensor,
-    metadata_t: torch.Tensor,
+    p_scale: torch.Tensor = None,
+    block_table: torch.Tensor = None,
+    cu_seqlens_q_t: torch.Tensor = None,
+    cu_seqlens_kv_t: torch.Tensor = None,
+    seqused_q_t: torch.Tensor = None,
+    seqused_kv_t: torch.Tensor = None,
+    sinks_t: torch.Tensor = None,
+    attn_mask_t: torch.Tensor = None,
+    metadata_t: torch.Tensor = None,
     *,
     batch_size: int,
     N_q: int,
     N_kv: int,
     D: int,
+    head_dim_v: Optional[int] = None,
     max_seqlen_q: int,
     max_seqlen_kv: int,
     enable_pa: bool,
@@ -133,7 +135,7 @@ def npu_qfa(
         )
     )
 
-    attn_mask_shape = tuple(attn_mask_t.shape)
+    attn_mask_shape = tuple(attn_mask_t.shape) if attn_mask_t is not None else None
 
     _apply_golden_globals(
         {
@@ -142,6 +144,7 @@ def npu_qfa(
             "N_q": N_q,
             "N_kv": N_kv,
             "D": D,
+            "HEAD_DIM_V": head_dim_v,
             "CU_SEQLENS_Q": cu_seqlens_q_list,
             "CU_SEQLENS_KV": cu_seqlens_kv_list,
             "SEQUSED_Q": seqused_q_list,

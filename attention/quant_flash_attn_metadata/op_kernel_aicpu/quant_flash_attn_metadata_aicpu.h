@@ -54,7 +54,11 @@ private:
     bool BalanceSchedule(SectionStreamKResult &splitRes);
     bool GenMetaData(SectionStreamKResult &splitRes);
     bool ParamsInit();
+    bool CheckNeedInitOutput();
     std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
+    uint32_t GetS1SeqSize(uint32_t bIdx);
+    uint32_t GetS2SeqSize(uint32_t bIdx);
+    int64_t CalDeterMaxRound();
 
 private:
     CpuKernelContext *context_ = nullptr;
@@ -62,7 +66,6 @@ private:
     Tensor *cuSeqlensKv_ = nullptr;
     Tensor *sequsedQ_ = nullptr;
     Tensor *sequsedKv_ = nullptr;
-    Tensor *vDescale_ = nullptr;
     Tensor *metaData_ = nullptr;
 
     int32_t batchSize_ = 0;
@@ -71,6 +74,7 @@ private:
     int32_t numHeadsQ_ = 0;
     int32_t numHeadsKv_ = 0;
     int32_t headDim_ = 0;
+    int32_t headDimV_ = 0;
     int32_t quantMode_ = 1;
     int32_t maskMode_ = 1;
     int32_t winLeft_ = -1;
@@ -82,10 +86,14 @@ private:
     std::string socVersion_ = "";
     int32_t aicCoreNum_ = 36U;
     int32_t aivCoreNum_ = 72U;
+    uint32_t s1Size_ = 0;
+    uint32_t s2Size_ = 0;
+    bool isGradEnabled_ = false;
 
     uint32_t groupSize_ = 0;
     uint32_t mBaseSize_ = NUM_64;
     uint32_t s2BaseSize_ = NUM_128;
+    bool needInitOutput_ = false;
     load_balance::DeviceInfo deviceInfo;
     load_balance::BaseInfo baseInfo;
     load_balance::SectionStreamKParam param;
@@ -96,7 +104,6 @@ private:
         cuSeqlensKv = 1,
         sequsedQ = 2,
         sequsedKv = 3,
-        vDescale = 4,
         metaData = 0,
     };
 };
