@@ -66,6 +66,7 @@
 
 - test_quant_lightning_indexer_v2_single.py    # pytest测试单用例运行主程序
 - test_quant_lightning_indexer_v2_paramset.py  # 单用例入参配置，按芯片型号自动选择用例
+- test_quant_lightning_indexer_v2_stc.py       # STC白盒用例配置
 
 批量测试：
 
@@ -99,6 +100,13 @@
 bash test_run.sh single
 bash test_run.sh single --save-pt ./single_pt -O ./result/single.xlsx
 bash test_run.sh single -M graph --save-pt ./single_pt
+```
+
+STC 参数集位于 `test_quant_lightning_indexer_v2_stc.py`，用于按代码路径执行白盒用例：
+
+``` bash
+bash test_run.sh single --paramset stc
+bash test_run.sh single --paramset stc -M graph
 ```
 
 #### 用例的批量生成与测试

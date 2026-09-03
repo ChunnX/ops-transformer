@@ -41,6 +41,7 @@ batch/batch_exec 选项:
 
 single 选项:
       --save-pt DIR         single 保存本次实际输入和 CPU golden 的目录
+      --paramset NAME       参数文件：default 或 stc，默认 default
 
 示例:
   $0 single --save-pt ./single_pt -O ./result/single.xlsx
@@ -81,6 +82,7 @@ run_single() {
     echo "===== QLI_V2 single: mode=$RUN_MODE result=$RESULT_PATH ====="
     QLIV2_SINGLE_SAVE_PT_DIR="$SAVE_PT_DIR" \
     QLIV2_SINGLE_RESULT_PATH="$RESULT_PATH" \
+    QLIV2_PARAMSET="$PARAMSET_MODULE" \
     QLIV2_RUN_MODE="$RUN_MODE" \
         python3 -m pytest -rA -s "$SINGLE_TEST_SCRIPT" -v -m ci \
         -W ignore::UserWarning -W ignore::DeprecationWarning
@@ -137,6 +139,7 @@ RESULT_PATH=""
 CASE_NAMES=""
 CASE_INDEXES=""
 SAVE_PT_DIR=""
+PARAMSET_MODULE="default"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -178,6 +181,11 @@ while [ $# -gt 0 ]; do
         --save-pt)
             require_value "$1" "$2"
             SAVE_PT_DIR="$2"
+            shift 2
+            ;;
+        --paramset)
+            require_value "$1" "$2"
+            PARAMSET_MODULE="$2"
             shift 2
             ;;
         -h|--help)

@@ -10,16 +10,23 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import importlib
 import itertools
+import os
 import torch
 import torch_npu
-from test_lightning_indexer_v2_paramset import ENABLED_PARAMS
 import result_compare_method
 import lightning_indexer_v2_golden
 import pytest
 import lightning_indexer_v2_acl_graph
 
-for _, params in enumerate(ENABLED_PARAMS):
+paramset = os.environ.get("LIV2_PARAMSET", "default")
+if paramset not in ("default", "stc"):
+    raise ValueError(f"unsupported paramset: {paramset}")
+paramset_module = "test_lightning_indexer_v2_stc" if paramset == "stc" else "test_lightning_indexer_v2_paramset"
+ENABLED_PARAMS = importlib.import_module(paramset_module).ENABLED_PARAMS
+
+for paramset_index, params in enumerate(ENABLED_PARAMS):
     # 将params的所有字段注册为局部变量
     for key, value in params.items():
         locals()[f"param_{key}"] = value
@@ -103,18 +110,27 @@ for _, params in enumerate(ENABLED_PARAMS):
                     cmp_ratio, return_value, max_seqlen_q
 
         # 获得cpu结果(真值)和算子结果（测试值）
-        # eager
-        cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value = lightning_indexer_v2_golden.liv2_output_single(test_data)
-        # aclgraph
-        cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value = lightning_indexer_v2_acl_graph.liv2_output_acl_graph(test_data)
+        run_mode = os.environ.get("LIV2_RUN_MODE", "both")
+        if run_mode not in ("eager", "graph", "both"):
+            raise ValueError(f"unsupported run_mode: {run_mode}")
+        if run_mode != "graph":
+            cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value = lightning_indexer_v2_golden.liv2_output_single(test_data)
+        if run_mode != "eager":
+            cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value = lightning_indexer_v2_acl_graph.liv2_output_acl_graph(test_data)
         print("npu_result", npu_result)
         print("cpu_result:", cpu_result)
         # 结果精度对比
         result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, output_idx_offset, test_data, cpu_topk_value, npu_topk_value)
         print("result", result)
         print("result", fulfill_percent)
+        assert result == "Pass"
 
         if return_value:
             result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(cpu_topk_value, npu_topk_value, test_data)
             print(f"result_return_value: {result_return_value}")
             print(f"result_return_value: {fulfill_precent_return_value}")
+            assert result_return_value == "Pass"
+
+    globals()[f"test_liv2_{paramset_index:03d}"] = test_liv2
+
+del test_liv2
