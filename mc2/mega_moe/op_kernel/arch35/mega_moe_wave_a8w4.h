@@ -96,11 +96,16 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1
         gmmAddrInfo, state, tokenStartIndexInExpert, gmm1TilesPerMGroup);
     ProblemShape sliceProblemShape = state.problemShape;
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
-    RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                EPILOGUE_TILE_M, TopkWeightsPrefetch, false, true>(
-        epilogueOp_, params_, sliceProblemShape, gmmAddrInfo, startBlockIdx, gmm1TileReadySequence,
-        gmmExecutionConfig_.blockJob, static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert,
-        state.expertIdx);
+    if constexpr (TopkWeightsPrefetch) {
+        epilogueOp_.SetMetaInfo(gmmAddrInfo.metaInfoGlobal,
+                                static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert);
+    }
+    Gmm1A8W4SyncPolicy<false, true, TopkWeightsPrefetch> sync(
+        gmmAddrInfo, sliceTokenCount, GMM1_TILE_M, state.expertIdx, gmm1TileReadySequence);
+    RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
+                QuantScaleOutType,
+                GMM1_TILE_M, TopkWeightsPrefetch>(
+        epilogueOp_, sliceProblemShape, gmmAddrInfo, startBlockIdx, sync);
 }
 
 // 对已完成 Wave 中的一个专家执行 GMM2 及后续 Combine 调度。
@@ -119,10 +124,13 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
             state, tokenStartIndexInExpert);
         ProblemShape sliceProblemShape = state.problemShape;
         Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
-        RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                    TopkWeightsPrefetch, false, false, true>(sliceProblemShape, gmmAddrInfo, startBlockIdx,
-                                                             gmmExecutionConfig_.blockJob, expertTokenCount,
-                                                             tokenStartIndexInExpert);
+        Gmm2A8W4SyncPolicy<false, false, true, false> sync(gmmAddrInfo, sliceProblemShape,
+                                                           TopkWeightsPrefetch ? L1_TILE_M_128 : GMM1_TILE_M,
+                                                           gmmExecutionConfig_.blockJob.totalJobs, expertTokenCount,
+                                                           tokenStartIndexInExpert);
+        RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
+                    QuantScaleOutType>(sliceProblemShape, gmmAddrInfo.tensorAddrs, startBlockIdx,
+                                       sync);
     }
     if (tokenStartIndexInExpert + sliceTokenCount < expertTokenCount) {
         return;

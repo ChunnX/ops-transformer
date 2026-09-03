@@ -14,6 +14,7 @@
 #include "lib/std/tuple.h"
 #include "tensor_api/tensor.h"
 #include "../mega_moe_tiling.h"
+#include "mega_moe_gmm_common.h"
 #include "mega_moe_constants.h"
 #include "mega_moe_workspace.h"
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
@@ -30,6 +31,7 @@ namespace MegaMoeImpl {
 using namespace AscendC;
 
 using ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
+using GmmKernel::GmmTensorAddrs;
 
 // GMM1/GMM2 逐专家遍历的公共状态。expertIdx 标识当前专家，globalTokenStartIndex 表示该专家
 // 在本卡 MoE 专家紧凑 token 序列中的起始索引。
@@ -56,12 +58,7 @@ struct ExpertTokenPosition {
 using Mc2MoeContext = Mc2Aclnn::Mc2MoeContext;
 
 struct GMMAddrInfo {
-    GM_ADDR aGlobal;
-    GM_ADDR bGlobal;
-    GM_ADDR aScaleGlobal;
-    GM_ADDR bScaleGlobal;
-    GM_ADDR gmm1OutGlobal;
-    GM_ADDR gmm2OutGlobal;
+    GmmTensorAddrs tensorAddrs;
     GM_ADDR metaInfoGlobal;
     __gm__ int32_t *activationToGmm2Flag;
     __gm__ int32_t *dispatchToGmm1Flag;
