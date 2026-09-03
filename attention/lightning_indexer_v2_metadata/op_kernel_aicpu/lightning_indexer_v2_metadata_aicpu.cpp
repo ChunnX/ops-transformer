@@ -232,15 +232,12 @@ bool LightningIndexerV2MetadataCpuKernel::ParamsInit()
     if (validSocVersion == ValidSocVersion::ASCEND910B) {
         mBaseSize_ = s1BaseSize_ * groupSize_;
         s2BaseSize_ = 2048U;
-    } else if (validSocVersion == ValidSocVersion::ASCEND950) {
+    } else if (validSocVersion == ValidSocVersion::ASCEND950 ||
+               validSocVersion == ValidSocVersion::ASCEND910_96) {
+        // A6(ASCEND910_96) 复用 A5(ASCEND950) 的分块策略，不做单独设置
         if (groupSize_ > 32 || topk_ > 2048) {
             s1BaseSize_ = 2;
         }
-        mBaseSize_ = s1BaseSize_ * groupSize_;
-        s2BaseSize_ = 128U;
-    } else if (validSocVersion == ValidSocVersion::ASCEND910_96) {
-        // A6: s1BaseSize始终为4，不做SMALL拆分
-        s1BaseSize_ = 4;
         mBaseSize_ = s1BaseSize_ * groupSize_;
         s2BaseSize_ = 128U;
     } else {

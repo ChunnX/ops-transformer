@@ -204,14 +204,14 @@ int32_t LightningIndexerV2MetadataCpuKernel::GetQueryBatchSize()
 
 ValidSocVersion LightningIndexerV2MetadataCpuKernel::ProcessSocVersion()
 {
-    // cpu_test仿真A6：默认走ASCEND910_96路径（s1BaseSize=4, 无SMALL拆分, s2BaseSize=128）
     const std::string ascend950 = "Ascend950";
-    const std::string ascend910_96 = "Ascend910_96";
+    const std::string ascend910_96 = "Ascend910_96";  // A6: 待确认实际soc字符串
     if (socVersion_.find(ascend950) != std::string::npos) {
         return ValidSocVersion::ASCEND950;
-    } else {
-        // 默认（含空socVersion_）走A6路径，s1BaseSize始终为4
+    } else if (socVersion_.find(ascend910_96) != std::string::npos) {
         return ValidSocVersion::ASCEND910_96;
+    } else {
+        return ValidSocVersion::ASCEND910B;
     }
 }
 
@@ -228,11 +228,22 @@ bool LightningIndexerV2MetadataCpuKernel::ParamsInit()
         attentionMode_ = 1;
     }
     groupSize_ = numHeadsQ_ / numHeadsK_;
-    // cpu_test仅用于A6仿真，直接写死分块参数
-    // A6: L0A仅64KB, s1BaseSize=2(与kernel InitTilingData的A6分支一致)
-    s1BaseSize_ = 2;
-    mBaseSize_ = s1BaseSize_ * groupSize_;
-    s2BaseSize_ = 128U;
+    ValidSocVersion validSocVersion = ProcessSocVersion();
+    if (validSocVersion == ValidSocVersion::ASCEND910B) {
+        mBaseSize_ = s1BaseSize_ * groupSize_;
+        s2BaseSize_ = 2048U;
+    } else if (validSocVersion == ValidSocVersion::ASCEND950 ||
+               validSocVersion == ValidSocVersion::ASCEND910_96) {
+        // A6(ASCEND910_96) 复用 A5(ASCEND950) 的分块策略，不做单独设置
+        if (groupSize_ > 32 || topk_ > 2048) {
+            s1BaseSize_ = 2;
+        }
+        mBaseSize_ = s1BaseSize_ * groupSize_;
+        s2BaseSize_ = 128U;
+    } else {
+        mBaseSize_ = s1BaseSize_ * groupSize_;
+        s2BaseSize_ = 128U;
+    }
     return true;
 }
 

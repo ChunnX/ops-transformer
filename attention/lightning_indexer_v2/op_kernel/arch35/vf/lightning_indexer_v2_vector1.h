@@ -325,44 +325,34 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint32_t* out_,
 
 template<typename QK_T, typename W_T, typename SCORE_T>
 __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &out_, // out [S2Base] [128 ]
-                                               uint32_t outStride,
-                                               const LocalTensor<QK_T> &qk_, // q*k^t [G, S2Base] [64 128]
-                                               uint32_t qkVLStride,
-                                               uint32_t qkStride,
-                                               const LocalTensor<W_T> &weight_, // w [G] [64 ]
-                                               uint32_t weightStride,
-                                               const int gSize, // G 64
-                                               const int batch)
+                                              uint32_t outStride,
+                                              const LocalTensor<QK_T> &qk_, // q*k^t [G, S2Base] [64 128]
+                                              uint32_t qkVLStride,
+                                              uint32_t qkStride,
+                                              const LocalTensor<W_T> &weight_, // w [G] [64 ]
+                                              uint32_t weightStride,
+                                              const int gSize, // G 64
+                                              const int row)
 {
-    if (batch < 1) {
+    // 暂只支持这两种情况, 后续改成循环
+    if (row != 2 && row != 1) {
         return;
     }
     auto weight = (__ubuf__ W_T *)weight_.GetPhyAddr();
     auto qk = (__ubuf__ QK_T *)qk_.GetPhyAddr();
     auto out = (__ubuf__ SCORE_T *)out_.GetPhyAddr();
 
-    // 偶数行：每次处理2行
-    int pairCount = batch / 2;
-    for (int p = 0; p < pairCount; p++) {
-        auto curOut = out + p * 2 * outStride;
-        auto curOut1 = curOut + outStride;
-        auto curQk = qk + p * 2 * qkStride;
-        auto curQk1 = curQk + qkStride;
-        auto curWeight = weight + p * 2 * weightStride;
-        auto curWeight1 = curWeight + weightStride;
+    if (row == 2) {
+        auto weight1 = weight + weightStride;
+        auto qk1 = qk + qkStride;
+        auto out1 = out + outStride;
 
-        MulWeightAndReduceSum2(curOut, curOut1, outStride,
-                            curQk, curQk1, qkVLStride, qkStride,
-                            curWeight, curWeight1, weightStride,
+        MulWeightAndReduceSum2(out, out1, outStride,
+                            qk, qk1, qkVLStride, qkStride,
+                            weight, weight1, weightStride,
                             gSize);
-    }
-
-    // 奇数行：最后一行用 S1=1 处理
-    if (batch % 2 != 0) {
-        auto lastOut = out + (batch - 1) * outStride;
-        auto lastQk = qk + (batch - 1) * qkStride;
-        auto lastWeight = weight + (batch - 1) * weightStride;
-        MulWeightAndReduceSum(lastOut, lastQk, qkVLStride, lastWeight, gSize);
+    } else {
+        MulWeightAndReduceSum(out, qk, qkVLStride, weight, gSize);
     }
 }
 }

@@ -204,7 +204,6 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitTilingData(const LIV2T
     constInfo.kHeadNum = K_HEAD_NUM;
     constInfo.headDim = HEAD_DIM;
 
-#if CVRATIO > 1
     if (constInfo.gSize > 32 || constInfo.topk > 2048) {
         constInfo.mBaseSize = S1_BASE_SIZE_SMALL * constInfo.gSize;
         constInfo.s1BaseSize = S1_BASE_SIZE_SMALL;
@@ -212,11 +211,6 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitTilingData(const LIV2T
         constInfo.mBaseSize = S1_BASE_SIZE * constInfo.gSize;
         constInfo.s1BaseSize = S1_BASE_SIZE;
     }
-#else
-    // A6(1:1): L0A仅64KB, s1BaseSize=2, mBaseSize=2*gSize, M_BASIC_BLOCK=128
-    constInfo.mBaseSize = S1_BASE_SIZE_SMALL * constInfo.gSize;
-    constInfo.s1BaseSize = S1_BASE_SIZE_SMALL;
-#endif
     constInfo.s2BaseSize = S2_BASE_SIZE;
     constInfo.returnValueFlag = tilingData->returnValue;
 }
