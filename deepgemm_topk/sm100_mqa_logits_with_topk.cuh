@@ -857,11 +857,91 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
             }
             __syncthreads();
 
-            // ==== stage 3: warp 0 computes global kth (rounds only) ====
-            if (warp_idx == 0)
-                warp_bucket_topk<kSparseCount, true, true>(merge_vals, 0, kNumCand,
-                                                           out_ptr, whist, wstage, merge_idx,
-                                                           lane_idx, gslots);
+            // ==== stage 3: distributed radix rounds (8 warps x 512-slices) ====
+            {
+                const float* mv3 = merge_vals;
+                auto to_sortable3 = [](float f) -> uint32_t {
+                    uint32_t u = __float_as_uint(f);
+                    return (u & 0x80000000u) ? ~u : (u ^ 0x80000000u);
+                };
+                uint32_t kth = 0, def_cnt = 0, rem = kSparseCount;
+                for (int round = 0; round < 4 && rem > 0; ++round) {
+                    const int shift = (3 - round) * 8;
+                    const uint32_t pmask = (round == 0) ? 0u : (0xFFFFFFFFu << (32 - round * 8));
+                    const uint32_t pval = kth & pmask;
+
+                    if (i_active) {
+                        uint32_t* wh = reinterpret_cast<uint32_t*>(whist);
+                        for (uint32_t i = lane_idx; i < 256; i += 32)
+                            wh[i] = 0;
+                        __syncwarp();
+                        #pragma unroll 4
+                        for (uint32_t i = lane_idx; i < kSlice; i += 32) {
+                            uint32_t u = to_sortable3(__uint_as_float(
+                                ptx::ld_shared(reinterpret_cast<const uint32_t*>(mv3) + warp_idx * kSlice + i)));
+                            if ((u & pmask) == pval) {
+                                uint32_t b = (u >> shift) & 0xFF;
+                                atomicAdd(&wh[b], 1u);
+                            }
+                        }
+                    }
+                    __syncthreads();
+
+                    if (warp_idx == 0) {
+                        const uint32_t* wp = reinterpret_cast<const uint32_t*>(warp_base);
+                        for (uint32_t i = lane_idx; i < 256; i += 32) {
+                            uint32_t s = 0;
+                            #pragma unroll
+                            for (uint32_t w = 0; w < kNumTopkWarps; ++w)
+                                s += wp[w * (kPerWarpBytes / 4) + kSegFloats + i];
+                            ghist[i] = s;
+                        }
+                    }
+                    __syncthreads();
+
+                    if (warp_idx == 0) {
+                        uint32_t mc[8];
+                        #pragma unroll
+                        for (int i = 0; i < 8; i++) mc[i] = ghist[lane_idx * 8 + i];
+                        uint32_t my_sum = 0;
+                        #pragma unroll
+                        for (int i = 0; i < 8; i++) my_sum += mc[i];
+                        uint32_t incl = my_sum;
+                        for (int s = 1; s < 32; s <<= 1) {
+                            uint32_t t = __shfl_up_sync(0xFFFFFFFF, incl, s);
+                            if (lane_idx >= s) incl += t;
+                        }
+                        const uint32_t total = __shfl_sync(0xFFFFFFFF, incl, 31);
+                        const uint32_t count_above_me = total - incl;
+                        uint32_t prefix_in_lane = 0;
+                        int32_t my_cutoff = -1;
+                        uint32_t my_cao = 0;
+                        #pragma unroll
+                        for (int i = 7; i >= 0; i--) {
+                            uint32_t ca = count_above_me + prefix_in_lane;
+                            uint32_t cge = ca + mc[i];
+                            if (ca < rem && cge >= rem) {
+                                my_cutoff = static_cast<int32_t>(lane_idx * 8 + i);
+                                my_cao = ca;
+                            }
+                            prefix_in_lane += mc[i];
+                        }
+                        uint32_t m = __ballot_sync(0xFFFFFFFF, my_cutoff >= 0);
+                        gslots[2] = (m != 0);
+                        if (m) {
+                            uint32_t cl = __ffs(m) - 1;
+                            gslots[0] = __shfl_sync(0xFFFFFFFF, static_cast<uint32_t>(my_cutoff), cl);
+                            gslots[1] = __shfl_sync(0xFFFFFFFF, my_cao, cl);
+                        }
+                    }
+                    __syncthreads();
+                    if (gslots[2] == 0) break;
+                    kth |= (gslots[0] << shift);
+                    def_cnt += gslots[1];
+                    rem = kSparseCount - def_cnt;
+                }
+                if (warp_idx == 0) gslots[0] = kth;   // publish final kth for stage 4
+            }
             __syncthreads();
             const uint32_t kth_full = gslots[0];
 
