@@ -935,6 +935,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     if (GetBlockIdx() >= v1UsedCubeCoreNum_) {
         return;
     }
+    if ASCEND_IS_AIC {
+        AscendC::SetHF32Mode(1);
+        AscendC::SetHF32TransMode(1);
+    }
+
     uint32_t currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - dealStartND_);
     uint32_t currentBSBlock = static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_));
     uint32_t buffId = 0;
@@ -967,6 +972,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
             ProcessC1(offsetND, currentNDBlock, offsetBS, currentBSBlock, buffId);
             buffId++;
         }
+    }
+
+    if ASCEND_IS_AIC {
+        AscendC::SetHF32Mode(0);
     }
 }
 
