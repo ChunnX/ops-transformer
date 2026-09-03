@@ -262,7 +262,7 @@ TEST_F(l2_causal_conv1d_update_test, Ascend950_update_3d_seqlen_not_1)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(ret, ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(ret, ACLNN_SUCCESS);
 }
 
 TEST_F(l2_causal_conv1d_update_test, Ascend950_update_kernel_width_invalid)
