@@ -273,12 +273,10 @@ public:
     {
         __VEC_SCOPE__
         {
-            AscendC::Reg::RegTensor<float> x_0, x_1, cos_0, cos_1, sin_0, sin_1, scale_0, scale_1, offset_0,
-                offset_1;
+            AscendC::Reg::RegTensor<float> x_0, x_1, cos_0, cos_1, sin_0, sin_1, scale_0, scale_1, offset_0, offset_1;
             AscendC::Reg::UnalignRegForStore UReg0, UReg1, UReg2, UReg3;
             AscendC::Reg::MaskReg mask;
-            AscendC::Reg::MaskReg maskAll =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg maskAll = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             for (uint16_t rowId = 0; rowId < row; rowId++) {
                 uint32_t sreg = colCosSin;
                 __ubuf__ T_KV *out0 = outFront + rowId * xOffset;
@@ -336,8 +334,7 @@ public:
             AscendC::Reg::RegTensor<float> x_0, x_1, cos_0, cos_1, sin_0, sin_1, scale_0, scale_1;
             AscendC::Reg::UnalignRegForStore UReg0, UReg1, UReg2, UReg3;
             AscendC::Reg::MaskReg mask;
-            AscendC::Reg::MaskReg maskAll =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg maskAll = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             for (uint16_t rowId = 0; rowId < row; rowId++) {
                 uint32_t sreg = colCosSin;
                 __ubuf__ T_KV *out0 = outFront + rowId * xOffset;
@@ -386,12 +383,10 @@ public:
     {
         __VEC_SCOPE__
         {
-            AscendC::Reg::RegTensor<float> x_0, x_1, cos_0, cos_1, sin_0, sin_1, scale_0, scale_1, offset_0,
-                offset_1;
+            AscendC::Reg::RegTensor<float> x_0, x_1, cos_0, cos_1, sin_0, sin_1, scale_0, scale_1, offset_0, offset_1;
             AscendC::Reg::UnalignRegForStore UReg2, UReg3;
             AscendC::Reg::MaskReg mask;
-            AscendC::Reg::MaskReg maskAll =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg maskAll = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             for (uint16_t rowId = 0; rowId < row; rowId++) {
                 uint32_t sreg = colCosSin;
                 __ubuf__ T_K_CACHE *out2 = quantFront + rowId * quantOutOffset;
@@ -442,8 +437,7 @@ public:
             AscendC::Reg::RegTensor<float> x_0, x_1, cos_0, cos_1, sin_0, sin_1, scale_0, scale_1;
             AscendC::Reg::UnalignRegForStore UReg2, UReg3;
             AscendC::Reg::MaskReg mask;
-            AscendC::Reg::MaskReg maskAll =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg maskAll = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             for (uint16_t rowId = 0; rowId < row; rowId++) {
                 uint32_t sreg = colCosSin;
                 __ubuf__ T_K_CACHE *out2 = quantFront + rowId * quantOutOffset;
@@ -489,8 +483,7 @@ public:
         StoreTensorForDtypeTOut<float>(ws, x_1, maskAll, VL_FP32);
         AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
         // get x
-        AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_DINTLV_B32>(x_0, x_1,
-                                                                                          ((__ubuf__ float *)(ws)));
+        AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_DINTLV_B32>(x_0, x_1, ((__ubuf__ float *)(ws)));
         LoadTensorForDtypeT(realCos, cos_0, mask, colId * VL_FP32 + rowId * cosSinOffset);
         LoadTensorForDtypeT(imgCos, cos_1, mask, colId * VL_FP32 + rowId * cosSinOffset);
         LoadTensorForDtypeT(realSin, sin_0, mask, colId * VL_FP32 + rowId * cosSinOffset);
@@ -515,8 +508,7 @@ public:
             AscendC::Reg::UnalignRegForStore UReg0;
             AscendC::Reg::UnalignRegForStore UReg1;
             AscendC::Reg::MaskReg mask;
-            AscendC::Reg::MaskReg maskAll =
-                AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+            AscendC::Reg::MaskReg maskAll = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
             for (uint16_t rowId = 0; rowId < row; rowId++) {
                 uint32_t sreg = colCosSin;
                 // 跨行地址重刷新

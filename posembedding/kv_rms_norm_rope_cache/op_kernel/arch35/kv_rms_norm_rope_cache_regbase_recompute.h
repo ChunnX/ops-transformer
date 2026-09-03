@@ -206,8 +206,7 @@ public:
                 pMask = AscendC::Reg::UpdateMask<float>(sreg);
                 AscendC::Reg::LoadAlign(aReg, (__ubuf__ float *)src + i * outerLoopStride);
                 for (uint16_t j = 0; j < innerLoopTimes; ++j) {
-                    AscendC::Reg::LoadAlign(bReg,
-                                                 (__ubuf__ float *)dst + i * outerLoopStride + j * innerLoopStride);
+                    AscendC::Reg::LoadAlign(bReg, (__ubuf__ float *)dst + i * outerLoopStride + j * innerLoopStride);
                     AscendC::Reg::Add<float, AscendC::Reg::MaskMergeMode::ZEROING>(aReg, aReg, bReg, pMask);
                 }
                 AscendC::Reg::StoreAlign((__ubuf__ float *)cache + i * outerLoopStride, aReg, pMask);
@@ -297,8 +296,8 @@ public:
 
     template <typename T = T_KV>
     __aicore__ inline void StoreDataAndCastFromFp32(__ubuf__ T *&dst, AscendC::Reg::RegTensor<float> &src,
-                                                    AscendC::Reg::UnalignRegForStore &uReg,
-                                                    AscendC::Reg::MaskReg &mask, uint32_t postUpdateStride)
+                                                    AscendC::Reg::UnalignRegForStore &uReg, AscendC::Reg::MaskReg &mask,
+                                                    uint32_t postUpdateStride)
     {
         if constexpr (!IsSameType<T, float>::value) {
             AscendC::Reg::RegTensor<T> vregB16, vregB16Pack;
@@ -1210,8 +1209,7 @@ public:
                 LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
                 AscendC::Reg::StoreAlign(tmpBufferPtr, vregRope1Fp32, mask);
                 AscendC::Reg::StoreAlign(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-                AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE,
-                                               AscendC::Reg::MemType::VEC_LOAD>();
+                AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
                 AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_DINTLV_B32>(
                     vregRope1Fp32, vregRope2Fp32, ((__ubuf__ float *)(tmpBufferPtr)));
 
@@ -1246,10 +1244,9 @@ public:
             LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
             AscendC::Reg::StoreAlign(tmpBufferPtr, vregRope1Fp32, mask);
             AscendC::Reg::StoreAlign(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-            AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE,
-                                           AscendC::Reg::MemType::VEC_LOAD>();
-            AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_DINTLV_B32>(
-                vregRope1Fp32, vregRope2Fp32, ((__ubuf__ float *)(tmpBufferPtr)));
+            AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
+            AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32,
+                                                                                    ((__ubuf__ float *)(tmpBufferPtr)));
 
             LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
             LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
@@ -1309,8 +1306,7 @@ public:
                 LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
                 AscendC::Reg::StoreAlign(tmpBufferPtr, vregRope1Fp32, mask);
                 AscendC::Reg::StoreAlign(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-                AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE,
-                                               AscendC::Reg::MemType::VEC_LOAD>();
+                AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
                 AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_DINTLV_B32>(
                     vregRope1Fp32, vregRope2Fp32, ((__ubuf__ float *)(tmpBufferPtr)));
 
@@ -1354,10 +1350,9 @@ public:
             LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
             AscendC::Reg::StoreAlign(tmpBufferPtr, vregRope1Fp32, mask);
             AscendC::Reg::StoreAlign(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-            AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE,
-                                           AscendC::Reg::MemType::VEC_LOAD>();
-            AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_DINTLV_B32>(
-                vregRope1Fp32, vregRope2Fp32, ((__ubuf__ float *)(tmpBufferPtr)));
+            AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
+            AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32,
+                                                                                    ((__ubuf__ float *)(tmpBufferPtr)));
 
             LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
             LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
@@ -1428,8 +1423,7 @@ public:
                 LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
                 AscendC::Reg::StoreAlign(tmpBufferPtr, vregRope1Fp32, mask);
                 AscendC::Reg::StoreAlign(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-                AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE,
-                                               AscendC::Reg::MemType::VEC_LOAD>();
+                AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
                 AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_DINTLV_B32>(
                     vregRope1Fp32, vregRope2Fp32, ((__ubuf__ float *)(tmpBufferPtr)));
 
@@ -1479,10 +1473,9 @@ public:
             LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
             AscendC::Reg::StoreAlign(tmpBufferPtr, vregRope1Fp32, mask);
             AscendC::Reg::StoreAlign(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-            AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE,
-                                           AscendC::Reg::MemType::VEC_LOAD>();
-            AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_DINTLV_B32>(
-                vregRope1Fp32, vregRope2Fp32, ((__ubuf__ float *)(tmpBufferPtr)));
+            AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
+            AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32,
+                                                                                    ((__ubuf__ float *)(tmpBufferPtr)));
 
             LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
             LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
@@ -1658,8 +1651,7 @@ public:
                 LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
                 AscendC::Reg::StoreAlign(tmpBufferPtr, vregRope1Fp32, mask);
                 AscendC::Reg::StoreAlign(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-                AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE,
-                                               AscendC::Reg::MemType::VEC_LOAD>();
+                AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
                 AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_DINTLV_B32>(
                     vregRope1Fp32, vregRope2Fp32, ((__ubuf__ float *)(tmpBufferPtr)));
 
@@ -1709,10 +1701,9 @@ public:
             LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
             AscendC::Reg::StoreAlign(tmpBufferPtr, vregRope1Fp32, mask);
             AscendC::Reg::StoreAlign(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-            AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE,
-                                           AscendC::Reg::MemType::VEC_LOAD>();
-            AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_DINTLV_B32>(
-                vregRope1Fp32, vregRope2Fp32, ((__ubuf__ float *)(tmpBufferPtr)));
+            AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
+            AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32,
+                                                                                    ((__ubuf__ float *)(tmpBufferPtr)));
 
             LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
             LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
@@ -1897,12 +1888,12 @@ public:
             AscendC::Reg::RegTensor<T> reg;
             AscendC::Reg::UnalignRegForStore ureg;
             for (uint16_t j = 0; j < repeatFloor; j++) {
-                AscendC::Reg::LoadAlign<T, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                    reg, srcPtr, static_cast<int32_t>(VL_FP32));
+                AscendC::Reg::LoadAlign<T, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(reg, srcPtr,
+                                                                                        static_cast<int32_t>(VL_FP32));
                 AscendC::Reg::StoreUnAlign(dstPtr, reg, ureg, static_cast<uint32_t>(VL_FP32));
             }
-            AscendC::Reg::LoadAlign<T, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                reg, srcPtr, static_cast<int32_t>(tailW));
+            AscendC::Reg::LoadAlign<T, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(reg, srcPtr,
+                                                                                    static_cast<int32_t>(tailW));
             AscendC::Reg::StoreUnAlign(dstPtr, reg, ureg, tailW);
             AscendC::Reg::StoreUnAlignPost(dstPtr, ureg, static_cast<int32_t>(0));
         }
@@ -2299,8 +2290,7 @@ public:
                 LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
                 AscendC::Reg::StoreAlign(tmpBufferPtr, vregRope1Fp32, mask);
                 AscendC::Reg::StoreAlign(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-                AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE,
-                                               AscendC::Reg::MemType::VEC_LOAD>();
+                AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
                 AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_DINTLV_B32>(
                     vregRope1Fp32, vregRope2Fp32, ((__ubuf__ float *)(tmpBufferPtr)));
 
@@ -2355,10 +2345,9 @@ public:
             LoadDataAndCast2Fp32(vregRope2Fp32, ropeAddr2, mask);
             AscendC::Reg::StoreAlign(tmpBufferPtr, vregRope1Fp32, mask);
             AscendC::Reg::StoreAlign(tmpBufferPtr + VL_FP32, vregRope2Fp32, mask);
-            AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE,
-                                           AscendC::Reg::MemType::VEC_LOAD>();
-            AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_DINTLV_B32>(
-                vregRope1Fp32, vregRope2Fp32, ((__ubuf__ float *)(tmpBufferPtr)));
+            AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
+            AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_DINTLV_B32>(vregRope1Fp32, vregRope2Fp32,
+                                                                                    ((__ubuf__ float *)(tmpBufferPtr)));
 
             LoadDataAndCast2Fp32(vregCos1Fp32, cosAddr1, mask);
             LoadDataAndCast2Fp32(vregCos2Fp32, cosAddr2, mask);
