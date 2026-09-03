@@ -52,7 +52,12 @@ template <typename DataTypeOut_, typename DataTypeIn_, uint32_t TileM = 256, uin
           bool TopkWeightsPrefetch = false, bool IsInterleaved_ = false>
 class BlockEpilogueActivationMxQuant {
 public:
-    __aicore__ inline BlockEpilogueActivationMxQuant() {}
+    using DataTypeOut = DataTypeOut_;
+    using DataTypeIn = DataTypeIn_;
+
+    using BlockShape = Shape<int64_t, int64_t, int64_t, int64_t>;
+    using BlockCoord = Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>;
+    using ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 
     static constexpr uint32_t MAX_SINGLE_MN = TileM * TileN;
 
@@ -67,35 +72,34 @@ public:
         Arguments() = default;
     };
 
-    // params
     using Params = Arguments;
 
-    using DataTypeOut = DataTypeOut_;
-    using DataTypeIn = DataTypeIn_;
+    __aicore__ inline BlockEpilogueActivationMxQuant() {}
 
-    // shape
-    using BlockShape = Shape<int64_t, int64_t, int64_t, int64_t>;
-    using BlockCoord = Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>;
-    using ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
-
-public:
     __aicore__ inline void Init(Params const &params);
+    __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset);
+    __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
     __aicore__ inline auto GetTopkWeightTensor();
+
     // 计算并写回一个激活/量化 tile，不包含流水通知。
     __aicore__ inline void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord,
                                       uint16_t pingpongIdx = 0);
-    __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset);
-    __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
 
 private:
     using UbPointers = Detail::ActivationMxQuantUbPointers<DataTypeIn>;
 
-    __aicore__ inline void RunMxQuantTile(const UbPointers &ubPointers, uint16_t validRowCount,
-                                          uint32_t outputRowStrideElements);
+    static constexpr auto kUbLayout =
+        Detail::BuildActivationMxQuantUbOffsets<DataTypeIn, TileM, TileN, IsInterleaved_>();
+    static constexpr uint32_t kUbFirstOffset = kUbLayout.firstInputOffsetBytes;
+    static constexpr uint32_t kUbInputElementCapacity = kUbLayout.firstInputElementCapacity;
+    static constexpr uint32_t kUbSecondOffset = kUbLayout.secondInputOffsetBytes;
 
     __aicore__ inline void RunGatedActivationTile(__ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc,
                                                   __ubuf__ bfloat16_t *gluResAddr, uint16_t validRowCount,
                                                   uint16_t validColumnCount, uint32_t outputRowStrideElements);
+
+    __aicore__ inline void RunMxQuantTile(const UbPointers &ubPointers, uint16_t validRowCount,
+                                          uint32_t outputRowStrideElements);
 
     __aicore__ inline void StoreQuantOutput(AscendC::GlobalTensor<int8_t> &dst, AscendC::LocalTensor<int8_t> &src,
                                             uint64_t blockCount, uint64_t offset, uint64_t n, uint64_t singleN);
@@ -104,31 +108,27 @@ private:
                                                   uint64_t blockCount, uint64_t offset, uint64_t scaleN,
                                                   uint64_t singleN);
 
-    // GM ADDR
-    GlobalTensor<int8_t> quantOutputGlobal_;
-    GlobalTensor<int8_t> quantScaleGlobal_;
+    // GM base addresses and bound tensor views
     GM_ADDR yGmAddr_{nullptr};
     GM_ADDR yScaleGmAddr_{nullptr};
+    GlobalTensor<int8_t> quantOutputGlobal_;
+    GlobalTensor<int8_t> quantScaleGlobal_;
 
-    // UB ADDR
-    static constexpr uint32_t kUbFirstOffset =
-        Detail::BuildActivationMxQuantUbOffsets<DataTypeIn, TileM, TileN, IsInterleaved_>().firstInputOffsetBytes;
-    static constexpr uint32_t kUbInputElementCapacity =
-        Detail::BuildActivationMxQuantUbOffsets<DataTypeIn, TileM, TileN, IsInterleaved_>().firstInputElementCapacity;
-    static constexpr uint32_t kUbSecondOffset =
-        Detail::BuildActivationMxQuantUbOffsets<DataTypeIn, TileM, TileN, IsInterleaved_>().secondInputOffsetBytes;
+    // UB tensor views ordered by physical layout
     LocalTensor<DataTypeIn> l0cOutUbFirst_{TPosition::VECIN, kUbFirstOffset, kUbInputElementCapacity};
     LocalTensor<DataTypeIn> l0cOutUbSecond_{TPosition::VECIN, kUbSecondOffset, kUbInputElementCapacity};
+    LocalTensor<bfloat16_t> gluRes_;
     LocalTensor<int8_t> quantOutput_;
     LocalTensor<int8_t> quantScaleOutput_;
-    LocalTensor<bfloat16_t> gluRes_;
     LocalTensor<uint16_t> maxExp_;
-    LocalTensor<uint16_t> halfScale_;
+    LocalTensor<uint16_t> inverseMxScale_;
     LocalTensor<float> weightUb_;
 
+    // Problem state
     int64_t intermediateHiddenSize_;
     int64_t intermediateHiddenScaleElements_;
 
+    // Activation state
     float clampLimit_{0.0f};
     uint8_t actMode_{static_cast<uint8_t>(ActMode::SWIGLU)};
     uint8_t actSubMode_{static_cast<uint8_t>(ActSubMode::DEFAULT)};
@@ -198,21 +198,20 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<DataTypeOut_, DataTypeIn_,
     activationAlpha_ = params.activationAlpha;
     activationBeta_ = params.activationBeta;
 
-    constexpr auto ubOffsets = Detail::BuildActivationMxQuantUbOffsets<DataTypeIn, TileM, TileN, IsInterleaved_>();
-    gluRes_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, ubOffsets.activationOutputOffsetBytes,
-                                      ubOffsets.activationQuantElementCapacity);
-    quantOutput_ = LocalTensor<int8_t>(TPosition::VECOUT, ubOffsets.quantOutputOffsetBytes,
-                                       ubOffsets.activationQuantElementCapacity);
+    gluRes_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, kUbLayout.activationOutputOffsetBytes,
+                                      kUbLayout.activationQuantElementCapacity);
+    quantOutput_ = LocalTensor<int8_t>(TPosition::VECOUT, kUbLayout.quantOutputOffsetBytes,
+                                       kUbLayout.activationQuantElementCapacity);
     quantScaleOutput_ =
-        LocalTensor<int8_t>(TPosition::VECOUT, ubOffsets.quantScaleOffsetBytes, ubOffsets.scaleElementCapacity);
-    maxExp_ = LocalTensor<uint16_t>(TPosition::VECCALC, ubOffsets.maxExpOffsetBytes, ubOffsets.scaleElementCapacity);
-    halfScale_ =
-        LocalTensor<uint16_t>(TPosition::VECCALC, ubOffsets.reciprocalScaleOffsetBytes, ubOffsets.scaleElementCapacity);
+        LocalTensor<int8_t>(TPosition::VECOUT, kUbLayout.quantScaleOffsetBytes, kUbLayout.scaleElementCapacity);
+    maxExp_ = LocalTensor<uint16_t>(TPosition::VECCALC, kUbLayout.maxExpOffsetBytes, kUbLayout.scaleElementCapacity);
+    inverseMxScale_ = LocalTensor<uint16_t>(TPosition::VECCALC, kUbLayout.inverseMxScaleOffsetBytes,
+                                            kUbLayout.scaleElementCapacity);
 
     // weight UB: 放在 VECIN 区之后的安全区域，仅 mode=1 分配
     if constexpr (TopkWeightsPrefetch) {
-        weightUb_ = LocalTensor<float>(TPosition::VECCALC, ubOffsets.topkWeightOffsetBytes,
-                                       ubOffsets.topkWeightElementCapacity);
+        weightUb_ = LocalTensor<float>(TPosition::VECCALC, kUbLayout.topkWeightOffsetBytes,
+                                       kUbLayout.topkWeightElementCapacity);
     }
 }
 
@@ -357,16 +356,16 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<DataTypeOut_, DataTypeIn_,
     const uint32_t scaleCount = dataCount / ONE_BLK_SIZE;
 
     Quant::ComputeMaxExp<bfloat16_t>(ubPointers.activationOutput, ubPointers.maxExp, dataCount);
-    Quant::ComputeScale<DataTypeOut>(ubPointers.maxExp, ubPointers.quantScale, ubPointers.reciprocalScale, scaleCount);
+    Quant::ComputeScale<DataTypeOut>(ubPointers.maxExp, ubPointers.quantScale, ubPointers.inverseMxScale, scaleCount);
     if constexpr (IsSameType<DataTypeOut, fp8_e4m3fn_t>::value || IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
         Quant::ComputeFp8Data<bfloat16_t, DataTypeOut, AscendC::RoundMode::CAST_TRUNC,
                               AscendC::RoundMode::CAST_RINT>(
-            ubPointers.activationOutput, ubPointers.reciprocalScale, ubPointers.quantOutput, dataCount);
+            ubPointers.activationOutput, ubPointers.inverseMxScale, ubPointers.quantOutput, dataCount);
     }
     if constexpr (IsSameType<DataTypeOut, fp4x2_e2m1_t>::value || IsSameType<DataTypeOut, fp4x2_e1m2_t>::value) {
         Quant::ComputeFp4Data<bfloat16_t, DataTypeOut, AscendC::RoundMode::CAST_TRUNC,
                               AscendC::RoundMode::CAST_RINT>(
-            ubPointers.activationOutput, ubPointers.reciprocalScale, ubPointers.quantOutput, dataCount);
+            ubPointers.activationOutput, ubPointers.inverseMxScale, ubPointers.quantOutput, dataCount);
     }
 }
 
@@ -402,7 +401,7 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<DataTypeOut_, DataTypeIn_,
         (__ubuf__ DataTypeIn *)l0cOutUbFirst_.GetPhyAddr(), secondInputBase,
         (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr(), (__ubuf__ int8_t *)quantOutput_.GetPhyAddr(),
         (__ubuf__ uint16_t *)quantScaleOutput_.GetPhyAddr(), (__ubuf__ uint16_t *)maxExp_.GetPhyAddr(),
-        (__ubuf__ uint16_t *)halfScale_.GetPhyAddr(), tileColumnCount, pingpongIdx);
+        (__ubuf__ uint16_t *)inverseMxScale_.GetPhyAddr(), tileColumnCount, pingpongIdx);
     uint32_t outputRowStrideElements = Ops::Base::CeilAlign(tileColumnCount, static_cast<uint32_t>(ONE_BLK_SIZE));
     RunGatedActivationTile(ubPointers.firstInput, ubPointers.secondInput, ubPointers.activationOutput,
                            static_cast<uint16_t>(tileRowCount), static_cast<uint16_t>(tileColumnCount),
