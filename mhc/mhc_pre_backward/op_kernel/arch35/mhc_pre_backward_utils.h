@@ -67,8 +67,7 @@ constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;               // 1KB
 // 将TBuf压缩到55KB，为后续VECOUT双缓冲预留32KB。
 constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 6 - 1) * 1024; // 55KB；两个VECIN队列均使用双缓冲
 constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 128;               // ProcessV2函数使用的chunk大小
-// 增大BS方向单次Matmul处理量，减少C0/C1通用Matmul接口的重复调度次数。
-constexpr uint32_t SINGLE_M = 1024;
+constexpr uint32_t SINGLE_M = 512;
 constexpr uint32_t ND_BLOCK_SIZE = 128;
 constexpr uint32_t ALPHA_GRAD_LAST_DIM_SIZE = 3;
 constexpr uint32_t ALPHA_GRAD_PADDING = 24;
