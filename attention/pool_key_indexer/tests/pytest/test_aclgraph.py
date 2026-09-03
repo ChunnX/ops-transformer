@@ -169,7 +169,7 @@ def _golden(cfg, inputs):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.graph
+@pytest.mark.aclgraph
 def test_aclgraph_bsnd_device_value():
     """BSND/BSND + causal + NPU pool_tail_k: 捕获/回放 vs CPU golden + 变值回放。
 
@@ -264,7 +264,7 @@ def test_aclgraph_bsnd_device_value():
     print("=== ACLGRAPH BSND DEVICE-VALUE PASSED ===")
 
 
-@pytest.mark.graph
+@pytest.mark.aclgraph
 def test_aclgraph_tnd_device_value():
     """TND/TND + NPU actual_seq_q/k + pool_tail_k: 变长前缀和捕获/回放 vs golden。
 
@@ -374,7 +374,7 @@ def test_aclgraph_tnd_device_value():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.graph
+@pytest.mark.aclgraph
 def test_aclgraph_bsnd_host_value():
     """BSND/BSND + causal: CPU pool_tail_k(Array 变体)捕获/回放 vs CPU golden。
 
@@ -451,7 +451,7 @@ def test_aclgraph_bsnd_host_value():
     print("=== ACLGRAPH BSND HOST-VALUE PASSED ===")
 
 
-@pytest.mark.graph
+@pytest.mark.aclgraph
 def test_aclgraph_tnd_host_value():
     """TND/TND + non-causal: CPU 值输入(Array 变体)捕获/回放 vs CPU golden。
 

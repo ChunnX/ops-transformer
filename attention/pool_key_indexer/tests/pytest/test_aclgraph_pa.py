@@ -203,7 +203,7 @@ def test_aclgraph_pa_eager_baseline(dtype):
 
 
 @pytest.mark.parametrize("dtype", _DTYPES, ids=_DTYPE_IDS)
-@pytest.mark.graph
+@pytest.mark.aclgraph
 def test_aclgraph_pa_native_npugraph(dtype):
     """原生 NPUGraph 捕获/回放: PA_BBND + 大 block_table 模型场景 vs CPU golden。
 
@@ -262,7 +262,7 @@ def test_aclgraph_pa_native_npugraph(dtype):
 
 
 @pytest.mark.parametrize("dtype", _DTYPES, ids=_DTYPE_IDS)
-@pytest.mark.graph
+@pytest.mark.aclgraph
 def test_aclgraph_pa_torchair_npugraph(dtype):
     """TorchAir aclgraph(torchair npugraph_ex)捕获/回放: PA 模型场景 vs golden。
 

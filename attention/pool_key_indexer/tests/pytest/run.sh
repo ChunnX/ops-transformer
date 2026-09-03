@@ -6,7 +6,7 @@
 #   bash run.sh smoke                # 冒烟套件(eager/torch.ops/torchair GE/aclgraph 可用性)
 #   bash run.sh precision            # 精度套件(定点 + 泛化 + 缺陷回归 + 边界计数)
 #   bash run.sh ge                   # GE 图套件(定点 + 泛化)
-#   bash run.sh aclgraph             # aclgraph 防护套件(strict xfail, 当前预期失败)
+#   bash run.sh aclgraph             # aclgraph/NPUGraph 图套件(捕获/回放 + 定点/泛化 + PA 变体)
 #   bash run.sh perf                 # 性能套件(算子 vs NPU 组合标杆)
 #   bash run.sh smoke precision      # 组合多个套件
 #   bash run.sh -- <pytest args>     # 透传 pytest 参数
@@ -32,22 +32,24 @@ if [ "${SUITES[0]:-}" == "--" ]; then
     exec python -m pytest $PYTEST_ARGS -v -s --tb=short 2>&1 | tee pytest_output.log
 fi
 
-# 默认全部功能套件(冒烟 -> 精度 -> GE 图)
+# 默认全部功能套件(冒烟 -> 精度 -> GE 图 -> aclgraph 图)
 if [ ${#SUITES[@]} -eq 0 ]; then
-    SUITES=(smoke precision ge)
+    SUITES=(smoke precision ge aclgraph)
 fi
 
 declare -A SUITE_FILES=(
     [smoke]="test_smoke.py"
     [precision]="test_precision.py"
     [ge]="test_ge_graph.py"
-    [aclgraph]="test_aclgraph.py"
+    [aclgraph]="test_aclgraph.py test_aclgraph_pa.py"
 )
 
 TARGETS=()
 for s in "${SUITES[@]}"; do
     if [ -n "${SUITE_FILES[$s]:-}" ]; then
-        TARGETS+=("${SUITE_FILES[$s]}")
+        for f in ${SUITE_FILES[$s]}; do
+            TARGETS+=("$f")
+        done
     elif [ "$s" == "perf" ]; then
         TARGETS+=("perf")
     else
