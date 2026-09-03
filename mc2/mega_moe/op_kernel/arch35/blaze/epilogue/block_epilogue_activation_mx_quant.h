@@ -118,6 +118,8 @@ private:
 
     __aicore__ inline void RunMxQuantTile(const TileExecutionContext &tileContext);
 
+    __aicore__ inline void StoreQuantTile(const TileExecutionContext &tileContext);
+
     __aicore__ inline void StoreQuantOutput(AscendC::GlobalTensor<int8_t> &dst, AscendC::LocalTensor<int8_t> &src,
                                             uint64_t blockCount, uint64_t offset, uint64_t n, uint64_t singleN);
 
@@ -405,6 +407,24 @@ template <typename DataTypeOut_, typename DataTypeIn_, uint32_t TileM, uint32_t 
           bool IsInterleaved_>
 __aicore__ inline void
 BlockEpilogueActivationMxQuant<DataTypeOut_, DataTypeIn_, TileM, TileN, TopkWeightsPrefetch,
+                               IsInterleaved_>::StoreQuantTile(const TileExecutionContext &tileContext)
+{
+    const TileGeometry &tileGeometry = tileContext.geometry;
+    const uint32_t bufferOffset = tileContext.buffers.selectedInt8BufferOffsetElements;
+    LocalTensor<int8_t> quantOutputTile = quantOutput_[bufferOffset];
+    LocalTensor<int8_t> quantScaleTile = quantScaleOutput_[bufferOffset];
+
+    StoreQuantOutput(quantOutputGlobal_, quantOutputTile, tileGeometry.rowCount, tileContext.outputOffset,
+                     intermediateHiddenSize_, tileGeometry.columnCount);
+    // scale已按compact布局生成，直接copy到GM，省掉原先TransMxScaleLayout重排scale。
+    StoreQuantScaleCompact(quantScaleGlobal_, quantScaleTile, tileGeometry.rowCount, tileContext.scaleOffset,
+                           intermediateHiddenScaleElements_, tileGeometry.columnCount);
+}
+
+template <typename DataTypeOut_, typename DataTypeIn_, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch,
+          bool IsInterleaved_>
+__aicore__ inline void
+BlockEpilogueActivationMxQuant<DataTypeOut_, DataTypeIn_, TileM, TileN, TopkWeightsPrefetch,
                                IsInterleaved_>::StoreQuantOutput(AscendC::GlobalTensor<int8_t> &dst,
                                                                  AscendC::LocalTensor<int8_t> &src, uint64_t blockCount,
                                                                  uint64_t offset, uint64_t n, uint64_t singleN)
@@ -457,34 +477,12 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<DataTypeOut_, DataTypeIn_,
     if (tileContext.geometry.rowCount == 0U) {
         return;
     }
-    const TileGeometry &tileGeometry = tileContext.geometry;
-    const UbPointers &ubPointers = tileContext.buffers;
 
     RunGatedActivationTile(tileContext);
     RunMxQuantTile(tileContext);
     SetFlag<HardEvent::V_MTE3>(0);
     WaitFlag<HardEvent::V_MTE3>(0);
-    // scale已按compact布局生成，直接copy到GM，省掉原先TransMxScaleLayout重排scale。
-    if constexpr (IsInterleaved_) {
-        if (tileContext.pingpongIndex == 1U) {
-            LocalTensor<int8_t> quantOutputPong = quantOutput_[ubPointers.selectedInt8BufferOffsetElements];
-            LocalTensor<int8_t> quantScalePong = quantScaleOutput_[ubPointers.selectedInt8BufferOffsetElements];
-            StoreQuantOutput(quantOutputGlobal_, quantOutputPong, tileGeometry.rowCount, tileContext.outputOffset,
-                             intermediateHiddenSize_, tileGeometry.columnCount);
-            StoreQuantScaleCompact(quantScaleGlobal_, quantScalePong, tileGeometry.rowCount, tileContext.scaleOffset,
-                                   intermediateHiddenScaleElements_, tileGeometry.columnCount);
-        } else {
-            StoreQuantOutput(quantOutputGlobal_, quantOutput_, tileGeometry.rowCount, tileContext.outputOffset,
-                             intermediateHiddenSize_, tileGeometry.columnCount);
-            StoreQuantScaleCompact(quantScaleGlobal_, quantScaleOutput_, tileGeometry.rowCount,
-                                   tileContext.scaleOffset, intermediateHiddenScaleElements_, tileGeometry.columnCount);
-        }
-    } else {
-        StoreQuantOutput(quantOutputGlobal_, quantOutput_, tileGeometry.rowCount, tileContext.outputOffset,
-                         intermediateHiddenSize_, tileGeometry.columnCount);
-        StoreQuantScaleCompact(quantScaleGlobal_, quantScaleOutput_, tileGeometry.rowCount, tileContext.scaleOffset,
-                               intermediateHiddenScaleElements_, tileGeometry.columnCount);
-    }
+    StoreQuantTile(tileContext);
     SetFlag<HardEvent::MTE3_V>(0);
     WaitFlag<HardEvent::MTE3_V>(0);
     SetFlag<HardEvent::MTE3_S>(0);
