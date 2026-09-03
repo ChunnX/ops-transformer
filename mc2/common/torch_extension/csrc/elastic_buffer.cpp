@@ -60,6 +60,7 @@ constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int DIM_TWO = 2;
 constexpr uint32_t MOE_CHANNEL_HANDLE_NUM = 72U;
 constexpr uint32_t MOE_CHANNEL_NOTIFY_NUM = 3U;
+constexpr uint32_t MOE_SINGLE_CHANNEL_RANK_THRESHOLD = 32U;
 constexpr int64_t SEND_COUNTS_ALIGN_FACTOR = 8;
 
 // RAII guard for multi-step host buffer allocation
@@ -692,7 +693,9 @@ private:
     {
         TORCH_CHECK(rankDim >= HCCL_MIN_RANK_SIZE && rankDim <= HCCL_MAX_RANK_SIZE, "Invalid HCCL rank size ", rankDim);
         uint32_t remoteRankNum = rankDim - 1;
-        context.channelsPerRank = static_cast<uint32_t>(CeilDiv(MOE_CHANNEL_HANDLE_NUM, rankDim));
+        context.channelsPerRank = rankDim >= MOE_SINGLE_CHANNEL_RANK_THRESHOLD ?
+                                      1U :
+                                      static_cast<uint32_t>(CeilDiv(MOE_CHANNEL_HANDLE_NUM, rankDim));
         TORCH_CHECK(context.channelsPerRank > 0, "No HCCL channel capacity for rank size ", rankDim);
         TORCH_CHECK(context.channelsPerRank <= HCCL_MAX_RANK_SIZE / rankDim,
                     "HCCL channel handles exceed capacity, rank size ", rankDim, ", channels per rank ",

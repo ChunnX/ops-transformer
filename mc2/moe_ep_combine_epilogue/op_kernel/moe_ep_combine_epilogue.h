@@ -64,6 +64,7 @@ using namespace AscendC;
 
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t COMBINE_CHANNEL_COUNT = 6U;
+static constexpr uint32_t SINGLE_CHANNEL_RANK_THRESHOLD = 32U;
 static constexpr uint32_t FLAG_CHUNK_RANKS = 64U;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint32_t STATE_OFFSET = 32U;
@@ -168,6 +169,9 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     uint32_t minTopKLocalExperts = (topK_ < localmoeNum_) ? topK_ : localmoeNum_;
     combineChannelCount_ = Ceil(numMaxTokensPerRank_ * minTopKLocalExperts, HCOMM_SQ_MAX_PENDING + 1);
     combineChannelCount_ = combineChannelCount_ < COMBINE_CHANNEL_COUNT ? combineChannelCount_ : COMBINE_CHANNEL_COUNT;
+    if (epWorldSize_ >= SINGLE_CHANNEL_RANK_THRESHOLD) {
+        combineChannelCount_ = 1U;
+    }
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
