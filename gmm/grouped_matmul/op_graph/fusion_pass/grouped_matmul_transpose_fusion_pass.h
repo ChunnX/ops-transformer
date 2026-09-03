@@ -11,7 +11,7 @@
 #ifndef TRANSFORMER_GROUPED_MATMUL_TRANSPOSE_FUSION_PASS_H
 #define TRANSFORMER_GROUPED_MATMUL_TRANSPOSE_FUSION_PASS_H
 
-#include "version/cann_version.h" // NOLINT: provides CANN_VERSION_NUM used in #if guard below
+#include "version/cann_version.h"
 
 #define GROUPED_MATMUL_GRAPH_FUSION_SUPPORT_VERSION 90000000
 

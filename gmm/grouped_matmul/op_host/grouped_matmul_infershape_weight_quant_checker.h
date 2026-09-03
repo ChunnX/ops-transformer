@@ -59,8 +59,7 @@ private:
     ge::graphStatus CheckShapeForTensorList(const gert::InferShapeContext *context, size_t gmm_index,
                                             const std::string &tensorType, const GMMAttrs &gmmAttrs) const;
     ge::graphStatus CheckShapeForTensorListAtIndex(const gert::InferShapeContext *context, size_t gmm_index,
-                                                   const std::string &tensorType, const GMMAttrs &gmmAttrs,
-                                                   size_t tensorIdx) const;
+                                                   const std::string &tensorType, size_t tensorIdx) const;
     ge::graphStatus CheckScenarioValid(const gert::InferShapeContext *context, const GMMAttrs &gmmAttrs) const;
     ge::graphStatus GetNumOfInputs(const gert::InferShapeContext *context, GMMInputParamsInfo &paramsInputInfo) const;
     ge::graphStatus CheckTensorListSizeMultiScenario(const gert::InferShapeContext *context,
