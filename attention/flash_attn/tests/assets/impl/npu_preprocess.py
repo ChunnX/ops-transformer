@@ -145,6 +145,9 @@ def build_metadata_arguments(q, k, v, kwargs):
 
     q_shape = tuple(int(value) for value in q.shape)
     head_dim = int(q_shape[-1])
+    # v 的 head_dim (TND: (T,N,D) 取 index 2; 其余布局含 PA_NZ 的 D 均在 index 3)
+    v_shape = tuple(int(value) for value in v.shape)
+    head_dim_v = int(v_shape[2]) if layout_kv == "TND" else int(v_shape[3])
     # head derivation mirrors flash_attn_ttk_ops.build_flash_attn_metadata.
     if layout_q == "TND":
         num_heads_q = int(q_shape[1])
@@ -176,6 +179,7 @@ def build_metadata_arguments(q, k, v, kwargs):
         "num_heads_q": int(get_attribute(kwargs, "num_heads_q", num_heads_q)),
         "num_heads_kv": int(get_attribute(kwargs, "num_heads_kv", num_heads_kv)),
         "head_dim": int(get_attribute(kwargs, "head_dim", head_dim)),
+        "head_dim_v": int(get_attribute(kwargs, "head_dim_v", head_dim_v)),
         "cu_seqlens_q": _resolve_tensor(kwargs, "cu_seqlens_q"),
         "cu_seqlens_kv": _resolve_tensor(kwargs, "cu_seqlens_kv"),
         "seqused_q": _resolve_tensor(kwargs, "seqused_q"),
@@ -209,6 +213,7 @@ def run_metadata(arguments, metadata):
         int(arguments["num_heads_q"]),
         int(arguments["num_heads_kv"]),
         int(arguments["head_dim"]),
+        head_dim_v=int(arguments.get("head_dim_v", -1)),
         cu_seqlens_q=move_to_device(arguments.get("cu_seqlens_q"), metadata),
         cu_seqlens_kv=move_to_device(arguments.get("cu_seqlens_kv"), metadata),
         seqused_q=move_to_device(arguments.get("seqused_q"), metadata),
