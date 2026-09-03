@@ -229,12 +229,14 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
                                                   static_cast<AscendC::HcclDataType>(scaleDataType_),
                                                   static_cast<uint64_t>(m_) * scaleKLen_, static_cast<uint8_t>(1));
 
-    // Data Head: 批量提交所有 head tile（repeat=tileCnt）
+    // Data Head: 批量提交所有 head tile（repeat=tileCnt）；纯尾块路径（tileCnt=0）跳过
     // count/stride 用 kForComm_（FP4 时 CeilDiv(K,2) 减半），地址偏移用 k_*sizeof(AType)（FP4 打包后字节数）
-    commState_.dataHeadHandle_ = commState_.hccl_.template AllGather<true>(
-        aGM_, gatherDataAddr_, static_cast<uint64_t>(tileM_) * kForComm_,
-        static_cast<AscendC::HcclDataType>(dataDataType_), static_cast<uint64_t>(m_) * kForComm_,
-        static_cast<uint8_t>(tileCnt_));
+    if (tileCnt_ > 0) {
+        commState_.dataHeadHandle_ = commState_.hccl_.template AllGather<true>(
+            aGM_, gatherDataAddr_, static_cast<uint64_t>(tileM_) * kForComm_,
+            static_cast<AscendC::HcclDataType>(dataDataType_), static_cast<uint64_t>(m_) * kForComm_,
+            static_cast<uint8_t>(tileCnt_));
+    }
 
     // Data Tail: 批量提交所有 tail tile（repeat=tailCnt）
     if (tailCnt_ > 0) {
