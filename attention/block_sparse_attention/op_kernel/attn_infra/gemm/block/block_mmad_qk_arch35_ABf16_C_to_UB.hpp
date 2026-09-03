@@ -38,8 +38,8 @@ namespace NpuArch::Gemm::Block {
 
 template <class L1TileShape_, class L0TileShape_, class ElementA_, class ElementB_, class ElementC_, class ElementBias_,
           class TileCopy_, class TileMmad_, bool zNOnlineSoftmax_>
-struct BlockMmadTla<MmadAtlasA5BsaQK<false, zNOnlineSoftmax_>, L1TileShape_, L0TileShape_, ElementA_, ElementB_, ElementC_, ElementBias_,
-                    TileCopy_, TileMmad_> {
+struct BlockMmadTla<MmadAtlasA5BsaQK<false, zNOnlineSoftmax_>, L1TileShape_, L0TileShape_, ElementA_, ElementB_,
+                    ElementC_, ElementBias_, TileCopy_, TileMmad_> {
 public:
     using DispatchPolicy = MmadAtlasA5BsaQK<false, zNOnlineSoftmax_>;
     using ArchTag = typename DispatchPolicy::ArchTag;

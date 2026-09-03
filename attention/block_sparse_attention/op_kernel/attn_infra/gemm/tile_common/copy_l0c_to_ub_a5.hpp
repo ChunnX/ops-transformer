@@ -236,12 +236,9 @@ struct CopyL0CToUBTla<
 // partial spacialization of zN mmRes on UB, with bypass f32tof16, single dist
 template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
 struct CopyL0CToUBTla<
-    NpuArch::Arch::AtlasA5,
-    TensorSrc_,
+    NpuArch::Arch::AtlasA5, TensorSrc_,
     tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
-    CopyL0CToUBMode::NO_SPLIT,
-    ScaleGranularity::PER_TENSOR,
-    ReluEnable_,
+    CopyL0CToUBMode::NO_SPLIT, ScaleGranularity::PER_TENSOR, ReluEnable_,
     std::enable_if_t<tla::detail::iszN<ElementDst_, LayoutDst_>::value>> {
     using ArchTag = NpuArch::Arch::AtlasA5;
     using ElementDst = ElementDst_;
@@ -254,11 +251,10 @@ struct CopyL0CToUBTla<
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint64_t deqScalar,
                                       bool subBlockId, uint8_t unitFlag = 0)
     {
-        static_assert(
-            tla::detail::iszN<typename TensorDst::Element, typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1
-                && TensorDst::position == AscendC::TPosition::VECCALC,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and zN"
-        );
+        static_assert(tla::detail::iszN<typename TensorDst::Element, typename TensorDst::Layout>::value &&
+                          TensorSrc::position == AscendC::TPosition::CO1 &&
+                          TensorDst::position == AscendC::TPosition::VECCALC,
+                      "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and zN");
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::NZ> intriParams;
 
@@ -280,8 +276,8 @@ struct CopyL0CToUBTla<
         auto srcOffset = srcTensor.layout()(srcTensor.coord());
 
         // Call AscendC Fixpipe
-        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_NZ_UB>(
-            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_NZ_UB>(dstTensor.data()[dstOffset], srcTensor.data()[srcOffset],
+                                                            intriParams);
     }
 };
 

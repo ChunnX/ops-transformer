@@ -259,22 +259,21 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(GM_ADDR query, GM_ADDR key
                                           workspace,
                                           lse,
                                           tiling};
-    using BsaFullQuantKernelArch35 = BsaFullQuantKernelArch35<EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax,
-                                                              BlockMmadPV, EpilogueRescaleO, qFormat, kvFormat, false, false>;
+    using BsaFullQuantKernelArch35 =
+        BsaFullQuantKernelArch35<EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO,
+                                 qFormat, kvFormat, false, false>;
     BsaFullQuantKernelArch35 bsaFullQuantKernelArch35;
     bsaFullQuantKernelArch35(params);
 }
 
-template <
-    class InDtype, class SMDtype, class REDtype,
-    Format qFormat, Format kvFormat,
-    Epilogue::LseMode lseMode, Epilogue::LseFormat lseFormat,
-    bool transposedMm1, bool zNOnlineSoftmax>
-__global__ __aicore__ void BsaInferIntfB8FullQuantOpt(
-                           GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR blockSparseMask, GM_ADDR attenMask,
-                           GM_ADDR blockTable, GM_ADDR actualSeqLengths, GM_ADDR actualSeqLengthsKv,
-                           GM_ADDR qDequantScale, GM_ADDR kDequantScale, GM_ADDR vDequantScale, GM_ADDR attentionOut,
-                           GM_ADDR workspace, GM_ADDR lse, GM_ADDR tiling)
+template <class InDtype, class SMDtype, class REDtype, Format qFormat, Format kvFormat, Epilogue::LseMode lseMode,
+          Epilogue::LseFormat lseFormat, bool transposedMm1, bool zNOnlineSoftmax>
+__global__ __aicore__ void BsaInferIntfB8FullQuantOpt(GM_ADDR query, GM_ADDR key, GM_ADDR value,
+                                                      GM_ADDR blockSparseMask, GM_ADDR attenMask, GM_ADDR blockTable,
+                                                      GM_ADDR actualSeqLengths, GM_ADDR actualSeqLengthsKv,
+                                                      GM_ADDR qDequantScale, GM_ADDR kDequantScale,
+                                                      GM_ADDR vDequantScale, GM_ADDR attentionOut, GM_ADDR workspace,
+                                                      GM_ADDR lse, GM_ADDR tiling)
 {
     using ArchTag = Arch::AtlasA5;
     using ElementSparseMask = uint8_t;
@@ -314,7 +313,7 @@ __global__ __aicore__ void BsaInferIntfB8FullQuantOpt(
                                                          Gemm::Tile::ScaleGranularity::PER_TENSOR>;
     using BlockMmadQK = Gemm::Block::BlockMmadTla<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK,
                                                   ElementS, void, TileCopyQK>;
-   // online softmax
+    // online softmax
     using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueB8FullQuantOnlineSoftmaxBsa<transposedMm1, zNOnlineSoftmax>;
     using PType = Gemm::GemmType<ElementP, LayoutPDummy>;
     using SType = Gemm::GemmType<ElementS, LayoutS>;
@@ -350,9 +349,9 @@ __global__ __aicore__ void BsaInferIntfB8FullQuantOpt(
                                           workspace,
                                           lse,
                                           tiling};
-    using BsaFullQuantKernelArch35 = BsaFullQuantKernelArch35<EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax,
-                                                              BlockMmadPV, EpilogueRescaleO, qFormat, kvFormat,
-                                                              transposedMm1, zNOnlineSoftmax>;
+    using BsaFullQuantKernelArch35 =
+        BsaFullQuantKernelArch35<EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO,
+                                 qFormat, kvFormat, transposedMm1, zNOnlineSoftmax>;
     BsaFullQuantKernelArch35 bsaFullQuantKernelArch35;
     bsaFullQuantKernelArch35(params);
 }
