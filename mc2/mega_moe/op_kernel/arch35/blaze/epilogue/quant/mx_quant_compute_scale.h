@@ -40,12 +40,10 @@ __aicore__ inline void ComputeGroupMaxExp(__ubuf__ bfloat16_t *input, __ubuf__ u
             // DINTLV_B16 每轮消费两个 BF16 寄存器，第二次调用必须保留以推进剩余计数。
             dataMask1 = AscendC::Reg::UpdateMask<bfloat16_t>(dataCount);
             AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                        AscendC::Reg::LoadDist::DIST_DINTLV_B16>(inputReg0, inputReg1, input,
-                                                                                      inputElementCountPerLoop);
-            AscendC::Reg::And(exponentReg0, (AscendC::Reg::RegTensor<uint16_t> &)inputReg0, exponentMaskReg,
-                                   dataMask0);
-            AscendC::Reg::And(exponentReg1, (AscendC::Reg::RegTensor<uint16_t> &)inputReg1, exponentMaskReg,
-                                   dataMask0);
+                                   AscendC::Reg::LoadDist::DIST_DINTLV_B16>(inputReg0, inputReg1, input,
+                                                                            inputElementCountPerLoop);
+            AscendC::Reg::And(exponentReg0, (AscendC::Reg::RegTensor<uint16_t> &)inputReg0, exponentMaskReg, dataMask0);
+            AscendC::Reg::And(exponentReg1, (AscendC::Reg::RegTensor<uint16_t> &)inputReg1, exponentMaskReg, dataMask0);
             AscendC::Reg::Max(maxExponentReg, exponentReg0, exponentReg1, dataMask0);
             AscendC::Reg::ReduceMaxWithDataBlock(maxExponentReg, maxExponentReg, dataMask0);
             AscendC::Reg::DataCopyUnAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
@@ -80,27 +78,26 @@ __aicore__ inline void ComputeMxScale(__ubuf__ uint16_t *maxExp, __ubuf__ uint16
             scaleMask = AscendC::Reg::UpdateMask<uint16_t>(scaleCount);
             AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
                 maxExponentReg, maxExp, SCALE_ELEMENT_COUNT_PER_VECTOR);
-            AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::NE>(validExponentMask, maxExponentReg,
-                                                                       exponentMaskReg, scaleMask);
+            AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::NE>(validExponentMask, maxExponentReg, exponentMaskReg,
+                                                                  scaleMask);
             AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::NE>(nonzeroMask, maxExponentReg, zeroReg, scaleMask);
             AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::LE>(belowMaxExponentMask, maxExponentReg,
-                                                                       outputMaxExponentReg, scaleMask);
-            AscendC::Reg::Select<uint16_t>(maxExponentReg, outputMaxExponentReg, maxExponentReg,
-                                                belowMaxExponentMask);
+                                                                  outputMaxExponentReg, scaleMask);
+            AscendC::Reg::Select<uint16_t>(maxExponentReg, outputMaxExponentReg, maxExponentReg, belowMaxExponentMask);
             AscendC::Reg::Sub(sharedExponentReg, maxExponentReg, outputMaxExponentReg, scaleMask);
             AscendC::Reg::ShiftRights(outputScaleReg, sharedExponentReg, BF16_EXPONENT_SHIFT, scaleMask);
             AscendC::Reg::Select<uint16_t>(outputScaleReg, outputScaleReg, fp8NanReg, validExponentMask);
             AscendC::Reg::Select<uint16_t>(outputScaleReg, outputScaleReg, zeroReg, nonzeroMask);
             AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                        AscendC::Reg::StoreDist::DIST_PACK_B16>(
-                outputScale, outputScaleReg, SCALE_PACK_ELEMENT_COUNT, scaleMask);
+                                   AscendC::Reg::StoreDist::DIST_PACK_B16>(outputScale, outputScaleReg,
+                                                                           SCALE_PACK_ELEMENT_COUNT, scaleMask);
             AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::EQ>(specialExponentMask, sharedExponentReg,
-                                                                       exponentBiasReg, scaleMask);
+                                                                  exponentBiasReg, scaleMask);
             AscendC::Reg::Sub(reciprocalScaleReg, exponentBiasReg, sharedExponentReg, scaleMask);
             AscendC::Reg::Select<uint16_t>(reciprocalScaleReg, reciprocalScaleReg, bf16NanReg, validExponentMask);
             AscendC::Reg::Select<uint16_t>(reciprocalScaleReg, reciprocalScaleReg, zeroReg, nonzeroMask);
             AscendC::Reg::Select<uint16_t>(reciprocalScaleReg, specialExponentReg, reciprocalScaleReg,
-                                                specialExponentMask);
+                                           specialExponentMask);
             AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
                 reciprocalScale, reciprocalScaleReg, SCALE_ELEMENT_COUNT_PER_VECTOR, scaleMask);
         }

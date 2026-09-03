@@ -317,14 +317,14 @@ __aicore__ inline void MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::AivPerTensor
                 AscendC::Reg::Muls(mulScaleOutReg, l0cOutReg, scaleScalar, maskN);
                 uint32_t dstUbOffset = l0cOutOffset;
                 if constexpr (isFirstKLoop) {
-                    AscendC::Reg::DataCopy<l0cDtype, AscendC::Reg::StoreDist::DIST_NORM_B32>(
-                        dst + dstUbOffset, mulScaleOutReg, maskN);
+                    AscendC::Reg::DataCopy<l0cDtype, AscendC::Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset,
+                                                                                             mulScaleOutReg, maskN);
                 } else {
                     AscendC::Reg::DataCopy(addReg, dst + l0cOutOffset);
                     AscendC::Reg::Add(ResReg, mulScaleOutReg, addReg, maskN);
                     // copy out from register to ub
-                    AscendC::Reg::DataCopy<l0cDtype, AscendC::Reg::StoreDist::DIST_NORM_B32>(
-                        dst + dstUbOffset, ResReg, maskN);
+                    AscendC::Reg::DataCopy<l0cDtype, AscendC::Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset, ResReg,
+                                                                                             maskN);
                 }
             }
         }
@@ -346,8 +346,7 @@ __aicore__ inline void MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::AivPerTensor
         for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) {
             uint32_t elementNum = nSize;
             AscendC::Reg::RegTensor<ptScaleType> muledScaleReg;
-            AscendC::Reg::DataCopy<ptScaleType, AscendC::Reg::LoadDist::DIST_BRC_B32>(muledScaleReg,
-                                                                                                muledScale + mIdx);
+            AscendC::Reg::DataCopy<ptScaleType, AscendC::Reg::LoadDist::DIST_BRC_B32>(muledScaleReg, muledScale + mIdx);
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < nLoopCnt; vfBlockIdx++) {
                 AscendC::Reg::MaskReg maskN = AscendC::Reg::UpdateMask<l0cDtype>(elementNum);
                 AscendC::Reg::RegTensor<l0cDtype> l0cOutReg;
@@ -360,14 +359,14 @@ __aicore__ inline void MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::AivPerTensor
                 AscendC::Reg::Mul(mulScaleOutReg, l0cOutReg, muledScaleReg, maskN);
                 uint32_t dstUbOffset = l0cOutOffset;
                 if constexpr (isFirstKLoop) {
-                    AscendC::Reg::DataCopy<l0cDtype, AscendC::Reg::StoreDist::DIST_NORM_B32>(
-                        dst + dstUbOffset, mulScaleOutReg, maskN);
+                    AscendC::Reg::DataCopy<l0cDtype, AscendC::Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset,
+                                                                                             mulScaleOutReg, maskN);
                 } else {
                     AscendC::Reg::DataCopy(addReg, dst + l0cOutOffset);
                     AscendC::Reg::Add(ResReg, mulScaleOutReg, addReg, maskN);
                     // copy out from register to ub
-                    AscendC::Reg::DataCopy<l0cDtype, AscendC::Reg::StoreDist::DIST_NORM_B32>(
-                        dst + dstUbOffset, ResReg, maskN);
+                    AscendC::Reg::DataCopy<l0cDtype, AscendC::Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset, ResReg,
+                                                                                             maskN);
                 }
             }
         }

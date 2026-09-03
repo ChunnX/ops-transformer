@@ -37,11 +37,10 @@ struct LocalAddressYParam {
 };
 
 static constexpr Reg::CastTrait C32_TO_FP32_TRAIT = {Reg::RegLayout::UNKNOWN, Reg::SatMode::UNKNOWN,
-                                                          Reg::MaskMergeMode::ZEROING,
-                                                          AscendC::RoundMode::CAST_RINT};
+                                                     Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 
-static constexpr Reg::CastTrait FP32_TO_F16 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                    Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+static constexpr Reg::CastTrait FP32_TO_F16 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING,
+                                               AscendC::RoundMode::CAST_RINT};
 
 template <typename yType, bool hasBias>
 __aicore__ inline void AntiQuantYB32(LocalAddressYParam<yType> &localAddressParam, uint64_t nRealL0Size,
@@ -60,20 +59,20 @@ __aicore__ inline void AntiQuantYB32(LocalAddressYParam<yType> &localAddressPara
         uint32_t nRealL0Temp = nRealL0Size;
         for (uint16_t nId = 0; nId < ubLoopN; nId++) {
             if constexpr (hasBias) {
-                Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(
-                    biasVreg, localAddressParam.biasPhyAddr + nId * nRealVRegSize);
+                Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(biasVreg,
+                                                               localAddressParam.biasPhyAddr + nId * nRealVRegSize);
             }
-            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(
-                antiQuantCScaleVreg, localAddressParam.cScalePhyAddr + nId * nRealVRegSize);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_NORM>(antiQuantCScaleVreg,
+                                                           localAddressParam.cScalePhyAddr + nId * nRealVRegSize);
 
             Reg::MaskReg yResultMask = Reg::UpdateMask<float>(nRealL0Temp);
             for (uint16_t mId = 0; mId < ubLoopM; mId++) {
                 uint64_t yOffset = nId * nRealVRegSize + mId * nRealL0Size;
                 uint64_t ubYOffset = (nId * nRealVRegSize >> 1) + mId * nRealL0Size;
                 Reg::DataCopy<int32_t, Reg::LoadDist::DIST_NORM>(yOriginVreg,
-                                                                           localAddressParam.yOriginPhyAddr + yOffset);
+                                                                 localAddressParam.yOriginPhyAddr + yOffset);
                 Reg::DataCopy<float, Reg::LoadDist::DIST_BRC_B32>(antiQuantKScaleVreg,
-                                                                            localAddressParam.kScalePhyAddr + mId);
+                                                                  localAddressParam.kScalePhyAddr + mId);
 
                 Reg::Cast<float, int32_t, C32_TO_FP32_TRAIT>(yVreg, yOriginVreg, maskAll);
                 Reg::Mul(yVreg, yVreg, antiQuantCScaleVreg, maskAll);
@@ -84,8 +83,8 @@ __aicore__ inline void AntiQuantYB32(LocalAddressYParam<yType> &localAddressPara
 
                 Reg::Cast<yType, float, FP32_TO_F16>(yF16Vreg, yVreg, maskAll);
 
-                Reg::DataCopy<yType, Reg::StoreDist::DIST_PACK_B32>(
-                    localAddressParam.yPhyAddr + ubYOffset * 2, yF16Vreg, yResultMask);
+                Reg::DataCopy<yType, Reg::StoreDist::DIST_PACK_B32>(localAddressParam.yPhyAddr + ubYOffset * 2,
+                                                                    yF16Vreg, yResultMask);
             }
         }
     }

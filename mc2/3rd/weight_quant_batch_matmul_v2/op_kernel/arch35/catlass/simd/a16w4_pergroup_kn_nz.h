@@ -37,8 +37,7 @@ struct C0 {
 };
 
 static constexpr Reg::CastTrait CAST_S4_TO_F16_TRAIT = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
-                                                             Reg::MaskMergeMode::ZEROING,
-                                                             AscendC::RoundMode::UNKNOWN};
+                                                        Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
 template <typename DtypeDst>
 struct Regs {
@@ -79,9 +78,8 @@ struct TailAddr {
 };
 
 template <typename DtypeDst, bool hasAntiQuantOffset>
-DEVICE void Dequant(Reg::RegTensor<DtypeDst> &wNzF16, Reg::RegTensor<DtypeDst> &scale,
-                    Reg::RegTensor<DtypeDst> &offset, Reg::RegTensor<int4x2_t> &wNzS4,
-                    Reg::MaskReg &preg)
+DEVICE void Dequant(Reg::RegTensor<DtypeDst> &wNzF16, Reg::RegTensor<DtypeDst> &scale, Reg::RegTensor<DtypeDst> &offset,
+                    Reg::RegTensor<int4x2_t> &wNzS4, Reg::MaskReg &preg)
 {
     Reg::Cast<DtypeDst, int4x2_t, CAST_S4_TO_F16_TRAIT>(wNzF16, wNzS4, preg);
     if constexpr (hasAntiQuantOffset) {
@@ -95,8 +93,7 @@ DEVICE void ProcessMainGroup(uint16_t n1Idx, Regs<DtypeDst> &reg, const VfParams
                              Reg::MaskReg &preg)
 {
     for (uint16_t groupIdx = 0; groupIdx < (uint16_t)param.mainGroupNum; ++groupIdx) {
-        Reg::AddrReg aregScale =
-            Reg::CreateAddrReg<DtypeDst>(n1Idx, ONE_BLK_ELEM<DtypeDst>::value, groupIdx, param.n);
+        Reg::AddrReg aregScale = Reg::CreateAddrReg<DtypeDst>(n1Idx, ONE_BLK_ELEM<DtypeDst>::value, groupIdx, param.n);
         // 每次处理 128 个数, scale broadcast 为 128 个数 (256B)
         Reg::DataCopy<DtypeDst, Reg::LoadDist::DIST_BLK>(reg.scale, addr.scaleBaseAddr, aregScale);
         if constexpr (hasAntiQuantOffset) {
@@ -115,8 +112,8 @@ DEVICE void ProcessMainGroup(uint16_t n1Idx, Regs<DtypeDst> &reg, const VfParams
 
             Reg::AddrReg aregWeightOut = Reg::CreateAddrReg<DtypeDst>(
                 n1Idx, param.n1DstExtend, groupIdx, param.groupNumDstExtend, regIdx, param.innerDstExtend);
-            Reg::DataCopy<DtypeDst, Reg::StoreDist::DIST_NORM_B16>(addr.weightOutUbBaseAddr, reg.wNzF16,
-                                                                             aregWeightOut, preg);
+            Reg::DataCopy<DtypeDst, Reg::StoreDist::DIST_NORM_B16>(addr.weightOutUbBaseAddr, reg.wNzF16, aregWeightOut,
+                                                                   preg);
         }
     }
 }
@@ -125,8 +122,8 @@ template <typename DtypeDst, bool hasAntiQuantOffset>
 DEVICE void ProcessTailGroup(uint16_t n1Idx, Regs<DtypeDst> &reg, const VfParams &param, TailAddr<DtypeDst> &addr,
                              Reg::MaskReg &preg)
 {
-    Reg::DataCopy<DtypeDst, Reg::LoadDist::DIST_BLK>(
-        reg.scale, addr.tailScaleBaseAddr + n1Idx * ONE_BLK_ELEM<DtypeDst>::value);
+    Reg::DataCopy<DtypeDst, Reg::LoadDist::DIST_BLK>(reg.scale,
+                                                     addr.tailScaleBaseAddr + n1Idx * ONE_BLK_ELEM<DtypeDst>::value);
     if constexpr (hasAntiQuantOffset) {
         Reg::DataCopy<DtypeDst, Reg::LoadDist::DIST_BLK>(
             reg.offset, addr.tailOffsetBaseAddr + n1Idx * ONE_BLK_ELEM<DtypeDst>::value);

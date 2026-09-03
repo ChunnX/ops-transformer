@@ -91,11 +91,11 @@ __aicore__ inline void DeQuantMxFp8(LocalTensor<XType> &inLocal, LocalTensor<flo
         AscendC::Reg::RegTensor<float> sumDstReg;
         AscendC::Reg::RegTensor<float> sumLocalDstReg;
         static constexpr AscendC::Reg::CastTrait FP82BF16CastTraitZero = {
-            AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN,
-            AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+            AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
+            AscendC::RoundMode::UNKNOWN};
         static constexpr AscendC::Reg::CastTrait FP162FP32CastTraitZero = {
-            AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN,
-            AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+            AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
+            AscendC::RoundMode::UNKNOWN};
         AscendC::Reg::MaskReg maskReg;
         AscendC::Reg::MaskReg maskReg1;
         AscendC::Reg::MaskReg maskReg2;
@@ -103,17 +103,17 @@ __aicore__ inline void DeQuantMxFp8(LocalTensor<XType> &inLocal, LocalTensor<flo
             maskReg = AscendC::Reg::UpdateMask<bfloat16_t>(scaleLen);
             Reg::DataCopy<fp8_e8m0_t, Reg::LoadDist::DIST_UNPACK_B8>(vSrcReg, srcPtr0 + i * bf16RepeatSize);
             Reg::Cast<bfloat16_t, fp8_e8m0_t, FP82BF16CastTraitZero>(vDstReg, vSrcReg, maskReg);
-            Reg::DataCopy<bfloat16_t, Reg::StoreDist::DIST_INTLV_B16>(dyScaleBf16Ptr + i * bf16RepeatSize * 2,
-                                                                                vDstReg, vDstReg, maskReg);
+            Reg::DataCopy<bfloat16_t, Reg::StoreDist::DIST_INTLV_B16>(dyScaleBf16Ptr + i * bf16RepeatSize * 2, vDstReg,
+                                                                      vDstReg, maskReg);
         }
         Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
         for (uint16_t i = 0; i < repeatTimes2; i++) {
             maskReg1 = AscendC::Reg::UpdateMask<float>(quantCount2);
             Reg::DataCopy<bfloat16_t, Reg::LoadDist::DIST_UNPACK_B16>(dyScaleBf16Reg,
-                                                                                dyScaleBf16Ptr + i * fp32RepeatSize);
+                                                                      dyScaleBf16Ptr + i * fp32RepeatSize);
             Reg::Cast<float, bfloat16_t, FP162FP32CastTraitZero>(dyScaleFp32Reg, dyScaleBf16Reg, maskReg1);
             Reg::DataCopy<float, Reg::StoreDist::DIST_INTLV_B32>(dyScaleFp32Ptr + i * fp32RepeatSize * 2,
-                                                                           dyScaleFp32Reg, dyScaleFp32Reg, maskReg1);
+                                                                 dyScaleFp32Reg, dyScaleFp32Reg, maskReg1);
         }
         Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
         for (uint16_t i = 0; i < fp32RepeatTimes; i++) {
