@@ -36,7 +36,6 @@ TILING_DATA_FIELD_DEF(uint32_t, blockSize);
 TILING_DATA_FIELD_DEF(uint32_t, topK);
 TILING_DATA_FIELD_DEF(uint32_t, qBlockNum);
 TILING_DATA_FIELD_DEF(uint32_t, maxBlocksPerBatch);
-TILING_DATA_FIELD_DEF(uint32_t, totalQTokens);
 TILING_DATA_FIELD_DEF(float, scaleValue);
 // Workspace大小
 TILING_DATA_FIELD_DEF(uint64_t, mm1OutSize);
@@ -125,7 +124,6 @@ private:
     uint32_t topK_ = 16;
     uint32_t qBlockNum_ = 0;
     uint32_t maxBlocksPerBatch_ = 0;
-    uint32_t totalQTokens_ = 0;
     uint32_t groupSize_ = 0;
     float scaleValue_ = 0.0f;
     uint32_t softmaxPrecision_ = 0;

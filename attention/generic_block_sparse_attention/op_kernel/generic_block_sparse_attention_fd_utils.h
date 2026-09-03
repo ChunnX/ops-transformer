@@ -47,9 +47,7 @@ __aicore__ inline bool ValidateMetadata(
         meta->version != GbsaMetadata::METADATA_VERSION ||
         meta->metadataUsedSize != static_cast<int32_t>(GbsaMetadata::METADATA_USED_SIZE) ||
         meta->configSignature != static_cast<int32_t>(CalculateConfigSignature(tilingData)) ||
-        meta->saTotalTaskNum < 0 ||
-        static_cast<uint64_t>(meta->saTotalTaskNum) >
-            static_cast<uint64_t>(tilingData->totalQTokens) * tilingData->kvHeads) {
+        meta->saTotalTaskNum < 0) {
         return false;
     }
 

@@ -190,24 +190,27 @@ public:
 
 #ifdef __DAV_C220_VEC__
         if (hasSequsedQ) {
-            uint32_t paddingTask = 0U;
+            uint64_t paddingTask = 0U;
             for (uint32_t batchIdx = 0U; batchIdx < batch_; ++batchIdx) {
-                const uint32_t storageStart = static_cast<uint32_t>(gCuSeqLengths.GetValue(batchIdx));
-                const uint32_t storageEnd = static_cast<uint32_t>(gCuSeqLengths.GetValue(batchIdx + 1U));
-                const uint32_t storageLen = storageEnd - storageStart;
-                uint32_t actualLen = static_cast<uint32_t>(gSequsedQ.GetValue(batchIdx));
-                actualLen = actualLen < storageLen ? actualLen : storageLen;
-                for (uint32_t token = actualLen; token < storageLen; ++token) {
+                const int64_t storageStart = gCuSeqLengths.GetValue(batchIdx);
+                const int64_t storageEnd = gCuSeqLengths.GetValue(batchIdx + 1U);
+                const int64_t actualLenValue = static_cast<int64_t>(gSequsedQ.GetValue(batchIdx));
+                if (storageStart < 0 || storageEnd < storageStart || actualLenValue < 0) {
+                    continue;
+                }
+                const int64_t storageLen = storageEnd - storageStart;
+                const int64_t actualLen = actualLenValue < storageLen ? actualLenValue : storageLen;
+                for (int64_t token = actualLen; token < storageLen; ++token) {
                     for (uint32_t kvHeadIdx = 0U; kvHeadIdx < kvHeads_; ++kvHeadIdx, ++paddingTask) {
                         if (paddingTask % coreNum != coreIdx) {
                             continue;
                         }
-                        const uint32_t qStorageToken = storageStart + token;
+                        const uint64_t qStorageToken = static_cast<uint64_t>(storageStart + token);
                         const uint32_t qHeadStart = kvHeadIdx * groupSize;
                         const uint64_t gmOffsetO =
-                            (static_cast<uint64_t>(qStorageToken) * qHeads_ + qHeadStart) * embed_;
+                            (qStorageToken * qHeads_ + qHeadStart) * embed_;
                         const uint64_t gmOffsetLse =
-                            static_cast<uint64_t>(qStorageToken) * qHeads_ + qHeadStart;
+                            qStorageToken * qHeads_ + qHeadStart;
                         epilogueRescaleO.WriteEmptyOutput(
                             gO[gmOffsetO], gLse[gmOffsetLse], groupSize, embed_);
                     }

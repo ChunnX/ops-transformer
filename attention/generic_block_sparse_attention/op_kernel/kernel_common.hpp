@@ -28,7 +28,6 @@ struct GenericBlockSparseAttentionTilingData {
     uint32_t topK;        // sparseBlockIdx dim-3 (KVb): selected KV blocks per Q block
     uint32_t qBlockNum;   // sparseBlockIdx dim-2 (Qb): total Q blocks
     uint32_t maxBlocksPerBatch;
-    uint32_t totalQTokens;
     float scaleValue;
     uint64_t mm1OutSize;
     uint64_t smOnlineOutSize;

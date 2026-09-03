@@ -83,7 +83,6 @@ constexpr int64_t GBSA_QUANT_TYPE_NONE = 0;
 constexpr int64_t GBSA_QUANT_TYPE_FULL = 5;
 constexpr int64_t GBSA_WIN_DISABLED = -1;
 constexpr float GBSA_DST_TYPE_MAX_DISABLED = 0.0f;
-constexpr uint32_t GSA_MAX_SPARSE_BLOCK_CAPACITY = 256U;      // Maximum sparse blocks per query block.
 constexpr uint32_t GSA_FD_MAX_ACTIVE_CORE_NUM = 32U;          // Maximum AIC cores used by FD.
 constexpr uint32_t GSA_FD_MAX_COMBINE_TASK_NUM = 32U;         // Maximum FD combine tasks.
 constexpr uint32_t GSA_FD_BASE_TASK_GATE_NUMERATOR = 3U;      // Numerator of the FD base-task gate ratio.
@@ -206,12 +205,11 @@ ge::graphStatus GBSATiling::ParseCapabilityAttrs(gert::TilingContext *context)
     if (lseFlagPtr != nullptr) {
         softmaxLseFlag_ = *lseFlagPtr;
     }
-    if (softmaxLseFlag_ != 0 && softmaxLseFlag_ != 1) {
-        OP_LOGE(context->GetNodeName(), "Unsupported returnSoftmaxlse=%ld, only 0 or 1 are supported.",
-                softmaxLseFlag_);
+    if (softmaxLseFlag_ != 0) {
+        OP_LOGE(context->GetNodeName(), "Unsupported returnSoftmaxlse=%ld, only 0 is supported.", softmaxLseFlag_);
         return ge::GRAPH_FAILED;
     }
-    returnSoftmaxlse_ = softmaxLseFlag_ == 1;
+    returnSoftmaxlse_ = false;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -404,7 +402,6 @@ ge::graphStatus GBSATiling::ParseQueryKeyShapes(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    totalQTokens_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(TND_DIM_T));
     numHeads_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(TND_DIM_N));
     embeddingSize_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(TND_DIM_D));
     if (embeddingSize_ != 128) {
@@ -449,14 +446,7 @@ ge::graphStatus GBSATiling::ParseSparseTensors(gert::TilingContext *context)
     kvHeads_ = static_cast<uint32_t>(sparseIdxShape->GetStorageShape().GetDim(SPARSE_IDX_DIM_KV_HEAD));
     qBlockNum_ =
         static_cast<uint32_t>(sparseIdxShape->GetStorageShape().GetDim(SPARSE_IDX_DIM_Q_BLOCK)); // totalQBlocks
-    const int64_t sparseBlockCapacity = sparseIdxShape->GetStorageShape().GetDim(SPARSE_IDX_DIM_KV_BLOCK);
-    if (sparseBlockCapacity <= 0 ||
-        static_cast<uint64_t>(sparseBlockCapacity) > GSA_MAX_SPARSE_BLOCK_CAPACITY) {
-        OP_LOGE(context->GetNodeName(), "sparseBlockIdx.shape[-1]=%ld must be in [1, %u].", sparseBlockCapacity,
-                GSA_MAX_SPARSE_BLOCK_CAPACITY);
-        return ge::GRAPH_FAILED;
-    }
-    topK_ = static_cast<uint32_t>(sparseBlockCapacity);
+    topK_ = static_cast<uint32_t>(sparseIdxShape->GetStorageShape().GetDim(SPARSE_IDX_DIM_KV_BLOCK));
     if (kvHeads_ == 0 || numHeads_ % kvHeads_ != 0) {
         OP_LOGE(context->GetNodeName(), "numHeads=%u must be divisible by kvHeads=%u (and kvHeads > 0).", numHeads_,
                 kvHeads_);
@@ -468,6 +458,12 @@ ge::graphStatus GBSATiling::ParseSparseTensors(gert::TilingContext *context)
                 "Unsupported groupSize=%u (numHeads=%u, kvHeads=%u), currently only groupSize <= %u is supported to "
                 "avoid kernel L0C/UB overflow.",
                 groupSize_, numHeads_, kvHeads_, GBSA_MAX_GROUP_SIZE);
+        return ge::GRAPH_FAILED;
+    }
+    constexpr uint32_t GBSA_MAX_TOPK = 256U;
+    if (topK_ > GBSA_MAX_TOPK) {
+        OP_LOGE(context->GetNodeName(), "Unsupported topK=%u, only topK<=%u is supported on this build.", topK_,
+                GBSA_MAX_TOPK);
         return ge::GRAPH_FAILED;
     }
 
@@ -587,6 +583,8 @@ ge::graphStatus GBSATiling::CalculateWorkSpace(gert::TilingContext *context)
         // partitions of the same flat task range, count is bounded by Bmax + Cmax - 1.
         fdPartialCapacity_ = maxNonEmptyBaseTaskNum == 0U || maxActiveCoreNum == 0U ?
             0U : maxNonEmptyBaseTaskNum + maxActiveCoreNum - 1U;
+        // Each FD partial task is split across two Vector sub-blocks. Reserve the larger half of groupSize and
+        // align each sub-block's FP32 LSE slice to 8 elements (32 bytes) for GM DataCopy alignment.
         fdLseSubStride_ = ((groupSize_ + 1U) / 2U + 7U) / 8U * 8U;
         fdPartialLseOffset_ = AlignUp(pipelineWorkspaceSize, GSA_FD_WORKSPACE_ALIGNMENT);
         const uint64_t partialLseSize = static_cast<uint64_t>(fdPartialCapacity_) * 2U *
@@ -788,7 +786,6 @@ ge::graphStatus GBSATiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_topK(topK_);
     tilingData_->set_qBlockNum(qBlockNum_);
     tilingData_->set_maxBlocksPerBatch(maxBlocksPerBatch_);
-    tilingData_->set_totalQTokens(totalQTokens_);
     tilingData_->set_scaleValue(scaleValue_);
     tilingData_->set_mm1OutSize(mm1OutSize_);
     tilingData_->set_smOnlineOutSize(smOnlineOutSize_);

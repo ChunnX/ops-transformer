@@ -51,25 +51,22 @@ constexpr float kScale = 1.0f / sqrt(static_cast<float>(kD));
 
 // Expected host tiling keys (BSA-style bitfields; must match GenerateTilingKey).
 constexpr uint64_t kFp16Tiling910B = 9200000071001002ULL;
-constexpr uint64_t kFp16LseTiling910B = 9200000171001002ULL;
 constexpr uint64_t kBf16Tiling910B = 9200000071023222ULL;
 constexpr uint64_t kFp16HalfSmTiling910B = 9200000071101002ULL;
 constexpr uint64_t kFp16Tiling950 = 9250000071001002ULL;
-constexpr uint64_t kFp16LseTiling950 = 9250000171001002ULL;
 constexpr uint64_t kBf16Tiling950 = 9250000071023222ULL;
 constexpr uint64_t kFp8Fp16Tiling950 = 9250000071001012ULL;
 constexpr uint64_t kFp8Bf16Tiling950 = 9250000071001022ULL;
 
 std::vector<int64_t> kBlockShape = {kBlockShapeX, kBlockSize};
 
-std::vector<gert::TilingContextPara::TensorDescription> MakeInputs(ge::DataType qkvDtype,
-                                                                   int64_t topK = kTopK)
+std::vector<gert::TilingContextPara::TensorDescription> MakeInputs(ge::DataType qkvDtype)
 {
     return {
         {{{kT, kN1, kD}, {kT, kN1, kD}}, qkvDtype, ge::FORMAT_ND},
         {{{kMaxBlocks, kBlockSize, kN2, kD}, {kMaxBlocks, kBlockSize, kN2, kD}}, qkvDtype, ge::FORMAT_ND},
         {{{kMaxBlocks, kBlockSize, kN2, kD}, {kMaxBlocks, kBlockSize, kN2, kD}}, qkvDtype, ge::FORMAT_ND},
-        {{{kN2, kTotalQBlocks, topK}, {kN2, kTotalQBlocks, topK}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{kN2, kTotalQBlocks, kTopK}, {kN2, kTotalQBlocks, kTopK}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{kN2, kTotalQBlocks}, {kN2, kTotalQBlocks}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
         {{}, ge::DT_UNDEFINED, ge::FORMAT_ND},
@@ -151,31 +148,13 @@ TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_bf16_910b)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kBf16Tiling910B);
 }
 
-TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp16_lse_910b)
+TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_return_softmax_lse)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
     gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16),
                                               MakeOutputs(ge::DT_FLOAT16, true), MakeAttrs(1, 0, 0, 1), &compileInfo,
                                               "Ascend910B", 40, 196608);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp16LseTiling910B);
-}
-
-TEST_F(generic_block_sparse_attention_tiling_ut, flash_decoding_with_lse_910b)
-{
-    GenericBlockSparseAttentionCompileInfo compileInfo;
-    gert::TilingContextPara noLseContextPara(
-        "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16, 12), MakeOutputs(ge::DT_FLOAT16, false),
-        MakeAttrs(1, 0, 0, 0), &compileInfo, "Ascend910B", 40, 196608);
-    TilingInfo noLseTilingInfo;
-    ASSERT_TRUE(ExecuteTiling(noLseContextPara, noLseTilingInfo));
-
-    gert::TilingContextPara lseContextPara(
-        "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16, 12), MakeOutputs(ge::DT_FLOAT16, true),
-        MakeAttrs(1, 0, 0, 1), &compileInfo, "Ascend910B", 40, 196608);
-    TilingInfo lseTilingInfo;
-    ASSERT_TRUE(ExecuteTiling(lseContextPara, lseTilingInfo));
-    EXPECT_EQ(lseTilingInfo.tilingKey, static_cast<int64_t>(kFp16LseTiling910B));
-    EXPECT_EQ(lseTilingInfo.workspaceSizes, noLseTilingInfo.workspaceSizes);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp16_950)
@@ -185,15 +164,6 @@ TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp16_950)
                                               MakeOutputs(ge::DT_FLOAT16, false), MakeAttrs(1, 0, 1, 0), &compileInfo,
                                               "Ascend950", 56, 262144);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp16Tiling950);
-}
-
-TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp16_lse_950)
-{
-    GenericBlockSparseAttentionCompileInfo compileInfo;
-    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16),
-                                              MakeOutputs(ge::DT_FLOAT16, true), MakeAttrs(1, 0, 1, 1), &compileInfo,
-                                              "Ascend950", 56, 262144);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp16LseTiling950);
 }
 
 TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_bf16_950)
@@ -338,8 +308,8 @@ TEST_F(generic_block_sparse_attention_tiling_ut, scale_value_zero_defaults_to_rs
     ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
     EXPECT_EQ(tilingInfo.tilingKey, static_cast<int64_t>(kFp16Tiling910B));
     ASSERT_NE(tilingInfo.tilingData, nullptr);
-    // scaleValue follows the 11 uint32 fields in the POD tiling layout.
-    constexpr size_t kScaleValueOffset = 11U * sizeof(uint32_t);
+    // scaleValue follows the 10 uint32 fields in the POD tiling layout.
+    constexpr size_t kScaleValueOffset = 10U * sizeof(uint32_t);
     ASSERT_GT(tilingInfo.tilingDataSize, kScaleValueOffset + sizeof(float));
     float scaleValue = 0.0f;
     std::memcpy(&scaleValue, tilingInfo.tilingData.get() + kScaleValueOffset, sizeof(float));

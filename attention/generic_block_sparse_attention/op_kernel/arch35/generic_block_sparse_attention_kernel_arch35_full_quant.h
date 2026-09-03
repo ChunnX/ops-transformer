@@ -148,8 +148,6 @@ public:
         uint32_t embedRound = RoundUp(embed_, 16);
 
 #ifdef __DAV_VEC__
-        // Initialize storage padding which is intentionally absent from the
-        // packed actual-token metadata schedule.
         if (hasSequsedQ) {
             uint32_t paddingTask = 0U;
             for (uint32_t batchIdx = 0U; batchIdx < batch_; ++batchIdx) {
@@ -251,7 +249,6 @@ public:
             auto gmLseLayoutTla = tla::MakeLayout<ElementLse, LayoutLse>(qBaseTile_, 1);
             auto gmLseTensorTla = tla::MakeTensor(gLse[gmOffsetLse], gmLseLayoutTla, Arch::PositionGM{});
 #endif
-            // Causal decode requires kvSeqlen >= qSeqlen; otherwise historyLen would underflow.
             if (qSeqlen == 0U || kvSeqlen == 0U || kvSeqlen < qSeqlen) {
 #ifdef __DAV_VEC__
                 if (isFdPartial) {
