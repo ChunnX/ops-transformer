@@ -708,13 +708,8 @@ static ge::graphStatus CheckCapacityAttrs(const gert::TilingContext *context, Me
 
     int64_t maxRecvTokenNum = static_cast<int64_t>(*attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex)));
     OP_TILING_CHECK(
-        maxRecvTokenNum < 0 ||
-            maxRecvTokenNum > numMaxTokensPerRank * epWorldSize * std::min(shape.topK, moeExpertPerRank),
-        OP_LOGE_FOR_INVALID_VALUE(
-            nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(),
-            (std::string("should in [0, ") +
-             std::to_string(numMaxTokensPerRank * epWorldSize * std::min(shape.topK, moeExpertPerRank)) + "]")
-                .c_str()),
+        maxRecvTokenNum < 0,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(), " >= 0"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -2366,7 +2361,8 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     context->SetTilingKey(tilingKey);
 
     // WorkspaceSize
-    WorkspaceInfo workspaceInfo((uint8_t *)0, tilingData);
+    // 以地址 0 作为虚拟基址，使构造出的指针值等于各 workspace 分区偏移。
+    WorkspaceInfo workspaceInfo(reinterpret_cast<uint8_t *>(0U), tilingData);
     OP_TILING_CHECK(SetWorkspace(context, workspaceInfo, nodeName) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
 
