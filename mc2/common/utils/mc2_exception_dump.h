@@ -200,6 +200,56 @@ inline int DumpToFile(std::string dir, std::string name, uint32_t id, void *buf,
     return 0;
 }
 
+#if MC2_DFX_ENABLE
+const uint32_t XN_ADDR_DUMP_SIZE = 64U * 64U * 8U;
+const uint32_t CKE_ADDR_DUMP_SIZE = 64U * 2U * 8U;
+const uint32_t MAX_PEERMEM_DUMP_SIZE = 64U * 1024U * 1024U;
+ 
+inline std::string GenDumpFileNameWithPrefix(aclrtExceptionInfo *args, const char *op, const char *prefix)
+{
+    std::stringstream ss;
+ 
+    uint32_t streamId = aclrtGetStreamIdFromExceptionInfo(args);
+    uint32_t taskId = aclrtGetTaskIdFromExceptionInfo(args);
+    std::string ts = GetTimestampWithMilliseconds();
+ 
+    ss << prefix << op << "." << streamId << "." << taskId << "." << ts;
+ 
+    return ss.str();
+}
+ 
+inline int DumpToFileWithSize(std::string dir, std::string name, uint32_t id, void *buf, uint32_t size)
+{
+    if (IsStrEmpty(dir) || IsStrEmpty(name)) {
+        OP_LOGE(OP_NAME, "Dump path or buf is null.");
+        return -1;
+    }
+ 
+    std::string rankPath = dir + "/" + std::to_string(id) + "/";
+    std::string path = rankPath + name;
+    OP_LOGE(OP_NAME, "Start to dump file. The dump path is %s", path.c_str());
+ 
+    int fd = open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, FILE_MODE);
+    if (fd < 0) {
+        int openErrno = errno;
+        OP_LOGE(OP_NAME, "Failed to open a dump file. errno=%d(%s)", openErrno, strerror(openErrno));
+        return -1;
+    }
+ 
+    ssize_t ret = write(fd, buf, size);
+    if (ret < 0) {
+        int writeErrno = errno;
+        OP_LOGE(OP_NAME, "Failed to write a dump file. errno=%d(%s)", writeErrno, strerror(writeErrno));
+        close(fd);
+        return -1;
+    }
+ 
+    close(fd);
+    OP_LOGE(OP_NAME, "Dump to file %s done.", path.c_str());
+    return 0;
+}
+#endif // MC2_DFX_ENABLE
+
 inline int ProcessArgsForA5(uint64_t argsAddr, std::vector<uint8_t> &winBuf, const char *op)
 {
     // Get hccl context from its addr
@@ -624,6 +674,467 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
         OP_LOGE(OP_NAME, "Failed to dump win content.");
     }
 }
+
+#if MC2_DFX_ENABLE
+inline void Mc2ExceptionImplTmp(aclrtExceptionInfo *args, void *userdata, const char *op)
+{
+    const char* socName = aclrtGetSocName();
+    if (std::strstr(socName, "Ascend950") == nullptr) {
+        OP_LOGE(OP_NAME, "The soc version is %s, skip dump process", socName);
+        return;
+    }
+ 
+    OP_LOGD(OP_NAME, "Start to handle mc2 exception and dump xn/cke info.");
+ 
+    // 1. 动态加载 aclrtGetArgsFromExceptionInfo 函数
+    auto aclrtGetArgsFromExceptionInfoFunc = GetAclrtGetArgsFromExceptionInfoFunc();
+    if (aclrtGetArgsFromExceptionInfoFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load aclrtGetArgsFromExceptionInfo function.");
+        return;
+    }
+ 
+    // 2. 调用获取函数，拿到 devArgsPtr 和 devArgsLen
+    void* devArgsPtr = nullptr;
+    uint32_t devArgsLen = 0;
+    auto ret = aclrtGetArgsFromExceptionInfoFunc(args, &devArgsPtr, &devArgsLen);
+    if (ret != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtGetArgsFromExceptionInfo failed. ret=%d", ret);
+        return;
+    }
+ 
+    // 3. 获取报错的 deviceId
+    uint32_t deviceId = aclrtGetDeviceIdFromExceptionInfo(args);
+    OP_LOGD(OP_NAME, "Get context from args. deviceId=%u, devArgsAddr=%p, devArgsLen=%u", deviceId, devArgsPtr,
+            devArgsLen);
+ 
+    // 4. args 首地址中的内容即为 hccl context 的 device 地址，做一次 D2H copy（无 argsOffset）
+    uint64_t argsAddr = 0;
+    ret = aclrtMemcpy(&argsAddr, sizeof(uint64_t), devArgsPtr, sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    if (ret != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy address of args failed. ret=%d", ret);
+        return;
+    }
+ 
+    // 5. 根据 hccl context 的 device 地址，做一次 D2H copy，大小为 HcclCombinOpParam
+    std::vector<uint8_t> hcclArgs(sizeof(HcclCombinOpParam), 0);
+    ret = aclrtMemcpy(hcclArgs.data(), sizeof(HcclCombinOpParam), (void *)argsAddr, sizeof(HcclCombinOpParam),
+                    ACL_MEMCPY_DEVICE_TO_HOST);
+    if (ret != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy HcclCombinOpParam from device to host failed. ret = %d", ret);
+        return;
+    }
+    HcclCombinOpParam* winContext = reinterpret_cast<HcclCombinOpParam *>(hcclArgs.data());
+    if (winContext == nullptr) {
+        OP_LOGE(OP_NAME, "Cast to winContext failed. HcclCombinOpParam is null.");
+        return;
+    }
+    OP_LOGE(OP_NAME, "HcclCombinOpParam: workSpace=0x%lx, workSpaceSize=%lu, rankId=%u, rankDim=%u, "
+            "xnAddr=0x%lx, ckeAddr=0x%lx", winContext->workSpace, winContext->workSpaceSize, winContext->rankId,
+            winContext->rankDim, winContext->xnAddr, winContext->ckeAddr);
+ 
+    // 6. 解析 HcclCombinOpParam，拿到 xnAddr 和 ckeAddr，分别做 D2H copy 并落盘
+    auto acldumpGetPathFunc = GetAcldumpGetPathFunc();
+    if (acldumpGetPathFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load acldumpGetPath function, skip dump");
+        return;
+    }
+    const char* dumpPath = acldumpGetPathFunc(acldumpType::AIC_ERR_BRIEF_DUMP);
+    if (dumpPath == nullptr) {
+        OP_LOGE(OP_NAME, "acldumpGetPath returned NULL");
+        return;
+    }
+ 
+    // xnAddr: 64*64*8 bytes
+    if (winContext->xnAddr == 0) {
+        OP_LOGE(OP_NAME, "xnAddr is 0, skip xn dump.");
+    } else {
+        std::vector<uint8_t> xnBuf(XN_ADDR_DUMP_SIZE, 0);
+        ret = aclrtMemcpy(xnBuf.data(), XN_ADDR_DUMP_SIZE, (void *)winContext->xnAddr, XN_ADDR_DUMP_SIZE,
+                        ACL_MEMCPY_DEVICE_TO_HOST);
+        if (ret != ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "aclrtMemcpy xnAddr from device to host failed. ret = %d", ret);
+        } else if (DumpToFileWithSize(std::string(dumpPath), GenDumpFileNameWithPrefix(args, op, "xn_addr_info_"),
+                                    deviceId, xnBuf.data(), XN_ADDR_DUMP_SIZE) != 0) {
+            OP_LOGE(OP_NAME, "Failed to dump xn addr info.");
+        }
+    }
+ 
+    // ckeAddr: 64*2*8 bytes
+    if (winContext->ckeAddr == 0) {
+        OP_LOGE(OP_NAME, "ckeAddr is 0, skip cke dump.");
+    } else {
+        std::vector<uint8_t> ckeBuf(CKE_ADDR_DUMP_SIZE, 0);
+        ret = aclrtMemcpy(ckeBuf.data(), CKE_ADDR_DUMP_SIZE, (void *)winContext->ckeAddr, CKE_ADDR_DUMP_SIZE,
+                        ACL_MEMCPY_DEVICE_TO_HOST);
+        if (ret != ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "aclrtMemcpy ckeAddr from device to host failed. ret = %d", ret);
+        } else if (DumpToFileWithSize(std::string(dumpPath), GenDumpFileNameWithPrefix(args, op, "cke_addr_info_"),
+                                    deviceId, ckeBuf.data(), CKE_ADDR_DUMP_SIZE) != 0) {
+            OP_LOGE(OP_NAME, "Failed to dump cke addr info.");
+        }
+    }
+}
+
+inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t tilingGmArgIdx,
+                            uint32_t argsOffset = 0U, uint32_t workspaceGmArgIdx = 0U,
+                            uint32_t quantModeOffset = 0U,
+                            uint32_t wsLayoutOffsetNonQuant = 0U,
+                            uint32_t wsLayoutOffsetQuant = 0U,
+                            uint32_t wsLayoutOffsetApace = 0U)
+{
+    if (args == nullptr || op == nullptr) {
+        return;
+    }
+ 
+    auto getArgsFunc = GetAclrtGetArgsFromExceptionInfoFunc();
+    if (getArgsFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load aclrtGetArgsFromExceptionInfo function.");
+        return;
+    }
+ 
+    void *devArgsPtr = nullptr;
+    uint32_t devArgsLen = 0U;
+    if (getArgsFunc(args, &devArgsPtr, &devArgsLen) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtGetArgsFromExceptionInfo failed.");
+        return;
+    }
+ 
+    uint32_t deviceId = aclrtGetDeviceIdFromExceptionInfo(args);
+    OP_LOGE(OP_NAME, "Tiling dump start: op=%s, devArgsPtr=%p, devArgsLen=%u, tilingGmArgIdx=%u, argsOffset=%u",
+            op, devArgsPtr, devArgsLen, tilingGmArgIdx, argsOffset);
+ 
+    uint32_t tilingGmOffset = argsOffset + tilingGmArgIdx * sizeof(uint64_t);
+    if (tilingGmOffset + sizeof(uint64_t) > devArgsLen) {
+        OP_LOGE(OP_NAME, "tilingGmOffset=%u + 8 > devArgsLen=%u, args too short.", tilingGmOffset, devArgsLen);
+        return;
+    }
+ 
+    constexpr uint32_t argsDumpSize = 256U;
+    uint32_t actualArgsDumpSize = std::min(devArgsLen, argsDumpSize);
+    std::vector<uint8_t> argsBuf(actualArgsDumpSize, 0);
+    if (aclrtMemcpy(argsBuf.data(), actualArgsDumpSize, devArgsPtr, actualArgsDumpSize,
+                    ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy args buffer failed.");
+        return;
+    }
+ 
+    // for (uint32_t i = 0; i < actualArgsDumpSize / sizeof(uint64_t); i++) {
+    //     uint64_t val = *reinterpret_cast<uint64_t *>(argsBuf.data() + i * sizeof(uint64_t));
+    //     OP_LOGE(OP_NAME, "args[%u] = 0x%lx (offset=%u)", i, val, i * sizeof(uint64_t));
+    // }
+ 
+    auto dumpPathFunc = GetAcldumpGetPathFunc();
+    if (dumpPathFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load acldumpGetPath function.");
+        return;
+    }
+    const char *dumpPath = dumpPathFunc(acldumpType::AIC_ERR_BRIEF_DUMP);
+    if (dumpPath == nullptr) {
+        OP_LOGE(OP_NAME, "acldumpGetPath returned NULL.");
+        return;
+    }
+ 
+    if (DumpToFileWithSize(std::string(dumpPath), GenDumpFileNameWithPrefix(args, op, "args_info_"), deviceId,
+                        argsBuf.data(), actualArgsDumpSize) != 0) {
+        OP_LOGE(OP_NAME, "Failed to dump args info.");
+    }
+ 
+    uint64_t tilingGM = 0U;
+    if (aclrtMemcpy(&tilingGM, sizeof(uint64_t), reinterpret_cast<uint8_t *>(devArgsPtr) + tilingGmOffset,
+                    sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy tilingGM pointer failed, offset=%u.", tilingGmOffset);
+        return;
+    }
+    OP_LOGE(OP_NAME, "tilingGM=0x%lx (offset=%u)", tilingGM, tilingGmOffset);
+    if (tilingGM == 0U) {
+        OP_LOGE(OP_NAME, "tilingGM is 0, skip tiling data dump.");
+        return;
+    }
+ 
+    constexpr uint32_t tilingDumpSize = 2048U;
+    std::vector<uint8_t> tilingBuf(tilingDumpSize, 0);
+    if (aclrtMemcpy(tilingBuf.data(), tilingDumpSize, reinterpret_cast<void *>(tilingGM), tilingDumpSize,
+                    ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy tiling data failed.");
+        return;
+    }
+    if (DumpToFileWithSize(std::string(dumpPath), GenDumpFileNameWithPrefix(args, op, "tiling_data_"), deviceId,
+                        tilingBuf.data(), tilingDumpSize) != 0) {
+        OP_LOGE(OP_NAME, "Failed to dump tiling data.");
+    }
+    OP_LOGE(OP_NAME, "Tiling dump done: op=%s, deviceId=%u.", op, deviceId);
+ 
+    // ====== Workspace dump（workspaceGmArgIdx != 0 时执行）======
+    if (workspaceGmArgIdx == 0U) {
+        return;
+    }
+ 
+    OP_LOGE(OP_NAME, "Workspace dump start: op=%s, wsGmArgIdx=%u, quantModeOffset=%u, "
+            "wsLayoutOffsetNonQuant=%u, wsLayoutOffsetQuant=%u, wsLayoutOffsetApace=%u",
+            op, workspaceGmArgIdx, quantModeOffset, wsLayoutOffsetNonQuant, wsLayoutOffsetQuant,
+            wsLayoutOffsetApace);
+ 
+    // 1. 选择 wsLayoutOffset
+    uint32_t wsLayoutOffset = wsLayoutOffsetNonQuant;
+    if (wsLayoutOffsetNonQuant != wsLayoutOffsetQuant) {
+        // 量化/非量化结构体不同，通过 x1QuantMode 判断
+        uint32_t x1QuantMode = 0U;
+        if (quantModeOffset + sizeof(uint32_t) <= tilingDumpSize) {
+            memcpy(&x1QuantMode, tilingBuf.data() + quantModeOffset, sizeof(uint32_t));
+        }
+        if (x1QuantMode != 0U) {
+            wsLayoutOffset = wsLayoutOffsetQuant;
+        }
+        OP_LOGE(OP_NAME, "Quant mode detect: x1QuantMode=%u, wsLayoutOffset=%u", x1QuantMode, wsLayoutOffset);
+    }
+ 
+    // 2. 解析 WorkspaceLayoutInfo，若首选偏移无效则尝试所有提供的偏移
+    constexpr uint32_t wsLayoutInfoSize = sizeof(Mc2Tiling::WorkspaceLayoutInfo);
+    Mc2Tiling::WorkspaceLayoutInfo wsLayout;
+    bool wsLayoutValid = false;
+    uint32_t tryOffsets[] = {wsLayoutOffset, wsLayoutOffsetApace, wsLayoutOffsetQuant, wsLayoutOffsetNonQuant};
+    for (uint32_t tryOff : tryOffsets) {
+        if (tryOff == 0U || tryOff + wsLayoutInfoSize > tilingDumpSize) {
+            continue;
+        }
+        memcpy(&wsLayout, tilingBuf.data() + tryOff, wsLayoutInfoSize);
+        if (wsLayout.totalSize != 0 && wsLayout.segCount > 0 &&
+            wsLayout.segCount <= Mc2Tiling::MAX_WORKSPACE_SEGMENTS) {
+            wsLayoutOffset = tryOff;
+            wsLayoutValid = true;
+            break;
+        }
+    }
+    if (!wsLayoutValid) {
+        OP_LOGE(OP_NAME, "No valid wsLayout found at any provided offset, skip workspace dump.");
+        return;
+    }
+    OP_LOGE(OP_NAME, "wsLayout valid: offset=%u, totalSize=%lu, segCount=%u.",
+            wsLayoutOffset, wsLayout.totalSize, wsLayout.segCount);
+ 
+    // 3. 读取 workspaceGM 指针 (workspaceGmArgIdx = tilingGmArgIdx - 1)
+    uint32_t wsGmOffset = argsOffset + workspaceGmArgIdx * sizeof(uint64_t);
+    if (wsGmOffset + sizeof(uint64_t) > devArgsLen) {
+        OP_LOGE(OP_NAME, "wsGmOffset=%u + 8 > devArgsLen=%u, args too short.", wsGmOffset, devArgsLen);
+        return;
+    }
+    uint64_t workspaceGM = 0U;
+    if (aclrtMemcpy(&workspaceGM, sizeof(uint64_t),
+                    reinterpret_cast<uint8_t *>(devArgsPtr) + wsGmOffset,
+                    sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy workspaceGM pointer failed, offset=%u.", wsGmOffset);
+        return;
+    }
+    OP_LOGE(OP_NAME, "workspaceGM=0x%lx (offset=%u)", workspaceGM, wsGmOffset);
+    if (workspaceGM == 0U) {
+        OP_LOGE(OP_NAME, "workspaceGM is 0, skip workspace dump.");
+        return;
+    }
+ 
+    // 4. 逐段 D2H 拷贝并落盘
+    for (uint32_t i = 0; i < wsLayout.segCount && i < Mc2Tiling::MAX_WORKSPACE_SEGMENTS; i++) {
+        auto &seg = wsLayout.segments[i];
+        if (seg.size == 0) {
+            continue;
+        }
+        uint64_t dumpSize = seg.size;
+        std::vector<uint8_t> segBuf(dumpSize, 0);
+        void *srcAddr = reinterpret_cast<void *>(workspaceGM + seg.offset);
+        OP_LOGE(OP_NAME, "seg[%u]: type=%u, offset=%lu, size=%lu, dumpSize=%lu, srcAddr=0x%lx",
+                i, seg.type, seg.offset, seg.size, dumpSize,
+                static_cast<uint64_t>(reinterpret_cast<uintptr_t>(srcAddr)));
+        if (aclrtMemcpy(segBuf.data(), dumpSize, srcAddr, dumpSize,
+                        ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "aclrtMemcpy workspace seg[%u] failed, offset=%lu, size=%lu.", i, seg.offset, dumpSize);
+            continue;
+        }
+        std::string segPrefix = "workspace_seg" + std::to_string(i) + "_type" + std::to_string(seg.type) + "_";
+        std::string segName = GenDumpFileNameWithPrefix(args, op, segPrefix.c_str());
+        if (DumpToFileWithSize(std::string(dumpPath), segName, deviceId, segBuf.data(), dumpSize) != 0) {
+            OP_LOGE(OP_NAME, "Failed to dump workspace seg[%u].", i);
+        }
+    }
+    OP_LOGE(OP_NAME, "Workspace dump done: op=%s, deviceId=%u.", op, deviceId);
+}
+ 
+inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_t contextArgIdx,
+                               uint32_t argsOffset = 0U, uint32_t tilingGmArgIdx = 0U,
+                               uint32_t peermemSizeOffset = 0U, uint32_t peermemLayoutOffset = 0U)
+{
+    if (args == nullptr || op == nullptr) {
+        return;
+    }
+ 
+    auto getArgsFunc = GetAclrtGetArgsFromExceptionInfoFunc();
+    if (getArgsFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load aclrtGetArgsFromExceptionInfo function.");
+        return;
+    }
+ 
+    void *devArgsPtr = nullptr;
+    uint32_t devArgsLen = 0U;
+    if (getArgsFunc(args, &devArgsPtr, &devArgsLen) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtGetArgsFromExceptionInfo failed.");
+        return;
+    }
+ 
+    uint32_t deviceId = aclrtGetDeviceIdFromExceptionInfo(args);
+    OP_LOGE(OP_NAME, "UrmaContext dump start: op=%s, contextArgIdx=%u, argsOffset=%u", op, contextArgIdx, argsOffset);
+ 
+    uint32_t contextOffset = argsOffset + contextArgIdx * sizeof(uint64_t);
+    if (contextOffset + sizeof(uint64_t) > devArgsLen) {
+        OP_LOGE(OP_NAME, "contextOffset=%u + 8 > devArgsLen=%u, args too short.", contextOffset, devArgsLen);
+        return;
+    }
+ 
+    auto dumpPathFunc = GetAcldumpGetPathFunc();
+    if (dumpPathFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load acldumpGetPath function.");
+        return;
+    }
+    const char *dumpPath = dumpPathFunc(acldumpType::AIC_ERR_BRIEF_DUMP);
+    if (dumpPath == nullptr) {
+        OP_LOGE(OP_NAME, "acldumpGetPath returned NULL.");
+        return;
+    }
+ 
+    // 1. 读取 context 指针 (arg 0)
+    uint64_t contextAddr = 0U;
+    if (aclrtMemcpy(&contextAddr, sizeof(uint64_t),
+                    reinterpret_cast<uint8_t *>(devArgsPtr) + contextOffset,
+                    sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy context pointer failed, offset=%u.", contextOffset);
+        return;
+    }
+    OP_LOGE(OP_NAME, "contextAddr=0x%lx (offset=%u)", contextAddr, contextOffset);
+    if (contextAddr == 0U) {
+        OP_LOGE(OP_NAME, "contextAddr is 0, skip urma context dump.");
+        return;
+    }
+ 
+    // 2. D2H 拷贝 CommContext (UrmaCommContextFullForDump, udmaCtx + ubmemCtx) -> comm_context
+    constexpr uint32_t ctxDumpSize = sizeof(UrmaCommContextFullForDump);
+    std::vector<uint8_t> ctxBuf(ctxDumpSize, 0);
+    if (aclrtMemcpy(ctxBuf.data(), ctxDumpSize, reinterpret_cast<void *>(contextAddr), ctxDumpSize,
+                    ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy UrmaCommContext failed.");
+        return;
+    }
+    if (DumpToFileWithSize(std::string(dumpPath), GenDumpFileNameWithPrefix(args, op, "comm_context_"), deviceId,
+                           ctxBuf.data(), ctxDumpSize) != 0) {
+        OP_LOGE(OP_NAME, "Failed to dump comm context.");
+    }
+ 
+    // 3. 解析 peermem 窗口地址
+    UrmaCommContextFullForDump *urmaCtx = reinterpret_cast<UrmaCommContextFullForDump *>(ctxBuf.data());
+    uint32_t rankId = urmaCtx->udmaCtx.rankId;
+    OP_LOGE(OP_NAME, "urmaCtx: rankId=%u, rankSize=%u", rankId, urmaCtx->udmaCtx.rankSize);
+    if (rankId >= URMA_MAX_RANK_NUM) {
+        OP_LOGE(OP_NAME, "rankId=%u >= URMA_MAX_RANK_NUM=%u, skip peermem dump.", rankId, URMA_MAX_RANK_NUM);
+        return;
+    }
+    uint64_t selfWinAddr = urmaCtx->udmaCtx.commBufferAddrs[rankId];
+    OP_LOGE(OP_NAME, "selfWinAddr=0x%lx (commBufferAddrs[%u])", selfWinAddr, rankId);
+    if (selfWinAddr == 0U) {
+        OP_LOGE(OP_NAME, "selfWinAddr is 0, skip peermem dump.");
+        return;
+    }
+ 
+    // 4. 确定 peermem dump 大小
+    uint32_t peermemDumpSize = WIN_SIZE;
+    uint64_t tilingGM = 0U;
+    if (tilingGmArgIdx != 0U && peermemSizeOffset != 0U) {
+        uint32_t tilingGmOffset = argsOffset + tilingGmArgIdx * sizeof(uint64_t);
+        if (tilingGmOffset + sizeof(uint64_t) <= devArgsLen) {
+            if (aclrtMemcpy(&tilingGM, sizeof(uint64_t),
+                            reinterpret_cast<uint8_t *>(devArgsPtr) + tilingGmOffset,
+                            sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS && tilingGM != 0U) {
+                uint64_t peermemDataSize = 0U;
+                if (aclrtMemcpy(&peermemDataSize, sizeof(uint64_t),
+                                reinterpret_cast<void *>(tilingGM + peermemSizeOffset),
+                                sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS) {
+                    if (peermemDataSize > 0 && peermemDataSize <= MAX_PEERMEM_DUMP_SIZE) {
+                        peermemDumpSize = static_cast<uint32_t>(peermemDataSize);
+                    } else {
+                        OP_LOGE(OP_NAME, "peermemDataSize=%lu, using fallback WIN_SIZE=%u",
+                                peermemDataSize, WIN_SIZE);
+                    }
+                }
+            }
+        }
+    }
+    OP_LOGE(OP_NAME, "peermemDumpSize=%u", peermemDumpSize);
+ 
+    // 5. D2H 拷贝 peermem 窗口 -> 分段落盘或单文件落盘
+    //    当 peermemLayoutOffset != 0 时，从 tiling 读取 PeermemLayoutInfo，逐段 D2H + 落盘
+    //    否则回退到原有单文件 peermem_window_ dump
+    bool segDumped = false;
+    if (peermemLayoutOffset != 0U && tilingGM != 0U) {
+        Mc2Tiling::PeermemLayoutInfo peermemLayout;
+        std::memset(&peermemLayout, 0, sizeof(peermemLayout));
+        if (aclrtMemcpy(&peermemLayout, sizeof(peermemLayout),
+                        reinterpret_cast<void *>(tilingGM + peermemLayoutOffset),
+                        sizeof(peermemLayout), ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS &&
+            peermemLayout.segCount > 0 && peermemLayout.segCount <= Mc2Tiling::MAX_PEERMEM_SEGMENTS) {
+            OP_LOGE(OP_NAME, "Peermem segmented dump: segCount=%u, totalSize=%lu",
+                    peermemLayout.segCount, peermemLayout.totalSize);
+            for (uint32_t i = 0; i < peermemLayout.segCount; i++) {
+                auto &seg = peermemLayout.segments[i];
+                if (seg.size == 0) {
+                    continue;
+                }
+                uint32_t segDumpSize = static_cast<uint32_t>(
+                    std::min<uint64_t>(seg.size, MAX_PEERMEM_DUMP_SIZE));
+                std::vector<uint8_t> segBuf(segDumpSize, 0);
+                void *srcAddr = reinterpret_cast<void *>(selfWinAddr + seg.offset);
+                OP_LOGE(OP_NAME, "peermem seg[%u]: type=%u, offset=%lu, size=%lu, dumpSize=%u, srcAddr=0x%lx",
+                        i, seg.type, seg.offset, seg.size, segDumpSize,
+                        static_cast<uint64_t>(selfWinAddr + seg.offset));
+                if (aclrtMemcpy(segBuf.data(), segDumpSize, srcAddr, segDumpSize,
+                                ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+                    OP_LOGE(OP_NAME, "aclrtMemcpy peermem seg[%u] failed, offset=%lu, size=%u.",
+                            i, seg.offset, segDumpSize);
+                    continue;
+                }
+                std::string segPrefix = "peermem_seg" + std::to_string(i) + "_type" +
+                                        std::to_string(seg.type) + "_";
+                std::string segName = GenDumpFileNameWithPrefix(args, op, segPrefix.c_str());
+                if (DumpToFileWithSize(std::string(dumpPath), segName, deviceId,
+                                       segBuf.data(), segDumpSize) != 0) {
+                    OP_LOGE(OP_NAME, "Failed to dump peermem seg[%u].", i);
+                }
+            }
+            segDumped = true;
+        } else {
+            OP_LOGE(OP_NAME, "PeermemLayoutInfo read failed or invalid, falling back to single dump.");
+        }
+    }
+ 
+    if (!segDumped) {
+        std::vector<uint8_t> winBuf(peermemDumpSize, 0);
+        if (aclrtMemcpy(winBuf.data(), peermemDumpSize, reinterpret_cast<void *>(selfWinAddr), peermemDumpSize,
+                        ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "aclrtMemcpy peermem window failed.");
+            return;
+        }
+        if (DumpToFileWithSize(std::string(dumpPath), GenDumpFileNameWithPrefix(args, op, "peermem_window_"),
+                               deviceId, winBuf.data(), peermemDumpSize) != 0) {
+            OP_LOGE(OP_NAME, "Failed to dump peermem window.");
+        }
+    }
+    OP_LOGE(OP_NAME, "UrmaContext dump done: op=%s, deviceId=%u.", op, deviceId);
+}
+#else  // !MC2_DFX_ENABLE
+inline void Mc2ExceptionImplTmp(aclrtExceptionInfo *args, void *userdata, const char *op) {}
+inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t tilingGmArgIdx,
+                            uint32_t argsOffset = 0U, uint32_t workspaceGmArgIdx = 0U,
+                            uint32_t quantModeOffset = 0U, uint32_t wsLayoutOffsetNonQuant = 0U,
+                            uint32_t wsLayoutOffsetQuant = 0U, uint32_t wsLayoutOffsetApace = 0U) {}
+inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_t contextArgIdx,
+                               uint32_t argsOffset = 0U, uint32_t tilingGmArgIdx = 0U,
+                               uint32_t peermemSizeOffset = 0U, uint32_t peermemLayoutOffset = 0U) {}
+#endif // MC2_DFX_ENABLE
+
 } // namespace Mc2Exception
 #endif
 

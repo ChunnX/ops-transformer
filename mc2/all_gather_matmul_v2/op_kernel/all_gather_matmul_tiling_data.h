@@ -28,9 +28,12 @@ struct AllGatherMatmulTilingDataV2 {
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;
+    uint32_t quantMode; // 0=非量化, 1=量化
     Mc2MatMulV3TilingData mc2MmV3LocalTilingData;
     Mc2MatMulV3TilingData mc2MmV3TileTilingData;
     Mc2MatMulV3TilingData mc2MmV3TailTilingData;
+    uint64_t tilingKey;          // tilingKey，用于确认kernel模板特化路径
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
 };
 
 struct AllGatherMatmulTilingDataFp8 {
@@ -39,9 +42,12 @@ struct AllGatherMatmulTilingDataFp8 {
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;
+    uint32_t quantMode; // 0=非量化, 1=量化
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmv3LocalTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmv3TileTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmv3TailTiling;
+    uint64_t tilingKey;          // tilingKey，用于确认kernel模板特化路径
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
 };
 
 #if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) || \
