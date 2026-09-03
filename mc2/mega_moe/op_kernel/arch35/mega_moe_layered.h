@@ -1417,17 +1417,17 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::PublishEx
             WriteGmByPassDCache(cumsumDst + srcRank, cumsumInfoTensor_.GetValue(expertRankOffset + srcRank));
         }
     }
-    // SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID2>();
-    // PipeBarrier<PIPE_ALL>();
-    // if constexpr (TopkWeightsPrefetch) {
-    //     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
-    // }
+    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID2>();
+    PipeBarrier<PIPE_ALL>();
+    if constexpr (TopkWeightsPrefetch) {
+        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+    }
 
-    // __gm__ int32_t *tokenCountReadyFlag =
-    //     reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr) +
-    //     static_cast<uint64_t>(expertIdx) * aicNum_ * INT_CACHELINE +
-    //     static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
-    // AscendC::AtomicAdd(tokenCountReadyFlag, static_cast<int32_t>(1));
+    __gm__ int32_t *tokenCountReadyFlag =
+        reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr) +
+        static_cast<uint64_t>(expertIdx) * aicNum_ * INT_CACHELINE +
+        static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
+    AscendC::AtomicAdd(tokenCountReadyFlag, static_cast<int32_t>(1));
 }
 
 // ============================================================================
@@ -2813,10 +2813,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::PrepareDi
         PublishExpertTokenCount(expertIdx);
     }
     // 先提交一级大批次，再计算后续专家计数；BatchCommit 后网络传输可与本地计数重叠。
-    // SendDispatchRelayQueues();
-    // for (uint32_t expertIdx = firstWaveExpertCount; expertIdx < moeExpertPerRank_; ++expertIdx) {
-    //     PublishExpertTokenCount(expertIdx);
-    // }
+    SendDispatchRelayQueues();
+    for (uint32_t expertIdx = firstWaveExpertCount; expertIdx < moeExpertPerRank_; ++expertIdx) {
+        PublishExpertTokenCount(expertIdx);
+    }
 }
 
 template <TemplateMegaMoeLayeredTypeClass>
