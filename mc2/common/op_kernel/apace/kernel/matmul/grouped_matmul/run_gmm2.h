@@ -200,7 +200,7 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, SyncPolicy &sync, cons
 
 // RunGmm2Generic：执行 Generic GMM2，支持量化和非量化 Combine 模式。
 // =================================================================================================
-template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
+template <typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false,
           bool IsWaveFlagGrained = false, typename SyncPolicy>
 __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
@@ -216,11 +216,6 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
                                         BlockScheduler::Params{Te::MakeCoord(
                                             static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
-
-    if constexpr (CombineQuantMode == COMBINE_NO_QUANT && g_coreType == AscendC::AIV) {
-        startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
-        return;
-    }
 
     uint32_t startLoopIdx =
         (config.blockIdx < startBlockIdx ? config.blockIdx + config.blockNum : config.blockIdx) - startBlockIdx;

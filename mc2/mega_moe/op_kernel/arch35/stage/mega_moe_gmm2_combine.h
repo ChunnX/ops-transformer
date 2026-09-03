@@ -590,7 +590,7 @@ __aicore__ inline void UpdateSharedExpertGmm2GlobalBuffer(const MoeStageCommonCo
 
 // 供普通模板、Wave 模板和共享专家的 GMM2 阶段复用。
 // 使用调用方传入的 block 任务执行 GMM2，并保持所选同步约定不变。
-template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, typename WeightType,
+template <typename GenericElementA, typename A8W4ElementA, typename WeightType,
           typename QuantScaleType, bool EnableA8W4, bool EnableA4W4, uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
           bool IsShared, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
 __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const GMMAddrInfo &gmmAddrInfo,
@@ -609,13 +609,13 @@ __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const 
                gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
         Gmm2UbSyncPolicy<false, IsShared, IsWaveFlagGrained, IsGmm1Interleaved> sync(
             gmmAddrInfo, problemShape, activationTileM, gmmConfig.blockJob.totalJobs);
-        RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType, true,
+        RunGmm2Generic<GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType, true,
                         IsWaveFlagGrained>(problemShape, gmmAddrInfo.tensorAddrs, runtimeState.startBlockIdx,
                                            sync, persistentBlockMmadContext, allowWeightL2Bypass);
     } else {
         Gmm2UbSyncPolicy<false, IsShared, IsWaveFlagGrained, IsGmm1Interleaved> sync(
             gmmAddrInfo, problemShape, activationTileM, gmmConfig.blockJob.totalJobs);
-        RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType, false,
+        RunGmm2Generic<GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType, false,
                         IsWaveFlagGrained>(problemShape, gmmAddrInfo.tensorAddrs, runtimeState.startBlockIdx, 
                                            sync, persistentBlockMmadContext, allowWeightL2Bypass);
     }

@@ -527,7 +527,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         UpdateSharedExpertGmm2GlobalBuffer<ActivationType, Weight1Type, QuantScaleOutType, GMM1_TILE_M>(
             commonConfig_, gmmExecutionConfig_, params_.workspaceInfo, sharedWeightTensorListAddrs_, gmmAddrInfo,
             sharedExpertIdx);
-        RunGmm2ByMode<COMBINE_NO_QUANT, QuantOutType, ActivationType, Weight1Type, QuantScaleOutType, false, false,
+        RunGmm2ByMode<QuantOutType, ActivationType, Weight1Type, QuantScaleOutType, false, false,
                       GMM1_TILE_M, TopkWeightsPrefetch, true, GMM1_INTERLEAVED, true>(
             gmmExecutionConfig_, gmmAddrInfo, problemShape, runtimeState, nullptr, true);
     }
@@ -702,7 +702,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         // GMM2 与 GMM1 使用相同保护：只有完整专家 problem 才允许进一步判断是否绕过 L2。
         bool isWholeExpert =
             gmm2Position.tokenIndexInExpert == 0U && static_cast<uint64_t>(waveEndTokenIndexInExpert) == expertRowCount;
-        RunGmm2ByMode<COMBINE_NO_QUANT, QuantOutType, ActivationType, Weight1Type, QuantScaleOutType, false, false,
+        RunGmm2ByMode<QuantOutType, ActivationType, Weight1Type, QuantScaleOutType, false, false,
                       GMM1_TILE_M, TopkWeightsPrefetch, false, GMM1_INTERLEAVED, true>(
             gmmExecutionConfig_, gmm2AddrInfo, gmm2WaveProblemShape, runtimeState, nullptr, isWholeExpert);
 

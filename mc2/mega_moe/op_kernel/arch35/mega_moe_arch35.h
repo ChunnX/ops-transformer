@@ -514,7 +514,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
         UpdateSharedExpertGmm2GlobalBuffer<ActivationQuantOutType, Weight1Type, QuantScaleOutType, GMM1_TILE_M>(
             commonConfig_, gmmExecutionConfig_, params_.workspaceInfo, sharedWeightTensorListAddrs_, gmmAddrInfo,
             sharedExpertIdx);
-        RunGmm2ByMode<COMBINE_NO_QUANT, QuantOutType, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
+        RunGmm2ByMode<QuantOutType, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
                       ENABLE_A8W4, ENABLE_A4W4, GMM1_TILE_M, false, true, false, false>(
             gmmExecutionConfig_, gmmAddrInfo, problemShape, runtimeState);
     }

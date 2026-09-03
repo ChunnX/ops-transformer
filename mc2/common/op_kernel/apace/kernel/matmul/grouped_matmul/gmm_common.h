@@ -45,7 +45,6 @@ constexpr uint32_t L1_TILE_K = 256U;
 constexpr uint32_t SCALE_K_L1_RATE = 2U;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = 128U * 256U;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_256 = 256U * 256U;
-constexpr uint8_t COMBINE_NO_QUANT = 0;
 
 using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
 
@@ -409,11 +408,11 @@ __aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &
  */
 template <bool IsWeightNz, typename MatmulConfig, typename TensorB, typename TensorScaleB>
 __aicore__ inline void SetWaveWeightL2CacheHint(const typename MatmulConfig::ProblemConfig &config,
-                                                bool coversWholeExpert, TensorB &gmB, TensorScaleB &gmScaleB)
+                                                bool coversWholeProblem, TensorB &gmB, TensorScaleB &gmScaleB)
 {
     constexpr uint64_t cacheLineBytes = 128U;
-    // coversWholeExpert 防止跨 Wave 复用；m <= tileM 防止同一 problem 内跨 M tile 复用。
-    bool hasNoLaterWeightReuse = coversWholeExpert && config.m <= config.tileM;
+    // coversWholeProblem 防止跨 Wave 复用；m <= tileM 防止同一 problem 内跨 M tile 复用。
+    bool hasNoLaterWeightReuse = coversWholeProblem && config.m <= config.tileM;
 
     /*
      * NZ 已由分形布局保证物理块对齐。ND/DN(transB) 的连续维是 K，每一行的起点只有在

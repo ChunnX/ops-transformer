@@ -2512,11 +2512,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
         Gmm2UbSyncPolicy<true, IsShared, false, false> sync(gmmAddrInfo, state.problemShape, activationTileM,
                                                             static_cast<uint32_t>(GetBlockNum()));
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
-            RunGmm2Generic<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
+            RunGmm2Generic<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                             QuantScaleOutType, true>(state.problemShape, gmmAddrInfo.tensorAddrs,
                                                     startBlockIdx_, sync);
         } else {
-            RunGmm2Generic<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
+            RunGmm2Generic<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                             QuantScaleOutType, false>(state.problemShape, gmmAddrInfo.tensorAddrs,
                                                       startBlockIdx_, sync);
         }
