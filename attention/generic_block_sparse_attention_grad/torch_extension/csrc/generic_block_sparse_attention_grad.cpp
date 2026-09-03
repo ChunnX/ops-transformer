@@ -22,7 +22,7 @@ namespace {
 // Keep in sync with generic_block_sparse_attention_grad_metadata.h
 constexpr int64_t GSAG_TASK_LIST_OFFSET = 80; // 8 + 2 * 36
 constexpr int64_t GSAG_TASK_ENTRY_SIZE = 4;
-constexpr int64_t ARC22_GBSAG_TASK_LIST_SIZE = 528; // 16 + 64 * 8
+constexpr int64_t ARC22_GBSAG_TASK_LIST_SIZE = 198; // 6 + 64 * 3
 
 inline int64_t CalcGsagMetadataSize(int64_t batchSize, int64_t numQHeads, int64_t numJ)
 {

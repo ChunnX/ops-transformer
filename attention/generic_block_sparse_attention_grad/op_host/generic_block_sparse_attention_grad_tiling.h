@@ -68,7 +68,6 @@ TILING_DATA_FIELD_DEF(uint64_t, dkvSize);
 TILING_DATA_FIELD_DEF(uint64_t, postUbBaseSize);
 TILING_DATA_FIELD_DEF(uint64_t, ubSize);
 TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, softmaxGradTilingData);
-// 阶段三 Q block 聚合参数追加在末尾，保持阶段二 TilingData 字段顺序不变。
 // packetWorkspaceSize：所有实际 AIC core 的 packet 双缓冲总字节数。
 TILING_DATA_FIELD_DEF(uint64_t, packetWorkspaceSize);
 END_TILING_DATA_DEF;

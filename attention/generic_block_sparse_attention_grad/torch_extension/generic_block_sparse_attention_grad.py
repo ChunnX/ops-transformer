@@ -21,7 +21,7 @@ GSAG_METADATA_SIZE = (
 GSAG_TASK_LIST_OFFSET = 80  # 8 + 2 * 36
 GSAG_TASK_ENTRY_SIZE = 4
 GSAG_METADATA_OP_NAME = "generic_block_sparse_attention_grad_metadata"
-ARC22_GBSAG_TASK_LIST_SIZE = 528  # 16 + 64 * 8
+ARC22_GBSAG_TASK_LIST_SIZE = 198  # 6 + 64 * 3
 
 
 def calc_gsag_metadata_size(batch_size: int, num_q_heads: int, num_j: int) -> int:

@@ -78,12 +78,8 @@ private:
     uint32_t batch_ = 0;
     uint32_t blockShapeY_ = 128;
     uint32_t inputLayout_ = 0; // 0=TND 1=BNSD 2=BSND
-    uint32_t maxQSeqlen_ = 0;
-    uint32_t maxKvSeqlen_ = 0;
     std::vector<uint32_t> qSeqlen_;
     std::vector<uint32_t> kvSeqlen_;
-    std::vector<uint32_t> qPrefix_;  // 长度 batch+1，qPrefix_[b] = Σ_{i<b} qSeqlen_[i]
-    std::vector<uint32_t> kvPrefix_; // 长度 batch+1
 
     std::vector<uint32_t> tasksInBatch_;
     uint32_t totalTaskNum_ = 0;
@@ -183,30 +179,14 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernelArch22::Prepare(CpuKernelCo
     }
     blockShapeY_ = static_cast<uint32_t>(blockShapeYAttr);
 
-    // Build per-batch lengths, prefixes and maximum lengths.
+    // Build per-batch lengths. 长度来源语义见 QSeqLen/KvSeqLen：
+    //   TND 取 cuSeq 前缀和差分；BNSD/BSND 取 seqused（可选，缺省回退 attr 物理值，
+    //   保持物理 stride 语义，不能取实际最大值否则 stride 错位）。
     qSeqlen_.assign(batch_, 0);
     kvSeqlen_.assign(batch_, 0);
-    qPrefix_.assign(batch_ + 1, 0);
-    kvPrefix_.assign(batch_ + 1, 0);
-
-    // Preserve physical-stride semantics for packed layouts:
-    //   TND      : 由 per-batch 值推导（max over b）。
-    //   BNSD/BSND: 保持物理 shape（attr max_q_seqlen / max_kv_seqlen），
-    //              用于 batch 物理 stride 与 maskQBlockNum/maskKvBlockNum，
-    //              不能取 seqused 的实际最大值（否则 < S 维时 stride 会错位）。
-    maxQSeqlen_ = static_cast<uint32_t>(maxQSeqlenAttr_);
-    maxKvSeqlen_ = static_cast<uint32_t>(maxKvSeqlenAttr_);
     for (uint32_t b = 0; b < batch_; ++b) {
-        const uint32_t qLen = QSeqLen(b);
-        const uint32_t kvLen = KvSeqLen(b);
-        qSeqlen_[b] = qLen;
-        kvSeqlen_[b] = kvLen;
-        if (inputLayout_ == gbsag_meta::LAYOUT_TND) {
-            maxQSeqlen_ = std::max(maxQSeqlen_, qLen);
-            maxKvSeqlen_ = std::max(maxKvSeqlen_, kvLen);
-        }
-        qPrefix_[b + 1] = qPrefix_[b] + qLen;
-        kvPrefix_[b + 1] = kvPrefix_[b] + kvLen;
+        qSeqlen_[b] = QSeqLen(b);
+        kvSeqlen_[b] = KvSeqLen(b);
     }
 
     return true;
@@ -331,17 +311,6 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernelArch22::FillKTask(uint32_t 
     task->beginBatch = b;
     task->beginKvHead = h;
     task->beginKvSeqOffset = DecodeBasicBlockStart(kBlk, blockShapeY_);
-    task->reserved = count;
-    const uint64_t preQ = inputLayout_ == gbsag_meta::LAYOUT_TND ?
-                              qPrefix_[b] :
-                              static_cast<uint64_t>(b) * static_cast<uint64_t>(numQHeads_) * maxQSeqlen_;
-    const uint64_t preKv = inputLayout_ == gbsag_meta::LAYOUT_TND ?
-                               kvPrefix_[b] :
-                               static_cast<uint64_t>(b) * static_cast<uint64_t>(numKvHeads_) * maxKvSeqlen_;
-    task->preQLo = static_cast<int64_t>(static_cast<uint32_t>(preQ));
-    task->preQHi = static_cast<int64_t>(static_cast<uint32_t>(preQ >> 32));
-    task->preKvLo = static_cast<int64_t>(static_cast<uint32_t>(preKv));
-    task->preKvHi = static_cast<int64_t>(static_cast<uint32_t>(preKv >> 32));
     return true;
 }
 
@@ -352,21 +321,11 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernelArch22::GenMetadata()
         return false;
     }
     std::memset(out, 0, metadata_->GetDataSize());
-    out[gbsag_meta::OFF_MAGIC] = gbsag_meta::MAGIC;
     const uint32_t coreNum = std::min<uint32_t>(
         std::min<uint32_t>(std::max<uint32_t>(aicCoreNum_, 1), gbsag_meta::MAX_AIC_CORE_NUM), totalTaskNum_);
-    out[gbsag_meta::OFF_TOTAL_LEN] = gbsag_meta::MetadataWords(coreNum);
-    out[gbsag_meta::OFF_BATCH] = batch_;
-    out[gbsag_meta::OFF_NUM_Q_HEADS] = static_cast<uint32_t>(numQHeads_);
-    out[gbsag_meta::OFF_NUM_KV_HEADS] = static_cast<uint32_t>(numKvHeads_);
-    out[gbsag_meta::OFF_HEAD_DIM] = static_cast<uint32_t>(headDim_);
-    out[gbsag_meta::OFF_INPUT_LAYOUT] = inputLayout_;
-    out[gbsag_meta::OFF_MAX_Q_SEQLEN] = maxQSeqlen_;
-    out[gbsag_meta::OFF_MAX_KV_SEQLEN] = maxKvSeqlen_;
     out[gbsag_meta::OFF_TOTAL_TASK_NUM] = totalTaskNum_;
     out[gbsag_meta::OFF_TASK_NUM_PER_CORE] = taskNumPerCore_;
     out[gbsag_meta::OFF_TAIL_TASK_NUM] = tailTaskNum_;
-    out[gbsag_meta::OFF_SEQ_LEN_OFFSET] = gbsag_meta::HEADER_WORDS;
     out[gbsag_meta::OFF_TASK_TABLE_OFFSET] = gbsag_meta::HEADER_WORDS;
     out[gbsag_meta::OFF_CORE_NUM] = coreNum;
     out[gbsag_meta::OFF_TASK_WORDS] = gbsag_meta::KTASK_WORDS;

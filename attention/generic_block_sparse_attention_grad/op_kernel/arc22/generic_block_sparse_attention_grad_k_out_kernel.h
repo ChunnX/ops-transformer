@@ -66,21 +66,15 @@ constexpr uint32_t CUBE3_PINGPONG_OFFSET = CUBE2_PINGPONG_OFFSET * WORKSPACE_PIN
 
 // Device-side Metadata ABI offsets. Keep these aligned with the host/AICPU layout header.
 namespace GBSAGMeta {
-constexpr uint32_t OFF_MAGIC = 0;
-constexpr uint32_t OFF_TOTAL_LEN = 1;
-constexpr uint32_t OFF_TASK_NUM_PER_CORE = 10;
-constexpr uint32_t OFF_TAIL_TASK_NUM = 11;
-constexpr uint32_t OFF_TASK_TABLE_OFFSET = 13;
-constexpr uint32_t OFF_CORE_NUM = 14;
-constexpr uint32_t OFF_TASK_WORDS = 15;
+constexpr uint32_t OFF_TOTAL_TASK_NUM = 0;
+constexpr uint32_t OFF_TASK_NUM_PER_CORE = 1;
+constexpr uint32_t OFF_TAIL_TASK_NUM = 2;
+constexpr uint32_t OFF_TASK_TABLE_OFFSET = 3;
+constexpr uint32_t OFF_CORE_NUM = 4;
+constexpr uint32_t OFF_TASK_WORDS = 5;
 constexpr uint32_t TASK_BEGIN_BATCH = 0;
 constexpr uint32_t TASK_BEGIN_KV_HEAD = 1;
 constexpr uint32_t TASK_BEGIN_KV_SEQ_OFFSET = 2;
-constexpr uint32_t TASK_RESERVED = 3;
-constexpr uint32_t TASK_PRE_Q_LO = 4;
-constexpr uint32_t TASK_PRE_Q_HI = 5;
-constexpr uint32_t TASK_PRE_KV_LO = 6;
-constexpr uint32_t TASK_PRE_KV_HI = 7;
 } // namespace GBSAGMeta
 
 template <class BlockMmadGBSAG1_, class BlockMmadGBSAG2_, class BlockMmadGBSAG3_, class EpilogueFAGPre_,
@@ -313,9 +307,6 @@ private:
             inactiveCore = false;
             const uint32_t taskBase = metadataTaskTableOffset + coreIdx * metadataTaskWords;
             taskLength = metadataTaskNumPerCore + (coreIdx < metadataTailTaskNum ? 1 : 0);
-            if (static_cast<uint32_t>(gMetadata.GetValue(taskBase + GBSAGMeta::TASK_RESERVED)) != taskLength) {
-                return false;
-            }
         }
 
         inputSlotElements = static_cast<uint64_t>(AGGREGATE_M) * headDim;
@@ -684,24 +675,26 @@ private:
         taskInfo.curBatchIdx = static_cast<uint32_t>(gMetadata.GetValue(taskBase + GBSAGMeta::TASK_BEGIN_BATCH));
         taskInfo.curKvHeadIdx = static_cast<uint32_t>(gMetadata.GetValue(taskBase + GBSAGMeta::TASK_BEGIN_KV_HEAD));
         taskInfo.curKSeqIdx = static_cast<uint32_t>(gMetadata.GetValue(taskBase + GBSAGMeta::TASK_BEGIN_KV_SEQ_OFFSET));
-        taskInfo.qBatchBaseOffset =
-            static_cast<uint64_t>(gMetadata.GetValue(taskBase + GBSAGMeta::TASK_PRE_Q_LO)) |
-            (static_cast<uint64_t>(gMetadata.GetValue(taskBase + GBSAGMeta::TASK_PRE_Q_HI)) << 32);
-        taskInfo.kvBatchBaseOffset =
-            static_cast<uint64_t>(gMetadata.GetValue(taskBase + GBSAGMeta::TASK_PRE_KV_LO)) |
-            (static_cast<uint64_t>(gMetadata.GetValue(taskBase + GBSAGMeta::TASK_PRE_KV_HI)) << 32);
         if (inputLayout == 0) {
-            // TND 契约：cuSeqLengthsQ/Kv 必传（host 已校验），长度直接取前缀和差分。
-            taskInfo.qSeqlen =
-                static_cast<uint32_t>(gCuSeqLengthsQ.GetValue(taskInfo.curBatchIdx + NEXT_SEQUENCE_INDEX_OFFSET) -
-                                      gCuSeqLengthsQ.GetValue(taskInfo.curBatchIdx));
-            taskInfo.kvSeqlen =
-                static_cast<uint32_t>(gCuSeqLengthsKv.GetValue(taskInfo.curBatchIdx + NEXT_SEQUENCE_INDEX_OFFSET) -
-                                      gCuSeqLengthsKv.GetValue(taskInfo.curBatchIdx));
+            // TND 契约：cuSeqLengthsQ/Kv 必传（host 已校验），长度取前缀和差分；
+            // 种子偏移 = cuSeq[b]（与差分同源，零额外 GM 读），替代原 KTask.preQ/preKv。
+            const int64_t cuQCur = gCuSeqLengthsQ.GetValue(taskInfo.curBatchIdx);
+            const int64_t cuKvCur = gCuSeqLengthsKv.GetValue(taskInfo.curBatchIdx);
+            taskInfo.qSeqlen = static_cast<uint32_t>(
+                gCuSeqLengthsQ.GetValue(taskInfo.curBatchIdx + NEXT_SEQUENCE_INDEX_OFFSET) - cuQCur);
+            taskInfo.kvSeqlen = static_cast<uint32_t>(
+                gCuSeqLengthsKv.GetValue(taskInfo.curBatchIdx + NEXT_SEQUENCE_INDEX_OFFSET) - cuKvCur);
+            taskInfo.qBatchBaseOffset = static_cast<uint64_t>(cuQCur);
+            taskInfo.kvBatchBaseOffset = static_cast<uint64_t>(cuKvCur);
             taskInfo.qBatchBaseOffset *= numHeads * headDim;
             taskInfo.kvOffset = (taskInfo.kvBatchBaseOffset * kvHeads + taskInfo.curKSeqIdx * kvHeads) * headDim +
                                 taskInfo.curKvHeadIdx * headDim;
         } else {
+            // packed（BNSD/BSND）：种子偏移 = b × N × maxSeqlen（物理 stride），替代原 KTask.preQ/preKv。
+            taskInfo.qBatchBaseOffset = static_cast<uint64_t>(taskInfo.curBatchIdx) * static_cast<uint64_t>(numHeads) *
+                                        static_cast<uint64_t>(maxQSeqlen);
+            taskInfo.kvBatchBaseOffset = static_cast<uint64_t>(taskInfo.curBatchIdx) * static_cast<uint64_t>(kvHeads) *
+                                         static_cast<uint64_t>(maxKvSeqlen);
             taskInfo.qSeqlen =
                 useUniformQSeqlen ? maxQSeqlen : static_cast<uint32_t>(gActualQseqlen.GetValue(taskInfo.curBatchIdx));
             taskInfo.kvSeqlen = useUniformKvSeqlen ?
