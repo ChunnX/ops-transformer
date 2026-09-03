@@ -1456,7 +1456,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 {
     uint32_t hOutElemCount = hOutSize_ / sizeof(XOutType); // expandXOutGlobal申请每个token的GM Buffer空间大小
     GlobalTensor<XOutType> dataFlagGlobal, expandXOutGlobal;
-    GlobalTensor<float> expertScaleInGlobal, expandScalesOutGlobal;
+    GlobalTensor<float> expandScalesOutGlobal;
     dataFlagGlobal.SetGlobalBuffer((__gm__ XOutType *)(wAddr));
     expandXOutGlobal.SetGlobalBuffer((__gm__ XOutType *)(expandXOutGM_) + (dstPosition)*hOutElemCount);
     DataCopyParams srcTokenCopyParams{static_cast<uint16_t>(blockCntPerToken_ * arriveCount),
@@ -1488,23 +1488,13 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
                 expandIdxCopyParams);
     if (hasExpertScalesFlag_) {
         LocalTensor<float> xOutFloatTensor = xTmpTensor.template ReinterpretCast<float>();
-        uint32_t expertScaleOffset = expertScaleAlign_ * sizeof(float);
-        uint32_t expertScaleWinOffset =
-            expertScaleOffset / SPLIT_BLOCK_DATA_SIZE * SPLIT_BLOCK_SIZE + expertScaleOffset % SPLIT_BLOCK_DATA_SIZE;
-        GM_ADDR scaleWinAddr = wAddr + expertFinishNumTensor_(index) * hCommuSize_ + expertScaleWinOffset;
-        expertScaleInGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(scaleWinAddr));
         expandScalesOutGlobal.SetGlobalBuffer((__gm__ float *)(expandScalesOutGM_) + dstPosition);
-        DataCopyExtParams expertScaleCopyInParams{uint16_t(arriveCount), static_cast<uint32_t>(sizeof(float)),
-                                                  static_cast<uint32_t>(hCommuSize_ - sizeof(float)), 0U, 0U};
-        DataCopyPadExtParams<float> expertScalePadParams{false, 0U, 0U, 0.0f};
-        DataCopyExtParams expertScaleCopyOutParams{uint16_t(arriveCount), static_cast<uint32_t>(sizeof(float)), 0U, 0U,
-                                                   0U};
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(dataBufferId);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(dataBufferId);
-        DataCopyPad(xOutFloatTensor, expertScaleInGlobal, expertScaleCopyInParams, expertScalePadParams);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(dataBufferId);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(dataBufferId);
-        DataCopyPad(expandScalesOutGlobal, xOutFloatTensor, expertScaleCopyOutParams);
+        // srcTokenCopyParams has already packed expertScale into xTmpTensor. Keep the copy on MTE3 and avoid a
+        // second window read plus the MTE3->MTE2->MTE3 dependency chain.
+        DataCopyExtParams expertScaleCopyParams{
+            uint16_t(arriveCount), sizeof(float),
+            static_cast<uint32_t>((blockCntPerToken_ * SPLIT_BLOCK_DATA_SIZE) / UB_ALIGN - 1), 0U, 0U};
+        DataCopyPad(expandScalesOutGlobal, xOutFloatTensor[expertScaleAlign_], expertScaleCopyParams);
     }
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(dataBufferId);
 }
