@@ -52,6 +52,7 @@
 
 - test_lightning_indexer_v2_single.py       # pytest测试单用例运行主程序 
 - test_lightning_indexer_v2_paramset.py     # 单用例入参配置
+- test_lightning_indexer_v2_stc.py          # STC白盒用例配置
 
 批量测试：
 
@@ -82,6 +83,13 @@
 
 ``` bash
 bash test_run.sh single
+```
+
+STC 参数集位于 `test_lightning_indexer_v2_stc.py`，用于按代码路径执行白盒用例：
+
+``` bash
+bash test_run.sh single stc eager
+bash test_run.sh single stc graph
 ```
 
 #### 用例的批量生成与测试

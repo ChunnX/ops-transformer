@@ -10,18 +10,28 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import importlib
 import itertools
 import os
 from pathlib import Path
 
 import torch
 import torch_npu
-from test_quant_lightning_indexer_v2_paramset import ENABLED_PARAMSETS
 import result_compare_method
 import quant_lightning_indexer_v2_golden
 import pytest
 from batch import quant_lightning_indexer_v2_pt_loadprocess
 from qliv2_test_utils import QliV2ResultWriter, ensure_comparison_passed
+
+paramset = os.environ.get("QLIV2_PARAMSET", "default")
+if paramset not in ("default", "stc"):
+    raise ValueError(f"unsupported paramset: {paramset}")
+paramset_module = (
+    "test_quant_lightning_indexer_v2_stc"
+    if paramset == "stc"
+    else "test_quant_lightning_indexer_v2_paramset"
+)
+ENABLED_PARAMSETS = importlib.import_module(paramset_module).ENABLED_PARAMSETS
 
 
 SAVE_PT_DIR = os.environ.get("QLIV2_SINGLE_SAVE_PT_DIR", "").strip()
