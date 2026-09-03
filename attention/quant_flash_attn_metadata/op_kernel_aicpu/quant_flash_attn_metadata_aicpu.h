@@ -53,6 +53,9 @@ private:
     bool Prepare(CpuKernelContext &ctx);
     bool BalanceSchedule(SectionStreamKResult &splitRes);
     bool GenMetaData(SectionStreamKResult &splitRes);
+    void SetMetadataHead(const SectionStreamKResult &splitRes, optiling::detail::FaMetaData &faMetadata);
+    void SetMetadataFa(const SectionStreamKResult &splitRes, optiling::detail::FaMetaData &faMetadata);
+    void SetMetadataFd(const SectionStreamKResult &splitRes, optiling::detail::FaMetaData &faMetadata);
     bool ParamsInit();
     bool CheckNeedInitOutput();
     std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
@@ -89,6 +92,7 @@ private:
     uint32_t s1Size_ = 0;
     uint32_t s2Size_ = 0;
     bool isGradEnabled_ = false;
+    int64_t fagDeterMaxRound_ = 0; // 延迟到 GenMetaData 中 Clear 之后写入
 
     uint32_t groupSize_ = 0;
     uint32_t mBaseSize_ = NUM_64;
