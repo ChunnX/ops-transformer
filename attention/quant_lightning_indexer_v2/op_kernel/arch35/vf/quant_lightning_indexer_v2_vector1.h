@@ -950,11 +950,16 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
                                                   const int gSize, // G 64
                                                   const int batch)
 {
-    // 暂只支持这两种情况, 后续改成循环
-    if (batch != 2 && batch != 1) {
+    if (batch != 4 && batch != 2 && batch != 1) {
         return;
     }
-    if (batch == 2) {
+    if (batch == 4) {
+        MulWeightAndReduceSum2(out_, outStride, qk_, qkVLStride, qkStride, weight_, weightStride, weightTemp_, kScale_,
+                               kScaleStride, qScale_, qScaleStride, gSize);
+        MulWeightAndReduceSum2(out_[2 * outStride], outStride, qk_[2 * qkStride], qkVLStride, qkStride,
+                               weight_[2 * weightStride], weightStride, weightTemp_, kScale_, kScaleStride,
+                               qScale_[2 * qScaleStride], qScaleStride, gSize);
+    } else if (batch == 2) {
         MulWeightAndReduceSum2(out_, outStride, qk_, qkVLStride, qkStride, weight_, weightStride, weightTemp_, kScale_,
                                kScaleStride, qScale_, qScaleStride, gSize);
     } else {
@@ -1433,11 +1438,16 @@ __aicore__ inline void BatchMulWeightAndReduceSumPerTensor(
     uint32_t weightStride, const LocalTensor<float> &weightTemp_, const float kScaleValue, const float qScaleValue,
     const int gSize, const int batch)
 {
-    // 暂只支持这两种情况, 后续改成循环
-    if (batch != 2 && batch != 1) {
+    if (batch != 4 && batch != 2 && batch != 1) {
         return;
     }
-    if (batch == 2) {
+    if (batch == 4) {
+        MulWeightAndReduceSumPerTensor2(out_, outStride, qk_, qkVLStride, qkStride, weight_, weightStride, weightTemp_,
+                                        kScaleValue, qScaleValue, gSize);
+        MulWeightAndReduceSumPerTensor2(out_[2 * outStride], outStride, qk_[2 * qkStride], qkVLStride, qkStride,
+                                        weight_[2 * weightStride], weightStride, weightTemp_, kScaleValue, qScaleValue,
+                                        gSize);
+    } else if (batch == 2) {
         MulWeightAndReduceSumPerTensor2(out_, outStride, qk_, qkVLStride, qkStride, weight_, weightStride, weightTemp_,
                                         kScaleValue, qScaleValue, gSize);
     } else {

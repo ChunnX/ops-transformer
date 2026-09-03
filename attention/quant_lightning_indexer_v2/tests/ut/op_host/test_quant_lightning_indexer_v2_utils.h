@@ -86,7 +86,7 @@ inline gert::TilingContextPara::TensorDescription Desc(const std::vector<int64_t
     return gert::TilingContextPara::TensorDescription(ToStorageShape(dims), dtype, ge::FORMAT_ND);
 }
 
-inline void RunTilingCase(const CaseParam &p, ge::graphStatus expect)
+inline void RunTilingCase(const CaseParam &p, ge::graphStatus expect, TilingInfo *tilingInfo = nullptr)
 {
     struct QLIV2CompileInfo {
     } compileInfo;
@@ -106,7 +106,12 @@ inline void RunTilingCase(const CaseParam &p, ge::graphStatus expect)
          {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(p.cmpRatio)},
          {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(p.returnValue)}},
         &compileInfo, p.soc, p.coreNum, p.ubSize, p.l2Size);
-    ExecuteTestCase(para, expect, SKIP_TILING_KEY);
+    if (tilingInfo == nullptr) {
+        ExecuteTestCase(para, expect, SKIP_TILING_KEY);
+        return;
+    }
+    ASSERT_EQ(expect, ge::GRAPH_SUCCESS);
+    ASSERT_TRUE(ExecuteTiling(para, *tilingInfo));
 }
 
 } // namespace qliv2_ut

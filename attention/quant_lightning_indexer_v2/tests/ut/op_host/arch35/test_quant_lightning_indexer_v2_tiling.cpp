@@ -29,6 +29,8 @@ namespace {
 constexpr uint32_t INT32_BIT_WIDTH = 32U;
 constexpr int64_t INVALID_TRUNCATED_INT64 = (static_cast<int64_t>(1) << INT32_BIT_WIDTH) + 1;
 constexpr uint64_t TEST_CORE_NUM = 56;
+constexpr size_t BASE8_FLAG_WORD_INDEX = 16U;
+constexpr size_t DIRECT_INDICES_FLAG_WORD_INDEX = 17U;
 
 // Base of a valid Ascend950 TND/PA_BBND fp8 case
 qliv2_ut::CaseParam Make950TndPaFp8()
@@ -61,6 +63,30 @@ qliv2_ut::CaseParam Make950TndPaFp8()
 TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_fp8_tnd_pa_success)
 {
     qliv2_ut::RunTilingCase(Make950TndPaFp8(), ge::GRAPH_SUCCESS);
+}
+
+TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_fast_path_flags)
+{
+    qliv2_ut::CaseParam p = Make950TndPaFp8();
+    p.qShape = {640, 32, 128};
+    p.wShape = {640, 32};
+    p.qScaleShape = {640, 32};
+    p.outShape = {640, 1, 2048};
+
+    TilingInfo tilingInfo;
+    qliv2_ut::RunTilingCase(p, ge::GRAPH_SUCCESS, &tilingInfo);
+    ASSERT_GE(tilingInfo.tilingDataSize, (DIRECT_INDICES_FLAG_WORD_INDEX + 1U) * sizeof(uint32_t));
+    const auto *tilingData = reinterpret_cast<const uint32_t *>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tilingData[BASE8_FLAG_WORD_INDEX], 1U);
+    EXPECT_EQ(tilingData[DIRECT_INDICES_FLAG_WORD_INDEX], 1U);
+
+    p.idxOffset = {640, 1};
+    TilingInfo offsetTilingInfo;
+    qliv2_ut::RunTilingCase(p, ge::GRAPH_SUCCESS, &offsetTilingInfo);
+    ASSERT_GE(offsetTilingInfo.tilingDataSize, (DIRECT_INDICES_FLAG_WORD_INDEX + 1U) * sizeof(uint32_t));
+    tilingData = reinterpret_cast<const uint32_t *>(offsetTilingInfo.tilingData.get());
+    EXPECT_EQ(tilingData[BASE8_FLAG_WORD_INDEX], 1U);
+    EXPECT_EQ(tilingData[DIRECT_INDICES_FLAG_WORD_INDEX], 0U);
 }
 
 // PA_BBND is not a valid query layout, including for low-rank query shapes.
