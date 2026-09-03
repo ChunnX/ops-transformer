@@ -358,12 +358,22 @@ bool QuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes
         KERNEL_LOG_ERROR("metadata is empty");
         return false;
     }
-    uint32_t sectionNum = splitRes.sectionNum;
-    detail::FaMetaData faMetadata(metaData_->GetData(), sectionNum);
-    faMetadata.SetHeadMedata(optiling::HEAD_SECTION_NUM_INDEX, sectionNum);
+    detail::FaMetaData faMetadata(aicCoreNum_, aivCoreNum_, splitRes.sectionNum, metaData_->GetData());
+    faMetadata.Clear(); // set to all 0
+
+    SetMetadataHead(splitRes, faMetadata);
+    SetMetadataFa(splitRes, faMetadata);
+    SetMetadataFd(splitRes, faMetadata);
+    return true;
+}
+
+void QuantFlashAttnMetadataCpuKernel::SetMetadataHead(const SectionStreamKResult &splitRes,
+                                                      optiling::detail::FaMetaData &faMetadata)
+{
+    faMetadata.SetHeadMedata(optiling::HEAD_SECTION_NUM_INDEX, splitRes.sectionNum);
 
     faMetadata.SetHeadMedata(optiling::HEAD_IS_FD_INDEX, 0);
-    for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
+    for (uint32_t sectionId = 0; sectionId < splitRes.sectionNum; ++sectionId) {
         auto fdSplitRes = splitRes.sectionFdResult[sectionId];
         if (fdSplitRes.usedVecNum > 0) {
             faMetadata.SetHeadMedata(optiling::HEAD_IS_FD_INDEX, 1);
@@ -372,26 +382,15 @@ bool QuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes
 
     faMetadata.SetHeadMedata(optiling::HEAD_M_BASE_SIZE_INDEX, mBaseSize_);
     faMetadata.SetHeadMedata(optiling::HEAD_S2_BASE_SIZE_INDEX, s2BaseSize_);
+    faMetadata.SetHeadMedata(optiling::HEAD_AIC_NUM_INDEX, static_cast<uint32_t>(aicCoreNum_));
+    faMetadata.SetHeadMedata(optiling::HEAD_AIV_NUM_INDEX, static_cast<uint32_t>(aivCoreNum_));
+    faMetadata.SetHeadMedata(optiling::HEAD_NEED_INIT_OUTPUT_INDEX, needInitOutput_ ? 1U : 0U);
+}
 
-    for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
-        for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
-            faMetadata.SetFaMetadata(sectionId, i, optiling::FA_BN_START_INDEX, 0U);
-            faMetadata.SetFaMetadata(sectionId, i, optiling::FA_M_START_INDEX, 0U);
-            faMetadata.SetFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX, 0U);
-            faMetadata.SetFaMetadata(sectionId, i, optiling::FA_BN_END_INDEX, 0U);
-            faMetadata.SetFaMetadata(sectionId, i, optiling::FA_M_END_INDEX, 0U);
-            faMetadata.SetFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX, 0U);
-            faMetadata.SetFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, 0U);
-        }
-        for (uint32_t i = 0; i < AIV_CORE_NUM; ++i) {
-            faMetadata.SetFdMetadata(sectionId, i, optiling::FD_BN_IDX_INDEX, 0U);
-            faMetadata.SetFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX, 0U);
-            faMetadata.SetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_IDX_INDEX, 0U);
-            faMetadata.SetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_NUM_INDEX, 0U);
-            faMetadata.SetFdMetadata(sectionId, i, optiling::FD_M_START_INDEX, 0U);
-            faMetadata.SetFdMetadata(sectionId, i, optiling::FD_M_NUM_INDEX, 0U);
-        }
-
+void QuantFlashAttnMetadataCpuKernel::SetMetadataFa(const SectionStreamKResult &splitRes,
+                                                    optiling::detail::FaMetaData &faMetadata)
+{
+    for (uint32_t sectionId = 0; sectionId < splitRes.sectionNum; ++sectionId) {
         auto faSplitRes = splitRes.sectionFaResult[sectionId];
         for (uint32_t i = 0; i < faSplitRes.usedCoreNum; ++i) {
             if (i > 0) {
@@ -413,7 +412,13 @@ bool QuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX,
                                      faSplitRes.firstFdDataWorkspaceIdx[i]);
         }
+    }
+}
 
+void QuantFlashAttnMetadataCpuKernel::SetMetadataFd(const SectionStreamKResult &splitRes,
+                                                    optiling::detail::FaMetaData &faMetadata)
+{
+    for (uint32_t sectionId = 0; sectionId < splitRes.sectionNum; ++sectionId) {
         auto fdSplitRes = splitRes.sectionFdResult[sectionId];
         for (uint32_t i = 0; i < fdSplitRes.usedVecNum; ++i) {
             uint32_t curTaskIdx = fdSplitRes.taskIdx[i];
@@ -426,8 +431,6 @@ bool QuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_M_NUM_INDEX, fdSplitRes.mLen[i]);
         }
     }
-    faMetadata.SetHeadMedata(optiling::HEAD_NEED_INIT_OUTPUT_INDEX, needInitOutput_ ? 1U : 0U);
-    return true;
 }
 
 namespace {
