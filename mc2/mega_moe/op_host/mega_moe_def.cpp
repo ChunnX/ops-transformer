@@ -262,6 +262,7 @@ public:
         this->Attr("max_recv_token_num").AttrType(OPTIONAL).Int(0);
         this->Attr("dispatch_quant_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("dispatch_quant_out_dtype").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
+        this->Attr("shared_expert_quant_out_dtype").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
         this->Attr("combine_quant_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("comm_alg").AttrType(OPTIONAL).String("");
         this->Attr("num_max_tokens_per_rank").AttrType(OPTIONAL).Int(0);
@@ -274,7 +275,6 @@ public:
         this->Attr("topo_type").AttrType(OPTIONAL).Int(0);
         this->Attr("rank_num_per_server").AttrType(OPTIONAL).Int(2); // 最少2个rank
         this->Attr("topk_weights_type").AttrType(OPTIONAL).Int(0);
-        this->Attr("shared_expert_quant_out_dtype").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
