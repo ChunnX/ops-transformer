@@ -94,6 +94,7 @@ public:
             .ExtendCfgInfo("opFile.value", "scatter_pa_cache");
         this->Attr("cache_mode").AttrType(OPTIONAL).String("Norm");
         this->AICore().AddConfig("ascend950", config_950);
+        this->AICore().AddConfig("ascend350", config_950);
     }
 };
 OP_ADD(ScatterPaCache);
