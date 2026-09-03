@@ -2801,10 +2801,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::PrepareDi
         PublishExpertTokenCount(expertIdx);
     }
     // 先提交一级大批次，再计算后续专家计数；BatchCommit 后网络传输可与本地计数重叠。
-    SendDispatchRelayQueues();
-    for (uint32_t expertIdx = firstWaveExpertCount; expertIdx < moeExpertPerRank_; ++expertIdx) {
-        PublishExpertTokenCount(expertIdx);
-    }
+    // SendDispatchRelayQueues();
+    // for (uint32_t expertIdx = firstWaveExpertCount; expertIdx < moeExpertPerRank_; ++expertIdx) {
+    //     PublishExpertTokenCount(expertIdx);
+    // }
 }
 
 template <TemplateMegaMoeLayeredTypeClass>
