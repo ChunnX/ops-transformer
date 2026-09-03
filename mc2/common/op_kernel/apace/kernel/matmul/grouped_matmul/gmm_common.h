@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef MEGA_MOE_GMM_COMMON_H
-#define MEGA_MOE_GMM_COMMON_H
+#ifndef APACE_GMM_COMMON_H
+#define APACE_GMM_COMMON_H
 
 #include "kernel_operator.h"
 #include "tensor_api/tensor.h"
@@ -20,11 +20,12 @@
 #include "apace/block/mmad/block_mmad_mx_fp8fp4.h"
 #include "apace/block/prologue/block_prologue_mx_fp8fp4.h"
 
-namespace MegaMoeImpl {
+namespace Apace {
+namespace Gemm {
 
 using namespace AscendC;
 
-namespace GmmKernel {
+namespace Kernel {
 
 using AscendC::Te::Get;
 
@@ -32,20 +33,22 @@ using AscendC::Te::Get;
 constexpr uint64_t M_VALUE = 0UL;
 constexpr uint64_t N_VALUE = 1UL;
 constexpr uint64_t K_VALUE = 2UL;
-constexpr int32_t MXFP_DIVISOR_SIZE = 64;
+constexpr uint32_t MXFP_DIVISOR_SIZE = 64U;
 constexpr int32_t MXFP_MULTI_BASE_SIZE = 2;
 constexpr uint32_t L1_TILE_M_256 = 256U;
+constexpr uint32_t L1_TILE_M_128 = 128U;
 constexpr uint32_t L1_TILE_N = 256U;
 constexpr uint32_t L0_TILE_K = 128U;
 constexpr uint32_t ACTIVATION_N_HALF = 2U;
 
 constexpr uint32_t L1_TILE_K = 256U;
 constexpr uint32_t SCALE_K_L1_RATE = 2U;
+constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = 128U * 256U;
+constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_256 = 256U * 256U;
+constexpr uint8_t COMBINE_NO_QUANT = 0;
 
 using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
 
-// 通用 GMM 张量 GM 地址（不含任何 MoE 同步 flag / metaInfo——那些留在 MoE 侧的 GMMAddrInfo）。
-// kernel（Exec / 循环 / tile 函数）只依赖本结构；P7 随本文件进 apace 供其他算子复用。
 struct GmmTensorAddrs {
     GM_ADDR aGlobal;
     GM_ADDR bGlobal;
@@ -308,13 +311,11 @@ struct Config {
         LayoutBiasType bias;
     };
 
-    // blockNum/blockIdx 直接取硬件值（0827 apace 同款）——BlockJobContext 恒等于
-    // GetBlockNum()/GetBlockIdx()/GetTaskRation()（两处初始化点已核实同源），无需外部传入。
     __aicore__ static inline void FinalizeProblemConfig(ProblemConfig &config)
     {
         config.blockNum = GetBlockNum();
         config.blockIdx = GetBlockIdx() / GetTaskRation();
-        config.scaleK = CeilDiv(config.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+        config.scaleK = Ops::Base::CeilDiv(config.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         config.blockMmadTiling = SelectBlockMmadTilingConfig(config.m, config.k, config.tileM);
     }
 
@@ -451,8 +452,8 @@ struct GroupMatmulWorkSet {
     TensorC &gmC;
 };
 
-} // namespace GmmKernel
-} // namespace MegaMoeImpl
+} // namespace Kernel
+} // namespace Gemm
+} // namespace Apace
 
-#endif // MEGA_MOE_GMM_COMMON_H
-
+#endif // APACE_GMM_COMMON_H

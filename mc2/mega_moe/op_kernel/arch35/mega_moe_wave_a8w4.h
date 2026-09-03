@@ -105,7 +105,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1
     RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
                 QuantScaleOutType,
                 GMM1_TILE_M, TopkWeightsPrefetch>(
-        epilogueOp_, sliceProblemShape, gmmAddrInfo, startBlockIdx, sync);
+        epilogueOp_, sliceProblemShape, gmmAddrInfo.tensorAddrs, startBlockIdx, sync);
 }
 
 // 对已完成 Wave 中的一个专家执行 GMM2 及后续 Combine 调度。
