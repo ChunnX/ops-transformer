@@ -1255,7 +1255,8 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     // from the head's last trunk range (off-by-one-trunk in tail segmentation/offset),
     // deep in shared LITopk internals. Direct path is proven master-equivalent.
     bool ldOpen = (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) && (tilingInfo->s2Size >= 2048) &&
-                  (tilingInfo->tSize <= 64);  // v2LD: decode-only. BUG-4 deadlock fixed (CleanInvalidOutput token
+                  ((tilingInfo->tSize <= 64) || (tilingInfo->gSize == 32));  // v2LD: decode + g32 prefill
+                                                                             // (flat-share quota rebalance) BUG-4 deadlock fixed (CleanInvalidOutput token
                                               // steal + ProcessLD ID4 ring starvation), prefill LD verified
                                               // correct (golden set-equal) but +7~10% slower than direct on
                                               // same-card A/B 2026-09-03: keep disabled for perf. BUG-4 deadlock fixed (CleanInvalidOutput token
