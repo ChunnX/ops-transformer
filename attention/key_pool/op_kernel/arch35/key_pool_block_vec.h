@@ -46,10 +46,9 @@ public:
     // =================================设置参数=================================
     __aicore__ inline void InitParams(const ConstInfo &constInfo, const KeyPoolTools<COMP> &tools);
     __aicore__ inline void Init(__gm__ uint8_t *hidden_states, __gm__ uint8_t *wk, __gm__ uint8_t *gateWeight,
-                                __gm__ uint8_t *normWeight, __gm__ uint8_t *normBias,
-                                __gm__ uint8_t *stateCache, __gm__ uint8_t *ape, __gm__ uint8_t *cacheBlockTable,
-                                __gm__ uint8_t *seqLens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
-                                __gm__ uint8_t *pooledKeyOut);
+                                __gm__ uint8_t *normWeight, __gm__ uint8_t *normBias, __gm__ uint8_t *stateCache,
+                                __gm__ uint8_t *ape, __gm__ uint8_t *cacheBlockTable, __gm__ uint8_t *seqLens,
+                                __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos, __gm__ uint8_t *pooledKeyOut);
     // =================================资源管理=================================
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void AllocEventID();
@@ -146,9 +145,9 @@ private:
                                           uint32_t dStartIdx, uint32_t dDealSize, uint32_t dBaseSize,
                                           uint32_t needDealTcSize);
     __aicore__ inline void GatherKvForNorm(const LocalTensor<T> &kvLocal, const Vec1RunInfo &info,
-                                          const LoopInfo &loopInfo, const StatisticInfo &statisticInfo,
-                                          const Vec1SliceInfo &originSliceInfo, uint32_t dStartIdx,
-                                          uint32_t dDealSize, uint32_t needDealTcSize);
+                                           const LoopInfo &loopInfo, const StatisticInfo &statisticInfo,
+                                           const Vec1SliceInfo &originSliceInfo, uint32_t dStartIdx, uint32_t dDealSize,
+                                           uint32_t needDealTcSize);
     __aicore__ inline void PrepareNormalizedKv(const Vec1RunInfo &info, const Vec1SplitInfo &splitInfo,
                                                const LoopInfo &loopInfo);
     __aicore__ inline void CopyOutVec1ResToOutput(const LocalTensor<T> &comperssoredUb, const Vec1SliceInfo &sliceInfo,
@@ -209,8 +208,7 @@ private:
 };
 
 template <typename COMP>
-__aicore__ inline void KeyPoolBlockVector<COMP>::InitParams(const ConstInfo &constInfo,
-                                                               const KeyPoolTools<COMP> &tools)
+__aicore__ inline void KeyPoolBlockVector<COMP>::InitParams(const ConstInfo &constInfo, const KeyPoolTools<COMP> &tools)
 {
     this->constInfo_ = constInfo;
     this->tools_ = tools;
@@ -219,12 +217,12 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::InitParams(const ConstInfo &con
 }
 
 template <typename COMP>
-__aicore__ inline void KeyPoolBlockVector<COMP>::Init(__gm__ uint8_t *hidden_states, __gm__ uint8_t *wk, __gm__ uint8_t *gateWeight,
-                                                         __gm__ uint8_t *normWeight, __gm__ uint8_t *normBias,
-                                                         __gm__ uint8_t *stateCache, __gm__ uint8_t *ape,
-                                                         __gm__ uint8_t *cacheBlockTable, __gm__ uint8_t *seqLens,
-                                                         __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
-                                                         __gm__ uint8_t *pooledKeyOut)
+__aicore__ inline void KeyPoolBlockVector<COMP>::Init(__gm__ uint8_t *hidden_states, __gm__ uint8_t *wk,
+                                                      __gm__ uint8_t *gateWeight, __gm__ uint8_t *normWeight,
+                                                      __gm__ uint8_t *normBias, __gm__ uint8_t *stateCache,
+                                                      __gm__ uint8_t *ape, __gm__ uint8_t *cacheBlockTable,
+                                                      __gm__ uint8_t *seqLens, __gm__ uint8_t *seqUsed,
+                                                      __gm__ uint8_t *startPos, __gm__ uint8_t *pooledKeyOut)
 {
     stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)cacheBlockTable);
     stateCacheGm_.SetGlobalBuffer((__gm__ T *)stateCache);
@@ -277,10 +275,10 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::FreeEventID()
 
 template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::InitVec1GlobalTensor(GlobalTensor<T> kvMm1ResGm,
-                                                                         GlobalTensor<T> scoreMm1ResGm,
-                                                                         GlobalTensor<T> kvCacheTcGm,
-                                                                         GlobalTensor<T> scoreCacheTcGm,
-                                                                         GlobalTensor<T> normalizedKvGm)
+                                                                      GlobalTensor<T> scoreMm1ResGm,
+                                                                      GlobalTensor<T> kvCacheTcGm,
+                                                                      GlobalTensor<T> scoreCacheTcGm,
+                                                                      GlobalTensor<T> normalizedKvGm)
 {
     this->kvMm1ResGm_ = kvMm1ResGm;
     this->scoreMm1ResGm_ = scoreMm1ResGm;
@@ -324,7 +322,7 @@ __aicore__ inline uint32_t KeyPoolBlockVector<COMP>::GetSeqLength(uint32_t bIdx)
 
 template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::CopyInApe(const LocalTensor<T> &apeUb, uint32_t dStartIdx,
-                                                              uint32_t dDealSize)
+                                                           uint32_t dDealSize)
 {
     if (apeIsLoad_ && prevApeDStartIdx_ == dStartIdx && prevApeDDealSize_ == dDealSize) {
         return;
@@ -346,8 +344,8 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::CopyInApe(const LocalTensor<T> 
 
 template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::AddApeToScore(const LocalTensor<T> &scoreLocal,
-                                                                  const LocalTensor<T> &apeUb,
-                                                                  const Vec1SliceInfo &sliceInfo, uint32_t dDealSize)
+                                                               const LocalTensor<T> &apeUb,
+                                                               const Vec1SliceInfo &sliceInfo, uint32_t dDealSize)
 {
     uint32_t singleRowElemNum = dDealSize * coff_;
     uint64_t scoreOffset = sliceInfo.dealedSeqCnt * singleRowElemNum;
@@ -381,9 +379,8 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::AddApeToScore(const LocalTensor
 
 template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::AddSingleApeToScore(const LocalTensor<T> &scoreLocal,
-                                                                        const LocalTensor<T> &apeUb,
-                                                                        const Vec1SliceInfo &sliceInfo,
-                                                                        uint32_t dDealSize)
+                                                                     const LocalTensor<T> &apeUb,
+                                                                     const Vec1SliceInfo &sliceInfo, uint32_t dDealSize)
 {
     uint32_t singleRowElemNum = dDealSize * coff_;
     uint32_t dealRowCount = min(sliceInfo.sIdx, cmpRatio_);
@@ -395,10 +392,10 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::AddSingleApeToScore(const Local
 template <typename COMP>
 template <typename O>
 __aicore__ inline void KeyPoolBlockVector<COMP>::DataCopyAlignUbToUb(const LocalTensor<O> &dstLocal,
-                                                                        const LocalTensor<O> &srcLocal,
-                                                                        uint32_t copyRowCount, uint32_t copyColCount,
-                                                                        uint32_t srcSingleRowCount,
-                                                                        uint32_t dstSingleRowCount)
+                                                                     const LocalTensor<O> &srcLocal,
+                                                                     uint32_t copyRowCount, uint32_t copyColCount,
+                                                                     uint32_t srcSingleRowCount,
+                                                                     uint32_t dstSingleRowCount)
 {
     if (copyRowCount == 0) {
         return;
@@ -414,10 +411,10 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::DataCopyAlignUbToUb(const Local
 template <typename COMP>
 template <typename O>
 __aicore__ inline void KeyPoolBlockVector<COMP>::DataCopyAlignGmToUb(const LocalTensor<O> &dstLocal,
-                                                                        const GlobalTensor<O> &srcGm,
-                                                                        uint32_t copyRowCount, uint32_t copyColCount,
-                                                                        uint32_t srcSingleRowCount,
-                                                                        uint32_t dstSingleRowCount)
+                                                                     const GlobalTensor<O> &srcGm,
+                                                                     uint32_t copyRowCount, uint32_t copyColCount,
+                                                                     uint32_t srcSingleRowCount,
+                                                                     uint32_t dstSingleRowCount)
 {
     if (copyRowCount == 0) {
         return;
@@ -433,10 +430,10 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::DataCopyAlignGmToUb(const Local
 template <typename COMP>
 template <typename O>
 __aicore__ inline void KeyPoolBlockVector<COMP>::DataCopyAlignUbToGm(const GlobalTensor<O> &dstGm,
-                                                                        const LocalTensor<O> &srcLocal,
-                                                                        uint32_t copyRowCount, uint32_t copyColCount,
-                                                                        uint32_t srcSingleRowCount,
-                                                                        uint32_t dstSingleRowCount)
+                                                                     const LocalTensor<O> &srcLocal,
+                                                                     uint32_t copyRowCount, uint32_t copyColCount,
+                                                                     uint32_t srcSingleRowCount,
+                                                                     uint32_t dstSingleRowCount)
 {
     if (copyRowCount == 0) {
         return;
@@ -452,10 +449,10 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::DataCopyAlignUbToGm(const Globa
 template <typename COMP>
 template <typename O>
 __aicore__ inline void KeyPoolBlockVector<COMP>::DataCopyWithOutputQue(const GlobalTensor<O> &dstGm,
-                                                                          const LocalTensor<O> &srcLocal,
-                                                                          uint32_t copyRowCount, uint32_t copyColCount,
-                                                                          uint32_t srcSingleRowCount,
-                                                                          uint32_t dstSingleRowCount)
+                                                                       const LocalTensor<O> &srcLocal,
+                                                                       uint32_t copyRowCount, uint32_t copyColCount,
+                                                                       uint32_t srcSingleRowCount,
+                                                                       uint32_t dstSingleRowCount)
 {
     if (copyRowCount == 0) {
         return;
@@ -483,10 +480,10 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::DataCopyWithOutputQue(const Glo
 template <typename COMP>
 template <typename O>
 __aicore__ inline void KeyPoolBlockVector<COMP>::DataCopyWithInputQue(const LocalTensor<O> &dstLocal,
-                                                                         const GlobalTensor<O> &srcGm,
-                                                                         uint32_t copyRowCount, uint32_t copyColCount,
-                                                                         uint32_t srcSingleRowCount,
-                                                                         uint32_t dstSingleRowCount)
+                                                                      const GlobalTensor<O> &srcGm,
+                                                                      uint32_t copyRowCount, uint32_t copyColCount,
+                                                                      uint32_t srcSingleRowCount,
+                                                                      uint32_t dstSingleRowCount)
 {
     if (copyRowCount == 0) {
         return;
@@ -513,9 +510,11 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::DataCopyWithInputQue(const Loca
 
 template <typename COMP>
 template <typename O>
-__aicore__ inline void KeyPoolBlockVector<COMP>::AddMultiDataToUb(
-    const LocalTensor<O> &dstLocal, const GlobalTensor<O> &srcGm, uint32_t dealRowCount, uint32_t dealColCount,
-    uint32_t srcSingleRowCount, uint32_t dstSingleRowCount, uint32_t repeatTimes, uint64_t offset)
+__aicore__ inline void KeyPoolBlockVector<COMP>::AddMultiDataToUb(const LocalTensor<O> &dstLocal,
+                                                                  const GlobalTensor<O> &srcGm, uint32_t dealRowCount,
+                                                                  uint32_t dealColCount, uint32_t srcSingleRowCount,
+                                                                  uint32_t dstSingleRowCount, uint32_t repeatTimes,
+                                                                  uint64_t offset)
 {
     if (dealRowCount == 0 || dealColCount == 0 || repeatTimes == 0) {
         return;
@@ -531,20 +530,18 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::AddMultiDataToUb(
 
         for (uint32_t repeatIdx = 0; repeatIdx < repeatTimes; repeatIdx++) {
             LocalTensor<O> inputLocal = inputQue2.AllocTensor<O>();
-            uint64_t srcOffset = static_cast<uint64_t>(rowOffset) * srcSingleRowCount +
-                                 static_cast<uint64_t>(repeatIdx) * offset;
-            DataCopyAlignGmToUb(inputLocal, srcGm[srcOffset], curRows, dealColCount,
-                                srcSingleRowCount, dstSingleRowCount);
+            uint64_t srcOffset =
+                static_cast<uint64_t>(rowOffset) * srcSingleRowCount + static_cast<uint64_t>(repeatIdx) * offset;
+            DataCopyAlignGmToUb(inputLocal, srcGm[srcOffset], curRows, dealColCount, srcSingleRowCount,
+                                dstSingleRowCount);
             inputQue2.EnQue(inputLocal);
             inputQue2.DeQue<O>();
 
             PipeBarrier<PIPE_V>();
             if (repeatIdx == 0) {
-                MultiAddVF<true>(dstLocal[dstOffset], inputLocal, curRows, dealColCount,
-                                 dstSingleRowCount, 1, cnt);
+                MultiAddVF<true>(dstLocal[dstOffset], inputLocal, curRows, dealColCount, dstSingleRowCount, 1, cnt);
             } else {
-                MultiAddVF<false>(dstLocal[dstOffset], inputLocal, curRows, dealColCount,
-                                  dstSingleRowCount, 1, cnt);
+                MultiAddVF<false>(dstLocal[dstOffset], inputLocal, curRows, dealColCount, dstSingleRowCount, 1, cnt);
             }
             inputQue2.FreeTensor(inputLocal);
         }
@@ -554,9 +551,9 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::AddMultiDataToUb(
 
 template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::PadAlign(const LocalTensor<T> &dstLocal,
-                                                             const LocalTensor<T> &srcLocal,
-                                                             const Vec1SliceInfo &sliceInfo, uint32_t dStartIdx,
-                                                             uint32_t dDealSize)
+                                                          const LocalTensor<T> &srcLocal,
+                                                          const Vec1SliceInfo &sliceInfo, uint32_t dStartIdx,
+                                                          uint32_t dDealSize)
 {
     // Ub data layout after overlap when r = 4 and coff = 2:
     //  Tc0_seq01: |--- --D_L--- -|------D_R-----|
@@ -593,11 +590,12 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::PadAlign(const LocalTensor<T> &
 
 template <typename COMP>
 template <bool IS_SCORE>
-__aicore__ inline void KeyPoolBlockVector<COMP>::OverLap(
-    const LocalTensor<T> &dstLocal, const LocalTensor<T> &srcLocal, const GlobalTensor<T> &srcGm,
-    const GlobalTensor<T> &stateGm, const GlobalTensor<int32_t> &blockTableGm, const GlobalTensor<T> &cacheTcGm,
-    const Vec1RunInfo &info, const Vec1SliceInfo &sliceInfo, const LoopInfo &loopInfo, uint32_t dStartIdx,
-    uint32_t globalSeqIdx, uint32_t dDealSize)
+__aicore__ inline void KeyPoolBlockVector<COMP>::OverLap(const LocalTensor<T> &dstLocal, const LocalTensor<T> &srcLocal,
+                                                         const GlobalTensor<T> &srcGm, const GlobalTensor<T> &stateGm,
+                                                         const GlobalTensor<int32_t> &blockTableGm,
+                                                         const GlobalTensor<T> &cacheTcGm, const Vec1RunInfo &info,
+                                                         const Vec1SliceInfo &sliceInfo, const LoopInfo &loopInfo,
+                                                         uint32_t dStartIdx, uint32_t globalSeqIdx, uint32_t dDealSize)
 {
     if (sliceInfo.dealTcSize == 0) {
         return;
@@ -624,10 +622,10 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::OverLap(
 
 template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::FromWokrSpaceToUb(const LocalTensor<T> &dstLocal,
-                                                                      const GlobalTensor<T> &srcGm,
-                                                                      const Vec1SliceInfo &sliceInfo,
-                                                                      const StatisticInfo &statisticInfo,
-                                                                      uint32_t dStartIdx, uint32_t dDealSize)
+                                                                   const GlobalTensor<T> &srcGm,
+                                                                   const Vec1SliceInfo &sliceInfo,
+                                                                   const StatisticInfo &statisticInfo,
+                                                                   uint32_t dStartIdx, uint32_t dDealSize)
 {
     uint32_t srcSingleRowElemNum = constInfo_.headDim;
     uint32_t copyRowCount = statisticInfo.dealSeqCnt * coff_;
@@ -646,10 +644,10 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::FromWokrSpaceToUb(const LocalTe
 
 template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::SaveToWorkSpace(const LocalTensor<T> &srcLocal,
-                                                                    const GlobalTensor<T> &cacheTcGm,
-                                                                    const Vec1SliceInfo &sliceInfo,
-                                                                    const LoopInfo &loopInfo, uint32_t dStartIdx,
-                                                                    uint32_t dDealSize)
+                                                                 const GlobalTensor<T> &cacheTcGm,
+                                                                 const Vec1SliceInfo &sliceInfo,
+                                                                 const LoopInfo &loopInfo, uint32_t dStartIdx,
+                                                                 uint32_t dDealSize)
 {
     uint64_t curSeqLen = sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.validSeqCnt;
     uint64_t totalSeqLen = sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.bSeqUsed;
@@ -676,8 +674,7 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::LoadFromWorkSpace(
     }
     uint32_t dstSingleRowElemNum = dDealSize * coff_;
     uint32_t copyRowCount = min(sliceInfo.sIdx, cmpRatio_);
-    uint64_t dstLocalOffset =
-        (sliceInfo.key_pooledScCnt * cmpRatio_ + cmpRatio_ - copyRowCount) * dstSingleRowElemNum;
+    uint64_t dstLocalOffset = (sliceInfo.key_pooledScCnt * cmpRatio_ + cmpRatio_ - copyRowCount) * dstSingleRowElemNum;
     if (loopInfo.isCoreRowFirst && loopInfo.isCoreLoopFirst && sliceInfo.isFirst) { // 从cacheGm获取
         uint32_t srcSingleRowElemNum = constInfo_.headDim;
         uint64_t srcLocalOffset = dStartIdx;
@@ -706,11 +703,11 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::LoadFromWorkSpace(
 
 template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::ReadFromCacheState(const LocalTensor<T> &output,
-                                                                       const GlobalTensor<T> &state,
-                                                                       const GlobalTensor<int32_t> &blockTableGm,
-                                                                       uint32_t batchIdx, uint32_t startSeqIdx,
-                                                                       uint32_t endSeqIdx, uint32_t dStartIdx,
-                                                                       uint32_t dDealSize, uint32_t stateIdx)
+                                                                    const GlobalTensor<T> &state,
+                                                                    const GlobalTensor<int32_t> &blockTableGm,
+                                                                    uint32_t batchIdx, uint32_t startSeqIdx,
+                                                                    uint32_t endSeqIdx, uint32_t dStartIdx,
+                                                                    uint32_t dDealSize, uint32_t stateIdx)
 {
     if constexpr (COMP::cacheMode == CACHE_MODE::LINEAR_BUFFER) {
         uint64_t blockTablebaseOffset = batchIdx * constInfo_.maxBlockNumPerBatch;
@@ -759,11 +756,11 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::ReadFromCacheState(const LocalT
 
 template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::WriteToCacheState(const GlobalTensor<T> &state,
-                                                                      const GlobalTensor<int32_t> &blockTableGm,
-                                                                      const LocalTensor<T> &input, uint32_t batchIdx,
-                                                                      uint32_t startSeqIdx, uint32_t endSeqIdx,
-                                                                      uint32_t dStartIdx, uint32_t dDealSize,
-                                                                      uint32_t stateIdx)
+                                                                   const GlobalTensor<int32_t> &blockTableGm,
+                                                                   const LocalTensor<T> &input, uint32_t batchIdx,
+                                                                   uint32_t startSeqIdx, uint32_t endSeqIdx,
+                                                                   uint32_t dStartIdx, uint32_t dDealSize,
+                                                                   uint32_t stateIdx)
 {
     if constexpr (COMP::cacheMode == CACHE_MODE::LINEAR_BUFFER) {
         uint64_t blockTablebaseOffset = batchIdx * constInfo_.maxBlockNumPerBatch;
@@ -815,10 +812,10 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::WriteToCacheState(const GlobalT
 
 template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::SaveState(const LocalTensor<T> &srcLocal,
-                                                              const GlobalTensor<T> &stateGm,
-                                                              const GlobalTensor<int32_t> &blockTableGm,
-                                                              const Vec1SliceInfo &sliceInfo, uint32_t dStartIdx,
-                                                              uint32_t dDealSize, uint32_t stateIdx)
+                                                           const GlobalTensor<T> &stateGm,
+                                                           const GlobalTensor<int32_t> &blockTableGm,
+                                                           const Vec1SliceInfo &sliceInfo, uint32_t dStartIdx,
+                                                           uint32_t dDealSize, uint32_t stateIdx)
 {
     uint64_t startSeqIdx = sliceInfo.bStartPos + sliceInfo.sIdx;
     uint32_t endSeqIdx = startSeqIdx + sliceInfo.validSeqCnt;
@@ -867,9 +864,9 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::SaveState(const LocalTensor<T> 
 template <typename COMP>
 template <bool IS_SCORE>
 __aicore__ inline void KeyPoolBlockVector<COMP>::DuplicateFirstBlock(const LocalTensor<T> &dstLocal,
-                                                                        uint32_t duplicateRowCount,
-                                                                        uint32_t duplicateColCount,
-                                                                        uint32_t singleRowCount)
+                                                                     uint32_t duplicateRowCount,
+                                                                     uint32_t duplicateColCount,
+                                                                     uint32_t singleRowCount)
 {
     for (uint32_t offset = 0; offset < duplicateColCount; offset += FP32_REPEAT_ELEMENT_NUM) {
         uint32_t curDuplicateColCount = min(duplicateColCount - offset, FP32_REPEAT_ELEMENT_NUM);
@@ -886,10 +883,10 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::DuplicateFirstBlock(const Local
 template <typename COMP>
 template <bool IS_SCORE>
 __aicore__ inline void KeyPoolBlockVector<COMP>::ReadState(const LocalTensor<T> &dstLocal,
-                                                              const GlobalTensor<T> &stateGm,
-                                                              const GlobalTensor<int32_t> &blockTableGm,
-                                                              const Vec1SliceInfo &sliceInfo, uint32_t dStartIdx,
-                                                              uint32_t dDealSize, uint32_t stateIdx)
+                                                           const GlobalTensor<T> &stateGm,
+                                                           const GlobalTensor<int32_t> &blockTableGm,
+                                                           const Vec1SliceInfo &sliceInfo, uint32_t dStartIdx,
+                                                           uint32_t dDealSize, uint32_t stateIdx)
 {
     // 没有需要压缩的块时, 不需要读state的信息
     if (sliceInfo.compressTcSize == 0) {
@@ -936,7 +933,7 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::ReadState(const LocalTensor<T> 
 
 template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::SoftmaxDN(const LocalTensor<T> &scoreLocal, uint32_t tcDealSize,
-                                                              uint32_t dDealSize)
+                                                           uint32_t dDealSize)
 {
     float minValue = SOFTMAX_MIN_VALUE;
     uint32_t ReduceSize = coff_ * cmpRatio_;
@@ -944,8 +941,8 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::SoftmaxDN(const LocalTensor<T> 
 }
 
 template <typename COMP>
-__aicore__ inline void KeyPoolBlockVector<COMP>::RoundToHiddenDtype(
-    const LocalTensor<T> &srcLocal, uint32_t elementCount)
+__aicore__ inline void KeyPoolBlockVector<COMP>::RoundToHiddenDtype(const LocalTensor<T> &srcLocal,
+                                                                    uint32_t elementCount)
 {
     constexpr uint32_t maxRoundCount = BUFFER_SIZE_BYTE_16K / sizeof(HIDDEN_STATES_T);
     for (uint32_t offset = 0; offset < elementCount; offset += maxRoundCount) {
@@ -960,8 +957,8 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::RoundToHiddenDtype(
 }
 
 template <typename COMP>
-__aicore__ inline void KeyPoolBlockVector<COMP>::AddApeToPooledScore(
-    const LocalTensor<T> &scoreLocal, uint32_t poolCount, uint32_t dDealSize)
+__aicore__ inline void KeyPoolBlockVector<COMP>::AddApeToPooledScore(const LocalTensor<T> &scoreLocal,
+                                                                     uint32_t poolCount, uint32_t dDealSize)
 {
     uint32_t poolElementCount = cmpRatio_ * dDealSize;
     for (uint32_t pool = 0; pool < poolCount; pool++) {
@@ -971,9 +968,9 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::AddApeToPooledScore(
 
 template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::KvMulReduceScore(const LocalTensor<T> &kvLocal,
-                                                                     const LocalTensor<T> &scoreLocal,
-                                                                     const LocalTensor<T> &dstLocal,
-                                                                     uint32_t tcDealSize, uint32_t dDealSize)
+                                                                  const LocalTensor<T> &scoreLocal,
+                                                                  const LocalTensor<T> &dstLocal, uint32_t tcDealSize,
+                                                                  uint32_t dDealSize)
 {
     if (hasLayerNorm_ && cmpRatio_ == 128U) {
         PipeBarrier<PIPE_ALL>();
@@ -983,16 +980,15 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::KvMulReduceScore(const LocalTen
 
 template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::CopyOutVec1ResToOutput(const LocalTensor<T> &comperssoredUb,
-                                                                           const Vec1SliceInfo &sliceInfo,
-                                                                           uint32_t compressTcSize, uint32_t dStartIdx,
-                                                                           uint32_t dDealSize)
+                                                                        const Vec1SliceInfo &sliceInfo,
+                                                                        uint32_t compressTcSize, uint32_t dStartIdx,
+                                                                        uint32_t dDealSize)
 {
     LocalTensor<HIDDEN_STATES_T> outputUb = outputQue2.AllocTensor<HIDDEN_STATES_T>();
     Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, compressTcSize * dDealSize);
     outputQue2.EnQue(outputUb);
     outputQue2.DeQue<HIDDEN_STATES_T>();
-    uint32_t outputPoolCapacity =
-        CeilDivT(constInfo_.maxBlockNumPerBatch * constInfo_.blockSize, cmpRatio_);
+    uint32_t outputPoolCapacity = CeilDivT(constInfo_.maxBlockNumPerBatch * constInfo_.blockSize, cmpRatio_);
     uint32_t bIdx = sliceInfo.bIdx;
     uint32_t sIdx = sliceInfo.sIdx;
     uint64_t ubOffset = 0;
@@ -1002,8 +998,8 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::CopyOutVec1ResToOutput(const Lo
         uint32_t totalScSize = (GetSeqUsed(bIdx) + bStartPos) / cmpRatio_;
         if (preScSize < totalScSize) {
             uint32_t curScSize = min(compressTcSize, totalScSize - preScSize);
-            uint64_t outputPoolIdx = static_cast<uint64_t>(bIdx) * outputPoolCapacity +
-                                     preScSize - bStartPos / cmpRatio_;
+            uint64_t outputPoolIdx =
+                static_cast<uint64_t>(bIdx) * outputPoolCapacity + preScSize - bStartPos / cmpRatio_;
             uint64_t outGmOffset = outputPoolIdx * constInfo_.headDim + dStartIdx;
             DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb[ubOffset], curScSize, dDealSize, dDealSize,
                                 constInfo_.headDim);
@@ -1053,36 +1049,26 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::OverLapScoreKv(
     if (hasLayerNorm_) {
         uint64_t normalizedOffset =
             normalizedKvDbOffset_ +
-            static_cast<uint64_t>(compressedCnt_ - normalizedPoolBase_) *
-                cmpRatio_ * constInfo_.headDim +
-            dStartIdx;
-        DataCopyAlignGmToUb(kvLocal, normalizedKvGm_[normalizedOffset],
-                            statisticInfo.key_poolScCnt * cmpRatio_,
+            static_cast<uint64_t>(compressedCnt_ - normalizedPoolBase_) * cmpRatio_ * constInfo_.headDim + dStartIdx;
+        DataCopyAlignGmToUb(kvLocal, normalizedKvGm_[normalizedOffset], statisticInfo.key_poolScCnt * cmpRatio_,
                             dDealSize, constInfo_.headDim, dDealSize);
-        event_t eventIdMte2ToV =
-            static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+        event_t eventIdMte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
         SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
         WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
         PipeBarrier<PIPE_ALL>();
     } else {
-        GlobalTensor<T> kvDBMm1ResGm =
-            kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
+        GlobalTensor<T> kvDBMm1ResGm = kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
         LocalTensor<T> kvUb = inputQue1.AllocTensor<T>();
-        FromWokrSpaceToUb(kvUb, kvDBMm1ResGm, originSliceInfo,
-                         statisticInfo, dStartIdx, dDealSize);
+        FromWokrSpaceToUb(kvUb, kvDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
         inputQue1.EnQue(kvUb);
         inputQue1.DeQue<T>();
-        RoundToHiddenDtype(kvUb,
-                           statisticInfo.dealSeqCnt * coff_ * dDealSize);
-        overLapSliceIterator.Reset(originSliceInfo.bIdx,
-                                   originSliceInfo.sIdx, 0U, 0U);
+        RoundToHiddenDtype(kvUb, statisticInfo.dealSeqCnt * coff_ * dDealSize);
+        overLapSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.sIdx, 0U, 0U);
         overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
         while (!overLapSliceIterator.IsEnd()) {
             overLapSliceIterator.GetSlice();
-            OverLap<false>(kvLocal, kvUb, kvDBMm1ResGm, stateCacheGm_,
-                           stateBlockTableGm_, kvCacheTcGm_, info,
-                           overLapSliceInfo, loopInfo, dStartIdx,
-                           originSliceInfo.dealedSeqCnt, dDealSize);
+            OverLap<false>(kvLocal, kvUb, kvDBMm1ResGm, stateCacheGm_, stateBlockTableGm_, kvCacheTcGm_, info,
+                           overLapSliceInfo, loopInfo, dStartIdx, originSliceInfo.dealedSeqCnt, dDealSize);
             overLapSliceIterator.IteratorSlice();
         }
         inputQue1.FreeTensor(kvUb);
@@ -1092,14 +1078,14 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::OverLapScoreKv(
 }
 
 template <typename COMP>
-__aicore__ inline void KeyPoolBlockVector<COMP>::GatherKvForNorm(
-    const LocalTensor<T> &kvLocal, const Vec1RunInfo &info,
-    const LoopInfo &loopInfo, const StatisticInfo &statisticInfo,
-    const Vec1SliceInfo &originSliceInfo, uint32_t dStartIdx,
-    uint32_t dDealSize, uint32_t needDealTcSize)
+__aicore__ inline void KeyPoolBlockVector<COMP>::GatherKvForNorm(const LocalTensor<T> &kvLocal, const Vec1RunInfo &info,
+                                                                 const LoopInfo &loopInfo,
+                                                                 const StatisticInfo &statisticInfo,
+                                                                 const Vec1SliceInfo &originSliceInfo,
+                                                                 uint32_t dStartIdx, uint32_t dDealSize,
+                                                                 uint32_t needDealTcSize)
 {
-    GlobalTensor<T> kvDBMm1ResGm =
-        kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
+    GlobalTensor<T> kvDBMm1ResGm = kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
 
     KeyPoolVec1SliceIterator<COMP> overLapSliceIterator(tools_);
     overLapSliceIterator.SetMaxBatchSize(constInfo_.batchSize);
@@ -1109,68 +1095,49 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::GatherKvForNorm(
     while (!overLapSliceIterator.IsEnd()) {
         overLapSliceIterator.GetSlice();
         if (overLapSliceInfo.dealTcSize > 0) {
-            ReadState<false>(kvLocal, stateCacheGm_, stateBlockTableGm_,
-                             overLapSliceInfo, dStartIdx, dDealSize, 0U);
+            ReadState<false>(kvLocal, stateCacheGm_, stateBlockTableGm_, overLapSliceInfo, dStartIdx, dDealSize, 0U);
 
             if constexpr (COMP::coff == COFF::DISABLE) {
                 if (overLapSliceInfo.compressTcSize > 0) {
                     uint32_t copyRowCount =
-                        overLapSliceInfo.compressTcSize * cmpRatio_ -
-                        overLapSliceInfo.headHolderSeqCnt;
-                    uint64_t dstUbOffset =
-                        (static_cast<uint64_t>(overLapSliceInfo.key_pooledScCnt) *
-                             cmpRatio_ +
-                         overLapSliceInfo.headHolderSeqCnt) *
-                        dDealSize;
+                        overLapSliceInfo.compressTcSize * cmpRatio_ - overLapSliceInfo.headHolderSeqCnt;
+                    uint64_t dstUbOffset = (static_cast<uint64_t>(overLapSliceInfo.key_pooledScCnt) * cmpRatio_ +
+                                            overLapSliceInfo.headHolderSeqCnt) *
+                                           dDealSize;
                     uint64_t srcGmOffset =
-                        (static_cast<uint64_t>(originSliceInfo.dealedSeqCnt) +
-                         overLapSliceInfo.dealedSeqCnt) *
+                        (static_cast<uint64_t>(originSliceInfo.dealedSeqCnt) + overLapSliceInfo.dealedSeqCnt) *
                             constInfo_.headDim +
                         dStartIdx;
-                    uint32_t maxRowsPerChunk = max(
-                        1U, static_cast<uint32_t>(BUFFER_SIZE_BYTE_32K /
-                                                  (dDealSize * sizeof(T))));
-                    for (uint32_t rowOffset = 0; rowOffset < copyRowCount;
-                         rowOffset += maxRowsPerChunk) {
-                        uint32_t curRows = min(maxRowsPerChunk,
-                                               copyRowCount - rowOffset);
+                    uint32_t maxRowsPerChunk =
+                        max(1U, static_cast<uint32_t>(BUFFER_SIZE_BYTE_32K / (dDealSize * sizeof(T))));
+                    for (uint32_t rowOffset = 0; rowOffset < copyRowCount; rowOffset += maxRowsPerChunk) {
+                        uint32_t curRows = min(maxRowsPerChunk, copyRowCount - rowOffset);
                         LocalTensor<T> inputChunk = inputQue1.AllocTensor<T>();
-                        GlobalTensor<T> srcChunk = kvDBMm1ResGm[
-                            srcGmOffset + static_cast<uint64_t>(rowOffset) *
-                                               constInfo_.headDim];
+                        GlobalTensor<T> srcChunk =
+                            kvDBMm1ResGm[srcGmOffset + static_cast<uint64_t>(rowOffset) * constInfo_.headDim];
                         if (constInfo_.kBaseNum == 1) {
-                            DataCopyAlignGmToUb(inputChunk, srcChunk, curRows,
-                                                dDealSize, constInfo_.headDim,
+                            DataCopyAlignGmToUb(inputChunk, srcChunk, curRows, dDealSize, constInfo_.headDim,
                                                 dDealSize);
                         } else {
-                            AddMultiDataToUb(
-                                inputChunk, srcChunk, curRows, dDealSize,
-                                constInfo_.headDim, dDealSize,
-                                constInfo_.kBaseNum, constInfo_.mm1KvResSize);
+                            AddMultiDataToUb(inputChunk, srcChunk, curRows, dDealSize, constInfo_.headDim, dDealSize,
+                                             constInfo_.kBaseNum, constInfo_.mm1KvResSize);
                         }
                         inputQue1.EnQue(inputChunk);
                         inputQue1.DeQue<T>();
                         RoundToHiddenDtype(inputChunk, curRows * dDealSize);
-                        DataCopyAlignUbToUb(
-                            kvLocal[dstUbOffset +
-                                    static_cast<uint64_t>(rowOffset) *
-                                        dDealSize],
-                            inputChunk, curRows, dDealSize, dDealSize,
-                            dDealSize);
+                        DataCopyAlignUbToUb(kvLocal[dstUbOffset + static_cast<uint64_t>(rowOffset) * dDealSize],
+                                            inputChunk, curRows, dDealSize, dDealSize, dDealSize);
                         inputQue1.FreeTensor(inputChunk);
                     }
                 }
             } else {
                 LocalTensor<T> kvUb = inputQue1.AllocTensor<T>();
-                FromWokrSpaceToUb(kvUb, kvDBMm1ResGm, originSliceInfo,
-                                  statisticInfo, dStartIdx, dDealSize);
+                FromWokrSpaceToUb(kvUb, kvDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
                 inputQue1.EnQue(kvUb);
                 inputQue1.DeQue<T>();
                 RoundToHiddenDtype(kvUb, statisticInfo.dealSeqCnt * dDealSize);
-                OverLap<false>(kvLocal, kvUb, kvDBMm1ResGm, stateCacheGm_,
-                               stateBlockTableGm_, kvCacheTcGm_, info,
-                               overLapSliceInfo, loopInfo, dStartIdx,
-                               originSliceInfo.dealedSeqCnt, dDealSize);
+                OverLap<false>(kvLocal, kvUb, kvDBMm1ResGm, stateCacheGm_, stateBlockTableGm_, kvCacheTcGm_, info,
+                               overLapSliceInfo, loopInfo, dStartIdx, originSliceInfo.dealedSeqCnt, dDealSize);
                 inputQue1.FreeTensor(kvUb);
             }
         }
@@ -1180,37 +1147,29 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::GatherKvForNorm(
 }
 
 template <typename COMP>
-__aicore__ inline void KeyPoolBlockVector<COMP>::PrepareNormalizedKv(
-    const Vec1RunInfo &info, const Vec1SplitInfo &splitInfo,
-    const LoopInfo &loopInfo)
+__aicore__ inline void KeyPoolBlockVector<COMP>::PrepareNormalizedKv(const Vec1RunInfo &info,
+                                                                     const Vec1SplitInfo &splitInfo,
+                                                                     const LoopInfo &loopInfo)
 {
-    GlobalTensor<T> kvDBMm1ResGm =
-        kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
+    GlobalTensor<T> kvDBMm1ResGm = kvMm1ResGm_[info.c1v1DbIdx * constInfo_.dbSize];
     normalizedKvDbOffset_ =
-        (static_cast<uint64_t>(info.c1v1DbIdx) * constInfo_.usedCoreNum * 2U +
-         GetBlockIdx()) * constInfo_.mm1KvResSize;
+        (static_cast<uint64_t>(info.c1v1DbIdx) * constInfo_.usedCoreNum * 2U + GetBlockIdx()) * constInfo_.mm1KvResSize;
     normalizedPoolBase_ = compressedCnt_;
 
     KeyPoolVec1SliceIterator<COMP> sliceIterator(tools_);
     sliceIterator.SetMaxBatchSize(constInfo_.batchSize);
-    sliceIterator.Reset(splitInfo.curBStart, splitInfo.curSStart,
-                        splitInfo.dealSeqStartIdx, 0U);
+    sliceIterator.Reset(splitInfo.curBStart, splitInfo.curSStart, splitInfo.dealSeqStartIdx, 0U);
     for (uint32_t tcIdx = 0; tcIdx < splitInfo.dealTcSize;) {
-        uint32_t maxPoolCount =
-            BUFFER_SIZE_BYTE_64K /
-            (cmpRatio_ * constInfo_.headDim * sizeof(T));
+        uint32_t maxPoolCount = BUFFER_SIZE_BYTE_64K / (cmpRatio_ * constInfo_.headDim * sizeof(T));
         maxPoolCount = max(maxPoolCount, 1U);
-        uint32_t actDealTcSize =
-            min(maxPoolCount, splitInfo.dealTcSize - tcIdx);
+        uint32_t actDealTcSize = min(maxPoolCount, splitInfo.dealTcSize - tcIdx);
         sliceIterator.SetNeedDealTcSize(actDealTcSize);
         Vec1SliceInfo originSliceInfo = sliceIterator.GetSlice();
         uint32_t needDealTcSize = sliceIterator.GetNeedDealTcSize();
-        StatisticInfo &statisticInfo =
-            sliceIterator.template FullIteratorSlice<true>();
+        StatisticInfo &statisticInfo = sliceIterator.template FullIteratorSlice<true>();
         if (statisticInfo.key_poolScCnt > 0) {
             LocalTensor<T> kvLocal = tmpBuff2.Get<T>();
-            GatherKvForNorm(kvLocal, info, loopInfo, statisticInfo,
-                            originSliceInfo, 0U, constInfo_.headDim,
+            GatherKvForNorm(kvLocal, info, loopInfo, statisticInfo, originSliceInfo, 0U, constInfo_.headDim,
                             needDealTcSize);
             SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 
@@ -1223,21 +1182,17 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::PrepareNormalizedKv(
                 Vec1SliceInfo normalizedSlice = normalizedSliceIterator.GetSlice();
                 if (normalizedSlice.compressTcSize > 0) {
                     uint32_t historicalRows = normalizedSlice.headHolderSeqCnt;
-                    uint32_t currentRows =
-                        normalizedSlice.compressTcSize * cmpRatio_ - historicalRows;
+                    uint32_t currentRows = normalizedSlice.compressTcSize * cmpRatio_ - historicalRows;
                     uint64_t currentOffset =
-                        static_cast<uint64_t>(
-                            normalizedSlice.key_pooledScCnt * cmpRatio_ + historicalRows) *
+                        static_cast<uint64_t>(normalizedSlice.key_pooledScCnt * cmpRatio_ + historicalRows) *
                         constInfo_.headDim;
                     LocalTensor<T> normScratch = inputQue1.AllocTensor<T>();
-                    KeyPoolLayerNormRowsInplace(
-                        kvLocal[currentOffset], normScratch, normWeightGm_, normBiasGm_,
-                        constInfo_.normEps, currentRows,
-                        constInfo_.headDim, constInfo_.headDim);
+                    KeyPoolLayerNormRowsInplace(kvLocal[currentOffset], normScratch, normWeightGm_, normBiasGm_,
+                                                constInfo_.normEps, currentRows, constInfo_.headDim,
+                                                constInfo_.headDim);
                     inputQue1.FreeTensor(normScratch);
                     PipeBarrier<PIPE_ALL>();
-                    ApplyKeyPoolRotaryPlaceholder(
-                        kvLocal[currentOffset], currentRows * constInfo_.headDim);
+                    ApplyKeyPoolRotaryPlaceholder(kvLocal[currentOffset], currentRows * constInfo_.headDim);
                 }
                 normalizedSliceIterator.IteratorSlice();
             }
@@ -1246,13 +1201,9 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::PrepareNormalizedKv(
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
             uint64_t normalizedOffset =
                 normalizedKvDbOffset_ +
-                static_cast<uint64_t>(compressedCnt_ - normalizedPoolBase_) *
-                    cmpRatio_ * constInfo_.headDim;
-            DataCopyAlignUbToGm(
-                normalizedKvGm_[normalizedOffset], kvLocal,
-                statisticInfo.key_poolScCnt * cmpRatio_,
-                constInfo_.headDim, constInfo_.headDim,
-                constInfo_.headDim);
+                static_cast<uint64_t>(compressedCnt_ - normalizedPoolBase_) * cmpRatio_ * constInfo_.headDim;
+            DataCopyAlignUbToGm(normalizedKvGm_[normalizedOffset], kvLocal, statisticInfo.key_poolScCnt * cmpRatio_,
+                                constInfo_.headDim, constInfo_.headDim, constInfo_.headDim);
             SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
             WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
             compressedCnt_ += statisticInfo.key_poolScCnt;
@@ -1267,43 +1218,32 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::PrepareNormalizedKv(
         tailIterator.SetNeedDealTcSize(needDealTcSize);
         while (!tailIterator.IsEnd()) {
             Vec1SliceInfo tailSlice = tailIterator.GetSlice();
-            uint32_t tailRows =
-                (tailSlice.bStartPos + tailSlice.bSeqUsed) % cmpRatio_;
+            uint32_t tailRows = (tailSlice.bStartPos + tailSlice.bSeqUsed) % cmpRatio_;
             tailRows = min(tailRows, tailSlice.validSeqCnt);
-            if (tailRows > 0 &&
-                tailSlice.sIdx + tailSlice.validSeqCnt == tailSlice.bSeqUsed) {
-                uint64_t tailOffset =
-                    static_cast<uint64_t>(originSliceInfo.dealedSeqCnt +
-                                          tailSlice.dealedSeqCnt +
-                                          tailSlice.validSeqCnt - tailRows) *
-                    constInfo_.headDim;
+            if (tailRows > 0 && tailSlice.sIdx + tailSlice.validSeqCnt == tailSlice.bSeqUsed) {
+                uint64_t tailOffset = static_cast<uint64_t>(originSliceInfo.dealedSeqCnt + tailSlice.dealedSeqCnt +
+                                                            tailSlice.validSeqCnt - tailRows) *
+                                      constInfo_.headDim;
                 LocalTensor<T> tailKv = tmpBuff2.Get<T>();
                 if (constInfo_.kBaseNum == 1) {
-                    DataCopyAlignGmToUb(tailKv, kvDBMm1ResGm[tailOffset],
-                                        tailRows, constInfo_.headDim,
+                    DataCopyAlignGmToUb(tailKv, kvDBMm1ResGm[tailOffset], tailRows, constInfo_.headDim,
                                         constInfo_.headDim, constInfo_.headDim);
                 } else {
                     // The incomplete tail is persisted for the next call and
                     // is not consumed by Pool in this call, so save the full
                     // K projection rather than its first K partial.
-                    AddMultiDataToUb(tailKv, kvDBMm1ResGm[tailOffset],
-                                     tailRows, constInfo_.headDim,
-                                     constInfo_.headDim, constInfo_.headDim,
-                                     constInfo_.kBaseNum, constInfo_.mm1KvResSize);
+                    AddMultiDataToUb(tailKv, kvDBMm1ResGm[tailOffset], tailRows, constInfo_.headDim, constInfo_.headDim,
+                                     constInfo_.headDim, constInfo_.kBaseNum, constInfo_.mm1KvResSize);
                 }
-                event_t eventIdMte2ToV =
-                    static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+                event_t eventIdMte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
                 SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
                 WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
                 RoundToHiddenDtype(tailKv, tailRows * constInfo_.headDim);
                 LocalTensor<T> normScratch = inputQue1.AllocTensor<T>();
-                KeyPoolLayerNormRowsInplace(
-                    tailKv, normScratch, normWeightGm_, normBiasGm_,
-                    constInfo_.normEps, tailRows,
-                    constInfo_.headDim, constInfo_.headDim);
+                KeyPoolLayerNormRowsInplace(tailKv, normScratch, normWeightGm_, normBiasGm_, constInfo_.normEps,
+                                            tailRows, constInfo_.headDim, constInfo_.headDim);
                 inputQue1.FreeTensor(normScratch);
-                ApplyKeyPoolRotaryPlaceholder(
-                    tailKv, tailRows * constInfo_.headDim);
+                ApplyKeyPoolRotaryPlaceholder(tailKv, tailRows * constInfo_.headDim);
 
                 Vec1SliceInfo tailCacheSlice = tailSlice;
                 tailCacheSlice.sIdx += tailSlice.validSeqCnt - tailRows;
@@ -1311,8 +1251,7 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::PrepareNormalizedKv(
                 tailCacheSlice.dealedSeqCnt = 0U;
                 SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
                 WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
-                SaveState(tailKv, stateCacheGm_, stateBlockTableGm_,
-                          tailCacheSlice, 0U, constInfo_.headDim, 0U);
+                SaveState(tailKv, stateCacheGm_, stateBlockTableGm_, tailCacheSlice, 0U, constInfo_.headDim, 0U);
             }
             tailIterator.IteratorSlice();
         }
@@ -1324,9 +1263,9 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::PrepareNormalizedKv(
 
 template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::DealVec1BaseBlock(const Vec1RunInfo &info,
-                                                                      KeyPoolVec1SliceIterator<COMP> &sliceIterator,
-                                                                      const LoopInfo &loopInfo, uint32_t dStartIdx,
-                                                                      uint32_t dDealSize, uint32_t dBaseSize)
+                                                                   KeyPoolVec1SliceIterator<COMP> &sliceIterator,
+                                                                   const LoopInfo &loopInfo, uint32_t dStartIdx,
+                                                                   uint32_t dDealSize, uint32_t dBaseSize)
 {
     Vec1SliceInfo originSliceInfo = sliceIterator.GetSlice();
     uint32_t needDealTcSize = sliceIterator.GetNeedDealTcSize();
@@ -1383,8 +1322,7 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::CalcGroupInfo(const Vec1RunInfo
 }
 
 template <typename COMP>
-__aicore__ inline void KeyPoolBlockVector<COMP>::CalcTaskDistribution(const Vec1RunInfo &info,
-                                                                         Vec1SplitInfo &splitInfo)
+__aicore__ inline void KeyPoolBlockVector<COMP>::CalcTaskDistribution(const Vec1RunInfo &info, Vec1SplitInfo &splitInfo)
 {
     uint32_t blockIdx = GetBlockIdx();
     uint32_t groupSize = splitInfo.vec1GroupSize;
@@ -1404,8 +1342,7 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::CalcTaskDistribution(const Vec1
 }
 
 template <typename COMP>
-__aicore__ inline void KeyPoolBlockVector<COMP>::UpdateIteratorState(const Vec1RunInfo &info,
-                                                                        Vec1SplitInfo &splitInfo)
+__aicore__ inline void KeyPoolBlockVector<COMP>::UpdateIteratorState(const Vec1RunInfo &info, Vec1SplitInfo &splitInfo)
 {
     KeyPoolVec1SliceIterator sliceIterator(tools_);
     sliceIterator.SetMaxBatchSize(constInfo_.batchSize);
@@ -1536,15 +1473,14 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::ComputeIncrementalPool()
         return;
     }
     dDealSize = min(dDealSize, constInfo_.headDim - dStartIdx);
-    uint32_t outputPoolCapacity =
-        CeilDivT(constInfo_.maxBlockNumPerBatch * constInfo_.blockSize, cmpRatio_);
+    uint32_t outputPoolCapacity = CeilDivT(constInfo_.maxBlockNumPerBatch * constInfo_.blockSize, cmpRatio_);
 
     for (uint32_t bIdx = 0; bIdx < constInfo_.batchSize; bIdx++) {
         uint32_t startPool = GetStartPos(bIdx) / cmpRatio_;
         uint32_t validPoolCount = (GetStartPos(bIdx) + GetSeqUsed(bIdx)) / cmpRatio_;
         uint32_t newPoolCount = validPoolCount > startPool ? validPoolCount - startPool : 0;
-        const uint32_t clearPoolCapacity = max(
-            1U, static_cast<uint32_t>(BUFFER_SIZE_BYTE_16K / (dDealSize * sizeof(HIDDEN_STATES_T))));
+        const uint32_t clearPoolCapacity =
+            max(1U, static_cast<uint32_t>(BUFFER_SIZE_BYTE_16K / (dDealSize * sizeof(HIDDEN_STATES_T))));
         for (uint32_t clearStart = newPoolCount; clearStart < outputPoolCapacity; clearStart += clearPoolCapacity) {
             uint32_t clearCount = min(clearPoolCapacity, outputPoolCapacity - clearStart);
             LocalTensor<HIDDEN_STATES_T> zeroUb = outputQue2.AllocTensor<HIDDEN_STATES_T>();
@@ -1553,8 +1489,7 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::ComputeIncrementalPool()
             outputQue2.DeQue<HIDDEN_STATES_T>();
             uint64_t outGmOffset =
                 (static_cast<uint64_t>(bIdx) * outputPoolCapacity + clearStart) * constInfo_.headDim + dStartIdx;
-            DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], zeroUb, clearCount, dDealSize, dDealSize,
-                                constInfo_.headDim);
+            DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], zeroUb, clearCount, dDealSize, dDealSize, constInfo_.headDim);
             outputQue2.FreeTensor(zeroUb);
         }
     }

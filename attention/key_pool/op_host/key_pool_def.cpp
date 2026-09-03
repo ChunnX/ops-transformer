@@ -17,7 +17,8 @@ public:
     static constexpr uint32_t ROTARY_MODE_VALUE = 1;
     static constexpr uint32_t STATE_CACHE_STRIDE_DIM0 = 0;
 
-    explicit KeyPool(const char *name) : OpDef(name)
+    explicit KeyPool(const char *name)
+        : OpDef(name)
     {
         this->Input("hidden_states")
             .ParamType(REQUIRED)
@@ -83,7 +84,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");   // set value of aclnn support
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn"); // set value of aclnn support
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
         this->AICore().AddConfig("ascend950", aicore_config);

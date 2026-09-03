@@ -1,8 +1,11 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 #ifndef KEY_POOL_LAYER_NORM_H
@@ -11,9 +14,9 @@
 namespace KeyPool {
 
 __aicore__ inline void KeyPoolLayerNorm(const LocalTensor<float> &data, const LocalTensor<float> &in,
-                                       const LocalTensor<float> &out, const LocalTensor<float> &mean,
-                                       const LocalTensor<float> &gamma, const LocalTensor<float> &beta, float eps,
-                                       uint32_t count)
+                                        const LocalTensor<float> &out, const LocalTensor<float> &mean,
+                                        const LocalTensor<float> &gamma, const LocalTensor<float> &beta, float eps,
+                                        uint32_t count)
 {
     const float reciprocal = 1.0f / static_cast<float>(static_cast<int64_t>(count));
 
@@ -60,10 +63,10 @@ __aicore__ inline void KeyPoolLayerNorm(const LocalTensor<float> &data, const Lo
 // Normalize complete current K rows before they enter the pooling path. The
 // caller provides a scratch tensor with room for input/output and three
 // vectors: mean, gamma, and beta.
-__aicore__ inline void KeyPoolLayerNormRowsInplace(
-    const LocalTensor<float> &data, const LocalTensor<float> &scratch,
-    const GlobalTensor<float> &normWeight, const GlobalTensor<float> &normBias,
-    float eps, uint32_t rowCount, uint32_t rowStride, uint32_t headDim)
+__aicore__ inline void KeyPoolLayerNormRowsInplace(const LocalTensor<float> &data, const LocalTensor<float> &scratch,
+                                                   const GlobalTensor<float> &normWeight,
+                                                   const GlobalTensor<float> &normBias, float eps, uint32_t rowCount,
+                                                   uint32_t rowStride, uint32_t headDim)
 {
     if (rowCount == 0 || rowStride < headDim) {
         return;
@@ -78,8 +81,7 @@ __aicore__ inline void KeyPoolLayerNormRowsInplace(
     SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
     WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
     for (uint32_t row = 0; row < rowCount; ++row) {
-        KeyPoolLayerNorm(data[static_cast<uint64_t>(row) * rowStride], input, output, mean, gamma, beta, eps,
-                         headDim);
+        KeyPoolLayerNorm(data[static_cast<uint64_t>(row) * rowStride], input, output, mean, gamma, beta, eps, headDim);
     }
 }
 

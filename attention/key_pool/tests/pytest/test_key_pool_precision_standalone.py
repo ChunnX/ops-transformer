@@ -1,8 +1,11 @@
-"""Standalone KeyPool NPU-vs-Golden precision check.
-
-Run directly after loading the CANN, custom-op, and torch-extension
-environments.  The script intentionally has no command-line parameters.
-"""
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 
 from __future__ import annotations
 
@@ -31,18 +34,32 @@ def generate_data():
         ("bsh_norm_off_history", "BSH", (9, 9), (3, 0), 4, 4, False, False),
         ("th_norm_on_zero_batch", "TH", (6, 3, 0), (5, 2, 4), 8, 2, True, True),
         ("bsh_norm_on_long_history", "BSH", (17,), (16,), 16, 8, False, True),
-        ("th_norm_off_small_blocks", "TH", (4, 4, 4, 4), (2, 2, 2, 2), 2, 1, True, False),
+        (
+            "th_norm_off_small_blocks",
+            "TH",
+            (4, 4, 4, 4),
+            (2, 2, 2, 2),
+            2,
+            1,
+            True,
+            False,
+        ),
     )
 
-    for name, layout, lengths, starts, cmp_ratio, block_size, scramble, norm_on in case_specs:
-        max_updated = max(
-            start + length for start, length in zip(starts, lengths)
-        )
+    for (
+        name,
+        layout,
+        lengths,
+        starts,
+        cmp_ratio,
+        block_size,
+        scramble,
+        norm_on,
+    ) in case_specs:
+        max_updated = max(start + length for start, length in zip(starts, lengths))
         max_blocks = max(1, (max_updated + block_size - 1) // block_size)
         block_num = 1 + len(lengths) * max_blocks
-        cache_block_table = torch.empty(
-            (len(lengths), max_blocks), dtype=torch.int32
-        )
+        cache_block_table = torch.empty((len(lengths), max_blocks), dtype=torch.int32)
         physical_block = 1
         for batch in range(len(lengths)):
             for logical_block in range(max_blocks):
@@ -68,9 +85,10 @@ def generate_data():
         wk = (torch.randn(head_dim, hidden_size) * 0.02).to(torch.bfloat16)
         gate_weight = (torch.randn(head_dim, hidden_size) * 0.02).to(torch.bfloat16)
         ape = torch.randn(cmp_ratio, head_dim, dtype=torch.float32) * 0.1
-        state_cache = torch.randn(
-            (block_num, block_size, 2 * head_dim), dtype=torch.float32
-        ) * 0.1
+        state_cache = (
+            torch.randn((block_num, block_size, 2 * head_dim), dtype=torch.float32)
+            * 0.1
+        )
         start_pos = torch.tensor(starts, dtype=torch.int32)
         norm_weight = torch.randn(head_dim, dtype=torch.float32) if norm_on else None
         norm_bias = torch.randn(head_dim, dtype=torch.float32) if norm_on else None
@@ -216,7 +234,11 @@ def compare_precision(
     output_percent = float(output_close.float().mean()) * 100.0
     cache_percent = float(cache_close.float().mean()) * 100.0
     output_max = float((actual - expected).abs().max()) if actual.numel() else 0.0
-    cache_max = float((actual_cache - expected_cache).abs().max()) if actual_cache.numel() else 0.0
+    cache_max = (
+        float((actual_cache - expected_cache).abs().max())
+        if actual_cache.numel()
+        else 0.0
+    )
     passed = output_percent >= 99.5 and cache_percent >= 99.5
     print(
         f"{case_name}: {'PASS' if passed else 'FAIL'}; "

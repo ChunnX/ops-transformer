@@ -62,7 +62,9 @@ class KeyPoolOpBuilder(OpBuilder):
             if (cos is None) != (sin is None):
                 raise ValueError("cos and sin must be passed as a pair")
             if cos is not None:
-                raise NotImplementedError("KeyPool RoPE is not implemented in this stage")
+                raise NotImplementedError(
+                    "KeyPool RoPE is not implemented in this stage"
+                )
             if hidden_states.dim() == 2 and cu_seqlens is None:
                 raise ValueError("cu_seqlens is required for TH layout")
             if hidden_states.dim() == 3 and cu_seqlens is not None:
@@ -70,10 +72,14 @@ class KeyPoolOpBuilder(OpBuilder):
             if seqused is not None:
                 raise ValueError("seqused is reserved and must be None in this stage")
             b = cache_block_table.size(0)
-            pcap = (cache_block_table.size(1) * state_cache.size(1) + cmp_ratio - 1) // cmp_ratio
+            pcap = (
+                cache_block_table.size(1) * state_cache.size(1) + cmp_ratio - 1
+            ) // cmp_ratio
             pooled_key_size = (b, pcap, wk.size(0))
 
-            return torch.empty(pooled_key_size, dtype=hidden_states.dtype, device="meta")
+            return torch.empty(
+                pooled_key_size, dtype=hidden_states.dtype, device="meta"
+            )
 
 
 key_pool_op_builder = KeyPoolOpBuilder()

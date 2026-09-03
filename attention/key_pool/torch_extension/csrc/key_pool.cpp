@@ -25,7 +25,8 @@ const int64_t VALUE_0 = 0;
 const int64_t VALUE_1 = 1;
 
 at::Tensor ConstructKeyPoolOutputTensor(const at::Tensor &hidden_states, const at::Tensor &wk,
-                                      const at::Tensor &stateCache, const at::Tensor &cacheBlockTable, int64_t cmpRatio)
+                                        const at::Tensor &stateCache, const at::Tensor &cacheBlockTable,
+                                        int64_t cmpRatio)
 {
     auto hiddenStatesDim = hidden_states.dim();
     at::SmallVector<int64_t, MAX_DIM_SIZE> pooledKeySize;
@@ -35,11 +36,10 @@ at::Tensor ConstructKeyPoolOutputTensor(const at::Tensor &hidden_states, const a
     auto wkDim = wk.dim();
     TORCH_CHECK(wkDim == DIM_TWO, "wk dim num[", wkDim, "] should be 2");
 
-    TORCH_CHECK(hiddenStatesDim == DIM_TWO || hiddenStatesDim == DIM_THREE,
-                "hidden_states dim num[", hiddenStatesDim, "] should be 2 or 3");
+    TORCH_CHECK(hiddenStatesDim == DIM_TWO || hiddenStatesDim == DIM_THREE, "hidden_states dim num[", hiddenStatesDim,
+                "] should be 2 or 3");
     TORCH_CHECK(stateCache.dim() == DIM_THREE, "state_cache dim num[", stateCache.dim(), "] should be 3");
-    TORCH_CHECK(cacheBlockTable.dim() == DIM_TWO,
-                "cache_block_table dim num[", cacheBlockTable.dim(), "] should be 2");
+    TORCH_CHECK(cacheBlockTable.dim() == DIM_TWO, "cache_block_table dim num[", cacheBlockTable.dim(), "] should be 2");
     int64_t pcap = (cacheBlockTable.size(1) * stateCache.size(1) + cmpRatio - 1) / cmpRatio;
     pooledKeySize = {cacheBlockTable.size(0), pcap, wk.size(0)};
 
@@ -48,21 +48,20 @@ at::Tensor ConstructKeyPoolOutputTensor(const at::Tensor &hidden_states, const a
 }
 
 at::Tensor KeyPool(const at::Tensor &hidden_states, const at::Tensor &wk, const at::Tensor &gate_weight,
-                 const at::Tensor &ape, at::Tensor &stateCache, const at::Tensor &cacheBlockTable,
-                 const at::Tensor &startPos, const c10::optional<at::Tensor> &normWeight,
-                 const c10::optional<at::Tensor> &normBias, const c10::optional<at::Tensor> &cos,
-                 const c10::optional<at::Tensor> &sin, const c10::optional<at::Tensor> &cuSeqlens,
-                 const c10::optional<at::Tensor> &seqused,
-                 int64_t cmpRatio, double normEps, int64_t rotaryMode)
+                   const at::Tensor &ape, at::Tensor &stateCache, const at::Tensor &cacheBlockTable,
+                   const at::Tensor &startPos, const c10::optional<at::Tensor> &normWeight,
+                   const c10::optional<at::Tensor> &normBias, const c10::optional<at::Tensor> &cos,
+                   const c10::optional<at::Tensor> &sin, const c10::optional<at::Tensor> &cuSeqlens,
+                   const c10::optional<at::Tensor> &seqused, int64_t cmpRatio, double normEps, int64_t rotaryMode)
 {
     TORCH_CHECK(hidden_states.defined(), "Check hidden_states != nullptr failed");
     auto hiddenStatesDim = hidden_states.dim();
-    TORCH_CHECK(hiddenStatesDim == DIM_TWO || hiddenStatesDim == DIM_THREE, "hidden_states dim num[", hiddenStatesDim, "] should be 2 or 3");
+    TORCH_CHECK(hiddenStatesDim == DIM_TWO || hiddenStatesDim == DIM_THREE, "hidden_states dim num[", hiddenStatesDim,
+                "] should be 2 or 3");
 
     TORCH_CHECK(cmpRatio > VALUE_0, "cmp_ratio should be greater than 0");
 
-    TORCH_CHECK(normWeight.has_value() == normBias.has_value(),
-                "norm_weight and norm_bias must be provided as a pair");
+    TORCH_CHECK(normWeight.has_value() == normBias.has_value(), "norm_weight and norm_bias must be provided as a pair");
     if (normWeight.has_value()) {
         TORCH_CHECK(normWeight->scalar_type() == at::kFloat && normBias->scalar_type() == at::kFloat,
                     "norm_weight and norm_bias must be FP32");
@@ -83,14 +82,11 @@ at::Tensor KeyPool(const at::Tensor &hidden_states, const at::Tensor &wk, const 
 
     if (cuSeqlens.has_value()) {
         TORCH_CHECK(cuSeqlens->scalar_type() == at::kInt, "cu_seqlens must be INT32");
-        TORCH_CHECK(cuSeqlens->dim() == DIM_ONE,
-                    "cu_seqlens dim num[", cuSeqlens->dim(), "] should be 1");
-        TORCH_CHECK(cuSeqlens->size(0) == cacheBlockTable.size(0) + VALUE_1,
-                    "cu_seqlens shape must be [B+1]");
+        TORCH_CHECK(cuSeqlens->dim() == DIM_ONE, "cu_seqlens dim num[", cuSeqlens->dim(), "] should be 1");
+        TORCH_CHECK(cuSeqlens->size(0) == cacheBlockTable.size(0) + VALUE_1, "cu_seqlens shape must be [B+1]");
     }
-    ACLNN_CMD(aclnnKeyPool, hidden_states, wk, gate_weight, ape, stateCache, cacheBlockTable, startPos,
-              normWeight, normBias, cos, sin, cuSeqlens, seqused, cmpRatio, normEps, rotaryMode,
-              stateCacheStrideDim0, pooledKey);
+    ACLNN_CMD(aclnnKeyPool, hidden_states, wk, gate_weight, ape, stateCache, cacheBlockTable, startPos, normWeight,
+              normBias, cos, sin, cuSeqlens, seqused, cmpRatio, normEps, rotaryMode, stateCacheStrideDim0, pooledKey);
 
     return pooledKey;
 }

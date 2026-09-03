@@ -5,7 +5,7 @@
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See the License for the full text of the License.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 #include <gtest/gtest.h>
@@ -31,9 +31,9 @@ TensorDesc Empty(ge::DataType dtype)
     return Desc({}, dtype);
 }
 
-gert::InfershapeContextPara MakePara(
-    const std::string &layout, ge::DataType dtype, int64_t batch, int64_t sequence, int64_t hidden,
-    int64_t headDim, int64_t cmpRatio, int64_t blockSize, int64_t maxBlocks, bool withNorm = false)
+gert::InfershapeContextPara MakePara(const std::string &layout, ge::DataType dtype, int64_t batch, int64_t sequence,
+                                     int64_t hidden, int64_t headDim, int64_t cmpRatio, int64_t blockSize,
+                                     int64_t maxBlocks, bool withNorm = false)
 {
     const int64_t tokenCount = layout == "BSH" ? batch * sequence : sequence;
     const int64_t blockNum = std::max<int64_t>(1, batch * maxBlocks);
@@ -61,14 +61,13 @@ gert::InfershapeContextPara MakePara(
         {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(cmpRatio)},
         {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6F)},
         {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-        {"state_cache_stride_dim0",
-         Ops::Transformer::AnyValue::CreateFrom<int64_t>(blockSize * 2 * headDim)},
+        {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(blockSize * 2 * headDim)},
     };
 
     gert::InfershapeContextPara para("KeyPool", inputs, outputs, attrs);
     return para;
 }
-}  // namespace
+} // namespace
 
 TEST(KeyPoolInfershape, BshBf16D128)
 {

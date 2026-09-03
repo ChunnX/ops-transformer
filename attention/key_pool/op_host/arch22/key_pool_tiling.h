@@ -182,9 +182,16 @@ struct OptionalParaInfo {
     const gert::StorageShape *shape;
 };
 
-enum class LayoutType { LAYOUT_BSH, LAYOUT_TH };
+enum class LayoutType {
+    LAYOUT_BSH,
+    LAYOUT_TH
+};
 
-enum class TemplateId : uint8_t { NORMAL = 0, EMPTY_HIDDEN_STATES = 1, FULL_LOAD = 2 };
+enum class TemplateId : uint8_t {
+    NORMAL = 0,
+    EMPTY_HIDDEN_STATES = 1,
+    FULL_LOAD = 2
+};
 
 CMP_EXTERN_C ge::graphStatus TilingKeyPool(gert::TilingContext *context);
 #ifdef DAY0_SCOPE
@@ -230,7 +237,9 @@ struct KeyPoolContext {
 
 class KeyPoolTiling {
 public:
-    explicit KeyPoolTiling(KeyPoolContext *context) : context_(context) {}
+    explicit KeyPoolTiling(KeyPoolContext *context)
+        : context_(context)
+    {}
     ~KeyPoolTiling() = default;
 
     static ge::graphStatus ConvertContext(gert::TilingContext &context, KeyPoolContext &key_poolContext);
@@ -285,7 +294,8 @@ private:
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckFeature() const;
     ge::graphStatus CheckShapeConsistency() const;
-    ge::graphStatus CheckDtypeConsistencyHiddenStates(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
+    ge::graphStatus CheckDtypeConsistencyHiddenStates(const gert::CompileTimeTensorDesc *desc,
+                                                      const std::string &name) const;
     ge::graphStatus CheckDtypeConsistency() const;
     ge::graphStatus CheckMultiParaConsistency() const;
     ge::graphStatus CheckDimNumConsistency() const;

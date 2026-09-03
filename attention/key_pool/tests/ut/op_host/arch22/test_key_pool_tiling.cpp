@@ -5,7 +5,7 @@
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See the License for the full text of the License.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 #include <algorithm>
@@ -23,26 +23,25 @@ namespace {
 using TensorDesc = gert::TilingContextPara::TensorDescription;
 using OpAttr = gert::TilingContextPara::OpAttr;
 
-const char *kA2SocInfo =
-    "{"
-    "\"hardware_info\":{"
-    "\"BT_SIZE\":0,"
-    "\"load3d_constraints\":\"1\","
-    "\"Intrinsic_fix_pipe_l0c2out\":false,"
-    "\"Intrinsic_data_move_l12ub\":true,"
-    "\"Intrinsic_data_move_l0c2ub\":true,"
-    "\"Intrinsic_data_move_out2l1_nd2nz\":false,"
-    "\"4096\":196608,"
-    "\"L2_SIZE\":201326592,"
-    "\"L1_SIZE\":524288,"
-    "\"L0A_SIZE\":65536,"
-    "\"L0B_SIZE\":65536,"
-    "\"L0C_SIZE\":131072,"
-    "\"vector_core_cnt\":40,"
-    "\"cube_core_cnt\":20,"
-    "\"socVersion\":\"Ascend910B\""
-    "}"
-    "}";
+const char *kA2SocInfo = "{"
+                         "\"hardware_info\":{"
+                         "\"BT_SIZE\":0,"
+                         "\"load3d_constraints\":\"1\","
+                         "\"Intrinsic_fix_pipe_l0c2out\":false,"
+                         "\"Intrinsic_data_move_l12ub\":true,"
+                         "\"Intrinsic_data_move_l0c2ub\":true,"
+                         "\"Intrinsic_data_move_out2l1_nd2nz\":false,"
+                         "\"4096\":196608,"
+                         "\"L2_SIZE\":201326592,"
+                         "\"L1_SIZE\":524288,"
+                         "\"L0A_SIZE\":65536,"
+                         "\"L0B_SIZE\":65536,"
+                         "\"L0C_SIZE\":131072,"
+                         "\"vector_core_cnt\":40,"
+                         "\"cube_core_cnt\":20,"
+                         "\"socVersion\":\"Ascend910B\""
+                         "}"
+                         "}";
 
 TensorDesc Desc(const std::vector<int64_t> &dims, ge::DataType dtype)
 {
@@ -54,15 +53,14 @@ TensorDesc Empty(ge::DataType dtype)
     return Desc({}, dtype);
 }
 
-gert::TilingContextPara MakePara(
-    const std::string &layout, ge::DataType dtype, int64_t batch, int64_t sequence, int64_t hidden,
-    int64_t headDim, int64_t cmpRatio, int64_t blockSize, int64_t maxBlocks, bool withNorm = false)
+gert::TilingContextPara MakePara(const std::string &layout, ge::DataType dtype, int64_t batch, int64_t sequence,
+                                 int64_t hidden, int64_t headDim, int64_t cmpRatio, int64_t blockSize,
+                                 int64_t maxBlocks, bool withNorm = false)
 {
     const int64_t tokenCount = layout == "BSH" ? batch * sequence : sequence;
     const int64_t blockNum = std::max<int64_t>(1, batch * maxBlocks);
     std::vector<TensorDesc> inputs;
-    inputs.emplace_back(layout == "BSH" ? Desc({batch, sequence, hidden}, dtype)
-                                         : Desc({tokenCount, hidden}, dtype));
+    inputs.emplace_back(layout == "BSH" ? Desc({batch, sequence, hidden}, dtype) : Desc({tokenCount, hidden}, dtype));
     inputs.emplace_back(Desc({headDim, hidden}, dtype));
     inputs.emplace_back(Desc({headDim, hidden}, dtype));
     inputs.emplace_back(Desc({cmpRatio, headDim}, ge::DT_FLOAT));
@@ -82,13 +80,11 @@ gert::TilingContextPara MakePara(
         {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(cmpRatio)},
         {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6F)},
         {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-        {"state_cache_stride_dim0",
-         Ops::Transformer::AnyValue::CreateFrom<int64_t>(blockSize * 2 * headDim)},
+        {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(blockSize * 2 * headDim)},
     };
-    return gert::TilingContextPara(
-        "KeyPool", inputs, outputs, attrs, nullptr, "Ascend910B", kA2SocInfo, 4096);
+    return gert::TilingContextPara("KeyPool", inputs, outputs, attrs, nullptr, "Ascend910B", kA2SocInfo, 4096);
 }
-}  // namespace
+} // namespace
 
 TEST(KeyPoolTilingArch22, BshBf16)
 {
