@@ -451,7 +451,7 @@ inline ge::graphStatus CheckEpWorldSizeV1(const char *nodeName, uint32_t epWorld
             return ge::GRAPH_FAILED;
         }
 
-        if ((256 % epWorldSize != 0) && (epWorldSize % 144 != 0)) {
+        if ((256 % epWorldSize != 0) && (epWorldSize % 144 != 0)) { // 卡数需要为256以下因数或者144的倍数
             OP_LOGE_FOR_INVALID_VALUE(nodeName, "epWorldSize", std::to_string(epWorldSize).c_str(),
                                       "one of [8, 16, 32, 64, 128, 144, 256, 288]");
             return ge::GRAPH_FAILED;
