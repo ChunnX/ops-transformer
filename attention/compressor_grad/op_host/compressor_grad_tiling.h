@@ -297,6 +297,76 @@ struct CompressorGradCompileInfo {
     int64_t core_num;
 };
 
+// 参照 compressor 的 arch35 tiling 风格，将自由函数封装为类结构
+class CompressorGradTilingEngine {
+public:
+    explicit CompressorGradTilingEngine(CompressorGradContext *context, uint32_t aicNum, uint32_t aivNum)
+        : context_(context),
+          aicNum_(aicNum),
+          aivNum_(aivNum)
+    {}
+    ~CompressorGradTilingEngine() = default;
+
+    static ge::graphStatus ConvertContext(gert::TilingContext &context, CompressorGradContext &compressorGradContext);
+    ge::graphStatus RunBigKernelTiling(void *data);
+
+private:
+    static ge::graphStatus ConvertRequiredParams(gert::TilingContext &context,
+                                                 CompressorGradContext &compressorGradContext);
+    static void ConvertOptionalParams(gert::TilingContext &context, CompressorGradContext &compressorGradContext);
+    ge::graphStatus SetBaseInfo();
+    ge::graphStatus CalcWorkSpace();
+    ge::graphStatus CheckSinglePara() const;
+    ge::graphStatus GenTilingKey() const;
+    ge::graphStatus CheckDimNumInLayoutSupport(const std::string &layout, const gert::StorageShape *shape,
+                                               const std::string &name) const;
+    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
+    ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape, const std::string &name) const;
+    ge::graphStatus LogErrorShapeConsistency(const std::string &name, const gert::StorageShape *shape,
+                                             const uint32_t &dimNum, const std::string &subName,
+                                             const uint32_t &expectNum) const;
+    ge::graphStatus CheckSingleParaX() const;
+    ge::graphStatus CheckSingleParaWkv() const;
+    ge::graphStatus CheckSingleParaWgate() const;
+    ge::graphStatus CheckSingleParaDCmpKv() const;
+    ge::graphStatus CheckSingleParaSoftmaxScore() const;
+    ge::graphStatus CheckSingleParaKV() const;
+    ge::graphStatus CheckSingleParaCuSeqlens() const;
+    ge::graphStatus CheckSingleParaSeqused() const;
+    ge::graphStatus CheckSingleParaStartPos() const;
+    ge::graphStatus CheckSingleParaDX() const;
+    ge::graphStatus CheckSingleParaDWkv() const;
+    ge::graphStatus CheckSingleParaDWgate() const;
+    ge::graphStatus CheckSingleParaDApe() const;
+    ge::graphStatus CheckSingleParaCmpRatio() const;
+    ge::graphStatus CheckSingleParaCoff() const;
+    ge::graphStatus CheckRequiredParaExistence() const;
+    ge::graphStatus CheckRequiredInOutExistence() const;
+    ge::graphStatus CheckRequiredAttrExistence() const;
+    ge::graphStatus CheckFeature() const;
+    ge::graphStatus CheckShapeConsistency() const;
+    ge::graphStatus CheckDtypeConsistencyX(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
+    ge::graphStatus CheckDtypeConsistency() const;
+    ge::graphStatus CheckMultiParaConsistency() const;
+    ge::graphStatus CheckDimNumConsistency() const;
+    ge::graphStatus CheckEmptyTensor() const;
+    ge::graphStatus CheckBlockDimConstrain() const;
+
+    size_t ubSize_ = 0;
+    size_t l1Size_ = 0;
+    size_t l0cSize_ = 0;
+    size_t l0bSize_ = 0;
+    uint32_t coreNum_ = 0;
+    uint32_t aicNum_ = 0;
+    uint32_t aivNum_ = 0;
+    size_t libapiSize_ = 0;
+    size_t workspaceSize_ = 0;
+    uint8_t coff_ = 1;
+    CompressorGradBaseParams baseParams_;
+    CompressorGradWorkspaceParams workspaceParams_;
+    CompressorGradContext *context_ = nullptr;
+};
+
 } // namespace optiling
 
 #endif // COMPRESSOR_GRAD_TILING_H_
