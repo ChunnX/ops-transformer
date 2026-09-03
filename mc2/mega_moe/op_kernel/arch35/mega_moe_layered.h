@@ -2857,27 +2857,27 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessMo
     DispatchBuffInit();
     InitCombineBuffers();
     LockOwnedRemoteChannels();
-    ExpertLoopState gmm1State{initShape, initOffset, 0};
-    ExpertLoopState gmm2State{initShape, initOffset, 0};
-    GMMAddrInfo gmm1AddrInfo{};
-    GMMAddrInfo gmm2AddrInfo{};
-    int32_t vecSetSyncCom = 0;
-    // 计算宏 Wave 只负责组织 GMM 阶段，不再定义一级通信提交边界或二级 256-token ready 边界。
-    // 小负载控制在 1～2 个有效 Wave；中等负载约 6 个；单专家很大的吞吐场景约 4 个。
-    const uint32_t targetWaveCount = CalcTargetWaveCount();
-    const uint32_t firstWaveExpertCount = CalcFirstWaveExpertCount(targetWaveCount);
-    const uint32_t steadyWaveExpertCount =
-        CalcSteadyWaveExpertCount(firstWaveExpertCount, targetWaveCount);
-    uint32_t currentWaveBegin = 0U;
-    uint32_t currentWaveEnd = firstWaveExpertCount;
+    // ExpertLoopState gmm1State{initShape, initOffset, 0};
+    // ExpertLoopState gmm2State{initShape, initOffset, 0};
+    // GMMAddrInfo gmm1AddrInfo{};
+    // GMMAddrInfo gmm2AddrInfo{};
+    // int32_t vecSetSyncCom = 0;
+    // // 计算宏 Wave 只负责组织 GMM 阶段，不再定义一级通信提交边界或二级 256-token ready 边界。
+    // // 小负载控制在 1～2 个有效 Wave；中等负载约 6 个；单专家很大的吞吐场景约 4 个。
+    // const uint32_t targetWaveCount = CalcTargetWaveCount();
+    // const uint32_t firstWaveExpertCount = CalcFirstWaveExpertCount(targetWaveCount);
+    // const uint32_t steadyWaveExpertCount =
+    //     CalcSteadyWaveExpertCount(firstWaveExpertCount, targetWaveCount);
+    // uint32_t currentWaveBegin = 0U;
+    // uint32_t currentWaveEnd = firstWaveExpertCount;
 
-    if constexpr (g_coreType == AIV) {
-        if (subBlockIdx_ == 1U) {
-            PrepareDispatch(firstWaveExpertCount);
-            // 首个宏 Wave 就绪后即可启动计算，不再等待全部专家的二级 Dispatch。
-            ReceiveDispatchExpertRange(currentWaveBegin, currentWaveEnd);
-        }
-    }
+    // if constexpr (g_coreType == AIV) {
+    //     if (subBlockIdx_ == 1U) {
+    //         PrepareDispatch(firstWaveExpertCount);
+    //         // 首个宏 Wave 就绪后即可启动计算，不再等待全部专家的二级 Dispatch。
+    //         ReceiveDispatchExpertRange(currentWaveBegin, currentWaveEnd);
+    //     }
+    // }
 
     // while (currentWaveBegin < moeExpertPerRank_) {
     //     const uint32_t waveStartBlockIdx = startBlockIdx_;
