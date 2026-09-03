@@ -7,8 +7,6 @@
 | Atlas A2 训练系列产品/Atlas A2 推理系列产品 | √ |
 | Ascend 950PR/Ascend 950DT（A5） | √ |
 
-本版本的实机验证范围为 A2 和 A5。A3 不在本版本验证范围内。
-
 ## 功能说明
 
 KeyPool 将当前输入 token 投影为 K 和 Gate，按 `cmp_ratio` 个 token
@@ -83,17 +81,18 @@ Pcap = ceil(L * BS / cmp_ratio)
 | `rotary_mode` | INT64 | 1 | `0/1`；RoPE 当前未实现 |
 | `state_cache_stride_dim0` | INT64 | 0 | 由调用方传入实际 stride |
 
-当前实现支持：
+## 约束说明
 
-- `D` 为 128 或 512；
-- `H` 在 `[1024, 10240]` 内并按 512 对齐；
-- `block_size` 在 `[1, 1024]` 内；
-- `hidden_states` 为 BSH 或 TH；
-- `state_cache` 使用线性分页布局，实际验证路径要求其物理布局连续。
-
-对于 TH，`cu_seqlens[0]` 必须为 0，单调不减，且
-`cu_seqlens[-1] == T`。`cache_block_table` 和 `start_pos` 的 batch 维度必须
-与 `B` 一致。
+- 支持 BSH 和 TH 两种场景：
+  - BSH 场景 `cu_seqlens` 必须为空；
+  - TH 场景必须提供合法的 `cu_seqlens` 前缀和数组，首元素为 0，
+    末元素为 `T`，且单调不减。
+- `cmp_ratio` 仅支持 `2/4/8/16/32/64/128`；`norm_eps` 必须大于 0；
+  `rotary_mode` 仅支持 `0/1`。
+- `norm_weight` 和 `norm_bias` 必须同时提供或同时为空。
+- `cos` 和 `sin` 必须同时为空，当前不支持 RoPE；`seqused` 必须为空，
+  当前不支持通过 `attention_mask` 选择 token。
+- 支持 BSH 场景的 `B=0` 或 `S=0`，以及 TH 场景的 `T=0`。
 
 ## 调用方式
 
