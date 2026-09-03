@@ -774,20 +774,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
             else return scheduler.num_q_tokens;
         }();
 
-        // Iterate Q blocks the same way Phase 1's scheduler does (one q_block
-        // per SM per round, BLOCK_Q tokens each) so that Phase 2 mostly reads
-        // rows written by THIS block's Phase 1 (L2-hit, no cross-SM stall).
-        for (uint32_t q_block = sm_idx; q_block * BLOCK_Q < num_q_tokens; q_block += sms) {
-            const uint32_t token_base = q_block * BLOCK_Q;
-            for (uint32_t ti = 0; ti < BLOCK_Q; ++ti) {
-            const uint32_t q_token = token_base + ti;
-            if (q_token >= num_q_tokens) {
-                if (i_active && warp_idx == 0)
-                    for (uint32_t i = lane_idx; i < kSparseCount; i += 32)
-                        sparse_indices[static_cast<uint64_t>(q_token) * kSparseCount + i] = -1;
-                __syncthreads();
-                continue;
-            }
+        for (uint32_t q_token = sm_idx; q_token < num_q_tokens; q_token += sms) {
             uint32_t k_start, k_end;
             if constexpr (decltype(scheduler)::kIsPaged) {
                 k_start = 0;
@@ -881,8 +868,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                 printf("[TOPK8] token=%u k_len=%u fence=%lld load+local=%lld merge=%lld final=%lld\n",
                        q_token, k_len,
                        dbg_t1 - dbg_t0, dbg_t2 - dbg_t1, dbg_t3 - dbg_t2, clock64() - dbg_t3);
-            } // ti loop
-        } // q_block loop
+        }
     }
 
     __syncthreads();
