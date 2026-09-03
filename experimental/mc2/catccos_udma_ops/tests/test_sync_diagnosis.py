@@ -291,16 +291,19 @@ def test_mssanitizer_build_enables_only_ready_wait_timeout_diagnostics():
         "elseif(CATCCOS_UDMA_MSSANITIZER)", 1
     )[1].split("else()", 1)[0]
     assert "-DCATCCOS_UDMA_READY_WAIT_TIMEOUT_DIAGNOSTICS=1" in mssanitizer_branch
+    assert "-DCATCCOS_UDMA_DEVICE_DIAGNOSTICS=0" in mssanitizer_branch
     assert "-DASCENDC_DUMP=1" in mssanitizer_branch
     assert "-DCATCCOS_UDMA_DEVICE_DIAGNOSTICS=1" not in mssanitizer_branch
 
-    assert "READY_WAIT_TIMEOUT_CYCLES = 15000000000LL" in kernel
+    assert "READY_WAIT_TIMEOUT_CYCLES = 45000000000LL" in kernel
     assert '"observed=0x%x expected=0x%x "' in kernel
     assert "observed_hi=" not in kernel
     assert "expected_hi=" not in kernel
     assert "dcci_cacheline((__gm__ uint8_t *)readyAddress)" in kernel
     assert "AscendC::GetSystemCycle() - startCycle" in kernel
-    assert "trap();" in kernel
+    assert "ascendc_assert(" in kernel
+    assert "AscendC::printf(" not in kernel
+    assert "trap();" not in kernel
 
 
 def test_production_default_uses_strong_ready_without_l2_bypass(monkeypatch):

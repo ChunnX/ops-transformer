@@ -884,8 +884,8 @@ private:
     {
 #if defined(CATCCOS_UDMA_READY_WAIT_TIMEOUT_DIAGNOSTICS) && \
     CATCCOS_UDMA_READY_WAIT_TIMEOUT_DIAGNOSTICS
-        // GetSystemCycle uses a fixed 50 MHz clock: 300 s * 50,000,000.
-        constexpr int64_t READY_WAIT_TIMEOUT_CYCLES = 15000000000LL;
+        // GetSystemCycle uses a fixed 50 MHz clock: 900 s * 50,000,000.
+        constexpr int64_t READY_WAIT_TIMEOUT_CYCLES = 45000000000LL;
         // Reading the clock less often keeps the diagnostic close to the
         // original SHMEM wait loop, whose only operations are DCCI + GM load.
         constexpr uint32_t CLOCK_CHECK_POLL_MASK = 0xFFFU;
@@ -910,7 +910,8 @@ private:
 
             uint64_t readyAddressValue =
                 reinterpret_cast<uint64_t>(readyAddress);
-            AscendC::printf(
+            ascendc_assert(
+                observedGeneration == expectedGeneration,
                 "[CATCCOS_UDMA_A2AV_GMM_READY_TIMEOUT] "
                 "rank=%u source=%u comm=%u stage=%u rows=%u "
                 "observed=0x%x expected=0x%x "
@@ -918,9 +919,9 @@ private:
                 rankIdx, srcRankIdx, commIdx, stageIdx, receiveRows,
                 observedGeneration, expectedGeneration, readyAddressValue,
                 static_cast<uint32_t>(elapsedCycles / 50000LL));
-            // Emit exactly one diagnostic record, then fail the kernel so the
-            // host-side synchronizer receives an actionable device exception.
-            trap();
+            // A failed device assertion emits one diagnostic record and
+            // terminates this root AIV. Keep the return for compiler flow
+            // analysis even though the failed assertion does not return.
             return;
         }
 #else

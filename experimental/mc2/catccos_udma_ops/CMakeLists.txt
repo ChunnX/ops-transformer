@@ -89,14 +89,15 @@ if(CATCCOS_UDMA_DEVICE_DIAGNOSTICS)
         "Enable device printf diagnostics; this Wheel is not valid for performance measurement")
 elseif(CATCCOS_UDMA_MSSANITIZER)
     # The model hang leaves the root AIV in the production strong-ready wait.
-    # Keep all legacy device prints disabled, but enable the one-shot timeout
-    # report and the Dump storage needed by AscendC::printf.
+    # Keep all legacy device printf call sites disabled, but enable the
+    # one-shot timeout assertion and the Dump storage needed by
+    # ascendc_assert's formatted diagnostic record.
     set(CATCCOS_UDMA_ASCEND_DIAGNOSTIC_FLAGS
-        "-DCATCCOS_UDMA_READY_WAIT_TIMEOUT_DIAGNOSTICS=1 -DASCENDC_DUMP=1")
+        "-DCATCCOS_UDMA_READY_WAIT_TIMEOUT_DIAGNOSTICS=1 -DCATCCOS_UDMA_DEVICE_DIAGNOSTICS=0 -DASCENDC_DUMP=1")
     message(WARNING
-        "Enable only the A2AV-GMM ready-wait timeout diagnostic for the msSanitizer Wheel")
+        "Enable only the A2AV-GMM ready-wait timeout assertion for the msSanitizer Wheel")
 else()
-    message(STATUS "Disable AscendC device Dump/printf in the production Wheel")
+    message(STATUS "Disable AscendC device Dump diagnostics in the production Wheel")
 endif()
 set(CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE_FLAG
     "-DCATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE=0")
