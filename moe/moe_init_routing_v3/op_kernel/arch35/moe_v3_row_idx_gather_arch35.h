@@ -68,8 +68,7 @@ __aicore__ inline void RowIdxGather::Init(GM_ADDR expandedRowIdx, GM_ADDR worksp
                                             Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
                                             Align(tilingData->actualExpertNum, sizeof(int32_t)),
                                         1);
-    int64_t expertTotalCount =
-        tilingData->epFullload ? expertTotalCountGm_.GetValue(0) : tilingData->n * tilingData->k;
+    int64_t expertTotalCount = expertTotalCountGm_.GetValue(0);
 
     perCoreElements_ = Ceil(expertTotalCount, needCoreNum_);
     needCoreNum_ = Ceil(expertTotalCount, perCoreElements_);
