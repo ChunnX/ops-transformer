@@ -463,14 +463,14 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
     // ====== Phase 1: MMA Issue Warp ======
     } else if (warp_idx == kSpecWarpStart + 2) {
         cutlass::arch::warpgroup_reg_dealloc<kNumSpecializedRegisters>();
-        DG_TRAP_ONLY_DEVICE_ASSERT(ld_sh(&smem.tmem_ptr_in_smem) == 0);
+        DG_TRAP_ONLY_DEVICE_ASSERT(ptx::ld_shared(&smem.tmem_ptr_in_smem) == 0);
 
         auto utccp_required_smem_warp_transpose = [&](const uint32_t* smem_ptr) {
             DG_STATIC_ASSERT(kNumUTCCPAlignedElems == 128, "Invalid aligned elements");
             uint32_t values[4];
             #pragma unroll
             for (uint32_t i = 0; i < 4; ++ i)
-                values[i] = ld_sh(smem_ptr + i * 32 + lane_idx);
+                values[i] = ptx::ld_shared(smem_ptr + i * 32 + lane_idx);
             __syncwarp();
             ptx::st_shared(smem_ptr + lane_idx * 4, values[0], values[1], values[2], values[3]);
         };
@@ -626,13 +626,13 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                         const auto packed_row = reinterpret_cast<const uint32_t*>(smem_weights_row);
                         #pragma unroll
                         for (uint32_t j = 0; j < kNumHeads / 2; ++ j) {
-                            const auto packed = ld_sh(packed_row + j);
+                            const auto packed = ptx::ld_shared(packed_row + j);
                             weights[i][j] = ptx::exchange(*reinterpret_cast<const nv_bfloat162*>(&packed), 0);
                         }
                     } else {
                         #pragma unroll
                         for (uint32_t j = 0; j < kNumHeads; ++ j)
-                            weights[i][j] = ld_sh(smem_weights_row + j);
+                            weights[i][j] = ptx::ld_shared(smem_weights_row + j);
                     }
                 }
 
@@ -645,7 +645,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                         CUTE_TIE_DECL(kv_pipeline.advance(), kv_stage_idx_local, kv_phase);
                         kv_stage_idx = kv_stage_idx_local;
                         smem.full_kv_barriers[kv_stage_idx].wait(kv_phase);
-                        scale_kv = static_cast<reduce_dtype_t>(ld_sh(smem.smem_sf_kv[kv_stage_idx] + math_thread_idx));
+                        scale_kv = static_cast<reduce_dtype_t>(ptx::ld_shared(smem.smem_sf_kv[kv_stage_idx] + math_thread_idx));
                     }
 
                     CUTE_TIE_DECL(tmem_pipeline.advance(kNumMathWarpGroups), tmem_stage_idx, tmem_phase);
