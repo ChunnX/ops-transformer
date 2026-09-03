@@ -170,7 +170,7 @@ private:
     __aicore__ inline void BuildTailFragment(const Params &params);
     __aicore__ inline void UpdateMainRoundAddrs(const Params &params, uint32_t roundIdx);
     __aicore__ inline Apace::Basic::FragmentParam<DIMS_NUM> MakeFragParam(uint64_t fragSize, uint64_t realFragSize,
-                                                                   uint32_t fragCnt, uint64_t shape1) const;
+                                                                          uint32_t fragCnt, uint64_t shape1) const;
 
     // ---- Tile context resolution ----
     struct TileCtx {
