@@ -2972,9 +2972,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
 
     CrossRankSyncInWorldSize(true); // 同一物理 AIV 继续使用 SendMask 已取得的锁，并在同步结束后释放。
 
-    // // URMA Layered 的 A8W8、A4W4 和 A8W4 共用同一专家 Wave 状态机。
-    // // 入口已由 mega_moe_apt.cpp 的 CommModeType 固定，精度路径由类模板选择，不保留旧路径回退开关。
-    // ProcessMoeExpertWave(initShape, initOffset, gmTileSequence);
+    // URMA Layered 的 A8W8、A4W4 和 A8W4 共用同一专家 Wave 状态机。
+    ProcessMoeExpertWave(initShape, initOffset, gmTileSequence);
 
     // // 3.5: 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
     // if (sharedExpertNum_ > 0) {
