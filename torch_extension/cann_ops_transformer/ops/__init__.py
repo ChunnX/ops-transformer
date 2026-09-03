@@ -120,6 +120,7 @@ _legacy_map = {
     "elastic_buffer": "mc2.common",
     "flash_attn": "attention.flash_attn",
     "ffn_to_attention": "mc2.ffn_to_attention_v2",
+    "generic_block_sparse_attention_grad": "attention.generic_block_sparse_attention_grad",
     "grouped_matmul_activation_quant": "gmm.grouped_matmul_activation_quant",
     "indexer_quant_cache": "attention.indexer_quant_cache",
     "inplace_partial_rotary_mul": "posembedding.inplace_partial_rotary_mul",
