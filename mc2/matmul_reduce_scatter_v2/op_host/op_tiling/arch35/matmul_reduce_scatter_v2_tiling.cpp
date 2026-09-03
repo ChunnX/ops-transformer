@@ -124,8 +124,7 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
     const auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
     const bool enablePeerOnly = std::strcmp(commMode, ACLNN_CCU_PEER_ONLY_MODE) == 0;
     isPeerOnly_ = enablePeerOnly && !isA2APath_ && commMode_ == TPL_CCU_COMM_MODE &&
-                  args_.rankDim == PEER_ONLY_RANK_SIZE && args_.geAType == ge::DataType::DT_BF16 &&
-                  mc2tiling::Mc2TilingUtils::GetDebugMode() == 0;
+                  args_.rankDim == PEER_ONLY_RANK_SIZE && mc2tiling::Mc2TilingUtils::GetDebugMode() == 0;
     if (isPeerOnly_) {
         mc2CcTilingConfig.SetAlgConfig(PEER_ONLY_ALGORITHM);
     }
