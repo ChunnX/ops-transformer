@@ -148,9 +148,9 @@ cann_ops_transformer.quant_flash_attn(
 
 | 枚举名 | 值 | 含义 |
 | :--- | :---: | :--- |
+| `A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32` | 0 | A8C8 Q/K/V HIFLOAT8 per-tensor，P per-tensor，Softmax FP32 |
 | `A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32` | 1 | A8C8 Q/KV MXFP8，P FP8_E4M3 per-tensor，Softmax FP32 |
 | `A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32` | 6 | A8C8 Q/K FP8_E4M3 per-token-head、V FP8_E4M3 per-head、P FP8_E4M3 per-tensor，Softmax FP32|
-| `A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32` | 0 | A8C8 Q/K/V HIFLOAT8 per-tensor，P per-tensor，Softmax FP32 |
 
 ### mask_mode 枚举
 
