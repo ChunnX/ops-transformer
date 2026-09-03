@@ -498,20 +498,20 @@ ExecuteTask(loop, taskRunInfo):
 ─────────────────────────────────────────────────────────────────────────────────────────────────────
 BMM1:      Q×K^T → L0C → Fixpipe → mmRes[bufId]
            （先 WaitFlag 同 flag×2：等该 buffer 上一个读端读完释放）
-           CrossCoreSetFlag(CC_MM+bufId) ─────────────────► CrossCoreWaitFlag 读 UB 前半
-           CrossCoreSetFlag(CC_MM+bufId+16) ───────────────────────────► CrossCoreWaitFlag 读 UB 后半
+           CrossCoreSetFlag(mmSyncIdx) ────────────────────► CrossCoreWaitFlag 读 UB 前半
+           CrossCoreSetFlag(mmSyncIdx+16) ──────────────────────────────► CrossCoreWaitFlag 读 UB 后半
                                                       Vec1 softmax → cast → L1(P) ──► AIV 各自
            AIC CrossCoreWaitFlag 等 L1(P) 就绪（CC_L1P，双路）◄─ CrossCoreSetFlag ×2
-           Vec1 读毕 SetFlag(CC_MM+bufId) ──► 释放该 buffer，供下一个写端覆写
+           Vec1 读毕 SetFlag(mmSyncIdx) ──► 释放该 buffer，供下一个写端覆写
 
 BMM2:      P×V → L0C → Fixpipe → mmRes[bufId']（bufId' 由 mmResBufId_ 计数器推进，≠bufId）
-           （先 WaitFlag(CC_MM+bufId')×2：等该 buffer 上一个读端读完释放）
-           CrossCoreSetFlag(CC_MM+bufId') ────────────────► Vec2 前半行累加 → 写 GM
-           CrossCoreSetFlag(CC_MM+bufId'+16) ──────────────────────────► Vec2 后半行累加 → 写 GM
-           Vec2 读毕 SetFlag(CC_MM+bufId') ──► 释放该 buffer，供下一个写端覆写
+           （先 WaitFlag 同 flag×2：等该 buffer 上一个读端读完释放）
+           CrossCoreSetFlag(mmSyncIdx') ──────────────────► Vec2 前半行累加 → 写 GM
+           CrossCoreSetFlag(mmSyncIdx'+16) ───────────────────────────► Vec2 后半行累加 → 写 GM
+           Vec2 读毕 SetFlag(mmSyncIdx') ──► 释放该 buffer，供下一个写端覆写
 ```
 
-- **flag 分工（一 buffer 一 flag 的读写接力）**：**flag 的 ID 标识 mmRes buffer（资源），不标识操作**。BMM1/BMM2 结果共用同一组 `ubMmResBuffers_`，每个 buffer 对应一个 flag（`CC_MM_0~3`，AIC 侧命名 `CROSSCORE_MM_*`；D≤128 用 4 个、D=256 用 2 个）：写端（BMM1/BMM2）fixpipe 完成后 Set（结果就绪），读端（Vec1/Vec2）Wait 后读取、读毕再 Set（buffer 释放）——同一 flag 沿「就绪 → 释放 → 就绪」交替接力，取代早期 BMM1/BMM2 各持一对独立 flag（`CC_BMM1_0/1`/`CC_BMM2_0/1`）的方案；`+16` 偏移让同一 AIC 的两个 AIV 使用独立 flag 位，互不串扰。buffer 由 `mmResBufId_` 单调递增计数器分配（取代 `loop%N` 索引——后者会使 BMM1(L) 与 BMM2(L-2) 映射到同一 buffer），保证同一 ExecuteTask 内先后执行的 BMM1(L) 与 BMM2(L-2) 落在不同 buffer，避免写写冲突与环形等待。
+- **flag 分工（一 buffer 一 flag 的读写接力）**：**flag 的 ID 标识 mmRes buffer（资源），不标识操作**。BMM1/BMM2 结果共用同一组 `ubMmResBuffers_`，每个 buffer 对应一个核间同步 ID——AIV 侧（block_vec）为 `CC_MM_0~3`、AIC 侧（block_cube）为 `CROSSCORE_MM_0~3`（两侧各声明一份、数值一致），代码中经 `mmSyncIdx = CC_MM_0 + mmResUbBufId` 换算后传给 `CrossCoreSetFlag/WaitFlag`（D≤128 用 4 个、D=256 用 2 个）：写端（BMM1/BMM2）fixpipe 完成后 Set（结果就绪），读端（Vec1/Vec2）Wait 后读取、读毕再 Set（buffer 释放）——同一 flag 沿「就绪 → 释放 → 就绪」交替接力，取代早期 BMM1/BMM2 各持一对独立 flag（`CC_BMM1_0/1`/`CC_BMM2_0/1`）的方案；`+16`（`AIV0_AIV1_OFFSET`）偏移让同一 AIC 的两个 AIV 使用独立 flag 位，互不串扰。buffer 由 `mmResBufId_` 单调递增计数器分配（取代 `loop%N` 索引——后者会使 BMM1(L) 与 BMM2(L-2) 映射到同一 buffer），保证同一 ExecuteTask 内先后执行的 BMM1(L) 与 BMM2(L-2) 落在不同 buffer，避免写写冲突与环形等待。
 - **L1(P) 交接**：Vec1 结果由两个 AIV 各自写 L1(P) 后 CrossCoreSetFlag(CC_L1P)（3 buffer 对应三路 flag），AIC 在 BMM2 前等待两路都就绪。
 - **行分担**：两个 AIV 各算 `mBaseSize/2` 行（Dn 按 `align32(actM)>>1`、Nd 按 `(actM+1)>>1` 切分），与 BMM1/BMM2 fixpipe 的双目标写（`dualDstCtl=1`，按 M 维对半拆分写入两个 AIV 的 UB）配合，保证每 AIV 恰好拿到自己那半。
 
@@ -541,7 +541,7 @@ AIC 侧按存储层级分配 buffer，覆盖 BMM1（Q×K^T）与 BMM2（P×V）�
 
 **L0C 分配策略解释**：L0C 是 Matmul 结果的累加器，4×64KB 双倍覆盖「上一轮 Fixpipe 读 + 本轮 Matmul 写」的重叠窗口。两个 MM 共用同一组 L0C（时间错开复用），4 buffer 使 MTE1→M→FIX 三级流水连续推进。D=256（dVBaseSize>128）时 BMM2 以 128 列为 tile 做外层循环（`IterateBmm2l0Split` 的 `nLoops` 循环，splitN），逐 tile 占用轮转的 64KB buffer 并独立 Fixpipe——单个 buffer 无需容纳 128×256×4B 整块结果，L0C 布局对 D=128/D=256 保持统一。
 
-**UB 分配策略解释**：`ubMmResBuffers_` 是 AIC→AIV 的 CV 通信 buffer（fixpipe 写、AIV 读），BMM1/BMM2 的结果复用同一组 buffer：buffer 大小取 `s2BaseSize` 与 `dVBaseSize` 的较大值（`mBaseSize/2` 行切片，双 AIV 各处理一半，`CV_RATIO=2`）；buffer 数按 D 分档——D≤128 用 4 个、D=256 用 2 个（`UB_MM_RES_BUFCNT = (dBaseSize > 128) ? 2 : 4`）。多 buffer 轮转配合核间 flag（`CROSSCORE_MM_0~3`，一 flag 一 buffer）实现流水：AIC fixpipe 写某个 buffer 时 AIV 正在读更早的 buffer，flag 置位/等待交替，隐藏 CV 传输延迟；buffer 由 `mmResBufId_` 单调递增计数器分配。需要与block_vec上对应UB buffer的地址和大小完全对齐。
+**UB 分配策略解释**：`ubMmResBuffers_` 是 AIC→AIV 的 CV 通信 buffer（fixpipe 写、AIV 读），BMM1/BMM2 的结果复用同一组 buffer：buffer 大小取 `s2BaseSize` 与 `dVBaseSize` 的较大值（`mBaseSize/2` 行切片，双 AIV 各处理一半，`CV_RATIO=2`）；buffer 数按 D 分档——D≤128 用 4 个、D=256 用 2 个（`UB_MM_RES_BUFCNT = (dBaseSize > 128) ? 2 : 4`）。多 buffer 轮转配合核间同步 ID（AIC 侧 `CROSSCORE_MM_0~3`，一 flag 一 buffer）实现流水：AIC fixpipe 写某个 buffer 时 AIV 正在读更早的 buffer，flag 置位/等待交替，隐藏 CV 传输延迟；buffer 由 `mmResBufId_` 单调递增计数器分配。需要与block_vec上对应UB buffer的地址和大小完全对齐。
 
 ### 9. block vector 层
 
@@ -550,7 +550,7 @@ AIC 侧按存储层级分配 buffer，覆盖 BMM1（Q×K^T）与 BMM2（P×V）�
 
 | Buffer | 数量×大小 | 用途 | 分配策略 |
 |---|---|---|---|
-| `ubMmResBuffers_` | （D≤128：4；D=256：2）× (mBaseSize/2 × max(s2BaseSize, dVBaseSize) × sizeof(FP32))，D=128 时 ≈ 4×32KB | CV 通信 BUF：AIC BMM1/BMM2 fixpipe 结果分时复用（Vec1 softmax 输入 / Vec2 累加输入） | **多 buffer 轮转**：AIC fixpipe 写与 AIV 读并行，一 flag 一 buffer（`CC_MM_0~3`）读写接力（见 §7⑤）；buffer 大小取 s2 与 dV 较大值，BMM1/BMM2 结果分时复用；`mmResBufId_` 单调递增计数器分配 buffer（取代 `loop%N`） |
+| `ubMmResBuffers_` | （D≤128：4；D=256：2）× (mBaseSize/2 × max(s2BaseSize, dVBaseSize) × sizeof(FP32))，D=128 时 ≈ 4×32KB | CV 通信 BUF：AIC BMM1/BMM2 fixpipe 结果分时复用（Vec1 softmax 输入 / Vec2 累加输入） | **多 buffer 轮转**：AIC fixpipe 写与 AIV 读并行，一 flag 一 buffer（AIV 侧 `CC_MM_0~3` / AIC 侧 `CROSSCORE_MM_0~3`）读写接力（见 §7⑤）；buffer 大小取 s2 与 dV 较大值，BMM1/BMM2 结果分时复用；`mmResBufId_` 单调递增计数器分配 buffer（取代 `loop%N`） |
 | `ubMaskBuffers_` | 2 × (mBaseSize/2 × s2BaseSize × sizeof(uint8)) | mask 从 GM 拷入的输入 BUF（仅 Nd） | **双 buffer 预取**：当前轮 `AttenMaskCopyIn` 计算的同时 MTE3 预取下一轮 mask，规避 GM 访存延迟。真实需求 = 每个 AIV 的 mBaseSize/2 行 × s2BaseSize 个 INT8（1B），即 2×(mBaseSize/2 × s2BaseSize × 1B)（当前代码写死 2×8KB，仅等于 s2BaseSize=128 时的需求） |
 | `ubVec2Res_` | 1 × (mBaseSize/2 × Align64(dVBaseSize) × sizeof(FP32)) | Vec2 中间结果 + attn_out 输出 buffer | **单 buffer**：与 PRELOAD_N=2 流水配合（Vec2 与 2 轮前 Vec1 同时执行），首次 tile 用 `DataCopy` 分支跳过脏值（见 §7），无需双缓冲。大小按模板参数动态计算（`UB_VEC2_RES_BUF_BYTES = mBaseSize/CV_RATIO × Align64(dVBaseSize) × sizeof(T)`，原为写死 32768U） |
 | `ubVec1ResBuffers_` | 2 × ((mBaseSize/2 + 1) × s2BaseSize × sizeof(BF16/FP16)) | softmax 结果 cast 后拷至 L1(P) 的过渡 BUF | **双 buffer**：V pipe 写与 MTE3 拷 L1 并行，2 buffer 使两段传输交替。大小按模板参数动态计算（`UB_VEC1_RES_BUF_BYTES = (mBaseSize/CV_RATIO+1) × s2BaseSize × sizeof(INPUT_T)`，原为写死 33024U）。**行大小取 (mBaseSize/2 + 1) 而非 mBaseSize/2**：每行多留 1 个元素作为地址偏移，使相邻行的起始地址错开（不再同余于 UB bank 数），避免多行并发访问命中同一 bank 造成 bank 冲突；×2B 为 cast 回 FP16 的元素大小 |
