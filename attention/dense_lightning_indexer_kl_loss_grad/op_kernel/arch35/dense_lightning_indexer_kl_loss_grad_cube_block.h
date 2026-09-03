@@ -198,8 +198,13 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(Buffer<BufferT
     mm2L0CBuffer.Wait<HardEvent::FIX_M>();
     for (uint32_t kIdx = 0; kIdx < kLoopTimes; kIdx++) {
         uint64_t l0cOffset = kIdx * VEC_SY_BASESIZE * constInfo.gSizeQueryIndex;
-        MatmulBase<INPUT_T, INPUT_T, T, QUERY_INDEX_SIZE, N_SPLIT_SIZE, K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(
-            sYQL1Tensor[runInfo.sTaskIdMod3], syKL1Tensor, l0aBuf, l0bBuf, mm2L0CTensor[l0cOffset], mmParam);
+if ((mmParam.singleK + K_SPLIT_SIZE - 1) / K_SPLIT_SIZE > 1) {
+            MatmulK<INPUT_T, INPUT_T, T, QUERY_INDEX_SIZE, N_SPLIT_SIZE, K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(sYQL1Tensor[runInfo.sTaskIdMod3], syKL1Tensor, l0aBuf, l0bBuf, mm2L0CTensor[l0cOffset], mmParam);
+        } else if ((mmParam.singleN + N_SPLIT_SIZE - 1) / N_SPLIT_SIZE > 1) {
+            MatmulN<INPUT_T, INPUT_T, T, QUERY_INDEX_SIZE, N_SPLIT_SIZE, K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(sYQL1Tensor[runInfo.sTaskIdMod3], syKL1Tensor, l0aBuf, l0bBuf, mm2L0CTensor[l0cOffset], mmParam);
+        } else {
+            MatmulFull<INPUT_T, INPUT_T, T, QUERY_INDEX_SIZE, N_SPLIT_SIZE, K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(sYQL1Tensor[runInfo.sTaskIdMod3], syKL1Tensor, l0aBuf, l0bBuf, mm2L0CTensor[l0cOffset], mmParam);
+        }
     }
     mm2L0CBuffer.Set<HardEvent::M_FIX>();
     mm2L0CBuffer.Wait<HardEvent::M_FIX>();
@@ -240,9 +245,13 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmDk(
         // 拷贝左矩阵
         Buffer<BufferType::L0C> mm3L0CBuffer = commonL0CBuf.Get();
         mm3L0CBuffer.Wait<HardEvent::FIX_M>();
-        MatmulBase<INPUT_T, INPUT_T, T, M_SPLIT_SIZE, N_SPLIT_SIZE, QUERY_INDEX_SIZE, ABLayout::MK, ABLayout::KN>(
-            reluGradL1Tensor[reluGradOffset], sYQL1Tensor[runInfo.sTaskIdMod3], l0aBuf, l0bBuf,
-            mm3L0CBuffer.GetTensor<T>(), mmParam);
+if ((mmParam.singleK + QUERY_INDEX_SIZE - 1) / QUERY_INDEX_SIZE > 1) {
+            MatmulK<INPUT_T, INPUT_T, T, M_SPLIT_SIZE, N_SPLIT_SIZE, QUERY_INDEX_SIZE, ABLayout::MK, ABLayout::KN>(reluGradL1Tensor[reluGradOffset], sYQL1Tensor[runInfo.sTaskIdMod3], l0aBuf, l0bBuf, mm3L0CBuffer.GetTensor<T>(), mmParam);
+        } else if ((mmParam.singleN + N_SPLIT_SIZE - 1) / N_SPLIT_SIZE > 1) {
+            MatmulN<INPUT_T, INPUT_T, T, M_SPLIT_SIZE, N_SPLIT_SIZE, QUERY_INDEX_SIZE, ABLayout::MK, ABLayout::KN>(reluGradL1Tensor[reluGradOffset], sYQL1Tensor[runInfo.sTaskIdMod3], l0aBuf, l0bBuf, mm3L0CBuffer.GetTensor<T>(), mmParam);
+        } else {
+            MatmulFull<INPUT_T, INPUT_T, T, M_SPLIT_SIZE, N_SPLIT_SIZE, QUERY_INDEX_SIZE, ABLayout::MK, ABLayout::KN>(reluGradL1Tensor[reluGradOffset], sYQL1Tensor[runInfo.sTaskIdMod3], l0aBuf, l0bBuf, mm3L0CBuffer.GetTensor<T>(), mmParam);
+        }
         mm3L0CBuffer.Set<HardEvent::M_FIX>();
         mm3L0CBuffer.Wait<HardEvent::M_FIX>();
         // fix2ub
@@ -310,8 +319,13 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmDq(
         } else {
             mmParam.isOutKFisrt = false;
         }
-        MatmulBase<INPUT_T, INPUT_T, T, QUERY_INDEX_SIZE, N_SPLIT_SIZE, K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(
-            reluGradL1Tensor[reluGradOffset], syKL1Tensor, l0aBuf, l0bBuf, mm4L0CBuffer.GetTensor<T>(), mmParam);
+if ((mmParam.singleK + K_SPLIT_SIZE - 1) / K_SPLIT_SIZE > 1) {
+            MatmulK<INPUT_T, INPUT_T, T, QUERY_INDEX_SIZE, N_SPLIT_SIZE, K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(reluGradL1Tensor[reluGradOffset], syKL1Tensor, l0aBuf, l0bBuf, mm4L0CBuffer.GetTensor<T>(), mmParam);
+        } else if ((mmParam.singleN + N_SPLIT_SIZE - 1) / N_SPLIT_SIZE > 1) {
+            MatmulN<INPUT_T, INPUT_T, T, QUERY_INDEX_SIZE, N_SPLIT_SIZE, K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(reluGradL1Tensor[reluGradOffset], syKL1Tensor, l0aBuf, l0bBuf, mm4L0CBuffer.GetTensor<T>(), mmParam);
+        } else {
+            MatmulFull<INPUT_T, INPUT_T, T, QUERY_INDEX_SIZE, N_SPLIT_SIZE, K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(reluGradL1Tensor[reluGradOffset], syKL1Tensor, l0aBuf, l0bBuf, mm4L0CBuffer.GetTensor<T>(), mmParam);
+        }
     }
     mm4L0CBuffer.Set<HardEvent::M_FIX>();
     mm4L0CBuffer.Wait<HardEvent::M_FIX>();
