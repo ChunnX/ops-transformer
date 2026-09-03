@@ -740,8 +740,11 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
             if constexpr (decltype(scheduler)::kIsPaged) return scheduler.num_q_tokens_total;
             else return scheduler.num_q_tokens;
         }();
+        const uint32_t num_sms = gridDim.x;
 
-        for (uint32_t q_token = warp_idx; q_token < num_q_tokens; q_token += kNumTopkWarps) {
+        for (uint32_t q_token = sm_idx * kNumTopkWarps + warp_idx;
+             q_token < num_q_tokens;
+             q_token += num_sms * kNumTopkWarps) {
             uint32_t k_start, k_end;
             if constexpr (decltype(scheduler)::kIsPaged) {
                 k_start = 0;
