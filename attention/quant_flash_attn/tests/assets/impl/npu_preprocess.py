@@ -97,20 +97,17 @@ def _derive_batch_size(q_shape, layout_q, cu_seqlens_q, seqused_q, kwargs):
     return 0
 
 
-def _max_seqlen(kwargs, name, used, prefix, fallback):
-    """Resolve one max_seqlen: explicit attr -> max(seqused) -> cu diff -> fallback."""
+def _max_seqlen(kwargs, name):
+    """透传 CSV 的 max_seqlen_q/kv, 空则 -1。
+
+    metadata 的 max_seqlen_q/kv 必须与主算子 quant_flash_attn 拿到的值一致:
+    主算子由 ttk 按 CSV 属性直调 (空 → None → -1), 因此这里不能从 seqused/cu_seqlens
+    派生真实值, 否则 metadata 与主算子对序列边界的理解不一致, 导致 npu 输出错误。
+    """
     explicit = get_attribute(kwargs, f"max_seqlen_{name}")
     if explicit is not None:
         return int(explicit)
-    if used is not None:
-        values = torch.as_tensor(used).detach().reshape(-1)
-        if values.numel():
-            return int(values.max().item())
-    if prefix is not None:
-        values = torch.as_tensor(prefix).detach().reshape(-1)
-        if values.numel() > 1:
-            return int((values[1:] - values[:-1]).max().item())
-    return int(fallback)
+    return -1
 
 
 def build_metadata_arguments(q, k, v, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, kwargs):
@@ -122,7 +119,13 @@ def build_metadata_arguments(q, k, v, cu_seqlens_q, cu_seqlens_kv, seqused_q, se
 
     q_shape = tuple(int(value) for value in q.shape)
     k_shape = tuple(int(value) for value in k.shape)
-    head_dim = int(get_attribute(kwargs, "head_dim", q_shape[-1]))
+    head_dim = int(
+        get_attribute(
+            kwargs,
+            "head_dim",
+            get_attribute(kwargs, "D", q_shape[-1]),
+        )
+    )
 
     num_heads_q = int(
         get_attribute(
@@ -155,13 +158,6 @@ def build_metadata_arguments(q, k, v, cu_seqlens_q, cu_seqlens_kv, seqused_q, se
         q_shape, layout_q, cu_q, seq_q, kwargs
     )
 
-    q_fallback = q_shape[1] if layout_q != "BSND" else q_shape[1]
-    kv_fallback = -1
-    if layout_kv == "TND":
-        kv_fallback = int(k_shape[0])
-    elif layout_kv in ("BNSD", "BSND"):
-        kv_fallback = int(k_shape[2] if layout_kv == "BNSD" else k_shape[1])
-
     return {
         "num_heads_q": num_heads_q,
         "num_heads_kv": num_heads_kv,
@@ -172,12 +168,8 @@ def build_metadata_arguments(q, k, v, cu_seqlens_q, cu_seqlens_kv, seqused_q, se
         "seqused_q": seq_q,
         "seqused_kv": seq_kv,
         "batch_size": None if batch_size is None else int(batch_size),
-        "max_seqlen_q": _max_seqlen(
-            kwargs, "q", seq_q, cu_q, q_fallback
-        ),
-        "max_seqlen_kv": _max_seqlen(
-            kwargs, "kv", seq_kv, cu_kv, kv_fallback
-        ),
+        "max_seqlen_q": _max_seqlen(kwargs, "q"),
+        "max_seqlen_kv": _max_seqlen(kwargs, "kv"),
         "head_dim_v": get_attribute(kwargs, "head_dim_v"),
         "mask_mode": int(get_attribute(kwargs, "mask_mode", 0)),
         "layout_q": layout_q,

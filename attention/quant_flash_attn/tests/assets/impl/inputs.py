@@ -80,6 +80,34 @@ def _write_int32_list(slot, values, slot_name):
         slot[...] = arr
 
 
+def _write_causal_mask(slot, mask_mode, mask_shape):
+    """mask_mode != 0 时生成上三角 causal mask 写入 attn_mask slot。
+
+    直调 op 后主算子的 attn_mask 直接来自 CSV slot (ttk 随机生成), 需在这里用与
+    golden _build_causal_mask 一致的方式重建: triu(ones, diagonal=1)。
+    mask_mode == 0 或 slot 为 None 时跳过。
+    """
+    if mask_mode == 0 or slot is None:
+        return
+    shape = tuple(int(v) for v in mask_shape) if mask_shape else (2048, 2048)
+    causal = torch.triu(torch.ones(shape, dtype=torch.int8), diagonal=1)
+    if isinstance(slot, torch.Tensor):
+        if tuple(slot.shape) != tuple(causal.shape):
+            raise ValueError(
+                f"[INPUTS] attn_mask shape mismatch: CSV slot {tuple(slot.shape)} "
+                f"!= causal {tuple(causal.shape)}"
+            )
+        slot.copy_(causal.to(slot.dtype))
+    else:
+        arr = causal.numpy().astype(numpy.asarray(slot).dtype)
+        if tuple(slot.shape) != tuple(arr.shape):
+            raise ValueError(
+                f"[INPUTS] attn_mask shape mismatch: CSV slot {tuple(slot.shape)} "
+                f"!= causal {tuple(arr.shape)}"
+            )
+        slot[...] = arr
+
+
 def generate_qfa_mxfp8_inputs(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -400,12 +428,13 @@ def generate_qfa_mxfp8_inputs(
 
     # ----- 新增 slot 8-14: 用 attributes 真实值覆盖 ttk 随机生成的 cu_seqlens/seqused。
     # sinks/metadata (slot 12,14) 无 value，保持 None 语义（CSV shape (0,) → 空 tensor，
-    # wrapper/golden 不消费）；attn_mask (slot 13) 不传值覆盖——mask 由 golden
+    # sink/golden 不消费）；attn_mask (slot 13) 不传值覆盖——mask 由 golden
     # _build_causal_mask() 按 attributes 里 attn_mask_shape 重建。 -----
     _write_int32_list(cu_seqlens_q_t, cu_seqlens_q, "cu_seqlens_q (slot 8)")
     _write_int32_list(cu_seqlens_kv_t, cu_seqlens_kv, "cu_seqlens_kv (slot 9)")
     _write_int32_list(seqused_q_t, seqused_q, "seqused_q (slot 10)")
     _write_int32_list(seqused_kv_t, seqused_kv, "seqused_kv (slot 11)")
+    _write_causal_mask(attn_mask_t, mask_mode, kwargs.get("attn_mask_shape"))
 
     logger.info(
         "[INPUTS] in-place wrote fp8 q/k/v (q=%s), e8m0 descale (dq=%s, dk=%s, dv=%s), "
@@ -702,6 +731,7 @@ def generate_qfa_gqa_fp8_inputs(
     _write_int32_list(cu_seqlens_kv_t, cu_seqlens_kv, "cu_seqlens_kv (slot 9)")
     _write_int32_list(seqused_q_t, seqused_q, "seqused_q (slot 10)")
     _write_int32_list(seqused_kv_t, seqused_kv, "seqused_kv (slot 11)")
+    _write_causal_mask(attn_mask_t, mask_mode, kwargs.get("attn_mask_shape"))
 
     logger.info(
         "[INPUTS GQA FP8] in-place wrote fp8 q (NTD %s), k/v (PA cache %s, %s), "
@@ -966,6 +996,7 @@ def generate_qfa_hif8_inputs(
     _write_int32_list(cu_seqlens_kv_t, cu_seqlens_kv, "cu_seqlens_kv (slot 9)")
     _write_int32_list(seqused_q_t, seqused_q, "seqused_q (slot 10)")
     _write_int32_list(seqused_kv_t, seqused_kv, "seqused_kv (slot 11)")
+    _write_causal_mask(attn_mask_t, mask_mode, kwargs.get("attn_mask_shape"))
 
     logger.info(
         "[INPUTS] HIF8 in-place wrote q/k/v (q=%s), fp32 descale (dq=%s, dk=%s, dv=%s), "
