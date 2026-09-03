@@ -2432,12 +2432,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
     }
     if constexpr (IsShared) {
         // 共享专家不参与权重前移，走原 UB ping-pong + 硬同步路径
+        Gmm1ActivationQuantEpilogue<SharedBlockEpilogue, false, false> gmm1Epilogue(sharedEpilogueOp_);
         if constexpr (ENABLE_A8W4) {
             Gmm1A8W4SyncPolicy<IsShared, false, false> sync(gmmAddrInfo,
                                                             static_cast<uint32_t>(Get<M_VALUE>(state.problemShape)),
                                                             GMM1_TILE_M, expertIdx, vecSetSyncCom);
             RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                        GMM1_TILE_M, false>(sharedEpilogueOp_, state.problemShape, gmmAddrInfo.tensorAddrs, startBlockIdx_,
+                        GMM1_TILE_M, false>(gmm1Epilogue, state.problemShape, gmmAddrInfo.tensorAddrs, startBlockIdx_,
                                             sync);
         } else {
             Gmm1GenericSyncPolicy<IsShared, false, false, false> sync(
@@ -2446,30 +2447,31 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
             if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                 params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
                 RunGmm1Generic<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                               true, GMM1_TILE_M, false, false>(sharedEpilogueOp_, state.problemShape, gmmAddrInfo.tensorAddrs,
+                               true, GMM1_TILE_M, false, false>(gmm1Epilogue, state.problemShape, gmmAddrInfo.tensorAddrs,
                                                                   startBlockIdx_, sync);
             } else {
                 RunGmm1Generic<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                               false, GMM1_TILE_M, false, false>(sharedEpilogueOp_, state.problemShape, gmmAddrInfo.tensorAddrs,
+                               false, GMM1_TILE_M, false, false>(gmm1Epilogue, state.problemShape, gmmAddrInfo.tensorAddrs,
                                                                   startBlockIdx_, sync);
             }
         }
     } else {
         // MoE 专家走 prefetch 路径
+        Gmm1ActivationQuantEpilogue<BlockEpilogue, TopkWeightsPrefetch, false> gmm1Epilogue(epilogueOp_);
         if constexpr (ENABLE_A8W4) {
             if constexpr (TopkWeightsPrefetch) {
-                epilogueOp_.SetMetaInfo(gmmAddrInfo.metaInfoGlobal, state.expertBeforeCnt);
+                gmm1Epilogue.SetMetaInfo(gmmAddrInfo.metaInfoGlobal, state.expertBeforeCnt);
             }
             Gmm1A8W4SyncPolicy<IsShared, false, TopkWeightsPrefetch> sync(
                 gmmAddrInfo, static_cast<uint32_t>(Get<M_VALUE>(state.problemShape)), GMM1_TILE_M, expertIdx,
                 vecSetSyncCom);
             RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t,
                         QuantScaleOutType, QuantScaleOutType,
-                        GMM1_TILE_M, TopkWeightsPrefetch>(epilogueOp_, state.problemShape, gmmAddrInfo.tensorAddrs,
+                        GMM1_TILE_M, TopkWeightsPrefetch>(gmm1Epilogue, state.problemShape, gmmAddrInfo.tensorAddrs,
                                                           startBlockIdx_, sync);
         } else {
             if constexpr (TopkWeightsPrefetch) {
-                epilogueOp_.SetMetaInfo(gmmAddrInfo.metaInfoGlobal, state.expertBeforeCnt);
+                gmm1Epilogue.SetMetaInfo(gmmAddrInfo.metaInfoGlobal, state.expertBeforeCnt);
             }
             Gmm1GenericSyncPolicy<IsShared, false, false, TopkWeightsPrefetch> sync(
                 gmmAddrInfo, static_cast<uint32_t>(Get<M_VALUE>(state.problemShape)), GMM1_TILE_M, expertIdx,
@@ -2480,12 +2482,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
                 // 自动处理类型提升
                 RunGmm1Generic<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                                QuantScaleOutType, true, GMM1_TILE_M, TopkWeightsPrefetch,
-                               false>(epilogueOp_, state.problemShape, gmmAddrInfo.tensorAddrs, startBlockIdx_, sync);
+                               false>(gmm1Epilogue, state.problemShape, gmmAddrInfo.tensorAddrs, startBlockIdx_, sync);
             } else {
                 // Generic: fp8/fp4 activation × fp8/fp4 weight in ND format (includes A4W4 ND)
                 RunGmm1Generic<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                                QuantScaleOutType, false, GMM1_TILE_M, TopkWeightsPrefetch,
-                               false>(epilogueOp_, state.problemShape, gmmAddrInfo.tensorAddrs, startBlockIdx_, sync);
+                               false>(gmm1Epilogue, state.problemShape, gmmAddrInfo.tensorAddrs, startBlockIdx_, sync);
             }
         }
     }

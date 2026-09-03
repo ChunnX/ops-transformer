@@ -96,15 +96,16 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1
         gmmAddrInfo, state, tokenStartIndexInExpert, gmm1TilesPerMGroup);
     ProblemShape sliceProblemShape = state.problemShape;
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
+    Gmm1ActivationQuantEpilogue<typename MegaMoeBase::BlockEpilogue, TopkWeightsPrefetch> gmm1Epilogue(epilogueOp_);
     if constexpr (TopkWeightsPrefetch) {
-        epilogueOp_.SetMetaInfo(gmmAddrInfo.metaInfoGlobal,
-                                static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert);
+        gmm1Epilogue.SetMetaInfo(gmmAddrInfo.metaInfoGlobal,
+                                 static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert);
     }
     Gmm1A8W4SyncPolicy<false, true, TopkWeightsPrefetch> sync(
         gmmAddrInfo, sliceTokenCount, GMM1_TILE_M, state.expertIdx, gmm1TileReadySequence);
     RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
                 QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-        epilogueOp_, sliceProblemShape, gmmAddrInfo.tensorAddrs, startBlockIdx,
+        gmm1Epilogue, sliceProblemShape, gmmAddrInfo.tensorAddrs, startBlockIdx,
         gmmExecutionConfig_.blockJob, sync);
 }
 

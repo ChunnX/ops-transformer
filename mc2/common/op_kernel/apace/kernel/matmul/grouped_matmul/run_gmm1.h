@@ -214,25 +214,9 @@ __aicore__ inline void Gmm1Aiv0PrologueA8W4(Scheduler &scheduler, TensorB &gmB, 
     }
 }
 
-// Prefetch 路径的 AIV0 等待 GM tile 就绪，再执行 SwiGLU/量化。
+// AIV0 消费 AIC 产出的 tile 并执行 SwiGLU/量化；GM/UB 数据源由 epilogue 按 TopkWeightsPrefetch 自决。
+// NotifyAicTileDone 经 policy 守卫（!TopkWeightsPrefetch）在 Prefetch 模式下编译期消除，行为与原双路径等价。
 template <typename MakeLayoutC, typename WorkSet, typename Config, typename ActivationQuantOp, typename SyncPolicy>
-__aicore__ inline void Gmm1Aiv0PrefetchEpilogueGeneric(WorkSet &workSet, const Config &config,
-                                                       uint32_t startLoopIdx, uint32_t tileNum,
-                                                       ActivationQuantOp &activationQuantOp, SyncPolicy &sync)
-{
-    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
-        auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
-        auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
-        uint32_t mLoc = Get<M_VALUE>(blockCoord);
-        uint32_t nLoc = Get<N_VALUE>(blockCoord);
-        sync.WaitAicTileDone(loopIdx);
-        activationQuantOp.template ProcessTileFromGm<MakeLayoutC>(config, workSet.gmC, actualShape, mLoc, nLoc,
-                                                                  sync);
-    }
-}
-
-// 非 Prefetch 路径的 AIV0 直接消费 AIC 的 UB tile，并维持 ping-pong 同步。
-template <typename WorkSet, typename Config, typename ActivationQuantOp, typename SyncPolicy>
 __aicore__ inline void Gmm1Aiv0EpilogueGeneric(WorkSet &workSet, const Config &config,
                                                uint32_t startLoopIdx, uint32_t tileNum,
                                                ActivationQuantOp &activationQuantOp, SyncPolicy &sync)
@@ -243,7 +227,8 @@ __aicore__ inline void Gmm1Aiv0EpilogueGeneric(WorkSet &workSet, const Config &c
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         sync.WaitAicTileDone(loopIdx);
-        activationQuantOp.ProcessTileFromUb(config, actualShape, mLoc, nLoc, sync.GetPingpongIdx(), sync);
+        activationQuantOp.template ProcessActivationTile<MakeLayoutC>(config, workSet.gmC, actualShape, mLoc, nLoc,
+                                                                     sync);
         sync.NotifyAicTileDone(loopIdx);
     }
 }
@@ -300,18 +285,11 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, SyncPolicy &sync, c
                 workSet, config, startLoopIdx, tileNum, sync, &localBlockMmadContext);
         }
     } else {
-        if constexpr (PrefetchToGm) {
-            Gmm1Aiv0PrefetchEpilogueGeneric<MakeLayoutC>(workSet, config, startLoopIdx, tileNum, activationQuantOp,
-                                                         sync);
-        } else {
-            Gmm1Aiv0EpilogueGeneric(workSet, config, startLoopIdx, tileNum, activationQuantOp, sync);
-        }
+        Gmm1Aiv0EpilogueGeneric<MakeLayoutC>(workSet, config, startLoopIdx, tileNum, activationQuantOp, sync);
     }
 }
 
-// Prefetch 路径的 AIV1 等待 GM tile 就绪，再执行 A8W4 SwiGLU/量化。
-
-// 非 Prefetch 路径的 AIV1 按 AIC 序号消费 A8W4 GMM1 tile（序号等待与推进在 SyncPolicy）。
+// AIV1 等待 AIC tile 就绪后消费 A8W4 GMM1 输出；Prefetch 分叉在 epilogue 内部（序号等待与推进在 SyncPolicy）。
 template <typename MakeLayoutC, typename WorkSet, typename Config, typename ActivationQuantOp, typename SyncPolicy>
 __aicore__ inline void Gmm1Aiv1EpilogueA8W4(WorkSet &workSet, const Config &config, uint32_t startLoopIdx,
                                             uint32_t tileNum, ActivationQuantOp &activationQuantOp,
@@ -323,8 +301,8 @@ __aicore__ inline void Gmm1Aiv1EpilogueA8W4(WorkSet &workSet, const Config &conf
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         sync.WaitAicTileDone(loopIdx);
-        activationQuantOp.template ProcessTileFromGmA8W4<MakeLayoutC>(config, workSet.gmC, actualShape, mLoc, nLoc,
-                                                                      sync);
+        activationQuantOp.template ProcessActivationTileA8W4<MakeLayoutC>(config, workSet.gmC, actualShape, mLoc,
+                                                                         nLoc, sync);
     }
 }
 
