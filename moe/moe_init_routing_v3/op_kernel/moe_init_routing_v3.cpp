@@ -12,6 +12,7 @@
  * \file moe_init_routing_v3.cpp
  * \brief
  */
+
 #include "moe_v3_mrgsort_out.h"
 #include "moe_v3_mrgsort.h"
 #include "moe_v3_sort_one_core.h"
@@ -34,7 +35,7 @@
 #include "moe_v3_gather_droppad_static_quant.h"
 #include "moe_v3_full_load_cut_origin_t.h"
 #include "moe_v3_cut_origin_t.h"
-
+printf(hello);
 
 /*
  * 高性能模板, 全在模板
@@ -60,9 +61,9 @@
 /*
  * 动态量化、无Gather、非Drop/Pad
  */
-#define MOE_INIT_ROUTING_V3_SORTONECORE_DYNAMICQUANT_GATHER_NODROP 1020000    // 单核排序、动态量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTONECORE_DYNAMICQUANT_SCATTER_NODROP 1021000   // 单核排序、动态量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_DYNAMICQUANT_GATHER_NODROP 1120000  // 多核排序、动态量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_SORTONECORE_DYNAMICQUANT_GATHER_NODROP 1020000 // 单核排序、动态量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_SORTONECORE_DYNAMICQUANT_SCATTER_NODROP 1021000 // 单核排序、动态量化、SCATTER索引
+#define MOE_INIT_ROUTING_V3_SORTMULTICORE_DYNAMICQUANT_GATHER_NODROP 1120000 // 多核排序、动态量化、GATHER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_DYNAMICQUANT_SCATTER_NODROP 1121000 // 多核排序、动态量化、GATHER索引
 
 /*
@@ -86,9 +87,9 @@
 /*
  * 非量化、有Gather
  */
-#define MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_GATHER 1200000    // 单核Gather->单核或多核排序、非量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_SCATTER 1201000   // 单核Gather->单核或多核排序、非量化、SCATTER索引
-#define MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_GATHER 1300000  // 多核Gather->多核排序、非量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_GATHER 1200000 // 单核Gather->单核或多核排序、非量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_GATHER_SORTONECORE_SCATTER 1201000 // 单核Gather->单核或多核排序、非量化、SCATTER索引
+#define MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_GATHER 1300000 // 多核Gather->多核排序、非量化、GATHER索引
 #define MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_SCATTER 1301000 // 多核Gather->多核排序、非量化、SCATTER索引
 
 #define EMPTY_TENSOR 3000000
