@@ -25,6 +25,9 @@
 #include "apace/core/aiv_comm/barrier/barrier_ubmem.h"
 #include "apace/tiling/comm_tiling_data.h"
 #include "include/tensor_api/tensor.h"
+#if MC2_DFX_ENABLE
+#include "mc2_runtime_info.h"
+#endif
 
 namespace Apace {
 
@@ -44,6 +47,10 @@ public:
                                 GM_ADDR bScaleGM, GM_ADDR cGM, GM_ADDR biasGM,
                                 const AllGatherMxMatmulUrmaTilingData *tilingData);
     __aicore__ inline void Process();
+
+#if MC2_DFX_ENABLE
+    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt) { runtimeInfo_ = rt; }
+#endif
 
     using QuantMatmulKernelImpl = AllGatherQbmmMxKernel<AType, BType, CType>;
     using KernelParams = typename QuantMatmulKernelImpl::Params;
@@ -107,6 +114,12 @@ private:
     uint64_t scaleRegionBytes_{};
 
     const AllGatherMxMatmulUrmaTilingData *tilingData_{};
+#if MC2_DFX_ENABLE
+    Mc2Kernel::Mc2RuntimeInfo *runtimeInfo_{nullptr};
+    uint8_t execTurn_ = 0;
+    static constexpr uint8_t POS_COMM_BEFORE             = 0U;
+    static constexpr uint8_t POS_COMP_CUBE_MATMUL_BEFORE = 1U;
+#endif
 };
 
 template <typename AType, typename BType, typename CType>
@@ -235,6 +248,12 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::MatmulPro
     params.dataBytesPerMRow = dataBytesPerMRow_;
     params.scaleBytesPerMRow = scaleBytesPerMRow_;
     params.cBytesPerM = cBytesPerM_;
+#if MC2_DFX_ENABLE
+    if (runtimeInfo_ != nullptr) {
+        runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_COMP_CUBE_MATMUL_BEFORE,
+            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
+    }
+#endif
     quantMatmulKernelImpl_(params);
 }
 
@@ -258,9 +277,22 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::AllGather
 
     for (uint32_t round = 0; round < commTurn_; ++round) {
         if (static_cast<uint32_t>(GetBlockIdx()) < rankSize_) {
+#if MC2_DFX_ENABLE
+            execTurn_++;
+            if (runtimeInfo_ != nullptr) {
+                runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_COMM_BEFORE,
+                    static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
+            }
+#endif
             allGatherScale_.Commit();
             allGatherData_.Commit();
+#if MC2_DFX_ENABLE
+            if (runtimeInfo_ != nullptr) { runtimeInfo_->IncCommitCount(); }
+#endif
             allGatherData_.template Wait<BARRIER_DEVICE>();
+#if MC2_DFX_ENABLE
+            if (runtimeInfo_ != nullptr) { runtimeInfo_->IncWaitCount(); }
+#endif
         }
         AscendC::SyncAll<true>();
         // round 0 对应 dependTileIdx=1，AIC 侧按 dependTileIdx 等待对应的远端 round 数据。
@@ -268,7 +300,11 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::AllGather
     }
     allGatherScale_.Finalize();
     allGatherData_.Finalize();
-
+#if MC2_DFX_ENABLE
+    if (runtimeInfo_ != nullptr) {
+        runtimeInfo_->WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
+    }
+#endif
     // 通信接口使用了 channel 内的字段，需要刷新 GM 地址保证跨 kernel launch 的 GM 状态与 aiCore cache 一致
     // 后续通信接口会内置刷 cache 机制，届时可移除此处调用
     dcci(reinterpret_cast<__gm__ void *>(udmaCtx_->commBufferAddrs),
