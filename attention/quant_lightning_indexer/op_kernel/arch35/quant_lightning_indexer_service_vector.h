@@ -728,7 +728,14 @@ __aicore__ inline void QLIVector<QLIT>::SegmentTopK(const QLICommon::RunInfo &in
         uint32_t segValidAlign256 = QLICommon::Align((uint32_t)segValid, (uint32_t)256);
         WaitFlag<HardEvent::V_MTE2>(TOPK_MRG_CYCLE);
         WaitFlag<HardEvent::MTE3_V>(TOPK_IDX_CYCLE);
+        // zero the FULL value tail [segValidAlign256, topkCountAlign256_): the LD list stores
+        // topkCount_ values wholesale, and any stale UB left there pairs with the -1 index
+        // padding and displaces real candidates in the merge (raw 0x0000 is the weakest
+        // sortable key, same neutral fill the segValid==0 path uses).
         Duplicate(mrgValueLocal_[segValid / 256 * 256], zero, segValidAlign256 - segValid / 256 * 256);
+        if (segValidAlign256 < topkCountAlign256_) {
+            Duplicate(mrgValueLocal_[segValidAlign256], zero, topkCountAlign256_ - segValidAlign256);
+        }
         SetFlag<HardEvent::V_MTE2>(TOPK_MRG_CYCLE);
         WaitFlag<HardEvent::V_MTE2>(TOPK_MRG_CYCLE);
         copyInParams.blockLen = (uint32_t)segValid * sizeof(SCORE_T);
