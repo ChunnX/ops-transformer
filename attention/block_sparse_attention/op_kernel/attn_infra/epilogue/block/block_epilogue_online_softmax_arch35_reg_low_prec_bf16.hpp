@@ -293,7 +293,6 @@ private:
 
         RegTensor<ElementInput> minVreg;
         RegTensor<ElementInput> srcVreg;
-        // RegTensor<ElementInput> maxSrcVreg;
         RegTensor<ElementInput> maxTmpVreg;
         RegTensor<ElementInput> scaleVreg;
         RegTensor<float> maxFloatVreg0;
@@ -349,7 +348,6 @@ private:
         RegTensor<ElementInput> minVreg;
         RegTensor<ElementInput> srcVreg0;
         RegTensor<ElementInput> srcVreg1;
-        // RegTensor<ElementInput> maxSrcVreg;
         RegTensor<ElementInput> maxTmpVreg;
         RegTensor<ElementInput> scaleVreg;
         RegTensor<float> maxFloatVreg0;

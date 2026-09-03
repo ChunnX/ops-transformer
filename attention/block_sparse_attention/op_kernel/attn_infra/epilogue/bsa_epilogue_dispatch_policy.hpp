@@ -83,11 +83,8 @@ struct EpilogueCopyGlobalMaxUbToL1BsaMX {
     using ArchTag = Arch::AtlasA5;
 };
 
-template <
-    LseMode LSE_MODE_ = LseMode::NONE,
-    LseFormat LSE_FORMAT_ = LseFormat::BNS1,
-    bool transposedMm1_ = false,
-    bool zNOnlineSoftmax_ = false>
+template <LseMode LSE_MODE_ = LseMode::NONE, LseFormat LSE_FORMAT_ = LseFormat::BNS1, bool transposedMm1_ = false,
+          bool zNOnlineSoftmax_ = false>
 struct EpilogueAtlasA5BsaRescaleO {
     using ArchTag = Arch::AtlasA5;
     static constexpr LseMode LSE_MODE = LSE_MODE_;

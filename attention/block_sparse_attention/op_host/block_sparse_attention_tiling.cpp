@@ -1272,8 +1272,8 @@ ge::graphStatus BSATiling::CalculateWorkSpace(gert::TilingContext *bsaContext)
     return ge::GRAPH_SUCCESS;
 }
 
-void BSATiling::B8FullQuantKVPL1TileInfo950(
-    uint32_t qBaseTileAligned128, uint32_t embeddingSizeAligned128, uint32_t kvBaseTileAligned128)
+void BSATiling::B8FullQuantKVPL1TileInfo950(uint32_t qBaseTileAligned128, uint32_t embeddingSizeAligned128,
+                                            uint32_t kvBaseTileAligned128)
 {
     if (embeddingSizeAligned128 == D_SIZE_128) {
         // fp8/hif8全量化场景下，kvBaseTile_最大达到512
@@ -1332,7 +1332,7 @@ void BSATiling::CalcMatmulPhaseL1TileInfo950()
         pL1BufNum_ = TRIO_BUF;
     }
     if (quantMode_ == FP8_QUANT) {
- 	    B8FullQuantKVPL1TileInfo950(qBaseTileAligned128, embeddingSizeAligned128, kvBaseTileAligned128);
+        B8FullQuantKVPL1TileInfo950(qBaseTileAligned128, embeddingSizeAligned128, kvBaseTileAligned128);
     }
 }
 
