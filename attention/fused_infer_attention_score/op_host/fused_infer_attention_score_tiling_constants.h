@@ -54,11 +54,6 @@ constexpr uint32_t BLOCK_SIZE_ALIGN_SIZE_16 = 16;
 constexpr uint32_t BLOCK_SIZE_ALIGN_SIZE_128 = 128;
 
 // sparse mode
-// constexpr uint32_t SPARSE_MODE_NO_MASK = 0;
-// constexpr uint32_t SPARSE_MODE_ALL_MASK = 1;
-// constexpr uint32_t SPARSE_MODE_LEFT_UP = 2;
-// constexpr uint32_t SPARSE_MODE_RIGHT_DOWN = 3;
-// constexpr uint32_t SPARSE_MODE_BAND = 4;
 constexpr uint32_t SPARSE_OPTIMIZE_ATTENTION_SIZE = 2048;
 
 // mask
