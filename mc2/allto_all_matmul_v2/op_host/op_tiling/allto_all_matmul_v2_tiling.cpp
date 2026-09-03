@@ -21,7 +21,9 @@
 #include <register/op_impl_registry.h>
 #include "graph/types.h"
 #include "tiling/platform/platform_ascendc.h"
-
+#include "mc2_exception_dump.h"
+#include "apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
+ 
 using namespace ge;
 
 namespace MC2Tiling {
@@ -57,4 +59,33 @@ IMPL_OP_OPTILING(AlltoAllMatmulV2)
     .Tiling(AlltoAllMatmulV2TilingFunc)
     .TilingParse<AlltoAllMatmulV2CompileInfo>(TilingParseForAlltoAllMatmulV2);
 
+#if MC2_DFX_ENABLE
+inline void AlltoAllMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
+{
+    const char *socName = aclrtGetSocName();
+    if (std::strstr(socName, "Ascend950") == nullptr) {
+        return;
+    }
+    Mc2Exception::Mc2DumpTilingData(args, "AlltoAllMatmulV2",
+        9U,   // tilingGmArgIdx
+        0U,   // argsOffset
+        8U,   // workspaceGmArgIdx
+        0U,   // quantModeOffset
+        offsetof(allToAllMatmulTilingData, workspaceLayout),  // wsLayoutOffsetNonQuant
+        offsetof(allToAllMatmulTilingData, workspaceLayout),  // wsLayoutOffsetQuant
+        offsetof(allToAllMatmulTilingData, workspaceLayout)); // wsLayoutOffsetApace
+    Mc2Exception::Mc2DumpUrmaContext(args, "AlltoAllMatmulV2",
+        0U,   // contextArgIdx
+        0U,   // argsOffset
+        9U,   // tilingGmArgIdx
+        offsetof(allToAllMatmulTilingData, peermemDataSize),
+        offsetof(allToAllMatmulTilingData, peermemLayout));
+}
+ 
+__attribute__((constructor)) void RegisterAlltoAllMatmulV2ExceptionFunc()
+{
+    IMPL_OP(AlltoAllMatmulV2)
+        .ExceptionDumpParseFunc(AlltoAllMatmulV2ExceptionImplWrapper);
+}
+#endif // MC2_DFX_ENABLE
 } // namespace MC2Tiling

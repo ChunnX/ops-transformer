@@ -34,6 +34,9 @@
 #include "apace/core/aiv_comm/collective_comm_context.h"
 #include "apace/tiling/comm_tiling_data.h"
 #include "apace/core/aiv_comm/barrier/barrier_ubmem.h"
+#if MC2_DFX_ENABLE
+#include "mc2_runtime_info.h"
+#endif
 
 namespace Apace {
 
@@ -76,6 +79,10 @@ public:
      * @brief 执行算子逻辑（包含 AIC/AIV 分离逻辑）
      */
     __aicore__ inline void Run();
+    
+#if MC2_DFX_ENABLE
+    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt) { runtimeInfo_ = rt; }
+#endif
 
     using TypeA = AType;
     using TypeB = BType;
@@ -147,7 +154,13 @@ private:
     } baseParams_;
 
     const allToAllMatmulTilingData *tilingData_{nullptr};
-
+#if MC2_DFX_ENABLE
+    Mc2Kernel::Mc2RuntimeInfo *runtimeInfo_{nullptr};
+    uint8_t execTurn_ = 0;
+    static constexpr uint8_t POS_COMM_BEFORE             = 0U;
+    static constexpr uint8_t POS_COMP_CUBE_MATMUL_BEFORE = 1U;
+    static constexpr uint8_t POS_COMP_LOCAL_BEFORE      = 2U;
+#endif
     // ---------------- 私有方法 ----------------
     __aicore__ inline void InitBaseParams(const allToAllMatmulTilingData *tilingData);
     __aicore__ inline void SetupParams(const QuantMatmulTilingData *mmTile, Params &out, MatmulMode matmulMode);
@@ -223,9 +236,26 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     for (uint32_t tid = 0; tid < baseParams_.commTurn; ++tid) {
         // 必选保证baseParams_.rankSize <= BlockNum
         if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
+#if MC2_DFX_ENABLE
+            execTurn_++;
+            if (runtimeInfo_ != nullptr) {
+                runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_COMM_BEFORE,
+                    static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
+            }
+#endif
             allToAllScaleA_.Commit();
             allToAllA_.Commit();
+#if MC2_DFX_ENABLE
+            if (runtimeInfo_ != nullptr) {
+                runtimeInfo_->IncCommitCount();
+            }
+#endif
             allToAllA_.template Wait<BARRIER_DEVICE>(); // scale的通信和a矩阵的通信使用同一channel，因此只需要wait一次
+#if MC2_DFX_ENABLE
+            if (runtimeInfo_ != nullptr) {
+                runtimeInfo_->IncWaitCount();
+            }
+#endif
         }
 
         AscendC::SyncAll<true>();
@@ -234,7 +264,11 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 
     allToAllScaleA_.Finalize();
     allToAllA_.Finalize();
-
+#if MC2_DFX_ENABLE
+    if (runtimeInfo_ != nullptr) {
+        runtimeInfo_->WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
+    }
+#endif
     // 通信接口使用了 channel 内的字段，需要刷新 GM 地址保证跨 kernel launch 的 GM 状态与 aiCore cache 一致
     // 后续通信接口会内置刷 cache 机制，届时可移除此处调用
     dcci(reinterpret_cast<__gm__ void *>(udmaCtx_->commBufferAddrs),
@@ -319,6 +353,12 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 {
     Params localParams;
     SetupParams(&tilingData_->tileQbmmTilingData, localParams, MatmulMode::LOCAL);
+#if MC2_DFX_ENABLE
+    if (runtimeInfo_ != nullptr) {
+        runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_COMP_LOCAL_BEFORE,
+            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
+    }
+#endif
     quantMatmulKernelImpl_(localParams);
 }
 
@@ -333,6 +373,12 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     params.mmadParams.cGmAddr = baseParams_.cGm;
     params.localParams.localAGmAddr = baseParams_.aGm;
     params.localParams.localScaleAGmAddr = baseParams_.scaleAGm;
+#if MC2_DFX_ENABLE
+    if (runtimeInfo_ != nullptr) {
+        runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_COMP_CUBE_MATMUL_BEFORE,
+            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
+    }
+#endif
     quantMatmulKernelImpl_(params);
 }
 
