@@ -43,11 +43,11 @@ __simd_callee__ inline void HistogramsHighProcessRow(__ubuf__ uint32_t *histogra
     Reg::RegTensor<uint16_t> vregHigh;
     Reg::RegTensor<uint16_t> vregLow;
 
-    static constexpr Reg::CastTrait CAST_TRAIT_UINT16_TOUINT32_EVEN = {
-        Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+    static constexpr Reg::CastTrait CAST_TRAIT_UINT16_TOUINT32_EVEN = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
+                                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
-    static constexpr Reg::CastTrait CAST_TRAIT_UINT16_TOUINT32_ODD = {
-        Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+    static constexpr Reg::CastTrait CAST_TRAIT_UINT16_TOUINT32_ODD = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
+                                                                      Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
     __ubuf__ uint16_t *roundInputBuf = inputBuf + realRowIdx * offset;
     __ubuf__ uint32_t *roundHistBuf = histogramsBuf + rowSlot * HISTOGRAM_BIN_COUNT;
@@ -55,14 +55,12 @@ __simd_callee__ inline void HistogramsHighProcessRow(__ubuf__ uint32_t *histogra
     Reg::Duplicate(cout1, 0);
     for (uint16_t i = 0; i < vfLoop; ++i) {
         Reg::LoadAlign<uint16_t, Reg::LoadDist::DIST_DINTLV_B8>(vregLow, vregHigh,
-                                                                          roundInputBuf + i * VF_INPUT_CHUNK_ELEMS);
+                                                                roundInputBuf + i * VF_INPUT_CHUNK_ELEMS);
 
-        Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0,
-                             Reg::HistogramsType::ACCUMULATE>(cout0, (Reg::RegTensor<uint8_t> &)vregHigh,
-                                                                   pregB8);
-        Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN1,
-                             Reg::HistogramsType::ACCUMULATE>(cout1, (Reg::RegTensor<uint8_t> &)vregHigh,
-                                                                   pregB8);
+        Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0, Reg::HistogramsType::ACCUMULATE>(
+            cout0, (Reg::RegTensor<uint8_t> &)vregHigh, pregB8);
+        Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN1, Reg::HistogramsType::ACCUMULATE>(
+            cout1, (Reg::RegTensor<uint8_t> &)vregHigh, pregB8);
     }
 
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_EVEN>(cout0U32Even, cout0, pregB16);
@@ -70,10 +68,9 @@ __simd_callee__ inline void HistogramsHighProcessRow(__ubuf__ uint32_t *histogra
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_EVEN>(cout1U32Even, cout1, pregB16);
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_ODD>(cout1U32Odd, cout1, pregB16);
 
-    Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(roundHistBuf, cout0U32Even, cout0U32Odd,
-                                                                        pregB32);
-    Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(roundHistBuf + VF_B16_ELEMS, cout1U32Even,
-                                                                        cout1U32Odd, pregB32);
+    Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(roundHistBuf, cout0U32Even, cout0U32Odd, pregB32);
+    Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(roundHistBuf + VF_B16_ELEMS, cout1U32Even, cout1U32Odd,
+                                                              pregB32);
 }
 
 template <typename T>
@@ -119,10 +116,8 @@ __simd_callee__ inline void FindHighTargetBinStoreRow(__ubuf__ uint32_t *idxHigh
 
         Reg::Compare<uint32_t, CMPMODE::GE>(pregGE, cout, btmK, pregB32);
 
-        Reg::Squeeze<uint32_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxHigh,
-                                                                         (Reg::RegTensor<uint32_t> &)idxC, pregGE);
-        Reg::StoreUnAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(roundIdxHighBuf, sqzIdxHigh,
-                                                                                  alignIdxHigh);
+        Reg::Squeeze<uint32_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxHigh, (Reg::RegTensor<uint32_t> &)idxC, pregGE);
+        Reg::StoreUnAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(roundIdxHighBuf, sqzIdxHigh, alignIdxHigh);
     }
     Reg::StoreUnAlignPost(roundIdxHighBuf, alignIdxHigh);
 }
@@ -210,11 +205,11 @@ __simd_callee__ inline void HistogramsLowProcessRow(__ubuf__ uint32_t *histogram
     Reg::RegTensor<uint16_t> vregHigh;
     Reg::RegTensor<uint16_t> vregLow;
 
-    static constexpr Reg::CastTrait CAST_TRAIT_UINT16_TOUINT32_EVEN = {
-        Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+    static constexpr Reg::CastTrait CAST_TRAIT_UINT16_TOUINT32_EVEN = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
+                                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
-    static constexpr Reg::CastTrait CAST_TRAIT_UINT16_TOUINT32_ODD = {
-        Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+    static constexpr Reg::CastTrait CAST_TRAIT_UINT16_TOUINT32_ODD = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
+                                                                      Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
     __ubuf__ uint16_t *roundInputBuf = inputBuf + realRowIdx * offset;
     __ubuf__ uint32_t *roundHistBuf = histogramsBuf + rowSlot * HISTOGRAM_BIN_COUNT;
@@ -225,17 +220,15 @@ __simd_callee__ inline void HistogramsLowProcessRow(__ubuf__ uint32_t *histogram
 
     for (uint16_t i = 0; i < vfLoop; ++i) {
         Reg::LoadAlign<uint16_t, Reg::LoadDist::DIST_DINTLV_B8>(vregLow, vregHigh,
-                                                                          roundInputBuf + i * VF_INPUT_CHUNK_ELEMS);
+                                                                roundInputBuf + i * VF_INPUT_CHUNK_ELEMS);
 
         Reg::Compare<uint8_t, CMPMODE::EQ>(pregEQ, (Reg::RegTensor<uint8_t> &)vregHigh,
-                                                (Reg::RegTensor<uint8_t> &)idxHigh, pregB8);
+                                           (Reg::RegTensor<uint8_t> &)idxHigh, pregB8);
 
-        Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0,
-                             Reg::HistogramsType::ACCUMULATE>(cout0, (Reg::RegTensor<uint8_t> &)vregLow,
-                                                                   pregEQ);
-        Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN1,
-                             Reg::HistogramsType::ACCUMULATE>(cout1, (Reg::RegTensor<uint8_t> &)vregLow,
-                                                                   pregEQ);
+        Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0, Reg::HistogramsType::ACCUMULATE>(
+            cout0, (Reg::RegTensor<uint8_t> &)vregLow, pregEQ);
+        Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN1, Reg::HistogramsType::ACCUMULATE>(
+            cout1, (Reg::RegTensor<uint8_t> &)vregLow, pregEQ);
     }
 
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_EVEN>(cout0U32Even, cout0, pregB16);
@@ -243,10 +236,9 @@ __simd_callee__ inline void HistogramsLowProcessRow(__ubuf__ uint32_t *histogram
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_EVEN>(cout1U32Even, cout1, pregB16);
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_ODD>(cout1U32Odd, cout1, pregB16);
 
-    Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(roundHistBuf, cout0U32Even, cout0U32Odd,
-                                                                        pregB32);
-    Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(roundHistBuf + VF_B16_ELEMS, cout1U32Even,
-                                                                        cout1U32Odd, pregB32);
+    Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(roundHistBuf, cout0U32Even, cout0U32Odd, pregB32);
+    Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(roundHistBuf + VF_B16_ELEMS, cout1U32Even, cout1U32Odd,
+                                                              pregB32);
 }
 
 template <typename T>
@@ -291,10 +283,8 @@ __simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *his
 
             Reg::Compare<uint32_t, CMPMODE::GE>(pregGE, cout, btmK, pregB32);
 
-            Reg::Squeeze<uint32_t, Reg::GatherMaskMode::STORE_REG>(
-                sqzIdxLow, (Reg::RegTensor<uint32_t> &)idxC, pregGE);
-            Reg::StoreUnAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(roundIdxLowBuf, sqzIdxLow,
-                                                                                      alignIdxLow);
+            Reg::Squeeze<uint32_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxLow, (Reg::RegTensor<uint32_t> &)idxC, pregGE);
+            Reg::StoreUnAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(roundIdxLowBuf, sqzIdxLow, alignIdxLow);
         }
         Reg::StoreUnAlignPost(roundIdxLowBuf, alignIdxLow);
     }
@@ -353,10 +343,8 @@ __simd_callee__ inline void FindIdxOutputProcessRow(__ubuf__ uint16_t *outputIdx
 
         Reg::Compare<uint16_t, CMPMODE::GT>(poutGT, vregInput, (Reg::RegTensor<uint16_t> &)kthValue, pregB16);
 
-        Reg::Squeeze<uint16_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxOut,
-                                                                         (Reg::RegTensor<uint16_t> &)idxC, poutGT);
-        Reg::StoreUnAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(roundOutputIdxBuf, sqzIdxOut,
-                                                                                  alignIdx);
+        Reg::Squeeze<uint16_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxOut, (Reg::RegTensor<uint16_t> &)idxC, poutGT);
+        Reg::StoreUnAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(roundOutputIdxBuf, sqzIdxOut, alignIdx);
     }
 
     for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
@@ -367,10 +355,8 @@ __simd_callee__ inline void FindIdxOutputProcessRow(__ubuf__ uint16_t *outputIdx
         Reg::MaskReg poutEQ;
         Reg::Compare<uint16_t, CMPMODE::EQ>(poutEQ, vregInput, (Reg::RegTensor<uint16_t> &)kthValue, pregB16);
 
-        Reg::Squeeze<uint16_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxOut,
-                                                                         (Reg::RegTensor<uint16_t> &)idxC, poutEQ);
-        Reg::StoreUnAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(roundOutputIdxBuf, sqzIdxOut,
-                                                                                  alignIdx);
+        Reg::Squeeze<uint16_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxOut, (Reg::RegTensor<uint16_t> &)idxC, poutEQ);
+        Reg::StoreUnAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(roundOutputIdxBuf, sqzIdxOut, alignIdx);
     }
     Reg::StoreUnAlignPost(roundOutputIdxBuf, alignIdx);
 }
@@ -407,8 +393,8 @@ __simd_callee__ inline void FindValueOutputProcessRow(__ubuf__ uint16_t *outputV
 
         Reg::Gather(outputValue, roundInputValueBuf, tmpIdx, pregB16);
 
-        Reg::StoreAlign<uint16_t, Reg::StoreDist::DIST_NORM>(roundOutputValueBuf + i * VF_B16_ELEMS,
-                                                                       outputValue, pregB16);
+        Reg::StoreAlign<uint16_t, Reg::StoreDist::DIST_NORM>(roundOutputValueBuf + i * VF_B16_ELEMS, outputValue,
+                                                             pregB16);
     }
 }
 
@@ -454,8 +440,7 @@ __simd_callee__ inline void FindRealIndexProcessRow(__ubuf__ uint32_t *outputIdx
 
         Reg::Add(outputGatherIdx, outputGatherIdx, outputAddsIdx, pregB32);
 
-        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(outputIdxBuf + i * VF_B32_ELEMS, outputGatherIdx,
-                                                                       pregB32);
+        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(outputIdxBuf + i * VF_B32_ELEMS, outputGatherIdx, pregB32);
     }
 }
 
@@ -564,8 +549,7 @@ __simd_vf__ void FindLDRealIndexVFImpl(__ubuf__ uint32_t *outputIdxBuf, __ubuf__
 
         Reg::Gather(outputIdx, hisIdxBuf, (Reg::RegTensor<uint32_t> &)tmpIdx, pregB32);
 
-        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(outputIdxBuf + i * VF_B32_ELEMS, outputIdx,
-                                                                       pregB32);
+        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(outputIdxBuf + i * VF_B32_ELEMS, outputIdx, pregB32);
     }
 }
 

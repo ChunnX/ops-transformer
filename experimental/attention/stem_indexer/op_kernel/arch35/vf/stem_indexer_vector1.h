@@ -52,7 +52,6 @@ struct FloatSortConstCtx {
     AscendC::Reg::RegTensor<UInt> nan;
 };
 
-
 template <typename FloatT>
 __simd_callee__ inline void InitFloatSortConstCtx(FloatSortConstCtx<FloatT> &ctx, AscendC::Reg::MaskReg &maskAll)
 {
@@ -64,10 +63,9 @@ __simd_callee__ inline void InitFloatSortConstCtx(FloatSortConstCtx<FloatT> &ctx
 }
 
 template <typename FloatT>
-__simd_callee__ inline void
-FloatToSortableKey(AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey,
-                   AscendC::Reg::RegTensor<FloatT> &inVal, FloatSortConstCtx<FloatT> &ctx,
-                   AscendC::Reg::MaskReg &maskAll)
+__simd_callee__ inline void FloatToSortableKey(AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey,
+                                               AscendC::Reg::RegTensor<FloatT> &inVal, FloatSortConstCtx<FloatT> &ctx,
+                                               AscendC::Reg::MaskReg &maskAll)
 {
     using Traits = FloatSortTraits<FloatT>;
     using UInt = typename Traits::UInt;
@@ -96,11 +94,10 @@ FloatToSortableKey(AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UIn
 }
 
 template <typename FloatT>
-__simd_callee__ inline void
-FloatX2ToSortableKey(AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey0,
-                     AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey1,
-                     AscendC::Reg::RegTensor<FloatT> &inVal0, AscendC::Reg::RegTensor<FloatT> &inVal1,
-                     FloatSortConstCtx<FloatT> &ctx, AscendC::Reg::MaskReg &maskAll)
+__simd_callee__ inline void FloatX2ToSortableKey(
+    AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey0,
+    AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey1, AscendC::Reg::RegTensor<FloatT> &inVal0,
+    AscendC::Reg::RegTensor<FloatT> &inVal1, FloatSortConstCtx<FloatT> &ctx, AscendC::Reg::MaskReg &maskAll)
 {
     using Traits = FloatSortTraits<FloatT>;
     using UInt = typename Traits::UInt;
@@ -179,14 +176,10 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint32_t *outBuf, _
         FloatX2ToSortableKey<float>(regOut[0], regOut[1], regQKBias[0], regQKBias[1], fp32Ctx, maskAllB32);
         FloatX2ToSortableKey<float>(regOut[2], regOut[3], regQKBias[2], regQKBias[3], fp32Ctx, maskAllB32);
         // 搬入outBuf的value部分
-        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i), regOut[0],
-                                                                       maskAllB32);
-        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 64, regOut[1],
-                                                                       maskAllB32);
-        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 128, regOut[2],
-                                                                       maskAllB32);
-        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 192, regOut[3],
-                                                                       maskAllB32);
+        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i), regOut[0], maskAllB32);
+        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 64, regOut[1], maskAllB32);
+        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 128, regOut[2], maskAllB32);
+        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 192, regOut[3], maskAllB32);
     }
 }
 
@@ -209,10 +202,10 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint16_t *outBuf, _
     FloatSortConstCtx<bfloat16_t> bf16Ctx;
     InitFloatSortConstCtx(bf16Ctx, maskAllB16);
 
-    constexpr static Reg::CastTrait castTraitF32ToF16_EVEN = {
-        Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::MERGING, RoundMode::CAST_ROUND};
-    constexpr static Reg::CastTrait castTraitF32ToF16_ODD = {
-        Reg::RegLayout::ONE, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+    constexpr static Reg::CastTrait castTraitF32ToF16_EVEN = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
+                                                              Reg::MaskMergeMode::MERGING, RoundMode::CAST_ROUND};
+    constexpr static Reg::CastTrait castTraitF32ToF16_ODD = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
+                                                             Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 
     Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(regvBias[0], vBiasBuf);
     Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(regvBias[1], vBiasBuf + 64);
@@ -241,10 +234,8 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint16_t *outBuf, _
         Reg::Cast<bfloat16_t, float, castTraitF32ToF16_EVEN>(regQKBiasBF16[1], regQKBias[2], maskAllB32);
         FloatX2ToSortableKey<bfloat16_t>(regOut[0], regOut[1], regQKBiasBF16[0], regQKBiasBF16[1], bf16Ctx, maskAllB16);
 
-        Reg::StoreAlign<uint16_t, Reg::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i), regOut[0],
-                                                                       maskAllB16);
-        Reg::StoreAlign<uint16_t, Reg::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 128, regOut[1],
-                                                                       maskAllB16);
+        Reg::StoreAlign<uint16_t, Reg::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i), regOut[0], maskAllB16);
+        Reg::StoreAlign<uint16_t, Reg::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 128, regOut[1], maskAllB16);
     }
 }
 

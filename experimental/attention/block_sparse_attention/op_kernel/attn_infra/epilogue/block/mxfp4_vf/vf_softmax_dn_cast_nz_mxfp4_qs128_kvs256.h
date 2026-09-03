@@ -96,8 +96,7 @@ __simd_callee__ inline void softmax_with_group_max_qs128_chunk_vf(__ubuf__ T2 *p
     }
 
     Max(group_gmax, group_gmax, curr_group_max, preg_all_16bit);
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>(local_group_max + groupBase * QsBase, curr_group_max,
-                                                      preg_all_16bit);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>(local_group_max + groupBase * QsBase, curr_group_max, preg_all_16bit);
 
     if constexpr (MX_QUANT_MODE == MXQuantMode::OCP) {
         Adds(curr_group_max, curr_group_max, NEG_TWO_VALE, preg_all_16bit);
@@ -247,8 +246,8 @@ __simd_callee__ inline void softmax_with_group_max_qs128_chunk_vf(__ubuf__ T2 *p
         Max(group_gmax, group_gmax, next_group_max, preg_valid_max);
 
         // 存储下一块最大值到 ulmax (groupBase+g+1)*128 偏移
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>(local_group_max + ((groupBase + g + 1) * QsBase),
-                                                          next_group_max, preg_valid_max);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>(local_group_max + ((groupBase + g + 1) * QsBase), next_group_max,
+                                                     preg_valid_max);
 
         // 更新当前块最大值，用于下一次循环
         if constexpr (MX_QUANT_MODE == MXQuantMode::OCP) {
@@ -261,7 +260,7 @@ __simd_callee__ inline void softmax_with_group_max_qs128_chunk_vf(__ubuf__ T2 *p
     for (uint16_t g = validGroups; g < GROUPS_PER_CHUNK; ++g) {
         // 写 MIN_VALUE，使下游 computePscale 得到 scale=0
         StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>(local_group_max + (groupBase + g) * QsBase, min_val_reg,
-                                                          preg_all_16bit);
+                                                     preg_all_16bit);
 
         // 偶数子块清零
         for (uint16_t j = 0; j < ITER_PER_GROUP; j += 2) {

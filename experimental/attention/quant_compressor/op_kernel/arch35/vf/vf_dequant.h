@@ -64,8 +64,7 @@ __simd_vf__ void DequantVFCoff1_128Impl(__ubuf__ float *outputAddr, __ubuf__ flo
         Reg::Mul(vregMul[1], vregInput[1], vregDescale[1], mask);
 
         Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset, vregMul[0], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + FLOAT_REP_SIZE, vregMul[1],
-                                                                    mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + FLOAT_REP_SIZE, vregMul[1], mask);
     }
 }
 
@@ -88,10 +87,8 @@ __simd_vf__ void DequantVFCoff1_256Impl(__ubuf__ float *outputAddr, __ubuf__ flo
 
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[0], inputAddr + offset);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[1], inputAddr + offset + FLOAT_REP_SIZE);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[2],
-                                                                  inputAddr + offset + 2 * FLOAT_REP_SIZE);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[3],
-                                                                  inputAddr + offset + 3 * FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[2], inputAddr + offset + 2 * FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[3], inputAddr + offset + 3 * FLOAT_REP_SIZE);
 
         Reg::Mul(vregMul[0], vregInput[0], vregDescale[0], mask);
         Reg::Mul(vregMul[1], vregInput[1], vregDescale[1], mask);
@@ -99,12 +96,9 @@ __simd_vf__ void DequantVFCoff1_256Impl(__ubuf__ float *outputAddr, __ubuf__ flo
         Reg::Mul(vregMul[3], vregInput[3], vregDescale[3], mask);
 
         Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset, vregMul[0], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + FLOAT_REP_SIZE, vregMul[1],
-                                                                    mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 2 * FLOAT_REP_SIZE,
-                                                                    vregMul[2], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 3 * FLOAT_REP_SIZE,
-                                                                    vregMul[3], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + FLOAT_REP_SIZE, vregMul[1], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 2 * FLOAT_REP_SIZE, vregMul[2], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 3 * FLOAT_REP_SIZE, vregMul[3], mask);
     }
 }
 
@@ -131,18 +125,12 @@ __simd_vf__ void DequantVFCoff1_512Impl(__ubuf__ float *outputAddr, __ubuf__ flo
 
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[0], inputAddr + offset);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[1], inputAddr + offset + FLOAT_REP_SIZE);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[2],
-                                                                  inputAddr + offset + 2 * FLOAT_REP_SIZE);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[3],
-                                                                  inputAddr + offset + 3 * FLOAT_REP_SIZE);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[4],
-                                                                  inputAddr + offset + 4 * FLOAT_REP_SIZE);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[5],
-                                                                  inputAddr + offset + 5 * FLOAT_REP_SIZE);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[6],
-                                                                  inputAddr + offset + 6 * FLOAT_REP_SIZE);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[7],
-                                                                  inputAddr + offset + 7 * FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[2], inputAddr + offset + 2 * FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[3], inputAddr + offset + 3 * FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[4], inputAddr + offset + 4 * FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[5], inputAddr + offset + 5 * FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[6], inputAddr + offset + 6 * FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInput[7], inputAddr + offset + 7 * FLOAT_REP_SIZE);
 
         Reg::Mul(vregMul[0], vregInput[0], vregDescale[0], mask);
         Reg::Mul(vregMul[1], vregInput[1], vregDescale[1], mask);
@@ -154,20 +142,13 @@ __simd_vf__ void DequantVFCoff1_512Impl(__ubuf__ float *outputAddr, __ubuf__ flo
         Reg::Mul(vregMul[7], vregInput[7], vregDescale[7], mask);
 
         Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset, vregMul[0], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + FLOAT_REP_SIZE, vregMul[1],
-                                                                    mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 2 * FLOAT_REP_SIZE,
-                                                                    vregMul[2], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 3 * FLOAT_REP_SIZE,
-                                                                    vregMul[3], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 4 * FLOAT_REP_SIZE,
-                                                                    vregMul[4], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 5 * FLOAT_REP_SIZE,
-                                                                    vregMul[5], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 6 * FLOAT_REP_SIZE,
-                                                                    vregMul[6], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 7 * FLOAT_REP_SIZE,
-                                                                    vregMul[7], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + FLOAT_REP_SIZE, vregMul[1], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 2 * FLOAT_REP_SIZE, vregMul[2], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 3 * FLOAT_REP_SIZE, vregMul[3], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 4 * FLOAT_REP_SIZE, vregMul[4], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 5 * FLOAT_REP_SIZE, vregMul[5], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 6 * FLOAT_REP_SIZE, vregMul[6], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 7 * FLOAT_REP_SIZE, vregMul[7], mask);
     }
 }
 
@@ -186,7 +167,6 @@ __simd_vf__ void DequantVFCoff2BaseImpl(__ubuf__ float *outputAddr, __ubuf__ flo
     Reg::RegTensor<float> vregMulCoff0;
     Reg::RegTensor<float> vregMulCoff1;
 
-
     Reg::MaskReg mask = Reg::UpdateMask<float>(col);
 
     Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff0, descaleAddr);
@@ -202,8 +182,7 @@ __simd_vf__ void DequantVFCoff2BaseImpl(__ubuf__ float *outputAddr, __ubuf__ flo
         Reg::Mul(vregMulCoff1, vregInputCoff1, vregDescaleCoff1, mask);
 
         Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset, vregMulCoff0, mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol, vregMulCoff1,
-                                                                    mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol, vregMulCoff1, mask);
     }
 }
 
@@ -219,24 +198,21 @@ __simd_vf__ void DequantVFCoff2_128Impl(__ubuf__ float *outputAddr, __ubuf__ flo
     Reg::RegTensor<float> vregMulCoff0[2];
     Reg::RegTensor<float> vregMulCoff1[2];
 
-
     Reg::MaskReg mask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
 
     Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff0[0], descaleAddr);
     Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff0[1], descaleAddr + FLOAT_REP_SIZE);
     Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[0], descaleAddr + headDim);
-    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[1],
-                                                              descaleAddr + headDim + FLOAT_REP_SIZE);
+    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[1], descaleAddr + headDim + FLOAT_REP_SIZE);
 
     for (uint16_t i = 0; i < row; i++) {
         uint64_t offset = i * 2 * actualCol;
 
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[0], inputAddr + offset);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[1],
-                                                                  inputAddr + offset + FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[1], inputAddr + offset + FLOAT_REP_SIZE);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff1[0], inputAddr + offset + actualCol);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff1[1],
-                                                                  inputAddr + offset + actualCol + FLOAT_REP_SIZE);
+                                                        inputAddr + offset + actualCol + FLOAT_REP_SIZE);
 
         Reg::Mul(vregMulCoff0[0], vregInputCoff0[0], vregDescaleCoff0[0], mask);
         Reg::Mul(vregMulCoff0[1], vregInputCoff0[1], vregDescaleCoff0[1], mask);
@@ -244,12 +220,10 @@ __simd_vf__ void DequantVFCoff2_128Impl(__ubuf__ float *outputAddr, __ubuf__ flo
         Reg::Mul(vregMulCoff1[1], vregInputCoff1[1], vregDescaleCoff1[1], mask);
 
         Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset, vregMulCoff0[0], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + FLOAT_REP_SIZE,
-                                                                    vregMulCoff0[1], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol, vregMulCoff1[0],
-                                                                    mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + FLOAT_REP_SIZE, vregMulCoff0[1], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol, vregMulCoff1[0], mask);
         Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol + FLOAT_REP_SIZE,
-                                                                    vregMulCoff1[1], mask);
+                                                          vregMulCoff1[1], mask);
     }
 }
 
@@ -265,7 +239,6 @@ __simd_vf__ void DequantVFCoff2_256Impl(__ubuf__ float *outputAddr, __ubuf__ flo
     Reg::RegTensor<float> vregMulCoff0[4];
     Reg::RegTensor<float> vregMulCoff1[4];
 
-
     Reg::MaskReg mask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
 
     Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff0[0], descaleAddr);
@@ -273,30 +246,24 @@ __simd_vf__ void DequantVFCoff2_256Impl(__ubuf__ float *outputAddr, __ubuf__ flo
     Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff0[2], descaleAddr + 2 * FLOAT_REP_SIZE);
     Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff0[3], descaleAddr + 3 * FLOAT_REP_SIZE);
     Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[0], descaleAddr + headDim);
-    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[1],
-                                                              descaleAddr + headDim + FLOAT_REP_SIZE);
-    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[2],
-                                                              descaleAddr + headDim + 2 * FLOAT_REP_SIZE);
-    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[3],
-                                                              descaleAddr + headDim + 3 * FLOAT_REP_SIZE);
+    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[1], descaleAddr + headDim + FLOAT_REP_SIZE);
+    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[2], descaleAddr + headDim + 2 * FLOAT_REP_SIZE);
+    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[3], descaleAddr + headDim + 3 * FLOAT_REP_SIZE);
 
     for (uint16_t i = 0; i < row; i++) {
         uint64_t offset = i * 2 * actualCol;
 
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[0], inputAddr + offset);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[1],
-                                                                  inputAddr + offset + FLOAT_REP_SIZE);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[2],
-                                                                  inputAddr + offset + 2 * FLOAT_REP_SIZE);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[3],
-                                                                  inputAddr + offset + 3 * FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[1], inputAddr + offset + FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[2], inputAddr + offset + 2 * FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[3], inputAddr + offset + 3 * FLOAT_REP_SIZE);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff1[0], inputAddr + offset + actualCol);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff1[1],
-                                                                  inputAddr + offset + actualCol + FLOAT_REP_SIZE);
+                                                        inputAddr + offset + actualCol + FLOAT_REP_SIZE);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff1[2],
-                                                                  inputAddr + offset + actualCol + 2 * FLOAT_REP_SIZE);
+                                                        inputAddr + offset + actualCol + 2 * FLOAT_REP_SIZE);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff1[3],
-                                                                  inputAddr + offset + actualCol + 3 * FLOAT_REP_SIZE);
+                                                        inputAddr + offset + actualCol + 3 * FLOAT_REP_SIZE);
 
         Reg::Mul(vregMulCoff0[0], vregInputCoff0[0], vregDescaleCoff0[0], mask);
         Reg::Mul(vregMulCoff0[1], vregInputCoff0[1], vregDescaleCoff0[1], mask);
@@ -308,20 +275,18 @@ __simd_vf__ void DequantVFCoff2_256Impl(__ubuf__ float *outputAddr, __ubuf__ flo
         Reg::Mul(vregMulCoff1[3], vregInputCoff1[3], vregDescaleCoff1[3], mask);
 
         Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset, vregMulCoff0[0], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + FLOAT_REP_SIZE,
-                                                                    vregMulCoff0[1], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 2 * FLOAT_REP_SIZE,
-                                                                    vregMulCoff0[2], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 3 * FLOAT_REP_SIZE,
-                                                                    vregMulCoff0[3], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol, vregMulCoff1[0],
-                                                                    mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + FLOAT_REP_SIZE, vregMulCoff0[1], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 2 * FLOAT_REP_SIZE, vregMulCoff0[2],
+                                                          mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 3 * FLOAT_REP_SIZE, vregMulCoff0[3],
+                                                          mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol, vregMulCoff1[0], mask);
         Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol + FLOAT_REP_SIZE,
-                                                                    vregMulCoff1[1], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(
-            outputAddr + offset + actualCol + 2 * FLOAT_REP_SIZE, vregMulCoff1[2], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(
-            outputAddr + offset + actualCol + 3 * FLOAT_REP_SIZE, vregMulCoff1[3], mask);
+                                                          vregMulCoff1[1], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol + 2 * FLOAT_REP_SIZE,
+                                                          vregMulCoff1[2], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol + 3 * FLOAT_REP_SIZE,
+                                                          vregMulCoff1[3], mask);
     }
 }
 
@@ -337,7 +302,6 @@ __simd_vf__ void DequantVFCoff2_512Impl(__ubuf__ float *outputAddr, __ubuf__ flo
     Reg::RegTensor<float> vregMulCoff0[8];
     Reg::RegTensor<float> vregMulCoff1[8];
 
-
     Reg::MaskReg mask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
 
     Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff0[0], descaleAddr);
@@ -349,54 +313,40 @@ __simd_vf__ void DequantVFCoff2_512Impl(__ubuf__ float *outputAddr, __ubuf__ flo
     Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff0[6], descaleAddr + 6 * FLOAT_REP_SIZE);
     Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff0[7], descaleAddr + 7 * FLOAT_REP_SIZE);
     Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[0], descaleAddr + headDim);
-    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[1],
-                                                              descaleAddr + headDim + FLOAT_REP_SIZE);
-    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[2],
-                                                              descaleAddr + headDim + 2 * FLOAT_REP_SIZE);
-    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[3],
-                                                              descaleAddr + headDim + 3 * FLOAT_REP_SIZE);
-    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[4],
-                                                              descaleAddr + headDim + 4 * FLOAT_REP_SIZE);
-    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[5],
-                                                              descaleAddr + headDim + 5 * FLOAT_REP_SIZE);
-    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[6],
-                                                              descaleAddr + headDim + 6 * FLOAT_REP_SIZE);
-    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[7],
-                                                              descaleAddr + headDim + 7 * FLOAT_REP_SIZE);
+    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[1], descaleAddr + headDim + FLOAT_REP_SIZE);
+    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[2], descaleAddr + headDim + 2 * FLOAT_REP_SIZE);
+    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[3], descaleAddr + headDim + 3 * FLOAT_REP_SIZE);
+    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[4], descaleAddr + headDim + 4 * FLOAT_REP_SIZE);
+    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[5], descaleAddr + headDim + 5 * FLOAT_REP_SIZE);
+    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[6], descaleAddr + headDim + 6 * FLOAT_REP_SIZE);
+    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregDescaleCoff1[7], descaleAddr + headDim + 7 * FLOAT_REP_SIZE);
 
     for (uint16_t i = 0; i < row; i++) {
         uint64_t offset = i * 2 * actualCol;
 
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[0], inputAddr + offset);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[1],
-                                                                  inputAddr + offset + FLOAT_REP_SIZE);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[2],
-                                                                  inputAddr + offset + 2 * FLOAT_REP_SIZE);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[3],
-                                                                  inputAddr + offset + 3 * FLOAT_REP_SIZE);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[4],
-                                                                  inputAddr + offset + 4 * FLOAT_REP_SIZE);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[5],
-                                                                  inputAddr + offset + 5 * FLOAT_REP_SIZE);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[6],
-                                                                  inputAddr + offset + 6 * FLOAT_REP_SIZE);
-        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[7],
-                                                                  inputAddr + offset + 7 * FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[1], inputAddr + offset + FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[2], inputAddr + offset + 2 * FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[3], inputAddr + offset + 3 * FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[4], inputAddr + offset + 4 * FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[5], inputAddr + offset + 5 * FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[6], inputAddr + offset + 6 * FLOAT_REP_SIZE);
+        Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff0[7], inputAddr + offset + 7 * FLOAT_REP_SIZE);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff1[0], inputAddr + offset + actualCol);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff1[1],
-                                                                  inputAddr + offset + actualCol + FLOAT_REP_SIZE);
+                                                        inputAddr + offset + actualCol + FLOAT_REP_SIZE);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff1[2],
-                                                                  inputAddr + offset + actualCol + 2 * FLOAT_REP_SIZE);
+                                                        inputAddr + offset + actualCol + 2 * FLOAT_REP_SIZE);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff1[3],
-                                                                  inputAddr + offset + actualCol + 3 * FLOAT_REP_SIZE);
+                                                        inputAddr + offset + actualCol + 3 * FLOAT_REP_SIZE);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff1[4],
-                                                                  inputAddr + offset + actualCol + 4 * FLOAT_REP_SIZE);
+                                                        inputAddr + offset + actualCol + 4 * FLOAT_REP_SIZE);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff1[5],
-                                                                  inputAddr + offset + actualCol + 5 * FLOAT_REP_SIZE);
+                                                        inputAddr + offset + actualCol + 5 * FLOAT_REP_SIZE);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff1[6],
-                                                                  inputAddr + offset + actualCol + 6 * FLOAT_REP_SIZE);
+                                                        inputAddr + offset + actualCol + 6 * FLOAT_REP_SIZE);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregInputCoff1[7],
-                                                                  inputAddr + offset + actualCol + 7 * FLOAT_REP_SIZE);
+                                                        inputAddr + offset + actualCol + 7 * FLOAT_REP_SIZE);
 
         Reg::Mul(vregMulCoff0[0], vregInputCoff0[0], vregDescaleCoff0[0], mask);
         Reg::Mul(vregMulCoff0[1], vregInputCoff0[1], vregDescaleCoff0[1], mask);
@@ -416,36 +366,34 @@ __simd_vf__ void DequantVFCoff2_512Impl(__ubuf__ float *outputAddr, __ubuf__ flo
         Reg::Mul(vregMulCoff1[7], vregInputCoff1[7], vregDescaleCoff1[7], mask);
 
         Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset, vregMulCoff0[0], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + FLOAT_REP_SIZE,
-                                                                    vregMulCoff0[1], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 2 * FLOAT_REP_SIZE,
-                                                                    vregMulCoff0[2], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 3 * FLOAT_REP_SIZE,
-                                                                    vregMulCoff0[3], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 4 * FLOAT_REP_SIZE,
-                                                                    vregMulCoff0[4], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 5 * FLOAT_REP_SIZE,
-                                                                    vregMulCoff0[5], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 6 * FLOAT_REP_SIZE,
-                                                                    vregMulCoff0[6], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 7 * FLOAT_REP_SIZE,
-                                                                    vregMulCoff0[7], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol, vregMulCoff1[0],
-                                                                    mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + FLOAT_REP_SIZE, vregMulCoff0[1], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 2 * FLOAT_REP_SIZE, vregMulCoff0[2],
+                                                          mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 3 * FLOAT_REP_SIZE, vregMulCoff0[3],
+                                                          mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 4 * FLOAT_REP_SIZE, vregMulCoff0[4],
+                                                          mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 5 * FLOAT_REP_SIZE, vregMulCoff0[5],
+                                                          mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 6 * FLOAT_REP_SIZE, vregMulCoff0[6],
+                                                          mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + 7 * FLOAT_REP_SIZE, vregMulCoff0[7],
+                                                          mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol, vregMulCoff1[0], mask);
         Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol + FLOAT_REP_SIZE,
-                                                                    vregMulCoff1[1], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(
-            outputAddr + offset + actualCol + 2 * FLOAT_REP_SIZE, vregMulCoff1[2], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(
-            outputAddr + offset + actualCol + 3 * FLOAT_REP_SIZE, vregMulCoff1[3], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(
-            outputAddr + offset + actualCol + 4 * FLOAT_REP_SIZE, vregMulCoff1[4], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(
-            outputAddr + offset + actualCol + 5 * FLOAT_REP_SIZE, vregMulCoff1[5], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(
-            outputAddr + offset + actualCol + 6 * FLOAT_REP_SIZE, vregMulCoff1[6], mask);
-        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(
-            outputAddr + offset + actualCol + 7 * FLOAT_REP_SIZE, vregMulCoff1[7], mask);
+                                                          vregMulCoff1[1], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol + 2 * FLOAT_REP_SIZE,
+                                                          vregMulCoff1[2], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol + 3 * FLOAT_REP_SIZE,
+                                                          vregMulCoff1[3], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol + 4 * FLOAT_REP_SIZE,
+                                                          vregMulCoff1[4], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol + 5 * FLOAT_REP_SIZE,
+                                                          vregMulCoff1[5], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol + 6 * FLOAT_REP_SIZE,
+                                                          vregMulCoff1[6], mask);
+        Reg::StoreAlign<float, Reg::StoreDist::DIST_NORM>(outputAddr + offset + actualCol + 7 * FLOAT_REP_SIZE,
+                                                          vregMulCoff1[7], mask);
     }
 }
 

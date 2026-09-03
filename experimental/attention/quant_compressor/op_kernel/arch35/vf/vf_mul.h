@@ -29,7 +29,6 @@ constexpr uint32_t baseD128 = 128;
 constexpr uint32_t baseD256 = 256;
 constexpr uint32_t baseD512 = 512;
 
-
 template <typename T>
 __simd_callee__ inline T SimdCeilDivT(T num1, T num2)
 {
@@ -47,7 +46,6 @@ struct ReduceMulRegList {
     Reg::RegTensor<T> vregSum;
 };
 
-
 template <typename T>
 __simd_callee__ void LoadMulAddVFImpl(__ubuf__ T *kvAddr, __ubuf__ T *scoreAddr, ReduceMulRegList<T> &regList,
                                       uint64_t offset, uint32_t maskValue)
@@ -58,7 +56,6 @@ __simd_callee__ void LoadMulAddVFImpl(__ubuf__ T *kvAddr, __ubuf__ T *scoreAddr,
     Reg::Mul(regList.vregMul, regList.vreg0, regList.vreg1, mask);
     Reg::Add(regList.vregSum, regList.vregSum, regList.vregMul, mask);
 }
-
 
 template <typename T>
 __simd_vf__ void MulReduceSumbase8VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *scoreAddr, __ubuf__ T *outputAddr,
@@ -312,7 +309,6 @@ __aicore__ inline void MulReduceSumbaseVF(const LocalTensor<T> &kvLocal, const L
         MulReduceSumbase512VFImpl(kvAddr, scoreAddr, outputAddr, coff, cmpRatio, scLoopCnt, baseD);
     }
 }
-
 
 template <typename T>
 __simd_vf__ void MulsVFImpl(__ubuf__ T *dstAddr, __ubuf__ T *srcAddr, float scalarValue, uint32_t cnt,

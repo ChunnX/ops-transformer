@@ -25,7 +25,6 @@ using AscendC::LocalTensor;
 using namespace AscendC;
 using namespace Reg;
 
-
 template <bool clear_gmax, typename T, typename T2, bool hasAtten = false, uint16_t S2BaseAlign = 32,
           uint16_t S1Base = 128>
 __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_vf(__ubuf__ T2 *pDest, __ubuf__ T *s,
@@ -249,16 +248,16 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_vf(__ubuf__ T2 
 
     // GroupMaxpadding到64, 使得对应的pscale=0
     Duplicate(min_val_reg, MIN_VALUE);
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>(local_group_max + GROUP_COUNT * S1Base, min_val_reg,
-                                                      preg_all_16bit);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>(local_group_max + GROUP_COUNT * S1Base, min_val_reg, preg_all_16bit);
 }
 
 template <bool clear_gmax, typename T, typename T2, bool hasAtten = false, uint16_t S2BaseAlign = 32,
           uint16_t S1Base = 128>
-__aicore__ inline void
-SoftmaxWithGroupMaxAlignQs128Kvs32CallVF(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor,
-                                         const LocalTensor<T> &local_group_max, const LocalTensor<T> &global_max,
-                                         const LocalTensor<uint8_t> &indexesBuf, const T scale)
+__aicore__ inline void SoftmaxWithGroupMaxAlignQs128Kvs32CallVF(const LocalTensor<T2> &dstTensor,
+                                                                const LocalTensor<T> &srcTensor,
+                                                                const LocalTensor<T> &local_group_max,
+                                                                const LocalTensor<T> &global_max,
+                                                                const LocalTensor<uint8_t> &indexesBuf, const T scale)
 {
     __ubuf__ T2 *pDest = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ T *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();

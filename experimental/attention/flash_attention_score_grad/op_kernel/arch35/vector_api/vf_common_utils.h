@@ -25,17 +25,17 @@ namespace AscendC {
 using namespace Reg;
 
 constexpr static AscendC::Reg::CastTrait castTraitB162B32Odd = {
-AscendC::Reg::RegLayout::ONE,
-AscendC::Reg::SatMode::UNKNOWN,
-AscendC::Reg::MaskMergeMode::ZEROING,
-AscendC::RoundMode::UNKNOWN,
+    AscendC::Reg::RegLayout::ONE,
+    AscendC::Reg::SatMode::UNKNOWN,
+    AscendC::Reg::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::UNKNOWN,
 };
 constexpr static AscendC::Reg::CastTrait castTraitB162B32Even = {
-AscendC::Reg::RegLayout::ZERO,
-AscendC::Reg::SatMode::UNKNOWN,
-AscendC::Reg::MaskMergeMode::ZEROING,
-AscendC::RoundMode::UNKNOWN,
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::UNKNOWN,
+    AscendC::Reg::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::UNKNOWN,
 };
-} // namespace
+} // namespace AscendC
 
 #endif // VF_COMMON_UTILS_H

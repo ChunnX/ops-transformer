@@ -26,60 +26,56 @@ struct FloatSortTraits;
 template <>
 struct FloatSortTraits<float> {
     using UInt = uint32_t;
-    static constexpr UInt ZERO      = 0x00000000;
+    static constexpr UInt ZERO = 0x00000000;
     static constexpr UInt SIGN_MASK = 0x80000000;
-    static constexpr UInt NAN_MASK  = 0x7FC00000;
-    static constexpr UInt ALL_ONE   = 0xFFFFFFFF;
+    static constexpr UInt NAN_MASK = 0x7FC00000;
+    static constexpr UInt ALL_ONE = 0xFFFFFFFF;
 };
 
 // bf16
 template <>
 struct FloatSortTraits<bfloat16_t> {
     using UInt = uint16_t;
-    static constexpr UInt ZERO      = 0x0000;
+    static constexpr UInt ZERO = 0x0000;
     static constexpr UInt SIGN_MASK = 0x8000;
-    static constexpr UInt NAN_MASK  = 0x7FC0;
-    static constexpr UInt ALL_ONE   = 0xFFFF;
+    static constexpr UInt NAN_MASK = 0x7FC0;
+    static constexpr UInt ALL_ONE = 0xFFFF;
 };
-
 
 template <typename FloatT>
 struct FloatSortConstCtx {
     using Traits = FloatSortTraits<FloatT>;
-    using UInt   = typename Traits::UInt;
+    using UInt = typename Traits::UInt;
     AscendC::Reg::RegTensor<UInt> zeros;
     AscendC::Reg::RegTensor<UInt> allOne;
     AscendC::Reg::RegTensor<UInt> signMask;
     AscendC::Reg::RegTensor<UInt> nan;
 };
 
-
 template <typename FloatT>
-__simd_callee__ inline void InitFloatSortConstCtx(FloatSortConstCtx<FloatT>& ctx, AscendC::Reg::MaskReg& maskAll)
+__simd_callee__ inline void InitFloatSortConstCtx(FloatSortConstCtx<FloatT> &ctx, AscendC::Reg::MaskReg &maskAll)
 {
     using Traits = FloatSortTraits<FloatT>;
-    AscendC::Reg::Duplicate(ctx.zeros,    Traits::ZERO,      maskAll);
-    AscendC::Reg::Duplicate(ctx.allOne,   Traits::ALL_ONE,   maskAll);
+    AscendC::Reg::Duplicate(ctx.zeros, Traits::ZERO, maskAll);
+    AscendC::Reg::Duplicate(ctx.allOne, Traits::ALL_ONE, maskAll);
     AscendC::Reg::Duplicate(ctx.signMask, Traits::SIGN_MASK, maskAll);
-    AscendC::Reg::Duplicate(ctx.nan,      Traits::NAN_MASK,  maskAll);
+    AscendC::Reg::Duplicate(ctx.nan, Traits::NAN_MASK, maskAll);
 }
 
-
 template <typename FloatT>
-__simd_callee__ inline void FloatToSortableKey(AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UInt>& outKey,
-                                               AscendC::Reg::RegTensor<FloatT>& inVal,
-                                               FloatSortConstCtx<FloatT>& ctx,
-                                               AscendC::Reg::MaskReg& maskAll)
+__simd_callee__ inline void FloatToSortableKey(AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey,
+                                               AscendC::Reg::RegTensor<FloatT> &inVal, FloatSortConstCtx<FloatT> &ctx,
+                                               AscendC::Reg::MaskReg &maskAll)
 {
     using Traits = FloatSortTraits<FloatT>;
-    using UInt   = typename Traits::UInt;
+    using UInt = typename Traits::UInt;
 
     AscendC::Reg::RegTensor<UInt> regTemp;
     AscendC::Reg::RegTensor<UInt> regMask;
     AscendC::Reg::MaskReg regSelectNan;
     AscendC::Reg::MaskReg regSelectSign;
 
-    auto& inBits = (AscendC::Reg::RegTensor<UInt>&)inVal;
+    auto &inBits = (AscendC::Reg::RegTensor<UInt> &)inVal;
 
     // 1. NaN check
     AscendC::Reg::Compare<UInt, CMPMODE::EQ>(regSelectNan, inBits, ctx.nan, maskAll);
@@ -98,23 +94,21 @@ __simd_callee__ inline void FloatToSortableKey(AscendC::Reg::RegTensor<typename 
 }
 
 template <typename FloatT>
-__simd_callee__ inline void FloatX2ToSortableKey(AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UInt>& outKey0,
-                                                 AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UInt>& outKey1,
-                                                 AscendC::Reg::RegTensor<FloatT>& inVal0,
-                                                 AscendC::Reg::RegTensor<FloatT>& inVal1,
-                                                 FloatSortConstCtx<FloatT>& ctx,
-                                                 AscendC::Reg::MaskReg& maskAll)
+__simd_callee__ inline void FloatX2ToSortableKey(
+    AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey0,
+    AscendC::Reg::RegTensor<typename FloatSortTraits<FloatT>::UInt> &outKey1, AscendC::Reg::RegTensor<FloatT> &inVal0,
+    AscendC::Reg::RegTensor<FloatT> &inVal1, FloatSortConstCtx<FloatT> &ctx, AscendC::Reg::MaskReg &maskAll)
 {
     using Traits = FloatSortTraits<FloatT>;
-    using UInt   = typename Traits::UInt;
+    using UInt = typename Traits::UInt;
 
     AscendC::Reg::RegTensor<UInt> regTemp[2];
     AscendC::Reg::RegTensor<UInt> regMask[2];
     AscendC::Reg::MaskReg regSelectNan[2];
     AscendC::Reg::MaskReg regSelectSign[2];
 
-    auto& inBits0 = (AscendC::Reg::RegTensor<UInt>&)inVal0;
-    auto& inBits1 = (AscendC::Reg::RegTensor<UInt>&)inVal1;
+    auto &inBits0 = (AscendC::Reg::RegTensor<UInt> &)inVal0;
+    auto &inBits1 = (AscendC::Reg::RegTensor<UInt> &)inVal1;
 
     // 1. NaN check
     AscendC::Reg::Compare<UInt, CMPMODE::EQ>(regSelectNan[0], inBits0, ctx.nan, maskAll);
@@ -138,10 +132,8 @@ __simd_callee__ inline void FloatX2ToSortableKey(AscendC::Reg::RegTensor<typenam
     AscendC::Reg::Xor(outKey1, outKey1, regMask[1], maskAll);
 }
 
-
 template <typename T, size_t N>
-__simd_callee__ inline void DuplicateZero(AscendC::Reg::RegTensor<T> (&regArray)[N],
-                                          AscendC::Reg::MaskReg& mask)
+__simd_callee__ inline void DuplicateZero(AscendC::Reg::RegTensor<T> (&regArray)[N], AscendC::Reg::MaskReg &mask)
 {
     static_assert(N <= 4, "N must be <= 4");
     // 不能用循环, 会导致fatal error: error in backend: Unsupported Inst must be hoisted.
@@ -159,12 +151,10 @@ __simd_callee__ inline void DuplicateZero(AscendC::Reg::RegTensor<T> (&regArray)
     }
 }
 
-
 template <typename T, size_t N, bool ApplyRelu = true>
 __simd_callee__ inline void WeightedAccum(AscendC::Reg::RegTensor<T> (&accum)[N],
-                                          AscendC::Reg::RegTensor<T> (&input)[N],
-                                          AscendC::Reg::RegTensor<T>& weight,
-                                          AscendC::Reg::MaskReg& mask)
+                                          AscendC::Reg::RegTensor<T> (&input)[N], AscendC::Reg::RegTensor<T> &weight,
+                                          AscendC::Reg::MaskReg &mask)
 {
     static_assert(N <= 2, "N must be <= 2");
     // ---- Relu block ----
@@ -185,9 +175,7 @@ __simd_callee__ inline void WeightedAccum(AscendC::Reg::RegTensor<T> (&accum)[N]
     }
 }
 
-
-__simd_callee__ inline void BroadcastLane(AscendC::Reg::RegTensor<float>& dst,
-                                          AscendC::Reg::RegTensor<float>& src,
+__simd_callee__ inline void BroadcastLane(AscendC::Reg::RegTensor<float> &dst, AscendC::Reg::RegTensor<float> &src,
                                           uint16_t laneIdx)
 {
     AscendC::Reg::RegTensor<uint32_t> brcGatherIndex;
@@ -195,27 +183,26 @@ __simd_callee__ inline void BroadcastLane(AscendC::Reg::RegTensor<float>& dst,
     AscendC::Reg::Gather(dst, src, brcGatherIndex);
 }
 
-__simd_callee__ inline void BroadcastLane(AscendC::Reg::RegTensor<float>& dst,
-                                          __local_mem__ float* src,
+__simd_callee__ inline void BroadcastLane(AscendC::Reg::RegTensor<float> &dst, __local_mem__ float *src,
                                           uint16_t laneIdx)
 {
     AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(dst, src + laneIdx);
 }
 
 // float in uint16 out
-__aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_,   // out    [S2Base]     [128   ]
-                                             const LocalTensor<float> &qk_,       // q*k^t  [G, S2Base]  [64 128]
+__aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_, // out    [S2Base]     [128   ]
+                                             const LocalTensor<float> &qk_,     // q*k^t  [G, S2Base]  [64 128]
                                              const uint32_t qkVLStride,
-                                             const LocalTensor<float> &weight_,   // w      [G]          [64    ]
-                                             const LocalTensor<float> &kScale_,   // kScale [S2Base]     [128   ]
-                                             const LocalTensor<float> &qScale_,   // qScale [G]          [64    ]
-                                             const int gSize)                     // G 64
+                                             const LocalTensor<float> &weight_, // w      [G]          [64    ]
+                                             const LocalTensor<float> &kScale_, // kScale [S2Base]     [128   ]
+                                             const LocalTensor<float> &qScale_, // qScale [G]          [64    ]
+                                             const int gSize)                   // G 64
 {
-    auto weight = (__local_mem__ float*)weight_.GetPhyAddr();
-    auto qScale = (__local_mem__ float*)qScale_.GetPhyAddr();
-    auto kScale = (__local_mem__ float*)kScale_.GetPhyAddr();
-    auto qk = (__local_mem__ float*)qk_.GetPhyAddr();
-    auto out = (__local_mem__ uint16_t*)out_.GetPhyAddr();
+    auto weight = (__local_mem__ float *)weight_.GetPhyAddr();
+    auto qScale = (__local_mem__ float *)qScale_.GetPhyAddr();
+    auto kScale = (__local_mem__ float *)kScale_.GetPhyAddr();
+    auto qk = (__local_mem__ float *)qk_.GetPhyAddr();
+    auto out = (__local_mem__ uint16_t *)out_.GetPhyAddr();
 
     __VEC_SCOPE__
     {
@@ -234,9 +221,9 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_, 
         InitFloatSortConstCtx(bf16Ctx, maskAllB16);
 
         constexpr static Reg::CastTrait castTraitF32ToF16_EVEN = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                                       Reg::MaskMergeMode::MERGING, RoundMode::CAST_ROUND};
+                                                                  Reg::MaskMergeMode::MERGING, RoundMode::CAST_ROUND};
         constexpr static Reg::CastTrait castTraitF32ToF16_ODD = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
-                                                                      Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+                                                                 Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 
         AscendC::Reg::LoadAlign<float>(regW, weight);
         AscendC::Reg::LoadAlign<float>(regQScale, qScale);
@@ -280,28 +267,27 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_, 
     }
 }
 
-
 // bfloat16_t in uint16 out
-__aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_,   // out    [S2Base]     [128   ]
-                                             const LocalTensor<bfloat16_t> &qk_,  // q*k^t  [G, S2Base]  [64 128]
-                                             const uint32_t qkVLStride,           // unused for bfloat16
-                                             const LocalTensor<float> &weight_,   // w      [G]          [64    ]
-                                             const LocalTensor<float> &kScale_,   // kScale [S2Base]     [128   ] 
-                                             const LocalTensor<float> &qScale_,   // qScale [G]          [64    ]
-                                             const int gSize)                     // G 64
+__aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_,  // out    [S2Base]     [128   ]
+                                             const LocalTensor<bfloat16_t> &qk_, // q*k^t  [G, S2Base]  [64 128]
+                                             const uint32_t qkVLStride,          // unused for bfloat16
+                                             const LocalTensor<float> &weight_,  // w      [G]          [64    ]
+                                             const LocalTensor<float> &kScale_,  // kScale [S2Base]     [128   ]
+                                             const LocalTensor<float> &qScale_,  // qScale [G]          [64    ]
+                                             const int gSize)                    // G 64
 {
-    auto weight = (__local_mem__ float*)weight_.GetPhyAddr();
-    auto qScale = (__local_mem__ float*)qScale_.GetPhyAddr();
-    auto qk = (__local_mem__ bfloat16_t*)qk_.GetPhyAddr();
-    auto kScale = (__local_mem__ float*)kScale_.GetPhyAddr();
-    auto out = (__local_mem__ uint16_t*)out_.GetPhyAddr();
+    auto weight = (__local_mem__ float *)weight_.GetPhyAddr();
+    auto qScale = (__local_mem__ float *)qScale_.GetPhyAddr();
+    auto qk = (__local_mem__ bfloat16_t *)qk_.GetPhyAddr();
+    auto kScale = (__local_mem__ float *)kScale_.GetPhyAddr();
+    auto out = (__local_mem__ uint16_t *)out_.GetPhyAddr();
 
     __VEC_SCOPE__
     {
         AscendC::Reg::RegTensor<float> regQK[4];
         AscendC::Reg::RegTensor<bfloat16_t> regQKB16[2];
         AscendC::Reg::RegTensor<float> regW;
-        AscendC::Reg::RegTensor<float> regwBrc[2];        
+        AscendC::Reg::RegTensor<float> regwBrc[2];
         AscendC::Reg::RegTensor<float> regQScale;
         AscendC::Reg::RegTensor<float> regKScale[2];
         AscendC::Reg::RegTensor<float> regSum[2];
@@ -314,26 +300,26 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_, 
         FloatSortConstCtx<bfloat16_t> bf16Ctx;
         InitFloatSortConstCtx(bf16Ctx, maskAllB16);
 
-
         using CastTrait = AscendC::Reg::CastTrait;
-        static constexpr CastTrait castTraitB162B32_EVEN = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, 
+        static constexpr CastTrait castTraitB162B32_EVEN = {AscendC::Reg::RegLayout::ZERO,
+                                                            AscendC::Reg::SatMode::UNKNOWN,
                                                             AscendC::Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-        static constexpr CastTrait castTraitB162B32_ODD  = {AscendC::Reg::RegLayout::ONE, AscendC::Reg::SatMode::UNKNOWN, 
-                                                            AscendC::Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+        static constexpr CastTrait castTraitB162B32_ODD = {AscendC::Reg::RegLayout::ONE, AscendC::Reg::SatMode::UNKNOWN,
+                                                           AscendC::Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
         constexpr static CastTrait castTraitF32ToF16_EVEN = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
                                                              Reg::MaskMergeMode::MERGING, RoundMode::CAST_ROUND};
-        constexpr static CastTrait castTraitF32ToF16_ODD  = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
-                                                             Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+        constexpr static CastTrait castTraitF32ToF16_ODD = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
+                                                            Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 
         AscendC::Reg::LoadAlign<float>(regW, weight);
         AscendC::Reg::LoadAlign<float>(regQScale, qScale);
         AscendC::Reg::Mul(regW, regW, regQScale, maskAllB32);
         AscendC::Reg::StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM>(weight, regW, maskAllB32);
         AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
-        
+
         DuplicateZero(regSum, maskAllB32);
-        
+
         // interleave load
         Reg::LoadAlign<float, Reg::LoadDist::DIST_DINTLV_B32>(regKScale[0], regKScale[1], kScale);
 
@@ -362,27 +348,25 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_, 
     }
 }
 
-
 // 计算S1=2
 // float in uint16 out
-__aicore__ inline void MulWeightAndReduceSum2(const LocalTensor<uint16_t> &out_,   // out    [2, S2Base]     [128   ]
+__aicore__ inline void MulWeightAndReduceSum2(const LocalTensor<uint16_t> &out_, // out    [2, S2Base]     [128   ]
                                               uint32_t outStride,
-                                              const LocalTensor<float> &qk_,       // q*k^t  [2, G, S2Base]  [64 128]
-                                              uint32_t qkVLStride,
-                                              uint32_t qkStride,
-                                              const LocalTensor<float> &weight_,   // w      [2, G]          [64    ]
+                                              const LocalTensor<float> &qk_, // q*k^t  [2, G, S2Base]  [64 128]
+                                              uint32_t qkVLStride, uint32_t qkStride,
+                                              const LocalTensor<float> &weight_, // w      [2, G]          [64    ]
                                               uint32_t weightStride,
-                                              const LocalTensor<float> &kScale_,   // kScale [S2Base]        [128   ]
+                                              const LocalTensor<float> &kScale_, // kScale [S2Base]        [128   ]
                                               uint32_t kScaleStride,
-                                              const LocalTensor<float> &qScale_,   // qScale [2, G]          [64    ]
+                                              const LocalTensor<float> &qScale_, // qScale [2, G]          [64    ]
                                               uint32_t qScaleStride,
-                                              const int gSize)                     // G 64
+                                              const int gSize) // G 64
 {
-    auto weight0 = (__local_mem__ float*)weight_.GetPhyAddr();
-    auto qScale0 = (__local_mem__ float*)qScale_.GetPhyAddr();
-    auto kScale0 = (__local_mem__ float*)kScale_.GetPhyAddr();
-    auto qk0 = (__local_mem__ float*)qk_.GetPhyAddr();
-    auto out0 = (__local_mem__ uint16_t*)out_.GetPhyAddr();
+    auto weight0 = (__local_mem__ float *)weight_.GetPhyAddr();
+    auto qScale0 = (__local_mem__ float *)qScale_.GetPhyAddr();
+    auto kScale0 = (__local_mem__ float *)kScale_.GetPhyAddr();
+    auto qk0 = (__local_mem__ float *)qk_.GetPhyAddr();
+    auto out0 = (__local_mem__ uint16_t *)out_.GetPhyAddr();
 
     auto weight1 = weight0 + weightStride;
     auto qScale1 = qScale0 + qScaleStride;
@@ -408,9 +392,9 @@ __aicore__ inline void MulWeightAndReduceSum2(const LocalTensor<uint16_t> &out_,
         InitFloatSortConstCtx(bf16Ctx, maskAllB16);
 
         constexpr static Reg::CastTrait castTraitF32ToF16_EVEN = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                                       Reg::MaskMergeMode::MERGING, RoundMode::CAST_ROUND};
+                                                                  Reg::MaskMergeMode::MERGING, RoundMode::CAST_ROUND};
         constexpr static Reg::CastTrait castTraitF32ToF16_ODD = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
-                                                                      Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+                                                                 Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 
         AscendC::Reg::LoadAlign<float>(regW[0], weight0);
         AscendC::Reg::LoadAlign<float>(regW[1], weight1);
@@ -452,7 +436,6 @@ __aicore__ inline void MulWeightAndReduceSum2(const LocalTensor<uint16_t> &out_,
         AscendC::Reg::Mul(regSum1[0], regSum1[0], regKScale[0], maskAllB32);
         AscendC::Reg::Mul(regSum1[1], regSum1[1], regKScale[1], maskAllB32);
 
-        
         // Convert to bfloat16 and store output channel
         AscendC::Reg::RegTensor<bfloat16_t> regSumBF16[2];
         AscendC::Reg::RegTensor<uint16_t> regOut[2];
@@ -469,27 +452,26 @@ __aicore__ inline void MulWeightAndReduceSum2(const LocalTensor<uint16_t> &out_,
     }
 }
 
-
 // 计算S1=2
 // bfloat16 in uint16 out
-__aicore__ inline void MulWeightAndReduceSum2(const LocalTensor<uint16_t> &out_,   // out    [2, S2Base]     [128   ]
+__aicore__ inline void MulWeightAndReduceSum2(const LocalTensor<uint16_t> &out_, // out    [2, S2Base]     [128   ]
                                               uint32_t outStride,
-                                              const LocalTensor<bfloat16_t> &qk_,  // q*k^t  [2, G, S2Base]  [64 128]
+                                              const LocalTensor<bfloat16_t> &qk_, // q*k^t  [2, G, S2Base]  [64 128]
                                               uint32_t qkVLStride,
-                                              uint32_t qkStride,   // gSize * 256
-                                              const LocalTensor<float> &weight_,   // w      [2, G]          [64    ]
+                                              uint32_t qkStride,                 // gSize * 256
+                                              const LocalTensor<float> &weight_, // w      [2, G]          [64    ]
                                               uint32_t weightStride,
-                                              const LocalTensor<float> &kScale_,   // kScale [S2Base]        [128   ]
+                                              const LocalTensor<float> &kScale_, // kScale [S2Base]        [128   ]
                                               uint32_t kScaleStride,
-                                              const LocalTensor<float> &qScale_,   // qScale [2, G]          [64    ]
+                                              const LocalTensor<float> &qScale_, // qScale [2, G]          [64    ]
                                               uint32_t qScaleStride,
-                                              const int gSize)                     // G 64
+                                              const int gSize) // G 64
 {
-    auto weight0 = (__local_mem__ float*)weight_.GetPhyAddr();
-    auto qScale0 = (__local_mem__ float*)qScale_.GetPhyAddr();
-    auto kScale0 = (__local_mem__ float*)kScale_.GetPhyAddr();
-    auto qk0 = (__local_mem__ bfloat16_t*)qk_.GetPhyAddr();
-    auto out0 = (__local_mem__ uint16_t*)out_.GetPhyAddr();
+    auto weight0 = (__local_mem__ float *)weight_.GetPhyAddr();
+    auto qScale0 = (__local_mem__ float *)qScale_.GetPhyAddr();
+    auto kScale0 = (__local_mem__ float *)kScale_.GetPhyAddr();
+    auto qk0 = (__local_mem__ bfloat16_t *)qk_.GetPhyAddr();
+    auto out0 = (__local_mem__ uint16_t *)out_.GetPhyAddr();
 
     auto weight1 = weight0 + weightStride;
     auto qScale1 = qScale0 + qScaleStride;
@@ -516,15 +498,16 @@ __aicore__ inline void MulWeightAndReduceSum2(const LocalTensor<uint16_t> &out_,
         InitFloatSortConstCtx(bf16Ctx, maskAllB16);
 
         using CastTrait = AscendC::Reg::CastTrait;
-        static constexpr CastTrait castTraitB162B32_EVEN = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, 
+        static constexpr CastTrait castTraitB162B32_EVEN = {AscendC::Reg::RegLayout::ZERO,
+                                                            AscendC::Reg::SatMode::UNKNOWN,
                                                             AscendC::Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-        static constexpr CastTrait castTraitB162B32_ODD  = {AscendC::Reg::RegLayout::ONE, AscendC::Reg::SatMode::UNKNOWN, 
-                                                            AscendC::Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+        static constexpr CastTrait castTraitB162B32_ODD = {AscendC::Reg::RegLayout::ONE, AscendC::Reg::SatMode::UNKNOWN,
+                                                           AscendC::Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
         constexpr static Reg::CastTrait castTraitF32ToF16_EVEN = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                                       Reg::MaskMergeMode::MERGING, RoundMode::CAST_ROUND};
+                                                                  Reg::MaskMergeMode::MERGING, RoundMode::CAST_ROUND};
         constexpr static Reg::CastTrait castTraitF32ToF16_ODD = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
-                                                                      Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+                                                                 Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 
         AscendC::Reg::LoadAlign<float>(regW[0], weight0);
         AscendC::Reg::LoadAlign<float>(regW[1], weight1);
@@ -562,7 +545,7 @@ __aicore__ inline void MulWeightAndReduceSum2(const LocalTensor<uint16_t> &out_,
         AscendC::Reg::Mul(regSum0[1], regSum0[1], regKScale[1], maskAllB32);
         AscendC::Reg::Mul(regSum1[0], regSum1[0], regKScale[0], maskAllB32);
         AscendC::Reg::Mul(regSum1[1], regSum1[1], regKScale[1], maskAllB32);
-        
+
         // Convert to bfloat16 and store output channel
         AscendC::Reg::RegTensor<bfloat16_t> regSumBF16[2];
         AscendC::Reg::RegTensor<uint16_t> regOut[2];
@@ -577,20 +560,18 @@ __aicore__ inline void MulWeightAndReduceSum2(const LocalTensor<uint16_t> &out_,
     }
 }
 
-
-template<typename QK_T, typename SCORE_T>
-__aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &out_,   // out    [S2Base]     [128   ]
+template <typename QK_T, typename SCORE_T>
+__aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &out_, // out    [S2Base]     [128   ]
                                                   uint32_t outStride,
-                                                  const LocalTensor<QK_T> &qk_,       // q*k^t  [G, S2Base]  [64 128]
-                                                  uint32_t qkVLStride,
-                                                  uint32_t qkStride,
-                                                  const LocalTensor<float> &weight_,   // w      [G]          [64    ]
+                                                  const LocalTensor<QK_T> &qk_, // q*k^t  [G, S2Base]  [64 128]
+                                                  uint32_t qkVLStride, uint32_t qkStride,
+                                                  const LocalTensor<float> &weight_, // w      [G]          [64    ]
                                                   uint32_t weightStride,
-                                                  const LocalTensor<float> &kScale_,   // kScale [S2Base]     [128   ]
+                                                  const LocalTensor<float> &kScale_, // kScale [S2Base]     [128   ]
                                                   uint32_t kScaleStride,
-                                                  const LocalTensor<float> &qScale_,   // qScale [G]          [64    ]
+                                                  const LocalTensor<float> &qScale_, // qScale [G]          [64    ]
                                                   uint32_t qScaleStride,
-                                                  const int gSize,                     // G 64
+                                                  const int gSize, // G 64
                                                   const int batch)
 {
     // 暂只支持这两种情况, 后续改成循环
@@ -598,17 +579,13 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
         return;
     }
     if (batch == 2) {
-        MulWeightAndReduceSum2(out_, outStride,
-                               qk_, qkVLStride, qkStride,
-                               weight_, weightStride,
-                               kScale_, kScaleStride,
-                               qScale_, qScaleStride,
-                               gSize);
+        MulWeightAndReduceSum2(out_, outStride, qk_, qkVLStride, qkStride, weight_, weightStride, kScale_, kScaleStride,
+                               qScale_, qScaleStride, gSize);
     } else {
         MulWeightAndReduceSum(out_, qk_, qkVLStride, weight_, kScale_, qScale_, gSize);
     }
 }
 
-}
+} // namespace vector1
 
 #endif
