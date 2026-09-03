@@ -12,12 +12,15 @@
  * \file npu_flash_attention_score_onnx_plugin.cpp
  * \brief
  */
-#include "onnx_common.h"
-#include "attention/flash_attention_score/op_graph/flash_attention_score_proto.h"
+#include "plugin_util.h"
+#include "register/register.h"
+#include "graph/operator.h"
+#include "graph/graph.h"
 #include "op_common/log/log.h"
+#include "nlohmann/json.hpp"
+#include "attention/flash_attention_score/op_graph/flash_attention_score_proto.h"
 
 namespace domi {
-using NodeProto = ge::onnx::NodeProto;
 constexpr int REQUIRED_ATTR = 2;
 constexpr int ACL_UINT8 = 4;
 constexpr int ONE = 1;
@@ -27,13 +30,30 @@ constexpr int EXTRA_LENGTH = 32;
 constexpr int OUTPUT_INDEX = 3;
 
 namespace{
-static void UpdateFlashAttentionByNode(ge::Operator& op_dest, const NodeProto* node) {
-  int input_size = node->input_size();
-  int output_size = node->output_size();
-  op_dest.DynamicInputRegister("x", input_size);
-  op_dest.DynamicOutputRegister("y", output_size);
-  op_dest.SetAttr("name", node->name());
+static bool GetOperatorIoCounts(const ge::Operator& op_src, size_t& input_size, size_t& output_size) {
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
+  if (op_src.GetAttr("input", input_names) != ge::GRAPH_SUCCESS ||
+      op_src.GetAttr("output", output_names) != ge::GRAPH_SUCCESS) {
+    return false;
+  }
+  input_size = input_names.size();
+  output_size = output_names.size();
+  return true;
+}
+
+static Status UpdateFlashAttentionByOperator(ge::Operator& op_dest, const ge::Operator& op_src) {
+  size_t input_size = 0U;
+  size_t output_size = 0U;
+  if (!GetOperatorIoCounts(op_src, input_size, output_size)) {
+    OP_LOGE(GetOpName(op_dest).c_str(), "get input/output from op failed");
+    return FAILED;
+  }
+  op_dest.DynamicInputRegister("x", static_cast<uint32_t>(input_size));
+  op_dest.DynamicOutputRegister("y", static_cast<uint32_t>(output_size));
+  op_dest.SetAttr("name", GetOpName(op_src));
   op_dest.SetAttr("original_type", "npu::1::NPUFlashAttention");
+  return SUCCESS;
 }
 
 static Status GetAttrFromPre4(
@@ -115,13 +135,8 @@ static Status GetOriNameFromOperator(const ge::Operator& op, std::string& ori_na
 }
 }
 
-static Status ParseParamsFlashAttention(const Message* op_src, ge::Operator& op_dest) {
-  const NodeProto* node = dynamic_cast<const NodeProto*>(op_src);
-  if (node == nullptr) {
-    OP_LOGE("FlashAttention", "Dynamic cast op_src to NodeProto failed.");
-    return FAILED;
-  }
-
+static Status ParseParamsFlashAttention(const ge::Operator& op_src, ge::Operator& op_dest) {
+  using json = nlohmann::json;
   int head_num = 0;
   std::string input_layout = "";
   float scale = 1.0f;
@@ -131,25 +146,48 @@ static Status ParseParamsFlashAttention(const Message* op_src, ge::Operator& op_
   int required_attr_num = 0;
   int inner_precise = 1;
   int sparse_mode = 0;
-  for (const auto& attr : node->attribute()) {
-    if (attr.name() == "head_num" && attr.type() == ge::onnx::AttributeProto::INT) {
-      head_num = attr.i();
-      ++required_attr_num;
-    } else if (attr.name() == "input_layout" && attr.type() == ge::onnx::AttributeProto::STRING) {
-      input_layout = attr.s();
-      ++required_attr_num;
-    } else if (attr.name() == "scale" && attr.type() == ge::onnx::AttributeProto::FLOAT) {
-      scale = attr.f();
-    } else if (attr.name() == "keep_prob" && attr.type() == ge::onnx::AttributeProto::FLOAT) {
-      keep_prob = attr.f();
-    } else if (attr.name() == "pre_tockens" && attr.type() == ge::onnx::AttributeProto::INT) {
-      pre_tockens = attr.i();
-    } else if (attr.name() == "next_tockens" && attr.type() == ge::onnx::AttributeProto::INT) {
-      next_tockens = attr.i();
-    } else if (attr.name() == "inner_precise" && attr.type() == ge::onnx::AttributeProto::INT) {
-      inner_precise = attr.i();
-    } else if (attr.name() == "sparse_mode" && attr.type() == ge::onnx::AttributeProto::INT) {
-      sparse_mode = attr.i();
+  ge::AscendString attrs_string;
+  if (op_src.GetAttr("attribute", attrs_string) == ge::GRAPH_SUCCESS) {
+    try {
+      json node_attrs = json::parse(attrs_string.GetString());
+      if (node_attrs.contains("attribute") && node_attrs["attribute"].is_array()) {
+        for (json& attr : node_attrs["attribute"]) {
+          std::string attr_name = attr.value("name", "");
+          if (attr_name == "head_num" && attr.contains("i")) {
+            head_num = attr["i"].get<int>();
+            ++required_attr_num;
+          } else if (attr_name == "input_layout" && attr.contains("s")) {
+            input_layout = attr["s"].get<std::string>();
+            ++required_attr_num;
+          } else if (attr_name == "scale" && attr.contains("f")) {
+            std::string scale_str = attr["f"].get<std::string>();
+            if (!StrToFloat(scale_str, scale)) {
+              OP_LOGE(GetOpName(op_dest).c_str(), "invalid scale value: %s", scale_str.c_str());
+              return FAILED;
+            }
+          } else if (attr_name == "keep_prob" && attr.contains("f")) {
+            std::string keep_prob_str = attr["f"].get<std::string>();
+            if (!StrToFloat(keep_prob_str, keep_prob)) {
+              OP_LOGE(GetOpName(op_dest).c_str(), "invalid keep_prob value: %s", keep_prob_str.c_str());
+              return FAILED;
+            }
+          } else if (attr_name == "pre_tockens" && attr.contains("i")) {
+            pre_tockens = attr["i"].get<int>();
+          } else if (attr_name == "next_tockens" && attr.contains("i")) {
+            next_tockens = attr["i"].get<int>();
+          } else if (attr_name == "inner_precise" && attr.contains("i")) {
+            inner_precise = attr["i"].get<int>();
+          } else if (attr_name == "sparse_mode" && attr.contains("i")) {
+            sparse_mode = attr["i"].get<int>();
+          }
+        }
+      }
+    } catch (const nlohmann::json::exception& e) {
+      OP_LOGE(GetOpName(op_dest).c_str(), "JSON parse error: %s", e.what());
+      return FAILED;
+    } catch (...) {
+      OP_LOGE(GetOpName(op_dest).c_str(), "get unknown exception, please check onnx attributes.");
+      return FAILED;
     }
   }
 
@@ -159,7 +197,9 @@ static Status ParseParamsFlashAttention(const Message* op_src, ge::Operator& op_
     return FAILED;
   }
 
-  UpdateFlashAttentionByNode(op_dest, node);
+  if (UpdateFlashAttentionByOperator(op_dest, op_src) != SUCCESS) {
+    return FAILED;
+  }
 
   op_dest.SetAttr("head_num", head_num);
   op_dest.SetAttr("input_layout", input_layout);
@@ -242,7 +282,7 @@ REGISTER_CUSTOM_OP("PartitionedCall")
                  ge::AscendString("ai.onnx::16::NPUFlashAttention"),
                  ge::AscendString("ai.onnx::17::NPUFlashAttention"),
                  ge::AscendString("ai.onnx::18::NPUFlashAttention")})
-  .ParseParamsFn(ParseParamsFlashAttention)
+  .ParseParamsByOperatorFn(ParseParamsFlashAttention)
   .ParseOpToGraphFn(ParseOpToGraphNpuFlashAttentionScore)
   .ImplyType(ImplyType::TVM);
 }  // namespace domi
