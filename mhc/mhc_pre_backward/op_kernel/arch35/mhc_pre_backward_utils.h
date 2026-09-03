@@ -146,10 +146,11 @@ using aT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using bT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using cT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using biasT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+constexpr MatmulConfig C0_CUSTOM_CFG_MDL = GetMDLConfig(false, false, 0, true, false, false, true);
 
 constexpr MatmulConfig GetC0StaticConfig()
 {
-    MatmulConfig config = GetMDLConfig(false, false, 0, true, false, false, true);
+    MatmulConfig config = C0_CUSTOM_CFG_MDL;
     config.singleCoreM = SINGLE_M;
     config.singleCoreN = ND_BLOCK_SIZE;
     config.singleCoreK = 80; // fusionSize最大为N=8时的80
