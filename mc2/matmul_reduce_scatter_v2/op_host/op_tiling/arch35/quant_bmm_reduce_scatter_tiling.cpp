@@ -16,6 +16,7 @@
 #ifndef _QUANT_BMM_MATMUL_REDUCE_SCATTER_TILING_CC_
 #define _QUANT_BMM_MATMUL_REDUCE_SCATTER_TILING_CC_
 
+#include <cstring>
 #include "quant_bmm_reduce_scatter_tiling.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
@@ -32,6 +33,7 @@ using namespace Mc2Tiling;
 namespace optiling {
 namespace {
 const gert::Shape defaultShape = gert::Shape();
+constexpr char ACLNN_CCU_PEER_ONLY_MODE[] = "ccu_peer_only";
 
 constexpr uint32_t DTYPE_ENUM_FLOAT = 0;
 constexpr uint32_t DTYPE_ENUM_FLOAT16 = 1;
@@ -472,6 +474,18 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for quant_bmm_reduce_scatter_tiling.");
     }
+    const bool isFp8Pertensor =
+        quantMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE &&
+        (args_.geAType == ge::DataType::DT_FLOAT8_E4M3FN || args_.geAType == ge::DataType::DT_FLOAT8_E5M2) &&
+        (args_.geBType == ge::DataType::DT_FLOAT8_E4M3FN || args_.geBType == ge::DataType::DT_FLOAT8_E5M2);
+    const auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
+    const bool enablePeerOnly = std::strcmp(commMode, ACLNN_CCU_PEER_ONLY_MODE) == 0;
+    isPeerOnly_ = enablePeerOnly && !isA2APath_ && commMode_ == TPL_CCU_COMM_MODE &&
+                  args_.rankDim == PEER_ONLY_RANK_SIZE && isFp8Pertensor &&
+                  mc2tiling::Mc2TilingUtils::GetDebugMode() == 0;
+    if (isPeerOnly_) {
+        mc2CcTilingConfig.SetAlgConfig(PEER_ONLY_ALGORITHM);
+    }
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(quantBmmMatmulReducescatterTilingData_->mc2InitTiling) != 0,
                     OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
                     return ge::GRAPH_FAILED);
@@ -586,7 +600,8 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
     }
 
     bool isPerBlock = quantMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE;
-    uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
+    uint8_t commAlg =
+        isPeerOnly_ ? TPL_CCU_REDUCESUM_PEER_ONLY : (isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM);
     uint64_t tilingKey = GET_TPL_TILING_KEY(isPerBlock, args_.isATrans, args_.isBTrans, inputType, outputType,
                                             scaleType, commAlg, commMode_);
     OP_LOGD(opName_, "isPerBlock, transA, transB is: [%d, %d, %d]", isPerBlock, args_.isATrans, args_.isBTrans);
