@@ -86,7 +86,7 @@ bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertIds, const 
 aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, const aclTensor *scalesOptional,
                                 const char *groupEp, const char *groupTp, int64_t quantMode, aclTensor *expandX,
                                 aclTensor *dynamicScales, aclTensor *assistInfoForCombine, aclTensor *expertTokensNums,
-                                aclTensor *epRecvCounts, aclTensor *tpRecvCounts)
+                                aclTensor *epRecvCounts)
 {
     CHECK_RET(DispatchCheckNotNull(x, expertIds, groupEp, groupTp, expandX, dynamicScales, assistInfoForCombine,
                                    expertTokensNums, epRecvCounts),
@@ -100,7 +100,7 @@ aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, 
         OP_LOGD("quantMode = 2, dynamicScales can't be null");
         CHECK_RET(dynamicScales != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     }
-    if (x->GetDataType() == ACL_INT32) {
+    if (static_cast<int32_t>(x->GetDataType()) == static_cast<int32_t>(ACL_INT32)) {
         OP_LOGD("x dtype is INT32, scales and dynamicScales can't be null");
         CHECK_RET(scalesOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
         CHECK_RET(dynamicScales != nullptr, ACLNN_ERR_PARAM_NULLPTR);
