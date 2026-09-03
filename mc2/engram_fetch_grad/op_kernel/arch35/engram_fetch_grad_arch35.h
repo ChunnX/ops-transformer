@@ -78,8 +78,7 @@ private:
     __aicore__ inline void StoreGradChunk(int64_t base, uint32_t count, LocalTensor<uint8_t> &buf, int32_t bufIdx);
     __aicore__ inline void ExchangeGrad();
     __aicore__ inline void SendGradToPeers();
-    __aicore__ inline void SendGradRemote(uint32_t dstRank, uint32_t senderIdx, int32_t sendCount, int64_t sdispl,
-                                          GM_ADDR localWinBase);
+    __aicore__ inline void SendGradRemote(uint32_t dstRank, uint32_t senderIdx, int32_t sendCount, int64_t sdispl);
     __aicore__ inline void DrainAndSendFlags();
     __aicore__ inline void RecvGradFromPeers();
     __aicore__ inline void FinishExchangeGrad();
@@ -96,8 +95,8 @@ private:
     __aicore__ inline uint64_t GetCommHandle(uint32_t dstRank, uint32_t senderIdx);
     __aicore__ inline int32_t ReadLocalCounter(GM_ADDR winBase, uint64_t counterOffset, uint32_t srcRank,
                                                uint32_t senderIdx);
-    __aicore__ inline void WriteRemoteCounter(uint32_t dstRank, uint64_t counterOffset, int32_t value,
-                                              uint32_t senderIdx);
+    __aicore__ inline int32_t ReadRemoteCounter(uint64_t handle, uint32_t dstRank, uint32_t senderIdx);
+    __aicore__ inline void WriteLocalReadCounter(uint32_t srcRank, uint32_t senderIdx, int32_t value);
     __aicore__ inline void LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len);
 
     TPipe *tpipe_{nullptr};
@@ -220,12 +219,13 @@ __aicore__ inline GM_ADDR EngramFetchGradArch35::GetRemoteWinAddr(uint32_t dstRa
     return (GM_ADDR)ctxPtr_->commBuffer[dstRank] + offset;
 }
 
+// 单 channel 协议：每个 (dstRank, senderIdx) 只占一条 channel，数据+write计数（notify）与
+// barrier flag 复用该 channel；read 计数由接收核本地写自己的窗口，发送核经 ReadNbi 远端轮询
 __aicore__ inline uint64_t EngramFetchGradArch35::GetCommHandle(uint32_t dstRank, uint32_t senderIdx)
 {
-    uint32_t roleOffset = isSender_ ? SENDER_CHANNEL_IDX : RECEIVER_CHANNEL_IDX;
-    uint32_t channelIdx = senderIdx * 2U + roleOffset;
+    uint32_t channelIdx = senderIdx;
     if (channelIdx >= channelsPerRank_) {
-        channelIdx = roleOffset;
+        channelIdx = 0U;
     }
     return ctxPtr_->hcommHandle[dstRank * channelsPerRank_ + channelIdx];
 }
@@ -241,29 +241,51 @@ __aicore__ inline int32_t EngramFetchGradArch35::ReadLocalCounter(GM_ADDR winBas
     return counterGM.GetValue(0);
 }
 
-__aicore__ inline void EngramFetchGradArch35::WriteRemoteCounter(uint32_t dstRank, uint64_t counterOffset,
-                                                                 int32_t value, uint32_t senderIdx)
+// 流控读计数位于接收核自己的窗口（接收核本地写），发送核经数据 channel 发起远端读，
+// 把 4B 计数快照到 per-aiv scratch 后解析；Drain 同时会冲刷本 handle 上在途的数据写（无依赖，安全）
+__aicore__ inline int32_t EngramFetchGradArch35::ReadRemoteCounter(uint64_t handle, uint32_t dstRank,
+                                                                   uint32_t senderIdx)
 {
-    if (dstRank == rankId_) {
-        return;
-    }
+    GM_ADDR remoteCounterAddr = GetRemoteWinAddr(dstRank, tokenReadOffset_) +
+                                (static_cast<uint64_t>(rankId_) * sendersPerRank_ + senderIdx) * STATE_OFFSET;
+    GM_ADDR snapshotAddr = counterScratchGM_ + static_cast<uint64_t>(aivId_) * UB_ALIGN;
 
+    int32_t ret = hcomm_.ReadNbi<true>(handle, snapshotAddr, remoteCounterAddr, sizeof(int32_t));
+    if (ret != 0) {
+        for (uint32_t i = 0; i < COMM_RETRY_COUNT; i++) {
+            ret = hcomm_.ReadNbi<true>(handle, snapshotAddr, remoteCounterAddr, sizeof(int32_t));
+            if (ret == 0) {
+                break;
+            }
+        }
+        if (ret != 0) {
+            RUNTIME_ABORT("ReadNbi failed after %u retries, ret=%d, rankId=%u, dstRank=%u", COMM_RETRY_COUNT, ret,
+                          rankId_, dstRank);
+        }
+    }
+    DrainChecked(handle);
+
+    GlobalTensor<int32_t> snapGM;
+    snapGM.SetGlobalBuffer((__gm__ int32_t *)snapshotAddr);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(snapGM);
+    return snapGM.GetValue(0);
+}
+
+// 接收核消费完 slot 后，把已消费 chunk 数写入自己窗口的 tokenRead 槽（单写者、绝对值递增），
+// 供对端发送核 ReadNbi 轮询，取代旧协议中经第二条 channel 的远端回写
+__aicore__ inline void EngramFetchGradArch35::WriteLocalReadCounter(uint32_t srcRank, uint32_t senderIdx, int32_t value)
+{
     LocalTensor<int32_t> valLocal = statusBuf_.Get<int32_t>();
     valLocal.SetValue(0, value);
     EngramFetchGradSyncFunc<HardEvent::S_MTE3>();
 
-    GM_ADDR srcAddr = counterScratchGM_ + static_cast<uint64_t>(aivId_) * UB_ALIGN;
-    GlobalTensor<int32_t> srcGM;
-    srcGM.SetGlobalBuffer((__gm__ int32_t *)srcAddr);
-    DataCopyParams valParams = {1U, static_cast<uint16_t>(UB_ALIGN), 0U, 0U};
-    DataCopyPad(srcGM, valLocal, valParams);
+    GM_ADDR counterAddr = (GM_ADDR)ctxPtr_->commBuffer[rankId_] + tokenReadOffset_ +
+                          (static_cast<uint64_t>(srcRank) * sendersPerRank_ + senderIdx) * STATE_OFFSET;
+    GlobalTensor<int32_t> counterGM;
+    counterGM.SetGlobalBuffer((__gm__ int32_t *)counterAddr);
+    DataCopyParams valParams = {1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U};
+    DataCopyPad(counterGM, valLocal, valParams);
     EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
-
-    uint64_t handle = GetCommHandle(dstRank, senderIdx);
-    GM_ADDR remoteCounterAddr = GetRemoteWinAddr(dstRank, counterOffset) +
-                                (static_cast<uint64_t>(rankId_) * sendersPerRank_ + senderIdx) * STATE_OFFSET;
-    WriteNbiChecked(handle, remoteCounterAddr, srcAddr, sizeof(int32_t));
-    DrainChecked(handle);
 }
 
 __aicore__ inline void EngramFetchGradArch35::WaitAllStatusFlags(GM_ADDR statusWinBase, uint32_t expectCount)
@@ -789,7 +811,6 @@ __aicore__ inline void EngramFetchGradArch35::SendGradToPeers()
         return;
     }
 
-    GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
     uint32_t totalSendWorkUnits = numRanks_ * sendersPerRank_;
     if (totalSendWorkUnits == 0U) {
         return;
@@ -833,12 +854,12 @@ __aicore__ inline void EngramFetchGradArch35::SendGradToPeers()
             continue;
         }
 
-        SendGradRemote(dstRank, senderIdx, mySendCount, mySdispl, localWinBase);
+        SendGradRemote(dstRank, senderIdx, mySendCount, mySdispl);
     }
 }
 
 __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, uint32_t senderIdx, int32_t sendCount,
-                                                             int64_t sdispl, GM_ADDR localWinBase)
+                                                             int64_t sdispl)
 {
     uint64_t handle = GetCommHandle(dstRank, senderIdx);
     uint32_t totalSent = 0;
@@ -851,10 +872,10 @@ __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, u
     while (totalSent < static_cast<uint32_t>(sendCount)) {
         if (totalBlocks_ > 1U) {
             uint64_t startTime = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_GRAD_CYCLES_PER_US;
-            int32_t remoteReadCnt = ReadLocalCounter(localWinBase, tokenReadOffset_, dstRank, senderIdx);
+            int32_t remoteReadCnt = ReadRemoteCounter(handle, dstRank, senderIdx);
             while (localWriteCnt >= static_cast<uint32_t>(remoteReadCnt) &&
                    localWriteCnt - static_cast<uint32_t>(remoteReadCnt) >= slotsPerSender) {
-                remoteReadCnt = ReadLocalCounter(localWinBase, tokenReadOffset_, dstRank, senderIdx);
+                remoteReadCnt = ReadRemoteCounter(handle, dstRank, senderIdx);
                 TimeoutCheck(startTime);
             }
         }
@@ -1027,7 +1048,7 @@ __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
 
             localReadCnt += slotsRead;
             senderReceived += tokensRead;
-            WriteRemoteCounter(srcRank, tokenReadOffset_, static_cast<int32_t>(localReadCnt), si);
+            WriteLocalReadCounter(srcRank, si, static_cast<int32_t>(localReadCnt));
         }
     }
 }

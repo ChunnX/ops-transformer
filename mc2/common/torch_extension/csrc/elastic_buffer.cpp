@@ -462,9 +462,8 @@ private:
         resources.deviceBufPtr = devPtr;
     }
 
-    void BuildChannelDescs(const HcclComm &commHandle, uint32_t srcRankId, uint32_t rankDim,
-                           uint32_t channelsPerRank, HcclMemHandle &memHandle,
-                           std::vector<HcclChannelDesc> &channelDesc)
+    void BuildChannelDescs(const HcclComm &commHandle, uint32_t srcRankId, uint32_t rankDim, uint32_t channelsPerRank,
+                           HcclMemHandle &memHandle, std::vector<HcclChannelDesc> &channelDesc)
     {
         channelDesc.clear();
         uint32_t totalChannels = (rankDim - 1) * channelsPerRank;
@@ -498,8 +497,8 @@ private:
         }
     }
 
-    void GetHcclCommChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId,
-                            uint32_t channelsPerRank, HcclMemHandle &memHandle, ChannelHandle *channels)
+    void GetHcclCommChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId, uint32_t channelsPerRank,
+                            HcclMemHandle &memHandle, ChannelHandle *channels)
     {
         std::vector<HcclChannelDesc> descs;
         ChannelHandle channelBuf[HCCL_MAX_RANK_SIZE] = {};
@@ -581,7 +580,9 @@ private:
         if (groupSize == 0U) {
             groupSize = 1U;
         }
-        uint32_t channelsPerPeer = groupSize * 2U;
+        // 单 channel 协议：每 (peer, sender) 仅一条 channel 承载数据+write计数与 barrier flag；
+        // read 计数由接收核本地写自己的窗口，发送核经 ReadNbi 轮询，不再需要第二条 channel
+        uint32_t channelsPerPeer = 1;
         resources.context.channelsPerRank = channelsPerPeer;
 
         std::vector<ChannelHandle> handlesByRank(rankSize * channelsPerPeer);
