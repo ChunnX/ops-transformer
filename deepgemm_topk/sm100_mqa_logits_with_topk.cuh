@@ -108,7 +108,7 @@ CUTLASS_DEVICE void warp_bucket_topk(
     // Explicit shared-space element loader (avoids generic loads)
     const uint32_t* logits_u = reinterpret_cast<const uint32_t*>(logits);
     auto load_u32 = [&](uint32_t i) -> uint32_t {
-        if constexpr (kCached) return logits_u[i];   // A/B: plain deref
+        if constexpr (kCached) return ptx::ld_shared(logits_u + i);
         else return __float_as_uint(__ldcg(reinterpret_cast<const float*>(logits_u) + i));
     };
 
@@ -131,7 +131,7 @@ CUTLASS_DEVICE void warp_bucket_topk(
         __syncwarp();
 
         // Build histogram with SMEM atomicAdd
-        #pragma unroll 4
+        #pragma unroll 8
         for (uint32_t i = lane_idx; i < k_len; i += 32) {
             uint32_t u = to_sortable(__uint_as_float(load_u32(i)));
             if ((u & prefix_mask) == prefix_val) {
@@ -201,7 +201,7 @@ CUTLASS_DEVICE void warp_bucket_topk(
     // Count definite + collect boundary simultaneously
     uint32_t my_def = 0;
     uint32_t my_collected = 0;
-    #pragma unroll 4
+    #pragma unroll 8
     for (uint32_t i = lane_idx; i < k_len; i += 32) {
         uint32_t u = to_sortable(__uint_as_float(load_u32(i)));
         if (u > kth_full) {
@@ -223,7 +223,7 @@ CUTLASS_DEVICE void warp_bucket_topk(
 
     // Write definite
     uint32_t def_pos = def_exclusive;
-    #pragma unroll 4
+    #pragma unroll 8
     for (uint32_t i = lane_idx; i < k_len; i += 32) {
         uint32_t u = to_sortable(__uint_as_float(load_u32(i)));
         if (u > kth_full) {
