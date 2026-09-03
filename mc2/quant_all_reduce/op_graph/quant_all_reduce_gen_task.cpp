@@ -12,6 +12,7 @@
  * \file quant_all_reduce_gen_task.cpp
  * \brief 静态shape图下沉占位注册
  */
+
 #include <vector>
 #include <cstdint>
 #include "register/op_impl_registry.h"

@@ -97,11 +97,11 @@ static const std::unordered_set<std::string> NEED_SET_BLOCK_SET{
 
 // 对已有结构的重复定义，只在本文件插入 aicpu desc 的时候使用
 struct HcclCommParamDescTmp {
-    uint64_t version   : 4;
-    uint64_t groupNum  : 4;
-    uint64_t hasFfts   : 1;
+    uint64_t version : 4;
+    uint64_t groupNum : 4;
+    uint64_t hasFfts : 1;
     uint64_t tilingOff : 7;
-    uint64_t isDyn     : 48;
+    uint64_t isDyn : 48;
 };
 
 static bool IsPlatform910B(const char *nodeName)
