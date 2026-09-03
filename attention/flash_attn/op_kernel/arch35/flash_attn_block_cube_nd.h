@@ -242,6 +242,16 @@ public:
         mmL0BPolicy_.Uninit(l0bBufferManager_);
     }
 
+    __aicore__ inline void InitValueL1BufferNAxis(const LocalTensor<KV_T> &valueL1, const uint32_t k, const uint32_t n)
+    {
+        InitConstValueParams<half> initConstValueParams;
+        initConstValueParams.repeatTimes = n / 32U;
+        initConstValueParams.blockNum = k;
+        initConstValueParams.dstGap = 0;
+        initConstValueParams.initValue = 0;
+        InitConstValue(valueL1.template ReinterpretCast<half>(), initConstValueParams);
+    }
+
     __aicore__ inline void CopyQuerySlice(const LocalTensor<Q_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
                                           RunInfo &runInfo)
     {
@@ -325,6 +335,11 @@ public:
         LocalTensor<Q_T> qL1Tensor = l1QBuffers_[qL1BufId_ * L1_Q_BUF_BYTES].template ReinterpretCast<Q_T>();
         if (unlikely(runInfo.isFirstS2Loop)) {
             Mutex::Lock<PIPE_MTE2>(Q_L1_BUFFER_ID0 + qL1BufId_);
+            if (unlikely(constInfo_.dSize != dBaseSize)) {
+                // D 非 64/128/256(如 72): ND2Nz 只拷真实列, 分形外的 pad 区需显式清零
+                InitValueL1BufferNAxis(qL1Tensor, mBaseSize, dBaseSize);
+                AscendC::PipeBarrier<PIPE_MTE2>();
+            }
             CopyQuerySlice(qL1Tensor, 0, constInfo_.dSize, runInfo);
             Mutex::Unlock<PIPE_MTE2>(Q_L1_BUFFER_ID0 + qL1BufId_);
             Mutex::Lock<PIPE_MTE1>(Q_L1_BUFFER_ID0 + qL1BufId_);
@@ -332,14 +347,22 @@ public:
 
         LocalTensor<KV_T> kL1Tensor = l1KvBuffers_[kvL1BufId_ * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
         Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
+        if (unlikely(constInfo_.dSize != dBaseSize)) {
+            // K 侧同 Q: 清零整 KV 槽(LoadData2D 按对齐组数寻址, 会读到槽内越界区)
+            constexpr uint32_t kvSlotRows = L1_KV_BUF_BYTES / (dBaseSize * sizeof(KV_T));
+            InitValueL1BufferNAxis(kL1Tensor, kvSlotRows, dBaseSize);
+            AscendC::PipeBarrier<PIPE_MTE2>();
+        }
         CopyKeySlice(kL1Tensor, 0, constInfo_.dSize, runInfo);
         Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         {
             Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
-            MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
-                                        (uint32_t)(constInfo_.dSize), false, true);
+            // K 轴取 pad 后宽度(D=72 → 128), L1 pad 区已清零, Mmad 结果数学等价
+            uint32_t kSize = (constInfo_.dSize != dBaseSize) ? constInfo_.dBasicBlock : constInfo_.dSize;
+            MMParam param =
+                MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size, kSize, false, true);
             if constexpr (dBaseSize > 128) {
                 if constexpr (s2BaseSize == 256) {
                     MatmulN<Q_T, KV_T, MM_T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
@@ -413,13 +436,22 @@ public:
     {
         LocalTensor<KV_T> vL1Tensor = l1KvBuffers_[kvL1BufId_ * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
         Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
+        if (unlikely(constInfo_.dSizeV != dVBaseSize)) {
+            // V 侧同 K: 清零整 KV 槽(bmm2 B 侧 LoadData3D 按对齐组数寻址)
+            constexpr uint32_t kvSlotRowsV = L1_KV_BUF_BYTES / (dVBaseSize * sizeof(KV_T));
+            InitValueL1BufferNAxis(vL1Tensor, kvSlotRowsV, dVBaseSize);
+            AscendC::PipeBarrier<PIPE_MTE2>();
+        }
         CopyValueSlice(vL1Tensor, 0, constInfo_.dSizeV, runInfo);
         Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         {
             uint32_t nLoops = (constInfo_.dSizeV + 128 - 1) / 128;
+            // 尾块 N 取 pad 后宽度(D=72 → 128): P × V_pad = 0, 保证 vec2 按 dTemplateAlign64=128 宽读不脏
+            uint32_t lastTileN =
+                (constInfo_.dSizeV != dVBaseSize) ? constInfo_.dBasicBlock : (constInfo_.dSizeV - (nLoops - 1) * 128);
             for (uint32_t n = 0; n < nLoops; n++) {
-                uint32_t tileN = (n == nLoops - 1) ? (constInfo_.dSizeV - n * 128) : 128;
+                uint32_t tileN = (n == nLoops - 1) ? lastTileN : 128;
                 Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
                 LocalTensor<MM_T> l0CSubTensor =
                     l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
