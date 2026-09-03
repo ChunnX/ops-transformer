@@ -39,6 +39,7 @@ public:
     void GetOptionalInputParaMaskInfo();
     void GetOptionalInputParaSeqLengthInfo();
     void GetOptionalInputParaSinksInfo();
+    void GetOptionalInputParaVTailInfo();
 
     void GetOptionalInputParaInfo();
     void GetInputParaInfo();
@@ -74,6 +75,7 @@ public:
     void GenerateDtypeInfo(QfaTilingInfo &qfaInfo);
     void GenerateFeatureInfo(QfaTilingInfo &qfaInfo);
     void GenerateLayoutInfo(QfaTilingInfo &qfaInfo);
+    void GenerateVTailInfo(QfaTilingInfo &qfaInfo);
     void GenerateQuantInfo(QfaTilingInfo &qfaInfo);
     void GenerateInfo(QfaTilingInfo &qfaInfo);
     ge::graphStatus ParseAxisInfo();

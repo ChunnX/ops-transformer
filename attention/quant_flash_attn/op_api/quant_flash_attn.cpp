@@ -30,6 +30,9 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
     const aclTensor *sinksOptional,
     const aclTensor *attnMaskOptional,
     const aclTensor *metadataOptional,
+    const aclTensor *vTailOptional,
+    const aclTensor *blockTableTailOptional,
+    const aclTensor *sequsedKvTailOptional,
     int64_t quantMode,
     double softmaxScale,
     int64_t maskMode, int64_t winLeft, int64_t winRight,
@@ -41,6 +44,7 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
     L0_DFX(QuantFlashAttn, q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
            cuSeqlensQOptional, cuSeqlensKvOptional,
            sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional,
+           vTailOptional, blockTableTailOptional, sequsedKvTailOptional,
            quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
            layoutQ, layoutQDescale, layoutKv, layoutOut, returnSoftmaxLse);
 
@@ -71,6 +75,15 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
     if (metadataOptional == nullptr) {
         metadataOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
     }
+    if (vTailOptional == nullptr) {
+        vTailOptional = executor->AllocTensor(DataType::DT_BF16, Format::FORMAT_ND, Format::FORMAT_ND);
+    }
+    if (blockTableTailOptional == nullptr) {
+        blockTableTailOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
+    }
+    if (sequsedKvTailOptional == nullptr) {
+        sequsedKvTailOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
+    }
 
     auto attentionOutAlloc = executor->AllocTensor(DataType::DT_BF16, Format::FORMAT_ND, Format::FORMAT_ND);
     auto softmaxLseAlloc = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
@@ -79,7 +92,8 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
                            OP_INPUT(q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
                                     cuSeqlensQOptional, cuSeqlensKvOptional,
                                     sequsedQOptional, sequsedKvOptional, sinksOptional,
-                                    attnMaskOptional, metadataOptional),
+                                    attnMaskOptional, metadataOptional, vTailOptional, blockTableTailOptional,
+                                    sequsedKvTailOptional),
                            OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
                            OP_ATTR(quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
                                    layoutQ, layoutQDescale, layoutKv, layoutOut, returnSoftmaxLse));
@@ -92,7 +106,8 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
         QuantFlashAttn,
         OP_INPUT(q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
                  cuSeqlensQOptional, cuSeqlensKvOptional,
-                 sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
+                 sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional,
+                 vTailOptional, blockTableTailOptional, sequsedKvTailOptional),
         OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
         OP_ATTR(quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
                 layoutQ, layoutQDescale, layoutKv, layoutOut, returnSoftmaxLse));
