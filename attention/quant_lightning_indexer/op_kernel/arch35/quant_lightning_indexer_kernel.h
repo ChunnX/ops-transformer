@@ -122,6 +122,8 @@ protected:
     TempLoopInfo tempLoopInfo{};
     QLICommon::SplitCoreInfo splitCoreInfo{};
     uint32_t ldAicNum = 0U;  // AIC count from host tiling (LD workspace layout)
+    bool ldDecodeMode_ = false;  // tSize<=64: legacy quota (decode rows are few; the s2 split
+                                 // point must stay near ldSplitCap, not quota-balanced)
     uint32_t accumSeqQTotalLen = 0U;  // TND: actualSeqLengthsQ[batchSize-1], Init时读一次缓存
 
     // ================================Init functions==================================
@@ -194,6 +196,7 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::InitTilingData(const Q
     constInfo.isLDOpen = tilingData->isLDOpen != 0;
     // AIC core count from host (GetBlockNum() returns grid blockDim = AIC+2*AIV, NOT aicNum)
     ldAicNum = tilingData->aicNum;
+    ldDecodeMode_ = (tilingData->tSize <= 64);
 }
 
 template <typename QLIT>
@@ -309,7 +312,21 @@ __aicore__ void inline QuantLightningIndexerKernel<QLIT>::SplitCore(uint32_t cur
     uint32_t lastGS1RemainBlockCnt = 0;
     uint32_t coreIdx = 0;
     uint32_t consumedBlocks = 0;  // blocks already handed to cores 0..coreIdx-1
-    uint32_t coreDealBlockCnt = coreIdx < deal1MoreBlockCoreNum ? minBlockPerCore + 1 : minBlockPerCore;
+    // quota policy by LD mode:
+    // - prefill (many whole/mask rows): flat remaining-share, ceil(unconsumed/remaining
+    //   slots). The legacy minP(+1) quota under-consumed whenever the head-clamp
+    //   truncated a row; the deficit accumulated into the last slot, whose
+    //   exact-remainder quota hit 13,187 blocks (+40% vs avg) -> critical path
+    //   (prefill-LD 6.8ms vs 5.5ms balanced).
+    // - decode (few rows, tSize<=64): legacy quota. Flat-share shifts the row split
+    //   point (head 151/122/88/48 blocks across rows) and the growing tail segments
+    //   stretched decode 150->213us.
+    uint32_t coreDealBlockCnt;
+    if (constInfo.isLDOpen && ldDecodeMode_) {
+        coreDealBlockCnt = coreIdx < deal1MoreBlockCoreNum ? minBlockPerCore + 1 : minBlockPerCore;
+    } else {
+        coreDealBlockCnt = (totalBlockNum + coreNum - 1) / coreNum;
+    }
     coreNum = minBlockPerCore == 0 ? deal1MoreBlockCoreNum : coreNum;
     if (curCoreIdx < coreNum) {
         splitCoreInfo.isCoreEnable = true;
@@ -404,12 +421,15 @@ __aicore__ void inline QuantLightningIndexerKernel<QLIT>::SplitCore(uint32_t cur
                     coreIdx++;
                     s2Idx = info.s2End + 1;
                     lastGS1RemainBlockCnt = 0;
-                    coreDealBlockCnt = coreIdx < deal1MoreBlockCoreNum ?
-                        minBlockPerCore + 1 : minBlockPerCore;
-                    // last core quota = exactly the remaining blocks, so its end branch
-                    // fires at the final grid block (totalBlockNum+1 made it unreachable:
-                    // last core stayed zero-init and tail tasks were never processed)
-                    if (coreIdx == coreNum - 1) { coreDealBlockCnt = totalBlockNum - consumedBlocks; }
+                    if (constInfo.isLDOpen && ldDecodeMode_) {
+                        coreDealBlockCnt = coreIdx < deal1MoreBlockCoreNum ?
+                            minBlockPerCore + 1 : minBlockPerCore;
+                        // last core: exact remainder so the end branch fires at grid end
+                        if (coreIdx == coreNum - 1) { coreDealBlockCnt = totalBlockNum - consumedBlocks; }
+                    } else {
+                        uint32_t remainingSlots = coreNum - coreIdx;
+                        coreDealBlockCnt = (totalBlockNum - consumedBlocks + remainingSlots - 1) / remainingSlots;
+                    }
                 } else {
                     lastGS1RemainBlockCnt += s2RemainBaseNum;
                     break;
