@@ -1,0 +1,23 @@
+失败：
+[QFA_DEBUG] quant_flash_attn args:
+  q=shape=(32, 24, 72) dtype=torch.float8_e4m3fn k=shape=(8192, 8, 72) dtype=torch.float8_e4m3fn v=shape=(8192, 8, 72) dtype=torch.float8_e4m3fn
+  q_descale=shape=(8, 32, 3, 2, 2) dtype=torch.float8_e8m0fnu k_descale=shape=(8192, 8, 2, 2) dtype=torch.float8_e8m0fnu v_descale=shape=(128, 8, 72, 2) dtype=torch.float8_e8m0fnu
+  quant_mode=1 block_table=None p_scale=shape=(1,) dtype=torch.float32 val=[10.0]
+  cu_seqlens_q=shape=(9,) dtype=torch.int32 val=[0, 4, 8, 12, 16, 20, 24, 28, 32] cu_seqlens_kv=shape=(9,) dtype=torch.int32 val=[0, 1024, 2048, 3072, 4096, 5120, 6144, 7168, 8192]
+  seqused_q=None seqused_kv=shape=(8,) dtype=torch.int32 val=[1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024]
+  sinks=None attn_mask=shape=(2048, 2048) dtype=torch.int8 val=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0] metadata=shape=(2, 4096) dtype=torch.int32 val=[1, 0, 128, 512, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  softmax_scale=0.117851130197757 mask_mode=3 win_left=-1 win_right=-1
+  max_seqlen_q=-1 max_seqlen_kv=-1
+  layout_q=TND layout_q_descale=N2TGD layout_kv=TND layout_out=TND return_softmax_lse=False
+
+通过：
+[QFA_DEBUG] quant_flash_attn args:
+  q=shape=(32, 24, 72) dtype=torch.float8_e4m3fn k=shape=(8192, 8, 72) dtype=torch.float8_e4m3fn v=shape=(8192, 8, 72) dtype=torch.float8_e4m3fn
+  q_descale=shape=(8, 32, 3, 2, 2) dtype=torch.float8_e8m0fnu k_descale=shape=(8192, 8, 2, 2) dtype=torch.float8_e8m0fnu v_descale=shape=(128, 8, 72, 2) dtype=torch.float8_e8m0fnu
+  quant_mode=1 block_table=None p_scale=shape=(1,) dtype=torch.float32 val=[10.0]
+  cu_seqlens_q=shape=(9,) dtype=torch.int32 val=[0, 4, 8, 12, 16, 20, 24, 28, 32] cu_seqlens_kv=shape=(9,) dtype=torch.int32 val=[0, 1024, 2048, 3072, 4096, 5120, 6144, 7168, 8192]
+  seqused_q=None seqused_kv=shape=(8,) dtype=torch.int32 val=[1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024]
+  sinks=None attn_mask=shape=(2048, 2048) dtype=torch.int8 val=[0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1] metadata=shape=(2, 4096) dtype=torch.int32 val=[1, 0, 128, 512, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  softmax_scale=0.117851130197757 mask_mode=3 win_left=-1 win_right=-1
+  max_seqlen_q=-1 max_seqlen_kv=-1
+  layout_q=TND layout_q_descale=N2TGD layout_kv=TND layout_out=TND return_softmax_lse=False
