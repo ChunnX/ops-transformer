@@ -1247,22 +1247,16 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     // async DMA writes still in flight; SyncAll only syncs the SCALAR pipe) was
     // fixed by FlushLDWrites() before SyncAll in ProcessDecode -> gate re-opened for prefill.
     constexpr uint32_t qliLdSplitCoreNum = 28;
-    // gate refinement: LD workspace constants (LD_WS_S1_BASE=8, s1Base=8 rows) are pinned to
-    // the PD g32 tiling; gSize 16 (mBase 64) crashes, gSize 64 (s1Base 4) intermittent ->
-    // only decode tiling may open LD.
-    // g32 prefill LD disabled: every LD-split row (28 cores -> 27 split rows, every 9th task)
-    // produces corrupted output; root cause = tail segment list carries ~100-280 candidates
-    // from the head's last trunk range (off-by-one-trunk in tail segmentation/offset),
-    // deep in shared LITopk internals. Direct path is proven master-equivalent.
+    // v2LD two-phase TopK gate: decode (tSize<=64) and g32 prefill (g1/g2 shapes).
+    // Workspace constants (LD_WS_S1_BASE=8, s1Base=8 rows) are pinned to the PD g32
+    // tiling; gSize 16 (mBase 64) crashes, gSize 64 (s1Base 4) intermittent.
+    // Status 2026-09-03: BUG-4 multi-task deadlock fixed (CleanInvalidOutput token
+    // normalize/re-arm + ProcessLD ID4 ring + FlushLDWrites MTE3 drain) and the
+    // last-slot quota imbalance fixed (flat remaining-share, see SplitCore);
+    // prefill-LD output bitwise-equal to master (g1/g2), decode golden-verified.
+    // msprof same-card A/B vs master: g1 -10.2% / g2 -12.8% / decode -35.7%.
     bool ldOpen = (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) && (tilingInfo->s2Size >= 2048) &&
-                  ((tilingInfo->tSize <= 64) || (tilingInfo->gSize == 32));  // v2LD: decode + g32 prefill
-                                                                             // (flat-share quota rebalance)
-                                              // steal + ProcessLD ID4 ring starvation), prefill LD verified
-                                              // correct (golden set-equal) but +7~10% slower than direct on
-                                              // same-card A/B 2026-09-03: keep disabled for perf. BUG-4 deadlock fixed (CleanInvalidOutput token
-                                              // steal + ProcessLD ID4 ring starvation), prefill LD verified
-                                              // correct (golden set-equal) but +7~10% slower than direct on
-                                              // same-card A/B 2026-09-03: keep disabled for perf.
+                  ((tilingInfo->tSize <= 64) || (tilingInfo->gSize == 32));
     uint32_t ldCores = qliLdSplitCoreNum < aicNum ? qliLdSplitCoreNum : aicNum;
     tilingData_.set_isLDOpen(ldOpen ? 1U : 0U);
     tilingData_.set_ldSplitCoreNum(ldCores);
