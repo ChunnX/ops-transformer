@@ -270,67 +270,38 @@ public:
     }
 
     // copy query（q 为 576 宽单张量，GM 上 nope+rope 合并存储，
-    // L1 上按行切分为 [nope 512) + [rope 64) 两段拼出 mm1 K=576 的 S 矩阵；
-    // rope 段 GM 偏移 = dIdx = dSize(=head_dim_v=512)，L1 偏移 = dSize*dstStride 与双张量版本一致）
+    // 一次拷满 576 宽连续块，避免两次 strided 拷贝（nope 512 + rope 64）在 GM 行内留 gap 降低 MTE2 效率；
+    // L1 NZ 布局中 rope 段自然落在 [dSize*dstStride) 偏移处，与双段拷贝一致）
     __aicore__ inline void CopyQueryAndRopeTile(const LocalTensor<Q_T> &dstTensor, FlashMlaWithKvcacheRunInfoX &runInfo)
     {
         uint32_t dstStride = (runInfo.actMSize + 15) >> 4 << 4;
-        {
-            FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
+        FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-            GmCoord gmCoord{.bIdx = runInfo.bIdx,
-                            .n2Idx = runInfo.n2Idx,
-                            .gS1Idx = runInfo.gS1Idx,
-                            .dIdx = 0,
-                            .gS1DealSize = runInfo.actMSize,
-                            .dDealSize = (uint32_t)constInfo.dSize};
-            copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
-        }
-
-        {
-            uint32_t ropeL1Offset = constInfo.dSize * dstStride;
-            FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor[ropeL1Offset], .rowCount = dstStride};
-
-            GmCoord gmCoord{.bIdx = runInfo.bIdx,
-                            .n2Idx = runInfo.n2Idx,
-                            .gS1Idx = runInfo.gS1Idx,
-                            .dIdx = (uint32_t)constInfo.dSize,
-                            .gS1DealSize = runInfo.actMSize,
-                            .dDealSize = (uint32_t)constInfo.dSizeRope};
-            copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
-        }
+        GmCoord gmCoord{.bIdx = runInfo.bIdx,
+                        .n2Idx = runInfo.n2Idx,
+                        .gS1Idx = runInfo.gS1Idx,
+                        .dIdx = 0,
+                        .gS1DealSize = runInfo.actMSize,
+                        .dDealSize = (uint32_t)(constInfo.dSize + constInfo.dSizeRope)};
+        copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
     }
 
     // copy key（k_cache 为 576 宽单张量，GM 上 nope+rope 合并存储，
-    // L1 上按行切分为 [nope 512) + [rope 64) 两段；rope 段 GM 偏移 = dIdx = dSize(=head_dim_v=512)；
-    // key and value 是同一份数据（k==v），bmm2 的 V 段 = L1 nope 区（512 宽），无独立 value GM 读取）
+    // 一次拷满 576 宽连续块，避免两次 strided 拷贝在 GM 行内留 gap；L1 NZ 布局 rope 段自然落在
+    // [dSize*dstStride) 偏移处；key and value 是同一份数据（k==v），bmm2 的 V 段 = L1 nope 区（512 宽），
+    // 无独立 value GM 读取）
     __aicore__ inline void CopyKeyAndRopeTile(const LocalTensor<KV_T> &dstTensor, FlashMlaWithKvcacheRunInfoX &runInfo)
     {
         uint32_t dstStride = (runInfo.actSingleLoopS2Size + 15) >> 4 << 4;
-        {
-            FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
+        FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-            GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
-                              .n2Idx = runInfo.n2Idx,
-                              .s2Idx = runInfo.s2Idx,
-                              .dIdx = 0,
-                              .s2DealSize = runInfo.actSingleLoopS2Size,
-                              .dDealSize = (uint32_t)constInfo.dSize};
-            copyKvGmToL1(l1Tensor, kCacheGm, gmCoord);
-        }
-
-        {
-            uint32_t ropeL1Offset = constInfo.dSize * dstStride;
-            FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor[ropeL1Offset], .rowCount = dstStride};
-
-            GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
-                              .n2Idx = runInfo.n2Idx,
-                              .s2Idx = runInfo.s2Idx,
-                              .dIdx = (uint32_t)constInfo.dSize,
-                              .s2DealSize = runInfo.actSingleLoopS2Size,
-                              .dDealSize = (uint32_t)constInfo.dSizeRope};
-            copyKvGmToL1(l1Tensor, kCacheGm, gmCoord);
-        }
+        GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
+                          .n2Idx = runInfo.n2Idx,
+                          .s2Idx = runInfo.s2Idx,
+                          .dIdx = 0,
+                          .s2DealSize = runInfo.actSingleLoopS2Size,
+                          .dDealSize = (uint32_t)(constInfo.dSize + constInfo.dSizeRope)};
+        copyKvGmToL1(l1Tensor, kCacheGm, gmCoord);
     }
 
     __aicore__ inline void FixpipeMm1(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C,
