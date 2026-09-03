@@ -960,6 +960,18 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                 }
 
                 const uint32_t kth_full = kth;
+                if (threadIdx.x == 0 && blockIdx.x == 0 && q_token == 0) {
+                    uint32_t cnt_gt = 0;
+                    for (uint32_t ii = 0; ii < kSlice; ++ii) {
+                        uint32_t u = __float_as_uint(merge_vals[ii]);
+                        u = (u & 0x80000000u) ? ~u : (u ^ 0x80000000u);
+                        if (u > kth_full) cnt_gt++;
+                    }
+                    uint32_t v0u = __float_as_uint(merge_vals[0]);
+                    uint32_t v0s = (v0u & 0x80000000u) ? ~v0u : (v0u ^ 0x80000000u);
+                    printf("[CHK] kth=0x%08x slice0_gt=%u v0_raw=0x%08x v0_sort=0x%08x idx0=%d\n",
+                           kth_full, cnt_gt, v0u, v0s, merge_idx[0]);
+                }
 
                 // ---- distributed selection pass: count definite + stage boundary ----
                 uint32_t my_def = 0, my_col = 0;
