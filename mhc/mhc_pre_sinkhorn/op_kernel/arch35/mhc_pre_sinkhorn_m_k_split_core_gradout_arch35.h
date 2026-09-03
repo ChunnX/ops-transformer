@@ -163,6 +163,10 @@ public:
                         if (curBlockIdx % 2 == 1) {
                             curRowFactor = tailRowFactor;
                         }
+                        if (curRowFactor == 0) {
+                            CrossCoreSetFlag<SYNC_MODE4, PIPE_MTE3>(SYNC_AIV_AIC_FLAG);
+                            continue;
+                        }
                         uint64_t cvLoopKSize = CeilDiv(kL1RealSize, tilingData->kUbSize);
                         uint64_t kReminderSize = kL1RealSize - (cvLoopKSize - 1) * tilingData->kUbSize;
                         float coeff = 1 / static_cast<float>(tilingData->hcMult * tilingData->d);
