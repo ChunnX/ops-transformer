@@ -16,6 +16,10 @@
 #ifndef ALLTO_ALL_MX_QUANT_MATMUL_ARCH35_H
 #define ALLTO_ALL_MX_QUANT_MATMUL_ARCH35_H
 
+#if MC2_DFX_ENABLE
+#include "../../../common/op_kernel/mc2_runtime_info.h"
+#endif
+
 namespace Mc2Kernel {
 template <typename T1, typename T2>
 __aicore__ inline T1 CeilDiv(T1 a, T2 b)
@@ -56,6 +60,9 @@ private:
     uint64_t rankForComm_;
     uint64_t mxScaleHcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E8M0;
     uint64_t x1HcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E4M3;
+#if MC2_DFX_ENABLE
+    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
+#endif
 
 private:
     static constexpr uint64_t MXFP_GROUP_SIZE = 64UL;
@@ -101,7 +108,11 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     } else {
         rankForComm_ = tilingData_->alltoAllQuantMatmulTilingInfo.rankK;
     }
-
+    // 初始化运行时信息并接线给 pipeline，使 pipeline 循环内可写 turn
+#if MC2_DFX_ENABLE
+    runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, mc2Tiling_.aicCoreNum);
+    pipeLine_->SetRuntimeInfo(&runtimeInfo_);
+#endif
     // 初始化流水线
     pipeLine_->Init();
     // 获取流水线上下文
@@ -134,7 +145,10 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     if (mc2Tiling_.tailCnt > 0) {
         ProcessTail(mc2Tiling_.tailCnt);
     }
-
+    // 结束流水线: 仅切 commPhase，到达 finalize 即表示成功
+#if MC2_DFX_ENABLE
+    runtimeInfo_.WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
+#endif
     // 结束流水线
     pipeLine_->End();
 }

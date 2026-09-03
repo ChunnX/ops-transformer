@@ -32,12 +32,15 @@ struct AlltoAllMatmulTilingInfo {
     uint32_t rankN;              // N轴大小，此处的rankN是X2的N（非转置）
     uint32_t rankK;              // K轴大小,此处的rankK是X1的K
     uint32_t aicCoreNum;         // 核数
+    uint32_t x1QuantMode;        // x1量化模式: 0=非量化, 7=动态pertoken量化(KC), 6=MX量化
+    uint32_t x2QuantMode;        // x2量化模式: 0=非量化, 2=perchannel量化(KC), 6=MX量化
     uint64_t commLen;            // 通信地址大小
     uint64_t permuteLen;         // 重排空间大小
     uint64_t hcclDataType;       // hccl通信枚举值
     uint64_t x1ScaleOptionalLen; // x1Scale所需空间大小
     uint64_t dynamicExtraSpace;  // 动态量化所需的额外空间
     uint64_t x1QuantDtype;       // x1动态量化后的结果
+    uint64_t tilingKey;          // tilingKey，用于确认kernel模板特化路径
 };
 
 struct AlltoAllMatmulTilingData {
@@ -46,6 +49,7 @@ struct AlltoAllMatmulTilingData {
     AlltoAllMatmulTilingInfo alltoAllMatmulTilingInfo;
     Mc2MatMulV3TilingData mc2MmV3TileTilingData; // 通算切分头块matmul tiling数据
     Mc2MatMulV3TilingData mc2MmV3TailTilingData; // 通算切分尾块matmul tiling数据
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
 };
 
 // MX量化tiling结构体
@@ -55,6 +59,7 @@ struct AlltoAllQuantMatmulTilingData {
     AlltoAllMatmulTilingInfo alltoAllQuantMatmulTilingInfo; // 传递给kernel的tiling info
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTileTilingData; // 通算切分头块matmul tiling数据
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTailTilingData; // 通算切分尾块matmul tiling数据
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
 };
 
 #endif // ALLTO_ALL_MATMUL_TILING_H
