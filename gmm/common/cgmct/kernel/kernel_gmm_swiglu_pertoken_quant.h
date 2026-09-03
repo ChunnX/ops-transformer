@@ -139,6 +139,7 @@ public:
     AscendC::LocalTensor<CType> l0cOutUbFirst_;
     AscendC::LocalTensor<CType> l0cOutUbSecond_;
     bool isVecSetSyncCom_ = false;
+    uint32_t curBaseM_ = 0U;
 
     struct GMMTiling {
         uint32_t groupNum;
@@ -290,6 +291,18 @@ public:
         bRightOffset += bRightOffsetStep_;
     }
 
+    __aicore__ inline void BaseMBalance(BlockSchedulerOp &bs, int64_t m, int64_t baseM)
+    {
+        if (m <= 0) {
+            return;
+        }
+        const int64_t safeBaseM = baseM > 0 ? baseM : static_cast<int64_t>(AscendC::BLOCK_CUBE);
+        const int64_t mCnt = CeilDiv(m, safeBaseM);
+        const int64_t balancedBaseM = CeilDiv(m, mCnt);
+        curBaseM_ = static_cast<uint32_t>(CeilAlign(balancedBaseM, static_cast<int64_t>(AscendC::BLOCK_CUBE)));
+        bs.UpdateBaseM(curBaseM_);
+    }
+
     __aicore__ inline void ProcessSingleGroup(const Params &params, BlockSchedulerOp &bs, uint32_t groupIdx)
     {
         int64_t m = Get<M_VALUES>(problemShape_);
@@ -297,10 +310,9 @@ public:
         int64_t k = Get<K_VALUES>(problemShape_);
         TupleShape resProblemShape{Get<M_VALUES>(problemShape_), Get<N_VALUES>(problemShape_) >> 1,
                                    Get<K_VALUES>(problemShape_)};
-        bs.UpdateNextProblem(resProblemShape);
         epilogueDequantAndSwigluOp_.UpdateNextProblem(resProblemShape);
         UpdateGlobalBuffer(params);
-        CoordClass coord(m, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+        CoordClass coord(m, n, k, curBaseM_, params.gmmParams.baseN, params.gmmParams.baseK);
         BlockCoord tileIdx;
         while (bs.GetTileIdx(tileIdx)) {
             BlockShape singleShape = bs.GetBlockShape(tileIdx);
@@ -357,6 +369,11 @@ public:
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
             }
+            int64_t m = Get<M_VALUES>(problemShape_);
+            TupleShape resProblemShape{Get<M_VALUES>(problemShape_), Get<N_VALUES>(problemShape_) >> 1,
+                                       Get<K_VALUES>(problemShape_)};
+            BaseMBalance(bs, m, params.gmmParams.baseM);
+            bs.UpdateNextProblem(resProblemShape);
             ProcessSingleGroup(params, bs, groupIdx);
         }
         End();
