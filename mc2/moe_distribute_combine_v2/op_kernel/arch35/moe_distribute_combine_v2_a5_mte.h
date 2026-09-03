@@ -569,20 +569,36 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::BuffIn
     if constexpr (QuantMode > UNQUANT) {
         uint32_t packedDataBytes = blockCntPerToken_ * SPLIT_BLOCK_DATA_SIZE;
         tokenScaleAlign32Size = tokenScaleAlign32Size > packedDataBytes ? tokenScaleAlign32Size : packedDataBytes;
-        tpipe_->InitBuffer(xAbsBuf_, hFloatAlign256Size_);
-        uint32_t hFloatAlign256Cnt = hFloatAlign256Size_ / sizeof(float);
-        tpipe_->InitBuffer(xMaxBuf_, (hFloatAlign256Cnt / REDUCE_NUM) * sizeof(float));
-        tpipe_->InitBuffer(xScaleMulBuf_, hFloatAlign256Size_);
-        tpipe_->InitBuffer(winTpSendCountFloatBuf_, hFloatAlign32Size_);
-        winTpSendCountFloatTensor_ = winTpSendCountFloatBuf_.Get<float>();
-        absFloatTensor_ = xAbsBuf_.Get<float>();
-        reduceMaxFloatTensor_ = xMaxBuf_.Get<float>();
-        scaleDupLocalTensor_ = xScaleMulBuf_.Get<float>();
-        fp16CastTensor_ = xAbsBuf_.Get<half>();
-        Duplicate(absFloatTensor_, float(0), hFloatAlign256Cnt);
+        if constexpr (QuantMode == INT8_COMM_QUANT) {
+            tpipe_->InitBuffer(xAbsBuf_, hFloatAlign256Size_);
+            uint32_t hFloatAlign256Cnt = hFloatAlign256Size_ / sizeof(float);
+            tpipe_->InitBuffer(xMaxBuf_, (hFloatAlign256Cnt / REDUCE_NUM) * sizeof(float));
+            tpipe_->InitBuffer(xScaleMulBuf_, hFloatAlign256Size_);
+            tpipe_->InitBuffer(winTpSendCountFloatBuf_, hFloatAlign32Size_);
+            winTpSendCountFloatTensor_ = winTpSendCountFloatBuf_.Get<float>();
+            absFloatTensor_ = xAbsBuf_.Get<float>();
+            reduceMaxFloatTensor_ = xMaxBuf_.Get<float>();
+            scaleDupLocalTensor_ = xScaleMulBuf_.Get<float>();
+            fp16CastTensor_ = xAbsBuf_.Get<half>();
+            Duplicate(absFloatTensor_, float(0), hFloatAlign256Cnt);
+        } else {
+            // MXFP8仍使用主线三段量化，保留maxExp和halfScale所需的临时buffer
+            tpipe_->InitBuffer(winTpSendCountFloatBuf_, hFloatAlign32Size_);
+            winTpSendCountFloatTensor_ = winTpSendCountFloatBuf_.Get<float>();
+            // MXFP8只消费第一个参数，其余INT8参数复用已有tensor，不额外分配
+            absFloatTensor_ = winTpSendCountFloatTensor_;
+            reduceMaxFloatTensor_ = winTpSendCountFloatTensor_;
+            scaleDupLocalTensor_ = winTpSendCountFloatTensor_;
+            fp16CastTensor_ = winTpSendCountFloatBuf_.Get<half>();
+        }
         quantInst_.SetQuantInitParams(winTpSendCountFloatTensor_, fp16CastTensor_, absFloatTensor_,
                                       reduceMaxFloatTensor_, scaleDupLocalTensor_);
         tpipe_->InitBuffer(quantResultBuf_, tokenScaleAlign32Size);
+        if constexpr ((QuantMode == MXFP8_E5M2_COMM_QUANT) || (QuantMode == MXFP8_E4M3_COMM_QUANT)) {
+            // 量化只更新结果区域，预先清零打包时会一并复制的补齐区
+            LocalTensor<uint8_t> quantResultTensor = quantResultBuf_.Get<uint8_t>();
+            Duplicate(quantResultTensor, QUANT_PADDING_VALUE, tokenScaleAlign32Size);
+        }
     }
     if (isScalingDownFlag_) {
         elasticInst_.InitElasticInfoTensor(epWorldSizeOriginal_, elasticInfoTensor_);
@@ -636,6 +652,14 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Dispat
     tpipe_->InitBuffer(expandXInBuf_, dispatchBufferNum_ * expandXInSize);
     tpipe_->InitBuffer(xOutPackageBuf_, dispatchBufferNum_ * hAlignWinSize_);
     if (sendCntNum_ > 0U) {
+        if constexpr ((QuantMode == MXFP8_E5M2_COMM_QUANT) || (QuantMode == MXFP8_E4M3_COMM_QUANT)) {
+            // 输入补齐区只初始化一次，后续token不覆盖这些区域
+            LocalTensor<uint8_t> expandXInLocal = expandXInBuf_.Get<uint8_t>();
+            Duplicate(expandXInLocal, QUANT_PADDING_VALUE, dispatchBufferNum_ * expandXInSize);
+        }
+        // 打包只覆盖数据区，发送flag只初始化一次；任务不足时不初始化多余buffer
+        LocalTensor<float> xOutPackageLocal = xOutPackageBuf_.Get<float>();
+        Duplicate(xOutPackageLocal, float(1.0), MIN(sendCntNum_, dispatchBufferNum_) * hAlignWinSize_ / sizeof(float));
         // 首轮输入和发送buffer均可用；空闲核不设置事件，也不进入发送收尾
         for (uint32_t bufferIndex = 0U; bufferIndex < dispatchBufferNum_; bufferIndex++) {
             SetFlag<HardEvent::V_MTE2>(bufferIndex);
@@ -687,11 +711,16 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AlltoA
     tpipe_->Reset();
     AlltoAllCommBuffInit();
     if constexpr (QuantMode > UNQUANT) {
-        tpipe_->InitBuffer(xAbsBuf_, scaleNumAlignSize_);
+        if constexpr (QuantMode == INT8_COMM_QUANT) {
+            tpipe_->InitBuffer(xAbsBuf_, scaleNumAlignSize_);
+            scaleDivFloatTensor_ = xAbsBuf_.Get<float>();
+        } else {
+            // MXFP8反量化不使用scaleDivFloatTensor_，复用已有buffer保持初始化接口不变
+            scaleDivFloatTensor_ = mulBuf_.Get<float>();
+        }
         fp16CastTensor_ = mulBuf_.Get<half>();
         absFloatTensor_ = rowTmpFloatBuf_.Get<float>();
         scaleDupLocalTensor_ = mulBuf_.Get<float>();
-        scaleDivFloatTensor_ = xAbsBuf_.Get<float>();
         quantInst_.SetDeQuantInitParams(fp16CastTensor_, absFloatTensor_, scaleDupLocalTensor_, scaleDivFloatTensor_);
     }
     if (isInputTokenMaskFlag_) {
@@ -850,16 +879,9 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Expert
     WaitFlag<HardEvent::V_MTE2>(bufferIndex);
     uint32_t inputOffset = bufferIndex * hExpandXAlignSize_ / sizeof(ExpandXType);
     LocalTensor<ExpandXType> expandXInLocal = expandXInBuf_.Get<ExpandXType>()[inputOffset];
-    if constexpr ((QuantMode == MXFP8_E5M2_COMM_QUANT) || (QuantMode == MXFP8_E4M3_COMM_QUANT)) {
-        LocalTensor<uint8_t> singleByteTok = expandXInLocal.template ReinterpretCast<uint8_t>();
-        Duplicate(singleByteTok, QUANT_PADDING_VALUE, hExpandXAlignSize_);
-        SetFlag<HardEvent::V_MTE2>(bufferIndex);
-        WaitFlag<HardEvent::V_MTE2>(bufferIndex);
-    }
     DataCopyExtParams copyParams{1U, hExpandXTypeSize_, 0U, 0U, 0U};
     DataCopyPadExtParams<ExpandXType> padParams{
         (QuantMode == UNQUANT) || (QuantMode == INT8_COMM_QUANT), 0U, 0U, 0U};
-    // tkIndex是本卡expandX的行号，不是目标rank上的tokenId
     DataCopyPad(expandXInLocal, expandXGM_[tkIndex * axisH_], copyParams, padParams);
     SetFlag<HardEvent::MTE2_V>(bufferIndex);
 }
@@ -886,9 +908,6 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Expert
     WaitFlag<HardEvent::MTE3_V>(bufferIndex);
     uint32_t outputOffset = bufferIndex * hAlignWinSize_ / sizeof(float);
     LocalTensor<float> xOutPackageLocal = xOutPackageBuf_.Get<float>()[outputOffset];
-    Duplicate(xOutPackageLocal, float(1.0), hAlignWinSize_ / sizeof(float));
-    PipeBarrier<PIPE_V>();
-    // 每块复制256B+224B数据，源步长480B、目的步长512B，保留末尾32B flag
     Copy(xOutPackageLocal, srcDataLocal, 64UL, uint8_t(blockCntPerToken_), {1, 1, 16, 15});
     Copy(xOutPackageLocal[64], srcDataLocal[64], 56UL, uint8_t(blockCntPerToken_), {1, 1, 16, 15});
     if constexpr (QuantMode == UNQUANT) {
