@@ -1428,7 +1428,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Loca
         }
         GM_ADDR wAddr = (__gm__ uint8_t *)(windowGM_) + winOffset * expertPerSizeOnWin_;
         GlobalTensor<XOutType> tokGlobal, expandXOutGlobal;
-        GlobalTensor<float> expertScaleInGlobal, expandScalesOutGlobal;
+        GlobalTensor<float> expandScalesOutGlobal;
         tokGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
 
         uint32_t loopTimes = Ceil(count, countPerDataSize);
@@ -1466,20 +1466,13 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Loca
 
             if (hasExpertScalesFlag_) {
                 xTmpTensorFloat = tripleLocal.template ReinterpretCast<float>();
-                expertScaleInGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(
-                    wAddr + tokenCopiedNumThisExpert * hAlignWinSize_ + expertScaleAlign_ * sizeof(float)));
                 expandScalesOutGlobal.SetGlobalBuffer((__gm__ float *)(expandScalesOutGM_) + beginIdx +
                                                       tokenCopiedNumThisExpert);
-                DataCopyExtParams expertScaleCopyInParams{blockCount, static_cast<uint32_t>(sizeof(float)),
-                                                          static_cast<uint32_t>(hAlignWinSize_ - sizeof(float)), 0U,
-                                                          0U};
-                DataCopyPadExtParams<float> expertScalePadParams{false, 0U, 0U, 0.0f};
-                DataCopyExtParams expertScaleCopyOutParams{blockCount, static_cast<uint32_t>(sizeof(float)), 0U, 0U,
-                                                           0U};
-                SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-                DataCopyPad(xTmpTensorFloat, expertScaleInGlobal, expertScaleCopyInParams, expertScalePadParams);
-                SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-                DataCopyPad(expandScalesOutGlobal, xTmpTensorFloat, expertScaleCopyOutParams);
+                // The token copy above already includes expertScale in tripleLocal. Copy it out directly to avoid
+                // rereading the same value from the communication window and serializing MTE2/MTE3.
+                DataCopyExtParams expertScaleCopyParams{blockCount, static_cast<uint32_t>(sizeof(float)),
+                                                        hOutAlignUbSize_ / UB_ALIGN - 1, 0U, 0U};
+                DataCopyPad(expandScalesOutGlobal, xTmpTensorFloat[expertScaleAlign_], expertScaleCopyParams);
             }
             tripleQueue.FreeTensor(tripleLocal);
         }
