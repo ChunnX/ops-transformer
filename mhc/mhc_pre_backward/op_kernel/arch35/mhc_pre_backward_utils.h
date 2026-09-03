@@ -145,7 +145,37 @@ struct V0V1Buffers {
 using aT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using bT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using cT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
-using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0>;
+using biasT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+
+constexpr MatmulConfig GetC0StaticConfig()
+{
+    MatmulConfig config = GetMDLConfig(false, false, 0, true, false, false, true);
+    config.singleCoreM = SINGLE_M;
+    config.singleCoreN = ND_BLOCK_SIZE;
+    config.singleCoreK = 80; // fusionSize最大为N=8时的80
+    config.basicM = 128;
+    config.basicN = 128;
+    config.basicK = 32;
+    return config;
+}
+
+constexpr MatmulApiStaticTiling GetC0StaticTiling()
+{
+    constexpr MatmulConfig config = GetC0StaticConfig();
+    MatmulApiStaticTiling tiling = GetMatmulApiTiling<aT_C0, bT_C0, cT_C0, biasT_C0>(config);
+    // 与当前host tiling的流水参数保持一致，只将重复的shape推导常量化。
+    tiling.stepM = 1;
+    tiling.stepN = 1;
+    tiling.stepKa = 1;
+    tiling.stepKb = 1;
+    tiling.depthA1 = 1;
+    tiling.depthB1 = 1;
+    tiling.dbL0C = 1;
+    return tiling;
+}
+
+constexpr MatmulApiStaticTiling C0_STATIC_TILING = GetC0StaticTiling();
+using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0, biasT_C0, C0_STATIC_TILING>;
 
 using aT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
 using bT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
