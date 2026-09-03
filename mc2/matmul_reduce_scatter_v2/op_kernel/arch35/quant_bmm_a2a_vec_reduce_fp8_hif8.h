@@ -25,6 +25,9 @@
 #include "../../../common/op_kernel/qbmm_mix_perblock_noncontiguous.h"
 #include "../matmul_reduce_scatter_v2_c_tiling.h"
 #include "../../../common/op_kernel/reduce_sum_cast_fp32.h"
+#if MC2_DFX_ENABLE
+#include "../../../common/op_kernel/mc2_runtime_info.h"
+#endif
 
 #define TEMPLATE_CLASS_PARAMS \
     template <typename AType, typename BType, typename CType, typename ScaleType, class MMClass, bool IsPerBlock, \
@@ -100,6 +103,16 @@ private:
     uint64_t tileMN_{0};
     uint64_t tailMN_{0};
     uint64_t tileOffset_{0};
+#if MC2_DFX_ENABLE
+    // MX量化场景(E8M0 scale)启用runtime info打点，覆盖MXFP8与MXFP4(两者ScaleType均为fp8_e8m0_t)
+    static constexpr bool IS_MX_DFX = AscendC::IsSameType<ScaleType, fp8_e8m0_t>::value;
+    // position 枚举(编号对齐alltoallmm实现)
+    static constexpr uint8_t POS_COMM_BEFORE = 0U;             // AlltoAll提交/hccl.Wait 前
+    static constexpr uint8_t POS_COMP_CUBE_MATMUL_BEFORE = 2U; // C核 matmul 前
+    static constexpr uint8_t POS_COMP_VEC_REDUCE_BEFORE = 3U;  // V核 reduceSum 前
+    // 运行时信息打点，崩溃dump时用于定位卡死的tile轮次与通信阶段
+    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
+#endif
 };
 
 TEMPLATE_CLASS_PARAMS
@@ -110,6 +123,12 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Init(
     tilingData_ = tilingData;
     auto &&cfg = tilingData_->param;
     auto &&tiling = tilingData_->quantBmmV3TileTiling.matmulTiling;
+#if MC2_DFX_ENABLE
+    if constexpr (IS_MX_DFX) {
+        // 初始化运行时信息(写入magicNum+COMM_INIT阶段)，HCCL初始化期间崩溃dump显示INIT
+        runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, cfg.aicCoreNum);
+    }
+#endif
 
     // 初始化 HCCL
     const void *hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
@@ -208,6 +227,10 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::PostPr
 
     // 等待执行完成后，最后终止hcclserver
     if (GetBlockIdx() == 0) {
+#if MC2_DFX_ENABLE
+        // 仅切commPhase，到达finalize即表示通信全流程成功结束
+        runtimeInfo_.WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
+#endif
         hccl_.Finalize();
     }
 }
@@ -345,6 +368,11 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
               isTail, false, preCoreNum_);
 
     for (uint32_t i = 0; i < count; i++) {
+#if MC2_DFX_ENABLE
+        // turn与handle序号对齐: 主块1..tileCnt, 尾块tileCnt+1..tileCnt+tailCnt
+        runtimeInfo_.WriteGmByPassDCache(i + 1 + (isTail ? cfg.tileCnt : 0U), POS_COMP_CUBE_MATMUL_BEFORE,
+                                          static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+#endif
         mmv3.UpdateSlice(i, isTail);                // 更新 slice 偏移
         mmv3.Process(isLast && (i == (count - 1))); // 执行 MatMul
 
@@ -386,9 +414,15 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
 
     // --- Prologue: 启动第 0 轮通信 ---
     VecWaitCube(); // 确保依赖的 MatMul 已完成
+#if MC2_DFX_ENABLE
+    runtimeInfo_.WriteGmByPassDCache(1U + handleShift, POS_COMM_BEFORE,
+                                      static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
+#endif
     handles_[0 + handleShift] =
         hccl_.template AlltoAll<true>(currentSendPtr, currentRecvPtr, rankSliceElems, dataType_, stride, repeat);
-
+#if MC2_DFX_ENABLE
+    runtimeInfo_.IncCommitCount();
+#endif
     // 移动指针准备下一轮
     currentSendPtr += rankSliceBytes;
     currentRecvPtr += rankSliceBytes;
@@ -398,20 +432,36 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
     for (uint32_t i = 0; i < count - 1; i++) {
         // 1. 等待上一轮 (i) 通信结束
         if (GetBlockIdx() == 0) {
+#if MC2_DFX_ENABLE
+            runtimeInfo_.WriteGmByPassDCache(i + 1U + handleShift, POS_COMM_BEFORE,
+                                              static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
+#endif
             hccl_.Wait(handles_[i + handleShift]);
+#if MC2_DFX_ENABLE
+            runtimeInfo_.IncWaitCount();
+#endif
         }
         SyncAll<true>(); // V 同步确保数据到达
 
         // 2. 启动下一轮 (i+1) 通信
         VecWaitCube();
+#if MC2_DFX_ENABLE
+        runtimeInfo_.WriteGmByPassDCache(i + 2U + handleShift, POS_COMM_BEFORE,
+                                          static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
+#endif
         handles_[i + 1 + handleShift] =
             hccl_.template AlltoAll<true>(currentSendPtr, currentRecvPtr, rankSliceElems, dataType_, stride, repeat);
-
+#if MC2_DFX_ENABLE
+        runtimeInfo_.IncCommitCount();
+#endif
         // 3. 执行上一轮 (i) 数据的 ReduceSum
         // 计算地址 = 当前指针 - 一步偏移
         GM_ADDR calculateRecvPtr = currentRecvPtr - rankSliceBytes;
         GM_ADDR calculateOutPtr = currentOutPtr - rankSliceBytes;
-
+#if MC2_DFX_ENABLE
+        runtimeInfo_.WriteGmByPassDCache(i + 1U + handleShift, POS_COMP_VEC_REDUCE_BEFORE,
+                                          static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+#endif
         tPipe_->Reset();
         reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calculateRecvPtr, calculateOutPtr, tPipe_);
         reduceSum_.ExecuteReduceSum();
@@ -427,7 +477,14 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
 
     // 等待最后一轮通信结束
     if (GetBlockIdx() == 0) {
+#if MC2_DFX_ENABLE
+        runtimeInfo_.WriteGmByPassDCache(lastIndex + 1U + handleShift, POS_COMM_BEFORE,
+                                          static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
+#endif
         hccl_.Wait(handles_[lastIndex + handleShift]);
+#if MC2_DFX_ENABLE
+        runtimeInfo_.IncWaitCount();
+#endif
     }
     SyncAll<true>();
 
@@ -435,7 +492,10 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
     // 此时的计算地址同样是 "当前指针 - 偏移量"
     GM_ADDR calculateRecvPtr = currentRecvPtr - rankSliceBytes;
     GM_ADDR calculateOutPtr = currentOutPtr - rankSliceBytes;
-
+#if MC2_DFX_ENABLE
+    runtimeInfo_.WriteGmByPassDCache(lastIndex + 1U + handleShift, POS_COMP_VEC_REDUCE_BEFORE,
+                                      static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+#endif
     tPipe_->Reset();
     reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calculateRecvPtr, calculateOutPtr, tPipe_);
     reduceSum_.ExecuteReduceSum();

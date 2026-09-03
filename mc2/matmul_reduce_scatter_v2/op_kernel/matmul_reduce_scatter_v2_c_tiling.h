@@ -32,8 +32,11 @@ struct MatmulReduceScatterV2TilingData {
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;
+    uint32_t quantMode; 
     Mc2MatMulV3TilingData mC2Mmv3TileTilingData;
     Mc2MatMulV3TilingData mC2Mmv3TailTilingData;
+    uint64_t tilingKey;          // tilingKey，用于确认kernel模板特化路径
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
 };
 
 struct QuantBatchMatmulV3ReduceScatterTilingData {
@@ -42,8 +45,11 @@ struct QuantBatchMatmulV3ReduceScatterTilingData {
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;
+    uint32_t quantMode;          // 0=非量化, 1=量化
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmV3TileTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmV3TailTiling;
+    uint64_t tilingKey;          // tilingKey，用于确认kernel模板特化路径
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
 };
 } // namespace Mc2Tiling
 #endif
