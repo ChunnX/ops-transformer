@@ -1291,10 +1291,8 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckEmptyTensorSingleXMultiWeightSing
         int64_t n = transB_ ? wShape.GetDim(wDimNum - 2) : wShape.GetDim(wDimNum - 1);
         if (weightNzFlag_) {
             // 非转置NZ排布(N1, K1, K0, N0), 转置NZ排布(K1, N1, N0, K0)
-            n = transB_ ? wShape.GetDim(wDimNum - 3) *
-                              wShape.GetDim(wDimNum - 2) : // wDimNum = 4，代表4维NZ，数字各自代表倒数第几维
-                    wShape.GetDim(wDimNum - 4) *
-                        wShape.GetDim(wDimNum - 1); // wDimNum = 4，代表4维NZ，数字各自代表倒数第几维
+            n = transB_ ? wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2) : // 数字各自代表倒数第几维
+                          wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);        // 数字各自代表倒数第几维
         }
         // k不能单独为0
         OP_CHECK_IF(
