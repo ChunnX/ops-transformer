@@ -108,7 +108,7 @@ CUTLASS_DEVICE void warp_bucket_topk(
     // Explicit shared-space element loader (avoids generic loads)
     const uint32_t* logits_u = reinterpret_cast<const uint32_t*>(logits);
     auto load_u32 = [&](uint32_t i) -> uint32_t {
-        if constexpr (kCached) return ptx::ld_shared(logits_u + i);
+        if constexpr (kCached) return logits_u[i];   // A/B: plain deref
         else return __float_as_uint(__ldcg(reinterpret_cast<const float*>(logits_u) + i));
     };
 
