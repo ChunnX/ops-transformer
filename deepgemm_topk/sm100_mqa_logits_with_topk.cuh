@@ -283,8 +283,6 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
     constexpr uint32_t kSpecWarpStart = kNumMathWarpGroups * 4;
     constexpr uint32_t kNumTopkWarps = 8;   // Phase 2 warps (segment-split local TopK + merge)
 
-    const long long dbg_kernel_start = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
-    const long long dbg_p1_start = dbg_kernel_start;
 
     if (warp_idx == kSpecWarpStart) {
         cute::prefetch_tma_descriptor(&tensor_map_q);
@@ -738,8 +736,6 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
     // ========================================================================
     __threadfence();
     __syncthreads();
-    if (threadIdx.x == 0 && blockIdx.x == 0)
-        printf("[SPLIT] phase1_cycles=%lld\n", clock64() - dbg_p1_start);
     // ========================================================================
     // PHASE 2: 8-warp split TopK with distributed final radix.
     // NOTE: all __syncthreads() are executed uniformly by the WHOLE block
@@ -787,7 +783,6 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
             const float* logits_row = logits_buffer + static_cast<uint64_t>(q_token) * logits_stride;
             int32_t* out_ptr = sparse_indices + static_cast<uint64_t>(q_token) * kSparseCount;
 
-            const long long dbg_t0 = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
 
             if (i_active && k_len == 0) {
                 for (uint32_t i = lane_idx; i < kSparseCount; i += 32)
@@ -807,7 +802,6 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
             const uint32_t my_len = (my_start < k_len) ? ((my_start + segL > k_len) ? k_len - my_start : segL) : 0;
 
             __threadfence();
-            const long long dbg_t1 = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
 
             // ==== stage 1: per-warp segment local TopK ====
             if (i_active && my_len > 0 && my_len <= kSegFloats) {
@@ -827,7 +821,6 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                     wcand[i] = -1;
             }
             __syncthreads();
-            const long long dbg_t2 = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
 
             // ==== stage 2: build merged candidate arrays ====
             if (i_active) {
@@ -856,7 +849,6 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                 }
             }
             __syncthreads();
-            const long long dbg_t3 = (threadIdx.x == 0 && blockIdx.x == 0) ? clock64() : 0;
 
             // ==== stage 3+4: final radix (warp 0, proven correct) ====
             if (warp_idx == 0)
@@ -864,17 +856,10 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
                                                            out_ptr, whist, wstage, merge_idx, lane_idx);
             __syncthreads();
 
-            if (threadIdx.x == 0 && blockIdx.x == 0)
-                printf("[TOPK8] token=%u k_len=%u fence=%lld load+local=%lld merge=%lld final=%lld\n",
-                       q_token, k_len,
-                       dbg_t1 - dbg_t0, dbg_t2 - dbg_t1, dbg_t3 - dbg_t2, clock64() - dbg_t3);
         }
     }
 
     __syncthreads();
-    if (threadIdx.x == 0 && blockIdx.x == 0)
-        printf("[SPLIT] phase2_cycles=%lld total_cycles=%lld\n",
-               clock64() - dbg_p1_start, clock64() - dbg_kernel_start);
 }
 
 // =============================================================================
