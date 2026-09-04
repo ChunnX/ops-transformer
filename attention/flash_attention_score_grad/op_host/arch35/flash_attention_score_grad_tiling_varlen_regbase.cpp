@@ -132,8 +132,7 @@ inline bool TNDRunIsTiny(int64_t virtM, int64_t virtN)
 
 inline bool TNDRunIsLineEligible(int64_t k, int64_t virtM, int64_t virtN, int64_t copies)
 {
-    return TNDRunIsLineWorthy(k, virtM, virtN, copies) ||
-           TNDRunIsLineWorthyTranspose(k, virtM, virtN, copies);
+    return TNDRunIsLineWorthy(k, virtM, virtN, copies) || TNDRunIsLineWorthyTranspose(k, virtM, virtN, copies);
 }
 
 inline uint8_t PickTNDLineOrientation(int64_t k, int64_t virtM, int64_t virtN, int64_t copies)
@@ -255,9 +254,9 @@ inline int64_t CountTNDSameShapeRun(FuzzyBaseInfoParamsRegbase &p, int64_t start
                      (isDense ? MakeTNDDenseRunShape(p, start) : MakeTNDCausalRunShape(p, start, leftUp));
     int64_t end = start;
     while (end + 1 < p.b) {
-        const TNDRunShape next = isBand ? MakeTNDBandRunShape(p, end + 1) :
-                                  (isDense ? MakeTNDDenseRunShape(p, end + 1) :
-                                             MakeTNDCausalRunShape(p, end + 1, leftUp));
+        const TNDRunShape next =
+            isBand ? MakeTNDBandRunShape(p, end + 1) :
+                     (isDense ? MakeTNDDenseRunShape(p, end + 1) : MakeTNDCausalRunShape(p, end + 1, leftUp));
         if (!SameTNDRunShape(next, shape)) {
             break;
         }
@@ -558,8 +557,7 @@ protected:
         if (preferLine && linePack.rLine > 0) {
             ApplyTNDLineDeterParam(fBaseParams, linePack);
         }
-        OP_LOGD("CalcleTNDDeterParam",
-                "TND deterMaxRound is %ld, tndLineDeter=%u, preferLine=%d, rLine=%ld.",
+        OP_LOGD("CalcleTNDDeterParam", "TND deterMaxRound is %ld, tndLineDeter=%u, preferLine=%d, rLine=%ld.",
                 fBaseParams.deterMaxRound, static_cast<uint32_t>(fBaseParams.tndLineDeter),
                 static_cast<int>(preferLine), linePack.rLine);
     }

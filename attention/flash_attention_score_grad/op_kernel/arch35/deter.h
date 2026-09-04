@@ -2919,9 +2919,10 @@ __aicore__ inline void ExpandTNDCausalRun(const __gm__ uint8_t *actualSeqQlenAdd
 }
 
 template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
-__aicore__ inline void ExpandTNDDenseRun(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
-                                         int64_t b, int64_t bIdx, int64_t &runHead, int64_t &runEnd, int64_t &m,
-                                         int64_t &n, CoordinateInfo &coordinateInfo)
+__aicore__ inline void ExpandTNDDenseRun(const __gm__ uint8_t *actualSeqQlenAddr,
+                                         const __gm__ uint8_t *actualSeqKvlenAddr, int64_t b, int64_t bIdx,
+                                         int64_t &runHead, int64_t &runEnd, int64_t &m, int64_t &n,
+                                         CoordinateInfo &coordinateInfo)
 {
     LoadTNDOuterMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, bIdx, m, n, coordinateInfo);
     runHead = bIdx;
@@ -3088,8 +3089,7 @@ __aicore__ inline uint8_t PickTNDLineOrientation(int64_t k, int64_t virtM, int64
     return TND_LINE_COL_MAJOR;
 }
 
-__aicore__ inline int64_t CalTNDLineRounds(int64_t k, int64_t virtM, int64_t virtN, int64_t copies,
-                                           uint8_t orientation)
+__aicore__ inline int64_t CalTNDLineRounds(int64_t k, int64_t virtM, int64_t virtN, int64_t copies, uint8_t orientation)
 {
     if (virtM <= 0 || virtN <= 0 || copies <= 0) {
         return 0;
@@ -3366,8 +3366,8 @@ __aicore__ inline void CalTNDDenseLineIndex(const __gm__ uint8_t *actualSeqQlenA
         int64_t runEnd = bIdx;
         int64_t m = 0;
         int64_t n = 0;
-        ExpandTNDDenseRun<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, b, bIdx, runHead, runEnd, m,
-                                                  n, coordinateInfo);
+        ExpandTNDDenseRun<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, b, bIdx, runHead, runEnd, m, n,
+                                                  coordinateInfo);
         const int64_t groupSize = runEnd - runHead + 1;
         if (bIdx > runHead) {
             bIdx = runEnd + 1;
@@ -3385,8 +3385,8 @@ __aicore__ inline void CalTNDDenseLineIndex(const __gm__ uint8_t *actualSeqQlenA
                 MapTNDCopyToBatch(w, n1, runHead, coordinateInfo.batchId);
                 int64_t realM = 0;
                 int64_t realN = 0;
-                LoadTNDOuterMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr,
-                                                       runHead + (w - 1) / n1, realM, realN, coordinateInfo);
+                LoadTNDOuterMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead + (w - 1) / n1,
+                                                       realM, realN, coordinateInfo);
                 coordinateInfo.s1Idx = x;
                 coordinateInfo.s2Idx = y;
             }
