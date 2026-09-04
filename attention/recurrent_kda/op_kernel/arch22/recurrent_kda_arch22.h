@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file recurrent_kda.h
+ * \file recurrent_kda_arch22.h
  * \brief Single-kernel fused recurrent KDA implementation.
  */
 
@@ -24,7 +24,6 @@ namespace RecurrentKda {
 
 using namespace matmul;
 using namespace AscendC;
-using namespace AscendC::Reg;
 constexpr uint64_t BUFFER_NUM = 1;
 constexpr uint64_t INPUT_BUFFER_NUM = 2;
 constexpr uint32_t MAX_OUT_BUFFER_NUM = 2;
@@ -34,8 +33,6 @@ constexpr uint64_t FP32_NUM_PER_BLOCK = 8;
 constexpr uint32_t REPEAT_LENTH = 64; // 256 bytes for float.
 constexpr uint32_t MAX_REPEAT_TIME = 255;
 constexpr uint32_t ADD_FOLD_REDUCE_MIN_K = 128;
-constexpr uint16_t V_LENGTH = VECTOR_REG_WIDTH / sizeof(float);
-constexpr uint16_t TWO_V_LENGTH = 2 * V_LENGTH;
 constexpr uint64_t INVALID_STATE_SLOT = static_cast<uint64_t>(-1);
 constexpr uint32_t STATE_TRANSPOSE_BLOCK = 16;
 constexpr uint32_t DATA_BLOCK_BYTES = 32;
@@ -157,7 +154,7 @@ public:
         uint32_t singleVSize = vStep_ * sizeof(float);
         uint32_t vSize = MAX_MTP * alignV_ * sizeof(float);
         uint32_t kSize = MAX_MTP * alignK_ * sizeof(float);
-        uint32_t betaUbSize = MAX_MTP * FP32_NUM_PER_BLOCK * sizeof(float);
+        uint32_t betaUbSize = Ceil(MAX_MTP * NV_, FP32_NUM_PER_BLOCK) * FP32_NUM_PER_BLOCK * sizeof(float);
         pipe_->InitBuffer(qInQueue_, BUFFER_NUM, MAX_MTP * alignK_ * sizeof(inType));
         pipe_->InitBuffer(kInQueue_, BUFFER_NUM, MAX_MTP * alignK_ * sizeof(inType));
         pipe_->InitBuffer(vInQueue_, BUFFER_NUM, MAX_MTP * alignV_ * sizeof(inType));
@@ -185,12 +182,8 @@ public:
         buffOffset += kSize;
         stateInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(alignK_ * vStep_), buffOffset);
         buffOffset += cubeSize;
-        if (alignK_ == TWO_V_LENGTH) {
-            broadTmpInUb = stateInUb;
-        } else {
-            broadTmpInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(alignK_ * vStep_), buffOffset);
-            buffOffset += cubeSize;
-        }
+        broadTmpInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(alignK_ * vStep_), buffOffset);
+        buffOffset += cubeSize;
         betaInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(betaUbSize / sizeof(float)), buffOffset);
         buffOffset += betaUbSize;
         gateInUb = tmpBuff.GetWithOffset<float>(static_cast<uint32_t>(MAX_MTP * alignK_), buffOffset);
@@ -276,80 +269,41 @@ public:
             ReleaseEvents();
             return;
         }
-        uint64_t taskIdx = blockIdx;
-        uint64_t taskNum = B_ * NV_;
-        uint64_t taskStride = GetBlockNum();
-        RKDATaskInfo currentTask{};
-        RKDATaskInfo nextTask{};
-        bool taskValid = true;
-        bool hasCurrentTask = PrepareNextTask(taskIdx, taskNum, taskStride, currentTask, taskValid);
-        bool hasNextTask = PrepareNextTask(taskIdx, taskNum, taskStride, nextTask, taskValid);
-        if (!taskValid) {
-            ReleaseEvents();
-            return;
-        }
-        bool statePrefetched = false;
-        while (hasCurrentTask) {
-            CopyInBeta(currentTask.seq0, currentTask.seq1, currentTask.head);
-            statePrefetched =
-                ProcessHead(currentTask.batch, currentTask.seq0, currentTask.seq1, currentTask.head,
-                            currentTask.stateSlot, statePrefetched, hasNextTask, nextTask.stateSlot, nextTask.head);
-            if (!hasNextTask) {
-                break;
+        for (uint64_t batch_i = 0; batch_i < B_; batch_i++) {
+            int64_t seq0 = SequenceStart(batch_i);
+            int64_t seq1 = SequenceEnd(batch_i);
+            int64_t seqLen64 = seq1 - seq0;
+            if (seqLen64 == 0) {
+                continue;
             }
-            currentTask = nextTask;
-            hasNextTask = PrepareNextTask(taskIdx, taskNum, taskStride, nextTask, taskValid);
-            if (!taskValid) {
+            int32_t seqLen = static_cast<int32_t>(seqLen64);
+            if (!ValidateStateSlots(batch_i, seq0, seqLen)) {
                 ReleaseEvents();
                 return;
+            }
+
+            uint64_t head_i = FindNextTaskHead(batch_i, 0);
+            if (head_i == NV_) {
+                continue;
+            }
+            uint64_t stateSlot = ResolveInitialStateSlot(batch_i, seq0, seqLen);
+            if (stateSlot == INVALID_STATE_SLOT) {
+                ReleaseEvents();
+                return;
+            }
+            CopyInBeta(seq0, seq1);
+            bool statePrefetched = false;
+            while (head_i < NV_) {
+                uint64_t nextHead = FindNextTaskHead(batch_i, head_i + 1);
+                statePrefetched = ProcessHead(batch_i, seq0, seq1, head_i, stateSlot, statePrefetched, nextHead < NV_,
+                                              stateSlot, nextHead);
+                head_i = nextHead;
             }
         }
         ReleaseEvents();
     }
 
 private:
-    struct RKDATaskInfo {
-        uint64_t batch;
-        uint64_t head;
-        uint64_t stateSlot;
-        int64_t seq0;
-        int64_t seq1;
-    };
-
-    __aicore__ inline bool PrepareNextTask(uint64_t &taskIdx, uint64_t taskNum, uint64_t taskStride, RKDATaskInfo &task,
-                                           bool &taskValid)
-    {
-        taskValid = true;
-        while (taskIdx < taskNum) {
-            uint64_t currentTaskIdx = taskIdx;
-            taskIdx += taskStride;
-            uint64_t batch = currentTaskIdx / NV_;
-            int64_t seq0 = SequenceStart(batch);
-            int64_t seq1 = SequenceEnd(batch);
-            int64_t seqLen64 = seq1 - seq0;
-            if (seqLen64 == 0) {
-                continue;
-            }
-            int32_t seqLen = static_cast<int32_t>(seqLen64);
-            if (!ValidateStateSlots(batch, seq0, seqLen)) {
-                taskValid = false;
-                return false;
-            }
-            uint64_t stateSlot = ResolveInitialStateSlot(batch, seq0, seqLen);
-            if (stateSlot == INVALID_STATE_SLOT) {
-                taskValid = false;
-                return false;
-            }
-            task.batch = batch;
-            task.head = currentTaskIdx % NV_;
-            task.stateSlot = stateSlot;
-            task.seq0 = seq0;
-            task.seq1 = seq1;
-            return true;
-        }
-        return false;
-    }
-
     __aicore__ inline bool ValidateCuSeqlens() const
     {
         if (!hasCuSeqlens_) {
@@ -696,8 +650,8 @@ private:
             DataCopyPad(stateLocal, initStateGm_[stateOffset], stateInParams, padParams);
         } else {
             uint64_t stateOffset = stateInStride0_ * stateSlot + stateInStride1_ * head + stateInStride3_ * vOffset;
-            int64_t srcStride = static_cast<int64_t>((stateInStride2_ - curSingleV) * sizeof(stateType));
-            int64_t dstStride = static_cast<int64_t>((vStep_ - curSingleV) * sizeof(stateType) / DATA_BLOCK_BYTES);
+            uint32_t srcStride = static_cast<uint32_t>((stateInStride2_ - curSingleV) * sizeof(stateType));
+            uint32_t dstStride = static_cast<uint32_t>((vStep_ - curSingleV) * sizeof(stateType) / DATA_BLOCK_BYTES);
             DataCopyExtParams stateInParams{static_cast<uint16_t>(realK_),
                                             static_cast<uint32_t>(curSingleV * sizeof(stateType)), srcStride, dstStride,
                                             0};
@@ -730,295 +684,116 @@ private:
     }
 
     __aicore__ inline void MatVecMul(const LocalTensor<float> &cubeTensor, const LocalTensor<float> &vecTensor,
-                                     LocalTensor<float> &dstTensor, uint32_t rows)
+                                     LocalTensor<float> &dstTensor, uint32_t cols, bool isAdd)
     {
-        __ubuf__ float *cubeAddr = (__ubuf__ float *)cubeTensor.GetPhyAddr();
-        __ubuf__ float *vecAddr = (__ubuf__ float *)vecTensor.GetPhyAddr();
-        __ubuf__ float *dstAddr = (__ubuf__ float *)dstTensor.GetPhyAddr();
-
-        uint16_t rowNum = static_cast<uint16_t>(rows);
-        uint16_t colLoopTimes = static_cast<uint16_t>(Ceil(alignK_, V_LENGTH));
-        uint32_t colLength = alignK_;
-        __VEC_SCOPE__
-        {
-            RegTensor<float> cube;
-            RegTensor<float> vec;
-            RegTensor<float> dst;
-            MaskReg pregLoop;
-            for (uint16_t j = 0; j < colLoopTimes; j++) {
-                pregLoop = UpdateMask<float>(colLength);
-                DataCopy(vec, vecAddr + j * V_LENGTH);
-                for (uint16_t i = 0; i < rowNum; i++) {
-                    DataCopy(cube, cubeAddr + i * alignK_ + j * V_LENGTH);
-                    Mul(dst, cube, vec, pregLoop);
-                    DataCopy(dstAddr + i * alignK_ + j * V_LENGTH, dst, pregLoop);
+        uint8_t repeatStride = alignK_ / FP32_NUM_PER_BLOCK;
+        for (uint32_t i = 0; i < alignK_; i += REPEAT_LENTH) {
+            uint64_t mask = Std::min(REPEAT_LENTH, alignK_ - i);
+            for (uint32_t j = 0; j < cols; j += MAX_REPEAT_TIME) {
+                uint64_t repeatTime = Std::min(MAX_REPEAT_TIME, cols - j);
+                if (isAdd) {
+                    MulAddDst(dstTensor[j * alignK_ + i], cubeTensor[j * alignK_ + i], vecTensor[i], mask, repeatTime,
+                              {1, 1, 1, repeatStride, repeatStride, 0});
+                } else {
+                    Mul(dstTensor[j * alignK_ + i], cubeTensor[j * alignK_ + i], vecTensor[i], mask, repeatTime,
+                        {1, 1, 1, repeatStride, repeatStride, 0});
                 }
             }
         }
     }
 
-    __aicore__ inline void DecayMatVecReduce128(LocalTensor<float> &stateTensor, const LocalTensor<float> &gateTensor,
-                                                const LocalTensor<float> &vecTensor, LocalTensor<float> &dstTensor,
+    __aicore__ inline void ReduceSumBaseline(LocalTensor<float> &dstTensor, const LocalTensor<float> &srcTensor,
+                                             uint32_t rows)
+    {
+        uint32_t stateShape[2] = {rows, alignK_};
+        ReduceSum<float, Pattern::Reduce::AR, true>(dstTensor, srcTensor, stateShape, true);
+    }
+
+    __aicore__ inline bool CanUseK128AddFoldFastPath(uint32_t rows) const
+    {
+        if (alignK_ != ADD_FOLD_REDUCE_MIN_K) {
+            return false;
+        }
+        if (rows == 0 || rows > MAX_REPEAT_TIME) {
+            return false;
+        }
+        return true;
+    }
+
+    __aicore__ inline void ReduceSumAddFoldK128(LocalTensor<float> &dstTensor, LocalTensor<float> &srcTensor,
                                                 uint32_t rows)
     {
-        __ubuf__ float *stateAddr = (__ubuf__ float *)stateTensor.GetPhyAddr();
-        __ubuf__ float *gateAddr = (__ubuf__ float *)gateTensor.GetPhyAddr();
-        __ubuf__ float *vecAddr = (__ubuf__ float *)vecTensor.GetPhyAddr();
-        __ubuf__ float *dstAddr = (__ubuf__ float *)dstTensor.GetPhyAddr();
-        uint16_t rowNum = static_cast<uint16_t>(rows);
-        __VEC_SCOPE__
-        {
-            RegTensor<float> state0;
-            RegTensor<float> state1;
-            RegTensor<float> gate0;
-            RegTensor<float> gate1;
-            RegTensor<float> vec0;
-            RegTensor<float> vec1;
-            RegTensor<float> product0;
-            RegTensor<float> product1;
-            RegTensor<float> sum;
-            MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
-            DataCopy<float, LoadDist::DIST_DINTLV_B32>(gate0, gate1, gateAddr);
-            DataCopy<float, LoadDist::DIST_DINTLV_B32>(vec0, vec1, vecAddr);
-            for (uint16_t i = 0; i < rowNum; ++i) {
-                DataCopy<float, LoadDist::DIST_DINTLV_B32>(state0, state1, stateAddr + i * alignK_);
-                Mul(state0, state0, gate0, pregFull);
-                Mul(state1, state1, gate1, pregFull);
-                Mul(product0, state0, vec0, pregFull);
-                Mul(product1, state1, vec1, pregFull);
-                Add(product0, product0, product1, pregFull);
-                ReduceSum(sum, product0, pregFull);
-                DataCopy<float, StoreDist::DIST_INTLV_B32>(stateAddr + i * alignK_, state0, state1, pregFull);
-                DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(dstAddr + i, sum, pregFull);
-            }
-        }
+        const uint8_t repeatTime = static_cast<uint8_t>(rows);
+        const uint8_t rowRepStride = static_cast<uint8_t>(alignK_ / FP32_NUM_PER_BLOCK);
+
+        Add(srcTensor[REPEAT_LENTH], srcTensor, srcTensor[REPEAT_LENTH], REPEAT_LENTH, repeatTime,
+            {1, 1, 1, rowRepStride, rowRepStride, rowRepStride});
+        AscendC::PipeBarrier<PIPE_V>();
+        WholeReduceSum(dstTensor, srcTensor[REPEAT_LENTH], REPEAT_LENTH, repeatTime, 1, 1, rowRepStride);
     }
 
-    __aicore__ inline void ProcessKQ(const LocalTensor<float> &cubeTensor, const LocalTensor<float> &vec1Tensor,
-                                     LocalTensor<float> &dst1Tensor, const LocalTensor<float> &vec2Tensor,
-                                     LocalTensor<float> &dst2Tensor, uint32_t rows)
+    __aicore__ inline void ReduceSumAddFold(LocalTensor<float> &dstTensor, LocalTensor<float> &srcTensor, uint32_t rows)
     {
-        __ubuf__ float *cubeAddr = (__ubuf__ float *)cubeTensor.GetPhyAddr();
-        __ubuf__ float *vec1Addr = (__ubuf__ float *)vec1Tensor.GetPhyAddr();
-        __ubuf__ float *vec2Addr = (__ubuf__ float *)vec2Tensor.GetPhyAddr();
-        __ubuf__ float *dst1Addr = (__ubuf__ float *)dst1Tensor.GetPhyAddr();
-        __ubuf__ float *dst2Addr = (__ubuf__ float *)dst2Tensor.GetPhyAddr();
-
-        uint16_t rowNum = static_cast<uint16_t>(rows);
-        uint16_t colLoopTimes = static_cast<uint16_t>(Ceil(alignK_, V_LENGTH));
-        uint32_t colLength = alignK_;
-        __VEC_SCOPE__
-        {
-            RegTensor<float> cube;
-            RegTensor<float> vec1;
-            RegTensor<float> vec2;
-            RegTensor<float> dst1;
-            RegTensor<float> dst2;
-            MaskReg pregLoop;
-            for (uint16_t j = 0; j < colLoopTimes; j++) {
-                pregLoop = UpdateMask<float>(colLength);
-                DataCopy(vec1, vec1Addr + j * V_LENGTH);
-                DataCopy(vec2, vec2Addr + j * V_LENGTH);
-                for (uint16_t i = 0; i < rowNum; i++) {
-                    DataCopy<float, LoadDist::DIST_BRC_B32>(cube, cubeAddr + i);
-                    DataCopy(dst1, dst1Addr + i * alignK_ + j * V_LENGTH);
-                    Mul(cube, cube, vec1, pregLoop);
-                    Add(dst1, dst1, cube, pregLoop);
-                    Mul(dst2, dst1, vec2, pregLoop);
-                    DataCopy(dst1Addr + i * alignK_ + j * V_LENGTH, dst1, pregLoop);
-                    DataCopy(dst2Addr + i * alignK_ + j * V_LENGTH, dst2, pregLoop);
-                }
-            }
+        if (alignK_ < REPEAT_LENTH) {
+            ReduceSumBaseline(dstTensor, srcTensor, rows);
+            return;
         }
-    }
 
-    template <bool useSigmoid, bool allowNeg>
-    __aicore__ inline void ProcessDeltaKQReduce128(const LocalTensor<float> &dotTensor,
-                                                   const LocalTensor<float> &vTensor,
-                                                   const LocalTensor<float> &betaTensor, uint64_t betaOffset,
-                                                   const LocalTensor<float> &kTensor, LocalTensor<float> &stateTensor,
-                                                   const LocalTensor<float> &qTensor, LocalTensor<float> &attnTensor,
-                                                   uint32_t rows)
-    {
-        __ubuf__ float *dotAddr = (__ubuf__ float *)dotTensor.GetPhyAddr();
-        __ubuf__ float *vAddr = (__ubuf__ float *)vTensor.GetPhyAddr();
-        uint64_t betaRowStride = betaDtype_ == 0 ? FP32_NUM_PER_BLOCK : BF16_NUM_PER_BLOCK;
-        __ubuf__ float *betaAddr = (__ubuf__ float *)betaTensor.GetPhyAddr() + betaOffset * betaRowStride;
-        __ubuf__ float *kAddr = (__ubuf__ float *)kTensor.GetPhyAddr();
-        __ubuf__ float *stateAddr = (__ubuf__ float *)stateTensor.GetPhyAddr();
-        __ubuf__ float *qAddr = (__ubuf__ float *)qTensor.GetPhyAddr();
-        __ubuf__ float *attnAddr = (__ubuf__ float *)attnTensor.GetPhyAddr();
-        uint16_t rowNum = static_cast<uint16_t>(rows);
-        __VEC_SCOPE__
-        {
-            RegTensor<float> delta;
-            RegTensor<float> value;
-            RegTensor<float> beta;
-            RegTensor<float> k0;
-            RegTensor<float> k1;
-            RegTensor<float> q0;
-            RegTensor<float> q1;
-            RegTensor<float> state0;
-            RegTensor<float> state1;
-            RegTensor<float> update;
-            RegTensor<float> dot0;
-            RegTensor<float> dot1;
-            RegTensor<float> sum;
-            RegTensor<float> one;
-            MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
-            DataCopy<float, LoadDist::DIST_BRC_B32>(beta, betaAddr);
-            if constexpr (useSigmoid) {
-                Muls(beta, beta, -1.0f, pregFull);
-                Exp(beta, beta, pregFull);
-                Adds(beta, beta, 1.0f, pregFull);
-                Duplicate(one, 1.0f);
-                Div(beta, one, beta, pregFull);
-                if constexpr (allowNeg) {
-                    Muls(beta, beta, 2.0f, pregFull);
-                }
-            }
-            DataCopy<float, LoadDist::DIST_DINTLV_B32>(k0, k1, kAddr);
-            DataCopy<float, LoadDist::DIST_DINTLV_B32>(q0, q1, qAddr);
-            for (uint16_t i = 0; i < rowNum; ++i) {
-                DataCopy<float, LoadDist::DIST_BRC_B32>(delta, dotAddr + i);
-                DataCopy<float, LoadDist::DIST_BRC_B32>(value, vAddr + i);
-                Sub(delta, value, delta, pregFull);
-                Mul(delta, delta, beta, pregFull);
-                DataCopy<float, LoadDist::DIST_DINTLV_B32>(state0, state1, stateAddr + i * alignK_);
-                Mul(update, delta, k0, pregFull);
-                Add(state0, state0, update, pregFull);
-                Mul(dot0, state0, q0, pregFull);
-
-                Mul(update, delta, k1, pregFull);
-                Add(state1, state1, update, pregFull);
-                Mul(dot1, state1, q1, pregFull);
-
-                Add(dot0, dot0, dot1, pregFull);
-                ReduceSum(sum, dot0, pregFull);
-                DataCopy<float, StoreDist::DIST_INTLV_B32>(stateAddr + i * alignK_, state0, state1, pregFull);
-                DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(attnAddr + i, sum, pregFull);
-            }
+        if ((alignK_ & (alignK_ - 1)) != 0) {
+            ReduceSumBaseline(dstTensor, srcTensor, rows);
+            return;
         }
-    }
 
-    __aicore__ inline void ProcessDeltaKQReduce128Dispatch(
-        const LocalTensor<float> &dotTensor, const LocalTensor<float> &vTensor, const LocalTensor<float> &betaTensor,
-        uint64_t betaOffset, const LocalTensor<float> &kTensor, LocalTensor<float> &stateTensor,
-        const LocalTensor<float> &qTensor, LocalTensor<float> &attnTensor, uint32_t rows)
-    {
-        if (useBetaSigmoid_) {
-            if (allowNegEigval_) {
-                ProcessDeltaKQReduce128<true, true>(dotTensor, vTensor, betaTensor, betaOffset, kTensor, stateTensor,
-                                                    qTensor, attnTensor, rows);
-            } else {
-                ProcessDeltaKQReduce128<true, false>(dotTensor, vTensor, betaTensor, betaOffset, kTensor, stateTensor,
-                                                     qTensor, attnTensor, rows);
-            }
-        } else {
-            ProcessDeltaKQReduce128<false, false>(dotTensor, vTensor, betaTensor, betaOffset, kTensor, stateTensor,
-                                                  qTensor, attnTensor, rows);
+        if (CanUseK128AddFoldFastPath(rows)) {
+            ReduceSumAddFoldK128(dstTensor, srcTensor, rows);
+            return;
         }
-    }
 
-    __aicore__ inline void ReduceSum64(__ubuf__ float *dstAddr, __ubuf__ float *srcAddr, uint16_t rowNum)
-    {
-        uint32_t colLength = alignK_;
-        __VEC_SCOPE__
-        {
-            RegTensor<float> src;
-            RegTensor<float> sum;
-            MaskReg pregLoop = UpdateMask<float>(colLength);
-            for (uint16_t i = 0; i < rowNum; i++) {
-                DataCopy(src, srcAddr + i * alignK_);
-                ReduceSum(sum, src, pregLoop);
-                DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(dstAddr + i, sum, pregLoop);
+        for (uint32_t row = 0; row < rows; ++row) {
+            uint32_t rowOffset = row * alignK_;
+            uint32_t activeLen = alignK_;
+            while (activeLen > REPEAT_LENTH) {
+                uint32_t half = activeLen >> 1;
+                Add(srcTensor[rowOffset], srcTensor[rowOffset], srcTensor[rowOffset + half], half);
+                AscendC::PipeBarrier<PIPE_V>();
+                activeLen = half;
             }
-        }
-    }
 
-    __aicore__ inline void ReduceSum128(__ubuf__ float *dstAddr, __ubuf__ float *srcAddr, uint16_t rowNum)
-    {
-        uint32_t colLength = alignK_ - V_LENGTH;
-        __VEC_SCOPE__
-        {
-            RegTensor<float> src1;
-            RegTensor<float> src2;
-            RegTensor<float> sum;
-            MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
-            MaskReg pregLoop = UpdateMask<float>(colLength);
-            for (uint16_t i = 0; i < rowNum; i++) {
-                DataCopy(src1, srcAddr + i * alignK_);
-                DataCopy(src2, srcAddr + i * alignK_ + V_LENGTH);
-                Add<float, MaskMergeMode::MERGING>(src1, src1, src2, pregLoop);
-                ReduceSum(sum, src1, pregFull);
-                DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(dstAddr + i, sum, pregFull);
-            }
-        }
-    }
-
-    __aicore__ inline void ReduceSumVF(__ubuf__ float *dstAddr, __ubuf__ float *srcAddr, uint16_t rowNum)
-    {
-        uint16_t colLoopTimes = static_cast<uint16_t>(Ceil(alignK_, V_LENGTH));
-        __VEC_SCOPE__
-        {
-            RegTensor<float> src;
-            RegTensor<float> tmp;
-            RegTensor<float> sum;
-            MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
-            MaskReg pregLoop;
-            for (uint16_t i = 0; i < rowNum; i++) {
-                uint32_t colLength = alignK_;
-                Duplicate(tmp, 0.0f);
-                for (uint16_t j = 0; j < colLoopTimes; j++) {
-                    pregLoop = UpdateMask<float>(colLength);
-                    DataCopy(src, srcAddr + i * alignK_ + j * V_LENGTH);
-                    Add<float, MaskMergeMode::MERGING>(tmp, tmp, src, pregLoop);
-                }
-                ReduceSum(sum, tmp, pregFull);
-                DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(dstAddr + i, sum, pregFull);
-            }
+            WholeReduceSum(dstTensor[row], srcTensor[rowOffset], REPEAT_LENTH, 1, 1, 1, FP32_NUM_PER_BLOCK);
         }
     }
 
     __aicore__ inline void ReduceSumDispatch(LocalTensor<float> &dstTensor, LocalTensor<float> &srcTensor,
                                              uint32_t rows)
     {
-        __ubuf__ float *srcAddr = (__ubuf__ float *)srcTensor.GetPhyAddr();
-        __ubuf__ float *dstAddr = (__ubuf__ float *)dstTensor.GetPhyAddr();
-        uint16_t rowNum = static_cast<uint16_t>(rows);
-        if (alignK_ <= V_LENGTH) {
-            ReduceSum64(dstAddr, srcAddr, rowNum);
-        } else if (alignK_ <= TWO_V_LENGTH) {
-            ReduceSum128(dstAddr, srcAddr, rowNum);
-        } else {
-            ReduceSumVF(dstAddr, srcAddr, rowNum);
+        if (useAddFoldReduce_ && alignK_ >= ADD_FOLD_REDUCE_MIN_K) {
+            ReduceSumAddFold(dstTensor, srcTensor, rows);
+            return;
         }
+        ReduceSumBaseline(dstTensor, srcTensor, rows);
     }
 
-    __aicore__ inline void Compute(uint32_t curSingleV, uint64_t curQKOffset, uint64_t curVOffset, uint64_t betaOffset)
+    __aicore__ inline void Compute(uint32_t curSingleV, uint64_t curQKOffset, uint64_t curVOffset)
     {
-        if (alignK_ == TWO_V_LENGTH) {
-            DecayMatVecReduce128(stateInUb, gateInUb[curQKOffset], kInUb[curQKOffset], deltaInUb, curSingleV);
-        } else {
-            MatVecMul(stateInUb, gateInUb[curQKOffset], stateInUb, curSingleV);
-            AscendC::PipeBarrier<PIPE_V>();
-            MatVecMul(stateInUb, kInUb[curQKOffset], broadTmpInUb, curSingleV);
-            AscendC::PipeBarrier<PIPE_V>();
-            ReduceSumDispatch(deltaInUb, broadTmpInUb, curSingleV);
-        }
+        uint32_t stateShape[2] = {curSingleV, alignK_};
+        uint32_t deltaShape[2] = {curSingleV, 1};
+        MatVecMul(stateInUb, gateInUb[curQKOffset], stateInUb, curSingleV, false);
         AscendC::PipeBarrier<PIPE_V>();
-        if (alignK_ == TWO_V_LENGTH) {
-            ProcessDeltaKQReduce128Dispatch(deltaInUb, vInUb[curVOffset], betaInUb, betaOffset, kInUb[curQKOffset],
-                                            stateInUb, qInUb[curQKOffset], attnInUb, curSingleV);
-        } else {
-            Sub(deltaInUb, vInUb[curVOffset], deltaInUb, curSingleV);
-            AscendC::PipeBarrier<PIPE_V>();
-            Muls(deltaInUb, deltaInUb, beta_, curSingleV);
-            AscendC::PipeBarrier<PIPE_V>();
-            ProcessKQ(deltaInUb, kInUb[curQKOffset], stateInUb, qInUb[curQKOffset], broadTmpInUb, curSingleV);
-            AscendC::PipeBarrier<PIPE_V>();
-            ReduceSumDispatch(attnInUb, broadTmpInUb, curSingleV);
-        }
+        MatVecMul(stateInUb, kInUb[curQKOffset], broadTmpInUb, curSingleV, false);
+        AscendC::PipeBarrier<PIPE_V>();
+        ReduceSumDispatch(deltaInUb, broadTmpInUb, curSingleV);
+        AscendC::PipeBarrier<PIPE_V>();
+        deltaInUb = vInUb[curVOffset] - deltaInUb;
+        AscendC::PipeBarrier<PIPE_V>();
+        Muls(deltaInUb, deltaInUb, beta_, curSingleV);
+        AscendC::PipeBarrier<PIPE_V>();
+        Broadcast<float, 2, 1>(broadTmpInUb, deltaInUb, stateShape, deltaShape);
+        AscendC::PipeBarrier<PIPE_V>();
+        MatVecMul(broadTmpInUb, kInUb[curQKOffset], stateInUb, curSingleV, true);
+        AscendC::PipeBarrier<PIPE_V>();
+        MatVecMul(stateInUb, qInUb[curQKOffset], broadTmpInUb, curSingleV, false);
+        AscendC::PipeBarrier<PIPE_V>();
+        ReduceSumDispatch(attnInUb, broadTmpInUb, curSingleV);
         LocalTensor<outType> attnOutLocal = attnOutQueue_.AllocTensor<outType>();
         if (shouldStoreState_) {
             LocalTensor<stateType> stateOutLocal = stateOutQueue_.AllocTensor<stateType>();
@@ -1054,8 +829,8 @@ private:
             TransposeVFirstToKFirst(stateTransposeLocal, stateOutLocal, curSingleV);
             SyncVToMte3();
             uint64_t stateOffset = stateOutStride0_ * stateSlot + stateOutStride1_ * head + stateOutStride3_ * vOffset;
-            int64_t srcStride = static_cast<int64_t>((vStep_ - curSingleV) * sizeof(stateType) / DATA_BLOCK_BYTES);
-            int64_t dstStride = static_cast<int64_t>((stateOutStride2_ - curSingleV) * sizeof(stateType));
+            uint32_t srcStride = static_cast<uint32_t>((vStep_ - curSingleV) * sizeof(stateType) / DATA_BLOCK_BYTES);
+            uint32_t dstStride = static_cast<uint32_t>((stateOutStride2_ - curSingleV) * sizeof(stateType));
             DataCopyExtParams stateOutParams{static_cast<uint16_t>(realK_),
                                              static_cast<uint32_t>(curSingleV * sizeof(stateType)), srcStride,
                                              dstStride, 0};
@@ -1066,46 +841,39 @@ private:
     }
 
     template <typename betaType>
-    __aicore__ inline void CopyInBetaTyped(int64_t seq0, int64_t seq1, uint64_t head)
+    __aicore__ inline void CopyInBetaTyped(int64_t seq0, int64_t seq1)
     {
         int64_t seqLen = seq1 - seq0;
-        constexpr uint64_t betaRowStride = 32 / sizeof(betaType);
-        uint64_t betaCount = static_cast<uint64_t>(seqLen) * betaRowStride;
+        uint64_t betaCount = static_cast<uint64_t>(seqLen) * NV_;
+        uint64_t betaBatchSize = Ceil(betaCount, FP32_NUM_PER_BLOCK) * FP32_NUM_PER_BLOCK;
         LocalTensor<betaType> betaLocal = betaInQueue_.AllocTensor<betaType>();
-        DataCopyExtParams betaInParams{static_cast<uint16_t>(seqLen), static_cast<uint32_t>(sizeof(betaType)),
-                                       static_cast<uint32_t>((NV_ - 1) * sizeof(betaType)), 0, 0};
-        DataCopyPadExtParams<betaType> betaPadParams{true, 0, static_cast<uint8_t>(betaRowStride - 1),
-                                                     static_cast<betaType>(0)};
-        uint64_t betaOffset = static_cast<uint64_t>(seq0) * NV_ + head;
         if constexpr (std::is_same<betaType, float32_t>()) {
-            DataCopyPad(betaLocal, betaFloatGm_[betaOffset], betaInParams, betaPadParams);
+            CopyVectorIn(betaLocal, betaFloatGm_, static_cast<uint64_t>(seq0) * NV_, betaCount);
         } else if constexpr (std::is_same<betaType, bfloat16_t>()) {
-            DataCopyPad(betaLocal, betaBf16Gm_[betaOffset], betaInParams, betaPadParams);
+            CopyVectorIn(betaLocal, betaBf16Gm_, static_cast<uint64_t>(seq0) * NV_, betaCount);
         } else {
-            DataCopyPad(betaLocal, betaFp16Gm_[betaOffset], betaInParams, betaPadParams);
+            CopyVectorIn(betaLocal, betaFp16Gm_, static_cast<uint64_t>(seq0) * NV_, betaCount);
         }
         betaInQueue_.EnQue<betaType>(betaLocal);
         betaLocal = betaInQueue_.DeQue<betaType>();
         if constexpr (std::is_same<betaType, float32_t>()) {
-            Adds(betaInUb, betaLocal, 0.0f, static_cast<uint32_t>(betaCount));
+            Adds(betaInUb, betaLocal, 0.0f, static_cast<uint32_t>(betaBatchSize));
         } else {
-            Cast(betaInUb, betaLocal, AscendC::RoundMode::CAST_NONE, static_cast<uint32_t>(betaCount));
+            Cast(betaInUb, betaLocal, AscendC::RoundMode::CAST_NONE, static_cast<uint32_t>(betaBatchSize));
         }
         betaInQueue_.FreeTensor(betaLocal);
         PipeBarrier<PIPE_V>();
-        if (alignK_ != TWO_V_LENGTH) {
-            SyncVToS();
-        }
+        SyncVToS();
     }
 
-    __aicore__ inline void CopyInBeta(int64_t seq0, int64_t seq1, uint64_t head)
+    __aicore__ inline void CopyInBeta(int64_t seq0, int64_t seq1)
     {
         if (betaDtype_ == 0) {
-            CopyInBetaTyped<float>(seq0, seq1, head);
+            CopyInBetaTyped<float>(seq0, seq1);
         } else if (betaDtype_ == 1) {
-            CopyInBetaTyped<bfloat16_t>(seq0, seq1, head);
+            CopyInBetaTyped<bfloat16_t>(seq0, seq1);
         } else {
-            CopyInBetaTyped<half>(seq0, seq1, head);
+            CopyInBetaTyped<half>(seq0, seq1);
         }
     }
 
@@ -1117,10 +885,9 @@ private:
         return batchIdx;
     }
 
-    __aicore__ inline float LoadBeta(uint64_t tokenOffset)
+    __aicore__ inline float LoadBeta(uint64_t gbOffset)
     {
-        uint64_t betaRowStride = betaDtype_ == 0 ? FP32_NUM_PER_BLOCK : BF16_NUM_PER_BLOCK;
-        float beta = betaInUb.GetValue(tokenOffset * betaRowStride);
+        float beta = betaInUb.GetValue(gbOffset);
         if (useBetaSigmoid_) {
             beta = SigmoidScalar(beta);
             if (allowNegEigval_) {
@@ -1131,7 +898,7 @@ private:
     }
 
     __aicore__ inline bool ProcessHead(uint64_t batchIdx, int64_t seq0, int64_t seq1, uint64_t head_i,
-                                       uint64_t stateSlot, bool statePrefetched, bool hasNextTask,
+                                       uint64_t stateSlot, bool statePrefetched, bool hasNextHead,
                                        uint64_t nextStateSlot, uint64_t nextHead)
     {
         uint64_t vOffset = (static_cast<uint64_t>(seq0) * NV_ + head_i) * realV_;
@@ -1156,7 +923,7 @@ private:
                 uint32_t nextSingleV = nextVOffset + vStep_ > realV_ ? realV_ - nextVOffset : vStep_;
                 PrefetchState(stateSlot, head_i, nextVOffset, nextSingleV);
                 nextVOffset += vStep_;
-            } else if (hasNextTask && !nextStatePrefetched) {
+            } else if (hasNextHead && !nextStatePrefetched) {
                 uint32_t nextSingleV = realV_ > vStep_ ? vStep_ : realV_;
                 PrefetchState(nextStateSlot, nextHead, 0, nextSingleV);
                 nextStatePrefetched = true;
@@ -1166,16 +933,14 @@ private:
             bool hasPendingAttn = false;
             bool hasPendingState = false;
             for (int64_t seq_i = seq0; seq_i < seq1; seq_i++) {
-                uint64_t betaOffset = static_cast<uint64_t>(seq_i - seq0);
+                uint64_t gbOffset = head_i + static_cast<uint64_t>(seq_i - seq0) * NV_;
                 uint64_t curQKOffset = static_cast<uint64_t>(seq_i - seq0) * alignK_;
                 uint64_t curVOffset = static_cast<uint64_t>(seq_i - seq0) * alignV_ + v_i;
                 uint64_t attnOffset = (static_cast<uint64_t>(seq_i) * NV_ + head_i) * realV_ + v_i;
                 uint64_t curStateSlot = StateSlotForToken(batchIdx, seq0, seq_i);
                 uint64_t curStateOutSlot = curStateSlot;
-                if (alignK_ != TWO_V_LENGTH) {
-                    beta_ = LoadBeta(betaOffset);
-                }
-                Compute(curSingleV, curQKOffset, curVOffset, betaOffset);
+                beta_ = LoadBeta(gbOffset);
+                Compute(curSingleV, curQKOffset, curVOffset);
                 if (attnOutBufferNum_ == BUFFER_NUM) {
                     CopyOutAttn(attnOffset, curSingleV);
                 } else {
@@ -1205,6 +970,21 @@ private:
             }
         }
         return nextStatePrefetched;
+    }
+
+    __aicore__ inline uint64_t FindNextTaskHead(uint64_t batchIdx, uint64_t startHead) const
+    {
+        for (uint64_t head = startHead; head < NV_; ++head) {
+            if (IsCurrentTask(batchIdx, head)) {
+                return head;
+            }
+        }
+        return NV_;
+    }
+
+    __aicore__ inline bool IsCurrentTask(uint64_t batchIdx, uint64_t headIdx) const
+    {
+        return ((batchIdx * NV_ + headIdx) % GetBlockNum()) == blockIdx;
     }
 
 private:

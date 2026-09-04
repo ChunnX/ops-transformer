@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file grouped_matmul_kernel.h
+ * \file fkl_grouped_matmul_kernel.h
  * \brief
  */
 #ifndef ASCEND_OPS_GROUPED_MATMUL_KERNEL_H
