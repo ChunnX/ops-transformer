@@ -241,7 +241,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     GlobalTensor<int32_t> localFlagGMTensor;
     localFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(localFlagAddr_));
     DataCopy(localFlagGMTensor, statusTensor_, flagSlotElementNum);
-    PipeBarrier<PIPE_MTE3>();
+    SyncFunc<HardEvent::MTE3_S>();
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
