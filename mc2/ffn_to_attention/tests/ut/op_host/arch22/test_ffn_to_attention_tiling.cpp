@@ -180,7 +180,6 @@ TEST_F(FFNToAttentionArch22TilingTest, RankTableTokenIdsInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-
 TEST_F(FFNToAttentionArch22TilingTest, RankTableExpertNumoffsetIdsInvalid)
 {
     struct FFNToAttentionCompileInfo {
@@ -230,7 +229,6 @@ TEST_F(FFNToAttentionArch22TilingTest, RankTableActualtokenNumInvalid)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
-
 
 TEST_F(FFNToAttentionArch22TilingTest, RankTableBsInvalid)
 {

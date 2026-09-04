@@ -5613,11 +5613,11 @@ static void TestQuantV2OneParamCase(const AlltoAllQuantMatmulV2AclnnTestParam &p
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet;
-    auto ut = OP_API_UT(aclnnAlltoAllQuantMatmulV2,
-                        INPUT(x1, x2, bias, x1scales, x2scales, nullptr, nullptr, nullptr, group, commMode,
-                              alltoAllAxesOptional, x1quantmode, x2quantmode, 0, -1, x1quantdtype, groupSize,
-                              transposeX1, transposeX2),
-                        OUTPUT(output, alltoallout));
+    auto ut = OP_API_UT(
+        aclnnAlltoAllQuantMatmulV2,
+        INPUT(x1, x2, bias, x1scales, x2scales, nullptr, nullptr, nullptr, group, commMode, alltoAllAxesOptional,
+              x1quantmode, x2quantmode, 0, -1, x1quantdtype, groupSize, transposeX1, transposeX2),
+        OUTPUT(output, alltoallout));
     aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     if (retStatus == ACLNN_SUCCESS) {
         EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);

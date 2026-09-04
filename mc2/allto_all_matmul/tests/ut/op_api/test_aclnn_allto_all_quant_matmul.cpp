@@ -5348,7 +5348,6 @@ TEST_F(test_aclnn_allto_all_quant_matmul, MXQuant_cases_params)
     }
 }
 
-
 namespace AlltoAllMatmulUT {
 
 class AclnnAlltoAllQuantMatmulTest : public testing::TestWithParam<AlltoAllMatmulApiUtParam> {
