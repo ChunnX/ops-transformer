@@ -63,11 +63,13 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 
 ## 参数说明
 
+### MXFP8量化场景
+
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| `x` | Tensor | 必选 | MXFP4必须使用`torch.uint8`存放两个一组的打包数据，并且必须通过`x_dtype`指定逻辑类型。 | MXFP8：`torch.float8_e4m3fn`、`torch.float8_e5m2`；MXFP4：`torch.uint8` | MXFP8：`(M, K)`；MXFP4物理shape：`(M, K / 2)` |
+| `x` | Tensor | 必选 | 左矩阵，表示GroupedMatmul的输入激活。 | `torch.float8_e4m3fn`、`torch.float8_e5m2` | `(M, K)` |
 | `group_list` | Tensor | 必选 | 分组信息。`group_list_type=0`时表示每个group在M轴上的累计结束位置，最后一个值不大于M轴大小；`group_list_type=1`时表示每个group的M轴长度，数值总和不大于M轴大小。 | `torch.int64` | `(E,)` |
-| `weight` | List[Tensor] | 必选 | 右矩阵TensorList，长度仅支持1。调用者必须传入FRACTAL_NZ格式的`weight`；MXFP4必须使用`torch.uint8`存放打包数据，并且必须通过`weight_dtype`指定逻辑类型。转置场景先对源Weight执行`npu_format_cast(..., 29)`，再对末两维执行transpose并传入该view。 | MXFP8：`torch.float8_e4m3fn`；MXFP4：`torch.uint8` | 非转置逻辑shape：`(E, K, N)`；MXFP4物理shape：`(E, K, N / 2)`<br>转置源逻辑shape：`(E, N, K)`；MXFP4源物理shape：`(E, N, K / 2)` |
+| `weight` | List[Tensor] | 必选 | 右矩阵TensorList，长度仅支持1。调用者必须传入FRACTAL_NZ格式的`weight`。转置场景先对源Weight执行`npu_format_cast(..., 29)`，再对末两维执行transpose并传入该view。 | `torch.float8_e4m3fn` | 非转置：`(E, K, N)`<br>转置：`(E, N, K)` |
 | `weight_scale` | List[Tensor] | 必选 | `weight`的MX量化scale，tensorList长度仅支持1。转置场景由源scale对中间两维执行transpose后传入。 | 通过`weight_scale_dtype`按`torch_npu.float8_e8m0fnu`解析 | 传入算子的shape：`(E, ceil(K / 64), N, 2)`<br>转置源shape：`(E, N, ceil(K / 64), 2)` |
 | `activation_type` | str | 必选 | 激活函数类型，当前仅支持`"gelu_tanh"`。 | string | - |
 | `bias` | List[Tensor] | 可选 | bias TensorList，默认值为`None`。当前MX场景必须为空，支持`None`、空TensorList或单个空Tensor。 | `torch.float32` | - |
@@ -75,20 +77,45 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 | `group_list_type` | int | 可选 | `group_list`语义类型，默认值为0，支持0或1。 | int | - |
 | `tuning_config` | List[int] | 可选 | 预留调优参数，默认值为`None`。 | int | - |
 | `quant_mode` | str | 可选 | 量化模式，默认值为`None`。torch层不解析该参数，直接透传到aclnn层；显式传值时当前仅支持`"mx"`。 | string | - |
-| `y_dtype` | torch.dtype | 可选 | 输出`y`的数据类型，默认值为`None`，此时推导为与`x`相同的FP8或FP4逻辑类型。 | `torch.float8_e4m3fn`、`torch.float8_e5m2`、两种FLOAT4 wrapper dtype | - |
+| `y_dtype` | torch.dtype | 可选 | 输出`y`的数据类型，默认值为`None`，此时推导为与`x`相同的FP8类型。 | `torch.float8_e4m3fn`、`torch.float8_e5m2` | - |
 | `round_mode` | str | 可选 | 舍入模式，默认值为`"rint"`，当前仅支持`"rint"`。 | string | - |
-| `scale_alg` | int | 可选 | MX量化scale算法，默认值为0。支持0、1、2：0表示OCP实现；1表示cuBLAS实现，仅支持FP8输出；2表示FLOAT4动态范围实现，仅支持FLOAT4_E2M1输出。FLOAT4_E1M2输出仅支持0。 | int | - |
-| `dst_type_max` | float | 可选 | 表示maxType的取值，对应公式中的Amax(DType)，默认值为0.0。`scale_alg=2`时支持0.0或`[6.0, 12.0]`；0.0表示使用FLOAT4_E2M1的最大值6.0。其他`scale_alg`仅支持0.0。 | float | - |
-| `x_dtype` | int | MXFP4必选 | `x`的逻辑dtype wrapper。MXFP4必须传`torch_npu.float4_e2m1fn_x2`或`torch_npu.float4_e1m2fn_x2`。 | int | - |
-| `weight_dtype` | int | MXFP4必选 | `weight`的逻辑dtype wrapper。MXFP4必须传`torch_npu.float4_e2m1fn_x2`或`torch_npu.float4_e1m2fn_x2`。 | int | - |
+| `scale_alg` | int | 可选 | MX量化scale算法，默认值为0。MXFP8场景支持0和1：0表示OCP实现，1表示cuBLAS实现。 | int | - |
+| `dst_type_max` | float | 可选 | 表示maxType的取值，对应公式中的Amax(DType)，默认值为0.0。MXFP8场景仅支持0.0。 | float | - |
+| `x_dtype` | int | 可选 | `x`的dtype wrapper覆盖值，默认值为`None`。MXFP8场景无需传入。 | - | - |
+| `weight_dtype` | int | 可选 | `weight`的dtype wrapper覆盖值，默认值为`None`。MXFP8场景无需传入。 | - | - |
 | `weight_scale_dtype` | int | 可选 | `weight_scale`的dtype wrapper覆盖值，默认值为`None`。当前MX场景需要传入`torch_npu.float8_e8m0fnu`。 | `torch_npu.float8_e8m0fnu` | - |
 | `x_scale_dtype` | int | 可选 | `x_scale`的dtype wrapper覆盖值，默认值为`None`。当前MX场景需要传入`torch_npu.float8_e8m0fnu`。 | `torch_npu.float8_e8m0fnu` | - |
 
-## 返回值说明
+### MXFP4量化场景
+
+MXFP4场景下`x`和`weight`必须同时使用FLOAT4，二者可分别选择`torch_npu.float4_e2m1fn_x2`或`torch_npu.float4_e1m2fn_x2`。由于PyTorch原生不支持FLOAT4，输入和输出使用`torch.uint8`承载，并通过`x_dtype`、`weight_dtype`和`y_dtype`指定对应类型。
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| `y` | Tensor | 必选 | 激活后量化输出。FP4以`torch.uint8`承载打包数据。 | 由`y_dtype`指定；`y_dtype=None`时逻辑类型跟随`x` | FP8：`(M, N)`；FP4物理shape：`(M, N / 2)` |
+| `x` | Tensor | 必选 | 左矩阵。MXFP4场景使用`torch.uint8`承载FLOAT4数据，需通过`x_dtype`指定对应的FLOAT4类型；此时`x`本身的`dtype`不再生效，但仍需保证其为8bit位的数据类型。 | `torch_npu.float4_e2m1fn_x2`、`torch_npu.float4_e1m2fn_x2` | 2维 |
+| `group_list` | Tensor | 必选 | 分组信息。`group_list_type=0`时表示每个group在M轴上的累计结束位置，最后一个值不大于M轴大小；`group_list_type=1`时表示每个group的M轴长度，数值总和不大于M轴大小。 | `torch.int64` | `(E,)` |
+| `weight` | List[Tensor] | 必选 | 右矩阵TensorList，长度仅支持1。MXFP4场景使用`torch.uint8`承载FLOAT4数据，需通过`weight_dtype`指定对应的FLOAT4类型；调用者必须传入FRACTAL_NZ格式的`weight`，转置场景先对源Weight执行`npu_format_cast(..., 29)`，再对末两维执行transpose并传入该view。 | `torch_npu.float4_e2m1fn_x2`、`torch_npu.float4_e1m2fn_x2` | 3维 |
+| `weight_scale` | List[Tensor] | 必选 | `weight`的MX量化scale，tensorList长度仅支持1。转置场景由源scale对中间两维执行transpose后传入。 | 通过`weight_scale_dtype`按`torch_npu.float8_e8m0fnu`解析 | 4维 |
+| `activation_type` | str | 必选 | 激活函数类型，当前仅支持`"gelu_tanh"`。 | string | - |
+| `bias` | List[Tensor] | 可选 | bias TensorList，默认值为`None`。当前MX场景必须为空，支持`None`、空TensorList或单个空Tensor。 | `torch.float32` | - |
+| `x_scale` | Tensor | 可选 | `x`的MX量化scale。当前MXFP4场景必须传入有效Tensor。 | 通过`x_scale_dtype`按`torch_npu.float8_e8m0fnu`解析 | `(M, ceil(K / 64), 2)` |
+| `group_list_type` | int | 可选 | `group_list`语义类型，默认值为0，支持0或1。 | int | - |
+| `tuning_config` | List[int] | 可选 | 预留调优参数，默认值为`None`。 | int | - |
+| `quant_mode` | str | 可选 | 量化模式，默认值为`None`。torch层不解析该参数，直接透传到aclnn层；显式传值时当前仅支持`"mx"`。 | string | - |
+| `y_dtype` | torch.dtype | 可选 | 输出`y`的数据类型，默认值为`None`，此时输出类型跟随`x`；支持`torch_npu.float4_e2m1fn_x2`和`torch_npu.float4_e1m2fn_x2`。 | `torch_npu.float4_e2m1fn_x2`、`torch_npu.float4_e1m2fn_x2` | - |
+| `round_mode` | str | 可选 | 舍入模式，默认值为`"rint"`，当前仅支持`"rint"`。 | string | - |
+| `scale_alg` | int | 可选 | MX量化scale算法，默认值为0。0表示OCP实现，支持FLOAT4输出；1表示cuBLAS实现，仅支持FP8输出；2表示FLOAT4动态范围实现，仅支持FLOAT4_E2M1输出。FLOAT4_E1M2输出仅支持0。 | int | - |
+| `dst_type_max` | float | 可选 | 表示maxType的取值，对应公式中的Amax(DType)，默认值为0.0。`scale_alg=2`时支持0.0或`[6.0, 12.0]`；0.0表示使用FLOAT4_E2M1的最大值6.0。其他`scale_alg`仅支持0.0。 | float | - |
+| `x_dtype` | int | 必选 | `x`的dtype wrapper。必须传`torch_npu.float4_e2m1fn_x2`或`torch_npu.float4_e1m2fn_x2`。 | int | - |
+| `weight_dtype` | int | 必选 | `weight`的dtype wrapper。必须传`torch_npu.float4_e2m1fn_x2`或`torch_npu.float4_e1m2fn_x2`。 | int | - |
+| `weight_scale_dtype` | int | 可选 | `weight_scale`的dtype wrapper覆盖值，默认值为`None`。当前MXFP4场景需要传入`torch_npu.float8_e8m0fnu`。 | `torch_npu.float8_e8m0fnu` | - |
+| `x_scale_dtype` | int | 可选 | `x_scale`的dtype wrapper覆盖值，默认值为`None`。当前MXFP4场景需要传入`torch_npu.float8_e8m0fnu`。 | `torch_npu.float8_e8m0fnu` | - |
+
+## 返回值说明
+
+| 返回值名 | 返回值类型 | 必选/可选 | 描述 | 数据类型 | 维度(shape) |
+| --- | --- | --- | --- | --- | --- |
+| `y` | Tensor | 必选 | 激活后量化输出。MXFP4场景使用`torch.uint8`承载FLOAT4数据。 | 由`y_dtype`指定；MXFP4为`torch.uint8` | 2维 |
 | `y_scale` | Tensor | 必选 | 输出`y`对应的MX量化scale。 | `torch_npu.float8_e8m0fnu` | `(M, ceil(N / 64), 2)` |
 
 ## 约束说明
@@ -157,11 +184,11 @@ cann_ops_transformer.grouped_matmul_activation_quant(
   N = 128
   group_list = torch.tensor([1, 31, 20], dtype=torch.int64).npu()
 
-  # MXFP4的两个逻辑元素打包到一个uint8中，因此x的物理末维为K / 2。
+  # MXFP4使用torch.uint8承载FLOAT4数据。
   x = torch.randint(0, 256, (M, K // 2), dtype=torch.uint8).npu()
   x_scale = torch.randint(120, 127, (M, math.ceil(K / 64), 2), dtype=torch.int8).npu()
 
-  # 转置WeightNZ：源物理shape为(E, N, K / 2)。先转NZ，再转置末两维。
+  # 转置WeightNZ：先对源Weight执行npu_format_cast(..., 29)，再转置末两维。
   weight_source = torch.randint(0, 256, (E, N, K // 2), dtype=torch.uint8).npu()
   weight = torch_npu.npu_format_cast(weight_source, 29).transpose(-1, -2)
   weight_scale_source = torch.randint(
@@ -189,6 +216,6 @@ cann_ops_transformer.grouped_matmul_activation_quant(
       x_scale_dtype=torch_npu.float8_e8m0fnu,
   )
   torch.npu.synchronize()
-  # y为打包uint8，物理shape为(M, N / 2)；y_scale的shape为(M, ceil(N / 64), 2)。
+  # y使用torch.uint8承载FLOAT4数据；y_scale的shape为(M, ceil(N / 64), 2)。
   print(y.shape, y.dtype, y_scale.shape, y_scale.dtype)
   ```
