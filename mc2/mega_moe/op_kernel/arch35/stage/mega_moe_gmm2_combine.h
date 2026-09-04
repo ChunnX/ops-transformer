@@ -62,29 +62,6 @@ __aicore__ inline uint64_t GetCombineDstRowIndex(const CombineTokenRoute &route,
     return static_cast<uint64_t>(route.tokenIdx) * params.tilingData->topK + route.topkIdx;
 }
 
-// 为 tile 内每个 token 行发送一段有效的 GMM2 tile 数据。
-template <typename ElementMMadOut2, typename BlockShape>
-__aicore__ inline void CombineTokens(uint32_t nLoc, uint32_t n, LocalTensor<int32_t> &metaInfoTensor,
-                                     LocalTensor<ElementMMadOut2> &l0cOutUbGMM2, BlockShape &actualBlockShape,
-                                     uint32_t ubTileN, const Params &params)
-{
-    // 调用方在进入该数据操作前，保证批量加载的 metadata 对 Scalar 可见。
-    int32_t lenTile = Get<M_VALUE>(actualBlockShape);
-    AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
-    uint64_t gmRemoteBaseOffset =
-        static_cast<uint64_t>(params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr);
-    AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
-    ub2GmParams.blockCount = 1;
-    ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
-    for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
-        CombineTokenRoute route = LoadCombineTokenRoute(metaInfoTensor, static_cast<uint32_t>(tileIdx));
-        gmRemoteD.SetGlobalBuffer(
-            reinterpret_cast<__gm__ ElementMMadOut2 *>(GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
-        uint64_t gmDstOffset = GetCombineDstRowIndex(route, params) * n + nLoc;
-        AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * ubTileN], ub2GmParams);
-    }
-}
-
 // 发送一行完整的 Combine 数据，BF16 与 FP8 记录复用相同的定长搬运流程。
 template <typename Element>
 __aicore__ inline void SendCombineTokenRow(uint32_t rowElements, uint64_t gmRemoteBaseOffset,
@@ -256,6 +233,7 @@ constexpr uint32_t WAVE_COMBINE_MIN_ROW_BUFFER_COUNT = 2U;
 constexpr uint32_t WAVE_COMBINE_STEADY_ROW_BUFFER_COUNT = 1U;
 constexpr uint32_t WAVE_COMBINE_MAX_ROW_BUFFER_COUNT = 6U;
 constexpr uint32_t WAVE_COMBINE_UB_BASE = 64U * 1024U;
+constexpr uint32_t NO_QUANT_TILE_COMBINE_BUFFER_COUNT = 6U;
 // [64 KiB, 184 KiB) is dedicated to the Combine row ring and quant scratch.
 // The ready scan starts at 184 KiB, so adaptive row buffers must stay below it.
 constexpr uint32_t WAVE_COMBINE_UB_LIMIT = 184U * 1024U;
@@ -592,14 +570,71 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
     }
 }
 
+// 参照 Dispatch 的多 buffer 流水，只负责发起一个行片段的 GM2UB；发送阶段由调用方错后一拍执行。
+template <bool IsBufferReuse, typename ElementC, typename MakeLayoutC, typename TensorC>
+__aicore__ inline void FetchNoQuantCombineFragment(TensorC &l0cOutGm, uint32_t mLoc, uint32_t nLoc,
+                                                    uint32_t actualN, uint32_t slot)
+{
+    TEventID eventId = static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(slot));
+    if constexpr (IsBufferReuse) {
+        WaitFlag<HardEvent::MTE3_MTE2>(eventId);
+    }
+
+    constexpr uint32_t fragmentElements = L1_TILE_N;
+    constexpr uint32_t fragmentStrideBytes = fragmentElements * sizeof(ElementC);
+    uint32_t fragmentUbBase = WAVE_COMBINE_UB_BASE + slot * fragmentStrideBytes;
+    auto tensorFragmentGm =
+        l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc), Te::MakeShape(1U, actualN));
+    auto layoutFragmentUb = MakeLayoutC{}(1U, fragmentElements);
+    auto tensorFragmentUb =
+        Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(fragmentUbBase), layoutFragmentUb);
+    auto copyGM2UB = Te::MakeCopy(Te::CopyGM2UB{});
+    Te::Copy(copyGM2UB, tensorFragmentUb, tensorFragmentGm);
+    SetFlag<HardEvent::MTE2_MTE3>(eventId);
+}
+
+// 等待对应 GM2UB 完成，并将已预取的行片段发送到 metadata 指定的目标卡。
+template <typename ElementC>
+__aicore__ inline void StoreNoQuantCombineFragment(uint32_t nLoc, uint32_t n, uint32_t actualN,
+                                                    LocalTensor<int32_t> &metaInfoTensor, uint32_t rowIdx,
+                                                    const Params &params, uint64_t gmRemoteBaseOffset, uint32_t slot,
+                                                    GlobalTensor<ElementC> &gmRemoteD)
+{
+    TEventID eventId = static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(slot));
+    WaitFlag<HardEvent::MTE2_MTE3>(eventId);
+
+    constexpr uint32_t fragmentElements = L1_TILE_N;
+    constexpr uint32_t fragmentStrideBytes = fragmentElements * sizeof(ElementC);
+    uint32_t fragmentUbBase = WAVE_COMBINE_UB_BASE + slot * fragmentStrideBytes;
+    LocalTensor<ElementC> fragmentUb =
+        LocalTensor<ElementC>(TPosition::VECIN, fragmentUbBase, fragmentElements);
+    CombineImpl::CombineTokenRoute route = CombineImpl::LoadCombineTokenRoute(metaInfoTensor, rowIdx);
+    gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(
+        GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
+    uint64_t gmDstOffset = CombineImpl::GetCombineDstRowIndex(route, params) * n + nLoc;
+    DataCopyExtParams ub2GmParams{1U, actualN * sizeof(ElementC), 0U, 0U, 0U};
+    DataCopyPad(gmRemoteD[gmDstOffset], fragmentUb, ub2GmParams);
+    SetFlag<HardEvent::MTE3_MTE2>(eventId);
+}
+
 // 非量化 Combine 的统一入口。AIV1 直接使用 GMM2 已构造的 scheduler，逐 tile 等待配对 AIC 并消费。
-// 当前 GMM2 problem 的起始地址和 M 大小共同限定 token 范围，无需再次遍历专家或重建 scheduler。
-// UB 从 64 KiB 起步，避开 AIV1 Dispatch 跨 wave 保留在低区的 cumsum 状态。
+// 每个 slot 保存一个 token 在当前 N tile 上的行片段；按 Dispatch 的“预取下一槽、发送上一槽”方式滚动，
+// 六槽环跨 tile 保持连续。UB 从 64 KiB 起步，避开 Dispatch 保留的低区状态。
 template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config>
 __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm, const Params &params,
                                          const GMMAddrInfo &gmmAddrInfo, int32_t &gmTileSequence, const Config &config,
                                          uint32_t startLoopIdx, uint32_t tileNum)
 {
+    constexpr uint32_t fragmentElements = L1_TILE_N;
+    constexpr uint32_t fragmentStrideBytes = fragmentElements * sizeof(ElementC);
+    static_assert(WAVE_COMBINE_UB_BASE + NO_QUANT_TILE_COMBINE_BUFFER_COUNT * fragmentStrideBytes <=
+                      WAVE_COMBINE_UB_LIMIT,
+                  "non-quantized tile Combine ring exceeds UB budget");
+    uint32_t issuedFragmentCount = 0U;
+    uint64_t gmRemoteBaseOffset =
+        static_cast<uint64_t>(params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr);
+    GlobalTensor<ElementC> gmRemoteD;
+
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -608,16 +643,9 @@ __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm
 
         int32_t expectedReadySequence = gmTileSequence + 1;
         WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag, expectedReadySequence);
-        auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
-                                            Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-        constexpr uint32_t tileUbBase = WAVE_COMBINE_UB_BASE;
-        auto layoutTileUb = MakeLayoutC{}(config.tileM, L1_TILE_N);
-        auto tensorBlockUb = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(tileUbBase), layoutTileUb);
-        LocalTensor<ElementC> tileUb = LocalTensor<ElementC>(TPosition::VECIN, tileUbBase, config.tileM * L1_TILE_N);
-        auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
-        AscendC::Te::Copy(copyGM2UB, tensorBlockUb, tensorBlockGm);
 
-        int32_t lenTile = Get<M_VALUE>(actualShape);
+        uint32_t lenTile = static_cast<uint32_t>(Get<M_VALUE>(actualShape));
+        uint32_t actualN = static_cast<uint32_t>(Get<N_VALUE>(actualShape));
         GlobalTensor<int32_t> metaInfoGm;
         LocalTensor<int32_t> metaInfoTensor =
             LocalTensor<int32_t>(TPosition::VECCALC, META_INFO_TENSOR_ADDR, lenTile * META_INFO_SIZE);
@@ -626,12 +654,41 @@ __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm
         AscendC::DataCopy(metaInfoTensor, metaInfoGm, lenTile * META_INFO_SIZE);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
-        CombineImpl::CombineTokens<ElementC, decltype(actualShape)>(nLoc, config.n, metaInfoTensor, tileUb, actualShape,
-                                                                    L1_TILE_N, params);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+
+        if (lenTile != 0U) {
+            uint32_t pendingRowIdx = 0U;
+            uint32_t pendingSlot = issuedFragmentCount % NO_QUANT_TILE_COMBINE_BUFFER_COUNT;
+            if (issuedFragmentCount >= NO_QUANT_TILE_COMBINE_BUFFER_COUNT) {
+                FetchNoQuantCombineFragment<true, ElementC, MakeLayoutC>(l0cOutGm, mLoc, nLoc, actualN,
+                                                                         pendingSlot);
+            } else {
+                FetchNoQuantCombineFragment<false, ElementC, MakeLayoutC>(l0cOutGm, mLoc, nLoc, actualN,
+                                                                          pendingSlot);
+            }
+            ++issuedFragmentCount;
+
+            for (uint32_t rowIdx = 1U; rowIdx < lenTile; ++rowIdx) {
+                uint32_t slot = issuedFragmentCount % NO_QUANT_TILE_COMBINE_BUFFER_COUNT;
+                if (issuedFragmentCount >= NO_QUANT_TILE_COMBINE_BUFFER_COUNT) {
+                    FetchNoQuantCombineFragment<true, ElementC, MakeLayoutC>(
+                        l0cOutGm, mLoc + rowIdx, nLoc, actualN, slot);
+                } else {
+                    FetchNoQuantCombineFragment<false, ElementC, MakeLayoutC>(
+                        l0cOutGm, mLoc + rowIdx, nLoc, actualN, slot);
+                }
+                ++issuedFragmentCount;
+
+                StoreNoQuantCombineFragment<ElementC>(nLoc, config.n, actualN, metaInfoTensor, pendingRowIdx, params,
+                                                       gmRemoteBaseOffset, pendingSlot, gmRemoteD);
+                pendingRowIdx = rowIdx;
+                pendingSlot = slot;
+            }
+            StoreNoQuantCombineFragment<ElementC>(nLoc, config.n, actualN, metaInfoTensor, pendingRowIdx, params,
+                                                   gmRemoteBaseOffset, pendingSlot, gmRemoteD);
+        }
         gmTileSequence = expectedReadySequence;
     }
+    DrainCombineRowBuffers(issuedFragmentCount, NO_QUANT_TILE_COMBINE_BUFFER_COUNT);
 }
 
 // 执行 A8W4 GMM2 tile 循环。
