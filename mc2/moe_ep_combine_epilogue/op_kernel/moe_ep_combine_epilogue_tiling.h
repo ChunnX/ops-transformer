@@ -35,6 +35,7 @@ struct MoeEpCombineEpilogueInfo {
     uint64_t totalUbSize = 0;
     uint64_t combineStateWinOffset = 0;
     uint64_t combineDataWinOffset = 0;
+    uint32_t isWeighted = 0;
 };
 
 struct MoeEpCombineEpilogueTilingData {

@@ -59,8 +59,8 @@ namespace MoeEpCombineEpilogueImpl {
 
 using namespace AscendC;
 
-#define TemplateMoeEpCombineEpilogueTypeClass typename XType, uint32_t HasTopkWeight
-#define TemplateMoeEpCombineEpilogueTypeFunc XType, HasTopkWeight
+#define TemplateMoeEpCombineEpilogueTypeClass typename XType, uint32_t HasTopkWeight, uint32_t IsWeighted
+#define TemplateMoeEpCombineEpilogueTypeFunc XType, HasTopkWeight, IsWeighted
 
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t COMBINE_CHANNEL_COUNT = 6U;
@@ -136,6 +136,7 @@ private:
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> weightQue_;
     TBuf<QuePosition::VECIN> ubAccFp32Buf_;
     TBuf<QuePosition::VECIN> ubTmpFp32Buf_;
+    TBuf<QuePosition::VECIN> weightScalarBuf_;
     TBuf<> stateBuf_;
 
     GM_ADDR winRankAddr_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
@@ -216,6 +217,9 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 
     if constexpr (HasTopkWeight == 1) {
         tpipe_->InitBuffer(weightQue_, DOUBLE_BUFFER_NUM, UB_ALIGN);
+    }
+    if constexpr (HasTopkWeight == 1 && IsWeighted == 1) {
+        tpipe_->InitBuffer(weightScalarBuf_, UB_ALIGN);
     }
     tpipe_->InitBuffer(xInQue_, DOUBLE_BUFFER_NUM, hAlignSize_);
     tpipe_->InitBuffer(xOutQue_, DOUBLE_BUFFER_NUM, hAlignSize_);
@@ -319,7 +323,22 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
         DataCopyPad(xLocal, srcTokenTensor, xCopyParams, padParams);
         xInQue_.EnQue(xLocal);
         LocalTensor<XType> xIn = xInQue_.DeQue<XType>();
+        float weightVal = 1.0f;
+        if constexpr (HasTopkWeight == 1 && IsWeighted == 1) {
+            GM_ADDR weightAddr = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) +
+                                 (tokenIndex * topK_ + topkId) * WIN_ADDR_ALIGN;
+            GlobalTensor<float> srcWeightTensor;
+            srcWeightTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(weightAddr));
+            LocalTensor<float> weightScalar = weightScalarBuf_.Get<float>();
+            DataCopyPad(weightScalar, srcWeightTensor, weightCopyParams, padParams);
+            SyncFunc<AscendC::HardEvent::MTE2_S>();
+            weightVal = weightScalar.GetValue(0);
+            SyncFunc<AscendC::HardEvent::S_MTE2>();
+        }
         Cast(ubTmpFp32_, xIn, AscendC::RoundMode::CAST_NONE, axisH_);
+        if constexpr (HasTopkWeight == 1 && IsWeighted == 1) {
+            Muls(ubTmpFp32_, ubTmpFp32_, weightVal, axisH_);
+        }
         Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_, axisH_);
         xInQue_.FreeTensor(xIn);
         if constexpr (HasTopkWeight == 1) {

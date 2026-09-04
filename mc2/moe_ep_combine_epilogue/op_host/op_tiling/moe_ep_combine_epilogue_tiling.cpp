@@ -48,6 +48,7 @@ constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 4;
 constexpr uint32_t ATTR_HAS_TOPK_WEIGHTS_INDEX = 5;
 constexpr uint32_t ATTR_TOPO_TYPE_INDEX = 6;
 constexpr uint32_t ATTR_RANK_NUM_PER_SERVER_INDEX = 7;
+constexpr uint32_t ATTR_APPLY_TOPK_WEIGHTS_INDEX = 8;
 
 constexpr uint32_t ONE_DIMS = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
@@ -73,6 +74,7 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpCombineEpilogue
             info.cfg.topK, info.cfg.numMaxTokensPerRank);
     OP_LOGD(nodeName, "perSlotBytes=%u, hasTopkWeights=%u, aivNum=%u", info.cfg.perSlotBytes, info.hasTopkWeights,
             info.aivNum);
+    OP_LOGD(nodeName, "isWeighted=%u", info.isWeighted);
     OP_LOGD(nodeName, "combineStateWinOffset=%lu, combineDataWinOffset=%lu, totalUbSize=%lu",
             info.combineStateWinOffset, info.combineDataWinOffset, info.totalUbSize);
 }
@@ -198,6 +200,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     auto hasTopkWeightsPtr = attrs->GetAttrPointer<bool>(ATTR_HAS_TOPK_WEIGHTS_INDEX);
     auto requestedNetworkModePtr = attrs->GetAttrPointer<int64_t>(ATTR_TOPO_TYPE_INDEX);
     auto rankNumPerServerPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_NUM_PER_SERVER_INDEX);
+    auto applyTopkWeightsPtr = attrs->GetAttrPointer<bool>(ATTR_APPLY_TOPK_WEIGHTS_INDEX);
 
     OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE(nodeName, "epWorldSizePtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(epRankIdPtr == nullptr, OP_LOGE(nodeName, "epRankIdPtr is null."), return ge::GRAPH_FAILED);
@@ -210,6 +213,11 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     OP_TILING_CHECK(requestedNetworkModePtr == nullptr, OP_LOGE(nodeName, "requestedNetworkModePtr is null."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(rankNumPerServerPtr == nullptr, OP_LOGE(nodeName, "rankNumPerServerPtr is null."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(applyTopkWeightsPtr == nullptr, OP_LOGE(nodeName, "applyTopkWeightsPtr is null."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*applyTopkWeightsPtr && !*hasTopkWeightsPtr,
+                    OP_LOGE(nodeName, "apply_topk_weights requires has_topk_weights to be true."),
                     return ge::GRAPH_FAILED);
 
     int64_t epWorldSize = *epWorldSizePtr;
@@ -250,6 +258,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     info.cfg.numLocalExperts = static_cast<uint32_t>(*numExpertsPtr / epWorldSize);
     info.cfg.numMaxTokensPerRank = static_cast<uint32_t>(*nmtPtr);
     info.hasTopkWeights = *hasTopkWeightsPtr ? 1 : 0;
+    info.isWeighted = (*applyTopkWeightsPtr && *hasTopkWeightsPtr) ? 1 : 0;
     rankNumPerServerOut = topology.rankNumPerServer;
     serverNum = topology.serverNum;
     networkMode = topology.networkMode;
@@ -333,10 +342,11 @@ static ge::graphStatus MoeEpCombineEpilogueTilingFunc(gert::TilingContext *conte
     workSpaces[0] = SYSTEM_NEED_WORKSPACE;
 
     uint32_t tplHasTopkWeights = info.hasTopkWeights ? 1 : 0;
-    uint64_t tilingKey = GET_TPL_TILING_KEY(tplHasTopkWeights, TILINGKEY_TPL_A5);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(tplHasTopkWeights, TILINGKEY_TPL_A5, info.isWeighted);
     context->SetTilingKey(tilingKey);
 
-    OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u", tilingKey, blockDim, aivNum);
+    OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u, isWeighted=%u", tilingKey, blockDim, aivNum,
+            info.isWeighted);
     PrintTilingDataInfo(nodeName, info);
     return ge::GRAPH_SUCCESS;
 }

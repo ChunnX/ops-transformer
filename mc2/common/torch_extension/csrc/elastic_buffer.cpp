@@ -852,7 +852,8 @@ public:
                                                    const c10::optional<at::Tensor> &topkWeights, int64_t epWorldSize,
                                                    int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank,
                                                    at::Tensor &combinedX,
-                                                   const c10::optional<at::Tensor> &combinedTopkWeightsOpt);
+                                                   const c10::optional<at::Tensor> &combinedTopkWeightsOpt,
+                                                   bool applyTopkWeights);
 
 private:
     void EnsureEngramContext();
@@ -1397,8 +1398,9 @@ void Mc2Api::ElasticBuffer::MoeEpCombine(const at::Tensor &x, const at::Tensor &
 Mc2Api::ElasticBuffer::CombineEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpCombineEpilogue(
     const at::Tensor &topkIdx, const c10::optional<at::Tensor> &topkWeights, int64_t epWorldSize, int64_t epRankId,
     int64_t numExperts, int64_t numMaxTokensPerRank, at::Tensor &combinedX,
-    const c10::optional<at::Tensor> &combinedTopkWeightsOpt)
+    const c10::optional<at::Tensor> &combinedTopkWeightsOpt, bool applyTopkWeights)
 {
+    TORCH_CHECK(!applyTopkWeights || topkWeights.has_value(), "applyTopkWeights requires topkWeights to be provided.");
     EnsureMoeContext();
     int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
     int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
@@ -1409,8 +1411,8 @@ Mc2Api::ElasticBuffer::CombineEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpCom
                                                at::empty({1}, combinedX.options().dtype(at::kFloat));
 
     ACLNN_CMD(aclnnMoeEpCombineEpilogue, moeContextTensor_, topkIdx, epWorldSize, epRankId, numExperts,
-              numMaxTokensPerRank, moeCclBufferSize_, hasTopkWeights, topoType, rankNumPerServer, combinedX,
-              combinedTopkWeightsTensor);
+              numMaxTokensPerRank, moeCclBufferSize_, hasTopkWeights, topoType, rankNumPerServer, applyTopkWeights,
+              combinedX, combinedTopkWeightsTensor);
 
     c10::optional<at::Tensor> combinedTopkWeightsOutput;
     if (hasTopkWeights) {
