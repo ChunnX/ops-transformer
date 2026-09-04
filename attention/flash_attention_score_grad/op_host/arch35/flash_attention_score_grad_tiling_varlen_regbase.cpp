@@ -514,7 +514,8 @@ protected:
         CalcleTNDDenseDeterParam();
         CalcleTNDCausalDeterParam();
         CalcleTNDBandDeterParam();
-        if (preferLine && (fBaseParams.deterMaxRound <= 0 || linePack.rLine <= fBaseParams.deterMaxRound)) {
+        if (preferLine && linePack.rLine > 0 && fBaseParams.deterMaxRound > 0 &&
+            linePack.rLine < fBaseParams.deterMaxRound) {
             ApplyTNDLineDeterParam(fBaseParams, linePack);
         }
         OP_LOGD("CalcleTNDDeterParam", "TND deterMaxRound is %ld.", fBaseParams.deterMaxRound);
