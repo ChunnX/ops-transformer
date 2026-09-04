@@ -96,10 +96,9 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 - 适用场景：该接口支持训练、推理场景下使用。
 - 调用方式：该接口支持单算子模式调用。
 - `N`必须为64的整数倍，`E`取值范围为`[1, 1024]`。
-- MXFP4场景下`x`与`weight`必须同时为FLOAT4，二者可分别选择E2M1或E1M2；`K`必须为偶数且不能为2。
+- `K`必须为偶数且不能为2。
 - MXFP4 Torch输入必须使用`torch.uint8`打包载体，并显式传入`x_dtype`和`weight_dtype`。
-- WeightNZ转置场景必须先对源Weight执行`torch_npu.npu_format_cast(weight_source, 29)`，再执行`transpose(-1, -2)`；`weight_scale`必须对源shape的中间两维同步执行transpose。
-- `scale_alg=1`仅支持FP8输出；`scale_alg=2`仅支持FLOAT4_E2M1输出，且`dst_type_max`只能取0.0或`[6.0, 12.0]`。FLOAT4_E1M2输出仅支持`scale_alg=0`。
+- `scale_alg=0`支持FP4、FP8输出；`scale_alg=1`仅支持FP8输出；`scale_alg=2`仅支持FLOAT4_E2M1输出，且`dst_type_max`只能取0.0或`[6.0, 12.0]`。
 - 支持M为0或N为0的空Tensor场景；该场景下允许K为0。
 
 ## 确定性计算
