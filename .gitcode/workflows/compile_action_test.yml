@@ -63,8 +63,21 @@ jobs:
             export GE_ST_RT2=${{ inputs.ge_st_rt2 }}
             export GIT_TARGET_BRANCH=${{ env.TARGET_BRANCH }}
             export OS_TYPE=${{ inputs.arch == 'arm64' && 'aarch64' || 'x86_64' }}
+            unset NB_NO_HOOK
+            unset XCACHE_IN_NEXTBUILD
+            unset NB_RDECO_TOOL_PATH
+            unset NB_UNLOAD_CMD_PATTERN
+            export NB_LOCAL_CMD_PATTERN=CMakeScratch/TryCompile
+            unset NB_RDECO_ENABLE
+            env|grep NB
+            env|grep XCACHE
+            export JOB_NUM=64
+            ls -al "${WORKSPACE}"/third_party
             BuildAccelerate bash compile.sh
-          AC_SERVER_IP: ${{ vars.AC_SERVER_IP }}
+            ls -al "${WORKSPACE}"/third_party
+          AC_SERVER_IP: 172.27.24.172:172.27.21.11:172.27.16.21:172.27.26.226:172.27.21.217:172.27.25.11:172.27.18.206:172.27.28.19:172.27.31.229:172.27.24.180
+          image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ inputs.image_version }}
+          AC_MODE: dis
     if: "${{ default() }}"
     runs-on:
       - self-hosted
