@@ -96,34 +96,34 @@ public:
                                             __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ,
                                             __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
                                             __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *seqUsedOriKV,
-                                            __gm__ uint8_t *seqUsedCmpKV, const ConstInfo &constInfo);
+                                            __gm__ uint8_t *seqUsedCmpKV, const ConstInfo<false> &constInfo);
 
     // SWA/HCA场景
-    __aicore__ inline void IterateLoadQK(RunInfo &runInfo, ConstInfo &constInfo, bool isFirstLoop);
+    __aicore__ inline void IterateLoadQK(RunInfo<false> &runInfo, ConstInfo<false> &constInfo, bool isFirstLoop);
 
     // CSA场景
     __aicore__ inline void IterateLoadQK(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-                                         RunInfo &runInfo, ConstInfo &constInfo, bool isFirstLoop);
-    __aicore__ inline void IterateBmm1(StaticBuffer<T> &output, bool notLastTwoLoop, RunInfo &runInfoNext,
-                                       RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void IterateBmm2(StaticBuffer<T> &outputBuf, StaticBuffer<Q_T> &l1PBuffer, const RunInfo &runInfo,
-                                       const ConstInfo &constInfo);
+                                         RunInfo<false> &runInfo, ConstInfo<false> &constInfo, bool isFirstLoop);
+    __aicore__ inline void IterateBmm1(StaticBuffer<T> &output, bool notLastTwoLoop, RunInfo<false> &runInfoNext,
+                                       RunInfo<false> &runInfo, ConstInfo<false> &constInfo);
+    __aicore__ inline void IterateBmm2(StaticBuffer<T> &outputBuf, StaticBuffer<Q_T> &l1PBuffer,
+                                       const RunInfo<false> &runInfo, const ConstInfo<false> &constInfo);
     __aicore__ inline void FreeEvent();
 
 private:
     __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
                                         __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv,
                                         __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV,
-                                        const ConstInfo &constInfo);
-    __aicore__ inline void CalcS2Coord(const RunInfo &runInfo, const ConstInfo &constInfo);
-    __aicore__ inline void CopyQGmToL1(RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void LoadKGmToL1(LocalTensor<KV_T> &inputRightTensor, const RunInfo &runInfo,
-                                       const ConstInfo &constInfo);
+                                        const ConstInfo<false> &constInfo);
+    __aicore__ inline void CalcS2Coord(const RunInfo<false> &runInfo, const ConstInfo<false> &constInfo);
+    __aicore__ inline void CopyQGmToL1(RunInfo<false> &runInfo, ConstInfo<false> &constInfo);
+    __aicore__ inline void LoadKGmToL1(LocalTensor<KV_T> &inputRightTensor, const RunInfo<false> &runInfo,
+                                       const ConstInfo<false> &constInfo);
 
-    __aicore__ inline void IterateBmm1Impl(StaticBuffer<T> &outputBuf, bool notLastTwoLoop, RunInfo &runInfoNext,
-                                           RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void IterateBmm1Impl(StaticBuffer<T> &outputBuf, bool notLastTwoLoop, RunInfo<false> &runInfoNext,
+                                           RunInfo<false> &runInfo, ConstInfo<false> &constInfo);
     __aicore__ inline void IterateBmm2Impl(StaticBuffer<T> &outputBuf, StaticBuffer<Q_T> &l1PBuffer,
-                                           const RunInfo &runInfo, const ConstInfo &constInfo);
+                                           const RunInfo<false> &runInfo, const ConstInfo<false> &constInfo);
 
     /* =====================GM变量==================== */
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
@@ -216,7 +216,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitGlobalBuffer(
     __gm__ uint8_t *query, __gm__ uint8_t *oriKv, __gm__ uint8_t *cmpKv, __gm__ uint8_t *cmpSparseIndices,
     __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *cuSeqlensQ,
     __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *seqUsedOriKV,
-    __gm__ uint8_t *seqUsedCmpKV, const ConstInfo &constInfo)
+    __gm__ uint8_t *seqUsedCmpKV, const ConstInfo<false> &constInfo)
 {
     if ASCEND_IS_AIC {
         this->queryGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)query);
@@ -260,7 +260,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t 
                                                                  __gm__ uint8_t *cuSeqlensCmpKv,
                                                                  __gm__ uint8_t *seqUsedOriKV,
                                                                  __gm__ uint8_t *seqUsedCmpKV,
-                                                                 const ConstInfo &constInfo)
+                                                                 const ConstInfo<false> &constInfo)
 {
     if constexpr (LAYOUT_T == SMLA_LAYOUT::BSND) {
         this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
@@ -283,13 +283,13 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t 
     } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
         uint32_t seqUsedOriKvSize = (seqUsedOriKV == nullptr) ? 0 : constInfo.bSize;
         ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
-        parser.Init(cuSeqlensOriKv, constInfo.actualSeqLenSize + 1, seqUsedOriKV, seqUsedOriKvSize);
+        parser.Init(cuSeqlensOriKv, constInfo.bSize + 1, seqUsedOriKV, seqUsedOriKvSize);
         this->oriKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize, parser);
         if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE &&
                       TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
             uint32_t seqUseCmpKvSize = (seqUsedCmpKV == nullptr) ? 0 : constInfo.bSize;
             ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
-            parser.Init(cuSeqlensCmpKv, constInfo.actualSeqLenSize + 1, seqUsedCmpKV, seqUseCmpKvSize);
+            parser.Init(cuSeqlensCmpKv, constInfo.bSize + 1, seqUsedCmpKV, seqUseCmpKvSize);
             this->cmpKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize, parser);
         }
     } else {
@@ -303,7 +303,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t 
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(const RunInfo &runInfo, const ConstInfo &constInfo)
+__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(const RunInfo<false> &runInfo,
+                                                                const ConstInfo<false> &constInfo)
 {
     // 计算s2方向偏移
     coordInfo[runInfo.taskIdMod3].curBIdx = runInfo.boIdx;
@@ -324,7 +325,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(const RunInfo &r
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::CopyQGmToL1(RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::CopyQGmToL1(RunInfo<false> &runInfo, ConstInfo<false> &constInfo)
 {
     uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
                                                                  runInfo.s1oIdx * runInfo.qSNumInOneBlock, 0);
@@ -340,7 +341,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::CopyQGmToL1(RunInfo &runInfo
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::LoadKGmToL1(LocalTensor<KV_T> &inputRightTensor,
-                                                                const RunInfo &runInfo, const ConstInfo &constInfo)
+                                                                const RunInfo<false> &runInfo,
+                                                                const ConstInfo<false> &constInfo)
 {
     if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         Position startPos;
@@ -356,19 +358,19 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::LoadKGmToL1(LocalTensor<KV_T
         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
         shape.copyRowNum = runInfo.s2RealSize;
         shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4; // 15，4：进行16字节对齐处理
-        shape.pageStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
+        shape.pageStride = runInfo.isCmp ? constInfo.cmpKvStride : constInfo.oriKvStride;
         GmCopyInToL1PA<KV_T>(inputRightTensor, curKvGm.gmTensor, blockTableGm, KVLAYOUT::BBH, shape, startPos);
     } else {
         int64_t keyOffset = this->curKvGm.offsetCalculator.GetOffset(
             coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
         CopyToL1Nd2Nz<KV_T>(inputRightTensor, curKvGm.gmTensor[keyOffset], runInfo.s2RealSize, constInfo.dSize,
-                            constInfo.mm1Kb);
+                            constInfo.mm1Ka);
     }
 }
 
 // SWA/HCA场景: K从GM直接搬运
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(RunInfo &runInfo, ConstInfo &constInfo,
+__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(RunInfo<false> &runInfo, ConstInfo<false> &constInfo,
                                                                   bool isFirstLoop)
 {
     if (unlikely(isFirstLoop)) {
@@ -387,8 +389,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(RunInfo &runIn
 // CSA场景: K来源取决于isSparse
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, RunInfo &runInfo, ConstInfo &constInfo,
-    bool isFirstLoop)
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, RunInfo<false> &runInfo,
+    ConstInfo<false> &constInfo, bool isFirstLoop)
 {
     if (unlikely(isFirstLoop)) {
         CopyQGmToL1(runInfo, constInfo);
@@ -420,7 +422,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(
             CrossCoreWaitFlag<0, PIPE_MTE2>(crossCoreMte2SyncFlagId);
         }
         GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
-        CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
+        CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Ka);
     }
     SetFlag<HardEvent::MTE2_MTE1>(INNERCORE_L1KV(l1KLoadBufId));
     l1KLoadBufId = (l1KLoadBufId + 1) % l1KBufNum;
@@ -428,24 +430,26 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1(StaticBuffer<T> &outputBuf, bool notLastTwoLoop,
-                                                                RunInfo &runInfoNext, RunInfo &runInfo,
-                                                                ConstInfo &constInfo)
+                                                                RunInfo<false> &runInfoNext, RunInfo<false> &runInfo,
+                                                                ConstInfo<false> &constInfo)
 {
     IterateBmm1Impl(outputBuf, notLastTwoLoop, runInfoNext, runInfo, constInfo);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2(StaticBuffer<T> &outputBuf,
-                                                                StaticBuffer<Q_T> &l1PBuffer, const RunInfo &runInfo,
-                                                                const ConstInfo &constInfo)
+                                                                StaticBuffer<Q_T> &l1PBuffer,
+                                                                const RunInfo<false> &runInfo,
+                                                                const ConstInfo<false> &constInfo)
 {
     IterateBmm2Impl(outputBuf, l1PBuffer, runInfo, constInfo);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1Impl(StaticBuffer<T> &outputBuf, bool notLastTwoLoop,
-                                                                    RunInfo &runInfoNext, RunInfo &runInfo,
-                                                                    ConstInfo &constInfo)
+                                                                    RunInfo<false> &runInfoNext,
+                                                                    RunInfo<false> &runInfo,
+                                                                    ConstInfo<false> &constInfo)
 {
     LocalTensor<Q_T> curL1RightTensor = l1RightBufs[runInfo.taskIdMod3].tensor;
     WaitFlag<HardEvent::MTE2_MTE1>(INNERCORE_L1KV(l1KMatmul1BufId));
@@ -521,7 +525,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1Impl(StaticBuffer
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2Impl(StaticBuffer<T> &outputBuf,
                                                                     StaticBuffer<Q_T> &l1PBuffer,
-                                                                    const RunInfo &runInfo, const ConstInfo &constInfo)
+                                                                    const RunInfo<false> &runInfo,
+                                                                    const ConstInfo<false> &constInfo)
 {
     LocalTensor<Q_T> curL1RightTensor = l1RightBufs[runInfo.taskIdMod3].tensor;
     CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(CROSSCORE_L1P(l1PBuffer.idx));
@@ -576,7 +581,7 @@ public:
                                             __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ,
                                             __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
                                             __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *seqUsedOriKV,
-                                            __gm__ uint8_t *seqUsedCmpKV, const ConstInfo &constInfo)
+                                            __gm__ uint8_t *seqUsedCmpKV, const ConstInfo<false> &constInfo)
     {}
     __aicore__ inline void FreeEvent() {}
 };

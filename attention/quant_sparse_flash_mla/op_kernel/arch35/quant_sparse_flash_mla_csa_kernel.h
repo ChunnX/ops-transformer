@@ -100,12 +100,12 @@ private:
     __aicore__ inline void FreeEvent();
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *workspace);
     __aicore__ inline void ComputeConstexpr();
-    __aicore__ inline void SetRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount,
-                                      int64_t s2LoopLimit, int64_t multiCoreInnerIdx);
-    __aicore__ inline void ComputeBmm1Tail(RunInfo &runInfo, RunParamStr &runParam);
+    __aicore__ inline void SetRunInfo(RunInfo<false> &runInfo, RunParamStr<false> &runParam, int64_t taskId,
+                                      int64_t s2LoopCount, int64_t s2LoopLimit, int64_t multiCoreInnerIdx);
+    __aicore__ inline void ComputeBmm1Tail(RunInfo<false> &runInfo, RunParamStr<false> &runParam);
     __aicore__ inline void InitUniqueConstInfo();
-    __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam);
-    __aicore__ inline void InitUniqueRunInfo(const RunParamStr &runParam, RunInfo &runInfo);
+    __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index, RunParamStr<false> &runParam);
+    __aicore__ inline void InitUniqueRunInfo(const RunParamStr<false> &runParam, RunInfo<false> &runInfo);
     TPipe *pipe;
 
     const QuantSparseFlashMlaTilingData *__restrict tilingData;
@@ -155,7 +155,7 @@ private:
     uint32_t hasLoad;
 
     /* 初始化后不变的信息 */
-    ConstInfo constInfo;
+    ConstInfo<false> constInfo;
 
     /* 模板库Block */
     CubeBlockType cubeBlock;
@@ -287,7 +287,6 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Pars
     constInfo.dSizeVInput = quantSparseFlashMlaBaseParams.dSizeVInput;
     constInfo.isSoftmaxLseEnable = quantSparseFlashMlaBaseParams.returnSoftmaxLse;
     constInfo.sparseBlockSize = 1;
-    constInfo.actualSeqLenSize = constInfo.bSize + 1;
 
     if constexpr (isPa) {
         constInfo.oriBlockSize = quantSparseFlashMlaBaseParams.paOriBlockSize;
@@ -449,31 +448,19 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ComputeConstexpr()
 {
-    constInfo.s1S2 = constInfo.s1Size * constInfo.s2Size;
-    constInfo.gS1 = constInfo.gSize * constInfo.s1Size;
     constInfo.n2G = constInfo.n2Size * constInfo.gSize;
 
-    constInfo.s1Dv = constInfo.s1Size * constInfo.dSizeV;
-    constInfo.s2Dv = constInfo.s2Size * constInfo.dSizeV;
-    constInfo.n2Dv = constInfo.n2Size * constInfo.dSizeV;
     constInfo.gDv = constInfo.gSize * constInfo.dSizeV;
-    constInfo.gS1Dv = constInfo.gSize * constInfo.s1Dv;
-    constInfo.n2S2Dv = constInfo.n2Size * constInfo.s2Dv;
     constInfo.n2GDv = constInfo.n2Size * constInfo.gDv;
-    constInfo.s2BaseN2Dv = constInfo.s2BaseSize * constInfo.n2Dv;
-    constInfo.n2GS1Dv = constInfo.n2Size * constInfo.gS1Dv;
 
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
         // (BS)ND
-        constInfo.s1BaseN2GDv = constInfo.s1BaseSize * constInfo.n2GDv;
-
         constInfo.mm1Ka = constInfo.n2Size * constInfo.dSize;
         if ASCEND_IS_AIV {
             constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
         }
     } else if constexpr (LAYOUT_T == QSMLA_LAYOUT::BSND) {
         // BSH/BSNGD
-        constInfo.s1BaseN2GDv = constInfo.s1BaseSize * constInfo.n2GDv;
         constInfo.mm1Ka = constInfo.n2Size * constInfo.dSize;
         if ASCEND_IS_AIV {
             constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
@@ -519,8 +506,8 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
     bool isFirstLoop = true;
     bool notLast = true;
     bool notLastTwoLoop = true;
-    RunInfo runInfo[4];
-    RunParamStr runParam;
+    RunInfo<false> runInfo[4];
+    RunParamStr<false> runParam;
     int64_t multiCoreInnerIdx = 1;
     for (int64_t bnIdx = bN2StartIdx; bnIdx < bN2EndIdx; bnIdx++) {
         bool lastBN = (bnIdx == bN2EndIdx - 1);
@@ -574,12 +561,12 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                 if (notLastThreeLoop) {
-                    RunInfo &runInfo1 = runInfo[taskId % 4];
+                    RunInfo<false> &runInfo1 = runInfo[taskId % 4];
                     this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
                 }
                 if ASCEND_IS_AIV {
                     if (notLastThreeLoop) {
-                        RunInfo &runInfo1 = runInfo[taskId % 4];
+                        RunInfo<false> &runInfo1 = runInfo[taskId % 4];
                         this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(runInfo1.taskIdMod3),
                                                    v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, this->constInfo);
                     }
@@ -589,12 +576,12 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                                                    this->constInfo);
                     }
                     if (taskId > 2) {
-                        RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
+                        RunInfo<false> &runInfo3 = runInfo[(taskId + 1) % 4];
                         this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
                     }
                 } else {
                     if (taskId > 0 && notLastTwoLoop) {
-                        RunInfo &runInfo1 = runInfo[(taskId + 3) % 4];
+                        RunInfo<false> &runInfo1 = runInfo[(taskId + 3) % 4];
                         this->cubeBlock.IterateLoadQK(this->l1RightBuffers.Get(runInfo1.taskIdMod3),
                                                       v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1,
                                                       this->constInfo, isFirstLoop);
@@ -610,14 +597,14 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                     }
                     if (taskId > 1 && notLast) {
                         auto &runInfo2 = runInfo[(taskId + 2) % 4];
-                        RunInfo &runInfoNext = runInfo[(taskId + 3) % 4];
+                        RunInfo<false> &runInfoNext = runInfo[(taskId + 3) % 4];
                         this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(),
                                                     this->l1RightBuffers.Get(runInfo2.taskIdMod3),
                                                     v0ResGmBuffers.Get(runInfo2.taskIdMod3), notLastTwoLoop,
                                                     runInfoNext, runInfo2, this->constInfo);
                     }
                     if (taskId > 2) {
-                        RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
+                        RunInfo<false> &runInfo3 = runInfo[(taskId + 1) % 4];
                         this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers,
                                                     this->l1RightBuffers.Get(runInfo3.taskIdMod3), runInfo3,
                                                     this->constInfo);
@@ -641,7 +628,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
-    int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam)
+    int64_t bnIndex, int64_t gS1Index, RunParamStr<false> &runParam)
 {
     // GS1合轴, 不切G, 只切S1
     runParam.s1oIdx = gS1Index * runParam.qSNumInOneBlock;
@@ -657,7 +644,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Comp
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::SetRunInfo(
-    RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit,
+    RunInfo<false> &runInfo, RunParamStr<false> &runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit,
     int64_t multiCoreInnerIdx)
 {
     if (s2LoopCount < runParam.oriKvLoopEndIdx) {
@@ -675,25 +662,21 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::SetR
         runInfo.goIdx = runParam.goIdx;
         runInfo.multiCoreInnerIdx = multiCoreInnerIdx;
         runInfo.multiCoreIdxMod2 = multiCoreInnerIdx & 1;
-        runInfo.multiCoreIdxMod3 = multiCoreInnerIdx % 3;
     }
 
-    runInfo.taskId = taskId;
     runInfo.taskIdMod2 = taskId & 1;
     runInfo.taskIdMod3 = taskId % 3;
     runInfo.s2LoopLimit = s2LoopLimit;
 
     runInfo.actualS1Size = runParam.actualS1Size;
-    runInfo.actualS2OriSize = runParam.actualS2OriSize;
     runInfo.attentionOutOffset = runParam.attentionOutOffset;
-    runInfo.sOuterOffset = runParam.sOuterOffset;
     this->ComputeBmm1Tail(runInfo, runParam);
     InitUniqueRunInfo(runParam, runInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
-    const RunParamStr &runParam, RunInfo &runInfo)
+    const RunParamStr<false> &runParam, RunInfo<false> &runInfo)
 {
     InitTaskParamByRun<TEMPLATE_INTF_ARGS>(runParam, runInfo);
 }
@@ -712,29 +695,23 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Free
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ComputeBmm1Tail(RunInfo &runInfo,
-                                                                                            RunParamStr &runParam)
+__aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ComputeBmm1Tail(
+    RunInfo<false> &runInfo, RunParamStr<false> &runParam)
 {
     // ------------------------S1 Base Related---------------------------
-    runInfo.s1RealSize = runParam.s1RealSize;
-    runInfo.halfS1RealSize = runParam.halfS1RealSize;
-    runInfo.firstHalfS1RealSize = runParam.firstHalfS1RealSize;
     runInfo.mRealSize = runParam.mRealSize;
     runInfo.halfMRealSize = runParam.halfMRealSize;
     runInfo.firstHalfMRealSize = runParam.firstHalfMRealSize;
 
-    runInfo.vec2S1BaseSize = runInfo.halfS1RealSize; // D>128 这里需要适配
     runInfo.vec2MBaseSize = runInfo.halfMRealSize;
 
     // ------------------------S2 Base Related----------------------------
     runInfo.s2RealSize = constInfo.s2BaseSize;
-    runInfo.s2AlignedSize = runInfo.s2RealSize;
     int64_t curS2LoopCnt = (runInfo.s2LoopCount >= runParam.oriKvLoopEndIdx) ?
                                (runInfo.s2LoopCount - runParam.oriKvLoopEndIdx) :
                                runInfo.s2LoopCount;
     if (runInfo.s2StartIdx + (curS2LoopCnt + 1) * runInfo.s2RealSize > runInfo.s2EndIdx) {
         runInfo.s2RealSize = runInfo.s2EndIdx - curS2LoopCnt * runInfo.s2RealSize - runInfo.s2StartIdx;
-        runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
     }
 }
 } // namespace BaseApi
