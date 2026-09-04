@@ -1661,6 +1661,18 @@ def copy_dqkv2gm(is_kv, run_info, const_info, tensor_info):
 
 
 @pl.vector_function
+def dequant_out_dq(tensor, real_length, scale):
+    preg_all = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    for i in pl.range(real_length):
+        vreg_x1 = vf.load_align(tensor, i * HALF_D_SIZE * 2)
+        vreg_x2 = vf.load_align(tensor, i * HALF_D_SIZE * 2 + HALF_D_SIZE)
+
+        vreg_x1 = vf.muls(vreg_x1, scale, preg_all)
+        vreg_x2 = vf.muls(vreg_x2, scale, preg_all)
+
+        vf.store_align(tensor + i * HALF_D_SIZE * 2, vreg_x1, preg_all)
+        vf.store_align(tensor + i * HALF_D_SIZE * 2 + HALF_D_SIZE, vreg_x2, preg_all)
+@pl.vector_function
 def dequant_out(tensor, real_length, scale):
     preg_all = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
     for i in pl.range(real_length):
@@ -1678,10 +1690,11 @@ def dequant_dqkv(mode, tensor_1, tensor_2, const_info, run_info):
     if mode == 0:
         scale = run_info.deq_scale_k_value * const_info.deq_scale_ds_value
         real_length = run_info.inner_s1_real_size[run_info.s1_idx]
+        dequant_out_dq(tensor_1, ceil(real_length, 2), scale)
     else:
         scale = run_info.deq_scale_do_value * const_info.deq_scale_p_value
         real_length = run_info.inner_s2_real_size[run_info.s2_idx]
-    dequant_out(tensor_1, ceil(real_length, 2), scale)
+        dequant_out(tensor_1, ceil(real_length, 2), scale)
     if mode != 0:
         scale = run_info.deq_scale_q_value * const_info.deq_scale_ds_value
         dequant_out(tensor_2, ceil(real_length, 2), scale)
