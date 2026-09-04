@@ -314,6 +314,16 @@ public:
         Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvpL1BufId);
     }
 
+    // 仅用于 kernel 启动首任务（loop==0）：Q 的 MTE2 拷贝提前与 KV 同拍发出，压缩启动期。
+    // 中途换 Q 块时不可提前（Q 单槽 L1，前块 MTE1 锁未释时会写冲突），仍走 IterateBmm1 原路径。
+    __aicore__ inline void IterateQPreload(FlashMlaWithKvcacheRunInfoX &runInfo)
+    {
+        LocalTensor<Q_T> qL1Tensor = l1QBuffers_.template ReinterpretCast<Q_T>();
+        Mutex::Lock<PIPE_MTE2>(Q_L1_BUFFER_ID0);
+        CopyQueryAndRopeTile(qL1Tensor, runInfo);
+        Mutex::Unlock<PIPE_MTE2>(Q_L1_BUFFER_ID0);
+    }
+
     __aicore__ inline void FixpipeMm1(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C,
                                       FlashMlaWithKvcacheRunInfoX &runInfo)
     {
@@ -334,7 +344,8 @@ public:
         Fixpipe<T, T, FIXPIPE_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
     }
 
-    __aicore__ inline void IterateBmm1(FlashMlaWithKvcacheRunInfoX &runInfo)
+    // qPreloaded：本任务 Q 已由启动路径（loop==0 IterateQPreload）提前发起 MTE2，跳过重复拷贝
+    __aicore__ inline void IterateBmm1(FlashMlaWithKvcacheRunInfoX &runInfo, bool qPreloaded = false)
     {
         uint32_t mm1ResUbBufId = runInfo.loop % UB_MM1_RES_BUFCNT;
         uint32_t kvpL1BufId = runInfo.loop % L1_KVP_BUFCNT;
@@ -347,9 +358,11 @@ public:
 
         LocalTensor<Q_T> qL1Tensor = l1QBuffers_.template ReinterpretCast<Q_T>();
         if (unlikely(runInfo.isFirstS2Loop)) {
-            Mutex::Lock<PIPE_MTE2>(Q_L1_BUFFER_ID0);
-            CopyQueryAndRopeTile(qL1Tensor, runInfo);
-            Mutex::Unlock<PIPE_MTE2>(Q_L1_BUFFER_ID0);
+            if (!qPreloaded) {
+                Mutex::Lock<PIPE_MTE2>(Q_L1_BUFFER_ID0);
+                CopyQueryAndRopeTile(qL1Tensor, runInfo);
+                Mutex::Unlock<PIPE_MTE2>(Q_L1_BUFFER_ID0);
+            }
             Mutex::Lock<PIPE_MTE1>(Q_L1_BUFFER_ID0);
         }
 

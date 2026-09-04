@@ -505,6 +505,10 @@ public:
         if (loop == 0) {
             if (runInfo0.isValid) {
                 if ASCEND_IS_AIC {
+                    // Q 的 MTE2 与首任务 KV 同拍发出，压缩启动期（仅首任务安全：Q 单槽 L1）
+                    if (runInfo0.isFirstS2Loop) {
+                        ComputeQPreload(runInfo0);
+                    }
                     ComputeBmm1Load(runInfo0);
                 }
             }
@@ -512,7 +516,7 @@ public:
 
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
-                ComputeMm1(runInfo0);
+                ComputeMm1(runInfo0, loop == 0);
             } else {
                 ComputeVec1(runInfo0);
             }
@@ -530,9 +534,14 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(FlashMlaWithKvcacheRunInfoX &runInfo)
+    __aicore__ inline void ComputeMm1(FlashMlaWithKvcacheRunInfoX &runInfo, bool qPreloaded = false)
     {
-        cubeBlock_.IterateBmm1(runInfo);
+        cubeBlock_.IterateBmm1(runInfo, qPreloaded);
+    }
+
+    __aicore__ inline void ComputeQPreload(FlashMlaWithKvcacheRunInfoX &runInfo)
+    {
+        cubeBlock_.IterateQPreload(runInfo);
     }
 
     __aicore__ inline void ComputeBmm1Load(FlashMlaWithKvcacheRunInfoX &runInfo)
