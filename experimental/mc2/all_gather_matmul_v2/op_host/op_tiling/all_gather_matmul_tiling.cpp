@@ -167,9 +167,9 @@ ge::graphStatus AllGatherMatmulTiling::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCfg)
 }
 
 AllGatherMatmulTiling::AllGatherMatmulTiling(gert::TilingContext *context)
-    : AllGatherMatmulTilingBase(context), allGatherMatmulTilingData_(&allGatherMatmulTilingDataSelf_)
-{
-}
+    : AllGatherMatmulTilingBase(context),
+      allGatherMatmulTilingData_(&allGatherMatmulTilingDataSelf_)
+{}
 // 注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(AllGatherMatmulV2, AllGatherMatmulTiling, static_cast<int32_t>(NpuArch::DAV_3510),
                                    0);

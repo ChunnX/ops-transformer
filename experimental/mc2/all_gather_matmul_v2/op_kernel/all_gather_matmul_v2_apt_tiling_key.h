@@ -46,8 +46,8 @@ ASCENDC_TPL_ARGS_DECL(Mc2AllGatherMatmulApt, // 算子OpType
                       ASCENDC_TPL_UINT_DECL(SCALETYPE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, SCALE_TYPE_NOT_IS_MX,
                                             SCALE_TYPE_IS_MX), );
 
-#define SET_NOT_USE_QUANT_BMM_SEL                                                                                      \
-    ASCENDC_TPL_UINT_SEL(QUANTMMMODE, ASCENDC_TPL_UI_LIST, TPL_DEFAULT_MODE),                                          \
+#define SET_NOT_USE_QUANT_BMM_SEL \
+    ASCENDC_TPL_UINT_SEL(QUANTMMMODE, ASCENDC_TPL_UI_LIST, TPL_DEFAULT_MODE), \
         ASCENDC_TPL_UINT_SEL(SCALETYPE, ASCENDC_TPL_UI_LIST, SCALE_TYPE_NOT_IS_MX)
 
 // 模板参数组合

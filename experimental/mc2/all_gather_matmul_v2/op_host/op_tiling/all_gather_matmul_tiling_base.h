@@ -53,9 +53,9 @@ constexpr uint32_t COMM_VERSION3 = 3U;
 
 class AllGatherMatmulTilingBase : public TilingBaseClass {
 public:
-    explicit AllGatherMatmulTilingBase(gert::TilingContext *context) : TilingBaseClass(context)
-    {
-    }
+    explicit AllGatherMatmulTilingBase(gert::TilingContext *context)
+        : TilingBaseClass(context)
+    {}
     ~AllGatherMatmulTilingBase() override = default;
 
     void Reset(gert::TilingContext *context) override
