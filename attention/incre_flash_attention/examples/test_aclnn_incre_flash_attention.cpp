@@ -19,6 +19,7 @@
 #include <cstring>
 #include "securec.h"
 #include "acl/acl.h"
+#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_incre_flash_attention_v4.h"
  
 using namespace std;
@@ -114,11 +115,11 @@ int InitializeTensors(TensorResources& resources) {
     int64_t attenyShapeSize = GetShapeSize(attenShape);
     int64_t outShapeSize = GetShapeSize(outShape);
     
-    std::vector<float> queryHostData(queryShapeSize, 1);
-    std::vector<float> keyHostData(keyShapeSize, 1);
-    std::vector<float> valueHostData(valueShapeSize, 1);
+    std::vector<op::fp16_t> queryHostData(queryShapeSize, 1);
+    std::vector<op::fp16_t> keyHostData(keyShapeSize, 1);
+    std::vector<op::fp16_t> valueHostData(valueShapeSize, 1);
     std::vector<int8_t> attenHostData(attenyShapeSize, 1);
-    std::vector<float> outHostData(outShapeSize, 1);
+    std::vector<op::fp16_t> outHostData(outShapeSize, 1);
 
     int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr, 
                              aclDataType::ACL_FLOAT16, &resources.queryTensor);
@@ -212,18 +213,18 @@ int ExecuteIncreFlashAttention(TensorResources& resources, aclrtStream stream,
 
 int ProcessResults(TensorResources& resources, const std::vector<int64_t>& outShape) {
     auto size = GetShapeSize(outShape);
-    std::vector<float> resultData(size, 0);
-    
-    int ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), 
-                         resources.outDeviceAddr, size * sizeof(resultData[0]), 
+    std::vector<op::fp16_t> resultData(size, 0);
+
+    int ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
+                         resources.outDeviceAddr, size * sizeof(resultData[0]),
                          ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
         return ret;
     }
-    
+
     for (int64_t i = 0; i < size; i++) {
-        LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
+        LOG_PRINT("result[%ld] is: %f\n", i, static_cast<float>(resultData[i]));
     }
     
     return ACL_SUCCESS;

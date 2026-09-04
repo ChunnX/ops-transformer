@@ -160,8 +160,8 @@ int ExecutePromptFlashAttention(TensorResources& resources, aclrtStream stream,
     int64_t numHeads = 2;
     int64_t numKeyValueHeads = numHeads;
     double scaleValue = 1 / sqrt(2);
-    int64_t preTokens = 65535;
-    int64_t nextTokens = 65535;
+    int64_t preTokens = 2147483647;
+    int64_t nextTokens = 0;
     int64_t sparseMode = 0;
     int64_t innerPrecise = 1;
     
