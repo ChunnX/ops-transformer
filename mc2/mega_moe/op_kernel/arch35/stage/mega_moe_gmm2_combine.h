@@ -20,6 +20,7 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "kernel_operator_list_tensor_intf.h"
+#include "utils/debug/asc_dump.h"
 #include "lib/matmul_intf.h"
 #include "tensor_api/tensor.h"
 #include "adv_api/reduce/reduce.h"
@@ -78,6 +79,18 @@ __aicore__ inline void CombineTokens(uint32_t nLoc, uint32_t n, LocalTensor<int3
     ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
     for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
         CombineTokenRoute route = LoadCombineTokenRoute(metaInfoTensor, static_cast<uint32_t>(tileIdx));
+        constexpr uint32_t debugTokenIndex = 9942U;
+        constexpr uint32_t debugOutputColumn = 2090U;
+        uint32_t tileWidth = static_cast<uint32_t>(Get<N_VALUE>(actualBlockShape));
+        if (params.tilingData->bs == 10072U && n == 3072U && route.tokenIdx == debugTokenIndex &&
+            nLoc <= debugOutputColumn && debugOutputColumn < nLoc + tileWidth) {
+            LocalTensor<ElementMMadOut2> debugRow = l0cOutUbGMM2[tileIdx * ubTileN];
+            uint32_t dumpDesc = 1100U + route.topkIdx;
+            AscendC::printf("[MegaMoeDebug] MoE GMM2 combine tile: dstRank=%u, token=%u, topk=%u, nLoc=%u, width=%u\n",
+                            route.dstRankId, route.tokenIdx, route.topkIdx, nLoc, tileWidth);
+            asc_dump_ubuf<ElementMMadOut2>(reinterpret_cast<__ubuf__ ElementMMadOut2 *>(debugRow.GetPhyAddr()),
+                                           dumpDesc, tileWidth);
+        }
         gmRemoteD.SetGlobalBuffer(
             reinterpret_cast<__gm__ ElementMMadOut2 *>(GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
         uint64_t gmDstOffset = GetCombineDstRowIndex(route, params) * n + nLoc;

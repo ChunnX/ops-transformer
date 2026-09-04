@@ -18,6 +18,7 @@
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
+#include "utils/debug/asc_dump.h"
 #if __has_include("../../common/mc2_kernel_utils.h")
 #include "../../common/mc2_kernel_utils.h"
 #else
@@ -86,6 +87,7 @@ private:
                                                          const GmmExecutionConfig &gmmConfig,
                                                          GmmRuntimeState &runtimeState, uint32_t sharedExpertIdx);
     __aicore__ inline void ProcessSharedExpertGmm1();
+    __aicore__ inline void DumpSharedExpertGmm1Boundary(bool afterGmm1);
     __aicore__ inline void ProcessMoeExpertStages();
     __aicore__ inline void ProcessSharedExpertGmm2();
     __aicore__ inline void ProcessGmmPipeline();
@@ -483,6 +485,64 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::SendAnd
 // ===============================================================
 // 可选共享专家流程：依次执行共享专家 GMM1 与 SwiGLU，并在结束后重置 GMM 调度状态。
 // ===============================================================
+template <TemplateMegaMoeA8W8WaveTypeClass>
+__aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::DumpSharedExpertGmm1Boundary(bool afterGmm1)
+{
+    constexpr uint32_t debugTokenIndex = 9942U;
+    constexpr uint32_t debugTokenNum = 10072U;
+    constexpr uint32_t debugHiddenDim = 3072U;
+    if constexpr (g_coreType == AIC || SharedQuantConfig::AXW_MODE != AxWMode::A8W4) {
+        return;
+    }
+    if (GetBlockIdx() != 0U || GetSubBlockIdx() != 0U || commonConfig_.tokenNum != debugTokenNum ||
+        commonConfig_.tokenHiddenDim != debugHiddenDim) {
+        return;
+    }
+
+    uint32_t stageDesc = afterGmm1 ? 1010U : 1000U;
+    __gm__ uint8_t *moeInput = reinterpret_cast<__gm__ uint8_t *>(params_.peermemInfo.quantTokenScalePtr) +
+                               static_cast<uint64_t>(debugTokenIndex) * quantProcessConfig_.quantTokenScaleAlignBytes;
+    asc_dump_gm<uint8_t>(moeInput, stageDesc + 1U, quantProcessConfig_.quantTokenScaleAlignBytes);
+
+    GM_ADDR sharedInputBase = params_.workspaceInfo.sharedExpertInputPtr;
+    if constexpr (SHARED_INPUT_REUSES_MOE_QUANT) {
+        sharedInputBase = params_.peermemInfo.quantTokenScalePtr;
+    }
+    __gm__ uint8_t *sharedInput =
+        reinterpret_cast<__gm__ uint8_t *>(sharedInputBase) +
+        static_cast<uint64_t>(debugTokenIndex) * sharedQuantProcessConfig_.quantTokenScaleAlignBytes;
+    asc_dump_gm<uint8_t>(sharedInput, stageDesc + 2U, sharedQuantProcessConfig_.quantTokenScaleAlignBytes);
+
+    AscendC::printf("[MegaMoeDebug] shared GMM1 boundary: rank=%u, after=%u, token=%u\n", rankId_,
+                    static_cast<uint32_t>(afterGmm1), debugTokenIndex);
+    if (!afterGmm1) {
+        return;
+    }
+
+    constexpr uint32_t activationElementsPerByte = SharedQuantConfig::C_ELEMS_PER_BYTE;
+    uint64_t gmm1OutputDim = commonConfig_.gmm1OutputDim;
+    uint64_t activationWidth = gmm1OutputDim / ACTIVATION_N_HALF;
+    uint64_t activationDataBytes = activationWidth / activationElementsPerByte;
+    uint64_t activationScaleWidth =
+        Ops::Base::CeilDiv(activationWidth, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+
+    __gm__ bfloat16_t *gmm1Output =
+        reinterpret_cast<__gm__ bfloat16_t *>(params_.workspaceInfo.sharedExpertGmm1OutPtr) +
+        static_cast<uint64_t>(debugTokenIndex) * gmm1OutputDim;
+    __gm__ uint8_t *activationData =
+        reinterpret_cast<__gm__ uint8_t *>(params_.workspaceInfo.sharedExpertActivationDataPtr) +
+        static_cast<uint64_t>(debugTokenIndex) * activationDataBytes;
+    __gm__ uint8_t *activationScale =
+        reinterpret_cast<__gm__ uint8_t *>(params_.workspaceInfo.sharedExpertActivationScalePtr) +
+        static_cast<uint64_t>(debugTokenIndex) * activationScaleWidth *
+            sizeof(typename SharedQuantConfig::QuantScaleType);
+    asc_dump_gm<bfloat16_t>(gmm1Output, 1020U, static_cast<uint32_t>(gmm1OutputDim));
+    asc_dump_gm<uint8_t>(activationData, 1021U, static_cast<uint32_t>(activationDataBytes));
+    asc_dump_gm<uint8_t>(
+        activationScale, 1022U,
+        static_cast<uint32_t>(activationScaleWidth * sizeof(typename SharedQuantConfig::QuantScaleType)));
+}
+
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::RunSharedExpertGmm1Activation(
     const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape, const GmmExecutionConfig &gmmConfig,
@@ -997,12 +1057,17 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 {
     if (sharedExpertNum_ > 0) {
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM1);
+        DumpSharedExpertGmm1Boundary(false);
         ProcessSharedExpertGmm1();
     }
 
     // 等待所有 rank 完成本轮输入准备，再读取远端 dispatch 数据。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
     CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+    if (sharedExpertNum_ > 0) {
+        // 复用 CrossRankSyncInWorldSize 末尾已有的全 AIV 同步，确保观测核读取时共享激活已全部写完。
+        DumpSharedExpertGmm1Boundary(true);
+    }
 
     // Dispatch、GMM1、SwiGLU、GMM2 与 Combine 使用同一 wave 边界滚动推进。
     ProcessMoeExpertStages();
