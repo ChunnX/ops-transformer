@@ -85,8 +85,8 @@ private:
     __aicore__ inline CombineBufferConfig InitCombineBuffers();
     __aicore__ inline void RunSharedExpertGmm1Activation(const GMMAddrInfo &gmmAddrInfo,
                                                          const ProblemShape &problemShape,
-                                                         GmmRuntimeState &runtimeState, uint32_t sharedExpertIdx,
-                                                         int32_t &gmm1TileReadySequence);
+                                                         const GmmExecutionConfig &gmmConfig,
+                                                         GmmRuntimeState &runtimeState, uint32_t sharedExpertIdx);
     __aicore__ inline void ProcessSharedExpertGmm1();
     __aicore__ inline void ProcessMoeExpertStages();
     __aicore__ inline void ProcessSharedExpertGmm2();
@@ -117,7 +117,6 @@ private:
     ExpertWeightTensorListAddrs sharedWeightTensorListAddrs_{};
     MoeStageCommonConfig commonConfig_{};
     GmmExecutionConfig gmmExecutionConfig_{};
-    GmmExecutionConfig sharedGmmExecutionConfig_{};
     BlockWorkspaceContext countWorkspace_{};
     MoeSyncWorkspaceLayout syncWorkspaceLayout_{};
     // 单次 reset 批量元素数（与 syncWorkspaceLayout_ 描述的清零区域配套）。
@@ -140,6 +139,7 @@ private:
     uint32_t mGroupsPerWave_ = 1U;
     uint16_t gmm1PingPongIdx_ = 0;
     uint32_t startBlockIdx_ = 0;
+    int32_t gmTileSequence_ = 0;
     uint32_t blockNum_ = GetBlockNum();
     uint32_t blockAivNum_ = GetBlockNum() * 2;
     uint32_t blockIdx_ = GetBlockIdx() / GetTaskRation();
@@ -211,12 +211,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::InitGmm
 {
     gmmExecutionConfig_ = {.blockJob = {.jobIndex = blockIdx_, .totalJobs = blockNum_},
                            .isPerExpertWeightTensor = params_.tilingData->isPerExpertWeightTensor};
-    sharedGmmExecutionConfig_ = {
-        .blockJob = gmmExecutionConfig_.blockJob,
-        .isPerExpertWeightTensor = params_.tilingData->isPerExpertWeightTensor,
-        .inputLayout = {sharedQuantProcessConfig_.quantTokenScaleAlignBytes * SharedQuantConfig::A_ELEMS_PER_BYTE,
-                        sharedQuantProcessConfig_.quantTokenScaleAlignBytes /
-                            static_cast<uint32_t>(sizeof(typename SharedQuantConfig::QuantScaleType))}};
     countWorkspace_ = {.blockIdx = blockIdx_, .blockNum = params_.tilingData->aicNum};
     syncWorkspaceLayout_ = {.dispatchFlagSlotCountPerExpert = dispatchFlagSlotsPerExpert,
                             .activationFlagSlotCountPerExpert = dispatchFlagSlotsPerExpert,
@@ -401,8 +395,10 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::SendAnd
     uint32_t mxTempTensorSize = 2 * 1024;
     // 单个 xOutTensor 槽位与 dispatch 的 token-scale-weight 通信记录使用相同布局。
     uint32_t xOutTensorSize = quantProcessConfig_.quantTokenScaleAlignBytes;
-    if (sharedExpertNum_ > 0U && xOutTensorSize < sharedQuantProcessConfig_.quantTokenScaleAlignBytes) {
-        xOutTensorSize = sharedQuantProcessConfig_.quantTokenScaleAlignBytes;
+    if constexpr (!SHARED_INPUT_REUSES_MOE_QUANT) {
+        if (sharedExpertNum_ > 0U && xOutTensorSize < sharedQuantProcessConfig_.quantTokenScaleAlignBytes) {
+            xOutTensorSize = sharedQuantProcessConfig_.quantTokenScaleAlignBytes;
+        }
     }
     uint32_t xInAlignSize = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
     uint32_t expertPerCoreMax = Ops::Base::CeilDiv(worldSize_ * moeExpertPerRank_, blockAivNum_);
@@ -479,6 +475,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::SendAnd
     LocalTensor<int16_t> quantScratchSpan(TPosition::VECCALC, mxTempTensorAddr,
                                           (routeRingAddr - mxTempTensorAddr) / sizeof(int16_t));
     Duplicate<int16_t>(quantScratchSpan, 0, static_cast<int32_t>((routeRingAddr - mxTempTensorAddr) / sizeof(int16_t)));
+    PipeBarrier<PIPE_V>();
     SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID2>();
     uint32_t routeRingBytes = static_cast<uint32_t>(bufferConfig.bufferCount) * bufferConfig.bufferBytes;
     sendMaskScratch_.routeRingTensor = LocalTensor<uint8_t>(TPosition::VECCALC, routeRingAddr, routeRingBytes);
@@ -493,33 +490,32 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::SendAnd
 // ===============================================================
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::RunSharedExpertGmm1Activation(
-    const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape, GmmRuntimeState &runtimeState,
-    uint32_t sharedExpertIdx, int32_t &gmm1TileReadySequence)
+    const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape, const GmmExecutionConfig &gmmConfig,
+    GmmRuntimeState &runtimeState, uint32_t sharedExpertIdx)
 {
     uint32_t expertBeforeCnt = sharedExpertIdx * commonConfig_.tokenNum;
     if constexpr (SharedQuantConfig::AXW_MODE == AxWMode::A8W4) {
         RunGmm1A8W4<typename SharedQuantConfig::QuantOutType, SharedWeightType, bfloat16_t,
                     typename SharedQuantConfig::QuantScaleType, typename SharedQuantConfig::QuantScaleType, GMM1_TILE_M,
                     L1_TILE_M_256, false, true, true>(sharedEpilogueOp_, params_, problemShape, gmmAddrInfo,
-                                                      runtimeState.startBlockIdx, gmm1TileReadySequence,
-                                                      sharedGmmExecutionConfig_.blockJob, expertBeforeCnt,
-                                                      sharedExpertIdx, sharedGmmExecutionConfig_.inputLayout);
+                                                      runtimeState.startBlockIdx, gmTileSequence_, gmmConfig.blockJob,
+                                                      expertBeforeCnt, sharedExpertIdx, gmmConfig.inputLayout);
     } else {
         RunGmm1Generic<typename SharedQuantConfig::QuantOutType, typename SharedQuantConfig::ActivationQuantOutType,
                        typename SharedQuantConfig::QuantOutType, bfloat16_t, typename SharedQuantConfig::QuantScaleType,
                        typename SharedQuantConfig::QuantScaleType, SharedWeight1Format != FORMAT_ND, GMM1_TILE_M,
                        L1_TILE_M_256, false, true, GMM1_INTERLEAVED, true>(
             sharedEpilogueOp_, params_, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
-            runtimeState.vecSetSyncCom, sharedGmmExecutionConfig_.blockJob, expertBeforeCnt, sharedExpertIdx,
-            runtimeState.pingpongIdx, nullptr, true, sharedGmmExecutionConfig_.inputLayout);
+            runtimeState.vecSetSyncCom, gmmConfig.blockJob, expertBeforeCnt, sharedExpertIdx, runtimeState.pingpongIdx,
+            nullptr, true, gmmConfig.inputLayout);
     }
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessSharedExpertGmm1()
 {
-    if (sharedGmmExecutionConfig_.blockJob.totalJobs == 0U ||
-        sharedGmmExecutionConfig_.blockJob.jobIndex >= sharedGmmExecutionConfig_.blockJob.totalJobs) {
+    if (gmmExecutionConfig_.blockJob.totalJobs == 0U ||
+        gmmExecutionConfig_.blockJob.jobIndex >= gmmExecutionConfig_.blockJob.totalJobs) {
         return;
     }
     typename SharedBlockEpilogue::Params epilogueParams{
@@ -536,21 +532,28 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     Get<M_VALUE>(problemShape) = commonConfig_.tokenNum;
     Get<N_VALUE>(problemShape) = commonConfig_.gmm1OutputDim;
     Get<K_VALUE>(problemShape) = commonConfig_.tokenHiddenDim;
-    GMMAddrInfo gmmAddrInfo{};
-    GM_ADDR sharedInputBase = SHARED_INPUT_REUSES_MOE_QUANT ? params_.peermemInfo.quantTokenScalePtr :
-                                                              params_.workspaceInfo.sharedExpertInputPtr;
-    gmmAddrInfo.aGlobal = sharedInputBase;
-    gmmAddrInfo.aScaleGlobal = sharedInputBase + sharedQuantProcessConfig_.quantTokenAlignBytes;
+    GM_ADDR sharedInputBase = params_.workspaceInfo.sharedExpertInputPtr;
+    if constexpr (SHARED_INPUT_REUSES_MOE_QUANT) {
+        sharedInputBase = params_.peermemInfo.quantTokenScalePtr;
+    }
+    GMMAddrInfo gmmAddrInfo{
+        .aGlobal = sharedInputBase,
+        .aScaleGlobal = sharedInputBase + sharedQuantProcessConfig_.quantTokenAlignBytes,
+    };
     int32_t vecSetSyncCom = 0;
-    int32_t gmm1TileReadySequence = 0;
     GmmRuntimeState runtimeState{startBlockIdx_, vecSetSyncCom, gmm1PingPongIdx_};
+    GmmExecutionConfig sharedGmmConfig = gmmExecutionConfig_;
+    sharedGmmConfig.inputLayout = {
+        sharedQuantProcessConfig_.quantTokenScaleAlignBytes * SharedQuantConfig::A_ELEMS_PER_BYTE,
+        sharedQuantProcessConfig_.quantTokenScaleAlignBytes /
+            static_cast<uint32_t>(sizeof(typename SharedQuantConfig::QuantScaleType))};
+    constexpr bool isA8W4 = SharedQuantConfig::AXW_MODE == AxWMode::A8W4;
     for (uint32_t sharedExpertIdx = 0U; sharedExpertIdx < sharedExpertNum_; ++sharedExpertIdx) {
         UpdateSharedExpertGmm1GlobalBuffer<SharedWeightType, typename SharedQuantConfig::ActivationQuantOutType,
-                                           typename SharedQuantConfig::QuantScaleType,
-                                           SharedQuantConfig::AXW_MODE == AxWMode::A8W4>(
-            commonConfig_, sharedGmmExecutionConfig_, params_.workspaceInfo, sharedWeightTensorListAddrs_,
-            sharedEpilogueOp_, gmmAddrInfo, sharedExpertIdx);
-        RunSharedExpertGmm1Activation(gmmAddrInfo, problemShape, runtimeState, sharedExpertIdx, gmm1TileReadySequence);
+                                           typename SharedQuantConfig::QuantScaleType, isA8W4>(
+            commonConfig_, sharedGmmConfig, params_.workspaceInfo, sharedWeightTensorListAddrs_, sharedEpilogueOp_,
+            gmmAddrInfo, sharedExpertIdx);
+        RunSharedExpertGmm1Activation(gmmAddrInfo, problemShape, sharedGmmConfig, runtimeState, sharedExpertIdx);
     }
     EndSync<GMM1_INTERLEAVED>(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
     gmm1PingPongIdx_ = 0;
@@ -570,13 +573,13 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     for (uint32_t sharedExpertIdx = 0U; sharedExpertIdx < sharedExpertNum_; ++sharedExpertIdx) {
         UpdateSharedExpertGmm2GlobalBuffer<typename SharedQuantConfig::ActivationQuantOutType, SharedWeightType,
                                            typename SharedQuantConfig::QuantScaleType, GMM1_TILE_M>(
-            commonConfig_, sharedGmmExecutionConfig_, params_.workspaceInfo, sharedWeightTensorListAddrs_, gmmAddrInfo,
+            commonConfig_, gmmExecutionConfig_, params_.workspaceInfo, sharedWeightTensorListAddrs_, gmmAddrInfo,
             sharedExpertIdx);
         RunGmm2ByMode<COMBINE_NO_QUANT, typename SharedQuantConfig::QuantOutType,
                       typename SharedQuantConfig::ActivationQuantOutType, SharedWeightType,
                       typename SharedQuantConfig::QuantScaleType, SharedQuantConfig::AXW_MODE,
                       SharedWeight2Format != FORMAT_ND, GMM1_TILE_M, TopkWeightsPrefetch, true, GMM1_INTERLEAVED, true>(
-            sharedGmmExecutionConfig_, gmmAddrInfo, problemShape, runtimeState, nullptr, true);
+            gmmExecutionConfig_, gmmAddrInfo, problemShape, runtimeState, nullptr, true);
     }
 }
 
@@ -615,10 +618,10 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
         plannedDispatchPosition = nextDispatchRange.end;
         dispatchRange.end = nextDispatchRange.end;
     }
-    DispatchTokenRange<typename MoeQuantConfig::QuantStorageType, typename MoeQuantConfig::QuantScaleType,
-                       GMM1_TILE_M, TopkWeightsPrefetch>(
-        tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
-        g_winRankAddr_, tokenDispatchScratch_, dispatchRange);
+    DispatchTokenRange<typename MoeQuantConfig::QuantStorageType, typename MoeQuantConfig::QuantScaleType, GMM1_TILE_M,
+                       TopkWeightsPrefetch>(tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob,
+                                            syncWorkspaceLayout_, params_, g_winRankAddr_, tokenDispatchScratch_,
+                                            dispatchRange);
     // 整 WAVE 的数据和 ready flag 发布完成后，再提交 Dispatch 进度。
     dispatchPosition = plannedDispatchPosition;
     return dispatchPosition;
@@ -813,9 +816,9 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                       typename MoeQuantConfig::ActivationQuantOutType, MoeWeightType,
                       typename MoeQuantConfig::QuantScaleType, MoeQuantConfig::AXW_MODE, MoeWeight2Format != FORMAT_ND,
                       GMM1_TILE_M, TopkWeightsPrefetch, false, GMM1_INTERLEAVED, true,
-                      CombineQuantMode == COMBINE_NO_QUANT>(
-            gmmExecutionConfig_, gmm2AddrInfo, gmm2WaveProblemShape, runtimeState, nullptr, isWholeExpert,
-            gmm2Position.tokenIndexInExpert, &params_, tileSequence);
+                      CombineQuantMode == COMBINE_NO_QUANT>(gmmExecutionConfig_, gmm2AddrInfo, gmm2WaveProblemShape,
+                                                            runtimeState, nullptr, isWholeExpert,
+                                                            gmm2Position.tokenIndexInExpert, &params_, tileSequence);
 
         gmm2Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
         gmm2Position.globalTokenIndex += waveRowCount;
@@ -1104,8 +1107,10 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,
                                      sendMaskScratch_);
     ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
-    if constexpr (g_coreType == AIV) {
-        PipeBarrier<PIPE_ALL>();
+    if (sharedExpertNum_ == 0U) {
+        if constexpr (g_coreType == AIV) {
+            PipeBarrier<PIPE_ALL>();
+        }
     }
     SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算
 
