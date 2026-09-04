@@ -179,10 +179,10 @@ QuantMatmulReduceScatterImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockSchedu
     uint64_t sumbf16Offset = localfp32Offset + paddingN * sizeof(float);
 
     auto vectorLayout = asc::te::make_layout(asc::te::make_shape(paddingN));
-    auto sumfp32UbTensor = AscendC::Te::MakeTensor(
-        AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, float>(0),
-        AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn, AscendC::Te::LayoutTraitDefault<float>>{}(
-            1, paddingN));
+    // auto sumfp32UbTensor = AscendC::Te::MakeTensor(
+    //     AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, float>(0),
+    //     AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn, AscendC::Te::LayoutTraitDefault<float>>{}(
+    //         1, paddingN));
     auto sumfp32UbVecTensor =
         asc::te::make_tensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, float>(0), vectorLayout);
     for (uint32_t tileIdx = 0; tileIdx < rowNum; ++tileIdx) {
@@ -205,10 +205,10 @@ QuantMatmulReduceScatterImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockSchedu
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(FLAG_ID_NUM_ONE);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(FLAG_ID_NUM_ONE);
 
-            auto fp32UbTensor = AscendC::Te::MakeTensor(
-                AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, float>(localfp32Offset),
-                AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn, AscendC::Te::LayoutTraitDefault<float>>{}(
-                    1, paddingN));
+            // auto fp32UbTensor = AscendC::Te::MakeTensor(
+            //     AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, float>(localfp32Offset),
+            //     AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn, AscendC::Te::LayoutTraitDefault<float>>{}(
+            //         1, paddingN));
             auto fp32UbVecTensor = asc::te::make_tensor(
                 AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, float>(localfp32Offset), vectorLayout);
 
