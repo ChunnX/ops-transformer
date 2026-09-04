@@ -30,12 +30,12 @@
  * attention/common/op_kernel/arch35/vf/vf_flash_decode.h, with:
  *   - an extra rowSumUb / rowSumLocal parameter (per-row original rowSum,
  *     pre-inverted to 1/rowSum by CopyLseIn);
- *   - one MicroAPI::Mul (was Div) per z-block, multiplying vregAccumOut by the
+ *   - one Reg::Mul (was Div) per z-block, multiplying vregAccumOut by the
  *     broadcast 1/rowSum before the existing Mul(..., vregLse, ...) / Add.
  *
  * Include ordering: must be included AFTER
  *   ../../../../../common/op_kernel/arch35/vf/vf_flash_decode.h
- * which provides FLT_ZERO / FLT_MAX_NEW and the MicroAPI types.
+ * which provides FLT_ZERO / FLT_MAX_NEW and the Reg types.
  */
 #ifndef VF_FLASH_DECODE_MSA_H
 #define VF_FLASH_DECODE_MSA_H
@@ -49,33 +49,33 @@ __simd_vf__ void ReduceFinalRes_0_VF(__ubuf__ T * dstUb, __ubuf__ T * lseUb, __u
                                       uint32_t dealNum1Reg, uint32_t repStride, const uint16_t floatRepSize,
                                       const uint16_t dLoops, uint32_t dealRowCount, uint32_t splitKVIndex)
 {
-    MicroAPI::RegTensor<T> vregDst;
-    MicroAPI::RegTensor<T> vregLse;
-    MicroAPI::RegTensor<T> vregAccumOut;
-    MicroAPI::RegTensor<T> vregRowSum;
+    Reg::RegTensor<T> vregDst;
+    Reg::RegTensor<T> vregLse;
+    Reg::RegTensor<T> vregAccumOut;
+    Reg::RegTensor<T> vregRowSum;
     uint32_t n = dealNum1Reg;
-    MicroAPI::MaskReg pregTailN = MicroAPI::UpdateMask<T>(n);
+    Reg::MaskReg pregTailN = Reg::UpdateMask<T>(n);
 
     for (k = 0; k < static_cast<uint16_t>(dealRowCount); k++) {  // repeat g
 
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_BLK>(
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_BLK>(
             vregLse,
             (__ubuf__ float*&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
         // rowSum is per-row (constant across the D-dim z-blocks): broadcast-load once per row.
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vregRowSum, (__ubuf__ float*&)rowSumUb + k);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vregRowSum, (__ubuf__ float*&)rowSumUb + k);
         for (z = 0; z < dLoops; z++) {
             // splitKVIndex=0的场景，vregDst不需要load，直接置0
-            MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vregDst, FLT_ZERO, pregTailN);
-            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(
+            Reg::Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vregDst, FLT_ZERO, pregTailN);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(
                 vregAccumOut, (__ubuf__ float*&)accumOutUb + k * repStride * 8 + z * floatRepSize);
             // Embedded regbase Mul: normalize Phase1 accumOut by its original per-row rowSum.
             // rowSum was pre-inverted to 1/rowSum by CopyLseIn's Reciprocal on the compact
             // lseSumTmpBuf, so this is a Mul (cheaper than Div). Broadcast-loaded via
             // DIST_BRC_B32 (one reciprocal per row).
-            MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vregAccumOut, vregAccumOut, vregRowSum, pregTailN);
-            MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vregAccumOut, vregLse, vregAccumOut, pregTailN);
-            MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregDst, vregDst, vregAccumOut, pregTailN);
-            MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+            Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(vregAccumOut, vregAccumOut, vregRowSum, pregTailN);
+            Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(vregAccumOut, vregLse, vregAccumOut, pregTailN);
+            Reg::Add<T, Reg::MaskMergeMode::ZEROING>(vregDst, vregDst, vregAccumOut, pregTailN);
+            Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ float*&)dstUb + k * repStride * 8 + z * floatRepSize, vregDst, pregTailN);
         }
     }
@@ -111,34 +111,34 @@ __simd_vf__ void ReduceFinalRes_Rest_VF(
     const uint16_t floatRepSize, const uint16_t dLoops,
     uint32_t dealRowCount, uint32_t splitKVIndex)
 {
-    MicroAPI::RegTensor<T> vregDst;
-    MicroAPI::RegTensor<T> vregLse;
-    MicroAPI::RegTensor<T> vregAccumOut;
-    MicroAPI::RegTensor<T> vregRowSum;
+    Reg::RegTensor<T> vregDst;
+    Reg::RegTensor<T> vregLse;
+    Reg::RegTensor<T> vregAccumOut;
+    Reg::RegTensor<T> vregRowSum;
     uint32_t n = dealNum1Reg;
-    MicroAPI::MaskReg pregTailN = MicroAPI::UpdateMask<T>(n);
+    Reg::MaskReg pregTailN = Reg::UpdateMask<T>(n);
     uint32_t stride = (0x1 << 16) | 0x8;
 
     for (k = 0; k < static_cast<uint16_t>(dealRowCount); k++) {  // repeat g
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_BLK>(
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_BLK>(
             vregLse,
             (__ubuf__ float*&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
         // rowSum is per-row (constant across the D-dim z-blocks): broadcast-load once per row.
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vregRowSum, (__ubuf__ float*&)rowSumUb + k);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vregRowSum, (__ubuf__ float*&)rowSumUb + k);
         for (z = 0; z < dLoops; z++) {
             // splitKVIndex>0的场景，reg_dst需要先从dstUb中load之前的结果，再进行add
-            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(
                 vregDst, (__ubuf__ float*&)dstUb + k * repStride * 8 + z * floatRepSize);
-            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(
                 vregAccumOut, (__ubuf__ float*&)accumOutUb + k * repStride * 8 + z * floatRepSize);
             // Embedded regbase Mul: normalize Phase1 accumOut by its original per-row rowSum.
             // rowSum was pre-inverted to 1/rowSum by CopyLseIn's Reciprocal on the compact
             // lseSumTmpBuf, so this is a Mul (cheaper than Div). Broadcast-loaded via
             // DIST_BRC_B32 (one reciprocal per row).
-            MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vregAccumOut, vregAccumOut, vregRowSum, pregTailN);
-            MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vregAccumOut, vregLse, vregAccumOut, pregTailN);
-            MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregDst, vregDst, vregAccumOut, pregTailN);
-            MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+            Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(vregAccumOut, vregAccumOut, vregRowSum, pregTailN);
+            Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(vregAccumOut, vregLse, vregAccumOut, pregTailN);
+            Reg::Add<T, Reg::MaskMergeMode::ZEROING>(vregDst, vregDst, vregAccumOut, pregTailN);
+            Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ float*&)dstUb + k * repStride * 8 + z * floatRepSize, vregDst, pregTailN);
         }
     }
@@ -211,7 +211,7 @@ __simd_vf__ void ReduceFinalRes_0_VF_BF16(__ubuf__ Tdst * dstUb, __ubuf__ float 
                                           uint16_t k, uint32_t dealRowCount,
                                           uint32_t splitKVIndex, uint32_t repStride)
 {
-    using namespace AscendC::MicroAPI;
+    using namespace AscendC::Reg;
     constexpr static CastTrait castUpZero = {
         RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
         AscendC::RoundMode::UNKNOWN};
@@ -266,7 +266,7 @@ __simd_vf__ void ReduceFinalRes_Rest_VF_BF16(__ubuf__ Tdst * dstUb, __ubuf__ flo
                                              uint16_t k, uint32_t dealRowCount,
                                              uint32_t splitKVIndex, uint32_t repStride)
 {
-    using namespace AscendC::MicroAPI;
+    using namespace AscendC::Reg;
     constexpr static CastTrait castUpZero = {
         RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
         AscendC::RoundMode::UNKNOWN};
