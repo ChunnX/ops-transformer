@@ -65,9 +65,9 @@ __aicore__ inline CombineTokenRoute LoadCombineTokenRoute(const LocalTensor<int3
 
 __aicore__ inline bool IsCombineProbeRoute(const MoeStageCommonConfig &common, const CombineTokenRoute &route)
 {
-    return common.tokenNum == 10072U && common.tokenHiddenDim == 3072U &&
-           route.dstRankId == COMBINE_PROBE_DST_RANK_ID && route.tokenIdx == COMBINE_PROBE_TOKEN_INDEX &&
-           route.topkIdx >= COMBINE_PROBE_FIRST_TOPK_INDEX && route.topkIdx <= COMBINE_PROBE_LAST_TOPK_INDEX;
+    return common.tokenHiddenDim == 3072U && route.dstRankId == COMBINE_PROBE_DST_RANK_ID &&
+           route.tokenIdx == COMBINE_PROBE_TOKEN_INDEX && route.topkIdx >= COMBINE_PROBE_FIRST_TOPK_INDEX &&
+           route.topkIdx <= COMBINE_PROBE_LAST_TOPK_INDEX;
 }
 
 // 目标卡 combine 接收区按 (token, topk) 展开的紧凑行号。
