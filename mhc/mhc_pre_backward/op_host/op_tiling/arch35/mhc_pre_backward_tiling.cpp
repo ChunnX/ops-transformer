@@ -333,7 +333,6 @@ void MhcPreBackwardTiling::SetMatmulC1Tiling(matmul_tiling::MatmulApiTiling &mm)
     mm.SetBias(false);
     mm.SetShape(N_ * N_ + 2 * N_, C1_SET_SHAPE_M_BASE, C1_SET_SHAPE_K);
     mm.SetOrgShape(N_ * N_ + 2 * N_, N_ * D_, totalLength_);
-    mm.SetTraverse(matmul_tiling::MatrixTraverse::FIRSTN);
     mm.SetBufferSpace(-1, -1, -1);
 }
 
