@@ -52,7 +52,7 @@ namespace ge {
 */
 #ifndef OPS_PROTO_DEF_ATTENTIONSCORE
 #define OPS_PROTO_DEF_ATTENTIONSCORE
-        REG_OP(AttentionScore)
+REG_OP(AttentionScore)
     .INPUT(query, TensorType({DT_FLOAT16}))
     .INPUT(key, TensorType({DT_FLOAT16}))
     .INPUT(value, TensorType({DT_FLOAT16}))
