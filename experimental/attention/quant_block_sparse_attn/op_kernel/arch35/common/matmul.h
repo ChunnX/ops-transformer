@@ -693,7 +693,7 @@ __aicore__ inline void MxMatmulFullReuseB(const LocalTensor<A> &aL1Tensor, const
     params.cmatrixSource = false;
     params.unitFlag = param.unitFlag;
     constexpr uint32_t singleRowM = 1U;
-    // MMAD 的 M 轴按 16 行分形粒度执行，单行尾块需要扩展为一个完整分形。
+    // M=1 使用 MMAD 的最小 16 行分形执行；其余 M 值保持真实行数，由底层 matmul 处理尾块。
     if (params.m == singleRowM) {
         params.m = ONE_FRACTAL_H_ELEMENT;
     }
