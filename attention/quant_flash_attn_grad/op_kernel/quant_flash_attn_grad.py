@@ -84,7 +84,7 @@ VA0 = 0
 VA1 = _align_up(VA0 + VB4_KV)
 VA2 = _align_up(VA1 + VB4_KV)
 VA3 = _align_up(VA2 + VB4_KV)
-VA4 = VA3 + TS_HALF * 4
+VA4 = VA3 + TS * HALF_D_SIZE * 4
 VAP_0 = 0
 VAP_1 = _align_up(VAP_0 + VB_P)
 MA0 = 0
@@ -2572,7 +2572,7 @@ def quant_flash_attn_grad(
     )
     dq_vec = pl.make_tile_group(
         type=pl.TileType(
-            shape=[TS, TS], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+            shape=[TS, HALF_D_SIZE], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
         ),
         addrs=VA3,
         mutex_ids=[31],
