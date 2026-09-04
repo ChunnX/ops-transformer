@@ -66,12 +66,13 @@ std::tuple<at::Tensor, at::Tensor> FlashAttn(
         sSize = q.size(2);
         dSize = q.size(3);
     }
-    // attention_out 的 D 维取 v 的 head_dim（支持 qk != v）; PA_NZ 布局的 D 在 index 3
+    // attention_out 的 D 维取 v 的 head_dim（支持 qk != v）
+    // PA_NZ 布局 v 为 (blocks, N2, D/16, block_size, 16)，D = dim2*dim4；TND 为 (T,N,D)
     int64_t dSizeV = dSize;
     if (v.dim() == DIM_THREE) {
         dSizeV = v.size(DIM_TWO);
     } else if (layoutKv == "PA_NZ") {
-        dSizeV = v.size(DIM_THREE);
+        dSizeV = v.size(DIM_TWO) * v.size(v.dim() - 1);
     } else {
         dSizeV = v.size(v.dim() - 1);
     }

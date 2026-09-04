@@ -142,10 +142,12 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
         headDimV = vShape->GetDim(2);
     } else if (layoutKvStr == "PA_ND" && vShape->GetDimNum() >= 4) {
         headDimV = vShape->GetDim(3);
-    } else if ((layoutKvStr == "PA_BBND" || layoutKvStr == "PA_BNBD" || layoutKvStr == "PA_NZ") &&
-               vShape->GetDimNum() >= 4) {
-        // PA_BBND (Bn,Bs,N2,D) / PA_BNBD (Bn,N2,Bs,D) / PA_NZ (Bn,N2,Bs/16,D,16) 的 D 维均在 index 3
+    } else if ((layoutKvStr == "PA_BBND" || layoutKvStr == "PA_BNBD") && vShape->GetDimNum() >= 4) {
+        // PA_BBND (Bn,Bs,N2,D) / PA_BNBD (Bn,N2,Bs,D) 的 D 维在 index 3
         headDimV = vShape->GetDim(3);
+    } else if (layoutKvStr == "PA_NZ" && vShape->GetDimNum() >= 5) {
+        // PA_NZ (Bn,N2,D/16,block_size,16) 的 D = dim2 * dim4
+        headDimV = vShape->GetDim(2) * vShape->GetDim(4);
     }
 
     gert::Shape *attnOutShape = context->GetOutputShape(OUTPUT_IDX_ATTN_OUT);

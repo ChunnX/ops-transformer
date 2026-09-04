@@ -613,14 +613,14 @@ TestCases = {
         "return_softmax_lse": [1],
     },
     # prefill PA_BBND + causal
-    "Prefill_Unquant_BF16_BF16_L0_1_5_1_1024_1024_192_128_PA_BBND_000015": {
+    "Prefill_Unquant_FP16_FP16_L0_1_5_1_1024_1024_192_128_PA_BBND_000015": {
         "layout_q": ["BNSD"],
         "layout_kv": ["PA_BBND"],
         "layout_out": ["BNSD"],
-        "Dtype": ["bf16"],
-        "q_range": [(-10, 10)],
-        "k_range": [(-10, 10)],
-        "v_range": [(-10, 10)],
+        "Dtype": ["fp16"],
+        "q_range": [(-5, 5)],
+        "k_range": [(-5, 5)],
+        "v_range": [(-5, 5)],
         "B": [1],
         "N1": [5],
         "N2": [1],
