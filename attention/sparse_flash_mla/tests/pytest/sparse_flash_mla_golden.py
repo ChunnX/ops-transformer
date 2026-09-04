@@ -1672,9 +1672,13 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
     else:
         raise ValueError(f"layout_kv is not support {layout_kv}")
 
-    seqused_cmp_kv, cmp_residual_kv = resolve_compressed_actual_lengths(
-        seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, cmp_ratio
-    )
+    if template_mode in ("SWA", "ORI_SPARSE"):
+        seqused_cmp_kv = None
+        cmp_residual_kv = None
+    else:
+        seqused_cmp_kv, cmp_residual_kv = resolve_compressed_actual_lengths(
+            seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, cmp_ratio
+        )
     # 路由到三个算子的逻辑：
     template_idx = 0
 

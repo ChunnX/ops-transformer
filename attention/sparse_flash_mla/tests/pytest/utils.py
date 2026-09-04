@@ -503,14 +503,15 @@ def generate_case_with_default_param(
         and cmp_ratio is not None
     ):
         case_param["seqused_ori_kv"] = generate_seqused(case_param["cu_seqlens_ori_kv"])
-        case_param["seqused_cmp_kv"] = [
-            x // cmp_ratio for x in case_param["seqused_ori_kv"]
-        ]
-        case_param["cu_seqlens_cmp_kv"] = generate_cu_seqlens(
-            case_param["seqused_cmp_kv"]
-        )
-        print("cu_seqlens_cmp_kv auto set to: ", case_param["cu_seqlens_cmp_kv"])
-        case_param["T3"] = case_param["cu_seqlens_cmp_kv"][-1]
+        if case_param.get("template_mode") not in ("SWA", "ORI_SPARSE"):
+            case_param["seqused_cmp_kv"] = [
+                x // cmp_ratio for x in case_param["seqused_ori_kv"]
+            ]
+            case_param["cu_seqlens_cmp_kv"] = generate_cu_seqlens(
+                case_param["seqused_cmp_kv"]
+            )
+            print("cu_seqlens_cmp_kv auto set to: ", case_param["cu_seqlens_cmp_kv"])
+            case_param["T3"] = case_param["cu_seqlens_cmp_kv"][-1]
 
     if case_param["seqused_ori_kv"] is None and layout_kv != "TND":
         case_param["seqused_ori_kv"] = fill_random_used_len(
