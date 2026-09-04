@@ -556,7 +556,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     int32_t ret = hcomm_.BatchCommit(batchHandle);
                     ascendc_assert(ret == 0, "BatchCommit data failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
                                    dstRank);
-                    ret = hcomm_.Drain(batchHandle);
+                    ret = hcomm_.Drain<PIPE_MTE3>(batchHandle);
                     ascendc_assert(ret == 0, "per-rank data drain failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
                                    dstRank);
 
@@ -608,7 +608,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     int32_t ret = hcomm_.BatchCommit(batchHandle);
                     ascendc_assert(ret == 0, "BatchCommit flag failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
                                    dstRank);
-                    ret = hcomm_.Drain(batchHandle);
+                    ret = hcomm_.Drain<PIPE_MTE3>(batchHandle);
                     ascendc_assert(ret == 0, "per-rank flag drain failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
                                    dstRank);
                 }
