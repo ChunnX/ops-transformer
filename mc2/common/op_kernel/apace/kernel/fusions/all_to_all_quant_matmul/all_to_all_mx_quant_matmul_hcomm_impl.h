@@ -251,10 +251,11 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
         commState_.dataHeadHandle_ = commState_.hccl_.template AlltoAll<true>(
             x1_, commOutGM_, headSendCount, static_cast<AscendC::HcclDataType>(x1HcclDataType_), dataStrideCount,
             static_cast<uint8_t>(commTiling.splitAxisTileCnt));
-    }
 #if MC2_DFX_ENABLE
         runtimeInfo_.IncCommitCount();
 #endif
+    }
+    
     if (commTiling.splitAxisTailCnt > 0) {
         uint64_t headOffset = static_cast<uint64_t>(commTiling.splitAxisTileCnt) * commTiling.splitAxisTileSize *
                               rankForComm * sizeof(X1Type);
