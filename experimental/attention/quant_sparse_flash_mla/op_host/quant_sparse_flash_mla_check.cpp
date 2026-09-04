@@ -36,10 +36,14 @@ std::string QSMLADataTypeToSerialString(ge::DataType type)
 std::string QSMLALayoutToSerialString(QSMLALayout layout)
 {
     switch (layout) {
-        case QSMLALayout::BSND: return "BSND";
-        case QSMLALayout::TND: return "TND";
-        case QSMLALayout::PA_BBND: return "PA_BBND";
-        default: return "UNKNOWN";
+        case QSMLALayout::BSND:
+            return "BSND";
+        case QSMLALayout::TND:
+            return "TND";
+        case QSMLALayout::PA_BBND:
+            return "PA_BBND";
+        default:
+            return "UNKNOWN";
     }
 }
 
@@ -63,17 +67,17 @@ std::string GetShapeStr(gert::Shape shape)
 
 bool QSMLATilingCheck::HasAxis(const QSMLAAxis &axis, const QSMLALayout &layout, const gert::Shape &shape) const
 {
-    const auto& layoutIt = QSMLA_LAYOUT_AXIS_MAP.find(layout);
+    const auto &layoutIt = QSMLA_LAYOUT_AXIS_MAP.find(layout);
     if (layoutIt == QSMLA_LAYOUT_AXIS_MAP.end()) {
         return false;
     }
 
-    const std::vector<QSMLAAxis>& axes = layoutIt->second;
-    const auto& axisIt = std::find(axes.begin(), axes.end(), axis);
+    const std::vector<QSMLAAxis> &axes = layoutIt->second;
+    const auto &axisIt = std::find(axes.begin(), axes.end(), axis);
     if (axisIt == axes.end()) {
         return false;
     }
-    const auto& dimIt = QSMLA_LAYOUT_DIM_MAP.find(layout);
+    const auto &dimIt = QSMLA_LAYOUT_DIM_MAP.find(layout);
     if (dimIt == QSMLA_LAYOUT_DIM_MAP.end() || dimIt->second != shape.GetDimNum()) {
         return false;
     }
@@ -82,8 +86,8 @@ bool QSMLATilingCheck::HasAxis(const QSMLAAxis &axis, const QSMLALayout &layout,
 
 size_t QSMLATilingCheck::GetAxisIdx(const QSMLAAxis &axis, const QSMLALayout &layout) const
 {
-    const std::vector<QSMLAAxis>& axes = QSMLA_LAYOUT_AXIS_MAP.find(layout)->second;
-    const auto& axisIt = std::find(axes.begin(), axes.end(), axis);
+    const std::vector<QSMLAAxis> &axes = QSMLA_LAYOUT_AXIS_MAP.find(layout)->second;
+    const auto &axisIt = std::find(axes.begin(), axes.end(), axis);
     return std::distance(axes.begin(), axisIt);
 }
 
@@ -160,12 +164,11 @@ void QSMLATilingCheck::Init()
 ge::graphStatus QSMLATilingCheck::Process()
 {
     Init();
-    if (CheckSinglePara() != ge::GRAPH_SUCCESS ||
-        CheckParaExistence() != ge::GRAPH_SUCCESS ||
+    if (CheckSinglePara() != ge::GRAPH_SUCCESS || CheckParaExistence() != ge::GRAPH_SUCCESS ||
         CheckFeature() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-}
+} // namespace optiling
