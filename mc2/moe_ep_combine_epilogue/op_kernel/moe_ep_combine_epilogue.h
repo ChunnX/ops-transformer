@@ -63,11 +63,12 @@ using namespace AscendC;
 #define TemplateMoeEpCombineEpilogueTypeFunc XType, HasTopkWeight
 
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
-static constexpr uint32_t COMBINE_CHANNEL_COUNT = 1U;
+static constexpr uint32_t COMBINE_CHANNEL_COUNT = 7U;
 static constexpr uint32_t FLAG_CHUNK_RANKS = 64U;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint32_t STATE_OFFSET = 32U;
 constexpr uint32_t DOUBLE_BUFFER_NUM = 2U;
+static constexpr uint32_t HCOMM_CHANNEL_TOKEN_CAPACITY = 32368U;
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
 class MoeEpCombineEpilogue {
@@ -157,7 +158,22 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     rankId_ = mc2Context_->epRankId;
-    combineChannelCount_ = COMBINE_CHANNEL_COUNT;
+    uint32_t channelsPerRank = mc2Context_->channelsPerRank;
+    if (channelsPerRank == 0U || (epWorldSize_ > 0U && channelsPerRank > Mc2Aclnn::HCCL_MAX_RANK_SIZE / epWorldSize_)) {
+        channelsPerRank = 1U;
+    }
+    if (channelsPerRank == 1U) {
+        combineChannelCount_ = 1U;
+    } else {
+        const uint64_t tokenSlotCount = static_cast<uint64_t>(numMaxTokensPerRank_) * topK_;
+        combineChannelCount_ =
+            static_cast<uint32_t>(Ceil(tokenSlotCount, static_cast<uint64_t>(HCOMM_CHANNEL_TOKEN_CAPACITY)));
+        combineChannelCount_ = combineChannelCount_ == 0U ? 1U : combineChannelCount_;
+        const uint32_t availableChannelCount =
+            channelsPerRank < COMBINE_CHANNEL_COUNT ? channelsPerRank : COMBINE_CHANNEL_COUNT;
+        combineChannelCount_ =
+            combineChannelCount_ < availableChannelCount ? combineChannelCount_ : availableChannelCount;
+    }
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }

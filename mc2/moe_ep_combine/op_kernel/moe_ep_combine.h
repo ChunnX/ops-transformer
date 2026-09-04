@@ -71,8 +71,9 @@ using namespace AscendC;
 #define HCOMM_INIT_SIZE 512UL
 
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
-static constexpr uint32_t COMBINE_CHANNEL_COUNT = 1U;
+static constexpr uint32_t COMBINE_CHANNEL_COUNT = 7U;
 static constexpr uint32_t RECV_META_FIELDS = 4;
+static constexpr uint32_t HCOMM_CHANNEL_TOKEN_CAPACITY = 32368U;
 // Keep one SQ entry unused. A token that would make the following token cross this limit requests a CQE and drains.
 static constexpr uint32_t HCOMM_SQ_MAX_PENDING = 32767U;
 // PR 111 requires each committed batch to contain fewer WQEBBs than the SQ depth.
@@ -251,7 +252,18 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
         channelsPerRank_ = 1;
     }
 
-    combineChannelCount_ = COMBINE_CHANNEL_COUNT;
+    if (channelsPerRank_ == 1U) {
+        combineChannelCount_ = 1U;
+    } else {
+        const uint64_t tokenSlotCount = static_cast<uint64_t>(numMaxTokensPerRank_) * topK_;
+        combineChannelCount_ =
+            static_cast<uint32_t>(Ceil(tokenSlotCount, static_cast<uint64_t>(HCOMM_CHANNEL_TOKEN_CAPACITY)));
+        combineChannelCount_ = combineChannelCount_ == 0U ? 1U : combineChannelCount_;
+        const uint32_t availableChannelCount =
+            channelsPerRank_ < COMBINE_CHANNEL_COUNT ? channelsPerRank_ : COMBINE_CHANNEL_COUNT;
+        combineChannelCount_ =
+            combineChannelCount_ < availableChannelCount ? combineChannelCount_ : availableChannelCount;
+    }
 
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];

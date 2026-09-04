@@ -56,6 +56,7 @@ constexpr int64_t NETWORK_DIRECT = 0;
 constexpr int64_t NETWORK_HYBRID = 1;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int DIM_TWO = 2;
+constexpr uint32_t MOE_UBC_CHANNEL_NUM = 7U;
 constexpr uint32_t MOE_CHANNEL_NOTIFY_NUM = 3U;
 constexpr int64_t SEND_COUNTS_ALIGN_FACTOR = 8;
 
@@ -789,6 +790,16 @@ private:
         CheckProtocolSupport(commHandle, layerList, layerNum, protocol);
     }
 
+    bool HasUbGPeer() const
+    {
+        for (const auto &entry : rankLinkMap_) {
+            if (entry.second.protocol == CommProtocol::COMM_PROTOCOL_UB_RTP) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     void InitHcclChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId, uint32_t channelsPerRank,
                          const CommProtocol &protocol, std::vector<HcclChannelDesc> &channelDesc)
     {
@@ -826,7 +837,12 @@ private:
     {
         TORCH_CHECK(rankDim >= HCCL_MIN_RANK_SIZE && rankDim <= HCCL_MAX_RANK_SIZE, "Invalid HCCL rank size ", rankDim);
         uint32_t remoteRankNum = rankDim - 1;
+        bool hasUbGPeer = HasUbGPeer();
+        uint32_t channelCapacity = HCCL_MAX_RANK_SIZE / rankDim;
         context.channelsPerRank = 1U;
+        if (!hasUbGPeer) {
+            context.channelsPerRank = channelCapacity < MOE_UBC_CHANNEL_NUM ? channelCapacity : MOE_UBC_CHANNEL_NUM;
+        }
         TORCH_CHECK(context.channelsPerRank > 0, "No HCCL channel capacity for rank size ", rankDim);
         TORCH_CHECK(context.channelsPerRank <= HCCL_MAX_RANK_SIZE / rankDim,
                     "HCCL channel handles exceed capacity, rank size ", rankDim, ", channels per rank ",
