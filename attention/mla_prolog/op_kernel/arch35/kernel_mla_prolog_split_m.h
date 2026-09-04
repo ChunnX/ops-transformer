@@ -1762,7 +1762,6 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::QcQrSplitRopeQr(
 {
     // 循环singleNumHeadSize次
     while (colOffsetRope + baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope <= colOffsetVecEnd) {
-        GlobalTensor<ropeOutputType> outputGmRope = qrOutGm_[ropeQrResOffset];
         LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
         LocalTensor<ropeOutputType> outputLocalRope = shareTmpUb.ReinterpretCast<ropeOutputType>();
         LocalTensor<uint8_t> ropeShareTmpUb =
