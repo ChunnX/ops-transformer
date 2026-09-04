@@ -26,6 +26,7 @@
 #include <atomic>
 #include <cstdint>
 #include <algorithm>
+#include <mutex>
 #include <unordered_map>
 
 // CANN ACL Runtime API
@@ -58,8 +59,8 @@ constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int64_t MB_SIZE = 1024LL * 1024LL;
 constexpr int64_t HUGE1G_SIZE = 1024ULL * 1024ULL * 1024ULL;
 constexpr int DIM_TWO = 2;
-constexpr uint32_t MEM_HANDLE_NUM = 1U;
 constexpr uint32_t MOE_CHANNEL_NOTIFY_NUM = 3U;
+constexpr uint32_t MEM_HANDLE_NUM = 1U;
 constexpr int64_t SEND_COUNTS_ALIGN_FACTOR = 8;
 
 // RAII guard for multi-step host buffer allocation
@@ -149,7 +150,22 @@ struct MoeContextResources {
     void *deviceBufPtr = nullptr;
     aclrtDrvMemHandle physicalMemHandle = nullptr;
     HcclMemHandle memHandle = nullptr;
+    std::string contextTag;
 };
+
+// 进程级 MoE 通信 buffer 共享池：HCCL 引擎 ctx 以 tag 为单例缓存在通信域内（无销毁接口），
+// 其内容(epHcclBuffer[])指向本类自建的物理内存。为避免"实例销毁释放内存后，缓存 ctx 中
+// 地址悬空导致其他实例/后续内核访问 use-after-free"，物理内存生命周期与 tag 绑定并由引用
+// 计数管理：同 tag 多实例共享，最后一个持有者 Destroy 时才真正释放。
+struct MoeSharedBufferEntry {
+    void *deviceBufPtr = nullptr;
+    aclrtDrvMemHandle physicalMemHandle = nullptr;
+    HcclMemHandle memHandle = nullptr;
+    int64_t cclBufferSize = 0; // 实际已申请的物理内存字节数
+    uint32_t refCount = 0;
+};
+static std::mutex gMoeSharedBufferMutex;
+static std::unordered_map<std::string, MoeSharedBufferEntry> gMoeSharedBuffers;
 
 struct EngramContextResources {
     HcclComm hcclComm = nullptr;
@@ -722,6 +738,17 @@ private:
 
 class MoeContextBuilder : public HcclContextBuilderBase {
 public:
+    MoeContextBuilder() = default;
+    ~MoeContextBuilder()
+    {
+        // RAII: Build 完整成功(所有权已转移)之外的任意异常路径，回滚已申请的物理内存，防泄露
+        if (!ownershipReleased_) {
+            ReleaseLocalDeviceBuffer();
+        }
+    }
+    MoeContextBuilder(const MoeContextBuilder &) = delete;
+    MoeContextBuilder &operator=(const MoeContextBuilder &) = delete;
+
     MoeContextResources Build(const std::string &groupName, int64_t customCclBufferSize)
     {
         ASCEND_LOGI("start build");
@@ -757,10 +784,37 @@ public:
         resources.deviceBufPtr = deviceBufPtr_;
         resources.physicalMemHandle = physicalMemHandle_;
         resources.memHandle = memHandle_;
+        resources.contextTag = groupName + "moe_dispatch_combine_multi_channel";
+        if (createdNew_) {
+            // 首次创建: 物理内存入共享池(与引擎 ctx 同生命周期)，由引用计数管理最终释放
+            std::lock_guard<std::mutex> lock(gMoeSharedBufferMutex);
+            MoeSharedBufferEntry &entry = gMoeSharedBuffers[resources.contextTag];
+            entry.deviceBufPtr = deviceBufPtr_;
+            entry.physicalMemHandle = physicalMemHandle_;
+            entry.memHandle = memHandle_;
+            entry.cclBufferSize = cclBufferSize_;
+            entry.refCount = 1;
+        }
+        ownershipReleased_ = true; // 所有权已转移(共享池/既有持有者)，builder 析构不释放
         return resources;
     }
 
 private:
+    // 回滚本 builder 持有的物理内存(异常路径)，顺序与申请严格互逆
+    void ReleaseLocalDeviceBuffer()
+    {
+        if (deviceBufPtr_ != nullptr) {
+            if (physicalMemHandle_ != nullptr) {
+                (void)aclrtUnmapMem(deviceBufPtr_);
+                (void)aclrtFreePhysical(physicalMemHandle_);
+                physicalMemHandle_ = nullptr;
+            }
+            (void)aclrtReleaseMemAddress(deviceBufPtr_);
+            deviceBufPtr_ = nullptr;
+        }
+        memHandle_ = nullptr;
+    }
+
     void BuildContext(const HcclComm &commHandle, const std::string &groupName, const std::string &opName,
                       const CommProtocol &protocol, MoeCommContext &context, void *&ctx)
     {
@@ -796,7 +850,31 @@ private:
         auto hcclRet = HcclEngineCtxGetFunc(commHandle, contextTag.c_str(), engine, &ctx, &ctxSize);
         if (hcclRet != HCCL_SUCCESS) {
             CreateContext(commHandle, contextTag, engine, protocol, ctx, &context);
+            createdNew_ = true;
+            return;
         }
+        // ctx 已存在(同 group 曾创建过)：物理内存由共享池按引用计数管理，此处复用既有 buffer。
+        // 容量校验：本次声明的容量不得超过既有 buffer 实际容量(物理内存按首次创建时大小申请)，
+        // 否则 tiling 按声明值校验通过、kernel 经共享 ctx 写入会超出实际物理内存。
+        MoeSharedBufferEntry entry;
+        {
+            std::lock_guard<std::mutex> lock(gMoeSharedBufferMutex);
+            auto iter = gMoeSharedBuffers.find(contextTag);
+            TORCH_CHECK(iter != gMoeSharedBuffers.end(), "MoE comm context of group '", contextTag,
+                        "' exists but its buffer has been released; "
+                        "creating a new ElasticBuffer on the same group after destroy() is not supported, "
+                        "please reuse the previous instance or use a new comm group");
+            TORCH_CHECK(cclBufferSize_ <= iter->second.cclBufferSize,
+                        "ccl buffer size exceeds the existing buffer of this group, requested ", cclBufferSize_,
+                        ", allocated ", iter->second.cclBufferSize,
+                        "; the shared comm buffer is sized by the first ElasticBuffer created on this group");
+            iter->second.refCount++;
+            entry = iter->second;
+        }
+        deviceBufPtr_ = entry.deviceBufPtr;
+        physicalMemHandle_ = entry.physicalMemHandle;
+        memHandle_ = entry.memHandle;
+        ownershipReleased_ = true; // 复用资源不归本 builder 所有，析构不得释放
     }
 
     void GetCommProtocol(const HcclComm &commHandle, CommProtocol &protocol)
@@ -916,7 +994,11 @@ private:
         int32_t deviceId = 0;
         ret = aclrtGetDevice(&deviceId);
         if (ret != ACL_SUCCESS) {
-            TORCH_CHECK(false, "aclrtGetDevice failed, ret=", ret); // 设备句柄获取失败非内存不足，直接报错
+            // 设备句柄获取失败非内存不足，直接报错；报错前回滚已完成的步骤防泄露
+            (void)aclrtUnmapMem(virPtr);
+            (void)aclrtFreePhysical(physicalHandle);
+            (void)aclrtReleaseMemAddress(virPtr);
+            TORCH_CHECK(false, "aclrtGetDevice failed, ret=", ret);
         }
         aclrtMemAccessDesc accessDesc = {};
         accessDesc.flags = ACL_RT_MEM_ACCESS_FLAGS_READWRITE;
@@ -1020,6 +1102,8 @@ private:
     void *deviceBufPtr_ = nullptr;
     aclrtDrvMemHandle physicalMemHandle_ = nullptr;
     HcclMemHandle memHandle_ = nullptr;
+    bool createdNew_ = false;        // 本次 Build 是否首次创建(ctx 不存在)
+    bool ownershipReleased_ = false; // 物理内存所有权是否已转移(共享池/复用)，析构不再释放
 };
 
 // ElasticBuffer class - unified interface for Engram storage and MoE EP kernels
@@ -1141,6 +1225,7 @@ private:
     void *moeDeviceBufPtr_ = nullptr;
     aclrtDrvMemHandle moePhysicalMemHandle_ = nullptr;
     HcclMemHandle moeMemHandle_ = nullptr;
+    std::string moeContextTag_; // 共享池 key（group + opName），Destroy 时按 tag 减引用
     bool moeContextInitialized_ = false;
 
     int64_t engramHiddenSize_ = 0;
@@ -1226,6 +1311,7 @@ void ElasticBuffer::EnsureMoeContext(int64_t cclBufferSize)
     moeDeviceBufPtr_ = resources.deviceBufPtr;
     moePhysicalMemHandle_ = resources.physicalMemHandle;
     moeMemHandle_ = resources.memHandle;
+    moeContextTag_ = resources.contextTag;
     moeContextInitialized_ = true;
 }
 
@@ -1449,25 +1535,40 @@ void ElasticBuffer::Destroy()
     // HCCL 默认 buffer 由框架管理，无需手动释放
     commBufferSize_ = 0;
 
-    // MoE 通信 buffer 由内部按需申请注册，需主动释放
-    if (moeMemHandle_ != nullptr || moeDeviceBufPtr_ != nullptr) {
+    // MoE 通信 buffer 为同 tag(group+opName) 多实例共享，与 HCCL 引擎 ctx 同生命周期：
+    // 引用计数减一，最后一个持有者才释放物理内存，避免缓存 ctx 中的地址悬空(use-after-free)
+    if (moeDeviceBufPtr_ != nullptr) {
         aclError aclRet = aclrtSynchronizeDevice();
         TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtSynchronizeDevice failed, ret: ", aclRet);
-    }
-    if (moeDeviceBufPtr_ != nullptr) {
-        // 2M大页物理内存释放: 解除映射 → 释放物理内存 → 释放虚拟地址区间
-        if (moePhysicalMemHandle_ != nullptr) {
-            aclError aclRet = aclrtUnmapMem(moeDeviceBufPtr_);
-            TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtUnmapMem failed, ret: ", aclRet);
-            aclRet = aclrtFreePhysical(moePhysicalMemHandle_);
-            TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtFreePhysical failed, ret: ", aclRet);
-            moePhysicalMemHandle_ = nullptr;
+        bool isLastOwner = false;
+        MoeSharedBufferEntry entry;
+        {
+            std::lock_guard<std::mutex> lock(gMoeSharedBufferMutex);
+            auto iter = gMoeSharedBuffers.find(moeContextTag_);
+            if (iter != gMoeSharedBuffers.end() && iter->second.refCount > 0) {
+                isLastOwner = (--iter->second.refCount == 0);
+                if (isLastOwner) {
+                    entry = iter->second;
+                    gMoeSharedBuffers.erase(iter);
+                }
+            }
         }
-        aclError aclRet = aclrtReleaseMemAddress(moeDeviceBufPtr_);
-        TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtReleaseMemAddress failed, ret: ", aclRet);
-        moeDeviceBufPtr_ = nullptr;
+        if (isLastOwner) {
+            // 物理内存释放: 解除映射 → 释放物理内存 → 释放虚拟地址区间
+            if (entry.physicalMemHandle != nullptr) {
+                aclError ret = aclrtUnmapMem(entry.deviceBufPtr);
+                TORCH_CHECK(ret == ACL_SUCCESS, "aclrtUnmapMem failed, ret: ", ret);
+                ret = aclrtFreePhysical(entry.physicalMemHandle);
+                TORCH_CHECK(ret == ACL_SUCCESS, "aclrtFreePhysical failed, ret: ", ret);
+            }
+            aclError ret = aclrtReleaseMemAddress(entry.deviceBufPtr);
+            TORCH_CHECK(ret == ACL_SUCCESS, "aclrtReleaseMemAddress failed, ret: ", ret);
+        }
     }
+    moeDeviceBufPtr_ = nullptr;
+    moePhysicalMemHandle_ = nullptr;
     moeMemHandle_ = nullptr;
+    moeContextTag_.clear();
     moeCclBufferSize_ = 0;
 
     if (engramHostBufPtr_ != nullptr) {
