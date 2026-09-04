@@ -99,14 +99,14 @@ private:
         uint16_t pingpongIndex;
     };
 
-    static constexpr auto ubLayout =
-        BuildActivationMxQuantUbOffsets<DataTypeIn, TileM, TileN, IsInterleaved>();
+    static constexpr auto ubLayout = BuildActivationMxQuantUbOffsets<DataTypeIn, TileM, TileN, IsInterleaved>();
     static constexpr uint32_t ubFirstOffset = ubLayout.firstInputOffsetBytes;
     static constexpr uint32_t ubInputElementCapacity = ubLayout.firstInputElementCapacity;
     static constexpr uint32_t ubSecondOffset = ubLayout.secondInputOffsetBytes;
 
-    __aicore__ inline TileExecutionContext PrepareTileExecutionContext(
-        const BlockShape &blockShape, const BlockCoord &blockCoord, uint16_t pingpongIdx);
+    __aicore__ inline TileExecutionContext PrepareTileExecutionContext(const BlockShape &blockShape,
+                                                                       const BlockCoord &blockCoord,
+                                                                       uint16_t pingpongIdx);
 
     __aicore__ static inline uint32_t ComputeGatedActivationInputRowStride(uint16_t validColumnCount);
 
@@ -181,13 +181,13 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, T
     quantScaleOutput_ =
         LocalTensor<int8_t>(TPosition::VECOUT, ubLayout.quantScaleOffsetBytes, ubLayout.scaleElementCapacity);
     maxExp_ = LocalTensor<uint16_t>(TPosition::VECCALC, ubLayout.maxExpOffsetBytes, ubLayout.scaleElementCapacity);
-    inverseMxScale_ = LocalTensor<uint16_t>(TPosition::VECCALC, ubLayout.inverseMxScaleOffsetBytes,
-                                            ubLayout.scaleElementCapacity);
+    inverseMxScale_ =
+        LocalTensor<uint16_t>(TPosition::VECCALC, ubLayout.inverseMxScaleOffsetBytes, ubLayout.scaleElementCapacity);
 
     // weight UB: 放在 VECIN 区之后的安全区域，仅 mode=1 分配
     if constexpr (TopkWeightsPrefetch) {
-        weightUb_ = LocalTensor<float>(TPosition::VECCALC, ubLayout.topkWeightOffsetBytes,
-                                       ubLayout.topkWeightElementCapacity);
+        weightUb_ =
+            LocalTensor<float>(TPosition::VECCALC, ubLayout.topkWeightOffsetBytes, ubLayout.topkWeightElementCapacity);
     }
 }
 
@@ -224,12 +224,12 @@ __aicore__ inline auto BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, T
 
 template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch,
           bool IsInterleaved>
-__aicore__ inline typename BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN,
-                                                          TopkWeightsPrefetch, IsInterleaved>::TileExecutionContext
+__aicore__ inline typename BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch,
+                                                          IsInterleaved>::TileExecutionContext
 BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch,
                                IsInterleaved>::PrepareTileExecutionContext(const BlockShape &blockShape,
-                                                                            const BlockCoord &blockCoord,
-                                                                            uint16_t pingpongIdx)
+                                                                           const BlockCoord &blockCoord,
+                                                                           uint16_t pingpongIdx)
 {
     TileExecutionContext tileContext{};
     tileContext.geometry.rowCount = Get<M_VALUE>(blockShape);
@@ -249,8 +249,7 @@ BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeight
         (__ubuf__ DataTypeIn *)l0cOutUbFirst_.GetPhyAddr(), secondInputBase,
         (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr(), (__ubuf__ int8_t *)quantOutput_.GetPhyAddr(),
         (__ubuf__ uint16_t *)quantScaleOutput_.GetPhyAddr(), (__ubuf__ uint16_t *)maxExp_.GetPhyAddr(),
-        (__ubuf__ uint16_t *)inverseMxScale_.GetPhyAddr(), tileContext.geometry.columnCount,
-        tileContext.pingpongIndex);
+        (__ubuf__ uint16_t *)inverseMxScale_.GetPhyAddr(), tileContext.geometry.columnCount, tileContext.pingpongIndex);
     return tileContext;
 }
 
@@ -274,10 +273,10 @@ BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeight
 // 保留主循环、尾 Vector 计算和两段补零能力，兼容后续放宽列方向对齐约束。
 template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch,
           bool IsInterleaved>
-__aicore__ inline void
-BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch,
-                               IsInterleaved>::ConfigureGatedActivationTail(
-    Activation::GatedActivationTileContext<DataTypeIn> &context, uint16_t validColumnCount)
+__aicore__ inline void BlockEpilogueActivationMxQuant<
+    DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch,
+    IsInterleaved>::ConfigureGatedActivationTail(Activation::GatedActivationTileContext<DataTypeIn> &context,
+                                                 uint16_t validColumnCount)
 {
     const uint32_t vectorLength = Activation::VECTOR_LENGTH_FP32;
     context.fullVectorLoopCount = validColumnCount / vectorLength;
@@ -318,8 +317,7 @@ template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t Ti
           bool IsInterleaved>
 __aicore__ inline Activation::GatedActivationTileContext<DataTypeIn>
 BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch,
-                               IsInterleaved>::BuildGatedActivationContext(
-    const TileExecutionContext &tileContext)
+                               IsInterleaved>::BuildGatedActivationContext(const TileExecutionContext &tileContext)
 {
     const UbPointers &ubPointers = tileContext.buffers;
     const uint16_t validColumnCount = static_cast<uint16_t>(tileContext.geometry.columnCount);
@@ -357,30 +355,27 @@ BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeight
             const Activation::SituGluParams situGluParams{clampLimit_, activationBeta_, invBeta, activationAlpha_,
                                                           invAlpha};
             asc_vf_call<Activation::RunSiTUGLU<DataTypeIn, TopkWeightsPrefetch, true>>(gatedActivationContext,
-                                                                                    situGluParams);
+                                                                                       situGluParams);
         } else {
             const Activation::SituGluParams situGluParams{clampLimit_, activationBeta_, invBeta, 1.0f, 1.0f};
             asc_vf_call<Activation::RunSiTUGLU<DataTypeIn, TopkWeightsPrefetch, false>>(gatedActivationContext,
-                                                                                     situGluParams);
+                                                                                        situGluParams);
         }
     } else if (actMode == ActMode::SWIGLU_STEP) {
-        asc_vf_call<Activation::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, true>>(gatedActivationContext,
-                                                                                 clampLimit_);
+        asc_vf_call<Activation::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, true>>(gatedActivationContext, clampLimit_);
     } else if (actMode == ActMode::SWIGLU_OAI) {
         const Activation::SwiGluOaiParams swiGluOaiParams{clampLimit_, activationAlpha_, activationBeta_};
-        asc_vf_call<Activation::RunSwiGLUOAI<DataTypeIn, TopkWeightsPrefetch>>(gatedActivationContext,
-                                                                             swiGluOaiParams);
+        asc_vf_call<Activation::RunSwiGLUOAI<DataTypeIn, TopkWeightsPrefetch>>(gatedActivationContext, swiGluOaiParams);
     } else {
-        asc_vf_call<Activation::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, false>>(gatedActivationContext,
-                                                                                  clampLimit_);
+        asc_vf_call<Activation::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, false>>(gatedActivationContext, clampLimit_);
     }
 }
 
 template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch,
           bool IsInterleaved>
-__aicore__ inline void BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch,
-                                                      IsInterleaved>::RunMxQuantTile(
-    const TileExecutionContext &tileContext)
+__aicore__ inline void
+BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch,
+                               IsInterleaved>::RunMxQuantTile(const TileExecutionContext &tileContext)
 {
     const UbPointers &ubPointers = tileContext.buffers;
     const uint16_t validRowCount = static_cast<uint16_t>(tileContext.geometry.rowCount);
@@ -391,13 +386,11 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, T
     Quant::ComputeMaxExp<bfloat16_t>(ubPointers.activationOutput, ubPointers.maxExp, dataCount);
     Quant::ComputeScale<DataTypeOut>(ubPointers.maxExp, ubPointers.quantScale, ubPointers.inverseMxScale, scaleCount);
     if constexpr (IsSameType<DataTypeOut, fp8_e4m3fn_t>::value || IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
-        Quant::ComputeFp8Data<bfloat16_t, DataTypeOut, AscendC::RoundMode::CAST_TRUNC,
-                              AscendC::RoundMode::CAST_RINT>(
+        Quant::ComputeFp8Data<bfloat16_t, DataTypeOut, AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
             ubPointers.activationOutput, ubPointers.inverseMxScale, ubPointers.quantOutput, dataCount);
     }
     if constexpr (IsSameType<DataTypeOut, fp4x2_e2m1_t>::value || IsSameType<DataTypeOut, fp4x2_e1m2_t>::value) {
-        Quant::ComputeFp4Data<bfloat16_t, DataTypeOut, AscendC::RoundMode::CAST_TRUNC,
-                              AscendC::RoundMode::CAST_RINT>(
+        Quant::ComputeFp4Data<bfloat16_t, DataTypeOut, AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
             ubPointers.activationOutput, ubPointers.inverseMxScale, ubPointers.quantOutput, dataCount);
     }
 }
@@ -425,8 +418,8 @@ template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t Ti
 __aicore__ inline void
 BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch,
                                IsInterleaved>::StoreQuantOutput(AscendC::GlobalTensor<int8_t> &dst,
-                                                                 AscendC::LocalTensor<int8_t> &src, uint64_t blockCount,
-                                                                 uint64_t offset, uint64_t n, uint64_t singleN)
+                                                                AscendC::LocalTensor<int8_t> &src, uint64_t blockCount,
+                                                                uint64_t offset, uint64_t n, uint64_t singleN)
 {
     AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
     ub2GmParams.blockCount = blockCount; // 128
@@ -450,9 +443,9 @@ template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t Ti
 __aicore__ inline void
 BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch,
                                IsInterleaved>::StoreQuantScaleCompact(AscendC::GlobalTensor<int8_t> &dst,
-                                                                       AscendC::LocalTensor<int8_t> &src,
-                                                                       uint64_t blockCount, uint64_t offset,
-                                                                       uint64_t scaleN, uint64_t singleN)
+                                                                      AscendC::LocalTensor<int8_t> &src,
+                                                                      uint64_t blockCount, uint64_t offset,
+                                                                      uint64_t scaleN, uint64_t singleN)
 {
     AscendC::DataCopyExtParams ub2GmParams{0, 0, 0, 0, 0};
     auto blockScaleN = Ops::Base::CeilDiv(static_cast<uint64_t>(singleN), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
@@ -469,8 +462,8 @@ template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t Ti
           bool IsInterleaved>
 __aicore__ inline void BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch,
                                                       IsInterleaved>::operator()(const BlockShape &blockShape,
-                                                                                  const BlockCoord &blockCoord,
-                                                                                  uint16_t pingpongIdx)
+                                                                                 const BlockCoord &blockCoord,
+                                                                                 uint16_t pingpongIdx)
 {
     if (Get<M_VALUE>(blockShape) == 0) {
         return;

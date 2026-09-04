@@ -24,18 +24,18 @@ namespace MegaMoeImpl {
 namespace Activation {
 
 template <typename InputType>
-__simd_callee__ inline void LoadSwiGluInputAsFp32(
-    AscendC::Reg::RegTensor<float> &dstReg, AscendC::Reg::RegTensor<InputType> &inputReg,
-    __ubuf__ InputType *src, AscendC::Reg::MaskReg computeMask)
+__simd_callee__ inline void LoadSwiGluInputAsFp32(AscendC::Reg::RegTensor<float> &dstReg,
+                                                  AscendC::Reg::RegTensor<InputType> &inputReg, __ubuf__ InputType *src,
+                                                  AscendC::Reg::MaskReg computeMask)
 {
     AscendC::Reg::LoadAlign<InputType, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(inputReg, src);
     AscendC::Reg::Cast<float, InputType, CAST_INPUT_TO_FP32>(dstReg, inputReg, computeMask);
 }
 
-__simd_callee__ inline void StoreSwiGluFp32AsBf16(
-    __ubuf__ bfloat16_t *dst, AscendC::Reg::RegTensor<bfloat16_t> &outputReg,
-    AscendC::Reg::RegTensor<float> &srcReg, AscendC::Reg::MaskReg computeMask,
-    AscendC::Reg::MaskReg storeMask)
+__simd_callee__ inline void StoreSwiGluFp32AsBf16(__ubuf__ bfloat16_t *dst,
+                                                  AscendC::Reg::RegTensor<bfloat16_t> &outputReg,
+                                                  AscendC::Reg::RegTensor<float> &srcReg,
+                                                  AscendC::Reg::MaskReg computeMask, AscendC::Reg::MaskReg storeMask)
 {
     AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(outputReg, srcReg, computeMask);
     AscendC::Reg::StoreAlign<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(dst, outputReg, storeMask);
@@ -115,10 +115,8 @@ __simd_vf__ inline void RunSwiGLU(GatedActivationTileContext<InputType> context,
         const uint32_t outputRowOffset = static_cast<uint32_t>(rowIndex) * outputRowStrideElements;
         for (uint16_t vectorIndex = 0; vectorIndex < fullVectorLoopCount; ++vectorIndex) {
             const uint32_t vectorOffset = static_cast<uint32_t>(vectorIndex) * VECTOR_LENGTH_FP32;
-            LoadSwiGluInputAsFp32<InputType>(
-                gateFp32Reg, gateReg, gate + inputRowOffset + vectorOffset, fullMask);
-            LoadSwiGluInputAsFp32<InputType>(
-                upFp32Reg, upReg, up + inputRowOffset + vectorOffset, fullMask);
+            LoadSwiGluInputAsFp32<InputType>(gateFp32Reg, gateReg, gate + inputRowOffset + vectorOffset, fullMask);
+            LoadSwiGluInputAsFp32<InputType>(upFp32Reg, upReg, up + inputRowOffset + vectorOffset, fullMask);
             ComputeSwiGluRegFlow<IsStep>(outputFp32Reg, gateFp32Reg, upFp32Reg, negReg, expReg, denominatorReg,
                                          sigmoidReg, fullMask, clampLimit);
             if constexpr (TopkWeightsPrefetch) {
@@ -129,10 +127,8 @@ __simd_vf__ inline void RunSwiGLU(GatedActivationTileContext<InputType> context,
         }
 
         for (uint16_t tailIndex = 0; tailIndex < needTailVectorCompute; ++tailIndex) {
-            LoadSwiGluInputAsFp32<InputType>(
-                gateFp32Reg, gateReg, gateTail + inputRowOffset, tailComputeMask);
-            LoadSwiGluInputAsFp32<InputType>(
-                upFp32Reg, upReg, upTail + inputRowOffset, tailComputeMask);
+            LoadSwiGluInputAsFp32<InputType>(gateFp32Reg, gateReg, gateTail + inputRowOffset, tailComputeMask);
+            LoadSwiGluInputAsFp32<InputType>(upFp32Reg, upReg, upTail + inputRowOffset, tailComputeMask);
             ComputeSwiGluRegFlow<IsStep>(outputFp32Reg, gateFp32Reg, upFp32Reg, negReg, expReg, denominatorReg,
                                          sigmoidReg, tailComputeMask, clampLimit);
             if constexpr (TopkWeightsPrefetch) {
@@ -142,8 +138,8 @@ __simd_vf__ inline void RunSwiGLU(GatedActivationTileContext<InputType> context,
                                   tailStoreMask);
         }
 
-        for (uint16_t additionalPaddingIndex = 0;
-             additionalPaddingIndex < needAdditionalPaddingStore; ++additionalPaddingIndex) {
+        for (uint16_t additionalPaddingIndex = 0; additionalPaddingIndex < needAdditionalPaddingStore;
+             ++additionalPaddingIndex) {
             AscendC::Reg::Duplicate(zeroReg, static_cast<bfloat16_t>(0));
             AscendC::Reg::StoreAlign<bfloat16_t>(additionalPaddingOutput + outputRowOffset, zeroReg,
                                                  additionalPaddingStoreMask);
