@@ -34,7 +34,6 @@ extern "C" {
  * moe专家对各个token的logit大小，矩阵乘的计算输出与该logit做乘法，然后索引进行combine，数据类型支持：float32。
  * @param [in] rowIndex: 
  * moe专家输出按照该rowIndex进行combine，其中的值即为combine做scatter add的索引，数据类型支持：int64、int32。
- * NOTE: aclnnGroupedMatmulFinalizeRoutingWeightNz only supports dtype 0 and float32 output.
  * @param [in] sharedInputWeight: 
  * 共享专家与moe专家进行combine的系数，shareInput先于该参数乘，然后在和moe专家结果累加，数据类型支持：float32。
  * @param [in] sharedInputOffset: 共享专家输出的在总输出中的偏移，数据类型支持：int64。
@@ -42,7 +41,6 @@ extern "C" {
  * @param [in] transposeX2: 右矩阵是否转置，默认值：false。
  * @param [in] groupListType: GroupedMatmul分组类型，默认值：1，count模式，数据类型支持：int64。。
  * @param [out] out: 计算结果，数据类型：float32，float16, bfloat16。
- * NOTE: aclnnGroupedMatmulFinalizeRoutingWeightNz currently supports float32 output.
  * @param [out] workspaceSize: 返回需要在npu device侧申请的workspace大小。
  * @param [out] executor: 返回op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回状态码

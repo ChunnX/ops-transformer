@@ -22,11 +22,13 @@ extern "C" {
  * @brief aclnnGroupedMatmulFinalizeRoutingWeightNzV2的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  * 算子功能：实现GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作, 当前仅支持w为nz格式。
+ * BF16 output constraints: only MX quantization with NZ weight is supported. In this scenario, dtype supports 2
+ * and out must be bfloat16; bias must be nullptr; rowIndex must be int32; logit supports float32 and bfloat16;
+ * scale and pertokenScale must be FLOAT8_E8M0.
  * @param [in] x1: matmul左矩阵，数据类型支持：int8、float8_e4m3fn、hifloat8。
  * @param [in] x2: matmul右矩阵，数据类型支持：int8、int4、float8_e4m3fn、hifloat8。
  * @param [in] scale: 量化参数中的缩放因子，数据类型支持：float32、int64、bf16。
  * @param [in] bias: 偏置，数据类型支持：float32、bf16。
- * NOTE: In MX quantization scenarios with BF16 output, bias must be nullptr.
  * @param [in] offsetOptional: 量化参数偏移量，数据类型支持：float32。
  * @param [in] antiquantScaleOptional: 伪量化参数中缩放因子，暂不支持。
  * @param [in] antiquantOffsetOptional: 伪量化参数中偏移量，暂不支持。
@@ -35,14 +37,11 @@ extern "C" {
  * @param [in] sharedInput: 
  * moe计算中共享专家的输出，需要与moe专家的输出进行combine操作，数据类型支持：bfloat16、float16。
  * @param [in] logit: 
- * NOTE: In MX quantization scenarios with BF16 output, logit supports float32 and bfloat16.
  * moe专家对各个token的logit大小，矩阵乘的计算输出与该logit做乘法，然后索引进行combine，数据类型支持：float32。
  * @param [in] rowIndex: 
- * NOTE: In MX quantization scenarios with BF16 output, rowIndex supports int32.
  * moe专家输出按照该rowIndex进行combine，其中的值即为combine做scatter add的索引，数据类型支持：int64、int32。
  * @param [in] dtype:
- * NOTE: In MX quantization scenarios with BF16 output, dtype supports 0 and 2, and y must be BF16.
- * GroupedMatmul计算的输出类型，0：FLOAT32；1：FLOAT16；2：BFLOAT16。仅支持取0。
+ * GroupedMatmul计算的输出类型，0：FLOAT32；1：FLOAT16；2：BFLOAT16。默认支持取0，BF16 output constraints场景下支持取2。
  * @param [in] sharedInputWeight: 
  * 共享专家与moe专家进行combine的系数，shareInput先于该参数乘，然后在和moe专家结果累加，数据类型支持：float32。
  * @param [in] sharedInputOffset: 共享专家输出的在总输出中的偏移，数据类型支持：int64。

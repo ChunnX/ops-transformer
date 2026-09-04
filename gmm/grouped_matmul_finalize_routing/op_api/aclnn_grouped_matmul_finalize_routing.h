@@ -32,10 +32,8 @@ extern "C" {
  * moe计算中共享专家的输出，需要与moe专家的输出进行combine操作，数据类型支持：bfloat16、float16。
  * @param [in] logitOptional: 
  * moe专家对各个token的logit大小，矩阵乘的计算输出与该logit做乘法，然后索引进行combine，数据类型支持：float32。
- * NOTE: In MX quantization scenarios with BF16 output, logit supports float32 and bfloat16.
  * @param [in] rowIndexOptional: 
  * moe专家输出按照该rowIndex进行combine，其中的值即为combine做scatter add的索引，数据类型支持：int64。
- * NOTE: In MX quantization scenarios with BF16 output, rowIndex supports int32.
  * @param [in] sharedInputWeight: 
  * 共享专家与moe专家进行combine的系数，shareInput先于该参数乘，然后在和moe专家结果累加，数据类型支持：float32。
  * @param [in] sharedInputOffset: 共享专家输出的在总输出中的偏移，数据类型支持：int64。
@@ -43,7 +41,6 @@ extern "C" {
  * @param [in] transposeW: 右矩阵是否转置，默认值：false。
  * @param [in] groupListType: GroupedMatmul分组类型，默认值：1，count模式，数据类型支持：int64。
  * @param [out] y: 计算结果，数据类型：float32。
- * NOTE: In MX quantization scenarios with BF16 output, y supports bfloat16.
  * @param [out] workspaceSize: 返回需要在npu device侧申请的workspace大小。
  * @param [out] executor: 返回op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回状态码
