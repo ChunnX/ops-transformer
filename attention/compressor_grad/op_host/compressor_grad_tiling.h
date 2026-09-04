@@ -88,8 +88,6 @@ static const std::string D_WKV_NAME = "d_wkv";
 static const std::string D_WGATE_NAME = "d_wgate";
 static const std::string D_APE_NAME = "d_ape";
 
-static std::string DataTypeToSerialString(ge::DataType type);
-
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {X_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
     {WKV_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
@@ -297,15 +295,18 @@ struct CompressorGradCompileInfo {
     int64_t core_num;
 };
 
-class CompressorGradTiling {
+// 类名不可用 CompressorGradTiling，与 pypto codegen 生成的 tiling data 类重名，
+// C++ injected-class-name 会遮蔽外部同名类型，导致 tilingData 成员类型错误。
+class CompressorGradTilingImpl {
 public:
-    explicit CompressorGradTiling(CompressorGradContext *context)
+    explicit CompressorGradTilingImpl(CompressorGradContext *context)
         : context_(context)
     {}
-    ~CompressorGradTiling() = default;
+    ~CompressorGradTilingImpl() = default;
 
     static ge::graphStatus ConvertContext(gert::TilingContext &context, CompressorGradContext &compressorGradContext);
     ge::graphStatus RunBigKernelTiling();
+    CompressorGradTiling *tilingData = nullptr;
 
 private:
     static ge::graphStatus ConvertRequiredParams(gert::TilingContext &context,
@@ -364,7 +365,6 @@ private:
     uint8_t coff_ = 1;
     CompressorGradBaseParams baseParams_;
     CompressorGradWorkspaceParams workspaceParams_;
-    CompressorGradTiling *tilingData;
     CompressorGradContext *context_ = nullptr;
 };
 
