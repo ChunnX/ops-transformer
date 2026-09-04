@@ -62,9 +62,11 @@ using namespace AscendC;
 
 constexpr uint32_t DOUBLE_BUFFER = 2;
 constexpr uint32_t INOUT_QUEUE_SIZE = 32 * 1024;              // 32KB
+constexpr uint32_t HALF_INOUT_QUEUE_SIZE = 16 * 1024;         // 16KB
+constexpr uint32_t SHARED_INOUT_POOL_SIZE = 3 * INOUT_QUEUE_SIZE; // qin1和qOut分阶段复用96KB
 constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;               // 1KB
 // V0/V1的最大占用约49.5KB；V2统一使用64行chunk后最大占用约42.75KB。
-// 将TBuf压缩到55KB，为后续VECOUT双缓冲预留32KB。
+// 保持TBuf为55KB；qin1/qOut通过96KB共享池换配后，仍保留32KB余量，不在本轮扩大工作区。
 constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 6 - 1) * 1024; // 55KB；两个VECIN队列均使用双缓冲
 constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 128;               // ProcessV2函数使用的chunk大小
 constexpr uint32_t SINGLE_M = 512;
