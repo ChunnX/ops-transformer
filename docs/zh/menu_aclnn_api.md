@@ -23,7 +23,7 @@
 - [aclnnBatchMatMulReduceScatterAlltoAll](../../mc2/batch_mat_mul_reduce_scatter_allto_all/docs/aclnnBatchMatMulReduceScatterAlltoAll.md)
 - [aclnnBlockAttnResPrepare](../../attention/block_attn_res_prepare/docs/aclnnBlockAttnResPrepare.md)
 - [aclnnBlockAttnResUpdate](../../attention/block_attn_res_update/docs/aclnnBlockAttnResUpdate.md)
-- [aclnnBlockAttentionResiduals](../../residuals/block_attention_residuals/docs/aclnnBlockAttentionResiduals.md)
+- [aclnnBlockAttentionResiduals](../../mhc/block_attention_residuals/docs/aclnnBlockAttentionResiduals.md)
 - [aclnnBlockSparseAttention](../../attention/block_sparse_attention/docs/aclnnBlockSparseAttention.md)
 - [aclnnBlockSparseAttentionGrad](../../attention/block_sparse_attention_grad/docs/aclnnBlockSparseAttentionGrad.md)
 - [aclnnBlockSparseAttentionV2](../../attention/block_sparse_attention/docs/aclnnBlockSparseAttentionV2.md)

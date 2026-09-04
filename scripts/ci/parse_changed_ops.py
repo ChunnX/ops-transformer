@@ -20,7 +20,6 @@ NEW_OPS_PATH = [
     "ffn",
     "gmm",
     "moe",
-    "residuals",
 ]
 
 

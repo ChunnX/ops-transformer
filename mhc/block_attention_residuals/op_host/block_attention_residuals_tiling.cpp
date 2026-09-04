@@ -28,7 +28,7 @@
 namespace optiling {
 REGISTER_OPS_TILING_TEMPLATE(BlockAttentionResiduals, BlockAttentionResidualsTiling, 0);
 
-constexpr size_t PREFIX_SUM_INDEX = 0;
+constexpr size_t PARTIAL_BLOCK_INDEX = 0;
 constexpr size_t BLOCK_RES_INDEX = 1;
 constexpr size_t PROJ_WEIGHT_INDEX = 2;
 constexpr size_t NORM_WEIGHT_INDEX = 3;
@@ -36,7 +36,7 @@ constexpr size_t HIDDEN_STATES_INDEX = 0;
 constexpr size_t INV_NORM_INDEX = 1;
 constexpr size_t PROBS_INDEX = 2;
 
-constexpr size_t PREFIX_SUM_DIM = 2;
+constexpr size_t PARTIAL_BLOCK_DIM = 2;
 constexpr size_t BLOCK_RES_DIM = 3;
 
 constexpr size_t ATTR_VALID_BLOCK_NUM_INDEX = 0;
@@ -315,8 +315,8 @@ ge::graphStatus BlockAttentionResidualsTiling::PostTiling()
 
 ge::graphStatus BlockAttentionResidualsTiling::CheckContext()
 {
-    OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputShape(PREFIX_SUM_INDEX));
-    OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputDesc(PREFIX_SUM_INDEX));
+    OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputShape(PARTIAL_BLOCK_INDEX));
+    OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputDesc(PARTIAL_BLOCK_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputShape(BLOCK_RES_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputDesc(BLOCK_RES_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputShape(PROJ_WEIGHT_INDEX));
@@ -330,7 +330,7 @@ ge::graphStatus BlockAttentionResidualsTiling::CheckContext()
 
 ge::graphStatus BlockAttentionResidualsTiling::AnalyzeDtype()
 {
-    auto prefixDtype = context_->GetInputDesc(PREFIX_SUM_INDEX)->GetDataType();
+    auto partialBlockDtype = context_->GetInputDesc(PARTIAL_BLOCK_INDEX)->GetDataType();
     auto blockDtype = context_->GetInputDesc(BLOCK_RES_INDEX)->GetDataType();
     auto projDtype = context_->GetInputDesc(PROJ_WEIGHT_INDEX)->GetDataType();
     auto normDtype = context_->GetInputDesc(NORM_WEIGHT_INDEX)->GetDataType();
@@ -339,7 +339,8 @@ ge::graphStatus BlockAttentionResidualsTiling::AnalyzeDtype()
     const auto dtypeOk = [](ge::DataType dt) {
         return dt == ge::DT_BF16 || dt == ge::DT_FLOAT16 || dt == ge::DT_FLOAT;
     };
-    OP_CHECK_IF(!dtypeOk(prefixDtype), OP_LOGE(context_->GetNodeName(), "prefix_sum dtype must be BF16/FP16/FP32"),
+    OP_CHECK_IF(!dtypeOk(partialBlockDtype),
+                OP_LOGE(context_->GetNodeName(), "partial_block dtype must be BF16/FP16/FP32"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!dtypeOk(blockDtype), OP_LOGE(context_->GetNodeName(), "block_res dtype must be BF16/FP16/FP32"),
                 return ge::GRAPH_FAILED);
@@ -349,11 +350,11 @@ ge::graphStatus BlockAttentionResidualsTiling::AnalyzeDtype()
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!dtypeOk(outDtype), OP_LOGE(context_->GetNodeName(), "hidden_states dtype must be BF16/FP16/FP32"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        prefixDtype != blockDtype || prefixDtype != projDtype || prefixDtype != normDtype || prefixDtype != outDtype,
-        OP_LOGE(context_->GetNodeName(), "all inputs and hidden_states must share the same dtype"),
-        return ge::GRAPH_FAILED);
-    inputDtype_ = prefixDtype;
+    OP_CHECK_IF(partialBlockDtype != blockDtype || partialBlockDtype != projDtype || partialBlockDtype != normDtype ||
+                    partialBlockDtype != outDtype,
+                OP_LOGE(context_->GetNodeName(), "all inputs and hidden_states must share the same dtype"),
+                return ge::GRAPH_FAILED);
+    inputDtype_ = partialBlockDtype;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -370,20 +371,20 @@ uint32_t BlockAttentionResidualsTiling::DtypeElemsPerBlk() const
 
 ge::graphStatus BlockAttentionResidualsTiling::AnalyzeShapes()
 {
-    const auto &prefixShape = context_->GetInputShape(PREFIX_SUM_INDEX)->GetOriginShape();
+    const auto &partialBlockShape = context_->GetInputShape(PARTIAL_BLOCK_INDEX)->GetOriginShape();
     const auto &blockShape = context_->GetInputShape(BLOCK_RES_INDEX)->GetOriginShape();
     const auto &projShape = context_->GetInputShape(PROJ_WEIGHT_INDEX)->GetOriginShape();
     const auto &normShape = context_->GetInputShape(NORM_WEIGHT_INDEX)->GetOriginShape();
 
-    OP_CHECK_IF(prefixShape.GetDimNum() != PREFIX_SUM_DIM,
-                OP_LOGE(context_->GetNodeName(), "prefix_sum dim num must be %zu", PREFIX_SUM_DIM),
+    OP_CHECK_IF(partialBlockShape.GetDimNum() != PARTIAL_BLOCK_DIM,
+                OP_LOGE(context_->GetNodeName(), "partial_block dim num must be %zu", PARTIAL_BLOCK_DIM),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(blockShape.GetDimNum() != BLOCK_RES_DIM,
                 OP_LOGE(context_->GetNodeName(), "block_res dim num must be %zu", BLOCK_RES_DIM),
                 return ge::GRAPH_FAILED);
 
-    const int64_t numTokens = prefixShape.GetDim(0);
-    const int64_t hiddenSize = prefixShape.GetDim(1);
+    const int64_t numTokens = partialBlockShape.GetDim(0);
+    const int64_t hiddenSize = partialBlockShape.GetDim(1);
     const int64_t numBlocks = blockShape.GetDim(1);
     constexpr int64_t U32_MAX = static_cast<int64_t>(std::numeric_limits<uint32_t>::max());
     OP_CHECK_IF(numTokens < 0 || numTokens > U32_MAX || hiddenSize <= 0 || hiddenSize > U32_MAX || numBlocks < 1 ||
@@ -399,10 +400,10 @@ ge::graphStatus BlockAttentionResidualsTiling::AnalyzeShapes()
     tilingData_.numBlocks = static_cast<uint32_t>(numBlocks);
 
     OP_CHECK_IF(blockShape.GetDim(0) != static_cast<int64_t>(tilingData_.numTokens),
-                OP_LOGE(context_->GetNodeName(), "T mismatch between prefix_sum and block_res"),
+                OP_LOGE(context_->GetNodeName(), "T mismatch between partial_block and block_res"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(blockShape.GetDim(2) != static_cast<int64_t>(tilingData_.hiddenSize),
-                OP_LOGE(context_->GetNodeName(), "H mismatch between prefix_sum and block_res"),
+                OP_LOGE(context_->GetNodeName(), "H mismatch between partial_block and block_res"),
                 return ge::GRAPH_FAILED);
     const bool projShapeOk =
         (projShape.GetDimNum() == 1 && projShape.GetDim(0) == hiddenSize) ||

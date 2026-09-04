@@ -13,5 +13,5 @@
 
 ## 功能说明
 
-- 算子功能：将 `prefixSum` 与 `blockRes` 拼接后完成 RMS 归一化、投影打分与 Softmax 加权融合，输出 `hiddenStates`；当 `needBackward` 为 true 时，同时输出反向所需的 `invNorm` 和 `probs`。
+- 算子功能：将 `partialBlock` 与 `blockRes` 拼接后完成 RMS 归一化、投影打分与 Softmax 加权融合，输出 `hiddenStates`；当 `needBackward` 为 true 时，同时输出反向所需的 `invNorm` 和 `probs`。
 - 详细接口说明参见 [aclnnBlockAttentionResiduals](docs/aclnnBlockAttentionResiduals.md)。

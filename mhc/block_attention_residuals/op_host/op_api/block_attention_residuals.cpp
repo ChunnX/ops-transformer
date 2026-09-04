@@ -25,20 +25,21 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(BlockAttentionResiduals);
 
-const std::array<const aclTensor *, 3> BlockAttentionResiduals(const aclTensor *prefixSum, const aclTensor *blockRes,
+const std::array<const aclTensor *, 3> BlockAttentionResiduals(const aclTensor *partialBlock, const aclTensor *blockRes,
                                                                const aclTensor *projWeight, const aclTensor *normWeight,
                                                                int64_t validBlockNum, double normEps, bool needBackward,
                                                                aclOpExecutor *executor)
 {
-    L0_DFX(BlockAttentionResiduals, prefixSum, blockRes, projWeight, normWeight, validBlockNum, normEps, needBackward);
+    L0_DFX(BlockAttentionResiduals, partialBlock, blockRes, projWeight, normWeight, validBlockNum, normEps,
+           needBackward);
 
-    DataType outType = prefixSum->GetDataType();
+    DataType outType = partialBlock->GetDataType();
     Format format = Format::FORMAT_ND;
     auto hiddenStates = executor->AllocTensor(outType, format, format);
     auto invNorm = executor->AllocTensor(DataType::DT_FLOAT, format, format);
     auto probs = executor->AllocTensor(DataType::DT_FLOAT, format, format);
 
-    auto ret = INFER_SHAPE(BlockAttentionResiduals, OP_INPUT(prefixSum, blockRes, projWeight, normWeight),
+    auto ret = INFER_SHAPE(BlockAttentionResiduals, OP_INPUT(partialBlock, blockRes, projWeight, normWeight),
                            OP_OUTPUT(hiddenStates, invNorm, probs),
                            OP_ATTR(validBlockNum, static_cast<float>(normEps), needBackward));
     if (ret != ACLNN_SUCCESS) {
@@ -46,7 +47,7 @@ const std::array<const aclTensor *, 3> BlockAttentionResiduals(const aclTensor *
         return {nullptr, nullptr, nullptr};
     }
 
-    ret = ADD_TO_LAUNCHER_LIST_AICORE(BlockAttentionResiduals, OP_INPUT(prefixSum, blockRes, projWeight, normWeight),
+    ret = ADD_TO_LAUNCHER_LIST_AICORE(BlockAttentionResiduals, OP_INPUT(partialBlock, blockRes, projWeight, normWeight),
                                       OP_OUTPUT(hiddenStates, invNorm, probs),
                                       OP_ATTR(validBlockNum, static_cast<float>(normEps), needBackward));
     if (ret != ACLNN_SUCCESS) {

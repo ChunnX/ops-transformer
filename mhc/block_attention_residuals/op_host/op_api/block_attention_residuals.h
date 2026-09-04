@@ -16,7 +16,7 @@
 #include "opdev/make_op_executor.h"
 
 namespace l0op {
-const std::array<const aclTensor *, 3> BlockAttentionResiduals(const aclTensor *prefixSum, const aclTensor *blockRes,
+const std::array<const aclTensor *, 3> BlockAttentionResiduals(const aclTensor *partialBlock, const aclTensor *blockRes,
                                                                const aclTensor *projWeight, const aclTensor *normWeight,
                                                                int64_t validBlockNum, double normEps, bool needBackward,
                                                                aclOpExecutor *executor);

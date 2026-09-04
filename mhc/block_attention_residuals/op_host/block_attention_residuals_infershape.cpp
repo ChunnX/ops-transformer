@@ -21,7 +21,7 @@
 using namespace gert;
 namespace ops {
 
-constexpr size_t PREFIX_SUM_INDEX = 0;
+constexpr size_t PARTIAL_BLOCK_INDEX = 0;
 constexpr size_t BLOCK_RES_INDEX = 1;
 constexpr size_t PROJ_WEIGHT_INDEX = 2;
 constexpr size_t NORM_WEIGHT_INDEX = 3;
@@ -29,7 +29,7 @@ constexpr size_t HIDDEN_STATES_INDEX = 0;
 constexpr size_t INV_NORM_INDEX = 1;
 constexpr size_t PROBS_INDEX = 2;
 
-constexpr size_t PREFIX_SUM_DIM = 2;
+constexpr size_t PARTIAL_BLOCK_DIM = 2;
 constexpr size_t BLOCK_RES_DIM = 3;
 constexpr size_t WEIGHT_1D_DIM = 1;
 constexpr size_t WEIGHT_2D_DIM = 2;
@@ -46,19 +46,20 @@ static ge::graphStatus InferShapeBlockAttentionResiduals(InferShapeContext *cont
     }
 
     auto opName = context->GetNodeName();
-    auto prefixShape = context->GetInputShape(PREFIX_SUM_INDEX);
+    auto partialBlockShape = context->GetInputShape(PARTIAL_BLOCK_INDEX);
     auto blockShape = context->GetInputShape(BLOCK_RES_INDEX);
     auto projShape = context->GetInputShape(PROJ_WEIGHT_INDEX);
     auto normShape = context->GetInputShape(NORM_WEIGHT_INDEX);
     auto outShape = context->GetOutputShape(HIDDEN_STATES_INDEX);
-    if (prefixShape == nullptr || blockShape == nullptr || projShape == nullptr || normShape == nullptr ||
+    if (partialBlockShape == nullptr || blockShape == nullptr || projShape == nullptr || normShape == nullptr ||
         outShape == nullptr) {
         OP_LOGE(opName, "[InferShape] shape is null");
         return ge::GRAPH_FAILED;
     }
 
-    OP_CHECK_IF(prefixShape->GetDimNum() != PREFIX_SUM_DIM,
-                OP_LOGE(opName, "prefix_sum dim num should be %zu, got %zu", PREFIX_SUM_DIM, prefixShape->GetDimNum()),
+    OP_CHECK_IF(partialBlockShape->GetDimNum() != PARTIAL_BLOCK_DIM,
+                OP_LOGE(opName, "partial_block dim num should be %zu, got %zu", PARTIAL_BLOCK_DIM,
+                        partialBlockShape->GetDimNum()),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(blockShape->GetDimNum() != BLOCK_RES_DIM,
                 OP_LOGE(opName, "block_res dim num should be %zu, got %zu", BLOCK_RES_DIM, blockShape->GetDimNum()),
@@ -70,8 +71,8 @@ static ge::graphStatus InferShapeBlockAttentionResiduals(InferShapeContext *cont
                 OP_LOGE(opName, "norm_weight dim num should be %zu, got %zu", WEIGHT_1D_DIM, normShape->GetDimNum()),
                 return ge::GRAPH_FAILED);
 
-    const int64_t numTokens = prefixShape->GetDim(0);
-    const int64_t hiddenSize = prefixShape->GetDim(1);
+    const int64_t numTokens = partialBlockShape->GetDim(0);
+    const int64_t hiddenSize = partialBlockShape->GetDim(1);
     const int64_t numBlocks = blockShape->GetDim(1);
     const int64_t blockCount = numBlocks + 1;
 
@@ -87,7 +88,7 @@ static ge::graphStatus InferShapeBlockAttentionResiduals(InferShapeContext *cont
     OP_CHECK_IF(normShape->GetDim(0) != hiddenSize, OP_LOGE(opName, "norm_weight shape must be [H]"),
                 return ge::GRAPH_FAILED);
 
-    outShape->SetDimNum(PREFIX_SUM_DIM);
+    outShape->SetDimNum(PARTIAL_BLOCK_DIM);
     outShape->SetDim(0, numTokens);
     outShape->SetDim(1, hiddenSize);
 
@@ -104,12 +105,12 @@ static ge::graphStatus InferShapeBlockAttentionResiduals(InferShapeContext *cont
         auto invNormShape = context->GetOutputShape(INV_NORM_INDEX);
         auto probsShape = context->GetOutputShape(PROBS_INDEX);
         if (invNormShape != nullptr) {
-            invNormShape->SetDimNum(PREFIX_SUM_DIM);
+            invNormShape->SetDimNum(PARTIAL_BLOCK_DIM);
             invNormShape->SetDim(0, numTokens);
             invNormShape->SetDim(1, blockCount);
         }
         if (probsShape != nullptr) {
-            probsShape->SetDimNum(PREFIX_SUM_DIM);
+            probsShape->SetDimNum(PARTIAL_BLOCK_DIM);
             probsShape->SetDim(0, numTokens);
             probsShape->SetDim(1, blockCount);
         }
@@ -123,8 +124,8 @@ static ge::graphStatus InferDataTypeBlockAttentionResiduals(gert::InferDataTypeC
         OP_LOGE("BlockAttentionResiduals", "inference context is null");
         return ge::GRAPH_FAILED;
     }
-    auto prefixDtype = context->GetInputDataType(PREFIX_SUM_INDEX);
-    context->SetOutputDataType(HIDDEN_STATES_INDEX, prefixDtype);
+    auto partialBlockDtype = context->GetInputDataType(PARTIAL_BLOCK_INDEX);
+    context->SetOutputDataType(HIDDEN_STATES_INDEX, partialBlockDtype);
 
     bool needBackward = false;
     auto attrs = context->GetAttrs();

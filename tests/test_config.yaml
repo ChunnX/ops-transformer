@@ -2275,6 +2275,20 @@ mhc:
     test:
       examples: True
       ut: False
+  block_attention_residuals:
+    module: True
+    src:
+      - mhc/block_attention_residuals
+    exclude:
+      - mhc/block_attention_residuals/docs
+      - mhc/block_attention_residuals/README.md
+    ut_cov_exclude:
+      - mhc/block_attention_residuals
+    test:
+      examples: False
+      ut: False
+    options:
+      - block_attention_residuals
 
 mamba:
     causal_conv1d:
@@ -2291,19 +2305,3 @@ mamba:
       ut: False
     options:
       - causal_conv1d
-
-residuals:
-    block_attention_residuals:
-    module: True
-    src:
-      - residuals/block_attention_residuals
-    exclude:
-      - residuals/block_attention_residuals/docs
-      - residuals/block_attention_residuals/README.md
-    ut_cov_exclude:
-      - residuals/block_attention_residuals
-    test:
-      examples: False
-      ut: False
-    options:
-      - block_attention_residuals

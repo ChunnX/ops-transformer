@@ -22,7 +22,7 @@
 │   │   └── CMakeLists.txt
 │   └── ...
 │
-├── ${op_class}                                         # 算子分类，如attention、ffn、gmm、mamba、residuals类算子
+├── ${op_class}                                         # 算子分类，如attention、ffn、gmm类算子
 │   ├${op_name}                                         # 算子工程目录，${op_name}表示算子名（小写下划线形式）
 │   │   ├── CMakeLists.txt                              # 算子cmakelist入口
 │   │   ├── README.md                                   # 算子介绍文档
