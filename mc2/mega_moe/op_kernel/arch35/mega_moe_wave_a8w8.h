@@ -111,8 +111,6 @@ private:
                                            GMMAddrInfo &gmm2AddrInfo, GmmRuntimeState &runtimeState,
                                            int32_t &gmm2TileSequence, uint32_t allCoreCombineExpertIndex,
                                            ExpertLoopState &allCoreCombineExpertState);
-    __aicore__ inline void AdvanceGmm2BlockCursor(ExpertTokenPosition pos, const ExpertTokenPosition &waveEndPosition,
-                                                  uint32_t &blockCursor);
     __aicore__ inline void ProcessCombineExperts(uint32_t expertBegin, uint32_t expertEnd,
                                                  ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo,
                                                  const CombineBufferConfig &bufferConfig,
@@ -675,38 +673,6 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
     return gmm1Position;
 }
 
-/*
- * AIC 专用：沿 [pos, waveEndPosition) 按与实际执行完全相同的 problem 切分，只推进 GMM2 分核游标
- * 而不执行。滞后模式下 AIC 用它对"被推迟的当前 wave"做等量虚推进，使主游标与未滞后的 AIV0
- * 逐 problem 保持一致（推进公式与 HandleWaveProblemWithoutWork 的 skip 路径同源）。
- */
-template <TemplateMegaMoeA8W8WaveTypeClass>
-__aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::AdvanceGmm2BlockCursor(
-    ExpertTokenPosition pos, const ExpertTokenPosition &waveEndPosition, uint32_t &blockCursor)
-{
-    while (!IsSameExpertTokenPosition(pos, waveEndPosition) && pos.expertIdx < moeExpertPerRank_) {
-        uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr,
-                                                                     countWorkspace_, moeExpertPerRank_, pos.expertIdx);
-        if (expertTokenCount == 0U || pos.tokenIndexInExpert >= expertTokenCount) {
-            ++pos.expertIdx;
-            pos.tokenIndexInExpert = 0U;
-            continue;
-        }
-        uint32_t waveEndTokenIndexInExpert = expertTokenCount;
-        if (pos.expertIdx == waveEndPosition.expertIdx) {
-            waveEndTokenIndexInExpert = waveEndPosition.tokenIndexInExpert;
-        }
-        uint32_t waveRowCount = waveEndTokenIndexInExpert - pos.tokenIndexInExpert;
-        uint32_t problemTileCount = GetMGroupCountForRows(waveRowCount, GMM1_TILE_M) * gmm2TilesPerMGroup_;
-        blockCursor = (blockCursor + problemTileCount) % gmmExecutionConfig_.blockJob.totalJobs;
-        pos.tokenIndexInExpert = waveEndTokenIndexInExpert;
-        if (pos.tokenIndexInExpert >= expertTokenCount) {
-            ++pos.expertIdx;
-            pos.tokenIndexInExpert = 0U;
-        }
-    }
-}
-
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessGmm2Wave(
     ExpertTokenPosition &gmm2Position, const ExpertTokenPosition &waveEndPosition, ExpertLoopState &gmm2ExpertState,
@@ -894,9 +860,9 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     // bs8192 净收益（-820us），故仅在每卡 token 数达到阈值时启用；2048/8192 之间未实测，
     // 阈值取中点偏保守，中间形状合入前需补测。
     const bool gmm2LagActive = commonConfig_.tokenNum >= GMM2_LAG_MIN_TOKEN_NUM;
-    ExpertTokenPosition gmm2LaggedTarget{};
-    // 滞后窗口执行时的分核游标快照（= 该 wave 被 AIV0 执行时的主游标起点）。
-    uint32_t gmm2LagBlockCursor = 0U;
+    // 三角色整体滞后一拍的缓存：上一 wave 的边界（见循环内注释）。
+    ExpertTokenPosition gmm2PendingWaveEnd{};
+    bool hasPendingGmm2Wave = false;
     uint32_t combineBeginExpertIndex = 0U;
     uint32_t allCoreCombineExpertIndex = moeExpertPerRank_;
 
@@ -941,45 +907,42 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         const uint32_t gmm1EndBlockIndex = startBlockIdx_;
 
         /*
-         * GMM2 的 AIC 消费目标滞后一个 wave（gmm2LaggedTarget 是上一轮 GMM1 的终点）：
-         * GMM2 wave w 的输入是 wave w 的激活输出，AIV0 epilogue 在末批 MMAD 后仍需一段
-         * 向量时间才发布 activationToGmm2Flag；紧跟消费同一 wave 会让 AIC 反复自旋等激活
-         * （实测约占 E2E 15%）。滞后一个 wave 后等待清零；代价仅是流水尾部多一个 GMM2 wave。
-         * 仅 AIC 滞后：AIV0 的 GMM2 状态机保持原目标推进——它承担 allCoreCombineExpertState
-         * 的保存与本地行偏移推进，滞后它会让全核 combine 专家的状态晚一个 wave 才可用；
-         * combine 门控走 AIC 发布的 per-expert gmm2Ready flag，自动跟随 AIC 滞后，语义不变。
+         * GMM2/Combine 三角色整体滞后一拍（大 bs 门控）：wave w 的 GMM2/Combine 延至 GMM1(w+1)
+         * 之后执行，用下一 wave 的 GMM1 覆盖 AIC 等激活发布的自旋（AIV0 epilogue 在末批 MMAD
+         * 后仍需一段向量时间才发布 activationToGmm2Flag，紧跟消费同一 wave 会让 AIC 反复自旋）。
+         * 三角色（AIC/AIV0/AIV1）以相同调用序同拍延后：ProcessGmm2Wave 内部的 pairwise tile
+         * 序号、分核游标与 combine 状态在三侧保持一致推进，无需任何游标配平（与统一后的
+         * W4 wave-ahead 路径同款模式）。此前的 AIC 单方滞后在逐 wave dispatch 交错的新调度下
+         * 与 AIV 侧 tile 序号错拍（实测 aic_scalar 0.30->0.54 净劣化），已废弃。
          */
-        ExpertTokenPosition gmm2ConsumeTarget = waveEndPosition;
-        uint32_t gmm2LaggedExecCursor = 0U;
-        bool useLaggedCursor = false;
-        if constexpr (g_coreType == AIC) {
-            if (gmm2LagActive) {
-                gmm2ConsumeTarget = gmm2LaggedTarget;
-                /*
-                 * 分核游标配平：AIV0 按当前 wave 实推进 startBlockIdx_；AIC 若按滞后 wave 推进，
-                 * 两侧游标会逐 wave 发散，下一 wave GMM1 的 tile->核映射错位，非 prefetch 路径的
-                 * 逐核 ping-pong 配对随之断裂（实测大 bs 死锁：AIC 等激活计数、AIV0 等 MMAD）。
-                 * 故 AIC 对当前 wave 做等量虚推进保持主游标与 AIV0 同步；滞后窗口的实际执行
-                 * 改用上一轮快照的游标，保证每个 GMM2 problem 两侧执行时分核起点相等。
-                 */
-                uint32_t currentWaveCursor = startBlockIdx_;
-                AdvanceGmm2BlockCursor(gmm2LaggedTarget, waveEndPosition, startBlockIdx_);
-                gmm2LaggedExecCursor = gmm2LagBlockCursor;
-                gmm2LagBlockCursor = currentWaveCursor;
-                useLaggedCursor = true;
+        if (gmm2LagActive) {
+            if (hasPendingGmm2Wave) {
+                GmmRuntimeState gmm2RuntimeState{startBlockIdx_, vecSetSyncCom, gmm2PingPongIdx_};
+                ProcessGmm2Wave(gmm2Position, gmm2PendingWaveEnd, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState,
+                                gmm2TileSequence, allCoreCombineExpertIndex, allCoreCombineExpertState);
+                UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
+                if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+                    uint32_t combineEndExpertIndex = gmm2PendingWaveEnd.expertIdx;
+                    ProcessCombineExperts(combineBeginExpertIndex, combineEndExpertIndex, combineExpertState,
+                                          combineAddrInfo, combineBufferConfig, allCoreCombineExpertIndex,
+                                          allCoreCombineExpertState);
+                    combineBeginExpertIndex = combineEndExpertIndex;
+                }
             }
-        }
-        GmmRuntimeState gmm2RuntimeState{useLaggedCursor ? gmm2LaggedExecCursor : startBlockIdx_, vecSetSyncCom,
-                                         gmm2PingPongIdx_};
-        ProcessGmm2Wave(gmm2Position, gmm2ConsumeTarget, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState,
-                        gmm2TileSequence, allCoreCombineExpertIndex, allCoreCombineExpertState);
-        gmm2LaggedTarget = waveEndPosition;
-        UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
-        if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-            uint32_t combineEndExpertIndex = waveEndPosition.expertIdx;
-            ProcessCombineExperts(combineBeginExpertIndex, combineEndExpertIndex, combineExpertState, combineAddrInfo,
-                                  combineBufferConfig, allCoreCombineExpertIndex, allCoreCombineExpertState);
-            combineBeginExpertIndex = combineEndExpertIndex;
+            gmm2PendingWaveEnd = waveEndPosition;
+            hasPendingGmm2Wave = true;
+        } else {
+            GmmRuntimeState gmm2RuntimeState{startBlockIdx_, vecSetSyncCom, gmm2PingPongIdx_};
+            ProcessGmm2Wave(gmm2Position, waveEndPosition, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState,
+                            gmm2TileSequence, allCoreCombineExpertIndex, allCoreCombineExpertState);
+            UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
+            if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+                uint32_t combineEndExpertIndex = waveEndPosition.expertIdx;
+                ProcessCombineExperts(combineBeginExpertIndex, combineEndExpertIndex, combineExpertState,
+                                      combineAddrInfo, combineBufferConfig, allCoreCombineExpertIndex,
+                                      allCoreCombineExpertState);
+                combineBeginExpertIndex = combineEndExpertIndex;
+            }
         }
 
         const bool hasNextWave = waveEndPosition.expertIdx < moeExpertPerRank_;
@@ -992,15 +955,16 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         waveBeginPosition = waveEndPosition;
     }
 
-    // 滞后流水收尾：仅 AIC 补跑最后一个 wave 的 GMM2（AIV 的 GMM2 状态机未滞后，无需补；
-    // combine 已在循环内按 per-expert flag 全量收齐）。
-    if constexpr (g_coreType == AIC) {
-        if (gmm2LagActive && !IsSameExpertTokenPosition(gmm2Position, gmm2LaggedTarget)) {
-            uint32_t gmm2TailCursor = gmm2LagBlockCursor;
-            GmmRuntimeState gmm2TailRuntimeState{gmm2TailCursor, vecSetSyncCom, gmm2PingPongIdx_};
-            ProcessGmm2Wave(gmm2Position, gmm2LaggedTarget, gmm2ExpertState, gmm2AddrInfo, gmm2TailRuntimeState,
-                            gmm2TileSequence, allCoreCombineExpertIndex, allCoreCombineExpertState);
-            UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
+    // 滞后流水收尾：三角色共同补跑最后一个 wave 的 GMM2/Combine（与循环内滞后分支同构）。
+    if (hasPendingGmm2Wave) {
+        GmmRuntimeState gmm2TailRuntimeState{startBlockIdx_, vecSetSyncCom, gmm2PingPongIdx_};
+        ProcessGmm2Wave(gmm2Position, gmm2PendingWaveEnd, gmm2ExpertState, gmm2AddrInfo, gmm2TailRuntimeState,
+                        gmm2TileSequence, allCoreCombineExpertIndex, allCoreCombineExpertState);
+        UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
+        if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+            ProcessCombineExperts(combineBeginExpertIndex, gmm2PendingWaveEnd.expertIdx, combineExpertState,
+                                  combineAddrInfo, combineBufferConfig, allCoreCombineExpertIndex,
+                                  allCoreCombineExpertState);
         }
     }
 
