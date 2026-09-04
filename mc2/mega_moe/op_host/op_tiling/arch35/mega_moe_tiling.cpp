@@ -708,8 +708,8 @@ static int64_t CalcLeastCclBufferSize(const gert::TilingContext *context, MegaMo
  * 容量这一组：单卡 token 数上界、topk 权重预取开关、peermem 窗口大小、能收多少 token。
  * topkWeightsType 归在这里，是因为开了预取之后 peermem 里每个 token 要多存一份 topk 权重，
  * 它直接决定窗口要开多大，所以先把它校验掉，再拿去算下面的容量。
- * numMaxTokensPerRank 传 0 表示"就按本卡 bs 算"，替换成 bs 之后的值才是后面公式该用的，
- * 所以默认化就在这个函数里做完，别的地方不要再去读一次 attr——那样会拿回 0 把容量算塌。
+ * MTE 下 numMaxTokensPerRank 传 0 表示按本卡 bs 计算。URMA 使用跨卡对称窗口，host 无法从
+ * 本卡 bs 推导出全卡一致的容量上界，因此必须显式传入非 0 值。
  */
 static ge::graphStatus CheckCapacityAttrs(const gert::TilingContext *context, MegaMoeConfig &config,
                                           const char *nodeName, const MegaMoeAttrShapeContext &shape,
@@ -721,6 +721,11 @@ static ge::graphStatus CheckCapacityAttrs(const gert::TilingContext *context, Me
     OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "numMaxTokensPerRank"),
                     return ge::GRAPH_FAILED);
     int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
+    int64_t topoType = *attrs->GetAttrPointer<int64_t>(config.attrTopoTypeIndex);
+    OP_TILING_CHECK(topoType == TOPO_TYPE_URMA && numMaxTokensPerRank == 0,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "numMaxTokensPerRank", "0",
+                                              "should be >= bs and identical on all ranks for URMA"),
+                    return ge::GRAPH_FAILED);
     // 这个上界最后按 uint32 落库，越界值不拦会被截断成错误值。
     OP_TILING_CHECK(
         numMaxTokensPerRank < 0 || numMaxTokensPerRank > 0xFFFFFFFFLL ||
@@ -731,7 +736,6 @@ static ge::graphStatus CheckCapacityAttrs(const gert::TilingContext *context, Me
     if (numMaxTokensPerRank == 0) {
         numMaxTokensPerRank = shape.bs;
     }
-    int64_t topoType = *attrs->GetAttrPointer<int64_t>(config.attrTopoTypeIndex);
     int64_t routeCapacity = numMaxTokensPerRank * shape.topK;
     OP_TILING_CHECK(
         topoType == TOPO_TYPE_URMA && routeCapacity > std::numeric_limits<int32_t>::max(),
@@ -831,7 +835,7 @@ static ge::graphStatus SetBasicAttrParams(const gert::TilingContext *context, Me
     tilingData->epWorldSize = *epWorldSizePtr;
     tilingData->topoType = *topoTypePtr;
     tilingData->topkWeightsPrefetch = static_cast<int32_t>(*topkWeightsTypePtr);
-    // attr 为 0 时上界取本卡 bs, 与原逻辑取值一致
+    // CheckCapacityAttrs 已禁止 URMA 使用 0；仅 MTE 保留 0 -> 本卡 bs 的兼容行为。
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
     OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "numMaxTokensPerRank"),
                     return ge::GRAPH_FAILED);
