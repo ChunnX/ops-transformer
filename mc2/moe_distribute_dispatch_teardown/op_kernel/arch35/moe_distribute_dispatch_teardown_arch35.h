@@ -31,15 +31,6 @@
 #endif
 #include "../../../common/op_kernel/mc2_moe_context.h"
 
-// arch35 性能优化开关：置 0 时 LocalWindowCopy 走原逐 token 同步搬运
-#ifndef MC2_DTD_OPT_WINCOPY_PIPELINE
-#define MC2_DTD_OPT_WINCOPY_PIPELINE 1
-#endif
-// 仅 bs<=16：count==0 的专家跳过 DCCI（空专家无数据可读）；bs256 走独立函数，不受影响
-#ifndef MC2_DTD_OPT_SMALL_BS_SKIP_EMPTY
-#define MC2_DTD_OPT_SMALL_BS_SKIP_EMPTY 1
-#endif
-
 namespace Mc2Kernel {
 constexpr uint8_t BUFFER_NUM = 2;       // 多buf
 constexpr uint32_t STATE_OFFSET = 512U; // 状态空间偏移地址
@@ -73,10 +64,8 @@ public:
 
 private:
     __aicore__ inline void LocalWindowCopy();
-#if MC2_DTD_OPT_WINCOPY_PIPELINE
     // 独立函数、禁止内联：避免 bs256 流水与小 bs 原路径编进同一段，抬高寄存器压力
     __aicore__ __attribute__((noinline)) void LocalWindowCopyPipeline();
-#endif
     __aicore__ inline void WaitDispatch();
     __aicore__ inline void FlipDataState();
     __aicore__ inline void GetCumSum(LocalTensor<int32_t> &outLocal, uint32_t totalCount);
@@ -518,12 +507,10 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
         uint32_t i = index - startExpertId_;
         uint32_t count = statusTensor_.GetValue(i * 8 + 1);
         outCountLocal.SetValue(i, beginIdx + count);
-#if MC2_DTD_OPT_SMALL_BS_SKIP_EMPTY
         // 空专家无 win 数据，DCCI 是纯开销。beginIdx 不变（+0）。
         if (count == 0U) {
             continue;
         }
-#endif
         uint32_t winOffset = index;
         if constexpr (!IsShareExpertRank) {
             if (moeExpertNumPerRank_ > 1) { // moe专家卡且一卡多专家场景 转换成数据区的排布偏移
@@ -562,7 +549,6 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
     PipeBarrier<PIPE_MTE3>();
 }
 
-#if MC2_DTD_OPT_WINCOPY_PIPELINE
 template <TemplateMC2TypeClass>
 __aicore__ __attribute__((noinline)) void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::LocalWindowCopyPipeline()
 {
@@ -621,7 +607,6 @@ __aicore__ __attribute__((noinline)) void MoeDistributeDispatchTeardown<Template
     DataCopyPad(sendCountsGlobal[startExpertId_], outCountLocal, dataCopyOutParams);
     PipeBarrier<PIPE_MTE3>();
 }
-#endif
 
 // 更新多专家卡上的tokenNumsOut tensor
 template <TemplateMC2TypeClass>
@@ -691,15 +676,11 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Proce
         WaitDispatch();
         FlipDataState();
         SyncAll<true>();
-#if MC2_DTD_OPT_WINCOPY_PIPELINE
         if (axisBS_ > 16U) {
             LocalWindowCopyPipeline();
         } else {
             LocalWindowCopy();
         }
-#else
-        LocalWindowCopy();
-#endif
         UpdateTokenNumsOut();
     }
 }

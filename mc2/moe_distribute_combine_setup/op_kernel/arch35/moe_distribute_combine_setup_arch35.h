@@ -33,16 +33,6 @@
 #include "../moe_distribute_combine_setup_tiling_data.h"
 #include "../../../common/op_kernel/mc2_moe_context.h"
 
-// arch35 性能优化开关（仅本算子）。全 0 时 Communication/CurRankComm/BuffInit 回原逻辑。
-#ifndef MC2_CSU_OPT_OVERLAP_REMOTE
-// 先下发远端 WriteNbi/Commit，再做本卡 GM->UB->win，bs256 本卡拷贝不再堵住 NIC
-#define MC2_CSU_OPT_OVERLAP_REMOTE 1
-#endif
-#ifndef MC2_CSU_OPT_LOCAL_COPY_PIPELINE
-// 仅 bs>16：本卡搬运双 buffer；bs8/bs16 保持单 buffer 全 UB，避免一次拷贝被拆成两块
-#define MC2_CSU_OPT_LOCAL_COPY_PIPELINE 1
-#endif
-
 namespace MoeDistributeCombineSetupImpl {
 
 #define TemplateMC2TypeClass typename ExpandXType, typename ExpandIdxType
@@ -103,9 +93,7 @@ private:
 
     TQue<QuePosition::VECIN, 1> assistInfoQueue_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> expertTokenTmpQueue_;
-#if MC2_CSU_OPT_LOCAL_COPY_PIPELINE
     uint32_t localCopyQueueNum_{1};
-#endif
 
     // =============================== Urma =============================== //
     uint32_t aivId_{0};
@@ -239,36 +227,25 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::BuffInit(
     if (reservedUbSize > totalUbSize) {
         printf("[ERROR] hcomm_.Init UB space is insufficient, reserved=%llu total=%u\n", reservedUbSize, totalUbSize);
     }
-#if MC2_CSU_OPT_LOCAL_COPY_PIPELINE
-    {
-        const uint64_t leftover = totalUbSize - reservedUbSize;
-        const uint64_t halfAlign = (leftover / 2U) / UB_ALIGN * UB_ALIGN;
-        tpipe_->Reset();
-        // bs8/bs16 本卡数据量小，拆半会把一次拷贝拆成两块；bs256 才走双 buffer
-        if (moeDistributeCombineSetupInfo_->bs > 16U && halfAlign > 0U) {
-            remain_ub_space = halfAlign;
-            localCopyQueueNum_ = 2U;
-            if (!tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize)) ||
-                !tpipe_->InitBuffer(expertTokenTmpQueue_, 2, static_cast<uint32_t>(remain_ub_space))) {
-                printf("[ERROR] hcomm_.Init communication buffers failed\n");
-            }
-        } else {
-            remain_ub_space = leftover;
-            localCopyQueueNum_ = 1U;
-            if (!tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize)) ||
-                !tpipe_->InitBuffer(expertTokenTmpQueue_, 1, static_cast<uint32_t>(remain_ub_space))) {
-                printf("[ERROR] hcomm_.Init communication buffers failed\n");
-            }
+    const uint64_t leftover = totalUbSize - reservedUbSize;
+    const uint64_t halfAlign = (leftover / 2U) / UB_ALIGN * UB_ALIGN;
+    tpipe_->Reset();
+    // bs8/bs16 本卡数据量小，拆半会把一次拷贝拆成两块；bs256 才走双 buffer
+    if (moeDistributeCombineSetupInfo_->bs > 16U && halfAlign > 0U) {
+        remain_ub_space = halfAlign;
+        localCopyQueueNum_ = 2U;
+        if (!tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize)) ||
+            !tpipe_->InitBuffer(expertTokenTmpQueue_, 2, static_cast<uint32_t>(remain_ub_space))) {
+            printf("[ERROR] hcomm_.Init communication buffers failed\n");
+        }
+    } else {
+        remain_ub_space = leftover;
+        localCopyQueueNum_ = 1U;
+        if (!tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize)) ||
+            !tpipe_->InitBuffer(expertTokenTmpQueue_, 1, static_cast<uint32_t>(remain_ub_space))) {
+            printf("[ERROR] hcomm_.Init communication buffers failed\n");
         }
     }
-#else
-    remain_ub_space = totalUbSize - reservedUbSize;
-    tpipe_->Reset();
-    if (!tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize)) ||
-        !tpipe_->InitBuffer(expertTokenTmpQueue_, 1, static_cast<uint32_t>(remain_ub_space))) {
-        printf("[ERROR] hcomm_.Init communication buffers failed\n");
-    }
-#endif
 }
 
 template <TemplateMC2TypeClass>
@@ -307,13 +284,6 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
         return;
     }
-
-#if !MC2_CSU_OPT_OVERLAP_REMOTE
-    if (unlikely(epRankId_ >= startRankId_ && epRankId_ < endRankId_)) {
-        // 本卡通信
-        CurRankComm(assistInfoForCombineLocal, curRankExpertNum);
-    }
-#endif
 
     // 数据和状态分离：有token才发数据，每个dstRank始终单独发一次状态
     uint32_t middleRank = epRankId_ < startRankId_ ? startRankId_ : epRankId_;
@@ -388,12 +358,10 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         // hcomm_.Drain(channelId);
     }
 
-#if MC2_CSU_OPT_OVERLAP_REMOTE
     if (unlikely(epRankId_ >= startRankId_ && epRankId_ < endRankId_)) {
         // 远端已 Commit，本卡拷贝与 NIC 重叠
         CurRankComm(assistInfoForCombineLocal, curRankExpertNum);
     }
-#endif
 
     assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
 }
@@ -428,7 +396,6 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankCo
 
         uint64_t sendBytes = static_cast<uint64_t>(curTokenNum) * axisHExpandXTypeSize_;
         DataCopyPadExtParams<uint8_t> padParams{false, 0U, 0U, 0U};
-#if MC2_CSU_OPT_LOCAL_COPY_PIPELINE
         if (localCopyQueueNum_ > 1U && remain_ub_space > 0U) {
             const uint64_t totalBytes = sendBytes;
             const uint64_t chunkNum = (totalBytes + remain_ub_space - 1UL) / remain_ub_space;
@@ -455,9 +422,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankCo
                 DataCopyPad(selfDataDstTensor[curOff], curBuf, outParams);
                 expertTokenTmpQueue_.FreeTensor<uint8_t>(curBuf);
             }
-        } else
-#endif
-        {
+        } else {
             LocalTensor<uint8_t> expertTokenTmpU8 = expertTokenTmpQueue_.AllocTensor<uint8_t>();
             DataCopyExtParams copyParams{1U, static_cast<uint32_t>(remain_ub_space), 0U, 0U, 0U};
 

@@ -33,11 +33,6 @@
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 
-// arch35 性能优化开关：置 0 时 CalMoeStartTokenNum 走原向量 Gather/ReduceSum
-#ifndef MC2_DSU_OPT_PREFIX_TOKEN_SUM
-#define MC2_DSU_OPT_PREFIX_TOKEN_SUM 1
-#endif
-
 namespace Mc2Kernel {
 constexpr uint8_t BUFFER_NUM = 2;       // 多buf
 constexpr uint32_t STATE_OFFSET = 512U; // 状态空间偏移地址
@@ -886,62 +881,13 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::CalMoeSt
     if (startRankId <= sharedExpertRankNum_) {
         return;
     }
-#if MC2_DSU_OPT_PREFIX_TOKEN_SUM
-    // 原实现按卡做向量 Gather/ReduceSum，startRankId 越大的核串行轮次越多。
-    // 累加对象是 statusTensor 上一段连续专家的 token 数，调用前已 MTE2_S，标量前缀和即可。
+    // statusTensor 上一段连续专家的 token 数，调用前已 MTE2_S，标量前缀和即可。
     const uint32_t preExpertCnt = (startRankId - sharedExpertRankNum_) * moeExpertNumPerRank_;
     uint32_t preTokenSum = 0U;
     for (uint32_t i = 0U; i < preExpertCnt; ++i) {
         preTokenSum += static_cast<uint32_t>(statusTensor((sharedExpertRankNum_ + i) * 8 + 1));
     }
     tokenNum += preTokenSum;
-    return;
-#else
-    int32_t moeExpertNumPerRank = moeExpertNumPerRank_;
-    tpipe_->InitBuffer(workLocalBuf_, moeExpertNumPerRank * sizeof(int32_t));
-    LocalTensor<int32_t> moeExpertIdLT = workLocalBuf_.Get<int32_t>();
-
-    tpipe_->InitBuffer(workLocalBuf_, moeExpertNumPerRank * sizeof(int32_t));
-    LocalTensor<int32_t> moeExpertIdOffsetLT = workLocalBuf_.Get<int32_t>();
-
-    tpipe_->InitBuffer(workLocalBuf_, moeExpertNumPerRank * sizeof(int32_t));
-    LocalTensor<int32_t> moeExpertIdIndexLT = workLocalBuf_.Get<int32_t>();
-
-    tpipe_->InitBuffer(workLocalBuf_, moeExpertNumPerRank * sizeof(int32_t));
-    LocalTensor<int32_t> statusGatherLT = workLocalBuf_.Get<int32_t>();
-    tpipe_->InitBuffer(workLocalBuf_, moeExpertNumPerRank * sizeof(float));
-    LocalTensor<float> statusGatherLTF = workLocalBuf_.Get<float>();
-
-    tpipe_->InitBuffer(workLocalBuf_, moeExpertNumPerRank * sizeof(float));
-    LocalTensor<float> statusSumLT = workLocalBuf_.Get<float>();
-
-    tpipe_->InitBuffer(workLocalBuf_, moeExpertNumPerRank * sizeof(float));
-    LocalTensor<float> sharedTmpBuffer = workLocalBuf_.Get<float>();
-
-    LocalTensor<uint32_t> moeExpertIdIndexLTU32;
-    for (uint32_t rankId = 0; rankId < startRankId - sharedExpertRankNum_; rankId++) {
-        Duplicate(moeExpertIdLT, (int32_t)(sharedExpertRankNum_ + rankId * moeExpertNumPerRank), moeExpertNumPerRank);
-        CreateVecIndex(moeExpertIdOffsetLT, 0, moeExpertNumPerRank);
-        // 计算moe专家的id
-        moeExpertIdIndexLT = moeExpertIdLT + moeExpertIdOffsetLT;
-        // 乘8加1表示在statusTensor_的位置，moeExpertIdIndexLT表示第几个元素
-        Muls(moeExpertIdIndexLT, moeExpertIdIndexLT, 8, moeExpertNumPerRank); //
-        Adds(moeExpertIdIndexLT, moeExpertIdIndexLT, 1, moeExpertNumPerRank);
-        // 4表示int32大小，moeExpertIdIndexLT表示地址偏移量
-        Muls(moeExpertIdIndexLT, moeExpertIdIndexLT, 4, moeExpertNumPerRank);
-        // 以上api不支持u32，gather第三个参数固定为u32，需转换一次
-        moeExpertIdIndexLTU32 = moeExpertIdIndexLT.ReinterpretCast<uint32_t>();
-        // 根据moeExpertIdIndexLTU32索引取statusTensor至statusGatherLT
-        Gather(statusGatherLT, statusTensor, moeExpertIdIndexLTU32, (uint32_t)0, moeExpertNumPerRank);
-        // reducesum支持float和half，需转换
-        Cast(statusGatherLTF, statusGatherLT, RoundMode::CAST_RINT, moeExpertNumPerRank);
-        ReduceSum(statusSumLT, statusGatherLTF, sharedTmpBuffer, moeExpertNumPerRank);
-        Cast(statusGatherLT, statusSumLT, RoundMode::CAST_RINT, moeExpertNumPerRank);
-        SyncFunc<AscendC::HardEvent::V_S>();
-        tokenNum += statusGatherLT(0);
-    }
-    return;
-#endif
 }
 
 template <TemplateMC2TypeClass>
