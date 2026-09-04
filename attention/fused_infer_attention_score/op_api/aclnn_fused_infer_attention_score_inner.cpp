@@ -470,7 +470,6 @@ const aclTensor *CreateStrideAwareView(const aclTensor *tensor, const char *name
 // 相比 executor->CreateView 不会在图模式路径5中固化多余的 view 节点, 相比 l0op::Contiguous 无数据拷贝。
 const aclTensor *NormalizeContiguousTensor(const aclTensor *tensor, const char *name, aclOpExecutor *executor)
 {
-    (void)name;
     (void)executor;
     if (tensor == nullptr) {
         return nullptr;
@@ -484,6 +483,9 @@ const aclTensor *NormalizeContiguousTensor(const aclTensor *tensor, const char *
     if (needNormalize) {
         const_cast<aclTensor *>(tensor)->SetStorageShape(viewShape);
     }
+    // TODO: 临时调测日志, 验证二进制是否包含原地归一化新代码, 验证完删除。
+    OP_LOGI("[FIA_DEBUG] NormalizeContiguousTensor name:%s needNormalize:%d viewDimNum:%ld storageDimNum:%ld",
+            name, static_cast<int>(needNormalize), viewShape.GetDimNum(), storageShape.GetDimNum());
     return tensor;
 }
 
