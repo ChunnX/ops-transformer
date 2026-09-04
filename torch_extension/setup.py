@@ -102,16 +102,16 @@ _op_cpp_files = []
 _op_locations = {}
 
 
-def _collect_op(op_cat, op_dir, te_dir, exported=True):
+def _collect_op(op_cat, op_dir, op_te_dir, exported=True):
     if exported:
         _selected_op_categories.append((op_cat, op_dir))
 
-    for f in sorted(os.listdir(te_dir)):
+    for f in sorted(os.listdir(op_te_dir)):
         if f.endswith(".py"):
-            f_src = os.path.join(te_dir, f)
+            f_src = os.path.join(op_te_dir, f)
             _op_py_files.append((os.path.join("ops", op_cat, op_dir, f), f_src))
 
-    csrc_dir = os.path.join(te_dir, "csrc")
+    csrc_dir = os.path.join(op_te_dir, "csrc")
     if os.path.isdir(csrc_dir):
         for cpp in sorted(os.listdir(csrc_dir)):
             if cpp.endswith(".cpp"):
@@ -153,13 +153,13 @@ for cat in sorted(os.listdir(OPS_TRANSFORMER_ROOT)):
 _SIBLING_IMPORT_RE = re.compile(r"from \.\.+([a-zA-Z_][a-zA-Z0-9_]*)")
 
 
-def _scan_sibling_deps(te_dir):
+def _scan_sibling_deps(op_te_dir):
     deps = []
-    for root, _, filenames in os.walk(te_dir):
+    for root_dir, _, filenames in os.walk(op_te_dir):
         for filename in filenames:
             if not filename.endswith(".py"):
                 continue
-            path = os.path.join(root, filename)
+            path = os.path.join(root_dir, filename)
             try:
                 with open(path, "r", errors="ignore") as fh:
                     text = fh.read()
@@ -174,12 +174,12 @@ def _resolve_required_ops(selected_pairs):
     required = set(selected_pairs)
     queue = list(selected_pairs)
     while queue:
-        cat, op_name = queue.pop()
-        te_dir = _op_locations.get((cat, op_name))
-        if not te_dir:
+        cur_cat, cur_op = queue.pop()
+        op_te_dir = _op_locations.get((cur_cat, cur_op))
+        if not op_te_dir:
             continue
-        for dep_name in _scan_sibling_deps(te_dir):
-            dep_pair = (cat, dep_name)
+        for dep_name in _scan_sibling_deps(op_te_dir):
+            dep_pair = (cur_cat, dep_name)
             if dep_pair in _op_locations and dep_pair not in required:
                 required.add(dep_pair)
                 queue.append(dep_pair)
