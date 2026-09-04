@@ -224,16 +224,6 @@ public:
         mmL0BPolicy_.Uninit(l0bBufferManager_);
     }
 
-    __aicore__ inline void InitValueL1BufferNAxis(const LocalTensor<KV_T> &valueL1, const uint32_t k, const uint32_t n)
-    {
-        InitConstValueParams<half> initConstValueParams;
-        initConstValueParams.repeatTimes = n / 32U;
-        initConstValueParams.blockNum = k;
-        initConstValueParams.dstGap = 0;
-        initConstValueParams.initValue = 0;
-        InitConstValue(valueL1.template ReinterpretCast<half>(), initConstValueParams);
-    }
-
     __aicore__ inline void CopyQuerySlice(const LocalTensor<Q_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
                                           RunInfo &runInfo)
     {
@@ -314,12 +304,6 @@ public:
         LocalTensor<Q_T> qL1Tensor = l1QBuffers_[qL1BufId_ * L1_Q_BUF_BYTES].template ReinterpretCast<Q_T>();
         if (unlikely(runInfo.isFirstS2Loop)) {
             Mutex::Lock<PIPE_MTE2>(Q_L1_BUFFER_ID0 + qL1BufId_);
-            if (unlikely(constInfo_.dSize != dBaseSize)) {
-                // D 非 64/128/256(如 72): Nd2Nz 只写 ceil(72/16)=5 组分形, loadK=80 时 LoadData 同样读 5 组,
-                // 寻址一致无错位; 仅需清零第 5 组内 72~80 的 8 列硬件补齐区(值未定义)
-                InitValueL1BufferNAxis(qL1Tensor, mBaseSize, (((constInfo_.dSize + 15) >> 4) << 4));
-                AscendC::PipeBarrier<PIPE_MTE2>();
-            }
             CopyQuerySlice(qL1Tensor, 0, constInfo_.dSize, runInfo);
             Mutex::Unlock<PIPE_MTE2>(Q_L1_BUFFER_ID0 + qL1BufId_);
             Mutex::Lock<PIPE_MTE1>(Q_L1_BUFFER_ID0 + qL1BufId_);
@@ -327,12 +311,6 @@ public:
 
         LocalTensor<KV_T> kL1Tensor = l1KvBuffers_[kvL1BufId_ * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
         Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
-        if (unlikely(constInfo_.dSize != dBaseSize)) {
-            // K 侧同 Q: loadK=80 时读 5 组与写入一致, 仅清 rows × 80(覆盖 72~80 补齐列)
-            uint32_t kRows = (runInfo.actSingleLoopS2Size + 15) >> 4 << 4; // 与 CopyKeySlice 的 rowCount 一致
-            InitValueL1BufferNAxis(kL1Tensor, kRows, (((constInfo_.dSize + 15) >> 4) << 4));
-            AscendC::PipeBarrier<PIPE_MTE2>();
-        }
         CopyKeySlice(kL1Tensor, 0, constInfo_.dSize, runInfo);
         Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
@@ -409,12 +387,6 @@ public:
     {
         LocalTensor<KV_T> vL1Tensor = l1KvBuffers_[kvL1BufId_ * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
         Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
-        if (unlikely(constInfo_.dSizeV != dVBaseSize)) {
-            // V 侧同 K: loadN=80 时读 5 组与写入一致, 仅清 rows × 80(覆盖 72~80 补齐列)
-            uint32_t kRows = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U); // 与 CopyValueSlice 一致
-            InitValueL1BufferNAxis(vL1Tensor, kRows, (((constInfo_.dSizeV + 15) >> 4) << 4));
-            AscendC::PipeBarrier<PIPE_MTE2>();
-        }
         CopyValueSlice(vL1Tensor, 0, constInfo_.dSizeV, runInfo);
         Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
