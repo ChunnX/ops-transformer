@@ -1,8 +1,8 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software; you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use it except in compliance with the License.
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
@@ -42,7 +42,7 @@
 #include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_tiling_data.h"
 #include "apace/tiling/quant_matmul_tiling_data.h"
 
-namespace AllGatherQuantMatmulImpl {
+namespace Apace {
 
 using namespace AscendC;
 
@@ -98,8 +98,8 @@ public:
         : tilingData_(tilingData)
     {}
 
-    __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
-                                GM_ADDR gatherOut, GM_ADDR workspaceGM);
+    __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR biasGM,
+                                GM_ADDR cGM, GM_ADDR gatherOut, GM_ADDR workspaceGM);
     __aicore__ inline void Run();
 
     using QuantMatmulKernelImpl = AllGatherQbmmMxKernel<AType, BType, CType, HcommCommWaitPolicy<ServerType>>;
@@ -119,6 +119,7 @@ private:
     GM_ADDR aScaleGM_{};
     GM_ADDR bGM_{};
     GM_ADDR bScaleGM_{};
+    GM_ADDR biasGM_{};
     GM_ADDR cGM_{};
     GM_ADDR workspaceGM_{};
     GM_ADDR gatherDataAddr_{};
@@ -181,13 +182,14 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
 
 template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, IsMxFp4>::Init(
-    GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM, GM_ADDR gatherOut,
+    GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR gatherOut,
     GM_ADDR workspaceGM)
 {
     aGM_ = aGM;
     aScaleGM_ = aScaleGM;
     bGM_ = bGM;
     bScaleGM_ = bScaleGM;
+    biasGM_ = biasGM;
     cGM_ = cGM;
     workspaceGM_ = workspaceGM;
 
@@ -195,8 +197,7 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
 
     // HCCL initialization
     commState_.hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
-    commState_.hccl_.SetCcTilingV2(
-        static_cast<uint64_t>(offsetof(Apace::hcommAllGatherMatmulTilingData, mc2CcTiling)));
+    commState_.hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(Apace::hcommAllGatherMatmulTilingData, mc2CcTiling)));
     rankId_ = commState_.hccl_.GetRankId();
     rankSize_ = commState_.hccl_.GetRankDim();
 
@@ -227,12 +228,14 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
                                                   static_cast<AscendC::HcclDataType>(scaleDataType_),
                                                   static_cast<uint64_t>(m_) * scaleKLen_, static_cast<uint8_t>(1));
 
-    // Data Head: 批量提交所有 head tile（repeat=tileCnt）
+    // Data Head: 批量提交所有 head tile（repeat=tileCnt）；纯尾块路径（tileCnt=0）跳过
     // count/stride 用 kForComm_（FP4 时 CeilDiv(K,2) 减半），地址偏移用 k_*sizeof(AType)（FP4 打包后字节数）
-    commState_.dataHeadHandle_ = commState_.hccl_.template AllGather<true>(
-        aGM_, gatherDataAddr_, static_cast<uint64_t>(tileM_) * kForComm_,
-        static_cast<AscendC::HcclDataType>(dataDataType_), static_cast<uint64_t>(m_) * kForComm_,
-        static_cast<uint8_t>(tileCnt_));
+    if (tileCnt_ > 0) {
+        commState_.dataHeadHandle_ = commState_.hccl_.template AllGather<true>(
+            aGM_, gatherDataAddr_, static_cast<uint64_t>(tileM_) * kForComm_,
+            static_cast<AscendC::HcclDataType>(dataDataType_), static_cast<uint64_t>(m_) * kForComm_,
+            static_cast<uint8_t>(tileCnt_));
+    }
 
     // Data Tail: 批量提交所有 tail tile（repeat=tailCnt）
     if (tailCnt_ > 0) {
@@ -267,6 +270,8 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
     params.aScaleGM = aScaleGM_;
     params.bGM = bGM_;
     params.bScaleGM = bScaleGM_;
+    params.biasGM = biasGM_;
+    params.isBias = (biasGM_ != nullptr); // bias optional 输入缺失时框架传 nullptr（同 gatherOut 判空惯例）
     params.cGM = cGM_;
     params.winDataBase = gatherDataAddr_;
     params.winScaleBase = gatherScaleAddr_;
@@ -285,4 +290,4 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
     commState_.hccl_.Finalize();
 }
 
-} // namespace AllGatherQuantMatmulImpl
+} // namespace Apace

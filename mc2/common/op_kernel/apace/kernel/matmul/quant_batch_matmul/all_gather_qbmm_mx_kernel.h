@@ -9,7 +9,7 @@
  */
 /*!
  * \file all_gather_qbmm_mx_kernel.h
- * \brief AllGather Prefill 专用 QMM 内核 — 基于 FragmentTensor。
+ * \brief AllGather Prefill 专用 QMM 内核 — 基于 FragmentTensor
  */
 
 #pragma once
@@ -31,7 +31,7 @@
 #include "apace/basic/fragment_tensor/fragment_tensor_api.h"
 #include "apace/tiling/quant_matmul_tiling_data.h"
 
-namespace AllGatherQuantMatmulImpl {
+namespace Apace {
 
 using namespace AscendC;
 
@@ -133,6 +133,8 @@ public:
         GM_ADDR bGM{nullptr};
         GM_ADDR bScaleGM{nullptr};
         GM_ADDR cGM{nullptr};
+        GM_ADDR biasGM{nullptr};
+        bool isBias{false};
 
         // Win buffer base addresses (computed by communication layer)
         GM_ADDR winDataBase{nullptr};
@@ -145,8 +147,14 @@ public:
     };
 
     __aicore__ inline void Run(const Params &params);
-    __aicore__ inline void operator()(const Params &params) { Run(params); }
-    __aicore__ inline CommPolicy &GetCommPolicy() { return commPolicy_; }
+    __aicore__ inline void operator()(const Params &params)
+    {
+        Run(params);
+    }
+    __aicore__ inline CommPolicy &GetCommPolicy()
+    {
+        return commPolicy_;
+    }
 
 private:
     __aicore__ inline void Init(const Params &params);
@@ -187,6 +195,7 @@ private:
     __gm__ BType *bGmAddr_{nullptr};
     __gm__ AscendC::fp8_e8m0_t *scaleBGmAddr_{nullptr};
     __gm__ CType *cGmAddr_{nullptr};
+    __gm__ float *biasGmAddr_{nullptr};
 
     // ---- FragmentTensor state ----
     FragTensorA headFragA_{};
@@ -199,10 +208,10 @@ private:
     FragScaleA tailFragScaleA_{};
     FragTensorC tailFragC_{};
 
-    // ---- Address bookkeeping ----
-    GM_ADDR cFragAddrs_[8]{};
-    GM_ADDR winDataRankBase_[8]{};
-    GM_ADDR winScaleRankBase_[8]{};
+    static constexpr uint32_t MAX_RANK_SIZE = 16U; // 与 tiling rank_size 上限一致
+    GM_ADDR cFragAddrs_[MAX_RANK_SIZE]{};
+    GM_ADDR winDataRankBase_[MAX_RANK_SIZE]{};
+    GM_ADDR winScaleRankBase_[MAX_RANK_SIZE]{};
 
     static constexpr uint32_t MAX_FRAG = Apace::Basic::MAX_FRAGMENT_COUNT;
     GM_ADDR headAddrListA_[MAX_FRAG]{};
@@ -240,6 +249,7 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::I
     cGmAddr_ = reinterpret_cast<__gm__ CType *>(params.cGM);
     scaleAGmAddr_ = reinterpret_cast<__gm__ AscendC::fp8_e8m0_t *>(params.aScaleGM);
     scaleBGmAddr_ = reinterpret_cast<__gm__ AscendC::fp8_e8m0_t *>(params.bScaleGM);
+    biasGmAddr_ = reinterpret_cast<__gm__ float *>(params.biasGM);
 }
 
 template <typename AType, typename BType, typename CType, typename CommPolicy>
@@ -306,7 +316,7 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::R
     ProblemShape problemShape{totalLogicalM, Ni, Ki, 1};
     BlockScheduler sch(problemShape, schParams);
     BlockMmadFragC mmadFrag;
-    mmadFrag.Init(problemShape, l0TileShape, fragL1, false, mmT.dbL0c > 1);
+    mmadFrag.Init(problemShape, l0TileShape, fragL1, params.isBias, mmT.dbL0c > 1);
 
     // 延迟构建 fragment tensor（head 先建，main/tail 在 Process 中按需建）
     BuildFragmentTensors(params);
@@ -334,8 +344,9 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::P
     auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(bGmAddr_), MakeLayoutB{}(Ki, Ni));
     auto gmScaleB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(scaleBGmAddr_), MakeLayoutScaleB{}(scaleKLen, Ni));
     __gm__ float *biasNull = nullptr;
+    __gm__ float *biasPtr = params.isBias ? biasGmAddr_ : biasNull;
     auto gmBias =
-        Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasNull), Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, Ni));
+        Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasPtr), Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, Ni));
 
     const auto &mTailTile = mmT.mTailTile;
     const auto &nTailTile = mmT.nTailTile;
@@ -586,4 +597,4 @@ AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::ResolveTileCtx(int64_t m
     return ctx;
 }
 
-} // namespace AllGatherQuantMatmulImpl
+} // namespace Apace
