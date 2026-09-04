@@ -84,10 +84,11 @@ __aicore__ inline void CombineTokens(uint32_t nLoc, uint32_t n, LocalTensor<int3
         if (params.tilingData->bs == 10072U && n == 3072U && route.tokenIdx == debugTokenIndex &&
             nLoc <= debugOutputColumn && debugOutputColumn < nLoc + tileWidth) {
             LocalTensor<ElementMMadOut2> debugRow = l0cOutUbGMM2[tileIdx * ubTileN];
-            float debugValue = static_cast<float>(debugRow.GetValue(debugOutputColumn - nLoc));
+            LocalTensor<uint16_t> debugBits = debugRow.template ReinterpretCast<uint16_t>();
+            uint16_t rawValue = debugBits.GetValue(debugOutputColumn - nLoc);
             AscendC::printf(
-                "[MegaMoeProbe] stage=moe_gmm2_before_combine dstRank=%u token=%u topk=%u col=%u value=%f\n",
-                route.dstRankId, route.tokenIdx, route.topkIdx, debugOutputColumn, debugValue);
+                "[MegaMoeProbe] stage=moe_gmm2_before_combine dstRank=%u token=%u topk=%u col=%u bf16Bits=0x%x\n",
+                route.dstRankId, route.tokenIdx, route.topkIdx, debugOutputColumn, static_cast<uint32_t>(rawValue));
         }
         gmRemoteD.SetGlobalBuffer(
             reinterpret_cast<__gm__ ElementMMadOut2 *>(GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
