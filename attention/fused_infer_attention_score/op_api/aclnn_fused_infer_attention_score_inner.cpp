@@ -846,6 +846,19 @@ static aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSizeImpl(
     // 输出直连条件: 用户输出张量连续(kernel 可直接写入用户显存), 且未开启 lse 或 lse 输出也连续。
     const bool bindUserOutput =
         IsContiguous(attentionOut) && (!softmaxLseFlag || (softmaxLse != nullptr && IsContiguous(softmaxLse)));
+    if (bindUserOutput) {
+        // 直连时用户张量成为算子输出, 宿侧 checker 要求 format 为 ND 等合法值;
+        // 入图路径5传入的输出张量 format 可能为 RESERVED(此前 AllocTensor 显式设 ND 掩盖了这一点),
+        // 此处原地归一化为 ND(与 base_aclnn.cpp ConvertIntArrayToTensor 的做法一致)。
+        const_cast<aclTensor *>(attentionOut)->SetViewFormat(Format::FORMAT_ND);
+        const_cast<aclTensor *>(attentionOut)->SetStorageFormat(Format::FORMAT_ND);
+        const_cast<aclTensor *>(attentionOut)->SetOriginalFormat(Format::FORMAT_ND);
+        if (softmaxLseFlag && softmaxLse != nullptr) {
+            const_cast<aclTensor *>(softmaxLse)->SetViewFormat(Format::FORMAT_ND);
+            const_cast<aclTensor *>(softmaxLse)->SetStorageFormat(Format::FORMAT_ND);
+            const_cast<aclTensor *>(softmaxLse)->SetOriginalFormat(Format::FORMAT_ND);
+        }
+    }
     auto l0Out = l0op::FusedInferAttentionScore(
         processedQuery, processedKey, processedValue, processedPseShift, processedAttenMask, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, processedDeqScale1, processedQuantScale1, processedDeqScale2, processedQuantScale2,
