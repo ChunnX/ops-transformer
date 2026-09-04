@@ -214,6 +214,7 @@ public:
         pipe.InitBuffer(vCacheOutQueue, BUFFER_NUM, kvDataNum * sizeof(int8_t));
 
         eventIdMTE2ToS = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_S>());
+        eventIdSToMTE2 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::S_MTE2>());
         eventIdVToMTE3V = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
         eventIdVToMTE3K = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
         eventIdMTE3ToMTE2K = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>());
@@ -299,6 +300,8 @@ public:
 
         for (uint32_t ubLoopIndex = 0; ubLoopIndex < coreCalcSLoop - 1; ubLoopIndex++) {
             computeQKV(OnceUBMaxS);
+            SetFlag<HardEvent::S_MTE2>(eventIdSToMTE2);
+            WaitFlag<HardEvent::S_MTE2>(eventIdSToMTE2);
         }
 
         dataCopyParamsK_ = {(uint16_t)coreCalcSLastNum, static_cast<uint32_t>(this->kHiddenSize * sizeof(XTYPE)),
@@ -322,6 +325,7 @@ public:
             WaitFlag<HardEvent::MTE3_MTE2>(eventIdMTE3ToMTE2V);
         }
         GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_S>(eventIdMTE2ToS);
+        GetTPipePtr()->ReleaseEventID<HardEvent::S_MTE2>(eventIdSToMTE2);
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(eventIdVToMTE3V);
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(eventIdVToMTE3K);
         GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_MTE2>(eventIdMTE3ToMTE2K);
@@ -916,12 +920,12 @@ private:
     int64_t indicesArray[INDICES_MAX__NUM];
 
     event_t eventIdMTE2ToS;
+    event_t eventIdSToMTE2;
     event_t eventIdVToMTE3K;
     event_t eventIdMTE3ToMTE2K;
     event_t eventIdMTE2ToMTE3V;
     event_t eventIdMTE3ToMTE2V;
     event_t eventIdVToMTE3V;
-    event_t eventIdMTE3ToVV;
     /* ascendc variable */
     TPipe pipe;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER_NUM> qQueue;
