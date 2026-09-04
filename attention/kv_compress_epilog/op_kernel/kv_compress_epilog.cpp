@@ -17,19 +17,14 @@
 
 using namespace AscendC;
 
-extern "C" __global__ __aicore__ void kv_compress_epilog(
-    GM_ADDR cache,
-    GM_ADDR x,
-    GM_ADDR slot_mapping,
-    GM_ADDR cache_out,
-    GM_ADDR workspace,
-    GM_ADDR tiling)
+extern "C" __global__ __aicore__ void kv_compress_epilog(GM_ADDR cache, GM_ADDR x, GM_ADDR slot_mapping,
+                                                         GM_ADDR cache_out, GM_ADDR workspace, GM_ADDR tiling)
 {
     TPipe pipe;
 
     // Get tiling data
     GET_TILING_DATA_WITH_STRUCT(KvCompressEpilogTilingData, tilingDataIn, tiling);
-    const KvCompressEpilogTilingData* __restrict__ tilingData = &tilingDataIn;
+    const KvCompressEpilogTilingData *__restrict__ tilingData = &tilingDataIn;
 
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
     if (TILING_KEY_IS(0)) {
