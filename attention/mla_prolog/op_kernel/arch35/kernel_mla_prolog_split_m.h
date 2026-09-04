@@ -151,18 +151,18 @@ private:
     __aicore__ inline void QcQrSplit(int64_t curVecToken, int64_t curBlockTokenOffset, int64_t curMSize,
                                      int64_t mmQnPreDequantOffset, int64_t mmQnPreDequantResOffset,
                                      int64_t ropeQrOffset, int64_t ropeQrResOffset);
-    __aicore__ inline void InitQcQrSplitParams(DataCopyParams &inputCopyParams, DataCopyParams &outputCopyParams,
-                                               DataCopyParams &outputRopeParams, Rectangle &ropeParams,
-                                               int64_t &ropeStride, uint32_t &totalLoops, uint32_t &totalQcLoops,
-                                               int64_t curVecToken) const;
+    __aicore__ inline void InitQcQrSplitParams(int64_t curVecToken,
+                                               DataCopyParams *inputCopyParams, DataCopyParams *outputCopyParams,
+                                               DataCopyParams *outputRopeParams, Rectangle *ropeParams,
+                                               int64_t *ropeStride, uint32_t *totalLoops, uint32_t *totalQcLoops) const;
     __aicore__ inline void QcQrSplitDequantQc(LocalTensor<mmQcQrOutputType> &inputLocal,
                                               LocalTensor<mmQnInputType> &outputLocal,
-                                              DataCopyParams &inputCopyParams, DataCopyParams &outputCopyParams,
+                                              const DataCopyParams &inputCopyParams, const DataCopyParams &outputCopyParams,
                                               int64_t curVecToken, uint32_t colOffsetVecEnd, uint32_t totalQcLoops,
                                               int64_t &mmQcQrOffset, int64_t &mmQnPreDequantResOffset,
                                               uint32_t &colOffsetVec, uint32_t &qcCount);
     __aicore__ inline void QcQrSplitRopeQr(int64_t curVecToken, uint32_t colOffsetVecEnd,
-                                           DataCopyParams &outputRopeParams, Rectangle &ropeParams,
+                                           const DataCopyParams &outputRopeParams, Rectangle &ropeParams,
                                            int64_t ropeStride, int64_t &ropeQrOffset, int64_t &ropeQrResOffset,
                                            uint32_t &colOffsetRope);
     __aicore__ inline void DynamicQuantQnAndMulQrSyncMMQn(int64_t batchOffset, int64_t curMSize, int64_t numHeadOffset,
@@ -318,7 +318,9 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::Init(
     }
     kvCacheGm_.SetGlobalBuffer((__gm__ kvCacheType *)kvCache);
     krCacheGm_.SetGlobalBuffer((__gm__ krCacheType *)krCache);
-
+    if constexpr (MLAPT::actualSeqMode == ACTUAL_SEQ_MODE::EN_Q_LEN) {
+        actualSeqLenGm_.SetGlobalBuffer((__gm__ int32_t *)actualSeqLen);
+    }
     OutputInit(actualSeqLen, queryOut, queryRopeOut, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut);
     ScaleInit(dequantScaleX, dequantScaleWDq, deqScaleQcQrW, dequantScaleWDkvkr, quantScaleCkv, quantScaleCkr,
               smoothScaleCq, kNopeClipAlpha);
@@ -357,9 +359,6 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::OutputInit(__gm__ uint8_t *actu
         if constexpr (IsFullQuantMode<mmQcQrInputType, dequantScaleType, false>()) {
             dequantScaleQNormGm_.SetGlobalBuffer((__gm__ dequantScaleQNormType *)dequantScaleQNormOut);
         }
-    }
-    if constexpr (MLAPT::actualSeqMode == ACTUAL_SEQ_MODE::EN_Q_LEN) {
-        actualSeqLenGm_.SetGlobalBuffer((__gm__ int32_t *)actualSeqLen);
     }
 }
 
@@ -1652,8 +1651,8 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::QcQrSplit(int64_t curVecToken, 
     int64_t ropeStride = 0;
     uint32_t totalLoops = 0;
     uint32_t totalQcLoops = 0;
-    InitQcQrSplitParams(inputCopyParams, outputCopyParams, outputRopeParams, ropeParams,
-                        ropeStride, totalLoops, totalQcLoops, curVecToken);
+    InitQcQrSplitParams(curVecToken, inputCopyParams, outputCopyParams, outputRopeParams, ropeParams,
+                        ropeStride, totalLoops, totalQcLoops);
     LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
     LocalTensor<mmQcQrOutputType> inputLocal = shareTmpUb.ReinterpretCast<mmQcQrOutputType>();
     LocalTensor<mmQnInputType> outputLocal = inputLocal.template ReinterpretCast<mmQnInputType>();
@@ -1689,10 +1688,10 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::QcQrSplit(int64_t curVecToken, 
 
 template <typename MLAPT>
 __aicore__ inline void MlaPrologV3SplitM<MLAPT>::InitQcQrSplitParams(
-    DataCopyParams &inputCopyParams, DataCopyParams &outputCopyParams,
-    DataCopyParams &outputRopeParams, Rectangle &ropeParams,
-    int64_t &ropeStride, uint32_t &totalLoops, uint32_t &totalQcLoops,
-    int64_t curVecToken) const
+    int64_t curVecToken,
+    DataCopyParams *inputCopyParams, DataCopyParams *outputCopyParams,
+    DataCopyParams *outputRopeParams, Rectangle *ropeParams,
+    int64_t *ropeStride, uint32_t *totalLoops, uint32_t *totalQcLoops) const
 {
     inputCopyParams = {
         static_cast<uint16_t>(curVecToken),
@@ -1724,7 +1723,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::InitQcQrSplitParams(
 template <typename MLAPT>
 __aicore__ inline void MlaPrologV3SplitM<MLAPT>::QcQrSplitDequantQc(
     LocalTensor<mmQcQrOutputType> &inputLocal, LocalTensor<mmQnInputType> &outputLocal,
-    DataCopyParams &inputCopyParams, DataCopyParams &outputCopyParams,
+    const DataCopyParams &inputCopyParams, const DataCopyParams &outputCopyParams,
     int64_t curVecToken, uint32_t colOffsetVecEnd, uint32_t totalQcLoops,
     int64_t &mmQcQrOffset, int64_t &mmQnPreDequantResOffset,
     uint32_t &colOffsetVec, uint32_t &qcCount)
@@ -1757,7 +1756,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::QcQrSplitDequantQc(
 template <typename MLAPT>
 __aicore__ inline void MlaPrologV3SplitM<MLAPT>::QcQrSplitRopeQr(
     int64_t curVecToken, uint32_t colOffsetVecEnd,
-    DataCopyParams &outputRopeParams, Rectangle &ropeParams,
+    const DataCopyParams &outputRopeParams, const Rectangle &ropeParams,
     int64_t ropeStride, int64_t &ropeQrOffset, int64_t &ropeQrResOffset,
     uint32_t &colOffsetRope)
 {

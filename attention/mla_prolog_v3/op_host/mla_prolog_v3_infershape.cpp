@@ -45,6 +45,7 @@ static ge::graphStatus ValidateInputShapeDims(const gert::InferShapeContext *con
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "krCache",
                                              std::to_string(krCacheShape->GetDimNum()) + "D", "1D or 3D or 4D"),
                 return ge::GRAPH_FAILED);
+    return GRAPH_SUCCESS;
 }
 
 ge::graphStatus GetMlaPrologV3ShapeDim(const gert::InferShapeContext *context, MlaPrologProtoShapeParam &shapeParam)
@@ -67,8 +68,13 @@ ge::graphStatus GetMlaPrologV3ShapeDim(const gert::InferShapeContext *context, M
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     // RoPE 开关由 do_rope attr 控制（aclnnV3 默认 true，aclnnV4 透传用户开关），缺省视为开启
     // 入图场景下旧图不携带 do_rope，attr 数组可能不足 13 个，先判越界再取值，避免 GetAttrPointer 越界报错
-    const bool *doRopePtr = attrs->GetAttrPointer<bool>(ATTR_DO_ROPE_INDEX);
-    const bool doRope = (doRopePtr == nullptr) ? true : *doRopePtr;
+    bool doRope = true;
+    if (attrs->GetAttrNum() > ATTR_DO_ROPE_INDEX) {
+        const bool *doRopePtr = attrs->GetAttrPointer<bool>(ATTR_DO_ROPE_INDEX);
+        if (doRopePtr != nullptr) {
+            doRope = *doRopePtr;
+        }
+    }
     const bool ropeSinEmpty = (ropeSinShape->GetShapeSize() == 0);
     if (ValidateInputShapeDims(context, tokenXShape, weightUkShape, ropeSinShape, weightDqShape,
                                kvCacheShape, krCacheShape, doRope) != ge::GRAPH_SUCCESS) {
