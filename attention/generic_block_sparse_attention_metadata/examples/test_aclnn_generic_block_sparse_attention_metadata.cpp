@@ -197,8 +197,8 @@ aclnnStatus CreateTndDecodeCase(CaseContext &context)
     constexpr int32_t secondQBlockCount = 3;
 
     context.name = "TND decode schedule";
-    context.maxQSeqLen = qStorageLength;
-    context.maxKvSeqLen = kvStorageLength;
+    context.maxQSeqLen = 0;
+    context.maxKvSeqLen = 0;
     context.numQHeads = numQHeads;
     context.numKvHeads = numKvHeads;
     context.headDim = GBSA_HEAD_DIM;
