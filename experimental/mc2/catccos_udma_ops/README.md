@@ -553,6 +553,68 @@ bad GET/final output. `summary.json` classifies producer visibility,
 quiet-to-recycle timing, cyclic stage reuse, or CQ/transport failure. Input and
 Golden reuse identities are recorded in `reuse_manifest.json`.
 
+### Continuous stress runs
+
+Use `run_stress.sh` to submit a fixed number of calls on one NPU stream per
+rank. Only balanced routing is supported. The following commands run each
+operator alone or alternate a real A2AV-GMM -> GMM-A2AV chain:
+
+```bash
+bash scripts/run_stress.sh --mode a2avgmm --case-id model_case_1 --iterations 10000
+bash scripts/run_stress.sh --mode gmma2av --case-id model_case_1 --iterations 10000
+bash scripts/run_stress.sh --mode chain --case-id model_case_1 --iterations 10000
+```
+
+The installed Wheel also provides `ops-transformer-udma-stress` with the same
+arguments. `--iterations` is a required positive integer: a single-operator
+run submits exactly that many calls per rank; `chain` submits that many pairs,
+so each operator runs that many times. There are no warmups, primers or repeat
+groups, and no Golden generation, comparison, output snapshots or msprof run.
+
+`a2avgmm` and `chain` default to `cases/alltoallv_grouped_mat_mul.yaml`;
+`gmma2av` defaults to `cases/grouped_mat_mul_all_to_allv.yaml`. Paths are resolved
+relative to the validation module. Use `--cases` for a different manifest;
+repeat `--case-id` or `--include-tag` to select workloads. Without filters all
+cases in that manifest run. Stress uses their input configuration regardless
+of the accuracy/performance `run` tags, and ignores their phase counts.
+An operator/mode mismatch or an unbalanced route is rejected before launch.
+
+For `chain`, supply one A2AV-GMM case with `shape: {m: M, k: K, n: N}`.
+With `L = expert_num / world_size`, the framework prepares:
+
+```text
+X [M,K] -- A, W1 [L,K,N] --> Y [M,N] -- B, W2 [L,N,K] --> Z [M,K]
+```
+
+The B output width is always A's input width K. No second case or output-width
+override is needed. Every pair starts from the same original X and reuses Y
+and Z; Z is never fed back into X. B consumes A's GMM output directly, not the
+optional exported AllToAllV tensor. The A export setting follows the case's
+`output_all_to_allv` field, with its buffer also allocated once. Chain mode
+observes B's tighter limit of 32 local experts.
+
+Inputs, both weights, contiguous NPU int64 routes and output buffers are
+prepared once. All calls pass reusable `out` tensors; A also receives the
+host-known row count. Route diagnostics must be disabled
+(`CATCCOS_UDMA_VALIDATE_ROUTES=0`) because they read device counts back on every
+call. The framework synchronizes preparation and aligns ranks once before
+the loop, then drains the stream after the entire loop. It adds no barriers,
+stream switches, device reads, allocations or synchronization between calls;
+the operators retain their own required communication synchronization.
+
+Use `--timeout-seconds 3600` to set the per-case host deadline, including
+initialization and teardown, and `--fail-fast` to stop after a failed case.
+Results go to `validation_results/<timestamp>/stress` or `--output-dir`.
+Each case contains `resolved_case.json`, `launch.json`, `torchrun.log`, per-rank
+`worker_rank_<rank>.json`, `report.json` and collected runtime logs; the root
+contains `environment.json` and `summary.json`. Submission counts are not
+completion counts: completion is confirmed only after the final stream drain.
+During the loop no progress files are written; if a process is killed while
+submitting, the saved counts reflect only the last checkpoint, not the exact
+failure location. Overall elapsed time includes Python submission overhead
+and is not a per-kernel latency measurement. PASS indicates successful
+execution and teardown on every rank, not numerical correctness.
+
 Performance is collected from exported `msprof` `op_summary` rows, following
 the official [`--task-time` collection definition](https://www.hiascend.com/document/detail/zh/canncommercial/900/devaids/Profiling/atlasprofiling_16_0011.html),
 rather than Python or NPU Event wall time:

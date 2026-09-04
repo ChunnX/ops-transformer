@@ -18,18 +18,11 @@ import ops_transformer_catccos_udma as udma
 try:
     from .case_schema import read_resolved_cases
     from .common import udma_init_method_from_env, validation_udma_heap_size, write_json
+    from .input_generation import make_tensor as _make_tensor
 except ImportError:  # Direct execution keeps the source tree out of package lookup.
     from case_schema import read_resolved_cases
     from common import udma_init_method_from_env, validation_udma_heap_size, write_json
-
-
-def _make_tensor(shape, distribution, device, generator):
-    result = torch.empty(shape, dtype=torch.float32)
-    if distribution["kind"] == "uniform":
-        result.uniform_(distribution["low"], distribution["high"], generator=generator)
-    else:
-        result.normal_(distribution["mean"], distribution["std"], generator=generator)
-    return result.to(dtype=torch.bfloat16, device=device)
+    from input_generation import make_tensor as _make_tensor
 
 
 def main():

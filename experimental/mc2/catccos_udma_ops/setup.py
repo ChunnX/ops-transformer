@@ -194,6 +194,7 @@ setup(
         "console_scripts": [
             "ops-transformer-udma-accuracy=validation.run_accuracy:main",
             "ops-transformer-udma-performance=validation.run_performance:main",
+            "ops-transformer-udma-stress=validation.run_stress:main",
             "ops-transformer-udma-import-baseline=validation.import_msprof_baseline:main",
             "ops-transformer-udma-analyze-dumps=validation.model_dump_analysis:main",
         ]

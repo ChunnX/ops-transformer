@@ -879,8 +879,8 @@ private:
     {
 #if defined(CATCCOS_UDMA_READY_WAIT_TIMEOUT_DIAGNOSTICS) && \
     CATCCOS_UDMA_READY_WAIT_TIMEOUT_DIAGNOSTICS
-        // GetSystemCycle uses a fixed 50 MHz clock: 900 s * 50,000,000.
-        constexpr int64_t READY_WAIT_TIMEOUT_CYCLES = 45000000000LL;
+        // GetSystemCycle uses a fixed 50 MHz clock: 420 s (7 min) * 50,000,000.
+        constexpr int64_t READY_WAIT_TIMEOUT_CYCLES = 21000000000LL;
         // Reading the clock less often keeps the diagnostic close to the
         // original SHMEM wait loop, whose only operations are DCCI + GM load.
         constexpr uint32_t CLOCK_CHECK_POLL_MASK = 0xFFFU;

@@ -259,12 +259,16 @@ def load_case_manifest(path: Union[Path, str]) -> List[Dict[str, Any]]:
 def select_cases(
     cases: Iterable[Mapping[str, Any]],
     *,
-    mode: str,
+    mode: Optional[str],
     case_ids: Optional[Sequence[str]] = None,
     include_tags: Optional[Sequence[str]] = None,
 ) -> List[Dict[str, Any]]:
-    """Select cases by run mode, explicit IDs and an all-tags predicate."""
-    if mode not in SUPPORTED_RUN_MODES:
+    """Select cases by IDs/tags, optionally restricting their declared run mode.
+
+    Passing mode=None lets stress reuse existing workloads without changing
+    their accuracy/performance scheduling metadata.
+    """
+    if mode is not None and mode not in SUPPORTED_RUN_MODES:
         raise ValueError(f"unsupported mode {mode}")
     requested_ids = set(case_ids or [])
     requested_tags = set(include_tags or [])
@@ -273,7 +277,7 @@ def select_cases(
     for raw_case in cases:
         case = copy.deepcopy(dict(raw_case))
         known_ids.add(case["id"])
-        if mode not in case["run"]:
+        if mode is not None and mode not in case["run"]:
             continue
         if requested_ids and case["id"] not in requested_ids:
             continue
