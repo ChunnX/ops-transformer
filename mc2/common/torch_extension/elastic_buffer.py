@@ -718,109 +718,7 @@ class ElasticBuffer:
                 grad_unique (K, H) grad_fetched.type
                 unique_local_entry (K,) int32 — 1D sparse index。
         """
-        _torch_check(
-            self._with_grad,
-            lambda: "engram_fetch_grad requires ElasticBuffer to be initialized with with_grad=True",
-        )
-        _torch_check(
-            grad_fetched.device.type == torch.device("npu").type,
-            lambda: f"grad_fetched must be on NPU, got device: {grad_fetched.device}",
-        )
-        _torch_check(
-            grad_fetched.dim() == 2,
-            lambda: f"grad_fetched must be 2D, got dimensions: {grad_fetched.dim()}",
-        )
-        _torch_check(
-            not self._engram_fetch_in_progress,
-            lambda: (
-                "engram_fetch_grad must be called after the callable returned by engram_fetch."
-            ),
-        )
-        _torch_check(
-            self._engram_context_tensor is not None,
-            lambda: "engram_fetch_grad must be called after at least one engram_write",
-        )
-        expected_dtype = _ENGRAM_INT_TO_DTYPE[self._engram_dtype_int]
-        _torch_check(
-            grad_fetched.dtype == expected_dtype,
-            lambda: (
-                f"grad_fetched dtype must match storage dtype ({expected_dtype}), "
-                f"got {grad_fetched.dtype}"
-            ),
-        )
-        _torch_check(
-            fetch_ctx.perm.dim() == 1,
-            lambda: f"fetch_ctx.perm must be 1D, got dimensions: {fetch_ctx.perm.dim()}",
-        )
-        expected_num_tokens = fetch_ctx.perm.size(0)
-        _torch_check(
-            grad_fetched.size(0) == expected_num_tokens,
-            lambda: (
-                f"grad_fetched row count ({grad_fetched.size(0)}) must match the number of tokens "
-                f"fetched in forward pass ({expected_num_tokens})"
-            ),
-        )
-        _torch_check(
-            grad_fetched.size(1) == self._engram_hidden_size,
-            lambda: (
-                f"grad_fetched hidden size ({grad_fetched.size(1)}) must match storage hidden size "
-                f"({self._engram_hidden_size})"
-            ),
-        )
-        for _name, _tensor in (
-            ("perm", fetch_ctx.perm),
-            ("send_counts", fetch_ctx.send_counts),
-            ("recv_counts", fetch_ctx.recv_counts),
-            ("recv_local_entry", fetch_ctx.recv_local_entry),
-            ("num_recv", fetch_ctx.num_recv),
-        ):
-            _torch_check(
-                _tensor.dtype == torch.int32,
-                lambda _n=_name, _t=_tensor: (
-                    f"fetch_ctx.{_n} dtype must be int32, got {_t.dtype}"
-                ),
-            )
-            _torch_check(
-                _tensor.device.type == torch.device("npu").type,
-                lambda _n=_name, _t=_tensor: (
-                    f"fetch_ctx.{_n} must be on NPU, got device: {_t.device}"
-                ),
-            )
-            _torch_check(
-                _tensor.dim() == 1,
-                lambda _n=_name, _t=_tensor: (
-                    f"fetch_ctx.{_n} must be 1D, got dimensions: {_t.dim()}"
-                ),
-            )
-        expected_send_counts_len = self._rank_size * 8
-        _torch_check(
-            fetch_ctx.send_counts.size(0) == expected_send_counts_len,
-            lambda: (
-                f"fetch_ctx.send_counts length ({fetch_ctx.send_counts.size(0)}) must equal "
-                f"rank_size * 8 = {expected_send_counts_len}"
-            ),
-        )
-        _torch_check(
-            fetch_ctx.recv_counts.size(0) == self._rank_size,
-            lambda: (
-                f"fetch_ctx.recv_counts length ({fetch_ctx.recv_counts.size(0)}) must equal "
-                f"rank_size ({self._rank_size})"
-            ),
-        )
-        expected_recv_local_entry_len = self._num_max_tokens_per_rank * self._rank_size
-        _torch_check(
-            fetch_ctx.recv_local_entry.size(0) == expected_recv_local_entry_len,
-            lambda: (
-                f"fetch_ctx.recv_local_entry length ({fetch_ctx.recv_local_entry.size(0)}) must equal "
-                f"num_max_tokens_per_rank * rank_size = {expected_recv_local_entry_len}"
-            ),
-        )
-        _torch_check(
-            fetch_ctx.num_recv.size(0) == 1,
-            lambda: (
-                f"fetch_ctx.num_recv length ({fetch_ctx.num_recv.size(0)}) must be 1"
-            ),
-        )
+        self._check_engram_fetch_grad(grad_fetched, fetch_ctx)
         grad_unique_full, unique_local_entry_full, num_unique = (
             torch.ops.cann_ops_transformer.engram_fetch_grad(
                 self._engram_context_tensor,
@@ -1097,6 +995,95 @@ class ElasticBuffer:
         self._local_storage_addr = None
         self._comm_buffer_size = 0
         self._rank_size = 0
+
+    def _check_engram_fetch_grad(
+        self, grad_fetched: torch.Tensor, fetch_ctx: EngramFetchCtx
+    ) -> None:
+        """图模式友好校验: 普通 if/raise 静态检查, Dynamo 可追踪为 guard (学习 engram_fetch,
+        避免 torch._check 的 lambda 消息触发 'Missing as_proxy() for NestedUserFunctionVariable')"""
+        if not self._with_grad:
+            raise RuntimeError(
+                "engram_fetch_grad requires ElasticBuffer to be initialized with with_grad=True"
+            )
+        if grad_fetched.device.type != torch.device("npu").type:
+            raise RuntimeError(
+                f"grad_fetched must be on NPU, got device: {grad_fetched.device}"
+            )
+        if grad_fetched.dim() != 2:
+            raise RuntimeError(
+                f"grad_fetched must be 2D, got dimensions: {grad_fetched.dim()}"
+            )
+        if self._engram_fetch_in_progress:
+            raise RuntimeError(
+                "engram_fetch_grad must be called after the callable returned by engram_fetch."
+            )
+        if self._engram_context_tensor is None:
+            raise RuntimeError(
+                "engram_fetch_grad must be called after at least one engram_write"
+            )
+        expected_dtype = _ENGRAM_INT_TO_DTYPE[self._engram_dtype_int]
+        if grad_fetched.dtype != expected_dtype:
+            raise RuntimeError(
+                f"grad_fetched dtype must match storage dtype ({expected_dtype}), got {grad_fetched.dtype}"
+            )
+        if fetch_ctx.perm.dim() != 1:
+            raise RuntimeError(
+                f"fetch_ctx.perm must be 1D, got dimensions: {fetch_ctx.perm.dim()}"
+            )
+        expected_num_tokens = fetch_ctx.perm.size(0)
+        if grad_fetched.size(0) != expected_num_tokens:
+            raise RuntimeError(
+                f"grad_fetched row count ({grad_fetched.size(0)}) must match the number of tokens "
+                f"fetched in forward pass ({expected_num_tokens})"
+            )
+        if grad_fetched.size(1) != self._engram_hidden_size:
+            raise RuntimeError(
+                f"grad_fetched hidden size ({grad_fetched.size(1)}) must match storage hidden size "
+                f"({self._engram_hidden_size})"
+            )
+        if grad_fetched.size(1) % 128 != 0:
+            raise RuntimeError(
+                f"grad_fetched hidden size must be 128-aligned, got {grad_fetched.size(1)}"
+            )
+        for name, tensor in (
+            ("perm", fetch_ctx.perm),
+            ("send_counts", fetch_ctx.send_counts),
+            ("recv_counts", fetch_ctx.recv_counts),
+            ("recv_local_entry", fetch_ctx.recv_local_entry),
+            ("num_recv", fetch_ctx.num_recv),
+        ):
+            if tensor.dtype != torch.int32:
+                raise RuntimeError(
+                    f"fetch_ctx.{name} dtype must be int32, got {tensor.dtype}"
+                )
+            if tensor.device.type != torch.device("npu").type:
+                raise RuntimeError(
+                    f"fetch_ctx.{name} must be on NPU, got device: {tensor.device}"
+                )
+            if tensor.dim() != 1:
+                raise RuntimeError(
+                    f"fetch_ctx.{name} must be 1D, got dimensions: {tensor.dim()}"
+                )
+        if fetch_ctx.send_counts.size(0) != self._rank_size * 8:
+            raise RuntimeError(
+                f"fetch_ctx.send_counts length ({fetch_ctx.send_counts.size(0)}) must equal "
+                f"rank_size * 8 = {self._rank_size * 8}"
+            )
+        if fetch_ctx.recv_counts.size(0) != self._rank_size:
+            raise RuntimeError(
+                f"fetch_ctx.recv_counts length ({fetch_ctx.recv_counts.size(0)}) must equal "
+                f"rank_size ({self._rank_size})"
+            )
+        expected_recv_local_entry_len = self._num_max_tokens_per_rank * self._rank_size
+        if fetch_ctx.recv_local_entry.size(0) != expected_recv_local_entry_len:
+            raise RuntimeError(
+                f"fetch_ctx.recv_local_entry length ({fetch_ctx.recv_local_entry.size(0)}) must equal "
+                f"num_max_tokens_per_rank * rank_size = {expected_recv_local_entry_len}"
+            )
+        if fetch_ctx.num_recv.size(0) != 1:
+            raise RuntimeError(
+                f"fetch_ctx.num_recv length ({fetch_ctx.num_recv.size(0)}) must be 1"
+            )
 
     def _check_engram_fetch_ready(self, indices: torch.Tensor) -> None:
         if indices.device.type != torch.device("npu").type:

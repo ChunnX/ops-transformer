@@ -1149,10 +1149,6 @@ public:
     void EngramBarrier(bool useCommStream = true, bool withCpuSync = false);
     void Destroy();
 
-    int64_t GetHostBufPtr() const
-    {
-        return reinterpret_cast<int64_t>(engramHostBufPtr_);
-    }
     const at::Tensor &GetContextTensor() const
     {
         return engramContextTensor_;
@@ -1179,10 +1175,6 @@ public:
                                                    int64_t commBufferSize, int64_t rankSize);
     static at::Tensor EngramFetchWait(const at::Tensor &context, const at::Tensor &fetched);
 
-    std::tuple<at::Tensor, at::Tensor> EngramFetchGrad(const at::Tensor &gradFetched, const at::Tensor &perm,
-                                                       const at::Tensor &sendCounts, const at::Tensor &recvCounts,
-                                                       const at::Tensor &recvLocalEntry, const at::Tensor &numRecv);
-
     // Stateless static method for training backward (graph-mode compatible).
     // Outputs: gradUnique [maxR, H], uniqueLocalEntry [maxR], numUnique [1] (NOT narrowed).
     // Caller is responsible for narrowing by numUnique.item() outside the graph.
@@ -1192,11 +1184,6 @@ public:
                                                  const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry,
                                                  const at::Tensor &numRecv, int64_t numEntries, int64_t commBufferSize,
                                                  int64_t numMaxTokensPerRank, int64_t rankSize);
-
-    bool IsWithGrad() const
-    {
-        return withGrad_;
-    }
 
     static int64_t GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
                                             at::ScalarType dtype = at::kBFloat16);
@@ -1481,42 +1468,6 @@ at::Tensor ElasticBuffer::EngramFetchWait(const at::Tensor &context, const at::T
     }
     ACLNN_CMD(aclnnEngramFetchWait, context, fetched);
     return fetched;
-}
-
-// EngramFetchGrad - training backward: produce gradUnique, uniqueLocalEntry (sparse index).。
-std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(const at::Tensor &gradFetched, const at::Tensor &perm,
-                                                                  const at::Tensor &sendCounts,
-                                                                  const at::Tensor &recvCounts,
-                                                                  const at::Tensor &recvLocalEntry,
-                                                                  const at::Tensor &numRecv)
-{
-    EnsureEngramContext();
-    TORCH_CHECK(!destroyed_, "engram_fetch_grad cannot be called after destroy");
-    TORCH_CHECK(withGrad_, "engram_fetch_grad requires with_grad=True");
-    TORCH_CHECK(engramWriteCalled_, "engram_fetch_grad must be called after at least one engram_write");
-
-    int64_t hidden = gradFetched.size(1);
-    uint32_t rankSize = engramCommContext_.rankSize;
-    int64_t rankSizeI64 = static_cast<int64_t>(rankSize);
-    TORCH_CHECK(rankSizeI64 > 0 && numMaxTokensPerRank_ <= INT64_MAX / rankSizeI64,
-                "numMaxTokensPerRank_ * rankSize overflow, got numMaxTokensPerRank_=", numMaxTokensPerRank_,
-                ", rankSize=", rankSize);
-    int64_t maxR = numMaxTokensPerRank_ * rankSizeI64;
-
-    auto gradUnique =
-        at::empty({maxR, hidden}, at::TensorOptions().dtype(gradFetched.dtype()).device(gradFetched.device()));
-    auto uniqueLocalEntry = at::empty({maxR}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
-    auto numUnique = at::empty({1}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
-
-    ACLNN_CMD(aclnnEngramFetchGrad, engramContextTensor_, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry,
-              numRecv, gradUnique, uniqueLocalEntry, numUnique, engramNumEntries_, commBufferSize_);
-
-    int64_t actualK = static_cast<int64_t>(numUnique.item<int32_t>());
-    if (actualK < maxR) {
-        gradUnique = gradUnique.narrow(0, 0, actualK);
-        uniqueLocalEntry = uniqueLocalEntry.narrow(0, 0, actualK);
-    }
-    return {gradUnique, uniqueLocalEntry};
 }
 
 // EngramFetchGrad - stateless static method for training backward (graph-mode compatible).
@@ -1904,13 +1855,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
                     pybind11::arg("rank_size"))
         .def_static("engram_fetch_wait", &Mc2Api::ElasticBuffer::EngramFetchWait, pybind11::arg("context"),
                     pybind11::arg("fetched"))
-        .def("engram_fetch_grad",
-             static_cast<std::tuple<at::Tensor, at::Tensor> (Mc2Api::ElasticBuffer::*)(
-                 const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &,
-                 const at::Tensor &)>(&Mc2Api::ElasticBuffer::EngramFetchGrad),
-             pybind11::arg("gradFetched").noconvert(), pybind11::arg("perm").noconvert(),
-             pybind11::arg("sendCounts").noconvert(), pybind11::arg("recvCounts").noconvert(),
-             pybind11::arg("recvLocalEntry").noconvert(), pybind11::arg("numRecv").noconvert())
         .def_static(
             "engram_fetch_grad_op",
             static_cast<Mc2Api::ElasticBuffer::EngramFetchGradOutput (*)(
@@ -1925,7 +1869,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("useCommStream") = true,
              pybind11::arg("withCpuSync") = false)
         .def("destroy", &Mc2Api::ElasticBuffer::Destroy)
-        .def("get_host_buf_ptr", &Mc2Api::ElasticBuffer::GetHostBufPtr)
         .def("get_context_tensor", &Mc2Api::ElasticBuffer::GetContextTensor)
         .def("get_local_storage_addr", &Mc2Api::ElasticBuffer::GetLocalStorageAddrTensor)
         .def("get_comm_buffer_size", &Mc2Api::ElasticBuffer::GetCommBufferSize)
