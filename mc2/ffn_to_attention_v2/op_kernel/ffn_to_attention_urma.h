@@ -556,6 +556,11 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     int32_t ret = hcomm_.BatchCommit(batchHandle);
                     ascendc_assert(ret == 0, "BatchCommit data failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
                                    dstRank);
+                    HcommBatchHandle drainHandle =
+                        hcomm_.MakeBatchHandle(channel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, nullptr);
+                    ret = hcomm_.Drain(drainHandle);
+                    ascendc_assert(ret == 0, "per-rank data drain failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
+                                   dstRank);
 
                     for (uint32_t index = 0U; index < relayCount; ++index) {
                         RemoteRelayInfo relayInfo = LoadRemoteRelayInfo(index);
