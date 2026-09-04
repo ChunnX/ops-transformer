@@ -1170,6 +1170,34 @@ def gen_band_info(const_info, band_info):
     band_info.n_offset = n_offset
 
 
+def is_valid_for_deter(index, const_info):
+    g_dim_tail = index % (const_info.s1_outer * const_info.s2_outer)
+    s2o_dim_idx = g_dim_tail // const_info.s1_outer
+    s1o_dim_idx = g_dim_tail % const_info.s1_outer
+    s2_idx_left = s2o_dim_idx * CUBE_BASEN
+    s2_idx_right = min((s2o_dim_idx + 1) * CUBE_BASEN, const_info.s2_size)
+    if has_attn_mask:
+        pl.printf("111111 \n")
+        if const_info.mask_mode == 3:
+            s2_ignored_end_len = const_info.s1_size - CUBE_BASEM * (s1o_dim_idx + 1)
+            if const_info.s2_size > s2_ignored_end_len:
+                s2_end_len = const_info.s2_size - s2_ignored_end_len
+            else:
+                s2_end_len = 0
+            s2_end_len = min(s2_end_len, const_info.s2_size)
+            return s2_idx_left < s2_end_len
+        s2_sparse_left = CUBE_BASEM * s1o_dim_idx - const_info.s1_token
+        if s2_sparse_left < 0:
+            s2_sparse_left = 0
+        s2_sparse_left = s2_sparse_left // 64 * 64
+        s2_sparse_right = (
+            min(CUBE_BASEM * (s1o_dim_idx + 1), const_info.s1_size) + const_info.s2_token + 63
+        ) // 64 * 64
+        s2_sparse_right = min(s2_sparse_right, const_info.s2_size)
+        return s2_idx_left < s2_sparse_right and s2_idx_right > s2_sparse_left
+    return True
+
+
 def cal_deter_index(round_id, max_loop_num, coordinate_info, const_info, band_info, flag=False):
     coordinate_info.mask_mode = const_info.mask_mode
     next_valid_round_id = max_loop_num
@@ -1190,8 +1218,9 @@ def cal_deter_index(round_id, max_loop_num, coordinate_info, const_info, band_in
                 current_round_id, max_loop_num, coordinate_info, const_info, flag
             )
         if next_valid_index >= 0:
-            next_valid_round_id = current_round_id
-            return next_valid_round_id, next_valid_index
+            if is_valid_for_deter(next_valid_index, const_info):
+                next_valid_round_id = current_round_id
+                return next_valid_round_id, next_valid_index
     coordinate_info.batch_id = -1
     next_valid_index = -1
     next_valid_round_id = max_loop_num
@@ -3640,6 +3669,8 @@ def quant_flash_attn_grad(
         else:
             block_inner_idx = -1
         is_valid_block = block_inner_idx >= 0
+        if is_valid_block:
+            is_valid_block = is_valid_for_deter(block_inner_idx, const_info)
         with pl.section_cube():
             pl.printf("wenyu check3 next_valid_loop_idx : %d next_block_idx : %d is_valid_block : %d \n", next_valid_loop_idx, next_block_idx, is_valid_block)
         # if is_valid_block:
