@@ -555,6 +555,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "range_key_rope": range_input["key_rope"],
         "range_dequant_scale": range_input["dequant_scale"],
         "range_sinks": range_input["sinks"],
+        "precision_mode": param_combination.get("precision_mode", 1),
     }
 
     return params

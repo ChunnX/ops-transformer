@@ -187,11 +187,28 @@ class KvQuantSparseFlashAttentionV2InputAdapter:
             rope_head_dim,
         )
         generated = pytest_golden.generate_input_tensors(params)
+        # 用例attributes内设置的“pytest_precision_mode”会被指令传入的compare_method覆盖，指令优先级更高
+        params["precision_mode"] = (
+            12 if golden_module.compare_method_is_cross_check() else 1
+        )
         outputs, generated, _ = pytest_golden.compute_cpu(generated, params)
         if outputs is None:
             raise RuntimeError(
                 "KvQuantSparseFlashAttentionV2 pytest compute_cpu failed"
             )
+        output_len = len(outputs)
+        if output_len not in (3, 6):
+            raise RuntimeError(
+                "KvQuantSparseFlashAttentionV2 pytest compute_cpu failed"
+            )
+        return_softmax_lse = bool(params["return_softmax_lse"])
+        # 设备真实输出 slot 数: return_softmax_lse=False 只有 attn 一个, 否则 3 个
+        real_out_len = 3 if return_softmax_lse else 1
+        up_goldens = None
+        if params["precision_mode"] == 12:
+            if output_len != 6:
+                raise RuntimeError("Ground truth is missing for the cross_check.")
+            up_goldens = outputs[3 : 3 + real_out_len]
 
         self.copy_tensor(query, generated.get("query_cache"), "query")
         self.copy_tensor(key, generated.get("key_cache"), "key")
@@ -219,10 +236,14 @@ class KvQuantSparseFlashAttentionV2InputAdapter:
             testcase_name,
             {
                 "golden": golden_module.normalize_pytest_outputs(
-                    outputs, query, params["return_softmax_lse"]
-                )
+                    outputs[:3], query, params["return_softmax_lse"]
+                ),
+                "up_goldens": (up_goldens if up_goldens is not None else None),
             },
         )
+        # 两阶段手工数据 prepare 时把升精度 golden 一并保存，replay 时 peek_golden 从本地恢复。
+        if up_goldens is not None and golden_module.compare_method_is_cross_check():
+            golden_module._persist_golden_sidecar(testcase_name, up_goldens)
 
 
 def generate_qsfa_v2_inputs(
@@ -287,6 +308,7 @@ __input__ = {
     "e2e": {
         "torch.ops.cann_ops_transformer.kv_quant_sparse_flash_attention": "generate_qsfa_v2_inputs",
         "torch_npu.npu_kv_quant_sparse_flash_attention_v2": "generate_qsfa_v2_inputs",
+        "torch_npu.npu_kv_quant_sparse_flash_attention": "generate_qsfa_v2_inputs",
         "qsfa_v2_ttk_ops.kv_quant_sparse_flash_attention_v2_ttk": "generate_qsfa_v2_inputs",
     }
 }

@@ -47,6 +47,20 @@ inputs_module = load_impl_module("inputs")
 compare_module = load_impl_module("compare")
 
 
+def _qsfa_compare(*outputs, compare_context=None, **kwargs):
+    """TestSpec compare 入口：从 compare_context 取 testcase_name，
+    通过 peek_golden 获取升精度 golden。"""
+    testcase_name = (
+        getattr(compare_context, "testcase_name", None)
+        if compare_context is not None
+        else None
+    )
+    return compare_module.compare(
+        *outputs,
+        up_goldens=golden_module.peek_golden(testcase_name),
+    )
+
+
 class KvQuantSparseFlashAttentionV2Spec:
     golden = golden_module.cpu_kv_quant_sparse_flash_attention_v2
     customize_inputs = inputs_module.generate_qsfa_v2_inputs
@@ -55,11 +69,12 @@ class KvQuantSparseFlashAttentionV2Spec:
         "bfloat16": {"standard": "stat_rel_err"},
     }
 
-    compare = staticmethod(compare_module.compare)
+    compare = staticmethod(_qsfa_compare)
 
 
 __spec__ = {
     "torch.ops.cann_ops_transformer.kv_quant_sparse_flash_attention": "KvQuantSparseFlashAttentionV2Spec",
     "torch_npu.npu_kv_quant_sparse_flash_attention_v2": "KvQuantSparseFlashAttentionV2Spec",
+    "torch_npu.npu_kv_quant_sparse_flash_attention": "KvQuantSparseFlashAttentionV2Spec",
     "qsfa_v2_ttk_ops.kv_quant_sparse_flash_attention_v2_ttk": "KvQuantSparseFlashAttentionV2Spec",
 }

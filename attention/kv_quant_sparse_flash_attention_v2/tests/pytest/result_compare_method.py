@@ -328,3 +328,131 @@ def check_result(expect, npu_result):
         display_error_output(real_data, data_compe, err_idx, err_diff[0:max_error_idx])
 
     return result, fulfill_percent
+
+
+def compute_matrix_small_value(input_data, golden_data, dtype, small_mask):
+    if not torch.any(small_mask):
+        return 0
+    thres = small_value_error_thres_dict[dtype]
+
+    error_count = torch.sum(
+        torch.abs(input_data[small_mask] - golden_data[small_mask]) > thres
+    ).item()
+    return error_count
+
+
+def compute_matrix_large_value(input_data, golden_data, large_mask):
+    if not torch.any(large_mask):
+        return 0, 0, 0
+
+    input_large = input_data[large_mask]
+    golden_large = golden_data[large_mask]
+
+    abs_diff = torch.abs(input_large - golden_large)
+    relative_error = abs_diff / (torch.abs(golden_large) + 1e-7)
+
+    mare = torch.max(relative_error).item()
+    mere = torch.mean(relative_error).item()
+    rmse = torch.sqrt(torch.mean((input_large - golden_large) ** 2)).item()
+    return mare, mere, rmse
+
+
+def compute_re_matrix(input_value, bm_value, small_value_thres):
+    if math.isinf(bm_value) or math.isnan(bm_value):
+        return 1
+    if math.isinf(input_value) or math.isnan(input_value):
+        return 1000
+    return input_value / max(bm_value, small_value_thres)
+
+
+def compute_re_triplet_matrix(npu_matrix, golden_matrix, small_value_thres):
+    mare_npu, mere_npu, rmse_npu = npu_matrix
+    mare_bm, mere_bm, rmse_bm = golden_matrix
+    mare_matrix = compute_re_matrix(mare_npu, mare_bm, small_value_thres)
+    mere_matrix = compute_re_matrix(mere_npu, mere_bm, small_value_thres)
+    rmse_matrix = compute_re_matrix(rmse_npu, rmse_bm, small_value_thres)
+    return mare_matrix, mere_matrix, rmse_matrix
+
+
+# 小值域阈值
+small_value_thres_dict = {
+    torch.float16: 2**-11,
+    torch.bfloat16: 2**-8,
+    torch.float32: 2**-14,
+    torch.uint8: 2**-4,
+    torch.float8_e4m3fn: 2**-4,
+}
+
+# 小值域error指标
+small_value_error_thres_dict = {
+    torch.float16: 2**-16,
+    torch.bfloat16: 2**-16,
+    torch.float32: 2**-30,
+    torch.uint8: 2**-6,
+    torch.float8_e4m3fn: 2**-6,
+}
+
+
+# 新精度 2.1 + L2
+def check_result_triple(npu_output, same_golden, up_golden, thres=(2, 1.2, 1.2)):
+    dtype = npu_output.dtype
+
+    npu_output = npu_output.cpu().to(torch.float64)
+    same_golden = same_golden.cpu().to(torch.float64)
+    up_golden = up_golden.cpu().to(torch.float64)
+
+    small_value_thres = small_value_thres_dict[dtype]
+    large_value_idx = torch.abs(up_golden) >= small_value_thres
+    small_value_idx = torch.abs(up_golden) < small_value_thres
+
+    # 小值域场景
+    npu_error_count = compute_matrix_small_value(
+        npu_output, up_golden, dtype, small_value_idx
+    )
+    bm_error_count = compute_matrix_small_value(
+        same_golden, up_golden, dtype, small_value_idx
+    )
+    small_value_matrix = npu_error_count / max(bm_error_count, 1)
+
+    # 大值域场景
+    mare_npu, mere_npu, rmse_npu = compute_matrix_large_value(
+        npu_output, up_golden, large_value_idx
+    )
+    mare_bm, mere_bm, rmse_bm = compute_matrix_large_value(
+        same_golden, up_golden, large_value_idx
+    )
+    mare_matrix, mere_matrix, rmse_matrix = compute_re_triplet_matrix(
+        [mare_npu, mere_npu, rmse_npu], [mare_bm, mere_bm, rmse_bm], small_value_thres
+    )
+
+    is_mare_acceptable = mare_matrix <= thres[0]
+    is_mere_acceptable = mere_matrix <= thres[1]
+    is_rmse_acceptable = rmse_matrix <= thres[2]
+
+    if (
+        small_value_matrix <= 2
+        and is_mare_acceptable
+        and is_mere_acceptable
+        and is_rmse_acceptable
+    ):
+        result = "PASS"
+    else:
+        result = "FAILED"
+
+    print_log(
+        "mare_matrix   \t mere_matrix   \t rmse_matrix   \t small_value_matrix   \t Result"
+    )
+    print_log(
+        "---------------------------------------------------------------------------------------"
+    )
+    print_log(
+        "%.6f    \t %.6f  \t %.6f   \t %.6f   \t %s"
+        % (mare_matrix, mere_matrix, rmse_matrix, small_value_matrix, result)
+    )
+    precision = "mare=%.6f, mere=%.6f, rmse=%.6f, small=%.6f" % (
+        mare_matrix,
+        mere_matrix,
+        rmse_matrix,
+        small_value_matrix,
+    )
+    return result, precision
