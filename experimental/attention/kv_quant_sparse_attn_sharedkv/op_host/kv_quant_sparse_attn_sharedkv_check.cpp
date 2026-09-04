@@ -72,6 +72,9 @@ SASTemplateMode SelectSASTemplateMode(const KvQuantSASTilingInfo &sasInfo)
     return SASTemplateMode::SCFA_TEMPLATE_MODE;
 }
 
+namespace {
+// 与 quant_sparse_flash_mla 中同名工具函数隔离（两者汇入同一全局 tiling target 时
+// multiple definition），仅本翻译单元内部使用
 std::string GetShapeStr(gert::Shape shape)
 {
     std::ostringstream oss;
@@ -85,6 +88,7 @@ std::string GetShapeStr(gert::Shape shape)
     oss << "]";
     return oss.str();
 }
+} // namespace
 
 bool KvQuantSASTilingCheck::HasAxis(const SASAxis &axis, const SASLayout &layout, const gert::Shape &shape) const
 {

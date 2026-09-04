@@ -12,8 +12,8 @@
  * \file fia_tiling_shape.h
  * \brief
  */
-#ifndef FIA_TILING_SHAPE_H
-#define FIA_TILING_SHAPE_H
+#ifndef QFA_FIA_TILING_SHAPE_H
+#define QFA_FIA_TILING_SHAPE_H
 
 #include <sstream>
 #include "register/tilingdata_base.h"
@@ -24,6 +24,7 @@
 #include <vector>
 
 namespace optiling {
+namespace qfa {
 template <typename T>
 using CompareFunc = bool (*)(const T &, const T &);
 
@@ -289,5 +290,17 @@ public:
                                    const std::string &funcName) const;
     ge::graphStatus CompareShape(FiaTilingShapeCompareParam &param, const std::string &funcName) const;
 };
+} // namespace qfa
+// 与 experimental/attention/common 下同名 fia_tiling_shape 实现隔离（两者汇入同一全局
+// tiling target 时同名符号 multiple definition）：实现符号收敛到 qfa 子命名空间，
+// 以下 using 声明保持既有 optiling:: 限定用法兼容，不引入新的链接符号。
+using qfa::FiaLayout;
+using qfa::FiaAxis;
+using qfa::FiaCompareType;
+using qfa::FiaTilingShapeCompareParam;
+using qfa::FiaTilingShape;
+using qfa::FiaTilingShapeCompare;
+using qfa::AxisToSerialString;
+using qfa::LayoutToSerialString;
 } // namespace optiling
-#endif // FIA_TILING_SHAPE_H
+#endif // QFA_FIA_TILING_SHAPE_H

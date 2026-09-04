@@ -479,6 +479,9 @@ void CompressorTiling::LogErrorNumberSupport(const std::vector<T> &expectNumberL
             to_string(actualValue).c_str());
 }
 
+namespace {
+// 与 quant_compressor 中同名工具函数隔离（两者汇入同一全局 tiling target 时
+// multiple definition），仅本翻译单元内部使用
 std::string LayoutTypeToStr(LayoutType layout)
 {
     switch (layout) {
@@ -490,6 +493,7 @@ std::string LayoutTypeToStr(LayoutType layout)
             return "UNKNOWN_LAYOUT";
     }
 }
+} // namespace
 
 ge::graphStatus CompressorTiling::CheckDimNumInLayoutSupport(const std::string &layout, const gert::StorageShape *shape,
                                                              const std::string &name) const

@@ -19,6 +19,7 @@
 
 
 namespace optiling {
+namespace qfa {
 static const std::map<FiaLayout, std::vector<FiaAxis>> FIA_LAYOUT_AXIS_MAP = {
     {FiaLayout::BSH, {FiaAxis::B, FiaAxis::S, FiaAxis::H}},
     {FiaLayout::BSND, {FiaAxis::B, FiaAxis::S, FiaAxis::N, FiaAxis::D}},
@@ -384,4 +385,5 @@ ge::graphStatus FiaTilingShapeCompare::CompareShape(FiaTilingShapeCompareParam &
 
     return ge::GRAPH_SUCCESS;
 }
+} // namespace qfa
 } // namespace optiling
