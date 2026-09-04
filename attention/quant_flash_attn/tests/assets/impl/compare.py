@@ -157,7 +157,6 @@ def compare(*outputs, **kwargs):
     npu_outputs = valid[:half]
     golden_outputs = valid[half:]
 
-    all_pass = True
     results = []
 
     for idx, (npu_out, golden_out) in enumerate(zip(npu_outputs, golden_outputs)):
@@ -200,8 +199,6 @@ def compare(*outputs, **kwargs):
             max_diff_hd=max_diff_hd,
         )
         is_pass = result == "Pass"
-        if not is_pass:
-            all_pass = False
         results.append(
             {
                 "pass": is_pass,

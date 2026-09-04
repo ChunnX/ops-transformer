@@ -28,10 +28,6 @@ import quant_flash_attn_hif8_golden as hif8_golden_mod
 
 logger = logging.getLogger(__name__)
 
-__golden__ = {
-    "e2e": {"torch.ops.cann_ops_transformer.quant_flash_attn": "cpu_qfa_mxfp8"}
-}
-
 
 # ==============================================================================
 # 框架 fp8/e8m0 -> torch 转换
@@ -359,7 +355,6 @@ def cpu_qfa_mxfp8(
     **kwargs,
 ):
     # —— op-schema 直调: 额外适配参数经 kwargs 传入 ——
-    batch_size = kwargs.get("batch_size")
     N_q = kwargs.get("N_q")
     N_kv = kwargs.get("N_kv")
     D = kwargs.get("D")
@@ -684,7 +679,6 @@ def cpu_qfa_gqa_fp8(
     **kwargs,
 ):
     # —— op-schema 直调: 额外适配参数经 kwargs 传入 ——
-    batch_size = kwargs.get("batch_size")
     N_q = kwargs.get("N_q")
     N_kv = kwargs.get("N_kv")
     D = kwargs.get("D")
@@ -891,13 +885,8 @@ def cpu_qfa_hif8(
     N_q = kwargs.get("N_q")
     N_kv = kwargs.get("N_kv")
     D = kwargs.get("D")
-    enable_pa = bool(kwargs.get("enable_pa", False))
-    kv_cache_layout = kwargs.get("kv_cache_layout") or layout_kv
-    block_size = kwargs.get("block_size", 0)
     q_scale_layout = kwargs.get("q_scale_layout") or layout_q_descale
     input_layout = kwargs.get("input_layout", "TND")
-    is_contiguous = kwargs.get("is_contiguous", True)
-    device_id = kwargs.get("device_id", 0)
     graph_path = kwargs.get("graph_path", 0)
     enable_lse = return_softmax_lse
     """HIF8 CPU golden (quant_mode=0, per-tensor, TND, 无 PA)。

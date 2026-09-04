@@ -14,7 +14,6 @@ import logging
 import math
 import os
 import sys
-from typing import List
 
 import numpy
 import torch
@@ -28,12 +27,6 @@ import quant_flash_attn_golden as mxfp8_golden_mod
 import quant_flash_attn_fp8_golden as fp8_golden_mod
 
 logger = logging.getLogger(__name__)
-
-__input__ = {
-    "e2e": {
-        "torch.ops.cann_ops_transformer.quant_flash_attn": "generate_qfa_mxfp8_inputs"
-    }
-}
 
 _SEED_MAP = {"q": 54, "k": 3, "v": 4}
 
@@ -139,7 +132,6 @@ def generate_qfa_mxfp8_inputs(
     **kwargs,
 ):
     # —— op-schema 直调: 额外适配参数与真实值 sidecar 经 kwargs 传入 ——
-    batch_size = kwargs.get("batch_size")
     N_q = kwargs.get("N_q")
     N_kv = kwargs.get("N_kv")
     D = kwargs.get("D")
@@ -152,12 +144,6 @@ def generate_qfa_mxfp8_inputs(
     seqused_q = kwargs.get("seqused_q_values")
     seqused_kv = kwargs.get("seqused_kv_values")
     input_layout = kwargs.get("input_layout", "TND")
-    is_contiguous = kwargs.get("is_contiguous", True)
-    device_id = kwargs.get("device_id", 0)
-    graph_path = kwargs.get("graph_path", 0)
-    data_range_q = kwargs.get("data_range_q", 1.0)
-    data_range_k = kwargs.get("data_range_k", 1.0)
-    data_range_v = kwargs.get("data_range_v", 1.0)
     # cu_seqlens -> actual_seq (差分还原)
     cu_seqlens_q = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
     cu_seqlens_kv = list(cu_seqlens_kv) if cu_seqlens_kv is not None else [0]
@@ -486,7 +472,6 @@ def generate_qfa_gqa_fp8_inputs(
     **kwargs,
 ):
     # —— op-schema 直调: 额外适配参数与真实值 sidecar 经 kwargs 传入 ——
-    batch_size = kwargs.get("batch_size")
     N_q = kwargs.get("N_q")
     N_kv = kwargs.get("N_kv")
     D = kwargs.get("D")
@@ -499,12 +484,6 @@ def generate_qfa_gqa_fp8_inputs(
     seqused_q = kwargs.get("seqused_q_values")
     seqused_kv = kwargs.get("seqused_kv_values")
     input_layout = kwargs.get("input_layout", "NTD")
-    is_contiguous = kwargs.get("is_contiguous", True)
-    device_id = kwargs.get("device_id", 0)
-    graph_path = kwargs.get("graph_path", 0)
-    data_range_q = kwargs.get("data_range_q", 1.0)
-    data_range_k = kwargs.get("data_range_k", 1.0)
-    data_range_v = kwargs.get("data_range_v", 1.0)
     """GQA FP8 输入生成 (quant_mode=6, 仅 PA)
 
     输出 slot 约定 (in-place 写入 ttk 分配的 numpy slot):
@@ -601,8 +580,6 @@ def generate_qfa_gqa_fp8_inputs(
     )
 
     # ----- Step 2: GQA FP8 量化 (per-token-head Q/K, per-head V), descale=FP32 -----
-    fp8_dtype = torch.float8_e4m3fn
-
     quant_scale_q_bnsd = fp8_golden_mod.get_fp8_per_token_head_quant_scale(q_bf16)
     quant_scale_k_bnsd = fp8_golden_mod.get_fp8_per_token_head_quant_scale(k_bf16)
     quant_scale_v_bnsd = fp8_golden_mod.get_fp8_per_head_quant_scale(v_bf16)
@@ -629,8 +606,6 @@ def generate_qfa_gqa_fp8_inputs(
     )
 
     # block_table (确定性, seed=42 与 mxfp8 inputs 一致)
-    total_blocks_k = int(dequant_scale_k.shape[0]) if dequant_scale_k.ndim >= 1 else 0
-    total_blocks_v = int(dequant_scale_v.shape[0]) if dequant_scale_v.ndim >= 1 else 0
     # CSV 分配的 k/v slot 形状决定物理 block 数 (slot 第一维)
     k_slot_blocks = int(k.shape[0]) if k.ndim >= 4 else 0
     v_slot_blocks = int(v.shape[0]) if v.ndim >= 4 else 0
@@ -780,9 +755,6 @@ def generate_qfa_hif8_inputs(
     N_q = kwargs.get("N_q")
     N_kv = kwargs.get("N_kv")
     D = kwargs.get("D")
-    enable_pa = bool(kwargs.get("enable_pa", False))
-    kv_cache_layout = kwargs.get("kv_cache_layout") or layout_kv
-    block_size = kwargs.get("block_size", 0)
     q_scale_layout = kwargs.get("q_scale_layout") or layout_q_descale
     cu_seqlens_q = kwargs.get("cu_seqlens_q_values")
     cu_seqlens_kv = kwargs.get("cu_seqlens_kv_values")

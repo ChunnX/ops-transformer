@@ -13,7 +13,6 @@
 import logging
 import os
 import sys
-from typing import List, Optional
 
 import torch
 
@@ -124,9 +123,7 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         cu_seqlens_kv_t = cu_seqlens_kv
         seqused_q_t = seqused_q
         seqused_kv_t = seqused_kv
-        sinks_t = sinks
         attn_mask_t = attn_mask
-        metadata_t = metadata
 
         layout_q = str(layout_q)
         layout_q_descale = str(layout_q_descale)
