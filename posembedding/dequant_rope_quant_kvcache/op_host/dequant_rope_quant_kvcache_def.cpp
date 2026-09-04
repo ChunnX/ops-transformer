@@ -13,6 +13,7 @@
  * \brief
  */
 #include "register/op_def_registry.h"
+#include "dequant_rope_quant_kvcache_check_support.h"
 
 namespace ops {
 
@@ -169,9 +170,17 @@ public:
         this->Attr("layout").AttrType(OPTIONAL).String("BSND");
         this->Attr("kv_output").AttrType(OPTIONAL).Bool(false);
         this->Attr("cache_mode").AttrType(OPTIONAL).String("contiguous");
+        this->AICore().SetCheckSupport(CheckSupportForDequantRopeQuantKvcache);
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
-        this->AICore().AddConfig("ascend950");
+        OpAICoreConfig config_950;
+        config_950.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(false)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(true)
+            .PrecisionReduceFlag(false);
+        this->AICore().AddConfig("ascend950", config_950);
 
         OpAICoreConfig config_kirin = GetKirinCoreConfig();
         this->AICore().AddConfig("kirinx90", config_kirin);
