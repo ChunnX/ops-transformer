@@ -138,6 +138,10 @@ int CreateTilingDataAndContext(const char *hcomName, aclrtStream stream, int m, 
     bool transB = !isNz;
     tilingEngine.GetTilingData(totalM, static_cast<uint64_t>(n), static_cast<uint64_t>(k), false, transB,
                                tilingData->mmTile);
+    if (!CheckBiasWiring(tilingData->mmTile, nullptr)) {
+        delete tilingData;
+        return -1;
+    }
 
     *usedCoreNum = tilingData->mmTile.usedCoreNum;
     INFO_LOG("Tiling: M=%d, K=%d, N=%d, rankNum=%d, isNz=%d, transB=%d, usedCoreNum=%u", m, k, n, rankNum, isNz, transB,

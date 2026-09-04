@@ -112,6 +112,7 @@ private:
         tilingData.scaleKL1 = scaleKL1;
         tilingData.stepK = static_cast<uint8_t>(std::min(runInfo_.stepKa, runInfo_.stepKb));
         tilingData.nBufferNum = nBufferNum;
+        tilingData.hasBias = static_cast<uint8_t>(hasBias_);
     }
 
     void CalcTailBasicBlock()

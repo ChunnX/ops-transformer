@@ -56,5 +56,30 @@ struct alignas(8) QuantMatmulTilingData {
 
     // Output buffering mode selected for the kernel implementation.
     uint8_t dbL0c{0};
+
+    // Whether the tiling reserved L1 budget for bias (must match the kernel-side
+    // bias pointer being non-null; mismatch means one side forgot to wire bias).
+    uint8_t hasBias{0};
 };
 #pragma pack(pop)
+
+#ifndef __CCE_AICORE__
+#include <cstdio>
+
+// Host-side guard before kernel launch: the tiling-side bias budget claim must
+// match the bias pointer actually handed to the kernel. A mismatch means one
+// side forgot to wire bias — tiling=0/kernel=non-null overflows L1, and
+// tiling=1/kernel=null wastes one scale-reuse step.
+inline bool CheckBiasWiring(const QuantMatmulTilingData &tilingData, const void *biasAddr)
+{
+    if ((tilingData.hasBias != 0U) == (biasAddr != nullptr)) {
+        return true;
+    }
+    fprintf(stderr,
+            "[ERROR] Bias wiring mismatch: tiling hasBias=%u but kernel bias addr is %s. Keep SetBiasInfo "
+            "consistent with the bias input.\n",
+            tilingData.hasBias, biasAddr == nullptr ? "null" : "non-null");
+    return false;
+}
+#endif
+

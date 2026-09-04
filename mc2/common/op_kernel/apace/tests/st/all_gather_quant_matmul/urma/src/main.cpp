@@ -122,6 +122,9 @@ int RunAllGatherQuantMatmul(int rankNum, int rankId, int m, int k, int n, const 
     tilingEngine.SetOptimizeEnable(false);
     tilingEngine.SetMTailAlignEnable(true);
     tilingEngine.GetTilingData(totalLogicalM, static_cast<uint32_t>(n), static_cast<uint32_t>(k), tilingData.mmTile);
+    if (!CheckBiasWiring(tilingData.mmTile, nullptr)) {
+        return -1;
+    }
     tilingData.commTile.splitAxisTileSize = tileM;
     tilingData.commTile.splitAxisTileCnt = tileCnt;
     tilingData.commTile.splitAxisTailSize = tailM;

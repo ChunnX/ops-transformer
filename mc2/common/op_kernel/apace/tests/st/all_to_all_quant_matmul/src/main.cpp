@@ -120,6 +120,9 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
 
     QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN, mm::BiasDataType::DT_FLOAT> tilingEngine;
     tilingEngine.GetTilingData(m, n, ka, false, true, tilingData.tileQbmmTilingData);
+    if (!CheckBiasWiring(tilingData.tileQbmmTilingData, nullptr)) {
+        return -1;
+    }
 
     auto nTile = CeilDiv(n, tilingData.tileQbmmTilingData.baseN);
     uint32_t headMSize =

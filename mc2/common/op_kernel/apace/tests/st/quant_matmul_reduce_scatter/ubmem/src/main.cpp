@@ -154,6 +154,10 @@ int CreateTilingDataAndContext(const char *hcomName, aclrtStream stream, int m, 
 
     tilingEngine.GetTilingData(totalM, static_cast<uint64_t>(n), static_cast<uint64_t>(k), false, false,
                                tilingData->mmTile);
+    if (!CheckBiasWiring(tilingData->mmTile, nullptr)) {
+        delete tilingData;
+        return -1;
+    }
 
     *usedCoreNum = tilingData->mmTile.usedCoreNum;
     INFO_LOG("Tiling: M=%d, K=%d, N=%d, rankNum=%d, dynMaxBaseM=%lu, usedCoreNum=%u", m, k, n, rankNum, dynMaxBaseM,
