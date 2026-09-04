@@ -16,6 +16,7 @@
 #include "register/register.h"
 #include "graph/operator.h"
 #include "nlohmann/json.hpp"
+#include "stub_ops.h"
 #include "attention/incre_flash_attention/op_graph/incre_flash_attention_proto.h"
 
 namespace domi {

@@ -18,6 +18,7 @@
 #include "graph/graph.h"
 #include "op_common/log/log.h"
 #include "nlohmann/json.hpp"
+#include "stub_ops.h"
 #include "attention/flash_attention_score/op_graph/flash_attention_score_proto.h"
 
 namespace domi {
