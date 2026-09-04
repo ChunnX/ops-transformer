@@ -125,6 +125,8 @@ __aicore__ inline void AccumulateMoeExpertsForToken(const TokenUnpermuteConfig &
         uint64_t expertInputIndex = static_cast<uint64_t>(tokenIdx) * common.topK + expertIdx;
         LoadMoeExpertInput<CombineMode>(context, common, scratch, expandedX, expertInputIndex, event, dataInBf16,
                                         dataInFp32);
+        // desc 2000 + expertIdx: this routed expert's FP32 input after Cast/dequantization.
+        DumpPrecisionProbe(common, tokenIdx, dataInFp32, 2000U + static_cast<uint32_t>(expertIdx));
         SetFlag<HardEvent::S_V>(event);
         WaitFlag<HardEvent::S_V>(event);
         PipeBarrier<PIPE_V>();
@@ -144,6 +146,8 @@ __aicore__ inline void AccumulateMoeExpertsForToken(const TokenUnpermuteConfig &
             Add(scratch.dataResFp32Tensor, scratch.dataResFp32Tensor, dataInFp32, common.tokenHiddenDim);
             PipeBarrier<PIPE_V>();
         }
+        // desc 3000 + expertIdx: running FP32 accumulation after this routed expert.
+        DumpPrecisionProbe(common, tokenIdx, scratch.dataResFp32Tensor, 3000U + static_cast<uint32_t>(expertIdx));
         SetFlag<HardEvent::V_MTE2>(event);
     }
 }
@@ -167,11 +171,6 @@ __aicore__ inline void AccumulateSharedExpertForToken(const MoeStageCommonConfig
 
     GlobalTensor<bfloat16_t> sharedResult;
     sharedResult.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(params.workspaceInfo.sharedExpertResultPtr));
-    uint64_t sharedResultOffset =
-        (static_cast<uint64_t>(sharedExpertIdx) * common.tokenNum + tokenIdx) * common.tokenHiddenDim;
-    GlobalTensor<bfloat16_t> sharedTokenResult = sharedResult[sharedResultOffset];
-    // desc 1002: shared GMM2 result in GM before Unpermute loads it.
-    DumpPrecisionProbe(common, tokenIdx, sharedTokenResult, 1002U + sharedExpertIdx * 10U);
     int32_t accumulationItemIdx = localIdx * static_cast<int32_t>(common.topK + common.sharedExpertNum) +
                                   static_cast<int32_t>(common.topK + sharedExpertIdx);
     int32_t inputBufferIdx = accumulationItemIdx % bufferConfig.inputBufferCount;
@@ -180,11 +179,12 @@ __aicore__ inline void AccumulateSharedExpertForToken(const MoeStageCommonConfig
         scratch.dataResTensor[(inputBufferIdx + 1) * bufferConfig.bf16SlotElementCount];
     LocalTensor<float> dataInFp32 = scratch.dataResFp32Tensor[(inputBufferIdx + 1) * bufferConfig.fp32SlotElementCount];
     WaitFlag<HardEvent::V_MTE2>(event);
-    DataCopy(dataInBf16, sharedTokenResult, common.tokenHiddenDim);
+    DataCopy(
+        dataInBf16,
+        sharedResult[(static_cast<uint64_t>(sharedExpertIdx) * common.tokenNum + tokenIdx) * common.tokenHiddenDim],
+        common.tokenHiddenDim);
     SetFlag<HardEvent::MTE2_V>(event);
     WaitFlag<HardEvent::MTE2_V>(event);
-    // desc 1003: the same shared GMM2 result after GM-to-UB copy.
-    DumpPrecisionProbe(common, tokenIdx, dataInBf16, 1003U + sharedExpertIdx * 10U);
     SetFlag<HardEvent::S_V>(event);
     WaitFlag<HardEvent::S_V>(event);
     Cast(dataInFp32, dataInBf16, RoundMode::CAST_NONE, common.tokenHiddenDim);
@@ -212,18 +212,12 @@ __aicore__ inline void ProcessTokenUnpermuteBatch(
         int32_t tokenIdx = jobOffset + batchTokenOffset + localIdx;
         AccumulateMoeExpertsForToken<CombineMode, TopkWeightsPrefetch>(context, common, scratch, tokenIdx, localIdx,
                                                                        expandedX, bufferConfig);
-        // desc 1001: FP32 result after all routed MoE experts have been accumulated.
-        DumpPrecisionProbe(common, tokenIdx, scratch.dataResFp32Tensor, 1001U);
         for (uint32_t sharedExpertIdx = 0; sharedExpertIdx < common.sharedExpertNum; ++sharedExpertIdx) {
             AccumulateSharedExpertForToken<Gmm1TileM>(common, params, scratch, tokenIdx, localIdx, sharedExpertIdx,
                                                       bufferConfig);
         }
-        // desc 1004: FP32 result after shared expert accumulation.
-        DumpPrecisionProbe(common, tokenIdx, scratch.dataResFp32Tensor, 1004U);
         WaitFlag<HardEvent::MTE3_V>(outputBufferEvent);
         Cast(scratch.dataResTensor, scratch.dataResFp32Tensor, RoundMode::CAST_RINT, common.tokenHiddenDim);
-        // desc 1005: final BF16 result immediately before output writeback.
-        DumpPrecisionProbe(common, tokenIdx, scratch.dataResTensor, 1005U);
         SyncFuncStatic<HardEvent::V_MTE3, SYNC_EVENT_ID3>();
         DataCopy(output[static_cast<uint64_t>(tokenIdx) * common.tokenHiddenDim], scratch.dataResTensor,
                  common.tokenHiddenDim);
