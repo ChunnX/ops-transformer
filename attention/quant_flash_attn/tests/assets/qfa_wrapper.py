@@ -13,6 +13,7 @@
 import logging
 import os
 import sys
+from typing import Optional
 
 import torch
 import torch_npu
@@ -52,20 +53,21 @@ def npu_qfa(
     dequant_scale_q: torch.Tensor,
     dequant_scale_k: torch.Tensor,
     dequant_scale_v: torch.Tensor,
-    p_scale: torch.Tensor,
-    block_table: torch.Tensor,
-    cu_seqlens_q_t: torch.Tensor,
-    cu_seqlens_kv_t: torch.Tensor,
-    seqused_q_t: torch.Tensor,
-    seqused_kv_t: torch.Tensor,
-    sinks_t: torch.Tensor,
-    attn_mask_t: torch.Tensor,
-    metadata_t: torch.Tensor,
+    p_scale: torch.Tensor = None,
+    block_table: torch.Tensor = None,
+    cu_seqlens_q_t: torch.Tensor = None,
+    cu_seqlens_kv_t: torch.Tensor = None,
+    seqused_q_t: torch.Tensor = None,
+    seqused_kv_t: torch.Tensor = None,
+    sinks_t: torch.Tensor = None,
+    attn_mask_t: torch.Tensor = None,
+    metadata_t: torch.Tensor = None,
     *,
     batch_size: int,
     N_q: int,
     N_kv: int,
     D: int,
+    head_dim_v: Optional[int] = None,
     max_seqlen_q: int,
     max_seqlen_kv: int,
     enable_pa: bool,
@@ -122,12 +124,18 @@ def npu_qfa(
     # batch_size: CSV 原始值 (可为 -1), 透传给 metadata 的 batch_size;
     # B: 从 cu_seqlens_q 推导的正整数, 供 inputs/golden 生成 BNSD 张量。
     B = (
-        max(1, len(cu_seqlens_q_list) - 1)
-        if cu_seqlens_q_list and len(cu_seqlens_q_list) >= 2
-        else 1
+        batch_size
+        if batch_size is not None and batch_size > 0
+        else (
+            max(1, len(cu_seqlens_q_list) - 1)
+            if cu_seqlens_q_list and len(cu_seqlens_q_list) >= 2
+            else len(list(seqused_q_list))
+            if seqused_q_list is not None and len(list(seqused_q_list)) > 0
+            else 1
+        )
     )
 
-    attn_mask_shape = tuple(attn_mask_t.shape)
+    attn_mask_shape = tuple(attn_mask_t.shape) if attn_mask_t is not None else None
 
     _apply_golden_globals(
         {
@@ -136,6 +144,7 @@ def npu_qfa(
             "N_q": N_q,
             "N_kv": N_kv,
             "D": D,
+            "HEAD_DIM_V": head_dim_v,
             "CU_SEQLENS_Q": cu_seqlens_q_list,
             "CU_SEQLENS_KV": cu_seqlens_kv_list,
             "SEQUSED_Q": seqused_q_list,
@@ -254,5 +263,11 @@ def npu_qfa(
     if not enable_lse:
         lse_out = None
     else:
-        lse_out = lse_out[:, : atten_out.shape[0]].contiguous()
+        layout_out_up = str(layout_out).upper() if layout_out else str(layout_q).upper()
+        if layout_out_up == "TND":
+            lse_out = lse_out[:, : atten_out.shape[0]].contiguous()
+        elif layout_out_up == "BNSD":
+            lse_out = lse_out[:, :, : atten_out.shape[2]].contiguous()
+        else:
+            lse_out = lse_out[:, :, : atten_out.shape[1]].contiguous()
     return atten_out, lse_out

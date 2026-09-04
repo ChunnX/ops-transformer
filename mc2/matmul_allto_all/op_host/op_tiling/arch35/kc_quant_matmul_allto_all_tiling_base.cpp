@@ -45,9 +45,9 @@ bool KcQuantMatmulAllToAllTilingBase::IsCapable()
  */
 ge::graphStatus KcQuantMatmulAllToAllTilingBase::CheckOpInputInfo()
 {
-    OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, MATMUL_ALLTOALL_INDEX_SCHEMA) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, MATMUL_ALLTOALL_INDEX_SCHEMA) != ge::GRAPH_SUCCESS,
+        OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckKcTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckKcQuantTensorDataType(context_, opName_) != ge::GRAPH_SUCCESS,
@@ -215,7 +215,7 @@ const gert::Shape &KcQuantMatmulAlltoAllHelper::GetScaleShape(const size_t index
 const gert::StorageShape *KcQuantMatmulAlltoAllHelper::GetOffsetShape(const size_t index)
 {
     (void)index;
-    return (gert::StorageShape *)nullptr;
+    return nullptr;
 }
 
 const gert::StorageShape *KcQuantMatmulAlltoAllHelper::GetPertokenShape(const size_t index)
@@ -305,12 +305,11 @@ ge::graphStatus KcQuantMatmulAlltoAllHelper::PostTiling()
  */
 KcQuantMatmulAlltoAllHelper::KcQuantMatmulAlltoAllHelper(
     KcQuantMatmulAllToAllTilingBase &kcQuantMatmulAllToAllTilingBase,
-    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &data, uint64_t &mmMvalueLen)
-    : Mc2AdaptiveSlidingWindowTiling(kcQuantMatmulAllToAllTilingBase.context_, &data),
+    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &out, uint64_t &mmMvalueLen)
+    : Mc2AdaptiveSlidingWindowTiling(kcQuantMatmulAllToAllTilingBase.context_, &out),
       tilingProcesser_(kcQuantMatmulAllToAllTilingBase),
       mmLen(mmMvalueLen)
-{
-}
+{}
 
 /**
  * @brief 打印量化matmul tiling的信息
@@ -394,11 +393,11 @@ void KcQuantMatmulAllToAllTilingBase::PrintKcQuantMatmulAlltoAllTilingInfo(const
     OP_LOGD(opName, "tilingInfo.rankM: %u", tilingInfo.rankM);
     OP_LOGD(opName, "tilingInfo.rankN: %u", tilingInfo.rankN);
     OP_LOGD(opName, "tilingInfo.rankK: %u", tilingInfo.rankK);
-    OP_LOGD(opName, "tilingInfo.mmResultLen: %u", tilingInfo.mmResultLen);
-    OP_LOGD(opName, "tilingInfo.permuteLen: %u", tilingInfo.permuteLen);
+    OP_LOGD(opName, "tilingInfo.mmResultLen: %lu", tilingInfo.mmResultLen);
+    OP_LOGD(opName, "tilingInfo.permuteLen: %lu", tilingInfo.permuteLen);
     OP_LOGD(opName, "tilingInfo.biasLen: %u", tilingInfo.biasLen);
     OP_LOGD(opName, "tilingInfo.aicCoreNum: %u", tilingInfo.aicCoreNum);
-    OP_LOGD(opName, "tilingInfo.hcclDataType: %u", tilingInfo.hcclDataType);
+    OP_LOGD(opName, "tilingInfo.hcclDataType: %lu", tilingInfo.hcclDataType);
 }
 
 /**
@@ -491,9 +490,10 @@ uint64_t KcQuantMatmulAllToAllTilingBase::GetTilingKey() const
     }
     uint8_t commMode = (engineType == mc2tiling::A5_CCU_ENGINE) ? COMMMODE_CCU : COMMMODE_AICPU;
 
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(KC_QUANT_MODE, x2TransposeFlag, biasDType, commMode);
-    OP_LOGD(opName_, "KCQUANTMODE,X2TRANSPOSE,DTYPEBIAS,COMMMODE: [%d,%d,%d,%d], TilingKey is [%lu].", KC_QUANT_MODE,
-            x2TransposeFlag, biasDType, commMode, tilingKey);
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(KC_QUANT_MODE, x2TransposeFlag, biasDType, commMode, ADDBIAS_OFF);
+    OP_LOGD(opName_,
+            "KCQUANTMODE,X2TRANSPOSE,DTYPEBIAS,COMMMODE,ADDBIASSPLITMODE: [%d,%d,%d,%d,0], TilingKey is [%lu].",
+            KC_QUANT_MODE, x2TransposeFlag, biasDType, commMode, tilingKey);
     return tilingKey;
 }
 
@@ -522,8 +522,7 @@ CutResult KcQuantMatmulAllToAllTilingBase::GetTilingResult()
  */
 KcQuantMatmulAllToAllTilingBase::KcQuantMatmulAllToAllTilingBase(gert::TilingContext *context)
     : MatmulAllToAllTilingBase(context)
-{
-}
+{}
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAlltoAll, KcQuantMatmulAllToAllTilingBase,

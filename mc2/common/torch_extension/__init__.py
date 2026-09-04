@@ -7,8 +7,15 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-__all__ = ["CommContextManager", "MoeDistributeBuffer", "ElasticBuffer", "EPHandle"]
+__all__ = [
+    "CommContextManager",
+    "CommChannelBuilderManager",
+    "MoeDistributeBuffer",
+    "ElasticBuffer",
+    "EPHandle",
+]
 
 from .comm_context import CommContextManager
 from .moe_distribute_buffer import MoeDistributeBuffer
 from .elastic_buffer import ElasticBuffer, EPHandle
+from .comm_channel_builder_manager import CommChannelBuilderManager

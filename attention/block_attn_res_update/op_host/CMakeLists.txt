@@ -19,11 +19,17 @@ if(BUILD_OPEN_PROJECT)
         OP_NAME BlockAttnResUpdate
         OPTIONS --cce-auto-sync=off
                 -mllvm -cce-aicore-dcci-before-kernel-end=false
+                -mllvm --licm-safe-hoist=true
                 -Wno-deprecated-declarations
                 -Werror
     )
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE block_attn_res_update ACLNNTYPE aclnn_exclude)
+    add_modules_sources(
+        OP_API_INDEPENDENT ON
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+        OPTYPE block_attn_res_update
+        ACLNNTYPE aclnn_exclude
+    )
 endif()

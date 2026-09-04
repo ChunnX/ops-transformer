@@ -35,7 +35,7 @@
 #     - op_name/examples ------ 算子的 examples 目录一般不需要看护覆盖率
 #     - op_name/tests --------- 算子的 tests 目录一般不需要看护覆盖率
 #   test: --------------------- [可选] 配置该结点的校验方式，目前支持 example、ut
-#     example: True ----------- [可选] 配置为 True 时，验证会被触发，未填写的字段默认为 True
+#     examples: True ----------- [可选] 配置为 True 时，验证会被触发，未填写的字段默认为 True
 #     ut: False --------------- [可选] 配置为 False 时，验证不会被触发，其他结点的 options 配置了本结点时，也不会触发本结点的验证
 #   options: ------------------ [可选] 校验列表，用于配置当前结点的 src 被修改时，需要触发的验证
 #     - op_name --------------- 当前算子
@@ -100,7 +100,7 @@ attention:
     ut_cov_exclude:
       - attention/bsa_select_block_mask
     test:
-      example: False
+      examples: False
       ut: False
     options:
       - bsa_select_block_mask
@@ -130,7 +130,7 @@ attention:
     ut_cov_exclude:
       - attention/compressor_grad
     test:
-      example: False
+      examples: False
       ut: False
     options:
       - compressor_grad
@@ -145,7 +145,7 @@ attention:
     ut_cov_exclude:
       - attention/fused_causal_conv1d
     test:
-      example: False
+      examples: False
       ut: False
     options:
       - fused_causal_conv1d
@@ -160,7 +160,7 @@ attention:
     ut_cov_exclude:
       - attention/indexer_quant_cache
     test:
-      example: False
+      examples: False
       ut: False
     options:
       - indexer_quant_cache
@@ -175,7 +175,7 @@ attention:
     ut_cov_exclude:
       - attention/inplace_fused_causal_conv1d
     test:
-      example: False
+      examples: False
       ut: False
     options:
       - inplace_fused_causal_conv1d
@@ -190,7 +190,7 @@ attention:
     ut_cov_exclude:
       - attention/kv_compress_epilog
     test:
-      example: False
+      examples: False
       ut: False
     options:
       - kv_compress_epilog
@@ -205,7 +205,7 @@ attention:
     ut_cov_exclude:
       - attention/sparse_flash_attention_grad
     test:
-      example: False
+      examples: False
       ut: False
     options:
       - sparse_flash_attention_grad
@@ -218,12 +218,42 @@ attention:
       - attention/sparse_flash_mla/docs
       - attention/sparse_flash_mla/README.md
     ut_cov_exclude:
-      - attention/sparse_flash_mla
+      - attention/sparse_flash_mla/tests
     test:
-      example: False
-      ut: False
+      examples: False
+      ut: True
     options:
       - sparse_flash_mla
+
+  mixed_quant_sparse_flash_mla:
+    module: True
+    src:
+      - attention/mixed_quant_sparse_flash_mla
+    exclude:
+      - attention/mixed_quant_sparse_flash_mla/docs
+      - attention/mixed_quant_sparse_flash_mla/README.md
+    ut_cov_exclude:
+      - attention/mixed_quant_sparse_flash_mla/tests
+    test:
+      examples: False
+      ut: True
+    options:
+      - mixed_quant_sparse_flash_mla
+
+  quant_sparse_flash_mla:
+    module: True
+    src:
+      - attention/quant_sparse_flash_mla
+    exclude:
+      - attention/quant_sparse_flash_mla/docs
+      - attention/quant_sparse_flash_mla/README.md
+    ut_cov_exclude:
+      - attention/quant_sparse_flash_mla/tests
+    test:
+      examples: False
+      ut: True
+    options:
+      - quant_sparse_flash_mla
 
   stem_oam_prep_paged_kv:
     module: True
@@ -235,10 +265,25 @@ attention:
     ut_cov_exclude:
       - attention/stem_oam_prep_paged_kv
     test:
-      example: False
+      examples: False
       ut: False
     options:
       - stem_oam_prep_paged_kv
+
+  generic_block_sparse_attention:
+    module: True
+    src:
+      - attention/generic_block_sparse_attention
+    exclude:
+      - attention/generic_block_sparse_attention/docs
+      - attention/generic_block_sparse_attention/README.md
+    ut_cov_exclude:
+      - attention/generic_block_sparse_attention/op_kernel
+    test:
+      examples: False
+      ut: True
+    options:
+      - generic_block_sparse_attention
 
   flash_attention_score:
     module: True
@@ -248,8 +293,15 @@ attention:
       - attention/flash_attention_score/docs
       - attention/flash_attention_score/README.md
     ut_cov_exclude:
-      - attention/flash_attention_score
+      - attention/flash_attention_score/op_api
+      - attention/flash_attention_score/op_graph
+      - attention/flash_attention_score/op_kernel
+      - attention/flash_attention_score/tests
+      - attention/flash_attention_score/docs
+      - attention/flash_attention_score/examples
+      - attention/flash_attention_score/op_host/arch22
     test:
+      examples: True
       ut: True
     options:
       - flash_attention_score
@@ -560,6 +612,21 @@ attention:
     options:
       - lightning_indexer
 
+  lightning_indexer_v2:
+    module: True
+    src:
+      - attention/lightning_indexer_v2
+    exclude:
+      - attention/lightning_indexer_v2/docs
+      - attention/lightning_indexer_v2/README.md
+    ut_cov_exclude:
+      - attention/lightning_indexer_v2/tests
+    test:
+      examples: False
+      ut: True
+    options:
+      - lightning_indexer_v2
+
   msa_index_score:
     module: True
     src:
@@ -605,6 +672,21 @@ attention:
       ut: True
     options:
       - quant_lightning_indexer
+
+  quant_lightning_indexer_v2:
+    module: True
+    src:
+      - attention/quant_lightning_indexer_v2
+    exclude:
+      - attention/quant_lightning_indexer_v2/docs
+      - attention/quant_lightning_indexer_v2/README.md
+    ut_cov_exclude:
+      - attention/quant_lightning_indexer_v2/tests
+    test:
+      examples: False
+      ut: True
+    options:
+      - quant_lightning_indexer_v2
 
   kv_quant_sparse_flash_attention:
     module: True
@@ -707,7 +789,7 @@ gmm:
     ut_cov_exclude:
       - gmm/grouped_matmul_activation_quant
     test:
-      example: False
+      examples: False
       ut: False
     options:
       - grouped_matmul_activation_quant
@@ -791,7 +873,7 @@ ffn:
     ut_cov_exclude:
       - ffn/ffn_worker_batching
     test:
-      example: False
+      examples: False
       ut: False
     options:
       - ffn_worker_batching
@@ -1348,7 +1430,7 @@ posembedding:
     ut_cov_exclude:
       - posembedding/inplace_partial_rotary_mul
     test:
-      example: False
+      examples: False
       ut: False
     options:
       - inplace_partial_rotary_mul
@@ -1380,6 +1462,22 @@ posembedding:
       ut: False
     options:
       - qkv_rms_norm_rope_cache
+
+  qkv_rms_norm_rope_cache_with_k_scale:
+    module: True
+    src:
+      - posembedding/qkv_rms_norm_rope_cache_with_k_scale
+    exclude:
+      - posembedding/qkv_rms_norm_rope_cache_with_k_scale/docs
+      - posembedding/qkv_rms_norm_rope_cache_with_k_scale/README.md
+    ut_cov_exclude:
+      - posembedding/qkv_rms_norm_rope_cache_with_k_scale/op_kernel
+      - posembedding/qkv_rms_norm_rope_cache_with_k_scale/op_host/qkv_rms_norm_rope_cache_with_k_scale_def.cpp
+    test:
+      examples: False
+      ut: True
+    options:
+      - qkv_rms_norm_rope_cache_with_k_scale
 
   und_gen_qkv_rms_norm_rope_cache:
     module: True
@@ -2149,7 +2247,7 @@ mhc:
       - mhc/mhc_pre_sinkhorn/examples
       - mhc/mhc_pre_sinkhorn/tests
     test:
-      example: False
+      examples: False
       ut: False
 
   mhc_pre_sinkhorn_backward:
@@ -2190,7 +2288,7 @@ mamba:
     ut_cov_exclude:
       - mamba/causal_conv1d
     test:
-      example: False
+      examples: False
       ut: False
     options:
       - causal_conv1d

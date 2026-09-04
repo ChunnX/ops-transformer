@@ -225,9 +225,9 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>scaleOptional（aclTensorList *）</td>
     <td>可选输入</td>
     <td>公式中的<code>scale</code>，代表量化参数中的缩放因子。</td>
-    <td>一般情况下，长度与weight相同。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
+    <td>一般情况下，长度与weight相同。在mx量化场景，scaleOptional支持FRACTAL_NZ format。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
     <td>UINT64、INT64、BFLOAT16、FLOAT32、FLOAT8_E8M0<sup>2</sup></td>
-    <td>ND</td>
+    <td>ND/FRACTAL_NZ</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -720,6 +720,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |:-------:|:-------:|:-------:| :------      |:-------    | :------   | :------ |
       |0|INT8  |INT8| INT32/BFLOAT16/FLOAT32/null     |BFLOAT16/FLOAT32    | FLOAT32   | BFLOAT16 |
       |0|INT8  |INT8| INT32/FLOAT16/FLOAT32/null     |FLOAT32    | FLOAT32   | FLOAT16 |
+      |0|INT4  |INT4| null     |UINT64    | FLOAT32/null   | FLOAT16/BFLOAT16 |
 
     - scaleOptional要满足下表（其中g为matmul组数即分组数）
 
@@ -732,6 +733,31 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       | groupType | 使用场景 | shape限制 |
       |:---------:|:---------:| :------ |
       |0|x单tensor|pertoken场景：每个tensor 1维，shape为（M,）|
+
+
+  - K-G（pertoken-pergroup）量化场景支持的输入类型与shape为：
+    - 以下入参为空：biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
+    - 不为空的参数支持的数据类型组合要满足下表：
+    |groupType| x       | weight  | scaleOptional | perTokenScaleOptional |out     |
+      |:-------:|:-------:|:-------:| :------      |:-------    | :------   | :------ |
+      |0|INT4  |INT4     |UINT64    | FLOAT32/null   | FLOAT16/BFLOAT16 |
+
+    - scaleOptional要满足下表（其中g为matmul组数即分组数）
+
+      | groupType | 使用场景 | shape限制 |
+      |:---------:|:---------:| :------ |
+      |0|weight单tensor|每个tensor 3维，shape为（E, G, N），$G$必须要能整除$K$，且$k/G$需为偶数|
+
+    - perTokenScaleOptional要满足下表：
+
+      | groupType | 使用场景 | shape限制 |
+      |:---------:|:---------:| :------ |
+      |0|x单tensor|pertoken场景：每个tensor 1维，shape为（M,）|
+
+    - 约束说明：
+
+      - S4S4的weight支持NZ转置输入，即输入为[E,N,K]，但view shape为[E,K,N]以保证算子识别转置状态，转置输入下，$k/G$要求按照64对齐，K按照64对齐，N按照16对齐。
+
 
   - 动态量化（mx量化）场景支持的输入类型与shape为：
     - 以下入参为空：offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
@@ -750,31 +776,22 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         |0|weight单tensor|每个tensor 4维，当weight转置时，shape为(g, N, ceil(K / 64), 2)；当weight不转置时，shape为(g, ceil(K / 64), N, 2)|
         |0|weight多tensor|每个tensor 3维，当weight转置时，shape为(N, ceil(K / 64), 2)；当weight不转置时，shape为(ceil(K / 64), N, 2)|
 
+    - scaleOptional FRACTAL_NZ format约束：
+      - 仅动态量化（mx量化）场景支持，scaleOptional数据类型必须为FLOAT8_E8M0。
+      - x和weight数据类型仅支持FLOAT8_E4M3FN。
+      - 本版本scaleOptional FRACTAL_NZ format暂不支持x或weight为FLOAT4_E2M1/FLOAT4_E1M2的场景。
+      - 仅支持transpose_weight为false的场景。
+      - 仅支持groupType为0，即M轴分组场景；不支持groupType为2的K轴分组场景。
+      - 仅支持x为单tensor、out为单tensor的场景，weight支持单tensor和多tensor两种场景。
+      - weight单tensor场景下，scaleOptional为单tensor，storage shape为(g, ceil(N / 16), ceil(K / 64), 16, 2)。
+      - weight多tensor场景下，scaleOptional为多tensor且长度与weight相同，每个tensor的storage shape为(ceil(N / 16), ceil(K / 64), 16, 2)。
+      - 非FRACTAL_NZ format下，scaleOptional继续使用上表中的原ND shape约束。
+
     - perTokenScaleOptional要满足下表：
 
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
         |0|x单tensor|每个tensor 3维，shape为（M, ceil(K / 64), 2）|
-
-  - S4S4（全量化INT4×INT4）场景支持的输入类型为：
-    - 以下入参为空：biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
-    - 不为空的参数支持的数据类型组合要满足下表：
-
-      |groupType| x | weight | scaleOptional | perTokenScaleOptional | out |
-      |:---:|:---:|:---:|:---:|:---:|:---:|
-      |0|INT4|INT4|UINT64|FLOAT32/null|FLOAT16/BFLOAT16|
-
-    - scaleOptional要满足下表：
-
-      |groupType| 使用场景 | shape限制 | 其他限制 |
-      |:---:|:---:|:---:| :------ |
-      |0|perchannel|每个tensor 2维，shape为（E, N）| |
-      |0|pergroup|每个tensor 3维，shape为（E, G, N）| $G$必须要能整除$K$，且$k/G$需为偶数 |
-
-    - 约束说明：
-
-      - 仅支持x、weight、out均为长度为1的TensorList。
-      - weight支持NZ转置输入，即输入为[E,N,K]，但view shape为[E,K,N]以保证算子识别转置状态，转置输入下，$k/G$要求按照64对齐，K按照64对齐，N按照16对齐。
 
   - 不同groupType支持场景:
 

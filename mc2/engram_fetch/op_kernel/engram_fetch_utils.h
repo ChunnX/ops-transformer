@@ -27,20 +27,22 @@ constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024U;
 constexpr uint32_t UB_ALIGN = 32U;
 constexpr uint32_t TILE_BYTES = 32U * 1024U;
 constexpr uint32_t HCOMM_INIT_SIZE = 512U;
-constexpr uint32_t READ_COMMIT_FIRST_THRESHOLD = 4U;
-constexpr uint32_t READ_COMMIT_THRESHOLD = 16U;
+constexpr uint32_t ENGRAM_BATCH_CAPACITY = 128U;
+constexpr uint32_t ENGRAM_WQE_BYTES = 64U;
+constexpr uint32_t ENGRAM_BATCH_BUFFER_BYTES = ENGRAM_BATCH_CAPACITY * ENGRAM_WQE_BYTES;
 constexpr int32_t BITS_PER_BYTE = 8;
 constexpr uint32_t ALIGNED_LEN_256 = 256U;
 constexpr uint32_t RELAY_BUFFER_NUM = 2U;
 
 constexpr uint32_t STATE_OFFSET = 32U;
-constexpr uint32_t WIN_REGION_COUNT = 8U;
+constexpr uint32_t WIN_REGION_COUNT = 6U;
 constexpr uint32_t NUM_SLOTS = 4U;
 constexpr uint32_t INDICES_RATIO = 50U;
 constexpr uint32_t UB_RESERVED_SIZE = 8U * 1024U;
 constexpr uint32_t SENDER_CHANNEL_IDX = 0U;
 constexpr uint32_t RECEIVER_CHANNEL_IDX = 1U;
 constexpr uint32_t HANDLE_ARRAY_SIZE = 72U;
+constexpr uint32_t MAX_CHANNELS_PER_RANK = 3U;
 
 struct EngramCommContext {
     uint32_t rankId;

@@ -68,6 +68,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/block_attn_res_prepare/README.md">block_attn_res_prepare</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>BlockAttnRes第一阶段准备算子，用于并行计算全部目标slot的块间注意力，输出softmax加权分子及统计量，供下一阶段融合当前残差。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/block_attn_res_update/README.md">block_attn_res_update</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -154,7 +164,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性，并且可以通过传入参数maxDraftTokens来指定最大投机个数。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -198,6 +208,26 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/generic_block_sparse_attention_metadata/README.md">generic_block_sparse_attention_metadata</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI CPU</td>
+    <td>generic_block_sparse_attention接口的前置接口，用于计算generic_block_sparse_attention的负载均衡。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/generic_block_sparse_attention/README.md">generic_block_sparse_attention</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>通过sparseBlockIdx/sparseBlockCount指定稀疏块模式的注意力正向计算。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/incre_flash_attention/README.md">incre_flash_attention</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -224,7 +254,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性，并且可以通过传入参数maxDraftTokens来指定最大投机个数。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -548,6 +578,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/recurrent_kda/README.md">recurrent_kda</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>完成KDA（Kimi Delta Attention）的递归前向计算，面向decode和MTP短序列场景。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/ring_attention_update/README.md">ring_attention_update</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -581,7 +621,7 @@
     <td><a href="../../attention/sparse_flash_attention_grad/README.md">sparse_flash_attention_grad</a></td>
     <td>✓</td>
     <td>✓</td>
-    <td>✗</td>
+    <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
     <td>训练场景下，计算sparse_flash_attention注意力的反向输出。</td>
@@ -715,6 +755,16 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>训练场景下，作为dense_lightning_indexer_kl_loss_grad的前置接口，用于计算attnSoftmaxL1Norm。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/quant_flash_attn_grad/README.md">quant_flash_attn_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>计算量化注意力（QuantFlashAttention）的反向梯度。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -928,11 +978,31 @@
   </tr>
   <tr>
     <td>mc2</td>
+    <td><a href="../../mc2/ffn_to_attention_v2/README.md">ffn_to_attention_v2</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>一个通信域内的FFN节点对Attention节点发送数据并写状态位，以检测通信链路是否正常。</td>
+  </tr>
+  <tr>
+    <td>mc2</td>
     <td><a href="../../mc2/attention_to_ffn/README.md">attention_to_ffn</a></td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
+    <td>AI Core</td>
+    <td>一个通信域内的Attention节点对FFN节点发送数据并写状态位，以检测通信链路是否正常。</td>
+  </tr>
+    <tr>
+    <td>mc2</td>
+    <td><a href="../../mc2/attention_to_ffn_v2/README.md">attention_to_ffn_v2</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
     <td>AI Core</td>
     <td>一个通信域内的Attention节点对FFN节点发送数据并写状态位，以检测通信链路是否正常。</td>
   </tr>
@@ -1508,10 +1578,20 @@
   </tr>
   <tr>
     <td>posembedding</td>
-    <td><a href="../../posembedding/dequant_rope_quant_kvcache/README.md">dequant_rope_quant_kvcache</a></td>
+    <td><a href="../../posembedding/apply_rotary_pos_emb_grad/README.md">apply_rotary_pos_emb_grad</a></td>
+    <td>✓</td>
     <td>✓</td>
     <td>✓</td>
     <td>✗</td>
+    <td>AI Core</td>
+    <td>执行双路旋转位置编码ApplyRotaryPosEmb的反向计算，同时计算query和key的rope反向梯度，融合为一次kernel调用。</td>
+  </tr>
+  <tr>
+    <td>posembedding</td>
+    <td><a href="../../posembedding/dequant_rope_quant_kvcache/README.md">dequant_rope_quant_kvcache</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
     <td>对输入张量（x）进行dequant（可选）后，按`sizeSplits`（为切分的长度）对尾轴进行切分，划分为q、k、vOut，对q、k进行旋转位置编码，生成qOut和kOut，之后对kOut和vOut进行量化并按照`indices`更新到kCacheRef和vCacheRef上。</td>
@@ -1564,7 +1644,7 @@
     <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
-    <td>输入Q/K/V融合张量，拆分Q、K、V；对Q/K执行RMSNorm、RoPE、共享rotation矩阵乘和FP8动态量化，输出q_out和q_scale；K/V分支按slot_mapping更新k_cache、k_scale_cache和v_cache。</td>
+    <td>融合Q/K/V拆分、Q/K RMSNorm、RoPE/M-RoPE、量化和KV Cache更新，支持M-RoPE MX场景。</td>
   </tr>
   <tr>
     <td>posembedding</td>

@@ -251,9 +251,12 @@ def _get_moe_ep_window_layout(
     win_addr_align = 512
     ub_align = 32
     notify_cnt_align = 15000
+    combine_channel_count = 6
     max_out_dtype_size = 2
     metadata_dtype_size = 4
     state_dtype_size = 4
+    dump_metadata_bytes = 64 * 1024
+    per_core_diag_bytes = 100 * win_addr_align
     local_experts_num = num_experts // world_size
 
     dispatch_count_size = world_size * _inline_align(
@@ -267,9 +270,16 @@ def _get_moe_ep_window_layout(
         + world_size * dispatch_notify_count * win_addr_align
     )
     combine_state_size = (
-        num_max_tokens_per_rank * topk * win_addr_align + world_size * win_addr_align
+        num_max_tokens_per_rank * topk * win_addr_align
+        + world_size * combine_channel_count * win_addr_align
     )
-    state_buffer_size = dispatch_count_size + dispatch_notify_size + combine_state_size
+    state_buffer_size = (
+        dump_metadata_bytes
+        + per_core_diag_bytes
+        + dispatch_count_size
+        + dispatch_notify_size
+        + combine_state_size
+    )
 
     metadata_bytes = _inline_align(topk * metadata_dtype_size, ub_align)
     hidden_align = _inline_align(hidden * max_out_dtype_size, ub_align)
@@ -420,7 +430,7 @@ class ElasticBuffer:
 
         Arguments:
             num_entries: the number of entries in the Engram storage (must be non-negative).
-            hidden: the hidden dimension of each entry (must be 128-aligned and positive).
+            hidden: the hidden dimension of each entry (must be positive).
             dtype: the data type, defaults to `torch.bfloat16`.
 
         Returns:
@@ -433,10 +443,6 @@ class ElasticBuffer:
         torch._check(
             hidden > 0,
             lambda: f"hidden must be positive, got {hidden}",
-        )
-        torch._check(
-            hidden % 128 == 0,
-            lambda: f"hidden must be 128-aligned, got {hidden}",
         )
         torch._check(
             dtype in (torch.bfloat16, torch.float16, torch.float32),
@@ -601,10 +607,6 @@ class ElasticBuffer:
             storage.size(1) > 0,
             lambda: f"storage second dimension must be positive, got: {storage.size(1)}",
         )
-        torch._check(
-            storage.size(1) % 128 == 0,
-            lambda: f"storage second dimension must be 128-aligned, got: {storage.size(1)}",
-        )
         self._runtime.engram_write(storage)
         self._engram_context_tensor = self._runtime.get_context_tensor()
         self._engram_hidden_size = storage.size(1)
@@ -745,12 +747,6 @@ class ElasticBuffer:
             lambda: (
                 f"grad_fetched hidden size ({grad_fetched.size(1)}) must match storage hidden size "
                 f"({self._engram_hidden_size})"
-            ),
-        )
-        _torch_check(
-            grad_fetched.size(1) % 128 == 0,
-            lambda: (
-                f"grad_fetched hidden size must be 128-aligned, got {grad_fetched.size(1)}"
             ),
         )
         for _name, _tensor in (

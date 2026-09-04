@@ -109,6 +109,7 @@ except NameError:
 import sys as _sys
 
 _legacy_map = {
+    "attention_to_ffn": "mc2.attention_to_ffn_v2",
     "causal_conv1d_fn": "mamba.causal_conv1d",
     "causal_conv1d_update": "mamba.causal_conv1d",
     "comm_context": "mc2.common",
@@ -118,11 +119,13 @@ _legacy_map = {
     "dense_lightning_indexer_softmax_lse": "attention.dense_lightning_indexer_softmax_lse_v2",
     "elastic_buffer": "mc2.common",
     "flash_attn": "attention.flash_attn",
+    "ffn_to_attention": "mc2.ffn_to_attention_v2",
     "grouped_matmul_activation_quant": "gmm.grouped_matmul_activation_quant",
     "indexer_quant_cache": "attention.indexer_quant_cache",
     "inplace_partial_rotary_mul": "posembedding.inplace_partial_rotary_mul",
     "inplace_partial_rotary_mul_backward": "posembedding.inplace_partial_rotary_mul_grad",
     "kv_compress_epilog": "attention.kv_compress_epilog",
+    "kv_quant_sparse_flash_attention": "attention.kv_quant_sparse_flash_attention_v2",
     "lightning_indexer": "attention.lightning_indexer_v2",
     "lightning_indexer_kl_loss": "attention.lightning_indexer_kl_loss",
     "mega_moe": "mc2.mega_moe",
@@ -152,6 +155,8 @@ _legacy_map = {
     "fused_causal_conv1d": "attention.fused_causal_conv1d",
     "fused_causal_conv1d_": "attention.inplace_fused_causal_conv1d",
     "block_sparse_attention": "attention.block_sparse_attention",
+    "apply_rotary_pos_emb": "posembedding.apply_rotary_pos_emb",
+    "apply_rotary_pos_emb_grad": "posembedding.apply_rotary_pos_emb_grad",
 }
 
 if __name__ == "cann_ops_transformer.ops":

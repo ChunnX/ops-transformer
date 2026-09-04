@@ -89,9 +89,14 @@ def run_metadata(
     enable_lse: bool = False,
     graph_path: int = 0,
     input_layout: str = "TND",
+    layout_q: str = "TND",
+    layout_q_descale: str = "TND",
+    layout_kv: str = "TND",
+    layout_out: str = "TND",
     is_contiguous: bool = True,
     device_id: int = 0,
     softmax_scale: float = None,
+    head_dim_v: int = None,
     data_range_q: float = 1.0,
     data_range_k: float = 1.0,
     data_range_v: float = 1.0,
@@ -131,9 +136,15 @@ def run_metadata(
     # batch_size: CSV 原始值 (可为 -1), 透传给 metadata 的 batch_size;
     # B: 从 cu_seqlens_q 推导的正整数, 供 inputs/golden 生成 BNSD 张量。
     B = (
-        max(1, len(cu_seqlens_q_list) - 1)
-        if cu_seqlens_q_list and len(cu_seqlens_q_list) >= 2
-        else 1
+        batch_size
+        if batch_size is not None and batch_size > 0
+        else (
+            max(1, len(cu_seqlens_q_list) - 1)
+            if cu_seqlens_q_list and len(cu_seqlens_q_list) >= 2
+            else len(list(seqused_q_list))
+            if seqused_q_list is not None and len(list(seqused_q_list)) > 0
+            else 1
+        )
     )
 
     _apply_golden_globals(
@@ -160,10 +171,15 @@ def run_metadata(
             "FP8_DTYPE": torch.float8_e4m3fn,
             "QUANT_GROUP_SIZE": 32,
             "INPUT_LAYOUT": layout_q,
+            "LAYOUT_Q": layout_q,
+            "LAYOUT_Q_DESCALE": layout_q_descale,
+            "LAYOUT_KV": layout_kv,
+            "LAYOUT_OUT": layout_out,
             "IS_CONTIGUOUS": is_contiguous,
             "DEVICE_ID": device_id,
             "GRAPH_PATH": graph_path,
             "SOFTMAX_SCALE": softmax_scale,
+            "HEAD_DIM_V": head_dim_v,
             "SEED_Q": kwargs.get("seed_q"),
             "SEED_K": kwargs.get("seed_k"),
             "SEED_V": kwargs.get("seed_v"),

@@ -28,6 +28,18 @@ FP8_DATA_RANGE_LEFT = -5
 FP8_DATA_RANGE_RIGHT = 5
 
 
+def get_kv_compute_dtype(kv_type):
+    """Use FP8 semantics when the operator input is stored as disguised uint8."""
+    return torch.float8_e4m3fn if kv_type == torch.uint8 else kv_type
+
+
+def reinterpret_kv_for_operator(kv_tensor, kv_type):
+    """Expose FP8 bytes as uint8 without changing their storage."""
+    if kv_tensor is not None and kv_type == torch.uint8:
+        return kv_tensor.view(torch.uint8)
+    return kv_tensor
+
+
 def resolve_input_data_ranges(q_datarange, ori_kv_datarange, cmp_kv_datarange):
     """Apply the canonical MQSMLA data range defaults."""
     default_range = [DATA_RANGE_LEFT, DATA_RANGE_RIGHT]
@@ -454,21 +466,32 @@ class GeneralizedSFAQuant:
         sparse_block_size=1,
     ):
         s2_sparse = list()
-        threshold = 0
+        ori_threshold = cur_act_kv - cur_act_q + i_S1 + 1
+        left_bound = 0
+        right_bound = cur_act_kv
         if self.ori_mask_mode == 3:
-            threshold = cur_act_kv - cur_act_q + i_S1 + 1
+            left_bound = 0
+            right_bound = min(max(ori_threshold, 0), cur_act_kv)
+        elif self.ori_mask_mode == 4:
+            if self.ori_win_left == -1:
+                left_bound = 0
+            else:
+                left_bound = max(ori_threshold - self.ori_win_left - 1, 0)
+            if self.ori_win_right == -1:
+                right_bound = cur_act_kv
+            else:
+                right_bound = min(
+                    max(ori_threshold + self.ori_win_right, 0), cur_act_kv
+                )
         elif self.ori_mask_mode == 0:
-            threshold = cur_act_kv
+            pass
+
+        left_bound = min(left_bound, cur_act_kv)
 
         # 与kernel逻辑保持一致: topkLen中的值与sparseIndices.Dim[-1]取最小
+        valid_count = min(topk_id.shape[0], right_bound)
         if ori_topk_length_bnsd is not None:
-            valid_count = min(
-                int(ori_topk_length_bnsd[i_B, 0, i_S1, 0]), topk_id.shape[0]
-            )
-        else:
-            raise ValueError(
-                "ori_topk_length_bnsd cann not be None when template_run_mode is ORI_SPARSE or ORI_CMP_SPARSE"
-            )
+            valid_count = min(int(ori_topk_length_bnsd[i_B, 0, i_S1, 0]), valid_count)
 
         for i_valid in range(valid_count):
             cur_topk_id = topk_id[i_valid]
@@ -476,12 +499,14 @@ class GeneralizedSFAQuant:
                 break
             begin_idx = cur_topk_id * sparse_block_size
             end_idx = min(begin_idx + sparse_block_size, cur_act_kv)
-            if begin_idx >= threshold:
+            if begin_idx >= right_bound:
                 continue
-            if end_idx <= threshold:
+            if begin_idx < left_bound:
+                continue
+            if end_idx <= right_bound:
                 s2_sparse.extend(np.arange(begin_idx, end_idx))
             else:
-                s2_sparse.extend(np.arange(begin_idx, threshold))
+                s2_sparse.extend(np.arange(begin_idx, right_bound))
         empty_flag = len(s2_sparse) == 0
         k_sparse = k_tensor[i_B, i_N2, s2_sparse, :] if not empty_flag else []
         return empty_flag, k_sparse
@@ -679,6 +704,7 @@ class GeneralizedSFAQuant:
                         b_index, n_index, :cur_act_seq, :
                     ]
                 t_start += cur_act_seq
+            output = output.transpose(0, 1).contiguous()
             return output
         else:
             return tensor
@@ -861,6 +887,8 @@ def gen_sparse_indices_bsnd(
     sparse_indices_mode,
     kv_topk_mode,
     topk_length_override=None,
+    ori_win_left=-1,
+    ori_win_right=-1,
 ):
     if mask_mode != 0:
         kv_topk_mode = "no"  # mask_mode != 0时，kv_topk_mode只能为no
@@ -890,15 +918,31 @@ def gen_sparse_indices_bsnd(
         cur_act_kv = seqused_kv[i_B]
         for i_N2 in range(N2):
             for i_S1 in range(cur_act_q):
+                cur_valid_left = 0
                 if mask_mode == 3:
                     cur_valid_s2_max = math.floor(
                         (cur_act_kv - cur_act_q + i_S1 + 1) / cmp_ratio
                     )
                 elif mask_mode == 0:
                     cur_valid_s2_max = math.floor(cur_act_kv / cmp_ratio)
+                elif mask_mode == 4:
+                    ori_threshold = cur_act_kv - cur_act_q + i_S1 + 1
+                    if ori_win_left == -1:
+                        left_bound = 0
+                    else:
+                        left_bound = max(ori_threshold - ori_win_left - 1, 0)
+                    if ori_win_right == -1:
+                        right_bound = cur_act_kv
+                    else:
+                        right_bound = min(
+                            max(ori_threshold + ori_win_right, 0), cur_act_kv
+                        )
+                    left_bound = min(left_bound, cur_act_kv)
+                    cur_valid_left = max(0, left_bound)
+                    cur_valid_s2_max = max(0, right_bound - cur_valid_left)
                 else:
                     raise ValueError(
-                        f"topklen sparse mask mode only support 0 and 3, which is {mask_mode}"
+                        f"topklen sparse mask mode only support 0/3/4, which is {mask_mode}"
                     )
                 cur_valid_s2_max = max(0, cur_valid_s2_max)
                 # gen sparse indices
@@ -915,9 +959,9 @@ def gen_sparse_indices_bsnd(
                 valid_blocks_max = max(0, cur_valid_s2_max_update)
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
                 valid_blocks_topk = min(valid_blocks_max, K)
-                sparse_data[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[
-                    0:valid_blocks_topk
-                ]
+                sparse_data[i_B, i_S1, i_N2, :valid_blocks_topk] = (
+                    block_indices[0:valid_blocks_topk] + cur_valid_left
+                )
 
                 # gen topk length
                 if topk_length is not None and topk_length_override is None:
@@ -945,6 +989,8 @@ def gen_sparse_indices_tnd(
     sparse_indices_mode,
     kv_topk_mode,
     topk_length_override=None,
+    ori_win_left=-1,
+    ori_win_right=-1,
 ):
     if mask_mode != 0:
         kv_topk_mode = "no"  # mask_mode != 0时，kv_topk_mode只能为no
@@ -974,15 +1020,31 @@ def gen_sparse_indices_tnd(
         cur_act_kv = seqused_ori_kv[i_B]
         for i_N2 in range(N2):
             for i_S1 in range(cur_act_q):
+                cur_valid_left = 0
                 if mask_mode == 3:
                     cur_valid_s2_max = math.floor(
                         (cur_act_kv - cur_act_q + i_S1 + 1) / cmp_ratio
                     )
                 elif mask_mode == 0:
                     cur_valid_s2_max = math.floor(cur_act_kv / cmp_ratio)
+                elif mask_mode == 4:
+                    ori_threshold = cur_act_kv - cur_act_q + i_S1 + 1
+                    if ori_win_left == -1:
+                        left_bound = 0
+                    else:
+                        left_bound = max(ori_threshold - ori_win_left - 1, 0)
+                    if ori_win_right == -1:
+                        right_bound = cur_act_kv
+                    else:
+                        right_bound = min(
+                            max(ori_threshold + ori_win_right, 0), cur_act_kv
+                        )
+                    left_bound = min(left_bound, cur_act_kv)
+                    cur_valid_left = max(0, left_bound)
+                    cur_valid_s2_max = max(0, right_bound - cur_valid_left)
                 else:
                     raise ValueError(
-                        f"ori_mask_mode only support 0 and 3, which is {mask_mode}"
+                        f"ori_mask_mode only support 0/3/4, which is {mask_mode}"
                     )
                 cur_valid_s2_max = max(0, cur_valid_s2_max)
                 # gen sparse indices
@@ -999,9 +1061,9 @@ def gen_sparse_indices_tnd(
                 valid_blocks_max = max(0, cur_valid_s2_max_update)
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
                 valid_blocks_topk = min(valid_blocks_max, K)
-                sparse_data[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_indices[
-                    0:valid_blocks_topk
-                ]
+                sparse_data[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = (
+                    block_indices[0:valid_blocks_topk] + cur_valid_left
+                )
 
                 # gen topk length
                 if topk_length is not None and topk_length_override is None:
@@ -1323,6 +1385,8 @@ def gen_ori_kv(
     ori_sparse_indices_mode="full",
     ori_kv_topk_mode="no",
     ori_topk_length_override=None,
+    ori_win_left=-1,
+    ori_win_right=-1,
 ):
     if quant_mode == 10:
         quant_param = random.uniform(quant_param_range_left, quant_param_range_right)
@@ -1471,6 +1535,8 @@ def gen_ori_kv(
                 ori_sparse_indices_mode,
                 ori_kv_topk_mode,
                 ori_topk_length_override,
+                ori_win_left=ori_win_left,
+                ori_win_right=ori_win_right,
             )
         elif layout_q == "TND":
             ori_sparse_indices, ori_topk_length = gen_sparse_indices_tnd(
@@ -1486,6 +1552,8 @@ def gen_ori_kv(
                 ori_sparse_indices_mode,
                 ori_kv_topk_mode,
                 ori_topk_length_override,
+                ori_win_left=ori_win_left,
+                ori_win_right=ori_win_right,
             )
     return (
         ori_k_bnsd,
@@ -1529,6 +1597,8 @@ def gen_ori_kv_quant_2_pa(
     ori_sparse_indices_mode="full",
     ori_kv_topk_mode="no",
     ori_topk_length_override=None,
+    ori_win_left=-1,
+    ori_win_right=-1,
 ):
     # 1. 生成并处理 Nope (448) 和 Rope (64) -> Feature (512)
     ori_k_nope_bnsd_npu = torch.tensor(
@@ -1655,6 +1725,8 @@ def gen_ori_kv_quant_2_pa(
                 ori_sparse_indices_mode,
                 ori_kv_topk_mode,
                 ori_topk_length_override,
+                ori_win_left=ori_win_left,
+                ori_win_right=ori_win_right,
             )
         elif layout_q == "TND":
             ori_sparse_indices, ori_topk_length = gen_sparse_indices_tnd(
@@ -1670,6 +1742,8 @@ def gen_ori_kv_quant_2_pa(
                 ori_sparse_indices_mode,
                 ori_kv_topk_mode,
                 ori_topk_length_override,
+                ori_win_left=ori_win_left,
+                ori_win_right=ori_win_right,
             )
     return (
         ori_k_bnsd,
@@ -2118,9 +2192,7 @@ def save_test_case(input_data, output_dir):
     return input_filepath
 
 
-def generate_and_save_testdata(
-    params, save_pt=False, save_path="", generate_golden=True
-):
+def gen_data(params, generate_golden=True):
     """
     生成input param及cpuout
     runNpu: 生成完毕后执行npu计算
@@ -2133,6 +2205,8 @@ def generate_and_save_testdata(
     q_type = params["q_type"]
     ori_kv_type = params["ori_kv_type"]
     cmp_kv_type = params["cmp_kv_type"]
+    ori_kv_compute_type = get_kv_compute_dtype(ori_kv_type)
+    cmp_kv_compute_type = get_kv_compute_dtype(cmp_kv_type)
     B = params["B"]
     S1 = params["S1"]
     T1 = params["T1"]
@@ -2283,7 +2357,7 @@ def generate_and_save_testdata(
             ori_topk_length,
         ) = gen_ori_kv(
             q_type,
-            ori_kv_type,
+            ori_kv_compute_type,
             B,
             S1,
             T1,
@@ -2315,6 +2389,8 @@ def generate_and_save_testdata(
             ori_sparse_indices_mode=ori_sparse_indices_mode,
             ori_kv_topk_mode=ori_kv_topk_mode,
             ori_topk_length_override=ori_topk_length_override,
+            ori_win_left=ori_win_left,
+            ori_win_right=ori_win_right,
         )
     else:
         (
@@ -2325,7 +2401,7 @@ def generate_and_save_testdata(
             ori_topk_length,
         ) = gen_ori_kv_quant_2_pa(
             q_type,
-            ori_kv_type,
+            ori_kv_compute_type,
             B,
             S1,
             T1,
@@ -2355,6 +2431,8 @@ def generate_and_save_testdata(
             ori_sparse_indices_mode=ori_sparse_indices_mode,
             ori_kv_topk_mode=ori_kv_topk_mode,
             ori_topk_length_override=ori_topk_length_override,
+            ori_win_left=ori_win_left,
+            ori_win_right=ori_win_right,
         )
     # generate cmp_kv and sparse_indices
     if template_run_mode in ("HCA", "CSA", "ORI_CMP_SPARSE"):
@@ -2368,7 +2446,7 @@ def generate_and_save_testdata(
             ) = gen_cmp_kv(
                 q_type,
                 layout_q,
-                cmp_kv_type,
+                cmp_kv_compute_type,
                 B,
                 S1,
                 T1,
@@ -2412,7 +2490,7 @@ def generate_and_save_testdata(
                 cmp_topk_length,
             ) = gen_cmp_kv_quant_2_pa(
                 q_type,
-                cmp_kv_type,
+                cmp_kv_compute_type,
                 B,
                 S1,
                 T1,
@@ -2450,6 +2528,11 @@ def generate_and_save_testdata(
         cmp_k_bnsd = None
         cmp_topk_length = None
 
+    # Golden tensors above retain FP8 semantics. Only the tensors crossing the
+    # operator/save boundary are reinterpreted as uint8 when requested.
+    ori_k_in_pa_shape = reinterpret_kv_for_operator(ori_k_in_pa_shape, ori_kv_type)
+    cmp_k_in_pa_shape = reinterpret_kv_for_operator(cmp_k_in_pa_shape, cmp_kv_type)
+
     # 0轴非连续
     # if layout_kv == "PA_BBND" and (template_run_mode == "HCA" or template_run_mode == "CSA"):
     #     total_block = block_size1 + block_size2
@@ -2474,8 +2557,8 @@ def generate_and_save_testdata(
         "layout_q": layout_q,
         "layout_kv": layout_kv,
         "q_type": q_type,
-        "ori_kv_type": ori_kv_type,
-        "cmp_kv_type": cmp_kv_type,
+        "ori_kv_type": ori_kv_compute_type,
+        "cmp_kv_type": cmp_kv_compute_type,
         "B": B,
         "S1": S1,
         "T1": T1,
@@ -2615,8 +2698,8 @@ def generate_and_save_testdata(
             "seqused_q": seqused_q,
             "cu_seqlens_ori_kv": op_cu_seqlens_ori_kv,
             "cu_seqlens_cmp_kv": op_cu_seqlens_cmp_kv,
-            "seqused_ori_kv": op_seqused_ori_kv,
-            "seqused_cmp_kv": op_seqused_cmp_kv,
+            "seqused_ori_kv": seqused_ori_kv,
+            "seqused_cmp_kv": seqused_cmp_kv,
             "cmp_residual_kv": cmp_residual_kv,
             "sinks": sinks,
             "quant_mode": quant_mode,
@@ -2639,9 +2722,6 @@ def generate_and_save_testdata(
         "cpu_output": cpu_result,
         "cpu_lse": cpu_lse if return_softmax_lse else None,
     }
-
-    if save_pt:
-        save_test_case(input_data, save_path)
 
     return input_data
 

@@ -16,11 +16,7 @@
 
 #include "arch35/flash_attn_template_tiling_key.h"
 #include "utils/flash_attn_common_def.h"
-#if __has_include("../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h")
 #include "../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
-#else
-#include "../common/arch35/flash_attention_score_common_regbase_arch35.h"
-#endif
 #include "arch35/flash_attn_kernel_dn.h"
 #include "arch35/flash_attn_kernel_nd.h"
 
@@ -116,7 +112,7 @@ __global__ __aicore__ void flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key
 #endif
 
 #if (ORIG_DTYPE_Q == DT_BF16) || (ORIG_DTYPE_Q == DT_FLOAT16)
-    fa_base_matmul::idCounterNum = 0;
+    fa_base_matmul::ResetIdCounter();
 
     constexpr FA_LAYOUT qLayout = GetQueryLayout<inOutLayoutType>();
     constexpr FA_LAYOUT outLayout = GetOutLayout<inOutLayoutType>();

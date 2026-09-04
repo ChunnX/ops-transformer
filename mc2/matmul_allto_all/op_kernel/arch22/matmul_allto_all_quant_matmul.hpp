@@ -16,14 +16,14 @@
 #ifndef CATLASS_MATMUL_ALLTO_ALL_QUANT_MATMUL_HPP
 #define CATLASS_MATMUL_ALLTO_ALL_QUANT_MATMUL_HPP
 
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/callback.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_catlass.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_cross_core_sync.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_resource.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_coord.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/tla_layout_layout.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/tla_detail_callback.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_gemm_coord.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_matrix_coord.hpp"
 #include "matmul_allto_all_util_arch22.h"
 
 namespace Catlass::Gemm::Kernel {
@@ -79,9 +79,7 @@ public:
 
         // Methods
         CATLASS_HOST_DEVICE
-        Params()
-        {
-        }
+        Params() {}
 
         CATLASS_HOST_DEVICE
         Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
@@ -89,13 +87,25 @@ public:
                LayoutPerTokenScale layoutPerTokenScale_, GM_ADDR ptrBias_, LayoutBias layoutBias_, GM_ADDR ptrPeerMem_,
                LayoutD layoutD_, GM_ADDR ptrWorkspace_, GM_ADDR ptrOut_, CommBase commUtil_, int32_t pipeDepth_,
                bool transB_)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
-              ptrScale(ptrScale_), layoutScale(layoutScale_), ptrPerTokenScale(ptrPerTokenScale_),
-              layoutPerTokenScale(layoutPerTokenScale_), ptrBias(ptrBias_), layoutBias(layoutBias_),
-              ptrPeerMem(ptrPeerMem_), layoutD(layoutD_), ptrWorkspace(ptrWorkspace_), ptrOut(ptrOut_),
-              commUtil(commUtil_), pipeDepth(pipeDepth_), transB(transB_)
-        {
-        }
+            : problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrScale(ptrScale_),
+              layoutScale(layoutScale_),
+              ptrPerTokenScale(ptrPerTokenScale_),
+              layoutPerTokenScale(layoutPerTokenScale_),
+              ptrBias(ptrBias_),
+              layoutBias(layoutBias_),
+              ptrPeerMem(ptrPeerMem_),
+              layoutD(layoutD_),
+              ptrWorkspace(ptrWorkspace_),
+              ptrOut(ptrOut_),
+              commUtil(commUtil_),
+              pipeDepth(pipeDepth_),
+              transB(transB_)
+        {}
     };
 
     // Methods
@@ -196,14 +206,13 @@ public:
 
                 MatrixCoord offsetA{blockIdxCoord.m() * L1TileShape::M, blockIdxCoord.k() * L1TileShape::K};
                 MatrixCoord offsetC{(stageId * coreNum + coreIdx) * L1TileShape::M, 0};
-                int64_t gmOffsetA = params.layoutA.GetOffset(offsetA) +
-                                    static_cast<int64_t>(commIdx) * L1TileShape::M * params.commUtil.p_value *
-                                        params.problemShape.k();
-                int64_t gmOffsetB =
-                    (static_cast<int64_t>(blockIdxCoord.n() / nLoopPerRank) *
-                         (params.problemShape.n() / params.commUtil.rank_size) +
-                     static_cast<int64_t>(blockIdxCoord.n() % nLoopPerRank) * L1TileShape::N) *
-                    (params.transB ? params.problemShape.k() : 1);
+                int64_t gmOffsetA = params.layoutA.GetOffset(offsetA) + static_cast<int64_t>(commIdx) * L1TileShape::M *
+                                                                            params.commUtil.p_value *
+                                                                            params.problemShape.k();
+                int64_t gmOffsetB = (static_cast<int64_t>(blockIdxCoord.n() / nLoopPerRank) *
+                                         (params.problemShape.n() / params.commUtil.rank_size) +
+                                     static_cast<int64_t>(blockIdxCoord.n() % nLoopPerRank) * L1TileShape::N) *
+                                    (params.transB ? params.problemShape.k() : 1);
                 int64_t gmOffsetC = layoutC.GetOffset(offsetC);
 
                 blockMmad(gmA[gmOffsetA], params.layoutA, gmB[gmOffsetB], params.layoutB, gmC[gmOffsetC], layoutC,
@@ -315,8 +324,7 @@ public:
                 int64_t rankIdx = blockIdxCoord.n() / nLoopPerRank;
                 int64_t rankOffsetInRank = blockIdxCoord.n() % nLoopPerRank;
                 int64_t gmOffsetD =
-                    static_cast<int64_t>(flagIdx) * L1TileShape::M * params.commUtil.p_value *
-                        params.problemShape.n() +
+                    static_cast<int64_t>(flagIdx) * L1TileShape::M * params.commUtil.p_value * params.problemShape.n() +
                     rankIdx * rankOffset +
                     static_cast<int64_t>(blockIdxCoord.m()) * L1TileShape::M *
                         (params.problemShape.n() / params.commUtil.rank_size) +
@@ -346,10 +354,9 @@ public:
                 int64_t src_offset =
                     static_cast<int64_t>(flag_idx) * params.commUtil.gm_a_pingpong_size +
                     params.commUtil.gm_a_pingpong_size / params.commUtil.rank_size * params.commUtil.rank;
-                int64_t dst_offset =
-                    params.commUtil.core_idx * rank_offset + static_cast<int64_t>(commIdx) * L1TileShape::M *
-                                                                 params.commUtil.p_value *
-                                                                 (params.problemShape.n() / params.commUtil.rank_size);
+                int64_t dst_offset = params.commUtil.core_idx * rank_offset +
+                                     static_cast<int64_t>(commIdx) * L1TileShape::M * params.commUtil.p_value *
+                                         (params.problemShape.n() / params.commUtil.rank_size);
                 params.commUtil.CopyGMToGM(
                     (__gm__ ElementD *)params.commUtil.buff[params.commUtil.core_idx] + src_offset,
                     reinterpret_cast<__gm__ ElementD *>(params.ptrOut) + dst_offset, token_per_rank);

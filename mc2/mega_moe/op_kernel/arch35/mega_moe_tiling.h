@@ -116,7 +116,7 @@ constexpr int32_t BASE_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
  * 若修改 MAX_H、MAX_MOE_EXPERT_NUM、DISPATCH_RESET_BATCH、Quant buffer 布局或 mask buffer 数量上限，
  * 必须重新验证该前提。
  *
- * CalcSendMaskBufferConfig 固定选中的 buffer 数后，用剩余 UB 扩大 batch，并向下对齐到 ALIGN_256。
+ * CalcTopkValidIndexBufferConfig 固定选中的 buffer 数后，用剩余 UB 扩大 batch，并向下对齐到 ALIGN_256。
  * SendMaskCal 使用 MTE3_V 的 EVENT_ID0~EVENT_ID5 管理 mask push ring。最低保留双 buffer，最多 6 个。
  */
 constexpr int32_t MIN_SEND_MASK_BUFFER_COUNT = 2;
@@ -180,8 +180,8 @@ struct MegaMoeTilingData {
 
     // Dispatch 的分核不改变 UB 布局，所有 AIV core 共用一套配置；对应 kernel DispatchBuffInit。
     MegaMoeDispatchBufferConfig dispatchBufferConfig;
-    // SendMask 按 expertId = aivCoreId + n * blockAivNum 分核，前 remainder 个 core 会多处理一个 expert；
-    // 对应 kernel SendAndQuantBuffInit 的选择条件和 SendMaskCal 的 expert 循环。
+    // SendMask 将全局 expertId 连续均分，前 remainder 个 core 会多处理一个 expert；
+    // 对应 kernel SendAndQuantBuffInit 的选择条件和 SendMaskCal 的连续 expert 区间。
     MegaMoeSendMaskBufferConfig sendMaskConfigForCoreWithExtraExpert;
     MegaMoeSendMaskBufferConfig sendMaskConfigForCoreWithoutExtraExpert;
     uint32_t sendMaskCoreCountWithExtraExpert;

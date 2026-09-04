@@ -29,13 +29,13 @@ public:
                                 GM_ADDR y, GM_ADDR softmaxMax, GM_ADDR softmaxSum, GM_ADDR actualSeqQlen,
                                 GM_ADDR actualSeqKvlen, GM_ADDR queryRope, GM_ADDR keyRope, GM_ADDR dq, GM_ADDR dk,
                                 GM_ADDR dv, GM_ADDR dqRope, GM_ADDR dkRope, GM_ADDR workspace,
-                                SFagTilingType ordTilingData, TPipe *pipeIn);
+                                SFagTilingType ordTilingData, TPipe *pipeIn, GM_ADDR sinks, GM_ADDR dSinks);
     __aicore__ inline void InitCVCommonBuffer();
     __aicore__ inline void InitCVCommonGlobalBuffer(GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace);
     __aicore__ inline void SetConstInfo();
     __aicore__ inline void SetOptionalInfo();
-    __aicore__ inline void SetRunInfo(FagRunInfo &runInfo, int64_t taskId, int64_t sTaskId);
-    __aicore__ inline void SetDeterRunInfo(FagRunInfo &runInfo, int64_t sTaskId);
+    __aicore__ inline void SetRunInfo(FagRunInfo &runInfo, int64_t taskId, int64_t sTaskId, int64_t deterTaskId);
+    __aicore__ inline void SetDeterRunInfo(FagRunInfo &runInfo, int64_t sTaskId, int64_t deterTaskId);
     __aicore__ inline void Process();
     template <bool IS_MM1_MM2 = true>
     __aicore__ inline int64_t GetQueryOffset(FagRunInfo &runInfo);
@@ -46,9 +46,11 @@ public:
     __aicore__ inline int64_t GetKeyRopeOffset(FagRunInfo &runInfo);
     __aicore__ inline int64_t GetValueOffset(FagRunInfo &runInfo);
     __aicore__ inline void SyncALLCores();
-    __aicore__ inline void GetSeqQlenKvlenByBidx(int64_t bIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvlen);
     __aicore__ inline void GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int64_t &actSelBlkCount);
     __aicore__ inline void GetTndSeqLen(const int64_t t1Idx, int64_t &bIdx);
+    __aicore__ inline int64_t GetValidTndT1Size();
+    __aicore__ inline bool IsValidTndT1Index(const int64_t t1Idx);
+    __aicore__ inline int64_t GetMaxDeterEpochs();
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
     __aicore__ inline void IterateMmDyV(LocalTensor<CALC_TYPE> &mm1ResTensor,
@@ -158,7 +160,7 @@ protected:
     using CubeBlockNLe64Type =
         typename std::conditional<CubeBlockType::IS_CUBE_DUMMY, CubeBlockType,
                                   FAGBlockCubeNLe64<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_DROP, IS_TND, IS_ROPE, IS_DETER,
-                                                    s2TemplateType, dTemplateType>>::type;
+                                                    KV_MERGE, IS_SINKS, s2TemplateType, dTemplateType>>::type;
     CubeBlockNLe64Type cubeBlockNLe64;
     VecBlockType vecBlock;
 
@@ -167,6 +169,7 @@ protected:
     int64_t t1Index = 0;
     int64_t n2Index = 0;
     int64_t lastT1Index = -1;
+    uint8_t qDxPingPongSeq = 0; // N<=64 Q/Dy L1 ping-pong，随 S1 翻转
     int64_t usedCoreNum = 0;
     int64_t processBS1ByCore = 0;
 };
@@ -189,6 +192,10 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     if ASCEND_IS_AIV {
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V5_TO_C4_FLAG[0]);
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V5_TO_C4_FLAG[1]);
+        if constexpr (IS_DETER) {
+            // 第一轮 AIC Wait(flag14) 的 initial credit。每个 AIV 各 Set 一次，对应 AIC 的 14 / 16+14。
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
+        }
     }
 }
 
@@ -207,6 +214,11 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_V5_TO_C4_FLAG[1]);
         CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_V5_TO_C4_FLAG[0]);
         CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_V5_TO_C4_FLAG[1]);
+        if constexpr (IS_DETER) {
+            // 消费最后一轮 AIV Set(flag14)，或从未 scatter 时消费 AllocEventID 的 initial credit。
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SCATTER_TO_FIX_SYNC_FLAG);
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_TO_FIX_SYNC_FLAG);
+        }
     }
 }
 
@@ -215,7 +227,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR sparseIndices, GM_ADDR dy, GM_ADDR y, GM_ADDR softmaxMax,
     GM_ADDR softmaxSum, GM_ADDR actualSeqQlen, GM_ADDR actualSeqKvlen, GM_ADDR queryRope, GM_ADDR keyRope, GM_ADDR dq,
     GM_ADDR dk, GM_ADDR dv, GM_ADDR dqRope, GM_ADDR dkRope, GM_ADDR workspace, SFagTilingType ordTilingData,
-    TPipe *pipeIn)
+    TPipe *pipeIn, GM_ADDR sinks, GM_ADDR dSinks)
 {
     // init current core tilingInfo
     if ASCEND_IS_AIV {
@@ -251,7 +263,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
                                pseInfo);
     vecBlock.InitUbBuffer();
     vecBlock.InitGlobalBuffer(key, dy, y, sparseIndices, softmaxMax, softmaxSum, keyRope, dq, dk, dv, actualSeqQlen,
-                              actualSeqKvlen, workspace);
+                              actualSeqKvlen, workspace, sinks, dSinks);
 
     if (constInfo.isHeadNLe64) {
         cubeBlockNLe64.SetCubeBlockParams(pipeIn, tilingData, &l1BufferManager);
@@ -279,8 +291,9 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Init
 {
     dqGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dq);
     dkGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dk);
-    dvGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dv);
-
+    if constexpr (!KV_MERGE) {
+        dvGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dv);
+    }
     // init workspace address
     dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                                   tilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
@@ -314,8 +327,15 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitCVCommonBuffer()
 {
     l1BufferManager.Init(pipe, L1_MAX_SIZE);
-    dSL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
-    pL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
+    if (constInfo.isHeadNLe64) {
+        // gather 64×g：每槽 8KB（g=64 bf16），dS/P 双缓冲合计 32KB
+        uint32_t dsPSize = AlignTo16(constInfo.commonConstInfo.gSize) * SFAG_GATHER_S2_HEAD_N * sizeof(INPUT_TYPE);
+        dSL1Buf.Init(l1BufferManager, dsPSize);
+        pL1Buf.Init(l1BufferManager, dsPSize);
+    } else {
+        dSL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
+        pL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
+    }
 
     pipe->InitBuffer(mm1ResBuf[0], VECTOR_BASEM * VECTOR_BASEN * sizeof(CALC_TYPE));
     pipe->InitBuffer(mm1ResBuf[1], VECTOR_BASEM * VECTOR_BASEN * sizeof(CALC_TYPE));
@@ -445,25 +465,8 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType,
-                                                         VecBlockType>::GetSeqQlenKvlenByBidx(int64_t bIdx,
-                                                                                              int64_t &actualSeqQlen,
-                                                                                              int64_t &actualSeqKvlen)
-{
-    if (unlikely(bIdx == 0)) {
-        actualSeqQlen = ((__gm__ int64_t *)actualSeqQlenAddr)[0];
-        actualSeqKvlen = ((__gm__ int64_t *)actualSeqKvlenAddr)[0];
-    } else {
-        actualSeqQlen = ((__gm__ int64_t *)actualSeqQlenAddr)[bIdx] - ((__gm__ int64_t *)actualSeqQlenAddr)[bIdx - 1];
-        actualSeqKvlen =
-            ((__gm__ int64_t *)actualSeqKvlenAddr)[bIdx] - ((__gm__ int64_t *)actualSeqKvlenAddr)[bIdx - 1];
-    }
-    return;
-}
-
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetRunInfo(
-    FagRunInfo &runInfo, int64_t taskId, int64_t sTaskId)
+    FagRunInfo &runInfo, int64_t taskId, int64_t sTaskId, int64_t deterTaskId)
 {
     runInfo.t1Index = t1Index;
     runInfo.n2Index = n2Index;
@@ -499,6 +502,10 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     // 当前S1内执行了一次task后，isS1IdxNoChange置为true
     runInfo.isS1IdxNoChange = t1Index == lastT1Index;
     runInfo.isNextS1IdxNoChange = blkCntOffset + constInfo.selectedCountOffset < actualSelectedBlockCount;
+    if (!runInfo.isS1IdxNoChange && lastT1Index >= 0) {
+        qDxPingPongSeq ^= 1;
+    }
+    runInfo.qDxPingPongIdx = qDxPingPongSeq;
     lastT1Index = t1Index;
 
     GetDerived()->SetUniqueRunInfo(runInfo);
@@ -527,11 +534,16 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     if constexpr (IS_DETER) {
         runInfo.sTaskId = sTaskId;
         runInfo.sTaskIdMod2 = sTaskId & 1;
-        runInfo.mm4ResWsAddr = runInfo.sTaskIdMod2 * constInfo.selectedBlockCount * constInfo.dTotalSize * coreNum +
+        runInfo.deterTaskId = deterTaskId;
+        runInfo.deterTaskIdMod2 = deterTaskId & 1;
+        // deter workspace 布局是 [parity][core][block][d]：每个 epoch 每核只放一个 token 的贡献，
+        // 没有 n2 维度。消费侧 ScatterAddDeter 的 topkIndices 寻址同样按 n2 == 1 展开。
+        // host tiling 已经硬性拒绝 n2 != 1，这里依赖该前提。
+        runInfo.mm4ResWsAddr = runInfo.deterTaskIdMod2 * constInfo.selectedBlockCount * constInfo.dTotalSize * coreNum +
                                cBlockIdx * constInfo.selectedBlockCount * constInfo.dTotalSize +
                                runInfo.blkCntOffset * constInfo.dTotalSize;
         runInfo.mm5ResWsAddr =
-            runInfo.sTaskIdMod2 * constInfo.selectedBlockCount * constInfo.commonConstInfo.dSizeV * coreNum +
+            runInfo.deterTaskIdMod2 * constInfo.selectedBlockCount * constInfo.commonConstInfo.dSizeV * coreNum +
             cBlockIdx * constInfo.selectedBlockCount * constInfo.commonConstInfo.dSizeV +
             runInfo.blkCntOffset * constInfo.commonConstInfo.dSizeV;
     }
@@ -539,10 +551,12 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetDeterRunInfo(
-    FagRunInfo &runInfo, int64_t sTaskId)
+    FagRunInfo &runInfo, int64_t sTaskId, int64_t deterTaskId)
 {
     runInfo.sTaskId = sTaskId;
     runInfo.sTaskIdMod2 = sTaskId & 1;
+    runInfo.deterTaskId = deterTaskId;
+    runInfo.deterTaskIdMod2 = deterTaskId & 1;
     if constexpr (!IS_TND) {
         runInfo.commonRunInfo.actualS1Size = constInfo.commonConstInfo.s1Size;
         runInfo.commonRunInfo.actualS2Size = constInfo.commonConstInfo.s2Size;
@@ -605,12 +619,16 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetActualSelCount(
     const int64_t t1Idx, const int64_t n2Idx, int64_t &actSelBlkCount)
 {
-    int64_t maxS2Blk = Ceil<int64_t>(curS2, constInfo.selectedBlockSize);
+    // t1Idx / n2Idx 不直接参与计算：因果上界由 GetTndSeqLen 先行写入的 curS1 / curS2 / s1Index 给出，
+    // n2 方向不影响 sel 数（deter 路径也只支持 n2 == 1，见 host tiling 校验）。
+    (void)t1Idx;
+    (void)n2Idx;
+    int64_t maxS2 = curS2;
     if (constInfo.sparseMode == RIGHT_DOWN_CAUSAL) {
-        int64_t newMaxS2 = Max(curS2 - curS1 + s1Index + 1, 0);
-        maxS2Blk = Ceil<int64_t>(newMaxS2, constInfo.selectedBlockSize);
+        maxS2 = Max(curS2 - curS1 + s1Index + 1, 0);
     }
-    actualSelectedBlockCount = Min(constInfo.selectedBlockCount, maxS2Blk);
+    // 与 FAGBlockVec::GetRunInfo 的消费侧公式必须逐字一致，否则 Scatter 会遍历到生产侧没写过的 block。
+    actSelBlkCount = Min(constInfo.selectedBlockCount, Ceil<int64_t>(maxS2, constInfo.selectedBlockSize));
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
@@ -649,6 +667,46 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         s1Index = t1Idx % constInfo.commonConstInfo.s1Size;
         t2Offset = bIdx * curS2;
     }
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline bool FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::IsValidTndT1Index(
+    const int64_t t1Idx)
+{
+    if constexpr (!IS_TND) {
+        return true;
+    }
+    return t1Idx < GetValidTndT1Size();
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline int64_t
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetValidTndT1Size()
+{
+    if constexpr (!IS_TND) {
+        return tilingData->baseParams.totalSize;
+    }
+    // 未校验前提（actual_seq_lengths_query 是 device 张量，tiling 期读不到，无法在 host 侧校验）：
+    // 前缀和非负、单调不降，且末值 <= 物理 T1。契约见 docs/aclnnSparseFlashAttentionGrad.md。
+    // 违反时尾 padding 的有效区间判断会失效。
+    return ((__gm__ int32_t *)actualSeqQlenAddr)[constInfo.bSize - 1];
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline int64_t
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetMaxDeterEpochs()
+{
+    // 所有核必须得到同一值：deterministic scatter epoch 总数。
+    // 非 TND：tiling formerCoreProcessNNum = ceil(totalSize / usedCoreNum)，核间最多差 1 个 Q。
+    // TND：用 packed validT1，不用物理 padding 长度，避免 physicalT1 与 validT1 把 epoch 数算分叉。
+    if (usedCoreNum <= 0) {
+        return 0;
+    }
+    int64_t tokenSize = GetValidTndT1Size();
+    if (tokenSize <= 0) {
+        return 0;
+    }
+    return (tokenSize + usedCoreNum - 1) / usedCoreNum;
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>

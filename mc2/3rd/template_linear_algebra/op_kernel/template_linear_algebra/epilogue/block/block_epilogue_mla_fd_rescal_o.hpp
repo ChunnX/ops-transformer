@@ -11,12 +11,12 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_MLA_FD_RESACLE_O_HPP
 #define CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_MLA_FD_RESACLE_O_HPP
 
-#include "../../catlass.hpp"
-#include "../../arch/resource.hpp"
-#include "../../epilogue/dispatch_policy.hpp"
-#include "../../epilogue/tile/tile_copy.hpp"
-#include "../../gemm_coord.hpp"
-#include "../../matrix_coord.hpp"
+#include "../../tla_catlass.hpp"
+#include "../../arch/tla_arch_resource.hpp"
+#include "../../epilogue/tla_epilogue_dispatch_policy.hpp"
+#include "../../epilogue/tile/tla_epilogue_tile_copy.hpp"
+#include "../../tla_gemm_coord.hpp"
+#include "../../tla_matrix_coord.hpp"
 
 namespace Catlass::Epilogue::Block {
 
@@ -163,11 +163,11 @@ public:
 
         // preload
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-        AscendC::DataCopyPad(oIn[0], gOCoreTmp,
-                             AscendC::DataCopyExtParams(actualHeads, headSize * sizeof(ElementInput),
-                                                        (kvSplitCoreNum * headSize - headSize) * sizeof(ElementInput),
-                                                        0, 0),
-                             AscendC::DataCopyPadExtParams<ElementInput>(false, 0, 0, 0));
+        AscendC::DataCopyPad(
+            oIn[0], gOCoreTmp,
+            AscendC::DataCopyExtParams(actualHeads, headSize * sizeof(ElementInput),
+                                       (kvSplitCoreNum * headSize - headSize) * sizeof(ElementInput), 0, 0),
+            AscendC::DataCopyPadExtParams<ElementInput>(false, 0, 0, 0));
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
 
         AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID2);

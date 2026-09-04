@@ -15,9 +15,9 @@
 
 #ifndef MATMUL_BLOCK_MMAD_MX_H
 #define MATMUL_BLOCK_MMAD_MX_H
-#include "../policy/dispatch_policy.h"
-#include "../utils/common_utils.h"
-#include "../utils/layout_utils.h"
+#include "../policy/cgmct_dispatch_policy.h"
+#include "../utils/cgmct_common_utils.h"
+#include "../utils/cgmct_layout_utils.h"
 #include "../utils/tuple_utils.h"
 
 namespace Cgmct {
@@ -741,7 +741,6 @@ public:
             bL1LoopCnt_++;
         }
     }
-
 
     __aicore__ inline void IterAL1BL1(TileL1L0Param &tileL1L0Param, AscendC::MmadParams &mmadParams, uint64_t l0cOffset,
                                       const AscendC::GlobalTensor<AType> &aGlobal,

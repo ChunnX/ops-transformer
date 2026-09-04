@@ -25,11 +25,6 @@ constexpr int64_t EXCEPTION_DUMP_REGION_SIZE = 60 * 1024LL; // 异常dump区
 constexpr int64_t SIZE_INT_8 = 1U;
 constexpr int64_t SIZE_INT_32 = 4U;
 constexpr int64_t SIZE_BF_16 = 2U;
-// GroupedMatmul 模式。
-constexpr uint8_t GROUPED_MATMUL_MODE_GENERAL = 0U;
-constexpr uint8_t GROUPED_MATMUL_MODE_A8W4 = 1U;
-// a4w4 混合场景：GMM1 走 generic a4w4，GMM2 走 A8W4。GMM2 需要 gmm2MmadResPtr workspace。
-constexpr uint8_t GROUPED_MATMUL_MODE_A4W4 = 3U;
 
 struct WorkspaceInfo {
     GM_ADDR dispatchRevDataPtr;
@@ -73,9 +68,14 @@ struct WorkspaceInfo {
     HOST_DEVICE WorkspaceInfo() = default;
     HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t serverNum = 1)
     {
+        InitializeWorkspaceLayout(base, tilingData, serverNum);
+    }
+
+private:
+    HOST_DEVICE void InitializeWorkspaceLayout(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t serverNum)
+    {
         workspaceSize = 0;
         dispatchRevDataPtr = base;
-
         workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h, ALIGN_512);
         dispatchRevScalePtr = base + workspaceSize;
 
@@ -103,25 +103,27 @@ struct WorkspaceInfo {
             ALIGN_512);
 
         expertRevTokenNumsPtr = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(tilingData->moeExpertPerRank * ALIGN_32 * tilingData->aicNum, ALIGN_512);
+        int64_t expertMajorPaddedCountBytes =
+            static_cast<int64_t>(tilingData->moeExpertPerRank) * ALIGN_32 * tilingData->aicNum;
+        int64_t blockMajorCountStride = static_cast<int64_t>(
+            Ops::Base::CeilAlign(tilingData->moeExpertPerRank, static_cast<uint32_t>(INT_CACHELINE)));
+        int64_t blockMajorCountBytes =
+            blockMajorCountStride * static_cast<int64_t>(sizeof(int32_t)) * tilingData->aicNum;
+        int64_t expertCountWorkspaceBytes =
+            tilingData->topoType == TOPO_TYPE_MTE ? blockMajorCountBytes : expertMajorPaddedCountBytes;
+        workspaceSize += Ops::Base::CeilAlign(expertCountWorkspaceBytes, ALIGN_512);
 
         metaInfoPtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
 
         // 以下三组 flag 仅由 MoE 专家使用；共享专家路径不使用这些 flag。
-        bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE;
-        bool useMteA8W8Wave =
-            tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
-                                                      tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
-        bool useGroupSyncCounters = tilingData->topoType == TOPO_TYPE_URMA ||
-                                    (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
-
+        const bool useMteWaveCombine = tilingData->topoType == TOPO_TYPE_MTE;
         int64_t maxWavesPerExpert =
             Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(L1_TILE_M_256));
         int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
-        // Wave 流水按 256 行分段消费 activation；非 Wave 路径仍只读写每个专家的第一个槽。
+        // MTE GMM2 按 256-token M group 消费 activation；URMA 只使用每个专家的首槽。
         int64_t activationFlagSlotsPerExpert =
-            useGroupGrainedActivationFlag ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
+            tilingData->topoType == TOPO_TYPE_MTE ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
         int64_t moeExpertCount = static_cast<int64_t>(tilingData->moeExpertPerRank);
 
         // 所有 Scalar 通知都放在同一段连续 workspace 中。每个逻辑槽独占一个 64B cache line，
@@ -138,21 +140,22 @@ struct WorkspaceInfo {
 
         // 每个 AIC 的就绪序列与前面的 flag 连续存放，使 ResetFlagList 能用同一次 MTE reset 清理；
         // 每个序列独占一个 64B cache line。
-        if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
-            tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
-            tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+        // W4 GMM1 activation 始终使用该序号；非量化 GMM2/Combine 也复用它做 tile 一对一通知。
+        bool isW4Mode = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+                        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
+                        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ;
+        if (isW4Mode || (tilingData->topoType == TOPO_TYPE_MTE && tilingData->combineQuantMode == COMBINE_NO_QUANT)) {
             flagGmmToEpiloguePtr = base + workspaceSize;
             workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
         }
 
-        if (useMteA8W8Wave) {
+        if (tilingData->topoType == TOPO_TYPE_MTE && tilingData->combineQuantMode != COMBINE_NO_QUANT) {
+            // 量化 Combine 在完整专家结束后等待每个 AIC 的完成标记。
             gmm2ReadyPtr = base + workspaceSize;
-            // PER_EXPERT 模式下 slotIdx 为 expertIdx，PER_BATCH 模式下为 batchIdx；
-            // 每个 AIC 到达标记独占一个 64B cache line。
             workspaceSize += SIZE_INT_32 * moeExpertCount * tilingData->aicNum * INT_CACHELINE;
         }
 
-        if (useGroupSyncCounters) {
+        if (tilingData->topoType == TOPO_TYPE_URMA) {
             gmm2CombineSyncCounterPtr = base + workspaceSize;
             workspaceSize += static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) * moeExpertCount *
                              INT_CACHELINE * SIZE_INT_32;
@@ -172,15 +175,16 @@ struct WorkspaceInfo {
         // A8W4 / Combine 量化路径的条件 workspace 分配。
         // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / ENABLE_A4W4 / CombineQuantMode) 一致，
         // 由 TilingKey 保证同步。
-        // A8W4 以及 MTE A4W4 Wave 使用 cumsum GM 备份；A8W4/prefetch 使用 GMM1 中间结果。
+        // W4 Wave-ahead Dispatch 与 layered A8W4 都会跨 Activation 保留 cumsum；Activation 会覆盖对应 UB，
+        // 因此需要逐物理 block 的 GM 备份。A8W8 的 cumsum 常驻 AIV1 UB 并按 wave 连续推进，不需要该备份。
         cumsumInfoPtr = nullptr;
         gmm1MmadResPtr = nullptr;
         gmm2MmadResPtr = nullptr;
-        bool usePersistentDispatchCumsum =
+        bool activationOverwritesDispatchCumsum =
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
             (tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
                                                        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ));
-        if (usePersistentDispatchCumsum) {
+        if (activationOverwritesDispatchCumsum) {
             // cumsumInfo：逐核备份 cumsum 状态，每核 moeExpertPerRank × epWorldSize 个 int32。
             cumsumInfoPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(SIZE_INT_32 * tilingData->moeExpertPerRank *
@@ -199,8 +203,8 @@ struct WorkspaceInfo {
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ ||
             tilingData->combineQuantMode != COMBINE_NO_QUANT || tilingData->topoType == TOPO_TYPE_URMA ||
-            useMteA8W8Wave) {
-            if (useMteA8W8Wave) {
+            useMteWaveCombine) {
+            if (useMteWaveCombine) {
                 workspaceSize = Ops::Base::CeilAlign(workspaceSize, static_cast<int64_t>(ALIGN_512));
             }
             gmm2MmadResPtr = base + workspaceSize;
@@ -210,8 +214,9 @@ struct WorkspaceInfo {
             int64_t gmm2OutputBytes = static_cast<int64_t>(SIZE_BF_16) *
                                       static_cast<int64_t>(tilingData->maxOutputSize) *
                                       static_cast<int64_t>(tilingData->h);
-            workspaceSize += useMteA8W8Wave ? Ops::Base::CeilAlign(gmm2OutputBytes, static_cast<int64_t>(ALIGN_512)) :
-                                              gmm2OutputBytes;
+            workspaceSize += useMteWaveCombine ?
+                                 Ops::Base::CeilAlign(gmm2OutputBytes, static_cast<int64_t>(ALIGN_512)) :
+                                 gmm2OutputBytes;
         }
 
         // GMM1 tile 状态位区（仅 prefetch 路径分配，用于 AIC→AIV 软同步）。
@@ -228,13 +233,15 @@ struct WorkspaceInfo {
         if (tilingData->topoType == TOPO_TYPE_URMA) {
             maskSlotPtr = base + workspaceSize;
             int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
-            int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) /
-                                   (int64_t)sizeof(int32_t);
-            int64_t maskAlignSize = Ops::Base::CeilAlign(compareCount / 8, (int64_t)ALIGN_32);
-            int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32; // mask + 32B count
+            int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * static_cast<int64_t>(sizeof(int32_t)),
+                                                        static_cast<int64_t>(ALIGN_256)) /
+                                   static_cast<int64_t>(sizeof(int32_t));
+            int64_t maskAlignSize = Ops::Base::CeilAlign(compareCount / 8, static_cast<int64_t>(ALIGN_32));
+            int64_t maskSlotSize = maskAlignSize + static_cast<int64_t>(ALIGN_32); // mask + 32B count
 
             workspaceSize += Ops::Base::CeilAlign(
-                (int64_t)tilingData->moeExpertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
+                static_cast<int64_t>(tilingData->moeExpertPerRank) * tilingData->epWorldSize * maskSlotSize,
+                static_cast<int64_t>(ALIGN_512));
 
             dispatchL1CommPtr = base + workspaceSize;
             int64_t serverWorkspaceBytes =
