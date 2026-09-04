@@ -526,6 +526,49 @@ mask_mode参数解释
     </tbody>
 </table>
 
+#### Paged Attention参数组
+
+当block_table不为空时，开启Paged Attention
+<table style="undefined;table-layout: fixed; width:1625px">
+    <colgroup>
+        <col style="width: 147px">
+        <col style="width: 232px">
+        <col style="width: 232px">
+        <col style="width: 293px">
+        <col style="width: 185px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>参数</th>
+            <th>单参数校验</th>
+            <th>存在性校验</th>
+            <th>一致性校验</th>
+            <th>特性交叉校验</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>block_table</td>
+            <td>
+                <ul>
+                    <li>tensor_type仅支持int32</li>
+                    <li>tensor_shape为(B, max_num_blocks_per_seq)</li>
+                    <li>值只能为正整数</li>
+                    <li>1024 >= block_size >= 16，block_size % 16 == 0</li>
+                </ul>
+            </td>
+            <td>可选参数</td>
+            <td>无</td>
+            <td>
+                <ul>
+                    <li>PagedAttention开启情况下，必须传入seqused_kv</li>
+                    <li>PagedAttention开启情况下，block_table必须不为空</li>
+                </ul>
+            </td>
+        </tr>
+    </tbody>
+</table>
+
 #### SeqLengths参数组
 
 <table style="undefined;table-layout: fixed; width:1625px">
@@ -590,6 +633,7 @@ mask_mode参数解释
                     <li>cu_seqlens_kv：第一个元素为0且最后一个元素等于KV_T</li>
                 </ul>
             </td>
+            <td rowspan="2">无</td>
             <td rowspan="2">
                 <ul>
                     <li>当layout_q为TND时，cu_seqlens_q必须传入</li>
@@ -598,8 +642,6 @@ mask_mode参数解释
                     <li>当layout_kv不为TND时，cu_seqlens_kv不支持传入</li>
                 </ul>
             </td>
-            <td rowspan="2">无</td>
-            <td rowspan="2">无</td>
         </tr>
         <tr>
             <td>cu_seqlens_kv</td>
@@ -645,49 +687,6 @@ layout_q、layout_kv与SeqLens参数的组合关系：
 
 - 当layout_q不为TND时，seqused_q与max_seqlen_q二选一传入，不支持传入cu_seqlens_q；当layout_q为TND时，cu_seqlens_q必须传入，seqused_q与max_seqlen_q均为可选参数。
 - 当layout_kv不为TND且不为PA时，seqused_kv与max_seqlen_kv二选一传入，不支持传入cu_seqlens_kv；当layout_kv为PA时，seqused_kv必须传入，max_seqlen_kv为可选参数；当layout_kv为TND时，cu_seqlens_kv必须传入，seqused_kv与max_seqlen_kv均为可选参数。
-
-#### Paged Attention参数组
-
-当block_table不为空时，开启Paged Attention
-<table style="undefined;table-layout: fixed; width:1625px">
-    <colgroup>
-        <col style="width: 147px">
-        <col style="width: 232px">
-        <col style="width: 232px">
-        <col style="width: 293px">
-        <col style="width: 185px">
-    </colgroup>
-    <thead>
-        <tr>
-            <th>参数</th>
-            <th>单参数校验</th>
-            <th>存在性校验</th>
-            <th>一致性校验</th>
-            <th>特性交叉校验</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-            <td>block_table</td>
-            <td>
-                <ul>
-                    <li>tensor_type仅支持int32</li>
-                    <li>tensor_shape为(B, max_num_blocks_per_seq)</li>
-                    <li>值只能为正整数</li>
-                    <li>1024 >= block_size >= 16，block_size % 16 == 0</li>
-                </ul>
-            </td>
-            <td>可选参数</td>
-            <td>无</td>
-            <td>
-                <ul>
-                    <li>PagedAttention开启情况下，必须传入seqused_kv</li>
-                    <li>PagedAttention开启情况下，block_table必须不为空</li>
-                </ul>
-            </td>
-        </tr>
-    </tbody>
-</table>
 
 #### Sinks参数组
 
