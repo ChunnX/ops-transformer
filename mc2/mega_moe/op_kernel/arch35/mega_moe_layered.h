@@ -1983,6 +1983,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::UpdateGlo
                                    Get<IDX_A_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
 
         uint32_t expertIdx = static_cast<uint32_t>(Get<IDX_FLAG_OFFSET>(state.baseOffset));
+        if constexpr (TopkWeightsPrefetch) {
+            gmmAddrInfo.gmm1TileStatus =
+                reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm1TileStatusPtr) +
+                static_cast<uint64_t>(expertIdx) * params_.tilingData->maxTilesPerExpert * INT_CACHELINE;
+        }
         gmmAddrInfo.bGlobal = GetExpertWeightAddr<Weight1Type>(
             params_.bGmAddr, params_.tilingData->isPerExpertWeightTensor, expertIdx,
             Get<IDX_B_OFFSET>(state.baseOffset));
