@@ -6,8 +6,7 @@
 Combine 消费 metadata 时必须遵守的数据关系。
 
 本文档是实现指导，不描述具体代码修改位置。本阶段的代码实施范围仅包含
-`MoeEpDispatchEpilogue` 及其 Torch 扩展适配；Combine 的处理方式只作为后续实现约束，
-不在本阶段修改。
+`MoeEpDispatchEpilogue`、Combine 及其 Torch 扩展适配。
 
 ### 1.1 修订记录
 
@@ -15,6 +14,7 @@ Combine 消费 metadata 时必须遵守的数据关系。
 |---|---|---|
 | 0.1 | 设计确认稿 | 约定五字段 metadata、首次执行和 cached 执行语义，以及后续 Combine 消费方式。 |
 | 0.2 | 设计确认稿 | 明确首次执行和 cached 执行各自需要修改的校验范围。 |
+| 0.3 | 实现稿 | 新增独立 rank offsets 输出、cached 复用及 Combine 直接消费方式。 |
 
 ## 2. 核心设计
 
@@ -26,7 +26,7 @@ Epilogue 输出的 token 数据继续按本地 expert 排列，metadata 改为�
 - `recv_x`、`recv_scales` 和 `recv_topk_weights` 保持 expert-order，供专家计算使用。
 - `recv_src_metadata` 的有效前缀保持 rank/token-order，供 Combine 按 rank 连续处理。
 - cached 执行复用首次执行产生的 metadata，不重新生成排序关系。
-- 不新增对外的 `rank_offsets` 输出。Combine 在消费 metadata 时自行生成 rank 边界。
+- 新增独立的 `recv_rank_offsets` 输出，直接向 Combine 提供各源 rank 的 metadata 边界。
 - `do_cpu_sync` 只影响输出张量的分配容量，不引入新的 Epilogue Kernel 执行分支。
 
 ## 3. Metadata 约定
@@ -35,6 +35,7 @@ Epilogue 输出的 token 数据继续按本地 expert 排列，metadata 改为�
 
 ```text
 recv_src_metadata: [A_alloc, 5], int32
+recv_rank_offsets: [ep_world_size + 1], int32
 ```
 
 每条 metadata 记录只包含 5 个 `int32` 字段。输出张量采用紧凑的 5 列布局，不增加
@@ -42,6 +43,17 @@ recv_src_metadata: [A_alloc, 5], int32
 
 内部 UB Buffer 可以按硬件要求对齐，但写回 GM 时必须保持 `[A_alloc, 5]` 的逻辑布局，
 不能覆盖相邻记录。
+
+`recv_rank_offsets` 是 metadata 行数的 exclusive prefix：
+
+```text
+recv_rank_offsets[0] = 0
+recv_rank_offsets[r + 1] - recv_rank_offsets[r] = src_rank 为 r 的 metadata 行数
+recv_rank_offsets[ep_world_size] = A_valid
+```
+
+源 rank `r` 的有效 metadata 区间为
+`[recv_rank_offsets[r], recv_rank_offsets[r + 1])`，空 rank 对应首尾相等的空区间。
 
 ### 3.2 字段定义
 
@@ -107,6 +119,8 @@ cached 执行在共同输出校验之外，还需要修改以下与 metadata 复
 - `cached_recv_src_metadata` 的数据类型为 `int32`。
 - `cached_recv_src_metadata` 为二维张量，dim1 等于 5。
 - `cached_recv_src_metadata` 的 dim0 等于本次 `recv_src_metadata` 和 `recv_x` 的 dim0。
+- `cached_recv_rank_offsets` 和 `recv_rank_offsets` 均为
+  `[ep_world_size + 1] int32`，且与 metadata 位于同一设备。
 - 当前输入 token 数等于 handle 中 `topk_idx` 的行数，保证缓存路由和 `recv_x_idx` 映射
   仍适用于本次输入。
 
@@ -164,7 +178,7 @@ Epilogue 的处理逻辑与 `do_cpu_sync=True` 完全相同，仍只写 `[0, A_v
 
 ## 5. Cached 执行路径
 
-cached 执行复用首次执行保存的 slot、路由和 metadata。它只允许更新 token 内容及相关
+cached 执行复用首次执行保存的 slot、路由、metadata 和 rank offsets。它只允许更新 token 内容及相关
 scale；路由关系、输入 token 数量和 MoE 配置必须与生成 handle 时一致。
 
 ### 5.1 Cached 前置条件
@@ -174,6 +188,7 @@ cached 路径必须满足：
 - 使用 handle 中保存的 `topk_idx` 和 slot/route 信息，不接受新的路由关系。
 - 当前输入 token 数量等于 handle 中 `topk_idx` 的行数。
 - cached metadata 为 `[A_alloc, 5] int32`，其 dim0 与本次输出容量一致。
+- cached rank offsets 为 `[ep_world_size + 1] int32`。
 - `do_cpu_sync=True` 仍为非法组合；cached 路径固定不进行 CPU 同步。
 
 这些条件保证本次 `num_recv_tokens_per_expert` 与首次执行一致，因而首次 metadata 中保存的
@@ -208,7 +223,8 @@ A_alloc = cached_recv_src_metadata.shape[0]
    当前 metadata 行号。
 6. 将 metadata 记录按原行号复制到本次输出，保持首次执行建立的 rank/token 顺序和
    `recv_x_idx` 映射。
-7. 不读取或复制 `[A_valid, A_alloc)` 的尾部内容。
+7. 由 AIV0 将 cached rank offsets 连续复制到本次 `recv_rank_offsets` 输出。
+8. 不读取或复制 `[A_valid, A_alloc)` 的尾部内容。
 
 cached 路径必须对 `recv_x_idx` 做边界保护，确保其位于 `[0, A_valid)`，防止无效 handle
 导致越界写入。
@@ -224,6 +240,7 @@ cached 执行完成后必须继续满足：
 - metadata 有效前缀与首次执行具有相同顺序和字段含义。
 - `recv_x` 仍为 expert-order。
 - 每条 metadata 的 `recv_x_idx` 仍准确指向本次输出中的对应 token。
+- `recv_rank_offsets` 与首次执行一致。
 - 新输出可以继续作为下一次 cached Dispatch 的 handle 内容。
 
 ## 6. 场景闭环
@@ -243,21 +260,21 @@ cached 执行完成后必须继续满足：
 
 ## 7. Combine 使用指导
 
-Combine 不属于本阶段代码修改范围，但后续实现必须按本节消费新的 metadata。
+Combine 按本节消费新的 metadata 和 rank offsets。
 
-### 7.1 计算有效长度
+### 7.1 获取有效长度
 
-Combine 首先计算：
+Combine 直接读取：
 
 ```text
-A_valid = sum(num_recv_tokens_per_expert)
+A_valid = recv_rank_offsets[ep_world_size]
 ```
 
 只处理 `recv_src_metadata[0:A_valid]`，不能使用输入张量 dim0 作为实际记录数。
 
-### 7.2 建立 Rank Offset
+### 7.2 使用 Rank Offset
 
-由于 metadata 已按 `src_rank` 排序，Combine 可以扫描第 1 列建立：
+Epilogue 已输出：
 
 ```text
 rank_offsets[0:ep_world_size + 1]
@@ -270,8 +287,8 @@ rank_offsets[0] = 0
 rank_offsets[ep_world_size] = A_valid
 ```
 
-没有记录的 rank 对应空区间。`rank_offsets` 由 Combine 自己生成和管理，不加入
-Epilogue 输出或 `EPHandle`。
+没有记录的 rank 对应空区间。`recv_rank_offsets` 随 metadata 加入 `EPHandle`，cached
+模式直接复用，不在 Combine 中重新扫描或二分定位。
 
 ### 7.3 发送 Token
 
