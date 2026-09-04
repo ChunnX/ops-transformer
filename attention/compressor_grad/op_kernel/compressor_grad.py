@@ -151,6 +151,7 @@ def _vf_scatter_backward(
     mask = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
 
     halves = d_deal_size // FLOAT_REG_ELEMENTS
+    
     cmp_size = cmp_row_cnt * d_deal_size
 
     for d_idx in pl.range(0, halves):
