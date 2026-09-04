@@ -21,6 +21,10 @@
 #else
 #include "kernel_operator.h"
 #endif
+// Mutex 仅在支持硬件同步原语的芯片上使能，后续新架构默认支持，不支持的老架构在此排除
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ != 2201) && (__NPU_ARCH__ != 3102)
+#define ATTN_MUTEX_ENABLE
+#endif
 using namespace AscendC;
 namespace fa_base_matmul {
 __BLOCK_LOCAL__ __inline__ uint32_t idCounterNum;
@@ -201,7 +205,7 @@ public:
                     c2pEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventC2P>();
                     SetFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
                 } else if constexpr (syncMode == SyncMode::LOCK_UNLOCK) {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#ifdef ATTN_MUTEX_ENABLE
                     mutexId_ = AllocMutexID();
 #endif
                 }
@@ -221,7 +225,7 @@ public:
                     c2pEventId_ = id;
                     SetFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
                 } else if constexpr (syncMode == SyncMode::LOCK_UNLOCK) {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#ifdef ATTN_MUTEX_ENABLE
                     mutexId_ = id;
 #endif
                 }
@@ -242,7 +246,7 @@ public:
                         GetTPipePtr()->ReleaseEventID<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
                     }
                 } else if constexpr (syncMode == SyncMode::LOCK_UNLOCK) {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#ifdef ATTN_MUTEX_ENABLE
                     if constexpr (idSource == IdSource::INTERNAL) {
                         ReleaseMutexID(mutexId_);
                     }
@@ -255,7 +259,7 @@ public:
     template <pipe_t pipe>
     __aicore__ inline void Lock()
     {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#ifdef ATTN_MUTEX_ENABLE
         if ASCEND_IS_AIC {
             if constexpr (syncType == SyncType::INNER_CORE_SYNC && syncMode == SyncMode::LOCK_UNLOCK) {
                 Mutex::Lock<pipe>(mutexId_);
@@ -267,7 +271,7 @@ public:
     template <pipe_t pipe>
     __aicore__ inline void Unlock()
     {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#ifdef ATTN_MUTEX_ENABLE
         if ASCEND_IS_AIC {
             if constexpr (syncType == SyncType::INNER_CORE_SYNC && syncMode == SyncMode::LOCK_UNLOCK) {
                 Mutex::Unlock<pipe>(mutexId_);
@@ -288,7 +292,7 @@ public:
                         WaitFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_); // 生产者等待消费者完成消费
                     }
                 } else if constexpr (syncMode == SyncMode::LOCK_UNLOCK) {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#ifdef ATTN_MUTEX_ENABLE
                     if constexpr (EventType == BufferInfo<bufferType>::EventP2C) {
                         Mutex::Lock<BufferInfo<bufferType>::ConsPipe>(mutexId_); // 消费者加锁
                     } else {
@@ -312,7 +316,7 @@ public:
                         SetFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_); // 消费者通知生产者已完成消费
                     }
                 } else if constexpr (syncMode == SyncMode::LOCK_UNLOCK) {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#ifdef ATTN_MUTEX_ENABLE
                     if constexpr (EventType == BufferInfo<bufferType>::EventP2C) {
                         Mutex::Unlock<BufferInfo<bufferType>::ProdPipe>(mutexId_); // 生产者解锁
                     } else {
@@ -446,7 +450,7 @@ private:
     TEventID c2pEventId_;
     uint32_t id0_; // 用作正向同步：生产者通知消费者，或者消费者等待生产者；
     uint32_t id1_; // 用作反向同步：消费者通知生产者，或者生产者等待消费者；
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#ifdef ATTN_MUTEX_ENABLE
     MutexID mutexId_;
 #endif
 };
