@@ -212,3 +212,32 @@ inputs:
     ranges:
       valid:
         values: [false, true]
+  # ---- 非量化场景覆盖标志(generator 约束合法组合, prepare_pki_inputs 消费) ----
+  - name: tnd_unequal
+    type: attr
+    dtypes:
+      values: [bool]
+    ranges:
+      valid:
+        values: [false]
+  - name: zero_q_batch
+    type: attr
+    dtypes:
+      values: [bool]
+    ranges:
+      valid:
+        values: [false]
+  - name: zero_pool_batch
+    type: attr
+    dtypes:
+      values: [bool]
+    ranges:
+      valid:
+        values: [false]
+  - name: key_non_contig
+    type: attr
+    dtypes:
+      values: [bool]
+    ranges:
+      valid:
+        values: [false]

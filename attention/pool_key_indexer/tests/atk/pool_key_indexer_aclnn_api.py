@@ -52,7 +52,7 @@ from atk.tasks.api_execute.aclnn_base_api import AclnnBaseApi
 from atk.tasks.backends.lib_interface.acl_wrapper import TensorPtr, AclIntArray
 
 import pool_key_indexer_api  # noqa: F401  注册 BaseApi(标杆/真值执行器)
-from pool_key_indexer_api import prepare_pki_inputs
+from pool_key_indexer_api import prepare_pki_inputs, make_pa_key_non_contig
 
 # ValueDepend 可选输入的空指针类型(与 aclIntArray* 签名校验匹配)
 IntAryPtr = ctypes.POINTER(AclIntArray)
@@ -157,8 +157,10 @@ class PKIAclnnApi(AclnnBaseApi):
         except RuntimeError:
             _recover_device(device_id)
 
-        # 三节点一致的输入规整(TND 前缀和 / PA block_table 构造)
-        prep = prepare_pki_inputs(input_data)
+        # 三节点一致的输入规整(TND 前缀和 / PA block_table / 场景标志);
+        # 非连续 key 由本适配器在目标设备构造(输入在 npu:0, 跨设备搬运会
+        # 拍平视图, prepare_pki_inputs 传 build_non_contig=False)
+        prep = prepare_pki_inputs(input_data, build_non_contig=False)
 
         def _to_dev(tensor):
             if tensor is None or not hasattr(tensor, "to"):
@@ -166,6 +168,18 @@ class PKIAclnnApi(AclnnBaseApi):
             if tensor.device.type == "npu" and tensor.device.index == device_id:
                 return tensor
             return tensor.to(dev)
+
+        # PA key 0 轴非连续: 搬到目标设备后构造视图, keyStride0 取实际 stride
+        key = _to_dev(prep["pool_key"])
+        if (
+            prep["key_non_contig"]
+            and prep["layout_k"] == "PA_BBND"
+            and key.is_contiguous()
+        ):
+            key = make_pa_key_non_contig(key)
+        key_stride0 = -1
+        if not key.is_contiguous():
+            key_stride0 = int(key.stride(0))  # 元素单位, 与 torch_extension csrc 一致
 
         def _tensor(tensor):
             # aclTensor 输入(已搬到目标设备, 避免 create_acl_tensor 静默跨设备)
@@ -188,7 +202,7 @@ class PKIAclnnApi(AclnnBaseApi):
         # 9 个输入: query/poolKey/weights/blockTable 为 aclTensor,
         # poolTailK/actualSeqQ/actualSeqK 为 aclIntArray(Host 侧取值)
         input_args.append(_tensor(prep["query"]))
-        input_args.append(_tensor(prep["pool_key"]))
+        input_args.append(_tensor(key))
         input_args.append(_tensor(prep["weights"]))
 
         input_args.append(_int_array(prep["pool_tail_k"]))
@@ -207,7 +221,8 @@ class PKIAclnnApi(AclnnBaseApi):
         # 9 个 attr 入参(与 op_def 声明顺序一致):
         # topk, poolSize, layoutQuery, layoutKey, maskMode, quantMode,
         # returnValue, keyStride0, kDescaleStride0
-        # 连续输入 keyStride0/kDescaleStride0 传 -1(tiling 回退 shape 推导)
+        # keyStride0: 非连续 key 传实际 stride(0)(元素单位); 连续传 -1
+        # (tiling 回退 shape 推导); kDescaleStride0 非量化场景恒 -1
         input_args.append(ctypes.c_int64(prep["topk"]))
         input_args.append(ctypes.c_int64(prep["pool_size"]))
         input_args.append(ctypes.c_char_p(prep["layout_q"].encode("utf-8")))
@@ -215,7 +230,7 @@ class PKIAclnnApi(AclnnBaseApi):
         input_args.append(ctypes.c_int64(prep["mask_mode"]))
         input_args.append(ctypes.c_int64(prep["quant_mode"]))
         input_args.append(ctypes.c_bool(prep["return_value"]))
-        input_args.append(ctypes.c_int64(-1))  # keyStride0
+        input_args.append(ctypes.c_int64(key_stride0))
         input_args.append(ctypes.c_int64(-1))  # kDescaleStride0
 
         # 输出 tensor: indices INT32, values FLOAT(规格来自标杆节点 output_info_list)

@@ -59,6 +59,10 @@ IDX_POOL_SIZE = 12
 IDX_MASK_MODE = 13
 IDX_QUANT_MODE = 14
 IDX_RETURN_VALUE = 15
+IDX_TND_UNEQUAL = 16
+IDX_ZERO_Q_BATCH = 17
+IDX_ZERO_POOL_BATCH = 18
+IDX_KEY_NON_CONTIG = 19
 
 
 def _parse_layout(raw):
@@ -101,6 +105,61 @@ def _normalize_prefix_seq(seq, total):
     return torch.tensor(lens, dtype=torch.int64).cumsum(0).to(torch.int64)
 
 
+def _distribute(total, b):
+    """total 均分到 b 份, 余数逐份 +1 分散(不堆在末 batch)。"""
+    base = total // b
+    rem = total - base * b
+    return [base + 1 if i < rem else base for i in range(b)]
+
+
+def _split_batch_lens(b, total, mode="uniform", max_ratio=2.0):
+    """将 total 确定性拆分为 b 份逐 batch 长度(与随机 tensor 值解耦)。
+
+    mode:
+      - "uniform": 均分(默认)
+      - "unequal": 头 batch 占大头, 其余均分(不等长 batch)
+      - "zero_head": 首 batch 为 0, 其余按 unequal 拆(0 长度/0 池 batch)
+    b<2 或余量不足时退化为 uniform。
+
+    max_ratio: 单 batch 长度相对均匀份额的上限。必须设上限:
+    NPU 组合标杆按 (B, S1m, Pm) 稠密化, 若头 batch 按 total 的固定比例
+    (如 60%)取值, 大 batch 用例单 batch 峰值放大 ~b/2 倍, 稠密矩阵
+    随 batch 维再乘 B, 内存 O(b^2) 爆炸(实测 51 batch 时 dot 矩阵
+    ~77GB 导致 NPU OOM)。上限 2x 保证峰值 <= 均匀基线的 ~4x。
+    (zero_head 的峰值上限按有效份额 total/(b-1) 计, 略超 2x*total/b
+    属预期。)
+    """
+    if b <= 0 or total < 0:
+        return []
+    if b == 1:
+        return [total]
+    if mode == "zero_head":
+        if total < b - 1:  # 其余 batch 各至少 1 个
+            mode = "uniform"
+        else:
+            return [0] + _split_batch_lens(b - 1, total, "unequal", max_ratio)
+    if mode == "unequal":
+        eff = b - 1
+        head = max(1, int(total * 0.6))
+        head = min(head, int(max_ratio * total) // b)
+        head = min(head, total - eff)
+        head = max(head, 1)
+        return [head] + _distribute(total - head, eff)
+    return _distribute(total, b)
+
+
+def make_pa_key_non_contig(key):
+    """PA key 0 轴非连续视图: 物理块嵌入 2 倍缓冲偶数行(与 pytest
+    make_pa_key_non_contig 语义一致), stride(0) = 2 * blockSize * N2 * D。
+
+    必须在目标设备上调用(非稠密视图跨设备 .to() 会被拍平为连续,
+    丢失 stride 信息)。"""
+    bn, bs, n2, d = key.shape
+    big = torch.zeros(2 * bn, bs, n2, d, dtype=key.dtype, device=key.device)
+    big[0::2] = key
+    return big[::2]
+
+
 def _construct_block_table(batch_size, act_seq_k, block_num, block_size):
     """PA_BBND 合法 block_table 构造(与 pytest pack_pa_key 语义一致)。
 
@@ -131,12 +190,17 @@ def _construct_block_table(batch_size, act_seq_k, block_num, block_size):
     return torch.from_numpy(bt).to(torch.int32)
 
 
-def prepare_pki_inputs(input_data: InputDataset):
+def prepare_pki_inputs(input_data: InputDataset, build_non_contig=True):
     """解析并规整 ATK 输入, 算子/标杆/真值三方一致消费。
+
+    build_non_contig: 是否在 key 所在设备构造 PA 非连续视图。
+    pyaclnn 适配器传 False(输入在 npu:0, 需搬到目标设备后再构造,
+    避免跨设备 .to() 拍平视图), 由适配器自行构造并读取 keyStride0。
 
     返回 dict:
       query/pool_key/weights/pool_tail_k/actual_seq_q/actual_seq_k/block_table
       layout_q/layout_k/topk/pool_size/mask_mode/quant_mode/return_value
+      tnd_unequal/zero_q_batch/zero_pool_batch/key_non_contig
     """
     args = list(input_data.args) if input_data.args else []
     kw = dict(input_data.kwargs) if input_data.kwargs else {}
@@ -166,21 +230,43 @@ def prepare_pki_inputs(input_data: InputDataset):
     mask_mode = int(pick_attr(IDX_MASK_MODE, "mask_mode", 3))
     quant_mode = int(pick_attr(IDX_QUANT_MODE, "quant_mode", -1))
     return_value = _parse_bool(pick_attr(IDX_RETURN_VALUE, "return_value", False))
+    # 场景标志(旧 JSON 无字段时回退 False)
+    tnd_unequal = _parse_bool(pick_attr(IDX_TND_UNEQUAL, "tnd_unequal", False))
+    zero_q_batch = _parse_bool(pick_attr(IDX_ZERO_Q_BATCH, "zero_q_batch", False))
+    zero_pool_batch = _parse_bool(pick_attr(IDX_ZERO_POOL_BATCH, "zero_pool_batch", False))
+    key_non_contig = _parse_bool(pick_attr(IDX_KEY_NON_CONTIG, "key_non_contig", False))
 
-    # TND: actualSeq 随机值 -> 合法前缀和
+    # TND actualSeq: 按场景标志确定性拆分(不等长/0长度 batch), 前缀和
     if layout_q == "TND" and act_seq_q is not None:
-        act_seq_q = _normalize_prefix_seq(act_seq_q, query.shape[0])
+        mode = "zero_head" if zero_q_batch else ("unequal" if tnd_unequal else "uniform")
+        lens = _split_batch_lens(len(act_seq_q), query.shape[0], mode)
+        act_seq_q = torch.tensor(lens, dtype=torch.int64).cumsum(0).to(torch.int64)
     if layout_k == "TND" and act_seq_k is not None:
-        act_seq_k = _normalize_prefix_seq(act_seq_k, key.shape[0])
+        mode = "zero_head" if zero_pool_batch else ("unequal" if tnd_unequal else "uniform")
+        lens = _split_batch_lens(len(act_seq_k), key.shape[0], mode)
+        act_seq_k = torch.tensor(lens, dtype=torch.int64).cumsum(0).to(torch.int64)
 
     # PA_BBND: actualSeqK 为每 batch 池数(非前缀和), 构造合法 block_table
     if layout_k == "PA_BBND":
-        if act_seq_k is None:
-            b = query.shape[0] if layout_q == "BSND" else query.shape[0]
-            act_seq_k = torch.full((b,), key.shape[1], dtype=torch.int64)
+        b_pa = len(act_seq_k) if act_seq_k is not None else query.shape[0]
+        if zero_pool_batch or tnd_unequal:
+            # 不等长/0池: 按 blockNum 拆分物理块(总量精确匹配 shape),
+            # 每 batch 池数 = 块数 * blockSize
+            mode = "zero_head" if zero_pool_batch else "unequal"
+            blocks = _split_batch_lens(b_pa, key.shape[0], mode)
+            act_seq_k = torch.tensor(
+                [bl * key.shape[1] for bl in blocks], dtype=torch.int64
+            )
+        elif act_seq_k is None:
+            act_seq_k = torch.full((b_pa,), key.shape[1], dtype=torch.int64)
         block_table = _construct_block_table(
-            len(act_seq_k), act_seq_k, key.shape[0], key.shape[1]
+            b_pa, act_seq_k, key.shape[0], key.shape[1]
         )
+
+    # PA key 0 轴非连续: 在 key 所在设备构造视图
+    # (pyaclnn 适配器传 build_non_contig=False, 由其在目标设备自行构造)
+    if build_non_contig and key_non_contig and layout_k == "PA_BBND" and key.is_contiguous():
+        key = make_pa_key_non_contig(key)
 
     if pool_tail_k is None:
         b = query.shape[0] if layout_q == "BSND" else len(act_seq_q)
@@ -210,6 +296,10 @@ def prepare_pki_inputs(input_data: InputDataset):
         mask_mode=mask_mode,
         quant_mode=quant_mode,
         return_value=return_value,
+        tnd_unequal=tnd_unequal,
+        zero_q_batch=zero_q_batch,
+        zero_pool_batch=zero_pool_batch,
+        key_non_contig=key_non_contig,
     )
 
 

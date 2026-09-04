@@ -56,11 +56,16 @@ IDX_POOL_SIZE = 12
 IDX_MASK_MODE = 13
 IDX_QUANT_MODE = 14
 IDX_RETURN_VALUE = 15
+IDX_TND_UNEQUAL = 16
+IDX_ZERO_Q_BATCH = 17
+IDX_ZERO_POOL_BATCH = 18
+IDX_KEY_NON_CONTIG = 19
 
 LAYOUT_COMBOS = [
     ("BSND", "BSND"),
     ("BSND", "PA_BBND"),
     ("TND", "TND"),
+    ("TND", "PA_BBND"),
 ]
 
 N1_CHOICES = [1, 2, 4, 8, 16, 24, 32]
@@ -70,6 +75,12 @@ TOPK_LARGE = [3072, 4096, 5120, 6144, 7168, 8192]
 POOL_SIZE_CHOICES = [1, 2, 4, 8, 16, 32, 64, 128]
 
 MASK_MODE_CHOICES = [0, 3]
+
+# 场景标志触发概率(仅对合法布局生效)
+P_UNEQUAL = 0.25
+P_ZERO_Q = 0.2
+P_ZERO_POOL = 0.2
+P_NON_CONTIG = 0.25
 
 
 def _gen_topk():
@@ -150,10 +161,32 @@ class PoolKeyIndexerGenerator(CaseGenerator):
 
         inputs[IDX_QUANT_MODE].range_values = [-1]
 
-        if layout_key == "PA_BBND":
-            return_value = False
-        else:
-            return_value = random.choice([True, False])
+        # 5.1 场景标志(非量化全场景覆盖, 仅生成合法组合):
+        #   - tnd_unequal: TND/PA 侧不等长 batch(头 batch ~60%, 其余均分)
+        #   - zero_q_batch: TND query 含 0 长度 batch(首 batch 0 行)
+        #   - zero_pool_batch: TND/PA key 含 0 池 batch(首 batch 0 池)
+        #   - key_non_contig: PA key 0 轴非连续(keyStride0 路径)
+        tnd_unequal = (
+            b >= 2
+            and (layout_query == "TND" or layout_key in ("TND", "PA_BBND"))
+            and random.random() < P_UNEQUAL
+        )
+        zero_q_batch = (
+            b >= 2 and layout_query == "TND" and random.random() < P_ZERO_Q
+        )
+        zero_pool_batch = (
+            b >= 2
+            and layout_key in ("TND", "PA_BBND")
+            and random.random() < P_ZERO_POOL
+        )
+        key_non_contig = layout_key == "PA_BBND" and random.random() < P_NON_CONTIG
+        inputs[IDX_TND_UNEQUAL].range_values = [tnd_unequal]
+        inputs[IDX_ZERO_Q_BATCH].range_values = [zero_q_batch]
+        inputs[IDX_ZERO_POOL_BATCH].range_values = [zero_pool_batch]
+        inputs[IDX_KEY_NON_CONTIG].range_values = [key_non_contig]
+
+        # 5.2 return_value: 所有布局均随机(PA+values 已在 pytest/950 验证支持)
+        return_value = random.choice([True, False])
         inputs[IDX_RETURN_VALUE].range_values = [return_value]
 
         # 6. 根据 layout 生成 query/poolKey/weights shape
