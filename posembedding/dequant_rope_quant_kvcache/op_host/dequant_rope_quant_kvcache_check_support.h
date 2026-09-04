@@ -36,11 +36,10 @@ inline bool IsDrqkDtypeSupported(const ge::Operator &op)
     const ge::DataType xDtype = op.GetInputDesc(0U).GetDataType();
     const ge::DataType cosDtype = op.GetInputDesc(1U).GetDataType();
     const ge::DataType sinDtype = op.GetInputDesc(2U).GetDataType();
-    const bool ropeDtypeSupported = cosDtype == sinDtype &&
-                                    ((xDtype == ge::DT_FLOAT16 && cosDtype == ge::DT_FLOAT16) ||
-                                     (xDtype == ge::DT_BF16 && cosDtype == ge::DT_BF16) ||
-                                     (xDtype == ge::DT_INT32 &&
-                                      (cosDtype == ge::DT_FLOAT16 || cosDtype == ge::DT_BF16)));
+    const bool ropeDtypeSupported =
+        cosDtype == sinDtype && ((xDtype == ge::DT_FLOAT16 && cosDtype == ge::DT_FLOAT16) ||
+                                 (xDtype == ge::DT_BF16 && cosDtype == ge::DT_BF16) ||
+                                 (xDtype == ge::DT_INT32 && (cosDtype == ge::DT_FLOAT16 || cosDtype == ge::DT_BF16)));
     if (!ropeDtypeSupported || op.GetInputDesc(3U).GetDataType() != ge::DT_INT8 ||
         op.GetInputDesc(4U).GetDataType() != ge::DT_INT8 || op.GetInputDesc(5U).GetDataType() != ge::DT_INT32 ||
         op.GetInputDesc(6U).GetDataType() != ge::DT_FLOAT || op.GetInputDesc(7U).GetDataType() != ge::DT_FLOAT) {
