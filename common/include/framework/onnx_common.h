@@ -26,41 +26,10 @@
 #include "graph/graph.h"
 #include "base/err_msg.h"
 #include "log/log.h"
+#include "plugin_util.h"
 #include "onnx/proto/ge_onnx.pb.h"
 
 namespace domi {
-template <typename T>
-inline std::string GetOpName(const T &op)
-{
-    ge::AscendString op_ascend_name;
-    ge::graphStatus ret = op.GetName(op_ascend_name);
-    if (ret != ge::GRAPH_SUCCESS) {
-        std::string op_name = "None";
-        return op_name;
-    }
-    return op_ascend_name.GetString();
-}
-
-template <typename T>
-inline ge::Tensor Vec2Tensor(vector<T> &vals, const vector<int64_t> &dims, ge::DataType dtype,
-                             ge::Format format = ge::FORMAT_ND)
-{
-    ge::Shape shape(dims);
-    ge::TensorDesc desc(shape, format, dtype);
-    ge::Tensor tensor(desc, reinterpret_cast<uint8_t *>(vals.data()), vals.size() * sizeof(T));
-    return tensor;
-}
-
-template <typename T>
-inline ge::Tensor CreateScalar(T val, ge::DataType dtype, ge::Format format = ge::FORMAT_ND)
-{
-    vector<int64_t> dims_scalar = {};
-    ge::Shape shape(dims_scalar);
-    ge::TensorDesc desc(shape, format, dtype);
-    ge::Tensor tensor(desc, reinterpret_cast<uint8_t *>(&val), sizeof(T));
-    return tensor;
-}
-
 inline Status ChangeFormatFromOnnx(ge::Operator &op, const int idx, ge::Format format, bool is_input)
 {
     if (is_input) {
