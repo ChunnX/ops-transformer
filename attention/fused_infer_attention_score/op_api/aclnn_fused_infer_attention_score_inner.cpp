@@ -843,6 +843,9 @@ static aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSizeImpl(
         ProcessCacheForL0Input(processedKey, processedValue, processedKeyRope, cacheStridePolicy, l0Executor);
     CHECK_RET(cacheProcessRet == ACLNN_SUCCESS, cacheProcessRet);
 
+    // 输出直连条件: 用户输出张量连续(kernel 可直接写入用户显存), 且未开启 lse 或 lse 输出也连续。
+    const bool bindUserOutput =
+        IsContiguous(attentionOut) && (!softmaxLseFlag || (softmaxLse != nullptr && IsContiguous(softmaxLse)));
     auto l0Out = l0op::FusedInferAttentionScore(
         processedQuery, processedKey, processedValue, processedPseShift, processedAttenMask, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, processedDeqScale1, processedQuantScale1, processedDeqScale2, processedQuantScale2,
@@ -853,7 +856,7 @@ static aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSizeImpl(
         processedKeyRopeAntiquantScale, processedDequantScaleQuery, processedLearnableSink, qStartIdxOptional,
         kvStartIdxOptional, numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode,
         innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode, queryQuantMode,
-        pseType, outDtype, attentionOut, softmaxLse, l0Executor);
+        pseType, outDtype, attentionOut, softmaxLse, bindUserOutput, l0Executor);
 
     auto l0AttentionOut = std::get<0>(l0Out);
     auto l0SoftmaxLse = std::get<1>(l0Out);
