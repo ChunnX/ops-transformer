@@ -299,15 +299,6 @@ private:
     }
 };
 
-// 仅在取得真实 workspace 基址后，将有效偏移绑定为可访问地址。
-HOST_DEVICE GM_ADDR ResolveWorkspaceAddress(GM_ADDR base, int64_t offset)
-{
-    if (base == nullptr || offset < 0) {
-        return nullptr;
-    }
-    return base + offset;
-}
-
 struct WorkspaceInfo {
     GM_ADDR dispatchRevDataPtr{nullptr};
     GM_ADDR dispatchRevScalePtr{nullptr};
@@ -343,6 +334,17 @@ struct WorkspaceInfo {
     int64_t flagResetElementCount{0};
     int64_t gmm1TileStatusElementCount{0};
 
+private:
+    // 仅在取得真实 workspace 基址后，将有效偏移绑定为可访问地址。
+    HOST_DEVICE static GM_ADDR ResolveWorkspaceAddress(GM_ADDR base, int64_t offset)
+    {
+        if (base == nullptr || offset < 0) {
+            return nullptr;
+        }
+        return base + offset;
+    }
+
+public:
     HOST_DEVICE void Bind(GM_ADDR base, const WorkspaceLayout &layout)
     {
         dispatchRevDataPtr = ResolveWorkspaceAddress(base, layout.dispatchRevDataOffset);
