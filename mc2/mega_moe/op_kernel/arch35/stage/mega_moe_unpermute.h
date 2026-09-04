@@ -136,14 +136,6 @@ __aicore__ inline void AccumulateMoeExpertsForToken(const TokenUnpermuteConfig &
         }
         LoadMoeExpertInput<CombineMode>(context, common, scratch, expandedX, expertInputIndex, event, dataInBf16,
                                         dataInFp32);
-        if (isProbeExpert) {
-            if constexpr (CombineMode == COMBINE_NO_QUANT) {
-                // desc 5000 + expertIdx: routed expert input after GM-to-UB copy.
-                DumpPrecisionProbe(common, tokenIdx, dataInBf16, 5000U + static_cast<uint32_t>(expertIdx));
-            }
-            // desc 2000 + expertIdx: routed expert input after Cast/dequantization.
-            DumpPrecisionProbe(common, tokenIdx, dataInFp32, 2000U + static_cast<uint32_t>(expertIdx));
-        }
         SetFlag<HardEvent::S_V>(event);
         WaitFlag<HardEvent::S_V>(event);
         PipeBarrier<PIPE_V>();
@@ -320,6 +312,16 @@ __aicore__ inline void UnpermuteTokens(const TokenUnpermuteConfig &context, cons
     int32_t jobOffset = static_cast<int32_t>(tokenRange.start);
     GlobalTensor<bfloat16_t> expandedX;
     expandedX.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(params.peermemInfo.combineSendPtr));
+    if (common.rankId == 1U && common.tokenNum == 10072U && common.tokenHiddenDim == 3072U &&
+        tokenRange.start <= static_cast<uint32_t>(PRECISION_PROBE_TOKEN_INDEX) &&
+        static_cast<uint32_t>(PRECISION_PROBE_TOKEN_INDEX) < tokenRange.start + tokenRange.count) {
+        GlobalTensor<int32_t> topkIds;
+        topkIds.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.expertIdxGmAddr));
+        PipeBarrier<PIPE_ALL>();
+        // desc 9000: global expert IDs selected by every top-k slot of the probed token.
+        AscendC::DumpTensor(topkIds[static_cast<uint64_t>(PRECISION_PROBE_TOKEN_INDEX) * common.topK], 9000U,
+                            common.topK);
+    }
     GlobalTensor<bfloat16_t> output;
     output.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(params.y2GmAddr));
 
