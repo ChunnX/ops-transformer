@@ -790,7 +790,7 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
                     ge::GRAPH_SUCCESS,
                 OP_LOGE(context.GetNodeName(), "Failed to get or validate krCache strides."), return ge::GRAPH_FAILED);
 
-    if (ConvertContextAttrs(context, mlaPrologContext) !=ge::GRAPH_SUCCESS) {
+    if (ConvertContextAttrs(context, mlaPrologContext) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 

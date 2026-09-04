@@ -152,9 +152,9 @@ private:
                                      int64_t mmQnPreDequantOffset, int64_t mmQnPreDequantResOffset,
                                      int64_t ropeQrOffset, int64_t ropeQrResOffset);
     __aicore__ inline void InitQcQrSplitParams(int64_t curVecToken,
-                                               DataCopyParams *inputCopyParams, DataCopyParams *outputCopyParams,
-                                               DataCopyParams *outputRopeParams, Rectangle *ropeParams,
-                                               int64_t *ropeStride, uint32_t *totalLoops, uint32_t *totalQcLoops) const;
+                                               DataCopyParams &inputCopyParams, DataCopyParams &outputCopyParams,
+                                               DataCopyParams &outputRopeParams, Rectangle &ropeParams,
+                                               int64_t &ropeStride, uint32_t &totalLoops, uint32_t &totalQcLoops) const;
     __aicore__ inline void QcQrSplitDequantQc(LocalTensor<mmQcQrOutputType> &inputLocal,
                                               LocalTensor<mmQnInputType> &outputLocal,
                                               const DataCopyParams &inputCopyParams, const DataCopyParams &outputCopyParams,
@@ -162,7 +162,7 @@ private:
                                               int64_t &mmQcQrOffset, int64_t &mmQnPreDequantResOffset,
                                               uint32_t &colOffsetVec, uint32_t &qcCount);
     __aicore__ inline void QcQrSplitRopeQr(int64_t curVecToken, uint32_t colOffsetVecEnd,
-                                           const DataCopyParams &outputRopeParams, Rectangle &ropeParams,
+                                           const DataCopyParams &outputRopeParams, const Rectangle &ropeParams,
                                            int64_t ropeStride, int64_t &ropeQrOffset, int64_t &ropeQrResOffset,
                                            uint32_t &colOffsetRope);
     __aicore__ inline void DynamicQuantQnAndMulQrSyncMMQn(int64_t batchOffset, int64_t curMSize, int64_t numHeadOffset,
@@ -1689,9 +1689,9 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::QcQrSplit(int64_t curVecToken, 
 template <typename MLAPT>
 __aicore__ inline void MlaPrologV3SplitM<MLAPT>::InitQcQrSplitParams(
     int64_t curVecToken,
-    DataCopyParams *inputCopyParams, DataCopyParams *outputCopyParams,
-    DataCopyParams *outputRopeParams, Rectangle *ropeParams,
-    int64_t *ropeStride, uint32_t *totalLoops, uint32_t *totalQcLoops) const
+    DataCopyParams &inputCopyParams, DataCopyParams &outputCopyParams,
+    DataCopyParams &outputRopeParams, Rectangle &ropeParams,
+    int64_t &ropeStride, uint32_t &totalLoops, uint32_t &totalQcLoops) const
 {
     inputCopyParams = {
         static_cast<uint16_t>(curVecToken),
