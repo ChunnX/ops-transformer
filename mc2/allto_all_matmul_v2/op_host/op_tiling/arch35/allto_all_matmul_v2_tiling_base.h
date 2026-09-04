@@ -656,14 +656,24 @@ protected:
             return ge::GRAPH_FAILED;
         }
         auto x1Dtype = x1DescTiling->GetDataType();
+        // bias 与 A/B/scale 同样驻留 L1（kernel 侧 l1BufferBiasOffset_ 布局），tiling 预算须同步计入；
+        // hasBias 与 kernel 侧 isBias_ 同源（optional bias 输入的存在性），bias dtype 与 kernel 侧
+        // BiasType 实例化一致（当前为 float），经类模板第三参数显式声明
+        bool hasBias = context_->GetOptionalInputDesc(IDX_INPUT_BIAS) != nullptr;
         if (x1Dtype == ge::DT_FLOAT4_E2M1) {
-            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingEngine;
+            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1,
+                                  mm::BiasDataType::DT_FLOAT>
+                tilingEngine;
             tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
+            tilingEngine.SetBiasInfo(hasBias);
             tilingEngine.EnableBaseMHalving(true);
             tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
         } else {
-            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN,
+                                  mm::BiasDataType::DT_FLOAT>
+                tilingEngine;
             tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
+            tilingEngine.SetBiasInfo(hasBias);
             tilingEngine.EnableBaseMHalving(true);
             tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
         }
