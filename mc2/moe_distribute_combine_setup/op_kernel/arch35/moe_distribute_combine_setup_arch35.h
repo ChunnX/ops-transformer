@@ -39,7 +39,7 @@
 #define MC2_CSU_OPT_OVERLAP_REMOTE 1
 #endif
 #ifndef MC2_CSU_OPT_LOCAL_COPY_PIPELINE
-// 本卡搬运双 buffer，MTE2 与 MTE3 重叠；remain 拆半为 0 时自动回退单 buffer
+// 仅 bs>16：本卡搬运双 buffer；bs8/bs16 保持单 buffer 全 UB，避免一次拷贝被拆成两块
 #define MC2_CSU_OPT_LOCAL_COPY_PIPELINE 1
 #endif
 
@@ -244,7 +244,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::BuffInit(
         const uint64_t leftover = totalUbSize - reservedUbSize;
         const uint64_t halfAlign = (leftover / 2U) / UB_ALIGN * UB_ALIGN;
         tpipe_->Reset();
-        if (halfAlign > 0U) {
+        // bs8/bs16 本卡数据量小，拆半会把一次拷贝拆成两块；bs256 才走双 buffer
+        if (moeDistributeCombineSetupInfo_->bs > 16U && halfAlign > 0U) {
             remain_ub_space = halfAlign;
             localCopyQueueNum_ = 2U;
             if (!tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize)) ||

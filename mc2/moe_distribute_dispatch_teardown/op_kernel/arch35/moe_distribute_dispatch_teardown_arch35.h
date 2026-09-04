@@ -35,6 +35,10 @@
 #ifndef MC2_DTD_OPT_WINCOPY_PIPELINE
 #define MC2_DTD_OPT_WINCOPY_PIPELINE 1
 #endif
+// 仅 bs<=16：count==0 的专家跳过 DCCI（空专家无数据可读）；bs256 走独立函数，不受影响
+#ifndef MC2_DTD_OPT_SMALL_BS_SKIP_EMPTY
+#define MC2_DTD_OPT_SMALL_BS_SKIP_EMPTY 1
+#endif
 
 namespace Mc2Kernel {
 constexpr uint8_t BUFFER_NUM = 2;       // 多buf
@@ -69,6 +73,10 @@ public:
 
 private:
     __aicore__ inline void LocalWindowCopy();
+#if MC2_DTD_OPT_WINCOPY_PIPELINE
+    // 独立函数、禁止内联：避免 bs256 流水与小 bs 原路径编进同一段，抬高寄存器压力
+    __aicore__ __attribute__((noinline)) void LocalWindowCopyPipeline();
+#endif
     __aicore__ inline void WaitDispatch();
     __aicore__ inline void FlipDataState();
     __aicore__ inline void GetCumSum(LocalTensor<int32_t> &outLocal, uint32_t totalCount);
@@ -510,6 +518,12 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
         uint32_t i = index - startExpertId_;
         uint32_t count = statusTensor_.GetValue(i * 8 + 1);
         outCountLocal.SetValue(i, beginIdx + count);
+#if MC2_DTD_OPT_SMALL_BS_SKIP_EMPTY
+        // 空专家无 win 数据，DCCI 是纯开销。beginIdx 不变（+0）。
+        if (count == 0U) {
+            continue;
+        }
+#endif
         uint32_t winOffset = index;
         if constexpr (!IsShareExpertRank) {
             if (moeExpertNumPerRank_ > 1) { // moe专家卡且一卡多专家场景 转换成数据区的排布偏移
@@ -522,9 +536,63 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
         tokGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
         tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr));
         DataCacheCleanAndInvalid<ExpandXOutType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(tokGlobal);
+        LocalTensor<int32_t> xTmpTensorInt;
+        for (uint32_t j = 0; j < count; j++) {
+            tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr + j * hAlignWinSize_));
+            // 将数据从Window拷贝到UB
+            xTmpTensor_ = xQueue_.AllocTensor<ExpandXOutType>();
+            DataCopyPad(xTmpTensor_, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
+            SyncFunc<AscendC::HardEvent::MTE2_S>();
+            xQueue_.EnQue(xTmpTensor_);
+            xTmpTensor_ = xQueue_.DeQue<ExpandXOutType>();
+            xTmpTensorInt = xTmpTensor_.template ReinterpretCast<int32_t>();
+            CopyScalesToOut(beginIdx + j, xTmpTensor_);
+            expandXOutGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOutGM_) + (beginIdx + j) * axisH_,
+                                             axisH_);
+            DataCopyPad(expandXOutGlobal, xTmpTensor_, expandXCopyParams_);
+            xQueue_.FreeTensor(xTmpTensor_);
+        }
+        beginIdx += count;
+    }
+    totalCnt_ = beginIdx;
+    lastCore_ = MIN(rscvStatusNum_, aivNum_) - 1;
+    GlobalTensor<int32_t> sendCountsGlobal;
+    sendCountsGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(sendCountsOutGM_));
+    DataCopyPad(sendCountsGlobal[startExpertId_], outCountLocal, dataCopyOutParams);
+    PipeBarrier<PIPE_MTE3>();
+}
+
 #if MC2_DTD_OPT_WINCOPY_PIPELINE
-        // 仅 bs>16 走双缓冲：bs8/bs16 每专家 token 很少，预取只增加排队开销
-        if (axisBS_ > 16U && count > 0U) {
+template <TemplateMC2TypeClass>
+__aicore__ __attribute__((noinline)) void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::LocalWindowCopyPipeline()
+{
+    LocalTensor<int32_t> outCountLocal;
+    if (startExpertId_ >= rscvStatusNum_) {
+        return;
+    }
+    GetCumSum(outCountLocal, aivId_);
+    uint32_t beginIdx = outCountLocal.GetValue(0);
+    statusTensor_ = waitStatusBuf_.Get<int32_t>();
+    DataCopyPadExtParams<ExpandXOutType> copyPadExtParams{false, 0U, 0U,
+                                                          *reinterpret_cast<ExpandXOutType *>(uint8_t(0))};
+    DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(sendExpertNum_ * sizeof(int32_t)), 0U, 0U, 0U};
+    for (uint32_t index = startExpertId_; index < endExpertId_; index++) {
+        uint32_t i = index - startExpertId_;
+        uint32_t count = statusTensor_.GetValue(i * 8 + 1);
+        outCountLocal.SetValue(i, beginIdx + count);
+        uint32_t winOffset = index;
+        if constexpr (!IsShareExpertRank) {
+            if (moeExpertNumPerRank_ > 1) {
+                winOffset = index % epWorldSize_ * moeExpertNumPerRank_ + index / epWorldSize_;
+            }
+        }
+        GM_ADDR wAddr = (__gm__ uint8_t *)(windowGM_) + winOffset * expertPerSizeOnWin_;
+        GlobalTensor<ExpandXOutType> tokGlobal;
+        GlobalTensor<ExpandXOutType> expandXOutGlobal;
+        tokGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+        tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr));
+        DataCacheCleanAndInvalid<ExpandXOutType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(tokGlobal);
+        if (count > 0U) {
             tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr));
             LocalTensor<ExpandXOutType> preTok = xQueue_.AllocTensor<ExpandXOutType>();
             DataCopyPad(preTok, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
@@ -543,25 +611,6 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
                 DataCopyPad(expandXOutGlobal, xTmpTensor_, expandXCopyParams_);
                 xQueue_.FreeTensor(xTmpTensor_);
             }
-        } else
-#endif
-        {
-            LocalTensor<int32_t> xTmpTensorInt;
-            for (uint32_t j = 0; j < count; j++) {
-                tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(wAddr + j * hAlignWinSize_));
-                // 将数据从Window拷贝到UB
-                xTmpTensor_ = xQueue_.AllocTensor<ExpandXOutType>();
-                DataCopyPad(xTmpTensor_, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
-                SyncFunc<AscendC::HardEvent::MTE2_S>();
-                xQueue_.EnQue(xTmpTensor_);
-                xTmpTensor_ = xQueue_.DeQue<ExpandXOutType>();
-                xTmpTensorInt = xTmpTensor_.template ReinterpretCast<int32_t>();
-                CopyScalesToOut(beginIdx + j, xTmpTensor_);
-                expandXOutGlobal.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOutGM_) + (beginIdx + j) * axisH_,
-                                                 axisH_);
-                DataCopyPad(expandXOutGlobal, xTmpTensor_, expandXCopyParams_);
-                xQueue_.FreeTensor(xTmpTensor_);
-            }
         }
         beginIdx += count;
     }
@@ -572,6 +621,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
     DataCopyPad(sendCountsGlobal[startExpertId_], outCountLocal, dataCopyOutParams);
     PipeBarrier<PIPE_MTE3>();
 }
+#endif
 
 // 更新多专家卡上的tokenNumsOut tensor
 template <TemplateMC2TypeClass>
@@ -641,7 +691,15 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Proce
         WaitDispatch();
         FlipDataState();
         SyncAll<true>();
+#if MC2_DTD_OPT_WINCOPY_PIPELINE
+        if (axisBS_ > 16U) {
+            LocalWindowCopyPipeline();
+        } else {
+            LocalWindowCopy();
+        }
+#else
         LocalWindowCopy();
+#endif
         UpdateTokenNumsOut();
     }
 }
