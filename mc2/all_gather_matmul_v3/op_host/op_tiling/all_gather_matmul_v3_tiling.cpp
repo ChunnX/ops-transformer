@@ -778,7 +778,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
             tilingData->commTile.splitAxisTailSize, tilingData->commTile.splitAxisTailCnt);
 
     uint64_t libApiSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    tilingData->workspaceLayout.totalSize = libApiSize + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE
+    tilingData->workspaceLayout.totalSize = libApiSize + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
     tilingData->workspaceLayout.segCount = 2;
     tilingData->workspaceLayout.segments[0] = {0UL, libApiSize,
                                                 static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};

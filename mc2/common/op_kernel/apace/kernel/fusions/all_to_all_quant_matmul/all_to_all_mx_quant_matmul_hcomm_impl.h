@@ -252,7 +252,7 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
             x1_, commOutGM_, headSendCount, static_cast<AscendC::HcclDataType>(x1HcclDataType_), dataStrideCount,
             static_cast<uint8_t>(commTiling.splitAxisTileCnt));
     }
-if MC2_DFX_ENABLE
+#if MC2_DFX_ENABLE
         runtimeInfo_.IncCommitCount();
 #endif
     if (commTiling.splitAxisTailCnt > 0) {
