@@ -17,7 +17,12 @@
 #include "lib/matmul_intf.h"
 #include "lightning_indexer_template_tiling_key.h"
 
-#include "arch35/lightning_indexer_kernel.h"  // arch22 legacy kernel removed
+#if (__CCE_AICORE__ == 310)
+    #include "arch35/lightning_indexer_kernel.h"
+
+#else
+    #include "arch22/lightning_indexer_kernel.h"
+#endif
 
 using namespace LIKernel;
 
@@ -41,6 +46,7 @@ __global__ __aicore__ void lightning_indexer(__gm__ uint8_t *query, __gm__ uint8
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__CCE_AICORE__ == 200)
     if (ORIG_DTYPE_QUERY == DT_BF16) {
         INVOKE_LI_NO_KFC_OP_IMPL(LightningIndexerKernel, bfloat16_t, bfloat16_t, int32_t,
             PAGE_ATTENTION, LI_LAYOUT(LAYOUT_T), LI_LAYOUT(K_LAYOUT_T), DT_W_FLAG);
@@ -48,4 +54,13 @@ __global__ __aicore__ void lightning_indexer(__gm__ uint8_t *query, __gm__ uint8
         INVOKE_LI_NO_KFC_OP_IMPL(LightningIndexerKernel, half, half, int32_t,
             PAGE_ATTENTION, LI_LAYOUT(LAYOUT_T), LI_LAYOUT(K_LAYOUT_T), DT_W_FLAG);
     }
+#else
+    if constexpr (DT_Q == LI_TPL_FP16 && DT_K == LI_TPL_FP16 && DT_OUT == LI_TPL_INT32) {
+        INVOKE_LI_NO_KFC_OP_IMPL(LightningIndexerKernel, half, half, int32_t, PAGE_ATTENTION,
+                                 LI_LAYOUT(LAYOUT_T), LI_LAYOUT(K_LAYOUT_T), DT_W_FLAG);
+    } else {
+        INVOKE_LI_NO_KFC_OP_IMPL(LightningIndexerKernel, bfloat16_t, bfloat16_t, int32_t, PAGE_ATTENTION,
+                                 LI_LAYOUT(LAYOUT_T), LI_LAYOUT(K_LAYOUT_T), DT_W_FLAG);
+    }
+#endif
 }

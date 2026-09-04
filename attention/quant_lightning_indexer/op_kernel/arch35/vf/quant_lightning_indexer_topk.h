@@ -31,6 +31,7 @@
 #else
 #include "../../../../lightning_indexer/op_kernel/arch35/vf/common/vf_topk_16_gather.h"
 #endif
+#include "qli_ld_gather.h"  // QLI-local LD gather (upstream LI headers stay untouched)
 
 namespace topk {
 template<typename T>
