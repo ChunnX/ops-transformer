@@ -26,14 +26,14 @@ using namespace MC2KernelTemplate;
 using namespace Mc2GroupedMatmulTilingData;
 
 #if defined(CONST_TILING)
-#define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling)                \
-    const outerType *outerPtr##var = (const outerType *)(tiling);                                                      \
-    const innerType *innerPtr##var = &(outerPtr##var->outerPtr##var);                                                  \
+#define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling) \
+    const outerType *outerPtr##var = (const outerType *)(tiling); \
+    const innerType *innerPtr##var = &(outerPtr##var->outerPtr##var); \
     const int32_t *(var) = (const int32_t *)((const uint8_t *)&(innerPtr##var->innerMember))
 #else
-#define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling)                \
-    size_t outerOffset##var = (size_t)(&((outerType *)0)->outerMember);                                                \
-    size_t innerOffset##var = (size_t)(&((innerType *)0)->innerMember);                                                \
+#define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling) \
+    size_t outerOffset##var = (size_t)(&((outerType *)0)->outerMember); \
+    size_t innerOffset##var = (size_t)(&((innerType *)0)->innerMember); \
     __gm__ int32_t *(var) = (__gm__ int32_t *)((__gm__ uint8_t *)(tiling) + outerOffset##var + innerOffset##var)
 #endif
 
@@ -44,11 +44,12 @@ using namespace Mc2GroupedMatmulTilingData;
 #endif
 
 template <bool TILINGKEY_GMM_WEIGHT_TRANSPOSE, bool TILINGKEY_MM_WEIGHT_TRANSPOSE, int TILINGKEY_COMM_MODE>
-__global__ __aicore__ void
-allto_allv_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCountsTensorOptionalGM,
-                           GM_ADDR recvCountsTensorOptionalGM, GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM,
-                           GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM, GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM,
-                           GM_ADDR tilingGM)
+__global__ __aicore__ void allto_allv_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
+                                                      GM_ADDR sendCountsTensorOptionalGM,
+                                                      GM_ADDR recvCountsTensorOptionalGM, GM_ADDR mmxOptionalGM,
+                                                      GM_ADDR mmweightOptionalGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
+                                                      GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM,
+                                                      GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     if (workspaceGM == nullptr) {
