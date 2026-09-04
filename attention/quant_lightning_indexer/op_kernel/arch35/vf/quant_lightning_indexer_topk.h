@@ -31,6 +31,7 @@
 #else
 #include "../../../../lightning_indexer/op_kernel/arch35/vf/common/vf_topk_16_gather.h"
 #endif
+#include "qli_ld_gather.h"  // QLI-local LD gather (upstream LI headers stay untouched)
 
 namespace topk {
 template<typename T>
@@ -76,6 +77,23 @@ public:
         idxLocal3 = idxLocal2[256]; // 256: 同上
         nkValueLocal = idxLocal3[256]; // 256: 同上
         tmpIndexLocal = nkValueLocal[64]; // 64: 单核/单线程输出元素容量（G维度切分阈值）
+    }
+
+    // v2 port: LD batch topk (32-bit variant): positions from histogram, indices
+    // gathered from the passed global-index stream.
+    __aicore__ inline void LdTopK(LocalTensor<uint32_t>& mrgValueLocal, LocalTensor<uint32_t>& indexIn,
+                                  LocalTensor<uint32_t>& indicesOutLocal, LocalTensor<uint32_t>& hisValueLocal,
+                                  uint32_t s2SeqLen)
+    {
+        topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxLocal0,
+                                      idxLocal1, idxLocal2, idxLocal3, nkValueLocal, topK, s2SeqLen);
+        PipeBarrier<PIPE_V>();
+        // 32-bit path: tmpIndexLocal holds positions into the concatenated stream; gather
+        // the global indices from indexIn at those positions.
+        __ubuf__ uint32_t* posBuf = (__ubuf__ uint32_t*)tmpIndexLocal.GetPhyAddr();
+        __ubuf__ uint32_t* srcBuf = (__ubuf__ uint32_t*)indexIn.GetPhyAddr();
+        __ubuf__ uint32_t* outBuf = (__ubuf__ uint32_t*)indicesOutLocal.GetPhyAddr();
+        topkb32gather::FindValueOutputVFImpl(outBuf, srcBuf, posBuf, (uint16_t)(topK / 64));
     }
 
     __aicore__ inline void operator()(LocalTensor<uint32_t>& mrgValueLocal, LocalTensor<uint32_t>& indicesOutLocal,
@@ -163,6 +181,18 @@ public:
         nkValueLocal = idxLowLocal[256]; // 256: 固定偏移步长
         LocalTensor<uint32_t> tmpIndexLocalTmp = nkValueLocal[64]; // 64: 单核/单线程输出容量
         tmpIndexLocal = tmpIndexLocalTmp.template ReinterpretCast<uint16_t>();
+    }
+
+    // v2 port: LD batch topk - positions from histogram, indices gathered from the
+    // passed global-index stream (mrgValue carries [prev top-K | current batch] layout).
+    __aicore__ inline void LdTopK(LocalTensor<uint16_t>& mrgValueLocal, LocalTensor<uint32_t>& indexIn,
+                                  LocalTensor<uint32_t>& indicesOutLocal, LocalTensor<uint16_t>& hisValueLocal,
+                                  uint32_t s2SeqLen)
+    {
+        topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal,
+                                      idxLowLocal, nkValueLocal, topK, s2SeqLen);
+        PipeBarrier<PIPE_V>();
+        topkb16gather::LiTopKLDGatherVF(indicesOutLocal, tmpIndexLocal, indexIn, topK);
     }
 
     __aicore__ inline void operator()(LocalTensor<uint16_t>& mrgValueLocal, LocalTensor<uint32_t>& indicesOutLocal,

@@ -102,6 +102,8 @@ private:
     __aicore__ inline int64_t LDParamElemOffset(uint32_t aic, uint32_t aiv, uint32_t slot);
     QLICommon::RunInfo ldRowInfo_{};
     bool ldRowValid_ = false;
+    QLICommon::RunInfo ldRowInfoArr_[4]{};  // v2LD: all LD tasks in this core's run
+    uint32_t ldRowCount_ = 0;
     // ================================Local Buffer区====================================
 
     // tmp buff for vector
@@ -573,6 +575,13 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
                 if (isSegStart) {
                     ldRowInfo_ = info;  // saved for ProcessLD (row merge owner)
                     ldRowValid_ = true;
+                    if (ldRowCount_ == 0 ||
+                        ldRowInfoArr_[ldRowCount_ - 1].gS1Idx != info.gS1Idx ||
+                        ldRowInfoArr_[ldRowCount_ - 1].bN2Idx != info.bN2Idx) {
+                        if (ldRowCount_ < 4) {
+                            ldRowInfoArr_[ldRowCount_++] = info;
+                        }
+                    }
                 }
                 continue;
             }
@@ -871,8 +880,6 @@ __aicore__ inline void QLIVector<QLIT>::WriteLDParam(uint32_t slot, const QLICom
 template <typename QLIT>
 __aicore__ inline void QLIVector<QLIT>::FlushLDWrites()
 {
-    WaitFlag<HardEvent::MTE3_V>(TOPK_IDX_CYCLE);
-    SetFlag<HardEvent::MTE3_V>(TOPK_IDX_CYCLE);
 }
 
 // LD phase (after AIV-only SyncAll): the row-start core of each split row merges
@@ -880,23 +887,16 @@ __aicore__ inline void QLIVector<QLIT>::FlushLDWrites()
 template <typename QLIT>
 __aicore__ inline void QLIVector<QLIT>::ProcessLD()
 {
-    if (!ldRowValid_) {
+    if (!ldRowValid_ || ldRowCount_ == 0) {
         return;
     }
-    const QLICommon::RunInfo &info = ldRowInfo_;
+    for (uint32_t t = 0; t < ldRowCount_; t++) {
+    const QLICommon::RunInfo &info = ldRowInfoArr_[t];
     int64_t curS1Idx = info.gS1Idx * s1BaseSize_;
     int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;
     int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2;
     if (curAivS1ProcNum == 0) {
         return;
-    }
-    uint32_t rowBlockNum = GetRowBlockNum(info);
-    int64_t carryEndCol = ((int64_t)info.s2Idx + 1) * s2BaseSize_;  // carry covers [0, carryEndCol)
-    int64_t rowEndCol = (int64_t)rowBlockNum * s2BaseSize_;
-    int32_t cuRealAcSeq = info.actS2Size;
-    if (constInfo_.attenMaskFlag) {
-        int64_t curAivS1Idx = curS1Idx + (blockId_ % 2) * CeilDiv(curS1ProcNum, 2);
-        cuRealAcSeq = info.actS2SizeOrig - info.actS1Size + curAivS1Idx + 1;
     }
     uint32_t aic = (uint32_t)(blockId_ / 2);
     uint32_t aiv = (uint32_t)(blockId_ % 2);
@@ -905,6 +905,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessLD()
     // prime events for LD loads/stores (AllocEventID/FreeEventID already paired in ProcessMain)
     SetFlag<HardEvent::V_MTE2>(TOPK_MRG_CYCLE);
     SetFlag<HardEvent::MTE3_V>(TOPK_IDX_CYCLE);
+
 
     AscendC::DataCopyExtParams copyInParams;
     copyInParams.blockCount = 1;
@@ -919,7 +920,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessLD()
     copyOutParams.srcStride = 0;
     copyOutParams.dstStride = 0;
 
-    // fullIdx buffer: idle in LD phase; float-scale path uses kScaleUB_(16KB), int8 path uses resMm1UB_(32KB)
+    // fullIdx mirrors mrgValue: [carry 2048 | remote 2048]
     LocalTensor<uint32_t> fullIdx;
     if constexpr (sizeof(SCALE_T) == 4) {
         fullIdx = kScaleUB_.template ReinterpretCast<uint32_t>();
@@ -928,50 +929,44 @@ __aicore__ inline void QLIVector<QLIT>::ProcessLD()
     }
 
     for (uint32_t i = 0; i < (uint32_t)curAivS1ProcNum; i++) {
-        int64_t vg = constInfo_.attenMaskFlag ? ((int64_t)cuRealAcSeq + i) : (int64_t)info.actS2Size;
-        int64_t carryN = vg < carryEndCol ? vg : carryEndCol;
-        carryN = carryN < 0 ? 0 : (carryN > (int64_t)topkCount_ ? (int64_t)topkCount_ : carryN);
-        int64_t remoteN = (vg < rowEndCol ? vg : rowEndCol) - carryEndCol;
-        remoteN = remoteN < 0 ? 0 : (remoteN > (int64_t)topkCount_ ? (int64_t)topkCount_ : remoteN);
         uint32_t rowIdx = blockId_ % 2 * CeilDiv(curS1ProcNum, 2) + i;
 
-        // pre-zero the whole merge stream [0, 2*topkCountAlign256): padded tails stay zero
-        // (plain Duplicate at arbitrary offset is unsafe; offset-0 bulk fill is aligned)
+        // pre-zero the merge + index streams (V), then release to MTE2
         WaitFlag<HardEvent::MTE3_V>(TOPK_IDX_CYCLE);
+        WaitFlag<HardEvent::V_MTE2>(TOPK_MRG_CYCLE);
         Duplicate(mrgValueLocal_, zero, 2 * topkCountAlign256_);
+        Duplicate(fullIdx, (uint32_t)0, 2 * topkCountAlign256_);
         SetFlag<HardEvent::V_MTE2>(TOPK_MRG_CYCLE);
         WaitFlag<HardEvent::V_MTE2>(TOPK_MRG_CYCLE);
-        // load carry list (own slot1) + remote list (next core slot0): values into mrgValue, idx into fullIdx
+
+        // load carry (own slot1) + remote (next core slot0): vals into mrgValue, GLOBAL idx into fullIdx
         copyInParams.blockLen = topkCount_ * sizeof(SCORE_T);
         AscendC::DataCopyPad(mrgValueLocal_, ldValGm[LDValElemOffset(aic, aiv, 1, i)], copyInParams, padValParams);
+        copyInParams.blockLen = topkCount_ * sizeof(uint32_t);
+        AscendC::DataCopyPad(fullIdx, ldIdxGm[LDIdxElemOffset(aic, aiv, 1, i)], copyInParams, padIdxParams);
+        copyInParams.blockLen = topkCount_ * sizeof(SCORE_T);
         AscendC::DataCopyPad(mrgValueLocal_[topkCountAlign256_],
                              ldValGm[LDValElemOffset(aic + 1, aiv, 0, i)], copyInParams, padValParams);
         copyInParams.blockLen = topkCount_ * sizeof(uint32_t);
-        AscendC::DataCopyPad(fullIdx, ldIdxGm[LDIdxElemOffset(aic, aiv, 1, i)], copyInParams, padIdxParams);
         AscendC::DataCopyPad(fullIdx[topkCountAlign256_],
                              ldIdxGm[LDIdxElemOffset(aic + 1, aiv, 0, i)], copyInParams, padIdxParams);
         SetFlag<HardEvent::MTE2_V>(TOPK_MRG_CYCLE);
         WaitFlag<HardEvent::MTE2_V>(TOPK_MRG_CYCLE);
 
-        // merged single-shot topk over [carry(2048) | remote(2048)] = 4096 stream
-        topkOp_(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, 2 * topkCountAlign256_, 0, 1);
+        // v2 merge: single-shot topk over 4096, positions -> gather GLOBAL indices
+        topkOp_.LdTopK(mrgValueLocal_, fullIdx, indicesOutLocal_, scoreOutLocal_,
+                       2 * topkCountAlign256_);
 
-        // gather global indices: outIdx[j] = fullIdx[pos[j]] (in-place per 64-chunk)
-        __ubuf__ uint32_t *posBuf = (__ubuf__ uint32_t *)indicesOutLocal_.GetPhyAddr();
-        __ubuf__ uint32_t *srcBuf = (__ubuf__ uint32_t *)fullIdx.GetPhyAddr();
-        topkb32gather::FindValueOutputVFImpl(posBuf, srcBuf, posBuf, (uint16_t)(topkCount_ / 64));
-        PipeBarrier<PIPE_V>();
-        // NOTE: no HardEvent SetFlag right after the MicroAPI gather: it hangs the pipe
-        // (per-iteration V_MTE2 release uses the self-contained Set+Wait pair before the loads)
-
-        // write final output row
-        // NOTE: PipeBarrier instead of Set/Wait<V_MTE3> pair: HardEvent flag pair right after a
-        // MicroAPI (__simd_vf__) gather call hangs the pipe on arch3510
-        PipeBarrier<PIPE_V>();
+        // final output: proven pair + arm (WriteLDList-style, no extra choreography)
+        SetFlag<HardEvent::V_MTE3>(TOPK_IDX_CYCLE);
+        WaitFlag<HardEvent::V_MTE3>(TOPK_IDX_CYCLE);
         AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * topkCount_],
                              indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
-        SetFlag<HardEvent::MTE3_V>(TOPK_IDX_CYCLE);  // arm only for next iteration
+        SetFlag<HardEvent::MTE3_V>(TOPK_IDX_CYCLE);  // arm-only: next head Wait consumes
     }
+    WaitFlag<HardEvent::MTE3_V>(TOPK_IDX_CYCLE);
+    SetFlag<HardEvent::MTE3_V>(TOPK_IDX_CYCLE);
 }
+    }  // end per-task merge loop
 }  // namespace QLIKernel
 #endif

@@ -680,9 +680,11 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::ProcessDecode()
         vectorService.FlushLDWrites();  // L-fix
         // AIV-only SyncAll(同 arch22 QLI ProcessDecode / arch35 FA infer gqa 先例, AIC 已退出不参与)
         SyncAll();
-        if (splitCoreInfo.isLD) {
-            vectorService.ProcessLD();
-        }
+        // v2LD: every AIV attempts the merge; only cores that collected segment-head
+        // tasks (ldRowCount_ > 0) do work. The walk-level isLD flag misses segment heads
+        // that live mid-run on a second core (multi-batch decode), which left whole
+        // batches unwritten.
+        vectorService.ProcessLD();
     }
 }
 
