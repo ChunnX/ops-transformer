@@ -4,4 +4,4 @@
 期望报错：
 Parameter axis B of QuantFlashAttn has incorrect value 65537. Reason: The value of B must be within the range (0, 65536).
 实际报错：
-[Prefill_FP8e4m3_FP8e4m3_BF16_Mxfp8_Exception_000040] API [torch.ops.cann_ops_transformer.quant_flash_attn] overload[0] requires non-tensor attribute(s) ['quant_mode'] but attributes only have ['D', 'N_kv', 'N_q', 'absolute_precision', 'attn_mask_dtype', 'batch_size', 'block_size', 'cu_seqlens_kv_values', 'cu_seqlens_q_values', 'enable_pa', 'head_dim_v', 'kv_cache_layout', 'layout_kv', 'layout_out', 'layout_q', 'layout_q_descale', 'mask_mode', 'max_seqlen_kv', 'max_seqlen_q', 'p_scale_value', 'precision_tolerances', 'q_scale_layout', 'return_softmax_lse', 'seqused_kv_values', 'seqused_q_values', 'softmax_scale', 'win_left', 'win_right']. (source: cann_ops_transformer._schemas)
+ValueError: [INPUTS] cu_seqlens_q (slot 8) shape mismatch: CSV slot (65538,) != attribute value (2,) ([0, 4096]). Check Excel shape vs cu_seqlens/seqused value.
