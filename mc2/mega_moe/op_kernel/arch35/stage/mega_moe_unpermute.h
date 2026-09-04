@@ -36,9 +36,8 @@ struct TokenUnpermuteScratch {
 };
 
 constexpr int32_t PRECISION_PROBE_TOKEN_INDEX = 9942;
-constexpr uint32_t PRECISION_PROBE_OUTPUT_COLUMN = 2089U;
-constexpr uint32_t PRECISION_PROBE_RADIUS = 3U;
-constexpr uint32_t PRECISION_PROBE_ELEMENT_COUNT = PRECISION_PROBE_RADIUS * 2U + 1U;
+constexpr uint32_t PRECISION_PROBE_DUMP_START_COLUMN = 2080U;
+constexpr uint32_t PRECISION_PROBE_ELEMENT_COUNT = 16U;
 
 template <typename Tensor>
 __aicore__ inline void DumpPrecisionProbe(const MoeStageCommonConfig &common, int32_t tokenIdx, const Tensor &tensor,
@@ -47,8 +46,7 @@ __aicore__ inline void DumpPrecisionProbe(const MoeStageCommonConfig &common, in
     if (common.rankId == 1U && common.tokenNum == 10072U && common.tokenHiddenDim == 3072U &&
         tokenIdx == PRECISION_PROBE_TOKEN_INDEX) {
         PipeBarrier<PIPE_ALL>();
-        AscendC::DumpTensor(tensor[PRECISION_PROBE_OUTPUT_COLUMN - PRECISION_PROBE_RADIUS], desc,
-                            PRECISION_PROBE_ELEMENT_COUNT);
+        AscendC::DumpTensor(tensor[PRECISION_PROBE_DUMP_START_COLUMN], desc, PRECISION_PROBE_ELEMENT_COUNT);
     }
 }
 
