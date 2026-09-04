@@ -157,8 +157,9 @@ uint32_t BlockAttentionResidualsTiling::CalcHSliceChunk() const
         1U + 1U + 8U + 2U + 2U; // vecMeta + metaSoftmax + metaBrc + Kahan(sumSq, score)
     uint64_t metaBytes = static_cast<uint64_t>(metaAlign) * META_FLOAT_PER_ALIGN * sizeof(float) +
                          static_cast<uint64_t>(SCALAR_LOCAL_ELEMS) * sizeof(float) + UB_OVERHEAD_BYTES;
+    constexpr uint32_t BACKWARD_QUE_NUM = 2U; // invQue + probsQue
     if (tilingData_.needBackward != 0) {
-        metaBytes += static_cast<uint64_t>(2) * metaAlign * sizeof(float); // invQue + probsQue
+        metaBytes += static_cast<uint64_t>(BACKWARD_QUE_NUM) * metaAlign * sizeof(float);
     }
     if (metaBytes >= UB_AVAIL_BYTES) {
         return H; // 保护：退化为整行单块（此时 kernel 按 hiddenSizeChunk=H 处理）

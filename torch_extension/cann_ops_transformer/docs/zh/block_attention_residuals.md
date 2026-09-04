@@ -118,13 +118,13 @@ cann_ops_transformer.block_attention_residuals(
 
 ## 返回值说明
 
-`need_backward=False` 时只返回 `hidden_states`。`need_backward=True` 时返回由 `hidden_states`、`inv_norm` 和 `probs` 组成的三元组。
+`need_backward=False` 时返回 `(hidden_states, None, None)`。`need_backward=True` 时返回 `(hidden_states, inv_norm, probs)`。
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
 | hidden_states | Tensor | 必选 | 加权融合结果，对应公式中的 $hidden\_states$。数据格式为 ND。 | 同 partial_block | [T, H] |
-| inv_norm | Tensor | 可选 | 逐行 RMS 归一化系数，对应公式中的 $inv\_rms$。仅 `need_backward=True` 时返回。数据格式为 ND。 | float32 | [T, N+1] |
-| probs | Tensor | 可选 | Softmax 概率，对应公式中的 $probs$。仅 `need_backward=True` 时返回。数据格式为 ND。 | float32 | [T, N+1] |
+| inv_norm | Tensor | 可选 | 逐行 RMS 归一化系数，对应公式中的 $inv\_rms$。`need_backward=False` 时为 `None` 占位。数据格式为 ND。 | float32 | [T, N+1] |
+| probs | Tensor | 可选 | Softmax 概率，对应公式中的 $probs$。`need_backward=False` 时为 `None` 占位。数据格式为 ND。 | float32 | [T, N+1] |
 
 ## 约束说明
 
@@ -174,7 +174,7 @@ cann_ops_transformer.block_attention_residuals(
     norm_weight = torch.ones(4, dtype=torch.bfloat16, device="npu")
 
     # valid_block_num / norm_eps / need_backward 为可选参数；省略时分别使用 N、1e-5、自动推断。
-    hidden_states = cann_ops_transformer.block_attention_residuals(
+    hidden_states, inv_norm, probs = cann_ops_transformer.block_attention_residuals(
         partial_block,
         block_res,
         proj_weight,

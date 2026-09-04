@@ -49,6 +49,16 @@ static const std::initializer_list<op::DataType> BF16_TYPE_SUPPORT_LIST = {
     op::DataType::DT_BF16, op::DataType::DT_FLOAT16, op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> FLOAT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
 constexpr int64_t MAX_NUM_BLOCKS = 100;
+constexpr size_t DIM_INDEX_ZERO = 0;
+constexpr size_t DIM_INDEX_ONE = 1;
+constexpr size_t DIM_INDEX_TWO = 2;
+constexpr size_t PARTIAL_BLOCK_DIM_NUM = 2;
+constexpr size_t BLOCK_RES_DIM_NUM = 3;
+constexpr size_t HIDDEN_STATES_DIM_NUM = 2;
+constexpr size_t WEIGHT_1D_DIM_NUM = 1;
+constexpr size_t WEIGHT_2D_DIM_NUM = 2;
+constexpr size_t INV_PROBS_DIM_NUM = 2;
+constexpr int64_t PROJ_WEIGHT_LEADING_ONES = 1;
 
 static inline bool CheckNotNull(const BlockAttentionResidualsParams &params)
 {
@@ -89,16 +99,16 @@ static inline bool CheckShapeValid(const BlockAttentionResidualsParams &params)
     const auto &projShape = params.projWeight->GetViewShape();
     const auto &normShape = params.normWeight->GetViewShape();
     const auto &hiddenShape = params.hiddenStates->GetViewShape();
-    if (partialBlockShape.GetDimNum() != 2 || blockShape.GetDimNum() != 3 ||
-        (projShape.GetDimNum() != 1 && projShape.GetDimNum() != 2) || normShape.GetDimNum() != 1 ||
-        hiddenShape.GetDimNum() != 2) {
+    if (partialBlockShape.GetDimNum() != PARTIAL_BLOCK_DIM_NUM || blockShape.GetDimNum() != BLOCK_RES_DIM_NUM ||
+        (projShape.GetDimNum() != WEIGHT_1D_DIM_NUM && projShape.GetDimNum() != WEIGHT_2D_DIM_NUM) ||
+        normShape.GetDimNum() != WEIGHT_1D_DIM_NUM || hiddenShape.GetDimNum() != HIDDEN_STATES_DIM_NUM) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "invalid tensor rank");
         return false;
     }
-    const int64_t T = partialBlockShape.GetDim(0);
-    const int64_t H = partialBlockShape.GetDim(1);
-    const int64_t N = blockShape.GetDim(1);
-    const int64_t B = blockShape.GetDim(1) + 1;
+    const int64_t T = partialBlockShape.GetDim(DIM_INDEX_ZERO);
+    const int64_t H = partialBlockShape.GetDim(DIM_INDEX_ONE);
+    const int64_t N = blockShape.GetDim(DIM_INDEX_ONE);
+    const int64_t B = blockShape.GetDim(DIM_INDEX_ONE) + 1;
     if (params.validBlockNum != N) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "only default valid_block_num=N is supported, got %ld", params.validBlockNum);
         return false;
@@ -107,17 +117,19 @@ static inline bool CheckShapeValid(const BlockAttentionResidualsParams &params)
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "shape range requires T>=0, H>=1 and 1<=N<=%ld", MAX_NUM_BLOCKS);
         return false;
     }
-    if (blockShape.GetDim(0) != T || blockShape.GetDim(2) != H) {
+    if (blockShape.GetDim(DIM_INDEX_ZERO) != T || blockShape.GetDim(DIM_INDEX_TWO) != H) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "block_res shape must be [T,N,H]");
         return false;
     }
-    const bool projShapeOk = (projShape.GetDimNum() == 1 && projShape.GetDim(0) == H) ||
-                             (projShape.GetDimNum() == 2 && projShape.GetDim(0) == 1 && projShape.GetDim(1) == H);
-    if (!projShapeOk || normShape.GetDim(0) != H) {
+    const bool projShapeOk =
+        (projShape.GetDimNum() == WEIGHT_1D_DIM_NUM && projShape.GetDim(DIM_INDEX_ZERO) == H) ||
+        (projShape.GetDimNum() == WEIGHT_2D_DIM_NUM && projShape.GetDim(DIM_INDEX_ZERO) == PROJ_WEIGHT_LEADING_ONES &&
+         projShape.GetDim(DIM_INDEX_ONE) == H);
+    if (!projShapeOk || normShape.GetDim(DIM_INDEX_ZERO) != H) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "proj_weight must be [H] or [1,H], and norm_weight must be [H]");
         return false;
     }
-    if (hiddenShape.GetDim(0) != T || hiddenShape.GetDim(1) != H) {
+    if (hiddenShape.GetDim(DIM_INDEX_ZERO) != T || hiddenShape.GetDim(DIM_INDEX_ONE) != H) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "hidden_states shape must be [T,H]");
         return false;
     }
@@ -126,11 +138,12 @@ static inline bool CheckShapeValid(const BlockAttentionResidualsParams &params)
     }
     const auto &invShape = params.invNorm->GetViewShape();
     const auto &probsShape = params.probs->GetViewShape();
-    if (invShape.GetDimNum() != 2 || probsShape.GetDimNum() != 2) {
+    if (invShape.GetDimNum() != INV_PROBS_DIM_NUM || probsShape.GetDimNum() != INV_PROBS_DIM_NUM) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "inv_norm/probs must be 2D [T,B]");
         return false;
     }
-    if (invShape.GetDim(0) != T || invShape.GetDim(1) != B || probsShape.GetDim(0) != T || probsShape.GetDim(1) != B) {
+    if (invShape.GetDim(DIM_INDEX_ZERO) != T || invShape.GetDim(DIM_INDEX_ONE) != B ||
+        probsShape.GetDim(DIM_INDEX_ZERO) != T || probsShape.GetDim(DIM_INDEX_ONE) != B) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "inv_norm/probs shape must be [%ld,%ld]", T, B);
         return false;
     }

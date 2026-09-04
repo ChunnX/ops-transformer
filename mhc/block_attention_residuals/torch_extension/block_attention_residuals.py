@@ -9,7 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import math
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 from torch import _check as torch_check
@@ -21,6 +21,9 @@ DEFAULT_NORM_EPS = 1.0e-5
 PARTIAL_BLOCK_RANK = 2
 BLOCK_RES_RANK = 3
 NORM_WEIGHT_RANK = 1
+PROJ_WEIGHT_RANK = 1
+PROJ_WEIGHT_RANK_2D = 2
+PROJ_WEIGHT_LEADING_ONES = 1
 T_DIM_INDEX = 0
 N_DIM_INDEX = 1
 H_DIM_INDEX = 1
@@ -74,7 +77,11 @@ def _check_inputs(
         lambda: f"norm_weight must be a 1D tensor, but got {norm_weight.dim()}D",
     )
     torch_check(
-        proj_weight.dim() == 1 or (proj_weight.dim() == 2 and proj_weight.size(0) == 1),
+        proj_weight.dim() == PROJ_WEIGHT_RANK
+        or (
+            proj_weight.dim() == PROJ_WEIGHT_RANK_2D
+            and proj_weight.size(0) == PROJ_WEIGHT_LEADING_ONES
+        ),
         lambda: f"proj_weight must be [H] or [1,H], but got {tuple(proj_weight.shape)}",
     )
 
@@ -247,7 +254,7 @@ def block_attention_residuals(
     valid_block_num: Optional[int] = None,
     norm_eps: float = DEFAULT_NORM_EPS,
     need_backward: Optional[bool] = None,
-) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
     """Attention Residual 加权融合前向，封装 aclnnBlockAttentionResiduals。
 
     Args:
@@ -263,8 +270,9 @@ def block_attention_residuals(
             ``requires_grad`` 则按 ``True`` 处理。
 
     Returns:
-        need_backward 为 False 时返回 ``hidden_states``，shape ``[T, H]``，dtype 同 partial_block。
-        为 True 时返回 ``(hidden_states, inv_norm, probs)``，后两者为 float32，shape ``[T, N+1]``。
+        始终返回 ``(hidden_states, inv_norm, probs)``。``hidden_states`` shape ``[T, H]``，
+        dtype 同 partial_block。``need_backward`` 为 True 时后两者为 float32、shape ``[T, N+1]``；
+        为 False 时后两者为 ``None`` 占位。
     """
     valid_block_num = _resolve_valid_block_num(block_res, valid_block_num)
     need_backward = _resolve_need_backward(
@@ -282,6 +290,7 @@ def block_attention_residuals(
         norm_eps=norm_eps,
         need_backward=need_backward,
     )
-    if need_backward:
-        return hidden, inv_norm, probs
-    return hidden
+    if not need_backward:
+        inv_norm = None
+        probs = None
+    return hidden, inv_norm, probs

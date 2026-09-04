@@ -18,8 +18,9 @@
 #include "kernel_tiling/kernel_tiling.h"
 
 namespace BlockAttentionResiduals {
-#pragma pack(push, 8)
-struct alignas(8) BlockAttentionResidualsTilingData {
+#define BLOCK_ATTENTION_RESIDUALS_TILING_ALIGN 8
+#pragma pack(push, BLOCK_ATTENTION_RESIDUALS_TILING_ALIGN)
+struct alignas(BLOCK_ATTENTION_RESIDUALS_TILING_ALIGN) BlockAttentionResidualsTilingData {
     uint32_t numTokens;
     uint32_t numBlocks;
     int64_t validBlockNum;
@@ -37,6 +38,7 @@ struct alignas(8) BlockAttentionResidualsTilingData {
     uint32_t hiddenSizeChunk; // HSLICE 分支的 h 切块大小；非 HSLICE 时可为 0
 };
 #pragma pack(pop)
+#undef BLOCK_ATTENTION_RESIDUALS_TILING_ALIGN
 } // namespace BlockAttentionResiduals
 
 #endif // ATTN_RES_FWD_TILING_DATA_H
