@@ -61,7 +61,7 @@ DIAGNOSTIC_TENSOR_WORDS = 131072
 DIAGNOSTIC_HEADER_WORDS = 32
 DIAGNOSTIC_RECORD_WORDS = 24
 DIAGNOSTIC_MAGIC = 0x474D4D4132415631
-DIAGNOSTIC_VERSION = 2
+DIAGNOSTIC_VERSION = 3
 DIAGNOSTIC_MODE_IDS = {
     "baseline": 1,
     "producer_barrier": 2,
@@ -188,7 +188,7 @@ def _parse_diagnostic_tensor(raw, expected_mode, world_size):
             "actual_rows": values[5],
             "output_row_offset": values[6],
             "udma_bytes": values[7],
-            "quiet_status": values[8],
+            "quiet_completed": bool(values[8]),
             "completion_published": bool(values[9]),
             "producer_barrier": bool(values[10]),
             "recycle_barrier": bool(values[11]),
@@ -201,28 +201,28 @@ def _parse_diagnostic_tensor(raw, expected_mode, world_size):
             "stage_byte_offset": values[16],
             "stage_payload_bytes": values[17],
             "producer_trace_row_offset": values[18],
-            "producer_trace_copy_status": values[19],
+            "producer_trace_copy_completed": bool(values[19]),
         })
-    cq_failures = [
+    completion_failures = [
         {
-            "status": item["quiet_status"],
+            "reason": "quiet_did_not_complete",
             "comm_index": item["comm_index"],
             "source_rank": item["source_rank"],
             "diagnostic_mode_id": item["diagnostic_mode_id"],
         }
         for item in records
-        if item["has_input"] and item["quiet_status"] != 0
+        if item["has_input"] and not item["quiet_completed"]
     ]
     trace_copy_failures = [
         {
-            "status": item["producer_trace_copy_status"],
+            "reason": "trace_copy_did_not_complete",
             "comm_index": item["comm_index"],
             "destination_rank": item["source_rank"],
         }
         for item in records
         if expected_mode == "no_reuse_trace"
         and item["stage_payload_bytes"] != 0
-        and item["producer_trace_copy_status"] != 0
+        and not item["producer_trace_copy_completed"]
     ]
     return {
         "header": {
@@ -250,7 +250,7 @@ def _parse_diagnostic_tensor(raw, expected_mode, world_size):
             "no_reuse_comm_loops_over_capacity": words[21],
         },
         "records": records,
-        "cq_failures": cq_failures,
+        "completion_failures": completion_failures,
         "producer_trace_copy_failures": trace_copy_failures,
     }
 
@@ -645,13 +645,13 @@ def main():
                 output_aliases_prefilled_buffer = (
                     actual.data_ptr() == diagnostic_out.data_ptr()
                 )
-                # Do not let a fast rank inspect output or CQ state while a
+                # Do not let a fast rank inspect output or completion records while a
                 # slower rank is still executing the communication kernel.
                 dist.barrier()
                 diagnostic_report = _parse_diagnostic_tensor(
                     diagnostic_status, mode, world_size
                 )
-                cq_failures = diagnostic_report["cq_failures"]
+                completion_failures = diagnostic_report["completion_failures"]
                 trace_copy_failures = diagnostic_report[
                     "producer_trace_copy_failures"
                 ]
@@ -732,8 +732,8 @@ def main():
                     "elapsed_seconds": elapsed,
                     "dataset_id": dataset_id,
                     "golden_id": golden_id,
-                    "cq_failures": cq_failures,
-                    "cq_status_passed": not cq_failures,
+                    "completion_failures": completion_failures,
+                    "completion_passed": not completion_failures,
                     "delay_cycles": delay_cycles,
                     "producer_trace_passed": (
                         producer_report["passed"]
@@ -810,8 +810,8 @@ def main():
                             "trace_row_offset": item[
                                 "producer_trace_row_offset"
                             ],
-                            "trace_copy_status": item[
-                                "producer_trace_copy_status"
+                            "trace_copy_completed": item[
+                                "producer_trace_copy_completed"
                             ],
                         } for item in diagnostic_report["records"]],
                     })
@@ -836,7 +836,7 @@ def main():
                     "actual_nonfinite": report["actual_nonfinite"],
                     "resident_tensors_unchanged":
                         resident_tensors_unchanged,
-                    "cq_failures": cq_failures,
+                    "completion_failures": completion_failures,
                     "delay_cycles": delay_cycles,
                     "producer_trace_passed": (
                         producer_report["passed"]
@@ -879,7 +879,7 @@ def main():
                 "mode": mode,
                 "passed": (
                     all(item["passed"] for item in launch_results)
-                    and all(not item["cq_failures"] for item in launch_results)
+                    and all(not item["completion_failures"] for item in launch_results)
                     and all(item["passed"] for item in mutation_checks.values())
                 ),
                 "launches": launch_results,
@@ -898,8 +898,8 @@ def main():
                     item["rank"] for item in gathered_modes
                     if not item["passed"]
                 ],
-                "cq_failure_count": sum(
-                    len(launch["cq_failures"])
+                "completion_failure_count": sum(
+                    len(launch["completion_failures"])
                     for item in gathered_modes
                     for launch in item["launches"]
                 ),
@@ -933,10 +933,10 @@ def main():
                 })
                 print(
                     "[gmm-a2av-root-cause] mode={} passed={} "
-                    "failed_ranks={} cq_failures={}".format(
+                    "failed_ranks={} completion_failures={}".format(
                         mode, group_mode["passed"],
                         group_mode["failed_ranks"],
-                        group_mode["cq_failure_count"],
+                        group_mode["completion_failure_count"],
                     ),
                     flush=True,
                 )

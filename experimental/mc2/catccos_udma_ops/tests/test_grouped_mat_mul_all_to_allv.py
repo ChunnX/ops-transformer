@@ -110,10 +110,9 @@ def test_no_reuse_delivery_retires_gets_once_instead_of_waiting_each_round():
     ).read_text(encoding="utf-8")
     target_order = kernel[kernel.index("void RunTargetOrderAivWithBlock("):]
 
-    completion_signal = target_order.index(
-        "syncCommFinish, 1,\n"
-        "                            ACLSHMEM_SIGNAL_ADD, srcRankIdx"
-    )
+    completion_signal = re.search(
+        r"syncCommFinish, 1,\s+ACLSHMEM_SIGNAL_ADD, srcRankIdx", target_order
+    ).start()
     signal_guard = target_order.rfind(
         "if constexpr (!NO_REUSE_STAGING)", 0, completion_signal
     )
@@ -337,7 +336,7 @@ def test_workspace_reuse_guard_avoids_unsigned_underflow():
     ) in kernel
 
 
-def test_get_cq_failure_is_detected_before_completion_is_published():
+def test_get_void_completion_precedes_acknowledgement():
     kernel = (
         PROJECT_ROOT
         / "csrc"
@@ -349,18 +348,15 @@ def test_get_cq_failure_is_detected_before_completion_is_published():
         / "grouped_matmul_alltoallv_tla.hpp"
     ).read_text(encoding="utf-8")
 
-    matches = list(re.finditer("FinalizeBlockLoopWithStatus\\(\\)", kernel))
-    completion_matches = [
-        match for match in matches
-        if "copyStatus" not in kernel[max(0, match.start() - 120):match.start()]
-    ]
-    assert len(completion_matches) == 2
-    assert kernel.count("if (quietStatus == 0)") == 2
-    assert kernel.count("GET CQ failure") == 2
-    for match in completion_matches:
-        completion = kernel.index("ACLSHMEM_SIGNAL_ADD", match.end())
-        success_guard = kernel.rfind("if (quietStatus == 0)", match.end(), completion)
-        assert success_guard >= match.end()
+    assert "quietStatus" not in kernel
+    assert "GET CQ failure" not in kernel
+    legacy = kernel[:kernel.index("private:")]
+    target_order = kernel[kernel.index("void RunTargetOrderAivWithBlock("):]
+    for path in (legacy, target_order):
+        quiet = path.index("blockRemoteCopy.FinalizeBlockLoop();")
+        fence = path.index("aclshmem_fence();", quiet)
+        completion = path.index("ACLSHMEM_SIGNAL_ADD, srcRankIdx", fence)
+        assert quiet < fence < completion
 
 
 def test_device_printf_is_compiled_only_into_explicit_diagnostic_wheel():

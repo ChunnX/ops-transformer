@@ -234,16 +234,6 @@ def test_kernel_and_runner_keep_the_five_modes_isolated():
         / "kernel"
         / "ascend950_alltoallv_grouped_matmul.hpp"
     ).read_text(encoding="utf-8")
-    tile = (
-        PROJECT_ROOT
-        / "csrc"
-        / "catccos_overlay"
-        / "include"
-        / "catccos"
-        / "comm"
-        / "tile"
-        / "tile_remote_copy_udma_2d.hpp"
-    ).read_text(encoding="utf-8")
     worker = (PROJECT_ROOT / "validation" / "accuracy_worker.py").read_text(
         encoding="utf-8"
     )
@@ -268,13 +258,28 @@ def test_kernel_and_runner_keep_the_five_modes_isolated():
     assert "aclshmemi_signal_wait_until_eq<uint64_t>" in kernel
     assert "quiet_poll_failure" not in kernel
     assert "CATCCOS_UDMA_A2AV_GMM_READY_TIMEOUT" in kernel
-    assert "aclshmemx_udma_put_signal_nbi" in tile
-    assert "aclshmemx_udma_quiet" in tile
-    assert "aclshmemi_udma_poll_cq" in tile
-    assert "qpContext->wqe_cnt" in tile
-    assert "qpContext->cqe_cnt" not in tile
     assert 'caller_repeats = (' in worker
     assert '"all_to_allv_export"' in worker
+
+
+def test_udma_tiles_use_public_completion_without_private_qp_access():
+    tile = (
+        PROJECT_ROOT / "csrc" / "catccos_overlay" / "include" / "catccos"
+        / "comm" / "tile" / "tile_remote_copy_udma_2d.hpp"
+    ).read_text(encoding="utf-8")
+    assert "aclshmemx_udma_put_signal_nbi" in tile
+    assert "aclshmemx_udma_quiet" in tile
+    for private_symbol in (
+        "aclshmemi_udma_poll_cq", "aclshmemi_udma_qp_info_fetch",
+        "aclshmemi_udma_active_table", "aclshmemi_udma_qp_table_t",
+        "aclshmemi_udma_wq_ctx_t", "wqe_cnt", "cqe_cnt",
+    ):
+        assert private_symbol not in tile
+    overlay = PROJECT_ROOT / "csrc" / "catccos_overlay" / "include" / "catccos"
+    for header in overlay.rglob("*.hpp"):
+        source = header.read_text(encoding="utf-8")
+        assert "FinalizeWithStatus" not in source, header
+        assert "FinalizeBlockLoopWithStatus" not in source, header
 
 
 def test_mssanitizer_build_enables_only_ready_wait_timeout_diagnostics():

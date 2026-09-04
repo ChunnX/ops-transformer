@@ -2,13 +2,7 @@
 
 from pathlib import Path
 
-import torch
-
-from validation.device_precision import analyze_accuracy_on_device
-from validation.accuracy_worker import (
-    _grouped_mat_mul_all_to_allv_producer_trace_golden,
-)
-from validation.precision import analyze_accuracy
+import pytest
 from validation.run_gmm_a2av_root_cause import (
     DIAGNOSTIC_MODES,
     classify_results,
@@ -22,7 +16,7 @@ def _results(**overrides):
     values = {mode: False for mode in DIAGNOSTIC_MODES}
     values.update(overrides)
     return [
-        {"mode": mode, "passed": values[mode], "cq_failure_count": 0}
+        {"mode": mode, "passed": values[mode], "completion_failure_count": 0}
         for mode in DIAGNOSTIC_MODES
     ]
 
@@ -74,11 +68,11 @@ def test_no_reuse_and_delay_pass_isolate_timing_window():
     assert decision["conclusive"]
 
 
-def test_cq_status_overrides_accuracy_results():
+def test_incomplete_get_overrides_accuracy_results():
     results = _results(no_reuse_trace=True)
-    results[0]["cq_failure_count"] = 1
+    results[0]["completion_failure_count"] = 1
     decision = classify_results(results)
-    assert decision["classification"] == "udma_get_cq_or_transport_failure"
+    assert decision["classification"] == "udma_get_completion_or_transport_failure"
     assert decision["conclusive"]
 
 
@@ -139,6 +133,10 @@ def test_worker_isolates_outputs_and_aligns_each_collective_launch():
 
 
 def test_device_comparator_matches_regular_opbase_pass_fail_decisions():
+    torch = pytest.importorskip("torch")
+    from validation.device_precision import analyze_accuracy_on_device
+    from validation.precision import analyze_accuracy
+
     expected = torch.zeros((100, 2), dtype=torch.bfloat16)
     variants = [expected.clone()]
     one_percent = expected.clone()
@@ -242,10 +240,15 @@ def test_host_registers_private_diagnostic_op_and_mte3_variants():
     assert "TileRemoteCopyUdma2DWithScratch" in device
     scratch = tile[tile.index("class TileRemoteCopyUdma2DWithScratch"):]
     assert "static constexpr bool DEFER_QUIET = true" in scratch
-    assert "uint32_t FinalizeWithStatus" in scratch
+    assert "void Finalize(uint32_t peerIdx)" in scratch
 
 
 def test_producer_trace_golden_is_destination_major():
+    torch = pytest.importorskip("torch")
+    from validation.accuracy_worker import (
+        _grouped_mat_mul_all_to_allv_producer_trace_golden,
+    )
+
     # rank 0 owns two local experts. Their ordinary GMM output is
     # [expert0(dst0,dst1), expert1(dst0,dst1)]. Producer trace is repacked as
     # [dst0(expert0,expert1), dst1(expert0,expert1)].
@@ -287,13 +290,11 @@ def test_official_block_mode_uses_the_exact_official_call_pattern():
     branch_start = kernel.rfind(
         "if constexpr (OFFICIAL_UDMA_BLOCK)", 0, official_call_comment
     )
-    branch_end = kernel.index("if (quietStatus == 0)", branch_start)
+    branch_end = kernel.index("} else {", official_call_comment)
     official_branch = kernel[branch_start:branch_end]
     assert "blockRemoteCopy(" in official_branch
-    assert "InitBlockLoop" not in official_branch.split("} else {")[0]
-    assert "FinalizeBlockLoopWithStatus" not in official_branch.split(
-        "} else {"
-    )[0]
+    assert "InitBlockLoop" not in official_branch
+    assert "FinalizeBlockLoop" not in official_branch
 
 
 def test_root_cause_kernels_are_compiled_out_of_delivery_wheels():

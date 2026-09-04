@@ -697,12 +697,7 @@ public:
                 // not make the remote stage consumable by the export path.
                 if constexpr (EXPORT_ALLTOALLV) {
                     if (isCommWorker) {
-                        if (params.completionMode ==
-                            COMPLETION_MODE_GENERATION_AFTER_QUIET) {
-                            (void)blockRemoteCopy.FinalizeBlockLoopWithStatus();
-                        } else {
-                            blockRemoteCopy.FinalizeBlockLoop();
-                        }
+                        blockRemoteCopy.FinalizeBlockLoop();
                     }
                     if (!useStrongReady && completedBlocks > 0) {
                         if (useGenerationReady) {

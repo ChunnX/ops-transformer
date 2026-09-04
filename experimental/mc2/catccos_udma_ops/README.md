@@ -72,7 +72,7 @@ It then rejects a Wheel unless its filename and sole `dist-info/METADATA` entry
 match the package version in `ops_transformer_catccos_udma/_version.py`.
 
 Production builds compile out every device-side `AscendC::printf` call and
-disable the AscendC Dump buffer. To diagnose a UDMA CQ timeout or CQE failure,
+disable the AscendC Dump buffer. To inspect GET completion and ready-wait context,
 build and install a separate diagnostic Wheel:
 
 ```bash
@@ -80,16 +80,12 @@ CATCCOS_UDMA_DEVICE_DIAGNOSTICS=1 bash scripts/build_wheel.sh
 python3 -m pip install --force-reinstall --no-deps dist/*.whl
 ```
 
-The pinned maintenance branch returns a status from its internal CQ poll;
-public `aclshmemx_udma_quiet(peer)` discards that status. Both local
-`FinalizeWithStatus` wrappers therefore use a shared checked implementation
-that preserves the real CQ error code for completion-sensitive callers. It
-uses the pinned branch's UDMA metadata accessor, `wqe_cnt`, and direct/relay
-QP0 completion scope. The ordinary void `Finalize` retains the upstream
-public quiet behavior. This branch does not provide master !743's
-unconditional CQ-error trap, so checked callers must handle nonzero status;
-void quiet alone does not establish an error-free completion. The diagnostic
-Wheel can print GET completion context and ready-wait diagnostics. Device
+Both UDMA tiles complete through public `aclshmemx_udma_quiet(peer)`, leaving
+QP selection and direct/relay handling to SHMEM. There is no local QP table
+access or CQ polling implementation. Tiles expose void `Finalize(peer)`;
+communication blocks use void `FinalizeBlockLoop()` before completion
+publication or buffer reuse. There is no CQ status return or status-based
+completion guard. The diagnostic Wheel enables ready-wait diagnostics. Device
 printf reserves additional HBM and affects timing, so do not use that Wheel
 for performance measurement or model delivery.
 
@@ -535,7 +531,7 @@ operator is compiled out of ordinary delivery Wheels. The default matrix runs:
 - `pre_get_delay_medium`: 20,000 cycles after producer-ready wait and before
   GET;
 - `post_quiet_delay_{short,medium,long}`: 2,000/20,000/200,000 cycles after
-  checked quiet and before completion publication;
+  public UDMA quiet and before completion publication;
 - `baseline`: the original two-stage local-`SyncAll` diagnostic protocol.
 
 Use repeated `--mode <name>` options to select a subset. Barrier modes require
@@ -543,9 +539,11 @@ Use repeated `--mode <name>` options to select a subset. Barrier modes require
 counts. Delays are diagnostics, not delivery fixes.
 
 Every launch allocates a 1 MiB regular NPU diagnostic tensor. Device AIVs write
-per-round/source records containing actual rows, output offset, GET bytes, CQ
-status, completion publication, delay placement, stage address/range and trace
-copy status. After
+per-round/source records containing actual rows, output offset, GET bytes,
+completion publication, delay placement, stage address/range and trace copy
+completion. Diagnostic format version 3 records `quiet_completed` and
+`producer_trace_copy_completed` as progress flags, with no CQ error codes.
+The matching validation scripts reject older diagnostic tensor versions. After
 stream synchronization Host writes these records to
 `rank_<N>/modes/<mode>/launch_<I>/diagnostic.json`. Device printf is not used,
 so the experiment does not reserve the AscendC printf buffer. For no-reuse,

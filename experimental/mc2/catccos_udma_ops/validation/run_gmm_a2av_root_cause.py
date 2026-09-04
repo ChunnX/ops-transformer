@@ -104,7 +104,7 @@ MODE_DESCRIPTIONS = {
         "producer_sync": "original local AscendC::SyncAll",
         "stage_recycle_sync": "original local AscendC::SyncAll",
         "udma_wqe_path": "PIPE_S",
-        "delay_placement": "after checked quiet, before completion signal",
+        "delay_placement": "after public UDMA quiet, before completion signal",
         "delay_cycles": 2_000,
     },
     "post_quiet_delay_medium": {
@@ -112,7 +112,7 @@ MODE_DESCRIPTIONS = {
         "producer_sync": "original local AscendC::SyncAll",
         "stage_recycle_sync": "original local AscendC::SyncAll",
         "udma_wqe_path": "PIPE_S",
-        "delay_placement": "after checked quiet, before completion signal",
+        "delay_placement": "after public UDMA quiet, before completion signal",
         "delay_cycles": 20_000,
     },
     "post_quiet_delay_long": {
@@ -120,14 +120,14 @@ MODE_DESCRIPTIONS = {
         "producer_sync": "original local AscendC::SyncAll",
         "stage_recycle_sync": "original local AscendC::SyncAll",
         "udma_wqe_path": "PIPE_S",
-        "delay_placement": "after checked quiet, before completion signal",
+        "delay_placement": "after public UDMA quiet, before completion signal",
         "delay_cycles": 200_000,
     },
     "no_reuse_trace": {
         "label": "no-reuse",
         "producer_sync": "per-round SHMEM all-PE barrier",
         "stage_recycle_sync": "disabled; one stage per commIdx",
-        "udma_wqe_path": "checked PIPE_S GET",
+        "udma_wqe_path": "PIPE_S GET with public UDMA quiet",
         "workspace_stages": 19,
         "producer_trace": (
             "destination-major local producer staging copied after a final "
@@ -140,9 +140,9 @@ MODE_DESCRIPTIONS = {
 def classify_results(mode_results, *, timed_out_mode=None, runtime_evidence=None):
     """Classify no-reuse/delay and legacy matrices, including timeouts."""
     by_mode = {item["mode"]: item for item in mode_results}
-    cq_modes = [
+    incomplete_modes = [
         item["mode"] for item in mode_results
-        if item.get("cq_failure_count", 0) > 0
+        if item.get("completion_failure_count", 0) > 0
     ]
     runtime_counts = (runtime_evidence or {}).get("counts", {})
     transport_evidence = any(runtime_counts.get(name, 0) for name in (
@@ -153,14 +153,14 @@ def classify_results(mode_results, *, timed_out_mode=None, runtime_evidence=None
         "shmem_initialization_failure",
         "device_runtime_failure",
     ))
-    if cq_modes or transport_evidence:
+    if incomplete_modes or transport_evidence:
         return {
-            "classification": "udma_get_cq_or_transport_failure",
+            "classification": "udma_get_completion_or_transport_failure",
             "conclusive": True,
-            "evidence_modes": cq_modes,
+            "evidence_modes": incomplete_modes,
             "next_action": (
-                "Fix or surface the checked GET CQ/transport failure first; "
-                "a source stage must never be released after this status."
+                "Inspect the missing GET completion or transport failure first; "
+                "do not infer a CQ status from public quiet's return."
             ),
         }
 
@@ -222,7 +222,7 @@ def classify_results(mode_results, *, timed_out_mode=None, runtime_evidence=None
             "evidence_modes": ["no_reuse_trace"],
             "next_action": (
                 "Producer staging is correct without reuse but the final "
-                "AllToAllV output is not. Inspect CQ, stage offsets and GET "
+                "AllToAllV output is not. Inspect stage offsets and GET "
                 "destination ranges in diagnostic.json/layout.json."
             ),
         }
@@ -244,7 +244,7 @@ def classify_results(mode_results, *, timed_out_mode=None, runtime_evidence=None
                 "evidence_modes": ["no_reuse_trace"] + post_modes,
                 "next_action": (
                     "Replace delay with generation-scoped consumer completion; "
-                    "do not release a stage until every destination's checked "
+                    "do not release a stage until every destination's "
                     "GET has deterministically completed."
                 ),
             }
@@ -274,7 +274,7 @@ def classify_results(mode_results, *, timed_out_mode=None, runtime_evidence=None
             "conclusive": True,
             "evidence_modes": post_modes,
             "next_action": (
-                "Replace the delay with deterministic checked completion and "
+                "Replace the delay with deterministic completion and "
                 "destination-scoped stage release."
             ),
         }
@@ -300,7 +300,7 @@ def classify_results(mode_results, *, timed_out_mode=None, runtime_evidence=None
             "evidence_modes": ["full_barrier"],
             "mte3_mode_passed": mte3,
             "next_action": (
-                "Keep checked GET completion and replace the aggregate recycle "
+                "Keep public GET completion and replace the aggregate recycle "
                 "edge with stage/source/generation-scoped consumer completion."
             ),
         }
@@ -627,7 +627,7 @@ def main():
             "passed": False,
             "timed_out": True,
             "failed_ranks": list(range(case["world_size"])),
-            "cq_failure_count": 0,
+            "completion_failure_count": 0,
         })
     decision = classify_results(
         mode_results,

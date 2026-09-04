@@ -217,7 +217,7 @@ def classify_mode_results(results):
             "conclusive": True,
             "next_action": (
                 "Promote per-stage/per-source write-with-notify generations. "
-                "The checked quiet returned without CQ errors, but publishing "
+                "The public quiet returned, but publishing "
                 "a generation through a separate signal operation remained "
                 "insufficient; cache bypass is not required by this result."
             ),

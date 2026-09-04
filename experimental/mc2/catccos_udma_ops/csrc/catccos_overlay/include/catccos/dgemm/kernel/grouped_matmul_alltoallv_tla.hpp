@@ -112,7 +112,8 @@ public:
     // four trailing words prevent different AIVs from sharing a cache line.
     static constexpr uint32_t DIAGNOSTIC_RECORD_WORDS = 24;
     static constexpr uint64_t DIAGNOSTIC_MAGIC = 0x474d4d4132415631ULL;
-    static constexpr uint64_t DIAGNOSTIC_VERSION = 2;
+    // Version 3 records completion progress instead of private CQ status.
+    static constexpr uint64_t DIAGNOSTIC_VERSION = 3;
 
     using MoeConstraints = typename BlockMmadScheduler::MoeConstraints;
 
@@ -408,9 +409,6 @@ public:
         auto commLoops = scheduler.GetCommLoops();
 
         uint32_t receiveAccum = 0;
-#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
-        bool quietFailureReported = false;
-#endif
         for (uint32_t commIdx = 0; commIdx < commLoops; ++commIdx) {
             uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
             uint32_t flagIdx = commIdx % SYNC_FLAG_STAGES;
@@ -458,25 +456,12 @@ public:
                         actualBlockShape, srcRankIdx
                     );
                 }
-                uint32_t quietStatus =
-                    blockRemoteCopy.FinalizeBlockLoopWithStatus();
+                blockRemoteCopy.FinalizeBlockLoop();
 
-                if (quietStatus == 0) {
-                    aclshmem_fence();
-                    aclshmemx_signal_op(
-                        syncCommFinish, 1,
-                        ACLSHMEM_SIGNAL_ADD, srcRankIdx);
-                }
-#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
-                else if (!quietFailureReported) {
-                    AscendC::printf(
-                        "[CATCCOS_UDMA_GMM_A2AV] GET CQ failure "
-                        "rank=%u source=%u comm=%u stage=%u status=0x%x; "
-                        "completion will not be published\n",
-                        rankIdx, srcRankIdx, commIdx, stageIdx, quietStatus);
-                    quietFailureReported = true;
-                }
-#endif
+                aclshmem_fence();
+                aclshmemx_signal_op(
+                    syncCommFinish, 1,
+                    ACLSHMEM_SIGNAL_ADD, srcRankIdx);
             }
 
             if (isSyncCore) {
@@ -605,7 +590,7 @@ private:
         uint32_t srcRankIdx, uint32_t stageIdx, uint32_t stageRows,
         bool hasInput,
         uint32_t actualRows, uint32_t outputRowOffset,
-        uint32_t quietStatus, bool completionPublished)
+        bool quietCompleted, bool completionPublished)
     {
         if (params.ptrDiagnostic == nullptr) {
             return;
@@ -627,7 +612,7 @@ private:
             params, base + 7,
             static_cast<uint64_t>(actualRows) *
                 params.problemShape.n() * sizeof(ElementC));
-        StoreDiagnosticWord(params, base + 8, quietStatus);
+        StoreDiagnosticWord(params, base + 8, quietCompleted ? 1 : 0);
         StoreDiagnosticWord(
             params, base + 9, completionPublished ? 1 : 0);
         StoreDiagnosticWord(
@@ -658,7 +643,7 @@ private:
     static void RecordProducerTraceCopy(
         Params const &params, uint32_t commIdx, uint32_t rankSize,
         uint32_t destinationRank, uint64_t stageByteOffset,
-        uint32_t actualRows, uint32_t traceRowOffset, uint32_t copyStatus)
+        uint32_t actualRows, uint32_t traceRowOffset, bool copyCompleted)
     {
         if (params.ptrDiagnostic == nullptr) {
             return;
@@ -671,7 +656,7 @@ private:
             static_cast<uint64_t>(actualRows) *
                 params.problemShape.n() * sizeof(ElementC));
         StoreDiagnosticWord(params, base + 18, traceRowOffset);
-        StoreDiagnosticWord(params, base + 19, copyStatus);
+        StoreDiagnosticWord(params, base + 19, copyCompleted ? 1 : 0);
     }
 
     CATLASS_DEVICE
@@ -934,7 +919,7 @@ private:
             uint64_t stageByteOffset =
                 stageElementOffset * sizeof(ElementC);
             uint32_t traceRowOffset = destinationBase + consumedRows;
-            uint32_t copyStatus = actualRows == 0 ? 0xffffffffU : 0U;
+            bool copyCompleted = false;
             if (actualRows != 0) {
                 AscendC::GlobalTensor<ElementC> gmStage;
                 gmStage.SetGlobalBuffer(ptrSymmetric + stageElementOffset);
@@ -951,12 +936,12 @@ private:
                 blockRemoteCopy(
                     gmStage, layoutBlockSrc, gmBlockDst, layoutBlockDst,
                     actualShape, rankIdx);
-                copyStatus =
-                    blockRemoteCopy.FinalizeBlockLoopWithStatus();
+                blockRemoteCopy.FinalizeBlockLoop();
+                copyCompleted = true;
             }
             RecordProducerTraceCopy(
                 params, commIdx, rankSize, destinationRank,
-                stageByteOffset, actualRows, traceRowOffset, copyStatus);
+                stageByteOffset, actualRows, traceRowOffset, copyCompleted);
             consumedRows += actualRows;
         }
     }
@@ -1057,9 +1042,6 @@ private:
                 return;
             }
         }
-#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
-        bool quietFailureReported = false;
-#endif
         uint32_t commRounds = commLoops;
         if constexpr (NO_REUSE_STAGING && PRODUCER_FULL_BARRIER) {
             // Every PE executes the same number of collective barriers even
@@ -1107,8 +1089,8 @@ private:
             bool hasInput = scheduler.HasInput();
             uint32_t actualRows = scheduler.GetActualRows();
             uint32_t outputRowOffset = scheduler.GetOutputRowOffset();
-            uint32_t quietStatus = hasInput ? 0U : 0xffffffffU;
 #if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+            bool quietCompleted = false;
             bool completionPublished = false;
 #endif
             if (isCommCore && hasInput) {
@@ -1138,50 +1120,37 @@ private:
                             gmBlockDst, layoutBlockDst,
                             actualShape, srcRankIdx);
                     }
-                    quietStatus = 0;
                 } else {
                     blockRemoteCopy.InitBlockLoop();
                     blockRemoteCopy(
                         gmBlockSrc, layoutBlockSrc,
                         gmBlockDst, layoutBlockDst,
                         actualShape, srcRankIdx);
-                    quietStatus =
-                        blockRemoteCopy.FinalizeBlockLoopWithStatus();
+                    blockRemoteCopy.FinalizeBlockLoop();
                 }
 
-                if (quietStatus == 0) {
 #if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
-                    if (params.diagnosticMode ==
-                        GMM_A2AV_DIAGNOSTIC_POST_QUIET_DELAY) {
-                        DiagnosticDelay(params.delayCycles);
-                    }
-#endif
-                    if constexpr (!NO_REUSE_STAGING) {
-                        aclshmem_fence();
-                        aclshmemx_signal_op(
-                            syncCommFinish, 1,
-                            ACLSHMEM_SIGNAL_ADD, srcRankIdx);
-#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
-                        completionPublished = true;
-#endif
-                    }
-                }
-#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS) && CATCCOS_UDMA_DEVICE_DIAGNOSTICS
-                else if (!quietFailureReported) {
-                    AscendC::printf(
-                        "[CATCCOS_UDMA_GMM_A2AV] GET CQ failure "
-                        "rank=%u source=%u comm=%u stage=%u status=0x%x; "
-                        "completion will not be published\n",
-                        rankIdx, srcRankIdx, commIdx, stageIdx, quietStatus);
-                    quietFailureReported = true;
+                quietCompleted = true;
+                if (params.diagnosticMode ==
+                    GMM_A2AV_DIAGNOSTIC_POST_QUIET_DELAY) {
+                    DiagnosticDelay(params.delayCycles);
                 }
 #endif
+                if constexpr (!NO_REUSE_STAGING) {
+                    aclshmem_fence();
+                    aclshmemx_signal_op(
+                        syncCommFinish, 1,
+                        ACLSHMEM_SIGNAL_ADD, srcRankIdx);
+#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
+                    completionPublished = true;
+#endif
+                }
             }
 #if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
             if (isCommCore) {
                 RecordTargetOrderComm(
                     params, commIdx, rankSize, srcRankIdx, stageIdx, stageRows,
-                    hasInput, actualRows, outputRowOffset, quietStatus,
+                    hasInput, actualRows, outputRowOffset, quietCompleted,
                     completionPublished);
             }
 #endif
