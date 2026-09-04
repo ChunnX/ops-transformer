@@ -1,0 +1,64 @@
+name: discompile_test_action
+
+on:
+  workflow_dispatch:
+  pull_request_comment:
+    types: [created]
+    branches: [ '**' ]
+    comments: [ '^(?:\/)?test*' ]
+  pr_comment:
+    types: [ created ]
+    keyword: '^(?:\/)?test*'
+
+env:
+  org_name: ${{ vars.ORG_NAME }}
+  repo_name: ${{ atomgit.event.repository.name}}
+  MERGE_ID: ${{ atomgit.event.pull_request.number }}
+  TARGET_BRANCH: ${{ atomgit.base_ref }}
+  SOURCE_BRANCH: ${{ atomgit.head_ref }}
+  obs_path: "${{ env.org_name }}/${{ env.repo_name }}/ci/package/discompile/${{ env.MERGE_ID }}"
+  obs_smoke_path: "${{ env.obs_path }}/presmoke/2"
+  online: ${{ vars.APPLY_LABEL }}
+
+stages:
+  stage1:
+    name: PreBuild
+    jobs:
+      JOB_image:
+        name: Test_image
+        steps:
+          - name: revise_image
+            identifier: revise_image
+            uses: cann/.gitcode/actions/revise-img@master
+            with:
+              repo_name: ops-transformer
+              target_branch: ${{ env.TARGET_BRANCH }}
+              comment: ${{ atomgit.event.comment.body }}
+              token: ${{ secrets.TESTTOKEN }}
+          -
+            name: show_output
+            run: |
+              echo "Compile_Ascend_X86: ${{ steps.revise_image.outputs.Compile_Ascend_X86 }}"
+        runs-on: ["self-hosted", "arch=x64", "spec=small"]
+        container:
+          image: swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_x86:k8s_v1.1006
+      JOB_pre:
+        name: Test_PreBuild
+        uses: cann/.gitcode/.gitcode/workflows/pre_action.yml@master
+    pre:
+    - type: auto
+    fail-fast: true
+  stage2:
+    name: compile
+    jobs:
+      JOB_monitor_950_compile:
+        name: Compile_monitor_950
+        uses: .gitcode/workflows/compile_action_test.yml
+        with:
+          task_name: 'monitor_950'
+          image_version: ${{ jobs.JOB_image.outputs.Compile_X86_monitor_9_0_0 }}
+          arch: 'x64'
+          package_name: 'cann-ops-transformer-monitor-950_linux-x86_64.run'
+    pre:
+    - type: auto
+    fail-fast: false
