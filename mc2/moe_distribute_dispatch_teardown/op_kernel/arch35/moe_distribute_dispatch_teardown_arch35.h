@@ -72,9 +72,9 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void LocalWindowCopy();
+    // 两条搬出路径都禁止内联进 Process：否则 bs256 仍会带上小 bs 循环的寄存器分配
+    __aicore__ __attribute__((noinline)) void LocalWindowCopy();
 #if MC2_DTD_OPT_WINCOPY_PIPELINE
-    // 独立函数、禁止内联：避免 bs256 流水与小 bs 原路径编进同一段，抬高寄存器压力
     __aicore__ __attribute__((noinline)) void LocalWindowCopyPipeline();
 #endif
     __aicore__ inline void WaitDispatch();
@@ -502,7 +502,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::GetCu
 }
 
 template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::LocalWindowCopy()
+__aicore__ __attribute__((noinline)) void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::LocalWindowCopy()
 {
     LocalTensor<int32_t> outCountLocal;
     if (startExpertId_ >= rscvStatusNum_) { // 分核已与前面的waitDispatch里保持一致

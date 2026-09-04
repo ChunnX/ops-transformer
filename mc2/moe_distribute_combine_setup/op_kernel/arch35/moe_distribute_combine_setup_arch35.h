@@ -35,12 +35,14 @@
 
 // arch35 性能优化开关（仅本算子）。全 0 时 Communication/CurRankComm/BuffInit 回原逻辑。
 #ifndef MC2_CSU_OPT_OVERLAP_REMOTE
-// 先下发远端 WriteNbi/Commit，再做本卡 GM->UB->win，bs256 本卡拷贝不再堵住 NIC
+// 仅 bs<=16：先下发远端 WriteNbi/Commit，再做本卡拷贝。
+// bs256 本卡数据量大，后置本地拷会把 C_S 从 ~16us 拉到 ~24us，必须走原「先本卡后远端」。
 #define MC2_CSU_OPT_OVERLAP_REMOTE 1
 #endif
 #ifndef MC2_CSU_OPT_LOCAL_COPY_PIPELINE
-// 仅 bs>16：本卡搬运双 buffer；bs8/bs16 保持单 buffer 全 UB，避免一次拷贝被拆成两块
-#define MC2_CSU_OPT_LOCAL_COPY_PIPELINE 1
+// 双缓冲默认关闭：expertTokenTmpQueue_ 类型深度是 1，InitBuffer(2) 无法真正流水，
+// 拆半 UB 只会让 bs256 多一倍 chunk。置 1 时仍仅 bs>16 尝试双缓冲。
+#define MC2_CSU_OPT_LOCAL_COPY_PIPELINE 0
 #endif
 
 namespace MoeDistributeCombineSetupImpl {
@@ -308,12 +310,14 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         return;
     }
 
-#if !MC2_CSU_OPT_OVERLAP_REMOTE
-    if (unlikely(epRankId_ >= startRankId_ && epRankId_ < endRankId_)) {
-        // 本卡通信
+    bool doLocalFirst = true;
+#if MC2_CSU_OPT_OVERLAP_REMOTE
+    // bs8/16：远端先行（本卡拷贝很短）；bs256：先本卡，避免大块 GM->UB->win 垫在所有 WriteNbi 之后
+    doLocalFirst = moeDistributeCombineSetupInfo_->bs > 16U;
+#endif
+    if (doLocalFirst && unlikely(epRankId_ >= startRankId_ && epRankId_ < endRankId_)) {
         CurRankComm(assistInfoForCombineLocal, curRankExpertNum);
     }
-#endif
 
     // 数据和状态分离：有token才发数据，每个dstRank始终单独发一次状态
     uint32_t middleRank = epRankId_ < startRankId_ ? startRankId_ : epRankId_;
@@ -389,8 +393,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
     }
 
 #if MC2_CSU_OPT_OVERLAP_REMOTE
-    if (unlikely(epRankId_ >= startRankId_ && epRankId_ < endRankId_)) {
-        // 远端已 Commit，本卡拷贝与 NIC 重叠
+    if (!doLocalFirst && unlikely(epRankId_ >= startRankId_ && epRankId_ < endRankId_)) {
+        // 仅 bs8/16：远端已 Commit，本卡短拷贝后置
         CurRankComm(assistInfoForCombineLocal, curRankExpertNum);
     }
 #endif
