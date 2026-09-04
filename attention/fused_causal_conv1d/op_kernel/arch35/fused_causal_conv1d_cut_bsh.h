@@ -240,6 +240,7 @@ private:
     TBuf<TPosition::VECCALC> initialStateIdxBuf_;
 
     // Persistent LocalTensors
+    bool needYZero_ = true; // is the per-tile yLocal zero-fill reachable at all?
     LocalTensor<int32_t> seqStartLocal_;
     LocalTensor<int32_t> cacheIdxLocal_;
     LocalTensor<int32_t> numComputedLocal_;
@@ -581,6 +582,24 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
 
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
+    // The conv writes every element it covers, so the fill only matters where one can be left
+    // unwritten: a padSlot batch, conv_mode == 1, or APC. Conservative in every other case.
+    needYZero_ = true;
+    if (convMode_ == 0 && !apcEnabled_) {
+        bool anyPad = false;
+        if (hasCacheIndices_) {
+            for (uint32_t b = 0; b < batchSize_; ++b) {
+                if ((int64_t)cacheIdxLocal_.GetValue(b) == padSlotId_) {
+                    anyPad = true;
+                    break;
+                }
+            }
+        } else {
+            anyPad = (padSlotId_ >= 0 && padSlotId_ < (int64_t)batchSize_);
+        }
+        needYZero_ = anyPad;
+    }
+
     uint32_t K = kernelWidth_;
 
     // ---- Compute bsStart (K-1 overlap between BS cores) ----
@@ -701,12 +720,18 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
         iStart = K - 1; // subsequent BS blocks always start with K-1 overlap
     }
 
-    SyncAll();
-
+    // Each barrier is skipped only where the work it orders cannot occur: deferred_ needs a batch
+    // spanning BS cores (impossible at bsCoreNum == 1, where every bsIdx_ is 0), while
+    // cacheDeferred_ and FillApcCachePrefixChunks both require APC. The conditions come from the
+    // tiling, so every core evaluates them identically.
+    if (bsCoreNum > 1 || apcEnabled_) {
+        SyncAll();
+    }
     WriteDeferredCacheSimple();
-
     FillApcCachePrefixChunks();
-    SyncAll(); // cross-core barrier: ensure FillApc reads complete before deferred writes
+    if (apcEnabled_) {
+        SyncAll(); // ensure FillApc reads complete before the deferred running-cache writes
+    }
     if (cacheDeferred_.active) {
         ExecuteDeferredRunningCache();
         cacheDeferred_.active = false;
@@ -770,9 +795,12 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
     LocalTensor<T> xLocal = xQueue_.DeQue<T>();
     LocalTensor<T> yLocal = yQueue_.AllocTensor<T>();
 
-    // Zero-init yLocal so padSlot tokens produce zero output
-    Duplicate(yLocal, (T)0, N * dimSize);
-    PipeBarrier<PIPE_V>();
+    // Zero-init yLocal so padSlot tokens produce zero output; dead work when nothing can be
+    // left unwritten (see needYZero_).
+    if (needYZero_) {
+        Duplicate(yLocal, (T)0, N * dimSize);
+        PipeBarrier<PIPE_V>();
+    }
 
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
 
