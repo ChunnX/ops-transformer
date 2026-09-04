@@ -512,7 +512,13 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     ++relayCount;
                 }
 
-                // Build one batch at a time for each destination rank. Submit all data WQEs first, then flags.
+                HcommChannelHandle sharedChannel = 0U;
+                if (relayCount > 0U) {
+                    RemoteRelayInfo firstRelayInfo = LoadRemoteRelayInfo(0U);
+                    sharedChannel = GetUrmaCommHandle(firstRelayInfo.dstRank);
+                }
+
+                // Phase 1: submit data batches for every destination rank before publishing any flag.
                 uint32_t submittedCount = 0U;
                 while (submittedCount < relayCount) {
                     uint32_t rankHeadIndex = relayCount;
@@ -533,6 +539,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     GM_ADDR remoteWindowAddr = GetWindowAddr(dstRank);
                     ascendc_assert(remoteWindowAddr != nullptr, "window address is null, dstRank=%u", dstRank);
                     HcommChannelHandle channel = GetUrmaCommHandle(dstRank);
+                    ascendc_assert(channel == sharedChannel, "all remote ranks must use the shared Hcomm channel");
                     HcommBatchHandle batchHandle =
                         hcomm_.MakeBatchHandle(channel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, remoteWindowAddr);
 
@@ -550,37 +557,62 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     ascendc_assert(ret == 0, "BatchCommit data failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
                                    dstRank);
 
-                    bool firstFlag = true;
                     for (uint32_t index = 0U; index < relayCount; ++index) {
                         RemoteRelayInfo relayInfo = LoadRemoteRelayInfo(index);
                         if (relayInfo.state != REMOTE_RELAY_STATE_READY || relayInfo.dstRank != dstRank) {
                             continue;
                         }
-                        AppendRemoteFlagWrite(batchHandle, remoteWindowAddr, relayInfo, firstFlag);
-                        firstFlag = false;
                         SetRemoteRelayState(index, index == rankHeadIndex ? REMOTE_RELAY_STATE_RANK_HEAD :
                                                                             REMOTE_RELAY_STATE_SUBMITTED);
                     }
-                    ret = hcomm_.BatchCommit(batchHandle);
-                    ascendc_assert(ret == 0, "BatchCommit flag failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
-                                   dstRank);
                     submittedCount += rankTokenCount;
                 }
 
-                // Submit every active channel before waiting, then drain once per destination rank. The drain must
-                // complete before workers reuse their single per-core staging slots in the next round.
-                for (uint32_t index = 0U; index < relayCount; ++index) {
-                    RemoteRelayInfo relayInfo = LoadRemoteRelayInfo(index);
-                    if (relayInfo.state != REMOTE_RELAY_STATE_RANK_HEAD) {
+                if (relayCount > 0U) {
+                    HcommBatchHandle drainHandle =
+                        hcomm_.MakeBatchHandle(sharedChannel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, nullptr);
+                    int32_t ret = hcomm_.Drain(drainHandle);
+                    ascendc_assert(ret == 0, "data BatchDrain failed, ret=%d, rankId=%u, round=%lu", ret, rankId_,
+                                   round);
+                }
+
+                // Phase 2: data is now remotely visible on every rank. Submit all flag batches.
+                for (uint32_t rankHeadIndex = 0U; rankHeadIndex < relayCount; ++rankHeadIndex) {
+                    RemoteRelayInfo rankHeadInfo = LoadRemoteRelayInfo(rankHeadIndex);
+                    if (rankHeadInfo.state != REMOTE_RELAY_STATE_RANK_HEAD) {
                         continue;
                     }
-                    GM_ADDR remoteWindowAddr = GetWindowAddr(relayInfo.dstRank);
-                    HcommChannelHandle channel = GetUrmaCommHandle(relayInfo.dstRank);
-                    HcommBatchHandle drainHandle =
+                    const uint32_t dstRank = rankHeadInfo.dstRank;
+                    GM_ADDR remoteWindowAddr = GetWindowAddr(dstRank);
+                    ascendc_assert(remoteWindowAddr != nullptr, "window address is null, dstRank=%u", dstRank);
+                    HcommChannelHandle channel = GetUrmaCommHandle(dstRank);
+                    ascendc_assert(channel == sharedChannel, "all remote ranks must use the shared Hcomm channel");
+                    HcommBatchHandle batchHandle =
                         hcomm_.MakeBatchHandle(channel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, remoteWindowAddr);
+
+                    bool firstFlag = true;
+                    uint32_t rankTokenCount = 0U;
+                    for (uint32_t index = 0U; index < relayCount; ++index) {
+                        RemoteRelayInfo relayInfo = LoadRemoteRelayInfo(index);
+                        if (relayInfo.dstRank != dstRank) {
+                            continue;
+                        }
+                        AppendRemoteFlagWrite(batchHandle, remoteWindowAddr, relayInfo, firstFlag);
+                        firstFlag = false;
+                        ++rankTokenCount;
+                    }
+                    ascendc_assert(rankTokenCount > 0U, "empty remote flag batch, dstRank=%u", dstRank);
+                    int32_t ret = hcomm_.BatchCommit(batchHandle);
+                    ascendc_assert(ret == 0, "BatchCommit flag failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
+                                   dstRank);
+                }
+
+                if (relayCount > 0U) {
+                    HcommBatchHandle drainHandle =
+                        hcomm_.MakeBatchHandle(sharedChannel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, nullptr);
                     int32_t ret = hcomm_.Drain(drainHandle);
-                    ascendc_assert(ret == 0, "BatchDrain failed, ret=%d, rankId=%u, dstRank=%u, round=%lu", ret,
-                                   rankId_, relayInfo.dstRank, round);
+                    ascendc_assert(ret == 0, "flag BatchDrain failed, ret=%d, rankId=%u, round=%lu", ret, rankId_,
+                                   round);
                 }
             }
 
