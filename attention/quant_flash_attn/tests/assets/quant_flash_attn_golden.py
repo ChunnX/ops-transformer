@@ -27,7 +27,6 @@ import torch
 import torch_npu
 
 
-
 logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
 logger = logging.getLogger(__name__)
 
@@ -37,107 +36,6 @@ logger = logging.getLogger(__name__)
 # GRAPH_PATH: 0=单算子, 7=aclgraph
 # 优先从环境变量读取，支持 GRAPH_PATH=7 python3 -m pytest ...
 import os as _os
-
-GRAPH_PATH = int(_os.environ.get("GRAPH_PATH", "0"))
-
-# ==============================================================================
-# 配置区 — 所有值由 wrapper._apply_golden_globals 从 csv attributes 注入
-# 默认 None；csv 未提供的 key → wrapper 用 dict.get() 得 None → 透传 None 给 aclnn
-# 零内部推导：不在此处硬编码任何 op 参数，不从其他参数推导缺失参数
-# ==============================================================================
-B = None
-BATCH_SIZE = None
-N_q = None
-N_kv = None
-D = None
-
-CU_SEQLENS_Q = None
-CU_SEQLENS_KV = None
-SEQUSED_Q = None
-SEQUSED_KV = None
-MAX_SEQLEN_Q = None
-MAX_SEQLEN_KV = None
-
-
-def _actual_seq_from_cu_seqlens(cu_seqlens):
-    """布局转换：从 cu_seqlens 差分还原 actual_seq（用于 tensor layout/TND 放置）。
-    这不是 op 参数推导——op 收到的 seqused 仍为 csv 原值（None 若 csv 省略）。
-    """
-    if cu_seqlens is None:
-        return None
-    return [cu_seqlens[i + 1] - cu_seqlens[i] for i in range(len(cu_seqlens) - 1)]
-
-
-def _actual_seq_q():
-    """布局辅助：返回 actual_seq_q（csv SEQUSED_Q 优先，否则从 CU_SEQLENS_Q 差分还原）。"""
-    return (
-        SEQUSED_Q
-        if SEQUSED_Q is not None
-        else _actual_seq_from_cu_seqlens(CU_SEQLENS_Q)
-    )
-
-
-def _actual_seq_kv():
-    """布局辅助：返回 actual_seq_kv（csv SEQUSED_KV 优先，否则从 CU_SEQLENS_KV 差分还原）。"""
-    return (
-        SEQUSED_KV
-        if SEQUSED_KV is not None
-        else _actual_seq_from_cu_seqlens(CU_SEQLENS_KV)
-    )
-
-
-ENABLE_PA = None
-BLOCK_SIZE = None
-
-SPARSE_MODE = 0
-FP8_DTYPE = torch.float8_e4m3fn
-QUANT_GROUP_SIZE = 32
-
-# Layout 选择
-INPUT_LAYOUT = None
-Q_SCALE_LAYOUT = None
-P_SCALE = None
-
-# 算子 layout 透传 (由 qfa_wrapper / inputs.py 从 CSV 注入)
-# layout_q/layout_q_descale/layout_kv/layout_out 直接透传给 aclnn 算子,
-# 与数据生成使用的 INPUT_LAYOUT/Q_SCALE_LAYOUT/KV_CACHE_LAYOUT 相互独立。
-LAYOUT_Q = "TND"
-LAYOUT_Q_DESCALE = "TND"
-LAYOUT_KV = "TND"
-LAYOUT_OUT = "TND"
-# head_dim_v: csv 显式传入则用 csv 值, 否则 None → 算子内默认取 head_dim
-HEAD_DIM_V = None
-
-SOFTMAX_SCALE = None
-
-# attn_mask 重建 shape（由 excel 的 attn_mask_shape 经 attributes→golden 全局注入）。
-# _build_causal_mask() 用此 shape 生成 causal mask；(0,) 空或 None 时回退默认 2048x2048。
-ATTN_MASK_SHAPE = (2048, 2048)
-
-# PA KV Cache Layout
-# BnNBsD: [BlockNum, N, BlockSize, D]
-# PA_NZ: fp8=[Bn,N,D//32,Bs,32], Kscale=[Bn,N,Bs//16,D//64,16,2], Vscale=[Bn,N,D//16,Bs//64,16,2]
-KV_CACHE_LAYOUT = None
-
-IS_CONTIGUOUS = None
-
-ENABLE_LSE = None
-
-# e8m0fnu 最小正数: 2^(-127)，用于替换 scale 中的 0 和非有限值
-# e8m0fnu 没有 0 值语义，0 的 biased exponent 会被 NPU 解释为 NaN
-E8M0_MIN_POSITIVE = 2 ** (-127)
-
-SEED_Q = None
-SEED_K = None
-SEED_V = None
-
-DATA_RANGE_Q = None
-DATA_RANGE_K = None
-DATA_RANGE_V = None
-
-DEVICE_ID = None
-
-
 
 
 # ==============================================================================
@@ -364,12 +262,6 @@ def canonical_q_scale_layout(layout):
     return layout
 
 
-
-
-
-
-
-
 def _convert_q_scale_bnsd_to_tnd(scale_bnsd, seq_lens, cu_seqlens=None):
     B, N, _, Dg = scale_bnsd.shape
     Dg_half = Dg // 2
@@ -555,19 +447,9 @@ def convert_q_scale_tnd_to_n2tgd_layout(tensor_tnd, num_kv_heads):
     return tensor_reshape.permute(1, 0, 2, 3, 4).contiguous()
 
 
-
-
 # ==============================================================================
 # TND → BNSD 反向转换 + scale unpack 辅助函数
 # ==============================================================================
-
-
-
-
-
-
-
-
 
 
 # ==============================================================================
@@ -734,12 +616,6 @@ def convert_v_scale_to_pa(scale_bnsd, seq_lens, group_size=32):
     return result
 
 
-
-
-
-
-
-
 # ==============================================================================
 # PA 格式逆转换 - PA → BNSD reverse
 # ==============================================================================
@@ -806,13 +682,9 @@ def pa_to_bnsd_data(pa_tensor, seq_lens, block_size, block_table, kv_layout="BnN
     return result[:, :, : max(seq_lens), :].contiguous()
 
 
-
-
 # ==============================================================================
 # 数据生成
 # ==============================================================================
-
-
 
 
 # ==============================================================================
@@ -901,11 +773,6 @@ def cpu_mxfp8_golden(
     else:
         K_BLOCK_SIZE = 256
         V_BLOCK_SIZE = 512
-
-    if actual_seq_q is None:
-        actual_seq_q = _actual_seq_q()
-    if actual_seq_kv is None:
-        actual_seq_kv = _actual_seq_kv()
 
     # FP8 → FP32 反量化
     q_tensor = q_fp8.to(torch.float32)
@@ -1064,10 +931,6 @@ def cpu_mxfp8_golden(
 # PA 模式: Q 用 TND layout, K/V 走 PA 预处理 (block_table + block_size)
 # 非 PA 模式: Q/K/V 均按 INPUT_LAYOUT 转换
 # ==============================================================================
-
-
-
-
 
 
 def _build_causal_mask():
@@ -1244,13 +1107,3 @@ def prepare_npu_inputs(
         sparse_mode=SPARSE_MODE,
         out_dtype=out_dtype,
     )
-
-
-
-
-
-
-# ==============================================================================
-# Main
-# ==============================================================================
-

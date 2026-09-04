@@ -32,83 +32,6 @@ logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
 logger = logging.getLogger(__name__)
 
 
-
-# ==============================================================================
-# 配置区
-# ==============================================================================
-import os as _os
-
-GRAPH_PATH = int(_os.environ.get("GRAPH_PATH", "0"))
-B = 1
-N_q = 1
-N_kv = 1
-D = 128
-# head_dim_v: csv 显式传入则用 csv 值, 否则 None → 算子内默认取 head_dim
-HEAD_DIM_V = None
-
-ENABLE_ROPE = False
-D_rope = 64
-
-CU_SEQLENS_Q = [0, 4]
-CU_SEQLENS_KV = [0, 1024]
-SEQUSED_Q = [4]
-SEQUSED_KV = [1024]
-MAX_SEQLEN_Q = 4
-MAX_SEQLEN_KV = 1024
-
-
-def _derive_seqused(cu_seqlens):
-    if cu_seqlens is None:
-        return None
-    return [cu_seqlens[i + 1] - cu_seqlens[i] for i in range(len(cu_seqlens) - 1)]
-
-
-def _get_seqused_q():
-    return SEQUSED_Q if SEQUSED_Q is not None else _derive_seqused(CU_SEQLENS_Q)
-
-
-def _get_seqused_kv():
-    return SEQUSED_KV if SEQUSED_KV is not None else _derive_seqused(CU_SEQLENS_KV)
-
-
-
-
-
-
-SPARSE_MODE = 3
-HIF8_MAX = 32768.0
-
-INPUT_LAYOUT = "TND"
-Q_SCALE_LAYOUT = "TND"
-P_SCALE = 1.0
-
-SOFTMAX_SCALE = None
-
-IS_CONTIGUOUS = True
-
-ENABLE_LSE = False
-
-ENABLE_PA = False
-BLOCK_SIZE = 0
-KV_CACHE_LAYOUT = "TND"
-FP8_DTYPE = torch.float8_e4m3fn
-HIF8_DTYPE = torch.uint8
-
-SEED_Q = 54
-SEED_K = 3
-SEED_V = 4
-SEED_QR = 8
-SEED_KR = 9
-
-DATA_RANGE_Q = 1.0
-DATA_RANGE_K = 1.0
-DATA_RANGE_V = 1.0
-
-DEVICE_ID = 0
-
-
-
-
 # ==============================================================================
 # HIF8 per-tensor 量化
 # scale = max_abs / HIF8_MAX, 每个张量一个标量
@@ -120,7 +43,6 @@ try:
     from . import generate_hifloat8_data as hif8_codec
 except ImportError:
     import generate_hifloat8_data as hif8_codec
-
 
 def get_hif8_per_tensor_quant_scale(tensor, hif8_max=HIF8_MAX):
     max_abs = tensor.abs().max().item()
@@ -231,15 +153,6 @@ def fill_tnd_padding(tensor_tnd, seq_lens, cu_seqlens, fill_value=float("inf")):
 
 
 
-
-
-# ==============================================================================
-# 数据生成
-# ==============================================================================
-
-
-
-
 # ==============================================================================
 # CPU Golden
 # ==============================================================================
@@ -311,11 +224,6 @@ def cpu_hif8_golden(
     Q_BLOCK_SIZE = 128
     K_BLOCK_SIZE = 256
     V_BLOCK_SIZE = 256
-
-    if actual_seq_q is None:
-        actual_seq_q = _get_seqused_q()
-    if actual_seq_kv is None:
-        actual_seq_kv = _get_seqused_kv()
 
     q_tensor = hif8_per_tensor_dequant(q_fp8)
     k_tensor = hif8_per_tensor_dequant(k_fp8)
@@ -418,10 +326,6 @@ def cpu_hif8_golden(
     out = torch.where(all_masked, torch.zeros_like(out), out)
     logger.info("[CPU Golden] output=%s", out.shape)
     return out, lse
-
-
-
-
 
 
 def _build_causal_mask():
@@ -589,13 +493,3 @@ def prepare_npu_inputs(
         sparse_mode=SPARSE_MODE,
         out_dtype=out_dtype,
     )
-
-
-
-
-
-
-# ==============================================================================
-# Main
-# ==============================================================================
-

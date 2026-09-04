@@ -36,92 +36,6 @@ logger = logging.getLogger(__name__)
 torch.set_printoptions(threshold=float("inf"), linewidth=300, precision=4)
 
 
-# ==============================================================================
-# 配置区 — 所有值由 wrapper._apply_golden_globals 从 csv attributes 注入
-# 默认 None; csv 未提供的 key → wrapper 用 dict.get() 得 None → 透传 None 给 aclnn
-# 零内部推导: 不在此处硬编码任何 op 参数
-# ==============================================================================
-GRAPH_PATH = int(os.environ.get("GRAPH_PATH", "0"))
-
-B = None
-BATCH_SIZE = None
-N_q = None
-N_kv = None
-D = None
-# head_dim_v: csv 显式传入则用 csv 值, 否则 None → 算子内默认取 head_dim
-HEAD_DIM_V = None
-
-ACTUAL_SEQ_Q = None
-ACTUAL_SEQ_KV = None
-CU_SEQLENS_Q = None
-CU_SEQLENS_KV = None
-SEQUSED_Q = None
-SEQUSED_KV = None
-MAX_SEQLEN_Q = None
-MAX_SEQLEN_KV = None
-
-ENABLE_PA = None
-BLOCK_SIZE = None
-
-SPARSE_MODE = 0
-FP8_DTYPE = torch.float8_e4m3fn
-
-# QFA layout 属性 (GQA FP8 固定值, 但保留可注入以兼容 csv 覆盖)
-LAYOUT_Q = "NTD"
-LAYOUT_Q_DESCALE = "NT"
-LAYOUT_KV = "PA_BNBD"
-LAYOUT_OUT = "TND"
-
-# PA KV Cache Layout (数据排布, 对应 LAYOUT_KV="PA_BNBD")
-KV_CACHE_LAYOUT = "BnNBsD"
-
-Q_SCALE_LAYOUT = None
-P_SCALE = None
-
-SOFTMAX_SCALE = None
-IS_CONTIGUOUS = None
-
-ENABLE_LSE = None
-
-SEED_Q = None
-SEED_K = None
-SEED_V = None
-SEED_BLOCK_TABLE = 1234
-
-DATA_RANGE_Q = None
-DATA_RANGE_K = None
-DATA_RANGE_V = None
-
-DEVICE_ID = None
-
-OUTPUT_DETYPE = torch.bfloat16
-
-# Q/K cache 末尾附加 scale 行数 (FP32 K scale 以 uint8 view 存入)
-K_SCALE_ROWS = 4
-
-EPSILON = 1e-20
-
-Q_BLOCK_SIZE = 128
-KV_BLOCK_SIZE = 256
-
-# QFA quant_mode=6 (GQA_FP8_FULLQUANT)
-QUANT_MODE = 6
-
-# 物理 block 数量, 0 表示使用默认值 (等于 total_blocks)
-NUM_BLOCKS = 0
-
-
-# ==============================================================================
-# 序列长度转换
-# ==============================================================================
-
-
-
-
-
-
-
-
 
 
 def broadcast_kv(num_heads, num_kv_heads, kv_tensor):
@@ -163,8 +77,6 @@ def quant_fp16_to_fp8(tensor, scale):
     result = tensor.float() * scale
     result = torch.clamp(result, -448.0, 448.0)
     return result.to(FP8_DTYPE).contiguous()
-
-
 
 
 # ==============================================================================
@@ -660,14 +572,6 @@ def _build_mask():
     return torch.triu(torch.ones(2048, 2048, dtype=torch.int8), diagonal=1).npu()
 
 
-
-
-
-
-
-
-
-
 def prepare_npu_inputs_gqa_fp8(
     q_fp8,
     k_fp8,
@@ -758,7 +662,4 @@ def prepare_npu_inputs_gqa_fp8(
         sparse_mode=SPARSE_MODE,
         out_dtype=OUTPUT_DETYPE,
     )
-
-
-
 
