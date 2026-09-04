@@ -25,15 +25,6 @@ extern "C" __global__ __aicore__ void kv_compress_epilog(
     GM_ADDR workspace,
     GM_ADDR tiling)
 {
-    if (workspace == nullptr) {
-        return;
-    }
-
-    GM_ADDR userspace = GetUserWorkspace(workspace);
-    if (userspace == nullptr) {
-        return;
-    }
-
     TPipe pipe;
 
     // Get tiling data
