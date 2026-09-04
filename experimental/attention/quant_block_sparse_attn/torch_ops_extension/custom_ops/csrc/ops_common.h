@@ -981,7 +981,7 @@ inline void UnInitCacheThreadLocal()
         auto converted_params = ConvertTypes(__VA_ARGS__, workspace_size_addr, executor_addr);                         \
         static auto getWorkspaceSizeFunc = ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr);             \
         auto workspace_status = call(getWorkspaceSizeFunc, converted_params);                                          \
-        TORCH_CHECK(workspace_status == 0, "call " #aclnn_api " failed");                                              \
+        TORCH_CHECK(workspace_status == 0, "call " #aclnn_api " failed, detail:", aclGetRecentErrMsg());              \
         void *workspace_addr = nullptr;                                                                                \
         at::Tensor workspace_tensor;                                                                                   \
         if (workspace_size != 0) {                                                                                     \
@@ -992,7 +992,7 @@ inline void UnInitCacheThreadLocal()
         auto acl_call = [converted_params, workspace_addr, workspace_size, acl_stream, executor]() {                   \
             OpApiFunc opApiFunc = reinterpret_cast<OpApiFunc>(opApiFuncAddr);                                          \
             auto api_ret = opApiFunc(workspace_addr, workspace_size, executor, acl_stream);                            \
-            TORCH_CHECK(api_ret == 0, "call " #aclnn_api " failed");                                                   \
+            TORCH_CHECK(api_ret == 0, "call " #aclnn_api " failed, detail:", aclGetRecentErrMsg());                   \
             ReleaseConvertTypes(converted_params);                                                                     \
             ReleaseHugeMem releaseMemFunc = reinterpret_cast<ReleaseHugeMem>(releaseMemAddr);                          \
             if (releaseMemFunc) {                                                                                      \
