@@ -472,6 +472,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for quant_bmm_reduce_scatter_tiling.");
     }
+    mc2CcTilingConfig.SetAlgConfig(CcuSchedReduceScatterSoleMesh);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(quantBmmMatmulReducescatterTilingData_->mc2InitTiling) != 0,
                     OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
                     return ge::GRAPH_FAILED);
