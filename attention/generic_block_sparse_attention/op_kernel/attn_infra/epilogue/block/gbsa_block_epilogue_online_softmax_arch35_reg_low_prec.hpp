@@ -11,14 +11,14 @@
 #ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_ARCH35_REG_LOW_PREC_HPP
 #define EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_ARCH35_REG_LOW_PREC_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/arch/resource.hpp"
-#include "../../../attn_infra/epilogue/dispatch_policy.hpp"
-#include "../../../attn_infra/epilogue/tile_common/tile_copy.hpp"
-#include "../../../attn_infra/gemm_coord.hpp"
-#include "../../../attn_infra/matrix_coord.hpp"
-#include "../../../tla/tensor.hpp"
-#include "../../../tla/layout.hpp"
+#include "../../../attn_infra/gbsa_base_defs.hpp"
+#include "../../../attn_infra/arch/gbsa_resource.hpp"
+#include "../../../attn_infra/epilogue/gbsa_epilogue_dispatch_policy.hpp"
+#include "../../../attn_infra/epilogue/tile_common/gbsa_epilogue_tile_copy.hpp"
+#include "../../../attn_infra/gbsa_gemm_coord.hpp"
+#include "../../../attn_infra/gbsa_matrix_coord.hpp"
+#include "../../../tla/gbsa_tla_tensor.hpp"
+#include "../../../tla/gbsa_tla_layout.hpp"
 
 namespace NpuArch::Epilogue::Block {
 
