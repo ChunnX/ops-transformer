@@ -25,6 +25,9 @@ if(NOT ASCEND_INSTALL_PATH AND DEFINED ENV{ASCEND_HOME_PATH})
     set(ASCEND_INSTALL_PATH $ENV{ASCEND_HOME_PATH})
 endif()
 
+add_cann_third_party(llvm)
+set(URL "https://gitcode.com/cann-src-third-party/protobuf/releases/download/v25.1/protobuf-25.1.tar.gz")
+
 option(BUILD_OPEN_PROJECT         "Build open ascend ops project."  ON)
 option(BUILD_OPS_RTY_KERNEL       "Build return yellow kernel."     OFF)
 option(ENABLE_CCACHE              "Enable ccache capability"        ON)
