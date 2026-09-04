@@ -275,7 +275,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseOptionalInputs(QuantBlockSp
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             kOpName, "block_table first dim", std::to_string(blockTableB),
             "block_table first dim must equal the first dim " + std::to_string(tilingInfo.bSize) +
-                " of query/sparse_indices, not just any dimension mismatch");
+                " of query/sparse_indices");
         return ge::GRAPH_FAILED;
     }
     const uint64_t kvSeqUpperBound =
