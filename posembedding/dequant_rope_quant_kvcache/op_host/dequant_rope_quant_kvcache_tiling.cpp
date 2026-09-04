@@ -14,6 +14,7 @@
  */
 
 #include "dequant_rope_quant_kvcache_tiling.h"
+#include "dequant_rope_quant_kvcache_check_support.h"
 
 namespace {
 constexpr int64_t BLOCK_SIZE = 32;
@@ -49,6 +50,8 @@ constexpr int32_t QUANT_V_OFFSET_INPUT_INDEX = 9;
 constexpr int32_t WEIGHT_SCALES_INPUT_INDEX = 10;
 constexpr int32_t ACTIVATION_INPUT_INDEX = 11;
 constexpr int32_t BIAS_INPUT_INDEX = 12;
+constexpr int32_t QUANT_MODE_IDX = 1;
+constexpr int32_t LAYOUT_IDX = 2;
 constexpr int32_t IFKV_INDEX = 3;
 constexpr int32_t CACHE_MODE_IDX = 4;
 constexpr int32_t KVCACHE_HEAD_DIM_INDEX = 2;
@@ -215,6 +218,21 @@ bool CheckPaCacheMode(const gert::RuntimeAttrs *attrs)
     return (cacheMode == "page");
 }
 
+ge::graphStatus CheckAttrs(const gert::RuntimeAttrs *attrs, const ge::char_t *nodeName)
+{
+    const char *quantMode = attrs->GetStr(QUANT_MODE_IDX);
+    const char *layout = attrs->GetStr(LAYOUT_IDX);
+    const char *cacheMode = attrs->GetStr(CACHE_MODE_IDX);
+    OP_CHECK_IF(quantMode == nullptr || std::string(quantMode) != "static",
+                OP_LOGE(nodeName, "quant_mode should be static"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(layout == nullptr || std::string(layout) != "BSND", OP_LOGE(nodeName, "layout should be BSND"),
+                return ge::GRAPH_FAILED);
+    // cache_mode is optional in the operator prototype and defaults to contiguous.
+    OP_CHECK_IF(cacheMode != nullptr && (std::string(cacheMode) != "contiguous" && std::string(cacheMode) != "page"),
+                OP_LOGE(nodeName, "cache_mode should be contiguous or page"), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus getDRQKShapeInfo(gert::TilingContext *context, TilingInfoDRQK &tilingInfoDRQK)
 {
     auto platformInfo = context->GetPlatformInfo();
@@ -228,6 +246,9 @@ ge::graphStatus getDRQKShapeInfo(gert::TilingContext *context, TilingInfoDRQK &t
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    if (CheckAttrs(attrs, nodeName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     auto attr = attrs->GetAttrPointer<gert::ContinuousVector>(0);
     OP_CHECK_IF(
@@ -376,13 +397,22 @@ ge::graphStatus getDRQKShapeInfo(gert::TilingContext *context, TilingInfoDRQK &t
 
     auto xDesc = context->GetInputDesc(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
-    tilingInfoDRQK.isDequant = xDesc->GetDataType() == ge::DT_INT32;
+    const auto xDtype = xDesc->GetDataType();
+    tilingInfoDRQK.isDequant = xDtype == ge::DT_INT32;
 
     auto indiceDesc = context->GetInputDesc(INDICES_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, indiceDesc);
     auto cosDesc = context->GetInputDesc(COS_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, cosDesc);
-    bool ifBfloat16 = cosDesc->GetDataType() == ge::DT_BF16;
+    auto sinDesc = context->GetInputDesc(SIN_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, sinDesc);
+    const auto cosDtype = cosDesc->GetDataType();
+    OP_CHECK_IF(cosDtype != sinDesc->GetDataType(), OP_LOGE(nodeName, "cos and sin dtype should be the same"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!tilingInfoDRQK.isDequant && xDtype != cosDtype,
+                OP_LOGE(nodeName, "x, cos and sin dtype should be the same when x is not int32"),
+                return ge::GRAPH_FAILED);
+    bool ifBfloat16 = cosDtype == ge::DT_BF16;
 
     tilingInfoDRQK.inputBtyeSize = ifBfloat16 ? FP32_BYTE : ge::GetSizeByDataType(cosDesc->GetDataType());
     tilingInfoDRQK.inputBtyeSize = tilingInfoDRQK.isDequant ? FP32_BYTE : tilingInfoDRQK.inputBtyeSize;
@@ -390,6 +420,10 @@ ge::graphStatus getDRQKShapeInfo(gert::TilingContext *context, TilingInfoDRQK &t
     tilingInfoDRQK.hiddenBtyeSize = tilingInfoDRQK.hiddenSize * tilingInfoDRQK.inputBtyeSize;
     auto scaleDesc = context->GetInputDesc(QUANT_K_SCALE_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, scaleDesc);
+    auto vScaleDesc = context->GetInputDesc(QUANT_V_SCALE_INPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, vScaleDesc);
+    OP_CHECK_IF(scaleDesc->GetDataType() != ge::DT_FLOAT || vScaleDesc->GetDataType() != ge::DT_FLOAT,
+                OP_LOGE(nodeName, "scale_k and scale_v dtype should be float"), return ge::GRAPH_FAILED);
     if (tilingInfoDRQK.hasQuantOffset == 1) {
         const gert::StorageShape *kOffsetShape = context->GetOptionalInputShape(QUANT_K_OFFSET_INPUT_INDEX);
         const gert::StorageShape *vOffsetShape = context->GetOptionalInputShape(QUANT_V_OFFSET_INPUT_INDEX);
@@ -528,3 +562,11 @@ IMPL_OP_OPTILING(DequantRopeQuantKvcache)
     .Tiling(TilingDequantRopeQuantKvcache)
     .TilingParse<DequantRopeQuantKvcacheCompileInfo>(TilingPrepareForDequantRopeQuantKvcache);
 } // namespace optiling
+
+namespace ops {
+static int g_DequantRopeQuantKvcacheRegisterCheckSupport = []() {
+    optiling::OpCheckFuncHelper(FUNC_CHECK_SUPPORTED, "DequantRopeQuantKvcache",
+                                CheckSupportForDequantRopeQuantKvcache);
+    return 0;
+}();
+} // namespace ops
