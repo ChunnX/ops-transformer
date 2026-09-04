@@ -212,7 +212,7 @@ int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vect
     ADD_OUTPUT(4, expanded_scale, DT_FLOAT, expanded_scale_shape);
 
     ADD_INPUT_ATTR(active_num, 12);
-    ADD_INPUT_ATTR(expert_capacity, 4);
+    ADD_INPUT_ATTR(expert_capacity, 0);
     ADD_INPUT_ATTR(expert_num, 256);
     ADD_INPUT_ATTR(drop_pad_mode, 0);
     ADD_INPUT_ATTR(expert_tokens_num_type, 1);
