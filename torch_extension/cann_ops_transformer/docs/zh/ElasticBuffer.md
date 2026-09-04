@@ -417,7 +417,7 @@ ElasticBuffer.combine(x, handle, *, topk_weights=None, bias=None) -> (Tensor, Te
 
 ### get_moe_ep_ccl_buffer_size（静态方法）
 
-**功能**：需与 [dispatch](#dispatch) 和 [combine](#combine) 配套使用，用于计算dispatch和combine算子所需的HCCL通信 `buffer_size` 大小（单位：MB）。该接口为静态方法，可在初始化ElasticBuffer前调用。
+**功能**：用于计算dispatch和combine算子所需的CCL通信buffer大小（单位：MB）。当前dispatch和combine所需的通信buffer已由ElasticBuffer内部在首次调用时按算子参数自动计算并申请（优先按1G大页申请并向上对齐，资源不足时降级为2M大页，均为物理地址连续内存），无需再通过 `HCCL_BUFFSIZE` 环境变量手动配置；该接口仅用于容量评估参考。该接口为静态方法，可在初始化ElasticBuffer前调用。
 
 **函数原型**：
 
@@ -435,7 +435,7 @@ ElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hi
 
 **输出说明**：
 
-- **ccl_buffer_size** (`int`)：计算得到的 `ccl_buffer_size` 大小，单位为MB。将该值设置为 `HCCL_BUFFSIZE` 环境变量即可满足通信域的内存需求。
+- **ccl_buffer_size** (`int`)：计算得到的 `ccl_buffer_size` 大小，单位为MB。当前通信buffer已由ElasticBuffer内部自动申请（实际按 `2 * ccl_buffer_size` 大小的物理内存申请），该值仅用于容量评估参考。
 
 **计算公式**：
 
@@ -549,9 +549,8 @@ ccl_buffer_size = Align2(Align1MB(minimum_buffer_size) / 1MB) / 2
   - `num_local_experts`：表示本卡专家数量，`num_local_experts = num_experts / ep_world_size`，其中 `num_experts` 取值范围为 `[2, 2048]` 且须被 `ep_world_size` 整除，即满足 `0 < num_local_experts * ep_world_size ≤ 2048`。
 
 - **HCCL通信域缓存区大小**：
-  - 调用 [dispatch](#dispatch) 或 [combine](#combine) 前需检查 `HCCL_BUFFSIZE` 环境变量取值是否合理，该环境变量配置单个通信域的 buffer 大小（单位MB，实际物理分配为 2 倍），不配置时默认为200MB。
-  - 通信域缓存区大小可通过调用 [get_moe_ep_ccl_buffer_size](#get_moe_ep_ccl_buffer_size静态方法) 计算。
-  - 计算得到的 `ccl_buffer_size` 需通过环境变量 `HCCL_BUFFSIZE` 设置，每个通信域独占一组 `2 * HCCL_BUFFSIZE` 大小的内存。
+  - [dispatch](#dispatch) 和 [combine](#combine) 所需的CCL通信buffer由ElasticBuffer内部自动计算并按需申请（优先按1G大页申请，申请量按1G向上对齐；1G大页资源不足时自动降级为2M大页，申请量为 `2 * ccl_buffer_size`；均为物理地址连续内存），无需配置 `HCCL_BUFFSIZE` 环境变量；buffer大小由 [get_moe_ep_ccl_buffer_size](#get_moe_ep_ccl_buffer_size静态方法) 的计算结果所得，在首次调用 [dispatch](#dispatch) 或 [combine](#combine) 时按调用参数完成计算与申请。
+  - Engram训练模式（`with_grad=True`）的a2a收发仍使用HCCL默认通信buffer，`HCCL_BUFFSIZE` 环境变量仅对该路径生效（不配置时默认200MB）。
 
 - **通信域约束**：
   - Engram通信域 `world_size` 范围 `[2, 1024]`，支持多卡分布式场景。
@@ -848,15 +847,6 @@ def run_dispatch_combine(rank):
 
 if __name__ == "__main__":
     os.environ["HCCL_WHITELIST_DISABLE"] = "1"
-    os.environ["HCCL_BUFFSIZE"] = str(
-        ElasticBuffer.get_moe_ep_ccl_buffer_size(
-            world_size,
-            num_max_tokens_per_rank,
-            hidden,
-            num_experts,
-            top_k,
-        )
-    )
 
     processes = []
     for rank in range(world_size):

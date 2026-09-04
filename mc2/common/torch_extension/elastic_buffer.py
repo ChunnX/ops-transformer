@@ -925,6 +925,14 @@ class ElasticBuffer:
             ),
         )
         hp_addr = self._prepare_host_counter(args.do_cpu_sync)
+        # 首次调用时按算子参数计算CCL通信buffer大小(MB)，由C++ EnsureMoeContext内部申请注册
+        ccl_buffer_size = self.get_moe_ep_ccl_buffer_size(
+            self._ep_world_size,
+            args.num_max_tokens_per_rank,
+            self._hidden,
+            args.num_experts,
+            self._num_topk,
+        )
 
         (
             num_recv_per_rank,
@@ -949,6 +957,7 @@ class ElasticBuffer:
             args.expert_alignment,
             args.do_cpu_sync,
             hp_addr,
+            ccl_buffer_size,
         )
 
         actual_a = self._get_dispatch_recv_count(args)
@@ -966,6 +975,7 @@ class ElasticBuffer:
                 self._rank_id,
                 args.num_experts,
                 args.num_max_tokens_per_rank,
+                ccl_buffer_size,
                 recv_x,
                 recv_src_meta,
                 recv_topk_weights,
@@ -1026,6 +1036,14 @@ class ElasticBuffer:
             if topk_weights is None
             else torch.empty((num_tokens, topk), dtype=torch.float32, device=x.device)
         )
+        # 首次调用时按算子参数计算CCL通信buffer大小(MB)，由C++ EnsureMoeContext内部申请注册
+        ccl_buffer_size = self.get_moe_ep_ccl_buffer_size(
+            self._ep_world_size,
+            handle.num_max_tokens_per_rank,
+            self._hidden,
+            handle.num_experts,
+            self._num_topk,
+        )
 
         self._runtime.moe_ep_combine(
             x,
@@ -1037,6 +1055,7 @@ class ElasticBuffer:
             self._rank_id,
             handle.num_experts,
             handle.num_max_tokens_per_rank,
+            ccl_buffer_size,
         )
 
         combined_x, combined_topk_weights = self._runtime.moe_ep_combine_epilogue(
@@ -1046,6 +1065,7 @@ class ElasticBuffer:
             self._rank_id,
             handle.num_experts,
             handle.num_max_tokens_per_rank,
+            ccl_buffer_size,
             combined_x,
             combined_topk_weights,
         )
