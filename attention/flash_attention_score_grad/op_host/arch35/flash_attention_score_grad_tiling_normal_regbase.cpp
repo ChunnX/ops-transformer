@@ -1673,11 +1673,6 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
 
 void FlashAttentionScoreGradTilingNormalRegbase::DoPostTiling()
 {
-    postTilingData_->set_sinkReduceAxis(0);
-    postTilingData_->set_sinkPostBlockTotal(0);
-    postTilingData_->set_sinkPostBlockFactor(0);
-    postTilingData_->set_sinkPostTailNum(0);
-
     uint64_t postUbBaseSize = fBaseParams.hasRope ? ROPE_POST_BASE * FP16_BYTES : REGBASE_POST_BASE * FP16_BYTES;
     uint64_t qPostBaseNum = fBaseParams.hasRope ? ROPE_POST_BASE : REGBASE_POST_BASE;
     uint64_t qPostBlockTotal = static_cast<uint64_t>(fBaseParams.qSize);
