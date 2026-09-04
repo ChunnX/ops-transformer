@@ -27,12 +27,12 @@
 
 #include "matmul_base_tiling.h"
 #include "matmul_tiling_cfg.h"
-#include "platform/soc_spec.h"
+#include "op_host/util/op_const_def.h"
 
 namespace optiling {
 struct Mc2MMRegisterCfg {
     const char *opType{nullptr};
-    NpuArch npuArch{NpuArch::DAV_RESV};
+    NpuArch npuArch{Ops::Base::DAV_RESV};
     std::vector<int32_t> priorities{}; // 0 base
 };
 

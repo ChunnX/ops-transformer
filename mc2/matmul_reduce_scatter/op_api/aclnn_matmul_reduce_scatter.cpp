@@ -24,6 +24,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
+#include "op_host/util/op_const_def.h"
 #include "mc2_log_compat.h"
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
@@ -50,7 +51,7 @@ typedef struct {
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &dfxId);
 
-static inline bool IsAscend910A5(void) { return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510; }
+static inline bool IsAscend910A5(void) { return op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510; }
 
 static uint8_t GetDebugMode()
 {
