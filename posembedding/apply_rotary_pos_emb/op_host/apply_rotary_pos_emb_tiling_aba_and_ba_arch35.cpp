@@ -33,8 +33,7 @@ class ApplyRotaryPosEmbTilingABAAndBA : public ApplyRotaryPosEmbRegbaseTilingBas
 public:
     explicit ApplyRotaryPosEmbTilingABAAndBA(gert::TilingContext *context)
         : ApplyRotaryPosEmbRegbaseTilingBaseClass(context)
-    {
-    }
+    {}
 
 protected:
     bool IsCapable() override;
