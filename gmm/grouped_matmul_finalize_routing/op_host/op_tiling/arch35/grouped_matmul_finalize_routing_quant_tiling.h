@@ -64,6 +64,16 @@ constexpr uint32_t OUT_DTYPE_BF16_INDEX = 2;
 constexpr int32_t SPLIT_M = 0;
 constexpr uint32_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024U;
 constexpr float DETER_WORKSPACE_RATIO = 0.8f; // 减去系统开销后，确定性workspace占比
+constexpr uint32_t SINGLE_BUFFER_NUM = 1;
+constexpr uint32_t DOUBLE_BUFFER_NUM = 2;
+constexpr uint64_t BF16_BYTES = 2UL;
+constexpr uint64_t FP32_BYTES = 4UL;
+constexpr uint64_t L0C_OUT_UB_MAX_M = 128UL;
+constexpr uint64_t L0C_OUT_UB_MAX_N = 256UL;
+constexpr uint64_t OUTPUT_UB_TOTAL_M = 64UL;
+constexpr uint64_t LOGIT_UB_BUFFER_NUM = 2UL;
+constexpr uint64_t LOGIT_UB_BLOCK_ELEMENTS = 256UL;
+constexpr uint64_t RESERVED_UB_BYTES = 32UL * 1024UL;
 } // namespace GroupedMatmulFinalizeRoutingArch35TilingConstant
 
 class GroupedMatmulFinalizeRoutingQuantTiling : public GroupedQmmTiling {
@@ -124,6 +134,8 @@ private:
     bool CheckOptionalInputsForRouting();
     bool CheckScaleAndPerTokenDims(const gert::StorageShape *pertokenScaleStorageShape,
                                    const gert::Shape &scaleShape) const;
+    bool IsBf16MxTensorApiTarget() const;
+    uint32_t SelectL0cOutUbBufferNum() const;
 
     GMMFinalizeRoutingTilingData tilingData_;
     uint64_t sharedInputLen_ = 0;
