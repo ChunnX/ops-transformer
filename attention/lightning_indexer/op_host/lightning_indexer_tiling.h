@@ -95,12 +95,6 @@ TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(int64_t, preTokens)
 TILING_DATA_FIELD_DEF(int64_t, nextTokens)
 TILING_DATA_FIELD_DEF(uint32_t, returnValue)
-TILING_DATA_FIELD_DEF(uint32_t, radixSortLen)
-TILING_DATA_FIELD_DEF(uint32_t, radixSortLenAlign)
-TILING_DATA_FIELD_DEF(uint64_t, scoreB16GmOffset)
-TILING_DATA_FIELD_DEF(uint64_t, radixWsOffset)
-TILING_DATA_FIELD_DEF(uint32_t, radixAivNum)
-TILING_DATA_FIELD_DEF(uint32_t, radixTotalBatch)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(LightningIndexer, LITilingData)
 

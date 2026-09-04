@@ -112,12 +112,6 @@ struct ConstInfo {
     int64_t preTokens = INT64_MAX;
     int64_t nextTokens = INT64_MAX;
     bool returnValue = false;
-    uint32_t radixSortLen = 0;
-    uint32_t radixSortLenAlign = 0;
-    uint64_t scoreB16GmOffset = 0;
-    uint64_t radixWsOffset = 0;
-    uint32_t radixAivNum = 0;
-    uint32_t radixTotalBatch = 0;
 
     uint32_t actualLenQDims = 0U; // query的actualSeqLength 的维度
     uint32_t actualLenDims = 0U;  // KV 的actualSeqLength 的维度

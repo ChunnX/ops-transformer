@@ -24,7 +24,6 @@
 #include "../lightning_indexer_common.h"
 #include "lightning_indexer_service_vector.h"
 #include "lightning_indexer_service_cube.h"
-#include "radix_topk_inline.h"
 
 namespace LIKernel {
 using namespace LICommon;
@@ -119,9 +118,6 @@ protected:
     GlobalTensor<MM1_OUT_T> mm1ResGm;  // 存放S
     GlobalTensor<float> vec1ResGm;     // 存放TopK计算中间结果
     GlobalTensor<int64_t> vec1ParamGm; // 存放LD参数信息
-    GlobalTensor<float> scoreB16Gm; // float score for RadixTopK
-    __gm__ uint8_t *workspaceBase = nullptr;
-    __gm__ uint8_t *sparseIndicesBase = nullptr;
 
     // ================================类成员变量====================================
     // aic、aiv核信息
@@ -145,7 +141,6 @@ protected:
     __aicore__ inline void ProcessMain();
     __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx, LICommon::RunInfo &runInfo);
     __aicore__ inline void ProcessDecode();
-    __aicore__ inline void ProcessRadixTopK();
     __aicore__ inline void ProcessInvalid();
     // ================================Params Calc=====================================
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
@@ -173,16 +168,14 @@ __aicore__ inline void LightningIndexerKernel<LIT>::InitTilingData(const LITilin
     constInfo.preTokens = tilingData->preTokens;
     constInfo.nextTokens = tilingData->nextTokens;
     constInfo.returnValue = tilingData->returnValue;
-    constInfo.radixSortLen = tilingData->radixSortLen;
-    constInfo.radixSortLenAlign = tilingData->radixSortLenAlign;
-    constInfo.scoreB16GmOffset = tilingData->scoreB16GmOffset;
-    constInfo.radixWsOffset = tilingData->radixWsOffset;
-    constInfo.radixAivNum = tilingData->radixAivNum;
-    constInfo.radixTotalBatch = tilingData->radixTotalBatch;
 
     constInfo.outputLayout = LAYOUT_T; // 输出和输入形状一致
-    constInfo.isAccumSeqS1 = (LAYOUT_T == LI_LAYOUT::TND);
-    constInfo.isAccumSeqS2 = (K_LAYOUT_T == LI_LAYOUT::TND);
+    if (LAYOUT_T == LI_LAYOUT::TND) {
+        constInfo.isAccumSeqS1 = true;
+    }
+    if (K_LAYOUT_T == LI_LAYOUT::TND) {
+        constInfo.isAccumSeqS2 = true;
+    }
 
     constInfo.kHeadNum = K_HEAD_NUM;
     constInfo.headDim = HEAD_DIM;
@@ -447,13 +440,10 @@ __aicore__ inline void LightningIndexerKernel<LIT>::Init(__gm__ uint8_t *query,
 
     if ASCEND_IS_AIV {
         vectorService.InitParams(constInfo, tiling);
-        workspaceBase = workspace;
-        sparseIndicesBase = sparseIndices;
-        scoreB16Gm.SetGlobalBuffer((__gm__ float *)(workspace + constInfo.scoreB16GmOffset));
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
         valueOutGm.SetGlobalBuffer((__gm__ K_T *)sparseValues);
         weightsGm.SetGlobalBuffer((__gm__ W_T *)weights);
-        vectorService.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, vec1ParamGm, weightsGm, indiceOutGm, valueOutGm, scoreB16Gm);
+        vectorService.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, vec1ParamGm, weightsGm, indiceOutGm, valueOutGm);
     } else {
         matmulService.InitParams(constInfo);
         queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
@@ -583,49 +573,8 @@ __aicore__ inline void LightningIndexerKernel<LIT>::Process()
         ProcessInvalid();
         return;
     }
-
-    // Initialize scoreB16Gm with -1e30 for RadixTopK path
-    if (constInfo.radixTotalBatch > 0) {
-    if ASCEND_IS_AIV {
-        uint64_t totalFloats = static_cast<uint64_t>(constInfo.radixTotalBatch) * constInfo.radixSortLenAlign;
-        uint64_t perCore = (totalFloats + constInfo.radixAivNum - 1) / constInfo.radixAivNum;
-        uint64_t start = static_cast<uint64_t>(tmpBlockIdx) * perCore;
-        uint64_t end = start + perCore;
-        if (end > totalFloats) { end = totalFloats; }
-
-        TBuf<TPosition::VECCALC> initBuf;
-        pipe->InitBuffer(initBuf, 512 * sizeof(float) + 32);
-        LocalTensor<float> initTensor = initBuf.Get<float>();
-        Duplicate<float>(initTensor, -1.0e30f, 512);
-        PipeBarrier<PIPE_V>();
-
-        event_t eVM = static_cast<event_t>(pipe->FetchEventID(HardEvent::V_MTE3));
-        constexpr uint64_t CHUNK = 512;
-        for (uint64_t off = start; off < end; off += CHUNK) {
-            uint64_t len = (off + CHUNK <= end) ? CHUNK : (end - off);
-            SetFlag<HardEvent::V_MTE3>(eVM);
-            WaitFlag<HardEvent::V_MTE3>(eVM);
-            DataCopyPad(scoreB16Gm[off], initTensor, DataCopyExtParams{
-                static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float) * len), 0, 0, 0});
-        }
-        // Wait for all MTE3 writes to complete before proceeding
-        event_t eM3V = static_cast<event_t>(pipe->FetchEventID(HardEvent::MTE3_V));
-        SetFlag<HardEvent::MTE3_V>(eM3V);
-        WaitFlag<HardEvent::MTE3_V>(eM3V);
-        pipe->ReleaseEventID<HardEvent::MTE3_V>(eM3V);
-        pipe->ReleaseEventID<HardEvent::V_MTE3>(eVM);
-        SyncAll();
-    } else {
-        SyncAll();
-    }
-    }
-
     ProcessMain();
-    if (constInfo.radixTotalBatch > 0) {
-        ProcessRadixTopK();
-    } else {
-        ProcessDecode();
-    }
+    ProcessDecode();
 }
 
 template <typename LIT>
@@ -704,9 +653,6 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessMain()
 
     if ASCEND_IS_AIV {
         vectorService.FreeEventID();
-        if (constInfo.radixTotalBatch > 0) {
-            PipeBarrier<PIPE_ALL>();
-        }
     } else {
         matmulService.FreeEventID();
         CrossCoreWaitFlag(constInfo.syncV1C1);
@@ -727,97 +673,6 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessBaseBlock(uint32_t lo
         CrossCoreWaitFlag(constInfo.syncC1V1);
         vectorService.ProcessVec(runInfo);
         CrossCoreSetFlag<LICommon::ConstInfo::FIA_SYNC_MODE2, PIPE_MTE2>(constInfo.syncV1C1);
-    }
-}
-
-template <typename LIT>
-__aicore__ inline void LightningIndexerKernel<LIT>::ProcessRadixTopK()
-{
-    if ASCEND_IS_AIV {
-        SyncAll();
-        uint32_t sortLen = constInfo.radixSortLen;
-        uint32_t sortLenAlign = constInfo.radixSortLenAlign;
-        uint32_t kValue = constInfo.sparseCount;
-        uint32_t tileLen = (sortLen < 2048) ? sortLen : 2048;
-        uint32_t totalBatch = constInfo.radixTotalBatch;
-        uint32_t aivIdx = tmpBlockIdx;
-        uint32_t aivTotal = constInfo.radixAivNum;
-
-        __gm__ uint8_t *scoreBase = workspaceBase + constInfo.scoreB16GmOffset;
-        __gm__ uint8_t *radixWsBase = workspaceBase + constInfo.radixWsOffset;
-
-        // TND batch mapping: use actualSeqLengthsGmQ to find (bIdx, s1Idx)
-        bool isTND = (constInfo.qSeqSize == 0 && constInfo.actualLenQDims > 0);
-
-        for (uint32_t batchId = aivIdx; batchId < totalBatch; batchId += aivTotal) {
-            uint32_t bIdx = 0;
-            uint32_t s1Idx = 0;
-            uint32_t n2Idx = 0;
-
-            if (constInfo.qSeqSize > 0) {
-                // BSND: batchId = bIdx * (qSeq * n2) + s1Idx * n2 + n2Idx
-                bIdx = batchId / (constInfo.qSeqSize * constInfo.kHeadNum);
-                uint32_t remain = batchId % (constInfo.qSeqSize * constInfo.kHeadNum);
-                s1Idx = remain / constInfo.kHeadNum;
-                n2Idx = remain % constInfo.kHeadNum;
-            } else if (isTND) {
-                // TND: batchId = tRow * n2 + n2Idx; tRow maps to (bIdx, localS1Idx)
-                uint32_t tRow = batchId / constInfo.kHeadNum;
-                n2Idx = batchId % constInfo.kHeadNum;
-                // Find which batch tRow belongs to using cumulative act_seq_q
-                uint32_t tBase = 0;
-                for (uint32_t b = 0; b < constInfo.batchSize; b++) {
-                    uint32_t tEnd = actualSeqLengthsGmQ.GetValue(b);
-                    if (tRow < tEnd) {
-                        bIdx = b;
-                        s1Idx = tRow - tBase;
-                        break;
-                    }
-                    tBase = tEnd;
-                }
-            } else {
-                s1Idx = batchId;
-            }
-
-            uint32_t actS1 = 0;
-            uint32_t actS2 = 0;
-            GetS1S2ActualSeqLen(bIdx, actS1, actS2);
-
-            int32_t cuRealAcSeq = constInfo.attenMaskFlag ?
-                (static_cast<int32_t>(actS2) - (static_cast<int32_t>(actS1) - static_cast<int32_t>(s1Idx)) + 1) :
-                static_cast<int32_t>(actS2);
-
-            __gm__ uint8_t *scorePtr = scoreBase + batchId * sortLenAlign * sizeof(float);
-            __gm__ uint8_t *idxPtr = sparseIndicesBase + batchId * kValue * sizeof(int32_t);
-
-            if (cuRealAcSeq <= 0) {
-                __gm__ int32_t *outIdx = reinterpret_cast<__gm__ int32_t *>(idxPtr);
-                for (uint32_t i = 0; i < kValue; i++) { outIdx[i] = -1; }
-                continue;
-            }
-
-            if (static_cast<uint32_t>(cuRealAcSeq) <= kValue) {
-                __gm__ int32_t *outIdx = reinterpret_cast<__gm__ int32_t *>(idxPtr);
-                for (int32_t i = 0; i < cuRealAcSeq; i++) { outIdx[i] = i; }
-                for (uint32_t i = static_cast<uint32_t>(cuRealAcSeq); i < kValue; i++) { outIdx[i] = -1; }
-                continue;
-            }
-
-            uint32_t effSortLen = static_cast<uint32_t>(cuRealAcSeq);
-
-            InlineRadixTopK(
-                pipe,
-                scorePtr,
-                idxPtr,
-                radixWsBase,
-                effSortLen,
-                sortLenAlign,
-                kValue,
-                tileLen,
-                0,
-                1,
-                batchId);
-        }
     }
 }
 

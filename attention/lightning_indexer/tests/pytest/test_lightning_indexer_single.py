@@ -85,7 +85,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         query_datarange = param_combinations['query_datarange']
         key_datarange = param_combinations['key_datarange']
         weights_datarange = param_combinations['weights_datarange']
-        torch_npu.npu.set_device(1)
+        torch_npu.npu.set_device(0)
         test_data = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num,\
                     qk_dtype, weight_dtype, actual_seq_dtype, act_seq_q, act_seq_k, layout_query,\
                     layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange, None

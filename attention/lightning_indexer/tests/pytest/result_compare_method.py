@@ -183,8 +183,8 @@ def compare_topk_valid(cur_npu, cur_cpu, topk_value, bsn, diff_npu, diff_cpu,
     if is_equivalent:
         pass
     else:
-        value_bm = topk_value[b_idx, n2_idx, s1_idx, cur_cpu[-1]].to(torch.bfloat16).to(torch.float32)
-        element_list = topk_value[b_idx, n2_idx, s1_idx, :].to(torch.bfloat16).to(torch.float32)
+        value_bm = topk_value[b_idx, n2_idx, s1_idx, cur_cpu[-1]]
+        element_list = topk_value[b_idx, n2_idx, s1_idx, :]
         only_in_npu = npu_set - cpu_set
         only_in_cpu = cpu_set - npu_set
         only_in_npu_list = list(only_in_npu)
