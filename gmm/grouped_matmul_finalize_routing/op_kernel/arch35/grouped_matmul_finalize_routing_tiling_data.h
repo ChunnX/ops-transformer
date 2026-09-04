@@ -37,6 +37,7 @@ struct GMMFinalizeRoutingDataParams {
     uint16_t deterministicFlag = 0;
     uint32_t deterWorkspaceSize = 0;
     uint32_t l0cOutUbBufferNum = 1;
+    uint32_t reserved = 0;
 };
 #pragma pack(pop)
 
