@@ -76,6 +76,11 @@ inline int64_t GetTNDRightDownRowShift(int64_t m, int64_t n)
 
 inline void GetTNDLeftUpVirt(int64_t m, int64_t n, int64_t &virtM, int64_t &virtN)
 {
+    if (m < 1 || n < 1) {
+        virtM = 0;
+        virtN = 0;
+        return;
+    }
     if (m < n) {
         n = m;
     }
@@ -85,17 +90,24 @@ inline void GetTNDLeftUpVirt(int64_t m, int64_t n, int64_t &virtM, int64_t &virt
 
 inline void GetTNDRightDownVirt(int64_t m, int64_t n, int64_t &virtM, int64_t &virtN)
 {
-    m -= GetTNDRightDownRowShift(m, n);
     if (m < 1 || n < 1) {
         virtM = 0;
         virtN = 0;
         return;
     }
+    m -= GetTNDRightDownRowShift(m, n);
+    if (m < 1) {
+        virtM = 0;
+        virtN = 0;
+        return;
+    }
     virtM = m;
-    virtN = NUM_TWO * n - m + NUM_THREE;
+    virtN = (m == n) ? (n + 1) : (NUM_TWO * n - m + NUM_THREE);
 }
 
 constexpr int64_t TND_LINE_TINY_AREA = 8;
+constexpr uint8_t TND_LINE_COL_MAJOR = 0;
+constexpr uint8_t TND_LINE_ROW_MAJOR = 1;
 
 inline bool TNDRunIsLineWorthy(int64_t k, int64_t virtM, int64_t virtN, int64_t pairCount)
 {
@@ -103,6 +115,41 @@ inline bool TNDRunIsLineWorthy(int64_t k, int64_t virtM, int64_t virtN, int64_t 
         return false;
     }
     return pairCount > 0 && virtN * pairCount >= k && virtM >= std::min(k, virtN);
+}
+
+inline bool TNDRunIsLineWorthyTranspose(int64_t k, int64_t virtM, int64_t virtN, int64_t pairCount)
+{
+    if (virtM <= 0 || virtN <= 0 || virtM * virtN <= TND_LINE_TINY_AREA) {
+        return false;
+    }
+    return pairCount > 0 && virtM * pairCount >= k && virtN >= std::min(k, virtM);
+}
+
+inline uint8_t PickTNDLineOrientation(int64_t k, int64_t virtM, int64_t virtN, int64_t copies)
+{
+    if (virtM <= 0 || virtN <= 0 || copies <= 0) {
+        return TND_LINE_COL_MAJOR;
+    }
+    const bool colMajorOk = TNDRunIsLineWorthy(k, virtM, virtN, copies);
+    const bool rowMajorOk = TNDRunIsLineWorthyTranspose(k, virtM, virtN, copies);
+    if (!colMajorOk) {
+        return TND_LINE_ROW_MAJOR;
+    }
+    if (!rowMajorOk) {
+        return TND_LINE_COL_MAJOR;
+    }
+    const int64_t colMajorRounds = CeilDivideBy(virtN * copies, k) * virtM;
+    const int64_t rowMajorRounds = CeilDivideBy(virtM * copies, k) * virtN;
+    return rowMajorRounds < colMajorRounds ? TND_LINE_ROW_MAJOR : TND_LINE_COL_MAJOR;
+}
+
+inline int64_t CalTNDLineRounds(int64_t k, int64_t virtM, int64_t virtN, int64_t copies, uint8_t orientation)
+{
+    if (virtM <= 0 || virtN <= 0 || copies <= 0) {
+        return 0;
+    }
+    return orientation == TND_LINE_ROW_MAJOR ? (CeilDivideBy(virtM * copies, k) * virtN) :
+                                               (CeilDivideBy(virtN * copies, k) * virtM);
 }
 
 struct TNDRunShape {
@@ -131,6 +178,14 @@ inline TNDRunShape MakeTNDCausalRunShape(const FuzzyBaseInfoParamsRegbase &p, in
         s.m -= GetTNDRightDownRowShift(s.m, s.n);
         s.kind = 3;
     }
+    return s;
+}
+
+inline TNDRunShape MakeTNDDenseRunShape(const FuzzyBaseInfoParamsRegbase &p, int64_t bIdx)
+{
+    TNDRunShape s;
+    GetTNDOuterMN(p, bIdx, s.m, s.n);
+    s.kind = 0;
     return s;
 }
 
@@ -188,10 +243,14 @@ inline TNDRunShape MakeTNDBandRunShape(FuzzyBaseInfoParamsRegbase &p, int64_t bI
 inline int64_t CountTNDSameShapeRun(FuzzyBaseInfoParamsRegbase &p, int64_t start, bool leftUp, bool isBand,
                                     TNDRunShape &shape)
 {
-    shape = isBand ? MakeTNDBandRunShape(p, start) : MakeTNDCausalRunShape(p, start, leftUp);
+    const bool isDense = !isBand && (p.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE));
+    shape = isBand ? MakeTNDBandRunShape(p, start) :
+                     (isDense ? MakeTNDDenseRunShape(p, start) : MakeTNDCausalRunShape(p, start, leftUp));
     int64_t end = start;
     while (end + 1 < p.b) {
-        const TNDRunShape next = isBand ? MakeTNDBandRunShape(p, end + 1) : MakeTNDCausalRunShape(p, end + 1, leftUp);
+        const TNDRunShape next = isBand ? MakeTNDBandRunShape(p, end + 1) :
+                                  (isDense ? MakeTNDDenseRunShape(p, end + 1) :
+                                             MakeTNDCausalRunShape(p, end + 1, leftUp));
         if (!SameTNDRunShape(next, shape)) {
             break;
         }
@@ -251,11 +310,9 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
     if (p.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) && !p.isS1S2Same) {
         return false;
     }
-    if (p.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL) &&
+    if (p.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_DENSE) &&
+        p.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL) &&
         p.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_BAND)) {
-        return false;
-    }
-    if (p.n2 < NUM_TWO) {
         return false;
     }
 
@@ -264,6 +321,7 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
     const bool isBand = (p.sparseMode == static_cast<uint32_t>(SparseMode::BAND)) ||
                         (p.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) &&
                          p.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND));
+    const bool isDense = !isBand && (p.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE));
     const bool leftUp = !isBand && (p.sparseMode != static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL));
     bool hasWork = false;
     int64_t i = 0;
@@ -278,7 +336,12 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
             continue;
         }
         hasWork = true;
-        if (!isBand) {
+        if (isDense) {
+            const uint8_t orientation = PickTNDLineOrientation(k, shape.m, shape.n, total);
+            if (CalTNDLineRounds(k, shape.m, shape.n, total, orientation) <= 0) {
+                return false;
+            }
+        } else if (!isBand) {
             int64_t virtM = 0;
             int64_t virtN = 0;
             if (leftUp) {
@@ -286,23 +349,26 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
             } else {
                 GetTNDRightDownVirt(shape.m, shape.n, virtM, virtN);
             }
-            if (!TNDRunIsLineWorthy(k, virtM, virtN, runPairs)) {
+            const uint8_t pairOrientation = PickTNDLineOrientation(k, virtM, virtN, runPairs);
+            if (runPairs > 0 && CalTNDLineRounds(k, virtM, virtN, runPairs, pairOrientation) <= 0) {
                 return false;
             }
-            if (!leftUp && runHasSingle && shape.m < std::min(k, shape.n)) {
-                return false;
+            if (!leftUp && runHasSingle) {
+                const uint8_t singleOrientation = PickTNDLineOrientation(k, shape.m, shape.n, 1);
+                if (CalTNDLineRounds(k, shape.m, shape.n, 1, singleOrientation) <= 0) {
+                    return false;
+                }
             }
         } else if (shape.kind == 43) {
-            if (!TNDRunIsLineWorthy(k, shape.m, shape.n, total)) {
+            const uint8_t orientation = PickTNDLineOrientation(k, shape.m, shape.n, total);
+            if (CalTNDLineRounds(k, shape.m, shape.n, total, orientation) <= 0) {
                 return false;
             }
         } else if (shape.p + shape.q <= shape.m) {
-            if (shape.m * shape.n <= TND_LINE_TINY_AREA) {
-                return false;
-            }
         } else {
             const int64_t denseN = CalTNDBandWideCols(shape.m, shape.n, shape.p, shape.q);
-            if (!TNDRunIsLineWorthy(k, shape.m, denseN, total)) {
+            const uint8_t orientation = PickTNDLineOrientation(k, shape.m, denseN, total);
+            if (CalTNDLineRounds(k, shape.m, denseN, total, orientation) <= 0) {
                 return false;
             }
         }
@@ -324,6 +390,7 @@ inline TNDLineDeterPack BuildTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
     const bool isBand = (p.sparseMode == static_cast<uint32_t>(SparseMode::BAND)) ||
                         (p.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) &&
                          p.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND));
+    const bool isDense = !isBand && (p.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE));
     const bool leftUp = !isBand && (p.sparseMode != static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL));
     std::vector<int64_t> prefixSolo = {0};
 
@@ -336,7 +403,10 @@ inline TNDLineDeterPack BuildTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
         const bool runHasSingle = (total % NUM_TWO == 1);
         int64_t runSolo = 0;
         if (!TNDRunEmpty(shape, isBand)) {
-            if (!isBand) {
+            if (isDense) {
+                const uint8_t orientation = PickTNDLineOrientation(k, shape.m, shape.n, total);
+                runSolo = CalTNDLineRounds(k, shape.m, shape.n, total, orientation);
+            } else if (!isBand) {
                 int64_t virtM = 0;
                 int64_t virtN = 0;
                 if (leftUp) {
@@ -344,19 +414,27 @@ inline TNDLineDeterPack BuildTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
                 } else {
                     GetTNDRightDownVirt(shape.m, shape.n, virtM, virtN);
                 }
-                const int64_t pairRounds =
-                    (runPairs > 0 && virtN > 0) ? (CeilDivideBy(virtN * runPairs, k) * virtM) : 0;
-                const int64_t singleRounds = runHasSingle ? (leftUp ? CalTNDSingleCausalRounds(k, shape.m, shape.n) :
-                                                                      (CeilDivideBy(shape.n, k) * shape.m)) :
-                                                            0;
+                const uint8_t pairOrientation = PickTNDLineOrientation(k, virtM, virtN, runPairs);
+                const int64_t pairRounds = CalTNDLineRounds(k, virtM, virtN, runPairs, pairOrientation);
+                int64_t singleRounds = 0;
+                if (runHasSingle) {
+                    if (leftUp) {
+                        singleRounds = CalTNDSingleCausalRounds(k, shape.m, shape.n);
+                    } else {
+                        const uint8_t singleOrientation = PickTNDLineOrientation(k, shape.m, shape.n, 1);
+                        singleRounds = CalTNDLineRounds(k, shape.m, shape.n, 1, singleOrientation);
+                    }
+                }
                 runSolo = pairRounds + singleRounds;
             } else if (shape.kind == 43) {
-                runSolo = CeilDivideBy(shape.n * total, k) * shape.m;
+                const uint8_t orientation = PickTNDLineOrientation(k, shape.m, shape.n, total);
+                runSolo = CalTNDLineRounds(k, shape.m, shape.n, total, orientation);
             } else if (shape.p + shape.q <= shape.m) {
                 runSolo = CalTNDBandNarrowRounds(k, total, shape.m, shape.n, shape.p, shape.q);
             } else {
                 const int64_t denseN = CalTNDBandWideCols(shape.m, shape.n, shape.p, shape.q);
-                runSolo = CeilDivideBy(denseN * total, k) * shape.m;
+                const uint8_t orientation = PickTNDLineOrientation(k, shape.m, denseN, total);
+                runSolo = CalTNDLineRounds(k, shape.m, denseN, total, orientation);
             }
         }
         const int64_t soloEnd = prefixSolo.back() + runSolo;
@@ -427,16 +505,18 @@ protected:
         std::fill(std::begin(fBaseParams.deterPrefix1), std::end(fBaseParams.deterPrefix1), static_cast<int64_t>(0));
         std::fill(std::begin(fBaseParams.deterPrefix2), std::end(fBaseParams.deterPrefix2), static_cast<int64_t>(0));
         fBaseParams.tndLineDeter = 0;
-
-        if (PreferTNDLineDeter(fBaseParams)) {
-            ApplyTNDLineDeterParam(fBaseParams, BuildTNDLineDeter(fBaseParams));
-            OP_LOGD("CalcleTNDDeterParam", "TND deterMaxRound is %ld.", fBaseParams.deterMaxRound);
-            return;
+        const bool preferLine = PreferTNDLineDeter(fBaseParams);
+        TNDLineDeterPack linePack;
+        if (preferLine) {
+            linePack = BuildTNDLineDeter(fBaseParams);
         }
 
         CalcleTNDDenseDeterParam();
         CalcleTNDCausalDeterParam();
         CalcleTNDBandDeterParam();
+        if (preferLine && (fBaseParams.deterMaxRound <= 0 || linePack.rLine <= fBaseParams.deterMaxRound)) {
+            ApplyTNDLineDeterParam(fBaseParams, linePack);
+        }
         OP_LOGD("CalcleTNDDeterParam", "TND deterMaxRound is %ld.", fBaseParams.deterMaxRound);
     }
 
