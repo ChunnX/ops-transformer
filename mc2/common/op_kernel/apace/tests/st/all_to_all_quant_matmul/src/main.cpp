@@ -150,9 +150,9 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
 
     tilingData.scaleCommTilingData = tilingData.commTilingData;
     tilingData.scaleCommTilingData.nonSplitAxisSize = ka / 32;
-    tilingData.commTilingData.bufferCount = static_cast<uint64_t>(bufferCountArg);
-    tilingData.scaleCommTilingData.bufferCount = 0;
+    tilingData.commTilingData.slotNum = static_cast<uint64_t>(bufferCountArg);
 
+    tilingData.scaleCommTilingData.slotNum = 0;
     INFO_LOG("TileCnt=%u, HeadTileCnt=%u, HeadMSize=%u, TailTileCnt=%u, TailMSize=%u, bufferCount=%u",
              tileCnt, headTileCnt, headMSize, tailTileCnt, tailMSize, bufferCountArg);
 
