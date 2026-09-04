@@ -3082,7 +3082,10 @@ __aicore__ inline uint8_t PickTNDLineOrientation(int64_t k, int64_t virtM, int64
     if (TNDRunIsLineWorthy(k, virtM, virtN, copies)) {
         return TND_LINE_COL_MAJOR;
     }
-    return TND_LINE_ROW_MAJOR;
+    if (TNDRunIsLineWorthyTranspose(k, virtM, virtN, copies)) {
+        return TND_LINE_ROW_MAJOR;
+    }
+    return TND_LINE_COL_MAJOR;
 }
 
 __aicore__ inline int64_t CalTNDLineRounds(int64_t k, int64_t virtM, int64_t virtN, int64_t copies,
@@ -3380,6 +3383,10 @@ __aicore__ inline void CalTNDDenseLineIndex(const __gm__ uint8_t *actualSeqQlenA
             if (CalTNDLineIndex(k, m, n, copies, j, a, orientation, w, x, y) && w >= 1 && w <= copies && x >= 1 &&
                 x <= m && y >= 1 && y <= n) {
                 MapTNDCopyToBatch(w, n1, runHead, coordinateInfo.batchId);
+                int64_t realM = 0;
+                int64_t realN = 0;
+                LoadTNDOuterMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr,
+                                                       runHead + (w - 1) / n1, realM, realN, coordinateInfo);
                 coordinateInfo.s1Idx = x;
                 coordinateInfo.s2Idx = y;
             }

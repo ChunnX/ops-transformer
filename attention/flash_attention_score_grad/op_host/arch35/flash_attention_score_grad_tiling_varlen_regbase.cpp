@@ -140,7 +140,8 @@ inline bool TNDRunIsTiny(int64_t virtM, int64_t virtN)
 
 inline bool TNDRunIsLineEligible(int64_t k, int64_t virtM, int64_t virtN, int64_t copies)
 {
-    return TNDRunIsLineWorthy(k, virtM, virtN, copies) && virtM >= k;
+    return TNDRunIsLineWorthy(k, virtM, virtN, copies) ||
+           TNDRunIsLineWorthyTranspose(k, virtM, virtN, copies);
 }
 
 inline uint8_t PickTNDLineOrientation(int64_t k, int64_t virtM, int64_t virtN, int64_t copies)
@@ -151,7 +152,10 @@ inline uint8_t PickTNDLineOrientation(int64_t k, int64_t virtM, int64_t virtN, i
     if (TNDRunIsLineWorthy(k, virtM, virtN, copies)) {
         return TND_LINE_COL_MAJOR;
     }
-    return TND_LINE_ROW_MAJOR;
+    if (TNDRunIsLineWorthyTranspose(k, virtM, virtN, copies)) {
+        return TND_LINE_ROW_MAJOR;
+    }
+    return TND_LINE_COL_MAJOR;
 }
 
 inline int64_t CalTNDLineRounds(int64_t k, int64_t virtM, int64_t virtN, int64_t copies, uint8_t orientation)
@@ -348,8 +352,7 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
         }
         if (isDense) {
             if (TNDRunIsTiny(shape.m, shape.n)) {
-                i += groupSize;
-                continue;
+                return false;
             }
             const uint8_t orientation = PickTNDLineOrientation(k, shape.m, shape.n, total);
             if (CalTNDLineRounds(k, shape.m, shape.n, total, orientation) <= 0) {
@@ -368,8 +371,7 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
                 GetTNDRightDownVirt(shape.m, shape.n, virtM, virtN);
             }
             if (TNDRunIsTiny(virtM, virtN)) {
-                i += groupSize;
-                continue;
+                return false;
             }
             const uint8_t pairOrientation = PickTNDLineOrientation(k, virtM, virtN, runPairs);
             if (runPairs > 0 && CalTNDLineRounds(k, virtM, virtN, runPairs, pairOrientation) <= 0) {
@@ -380,6 +382,9 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
                 if (CalTNDLineRounds(k, shape.m, shape.n, 1, singleOrientation) <= 0) {
                     return false;
                 }
+                if (!TNDRunIsLineEligible(k, shape.m, shape.n, 1)) {
+                    return false;
+                }
             }
             if (!TNDRunIsLineEligible(k, virtM, virtN, runPairs)) {
                 return false;
@@ -387,8 +392,7 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
             hasSubstantial = true;
         } else if (shape.kind == TNDRunShapeKind::BAND_DENSE) {
             if (TNDRunIsTiny(shape.m, shape.n)) {
-                i += groupSize;
-                continue;
+                return false;
             }
             const uint8_t orientation = PickTNDLineOrientation(k, shape.m, shape.n, total);
             if (CalTNDLineRounds(k, shape.m, shape.n, total, orientation) <= 0) {
@@ -406,8 +410,7 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
         } else {
             const int64_t denseN = CalTNDBandWideCols(shape.m, shape.n, shape.p, shape.q);
             if (TNDRunIsTiny(shape.m, denseN)) {
-                i += groupSize;
-                continue;
+                return false;
             }
             const uint8_t orientation = PickTNDLineOrientation(k, shape.m, denseN, total);
             if (CalTNDLineRounds(k, shape.m, denseN, total, orientation) <= 0) {
