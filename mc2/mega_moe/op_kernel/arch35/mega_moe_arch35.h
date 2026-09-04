@@ -85,11 +85,14 @@ private:
     using SendMaskBufferConfig = MegaMoeSendMaskBufferConfig;
     using UnpermuteBufferConfig = MegaMoeUnpermuteBufferConfig;
 
+    __aicore__ inline void InitEpilogueAndCommonConfig(MegaMoeTilingData *tilingData);
     __aicore__ inline void InitInputPrepareConfigs();
     __aicore__ inline void InitSyncWorkspaceConfigs(int32_t dispatchFlagSlotsPerExpert,
                                                     int32_t activationFlagSlotsPerExpert);
     __aicore__ inline void InitGmmConfigs();
     __aicore__ inline void InitTokenUnpermuteConfig();
+    __aicore__ inline uint32_t InitQuantScratchTensors(uint32_t mxTempTensorAddr, uint32_t mxTempTensorSize,
+                                                       uint32_t xOutTensorSize, uint32_t xInAlignSize);
 
 protected:
     __aicore__ inline void SendAndQuantBuffInit();
@@ -98,11 +101,8 @@ protected:
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void ProcessInputPreparationStage();
     __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
-                                                   uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
-                                                   uint32_t sliceTokenCount,
-                                                   WaveCombineBufferConfig &combineBufferConfig,
-                                                   uint32_t &combineRowSequence, int32_t &pairwiseTileSequence,
-                                                   bool isFinalCombine);
+                                                   WaveGmm2PipelineState &runtimeState, uint32_t tokenStartIndexInExpert,
+                                                   uint32_t sliceTokenCount, bool isFinalCombine);
     template <bool WaitForTokenCountReady>
     __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx);
     __aicore__ inline void ProcessSharedExpertGmm1(int32_t &gmm1TileReadySequence);
@@ -222,6 +222,26 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitTokenUnpermuteConfi
 // Init：初始化 & 偏移计算
 // ========================
 template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitEpilogueAndCommonConfig(MegaMoeTilingData *tilingData)
+{
+    epilogueOp_.Init({.yGmAddr = params_.workspaceInfo.activationQuantDataPtr,
+                      .yScaleGmAddr = params_.workspaceInfo.activationQuantScalePtr,
+                      .clampLimit = tilingData->clampLimit,
+                      .actMode = tilingData->actMode,
+                      .actSubMode = tilingData->actSubMode,
+                      .activationAlpha = tilingData->activationAlpha,
+                      .activationBeta = tilingData->activationBeta});
+    commonConfig_ = {.rankId = rankId_,
+                     .worldSize = worldSize_,
+                     .moeExpertPerRank = moeExpertPerRank_,
+                     .sharedExpertNum = sharedExpertNum_,
+                     .tokenNum = tilingData->bs,
+                     .topK = tilingData->topK,
+                     .tokenHiddenDim = k_,
+                     .gmm1OutputDim = tilingData->hiddenDim};
+}
+
+template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
     GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR sharedWeight1,
@@ -260,21 +280,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     }
     params_.peermemInfo = PeermemInfo(g_winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE);
     params_.tilingData = tilingData;
-    epilogueOp_.Init({.yGmAddr = params_.workspaceInfo.activationQuantDataPtr,
-                      .yScaleGmAddr = params_.workspaceInfo.activationQuantScalePtr,
-                      .clampLimit = tilingData->clampLimit,
-                      .actMode = tilingData->actMode,
-                      .actSubMode = tilingData->actSubMode,
-                      .activationAlpha = tilingData->activationAlpha,
-                      .activationBeta = tilingData->activationBeta});
-    commonConfig_ = {.rankId = rankId_,
-                     .worldSize = worldSize_,
-                     .moeExpertPerRank = moeExpertPerRank_,
-                     .sharedExpertNum = sharedExpertNum_,
-                     .tokenNum = tilingData->bs,
-                     .topK = tilingData->topK,
-                     .tokenHiddenDim = k_,
-                     .gmm1OutputDim = tilingData->hiddenDim};
+    InitEpilogueAndCommonConfig(tilingData);
     const int64_t maxOutput = static_cast<int64_t>(tilingData->maxOutputSize);
     const int64_t tileM = static_cast<int64_t>(GMM1_TILE_M);
     int32_t dispatchFlagSlotsPerExpert = static_cast<int32_t>(Ops::Base::CeilDiv(maxOutput, tileM)) * INT_CACHELINE;
@@ -357,6 +363,50 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantTokenBufferCon
 //   shared prepare 复用 quant 输出双 buffer；reset 封顶 DISPATCH_RESET_BATCH。
 // ======================================================================================
 template <TemplateMegaMoeTypeClass>
+__aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTensors(uint32_t mxTempTensorAddr,
+                                                                                     uint32_t mxTempTensorSize,
+                                                                                     uint32_t xOutTensorSize,
+                                                                                     uint32_t xInAlignSize)
+{
+    quantScratch_.mxTempTensor =
+        LocalTensor<uint16_t>(TPosition::VECCALC, mxTempTensorAddr, mxTempTensorSize / sizeof(uint16_t));
+    uint32_t xOutTensorAddr1 = mxTempTensorAddr + mxTempTensorSize;
+    quantScratch_.xOutTensor0 =
+        LocalTensor<ActivationType>(TPosition::VECCALC, xOutTensorAddr1, xOutTensorSize / sizeof(ActivationType));
+    uint32_t xOutTensorAddr2 = xOutTensorAddr1 + xOutTensorSize;
+    quantScratch_.xOutTensor1 =
+        LocalTensor<ActivationType>(TPosition::VECCALC, xOutTensorAddr2, xOutTensorSize / sizeof(ActivationType));
+    if (sharedExpertNum_ > 0U) {
+        sharedExpertPrepareScratch_.copyBuffer0 = quantScratch_.xOutTensor0;
+        sharedExpertPrepareScratch_.copyBuffer1 = quantScratch_.xOutTensor1;
+    }
+    uint32_t xInAlignAddr1 = xOutTensorAddr2 + xOutTensorSize;
+    quantScratch_.xInTensor0 =
+        LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAlignAddr1, xInAlignSize / sizeof(bfloat16_t));
+    uint32_t xInAlignAddr2 = xInAlignAddr1 + xInAlignSize;
+    quantScratch_.xInTensor1 =
+        LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAlignAddr2, xInAlignSize / sizeof(bfloat16_t));
+
+    uint32_t routeRingAddr = xInAlignAddr2 + xInAlignSize;
+    /*
+     * h%64==32（scale 组数为奇数）时，量化链路存在三处"计算不覆盖、却进入定长通信记录或参与
+     * 计算"的跨 launch UB 残留：xIn 尾部（进 ComputeMaxExp 尾块 mask 内 lane）、xOut 记录的
+     * scale 偶数补齐槽（ComputeScale 掩码写不到）、mxTemp 的 halfScale 补偶槽（被
+     * ComputeFp8Data 尾块 E2B 广播进乘法，0×NaN 仍为 NaN）。残留呈 NaN/大指数位型时整行
+     * GMM 输出被污染为 NaN，最终 combine 输出成块清零（首轮 UB 干净故仅多轮调用时显形）。
+     * 此处对 [mxTempTensorAddr, routeRingAddr) 连续 span（mxTemp/xOut0/xOut1/xIn0/xIn1 五段
+     * 量化 scratch）一次性清零：span 边界取 routeRingAddr、与本函数的地址推进公式同源，
+     * 中间插入新 buffer 时范围自动跟随；有效区随后每 token 均被完整覆写，残留位恒为良性 0。
+     * h%64==0 时不存在上述缝隙，本清零不改变任何可观测行为。
+     */
+    LocalTensor<int16_t> quantScratchSpan(TPosition::VECCALC, mxTempTensorAddr,
+                                          (routeRingAddr - mxTempTensorAddr) / sizeof(int16_t));
+    Duplicate<int16_t>(quantScratchSpan, 0, static_cast<int32_t>((routeRingAddr - mxTempTensorAddr) / sizeof(int16_t)));
+    SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID2>();
+    return routeRingAddr;
+}
+
+template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
 {
     if constexpr (g_coreType == AIC) {
@@ -405,43 +455,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     resetBatchElementCount_ = resetBatchElementCount;
 
     uint32_t mxTempTensorAddr = resetAddrActual + resetTensorSize;
-    quantScratch_.mxTempTensor =
-        LocalTensor<uint16_t>(TPosition::VECCALC, mxTempTensorAddr, mxTempTensorSize / sizeof(uint16_t));
-
-    uint32_t xOutTensorAddr1 = mxTempTensorAddr + mxTempTensorSize;
-    quantScratch_.xOutTensor0 =
-        LocalTensor<ActivationType>(TPosition::VECCALC, xOutTensorAddr1, xOutTensorSize / sizeof(ActivationType));
-    uint32_t xOutTensorAddr2 = xOutTensorAddr1 + xOutTensorSize;
-    quantScratch_.xOutTensor1 =
-        LocalTensor<ActivationType>(TPosition::VECCALC, xOutTensorAddr2, xOutTensorSize / sizeof(ActivationType));
-    if (sharedExpertNum_ > 0U) {
-        sharedExpertPrepareScratch_.copyBuffer0 = quantScratch_.xOutTensor0;
-        sharedExpertPrepareScratch_.copyBuffer1 = quantScratch_.xOutTensor1;
-    }
-
-    uint32_t xInAlignAddr1 = xOutTensorAddr2 + xOutTensorSize;
-    quantScratch_.xInTensor0 =
-        LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAlignAddr1, xInAlignSize / sizeof(bfloat16_t));
-    uint32_t xInAlignAddr2 = xInAlignAddr1 + xInAlignSize;
-    quantScratch_.xInTensor1 =
-        LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAlignAddr2, xInAlignSize / sizeof(bfloat16_t));
-
-    uint32_t routeRingAddr = xInAlignAddr2 + xInAlignSize;
-    /*
-     * h%64==32（scale 组数为奇数）时，量化链路存在三处"计算不覆盖、却进入定长通信记录或参与
-     * 计算"的跨 launch UB 残留：xIn 尾部（进 ComputeMaxExp 尾块 mask 内 lane）、xOut 记录的
-     * scale 偶数补齐槽（ComputeScale 掩码写不到）、mxTemp 的 halfScale 补偶槽（被
-     * ComputeFp8Data 尾块 E2B 广播进乘法，0×NaN 仍为 NaN）。残留呈 NaN/大指数位型时整行
-     * GMM 输出被污染为 NaN，最终 combine 输出成块清零（首轮 UB 干净故仅多轮调用时显形）。
-     * 此处对 [mxTempTensorAddr, routeRingAddr) 连续 span（mxTemp/xOut0/xOut1/xIn0/xIn1 五段
-     * 量化 scratch）一次性清零：span 边界取 routeRingAddr、与本函数的地址推进公式同源，
-     * 中间插入新 buffer 时范围自动跟随；有效区随后每 token 均被完整覆写，残留位恒为良性 0。
-     * h%64==0 时不存在上述缝隙，本清零不改变任何可观测行为。
-     */
-    LocalTensor<int16_t> quantScratchSpan(TPosition::VECCALC, mxTempTensorAddr,
-                                          (routeRingAddr - mxTempTensorAddr) / sizeof(int16_t));
-    Duplicate<int16_t>(quantScratchSpan, 0, static_cast<int32_t>((routeRingAddr - mxTempTensorAddr) / sizeof(int16_t)));
-    SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID2>();
+    uint32_t routeRingAddr = InitQuantScratchTensors(mxTempTensorAddr, mxTempTensorSize, xOutTensorSize, xInAlignSize);
     uint32_t routeRingBytes = static_cast<uint32_t>(bufferConfig.bufferCount) * bufferConfig.bufferBytes;
     sendMaskScratch_.routeRingTensor = LocalTensor<uint8_t>(TPosition::VECCALC, routeRingAddr, routeRingBytes);
     uint32_t sendCntAccAddr = routeRingAddr + routeRingBytes;
@@ -522,14 +536,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
 // 非量化路径由 AIV1 在 GMM2 scheduler 内逐 tile 调用统一的 CombineTokenRange。
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert(
-    ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
-    uint32_t sliceTokenCount, WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence,
-    int32_t &pairwiseTileSequence, bool isFinalCombine)
+    ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, WaveGmm2PipelineState &runtimeState,
+    uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount, bool isFinalCombine)
 {
     uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     uint32_t gmm2NTileCount = Ops::Base::CeilDiv(commonConfig_.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
     uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm2NTileCount;
-    if (!HandleWaveProblemWithoutWork(problemTileCount, gmmExecutionConfig_.blockJob, startBlockIdx)) {
+    if (!HandleWaveProblemWithoutWork(problemTileCount, gmmExecutionConfig_.blockJob, runtimeState.startBlockIdx)) {
         UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType>(
             gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo,
             state, tokenStartIndexInExpert);
@@ -543,11 +556,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
         Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
         int32_t *gmm2TileSequence = nullptr;
         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-            gmm2TileSequence = &pairwiseTileSequence;
+            gmm2TileSequence = &runtimeState.pairwiseTileSequence;
         }
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
                     TopkWeightsPrefetch, false, false, true, CombineQuantMode == COMBINE_NO_QUANT>(
-            sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
+            sliceProblemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
             tokenStartIndexInExpert, &params_, gmm2TileSequence);
     }
 
@@ -570,15 +583,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
                 SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID0>();
             }
         }
-        combineBufferConfig =
-            PrepareFinalWaveCombineBuffers<CombineQuantMode>(commonConfig_, combineBufferConfig, waveCombineScratch_);
-        RunWaveCombineStage<CombineQuantMode, true>(commonConfig_, waveCombineJob_, combineBufferConfig,
+        runtimeState.combineBufferConfig = PrepareFinalWaveCombineBuffers<CombineQuantMode>(
+            commonConfig_, runtimeState.combineBufferConfig, waveCombineScratch_);
+        RunWaveCombineStage<CombineQuantMode, true>(commonConfig_, waveCombineJob_, runtimeState.combineBufferConfig,
                                                     waveCombineScratch_, params_, gmmAddrInfo, state, state.expertIdx,
-                                                    combineRowSequence);
+                                                    runtimeState.combineRowSequence);
         return;
     }
-    RunWaveCombineStage<CombineQuantMode>(commonConfig_, waveCombineJob_, combineBufferConfig, waveCombineScratch_,
-                                          params_, gmmAddrInfo, state, state.expertIdx, combineRowSequence);
+    RunWaveCombineStage<CombineQuantMode>(commonConfig_, waveCombineJob_, runtimeState.combineBufferConfig,
+                                          waveCombineScratch_, params_, gmmAddrInfo, state, state.expertIdx,
+                                          runtimeState.combineRowSequence);
 }
 
 // 从 workspace 读取 token 数并准备 GMM 专家状态；GMM1 可按需先等待 token count ready。
