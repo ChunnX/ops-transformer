@@ -1,0 +1,7 @@
+现在要支持异常用例的测试
+用例：
+		Prefill_FP8e4m3_FP8e4m3_BF16_Mxfp8_Exception_000040	(metadata)mxfp8:cu_q[65538,]， 												4096,20,64	BF16		4096,20	FP32		4096,20,64	FLOAT8_E4M3FN	-1,1	4096,2,64	FLOAT8_E4M3FN	-1,1	4096,2,64	FLOAT8_E4M3FN	-1,1	4096,20,1,2	FLOAT8_E8M0	-1,1	4096,2,1,2	FLOAT8_E8M0	-1,1	64,2,64,2	FLOAT8_E8M0	-1,1				1	1	FP32	1,448	0,4096	65538	INT32	0,1	0,4096	65538	INT32	0,1																			0.125	0	-1	-1	4096	-1	TND	TND	TND	TND	TRUE	-1	20	2	64											
+期望报错：
+Parameter axis B of QuantFlashAttn has incorrect value 65537. Reason: The value of B must be within the range (0, 65536).
+实际报错：
+[Prefill_FP8e4m3_FP8e4m3_BF16_Mxfp8_Exception_000040] API [torch.ops.cann_ops_transformer.quant_flash_attn] overload[0] requires non-tensor attribute(s) ['quant_mode'] but attributes only have ['D', 'N_kv', 'N_q', 'absolute_precision', 'attn_mask_dtype', 'batch_size', 'block_size', 'cu_seqlens_kv_values', 'cu_seqlens_q_values', 'enable_pa', 'head_dim_v', 'kv_cache_layout', 'layout_kv', 'layout_out', 'layout_q', 'layout_q_descale', 'mask_mode', 'max_seqlen_kv', 'max_seqlen_q', 'p_scale_value', 'precision_tolerances', 'q_scale_layout', 'return_softmax_lse', 'seqused_kv_values', 'seqused_q_values', 'softmax_scale', 'win_left', 'win_right']. (source: cann_ops_transformer._schemas)
