@@ -20,13 +20,17 @@ HIF8: Q/K/V 各只有一个 per-tensor FP32 scale (shape=(1,))
 
 import logging
 import math
-
 import torch
 
 try:
     import torch_npu
 except ImportError:
     torch_npu = None
+
+try:
+    from . import generate_hifloat8_data as hif8_codec
+except ImportError:
+    import generate_hifloat8_data as hif8_codec
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
 logger = logging.getLogger(__name__)
@@ -38,11 +42,11 @@ logger = logging.getLogger(__name__)
 # 量化: fp32 → trans_float_tensor_to_hifuint8 → uint8 (HIF8 编码)
 # 反量化: uint8 → trans_hifuint8_tensor_to_float → fp32, 再乘 scale
 # ==============================================================================
+HIF8_MAX = 32768.0
+ENABLE_ROPE = False
+FP8_DTYPE = torch.float8_e4m3fn 
+HIF8_DTYPE = torch.uint8
 
-try:
-    from . import generate_hifloat8_data as hif8_codec
-except ImportError:
-    import generate_hifloat8_data as hif8_codec
 
 def get_hif8_per_tensor_quant_scale(tensor, hif8_max=HIF8_MAX):
     max_abs = tensor.abs().max().item()

@@ -22,10 +22,9 @@ MXFP8 Flash Attention Golden
 import logging
 import math
 from typing import Optional
-
 import torch
 import torch_npu
-
+import os as _os
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
 logger = logging.getLogger(__name__)
@@ -33,10 +32,9 @@ logger = logging.getLogger(__name__)
 # ==============================================================================
 # 配置区
 # ==============================================================================
-# GRAPH_PATH: 0=单算子, 7=aclgraph
-# 优先从环境变量读取，支持 GRAPH_PATH=7 python3 -m pytest ...
-import os as _os
-
+E8M0_MIN_POSITIVE = 2 ** (-127)
+FP8_DTYPE = torch.float8_e4m3fn
+QUANT_GROUP_SIZE = 32
 
 # ==============================================================================
 # 量化 scale 计算
@@ -47,7 +45,6 @@ import os as _os
 #   量化: quantized = original / quant_scale
 #   反量化: dequantized = quantized * dequant_scale, 其中 dequant_scale = quant_scale
 # ==============================================================================
-
 _EMAX_MAP = {
     torch.float8_e4m3fn: 8,
     torch.float8_e5m2: 15,

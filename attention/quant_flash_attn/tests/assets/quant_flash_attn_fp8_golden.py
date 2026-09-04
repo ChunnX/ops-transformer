@@ -25,17 +25,22 @@ TTK 适配: 模块级全局变量 (B/N_q/N_kv/D/ENABLE_PA/...) 默认 None,
 import logging
 import math
 import os
-
 import torch
 import torch_npu
-
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
 logger = logging.getLogger(__name__)
 
-torch.set_printoptions(threshold=float("inf"), linewidth=300, precision=4)
 
-
+# ==============================================================================
+# FP8 量化 (per-token-head Q/K, per-head V, descale=FP32)
+# ==============================================================================
+FP8_DTYPE = torch.float8_e4m3fn
+K_SCALE_ROWS = 4 
+EPSILON = 1e-20 
+Q_BLOCK_SIZE = 128 
+KV_BLOCK_SIZE = 256
+NUM_BLOCKS = 0
 
 
 def broadcast_kv(num_heads, num_kv_heads, kv_tensor):
@@ -46,9 +51,6 @@ def broadcast_kv(num_heads, num_kv_heads, kv_tensor):
     return kv_tensor.repeat_interleave(factor, dim=1).contiguous()
 
 
-# ==============================================================================
-# FP8 量化 (per-token-head Q/K, per-head V, descale=FP32)
-# ==============================================================================
 def get_fp8_per_token_head_quant_scale(tensor):
     """per-token-head quant scale: shape (B, N, S, 1) FP32."""
     tensor = tensor.contiguous()
@@ -662,4 +664,3 @@ def prepare_npu_inputs_gqa_fp8(
         sparse_mode=SPARSE_MODE,
         out_dtype=OUTPUT_DETYPE,
     )
-
