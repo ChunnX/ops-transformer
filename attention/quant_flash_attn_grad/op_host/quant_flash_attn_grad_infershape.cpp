@@ -50,8 +50,9 @@ ge::graphStatus InferShapeQuantFlashAttnGrad(gert::InferShapeContext *context)
     for (auto &c : kvInputLayoutStr) {
         c = toupper(c);
     }
-    if ((qInputLayoutStr != "BSND" && qInputLayoutStr != "BNSD") ||
-        (kvInputLayoutStr != "BSND" && kvInputLayoutStr != "BNSD") || kvInputLayoutStr != qInputLayoutStr) {
+    if ((qInputLayoutStr != "BSND" && qInputLayoutStr != "BNSD" && qInputLayoutStr != "TND") ||
+        (kvInputLayoutStr != "BSND" && kvInputLayoutStr != "BNSD" && kvInputLayoutStr != "TND") ||
+        kvInputLayoutStr != qInputLayoutStr) {
         OP_LOGI(context, "QuantFlashAttnGrad inputLayout error.");
         return GRAPH_FAILED;
     }
@@ -70,7 +71,17 @@ ge::graphStatus InferShapeQuantFlashAttnGrad(gert::InferShapeContext *context)
     gert::Shape *dvShape = context->GetOutputShape(OUTPUT_IDX_DV);
     OP_CHECK_NULL_WITH_CONTEXT(context, dvShape);
     *dvShape = *valueShape;
-    OP_LOGI(context, "QuantFlashAttnGrad InferShape done. dq dims.");
+    // gert::Shape *dsinkShape = context->GetOutputShape(OUTPUT_IDX_DSINK);
+    // OP_CHECK_NULL_WITH_CONTEXT(context, dsinkShape);
+    // int64_t headNum = 0;
+    // if (qInputLayoutStr == "BSND") {
+    //     headNum = queryShape->GetStorageShape().GetDim(2);
+    // } else {
+    //     headNum = queryShape->GetStorageShape().GetDim(1);
+    // }
+    // dsinkShape->SetDimNum(1);
+    // dsinkShape->SetDim(0, headNum);
+    // OP_LOGI(context, "QuantFlashAttnGrad InferShape done. dq dims.");
     return ge::GRAPH_SUCCESS;
 }
 
