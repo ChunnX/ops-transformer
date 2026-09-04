@@ -24,9 +24,11 @@ namespace ge {
    *
    * @par Inputs:
    * @li x: A 2D tensor which moe gating topk is applied, The shape is: (B*S, E), format supports ND, and data type must be float16, float or bfloat16. E(Expert num) can not be greater than 2048. E(Expert num) should be divisible by group_count.
-   * @li bias: A 1D tensor which is "bias" in moe gating topk. The shape is: (E), format supports ND, and data type must be the same as that of x.
-   *
-   * @par Outputs:
+    * @li bias: A 1D tensor which is "bias" in moe gating topk. The shape is: (E), format supports ND, and data type must be the same as that of x.
+    * @li input_ids: An optional 1D tensor which is the input index of hash mode, used to look up expert indices from tid2eid. The shape is: (B*S), which must be the same as the 0th axis of x, format supports ND, and data type must be int32 or int64. It is only required when hash mode is enabled, that is, both input_ids and tid2eid are provided.
+    * @li tid2eid: An optional 2D tensor which is the hash mapping table, storing the precomputed expert indices. The shape is: (numKeys, k), where numKeys is the number of rows in the mapping table and k must be equal to the value of attribute k, format supports ND, and data type must be int32 or int64. It is only required when hash mode is enabled, that is, both input_ids and tid2eid are provided.
+    *
+    * @par Outputs:
    * @li y: A 2D tensor which is the topk value result of moe gating topk, format supports ND, and data type must be the same as that of x.
          The size of the non-1 axis must be the same as that of the corresponding axis of x.
          The size of the -1 axis must be the same as that of k.
