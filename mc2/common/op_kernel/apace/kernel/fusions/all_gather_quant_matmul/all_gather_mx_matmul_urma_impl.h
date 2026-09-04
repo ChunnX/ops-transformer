@@ -24,6 +24,7 @@
 #include "apace/core/aiv_comm/collective_comm_api.h"
 #include "apace/core/aiv_comm/barrier/barrier_ubmem.h"
 #include "apace/tiling/comm_tiling_data.h"
+#include "apace/basic/buffer/buffer_channel.h"
 #include "include/tensor_api/tensor.h"
 
 namespace Apace {
@@ -152,7 +153,7 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::Init(
     commTilingData_.splitAxisTailCnt = tailCnt_;
     // 通信按 Dtype 元素个数计：FP4(fp4x2) 每元素 2 个逻辑值，故按字节行宽折算
     commTilingData_.nonSplitAxisSize = dataBytesPerMRow_ / sizeof(AType); // 非切分轴k
-    commTilingData_.bufferCount = tilingData_->commTile.bufferCount; // data 复用
+    commTilingData_.slotNum = tilingData_->commTile.slotNum; // data 复用
 
     commTilingScale_.splitAxisTileSize = tileM_;
     commTilingScale_.splitAxisTileCnt = tileCnt_;
@@ -160,7 +161,7 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::Init(
     commTilingScale_.splitAxisTailCnt = tailCnt_;
     scaleKLen_ = scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE);
     commTilingScale_.nonSplitAxisSize = scaleKLen_;
-    commTilingScale_.bufferCount = 0; // scale 全量，不复用
+    commTilingScale_.slotNum = 0; // scale 全量，不复用
     allGatherData_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, commTilingData_, aGM_,
                                                commBuf.Get(), rankSize_, static_cast<uint32_t>(GetBlockIdx()));
     allGatherScale_.Init(udmaCtx_, teamBarrier_, commTilingScale_, aScaleGM_, commScaleBuf.Get(),
@@ -193,7 +194,7 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::InitBaseP
 
     // buffer 复用归一化：0 或 >= commTiles 视为不复用（全量）
     uint64_t commTiles = static_cast<uint64_t>(tileCnt_) + static_cast<uint64_t>(tailCnt_);
-    uint64_t rawBufferCount = td->commTile.bufferCount;
+    uint64_t rawBufferCount = td->commTile.slotNum;
     bufferCount_ = (rawBufferCount > 0 && rawBufferCount < commTiles) ?
                    static_cast<uint32_t>(rawBufferCount) : 0;
     effBufferCount_ = (rawBufferCount > 0 && rawBufferCount < commTiles) ? rawBufferCount : commTiles;
@@ -262,27 +263,41 @@ __aicore__ inline GM_ADDR AllGatherMxMatmulUrmaImpl<AType, BType, CType>::GetWin
 template <typename AType, typename BType, typename CType>
 __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::AllGatherProcess()
 {
-    // 预触发 dependTileIdx=0：自身数据始终就绪，AIC 可直接消费。
+    // slotSize(字节, 与 comm 层 tileMaxByteSize_ 对齐)
+    uint64_t maxTileSize = (tileM_ > tailM_) ? static_cast<uint64_t>(tileM_) : static_cast<uint64_t>(tailM_);
+    uint64_t dataSlotSize = static_cast<uint64_t>(rankSize_ - 1) * maxTileSize * dataBytesPerMRow_;
+    uint64_t scaleSlotSize = static_cast<uint64_t>(rankSize_ - 1) * maxTileSize * scaleBytesPerMRow_;
+    uint32_t dataSlotNum = static_cast<uint32_t>(effBufferCount_);
+    uint32_t scaleSlotNum = commTurn_;
+
+    Apace::Basic::BufferChannel dataChannel;
+    Apace::Basic::BufferChannel scaleChannel;
+    dataChannel.Init(dataSlotSize, dataSlotNum);
+    scaleChannel.Init(scaleSlotSize, scaleSlotNum);
+
+    // 预触发 local HEAD：HEAD 读本地 GM 不经通信，flagId=0 硬编码，不走 BufferChannel。
     CrossCoreSetFlag<0x2, PIPE_MTE3>(0);
 
     for (uint32_t round = 0; round < commTurn_; ++round) {
-        // win buffer 复用：写 slot round%bufferCount 会覆盖 slot (round-bufferCount)%bufferCount，
-        // 需先等 AIC 消费完并释放 round-bufferCount。
-        if (bufferCount_ > 0 && round >= bufferCount_) {
-            AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE3>((round - bufferCount_) % SYNCALL_FLAG_ID_MAX);
+        auto dataSlot = dataChannel.GetNextSlot();
+        auto scaleSlot = scaleChannel.GetNextSlot();
+        uint32_t flagId = dataSlot.slotIdx + 1;   // +1 避开预触发的 flagId=0
+
+        // win buffer 复用：写 slot round%dataSlotNum 会覆盖前一轮，需先等 AIC 消费完并释放。
+        if (round >= dataChannel.GetSlotNum()) {
+            AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE3>(flagId);
             AscendC::SyncAll<true>();
             if (static_cast<uint32_t>(GetBlockIdx()) < rankSize_) {
                 teamBarrier_.CrossDevice();
             }
         }
         if (static_cast<uint32_t>(GetBlockIdx()) < rankSize_) {
-            allGatherScale_.Commit(0);
-            allGatherData_.Commit(0);
+            allGatherScale_.Commit(scaleSlot.offset);
+            allGatherData_.Commit(dataSlot.offset);
             allGatherData_.template Wait<BARRIER_DEVICE>();
         }
         AscendC::SyncAll<true>();
-        // round 0 对应 dependTileIdx=1，AIC 侧按 dependTileIdx 等待对应的远端 round 数据。
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(round + 1);
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(flagId);
     }
     allGatherScale_.Finalize();
     allGatherData_.Finalize();

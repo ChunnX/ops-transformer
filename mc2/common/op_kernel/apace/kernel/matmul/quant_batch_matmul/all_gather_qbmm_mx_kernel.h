@@ -29,6 +29,7 @@
 #include "apace/block/mmad/qmm_mx_block_mmad_fragment.h"
 #include "apace/basic/fragment_tensor/fragment_tensor.h"
 #include "apace/basic/fragment_tensor/fragment_tensor_api.h"
+#include "apace/basic/buffer/buffer_channel.h"
 #include "apace/tiling/quant_matmul_tiling_data.h"
 
 namespace Apace {
@@ -45,9 +46,6 @@ enum RegionTag {
     MAIN,
     TAIL
 };
-
-// SyncAll<true> 占用 flagId 14，release 方向取模后落在 [0,13]，避免与 SyncAll 抢 AIV 计数器。
-constexpr uint32_t SYNCALL_FLAG_ID_MAX = 14;
 
 template <typename AType, typename BType, typename CType>
 class AllGatherQbmmMxKernel {
@@ -120,7 +118,7 @@ public:
         uint64_t k{0};
         uint64_t n{0};
         uint64_t scaleKLen{0};
-        uint32_t bufferCount{0};     // win 区复用槽位数（release 门控，0=不复用）
+        uint32_t slotNum{0};     // win 区复用槽位数（release 门控，0=不复用）
         uint64_t effBufferCount{0};  // data 复用轮数（0/>=commTiles 归一化为 commTiles）
     };
 
@@ -221,7 +219,6 @@ private:
     uint32_t curMainRoundIdx_{0xFFFFFFFF};
     bool tailBuilt_{false};
     uint64_t curRoundCOff_{};
-    int32_t releasedRoundIdx_{-1};
 
     // ---- Tile strides ----
     uint64_t tileMDataStride_{};
@@ -360,11 +357,25 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
     if ((sch.GetEndBlockIdx() + 1) * mTailTile * nTailTile <= AscendC::GetBlockNum()) {
         sch.UpdateTailTile(mTailTile, nTailTile);
     }
-    uint32_t readyTileIdx = 0;
-    CrossCoreWaitFlag<0x2, PIPE_MTE2>(0); // dependTileIdx=0 由 AIV 预触发，无需等待。
+
+    // BufferChannel：slotSize 用行单位(读端寻址)，与写端 impl 的字节 slotSize 对应。
+    uint32_t dataSlotNum = (fp.slotNum > 0 && fp.slotNum < fp.commTurn) ? fp.slotNum : fp.commTurn;
+    uint64_t dataSlotSize = static_cast<uint64_t>(rankMinus1) * tileM;
+    uint64_t scaleSlotSize = static_cast<uint64_t>(rankMinus1) * tileM;
+    Apace::Basic::BufferChannel dataChannel;
+    Apace::Basic::BufferChannel scaleChannel;
+    dataChannel.Init(dataSlotSize, dataSlotNum);
+    scaleChannel.Init(scaleSlotSize, fp.commTurn);
+
+    // 预触发 local HEAD：HEAD 读本地 GM 不经通信，flagId=0 硬编码，不走 BufferChannel。
+    CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
 
     const int32_t commTurnI = static_cast<int32_t>(fp.commTurn);
-    const int32_t bufferCountI = static_cast<int32_t>(fp.bufferCount);
+    const int32_t dataSlotNumI = static_cast<int32_t>(dataSlotNum);
+
+    int32_t readyTileIdx = -1;
+    uint64_t dataSlotOffset = 0;
+    uint64_t scaleSlotOffset = 0;
 
     Te::Coord<int64_t, int64_t, int64_t, int64_t> blockIdx;
     int64_t mPos = 0L, nPos = 0L;
@@ -381,22 +392,20 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
         sch.GetTileCoord(blockIdx, mPos, nPos);
 
         auto ctx = ResolveTileCtx(mPos, headMainRows, mainRoundRows, mainSectionRows, fp.rankSize, fp.commTurn);
-        while (readyTileIdx < ctx.dependTileIdx) {
-            readyTileIdx++;
-            CrossCoreWaitFlag<0x2, PIPE_MTE2>(readyTileIdx);
-        }
+        int32_t dependRound = static_cast<int32_t>(ctx.dependTileIdx) - 1;
 
-        // win buffer 复用：释放本 block 已消费完的 round（去重、单调不减）。
-        // dependTileIdx 是 flag 编号（=round+1），换算成 round 编号后再释放。
-        {
-            int32_t dependRound = static_cast<int32_t>(ctx.dependTileIdx) - 1;
-            while (bufferCountI > 0 && releasedRoundIdx_ < dependRound - 1) {
-                releasedRoundIdx_++;
-                if (releasedRoundIdx_ < commTurnI - bufferCountI) {
-                    CrossCoreSetFlag<0x2, PIPE_FIX>(
-                        static_cast<uint32_t>(releasedRoundIdx_) % SYNCALL_FLAG_ID_MAX);
-                }
+        // wait + release merged（对标 all_to_all kernel）
+        while (readyTileIdx < dependRound) {
+            if (readyTileIdx >= 0 && readyTileIdx < commTurnI - dataSlotNumI) {
+                CrossCoreSetFlag<0x2, PIPE_FIX>(
+                    static_cast<uint32_t>(readyTileIdx) % static_cast<uint32_t>(dataSlotNumI) %
+                    Apace::Basic::BufferChannel::FLAG_ID_MODULO + 1);
             }
+            readyTileIdx++;
+            auto dataSlot = dataChannel.GetNextSlot();
+            CrossCoreWaitFlag<0x2, PIPE_MTE2>(dataSlot.slotIdx + 1);
+            dataSlotOffset = dataSlot.offset;
+            scaleSlotOffset = scaleChannel.GetNextSlot().offset;
         }
 
         // Per-tile L2 cache hint
@@ -417,10 +426,9 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
                 UpdateMainRoundAddrs(params, ctx.roundIdx);
             }
             auto blockC = ctx.fragC->Slice(coordC, shapeC);
-            // A/scaleA 普通连续读：A 按 slotIdx 回绕，scale 全量不回绕。
-            int64_t slotIdx = static_cast<int64_t>(static_cast<uint64_t>(ctx.roundIdx) % fp.effBufferCount);
-            int64_t actualMPos = slotIdx * rankMinus1 * tileM + ctx.regionMPos;
-            int64_t scaleActualMPos = static_cast<int64_t>(ctx.roundIdx) * rankMinus1 * tileM + ctx.regionMPos;
+            // A/scaleA 连续读：offset 由 BufferChannel 提供（data 回绕复用，scale 全量不回绕）
+            int64_t actualMPos = static_cast<int64_t>(dataSlotOffset) + ctx.regionMPos;
+            int64_t scaleActualMPos = static_cast<int64_t>(scaleSlotOffset) + ctx.regionMPos;
             auto blockA = gmA.Slice(Te::MakeCoord(actualMPos, 0L), Te::MakeShape(curMtile, Ki));
             auto blockScaleA = gmScaleA.Slice(Te::MakeCoord(scaleActualMPos, 0L), Te::MakeShape(curMtile, scaleKLen));
             mmadFrag(blockA, gmBlockB, blockScaleA, gmBlockScaleB, gmBlockBias,
@@ -444,17 +452,16 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
         }
     }
 
-    // 确保所有 dependTileIdx 均已 wait（收尾清理）。
-    while (readyTileIdx < fp.commTurn) {
+    // 确保所有 round 均已 wait + release 兜底（对标 all_to_all kernel）。
+    while (readyTileIdx < commTurnI - 1) {
+        if (readyTileIdx >= 0 && readyTileIdx < commTurnI - dataSlotNumI) {
+            CrossCoreSetFlag<0x2, PIPE_FIX>(
+                static_cast<uint32_t>(readyTileIdx) % static_cast<uint32_t>(dataSlotNumI) %
+                Apace::Basic::BufferChannel::FLAG_ID_MODULO + 1);
+        }
         readyTileIdx++;
-        CrossCoreWaitFlag<0x2, PIPE_MTE2>(readyTileIdx);
-    }
-    // release 兜底：每个 AIC 核（包括未分到 block 的核）都要把 flag 补齐，
-    // AIV 复用等待最大需要释放 commTurn-bufferCount-1。
-    while (bufferCountI > 0 && releasedRoundIdx_ < commTurnI - bufferCountI - 1) {
-        releasedRoundIdx_++;
-        CrossCoreSetFlag<0x2, PIPE_FIX>(
-            static_cast<uint32_t>(releasedRoundIdx_) % SYNCALL_FLAG_ID_MAX);
+        auto dataSlot = dataChannel.GetNextSlot();
+        CrossCoreWaitFlag<0x2, PIPE_MTE2>(dataSlot.slotIdx + 1);
     }
 }
 
