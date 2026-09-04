@@ -172,7 +172,12 @@ private:
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers_.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
         // MxMatmulFull 同时消费 fp8 data 与 e8m0 scale。
-        MMParam param = MxMakeMMParam(s2CalcSize, runInfo.actMSize, constInfo.dSize, false, true);
+        // C1: K[S2,D] * Q^T[D,M] -> C1[S2,M]。
+        MMParam param = MxMakeMMParam(s2CalcSize,       // singleM：当前 subLoop 的实际 S2 长度。
+                                      runInfo.actMSize, // singleN：当前 Q block 的实际 M 长度。
+                                      constInfo.dSize,  // singleK：Q/K head dimension。
+                                      false,            // isLeftTranspose：K 按 [S2,D] 加载，不转置。
+                                      true);            // isRightTranspose：Q 按 [D,M] 转置视图加载。
         if constexpr (LOAD_Q_TO_L0B && RELEASE_Q_L0B) {
             MxMatmulFull<INPUT_T, INPUT_T, MM_T, S2_SPLIT, M_BASE, D_BASE, ABLayout::MK, ABLayout::KN,
                          BuffersPolicyDB<BufferType::L0A>, BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T,
@@ -242,8 +247,15 @@ public:
             vBuf.Set<HardEvent::MTE2_MTE1>();
             vBuf.Wait<HardEvent::MTE2_MTE1>();
 
-            MMParam param =
-                MxMakeMMParam(M_BASE, constInfo.dSizeV, AlignUp64(realK), true, false, kIdx == 0U, kIdx == 0U);
+            // C2: P[M,K] * V[K,DV] -> C2[M,DV]。
+            const bool isFirstKLoop = kIdx == 0U;
+            MMParam param = MxMakeMMParam(M_BASE,           // singleM：固定的 Q block 行数。
+                                          constInfo.dSizeV, // singleN：V 的 head dimension。
+                                          AlignUp64(realK), // singleK：当前 K 分块按 64 对齐后的长度。
+                                          true,             // isLeftTranspose：P 按 [M,K] 转置视图加载。
+                                          false,            // isRightTranspose：V 按 [K,DV] 加载，不转置。
+                                          isFirstKLoop,     // cmatrixInitVal：首个 K 分块初始化 C 矩阵。
+                                          isFirstKLoop);    // isOutKFisrt：标记当前是外层 K 循环首块。
             // P 转置，V 保持 KN。
             MxMatmulFull<INPUT_T, INPUT_T, MM_T, M_BASE, DV_BASE, baseK, ABLayout::MK, ABLayout::KN,
                          BuffersPolicyDB<BufferType::L0A>, BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T,
