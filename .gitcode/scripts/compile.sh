@@ -113,7 +113,10 @@ else
     echo "api-check=continue" >> "${ATOMGIT_OUTPUT}"
 fi
 if [ "${task_name}" == "Pre_Compile" ]; then
-    LOG_DO bash build.sh --PR_PKG ./pr_filelist.txt -j32 --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH}
+    # LOG_DO bash build.sh --PR_PKG ./pr_filelist.txt -j32 --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH}
+    echo "bash build.sh --pkg --ops=fused_infer_attention_score --soc=ascend950 -j16"
+    LOG_DO bash build.sh --pkg --ops=fused_infer_attention_score --soc=ascend950 -j16
+    ls -al "${WORKSPACE}"/third_party
     ret=$?
     if [ $ret -eq 200 ]; then
         LOG_HEAD "NOTE: changed files are not supported in pre_smoke"
