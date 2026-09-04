@@ -992,6 +992,7 @@ class ElasticBuffer:
         handle: EPHandle,
         *,
         topk_weights: Optional[torch.Tensor] = None,
+        apply_weights: bool = False,
         bias: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor], None] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         self._ensure_moe_config()
@@ -1006,6 +1007,14 @@ class ElasticBuffer:
         torch._check(
             topk_weights is None or isinstance(topk_weights, torch.Tensor),
             lambda: f"topk_weights must be a tensor or None, but got {type(topk_weights).__name__}.",
+        )
+        torch._check(
+            isinstance(apply_weights, bool),
+            lambda: f"apply_weights must be a bool, but got {type(apply_weights).__name__}.",
+        )
+        torch._check(
+            (not apply_weights) or (topk_weights is not None),
+            lambda: "apply_weights requires topk_weights to be specified.",
         )
         torch._check(
             bias is None or isinstance(bias, (torch.Tensor, tuple)),
@@ -1058,6 +1067,7 @@ class ElasticBuffer:
             ccl_buffer_size,
             combined_x,
             combined_topk_weights,
+            apply_weights,
         )
         return combined_x, combined_topk_weights
 
