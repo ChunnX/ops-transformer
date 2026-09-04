@@ -12,12 +12,20 @@
  * \file npu_flash_attention_score_onnx_plugin.cpp
  * \brief
  */
-#include "onnx_common.h"
-#include "attention/flash_attention_score/op_graph/flash_attention_score_proto.h"
+#include <cerrno>
+#include <cstdlib>
+#include <string>
+#include <vector>
+
+#include "register/register.h"
+#include "graph/operator.h"
+#include "graph/graph.h"
 #include "op_common/log/log.h"
+#include "nlohmann/json.hpp"
+#include "stub_ops.h"
+#include "attention/flash_attention_score/op_graph/flash_attention_score_proto.h"
 
 namespace domi {
-using NodeProto = ge::onnx::NodeProto;
 constexpr int REQUIRED_ATTR = 2;
 constexpr int ACL_UINT8 = 4;
 constexpr int ONE = 1;
@@ -26,223 +34,316 @@ constexpr int ONE_BYTE_BITS = 8;
 constexpr int EXTRA_LENGTH = 32;
 constexpr int OUTPUT_INDEX = 3;
 
-namespace{
-static void UpdateFlashAttentionByNode(ge::Operator& op_dest, const NodeProto* node) {
-  int input_size = node->input_size();
-  int output_size = node->output_size();
-  op_dest.DynamicInputRegister("x", input_size);
-  op_dest.DynamicOutputRegister("y", output_size);
-  op_dest.SetAttr("name", node->name());
-  op_dest.SetAttr("original_type", "npu::1::NPUFlashAttention");
-}
-
-static Status GetAttrFromPre4(
-  const ge::Operator& op, int& head_num, string& input_layout, float& scale, float& keep_prob) {
-  if (op.GetAttr("head_num", head_num) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "head_num",
-        "get head_num from op failed");
-    return FAILED;
-  }
-  if (op.GetAttr("input_layout", input_layout) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "input_layout",
-        "get input_layout from op failed");
-    return FAILED;
-  }
-  if (op.GetAttr("scale", scale) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "scale",
-        "get scale from op failed");
-    return FAILED;
-  }
-  if (op.GetAttr("keep_prob", keep_prob) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "keep_prob",
-        "get keep_prob from op failed");
-    return FAILED;
-  }
-  return SUCCESS;
-}
-
-static Status GetAttrFromLast4(
-  const ge::Operator& op, int& pre_tockens, int& next_tockens, int& inner_precise, int& sparse_mode) {
-  if (op.GetAttr("pre_tockens", pre_tockens) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "pre_tockens",
-        "get pre_tockens from op failed");
-    return FAILED;
-  }
-  if (op.GetAttr("next_tockens", next_tockens) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "next_tockens",
-        "get next_tockens from op failed");
-    return FAILED;
-  }
-  if (op.GetAttr("inner_precise", inner_precise) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "inner_precise",
-        "get inner_precise from op failed");
-    return FAILED;
-  }
-  if (op.GetAttr("sparse_mode", sparse_mode) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "sparse_mode",
-        "get sparse_mode from op failed");
-    return FAILED;
-  }
-  return SUCCESS;
-}
-
-static Status GetFinalDimsByOperator(
-  const ge::Operator& op, const std::string& input_layout, int head_num, vector<int64_t>& final_dims) {
-  std::vector<int64_t> dims = op.GetInputDesc(0).GetShape().GetDims();
-  int64_t numels = 0;
-  if (input_layout == "BSH") {
-    numels = dims[0] * dims[1] * dims[1] * head_num;
-  } else if (input_layout == "SBH") {
-    numels = dims[1] * dims[0] * dims[0] * head_num;
-  } else {
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetOpName(op).c_str(), "input_layout",
-        input_layout, "The value of input_layout must be BSH or SBH");
-    return FAILED;
-  }
-  int64_t length = (numels + ALIGN_NUM - 1) / ALIGN_NUM * ALIGN_NUM / ONE_BYTE_BITS;
-  length += EXTRA_LENGTH;
-  final_dims = {length};
-  return SUCCESS;
-}
-
-static Status GetOriNameFromOperator(const ge::Operator& op, std::string& ori_name) {
-  if (op.GetAttr("name", ori_name) != SUCCESS) {
-    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "name",
-        "get name from op failed");
-    return FAILED;
-  }
-  return SUCCESS;
-}
-}
-
-static Status ParseParamsFlashAttention(const Message* op_src, ge::Operator& op_dest) {
-  const NodeProto* node = dynamic_cast<const NodeProto*>(op_src);
-  if (node == nullptr) {
-    OP_LOGE("FlashAttention", "Dynamic cast op_src to NodeProto failed.");
-    return FAILED;
-  }
-
-  int head_num = 0;
-  std::string input_layout = "";
-  float scale = 1.0f;
-  float keep_prob = 1.0f;
-  int pre_tockens = 0;
-  int next_tockens = 0;
-  int required_attr_num = 0;
-  int inner_precise = 1;
-  int sparse_mode = 0;
-  for (const auto& attr : node->attribute()) {
-    if (attr.name() == "head_num" && attr.type() == ge::onnx::AttributeProto::INT) {
-      head_num = attr.i();
-      ++required_attr_num;
-    } else if (attr.name() == "input_layout" && attr.type() == ge::onnx::AttributeProto::STRING) {
-      input_layout = attr.s();
-      ++required_attr_num;
-    } else if (attr.name() == "scale" && attr.type() == ge::onnx::AttributeProto::FLOAT) {
-      scale = attr.f();
-    } else if (attr.name() == "keep_prob" && attr.type() == ge::onnx::AttributeProto::FLOAT) {
-      keep_prob = attr.f();
-    } else if (attr.name() == "pre_tockens" && attr.type() == ge::onnx::AttributeProto::INT) {
-      pre_tockens = attr.i();
-    } else if (attr.name() == "next_tockens" && attr.type() == ge::onnx::AttributeProto::INT) {
-      next_tockens = attr.i();
-    } else if (attr.name() == "inner_precise" && attr.type() == ge::onnx::AttributeProto::INT) {
-      inner_precise = attr.i();
-    } else if (attr.name() == "sparse_mode" && attr.type() == ge::onnx::AttributeProto::INT) {
-      sparse_mode = attr.i();
+namespace {
+static std::string GetOpName(const ge::Operator &op)
+{
+    ge::AscendString op_name;
+    if (op.GetName(op_name) != ge::GRAPH_SUCCESS) {
+        return "None";
     }
-  }
-
-  if (required_attr_num != REQUIRED_ATTR) {
-    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op_dest).c_str(),
-        "required_attr_num", "attr num two is required.");
-    return FAILED;
-  }
-
-  UpdateFlashAttentionByNode(op_dest, node);
-
-  op_dest.SetAttr("head_num", head_num);
-  op_dest.SetAttr("input_layout", input_layout);
-  op_dest.SetAttr("scale", scale);
-  op_dest.SetAttr("keep_prob", keep_prob);
-  op_dest.SetAttr("pre_tockens", pre_tockens);
-  op_dest.SetAttr("next_tockens", next_tockens);
-  op_dest.SetAttr("inner_precise", inner_precise);
-  op_dest.SetAttr("sparse_mode", sparse_mode);
-  return SUCCESS;
+    return op_name.GetString();
 }
 
-static Status ParseOpToGraphNpuFlashAttentionScore(const ge::Operator& op, ge::Graph& graph) {
-  std::string ori_name;
-  if (GetOriNameFromOperator(op, ori_name)) {
-    return FAILED;
-  }
+static bool StrToFloat(const std::string &str, float &value)
+{
+    if (str.empty()) {
+        return false;
+    }
+    errno = 0;
+    char *end_ptr = nullptr;
+    const float parsed = std::strtof(str.c_str(), &end_ptr);
+    if (end_ptr == str.c_str() || *end_ptr != '\0' || errno == ERANGE) {
+        return false;
+    }
+    value = parsed;
+    return true;
+}
 
-  auto data0 = ge::op::Data((ori_name + "_data0").c_str()).set_attr_index(0);
-  auto data1 = ge::op::Data((ori_name + "_data1").c_str()).set_attr_index(1);
-  auto data2 = ge::op::Data((ori_name + "_data2").c_str()).set_attr_index(2);
-  auto data3 = ge::op::Data((ori_name + "_data3").c_str()).set_attr_index(3);
-  auto data4 = ge::op::Data((ori_name + "_data4").c_str()).set_attr_index(4);
-  auto data5 = ge::op::Data((ori_name + "_data5").c_str()).set_attr_index(5);
-  auto data6 = ge::op::Data((ori_name + "_data6").c_str()).set_attr_index(6);
-  auto data7 = ge::op::Data((ori_name + "_data7").c_str()).set_attr_index(7);
-  auto data8 = ge::op::Data((ori_name + "_data8").c_str()).set_attr_index(8);
+template <typename T>
+static ge::Tensor Vec2Tensor(std::vector<T> &vals, const std::vector<int64_t> &dims, ge::DataType dtype,
+                             ge::Format format = ge::FORMAT_ND)
+{
+    ge::Shape shape(dims);
+    ge::TensorDesc desc(shape, format, dtype);
+    ge::Tensor tensor(desc, reinterpret_cast<uint8_t *>(vals.data()), vals.size() * sizeof(T));
+    return tensor;
+}
 
-  int head_num = 0;
-  string input_layout = "BSH";
-  float scale = 1.0f;
-  float keep_prob = 1.0f;
-  int pre_tockens = 0;
-  int next_tockens = 0;
-  int inner_precise = 1;
-  int sparse_mode = 0;
-  if ((GetAttrFromPre4(op, head_num, input_layout, scale, keep_prob) != SUCCESS) ||
-      (GetAttrFromLast4(op, pre_tockens, next_tockens, inner_precise, sparse_mode) != SUCCESS)) {
-    return FAILED;
-  }
-  // create const input tensor "drop_mask" which is filled with the scalar value 1 for inferencing
-  // deop_mask.size = [B, N, S, S]
-  ge::Tensor saclar_one = CreateScalar(ONE, ge::DT_UINT8);
-  auto const_one = ge::op::Const((ori_name + "_Const_one").c_str()).set_attr_value(saclar_one);
-  vector<int64_t> final_dims;
-  if (GetFinalDimsByOperator(op, input_layout, head_num, final_dims) != SUCCESS) {
-    return FAILED;
-  }
+template <typename T>
+static ge::Tensor CreateScalar(T val, ge::DataType dtype, ge::Format format = ge::FORMAT_ND)
+{
+    std::vector<int64_t> dims_scalar = {};
+    ge::Shape shape(dims_scalar);
+    ge::TensorDesc desc(shape, format, dtype);
+    ge::Tensor tensor(desc, reinterpret_cast<uint8_t *>(&val), sizeof(T));
+    return tensor;
+}
 
-  auto tensor_dims = Vec2Tensor(final_dims, {1}, ge::DT_INT64);
-  auto const_dims = ge::op::Const((ori_name + "_Const_dims").c_str()).set_attr_value(tensor_dims);
-  auto drop_mask = ge::op::Fill((ori_name + "_Fill_ones").c_str()).set_input_dims(const_dims).set_input_value(const_one);
-  auto cast_drop_mask = ge::op::Cast((ori_name + "_Cast_drop_mask").c_str()).set_input_x(drop_mask)
-                                                                            .set_attr_dst_type(ACL_UINT8);
+static bool GetOperatorIoCounts(const ge::Operator &op_src, size_t &input_size, size_t &output_size)
+{
+    std::vector<std::string> input_names;
+    std::vector<std::string> output_names;
+    if (op_src.GetAttr("input", input_names) != ge::GRAPH_SUCCESS ||
+        op_src.GetAttr("output", output_names) != ge::GRAPH_SUCCESS) {
+        return false;
+    }
+    input_size = input_names.size();
+    output_size = output_names.size();
+    return true;
+}
 
-  auto AttentionScore = ge::op::FlashAttentionScore((ori_name + "_FlashAttentionScore").c_str())
-                            .set_input_query(data0).set_input_key(data1).set_input_value(data2)
-                            .set_input_real_shift(data3).set_input_drop_mask(cast_drop_mask)
-                            .set_input_padding_mask(data4).set_input_atten_mask(data5).set_input_prefix(data6)
-                            .set_input_actual_seq_qlen(data7).set_input_actual_seq_kvlen(data8)
-                            .set_attr_scale_value(scale).set_attr_keep_prob(keep_prob).set_attr_pre_tockens(pre_tockens)
-                            .set_attr_next_tockens(next_tockens).set_attr_head_num(head_num)
-                            .set_attr_inner_precise(inner_precise).set_attr_sparse_mode(sparse_mode);
-  std::vector<ge::Operator> inputs{data0, data1, data2, data3, data4, data5, data6, data7, data8};
-  std::vector<std::pair<ge::Operator, std::vector<size_t>>> outputs;
-  outputs.emplace_back(AttentionScore, std::vector<std::size_t>{OUTPUT_INDEX});
-  graph.SetInputs(inputs).SetOutputs(outputs);
-  return SUCCESS;
+static Status UpdateFlashAttentionByOperator(ge::Operator &op_dest, const ge::Operator &op_src)
+{
+    size_t input_size = 0U;
+    size_t output_size = 0U;
+    if (!GetOperatorIoCounts(op_src, input_size, output_size)) {
+        OP_LOGE(GetOpName(op_dest).c_str(), "get input/output from op failed");
+        return FAILED;
+    }
+    op_dest.DynamicInputRegister("x", static_cast<uint32_t>(input_size));
+    op_dest.DynamicOutputRegister("y", static_cast<uint32_t>(output_size));
+    op_dest.SetAttr("name", GetOpName(op_src));
+    op_dest.SetAttr("original_type", "npu::1::NPUFlashAttention");
+    return SUCCESS;
+}
+
+static Status GetAttrFromPre4(const ge::Operator &op, int &head_num, string &input_layout, float &scale,
+                              float &keep_prob)
+{
+    if (op.GetAttr("head_num", head_num) != SUCCESS) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "head_num", "get head_num from op failed");
+        return FAILED;
+    }
+    if (op.GetAttr("input_layout", input_layout) != SUCCESS) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "input_layout",
+                                                 "get input_layout from op failed");
+        return FAILED;
+    }
+    if (op.GetAttr("scale", scale) != SUCCESS) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "scale", "get scale from op failed");
+        return FAILED;
+    }
+    if (op.GetAttr("keep_prob", keep_prob) != SUCCESS) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "keep_prob", "get keep_prob from op failed");
+        return FAILED;
+    }
+    return SUCCESS;
+}
+
+static Status GetAttrFromLast4(const ge::Operator &op, int &pre_tockens, int &next_tockens, int &inner_precise,
+                               int &sparse_mode)
+{
+    if (op.GetAttr("pre_tockens", pre_tockens) != SUCCESS) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "pre_tockens",
+                                                 "get pre_tockens from op failed");
+        return FAILED;
+    }
+    if (op.GetAttr("next_tockens", next_tockens) != SUCCESS) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "next_tockens",
+                                                 "get next_tockens from op failed");
+        return FAILED;
+    }
+    if (op.GetAttr("inner_precise", inner_precise) != SUCCESS) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "inner_precise",
+                                                 "get inner_precise from op failed");
+        return FAILED;
+    }
+    if (op.GetAttr("sparse_mode", sparse_mode) != SUCCESS) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "sparse_mode",
+                                                 "get sparse_mode from op failed");
+        return FAILED;
+    }
+    return SUCCESS;
+}
+
+static Status GetFinalDimsByOperator(const ge::Operator &op, const std::string &input_layout, int head_num,
+                                     vector<int64_t> &final_dims)
+{
+    std::vector<int64_t> dims = op.GetInputDesc(0).GetShape().GetDims();
+    int64_t numels = 0;
+    if (input_layout == "BSH") {
+        numels = dims[0] * dims[1] * dims[1] * head_num;
+    } else if (input_layout == "SBH") {
+        numels = dims[1] * dims[0] * dims[0] * head_num;
+    } else {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetOpName(op).c_str(), "input_layout", input_layout,
+                                              "The value of input_layout must be BSH or SBH");
+        return FAILED;
+    }
+    int64_t length = (numels + ALIGN_NUM - 1) / ALIGN_NUM * ALIGN_NUM / ONE_BYTE_BITS;
+    length += EXTRA_LENGTH;
+    final_dims = {length};
+    return SUCCESS;
+}
+
+static Status GetOriNameFromOperator(const ge::Operator &op, std::string &ori_name)
+{
+    if (op.GetAttr("name", ori_name) != SUCCESS) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op).c_str(), "name", "get name from op failed");
+        return FAILED;
+    }
+    return SUCCESS;
+}
+} // namespace
+
+static Status ParseParamsFlashAttention(const ge::Operator &op_src, ge::Operator &op_dest)
+{
+    using json = nlohmann::json;
+    int head_num = 0;
+    std::string input_layout = "";
+    float scale = 1.0f;
+    float keep_prob = 1.0f;
+    int pre_tockens = 0;
+    int next_tockens = 0;
+    int required_attr_num = 0;
+    int inner_precise = 1;
+    int sparse_mode = 0;
+    ge::AscendString attrs_string;
+    if (op_src.GetAttr("attribute", attrs_string) == ge::GRAPH_SUCCESS) {
+        try {
+            json node_attrs = json::parse(attrs_string.GetString());
+            if (node_attrs.contains("attribute") && node_attrs["attribute"].is_array()) {
+                for (json &attr : node_attrs["attribute"]) {
+                    std::string attr_name = attr.value("name", "");
+                    if (attr_name == "head_num" && attr.contains("i")) {
+                        head_num = attr["i"].get<int>();
+                        ++required_attr_num;
+                    } else if (attr_name == "input_layout" && attr.contains("s")) {
+                        input_layout = attr["s"].get<std::string>();
+                        ++required_attr_num;
+                    } else if (attr_name == "scale" && attr.contains("f")) {
+                        std::string scale_str = attr["f"].get<std::string>();
+                        if (!StrToFloat(scale_str, scale)) {
+                            OP_LOGE(GetOpName(op_dest).c_str(), "invalid scale value: %s", scale_str.c_str());
+                            return FAILED;
+                        }
+                    } else if (attr_name == "keep_prob" && attr.contains("f")) {
+                        std::string keep_prob_str = attr["f"].get<std::string>();
+                        if (!StrToFloat(keep_prob_str, keep_prob)) {
+                            OP_LOGE(GetOpName(op_dest).c_str(), "invalid keep_prob value: %s", keep_prob_str.c_str());
+                            return FAILED;
+                        }
+                    } else if (attr_name == "pre_tockens" && attr.contains("i")) {
+                        pre_tockens = attr["i"].get<int>();
+                    } else if (attr_name == "next_tockens" && attr.contains("i")) {
+                        next_tockens = attr["i"].get<int>();
+                    } else if (attr_name == "inner_precise" && attr.contains("i")) {
+                        inner_precise = attr["i"].get<int>();
+                    } else if (attr_name == "sparse_mode" && attr.contains("i")) {
+                        sparse_mode = attr["i"].get<int>();
+                    }
+                }
+            }
+        } catch (const nlohmann::json::exception &e) {
+            OP_LOGE(GetOpName(op_dest).c_str(), "JSON parse error: %s", e.what());
+            return FAILED;
+        } catch (...) {
+            OP_LOGE(GetOpName(op_dest).c_str(), "get unknown exception, please check onnx attributes.");
+            return FAILED;
+        }
+    }
+
+    if (required_attr_num != REQUIRED_ATTR) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GetOpName(op_dest).c_str(), "required_attr_num",
+                                                 "attr num two is required.");
+        return FAILED;
+    }
+
+    if (UpdateFlashAttentionByOperator(op_dest, op_src) != SUCCESS) {
+        return FAILED;
+    }
+
+    op_dest.SetAttr("head_num", head_num);
+    op_dest.SetAttr("input_layout", input_layout);
+    op_dest.SetAttr("scale", scale);
+    op_dest.SetAttr("keep_prob", keep_prob);
+    op_dest.SetAttr("pre_tockens", pre_tockens);
+    op_dest.SetAttr("next_tockens", next_tockens);
+    op_dest.SetAttr("inner_precise", inner_precise);
+    op_dest.SetAttr("sparse_mode", sparse_mode);
+    return SUCCESS;
+}
+
+static Status ParseOpToGraphNpuFlashAttentionScore(const ge::Operator &op, ge::Graph &graph)
+{
+    std::string ori_name;
+    if (GetOriNameFromOperator(op, ori_name)) {
+        return FAILED;
+    }
+
+    auto data0 = ge::op::Data((ori_name + "_data0").c_str()).set_attr_index(0);
+    auto data1 = ge::op::Data((ori_name + "_data1").c_str()).set_attr_index(1);
+    auto data2 = ge::op::Data((ori_name + "_data2").c_str()).set_attr_index(2);
+    auto data3 = ge::op::Data((ori_name + "_data3").c_str()).set_attr_index(3);
+    auto data4 = ge::op::Data((ori_name + "_data4").c_str()).set_attr_index(4);
+    auto data5 = ge::op::Data((ori_name + "_data5").c_str()).set_attr_index(5);
+    auto data6 = ge::op::Data((ori_name + "_data6").c_str()).set_attr_index(6);
+    auto data7 = ge::op::Data((ori_name + "_data7").c_str()).set_attr_index(7);
+    auto data8 = ge::op::Data((ori_name + "_data8").c_str()).set_attr_index(8);
+
+    int head_num = 0;
+    string input_layout = "BSH";
+    float scale = 1.0f;
+    float keep_prob = 1.0f;
+    int pre_tockens = 0;
+    int next_tockens = 0;
+    int inner_precise = 1;
+    int sparse_mode = 0;
+    if ((GetAttrFromPre4(op, head_num, input_layout, scale, keep_prob) != SUCCESS) ||
+        (GetAttrFromLast4(op, pre_tockens, next_tockens, inner_precise, sparse_mode) != SUCCESS)) {
+        return FAILED;
+    }
+    // create const input tensor "drop_mask" which is filled with the scalar value 1 for inferencing
+    // deop_mask.size = [B, N, S, S]
+    ge::Tensor saclar_one = CreateScalar(ONE, ge::DT_UINT8);
+    auto const_one = ge::op::Const((ori_name + "_Const_one").c_str()).set_attr_value(saclar_one);
+    vector<int64_t> final_dims;
+    if (GetFinalDimsByOperator(op, input_layout, head_num, final_dims) != SUCCESS) {
+        return FAILED;
+    }
+
+    auto tensor_dims = Vec2Tensor(final_dims, {1}, ge::DT_INT64);
+    auto const_dims = ge::op::Const((ori_name + "_Const_dims").c_str()).set_attr_value(tensor_dims);
+    auto drop_mask =
+        ge::op::Fill((ori_name + "_Fill_ones").c_str()).set_input_dims(const_dims).set_input_value(const_one);
+    auto cast_drop_mask =
+        ge::op::Cast((ori_name + "_Cast_drop_mask").c_str()).set_input_x(drop_mask).set_attr_dst_type(ACL_UINT8);
+
+    auto AttentionScore = ge::op::FlashAttentionScore((ori_name + "_FlashAttentionScore").c_str())
+                              .set_input_query(data0)
+                              .set_input_key(data1)
+                              .set_input_value(data2)
+                              .set_input_real_shift(data3)
+                              .set_input_drop_mask(cast_drop_mask)
+                              .set_input_padding_mask(data4)
+                              .set_input_atten_mask(data5)
+                              .set_input_prefix(data6)
+                              .set_input_actual_seq_qlen(data7)
+                              .set_input_actual_seq_kvlen(data8)
+                              .set_attr_scale_value(scale)
+                              .set_attr_keep_prob(keep_prob)
+                              .set_attr_pre_tockens(pre_tockens)
+                              .set_attr_next_tockens(next_tockens)
+                              .set_attr_head_num(head_num)
+                              .set_attr_inner_precise(inner_precise)
+                              .set_attr_sparse_mode(sparse_mode);
+    std::vector<ge::Operator> inputs{data0, data1, data2, data3, data4, data5, data6, data7, data8};
+    std::vector<std::pair<ge::Operator, std::vector<size_t>>> outputs;
+    outputs.emplace_back(AttentionScore, std::vector<std::size_t>{OUTPUT_INDEX});
+    graph.SetInputs(inputs).SetOutputs(outputs);
+    return SUCCESS;
 }
 
 // register npu_flash_attention_score op info to GE
 REGISTER_CUSTOM_OP("PartitionedCall")
-  .FrameworkType(ONNX)
-  .OriginOpType({ge::AscendString("npu::1::NPUFlashAttention"), 
-                 ge::AscendString("ai.onnx::11::NPUFlashAttention"),
-                 ge::AscendString("ai.onnx::12::NPUFlashAttention"),
-                 ge::AscendString("ai.onnx::13::NPUFlashAttention"),
-                 ge::AscendString("ai.onnx::14::NPUFlashAttention"),
-                 ge::AscendString("ai.onnx::15::NPUFlashAttention"),
-                 ge::AscendString("ai.onnx::16::NPUFlashAttention"),
-                 ge::AscendString("ai.onnx::17::NPUFlashAttention"),
-                 ge::AscendString("ai.onnx::18::NPUFlashAttention")})
-  .ParseParamsFn(ParseParamsFlashAttention)
-  .ParseOpToGraphFn(ParseOpToGraphNpuFlashAttentionScore)
-  .ImplyType(ImplyType::TVM);
-}  // namespace domi
+    .FrameworkType(ONNX)
+    .OriginOpType(
+        {ge::AscendString("npu::1::NPUFlashAttention"), ge::AscendString("ai.onnx::11::NPUFlashAttention"),
+         ge::AscendString("ai.onnx::12::NPUFlashAttention"), ge::AscendString("ai.onnx::13::NPUFlashAttention"),
+         ge::AscendString("ai.onnx::14::NPUFlashAttention"), ge::AscendString("ai.onnx::15::NPUFlashAttention"),
+         ge::AscendString("ai.onnx::16::NPUFlashAttention"), ge::AscendString("ai.onnx::17::NPUFlashAttention"),
+         ge::AscendString("ai.onnx::18::NPUFlashAttention")})
+    .ParseParamsByOperatorFn(ParseParamsFlashAttention)
+    .ParseOpToGraphFn(ParseOpToGraphNpuFlashAttentionScore)
+    .ImplyType(ImplyType::TVM);
+} // namespace domi
