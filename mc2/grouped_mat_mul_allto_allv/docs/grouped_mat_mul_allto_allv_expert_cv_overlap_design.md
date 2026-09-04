@@ -5,9 +5,20 @@
 - 适用算子：`GroupedMatMulAlltoAllvV2`
 - 适用通路：`commMode="aiv"` 的 AIV 直驱 MTE 通路
 - 适用架构：当前该通路覆盖的 Ascend 910B / Ascend 910_93
-- 设计状态：方案设计，尚未实现
+- 设计状态：实验实现已落地；发布默认仍为 `BULK`
 - 跨 rank 审计状态：有条件通过；HW-02 与 HW-10 为实现/默认使能阻断项
 - 目标分支：`feature/gmma2av-expert-cv-overlap`
+
+### 1.1 当前实现边界
+
+当前分支已实现固定同步布局、Catlass 每专家完成回调、本地 ready/reverse-credit、
+count 提前发布、逐专家 peer-window publish/pull、owner-AIV 私有 UB source-offset 缓存以及
+completion/ack 排水。`GMMA2AV_EXPERT_PIPELINE_MODE=overlap` 仅作为通信域内所有
+rank 已协调一致的实机验证入口；unset/`auto`/`bulk` 均选择 `BULK`。
+
+该实现没有替代第 8.1、8.2 节要求的 executor admission、window 一次性协调清零
+和 epoch 耗尽重建。公开 CANN 头文件也尚未给出“跨不同 HCCL window”的正式
+release/acquire 契约，因此 HW-02、HW-10 关闭前不得将 overlap 改为发布默认值。
 
 ## 2. 背景与现状
 
@@ -82,7 +93,8 @@ Toverlap = max(Tmetadata, Tgmm[0])
 3. 不引入专家内 chunk 流水；流水最小粒度固定为一个专家。
 4. 不改变 `sendCounts`/`recvCounts` 的语义和数据排列。
 5. 不扩展到 `ai_cpu`、`aic` 等非 AIV-MTE 通路。
-6. 不裁减现有 cumsum workspace；第一版将其复用为远端专家源偏移缓存。
+6. 不裁减现有 cumsum workspace，以避免同时改变既有 workspace 布局；专家流水
+   不再读写该区域，远端专家源偏移保存在 owner AIV 的私有 UB。
 
 ## 4. 总体方案
 
@@ -251,6 +263,11 @@ AIC/AIV 编译栈隔离要求。
 空专家没有数据搬运，但不得跳过 barrier 和 ready 通知，否则不同 AIC 或 rank
 会进入不同专家轮次并死锁。
 
+每个 AIV 只直接等待配对 AIC，但 payload 行按 AIV worker 重新均分，消费某行的
+AIV 不一定与计算该行 Tile 的 AIC 配对。因此所有 AIV 完成各自 paired wait 后，
+还必须执行一次 all-AIV barrier，再允许任一 AIV 读取共享 GMM workspace。该
+C→V hand-off 顺序与 mega_moe A3 一致，不能仅让各 AIV 独立等待自己的配对 AIC。
+
 ### 6.3 ready/reverse-credit 背压
 
 CrossCore flag 允许的未消费 set 次数有限。不能让计算较快的 AIC 无限制领先
@@ -260,9 +277,9 @@ arch22 的本地 flag ID 只有 0~15；简单照搬其他算子的
 `flagId = readySequence / 15` 方案，在本算子 `W * E <= 1024`、`W=2` 时
 `E` 可达到 512，会产生大于 15 的 flag ID 并发生低 4 bit 别名，因此不可用。
 
-设计直接采用 Catlass 已验证的
-`CrossCoreFlagWithReverse<MAX_REVERSE_DEPTH>`，其中
-`MAX_REVERSE_DEPTH = 15`。它只使用一个 ready flag ID 和一个 reverse flag ID：
+设计直接采用 mega_moe A3 已验证的 `CrossCoreFlagWithReverse<15U>`。深度必须
+显式为 15，不能引用当前通用 CATLASS 中取值为 16 的同名默认常量。它只使用
+一个 ready flag ID 和一个 reverse flag ID：
 
 ```text
 AIC:
@@ -332,14 +349,26 @@ primary AIV 按 `srcRank = logicalCoreIdx; srcRank < W; srcRank += workerNum`
 
 1. 每个 worker 对其负责的源 rank 只加载一次 `[W][E]` count table；
 2. 预计算所有 `sourceOffset(source, localRank, expert)`；
-3. 将 token 行偏移以 `uint32_t` 写入现有 `cumsumBuffer[W * E]`；当前 A/BSK
-   上限为 5,000,000，能够安全表示；
+3. 将 token 行偏移以 `uint32_t` 写入该物理 AIV 私有的
+   `sourceOffsets[W * E]` UB 区域；当前 A/BSK 上限为 5,000,000，能够安全表示；
 4. 每个 worker 保存或顺序更新其负责源 rank 的 `destinationOffset`，专家循环中
    仅做 O(1) 地址查询和增量更新。
 
 这样单个目标 rank 的总预处理复杂度为 `O(W^2 * E)`（每个源 rank 为
 `O(W * E)`），逐专家数据阶段不再重复扫描全部前序专家，且
-不增加算子 workspace。
+不增加算子 workspace。`BuildPeerSourceOffsets` 与 `PullPeerExpert` 使用完全相同的
+`srcRank = logicalCoreIdx + k * workerNum` 分工，因此某个 `(source, expert)` 的
+offset 始终由同一个物理 AIV 生产和消费，不需要跨 AIV 共享。UB 固定布局为：
+
+```text
+[0, 64 KiB)    payload ping
+[64, 68 KiB)   count/control scratch
+[72, 76 KiB)   destinationOffsets[1024]
+[80, 84 KiB)   sourceOffsets[1024]
+[96, 160 KiB)  payload pong
+```
+
+各边界、32-byte 对齐和总 UB 容量均由 kernel `static_assert` 约束。
 
 ### 7.3 跨 rank 同步 slot
 
@@ -785,6 +814,7 @@ RunExpertOverlap(localRank r):
 
     for e in [0, E):                              // 空专家也执行全部 phase
         WaitPairedAicExpertReadyWithReverse(e)
+        LocalAllAivBarrier(ALL_PAIRED_AIC_READY)
 
         all payload workers in parallel:
             CopyDisjointRows(
@@ -882,11 +912,12 @@ ValidateOrDrain(source s, expert e):
 ack 汇总到全 rank；在该扩展完成前，不得用正 ready 掩盖 source 发布失败。
 
 伪代码中的 `errorBits` 是逻辑状态，不得直接实现成多个 AIV 无同步写同一标量。
-第一版可由每个 source 的唯一 owner 将对应 `cumsumBuffer[source,e]` 写为
-`INVALID_OFFSET`，ack 后再由 controller 扫描归并；若需要保留详细错误码，则使用
-每 worker 独占的 DFX record，再由 controller/host 汇总。最终上报只能写入
-non-trapping 状态，之后仍须完成本卡 all-AIV 和最终 AIC/AIV rendezvous；不能在
-ack 后立即 `assert/trap`，否则本卡尚未退出的 AIC/共享专家路径仍可能卡死。
+第一版由每个 source 的唯一 owner 将其私有 UB
+`sourceOffsets[source,e]` 写为 `INVALID_OFFSET`，只用于安全跳过本 owner 的 copy；
+若需要在 ack 后汇总或保留详细错误码，则使用每 worker 独占的 DFX record，再由
+controller/host 汇总。最终上报只能写入 non-trapping 状态，之后仍须完成本卡
+all-AIV 和最终 AIC/AIV rendezvous；不能在 ack 后立即 `assert/trap`，否则本卡
+尚未退出的 AIC/共享专家路径仍可能卡死。
 `FinalAicAivRendezvous()` 对应当前调度器两侧都会到达的最终
 `AscendC::SyncAll<false>()`，实现专家流水时不得遗漏。
 
@@ -1041,12 +1072,14 @@ FP16 等类型时，只需补齐 Catlass 实例、host dtype 白名单、binary 
 ```text
 libApiWorkspace
 + AlignUp(A * N1 * sizeof(T), 512)          // 完整 GMM 输出
-+ AlignUp(W * E * sizeof(uint32_t), 512)    // 复用为 sourceOffset 缓存
++ AlignUp(W * E * sizeof(uint32_t), 512)    // 既有 cumsum 区，当前保留但不再访问
 ```
 
-专家流水仅改变不同区间的生产/消费时机，不改变 workspace 总大小。每个
-`cumsumBuffer[source * E + expert]` 保存源 window 中该专家发往本 rank 数据的
-token 行偏移，不能保存乘以 `N1` 后的元素/字节偏移。
+专家流水仅改变不同区间的生产/消费时机，不改变 workspace 总大小。源 window
+中该专家发往本 rank 数据的 token 行偏移保存在 owner AIV 私有 UB 的
+`sourceOffsets[source * E + expert]`，不能保存乘以 `N1` 后的元素/字节偏移。
+保留未使用的 cumsum 区是兼容性选择，后续可作为独立优化在 host/kernel ABI 与
+workspace 回归齐备后裁减，不能和同步正确性修复混在同一变更中。
 
 CCL window 的 payload、count table 和尾部控制区总体布局不变；同步控制区改为
 固定上限布局，并增加 host 容量校验。CCL window 不计入算子 workspace。
@@ -1126,8 +1159,8 @@ metadata -> expert 0 -> ... -> expert E-1 -> completion -> ack
    `startCoreIdx`，在每专家完成后触发 AIC-only callback。
 4. **本地 ready/reverse**：接入 `CrossCoreFlagWithReverse<15>`，先验证空专家、
    `E > 15` 长链和固定合法 flag ID。
-5. **偏移预处理**：复用 cumsum workspace 缓存远端专家源偏移，避免逐专家
-   `O(W^2 * E^2)` 重扫 count table。
+5. **偏移预处理**：在每个 owner AIV 的私有 UB 中缓存其负责 source 的专家源偏移，
+   避免共享 GM scratch 及逐专家 `O(W^2 * E^2)` 重扫 count table。
 6. **逐专家 payload publish/pull**：接入独立 expert ready slot、跨 window
    release/acquire 和最终 completion/ack。
 7. **tiling 使能及 bulk 回退**：加入 `expertPipelineMode`，完成同一二进制 A/B。
@@ -1328,6 +1361,56 @@ context 和真实核路径可加载运行，二者不能互相替代。
 
 每项实机门禁必须保存：算子 commit、CANN 包版本、SOC、卡数、通信域、用例
 参数、随机种子、命令、watchdog 结果；性能项还需保存 30 次原始数据和 trace。
+
+### 15.6 2026-09-04 Ascend 910_93 调试与阶段性结果
+
+本节只记录当前实验分支的阶段性 A3 功能证据，不等价于关闭 15.5 节全部硬门禁。
+测试使用 `/root/workspace/Q2/GMMA2Av/env_0828` CANN 环境。最终恢复的 normal 包
+SHA256 为 `b9fd18ec8a959bbf883df22b04f186f420a7fbd347bf237974f4ff4fb5823452`；
+同源码的 sanitizer + `ccec_g` 包也编译通过，SHA256 为
+`468fda67aba5e4dd4773fe00ce40729a4d205379b1fe488dbea352cd6331c2f1`。
+
+原稳定失败为 EP4 `ep4_global_expert_skew_e4_aligned` 的 rank3：期望读取
+source2/expert2/row16，实际结果等于 source2/expert0/row0。bulk 同输入通过；仅增加
+AIC→AIV 后的本地 AIV barrier、或将 ready 临时改成 source-local remote polling，
+错误均保持不变。将 `sourceOffset` 从共享 GM cumsum scratch 改为 owner AIV 私有
+UB 后，该用例恢复正确；再恢复为与 mega_moe/combine A3 一致的 destination-local
+ready，结果仍通过。因此当前 A/B 能确认故障位于共享 GM source-offset 中间路径，
+但不能仅凭该现象断言 `WriteGmByPassDCache<uint32_t>` 发生 cache-line 覆盖。最终
+方案直接消除了不必要的跨核 GM 状态及标量 GM 往返。
+
+最终只读审查还发现，当前通用 CATLASS 的 `MAX_REVERSE_DEPTH` 为 16，而 A3
+CrossCore flag 最多允许积累 15 次未消费 set。实现已改为显式
+`CrossCoreFlagWithReverse<15U>`，避免 `E>=16` 且 AIC 领先 AIV 时发生 set-count
+溢出或挂死，不再依赖不同 CATLASS 分支中同名常量的取值。
+
+最终版本未加入 kernel `printf`。验证结果如下：
+
+- overlap：在 depth=15 修正后的 normal 包上，EP2 的 5 个 `E>=2` 用例、EP4
+  的 3 个 `E>=2` 用例、EP8 的 4 个用例均执行 3 轮并通过；每个连续 case 区间
+  使用 `hccl_per_case=0`，复用 communicator；
+- bulk：EP2 全 7 例、EP4 全 4 例、EP8 全 4 例均执行 2 轮并通过，覆盖 `E=1` 回退；
+  depth=15 修正后又单独复测 EP2/EP4 的 3 个 `E=1` 用例，全部通过；
+- 16 卡同一通信域依次运行 Kimi-K2.5、Qwen3.5-122B-A10B、
+  Qwen3.5-397B-A17B；最终 normal 包对应的本地专家数分别为 24、16、32，覆盖
+  reverse-credit 的 15 次边界，shape 与解析 golden 均通过，MERE/MARE/max-abs
+  均为 0；
+- `--ophost_test --ops=grouped_mat_mul_allto_allv` 共 68 个 host/tiling/infershape
+  单元测试全部通过，其中 MTE arch22 tiling 相关测试 35 个；
+- 编译通过，除既有 `SetSysWorkspace` deprecated warning 外无新增编译错误。
+
+代表性日志位于：
+
+```text
+/root/workspace/Q2/GMMA2Av/ep_test/log/log_gmma2av_v2_4EP_0,1,2,3Rank_20260904_1105/offline_master_0.log
+/root/workspace/Q2/GMMA2Av/ep_test/log/log_gmma2av_v2_2EP_0,1Rank_20260904_1131/offline_master_0.log
+/root/workspace/Q2/GMMA2Av/ep_test/log/log_gmma2av_v2_4EP_0,1,2,3Rank_20260904_1132/offline_master_0.log
+/root/workspace/Q2/GMMA2Av/ep_test/log/log_gmma2av_v2_8EP_0,1,2,3,4,5,6,7Rank_20260904_1134/offline_master_0.log
+```
+
+尚未覆盖 Ascend 910B、100/1000 轮持久域压力、双 stream admission、首次非零
+window、epoch 上限/异常重建及性能 trace，故 `auto` 继续选择 `BULK`，HW-02、
+HW-06、HW-08、HW-09、HW-10 仍不能据此关闭。
 
 ## 16. 验收标准
 

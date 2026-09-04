@@ -45,6 +45,7 @@ protected:
     ge::graphStatus PostTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus SetMteWorkspaceInfo();
+    ge::graphStatus SetExpertPipelineMode(uint32_t &expertPipelineMode) const;
     uint64_t GetTilingKey() const override;
     uint32_t GetCommModeIndex() const override;
     ge::graphStatus GetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const;

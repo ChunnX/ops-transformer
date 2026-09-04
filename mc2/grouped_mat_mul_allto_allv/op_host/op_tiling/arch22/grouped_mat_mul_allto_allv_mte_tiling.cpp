@@ -22,6 +22,8 @@
 #include "register/op_def_registry.h"
 #include "register/tilingdata_base.h"
 #include "graph/utils/type_utils.h"
+#include <cstdlib>
+#include <cstring>
 
 using namespace Mc2Log;
 using namespace AscendC;
@@ -36,6 +38,11 @@ namespace {
 constexpr uint8_t COMM_MODE_AIV = 2U;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8U;
 constexpr uint32_t OP_TYPE_MULTI_PUT = 18U;
+constexpr const char *EXPERT_PIPELINE_MODE_ENV = "GMMA2AV_EXPERT_PIPELINE_MODE";
+constexpr const char *EXPERT_PIPELINE_MODE_AUTO = "auto";
+constexpr const char *EXPERT_PIPELINE_MODE_BULK = "bulk";
+constexpr const char *EXPERT_PIPELINE_MODE_OVERLAP = "overlap";
+constexpr uint64_t A2_EXPERT_OVERLAP_MAX_RANK_SIZE = 8UL;
 const std::string A3_MTE_HCCL_ALG_CONFIG = "AlltoAll=level0:fullmesh;level1:pairwise";
 const std::string A2_MTE_HCCL_ALG_CONFIG = "MultiPut=level0:fullmesh";
 }
@@ -394,6 +401,9 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckParamsAttrEpAndSetLocalPar
                     OP_LOGE(opName_, "epWorldSize=%ld does not match communicator rank size=%ld.", rankDim,
                             communicatorRankDim),
                     return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(rankDim <= 0 || static_cast<uint64_t>(rankDim) > MC2KernelTemplate::Gmma2avMteTiling::MAX_RANK_SIZE,
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "rankSize", std::to_string(rankDim).c_str(), "[1, 768]"),
+                    return ge::GRAPH_FAILED);
 
     std::string supportRankSizeRange;
     const std::set<int64_t> &supportRankSize = (npuArch_ == NpuArch::DAV_3510) ? A5_SUPPORT_RANK_SIZE :
@@ -410,11 +420,12 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckParamsAttrEpAndSetLocalPar
     OP_TILING_CHECK(localParams_.ep == 0 || localParams_.ep > MAX_GLOBAL_EXPERT_NUM,
                     OP_LOGE_FOR_INVALID_VALUE(opName_, "ep", std::to_string(localParams_.ep).c_str(), "(0, 1024]"),
                     return ge::GRAPH_FAILED);
-    uint64_t expertNum = localParams_.ep * rankDim;
-    OP_TILING_CHECK(expertNum > MAX_GLOBAL_EXPERT_NUM,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "expertNum", std::to_string(expertNum).c_str(),
-                                                          "must be in [1, 1024]"),
-                    return ge::GRAPH_FAILED);
+    const uint64_t rankSize = static_cast<uint64_t>(rankDim);
+    OP_TILING_CHECK(
+        localParams_.ep > MC2KernelTemplate::Gmma2avMteTiling::MAX_COUNT_NUM / rankSize,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "expertNum", std::to_string(localParams_.ep * rankSize).c_str(),
+                                              "rankSize * expertNumPerRank must be in [1, 1024]"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -497,6 +508,7 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::PostTiling()
     context_->SetBlockDim(localParams_.aicCoreNum);
 
     MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData outData{};
+    outData.expertPipelineMode = static_cast<uint32_t>(MC2KernelTemplate::ExpertPipelineMode::BULK);
     auto &taskTiling = outData.taskTilingInfo;
     taskTiling.BSK = localParams_.BsK;
     taskTiling.BS = localParams_.Bs;
@@ -544,11 +556,9 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::PostTiling()
                     OP_LOGE(opName_, "MTE send-count staging requires %lu bytes, but its CCL region has %lu bytes.",
                             countMatrixBytes, sendCountStagingBytes),
                     return ge::GRAPH_FAILED);
-    const uint64_t syncBytes = localParams_.epWorldSize *
-                               MC2KernelTemplate::Gmma2avMteTiling::SYNC_STORAGE_SLOT_COUNT *
-                               MC2KernelTemplate::Gmma2avMteTiling::SYNC_SLOT_BYTES;
+    const uint64_t syncBytes = MC2KernelTemplate::Gmma2avMteTiling::FIXED_SYNC_BYTES;
     OP_TILING_CHECK(syncBytes > MC2KernelTemplate::Gmma2avMteTiling::CCL_TAIL_SAFETY_BYTES,
-                    OP_LOGE(opName_, "MTE sync slots require %lu bytes, but the CCL tail region has %lu bytes.",
+                    OP_LOGE(opName_, "MTE fixed sync layout requires %lu bytes, but the CCL tail region has %lu bytes.",
                             syncBytes, MC2KernelTemplate::Gmma2avMteTiling::CCL_TAIL_SAFETY_BYTES),
                     return ge::GRAPH_FAILED);
     const uint64_t dtypeSize = mc2tiling::GetDataTypeSize(opName_, localParams_.gmmYDtype);
@@ -568,6 +578,16 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::PostTiling()
                             MC2KernelTemplate::Gmma2avMteTiling::CONTROL_REGION_BYTES,
                             MC2KernelTemplate::Gmma2avMteTiling::MIN_CCL_BUFFER_BYTES),
                     return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(outData.commBufferSize < MC2KernelTemplate::Gmma2avMteTiling::SYNC_REGION_FROM_TAIL,
+                    OP_LOGE(opName_, "CCL buffer=%lu bytes is smaller than the MTE sync-tail offset=%lu bytes.",
+                            outData.commBufferSize, MC2KernelTemplate::Gmma2avMteTiling::SYNC_REGION_FROM_TAIL),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(outData.commBufferSize % MC2KernelTemplate::Gmma2avMteTiling::SYNC_SLOT_BYTES != 0UL,
+                    OP_LOGE(opName_, "CCL buffer=%lu bytes does not preserve %lu-byte sync-slot alignment.",
+                            outData.commBufferSize, MC2KernelTemplate::Gmma2avMteTiling::SYNC_SLOT_BYTES),
+                    return ge::GRAPH_FAILED);
+
+    MC2_CHECK_LOG_RET(opName_, SetExpertPipelineMode(outData.expertPipelineMode));
 
     outData.cumsumWorkspaceOffset = mc2tiling::AlignUp(
         localParams_.A * localParams_.N1 * dtypeSize, MC2KernelTemplate::Gmma2avMteTiling::WORKSPACE_ALIGNMENT);
@@ -592,6 +612,49 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::PostTiling()
     OP_TILING_CHECK(ret != EOK, OP_LOGE(opName_, "postTiling: memcpy_s failed with ret=%d.", ret),
                     return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(sizeof(outData));
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::SetExpertPipelineMode(uint32_t &expertPipelineMode) const
+{
+    expertPipelineMode = static_cast<uint32_t>(MC2KernelTemplate::ExpertPipelineMode::BULK);
+    const char *requestedMode = std::getenv(EXPERT_PIPELINE_MODE_ENV);
+    if (requestedMode == nullptr || std::strcmp(requestedMode, EXPERT_PIPELINE_MODE_AUTO) == 0 ||
+        std::strcmp(requestedMode, EXPERT_PIPELINE_MODE_BULK) == 0) {
+        OP_LOGD(opName_, "MTE expert pipeline mode=bulk, layoutVersion=%u, W=%lu, E=%lu.",
+                MC2KernelTemplate::Gmma2avMteTiling::FIXED_SYNC_LAYOUT_VERSION, localParams_.epWorldSize,
+                localParams_.ep);
+        return ge::GRAPH_SUCCESS;
+    }
+
+    OP_TILING_CHECK(
+        std::strcmp(requestedMode, EXPERT_PIPELINE_MODE_OVERLAP) != 0,
+        OP_LOGE(opName_, "%s must be one of auto, bulk or overlap, got '%s'.", EXPERT_PIPELINE_MODE_ENV, requestedMode),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(localParams_.ep < 2UL,
+                    OP_LOGE(opName_, "Expert-overlap mode requires at least two experts, got E=%lu.", localParams_.ep),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(!isA3_ && localParams_.epWorldSize > A2_EXPERT_OVERLAP_MAX_RANK_SIZE,
+                    OP_LOGE(opName_, "Expert-overlap mode on Ascend 910B only supports W=2, 4 or 8, got W=%lu.",
+                            localParams_.epWorldSize),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        localParams_.epWorldSize > MC2KernelTemplate::Gmma2avMteTiling::MAX_RANK_SIZE ||
+            localParams_.ep > MC2KernelTemplate::Gmma2avMteTiling::MAX_COUNT_NUM / localParams_.epWorldSize,
+        OP_LOGE(opName_,
+                "Expert-overlap sync layout capacity exceeded: W=%lu, E=%lu, maxW=%u, "
+                "max(W*E)=%u.",
+                localParams_.epWorldSize, localParams_.ep, MC2KernelTemplate::Gmma2avMteTiling::MAX_RANK_SIZE,
+                MC2KernelTemplate::Gmma2avMteTiling::MAX_COUNT_NUM),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(MC2KernelTemplate::Gmma2avMteTiling::FIXED_SYNC_BYTES >
+                        MC2KernelTemplate::Gmma2avMteTiling::SYNC_REGION_FROM_TAIL,
+                    OP_LOGE(opName_, "Expert-overlap fixed sync layout does not fit its reserved CCL region."),
+                    return ge::GRAPH_FAILED);
+
+    expertPipelineMode = static_cast<uint32_t>(MC2KernelTemplate::ExpertPipelineMode::EXPERT_OVERLAP);
+    OP_LOGD(opName_, "MTE expert pipeline mode=overlap, layoutVersion=%u, W=%lu, E=%lu.",
+            MC2KernelTemplate::Gmma2avMteTiling::FIXED_SYNC_LAYOUT_VERSION, localParams_.epWorldSize, localParams_.ep);
     return ge::GRAPH_SUCCESS;
 }
 

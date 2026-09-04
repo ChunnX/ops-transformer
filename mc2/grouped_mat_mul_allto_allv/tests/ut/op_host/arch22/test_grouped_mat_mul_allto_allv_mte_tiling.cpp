@@ -8,8 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include <iostream>
+#include <cstdlib>
+#include <cstring>
 #include <gtest/gtest.h>
 #include "../../../../op_host/op_tiling/arch22/grouped_mat_mul_allto_allv_mte_tiling.h"
+#include "../../../../op_kernel/arch22/grouped_mat_mul_allto_allv_mte_tiling.h"
 #include "mc2_tiling_case_executor.h"
 
 namespace GroupedMatMulAlltoAllvMteUT {
@@ -18,6 +21,9 @@ constexpr uint64_t DEFAULT_CCL_BUFFER_SIZE = 6000ULL * 1024ULL * 1024ULL;
 constexpr uint64_t SAMPLE_OUTPUT_SIZE = 4096ULL * 4096ULL * sizeof(uint16_t);
 constexpr uint64_t SAMPLE_COUNT_MATRIX_SIZE = 8ULL * 4ULL * sizeof(int32_t);
 constexpr uint64_t SAMPLE_REQUIRED_CCL_BUFFER_SIZE = 200ULL * 1024ULL * 1024ULL;
+constexpr const char *EXPERT_PIPELINE_MODE_ENV = "GMMA2AV_EXPERT_PIPELINE_MODE";
+constexpr uint32_t BULK_MODE = static_cast<uint32_t>(MC2KernelTemplate::ExpertPipelineMode::BULK);
+constexpr uint32_t OVERLAP_MODE = static_cast<uint32_t>(MC2KernelTemplate::ExpertPipelineMode::EXPERT_OVERLAP);
 
 struct TestParam {
     string testName{};
@@ -26,6 +32,41 @@ struct TestParam {
     std::vector<std::pair<size_t, ge::DataType>> tilingDTypesPair{};
     ge::graphStatus status;
     uint64_t cclBufferSize{DEFAULT_CCL_BUFFER_SIZE};
+    std::string pipelineModeEnv{};
+    uint32_t expectedPipelineMode{BULK_MODE};
+    uint64_t communicatorRankSize{8UL};
+};
+
+class ScopedEnvironmentVariable {
+public:
+    ScopedEnvironmentVariable(const char *name, const std::string &value)
+        : name_(name)
+    {
+        const char *oldValue = std::getenv(name);
+        if (oldValue != nullptr) {
+            hadOldValue_ = true;
+            oldValue_ = oldValue;
+        }
+        if (value.empty()) {
+            (void)::unsetenv(name);
+        } else {
+            (void)::setenv(name, value.c_str(), 1);
+        }
+    }
+
+    ~ScopedEnvironmentVariable()
+    {
+        if (hadOldValue_) {
+            (void)::setenv(name_, oldValue_.c_str(), 1);
+        } else {
+            (void)::unsetenv(name_);
+        }
+    }
+
+private:
+    const char *name_;
+    bool hadOldValue_{false};
+    std::string oldValue_{};
 };
 
 struct TilingParams {
@@ -110,6 +151,19 @@ protected:
     }
 };
 
+TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, FixedSyncLayout)
+{
+    using namespace MC2KernelTemplate::Gmma2avMteTiling;
+    EXPECT_EQ(FIXED_SYNC_LAYOUT_VERSION, 1U);
+    EXPECT_EQ(EPOCH_BASE, 0UL);
+    EXPECT_EQ(BULK_READY_BASE, SYNC_SLOT_BYTES);
+    EXPECT_EQ(EXPERT_READY_BASE, BULK_READY_BASE + static_cast<uint64_t>(MAX_RANK_SIZE) * SYNC_SLOT_BYTES);
+    EXPECT_EQ(COMPLETION_BASE, EXPERT_READY_BASE + static_cast<uint64_t>(MAX_COUNT_NUM) * SYNC_SLOT_BYTES);
+    EXPECT_EQ(ACK_BASE, COMPLETION_BASE + static_cast<uint64_t>(MAX_RANK_SIZE) * SYNC_SLOT_BYTES);
+    EXPECT_EQ(FIXED_SYNC_BYTES, (1UL + 3UL * MAX_RANK_SIZE + MAX_COUNT_NUM) * SYNC_SLOT_BYTES);
+    EXPECT_LE(FIXED_SYNC_BYTES, SYNC_REGION_FROM_TAIL);
+}
+
 TEST_P(GroupedMatMulAlltoAllvMteArch22TilingTest, ShapeSize)
 {
     auto testParam = GetParam();
@@ -118,7 +172,8 @@ TEST_P(GroupedMatMulAlltoAllvMteArch22TilingTest, ShapeSize)
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingData = 8192;
+    uint64_t tilingData = sizeof(MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData);
+    ScopedEnvironmentVariable pipelineModeGuard(EXPERT_PIPELINE_MODE_ENV, testParam.pipelineModeEnv);
     auto tilingParams = TilingParams{};
     for (auto &kv : testParam.tilingParamsStrPair) {
         if (g_tilingParamsStrHandlers.count(kv.first) != 0) {
@@ -163,13 +218,22 @@ TEST_P(GroupedMatMulAlltoAllvMteArch22TilingTest, ShapeSize)
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
     if (testParam.status == ge::GRAPH_FAILED) {
-        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}, {"cclBufferSize", testParam.cclBufferSize}};
+        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", testParam.communicatorRankSize},
+                                                   {"cclBufferSize", testParam.cclBufferSize}};
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
     } else {
-        Mc2Hcom::MockValues hcomTopologyMockValues{
-            {"rankNum", tilingParams.epWorldSize}, {"cclBufferSize", testParam.cclBufferSize}};
-        uint64_t expectTilingKey = 17UL;
-        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", tilingParams.epWorldSize},
+                                                   {"cclBufferSize", testParam.cclBufferSize}};
+        Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValues(hcomTopologyMockValues);
+        TilingInfo tilingInfo{};
+        const bool tilingSucceeded = ExecuteTiling(tilingContextPara, tilingInfo);
+        Mc2Hcom::MC2HcomTopologyMocker::GetInstance().Reset();
+        ASSERT_TRUE(tilingSucceeded);
+        EXPECT_EQ(tilingInfo.tilingKey, 17UL);
+        ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData));
+        MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData actualTiling{};
+        std::memcpy(&actualTiling, tilingInfo.tilingData.get(), sizeof(actualTiling));
+        EXPECT_EQ(actualTiling.expertPipelineMode, testParam.expectedPipelineMode);
     }
 }
 
@@ -177,6 +241,35 @@ static TestParam g_testParams[] = {
     {"Test_sample", {}, {}, {}, ge::GRAPH_SUCCESS},
     {"Test_ccl_buffer_exact", {}, {}, {}, ge::GRAPH_SUCCESS, SAMPLE_REQUIRED_CCL_BUFFER_SIZE},
     {"Test_ccl_buffer_too_small", {}, {}, {}, ge::GRAPH_FAILED, SAMPLE_REQUIRED_CCL_BUFFER_SIZE - 1ULL},
+    {"Test_ccl_buffer_unaligned", {}, {}, {}, ge::GRAPH_FAILED, SAMPLE_REQUIRED_CCL_BUFFER_SIZE + 1ULL},
+    {"Test_pipeline_auto", {}, {}, {}, ge::GRAPH_SUCCESS, DEFAULT_CCL_BUFFER_SIZE, "auto", BULK_MODE},
+    {"Test_pipeline_bulk", {}, {}, {}, ge::GRAPH_SUCCESS, DEFAULT_CCL_BUFFER_SIZE, "bulk", BULK_MODE},
+    {"Test_pipeline_overlap", {}, {}, {}, ge::GRAPH_SUCCESS, DEFAULT_CCL_BUFFER_SIZE, "overlap", OVERLAP_MODE},
+    {"Test_pipeline_invalid", {}, {}, {}, ge::GRAPH_FAILED, DEFAULT_CCL_BUFFER_SIZE, "invalid"},
+    {"Test_pipeline_bulk_a2_rank16",
+     {{"epWorldSize", "16"}},
+     {{"sendCounts", MakeCounts(64, 4096)}, {"recvCounts", MakeCounts(64, 4096)}},
+     {},
+     ge::GRAPH_SUCCESS,
+     DEFAULT_CCL_BUFFER_SIZE,
+     "bulk",
+     BULK_MODE},
+    {"Test_pipeline_overlap_a2_rank16",
+     {{"epWorldSize", "16"}},
+     {{"sendCounts", MakeCounts(64, 4096)}, {"recvCounts", MakeCounts(64, 4096)}},
+     {},
+     ge::GRAPH_FAILED,
+     DEFAULT_CCL_BUFFER_SIZE,
+     "overlap",
+     BULK_MODE,
+     16UL},
+    {"Test_pipeline_overlap_one_expert",
+     {{"e", "1"}},
+     {{"sendCounts", MakeCounts(8, 4096)}, {"recvCounts", MakeCounts(8, 4096)}},
+     {},
+     ge::GRAPH_FAILED,
+     DEFAULT_CCL_BUFFER_SIZE,
+     "overlap"},
     {"Test_rank_768",
      {{"epWorldSize", "768"}, {"e", "1"}},
      {{"sendCounts", MakeCounts(768, 4096)}, {"recvCounts", MakeCounts(768, 4096)}},
@@ -240,7 +333,7 @@ TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim1)
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingData = 8192;
+    uint64_t tilingData = sizeof(MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData);
     gert::TilingContextPara tilingContextPara(
         "GroupedMatMulAlltoAllv",
         {
@@ -275,7 +368,7 @@ TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim2)
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingData = 8192;
+    uint64_t tilingData = sizeof(MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData);
     gert::TilingContextPara tilingContextPara(
         "GroupedMatMulAlltoAllv",
         {
@@ -310,7 +403,7 @@ TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim3)
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingData = 8192;
+    uint64_t tilingData = sizeof(MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData);
     gert::TilingContextPara tilingContextPara(
         "GroupedMatMulAlltoAllv",
         {
@@ -345,7 +438,7 @@ TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim4)
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingData = 8192;
+    uint64_t tilingData = sizeof(MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData);
     gert::TilingContextPara tilingContextPara(
         "GroupedMatMulAlltoAllv",
         {
@@ -381,7 +474,7 @@ TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim5)
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingData = 8192;
+    uint64_t tilingData = sizeof(MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData);
     gert::TilingContextPara tilingContextPara(
         "GroupedMatMulAlltoAllv",
         {
@@ -417,7 +510,7 @@ TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim6)
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingData = 8192;
+    uint64_t tilingData = sizeof(MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData);
     gert::TilingContextPara tilingContextPara(
         "GroupedMatMulAlltoAllv",
         {
@@ -453,7 +546,7 @@ TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, TransMmWeightInvalid)
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingData = 8192;
+    uint64_t tilingData = sizeof(MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData);
     gert::TilingContextPara tilingContextPara(
         "GroupedMatMulAlltoAllv",
         {
