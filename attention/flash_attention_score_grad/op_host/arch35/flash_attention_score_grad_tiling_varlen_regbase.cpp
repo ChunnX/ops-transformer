@@ -138,23 +138,9 @@ inline bool TNDRunIsTiny(int64_t virtM, int64_t virtN)
     return virtM <= 0 || virtN <= 0 || virtM * virtN <= TND_LINE_TINY_AREA;
 }
 
-inline bool TNDRunIsLineSubstantial(int64_t k, int64_t virtM, int64_t virtN, int64_t copies)
+inline bool TNDRunIsLineEligible(int64_t k, int64_t virtM, int64_t virtN, int64_t copies)
 {
-    return TNDRunIsLineWorthy(k, virtM, virtN, copies) || TNDRunIsLineWorthyTranspose(k, virtM, virtN, copies);
-}
-
-constexpr int64_t TND_LINE_ROUND_GAIN_NUM = 10;
-constexpr int64_t TND_LINE_ROUND_GAIN_DEN = 7;
-
-inline bool TNDLineBeatsLegacy(int64_t rLine, int64_t rOld)
-{
-    if (rLine <= 0) {
-        return false;
-    }
-    if (rOld <= 0) {
-        return true;
-    }
-    return rLine * TND_LINE_ROUND_GAIN_NUM <= rOld * TND_LINE_ROUND_GAIN_DEN;
+    return TNDRunIsLineWorthy(k, virtM, virtN, copies) && virtM >= k;
 }
 
 inline uint8_t PickTNDLineOrientation(int64_t k, int64_t virtM, int64_t virtN, int64_t copies)
@@ -162,17 +148,10 @@ inline uint8_t PickTNDLineOrientation(int64_t k, int64_t virtM, int64_t virtN, i
     if (virtM <= 0 || virtN <= 0 || copies <= 0) {
         return TND_LINE_COL_MAJOR;
     }
-    const bool colMajorOk = TNDRunIsLineWorthy(k, virtM, virtN, copies);
-    const bool rowMajorOk = TNDRunIsLineWorthyTranspose(k, virtM, virtN, copies);
-    if (!colMajorOk) {
-        return TND_LINE_ROW_MAJOR;
-    }
-    if (!rowMajorOk) {
+    if (TNDRunIsLineWorthy(k, virtM, virtN, copies)) {
         return TND_LINE_COL_MAJOR;
     }
-    const int64_t colMajorRounds = CeilDivideBy(virtN * copies, k) * virtM;
-    const int64_t rowMajorRounds = CeilDivideBy(virtM * copies, k) * virtN;
-    return rowMajorRounds < colMajorRounds ? TND_LINE_ROW_MAJOR : TND_LINE_COL_MAJOR;
+    return TND_LINE_ROW_MAJOR;
 }
 
 inline int64_t CalTNDLineRounds(int64_t k, int64_t virtM, int64_t virtN, int64_t copies, uint8_t orientation)
@@ -376,7 +355,10 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
             if (CalTNDLineRounds(k, shape.m, shape.n, total, orientation) <= 0) {
                 return false;
             }
-            hasSubstantial = hasSubstantial || TNDRunIsLineSubstantial(k, shape.m, shape.n, total);
+            if (!TNDRunIsLineEligible(k, shape.m, shape.n, total)) {
+                return false;
+            }
+            hasSubstantial = true;
         } else if (!isBand) {
             int64_t virtM = 0;
             int64_t virtN = 0;
@@ -399,7 +381,10 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
                     return false;
                 }
             }
-            hasSubstantial = hasSubstantial || TNDRunIsLineSubstantial(k, virtM, virtN, runPairs);
+            if (!TNDRunIsLineEligible(k, virtM, virtN, runPairs)) {
+                return false;
+            }
+            hasSubstantial = true;
         } else if (shape.kind == TNDRunShapeKind::BAND_DENSE) {
             if (TNDRunIsTiny(shape.m, shape.n)) {
                 i += groupSize;
@@ -409,8 +394,14 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
             if (CalTNDLineRounds(k, shape.m, shape.n, total, orientation) <= 0) {
                 return false;
             }
-            hasSubstantial = hasSubstantial || TNDRunIsLineSubstantial(k, shape.m, shape.n, total);
+            if (!TNDRunIsLineEligible(k, shape.m, shape.n, total)) {
+                return false;
+            }
+            hasSubstantial = true;
         } else if (shape.p + shape.q <= shape.m) {
+            if (shape.m < k) {
+                return false;
+            }
             hasSubstantial = true;
         } else {
             const int64_t denseN = CalTNDBandWideCols(shape.m, shape.n, shape.p, shape.q);
@@ -422,7 +413,10 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
             if (CalTNDLineRounds(k, shape.m, denseN, total, orientation) <= 0) {
                 return false;
             }
-            hasSubstantial = hasSubstantial || TNDRunIsLineSubstantial(k, shape.m, denseN, total);
+            if (!TNDRunIsLineEligible(k, shape.m, denseN, total)) {
+                return false;
+            }
+            hasSubstantial = true;
         }
         i += groupSize;
     }
@@ -566,7 +560,7 @@ protected:
         CalcleTNDDenseDeterParam();
         CalcleTNDCausalDeterParam();
         CalcleTNDBandDeterParam();
-        if (preferLine && TNDLineBeatsLegacy(linePack.rLine, fBaseParams.deterMaxRound)) {
+        if (preferLine && linePack.rLine > 0) {
             ApplyTNDLineDeterParam(fBaseParams, linePack);
         }
         OP_LOGD("CalcleTNDDeterParam",
