@@ -268,7 +268,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseOptionalInputs(QuantBlockSp
                          tilingInfo.maxBlockNumPerBatch)) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
             kOpName, "block_table", std::to_string(blockTableShape.GetDimNum()) + "D",
-            "failed to get B/maxBlockNumPerBatch from block_table shape");
+            "Failed to get B/maxBlockNumPerBatch from block_table shape");
         return ge::GRAPH_FAILED;
     }
     if (blockTableB != tilingInfo.bSize) {
