@@ -25,10 +25,11 @@
 
 using namespace matmul;
 
-constexpr inline MatmulConfig SAB_NORM_DISABLE_INIT = {true,  false, false, 0,     0,     0,     false, false,
-                                                   false, false, 0,     0,     0,     0,     0,     0,
-                                                   0,     0,     true,  false, false, false, false, false};
-constexpr MatmulConfig CFG_DIS_UNIT_FLAG_EXCEED = GetNormalConfig(true, false, false, BatchMode::BATCH_LESS_THAN_L1, true, IterateOrder::UNDEF, ScheduleType::INNER_PRODUCT, false);
+constexpr inline MatmulConfig SAB_NORM_DISABLE_INIT = {true,  false, false, 0,     0,     0,     true,  false,
+                                                       false, false, 0,     0,     0,     0,     0,     0,
+                                                       0,     0,     true,  false, false, false, false, false};
+constexpr MatmulConfig CFG_DIS_UNIT_FLAG_EXCEED = GetNormalConfig(
+    true, false, false, BatchMode::BATCH_LESS_THAN_L1, true, IterateOrder::UNDEF, ScheduleType::INNER_PRODUCT, false);
 
 struct DBParams {
   int64_t blockId;
