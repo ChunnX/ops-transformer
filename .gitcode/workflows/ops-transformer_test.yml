@@ -57,8 +57,8 @@ stages:
         with:
           task_name: 'Pre_Compile'
           image_version: ${{ jobs.JOB_image.outputs.Pre_Compile }}
-          arch: 'arm64'
-          spec: '2xlarge'
+          arch: 'x64'
+          spec: 'xlarge'
     pre:
     - type: auto
     fail-fast: false
