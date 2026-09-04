@@ -32,10 +32,11 @@
 #include "../../../common/op_kernel/mc2_moe_context.h"
 
 // arch35 性能优化开关：置 0 时 LocalWindowCopy 走原逐 token 同步搬运
+// 双缓冲搬出与小 bs 原路径编在同一 Process 会互抢寄存器，默认关闭以求两边平衡。
 #ifndef MC2_DTD_OPT_WINCOPY_PIPELINE
-#define MC2_DTD_OPT_WINCOPY_PIPELINE 1
+#define MC2_DTD_OPT_WINCOPY_PIPELINE 0
 #endif
-// 仅 bs<=16：count==0 的专家跳过 DCCI（空专家无数据可读）；bs256 走独立函数，不受影响
+// 空专家跳过 DCCI：小 bs / 大 bs 都适用，不引入第二条搬出路径
 #ifndef MC2_DTD_OPT_SMALL_BS_SKIP_EMPTY
 #define MC2_DTD_OPT_SMALL_BS_SKIP_EMPTY 1
 #endif
@@ -519,7 +520,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
         uint32_t count = statusTensor_.GetValue(i * 8 + 1);
         outCountLocal.SetValue(i, beginIdx + count);
 #if MC2_DTD_OPT_SMALL_BS_SKIP_EMPTY
-        // 空专家无 win 数据，DCCI 是纯开销。beginIdx 不变（+0）。
+        // 空专家无 win 数据，DCCI 是纯开销。beginIdx 不变（+0）。大小 bs 共用这一条路径。
         if (count == 0U) {
             continue;
         }

@@ -34,13 +34,12 @@
 #include "../../../common/op_kernel/mc2_moe_context.h"
 
 // arch35 性能优化开关（仅本算子）。全 0 时 Communication/CurRankComm/BuffInit 回原逻辑。
+// 远端先行 + 拆半双缓冲只对某一侧有利、对另一侧明显变慢，默认关闭以求 bs8/16 与 bs256 平衡。
 #ifndef MC2_CSU_OPT_OVERLAP_REMOTE
-// 先下发远端 WriteNbi/Commit，再做本卡 GM->UB->win，bs256 本卡拷贝不再堵住 NIC
-#define MC2_CSU_OPT_OVERLAP_REMOTE 1
+#define MC2_CSU_OPT_OVERLAP_REMOTE 0
 #endif
 #ifndef MC2_CSU_OPT_LOCAL_COPY_PIPELINE
-// 仅 bs>16：本卡搬运双 buffer；bs8/bs16 保持单 buffer 全 UB，避免一次拷贝被拆成两块
-#define MC2_CSU_OPT_LOCAL_COPY_PIPELINE 1
+#define MC2_CSU_OPT_LOCAL_COPY_PIPELINE 0
 #endif
 
 namespace MoeDistributeCombineSetupImpl {
