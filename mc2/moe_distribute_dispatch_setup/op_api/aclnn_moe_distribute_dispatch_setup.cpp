@@ -66,10 +66,7 @@ static bool CheckNotNull(const aclTensor *x, const aclTensor *expertIds, const c
 
 // 入参校验
 static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *expertIds, const aclTensor *scalesOptional,
-                               const char *groupEp, int64_t epWorldSize, int64_t epRankId, int64_t expertShardType,
-                               int64_t shareExpertRankNum, int64_t moeExpertNum, int64_t quantMode, int64_t globalBs,
-                               int64_t commType, const char *commAlg, aclTensor *yOut, aclTensor *expandIdxOut,
-                               aclTensor *commCmdInfoOut)
+                               const char *groupEp, aclTensor *yOut, aclTensor *expandIdxOut, aclTensor *commCmdInfoOut)
 {
     CHECK_RET(CheckNotNull(x, expertIds, groupEp, yOut, expandIdxOut, commCmdInfoOut), ACLNN_ERR_PARAM_NULLPTR);
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
@@ -89,9 +86,7 @@ aclnnStatus aclnnMoeDistributeDispatchSetupGetWorkspaceSize(
     aclTensor *expandIdxOut, aclTensor *commCmdInfoOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnnMoeDistributeDispatchSetupGetWorkspaceSize start");
-    auto ret_param =
-        CheckParams(x, expertIds, scalesOptional, groupEp, epWorldSize, epRankId, expertShardType, shareExpertRankNum,
-                    moeExpertNum, quantMode, globalBs, commType, commAlg, yOut, expandIdxOut, commCmdInfoOut);
+    auto ret_param = CheckParams(x, expertIds, scalesOptional, groupEp, yOut, expandIdxOut, commCmdInfoOut);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     aclnnStatus ret = aclnnInnerMoeDistributeDispatchSetupGetWorkspaceSize(
