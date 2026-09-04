@@ -125,6 +125,16 @@ inline bool TNDRunIsLineWorthyTranspose(int64_t k, int64_t virtM, int64_t virtN,
     return pairCount > 0 && virtM * pairCount >= k && virtN >= std::min(k, virtM);
 }
 
+inline bool TNDRunIsTiny(int64_t virtM, int64_t virtN)
+{
+    return virtM <= 0 || virtN <= 0 || virtM * virtN <= TND_LINE_TINY_AREA;
+}
+
+inline bool TNDRunIsLineSubstantial(int64_t k, int64_t virtM, int64_t virtN, int64_t copies)
+{
+    return TNDRunIsLineWorthy(k, virtM, virtN, copies) || TNDRunIsLineWorthyTranspose(k, virtM, virtN, copies);
+}
+
 inline uint8_t PickTNDLineOrientation(int64_t k, int64_t virtM, int64_t virtN, int64_t copies)
 {
     if (virtM <= 0 || virtN <= 0 || copies <= 0) {
@@ -323,7 +333,7 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
                          p.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND));
     const bool isDense = !isBand && (p.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE));
     const bool leftUp = !isBand && (p.sparseMode != static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL));
-    bool hasWork = false;
+    bool hasSubstantial = false;
     int64_t i = 0;
     while (i < p.b) {
         TNDRunShape shape;
@@ -335,12 +345,16 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
             i += groupSize;
             continue;
         }
-        hasWork = true;
         if (isDense) {
+            if (TNDRunIsTiny(shape.m, shape.n)) {
+                i += groupSize;
+                continue;
+            }
             const uint8_t orientation = PickTNDLineOrientation(k, shape.m, shape.n, total);
             if (CalTNDLineRounds(k, shape.m, shape.n, total, orientation) <= 0) {
                 return false;
             }
+            hasSubstantial = hasSubstantial || TNDRunIsLineSubstantial(k, shape.m, shape.n, total);
         } else if (!isBand) {
             int64_t virtM = 0;
             int64_t virtN = 0;
@@ -348,6 +362,10 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
                 GetTNDLeftUpVirt(shape.m, shape.n, virtM, virtN);
             } else {
                 GetTNDRightDownVirt(shape.m, shape.n, virtM, virtN);
+            }
+            if (TNDRunIsTiny(virtM, virtN)) {
+                i += groupSize;
+                continue;
             }
             const uint8_t pairOrientation = PickTNDLineOrientation(k, virtM, virtN, runPairs);
             if (runPairs > 0 && CalTNDLineRounds(k, virtM, virtN, runPairs, pairOrientation) <= 0) {
@@ -359,22 +377,34 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
                     return false;
                 }
             }
+            hasSubstantial = hasSubstantial || TNDRunIsLineSubstantial(k, virtM, virtN, runPairs);
         } else if (shape.kind == 43) {
+            if (TNDRunIsTiny(shape.m, shape.n)) {
+                i += groupSize;
+                continue;
+            }
             const uint8_t orientation = PickTNDLineOrientation(k, shape.m, shape.n, total);
             if (CalTNDLineRounds(k, shape.m, shape.n, total, orientation) <= 0) {
                 return false;
             }
+            hasSubstantial = hasSubstantial || TNDRunIsLineSubstantial(k, shape.m, shape.n, total);
         } else if (shape.p + shape.q <= shape.m) {
+            hasSubstantial = true;
         } else {
             const int64_t denseN = CalTNDBandWideCols(shape.m, shape.n, shape.p, shape.q);
+            if (TNDRunIsTiny(shape.m, denseN)) {
+                i += groupSize;
+                continue;
+            }
             const uint8_t orientation = PickTNDLineOrientation(k, shape.m, denseN, total);
             if (CalTNDLineRounds(k, shape.m, denseN, total, orientation) <= 0) {
                 return false;
             }
+            hasSubstantial = hasSubstantial || TNDRunIsLineSubstantial(k, shape.m, denseN, total);
         }
         i += groupSize;
     }
-    return hasWork;
+    return hasSubstantial;
 }
 
 struct TNDLineDeterPack {
@@ -514,11 +544,13 @@ protected:
         CalcleTNDDenseDeterParam();
         CalcleTNDCausalDeterParam();
         CalcleTNDBandDeterParam();
-        if (preferLine && linePack.rLine > 0 && fBaseParams.deterMaxRound > 0 &&
-            linePack.rLine < fBaseParams.deterMaxRound) {
+        // Tiny tails (e.g. S=109 -> 1 cube) must not drop a Line-worthy pack back to legacy.
+        if (preferLine && linePack.rLine > 0) {
             ApplyTNDLineDeterParam(fBaseParams, linePack);
         }
-        OP_LOGD("CalcleTNDDeterParam", "TND deterMaxRound is %ld.", fBaseParams.deterMaxRound);
+        OP_LOGD("CalcleTNDDeterParam", "TND deterMaxRound is %ld, tndLineDeter=%u, preferLine=%d, rLine=%ld.",
+                fBaseParams.deterMaxRound, static_cast<uint32_t>(fBaseParams.tndLineDeter),
+                static_cast<int>(preferLine), linePack.rLine);
     }
 
     void CalcTNDSwizzleParam() override
