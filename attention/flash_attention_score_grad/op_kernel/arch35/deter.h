@@ -3079,17 +3079,10 @@ __aicore__ inline uint8_t PickTNDLineOrientation(int64_t k, int64_t virtM, int64
     if (virtM <= 0 || virtN <= 0 || copies <= 0) {
         return TND_LINE_COL_MAJOR;
     }
-    const bool colMajorOk = TNDRunIsLineWorthy(k, virtM, virtN, copies);
-    const bool rowMajorOk = TNDRunIsLineWorthyTranspose(k, virtM, virtN, copies);
-    if (!colMajorOk) {
-        return TND_LINE_ROW_MAJOR;
-    }
-    if (!rowMajorOk) {
+    if (TNDRunIsLineWorthy(k, virtM, virtN, copies)) {
         return TND_LINE_COL_MAJOR;
     }
-    const int64_t colMajorRounds = Ceil<int64_t>(virtN * copies, k) * virtM;
-    const int64_t rowMajorRounds = Ceil<int64_t>(virtM * copies, k) * virtN;
-    return rowMajorRounds < colMajorRounds ? TND_LINE_ROW_MAJOR : TND_LINE_COL_MAJOR;
+    return TND_LINE_ROW_MAJOR;
 }
 
 __aicore__ inline int64_t CalTNDLineRounds(int64_t k, int64_t virtM, int64_t virtN, int64_t copies,
