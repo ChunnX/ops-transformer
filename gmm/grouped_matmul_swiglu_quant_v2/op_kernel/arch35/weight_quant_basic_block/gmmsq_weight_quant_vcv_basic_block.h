@@ -171,7 +171,7 @@ GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithAiv(const BasicBlockOffsetParam &
         SetAivToAic<PIPE_MTE3>(SYNC_AIV_MTE3_AIC_FIX_FLAG);
         WaitAicToAiv<PIPE_V>(SYNC_AIC_FIX_AIV_VF_FLAG);
 
-        vecCompute_.SwiGLU(yF32Buffer_, previousOffsetParam);
+        vecCompute_.Situ(yF32Buffer_, previousOffsetParam);
         vecCompute_.ComputeMaxExp(yF32Buffer_, previousOffsetParam);
         vecCompute_.ComputeScale(previousOffsetParam);
         vecCompute_.ComputeDataForQuantTargetFp8(yF32Buffer_, previousOffsetParam);
@@ -267,7 +267,7 @@ __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::End(const BasicBlockOffse
             SetAivToAic<PIPE_MTE3>(SYNC_AIV_MTE3_AIC_FIX_FLAG);
             WaitAicToAiv<PIPE_V>(SYNC_AIC_FIX_AIV_VF_FLAG);
 
-            vecCompute_.SwiGLU(yF32Buffer_, previousOffsetParam);
+            vecCompute_.Situ(yF32Buffer_, previousOffsetParam);
             vecCompute_.ComputeMaxExp(yF32Buffer_, previousOffsetParam);
             vecCompute_.ComputeScale(previousOffsetParam);
             vecCompute_.ComputeDataForQuantTargetFp8(yF32Buffer_, previousOffsetParam);
