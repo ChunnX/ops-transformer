@@ -63,11 +63,13 @@ using namespace AscendC;
 #define TemplateMoeEpCombineEpilogueTypeFunc XType, HasTopkWeight
 
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
-static constexpr uint32_t COMBINE_CHANNEL_COUNT = 1U;
-static constexpr uint32_t FLAG_CHUNK_RANKS = 64U;
+static constexpr uint32_t COMBINE_CHANNEL_COUNT = 7U;
+static constexpr uint32_t MULTI_CHANNEL_RANK_LIMIT = 64U;
 constexpr uint64_t UB_ALIGN = 32UL;
+constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t STATE_OFFSET = 32U;
 constexpr uint32_t DOUBLE_BUFFER_NUM = 2U;
+static constexpr uint32_t HCOMM_CHANNEL_TOKEN_CAPACITY = 32368U;
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
 class MoeEpCombineEpilogue {
@@ -86,9 +88,16 @@ private:
     __aicore__ inline void BuffInit();
     __aicore__ inline uint32_t GetCompletionChannelCount();
     __aicore__ inline bool WaitDispatch(uint32_t completionChannelCount);
-    __aicore__ inline void ClearCompletionFlags(uint32_t completionChannelCount);
+    __aicore__ inline void ClearCompletionFlags();
     __aicore__ inline void ProcessTopKToken(uint32_t tokenIndex);
     __aicore__ inline void RecvPhaseReduce();
+    __aicore__ inline uint32_t ReduceSumWorkNeedSize(int32_t count, int32_t typeSize)
+    {
+        int32_t elementsPerBlock = UB_ALIGN / typeSize;
+        int32_t elementsPerRepeat = ALIGNED_LEN_256 / typeSize;
+        int32_t iter1OutputCount = (count + elementsPerRepeat - 1) / elementsPerRepeat;
+        return ((iter1OutputCount + elementsPerBlock - 1) / elementsPerBlock) * elementsPerBlock;
+    }
 
     __aicore__ inline GM_ADDR GetUrmaWinAddrByRankId(uint32_t rankId, uint64_t offset)
     {
@@ -135,6 +144,8 @@ private:
     TBuf<QuePosition::VECIN> ubAccFp32Buf_;
     TBuf<QuePosition::VECIN> ubTmpFp32Buf_;
     TBuf<> stateBuf_;
+    TBuf<> waitSumBuf_;
+    TBuf<> waitTmpBuf_;
 
     GM_ADDR winRankAddr_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
 };
@@ -157,7 +168,22 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     rankId_ = mc2Context_->epRankId;
-    combineChannelCount_ = COMBINE_CHANNEL_COUNT;
+    uint32_t channelsPerRank = mc2Context_->channelsPerRank;
+    if (channelsPerRank == 0U) {
+        channelsPerRank = 1U;
+    }
+    if (channelsPerRank == 1U) {
+        combineChannelCount_ = 1U;
+    } else {
+        const uint64_t tokenSlotCount = static_cast<uint64_t>(numMaxTokensPerRank_) * topK_;
+        combineChannelCount_ =
+            static_cast<uint32_t>(Ceil(tokenSlotCount, static_cast<uint64_t>(HCOMM_CHANNEL_TOKEN_CAPACITY)));
+        combineChannelCount_ = combineChannelCount_ == 0U ? 1U : combineChannelCount_;
+        const uint32_t availableChannelCount =
+            channelsPerRank < COMBINE_CHANNEL_COUNT ? channelsPerRank : COMBINE_CHANNEL_COUNT;
+        combineChannelCount_ =
+            combineChannelCount_ < availableChannelCount ? combineChannelCount_ : availableChannelCount;
+    }
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
@@ -239,57 +265,44 @@ __aicore__ inline bool MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     uint64_t flagOffset = static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ * WIN_ADDR_ALIGN;
     GM_ADDR stateGM = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) + flagOffset;
     LocalTensor<uint32_t> stateTensor = stateBuf_.Get<uint32_t>();
-    const DataCopyPadExtParams<uint32_t> padParams = {true, 0, 0, 0};
-    constexpr uint32_t localFlagStride = STATE_OFFSET / sizeof(uint32_t);
-    constexpr uint32_t remoteRankStride = COMBINE_CHANNEL_COUNT * WIN_ADDR_ALIGN;
+    LocalTensor<int32_t> waitSum = waitSumBuf_.Get<int32_t>();
+    LocalTensor<float> waitTmp = waitTmpBuf_.Get<float>();
+    LocalTensor<float> stateTensorFp32 = stateTensor.ReinterpretCast<float>();
+    LocalTensor<float> waitSumFp32 = waitSum.ReinterpretCast<float>();
+    constexpr uint32_t reduceMask = 1U;
 
-    for (uint32_t rankStart = 0U; rankStart < epWorldSize_; rankStart += FLAG_CHUNK_RANKS) {
-        uint32_t currentRanks =
-            rankStart + FLAG_CHUNK_RANKS > epWorldSize_ ? epWorldSize_ - rankStart : FLAG_CHUNK_RANKS;
-        for (uint32_t channel = 0U; channel < completionChannelCount; ++channel) {
-            uint64_t firstFlagIndex = static_cast<uint64_t>(rankStart) * COMBINE_CHANNEL_COUNT + channel;
-            GlobalTensor<uint32_t> stateGMTensor;
-            stateGMTensor.SetGlobalBuffer(
-                reinterpret_cast<__gm__ uint32_t *>(stateGM + firstFlagIndex * WIN_ADDR_ALIGN));
-            DataCopyExtParams params = {static_cast<uint16_t>(currentRanks), sizeof(uint32_t),
-                                        remoteRankStride - sizeof(uint32_t), 0U, 0U};
-            SyncFunc<AscendC::HardEvent::S_MTE2>();
-            DataCopyPad<uint32_t>(stateTensor, stateGMTensor, params, padParams);
-            SyncFunc<AscendC::HardEvent::MTE2_S>();
-            for (uint32_t rank = 0U; rank < currentRanks; ++rank) {
-                if (stateTensor.GetValue(rank * localFlagStride) != 1U) {
-                    return false;
-                }
-            }
-        }
-    }
-    return true;
+    uint32_t flagSlotsPerRank = epWorldSize_ < MULTI_CHANNEL_RANK_LIMIT ? COMBINE_CHANNEL_COUNT : 1U;
+    uint32_t totalFlagCount = epWorldSize_ * flagSlotsPerRank;
+    uint32_t flagStride = flagSlotsPerRank == 1U ? COMBINE_CHANNEL_COUNT * WIN_ADDR_ALIGN : WIN_ADDR_ALIGN;
+    GlobalTensor<uint32_t> stateGMTensor;
+    stateGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(stateGM));
+    DataCopyParams params = {static_cast<uint16_t>(totalFlagCount), 1U,
+                             static_cast<uint16_t>((flagStride - UB_ALIGN) / UB_ALIGN), 0U};
+    DataCopy(stateTensor, stateGMTensor, params);
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
+    ReduceSum(waitSumFp32, stateTensorFp32, waitTmp, reduceMask, totalFlagCount, 1U);
+    SyncFunc<AscendC::HardEvent::V_S>();
+    int32_t expectedFlagSum = static_cast<int32_t>(epWorldSize_ * completionChannelCount);
+    return waitSum.GetValue(0) == expectedFlagSum;
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
-__aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::ClearCompletionFlags(
-    uint32_t completionChannelCount)
+__aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::ClearCompletionFlags()
 {
     uint64_t flagOffset = static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ * WIN_ADDR_ALIGN;
     GM_ADDR stateGM = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) + flagOffset;
     LocalTensor<uint32_t> stateTensor = stateBuf_.Get<uint32_t>();
-    Duplicate<uint32_t>(stateTensor, 0U, FLAG_CHUNK_RANKS * STATE_OFFSET / sizeof(uint32_t));
+    uint32_t flagSlotsPerRank = epWorldSize_ < MULTI_CHANNEL_RANK_LIMIT ? COMBINE_CHANNEL_COUNT : 1U;
+    uint32_t totalFlagCount = epWorldSize_ * flagSlotsPerRank;
+    uint32_t flagStride = flagSlotsPerRank == 1U ? COMBINE_CHANNEL_COUNT * WIN_ADDR_ALIGN : WIN_ADDR_ALIGN;
+    Duplicate<uint32_t>(stateTensor, 0U, totalFlagCount * STATE_OFFSET / sizeof(uint32_t));
     SyncFunc<AscendC::HardEvent::V_MTE3>();
 
-    constexpr uint32_t remoteRankStride = COMBINE_CHANNEL_COUNT * WIN_ADDR_ALIGN;
-    for (uint32_t rankStart = 0U; rankStart < epWorldSize_; rankStart += FLAG_CHUNK_RANKS) {
-        uint32_t currentRanks =
-            rankStart + FLAG_CHUNK_RANKS > epWorldSize_ ? epWorldSize_ - rankStart : FLAG_CHUNK_RANKS;
-        for (uint32_t channel = 0U; channel < completionChannelCount; ++channel) {
-            uint64_t firstFlagIndex = static_cast<uint64_t>(rankStart) * COMBINE_CHANNEL_COUNT + channel;
-            GlobalTensor<uint32_t> stateGMTensor;
-            stateGMTensor.SetGlobalBuffer(
-                reinterpret_cast<__gm__ uint32_t *>(stateGM + firstFlagIndex * WIN_ADDR_ALIGN));
-            DataCopyExtParams clearParams = {static_cast<uint16_t>(currentRanks), STATE_OFFSET, 0U,
-                                             remoteRankStride - STATE_OFFSET, 0U};
-            DataCopyPad<uint32_t>(stateGMTensor, stateTensor, clearParams);
-        }
-    }
+    GlobalTensor<uint32_t> stateGMTensor;
+    stateGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(stateGM));
+    DataCopyParams clearParams = {static_cast<uint16_t>(totalFlagCount), 1U, 0U,
+                                  static_cast<uint16_t>((flagStride - UB_ALIGN) / UB_ALIGN)};
+    DataCopy(stateGMTensor, stateTensor, clearParams);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
@@ -334,13 +347,18 @@ template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::RecvPhaseReduce()
 {
     uint32_t completionChannelCount = GetCompletionChannelCount();
-    constexpr uint32_t flagBufferBytes = FLAG_CHUNK_RANKS * STATE_OFFSET;
+    uint32_t flagSlotsPerRank = epWorldSize_ < MULTI_CHANNEL_RANK_LIMIT ? COMBINE_CHANNEL_COUNT : 1U;
+    uint32_t totalFlagCount = epWorldSize_ * flagSlotsPerRank;
+    uint32_t flagBufferBytes = totalFlagCount * STATE_OFFSET;
+    uint32_t waitTmpBytes = ReduceSumWorkNeedSize(static_cast<int32_t>(totalFlagCount), sizeof(float)) * sizeof(float);
     tpipe_->InitBuffer(stateBuf_, flagBufferBytes);
+    tpipe_->InitBuffer(waitSumBuf_, UB_ALIGN);
+    tpipe_->InitBuffer(waitTmpBuf_, waitTmpBytes);
 
     if (aivId_ == 0U) {
         while (!WaitDispatch(completionChannelCount)) {
         }
-        ClearCompletionFlags(completionChannelCount);
+        ClearCompletionFlags();
     }
     SyncAll<true>();
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_EPILOGUE_RUN_POS_WAIT_DONE);
