@@ -227,7 +227,8 @@ ge::graphStatus CheckAttrs(const gert::RuntimeAttrs *attrs, const ge::char_t *no
                 OP_LOGE(nodeName, "quant_mode should be static"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(layout == nullptr || std::string(layout) != "BSND", OP_LOGE(nodeName, "layout should be BSND"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(cacheMode == nullptr || (std::string(cacheMode) != "contiguous" && std::string(cacheMode) != "page"),
+    // cache_mode is optional in the operator prototype and defaults to contiguous.
+    OP_CHECK_IF(cacheMode != nullptr && (std::string(cacheMode) != "contiguous" && std::string(cacheMode) != "page"),
                 OP_LOGE(nodeName, "cache_mode should be contiguous or page"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
