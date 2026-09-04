@@ -71,6 +71,10 @@ static inline bool CheckDtypeValid(const BlockAttentionResidualsParams &params)
     OP_CHECK_DTYPE_NOT_SUPPORT(params.projWeight, BF16_TYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(params.normWeight, BF16_TYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(params.hiddenStates, BF16_TYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SAME(params.partialBlock, params.blockRes, return false);
+    OP_CHECK_DTYPE_NOT_SAME(params.partialBlock, params.projWeight, return false);
+    OP_CHECK_DTYPE_NOT_SAME(params.partialBlock, params.normWeight, return false);
+    OP_CHECK_DTYPE_NOT_SAME(params.partialBlock, params.hiddenStates, return false);
     if (params.needBackward) {
         OP_CHECK_DTYPE_NOT_SUPPORT(params.invNorm, FLOAT_TYPE_SUPPORT_LIST, return false);
         OP_CHECK_DTYPE_NOT_SUPPORT(params.probs, FLOAT_TYPE_SUPPORT_LIST, return false);
