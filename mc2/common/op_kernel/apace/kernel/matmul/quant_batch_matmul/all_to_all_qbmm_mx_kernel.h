@@ -35,21 +35,21 @@ namespace Gemm {
 namespace Kernel {
 
 #define QBMM_MX_KERNEL_CLASS_TEM_PARAMS \
-    template <class ProblemShape, class BlockMmad, class BlockScheduler, class CommPolicy>
-#define QBMM_MX_KERNEL_FUNC_TEM_PARAMS ProblemShape, BlockMmad, BlockScheduler, CommPolicy
+template <class ProblemShape, class BlockMmad, class BlockScheduler, class BufferSyncManager>
 
+#define QBMM_MX_KERNEL_FUNC_TEM_PARAMS ProblemShape, BlockMmad, BlockScheduler, BufferSyncManager
 using namespace AscendC;
 using AscendC::Te::Get;
 
 /**
  * @brief SWAT MX 量化矩阵乘内核实现
  * 该类负责具体的矩阵乘块调度和计算，支持本地(LOCAL)和远程(REMOTE)两种切片模式。
- * 通信等待逻辑经 CommPolicy 策略类注入（组合模式）：基类持 commPolicy_ 成员对象，
- * 调用点直接 commPolicy_.WaitTile(tileIdx)，编译期由模板参数绑定具体策略，
+ * 通信等待逻辑经 BufferSyncManager 策略类注入（组合模式）：基类持 bufferSyncMgr_ 成员对象，
+ * 调用点直接 bufferSyncMgr_.WaitBuffer(tileIdx)，编译期由模板参数绑定具体策略，
  * 无需继承与 static_cast。
  */
 
-template <class ProblemShape, class BlockMmad, class BlockScheduler, class CommPolicy>
+template <class ProblemShape, class BlockMmad, class BlockScheduler, class BufferSyncManager>
 class AllToAllQbmmMxKernel {
 public:
     __aicore__ inline AllToAllQbmmMxKernel() {}
@@ -144,9 +144,9 @@ public:
         Run(params);
     }
 
-    __aicore__ inline CommPolicy &GetCommPolicy()
+    __aicore__ inline BufferSyncManager &GetBufferSyncMgr()
     {
-        return commPolicy_;
+        return bufferSyncMgr_;
     }
 
 private:
@@ -165,7 +165,7 @@ private:
 
 private:
     BlockMmad mmadOp_;
-    CommPolicy commPolicy_;
+    BufferSyncManager bufferSyncMgr_;
 
     __gm__ AType *aGmAddr_;      // 远程数据基址（通信缓冲区）
     __gm__ AType *localAGmAddr_; // 本地数据基址
@@ -325,13 +325,12 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
         Blaze::Gemm::CeilDiv(Te::Get<MNK_K>(params.problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
         MXFP_MULTI_BASE_SIZE;
 
-    uint32_t bufferCount = commPolicy_.bufferCount;
+    uint32_t dataSlotNum = bufferSyncMgr_.slotNum;
     uint32_t totalTiles = (oriM + params.localParams.headTileSize - 1) / params.localParams.headTileSize;
     uint64_t winPerRound = static_cast<uint64_t>(rankSize) * params.localParams.headTileSize;
 
     Apace::Basic::BufferChannel dataChannel;
     Apace::Basic::BufferChannel scaleChannel;
-    uint32_t dataSlotNum = (bufferCount > 0) ? bufferCount : totalTiles;
     dataChannel.Init(winPerRound, dataSlotNum);
     scaleChannel.Init(winPerRound, totalTiles);
 
@@ -432,11 +431,11 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
                 // release 已被前序 block 读完的 tile（每 block 只读 dependTileIdx 一个 tile）
                 if (readyTileIdx >= 0 &&
                     readyTileIdx < static_cast<int32_t>(totalTiles) - static_cast<int32_t>(dataSlotNum)) {
-                    AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(static_cast<uint32_t>(readyTileIdx) % dataSlotNum);
+                    bufferSyncMgr_.ReleaseBuffer(static_cast<uint32_t>(readyTileIdx) % dataSlotNum);
                 }
                 readyTileIdx++;
                 auto dataSlot = dataChannel.GetNextSlot();
-                commPolicy_.WaitTile(dataSlot.id);
+                bufferSyncMgr_.WaitBuffer(dataSlot.id);
                 dataSlotOffset = dataSlot.offset;
                 scaleSlotOffset = scaleChannel.GetNextSlot().offset;
             }
@@ -470,11 +469,11 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
                 // release 已被前序 block 读完的 tile（每 block 只读 dependTileIdx 一个 tile）
                 if (readyTileIdx >= 0 &&
                     readyTileIdx < static_cast<int32_t>(totalTiles) - static_cast<int32_t>(dataSlotNum)) {
-                    AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(static_cast<uint32_t>(readyTileIdx) % dataSlotNum);
+                    bufferSyncMgr_.ReleaseBuffer(static_cast<uint32_t>(readyTileIdx) % dataSlotNum);
                 }
                 readyTileIdx++;
                 auto dataSlot = dataChannel.GetNextSlot();
-                commPolicy_.WaitTile(dataSlot.id);
+                bufferSyncMgr_.WaitBuffer(dataSlot.id);
                 dataSlotOffset = dataSlot.offset;
                 scaleSlotOffset = scaleChannel.GetNextSlot().offset;
             }
@@ -521,10 +520,10 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
         while (readyTileIdx < static_cast<int32_t>(totalTiles) - 1) {
             if (readyTileIdx >= 0 &&
                 readyTileIdx < static_cast<int32_t>(totalTiles) - static_cast<int32_t>(dataSlotNum)) {
-                AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(static_cast<uint32_t>(readyTileIdx) % dataSlotNum);
+                bufferSyncMgr_.ReleaseBuffer(static_cast<uint32_t>(readyTileIdx) % dataSlotNum);
             }
             readyTileIdx++;
-            commPolicy_.WaitTile(static_cast<uint32_t>(readyTileIdx) % dataSlotNum);
+            bufferSyncMgr_.WaitBuffer(static_cast<uint32_t>(readyTileIdx) % dataSlotNum);
         }
     }
 }
