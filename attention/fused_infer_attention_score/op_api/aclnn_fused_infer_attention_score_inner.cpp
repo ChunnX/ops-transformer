@@ -861,11 +861,15 @@ static aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSizeImpl(
         return ACLNN_ERR_INNER_NULLPTR;
     }
 
-    auto attentionViewCopy = l0op::ViewCopy(l0AttentionOut, attentionOut, l0Executor);
-    if (attentionViewCopy == nullptr) {
-        return ACLNN_ERR_INNER_NULLPTR;
+    // 输出直连(用户输出连续时 l0op 直接绑定用户张量, kernel 已写入用户显存)则跳过 ViewCopy,
+    // 避免图模式路径5固化全量输出拷贝节点; 仅在输出为 executor 分配张量时才需拷回。
+    if (l0AttentionOut != attentionOut) {
+        auto attentionViewCopy = l0op::ViewCopy(l0AttentionOut, attentionOut, l0Executor);
+        if (attentionViewCopy == nullptr) {
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
     }
-    if (softmaxLseFlag) {
+    if (softmaxLseFlag && l0SoftmaxLse != softmaxLse) {
         auto softmaxLseViewCopy = l0op::ViewCopy(l0SoftmaxLse, softmaxLse, l0Executor);
         CHECK_RET(softmaxLseViewCopy != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }

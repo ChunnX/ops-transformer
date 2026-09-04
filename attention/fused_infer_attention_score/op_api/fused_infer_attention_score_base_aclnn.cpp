@@ -129,12 +129,21 @@ std::tuple<const aclTensor *, const aclTensor *> FusedInferAttentionScore(
         return {nullptr, nullptr};
     }
 
-    auto attentionOutOut = executor->AllocTensor(attentionOut->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
+    // 输出直连: 用户输出张量连续时直接绑定用户张量为算子输出, kernel 直接写入用户显存,
+    // 避免 AllocTensor + ViewCopy 在图模式(入图路径5)固化为全量输出拷贝节点(与 autogen 框架行为一致);
+    // 用户输出非连续时回退 AllocTensor, 由 inner 层 ViewCopy 拷回用户张量。
+    const bool directAttentionOut = IsContiguous(attentionOut);
+    auto attentionOutOut = directAttentionOut ?
+        attentionOut :
+        executor->AllocTensor(attentionOut->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
     if (attentionOutOut == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "FusedInferAttentionScore: alloc attentionOutOut failed.");
         return {nullptr, nullptr};
     }
-    auto softmaxLseOut = executor->AllocTensor(softmaxLse->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
+    const bool directSoftmaxLse = IsContiguous(softmaxLse);
+    auto softmaxLseOut = directSoftmaxLse ?
+        softmaxLse :
+        executor->AllocTensor(softmaxLse->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
     if (softmaxLseOut == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "FusedInferAttentionScore: alloc softmaxLseOut failed.");
         return {nullptr, nullptr};
