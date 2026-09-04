@@ -316,6 +316,9 @@ public:
         BlockCoord tileIdx;
         while (bs.GetTileIdx(tileIdx)) {
             BlockShape singleShape = bs.GetBlockShape(tileIdx);
+            if (Get<M_VALUES>(singleShape) <= 0 || Get<N_VALUES>(singleShape) <= 0) {
+                continue;
+            }
             // isMx = true
             blockOffset_ = coord.template GetQuantIOOffset<GroupedMatmul::QuantMode::PERTOKEN_MODE>(
                 Get<INDEX_M_TILEIDX>(tileIdx), Get<INDEX_N_TILEIDX>(tileIdx),
@@ -361,6 +364,14 @@ public:
         }
         InitParamsAndTensor(params);
         BlockSchedulerOp bs(params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+        if constexpr (!transA) {
+            // Keep split N offsets valid for both ND and NZ weight layouts.
+            if constexpr (transB) {
+                bs.SetTailAlign(1, AscendC::BLOCK_CUBE);
+            } else {
+                bs.SetTailAlign(1, MATMUL_MNK_ALIGN_INT8);
+            }
+        }
         if ASCEND_IS_AIV {
             epilogueDequantAndSwigluOp_.Init(params.epilogueDequantSwigluParams);
         }
@@ -374,6 +385,14 @@ public:
                                        Get<K_VALUES>(problemShape_)};
             BaseMBalance(bs, m, params.gmmParams.baseM);
             bs.UpdateNextProblem(resProblemShape);
+            if constexpr (!transA) {
+                // Match QGMM MX: split only the final group's tail round when
+                // at least half of the cores are available after its last tile.
+                if (groupIdx + 1 == groupNum && m > 0 && Get<K_VALUES>(problemShape_) > 0 &&
+                    (bs.GetEndBlockIdx() + 1) <= (AscendC::GetBlockNum() >> 1)) {
+                    bs.UpdateTailTile();
+                }
+            }
             ProcessSingleGroup(params, bs, groupIdx);
         }
         End();
