@@ -302,7 +302,7 @@ static_assert(QKV_K_SCALE_MROPE_COMPACT_RESERVE_END <= QKV_K_SCALE_MROPE_COMPACT
               "compact M-RoPE reserve layout exceeds 40 KiB");
 static_assert(QKV_K_SCALE_MROPE_POSITION_CACHE_OFFSET % QKV_K_SCALE_BLOCK_BYTES == 0U,
               "compact M-RoPE position cache must be 32-byte aligned");
-static_assert(QKV_K_SCALE_MROPE_COMPACT_TOTAL_UB_BYTES <= 256U * QKV_K_SCALE_KIB,
+static_assert(QKV_K_SCALE_MROPE_COMPACT_TOTAL_UB_BYTES <= ASC_UB_SIZE,
               "compact M-RoPE layout exceeds physical UB capacity");
 
 struct TileParam {
