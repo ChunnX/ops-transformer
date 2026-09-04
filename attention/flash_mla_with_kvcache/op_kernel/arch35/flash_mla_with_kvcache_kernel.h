@@ -308,7 +308,7 @@ public:
                 }
             }
             // 执行任务
-            shouldExecuteTask = ShouldExecuteTask(taskRunInfo);
+            shouldExecuteTask = ShouldExecuteTask(taskRunInfo, shouldDispatchTask);
             if (shouldExecuteTask) {
                 ExecuteTask(executedTaskCount, taskRunInfo);
                 executedTaskCount++;
@@ -327,9 +327,18 @@ public:
         return s2Cur < constInfo_.s2OEnd;
     }
 
-    __aicore__ inline bool ShouldExecuteTask(FlashMlaWithKvcacheRunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
+    __aicore__ inline bool ShouldExecuteTask(FlashMlaWithKvcacheRunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE],
+                                             bool stillDispatchTask)
     {
-        return validTaskNum_ > 0;
+        if (validTaskNum_ <= 0) {
+            return false;
+        }
+        // 预取提前一轮：执行本轮前须保证下一轮任务已创建（validTaskNum_ >= 2），
+        // 否则 ExecuteTask 的 Load(L+1) 无任务可预取；收尾阶段（!stillDispatchTask）放行，避免流水排不空。
+        if (stillDispatchTask && validTaskNum_ < 2) {
+            return false;
+        }
+        return true;
     }
 
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
@@ -482,6 +491,25 @@ public:
         FlashMlaWithKvcacheRunInfoX &runInfoNegN =
             taskRunInfo[(loop - (PRELOAD_N - 1)) &
                         (PRELOAD_TASK_CACHE_SIZE - 1)]; // 上 PRELOAD_N-1 轮任务（对齐 fia，bmm2 落后 1 轮）
+        FlashMlaWithKvcacheRunInfoX &runInfoNext =
+            taskRunInfo[(loop + 1) & (PRELOAD_TASK_CACHE_SIZE - 1)]; // 下一轮任务（仅用于提前搬运 KV）
+
+        // 提前一轮发起下一任务的 KV 搬运（只发 MTE2、不等落地），让 MTE2 与 MAC 流水重叠：
+        // MAC 在算本轮(L)与上轮(L-1)时，MTE2 在后台搬 L+1。
+        // 首个任务（loop==0）无"上轮"可预取，须在本轮同轮发起。
+        if (runInfoNext.isValid) {
+            if ASCEND_IS_AIC {
+                ComputeBmm1Load(runInfoNext);
+            }
+        }
+        if (loop == 0) {
+            if (runInfo0.isValid) {
+                if ASCEND_IS_AIC {
+                    ComputeBmm1Load(runInfo0);
+                }
+            }
+        }
+
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
                 ComputeMm1(runInfo0);
@@ -505,6 +533,11 @@ public:
     __aicore__ inline void ComputeMm1(FlashMlaWithKvcacheRunInfoX &runInfo)
     {
         cubeBlock_.IterateBmm1(runInfo);
+    }
+
+    __aicore__ inline void ComputeBmm1Load(FlashMlaWithKvcacheRunInfoX &runInfo)
+    {
+        cubeBlock_.IterateBmm1Load(runInfo);
     }
 
     __aicore__ inline void ComputeMm2(FlashMlaWithKvcacheRunInfoX &runInfo)
