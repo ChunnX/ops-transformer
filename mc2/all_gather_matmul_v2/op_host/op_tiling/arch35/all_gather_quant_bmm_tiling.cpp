@@ -63,6 +63,8 @@ constexpr int32_t IDX_B_LOW = 6;
 
 constexpr uint32_t X1_INDEX = 0;
 constexpr uint32_t X2_INDEX = 1;
+
+constexpr char* CCU_ALGORITHM = "CcuSchedAllGatherSoleMesh";
 } // namespace
 
 static constexpr int64_t CMP_MAX_LEN = 7;
@@ -510,6 +512,7 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
     if (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
         commEngine = Mc2Comm::ENGINE_CCU_SCHED;
+        mc2CcTilingConfig.SetAlgConfig(CCU_ALGORITHM);
     }
     OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s", commMode_);
     OP_LOGD(opName_, "Tiling SetMc2Hcom commEngine: %d", commEngine);

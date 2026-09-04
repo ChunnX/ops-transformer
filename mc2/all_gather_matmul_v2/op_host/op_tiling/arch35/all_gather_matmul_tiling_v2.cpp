@@ -41,6 +41,7 @@ using namespace Mc2Tiling;
 
 namespace optiling {
 static constexpr int64_t CMP_MAX_LEN = 7;
+constexpr char* CCU_ALGORITHM = "CcuSchedAllGatherSoleMesh";
 
 bool AllGatherMatmulTilingV2::IsCapable()
 {
@@ -218,6 +219,7 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCf
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
     if (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
         commEngine = Mc2Comm::ENGINE_CCU_SCHED;
+        mc2CcTilingConfig.SetAlgConfig(CCU_ALGORITHM);
     }
     OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s", commMode_);
     OP_LOGD(opName_, "Tiling SetMc2Hcom commEngine: %d", commEngine);
