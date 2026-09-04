@@ -58,7 +58,7 @@ __aicore__ inline void grouped_matmul_finalize_routing_mx(GM_ADDR x, GM_ADDR w, 
     using AType = DTYPE_X;
     using BType = DTYPE_W;
     using CType = DTYPE_Y;
-    using C1Type = float;
+    using C1Type = CType;
     using LogitType = DTYPE_LOGIT;
     using LayoutA = layoutA;
     using LayoutB = layoutB;
