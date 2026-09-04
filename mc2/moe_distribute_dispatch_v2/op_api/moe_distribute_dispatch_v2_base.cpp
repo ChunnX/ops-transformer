@@ -100,7 +100,7 @@ aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, 
         OP_LOGD("quantMode = 2, dynamicScales can't be null");
         CHECK_RET(dynamicScales != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     }
-    if (x->GetDataType() == ACL_INT32) {
+    if (x->GetDataType() == ge::DT_INT32) {
         OP_LOGD("x dtype is INT32, scales and dynamicScales can't be null");
         CHECK_RET(scalesOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
         CHECK_RET(dynamicScales != nullptr, ACLNN_ERR_PARAM_NULLPTR);
