@@ -120,7 +120,7 @@ public:
         uint64_t k{0};
         uint64_t n{0};
         uint64_t scaleKLen{0};
-        uint32_t bufferCount{0};     // win 区复用槽位数（release 门控，0=不复用）
+        uint32_t slotNum{0};     // win 区复用槽位数（release 门控，0=不复用）
         uint64_t effBufferCount{0};  // data 复用轮数（0/>=commTiles 归一化为 commTiles）
     };
 
@@ -364,7 +364,7 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
     CrossCoreWaitFlag<0x2, PIPE_MTE2>(0); // dependTileIdx=0 由 AIV 预触发，无需等待。
 
     const int32_t commTurnI = static_cast<int32_t>(fp.commTurn);
-    const int32_t bufferCountI = static_cast<int32_t>(fp.bufferCount);
+    const int32_t bufferCountI = static_cast<int32_t>(fp.slotNum);
 
     Te::Coord<int64_t, int64_t, int64_t, int64_t> blockIdx;
     int64_t mPos = 0L, nPos = 0L;
