@@ -154,6 +154,12 @@ cd build && ctest -R flash_attn_tiling --output-on-failure
 - **GQA（Grouped Query Attention）**：Q_N 是 KV_N 的整数倍，即 g = Q_N / KV_N，同一组 g 个 Q head 共享一份 KV。用于减少 KV 的显存与计算量（Q_N 远大 KV_N 时，KV cache 显著缩小）。
 - 本算子要求 Q_N % KV_N == 0（GQA 场景）。kernel 中 `gSize = g`，任务按 (bN2, gS1, s2) 三层循环展开，其中 bN2 = batch × KV_N 扁平索引，gS1 = Q 序列 × g 的扁平索引。
 
+#### 1.1.1 head_dim（D）取值约束
+
+- **支持 D ∈ {64, 72, 128, 256}**，且要求 qk_head_dim == v_head_dim。
+- **D=72**（SigLIP 系 ViT 编码器规格，16 头 × hidden 1152）：复用 D=128 的 config 模板（config 2/3），kernel 内将 D 轴 pad 到 Align64(72)=128 执行（Mmad K/N 轴与 vec 行宽的对齐要求），GM 搬出按真实 72 裁剪；资源占用与性能预期同 D=128 档。
+- **D=72 时 `layout_kv` 不支持 PA_NZ**（NZ 的 D 轴分形粒度为 16 元素，72 非 16 倍数），checker 显式拦截并报错；其余 layout（BSND/BNSD/TND/PA_BBND/PA_BNBD）均支持。
+
 #### 1.2 PagedAttention 场景及 layout_kv 取值
 
 - **PagedAttention**：将 KV cache 按 block（block_size 个 token）分页存储，通过 `block_table` 索引物理 block，避免 KV cache 预留过大的连续显存，支持动态分配与复用。推理场景（长序列 decode 且 KV cache 会增长）通常使用。
@@ -349,8 +355,8 @@ FA 计算的核心是把注意力矩阵按块切分、逐块 online 计算。基
 |---|---|---|---|---|
 | 0 | 64 | 128 | 64 | 64 |
 | 1 | 32 | 256 | 64 | 64 |
-| 2 | 64 | 128 | 128 | 128 |
-| 3 | 32 | 256 | 128 | 128 |
+| 2 | 64 | 128 | 128（D=72 复用） | 128（DV=72 复用） |
+| 3 | 32 | 256 | 128（D=72 复用） | 128（DV=72 复用） |
 | 4 | 64 | 128 | 256 | 256 |
 | 5 | 32 | 256 | 256 | 256 |
 
@@ -361,7 +367,7 @@ FA 计算的核心是把注意力矩阵按块切分、逐块 online 计算。基
 
 - **mBaseSize = sOuter × CV_RATIO**（CV_RATIO=2，AIC:AIV=1:2）：一个 AIC 核承担 mBaseSize 行 Q，对应 2 个 AIV 核各处理 mBaseSize/2 行。
 - **s2BaseSize = sInner**：KV 序列方向的块大小。
-- host 侧 `AdjustSinnerAndSouter` 按 D（及 gSize/maxSeq/window 条件）选择 sOuter/sInner，再映射到 config（D=64→config0/1，D=128→config2/3，D=256→config4/5：`gSize × maxSeqQ ≥ 64` 时取 sOuter=64/sInner=128→config4，否则取 sOuter=32/sInner=256→config5）。
+- host 侧 `AdjustSinnerAndSouter` 按 D（及 gSize/maxSeq/window 条件）选择 sOuter/sInner，再映射到 config（D=64→config0/1，D=72 与 D=128→config2/3，D=256→config4/5：`gSize × maxSeqQ ≥ 64` 时取 sOuter=64/sInner=128→config4，否则取 sOuter=32/sInner=256→config5）。D=72 与 D=128 共享 kernel 变体（零新增 tiling key），kernel 内 L1→L0 搬运宽度按 16 元素分形对齐（72→80，`MMParam.loadK/loadN`），Mmad 按真实 D 精确累加，无需 L1 清零。
 
 **gS1 合轴**：
 
