@@ -372,6 +372,7 @@ ElasticBuffer.dispatch(
 - **handle** (`EPHandle`)：表示dispatch阶段生成的handle对象，包含slot索引、元数据等信息，需传递给 [combine](#combine) 使用。handle的属性如下：
   - **dst_buffer_slot_idx** (`Tensor`)：slot索引，shape为 `(BS, K)`，dtype为 `int32`。
   - **recv_src_metadata** (`Tensor`)：接收元数据，shape为 `(A_alloc, 5)`，dtype为 `int32`；仅前 `sum(num_recv_tokens_per_expert)` 行有效。
+  - **recv_rank_offsets** (`Tensor`)：各源EP rank对应metadata行数的排他前缀和，shape为 `(ep_world_size + 1,)`，dtype为 `int32`；rank `r` 的metadata区间为 `[recv_rank_offsets[r], recv_rank_offsets[r + 1])`，最后一个元素等于有效metadata行数。cached模式复用该Tensor的内容。
   - **num_recv_tokens_per_rank** (`Tensor`)：各卡接收token数量，shape为 `(ep_world_size,)`，dtype为 `int32`。
   - **num_recv_tokens_per_expert** (`Tensor`)：每个本地专家接收的token数量，shape为 `(num_local_experts,)`，dtype为 `int64`。
   - **num_experts** (`int`)：专家总数量。

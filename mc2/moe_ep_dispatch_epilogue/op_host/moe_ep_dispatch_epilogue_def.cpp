@@ -41,6 +41,11 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("cached_recv_rank_offsets")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
 
         this->Output("recv_x")
             .ParamType(REQUIRED)
@@ -51,6 +56,10 @@ public:
         this->Output("recv_scales")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+            .FormatList({ge::FORMAT_ND});
+        this->Output("recv_rank_offsets")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
 
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
