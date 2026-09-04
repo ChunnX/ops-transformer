@@ -10,17 +10,18 @@
 from typing import Optional
 import torch
 from torch.library import impl
-from cann_ops_transformer.op_builder.builder import OpBuilder
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 
 class FlashAttnGradOpBuilder(OpBuilder):
     def __init__(self):
-        super(FlashAttnGradOpBuilder, self).__init__("flash_attn_grad")
+        super(FlashAttnGradOpBuilder, self).__init__(
+            "flash_attn_grad", category="attention"
+        )
 
     def sources(self):
         """Path to C++ source code."""
-        return ["ops/csrc/flash_attn_grad.cpp"]
+        return ["csrc/attention/flash_attn_grad.cpp"]
 
     def schema(self) -> str:
         """PyTorch operator signature."""
@@ -41,7 +42,7 @@ class FlashAttnGradOpBuilder(OpBuilder):
         dq shape = q shape, dk shape = k shape, dv shape = v shape.
         """
 
-        @impl(AS_LIBRARY, self.name, "Meta")
+        @impl(get_as_library(), self.name, "Meta")
         def flash_attn_grad_meta(
             q: torch.Tensor,
             k: torch.Tensor,
@@ -72,11 +73,11 @@ class FlashAttnGradOpBuilder(OpBuilder):
             return (dq, dk, dv)
 
 
-# Instantiate the builder
 flash_attn_grad_op_builder = FlashAttnGradOpBuilder()
+flash_attn_grad_op_builder._ensure_initialized()
 
 
-@impl(AS_LIBRARY, flash_attn_grad_op_builder.name, "PrivateUse1")
+@impl(get_as_library(), flash_attn_grad_op_builder.name, "PrivateUse1")
 def flash_attn_grad(
     q: torch.Tensor,
     k: torch.Tensor,

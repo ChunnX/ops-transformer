@@ -110,7 +110,7 @@ cann_ops_transformer.flash_attn_grad(
 
 ## 枚举说明
 
-`mask_mode` 在 Python 接口中支持传入 `IntEnum` 枚举或对应 int 值，枚举定义于 `cann_ops_transformer.ops.flash_attn_grad`：
+`mask_mode` 在 Python 接口中支持传入 `IntEnum` 枚举或对应 int 值，枚举定义于 `cann_ops_transformer.ops.attention.flash_attn_grad`：
 
 ### mask_mode 枚举
 
