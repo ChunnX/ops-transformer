@@ -6,87 +6,53 @@
 - <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：x
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：x
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：x
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：x
+- <term>Atlas 推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：x
+- <term>Atlas 训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
 
-- 接口功能：GenericBlockSparseAttentionGrad是通用块稀疏注意力的反向计算算子。依据`rsvdBlockIdx`/`rsvdBlockCount`（稀疏块索引表）定义的索引，仅在被选中的Q块上计算和传播梯度，在反向传播时精确路由梯度，支持动态、可变长的分块稀疏模式。调用前须先通过`aclnnGenericBlockSparseAttentionGradMetadata`生成分核`metadata`。
-
+- 接口功能：aclnnGenericBlockSparseAttentionGrad是通用块稀疏注意力的反向计算算子。依据`rsvdBlockIdx`/`rsvdBlockCount`（稀疏块索引表）定义的索引，仅在被选中的KV块上计算和传播梯度，支持动态、可变长的分块稀疏模式。调用前须先通过`aclnnGenericBlockSparseAttentionGradMetadata`生成分核`metadata`。
 - 计算公式：
 
-  1. 计算 Softmax 后的注意力权重矩阵
+$$
+P = SimpleSoftmax(Mask(Q @ selectedK^{T} \cdot scale), lse)
+$$
 
-  $$
-  P = SimpleSoftmax(Mask(Q @ selectedK^{T} \cdot scale), lse)
-  $$
+$$
+dP = dO @ selectedV^{T}
+$$
 
-  2. 计算 $dP$（Softmax 梯度的直接部分）
+$$
+dS = P \odot (dP - SoftmaxGrad(dO, O))
+$$
 
-  $$
-  dP = dO @ selectedV^{T}
-  $$
+$$
+dQ = dS @ selectedK \cdot scale
+$$
 
-  3. 计算 $dS$（注意力分数梯度）
+$$
+dK = dS^{T} @ Q \cdot scale
+$$
 
-  $$
-  dS = P \odot (dP - SoftmaxGrad(dO, O))
-  $$
-
-  4. 计算 $dQ$、$dK$、$dV$
-
-  $$
-  dQ = dS @ selectedK \cdot scale
-  $$
-
-  $$
-  dK = dS^{T} @ Q \cdot scale
-  $$
-
-  $$
-  dV = P^{T} @ dO
-  $$
-
-  | 符号 | 含义 |
-  | --- | --- |
-  | $Q$ | 查询矩阵 |
-  | $K, V$ | 键、值矩阵 |
-  | $P$ | Softmax 后的注意力权重矩阵 |
-  | $S$ | 注意力分数（缩放掩码后、Softmax 前） |
-  | $O$ | 注意力输出矩阵（$O = P \cdot V$） |
-  | $\text{lse}$ | log-sum-exp 值，前向保存供反向使用 |
-  | $dO$ | 输出梯度（从上层传入） |
-  | $\text{scale}$ | 缩放因子，通常为 $1/\sqrt{d_k}$ |
-  | $dP, dS, dQ, dK, dV$ | 各中间变量和参数的梯度 |
-
-  输入`query`/`key`/`value`/`dout`/`out`的排布由`qInputLayout`、`kvInputLayout`指定。布局字母含义：
-
-  - B：Batch
-  - T：B 与 S 合轴后的 Total tokens
-  - S：Seq-Length
-  - N：Head-Num
-  - D：Head-Dim
-
-  当前支持的布局：
-
-  - `qInputLayout`：`"TND"`、`"BNSD"`、`"BSND"`
-  - `kvInputLayout`：`"TND"`、`"BNSD"`、`"BSND"`（须与`qInputLayout`一致）
+$$
+dV = P^{T} @ dO
+$$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGenericBlockSparseAttentionGradGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGenericBlockSparseAttentionGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGenericBlockSparseAttentionGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGenericBlockSparseAttentionGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnGenericBlockSparseAttentionGradGetWorkspaceSize(
@@ -130,9 +96,9 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
 
 ## aclnnGenericBlockSparseAttentionGradGetWorkspaceSize
 
-- **参数说明：**
+- **参数说明**
 
-    <table style="undefined;table-layout: fixed; width: 1550px">
+    <table style="undefined; table-layout: fixed; width: 1567px">
         <colgroup>
             <col style="width: 220px">
             <col style="width: 120px">
@@ -493,200 +459,107 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
         </tbody>
     </table>
 
-- **返回值：**
+- **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
-    第一段接口完成入参校验，出现以下场景时报错：
+  第一段接口完成入参校验，出现以下场景时报错：
 
-    <table style="undefined;table-layout: fixed;width: 1155px">
-        <colgroup>
-            <col style="width: 319px">
-            <col style="width: 144px">
-            <col style="width: 671px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>返回值</th>
-                <th>错误码</th>
-                <th>描述</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>ACLNN_ERR_PARAM_NULLPTR</td>
-                <td>161001</td>
-                <td>必选参数或输出为空指针；qInputLayout为"TND"时未提供cuSeqLengthsOptional；kvInputLayout为"TND"时未提供cuSeqLengthsKvOptional。</td>
-            </tr>
-            <tr>
-                <td>ACLNN_ERR_PARAM_INVALID</td>
-                <td>161002</td>
-                <td>输入、输出、属性的数据类型、数据格式或取值不在支持范围内；qInputLayout与kvInputLayout不一致；isPackedGqa!=1；windowSizeLeft/Right!=-1；blockShape不满足约束。</td>
-            </tr>
-            <tr>
-                <td>ACLNN_ERR_RUNTIME_ERROR</td>
-                <td>361001</td>
-                <td>API内存调用npu runtime的接口异常。</td>
-            </tr>
-        </tbody>
+  <div style="overflow-x: auto;">
+    <table style="table-layout: fixed; width: 1100px">
+      <colgroup>
+        <col style="width: 250px">
+        <col style="width: 130px">
+        <col style="width: 720px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>返回值</th>
+          <th>错误码</th>
+          <th>描述</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>ACLNN_ERR_PARAM_NULLPTR</td>
+          <td>161001</td>
+          <td>必选参数或输出为空指针；qInputLayout为"TND"时未提供cuSeqLengthsOptional；kvInputLayout为"TND"时未提供cuSeqLengthsKvOptional。</td>
+        </tr>
+        <tr>
+          <td class="merged-cell" rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
+          <td class="merged-cell" rowspan="2">161002</td>
+          <td>输入、输出、属性的数据类型、数据格式或取值不在支持范围内；qInputLayout与kvInputLayout不一致。</td>
+        </tr>
+        <tr>
+          <td>isPackedGqa!=1；windowSizeLeft/Right!=-1；blockShape不满足约束。</td>
+        </tr>
+        <tr>
+          <td>ACLNN_ERR_RUNTIME_ERROR</td>
+          <td>361001</td>
+          <td>API内存调用npu runtime的接口异常。</td>
+        </tr>
+      </tbody>
     </table>
+  </div>
 
 ## aclnnGenericBlockSparseAttentionGrad
 
-- **参数说明：**
+- **参数说明**
 
-    <table style="undefined;table-layout: fixed; width: 1155px">
-        <colgroup>
-            <col style="width: 144px">
-            <col style="width: 125px">
-            <col style="width: 700px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>参数名</th>
-                <th>输入/输出</th>
-                <th>描述</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>workspace</td>
-                <td>输入</td>
-                <td>在Device侧申请的workspace内存地址。</td>
-            </tr>
-            <tr>
-                <td>workspaceSize</td>
-                <td>输入</td>
-                <td>在Device侧申请的workspace大小，由第一段接口aclnnGenericBlockSparseAttentionGradGetWorkspaceSize获取。</td>
-            </tr>
-            <tr>
-                <td>executor</td>
-                <td>输入</td>
-                <td>op执行器，包含了算子计算流程。</td>
-            </tr>
-            <tr>
-                <td>stream</td>
-                <td>输入</td>
-                <td>指定执行任务的Stream。</td>
-            </tr>
-        </tbody>
-    </table>
+  <table><thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>workspace</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnGenericBlockSparseAttentionGradGetWorkspaceSize获取。</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输入</td>
+      <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+      <td>stream</td>
+      <td>输入</td>
+      <td>指定执行任务的Stream流。</td>
+    </tr>
+  </tbody>
+  </table>
 
-- **返回值：**
+- **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
   - aclnnGenericBlockSparseAttentionGrad默认为非确定性实现，暂不支持确定性实现，确定性计算配置后不会生效。
-- 公共约束：
-  - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
-  - 须先调用[aclnnGenericBlockSparseAttentionGradMetadata](../../generic_block_sparse_attention_grad_metadata/docs/aclnnGenericBlockSparseAttentionGradMetadata.md)生成`metadata`，再调用本接口。
-  - 参数query、key、value、dout、out、dQuery、dKey、dValue的数据类型应保持一致，支持FLOAT16和BFLOAT16。
-  - 参数lse的数据类型应为FLOAT32。
-  - 参数rsvdBlockIdx、rsvdBlockCount、sequsedQOptional、sequsedKvOptional的数据类型应为INT32。
-  - 参数cuSeqLengthsOptional、cuSeqLengthsKvOptional、metadata的数据类型应为INT64。
-  - qInputLayout和kvInputLayout当前支持TND、BNSD、BSND，且必须保持一致。
-  - 当qInputLayout为TND时，需要传入cuSeqLengthsOptional；当kvInputLayout为TND时，需要传入cuSeqLengthsKvOptional。
-  - Softmax LSE的head/seq轴语义须与query布局一致。
-  - `rsvdBlockIdx`第4维maxS1应≥`rsvdBlockCount`中所有元素的最大值，不限制上限。
-  - `windowSizeLeft`和`windowSizeRight`不使能时必须为-1。
-  - `isPackedGqa`当前仅支持1。
-  - `attenMaskOptional`当前暂不支持，应传nullptr。
-
-    <table style="undefined;table-layout: fixed; width: 942px">
-        <colgroup>
-            <col style="width: 100px">
-            <col style="width: 520px">
-            <col style="width: 160px">
-            <col style="width: 160px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>maskType</th>
-                <th>含义</th>
-                <th>attenMaskOptional</th>
-                <th>windowSizeLeft/Right</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>1</td>
-                <td>causal mask（RIGHT_DOWN_CAUSAL）</td>
-                <td>当前应传nullptr</td>
-                <td>-1/-1</td>
-            </tr>
-        </tbody>
-    </table>
-
-- 规格约束：
-    <table style="undefined;table-layout: fixed; width: 942px">
-        <colgroup>
-            <col style="width: 100px">
-            <col style="width: 300px">
-            <col style="width: 360px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>规格项</th>
-                <th>规格</th>
-                <th>规格说明</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>D</td>
-                <td>128</td>
-                <td>query/key/value最后一维固定为128。</td>
-            </tr>
-            <tr>
-                <td>N1</td>
-                <td>1~128</td>
-                <td>须能被N2整除。</td>
-            </tr>
-            <tr>
-                <td>N2</td>
-                <td>1~128</td>
-                <td>-</td>
-            </tr>
-            <tr>
-                <td>layout</td>
-                <td>TND/BNSD/BSND</td>
-                <td>q与kv layout须一致。</td>
-            </tr>
-            <tr>
-                <td>blockShape</td>
-                <td>[1, 128]</td>
-                <td>blockShapeX仅支持1；blockShapeY当前仅支持128。</td>
-            </tr>
-            <tr>
-                <td>isPackedGqa</td>
-                <td>1</td>
-                <td>当前仅支持1。</td>
-            </tr>
-            <tr>
-                <td>maskType</td>
-                <td>1</td>
-                <td>当前仅支持1。</td>
-            </tr>
-            <tr>
-                <td>softmaxPrecision</td>
-                <td>0或1</td>
-                <td>当前实现传0。</td>
-            </tr>
-        </tbody>
-    </table>
-
-  - 参数B、S1、S2的支持情况：
-
-    <!-- npu="950" id7 -->
-    - <term>Ascend 950PR/Ascend 950DT</term>：B>0，S1>0，S2>0。
-    <!-- end id7 -->
+- 须先调用[aclnnGenericBlockSparseAttentionGradMetadata](../../generic_block_sparse_attention_grad_metadata/docs/aclnnGenericBlockSparseAttentionGradMetadata.md)生成`metadata`，再调用本接口。
+- 参数query、key、value、dout、out、dQuery、dKey、dValue的数据类型应保持一致，支持FLOAT16和BFLOAT16。
+- 参数lse的数据类型应为FLOAT32。
+- 参数rsvdBlockIdx、rsvdBlockCount、sequsedQOptional、sequsedKvOptional的数据类型应为INT32。
+- 参数cuSeqLengthsOptional、cuSeqLengthsKvOptional、metadata的数据类型应为INT64。
+- qInputLayout和kvInputLayout当前支持TND、BNSD、BSND，且必须保持一致。
+- 当qInputLayout为TND时，需要传入cuSeqLengthsOptional；当kvInputLayout为TND时，需要传入cuSeqLengthsKvOptional。
+- HeadDim固定为128；N1/N2取值范围[1, 128]，且N1 % N2 == 0。
+- blockShape当前仅支持[1, 128]；isPackedGqa当前仅支持1；maskType当前仅支持1。
+- windowSizeLeft和windowSizeRight不使能时必须为-1；attenMaskOptional当前应传nullptr。
+- Softmax LSE的head/seq轴语义须与query布局一致。
+- `rsvdBlockIdx`第4维maxS1应≥`rsvdBlockCount`中所有元素的最大值。
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参见[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。完整可运行样例见`examples/test_aclnn_generic_block_sparse_attention_grad.cpp`。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <cmath>
