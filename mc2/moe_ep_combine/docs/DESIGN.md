@@ -21,7 +21,7 @@
 ### 2.1 有效数据范围
 
 ```text
-actualA = sum(num_recv_tokens_per_expert)
+actualA = recv_rank_offsets[ep_world_size]
 ```
 
 Combine 只处理 metadata、`x` 和 `topk_weights` 的有效前缀。metadata 的实际分配容量不能代替 `actualA`。
@@ -59,14 +59,17 @@ metadata 行号不能用于索引 `x` 或 `topk_weights`。metadata 是 rank-ord
 
 ### 2.3 rank 区间定位
 
-metadata 的有效前缀按 `src_rank` 排序，因此通过二分查找得到任意 rank 的连续区间：
+Dispatch Epilogue 输出 `recv_rank_offsets[ep_world_size + 1]`。它是每个源 rank metadata
+行数的 exclusive prefix，因此任意 rank 的连续区间可直接读取：
 
 ```text
-rank_begin = lower_bound(metadata.src_rank, rank)
-rank_end   = lower_bound(metadata.src_rank, rank + 1)
+rank_begin = recv_rank_offsets[rank]
+rank_end   = recv_rank_offsets[rank + 1]
 ```
 
-该过程不需要构建逐 token 地址表，也不要求同一 rank 内的 `recv_x_idx` 有序。
+其中 `recv_rank_offsets[0] = 0`，`recv_rank_offsets[ep_world_size] = actualA`。该过程不需要
+扫描 metadata、执行二分查找或构建逐 token 地址表，也不要求同一 rank 内的
+`recv_x_idx` 有序。
 
 ## 3. 总体执行流程
 
@@ -75,13 +78,13 @@ rank_end   = lower_bound(metadata.src_rank, rank + 1)
     │
     ├─ 1. 初始化
     │     ├─ 读取 tiling、rank、通信窗口和 Hcomm context
-    │     ├─ 每核独立计算 actualA
+    │     ├─ 连续读取 recv_rank_offsets
+    │     ├─ 从最后一个 offset 得到 actualA
     │     ├─ 初始化 metadata UB、token queue、weight buffer/queue
     │     └─ 初始化每核 Hcomm batch 和 flag source
     │
     ├─ 2. 定位本卡 metadata 区间
-    │     ├─ lower_bound(rankId)
-    │     └─ lower_bound(rankId + 1)
+    │     └─ 直接读取 offsets[rankId:rankId + 2]
     │
     ├─ 3. 全核并行搬运本卡数据
     │     ├─ 按本卡 metadata 记录数均分
@@ -271,12 +274,12 @@ x/weight GM -> UB 完成
 ```cpp
 __aicore__ inline void Process()
 {
-    // 每核独立准备，避免为 actualA/rank boundary 增加同步。
+    // 每核连续加载 rank offsets，避免为 actualA/rank boundary 增加同步。
     PrepareRuntimeInfo();
     InitPerCoreBuffersAndFlagSource();
 
-    uint64_t localBegin = LowerBoundSrcRank(rankId_);
-    uint64_t localEnd = LowerBoundSrcRank(rankId_ + 1U);
+    uint64_t localBegin = rankOffsets[rankId_];
+    uint64_t localEnd = rankOffsets[rankId_ + 1U];
 
     uint64_t coreBegin;
     uint64_t coreEnd;
@@ -303,8 +306,8 @@ __aicore__ inline void Process()
          ordinal < remoteOrdinalEnd;
          ++ordinal) {
         uint32_t dstRank = ordinal < rankId_ ? ordinal : ordinal + 1U;
-        uint64_t rankBegin = LowerBoundSrcRank(dstRank);
-        uint64_t rankEnd = LowerBoundSrcRank(dstRank + 1U);
+        uint64_t rankBegin = rankOffsets[dstRank];
+        uint64_t rankEnd = rankOffsets[dstRank + 1U];
 
         BeginPreparedWrites(dstRank);
         ProcessRemoteMetadataRange(dstRank, rankBegin, rankEnd);
@@ -319,9 +322,11 @@ __aicore__ inline void Process()
 ### 7.1 正确性约束
 
 - `RECV_META_FIELDS` 和 Host 的 metadata dim1 校验必须同时从 4 改为 5。
+- `recv_rank_offsets` 必须是 `[ep_world_size + 1] int32`，满足首项为 0、单调非降且末项为
+  `actualA`；源 rank `r` 对应区间为 `[offsets[r], offsets[r + 1])`。
 - `actualA` 不得超过 `x.shape[0]`、metadata 容量和可选 weight 容量。
 - Combine Kernel 热路径不逐行检查 metadata 字段合法性，信任 Dispatch Epilogue 或 cached handle 的 metadata 契约。字段范围和排序必须由 metadata 生产侧保证。
-- metadata 有效前缀必须按 `src_rank` 非降序，否则不能使用二分区间定位。
+- metadata 有效前缀必须按 `src_rank` 非降序，并与 `recv_rank_offsets` 描述的 rank 区间一致。
 - metadata 行号不能作为 token/weight 源索引。
 - token 和 weight 保持独立输入、独立目的区域，不修改通信窗口布局。
 - 每个 rank/channel 在一次 kernel 执行中只能有一个 owner 核。
@@ -356,21 +361,24 @@ H：典型 4096/7168/8192，不能按固定上限设计索引
 - 第一版按 rank 数均分，依赖实际业务中各 rank 数据量近似均匀的假设。
 - `R < C` 时远端阶段最多使用 `R-1` 个核，这是单 channel 约束下的并行上限。
 - `R > C` 时一个核顺序处理多个 rank，需在 Hcomm batch 容量边界正确提交。
-- lower-bound 的重复计算为 `O(log actualA)`，不应重新引入 `O(actualA)` 的全量 rank 扫描或逐 token workspace。
+- rank 边界必须直接来自 Epilogue 输出，不应重新引入 lower-bound、`O(actualA)` 的全量 rank 扫描
+  或逐 token workspace。
 
 ## 8. 代码实现映射
 
 ### 8.1 Combine Kernel
 
 - `RECV_META_FIELDS` 从 4 改为 5，并增加五个字段 offset。
+- 增加 `recv_rank_offsets` 输入，每核一次性连续搬入 UB；`actualA` 取最后一个 offset。
 - `Process()` 已切换到 `SendPhaseDirectFromMetadata()`。
 - 原地址表入口 `SendPhaseExpertToToken()` 仅在调用点注释，并标记 `TODO(delete)`；相关函数和成员暂时保留，待直接路径完成板上验证后统一删除。
 - `IsMetadataRowValid()` 定义暂时保留，本卡和远端热路径调用点均已注释，不产生逐行校验开销。
 - 增加：
-  - `LowerBoundSrcRank`；
   - `SplitRange`；
   - `ProcessLocalMetadataRange`；
   - `ProcessRemoteMetadataRange`。
+- `ReadMetadataRank()` 和 `LowerBoundSrcRank()` 的定义暂时保留，调用点已注释，待 rank-offset
+  路径完成板上验证后统一删除。
 - `SendLocalSlot` 和 `SendRemoteSlot` 的源参数改为 `recvXIdx`。
 - 本卡 token 和 weight 使用独立搬运路径。
 - 有效直接路径按第 6 节流程执行，只保留一次 `SyncAll`。旧地址表函数定义中仍有历史 `SyncAll`，但该入口不再被调用。
@@ -378,6 +386,7 @@ H：典型 4096/7168/8192，不能按固定上限设计索引
 ### 8.2 Combine Host Tiling
 
 - metadata dim1 校验从 4 改为 5。
+- 增加 `recv_rank_offsets` 的一维 shape、长度和 int32 dtype 校验。
 - 保留通信窗口大小和 offset 的计算。
 - workspace 生效值改为系统预留空间加每 AIV 512B flag source；旧地址表 workspace 公式仅注释并标记 `TODO(delete)`。
 - `aivNum` 继续使用本次平台和控核结果，不写死 56 或 72。
@@ -386,7 +395,7 @@ H：典型 4096/7168/8192，不能按固定上限设计索引
 ### 8.3 不需要修改的模块
 
 - Dispatch 主 kernel：不消费 Combine metadata。
-- Dispatch Epilogue：已负责生产 5 列 metadata 和 `recv_x_idx`。
+- Dispatch Epilogue：负责生产 5 列 metadata、`recv_x_idx` 和 `recv_rank_offsets`。
 - Combine Epilogue：不读取 metadata；只要窗口布局和每 sender rank 一个完成 flag 的协议不变，就不需要因本设计修改。
 
 ## 9. 实现检查项
@@ -414,3 +423,4 @@ H：典型 4096/7168/8192，不能按固定上限设计索引
 | 0.1 | 2026-08-28 | 记录 5 列 metadata 直接发送、全核本卡优先、一次 SyncAll 和 rank/channel owner 分核方案 |
 | 0.2 | 2026-08-28 | 记录直接路径代码映射、旧地址表保留策略和当前静态验证状态 |
 | 0.3 | 2026-08-28 | 按性能约束关闭 Kernel metadata 逐行合法性校验 |
+| 0.4 | 2026-09-04 | 增加 Epilogue rank offsets 输出，停用 Combine 的 actualA 归约和 rank lower-bound 调用 |
