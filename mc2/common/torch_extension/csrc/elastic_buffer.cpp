@@ -137,6 +137,7 @@ struct EngramContextResources {
     HcclMemHandle memHandle = nullptr;
     void *hostBufPtr = nullptr;
     void *deviceBufPtr = nullptr;
+    bool externalRegistered = false;
     int64_t commBufferSize = 0;
     EngramCommContext context;
     at::Tensor contextTensor;
@@ -211,7 +212,8 @@ protected:
 
 class EngramContextBuilder : public HcclContextBuilderBase {
 public:
-    EngramContextResources Build(const std::string &groupName, int64_t numCpuBytes, bool withGrad)
+    EngramContextResources Build(const std::string &groupName, int64_t numCpuBytes, bool withGrad,
+                                 void *externalHostPtr = nullptr, int64_t externalBytes = 0)
     {
         withGrad_ = withGrad;
         EngramContextResources resources;
@@ -221,7 +223,7 @@ public:
         CheckContextTag(contextTag);
 
         HostBufferGuard guard;
-        CreateContext(resources, contextTag, numCpuBytes, guard);
+        CreateContext(resources, contextTag, numCpuBytes, guard, externalHostPtr, externalBytes);
         resources.contextTensor = CreateCommContextTensor(resources.context);
         guard.Release();
         return resources;
@@ -240,29 +242,43 @@ private:
 
     static void AllocateAndRegisterBuffer(const HcclComm &commHandle, const std::string &memBufferTag,
                                           int64_t numCpuBytes, EngramContextResources &resources,
-                                          HostBufferGuard &guard)
+                                          HostBufferGuard &guard, void *externalHostPtr = nullptr,
+                                          int64_t externalBytes = 0)
     {
-        aclError ar = aclrtMallocHost(&guard.hostPtr, static_cast<uint64_t>(numCpuBytes));
-        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMallocHost(", numCpuBytes, " B) failed, ret=", ar);
+        if (externalHostPtr == nullptr) {
+            aclError ar = aclrtMallocHost(&guard.hostPtr, static_cast<uint64_t>(numCpuBytes));
+            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMallocHost(", numCpuBytes, " B) failed, ret=", ar);
 
-        ar = aclrtHostRegisterV2(guard.hostPtr, static_cast<uint64_t>(numCpuBytes), ACL_HOST_REG_MAPPED);
-        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostRegisterV2(", numCpuBytes, " B) failed, ret=", ar);
-        guard.registered = true;
+            ar = aclrtHostRegisterV2(guard.hostPtr, static_cast<uint64_t>(numCpuBytes), ACL_HOST_REG_MAPPED);
+            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostRegisterV2(", numCpuBytes, " B) failed, ret=", ar);
+            guard.registered = true;
+        } else {
+            // Map caller-owned storage memory directly (zero-copy): plain memory is supported
+            aclError ar =
+                aclrtHostRegisterV2(externalHostPtr, static_cast<uint64_t>(externalBytes), ACL_HOST_REG_MAPPED);
+            resources.externalRegistered = (ar == ACL_SUCCESS);
+            if (ar != ACL_SUCCESS) {
+                ASCEND_LOGW("aclrtHostRegisterV2(%lld B) failed, ret=%d, fallback to existing registration",
+                            externalBytes, static_cast<int>(ar));
+            }
+        }
 
+        void *hostPtr = (externalHostPtr != nullptr) ? externalHostPtr : guard.hostPtr;
         void *devPtr = nullptr;
-        ar = aclrtHostGetDevicePointer(guard.hostPtr, &devPtr, 0);
-        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostGetDevicePointer failed, ret=", ar);
+        aclError ar = aclrtHostGetDevicePointer(hostPtr, &devPtr, 0);
+        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostGetDevicePointer failed, ret=", ar,
+                    ", storage host memory cannot be mapped to device");
 
         CommMem mem;
         mem.type = COMM_MEM_TYPE_DEVICE;
         mem.addr = devPtr;
-        mem.size = static_cast<uint64_t>(numCpuBytes);
+        mem.size = static_cast<uint64_t>((externalHostPtr != nullptr) ? externalBytes : numCpuBytes);
 
         auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, &resources.memHandle);
-        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", numCpuBytes,
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", mem.size,
                     ") failed, ret=", hcclRet);
 
-        resources.hostBufPtr = guard.hostPtr;
+        resources.hostBufPtr = hostPtr;
         resources.deviceBufPtr = devPtr;
     }
 
@@ -441,7 +457,7 @@ private:
     }
 
     void CreateContext(EngramContextResources &resources, const std::string &contextTag, int64_t numCpuBytes,
-                       HostBufferGuard &guard)
+                       HostBufferGuard &guard, void *externalHostPtr = nullptr, int64_t externalBytes = 0)
     {
         uint64_t contextSize = sizeof(EngramCommContext);
         void *ctx = nullptr;
@@ -450,12 +466,13 @@ private:
         GetRankInfo(resources.hcclComm, resources.context.rankId, resources.context.rankSize);
         ValidateRankSize(resources.context.rankSize);
 
-        if (numCpuBytes == 0) {
+        if (numCpuBytes == 0 && externalHostPtr == nullptr) {
             return;
         }
 
         std::string memBufferTag = contextTag + "_buffer";
-        AllocateAndRegisterBuffer(resources.hcclComm, memBufferTag, numCpuBytes, resources, guard);
+        AllocateAndRegisterBuffer(resources.hcclComm, memBufferTag, numCpuBytes, resources, guard, externalHostPtr,
+                                  externalBytes);
 
         if (withGrad_) {
             QueryHcclBufferResource(resources.hcclComm, resources);
@@ -855,7 +872,7 @@ public:
                                                    const c10::optional<at::Tensor> &combinedTopkWeightsOpt);
 
 private:
-    void EnsureEngramContext();
+    void EnsureEngramContext(void *externalHostPtr = nullptr, int64_t externalBytes = 0);
     void EnsureMoeContext();
     int64_t ResolveRankNumPerServer(int64_t epWorldSize) const;
     int64_t ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerServer) const;
@@ -875,6 +892,8 @@ private:
     at::Tensor engramContextTensor_;    // Cached Engram context tensor
     at::Tensor localStorageAddrTensor_; // int64 scalar tensor, stores deviceBufPtr_ address
     bool engramContextInitialized_ = false;
+    bool engramStorageExternal_ = false;
+    bool engramExternalRegisteredByUs_ = false;
 
     at::Tensor moeContextTensor_;
     int64_t moeCclBufferSize_ = 0;
@@ -923,7 +942,7 @@ ElasticBuffer::~ElasticBuffer()
     }
 }
 
-void ElasticBuffer::EnsureEngramContext()
+void ElasticBuffer::EnsureEngramContext(void *externalHostPtr, int64_t externalBytes)
 {
     TORCH_CHECK(!destroyed_, "ElasticBuffer cannot be used after destroy, please create a new ElasticBuffer instance");
     if (engramContextInitialized_) {
@@ -932,7 +951,8 @@ void ElasticBuffer::EnsureEngramContext()
     commStream_ = c10_npu::getNPUStreamFromPool().stream(false);
     TORCH_CHECK(commStream_ != nullptr, "Failed to get NPU stream from pool for comm stream");
     EngramContextBuilder builder;
-    EngramContextResources resources = builder.Build(groupName_, engramNumCpuBytes_, withGrad_);
+    EngramContextResources resources =
+        builder.Build(groupName_, engramNumCpuBytes_, withGrad_, externalHostPtr, externalBytes);
     engramHcclComm_ = resources.hcclComm;
     engramMemHandle_ = resources.memHandle;
     engramHostBufPtr_ = resources.hostBufPtr;
@@ -940,6 +960,8 @@ void ElasticBuffer::EnsureEngramContext()
     engramCommContext_ = resources.context;
     engramContextTensor_ = resources.contextTensor;
     commBufferSize_ = resources.commBufferSize;
+    engramStorageExternal_ = (externalHostPtr != nullptr);
+    engramExternalRegisteredByUs_ = resources.externalRegistered;
     int64_t addrValue = reinterpret_cast<int64_t>(engramDeviceBufPtr_);
     auto hostAddrTensor = at::full({1}, addrValue, at::TensorOptions().dtype(at::kLong));
     localStorageAddrTensor_ = hostAddrTensor.to(c10::DeviceType::PrivateUse1);
@@ -971,15 +993,34 @@ int64_t ElasticBuffer::ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerSe
     return (epWorldSize / rankNumPerServer > 1) ? NETWORK_HYBRID : NETWORK_DIRECT;
 }
 
-// EngramWrite - write data with automatic barrier
+// EngramWrite - write data with automatic barrier.
+// with_grad=true (training): map caller-owned storage memory directly as the engram storage
+//             (zero-copy, no data copy). The storage host memory must be mappable to the
 void ElasticBuffer::EngramWrite(const at::Tensor &storage)
 {
     TORCH_CHECK(!destroyed_, "engram_write cannot be called after destroy, "
                              "please create a new ElasticBuffer instance");
-    EnsureEngramContext();
+    void *externalHostPtr = nullptr;
+    int64_t externalBytes = 0;
+    if (withGrad_) {
+        TORCH_CHECK(storage.nbytes() > 0, "engram_write in with_grad mode requires non-empty storage, got ",
+                    storage.nbytes(), " bytes");
+        if (engramContextInitialized_) {
+            TORCH_CHECK(engramHostBufPtr_ == storage.data_ptr(),
+                        "engram_write: engram storage is already initialized from a different address, expected "
+                        "ptr=",
+                        engramHostBufPtr_, ", got ptr=", storage.data_ptr());
+        } else {
+            externalHostPtr = storage.data_ptr();
+            externalBytes = static_cast<int64_t>(storage.nbytes());
+        }
+    }
+    EnsureEngramContext(externalHostPtr, externalBytes);
 
-    TORCH_CHECK(storage.nbytes() <= static_cast<size_t>(engramNumCpuBytes_), "storage size ", storage.nbytes(),
-                " exceeds buffer capacity ", engramNumCpuBytes_);
+    if (!withGrad_) {
+        TORCH_CHECK(storage.nbytes() <= static_cast<size_t>(engramNumCpuBytes_), "storage size ", storage.nbytes(),
+                    " exceeds buffer capacity ", engramNumCpuBytes_);
+    }
 
     constexpr int64_t int32Max = static_cast<int64_t>(INT32_MAX);
     TORCH_CHECK(storage.size(0) * static_cast<int64_t>(engramCommContext_.rankSize) <= int32Max,
@@ -993,7 +1034,7 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
     engramNumEntries_ = storage.size(0);
     engramDtype_ = storage.scalar_type();
 
-    if (engramNumEntries_ > 0) {
+    if (!withGrad_ && engramNumEntries_ > 0) {
         constexpr size_t MEMCPY_MAX_BYTES = 0x7fffffff;
         size_t totalBytes = storage.nbytes();
         size_t remaining = totalBytes;
@@ -1178,12 +1219,18 @@ void ElasticBuffer::Destroy()
     commBufferSize_ = 0;
 
     if (engramHostBufPtr_ != nullptr) {
-        aclError ret = aclrtHostUnregister(engramHostBufPtr_);
-        TORCH_CHECK(ret == ACL_SUCCESS, "aclrtHostUnregister failed, ret: ", ret);
-        ret = aclrtFreeHost(engramHostBufPtr_);
-        TORCH_CHECK(ret == ACL_SUCCESS, "aclrtFreeHost failed, ret: ", ret);
+        if (!engramStorageExternal_ || engramExternalRegisteredByUs_) {
+            aclError ret = aclrtHostUnregister(engramHostBufPtr_);
+            TORCH_CHECK(ret == ACL_SUCCESS, "aclrtHostUnregister failed, ret: ", ret);
+        }
+        if (!engramStorageExternal_) {
+            aclError ret = aclrtFreeHost(engramHostBufPtr_);
+            TORCH_CHECK(ret == ACL_SUCCESS, "aclrtFreeHost failed, ret: ", ret);
+        }
         engramHostBufPtr_ = nullptr;
         engramDeviceBufPtr_ = nullptr;
+        engramStorageExternal_ = false;
+        engramExternalRegisteredByUs_ = false;
     }
     engramContextInitialized_ = false;
     moeContextInitialized_ = false;

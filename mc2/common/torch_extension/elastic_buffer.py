@@ -414,6 +414,7 @@ class ElasticBuffer:
         self._engram_num_entries = None
         self._engram_dtype_int = None
         self._engram_fetch_in_progress = False
+        self._engram_storage_ref = None
         self._local_storage_addr = None
         self._comm_buffer_size = 0
         self._rank_size = 0
@@ -582,7 +583,7 @@ class ElasticBuffer:
 
     def engram_write(self, storage: torch.Tensor) -> None:
         """
-        Write data to the host pinned memory of ElasticBuffer.
+        Write data to the Engram storage of ElasticBuffer.
 
         Arguments:
             storage: the CPU tensor to write (must be 2D, contiguous, dtype=bf16/fp16/fp32).
@@ -591,6 +592,12 @@ class ElasticBuffer:
             None
 
         Note: barrier(with_device_sync=True) is called before and after write internally.
+            In training mode (with_grad=True), the memory of `storage` is mapped directly
+            as the Engram storage (zero-copy, no data copy): `storage` must stay alive and
+            keep its address for the lifetime of this buffer, and in-place updates of
+            `storage` are visible to subsequent engram_fetch calls. The host memory of
+            `storage` must be mappable to the device: plain CPU memory is supported on
+            Ascend 950, pinned memory is required on Ascend 910.
         """
         torch._check(
             storage.is_cpu,
@@ -613,7 +620,14 @@ class ElasticBuffer:
             storage.size(1) % 128 == 0,
             lambda: f"storage second dimension must be 128-aligned, got: {storage.size(1)}",
         )
+        if self._with_grad:
+            torch._check(
+                storage.numel() > 0,
+                lambda: "engram_write in with_grad mode requires a non-empty storage",
+            )
         self._runtime.engram_write(storage)
+        if self._with_grad:
+            self._engram_storage_ref = storage
         self._engram_context_tensor = self._runtime.get_context_tensor()
         self._engram_hidden_size = storage.size(1)
         self._engram_num_entries = storage.size(0)
@@ -1067,6 +1081,7 @@ class ElasticBuffer:
         self._engram_num_entries = None
         self._engram_dtype_int = None
         self._engram_fetch_in_progress = False
+        self._engram_storage_ref = None
         self._local_storage_addr = None
         self._comm_buffer_size = 0
         self._rank_size = 0
