@@ -56,7 +56,7 @@ stages:
         uses: .gitcode/workflows/compile_action_test.yml
         with:
           task_name: 'Pre_Compile'
-          image_version: ${{ jobs.JOB_image.outputs.Pre_Compile }}
+          image_version: 'ubuntu24.04_x86:lv6_v1.1131'
           arch: 'x64'
           spec: 'xlarge'
     pre:
