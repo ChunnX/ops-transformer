@@ -18,9 +18,8 @@ class MhcPreSinkhornFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, phi, alpha, bias, hc_mult, num_iters, hc_eps, norm_eps):
         # autograd 路径强制 out_flag=True，以保存 backward 所需的中间结果
-        op_module = mhc_pre_sinkhorn_op_builder.load()
         hin, h_post, h_res, h_pre, hc_before_norm, inv_rms, sum_out, norm_out = (
-            op_module.mhc_pre_sinkhorn(
+            torch.ops.cann_ops_transformer.mhc_pre_sinkhorn(
                 x, phi, alpha, bias, hc_mult, num_iters, hc_eps, norm_eps, True
             )
         )
@@ -184,8 +183,7 @@ def mhc_pre_sinkhorn(
         )
     else:
         # 普通路径：out_flag=False，不保存中间变量，只返回 3 个主输出
-        op_module = mhc_pre_sinkhorn_op_builder.load()
-        hin, h_post, h_res, _, _, _, _, _ = op_module.mhc_pre_sinkhorn(
+        hin, h_post, h_res, _, _, _, _, _ = torch.ops.cann_ops_transformer.mhc_pre_sinkhorn(
             x, phi, alpha, bias, hc_mult, num_iters, hc_eps, norm_eps, False
         )
         return hin, h_post, h_res
