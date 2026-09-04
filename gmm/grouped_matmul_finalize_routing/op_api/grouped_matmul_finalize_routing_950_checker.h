@@ -85,6 +85,7 @@ const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_MX_FP8 = {op::D
 const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_FP8 = {op::DataType::DT_FLOAT4_E2M1};
 static const std::initializer_list<op::DataType> SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0};
 static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_INT64};
+static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_MX_BF16_OUTPUT = {op::DataType::DT_INT32};
 static const std::initializer_list<op::DataType> BIAS_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_BF16};
 static const std::initializer_list<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0};
 static const std::initializer_list<op::DataType> GROUP_LIST_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
@@ -442,7 +443,6 @@ public:
         GMMFR_CHECK_DTYPE(gmmParams_.x1, "x", X_WEIGHT_TYPE_SUPPORT_LIST_MX, return false);
         GMMFR_CHECK_DTYPE(gmmParams_.x2, "weight", X_WEIGHT_TYPE_SUPPORT_LIST_MX, return false);
         GMMFR_CHECK_DTYPE(gmmParams_.scale, "scale", SCALE_TYPE_SUPPORT_LIST_MX, return false);
-        GMMFR_CHECK_DTYPE(gmmParams_.rowIndex, "rowIndex", ROW_INDEX_TYPE_SUPPORT_LIST_MX, return false);
         GMMFR_CHECK_DTYPE(gmmParams_.pertokenScaleOptional, "perTokenScale", PERTOKEN_SCALE_TYPE_SUPPORT_LIST_MX,
                           return false);
         if (gmmParams_.bias != nullptr) {
@@ -455,15 +455,21 @@ public:
         GMMFR_CHECK_DTYPE(gmmParams_.out, "y", OUT_TYPE_SUPPORT_LIST_MX, return false);
         bool isBf16Output = gmmParams_.dtype == OUT_DTYPE_BF16 || gmmParams_.out->GetDataType() == DataType::DT_BF16;
         if (isBf16Output) {
+            GMMFR_CHECK_DTYPE(gmmParams_.rowIndex, "rowIndex", ROW_INDEX_TYPE_SUPPORT_LIST_MX_BF16_OUTPUT,
+                              return false);
             GMMFR_CHECK_DTYPE(gmmParams_.logit, "logit", LOGIT_TYPE_SUPPORT_LIST_BF16_OUTPUT, return false);
             GMMFR_CHECK_REPORT(
                 gmmParams_.dtype == OUT_DTYPE_FLOAT32 || gmmParams_.dtype == OUT_DTYPE_BF16, return false,
                 OP_LOGE_FOR_INVALID_VALUE(GMMFR_ACLNN_OP_NAME, "dtype", std::to_string(gmmParams_.dtype), "0 or 2"));
+            GMMFR_CHECK_REPORT(gmmParams_.bias == nullptr, return false,
+                               OP_LOGE_FOR_INVALID_VALUE(GMMFR_ACLNN_OP_NAME, "bias", "not nullptr",
+                                                         "when dtype is 2 or y is BF16, bias must be nullptr"));
             GMMFR_CHECK_REPORT(gmmParams_.out->GetDataType() == DataType::DT_BF16, return false,
                                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                                    GMMFR_ACLNN_OP_NAME, "y", op::ToString(gmmParams_.out->GetDataType()).GetString(),
                                    "when dtype is 2 or y is BF16, y must be DT_BF16"));
         } else {
+            GMMFR_CHECK_DTYPE(gmmParams_.rowIndex, "rowIndex", ROW_INDEX_TYPE_SUPPORT_LIST_MX, return false);
             GMMFR_CHECK_DTYPE(gmmParams_.logit, "logit", LOGIT_TYPE_SUPPORT_LIST, return false);
             GMMFR_CHECK_REPORT(
                 gmmParams_.dtype == OUT_DTYPE_FLOAT32, return false,
