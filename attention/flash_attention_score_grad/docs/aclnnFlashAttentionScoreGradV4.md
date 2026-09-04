@@ -136,7 +136,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4GetWorkspaceSize(
   const aclTensor   *dpseOut,
   const aclTensor   *dsinkOut,
   uint64_t          *workspaceSize,
-  aclOpExecutor    **executor)`
+  aclOpExecutor    **executor)
 ```
 
 ```c++
@@ -738,7 +738,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
 - 支持输入query/dy的N和key/value的N不相等，但必须成比例关系，即Nq/Nkv必须是非0整数，Nq取值范围1~256。
 - 关于数据shape的约束，以inputLayout的TND为例，其中：
 
-    - B：取值范围为1\~2K。带prefixOptional的时候B最大支持1K。
+    - B：取值范围为1\~2k。带prefixOptional的时候B最大支持1k。
     - N：取值范围为1\~256。
     - S：取值范围为1\~1M。
     - D：取值范围为1\~768。
@@ -746,7 +746,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
 - 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - prefixOptional稀疏计算仅支持压缩场景，sparseModeOptional=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。当sparseModeOptional=5、prefix的N > Skv或prefixOptional不传时执行全计算，sparseModeOptional=6要求prefixOptional必传。
 - sparseMode=7时，不支持可选输入pseShiftOptional。
-- sparseMode=8时，当每个sequence的q、kv等长时支持可选输入pseShiftOptional，针对全局做pse生成。支持q方向进行外切，需要外切前每个sequence的q、kv等长，外切后传入的actualSeqQLenOptional[0] - actualSeqKvLenOptional[0] + qStartIdxOptional - kvStartIdxOptional == 0（本功能属实验性功能）。
+- sparseMode=8时，当每个sequence的q、kv等长时支持可选输入pseShiftOptional，针对全局做pse生成。支持q方向进行外切，需要外切前每个sequence的q、kv等长，外切后传入的actualSeqQLenOptional[0] - actualSeqKvLenOptional[0] + qStartIdxOptional[0] - kvStartIdxOptional[0] == 0（本功能属实验性功能）。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入pseShiftOptional。
 - 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\],TND的输入格式除外，此时为\[N, T, 8\]，注：T=B*S。
 - headNum的取值必须和传入的Query中的N值保持一致。
@@ -759,7 +759,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
 <!-- end id8 -->
 - TND格式下，支持尾部部分Batch不参与计算，此时actual_seq_q_len和actual_seq_kv_len尾部传入对应个数的0即可。假设真实S长度为[2, 3, 4, 5, 6]，若希望最后两个Batch不参与计算，则传入的actual_seq_q_len为[2, 3, 4, 0, 0]。此时若需要传入prefixOptional，其尾部也需要传入同等数量的0，例如[1, 1, 1, 0, 0]。
 - sinkInOptional不为None时，query与key等输入tensor仅支持float16和bfloat16两种类型，sinkInOptional维度为1，长度需要与query的headnum相同。
-- softmaxSum、softmaxMax数据排布为TND时，softmaxInLayout需要为"same_as_input"。
+- softmaxSum、softmaxMax数据排布为TND时，softmaxInLayout需传空字符串""。
 
 ## 调用示例
 
@@ -968,6 +968,7 @@ int main() {
   ret = CreateAclTensor(softmaxSumHostData, softmaxSumShape, &softmaxSumDeviceAddr, aclDataType::ACL_FLOAT, &softmaxSum);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(attentionInHostData, attentionInShape, &attentionInDeviceAddr, aclDataType::ACL_FLOAT, &attentionIn);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Create attentionIn tensor failed. ERROR: %d\n", ret); return ret);
   ret = CreateAclTensor(sinkInOptionalHostData, sinkInOptionalShape, &sinkInOptionalDeviceAddr, aclDataType::ACL_FLOAT, &sinkInOptional);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(dqHostData, dqShape, &dqDeviceAddr, aclDataType::ACL_FLOAT, &dq);
