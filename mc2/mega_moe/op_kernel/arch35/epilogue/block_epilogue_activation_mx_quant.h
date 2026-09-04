@@ -22,8 +22,8 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "../../common/mega_moe_constants.h"
-#include "../../common/mega_moe_utils.h"
+#include "../common/mega_moe_constants.h"
+#include "../common/mega_moe_utils.h"
 #include "activation/activation_common.h"
 #include "activation/situglu_activation.h"
 #include "activation/swiglu_activation.h"

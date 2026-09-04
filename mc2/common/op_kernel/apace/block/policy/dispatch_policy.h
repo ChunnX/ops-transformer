@@ -9,23 +9,28 @@
  */
 
 /*!
- * \file block_prologue.h
- * \brief block prologue interface.
+ * \file dispatch_policy.h
+ * \brief Dispatch policy and pipeline constants for the MX FP8/FP4 dynamic KL1 tail-resplit path.
  */
 #pragma once
 
-#include "../gemm/policy/dispatch_policy_mega_moe.h"
-
 namespace Blaze {
 namespace Gemm {
-namespace Prologue {
 
-template <class DispatchPolicy, class... Args>
-class BlockPrologue {
-    static_assert(!AscendC::Std::is_same_v<DispatchPolicy, DispatchPolicy>,
-                  "BlockPrologue is not implemented for this DispatchPolicy");
-};
+// MX FP8FP4 pipeline constants
+constexpr uint64_t MX_FP8FP4_L1_K_CONFIG_256 = 256UL;
+constexpr uint64_t MX_FP8FP4_L1_K_CONFIG_512 = 512UL;
+constexpr uint64_t MX_FP8FP4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD = 128UL;
+constexpr uint64_t MX_FP8FP4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD = 256UL;
+constexpr uint64_t MX_FP8FP4_SCALE_K_L1_SIZE = 4096UL;
+constexpr uint64_t DOUBLE_BUFFER = 2UL;
+constexpr uint64_t SYNC_MODE4 = 4;
 
-} // namespace Prologue
+/**
+ * @struct MatmulMxFp8Fp4DynamicKL1TailResplit
+ * @brief Dispatch policy for the MX FP8/FP4 dynamic KL1 tail-resplit path.
+ */
+struct MatmulMxFp8Fp4DynamicKL1TailResplit {};
+
 } // namespace Gemm
 } // namespace Blaze
