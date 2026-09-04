@@ -1,22 +1,31 @@
 # aclnnBlockAttentionResiduals
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mhc/block_attention_residuals)
+
 ## 产品支持情况
 
-| 产品 | 是否支持 |
-| :----------------------------------------- | :------:|
-| <term>Ascend 950PR/Ascend 950DT</term> | √ |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | √ |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
-| <term>Atlas 200I/500 A2 推理产品</term> | × |
-| <term>Atlas 推理系列产品</term> | × |
-| <term>Atlas 训练系列产品</term> | × |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
-- 接口功能：BlockAttentionResiduals是attention residual正向计算算子。该接口将partial_block与block_res拼接后，经RMS归一化、线性投影和softmax加权融合，输出hidden_states；当needBackward为true时，同时输出反向计算所需的invNorm和probs。
-- 使用场景：attention residual分支的前向融合计算，needBackward为true时同时保存反向计算所需的invNorm和probs。
-- V版本说明：当前无V版本差异。
-- 芯片差异：<term>Ascend 950PR/Ascend 950DT</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>计算语义一致；A2/A3使用arch22实现，Ascend950使用arch35 regbase实现。
+- 接口功能：将`partialBlock`与`blockRes`拼接后，经RMS归一化、线性投影和softmax加权融合，输出`hiddenStates`；当`needBackward`为true时，同时输出反向计算所需的`invNorm`和`probs`。
 
 - 计算公式：
 
@@ -25,7 +34,7 @@
   $$
   v_{t,i,h} =
   \begin{cases}
-  block\_residual_{t,i,h}, & i < N \\
+  block\_res_{t,i,h}, & i < N \\
   partial\_block_{t,h}, & i = N
   \end{cases}
   $$
@@ -58,24 +67,19 @@
   hidden\_states_{t,h} = \sum_{i=0}^{N} probs_{t,i} \cdot v_{t,i,h}
   $$
 
-### 符号说明
-
-| 符号 | 含义 |
-|------|------|
-| $T$ | token数量 |
-| $N$ | block_res的block数量 |
-| $H$ | hidden size |
-| $v_{t,i,h}$ | block_res与partial_block拼接后的value，维度为 $(T,N+1,H)$ |
-| $inv\_rms_{t,i}$ | 前向逐行归一化系数 |
-| $score\_weight_{h}$ | norm_weight与proj_weight逐元素相乘的结果 |
-| $probs_{t,i}$ | 前向softmax输出概率 |
-| $hidden\_states_{t,h}$ | 前向加权融合输出 |
+  其中：
+  - $T$ 表示 token 数量，$N$ 表示 `blockRes` 的 block 数量，$H$ 表示 hidden size。
+  - $v_{t,i,h}$ 表示 `blockRes` 与 `partialBlock` 拼接后的 value，维度为 $(T,N+1,H)$。
+  - $inv\_rms_{t,i}$ 表示前向逐行归一化系数。
+  - $score\_weight_{h}$ 表示 `normWeight` 与 `projWeight` 逐元素相乘的结果。
+  - $probs_{t,i}$ 表示前向 softmax 输出概率。
+  - $hidden\_states_{t,h}$ 表示前向加权融合输出。
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnBlockAttentionResidualsGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnBlockAttentionResiduals”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnBlockAttentionResidualsGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBlockAttentionResiduals"接口执行计算。
 
-```cpp
+```Cpp
 aclnnStatus aclnnBlockAttentionResidualsGetWorkspaceSize(
     const aclTensor *partialBlock,
     const aclTensor *blockRes,
@@ -88,254 +92,277 @@ aclnnStatus aclnnBlockAttentionResidualsGetWorkspaceSize(
     aclTensor       *invNorm,
     aclTensor       *probs,
     uint64_t        *workspaceSize,
-    aclOpExecutor   **executor)
+    aclOpExecutor  **executor)
 ```
 
-```cpp
+```Cpp
 aclnnStatus aclnnBlockAttentionResiduals(
-    void           *workspace,
-    uint64_t        workspaceSize,
-    aclOpExecutor  *executor,
-    aclrtStream     stream)
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
+    aclrtStream    stream)
 ```
 
 ## aclnnBlockAttentionResidualsGetWorkspaceSize
 
-### 参数说明
+- **参数说明：**
 
-<table style="table-layout: fixed; width: 1200px; max-width: 100%"><colgroup>
-  <col style="width: 180px">
-  <col style="width: 90px">
-  <col style="width: 220px">
-  <col style="width: 290px">
-  <col style="width: 160px">
-  <col style="width: 70px">
-  <col style="width: 100px">
-  <col style="width: 90px">
-</colgroup>
-<thead>
+  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+  <col style="width: 187px">
+  <col style="width: 121px">
+  <col style="width: 287px">
+  <col style="width: 387px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 146px">
+  </colgroup>
+  <thead>
+  <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+  </tr></thead>
+  <tbody>
+  <tr>
+      <td>partialBlock（aclTensor*）</td>
+      <td>输入</td>
+      <td>前向输入partialBlock，对应公式中拼接后的第N+1个value。</td>
+      <td><ul><li>支持空Tensor，T可以为0。</li><li>shape为(T, H)。</li><li>T、H须与blockRes保持一致。</li></ul></td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>blockRes（aclTensor*）</td>
+      <td>输入</td>
+      <td>前向输入分块残差，对应公式中前N个value。</td>
+      <td><ul><li>支持空Tensor，T可以为0。</li><li>shape为(T, N, H)。</li><li>数据类型须与partialBlock保持一致。</li></ul></td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>3</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>projWeight（aclTensor*）</td>
+      <td>输入</td>
+      <td>前向线性投影权重，与normWeight共同构成score_weight。</td>
+      <td><ul><li>不支持空Tensor。</li><li>shape为(H)或(1, H)。</li><li>数据类型须与partialBlock保持一致。</li></ul></td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>1-2</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>normWeight（aclTensor*）</td>
+      <td>输入</td>
+      <td>前向归一化权重，与projWeight共同构成score_weight。</td>
+      <td><ul><li>不支持空Tensor。</li><li>shape为(H)。</li><li>数据类型须与partialBlock保持一致。</li></ul></td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>validBlockNum（int64_t）</td>
+      <td>输入</td>
+      <td>当前有效的block数量。</td>
+      <td><ul><li>当前仅支持默认场景，须等于blockRes的N。</li></ul></td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>normEps（double）</td>
+      <td>可选输入</td>
+      <td>RMS归一化数值稳定性参数，对应公式中的norm_eps。</td>
+      <td><ul><li>须大于0。</li><li>默认值：1e-5。</li></ul></td>
+      <td>DOUBLE</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>needBackward（bool）</td>
+      <td>可选输入</td>
+      <td>是否保存invNorm和probs供反向计算使用。</td>
+      <td><ul><li>默认值：false。</li><li>为true时invNorm、probs不能为空指针。</li></ul></td>
+      <td>BOOL</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>hiddenStates（aclTensor*）</td>
+      <td>输出</td>
+      <td>前向加权融合输出，对应公式中的hidden_states。</td>
+      <td><ul><li>支持空Tensor，T可以为0。</li><li>shape为(T, H)。</li><li>数据类型须与partialBlock保持一致。</li></ul></td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>×</td>
+  </tr>
+  <tr>
+      <td>invNorm（aclTensor*）</td>
+      <td>可选输出</td>
+      <td>前向保存的逐行归一化系数，对应公式中的inv_rms。</td>
+      <td><ul><li>needBackward为false时可传空指针。</li><li>needBackward为true时不支持空指针，shape为(T, N+1)。</li></ul></td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>×</td>
+  </tr>
+  <tr>
+      <td>probs（aclTensor*）</td>
+      <td>可选输出</td>
+      <td>前向softmax输出概率，对应公式中的probs。</td>
+      <td><ul><li>needBackward为false时可传空指针。</li><li>needBackward为true时不支持空指针，shape为(T, N+1)。</li></ul></td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>×</td>
+  </tr>
+  <tr>
+      <td>workspaceSize（uint64_t*）</td>
+      <td>输出</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>executor（aclOpExecutor**）</td>
+      <td>输出</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  </tbody></table>
+
+- **返回值**
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
+  第一段接口完成入参校验，出现以下场景时报错：
+
+  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
+  <col style="width: 330px">
+  <col style="width: 140px">
+  <col style="width: 762px">
+  </colgroup>
+  <thead>
+    <tr>
+    <th>返回值</th>
+    <th>错误码</th>
+    <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+    <td> ACLNN_ERR_PARAM_NULLPTR </td>
+    <td> 161001 </td>
+    <td>partialBlock、blockRes、projWeight、normWeight、hiddenStates存在空指针；needBackward为true时invNorm、probs存在空指针。</td>
+    </tr>
+    <tr>
+    <td rowspan="3"> ACLNN_ERR_PARAM_INVALID </td>
+    <td rowspan="3"> 161002 </td>
+    <td>partialBlock、blockRes、projWeight、normWeight、hiddenStates、invNorm、probs的数据类型不在支持的范围内，或计算张量之间的数据类型不一致。</td>
+    </tr>
+    <tr>
+    <td>partialBlock、blockRes、projWeight、normWeight、hiddenStates、invNorm、probs的shape维度不在支持的范围内。</td>
+    </tr>
+    <tr>
+    <td>validBlockNum不等于blockRes的N，或normEps小于等于0。</td>
+    </tr>
+    <tr>
+    <td> ACLNN_ERR_INNER_CREATE_EXECUTOR </td>
+    <td> 561101 </td>
+    <td>接口内部创建aclOpExecutor失败。</td>
+    </tr>
+    <tr>
+    <td> ACLNN_ERR_INNER_NULLPTR </td>
+    <td> 561103 </td>
+    <td>接口内部执行连续化处理、创建算子输出或创建输出拷贝节点时返回空指针。</td>
+    </tr>
+    <tr>
+    <td> ACLNN_ERR_RUNTIME_ERROR </td>
+    <td> 361001 </td>
+    <td>API内部调用npu runtime的接口异常。</td>
+    </tr>
+  </tbody></table>
+
+## aclnnBlockAttentionResiduals
+
+- **参数说明**
+
+  <table style="undefined;table-layout: fixed; width: 1148px"><colgroup>
+  <col style="width: 170px">
+  <col style="width: 134px">
+  <col style="width: 844px">
+  </colgroup>
+  <thead>
   <tr>
     <th>参数名</th>
     <th>输入/输出</th>
     <th>描述</th>
-    <th>使用说明</th>
-    <th>数据类型</th>
-    <th>数据格式</th>
-    <th>维度(shape)</th>
-    <th>非连续Tensor</th>
   </tr>
-</thead>
-<tbody>
+  </thead>
+  <tbody>
   <tr>
-    <td>partialBlock（aclTensor*）</td>
+    <td>workspace</td>
     <td>输入</td>
-    <td>前向输入partialBlock，对应公式中拼接后的第N+1个value。</td>
-    <td>支持T=0的空Tensor；T、H与blockRes保持一致。</td>
-    <td>FLOAT16、BFLOAT16、FLOAT32</td>
-    <td>ND</td>
-    <td>(T,H)</td>
-    <td>√</td>
+    <td>在Device侧申请的workspace内存地址。</td>
   </tr>
   <tr>
-    <td>blockRes（aclTensor*）</td>
+    <td>workspaceSize</td>
     <td>输入</td>
-    <td>前向输入分块残差，对应公式中前N个value。</td>
-    <td>支持T=0的空Tensor；dtype与partialBlock保持一致。</td>
-    <td>FLOAT16、BFLOAT16、FLOAT32</td>
-    <td>ND</td>
-    <td>(T,N,H)</td>
-    <td>√</td>
+    <td>在Device侧申请的workspace大小，由第一段接口aclnnBlockAttentionResidualsGetWorkspaceSize获取。</td>
   </tr>
   <tr>
-    <td>projWeight（aclTensor*）</td>
+    <td>executor</td>
     <td>输入</td>
-    <td>前向线性投影权重，与normWeight共同构成score_weight。</td>
-    <td>shape支持(1,H)或(H)；dtype与partialBlock保持一致。</td>
-    <td>FLOAT16、BFLOAT16、FLOAT32</td>
-    <td>ND</td>
-    <td>(1,H)或(H)</td>
-    <td>√</td>
+    <td>op执行器，包含了算子计算流程。</td>
   </tr>
   <tr>
-    <td>normWeight（aclTensor*）</td>
+    <td>stream</td>
     <td>输入</td>
-    <td>前向归一化权重，与projWeight共同构成score_weight。</td>
-    <td>shape为(H)；dtype与partialBlock保持一致。</td>
-    <td>FLOAT16、BFLOAT16、FLOAT32</td>
-    <td>ND</td>
-    <td>(H)</td>
-    <td>√</td>
+    <td>指定执行任务的Stream。</td>
   </tr>
-  <tr>
-    <td>validBlockNum（int64_t）</td>
-    <td>输入</td>
-    <td>当前有效的block数量。</td>
-    <td>当前仅支持默认场景，需等于blockRes的N；缺省语义为N。</td>
-    <td>INT64</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>normEps（double）</td>
-    <td>输入</td>
-    <td>RMS归一化数值稳定性参数。</td>
-    <td>需大于0，默认1e-5。</td>
-    <td>DOUBLE</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>needBackward（bool）</td>
-    <td>输入</td>
-    <td>是否需要保存invNorm和probs供反向计算使用。</td>
-    <td>默认false；true时invNorm/probs不能为空。</td>
-    <td>BOOL</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>hiddenStates（aclTensor*）</td>
-    <td>输出</td>
-    <td>前向加权融合输出，对应公式中hidden_states。</td>
-    <td>不支持空Tensor；dtype与partialBlock保持一致。</td>
-    <td>FLOAT16、BFLOAT16、FLOAT32</td>
-    <td>ND</td>
-    <td>(T,H)</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>invNorm（aclTensor*）</td>
-    <td>输出</td>
-    <td>前向保存的逐行归一化系数。</td>
-    <td>needBackward=false时传空指针；仅支持FLOAT32。</td>
-    <td>FLOAT32</td>
-    <td>ND</td>
-    <td>(T,N+1)</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>probs（aclTensor*）</td>
-    <td>输出</td>
-    <td>前向softmax输出概率。</td>
-    <td>needBackward=false时传空指针；仅支持FLOAT32。</td>
-    <td>FLOAT32</td>
-    <td>ND</td>
-    <td>(T,N+1)</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>workspaceSize（uint64_t*）</td>
-    <td>输出</td>
-    <td>返回需要在Device侧申请的workspace大小。</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-  </tr>
-  <tr>
-    <td>executor（aclOpExecutor**）</td>
-    <td>输出</td>
-    <td>返回op执行器，包含算子计算流程。</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-  </tr>
-</tbody>
-</table>
+  </tbody>
+  </table>
 
-### 返回值
+- **返回值**
 
-返回aclnnStatus状态码。
-
-第一段接口完成入参校验，出现以下场景时报错：
-
-<table style="table-layout: fixed; width: 1000px"><colgroup>
-  <col style="width: 300px">
-  <col style="width: 150px">
-  <col style="width: 550px">
-</colgroup>
-<thead>
-  <tr>
-    <th>返回值</th>
-    <th>错误码</th>
-    <th>描述</th>
-  </tr>
-</thead>
-<tbody>
-  <tr>
-    <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
-    <td rowspan="3">161002</td>
-    <td>输入输出张量存在空指针（含needBackward为true时invNorm/probs为空），返回实际日志包含空指针校验错误。</td>
-  </tr>
-  <tr>
-    <td>输入张量的数据类型不在支持的范围内。</td>
-  </tr>
-  <tr>
-    <td>实际错误文本包括：<code>invalid tensor rank</code>、<code>only default valid_block_num=N is supported, got %ld</code>、<code>shape range requires T&gt;=0, H&gt;=1 and 1&lt;=N&lt;=%ld</code>、<code>block_res shape must be [T,N,H]</code>、<code>proj_weight must be [H] or [1,H], and norm_weight must be [H]</code>、<code>hidden_states shape must be [T,H]</code>、<code>inv_norm/probs must be 2D [T,B]</code>、<code>inv_norm/probs shape must be [%ld,%ld]</code>、<code>normEps must be &gt; 0</code>。</td>
-  </tr>
-  <tr>
-    <td>ACLNN_ERR_RUNTIME_ERROR</td>
-    <td>361001</td>
-    <td>API调用npu runtime的接口异常。</td>
-  </tr>
-</tbody>
-</table>
-
-## aclnnBlockAttentionResiduals
-
-### 参数说明
-
-<table style="table-layout: fixed; width: 1000px"><colgroup>
-  <col style="width: 180px">
-  <col style="width: 120px">
-  <col style="width: 700px">
-</colgroup>
-<thead>
-  <tr><th>参数名</th><th>输入/输出</th><th>描述</th></tr>
-</thead>
-<tbody>
-  <tr><td>workspace</td><td>输入</td><td>在Device侧申请的workspace内存地址。</td></tr>
-    <tr><td>workspaceSize</td><td>输入</td><td>在Device侧申请的workspace大小，由第一段接口aclnnBlockAttentionResidualsGetWorkspaceSize获取。</td></tr>
-  <tr><td>executor</td><td>输入</td><td>op执行器，包含了算子计算流程。</td></tr>
-  <tr><td>stream</td><td>输入</td><td>指定执行任务的Stream。</td></tr>
-</tbody>
-</table>
-
-### 返回值
-
-返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
-### 确定性计算
+- 确定性计算：
+  - aclnnBlockAttentionResiduals默认确定性实现。
 
-- aclnnBlockAttentionResiduals默认确定性实现。
+- Batch一致性说明：
+  - 默认非Batch一致性实现，不支持通过aclrtSetSysParamOpt开启Batch一致性。
 
-### 规格约束
-
-- partialBlock、blockRes、projWeight、normWeight和hiddenStates支持FLOAT16、BFLOAT16、FLOAT32；invNorm和probs仅支持FLOAT32。
-- shape需满足：partialBlock为(T,H)，blockRes为(T,N,H)，projWeight为(1,H)或(H)，normWeight为(H)，hiddenStates为(T,H)，invNorm为(T,N+1)，probs为(T,N+1)，其中T可为0，H大于等于1，N在1到100之间，且各张量中的T、H保持一致。
-- validBlockNum为INT64，当前仅支持validBlockNum=N。
-- normEps为DOUBLE，需大于0，默认值为1e-5；传入0或负值时返回ACLNN_ERR_PARAM_INVALID，实际错误文本为“normEps must be > 0”。
-- needBackward为true时，invNorm和probs必须为非空Tensor且shape为(T,N+1)。
-- 输入张量支持非连续Tensor，接口内部统一转为Contiguous后计算；输出通过ViewCopy写回。
-- workspace为系统预留16MB。
-
-### 预期异常
-
-以下输入校验异常统一返回`ACLNN_ERR_PARAM_INVALID`（161002），ATK异常用例按实际错误文本匹配：
-
-- `validBlockNum != blockRes.shape[1]`：`only default valid_block_num=N is supported, got %ld`。
-- `normEps <= 0`：`normEps must be > 0`。
-- rank、跨输入shape或反向输出shape不匹配：分别匹配`invalid tensor rank`、`block_res shape must be [T,N,H]`、`proj_weight must be [H] or [1,H], and norm_weight must be [H]`、`hidden_states shape must be [T,H]`、`inv_norm/probs must be 2D [T,B]`或`inv_norm/probs shape must be [%ld,%ld]`。
-- T/H/N越界：`shape range requires T>=0, H>=1 and 1<=N<=100`。
-- `needBackward=false`时`invNorm`和`probs`按接口约定传空指针；`needBackward=true`时两者必须非空且为`FLOAT32`、shape为(T,N+1)。
+- 规格约束：
+  - T大于等于0，H大于等于1，N取值范围为1~100。
+  - partialBlock、blockRes、projWeight、normWeight、hiddenStates的数据类型须一致，支持FLOAT16、BFLOAT16、FLOAT32；invNorm、probs仅支持FLOAT32。
+  - shape须满足：partialBlock为(T, H)，blockRes为(T, N, H)，projWeight为(H)或(1, H)，normWeight为(H)，hiddenStates为(T, H)；needBackward为true时invNorm、probs为(T, N+1)。
+  - validBlockNum须等于blockRes的N。
+  - normEps须大于0，默认值为1e-5。
+  - 输入张量支持非连续Tensor，接口内部转为Contiguous后计算；输出不支持非连续Tensor。
+  - workspace仅使用平台系统预留，不追加用户侧workspace。
 
 ## 调用示例
 
