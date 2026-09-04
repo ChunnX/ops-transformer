@@ -616,16 +616,27 @@ private:
     {
         uint32_t rankId = resources.context.rankId;
         uint32_t rankSize = resources.context.rankSize;
-        constexpr uint32_t aivNum = 72U;
-        uint32_t numSendCores = aivNum / 2U;
-        if (numSendCores == 0U) {
-            numSendCores = 1U;
+        bool hasUbGPeer = false;
+        for (auto &entry : rankLinkMap_) {
+            if (entry.second.protocol == CommProtocol::COMM_PROTOCOL_UB_RTP) {
+                hasUbGPeer = true;
+                break;
+            }
         }
-        uint32_t groupSize = numSendCores / rankSize;
-        if (groupSize == 0U) {
-            groupSize = 1U;
+
+        uint32_t channelsPerPeer = 1U;
+        if (!hasUbGPeer) {
+            constexpr uint32_t aivNum = 72U;
+            uint32_t numSendCores = aivNum / 2U;
+            if (numSendCores == 0U) {
+                numSendCores = 1U;
+            }
+            uint32_t groupSize = numSendCores / rankSize;
+            if (groupSize == 0U) {
+                groupSize = 1U;
+            }
+            channelsPerPeer = groupSize * 2U;
         }
-        uint32_t channelsPerPeer = groupSize * 2U;
         resources.context.channelsPerRank = channelsPerPeer;
 
         std::vector<ChannelHandle> handlesByRank(rankSize * channelsPerPeer);
