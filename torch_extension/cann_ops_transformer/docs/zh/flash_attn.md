@@ -634,6 +634,7 @@ mask_mode参数解释
                 </ul>
             </td>
             <td rowspan="2">无</td>
+            <td rowspan="2">无</td>
             <td rowspan="2">
                 <ul>
                     <li>当layout_q为TND时，cu_seqlens_q必须传入</li>
