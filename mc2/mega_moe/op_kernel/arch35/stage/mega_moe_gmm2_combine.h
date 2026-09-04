@@ -63,9 +63,9 @@ __aicore__ inline CombineTokenRoute LoadCombineTokenRoute(const LocalTensor<int3
             static_cast<uint32_t>(metaInfoTensor.GetValue(recordBase + TOPK_INDEX))};
 }
 
-__aicore__ inline bool IsCombineProbeRoute(const MoeStageCommonConfig &common, const CombineTokenRoute &route)
+__aicore__ inline bool IsCombineProbeRoute(uint32_t tokenHiddenDim, const CombineTokenRoute &route)
 {
-    return common.tokenHiddenDim == 3072U && route.dstRankId == COMBINE_PROBE_DST_RANK_ID &&
+    return tokenHiddenDim == 3072U && route.dstRankId == COMBINE_PROBE_DST_RANK_ID &&
            route.tokenIdx == COMBINE_PROBE_TOKEN_INDEX && route.topkIdx >= COMBINE_PROBE_FIRST_TOPK_INDEX &&
            route.topkIdx <= COMBINE_PROBE_LAST_TOPK_INDEX;
 }
@@ -92,6 +92,20 @@ __aicore__ inline void CombineTokens(uint32_t nLoc, uint32_t n, LocalTensor<int3
     ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
     for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
         CombineTokenRoute route = LoadCombineTokenRoute(metaInfoTensor, static_cast<uint32_t>(tileIdx));
+        uint32_t tileColumnCount = static_cast<uint32_t>(Get<N_VALUE>(actualBlockShape));
+        bool containsProbeColumns =
+            nLoc <= COMBINE_PROBE_DUMP_START_COLUMN &&
+            COMBINE_PROBE_DUMP_START_COLUMN + COMBINE_PROBE_ELEMENT_COUNT <= nLoc + tileColumnCount;
+        if (containsProbeColumns && IsCombineProbeRoute(n, route)) {
+            PipeBarrier<PIPE_ALL>();
+            // desc 6000 + topkIdx: metadata used by this direct Combine write.
+            AscendC::DumpTensor(metaInfoTensor[static_cast<uint32_t>(tileIdx) * META_INFO_SIZE], 6000U + route.topkIdx,
+                                META_INFO_SIZE);
+            // desc 7000 + topkIdx: GMM2 epilogue output immediately before the remote GM write.
+            uint32_t probeColumnOffset = COMBINE_PROBE_DUMP_START_COLUMN - nLoc;
+            AscendC::DumpTensor(l0cOutUbGMM2[static_cast<uint32_t>(tileIdx) * ubTileN + probeColumnOffset],
+                                7000U + route.topkIdx, COMBINE_PROBE_ELEMENT_COUNT);
+        }
         gmRemoteD.SetGlobalBuffer(
             reinterpret_cast<__gm__ ElementMMadOut2 *>(GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
         uint64_t gmDstOffset = GetCombineDstRowIndex(route, params) * n + nLoc;
@@ -424,31 +438,12 @@ __aicore__ inline void SendWaveCombineToken(const MoeStageCommonConfig &common,
     }
     uint32_t slotElementOffset = slot * bufferConfig.slotStrideBytes / sizeof(bfloat16_t);
     LocalTensor<bfloat16_t> rowUb = scratch.rowBufferTensor[slotElementOffset];
-    CombineImpl::CombineTokenRoute route = CombineImpl::LoadCombineTokenRoute(tokenMetaInfo, 0U);
-    bool isProbeRoute = CombineImpl::IsCombineProbeRoute(common, route);
-    if constexpr (CombineMode == COMBINE_NO_QUANT) {
-        if (isProbeRoute) {
-            PipeBarrier<PIPE_ALL>();
-            // desc 6000 + topkIdx: (dstRank, token, topk) metadata used by this send.
-            AscendC::DumpTensor(tokenMetaInfo, 6000U + route.topkIdx, META_INFO_SIZE);
-            // desc 7000 + topkIdx: source row in the local GMM2 output.
-            AscendC::DumpTensor(gmm2OutGm[static_cast<uint64_t>(tokenLocal) * common.tokenHiddenDim +
-                                          CombineImpl::COMBINE_PROBE_DUMP_START_COLUMN],
-                                7000U + route.topkIdx, CombineImpl::COMBINE_PROBE_ELEMENT_COUNT);
-        }
-    }
     DataCopyExtParams gm2UbParams{1U, bufferConfig.rowBytes, 0U, 0U, 0U};
     DataCopyPadExtParams<bfloat16_t> gm2UbPad{false, 0U, 0U, 0U};
     DataCopyPad(rowUb, gmm2OutGm[static_cast<uint64_t>(tokenLocal) * common.tokenHiddenDim], gm2UbParams, gm2UbPad);
     if constexpr (CombineMode == COMBINE_NO_QUANT) {
         SetFlag<HardEvent::MTE2_MTE3>(eventId);
         WaitFlag<HardEvent::MTE2_MTE3>(eventId);
-        if (isProbeRoute) {
-            PipeBarrier<PIPE_ALL>();
-            // desc 8000 + topkIdx: source row after the GM-to-UB copy, immediately before sending.
-            AscendC::DumpTensor(rowUb[CombineImpl::COMBINE_PROBE_DUMP_START_COLUMN], 8000U + route.topkIdx,
-                                CombineImpl::COMBINE_PROBE_ELEMENT_COUNT);
-        }
         CombineImpl::SendCombineTokenRow<bfloat16_t>(common.tokenHiddenDim, gmRemoteBaseOffset, tokenMetaInfo, rowUb,
                                                      params);
     } else {
