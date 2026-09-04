@@ -38,8 +38,9 @@ constexpr uint32_t CONTEXT_INDEX = 0U;
 constexpr uint32_t RECVX_INDEX = 1U;
 constexpr uint32_t TOPK_IDX_INDEX = 2U;
 constexpr uint32_t RECV_SRC_METADATA_INDEX = 3U;
-constexpr uint32_t NUM_RECV_PER_EXPERT_INDEX = 4U;
-constexpr uint32_t TOPK_WEIGHTS_INDEX = 5U;
+constexpr uint32_t RECV_RANK_OFFSETS_INDEX = 4U;
+constexpr uint32_t NUM_RECV_PER_EXPERT_INDEX = 5U;
+constexpr uint32_t TOPK_WEIGHTS_INDEX = 6U;
 
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 0;
 constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;
@@ -158,6 +159,18 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
         OP_LOGE(nodeName, "recv_src_metadata dim1 must be %ld, but got %ld.", META_INNER_DIM, recvSrcMetadataDim1),
         return ge::GRAPH_FAILED);
 
+    const gert::StorageShape *recvRankOffsetsShape = context->GetInputShape(RECV_RANK_OFFSETS_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, recvRankOffsetsShape);
+    OP_TILING_CHECK(recvRankOffsetsShape->GetStorageShape().GetDimNum() != ONE_DIMS,
+                    OP_LOGE(nodeName, "recv_rank_offsets dims must be 1, but got %lu.",
+                            recvRankOffsetsShape->GetStorageShape().GetDimNum()),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        recvRankOffsetsShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(info.cfg.epWorldSize + 1U),
+        OP_LOGE(nodeName, "recv_rank_offsets dim0 must equal ep_world_size + 1=%u, but got %ld.",
+                info.cfg.epWorldSize + 1U, recvRankOffsetsShape->GetStorageShape().GetDim(0)),
+        return ge::GRAPH_FAILED);
+
     const gert::StorageShape *numRecvPerExpertShape = context->GetInputShape(NUM_RECV_PER_EXPERT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvPerExpertShape);
     OP_TILING_CHECK(numRecvPerExpertShape->GetStorageShape().GetDimNum() != ONE_DIMS,
@@ -215,6 +228,13 @@ static ge::graphStatus CheckInputDataType(const gert::TilingContext *context, co
     OP_TILING_CHECK(recvSrcMetadataDesc->GetDataType() != ge::DT_INT32,
                     OP_LOGE(nodeName, "recv_src_metadata dtype must be DT_INT32, but got %s.",
                             ge::TypeUtils::DataTypeToSerialString(recvSrcMetadataDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
+
+    auto recvRankOffsetsDesc = context->GetInputDesc(RECV_RANK_OFFSETS_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, recvRankOffsetsDesc);
+    OP_TILING_CHECK(recvRankOffsetsDesc->GetDataType() != ge::DT_INT32,
+                    OP_LOGE(nodeName, "recv_rank_offsets dtype must be DT_INT32, but got %s.",
+                            ge::TypeUtils::DataTypeToSerialString(recvRankOffsetsDesc->GetDataType()).c_str()),
                     return ge::GRAPH_FAILED);
 
     auto numRecvPerExpertDesc = context->GetInputDesc(NUM_RECV_PER_EXPERT_INDEX);

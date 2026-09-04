@@ -95,15 +95,18 @@ public:
     __aicore__ inline MoeEpCombine(){};
 
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR recvSrcMetadata,
-                                GM_ADDR numRecvPerExpert, GM_ADDR topkWeights, GM_ADDR workspace, GM_ADDR tilingGM,
-                                TPipe *pipe, const MoeEpCombineInfo *tilingData);
+                                GM_ADDR recvRankOffsets, GM_ADDR numRecvPerExpert, GM_ADDR topkWeights,
+                                GM_ADDR workspace, GM_ADDR tilingGM, TPipe *pipe,
+                                const MoeEpCombineInfo *tilingData);
 
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void SendLocalToken(uint32_t tokenIndex, GM_ADDR dstAddr);
+    // TODO(delete): legacy address-table path only; the direct metadata path uses SendLocalMetadataSlot().
     __aicore__ inline void SendLocalSlot(uint32_t tokenIndex, int32_t srcTokenIdx, int32_t srcTopKIdx, uint32_t weight,
                                          GM_ADDR localDataBase, GM_ADDR localStateBase);
+    // TODO(delete): legacy address-table path only; the direct metadata path uses SendRemoteMetadataSlot().
     __aicore__ inline void SendRemoteSlot(uint32_t tokenIndex, int32_t srcTokenIdx, int32_t srcTopKIdx, uint32_t weight,
                                           GM_ADDR remoteDataBase, GM_ADDR remoteStateBase, uint64_t tokenBytes);
     __aicore__ inline void SendChannelFlag(uint32_t dstRank, uint32_t channelIndex);
@@ -112,17 +115,25 @@ private:
     template <auto const &config>
     __aicore__ inline void PrepareWrite(GM_ADDR dst, GM_ADDR src, uint64_t len);
     __aicore__ inline void FlushPreparedWrites(bool keepHandle = false);
+    // TODO(delete): legacy address-table construction path; no longer called by the direct metadata path.
     __aicore__ inline void BuildAddressTable();
+    // TODO(delete): legacy address-table path only.
     __aicore__ inline uint32_t GetAddressTableCount(uint32_t targetRank);
+    // TODO(delete): legacy address-table path only.
     __aicore__ inline void SendAddressTableRange(uint32_t targetRank, uint32_t entryStart, uint32_t entryEnd,
                                                  uint32_t channelIndex);
+    // TODO(delete): legacy address-table send entry; its Process() call site is intentionally commented out.
     __aicore__ inline void SendPhaseExpertToToken();
+    // TODO(delete): legacy address-table path only.
     __aicore__ inline void GetCoreAssignment(uint32_t totalBlocks, uint32_t &targetRank, uint32_t &coreIndexInGroup,
                                              uint32_t &groupSize);
+    // TODO(delete): rank offsets replaced metadata rank probing.
     __aicore__ inline int32_t ReadMetadataRank(uint64_t metadataRow);
+    // TODO(delete): rank offsets replaced metadata lower-bound lookup.
     __aicore__ inline uint64_t LowerBoundSrcRank(uint32_t targetRank);
     __aicore__ inline void SplitRange(uint64_t rangeBegin, uint64_t rangeEnd, uint32_t coreCount, uint32_t coreIndex,
                                       uint64_t &coreBegin, uint64_t &coreEnd);
+    // TODO(delete): the direct metadata hot path trusts the Dispatch Epilogue metadata contract.
     __aicore__ inline bool IsMetadataRowValid(uint32_t targetRank, int32_t srcRank, int32_t srcTokenIdx,
                                               int32_t srcTopKIdx, int32_t recvXIdx);
     __aicore__ inline void SendLocalWeight(uint32_t recvXIdx, GM_ADDR dstAddr);
@@ -146,10 +157,12 @@ private:
     {
         return (GM_ADDR)(winRankAddr_[rankId] + offset);
     }
+    // TODO(delete): legacy address-table workspace accessor.
     __aicore__ inline GM_ADDR GetLocalSendDataWorkspaceAddr(const int32_t rankId)
     {
         return combineSendDataWorkspaceAddr_ + sendDataWorkspaceSizePerRank_ * rankId;
     }
+    // TODO(delete): only used by the commented legacy actualA reduction.
     __aicore__ inline uint32_t ReduceSumWorkNeedSize(int32_t count, int32_t typeSize)
     {
         int32_t elementsPerBlock = UB_ALIGN / typeSize;
@@ -187,14 +200,17 @@ private:
 
     GlobalTensor<XType> xGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
+    GlobalTensor<int32_t> recvRankOffsetsGm_;
     GlobalTensor<int64_t> numRecvPerExpertGm_;
     GlobalTensor<float> topkWeightsGm_;
 
     LocalTensor<uint32_t> statusTensor_;
+    LocalTensor<int32_t> rankOffsetsTensor_;
     LocalTensor<uint8_t> hcommTensor_;
     LocalTensor<uint8_t> hcommBatchTensor_;
 
     TBuf<> readStateBuf_;
+    TBuf<> rankOffsetsBuf_;
     TBuf<> hcommBuf_;
     TBuf<TPosition::VECOUT> hcommBatchBuf_;
 
@@ -226,9 +242,11 @@ private:
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx,
                                                                         GM_ADDR recvSrcMetadata,
-                                                                        GM_ADDR numRecvPerExpert, GM_ADDR topkWeights,
-                                                                        GM_ADDR workspace, GM_ADDR tilingGM,
-                                                                        TPipe *pipe, const MoeEpCombineInfo *tilingData)
+                                                                        GM_ADDR recvRankOffsets,
+                                                                        GM_ADDR numRecvPerExpert,
+                                                                        GM_ADDR topkWeights, GM_ADDR workspace,
+                                                                        GM_ADDR tilingGM, TPipe *pipe,
+                                                                        const MoeEpCombineInfo *tilingData)
 {
     tpipe_ = pipe;
     tilingData_ = tilingData;
@@ -292,25 +310,37 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
 
     xGm_.SetGlobalBuffer((__gm__ XType *)x);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t *)recvSrcMetadata);
+    recvRankOffsetsGm_.SetGlobalBuffer((__gm__ int32_t *)recvRankOffsets);
     numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t *)numRecvPerExpert);
 
-    // 计算actualA_的大小
+    uint32_t rankOffsetsBytes =
+        Ceil(static_cast<uint64_t>(epWorldSize_ + 1U) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(rankOffsetsBuf_, rankOffsetsBytes);
+    rankOffsetsTensor_ = rankOffsetsBuf_.Get<int32_t>();
+    DataCopyExtParams rankOffsetsCopyParams{
+        1U, static_cast<uint32_t>((epWorldSize_ + 1U) * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> rankOffsetsPadParams{false, 0U, 0U, 0U};
+    DataCopyPad(rankOffsetsTensor_, recvRankOffsetsGm_, rankOffsetsCopyParams, rankOffsetsPadParams);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    int32_t actualASigned = rankOffsetsTensor_.GetValue(epWorldSize_);
+
+    // TODO(delete): recv_rank_offsets[epWorldSize] replaces the legacy per-core reduction below.
+    /*
     uint32_t numRecvBytes = Ceil(localmoeNum_ * sizeof(int64_t), UB_ALIGN) * UB_ALIGN;
     uint32_t reduceTmpBytes = ReduceSumWorkNeedSize(localmoeNum_, sizeof(int64_t)) * sizeof(int64_t);
     TBuf<TPosition::VECCALC> numRecvBuf;
-    tpipe_->InitBuffer(numRecvBuf, numRecvBytes + reduceTmpBytes + UB_ALIGN); // 数据 + ReduceSum tmp + 输出
+    tpipe_->InitBuffer(numRecvBuf, numRecvBytes + reduceTmpBytes + UB_ALIGN);
     LocalTensor<int64_t> numRecvLocal = numRecvBuf.Get<int64_t>();
-
     DataCopyExtParams numRecvCopyParams{1U, static_cast<uint32_t>(localmoeNum_ * sizeof(int64_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int64_t> numRecvPadParams{false, 0U, 0U, 0U};
     DataCopyPad(numRecvLocal, numRecvPerExpertGm_, numRecvCopyParams, numRecvPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
-
     LocalTensor<int64_t> reduceTmp = numRecvLocal[numRecvBytes / sizeof(int64_t)];
     LocalTensor<int64_t> sumOut = reduceTmp[reduceTmpBytes / sizeof(int64_t)];
     ReduceSum<int64_t>(sumOut, numRecvLocal, reduceTmp, static_cast<int32_t>(localmoeNum_));
     SyncFunc<AscendC::HardEvent::V_S>();
     int64_t actualASigned = sumOut.GetValue(0);
+    */
     actualA_ = (actualASigned > 0) ? static_cast<uint64_t>(actualASigned) : 0U;
     if (actualA_ > recvCapacity_) {
         actualA_ = recvCapacity_;
@@ -333,6 +363,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_INIT_DONE);
 }
 
+// TODO(delete): legacy address-table construction path.
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressTable()
 {
@@ -510,6 +541,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
     SyncAll<true>();
 }
 
+// TODO(delete): legacy address-table path only.
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline uint32_t MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GetAddressTableCount(uint32_t targetRank)
 {
@@ -523,6 +555,7 @@ __aicore__ inline uint32_t MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GetAddres
     return count;
 }
 
+// TODO(delete): legacy address-table path only.
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendAddressTableRange(uint32_t targetRank,
                                                                                          uint32_t entryStart,
@@ -630,6 +663,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
     ++sqWriteCount_;
 }
 
+// TODO(delete): legacy address-table path only.
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendLocalSlot(uint32_t tokenIndex,
                                                                                  int32_t srcTokenIdx,
@@ -652,6 +686,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendLocalSlot
     }
 }
 
+// TODO(delete): legacy address-table path only.
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteSlot(
     uint32_t tokenIndex, int32_t srcTokenIdx, int32_t srcTopKIdx, uint32_t weight, GM_ADDR remoteDataBase,
@@ -719,6 +754,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::InitFlagSourc
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
+// TODO(delete): rank offsets replaced metadata rank probing.
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline int32_t MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ReadMetadataRank(uint64_t metadataRow)
 {
@@ -735,6 +771,7 @@ __aicore__ inline int32_t MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ReadMetada
     return srcRank;
 }
 
+// TODO(delete): rank offsets replaced metadata lower-bound lookup.
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline uint64_t MoeEpCombine<TemplateMoeEpCombineTypeFunc>::LowerBoundSrcRank(uint32_t targetRank)
 {
@@ -772,6 +809,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SplitRange(ui
     coreEnd = coreBegin + coreCountValue;
 }
 
+// TODO(delete): the direct metadata hot path trusts the Dispatch Epilogue metadata contract.
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::IsMetadataRowValid(
     uint32_t targetRank, int32_t srcRank, int32_t srcTokenIdx, int32_t srcTopKIdx, int32_t recvXIdx)
@@ -916,8 +954,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
 
     InitFlagSource();
 
-    uint64_t localBegin = LowerBoundSrcRank(rankId_);
-    uint64_t localEnd = LowerBoundSrcRank(rankId_ + 1U);
+    // TODO(delete): rank boundaries now come directly from Dispatch Epilogue.
+    // uint64_t localBegin = LowerBoundSrcRank(rankId_);
+    // uint64_t localEnd = LowerBoundSrcRank(rankId_ + 1U);
+    uint64_t localBegin = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(rankId_));
+    uint64_t localEnd = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(rankId_ + 1U));
     uint64_t localCoreBegin = 0U;
     uint64_t localCoreEnd = 0U;
     SplitRange(localBegin, localEnd, aivNum_, aivId_, localCoreBegin, localCoreEnd);
@@ -950,8 +991,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
         uint64_t ordinal = task / combineChannelCount_;
         uint32_t channelIndex = static_cast<uint32_t>(task % combineChannelCount_);
         uint32_t dstRank = (ordinal < rankId_) ? static_cast<uint32_t>(ordinal) : static_cast<uint32_t>(ordinal + 1U);
-        uint64_t rankBegin = LowerBoundSrcRank(dstRank);
-        uint64_t rankEnd = LowerBoundSrcRank(dstRank + 1U);
+        uint64_t rankBegin = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(dstRank));
+        uint64_t rankEnd = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(dstRank + 1U));
         uint64_t channelBegin = 0U;
         uint64_t channelEnd = 0U;
         SplitRange(rankBegin, rankEnd, combineChannelCount_, channelIndex, channelBegin, channelEnd);
@@ -963,6 +1004,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
     }
 }
 
+// TODO(delete): legacy address-table path only.
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GetCoreAssignment(uint32_t totalBlocks,
                                                                                      uint32_t &targetRank,
@@ -1005,6 +1047,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GetCoreAssign
     coreIndexInGroup = 0;
 }
 
+// TODO(delete): legacy address-table send entry; its Process() call site remains commented out.
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpertToToken()
 {
