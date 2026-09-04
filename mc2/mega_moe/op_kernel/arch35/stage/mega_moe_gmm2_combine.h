@@ -47,6 +47,13 @@ struct CombineTokenRoute {
     uint32_t topkIdx;
 };
 
+constexpr uint32_t COMBINE_PROBE_DST_RANK_ID = 1U;
+constexpr uint32_t COMBINE_PROBE_TOKEN_INDEX = 9942U;
+constexpr uint32_t COMBINE_PROBE_FIRST_TOPK_INDEX = 5U;
+constexpr uint32_t COMBINE_PROBE_LAST_TOPK_INDEX = 9U;
+constexpr uint32_t COMBINE_PROBE_DUMP_START_COLUMN = 2080U;
+constexpr uint32_t COMBINE_PROBE_ELEMENT_COUNT = 16U;
+
 __aicore__ inline CombineTokenRoute LoadCombineTokenRoute(const LocalTensor<int32_t> &metaInfoTensor,
                                                           uint32_t recordIdx)
 {
@@ -54,6 +61,13 @@ __aicore__ inline CombineTokenRoute LoadCombineTokenRoute(const LocalTensor<int3
     return {static_cast<uint32_t>(metaInfoTensor.GetValue(recordBase + RANK_ID)),
             static_cast<uint32_t>(metaInfoTensor.GetValue(recordBase + TOKEN_ID)),
             static_cast<uint32_t>(metaInfoTensor.GetValue(recordBase + TOPK_INDEX))};
+}
+
+__aicore__ inline bool IsCombineProbeRoute(const MoeStageCommonConfig &common, const CombineTokenRoute &route)
+{
+    return common.tokenNum == 10072U && common.tokenHiddenDim == 3072U &&
+           route.dstRankId == COMBINE_PROBE_DST_RANK_ID && route.tokenIdx == COMBINE_PROBE_TOKEN_INDEX &&
+           route.topkIdx >= COMBINE_PROBE_FIRST_TOPK_INDEX && route.topkIdx <= COMBINE_PROBE_LAST_TOPK_INDEX;
 }
 
 // 目标卡 combine 接收区按 (token, topk) 展开的紧凑行号。
@@ -410,12 +424,31 @@ __aicore__ inline void SendWaveCombineToken(const MoeStageCommonConfig &common,
     }
     uint32_t slotElementOffset = slot * bufferConfig.slotStrideBytes / sizeof(bfloat16_t);
     LocalTensor<bfloat16_t> rowUb = scratch.rowBufferTensor[slotElementOffset];
+    CombineImpl::CombineTokenRoute route = CombineImpl::LoadCombineTokenRoute(tokenMetaInfo, 0U);
+    bool isProbeRoute = CombineImpl::IsCombineProbeRoute(common, route);
+    if constexpr (CombineMode == COMBINE_NO_QUANT) {
+        if (isProbeRoute) {
+            PipeBarrier<PIPE_ALL>();
+            // desc 6000 + topkIdx: (dstRank, token, topk) metadata used by this send.
+            AscendC::DumpTensor(tokenMetaInfo, 6000U + route.topkIdx, META_INFO_SIZE);
+            // desc 7000 + topkIdx: source row in the local GMM2 output.
+            AscendC::DumpTensor(gmm2OutGm[static_cast<uint64_t>(tokenLocal) * common.tokenHiddenDim +
+                                          CombineImpl::COMBINE_PROBE_DUMP_START_COLUMN],
+                                7000U + route.topkIdx, CombineImpl::COMBINE_PROBE_ELEMENT_COUNT);
+        }
+    }
     DataCopyExtParams gm2UbParams{1U, bufferConfig.rowBytes, 0U, 0U, 0U};
     DataCopyPadExtParams<bfloat16_t> gm2UbPad{false, 0U, 0U, 0U};
     DataCopyPad(rowUb, gmm2OutGm[static_cast<uint64_t>(tokenLocal) * common.tokenHiddenDim], gm2UbParams, gm2UbPad);
     if constexpr (CombineMode == COMBINE_NO_QUANT) {
         SetFlag<HardEvent::MTE2_MTE3>(eventId);
         WaitFlag<HardEvent::MTE2_MTE3>(eventId);
+        if (isProbeRoute) {
+            PipeBarrier<PIPE_ALL>();
+            // desc 8000 + topkIdx: source row after the GM-to-UB copy, immediately before sending.
+            AscendC::DumpTensor(rowUb[CombineImpl::COMBINE_PROBE_DUMP_START_COLUMN], 8000U + route.topkIdx,
+                                CombineImpl::COMBINE_PROBE_ELEMENT_COUNT);
+        }
         CombineImpl::SendCombineTokenRow<bfloat16_t>(common.tokenHiddenDim, gmRemoteBaseOffset, tokenMetaInfo, rowUb,
                                                      params);
     } else {
