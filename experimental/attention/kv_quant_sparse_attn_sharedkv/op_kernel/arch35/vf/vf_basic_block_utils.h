@@ -54,7 +54,7 @@ constexpr static AscendC::Reg::CastTrait castTraitThree = {
     AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_ROUND,
 };
- 
+
 constexpr static AscendC::Reg::CastTrait castTraitRintZero = {
     AscendC::Reg::RegLayout::ZERO,
     AscendC::Reg::SatMode::SAT,
@@ -68,7 +68,7 @@ constexpr static AscendC::Reg::CastTrait castTraitRintOne = {
     AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT,
 };
- 
+
 constexpr static AscendC::Reg::CastTrait castTraitRintTwo = {
     AscendC::Reg::RegLayout::TWO,
     AscendC::Reg::SatMode::SAT,
@@ -82,5 +82,5 @@ constexpr static AscendC::Reg::CastTrait castTraitRintThree = {
     AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT,
 };
-}
+} // namespace SCFaVectorApi
 #endif // VF_BASIC_BLOCK_UTILS_H
