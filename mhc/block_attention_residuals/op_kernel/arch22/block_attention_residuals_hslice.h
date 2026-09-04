@@ -10,8 +10,8 @@
 
 /*!
  * \file block_attention_residuals_hslice.h
- * \brief arch35 TK-HSLICE：以 TK-RELOAD 为基础，对 H 切块（hiddenSizeChunk）逐块重复搬运 v，
- *        支持任意 H（H 上限仅受 GM 容量约束）。计算使用 RegBase VF，偶数长度双路执行。
+ * \brief TK-HSLICE：以 TK-RELOAD 为基础，对 H 切块（hiddenSizeChunk）逐块重复搬运 v，
+ *        支持任意 H（H 上限仅受 GM 容量约束）。AIV 向量路径，无 GetValue/SetValue。
  *
  * 计算流程（每 token）：
  *   Phase A（score pass，按 h 块）：
@@ -23,7 +23,7 @@
  *   Phase B（weighted pass，按 h 块）：
  *     每块 Counter 外置 Cast+MulAdd 累加 outFp32，块结束时 Cast → 写 hiddenStates 对应切片。
  *
- * 行序（golden）：n=0..N-1 ← block_res[n]；n=N ← prefix_sum
+ * 行序（golden）：n=0..N-1 ← block_res[n]；n=N ← partial_block
  */
 #ifndef ATTN_RES_FWD_HSLICE_H
 #define ATTN_RES_FWD_HSLICE_H
@@ -32,7 +32,6 @@
 #include "../block_attention_residuals_tiling_data.h"
 #include "reduce_common.h"
 #include "block_attention_residuals_reload.h" // BlockAttentionResidualsInitParams / BUFFER_NUM_RELOAD
-#include "block_attention_residuals_regbase_common.h"
 
 namespace BlockAttentionResiduals {
 
@@ -81,7 +80,7 @@ public:
             tokenNum_ = numTokens_ - tokenStart_;
         }
 
-        prefixSumGm_.SetGlobalBuffer(reinterpret_cast<__gm__ D_IN *>(params.prefixSum));
+        partialBlockGm_.SetGlobalBuffer(reinterpret_cast<__gm__ D_IN *>(params.partialBlock));
         blockResGm_.SetGlobalBuffer(reinterpret_cast<__gm__ D_IN *>(params.blockRes));
         projWeightGm_.SetGlobalBuffer(reinterpret_cast<__gm__ D_IN *>(params.projWeight));
         normWeightGm_.SetGlobalBuffer(reinterpret_cast<__gm__ D_IN *>(params.normWeight));
@@ -196,10 +195,10 @@ private:
         inQue_.FreeTensor(inLocal);
     }
 
-    /*! golden：n < N → residual；n == N → prefix */
+    /*! golden：n < N → residual；n == N → partial_block */
     __aicore__ inline const GlobalTensor<D_IN> &GetLogicRowGm(uint32_t n) const
     {
-        return (n < numBlocks_) ? blockResGm_ : prefixSumGm_;
+        return (n < numBlocks_) ? blockResGm_ : partialBlockGm_;
     }
 
     __aicore__ inline uint64_t GetLogicRowOffset(uint32_t tokenIdx, uint32_t n) const
@@ -215,22 +214,32 @@ private:
     __aicore__ inline void LoadScoreWeightChunk(uint64_t hcOffset, uint32_t hcLen)
     {
         LocalTensor<D_IN> inLocal = CopyInRowSyncOff(projWeightGm_, hcOffset, hcLen);
-        RegBase::CastB16ToFp32Dual(vRow_, inLocal, hcLen);
+        CastRowToFp32(vRow_, inLocal, hcLen);
+        PipeBarrier<PIPE_V>();
         FreeInRow(inLocal);
 
         inLocal = CopyInRowSyncOff(normWeightGm_, hcOffset, hcLen);
-        RegBase::CastB16ToFp32Dual(outFp32_, inLocal, hcLen);
+        CastRowToFp32(outFp32_, inLocal, hcLen);
+        PipeBarrier<PIPE_V>();
         FreeInRow(inLocal);
 
-        RegBase::MulDual(scoreWeight_, vRow_, outFp32_, hcLen);
+        Mul(scoreWeight_, vRow_, outFp32_, hcLen);
+        PipeBarrier<PIPE_V>();
     }
 
     /*! 本块行归约：vecMeta[n]=Σv²；metaSoftmax[n]=Σ(v*scoreWeight)。metaIdx 标量槽（WholeReduce 标量 sink）。 */
     __aicore__ inline void ProcessRowScoreChunk(const LocalTensor<D_IN> &inLocal, uint32_t metaIdx, uint32_t hcLen)
     {
-        RegBase::CastB16ToFp32Dual(vRow_, inLocal, hcLen);
-        RegBase::ReduceSquareSum(vecMeta_[metaIdx], vRow_, hcLen);
-        RegBase::ReduceMulSum(metaSoftmax_[metaIdx], vRow_, scoreWeight_, hcLen);
+        CastRowToFp32(vRow_, inLocal, hcLen);
+        PipeBarrier<PIPE_V>();
+        Mul(outFp32_, vRow_, vRow_, hcLen);
+        PipeBarrier<PIPE_V>();
+        ReduceSumHalfInterval(vecMeta_[metaIdx], outFp32_, static_cast<int32_t>(hcLen));
+        PipeBarrier<PIPE_V>();
+        Mul(outFp32_, vRow_, scoreWeight_, hcLen);
+        PipeBarrier<PIPE_V>();
+        ReduceSumHalfInterval(metaSoftmax_[metaIdx], outFp32_, static_cast<int32_t>(hcLen));
+        PipeBarrier<PIPE_V>();
     }
 
     /*! Phase A：按 h 块用 Kahan 求和累计 sumSqAcc/scoreAcc */
@@ -295,7 +304,7 @@ private:
     __aicore__ inline void SoftmaxSmall()
     {
         LocalTensor<float> scoreAcc = GetScoreAcc();
-        RegBase::SoftmaxSmallRegBase(scoreAcc, blockCount_, metaAlign_, scalarLocal_, metaSoftmax_, metaBrc_);
+        SoftmaxSmallVec(scoreAcc, blockCount_, metaAlign_, scalarLocal_, metaSoftmax_, metaBrc_);
         // 紧凑 prob → metaBrc[n*8]：零填充 staging 后单次 Brcb（repeat=ceil(B/8)）
         Duplicate(metaSoftmax_, 0.0f, metaAlign_);
         PipeBarrier<PIPE_V>();
@@ -321,7 +330,10 @@ private:
     /*! Softmax 后加权累加（Counter 外置）：outFp32 += v[n,hc] * prob[n] */
     __aicore__ inline void ProcessRowWeighted(const LocalTensor<D_IN> &inLocal, uint32_t metaIdx, uint32_t hcLen)
     {
-        RegBase::WeightedMulAddFromB16(outFp32_, inLocal, metaBrc_[metaIdx * ELEM_PER_BLK_FP32], hcLen);
+        CastRowToFp32CounterNoSetMask(vRow_, inLocal);
+        PipeBarrier<PIPE_V>();
+        MulAddRowByBrcBlock(outFp32_, vRow_, metaBrc_[metaIdx * ELEM_PER_BLK_FP32], hcLen, hChunkAlignFp32_, false);
+        PipeBarrier<PIPE_V>();
     }
 
     /*! Phase B：按 h 块加权输出，逐块 Cast → 写 hiddenStates 切片 */
@@ -333,6 +345,9 @@ private:
             Duplicate(outFp32_, 0.0f, hcLen);
             PipeBarrier<PIPE_V>();
             CopyInRowEnqueueOff(GetLogicRowGm(0), GetLogicRowOffset(tokenIdx, 0) + hcOffset, hcLen);
+            // Counter 外置一次：Cast/MulAdd 均 isSetMask=false（同 Adds 前n 示例）
+            SetMaskCount();
+            SetVectorMask<float, MaskMode::COUNTER>(hcLen);
             for (uint32_t n = 0; n < blockCount_; ++n) {
                 LocalTensor<D_IN> inLocal = CopyInRowDeQue();
                 if (n + 1U < blockCount_) {
@@ -341,6 +356,8 @@ private:
                 ProcessRowWeighted(inLocal, n, hcLen);
                 FreeInRow(inLocal);
             }
+            SetMaskNorm();
+            ResetMask();
             WriteHiddenStatesChunk(tokenIdx, hcOffset, hcLen);
         }
     }
@@ -348,7 +365,7 @@ private:
     __aicore__ inline void WriteHiddenStatesChunk(uint32_t tokenIdx, uint64_t hcOffset, uint32_t hcLen)
     {
         LocalTensor<D_IN> outLocal = outQue_.AllocTensor<D_IN>();
-        RegBase::CastFp32ToB16Dual(outLocal, outFp32_, hcLen);
+        CastFp32ToRow(outLocal, outFp32_, hcLen);
         outQue_.EnQue(outLocal);
         outLocal = outQue_.DeQue<D_IN>();
         const uint64_t outOffset = static_cast<uint64_t>(tokenIdx) * hiddenSize_ + hcOffset;
@@ -372,7 +389,7 @@ private:
     TPipe *pipe_{nullptr};
     const BlockAttentionResidualsTilingData *tiling_{nullptr};
 
-    GlobalTensor<D_IN> prefixSumGm_;
+    GlobalTensor<D_IN> partialBlockGm_;
     GlobalTensor<D_IN> blockResGm_;
     GlobalTensor<D_IN> projWeightGm_;
     GlobalTensor<D_IN> normWeightGm_;

@@ -13,7 +13,7 @@
  * \brief BlockAttentionResiduals tiling key definitions
  *
  * 说明：dtype 不参与 tiling key，而是通过编译期宏 DTYPE_<输入名>（如
- * DTYPE_PREFIX_SUM）区分——框架按 def 中的 DataType 组合为每个 dtype 生成独立
+ * DTYPE_PARTIAL_BLOCK）区分——框架按 def 中的 DataType 组合为每个 dtype 生成独立
  * kernel 二进制，并以 -DDTYPE_<NAME>=<type> 注入宏（参考 moe_token_permute）。
  * 因此 key 只区分算法分支 RELOAD / RESIDENT / HSLICE。
  */

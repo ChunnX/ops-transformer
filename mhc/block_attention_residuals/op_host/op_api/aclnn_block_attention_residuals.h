@@ -24,7 +24,7 @@ extern "C" {
  * @param probs  nullable if !needBackward
  */
 ACLNN_API aclnnStatus aclnnBlockAttentionResidualsGetWorkspaceSize(
-    const aclTensor *prefixSum, const aclTensor *blockRes, const aclTensor *projWeight, const aclTensor *normWeight,
+    const aclTensor *partialBlock, const aclTensor *blockRes, const aclTensor *projWeight, const aclTensor *normWeight,
     int64_t validBlockNum, double normEps, bool needBackward, aclTensor *hiddenStates, aclTensor *invNorm,
     aclTensor *probs, uint64_t *workspaceSize, aclOpExecutor **executor);
 

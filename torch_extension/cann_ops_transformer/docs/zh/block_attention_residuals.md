@@ -23,23 +23,23 @@
 
 ## 功能说明
 
-- **接口功能**：将 `prefix_sum` 与 `block_res` 按 block 维拼接后，完成 RMS 归一化、`norm_weight ⊙ proj_weight` 投影打分、Softmax 加权融合，输出 `hidden_states`。当 `need_backward=True` 时，同时输出逐行 `inv_norm` 与 Softmax 概率 `probs`，供反向使用。
+- **接口功能**：将 `partial_block` 与 `block_res` 按 block 维拼接后，完成 RMS 归一化、`norm_weight ⊙ proj_weight` 投影打分、Softmax 加权融合，输出 `hidden_states`。当 `need_backward=True` 时，同时输出逐行 `inv_norm` 与 Softmax 概率 `probs`，供反向使用。
 
 - **计算公式**：
 
     $$
     \operatorname{block\_attention\_residuals}
-    \left(prefix\_sum, block\_res, proj\_weight, norm\_weight; valid\_block\_num, norm\_eps\right)
+    \left(partial\_block, block\_res, proj\_weight, norm\_weight; valid\_block\_num, norm\_eps\right)
     \longrightarrow hidden\_states \ [,\ inv\_norm,\ probs].
     $$
 
-    记 token 数为 $T$，block 数为 $N$，hidden size 为 $H$，拼接后逻辑行数 $B = N + 1$。行序与 golden 一致：前 $N$ 行来自 `block_res`，最后一行来自 `prefix_sum`。
+    记 token 数为 $T$，block 数为 $N$，hidden size 为 $H$，拼接后逻辑行数 $B = N + 1$。行序与 golden 一致：前 $N$ 行来自 `block_res`，最后一行来自 `partial_block`。
 
     $$
     v_{t,i,h} =
     \begin{cases}
     block\_res_{t,i,h}, & 0 \le i < N \\
-    prefix\_sum_{t,h}, & i = N
+    partial\_block_{t,h}, & i = N
     \end{cases}
     $$
 
@@ -78,7 +78,7 @@
 
     其中：
 
-    - $prefix\_sum \in \mathbb{R}^{T \times H}$ 表示输入 `prefix_sum`，作为拼接后的第 $N$ 行 value。
+    - $partial\_block \in \mathbb{R}^{T \times H}$ 表示输入 `partial_block`，作为拼接后的第 $N$ 行 value。
     - $block\_res \in \mathbb{R}^{T \times N \times H}$ 表示输入 `block_res`，作为拼接后的前 $N$ 行 value。
     - $proj\_weight$ 表示输入 `proj_weight`，shape 为 $[1, H]$ 或 $[H]$；$proj\_weight_{0,h}$ 表示其第 $h$ 个元素。
     - $norm\_weight \in \mathbb{R}^{H}$ 表示输入 `norm_weight`。
@@ -93,7 +93,7 @@
 
 ```python
 cann_ops_transformer.block_attention_residuals(
-    prefix_sum,
+    partial_block,
     block_res,
     proj_weight,
     norm_weight,
@@ -108,10 +108,10 @@ cann_ops_transformer.block_attention_residuals(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| prefix_sum | Tensor | 必选 | 拼接后的第 $N$ 行 value，对应公式中的 $prefix\_sum$。数据格式为 ND。 | float16、bfloat16、float32 | [T, H] |
-| block_res | Tensor | 必选 | 前 $N$ 行 value，对应公式中的 $block\_res$。数据格式为 ND；dtype 必须与 `prefix_sum` 一致。 | 同 prefix_sum | [T, N, H] |
-| proj_weight | Tensor | 必选 | 投影权重，与 `norm_weight` 共同构成 $score\_weight$。数据格式为 ND；dtype 必须与 `prefix_sum` 一致。 | 同 prefix_sum | [H] 或 [1, H] |
-| norm_weight | Tensor | 必选 | RMS 缩放权重。数据格式为 ND；dtype 必须与 `prefix_sum` 一致。 | 同 prefix_sum | [H] |
+| partial_block | Tensor | 必选 | 拼接后的第 $N$ 行 value，对应公式中的 $partial\_block$。数据格式为 ND。 | float16、bfloat16、float32 | [T, H] |
+| block_res | Tensor | 必选 | 前 $N$ 行 value，对应公式中的 $block\_res$。数据格式为 ND；dtype 必须与 `partial_block` 一致。 | 同 partial_block | [T, N, H] |
+| proj_weight | Tensor | 必选 | 投影权重，与 `norm_weight` 共同构成 $score\_weight$。数据格式为 ND；dtype 必须与 `partial_block` 一致。 | 同 partial_block | [H] 或 [1, H] |
+| norm_weight | Tensor | 必选 | RMS 缩放权重。数据格式为 ND；dtype 必须与 `partial_block` 一致。 | 同 partial_block | [H] |
 | valid_block_num | int | 可选 | Torch 适配层可选。不传或传入 `None` / `-1` 时默认使用 $N$，再下发给 ACLNN；当前仅支持等于 $N$，其它取值报错。 | int | - |
 | norm_eps | float | 可选 | RMS 归一化的数值稳定项，必须为有限正数，默认值为 `1.0e-5`。 | float | - |
 | need_backward | bool | 可选 | 是否写出反向中间量。默认 `None`：四个输入均 `requires_grad=True` 时按 `True` 处理，否则按 `False`。 | bool | - |
@@ -122,7 +122,7 @@ cann_ops_transformer.block_attention_residuals(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| hidden_states | Tensor | 必选 | 加权融合结果，对应公式中的 $hidden\_states$。数据格式为 ND。 | 同 prefix_sum | [T, H] |
+| hidden_states | Tensor | 必选 | 加权融合结果，对应公式中的 $hidden\_states$。数据格式为 ND。 | 同 partial_block | [T, H] |
 | inv_norm | Tensor | 可选 | 逐行 RMS 归一化系数，对应公式中的 $inv\_rms$。仅 `need_backward=True` 时返回。数据格式为 ND。 | float32 | [T, N+1] |
 | probs | Tensor | 可选 | Softmax 概率，对应公式中的 $probs$。仅 `need_backward=True` 时返回。数据格式为 ND。 | float32 | [T, N+1] |
 
@@ -132,11 +132,11 @@ cann_ops_transformer.block_attention_residuals(
 - 该接口支持单算子模式调用，暂不支持 TorchAir 图模式调用。
 - 主路径 dtype 必须一致，支持 float16 / bfloat16 / float32；`inv_norm` / `probs` 仅 float32。
 - shape 要求：`T >= 0`，`H >= 1`，`1 <= N <= 100`。`T == 0` 时返回对应 shape 的空输出。
-- `block_res.shape[0]`、`block_res.shape[2]` 必须分别等于 `prefix_sum` 的 $T$、$H$；`proj_weight` 最后一维与 `norm_weight` 长度必须等于 $H$。
+- `block_res.shape[0]`、`block_res.shape[2]` 必须分别等于 `partial_block` 的 $T$、$H$；`proj_weight` 最后一维与 `norm_weight` 长度必须等于 $H$。
 - `valid_block_num` 为 Torch 适配层可选参数：不传或传入 `None` / `-1` 时默认等于 $N$，由适配层解析后再调用 ACLNN。ACLNN / 算子侧该属性仍为必选且必须等于 $N$。
 - `norm_eps` 必须为有限正数。
 - 输入 Tensor 支持非连续布局，接口内部转为连续后再计算。
-- `prefix_sum` 或 `block_res` 含 `NaN`、`Inf`，或平方、乘法及累加发生溢出时，结果可能包含 `NaN` 或 `Inf`。
+- `partial_block` 或 `block_res` 含 `NaN`、`Inf`，或平方、乘法及累加发生溢出时，结果可能包含 `NaN` 或 `Inf`。
 
 ## 确定性/Batch一致性
 
@@ -155,7 +155,7 @@ cann_ops_transformer.block_attention_residuals(
 
     torch_npu.npu.set_device(0)
 
-    prefix_sum = torch.tensor(
+    partial_block = torch.tensor(
         [[1.0, 2.0, 3.0, 4.0]],
         dtype=torch.bfloat16,
         device="npu",
@@ -175,14 +175,14 @@ cann_ops_transformer.block_attention_residuals(
 
     # valid_block_num / norm_eps / need_backward 为可选参数；省略时分别使用 N、1e-5、自动推断。
     hidden_states = cann_ops_transformer.block_attention_residuals(
-        prefix_sum,
+        partial_block,
         block_res,
         proj_weight,
         norm_weight,
     )
 
     hidden_states, inv_norm, probs = cann_ops_transformer.block_attention_residuals(
-        prefix_sum,
+        partial_block,
         block_res,
         proj_weight,
         norm_weight,

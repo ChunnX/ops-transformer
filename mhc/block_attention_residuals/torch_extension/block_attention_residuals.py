@@ -18,7 +18,7 @@ from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 DEFAULT_NORM_EPS = 1.0e-5
-PREFIX_SUM_RANK = 2
+PARTIAL_BLOCK_RANK = 2
 BLOCK_RES_RANK = 3
 NORM_WEIGHT_RANK = 1
 T_DIM_INDEX = 0
@@ -32,7 +32,7 @@ SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 
 
 def _resolve_need_backward(
-    prefix_sum: torch.Tensor,
+    partial_block: torch.Tensor,
     block_res: torch.Tensor,
     proj_weight: torch.Tensor,
     norm_weight: torch.Tensor,
@@ -41,7 +41,7 @@ def _resolve_need_backward(
     if need_backward is not None:
         return need_backward
     return all(
-        t.requires_grad for t in (prefix_sum, block_res, proj_weight, norm_weight)
+        t.requires_grad for t in (partial_block, block_res, proj_weight, norm_weight)
     )
 
 
@@ -54,7 +54,7 @@ def _resolve_valid_block_num(
 
 
 def _check_inputs(
-    prefix_sum: torch.Tensor,
+    partial_block: torch.Tensor,
     block_res: torch.Tensor,
     proj_weight: torch.Tensor,
     norm_weight: torch.Tensor,
@@ -62,8 +62,8 @@ def _check_inputs(
     norm_eps: float,
 ) -> None:
     torch_check(
-        prefix_sum.dim() == PREFIX_SUM_RANK,
-        lambda: f"prefix_sum must be a 2D tensor, but got {prefix_sum.dim()}D",
+        partial_block.dim() == PARTIAL_BLOCK_RANK,
+        lambda: f"partial_block must be a 2D tensor, but got {partial_block.dim()}D",
     )
     torch_check(
         block_res.dim() == BLOCK_RES_RANK,
@@ -78,11 +78,11 @@ def _check_inputs(
         lambda: f"proj_weight must be [H] or [1,H], but got {tuple(proj_weight.shape)}",
     )
 
-    compute_dtype = prefix_sum.dtype
+    compute_dtype = partial_block.dtype
     torch_check(
         compute_dtype in SUPPORTED_DTYPES,
         lambda: (
-            "prefix_sum dtype must be float16, bfloat16 or float32, "
+            "partial_block dtype must be float16, bfloat16 or float32, "
             f"but got {compute_dtype}"
         ),
     )
@@ -94,25 +94,25 @@ def _check_inputs(
         torch_check(
             tensor.dtype == compute_dtype,
             lambda tensor_name=tensor_name, tensor=tensor: (
-                f"{tensor_name} dtype must match prefix_sum ({compute_dtype}), "
+                f"{tensor_name} dtype must match partial_block ({compute_dtype}), "
                 f"but got {tensor.dtype}"
             ),
         )
 
     torch_check(
-        prefix_sum.device
+        partial_block.device
         == block_res.device
         == proj_weight.device
         == norm_weight.device,
         lambda: (
             "all inputs must be on the same device, but got "
-            f"prefix_sum={prefix_sum.device}, block_res={block_res.device}, "
+            f"partial_block={partial_block.device}, block_res={block_res.device}, "
             f"proj_weight={proj_weight.device}, norm_weight={norm_weight.device}"
         ),
     )
 
-    num_tokens = prefix_sum.size(T_DIM_INDEX)
-    hidden_size = prefix_sum.size(H_DIM_INDEX)
+    num_tokens = partial_block.size(T_DIM_INDEX)
+    hidden_size = partial_block.size(H_DIM_INDEX)
     num_blocks = block_res.size(N_DIM_INDEX)
     torch_check(
         num_tokens >= 0
@@ -151,14 +151,14 @@ def _check_inputs(
 
 class _BlockAttentionResidualsOpBuilder(OpBuilder):
     def __init__(self):
-        super().__init__("block_attention_residuals", category="residuals")
+        super().__init__("block_attention_residuals", category="mhc")
 
     def sources(self):
-        return ["csrc/residuals/block_attention_residuals.cpp"]
+        return ["csrc/mhc/block_attention_residuals.cpp"]
 
     def schema(self) -> str:
         return (
-            "block_attention_residuals(Tensor prefix_sum, Tensor block_res, "
+            "block_attention_residuals(Tensor partial_block, Tensor block_res, "
             "Tensor proj_weight, Tensor norm_weight, *, int? valid_block_num=None, "
             f"float norm_eps={DEFAULT_NORM_EPS}, bool? need_backward=None) "
             "-> (Tensor, Tensor, Tensor)"
@@ -167,7 +167,7 @@ class _BlockAttentionResidualsOpBuilder(OpBuilder):
     def register_meta(self):
         @impl(get_as_library(), self.name, "Meta")
         def block_attention_residuals_meta(
-            prefix_sum,
+            partial_block,
             block_res,
             proj_weight,
             norm_weight,
@@ -178,21 +178,21 @@ class _BlockAttentionResidualsOpBuilder(OpBuilder):
         ):
             valid_block_num = _resolve_valid_block_num(block_res, valid_block_num)
             need_backward = _resolve_need_backward(
-                prefix_sum, block_res, proj_weight, norm_weight, need_backward
+                partial_block, block_res, proj_weight, norm_weight, need_backward
             )
             _check_inputs(
-                prefix_sum,
+                partial_block,
                 block_res,
                 proj_weight,
                 norm_weight,
                 valid_block_num,
                 norm_eps,
             )
-            num_tokens = prefix_sum.size(T_DIM_INDEX)
-            hidden_size = prefix_sum.size(H_DIM_INDEX)
+            num_tokens = partial_block.size(T_DIM_INDEX)
+            hidden_size = partial_block.size(H_DIM_INDEX)
             block_count = block_res.size(N_DIM_INDEX) + 1
             hidden = torch.empty(
-                num_tokens, hidden_size, dtype=prefix_sum.dtype, device="meta"
+                num_tokens, hidden_size, dtype=partial_block.dtype, device="meta"
             )
             if need_backward:
                 inv_norm = torch.empty(
@@ -213,7 +213,7 @@ _block_attention_residuals_op_builder.ensure_initialized()
 
 @impl(get_as_library(), _block_attention_residuals_op_builder.name, "PrivateUse1")
 def _block_attention_residuals(
-    prefix_sum: torch.Tensor,
+    partial_block: torch.Tensor,
     block_res: torch.Tensor,
     proj_weight: torch.Tensor,
     norm_weight: torch.Tensor,
@@ -224,11 +224,11 @@ def _block_attention_residuals(
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     valid_block_num = _resolve_valid_block_num(block_res, valid_block_num)
     need_backward = _resolve_need_backward(
-        prefix_sum, block_res, proj_weight, norm_weight, need_backward
+        partial_block, block_res, proj_weight, norm_weight, need_backward
     )
     op_module = _block_attention_residuals_op_builder.load()
     return op_module.block_attention_residuals(
-        prefix_sum,
+        partial_block,
         block_res,
         proj_weight,
         norm_weight,
@@ -239,7 +239,7 @@ def _block_attention_residuals(
 
 
 def block_attention_residuals(
-    prefix_sum: torch.Tensor,
+    partial_block: torch.Tensor,
     block_res: torch.Tensor,
     proj_weight: torch.Tensor,
     norm_weight: torch.Tensor,
@@ -251,11 +251,11 @@ def block_attention_residuals(
     """Attention Residual 加权融合前向，封装 aclnnBlockAttentionResiduals。
 
     Args:
-        prefix_sum (Tensor): 拼接后的第 N 行 value，shape 为 ``[T, H]``，
+        partial_block (Tensor): 拼接后的第 N 行 value，shape 为 ``[T, H]``，
             dtype 支持 float16 / bfloat16 / float32。
-        block_res (Tensor): 前 N 行 value，shape 为 ``[T, N, H]``，dtype 与 prefix_sum 一致。
-        proj_weight (Tensor): 投影权重，shape 为 ``[H]`` 或 ``[1, H]``，dtype 与 prefix_sum 一致。
-        norm_weight (Tensor): RMS 缩放权重，shape 为 ``[H]``，dtype 与 prefix_sum 一致。
+        block_res (Tensor): 前 N 行 value，shape 为 ``[T, N, H]``，dtype 与 partial_block 一致。
+        proj_weight (Tensor): 投影权重，shape 为 ``[H]`` 或 ``[1, H]``，dtype 与 partial_block 一致。
+        norm_weight (Tensor): RMS 缩放权重，shape 为 ``[H]``，dtype 与 partial_block 一致。
         valid_block_num (int, optional): 有效 block 数。不传或传入 ``None`` / ``-1`` 时默认
             为 ``N``；当前仅支持等于 ``N``。
         norm_eps (float): RMS 数值稳定项，必须为有限正数，默认 ``1e-5``。
@@ -263,18 +263,18 @@ def block_attention_residuals(
             ``requires_grad`` 则按 ``True`` 处理。
 
     Returns:
-        need_backward 为 False 时返回 ``hidden_states``，shape ``[T, H]``，dtype 同 prefix_sum。
+        need_backward 为 False 时返回 ``hidden_states``，shape ``[T, H]``，dtype 同 partial_block。
         为 True 时返回 ``(hidden_states, inv_norm, probs)``，后两者为 float32，shape ``[T, N+1]``。
     """
     valid_block_num = _resolve_valid_block_num(block_res, valid_block_num)
     need_backward = _resolve_need_backward(
-        prefix_sum, block_res, proj_weight, norm_weight, need_backward
+        partial_block, block_res, proj_weight, norm_weight, need_backward
     )
     _check_inputs(
-        prefix_sum, block_res, proj_weight, norm_weight, valid_block_num, norm_eps
+        partial_block, block_res, proj_weight, norm_weight, valid_block_num, norm_eps
     )
     hidden, inv_norm, probs = torch.ops.cann_ops_transformer.block_attention_residuals(
-        prefix_sum,
+        partial_block,
         block_res,
         proj_weight,
         norm_weight,

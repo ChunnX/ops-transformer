@@ -13,7 +13,7 @@
  * \brief TK-RELOAD: Softmax 前每行 GM 读 1 次（同趟 sumSq→invNorm→score）；
  *        Softmax 后重搬 BF16→Cast（第 2 次）；合计每行 v 搬入 2 次；无 FP32-v Workspace
  *
- * 行序（golden）：n=0..N-1 ← block_res[n]；n=N ← prefix_sum
+ * 行序（golden）：n=0..N-1 ← block_res[n]；n=N ← partial_block
  */
 #ifndef ATTN_RES_FWD_RELOAD_H
 #define ATTN_RES_FWD_RELOAD_H
@@ -21,7 +21,6 @@
 #include "kernel_operator.h"
 #include "../block_attention_residuals_tiling_data.h"
 #include "reduce_common.h"
-#include "block_attention_residuals_regbase_common.h"
 
 namespace BlockAttentionResiduals {
 
@@ -31,7 +30,7 @@ constexpr uint32_t BUFFER_NUM_RELOAD = 2;
 constexpr uint32_t ELEM_PER_BLK_BF16 = 16;
 
 struct BlockAttentionResidualsInitParams {
-    GM_ADDR prefixSum;
+    GM_ADDR partialBlock;
     GM_ADDR blockRes;
     GM_ADDR projWeight;
     GM_ADDR normWeight;
@@ -77,7 +76,7 @@ public:
             tokenNum_ = numTokens_ - tokenStart_;
         }
 
-        prefixSumGm_.SetGlobalBuffer(reinterpret_cast<__gm__ D_IN *>(params.prefixSum));
+        partialBlockGm_.SetGlobalBuffer(reinterpret_cast<__gm__ D_IN *>(params.partialBlock));
         blockResGm_.SetGlobalBuffer(reinterpret_cast<__gm__ D_IN *>(params.blockRes));
         projWeightGm_.SetGlobalBuffer(reinterpret_cast<__gm__ D_IN *>(params.projWeight));
         normWeightGm_.SetGlobalBuffer(reinterpret_cast<__gm__ D_IN *>(params.normWeight));
@@ -109,11 +108,9 @@ private:
         pipe_->InitBuffer(scoreWeightBuf_, hiddenSizeAlignFp32_ * sizeof(float));
         pipe_->InitBuffer(vRowBuf_, hiddenSizeAlignFp32_ * sizeof(float));
         pipe_->InitBuffer(outFp32Buf_, hiddenSizeAlignFp32_ * sizeof(float));
-        // 与 arch22 一致：meta 按 32B block（8 fp32）对齐
         metaAlign_ = (blockCount_ + ELEM_PER_BLK_FP32 - 1U) / ELEM_PER_BLK_FP32 * ELEM_PER_BLK_FP32;
         pipe_->InitBuffer(vecMetaBuf_, metaAlign_ * sizeof(float));
         pipe_->InitBuffer(metaSoftmaxBuf_, metaAlign_ * sizeof(float));
-        // Softmax 期间作 fold/Brcb scratch；Softmax 后 Brcb 成 metaBrc[n*8] 供 Weighted
         pipe_->InitBuffer(metaBrcBuf_, metaAlign_ * ELEM_PER_BLK_FP32 * sizeof(float));
         pipe_->InitBuffer(scalarBuf_, SCALAR_LOCAL_ELEMS * sizeof(float));
 
@@ -159,10 +156,10 @@ private:
         inQue_.FreeTensor(inLocal);
     }
 
-    /*! golden：n < N → residual；n == N → prefix */
+    /*! golden：n < N → residual；n == N → partial_block */
     __aicore__ inline const GlobalTensor<D_IN> &GetLogicRowGm(uint32_t n) const
     {
-        return (n < numBlocks_) ? blockResGm_ : prefixSumGm_;
+        return (n < numBlocks_) ? blockResGm_ : partialBlockGm_;
     }
 
     __aicore__ inline uint64_t GetLogicRowOffset(uint32_t tokenIdx, uint32_t n) const
@@ -174,14 +171,20 @@ private:
         return static_cast<uint64_t>(tokenIdx) * hiddenSize_;
     }
 
-    /*! Softmax 前：RegBase Cast + 融合 Reduce(Square/Mul) + InvRms → vecMeta[metaIdx] */
+    /*! Softmax 前：Cast → sumSq → invNorm → score → vecMeta[metaIdx] */
     __aicore__ inline void ProcessRowScore(const LocalTensor<D_IN> &inLocal, uint32_t metaIdx, uint32_t tokenIdx)
     {
-        RegBase::CastB16ToFp32Dual(vRow_, inLocal, hiddenSize_);
-        // 融合 sum(v²)，不写 outFp32 中间行
-        RegBase::ReduceSquareSum(scalarLocal_, vRow_, hiddenSize_);
-        RegBase::InvRmsScalar(scalarLocal_, invHiddenSize_, normEps_);
+        CastRowToFp32(vRow_, inLocal, hiddenSize_);
+        PipeBarrier<PIPE_V>();
+        // 非原地平方：outFp32=v²，保留 vRow=v
+        Mul(outFp32_, vRow_, vRow_, hiddenSize_);
+        PipeBarrier<PIPE_V>();
+        ReduceSumHalfInterval(scalarLocal_, outFp32_, static_cast<int32_t>(hiddenSize_));
+        PipeBarrier<PIPE_V>();
+        InvRmsInPlace(scalarLocal_, invHiddenSize_, normEps_, metaSoftmax_);
         if (needBackward_) {
+            // inv 逐点搬 GM：Alloc→Copy→EnQue→DeQue→DataCopyPad→Free
+            PipeBarrier<PIPE_V>();
             LocalTensor<float> invUb = invQue_.AllocTensor<float>();
             CopyMetaScalarToLocal(invUb, scalarLocal_);
             invQue_.EnQue(invUb);
@@ -191,28 +194,37 @@ private:
             DataCopyPad(invNormGm_[gmOffset], invUb, scalarParams);
             invQue_.FreeTensor(invUb);
         }
-        RegBase::BroadcastScalarMulDual(vRow_, vRow_, scalarLocal_, hiddenSize_);
-        // 融合 sum(v * scoreWeight) → vecMeta[n]
-        RegBase::ReduceMulSum(vecMeta_[metaIdx], vRow_, scoreWeight_, hiddenSize_);
+        BroadcastScalarMulTensor(vRow_, vRow_, scalarLocal_, metaSoftmax_, metaBrc_, hiddenSize_, hiddenSizeAlignFp32_);
+        Mul(outFp32_, vRow_, scoreWeight_, hiddenSize_);
+        PipeBarrier<PIPE_V>();
+        ReduceSumHalfInterval(vecMeta_[metaIdx], outFp32_, static_cast<int32_t>(hiddenSize_));
+        PipeBarrier<PIPE_V>();
     }
 
-    /*! Softmax 后加权累加：RegBase VF Cast + DIST_BRC(metaBrc[n*8]) MulAddDst */
+    /*! Softmax 后加权累加：Cast + MulAdd（调用方已外置 Counter mask） */
     __aicore__ inline void ProcessRowWeighted(const LocalTensor<D_IN> &inLocal, uint32_t metaIdx)
     {
-        RegBase::WeightedMulAddFromB16(outFp32_, inLocal, metaBrc_[metaIdx * ELEM_PER_BLK_FP32], hiddenSize_);
+        CastRowToFp32CounterNoSetMask(vRow_, inLocal);
+        PipeBarrier<PIPE_V>();
+        MulAddRowByBrcBlock(outFp32_, vRow_, metaBrc_[metaIdx * ELEM_PER_BLK_FP32], hiddenSize_, hiddenSizeAlignFp32_,
+                            false);
+        PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline void LoadScoreWeight()
     {
         LocalTensor<D_IN> inLocal = CopyInRowSync(projWeightGm_, 0);
-        RegBase::CastB16ToFp32Dual(vRow_, inLocal, hiddenSize_);
+        CastRowToFp32(vRow_, inLocal, hiddenSize_);
+        PipeBarrier<PIPE_V>();
         FreeInRow(inLocal);
 
         inLocal = CopyInRowSync(normWeightGm_, 0);
-        RegBase::CastB16ToFp32Dual(outFp32_, inLocal, hiddenSize_);
+        CastRowToFp32(outFp32_, inLocal, hiddenSize_);
+        PipeBarrier<PIPE_V>();
         FreeInRow(inLocal);
 
-        RegBase::MulDual(scoreWeight_, vRow_, outFp32_, hiddenSize_);
+        Mul(scoreWeight_, vRow_, outFp32_, hiddenSize_);
+        PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline void ComputePreSoftmaxScores(uint32_t tokenIdx)
@@ -233,10 +245,13 @@ private:
 
     __aicore__ inline void SoftmaxSmall()
     {
-        // probs 写在 vecMeta_；Brcb → metaBrc[n*8] 供 Weighted（n<B 才用）
-        RegBase::SoftmaxSmallRegBase(vecMeta_, blockCount_, metaAlign_, scalarLocal_, metaSoftmax_, metaBrc_);
+        SoftmaxSmallVec(vecMeta_, blockCount_, metaAlign_, scalarLocal_, metaSoftmax_, metaBrc_);
+        // 紧凑 prob → metaBrc[n*8]：零填充 staging 后单次 Brcb（repeat=ceil(B/8)）
+        Duplicate(metaSoftmax_, 0.0f, metaAlign_);
+        PipeBarrier<PIPE_V>();
+        CopyCompactFloatsUb(metaSoftmax_, vecMeta_, blockCount_);
         const uint8_t brcRepeat = static_cast<uint8_t>((blockCount_ + ELEM_PER_BLK_FP32 - 1U) / ELEM_PER_BLK_FP32);
-        Brcb(metaBrc_, vecMeta_, brcRepeat, {1, MOV_8});
+        Brcb(metaBrc_, metaSoftmax_, brcRepeat, {1, MOV_8});
         PipeBarrier<PIPE_V>();
     }
 
@@ -261,6 +276,9 @@ private:
             return;
         }
         CopyInRowEnqueue(GetLogicRowGm(0), GetLogicRowOffset(tokenIdx, 0));
+        // Counter 外置一次：Cast/MulAdd 均 isSetMask=false（同 Adds 前n 示例）
+        SetMaskCount();
+        SetVectorMask<float, MaskMode::COUNTER>(hiddenSize_);
         for (uint32_t n = 0; n < blockCount_; ++n) {
             LocalTensor<D_IN> inLocal = CopyInRowDeQue();
             if (n + 1U < blockCount_) {
@@ -269,12 +287,14 @@ private:
             ProcessRowWeighted(inLocal, n);
             FreeInRow(inLocal);
         }
+        SetMaskNorm();
+        ResetMask();
     }
 
     __aicore__ inline void WriteHiddenStates(uint32_t tokenIdx)
     {
         LocalTensor<D_IN> outLocal = outQue_.AllocTensor<D_IN>();
-        RegBase::CastFp32ToB16Dual(outLocal, outFp32_, hiddenSize_);
+        CastFp32ToRow(outLocal, outFp32_, hiddenSize_);
         outQue_.EnQue(outLocal);
         outLocal = outQue_.DeQue<D_IN>();
         const uint64_t outOffset = static_cast<uint64_t>(tokenIdx) * hiddenSize_;
@@ -298,7 +318,7 @@ private:
     TPipe *pipe_{nullptr};
     const BlockAttentionResidualsTilingData *tiling_{nullptr};
 
-    GlobalTensor<D_IN> prefixSumGm_;
+    GlobalTensor<D_IN> partialBlockGm_;
     GlobalTensor<D_IN> blockResGm_;
     GlobalTensor<D_IN> projWeightGm_;
     GlobalTensor<D_IN> normWeightGm_;

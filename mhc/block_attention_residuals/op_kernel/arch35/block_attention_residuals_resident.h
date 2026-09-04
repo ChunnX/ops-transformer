@@ -12,7 +12,7 @@
  * \file block_attention_residuals_resident.h
  * \brief TK-RESIDENT: Softmax 前单次搬入驻留 vBf16[B,H]；Softmax 后不重搬 GM
  *
- * 行序（golden）：n=0..N-1 ← block_res[n]；n=N ← prefix_sum
+ * 行序（golden）：n=0..N-1 ← block_res[n]；n=N ← partial_block
  */
 #ifndef ATTN_RES_FWD_RESIDENT_H
 #define ATTN_RES_FWD_RESIDENT_H
@@ -66,7 +66,7 @@ public:
             tokenNum_ = numTokens_ - tokenStart_;
         }
 
-        prefixSumGm_.SetGlobalBuffer(reinterpret_cast<__gm__ D_IN *>(params.prefixSum));
+        partialBlockGm_.SetGlobalBuffer(reinterpret_cast<__gm__ D_IN *>(params.partialBlock));
         blockResGm_.SetGlobalBuffer(reinterpret_cast<__gm__ D_IN *>(params.blockRes));
         projWeightGm_.SetGlobalBuffer(reinterpret_cast<__gm__ D_IN *>(params.projWeight));
         normWeightGm_.SetGlobalBuffer(reinterpret_cast<__gm__ D_IN *>(params.normWeight));
@@ -159,7 +159,7 @@ private:
     }
 
     /*! Phase-1~3：搬入驻留 + 同趟 sumSq→invNorm→score（向量路径，无 Get/Set）
-     *  行序（golden）：n < N → residual[n]；n == N → prefix
+     *  行序（golden）：n < N → residual[n]；n == N → partial_block
      */
     __aicore__ inline void LoadResidentAndScores(uint32_t tokenIdx)
     {
@@ -169,7 +169,7 @@ private:
                 const uint64_t blockBase = static_cast<uint64_t>(tokenIdx) * numBlocks_ * hiddenSize_;
                 inLocal = CopyInRow(blockResGm_, blockBase + static_cast<uint64_t>(n) * hiddenSize_);
             } else {
-                inLocal = CopyInRow(prefixSumGm_, static_cast<uint64_t>(tokenIdx) * hiddenSize_);
+                inLocal = CopyInRow(partialBlockGm_, static_cast<uint64_t>(tokenIdx) * hiddenSize_);
             }
             LocalTensor<D_IN> dstRow = GetResidentRow(n);
             // 单条 Level0 Copy 受 VL 上限约束；RegBase 按 VL 分段并只拷有效 H。
@@ -252,7 +252,7 @@ private:
     TPipe *pipe_{nullptr};
     const BlockAttentionResidualsTilingData *tiling_{nullptr};
 
-    GlobalTensor<D_IN> prefixSumGm_;
+    GlobalTensor<D_IN> partialBlockGm_;
     GlobalTensor<D_IN> blockResGm_;
     GlobalTensor<D_IN> projWeightGm_;
     GlobalTensor<D_IN> normWeightGm_;

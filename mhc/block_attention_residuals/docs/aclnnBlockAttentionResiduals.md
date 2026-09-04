@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：BlockAttentionResiduals是attention residual正向计算算子。该接口将prefix_sum与block_res拼接后，经RMS归一化、线性投影和softmax加权融合，输出hidden_states；当needBackward为true时，同时输出反向计算所需的invNorm和probs。
+- 接口功能：BlockAttentionResiduals是attention residual正向计算算子。该接口将partial_block与block_res拼接后，经RMS归一化、线性投影和softmax加权融合，输出hidden_states；当needBackward为true时，同时输出反向计算所需的invNorm和probs。
 - 使用场景：attention residual分支的前向融合计算，needBackward为true时同时保存反向计算所需的invNorm和probs。
 - V版本说明：当前无V版本差异。
 - 芯片差异：<term>Ascend 950PR/Ascend 950DT</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>计算语义一致；A2/A3使用arch22实现，Ascend950使用arch35 regbase实现。
@@ -26,7 +26,7 @@
   v_{t,i,h} =
   \begin{cases}
   block\_residual_{t,i,h}, & i < N \\
-  prefix\_sum_{t,h}, & i = N
+  partial\_block_{t,h}, & i = N
   \end{cases}
   $$
 
@@ -65,7 +65,7 @@
 | $T$ | token数量 |
 | $N$ | block_res的block数量 |
 | $H$ | hidden size |
-| $v_{t,i,h}$ | block_res与prefix_sum拼接后的value，维度为 $(T,N+1,H)$ |
+| $v_{t,i,h}$ | block_res与partial_block拼接后的value，维度为 $(T,N+1,H)$ |
 | $inv\_rms_{t,i}$ | 前向逐行归一化系数 |
 | $score\_weight_{h}$ | norm_weight与proj_weight逐元素相乘的结果 |
 | $probs_{t,i}$ | 前向softmax输出概率 |
@@ -77,7 +77,7 @@
 
 ```cpp
 aclnnStatus aclnnBlockAttentionResidualsGetWorkspaceSize(
-    const aclTensor *prefixSum,
+    const aclTensor *partialBlock,
     const aclTensor *blockRes,
     const aclTensor *projWeight,
     const aclTensor *normWeight,
@@ -127,9 +127,9 @@ aclnnStatus aclnnBlockAttentionResiduals(
 </thead>
 <tbody>
   <tr>
-    <td>prefixSum（aclTensor*）</td>
+    <td>partialBlock（aclTensor*）</td>
     <td>输入</td>
-    <td>前向输入前缀和，对应公式中拼接后的第N+1个value。</td>
+    <td>前向输入partialBlock，对应公式中拼接后的第N+1个value。</td>
     <td>支持T=0的空Tensor；T、H与blockRes保持一致。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
     <td>ND</td>
@@ -140,7 +140,7 @@ aclnnStatus aclnnBlockAttentionResiduals(
     <td>blockRes（aclTensor*）</td>
     <td>输入</td>
     <td>前向输入分块残差，对应公式中前N个value。</td>
-    <td>支持T=0的空Tensor；dtype与prefixSum保持一致。</td>
+    <td>支持T=0的空Tensor；dtype与partialBlock保持一致。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
     <td>ND</td>
     <td>(T,N,H)</td>
@@ -150,7 +150,7 @@ aclnnStatus aclnnBlockAttentionResiduals(
     <td>projWeight（aclTensor*）</td>
     <td>输入</td>
     <td>前向线性投影权重，与normWeight共同构成score_weight。</td>
-    <td>shape支持(1,H)或(H)；dtype与prefixSum保持一致。</td>
+    <td>shape支持(1,H)或(H)；dtype与partialBlock保持一致。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
     <td>ND</td>
     <td>(1,H)或(H)</td>
@@ -160,7 +160,7 @@ aclnnStatus aclnnBlockAttentionResiduals(
     <td>normWeight（aclTensor*）</td>
     <td>输入</td>
     <td>前向归一化权重，与projWeight共同构成score_weight。</td>
-    <td>shape为(H)；dtype与prefixSum保持一致。</td>
+    <td>shape为(H)；dtype与partialBlock保持一致。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
     <td>ND</td>
     <td>(H)</td>
@@ -200,7 +200,7 @@ aclnnStatus aclnnBlockAttentionResiduals(
     <td>hiddenStates（aclTensor*）</td>
     <td>输出</td>
     <td>前向加权融合输出，对应公式中hidden_states。</td>
-    <td>不支持空Tensor；dtype与prefixSum保持一致。</td>
+    <td>不支持空Tensor；dtype与partialBlock保持一致。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
     <td>ND</td>
     <td>(T,H)</td>
@@ -319,8 +319,8 @@ aclnnStatus aclnnBlockAttentionResiduals(
 
 ### 规格约束
 
-- prefixSum、blockRes、projWeight、normWeight和hiddenStates支持FLOAT16、BFLOAT16、FLOAT32；invNorm和probs仅支持FLOAT32。
-- shape需满足：prefixSum为(T,H)，blockRes为(T,N,H)，projWeight为(1,H)或(H)，normWeight为(H)，hiddenStates为(T,H)，invNorm为(T,N+1)，probs为(T,N+1)，其中T可为0，H大于等于1，N在1到100之间，且各张量中的T、H保持一致。
+- partialBlock、blockRes、projWeight、normWeight和hiddenStates支持FLOAT16、BFLOAT16、FLOAT32；invNorm和probs仅支持FLOAT32。
+- shape需满足：partialBlock为(T,H)，blockRes为(T,N,H)，projWeight为(1,H)或(H)，normWeight为(H)，hiddenStates为(T,H)，invNorm为(T,N+1)，probs为(T,N+1)，其中T可为0，H大于等于1，N在1到100之间，且各张量中的T、H保持一致。
 - validBlockNum为INT64，当前仅支持validBlockNum=N。
 - normEps为DOUBLE，需大于0，默认值为1e-5；传入0或负值时返回ACLNN_ERR_PARAM_INVALID，实际错误文本为“normEps must be > 0”。
 - needBackward为true时，invNorm和probs必须为非空Tensor且shape为(T,N+1)。
@@ -407,31 +407,31 @@ int main()
     const int64_t N = 4;
     const int64_t H = 64;
 
-    std::vector<int64_t> prefixShape     = {T, H};
+    std::vector<int64_t> partialBlockShape     = {T, H};
     std::vector<int64_t> blockShape      = {T, N, H};
     std::vector<int64_t> projShape       = {1, H};
     std::vector<int64_t> normShape       = {H};
     std::vector<int64_t> hiddenShape     = {T, H};
 
-    std::vector<uint16_t> prefixData(GetShapeSize(prefixShape), 0x3C00);
+    std::vector<uint16_t> partialBlockData(GetShapeSize(partialBlockShape), 0x3C00);
     std::vector<uint16_t> blockData(GetShapeSize(blockShape), 0x3C00);
     std::vector<uint16_t> projData(GetShapeSize(projShape), 0x3C00);
     std::vector<uint16_t> normData(GetShapeSize(normShape), 0x3C00);
     std::vector<uint16_t> hiddenData(GetShapeSize(hiddenShape), 0);
 
-    void* prefixDev = nullptr;
+    void* partialBlockDev = nullptr;
     void* blockDev = nullptr;
     void* projDev = nullptr;
     void* normDev = nullptr;
     void* hiddenDev = nullptr;
 
-    aclTensor* prefixTensor = nullptr;
+    aclTensor* partialBlockTensor = nullptr;
     aclTensor* blockTensor = nullptr;
     aclTensor* projTensor = nullptr;
     aclTensor* normTensor = nullptr;
     aclTensor* hiddenTensor = nullptr;
 
-    ret = CreateAclTensor(prefixData, prefixShape, &prefixDev, &prefixTensor);
+    ret = CreateAclTensor(partialBlockData, partialBlockShape, &partialBlockDev, &partialBlockTensor);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(blockData, blockShape, &blockDev, &blockTensor);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -446,7 +446,7 @@ int main()
     aclOpExecutor* executor = nullptr;
 
     ret = aclnnBlockAttentionResidualsGetWorkspaceSize(
-        prefixTensor, blockTensor, projTensor, normTensor, N, 1e-5, false,
+        partialBlockTensor, blockTensor, projTensor, normTensor, N, 1e-5, false,
         hiddenTensor, nullptr, nullptr, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnBlockAttentionResidualsGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
@@ -466,12 +466,12 @@ int main()
     if (workspaceAddr != nullptr) {
         aclrtFree(workspaceAddr);
     }
-    aclDestroyTensor(prefixTensor);
+    aclDestroyTensor(partialBlockTensor);
     aclDestroyTensor(blockTensor);
     aclDestroyTensor(projTensor);
     aclDestroyTensor(normTensor);
     aclDestroyTensor(hiddenTensor);
-    aclrtFree(prefixDev);
+    aclrtFree(partialBlockDev);
     aclrtFree(blockDev);
     aclrtFree(projDev);
     aclrtFree(normDev);

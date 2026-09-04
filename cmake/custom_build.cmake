@@ -301,10 +301,6 @@ else()
     if(ADD_MAMBA)
         add_subdirectory(mamba)
     endif()
-    should_add_module("residuals" ADD_RESIDUALS)
-    if(ADD_RESIDUALS)
-        add_subdirectory(residuals)
-    endif()
 endif()
 
 # 编译examples目录下算子

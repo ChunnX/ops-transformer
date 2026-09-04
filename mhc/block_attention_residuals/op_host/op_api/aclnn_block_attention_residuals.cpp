@@ -32,7 +32,7 @@ extern "C" {
 
 namespace {
 struct BlockAttentionResidualsParams {
-    const aclTensor *prefixSum{nullptr};
+    const aclTensor *partialBlock{nullptr};
     const aclTensor *blockRes{nullptr};
     const aclTensor *projWeight{nullptr};
     const aclTensor *normWeight{nullptr};
@@ -52,7 +52,7 @@ constexpr int64_t MAX_NUM_BLOCKS = 100;
 
 static inline bool CheckNotNull(const BlockAttentionResidualsParams &params)
 {
-    OP_CHECK_NULL(params.prefixSum, return false);
+    OP_CHECK_NULL(params.partialBlock, return false);
     OP_CHECK_NULL(params.blockRes, return false);
     OP_CHECK_NULL(params.projWeight, return false);
     OP_CHECK_NULL(params.normWeight, return false);
@@ -66,7 +66,7 @@ static inline bool CheckNotNull(const BlockAttentionResidualsParams &params)
 
 static inline bool CheckDtypeValid(const BlockAttentionResidualsParams &params)
 {
-    OP_CHECK_DTYPE_NOT_SUPPORT(params.prefixSum, BF16_TYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(params.partialBlock, BF16_TYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(params.blockRes, BF16_TYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(params.projWeight, BF16_TYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(params.normWeight, BF16_TYPE_SUPPORT_LIST, return false);
@@ -80,19 +80,19 @@ static inline bool CheckDtypeValid(const BlockAttentionResidualsParams &params)
 
 static inline bool CheckShapeValid(const BlockAttentionResidualsParams &params)
 {
-    const auto &prefixShape = params.prefixSum->GetViewShape();
+    const auto &partialBlockShape = params.partialBlock->GetViewShape();
     const auto &blockShape = params.blockRes->GetViewShape();
     const auto &projShape = params.projWeight->GetViewShape();
     const auto &normShape = params.normWeight->GetViewShape();
     const auto &hiddenShape = params.hiddenStates->GetViewShape();
-    if (prefixShape.GetDimNum() != 2 || blockShape.GetDimNum() != 3 ||
+    if (partialBlockShape.GetDimNum() != 2 || blockShape.GetDimNum() != 3 ||
         (projShape.GetDimNum() != 1 && projShape.GetDimNum() != 2) || normShape.GetDimNum() != 1 ||
         hiddenShape.GetDimNum() != 2) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "invalid tensor rank");
         return false;
     }
-    const int64_t T = prefixShape.GetDim(0);
-    const int64_t H = prefixShape.GetDim(1);
+    const int64_t T = partialBlockShape.GetDim(0);
+    const int64_t H = partialBlockShape.GetDim(1);
     const int64_t N = blockShape.GetDim(1);
     const int64_t B = blockShape.GetDim(1) + 1;
     if (params.validBlockNum != N) {
@@ -147,7 +147,7 @@ static aclnnStatus CheckParams(BlockAttentionResidualsParams &params)
 
 static aclnnStatus PreProcess(BlockAttentionResidualsParams &params)
 {
-    params.prefixSum->SetOriginalShape(params.prefixSum->GetViewShape());
+    params.partialBlock->SetOriginalShape(params.partialBlock->GetViewShape());
     params.blockRes->SetOriginalShape(params.blockRes->GetViewShape());
     params.projWeight->SetOriginalShape(params.projWeight->GetViewShape());
     params.normWeight->SetOriginalShape(params.normWeight->GetViewShape());
@@ -160,21 +160,21 @@ static aclnnStatus PreProcess(BlockAttentionResidualsParams &params)
 }
 } // namespace
 
-aclnnStatus aclnnBlockAttentionResidualsGetWorkspaceSize(const aclTensor *prefixSum, const aclTensor *blockRes,
+aclnnStatus aclnnBlockAttentionResidualsGetWorkspaceSize(const aclTensor *partialBlock, const aclTensor *blockRes,
                                                          const aclTensor *projWeight, const aclTensor *normWeight,
                                                          int64_t validBlockNum, double normEps, bool needBackward,
                                                          aclTensor *hiddenStates, aclTensor *invNorm, aclTensor *probs,
                                                          uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnBlockAttentionResiduals,
-                   DFX_IN(prefixSum, blockRes, projWeight, normWeight, validBlockNum, normEps, needBackward),
+                   DFX_IN(partialBlock, blockRes, projWeight, normWeight, validBlockNum, normEps, needBackward),
                    DFX_OUT(hiddenStates, invNorm, probs));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    BlockAttentionResidualsParams params{prefixSum, blockRes,     projWeight,   normWeight, validBlockNum,
-                                         normEps,   needBackward, hiddenStates, invNorm,    probs};
+    BlockAttentionResidualsParams params{partialBlock, blockRes,     projWeight,   normWeight, validBlockNum,
+                                         normEps,      needBackward, hiddenStates, invNorm,    probs};
     CHECK_RET(CheckNotNull(params), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckParams(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
@@ -187,8 +187,8 @@ aclnnStatus aclnnBlockAttentionResidualsGetWorkspaceSize(const aclTensor *prefix
         return ACLNN_SUCCESS;
     }
 
-    auto prefixSum_ = l0op::Contiguous(prefixSum, uniqueExecutor.get());
-    CHECK_RET(prefixSum_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto partialBlock_ = l0op::Contiguous(partialBlock, uniqueExecutor.get());
+    CHECK_RET(partialBlock_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto blockRes_ = l0op::Contiguous(blockRes, uniqueExecutor.get());
     CHECK_RET(blockRes_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto projWeight_ = l0op::Contiguous(projWeight, uniqueExecutor.get());
@@ -196,8 +196,8 @@ aclnnStatus aclnnBlockAttentionResidualsGetWorkspaceSize(const aclTensor *prefix
     auto normWeight_ = l0op::Contiguous(normWeight, uniqueExecutor.get());
     CHECK_RET(normWeight_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    auto outRet = l0op::BlockAttentionResiduals(prefixSum_, blockRes_, projWeight_, normWeight_, validBlockNum, normEps,
-                                                needBackward, uniqueExecutor.get());
+    auto outRet = l0op::BlockAttentionResiduals(partialBlock_, blockRes_, projWeight_, normWeight_, validBlockNum,
+                                                normEps, needBackward, uniqueExecutor.get());
     if (outRet[0] == nullptr) {
         return ACLNN_ERR_INNER_NULLPTR;
     }

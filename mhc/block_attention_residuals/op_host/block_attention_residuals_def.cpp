@@ -19,7 +19,7 @@ class BlockAttentionResiduals : public OpDef {
 public:
     explicit BlockAttentionResiduals(const char *name) : OpDef(name)
     {
-        this->Input("prefix_sum")
+        this->Input("partial_block")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})

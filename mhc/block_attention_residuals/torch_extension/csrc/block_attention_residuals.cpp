@@ -23,7 +23,7 @@
 namespace op_api {
 namespace {
 
-constexpr int64_t PREFIX_SUM_RANK = 2;
+constexpr int64_t PARTIAL_BLOCK_RANK = 2;
 constexpr int64_t BLOCK_RES_RANK = 3;
 constexpr int64_t NORM_WEIGHT_RANK = 1;
 constexpr int64_t T_DIM_INDEX = 0;
@@ -42,34 +42,35 @@ bool IsSupportedComputeDtype(at::ScalarType dtype)
 } // namespace
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor> block_attention_residuals(
-    const at::Tensor &prefixSum, const at::Tensor &blockRes, const at::Tensor &projWeight, const at::Tensor &normWeight,
-    int64_t validBlockNum, double normEps, bool needBackward)
+    const at::Tensor &partialBlock, const at::Tensor &blockRes, const at::Tensor &projWeight,
+    const at::Tensor &normWeight, int64_t validBlockNum, double normEps, bool needBackward)
 {
-    TORCH_CHECK(prefixSum.dim() == PREFIX_SUM_RANK, "prefix_sum must be a 2D tensor, but got ", prefixSum.dim(), "D");
+    TORCH_CHECK(partialBlock.dim() == PARTIAL_BLOCK_RANK, "partial_block must be a 2D tensor, but got ",
+                partialBlock.dim(), "D");
     TORCH_CHECK(blockRes.dim() == BLOCK_RES_RANK, "block_res must be a 3D tensor, but got ", blockRes.dim(), "D");
     TORCH_CHECK(normWeight.dim() == NORM_WEIGHT_RANK, "norm_weight must be a 1D tensor, but got ", normWeight.dim(),
                 "D");
     TORCH_CHECK(projWeight.dim() == 1 || (projWeight.dim() == 2 && projWeight.size(0) == 1),
                 "proj_weight must be [H] or [1,H], but got ", projWeight.sizes());
 
-    const auto computeDtype = prefixSum.scalar_type();
+    const auto computeDtype = partialBlock.scalar_type();
     TORCH_CHECK(IsSupportedComputeDtype(computeDtype),
-                "prefix_sum dtype must be float16, bfloat16 or float32, but got ", computeDtype);
-    TORCH_CHECK(blockRes.scalar_type() == computeDtype, "block_res dtype must match prefix_sum, but got ",
+                "partial_block dtype must be float16, bfloat16 or float32, but got ", computeDtype);
+    TORCH_CHECK(blockRes.scalar_type() == computeDtype, "block_res dtype must match partial_block, but got ",
                 blockRes.scalar_type());
-    TORCH_CHECK(projWeight.scalar_type() == computeDtype, "proj_weight dtype must match prefix_sum, but got ",
+    TORCH_CHECK(projWeight.scalar_type() == computeDtype, "proj_weight dtype must match partial_block, but got ",
                 projWeight.scalar_type());
-    TORCH_CHECK(normWeight.scalar_type() == computeDtype, "norm_weight dtype must match prefix_sum, but got ",
+    TORCH_CHECK(normWeight.scalar_type() == computeDtype, "norm_weight dtype must match partial_block, but got ",
                 normWeight.scalar_type());
 
-    TORCH_CHECK(prefixSum.device() == blockRes.device() && prefixSum.device() == projWeight.device() &&
-                    prefixSum.device() == normWeight.device(),
-                "all inputs must be on the same device, but got prefix_sum=", prefixSum.device(),
+    TORCH_CHECK(partialBlock.device() == blockRes.device() && partialBlock.device() == projWeight.device() &&
+                    partialBlock.device() == normWeight.device(),
+                "all inputs must be on the same device, but got partial_block=", partialBlock.device(),
                 ", block_res=", blockRes.device(), ", proj_weight=", projWeight.device(),
                 ", norm_weight=", normWeight.device());
 
-    const int64_t numTokens = prefixSum.size(T_DIM_INDEX);
-    const int64_t hiddenSize = prefixSum.size(H_DIM_INDEX);
+    const int64_t numTokens = partialBlock.size(T_DIM_INDEX);
+    const int64_t hiddenSize = partialBlock.size(H_DIM_INDEX);
     const int64_t numBlocks = blockRes.size(N_DIM_INDEX);
     const int64_t blockCount = numBlocks + 1;
     TORCH_CHECK(
@@ -92,14 +93,14 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> block_attention_residuals(
     at::Tensor invNorm{nullptr};
     at::Tensor probs{nullptr};
     {
-        const c10::OptionalDeviceGuard deviceGuard(prefixSum.device());
-        hiddenStates = at::empty({numTokens, hiddenSize}, prefixSum.options());
+        const c10::OptionalDeviceGuard deviceGuard(partialBlock.device());
+        hiddenStates = at::empty({numTokens, hiddenSize}, partialBlock.options());
         if (needBackward) {
-            invNorm = at::empty({numTokens, blockCount}, prefixSum.options().dtype(at::kFloat));
-            probs = at::empty({numTokens, blockCount}, prefixSum.options().dtype(at::kFloat));
+            invNorm = at::empty({numTokens, blockCount}, partialBlock.options().dtype(at::kFloat));
+            probs = at::empty({numTokens, blockCount}, partialBlock.options().dtype(at::kFloat));
         } else {
-            invNorm = at::empty({0}, prefixSum.options().dtype(at::kFloat));
-            probs = at::empty({0}, prefixSum.options().dtype(at::kFloat));
+            invNorm = at::empty({0}, partialBlock.options().dtype(at::kFloat));
+            probs = at::empty({0}, partialBlock.options().dtype(at::kFloat));
         }
     }
 
@@ -110,7 +111,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> block_attention_residuals(
         probsOpt = probs;
     }
 
-    ACLNN_CMD(aclnnBlockAttentionResiduals, prefixSum, blockRes, projWeight, normWeight, validBlockNum, normEps,
+    ACLNN_CMD(aclnnBlockAttentionResiduals, partialBlock, blockRes, projWeight, normWeight, validBlockNum, normEps,
               needBackward, hiddenStates, invNormOpt, probsOpt);
     return {hiddenStates, invNorm, probs};
 }
