@@ -547,6 +547,7 @@ def analyze(
     tail_count: int | None = None,
     event_map: Path | None = None,
     frequency_search_root: Path | None = None,
+    frequency_mhz_override: float | None = None,
 ) -> dict[str, object]:
     run_dir, output_dir = run_dir.resolve(), output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -575,7 +576,15 @@ def analyze(
         core_stats.extend(parsed_stats)
         headers.append({"path": str(path), **header.__dict__})
     frequency_root = (frequency_search_root or run_dir).resolve()
-    frequency = resolve_frequency_mhz(frequency_root)
+    if frequency_mhz_override is not None and frequency_mhz_override > 0:
+        frequency = {
+            "mhz": float(frequency_mhz_override),
+            "source": "cli --frequency-mhz override",
+            "source_files": [],
+            "observed_mhz": [float(frequency_mhz_override)],
+        }
+    else:
+        frequency = resolve_frequency_mhz(frequency_root)
     frequency_mhz = float(frequency["mhz"])
     intervals = pair_intervals(events, frequency_mhz)
     post_warmup = [item for item in intervals if int(item["invocation"]) >= warmup]
@@ -736,6 +745,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         help="root containing this run's OpBasicInfo.csv; platform_config/fallback remain automatic",
     )
+    parser.add_argument(
+        "--frequency-mhz",
+        type=float,
+        help="override frequency in MHz; skips OpBasicInfo/platform_config/fallback",
+    )
     args = parser.parse_args(argv)
     output = args.output or args.run_dir / "analysis"
     result = analyze(
@@ -745,6 +759,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.tail_count,
         args.event_map,
         args.frequency_search_root,
+        args.frequency_mhz,
     )
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0

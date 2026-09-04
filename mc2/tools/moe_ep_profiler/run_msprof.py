@@ -18,7 +18,11 @@ CHILD_MARKER = "MOE_EP_MSPROF_CHILD"
 
 
 def run_msprof(
-    command: Sequence[str], output_root: Path, warm_up: int = 0, launch_count: int = 1
+    command: Sequence[str],
+    output_root: Path,
+    warm_up: int = 0,
+    launch_count: int = 1,
+    frequency_mhz_override: float | None = None,
 ) -> int:
     if not command:
         raise ValueError("command must not be empty")
@@ -52,7 +56,7 @@ def run_msprof(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
     if completed.returncode == 0:
-        analyze(collection_dir, analysis_dir)
+        analyze(collection_dir, analysis_dir, frequency_mhz_override)
     return completed.returncode
 
 
@@ -73,10 +77,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=1,
         help="whole-command launches; keep 1 for multi-rank test scripts",
     )
+    parser.add_argument(
+        "--frequency-mhz",
+        type=float,
+        help="override frequency in MHz; skips OpBasicInfo/platform_config/fallback",
+    )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
-    return run_msprof(command, args.output_root, args.warm_up, args.launch_count)
+    return run_msprof(
+        command, args.output_root, args.warm_up, args.launch_count, args.frequency_mhz
+    )
 
 
 if __name__ == "__main__":
