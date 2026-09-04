@@ -38,6 +38,7 @@ class MoeDistributeBuffer:
                 "Ascend910_93": "kfc",
                 "Ascend950": "channel",
             },
+            opName="moe_distribute_buffer",
             customCclBufferSize=ccl_buffer_size,
         )
         self.context = self._ctx_manager.create_context()
@@ -177,9 +178,8 @@ class MoeDistributeBuffer:
         return ccl_buffer_size
 
     def update_ctx(self, new_group) -> bool:
-        self.group = new_group
-        self.rank_id = torch.distributed.get_rank(new_group)
-        self.group_name = _get_hccl_comm_name(new_group, self.rank_id)
+        rank_id = torch.distributed.get_rank(new_group)
+        group_name = _get_hccl_comm_name(new_group, rank_id)
         new_world_size = torch.distributed.get_world_size(new_group)
         torch._check(
             new_world_size == self.world_size,
@@ -189,8 +189,36 @@ class MoeDistributeBuffer:
                 f"{ops_error(ErrCode.VALUE)}."
             ),
         )
-        self._ctx_manager.update_group(self.group_name, self.context)
-        self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
+        if group_name == self.group_name:
+            self.group = new_group
+            self.rank_id = rank_id
+            return True
+
+        new_manager = CommContextManager(
+            group_name,
+            new_world_size,
+            backend={
+                "Ascend910B": "kfc",
+                "Ascend910_93": "kfc",
+                "Ascend950": "channel",
+            },
+            opName="moe_distribute_buffer",
+            customCclBufferSize=self.ccl_buffer_size,
+        )
+        try:
+            new_context = new_manager.create_context()
+            self.context.copy_(new_context)
+        except Exception:
+            new_manager.destroy()
+            raise
+
+        old_manager = self._ctx_manager
+        self.group = new_group
+        self.rank_id = rank_id
+        self.group_name = group_name
+        self._ctx_manager = new_manager
+        self.ccl_buffer_size = new_manager.ccl_buffer_size
+        old_manager.destroy()
         return True
 
     def low_latency_dispatch(

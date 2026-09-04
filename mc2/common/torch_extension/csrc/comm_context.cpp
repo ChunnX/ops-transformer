@@ -16,7 +16,6 @@
 
 #include <torch/extension.h>
 #include <acl/acl_rt.h>
-#include <limits>
 #include <utility>
 #include "hccl_common.h"
 
@@ -214,11 +213,12 @@ private:
 
 class HcclChannelContextBuilder {
 public:
-    void Build(const std::string &group, int64_t worldSize, int64_t &cclBufferSize, at::Tensor &contextTensor,
-               const std::string &commAlg, const std::string &opName, int64_t customCclBufferSize = 0,
-               const py::object &customCclBufferSizeResolver = py::none(), void **customDeviceBuffer = nullptr,
-               HcclMemHandle *customMemHandle = nullptr)
+    void Build(const std::string &group, int64_t &cclBufferSize, at::Tensor &contextTensor, const std::string &commAlg,
+               const std::string &opName, int64_t customCclBufferSize,
+               const py::object &customCclBufferSizeResolver, void **customDeviceBuffer,
+               HcclMemHandle *customMemHandle, void **localDeviceBuffer)
     {
+        TORCH_CHECK(localDeviceBuffer != nullptr, "local buffer owner pointer must not be null");
         ASCEND_LOGI("Start to get CommContext Tensor, group: %s", group.c_str());
         InitHcclEngineCtxFunctions();
         customCclBufferSize_ = customCclBufferSize;
@@ -227,6 +227,7 @@ public:
 
         HcclComm hcclHandle;
         AcquireHcclHandle(group, hcclHandle);
+        uint32_t rankSize = GetRankSize(hcclHandle);
 
         CommProtocol protocol;
         if (commAlg == "urma") {
@@ -234,13 +235,21 @@ public:
         } else {
             protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
         }
-        GetCommProtocol(hcclHandle, protocol);
+        GetCommProtocol(hcclHandle, protocol, rankSize);
         rankNumPerServer_ = rankNumPerUbDomain_;
-        ResolveCustomCclBufferSize(worldSize, customCclBufferSizeResolver);
+        ResolveCustomCclBufferSize(rankSize, customCclBufferSizeResolver);
+        TORCH_CHECK(customCclBufferSize_ > 0, "customCclBufferSize must be greater than 0");
 
         CommContext commContextStruct;
-        BuildContext(hcclHandle, group, opName, protocol, commContextStruct, cclBufferSize);
         commContextStruct.rankSizePerServer = rankNumPerServer_;
+        BuildContext(hcclHandle, group, opName, protocol, rankSize, commContextStruct, cclBufferSize);
+
+        TORCH_CHECK(commContextStruct.epRankId < rankSize, "Invalid local rank ", commContextStruct.epRankId,
+                    " for rank size ", rankSize);
+        // Keep ownership with the manager that allocated the buffer; a cache hit may only borrow this address.
+        *localDeviceBuffer = reinterpret_cast<void *>(commContextStruct.epHcclBuffer_[commContextStruct.epRankId]);
+        TORCH_CHECK(*localDeviceBuffer != nullptr, "Local CCL buffer address is null for rank ",
+                    commContextStruct.epRankId);
 
         CopyContextToTensor(commContextStruct, contextTensor);
         ASCEND_LOGI("Get CommContext Tensor Success, group: %s, ccl_buffer_size: %ld", group.c_str(), cclBufferSize);
@@ -253,20 +262,21 @@ public:
         ASCEND_LOGI("Get HCCL communication handle success hcclHandle is: %p", hcclHandle);
     }
 
-    void ResolveCustomCclBufferSize(int64_t worldSize, const py::object &customCclBufferSizeResolver)
+    void ResolveCustomCclBufferSize(uint32_t rankSize, const py::object &customCclBufferSizeResolver)
     {
         if (topoType_ != TopoType::CROSS_SUPER_NODE || customCclBufferSizeResolver.is_none()) {
             return;
         }
 
-        int64_t serverNum = worldSize / rankNumPerServer_;
+        int64_t serverNum = static_cast<int64_t>(rankSize) / rankNumPerServer_;
         customCclBufferSize_ = customCclBufferSizeResolver(serverNum).cast<int64_t>();
         ASCEND_LOGI("Recalculated cross-server CCL buffer size: %ld bytes, serverNum: %ld", customCclBufferSize_,
                     serverNum);
     }
 
     void BuildContext(const HcclComm &hcclHandle, const std::string &group, const std::string &opName,
-                      const CommProtocol &protocol, CommContext &commContextStruct, int64_t &cclBufferSize)
+                      const CommProtocol &protocol, uint32_t rankSize, CommContext &commContextStruct,
+                      int64_t &cclBufferSize)
     {
         std::string mc2ContextTag = std::string(group) + opName;
         TORCH_CHECK(mc2ContextTag.size() <= HCCL_CONTEXT_TAG_MAX_LEN, "Mc2ContextTag is too long, max size is ",
@@ -276,12 +286,13 @@ public:
         void *ctx = nullptr;
         uint64_t hcclBuffSize = 0;
 
-        GetOrCreateContext(hcclHandle, mc2ContextTag, engine, protocol, ctx, hcclBuffSize, commContextStruct);
+        GetOrCreateContext(hcclHandle, mc2ContextTag, engine, protocol, rankSize, ctx, hcclBuffSize,
+                           commContextStruct);
 
         cclBufferSize = hcclBuffSize;
     }
 
-    void GetCommProtocol(const HcclComm &commHandle, CommProtocol &protocol)
+    void GetCommProtocol(const HcclComm &commHandle, CommProtocol &protocol, uint32_t rankSize)
     {
         ASCEND_LOGI("Start to get HCCL communication protocol");
         uint32_t layerNum = 0;
@@ -295,7 +306,7 @@ public:
             return;
         }
 
-        CheckProtocolSupport(commHandle, layerList, layerNum, protocol);
+        CheckProtocolSupport(commHandle, layerList, layerNum, protocol, rankSize);
     }
 
     // Protocol discovery may probe layers that do not connect the rank pair; treat those probes as unsupported.
@@ -315,10 +326,9 @@ public:
     }
 
     void CheckProtocolSupport(const HcclComm &commHandle, const uint32_t *layerList, uint32_t layerNum,
-                              const CommProtocol &protocol)
+                              const CommProtocol &protocol, uint32_t rankSize)
     {
         uint32_t srcRankId = GetRankId(commHandle);
-        uint32_t rankSize = GetRankSize(commHandle);
         rankLinkMap_.clear();
         rankNumPerUbDomain_ = 0;
 
@@ -579,9 +589,6 @@ public:
     {
         TORCH_CHECK(customDeviceBuffer_ != nullptr && customMemHandle_ != nullptr,
                     "custom buffer owner pointers must not be null");
-        TORCH_CHECK(customCclBufferSize_ > 0, "customCclBufferSize must be greater than 0");
-        TORCH_CHECK(customCclBufferSize_ <= std::numeric_limits<int64_t>::max(),
-                    "customCclBufferSize is too large: ", customCclBufferSize_);
 
         uint64_t bufferSizeBytes = static_cast<uint64_t>(customCclBufferSize_);
         if (*customDeviceBuffer_ == nullptr) {
@@ -635,7 +642,8 @@ public:
     // ---- Context lifecycle helpers ----
 
     void CreateContext(const HcclComm &commHandle, const std::string &mc2ContextTag, const CommEngine &engine,
-                       const CommProtocol &protocol, void *&ctx, CommContext *commContextStruct, uint64_t &hcclBuffSize)
+                       const CommProtocol &protocol, uint32_t rankSize, void *&ctx, CommContext *commContextStruct,
+                       uint64_t &hcclBuffSize)
     {
         ASCEND_LOGI("Start to create HCCL context");
         uint64_t commContextSize = sizeof(CommContext);
@@ -647,9 +655,6 @@ public:
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank ID failed, ret: ", hcclRet);
         ASCEND_LOGI("Get rank ID success, rankId is: %u", commContextStruct->epRankId);
 
-        uint32_t rankSize = 0;
-        hcclRet = HcclGetRankSizeFunc(commHandle, &rankSize);
-        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank size failed, ret: ", hcclRet);
         ASCEND_LOGI("Get rank size success, rankSize is: %u", rankSize);
 
         std::string memBufferTag = mc2ContextTag + "_buffer";
@@ -666,26 +671,26 @@ public:
     }
 
     void GetOrCreateContext(const HcclComm &commHandle, const std::string &mc2ContextTag, const CommEngine &engine,
-                            const CommProtocol &protocol, void *&ctx, uint64_t &hcclBuffSize,
+                            const CommProtocol &protocol, uint32_t rankSize, void *&ctx, uint64_t &hcclBuffSize,
                             CommContext &commContextStruct)
     {
         uint64_t ctxSize = 0;
         auto hcclRet = HcclEngineCtxGetFunc(commHandle, mc2ContextTag.c_str(), engine, &ctx, &ctxSize);
         if (hcclRet != HCCL_SUCCESS) {
-            CreateContext(commHandle, mc2ContextTag, engine, protocol, ctx, &commContextStruct, hcclBuffSize);
+            CreateContext(commHandle, mc2ContextTag, engine, protocol, rankSize, ctx, &commContextStruct, hcclBuffSize);
         } else {
-            GetHcclBufferSize(commHandle, hcclBuffSize);
+            TORCH_CHECK(ctx != nullptr, "Cached HCCL context is null, tag: ", mc2ContextTag);
+            TORCH_CHECK(ctxSize == sizeof(CommContext), "Cached HCCL context size mismatch, expect ",
+                        sizeof(CommContext), ", got ", ctxSize, ", tag: ", mc2ContextTag);
+            // Restore the cached context while preserving the public API's independent output tensor.
+            auto aclRet = aclrtMemcpy(&commContextStruct, sizeof(CommContext), ctx, sizeof(CommContext),
+                                      ACL_MEMCPY_DEVICE_TO_HOST);
+            TORCH_CHECK(aclRet == ACL_SUCCESS, "Copy cached HCCL context to host failed, ret: ", aclRet);
+            hcclBuffSize = static_cast<uint64_t>(customCclBufferSize_);
         }
     }
 
     // ---- Static HCCL query helpers ----
-
-    static void GetHcclBufferSize(const HcclComm &commHandle, uint64_t &hcclBuffSize)
-    {
-        void *tempBuffer = nullptr;
-        auto hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBuffSize);
-        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL Buffer Size failed, ret: ", hcclRet);
-    }
 
     static void GetNetLayers(const HcclComm &commHandle, uint32_t *&netLayerList, uint32_t &netLayerNum)
     {
@@ -790,13 +795,14 @@ public:
 
     void UpdateGroup(const std::string &group, at::Tensor &contextTensor)
     {
-        TORCH_CHECK(customCclBufferSizeResolver_.is_none() ||
-                        (customMemHandle_ == nullptr && customDeviceBuffer_ == nullptr),
-                    "update_group cannot reuse an allocated channel buffer with customCclBufferSizeResolver; "
-                    "create a replacement CommContextManager instead");
+        EnsureResolved();
+        const bool hasChannelResource =
+            customMemHandle_ != nullptr || customDeviceBuffer_ != nullptr || localDeviceBuffer_ != nullptr;
+        TORCH_CHECK(mode_ != BackendMode::CHANNEL || !hasChannelResource,
+                    "update_group cannot reuse an initialized channel context; create a replacement "
+                    "CommContextManager instead");
         group_ = group;
         cclBufferSize_ = 0;
-        EnsureResolved();
         DispatchBuild(contextTensor);
     }
 
@@ -871,9 +877,9 @@ private:
             }
             case BackendMode::CHANNEL: {
                 HcclChannelContextBuilder builder;
-                builder.Build(group_, worldSize_, cclBufferSize_, tensor, commAlg_, opName_, customCclBufferSize_,
-                              customCclBufferSizeResolver_, &customDeviceBuffer_, &customMemHandle_);
-                localDeviceBuffer_ = customDeviceBuffer_;
+                builder.Build(group_, cclBufferSize_, tensor, commAlg_, opName_, customCclBufferSize_,
+                              customCclBufferSizeResolver_, &customDeviceBuffer_, &customMemHandle_,
+                              &localDeviceBuffer_);
                 topoType_ = builder.GetTopoType();
                 rankNumPerServer_ = builder.GetRankNumPerServer();
                 return;

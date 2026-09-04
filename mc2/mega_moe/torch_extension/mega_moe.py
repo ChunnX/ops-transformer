@@ -305,6 +305,7 @@ class SymmBuffer:
                 "Ascend910_93": "kfc",
                 "Ascend950": "channel",
             },
+            opName="moe_dispatch_ffn_combine",
             customCclBufferSize=required_ccl_buffer_size,
             customCclBufferSizeResolver=ccl_buffer_size_params,
         )
@@ -418,6 +419,12 @@ class SymmBuffer:
             rank_id, init_comm=True
         )
         ep_world_size = torch.distributed.get_world_size(group)
+        if group_name == self.group_name:
+            self.group = group
+            self.rank_id = rank_id
+            self.ep_world_size = ep_world_size
+            return
+
         ccl_buffer_size_params = _MegaMoeCclBufferSizeParams(
             ep_world_size=ep_world_size,
             moe_expert_num=self.num_experts,
@@ -440,6 +447,7 @@ class SymmBuffer:
                 "Ascend910_93": "kfc",
                 "Ascend950": "channel",
             },
+            opName="moe_dispatch_ffn_combine",
             customCclBufferSize=required_ccl_buffer_size,
             customCclBufferSizeResolver=ccl_buffer_size_params,
         )
