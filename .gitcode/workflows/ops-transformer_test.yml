@@ -21,33 +21,6 @@ env:
   online: ${{ vars.APPLY_LABEL }}
 
 stages:
-  stage1:
-    name: PreBuild
-    jobs:
-      JOB_image:
-        name: Test_image
-        steps:
-          - name: revise_image
-            identifier: revise_image
-            uses: cann/.gitcode/actions/revise-img@master
-            with:
-              repo_name: ops-transformer
-              target_branch: ${{ env.TARGET_BRANCH }}
-              comment: ${{ atomgit.event.comment.body }}
-              token: ${{ secrets.TESTTOKEN }}
-          -
-            name: show_output
-            run: |
-              echo "Compile_Ascend_X86: ${{ steps.revise_image.outputs.Compile_Ascend_X86 }}"
-        runs-on: ["self-hosted", "arch=x64", "spec=small"]
-        container:
-          image: swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_x86:k8s_v1.1006
-      JOB_pre:
-        name: Test_PreBuild
-        uses: cann/.gitcode/.gitcode/workflows/pre_action.yml@master
-    pre:
-    - type: auto
-    fail-fast: true
   stage2:
     name: compile
     jobs:
