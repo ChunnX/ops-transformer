@@ -1558,22 +1558,8 @@ uint64_t FlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
 
 void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
 {
+    // reserved2/3 仅为 8 字节对齐占位，后面没有任何 set；不写则 tiling blob 里是未初始化字节
     preTilingData_->set_reserved();
-    preTilingData_->set_sinkPreBlockFactor(0);
-    preTilingData_->set_sinkPreBlockTotal(0);
-    preTilingData_->set_sinkPreBlockTail(0);
-    preTilingData_->set_sfmgUsedCoreNum(0);
-    preTilingData_->set_sfmgDyBufferLen(0);
-    preTilingData_->set_sfmgYBufferLen(0);
-    preTilingData_->set_sfmgOutputBufferLen(0);
-    preTilingData_->set_singleLoopNBurstNum(0);
-    preTilingData_->set_normalCoreLoopTimes(0);
-    preTilingData_->set_tailCoreLoopTimes(0);
-    preTilingData_->set_normalCoreLastLoopNBurstNum(0);
-    preTilingData_->set_tailCoreLastLoopNBurstNum(0);
-    preTilingData_->set_normalCoreNBurstNums(0);
-    preTilingData_->set_tailCoreNBurstNums(0);
-    preTilingData_->set_normalAxisSize(0);
 
     uint64_t inputBufferLen = PRE_BUFFER_SIZE; // x / 8 + 2 * x + 32 = fBaseParams.ubSize
     uint64_t singleUBProcessNum = static_cast<uint64_t>(CAST_BUFFER_LEN) / 2;
