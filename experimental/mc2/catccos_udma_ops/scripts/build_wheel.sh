@@ -8,10 +8,11 @@ REPO_ROOT=$(cd -- "${PROJECT_DIR}/../../.." && pwd)
 export CATCCOS_SOURCE_PATH=${CATCCOS_SOURCE_PATH:-"${REPO_ROOT}/3rdparty/catccos"}
 export SHMEM_SOURCE_PATH=${SHMEM_SOURCE_PATH:-"${REPO_ROOT}/3rdparty/shmem"}
 export SHMEM_HOME_PATH=${SHMEM_HOME_PATH:-"${SHMEM_SOURCE_PATH}/install"}
-EXPECTED_SHMEM_COMMIT=aee374a396b389626f68fab74ec8c555e18978a7
+EXPECTED_SHMEM_COMMIT=7fa19662da0093587d9a332e740b91d6c929cdcf
 
 if [[ ! -f "${SHMEM_SOURCE_PATH}/include/shmem.h" ||
       ! -f "${SHMEM_HOME_PATH}/shmem/lib/libshmem.so" ||
+      ! -f "${SHMEM_HOME_PATH}/shmem/lib/libshmem_utils.so" ||
       ! -f "${SHMEM_HOME_PATH}/shmem/.ops_transformer_source_commit" ]]; then
     echo "error: SHMEM UDMA library was not found; run scripts/prepare_dependencies.sh first" >&2
     exit 1
@@ -20,11 +21,17 @@ ACTUAL_SHMEM_COMMIT=$(git -C "${SHMEM_SOURCE_PATH}" rev-parse HEAD 2>/dev/null |
 BUILT_SHMEM_COMMIT=$(tr -d '[:space:]' < "${SHMEM_HOME_PATH}/shmem/.ops_transformer_source_commit")
 if [[ "${ACTUAL_SHMEM_COMMIT}" != "${EXPECTED_SHMEM_COMMIT}" ||
       "${BUILT_SHMEM_COMMIT}" != "${EXPECTED_SHMEM_COMMIT}" ]]; then
-    echo "error: SHMEM source or library is not the pinned official v1.6.0 commit" >&2
+    echo "error: SHMEM source or library is not the pinned official release/v1.6.0 snapshot" >&2
     echo "expected: ${EXPECTED_SHMEM_COMMIT}" >&2
     echo "source:   ${ACTUAL_SHMEM_COMMIT:-missing}" >&2
     echo "library:  ${BUILT_SHMEM_COMMIT:-missing}" >&2
     echo "run scripts/prepare_dependencies.sh to rebuild the dependency" >&2
+    exit 1
+fi
+SHMEM_WORKTREE_STATUS=$(git -C "${SHMEM_SOURCE_PATH}" status --porcelain --untracked-files=normal)
+if [[ -n "${SHMEM_WORKTREE_STATUS}" ]]; then
+    echo "error: SHMEM source has local changes and no longer matches its build provenance" >&2
+    printf '%s\n' "${SHMEM_WORKTREE_STATUS}" >&2
     exit 1
 fi
 

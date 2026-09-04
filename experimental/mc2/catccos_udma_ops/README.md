@@ -11,10 +11,13 @@ The CatCCOS dependency comes from the official
 `https://gitcode.com/cann/catccos.git` repository and is pinned to
 `878c2e0a504be8c49c03b5e1157a7c714a628e29`; its CATLASS gitlink is used, so
 this project does not change the repository-wide CATLASS version. SHMEM is
-independently pinned to the official `cann/shmem` v1.6.0 commit
-`aee374a396b389626f68fab74ec8c555e18978a7`. This version contains the official
-rootinfo fixes for the 2048-byte capacity limit and incorrect POD/Server EID
-port generation.
+independently pinned to the official `cann/shmem` `release/v1.6.0` commit
+`7fa19662da0093587d9a332e740b91d6c929cdcf`, verified on 2026-09-04.
+Upstream `VERSION` is `1.6.0`; the pin includes maintenance commits after the
+original v1.6.0 tag, including the UDMA SQ wrap fix (!726), runtime-sized
+software barrier pool (!729), and transport metadata/channel fixes. It does
+not follow the unreleased 1.7.0 master branch. The earlier rootinfo fixes for
+the 2048-byte capacity limit and POD/Server EID ports remain included.
 The operator-local `csrc/catccos_overlay` directory contains only the
 UDMA all-to-all-v headers that have not yet landed in that official revision.
 The GroupedMatMul-AllToAllV configuration is migrated from CatCCOS commit
@@ -77,17 +80,37 @@ CATCCOS_UDMA_DEVICE_DIAGNOSTICS=1 bash scripts/build_wheel.sh
 python3 -m pip install --force-reinstall --no-deps dist/*.whl
 ```
 
-That Wheel prints the first failed GET completion for each communication core,
-including rank, source rank, communication round, stage, and CQ status. Device
-printf reserves additional HBM and affects timing, so do not use a diagnostic
-Wheel for performance measurement or model delivery.
+The pinned maintenance branch returns a status from its internal CQ poll;
+public `aclshmemx_udma_quiet(peer)` discards that status. Both local
+`FinalizeWithStatus` wrappers therefore use a shared checked implementation
+that preserves the real CQ error code for completion-sensitive callers. It
+uses the pinned branch's UDMA metadata accessor, `wqe_cnt`, and direct/relay
+QP0 completion scope. The ordinary void `Finalize` retains the upstream
+public quiet behavior. This branch does not provide master !743's
+unconditional CQ-error trap, so checked callers must handle nonzero status;
+void quiet alone does not establish an error-free completion. The diagnostic
+Wheel can print GET completion context and ready-wait diagnostics. Device
+printf reserves additional HBM and affects timing, so do not use that Wheel
+for performance measurement or model delivery.
 
-`prepare_dependencies.sh` refuses an existing CatCCOS or SHMEM checkout at
-another revision. SHMEM is built with `-soc_type Ascend950` and the same C++
-ABI setting as the active PyTorch installation. Both the extension's device
-headers and its bundled user-space SHMEM libraries therefore come from v1.6.0.
+`prepare_dependencies.sh` keeps the CatCCOS revision fixed and switches a clean
+SHMEM checkout to the pinned maintenance commit, including a checkout currently
+on master. It refuses local SHMEM changes instead of
+overwriting them. SHMEM is rebuilt with `-soc_type Ascend950` and the same C++
+ABI setting as the active PyTorch installation. The build verifies that the
+extension's device headers and bundled user-space SHMEM libraries come from
+the same pinned revision. Run dependency preparation again when upgrading an
+existing checkout, then rebuild and reinstall the Wheel; replacing only the
+SHMEM shared libraries does not update the device code compiled into `_C`.
 The target host only installs the Wheel; it does not need either source checkout,
 `SHMEM_HOME_PATH`, or a manually generated rootinfo file.
+
+The maintenance branch's generic `aclshmem_fence`/`aclshmem_quiet` still flush
+local pipelines and cache; they do not drain UDMA peer queues. The fused
+kernels retain their existing peer completion points and scheduling. The
+contiguous strong-ready path still publishes payload and generation in one
+WRITE_WITH_NOTIFY request. This update does not enable UDMA multi-QP or import
+master's operation-config/CQE-counter changes.
 
 ## PyTorch API
 

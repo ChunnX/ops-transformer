@@ -21,6 +21,51 @@
 
 namespace Catccos::Comm::Tile {
 
+/// Checked equivalent of release/v1.6.0's public quiet, which discards the CQ
+/// status. These tiles submit only to QP0. Use SHMEM's metadata accessors so
+/// the direct/relay table follows the pinned release's UDMA metadata layout.
+CATLASS_DEVICE
+uint32_t UdmaQuietWithStatus(uint32_t peerIdx)
+{
+    __gm__ aclshmemi_aiv_udma_info_t *udmaInfo =
+        aclshmemi_udma_qp_info_fetch();
+    __gm__ aclshmemi_udma_qp_table_t *table =
+        aclshmemi_udma_active_table(udmaInfo);
+    uint32_t qpNum = udmaInfo->qp_num;
+    if constexpr (ACLSHMEM_RELAY_SUPPORTED) {
+        uint32_t rankCount =
+            static_cast<uint32_t>(aclshmemi_get_total_pe());
+        uint32_t firstError = 0;
+        for (uint32_t relayPeer = 0; relayPeer < rankCount; ++relayPeer) {
+            // The diagonal slot is never initialized or used by SHMEM.
+            if (relayPeer == peerIdx) {
+                continue;
+            }
+            uint32_t slot = peerIdx * rankCount + relayPeer;
+            __gm__ aclshmemi_udma_wq_ctx_t *qpContext =
+                (__gm__ aclshmemi_udma_wq_ctx_t *)(
+                    table->sq_ptr +
+                    (slot * qpNum) * sizeof(aclshmemi_udma_wq_ctx_t));
+            uint32_t wqeCount = qpContext->wqe_cnt;
+            if (wqeCount == 0) {
+                continue;
+            }
+            uint32_t status =
+                aclshmemi_udma_poll_cq(slot, 0, wqeCount);
+            if (firstError == 0 && status != 0) {
+                firstError = status;
+            }
+        }
+        return firstError;
+    } else {
+        __gm__ aclshmemi_udma_wq_ctx_t *qpContext =
+            (__gm__ aclshmemi_udma_wq_ctx_t *)(
+                table->sq_ptr +
+                (peerIdx * qpNum) * sizeof(aclshmemi_udma_wq_ctx_t));
+        return aclshmemi_udma_poll_cq(peerIdx, 0, qpContext->wqe_cnt);
+    }
+}
+
 /// Layout-aware two-dimensional UDMA copy.
 ///
 /// UDMA exposes a byte-contiguous transfer primitive. A single request is used
@@ -124,54 +169,12 @@ public:
         aclshmemx_udma_quiet(peerIdx);
     }
 
-    /// Completion equivalent of aclshmemx_udma_quiet that preserves the
-    /// pinned SHMEM implementation's CQ return code. The public API returns
-    /// void and silently discards timeout/CQE failures; completion-sensitive
-    /// collectives must not publish an acknowledgement on such failures.
+    /// Preserve CQ timeout/error status for completion-sensitive collectives.
+    /// They must not publish an acknowledgement when this returns nonzero.
     CATLASS_DEVICE
     uint32_t FinalizeWithStatus(uint32_t peerIdx)
     {
-        __gm__ aclshmemi_aiv_udma_info_t *udmaInfo =
-            aclshmemi_udma_qp_info_fetch();
-        __gm__ aclshmemi_udma_qp_table_t *table =
-            aclshmemi_udma_active_table(udmaInfo);
-        uint32_t qpNum = udmaInfo->qp_num;
-        uint32_t actualPeer = peerIdx;
-        uint32_t firstError = 0;
-        if constexpr (ACLSHMEM_RELAY_SUPPORTED) {
-            uint32_t rankCount =
-                static_cast<uint32_t>(aclshmemi_get_total_pe());
-            for (uint32_t relayPeer = 0; relayPeer < rankCount;
-                 ++relayPeer) {
-                if (relayPeer == actualPeer) {
-                    continue;
-                }
-                uint32_t slot = actualPeer * rankCount + relayPeer;
-                __gm__ aclshmemi_udma_wq_ctx_t *qpContext =
-                    (__gm__ aclshmemi_udma_wq_ctx_t *)(
-                        table->sq_ptr +
-                        (slot * qpNum) *
-                            sizeof(aclshmemi_udma_wq_ctx_t));
-                uint32_t wqeCount = qpContext->wqe_cnt;
-                if (wqeCount == 0) {
-                    continue;
-                }
-                uint32_t status =
-                    aclshmemi_udma_poll_cq(slot, 0, wqeCount);
-                if (firstError == 0 && status != 0) {
-                    firstError = status;
-                }
-            }
-        } else {
-            __gm__ aclshmemi_udma_wq_ctx_t *qpContext =
-                (__gm__ aclshmemi_udma_wq_ctx_t *)(
-                    table->sq_ptr +
-                    (actualPeer * qpNum) *
-                        sizeof(aclshmemi_udma_wq_ctx_t));
-            firstError = aclshmemi_udma_poll_cq(
-                actualPeer, 0, qpContext->wqe_cnt);
-        }
-        return firstError;
+        return UdmaQuietWithStatus(peerIdx);
     }
 
 private:
@@ -307,46 +310,11 @@ public:
         aclshmemx_udma_quiet(peerIdx);
     }
 
+    /// Match PIPE_S's checked completion for QP0, including relay slots.
     CATLASS_DEVICE
     uint32_t FinalizeWithStatus(uint32_t peerIdx)
     {
-        __gm__ aclshmemi_aiv_udma_info_t *udmaInfo =
-            aclshmemi_udma_qp_info_fetch();
-        __gm__ aclshmemi_udma_qp_table_t *table =
-            aclshmemi_udma_active_table(udmaInfo);
-        uint32_t qpNum = udmaInfo->qp_num;
-        uint32_t firstError = 0;
-        if constexpr (ACLSHMEM_RELAY_SUPPORTED) {
-            uint32_t rankCount =
-                static_cast<uint32_t>(aclshmemi_get_total_pe());
-            for (uint32_t relayPeer = 0; relayPeer < rankCount; ++relayPeer) {
-                if (relayPeer == peerIdx) {
-                    continue;
-                }
-                uint32_t slot = peerIdx * rankCount + relayPeer;
-                __gm__ aclshmemi_udma_wq_ctx_t *qpContext =
-                    (__gm__ aclshmemi_udma_wq_ctx_t *)(
-                        table->sq_ptr +
-                        (slot * qpNum) * sizeof(aclshmemi_udma_wq_ctx_t));
-                uint32_t wqeCount = qpContext->wqe_cnt;
-                if (wqeCount == 0) {
-                    continue;
-                }
-                uint32_t status =
-                    aclshmemi_udma_poll_cq(slot, 0, wqeCount);
-                if (firstError == 0 && status != 0) {
-                    firstError = status;
-                }
-            }
-        } else {
-            __gm__ aclshmemi_udma_wq_ctx_t *qpContext =
-                (__gm__ aclshmemi_udma_wq_ctx_t *)(
-                    table->sq_ptr +
-                    (peerIdx * qpNum) * sizeof(aclshmemi_udma_wq_ctx_t));
-            firstError = aclshmemi_udma_poll_cq(
-                peerIdx, 0, qpContext->wqe_cnt);
-        }
-        return firstError;
+        return UdmaQuietWithStatus(peerIdx);
     }
 
 private:

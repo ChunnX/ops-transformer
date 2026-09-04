@@ -269,7 +269,10 @@ def test_kernel_and_runner_keep_the_five_modes_isolated():
     assert "quiet_poll_failure" not in kernel
     assert "CATCCOS_UDMA_A2AV_GMM_READY_TIMEOUT" in kernel
     assert "aclshmemx_udma_put_signal_nbi" in tile
+    assert "aclshmemx_udma_quiet" in tile
     assert "aclshmemi_udma_poll_cq" in tile
+    assert "qpContext->wqe_cnt" in tile
+    assert "qpContext->cqe_cnt" not in tile
     assert 'caller_repeats = (' in worker
     assert '"all_to_allv_export"' in worker
 
