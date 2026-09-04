@@ -270,7 +270,12 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
     uint32_t rankId = mc2ContextStruct->epRankId;
     std::vector<ChannelHandle> channels;
 
-    auto ret = GetHcclCommChannel(hcclHandle, epRankSize_, rankId, protocol, engine, channels);
+    aclnnStatus ret;
+    if (CommProtocol::COMM_PROTOCOL_UBC_CTP == protocol) {
+        ret = GetHcclCommChannelUbCTP(hcclHandle, epRankSize_, rankId, protocol, engine, channels, mc2ContextStruct);
+    } else {
+        ret = GetHcclCommChannel(hcclHandle, epRankSize_, rankId, protocol, engine, channels);
+    }
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
@@ -287,7 +292,11 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
             hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
         } else {
             uint32_t idx = (i < rankId) ? i : (i - 1);
-            hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
+            auto channelHandle = channels[idx];
+            if (CommProtocol::COMM_PROTOCOL_UBC_CTP == protocol) {
+                channelHandle = mc2ContextStruct->hcommHandle_[idx];
+            }
+            hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channelHandle, &tempBuffer, &bufSize);
         }
 
         if (hcclRet != HCCL_SUCCESS || tempBuffer == nullptr) {
@@ -565,6 +574,85 @@ aclnnStatus Mc2Context::GetMc2RankSize(const char *groupEp, uint32_t &rankSize)
 
 // 模板函数显式实例化
 template void *Mc2Context::GetHcclLibFunc<void *>(void *handle, const std::string &funcName);
+
+// UB_CTP协议单走一路
+aclnnStatus Mc2Context::GetMc2ContextTensorUbCTP(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
+                                                 aclTensor *&mc2Context, CommProtocol protocol)
+{
+    OP_LOGI("Start to get UB_CTP Mc2MoeContext Tensor");
+    Mc2Context instance;
+
+    auto aclnnRet = instance.LoadHcclSymbols();
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+
+    void *ctx = nullptr;
+    std::string mc2ContextTag = std::string(groupEp) + std::string(opName);
+    CommEngine engine = CommEngine::COMM_ENGINE_AIV;
+    hcclBuffSize = 0; // Default to 0, will be updated in CheckContextCache
+
+    aclnnRet = instance.ValidateContextTag(mc2ContextTag);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+
+    HcclComm hcclHandle;
+    aclnnRet = instance.GetCommHandle(groupEp, hcclHandle);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+
+    aclnnRet = instance.CheckContextCache(hcclHandle, mc2ContextTag, engine, ctx, hcclBuffSize);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+    if (hcclBuffSize != 0) { // Cache not found, need to create context
+        aclnnRet = instance.CreatMc2ContextTensor(ctx, mc2Context);
+        CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+        OP_LOGI("Found context cache, Get UB_CTP Mc2MoeContext Tensor Success");
+        return ACLNN_SUCCESS;
+    }
+
+    Mc2MoeContext mc2ContextStruct;
+    aclnnRet =
+        instance.CreatMc2Context(hcclHandle, mc2ContextTag, engine, protocol, &mc2ContextStruct, ctx, hcclBuffSize);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+
+    aclnnRet = instance.CreatMc2ContextTensor(ctx, mc2Context);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+
+    OP_LOGI("Get UB_CTP Mc2MoeContext Tensor Success");
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus Mc2Context::GetHcclCommChannelUbCTP(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
+                                                const CommProtocol &protocol, const CommEngine &engine,
+                                                std::vector<ChannelHandle> &channels, Mc2MoeContext *mc2ContextStruct)
+{
+    OP_LOGD("Start to get UB_CTP channel from HCCL communication");
+    uint32_t channelNum = rankDim - 1;
+    std::vector<HcclChannelDesc> channelDesc(channelNum);
+    channels.resize(channelNum);
+
+    uint32_t *netLayerList = nullptr;
+    uint32_t netLayerNum = 0;
+    auto ret = GetNetLayers(hcclHandle, netLayerList, netLayerNum);
+    if (ret != ACLNN_SUCCESS) {
+        return ret;
+    }
+
+    uint32_t netLayers = netLayerList[GET_LOCAL_SERVER_RANK_SIZE_LAYER]; // 获取本server卡数
+    ret = GetRankSizePerServer(hcclHandle, netLayers);
+    if (ret != ACLNN_SUCCESS) {
+        return ret;
+    }
+
+    ret = InitHcclChannel(hcclHandle, rankDim, srcRankId, protocol, channelDesc);
+    if (ret != ACLNN_SUCCESS) {
+        return ret;
+    }
+
+    auto hcclRet =
+        HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, mc2ContextStruct->hcommHandle_);
+    if (hcclRet != HCCL_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER, "Acquire UB_CTP HCCL channel failed");
+        return ACLNN_ERR_INNER;
+    }
+    return ACLNN_SUCCESS;
+}
 
 } // namespace Mc2Aclnn
 #endif
