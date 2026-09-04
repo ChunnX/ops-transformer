@@ -84,7 +84,7 @@ VA0 = 0
 VA1 = _align_up(VA0 + VB4_KV)
 VA2 = _align_up(VA1 + VB4_KV)
 VA3 = _align_up(VA2 + VB4_KV)
-VA4 = VA3 + TS_HALF * 4
+VA4 = VA3 + TS * HALF_D_SIZE * 4
 VAP_0 = 0
 VAP_1 = _align_up(VAP_0 + VB_P)
 MA0 = 0
@@ -1661,6 +1661,18 @@ def copy_dqkv2gm(is_kv, run_info, const_info, tensor_info):
 
 
 @pl.vector_function
+def dequant_out_dq(tensor, real_length, scale):
+    preg_all = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    for i in pl.range(real_length):
+        vreg_x1 = vf.load_align(tensor, i * HALF_D_SIZE * 2)
+        vreg_x2 = vf.load_align(tensor, i * HALF_D_SIZE * 2 + HALF_D_SIZE)
+
+        vreg_x1 = vf.muls(vreg_x1, scale, preg_all)
+        vreg_x2 = vf.muls(vreg_x2, scale, preg_all)
+
+        vf.store_align(tensor + i * HALF_D_SIZE * 2, vreg_x1, preg_all)
+        vf.store_align(tensor + i * HALF_D_SIZE * 2 + HALF_D_SIZE, vreg_x2, preg_all)
+@pl.vector_function
 def dequant_out(tensor, real_length, scale):
     preg_all = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
     for i in pl.range(real_length):
@@ -1678,10 +1690,11 @@ def dequant_dqkv(mode, tensor_1, tensor_2, const_info, run_info):
     if mode == 0:
         scale = run_info.deq_scale_k_value * const_info.deq_scale_ds_value
         real_length = run_info.inner_s1_real_size[run_info.s1_idx]
+        dequant_out_dq(tensor_1, ceil(real_length, 2), scale)
     else:
         scale = run_info.deq_scale_do_value * const_info.deq_scale_p_value
         real_length = run_info.inner_s2_real_size[run_info.s2_idx]
-    dequant_out(tensor_1, ceil(real_length, 2), scale)
+        dequant_out(tensor_1, ceil(real_length, 2), scale)
     if mode != 0:
         scale = run_info.deq_scale_q_value * const_info.deq_scale_ds_value
         dequant_out(tensor_2, ceil(real_length, 2), scale)
@@ -2572,7 +2585,7 @@ def quant_flash_attn_grad(
     )
     dq_vec = pl.make_tile_group(
         type=pl.TileType(
-            shape=[TS, TS], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+            shape=[TS, HALF_D_SIZE], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
         ),
         addrs=VA3,
         mutex_ids=[31],
