@@ -16,6 +16,7 @@
 #include <graph/utils/type_utils.h>
 #include <register/op_impl_registry.h>
 #include "log/log.h"
+
 #include "log/error_code.h"
 
 using namespace ge;
