@@ -10,7 +10,7 @@
 
 /*!
  * \file block_attention_residuals_apt.cpp
- * \brief BlockAttentionResiduals A5(ascend950) kernel entry — same logic as A2, includes arch35/
+ * \brief BlockAttentionResiduals
  */
 #include "arch35/block_attention_residuals_reload.h"
 #include "arch35/block_attention_residuals_resident.h"
