@@ -50,11 +50,13 @@
 #include "../common/mc2_kernel_utils.h"
 #include "../common/mc2_moe_context.h"
 #include "../common/moe_ep_exception_dump_writer.h"
+#include "../common/moe_ep_profiler.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
+#include "../../common/op_kernel/moe_ep_profiler.h"
 #endif
 
 namespace MoeEpDispatchImpl {
@@ -82,6 +84,18 @@ constexpr uint32_t EXPERT_NUM_PER_GROUP = 256U; // 直方图每次计算0-255
 constexpr uint32_t DATA_BLOCK_NUM = 8U;         // 256B/32B=8
 constexpr uint8_t BUFFER_NUM = 2;
 static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
+
+enum class MoeEpDispatchProfileStage : uint32_t {
+    KERNEL = 0,
+    BUFFER_INIT = 1,
+    COUNT_BUILD = 2,
+    COUNT_ISSUE = 3,
+    COUNT_WAIT = 4,
+    COUNT_AGGREGATE = 5,
+    SLOT_PREFIX = 6,
+    PAYLOAD_PREP = 7,
+    PAYLOAD_ISSUE = 8,
+};
 
 template <TemplateMoeEpDispatchTypeClass>
 class MoeEpDispatch {
@@ -116,6 +130,7 @@ private:
     __gm__ Mc2Aclnn::MoeCommContext *mc2Context_{nullptr};
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
     MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
+    MOE_EP_PROFILE_DECLARE();
 
     GlobalTensor<XType> xGMTensor_;
     GlobalTensor<int32_t> topkIdxGMTensor_;
@@ -239,6 +254,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     scalesBytes_ = info.scalesBytes;
     perSlotBytes_ = info.perSlotBytes;
     aivNum_ = info.aivNum;
+    MOE_EP_PROFILE_INIT(mc2Context_, MoeEpProfileOp::DISPATCH, aivNum_);
     cntWinStateOffset_ = info.window.cntWinStateOffset;
     slotWinStateOffset_ = info.window.slotWinStateOffset;
     winDataOffset_ = info.window.winDataOffset;
@@ -566,13 +582,19 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetRecvCoun
     LocalTensor<float> recvCounterTensorFp32 = recvCounterTensor.template ReinterpretCast<float>();
     LocalTensor<float> numRecvPerRankTensorFp32 = numRecvPerRankTensor_.template ReinterpretCast<float>();
     SyncFunc<AscendC::HardEvent::MTE3_V>(); // buf 复用
-    while (sumOfFlag != commpareFlag) {     // 状态位check
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::WAIT,
+                                             MoeEpDispatchProfileStage::COUNT_WAIT, MoeEpProfileBoundary::BEGIN));
+    while (sumOfFlag != commpareFlag) { // 状态位check
         DataCopy(recvCounterTensor, recvCounterGMTensor_, statusCopyParams_);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum(numRecvPerRankTensorFp32, recvCounterTensorFp32, tempFp32, mask, epWorldSize_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = numRecvPerRankTensor_.GetValue(0);
     }
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::WAIT,
+                                             MoeEpDispatchProfileStage::COUNT_WAIT, MoeEpProfileBoundary::END));
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::VECTOR,
+                                             MoeEpDispatchProfileStage::COUNT_AGGREGATE, MoeEpProfileBoundary::BEGIN));
     SetRecvNumPerExpert();                // 计算本卡上各专家接收的token总数
     SetRecvNumPerRank(recvCounterTensor); // 计算本端接收来自各卡的token总数
     // status clear
@@ -580,6 +602,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetRecvCoun
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(recvCounterGMTensor_, recvCounterTensor, clearStatusCopyParams_);
     diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_COUNT_READY);
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::VECTOR,
+                                             MoeEpDispatchProfileStage::COUNT_AGGREGATE, MoeEpProfileBoundary::END));
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -818,18 +842,50 @@ template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchProfileStage::KERNEL, MoeEpProfileBoundary::BEGIN));
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchProfileStage::BUFFER_INIT, MoeEpProfileBoundary::BEGIN));
         BufferInit();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchProfileStage::BUFFER_INIT, MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::VECTOR,
+                                                 MoeEpDispatchProfileStage::COUNT_BUILD, MoeEpProfileBoundary::BEGIN));
         CalSendCnt();
         SyncAll<true>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::VECTOR,
+                                                 MoeEpDispatchProfileStage::COUNT_BUILD, MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::URMA,
+                                                 MoeEpDispatchProfileStage::COUNT_ISSUE, MoeEpProfileBoundary::BEGIN));
         Communication();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::URMA,
+                                                 MoeEpDispatchProfileStage::COUNT_ISSUE, MoeEpProfileBoundary::END));
         GetRecvCount();
         if constexpr (!IsCached) { // 计算起始slot id
+            MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::VECTOR,
+                                                     MoeEpDispatchProfileStage::SLOT_PREFIX,
+                                                     MoeEpProfileBoundary::BEGIN));
             GetSlotStartNum();
+            MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::VECTOR,
+                                                     MoeEpDispatchProfileStage::SLOT_PREFIX,
+                                                     MoeEpProfileBoundary::END));
         }
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::MTE2,
+                                                 MoeEpDispatchProfileStage::PAYLOAD_PREP, MoeEpProfileBoundary::BEGIN));
         SendPhase();
         SyncAll<true>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::MTE2,
+                                                 MoeEpDispatchProfileStage::PAYLOAD_PREP, MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::URMA,
+                                                 MoeEpDispatchProfileStage::PAYLOAD_ISSUE,
+                                                 MoeEpProfileBoundary::BEGIN));
         WriteToRemoteWindow();
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::URMA,
+                                                 MoeEpDispatchProfileStage::PAYLOAD_ISSUE, MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchProfileStage::KERNEL, MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_FLUSH();
     }
 }
 

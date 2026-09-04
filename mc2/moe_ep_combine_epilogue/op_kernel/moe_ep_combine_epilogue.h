@@ -43,11 +43,13 @@
 #include "../common/mc2_kernel_utils.h"
 #include "../common/mc2_moe_context.h"
 #include "../common/moe_ep_exception_dump_writer.h"
+#include "../common/moe_ep_profiler.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
+#include "../../common/op_kernel/moe_ep_profiler.h"
 #endif
 
 #include "moe_ep_combine_epilogue_tiling_key.h"
@@ -69,6 +71,14 @@ constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint32_t STATE_OFFSET = 32U;
 constexpr uint32_t DOUBLE_BUFFER_NUM = 2U;
 static constexpr uint32_t HCOMM_SQ_MAX_PENDING = 32767U;
+
+enum class MoeEpCombineEpilogueProfileStage : uint32_t {
+    KERNEL = 0,
+    BUFFER_INIT = 1,
+    COMPLETION_WAIT = 2,
+    WAIT_BARRIER = 3,
+    REDUCE_OUTPUT = 4,
+};
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
 class MoeEpCombineEpilogue {
@@ -105,6 +115,7 @@ private:
     const MoeEpCombineEpilogueInfo *tilingData_{nullptr};
     __gm__ Mc2Aclnn::MoeCommContext *mc2Context_{nullptr};
     MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
+    MOE_EP_PROFILE_DECLARE();
 
     uint32_t rankId_{0};
     uint32_t epWorldSize_{0};
@@ -168,6 +179,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     uint32_t minTopKLocalExperts = (topK_ < localmoeNum_) ? topK_ : localmoeNum_;
     combineChannelCount_ = Ceil(numMaxTokensPerRank_ * minTopKLocalExperts, HCOMM_SQ_MAX_PENDING + 1);
     combineChannelCount_ = combineChannelCount_ < COMBINE_CHANNEL_COUNT ? combineChannelCount_ : COMBINE_CHANNEL_COUNT;
+    MOE_EP_PROFILE_INIT(mc2Context_, MoeEpProfileOp::COMBINE_EPILOGUE, aivNum_);
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
@@ -348,17 +360,32 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     tpipe_->InitBuffer(stateBuf_, flagBufferBytes);
 
     if (aivId_ == 0U) {
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpCombineEpilogueProfileStage::COMPLETION_WAIT,
+                                                 MoeEpProfileBoundary::BEGIN));
         while (!WaitDispatch(completionChannelCount)) {
         }
         ClearCompletionFlags(completionChannelCount);
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpCombineEpilogueProfileStage::COMPLETION_WAIT,
+                                                 MoeEpProfileBoundary::END));
     }
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                             MoeEpCombineEpilogueProfileStage::WAIT_BARRIER,
+                                             MoeEpProfileBoundary::BEGIN));
     SyncAll<true>();
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                             MoeEpCombineEpilogueProfileStage::WAIT_BARRIER,
+                                             MoeEpProfileBoundary::END));
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_EPILOGUE_RUN_POS_WAIT_DONE);
 
     if (tPerCore_ == 0) {
         return;
     }
 
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE_EPILOGUE, MoeEpProfileEngine::VECTOR,
+                                             MoeEpCombineEpilogueProfileStage::REDUCE_OUTPUT,
+                                             MoeEpProfileBoundary::BEGIN));
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     for (uint32_t tokenIdx = tStart_; tokenIdx < tEnd_; ++tokenIdx) {
@@ -368,13 +395,26 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
         xOutQue_.FreeTensor(ubResult);
     }
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_EPILOGUE_RUN_POS_OUTPUT_DONE);
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE_EPILOGUE, MoeEpProfileEngine::VECTOR,
+                                             MoeEpCombineEpilogueProfileStage::REDUCE_OUTPUT,
+                                             MoeEpProfileBoundary::END));
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::Process()
 {
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpCombineEpilogueProfileStage::KERNEL, MoeEpProfileBoundary::BEGIN));
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpCombineEpilogueProfileStage::BUFFER_INIT,
+                                             MoeEpProfileBoundary::BEGIN));
     BuffInit();
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpCombineEpilogueProfileStage::BUFFER_INIT, MoeEpProfileBoundary::END));
     RecvPhaseReduce();
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpCombineEpilogueProfileStage::KERNEL, MoeEpProfileBoundary::END));
+    MOE_EP_PROFILE_FLUSH();
 }
 
 #endif

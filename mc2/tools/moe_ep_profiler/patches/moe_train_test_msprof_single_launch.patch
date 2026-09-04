@@ -1,0 +1,22 @@
+diff --git a/moe_train_test.py b/moe_train_test.py
+--- a/moe_train_test.py
++++ b/moe_train_test.py
+@@ -274,7 +274,6 @@ def maybe_relaunch_under_msprof() -> Optional[int]:
+     runner = profiler_tool_root / "run_msprof.py"
+     if not runner.is_file():
+         raise FileNotFoundError(f"msprof runner not found: {runner}; set OPS_TRANSFORMER_ROOT")
+-    op_count_per_iteration = 4 if is_continue else 2
+     command = [
+         sys.executable,
+         str(runner),
+@@ -283,8 +282,8 @@ def maybe_relaunch_under_msprof() -> Optional[int]:
+         str(cycle_profiler_output_root / "msprof"),
+         "--warm-up",
+-        str(int(os.environ.get("MOE_EP_MSPROF_WARM_UP", warmup * op_count_per_iteration))),
++        str(int(os.environ.get("MOE_EP_MSPROF_WARM_UP", "0"))),
+         "--launch-count",
+-        str(int(os.environ.get("MOE_EP_MSPROF_LAUNCH_COUNT", performance_tail_count * op_count_per_iteration))),
++        str(int(os.environ.get("MOE_EP_MSPROF_LAUNCH_COUNT", "1"))),
+         "--",
+         sys.executable,
+         str(Path(__file__).resolve()),

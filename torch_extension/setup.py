@@ -41,6 +41,9 @@ _selected_ops = (
 )
 
 _vendor_env = os.environ.get("TORCH_EXTENSION_VENDOR", "").strip()
+_moe_ep_profiling_build = (
+    os.environ.get("CANN_OPS_MOE_EP_PROFILING_BUILD", "").strip() == "1"
+)
 
 if _selected_ops:
     PACKAGE_NAME = "%s_%s" % (BASE_PACKAGE_NAME, _vendor_env or "custom")
@@ -224,9 +227,9 @@ class BuildPyWithOps(_build_py):
         for rel_path, src_abs in _op_py_files:
             dst = os.path.join(build_pkg, rel_path)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
+            with open(src_abs, "r", encoding="utf-8") as _f:
+                _content = _f.read()
             if PACKAGE_NAME != BASE_PACKAGE_NAME:
-                with open(src_abs, "r") as _f:
-                    _content = _f.read()
                 _content = _content.replace(
                     "from cann_ops_transformer.op_builder",
                     "from %s.op_builder" % PACKAGE_NAME,
@@ -235,10 +238,12 @@ class BuildPyWithOps(_build_py):
                     "import cann_ops_transformer.op_builder",
                     "import %s.op_builder" % PACKAGE_NAME,
                 )
-                with open(dst, "w") as _f:
-                    _f.write(_content)
-            else:
-                shutil.copy2(src_abs, dst)
+            _content = _content.replace(
+                "_MOE_EP_PROFILING_BUILD = False",
+                "_MOE_EP_PROFILING_BUILD = %s" % _moe_ep_profiling_build,
+            )
+            with open(dst, "w", encoding="utf-8") as _f:
+                _f.write(_content)
         for rel_path, src_abs in _op_cpp_files:
             dst = os.path.join(build_pkg, rel_path)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
