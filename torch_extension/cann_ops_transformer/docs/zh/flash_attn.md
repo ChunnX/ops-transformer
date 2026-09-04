@@ -557,12 +557,26 @@ mask_mode参数解释
                     <li>seqused_kv中的值需小于等于KV_S</li>
                 </ul>
             </td>
-            <td rowspan="2">可选参数</td>
-            <td rowspan="4">无</td>
-            <td rowspan="6">无</td>
+            <td>可选参数</td>
+            <td>无</td>
+            <td>
+                <ul>
+                    <li>当layout_q为TND时，seqused_q可选</li>
+                    <li>当layout_q不为TND时，seqused_q与max_seqlen_q二选一传入</li>
+                </ul>
+            </td>
         </tr>
         <tr>
             <td>seqused_kv</td>
+            <td>可选参数</td>
+            <td>无</td>
+            <td>
+                <ul>
+                    <li>当layout_kv为TND时，seqused_kv可选</li>
+                    <li>当layout_kv为PA时，seqused_kv必须传入</li>
+                    <li>当layout_kv不为TND且不为PA时，seqused_kv与max_seqlen_kv二选一传入</li>
+                </ul>
+            </td>
         </tr>
         <tr>
             <td>cu_seqlens_q</td>
@@ -584,6 +598,8 @@ mask_mode参数解释
                     <li>当layout_kv不为TND时，cu_seqlens_kv不支持传入</li>
                 </ul>
             </td>
+            <td rowspan="2">无</td>
+            <td rowspan="2">无</td>
         </tr>
         <tr>
             <td>cu_seqlens_kv</td>
@@ -606,12 +622,29 @@ mask_mode参数解释
                     <li>值必须大于等于-1；传入时必须等于实际的最大序列长度，否则行为未定义</li>
                 </ul>
             </td>
+            <td>
+                <ul>
+                    <li>当layout_q为TND时，max_seqlen_q可选</li>
+                    <li>当layout_q不为TND时，max_seqlen_q与seqused_q二选一传入</li>
+                </ul>
+            </td>
         </tr>
         <tr>
             <td>max_seqlen_kv</td>
+            <td>
+                <ul>
+                    <li>当layout_kv为TND或PA时，max_seqlen_kv可选</li>
+                    <li>当layout_kv不为TND且不为PA时，max_seqlen_kv与seqused_kv二选一传入</li>
+                </ul>
+            </td>
         </tr>
         </tbody>
 </table>
+
+layout_q、layout_kv与SeqLens参数的组合关系：
+
+- 当layout_q不为TND时，seqused_q与max_seqlen_q二选一传入，不支持传入cu_seqlens_q；当layout_q为TND时，cu_seqlens_q必须传入，seqused_q与max_seqlen_q均为可选参数。
+- 当layout_kv不为TND且不为PA时，seqused_kv与max_seqlen_kv二选一传入，不支持传入cu_seqlens_kv；当layout_kv为PA时，seqused_kv必须传入，max_seqlen_kv为可选参数；当layout_kv为TND时，cu_seqlens_kv必须传入，seqused_kv与max_seqlen_kv均为可选参数。
 
 #### Paged Attention参数组
 
