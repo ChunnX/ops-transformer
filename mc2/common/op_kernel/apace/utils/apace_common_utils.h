@@ -27,6 +27,7 @@ namespace mm {
 enum class DataType {
     DT_FLOAT4_E2M1,
     DT_FLOAT8_E4M3FN,
+    DT_FLOAT8_E5M2,
 };
 } // namespace mm
 
@@ -34,8 +35,8 @@ enum class DataType {
 #define CHECK_COND(cond, msg) \
     do { \
         if (!(cond)) { \
-            throw std::runtime_error( \
-                std::string("Error: ") + msg + "\nFile: " + __FILE__ + "\nLine: " + std::to_string(__LINE__)); \
+            throw std::runtime_error(std::string("Error: ") + msg + "\nFile: " + __FILE__ + \
+                                     "\nLine: " + std::to_string(__LINE__)); \
         } \
     } while (0)
 
