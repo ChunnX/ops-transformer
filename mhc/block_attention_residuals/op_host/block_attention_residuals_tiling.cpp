@@ -43,7 +43,6 @@ constexpr size_t ATTR_VALID_BLOCK_NUM_INDEX = 0;
 constexpr size_t ATTR_NORM_EPS_INDEX = 1;
 constexpr size_t ATTR_NEED_BACKWARD_INDEX = 2;
 
-constexpr int64_t SYS_WORKSPACE_SIZE = 16777216;
 constexpr uint32_t UB_AVAIL_BYTES = 192U * 1024U; // DAV_2201 按 192KB 估算
 // TPipe/对齐/Que 头开销；过小会导致大 H RESIDENT 运行时 507035
 constexpr uint32_t UB_OVERHEAD_BYTES = 32U * 1024U;
@@ -279,8 +278,10 @@ uint64_t BlockAttentionResidualsTiling::GetTilingKey() const
 
 ge::graphStatus BlockAttentionResidualsTiling::GetWorkspaceSize()
 {
-    // 仅系统 16MB 预留，不追加 FP32-v
-    workspaceSize_ = static_cast<uint64_t>(SYS_WORKSPACE_SIZE);
+    auto platformInfoPtr = context_->GetPlatformInfo();
+    OP_CHECK_NULL_WITH_CONTEXT(context_, platformInfoPtr);
+    auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    workspaceSize_ = ascendPlatformInfo.GetLibApiWorkSpaceSize();
     return ge::GRAPH_SUCCESS;
 }
 
