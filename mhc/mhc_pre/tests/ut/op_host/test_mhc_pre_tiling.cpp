@@ -1926,3 +1926,62 @@ TEST_F(MhcPreTiling, Ut_Check_CoreRatio_2to1_Fail)
 {
     CheckCoreRatioFailure(64, 32);
 }
+
+TEST_F(MhcPreTiling, Ut_Check_3Bf16PackedPhi_RoutesToExperimentalKernel)
+{
+    constexpr uint32_t totalLength = 3072U;
+    constexpr uint32_t n = 4U;
+    constexpr uint32_t d = 5120U;
+    constexpr uint32_t fusionSize = n * n + 2U * n;
+    constexpr uint32_t packedPhiRows = 3U * fusionSize;
+    constexpr uint32_t nD = n * d;
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {{{{1U, totalLength, n, d}, {1U, totalLength, n, d}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{packedPhiRows, nD}, {packedPhiRows, nD}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{3U}, {3U}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{1U, totalLength, d}, {1U, totalLength, d}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{1U, totalLength, n}, {1U, totalLength, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1U, totalLength, n, n}, {1U, totalLength, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1U, totalLength}, {1U, totalLength}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1U, totalLength, fusionSize}, {1U, totalLength, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1U, totalLength, n}, {1U, totalLength, n}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(0.000001f)},
+         {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(0.000001f)}},
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 3, "", {}, 0, TilingData2Str<int32_t>);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    constexpr uint32_t sentinel = 0x5A5AA55AU;
+    auto readMatmulField = [&](auto setter) -> uint32_t {
+        optiling::MhcPreTilingData schema;
+        std::vector<uint8_t> schemaBuffer(schema.GetDataSize(), 0U);
+        setter(schema.matmulTiling3Bf16, sentinel);
+        schema.SaveToBuffer(schemaBuffer.data(), schemaBuffer.size());
+        for (size_t offset = 0; offset + sizeof(uint32_t) <= schemaBuffer.size(); ++offset) {
+            uint32_t marker = 0U;
+            std::memcpy(&marker, schemaBuffer.data() + offset, sizeof(marker));
+            if (marker == sentinel) {
+                EXPECT_LE(offset + sizeof(uint32_t), tilingInfo.tilingDataSize);
+                if (offset + sizeof(uint32_t) > tilingInfo.tilingDataSize) {
+                    return 0U;
+                }
+                uint32_t value = 0U;
+                std::memcpy(&value, tilingInfo.tilingData.get() + offset, sizeof(value));
+                return value;
+            }
+        }
+        ADD_FAILURE() << "3BF16 matmul tiling field was not serialized";
+        return 0U;
+    };
+    EXPECT_EQ(readMatmulField([](auto &mm, uint32_t value) { mm.set_baseM(value); }), 96U);
+    EXPECT_EQ(readMatmulField([](auto &mm, uint32_t value) { mm.set_baseN(value); }), 80U);
+    EXPECT_EQ(readMatmulField([](auto &mm, uint32_t value) { mm.set_stepKa(value); }), 4U);
+    EXPECT_EQ(readMatmulField([](auto &mm, uint32_t value) { mm.set_depthA1(value); }), 8U);
+}

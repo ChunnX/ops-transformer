@@ -45,6 +45,11 @@
   \end{aligned}
   $$
 
+- **3BF16穿刺实验**：在<term>Ascend 950PR/Ascend 950DT</term>上，`x`和`phi`可同时使用BFLOAT16。
+  令$F=n^{2}+2n$，`phi`按高、中、低三段打包为`[3F, nD]`，矩阵乘结果按
+  $hMix=hMixHigh+2^{-8}hMixMid+2^{-16}hMixLow$重构为`[F]`。该实验仅支持`alpha.shape=(3)`、
+  `gamma=null`和`op_impl_mode=0`；`bias`及各浮点输出仍为FLOAT32。
+
 ## 参数说明
 
   <table style="table-layout: auto; width: 100%">
@@ -68,8 +73,8 @@
       <tr>
         <td>phi</td>
         <td>输入</td>
-        <td>mHC的参数矩阵，对应公式中的phi。</td>
-        <td>FLOAT32</td>
+        <td>mHC的参数矩阵，对应公式中的phi；Ascend 950支持实验性高、中、低三段打包。</td>
+        <td>FLOAT32, BFLOAT16（3BF16实验）</td>
         <td>ND</td>
       </tr>
       <tr>

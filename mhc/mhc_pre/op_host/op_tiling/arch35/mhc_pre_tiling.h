@@ -25,10 +25,12 @@ namespace optiling {
 enum class TilingMode : uint8_t {
     SPLIT_BS = 0,
     SPLIT_ND = 1,
-    SPLIT_M_K = 2
+    SPLIT_M_K = 2,
+    SPLIT_3BF16 = 3
 };
 
 BEGIN_TILING_DATA_DEF(MhcPreTilingData)
+TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTiling3Bf16);
 TILING_DATA_FIELD_DEF(uint32_t, coreNum);
 TILING_DATA_FIELD_DEF(uint32_t, outFlag);
 TILING_DATA_FIELD_DEF(uint32_t, hasGamma);
@@ -133,6 +135,7 @@ protected:
     ge::graphStatus CalculateBsTiling();
     ge::graphStatus CalculateNdTiling();
     ge::graphStatus CalculateMkTiling();
+    ge::graphStatus Calculate3Bf16Tiling();
     bool CanUseMk() const;
     uint32_t SelectMkStage() const;
     size_t GetLastRequiredInputIndex() const;
@@ -162,6 +165,8 @@ private:
     uint32_t implMode_ = 0;
     TilingMode tilingMode_ = TilingMode::SPLIT_BS;
     uint32_t hasResi_ = 1;
+    bool is3Bf16_ = false;
+    matmul_tiling::MultiCoreMatmulTiling mm3Bf16_;
 };
 
 } // namespace optiling

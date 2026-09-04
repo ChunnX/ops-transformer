@@ -128,8 +128,8 @@ aclnnStatus aclnnMhcPre(
       <td>phi（aclTensor*）</td>
       <td>输入</td>
       <td>mHC的参数矩阵，对应公式中的phi。</td>
-      <td><ul><li>不支持空Tensor。</li><li>shape为(n!+2n, nD)、(n<sup>2</sup>+2n, nD)或(2n, nD)。</li></ul></td>
-      <td>FLOAT32</td>
+      <td><ul><li>不支持空Tensor。</li><li>常规shape为(n!+2n, nD)、(n<sup>2</sup>+2n, nD)或(2n, nD)。</li><li>Ascend 950的3BF16实验shape为(3(n<sup>2</sup>+2n), nD)，按高、中、低三段打包。</li></ul></td>
+      <td>FLOAT32；3BF16实验为BFLOAT16</td>
       <td>ND</td>
       <td>2</td>
       <td>√</td>
@@ -371,6 +371,7 @@ aclnnStatus aclnnMhcPre(
     - n目前支持4、6、8。
     - D支持1~16384范围以内，需满足D为16对齐。
     - 当alpha=(3)时，支持hRes输出，必须满足以下条件：输入phi=(n<sup>2</sup>+2n, nD)，bias=(n<sup>2</sup>+2n)；输出hMixOptional=(B, S, n<sup>2</sup>+2n)或(T, n<sup>2</sup>+2n)；当alpha=(2)时，hRes输出为0，必须满足以下条件：输入phi=(2n, nD),bias=(2n)，输出hMixOptional=(B, S, 2n) 或 (T, 2n)。
+    - 3BF16穿刺实验要求x和phi均为BFLOAT16，phi=(3(n<sup>2</sup>+2n), nD)，依次存放高、中、低三段；内部按high+2<sup>-8</sup>mid+2<sup>-16</sup>low重构。仅支持alpha=(3)、bias=(n<sup>2</sup>+2n)、gammaOptional=nullptr及opImplMode=0，hMixOptional仍为紧凑shape。
   <!-- end id7 -->
   <!-- npu="A3,910b" id8 -->
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：

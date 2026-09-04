@@ -14,6 +14,7 @@
  */
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
 #include "arch35/mhc_pre_common.h"
+#include "arch35/mhc_pre_3bf16.h"
 #include "arch35/mhc_pre_split_bs.h"
 #include "arch35/mhc_pre_m_k_split.h"
 #include "arch35/mhc_pre_split_nd.h"
@@ -33,14 +34,14 @@ __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADD
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
     if constexpr (TILING_MODE == MHC_PRE_SPLIT_BS) {
-        InitParams initParams{x, phi, alpha, bias, gamma, hin, h_post,
-                              h_res, inv_rms, h_mix, h_pre, user, &pipe, &tilingData};
+        InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
+                              h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
         MhcPreSplitBS<DTYPE_X, float32_t, RESI_MODE> op;
         op.Init(initParams);
         op.Process();
     } else if constexpr (TILING_MODE == MHC_PRE_SPLIT_M_K) {
-        InitParams initParams{x, phi, alpha, bias, gamma, hin, h_post,
-                              h_res, inv_rms, h_mix, h_pre, user, &pipe, &tilingData};
+        InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
+                              h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
         MhcPreMKPart1<DTYPE_X, float32_t, RESI_MODE> part1;
         part1.Init(initParams);
         part1.Process();
@@ -53,9 +54,18 @@ __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADD
         part2.Init(initParams);
         part2.Process();
     } else if constexpr (TILING_MODE == MHC_PRE_SPLIT_ND) {
-        InitParams initParams{x, phi, alpha, bias, gamma, hin, h_post,
-                              h_res, inv_rms, h_mix, h_pre, user, &pipe, &tilingData};
+        InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
+                              h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
         MhcPreSplitND<DTYPE_X, float32_t, RESI_MODE> op;
+        op.Init(initParams);
+        op.Process();
+    } else if constexpr (TILING_MODE == MHC_PRE_SPLIT_3BF16) {
+        InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
+                              h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
+        MhcPre3Bf16Matmul mm;
+        mm.SetSubBlockIdx(0);
+        mm.Init(&tilingData.matmulTiling3Bf16, &pipe);
+        MhcPre3Bf16<DTYPE_X, float32_t, RESI_MODE> op(mm);
         op.Init(initParams);
         op.Process();
     }

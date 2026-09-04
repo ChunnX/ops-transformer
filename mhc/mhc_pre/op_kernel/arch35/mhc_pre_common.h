@@ -97,6 +97,7 @@ constexpr uint16_t MHC_PRE_SUBBLOCK_FLAG_OFFSET = 16U;
 constexpr uint16_t MHC_PRE_X_READY_FLAG = 8U;
 constexpr uint16_t MHC_PRE_X_CONSUMED_FLAG = 9U;
 constexpr uint16_t MHC_PRE_MM_READY_FLAG = 10U;
+constexpr uint16_t MHC_PRE_3BF16_CONSUMED_FLAG = 11U;
 
 // Integer shape helpers.
 __aicore__ inline uint32_t BasicApiCeilDiv(uint32_t value, uint32_t div)

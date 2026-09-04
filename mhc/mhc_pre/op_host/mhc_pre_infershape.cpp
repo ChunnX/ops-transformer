@@ -146,17 +146,20 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
     uint64_t nn_fac = Factorial(n);
     uint64_t nn_pow = n * n;
     uint64_t doubleN = 2 * n;
+    uint64_t packed3Bf16Rows = 3 * (nn_pow + doubleN);
     OP_CHECK_IF(
         !hasResi && phiDim0 != doubleN,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "phi", Ops::Base::ToString(*phiShape).c_str(),
                                               "alpha shape [2] requires phi shape [2n, nD]"),
         return GRAPH_FAILED);
     OP_CHECK_IF(
-        hasResi && phiDim0 != nn_fac + doubleN && phiDim0 != nn_pow + doubleN,
+        hasResi && phiDim0 != nn_fac + doubleN && phiDim0 != nn_pow + doubleN && phiDim0 != packed3Bf16Rows,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "phi", Ops::Base::ToString(*phiShape).c_str(),
                                               "alpha shape [3] requires phi to contain the residual branch"),
         return GRAPH_FAILED);
-    if (phiDim0 == (nn_fac + doubleN)) {
+    if (phiDim0 == packed3Bf16Rows) {
+        nn = nn_pow;
+    } else if (phiDim0 == (nn_fac + doubleN)) {
         nn = nn_fac;
         isFac = true;
     } else {
