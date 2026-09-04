@@ -556,9 +556,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     int32_t ret = hcomm_.BatchCommit(batchHandle);
                     ascendc_assert(ret == 0, "BatchCommit data failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
                                    dstRank);
-                    HcommBatchHandle drainHandle =
-                        hcomm_.MakeBatchHandle(channel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, nullptr);
-                    ret = hcomm_.Drain(drainHandle);
+                    ret = hcomm_.Drain(batchHandle);
                     ascendc_assert(ret == 0, "per-rank data drain failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
                                    dstRank);
 
@@ -573,13 +571,13 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     submittedCount += rankTokenCount;
                 }
 
-                if (relayCount > 0U) {
-                    HcommBatchHandle drainHandle =
-                        hcomm_.MakeBatchHandle(sharedChannel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, nullptr);
-                    int32_t ret = hcomm_.Drain(drainHandle);
-                    ascendc_assert(ret == 0, "data BatchDrain failed, ret=%d, rankId=%u, round=%lu", ret, rankId_,
-                                   round);
-                }
+                // if (relayCount > 0U) {
+                //     HcommBatchHandle drainHandle =
+                //         hcomm_.MakeBatchHandle(sharedChannel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, nullptr);
+                //     int32_t ret = hcomm_.Drain(drainHandle);
+                //     ascendc_assert(ret == 0, "data BatchDrain failed, ret=%d, rankId=%u, round=%lu", ret, rankId_,
+                //                    round);
+                // }
 
                 // Phase 2: data is now remotely visible on every rank. Submit all flag batches.
                 for (uint32_t rankHeadIndex = 0U; rankHeadIndex < relayCount; ++rankHeadIndex) {
@@ -610,15 +608,18 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     int32_t ret = hcomm_.BatchCommit(batchHandle);
                     ascendc_assert(ret == 0, "BatchCommit flag failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
                                    dstRank);
+                    ret = hcomm_.Drain(batchHandle);
+                    ascendc_assert(ret == 0, "per-rank flag drain failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
+                                   dstRank);
                 }
 
-                if (relayCount > 0U) {
-                    HcommBatchHandle drainHandle =
-                        hcomm_.MakeBatchHandle(sharedChannel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, nullptr);
-                    int32_t ret = hcomm_.Drain(drainHandle);
-                    ascendc_assert(ret == 0, "flag BatchDrain failed, ret=%d, rankId=%u, round=%lu", ret, rankId_,
-                                   round);
-                }
+                // if (relayCount > 0U) {
+                //     HcommBatchHandle drainHandle =
+                //         hcomm_.MakeBatchHandle(sharedChannel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, nullptr);
+                //     int32_t ret = hcomm_.Drain(drainHandle);
+                //     ascendc_assert(ret == 0, "flag BatchDrain failed, ret=%d, rankId=%u, round=%lu", ret, rankId_,
+                //                    round);
+                // }
             }
 
             // Core 0 must drain all active channels before workers overwrite their per-core staging slots.
