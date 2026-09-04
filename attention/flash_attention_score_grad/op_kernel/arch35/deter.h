@@ -2678,6 +2678,23 @@ __aicore__ inline bool CalTNDDenseLine(int64_t k, int64_t m, int64_t n, int64_t 
     return true;
 }
 
+__aicore__ inline bool CalTNDDenseLineTranspose(int64_t k, int64_t m, int64_t n, int64_t copies, int64_t j, int64_t r,
+                                                int64_t &w, int64_t &x, int64_t &y)
+{
+    if (j < 1 || j > k || r < 1 || copies <= 0 || m <= 0 || n <= 0) {
+        return false;
+    }
+    const int64_t delta = r - 1;
+    const int64_t x1 = (delta / n) * k + j;
+    if (x1 > m * copies) {
+        return false;
+    }
+    w = (x1 - 1) / m + 1;
+    x = (x1 - 1) % m + 1;
+    y = (x + delta - 1) % n + 1;
+    return true;
+}
+
 __aicore__ inline void CalTNDG2k(int64_t k, int64_t j, int64_t a, int64_t l1, int64_t offset, int64_t &x, int64_t &y)
 {
     if (j % NUM_TWO == 1) {
@@ -2902,6 +2919,38 @@ __aicore__ inline void ExpandTNDCausalRun(const __gm__ uint8_t *actualSeqQlenAdd
 }
 
 template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
+__aicore__ inline void ExpandTNDDenseRun(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
+                                         int64_t b, int64_t bIdx, int64_t &runHead, int64_t &runEnd, int64_t &m,
+                                         int64_t &n, CoordinateInfo &coordinateInfo)
+{
+    LoadTNDOuterMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, bIdx, m, n, coordinateInfo);
+    runHead = bIdx;
+    while (runHead > 0) {
+        int64_t prevM = 0;
+        int64_t prevN = 0;
+        CoordinateInfo prevInfo;
+        LoadTNDOuterMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead - 1, prevM, prevN,
+                                               prevInfo);
+        if (prevM != m || prevN != n) {
+            break;
+        }
+        runHead -= 1;
+    }
+    runEnd = bIdx;
+    while (runEnd + 1 < b) {
+        int64_t nextM = 0;
+        int64_t nextN = 0;
+        CoordinateInfo nextInfo;
+        LoadTNDOuterMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runEnd + 1, nextM, nextN,
+                                               nextInfo);
+        if (nextM != m || nextN != n) {
+            break;
+        }
+        runEnd += 1;
+    }
+}
+
+template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
 __aicore__ inline void LoadTNDBandMN(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
                                      int64_t bIdx, int64_t &m, int64_t &n, int64_t &p, int64_t &q,
                                      CoordinateInfo &coordinateInfo)
@@ -2976,6 +3025,11 @@ __aicore__ inline int64_t GetTNDPrefixTailIndex(int64_t b, int64_t step)
 
 __aicore__ inline void GetTNDLeftUpVirt(int64_t m, int64_t n, int64_t &virtM, int64_t &virtN)
 {
+    if (m < 1 || n < 1) {
+        virtM = 0;
+        virtN = 0;
+        return;
+    }
     if (m < n) {
         n = m;
     }
@@ -2985,17 +3039,24 @@ __aicore__ inline void GetTNDLeftUpVirt(int64_t m, int64_t n, int64_t &virtM, in
 
 __aicore__ inline void GetTNDRightDownVirt(int64_t m, int64_t n, int64_t &virtM, int64_t &virtN)
 {
-    m -= GetTNDRightDownRowShift(m, n);
     if (m < 1 || n < 1) {
         virtM = 0;
         virtN = 0;
         return;
     }
+    m -= GetTNDRightDownRowShift(m, n);
+    if (m < 1) {
+        virtM = 0;
+        virtN = 0;
+        return;
+    }
     virtM = m;
-    virtN = NUM_TWO * n - m + NUM_THREE;
+    virtN = (m == n) ? (n + 1) : (NUM_TWO * n - m + NUM_THREE);
 }
 
 constexpr int64_t TND_LINE_TINY_AREA = 8;
+constexpr uint8_t TND_LINE_COL_MAJOR = 0;
+constexpr uint8_t TND_LINE_ROW_MAJOR = 1;
 
 __aicore__ inline bool TNDRunIsLineWorthy(int64_t k, int64_t virtM, int64_t virtN, int64_t pairCount)
 {
@@ -3003,6 +3064,49 @@ __aicore__ inline bool TNDRunIsLineWorthy(int64_t k, int64_t virtM, int64_t virt
         return false;
     }
     return pairCount > 0 && virtN * pairCount >= k && virtM >= Min(k, virtN);
+}
+
+__aicore__ inline bool TNDRunIsLineWorthyTranspose(int64_t k, int64_t virtM, int64_t virtN, int64_t pairCount)
+{
+    if (virtM <= 0 || virtN <= 0 || virtM * virtN <= TND_LINE_TINY_AREA) {
+        return false;
+    }
+    return pairCount > 0 && virtM * pairCount >= k && virtN >= Min(k, virtM);
+}
+
+__aicore__ inline uint8_t PickTNDLineOrientation(int64_t k, int64_t virtM, int64_t virtN, int64_t copies)
+{
+    if (virtM <= 0 || virtN <= 0 || copies <= 0) {
+        return TND_LINE_COL_MAJOR;
+    }
+    const bool colMajorOk = TNDRunIsLineWorthy(k, virtM, virtN, copies);
+    const bool rowMajorOk = TNDRunIsLineWorthyTranspose(k, virtM, virtN, copies);
+    if (!colMajorOk) {
+        return TND_LINE_ROW_MAJOR;
+    }
+    if (!rowMajorOk) {
+        return TND_LINE_COL_MAJOR;
+    }
+    const int64_t colMajorRounds = Ceil<int64_t>(virtN * copies, k) * virtM;
+    const int64_t rowMajorRounds = Ceil<int64_t>(virtM * copies, k) * virtN;
+    return rowMajorRounds < colMajorRounds ? TND_LINE_ROW_MAJOR : TND_LINE_COL_MAJOR;
+}
+
+__aicore__ inline int64_t CalTNDLineRounds(int64_t k, int64_t virtM, int64_t virtN, int64_t copies,
+                                           uint8_t orientation)
+{
+    if (virtM <= 0 || virtN <= 0 || copies <= 0) {
+        return 0;
+    }
+    return orientation == TND_LINE_ROW_MAJOR ? (Ceil<int64_t>(virtM * copies, k) * virtN) :
+                                               (Ceil<int64_t>(virtN * copies, k) * virtM);
+}
+
+__aicore__ inline bool CalTNDLineIndex(int64_t k, int64_t m, int64_t n, int64_t copies, int64_t j, int64_t r,
+                                       uint8_t orientation, int64_t &w, int64_t &x, int64_t &y)
+{
+    return orientation == TND_LINE_ROW_MAJOR ? CalTNDDenseLineTranspose(k, m, n, copies, j, r, w, x, y) :
+                                               CalTNDDenseLine(k, m, n, copies, j, r, w, x, y);
 }
 
 __aicore__ inline int64_t CalTNDBandWideCols(int64_t m, int64_t n, int64_t p, int64_t q)
@@ -3035,12 +3139,15 @@ __aicore__ inline int64_t CalTNDBandLineRounds(int64_t k, int64_t n1, int64_t m,
         return 0;
     }
     if (p >= m) {
-        return Ceil<int64_t>(n * n1, k) * m;
+        const uint8_t orientation = PickTNDLineOrientation(k, m, n, n1);
+        return CalTNDLineRounds(k, m, n, n1, orientation);
     }
     if (p + q <= m) {
         return CalTNDBandNarrowRounds(k, n1, m, n, p, q);
     }
-    return Ceil<int64_t>(CalTNDBandWideCols(m, n, p, q) * n1, k) * m;
+    const int64_t denseN = CalTNDBandWideCols(m, n, p, q);
+    const uint8_t orientation = PickTNDLineOrientation(k, m, denseN, n1);
+    return CalTNDLineRounds(k, m, denseN, n1, orientation);
 }
 
 __aicore__ inline void MapTNDTriToBatch(int64_t tri, int64_t n1, int64_t runHead, int64_t &batchId)
@@ -3106,6 +3213,16 @@ __aicore__ inline bool MapTNDLeftUp(int64_t m, int64_t n, int64_t pairId, int64_
 __aicore__ inline bool MapTNDRightDown(int64_t m, int64_t n, int64_t pairId, int64_t pairBatchCount, int64_t &x,
                                        int64_t &y, int64_t &n1Id)
 {
+    if (m == n) {
+        if (y >= x + 1) {
+            y = m + NUM_TWO - y;
+            x = m + 1 - x;
+            n1Id = NUM_TWO * pairId;
+        } else {
+            n1Id = NUM_TWO * pairId - 1;
+        }
+        return n1Id >= 1 && n1Id <= pairBatchCount && y >= 1 && y <= n && y <= x && x <= m;
+    }
     const int64_t nExt = n + 1;
     if (y >= x + nExt - m + 1) {
         y = NUM_TWO * nExt - m - y + NUM_TWO;
@@ -3169,16 +3286,25 @@ __aicore__ inline void CalTNDCausalLineRunIndex(const __gm__ uint8_t *actualSeqQ
         const int64_t total = n1 * groupSize;
         const int64_t runPairs = total / NUM_TWO;
         const int64_t pairSpace = runPairs * NUM_TWO;
-        const int64_t pairRounds = (runPairs > 0 && virtN > 0) ? (Ceil<int64_t>(virtN * runPairs, k) * virtM) : 0;
-        const int64_t singleRounds =
-            (total % NUM_TWO == 1) ? (LEFT_UP ? CalTNDSingleCausalRounds(k, m, n) : (Ceil<int64_t>(n, k) * m)) : 0;
+        const uint8_t pairOrientation = PickTNDLineOrientation(k, virtM, virtN, runPairs);
+        const int64_t pairRounds = CalTNDLineRounds(k, virtM, virtN, runPairs, pairOrientation);
+        int64_t singleRounds = 0;
+        uint8_t singleOrientation = TND_LINE_COL_MAJOR;
+        if (total % NUM_TWO == 1) {
+            if (LEFT_UP) {
+                singleRounds = CalTNDSingleCausalRounds(k, m, n);
+            } else {
+                singleOrientation = PickTNDLineOrientation(k, m, n, 1);
+                singleRounds = CalTNDLineRounds(k, m, n, 1, singleOrientation);
+            }
+        }
         const int64_t runRounds = pairRounds + singleRounds;
         if (a <= runRounds) {
             if (a <= pairRounds && runPairs > 0) {
                 int64_t pairId = 0;
                 int64_t x = 0;
                 int64_t y = 0;
-                const bool ok = CalTNDDenseLine(k, virtM, virtN, runPairs, j, a, pairId, x, y);
+                const bool ok = CalTNDLineIndex(k, virtM, virtN, runPairs, j, a, pairOrientation, pairId, x, y);
                 int64_t n1Id = 0;
                 const bool mapped = ok && (LEFT_UP ? MapTNDLeftUp(m, n, pairId, pairSpace, x, y, n1Id) :
                                                      MapTNDRightDown(m, n, pairId, pairSpace, x, y, n1Id));
@@ -3196,7 +3322,8 @@ __aicore__ inline void CalTNDCausalLineRunIndex(const __gm__ uint8_t *actualSeqQ
                 ok = CalTNDSingleCausalPos(k, m, n, j, singleRound, x, y);
             } else {
                 int64_t w = 0;
-                ok = CalTNDDenseLine(k, m, n, 1, j, singleRound, w, x, y) && IsTNDRightDownValid(m, n, x, y);
+                ok = CalTNDLineIndex(k, m, n, 1, j, singleRound, singleOrientation, w, x, y) &&
+                     IsTNDRightDownValid(m, n, x, y);
             }
             if (ok) {
                 BindTNDCausalMappedBatch<CUBE_BASEM, CUBE_BASEN, LEFT_UP>(actualSeqQlenAddr, actualSeqKvlenAddr,
@@ -3221,6 +3348,52 @@ __aicore__ inline void CalTNDCausalLineIndex(const __gm__ uint8_t *actualSeqQlen
     } else {
         CalTNDCausalLineRunIndex<CUBE_BASEM, CUBE_BASEN, true>(actualSeqQlenAddr, actualSeqKvlenAddr, prefix0, b, N1, k,
                                                                j, r, step, coordinateInfo);
+    }
+}
+
+template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
+__aicore__ inline void CalTNDDenseLineIndex(const __gm__ uint8_t *actualSeqQlenAddr,
+                                            const __gm__ uint8_t *actualSeqKvlenAddr, const __gm__ int64_t *prefix,
+                                            int64_t b, int64_t n1, int64_t k, int64_t j, int64_t r, int64_t step,
+                                            CoordinateInfo &coordinateInfo)
+{
+    coordinateInfo.batchId = -1;
+    const int64_t batchTypeBase = BinarySearch(prefix, b, r, step);
+    int64_t a = r - prefix[batchTypeBase];
+    int64_t bIdx = batchTypeBase * step;
+    if (bIdx >= b || a < 1) {
+        return;
+    }
+
+    while (bIdx < b) {
+        int64_t runHead = bIdx;
+        int64_t runEnd = bIdx;
+        int64_t m = 0;
+        int64_t n = 0;
+        ExpandTNDDenseRun<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, b, bIdx, runHead, runEnd, m,
+                                                  n, coordinateInfo);
+        const int64_t groupSize = runEnd - runHead + 1;
+        if (bIdx > runHead) {
+            bIdx = runEnd + 1;
+            continue;
+        }
+        const int64_t copies = n1 * groupSize;
+        const uint8_t orientation = PickTNDLineOrientation(k, m, n, copies);
+        const int64_t runRounds = CalTNDLineRounds(k, m, n, copies, orientation);
+        if (a <= runRounds) {
+            int64_t w = 0;
+            int64_t x = 0;
+            int64_t y = 0;
+            if (CalTNDLineIndex(k, m, n, copies, j, a, orientation, w, x, y) && w >= 1 && w <= copies && x >= 1 &&
+                x <= m && y >= 1 && y <= n) {
+                MapTNDCopyToBatch(w, n1, runHead, coordinateInfo.batchId);
+                coordinateInfo.s1Idx = x;
+                coordinateInfo.s2Idx = y;
+            }
+            return;
+        }
+        a -= runRounds;
+        bIdx = runEnd + 1;
     }
 }
 
@@ -3263,11 +3436,12 @@ __aicore__ inline void CalTNDBandLineIndex(const __gm__ uint8_t *actualSeqQlenAd
         }
 
         if (p >= m) {
+            const uint8_t orientation = PickTNDLineOrientation(k, m, n, copies);
             int64_t w = 0;
             int64_t x = 0;
             int64_t y = 0;
-            if (CalTNDDenseLine(k, m, n, copies, j, a, w, x, y) && w >= 1 && w <= copies && x >= 1 && x <= m &&
-                y >= 1 && y <= n && y <= x + q - 1) {
+            if (CalTNDLineIndex(k, m, n, copies, j, a, orientation, w, x, y) && w >= 1 && w <= copies && x >= 1 &&
+                x <= m && y >= 1 && y <= n && y <= x + q - 1) {
                 BindTNDBandMappedBatch<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead, n1, w, x,
                                                                y, rawP, rawQ, coordinateInfo);
             }
@@ -3276,11 +3450,12 @@ __aicore__ inline void CalTNDBandLineIndex(const __gm__ uint8_t *actualSeqQlenAd
 
         if (p + q > m) {
             const int64_t denseN = CalTNDBandWideCols(m, n, p, q);
+            const uint8_t orientation = PickTNDLineOrientation(k, m, denseN, copies);
             int64_t w = 0;
             int64_t x = 0;
             int64_t y = 0;
-            if (CalTNDDenseLine(k, m, denseN, copies, j, a, w, x, y) && MapTNDBandWide(m, n, p, q, x, y) && w >= 1 &&
-                w <= copies) {
+            if (CalTNDLineIndex(k, m, denseN, copies, j, a, orientation, w, x, y) && MapTNDBandWide(m, n, p, q, x, y) &&
+                w >= 1 && w <= copies) {
                 BindTNDBandMappedBatch<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead, n1, w, x,
                                                                y, rawP, rawQ, coordinateInfo);
             }
