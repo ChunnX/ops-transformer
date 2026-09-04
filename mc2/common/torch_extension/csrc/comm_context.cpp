@@ -216,7 +216,8 @@ class HcclChannelContextBuilder {
 public:
     void Build(const std::string &group, int64_t worldSize, int64_t &cclBufferSize, at::Tensor &contextTensor,
                const std::string &commAlg, const std::string &opName, int64_t customCclBufferSize = 0,
-               void **customDeviceBuffer = nullptr, HcclMemHandle *customMemHandle = nullptr)
+               const py::object &customCclBufferSizeResolver = py::none(), void **customDeviceBuffer = nullptr,
+               HcclMemHandle *customMemHandle = nullptr)
     {
         ASCEND_LOGI("Start to get CommContext Tensor, group: %s", group.c_str());
         InitHcclEngineCtxFunctions();
@@ -234,14 +235,15 @@ public:
             protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
         }
         GetCommProtocol(hcclHandle, protocol);
+        rankNumPerServer_ = rankNumPerUbDomain_;
+        ResolveCustomCclBufferSize(worldSize, customCclBufferSizeResolver);
 
         CommContext commContextStruct;
         BuildContext(hcclHandle, group, opName, protocol, commContextStruct, cclBufferSize);
-        rankNumPerServer_ = rankNumPerUbDomain_;
         commContextStruct.rankSizePerServer = rankNumPerServer_;
 
         CopyContextToTensor(commContextStruct, contextTensor);
-        ASCEND_LOGI("Get CommContext Tensor Success, group: %s, ccl_buffer_size: %d", group.c_str(), cclBufferSize);
+        ASCEND_LOGI("Get CommContext Tensor Success, group: %s, ccl_buffer_size: %ld", group.c_str(), cclBufferSize);
     }
 
     void AcquireHcclHandle(const std::string &group, HcclComm &hcclHandle)
@@ -249,6 +251,18 @@ public:
         auto aclnnRet = HcomGetCommHandleByGroupFunc(group.c_str(), &hcclHandle);
         TORCH_CHECK(aclnnRet == HCCL_SUCCESS, "Get HCCL handle failed, group: ", group.c_str(), ", ret: ", aclnnRet);
         ASCEND_LOGI("Get HCCL communication handle success hcclHandle is: %p", hcclHandle);
+    }
+
+    void ResolveCustomCclBufferSize(int64_t worldSize, const py::object &customCclBufferSizeResolver)
+    {
+        if (topoType_ != TopoType::CROSS_SUPER_NODE || customCclBufferSizeResolver.is_none()) {
+            return;
+        }
+
+        int64_t serverNum = worldSize / rankNumPerServer_;
+        customCclBufferSize_ = customCclBufferSizeResolver(serverNum).cast<int64_t>();
+        ASCEND_LOGI("Recalculated cross-server CCL buffer size: %ld bytes, serverNum: %ld", customCclBufferSize_,
+                    serverNum);
     }
 
     void BuildContext(const HcclComm &hcclHandle, const std::string &group, const std::string &opName,
@@ -739,17 +753,19 @@ class CommContextManager {
 public:
     CommContextManager(const std::string &group, int64_t worldSize, const py::object &backend = py::str("kfc"),
                        const std::string &commAlg = "ub-mem", const std::string &opName = "moe_dispatch_ffn_combine",
-                       int64_t customCclBufferSize = 0)
+                       int64_t customCclBufferSize = 0,
+                       const py::object &customCclBufferSizeResolver = py::none())
         : group_(group),
-          worldSize_(worldSize),
           commAlg_(commAlg),
           opName_(opName),
+          worldSize_(worldSize),
           backend_(backend),
           mode_(BackendMode::UNINITIALIZED),
           cclBufferSize_(0),
           topoType_(TopoType::INTRA_SUPER_NODE),
           rankNumPerServer_(DEFAULT_RANK_NUM_PER_SERVER),
-          customCclBufferSize_(customCclBufferSize)
+          customCclBufferSize_(customCclBufferSize),
+          customCclBufferSizeResolver_(customCclBufferSizeResolver)
     {}
 
     ~CommContextManager()
@@ -774,6 +790,10 @@ public:
 
     void UpdateGroup(const std::string &group, at::Tensor &contextTensor)
     {
+        TORCH_CHECK(customCclBufferSizeResolver_.is_none() ||
+                        (customMemHandle_ == nullptr && customDeviceBuffer_ == nullptr),
+                    "update_group cannot reuse an allocated channel buffer with customCclBufferSizeResolver; "
+                    "create a replacement CommContextManager instead");
         group_ = group;
         cclBufferSize_ = 0;
         EnsureResolved();
@@ -852,7 +872,7 @@ private:
             case BackendMode::CHANNEL: {
                 HcclChannelContextBuilder builder;
                 builder.Build(group_, worldSize_, cclBufferSize_, tensor, commAlg_, opName_, customCclBufferSize_,
-                              &customDeviceBuffer_, &customMemHandle_);
+                              customCclBufferSizeResolver_, &customDeviceBuffer_, &customMemHandle_);
                 localDeviceBuffer_ = customDeviceBuffer_;
                 topoType_ = builder.GetTopoType();
                 rankNumPerServer_ = builder.GetRankNumPerServer();
@@ -873,6 +893,7 @@ private:
     TopoType topoType_ = TopoType::INTRA_SUPER_NODE;
     int64_t rankNumPerServer_ = DEFAULT_RANK_NUM_PER_SERVER;
     int64_t customCclBufferSize_ = 0;
+    py::object customCclBufferSizeResolver_;
     void *customDeviceBuffer_ = nullptr;
     void *localDeviceBuffer_ = nullptr;
     HcclMemHandle customMemHandle_ = nullptr;
@@ -883,10 +904,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     py::class_<CommContextManager>(m, "CommContextManager")
         .def(py::init<const std::string &, int64_t, const py::object &, const std::string &, const std::string &,
-                      int64_t>(),
+                      int64_t, const py::object &>(),
              py::arg("group"), py::arg("worldSize"), py::arg("backend") = std::string("kfc"),
              py::arg("commAlg") = std::string("ub-mem"), py::arg("opName") = std::string("moe_dispatch_ffn_combine"),
-             py::arg("customCclBufferSize") = 0)
+             py::arg("customCclBufferSize") = 0, py::arg("customCclBufferSizeResolver") = py::none())
         .def("create_context", &CommContextManager::CreateContext)
         .def("update_group", &CommContextManager::UpdateGroup, py::arg("group"), py::arg("contextTensor").noconvert())
         .def("destroy", &CommContextManager::Destroy)
