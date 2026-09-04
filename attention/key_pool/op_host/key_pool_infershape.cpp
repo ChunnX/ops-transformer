@@ -76,6 +76,8 @@ ge::graphStatus GetKeyPoolShapeDim(const gert::InferShapeContext *context, KeyPo
     OP_CHECK_NULL_WITH_CONTEXT(context, attr);
     const int64_t *cmpRatioPtr = attr->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
     int64_t cmpRatio = (cmpRatioPtr != nullptr) ? *cmpRatioPtr : CMP_RATIO_VALUE;
+    OP_CHECK_IF(cmpRatio == 0, OP_LOGE(context->GetNodeName(), "cmp_ratio must not be zero"),
+                return ge::GRAPH_FAILED);
     if (hiddenStatesShape->GetDimNum() == DIM_NUM_3) { // BS
         shapeParam.isBsMerge = false;
         shapeParam.B = hiddenStatesShape->GetDim(DIM_INDEX_0);

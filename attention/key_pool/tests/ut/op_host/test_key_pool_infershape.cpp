@@ -104,3 +104,9 @@ TEST(KeyPoolInfershape, EmptyBatch)
     auto para = MakePara("BSH", ge::DT_BF16, 0, 8, 4096, 512, 4, 4, 2);
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{0, 2, 512}});
 }
+
+TEST(KeyPoolInfershape, ZeroCmpRatio)
+{
+    auto para = MakePara("BSH", ge::DT_BF16, 2, 8, 2048, 128, 0, 4, 2);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
