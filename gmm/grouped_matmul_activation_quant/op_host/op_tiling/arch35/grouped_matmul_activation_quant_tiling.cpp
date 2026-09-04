@@ -506,14 +506,12 @@ uint64_t GroupedMatmulActivationQuantTiling950::CalcEpilogueUbBytes(uint64_t bas
     const uint32_t effectiveBufferCount = std::max(bufferCount, EPILOGUE_UB_SINGLE_BUFFER_COUNT);
     const uint64_t mPerVector = GroupedMatmul::CeilDiv(baseM, GroupedMatmul::QUEUE_DOUBLE_BUFFER);
     const uint64_t maxBlockCount = mPerVector * baseN;
-    const uint64_t maxScaleCount =
-        GroupedMatmul::CeilDiv(maxBlockCount, static_cast<uint64_t>(AscendC::ONE_BLK_SIZE));
+    const uint64_t maxScaleCount = GroupedMatmul::CeilDiv(maxBlockCount, static_cast<uint64_t>(AscendC::ONE_BLK_SIZE));
     const uint64_t afterIn = maxBlockCount * sizeof(float);
     const uint64_t scaleBlockBytes = mPerVector * AscendC::ONE_BLK_SIZE * sizeof(int8_t);
-    const uint64_t singleBufferBytes = afterIn + maxBlockCount * sizeof(int8_t) + maxScaleCount * sizeof(int8_t) +
-                                       maxBlockCount * sizeof(uint16_t) +
-                                       maxScaleCount * sizeof(uint16_t) * EPILOGUE_SCALE_INTERMEDIATE_COUNT +
-                                       scaleBlockBytes;
+    const uint64_t singleBufferBytes =
+        afterIn + maxBlockCount * sizeof(int8_t) + maxScaleCount * sizeof(int8_t) + maxBlockCount * sizeof(uint16_t) +
+        maxScaleCount * sizeof(uint16_t) * EPILOGUE_SCALE_INTERMEDIATE_COUNT + scaleBlockBytes;
     const uint64_t extraBufferBytes = maxBlockCount * sizeof(int8_t) + scaleBlockBytes;
     return singleBufferBytes + (effectiveBufferCount - EPILOGUE_UB_SINGLE_BUFFER_COUNT) * extraBufferBytes;
 }
