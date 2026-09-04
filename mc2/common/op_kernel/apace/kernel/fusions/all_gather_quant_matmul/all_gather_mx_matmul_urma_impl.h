@@ -276,8 +276,8 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::AllGather
             }
         }
         if (static_cast<uint32_t>(GetBlockIdx()) < rankSize_) {
-            allGatherScale_.Commit();
-            allGatherData_.Commit();
+            allGatherScale_.Commit(0);
+            allGatherData_.Commit(0);
             allGatherData_.template Wait<BARRIER_DEVICE>();
         }
         AscendC::SyncAll<true>();

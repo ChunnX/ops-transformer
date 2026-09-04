@@ -102,7 +102,7 @@ public:
     }
 
     template <uint8_t BarrierMode = BARRIER_BOTH>
-    __aicore__ inline void Commit()
+    __aicore__ inline void Commit(uint64_t bufferOffset)
     {
         if (remainingChunkSize_ <= 0) {
             return;
@@ -128,7 +128,7 @@ public:
             for (uint32_t i = 0; i < targetRankCnt; i++) {
                 uint32_t targetRankId = targetRankStart + i;
                 static_cast<Impl *>(this)->template DoCommit<BarrierMode>(
-                    targetRankId, currentTileByteSize);
+                    targetRankId, currentTileByteSize, bufferOffset);
             }
         }
 

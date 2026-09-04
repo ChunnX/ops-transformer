@@ -227,26 +227,46 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA, TransB>::RunAllToAll()
 {
-    for (uint32_t tid = 0; tid < baseParams_.commTurn; ++tid) {
+    // 写端 ring 的 slotSize(字节)从 commTilingData 算，与通信层 DoCommit 的 tileMaxByteSize_ 保持一致
+    const auto &commTiling = tilingData_->commTilingData;
+    const auto &scaleTiling = tilingData_->scaleCommTilingData;
+    uint64_t maxTileSize = (commTiling.splitAxisTileSize > commTiling.splitAxisTailSize) ?
+                               commTiling.splitAxisTileSize : commTiling.splitAxisTailSize;
+    uint64_t dataTileMaxByte = maxTileSize * commTiling.nonSplitAxisSize * sizeof(AType);
+    uint64_t scaleTileMaxByte = maxTileSize * scaleTiling.nonSplitAxisSize * sizeof(TypeScaleA);
+    uint64_t dataSlotSize = static_cast<uint64_t>(baseParams_.rankSize) * dataTileMaxByte;
+    uint64_t scaleSlotSize = static_cast<uint64_t>(baseParams_.rankSize) * scaleTileMaxByte;
+    uint32_t dataSlotNum = static_cast<uint32_t>(baseParams_.effBufferCount);
+    uint32_t scaleSlotNum = static_cast<uint32_t>(baseParams_.commTurn);
+
+    Apace::Basic::BufferChannel dataW;
+    Apace::Basic::BufferChannel scaleW;
+    dataW.Init(dataSlotSize, dataSlotNum);
+    scaleW.Init(scaleSlotSize, scaleSlotNum);
+
+    for (uint32_t tid = 0; tid < static_cast<uint32_t>(baseParams_.commTurn); ++tid) {
         // 必选保证baseParams_.rankSize <= BlockNum
-        // win buffer 复用：写 tile tid 会覆盖槽位 tid%bufferCount，需等本端 cube 消费完 tile tid-bufferCount，
-        // 并跨 device 屏障保证对端 cube 也已释放该槽位
-        if (baseParams_.bufferCount > 0 && tid >= baseParams_.bufferCount) {
-            AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE3>(
-                (tid - baseParams_.bufferCount) % Apace::Basic::BufferChannel::FLAG_ID_MODULO);
+        auto dataSlot = dataW.GetNextSlot();   // dataSlot.id = tid % dataSlotNum(即 bufferId,作 flagId)
+        auto scaleSlot = scaleW.GetNextSlot();
+
+        // win buffer 复用：写 tile tid 覆盖槽位 tid%dataSlotNum，需等本端 cube 消费完该槽位
+        // flagId 直接用 bufferId(dataSlot.id)，<14 避开 SyncAll<true> 的 14
+        if (tid >= dataSlotNum) {
+            AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE3>(dataSlot.id);
             AscendC::SyncAll<true>();
             if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
                 teamBarrier_.CrossDevice();
             }
         }
         if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
-            allToAllScaleA_.Commit();
-            allToAllA_.Commit();
-            allToAllA_.template Wait<BARRIER_DEVICE>(); // scale的通信和a矩阵的通信使用同一channel，因此只需要wait一次
+            allToAllScaleA_.Commit(scaleSlot.offset);
+            allToAllA_.Commit(dataSlot.offset);
+            allToAllA_.template Wait<BARRIER_DEVICE>(); // scale与a通信共用channel，只wait一次
         }
 
         AscendC::SyncAll<true>();
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(tid);
+        // data-ready 的 flagId 直接用 bufferId
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(dataSlot.id);
     }
 
     allToAllScaleA_.Finalize();
@@ -288,6 +308,9 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     // release 门控用（0 表示不复用）
     baseParams_.bufferCount = (rawBufferCount > 0 && rawBufferCount < commTiles) ?
                               static_cast<uint32_t>(rawBufferCount) : 0;
+    // bufferId 作 flagId 时深度须 <= 14（避开 SyncAll<true> 的 flagId 14）
+    ascendc_assert(baseParams_.bufferCount <= Apace::Basic::BufferChannel::FLAG_ID_MODULO,
+                   "reuse bufferCount must be <= %u", Apace::Basic::BufferChannel::FLAG_ID_MODULO);
     // 归一化后的 slot 数（不复用时 = commTiles），用于计算 scale 段 winOffset
     baseParams_.effBufferCount = (rawBufferCount > 0 && rawBufferCount < commTiles) ? rawBufferCount : commTiles;
     uint64_t maxTileSize = tilingData->commTilingData.splitAxisTileSize >

@@ -331,11 +331,12 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
 
     Apace::Basic::BufferChannel dataChannel;
     Apace::Basic::BufferChannel scaleChannel;
-    uint32_t dataSlotNum = dataChannel.Init(0, winPerRound, bufferCount, totalTiles);
-    uint32_t scaleSlotNum = scaleChannel.Init(0, winPerRound, totalTiles, totalTiles);
+    uint32_t dataSlotNum = (bufferCount > 0) ? bufferCount : totalTiles;
+    dataChannel.Init(winPerRound, dataSlotNum);
+    scaleChannel.Init(winPerRound, totalTiles);
 
-    uint64_t winTotalM = static_cast<uint64_t>(dataSlotNum) * winPerRound;
-    uint64_t scaleWinTotalM = static_cast<uint64_t>(scaleSlotNum) * winPerRound;
+    uint64_t winTotalM = static_cast<uint64_t>(dataChannel.GetSlotNum()) * winPerRound;
+    uint64_t scaleWinTotalM = static_cast<uint64_t>(scaleChannel.GetSlotNum()) * winPerRound;
 
     // 构建各 Tensor 的全局布局
     auto layoutA = MakeLayoutA{}(winTotalM, Te::Get<MNK_K>(params.problemShape));
@@ -428,10 +429,16 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
 
             // Phase 2: 在 self rank mmad 之后 wait，阻塞后续 shmem 读（去重：同一 tile 只 wait 一次）
             while (readyTileIdx < dependTileIdx) {
+                // release 已被前序 block 读完的 tile（每 block 只读 dependTileIdx 一个 tile）
+                if (readyTileIdx >= 0 &&
+                    readyTileIdx < static_cast<int32_t>(totalTiles) - static_cast<int32_t>(dataSlotNum)) {
+                    AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(static_cast<uint32_t>(readyTileIdx) % dataSlotNum);
+                }
                 readyTileIdx++;
-                commPolicy_.WaitTile(readyTileIdx);
-                dataSlotOffset = dataChannel.GetNextSlotAddr();
-                scaleSlotOffset = scaleChannel.GetNextSlotAddr();
+                auto dataSlot = dataChannel.GetNextSlot();
+                commPolicy_.WaitTile(dataSlot.id);
+                dataSlotOffset = dataSlot.offset;
+                scaleSlotOffset = scaleChannel.GetNextSlot().offset;
             }
             // Phase 3: 遍历其它 rank，在 L0C 上累加（最后一个 rank 触发 fixpipe）
             uint32_t remoteRankCnt = 1;
@@ -460,10 +467,16 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
             auto remoteRankCnt = 0UL;
             // 等待当前 block 依赖的通信 tile 完成（去重：同一 tile 只 wait 一次）
             while (readyTileIdx < dependTileIdx) {
+                // release 已被前序 block 读完的 tile（每 block 只读 dependTileIdx 一个 tile）
+                if (readyTileIdx >= 0 &&
+                    readyTileIdx < static_cast<int32_t>(totalTiles) - static_cast<int32_t>(dataSlotNum)) {
+                    AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(static_cast<uint32_t>(readyTileIdx) % dataSlotNum);
+                }
                 readyTileIdx++;
-                commPolicy_.WaitTile(readyTileIdx);
-                dataSlotOffset = dataChannel.GetNextSlotAddr();
-                scaleSlotOffset = scaleChannel.GetNextSlotAddr();
+                auto dataSlot = dataChannel.GetNextSlot();
+                commPolicy_.WaitTile(dataSlot.id);
+                dataSlotOffset = dataSlot.offset;
+                scaleSlotOffset = scaleChannel.GetNextSlot().offset;
             }
             for (uint64_t rank = 0; rank < rankSize; rank++) {
                 auto denseMPos = rank * oriM + static_cast<uint64_t>(mPos);
@@ -501,27 +514,17 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
                 remoteRankCnt++;
             }
         }
-        // win buffer 复用：本核 dependTileIdx 单调不减，≤ dependTileIdx-1 的 tile 本核不再访问，逐 tile 释放
-        if (!localFirst) {
-            int32_t releaseEnd = dataChannel.GetReleaseBound();
-            if (releaseEnd > dependTileIdx - 1) {
-                releaseEnd = dependTileIdx - 1;
-            }
-            while (dataChannel.GetLastReleaseId() < releaseEnd) {
-                AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(dataChannel.GetCurrentReleaseId());
-            }
-        }
     }
 
     // 存在尾核没用满核，所以这里要等flag兜底
     if (!localFirst) {
-        while (readyTileIdx < totalTiles - 1) {
+        while (readyTileIdx < static_cast<int32_t>(totalTiles) - 1) {
+            if (readyTileIdx >= 0 &&
+                readyTileIdx < static_cast<int32_t>(totalTiles) - static_cast<int32_t>(dataSlotNum)) {
+                AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(static_cast<uint32_t>(readyTileIdx) % dataSlotNum);
+            }
             readyTileIdx++;
-            commPolicy_.WaitTile(readyTileIdx);
-        }
-        // release 兜底：每个 AIC 核（包括未分到 block 的核）都要把 flag 补齐到 release 上界
-        while (dataChannel.GetLastReleaseId() < dataChannel.GetReleaseBound()) {
-            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(dataChannel.GetCurrentReleaseId());
+            commPolicy_.WaitTile(static_cast<uint32_t>(readyTileIdx) % dataSlotNum);
         }
     }
 }
