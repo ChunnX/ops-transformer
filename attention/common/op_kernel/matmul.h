@@ -863,8 +863,10 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTenso
         } else
 #endif
         {
+            // 尾块搬运宽度按分形粒度对齐(对齐D时与legacy原值等价; 非对齐D如72→80, 与Nd2Nz写入组数一致)
             LoadDataToL0A(L0ATensor, aL1Tensor, param, k * L1Aoffset,
-                          (k == (kLoops - 1) && param.loadK != 0) ? param.loadK : tileK, param.singleM); // s2*d,d,s2
+                          (k == (kLoops - 1) && param.loadK != 0) ? (((tileK + 15) >> 4) << 4) : tileK,
+                          param.singleM); // s2*d,d,s2
         }
 
         auto l0bBuffer = bL0BuffsDb.Get();
@@ -879,7 +881,8 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTenso
 #endif
         {
             LoadDataToL0B(L0BTensor, bL1Tensor, param, k * L1Boffset,
-                          (k == (kLoops - 1) && param.loadK != 0) ? param.loadK : tileK, GetLoadN(param), loopNum);
+                          (k == (kLoops - 1) && param.loadK != 0) ? (((tileK + 15) >> 4) << 4) : tileK, GetLoadN(param),
+                          loopNum);
         }
         l0bBuffer.template Set<HardEvent::MTE1_M>(); // mte1搬运完后，通知可以开始matmul
         // l0aBuffer和l0bBuffer共用MTE1_M，在D=512场景减少同步指令数量，提升性能
@@ -1025,7 +1028,7 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor, const LocalTenso
     }
     for (uint32_t n = 0; n < nLoops; n++) {
         uint32_t tileN = (n == (nLoops - 1)) ? tailN : baseN;
-        uint32_t loadTileN = (n == (nLoops - 1) && param.loadN != 0) ? param.loadN : tileN;
+        uint32_t loadTileN = (n == (nLoops - 1) && param.loadN != 0) ? (((tileN + 15) >> 4) << 4) : tileN;
 
         auto l0bBuffer = bL0BuffsDb.Get();
         l0bBuffer.template Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0B
