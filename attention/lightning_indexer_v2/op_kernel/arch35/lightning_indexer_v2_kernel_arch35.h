@@ -878,6 +878,10 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessMain()
         matmulService.FreeEventID();
         CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 0);
         CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(LIV2Common::ConstInfo::CROSS_VC_EVENT + 1);
+        CrossCoreWaitFlag<QLIV2Common::ConstInfo::QLIV2_SYNC_MODE4, PIPE_FIX>(QLIV2Common::ConstInfo::CROSS_VC_EVENT +
+                                                                              0 + QLIV2Common::ConstInfo::AIV0_AIV1_OFFSET);
+        CrossCoreWaitFlag<QLIV2Common::ConstInfo::QLIV2_SYNC_MODE4, PIPE_FIX>(QLIV2Common::ConstInfo::CROSS_VC_EVENT +
+                                                                              1 + QLIV2Common::ConstInfo::AIV0_AIV1_OFFSET);
     }
 }
 
