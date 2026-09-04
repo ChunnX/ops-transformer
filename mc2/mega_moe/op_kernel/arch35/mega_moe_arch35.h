@@ -542,10 +542,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
             gmm2TileSequence = &pairwiseTileSequence;
         }
-        RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                    TopkWeightsPrefetch, false, false, true, CombineQuantMode == COMBINE_NO_QUANT>(
-            sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
-            tokenStartIndexInExpert, &params_, gmm2TileSequence);
+        if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+            CombineEpilogueOp<bfloat16_t> gmm2AivEpilogue(&params_, gmmAddrInfo.metaInfoGlobal);
+            RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
+                        GMM1_TILE_M, TopkWeightsPrefetch, false, false, true, true>(
+                sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
+                tokenStartIndexInExpert, &params_, gmm2TileSequence, &gmm2AivEpilogue);
+        } else {
+            RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
+                        GMM1_TILE_M, TopkWeightsPrefetch, false, false, true, false>(
+                sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
+                tokenStartIndexInExpert, &params_, gmm2TileSequence);
+        }
     }
 
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
