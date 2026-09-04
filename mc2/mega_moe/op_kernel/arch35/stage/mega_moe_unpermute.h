@@ -200,12 +200,20 @@ __aicore__ inline void ProcessTokenUnpermuteBatch(
         WaitFlag<HardEvent::MTE3_V>(outputBufferEvent);
         Cast(scratch.dataResTensor, scratch.dataResFp32Tensor, RoundMode::CAST_RINT, common.tokenHiddenDim);
         constexpr int32_t debugTokenIndex = 9942;
-        constexpr uint32_t debugOutputColumn = 2090U;
-        if (common.tokenNum == 10072U && common.tokenHiddenDim == 3072U && tokenIdx == debugTokenIndex) {
+        constexpr uint32_t debugOutputColumn = 2089U;
+        if (common.rankId == 1U && common.tokenNum == 10072U && common.tokenHiddenDim == 3072U &&
+            tokenIdx == debugTokenIndex) {
             SyncFuncStatic<HardEvent::V_S, SYNC_EVENT_ID4>();
-            bfloat16_t value = scratch.dataResTensor.GetValue(debugOutputColumn);
-            AscendC::printf("[MegaMoeProbe] stage=unpermute_before_store rank=%u token=%u col=%u value=%f\n",
-                            common.rankId, static_cast<uint32_t>(tokenIdx), debugOutputColumn, value);
+            AscendC::printf(
+                "[MegaMoeProbe] stage=unpermute_before_store rank=%u token=%u cols=2086..2092 values=[%f, %f, %f, "
+                "%f, %f, %f, %f]\n",
+                common.rankId, static_cast<uint32_t>(tokenIdx), scratch.dataResTensor.GetValue(debugOutputColumn - 3U),
+                scratch.dataResTensor.GetValue(debugOutputColumn - 2U),
+                scratch.dataResTensor.GetValue(debugOutputColumn - 1U),
+                scratch.dataResTensor.GetValue(debugOutputColumn),
+                scratch.dataResTensor.GetValue(debugOutputColumn + 1U),
+                scratch.dataResTensor.GetValue(debugOutputColumn + 2U),
+                scratch.dataResTensor.GetValue(debugOutputColumn + 3U));
         }
         SyncFuncStatic<HardEvent::V_MTE3, SYNC_EVENT_ID3>();
         DataCopy(output[static_cast<uint64_t>(tokenIdx) * common.tokenHiddenDim], scratch.dataResTensor,
