@@ -19,7 +19,7 @@
 
 #include "quant_matmul_tiling_base.h"
 
-template <mm::DataType aDataType, mm::DataType bDataType>
+template <mm::DataType aDataType, mm::DataType bDataType, mm::BiasDataType biasDtype>
 class QuantMatmulTilingSwat : public QuantMatmulTilingBase<aDataType, bDataType> {
 public:
     QuantMatmulTilingSwat()
@@ -37,11 +37,11 @@ public:
         maxBaseM_ = v;
     }
 
-    // biasDataSize: 4 (fp32) / 2 (fp16, bf16), must match the kernel-side BiasType.
-    void SetBiasInfo(bool hasBias, uint64_t biasDataSize = DATA_SIZE_FP32)
+    // biasDtype is the class template parameter and must match the kernel-side
+    // BiasType instantiation (fp32/fp16/bf16).
+    void SetBiasInfo(bool hasBias)
     {
         hasBias_ = hasBias;
-        biasDataSize_ = biasDataSize;
     }
 
 protected:
@@ -77,7 +77,6 @@ private:
     bool enableBaseMHalving_{false};
     uint64_t maxBaseM_{0};
     bool hasBias_{false};
-    uint64_t biasDataSize_{DATA_SIZE_FP32};
 
 private:
     uint32_t CalcScaleKL1() const
@@ -200,8 +199,10 @@ private:
         uint64_t baseScaleBSize =
             Align(CeilDiv(runInfo_.baseK, MX_GROUP_SIZE), TILING_MXFP_MULTI_BASE_SIZE) * runInfo_.baseN;
         // Bias occupies DB_SIZE ping-pong L1 buffers next to the scale windows.
-        uint64_t biasL1Size = hasBias_ ? DB_SIZE * Align(runInfo_.baseN, CUBE_BLOCK) * biasDataSize_ : 0UL;
-        uint64_t availL1Size = platformInfo_.l1Size - biasL1Size;
+        runInfo_.biasL1Size = hasBias_ ?
+                                  DB_SIZE * Align(runInfo_.baseN, CUBE_BLOCK) * mm::GetBiasDataSize<biasDtype>() :
+                                  0UL;
+        uint64_t availL1Size = platformInfo_.l1Size - runInfo_.biasL1Size;
         uint64_t baseL1Size = baseASize + baseBSize + baseScaleASize + baseScaleBSize;
         uint64_t depthInit = GetDepthA1B1(runInfo_, availL1Size, baseL1Size, 1UL);
         uint64_t leftL1SizeByDepthInit = availL1Size - depthInit * baseL1Size;
@@ -218,14 +219,7 @@ private:
             runInfo_.depthB1 = depthASec < depthBSec ? depthBSec : depthInit;
         }
         CalStepKs(args_, runInfo_);
-        CalScaleFactors(args_, platformInfo_, runInfo_, baseASize, baseBSize, baseScaleASize, baseScaleBSize,
-                        biasL1Size);
-        printf("[QuantMatmul BiasBudget] hasBias=%d biasL1Size=%llu availL1Size=%llu depthA1=%llu depthB1=%llu "
-               "scaleFactorA=%llu scaleFactorB=%llu\n",
-               static_cast<int>(hasBias_), static_cast<unsigned long long>(biasL1Size),
-               static_cast<unsigned long long>(availL1Size), static_cast<unsigned long long>(runInfo_.depthA1),
-               static_cast<unsigned long long>(runInfo_.depthB1), static_cast<unsigned long long>(runInfo_.scaleFactorA),
-               static_cast<unsigned long long>(runInfo_.scaleFactorB));
+        CalScaleFactors(args_, platformInfo_, runInfo_, baseASize, baseBSize, baseScaleASize, baseScaleBSize);
     }
 
     void AdjustBasicBlock()
@@ -489,7 +483,7 @@ private:
 
     void CalScaleFactors(const QuantMatmulArgs &args, const QuantMatmulPlatformInfo &platformInfo,
                          QuantMatmulRunInfo &runInfo, uint64_t baseASize, uint64_t baseBSize, uint64_t baseScaleASize,
-                         uint64_t baseScaleBSize, uint64_t biasL1Size)
+                         uint64_t baseScaleBSize)
     {
         // Scale reuse is solved after A/B depth is fixed. The search keeps the
         // two scale paths balanced while staying inside the leftover L1 budget.
@@ -505,7 +499,7 @@ private:
         // `scaleInit` is the balanced reuse factor both sides can afford
         // without favoring either A or B. Any leftover space is then assigned
         // to the side that can still benefit from deeper scale reuse.
-        uint64_t leftL1Size = platformInfo.l1Size - biasL1Size -
+        uint64_t leftL1Size = platformInfo.l1Size - runInfo.biasL1Size -
                               (runInfo.depthA1 * baseASize + runInfo.depthB1 * baseBSize);
         uint64_t scaleInit = leftL1Size / (runInfo.depthA1 * baseScaleASize + runInfo.depthB1 * baseScaleBSize);
         if (runInfo.scaleFactorA <= scaleInit && runInfo.scaleFactorB > scaleInit) {
