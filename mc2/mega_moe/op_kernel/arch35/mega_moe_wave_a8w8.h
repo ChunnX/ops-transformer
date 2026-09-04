@@ -98,7 +98,8 @@ private:
     __aicore__ inline void ProcessGmmPipeline();
     __aicore__ inline bool IsSameExpertTokenPosition(const ExpertTokenPosition &currentPosition,
                                                      const ExpertTokenPosition &targetPosition) const;
-    __aicore__ inline ExpertTokenPosition DispatchNextWave(ExpertTokenPosition &dispatchPosition);
+    __aicore__ inline ExpertTokenPosition DispatchNextWave(ExpertTokenPosition &dispatchPosition,
+                                                            const TokenDispatchConfig &dispatchConfig);
     __aicore__ inline ExpertTokenPosition ProcessGmm1Wave(ExpertTokenPosition &gmm1Position,
                                                           ExpertLoopState &gmm1ExpertState, GMMAddrInfo &gmm1AddrInfo,
                                                           GmmRuntimeState &runtimeState);
@@ -539,7 +540,7 @@ __aicore__ inline bool MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::IsSameE
 // 规划并 Dispatch 紧接着的一个完整 WAVE，返回更新后的全局专家位置。
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::DispatchNextWave(
-    ExpertTokenPosition &dispatchPosition)
+    ExpertTokenPosition &dispatchPosition, const TokenDispatchConfig &dispatchConfig)
 {
     ExpertTokenRange dispatchRange{dispatchPosition, dispatchPosition};
     ExpertTokenPosition plannedDispatchPosition = dispatchPosition;
@@ -552,8 +553,8 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
         dispatchRange.end = nextDispatchRange.end;
     }
     DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-        tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
-        g_winRankAddr_, tokenDispatchScratch_, dispatchRange);
+        dispatchConfig, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_, g_winRankAddr_,
+        tokenDispatchScratch_, dispatchRange);
     // 整 WAVE 的数据和 ready flag 发布完成后，再提交 Dispatch 进度。
     dispatchPosition = plannedDispatchPosition;
     return dispatchPosition;
@@ -852,6 +853,12 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     ExpertTokenPosition gmm2Position{};
     ExpertTokenPosition preparedWaveEndPosition{};
     bool hasPreparedWave = false;
+    // UB 按 Host 选出的完整 ring（通常为 6 槽）分配；非量化 Combine 路径的启动 W0 使用完整 ring，
+    // 进入与计算重叠的稳态后只激活一个槽位，避免 Dispatch 的 MTE 搬运持续争用 AIC 的 MTE2/FIX_PIPE。
+    TokenDispatchConfig steadyDispatchConfig = tokenDispatchConfig_;
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        steadyDispatchConfig.bufferConfig.bufferCount = 1;
+    }
     uint32_t combineBeginExpertIndex = 0U;
     uint32_t allCoreCombineExpertIndex = moeExpertPerRank_;
 
@@ -880,9 +887,11 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             ProcessGmm1Wave(gmm1Position, gmm1ExpertState, gmm1AddrInfo, gmm1RuntimeState);
         if constexpr (g_coreType == AIV) {
             if (GetSubBlockIdx() == 1U) {
-                waveEndPosition = hasPreparedWave ? preparedWaveEndPosition : DispatchNextWave(dispatchPosition);
+                waveEndPosition = hasPreparedWave
+                                      ? preparedWaveEndPosition
+                                      : DispatchNextWave(dispatchPosition, tokenDispatchConfig_);
                 if (waveEndPosition.expertIdx < moeExpertPerRank_) {
-                    preparedWaveEndPosition = DispatchNextWave(dispatchPosition);
+                    preparedWaveEndPosition = DispatchNextWave(dispatchPosition, steadyDispatchConfig);
                     hasPreparedWave = true;
                 } else {
                     hasPreparedWave = false;

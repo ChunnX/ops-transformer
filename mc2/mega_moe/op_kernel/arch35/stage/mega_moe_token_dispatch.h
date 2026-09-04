@@ -173,6 +173,25 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(const TokenDispatchConfig &c
     FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(context, params, scratch, 0, firstTopkIndex,
                                                               remoteRankIdx, remoteRankGlobalTensor);
 
+    // 单槽稳态不能沿用多槽的“先 Fetch 下一项、再 Store 前一项”顺序：slot 0 尚未 Store 时等待其
+    // MTE3_MTE2/MTE3_S 会形成死锁。单槽严格按 Fetch -> Store 串行，下一项再等待上一项释放 slot。
+    if (bufferCount == 1) {
+        StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+            context, params, scratch, 0, tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor, copyStartIdx,
+            0);
+        for (int32_t copyIdx = 1; copyIdx < copyNum; ++copyIdx) {
+            int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx + copyIdx);
+            FetchDispatchTokenAndMetaInfo<true, TopkWeightsPrefetch>(context, params, scratch, 0, topkIndex,
+                                                                     remoteRankIdx, remoteRankGlobalTensor);
+            StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+                context, params, scratch, 0, tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
+                copyStartIdx, copyIdx);
+        }
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+        return;
+    }
+
     int32_t firstUseEnd = copyNum < bufferCount ? copyNum : bufferCount;
     for (int32_t issueIdx = 1; issueIdx < firstUseEnd; ++issueIdx) {
         int32_t copyIdx = issueIdx - 1;
