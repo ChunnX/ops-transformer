@@ -35,7 +35,6 @@ constexpr Reg::CastTrait castTraitB322B16 = {
     RoundMode::CAST_RINT,
 };
 
-
 template <typename T, typename ROPET>
 __simd_vf__ void HalfModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ubuf__ T *inUb, __ubuf__ ROPET *outUb,
                                 uint32_t row, uint32_t col, uint32_t actualCol, uint64_t baseAddr)
@@ -56,7 +55,6 @@ __simd_vf__ void HalfModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ubuf__ T
     uint32_t maskValue = col / 2;
     Reg::MaskReg mask = Reg::UpdateMask<T>(maskValue);
     uint32_t halfCol = col / 2;
-
 
     for (uint32_t rIdx = 0; rIdx < row; rIdx++) {
         __ubuf__ T *curSinUb = sinUb + rIdx * col;
@@ -79,8 +77,7 @@ __simd_vf__ void HalfModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ubuf__ T
         Reg::Cast<ROPET, T, castTraitB322B16>(vregOutBf16, vregOut, mask);
         Reg::DataCopy<ROPET, Reg::StoreDist::DIST_PACK_B32>(curOutUb + baseAddr, vregOutBf16, mask);
         Reg::Cast<ROPET, T, castTraitB322B16>(vregOutHalfBf16, vregHalfOut, mask);
-        Reg::DataCopy<ROPET, Reg::StoreDist::DIST_PACK_B32>(curOutUb + baseAddr + halfCol, vregOutHalfBf16,
-                                                                      mask);
+        Reg::DataCopy<ROPET, Reg::StoreDist::DIST_PACK_B32>(curOutUb + baseAddr + halfCol, vregOutHalfBf16, mask);
 
         for (uint64_t dOffset = 0; dOffset < baseAddr; dOffset += 64) {
             uint32_t castMaskValue = min(baseAddr - dOffset, static_cast<uint64_t>(64));
@@ -91,7 +88,6 @@ __simd_vf__ void HalfModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ubuf__ T
         }
     }
 }
-
 
 template <typename T, typename ROPET>
 __simd_vf__ void InterleaveModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ubuf__ T *inUb, __ubuf__ ROPET *outUb,
@@ -109,7 +105,6 @@ __simd_vf__ void InterleaveModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ub
     Reg::RegTensor<ROPET> vregCastOut;
     uint32_t maskValue = col;
     Reg::MaskReg mask = Reg::UpdateMask<T>(maskValue);
-
 
     for (uint32_t rIdx = 0; rIdx < row; rIdx++) {
         __ubuf__ T *curSinUb = sinUb + rIdx * col;
@@ -137,7 +132,6 @@ __simd_vf__ void InterleaveModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ub
         }
     }
 }
-
 
 template <Compressor::ROTARY_MODE MODE, typename T, typename ROPET>
 __aicore__ inline void RopeVF(const LocalTensor<T> &sinTensor, const LocalTensor<T> &cosTensor,

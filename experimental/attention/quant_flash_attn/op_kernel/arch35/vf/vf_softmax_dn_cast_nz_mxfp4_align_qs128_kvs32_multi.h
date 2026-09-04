@@ -24,12 +24,10 @@ using AscendC::LocalTensor;
 using namespace AscendC;
 using namespace Reg;
 
-
 template <bool clear_gmax, typename T, typename T2, bool hasAtten = false, uint16_t S1Base = 128>
-__simd_vf__ inline void
-softmax_with_group_max_align_qs128_kvs32_multi_vf(__ubuf__ T2 *pDest, __ubuf__ T *s, __ubuf__ T *local_group_max,
-                                                  __ubuf__ T *global_max, __ubuf__ uint8_t *indexesUb, const T dScale,
-                                                  uint16_t S2BaseAlign32, uint16_t S2BaseAlign64)
+__simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(
+    __ubuf__ T2 *pDest, __ubuf__ T *s, __ubuf__ T *local_group_max, __ubuf__ T *global_max, __ubuf__ uint8_t *indexesUb,
+    const T dScale, uint16_t S2BaseAlign32, uint16_t S2BaseAlign64)
 {
     // ====================== 寄存器定义 ======================
     RegTensor<half> src_c0, src_c1, src_c2, src_c3;
@@ -240,7 +238,7 @@ softmax_with_group_max_align_qs128_kvs32_multi_vf(__ubuf__ T2 *pDest, __ubuf__ T
 
         // 存储下一块最大值到 ulmax (i+1)*128 偏移
         StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>(local_group_max + ((i + 1) * S1Base), next_group_max,
-                                                          preg_valid_max);
+                                                     preg_valid_max);
 
         // 更新当前块最大值，用于下一次循环
         Adds(next_group_max, next_group_max, NEG_TWO_VALE, preg_all_16bit);
@@ -254,11 +252,10 @@ softmax_with_group_max_align_qs128_kvs32_multi_vf(__ubuf__ T2 *pDest, __ubuf__ T
 }
 
 template <bool clear_gmax, typename T, typename T2, bool hasAtten = false, uint16_t S1Base = 128>
-__aicore__ inline void
-SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor,
-                                              const LocalTensor<T> &local_group_max, const LocalTensor<T> &global_max,
-                                              const LocalTensor<uint8_t> &indexesBuf, const T scale,
-                                              uint16_t S2BaseAlign32, uint16_t S2BaseAlign64)
+__aicore__ inline void SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF(
+    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &local_group_max,
+    const LocalTensor<T> &global_max, const LocalTensor<uint8_t> &indexesBuf, const T scale, uint16_t S2BaseAlign32,
+    uint16_t S2BaseAlign64)
 {
     __ubuf__ T2 *pDest = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ T *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();

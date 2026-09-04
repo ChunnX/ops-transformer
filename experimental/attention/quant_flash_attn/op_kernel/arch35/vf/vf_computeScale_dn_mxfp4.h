@@ -27,7 +27,6 @@ using namespace Reg;
 #define VMULSCVT false
 #define DROPOUT false
 
-
 // T: half
 template <bool clear_gmax, typename T, uint16_t m = 128>
 __simd_vf__ inline void computePscaleVF(__ubuf__ uint8_t *mxscale1, __ubuf__ uint8_t *mxscale2, __ubuf__ T *ulmax1,
