@@ -304,6 +304,16 @@ public:
         copyKvGmToL1(l1Tensor, kCacheGm, gmCoord);
     }
 
+    // 提前一轮发起 KV 搬运（只发 MTE2、不等落地），让 MTE2 与 MAC 流水重叠
+    __aicore__ inline void IterateBmm1Load(FlashMlaWithKvcacheRunInfoX &runInfo)
+    {
+        uint32_t kvpL1BufId = runInfo.loop % L1_KVP_BUFCNT;
+        LocalTensor<KV_T> kvpL1Tensor = l1KvpBuffers_[kvpL1BufId * L1_KVP_BUF_BYTES].template ReinterpretCast<KV_T>();
+        Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvpL1BufId);
+        CopyKeyAndRopeTile(kvpL1Tensor, runInfo);
+        Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvpL1BufId);
+    }
+
     __aicore__ inline void FixpipeMm1(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C,
                                       FlashMlaWithKvcacheRunInfoX &runInfo)
     {
@@ -344,9 +354,6 @@ public:
         }
 
         LocalTensor<KV_T> kvpL1Tensor = l1KvpBuffers_[kvpL1BufId * L1_KVP_BUF_BYTES].template ReinterpretCast<KV_T>();
-        Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvpL1BufId);
-        CopyKeyAndRopeTile(kvpL1Tensor, runInfo);
-        Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvpL1BufId);
         Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvpL1BufId);
         {
             Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
