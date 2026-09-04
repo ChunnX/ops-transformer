@@ -13,6 +13,7 @@
 #include "opdev/common_types.h"
 #include "opdev/op_def.h"
 #include "opdev/op_log.h"
+#include "opdev/tensor_view_utils.h"
 
 using namespace op;
 
