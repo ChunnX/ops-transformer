@@ -37,6 +37,13 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FaTilingInfo &faInf
         return ge::GRAPH_SUCCESS;
     }
 
+    // PA_NZ 的 D 轴分形粒度为 16 元素, D=72 非 16 倍数, kernel 内 d1 = headDim/16 截断会静默算错
+    OP_CHECK_IF((faInfo.kvLayout == FaLayout::PA_NZ) && (faInfo.qkHeadDim == 72),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    faInfo.opName, "layout_kv", LayoutToSerialString(faInfo.kvLayout).c_str(),
+                    "When qkHeadDim is 72, layout_kv cannot be PA_NZ (D axis fractal of NZ is 16 elements)"),
+                return ge::GRAPH_FAILED);
+
     OP_CHECK_IF(
         faInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || faInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size", std::to_string(faInfo.blockSize).c_str(),
