@@ -1,0 +1,295 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+
+"""PyTorch registration for GenericBlockSparseAttentionGrad."""
+
+from typing import List, Optional, Tuple
+
+import torch
+from torch.library import impl
+
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+
+GSAG_METADATA_SIZE = (
+    16464  # legacy fallback; actual size is dynamic via calc_gsag_metadata_size
+)
+GSAG_TASK_LIST_OFFSET = 80  # 8 + 2 * 36
+GSAG_TASK_ENTRY_SIZE = 4
+GSAG_METADATA_OP_NAME = "generic_block_sparse_attention_grad_metadata"
+
+
+def calc_gsag_metadata_size(batch_size: int, num_q_heads: int, num_j: int) -> int:
+    """Required metadata int64 length: TASK_LIST_OFFSET + B * N1 * J * TASK_ENTRY_SIZE."""
+    return (
+        GSAG_TASK_LIST_OFFSET + batch_size * num_q_heads * num_j * GSAG_TASK_ENTRY_SIZE
+    )
+
+
+class GenericBlockSparseAttentionGradOpBuilder(OpBuilder):
+    def __init__(self):
+        super().__init__("generic_block_sparse_attention_grad", category="attention")
+
+    def sources(self):
+        """Path to C++ source code (packaged as csrc/attention/*.cpp)."""
+        return ["csrc/attention/generic_block_sparse_attention_grad.cpp"]
+
+    def schema(self):
+        return [
+            "generic_block_sparse_attention_grad_metadata("
+            "Tensor rsvd_block_idx, Tensor rsvd_block_count, "
+            "Tensor? cu_seq_lengths=None, Tensor? cu_seq_lengths_kv=None, "
+            "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
+            "int max_q_seqlen=0, int max_kv_seqlen=0, int num_q_heads=0, int num_kv_heads=0, int head_dim=128, "
+            "int[] block_shape=[1, 128], int is_packed_gqa=1, "
+            'str q_input_layout="TND", str kv_input_layout="TND", '
+            "int mask_type=0, int softmax_precision=0, "
+            "int window_size_left=-1, int window_size_right=-1) -> Tensor",
+            "generic_block_sparse_attention_grad("
+            "Tensor query, Tensor key, Tensor value, Tensor dout, Tensor out, Tensor lse, "
+            "Tensor rsvd_block_idx, Tensor rsvd_block_count, Tensor metadata, "
+            "Tensor? atten_mask=None, Tensor? cu_seq_lengths=None, Tensor? cu_seq_lengths_kv=None, "
+            "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
+            "int[] block_shape=[0], int is_packed_gqa=1, "
+            'str q_input_layout="TND", str kv_input_layout="TND", '
+            "float scale_value=1.0, int mask_type=0, int softmax_precision=0, "
+            "int window_size_left=-1, int window_size_right=-1) -> (Tensor, Tensor, Tensor)",
+        ]
+
+    def register_meta(self):
+        @torch.library.register_fake("cann_ops_transformer::" + GSAG_METADATA_OP_NAME)
+        def generic_block_sparse_attention_grad_metadata_meta(
+            rsvd_block_idx: torch.Tensor,
+            rsvd_block_count: torch.Tensor,
+            cu_seq_lengths: Optional[torch.Tensor] = None,
+            cu_seq_lengths_kv: Optional[torch.Tensor] = None,
+            seqused_q: Optional[torch.Tensor] = None,
+            seqused_kv: Optional[torch.Tensor] = None,
+            max_q_seqlen: int = 0,
+            max_kv_seqlen: int = 0,
+            num_q_heads: int = 0,
+            num_kv_heads: int = 0,
+            head_dim: int = 128,
+            block_shape: Optional[List[int]] = None,
+            is_packed_gqa: int = 1,
+            q_input_layout: str = "TND",
+            kv_input_layout: str = "TND",
+            mask_type: int = 0,
+            softmax_precision: int = 0,
+            window_size_left: int = -1,
+            window_size_right: int = -1,
+        ) -> torch.Tensor:
+            del (
+                rsvd_block_count,
+                cu_seq_lengths,
+                cu_seq_lengths_kv,
+                seqused_q,
+                seqused_kv,
+                max_q_seqlen,
+                num_kv_heads,
+                head_dim,
+                is_packed_gqa,
+                q_input_layout,
+                kv_input_layout,
+                mask_type,
+                softmax_precision,
+                window_size_left,
+                window_size_right,
+            )
+            block_y = 128
+            if block_shape is not None and len(block_shape) >= 2:
+                block_y = int(block_shape[1])
+            batch = int(rsvd_block_idx.shape[0])
+            num_j = int(rsvd_block_idx.shape[2]) if rsvd_block_idx.dim() == 4 else 0
+            if num_j <= 0 and max_kv_seqlen > 0:
+                num_j = (int(max_kv_seqlen) + block_y - 1) // block_y
+            meta_size = calc_gsag_metadata_size(batch, int(num_q_heads), max(num_j, 0))
+            return torch.empty(
+                (meta_size,), dtype=torch.int64, device=rsvd_block_idx.device
+            )
+
+        @torch.library.register_fake(
+            "cann_ops_transformer::generic_block_sparse_attention_grad"
+        )
+        def generic_block_sparse_attention_grad_meta(
+            query: torch.Tensor,
+            key: torch.Tensor,
+            value: torch.Tensor,
+            dout: torch.Tensor,
+            out: torch.Tensor,
+            lse: torch.Tensor,
+            rsvd_block_idx: torch.Tensor,
+            rsvd_block_count: torch.Tensor,
+            metadata: torch.Tensor,
+            atten_mask: Optional[torch.Tensor] = None,
+            cu_seq_lengths: Optional[torch.Tensor] = None,
+            cu_seq_lengths_kv: Optional[torch.Tensor] = None,
+            seqused_q: Optional[torch.Tensor] = None,
+            seqused_kv: Optional[torch.Tensor] = None,
+            block_shape: Optional[List[int]] = None,
+            is_packed_gqa: int = 1,
+            q_input_layout: str = "TND",
+            kv_input_layout: str = "TND",
+            scale_value: float = 1.0,
+            mask_type: int = 0,
+            softmax_precision: int = 0,
+            window_size_left: int = -1,
+            window_size_right: int = -1,
+        ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            del (
+                dout,
+                out,
+                lse,
+                rsvd_block_idx,
+                rsvd_block_count,
+                metadata,
+                atten_mask,
+                cu_seq_lengths,
+                cu_seq_lengths_kv,
+                seqused_q,
+                seqused_kv,
+                block_shape,
+                is_packed_gqa,
+                q_input_layout,
+                kv_input_layout,
+                scale_value,
+                mask_type,
+                softmax_precision,
+                window_size_left,
+                window_size_right,
+            )
+            return (
+                torch.empty_like(query, device="meta"),
+                torch.empty_like(key, device="meta"),
+                torch.empty_like(value, device="meta"),
+            )
+
+
+generic_block_sparse_attention_grad_op_builder = (
+    GenericBlockSparseAttentionGradOpBuilder()
+)
+generic_block_sparse_attention_grad_op_builder._ensure_initialized()
+
+
+@impl(get_as_library(), GSAG_METADATA_OP_NAME, "PrivateUse1")
+def generic_block_sparse_attention_grad_metadata(
+    rsvd_block_idx: torch.Tensor,
+    rsvd_block_count: torch.Tensor,
+    cu_seq_lengths: Optional[torch.Tensor] = None,
+    cu_seq_lengths_kv: Optional[torch.Tensor] = None,
+    seqused_q: Optional[torch.Tensor] = None,
+    seqused_kv: Optional[torch.Tensor] = None,
+    max_q_seqlen: int = 0,
+    max_kv_seqlen: int = 0,
+    num_q_heads: int = 0,
+    num_kv_heads: int = 0,
+    head_dim: int = 128,
+    block_shape: Optional[List[int]] = None,
+    is_packed_gqa: int = 1,
+    q_input_layout: str = "TND",
+    kv_input_layout: str = "TND",
+    mask_type: int = 0,
+    softmax_precision: int = 0,
+    window_size_left: int = -1,
+    window_size_right: int = -1,
+) -> torch.Tensor:
+    if block_shape is None:
+        block_shape = [1, 128]
+    op_module = generic_block_sparse_attention_grad_op_builder.load()
+    return op_module.generic_block_sparse_attention_grad_metadata(
+        rsvd_block_idx,
+        rsvd_block_count,
+        cu_seq_lengths,
+        cu_seq_lengths_kv,
+        seqused_q,
+        seqused_kv,
+        max_q_seqlen,
+        max_kv_seqlen,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        block_shape,
+        is_packed_gqa,
+        q_input_layout,
+        kv_input_layout,
+        mask_type,
+        softmax_precision,
+        window_size_left,
+        window_size_right,
+    )
+
+
+@impl(get_as_library(), "generic_block_sparse_attention_grad", "PrivateUse1")
+def generic_block_sparse_attention_grad(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    dout: torch.Tensor,
+    out: torch.Tensor,
+    lse: torch.Tensor,
+    rsvd_block_idx: torch.Tensor,
+    rsvd_block_count: torch.Tensor,
+    metadata: torch.Tensor,
+    atten_mask: Optional[torch.Tensor] = None,
+    cu_seq_lengths: Optional[torch.Tensor] = None,
+    cu_seq_lengths_kv: Optional[torch.Tensor] = None,
+    seqused_q: Optional[torch.Tensor] = None,
+    seqused_kv: Optional[torch.Tensor] = None,
+    block_shape: Optional[List[int]] = None,
+    is_packed_gqa: int = 1,
+    q_input_layout: str = "TND",
+    kv_input_layout: str = "TND",
+    scale_value: float = 1.0,
+    mask_type: int = 0,
+    softmax_precision: int = 0,
+    window_size_left: int = -1,
+    window_size_right: int = -1,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    if block_shape is None:
+        block_shape = [0]
+    op_module = generic_block_sparse_attention_grad_op_builder.load()
+    return op_module.generic_block_sparse_attention_grad(
+        query,
+        key,
+        value,
+        dout,
+        out,
+        lse,
+        rsvd_block_idx,
+        rsvd_block_count,
+        metadata,
+        atten_mask,
+        cu_seq_lengths,
+        cu_seq_lengths_kv,
+        seqused_q,
+        seqused_kv,
+        block_shape,
+        is_packed_gqa,
+        q_input_layout,
+        kv_input_layout,
+        scale_value,
+        mask_type,
+        softmax_precision,
+        window_size_left,
+        window_size_right,
+    )
+
+
+@torch.library.register_kernel(
+    "cann_ops_transformer::generic_block_sparse_attention_grad", None
+)
+def generic_block_sparse_attention_grad_fallback(*args, **kwargs):
+    return generic_block_sparse_attention_grad(*args, **kwargs)
+
+
+@torch.library.register_kernel("cann_ops_transformer::" + GSAG_METADATA_OP_NAME, None)
+def generic_block_sparse_attention_grad_metadata_fallback(*args, **kwargs):
+    return generic_block_sparse_attention_grad_metadata(*args, **kwargs)
+
+
+torch.compiler.allow_in_graph(generic_block_sparse_attention_grad_metadata)
+torch.compiler.allow_in_graph(generic_block_sparse_attention_grad)
