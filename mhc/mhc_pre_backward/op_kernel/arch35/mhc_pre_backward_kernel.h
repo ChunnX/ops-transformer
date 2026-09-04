@@ -43,7 +43,6 @@ public:
     __aicore__ inline void InitGlobalBuffersAndTiling(InitParams initParams);
     __aicore__ inline void InitUBAndAIVBuffers(InitParams initParams);
     __aicore__ inline void InitStage2AndDataCopy();
-    __aicore__ inline void ResetSharedQueuesForV2();
 
     // V0 流程 (向量计算)
     __aicore__ inline void ProcessV0Main();
@@ -207,7 +206,6 @@ private:
     TQue<QuePosition::VECOUT, 1> vecOutQueue1_;
     TQue<QuePosition::VECIN, 1> vecInQueue1_;
     TQue<QuePosition::VECOUT, 1> vecOutQueueSmall_;
-    TBufPool<QuePosition::VECCALC, 4> sharedInOutPool_;
 
     TBuf<TPosition::VECCALC> fp32TBuf_;
 
@@ -296,10 +294,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
     if ASCEND_IS_AIV {
         pipe_ = initParams.tPipeIn;
         pipe_->InitBuffer(vecInQueue0_, 2, INOUT_QUEUE_SIZE);
-        pipe_->InitBufPool(sharedInOutPool_, SHARED_INOUT_POOL_SIZE);
-        // V0/V1阶段：qin1每槽32KB，qOut每槽16KB，二者均使用双缓冲。
-        sharedInOutPool_.InitBuffer(vecInQueue1_, 2, INOUT_QUEUE_SIZE);
-        sharedInOutPool_.InitBuffer(vecOutQueue1_, 2, HALF_INOUT_QUEUE_SIZE);
+        pipe_->InitBuffer(vecOutQueue1_, 1, INOUT_QUEUE_SIZE);
+        pipe_->InitBuffer(vecInQueue1_, 2, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(vecOutQueueSmall_, 1, SMALL_QUEUE_SIZE);
         pipe_->InitBuffer(fp32TBuf_, FP32_BUF_SIZE);
         globalUbOffset_ = 0; // V0V1部分开始分配fp32TBuf_
@@ -357,10 +353,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::Process()
 
     SyncAll<false>();
 
-    if ASCEND_IS_AIV {
-        ResetSharedQueuesForV2();
-    }
-
     if ASCEND_IS_AIC {
         // 执行矩阵乘法 C0 -> C1
         ProcessC0C1Pipeline();
@@ -376,15 +368,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::Process()
             ProcessV3();
         }
     }
-}
-
-template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::ResetSharedQueuesForV2()
-{
-    // V0/V1已结束，Reset会等待池内队列尚未完成的释放事件，再按V2峰值重新划分同一块UB。
-    sharedInOutPool_.Reset();
-    sharedInOutPool_.InitBuffer(vecInQueue1_, 2, HALF_INOUT_QUEUE_SIZE);
-    sharedInOutPool_.InitBuffer(vecOutQueue1_, 2, INOUT_QUEUE_SIZE);
 }
 
 template <class T, class P>
