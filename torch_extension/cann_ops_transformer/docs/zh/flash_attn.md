@@ -633,7 +633,11 @@ mask_mode参数解释
                     <li>cu_seqlens_kv：第一个元素为0且最后一个元素等于KV_T</li>
                 </ul>
             </td>
-            <td rowspan="2">无</td>
+            <td rowspan="2">
+                <ul>
+                    <li>可选参数</li>
+                </ul>
+            </td>
             <td rowspan="2">无</td>
             <td rowspan="2">
                 <ul>
