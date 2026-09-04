@@ -263,13 +263,8 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
                             std::to_string(MAX_BLOCK_SIZE) + "] and a multiple of " + std::to_string(ALIGN_BLOCK_SIZE)),
                     return ge::GRAPH_FAILED);
     }
-    if (CheckHcqSize() != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    if (CheckDSize() != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    if (CheckDtileSize() != ge::GRAPH_SUCCESS) {
+    if (CheckHcqSize() != ge::GRAPH_SUCCESS || CheckDSize() != ge::GRAPH_SUCCESS ||
+        CheckDtileSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
