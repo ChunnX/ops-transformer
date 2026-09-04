@@ -755,7 +755,7 @@ aclnnStatus InnerBlitzSparseAttentionGetWorkspaceSize(
                    DFX_IN(query, key, value, pseShift, attenMask, sabi, actualSeqLengths, actualSeqLengthsKv,
                           deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2,
                           numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads,
-                          sparseMode, innerPrecise),
+                          sparseMode, innerPrecise, softmaxLseFlag, blockShape),
                    DFX_OUT(attentionOut, softmaxLse));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
