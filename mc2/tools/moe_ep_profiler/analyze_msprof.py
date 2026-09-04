@@ -271,13 +271,25 @@ def _write_report(
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def analyze(input_root: Path, output_dir: Path) -> dict[str, object]:
+def analyze(
+    input_root: Path,
+    output_dir: Path,
+    frequency_mhz_override: float | None = None,
+) -> dict[str, object]:
     input_root = input_root.resolve()
     output_dir = output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     metrics = collect_metrics(input_root)
     summary = summarize_metrics(metrics)
-    frequency = resolve_frequency_mhz(input_root)
+    if frequency_mhz_override is not None and frequency_mhz_override > 0:
+        frequency = {
+            "mhz": float(frequency_mhz_override),
+            "source": "cli --frequency-mhz override",
+            "source_files": [],
+            "observed_mhz": [float(frequency_mhz_override)],
+        }
+    else:
+        frequency = resolve_frequency_mhz(input_root)
     copied = archive_raw(input_root, output_dir / "raw_msprof")
     metric_fields = [
         "source_file",
@@ -335,9 +347,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         help="analysis directory (default: <input>/moe_ep_analysis)",
     )
+    parser.add_argument(
+        "--frequency-mhz",
+        type=float,
+        help="override frequency in MHz; skips OpBasicInfo/platform_config/fallback",
+    )
     args = parser.parse_args(argv)
     output = args.output or args.input / "moe_ep_analysis"
-    manifest = analyze(args.input, output)
+    manifest = analyze(args.input, output, args.frequency_mhz)
     print(json.dumps(manifest, indent=2, ensure_ascii=False))
     return 0
 
