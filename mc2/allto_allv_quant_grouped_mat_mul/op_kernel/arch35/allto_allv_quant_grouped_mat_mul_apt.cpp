@@ -25,21 +25,20 @@ using namespace AscendC;
 using namespace MC2KernelTemplate;
 using namespace Mc2GroupedMatmulTilingData;
 
-#define INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL()                                                                      \
-    do {                                                                                                               \
-        op.Init(gmmxGM, gmmweightGM, sendCountsTensorOptionalGM, recvCountsTensorOptionalGM, mmxOptionalGM,            \
-                mmweightOptionalGM, gmmyGM, mmyOptionalGM, permuteOutOptionalGM, workspaceGM, contextGM, &tilingData,  \
-                hcclInitTiling, alltoAllvCcTiling, &pipe);                                                             \
-        op.Process();                                                                                                  \
+#define INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL() \
+    do { \
+        op.Init(gmmxGM, gmmweightGM, sendCountsTensorOptionalGM, recvCountsTensorOptionalGM, mmxOptionalGM, \
+                mmweightOptionalGM, gmmyGM, mmyOptionalGM, permuteOutOptionalGM, workspaceGM, contextGM, &tilingData, \
+                hcclInitTiling, alltoAllvCcTiling, &pipe); \
+        op.Process(); \
     } while (0)
 
 template <bool TILINGKEY_GMM_WEIGHT_TRANSPOSE, bool TILINGKEY_MM_WEIGHT_TRANSPOSE, int TILINGKEY_COMM_MODE>
-__global__ __aicore__ void
-allto_allv_quant_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM,
-                                 GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM,
-                                 GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM, GM_ADDR mmxScaleGM,
-                                 GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
-                                 GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+__global__ __aicore__ void allto_allv_quant_grouped_mat_mul(
+    GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM,
+    GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM, GM_ADDR mmxOptionalGM,
+    GM_ADDR mmweightOptionalGM, GM_ADDR mmxScaleGM, GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
+    GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     SetSysWorkspace(workspaceGM);
     GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspaceGM);

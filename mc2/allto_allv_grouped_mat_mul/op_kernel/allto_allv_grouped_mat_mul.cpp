@@ -26,11 +26,12 @@ using namespace MC2KernelTemplate;
 using namespace Mc2GroupedMatmulTilingData;
 
 template <bool TILINGKEY_GMM_WEIGHT_TRANSPOSE, bool TILINGKEY_MM_WEIGHT_TRANSPOSE, int TILINGKEY_COMM_MODE>
-__global__ __aicore__ void
-allto_allv_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCountsTensorOptionalGM,
-                           GM_ADDR recvCountsTensorOptionalGM, GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM,
-                           GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM, GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM,
-                           GM_ADDR tilingGM)
+__global__ __aicore__ void allto_allv_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
+                                                      GM_ADDR sendCountsTensorOptionalGM,
+                                                      GM_ADDR recvCountsTensorOptionalGM, GM_ADDR mmxOptionalGM,
+                                                      GM_ADDR mmweightOptionalGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
+                                                      GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM,
+                                                      GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     if (workspaceGM == nullptr) {

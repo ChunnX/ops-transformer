@@ -44,7 +44,6 @@ enum class QuantModeType : int64_t {
     DYN_PERTOKEN_QUANT = 7
 };
 
-
 enum class NnopbaseHcclServerType : uint32_t { // HCCL Server
     NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
     NNOPBASE_HCCL_SERVER_TYPE_MTE,
@@ -417,10 +416,10 @@ static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight
     CHECK_RET(CheckNullStatus(sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional, group,
                               mmYOptional),
               ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(CheckQuantParams(gmmXQuantMode, gmmWeightQuantMode, gmmXScale, gmmWeightScale, mmXQuantMode,
-                               mmWeightQuantMode, mmXOptional, mmWeightOptional, mmXScaleOptional,
-                               mmWeightScaleOptional),
-              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(
+        CheckQuantParams(gmmXQuantMode, gmmWeightQuantMode, gmmXScale, gmmWeightScale, mmXQuantMode, mmWeightQuantMode,
+                         mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional),
+        ACLNN_ERR_PARAM_INVALID);
     if (commQuantMode != 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv", "commQuantMode",
                                               std::to_string(commQuantMode).c_str(), "commQuantMode only supports 0.");

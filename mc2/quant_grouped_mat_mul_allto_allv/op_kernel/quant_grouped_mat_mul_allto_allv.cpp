@@ -30,15 +30,13 @@ struct GMMATAVType { // Grouped_Mat_Mul_All_To_Allv_Type
     static constexpr bool isOptWeightTrans = IS_OPT_WEIGHT_TRANS;
 };
 
-
 template <bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GROUPED_MATMUL_TRANS, bool TILINGKEY_MATMUL_TRANS,
           int TILINGKEY_COMM_MODE>
-__global__ __aicore__ void
-quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM,
-                                 GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM,
-                                 GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM, GM_ADDR mmxScaleGM,
-                                 GM_ADDR mmWeightScaleGM, GM_ADDR commQuantScaleGM, GM_ADDR yGM, GM_ADDR mmyOptionalGM,
-                                 GM_ADDR workspaceGM, GM_ADDR tilingGM)
+__global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
+    GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM,
+    GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM, GM_ADDR mmxOptionalGM,
+    GM_ADDR mmweightOptionalGM, GM_ADDR mmxScaleGM, GM_ADDR mmWeightScaleGM, GM_ADDR commQuantScaleGM, GM_ADDR yGM,
+    GM_ADDR mmyOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     if (workspaceGM == nullptr) {

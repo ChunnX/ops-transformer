@@ -149,9 +149,8 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(
     const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight, bool permuteOutFlag, aclTensor *gmmY,
     aclTensor *mmYOptional, aclTensor *permuteOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    auto ret_param =
-        CheckParams(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
-                    group, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional);
+    auto ret_param = CheckParams(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
+                                 mmWeightOptional, group, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
     auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
