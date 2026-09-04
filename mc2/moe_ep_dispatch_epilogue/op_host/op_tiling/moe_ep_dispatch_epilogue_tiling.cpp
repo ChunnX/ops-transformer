@@ -45,11 +45,13 @@ constexpr uint32_t DST_BUFFER_SLOT_IDX_INDEX = 1U;
 constexpr uint32_t NUM_RECV_PER_RANK_INDEX = 2U;
 constexpr uint32_t NUM_RECV_PER_EXPERT_INDEX = 3U;
 constexpr uint32_t CACHED_RECV_SRC_METADATA_INDEX = 4U;
+constexpr uint32_t CACHED_RECV_RANK_OFFSETS_INDEX = 5U;
 
 constexpr uint32_t OUT_RECV_X_INDEX = 0U;
 constexpr uint32_t OUT_RECV_SRC_METADATA_INDEX = 1U;
 constexpr uint32_t OUT_RECV_TOPK_WEIGHTS_INDEX = 2U;
 constexpr uint32_t OUT_RECV_SCALES_INDEX = 3U;
+constexpr uint32_t OUT_RECV_RANK_OFFSETS_INDEX = 4U;
 
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 0;
 constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;
@@ -190,6 +192,13 @@ static ge::graphStatus CheckInputDataType(const gert::TilingContext *context, co
                         OP_LOGE(nodeName, "cached_recv_src_metadata dtype must be DT_INT32, but got %s.",
                                 ge::TypeUtils::DataTypeToSerialString(recvSrcMetaDesc->GetDataType()).c_str()),
                         return ge::GRAPH_FAILED);
+
+        auto recvRankOffsetsDesc = context->GetInputDesc(CACHED_RECV_RANK_OFFSETS_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(context, recvRankOffsetsDesc);
+        OP_TILING_CHECK(recvRankOffsetsDesc->GetDataType() != ge::DT_INT32,
+                        OP_LOGE(nodeName, "cached_recv_rank_offsets dtype must be DT_INT32, but got %s.",
+                                ge::TypeUtils::DataTypeToSerialString(recvRankOffsetsDesc->GetDataType()).c_str()),
+                        return ge::GRAPH_FAILED);
     }
 
     auto numRecvRankDesc = context->GetInputDesc(NUM_RECV_PER_RANK_INDEX);
@@ -262,6 +271,19 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
         OP_TILING_CHECK(
             metaDim1 != META_INNER_DIM,
             OP_LOGE(nodeName, "cached_recv_src_metadata dim1 must be %ld, but got %ld.", META_INNER_DIM, metaDim1),
+            return ge::GRAPH_FAILED);
+
+        const gert::StorageShape *recvRankOffsetsShape = context->GetInputShape(CACHED_RECV_RANK_OFFSETS_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(context, recvRankOffsetsShape);
+        OP_TILING_CHECK(
+            recvRankOffsetsShape->GetStorageShape().GetDimNum() != ONE_DIM,
+            OP_LOGE(nodeName, "cached_recv_rank_offsets dims must be 1, but got %lu.",
+                    recvRankOffsetsShape->GetStorageShape().GetDimNum()),
+            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            recvRankOffsetsShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(info.cfg.epWorldSize + 1U),
+            OP_LOGE(nodeName, "cached_recv_rank_offsets dim0 must equal ep_world_size + 1=%u, but got %ld.",
+                    info.cfg.epWorldSize + 1U, recvRankOffsetsShape->GetStorageShape().GetDim(0)),
             return ge::GRAPH_FAILED);
     }
 
@@ -433,6 +455,26 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
             return ge::GRAPH_FAILED);
     }
 
+    // ---- recvRankOffsets [ep_world_size + 1] int32 ----
+    auto recvRankOffsetsShape = context->GetOutputShape(OUT_RECV_RANK_OFFSETS_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, recvRankOffsetsShape);
+    OP_TILING_CHECK(
+        recvRankOffsetsShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE(nodeName, "recv_rank_offsets dims must be 1, but got %lu.",
+                recvRankOffsetsShape->GetStorageShape().GetDimNum()),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        recvRankOffsetsShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(info.cfg.epWorldSize + 1U),
+        OP_LOGE(nodeName, "recv_rank_offsets dim0 must equal ep_world_size + 1=%u, but got %ld.",
+                info.cfg.epWorldSize + 1U, recvRankOffsetsShape->GetStorageShape().GetDim(0)),
+        return ge::GRAPH_FAILED);
+    auto recvRankOffsetsDesc = context->GetOutputDesc(OUT_RECV_RANK_OFFSETS_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, recvRankOffsetsDesc);
+    OP_TILING_CHECK(recvRankOffsetsDesc->GetDataType() != ge::DT_INT32,
+                    OP_LOGE(nodeName, "recv_rank_offsets dtype must be DT_INT32, but got %s.",
+                            ge::TypeUtils::DataTypeToSerialString(recvRankOffsetsDesc->GetDataType()).c_str()),
+                    return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -485,6 +527,12 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
         OP_LOGE(nodeName, "Check attr params failed."), return ge::GRAPH_FAILED);
 
     bool cached = (context->GetInputShape(CACHED_RECV_SRC_METADATA_INDEX) != nullptr);
+    bool hasCachedRankOffsets = (context->GetInputShape(CACHED_RECV_RANK_OFFSETS_INDEX) != nullptr);
+    OP_TILING_CHECK(cached != hasCachedRankOffsets,
+                    OP_LOGE(nodeName,
+                            "cached_recv_src_metadata and cached_recv_rank_offsets must either both be provided or "
+                            "both be absent."),
+                    return ge::GRAPH_FAILED);
     info.cached = cached ? 1U : 0U;
 
     auto attrs = context->GetAttrs();
