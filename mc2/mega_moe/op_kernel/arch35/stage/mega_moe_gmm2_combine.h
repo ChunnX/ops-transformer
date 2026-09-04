@@ -612,7 +612,7 @@ __aicore__ inline void StoreNoQuantCombineFragment(uint32_t nLoc, uint32_t n, ui
     gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(
         GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
     uint64_t gmDstOffset = CombineImpl::GetCombineDstRowIndex(route, params) * n + nLoc;
-    DataCopyExtParams ub2GmParams{1U, actualN * sizeof(ElementC), 0U, 0U, 0U};
+    DataCopyExtParams ub2GmParams{1U, static_cast<uint32_t>(actualN * sizeof(ElementC)), 0U, 0U, 0U};
     DataCopyPad(gmRemoteD[gmDstOffset], fragmentUb, ub2GmParams);
     SetFlag<HardEvent::MTE3_MTE2>(eventId);
 }
