@@ -72,9 +72,9 @@ public:
     __aicore__ inline void Process();
 
 private:
+    // bs8/16 热路径内联；bs256 走 LocalWindowCopyPipeline（noinline），互不编进对方
     __aicore__ inline void LocalWindowCopy();
 #if MC2_DTD_OPT_WINCOPY_PIPELINE
-    // 独立函数、禁止内联：避免 bs256 流水与小 bs 原路径编进同一段，抬高寄存器压力
     __aicore__ __attribute__((noinline)) void LocalWindowCopyPipeline();
 #endif
     __aicore__ inline void WaitDispatch();

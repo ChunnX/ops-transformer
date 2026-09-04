@@ -35,12 +35,12 @@
 
 // arch35 性能优化开关（仅本算子）。全 0 时 Communication/CurRankComm/BuffInit 回原逻辑。
 #ifndef MC2_CSU_OPT_OVERLAP_REMOTE
-// 先下发远端 WriteNbi/Commit，再做本卡 GM->UB->win，bs256 本卡拷贝不再堵住 NIC
+// 仅 bs<=16：先远端 WriteNbi 再本卡拷贝。bs256 必须走独立的「先本卡」函数，不能和这条编在一起。
 #define MC2_CSU_OPT_OVERLAP_REMOTE 1
 #endif
 #ifndef MC2_CSU_OPT_LOCAL_COPY_PIPELINE
-// 仅 bs>16：本卡搬运双 buffer；bs8/bs16 保持单 buffer 全 UB，避免一次拷贝被拆成两块
-#define MC2_CSU_OPT_LOCAL_COPY_PIPELINE 1
+// 默认关闭。TQueBind 深度为 1，InitBuffer(2) 在 bs256 上只会拆半 UB、增加 chunk，不能真流水。
+#define MC2_CSU_OPT_LOCAL_COPY_PIPELINE 0
 #endif
 
 namespace MoeDistributeCombineSetupImpl {
@@ -72,9 +72,14 @@ public:
 
 private:
     __aicore__ inline void SplitCoreCal();
-    __aicore__ inline void CurRankComm(const LocalTensor<int32_t> &assistInfoForCombineLocal,
-                                       uint32_t curRankExpertNum);
+    __aicore__ inline __attribute__((always_inline)) void CurRankComm(
+        const LocalTensor<int32_t> &assistInfoForCombineLocal, uint32_t curRankExpertNum);
     __aicore__ inline void Communication();
+    __aicore__ inline __attribute__((always_inline)) void IssueRemoteWrites(
+        const LocalTensor<int32_t> &assistInfoForCombineLocal, uint32_t curRankExpertNum);
+    // bs256：独立函数，禁止内联，避免带上小 bs 的远端先行代码
+    __aicore__ __attribute__((noinline)) void CommLocalThenRemote(const LocalTensor<int32_t> &assistInfoForCombineLocal,
+                                                                  uint32_t curRankExpertNum);
     __aicore__ inline void BuffInit();
     __aicore__ inline void AssistInfoLocalCopy();
 
@@ -103,9 +108,6 @@ private:
 
     TQue<QuePosition::VECIN, 1> assistInfoQueue_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> expertTokenTmpQueue_;
-#if MC2_CSU_OPT_LOCAL_COPY_PIPELINE
-    uint32_t localCopyQueueNum_{1};
-#endif
 
     // =============================== Urma =============================== //
     uint32_t aivId_{0};
@@ -239,36 +241,12 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::BuffInit(
     if (reservedUbSize > totalUbSize) {
         printf("[ERROR] hcomm_.Init UB space is insufficient, reserved=%llu total=%u\n", reservedUbSize, totalUbSize);
     }
-#if MC2_CSU_OPT_LOCAL_COPY_PIPELINE
-    {
-        const uint64_t leftover = totalUbSize - reservedUbSize;
-        const uint64_t halfAlign = (leftover / 2U) / UB_ALIGN * UB_ALIGN;
-        tpipe_->Reset();
-        // bs8/bs16 本卡数据量小，拆半会把一次拷贝拆成两块；bs256 才走双 buffer
-        if (moeDistributeCombineSetupInfo_->bs > 16U && halfAlign > 0U) {
-            remain_ub_space = halfAlign;
-            localCopyQueueNum_ = 2U;
-            if (!tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize)) ||
-                !tpipe_->InitBuffer(expertTokenTmpQueue_, 2, static_cast<uint32_t>(remain_ub_space))) {
-                printf("[ERROR] hcomm_.Init communication buffers failed\n");
-            }
-        } else {
-            remain_ub_space = leftover;
-            localCopyQueueNum_ = 1U;
-            if (!tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize)) ||
-                !tpipe_->InitBuffer(expertTokenTmpQueue_, 1, static_cast<uint32_t>(remain_ub_space))) {
-                printf("[ERROR] hcomm_.Init communication buffers failed\n");
-            }
-        }
-    }
-#else
     remain_ub_space = totalUbSize - reservedUbSize;
     tpipe_->Reset();
     if (!tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize)) ||
         !tpipe_->InitBuffer(expertTokenTmpQueue_, 1, static_cast<uint32_t>(remain_ub_space))) {
         printf("[ERROR] hcomm_.Init communication buffers failed\n");
     }
-#endif
 }
 
 template <TemplateMC2TypeClass>
@@ -290,13 +268,84 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::AssistInf
 }
 
 template <TemplateMC2TypeClass>
+__aicore__ inline __attribute__((always_inline)) void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::IssueRemoteWrites(
+    const LocalTensor<int32_t> &assistInfoForCombineLocal, uint32_t curRankExpertNum)
+{
+    // 数据和状态分离：有token才发数据，每个dstRank始终单独发一次状态
+    uint32_t middleRank = epRankId_ < startRankId_ ? startRankId_ : epRankId_;
+    for (uint32_t dstRankId = middleRank; dstRankId < endRankId_; ++dstRankId) {
+        if (unlikely(dstRankId == epRankId_)) {
+            continue;
+        }
+        auto channelId = GetCommHandle(dstRankId);
+        GM_ADDR dstStatusAddr = GetUrmaStateAddrByRankId(dstRankId) + epStateOffsetOnWin_;
+        for (uint32_t expertIdx = 0U; expertIdx < curRankExpertNum; ++expertIdx) {
+            uint32_t preCount = 0U;
+            uint32_t assistInfoIdx = expertIdx * moeDistributeCombineSetupInfo_->epWorldSize + dstRankId;
+            if (likely(assistInfoIdx > 0U)) {
+                preCount = assistInfoForCombineLocal.GetValue(assistInfoIdx - 1U);
+            }
+            const uint32_t curCount = assistInfoForCombineLocal.GetValue(assistInfoIdx);
+            uint32_t curTokenNum = curCount - preCount;
+            if (curTokenNum == 0U) {
+                continue;
+            }
+            GM_ADDR srcAddr = expandXGM_ + static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_;
+            GM_ADDR dstAddr = GetUrmaAddrByRankId(dstRankId, expertIdx) + epDataOffsetOnWin_;
+            uint64_t lengthU64 = axisHExpandXTypeSize_ * static_cast<uint64_t>(curTokenNum);
+            int32_t dataRet = hcomm_.WriteNbi<false>(channelId, dstAddr, srcAddr, static_cast<uint32_t>(lengthU64));
+            (void)dataRet;
+        }
+        hcomm_.WriteNbi<false>(channelId, dstStatusAddr, statusFlagGM_, UB_ALIGN);
+        hcomm_.Commit(channelId);
+    }
+
+    middleRank = epRankId_ < endRankId_ ? epRankId_ : endRankId_;
+    for (uint32_t dstRankId = startRankId_; dstRankId < middleRank; ++dstRankId) {
+        if (unlikely(dstRankId == epRankId_)) {
+            continue;
+        }
+        auto channelId = GetCommHandle(dstRankId);
+        GM_ADDR dstStatusAddr = GetUrmaStateAddrByRankId(dstRankId) + epStateOffsetOnWin_;
+        for (uint32_t expertIdx = 0U; expertIdx < curRankExpertNum; ++expertIdx) {
+            uint32_t preCount = 0U;
+            uint32_t assistInfoIdx = expertIdx * moeDistributeCombineSetupInfo_->epWorldSize + dstRankId;
+            if (likely(assistInfoIdx > 0U)) {
+                preCount = assistInfoForCombineLocal.GetValue(assistInfoIdx - 1U);
+            }
+            const uint32_t curCount = assistInfoForCombineLocal.GetValue(assistInfoIdx);
+            uint32_t curTokenNum = curCount - preCount;
+            if (curTokenNum == 0U) {
+                continue;
+            }
+            GM_ADDR srcAddr = expandXGM_ + static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_;
+            GM_ADDR dstAddr = GetUrmaAddrByRankId(dstRankId, expertIdx) + epDataOffsetOnWin_;
+            uint64_t lengthU64 = axisHExpandXTypeSize_ * static_cast<uint64_t>(curTokenNum);
+            int32_t dataRet = hcomm_.WriteNbi<false>(channelId, dstAddr, srcAddr, static_cast<uint32_t>(lengthU64));
+            (void)dataRet;
+        }
+        hcomm_.WriteNbi<false>(channelId, dstStatusAddr, statusFlagGM_, UB_ALIGN);
+        hcomm_.Commit(channelId);
+    }
+}
+
+template <TemplateMC2TypeClass>
+__aicore__ __attribute__((noinline)) void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CommLocalThenRemote(
+    const LocalTensor<int32_t> &assistInfoForCombineLocal, uint32_t curRankExpertNum)
+{
+    if (unlikely(epRankId_ >= startRankId_ && epRankId_ < endRankId_)) {
+        CurRankComm(assistInfoForCombineLocal, curRankExpertNum);
+    }
+    IssueRemoteWrites(assistInfoForCombineLocal, curRankExpertNum);
+}
+
+template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communication()
 {
-    // 本卡专家数
     uint32_t curRankExpertNum = (isShardExpert_) ? 1U : moeDistributeCombineSetupInfo_->moeExpertPerRankNum;
     AssistInfoLocalCopy();
     LocalTensor<int32_t> assistInfoForCombineLocal = assistInfoQueue_.DeQue<int32_t>();
-    AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>(); // 等assistInfoQueue_的GM->Local，后续标量读
+    AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>();
 
     uint32_t assistInfoSize = Ceil(moeSendNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     LocalTensor<uint8_t> assistStorage = assistInfoForCombineLocal.ReinterpretCast<uint8_t>();
@@ -308,98 +357,25 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         return;
     }
 
-#if !MC2_CSU_OPT_OVERLAP_REMOTE
-    if (unlikely(epRankId_ >= startRankId_ && epRankId_ < endRankId_)) {
-        // 本卡通信
-        CurRankComm(assistInfoForCombineLocal, curRankExpertNum);
-    }
-#endif
-
-    // 数据和状态分离：有token才发数据，每个dstRank始终单独发一次状态
-    uint32_t middleRank = epRankId_ < startRankId_ ? startRankId_ : epRankId_;
-    for (uint32_t dstRankId = middleRank; dstRankId < endRankId_; ++dstRankId) {
-        if (unlikely(dstRankId == epRankId_)) {
-            continue;
-        }
-        // 每 dst 只取一次 channelId（内含单行 DCCI），Commit 后立刻 Drain，避免二次读 handle
-        auto channelId = GetCommHandle(dstRankId);
-        GM_ADDR dstStatusAddr = GetUrmaStateAddrByRankId(dstRankId) + epStateOffsetOnWin_;
-        for (uint32_t expertIdx = 0U; expertIdx < curRankExpertNum; ++expertIdx) {
-            uint32_t preCount = 0U;
-            uint32_t assistInfoIdx = expertIdx * moeDistributeCombineSetupInfo_->epWorldSize + dstRankId;
-            if (likely(assistInfoIdx > 0U)) {
-                // 计算其他卡或专家已经发了多少token
-                preCount = assistInfoForCombineLocal.GetValue(assistInfoIdx - 1U);
-            }
-            const uint32_t curCount = assistInfoForCombineLocal.GetValue(assistInfoIdx);
-            // 当前要发送的token数量
-            uint32_t curTokenNum = curCount - preCount;
-            if (curTokenNum == 0U) {
-                continue;
-            }
-            GM_ADDR srcAddr = expandXGM_ + static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_;
-            GM_ADDR dstAddr = GetUrmaAddrByRankId(dstRankId, expertIdx) + epDataOffsetOnWin_;
-            uint64_t lengthU64 = axisHExpandXTypeSize_ * static_cast<uint64_t>(curTokenNum);
-            // 数据与状态在同一 Commit 批次里，状态排在最后：任一数据 WQE 失败都会让队列进 error 态
-            // 并 flush 掉后面的状态 WQE，表现为对端状态恒为 0。所以这里必须查返回值。
-            int32_t dataRet = hcomm_.WriteNbi<false>(channelId, dstAddr, srcAddr, static_cast<uint32_t>(lengthU64));
-        }
-        // 无论token是否为0，都独立下发状态，避免WriteWithNotify在length=0时丢notify
-        hcomm_.WriteNbi<false>(channelId, dstStatusAddr, statusFlagGM_, UB_ALIGN);
-        hcomm_.Commit(channelId);
-        // 回收本核负责的 channel CQ，避免同通信域多轮复用时 SQ/CQ 堆积导致后续卡死
-        // 开启时会造成性能下降
-        // hcomm_.Drain(channelId);
-    }
-
-    middleRank = epRankId_ < endRankId_ ? epRankId_ : endRankId_;
-    for (uint32_t dstRankId = startRankId_; dstRankId < middleRank; ++dstRankId) {
-        if (unlikely(dstRankId == epRankId_)) {
-            continue;
-        }
-        // 每 dst 只取一次 channelId（内含单行 DCCI），Commit 后立刻 Drain，避免二次读 handle
-        auto channelId = GetCommHandle(dstRankId);
-        GM_ADDR dstStatusAddr = GetUrmaStateAddrByRankId(dstRankId) + epStateOffsetOnWin_;
-        for (uint32_t expertIdx = 0U; expertIdx < curRankExpertNum; ++expertIdx) {
-            uint32_t preCount = 0U;
-            uint32_t assistInfoIdx = expertIdx * moeDistributeCombineSetupInfo_->epWorldSize + dstRankId;
-            if (likely(assistInfoIdx > 0U)) {
-                // 计算其他卡或专家已经发了多少token
-                preCount = assistInfoForCombineLocal.GetValue(assistInfoIdx - 1U);
-            }
-            const uint32_t curCount = assistInfoForCombineLocal.GetValue(assistInfoIdx);
-            // 当前要发送的token数量
-            uint32_t curTokenNum = curCount - preCount;
-            if (curTokenNum == 0U) {
-                continue;
-            }
-            GM_ADDR srcAddr = expandXGM_ + static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_;
-            GM_ADDR dstAddr = GetUrmaAddrByRankId(dstRankId, expertIdx) + epDataOffsetOnWin_;
-            uint64_t lengthU64 = axisHExpandXTypeSize_ * static_cast<uint64_t>(curTokenNum);
-            // 数据与状态在同一 Commit 批次里，状态排在最后：任一数据 WQE 失败都会让队列进 error 态
-            // 并 flush 掉后面的状态 WQE，表现为对端状态恒为 0。所以这里必须查返回值。
-            int32_t dataRet = hcomm_.WriteNbi<false>(channelId, dstAddr, srcAddr, static_cast<uint32_t>(lengthU64));
-        }
-        // 无论token是否为0，都独立下发状态，避免WriteWithNotify在length=0时丢notify
-        hcomm_.WriteNbi<false>(channelId, dstStatusAddr, statusFlagGM_, UB_ALIGN);
-        hcomm_.Commit(channelId);
-        // 回收本核负责的 channel CQ，避免同通信域多轮复用时 SQ/CQ 堆积导致后续卡死
-        // 开启时会造成性能下降
-        // hcomm_.Drain(channelId);
-    }
-
 #if MC2_CSU_OPT_OVERLAP_REMOTE
-    if (unlikely(epRankId_ >= startRankId_ && epRankId_ < endRankId_)) {
-        // 远端已 Commit，本卡拷贝与 NIC 重叠
-        CurRankComm(assistInfoForCombineLocal, curRankExpertNum);
+    if (moeDistributeCombineSetupInfo_->bs <= 16U) {
+        // bs8/16：与达标版本相同，远端先行 + 单 buffer，全部强制内联进本函数
+        IssueRemoteWrites(assistInfoForCombineLocal, curRankExpertNum);
+        if (unlikely(epRankId_ >= startRankId_ && epRankId_ < endRankId_)) {
+            CurRankComm(assistInfoForCombineLocal, curRankExpertNum);
+        }
+    } else {
+        CommLocalThenRemote(assistInfoForCombineLocal, curRankExpertNum);
     }
+#else
+    CommLocalThenRemote(assistInfoForCombineLocal, curRankExpertNum);
 #endif
 
     assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
 }
 
 template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(
+__aicore__ inline __attribute__((always_inline)) void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(
     const LocalTensor<int32_t> &assistInfoForCombineLocal, uint32_t curRankExpertNum)
 {
     uint32_t curTokenNum = 0;
@@ -407,10 +383,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankCo
         uint32_t preCount = 0U;
         uint32_t assistInfoIdx = expertIdx * moeDistributeCombineSetupInfo_->epWorldSize + epRankId_;
         if (likely(assistInfoIdx > 0U)) {
-            // 计算其他卡或专家已经发了多少token
             preCount = assistInfoForCombineLocal.GetValue(assistInfoIdx - 1U);
         }
-        // 当前要发送的token数量
         curTokenNum = assistInfoForCombineLocal.GetValue(assistInfoIdx) - preCount;
         if (unlikely(curTokenNum == 0U)) {
             continue;
@@ -419,8 +393,6 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankCo
         GM_ADDR srcAddr = expandXGM_ + static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_;
         GM_ADDR dstAddr = GetUrmaAddrByRankId(epRankId_, expertIdx) + epDataOffsetOnWin_;
 
-        // expandX在GM上，winIn也属于GM，
-        // 因此，数据需要GM -> local -> winIn
         GlobalTensor<uint8_t> selfDataSrcTensor;
         GlobalTensor<uint8_t> selfDataDstTensor;
         selfDataSrcTensor.SetGlobalBuffer((__gm__ uint8_t *)srcAddr);
@@ -428,62 +400,30 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankCo
 
         uint64_t sendBytes = static_cast<uint64_t>(curTokenNum) * axisHExpandXTypeSize_;
         DataCopyPadExtParams<uint8_t> padParams{false, 0U, 0U, 0U};
-#if MC2_CSU_OPT_LOCAL_COPY_PIPELINE
-        if (localCopyQueueNum_ > 1U && remain_ub_space > 0U) {
-            const uint64_t totalBytes = sendBytes;
-            const uint64_t chunkNum = (totalBytes + remain_ub_space - 1UL) / remain_ub_space;
-            DataCopyExtParams chunkParams{1U, 0U, 0U, 0U, 0U};
-            chunkParams.blockLen = static_cast<uint32_t>((totalBytes > remain_ub_space) ? remain_ub_space : totalBytes);
-            LocalTensor<uint8_t> preBuf = expertTokenTmpQueue_.AllocTensor<uint8_t>();
-            DataCopyPad(preBuf, selfDataSrcTensor[0], chunkParams, padParams);
-            expertTokenTmpQueue_.EnQue(preBuf);
-            for (uint64_t i = 0UL; i < chunkNum; ++i) {
-                const uint64_t curOff = i * remain_ub_space;
-                const uint64_t curRest = totalBytes - curOff;
-                const uint32_t curLen = static_cast<uint32_t>((curRest > remain_ub_space) ? remain_ub_space : curRest);
-                LocalTensor<uint8_t> curBuf = expertTokenTmpQueue_.DeQue<uint8_t>();
-                if (i + 1UL < chunkNum) {
-                    const uint64_t nextOff = curOff + remain_ub_space;
-                    const uint64_t nextRest = totalBytes - nextOff;
-                    chunkParams.blockLen =
-                        static_cast<uint32_t>((nextRest > remain_ub_space) ? remain_ub_space : nextRest);
-                    LocalTensor<uint8_t> nextBuf = expertTokenTmpQueue_.AllocTensor<uint8_t>();
-                    DataCopyPad(nextBuf, selfDataSrcTensor[nextOff], chunkParams, padParams);
-                    expertTokenTmpQueue_.EnQue(nextBuf);
-                }
-                DataCopyExtParams outParams{1U, curLen, 0U, 0U, 0U};
-                DataCopyPad(selfDataDstTensor[curOff], curBuf, outParams);
-                expertTokenTmpQueue_.FreeTensor<uint8_t>(curBuf);
-            }
-        } else
-#endif
-        {
-            LocalTensor<uint8_t> expertTokenTmpU8 = expertTokenTmpQueue_.AllocTensor<uint8_t>();
-            DataCopyExtParams copyParams{1U, static_cast<uint32_t>(remain_ub_space), 0U, 0U, 0U};
+        LocalTensor<uint8_t> expertTokenTmpU8 = expertTokenTmpQueue_.AllocTensor<uint8_t>();
+        DataCopyExtParams copyParams{1U, static_cast<uint32_t>(remain_ub_space), 0U, 0U, 0U};
 
-            uint64_t i = 0;
-            for (; sendBytes > remain_ub_space; sendBytes -= remain_ub_space) {
-                DataCopyPad(expertTokenTmpU8, selfDataSrcTensor[i * remain_ub_space], copyParams, padParams);
-                expertTokenTmpQueue_.EnQue(expertTokenTmpU8);
-                expertTokenTmpU8 = expertTokenTmpQueue_.DeQue<uint8_t>();
-                DataCopyPad(selfDataDstTensor[i * remain_ub_space], expertTokenTmpU8, copyParams);
-                ++i;
-
-                AscendC::SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-            }
-
-            copyParams.blockLen = sendBytes;
+        uint64_t i = 0;
+        for (; sendBytes > remain_ub_space; sendBytes -= remain_ub_space) {
             DataCopyPad(expertTokenTmpU8, selfDataSrcTensor[i * remain_ub_space], copyParams, padParams);
             expertTokenTmpQueue_.EnQue(expertTokenTmpU8);
             expertTokenTmpU8 = expertTokenTmpQueue_.DeQue<uint8_t>();
             DataCopyPad(selfDataDstTensor[i * remain_ub_space], expertTokenTmpU8, copyParams);
+            ++i;
 
-            expertTokenTmpQueue_.FreeTensor<uint8_t>(expertTokenTmpU8);
+            AscendC::SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
         }
+
+        copyParams.blockLen = sendBytes;
+        DataCopyPad(expertTokenTmpU8, selfDataSrcTensor[i * remain_ub_space], copyParams, padParams);
+        expertTokenTmpQueue_.EnQue(expertTokenTmpU8);
+        expertTokenTmpU8 = expertTokenTmpQueue_.DeQue<uint8_t>();
+        DataCopyPad(selfDataDstTensor[i * remain_ub_space], expertTokenTmpU8, copyParams);
+
+        expertTokenTmpQueue_.FreeTensor<uint8_t>(expertTokenTmpU8);
     }
 
-    AscendC::SyncFunc<AscendC::HardEvent::MTE3_S>(); // 数据拷贝完后才能写状态
-    // 向本卡状态区写状态
+    AscendC::SyncFunc<AscendC::HardEvent::MTE3_S>();
     GlobalTensor<int32_t> selfStatusTensor;
     selfStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(GetUrmaStateAddrByRankId(epRankId_) + epStateOffsetOnWin_));
     selfStatusTensor.SetValue(0, static_cast<int32_t>(STATUS_FLAG_VALUE));
