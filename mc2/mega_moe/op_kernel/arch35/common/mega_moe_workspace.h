@@ -226,11 +226,8 @@ private:
         }
         if (tilingData->topoType == TOPO_TYPE_URMA) {
             maskSlotPtr = base + workspaceSize;
-            int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
-            int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * static_cast<int64_t>(sizeof(int32_t)),
-                                                        static_cast<int64_t>(ALIGN_256)) /
-                                   static_cast<int64_t>(sizeof(int32_t));
-            int64_t maskAlignSize = Ops::Base::CeilAlign(compareCount / 8, static_cast<int64_t>(ALIGN_32));
+            // 本地暂存槽最终会整槽发送到对称窗口，几何必须和 PeermemInfo 一样按全卡上界计算。
+            int64_t maskAlignSize = CalcDispatchMaskAlignSize(tilingData);
             int64_t maskSlotSize = maskAlignSize + static_cast<int64_t>(ALIGN_32); // mask + 32B count
 
             workspaceSize += Ops::Base::CeilAlign(
@@ -271,7 +268,7 @@ private:
                                                                          static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM)) *
                                                       MXFP_MULTI_BASE_SIZE,
                                                   ALIGN_512);
-            // sharedExpertActivationData：SwiGLU 量化输出 [sharedExpertNum × bs × hiddenDim / 2] FP8。
+            // sharedExpertActivationData：门控激活量化输出 [sharedExpertNum × bs × hiddenDim / 2] FP8。
             sharedExpertActivationDataPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
                 SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim / ACTIVATION_N_HALF,
