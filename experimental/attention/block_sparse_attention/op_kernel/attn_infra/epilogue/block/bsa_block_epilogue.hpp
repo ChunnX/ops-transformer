@@ -33,7 +33,7 @@ class BlockEpilogue {
 #include "../../../attn_infra/epilogue/block/block_epilogue_rescale_o_arch35_reg_high_prec_mxfp4.hpp"
 #include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_low_prec.hpp"
 #include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_low_prec_bf16.hpp"
-#include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_low_prec_fp16_mxfp4_mask.hpp"
+#include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_low_prec_fp16_mxfp4.hpp"
 #include "../../../attn_infra/epilogue/block/block_epilogue_compute_pscale_arch35_mxfp4.hpp"
 #include "../../../attn_infra/epilogue/block/block_epilogue_copy_global_max_ub_to_l1_arch35_mxfp4.hpp"
 #endif
