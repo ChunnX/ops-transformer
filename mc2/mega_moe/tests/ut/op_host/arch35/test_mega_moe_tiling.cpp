@@ -8,10 +8,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <cstdint>
 #include <iostream>
 #include <limits>
 #include <vector>
 #include <gtest/gtest.h>
+#include "../../../../op_kernel/arch35/common/mega_moe_workspace.h"
 #include "../../../../op_kernel/arch35/mega_moe_tiling.h"
 #include "mc2_tiling_case_executor.h"
 
@@ -266,7 +268,9 @@ TEST_F(MegaMoeArch35TilingTest, DifferentNConfig)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN_URMA)
+static void RunUrmaVariableBsInputShapeCase(int64_t xBs, int64_t topkIdsBs, int64_t topkWeightsBs,
+                                            int64_t numMaxTokensPerRank, int64_t maxRecvTokenNum,
+                                            ge::graphStatus expectedStatus)
 {
     struct MegaMoeCompileInfo {
     } compileInfo;
@@ -275,13 +279,13 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN_URMA)
         "MegaMoe",
         {
             {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{128, 4096}, {128, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{128, 8}, {128, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{128, 8}, {128, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{4, 2048, 4096}, {4, 2048, 4096}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_FRACTAL_NZ},
-            {{{4, 4096, 1024}, {4, 4096, 1024}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_FRACTAL_NZ},
-            {{{4, 2048, 64, 2}, {4, 2048, 64, 2}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-            {{{4, 4096, 16, 2}, {4, 4096, 16, 2}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+            {{{xBs, 4096}, {xBs, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{topkIdsBs, 8}, {topkIdsBs, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{topkWeightsBs, 8}, {topkWeightsBs, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{8, 2048, 4096}, {8, 2048, 4096}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_FRACTAL_NZ},
+            {{{8, 4096, 1024}, {8, 4096, 1024}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_FRACTAL_NZ},
+            {{{8, 2048, 64, 2}, {8, 2048, 64, 2}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+            {{{8, 4096, 16, 2}, {8, 4096, 16, 2}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
             {{}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{}, ge::DT_INT8, ge::FORMAT_ND},
@@ -294,19 +298,19 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN_URMA)
             {{}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
-            {{{128, 4096}, {128, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{xBs, 4096}, {xBs, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
             {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(67108864)},
-            {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(maxRecvTokenNum)},
             {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
             {"dispatch_quant_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(36)},
             {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+            {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(numMaxTokensPerRank)},
             {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
             {"activation_params",
              Ops::Transformer::AnyValue::CreateFrom<std::vector<float>>({std::numeric_limits<float>::max()})},
@@ -316,102 +320,107 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN_URMA)
             {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"topo_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"rank_num_per_server", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"rank_num_per_server", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"topk_weights_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
         &compileInfo);
-    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
-    uint64_t expectTilingKey = 4112UL;
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 2}};
+    const uint64_t expectedTilingKey = expectedStatus == ge::GRAPH_SUCCESS ? 4112UL : 0UL;
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, expectedStatus, expectedTilingKey);
 }
 
-static void RunUrmaGeneralizedCase(int64_t inputBs, int64_t topkWeightsBs, int64_t numMaxTokensPerRank,
-                                   int64_t maxRecvTokenNum, ge::graphStatus expectedStatus)
+static void RunUrmaVariableBsCase(int64_t bs, int64_t numMaxTokensPerRank, int64_t maxRecvTokenNum,
+                                  ge::graphStatus expectedStatus)
 {
-    struct MegaMoeCompileInfo {
-    } compileInfo;
-
-    gert::TilingContextPara tilingContextPara(
-        "MegaMoe",
-        {
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{inputBs, 4096}, {inputBs, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{inputBs, 8}, {inputBs, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{topkWeightsBs, 8}, {topkWeightsBs, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{4, 768, 4096}, {4, 768, 4096}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_FRACTAL_NZ},
-            {{{4, 4096, 384}, {4, 4096, 384}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_FRACTAL_NZ},
-            {{{4, 768, 64, 2}, {4, 768, 64, 2}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-            {{{4, 4096, 6, 2}, {4, 4096, 6, 2}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{}, ge::DT_INT8, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {{{inputBs, 4096}, {inputBs, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(67108864)},
-            {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(maxRecvTokenNum)},
-            {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"dispatch_quant_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(36)},
-            {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(numMaxTokensPerRank)},
-            {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("situglu")},
-            {"activation_params", Ops::Transformer::AnyValue::CreateFrom<std::vector<float>>({1.0f})},
-            {"activation_out_dtype",
-             Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
-            {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"topo_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"rank_num_per_server", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-            {"topk_weights_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        },
-        &compileInfo);
-    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
-    uint64_t expectTilingKey = expectedStatus == ge::GRAPH_SUCCESS ? 4112UL : 0UL;
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, expectedStatus, expectTilingKey);
+    RunUrmaVariableBsInputShapeCase(bs, bs, bs, numMaxTokensPerRank, maxRecvTokenNum, expectedStatus);
 }
 
-TEST_F(MegaMoeArch35TilingTest, H4096_BS128_N768_SITU_URMA_VariableBS)
+TEST_F(MegaMoeArch35TilingTest, H4096_BS128_NumMaxTokens256_FP8E4M3FN_URMA_2Servers)
 {
-    RunUrmaGeneralizedCase(128, 128, 256, 0, ge::GRAPH_SUCCESS);
+    RunUrmaVariableBsCase(128, 256, 0, ge::GRAPH_SUCCESS);
 }
 
-TEST_F(MegaMoeArch35TilingTest, URMARejectsImplicitNumMaxTokensPerRank)
+TEST_F(MegaMoeArch35TilingTest, H4096_BS128_NumMaxTokensZero_FP8E4M3FN_URMA_2Servers)
 {
-    RunUrmaGeneralizedCase(128, 128, 0, 0, ge::GRAPH_FAILED);
+    RunUrmaVariableBsCase(128, 0, 0, ge::GRAPH_FAILED);
 }
 
-TEST_F(MegaMoeArch35TilingTest, URMARejectsMismatchedTopkWeightsBS)
+TEST_F(MegaMoeArch35TilingTest, H4096_BS128_NumMaxTokens64_FP8E4M3FN_URMA_2Servers)
 {
-    RunUrmaGeneralizedCase(128, 64, 256, 0, ge::GRAPH_FAILED);
+    RunUrmaVariableBsCase(128, 64, 0, ge::GRAPH_FAILED);
 }
 
-TEST_F(MegaMoeArch35TilingTest, URMARejectsRouteCapacityBeyondInt32)
+TEST_F(MegaMoeArch35TilingTest, H4096_BS0_NumMaxTokens256_FP8E4M3FN_URMA_2Servers)
 {
-    RunUrmaGeneralizedCase(128, 128, 268435456, 0, ge::GRAPH_FAILED);
+    RunUrmaVariableBsCase(0, 256, 0, ge::GRAPH_FAILED);
 }
 
-TEST_F(MegaMoeArch35TilingTest, URMARejectsMaxOutputBeyondInt32)
+TEST_F(MegaMoeArch35TilingTest, H4096_BS128_TopkIdsBS64_FP8E4M3FN_URMA_2Servers)
 {
-    RunUrmaGeneralizedCase(128, 128, 256, 2147483648LL, ge::GRAPH_FAILED);
+    RunUrmaVariableBsInputShapeCase(128, 64, 128, 256, 0, ge::GRAPH_FAILED);
 }
 
-TEST_F(MegaMoeArch35TilingTest, URMARejectsZeroBS)
+TEST_F(MegaMoeArch35TilingTest, H4096_BS128_TopkWeightsBS64_FP8E4M3FN_URMA_2Servers)
 {
-    RunUrmaGeneralizedCase(0, 0, 256, 0, ge::GRAPH_FAILED);
+    RunUrmaVariableBsInputShapeCase(128, 128, 64, 256, 0, ge::GRAPH_FAILED);
+}
+
+TEST_F(MegaMoeArch35TilingTest, H4096_RouteCapacityOverflow_FP8E4M3FN_URMA_2Servers)
+{
+    const int64_t numMaxTokensPerRank = static_cast<int64_t>(std::numeric_limits<int32_t>::max()) / 8 + 1;
+    RunUrmaVariableBsCase(128, numMaxTokensPerRank, 0, ge::GRAPH_FAILED);
+}
+
+TEST_F(MegaMoeArch35TilingTest, H4096_OutputCapacityOverflow_FP8E4M3FN_URMA_2Servers)
+{
+    const int64_t numMaxTokensPerRank = static_cast<int64_t>(std::numeric_limits<int32_t>::max()) / 16 + 1;
+    RunUrmaVariableBsCase(128, numMaxTokensPerRank, 0, ge::GRAPH_FAILED);
+}
+
+TEST_F(MegaMoeArch35TilingTest, H4096_MaxRecvTokenNumOverflow_FP8E4M3FN_URMA_2Servers)
+{
+    const int64_t maxRecvTokenNum = static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1;
+    RunUrmaVariableBsCase(128, 256, maxRecvTokenNum, ge::GRAPH_FAILED);
+}
+
+TEST_F(MegaMoeArch35TilingTest, H4096_MaxRecvTokenNumAboveCapacity_FP8E4M3FN_URMA_2Servers)
+{
+    RunUrmaVariableBsCase(128, 256, 4097, ge::GRAPH_FAILED);
+}
+
+TEST_F(MegaMoeArch35TilingTest, BS128_NumMaxTokens256_URMA_MaskWorkspaceUsesCapacity)
+{
+    MegaMoeTilingData tilingData{};
+    tilingData.bs = 128;
+    tilingData.h = 4096;
+    tilingData.hiddenDim = 2048;
+    tilingData.epWorldSize = 2;
+    tilingData.maxOutputSize = 4096;
+    tilingData.topK = 8;
+    tilingData.aicNum = 28;
+    tilingData.moeExpertPerRank = 8;
+    tilingData.combineSyncSlotCountPerExpert = 1;
+    tilingData.topoType = MegaMoeImpl::TOPO_TYPE_URMA;
+    tilingData.numMaxTokensPerRank = 256;
+    tilingData.rankNumPerServer = 1;
+
+    MegaMoeImpl::WorkspaceInfo workspaceInfo(nullptr, &tilingData);
+    const int64_t actualMaskWorkspaceBytes =
+        reinterpret_cast<std::uintptr_t>(workspaceInfo.dispatchRelaySendQueuePtr) -
+        reinterpret_cast<std::uintptr_t>(workspaceInfo.maskSlotPtr);
+    const int64_t capacityMaskSlotBytes =
+        MegaMoeImpl::CalcDispatchMaskAlignSize(&tilingData) + MegaMoeImpl::ALIGN_32;
+    const int64_t expectedMaskWorkspaceBytes = Ops::Base::CeilAlign(
+        static_cast<int64_t>(tilingData.moeExpertPerRank) * tilingData.epWorldSize * capacityMaskSlotBytes,
+        static_cast<int64_t>(MegaMoeImpl::ALIGN_512));
+    const int64_t localBsMaskSlotBytes =
+        MegaMoeImpl::CalcDispatchMaskAlignSizeBy(tilingData.bs, tilingData.topK) + MegaMoeImpl::ALIGN_32;
+    const int64_t localBsMaskWorkspaceBytes = Ops::Base::CeilAlign(
+        static_cast<int64_t>(tilingData.moeExpertPerRank) * tilingData.epWorldSize * localBsMaskSlotBytes,
+        static_cast<int64_t>(MegaMoeImpl::ALIGN_512));
+
+    EXPECT_EQ(actualMaskWorkspaceBytes, expectedMaskWorkspaceBytes);
+    EXPECT_NE(actualMaskWorkspaceBytes, localBsMaskWorkspaceBytes);
 }
 
 static void RunA8W4FormatCase(ge::Format weightOneFormat, ge::Format weightTwoFormat,
