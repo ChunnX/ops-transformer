@@ -36,7 +36,7 @@
 #endif
 
 #include "kernel_operator_list_tensor_intf.h"
-#include "util_regbase.h"
+#include "../../../sparse_flash_mla/op_kernel/arch35/util_regbase.h"
 #include "mixed_quant_sparse_flash_mla_common_arch35.h"
 #if __has_include("../../../sparse_flash_mla/op_kernel/arch35/common/static_matmul.h")
 #include "../../../sparse_flash_mla/op_kernel/arch35/common/static_matmul.h"
