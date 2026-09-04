@@ -135,6 +135,20 @@ inline bool TNDRunIsLineSubstantial(int64_t k, int64_t virtM, int64_t virtN, int
     return TNDRunIsLineWorthy(k, virtM, virtN, copies) || TNDRunIsLineWorthyTranspose(k, virtM, virtN, copies);
 }
 
+constexpr int64_t TND_LINE_ROUND_GAIN_NUM = 10;
+constexpr int64_t TND_LINE_ROUND_GAIN_DEN = 7;
+
+inline bool TNDLineBeatsLegacy(int64_t rLine, int64_t rOld)
+{
+    if (rLine <= 0) {
+        return false;
+    }
+    if (rOld <= 0) {
+        return true;
+    }
+    return rLine * TND_LINE_ROUND_GAIN_NUM <= rOld * TND_LINE_ROUND_GAIN_DEN;
+}
+
 inline uint8_t PickTNDLineOrientation(int64_t k, int64_t virtM, int64_t virtN, int64_t copies)
 {
     if (virtM <= 0 || virtN <= 0 || copies <= 0) {
@@ -544,11 +558,11 @@ protected:
         CalcleTNDDenseDeterParam();
         CalcleTNDCausalDeterParam();
         CalcleTNDBandDeterParam();
-        // Tiny tails (e.g. S=109 -> 1 cube) must not drop a Line-worthy pack back to legacy.
-        if (preferLine && linePack.rLine > 0) {
+        if (preferLine && TNDLineBeatsLegacy(linePack.rLine, fBaseParams.deterMaxRound)) {
             ApplyTNDLineDeterParam(fBaseParams, linePack);
         }
-        OP_LOGD("CalcleTNDDeterParam", "TND deterMaxRound is %ld, tndLineDeter=%u, preferLine=%d, rLine=%ld.",
+        OP_LOGD("CalcleTNDDeterParam",
+                "TND deterMaxRound is %ld, tndLineDeter=%u, preferLine=%d, rLine=%ld.",
                 fBaseParams.deterMaxRound, static_cast<uint32_t>(fBaseParams.tndLineDeter),
                 static_cast<int>(preferLine), linePack.rLine);
     }
