@@ -87,7 +87,7 @@ public:
                            nonSplitAxisBytes;
 
         uint64_t commTiles = tilingData_->splitAxisTileCnt + tilingData_->splitAxisTailCnt;
-        bufferCount_ = tilingData_->bufferCount;
+        bufferCount_ = tilingData_->slotNum;
         if (bufferCount_ == 0 || bufferCount_ >= commTiles) {
             bufferCount_ = commTiles;
         }
