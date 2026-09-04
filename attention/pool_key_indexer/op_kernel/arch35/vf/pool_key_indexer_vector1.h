@@ -193,8 +193,6 @@ __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<float> &out_,
     {
         AscendC::MicroAPI::RegTensor<uint32_t> regIn[2];
         AscendC::MicroAPI::RegTensor<float> regOut[2];
-        AscendC::MicroAPI::RegTensor<float> regOutValue;
-        AscendC::MicroAPI::RegTensor<float> regInvalid;
         AscendC::MicroAPI::MaskReg maskAllB32 =
             AscendC::MicroAPI::CreateMask<uint32_t, AscendC::MicroAPI::MaskPattern::ALL>();
         AscendC::MicroAPI::MaskReg maskAllB32f =
@@ -207,11 +205,18 @@ __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<float> &out_,
             UIntToSortableKey<float>(regOut[0], regIn[0], uint32Ctx, maskAllB32);
             UIntToSortableKey<float>(regOut[1], regIn[1], uint32Ctx, maskAllB32);
 
-            AscendC::MicroAPI::DeInterleave(regOutValue, regInvalid, regOut[0], regOut[1]);
-
+            // float 版本入/出同宽(4B->4B), 不能沿用 bf16/fp16 版本的
+            // DeInterleave 半宽合并模式: 同宽寄存器对上 DeInterleave 是
+            // 2:1 元素抽取(丢弃奇数位元素), 且单次 StoreAlign 只写 64 lane,
+            // 会造成 out[k]=in[2k] 且 [128i+64,128i+128) 残留脏数据。
+            // 正确做法: 两个 64 lane 寄存器分别落回各自位置。
             AscendC::MicroAPI::StoreAlign<float, AscendC::MicroAPI::StoreDist::DIST_NORM>(
                 outBuf + i * repeatSize32,
-                regOutValue,
+                regOut[0],
+                maskAllB32f);
+            AscendC::MicroAPI::StoreAlign<float, AscendC::MicroAPI::StoreDist::DIST_NORM>(
+                outBuf + i * repeatSize32 + 64,
+                regOut[1],
                 maskAllB32f);
         }
     }

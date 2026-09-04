@@ -180,7 +180,7 @@ def test_aclgraph_bsnd_device_value():
     dtype = torch.float16
     ps, topk, mask_mode = 16, 128, 3
     batch, s1, pools, n1 = 2, 64, 16, 8
-    dev = "npu:0"
+    dev = f"npu:{get_device_id()}"
 
     query = torch.randn(batch, s1, n1, HEAD_DIM, dtype=dtype, device=dev)
     pool_key = torch.randn(batch, pools, N2, HEAD_DIM, dtype=dtype, device=dev)
@@ -277,7 +277,7 @@ def test_aclgraph_tnd_device_value():
     k_pools = [12, 20]
     n1 = 8
     t1 = sum(q_lens)
-    dev = "npu:0"
+    dev = f"npu:{get_device_id()}"
 
     query = torch.randn(t1, n1, HEAD_DIM, dtype=dtype, device=dev)
     pool_key = torch.randn(sum(k_pools), N2, HEAD_DIM, dtype=dtype, device=dev)
@@ -385,7 +385,7 @@ def test_aclgraph_bsnd_host_value():
     dtype = torch.float16
     ps, topk, mask_mode = 16, 128, 3
     batch, s1, pools, n1 = 2, 64, 16, 8
-    dev = "npu:0"
+    dev = f"npu:{get_device_id()}"
 
     query = torch.randn(batch, s1, n1, HEAD_DIM, dtype=dtype, device=dev)
     pool_key = torch.randn(batch, pools, N2, HEAD_DIM, dtype=dtype, device=dev)
@@ -465,7 +465,7 @@ def test_aclgraph_tnd_host_value():
     k_pools = [12, 20]
     n1 = 8
     t1 = sum(q_lens)
-    dev = "npu:0"
+    dev = f"npu:{get_device_id()}"
 
     query = torch.randn(t1, n1, HEAD_DIM, dtype=dtype, device=dev)
     pool_key = torch.randn(sum(k_pools), N2, HEAD_DIM, dtype=dtype, device=dev)
@@ -545,7 +545,7 @@ def test_value_input_host_validation_routing():
     精确拒绝, 证明 Array 变体路径未被 Tensor 变体改造破坏。
     """
     torch.manual_seed(42)
-    dev = "npu:0"
+    dev = f"npu:{get_device_id()}"
     ps, topk = 16, 128
     q = torch.randn(1, 64, 8, HEAD_DIM, dtype=torch.float16, device=dev)
     k = torch.randn(1, 16, N2, HEAD_DIM, dtype=torch.float16, device=dev)

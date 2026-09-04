@@ -627,7 +627,10 @@ def _normalize_key_npu(pool_key, actual_seq_k, block_table, layout_k, device):
         raise ValueError("layout_k='PA_BBND' requires block_table")
     p_idx = torch.arange(pm, device=device)
     blk_col = (p_idx // block_size).clamp(0, block_table.shape[1] - 1)  # (Pm,)
-    blk = block_table[:, blk_col].long()  # (B, Pm), 空槽 -1
+    # index_select 避免 torch_npu(2.9.0.post2) advanced indexing bug:
+    # x[:, idx] 在 NPU 上输出周期性错乱(result[b][j] = x_flat[(b+j)%n]),
+    # CPU 正确; index_select/gather 实测正确
+    blk = block_table.index_select(1, blk_col).long()  # (B, Pm), 空槽 -1
     pool_valid = p_idx[None, :] < k_counts_t[:, None]
     blk_safe = blk.clamp(min=0)  # 无效槽位指向物理块 0, 数据由掩码丢弃
     rows = blk_safe * block_size + (p_idx % block_size)[None, :]  # (B, Pm)

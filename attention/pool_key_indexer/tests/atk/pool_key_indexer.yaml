@@ -9,11 +9,25 @@ generate: pki_gen
 dtype_numbers: 700
 extra_numbers: 0
 standard:
+  # 双标杆精度标准(自定义比较器见 pool_key_indexer_compare.py):
+  #   - 名字包含 "benchmark" 触发 ATK 真值任务(CPU 金标升精度, 输出落盘 cpu_benchmark/);
+  #   - indices(整型): 算子 vs 真值 集合比对(逐行有效索引排序集合相等, 100% 行通过);
+  #   - values(浮点): 按索引排序后双标杆对比(算子/标杆 vs 真值, Actual/Benchmark 比例门禁)。
   acc:
-    cv_fused_double_benchmark:
-      max_re_ratio: 2
-      avg_re_ratio: 1.2
-      root_mean_squared_ratio: 1.2
+    pki_double_benchmark:
+      max_re_ratio: 2        # max_re 的 Actual/Benchmark 比例上限
+      avg_re_ratio: 1.2      # avg_re 的 Actual/Benchmark 比例上限
+      rmse_ratio: 1.2        # rmse 的 Actual/Benchmark 比例上限
+      row_pass_ratio: 1.0    # indices 集合比对行通过率阈值(1.0 = 严格 100%)
+      abs_floor: 1.0e-5      # 误差噪声 floor(双方均低于该值视为精确一致)
+      denom_floor: 1.0e-3    # 相对误差分母下限(小值域转绝对误差口径)
+      # ---- 索引并列翻转容忍(TopK 边界近并列分数的取舍随计算路径翻转, 非选池错误) ----
+      tie_rtol: 1.0e-2       # 翻转池分数差容忍(相对); 差异行池分数差<=该值判为并列翻转
+      max_flip_pools: 2      # 单行翻转的最大差集池数(差集不等量=真错误, 直接失败)
+      flip_row_ratio: 1.0e-2 # rv=False 无 values 分数仲裁时的结构翻转行比例上限(兜底防蒙混)
+      # ---- values 精度比对开关 ----
+      skip_values_compare: true  # 默认 false=正常比对 values; true=跳过 values 精度比对
+                                  # (rv=True 用例 values 直接判定通过, 仅保留 indices 门禁)
   perf: not_key
 inputs:
   - name: query

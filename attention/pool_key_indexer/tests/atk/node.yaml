@@ -1,17 +1,22 @@
-# PoolKeyIndexer ATK 节点配置 (复检模式)
+# PoolKeyIndexer ATK 节点配置 (双标杆精度标准)
 #
-# 双标杆 (cv_fused_double_benchmark) 精度复检节点:
-#   - operator: 算子执行端, PyAclnn 后端, NPU 0 号卡
-#   - golden  : 标杆执行端, CPU 后端
+# 节点拓扑(pki_double_benchmark 双标杆):
+#   - operator:  算子执行端, PyAclnn 后端(aclnnPoolKeyIndexer 直调), 主节点;
+#   - npu_golden: NPU 组合标杆(torch 标准算子向量化, 与 pytest 一致), 参与比对;
+#   - 真值:      无需配置节点 —— 精度标准名含 "benchmark", ATK 自动追加
+#     benchmark 任务(CPU 金标升精度 fp16/bf16->fp32), 输出落盘 cpu_benchmark/。
 #
-# 复检模式使用 accuracy_lt 任务, 触发 cv_fused 复检流程
+# 用法(与 run.sh 等价, 二选一):
+#   atk task -c result/pool_key_indexer/json/all_pool_key_indexer.json \
+#       -n node.yaml -p . --task accuracy -s 0 -e 10 -cp
 
 nodes:
   - backend: pyaclnn
-    task: ['accuracy_lt']
-    devices: [0]
+    task: ['accuracy']
+    devices: [2]
     name: operator
 
-  - backend: cpu
-    task: ['accuracy_lt']
-    name: golden
+  - backend: npu
+    task: ['accuracy']
+    devices: [2]
+    name: npu_golden
