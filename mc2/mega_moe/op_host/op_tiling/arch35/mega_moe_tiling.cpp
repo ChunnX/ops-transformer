@@ -449,8 +449,7 @@ static ge::graphStatus CheckSituGluActivationParams(const float *activationParam
 }
 
 /*
- * URMA 路径的 kernel 目前只实现了 swiglu，别的激活还没接上。
- * 在 host 就拦掉，免得跑到板上才发现这条路走不通。
+ * URMA Layered 已接入 situglu 分派；其余扩展激活仍保持原约束。
  */
 static ge::graphStatus CheckActivationTopoConstraint(const gert::TilingContext *context, MegaMoeConfig &config,
                                                      const char *activationPtr, const char *nodeName)
@@ -458,8 +457,9 @@ static ge::graphStatus CheckActivationTopoConstraint(const gert::TilingContext *
     auto attrs = context->GetAttrs();
     auto topoTypePtr = attrs->GetAttrPointer<int64_t>(config.attrTopoTypeIndex);
     OP_TILING_CHECK(
-        topoTypePtr != nullptr && *topoTypePtr == TOPO_TYPE_URMA && std::strcmp(activationPtr, "swiglu") != 0,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr, "'swiglu' for URMA topology"),
+        topoTypePtr != nullptr && *topoTypePtr == TOPO_TYPE_URMA && std::strcmp(activationPtr, "swiglu") != 0 &&
+            std::strcmp(activationPtr, "situglu") != 0,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr, "'swiglu' or 'situglu' for URMA topology"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -482,7 +482,7 @@ static ge::graphStatus CheckActivationParams(const gert::TilingContext *context,
                                               "one of 'swiglu', 'swiglustep', 'swigluoai' or 'situglu'"),
                     return ge::GRAPH_FAILED);
 
-    // 拓扑约束先判：URMA 只认 swiglu，激活类型不对就没必要再往下校验它的参数了。
+    // 拓扑约束先判：URMA 支持 swiglu/situglu，其他激活保持拦截。
     ge::graphStatus topoStatus = CheckActivationTopoConstraint(context, config, activationPtr, nodeName);
     if (topoStatus != ge::GRAPH_SUCCESS) {
         return topoStatus;
