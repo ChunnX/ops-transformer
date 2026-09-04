@@ -26,11 +26,15 @@ MOE_EP_CYCLE_PROFILER=1 python moe_train_test.py
 
 ```bash
 python mc2/tools/moe_ep_profiler/analyze_cycle.py /path/to/run \
-  --warmup 5 --tail-count 50
+  --warmup 5 --tail-count 50 --frequency-mhz 1000
 ```
 
-如果本次 msprof 输出不在 run 目录下，可通过
-`--frequency-search-root /path/to/this-run-msprof` 指定。本工具按以下顺序解析频率并在
+本次目标 Ascend 950 环境的 `GetSystemCycle()` tick 已确认为 1000 MHz，因此 cycle raw
+应显式传 `--frequency-mhz 1000`，即 `cycles / 1000 = us`。该参数优先于所有自动探测；
+迁移到其他型号或环境后需重新确认 tick 频率。
+
+省略显式参数时，如果本次 msprof 输出不在 run 目录下，可通过
+`--frequency-search-root /path/to/this-run-msprof` 指定。本工具按以下顺序自动解析频率并在
 `analysis_manifest.json` 中记录来源：
 
 1. 本次 `OpBasicInfo.csv` 的 `Current Freq`；
@@ -80,3 +84,8 @@ cycle 数据；msprof 指标是 kernel/core 粒度，报告不会把它伪装成
 ```bash
 python -m unittest discover -s mc2/tools/moe_ep_profiler/tests -v
 ```
+
+## 接入与分支迁移
+
+重新接入打点、更新 kernel 阶段或切换分支时，参见
+[INTEGRATION_AND_MIGRATION.md](INTEGRATION_AND_MIGRATION.md)。
