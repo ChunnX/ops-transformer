@@ -20,7 +20,7 @@
 #include "quant_block_sparse_attn_common_arch35.h"
 
 using namespace AscendC;
-using namespace AscendC::MicroAPI;
+using namespace AscendC::Reg;
 namespace regbaseutil {
 enum class AttenMaskCompressMode {
     NO_COMPRESS_MODE = 0,

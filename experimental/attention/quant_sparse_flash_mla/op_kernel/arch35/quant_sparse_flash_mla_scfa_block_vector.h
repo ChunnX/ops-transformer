@@ -318,10 +318,10 @@ __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTens
 __simd_vf__ void CastB8Nd2NzVFImpl(__ubuf__ int8_t* ubDstAddr, __ubuf__ int8_t* ubSrcAddr, const uint32_t dealRowCount,
                                   const uint32_t blockStride)
 {
-    MicroAPI::RegTensor<int8_t> kvData0;
-    MicroAPI::RegTensor<int8_t> kvData1;
+    Reg::RegTensor<int8_t> kvData0;
+    Reg::RegTensor<int8_t> kvData1;
 
-    MicroAPI::MaskReg b8MaskAll = MicroAPI::CreateMask<int8_t, MicroAPI::MaskPattern::ALL>();
+    Reg::MaskReg b8MaskAll = Reg::CreateMask<int8_t, Reg::MaskPattern::ALL>();
     const uint32_t repeatStride = 1;
     const uint32_t combineDim = 512; // nope(448) + rope(64)
     const uint32_t elementNumPerVL = 256;
@@ -332,13 +332,13 @@ __simd_vf__ void CastB8Nd2NzVFImpl(__ubuf__ int8_t* ubDstAddr, __ubuf__ int8_t* 
     // fp8 copy in 512 element (448 nope + 64 rope) in each loop
     for (uint16_t i = 0; i < static_cast<uint16_t>(dealRowCount); i++) {
         // load nope + rope
-        MicroAPI::LoadAlign<int8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
+        Reg::LoadAlign<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(
             kvData0, ubSrcAddr, combineDim);
-        MicroAPI::LoadAlign<int8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
+        Reg::LoadAlign<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_NORM>(
             kvData1, ubSrcAddrTmp, combineDim);
-        MicroAPI::StoreAlign<int8_t, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+        Reg::StoreAlign<int8_t, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
             ubDstAddr, kvData0, blockStride, repeatStride, b8MaskAll);
-        MicroAPI::StoreAlign<int8_t, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+        Reg::StoreAlign<int8_t, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
             ubDstAddrTmp, kvData1, blockStride, repeatStride, b8MaskAll);
     }
 }
