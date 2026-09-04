@@ -149,6 +149,7 @@ public:
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
+    uint32_t querySeqLenForTiling = 0;
     int64_t s2Size = 0;
     uint32_t qkHeadDim = 0;
     uint32_t gSize = 0;
@@ -179,7 +180,9 @@ public:
 // -----------算子Tiling入参信息解析及Check类---------------
 class QLIInfoParser {
 public:
-    explicit QLIInfoParser(gert::TilingContext *context) : context_(context) {}
+    explicit QLIInfoParser(gert::TilingContext *context)
+        : context_(context)
+    {}
     ~QLIInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
@@ -201,6 +204,7 @@ public:
     ge::graphStatus GetBatchSize();
     ge::graphStatus GetHeadDim();
     ge::graphStatus GetS1Size();
+    void GetQuerySeqLenForTiling();
     ge::graphStatus GetAndCheckOptionalInput();
     ge::graphStatus CheckShapeDim();
     ge::graphStatus GetAndCheckBlockSize();
@@ -228,6 +232,7 @@ public:
     uint32_t n2Size_ = 0;
     uint32_t gSize_ = 0;
     uint32_t s1Size_ = 0;
+    uint32_t querySeqLenForTiling_ = 0;
     int64_t s2Size_ = 0;
     uint32_t headDim_ = 0;
     bool batchSupperFlag_ = false;
@@ -251,7 +256,8 @@ public:
 // ---------------算子Tiling类---------------
 class QuantLightningIndexerTiling {
 public:
-    explicit QuantLightningIndexerTiling(gert::TilingContext *context) : context_(context) {};
+    explicit QuantLightningIndexerTiling(gert::TilingContext *context)
+        : context_(context) {};
     ge::graphStatus DoTiling(QLITilingInfo *tilingInfo);
 
 private:
@@ -259,5 +265,5 @@ private:
     QLITilingData tilingData_;
 };
 
-}  // namespace optiling
-#endif  // QUANT_LIGHTNING_INDEXER_TILING_H
+} // namespace optiling
+#endif // QUANT_LIGHTNING_INDEXER_TILING_H
