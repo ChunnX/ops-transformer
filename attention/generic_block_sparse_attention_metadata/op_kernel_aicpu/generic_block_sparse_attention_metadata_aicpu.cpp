@@ -294,7 +294,7 @@ bool GenericBlockSparseAttentionMetadataAicpu::GenerateMetadata(const std::vecto
 
     generic_block_sparse_attention_metadata::ScheduleResult result;
     const auto scheduleStatus = generic_block_sparse_attention_metadata::BuildSchedule(input, result);
-    if (scheduleStatus != generic_block_sparse_attention_metadata::ScheduleStatus::SUCCESS) {
+    if (scheduleStatus != generic_block_sparse_attention_metadata::BSAScheduleStatus::BSA_SUCCESS) {
         KERNEL_LOG_ERROR("Failed to build metadata schedule, status=%u.", static_cast<uint32_t>(scheduleStatus));
         return false;
     }
@@ -302,7 +302,7 @@ bool GenericBlockSparseAttentionMetadataAicpu::GenerateMetadata(const std::vecto
         static_cast<optiling::generic_block_sparse_attention_metadata::MetadataType *>(metadata_->GetData());
     const auto encodeStatus = generic_block_sparse_attention_metadata::EncodeMetadata(
         result, metadata, optiling::generic_block_sparse_attention_metadata::METADATA_TOTAL_SIZE);
-    if (encodeStatus != generic_block_sparse_attention_metadata::ScheduleStatus::SUCCESS) {
+    if (encodeStatus != generic_block_sparse_attention_metadata::BSAScheduleStatus::BSA_SUCCESS) {
         KERNEL_LOG_ERROR("Failed to encode metadata, status=%u.", static_cast<uint32_t>(encodeStatus));
         return false;
     }
