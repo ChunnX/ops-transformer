@@ -70,7 +70,7 @@ constexpr static AscendC::Reg::CastTrait castTraitThree = {
     AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_ROUND,
 };
- 
+
 constexpr static AscendC::Reg::CastTrait castTraitRintZero = {
     AscendC::Reg::RegLayout::ZERO,
     AscendC::Reg::SatMode::SAT,
@@ -84,7 +84,7 @@ constexpr static AscendC::Reg::CastTrait castTraitRintOne = {
     AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT,
 };
- 
+
 constexpr static AscendC::Reg::CastTrait castTraitRintTwo = {
     AscendC::Reg::RegLayout::TWO,
     AscendC::Reg::SatMode::SAT,
@@ -99,23 +99,23 @@ constexpr static AscendC::Reg::CastTrait castTraitRintThree = {
     AscendC::RoundMode::CAST_RINT,
 };
 
-#define USE_MLA_FULLQUANT_V1_P(vreg_exp, vreg_rowmax_p, MaskReg)    \
-    do {                                                            \
-        Muls(vreg_exp, vreg_exp, fp8e4m3MaxValue, MaskReg);         \
-        Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg);            \
-    } while (0)
-    
-#define USE_MLA_FULLQUANT_V1_P_INT8(vreg_exp, vreg_rowmax_p, MaskReg) \
-    do {                                                              \
-        Muls(vreg_exp, vreg_exp, int8MaxValue, MaskReg);              \
-        Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg);              \
+#define USE_MLA_FULLQUANT_V1_P(vreg_exp, vreg_rowmax_p, MaskReg) \
+    do { \
+        Muls(vreg_exp, vreg_exp, fp8e4m3MaxValue, MaskReg); \
+        Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg); \
     } while (0)
 
-#define USE_MLA_FULLQUANT_V1_P_HIFP8(vreg_exp, vreg_rowmax_p, MaskReg)    \
-    do {                                                            \
-        Muls(vreg_exp, vreg_exp, hifp8MaxValue, MaskReg);         \
-        Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg);            \
+#define USE_MLA_FULLQUANT_V1_P_INT8(vreg_exp, vreg_rowmax_p, MaskReg) \
+    do { \
+        Muls(vreg_exp, vreg_exp, int8MaxValue, MaskReg); \
+        Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg); \
     } while (0)
-} // namespace
+
+#define USE_MLA_FULLQUANT_V1_P_HIFP8(vreg_exp, vreg_rowmax_p, MaskReg) \
+    do { \
+        Muls(vreg_exp, vreg_exp, hifp8MaxValue, MaskReg); \
+        Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg); \
+    } while (0)
+} // namespace FaVectorApi
 
 #endif // VF_BASIC_BLOCK_UTILS_H

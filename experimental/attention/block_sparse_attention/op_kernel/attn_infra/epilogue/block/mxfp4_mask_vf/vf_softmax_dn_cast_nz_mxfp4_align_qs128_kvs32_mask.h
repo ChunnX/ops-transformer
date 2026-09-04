@@ -203,8 +203,7 @@ __simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_vf(__ubuf__ T2 
     }
 
     // GroupMaxpadding到64, 使得对应的pscale=0
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>(local_group_max + GROUP_COUNT * QsBase, min_val_reg,
-                                                      preg_all_16bit);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>(local_group_max + GROUP_COUNT * QsBase, min_val_reg, preg_all_16bit);
 }
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
