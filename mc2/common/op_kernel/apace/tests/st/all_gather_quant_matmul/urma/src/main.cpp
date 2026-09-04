@@ -132,7 +132,7 @@ int RunAllGatherQuantMatmul(int rankNum, int rankId, int m, int k, int n, int bu
     tilingData.commTile.splitAxisTailSize = tailM;
     tilingData.commTile.splitAxisTailCnt = tailCnt;
     tilingData.commTile.nonSplitAxisSize = static_cast<uint32_t>(k);
-    tilingData.commTile.bufferCount = static_cast<uint64_t>(bufferCount);
+    tilingData.commTile.slotNum = static_cast<uint64_t>(bufferCount);
 
     printf("[Rank %d] Tiling: tileCnt=%u, tileM=%u, tailCnt=%u, tailM=%u, paddedTailM=%u, commTurn=%u, bufferCount=%d\n",
            rankId, tileCnt, tileM, tailCnt, tailM, paddedTailM, tileCnt + tailCnt, bufferCount);
