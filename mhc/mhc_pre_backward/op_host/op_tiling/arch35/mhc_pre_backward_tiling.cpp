@@ -50,7 +50,7 @@ const constexpr uint32_t LEGAL_N_VALUES[] = {4, 6, 8};
 const constexpr uint32_t LEGAL_N_COUNT = 3;
 const constexpr float DEFAULT_HC_EPS = 1e-6f;
 
-const constexpr uint32_t C0_SET_VALUE = 1;
+const constexpr uint32_t C0_SET_VALUE = 2;
 const constexpr uint32_t ALPHA_GRAD_CORE_FACTOR = 24;
 const constexpr uint32_t BUFFER_NUM = 2;
 const constexpr uint32_t EXTRA_BUFFER_SIZE = 2 * 1024 * 1024;
