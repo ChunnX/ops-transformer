@@ -243,11 +243,26 @@ void FlashAttnMetadataCpuKernel::SetFagSplitAxis()
     // isAllSame: all batches have same seq lengths (for TND)
     SupportTransBSND();
 
-    // Align with pypto host: tmpl=1 only for MHA + S<=128 + D<=128.
-    // Do not mark S<=640 MultiBlk or D<=512 as BN2, and do not take BN2S2 —
-    // the kernel only implements template 0 (GS1S2) and 1 (BN2).
+    // Match old FAG SetSplitAxis + pypto host: single-block BN2 (S<=128) or
+    // MultiBlk (S in (128, 640] and BN gate). Kernel has no mask/TND/GQA/D>128
+    // BN2 path, so those stay on GS1S2 even if old FAG would try sparse MultiBlk.
     fagIsBn2_ = (s1 <= 128 && s2 <= 128) && (n1 == n2) && (d <= 128) && !fagIsSeqExistZero_;
-    fagIsBn2MultiBlk_ = false;
+    constexpr int64_t BN2_MULTIBLK_SEQ = 640;
+    constexpr int64_t BN2_MULTIBLK_BN_128 = 128;
+    constexpr int64_t BN2_MULTIBLK_BN_256 = 256;
+    constexpr int64_t ALIGN128 = 128;
+    bool bnLimit = ((b * n1) >= BN2_MULTIBLK_BN_256) ||
+                   ((b * n1) >= BN2_MULTIBLK_BN_128 && (s1 % ALIGN128 == 0) &&
+                    (s2 % ALIGN128 == 0));
+    fagIsBn2MultiBlk_ = bnLimit &&
+                        !fagUseTndSplit_ &&
+                        !fagIsSparse_ &&
+                        (s1 > 128 || s2 > 128) &&
+                        (s1 <= BN2_MULTIBLK_SEQ && s2 <= BN2_MULTIBLK_SEQ) &&
+                        (n1 == n2) && (d <= 128) && !fagIsSeqExistZero_;
+    if (fagIsBn2MultiBlk_) {
+        fagIsBn2_ = true;
+    }
     if (fagIsBn2_ && fagUseTndSplit_ && d > 128) {
         fagIsBn2_ = false;
     }
@@ -1037,6 +1052,29 @@ bool FlashAttnMetadataCpuKernel::DoFagBn2SparseBlockInfo()
     return true;
 }
 
+// Consecutive row split across live AIV cores. Remainder goes to the first rem cores
+// so max(rows)-min(rows) <= 1 among participants. Idle slots stay [0,0).
+static inline void FagSplitRows(int64_t totalRows, uint32_t nAiv, FA_METADATA_T *starts, FA_METADATA_T *ends)
+{
+    for (uint32_t i = 0; i < FAG_AIV_SLOT_NUM; i++) {
+        starts[i] = 0;
+        ends[i] = 0;
+    }
+    if (nAiv == 0U || totalRows <= 0) {
+        return;
+    }
+    uint32_t live = (nAiv > FAG_AIV_SLOT_NUM) ? FAG_AIV_SLOT_NUM : nAiv;
+    int64_t base = totalRows / static_cast<int64_t>(live);
+    int64_t rem = totalRows % static_cast<int64_t>(live);
+    int64_t cur = 0;
+    for (uint32_t i = 0; i < live; i++) {
+        int64_t n = base + (static_cast<int64_t>(i) < rem ? 1 : 0);
+        starts[i] = static_cast<FA_METADATA_T>(cur);
+        ends[i] = static_cast<FA_METADATA_T>(cur + n);
+        cur += n;
+    }
+}
+
 // ===== GenFagMetadata: serialize FAG split results to metadata tensor =====
 // FAG data is appended after FA/FD data, core counts are dynamic (read from attrs)
 void FlashAttnMetadataCpuKernel::GenFagMetadata(uint32_t sectionNum)
@@ -1077,6 +1115,24 @@ void FlashAttnMetadataCpuKernel::GenFagMetadata(uint32_t sectionNum)
     fag[FAG_WIN_RIGHT_INDEX] = static_cast<FA_METADATA_T>(winRight_);
     fag[FAG_MAX_SEQLEN_Q_INDEX] = static_cast<FA_METADATA_T>(maxSeqlenQ_);
     fag[FAG_MAX_SEQLEN_KV_INDEX] = static_cast<FA_METADATA_T>(maxSeqlenKv_);
+
+    // pre/post 行区间。与 kernel 展平视图一致：dqRows=B*S1*N1，dkvRows=B*S2*N2。
+    int64_t s1 = (maxSeqlenQ_ > 0) ? static_cast<int64_t>(maxSeqlenQ_) : 0;
+    int64_t s2 = (maxSeqlenKv_ > 0) ? static_cast<int64_t>(maxSeqlenKv_) : 0;
+    int64_t b = (batchSize_ > 0) ? static_cast<int64_t>(batchSize_) : 0;
+    int64_t n1 = (numHeadsQ_ > 0) ? static_cast<int64_t>(numHeadsQ_) : 0;
+    int64_t n2 = (numHeadsKv_ > 0) ? static_cast<int64_t>(numHeadsKv_) : 0;
+    int64_t dqRows = b * s1 * n1;
+    int64_t dkvRows = b * s2 * n2;
+    uint32_t nAiv = fagBlockOuter_ * 2U;
+    if (nAiv > FAG_AIV_SLOT_NUM) {
+        nAiv = FAG_AIV_SLOT_NUM;
+    }
+    fag[FAG_PRE_AIV_NUM_INDEX] = nAiv;
+    fag[FAG_DQ_ROWS_INDEX] = static_cast<FA_METADATA_T>(dqRows);
+    fag[FAG_DKV_ROWS_INDEX] = static_cast<FA_METADATA_T>(dkvRows);
+    FagSplitRows(dqRows, nAiv, fag + FAG_DQ_ROW_STARTS_OFFSET, fag + FAG_DQ_ROW_ENDS_OFFSET);
+    FagSplitRows(dkvRows, nAiv, fag + FAG_DKV_ROW_STARTS_OFFSET, fag + FAG_DKV_ROW_ENDS_OFFSET);
 }
 
 // ===== FAG metadata end =====

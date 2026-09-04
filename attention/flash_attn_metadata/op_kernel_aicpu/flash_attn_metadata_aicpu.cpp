@@ -35,24 +35,18 @@ uint32_t FlashAttnMetadataCpuKernel::Compute(CpuKernelContext &ctx)
     bool success = Prepare(ctx);
     KERNEL_CHECK_FALSE(success, FA_KERNEL_STATUS_PARAM_INVALID, "Prepare data failed!");
 
-    // Grad 路径只需要 FAG 分核区。正向 SectionStreamK 在不规则 D/S 上会
-    // PARAM_INVALID，把本来能跑的 FAG 拦掉。固定 sectionNum=1，FAG 从 1744 起。
-    if (fagIsGradEnabled_) {
-        detail::FaMetadata faMetadata(metadata_->GetData(), 1U);
-        faMetadata.Clear();
-        faMetadata.SetHeadMetadata(HEAD_SECTION_NUM_INDEX, 1U);
-        InitFagParams();
-        DoFagSparse();
-        GenFagMetadata(1U);
-        return FA_KERNEL_STATUS_OK;
-    }
-
     load_balance::SectionStreamKResult splitRes{};
     success = BalanceSchedule(splitRes);
     KERNEL_CHECK_FALSE(success, FA_KERNEL_STATUS_PARAM_INVALID, "Schedule load balance failed!");
 
     success = GenMetadata(splitRes);
     KERNEL_CHECK_FALSE(success, FA_KERNEL_STATUS_PARAM_INVALID, "Generate balance result failed!");
+
+    if (fagIsGradEnabled_) {
+        InitFagParams();
+        DoFagSparse();
+        GenFagMetadata(splitRes.sectionNum);
+    }
 
     return FA_KERNEL_STATUS_OK;
 }

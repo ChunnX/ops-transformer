@@ -16,7 +16,7 @@ FA_METADATA_OP_NAME = "flash_attn_metadata"
 METADATA_STRIDE = 16
 AIC_NUM = torch.npu.get_device_properties().cube_core_num
 AIV_NUM = torch.npu.get_device_properties().vector_core_num
-FAG_METADATA_SIZE = 121  # FAG (Flash Attn Grad) metadata size, in int32 elements
+FAG_METADATA_SIZE = 412  # FAG (Flash Attn Grad) metadata size, in int32 elements
 
 
 def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):

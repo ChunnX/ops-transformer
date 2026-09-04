@@ -145,12 +145,37 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
                 return ge::GRAPH_PARAM_INVALID);
     int64_t gSize = n1Size / n2Size;
 
-    // BN2 this round: MHA + S<=128 + D<=128. GQA (N1!=N2) and D=192
-    // stay on BN2GS1S2. bit4 swizzle is template=0 only.
+    // TilingKey template: 0=BN2GS1S2, 1=BN2 (single + MultiBlk via bit8),
+    // 2=unused, 3=BN2S2 reserved (not compiled this round).
+    // BN2 this round: MHA + D<=128. Single-block (S<=128) or MultiBlk
+    // (S in (128,640] and BN gate). GQA and D=192 stay on BN2GS1S2.
+    // bit4 swizzle is template=0 only. bit8 isBn2MultiBlk is template=1 only.
+    constexpr int64_t BN2_MAX_S = 128;
+    constexpr int64_t BN2_MAX_D = 128;
+    constexpr int64_t BN2_MULTIBLK_SEQ = 640;
+    constexpr int64_t BN2_MULTIBLK_BN_128 = 128;
+    constexpr int64_t BN2_MULTIBLK_BN_256 = 256;
+    constexpr int64_t BN2_ALIGN128 = 128;
     int64_t tmpl = 0;
-    if (layout != 1 && n1Size == n2Size && dSize <= 128 &&
-        s1Size <= 128 && s2Size <= 128) {
-        tmpl = 1;
+    int64_t isBn2MultiBlk = 0;
+    const bool isTnd = (layout == 1);
+    if (!isTnd && n1Size == n2Size && dSize <= BN2_MAX_D) {
+        if (s1Size <= BN2_MAX_S && s2Size <= BN2_MAX_S) {
+            tmpl = 1;
+        } else if (maskMode == 0 &&
+                   (s1Size > BN2_MAX_S || s2Size > BN2_MAX_S) &&
+                   s1Size <= BN2_MULTIBLK_SEQ && s2Size <= BN2_MULTIBLK_SEQ &&
+                   dSize == dvSize) {
+            const int64_t bn = bSize * n1Size;
+            const bool bnGate =
+                (bn >= BN2_MULTIBLK_BN_256) ||
+                (bn >= BN2_MULTIBLK_BN_128 && (s1Size % BN2_ALIGN128 == 0) &&
+                 (s2Size % BN2_ALIGN128 == 0));
+            if (bnGate) {
+                tmpl = 1;
+                isBn2MultiBlk = 1;
+            }
+        }
     }
 
     // Launch cube count = metadata blockOuter for dense non-TND. Tiling cannot
@@ -348,9 +373,11 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     // dAlign=64 is still a tilingkey bucket for D<=64, but the kernel keeps
     // L1/L0 physically 128-wide and crops with compact=1 + set_validshape.
     // dvAlign stays 128: the tilingkey field has no 64 bucket.
-    // TilingKey: bit[1:0]=template, bit2=layout, bit3=hasAttenMask,
+    // TilingKey: bit[1:0]=template (0=BN2GS1S2, 1=BN2, 2=unused, 3=BN2S2 reserved),
+    //            bit2=layout, bit3=hasAttenMask,
     //            bit4=swizzle (template=0 only),
-    //            bit[6:5]=d_align (0=64,1=128,2=192), bit7=dv_align (0=128,1=192)
+    //            bit[6:5]=d_align (0=64,1=128,2=192), bit7=dv_align (0=128,1=192),
+    //            bit8=isBn2MultiBlk (template=1 only; MultiBlk stays inside BN2)
     uint64_t dAlignBits = (dAlign == 64) ? 0ULL : ((dAlign == 128) ? 1ULL : 2ULL);
     uint64_t dvAlignBit = (dvAlign == 192) ? 1ULL : 0ULL;
     uint64_t tilingKey = static_cast<uint64_t>(tmpl) |
@@ -358,7 +385,8 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
                          (static_cast<uint64_t>(hasAttenMask) << 3) |
                          (static_cast<uint64_t>(swizzle) << 4) |
                          (dAlignBits << 5) |
-                         (dvAlignBit << 7);
+                         (dvAlignBit << 7) |
+                         (static_cast<uint64_t>(isBn2MultiBlk) << 8);
     context->SetTilingKey(tilingKey);
 
     // Workspace layout must match the kernel's make_ptr partitioning exactly:
@@ -382,9 +410,9 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     workSpaces[0] = workspaceSize;
 
     OP_LOGI(context->GetNodeName(),
-            "FlashAttnGrad tiling: usedCube=%u, usedBlockDim=%u, useActualCores=%d, s1Outer=%ld, s2Outer=%ld, layoutStr=%s, layout=%ld, maskMode=%ld, hasAttenMask=%d, template=%ld, swizzle=%ld, dAlign=%ld, dvAlign=%ld, B=%ld, S1=%ld, S2=%ld, N1=%ld, N2=%ld, G=%ld, D=%ld, Dv=%ld, viewQ=[%ld,S,%ld,D] b0=%ld, viewKV=[%ld,S,%ld,D] b0=%ld, coefN=(%ld,%ld), tilingKey=%llu, workspaceSize=%zu.",
+            "FlashAttnGrad tiling: usedCube=%u, usedBlockDim=%u, useActualCores=%d, s1Outer=%ld, s2Outer=%ld, layoutStr=%s, layout=%ld, maskMode=%ld, hasAttenMask=%d, template=%ld, isBn2MultiBlk=%ld, swizzle=%ld, dAlign=%ld, dvAlign=%ld, B=%ld, S1=%ld, S2=%ld, N1=%ld, N2=%ld, G=%ld, D=%ld, Dv=%ld, viewQ=[%ld,S,%ld,D] b0=%ld, viewKV=[%ld,S,%ld,D] b0=%ld, coefN=(%ld,%ld), tilingKey=%llu, workspaceSize=%zu.",
             usedCube, blockDim, static_cast<int>(useActualCores), s1OuterMeta, s2OuterMeta,
-            layoutQStr.c_str(), layout, maskMode, hasAttenMask, tmpl, swizzle, dAlign, dvAlign, bSize, s1Size, s2Size, n1Size,
+            layoutQStr.c_str(), layout, maskMode, hasAttenMask, tmpl, isBn2MultiBlk, swizzle, dAlign, dvAlign, bSize, s1Size, s2Size, n1Size,
             n2Size, gSize, dSize, dvSize,
             tilingData->viewD0Q, tilingData->viewD2Q, tilingData->coefB0Q,
             tilingData->viewD0KV, tilingData->viewD2KV, tilingData->coefB0KV,

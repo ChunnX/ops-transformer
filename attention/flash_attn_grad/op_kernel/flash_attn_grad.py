@@ -98,20 +98,18 @@ D_CHUNK_OFF1 = {64: 0, 128: 0, 192: 96}        # 第 1 块(仅 192 档)
 D_CHUNK_W1 = {64: 0, 128: 0, 192: 96}
 # L0A/L0B/L0C 按最宽的一块声明，足以装下任一块
 D_CHUNK_MAXW = {64: 128, 128: 128, 192: 96}
-# D<=128：L1/L0 物理宽钉在 128，compact=1 + set_validshape 裁到 dSize
-# （与 indexer 的 M/N 尾块同一套）。d_align=64 只是 tilingkey 分档，
-# 不再单独开 64 宽 buffer。post 仍按 128 元素 DINTLV。
+# Cube L1/L0 物理宽钉在 128（d_align=64 只是 tilingkey 分档，Acc/L1 仍按
+# 128 开）。pre/post 已改成 1D 元素切，不再用列宽表。V1 列宽见 v1w。
 D_PHYS_W = {64: 128, 128: 128, 192: 192}
-POST_PHYS_W = {64: 128, 128: 128, 192: 192}
+# pre/post 列宽：64 档收到 64，避免 128 列 DINTLV 填零。Cube Acc N 仍是 S2=128。
+PRE_PHYS_W = {64: 64, 128: 128, 192: 192}
+POST_PHYS_W = {64: 64, 128: 128, 192: 192}
 CV_CORE_RATIO = 2
 VECTOR_BASEM = CUBE_BASEM // CV_CORE_RATIO   # 64，每个 vector 子核处理半个 S1
 VECTOR_BASEN = CUBE_BASEN
 
 # 单个 VF 寄存器的 fp32 lane 数
 VF_LANES = 64
-
-# V1 的 sfmg 分段行数：prod/tmp 两块 fp32 缓冲按此尺寸开，控制 UB 占用
-SFMG_LOOP_SIZE = VECTOR_BASEM // 2           # 32
 
 # 兼容测试脚本导出的别名
 TILE_M = CUBE_BASEM
@@ -136,6 +134,11 @@ SYNC_C3_TO_V5_FLAG = 6        # mm3 fp32 已进 mm1 UB，v5 可 Muls+Cast dQ
 SYNC_C4_TO_V6_FLAG = 7        # mm4 fp32 已进 mm2 UB，v6 可 Muls+Cast dK
 # cube 在下一轮 mm1/mm2 前等 v6 写完，避免覆写仍在用的 mm1/mm2 槽
 SYNC_DETER_FIX_FLAG = 14
+# MultiBlk：dQ workspace 的 MTE3 store 完成。与 DETER 分开：DETER 仍走
+# V/FIX（等 VF 用完 mm1），这条走 MTE3/MTE1（等 GM store 完成后再让
+# cube DualMode 复用同一块 mm1）。两拍前的 store 否则会跟下一拍 DualMode 打架，
+# 首 head 的 s1 片后半行会脏（s1_512 / s2_640 的 27–58 行、N=8k）。
+SYNC_DQ_WS_MTE3_FLAG = 15
 
 # cube 领先 vector 的 task 数。ASC 的 PRELOAD_TIMES=3：首轮连发两组
 # mm2+mm1(共四次 matmul)填满两个 UB 槽位，之后第 N 组的 cube 计算与
@@ -318,44 +321,25 @@ ACC_COLS = {w: max(CUBE_BASEN, D_CHUNK_MAXW[w]) for w in (64, 128, 192)}
 # 这两个阶段与主循环靠 sync_all 完全隔开，故直接从 0 起借用整块 UB
 # (mm1/mm2 结果区等)，不与主循环争空间；mutex_ids 同样可复用。
 #
-# chunk 大小实测结论：把 UB 吃满反而更慢 —— 并行度比单次搬运大小重要。
-# 8192 行按 chunk 跨核分配(核 i 领第 i, i+vecCoreNum, ... 块)时：
-#
-#   pre chunk  UB      块数   耗时      post chunk  UB       耗时
-#   496 行     248KB    17    201.7us   165 行      247.5KB  (见左)
-#   128 行      64KB    64    193.6us    64 行       96.0KB  193.6us
-#    48 行      24KB   171    192.8us    32 行       48.0KB  193.5us
-#
-# pre=496 时 8192 行只切出 17 块，72 个 vector 核有 55 个空跑，并行度
-# 从 72 塌到 17；搬运总量不变但摊到的核少了，单核串行时间变长，用满 UB
-# 换来的「单次 MTE3 更大」补不回这个损失。post chunk 影响很小
-# (165->32 仅差 1.3us)，因为它每轮都有 load/cast/store 三段可重叠。
-# 取 128/64：块数远多于核数，每核多轮，depth 2 的重叠才真正生效。
-# S=8192 下扫 N=1/32/64 三档，pre=128/post=64 在大 N 下最优、N=1 时
-# 仅比最佳(48)慢 0.4%，故取它。大 N 时 pre/post 只占总时间约 1.5%，
-# chunk 选值影响很小 —— 主导项是 matmul。
-# UB 开头必须留空：codegen 在 vector 核入口把 tiling 经 UB[0] 中转。
-# BN2 没有 pre/sync_all，不留空会和 cube fixpipe 抢 UB[0]。
+# pre/post 按 ASC 一样走一维元素，不按 [行, D] 切。usable=248KB
+# （256KB 预留 8KB 给 UB[0] tiling 中转；BN2 无 pre/sync_all，不留会
+# 和 cube fixpipe 抢 UB[0]）。
+#   pre  单槽 fp32：248KB/4  = 63488 elems（192 档 63360，整除 192）
+#   post depth-2：  248KB/12 = 21120 elems（64 档 20480，整除 64）
+# 三档都吃满 UB。行区间已由 metadata 按 nAiv 均分，块大不再空核。
+# 每档 elems 都能被 128 整除，full-tile 的 VF 段数是编译期常量。
 UB_HEAD_RESERVE = 0x1000
-PRE_CHUNK_ROWS = 128
+PRE_ELEMS = {64: 63488, 128: 63488, 192: 63360}
 UB_PRE_ZERO = UB_HEAD_RESERVE
 
-# post 需要 fp32 输入 + fp16 输出各两槽(depth 2)，让 MTE2/V/MTE3 并行：
-#   D=128: 2 * 64 * 128 * (4 + 2) =  96KB
-#   D=192: 2 * 64 * 192 * (4 + 2) = 144KB   都在 248KB 以内
-POST_CHUNK_ROWS = 64
+POST_ELEMS = {64: 20480, 128: 21120, 192: 21120}
 UB_POST_F32_0 = UB_HEAD_RESERVE
 
 
-def post_ub_addrs(width):
-    """按分配宽度算 post 的四个 UB 槽位地址。
-
-    地址随档位变化，故不能写成模块级常量 —— 但 width 是 trace 期常量
-    (tilingkey 字段 d_align)，在 kernel 体内算出来即可。
-    D=128 时得到的四个地址与本改动前完全一致，故该档零回归。
-    """
-    f32Bytes = POST_CHUNK_ROWS * width * 4
-    f16Bytes = POST_CHUNK_ROWS * width * 2
+def post_ub_addrs(nElems):
+    """按 1D 元素个数算 post 的四个 UB 槽位地址。nElems 是 tilingkey 常量。"""
+    f32Bytes = nElems * 4
+    f16Bytes = nElems * 2
     f32_1 = UB_POST_F32_0 + f32Bytes
     f16_0 = f32_1 + f32Bytes
     return UB_POST_F32_0, f32_1, f16_0, f16_0 + f16Bytes
@@ -366,56 +350,38 @@ UB_MM1_0   = UB_HEAD_RESERVE + 0x00000   # fp32[64,128] 32KB
 UB_MM1_1   = UB_HEAD_RESERVE + 0x08000
 UB_MM2_0   = UB_HEAD_RESERVE + 0x10000
 UB_MM2_1   = UB_HEAD_RESERVE + 0x18000
-# V1 按 SFMG_LOOP_SIZE 行分段，避免 prod+tmp 两块 [64,128] fp32 撑爆 UB。
-# 这四块的宽度是 **Dv**(y/dy 是 Dv 宽)，故按 dv_align 分档：
-#   dv_align=128: y/dy 各 8KB，prod/tmp 各 16KB，合计 48KB
-#   dv_align=192: y/dy 各12KB，prod/tmp 各 24KB，合计 72KB
-# 后面几块的地址跟着顺移，故整段按档算(见 _build_ub)。
-UB_Y       = UB_HEAD_RESERVE + 0x20000   # fp16[32,dv] V1 前向输出 y
-UB_DY      = UB_HEAD_RESERVE + 0x22000   # fp16[32,dv] V1 的 dy
-UB_PROD    = UB_HEAD_RESERVE + 0x24000   # fp32[32,dv] dy*y 的逐元素积
-UB_TMP     = UB_HEAD_RESERVE + 0x28000   # fp32[32,dv] pl.sum 要求的同尺寸 workspace
+# V1 一趟 VECTOR_BASEM 行、按行 reduce，不再开 prod/tmp。列宽是
+# V1_W = 64 if d_align==64 else dv_align（y/dy 是 Dv 宽）。
+# 地址按 V1_W 分档排，见 _build_ub。
+UB_Y       = UB_HEAD_RESERVE + 0x20000   # fp16[64,v1w] V1 前向输出 y
 # cast+ND2NZ 融合 VF 的输出缓冲：声明 65 行而非 64。
 # VF 用 block_stride=65 写出，每个分形列比紧凑排布多垫一个 32B block，
 # 把相邻分形列错开到不同 bank(对应 ASC vf_cast_transdata_deconflict.h 的 +1)。
-UB_NZP     = UB_HEAD_RESERVE + 0x2C000   # fp16[65,128] 16.25KB
-# 0x30400-0x3BFFF 空闲
-# sfmg 两个分段结果地址连续，故可用一个 [64,1] 视图整体读取
-UB_SFMG    = UB_HEAD_RESERVE + 0x3C000   # fp32[64,1]  256B  softmaxGradResBuf
-UB_SFMG_HI = UB_HEAD_RESERVE + 0x3C080   # 后 32 行 (32*4 = 128B 偏移)
 # lseQue[2] 双缓冲。原先是 max/sum 两组共四块，改用 LSE 后合成一组：
 # lse = max + log(sum(exp(s-max)))，前向已把两者合进一个张量。
-UB_LSE_0   = UB_HEAD_RESERVE + 0x3C200   # fp32[64,1] 256B
-UB_LSE_1   = UB_HEAD_RESERVE + 0x3C400
-# 末尾 0x3C600 = 241.5KB，未超 248KB 上限
 
 
-def _build_ub(dvw):
-    """按 Dv 的分配宽度铺排 V1 之后的那几块 UB。
+def _build_ub(v1w):
+    """按 V1 列宽铺排 y/dy/nzp/sfmg/lse。已删 prod/tmp。
 
-    dv_align=128 时返回上面那套写死的地址(零回归)；192 时 y/dy/prod/tmp
-    各变宽 1.5 倍，其后的 nzp/sfmg/lse 顺移。
-    返回 (y, dy, prod, tmp, nzp, sfmg, sfmg_hi, lse0, lse1)。
+    返回 (y, dy, nzp, sfmg, lse0, lse1)。NZP 仍是 [65,128]，与 DualMode
+    dest / vsstb 无关。主循环 V1 不抢 248KB：它和 mm1/mm2/nzp 同相位。
     """
-    if dvw == 128:
-        return (UB_Y, UB_DY, UB_PROD, UB_TMP, UB_NZP,
-                UB_SFMG, UB_SFMG_HI, UB_LSE_0, UB_LSE_1)
     a = UB_HEAD_RESERVE + 0x20000
-    y = a; a += SFMG_LOOP_SIZE * dvw * 2
-    dy = a; a += SFMG_LOOP_SIZE * dvw * 2
-    prod = a; a += SFMG_LOOP_SIZE * dvw * 4
-    tmp = a; a += SFMG_LOOP_SIZE * dvw * 4
-    nzp = a; a += NZP_ROWS * VECTOR_BASEN * 2
-    # 后面几块都很小，按 512B 对齐依次排
+    y = a
+    a += VECTOR_BASEM * v1w * 2
+    dy = a
+    a += VECTOR_BASEM * v1w * 2
+    nzp = a
+    a += (VECTOR_BASEM + 1) * VECTOR_BASEN * 2
     a = (a + 0x1FF) & ~0x1FF
     sfmg = a
-    sfmg_hi = a + SFMG_LOOP_SIZE * 4
     a += 0x200
     lse0 = a
     lse1 = a + 0x200
     a += 0x400
-    assert a <= 248 * 1024, f"UB overflow for dv_align={dvw}: {a} bytes"
-    return (y, dy, prod, tmp, nzp, sfmg, sfmg_hi, lse0, lse1)
+    assert a <= 248 * 1024, f"UB overflow for v1w={v1w}: {a} bytes"
+    return (y, dy, nzp, sfmg, lse0, lse1)
 
 
 @dataclass
@@ -460,6 +426,8 @@ class FlashAttnGradTilingData:
 
 # 与 op_kernel/flash_attn_grad.py 的 FlashAttnGradTilingKey 一致
 class FlashAttnGradTilingKey:
+    # bit[1:0]：0=BN2GS1S2，1=BN2（含 MultiBlk，bit8 区分），
+    # 2=未用，3=BN2S2 预留（本轮不编、不进入口）。
     template = TilingKeyField(bits=2, values=[0, 1, 2, 3])
     layout = TilingKeyField(bits=1, values=[0, 1])
     has_atten_mask = TilingKeyField(bits=1, values=[0, 1])
@@ -485,16 +453,23 @@ class FlashAttnGradTilingKey:
     # 这四块 UB 的宽度是 Dv 派生的，而 tile shape 必须是 trace 期常量，
     # 故同样要分档。(64, 128) 是例外：d_align=64 时 dv_align 强制 128。
     dv_align = TilingKeyField(bits=1, values=[128, 192])
+    # BN2 MultiBlk：S 在 (128, 640] 仍走 BN2 函数。bit8，不打乱已有 key。
+    is_bn2_multiblk = TilingKeyField(bits=1, values=[0, 1])
 
     def is_valid(self, key):
         """剪掉本实现未走到的组合，控制二进制数量。"""
-        template, layout, has_atten_mask, swizzle, d_align, dv_align = key
+        template, layout, has_atten_mask, swizzle, d_align, dv_align, is_bn2_multiblk = key
+        # 2 未用；3 预留给 BN2S2。不剪会当 GS1S2 多编死二进制。
+        if template != 0 and template != 1:
+            return False
         if template == 1:
             if d_align == 192 or swizzle != 0 or layout != 0 or has_atten_mask != 0:
                 return False
             if d_align == 64 and dv_align != 128:
                 return False
             return True
+        if is_bn2_multiblk == 1:
+            return False
         # GS1S2 + d_align=64：tilingkey 的 dv_align 没有 64 档，host 仍发 128。
         if d_align == 64:
             return dv_align == 128
@@ -534,6 +509,8 @@ def set_const_info(tiling, coreNum, enableSwizzle):
                * BLOCK_ELEMS_F16,
         dEvenSize=(tiling.d + 1) // 2,
         dOddSize=tiling.d // 2,
+        dvEvenSize=(tiling.dv + 1) // 2,
+        dvOddSize=tiling.dv // 2,
         scaleValue=tiling.scaleValue,
         s1Outer=s1Outer,
         s2Outer=s2Outer,
@@ -586,11 +563,8 @@ def make_run_infos():
         s1RealSize=0,
         s2RealSize=0,
         halfS1RealSize=0,
-        firstHalfS1RealSize=0,
-        taskIdMod2=0,
         queryOffset=0,
         keyOffset=0,
-        isS2IdxNoChange=0,
         # GQA 的组内索引 g，取值 [0, gSize)
         goIdx=0,
         # 统一四维视图上的第 0 / 第 2 轴索引，见 set_run_info()。
@@ -602,6 +576,9 @@ def make_run_infos():
         idx2KV=0,
         loadBase=0,
         rowShift=0,
+        loadKV=0,
+        dkvAcc=0,
+        flushDkv=0,
     )
 
 
@@ -643,13 +620,47 @@ L2_CACHE_BYTES = 128 * 1024 * 1024
 
 
 
-def decide_template(n1, n2, s1, s2, d, is_tnd=False):
-    """host 侧选分核模板。BN2 本轮不接 GQA、不接 D=192。"""
-    if is_tnd:
+BN2_MAX_S = 128
+BN2_MAX_D = 128
+BN2_MULTIBLK_SEQ = 640
+BN2_MULTIBLK_BN_128 = 128
+BN2_MULTIBLK_BN_256 = 256
+
+
+def decide_bn2_multiblk(b, n1, n2, s1, s2, d, dv=None, is_tnd=False, mask_mode=0):
+    """老 FAG SetSplitAxis 的 MultiBlk 门。不满足则不要硬走 BN2。"""
+    if is_tnd or mask_mode != 0:
         return 0
-    if s1 <= 128 and s2 <= 128 and n1 == n2 and d <= 128:
+    if n1 != n2 or d > BN2_MAX_D:
+        return 0
+    if dv is not None and dv != d:
+        return 0
+    if not ((s1 > BN2_MAX_S or s2 > BN2_MAX_S) and
+            s1 <= BN2_MULTIBLK_SEQ and s2 <= BN2_MULTIBLK_SEQ):
+        return 0
+    bn = b * n1
+    if bn >= BN2_MULTIBLK_BN_256:
+        return 1
+    if bn >= BN2_MULTIBLK_BN_128 and (s1 % 128 == 0) and (s2 % 128 == 0):
         return 1
     return 0
+
+
+def decide_template(n1, n2, s1, s2, d, is_tnd=False, b=None, dv=None, mask_mode=0):
+    """host 侧选分核模板。BN2 本轮不接 GQA、不接 D=192。
+
+    b 缺省时 S>128 不升 MultiBlk，避免旧调用方在不知道 B 时静默改模板。
+    """
+    if is_tnd:
+        return 0
+    if n1 != n2 or d > BN2_MAX_D:
+        return 0
+    if s1 <= BN2_MAX_S and s2 <= BN2_MAX_S:
+        return 1
+    if b is None:
+        return 0
+    return 1 if decide_bn2_multiblk(b, n1, n2, s1, s2, d, dv=dv,
+                                    is_tnd=is_tnd, mask_mode=mask_mode) else 0
 
 
 def decide_d_align(d):
@@ -742,9 +753,17 @@ def sel(flag, whenOne, whenZero):
     return whenZero + flag * (whenOne - whenZero)
 
 
-META_HEAD_FAG_START_INDEX = 4
+META_HEAD_FAG_START_INDEX = 7
 META_FAG_BLOCK_STARTS_OFFSET = 8
 META_FAG_BLOCK_ENDS_OFFSET = 44
+META_FAG_PRE_AIV_NUM = 121
+META_FAG_DQ_ROWS = 122
+META_FAG_DKV_ROWS = 123
+META_FAG_DQ_ROW_STARTS = 124
+META_FAG_DQ_ROW_ENDS = 196
+META_FAG_DKV_ROW_STARTS = 268
+META_FAG_DKV_ROW_ENDS = 340
+META_FAG_AIV_LIST_NUM = 72
 META_VIEW_LEN = 8192
 
 
@@ -777,31 +796,12 @@ def s2_group_of(constInfo, idx):
     return idx // constInfo.s1Outer
 
 
-def dkv_acc_flag(constInfo, gIdx, localIdx):
-    """本轮的 dK/dV 是否应在 L0C 上累加(1)还是覆写(0)。
-
-    swizzle: 本核连续处理同一列(同一 (b,n2,s2o) 组)的 s1Outer 个块，故
-             localIdx % s1Outer == 0 即换组那一块，必须覆写；其余累加。
-             这天然覆盖「本核第一块」(localIdx==0 也是列首) —— 漏掉这条
-             时 L0C 残留值会污染 dK/dV(实测 max_diff 达 57)。
-    线性:    需同时满足「非本核首块」与「与前一块同组」。
-    """
-    swz = pl.min(localIdx % constInfo.s1Outer, 1)
-    notFirst = pl.min(localIdx, 1)
-    gCur = s2_group_of(constInfo, gIdx)
-    gBefore = s2_group_of(constInfo, pl.max(gIdx - 1, 0))
-    sameGroup = 1 - pl.min(gCur - gBefore, 1)
-    lin = pl.min(notFirst, sameGroup)
-    return sel(constInfo.enableSwizzle, swz, lin)
-
-
-
 def need_load_kv(constInfo, gIdx, localIdx):
     """是否需要重新从 GM 载入 K/V(1=需要，0=沿用 L1 里的)。
 
-    与 dkv_acc_flag 互补：只有换组那一块要重载，组内其余块 K/V 相同。
-    对应 ASC block_cube.h:529 的 isCopyRight。8192 场景 s1Outer=64，
-    K/V 的 GM 读次数降到 1/64。
+    只有换组那一块要重载，组内其余块 K/V 相同。dkvAcc = 1 - loadKV，
+    不必再算一遍。对应 ASC block_cube.h:529 的 isCopyRight。
+    8192 场景 s1Outer=64，K/V 的 GM 读次数降到 1/64。
     """
     swz = 1 - pl.min(localIdx % constInfo.s1Outer, 1)
     isFirst = 1 - pl.min(localIdx, 1)
@@ -820,7 +820,7 @@ def next_s2_same(constInfo, gIdx, localIdx):
     return sel(constInfo.enableSwizzle, swz, lin)
 
 
-def set_run_info(constInfo, runInfo, taskId, index, subIdx):
+def set_run_info(constInfo, runInfo, taskId, index, subIdx, localIdx):
     # index -> (boIdx, n2oIdx, goIdx, s2oIdx, s1oIdx)，S1 为最快轴。
     # 维度顺序 b -> n2 -> g -> s2o -> s1o，与 ASC 的
     # GetNextValidIdx 一致（g 在 n2 之内、s2o 之外）。
@@ -839,7 +839,6 @@ def set_run_info(constInfo, runInfo, taskId, index, subIdx):
     s2Real = pl.min(CUBE_BASEN, constInfo.s2Size - runInfo.s2oIdx * CUBE_BASEN)
     runInfo.s1RealSize = s1Real
     runInfo.s2RealSize = s2Real
-    runInfo.taskIdMod2 = taskId % 2
 
     # vector 侧两个子核各承担半个 S1：
     # subIdx=0 取 firstHalf，subIdx=1 取剩余部分
@@ -848,22 +847,13 @@ def set_run_info(constInfo, runInfo, taskId, index, subIdx):
     # 子核 0 恒拿块内 0..63 行、子核 1 恒拿 64..127 行。若分界跟着尾块变小，
     # UB 里的数据与 VF 的行号就错位(实测尾块场景 dQ/dK/dV 全错)。
     # 固定 64 同时天然满足 dS^T/P^T 的 NZ 分形 16 对齐要求。
-    firstHalf = VECTOR_BASEM
-    runInfo.firstHalfS1RealSize = firstHalf
     # 本子核真实行数：尾块可能不足，甚至为 0(s1Real <= 64 时子核 1 无事可做)
-    runInfo.halfS1RealSize = pl.max(pl.min(s1Real - subIdx * firstHalf, firstHalf), 0)
+    runInfo.halfS1RealSize = pl.max(
+        pl.min(s1Real - subIdx * VECTOR_BASEM, VECTOR_BASEM), 0)
 
     # BSND 布局的 GM 偏移
     runInfo.queryOffset = runInfo.s1oIdx * CUBE_BASEM
     runInfo.keyOffset = runInfo.s2oIdx * CUBE_BASEN
-
-    # isS2IdxNoChange 决定 dK/dV 能否在 L0C 上累加。本配置下
-    # IS_DKV_RESIDENT_L0C 为 true，但当前实现仍走 atomicAdd，
-    # 故该字段暂只对齐结构，待 L0C 驻留优化时启用。
-    # 由 index-1 直接推出上一块的 s2oIdx，避免跨迭代的可变量
-    # (循环里带条件赋值的标量会触发 IfStmt phi 合并失败)
-    prevS2oIdx = (index - 1) % constInfo.s1oS2o // constInfo.s1Outer
-    runInfo.isS2IdxNoChange = runInfo.s2oIdx == prevS2oIdx
 
     # 统一四维视图上的两个非 S 轴索引，纯算术无分支。
     # Q 侧的 head 是 n2oIdx*gSize + goIdx（共 n1 个），KV 侧是 n2oIdx（共 n2 个）
@@ -877,6 +867,11 @@ def set_run_info(constInfo, runInfo, taskId, index, subIdx):
     runInfo.loadBase = pl.max(
         pl.min(rowBase, constInfo.s1Size - VECTOR_BASEM), 0)
     runInfo.rowShift = rowBase - runInfo.loadBase
+
+    runInfo.loadKV = need_load_kv(constInfo, index, localIdx)
+    # 与 loadKV 互补：列首覆写 L0C，列中累加。消费点必须 == 1，不要用 == 0。
+    runInfo.dkvAcc = 1 - runInfo.loadKV
+    runInfo.flushDkv = 1 - next_s2_same(constInfo, index, localIdx)
 
 
 # ==================================================================
@@ -1148,18 +1143,14 @@ NZP_BLOCK_STRIDE = (VECTOR_BASEM * FRACTAL_C0) * 2 // UB_BLOCK_BYTES + 1   # 65
 NZP_REPEAT_STRIDE = 1
 NZP_ROWS = VECTOR_BASEM + 1   # 65
 
-# V1 之后那几块 UB 的地址表，按 dv_align 分档(见 _build_ub)。
-# 放在这里而不是 _build_ub 旁边：它要用上面的 NZP_ROWS。
-_UB_TAB = {w: _build_ub(w) for w in (128, 192)}
+# V1 UB 按列宽分档：64（d_align=64）、128、192。
+_UB_TAB = {w: _build_ub(w) for w in (64, 128, 192)}
 UB_Y_A = {w: _UB_TAB[w][0] for w in _UB_TAB}
 UB_DY_A = {w: _UB_TAB[w][1] for w in _UB_TAB}
-UB_PROD_A = {w: _UB_TAB[w][2] for w in _UB_TAB}
-UB_TMP_A = {w: _UB_TAB[w][3] for w in _UB_TAB}
-UB_NZP_A = {w: _UB_TAB[w][4] for w in _UB_TAB}
-UB_SFMG_A = {w: _UB_TAB[w][5] for w in _UB_TAB}
-UB_SFMG_HI_A = {w: _UB_TAB[w][6] for w in _UB_TAB}
-UB_LSE0_A = {w: _UB_TAB[w][7] for w in _UB_TAB}
-UB_LSE1_A = {w: _UB_TAB[w][8] for w in _UB_TAB}
+UB_NZP_A = {w: _UB_TAB[w][2] for w in _UB_TAB}
+UB_SFMG_A = {w: _UB_TAB[w][3] for w in _UB_TAB}
+UB_LSE0_A = {w: _UB_TAB[w][4] for w in _UB_TAB}
+UB_LSE1_A = {w: _UB_TAB[w][5] for w in _UB_TAB}
 
 
 def copy_ub2l1(l1_tile, nzp_ub, row_offset):
@@ -1190,38 +1181,21 @@ def copy_ub2l1(l1_tile, nzp_ub, row_offset):
 # ==================================================================
 #  ProcessVec1 —— v1: sfmg = rowsum(dy * y)
 #  对应 vector_api/cast_softmax_grad.h::CopyInSoftmaxGrad +
-#  MySoftmaxGradFrontCast。y 为前向输出，按 SFMG_LOOP_SIZE 分段。
+#  MySoftmaxGradFrontCast。与 BN2 共用按行 reduce，不再开 prod/tmp。
 # ==================================================================
 @pl.vector_function
-def softmax_grad_front_mul_vf(prod_ub, y_ub, dy_ub, srcM: pl.DT_INT64,
-                              rowShift: pl.DT_INT64):
-    """prod = cast(dy) * cast(y)，逐行做逐元素乘（不含 reduce）。
-
-    对应 AscendC CastAligned256F16VF128 的乘法部分：fp16 一次载入 128 个数，
-    按 Even/Odd 拆成两个 64 lane 的 fp32 寄存器分别相乘。
-    行内求和交给 tile 级 pl.sum：VF 的 store 目标地址不能随运行期循环变量
-    变化（实测 507035），而逐行标量写回正需要这种寻址。
-    注意 astype(ZERO)/astype(ONE) 得到的是「去交错」的偶/奇两半，
-    所以两个乘积寄存器要按 even/odd 半区写回，保持与源同序。
-    """
+def softmax_grad_front_row_vf(sfmg_ub, y_ub, dy_ub, srcM: pl.DT_INT64,
+                              rowShift: pl.DT_INT64, rowStride: pl.DT_INT64,
+                              evenSize: pl.DT_INT64, oddSize: pl.DT_INT64):
+    """sfmg：Dv≤128，整行一次 128-fp16 load，even/odd mask 盖真实宽度。"""
     pregFullExe = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
     pregFullExeB16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP16)
-    # 按「平铺的 128 元素段」遍历整块 tile，而不是按行 —— 一次 load_align +
-    # Even/Odd 拆分正好覆盖 128 个 fp16，而 dv_align=192 时一行是 1.5 段，
-    # 按行发固定条数的指令覆盖不全。
-    #
-    # 关键：源(y/dy)与目的(prod)的**行距都是 dv_align**，所以平铺段号在两边
-    # 是同一套坐标，逐段搬运天然保持行内/行间位置一致 —— 不需要知道每行多宽。
-    # 总段数按整块 tile 算(不是按 srcM 行)：多算的越界行由 pl.sum 前的
-    # valid_shape 裁掉(见 process_vec1_chunk)，比在 VF 里按行判断便宜。
-    # 两档都整除：32*128/128=32，32*192/128=48。
-    nsegs = SFMG_LOOP_SIZE * dv_align // (2 * VF_LANES)
-    # rowShift 是「源被钳位后要补偿的行数」，换算成元素偏移
-    base = rowShift * dv_align
-    for t in pl.range(0, nsegs):
-        # rowShift：y/dy 的 GM 读取起点被钳位到界内(见 process_vec1_chunk)
-        vregYHalf = vf.load_align(y_ub, base + t * (2 * VF_LANES))
-        vregDyHalf = vf.load_align(dy_ub, base + t * (2 * VF_LANES))
+    pregEven = vf.update_mask(evenSize, dtype=pl.DT_FP32)
+    pregOdd = vf.update_mask(oddSize, dtype=pl.DT_FP32)
+    aregSfmg = vf.unalign_reg_for_store()
+    for m in pl.range(0, srcM):
+        vregYHalf = vf.load_align(y_ub, (m + rowShift) * rowStride)
+        vregDyHalf = vf.load_align(dy_ub, (m + rowShift) * rowStride)
         vregY = vf.astype(vregYHalf, pregFullExeB16, dtype=pl.DT_FP32,
                           layout=pl.CastLayout.ZERO)
         vregY1 = vf.astype(vregYHalf, pregFullExeB16, dtype=pl.DT_FP32,
@@ -1230,69 +1204,90 @@ def softmax_grad_front_mul_vf(prod_ub, y_ub, dy_ub, srcM: pl.DT_INT64,
                            layout=pl.CastLayout.ZERO)
         vregDy1 = vf.astype(vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32,
                             layout=pl.CastLayout.ONE)
-        vregMul = vf.mul(vregDy, vregY, pregFullExe)
-        vregMul2 = vf.mul(vregDy1, vregY1, pregFullExe)
-        # 用 INTLV_B32 一条指令把偶/奇两个寄存器**交错**写回，还原成与源
-        # 完全相同的元素顺序。
-        #
-        # 这里必须还原顺序，不能像原先那样把两半分别落在本段的前/后 64 个
-        # 位置。原因是 astype(ZERO/ONE) 的去交错是**跨整段 128 个元素**的，
-        # 而一个段并不总等于一行：
-        #   dv_align=128 时一段恰好一行，打乱只发生在行内，而后面按行求和
-        #   对行内顺序不敏感，故看不出问题(这就是 Dv=128 一直是对的原因)；
-        #   dv_align=192 时一行是 1.5 段，段跨越行边界，去交错会把元素搬到
-        #   **另一行**去，行和随之全错 —— 且 pl.sum 前按 dvSize 裁列也裁错
-        #   了位置。实测 Dv=96/160/192 三档 dQ/dK/dV 全错，唯 Dv=128 全对。
-        # 不能用 post_update：它跨迭代累加地址，实测得到量级失控的脏数据。
-        # 注意 prod 的写回**不带 rowShift**：rowShift 只是补偿源(y/dy)被
-        # 钳位的读取起点，prod/sum 始终从第 0 行开始用。
-        vf.store_align(prod_ub + t * (2 * VF_LANES), vregMul, vregMul2,
-                       pregFullExe, dist=pl.StoreDist.INTLV_B32)
+        vregMul = vf.mul(vregDy, vregY, pregEven)
+        vregMul2 = vf.mul(vregDy1, vregY1, pregOdd)
+        vregRed = vf.reduce_sum(vregMul, pregEven)
+        vregRed2 = vf.reduce_sum(vregMul2, pregOdd)
+        vregSum = vf.add(vregRed, vregRed2, pregFullExe)
+        vf.store_unalign(sfmg_ub, vregSum, aregSfmg, 1, post_update=True)
+    vf.store_unalign_post(sfmg_ub, aregSfmg, 0, post_update=True)
 
 
-def process_vec1_chunk(constInfo, runInfo, s1Base, rowOff, rows,
-                       tensor_y, tensor_dy, y_ub, dy_ub, prod_ub, tmp_ub,
-                       sfmg_chunk_ub):
-    # y/dy 的 tile 是 SFMG_LOOP_SIZE 行，load 总是搬满这么多行。
-    # S1 非对齐时起点 + 32 会越过 s1Size，故同 process_vec2 的做法：
-    # 把起点钳位到界内，再用 rowShift 在 VF 内补偿索引。
-    rowBase = s1Base + rowOff
-    loadBase = pl.max(pl.min(rowBase, constInfo.s1Size - SFMG_LOOP_SIZE), 0)
-    rowShift = rowBase - loadBase
-    pl.set_validshape(y_ub, [SFMG_LOOP_SIZE, constInfo.dvSize])
-    pl.set_validshape(dy_ub, [SFMG_LOOP_SIZE, constInfo.dvSize])
-    pl.load(y_ub, tensor_y,
-            [runInfo.idx0Q, loadBase, runInfo.idx2Q, 0], order=[1, 3])
-    pl.load(dy_ub, tensor_dy,
-            [runInfo.idx0Q, loadBase, runInfo.idx2Q, 0], order=[1, 3])
-    softmax_grad_front_mul_vf(prod_ub, y_ub, dy_ub, rows, rowShift)
-    # dim=0：沿最后一轴(Dv)做行向 reduce，得到 [rows, 1]。
-    # 必须把有效宽度裁到真实的 Dv：tile 按 dv_align 声明，Dv 更短时右侧
-    # 是 padding，pl.sum 会把它一起加进 sfmg。
-    # 行数也裁到 rows —— 越界行的乘积是钳位读来的陈旧数据。
-    pl.set_validshape(prod_ub, [rows, constInfo.dvSize])
-    pl.sum(sfmg_chunk_ub, prod_ub, tmp_ub, dim=0)
-    pl.set_validshape(prod_ub, [SFMG_LOOP_SIZE, dv_align])
+@pl.vector_function
+def softmax_grad_front_row192_vf(sfmg_ub, y_ub, dy_ub, srcM: pl.DT_INT64,
+                                 rowShift: pl.DT_INT64, rowStride: pl.DT_INT64,
+                                 evenSize: pl.DT_INT64, oddSize: pl.DT_INT64,
+                                 evenSize2: pl.DT_INT64, oddSize2: pl.DT_INT64):
+    """sfmg：Dv=192 档。先收前 128 列，再 colOff=128 收剩余，两趟 reduce 相加。
+
+    对标老 FAG `MySoftmaxGradFrontCast<..., 384, HEAD_DIM_ALIGN>`：独立档位
+    函数，不把 128/192 写进同一个 VF。
+    """
+    pregFullExe = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    pregFullExeB16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP16)
+    pregEven = vf.update_mask(evenSize, dtype=pl.DT_FP32)
+    pregOdd = vf.update_mask(oddSize, dtype=pl.DT_FP32)
+    pregEven2 = vf.update_mask(evenSize2, dtype=pl.DT_FP32)
+    pregOdd2 = vf.update_mask(oddSize2, dtype=pl.DT_FP32)
+    aregSfmg = vf.unalign_reg_for_store()
+    for m in pl.range(0, srcM):
+        vregYHalf = vf.load_align(y_ub, (m + rowShift) * rowStride)
+        vregDyHalf = vf.load_align(dy_ub, (m + rowShift) * rowStride)
+        vregY = vf.astype(vregYHalf, pregFullExeB16, dtype=pl.DT_FP32,
+                          layout=pl.CastLayout.ZERO)
+        vregY1 = vf.astype(vregYHalf, pregFullExeB16, dtype=pl.DT_FP32,
+                           layout=pl.CastLayout.ONE)
+        vregDy = vf.astype(vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32,
+                           layout=pl.CastLayout.ZERO)
+        vregDy1 = vf.astype(vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32,
+                            layout=pl.CastLayout.ONE)
+        vregMul = vf.mul(vregDy, vregY, pregEven)
+        vregMul2 = vf.mul(vregDy1, vregY1, pregOdd)
+        vregRed = vf.reduce_sum(vregMul, pregEven)
+        vregRed2 = vf.reduce_sum(vregMul2, pregOdd)
+        vregSum = vf.add(vregRed, vregRed2, pregFullExe)
+        vregYHalf = vf.load_align(y_ub, (m + rowShift) * rowStride + 128)
+        vregDyHalf = vf.load_align(dy_ub, (m + rowShift) * rowStride + 128)
+        vregY = vf.astype(vregYHalf, pregFullExeB16, dtype=pl.DT_FP32,
+                          layout=pl.CastLayout.ZERO)
+        vregY1 = vf.astype(vregYHalf, pregFullExeB16, dtype=pl.DT_FP32,
+                           layout=pl.CastLayout.ONE)
+        vregDy = vf.astype(vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32,
+                           layout=pl.CastLayout.ZERO)
+        vregDy1 = vf.astype(vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32,
+                            layout=pl.CastLayout.ONE)
+        vregMul = vf.mul(vregDy, vregY, pregEven2)
+        vregMul2 = vf.mul(vregDy1, vregY1, pregOdd2)
+        vregRed = vf.reduce_sum(vregMul, pregEven2)
+        vregRed2 = vf.reduce_sum(vregMul2, pregOdd2)
+        vregSum2 = vf.add(vregRed, vregRed2, pregFullExe)
+        vregSum = vf.add(vregSum, vregSum2, pregFullExe)
+        vf.store_unalign(sfmg_ub, vregSum, aregSfmg, 1, post_update=True)
+    vf.store_unalign_post(sfmg_ub, aregSfmg, 0, post_update=True)
 
 
 def process_vec1(constInfo, runInfo, subIdx, tensor_y, tensor_dy,
-                 y_ub, dy_ub, prod_ub, tmp_ub, sfmg_lo_ub, sfmg_hi_ub):
-    """softmaxGradFront: sfmg = rowsum(dy * y)。
-
-    按 SFMG_LOOP_SIZE 行分两段：两段的 sfmg 结果地址连续，
-    上层用一个 [VECTOR_BASEM,1] 视图整体参与后续 broadcast。
-    分段数是编译期常量，但 kernel 内 for 必须用 pl.range，
-    故直接展开两次调用。
-    """
-    s1Base = runInfo.queryOffset + subIdx * runInfo.firstHalfS1RealSize
-    rowsLo = pl.min(SFMG_LOOP_SIZE, runInfo.halfS1RealSize)
-    rowsHi = runInfo.halfS1RealSize - rowsLo
-    process_vec1_chunk(constInfo, runInfo, s1Base, 0, rowsLo,
-                       tensor_y, tensor_dy, y_ub, dy_ub, prod_ub, tmp_ub,
-                       sfmg_lo_ub)
-    process_vec1_chunk(constInfo, runInfo, s1Base, SFMG_LOOP_SIZE, rowsHi,
-                       tensor_y, tensor_dy, y_ub, dy_ub, prod_ub, tmp_ub,
-                       sfmg_hi_ub)
+                 y_ub, dy_ub, sfmg_ub, rowStride):
+    """softmaxGradFront: sfmg = rowsum(dy * y)。一趟 VECTOR_BASEM 行。"""
+    pl.set_validshape(y_ub, [VECTOR_BASEM, constInfo.dvSize])
+    pl.set_validshape(dy_ub, [VECTOR_BASEM, constInfo.dvSize])
+    pl.load(y_ub, tensor_y,
+            [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, 0], order=[1, 3])
+    pl.load(dy_ub, tensor_dy,
+            [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, 0], order=[1, 3])
+    w0 = pl.min(constInfo.dvSize, 128)
+    if dv_align == 192:
+        w1 = pl.max(constInfo.dvSize - 128, 0)
+        softmax_grad_front_row192_vf(
+            sfmg_ub, y_ub, dy_ub, runInfo.halfS1RealSize,
+            runInfo.rowShift, rowStride,
+            (w0 + 1) // 2, w0 // 2,
+            (w1 + 1) // 2, w1 // 2)
+    else:
+        softmax_grad_front_row_vf(
+            sfmg_ub, y_ub, dy_ub, runInfo.halfS1RealSize,
+            runInfo.rowShift, rowStride,
+            (w0 + 1) // 2, w0 // 2)
 
 
 # ==================================================================
@@ -1327,23 +1322,17 @@ def muls_simple_softmax_vf(mm2_ub, lse_ub, scale: pl.DT_FP32,
 
 
 def process_vec2(constInfo, runInfo, subIdx, tensor_lse, mm2_ub, lse_ub):
-    s1Base = runInfo.queryOffset + subIdx * runInfo.firstHalfS1RealSize
-    # lse 的 tile 是 [VECTOR_BASEM,1]，load 总是搬 VECTOR_BASEM 行。
-    # S1 非对齐时 s1Base + 64 会越过 s1Size(实测 AIV 507015)，故把起点
-    # 钳位到界内，再把差值 rowShift 传给 VF 做索引补偿 —— 这样搬入的行
-    # 一定在界内，且逻辑行号仍对得上。
-    loadBase = pl.min(s1Base, constInfo.s1Size - VECTOR_BASEM)
-    loadBase = pl.max(loadBase, 0)
-    rowShift = s1Base - loadBase
-    # CopyLse: 前向的 lse 直接复用，无需再求极值或行和
+    # CopyLse: 前向的 lse 直接复用，无需再求极值或行和。
+    # loadBase/rowShift 与 vec1 同一套：S1 非对齐时起点钳位到界内，
+    # VF 用 rowShift 补偿逻辑行号（实测 AIV 507015）。
     # lse 形状 [B,N1,S1]，按 (b, n2*G+g, s1) 三维索引 —— head 维用 Q 侧的
     # n1，与 ASC 的 ((b*n2+n2o)*G+g)*S1 一致；order=[2,0] 指明搬运沿
     # S1(轴 2) 展开、落到 tile 的行方向
     headQ = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx
     pl.load(lse_ub, tensor_lse,
-            [runInfo.boIdx, headQ, loadBase], order=[2, 0])
+            [runInfo.boIdx, headQ, runInfo.loadBase], order=[2, 0])
     muls_simple_softmax_vf(mm2_ub, lse_ub, constInfo.scaleValue,
-                           runInfo.halfS1RealSize, rowShift)
+                           runInfo.halfS1RealSize, runInfo.rowShift)
 
 
 # ==================================================================
@@ -1412,16 +1401,7 @@ def broadcast_sub_mul_cast_vf(nzp_ub, mm1_ub, mm2_ub, sfmg_ub,
 def fill_zero_vf(dst_ub, nvecs: pl.DT_INT64):
     """把 UB tile 的前 nvecs 个 vreg(每个 VF_LANES 个 fp32)填 0。
 
-    按「平铺的 vreg 个数」而不是「行数」计数，故与行宽解耦 —— D 与 Dv 不等长
-    时行宽会随档位变化(128 或 192)，按行写死 2 条 store 的老写法在 192 下
-    只会清到 2/3。
-
-    注意要按 tile 的**分配宽度 d_align** 平铺遍历整块，而不是按运行期的
-    有效宽度：valid_shape 收窄只影响 load/store 搬多少，tile 自身的行距
-    仍是声明时的 d_align，行与行之间是**跨距排布而非紧凑**。多清的那些
-    padding 列由 store 的 valid_shape 挡掉，无副作用。
-    调用方传 rows * D_PHYS_W // VF_LANES，三档都整除(128*128/64=256,
-    128*128/64=256, 128*192/64=384)。
+    1D tile 连续排布。调用方传 ceil(nElems / VF_LANES)。
     """
     pregFullExe = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
     vregZero = vf.full(0.0, pregFullExe, dtype=pl.DT_FP32)
@@ -1429,32 +1409,38 @@ def fill_zero_vf(dst_ub, nvecs: pl.DT_INT64):
         vf.store_align(dst_ub + i * VF_LANES, vregZero, pregFullExe)
 
 
-def process_pre(tensor_ws, zero_ub, totalRows, width, vBlockIdx, vecCoreNum):
-    """把一个 fp32 workspace 清零。
+@pl.vector_function
+def add_fp32_vf(dst_ub, src_ub, nvecs: pl.DT_INT64):
+    """dst += src，按 VF_LANES 个 fp32 一段。"""
+    preg = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    for i in pl.range(0, nvecs):
+        vregA = vf.load_align(dst_ub + i * VF_LANES)
+        vregB = vf.load_align(src_ub + i * VF_LANES)
+        vregS = vf.add(vregA, vregB, preg)
+        vf.store_align(dst_ub + i * VF_LANES, vregS, preg)
 
-    workspace 形状 [B,S,N,D] 已展平成 [totalRows, width]，其中 width 是该
-    张量真实的 head dim —— dq/dk 是 D，dv 是 Dv，两者可以不等长。
-    按 chunk 跨核分配：核 i 领第 i, i+vecCoreNum, ... 块。chunk 取 128 行
-    而非吃满 UB —— 实测吃满(496 行)会把 8192 行切成仅 17 块、55 个核
-    空跑，反而慢 9us。零值在 UB 里只生成一次，之后反复 store，故单缓冲
-    足够，无需 depth 2。
+
+def process_pre(tensor_ws, zt, elemStart, nElems):
+    """把一段连续 fp32 workspace 清零。对齐 ASC InitOutput 的一维切法。
+
+    tensor_ws 是 [1, totalElems] 的扁平视图（B*S*N*D 紧凑）。本核负责
+    [elemStart, elemStart+nElems)。UB 按 PRE_ELEMS 切 full tile；尾块用
+    trip count 0/1 的第二个 pl.range，没有 `if r >= end` / `pl.min`。
+    PyPTO tile 必须是二维，故写成 [1, N]，语义仍是一维元素。
+    zt 已由调用方填零，本函数只 store。
     """
-    numChunks = (totalRows + PRE_CHUNK_ROWS - 1) // PRE_CHUNK_ROWS
-    zt = zero_ub.current()
-    # 清零按 tile 的分配宽度 d_align 平铺整块(见 fill_zero_vf 的说明)，
-    # store 时才用 valid_shape 裁到真实宽度 width。
-    pl.set_validshape(zt, [PRE_CHUNK_ROWS, width])
-    fill_zero_vf(zt, PRE_CHUNK_ROWS * D_PHYS_W[d_align] // VF_LANES)
-    c = vBlockIdx
-    for _ in pl.range(0, numChunks):
-        if c >= numChunks:
-            break
-        r = c * PRE_CHUNK_ROWS
-        n = pl.min(PRE_CHUNK_ROWS, totalRows - r)
-        pl.set_validshape(zt, [n, width])
-        pl.store(tensor_ws, zt, [r, 0])
-        pl.set_validshape(zt, [PRE_CHUNK_ROWS, width])
-        c = c + vecCoreNum
+    chunk = PRE_ELEMS[d_align]
+    nFull = nElems // chunk
+    rem = nElems - nFull * chunk
+    off = elemStart
+    pl.set_validshape(zt, [1, chunk])
+    for _ in pl.range(0, nFull):
+        pl.store(tensor_ws, zt, [0, off])
+        off = off + chunk
+    nTail = (rem + chunk - 1) // chunk
+    for _ in pl.range(0, nTail):
+        pl.set_validshape(zt, [1, rem])
+        pl.store(tensor_ws, zt, [0, off])
 
 
 # ==================================================================
@@ -1467,81 +1453,71 @@ def process_pre(tensor_ws, zero_ub, totalRows, width, vBlockIdx, vecCoreNum):
 
 @pl.vector_function
 def muls_cast_vf(dst_ub, src_ub, scale: pl.DT_FP32, nsegs: pl.DT_INT64):
-    """fp32 -> muls(scale) -> fp16。
+    """fp32 -> muls(scale) -> fp16，按 128 个元素一段扁平遍历整块 tile。
 
-    Even/Odd 双路 cast 再 Or 合并，与主循环里的 cast 路径一致。
-    dV 不需要 scale，调用方传 1.0（fp32 乘 1.0 精确，不改变数值），
-    这样避免在 VF 内做标量分支。
+    对应 ASC post_regbase.h:238-241：那边 Muls/Cast 直接吃 pingSize 个元素，
+    完全不看行宽。这里同理不按行走 —— Vec tile 是紧凑 RowMajor，行距就等于
+    声明宽度 PHYS_W，整块在 UB 里连续，可以当一维数组遍历。
 
-    按「128 元素段数」而不是行数计数：一次 DINTLV_B32 恰好覆盖 128 个 fp32，
-    与行宽解耦 —— D 与 Dv 不等长时行宽会是 128 或 192，按行写死一次 load
-    的老写法在 192 下只会算 2/3。
-    源与目的的行距都是各自 tile 的分配宽度 d_align(相同)，故同一个段号在
-    两边都对得上；调用方按 rows * d_align // VECTOR_BASEN 传段数，
-    多算的 padding 列由 store 的 valid_shape 挡掉。
+    按行走的老写法在 D≤64 时很吃亏：一次 DINTLV_B32 能覆盖 128 个 fp32，
+    但一行只有 64 个，even/odd 掩码各只开一半 lane，VF 利用率 50%。扁平后
+    三条掩码恒为全满，既省掉每次调用的 plt_b32/plt_b16 标量配置，vmuls 也
+    跑在满 lane 上。
+
+    掩码全满会连 padding 列一起算(D=47 时每行多算 17 列的残值)，但那些列
+    被 store 的 valid_shape 挡在 UB 里，出不到 GM。调用方保证
+    rows*PHYS_W % 128 == 0，故段边界不会越出 tile。
     """
-    pregFullExe = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
-    pregB16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP16)
+    pregFull32 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    pregFull16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP16)
     for m in pl.range(0, nsegs):
-        # DINTLV_B32 一次取到 even/odd 两路，各 64 个 fp32，合起来正好
-        # 覆盖 128 个连续元素。
-        vregEven, vregOdd = vf.load_align(src_ub, m * VECTOR_BASEN,
-                                          dist=pl.LoadDist.DINTLV_B32)
-        vregEven = vf.muls(vregEven, scale, pregFullExe)
-        vregOdd = vf.muls(vregOdd, scale, pregFullExe)
-        vregCastEven = vf.astype(vregEven, pregB16, dtype=pl.DT_FP16,
+        vregEven, vregOdd = vf.load_align(
+            src_ub, m * VECTOR_BASEN, dist=pl.LoadDist.DINTLV_B32)
+        vregEven = vf.muls(vregEven, scale, pregFull32)
+        vregOdd = vf.muls(vregOdd, scale, pregFull32)
+        vregCastEven = vf.astype(vregEven, pregFull16, dtype=pl.DT_FP16,
                                  layout=pl.CastLayout.ZERO)
-        vregCastOdd = vf.astype(vregOdd, pregB16, dtype=pl.DT_FP16,
+        vregCastOdd = vf.astype(vregOdd, pregFull16, dtype=pl.DT_FP16,
                                 layout=pl.CastLayout.ONE)
-        vregRes = vf.or_(vregCastEven, vregCastOdd, pregB16)
-        # Or 合并后是完整的 128 个 fp16，一次 store 写完
-        vf.store_align(dst_ub + m * VECTOR_BASEN, vregRes, pregB16)
+        vregRes = vf.or_(vregCastEven, vregCastOdd, pregFull16)
+        vf.store_align(dst_ub + m * VECTOR_BASEN, vregRes, pregFull16)
 
 
-def process_post(tensor_ws, tensor_out, f32_ub, f16_ub,
-                 totalRows, width, scale, vBlockIdx, vecCoreNum):
-    """fp32 workspace -> muls(scale) -> cast fp16 -> 输出。
+def process_post(tensor_ws, tensor_out, f32_ub, f16_ub, scale, elemStart, nElems):
+    """fp32 workspace -> muls(scale) -> cast fp16。对齐 ASC post 的一维 Muls/Cast。
 
-    width 是该张量真实的 head dim：dq/dk 是 D，dv 是 Dv(可以短于 D)。
-
-    按 chunk 跨核分配：核 i 领第 i, i+vecCoreNum, ... 块，chunk 取满
-    247.5KB UB(165 行)。块数少于核数时尾部核空跑 —— 这是「UB 用满优先」
-    的取舍。
-
-    depth 2 靠每轮无条件 next() 轮转两个槽位实现：相邻两轮落在不同 UB
-    地址、各自独立 mutex_id，框架据此判无冲突，于是第 i+1 轮的 load(MTE2)
-    可与第 i 轮的 cast(V)、store(MTE3) 重叠。
-
-    不要手工做「先发下一块 load」的软流水：预取是条件执行的，next() 的
-    调用次数随分支变化，current() 指向的槽位就会错位 —— 实测多块的核
-    在最后一轮拿到上一块的旧数据(B2N2/S1=384 用例 dQ 错到 1.3/4.2)。
-    无条件轮转把游标记账变成确定的，重叠交给框架，与 L0A/L0B 双缓冲同理。
+    本核 [elemStart, elemStart+nElems)。full tile 的 VF 段数是编译期常量；
+    尾块同样用 trip count 0/1，没有 break / min。
     """
-    numChunks = (totalRows + POST_CHUNK_ROWS - 1) // POST_CHUNK_ROWS
-    c = vBlockIdx
-    for _ in pl.range(0, numChunks):
-        if c >= numChunks:
-            break
-        r = c * POST_CHUNK_ROWS
-        n = pl.min(POST_CHUNK_ROWS, totalRows - r)
+    chunk = POST_ELEMS[d_align]
+    nFull = nElems // chunk
+    rem = nElems - nFull * chunk
+    nsegsFull = chunk // VECTOR_BASEN
+    off = elemStart
+    for _ in pl.range(0, nFull):
         ft = f32_ub.next()
         ht = f16_ub.next()
-        # tile 按 d_align 声明，这里裁到该张量真实的宽度 width
-        # (dq/dk 是 D，dv 是 Dv)。VF 按平铺段数走，与行宽解耦。
-        pl.set_validshape(ft, [n, width])
-        pl.set_validshape(ht, [n, width])
-        pl.load(ft, tensor_ws, [r, 0])
-        # post 分配宽度是 POST_PHYS_W（64 档仍 128），走 128 元素 DINTLV。
-        muls_cast_vf(ht, ft, scale, n * POST_PHYS_W[d_align] // VECTOR_BASEN)
-        pl.store(tensor_out, ht, [r, 0])
-        pl.set_validshape(ft, [POST_CHUNK_ROWS, width])
-        pl.set_validshape(ht, [POST_CHUNK_ROWS, width])
-        c = c + vecCoreNum
+        pl.set_validshape(ft, [1, chunk])
+        pl.set_validshape(ht, [1, chunk])
+        pl.load(ft, tensor_ws, [0, off])
+        muls_cast_vf(ht, ft, scale, nsegsFull)
+        pl.store(tensor_out, ht, [0, off])
+        off = off + chunk
+    nTail = (rem + chunk - 1) // chunk
+    nsegsTail = (rem + VECTOR_BASEN - 1) // VECTOR_BASEN
+    for _ in pl.range(0, nTail):
+        ft = f32_ub.next()
+        ht = f16_ub.next()
+        pl.set_validshape(ft, [1, rem])
+        pl.set_validshape(ht, [1, rem])
+        pl.load(ft, tensor_ws, [0, off])
+        muls_cast_vf(ht, ft, scale, nsegsTail)
+        pl.store(tensor_out, ht, [0, off])
 
 
 def process_vec3(constInfo, runInfo, subIdx, ds_l1,
                  mm1_ub, mm2_ub, sfmg_ub, nzp_ub):
-    rowOff = subIdx * runInfo.firstHalfS1RealSize
+    rowOff = subIdx * VECTOR_BASEM
     rows = runInfo.halfS1RealSize
     # nd/nz 不裁剪：列方向的脏数据由 matmul 的 valid_shape 与 store 挡掉。
     # VF 固定写满 VECTOR_BASEM 行：NZ+1 的分形列间距由行数决定，按尾块
@@ -1583,7 +1559,7 @@ def cast_p_vf(nzp_ub, mm2_ub, srcM: pl.DT_INT64):
 
 def process_vec4(constInfo, runInfo, subIdx, p_l1,
                  mm2_ub, nzp_ub):
-    rowOff = subIdx * runInfo.firstHalfS1RealSize
+    rowOff = subIdx * VECTOR_BASEM
     rows = runInfo.halfS1RealSize
     cast_p_vf(nzp_ub, mm2_ub, VECTOR_BASEM)
     # 同 process_vec3：mm5 从 p_t_l1(同地址 ZN 视图)读 P^T
@@ -1634,7 +1610,7 @@ def flash_attn_grad_bn2gs1s2(
     softmax_lse: pl.Ptr[pl.DT_UINT8],
     # 以下 6 个为可选输入。本实现只覆盖 BSND 非 sparse 无 mask 路径，
     # 故 cu_seqlens/seqused(TND 变长)、sinks、attn_mask 均不读取；
-    # metadata 预留给 FAG 元数据(head[4] + 116 int32)，当前未用。
+    # metadata：FAG 区含分核 [start,end) 与 pre/post 行区间（412 int32）。
     # 保留形参是为了与 host 的 13 输入按位对齐 —— 少一个都会错位。
     cu_seqlens_q: pl.Ptr[pl.DT_UINT8],
     cu_seqlens_kv: pl.Ptr[pl.DT_UINT8],
@@ -1736,25 +1712,25 @@ def flash_attn_grad_bn2gs1s2(
     tensor_dv_ws = pl.make_tensor(dv_workspace, [constInfo.viewD0KV, constInfo.s2Size, viewD2KV, dV],
                                   [s2ndKVv, d2dKVv, dV, 1], dtype=pl.DT_FP32)
 
-    # ---- pre/post 用的展平视图 ----
-    # workspace 逻辑形状 [B,S,N,D]，pre/post 只需按行线性遍历，
-    # 故另建 [B*S*N, D] 的二维视图(同一 buffer，独立推导 layout)。
-    # dq 侧的 head 数是 n1(=n2*G)，dk/dv 侧是 n2 —— GQA 下两者不同。
+    # ---- pre/post：ASC 同款一维视图 ----
+    # InitOutput / Muls+Cast 都按 B*S*N*D 个元素线性切，不看行宽。
+    # dq 侧 head 数是 n1(=n2*G)，dk/dv 侧是 n2。
     dqRows = constInfo.bSize * constInfo.s1Size * n1Size
     dkvRows = constInfo.bSize * constInfo.s2Size * constInfo.n2Size
-    # 行宽同样按各自的 head dim：dq/dk 用 D，dv 用 Dv。
-    tensor_dq_ws_flat = pl.make_tensor(dq_workspace, [dqRows, dQ],
-                                       [dQ, 1], dtype=pl.DT_FP32)
-    tensor_dk_ws_flat = pl.make_tensor(dk_workspace, [dkvRows, dQ],
-                                       [dQ, 1], dtype=pl.DT_FP32)
-    tensor_dv_ws_flat = pl.make_tensor(dv_workspace, [dkvRows, dV],
-                                       [dV, 1], dtype=pl.DT_FP32)
-    tensor_dq_out = pl.make_tensor(dq, [dqRows, dQ],
-                                   [dQ, 1], dtype=pl.DT_FP16)
-    tensor_dk_out = pl.make_tensor(dk, [dkvRows, dQ],
-                                   [dQ, 1], dtype=pl.DT_FP16)
-    tensor_dv_out = pl.make_tensor(dv, [dkvRows, dV],
-                                   [dV, 1], dtype=pl.DT_FP16)
+    dqElems = dqRows * dQ
+    dkElems = dkvRows * dQ
+    dvElems = dkvRows * dV
+    tensor_dq_ws_flat = pl.make_tensor(dq_workspace, [1, dqElems], [dqElems, 1],
+                                       dtype=pl.DT_FP32)
+    tensor_dk_ws_flat = pl.make_tensor(dk_workspace, [1, dkElems], [dkElems, 1],
+                                       dtype=pl.DT_FP32)
+    tensor_dv_ws_flat = pl.make_tensor(dv_workspace, [1, dvElems], [dvElems, 1],
+                                       dtype=pl.DT_FP32)
+    tensor_dq_out = pl.make_tensor(dq, [1, dqElems], [dqElems, 1], dtype=pl.DT_FP16)
+    tensor_dk_out = pl.make_tensor(dk, [1, dkElems], [dkElems, 1], dtype=pl.DT_FP16)
+    tensor_dv_out = pl.make_tensor(dv, [1, dvElems], [dvElems, 1], dtype=pl.DT_FP16)
+    # V1 列宽：64 档收到 64；其它档跟 dv_align（y/dy 是 Dv 宽）。
+    v1w = 64 if d_align == 64 else dv_align
 
     # cBlockIdx 必须按物理核取：AIV 侧 get_block_idx() 按 vector 子核计数
     # (0..2*coreNum-1)，AIC 侧按物理核计数。两侧口径不一致会算出不同的
@@ -1771,7 +1747,7 @@ def flash_attn_grad_bn2gs1s2(
     numBlocks = block_range_of(constInfo, cBlockIdx, coreNum,
                                blockStart, blockEnd)
 
-    # ---- CV 共享 UB：mm1ResBuf[2] / mm2ResBuf[2]，按 taskIdMod2 ping-pong ----
+    # ---- CV 共享 UB：mm1ResBuf[2] / mm2ResBuf[2]，按 taskId % 2 ping-pong ----
     mm1_res = pl.make_tile_group(
         type=pl.TileType(shape=[VECTOR_BASEM, VECTOR_BASEN], dtype=pl.DT_FP32,
                          target_memory=pl.MemorySpace.Vec),
@@ -1816,19 +1792,31 @@ def flash_attn_grad_bn2gs1s2(
     # 清完用 sync_all 隔开：主循环的 atomicAdd 必须看到已清零的 GM。
     with pl.section_vector():
         vBlockIdx = pl.get_block_idx()
-        vecCoreNum = coreNum * pl.get_subblock_num()
-        # 单缓冲吃满 248KB(496 行)。mutex_ids 复用主循环的 id：
-        # pre 与主循环被 sync_all 完全隔开，不会同时活跃。
+        dqRowStart = pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdx)
+        dqRowEnd = pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdx)
+        dkvRowStart = pl.getval(meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdx)
+        dkvRowEnd = pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdx)
+        # 单缓冲。mutex_ids 复用主循环的 id：pre 与主循环被 sync_all
+        # 完全隔开，不会同时活跃。列宽/行数按 d_align 查表。
         zero_ub = pl.make_tile_group(
-            type=pl.TileType(shape=[PRE_CHUNK_ROWS, D_PHYS_W[d_align]],
+            type=pl.TileType(shape=[1, PRE_ELEMS[d_align]],
                              dtype=pl.DT_FP32,
                              target_memory=pl.MemorySpace.Vec,
                              valid_shape=[-1, -1]),
             addrs=[UB_PRE_ZERO], mutex_ids=[19])
-        # dq/dk 段是 D 宽，dv 段是 Dv 宽
-        process_pre(tensor_dq_ws_flat, zero_ub, dqRows, dQ, vBlockIdx, vecCoreNum)
-        process_pre(tensor_dk_ws_flat, zero_ub, dkvRows, dQ, vBlockIdx, vecCoreNum)
-        process_pre(tensor_dv_ws_flat, zero_ub, dkvRows, dV, vBlockIdx, vecCoreNum)
+        zt = zero_ub.current()
+        dqNElems = (dqRowEnd - dqRowStart) * dQ
+        dkvNElems = (dkvRowEnd - dkvRowStart) * dQ
+        dvNElems = (dkvRowEnd - dkvRowStart) * dV
+        # 只清本核真正要 store 的元素：小 shape 下每核只有几千个数，
+        # 填满 248KB 要上千条 vsts。三个张量共用这一次填零。
+        preElems = pl.min(PRE_ELEMS[d_align],
+                          pl.max(dqNElems, pl.max(dkvNElems, dvNElems)))
+        pl.set_validshape(zt, [1, PRE_ELEMS[d_align]])
+        fill_zero_vf(zt, (preElems + VF_LANES - 1) // VF_LANES)
+        process_pre(tensor_dq_ws_flat, zt, dqRowStart * dQ, dqNElems)
+        process_pre(tensor_dk_ws_flat, zt, dkvRowStart * dQ, dkvNElems)
+        process_pre(tensor_dv_ws_flat, zt, dkvRowStart * dV, dvNElems)
     pl.system.sync_all()
 
     with pl.section_cube():
@@ -1946,10 +1934,7 @@ def flash_attn_grad_bn2gs1s2(
             if not isLastLoop:
                 curInfo = runInfos[taskId % PRELOAD_TIMES]
                 gIdx = block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx)
-                set_run_info(constInfo, curInfo, taskId, gIdx, 0)
-
-                # K/V 只在 s2 组切换时重载(S1 为最快轴，同组内 K/V 不变)
-                loadKV = need_load_kv(constInfo, gIdx, localIdx)
+                set_run_info(constInfo, curInfo, taskId, gIdx, 0, localIdx)
 
                 # ---- mm2: Q@K^T ----
                 # 反向等待：mm2 只有 2 个 UB 槽位，task N 复用 task N-2 的
@@ -1964,7 +1949,7 @@ def flash_attn_grad_bn2gs1s2(
                         pipe=pl.PipeType.FIX,
                         event_id=SYNC_V2_TO_C2_FLAG[taskId % 2])
                 iterate_mm_qk(constInfo, curInfo, tensor_q, tensor_k,
-                              q_cur, k_l1, left, right, acc, mm2_cur, loadKV)
+                              q_cur, k_l1, left, right, acc, mm2_cur, curInfo.loadKV)
                 pl.system.set_cross_core(pipe=pl.PipeType.FIX,
                                          event_id=SYNC_C2_TO_V2_FLAG[taskId % 2])
                 # ---- mm1: dO@V^T ----
@@ -1973,7 +1958,7 @@ def flash_attn_grad_bn2gs1s2(
                         pipe=pl.PipeType.FIX,
                         event_id=SYNC_V2_TO_C1_FLAG[taskId % 2])
                 iterate_mm_dyv(constInfo, curInfo, tensor_dy, tensor_v,
-                               do_cur, v_l1, left, right, acc, mm1_cur, loadKV)
+                               do_cur, v_l1, left, right, acc, mm1_cur, curInfo.loadKV)
                 pl.system.set_cross_core(pipe=pl.PipeType.FIX,
                                          event_id=SYNC_C1_TO_V2_FLAG[taskId % 2])
 
@@ -1986,40 +1971,33 @@ def flash_attn_grad_bn2gs1s2(
                 pl.system.wait_cross_core(pipe=pl.PipeType.MTE1,
                                           event_id=SYNC_V3_TO_C3_FLAG)
                 # ---- mm5: dV = P^T@dO (L0C 驻留累加) ----
-                # isS2IdxNoChange: 与上一轮同一个 s2 块 -> 在 L0C 上累加
+                # dkvAcc=1: 与上一轮同一个 s2 块 -> 在 L0C 上累加
                 # prevInfo 对应 task N-2 的 block 下标。
                 # task N 处理局部序号 N，故 task N-2 是 taskId-2。
                 # 不能用 localIdx-2：排空阶段 localIdx 已停在 numBlocks。
                 prevIdx = taskId - 2
-                prevG = block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, prevIdx)
-                dkvAcc = dkv_acc_flag(constInfo, prevG, prevIdx)
                 # 延后游标在此推进：taskId>1 才走到这里，故它恒落后两拍
                 q_prev = q_l1_dk.next()
                 do_prev = do_l1_dv.next()
                 iterate_mm_pdy(constInfo, prevInfo,
                                p_t_l1.current(), do_prev,
-                               left, right, dv_acc0, dv_acc1, dkvAcc)
+                               left, right, dv_acc0, dv_acc1, prevInfo.dkvAcc)
                 # 反向：P 的 L1 已读完，放行 vector 覆写
                 pl.system.set_cross_core(pipe=pl.PipeType.MTE1,
                                          event_id=SYNC_C5_TO_V4_FLAG)
                 # ---- mm3: dQ = dS@K (仍直出 GM，dQ 按 s1 分块无法驻留) ----
-                # mm3 对应 task N-2，其 K_ND 是否需重载按 prevIdx 判断
-                loadKVPrev = need_load_kv(constInfo, prevG, prevIdx)
                 iterate_mm_dsk(constInfo, prevInfo, tensor_k_nt, tensor_dq_ws,
-                               loadKVPrev,
+                               prevInfo.loadKV,
                                ds_l1.current(), k_l1_n, left, right, acc)
 
                 # ---- mm4: dK = dS^T@Q (L0C 驻留累加) ----
                 iterate_mm_dsq(constInfo, prevInfo,
                                ds_t_l1.current(), q_prev,
-                               left, right, dk_acc0, dk_acc1, dkvAcc)
+                               left, right, dk_acc0, dk_acc1, prevInfo.dkvAcc)
 
-                # s2 块即将切换(或已是最后一轮)时，把 L0C 上的 dK/dV 落 GM
-                # 注意：这里判断的是「上一轮(prevInfo)所属的 s2 块是否即将
-                # 结束」：比较 prevIdx 与其后继是否同组；
-                # 末轮无后继，必须无条件落盘。
-                if prevIdx >= numBlocks - 1 or not next_s2_same(
-                        constInfo, prevG, prevIdx):
+                # s2 块即将切换(或已是最后一轮)时，把 L0C 上的 dK/dV 落 GM。
+                # 核可能在列中途结束，末块必须无条件落盘。
+                if prevIdx >= numBlocks - 1 or prevInfo.flushDkv == 1:
                     flush_dkv(constInfo, prevInfo,
                               tensor_dk_ws, tensor_dv_ws,
                               dk_acc0, dk_acc1, dv_acc0, dv_acc1)
@@ -2036,24 +2014,15 @@ def flash_attn_grad_bn2gs1s2(
 
     with pl.section_vector():
         subIdx = pl.get_subblock_idx()
-        # y/dy/prod/tmp 的宽度是 **Dv**(y/dy 就是 Dv 宽)，故按 dv_align 声明。
-        # pl.sum 沿最后一轴 reduce，宽度错了会把 padding 列也加进 sfmg。
+        # y/dy 宽度是 V1_W（d_align=64 时 64，否则 dv_align）。
         y_ub = pl.make_tile_group(
-            type=pl.TileType(shape=[SFMG_LOOP_SIZE, dv_align], dtype=pl.DT_FP16,
+            type=pl.TileType(shape=[VECTOR_BASEM, v1w], dtype=pl.DT_FP16,
                              target_memory=pl.MemorySpace.Vec),
-            addrs=[UB_Y_A[dv_align]], mutex_ids=[15])
+            addrs=[UB_Y_A[v1w]], mutex_ids=[15])
         dy_ub = pl.make_tile_group(
-            type=pl.TileType(shape=[SFMG_LOOP_SIZE, dv_align], dtype=pl.DT_FP16,
+            type=pl.TileType(shape=[VECTOR_BASEM, v1w], dtype=pl.DT_FP16,
                              target_memory=pl.MemorySpace.Vec),
-            addrs=[UB_DY_A[dv_align]], mutex_ids=[16])
-        prod_ub = pl.make_tile_group(
-            type=pl.TileType(shape=[SFMG_LOOP_SIZE, dv_align], dtype=pl.DT_FP32,
-                             target_memory=pl.MemorySpace.Vec),
-            addrs=[UB_PROD_A[dv_align]], mutex_ids=[17])
-        tmp_ub = pl.make_tile_group(
-            type=pl.TileType(shape=[SFMG_LOOP_SIZE, dv_align], dtype=pl.DT_FP32,
-                             target_memory=pl.MemorySpace.Vec),
-            addrs=[UB_TMP_A[dv_align]], mutex_ids=[18])
+            addrs=[UB_DY_A[v1w]], mutex_ids=[16])
         # 融合 VF 的唯一输出缓冲：65 行 NZ，多出的一行是 bank 错开填充。
         # valid_shape 动态设置：insert 前收窄到 rows(框架据此算 65-rows
         # 的源跨距)，insert 后必须恢复成 65(见 copy_ub2l1)。
@@ -2061,24 +2030,15 @@ def flash_attn_grad_bn2gs1s2(
             type=pl.TileType(shape=[NZP_ROWS, VECTOR_BASEN], dtype=pl.DT_FP16,
                              target_memory=pl.MemorySpace.Vec, layout=pl.NZ,
                              valid_shape=[-1, -1], compact=2),
-            addrs=[UB_NZP_A[dv_align]], mutex_ids=[19])
-        # sfmg 整体视图([64,1])供 V3 broadcast；lo/hi 两个分段视图供 V1 写入
+            addrs=[UB_NZP_A[v1w]], mutex_ids=[19])
         sfmg_ub = pl.make_tile_group(
             type=pl.TileType(shape=[VECTOR_BASEM, 1], dtype=pl.DT_FP32,
                              target_memory=pl.MemorySpace.Vec, layout=pl.DN),
-            addrs=[UB_SFMG_A[dv_align]], mutex_ids=[23])
-        sfmg_lo_ub = pl.make_tile_group(
-            type=pl.TileType(shape=[SFMG_LOOP_SIZE, 1], dtype=pl.DT_FP32,
-                             target_memory=pl.MemorySpace.Vec, layout=pl.DN),
-            addrs=[UB_SFMG_A[dv_align]], mutex_ids=[28])
-        sfmg_hi_ub = pl.make_tile_group(
-            type=pl.TileType(shape=[SFMG_LOOP_SIZE, 1], dtype=pl.DT_FP32,
-                             target_memory=pl.MemorySpace.Vec, layout=pl.DN),
-            addrs=[UB_SFMG_HI_A[dv_align]], mutex_ids=[29])
+            addrs=[UB_SFMG_A[v1w]], mutex_ids=[23])
         lse_ub = pl.make_tile_group(
             type=pl.TileType(shape=[VECTOR_BASEM, 1], dtype=pl.DT_FP32,
                              target_memory=pl.MemorySpace.Vec, layout=pl.DN),
-            addrs=[UB_LSE0_A[dv_align], UB_LSE1_A[dv_align]], mutex_ids=[24, 25])
+            addrs=[UB_LSE0_A[v1w], UB_LSE1_A[v1w]], mutex_ids=[24, 25])
 
         runInfos = make_run_infos()
         # ---------------- Process() 主循环 (AIV 侧) ----------------
@@ -2097,13 +2057,12 @@ def flash_attn_grad_bn2gs1s2(
                 # ---- v1: softmaxGrad sfmg = rowsum(dy*y) ----
                 process_vec1(constInfo, prevInfo, subIdx, tensor_y, tensor_dy,
                              y_ub.current(), dy_ub.current(),
-                             prod_ub.current(), tmp_ub.current(),
-                             sfmg_lo_ub.current(), sfmg_hi_ub.current())
+                             sfmg_ub.current(), v1w)
 
             if not isLastLoop:
                 curInfo = runInfos[taskId % PRELOAD_TIMES]
                 gIdx = block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx)
-                set_run_info(constInfo, curInfo, taskId, gIdx, subIdx)
+                set_run_info(constInfo, curInfo, taskId, gIdx, subIdx, localIdx)
                 # CopyMaxSum：max/sum 双缓冲随 taskId 轮转
                 lse_ub.next()
 
@@ -2170,35 +2129,40 @@ def flash_attn_grad_bn2gs1s2(
 
     with pl.section_vector():
         vBlockIdxP = pl.get_block_idx()
-        vecCoreNumP = coreNum * pl.get_subblock_num()
+        dqRowStartP = pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdxP)
+        dqRowEndP = pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdxP)
+        dkvRowStartP = pl.getval(meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdxP)
+        dkvRowEndP = pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdxP)
         # depth 2：两个 f32 槽 + 两个 f16 槽，各自独立 mutex_ids，
         # 框架据此判定「下一块的 load」与「本块的 cast/store」无冲突，
         # 从而让 MTE2 / V / MTE3 三条流水重叠。
-        # 槽位地址随 d_align 变化，见 post_ub_addrs
-        postF32_0, postF32_1, postF16_0, postF16_1 = post_ub_addrs(POST_PHYS_W[d_align])
+        postF32_0, postF32_1, postF16_0, postF16_1 = post_ub_addrs(
+            POST_ELEMS[d_align])
         post_f32 = pl.make_tile_group(
-            type=pl.TileType(shape=[POST_CHUNK_ROWS, POST_PHYS_W[d_align]],
+            type=pl.TileType(shape=[1, POST_ELEMS[d_align]],
                              dtype=pl.DT_FP32,
                              target_memory=pl.MemorySpace.Vec,
                              valid_shape=[-1, -1]),
             addrs=[postF32_0, postF32_1], mutex_ids=[19, 20])
         post_f16 = pl.make_tile_group(
-            type=pl.TileType(shape=[POST_CHUNK_ROWS, POST_PHYS_W[d_align]],
+            type=pl.TileType(shape=[1, POST_ELEMS[d_align]],
                              dtype=pl.DT_FP16,
                              target_memory=pl.MemorySpace.Vec,
                              valid_shape=[-1, -1]),
             addrs=[postF16_0, postF16_1], mutex_ids=[21, 22])
-        # dq/dk 是 D 宽，dv 是 Dv 宽；dv 不乘 scale(对应 ASC 的 qkvIdx < 2)
         process_post(tensor_dq_ws_flat, tensor_dq_out, post_f32, post_f16,
-                     dqRows, dQ, constInfo.scaleValue, vBlockIdxP, vecCoreNumP)
+                     constInfo.scaleValue, dqRowStartP * dQ,
+                     (dqRowEndP - dqRowStartP) * dQ)
         process_post(tensor_dk_ws_flat, tensor_dk_out, post_f32, post_f16,
-                     dkvRows, dQ, constInfo.scaleValue, vBlockIdxP, vecCoreNumP)
+                     constInfo.scaleValue, dkvRowStartP * dQ,
+                     (dkvRowEndP - dkvRowStartP) * dQ)
         process_post(tensor_dv_ws_flat, tensor_dv_out, post_f32, post_f16,
-                     dkvRows, dV, 1.0, vBlockIdxP, vecCoreNumP)
+                     1.0, dkvRowStartP * dV,
+                     (dkvRowEndP - dkvRowStartP) * dV)
 
 
-# BN2 的 V1 一趟吃满 VECTOR_BASEM 行，不与 GS1S2 的 SFMG_LOOP_SIZE=32 / prod+tmp
-# 共用同一套 UB 尺寸。地址从 UB_HEAD_RESERVE 起，避免与 codegen 的 UB[0] 中转打架。
+# BN2 的 V1 与 GS1S2 共用 softmax_grad_front_row_vf。地址从
+# UB_HEAD_RESERVE 起，避免与 codegen 的 UB[0] 中转打架。
 BN2_V1_ROWS = VECTOR_BASEM
 BN2_UB_Y = UB_HEAD_RESERVE + 0x20000
 BN2_UB_DY = UB_HEAD_RESERVE + 0x24000
@@ -2207,40 +2171,12 @@ BN2_UB_SFMG = UB_HEAD_RESERVE + 0x2C200
 BN2_UB_LSE_0 = UB_HEAD_RESERVE + 0x2C400
 BN2_UB_LSE_1 = UB_HEAD_RESERVE + 0x2C600
 # v5/v6 Muls+Cast 的 fp16 目的必须是 128 宽：mm1/mm2 DualModeSplitM 落
-# [64,128]，与 GS1S2 的 D_PHYS_W 无关。d_align=64 时若跟 64 宽走，会把
-# 两行拼进 DINTLV 一段。
+# [64,128]。宽度正好等于 muls_cast_vf 的段长，故 64 行就是 64 段；padding
+# 列会被一起算但被 store 的 valid_shape 挡在 UB 里。
 BN2_CAST_W = VECTOR_BASEN
 BN2_UB_CAST = UB_HEAD_RESERVE + 0x30000
-
-
-@pl.vector_function
-def softmax_grad_front_bn2_vf(sfmg_ub, y_ub, dy_ub, srcM: pl.DT_INT64,
-                              rowShift: pl.DT_INT64, rowStride: pl.DT_INT64,
-                              evenSize: pl.DT_INT64, oddSize: pl.DT_INT64):
-    """BN2 的 sfmg：整行在寄存器里收完，mask 按真实 D 的偶/奇宽度。"""
-    pregFullExe = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
-    pregFullExeB16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP16)
-    pregEven = vf.update_mask(evenSize, dtype=pl.DT_FP32)
-    pregOdd = vf.update_mask(oddSize, dtype=pl.DT_FP32)
-    aregSfmg = vf.unalign_reg_for_store()
-    for m in pl.range(0, srcM):
-        vregYHalf = vf.load_align(y_ub, (m + rowShift) * rowStride)
-        vregDyHalf = vf.load_align(dy_ub, (m + rowShift) * rowStride)
-        vregY = vf.astype(vregYHalf, pregFullExeB16, dtype=pl.DT_FP32,
-                          layout=pl.CastLayout.ZERO)
-        vregY1 = vf.astype(vregYHalf, pregFullExeB16, dtype=pl.DT_FP32,
-                           layout=pl.CastLayout.ONE)
-        vregDy = vf.astype(vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32,
-                           layout=pl.CastLayout.ZERO)
-        vregDy1 = vf.astype(vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32,
-                            layout=pl.CastLayout.ONE)
-        vregMul = vf.mul(vregDy, vregY, pregEven)
-        vregMul2 = vf.mul(vregDy1, vregY1, pregOdd)
-        vregRed = vf.reduce_sum(vregMul, pregEven)
-        vregRed2 = vf.reduce_sum(vregMul2, pregOdd)
-        vregSum = vf.add(vregRed, vregRed2, pregFullExe)
-        vf.store_unalign(sfmg_ub, vregSum, aregSfmg, 1, post_update=True)
-    vf.store_unalign_post(sfmg_ub, aregSfmg, 0, post_update=True)
+# MultiBlk dQ 跨 s2 的 fp32 载入缓冲。CAST 在 0x30000 占 16KB。
+BN2_UB_DQTMP = UB_HEAD_RESERVE + 0x34000
 
 
 def process_vec1_bn2(constInfo, runInfo, subIdx, tensor_y, tensor_dy,
@@ -2251,7 +2187,7 @@ def process_vec1_bn2(constInfo, runInfo, subIdx, tensor_y, tensor_dy,
             [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, 0], order=[1, 3])
     pl.load(dy_ub, tensor_dy,
             [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, 0], order=[1, 3])
-    softmax_grad_front_bn2_vf(sfmg_ub, y_ub, dy_ub, runInfo.halfS1RealSize,
+    softmax_grad_front_row_vf(sfmg_ub, y_ub, dy_ub, runInfo.halfS1RealSize,
                               runInfo.rowShift, rowStride,
                               constInfo.dEvenSize, constInfo.dOddSize)
 
@@ -2343,10 +2279,10 @@ def process_muls_cast_dq_bn2(tensor_dq, src_ub, dst_ub, constInfo, runInfo, subI
     DualModeSplitM 在第 64 行切开，子核 0/1 各拿半块 S1。
     """
     rows = runInfo.halfS1RealSize
-    nsegs = VECTOR_BASEM * BN2_CAST_W // VECTOR_BASEN
     pl.set_validshape(src_ub, [VECTOR_BASEM, BN2_CAST_W])
     pl.set_validshape(dst_ub, [VECTOR_BASEM, BN2_CAST_W])
-    muls_cast_vf(dst_ub, src_ub, constInfo.scaleValue, nsegs)
+    muls_cast_vf(dst_ub, src_ub, constInfo.scaleValue,
+                 VECTOR_BASEM * BN2_CAST_W // VECTOR_BASEN)
     if rows > 0:
         seqOff = runInfo.queryOffset + subIdx * VECTOR_BASEM
         pl.set_validshape(dst_ub, [rows, constInfo.dSize])
@@ -2360,10 +2296,10 @@ def process_muls_cast_dk_bn2(tensor_dk, src_ub, dst_ub, constInfo, runInfo, subI
     """v6：mm4 的 fp32 UB → muls(scale) → cast fp16 → dK GM。"""
     rowOff = subIdx * VECTOR_BASEM
     rows = pl.max(pl.min(runInfo.s2RealSize - rowOff, VECTOR_BASEM), 0)
-    nsegs = VECTOR_BASEM * BN2_CAST_W // VECTOR_BASEN
     pl.set_validshape(src_ub, [VECTOR_BASEM, BN2_CAST_W])
     pl.set_validshape(dst_ub, [VECTOR_BASEM, BN2_CAST_W])
-    muls_cast_vf(dst_ub, src_ub, constInfo.scaleValue, nsegs)
+    muls_cast_vf(dst_ub, src_ub, constInfo.scaleValue,
+                 VECTOR_BASEM * BN2_CAST_W // VECTOR_BASEN)
     if rows > 0:
         seqOff = runInfo.keyOffset + rowOff
         pl.set_validshape(dst_ub, [rows, constInfo.dSize])
@@ -2386,6 +2322,64 @@ def process_vec3_bn2(constInfo, runInfo, subIdx, ds_l1,
     copy_ub2l1(ds_l1, nzp_ub, rowOff)
 
 
+def iterate_mm_dsk_bn2(constInfo, runInfo, tensor_k_nt,
+                       ds_l1, k_l1_n, left, right, acc, mm1_ub, loadKV):
+    """MM3 MultiBlk：dQ = dS @ K，DualMode 进 mm1 UB（与单块同一条 CV 路径）。"""
+    k_t3 = k_l1_n.current()
+    pl.set_validshape(k_t3, [runInfo.s2RealSize, constInfo.dSize])
+    if loadKV == 1:
+        pl.load(k_t3, tensor_k_nt,
+                [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV, 0],
+                order=[1, 3])
+    lt3 = left.next()
+    rt3 = right.next()
+    at3 = acc.next()
+    pl.set_validshape(lt3, [CUBE_BASEM, runInfo.s2RealSize])
+    pl.set_validshape(rt3, [runInfo.s2RealSize, constInfo.dSize])
+    pl.set_validshape(at3, [CUBE_BASEM, constInfo.dSize])
+    pl.move(lt3, ds_l1.current())
+    pl.move(rt3, k_t3)
+    pl.matmul(at3, lt3, rt3)
+    pl.set_validshape(mm1_ub, [VECTOR_BASEM, VECTOR_BASEN])
+    pl.move(mm1_ub, at3, acc_to_vec_mode=pl.AccToVecMode.DualModeSplitM)
+
+
+def process_dq_multiblk(tensor_dq, tensor_dq_ws, mm1_ub, tmp_ub, dst_ub,
+                        constInfo, runInfo, subIdx, cBlockIdx):
+    """MultiBlk v5：首 s2 覆盖写 workspace，之后 load+add 再覆盖，末 s2 用 UB 累加做 muls+cast。
+
+    对齐 ASC：needAtomic = IS_BN2_MULTIBLK && !isFirstS1Outer（第一次覆盖，之后累加）。
+    下一 head 的 s2o==0 再次覆盖，不必清零 workspace。
+
+    标志从 s2oIdx 现算（s2oIdx 是已验证字段），不用 struct 里另开一对首末列标记。
+    首列用 UB 加 0 而不是 skip-load，让每拍都走 add+store，避免 DualMode/MTE3 管线分叉。
+    不用 if/else：else 等于用 == 0 当开关。
+    """
+    rows = runInfo.halfS1RealSize
+    rowOff = (cBlockIdx * constInfo.s1Outer + runInfo.s1oIdx) * CUBE_BASEM + subIdx * VECTOR_BASEM
+    nvecs = VECTOR_BASEM * BN2_CAST_W // VF_LANES
+    isFirstS1Outer = 1 - pl.min(runInfo.s2oIdx, 1)
+    isRestS1Outer = pl.min(runInfo.s2oIdx, 1)
+    isLastS1Outer = 1 - pl.min(constInfo.s2Outer - 1 - runInfo.s2oIdx, 1)
+    pl.set_validshape(mm1_ub, [VECTOR_BASEM, BN2_CAST_W])
+    pl.set_validshape(tmp_ub, [VECTOR_BASEM, BN2_CAST_W])
+    if rows > 0:
+        if isFirstS1Outer == 1:
+            fill_zero_vf(tmp_ub, nvecs)
+        if isRestS1Outer == 1:
+            pl.set_validshape(tmp_ub, [rows, constInfo.dSize])
+            pl.load(tmp_ub, tensor_dq_ws, [rowOff, 0])
+            pl.set_validshape(tmp_ub, [VECTOR_BASEM, BN2_CAST_W])
+        add_fp32_vf(mm1_ub, tmp_ub, nvecs)
+        pl.set_validshape(mm1_ub, [rows, constInfo.dSize])
+        pl.store(tensor_dq_ws, mm1_ub, [rowOff, 0],
+                 atomic=pl.AtomicType.AtomicNone)
+        pl.set_validshape(mm1_ub, [VECTOR_BASEM, BN2_CAST_W])
+    if isLastS1Outer == 1:
+        process_muls_cast_dq_bn2(tensor_dq, mm1_ub, dst_ub,
+                                 constInfo, runInfo, subIdx)
+
+
 def flash_attn_grad_bn2(
     q: pl.Ptr[pl.DT_UINT8],
     k: pl.Ptr[pl.DT_UINT8],
@@ -2397,17 +2391,17 @@ def flash_attn_grad_bn2(
     dq: pl.Ptr[pl.DT_UINT8],
     dk: pl.Ptr[pl.DT_UINT8],
     dv: pl.Ptr[pl.DT_UINT8],
+    workspace: pl.Ptr[pl.DT_UINT8],
     tiling: FlashAttnGradTilingData,
     d_align,
 ):
-    """BN2 模板：S1/S2<=128、N1==N2，一个核独占整个 (b, n2) head。
+    """BN2 模板：一个核独占整个 (b, n2) head。
 
-    对齐老 FAG 非 sink BN2：没有 pre、没有 post、没有 sync_all，也不用
-    fp32 workspace。主循环对齐 ComputeDqkvBn2（1-ahead ping-pong）：
-      vec2 → vec3(dS 无 scale) → vec4(P)
-      mm3 fp32→mm1 UB → v5 Muls+Cast dQ
-      mm4 fp32→mm2 UB → v6 Muls+Cast dK
-      mm5 直接 fp16 落 dV（不乘 scale）
+    单块（S1/S2<=128）：没有 pre、没有 post、没有 sync_all，也不读
+    fp32 workspace。主循环对齐 ComputeDqkvBn2（1-ahead ping-pong）。
+
+    MultiBlk（is_bn2_multiblk）：仍无 pre/post/sync_all；dQ 用本核私有
+    workspace 跨 s2 累加，dK/dV 在 L0C 累加到换 s2 再写回。
     """
     coreNum = pl.get_block_num()
     # BN2 合轴分核，kernel 内不启用 swizzle
@@ -2436,7 +2430,7 @@ def flash_attn_grad_bn2(
         softmax_lse, [constInfo.bSize, constInfo.n2Size, constInfo.s1Size],
         [constInfo.n2Size * constInfo.s1Size, constInfo.s1Size, 1],
         dtype=pl.DT_FP32)
-    # 输出直接就是 fp16：没有 fp32 workspace，也就没有 pre/post
+    # 输出直接就是 fp16：单块路径没有 fp32 workspace，也就没有 pre/post
     tensor_dq_out = pl.make_tensor(dq, [constInfo.viewD0Q, constInfo.s1Size, viewD2, dSize],
                                    [s1nd, d2d, dSize, 1], dtype=pl.DT_FP16)
     tensor_dk_out = pl.make_tensor(dk, [constInfo.viewD0Q, constInfo.s2Size, viewD2, dSize],
@@ -2445,6 +2439,13 @@ def flash_attn_grad_bn2(
                                    [s2nd, d2d, dSize, 1], dtype=pl.DT_FP16)
 
     cBlockIdx = pl.get_block_idx() // pl.get_subblock_num()
+    # MultiBlk 才读 workspace。整段 [coreNum * Align128(S1), D]，用行号编码核号。
+    if is_bn2_multiblk == 1:
+        alignS1 = constInfo.s1Outer * CUBE_BASEM
+        ws_ptr = pl.make_ptr(workspace, dtype=pl.DT_FP32)
+        tensor_dq_ws = pl.make_tensor(
+            ws_ptr, [constInfo.coreNum * alignS1, dSize], [dSize, 1],
+            dtype=pl.DT_FP32)
     coreNum = constInfo.coreNum
     # ---- 分核区间直接取自 metadata（AICPU DoFagBn2DenseSplit 的结果）----
     # BN2 下 s1Outer=s2Outer=1，一个块就是一个 (b,n2) head，与 metadata
@@ -2537,20 +2538,23 @@ def flash_attn_grad_bn2(
             if not isLastLoop:
                 curInfo = runInfos[taskId % 2]
                 gIdx = blockStart + localIdx
-                set_run_info(constInfo, curInfo, taskId, gIdx, 0)
+                set_run_info(constInfo, curInfo, taskId, gIdx, 0, localIdx)
 
-                # BN2 每块都是新的 (b,n2)，K/V 每轮都要重载。
                 if taskId > 1:
                     pl.system.wait_cross_core(
                         pipe=pl.PipeType.FIX,
                         event_id=SYNC_DETER_FIX_FLAG)
+                    if is_bn2_multiblk == 1:
+                        pl.system.wait_cross_core(
+                            pipe=pl.PipeType.MTE1,
+                            event_id=SYNC_DQ_WS_MTE3_FLAG)
                 iterate_mm_qk_bn2(constInfo, curInfo, tensor_q, tensor_k,
-                              q_cur, k_l1, left, right, acc, mm2_cur, 1)
+                              q_cur, k_l1, left, right, acc, mm2_cur, curInfo.loadKV)
                 pl.system.set_cross_core(pipe=pl.PipeType.FIX,
                                          event_id=SYNC_C2_TO_V2_FLAG[taskId % 2])
 
                 iterate_mm_dyv_bn2(constInfo, curInfo, tensor_dy, tensor_v,
-                               do_cur, v_l1, left, right, acc, mm1_cur, 1)
+                               do_cur, v_l1, left, right, acc, mm1_cur, curInfo.loadKV)
                 pl.system.set_cross_core(pipe=pl.PipeType.FIX,
                                          event_id=SYNC_C1_TO_V2_FLAG[taskId % 2])
 
@@ -2565,49 +2569,77 @@ def flash_attn_grad_bn2(
                 pl.system.wait_cross_core(pipe=pl.PipeType.MTE1,
                                           event_id=SYNC_V4_TO_C5_FLAG)
 
-                # ---- mm3: dQ = dS@K，fp32 进 mm1 UB（不带 scale）----
-                k_t3 = k_l1_n.current()
-                pl.set_validshape(k_t3, [prevInfo.s2RealSize, constInfo.dSize])
-                pl.load(k_t3, tensor_k_nt,
-                        [prevInfo.idx0KV, prevInfo.keyOffset, prevInfo.idx2KV, 0],
-                        order=[1, 3])
-                lt3 = left.next()
-                rt3 = right.next()
-                at3 = acc.next()
-                # M 用满 CUBE_BASEM，DualModeSplitM 固定在第 64 行切开。
-                pl.set_validshape(lt3, [CUBE_BASEM, prevInfo.s2RealSize])
-                pl.set_validshape(rt3, [prevInfo.s2RealSize, constInfo.dSize])
-                pl.set_validshape(at3, [CUBE_BASEM, constInfo.dSize])
-                pl.move(lt3, ds_l1.current())
-                pl.move(rt3, k_t3)
-                pl.matmul(at3, lt3, rt3)
-                pl.set_validshape(mm1_prev, [VECTOR_BASEM, VECTOR_BASEN])
-                pl.move(mm1_prev, at3,
-                        acc_to_vec_mode=pl.AccToVecMode.DualModeSplitM)
-                pl.system.set_cross_core(pipe=pl.PipeType.FIX,
-                                         event_id=SYNC_C3_TO_V5_FLAG)
+                if is_bn2_multiblk == 1:
+                    iterate_mm_dsk_bn2(constInfo, prevInfo, tensor_k_nt,
+                                       ds_l1, k_l1_n, left, right, acc,
+                                       mm1_prev, prevInfo.loadKV)
+                    pl.system.set_cross_core(pipe=pl.PipeType.FIX,
+                                             event_id=SYNC_C3_TO_V5_FLAG)
+                    iterate_mm_dsq_bn2(constInfo, prevInfo,
+                                       ds_t_l1.current(), q_prev,
+                                       left, right, dk_acc, prevInfo.dkvAcc)
+                    if prevInfo.flushDkv == 1:
+                        pl.set_validshape(mm2_prev, [VECTOR_BASEM, VECTOR_BASEN])
+                        pl.move(mm2_prev, dk_acc.current(),
+                                acc_to_vec_mode=pl.AccToVecMode.DualModeSplitM)
+                        pl.system.set_cross_core(pipe=pl.PipeType.FIX,
+                                                 event_id=SYNC_C4_TO_V6_FLAG)
+                    iterate_mm_pdy_bn2(constInfo, prevInfo,
+                                       p_t_l1.current(), do_prev,
+                                       left, right, dv_acc, prevInfo.dkvAcc)
+                    if prevInfo.flushDkv == 1:
+                        pl.store(tensor_dv_out, dv_acc.current(),
+                                 [prevInfo.idx0KV, prevInfo.keyOffset,
+                                  prevInfo.idx2KV, 0],
+                                 order=[1, 3], atomic=pl.AtomicType.AtomicNone)
+                    pl.system.set_cross_core(pipe=pl.PipeType.MTE1,
+                                             event_id=SYNC_C5_TO_V4_FLAG)
+                    pl.system.set_cross_core(pipe=pl.PipeType.MTE1,
+                                             event_id=SYNC_C4_TO_V3_FLAG)
+                else:
+                    # ---- mm3: dQ = dS@K，fp32 进 mm1 UB（不带 scale）----
+                    k_t3 = k_l1_n.current()
+                    pl.set_validshape(k_t3, [prevInfo.s2RealSize, constInfo.dSize])
+                    pl.load(k_t3, tensor_k_nt,
+                            [prevInfo.idx0KV, prevInfo.keyOffset, prevInfo.idx2KV, 0],
+                            order=[1, 3])
+                    lt3 = left.next()
+                    rt3 = right.next()
+                    at3 = acc.next()
+                    # M 用满 CUBE_BASEM，DualModeSplitM 固定在第 64 行切开。
+                    pl.set_validshape(lt3, [CUBE_BASEM, prevInfo.s2RealSize])
+                    pl.set_validshape(rt3, [prevInfo.s2RealSize, constInfo.dSize])
+                    pl.set_validshape(at3, [CUBE_BASEM, constInfo.dSize])
+                    pl.move(lt3, ds_l1.current())
+                    pl.move(rt3, k_t3)
+                    pl.matmul(at3, lt3, rt3)
+                    pl.set_validshape(mm1_prev, [VECTOR_BASEM, VECTOR_BASEN])
+                    pl.move(mm1_prev, at3,
+                            acc_to_vec_mode=pl.AccToVecMode.DualModeSplitM)
+                    pl.system.set_cross_core(pipe=pl.PipeType.FIX,
+                                             event_id=SYNC_C3_TO_V5_FLAG)
 
-                # ---- mm4: dK = dS^T@Q，fp32 进 mm2 UB ----
-                iterate_mm_dsq_bn2(constInfo, prevInfo,
-                               ds_t_l1.current(), q_prev,
-                               left, right, dk_acc, 0)
-                pl.set_validshape(mm2_prev, [VECTOR_BASEM, VECTOR_BASEN])
-                pl.move(mm2_prev, dk_acc.current(),
-                        acc_to_vec_mode=pl.AccToVecMode.DualModeSplitM)
-                pl.system.set_cross_core(pipe=pl.PipeType.FIX,
-                                         event_id=SYNC_C4_TO_V6_FLAG)
+                    # ---- mm4: dK = dS^T@Q，fp32 进 mm2 UB ----
+                    iterate_mm_dsq_bn2(constInfo, prevInfo,
+                                   ds_t_l1.current(), q_prev,
+                                   left, right, dk_acc, 0)
+                    pl.set_validshape(mm2_prev, [VECTOR_BASEM, VECTOR_BASEN])
+                    pl.move(mm2_prev, dk_acc.current(),
+                            acc_to_vec_mode=pl.AccToVecMode.DualModeSplitM)
+                    pl.system.set_cross_core(pipe=pl.PipeType.FIX,
+                                             event_id=SYNC_C4_TO_V6_FLAG)
 
-                # ---- mm5: dV = P^T@dO，直接 fp16 落 GM，不乘 scale ----
-                iterate_mm_pdy_bn2(constInfo, prevInfo,
-                               p_t_l1.current(), do_prev,
-                               left, right, dv_acc, 0)
-                pl.store(tensor_dv_out, dv_acc.current(),
-                         [prevInfo.idx0KV, prevInfo.keyOffset, prevInfo.idx2KV, 0],
-                         order=[1, 3], atomic=pl.AtomicType.AtomicNone)
-                pl.system.set_cross_core(pipe=pl.PipeType.MTE1,
-                                         event_id=SYNC_C5_TO_V4_FLAG)
-                pl.system.set_cross_core(pipe=pl.PipeType.MTE1,
-                                         event_id=SYNC_C4_TO_V3_FLAG)
+                    # ---- mm5: dV = P^T@dO，直接 fp16 落 GM，不乘 scale ----
+                    iterate_mm_pdy_bn2(constInfo, prevInfo,
+                                   p_t_l1.current(), do_prev,
+                                   left, right, dv_acc, 0)
+                    pl.store(tensor_dv_out, dv_acc.current(),
+                             [prevInfo.idx0KV, prevInfo.keyOffset, prevInfo.idx2KV, 0],
+                             order=[1, 3], atomic=pl.AtomicType.AtomicNone)
+                    pl.system.set_cross_core(pipe=pl.PipeType.MTE1,
+                                             event_id=SYNC_C5_TO_V4_FLAG)
+                    pl.system.set_cross_core(pipe=pl.PipeType.MTE1,
+                                             event_id=SYNC_C4_TO_V3_FLAG)
 
             if taskId >= numBlocks:
                 break
@@ -2644,6 +2676,12 @@ def flash_attn_grad_bn2(
                              target_memory=pl.MemorySpace.Vec,
                              valid_shape=[-1, -1]),
             addrs=[BN2_UB_CAST], mutex_ids=[20])
+        if is_bn2_multiblk == 1:
+            dqtmp_ub = pl.make_tile_group(
+                type=pl.TileType(shape=[VECTOR_BASEM, BN2_CAST_W], dtype=pl.DT_FP32,
+                                 target_memory=pl.MemorySpace.Vec,
+                                 valid_shape=[-1, -1]),
+                addrs=[BN2_UB_DQTMP], mutex_ids=[29])
 
         runInfos = make_run_infos()
         taskId = 0
@@ -2662,7 +2700,7 @@ def flash_attn_grad_bn2(
             if not isLastLoop:
                 curInfo = runInfos[taskId % 2]
                 gIdx = blockStart + localIdx
-                set_run_info(constInfo, curInfo, taskId, gIdx, subIdx)
+                set_run_info(constInfo, curInfo, taskId, gIdx, subIdx, localIdx)
 
             if taskId > 0:
                 prevInfo = runInfos[(taskId + 1) % 2]
@@ -2693,18 +2731,35 @@ def flash_attn_grad_bn2(
                              mm2_t, nzp_ub.current())
                 pl.system.set_cross_core(pipe=pl.PipeType.MTE3,
                                          event_id=SYNC_V4_TO_C5_FLAG)
-                pl.system.wait_cross_core(
-                    pipe=pl.PipeType.V, event_id=SYNC_C3_TO_V5_FLAG)
-                process_muls_cast_dq_bn2(
-                    tensor_dq_out, mm1_t, cast_ub.current(),
-                    constInfo, prevInfo, subIdx)
-                pl.system.wait_cross_core(
-                    pipe=pl.PipeType.V, event_id=SYNC_C4_TO_V6_FLAG)
-                process_muls_cast_dk_bn2(
-                    tensor_dk_out, mm2_t, cast_ub.current(),
-                    constInfo, prevInfo, subIdx)
-                pl.system.set_cross_core(pipe=pl.PipeType.V,
-                                         event_id=SYNC_DETER_FIX_FLAG)
+                if is_bn2_multiblk == 1:
+                    pl.system.wait_cross_core(
+                        pipe=pl.PipeType.V, event_id=SYNC_C3_TO_V5_FLAG)
+                    process_dq_multiblk(
+                        tensor_dq_out, tensor_dq_ws, mm1_t, dqtmp_ub.current(),
+                        cast_ub.current(), constInfo, prevInfo, subIdx, cBlockIdx)
+                    if prevInfo.flushDkv == 1:
+                        pl.system.wait_cross_core(
+                            pipe=pl.PipeType.V, event_id=SYNC_C4_TO_V6_FLAG)
+                        process_muls_cast_dk_bn2(
+                            tensor_dk_out, mm2_t, cast_ub.current(),
+                            constInfo, prevInfo, subIdx)
+                    pl.system.set_cross_core(pipe=pl.PipeType.V,
+                                             event_id=SYNC_DETER_FIX_FLAG)
+                    pl.system.set_cross_core(pipe=pl.PipeType.MTE3,
+                                             event_id=SYNC_DQ_WS_MTE3_FLAG)
+                else:
+                    pl.system.wait_cross_core(
+                        pipe=pl.PipeType.V, event_id=SYNC_C3_TO_V5_FLAG)
+                    process_muls_cast_dq_bn2(
+                        tensor_dq_out, mm1_t, cast_ub.current(),
+                        constInfo, prevInfo, subIdx)
+                    pl.system.wait_cross_core(
+                        pipe=pl.PipeType.V, event_id=SYNC_C4_TO_V6_FLAG)
+                    process_muls_cast_dk_bn2(
+                        tensor_dk_out, mm2_t, cast_ub.current(),
+                        constInfo, prevInfo, subIdx)
+                    pl.system.set_cross_core(pipe=pl.PipeType.V,
+                                             event_id=SYNC_DETER_FIX_FLAG)
 
             if taskId >= numBlocks:
                 break
@@ -2743,11 +2798,12 @@ def flash_attn_grad(
 ):
     """入口只做编译期分发：template 来自 tilingkey。
 
-    BN2 与 BN2GS1S2 各自是一套完整实现。BN2 不接 GQA / D=192。
+    0=BN2GS1S2，1=BN2（含 MultiBlk）。3 预留给 BN2S2，本轮 is_valid 裁掉。
+    BN2 不接 GQA / D=192。
     """
     if template == 1:
         flash_attn_grad_bn2(q, k, v, dout, attn_out, softmax_lse, metadata,
-                            dq, dk, dv, tiling, d_align)
+                            dq, dk, dv, workspace, tiling, d_align)
     else:
         flash_attn_grad_bn2gs1s2(q, k, v, dout, attn_out, softmax_lse,
                                  cu_seqlens_q, cu_seqlens_kv, seqused_q,

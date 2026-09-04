@@ -20,14 +20,23 @@ KERNEL_TIMEOUT_EXIT = 124  # 与 timeout(1) 的约定一致
 # Add op_kernel directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from flash_attn_grad import (  # noqa: E501
+    decide_bn2_multiblk,
     decide_d_align,
     decide_dv_align,
     decide_swizzle,
     decide_template,
     flash_attn_grad,
     FlashAttnGradTilingData,
+    META_FAG_AIV_LIST_NUM,
     META_FAG_BLOCK_ENDS_OFFSET,
     META_FAG_BLOCK_STARTS_OFFSET,
+    META_FAG_DKV_ROW_ENDS,
+    META_FAG_DKV_ROW_STARTS,
+    META_FAG_DKV_ROWS,
+    META_FAG_DQ_ROW_ENDS,
+    META_FAG_DQ_ROW_STARTS,
+    META_FAG_DQ_ROWS,
+    META_FAG_PRE_AIV_NUM,
     META_HEAD_FAG_START_INDEX,
     META_VIEW_LEN,
     TILE_M, TILE_N, TILE_D,
@@ -36,17 +45,50 @@ from flash_attn_grad import (  # noqa: E501
 META_FAG_CORE_LIST_NUM = 36
 
 
-def build_fake_metadata(b, n2, s1_outer, s2_outer, cores, tmpl, device, g_size=1):
-    """JIT 没有 AICPU，按同样布局造 metadata；GQA 下块网格含 G。"""
-    total = b * n2 * g_size * s1_outer * s2_outer
+def _split_rows(total_rows, n_aiv, aiv_num=META_FAG_AIV_LIST_NUM):
+    """与 AICPU FagSplitRows 相同：余数给前 rem 个核，空槽 [0,0)。"""
+    starts = [0] * aiv_num
+    ends = [0] * aiv_num
+    if n_aiv <= 0 or total_rows <= 0:
+        return starts, ends
+    live = min(int(n_aiv), aiv_num)
+    base = int(total_rows) // live
+    rem = int(total_rows) % live
+    cur = 0
+    for i in range(live):
+        n = base + (1 if i < rem else 0)
+        starts[i] = cur
+        ends[i] = cur + n
+        cur += n
+    return starts, ends
+
+
+def build_fake_metadata(b, n2, s1_outer, s2_outer, cores, tmpl, device, g_size=1,
+                        s1=None, s2=None, n1=None):
+    """JIT 没有 AICPU，按同样布局造 metadata；GQA 下块网格含 G。
+
+    tmpl==1 对齐 DoFagBn2DenseSplit：先按 B*N2*G 分核，再把 factor 乘上
+    s1Outer*s2Outer。单块 BN2 时 s1Outer=s2Outer=1，退化为 total=B*N2。
+    pre/post 行区间按 nAiv=usedCube*2 连续均分 dqRows=B*S1*N1、dkvRows=B*S2*N2。
+    """
+    heads = b * n2 * g_size
+    s1s2 = s1_outer * s2_outer
     if tmpl == 1:
-        total = b * n2
+        fused_bn = max(heads, 1)
+        factor_bn = (fused_bn + cores - 1) // cores
+        total = fused_bn * s1s2
+        factor = factor_bn * s1s2
+    else:
+        total = heads * s1s2
+        factor = (total + cores - 1) // cores if cores else total
     meta = torch.zeros(META_VIEW_LEN, dtype=torch.int32)
     fag = int(os.environ.get("FAG_META_OFF", "1744"))
     meta[META_HEAD_FAG_START_INDEX] = fag
-    factor = (total + cores - 1) // cores
+    if factor <= 0:
+        factor = 1
+    used_cube = (total + factor - 1) // factor if factor else 0
     meta[fag + 0] = tmpl
-    meta[fag + 1] = (total + factor - 1) // factor
+    meta[fag + 1] = used_cube
     meta[fag + 2] = factor
     meta[fag + 3] = s1_outer
     meta[fag + 4] = s2_outer
@@ -55,6 +97,25 @@ def build_fake_metadata(b, n2, s1_outer, s2_outer, cores, tmpl, device, g_size=1
         end = min(start + factor, total)
         meta[fag + META_FAG_BLOCK_STARTS_OFFSET + c] = start
         meta[fag + META_FAG_BLOCK_ENDS_OFFSET + c] = end
+    if s1 is None:
+        s1 = s1_outer * 128
+    if s2 is None:
+        s2 = s2_outer * 128
+    if n1 is None:
+        n1 = n2 * g_size
+    n_aiv = min(int(used_cube) * 2, META_FAG_AIV_LIST_NUM) if used_cube else 0
+    dq_rows = int(b) * int(s1) * int(n1)
+    dkv_rows = int(b) * int(s2) * int(n2)
+    meta[fag + META_FAG_PRE_AIV_NUM] = n_aiv
+    meta[fag + META_FAG_DQ_ROWS] = dq_rows
+    meta[fag + META_FAG_DKV_ROWS] = dkv_rows
+    dq_starts, dq_ends = _split_rows(dq_rows, n_aiv)
+    dkv_starts, dkv_ends = _split_rows(dkv_rows, n_aiv)
+    for i in range(META_FAG_AIV_LIST_NUM):
+        meta[fag + META_FAG_DQ_ROW_STARTS + i] = dq_starts[i]
+        meta[fag + META_FAG_DQ_ROW_ENDS + i] = dq_ends[i]
+        meta[fag + META_FAG_DKV_ROW_STARTS + i] = dkv_starts[i]
+        meta[fag + META_FAG_DKV_ROW_ENDS + i] = dkv_ends[i]
     return meta.to(device)
 
 
@@ -244,23 +305,28 @@ def run_case(B, N, S1, S2, D, num_cores, G=1, Dv=None):
 
     d_align = decide_d_align(D)
     dv_align = decide_dv_align(Dv, d_align)
-    tmpl = decide_template(N1, N2, S1, S2, D, is_tnd=False)
+    tmpl = decide_template(N1, N2, S1, S2, D, is_tnd=False, b=B, dv=Dv)
+    is_mb = decide_bn2_multiblk(B, N1, N2, S1, S2, D, dv=Dv)
     _force_tmpl = os.environ.get("FAG_FORCE_TEMPLATE")
     if _force_tmpl is not None:
         tmpl = int(_force_tmpl)
     if tmpl == 1:
         swizzle = 0
+    else:
+        is_mb = 0
     s1_outer = (S1 + 127) // 128
     s2_outer = (S2 + 127) // 128
     metadata = build_fake_metadata(
-        B, N2, s1_outer, s2_outer, num_cores, tmpl, device, g_size=G)
+        B, N2, s1_outer, s2_outer, num_cores, tmpl, device, g_size=G,
+        s1=S1, s2=S2, n1=N1)
 
     # Launch kernel
     print(f"Launching kernel: B={B}, N1={N1}, N2={N2}, G={G}, S1={S1}, "
           f"S2={S2}, D={D}, Dv={Dv}, d_align={d_align}, "
           f"dv_align={dv_align}, "
           f"scale={scale:.6f}, cores={num_cores}, "
-          f"layout={layout}, template={tmpl}, swizzle={swizzle}")
+          f"layout={layout}, template={tmpl}, swizzle={swizzle}, "
+          f"is_bn2_multiblk={is_mb}")
 
     # 先触发编译（不计入执行看护窗口）：编译发生在首次调用内部，
     # 故这里用 launch + 同步作为一次完整执行，并只对「执行」计时看护。
@@ -271,7 +337,8 @@ def run_case(B, N, S1, S2, D, num_cores, G=1, Dv=None):
             # d_align 是 D 的分配宽度分档，取值即实际列数。
             {"template": tmpl, "layout": 0,
              "has_atten_mask": 0, "swizzle": swizzle,
-             "d_align": d_align, "dv_align": dv_align},
+             "d_align": d_align, "dv_align": dv_align,
+             "is_bn2_multiblk": is_mb},
             # datatype：对应 @pl.jit 的 datatype={"q": "input_dtype"}
             {"q": pl.DT_FP16},
         ](
@@ -385,6 +452,9 @@ CASES = [
     (1, 1, 256, 256, 72, 1),    # 35: D=72，非 16 倍数(dAlign=80)
     (2, 3, 257, 257, 100, 8),   # 36: D=100，非 16 倍数 + 多核双尾块
     (1, 1, 4096, 4096, 72, 36), # 37: D 尾块 + 满核大 shape
+    # --- BN2 MultiBlk：S in (128,640]，BN 门 ---
+    (1, 128, 256, 256, 128, 36), # 38: BN=128 且 S 对齐
+    (1, 256, 129, 129, 64, 36),  # 39: BN>=256 双尾块 D64
 ]
 
 
@@ -547,7 +617,9 @@ def run_test():
         return 0 if test_gate_matches_host() else 1
     _named = {"G": GENERALIZED_CASES, "G64": GENERALIZED_CASES_D64,
               "G128": GENERALIZED_CASES_D128, "GD": GENERALIZED_CASES_DTAIL,
-              "GQA": GQA_CASES, "DV": DV_CASES, "ASYM": ASYM_CASES}
+              "GQA": GQA_CASES, "DV": DV_CASES, "ASYM": ASYM_CASES,
+              "MB": [(1, 128, 256, 256, 128, 36),
+                     (1, 256, 129, 129, 64, 36)]}
     if ":" in flt:
         name, _, idxs = flt.partition(":")
         pool = _named.get(name, CASES)

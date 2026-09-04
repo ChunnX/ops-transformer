@@ -73,7 +73,7 @@ _DTYPE_MAP = {
     "float32": torch.float32,
 }
 
-HEAD_FAG_START_OFFSET_INDEX = 4
+HEAD_FAG_START_OFFSET_INDEX = 7
 FAG_SPLIT_AXIS_INDEX = 0
 FAG_BLOCK_OUTER_INDEX = 1
 FAG_BLOCK_STARTS_OFFSET = 8
@@ -81,7 +81,16 @@ FAG_BLOCK_ENDS_OFFSET = 44
 FAG_CORE_LIST_NUM = 36
 FAG_SPLIT_AXIS_BN2GS1S2 = 0
 FAG_SPLIT_AXIS_BN2 = 1
+# AICPU 分核轴：2=BN2S2。与 tilingkey template=3（BN2S2 预留）不是同一个数。
 FAG_SPLIT_AXIS_BN2S2 = 2
+FAG_PRE_AIV_NUM_INDEX = 121
+FAG_DQ_ROWS_INDEX = 122
+FAG_DKV_ROWS_INDEX = 123
+FAG_DQ_ROW_STARTS_OFFSET = 124
+FAG_DQ_ROW_ENDS_OFFSET = 196
+FAG_DKV_ROW_STARTS_OFFSET = 268
+FAG_DKV_ROW_ENDS_OFFSET = 340
+FAG_AIV_LIST_NUM = 72
 
 
 def _parse_cell(val):
@@ -251,10 +260,40 @@ def dump_metadata(metadata, b=None, n2=None, s1=None, s2=None, core_num=36,
         print("  [FAIL] AICPU 标成 BN2，但 host tmpl=0（禁止 silently 错模板）")
         mismatch = True
     if template == 0 and axis == FAG_SPLIT_AXIS_BN2S2:
-        print("  [FAIL] AICPU 标成 BN2S2，kernel 没有 tmpl=2")
+        print("  [FAIL] AICPU 标成 BN2S2（splitAxis=2），kernel 预留 tmpl=3 本轮未编")
         mismatch = True
     print(f"  [meta] blockStarts[0:12]={starts[:12]}")
     print(f"  [meta] blockEnds  [0:12]={ends[:12]}")
+    n_aiv = fag[FAG_PRE_AIV_NUM_INDEX] if len(fag) > FAG_PRE_AIV_NUM_INDEX else 0
+    dq_rows = fag[FAG_DQ_ROWS_INDEX] if len(fag) > FAG_DQ_ROWS_INDEX else 0
+    dkv_rows = fag[FAG_DKV_ROWS_INDEX] if len(fag) > FAG_DKV_ROWS_INDEX else 0
+    dq_aiv_s = fag[FAG_DQ_ROW_STARTS_OFFSET:FAG_DQ_ROW_STARTS_OFFSET + FAG_AIV_LIST_NUM]
+    dq_aiv_e = fag[FAG_DQ_ROW_ENDS_OFFSET:FAG_DQ_ROW_ENDS_OFFSET + FAG_AIV_LIST_NUM]
+    print(f"  [meta] nAiv={n_aiv} dqRows={dq_rows} dkvRows={dkv_rows}")
+    expect_naiv = min(int(bo) * 2, FAG_AIV_LIST_NUM) if bo else 0
+    if n_aiv != expect_naiv:
+        print(f"  [FAIL] nAiv={n_aiv} != usedCube*2={expect_naiv}")
+        mismatch = True
+    if None not in (b, s1) and (n1 is not None or n2 is not None):
+        n_q = n1 if n1 is not None else n2
+        expect_dq = int(b) * int(s1) * int(n_q)
+        if dq_rows != expect_dq:
+            print(f"  [FAIL] dqRows={dq_rows} != B*S1*N1={expect_dq}")
+            mismatch = True
+    if None not in (b, s2, n2):
+        expect_dkv = int(b) * int(s2) * int(n2)
+        if dkv_rows != expect_dkv:
+            print(f"  [FAIL] dkvRows={dkv_rows} != B*S2*N2={expect_dkv}")
+            mismatch = True
+    dq_first8 = [(dq_aiv_s[i], dq_aiv_e[i]) for i in range(min(8, len(dq_aiv_s)))]
+    print(f"  [meta] dqAiv[0:8]={dq_first8}")
+    live_rows = [dq_aiv_e[i] - dq_aiv_s[i] for i in range(len(dq_aiv_s))
+                 if i < len(dq_aiv_e) and dq_aiv_e[i] > dq_aiv_s[i]]
+    occ_span = (max(live_rows) - min(live_rows)) if live_rows else 0
+    print(f"  [meta] dq live cores={len(live_rows)} max-min={occ_span}")
+    if (template == 0 and n_aiv > 1 and live_rows and occ_span > 1):
+        print("  [FAIL] GS1S2 pre/post 行负载 max-min>1")
+        mismatch = True
     if None not in (b, n2, s1, s2):
         s1o = (s1 + cube_base - 1) // cube_base
         s2o = (s2 + cube_base - 1) // cube_base
@@ -282,14 +321,16 @@ def dump_metadata(metadata, b=None, n2=None, s1=None, s2=None, core_num=36,
             print("  [note] 上面那行 [kernel] 只是旧的内置公式，用来对账；"
                   "kernel 线性分核实际读的是 metadata 的 [start, end)")
     return {"block_outer": bo, "starts": starts, "ends": ends,
-            "split_axis": axis, "mismatch": mismatch, "used_cores": used}
+            "split_axis": axis, "mismatch": mismatch, "used_cores": used,
+            "n_aiv": n_aiv, "dq_rows": dq_rows, "dq_first8": dq_first8,
+            "dq_span": occ_span}
 
 
 def _check_fag_block_starts_ends(metadata):
     meta = metadata.cpu().tolist()
     fag_offset = meta[HEAD_FAG_START_OFFSET_INDEX] if len(meta) > HEAD_FAG_START_OFFSET_INDEX else 0
     if fag_offset == 0 or fag_offset >= len(meta):
-        print(f"  [WARN] FAG region not populated (head[4]={fag_offset}), skip FAG check")
+        print(f"  [WARN] FAG region not populated (head[7]={fag_offset}), skip FAG check")
         return
     fag = meta[fag_offset:]
     bo = fag[FAG_BLOCK_OUTER_INDEX] if len(fag) > FAG_BLOCK_OUTER_INDEX else 0
@@ -947,6 +988,45 @@ def _fag_dense_block_outer(fused, aic_num):
     return (fused + factor - 1) // factor
 
 
+_BN2_MAX_S = 128
+_BN2_MAX_D = 128
+_BN2_MB_SEQ = 640
+_BN2_MB_BN128 = 128
+_BN2_MB_BN256 = 256
+
+
+def _decide_bn2_multiblk(c):
+    b, n1, n2 = c["b"], c["n1"], c["n2"]
+    s1, s2, d = c["s1"], c["s2"], c["d"]
+    dv = c.get("dv", d)
+    if c.get("layout", "BSND") == "TND":
+        return 0
+    if (c.get("mask_mode", 0) or 0) != 0:
+        return 0
+    if n1 != n2 or d > _BN2_MAX_D or dv != d:
+        return 0
+    if not ((s1 > _BN2_MAX_S or s2 > _BN2_MAX_S) and
+            s1 <= _BN2_MB_SEQ and s2 <= _BN2_MB_SEQ):
+        return 0
+    bn = b * n1
+    if bn >= _BN2_MB_BN256:
+        return 1
+    if bn >= _BN2_MB_BN128 and (s1 % 128 == 0) and (s2 % 128 == 0):
+        return 1
+    return 0
+
+
+def _decide_template(c):
+    n1, n2, s1, s2, d = c["n1"], c["n2"], c["s1"], c["s2"], c["d"]
+    if c.get("layout", "BSND") == "TND":
+        return 0
+    if n1 == n2 and d <= _BN2_MAX_D and s1 <= _BN2_MAX_S and s2 <= _BN2_MAX_S:
+        return 1
+    if _decide_bn2_multiblk(c):
+        return 1
+    return 0
+
+
 def _predict_used_cube(c, aic_num=None):
     """复刻 host FagUsedCubeCores：dense 非 TND 返回实际 blockOuter，否则满核。
 
@@ -960,7 +1040,7 @@ def _predict_used_cube(c, aic_num=None):
     b, n1, n2 = c["b"], c["n1"], c["n2"]
     s1, s2, d = c["s1"], c["s2"], c["d"]
     g = n1 // n2 if n2 else 1
-    tmpl = 1 if (layout != "TND" and n1 == n2 and d <= 128 and s1 <= 128 and s2 <= 128) else 0
+    tmpl = _decide_template(c)
     s1o = _fag_outer(s1, _FAG_S1_INNER, _FAG_S1CV_RATIO)
     s2o = _fag_outer(s2, _FAG_S2_INNER, _FAG_S2CV_RATIO)
     fused = b * n2 * g if tmpl == 1 else b * n2 * g * s1o * s2o
@@ -973,14 +1053,15 @@ def _predict_tiling(c, cores=None):
     """复刻 host tiling 的 template / swizzle / tilingKey，只为打进报告里对账。
 
     tilingKey = tmpl | layout<<2 | mask<<3 | swizzle<<4 |
-                d_align_bits<<5 | dv_align_bit<<7
+                d_align_bits<<5 | dv_align_bit<<7 | is_bn2_multiblk<<8
     d_align bits: 0=64, 1=128, 2=192。GS1S2 的 D<=64 保持 d_align=64（dv_align 仍 128）。
     """
     cores = cores or int(os.environ.get("FAG_CORE_NUM", "36"))
     b, n1, n2 = c["b"], c["n1"], c["n2"]
     s1, s2, d, dv = c["s1"], c["s2"], c["d"], c["dv"]
     g = n1 // n2 if n2 else 1
-    tmpl = 1 if (n1 == n2 and d <= 128 and s1 <= 128 and s2 <= 128) else 0
+    tmpl = _decide_template(c)
+    is_mb = _decide_bn2_multiblk(c) if tmpl == 1 else 0
     used_cube, _ = _predict_used_cube(c, cores)
     swizzle = 0
     if tmpl == 0 and cores > 0 and used_cube == cores:
@@ -1005,7 +1086,7 @@ def _predict_tiling(c, cores=None):
         dv_align = 128
     d_bits = 0 if d_align == 64 else (1 if d_align == 128 else 2)
     dv_bit = 1 if dv_align == 192 else 0
-    key = tmpl | (swizzle << 4) | (d_bits << 5) | (dv_bit << 7)
+    key = tmpl | (swizzle << 4) | (d_bits << 5) | (dv_bit << 7) | (is_mb << 8)
     return tmpl, swizzle, key
 
 
@@ -1077,6 +1158,8 @@ def _build_case_data(c):
 
 
 def _bench_wall(fn, warmup=3, iters=10):
+    if iters <= 0:
+        return float("nan")
     for _ in range(warmup):
         fn()
     torch.npu.synchronize()
@@ -1125,6 +1208,7 @@ def _run_one_compare(case, args):
              f"{c['dtype']} {c['layout']}")
     print(f"\n{'='*78}\n[compare] {c['name']}\n  {shape}  "
           f"template={tmpl}({'BN2' if tmpl else 'BN2GS1S2'}) "
+          f"multiblk={_decide_bn2_multiblk(c) if tmpl == 1 else 0} "
           f"swizzle={swizzle} tilingKey={key} usedCube={used_cube}"
           f"{'' if use_actual else ' (full-chip fallback)'}\n{'='*78}", flush=True)
 
@@ -1230,6 +1314,30 @@ def _run_one_compare(case, args):
             print(f"    {nm} {'OK ' if good else 'BAD'} "
                   f"pypto/golden {_fmt_err(ep)} | ASC/golden {_fmt_err(ea)} | "
                   f"pypto/ASC rel={epa['rel_max']:.2e}")
+            if nm == "dQ" and not good:
+                g = po.detach().cpu().float()
+                r = gdq.detach().cpu().float()
+                diff = (g - r).abs()
+                n_big = int((diff > 0.1).sum().item())
+                n_huge = int((diff > 1.0).sum().item())
+                flat = int(diff.reshape(-1).argmax().item())
+                loc = []
+                rem = flat
+                for dim in reversed(diff.shape):
+                    loc.append(rem % int(dim))
+                    rem //= int(dim)
+                loc = tuple(reversed(loc))
+                print(f"      dQ debug n>|0.1|={n_big} n>|1|={n_huge} "
+                      f"argmax{loc} got={g.reshape(-1)[flat].item():.4f} "
+                      f"ref={r.reshape(-1)[flat].item():.4f} "
+                      f"shape={tuple(int(x) for x in diff.shape)}")
+                huge = diff > 1.0
+                # BSND: (B, S1, N, D)
+                s1_idx = [i for i, v in enumerate(huge.any(dim=0).any(dim=1).any(dim=1).tolist()) if v]
+                n_idx = [i for i, v in enumerate(huge.any(dim=0).any(dim=0).any(dim=1).tolist()) if v]
+                d_idx = [i for i, v in enumerate(huge.any(dim=0).any(dim=0).any(dim=0).tolist()) if v]
+                print(f"      huge s1({len(s1_idx)})={s1_idx[:32]} "
+                      f"n({len(n_idx)})={n_idx[:32]} d({len(d_idx)})={d_idx[:32]}")
 
     # 重跑同一份输入，看结果是否逐位可重复 —— 之前 UB 竞争就是这么暴露的
     drift = 0.0
@@ -1245,14 +1353,18 @@ def _run_one_compare(case, args):
             ok = False
     res["drift"] = drift
 
-    t_pypto = _bench_wall(pypto_once, args.warmup, args.iters)
+    t_pypto = float("nan")
     t_asc = float("nan")
-    if asc_out is not None:
-        t_asc = _bench_wall(asc_once, args.warmup, args.iters)
-        print(f"    perf  pypto={t_pypto:.1f}us  ASC={t_asc:.1f}us  "
-              f"pypto/ASC={t_pypto / t_asc if t_asc else float('nan'):.2f}x")
+    if args.warmup > 0 or args.iters > 0:
+        t_pypto = _bench_wall(pypto_once, args.warmup, args.iters)
+        if asc_out is not None:
+            t_asc = _bench_wall(asc_once, args.warmup, args.iters)
+            print(f"    perf  pypto={t_pypto:.1f}us  ASC={t_asc:.1f}us  "
+                  f"pypto/ASC={t_pypto / t_asc if t_asc else float('nan'):.2f}x")
+        else:
+            print(f"    perf  pypto={t_pypto:.1f}us  ASC=n/a（无 ASC）")
     else:
-        print(f"    perf  pypto={t_pypto:.1f}us  ASC=n/a（无 ASC）")
+        print("    perf  skipped (precision-only)")
 
     res.update({"status": "pass" if ok else "fail", "t_pypto": t_pypto,
                 "t_asc": t_asc, "err_p": worst_p, "err_a": worst_a,
