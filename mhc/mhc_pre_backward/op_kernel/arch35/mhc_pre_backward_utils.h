@@ -170,7 +170,7 @@ constexpr MatmulApiStaticTiling GetC0StaticTiling(const MatmulApiStaticTiling& m
     tiling.stepKb = 1;
     tiling.depthA1 = 1;
     tiling.depthB1 = 1;
-    tiling.dbL0C = 1;
+    tiling.dbL0C = 2;
     return tiling;
 }
 
