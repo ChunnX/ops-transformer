@@ -296,8 +296,7 @@ class SymmBuffer:
             comm_alg=comm_alg,
             topk_weights_type=topk_weights_type,
         )
-        # Preserve the existing MTE allocation; cross-super context replaces it with the URMA size before malloc.
-        required_ccl_buffer_size = ccl_buffer_size_params() * 2
+        required_ccl_buffer_size = ccl_buffer_size_params()
         self._ctx_manager = CommContextManager(
             self.group_name,
             self.ep_world_size,
