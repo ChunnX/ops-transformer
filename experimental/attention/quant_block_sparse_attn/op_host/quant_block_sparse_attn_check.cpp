@@ -745,7 +745,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckQuantShape() const
         if (vDescaleShape.GetDimNum() != DIM_NUM_1 ||
             vDescaleShape.GetDim(0U) != static_cast<int64_t>(tilingInfo_.n2Size)) { // dim0 = n2Size
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "v_descale", Ops::Base::ToString(vDescaleShape),
-                                                  "must be [n2Size].");
+                                                  "must be [n2Size]");
             return ge::GRAPH_FAILED;
         }
     }
@@ -797,8 +797,15 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckAttenMask() const
         OP_LOGE_WITH_INVALID_ATTR(kOpName, "mask_mode", std::to_string(tilingInfo_.maskModeVal), "0 or 3");
         return ge::GRAPH_FAILED;
     }
-    if (tilingInfo_.maskModeVal == QBSA_MASK_MODE_CAUSAL) {
-        const auto &opParamInfo = tilingInfo_.opParamInfo;
+    const auto &opParamInfo = tilingInfo_.opParamInfo;
+    if (tilingInfo_.maskModeVal == QBSA_MASK_MODE_NONE) {
+        if (opParamInfo.attenMask.shape != nullptr &&
+            opParamInfo.attenMask.shape->GetStorageShape().GetShapeSize() > 0) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "atten_mask", "provided",
+                                                  "Atten_mask must not be provided when mask_mode=0");
+            return ge::GRAPH_FAILED;
+        }
+    } else if (tilingInfo_.maskModeVal == QBSA_MASK_MODE_CAUSAL) {
         if (opParamInfo.attenMask.shape == nullptr ||
             opParamInfo.attenMask.shape->GetStorageShape().GetShapeSize() <= 0) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "atten_mask", "nullptr",

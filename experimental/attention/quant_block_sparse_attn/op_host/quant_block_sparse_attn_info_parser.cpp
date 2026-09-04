@@ -257,14 +257,25 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseOptionalInputs(QuantBlockSp
 
     const gert::Shape &blockTableShape = blockTableStorageShape->GetStorageShape();
     uint32_t blockTableB = 0;
-    if (blockTableShape.GetDimNum() != DIM_NUM_2 ||
-        !QBSAGetDimAsU32(blockTableShape, QBSAGetBlockTableAxisIdx(QBSAAxis::B), blockTableB) ||
-        !QBSAGetDimAsU32(blockTableShape, QBSAGetBlockTableAxisIdx(QBSAAxis::MAX_BLOCK_NUM),
-                         tilingInfo.maxBlockNumPerBatch) ||
-        blockTableB != tilingInfo.bSize) {
+    if (blockTableShape.GetDimNum() != DIM_NUM_2) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
             kOpName, "block_table", std::to_string(blockTableShape.GetDimNum()) + "D",
-            "2D [B=" + std::to_string(tilingInfo.bSize) + ", maxBlockNumPerBatch]");
+            "2D [B, maxBlockNumPerBatch]");
+        return ge::GRAPH_FAILED;
+    }
+    if (!QBSAGetDimAsU32(blockTableShape, QBSAGetBlockTableAxisIdx(QBSAAxis::B), blockTableB) ||
+        !QBSAGetDimAsU32(blockTableShape, QBSAGetBlockTableAxisIdx(QBSAAxis::MAX_BLOCK_NUM),
+                         tilingInfo.maxBlockNumPerBatch)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            kOpName, "block_table", std::to_string(blockTableShape.GetDimNum()) + "D",
+            "failed to get B/maxBlockNumPerBatch from block_table shape");
+        return ge::GRAPH_FAILED;
+    }
+    if (blockTableB != tilingInfo.bSize) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            kOpName, "block_table batch dim[B]", std::to_string(blockTableB),
+            "Must be consistent with the batch dim [B] " + std::to_string(tilingInfo.bSize) +
+                " derived from query/sparse_indices");
         return ge::GRAPH_FAILED;
     }
     const uint64_t kvSeqUpperBound =
