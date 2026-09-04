@@ -24,6 +24,19 @@ using namespace optiling::QuantFag;
 namespace optiling {
 namespace QuantFag {
 
+namespace {
+uint32_t GetKernelSparseType(uint32_t deterSparseType)
+{
+    if (deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL)) {
+        return 3;
+    }
+    if (deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND)) {
+        return 4;
+    }
+    return 0;
+}
+} // namespace
+
 ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
 {
     fBaseParams.isDeterministic = true;
@@ -47,7 +60,8 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsIn
         // q shape = [B, N, S, D]
         headNum = queryShape->GetStorageShape().GetDim(1);
     } else {
-        OP_LOGE(context_, "Invalid layout_q: %s, only BSND/BNSD supported", inputLayoutQ);
+        OP_LOGE(context_, "Invalid layout_q: %s, only BSND/BNSD supported (TND pending varlen tiling template)",
+                inputLayoutQ);
         return ge::GRAPH_FAILED;
     }
 
@@ -80,6 +94,7 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsIn
     }
 
     fBaseParams.n1 = fBaseParams.n2 * fBaseParams.g;
+    fBaseParams.isS1S2Same = (fBaseParams.s1 == fBaseParams.s2);
 
     auto ret = ProcessOptionalInput(context_, fBaseParams);
     if (ret != ge::GRAPH_SUCCESS) {
@@ -669,11 +684,12 @@ uint64_t QuantFlashAttentionScoreGradTilingNormalRegbase::GetTilingKey() const
     uint32_t d_template_num = 128;
     uint32_t is_n_equal = 1;
     uint32_t layout = fBaseParams.layoutType;
+    uint32_t sparse_type = GetKernelSparseType(fBaseParams.deterSparseType);
     uint64_t tilingKey = GET_TPL_TILING_KEY(
         static_cast<uint8_t>(has_attn_mask), static_cast<uint8_t>(has_sink), static_cast<uint16_t>(s1_template_num),
         static_cast<uint16_t>(s2_template_num), static_cast<uint8_t>(d_template_num), static_cast<uint8_t>(is_n_equal),
-        static_cast<uint8_t>(layout));
-    OP_LOGI(context_, "QuantFAGTiling DoTiling success, tiling is %lu.", tilingKey);
+        static_cast<uint8_t>(layout), static_cast<uint8_t>(sparse_type));
+    OP_LOGI(context_, "QuantFAGTiling DoTiling success, tiling is %lu, sparse_type is %u.", tilingKey, sparse_type);
     return tilingKey;
 }
 
@@ -900,6 +916,10 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::SaveToTilingDat
     quantFagTilingData_->has_seq_used_q = fBaseParams.hasSequsedQ;
     quantFagTilingData_->has_seq_used_k = fBaseParams.hasSequsedKV;
     quantFagTilingData_->metadata_len = fBaseParams.metadataLen;
+    quantFagTilingData_->deter_max_round = fBaseParams.deterMaxRound;
+    quantFagTilingData_->mask_mode = fBaseParams.sparseMode;
+    quantFagTilingData_->s1_token = fBaseParams.s1Token;
+    quantFagTilingData_->s2_token = fBaseParams.s2Token;
     return ge::GRAPH_SUCCESS;
 }
 

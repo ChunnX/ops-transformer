@@ -65,12 +65,25 @@ static ge::graphStatus ParseAttrs(gert::TilingContext *context, const string &op
     OP_CHECK_IF(maxSeqlenKV != nullptr && *maxSeqlenKV != -1, OP_LOGE(opName, "maxSeqlenKV not support."),
                 return ge::GRAPH_FAILED);
     const int64_t *maskMode = attrs->GetAttrPointer<int64_t>(MASK_MODE);
-    OP_CHECK_IF(maskMode != nullptr && *maskMode != 0, OP_LOGE(opName, "maskMode must be 0."), return ge::GRAPH_FAILED);
-    const int64_t *winRight = attrs->GetAttrPointer<int64_t>(WIN_RIGHT);
-    OP_CHECK_IF(winRight != nullptr && *winRight != -1, OP_LOGE(opName, "winRight not support."),
+    int64_t maskModeValue = (maskMode != nullptr) ? *maskMode : 0;
+    OP_CHECK_IF(maskModeValue != 0 && maskModeValue != 3 && maskModeValue != 4,
+                OP_LOGE(opName, "maskMode only support 0, 3, 4, now is %ld.", maskModeValue),
                 return ge::GRAPH_FAILED);
     const int64_t *winLeft = attrs->GetAttrPointer<int64_t>(WIN_LEFT);
-    OP_CHECK_IF(winLeft != nullptr && *winLeft != -1, OP_LOGE(opName, "winLeft not support."), return ge::GRAPH_FAILED);
+    const int64_t *winRight = attrs->GetAttrPointer<int64_t>(WIN_RIGHT);
+    int64_t winLeftValue = (winLeft != nullptr) ? *winLeft : -1;
+    int64_t winRightValue = (winRight != nullptr) ? *winRight : -1;
+    if (maskModeValue == 4) {
+        OP_CHECK_IF(winLeftValue < 0 || winRightValue < 0,
+                    OP_LOGE(opName, "maskMode 4 requires winLeft >= 0 and winRight >= 0, now is [%ld, %ld].",
+                            winLeftValue, winRightValue),
+                    return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(winLeftValue != -1 || winRightValue != -1,
+                    OP_LOGE(opName, "winLeft/winRight only support in maskMode 4, now is [%ld, %ld].",
+                            winLeftValue, winRightValue),
+                    return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 

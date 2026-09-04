@@ -122,6 +122,10 @@ class QuantFlashAttnGradTiling:
     has_seq_used_q: bool
     has_seq_used_k: bool
     metadata_len: int
+    mask_mode: int
+    s1_token: int
+    s2_token: int
+    deter_max_round: int
 
     dq_work_space_offset: int
     dk_work_space_offset: int
@@ -165,7 +169,7 @@ class QuantFlashAttnGradTiling:
 
 
 class QuantFlashAttnGradTilingKey:
-    has_attn_mask = TilingKeyField(bits=1, values=[0])
+    has_attn_mask = TilingKeyField(bits=1, values=[0, 1])
     has_sink = TilingKeyField(bits=1, values=[0])
     s1_template_num = TilingKeyField(bits=1, values=[512])
     s2_template_num = TilingKeyField(bits=1, values=[512])
@@ -173,13 +177,19 @@ class QuantFlashAttnGradTilingKey:
     is_n_equal = TilingKeyField(bits=1, values=[1])
     # 0: BSND 1: BNSD 2: TND
     layout = TilingKeyField(bits=2, values=[0, 1])
+    # DeterSparseType: 0: DENSE 3: CAUSAL 4: BAND
+    sparse_type = TilingKeyField(bits=2, values=[0, 3, 4])
 
 
 def l1_ds(i, j, task_mod2):
     return i + j * 4 if task_mod2 == 0 else i * 4 + j
 
 
-def cal_deter_max_loop_num(const_info):
+def cal_deter_max_loop_num(const_info, band_info):
+    if sparse_type == 4:
+        return max(const_info.deter_max_round, band_info.rm2)
+    if sparse_type == 3:
+        return const_info.deter_max_round
     b = const_info.b_size * const_info.n2_size
     m = const_info.s1_outer
     n = const_info.s2_outer
@@ -502,6 +512,322 @@ def cal_dense_index(k, m, n, b, j, r, coordinate):
     else:
         coordinate.batch_id = -1
 
+def _isqrt(x):
+    if x < 2:
+        return x
+    res = x
+    nxt = (res + 1) // 2
+    while nxt < res:
+        res = nxt
+        nxt = (res + x // res) // 2
+    return res
+
+
+def _ceil_trunc(a, b):
+    q = (a + b - 1) // b
+    if (a + b - 1) % b != 0 and a + b - 1 < 0:
+        q += 1
+    return q
+
+
+def cal_causal_g2k_single_batch_deter_index(k, j, a, l1, offset, coordinate):
+    if j % 2 == 1:
+        if a <= l1 - j + 1:
+            y = j + offset
+            x = y + a - 1
+        else:
+            y = 2 * k + 1 - j + offset
+            x = y + 2 * l1 - 2 * k + 1 - a
+    else:
+        if a >= l1 - 2 * k + 1 + j:
+            y = j + offset
+            x = y + 2 * l1 - 2 * k + 1 - a
+        else:
+            y = 2 * k + 1 - j + offset
+            x = y + a - 1
+    coordinate.batch_id = 0
+    coordinate.s1_idx = x
+    coordinate.s2_idx = y
+
+
+def cal_causal_no_rec_single_batch_deter_index(k, m, n, j, r, coordinate):
+    coordinate.batch_id = -1
+    if j > (n // 2) + 1:
+        return
+    if j % 2 == 1:
+        if r + j <= n + 1:
+            x = r + j - 1
+            y = j
+        else:
+            x = 2 * n + 2 - j - r
+            y = n + 3 - j - (n % 2)
+    else:
+        if j <= r + 1 - (n % 2):
+            x = n + j - r - 1 + n % 2
+            y = j
+        else:
+            x = n + 2 + r - j - (n % 2)
+            y = n + 3 - j - (n % 2)
+    if y >= 1 and y <= m and y <= x and x <= m:
+        coordinate.batch_id = 0
+        coordinate.s1_idx = x
+        coordinate.s2_idx = y
+
+
+def cal_causal_rec_single_batch_deter_index(k, m, n, j, r, coordinate):
+    if 2 * k < m + 1 and k < n:
+        cal_causal_g2k_single_batch_deter_index(k, j, r, m, 0, coordinate)
+        x = coordinate.s1_idx
+        y = coordinate.s2_idx
+    else:
+        cal_causal_no_rec_single_batch_deter_index(k, m, m, j, r, coordinate)
+        if coordinate.batch_id != -1:
+            x = coordinate.s1_idx
+            y = coordinate.s2_idx
+        else:
+            x = m + 1
+            y = m + 1
+    if y >= 1 and y <= n and y <= x and x <= m:
+        coordinate.batch_id = 0
+        coordinate.s1_idx = x
+        coordinate.s2_idx = y
+    else:
+        coordinate.batch_id = -1
+
+
+def cal_causal_single_batch_deter_index(k, m, n, j, r, coordinate):
+    if k >= (n // 2) + 1:
+        cal_causal_rec_single_batch_deter_index(k, m, n, j, r, coordinate)
+        return
+    ell = n % k
+    t1 = n // (2 * k)
+    t3 = (n // k) % 2
+    bound1 = (2 * m + 1) * t1 - 2 * k * t1 * t1
+    if r <= bound1:
+        disc = (2 * m + 1) * (2 * m + 1) - 8 * k * r
+        i = ceil(2 * m + 1 - _isqrt(disc), 4 * k)
+        rm = (2 * m + 1) * (i - 1) - 2 * k * (i - 1) * (i - 1)
+        offset = 2 * k * (i - 1)
+        l1 = m - 2 * k * (i - 1)
+        a = r - rm
+        cal_causal_g2k_single_batch_deter_index(k, j, a, l1, offset, coordinate)
+        return
+    rm = bound1
+    offset = 2 * k * t1
+    rem = t3 * k + ell
+    coordinate.batch_id = -1
+    if rem > 0:
+        l1 = m - n + rem
+        a = r - rm
+        if t3 == 0 and j <= rem:
+            coordinate.batch_id = 0
+            coordinate.s2_idx = offset + j
+            coordinate.s1_idx = coordinate.s2_idx + a - 1
+        elif t3 == 1:
+            cal_causal_rec_single_batch_deter_index(k, l1, l1, j, a, coordinate)
+            if coordinate.batch_id != -1:
+                shift = 2 * k * t1
+                coordinate.s1_idx += shift
+                coordinate.s2_idx += shift
+        return
+
+
+def cal_causal_index(k, m, n, b, j, r, coordinate):
+    b1 = b // k
+    b2 = b % k
+    delta = m - n
+    size_tri = n * (m + delta + 1) // 2
+    rm1 = b1 * size_tri
+    if r <= rm1:
+        a = r % size_tri
+        a = a if a != 0 else size_tri
+        w = ceil(r, size_tri) + b1 * (j - 1)
+        n1_even = n // 2 * 2
+        l_len = 2 * m - n1_even + 1
+        rm_local = n1_even * l_len // 2
+        if a <= rm_local:
+            y = ceil(a, l_len)
+            r_rem = a % l_len
+            r_rem = r_rem if r_rem != 0 else l_len
+            x = r_rem + y - 1
+            if x > m:
+                x = 2 * m + 1 - x
+                y = n1_even + 1 - y
+        else:
+            a1 = a - rm_local
+            y = n
+            x = a1 - 1 + y
+        w = ((w - 1) % b1) * k + (w - 1) // b1 + 1
+        w = ((w - 1) // k) * k + ((y - 1 + (w - 1)) % k) + 1
+        coordinate.batch_id = w
+        coordinate.s1_idx = x
+        coordinate.s2_idx = y
+        return
+    t = n // k
+    ell = n % k
+    a2 = r - rm1
+    half_ = b2 // 2
+    rm2 = (2 * m - t * k + 1) * t * half_
+    if a2 >= 1 and a2 <= rm2:
+        cal_dense_index(k, 2 * m - t * k + 1, t * k, half_, j, a2, coordinate)
+        w_sub = coordinate.batch_id
+        x_sub = coordinate.s1_idx
+        y_sub = coordinate.s2_idx
+        max_x = 2 * m - t * k + 1
+        max_y = t * k
+        max_w = half_
+        if (
+            x_sub >= 1
+            and x_sub <= max_x
+            and y_sub >= 1
+            and y_sub <= max_y
+            and w_sub >= 1
+            and w_sub <= max_w
+        ):
+            if x_sub - y_sub <= m - t * k:
+                w = 2 * w_sub - 1 + b1 * k
+                x = m + 1 - x_sub
+                y = t * k + 1 - y_sub
+            else:
+                w = 2 * w_sub + b1 * k
+                x = x_sub - m + t * k - 1
+                y = y_sub
+            coordinate.batch_id = w
+            coordinate.s1_idx = x
+            coordinate.s2_idx = y
+        else:
+            coordinate.batch_id = -1
+        return
+    a3 = r - rm1 - rm2
+    rm3 = 0
+    if b2 % 2 == 1:
+        t1 = n // (2 * k)
+        t3 = t % 2
+        if t3 == 1:
+            m1 = m - t1 * 2 * k
+            rm3 = (m + m1 + 1) * t1
+            if ell == 0:
+                rm3 += m1
+            else:
+                rm3 += max(m1, 2 * m1 - 2 * k + 1)
+            if a3 >= 1 and a3 <= rm3:
+                cal_causal_single_batch_deter_index(k, m, n, j, a3, coordinate)
+                if coordinate.batch_id != -1:
+                    coordinate.batch_id = b
+                return
+            b -= 1
+            b2 -= 1
+        else:
+            rm3 = (2 * m - t * k + 1) * t // 2
+            if a3 >= 1 and a3 <= rm3:
+                cal_causal_single_batch_deter_index(k, m, t * k, j, a3, coordinate)
+                if coordinate.batch_id != -1:
+                    coordinate.batch_id = b
+                return
+    a4 = a3 - rm3
+    p = ceil(ell, 2)
+    ell1 = ell + 1 - (ell % 2)
+    block = b2 * p // k
+    res0 = b2 * p % k
+    if a4 > block * (ell1 + 2 * delta) and res0 <= k // 2:
+        offs = a4 - block * (ell1 + 2 * delta)
+        if j >= 1 and j <= res0:
+            limit = (res0 - j) // b2 + ceil(ell1, 2) + delta
+            if offs <= limit:
+                w = (k * ((a4 - 1) // (ell1 + 2 * delta)) + j) % b2
+                w = w if w != 0 else b2
+                y = p - (res0 - j) // b2
+                x = y + offs - 1
+                if y >= 1 and y <= ell and y <= x and x <= ell + delta:
+                    coordinate.batch_id = b1 * k + w
+                    coordinate.s1_idx = x + t * k
+                    coordinate.s2_idx = y + t * k
+                    return
+        if k - res0 + 1 <= j and j <= k:
+            idx = j - (k - res0 + 1)
+            limit = (ell1 - 1) // 2 - idx // b2 + delta
+            if offs <= limit:
+                w = (k * ((a4 - 1) // (ell1 + 2 * delta)) + k + 1 - j) % b2
+                w = w if w != 0 else b2
+                y = p + 1 + idx // b2
+                x = y + offs - 1
+                if y >= 1 and y <= ell and y <= x and x <= ell + delta:
+                    coordinate.batch_id = b1 * k + w
+                    coordinate.s1_idx = x + t * k
+                    coordinate.s2_idx = y + t * k
+                    return
+        coordinate.batch_id = -1
+        return
+    w = (k * ((a4 - 1) // (ell1 + 2 * delta)) + j) % b2
+    w = w if w != 0 else b2
+    g = ceil(k * ((a4 - 1) // (ell1 + 2 * delta)) + j, b2)
+    if g >= 1 and g <= p:
+        a5 = a4 % (ell1 + 2 * delta)
+        a5 = a5 if a5 != 0 else ell1 + 2 * delta
+        if g % 2 == 1:
+            if a5 <= ell - g + 1 + delta:
+                x0 = g + a5 - 1
+                y0 = g
+            else:
+                x0 = 2 * ell + 2 * delta + 2 - g - a5
+                y0 = ell + 1 + (ell % 2) - g
+        else:
+            if a5 >= g + 1 + delta - (ell % 2):
+                x0 = g + ell + 2 * delta + 1 - (ell % 2) - a5
+                y0 = g
+            else:
+                x0 = a5 + ell - g + (ell % 2)
+                y0 = ell + 1 + (ell % 2) - g
+        if y0 >= 1 and y0 <= ell and y0 <= x0 and x0 <= ell + delta:
+            coordinate.batch_id = b1 * k + w
+            coordinate.s1_idx = x0 + t * k
+            coordinate.s2_idx = y0 + t * k
+            return
+    coordinate.batch_id = -1
+
+def cal_causal_deter_index(round_id, max_loop_num, coordinate_info, const_info, flag):
+    j = const_info.core_id_cube + 1
+    if flag == True:
+        j += 1
+    r = round_id + 1
+    k = const_info.core_num
+    if j > k:
+        return -1
+    m_gap = 0
+    b = const_info.b_size * const_info.n2_size
+    m = const_info.s1_outer
+    n = const_info.s2_outer
+    if sparse_type == 3:
+        if m > n:
+            m_gap = (const_info.s1_size - const_info.s2_size) // CUBE_BASEM
+            m -= m_gap
+    tmp_res = 0
+    cal_causal_index(k, m, n, b, j, r, coordinate_info)
+    w = coordinate_info.batch_id
+    n1 = const_info.g_size * const_info.n2_size
+    coordinate_info.batch_id = ceil(w, n1) - 1
+    n1_idx = w - coordinate_info.batch_id * n1 - 1
+    coordinate_info.n2_idx = n1_idx // const_info.g_size
+    coordinate_info.g_idx = n1_idx % const_info.g_size
+    coordinate_info.s1_idx = coordinate_info.s1_idx + m_gap - 1
+    coordinate_info.s2_idx = coordinate_info.s2_idx - 1
+    if not (
+        w > 0
+        and coordinate_info.batch_id < const_info.b_size
+        and coordinate_info.n2_idx < const_info.n2_size
+        and coordinate_info.g_idx < const_info.g_size
+        and coordinate_info.s1_idx >= 0
+        and coordinate_info.s1_idx < coordinate_info.s1_outer
+        and coordinate_info.s2_idx >= 0
+        and coordinate_info.s2_idx < coordinate_info.s2_outer
+    ):
+        return -1
+    res = (
+        coordinate_info.batch_id * n1
+        + coordinate_info.n2_idx * const_info.g_size
+        + coordinate_info.g_idx
+    ) * const_info.s1_outer * const_info.s2_outer + coordinate_info.s2_idx * const_info.s1_outer + coordinate_info.s1_idx
+    return res
 
 def cal_dense_deter_index(round_id, max_loop_num, coordinate_info, const_info, flag):
     j = const_info.core_id_cube + 1
@@ -558,13 +884,311 @@ def cal_dense_deter_index(round_id, max_loop_num, coordinate_info, const_info, f
     return res
 
 
-def cal_deter_index(round_id, max_loop_num, coordinate_info, const_info, flag=False):
+def cal_band_index(band_info, j, r, coordinate):
+    coordinate.batch_id = -1
+    k = band_info.k
+    m = band_info.m
+    n = band_info.n
+    p = band_info.p
+    q = band_info.q
+    b = band_info.b
+    b1 = band_info.b1
+    b2 = band_info.b2
+    l1 = band_info.l1
+    l2 = band_info.l2
+    l3 = band_info.l3
+    n_seg = band_info.n_seg
+    r1 = band_info.r1
+    r2 = band_info.r2
+    r3 = band_info.r3
+    rm_batch = band_info.rm_batch
+    rm = band_info.rm
+    if p + q > m:
+        if r <= rm:
+            a = r % rm_batch
+            w = ceil(r, rm_batch) + b1 * (j - 1)
+            if a == 0:
+                a = rm_batch
+            if a <= r1:
+                l1_even = l1 // 2 * 2
+                l_len = 2 * p + l1_even - 1
+                local_round = l1_even * l_len // 2
+                if a <= local_round:
+                    y = ceil(a, l_len)
+                    r_rem = a % l_len
+                    r_rem = r_rem if r_rem != 0 else l_len
+                    x = p + y - r_rem
+                    if x < 1:
+                        y = l1_even + 1 - y
+                        x = 1 - x
+                else:
+                    x = a - local_round
+                    y = l1
+            elif a <= r1 + r2:
+                a2 = a - r1
+                y = ceil(a2, m)
+                x = a2 % m
+                if x == 0:
+                    x = m
+                y = y + l1
+            else:
+                a3 = a - r1 - r2
+                l3_even = l3 // 2 * 2
+                l_len = 2 * m - l3_even - 1
+                local_round = l3_even * l_len // 2
+                if a3 <= local_round:
+                    y = ceil(a3, l_len)
+                    r_rem = a3 % l_len
+                    r_rem = r_rem if r_rem != 0 else l_len
+                    x = y + r_rem
+                    if x > m:
+                        y = l3_even + 1 - y
+                        x = 2 * m + 1 - x
+                else:
+                    x = m - a3 + local_round + 1
+                    y = l3
+                y = y + l1 + l2
+            w = ((w - 1) % b1) * k + (w - 1) // b1 + 1
+            w = ((w - 1) // k) * k + ((y - 1 + (w - 1)) % k) + 1
+            coordinate.batch_id = w
+            coordinate.s1_idx = x
+            coordinate.s2_idx = y
+            return
+        a = r - rm
+        cal_dense_index(k, m, n, b2, j, a, coordinate)
+        w = coordinate.batch_id
+        if w != -1:
+            x = coordinate.s1_idx
+            y = coordinate.s2_idx
+            if y <= m - p and x >= p + y:
+                return
+            if y > l1 + l2 and x <= y - l1 - l2:
+                return
+            if w > 0 and w < b2 + 1 and x > 0 and x < m + 1 and y > 0 and y < n + 1:
+                coordinate.batch_id = b1 * k + w
+                coordinate.s1_idx = x
+                coordinate.s2_idx = y
+                return
+        return
+    if l3 == 0:
+        m = p + q + l2 - 2
+    if r <= rm:
+        a = r % rm_batch
+        w = ceil(r, rm_batch) + b1 * (j - 1)
+        if a == 0:
+            a = rm_batch
+        if a <= r1:
+            l1_even = l1 // 2 * 2
+            l_len = 2 * p + l1_even - 1
+            local_round = l1_even * l_len // 2
+            if a <= local_round:
+                y = ceil(a, l_len)
+                r_rem = a % l_len
+                r_rem = r_rem if r_rem != 0 else l_len
+                x = p + y - r_rem
+                if x < 1:
+                    y = l1_even + 1 - y
+                    x = 1 - x
+            else:
+                x = a - local_round
+                y = l1
+        elif a <= r1 + r2:
+            a2 = a - r1
+            y = ceil(a2, p + q - 1)
+            x = a2 % (p + q - 1) + (y - 1)
+            if x == y - 1:
+                x = p + q - 1 + y - 1
+            y = y + l1
+        else:
+            a3 = a - r1 - r2
+            l3_even = l3 // 2 * 2
+            l_len = 2 * (p + q) - l3_even - 3
+            local_round = l3_even * l_len // 2
+            if a3 <= local_round:
+                y = ceil(a3, l_len)
+                r_rem = a3 % l_len
+                r_rem = r_rem if r_rem != 0 else l_len
+                x = y + r_rem + 1 + m - (p + q)
+                if x > m:
+                    y = l3_even + 1 - y
+                    x = 2 * m + 1 - x
+            else:
+                x = m - a3 + local_round + 1
+                y = l3
+            y = y + l1 + l2
+        coordinate.batch_id = w
+        coordinate.s1_idx = x
+        coordinate.s2_idx = y
+        return
+    if b2 == 0:
+        coordinate.batch_id = -1
+        return
+    a = r - rm
+    seg = p + q - 1
+    a1 = ceil(a, seg)
+    a2 = a % seg
+    a2 = seg if a2 == 0 else a2
+    if l3 == 0 or n_seg - m < 1:
+        idx = (a1 - 1) * k + j
+        w = ceil(idx, n_seg)
+        y = idx % n_seg
+        if y == 0:
+            y = n_seg
+        x = y + a2 - q
+        if x >= 1 and x <= m:
+            coordinate.batch_id = w + b1 * k
+            coordinate.s1_idx = x
+            coordinate.s2_idx = y
+        return
+    y = (a1 - 1) * k + j
+    x = y + a2 - q
+    if x < 1:
+        coordinate.batch_id = b
+        coordinate.s1_idx = x + m
+        coordinate.s2_idx = y + m
+        return
+    w = ceil(x, m)
+    x = x % m
+    if x == 0:
+        x = m
+    y = x + q - a2
+    if w == b2 and y > m:
+        return
+    if y >= 1 and y <= n:
+        coordinate.batch_id = w + b1 * k
+        coordinate.s1_idx = x
+        coordinate.s2_idx = y
+    return
+
+
+def cal_band_deter_index(round_id, max_loop_num, coordinate_info, const_info, band_info, flag):
+    j = const_info.core_id_cube + 1
+    if flag == True:
+        j += 1
+    r = round_id + 1
+    k = const_info.core_num
+    if j > k:
+        return -1
+    cal_band_index(band_info, j, r, coordinate_info)
+    w = coordinate_info.batch_id
+    n1 = const_info.g_size * const_info.n2_size
+    coordinate_info.batch_id = ceil(w, n1) - 1
+    n1_idx = w - coordinate_info.batch_id * n1 - 1
+    coordinate_info.n2_idx = n1_idx // const_info.g_size
+    coordinate_info.g_idx = n1_idx % const_info.g_size
+    coordinate_info.s1_idx = coordinate_info.s1_idx - 1 + coordinate_info.m_offset
+    coordinate_info.s2_idx = coordinate_info.s2_idx - 1 + coordinate_info.n_offset
+    if not (
+        w > 0
+        and coordinate_info.batch_id < const_info.b_size
+        and coordinate_info.n2_idx < const_info.n2_size
+        and coordinate_info.g_idx < const_info.g_size
+        and coordinate_info.s1_idx >= 0
+        and coordinate_info.s1_idx < coordinate_info.s1_outer
+        and coordinate_info.s2_idx >= 0
+        and coordinate_info.s2_idx < coordinate_info.s2_outer
+    ):
+        return -1
+    return (
+        coordinate_info.batch_id * n1
+        + coordinate_info.n2_idx * const_info.g_size
+        + coordinate_info.g_idx
+    ) * const_info.s1_outer * const_info.s2_outer + coordinate_info.s2_idx * const_info.s1_outer + coordinate_info.s1_idx
+
+
+def gen_band_info(const_info, band_info):
+    k = const_info.core_num
+    m = const_info.s1_outer
+    n = const_info.s2_outer
+    b = const_info.b_size * const_info.n2_size
+    p = _ceil_trunc(const_info.s1_token, CUBE_BASEM) + 1
+    q = _ceil_trunc(const_info.s2_token, CUBE_BASEN) + 1
+    p = m if p > m else p
+    q = n if q > n else q
+    m_offset = 0
+    n_offset = 0
+    if p < 0:
+        actual_m = m
+        actual_n = n + p
+        actual_p = 1
+        actual_q = p + q
+        n_offset = -p
+    elif q < 0:
+        actual_m = m + q
+        actual_n = n
+        actual_p = p + q
+        actual_q = 1
+        m_offset = -q
+    else:
+        actual_m = m
+        actual_n = n
+        actual_p = p
+        actual_q = q
+    b1 = b // k
+    b2 = b % k
+    if actual_p + actual_q > actual_m:
+        l1 = actual_m - actual_p
+        l2 = actual_p + actual_q - actual_m
+        l3 = min(actual_m - 1, actual_n - actual_q)
+        n_seg = l1 + l2 + l3
+        r1 = (actual_p + actual_m - 1) * l1 // 2
+        r2 = actual_m * l2
+        r3 = (2 * actual_m - 1 - l3) * l3 // 2
+        rm_batch = r1 + r2 + r3
+        rm = b1 * rm_batch
+        rm2 = actual_m * ceil(actual_n * b, min(k, b * actual_m))
+    else:
+        l1 = actual_q - 1
+        l2 = min(actual_n - actual_q + 1, actual_m + 2 - actual_p - actual_q)
+        l3 = max(0, min(actual_p + actual_n - actual_m - 1, actual_p + actual_q - 2))
+        n_seg = l1 + l2 + l3
+        r1 = (2 * actual_p - 2 + actual_q) * l1 // 2
+        r2 = (actual_p + actual_q - 1) * l2
+        r3 = (actual_p + actual_q - 2) * l3 - l3 * (l3 - 1) // 2
+        rm_batch = r1 + r2 + r3
+        rm = b1 * rm_batch
+        rm2 = ceil(actual_n * b, k) * (actual_p + actual_q - 1)
+    band_info.k = k
+    band_info.m = actual_m
+    band_info.n = actual_n
+    band_info.p = actual_p
+    band_info.q = actual_q
+    band_info.b = b
+    band_info.b1 = b1
+    band_info.b2 = b2
+    band_info.l1 = l1
+    band_info.l2 = l2
+    band_info.l3 = l3
+    band_info.n_seg = n_seg
+    band_info.r1 = r1
+    band_info.r2 = r2
+    band_info.r3 = r3
+    band_info.rm_batch = rm_batch
+    band_info.rm = rm
+    band_info.rm2 = rm2
+    band_info.m_offset = m_offset
+    band_info.n_offset = n_offset
+
+
+def cal_deter_index(round_id, max_loop_num, coordinate_info, const_info, band_info, flag=False):
+    coordinate_info.mask_mode = const_info.mask_mode
     next_valid_round_id = max_loop_num
     next_valid_index = -1
     for current_round_id in pl.range(round_id, max_loop_num, 1):
-        next_valid_index = cal_dense_deter_index(
-            current_round_id, max_loop_num, coordinate_info, const_info, flag
-        )
+        if sparse_type == 4:
+            # next_valid_index = cal_band_deter_index(
+            #     current_round_id, max_loop_num, coordinate_info, const_info, band_info, flag
+            # )
+            pass
+        elif sparse_type == 3:
+            next_valid_index = cal_causal_deter_index(
+                current_round_id, max_loop_num, coordinate_info, const_info, flag
+            )
+            # pass
+        else:
+            next_valid_index = cal_dense_deter_index(
+                current_round_id, max_loop_num, coordinate_info, const_info, flag
+            )
         if next_valid_index >= 0:
             next_valid_round_id = current_round_id
             return next_valid_round_id, next_valid_index
@@ -2494,6 +3118,10 @@ def quant_flash_attn_grad(
         n2_s2_d=tiling.n2 * tiling.s2 * tiling.d,
         g_s1_d=tiling.g * tiling.s1 * tiling.d,
         n2_g_s1_d=tiling.n2 * tiling.g * tiling.s1 * tiling.d,
+        mask_mode=tiling.mask_mode,
+        s1_token=tiling.s1_token,
+        s2_token=tiling.s2_token,
+        deter_max_round=tiling.deter_max_round,
         scale_p=scale_p_value,
         scale_ds=scale_ds_value,
         deq_scale_p_value=1.0 / scale_p_value,
@@ -2916,182 +3544,242 @@ def quant_flash_attn_grad(
         s2_outer=0,
         m_offset=0,
         n_offset=0,
+        mask_mode=0,
     )
     next_core_first_block_coordinate_info = coordinate_infos[2]
+    band_infos = pl.struct_array(
+        1,
+        "band_info",
+        k=0,
+        m=0,
+        n=0,
+        p=0,
+        q=0,
+        b=0,
+        b1=0,
+        b2=0,
+        l1=0,
+        l2=0,
+        l3=0,
+        n_seg=0,
+        r1=0,
+        r2=0,
+        r3=0,
+        rm_batch=0,
+        rm=0,
+        rm2=0,
+        m_offset=0,
+        n_offset=0,
+    )
+    band_info = band_infos[0]
 
-    # process presfmg
-    presfmg_quant_inner_hif8(const_info, tensor_info)
-    pl.system.sync_all()
+    # # process presfmg
+    # presfmg_quant_inner_hif8(const_info, tensor_info)
+    # pl.system.sync_all()
 
     # process kernel
-    alloc_event_id()
-    loop_max = 0
-    loop_max = loop_max + tensor_metadata[1, 0]
-    task_id = 0
 
+    # alloc_event_id()
+    if sparse_type == 4:
+        gen_band_info(const_info, band_info)
+    loop_max = 0
+    # loop_max = loop_max + tensor_metadata[1, 0]
+    loop_max = cal_deter_max_loop_num(const_info, band_info)
+    with pl.section_cube():
+        pl.printf("wenyu check1 loop_max : %d \n", loop_max)
+    task_id = 0
+    next_valid_loop_idx = 0
+    next_block_idx = 0
     init_coordinate_info(const_info, 0, 0, coordinate_infos[0])
     init_coordinate_info(const_info, 0, 0, coordinate_infos[1])
+    if sparse_type == 4:
+        init_coordinate_info(
+            const_info, band_info.m_offset, band_info.n_offset, coordinate_infos[0]
+        )
+        init_coordinate_info(
+            const_info, band_info.m_offset, band_info.n_offset, coordinate_infos[1]
+        )
     with pl.section_vector():
-        if const_info.s2_outer == 1:
+        if const_info.s2_outer == 1 :
             init_coordinate_info(
                 const_info, 0, 0, next_core_first_block_coordinate_info
             )
+            if sparse_type == 4:
+                init_coordinate_info(
+                    const_info,
+                    band_info.m_offset,
+                    band_info.n_offset,
+                    next_core_first_block_coordinate_info,
+                )
             next_valid_loop_idx, next_block_idx = cal_deter_index(
-                0, loop_max, next_core_first_block_coordinate_info, const_info, True
+                0,
+                loop_max,
+                next_core_first_block_coordinate_info,
+                const_info,
+                band_info,
+                True,
             )
     next_valid_loop_idx, next_block_idx = cal_deter_index(
-        0, loop_max, coordinate_infos[task_id % 2], const_info
+        0, loop_max, coordinate_infos[task_id % 2], const_info, band_info
     )
+    with pl.section_cube():
+        pl.printf("wenyu check2 next_valid_loop_idx : %d next_block_idx : %d \n", next_valid_loop_idx, next_block_idx)
     for loop_idx in pl.range(loop_max):
         block_inner_idx = next_block_idx
         if loop_idx >= next_valid_loop_idx:
             block_inner_idx = next_block_idx
             next_valid_loop_idx, next_block_idx = cal_deter_index(
-                loop_idx + 1, loop_max, coordinate_infos[(task_id + 1) % 2], const_info
+                loop_idx + 1,
+                loop_max,
+                coordinate_infos[(task_id + 1) % 2],
+                const_info,
+                band_info,
             )
             run_infos[task_id % 2].is_dkv_completed = False
             run_infos[task_id % 2].is_dq_completed = False
         else:
             block_inner_idx = -1
         is_valid_block = block_inner_idx >= 0
-        if is_valid_block:
-            set_run_info(
-                run_infos[task_id % 2],
-                run_infos[(task_id + 1) % 2],
-                task_id,
-                coordinate_infos[task_id % 2],
-                coordinate_infos[(task_id + 1) % 2],
-                next_core_first_block_coordinate_info,
-                const_info,
-                tensor_info,
-                tmp_info[0],
-            )
-            run_info = run_infos[task_id % 2]
-            for kv_inner_id in pl.range(4):
-                process_first_s2(
-                    const_info,
-                    run_infos[task_id % 2],
-                    run_infos[(task_id + 1) % 2],
-                    kv_inner_id,
-                    tensor_info,
-                    tmp_info[0],
-                )
-        else:
-            with pl.section_vector():
-                if loop_idx > 0:
-                    for j in pl.range(4):
-                        pl.system.wait_cross_core(
-                            pipe=pl.PipeType.MTE3,
-                            event_id=SYNC_DETER_FLAG,
-                            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                        )
-                        pl.system.set_cross_core(
-                            pipe=pl.PipeType.MTE3,
-                            event_id=SYNC_DETER_FLAG,
-                            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                        )
-        if is_valid_block:
-            task_id += 1
+        with pl.section_cube():
+            pl.printf("wenyu check3 next_valid_loop_idx : %d next_block_idx : %d is_valid_block : %d \n", next_valid_loop_idx, next_block_idx, is_valid_block)
+        # if is_valid_block:
+        #     set_run_info(
+        #         run_infos[task_id % 2],
+        #         run_infos[(task_id + 1) % 2],
+        #         task_id,
+        #         coordinate_infos[task_id % 2],
+        #         coordinate_infos[(task_id + 1) % 2],
+        #         next_core_first_block_coordinate_info,
+        #         const_info,
+        #         tensor_info,
+        #         tmp_info[0],
+        #     )
+        #     run_info = run_infos[task_id % 2]
+        #     for kv_inner_id in pl.range(4):
+        #         process_first_s2(
+        #             const_info,
+        #             run_infos[task_id % 2],
+        #             run_infos[(task_id + 1) % 2],
+        #             kv_inner_id,
+        #             tensor_info,
+        #             tmp_info[0],
+        #         )
+    #     else:
+    #         with pl.section_vector():
+    #             if loop_idx > 0:
+    #                 for j in pl.range(4):
+    #                     pl.system.wait_cross_core(
+    #                         pipe=pl.PipeType.MTE3,
+    #                         event_id=SYNC_DETER_FLAG,
+    #                         sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+    #                     )
+    #                     pl.system.set_cross_core(
+    #                         pipe=pl.PipeType.MTE3,
+    #                         event_id=SYNC_DETER_FLAG,
+    #                         sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+    #                     )
+    #     if is_valid_block:
+    #         task_id += 1
 
-    if not run_infos[(task_id + 1) % 2].is_dkv_completed:
-        kv_iib = 3
-        with pl.section_vector():
-            set_quant_run_info(run_infos[(task_id + 1) % 2], 0, kv_iib - 1)
-            if (
-                run_infos[(task_id + 1) % 2].s2_idx
-                < run_infos[(task_id + 1) % 2].inner_s2_loop_num
-            ):
-                copy_dqkv2gm(
-                    True, run_infos[(task_id + 1) % 2], const_info, tensor_info
-                )
-            pl.system.set_cross_core(
-                pipe=pl.PipeType.MTE3,
-                event_id=SYNC_TRANSFER_DKV_FLAG,
-                sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
-            )
+    # if not run_infos[(task_id + 1) % 2].is_dkv_completed:
+    #     kv_iib = 3
+    #     with pl.section_vector():
+    #         set_quant_run_info(run_infos[(task_id + 1) % 2], 0, kv_iib - 1)
+    #         if (
+    #             run_infos[(task_id + 1) % 2].s2_idx
+    #             < run_infos[(task_id + 1) % 2].inner_s2_loop_num
+    #         ):
+    #             copy_dqkv2gm(
+    #                 True, run_infos[(task_id + 1) % 2], const_info, tensor_info
+    #             )
+    #         pl.system.set_cross_core(
+    #             pipe=pl.PipeType.MTE3,
+    #             event_id=SYNC_TRANSFER_DKV_FLAG,
+    #             sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
+    #         )
 
-        set_quant_run_info(run_infos[(task_id + 1) % 2], 0, kv_iib)
-        process_dkv(
-            False, run_infos[(task_id + 1) % 2], 0, const_info, tensor_info, tmp_info[0]
-        )
-        set_quant_run_info(run_infos[(task_id + 1) % 2], 2, kv_iib)
-        process_dkv(
-            False, run_infos[(task_id + 1) % 2], 2, const_info, tensor_info, tmp_info[0]
-        )
+    #     set_quant_run_info(run_infos[(task_id + 1) % 2], 0, kv_iib)
+    #     process_dkv(
+    #         False, run_infos[(task_id + 1) % 2], 0, const_info, tensor_info, tmp_info[0]
+    #     )
+    #     set_quant_run_info(run_infos[(task_id + 1) % 2], 2, kv_iib)
+    #     process_dkv(
+    #         False, run_infos[(task_id + 1) % 2], 2, const_info, tensor_info, tmp_info[0]
+    #     )
 
-        set_quant_run_info(run_infos[(task_id + 1) % 2], 0, kv_iib)
-        process_dkv(
-            True, run_infos[(task_id + 1) % 2], 0, const_info, tensor_info, tmp_info[0]
-        )
-        set_quant_run_info(run_infos[(task_id + 1) % 2], 2, kv_iib)
-        process_dkv(
-            True, run_infos[(task_id + 1) % 2], 2, const_info, tensor_info, tmp_info[0]
-        )
+    #     set_quant_run_info(run_infos[(task_id + 1) % 2], 0, kv_iib)
+    #     process_dkv(
+    #         True, run_infos[(task_id + 1) % 2], 0, const_info, tensor_info, tmp_info[0]
+    #     )
+    #     set_quant_run_info(run_infos[(task_id + 1) % 2], 2, kv_iib)
+    #     process_dkv(
+    #         True, run_infos[(task_id + 1) % 2], 2, const_info, tensor_info, tmp_info[0]
+    #     )
 
-        with pl.section_vector():
-            set_quant_run_info(run_infos[(task_id + 1) % 2], 0, kv_iib)
-            if (
-                run_infos[(task_id + 1) % 2].s2_idx
-                < run_infos[(task_id + 1) % 2].inner_s2_loop_num
-            ):
-                copy_dqkv2gm(
-                    True, run_infos[(task_id + 1) % 2], const_info, tensor_info
-                )
-            pl.system.set_cross_core(
-                pipe=pl.PipeType.MTE3,
-                event_id=SYNC_TRANSFER_DKV_FLAG,
-                sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
-            )
+    #     with pl.section_vector():
+    #         set_quant_run_info(run_infos[(task_id + 1) % 2], 0, kv_iib)
+    #         if (
+    #             run_infos[(task_id + 1) % 2].s2_idx
+    #             < run_infos[(task_id + 1) % 2].inner_s2_loop_num
+    #         ):
+    #             copy_dqkv2gm(
+    #                 True, run_infos[(task_id + 1) % 2], const_info, tensor_info
+    #             )
+    #         pl.system.set_cross_core(
+    #             pipe=pl.PipeType.MTE3,
+    #             event_id=SYNC_TRANSFER_DKV_FLAG,
+    #             sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
+    #         )
 
-    if not run_infos[(task_id + 1) % 2].is_dq_completed:
-        for i in pl.range(4):
-            set_quant_run_info(run_infos[(task_id + 1) % 2], i, 0)
-            process_dq(
-                run_infos[(task_id + 1) % 2], 0, const_info, tensor_info, tmp_info[0]
-            )
-            set_quant_run_info(run_infos[(task_id + 1) % 2], i, 2)
-            process_dq(
-                run_infos[(task_id + 1) % 2], 2, const_info, tensor_info, tmp_info[0]
-            )
-            compute_dq(run_infos[(task_id + 1) % 2], const_info, tensor_info)
-            with pl.section_vector():
-                pl.system.wait_cross_core(
-                    pipe=pl.PipeType.MTE3,
-                    event_id=SYNC_DETER_FLAG,
-                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                )
-                if (
-                    run_infos[(task_id + 1) % 2].s1_idx
-                    < run_infos[(task_id + 1) % 2].inner_s1_loop_num
-                ):
-                    copy_dqkv2gm(
-                        False, run_infos[(task_id + 1) % 2], const_info, tensor_info
-                    )
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.MTE3,
-                    event_id=SYNC_DETER_FLAG,
-                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                )
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.MTE3,
-                    event_id=SYNC_TRANSFER_DQ_FLAG,
-                    sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
-                )
-    else:
-        with pl.section_vector():
-            for i in pl.range(4):
-                pl.system.wait_cross_core(
-                    pipe=pl.PipeType.MTE3,
-                    event_id=SYNC_DETER_FLAG,
-                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                )
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.MTE3,
-                    event_id=SYNC_DETER_FLAG,
-                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-                )
-    free_event_id()
-    pl.system.sync_all()
+    # if not run_infos[(task_id + 1) % 2].is_dq_completed:
+    #     for i in pl.range(4):
+    #         set_quant_run_info(run_infos[(task_id + 1) % 2], i, 0)
+    #         process_dq(
+    #             run_infos[(task_id + 1) % 2], 0, const_info, tensor_info, tmp_info[0]
+    #         )
+    #         set_quant_run_info(run_infos[(task_id + 1) % 2], i, 2)
+    #         process_dq(
+    #             run_infos[(task_id + 1) % 2], 2, const_info, tensor_info, tmp_info[0]
+    #         )
+    #         compute_dq(run_infos[(task_id + 1) % 2], const_info, tensor_info)
+    #         with pl.section_vector():
+    #             pl.system.wait_cross_core(
+    #                 pipe=pl.PipeType.MTE3,
+    #                 event_id=SYNC_DETER_FLAG,
+    #                 sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+    #             )
+    #             if (
+    #                 run_infos[(task_id + 1) % 2].s1_idx
+    #                 < run_infos[(task_id + 1) % 2].inner_s1_loop_num
+    #             ):
+    #                 copy_dqkv2gm(
+    #                     False, run_infos[(task_id + 1) % 2], const_info, tensor_info
+    #                 )
+    #             pl.system.set_cross_core(
+    #                 pipe=pl.PipeType.MTE3,
+    #                 event_id=SYNC_DETER_FLAG,
+    #                 sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+    #             )
+    #             pl.system.set_cross_core(
+    #                 pipe=pl.PipeType.MTE3,
+    #                 event_id=SYNC_TRANSFER_DQ_FLAG,
+    #                 sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
+    #             )
+    # else:
+    #     with pl.section_vector():
+    #         for i in pl.range(4):
+    #             pl.system.wait_cross_core(
+    #                 pipe=pl.PipeType.MTE3,
+    #                 event_id=SYNC_DETER_FLAG,
+    #                 sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+    #             )
+    #             pl.system.set_cross_core(
+    #                 pipe=pl.PipeType.MTE3,
+    #                 event_id=SYNC_DETER_FLAG,
+    #                 sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+    #             )
+    # free_event_id()
+    # pl.system.sync_all()
 
-    # process post
-    process_post_dqkv(const_info, tensor_info)
+    # # process post
+    # process_post_dqkv(const_info, tensor_info)
