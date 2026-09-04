@@ -43,14 +43,17 @@ using namespace Blaze::Gemm;
 using AscendC::Te::Get;
 using namespace Apace::AivComm;
 
-// release 方向的 flagId 取模上限见 Apace::Basic::BufferChannel::FLAG_ID_MODULO(14)，
-// 使 flagId 落在 [0,13]，避免与 SyncAll<true> 抢同一个 AIV 计数器。
-struct UrmaCommWaitPolicy {
-    __aicore__ inline void WaitTile(uint32_t tileIdx)
+struct UrmaBufferSync {
+    uint32_t slotNum{0};
+
+    __aicore__ inline void WaitTile(uint32_t slotIdx)
     {
-        AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(tileIdx);
+        AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(slotIdx);
     }
-    uint32_t bufferCount{0};
+    __aicore__ inline void ReleaseTile(uint32_t slotIdx)
+    {
+        AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(slotIdx);
+    }
 };
 
 // 定义问题形状：[M, N, K, Batch]
@@ -110,7 +113,7 @@ public:
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, TypeA, LayoutA, TypeB, LayoutB, TypeC, LayoutC,
                                                     BiasType, LayoutBias>;
     using QuantMatmulKernelImpl =
-        Kernel::AllToAllQbmmMxKernel<ProblemShape, BlockMmad, BlockScheduler, UrmaCommWaitPolicy>;
+        Kernel::AllToAllQbmmMxKernel<ProblemShape, BlockMmad, BlockScheduler, UrmaBufferSync>;
 
     // 参数类型
     using Params = typename QuantMatmulKernelImpl::Params;
@@ -148,8 +151,6 @@ private:
         uint64_t headMSize{0};   // 长块 M 大小
         uint64_t scaleKaSize{0}; // Scale 的 K 轴字节长度
         uint64_t rankDataBytes{0};
-        uint32_t bufferCount{0};      // win区复用槽位数，0=不复用
-        uint64_t effBufferCount{0};  // 归一化后的 slot 数（复用值或 commTiles），用于计算 scale 段 winOffset
         uint64_t scaleWinOffset{0}; // win区data部分字节大小，用作scale的winOffset
     } baseParams_;
 
@@ -236,23 +237,23 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     uint64_t scaleTileMaxByte = maxTileSize * scaleTiling.nonSplitAxisSize * sizeof(TypeScaleA);
     uint64_t dataSlotSize = static_cast<uint64_t>(baseParams_.rankSize) * dataTileMaxByte;
     uint64_t scaleSlotSize = static_cast<uint64_t>(baseParams_.rankSize) * scaleTileMaxByte;
-    uint32_t dataSlotNum = static_cast<uint32_t>(baseParams_.effBufferCount);
+    uint32_t dataSlotNum = quantMatmulKernelImpl_.GetBufferSyncMgr().slotNum;
     uint32_t scaleSlotNum = static_cast<uint32_t>(baseParams_.commTurn);
 
-    Apace::Basic::BufferChannel dataW;
-    Apace::Basic::BufferChannel scaleW;
-    dataW.Init(dataSlotSize, dataSlotNum);
-    scaleW.Init(scaleSlotSize, scaleSlotNum);
+    Apace::Basic::BufferChannel dataChannel;
+    Apace::Basic::BufferChannel scaleChannel;
+    dataChannel.Init(dataSlotSize, dataSlotNum);
+    scaleChannel.Init(scaleSlotSize, scaleSlotNum);
 
     for (uint32_t tid = 0; tid < static_cast<uint32_t>(baseParams_.commTurn); ++tid) {
         // 必选保证baseParams_.rankSize <= BlockNum
-        auto dataSlot = dataW.GetNextSlot();   // dataSlot.id = tid % dataSlotNum(即 bufferId,作 flagId)
-        auto scaleSlot = scaleW.GetNextSlot();
+        auto dataSlot = dataChannel.GetNextSlot();   // dataSlot.slotIdx = tid % dataSlotNum(作 flagId)
+        auto scaleSlot = scaleChannel.GetNextSlot();
 
         // win buffer 复用：写 tile tid 覆盖槽位 tid%dataSlotNum，需等本端 cube 消费完该槽位
-        // flagId 直接用 bufferId(dataSlot.id)，<14 避开 SyncAll<true> 的 14
-        if (tid >= dataSlotNum) {
-            AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE3>(dataSlot.id);
+        // flagId 直接用 slotIdx(dataSlot.slotIdx)，<14 避开 SyncAll<true> 的 14
+        if (tid >= dataChannel.GetSlotNum()) {
+            AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE3>(dataSlot.slotIdx);
             AscendC::SyncAll<true>();
             if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
                 teamBarrier_.CrossDevice();
@@ -265,8 +266,8 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
         }
 
         AscendC::SyncAll<true>();
-        // data-ready 的 flagId 直接用 bufferId
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(dataSlot.id);
+        // data-ready 的 flagId 直接用 slotIdx
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(dataSlot.slotIdx);
     }
 
     allToAllScaleA_.Finalize();
@@ -304,19 +305,14 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     }
 
     uint64_t commTiles = tilingData->commTilingData.splitAxisTileCnt + tilingData->commTilingData.splitAxisTailCnt;
-    uint64_t rawBufferCount = tilingData->commTilingData.bufferCount;
-    // release 门控用（0 表示不复用）
-    baseParams_.bufferCount = (rawBufferCount > 0 && rawBufferCount < commTiles) ?
-                              static_cast<uint32_t>(rawBufferCount) : 0;
-    // bufferId 作 flagId 时深度须 <= 14（避开 SyncAll<true> 的 flagId 14）
-    ascendc_assert(baseParams_.bufferCount <= Apace::Basic::BufferChannel::FLAG_ID_MODULO,
-                   "reuse bufferCount must be <= %u", Apace::Basic::BufferChannel::FLAG_ID_MODULO);
-    // 归一化后的 slot 数（不复用时 = commTiles），用于计算 scale 段 winOffset
-    baseParams_.effBufferCount = (rawBufferCount > 0 && rawBufferCount < commTiles) ? rawBufferCount : commTiles;
+    uint64_t rawSlotNum = tilingData->commTilingData.slotNum;
+    uint32_t slotNum = (rawSlotNum > 0 && rawSlotNum < commTiles) ?
+                       static_cast<uint32_t>(rawSlotNum) : static_cast<uint32_t>(commTiles);
+    quantMatmulKernelImpl_.GetBufferSyncMgr().slotNum = slotNum;
     uint64_t maxTileSize = tilingData->commTilingData.splitAxisTileSize >
         tilingData->commTilingData.splitAxisTailSize ?
         tilingData->commTilingData.splitAxisTileSize : tilingData->commTilingData.splitAxisTailSize;
-    baseParams_.scaleWinOffset = static_cast<uint64_t>(baseParams_.rankSize) * baseParams_.effBufferCount *
+    baseParams_.scaleWinOffset = static_cast<uint64_t>(baseParams_.rankSize) * slotNum *
                            maxTileSize * baseParams_.axisKa * sizeof(AType);
 }
 
@@ -386,7 +382,6 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     params.mmadParams.cGmAddr = baseParams_.cGm;
     params.localParams.localAGmAddr = baseParams_.aGm;
     params.localParams.localScaleAGmAddr = baseParams_.scaleAGm;
-    quantMatmulKernelImpl_.GetCommPolicy().bufferCount = baseParams_.bufferCount;
     quantMatmulKernelImpl_(params);
 }
 

@@ -152,7 +152,7 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::Init(
     commTilingData_.splitAxisTailCnt = tailCnt_;
     // 通信按 Dtype 元素个数计：FP4(fp4x2) 每元素 2 个逻辑值，故按字节行宽折算
     commTilingData_.nonSplitAxisSize = dataBytesPerMRow_ / sizeof(AType); // 非切分轴k
-    commTilingData_.bufferCount = tilingData_->commTile.bufferCount; // data 复用
+    commTilingData_.slotNum = tilingData_->commTile.slotNum; // data 复用
 
     commTilingScale_.splitAxisTileSize = tileM_;
     commTilingScale_.splitAxisTileCnt = tileCnt_;
@@ -160,7 +160,7 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::Init(
     commTilingScale_.splitAxisTailCnt = tailCnt_;
     scaleKLen_ = scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE);
     commTilingScale_.nonSplitAxisSize = scaleKLen_;
-    commTilingScale_.bufferCount = 0; // scale 全量，不复用
+    commTilingScale_.slotNum = 0; // scale 全量，不复用
     allGatherData_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, commTilingData_, aGM_,
                                                commBuf.Get(), rankSize_, static_cast<uint32_t>(GetBlockIdx()));
     allGatherScale_.Init(udmaCtx_, teamBarrier_, commTilingScale_, aScaleGM_, commScaleBuf.Get(),
@@ -193,7 +193,7 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::InitBaseP
 
     // buffer 复用归一化：0 或 >= commTiles 视为不复用（全量）
     uint64_t commTiles = static_cast<uint64_t>(tileCnt_) + static_cast<uint64_t>(tailCnt_);
-    uint64_t rawBufferCount = td->commTile.bufferCount;
+    uint64_t rawBufferCount = td->commTile.slotNum;
     bufferCount_ = (rawBufferCount > 0 && rawBufferCount < commTiles) ?
                    static_cast<uint32_t>(rawBufferCount) : 0;
     effBufferCount_ = (rawBufferCount > 0 && rawBufferCount < commTiles) ? rawBufferCount : commTiles;
