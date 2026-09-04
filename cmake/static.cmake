@@ -15,6 +15,12 @@ if (TARGET ${OPHOST_NAME}_infer_obj OR TARGET ${OPHOST_NAME}_tiling_obj OR TARGE
         $<$<TARGET_EXISTS:${OPHOST_NAME}_aicpu_objs>:$<TARGET_OBJECTS:${OPHOST_NAME}_aicpu_objs>>
         $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_obj>>
     )
+    add_dependencies(${OPHOST_NAME}_static
+        $<$<TARGET_EXISTS:${OPHOST_NAME}_infer_obj>:${OPHOST_NAME}_infer_obj>
+        $<$<TARGET_EXISTS:${OPHOST_NAME}_tiling_obj>:${OPHOST_NAME}_tiling_obj>
+        $<$<TARGET_EXISTS:${OPHOST_NAME}_aicpu_objs>:${OPHOST_NAME}_aicpu_objs>
+        $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:${COMMON_NAME}_obj>
+    )
     add_custom_command(TARGET ${OPHOST_NAME}_static
                        POST_BUILD
                        COMMAND python3 ${PROJECT_SOURCE_DIR}/scripts/util/build_opp_kernel_static.py
@@ -56,7 +62,10 @@ if (TARGET ${OPHOST_NAME}_opapi_obj OR TARGET opbuild_gen_aclnn_all)
         $<$<TARGET_EXISTS:${OPHOST_NAME}_opapi_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_opapi_obj>>
         $<$<TARGET_EXISTS:opbuild_gen_aclnn_all>:$<TARGET_OBJECTS:opbuild_gen_aclnn_all>>
     )
-    add_dependencies(${OPAPI_NAME}_static ${OPHOST_NAME}_static)
+    add_dependencies(${OPAPI_NAME}_static ${OPHOST_NAME}_static
+        $<$<TARGET_EXISTS:${OPHOST_NAME}_opapi_obj>:${OPHOST_NAME}_opapi_obj>
+        $<$<TARGET_EXISTS:opbuild_gen_aclnn_all>:opbuild_gen_aclnn_all>
+    )
     add_custom_command(TARGET ${OPAPI_NAME}_static
                     POST_BUILD
                     COMMAND ${CMAKE_AR} x ${PROJECT_SOURCE_DIR}/build/libops_aclnn.a
@@ -73,7 +82,7 @@ if (TARGET ${OPHOST_NAME}_static OR TARGET ${OPAPI_NAME}_static)
     add_custom_target(${OPSTATIC_NAME})
     foreach(compute_unit ${ASCEND_COMPUTE_UNIT})
         set(RESOURCE_PATH ${CMAKE_BINARY_DIR}/autogen/${compute_unit}/aclnnop_resource)
-        file(GLOB RESOURCE_CPP ${RESOURCE_PATH}/*.cpp)
+        file(GLOB RESOURCE_CPP CONFIGURE_DEPENDS ${RESOURCE_PATH}/*.cpp)
         set_source_files_properties(${RESOURCE_CPP} PROPERTIES GENERATED TRUE)
         add_library(resource_${compute_unit}_static STATIC
                     $<$<TARGET_EXISTS:${OPHOST_NAME}_infer_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_infer_obj>>
@@ -88,6 +97,14 @@ if (TARGET ${OPHOST_NAME}_static OR TARGET ${OPAPI_NAME}_static)
         set_target_properties(resource_${compute_unit}_static PROPERTIES
                                         ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin_tmp/${compute_unit}
                                         OUTPUT_NAME ${OPSTATIC_NAME})
+        add_dependencies(resource_${compute_unit}_static
+            $<$<TARGET_EXISTS:${OPHOST_NAME}_infer_obj>:${OPHOST_NAME}_infer_obj>
+            $<$<TARGET_EXISTS:${OPHOST_NAME}_tiling_obj>:${OPHOST_NAME}_tiling_obj>
+            $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:${COMMON_NAME}_obj>
+            $<$<TARGET_EXISTS:${OPHOST_NAME}_aicpu_objs>:${OPHOST_NAME}_aicpu_objs>
+            $<$<TARGET_EXISTS:${OPHOST_NAME}_opapi_obj>:${OPHOST_NAME}_opapi_obj>
+            $<$<TARGET_EXISTS:opbuild_gen_aclnn_all>:opbuild_gen_aclnn_all>
+        )
         add_dependencies(${OPSTATIC_NAME} resource_${compute_unit}_static ${OPHOST_NAME}_static ${OPAPI_NAME}_static)
         add_custom_command(TARGET resource_${compute_unit}_static
                         POST_BUILD
