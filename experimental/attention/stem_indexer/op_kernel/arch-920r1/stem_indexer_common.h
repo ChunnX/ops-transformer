@@ -24,12 +24,12 @@ enum class SI_LAYOUT : uint32_t {
     PA_BNSD = 2,
     BNSD = 3
 };
-// Cube与Vector之间的同步模式。
+// Sync mode between Cube and Vector.
 constexpr uint32_t SI_SYNC_MODE4 = 4U;
 constexpr uint32_t MM1_RES_BUFFER_NUM = 2U;
 constexpr uint32_t CROSS_VC_EVENT = 0U;
 constexpr uint32_t CROSS_CV_EVENT = 2U;
-// 缓存大小，单位为字节。
+// Buffer size in bytes.
 constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32U;
 constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64U;
 constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256U;
@@ -41,7 +41,7 @@ constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192U;
 constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384U;
 constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768U;
 constexpr uint32_t TOPK_TRUNK_LEN = 512U;
-// 无效索引。
+// Invalid index.
 constexpr int INVALID_IDX = -1;
 struct RowIdx4 {
     uint32_t v0 = 0U;

@@ -15,7 +15,7 @@
 
 /*!
  * \file stem_indexer_service_cube.h
- * \brief matmul使用多缓存以优化流水
+ * \brief use multi-buffer for matmul, better pipeline
  */
 #ifndef stem_indexer_SERVICE_CUBE_H
 #define stem_indexer_SERVICE_CUBE_H
@@ -44,7 +44,7 @@ public:
     __aicore__ inline void FreeEventID();
     __aicore__ inline void ComputeMm1(const SICommon::RunInfo &runInfo);
 
-    static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true}; // 是否设置F矩阵，是否设置Padding；
+    static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true}; // isSetFMatrix isSetPadding;
     static constexpr uint64_t KEY_BUF_NUM = 4;
     static constexpr uint64_t QUERY_BUF_NUM = 4;
     static constexpr uint64_t L0A_BUF_NUM = 2;
@@ -141,7 +141,7 @@ __aicore__ inline void SIMatmul<SIT>::InitParams(const ConstInfo &constInfo)
 template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::InitBuffers(TPipe *pipe)
 {
-    // V121 1C:1V：2 * 64 * 512 * 4B = 256 KiB。
+    // V121 1C:1V: 2 * 64 * 512 * 4B = 256 KiB.
     pipe->InitBuffer(bufUB_, RES_MM1_DOUBLE_BUFFER_BYTES);
     mm1ResUB_ = bufUB_.Get<QK_T>();
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * M_BASIC_BLOCK_L1 * D_BASIC_BLOCK_L1 * sizeof(Q_T));
@@ -278,7 +278,7 @@ __aicore__ inline void SIMatmul<SIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s
              keyGm_[runInfo.tensorKeyOffset + s2GmOffset * constInfo_.headDim + kGmOffset], nd2nzPara);
 }
 
-// 维度顺序：batch、n2、g、s1、d
+// batch, n2, g, s1, d
 template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::CopyQuerySegmentNd2Nz(LocalTensor<Q_T> queryL1Base, uint64_t l1RowOffset,
                                                             uint64_t l1RowAlign, uint64_t gmOffset, uint64_t nValue)

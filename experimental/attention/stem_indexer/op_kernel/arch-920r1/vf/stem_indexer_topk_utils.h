@@ -26,7 +26,7 @@ __simd_callee__ inline void PadMrgRowRangeVFCore(__ubuf__ SCORE_T *rowBuf, const
                                                  const uint32_t padEnd)
 {
     constexpr uint32_t VF_ELEMS = 256U / sizeof(SCORE_T);
-    // Arange仅支持有符号索引Tensor；后续转换复用相同lane位进行SCORE_T比较。
+    // Arange only supports signed index tensors; later casts reuse the same lane bits for SCORE_T comparisons.
     using IDX_T = std::conditional_t<std::is_same_v<SCORE_T, uint16_t>, int16_t, int32_t>;
     const uint32_t blockStart = padStart & ~(VF_ELEMS - 1U);
     const uint32_t blockEnd = (padEnd + VF_ELEMS - 1U) & ~(VF_ELEMS - 1U);
@@ -126,7 +126,7 @@ __simd_vf__ inline void PadMrgRowsInitBlockVFImpl(__ubuf__ SCORE_T *mrgValueBuf,
     MicroAPI::RegTensor<IDX_T> regIdx;
     MicroAPI::RegTensor<SCORE_T> regZero;
     MicroAPI::Duplicate(regZero, (SCORE_T)0, maskAll);
-    // Arange仅支持有符号索引Tensor；后续转换复用相同lane位进行SCORE_T比较。
+    // Arange only supports signed index tensors; later casts reuse the same lane bits for SCORE_T comparisons.
     MicroAPI::Arange(regIdx, static_cast<IDX_T>(0));
     MicroAPI::Compares<SCORE_T, CMPMODE::LT>(maskInit, (MicroAPI::RegTensor<SCORE_T> &)regIdx, (SCORE_T)initialBlocks,
                                              maskAll);
@@ -143,7 +143,22 @@ __aicore__ inline void PadMrgRowsInitBlockVF(LocalTensor<SCORE_T> &mrgValueLocal
                                              const uint32_t initialBlocks)
 {
     __ubuf__ SCORE_T *mrgValueBuf = (__ubuf__ SCORE_T *)mrgValueLocal.GetPhyAddr();
-    PadMrgRowsInitBlockVFImpl<SCORE_T>(mrgValueBuf, rowStride, rowNum, topkSelectNumAlign, initialBlocks);
+    if constexpr (std::is_same_v<SCORE_T, uint32_t>) {
+        if (rowNum == 0U || initialBlocks == 0U) {
+            return;
+        }
+        constexpr uint32_t B32_VF_ELEMS = 64U;
+        uint32_t maskElems = initialBlocks < B32_VF_ELEMS ? initialBlocks : B32_VF_ELEMS;
+        uint64_t mask[1] = {
+            maskElems == B32_VF_ELEMS ? ~static_cast<uint64_t>(0) : (static_cast<uint64_t>(1) << maskElems) - 1U};
+        uint8_t repeatTimes = static_cast<uint8_t>(rowNum);
+        uint8_t dstRepStride = static_cast<uint8_t>(rowStride * sizeof(uint32_t) / 32U);
+        // One repeat clears the initial-block prefix of one row. The repeat stride advances directly to the next
+        // row, avoiding the V121 invalid-address lowering observed for explicit dynamic row loops.
+        Duplicate(mrgValueLocal[topkSelectNumAlign], static_cast<uint32_t>(0), mask, repeatTimes, 1U, dstRepStride);
+    } else {
+        PadMrgRowsInitBlockVFImpl<SCORE_T>(mrgValueBuf, rowStride, rowNum, topkSelectNumAlign, initialBlocks);
+    }
 }
 
 template <typename SCORE_T, uint32_t TRUNK_LEN = SICommon::TOPK_TRUNK_LEN>
@@ -153,7 +168,7 @@ __aicore__ inline void PadMrgFourRowsFirstS2RangeVF(const LocalTensor<SCORE_T> &
                                                     const SICommon::S2ValidLen4 &s2ValidLen4, const uint32_t rowStride)
 {
     __ubuf__ SCORE_T *mrgValueBuf = (__ubuf__ SCORE_T *)mrgValueLocal.GetPhyAddr();
-    // 调用方将最后一个有效行复制到尾部lane，因此VF始终无分支地处理4行。
+    // The caller duplicates the last valid row into tail lanes, so VF always processes four rows without branches.
     PadMrgFourRowsFirstS2RangeVFImpl<SCORE_T, TRUNK_LEN>(
         mrgValueBuf, rowStride, rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3, topkNum4.v0, topkNum4.v1,
         topkNum4.v2, topkNum4.v3, s2ValidLen4.v0, s2ValidLen4.v1, s2ValidLen4.v2, s2ValidLen4.v3);
@@ -166,7 +181,7 @@ PadMrgFourRowsNotFirstS2RangeVF(const LocalTensor<SCORE_T> &mrgValueLocal, const
                                 const uint32_t rowStride)
 {
     __ubuf__ SCORE_T *mrgValueBuf = (__ubuf__ SCORE_T *)mrgValueLocal.GetPhyAddr();
-    // 调用方将最后一个有效行复制到尾部lane，因此VF始终无分支地处理4行。
+    // The caller duplicates the last valid row into tail lanes, so VF always processes four rows without branches.
     PadMrgFourRowsNotFirstS2RangeVFImpl<SCORE_T, TRUNK_LEN>(
         mrgValueBuf, rowStride, rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3, topkNum4.v0, topkNum4.v1,
         topkNum4.v2, topkNum4.v3, s2ValidLen4.v0, s2ValidLen4.v1, s2ValidLen4.v2, s2ValidLen4.v3);
