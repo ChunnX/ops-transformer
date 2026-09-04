@@ -36,6 +36,8 @@ struct TokenUnpermuteScratch {
 };
 
 constexpr int32_t PRECISION_PROBE_TOKEN_INDEX = 9942;
+constexpr int32_t PRECISION_PROBE_FIRST_EXPERT_INDEX = 5;
+constexpr int32_t PRECISION_PROBE_LAST_EXPERT_INDEX = 9;
 constexpr uint32_t PRECISION_PROBE_DUMP_START_COLUMN = 2080U;
 constexpr uint32_t PRECISION_PROBE_ELEMENT_COUNT = 16U;
 
@@ -123,10 +125,25 @@ __aicore__ inline void AccumulateMoeExpertsForToken(const TokenUnpermuteConfig &
         LocalTensor<float> dataInFp32 =
             scratch.dataResFp32Tensor[(inputBufferIdx + 1) * bufferConfig.fp32SlotElementCount];
         uint64_t expertInputIndex = static_cast<uint64_t>(tokenIdx) * common.topK + expertIdx;
+        bool isProbeExpert =
+            expertIdx >= PRECISION_PROBE_FIRST_EXPERT_INDEX && expertIdx <= PRECISION_PROBE_LAST_EXPERT_INDEX;
+        if constexpr (CombineMode == COMBINE_NO_QUANT) {
+            if (isProbeExpert) {
+                GlobalTensor<bfloat16_t> expertInput = expandedX[expertInputIndex * common.tokenHiddenDim];
+                // desc 4000 + expertIdx: routed expert input in the Combine receive buffer.
+                DumpPrecisionProbe(common, tokenIdx, expertInput, 4000U + static_cast<uint32_t>(expertIdx));
+            }
+        }
         LoadMoeExpertInput<CombineMode>(context, common, scratch, expandedX, expertInputIndex, event, dataInBf16,
                                         dataInFp32);
-        // desc 2000 + expertIdx: this routed expert's FP32 input after Cast/dequantization.
-        DumpPrecisionProbe(common, tokenIdx, dataInFp32, 2000U + static_cast<uint32_t>(expertIdx));
+        if (isProbeExpert) {
+            if constexpr (CombineMode == COMBINE_NO_QUANT) {
+                // desc 5000 + expertIdx: routed expert input after GM-to-UB copy.
+                DumpPrecisionProbe(common, tokenIdx, dataInBf16, 5000U + static_cast<uint32_t>(expertIdx));
+            }
+            // desc 2000 + expertIdx: routed expert input after Cast/dequantization.
+            DumpPrecisionProbe(common, tokenIdx, dataInFp32, 2000U + static_cast<uint32_t>(expertIdx));
+        }
         SetFlag<HardEvent::S_V>(event);
         WaitFlag<HardEvent::S_V>(event);
         PipeBarrier<PIPE_V>();
@@ -146,8 +163,6 @@ __aicore__ inline void AccumulateMoeExpertsForToken(const TokenUnpermuteConfig &
             Add(scratch.dataResFp32Tensor, scratch.dataResFp32Tensor, dataInFp32, common.tokenHiddenDim);
             PipeBarrier<PIPE_V>();
         }
-        // desc 3000 + expertIdx: running FP32 accumulation after this routed expert.
-        DumpPrecisionProbe(common, tokenIdx, scratch.dataResFp32Tensor, 3000U + static_cast<uint32_t>(expertIdx));
         SetFlag<HardEvent::V_MTE2>(event);
     }
 }
