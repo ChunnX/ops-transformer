@@ -373,7 +373,9 @@ public:
                 }
                 blockRemoteCopy.FinalizeBlockLoop();
 
-                aclshmem_fence();
+                // The owning worker already drained its UDMA peer above.
+                // Complete local memory without polling other workers' queues.
+                aclshmemx_mte_quiet();
                 aclshmemx_signal_op(syncCommFinish, 1, ACLSHMEM_SIGNAL_ADD, srcRankIdx);
             }
 
@@ -554,7 +556,7 @@ private:
                     actualShape, srcRankIdx);
                 blockRemoteCopy.FinalizeBlockLoop();
 
-                aclshmem_fence();
+                aclshmemx_mte_quiet();
                 aclshmemx_signal_op(
                     syncCommFinish, 1, ACLSHMEM_SIGNAL_ADD, srcRankIdx);
             }

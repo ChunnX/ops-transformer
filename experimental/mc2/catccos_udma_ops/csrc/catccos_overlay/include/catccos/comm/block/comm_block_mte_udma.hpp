@@ -55,6 +55,16 @@ public:
         localComm.FinalizeBlockLoop();
     }
 
+    /// Complete this worker's pending copies before a software signal without
+    /// closing the local MTE event loop. SHMEM's generic fence polls every peer
+    /// queue, including queues owned by other concurrently progressing AIVs.
+    CATLASS_DEVICE
+    void CompleteForSignal()
+    {
+        remoteComm.FinalizeBlockLoop();
+        aclshmemx_mte_quiet();
+    }
+
     CATLASS_DEVICE
     void operator()(
         AscendC::GlobalTensor<ElementSrc> const &gmSrc, LayoutSrc const &layoutSrc,

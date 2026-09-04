@@ -11,10 +11,11 @@ The CatCCOS dependency comes from the official
 `https://gitcode.com/cann/catccos.git` repository and is pinned to
 `878c2e0a504be8c49c03b5e1157a7c714a628e29`; its CATLASS gitlink is used, so
 this project does not change the repository-wide CATLASS version. SHMEM is
-independently pinned to the official `cann/shmem` v1.6.0 commit
-`aee374a396b389626f68fab74ec8c555e18978a7`. This version contains the official
-rootinfo fixes for the 2048-byte capacity limit and incorrect POD/Server EID
-port generation.
+independently pinned to the official `cann/shmem` master snapshot
+`2a59c8fdcce9b717114fe445be09c96a13a55c39`, checked on 2026-09-04. Its upstream
+`VERSION` is `1.7.0`; this is an unreleased master commit. The exact commit is
+used for both device headers and bundled SHMEM libraries, and is recorded in
+the package's `_build_versions.py` together with `SHMEM_REF = "master"`.
 The operator-local `csrc/catccos_overlay` directory contains only the
 UDMA all-to-all-v headers that have not yet landed in that official revision.
 The GroupedMatMul-AllToAllV configuration is migrated from CatCCOS commit
@@ -44,12 +45,26 @@ python3 -m pip install --force-reinstall --no-deps dist/*.whl
 It then rejects a Wheel unless its filename and sole `dist-info/METADATA` entry
 match the package version in `ops_transformer_catccos_udma/_version.py`.
 
-`prepare_dependencies.sh` refuses an existing CatCCOS or SHMEM checkout at
-another revision. SHMEM is built with `-soc_type Ascend950` and the same C++
-ABI setting as the active PyTorch installation. Both the extension's device
-headers and its bundled user-space SHMEM libraries therefore come from v1.6.0.
+`prepare_dependencies.sh` refuses an existing CatCCOS checkout at another
+revision. It moves a clean SHMEM checkout to the pinned commit, fetching the
+commit when needed; local changes and untracked source files are rejected.
+SHMEM is built with `-soc_type Ascend950` and the same C++ ABI setting as the
+active PyTorch installation. A successful build records the source commit;
+the Wheel build rejects mismatched source, modified headers, or libraries
+without a matching build marker. Rerun dependency preparation when upgrading
+an existing installation. This SHMEM snapshot also requires the CANN-provided
+`libhcomm.so` on both build and target hosts.
 The target host only installs the Wheel; it does not need either source checkout,
 `SHMEM_HOME_PATH`, or a manually generated rootinfo file.
+
+The custom MTE/UDMA communication blocks use peer-scoped completion before
+publishing a software completion signal. SHMEM master makes the generic
+`aclshmem_fence()` and `aclshmem_quiet()` poll all reachable peers, which would
+cross the fused kernels' AIV queue ownership boundaries. These workers instead
+drain their own pending UDMA peer through `aclshmemx_udma_quiet(peer)` and use
+`aclshmemx_mte_quiet()` for local memory completion. Mid-loop completion keeps
+the local MTE events alive for subsequent tiles. The existing UDMA tile calls
+retain the default QP 0 and inherit upstream's CQ error/timeout trap behavior.
 
 ## PyTorch API
 

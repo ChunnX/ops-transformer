@@ -569,7 +569,8 @@ public:
                                     if constexpr (EXPORT_ALLTOALLV) {
                                         completedBlocks = peerCompletedBlocks;
                                     } else {
-                                        aclshmem_fence();
+                                        // This worker owns only a self MTE copy.
+                                        aclshmemx_mte_quiet();
                                         aclshmemx_signal_op(
                                             syncCommFinish, peerCompletedBlocks,
                                             ACLSHMEM_SIGNAL_ADD, dstRankIdx);
@@ -597,7 +598,7 @@ public:
                                 if constexpr (EXPORT_ALLTOALLV) {
                                     completedBlocks = peerCompletedBlocks;
                                 } else {
-                                    aclshmem_fence();
+                                    blockRemoteCopy.CompleteForSignal();
                                     aclshmemx_signal_op(
                                         syncCommFinish, peerCompletedBlocks,
                                         ACLSHMEM_SIGNAL_ADD, dstRankIdx);
@@ -651,7 +652,7 @@ public:
                         actualBlockShape, dstRankIdx
                     );
 
-                    aclshmem_fence();
+                    blockRemoteCopy.CompleteForSignal();
                     aclshmemx_signal_op(syncCommFinish, 1, ACLSHMEM_SIGNAL_ADD, dstRankIdx);
                 }
             }

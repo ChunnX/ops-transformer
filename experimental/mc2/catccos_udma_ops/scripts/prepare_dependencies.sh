@@ -9,9 +9,8 @@ CATCCOS_REPOSITORY=https://gitcode.com/cann/catccos.git
 CATCCOS_COMMIT=878c2e0a504be8c49c03b5e1157a7c714a628e29
 CATCCOS_DIR=${CATCCOS_SOURCE_PATH:-"${REPO_ROOT}/3rdparty/catccos"}
 SHMEM_REPOSITORY=https://gitcode.com/cann/shmem.git
-# Official v1.6.0. It contains 6fdde552, which fixes both the 2048-byte
-# rootinfo capacity and incorrect POD/Server EID port generation.
-SHMEM_COMMIT=aee374a396b389626f68fab74ec8c555e18978a7
+# Official master snapshot (2026-09-04); VERSION is 1.7.0, not a release tag.
+SHMEM_COMMIT=2a59c8fdcce9b717114fe445be09c96a13a55c39
 SHMEM_DIR=${SHMEM_SOURCE_PATH:-"${REPO_ROOT}/3rdparty/shmem"}
 
 if [[ ! -d "${CATCCOS_DIR}/.git" ]]; then
@@ -34,20 +33,28 @@ fi
 # independent SHMEM checkout below instead of this revision's SHMEM gitlink.
 git -C "${CATCCOS_DIR}" submodule update --init --recursive 3rdparty/catlass 3rdparty/shmem
 
-if [[ ! -d "${SHMEM_DIR}/.git" ]]; then
+if [[ ! -e "${SHMEM_DIR}/.git" ]]; then
     if [[ -e "${SHMEM_DIR}" ]]; then
         echo "error: ${SHMEM_DIR} exists but is not a Git checkout" >&2
         exit 1
     fi
     git clone "${SHMEM_REPOSITORY}" "${SHMEM_DIR}"
-    git -C "${SHMEM_DIR}" checkout --detach "${SHMEM_COMMIT}"
-else
-    ACTUAL_SHMEM_COMMIT=$(git -C "${SHMEM_DIR}" rev-parse HEAD)
-    if [[ "${ACTUAL_SHMEM_COMMIT}" != "${SHMEM_COMMIT}" ]]; then
-        echo "error: SHMEM_SOURCE_PATH is at ${ACTUAL_SHMEM_COMMIT}, expected ${SHMEM_COMMIT}" >&2
-        echo "Use a clean checkout at official SHMEM v1.6.0 or unset SHMEM_SOURCE_PATH." >&2
-        exit 1
+fi
+
+# Keep user edits intact and never label a modified checkout as the official
+# binary. Gitignored build/install products do not make the checkout dirty.
+SHMEM_WORKTREE_STATUS=$(git -C "${SHMEM_DIR}" status --porcelain --untracked-files=normal)
+if [[ -n "${SHMEM_WORKTREE_STATUS}" ]]; then
+    echo "error: SHMEM checkout has local changes; commit or move them before preparing dependencies" >&2
+    printf '%s\n' "${SHMEM_WORKTREE_STATUS}" >&2
+    exit 1
+fi
+ACTUAL_SHMEM_COMMIT=$(git -C "${SHMEM_DIR}" rev-parse HEAD)
+if [[ "${ACTUAL_SHMEM_COMMIT}" != "${SHMEM_COMMIT}" ]]; then
+    if ! git -C "${SHMEM_DIR}" cat-file -e "${SHMEM_COMMIT}^{commit}" 2>/dev/null; then
+        git -C "${SHMEM_DIR}" fetch --no-tags "${SHMEM_REPOSITORY}" "${SHMEM_COMMIT}"
     fi
+    git -C "${SHMEM_DIR}" checkout --detach "${SHMEM_COMMIT}"
 fi
 
 if [[ -z "${ASCEND_HOME_PATH:-}" ]]; then
@@ -61,7 +68,16 @@ if [[ "${TORCH_ABI}" == "1" ]]; then
 else
     ABI_ARG=-use_cxx11_abi0
 fi
-bash "${SHMEM_DIR}/scripts/build.sh" -soc_type Ascend950 "${ABI_ARG}"
+# Invalidate the previous install before rebuilding, including on build failure.
+rm -f "${SHMEM_DIR}/install/shmem/.ops_transformer_source_commit"
+VERSION=$(tr -d '[:space:]' < "${SHMEM_DIR}/VERSION") \
+    bash "${SHMEM_DIR}/scripts/build.sh" -soc_type Ascend950 "${ABI_ARG}"
+for SHMEM_LIBRARY in libshmem.so libshmem_utils.so; do
+    if [[ ! -f "${SHMEM_DIR}/install/shmem/lib/${SHMEM_LIBRARY}" ]]; then
+        echo "error: SHMEM build did not install ${SHMEM_LIBRARY}; no provenance marker was written" >&2
+        exit 1
+    fi
+done
 printf '%s\n' "${SHMEM_COMMIT}" > "${SHMEM_DIR}/install/shmem/.ops_transformer_source_commit"
 
 echo "CatCCOS: ${CATCCOS_DIR}"
