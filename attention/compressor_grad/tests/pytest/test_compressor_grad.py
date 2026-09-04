@@ -263,7 +263,7 @@ from compressor_grad import compressor_grad, CompressorGradTiling  # noqa: E402
 from test_compressor_grad_cases import REDLINE_CASES
 from compressor_grad_cpu_golden import compressor_grad_golden
 from compressor_grad_npu import NPUBackend
-from cann_ops_transformer.ops.compressor import (
+from cann_ops_transformer.ops.attention.compressor.compressor import (
     _compressor_forward,
     _compressor_backward,
 )
