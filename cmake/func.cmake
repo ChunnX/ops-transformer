@@ -269,7 +269,7 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
         get_filename_component(OP_NAME "${OP_DIR}" NAME)
 
         if (NOT BUILD_OPEN_PROJECT)
-            if (EXISTS ${TOP_DIR}/asl/ops/cann/ops/built-in/tbe/impl/ascendc/${OP_NAME})
+            if (EXISTS ${TOP_DIR}/asl/ops/cann/ops/built-in/tbe/impl/ascendc/${OP_NAME}/op_kernel)
                 continue()
             endif ()
         endif ()
@@ -340,7 +340,7 @@ function(op_add_depend_directory)
 
                 get_filename_component(_depend_op_name "${depend_info}" NAME)
                 if (NOT BUILD_OPEN_PROJECT)
-                    if (EXISTS ${TOP_DIR}/asl/ops/cann/ops/built-in/tbe/impl/ascendc/${_depend_op_name})
+                    if (EXISTS ${TOP_DIR}/asl/ops/cann/ops/built-in/tbe/impl/ascendc/${_depend_op_name}/op_kernel)
                         continue()
                     endif ()
                 endif ()
@@ -693,7 +693,7 @@ function(enable_pypto_kernel op_file)
     execute_process(
         COMMAND ${HI_PYTHON} ${OPS_ADV_DIR}/cmake/scripts/pypto_codegen.py
                 --py-file "${_py}" --out-dir "${_gen}"
-                --op-file "${op_file}" --soc "${_soc_unit}"
+                --op-file "${op_file}"
         RESULT_VARIABLE _rc
     )
     if (NOT _rc EQUAL 0)

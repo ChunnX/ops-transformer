@@ -18,7 +18,7 @@
 #include "kernel_tensor.h"
 
 namespace AscendC {
-using namespace MicroAPI;
+using namespace Reg;
 
 static constexpr uint32_t FLOAT_REP_SIZE_128 = 128;
 
@@ -32,7 +32,7 @@ __simd_vf__ inline void Ub2UbNd2Nz128(__ubuf__ INPUT_T *dstUb, __ubuf__ INPUT_T 
     MaskReg preg16 = UpdateMask<uint16_t>(repeatSize);
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign(vreg_input_x1, srcUb + i * n);
-        StoreAlign<INPUT_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+        StoreAlign<INPUT_T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ INPUT_T *&)dstUb), vreg_input_x1, blockStride, repeatStride, preg16);
     }
 }
@@ -56,21 +56,20 @@ __simd_vf__ inline void Ub2UbNd2Nz512(__ubuf__ INPUT_T *dstUb, __ubuf__ INPUT_T 
         LoadAlign(vreg_input_x2, srcUb + i * n + FLOAT_REP_SIZE_128);
         LoadAlign(vreg_input_x3, srcUb + i * n + FLOAT_REP_SIZE_128 * 2);
         LoadAlign(vreg_input_x4, srcUb + i * n + FLOAT_REP_SIZE_128 * 3);
-        StoreAlign<INPUT_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+        StoreAlign<INPUT_T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ INPUT_T *&)dstUb), vreg_input_x1, blockStride, repeatStride, preg16);
-        StoreAlign<INPUT_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+        StoreAlign<INPUT_T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ INPUT_T *&)dstUb2), vreg_input_x2, blockStride, repeatStride, preg16);
-        StoreAlign<INPUT_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+        StoreAlign<INPUT_T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ INPUT_T *&)dstUb3), vreg_input_x3, blockStride, repeatStride, preg16);
-        StoreAlign<INPUT_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+        StoreAlign<INPUT_T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ INPUT_T *&)dstUb4), vreg_input_x4, blockStride, repeatStride, preg16);
     }
 }
 
-
 template <typename INPUT_T>
 __aicore__ inline void Ub2UbNd2Nz(const LocalTensor<INPUT_T> &dstTensor, const LocalTensor<INPUT_T> &srcTensor,
-    uint32_t m, uint32_t n)
+                                  uint32_t m, uint32_t n)
 {
     __ubuf__ INPUT_T *dstUb = (__ubuf__ INPUT_T *)dstTensor.GetPhyAddr();
     __ubuf__ INPUT_T *srcUb = (__ubuf__ INPUT_T *)srcTensor.GetPhyAddr();
@@ -81,6 +80,6 @@ __aicore__ inline void Ub2UbNd2Nz(const LocalTensor<INPUT_T> &dstTensor, const L
         Ub2UbNd2Nz128<INPUT_T>(dstUb, srcUb, m, n);
     }
 }
-} // namespace
+} // namespace AscendC
 
 #endif // VF_PROCESS_VEC0_KL_LOSS_GRAD_H

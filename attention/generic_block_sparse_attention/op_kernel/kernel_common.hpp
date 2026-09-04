@@ -52,9 +52,14 @@ struct GenericBlockSparseAttentionTilingData {
     uint32_t kL1BufNum;
     uint32_t vL1BufNum;
     uint32_t pL1BufNum;
-    // PAGED_BBND page base stride in elements (dim0). Allows first-axis non-contiguous KV cache.
+    // PA_BBND page base stride in elements (dim0). Allows first-axis non-contiguous KV cache.
     uint64_t kStride0;
     uint64_t vStride0;
+    uint32_t fdStaticEnabled;
+    uint32_t fdLseSubStride;
+    uint32_t fdPartialCapacity;
+    uint64_t fdPartialLseOffset;
+    uint64_t fdPartialOOffset;
 };
 
 } // namespace GenericBlockSparseAttn
