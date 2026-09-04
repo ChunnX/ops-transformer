@@ -199,6 +199,16 @@ __aicore__ inline void ProcessTokenUnpermuteBatch(
         }
         WaitFlag<HardEvent::MTE3_V>(outputBufferEvent);
         Cast(scratch.dataResTensor, scratch.dataResFp32Tensor, RoundMode::CAST_RINT, common.tokenHiddenDim);
+        constexpr int32_t debugTokenIndex = 9942;
+        constexpr uint32_t debugOutputColumn = 2090U;
+        if (common.tokenNum == 10072U && common.tokenHiddenDim == 3072U && tokenIdx == debugTokenIndex) {
+            SyncFuncStatic<HardEvent::V_S, SYNC_EVENT_ID4>();
+            LocalTensor<uint16_t> outputBits = scratch.dataResTensor.ReinterpretCast<uint16_t>();
+            uint16_t rawValue = outputBits.GetValue(debugOutputColumn);
+            AscendC::printf("[MegaMoeProbe] stage=unpermute_before_store rank=%u token=%u col=%u bf16Bits=0x%x\n",
+                            common.rankId, static_cast<uint32_t>(tokenIdx), debugOutputColumn,
+                            static_cast<uint32_t>(rawValue));
+        }
         SyncFuncStatic<HardEvent::V_MTE3, SYNC_EVENT_ID3>();
         DataCopy(output[static_cast<uint64_t>(tokenIdx) * common.tokenHiddenDim], scratch.dataResTensor,
                  common.tokenHiddenDim);
