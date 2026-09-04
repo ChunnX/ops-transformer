@@ -26,6 +26,9 @@ namespace {
 constexpr int64_t PARTIAL_BLOCK_RANK = 2;
 constexpr int64_t BLOCK_RES_RANK = 3;
 constexpr int64_t NORM_WEIGHT_RANK = 1;
+constexpr int64_t PROJ_WEIGHT_RANK_1D = 1;
+constexpr int64_t PROJ_WEIGHT_RANK_2D = 2;
+constexpr int64_t PROJ_WEIGHT_LEADING_ONES = 1;
 constexpr int64_t T_DIM_INDEX = 0;
 constexpr int64_t N_DIM_INDEX = 1;
 constexpr int64_t H_DIM_INDEX = 1;
@@ -50,7 +53,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> block_attention_residuals(
     TORCH_CHECK(blockRes.dim() == BLOCK_RES_RANK, "block_res must be a 3D tensor, but got ", blockRes.dim(), "D");
     TORCH_CHECK(normWeight.dim() == NORM_WEIGHT_RANK, "norm_weight must be a 1D tensor, but got ", normWeight.dim(),
                 "D");
-    TORCH_CHECK(projWeight.dim() == 1 || (projWeight.dim() == 2 && projWeight.size(0) == 1),
+    TORCH_CHECK(projWeight.dim() == PROJ_WEIGHT_RANK_1D || (projWeight.dim() == PROJ_WEIGHT_RANK_2D &&
+                                                            projWeight.size(T_DIM_INDEX) == PROJ_WEIGHT_LEADING_ONES),
                 "proj_weight must be [H] or [1,H], but got ", projWeight.sizes());
 
     const auto computeDtype = partialBlock.scalar_type();
