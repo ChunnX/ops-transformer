@@ -69,10 +69,10 @@ public:
             SetFlag<HardEvent::M_FIX>(0);
             WaitFlag<HardEvent::M_FIX>(0);
             CopyOut(c[offsetM * C0_BASIC_N_STRIDE], curM, n);
+            CrossCoreSetFlag<MhcPreBackwardUtils::CROSS_CORE_FLAG_INDEX, PIPE_FIX>(
+                MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0);
             SetFlag<HardEvent::FIX_M>(0);
         }
-        CrossCoreSetFlag<MhcPreBackwardUtils::CROSS_CORE_FLAG_INDEX, PIPE_FIX>(
-            MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0);
     }
 
     __aicore__ inline void ProcessC1(const GlobalTensor<float> &a, const GlobalTensor<float> &b,
