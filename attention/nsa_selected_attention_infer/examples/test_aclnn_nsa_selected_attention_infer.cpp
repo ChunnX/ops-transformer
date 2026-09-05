@@ -132,18 +132,18 @@ int main(int argc, char **argv)
     int64_t d2 = 128;
     int64_t g = 1;
 
-    int64_t n2 = 1;
+    int64_t numKeyValueHeads = 1;
     int64_t blockSize = 64;
     int64_t selectBlockSize = 64;
     int64_t selectBlockCount = 1;
     int64_t blockTableLength = 1;
     int64_t numBlocks = batch * blockTableLength;
-    std::vector<int64_t> queryShape = {batch, s1, n2 * g, d1};
-    std::vector<int64_t> keyShape = {numBlocks, blockSize, n2, d1};
-    std::vector<int64_t> valueShape = {numBlocks, blockSize, n2, d2};
-    std::vector<int64_t> topkIndicesShape = {batch, s1, n2, selectBlockCount};
+    std::vector<int64_t> queryShape = {batch, s1, numKeyValueHeads * g, d1};
+    std::vector<int64_t> keyShape = {numBlocks, blockSize, numKeyValueHeads, d1};
+    std::vector<int64_t> valueShape = {numBlocks, blockSize, numKeyValueHeads, d2};
+    std::vector<int64_t> topkIndicesShape = {batch, s1, numKeyValueHeads, selectBlockCount};
     std::vector<int64_t> blockTableOptionalShape = {batch, blockTableLength};
-    std::vector<int64_t> outputShape = {batch, s1, n2 * g, d2};
+    std::vector<int64_t> outputShape = {batch, s1, numKeyValueHeads * g, d2};
 
     long long queryShapeSize = GetShapeSize(queryShape);
     long long keyShapeSize = GetShapeSize(keyShape);
@@ -161,7 +161,7 @@ int main(int argc, char **argv)
     std::vector<int32_t> topkIndicesHostData;
     for (int b = 0; b < batch; ++b) {
         for (int s = 0; s < s1; ++s) {
-            for (int h = 0; h < n2; ++h) {
+            for (int h = 0; h < numKeyValueHeads; ++h) {
                 for (int k = 0; k < selectBlockCount; ++k) {
                     if (k == 0) {
                         topkIndicesHostData.push_back(k);
@@ -174,8 +174,8 @@ int main(int argc, char **argv)
     }
     // attr
     double scaleValue = 1.0;
-    int64_t sparseMod = 0;
-    int64_t numHeads = static_cast<int64_t>(n2 * g);
+    int64_t sparseMode = 0;
+    int64_t numHeads = static_cast<int64_t>(numKeyValueHeads * g);
     std::string sLayerOut = "BSND";
     char layOut[sLayerOut.length() + 1];
     std::strcpy(layOut, sLayerOut.c_str());
@@ -228,9 +228,11 @@ int main(int argc, char **argv)
     // 调用aclnnNsaSelectedAttention第一段接口
     ret = aclnnNsaSelectedAttentionInferGetWorkspaceSize(
         queryTensor, keyTensor, valueTensor, topkIndicesTensor, nullptr, blockTableOptionalTensor, actualCmpQSeqLen,
-        actualCmpKvSeqLen, layOut, numHeads, n2, selectBlockSize, selectBlockCount, blockSize, scaleValue, sparseMod,
-        outputTensor, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); destroyIntArrays(); return ret);
+        actualCmpKvSeqLen, layOut, numHeads, numKeyValueHeads, selectBlockSize, selectBlockCount, blockSize, scaleValue,
+        sparseMode, outputTensor, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS,
+            LOG_PRINT("aclnnNsaSelectedAttentionInferGetWorkspaceSize failed. ERROR: %d\n", ret);
+            destroyIntArrays(); return ret);
 
     // 根据第一段接口计算出的workspaceSize申请device内存
     if (workspaceSize > 0) {
