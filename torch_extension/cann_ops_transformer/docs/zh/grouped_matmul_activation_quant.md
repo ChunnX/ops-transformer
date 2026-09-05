@@ -81,8 +81,8 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 | `round_mode` | str | 可选 | 舍入模式，默认值为`"rint"`，当前仅支持`"rint"`。 | string | - |
 | `scale_alg` | int | 可选 | MX量化scale算法，默认值为0。支持0、1、2：0表示OCP实现；1表示cuBLAS实现，仅支持FP8输出；2表示FLOAT4动态范围实现，仅支持FLOAT4_E2M1输出。FLOAT4_E1M2输出仅支持0。 | int | - |
 | `dst_type_max` | float | 可选 | 表示maxType的取值，对应公式中的Amax(DType)，默认值为0.0。`scale_alg=2`时支持0.0或`[6.0, 12.0]`；0.0表示使用FLOAT4_E2M1的最大值6.0。其他`scale_alg`仅支持0.0。 | float | - |
-| `x_dtype` | int | 可选 | `x`的dtype wrapper覆盖值，默认值为`None`。MXFP4场景需指定FLOAT4类型，MXFP8场景无需传入。 | int | - |
-| `weight_dtype` | int | 可选 | `weight`的dtype wrapper覆盖值，默认值为`None`。MXFP4场景需指定FLOAT4类型，MXFP8场景无需传入。 | int | - |
+| `x_dtype` | torch.dtype/int | 可选 | `x`的dtype wrapper覆盖值，默认值为`None`。MXFP4场景需指定FLOAT4类型，MXFP8场景无需传入。 | `torch_npu.float4_e2m1fn_x2`、`torch_npu.float4_e1m2fn_x2` | - |
+| `weight_dtype` | torch.dtype/int | 可选 | `weight`的dtype wrapper覆盖值，默认值为`None`。MXFP4场景需指定FLOAT4类型，MXFP8场景无需传入。 | `torch_npu.float4_e2m1fn_x2`、`torch_npu.float4_e1m2fn_x2` | - |
 | `weight_scale_dtype` | int | 可选 | `weight_scale`的dtype wrapper覆盖值，默认值为`None`。当前MX场景需要传入`torch_npu.float8_e8m0fnu`。 | `torch_npu.float8_e8m0fnu` | - |
 | `x_scale_dtype` | int | 可选 | `x_scale`的dtype wrapper覆盖值，默认值为`None`。当前MX场景需要传入`torch_npu.float8_e8m0fnu`。 | `torch_npu.float8_e8m0fnu` | - |
 
@@ -108,15 +108,15 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 
 | 参数名 | 数据类型 | 维度(shape) | 场景约束 |
 | --- | --- | --- | --- |
-| `x` | `torch_npu.float4_e2m1fn_x2`、`torch_npu.float4_e1m2fn_x2` | 2维 | 使用`torch.uint8`承载FLOAT4数据，需通过`x_dtype`指定类型。 |
-| `weight` | `torch_npu.float4_e2m1fn_x2`、`torch_npu.float4_e1m2fn_x2` | 3维 | 使用`torch.uint8`承载FLOAT4数据，需通过`weight_dtype`指定类型，并传入FRACTAL_NZ格式。 |
-| `weight_scale` | `torch_npu.float8_e8m0fnu` | 4维 | 转置属性需与`weight`保持一致。 |
+| `x` | `torch_npu.float4_e2m1fn_x2`、`torch_npu.float4_e1m2fn_x2` | `(M, K)` | 使用`torch.uint8`承载FLOAT4数据，需通过`x_dtype`指定类型。 |
+| `weight` | `torch_npu.float4_e2m1fn_x2`、`torch_npu.float4_e1m2fn_x2` | 非转置：`(E, K, N)`<br>转置：`(E, N, K)` | 使用`torch.uint8`承载FLOAT4数据，需通过`weight_dtype`指定类型，并传入FRACTAL_NZ格式。 |
+| `weight_scale` | `torch_npu.float8_e8m0fnu` | 非转置：`(E, ceil(K / 64), N, 2)`<br>转置：`(E, N, ceil(K / 64), 2)` | 转置属性需与`weight`保持一致。 |
 | `x_scale` | `torch_npu.float8_e8m0fnu` | `(M, ceil(K / 64), 2)` | 必须传入。 |
-| `y` | `torch.float8_e4m3fn`、`torch.float8_e5m2`、`torch_npu.float4_e2m1fn_x2`、`torch_npu.float4_e1m2fn_x2` | 2维 | FLOAT4输出使用`torch.uint8`承载。 |
+| `y` | `torch.float8_e4m3fn`、`torch.float8_e5m2`、`torch_npu.float4_e2m1fn_x2`、`torch_npu.float4_e1m2fn_x2` | `(M, N)` | FLOAT4输出使用`torch.uint8`承载。 |
 | `y_scale` | `torch_npu.float8_e8m0fnu` | `(M, ceil(N / 64), 2)` | - |
 | `y_dtype` | `torch.float8_e4m3fn`、`torch.float8_e5m2`、`torch_npu.float4_e2m1fn_x2`、`torch_npu.float4_e1m2fn_x2` | - | `None`时跟随`x`。 |
-| `x_dtype` | int | - | 必须传`torch_npu.float4_e2m1fn_x2`或`torch_npu.float4_e1m2fn_x2`。 |
-| `weight_dtype` | int | - | 必须传`torch_npu.float4_e2m1fn_x2`或`torch_npu.float4_e1m2fn_x2`。 |
+| `x_dtype` | `torch_npu.float4_e2m1fn_x2`、`torch_npu.float4_e1m2fn_x2` | - | 必须传入。 |
+| `weight_dtype` | `torch_npu.float4_e2m1fn_x2`、`torch_npu.float4_e1m2fn_x2` | - | 必须传入。 |
 | `scale_alg` | int | - | 支持0、1、2：0表示OCP实现；1表示cuBLAS实现，仅支持FP8输出；2表示FLOAT4动态范围实现，仅支持FLOAT4_E2M1输出。FLOAT4_E1M2输出仅支持0。 |
 | `dst_type_max` | float | - | `scale_alg=2`时支持0.0或`[6.0, 12.0]`；其他`scale_alg`仅支持0.0。 |
 
