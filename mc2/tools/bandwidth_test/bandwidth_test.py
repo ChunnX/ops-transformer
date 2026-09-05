@@ -40,6 +40,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+URMA_MAX_BATCH_TOKENS = 2048  # Matches the current tiling cap for all supported shapes.
+
 # Resolve the environment and derive runtime values from config.py.
 server_index = CONFIG.parallel.server_index
 master_ip = CONFIG.parallel.master_ip
@@ -68,13 +70,23 @@ test_configs = (
 )
 input_dtype = torch.bfloat16 if CONFIG.shape.x_dtype == "bf16" else torch.float16
 dtype_bytes = torch.empty(0, dtype=input_dtype).element_size()
-mode = 0 if CONFIG.run.is_precision_test else 1
+mode = CONFIG.model.mode
+if mode is None:
+    mode = 0 if CONFIG.run.is_precision_test else 1
+if mode not in (0, 1, 3):
+    raise ValueError("mode must be 0, 1 or 3")
+if mode == 3 and CONFIG.model.comm_alg != "urma":
+    raise ValueError("mode=3 requires comm_alg=urma")
+if CONFIG.run.is_precision_test and mode != 0:
+    raise ValueError("precision testing requires mode=0")
 
 
 def cal_hccl_buffsize(test_max_bs, h, ep_world_size):
     # A5 allocates twice HCCL_BUFFSIZE; each half includes one reserved token block.
     row_bytes = ((h * 2 + 511) // 512) * 512
     required_bytes = 1024 * 1024 + 2 * (ep_world_size + 1) * test_max_bs * row_bytes
+    if mode == 3:
+        required_bytes = 1024 * 1024 + 2 * test_max_bs * h * dtype_bytes
     return str((required_bytes + 2 * 1024 * 1024 - 1) // (2 * 1024 * 1024))
 
 
@@ -221,6 +233,8 @@ def get_bandwidth_performance(
     single_rank_data_bytes = (
         test_bs * data_size_bytes * ((num_world_size - 1) / num_world_size)
     )
+    if mode == 3:
+        single_rank_data_bytes = (test_bs // num_world_size) * (num_world_size - 1) * data_size_bytes
     total_data_bytes = single_rank_data_bytes * num_world_size
     mean_bandwidth_gbps = (
         (total_data_bytes / mean_time_s) / 1024 / 1024 / 1024 / num_world_size
@@ -391,6 +405,10 @@ def generate_inputs(
     test_bs: int, test_data_size: int
 ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
     """生成测试输入数据，每个发送方内部的目标rank均衡"""
+    if mode == 3:
+        # Only tensor shapes are used by this mode; the registered Win supplies the payload.
+        return ([torch.empty((test_bs, test_data_size), dtype=input_dtype) for _ in range(world_size)],
+                [torch.empty((test_bs,), dtype=torch.int32) for _ in range(world_size)])
     torch.manual_seed(CONFIG.shape.random_seed)
 
     x_per_rank = [
@@ -413,6 +431,13 @@ def generate_inputs(
         dstrank_id_per_rank.append(torch.tensor(shuffled_targets, dtype=torch.int32))
 
     return x_per_rank, dstrank_id_per_rank
+
+
+def prepare_npu_inputs(x, dstrank_id, test_mode):
+    if test_mode == 3:
+        return (torch.empty(x.shape, dtype=input_dtype, device="npu"),
+                torch.empty(dstrank_id.shape, dtype=torch.int32, device="npu"))
+    return x.to(input_dtype).npu(), dstrank_id.to(torch.int32).npu()
 
 
 # endregion
@@ -552,14 +577,13 @@ def run_bandwidth_test_npu(
     if sym_buffer is None:
         sym_buffer, _ = init_hccl_comm(rank, test_world_size)
 
-    if CONFIG.diagnostics.is_save_tensor_to_bin:
+    if CONFIG.diagnostics.is_save_tensor_to_bin and test_mode != 3:
         save_tensor_to_bin(x.to(torch.float32), "x_in_" + str(rank))
         save_tensor_to_bin(dstrank_id.to(torch.int32), "dstrank_id_" + str(rank))
 
     logger.info(f"[INFO] device_{rank} 构造bandwidth_test算子输入数据")
 
-    x_npu = x.to(input_dtype).npu()
-    dstrank_id_npu = dstrank_id.to(torch.int32).npu()
+    x_npu, dstrank_id_npu = prepare_npu_inputs(x, dstrank_id, test_mode)
     torch.npu.synchronize()
     logger.debug("[DEBUG] device_%s 开始调用算子", rank)
 
@@ -627,11 +651,12 @@ def run_bandwidth_test_npu(
 
     logger.info(f"rank {rank} npu finished! \n")
 
-    if CONFIG.diagnostics.is_save_tensor_to_bin:
+    if CONFIG.diagnostics.is_save_tensor_to_bin and test_mode != 3:
         save_tensor_to_bin(y.to(torch.float32), "y_out_" + str(rank))
         save_tensor_to_bin(receive_cnt, "receive_cnt_" + str(rank))
 
-    queue.put([rank, [y.cpu(), receive_cnt.cpu()]])
+    outputs = [None, None] if test_mode == 3 else [y.cpu(), receive_cnt.cpu()]
+    queue.put([rank, outputs])
 
 
 def run_bandwidth_test_npu_bandwidth(
@@ -691,8 +716,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
 
         logger.info(f"[INFO] device_{rank} 构造bandwidth_test算子输入数据")
 
-        x_npu = x.to(input_dtype).npu()
-        dstrank_id_npu = dstrank_id.to(torch.int32).npu()
+        x_npu, dstrank_id_npu = prepare_npu_inputs(x, dstrank_id, mode)
 
         torch.npu.synchronize()
         logger.debug("[DEBUG] device_%s 开始调用算子", rank)
@@ -749,7 +773,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
         torch.npu.synchronize()
         torch.npu.empty_cache()
 
-        if CONFIG.diagnostics.is_save_tensor_to_bin:
+        if CONFIG.diagnostics.is_save_tensor_to_bin and mode != 3:
             save_tensor_to_bin(
                 y.to(torch.float32), f"y_out_{rank}_config{config_index}"
             )
@@ -758,8 +782,8 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
         results.append(
             {
                 "config_index": config_index,
-                "y": y.cpu(),
-                "receive_cnt": receive_cnt.cpu(),
+                "y": None if mode == 3 else y.cpu(),
+                "receive_cnt": None if mode == 3 else receive_cnt.cpu(),
                 "test_bs": test_bs,
                 "test_data_size": test_data_size,
             }
@@ -989,6 +1013,8 @@ def print_summary_table(results: List[Dict[str, Any]]):
         logger.warning("[WARN] No valid test results")
         return
 
+    logger.info("Communication: %s; mode: %d; requested batch_tokens: %d", CONFIG.model.comm_alg, mode,
+                CONFIG.model.batch_tokens)
     header = (
         f"{'No.':<5} {'BS':<8} {'H':<10} {'Rank Data(MB)':<16} "
         f"{'Batch Tokens':<14} {'Batch Data(MB)':<16} "
@@ -1004,13 +1030,14 @@ def print_summary_table(results: List[Dict[str, Any]]):
         cfg = r["config"]
         token_bytes = cfg["data_size"] * dtype_bytes
         rank_data_mb = cfg["bs"] * token_bytes / (1024 * 1024)
+        if mode == 3:
+            rank_data_mb = (cfg["bs"] // world_size) * (world_size - 1) * token_bytes / (1024 * 1024)
         if CONFIG.model.comm_alg != "urma":
             batch_tokens_text = batch_data_mb_text = "N/A"
-        elif CONFIG.model.batch_tokens == 0:
-            batch_tokens_text = batch_data_mb_text = "Auto"
         else:
-            batch_tokens_text = str(CONFIG.model.batch_tokens)
-            batch_data_mb_text = f"{CONFIG.model.batch_tokens * token_bytes / (1024 * 1024):.4f}"
+            batch_tokens = CONFIG.model.batch_tokens or URMA_MAX_BATCH_TOKENS
+            batch_tokens_text = str(batch_tokens)
+            batch_data_mb_text = f"{batch_tokens * token_bytes / (1024 * 1024):.4f}"
         row = (
             f"{r['config_index']:<5} {cfg['bs']:<8} {cfg['data_size']:<10} "
             f"{rank_data_mb:<16.4f} {batch_tokens_text:<14} {batch_data_mb_text:<16} "
@@ -1024,9 +1051,10 @@ def print_summary_table(results: List[Dict[str, Any]]):
             max_bw_config = r
 
     logger.info("-" * len(header))
-    logger.info("MB = 1024^2 bytes. Rank Data = BS * H * dtype bytes, including local-rank destinations.")
+    logger.info("MB = 1024^2 bytes. Mode 0/1 Rank Data includes local destinations.")
+    logger.info("Mode 3 Rank Data = floor(BS/world_size) * (world_size-1) * H * dtype bytes; only remote payload.")
     logger.info("Batch Data is the configured full-batch payload per destination; the final batch may be smaller.")
-    logger.info("Auto: batch size is selected by tiling (at most 2048). N/A: MTE has no URMA batch submission.")
+    logger.info("URMA batch_tokens=0 uses the current tiling maximum of 2048. N/A: MTE has no URMA batch submission.")
 
     if max_bw_config:
         logger.info(f"\n{'*' * 90}")
@@ -1036,6 +1064,8 @@ def print_summary_table(results: List[Dict[str, Any]]):
         logger.info(f"  H: {max_bw_config['config']['data_size']}")
         best_cfg = max_bw_config["config"]
         best_rank_data_mb = best_cfg["bs"] * best_cfg["data_size"] * dtype_bytes / (1024 * 1024)
+        if mode == 3:
+            best_rank_data_mb = max_bw_config["single_rank_data_kb"] / 1024
         logger.info(f"  Rank Data: {best_rank_data_mb:.4f} MB")
         logger.info(f"  Mean Time: {max_bw_config['mean_time_us']:.2f} us")
         logger.info(f"{'*' * 90}")

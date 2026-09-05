@@ -57,7 +57,7 @@ is_single_test = True     # True: 单配置测试; False: 多配置批量测试
 
 ### 核心配置
 
-`graph_type`、`comm_alg` 和 `batch_tokens` 位于 `ModelConfig`，核数配置位于 `ParallelConfig`。
+`graph_type`、`mode`、`comm_alg` 和 `batch_tokens` 位于 `ModelConfig`，核数配置位于 `ParallelConfig`。
 
 ```python
 graph_type = 0            # 0: 单算子模式; 3: aclgraph模式
@@ -70,7 +70,7 @@ aiv_num = None          # 算子 AIV 核数，None 使用自动值，也可单�
 
 `batch_tokens` 表示每张目标卡每次 BatchCommit 的 token 数，只有最后一批允许不足。
 BS 不受单批容量限制，tiling 的最大提交数也不按 BS 截断；MTE 使用 `batch_tokens=0`。
-调用方必须保证通信参数有效，并自行确认选定批量小于所有使用的 SQ 深度（包括 0/最大值模式）。
+调用方必须保证通信参数有效，并自行确认选定批量小于所有使用的 SQ 和 CQ 深度（包括 0/最大值模式）。
 kernel 不做参数校验、打印或自动缩小批量；UB 预算与完成流控说明见 [Torch 扩展说明](torch_extension/README.md)。
 
 ### 性能采集配置
@@ -114,7 +114,7 @@ random_seed = 90         # 随机种子
 修改 `ModelConfig` 中的字段。
 
 ```python
-# mode 由 is_precision_test 自动决定：精度为 0，带宽为 1
+# ModelConfig.mode 为 None 时自动决定：精度为 0，带宽为 1；显式设为 3 启用 URMA Win 打流
 comm_alg = "mte"         # 通信算法
 ```
 
@@ -232,7 +232,7 @@ No.   BS       H          Rank Data(MB)    Batch Tokens   Batch Data(MB)   Mean 
 示例使用 FP16、URMA、`batch_tokens=256`。MB 按 `1024²` 字节计算：
 `Rank Data = BS × H × 元素字节数`，包含本卡目标数据；
 `Batch Data = batch_tokens × H × 元素字节数`，表示每个目标卡的配置满批数据量，实际尾批可以更小。
-自动批量 `0` 显示 `Auto`，容量由 tiling 决定且最高 2048；MTE 显示 `N/A`。
+自动批量 `0` 按当前 tiling 规则显示 `2048` 和对应的满批 MB；MTE 显示 `N/A`。
 带宽数值继续沿用原来的跨卡数据量计算口径。
 
 采集循环只运行 BandwidthTest，已去掉辅助张量和 `torch.exp` 负载。
@@ -241,6 +241,34 @@ profiler 配置恢复到已验证可采集的 `124d318a` 基线：`Level1`、`Pi
 报告基于 `op_summary` 的算子执行时间，包含必要的搬运、通信及完成等待，并非裸链路峰值。
 
 ## 核心函数说明
+
+### URMA 极限带宽模式 3
+
+在 `config.py` 中设置 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 3`，
+并关闭 `RunConfig.is_precision_test`。`graph_type` 仍独立选择 eager 或 aclgraph。
+调节 `batch_tokens`（0 自动选择 2048）和 `ShapeConfig.data_size`（H）观察带宽；BS 决定发送持续量，
+应足够大，使 `BS // world_size` 能形成多次满批提交。
+
+每个目标卡由一个 AIV 核负责，目标卡数多于核数时按核号步进处理。
+每个远端目标发送 `BS // world_size` 个 token，自卡跳过，除法余数不参与传输。
+不足一条 token 时只交换完成 flag，数据带宽为 0。
+`Rank Data` 和带宽分子均使用实际远端字节数：
+`(BS // world_size) * (world_size - 1) * H * 2`；`Batch Data` 仍是满批容量，尾批可以更小。
+
+kernel 直接从已注册 Win 的只读源区向远端独立接收区逐 token 调用 Batch Write，
+只分配 WQE buffer，不读取 x 或目标 ID，不做 token 搬运、统计、输出拷贝或双缓冲初始化。
+所有 URMA 模式直接调用 `hcomm_.WriteNbi(handle, dst, src, len)`，不传 WQE 配置，完全使用 SDK 默认值。
+每次凑够 batch 就 Commit，SQ/CQ 剩余空间不足下一批时收齐已提交请求的 CQE。
+数据结束后先收齐全部数据 CQE，再单独发送 flag 并确认 flag 完成。
+最后各核等待负责的来源卡 flag，全部核退出后算子才结束。
+
+flag 使用 Win 中独立的递增序号，避免清零和旧 flag 误判；Win 在通信接口初始化时已清零。
+同一 context 的调用必须串行，所有 rank 的模式、shape、核数和调用顺序必须一致，核数变化需要重建 context。
+此模式不校验数据内容，y 和 receive_cnt 不保证有效；脚本不初始化输入内容、不保存或回传无效输出。
+输出 tensor 形状沿用接口约定。窗口最小值为 `1 MiB + 2 * BS * H * 2`，包含分离的源区和接收区。
+Batch buffer 复用不代表网络完成；报告时间包含 CQE 回收及 flag 等待。
+模式 3 与模式 0/1 共用 `BandwidthTestUrma`，在 `Process()` 的 `mode_ == 3` 分支执行；
+`Init()` 只读取该模式需要的通信参数便返回，业务缓冲区不初始化，沿用原有 URMA tiling key。
 
 | 函数名 | 功能 |
 |--------|------|

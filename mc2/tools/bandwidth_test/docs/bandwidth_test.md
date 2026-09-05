@@ -2,6 +2,7 @@
 
 URMA batch 带宽测试使用 [Torch 接口](../torch_extension/README.md) 和 Torch 已创建的 context。
 本页公开 ACLNN 包装接口不创建 URMA context；传入 `commAlg="urma"` 会报参数错误。
+新增 `mode=3` 的 URMA Win 直接打流模式也通过上述 Torch 接口调用；本页公开接口仍只支持 mode 0/1。
 
 ## 产品支持情况
 

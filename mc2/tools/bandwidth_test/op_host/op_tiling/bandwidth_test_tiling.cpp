@@ -139,8 +139,8 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
                     OP_LOGE(nodeName, "maxBs must be in [1, INT32_MAX/worldSize], got %ld.", *maxBsPtr),
                     return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK((*modePtr < 0) || (*modePtr > 1),
-                    OP_LOGE(nodeName, "mode is invalid, should be 0 or 1, but got mode=%ld.", *modePtr),
+    OP_TILING_CHECK(*modePtr != 0 && *modePtr != 1 && *modePtr != 3,
+                    OP_LOGE(nodeName, "mode must be 0, 1 or 3, got %ld.", *modePtr),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -174,6 +174,8 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
                         (std::strcmp(commAlg, "") != 0 && std::strcmp(commAlg, "mte") != 0 &&
                          std::strcmp(commAlg, "urma") != 0),
                     OP_LOGE(nodeName, "comm_alg must be mte or urma."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tilingData.mode == 3 && std::strcmp(commAlg, "urma") != 0,
+                    OP_LOGE(nodeName, "mode=3 requires comm_alg=urma."), return ge::GRAPH_FAILED);
 
     OP_LOGD(nodeName, "group = %s", groupPtr);
     OP_LOGD(nodeName, "worldSize = %ld", *worldSizePtr);
@@ -310,7 +312,10 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestT
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<size_t>(WORKSPACE_ELEMENT_OFFSET * aivNum * aivNum);
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE;
+    if (tilingData->mode != 3) {
+        workSpaces[0] += static_cast<size_t>(WORKSPACE_ELEMENT_OFFSET * aivNum * aivNum);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -330,6 +335,10 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, Bandwidt
         uint64_t worldSize = tilingData->worldSize;
         // Reuse the MTE state area and its reserved max_bs staging block in each data half.
         uint64_t required = MB_SIZE + 2 * (worldSize + 1) * rankBytes;
+        if (tilingData->mode == 3) {
+            // One read-only BS block and one disjoint receive block, with compact token rows.
+            required = MB_SIZE + 2 * static_cast<uint64_t>(tilingData->maxBs) * tilingData->dataSize * 2;
+        }
         OP_TILING_CHECK(static_cast<uint64_t>(*bufferSize) < required,
                         OP_LOGE(nodeName, "Context Win too small: need %lu bytes, got %ld.", required, *bufferSize),
                         return ge::GRAPH_FAILED);
@@ -433,10 +442,12 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     OP_TILING_CHECK(batchTokensPtr == nullptr || *batchTokensPtr < 0,
                     OP_LOGE(nodeName, "batch_tokens must be 0 (auto) or positive."), return ge::GRAPH_FAILED);
     tilingData->batchTokens = 0;
+    bool directWin = tilingData->mode == 3;
     if (IsUrma(context)) {
-        // One staging row is live. IDs are reused per chunk; WQEs are reused after BatchCommit.
-        uint64_t fixedBytes = 32 + statusBytes + rowBytes;
-        constexpr uint64_t bytesPerToken = sizeof(int32_t) + URMA_WQE_BYTES;
+        // Direct Win streaming only needs WQEs; business modes also stage one row and a chunk of IDs.
+        uint64_t fixedBytes = directWin ? 0 : 32 + statusBytes + rowBytes;
+        uint64_t idBytesPerToken = directWin ? 0 : sizeof(int32_t);
+        uint64_t bytesPerToken = idBytesPerToken + URMA_WQE_BYTES;
         OP_TILING_CHECK(fixedBytes > ubSize || ubSize - fixedBytes < 32 + URMA_WQE_BYTES,
                         OP_LOGE(nodeName,
                                 "Insufficient UB for URMA batch: max_bs=%d, hidden=%d, world_size=%d, "
@@ -446,7 +457,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
         uint64_t availableBytes = ubSize - fixedBytes;
         uint64_t maxBatchTokens = availableBytes / bytesPerToken;
         // Rank IDs need one aligned allocation, not eight-token granularity for commits.
-        if (maxBatchTokens * URMA_WQE_BYTES + alignUp(maxBatchTokens * sizeof(int32_t), 32) > availableBytes) {
+        if (maxBatchTokens * URMA_WQE_BYTES + alignUp(maxBatchTokens * idBytesPerToken, 32) > availableBytes) {
             --maxBatchTokens;
         }
         maxBatchTokens = std::min(maxBatchTokens, static_cast<uint64_t>(URMA_MAX_BATCH_TOKENS));
@@ -456,7 +467,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
         uint64_t batchTokens = *batchTokensPtr == 0 ? maxBatchTokens : static_cast<uint64_t>(*batchTokensPtr);
         tilingData->batchTokens = static_cast<uint32_t>(batchTokens);
         tilingData->batchBufferBytes = batchTokens * URMA_WQE_BYTES;
-        requiredUb = fixedBytes + batchTokens * URMA_WQE_BYTES + alignUp(batchTokens * sizeof(int32_t), 32);
+        requiredUb = fixedBytes + batchTokens * URMA_WQE_BYTES + alignUp(batchTokens * idBytesPerToken, 32);
         OP_LOGI(nodeName, "URMA batch_tokens: requested=%ld, selected=%lu, maximum=%lu.",
                 *batchTokensPtr, batchTokens, maxBatchTokens);
     } else {
@@ -474,7 +485,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     uint64_t gatherBytes = alignUp(std::max(static_cast<uint64_t>(tilingData->worldSize) * 4,
                                           alignUp(ranksPerCore * 4, 32)), 32);
     uint64_t receiveBytes = waitBytes + gatherBytes + 64 + static_cast<uint64_t>(tilingData->worldSize) * 32;
-    OP_TILING_CHECK(requiredUb > ubSize || receiveBytes + rowBytes * 2 > ubSize,
+    OP_TILING_CHECK(requiredUb > ubSize || (!directWin && receiveBytes + rowBytes * 2 > ubSize),
                     OP_LOGE(nodeName, "Insufficient UB for BandwidthTest send or receive buffers."),
                     return ge::GRAPH_FAILED);
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);

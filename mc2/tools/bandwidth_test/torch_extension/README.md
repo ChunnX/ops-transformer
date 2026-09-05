@@ -102,7 +102,7 @@ URMA 将 MTE 已预留的首个 max_bs 数据块作为中转区；接收区仍�
 中转数据和通知源地址全部位于 context 注册的 Win；workspace 仅保留框架系统空间。
 URMA 通过 MTE 的 `SplitToCore(world_size, aiv_num, ...)` 将连续的目标卡范围分配给各核，
 前面的核处理余数卡，本卡仍使用 `ProcessToken` 本地搬运。
-kernel 新增通信模式 tiling key，通过 `if constexpr` 选择 MTE/URMA，不在设备运行时判断算法字段。
+kernel 通过已有的通信算法 tiling key 和 `if constexpr` 选择 MTE/URMA；mode 3 不新增 tiling key。
 URMA 是独立类，声明、类外实现和 `Process()` 分支排列与 MTE 一致。
 `mode=0` 顺序执行 `SendToMoeExpert → SetStatus → WaitDispatch → LocalWindowCopy`；
 `mode=1` 顺序执行前三个阶段。
@@ -135,19 +135,26 @@ Ascend950 的 256 KiB UB 扣除系统预留的 8 KiB 后，算子使用完整的
 `max_bs=8192、hidden=8192` 的 tiling 最大提交数均为 **2048 个 token/WQE**。
 设备端分块扫描 ID，为当前目标卡跨 ID 块累计 WQE；凑够指定数量就 `BatchCommit`。
 SDK 将 WQE 拷入 SQ 并同步 UB 复用，后续批次可以继续准备和提交。
-只有剩余 SQ 空间不足容纳下一整批，或该目标卡数据结束时，末条 WQE 请求 CQE 并 `Drain`；
+所有 URMA 模式直接调用 `hcomm_.WriteNbi(handle, dst, src, len)`，不传 WQE 配置或模板实参。
+WQE 行为完全由 SDK 默认值决定，算子不覆盖 `odr`、`fence` 或 `cqe`。
+下述已核对 SDK 版本的默认值为 `odr=5、fence=1、cqe=1`，直接调用并不表示把这些字段置零。
+当前 SDK 默认每条请求生成 CQE，剩余 SQ/CQ 空间不足容纳下一整批或目标卡数据结束时 `Drain` 收齐完成通知；
 不会因为一个 ID 块结束或 WQE UB 缓冲写满就等待通信完成。空目标卡不提交数据批次。
 发送中的单行 UB 不必保留到 URMA 完成：URMA 源数据已位于注册的 GM 中转区。
 中转区仍使用原 token 下标，避免不同目标卡所属核并发覆盖同一槽位。
 所有数据和状态通知完成后，`TPipe::Reset` 将发送阶段 UB 复用于等待和接收阶段。
 这是带宽测试：调用方必须保证 channel、目标 rank、Win 容量和各 rank 配置正确，
-并保证 tiling 选出的 `batch_tokens < 每条使用的 SQ 深度`；使用 0/最大值时也须自行确认。
+并保证 tiling 选出的 `batch_tokens` 小于每条使用的 SQ 和 CQ 深度；使用 0/最大值时也须自行确认。
 本算子 kernel 直接使用 tiling 的有效批量，不额外做参数校验、打印、Trap 或自动缩小批量；SDK 内部检查沿用原实现。
-SQ 深度只在持锁创建 batch handle 时读取，用于批次边界的完成流控，防止覆盖在途 WQE；
+SQ/CQ 深度只在持锁创建 batch handle 时读取，用于批次边界的完成流控，防止覆盖在途 WQE/CQE；
 必要的最终 Drain、状态通知和接收等待保留，确保计时包含真实传输完成。
 该读取依赖 [Hcomm URMA 实现](https://gitcode.com/cann/asc-comm/blob/master/src/aicore/hcomm/impl/platform_v310/hcomm_aiv_urma.h)
 的 `ChannelEntity` / `sqContextAddr[0]` 布局；静态核对的 asc-comm 提交为
 `1529377b9e908d78ba5ba5d579edf1669fb99b01`，部署时须使用兼容版本。
+该 SDK 的 `PollBatchCq` 在目标 CQ 游标等于 0 时直接返回，即使还有未完成请求。
+长期打流中，32 位 `cqHead` 恰好在 Drain 边界回绕为 0 时可能漏等完成；
+部署 SDK 应修复为仅在没有待回收 CQE 时跳过轮询，不能仅判断目标游标为 0。
+本算子不为此增加 BS 上限、设备侧补丁或强序设置；目标 SDK 未修复前，不能保证触及该边界时的完成语义。
 数据阶段的通道锁覆盖 batch handle 创建至最终 Drain，避免共享 SQ 的其他核并发更新游标。
 `SetStatus` 复用缓存的通道句柄，重新持锁并创建该阶段的 batch handle；
 计数和 ready flag 均经 batch 接口提交并分别等待完成，保证先计数后就绪。
@@ -157,9 +164,18 @@ SQ 深度只在持锁创建 batch handle 时读取，用于批次边界的完成
 同一 context 的调用与图重放应串行下发，避免并发覆盖通信窗口。
 切换 shape、mode 或测试配置前，所有 rank 必须完成此前调用并同步；各 rank 调用次数和顺序须相同。
 同一 owner 的 `aiv_num` 必须固定；窗口按核保存双缓冲位，改变核数需要同步后重建 owner。
-`mode=0` 仅 `y[:receive_cnt.sum()]` 有效；`mode=1` 不搬运输出，两个输出均不保证有效，
+`mode=0` 仅 `y[:receive_cnt.sum()]` 有效；`mode=1/3` 不搬运输出，两个输出均不保证有效，
 测试脚本的图内循环因此继续使用原始输入。schema 将 context 声明为可变输入，
 沿用仓库通信算子的副作用约定；目标环境仍须确认优化后的图保留全部通信次数和顺序。
+
+`mode=3` 仅支持此 Torch context 的 URMA 路径，直接从 Win 发送 `BS // world_size` 个 token 到每个远端卡。
+它在同一个 `BandwidthTestUrma::Process()` 的 `mode_ == 3` 分支中执行，沿用原有 URMA tiling key。
+`Init()` 读取通信参数后提前返回，不做 mode 0/1 的业务初始化、ID 扫描和数据搬运；
+`StreamFromWindow()` 只分配 `batch_tokens * 64` 字节 UB。
+Win 使用紧凑 H 行，最小容量为 `1 MiB + 2 * BS * H * 2`；该模式不适用上文 mode 0/1 的双缓冲及 ID 预算公式。
+flag 位于 Win 的 128 KiB 处（每个来源卡 32B），本核序号位于 160 KiB 处（每核 32B）。
+每次调用递增本核序号，收齐所有数据 CQE 后再发 flag；等待时允许对方序号超前一轮，支持 uint32 回绕。
+不读取 x/dstrank_id 内容，仍保留原 tensor shape/type 接口约定；完整使用和计时口径见主目录 README。
 
 需在装有 CANN、PyTorch、torch_npu 和兼容 TorchAir 的 Ascend950 多 rank 环境
 分别验证 eager 精度、图捕获及重复重放。本地静态检查不能替代上述验证。

@@ -28,7 +28,7 @@ struct BandwidthTestTilingData {
     int32_t dataSize;      // hidden size，即特征维度大小
     int32_t worldSize;     // EP大小，即参与通信的rank总数
     int32_t maxBs;         // batch size，即token数量
-    int32_t mode;          // 执行模式: 0=完整流程(发送+同步+接收), 1=仅发送
+    int32_t mode;          // 0=完整流程, 1=业务发送, 3=URMA Win直接打流
     int32_t aivNum;        // AIV核总数，用于任务分发
     uint32_t batchBufferBytes; // URMA WQE bytes; rank-ID capacity is batchBufferBytes / URMA_WQE_BYTES
     uint32_t batchTokens;  // Effective URMA tokens per commit, selected by tiling

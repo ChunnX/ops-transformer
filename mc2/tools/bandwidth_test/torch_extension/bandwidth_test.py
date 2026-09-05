@@ -70,8 +70,9 @@ def _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
                  lambda: "all inputs must be on the same device")
     torch._check(0 < len(group.encode()) < 128 and "\0" not in group,
                  lambda: "group must be a valid HCCL group name")
-    torch._check(test_mode in (0, 1), lambda: "test_mode must be 0 or 1")
+    torch._check(test_mode in (0, 1, 3), lambda: "test_mode must be 0, 1 or 3")
     torch._check(comm_alg in ("", "mte", "urma"), lambda: "comm_alg must be mte or urma")
+    torch._check(test_mode != 3 or comm_alg == "urma", lambda: "mode=3 requires comm_alg=urma")
     torch._check(aiv_num == -1 or aiv_num > 0, lambda: "aiv_num must be -1 or positive")
     torch._check(batch_tokens >= 0, lambda: "batch_tokens must be 0 (auto) or positive")
     torch._check(comm_alg == "urma" or batch_tokens == 0,
@@ -79,6 +80,8 @@ def _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
     # Kernel divides the data window in two and reserves one max_bs block per half.
     row_bytes = ((x.size(1) * 2 + 511) // 512) * 512
     required_bytes = 1024 * 1024 + 2 * (world_size + 1) * max_bs * row_bytes
+    if test_mode == 3:
+        required_bytes = 1024 * 1024 + 2 * max_bs * x.size(1) * 2
     torch._check(ccl_buffer_size >= required_bytes,
                  lambda: "HCCL buffer too small; increase HCCL_BUFFSIZE before creating the group")
 
@@ -154,14 +157,14 @@ def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
             in [0, world_size). Device values are not checked during capture.
         world_size: Group size in [1, 1024], matching sym_buffer.
         max_bs: Positive row count shared by all ranks.
-        mode: 0 exchanges and receives rows; 1 sends and waits, without copying outputs.
+        mode: 0 exchanges and receives rows; 1 sends and waits; 3 streams Win data directly (URMA only).
         comm_alg: "mte", "" or "urma"; must match the context owner.
         aiv_num: -1 selects platform defaults; otherwise a positive AIV count.
         batch_tokens: URMA tokens per commit; 0 selects capacity automatically.
 
     Returns:
         FP16 y [max_bs * world_size, hidden] and INT32 receive_cnt [world_size].
-        Only y[:receive_cnt.sum()] is valid in mode=0; mode=1 outputs are
+        Only y[:receive_cnt.sum()] is valid in mode=0; mode=1 and mode=3 outputs are
         unspecified. Calls sharing a context must be submitted serially.
     """
     if world_size != sym_buffer.world_size:
