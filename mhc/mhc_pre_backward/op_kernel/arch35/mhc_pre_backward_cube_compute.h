@@ -77,7 +77,7 @@ public:
             LocalTensor<float> currentDirectUb =
                 directUb[directSlot * MhcPreBackwardUtils::C0_DIRECT_UB_SLOT_ELEMS];
             ComputeTile(a[offsetM * k], b, currentDirectUb, currentM, n, k, k, bGmStride, n >> 1U,
-                        false, false);
+                        false, false, true);
 
             uint32_t readyFlag = directSlot == 0U ? MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0 :
                                                     MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0_READY_PONG;
@@ -90,7 +90,7 @@ public:
                                      const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
                                      uint32_t aGmStride, uint32_t bGmStride, uint32_t cGmStride, bool atomicAdd)
     {
-        ComputeTile(a, b, c, m, n, k, aGmStride, bGmStride, cGmStride, true, atomicAdd);
+        ComputeTile(a, b, c, m, n, k, aGmStride, bGmStride, cGmStride, true, atomicAdd, false);
     }
 
     __aicore__ inline void End()
@@ -115,7 +115,7 @@ private:
     __aicore__ inline void ComputeTile(const GlobalTensor<float> &a, const GlobalTensor<float> &b,
                                        const C_TENSOR &c, uint32_t m, uint32_t n, uint32_t k,
                                        uint32_t aGmStride, uint32_t bGmStride, uint32_t cGmStride, bool transA,
-                                       bool atomicAdd)
+                                       bool atomicAdd, bool directOutput)
     {
         // 最优组合：L0A/L0B保留ping-pong，L0C固定使用第0槽。
         uint32_t cSlot = 0U;
@@ -159,7 +159,10 @@ private:
                 WaitFlag<HardEvent::MTE1_M>(l0Slot);
 
                 bool initC = (offsetKL1 == 0U && offsetKL0 == 0U);
-                Compute(currentC, currentA2, currentB2, m, n, currentKL0, initC);
+                bool finalAccumulation =
+                    (offsetKL1 + currentKL1 >= k) && (offsetKL0 + currentKL0 >= currentKL1);
+                Compute(currentC, currentA2, currentB2, m, n, currentKL0, initC, directOutput,
+                        finalAccumulation);
                 SetFlag<HardEvent::M_MTE1>(BASIC_CUBE_L0_EVENT_BASE + l0Slot);
                 ++l0LoopCount_;
             }
@@ -270,7 +273,8 @@ private:
     }
 
     __aicore__ inline void Compute(const LocalTensor<float> &c, const LocalTensor<float> &a,
-                                   const LocalTensor<float> &b, uint32_t m, uint32_t n, uint32_t k, bool initC)
+                                   const LocalTensor<float> &b, uint32_t m, uint32_t n, uint32_t k, bool initC,
+                                   bool directOutput, bool finalAccumulation)
     {
         MmadParams p;
         p.m = m;
@@ -279,8 +283,8 @@ private:
         p.disableGemv = true;
         p.cmatrixInitVal = initC;
         p.cmatrixSource = false;
-        // unitFlag=0，L0C的生产/消费完全由M_FIX与FIX_M事件管理。
-        p.unitFlag = 0;
+        // UB直连需要完整的非末次/末次令牌链；GM通路继续使用原来的显式事件同步。
+        p.unitFlag = directOutput ? (finalAccumulation ? 3U : 2U) : 0U;
         Mmad(c, a, b, p);
     }
 
