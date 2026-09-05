@@ -195,6 +195,8 @@ TEST_F(ChunkGatedDeltaRuleTilingTest, BasicFp32StateWithoutGamma)
     TilingInfo tilingInfo;
     EXPECT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
     EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+    ASSERT_EQ(tilingInfo.workspaceSizes.size(), 1U);
+    EXPECT_EQ(tilingInfo.workspaceSizes[0], 16U * 1024U * 1024U);
 }
 
 TEST_F(ChunkGatedDeltaRuleTilingTest, BasicFp32StateWithGamma)
