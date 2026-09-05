@@ -97,8 +97,7 @@ private:
         for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += BASIC_CUBE_K_L1) {
             uint32_t remainKL1 = k - offsetKL1;
             uint32_t currentKL1 = remainKL1 < BASIC_CUBE_K_L1 ? remainKL1 : BASIC_CUBE_K_L1;
-            // 消融实验：固定使用L1的第0槽，仅关闭L1双缓冲。
-            uint32_t l1Slot = 0U;
+            uint32_t l1Slot = l1LoopCount_ & 1U;
             LocalTensor<float> currentA1 = aL1_[l1Slot * BASIC_CUBE_L1_SLOT_ELEMS];
             LocalTensor<float> currentB1 = bL1_[l1Slot * BASIC_CUBE_L1_SLOT_ELEMS];
 
@@ -116,11 +115,16 @@ private:
                 uint32_t remainKL0 = currentKL1 - offsetKL0;
                 uint32_t currentKL0 = remainKL0 < BASIC_CUBE_K_L0 ? remainKL0 : BASIC_CUBE_K_L0;
                 uint32_t l0Slot = l0LoopCount_ & 1U;
-                uint32_t l0Offset = l0Slot * BASIC_CUBE_L0_SLOT_ELEMS;
-                LocalTensor<float> currentA2 = aL0_[l0Offset];
-                LocalTensor<float> currentB2 = bL0_[l0Offset];
+                // 消融实验：L0A固定使用第0槽，L0B继续ping-pong。
+                uint32_t aL0Slot = 0U;
+                uint32_t bL0Slot = l0Slot;
+                LocalTensor<float> currentA2 = aL0_[aL0Slot * BASIC_CUBE_L0_SLOT_ELEMS];
+                LocalTensor<float> currentB2 = bL0_[bL0Slot * BASIC_CUBE_L0_SLOT_ELEMS];
 
-                WaitFlag<HardEvent::M_MTE1>(BASIC_CUBE_L0_EVENT_BASE + l0Slot);
+                WaitFlag<HardEvent::M_MTE1>(BASIC_CUBE_L0_EVENT_BASE + aL0Slot);
+                if (bL0Slot != aL0Slot) {
+                    WaitFlag<HardEvent::M_MTE1>(BASIC_CUBE_L0_EVENT_BASE + bL0Slot);
+                }
                 if (transA) {
                     CopyInA2Trans(currentA2, currentA1[offsetKL0 * AuxGetC0Size<float>()], m, currentKL0,
                                   currentKL1);
@@ -133,7 +137,10 @@ private:
 
                 bool initC = (offsetKL1 == 0U && offsetKL0 == 0U);
                 Compute(currentC, currentA2, currentB2, m, n, currentKL0, initC);
-                SetFlag<HardEvent::M_MTE1>(BASIC_CUBE_L0_EVENT_BASE + l0Slot);
+                SetFlag<HardEvent::M_MTE1>(BASIC_CUBE_L0_EVENT_BASE + aL0Slot);
+                if (bL0Slot != aL0Slot) {
+                    SetFlag<HardEvent::M_MTE1>(BASIC_CUBE_L0_EVENT_BASE + bL0Slot);
+                }
                 ++l0LoopCount_;
             }
 
