@@ -1,0 +1,3 @@
+# ninja log v7
+0	12409	1788595046498382339	generic_block_sparse_attention_grad.o	9ea2a7cadc05fc9
+12409	12525	1788595058907382246	generic_block_sparse_attention_grad.so	8388c10705f5f6a

@@ -1,0 +1,30 @@
+ninja_required_version = 1.3
+cxx = c++
+
+cflags = -DTORCH_EXTENSION_NAME=generic_block_sparse_attention_grad -DTORCH_API_INCLUDE_EXTENSION_H -I/data/cjz/add_gsag_custom/vendors/custom_transformer/op_api/include -I/root/miniconda3/envs/cjz/lib/python3.14/site-packages/torch_npu/include -I/root/miniconda3/envs/cjz/lib/python3.14/site-packages/torch_npu/include/third_party/hccl/inc -I/root/miniconda3/envs/cjz/lib/python3.14/site-packages/torch_npu/include/third_party/acl/inc -I/root/miniconda3/envs/cjz/lib/python3.14/site-packages/torch_npu/include/third_party/op-plugin -I/usr/local/Ascend/cann-9.2.0-beta.1/include -I/usr/local/Ascend/cann-9.2.0-beta.1/include/aclnnop -I/data/cjz/ops-transformer_2/torch_extension/cann_ops_transformer/common -isystem /root/miniconda3/envs/cjz/lib/python3.14/site-packages/torch/include -isystem /root/miniconda3/envs/cjz/lib/python3.14/site-packages/torch/include/torch/csrc/api/include -isystem /root/miniconda3/envs/cjz/include/python3.14 -fPIC -std=c++20 -O3 -w -fPIC -fstack-protector-all -Wl,-z,relro,-z,now,-z,noexecstack -pie -s -fvisibility=hidden -D_FORTIFY_SOURCE=2 -D_GLIBCXX_USE_CXX11_ABI=1
+post_cflags = 
+cuda_dlink_post_cflags = 
+sycl_dlink_post_cflags = 
+ldflags = -shared -L/data/cjz/add_gsag_custom/vendors/custom_transformer/op_api/lib -L/usr/local/Ascend/cann-9.2.0-beta.1/lib64 -lascendcl -L/root/miniconda3/envs/cjz/lib/python3.14/site-packages/torch_npu/lib -ltorch_npu -L/root/miniconda3/envs/cjz/lib/python3.14/site-packages/torch/lib -lc10 -ltorch_cpu -ltorch -ltorch_python
+
+rule compile
+  command = $cxx -MMD -MF $out.d $cflags -c $in -o $out $post_cflags
+  depfile = $out.d
+  deps = gcc
+
+
+
+
+
+rule link
+  command = $cxx $in $ldflags -o $out
+
+build generic_block_sparse_attention_grad.o: compile /data/cjz/ops-transformer_2/torch_extension/cann_ops_transformer/csrc/attention/generic_block_sparse_attention_grad.cpp
+
+
+
+
+
+build generic_block_sparse_attention_grad.so: link generic_block_sparse_attention_grad.o
+
+default generic_block_sparse_attention_grad.so
