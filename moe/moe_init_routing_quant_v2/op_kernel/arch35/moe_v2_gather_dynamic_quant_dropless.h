@@ -179,10 +179,13 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::Compute(LocalTensor<f
     Abs(tempLocal, inLocal, cols_);
     ReduceMax(dynamicQuantLocal, tempLocal, tempLocal, cols_);
 
+    MoeInitRoutingQuantV2::SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
     float maxValue = dynamicQuantLocal.GetValue(0) / MAX_INT8;
+    MoeInitRoutingQuantV2::SetWaitFlag<HardEvent::S_V>(HardEvent::S_V);
 
     Duplicate<float>(dynamicQuantLocal, maxValue, 8);
     Duplicate<float>(tempLocal, maxValue, cols_);
+    AscendC::PipeBarrier<PIPE_V>();
     Div(tempLocal, inLocal, tempLocal, cols_);
     Cast(tempLocal.ReinterpretCast<half>(), tempLocal, RoundMode::CAST_TRUNC, cols_);
     Cast(outLocal, tempLocal.ReinterpretCast<half>(), RoundMode::CAST_ROUND, cols_);
@@ -230,6 +233,7 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::CopyOutXQuant1H(int64
 
         LocalTensor<int8_t> outLocal = inputXOutQueue_.DeQue<int8_t>();
         LocalTensor<float> quantScaleLocal = scaleOutQueue_.DeQue<float>();
+        MoeInitRoutingQuantV2::SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
 
         while (curLoopRow < currentLoopRows_ && initialRow / k_ == row) {
             int32_t outIndex = indicesLocal.GetValue(curLoopRow);
@@ -288,6 +292,7 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::CopyOutXQuantEH(int64
 
         Compute(smoothLocal);
         LocalTensor<float> quantScaleLocal = scaleOutQueue_.DeQue<float>();
+        MoeInitRoutingQuantV2::SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
         DataCopyPad(dynamicQuantScaleGm_[(rowOffset + i)], quantScaleLocal, {1, 4, 0, 0, 0});
         LocalTensor<int8_t> outLocal = inputXOutQueue_.DeQue<int8_t>();
         SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
@@ -348,6 +353,7 @@ __aicore__ inline float MoeV2GatherDynamicQuantDropless<T>::ComputeMax(LocalTens
     DataCopyPad(quantSrcGm_[j * perLoopCols_], inLocal, intriParamsFp32);
     smoothInQueue_.FreeTensor(smoothLocal);
     MoeInitRoutingQuantV2::SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+    MoeInitRoutingQuantV2::SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
     return dynamicQuantLocal.GetValue(8);
 }
 
@@ -407,9 +413,11 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::CopyOutPartialXQuantE
         }
 
         float scaleTemp = reduceMax / MAX_INT8;
+        MoeInitRoutingQuantV2::SetWaitFlag<HardEvent::S_V>(HardEvent::S_V);
         Duplicate<float>(quantScaleLocal, scaleTemp, 8);
         scaleOutQueue_.EnQue(quantScaleLocal);
         quantScaleLocal = scaleOutQueue_.DeQue<float>();
+        MoeInitRoutingQuantV2::SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
         DataCopyPad(dynamicQuantScaleGm_[(rowOffset + i)], quantScaleLocal, {1, 4, 0, 0, 0});
         colsTileLength_ = perLoopCols_;
         for (int64_t j = 0; j < colLoops_; j++) {
@@ -455,9 +463,11 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::CopyOutPartialXQuant1
         }
 
         float scaleTemp = reduceMax / MAX_INT8;
+        MoeInitRoutingQuantV2::SetWaitFlag<HardEvent::S_V>(HardEvent::S_V);
         Duplicate<float>(quantScaleLocal, scaleTemp, 8);
         scaleOutQueue_.EnQue(quantScaleLocal);
         quantScaleLocal = scaleOutQueue_.DeQue<float>();
+        MoeInitRoutingQuantV2::SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
 
         while (curLoopRow < currentLoopRows_ && initialRow / k_ == row) {
             int32_t outIndex = indicesLocal.GetValue(curLoopRow);
