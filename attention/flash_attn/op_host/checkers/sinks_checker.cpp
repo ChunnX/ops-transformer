@@ -39,14 +39,8 @@ ge::graphStatus SinksChecker::CheckSinglePara(const FaTilingInfo &faInfo)
             return ge::GRAPH_FAILED;
         }
         auto dtype = faInfo.opParamInfo.sinks.desc->GetDataType();
-        if (dtype != ge::DT_FLOAT16 && dtype != ge::DT_BF16) {
-            OP_LOGE(faInfo.opName, "sinks dtype must be FLOAT16 or BFLOAT16, but got %s.",
-                    ge::TypeUtils::DataTypeToSerialString(dtype).c_str());
-            return ge::GRAPH_FAILED;
-        }
-        if (dtype != faInfo.inputQType) {
-            OP_LOGE(faInfo.opName, "sinks dtype must be the same as query dtype (%s), but got %s.",
-                    ge::TypeUtils::DataTypeToSerialString(faInfo.inputQType).c_str(),
+        if (dtype != ge::DT_FLOAT) {
+            OP_LOGE(faInfo.opName, "sinks dtype must be FLOAT32, but got %s.",
                     ge::TypeUtils::DataTypeToSerialString(dtype).c_str());
             return ge::GRAPH_FAILED;
         }
