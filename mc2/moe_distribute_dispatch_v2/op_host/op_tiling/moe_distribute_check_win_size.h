@@ -28,6 +28,7 @@ constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint64_t FULL_MESH_DATA_ALIGN = 480UL;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t LAYERED_BS_UPPER_BOUND = 256UL;
+constexpr uint64_t LAYERED_BS_UPPER_BOUND_A3 = 512UL;
 constexpr uint64_t SCALE_EXPAND_IDX_BUFFER = 44UL; // scale32B + 3*4expandIdx
 constexpr uint32_t EP_RANK_OFFSET_STEP = 1024;
 } // namespace
@@ -74,15 +75,17 @@ inline ge::graphStatus CheckActualWinSize(const gert::TilingContext *context, co
                 DOUBLE_DATA_BUFFER;
 
     if (winSizeData.isLayered) {
+        const uint64_t layeredBsUpperBound =
+            (socVersion == "Ascend910_93") ? LAYERED_BS_UPPER_BOUND_A3 : LAYERED_BS_UPPER_BOUND;
         OP_TILING_CHECK(
             (socVersion != "Ascend910_93") && (bs != maxBs),
             OP_LOGE_WITHOUT_REPORT(nodeName, "Layered cannot support variableBs on %s, bs is %lu, maxBs is %lu",
                                    socVersion.c_str(), bs, maxBs),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(
-            (maxBs > LAYERED_BS_UPPER_BOUND),
+            (maxBs > layeredBsUpperBound),
             OP_LOGE_WITHOUT_REPORT(nodeName, "maxBs is invalid for hierarchy, should be in range [1, %lu], but got %lu",
-                                   LAYERED_BS_UPPER_BOUND, maxBs),
+                                   layeredBsUpperBound, maxBs),
             return ge::GRAPH_FAILED);
         // 校验buffersize
         OP_TILING_CHECK((actualSize > maxWindowSizeEp),

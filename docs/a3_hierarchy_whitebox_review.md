@@ -1,5 +1,12 @@
 # A3 MoeDistribute Dispatch/Combine V2 hierarchy 白盒走读报告
 
+> 2026-09-05 泛化用例复核更正：主仓 `1fd3f950c` 的 Dispatch/Combine tiling 在
+> EP=16 时将 hierarchy 降级为 fullmesh，EP=8 时拒绝 hierarchy。此前本文把
+> 16-rank 的通过结果归因为 layered kernel 的表述不准确。本文所有已执行的
+> 单机结果均只证明接口/降级路径通过；真正的 A3 layered kernel 需 EP>=32
+> 才会进入，本环境尚未完成其硬件验证。本轮还补齐了公共 window 校验中遗漏的
+> A3 BS512 上限；旧安装包 SHA 对应补齐前版本，不代表本轮更新后的源码。
+
 ## 1. 结论摘要
 
 审查范围为 A3 `MoeDistributeDispatchV2` / `MoeDistributeCombineV2` 的 hierarchy tiling、kernel 入口、AIV kernel、HCCL window/IPC 布局，以及其与 A2 hierarchy 的提交历史和实现差异。
@@ -44,7 +51,7 @@
 | 单机 16 rank，全 false 一维 token mask / 空路由 | 通过 |
 | 测试工程专项及相关单测 | 93 passed, 1 skipped（真实 NPU 预检集成测试默认跳过） |
 
-上述结果已覆盖本次白盒发现的大专家数 UB、全零量化和空 token 流；`expandScales=nullptr` 属于负向 host 校验，已由代码路径检查覆盖。受单机环境限制，本文未执行 32/64 rank 的跨 server RDMA 回归，因此单机 ready 不等价于多机 ready，也不等价于形式化证明。
+上述结果覆盖单机接口的对应输入组合，不能证明 layered 分支的大专家数 UB、全零量化或空 token 流修复已被硬件执行；`expandScales=nullptr` 仅作代码检查。真正的 layered/RDMA 回归须使用 32/64 rank。
 
 ## 3. A2 → A3 feature / bugfix 继承矩阵
 
@@ -54,7 +61,7 @@
 | token flag 使用 8-byte 有效载荷 | 已有 | 当前分支已同步 | 必需 bugfix |
 | end flag / current token / next token 的有序读取 | 2026-05 `8b4b39be6` 修复 | 当前分支已同步等价逻辑 | issue #4501 根因修复 |
 | 地址及 IPC offset 使用 64 位 | 已有修复 | 当前分支已同步 | 必需 bugfix |
-| hierarchy BS=512 | A2 Dispatch/Combine 已支持 | A3 kernel/tiling 已放开到 512，Inner ReduceInfo 已重构 | 代码已同步；README 规格表述仍需 owner 统一 |
+| hierarchy BS=512 | A2 Dispatch/Combine 已支持 | A3 kernel/tiling 已放开到 512，Inner ReduceInfo 已重构；本轮补齐公共 window 校验 | 代码已同步；32p 待硬件验证 |
 | HCCL buffer 地址布局重构 | 2026-03 `77411b7de` | 未直接继承；A3 保持 16-rank/server、固定 400 MiB RDMA + IPC 设计 | 架构差异，不能机械 cherry-pick |
 | ADump、执行位置和通信信息记录 | 2026-05 `5a32325da` | A3 layered kernel 无 ADump | 明确遗漏的可观测性 feature |
 | `performanceInfo` 通信耗时 | A2 layered kernel 支持 | A3 tiling 对 hierarchy 显式拒绝 | 明确 feature gap，当前属于受控限制 |
@@ -341,6 +348,9 @@ A2 的 2026-05 feature 会记录阶段位置、跨 server send/recv、token 数�
 | 真机重跑环境竞争 | 一次边界用例在 HCCL AICPU 初始化时报 `libccl_kernel.so open failed`；同期 `npu-smi` 显示全部 16 die 被非本次测试 PID 占用 | 未终止外部进程；待其退出后同一安装包、同一用例重跑通过，判定为瞬时设备竞争而非算子失败 |
 | NPU 预检解析 | 外部容器进程在宿主 PID namespace 中名称为空，测试框架把有效 `npu-smi` 进程行误判成未知格式 | 允许空名称并记为 `<unknown>`，仍按 busy 失败关闭；增加 parser/checker 单测，避免误报格式错误 |
 | 回归说明索引 | 零量化 README 使用 `-i 0,1`，半开区间语义只运行第 0 条 | 修正为 `-i 0,2`，确认两条用例均实际执行并通过 |
+| 泛化覆盖复核 | EP=16 hierarchy 在两算子 host 自动降级 fullmesh，先前单机通过结论高估 layered 覆盖 | 更正报告；8p 标为负向/对照，16p 标为降级路径，32p 才标为 layered，生成清单明确 `hardware_executed=false` |
+| BS512 公共校验遗漏 | `moe_distribute_check_win_size.h` 仍以 256 限制真正的 layered 路径，16p 降级使问题未暴露 | 仅对 Ascend910_93 使用 512 上限，保留其他 SoC 的原限制；host tiling 对象目标增量编译通过 |
+| 单算子 ABI | 测试工程 Dispatch/Combine 单独执行时仍走 A3 fullmesh 精简 ABI，遗漏 hierarchy 的 expert_scales/expand_scales/comm_alg | 按通信算法选择完整 V2 ABI，增加 mock 调用测试 |
 
 ## 11. 建议的人工检查顺序
 
@@ -375,7 +385,7 @@ A2 的 2026-05 feature 会记录阶段位置、跨 server send/recv、token 数�
 
 ## 13. 最终判定
 
-- issue #4501 对应的结束标志竞态已在当前分支修复，并完成最新主仓基线上的单机 A3 16-die 回归。
+- issue #4501 对应的结束标志竞态已在当前分支修改；单机 16-die 通过的是 hierarchy 接口降级路径，真正的 layered 修复仍待多机硬件验证。
 - A3 确有未继承 feature：最明确的是 ADump/执行打点和 performanceInfo；AICPU dataplane 属于架构差异，不应视为简单遗漏。
 - 白盒扫描确认的确定性逻辑问题均已修复；Dispatch 的 O(BS×experts) UB 布局已降为 O(BS+experts)，Combine 配套的空指针、量化零值和数组尾后读取也已收口。
-- 当前代码可判定为 **A3 单机 hierarchy 功能 ready**；跨 server 的 32/64-rank RDMA 路径仍需多机环境验证后才能宣称多机 ready。
+- 当前已验证 **A3 单机 hierarchy 接口的 fullmesh 降级路径**；不能据此判定 A3 layered kernel ready。32/64-rank layered/RDMA 路径仍需硬件验证。
