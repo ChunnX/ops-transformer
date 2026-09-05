@@ -942,35 +942,14 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
         AscendC::SetHF32TransMode(1);
     }
 
-    uint32_t currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - dealStartND_);
-    uint32_t currentBSBlock = static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_));
     uint32_t buffId = 0;
-    // 预执行第一个C0
-    ProcessC0(dealStartND_, currentNDBlock, 0, currentBSBlock, buffId);
-
     for (uint32_t offsetND = dealStartND_; offsetND < dealEndND_; offsetND += ND_BLOCK_SIZE) {
-        currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - offsetND);
+        uint32_t currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - offsetND);
 
         for (uint64_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
-            currentBSBlock =
+            uint32_t currentBSBlock =
                 static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - offsetBS));
-
-            uint64_t nextOffsetBS = offsetBS + SINGLE_M;
-            if (nextOffsetBS < totalLength_) { // BS还有未计算
-                uint32_t nextBSBlock =
-                    static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - nextOffsetBS));
-                ProcessC0(offsetND, currentNDBlock, nextOffsetBS, nextBSBlock, (buffId + 1));
-            } else { // 预计算下一个nD块的C0
-                uint32_t nextOffsetND = offsetND + ND_BLOCK_SIZE;
-                if (nextOffsetND < dealEndND_) { // ND 还有未计算
-                    uint32_t nextNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - nextOffsetND);
-                    nextOffsetBS = 0;
-                    uint32_t nextBSBlock =
-                        static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - nextOffsetBS));
-                    ProcessC0(nextOffsetND, nextNDBlock, nextOffsetBS, nextBSBlock, (buffId + 1));
-                }
-            }
-
+            ProcessC0(offsetND, currentNDBlock, offsetBS, currentBSBlock, buffId);
             ProcessC1(offsetND, currentNDBlock, offsetBS, currentBSBlock, buffId);
             buffId++;
         }
@@ -1244,6 +1223,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
 
     // 当前BS块的invRms系数一次搬入并计算，后续各chunk按行偏移复用已有UB空间。
     ProcessV2ChunkLoadInvRms(bsStart, currentBsSize);
+    // 基础Cube功能验证阶段：等待整个BS块的C0结果写完后再处理，避免同值ready令牌堆叠。
+    AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0);
 
     // ==========================================================
     // 主循环: 按chunk=64切分BS方向
@@ -1253,10 +1234,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         uint32_t currentChunkSize = static_cast<uint32_t>(bsChunkEnd - bsChunkStart);
         uint32_t chunkNDSize = currentChunkSize * copySizeND;
 
-        // N=4每chunk等待一次，N=6/8每两个64行chunk等待一次，尾块同样配对。
-        if ((bsChunkStart - bsStart) % MATMUL_WRITE_OFFSET_M == 0) {
-            AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0);
-        }
         ProcessV2ChunkLoop(offsetND, copySizeND, bsStart, bsChunkStart, currentChunkSize, chunkNDSize, currentN, buffId,
                            sumBuf);
     }
