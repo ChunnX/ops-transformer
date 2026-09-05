@@ -265,7 +265,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     gmm1TilesPerMGroup_ =
         Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF, static_cast<uint32_t>(L1_TILE_N));
     WaveGmm2PipelineState gmm2RuntimeState{startBlockIdx, combineBufferConfig, combineRowSequence,
-                                          gmm1TileReadySequence};
+                                           gmm1TileReadySequence};
 
     ExpertTokenPosition dispatchPosition{};
     DispatchFirstWave(dispatchPosition);
