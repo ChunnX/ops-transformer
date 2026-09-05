@@ -482,8 +482,8 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
         if (sparseIndicesShape.GetDim(0U) != static_cast<int64_t>(tilingInfo_.bSize) ||
             sparseIndicesShape.GetDim(1U) != static_cast<int64_t>(tilingInfo_.n1Size)) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "sparse_indices", Ops::Base::ToString(sparseIndicesShape),
-                                                   "Dim[0] must equal batch size and dim[1] must equal "
-                                                   "query N1 in quant_mode=1 or 2");
+                                                  "Dim[0] must equal batch size and dim[1] must equal "
+                                                  "query N1 in quant_mode=1 or 2");
             return ge::GRAPH_FAILED;
         }
         if (sparseSeqLenShape.GetDim(0U) != static_cast<int64_t>(tilingInfo_.bSize) ||
