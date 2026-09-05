@@ -23,7 +23,7 @@
 
 ## 功能说明
 
-- 接口功能：aclnnGenericBlockSparseAttentionGradMetadata根据rsvdBlockIdx、rsvdBlockCount、seqlen等信息进行稀疏attention的分核与负载均衡，为aclnnGenericBlockSparseAttentionGrad的前置AICPU算子。按B → N2 → J → G顺序展开`(b, n2, j, g)`任务列表，并在AIC核间做`[baseM, baseN] = [128, 128]`基本块粒度的贪心负载均衡，输出metadata供主Grad算子消费。
+- 接口功能：aclnnGenericBlockSparseAttentionGradMetadata根据sparseBlockIdx、sparseBlockCount、seqlen等信息进行稀疏attention的分核与负载均衡，为aclnnGenericBlockSparseAttentionGrad的前置AICPU算子。按B → N2 → J → G顺序展开`(b, n2, j, g)`任务列表，并在AIC核间做`[baseM, baseN] = [128, 128]`基本块粒度的贪心负载均衡，输出metadata供主Grad算子消费。
 - 该算子不建议单独使用，建议与aclnnGenericBlockSparseAttentionGrad配合使用，形成完整工作流。
 
 $$
@@ -38,8 +38,8 @@ $$
 
 ```c++
 aclnnStatus aclnnGenericBlockSparseAttentionGradMetadataGetWorkspaceSize(
-    const aclTensor *rsvdBlockIdx,
-    const aclTensor *rsvdBlockCount,
+    const aclTensor *sparseBlockIdx,
+    const aclTensor *sparseBlockCount,
     const aclTensor *cuSeqLengthsQOptional,
     const aclTensor *cuSeqLengthsKvOptional,
     const aclTensor *sequsedQOptional,
@@ -99,7 +99,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradMetadata(
     </thead>
     <tbody>
       <tr>
-        <td>rsvdBlockIdx</td>
+        <td>sparseBlockIdx</td>
         <td>输入</td>
         <td>稀疏块索引数组，指定每个KV块选择的Q块/token索引。</td>
         <td>同group每个KVHead对应的Q稀疏pattern一致（isPackedGQA=1）。不支持空Tensor。</td>
@@ -109,7 +109,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradMetadata(
         <td>√</td>
       </tr>
       <tr>
-        <td>rsvdBlockCount</td>
+        <td>sparseBlockCount</td>
         <td>输入</td>
         <td>指定每个KV块实际选择的Q数量。</td>
         <td>不支持空Tensor。</td>
@@ -192,7 +192,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradMetadata(
         <td>numKvHeads</td>
         <td>输入</td>
         <td>key/value的head数（N2）。</td>
-        <td>须落在[1, 128]，且与rsvdBlockIdx的N2维一致。</td>
+        <td>须落在[1, 128]，且与sparseBlockIdx的N2维一致。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -212,7 +212,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradMetadata(
         <td>blockShape</td>
         <td>输入</td>
         <td>稀疏块形状数组。</td>
-        <td>含两个元素[blockShapeX, blockShapeY]。blockShapeX当前仅支持1；blockShapeY当前仅支持128。</td>
+        <td>含两个元素[blockShapeX, blockShapeY]。blockShapeX当前仅支持1；blockShapeY须≥128且为64的倍数（Cube按baseN=128切分S2）。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -355,13 +355,13 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradMetadata(
         <tr>
           <td class="merged-cell" rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
           <td class="merged-cell" rowspan="3">161002</td>
-          <td>rsvdBlockIdx/rsvdBlockCount/metadata为空或shape/dtype非法。</td>
+          <td>sparseBlockIdx/sparseBlockCount/metadata为空或shape/dtype非法。</td>
         </tr>
         <tr>
           <td>layout为TND时未提供cuSeqLengths；headDim、blockShape、isPackedGQA、window参数不在支持范围。</td>
         </tr>
         <tr>
-          <td>rsvdBlockIdx的J维与ceilDiv(maxKvSeqlen, blockShapeY)不一致；metadata长度不足；B×N1×J超过任务数上限（1M）。</td>
+          <td>sparseBlockIdx的J维与ceilDiv(maxKvSeqlen, blockShapeY)不一致；metadata长度不足；B×N1×J超过任务数上限（1M）。</td>
         </tr>
       </tbody>
     </table>
@@ -414,7 +414,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradMetadata(
 - blockShape当前仅支持[1, 128]；isPackedGQA当前仅支持1；maskType当前仅支持1。
 - layoutQ与layoutKv须相同，取值"TND"/"BNSD"/"BSND"；TND布局下cuSeqLengthsQOptional/cuSeqLengthsKvOptional必选。
 - winLeft和winRight不使能时必须为-1。
-- rsvdBlockIdx最后一维maxS1须≥maxQSeqlen；J = ceilDiv(maxKvSeqlen, blockShapeY)须与rsvdBlockIdx第3维一致。
+- sparseBlockIdx最后一维maxS1须≥maxQSeqlen；J = ceilDiv(maxKvSeqlen, blockShapeY)须与sparseBlockIdx第3维一致。
 - metadata长度须满足shape[0] ≥ 80 + B × numQHeads × J × 4；任务数上界B × numQHeads × J ≤ 1048576。
 
 ## 调用示例
