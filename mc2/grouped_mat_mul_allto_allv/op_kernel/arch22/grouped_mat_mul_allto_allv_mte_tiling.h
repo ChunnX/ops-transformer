@@ -28,6 +28,10 @@ enum class ExpertPipelineMode : uint32_t {
     EXPERT_OVERLAP = 1U,
 };
 
+// Default expert-chunk granularity (received rows) for the expert-overlap
+// pipeline: 8 L1 M-tiles worth of rows per synchronization stage.
+constexpr uint32_t GMMA2AV_MTE_DEFAULT_EXPERT_CHUNK_ROWS = 1024U;
+
 // The AIV-driven MTE path only consumes the fields below. Keep this definition
 // local instead of inheriting TaskTilingInfo from the legacy implementation.
 struct GroupedMatMulAlltoAllvMteTaskTilingInfo {
@@ -72,6 +76,11 @@ struct GroupedMatMulAlltoAllvMteTilingData {
     // This reuses the former reserved word so the serialized MTE tiling-data
     // size and all following member offsets remain unchanged.
     uint32_t expertPipelineMode;
+    // Expert-overlap pipeline granularity: consecutive experts are batched
+    // into one synchronization stage until their cumulative received rows
+    // reach this threshold (boundary snapped to an expert end). 1 restores
+    // the legacy per-expert pipeline.
+    uint32_t expertChunkRows;
     GmmA2avCoCTiling cocTiling;
 };
 

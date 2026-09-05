@@ -42,6 +42,7 @@ constexpr const char *EXPERT_PIPELINE_MODE_ENV = "GMMA2AV_EXPERT_PIPELINE_MODE";
 constexpr const char *EXPERT_PIPELINE_MODE_AUTO = "auto";
 constexpr const char *EXPERT_PIPELINE_MODE_BULK = "bulk";
 constexpr const char *EXPERT_PIPELINE_MODE_OVERLAP = "overlap";
+constexpr const char *EXPERT_CHUNK_ROWS_ENV = "GMMA2AV_EXPERT_CHUNK_ROWS";
 constexpr uint64_t A2_EXPERT_OVERLAP_MAX_RANK_SIZE = 8UL;
 const std::string A3_MTE_HCCL_ALG_CONFIG = "AlltoAll=level0:fullmesh;level1:pairwise";
 const std::string A2_MTE_HCCL_ALG_CONFIG = "MultiPut=level0:fullmesh";
@@ -588,6 +589,7 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::PostTiling()
                     return ge::GRAPH_FAILED);
 
     MC2_CHECK_LOG_RET(opName_, SetExpertPipelineMode(outData.expertPipelineMode));
+    MC2_CHECK_LOG_RET(opName_, SetExpertChunkRows(outData.expertChunkRows));
 
     outData.cumsumWorkspaceOffset = mc2tiling::AlignUp(
         localParams_.A * localParams_.N1 * dtypeSize, MC2KernelTemplate::Gmma2avMteTiling::WORKSPACE_ALIGNMENT);
@@ -631,9 +633,12 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::SetExpertPipelineMode(uint32_t 
         std::strcmp(requestedMode, EXPERT_PIPELINE_MODE_OVERLAP) != 0,
         OP_LOGE(opName_, "%s must be one of auto, bulk or overlap, got '%s'.", EXPERT_PIPELINE_MODE_ENV, requestedMode),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(localParams_.ep < 2UL,
-                    OP_LOGE(opName_, "Expert-overlap mode requires at least two experts, got E=%lu.", localParams_.ep),
-                    return ge::GRAPH_FAILED);
+    if (localParams_.ep < 2UL) {
+        OP_LOGI(opName_,
+                "Expert-overlap mode requires at least two experts, got E=%lu; fall back to bulk pipeline mode.",
+                localParams_.ep);
+        return ge::GRAPH_SUCCESS;
+    }
     OP_TILING_CHECK(!isA3_ && localParams_.epWorldSize > A2_EXPERT_OVERLAP_MAX_RANK_SIZE,
                     OP_LOGE(opName_, "Expert-overlap mode on Ascend 910B only supports W=2, 4 or 8, got W=%lu.",
                             localParams_.epWorldSize),
@@ -655,6 +660,25 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::SetExpertPipelineMode(uint32_t 
     expertPipelineMode = static_cast<uint32_t>(MC2KernelTemplate::ExpertPipelineMode::EXPERT_OVERLAP);
     OP_LOGD(opName_, "MTE expert pipeline mode=overlap, layoutVersion=%u, W=%lu, E=%lu.",
             MC2KernelTemplate::Gmma2avMteTiling::FIXED_SYNC_LAYOUT_VERSION, localParams_.epWorldSize, localParams_.ep);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::SetExpertChunkRows(uint32_t &expertChunkRows) const
+{
+    expertChunkRows = MC2KernelTemplate::GMMA2AV_MTE_DEFAULT_EXPERT_CHUNK_ROWS;
+    const char *requestedRows = std::getenv(EXPERT_CHUNK_ROWS_ENV);
+    if (requestedRows == nullptr || requestedRows[0] == '\0') {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    char *parseEnd = nullptr;
+    const long parsedRows = std::strtol(requestedRows, &parseEnd, 10);
+    OP_TILING_CHECK(parseEnd == requestedRows || *parseEnd != '\0' || parsedRows <= 0L || parsedRows > 0x7fffffffL,
+                    OP_LOGE(opName_, "%s must be a positive 31-bit integer, got '%s'.", EXPERT_CHUNK_ROWS_ENV,
+                            requestedRows),
+                    return ge::GRAPH_FAILED);
+    expertChunkRows = static_cast<uint32_t>(parsedRows);
+    OP_LOGD(opName_, "MTE expert pipeline chunk rows=%u.", expertChunkRows);
     return ge::GRAPH_SUCCESS;
 }
 

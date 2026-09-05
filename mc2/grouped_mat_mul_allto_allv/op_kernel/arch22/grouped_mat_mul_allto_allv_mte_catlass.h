@@ -57,9 +57,15 @@ public:
     }
 
     // Process the requested expert range in one CATLASS resource lifetime.
-    // The callback runs on every AIC after that AIC has drained the expert's
-    // FIX output. It is also called for an empty expert, allowing the caller
-    // to keep an identical expert-ready protocol on every rank.
+    // The callback runs on every AIC after that AIC has finished issuing the
+    // expert's tiles. It is also called for an empty expert, allowing the
+    // caller to keep an identical expert-ready protocol on every rank. The
+    // callback returns whether this expert closes a chunk; only then does the
+    // caller drain the FIX pipe and invoke NotifyChunkReady(). Draining once
+    // per expert would break the MTE1->MAC->FIX pipeline between every pair of
+    // experts and cost a full cold-restart chain per expert, which profiling
+    // showed dominates large-token cases (volume-proportional, independent of
+    // chunk count).
     template <typename ExpertCompletion>
     __aicore__ inline void ProcessExperts(uint32_t startExpertIdx, uint32_t expertNum,
                                           ExpertCompletion &&onExpertComplete)
@@ -229,8 +235,13 @@ private:
             startCoreIdx = (startCoreIdx + coreLoops) % aicCoreNum;
 
             if constexpr (CompleteEachExpert) {
-                DrainExpertOutput(blockMmad);
-                onExpertComplete(expertIdx);
+                // Drain the FIX pipe only at chunk boundaries, right before
+                // the paired AIV is notified, so experts inside a chunk keep
+                // the uninterrupted CATLASS pipelining that the bulk path has.
+                if (onExpertComplete(expertIdx)) {
+                    DrainExpertOutput(blockMmad);
+                    onExpertComplete.NotifyChunkReady();
+                }
             }
         }
 

@@ -73,7 +73,8 @@ __aicore__ inline void RunGmmA2avMtePath(
         SharedGmmExpertOpType shareComputeOp;
         shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmyOptionalGM, taskTilingInfo);
 
-        GmmA2avSchedulerType::ProcessAic(computeOp, shareComputeOp, taskTilingInfo, tilingData->expertPipelineMode);
+        GmmA2avSchedulerType::ProcessAic(computeOp, shareComputeOp, taskTilingInfo, tilingData->expertPipelineMode,
+                                         tilingData->expertChunkRows);
     }
 
     if ASCEND_IS_AIV {
@@ -81,7 +82,8 @@ __aicore__ inline void RunGmmA2avMtePath(
         commOp.Init(taskTilingInfo, gmmOutputGM, yGM, cumsumGM, pipe,
                     &tilingData->cocTiling, tilingData->commBufferSize, tilingData->isA3);
 
-        GmmA2avSchedulerType::ProcessAiv(commOp, taskTilingInfo, tilingData->expertPipelineMode);
+        GmmA2avSchedulerType::ProcessAiv(commOp, taskTilingInfo, tilingData->expertPipelineMode,
+                                         tilingData->expertChunkRows);
     }
 }
 
