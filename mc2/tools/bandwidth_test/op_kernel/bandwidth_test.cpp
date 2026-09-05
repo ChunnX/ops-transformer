@@ -44,7 +44,7 @@ __global__ __aicore__ void bandwidth_test(GM_ADDR context, GM_ADDR x, GM_ADDR ds
             op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
             op.Process();
         } else {
-            printf("mte");
+            printf("mte\n");
             BandwidthTest<DTYPE_X, DTYPE_Y> op;
             op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
             op.Process();
