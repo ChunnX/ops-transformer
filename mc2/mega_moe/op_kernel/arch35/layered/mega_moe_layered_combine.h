@@ -185,19 +185,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCo
     }
 }
 
-// =============================================
-// UnpermuteBuffInit：Unpermute中使用的buffer申请
-// =============================================
 template <TemplateMegaMoeLayeredTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::UnpermuteBuffInit()
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::InitUnpermuteWeightChunk(
+    uint32_t dataResBufAlign, uint32_t dataResFp32BufAlign)
 {
-    uint32_t dataResBufAlign = Ops::Base::CeilAlign(static_cast<uint32_t>(UNPERMUTE_LIST_NUM * k_ * sizeof(bfloat16_t)),
-                                                    static_cast<uint32_t>(ALIGN_32));
-    uint32_t dataResFp32BufAlign = dataResBufAlign * HALF_TO_FP32;
     uint32_t fixedUbBeforeTopK = dataResBufAlign + dataResFp32BufAlign;
     uint32_t scaleUbCost = 0;
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        // 预算公式必须与下方实际张量完全一致：每 32 个元素一个 scale，再扩展为两份。
+        // 预算公式必须与 UnpermuteBuffInit 的张量一致：每 32 个元素一个 scale，再扩展为两份。
         uint32_t scaleNum =
             Ops::Base::CeilDiv(static_cast<uint32_t>(k_), static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
         scaleUbCost = Ops::Base::CeilAlign(
@@ -223,6 +218,18 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
     if (topKWeightsChunkLen_ > m_) {
         topKWeightsChunkLen_ = m_;
     }
+}
+
+// =============================================
+// UnpermuteBuffInit：Unpermute中使用的buffer申请
+// =============================================
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::UnpermuteBuffInit()
+{
+    uint32_t dataResBufAlign = Ops::Base::CeilAlign(static_cast<uint32_t>(UNPERMUTE_LIST_NUM * k_ * sizeof(bfloat16_t)),
+                                                    static_cast<uint32_t>(ALIGN_32));
+    uint32_t dataResFp32BufAlign = dataResBufAlign * HALF_TO_FP32;
+    InitUnpermuteWeightChunk(dataResBufAlign, dataResFp32BufAlign);
     uint32_t topKWeightsBufAlign = Ops::Base::CeilAlign(
         static_cast<uint32_t>(topKWeightsChunkLen_ * topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
     // Tensor用处：Unpermute 函数用于存储mte2搬入token；
@@ -292,6 +299,105 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
     }
 }
 
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::LoadUnpermuteWeights(
+    int32_t chunkStart, int32_t chunkTokenCnt)
+{
+    if constexpr (!TopkWeightsPrefetch) {
+        if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
+            GlobalTensor<float> topKWeightsGlobalTensor_;
+            topKWeightsGlobalTensor_.SetGlobalBuffer((__gm__ float *)params_.probsGmAddr);
+            DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(chunkTokenCnt * topK_ * sizeof(float)), 0U,
+                                            0U, 0U};
+            DataCopyPadExtParams<float> copyPadParams{false, 0U, 0U, 0U};
+            DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_[chunkStart * topK_], copyParams,
+                        copyPadParams);
+            SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
+        }
+        if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
+            uint32_t tempBufAlign = Ops::Base::CeilAlign(
+                static_cast<uint32_t>(topKWeightsChunkLen_ * topK_ * sizeof(bfloat16_t)), uint32_t(ALIGN_32));
+            LocalTensor<bfloat16_t> tempLocal(TPosition::VECCALC, topKWeightsTempAddr_,
+                                              tempBufAlign / sizeof(bfloat16_t));
+            GlobalTensor<bfloat16_t> topkWeightsGlobalTensor;
+            topkWeightsGlobalTensor.SetGlobalBuffer((__gm__ bfloat16_t *)params_.probsGmAddr);
+            DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(chunkTokenCnt * topK_ * sizeof(bfloat16_t)),
+                                            0U, 0U, 0U};
+            DataCopyPadExtParams<bfloat16_t> copyPadParams{false, 0U, 0U, 0U};
+            DataCopyPad(tempLocal, topkWeightsGlobalTensor[chunkStart * topK_], copyParams, copyPadParams);
+            SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID2>();
+            Cast(topKWeightsTensor_, tempLocal, AscendC::RoundMode::CAST_NONE, chunkTokenCnt * topK_);
+            SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
+        }
+    }
+}
+
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::LoadUnpermuteExpertInput(
+    const GlobalTensor<bfloat16_t> &expandedX, int32_t tokenIdx, int32_t expId, TEventID event,
+    LocalTensor<bfloat16_t> &dataInBf16, LocalTensor<float> &dataInFp32)
+{
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        WaitFlag<AscendC::HardEvent::V_MTE2>(event);
+        DataCopy(dataInBf16, expandedX[(tokenIdx * topK_ + expId) * k_], k_);
+        SetFlag<AscendC::HardEvent::MTE2_V>(event);
+        WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+        SetFlag<AscendC::HardEvent::S_V>(event);
+        WaitFlag<AscendC::HardEvent::S_V>(event);
+        Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
+    } else {
+        uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
+        uint32_t quantTokenSize = k_ + nScale;
+        uint32_t quantEleNum = quantTokenSize / sizeof(bfloat16_t);
+        WaitFlag<AscendC::HardEvent::V_MTE2>(event);
+        DataCopy(dataInBf16, expandedX[(tokenIdx * topK_ + expId) * quantEleNum], quantEleNum);
+        SetFlag<AscendC::HardEvent::MTE2_V>(event);
+        WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+        using Fp8Type = typename std::conditional<CombineQuantMode == MXFP8_E4M3_COMM_QUANT, fp8_e4m3fn_t,
+                                                  fp8_e5m2_t>::type;
+        SetFlag<AscendC::HardEvent::S_V>(event);
+        WaitFlag<AscendC::HardEvent::S_V>(event);
+        Mxfp8::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32, bf16ScaleTensor_, fp32ScaleTensor_,
+                                                 nScale, k_);
+    }
+}
+
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::AccumulateUnpermuteExperts(
+    const GlobalTensor<bfloat16_t> &expandedX, int32_t tokenIdx, int32_t localIdx)
+{
+    LocalTensor<bfloat16_t> dataIn0Bf16 = dataResTensor_[k_];
+    LocalTensor<bfloat16_t> dataIn1Bf16 = dataResTensor_[k_ * 2];
+    LocalTensor<float> dataIn0Fp32 = dataResFp32Tensor_[k_];
+    LocalTensor<float> dataIn1Fp32 = dataResFp32Tensor_[k_ * 2];
+    for (int32_t expId = 0; expId < topK_; ++expId) {
+        auto event = (expId % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
+        auto dataInBf16 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Bf16 : dataIn1Bf16;
+        auto dataInFp32 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Fp32 : dataIn1Fp32;
+        LoadUnpermuteExpertInput(expandedX, tokenIdx, expId, event, dataInBf16, dataInFp32);
+        PipeBarrier<PIPE_V>();
+        if constexpr (TopkWeightsPrefetch) {
+            if (expId == 0) {
+                DataCopy(dataResFp32Tensor_, dataInFp32, k_);
+            } else {
+                Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
+                PipeBarrier<PIPE_V>();
+            }
+        } else {
+            float expScale = topKWeightsTensor_.GetValue(localIdx * topK_ + expId);
+            if (expId == 0) {
+                Muls(dataResFp32Tensor_, dataInFp32, expScale, k_);
+            } else {
+                Muls(dataInFp32, dataInFp32, expScale, k_);
+                PipeBarrier<PIPE_V>();
+                Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
+                PipeBarrier<PIPE_V>();
+            }
+        }
+        SetFlag<AscendC::HardEvent::V_MTE2>(event);
+    }
+}
+
 // ===============================================================
 // Unpermute：对于各个专家还回来token的后处理，进行对应scale相乘与累加
 // ===============================================================
@@ -312,88 +418,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
             chunkEnd = coreLen + coreOffset;
         }
         int32_t chunkTokenCnt = chunkEnd - chunkStart;
-        if constexpr (!TopkWeightsPrefetch) {
-            if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
-                GlobalTensor<float> topKWeightsGlobalTensor_;
-                topKWeightsGlobalTensor_.SetGlobalBuffer((__gm__ float *)params_.probsGmAddr);
-                DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(chunkTokenCnt * topK_ * sizeof(float)), 0U,
-                                                0U, 0U};
-                DataCopyPadExtParams<float> copyPadParams{false, 0U, 0U, 0U};
-                DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_[chunkStart * topK_], copyParams,
-                            copyPadParams);
-                SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
-            }
-            if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
-                uint32_t tempBufAlign = Ops::Base::CeilAlign(
-                    static_cast<uint32_t>(topKWeightsChunkLen_ * topK_ * sizeof(bfloat16_t)), uint32_t(ALIGN_32));
-                LocalTensor<bfloat16_t> tempLocal(TPosition::VECCALC, topKWeightsTempAddr_,
-                                                  tempBufAlign / sizeof(bfloat16_t));
-                GlobalTensor<bfloat16_t> topkWeightsGlobalTensor;
-                topkWeightsGlobalTensor.SetGlobalBuffer((__gm__ bfloat16_t *)params_.probsGmAddr);
-                DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(chunkTokenCnt * topK_ * sizeof(bfloat16_t)),
-                                                0U, 0U, 0U};
-                DataCopyPadExtParams<bfloat16_t> copyPadParams{false, 0U, 0U, 0U};
-                DataCopyPad(tempLocal, topkWeightsGlobalTensor[chunkStart * topK_], copyParams, copyPadParams);
-                SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID2>();
-                Cast(topKWeightsTensor_, tempLocal, AscendC::RoundMode::CAST_NONE, chunkTokenCnt * topK_);
-                SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
-            }
-        }
+        LoadUnpermuteWeights(chunkStart, chunkTokenCnt);
         for (int32_t tokenIdx = chunkStart; tokenIdx < chunkEnd; tokenIdx++) {
             int32_t localIdx = tokenIdx - chunkStart;
             SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
-            LocalTensor<bfloat16_t> dataIn0Bf16 = dataResTensor_[k_];
-            LocalTensor<bfloat16_t> dataIn1Bf16 = dataResTensor_[k_ * 2];
-            LocalTensor<float> dataIn0Fp32 = dataResFp32Tensor_[k_];
-            LocalTensor<float> dataIn1Fp32 = dataResFp32Tensor_[k_ * 2];
-            for (int32_t expId = 0; expId < topK_; ++expId) {
-                auto event = (expId % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
-                auto dataInBf16 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Bf16 : dataIn1Bf16;
-                auto dataInFp32 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Fp32 : dataIn1Fp32;
-                if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-                    WaitFlag<AscendC::HardEvent::V_MTE2>(event);
-                    DataCopy(dataInBf16, expandedX[(tokenIdx * topK_ + expId) * k_], k_);
-                    SetFlag<AscendC::HardEvent::MTE2_V>(event);
-                    WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-                    SetFlag<AscendC::HardEvent::S_V>(event);
-                    WaitFlag<AscendC::HardEvent::S_V>(event);
-                    Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
-                } else {
-                    uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
-                    uint32_t quantTokenSize = k_ + nScale;
-                    uint32_t quantEleNum = quantTokenSize / sizeof(bfloat16_t);
-                    WaitFlag<AscendC::HardEvent::V_MTE2>(event);
-                    DataCopy(dataInBf16, expandedX[(tokenIdx * topK_ + expId) * quantEleNum], quantEleNum);
-                    SetFlag<AscendC::HardEvent::MTE2_V>(event);
-                    WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-                    using Fp8Type = typename std::conditional<CombineQuantMode == MXFP8_E4M3_COMM_QUANT, fp8_e4m3fn_t,
-                                                              fp8_e5m2_t>::type;
-                    SetFlag<AscendC::HardEvent::S_V>(event);
-                    WaitFlag<AscendC::HardEvent::S_V>(event);
-                    Mxfp8::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32, bf16ScaleTensor_, fp32ScaleTensor_,
-                                                             nScale, k_);
-                }
-                PipeBarrier<PIPE_V>();
-                if constexpr (TopkWeightsPrefetch) {
-                    if (expId == 0) {
-                        DataCopy(dataResFp32Tensor_, dataInFp32, k_);
-                    } else {
-                        Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
-                        PipeBarrier<PIPE_V>();
-                    }
-                } else {
-                    float expScale = topKWeightsTensor_.GetValue(localIdx * topK_ + expId);
-                    if (expId == 0) {
-                        Muls(dataResFp32Tensor_, dataInFp32, expScale, k_);
-                    } else {
-                        Muls(dataInFp32, dataInFp32, expScale, k_);
-                        PipeBarrier<PIPE_V>();
-                        Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
-                        PipeBarrier<PIPE_V>();
-                    }
-                }
-                SetFlag<AscendC::HardEvent::V_MTE2>(event);
-            }
+            AccumulateUnpermuteExperts(expandedX, tokenIdx, localIdx);
             // 共享专家结果累加（直接加，不乘 topk_weight）
             if (sharedExpertNum_ > 0) {
                 UnpermuteSharedExpert(tokenIdx);

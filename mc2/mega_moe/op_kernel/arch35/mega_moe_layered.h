@@ -102,6 +102,32 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void InitTopology(GM_ADDR context, const MegaMoeTilingData *tilingData);
+    __aicore__ inline void InitDispatchLayout(const MegaMoeTilingData *tilingData);
+    __aicore__ inline void InitWorkspace(GM_ADDR workspaceGM, MegaMoeTilingData *tilingData);
+    __aicore__ inline uint32_t InitResetBatch();
+    __aicore__ inline void InitSendMaskRounds(uint32_t resetTensorSize);
+    __aicore__ inline void InitDispatchRounds(uint32_t fixedBefore, uint32_t dispatchFixedCost);
+    __aicore__ inline uint32_t InitDispatchIndexBuffers(uint32_t fixedBefore);
+    __aicore__ inline void InitDispatchCopyBuffers(
+        uint32_t copyTmpBaseAddr, uint32_t relayFlagTensorSize, uint32_t dispatchWorkTensorSize,
+        uint32_t expertTokenNumsOutTensorSize);
+    __aicore__ inline void BuildExpertMaskRound(
+        int32_t curExpertId, uint32_t roundIdx, uint64_t roundStart, uint32_t roundLen,
+        uint32_t curRoundCompareCount, uint64_t &totalSendCnt);
+    __aicore__ inline uint64_t BuildExpertMask(
+        uint32_t curRankId, int32_t curExpertId, uint64_t srcOffset, uint64_t dstOffset);
+    __aicore__ inline void UpdateLocalRelayWeight(int32_t copyIdx, int32_t outIdx, TEventID eventId);
+    __aicore__ inline QuantProcessScratch<ActivationType> InitSharedExpertInputBuffers();
+    __aicore__ inline void InitUnpermuteWeightChunk(uint32_t dataResBufAlign, uint32_t dataResFp32BufAlign);
+    __aicore__ inline void LoadUnpermuteWeights(int32_t chunkStart, int32_t chunkTokenCnt);
+    __aicore__ inline void LoadUnpermuteExpertInput(
+        const GlobalTensor<bfloat16_t> &expandedX, int32_t tokenIdx, int32_t expId, TEventID event,
+        LocalTensor<bfloat16_t> &dataInBf16, LocalTensor<float> &dataInFp32);
+    __aicore__ inline void AccumulateUnpermuteExperts(
+        const GlobalTensor<bfloat16_t> &expandedX, int32_t tokenIdx, int32_t localIdx);
+    __aicore__ inline void LoadLocalRelayToken(
+        uint32_t srcServer, uint32_t tokenIndex, int32_t bufferIdx, uint32_t copyInNum, TEventID eventId);
     __aicore__ inline uint32_t GetChannelOwnerBlock(uint32_t rank) const;
     __aicore__ inline bool IsChannelOwner(uint32_t rank) const;
     __aicore__ inline uint32_t CalcTargetWaveCount() const;
@@ -444,15 +470,9 @@ __aicore__ inline uint32_t MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CalcS
     return steadyWaveExperts == 0U ? 1U : steadyWaveExperts;
 }
 
-// ========================
-// Init：初始化 & 偏移计算
-// ========================
 template <TemplateMegaMoeLayeredTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
-    GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
-    GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR sharedWeight1,
-    GM_ADDR sharedWeight2, GM_ADDR sharedWeightScales1, GM_ADDR sharedWeightScales2, GM_ADDR yOut,
-    GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::InitTopology(
+    GM_ADDR context, const MegaMoeTilingData *tilingData)
 {
     m_ = tilingData->bs;
     k_ = tilingData->h;
@@ -482,48 +502,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     for (int i = 0; i < worldSize_; i++) {
         g_winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer_[i];
     }
-    params_.aGmAddr = x;
-    params_.expertIdxGmAddr = topkIds;
-    // 保留 TensorList 入口；每个 expert 更新地址时再按 2D-list/3D-stacked 布局解析。
-    params_.bGmAddr = weight1;
-    params_.b2GmAddr = weight2;
-    params_.bScaleGmAddr = weightScales1;
-    params_.b2ScaleGmAddr = weightScales2;
-    params_.sharedBGmAddr = sharedWeight1;
-    params_.sharedB2GmAddr = sharedWeight2;
-    params_.sharedBScaleGmAddr = sharedWeightScales1;
-    params_.sharedB2ScaleGmAddr = sharedWeightScales2;
-    params_.combineCommParams.hcomm = &hcomm_;
+}
 
-    params_.y2GmAddr = yOut;
-    params_.expertTokenNumsOutGmAddr = expertTokenNumsOut;
-    params_.probsGmAddr = topkWeights;
-    {
-        WorkspaceLayout workspaceLayout(tilingData, serverNum_);
-        params_.workspaceInfo.Bind(workspaceGM, workspaceLayout);
-    }
-    params_.peermemInfo = PeermemInfo(g_winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE, serverNum_);
-    params_.tilingData = tilingData;
-    if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
-        gmmToEpilogueFlag_ = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagGmmToEpiloguePtr) +
-                             static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
-    }
-    expertTokenNumsOut_.SetGlobalBuffer((__gm__ int32_t *)params_.expertTokenNumsOutGmAddr);
-    expertRevNumsGlobalTensor_.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.expertRevTokenNumsPtr);
-    metaInfoGlobalTensor_.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.metaInfoPtr);
-    // 每个 block 负责一个专家，cumsumInfo 中每个专家占 worldSize 个
-    // int32_t 存 rank 维度的 cumsum 结果，blockIdx 决定了负责哪个专家。
-    uint64_t cumsumStride =
-        Ops::Base::CeilAlign(static_cast<int64_t>(worldSize_ * moeExpertPerRank_ * sizeof(int32_t)), ALIGN_32);
-    cumsumInfoGlobalTensor_.SetGlobalBuffer(
-        reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.cumsumInfoPtr + cumsumStride * blockIdx_));
-    epilogueOp_.Init({.yGmAddr = params_.workspaceInfo.activationQuantDataPtr,
-                      .yScaleGmAddr = params_.workspaceInfo.activationQuantScalePtr,
-                      .clampLimit = tilingData->clampLimit,
-                      .actMode = tilingData->actMode,
-                      .actSubMode = tilingData->actSubMode,
-                      .activationAlpha = tilingData->activationAlpha,
-                      .activationBeta = tilingData->activationBeta});
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::InitDispatchLayout(
+    const MegaMoeTilingData *tilingData)
+{
     // 各 win 区相对 win 基址(rankSyncInWorldPtr)的偏移; 所有卡 win 布局一致, 跨卡读写用同一偏移。
     maskWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.maskRecvPtr - params_.peermemInfo.rankSyncInWorldPtr);
     dispatchWinOffset_ =
@@ -554,6 +538,69 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     uint64_t flagSnapshotBytes = static_cast<uint64_t>(DISPATCH_RECEIVE_BATCH_TOKEN_CAPACITY) * sizeof(uint64_t);
     dispatchRelayFlagSnapshotBytesPerBlock_ =
         Ops::Base::CeilAlign(flagSnapshotBytes, static_cast<uint64_t>(ALIGN_512));
+}
+
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::InitWorkspace(
+    GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
+{
+    {
+        WorkspaceLayout workspaceLayout(tilingData, serverNum_);
+        params_.workspaceInfo.Bind(workspaceGM, workspaceLayout);
+    }
+    params_.peermemInfo = PeermemInfo(g_winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE, serverNum_);
+    params_.tilingData = tilingData;
+    if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
+        gmmToEpilogueFlag_ = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagGmmToEpiloguePtr) +
+                             static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
+    }
+    expertTokenNumsOut_.SetGlobalBuffer((__gm__ int32_t *)params_.expertTokenNumsOutGmAddr);
+    expertRevNumsGlobalTensor_.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.expertRevTokenNumsPtr);
+    metaInfoGlobalTensor_.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.metaInfoPtr);
+    // 每个 block 负责一个专家，cumsumInfo 中每个专家占 worldSize 个
+    // int32_t 存 rank 维度的 cumsum 结果，blockIdx 决定了负责哪个专家。
+    uint64_t cumsumStride =
+        Ops::Base::CeilAlign(static_cast<int64_t>(worldSize_ * moeExpertPerRank_ * sizeof(int32_t)), ALIGN_32);
+    cumsumInfoGlobalTensor_.SetGlobalBuffer(
+        reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.cumsumInfoPtr + cumsumStride * blockIdx_));
+    epilogueOp_.Init({.yGmAddr = params_.workspaceInfo.activationQuantDataPtr,
+                      .yScaleGmAddr = params_.workspaceInfo.activationQuantScalePtr,
+                      .clampLimit = tilingData->clampLimit,
+                      .actMode = tilingData->actMode,
+                      .actSubMode = tilingData->actSubMode,
+                      .activationAlpha = tilingData->activationAlpha,
+                      .activationBeta = tilingData->activationBeta});
+    InitDispatchLayout(tilingData);
+}
+
+// ========================
+// Init：初始化 & 偏移计算
+// ========================
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
+    GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
+    GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR sharedWeight1,
+    GM_ADDR sharedWeight2, GM_ADDR sharedWeightScales1, GM_ADDR sharedWeightScales2, GM_ADDR yOut,
+    GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
+{
+    InitTopology(context, tilingData);
+    params_.aGmAddr = x;
+    params_.expertIdxGmAddr = topkIds;
+    // 保留 TensorList 入口；每个 expert 更新地址时再按 2D-list/3D-stacked 布局解析。
+    params_.bGmAddr = weight1;
+    params_.b2GmAddr = weight2;
+    params_.bScaleGmAddr = weightScales1;
+    params_.b2ScaleGmAddr = weightScales2;
+    params_.sharedBGmAddr = sharedWeight1;
+    params_.sharedB2GmAddr = sharedWeight2;
+    params_.sharedBScaleGmAddr = sharedWeightScales1;
+    params_.sharedB2ScaleGmAddr = sharedWeightScales2;
+    params_.combineCommParams.hcomm = &hcomm_;
+
+    params_.y2GmAddr = yOut;
+    params_.expertTokenNumsOutGmAddr = expertTokenNumsOut;
+    params_.probsGmAddr = topkWeights;
+    InitWorkspace(workspaceGM, tilingData);
 }
 
 // Advance the GMM cursor using the previous expert's shape, including empty experts.
