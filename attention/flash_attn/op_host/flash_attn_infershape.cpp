@@ -42,8 +42,6 @@ static constexpr size_t INPUT_IDX_V = 2;
 static constexpr size_t OUTPUT_IDX_ATTN_OUT = 0;
 static constexpr size_t OUTPUT_IDX_SOFTMAX_LSE = 1;
 
-static constexpr int FA_SOFTMAX_LSE_LAST_DIM = 1; // softmax_lse最后一维元素数（每head一个float）
-
 ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
 {
     OP_LOGI(context, "FlashAttn InferShape start.");
@@ -135,15 +133,6 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    int64_t headDimV = headDim;
-    if ((layoutKvStr == "BSND" || layoutKvStr == "BNSD") && vShape->GetDimNum() >= 4) {
-        headDimV = vShape->GetDim(3);
-    } else if (layoutKvStr == "TND" && vShape->GetDimNum() >= 3) {
-        headDimV = vShape->GetDim(2);
-    } else if (layoutKvStr == "PA_ND" && vShape->GetDimNum() >= 4) {
-        headDimV = vShape->GetDim(3);
-    }
-
     gert::Shape *attnOutShape = context->GetOutputShape(OUTPUT_IDX_ATTN_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, attnOutShape);
 
@@ -152,18 +141,18 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
         attnOutShape->SetDim(0, batchSize);
         attnOutShape->SetDim(1, seqLenQ);
         attnOutShape->SetDim(2, numHeadsQ);
-        attnOutShape->SetDim(3, headDimV);
+        attnOutShape->SetDim(3, headDim);
     } else if (layoutOutStr == "BNSD") {
         attnOutShape->SetDimNum(4);
         attnOutShape->SetDim(0, batchSize);
         attnOutShape->SetDim(1, numHeadsQ);
         attnOutShape->SetDim(2, seqLenQ);
-        attnOutShape->SetDim(3, headDimV);
+        attnOutShape->SetDim(3, headDim);
     } else if (layoutOutStr == "TND") {
         attnOutShape->SetDimNum(3);
         attnOutShape->SetDim(0, seqLenQ); // T总token数
         attnOutShape->SetDim(1, numHeadsQ);
-        attnOutShape->SetDim(2, headDimV);
+        attnOutShape->SetDim(2, headDim);
     } else {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "layout_out", layoutOutStr.c_str(),
                                               "The value of layout_out must be in BSND/BNSD/TND");
@@ -175,8 +164,8 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
         if (returnSoftmaxLse != 0) {
             if (isTND) {
                 lseShape->SetDimNum(2);
-                lseShape->SetDim(0, seqLenQ);
-                lseShape->SetDim(1, numHeadsQ);
+                lseShape->SetDim(0, numHeadsQ);
+                lseShape->SetDim(1, seqLenQ);
             } else {
                 lseShape->SetDimNum(3);
                 lseShape->SetDim(0, batchSize);
