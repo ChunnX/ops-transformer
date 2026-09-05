@@ -82,7 +82,7 @@ constexpr int64_t MIN_EP_WORLD_SIZE = 2;
 constexpr int64_t EP_RESTRICT_8 = 8;
 constexpr int64_t MAX_TP_WORLD_SIZE = 1;
 constexpr int64_t BS_UPPER_BOUND = 512;
-constexpr int64_t BS_UPPER_BOUND_LAYERED = 256;
+constexpr int64_t BS_UPPER_BOUND_LAYERED = 512;
 constexpr uint32_t H_BASIC_BLOCK_LAYERED = 32;
 constexpr int64_t RESIDUAL_X_DIM2_SIZE = 1;
 constexpr uint32_t NUM_PER_REP_FP32 = 64U;
@@ -507,9 +507,9 @@ static bool CheckOptionalScalesTensorDim(const gert::TilingContext *context, con
 {
     if (isLayered) {
         const gert::StorageShape *expandScaleStorageShape = context->GetOptionalInputShape(EXPAND_SCALES_INDEX);
-        const int64_t expandScaleDim = expandScaleStorageShape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(expandScaleStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandScales"),
                         return false);
+        const int64_t expandScaleDim = expandScaleStorageShape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(
             expandScaleDim != ONE_DIM,
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "expandScales", std::to_string(expandScaleDim).c_str(),

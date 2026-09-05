@@ -71,7 +71,7 @@ public:
     constexpr static uint32_t RDMA_DATA_SIZE = 400U * 1024U * 1024U;
     constexpr static uint32_t VEC_LEN = 256U;
     constexpr static uint32_t SRCSTRIDE_BLOCK = 15U;
-    constexpr static uint32_t MAX_LOCAL_BS = 256U;
+    constexpr static uint32_t MAX_LOCAL_BS = 512U;
     constexpr static uint32_t MAGIC_OFFSET = 2U * 1024U * 1024U - 32U * 32U;
     constexpr static uint32_t EXTRA_TOKEN_INFO_NUM = 4U; // 专家信息 权重信息 量化Scale 到达标志位
     constexpr static uint64_t MB_SIZE = 1024UL * 1024UL;
@@ -79,7 +79,6 @@ public:
     constexpr static uint32_t TBUF_SIZE = 185U * 1024U;
     constexpr static uint32_t TBUF_TEMP_OFFSET = 0U;
     constexpr static uint32_t WEIGHT_VALUE_NUM = 16U; // token(h * sizeof(bf/fp16)) + scale(32B) = (h + 16) * 2B
-    constexpr static uint32_t MAXBS_PER_CORE = 65U;
     constexpr static uint64_t GM2IPC_SYNC_FLAG = 12345UL;
     constexpr static uint64_t RDMA_TOKEN_ARRIVED_FLAG = 123UL;
     constexpr static uint64_t RDMA_TOKEN_END_FLAG = 321UL;
@@ -120,9 +119,6 @@ private:
     __aicore__ inline void SumToServerLocalTensor();
     __aicore__ inline void DynamicQuantProcess(const uint32_t dataOffset);
     __aicore__ inline void ServerInAdd(const uint32_t targetRankId, const uint32_t offsetIndexStart);
-    __aicore__ inline void SumToWindowAdd(const uint32_t coreNumPerServer, const uint32_t serverId,
-                                          const uint32_t totalCopyLen, const uint32_t targetRankId,
-                                          LocalTensor<uint64_t> rdmaFlagLocal);
     __aicore__ inline void RDMADataSwitch();
     __aicore__ inline void AlltoAllServerDispatch();
     __aicore__ inline void SumToServer();
@@ -213,9 +209,9 @@ private:
     uint32_t tokenNumPerCore_{0};
     uint32_t tokenIndex_{0};
     uint32_t serverNum_{0};
-    uint32_t ipcSliceNodeSize_{0};
-    uint32_t ipcDataSize_{0};
-    uint32_t ipcSliceSize_{0};
+    uint64_t ipcSliceNodeSize_{0};
+    uint64_t ipcDataSize_{0};
+    uint64_t ipcSliceSize_{0};
     uint32_t axisBsAlignSize_{0};
     uint32_t startBs_{0};
     uint32_t endBs_{0};
@@ -267,9 +263,6 @@ private:
     uint32_t scaleNumAlign_;
     uint32_t scale_granu_;
 
-    uint32_t offsetIndexs_[MAXBS_PER_CORE];
-    uint32_t copyNums_[MAXBS_PER_CORE];
-    uint32_t dataOffsets_[MAXBS_PER_CORE];
 };
 
 template <TemplateMC2TypeV2LayeredClass>
@@ -318,9 +311,6 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
     stateOffsetOnWin_ = static_cast<uint64_t>(dataSpaceSize_ + rankId_ * STATE_OFFSET);
     axisHFloatSize_ = axisH_ * static_cast<uint32_t>(sizeof(float));
     axisHExpandXTypeSize_ = axisH_ * static_cast<uint32_t>(sizeof(ExpandXType));
-    uint64_t winSizeMin =
-        moeExpertNum_ * axisBS_ * (axisHExpandXTypeSize_ + EXTRA_TOKEN_INFO_NUM * axisK_ * sizeof(uint32_t)) +
-        IPC_DATA_OFFSET + RDMA_DATA_SIZE; // 考虑负载极其不均衡时，HCCL BUFFSIZE需要开的大小
 }
 
 template <TemplateMC2TypeV2LayeredClass>
@@ -461,7 +451,7 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint64_t localShareAddr = shareAddreRank_[rankId_ % SERVER_RANK_SIZE];
     for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; ++dstRankId) {
-        uint32_t rankTokenNum = 0U;
+        uint64_t rankTokenNum = 0U;
         uint64_t targetRankAddr = localShareAddr + static_cast<uint64_t>(dstRankId * ipcSliceSize_ + IPC_DATA_OFFSET);
         dstshareMemGlobal_.SetGlobalBuffer((__gm__ ExpandXType *)(targetRankAddr));
         for (uint32_t expertId = 0U; expertId < localMoeExpertNum_; ++expertId) {
@@ -590,8 +580,18 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
         PipeBarrier<PIPE_V>();
         SyncFunc<AscendC::HardEvent::MTE3_V>();
         Muls(scaleData_, reduceMaxOutTensor_, scaleMulVal_, scaleNum_); // 1/scale = dmax / 127
+        SyncFunc<AscendC::HardEvent::V_S>();
+        // Keep the externally visible scale at zero for an all-zero group, but use 1 as the division denominator.
+        for (uint32_t scaleIdx = 0; scaleIdx < scaleNum_; ++scaleIdx) {
+            float scaleValue = static_cast<float>(reduceMaxOutTensor_.GetValue(scaleIdx));
+            if (scaleValue == 0.0f) {
+                reduceMaxOutTensor_.SetValue(scaleIdx, static_cast<ExpandXType>(127.0));
+            }
+        }
+        SyncFunc<AscendC::HardEvent::S_V>();
+        Muls(reduceMaxOutTensor_, reduceMaxOutTensor_, scaleMulVal_, scaleNum_);
         PipeBarrier<PIPE_V>();
-        Brcb(absScaleTensor_, scaleData_, repeatNum_, {1, VEC_LEN / UB_ALIGN}); // 填充scale值
+        Brcb(absScaleTensor_, reduceMaxOutTensor_, repeatNum_, {1, VEC_LEN / UB_ALIGN}); // 填充安全scale值
         PipeBarrier<PIPE_V>();
 
         Div(sumHalfLocal_, sumHalfLocal_, absScaleTensor_, axisH_); // data_fp16/(1/scale)
@@ -610,13 +610,19 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
         PipeBarrier<PIPE_V>();
         Muls(reduceMaxTensorFloat_, reduceMaxTensorFloat_, scaleMulVal_, scaleNum_); // scale = dmax * 1/127
         PipeBarrier<PIPE_V>();
+        Cast(scaleData_, reduceMaxTensorFloat_, RoundMode::CAST_RINT, scaleNum_); // 保存对外输出scale，零组保持0
+        SyncFunc<AscendC::HardEvent::V_S>();
+        for (uint32_t scaleIdx = 0; scaleIdx < scaleNum_; ++scaleIdx) {
+            if (reduceMaxTensorFloat_.GetValue(scaleIdx) == 0.0f) {
+                reduceMaxTensorFloat_.SetValue(scaleIdx, 1.0f);
+            }
+        }
+        SyncFunc<AscendC::HardEvent::S_V>();
         Brcb(castInFloatLocal_, reduceMaxTensorFloat_, repeatNum_, {1, VEC_LEN / UB_ALIGN}); // 填充fp32的scale值
         PipeBarrier<PIPE_V>();
         Div(sumFloatLocal_, sumFloatLocal_, castInFloatLocal_, axisH_); // data_fp32/(1/scale)
         PipeBarrier<PIPE_V>();
         SyncFunc<AscendC::HardEvent::MTE3_V>();
-        Cast(scaleData_, reduceMaxTensorFloat_, RoundMode::CAST_RINT, scaleNum_); // 1/scale从fp32量化成bf16
-        PipeBarrier<PIPE_V>();
         Cast(halfLocal_, sumFloatLocal_, RoundMode::CAST_RINT, axisH_); // token数据fp32->bf16 四舍六入五成双
         PipeBarrier<PIPE_V>();
         Cast(castDataInt8_, halfLocal_, RoundMode::CAST_RINT, axisH_); // token数据bf16->int8 四舍六入五成双
@@ -650,11 +656,10 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
     int offsetPre = 0;
     offsetIndex_ = 0U;
 
-    // 计算offsetIndex,copyNum,dataOffset,scaleOffset
-    uint32_t totalCopyLen = 0;
-    uint32_t processNum_ = 0;
+    uint32_t processTokenNum = 0;
     uint32_t coreSeverId = coreIdx_ % coreNumPerServer;
     uint32_t tokenScaleLen = axisH_ / DOUBLE_TYPE + scaleNumAlign_;
+    DataCopyParams flagCopyParams{1U, static_cast<uint16_t>(sizeof(uint64_t)), 0U, 0U};
 
     // 每个核使用的链路要岔开，不能有冲突
     for (uint32_t i = 0U; i < maxLocalBs_; i++) {
@@ -669,15 +674,27 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
                 break;
             }
             offsetIndex_ = static_cast<uint32_t>(offsetPre);
-
-            offsetIndexs_[processNum_] = offsetIndex_;
-            copyNums_[processNum_] = static_cast<uint32_t>(copyNum);
-            dataOffsets_[processNum_] = dataOffset;
-            totalCopyLen += static_cast<uint32_t>(copyNum);
-            processNum_++;
+            uint32_t offsetIndexStart = offsetIndex_;
+            for (uint32_t copyIdx = 0; copyIdx < static_cast<uint32_t>(copyNum); ++copyIdx) {
+                ServerInAdd(targetRankId, offsetIndexStart);
+            }
+            if constexpr (DynamicQuant && std::is_same<ExpandXTransType, int8_t>::value) {
+                DynamicQuantProcess(dataOffset);
+            } else {
+                PipeBarrier<PIPE_V>();
+                Cast(dataInLocal_, sumFloatLocal_, AscendC::RoundMode::CAST_RINT, axisH_);
+                SyncFunc<AscendC::HardEvent::V_MTE3>();
+                DataCopy(localOutWindow_[i * axisH_], dataInLocal_, axisH_);
+            }
+            PipeBarrier<PIPE_MTE3>();
+            DataCopyPad(shareFlagGlobal_[(serverId + 1) * SUM_WINDOW_FLAG + i], rdmaFlagLocal, flagCopyParams);
+            processTokenNum++;
         }
     }
-    SumToWindowAdd(coreNumPerServer, serverId, totalCopyLen, targetRankId, rdmaFlagLocal);
+    PipeBarrier<PIPE_ALL>();
+    rdmaFlagLocal(0) = RDMA_TOKEN_END_FLAG + magicValue_;
+    uint32_t tokenOffset = coreNumPerServer * processTokenNum + coreSeverId;
+    DataCopyPad(shareFlagGlobal_[(serverId + 1) * SUM_WINDOW_FLAG + tokenOffset], rdmaFlagLocal, flagCopyParams);
     SyncAll<true>();
 }
 
@@ -686,7 +703,7 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
     const uint32_t targetRankId, const uint32_t offsetIndexStart)
 {
     uint32_t targetIpcRank = offsetReduceLocal_.GetValue(offsetIndex_) / (globalBs_ * axisK_);
-    uint32_t targetIpcOffset =
+    uint64_t targetIpcOffset =
         offsetReduceLocal_.GetValue(offsetIndex_) % (globalBs_ * axisK_) * (axisH_ + WEIGHT_VALUE_NUM);
 
     uint64_t copyAddr = shareAddreRank_[targetIpcRank % SERVER_RANK_SIZE] +
@@ -709,46 +726,6 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::SumToWindowAdd(
-    const uint32_t coreNumPerServer, const uint32_t serverId, const uint32_t totalCopyLen, const uint32_t targetRankId,
-    LocalTensor<uint64_t> rdmaFlagLocal)
-{
-    uint32_t processTokenNum = 0;
-    uint32_t tokenOffset = 0;
-    uint32_t offsetIndexStart = offsetIndexs_[processTokenNum];
-    offsetIndex_ = offsetIndexs_[processTokenNum];
-    uint32_t copyNum = copyNums_[processTokenNum];
-    uint32_t dataOffset = dataOffsets_[processTokenNum];
-    for (uint32_t i = 0U; i < totalCopyLen; i++) {
-        ServerInAdd(targetRankId, offsetIndexStart);
-        if ((offsetIndex_ - offsetIndexStart) == copyNum) {
-            tokenOffset = coreNumPerServer * processTokenNum + coreIdx_ % coreNumPerServer;
-            if constexpr (DynamicQuant && std::is_same<ExpandXTransType, int8_t>::value) {
-                DynamicQuantProcess(dataOffset);
-            } else {
-                PipeBarrier<PIPE_V>();
-                Cast(dataInLocal_, sumFloatLocal_, AscendC::RoundMode::CAST_RINT, axisH_);
-                SyncFunc<AscendC::HardEvent::V_MTE3>();
-                DataCopy(localOutWindow_[tokenOffset * axisH_], dataInLocal_, axisH_); // int8数据+scale值
-            }
-            PipeBarrier<PIPE_MTE3>();
-            DataCopy(shareFlagGlobal_[(serverId + 1) * SUM_WINDOW_FLAG + tokenOffset * B64_PER_BLOCK], rdmaFlagLocal,
-                     B64_PER_BLOCK);
-            processTokenNum++;
-            offsetIndex_ = offsetIndexs_[processTokenNum];
-            copyNum = copyNums_[processTokenNum];
-            dataOffset = dataOffsets_[processTokenNum];
-            offsetIndexStart = offsetIndex_;
-        }
-    }
-    PipeBarrier<PIPE_ALL>();
-    rdmaFlagLocal(0) = RDMA_TOKEN_END_FLAG + magicValue_;
-    tokenOffset = coreNumPerServer * processTokenNum + coreIdx_ % coreNumPerServer;
-    DataCopy(shareFlagGlobal_[(serverId + 1) * SUM_WINDOW_FLAG + tokenOffset * B64_PER_BLOCK], rdmaFlagLocal,
-             B64_PER_BLOCK);
-}
-
-template <TemplateMC2TypeV2LayeredClass>
 __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::WaitStatusAndDispatch(
     const uint32_t tragRankId, const uint32_t copyLen, const uint32_t copyLenAlign, const uint64_t srcrdmaAddr,
     const uint64_t dstrdmaAddr)
@@ -759,10 +736,13 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
     GlobalTensor<ExpandXTransType> aivSrcGlobal;
     GlobalTensor<ExpandXTransType> aivDstGlobal;
     LocalTensor<ExpandXTransType> tmpLowUb = tBuf_.Get<ExpandXTransType>();
+    DataCopyExtParams flagCopyParams{1U, static_cast<uint16_t>(sizeof(uint64_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<uint64_t> flagPadParams{false, 0U, 0U, 0U};
     while (!stopFlag) {
         while (true) {
-            DataCopy(checkRdmaLocal_[CACHELINE_SIZE],
-                     shareFlagGlobal_[(checkServer_ + 1) * SUM_WINDOW_FLAG + copySum * B64_PER_BLOCK], B64_PER_BLOCK);
+            DataCopyPad(checkRdmaLocal_[CACHELINE_SIZE],
+                        shareFlagGlobal_[(checkServer_ + 1) * SUM_WINDOW_FLAG + copySum], flagCopyParams,
+                        flagPadParams);
             PipeBarrier<PIPE_ALL>();
             if (checkRdmaLocal_.GetValue(CACHELINE_SIZE) == (RDMA_TOKEN_ARRIVED_FLAG + magicValue_)) {
                 copySum++;
