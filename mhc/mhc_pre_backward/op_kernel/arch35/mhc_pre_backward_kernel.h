@@ -20,6 +20,7 @@
 #include "lib/matmul_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "mhc_pre_backward_utils.h"
+#include "mhc_pre_backward_cube_compute.h"
 
 namespace MhcPreBackward {
 
@@ -32,9 +33,7 @@ constexpr uint32_t GAMMA_REG_REUSE_T_THRESHOLD = 3072;
 template <class T, class P>
 class MhcPreBackwardKernel {
 public:
-    __aicore__ inline MhcPreBackwardKernel(MT_C0 &matmul0, MT_C1 &matmul1) : mm0(matmul0), mm1(matmul1)
-    {
-    }
+    __aicore__ inline MhcPreBackwardKernel() = default;
     // 入口函数
     __aicore__ inline void Init(InitParams initParams);
     __aicore__ inline void Process();
@@ -128,8 +127,7 @@ public:
     __aicore__ inline void VFDoV3ProcessAlphaGrad(__ubuf__ P *alphaGradOut, __ubuf__ P *alphaGradIn);
 
 private:
-    MT_C0 &mm0;
-    MT_C1 &mm1;
+    MhcPreBackwardC0Basic c0Basic_;
     uint32_t coreNum_;
     uint64_t totalLength_;
     uint64_t vecDealBSPeCore_;
@@ -291,6 +289,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
     gradHPostOffset_ = hPreMaxBufLen_ * sizeof(P);
     gradHResBufLen_ = vecDealChunk_ * N_ * N_;
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + gradHResBufLen_;
+    if ASCEND_IS_AIC {
+        pipe_ = initParams.tPipeIn;
+        c0Basic_.Init(pipe_);
+    }
     if ASCEND_IS_AIV {
         pipe_ = initParams.tPipeIn;
         pipe_->InitBuffer(vecInQueue0_, 2, INOUT_QUEUE_SIZE);
@@ -943,7 +945,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     uint32_t currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - dealStartND_);
     uint32_t currentBSBlock = static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_));
     uint32_t buffId = 0;
-    // 预执行第一个C0
+    // 预执行第一块C0，后续每轮先计算下一块C0，再消费当前块执行C1。
     ProcessC0(dealStartND_, currentNDBlock, 0, currentBSBlock, buffId);
 
     for (uint32_t offsetND = dealStartND_; offsetND < dealEndND_; offsetND += ND_BLOCK_SIZE) {
@@ -954,18 +956,18 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
                 static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - offsetBS));
 
             uint64_t nextOffsetBS = offsetBS + SINGLE_M;
-            if (nextOffsetBS < totalLength_) { // BS还有未计算
+            if (nextOffsetBS < totalLength_) {
                 uint32_t nextBSBlock =
                     static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - nextOffsetBS));
-                ProcessC0(offsetND, currentNDBlock, nextOffsetBS, nextBSBlock, (buffId + 1));
-            } else { // 预计算下一个nD块的C0
+                ProcessC0(offsetND, currentNDBlock, nextOffsetBS, nextBSBlock, buffId + 1);
+            } else {
                 uint32_t nextOffsetND = offsetND + ND_BLOCK_SIZE;
-                if (nextOffsetND < dealEndND_) { // ND 还有未计算
+                if (nextOffsetND < dealEndND_) {
                     uint32_t nextNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - nextOffsetND);
                     nextOffsetBS = 0;
                     uint32_t nextBSBlock =
-                        static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - nextOffsetBS));
-                    ProcessC0(nextOffsetND, nextNDBlock, nextOffsetBS, nextBSBlock, (buffId + 1));
+                        static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_));
+                    ProcessC0(nextOffsetND, nextNDBlock, nextOffsetBS, nextBSBlock, buffId + 1);
                 }
             }
 
@@ -973,6 +975,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
             buffId++;
         }
     }
+    c0Basic_.End();
 
     if ASCEND_IS_AIC {
         AscendC::SetHF32Mode(0);
@@ -986,22 +989,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
                                                              uint32_t buffIdx)
 {
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
-    // 设置矩阵形状
-    mm0.SetOrgShape(totalLength_, nD_, fusionSize_);
-    mm0.SetSingleShape(currentBSBlock, currentNDBlock, fusionSize_);
-    // h_mix_grad @ phi
-    mm0.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)]); // [BS, N^2+2N]
-    mm0.SetTensorB(phiGm_[offsetND], false);                                 // [N^2+2N, ND]
-    // 计算
     uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffIdx);
-    while (mm0.Iterate()) {
-        mm0.GetTensorC(workSpaceGm_[writeOffset], 0, true); // 连续写
-        // 每个128行结果写回完成后发布一次，包含最后不足128行的尾块。
-        AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(CROSS_CORE_WAIT_FLAG_C0);
-        writeOffset += MATMUL_WRITE_OFFSET_M * MATMUL_WRITE_OFFSET_N;
-    }
-    mm0.End();
-
+    c0Basic_.Process(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], phiGm_[offsetND],
+                     workSpaceGm_[writeOffset], currentBSBlock, currentNDBlock, fusionSize_, nD_);
 }
 
 template <class T, class P>
@@ -1012,17 +1002,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
     AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
     // 1C2V 对应操作两块 workspaceGm_
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
-    // 设置矩阵形状
     uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffIdx);
-    mm1.SetOrgShape(fusionSize_, currentNDBlock, totalLength_, currentBSBlock, nD_); // [M,N,Ka,Kb,orgKc]
-    mm1.SetSingleShape(fusionSize_, currentNDBlock, currentBSBlock);                 // [sM, sN, sK]
-    // h_mix_grad^T @ x_rs
-    mm1.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], true); // [BS, N^2+2N]
-    mm1.SetTensorB(workSpaceGm_[offsetXs], false);                                 // [BS, NDBlock]
-    // 计算
     bool enAtomic = (offsetBS != 0);
-    mm1.IterateAll(gradPhiGm_[offsetND], enAtomic); // 非连续写
-    mm1.End();
+    c0Basic_.ProcessC1(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], workSpaceGm_[offsetXs],
+                       gradPhiGm_[offsetND], fusionSize_, currentNDBlock, currentBSBlock, fusionSize_,
+                       ND_BLOCK_SIZE, nD_, enAtomic);
 }
 
 template <class T, class P>
@@ -1260,7 +1244,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
 
     // 当前BS块的invRms系数一次搬入并计算，后续各chunk按行偏移复用已有UB空间。
     ProcessV2ChunkLoadInvRms(bsStart, currentBsSize);
-
     // ==========================================================
     // 主循环: 按chunk=64切分BS方向
     // ==========================================================
@@ -1269,7 +1252,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         uint32_t currentChunkSize = static_cast<uint32_t>(bsChunkEnd - bsChunkStart);
         uint32_t chunkNDSize = currentChunkSize * copySizeND;
 
-        // N=4每chunk等待一次，N=6/8每两个64行chunk等待一次，尾块同样配对。
+        // C0每完成128行发布一次；两个64行chunk共同消费一块C0结果。
         if ((bsChunkStart - bsStart) % MATMUL_WRITE_OFFSET_M == 0) {
             AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0);
         }
