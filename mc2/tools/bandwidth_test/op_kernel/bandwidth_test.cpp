@@ -30,6 +30,7 @@ template <uint8_t ArchTag, uint8_t CommMode>
 __global__ __aicore__ void bandwidth_test(GM_ADDR context, GM_ADDR x, GM_ADDR dstRankId, GM_ADDR y, GM_ADDR receiveCnt,
                                           GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+    printf("111111111111111111\n");
     REGISTER_TILING_DEFAULT(BandwidthTestTilingData);
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", BandwidthTestTilingData);
 
@@ -38,7 +39,7 @@ __global__ __aicore__ void bandwidth_test(GM_ADDR context, GM_ADDR x, GM_ADDR ds
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(BandwidthTestTilingData, tilingData, tilingGM);
         if constexpr (CommMode == TILINGKEY_TPL_URMA) {
-            printf("urma");
+            printf("urma\n");
             BandwidthTestUrma<DTYPE_X, DTYPE_Y> op;
             op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
             op.Process();
