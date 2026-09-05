@@ -1103,19 +1103,19 @@ def generate_data():
 
     if SEED_Q is not None:
         torch.manual_seed(SEED_Q)
-    q_bf16 = torch.rand(B, N_q, max_sq, D, dtype=torch.float16) * 2 - 1
+    q_bf16 = torch.rand(B, N_q, max_sq, D, dtype=torch.bfloat16) * 2 - 1
     if DATA_RANGE_Q is not None:
         q_bf16 = q_bf16 * DATA_RANGE_Q
 
     if SEED_K is not None:
         torch.manual_seed(SEED_K)
-    k_bf16 = torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+    k_bf16 = torch.rand(B, N_kv, max_skv, D, dtype=torch.bfloat16) * 2 - 1
     if DATA_RANGE_K is not None:
         k_bf16 = k_bf16 * DATA_RANGE_K
 
     if SEED_V is not None:
         torch.manual_seed(SEED_V)
-    v_bf16 = torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+    v_bf16 = torch.rand(B, N_kv, max_skv, D, dtype=torch.bfloat16) * 2 - 1
     if DATA_RANGE_V is not None:
         v_bf16 = v_bf16 * DATA_RANGE_V
 
@@ -1216,13 +1216,38 @@ def _build_attention_mask(b, Sq, Skv, actual_seq_q, actual_seq_kv, sparse_mode):
 
     if sparse_mode == 3:
         delta = k_lens_acl - q_lens_acl
-        causal_mask = k_range > (q_range + delta)
-        return causal_mask | q_padding_mask | k_padding_mask
+        causal_mask = (k_range > (q_range + delta)) & (k_range < k_lens_acl)
+
+        t_loc = torch.arange(Sq, dtype=torch.int32).view(1, Sq)
+        even_sec = (
+            (q_lens_t % 2 == 0).view(b, 1) & (t_loc >= (q_lens_t - 2).view(b, 1))
+        ).view(b, 1, Sq, 1)
+        delta_eff = (delta + even_sec).to(torch.int32)
+        causal_mask = torch.where(
+            even_sec, (k_range > (q_range + delta_eff)) & (k_range < k_lens_acl), causal_mask
+        )
+        return causal_mask | q_padding_mask
     else:
         return q_padding_mask | k_padding_mask
 
 
-def _compute_c1_npu(
+def _quant_matmul_npu(x1, x2, c_scale, pertoken_scale):
+    torch.npu.synchronize()
+    res = torch_npu.npu_quant_matmul(
+        x1,
+        x2,
+        c_scale,
+        pertoken_scale=pertoken_scale,
+        output_dtype=torch.float32,
+        pertoken_scale_dtype=torch_npu.float8_e8m0fnu,
+        scale_dtype=torch_npu.float8_e8m0fnu,
+        group_sizes=[1, 1, 32],
+    )
+    torch.npu.synchronize()
+    return res
+
+
+def _compute_c1_npu_sequential(
     Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale, Qri=None, Krj=None
 ):
     """计算单个 S block (attention score)"""
@@ -1239,18 +1264,12 @@ def _compute_c1_npu(
             input_deq_scale = input_deq_scale.reshape(S2, -1, 2)
             pertoken_scale = deq_scale_q_i[b, n, :, :]
             pertoken_scale = pertoken_scale.reshape(S1, -1, 2)
-            torch.npu.synchronize()
-            tmp_res = torch_npu.npu_quant_matmul(
+            tmp_res = _quant_matmul_npu(
                 Qi_tmp,
                 Kj_tmp.t(),
                 input_deq_scale.transpose(0, 1),
-                pertoken_scale=pertoken_scale,
-                output_dtype=torch.float32,
-                pertoken_scale_dtype=torch_npu.float8_e8m0fnu,
-                scale_dtype=torch_npu.float8_e8m0fnu,
-                group_sizes=[1, 1, 32],
+                pertoken_scale,
             )
-            torch.npu.synchronize()
             S_ij[b, n, :, :] = tmp_res
     if Qri is not None and Krj is not None:
         S_ij += torch.matmul(
@@ -1260,8 +1279,104 @@ def _compute_c1_npu(
     return S_ij
 
 
-def _compute_c2_npu(P, V, deq_scale_p, deq_scale_v):
-    """计算单个 S block (attention score)"""
+def _compute_c1_npu_batched(
+    Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale, Qri=None, Krj=None
+):
+    """计算单个 S block (attention score)
+    batched 版: 把 (B, N) 展平为 batch 维, 单次 npu_quant_matmul 完成,
+    数值与 per-head 串行调用一致 (verify_batch.py 已验证 bit-exact)。
+    """
+    B, N, S1, D = Qi.shape
+    _, _, S2, _ = Kj.shape
+    BN = B * N
+    x1 = Qi.to(torch.float8_e4m3fn).view(BN, S1, D).npu()
+    x2 = (
+        Kj.permute(0, 1, 3, 2)
+        .to(torch.float8_e4m3fn)
+        .reshape(BN, D, S2)
+        .contiguous()
+        .npu()
+    )
+    Dg_half = deq_scale_k_j.shape[-1] // 2
+    c_scale = (
+        deq_scale_k_j.reshape(BN, S2, Dg_half, 2).permute(0, 2, 1, 3).contiguous().npu()
+    )
+    pertoken_scale = (
+        deq_scale_q_i.reshape(BN, S1, Dg_half, 2).contiguous().npu()
+    )
+    S_ij = _quant_matmul_npu(x1, x2, c_scale, pertoken_scale).view(B, N, S1, S2).cpu()
+    if Qri is not None and Krj is not None:
+        S_ij += torch.matmul(
+            Qri.to(torch.float32), Krj.to(torch.float32).permute(0, 1, 3, 2)
+        )
+    S_ij = S_ij * softmax_scale
+    return S_ij
+
+
+def _e8m0_exps(scale_bytes):
+    """e8m0fnu 字节流 (int8/int32 存 biased exponent 字节) → 指数 (相对 2^0)"""
+    return ((scale_bytes.to(torch.int32) & 0xFF) - 127).to(torch.int64)
+
+
+def _grouped_quant_matmul_cpu(x1, x2, e1, e2):
+
+    BN, M, K = x1.shape
+    N = x2.shape[2]
+    G = e1.shape[2]
+    x1g = x1.view(BN, M, G, 32)
+    x2g = x2.view(BN, G, 32, N)
+    S = x1.new_zeros((BN, M, N))
+    for g in range(G):
+        partial = torch.bmm(x1g[:, :, g], x2g[:, g])
+        exp_sum = e1[:, :, g].unsqueeze(2) + e2[:, :, g].unsqueeze(1)
+        S = S + torch.ldexp(partial, exp_sum)
+    return S
+
+
+def _compute_c1_cpu(
+    Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale, Qri=None, Krj=None
+):
+    """CPU 仿真 NPU C1 量化 matmul: S = (Q·K^T 组 scale) * softmax_scale。
+    Q/K scale 均为 32 通道组 e8m0 (deq_scale_q_i: (B,N,S1,D/32), deq_scale_k_j: (B,N,S2,D/32))。
+    """
+    B, N, S1, D = Qi.shape
+    S2 = Kj.shape[2]
+    BN = B * N
+    x1 = Qi.to(torch.float32).view(BN, S1, D)
+    x2 = Kj.permute(0, 1, 3, 2).to(torch.float32).reshape(BN, D, S2).contiguous()
+    e1 = _e8m0_exps(deq_scale_q_i).view(BN, S1, deq_scale_q_i.shape[-1])
+    e2 = _e8m0_exps(deq_scale_k_j).view(BN, S2, deq_scale_k_j.shape[-1])
+    S_ij = _grouped_quant_matmul_cpu(x1, x2, e1, e2).view(B, N, S1, S2)
+    if Qri is not None and Krj is not None:
+        S_ij += torch.matmul(
+            Qri.to(torch.float32), Krj.to(torch.float32).permute(0, 1, 3, 2)
+        )
+    S_ij = S_ij * softmax_scale
+    return S_ij
+
+
+def _compute_c1_npu(
+    Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale, Qri=None, Krj=None
+):
+    """计算单个 S block (attention score)
+    QFA_GOLDEN_NPU: ""(默认) CPU 仿真 / "batch" NPU 批量 / "seq" NPU per-head (最慢)。
+    """
+    mode = _os.environ.get("QFA_GOLDEN_NPU", "")
+    if mode == "batch":
+        return _compute_c1_npu_batched(
+            Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale, Qri=Qri, Krj=Krj
+        )
+    if mode == "seq" or int(_os.environ.get("QFA_GOLDEN_SEQ", "0")):
+        return _compute_c1_npu_sequential(
+            Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale, Qri=Qri, Krj=Krj
+        )
+    return _compute_c1_cpu(
+        Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale, Qri=Qri, Krj=Krj
+    )
+
+
+def _compute_c2_npu_sequential(P, V, deq_scale_p, deq_scale_v):
+    """计算单个 O block (P·V) — per-head 串行调用 (慢, 仅 fallback)"""
     batch, headnum, M, PK = P.shape
     _, _, VK, N = V.shape
     if PK != VK:
@@ -1281,20 +1396,70 @@ def _compute_c2_npu(P, V, deq_scale_p, deq_scale_v):
             )
             pertoken_scale = deq_scale_p[b, n, :, :]
             pertoken_scale = pertoken_scale.reshape(M, -1, 2)
-            torch.npu.synchronize()
-            tmp_res = torch_npu.npu_quant_matmul(
-                P_tmp,
-                V_tmp,
-                input_deq_scale,
-                pertoken_scale=pertoken_scale,
-                output_dtype=torch.float32,
-                pertoken_scale_dtype=torch_npu.float8_e8m0fnu,
-                scale_dtype=torch_npu.float8_e8m0fnu,
-                group_sizes=[1, 1, 32],
+            S_ij[b, n, :, :] = _quant_matmul_npu(
+                P_tmp, V_tmp, input_deq_scale, pertoken_scale
             )
-            torch.npu.synchronize()
-            S_ij[b, n, :, :] = tmp_res
     return S_ij
+
+
+def _compute_c2_npu_batched(P, V, deq_scale_p, deq_scale_v):
+    """计算单个 O block (P·V)
+    batched 版: (B, N) 展平为 batch 维, 单次 npu_quant_matmul 完成,
+    数值与 per-head 串行调用一致 (verify_batch.py 已验证 bit-exact)。
+    """
+    batch, headnum, M, PK = P.shape
+    _, _, VK, N = V.shape
+    if PK != VK:
+        print("❌ x1's K must be same with x2's K")
+    BN = batch * headnum
+    x1 = P.to(torch.float8_e4m3fn).view(BN, M, PK).contiguous().npu()
+    x2 = V.to(torch.float8_e4m3fn).view(BN, PK, N).contiguous().npu()
+    Sg = deq_scale_v.shape[2]
+    c_scale = (
+        deq_scale_v.view(batch, headnum, Sg, N)
+        .permute(0, 1, 3, 2)
+        .reshape(BN, N, Sg // 2, 2)
+        .permute(0, 2, 1, 3)
+        .contiguous()
+        .npu()
+    )
+    pertoken_scale = (
+        deq_scale_p.view(BN, M, PK // 32 // 2, 2).contiguous().npu()
+    )
+    S_ij = _quant_matmul_npu(x1, x2, c_scale, pertoken_scale).view(
+        batch, headnum, M, N
+    )
+    return S_ij.cpu()
+
+
+def _compute_c2_cpu(P, V, deq_scale_p, deq_scale_v):
+
+    batch, headnum, M, PK = P.shape
+    _, _, VK, N = V.shape
+    if PK != VK:
+        print("❌ x1's K must be same with x2's K")
+    BN = batch * headnum
+    G = PK // 32
+    x1 = P.to(torch.float32).view(BN, M, PK)
+    x2 = V.to(torch.float32).view(BN, PK, N)
+    e1 = _e8m0_exps(deq_scale_p).view(BN, M, G)
+    e2 = (
+        _e8m0_exps(deq_scale_v)
+        .view(batch, headnum, G, N)
+        .permute(0, 1, 3, 2)
+        .reshape(BN, N, G)
+    )
+    return _grouped_quant_matmul_cpu(x1, x2, e1, e2).view(batch, headnum, M, N)
+
+
+def _compute_c2_npu(P, V, deq_scale_p, deq_scale_v):
+
+    mode = _os.environ.get("QFA_GOLDEN_NPU", "")
+    if mode == "batch":
+        return _compute_c2_npu_batched(P, V, deq_scale_p, deq_scale_v)
+    if mode == "seq" or int(_os.environ.get("QFA_GOLDEN_SEQ", "0")):
+        return _compute_c2_npu_sequential(P, V, deq_scale_p, deq_scale_v)
+    return _compute_c2_cpu(P, V, deq_scale_p, deq_scale_v)
 
 
 def _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale):
@@ -1393,6 +1558,25 @@ def cpu_mxfp8_golden(
         b, Sq, Skv, actual_seq_q, actual_seq_kv, SPARSE_MODE
     )
 
+    kv_len_acl = torch.tensor(actual_seq_kv, dtype=torch.int32).view(b, 1, 1, 1)
+    kv_pos_range = torch.arange(Skv, dtype=torch.int32).view(1, 1, 1, -1)
+    qlen_acl_t = torch.tensor(actual_seq_q, dtype=torch.int32).view(b, 1, 1, 1)
+    kv_hi_t = kv_len_acl - (kv_len_acl % 64) + 64
+    kv_hi_t = torch.where(kv_len_acl % 64 == 0, kv_len_acl, kv_hi_t)
+    t_loc_t = torch.arange(Sq, dtype=torch.int32).view(1, 1, Sq, 1)
+    min_k_t = (t_loc_t + kv_len_acl - qlen_acl_t).clamp(min=0)
+    neg_inf_t = torch.tensor(float("-inf"), dtype=torch.float32)
+    min_val_t = torch.tensor(minValue.item(), dtype=torch.float32)
+
+    def _apply_tile_window(S_ij, Sk_start):
+
+        width = S_ij.shape[-1]
+        pos = kv_pos_range[:, :, :, Sk_start : Sk_start + width]
+        skip = (Sk_start + width - 1 < min_k_t) | (Sk_start >= kv_hi_t)
+        S_ij = S_ij.masked_fill(skip, neg_inf_t)
+        S_ij = S_ij.masked_fill(pos >= kv_hi_t, neg_inf_t)
+        return torch.where((pos >= kv_len_acl) & (pos < kv_hi_t), min_val_t, S_ij)
+
     Q_BLOCKS = list(torch.split(q_tensor, Q_BLOCK_SIZE, dim=2))
     K_BLOCKS = list(torch.split(k_tensor, K_BLOCK_SIZE, dim=2))
     V_BLOCKS = list(torch.split(v_tensor, V_BLOCK_SIZE, dim=2))
@@ -1409,8 +1593,12 @@ def cpu_mxfp8_golden(
     dequant_scale_k = sanitize_e8m0_scale(dequant_scale_k, "dequant_scale_k")
     dequant_scale_q_np = dequant_scale_q.numpy().astype("float8_e8m0").view(np.int8)
     dequant_scale_k_np = dequant_scale_k.numpy().astype("float8_e8m0").view(np.int8)
-    dequant_scale_q = torch.from_numpy(dequant_scale_q_np).npu()
-    dequant_scale_k = torch.from_numpy(dequant_scale_k_np).npu()
+    if _os.environ.get("QFA_GOLDEN_NPU", "") != "":
+        dequant_scale_q = torch.from_numpy(dequant_scale_q_np).npu()
+        dequant_scale_k = torch.from_numpy(dequant_scale_k_np).npu()
+    else:
+        dequant_scale_q = torch.from_numpy(dequant_scale_q_np)
+        dequant_scale_k = torch.from_numpy(dequant_scale_k_np)
     groups_num = dequant_scale_v.shape[2]
     if groups_num % 2 != 0:  # s2没有64对齐
         dequant_scale_v = F.pad(dequant_scale_v, (0, 0, 0, 1))
@@ -1442,6 +1630,7 @@ def cpu_mxfp8_golden(
             deq_scale_k_j = dequant_scale_k[:, :, Sk_start:Sk_end, :]
             deq_scale_q_i = dequant_scale_q[:, :, Sq_start:Sq_end, :]
             S_ij = _compute_c1_npu(Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale)
+            S_ij = _apply_tile_window(S_ij, Sk_start)
 
             mask_j = mask_global[:, :, Sq_start:Sq_end, Sk_start:Sk_end]
             m_block_j, s_block_j, P_ij_drop = _online_softmax_update(
@@ -1458,6 +1647,7 @@ def cpu_mxfp8_golden(
                 S_ij1 = _compute_c1_npu(
                     Qi, Kj1, deq_scale_q_i, deq_scale_k_j1, softmax_scale
                 )
+                S_ij1 = _apply_tile_window(S_ij1, Sk1_start)
                 mask_j1 = mask_global[:, :, Sq_start:Sq_end, Sk1_start:Sk1_end]
                 m_block_j1, s_block_j1, P_ij1_drop = _online_softmax_update(
                     S_ij1, mask_j1, m_block_j, s_block_j, oi, ln_p_scale, minValue
@@ -1538,6 +1728,8 @@ def cpu_mxfp8_golden(
     out = torch.cat(o_BLOCKS, dim=2)
     out_sum = torch.cat(s_BLOCKS, dim=2)
     out = out / (out_sum)
+    # kernel 语义: s=0 的行 (全溢出/全 mask) 输出 0 而非 NaN
+    out = torch.where(out_sum > 0, out, torch.zeros_like(out))
 
     o_max = torch.cat(m_BLOCKS, dim=2)
     all_masked = o_max <= minValue.item()
@@ -1546,7 +1738,7 @@ def cpu_mxfp8_golden(
     lse = torch.where(
         all_masked,
         torch.full_like(o_max, float("inf")),
-        o_max + torch.log(out_sum + EPSILON),
+        o_max + torch.log(out_sum),
     )
 
     out = torch.where(true_all_masked, torch.zeros_like(out), out)
