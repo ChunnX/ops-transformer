@@ -39,5 +39,25 @@ std::tuple<at::Tensor, at::Tensor> bandwidth_test(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("bandwidth_test", &bandwidth_test, "bandwidth_test");
+    // Diagnose the same resolver and process-local library cache used by ACLNN_CMD, without launching an op.
+    m.def("check_aclnn_api", []() {
+        pybind11::dict result;
+        const char *symbols[] = {
+            "aclnnMegaMoeGetWorkspaceSize", "aclnnMegaMoe",
+            "aclnnBandwidthTestGetWorkspaceSize", "aclnnBandwidthTest",
+            "aclnnInnerBandwidthTestGetWorkspaceSize", "aclnnInnerBandwidthTest",
+            "aclnnBandwidthTestWithContextGetWorkspaceSize", "aclnnBandwidthTestWithContext"};
+        for (const char *symbol : symbols) {
+            void *address = GetOpApiFuncAddr(symbol);
+            if (address == nullptr) {
+                result[pybind11::str(symbol)] = "MISSING";
+                continue;
+            }
+            Dl_info info{};
+            result[pybind11::str(symbol)] =
+                dladdr(address, &info) != 0 && info.dli_fname != nullptr ? info.dli_fname : "FOUND (path unavailable)";
+        }
+        return result;
+    });
 }
 } // namespace op_api
