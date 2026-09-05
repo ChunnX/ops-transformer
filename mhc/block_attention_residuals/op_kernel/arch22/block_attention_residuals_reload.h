@@ -66,7 +66,7 @@ public:
             return;
         }
 
-        tokenStart_ = blockIdx_ * tokensPerCore_;
+        tokenStart_ = static_cast<int64_t>(blockIdx_) * tokensPerCore_;
         if (tokenStart_ >= numTokens_) {
             tokenNum_ = 0;
             return;
@@ -95,7 +95,7 @@ public:
         if (tokenNum_ == 0 || hiddenSize_ == 0) {
             return;
         }
-        for (uint32_t localIdx = 0; localIdx < tokenNum_; ++localIdx) {
+        for (int64_t localIdx = 0; localIdx < tokenNum_; ++localIdx) {
             ProcessOneToken(tokenStart_ + localIdx);
         }
     }
@@ -131,7 +131,7 @@ private:
         }
     }
 
-    __aicore__ inline void CopyInRowEnqueue(const GlobalTensor<D_IN> &srcGm, uint64_t srcOffset)
+    __aicore__ inline void CopyInRowEnqueue(const GlobalTensor<D_IN> &srcGm, int64_t srcOffset)
     {
         LocalTensor<D_IN> inLocal = inQue_.AllocTensor<D_IN>();
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(hiddenSize_ * sizeof(D_IN)), 0, 0, 0};
@@ -145,7 +145,7 @@ private:
         return inQue_.DeQue<D_IN>();
     }
 
-    __aicore__ inline LocalTensor<D_IN> CopyInRowSync(const GlobalTensor<D_IN> &srcGm, uint64_t srcOffset)
+    __aicore__ inline LocalTensor<D_IN> CopyInRowSync(const GlobalTensor<D_IN> &srcGm, int64_t srcOffset)
     {
         CopyInRowEnqueue(srcGm, srcOffset);
         return CopyInRowDeQue();
@@ -162,17 +162,16 @@ private:
         return (n < numBlocks_) ? blockResGm_ : partialBlockGm_;
     }
 
-    __aicore__ inline uint64_t GetLogicRowOffset(uint32_t tokenIdx, uint32_t n) const
+    __aicore__ inline int64_t GetLogicRowOffset(int64_t tokenIdx, int64_t n) const
     {
         if (n < numBlocks_) {
-            const uint64_t blockBase = static_cast<uint64_t>(tokenIdx) * numBlocks_ * hiddenSize_;
-            return blockBase + static_cast<uint64_t>(n) * hiddenSize_;
+            return tokenIdx * numBlocks_ * hiddenSize_ + n * hiddenSize_;
         }
-        return static_cast<uint64_t>(tokenIdx) * hiddenSize_;
+        return tokenIdx * hiddenSize_;
     }
 
     /*! Softmax 前：Cast → sumSq → invNorm → score → vecMeta[metaIdx] */
-    __aicore__ inline void ProcessRowScore(const LocalTensor<D_IN> &inLocal, uint32_t metaIdx, uint32_t tokenIdx)
+    __aicore__ inline void ProcessRowScore(const LocalTensor<D_IN> &inLocal, uint32_t metaIdx, int64_t tokenIdx)
     {
         CastRowToFp32(vRow_, inLocal, hiddenSize_);
         PipeBarrier<PIPE_V>();
@@ -190,7 +189,7 @@ private:
             invQue_.EnQue(invUb);
             invUb = invQue_.DeQue<float>();
             DataCopyExtParams scalarParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-            const uint64_t gmOffset = static_cast<uint64_t>(tokenIdx) * blockCount_ + static_cast<uint64_t>(metaIdx);
+            const int64_t gmOffset = tokenIdx * blockCount_ + static_cast<int64_t>(metaIdx);
             DataCopyPad(invNormGm_[gmOffset], invUb, scalarParams);
             invQue_.FreeTensor(invUb);
         }
@@ -227,7 +226,7 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline void ComputePreSoftmaxScores(uint32_t tokenIdx)
+    __aicore__ inline void ComputePreSoftmaxScores(int64_t tokenIdx)
     {
         if (blockCount_ == 0) {
             return;
@@ -256,19 +255,19 @@ private:
     }
 
     /*! Softmax 后：每 token 一次搬出 B 个 probs（Que 同步） */
-    __aicore__ inline void WriteProbsQue(uint32_t tokenIdx)
+    __aicore__ inline void WriteProbsQue(int64_t tokenIdx)
     {
         LocalTensor<float> probsUb = probsQue_.AllocTensor<float>();
         CopyCompactFloatsUb(probsUb, vecMeta_, blockCount_);
         probsQue_.EnQue(probsUb);
         probsUb = probsQue_.DeQue<float>();
-        DataCopyExtParams probsParams{1, blockCount_ * static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-        const uint64_t gmOffset = static_cast<uint64_t>(tokenIdx) * blockCount_;
+        DataCopyExtParams probsParams{1, static_cast<uint32_t>(blockCount_ * sizeof(float)), 0, 0, 0};
+        const int64_t gmOffset = tokenIdx * blockCount_;
         DataCopyPad(probsGm_[gmOffset], probsUb, probsParams);
         probsQue_.FreeTensor(probsUb);
     }
 
-    __aicore__ inline void WeightedOutputReload(uint32_t tokenIdx)
+    __aicore__ inline void WeightedOutputReload(int64_t tokenIdx)
     {
         Duplicate(outFp32_, 0.0f, hiddenSize_);
         PipeBarrier<PIPE_V>();
@@ -291,19 +290,19 @@ private:
         ResetMask();
     }
 
-    __aicore__ inline void WriteHiddenStates(uint32_t tokenIdx)
+    __aicore__ inline void WriteHiddenStates(int64_t tokenIdx)
     {
         LocalTensor<D_IN> outLocal = outQue_.AllocTensor<D_IN>();
         CastFp32ToRow(outLocal, outFp32_, hiddenSize_);
         outQue_.EnQue(outLocal);
         outLocal = outQue_.DeQue<D_IN>();
-        const uint64_t outOffset = static_cast<uint64_t>(tokenIdx) * hiddenSize_;
+        const int64_t outOffset = tokenIdx * hiddenSize_;
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(hiddenSize_ * sizeof(D_IN)), 0, 0, 0};
         DataCopyPad(hiddenStatesGm_[outOffset], outLocal, copyParams);
         outQue_.FreeTensor(outLocal);
     }
 
-    __aicore__ inline void ProcessOneToken(uint32_t tokenIdx)
+    __aicore__ inline void ProcessOneToken(int64_t tokenIdx)
     {
         ComputePreSoftmaxScores(tokenIdx);
         SoftmaxSmall();
@@ -346,19 +345,19 @@ private:
     LocalTensor<float> metaBrc_;
     LocalTensor<float> scalarLocal_;
 
-    uint32_t numTokens_{0};
-    uint32_t numBlocks_{0};
-    uint32_t hiddenSize_{0};
+    int64_t numTokens_{0};
+    int64_t numBlocks_{0};
+    int64_t hiddenSize_{0};
     uint32_t hiddenSizeAlignBf16_{0};
     uint32_t hiddenSizeAlignFp32_{0};
-    uint32_t blockCount_{0};
+    int64_t blockCount_{0};
     uint32_t metaAlign_{0};
-    uint32_t tokensPerCore_{0};
-    uint32_t tokenStart_{0};
-    uint32_t tokenNum_{0};
+    int64_t tokensPerCore_{0};
+    int64_t tokenStart_{0};
+    int64_t tokenNum_{0};
     uint32_t blockIdx_{0};
     uint32_t blockNum_{0};
-    float normEps_{1e-5f};
+    float normEps_{1e-6F};
     float invHiddenSize_{0.0f};
     bool needBackward_{false};
 };

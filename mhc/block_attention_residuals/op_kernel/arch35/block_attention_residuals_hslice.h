@@ -57,10 +57,12 @@ public:
         if (hiddenSizeChunk_ == 0 || hiddenSizeChunk_ > hiddenSize_) {
             hiddenSizeChunk_ = hiddenSize_;
         }
-        hChunks_ = CeilDivU32(hiddenSize_, hiddenSizeChunk_);
-        lastChunkLen_ = hiddenSize_ - (hChunks_ - 1U) * hiddenSizeChunk_;
-        hChunkAlignBf16_ = (hiddenSizeChunk_ + ELEM_PER_BLK_BF16 - 1U) / ELEM_PER_BLK_BF16 * ELEM_PER_BLK_BF16;
-        hChunkAlignFp32_ = (hiddenSizeChunk_ + ELEM_PER_BLK_FP32 - 1U) / ELEM_PER_BLK_FP32 * ELEM_PER_BLK_FP32;
+        hChunks_ = (hiddenSizeChunk_ == 0) ? 0 : (hiddenSize_ + hiddenSizeChunk_ - 1) / hiddenSizeChunk_;
+        lastChunkLen_ = hiddenSize_ - (hChunks_ - 1) * hiddenSizeChunk_;
+        hiddenSizeChunkU32_ = static_cast<uint32_t>(hiddenSizeChunk_);
+        blockCountU32_ = static_cast<uint32_t>(blockCount_);
+        hChunkAlignBf16_ = (hiddenSizeChunkU32_ + ELEM_PER_BLK_BF16 - 1U) / ELEM_PER_BLK_BF16 * ELEM_PER_BLK_BF16;
+        hChunkAlignFp32_ = (hiddenSizeChunkU32_ + ELEM_PER_BLK_FP32 - 1U) / ELEM_PER_BLK_FP32 * ELEM_PER_BLK_FP32;
     }
 
     __aicore__ inline void Init(const BlockAttentionResidualsInitParams &params)
@@ -71,7 +73,7 @@ public:
             return;
         }
 
-        tokenStart_ = blockIdx_ * tokensPerCore_;
+        tokenStart_ = static_cast<int64_t>(blockIdx_) * tokensPerCore_;
         if (tokenStart_ >= numTokens_) {
             tokenNum_ = 0;
             return;
@@ -100,7 +102,7 @@ public:
         if (tokenNum_ == 0 || hiddenSize_ == 0) {
             return;
         }
-        for (uint32_t localIdx = 0; localIdx < tokenNum_; ++localIdx) {
+        for (int64_t localIdx = 0; localIdx < tokenNum_; ++localIdx) {
             ProcessOneToken(tokenStart_ + localIdx);
         }
     }
@@ -110,13 +112,13 @@ private:
     {
         LocalTensor<float> sum = sumList[sumPos];
         LocalTensor<float> compensation = sumList[1 - sumPos];
-        Sub(input, input, compensation, blockCount_); // y = x - c
+        Sub(input, input, compensation, blockCountU32_); // y = x - c
         PipeBarrier<PIPE_V>();
-        Add(compensation, input, sum, blockCount_); // t = sum + y
+        Add(compensation, input, sum, blockCountU32_); // t = sum + y
         PipeBarrier<PIPE_V>();
-        Sub(sum, compensation, sum, blockCount_);
+        Sub(sum, compensation, sum, blockCountU32_);
         PipeBarrier<PIPE_V>();
-        Sub(sum, sum, input, blockCount_); // c = (t - sum) - y
+        Sub(sum, sum, input, blockCountU32_); // c = (t - sum) - y
         PipeBarrier<PIPE_V>();
         sumPos = 1 - sumPos;
     }
@@ -138,7 +140,7 @@ private:
         pipe_->InitBuffer(scoreWeightBuf_, hChunkAlignFp32_ * sizeof(float));
         pipe_->InitBuffer(vRowBuf_, hChunkAlignFp32_ * sizeof(float));
         pipe_->InitBuffer(outFp32Buf_, hChunkAlignFp32_ * sizeof(float));
-        metaAlign_ = (blockCount_ + ELEM_PER_BLK_FP32 - 1U) / ELEM_PER_BLK_FP32 * ELEM_PER_BLK_FP32;
+        metaAlign_ = (blockCountU32_ + ELEM_PER_BLK_FP32 - 1U) / ELEM_PER_BLK_FP32 * ELEM_PER_BLK_FP32;
         pipe_->InitBuffer(vecMetaBuf_, metaAlign_ * sizeof(float));
         pipe_->InitBuffer(metaSoftmaxBuf_, metaAlign_ * sizeof(float));
         pipe_->InitBuffer(metaBrcBuf_, metaAlign_ * ELEM_PER_BLK_FP32 * sizeof(float));
@@ -170,7 +172,7 @@ private:
     }
 
     /*! 按 len 切片的 GM→UB 搬入（DataCopyPad，len 可为非对齐尾部） */
-    __aicore__ inline void CopyInRowEnqueueOff(const GlobalTensor<D_IN> &srcGm, uint64_t srcOffset, uint32_t len)
+    __aicore__ inline void CopyInRowEnqueueOff(const GlobalTensor<D_IN> &srcGm, int64_t srcOffset, uint32_t len)
     {
         LocalTensor<D_IN> inLocal = inQue_.AllocTensor<D_IN>();
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(len * sizeof(D_IN)), 0, 0, 0};
@@ -184,7 +186,7 @@ private:
         return inQue_.DeQue<D_IN>();
     }
 
-    __aicore__ inline LocalTensor<D_IN> CopyInRowSyncOff(const GlobalTensor<D_IN> &srcGm, uint64_t srcOffset,
+    __aicore__ inline LocalTensor<D_IN> CopyInRowSyncOff(const GlobalTensor<D_IN> &srcGm, int64_t srcOffset,
                                                          uint32_t len)
     {
         CopyInRowEnqueueOff(srcGm, srcOffset, len);
@@ -202,17 +204,16 @@ private:
         return (n < numBlocks_) ? blockResGm_ : partialBlockGm_;
     }
 
-    __aicore__ inline uint64_t GetLogicRowOffset(uint32_t tokenIdx, uint32_t n) const
+    __aicore__ inline int64_t GetLogicRowOffset(int64_t tokenIdx, int64_t n) const
     {
         if (n < numBlocks_) {
-            const uint64_t blockBase = static_cast<uint64_t>(tokenIdx) * numBlocks_ * hiddenSize_;
-            return blockBase + static_cast<uint64_t>(n) * hiddenSize_;
+            return tokenIdx * numBlocks_ * hiddenSize_ + n * hiddenSize_;
         }
-        return static_cast<uint64_t>(tokenIdx) * hiddenSize_;
+        return tokenIdx * hiddenSize_;
     }
 
     /*! 搬入第 hc 块 scoreWeight（projWeight × normWeight 切片） */
-    __aicore__ inline void LoadScoreWeightChunk(uint64_t hcOffset, uint32_t hcLen)
+    __aicore__ inline void LoadScoreWeightChunk(int64_t hcOffset, uint32_t hcLen)
     {
         LocalTensor<D_IN> inLocal = CopyInRowSyncOff(projWeightGm_, hcOffset, hcLen);
         RegBase::CastB16ToFp32Dual(vRow_, inLocal, hcLen);
@@ -234,7 +235,7 @@ private:
     }
 
     /*! Phase A：按 h 块用 Kahan 求和累计 sumSqAcc/scoreAcc */
-    __aicore__ inline void ComputePreSoftmaxScores(uint32_t tokenIdx)
+    __aicore__ inline void ComputePreSoftmaxScores(int64_t tokenIdx)
     {
         Duplicate(sumSqAcc_, 0.0f, metaAlign_);
         Duplicate(sumSqComp_, 0.0f, metaAlign_);
@@ -243,14 +244,14 @@ private:
         PipeBarrier<PIPE_V>();
         sumSqKahanPos_ = 0;
         scoreKahanPos_ = 0;
-        for (uint32_t hc = 0; hc < hChunks_; ++hc) {
-            const uint32_t hcLen = (hc == hChunks_ - 1U) ? lastChunkLen_ : hiddenSizeChunk_;
-            const uint64_t hcOffset = static_cast<uint64_t>(hc) * hiddenSizeChunk_;
+        for (int64_t hc = 0; hc < hChunks_; ++hc) {
+            const uint32_t hcLen = static_cast<uint32_t>((hc + 1 == hChunks_) ? lastChunkLen_ : hiddenSizeChunk_);
+            const int64_t hcOffset = hc * hiddenSizeChunk_;
             LoadScoreWeightChunk(hcOffset, hcLen);
             CopyInRowEnqueueOff(GetLogicRowGm(0), GetLogicRowOffset(tokenIdx, 0) + hcOffset, hcLen);
-            for (uint32_t n = 0; n < blockCount_; ++n) {
+            for (uint32_t n = 0; n < blockCountU32_; ++n) {
                 LocalTensor<D_IN> inLocal = CopyInRowDeQue();
-                if (n + 1U < blockCount_) {
+                if (n + 1U < blockCountU32_) {
                     CopyInRowEnqueueOff(GetLogicRowGm(n + 1U), GetLogicRowOffset(tokenIdx, n + 1U) + hcOffset, hcLen);
                 }
                 ProcessRowScoreChunk(inLocal, n, hcLen);
@@ -264,29 +265,29 @@ private:
     }
 
     /*! invNorm=1/sqrt(sumSq*invH+eps)（逐元素）；score *= invNorm；整块写 invNorm GM */
-    __aicore__ inline void FinalizeScores(uint32_t tokenIdx)
+    __aicore__ inline void FinalizeScores(int64_t tokenIdx)
     {
         LocalTensor<float> sumSqAcc = GetSumSqAcc();
         LocalTensor<float> scoreAcc = GetScoreAcc();
-        Muls(sumSqAcc, sumSqAcc, invHiddenSize_, blockCount_);
+        Muls(sumSqAcc, sumSqAcc, invHiddenSize_, blockCountU32_);
         PipeBarrier<PIPE_V>();
-        Adds(sumSqAcc, sumSqAcc, normEps_, blockCount_);
+        Adds(sumSqAcc, sumSqAcc, normEps_, blockCountU32_);
         PipeBarrier<PIPE_V>();
-        Sqrt(sumSqAcc, sumSqAcc, blockCount_);
+        Sqrt(sumSqAcc, sumSqAcc, blockCountU32_);
         PipeBarrier<PIPE_V>();
         Duplicate(metaSoftmax_, 1.0f, metaAlign_);
         PipeBarrier<PIPE_V>();
-        Div(sumSqAcc, metaSoftmax_, sumSqAcc, blockCount_); // sumSqAcc ← invNorm
+        Div(sumSqAcc, metaSoftmax_, sumSqAcc, blockCountU32_); // sumSqAcc ← invNorm
         PipeBarrier<PIPE_V>();
-        Mul(scoreAcc, scoreAcc, sumSqAcc, blockCount_);
+        Mul(scoreAcc, scoreAcc, sumSqAcc, blockCountU32_);
         PipeBarrier<PIPE_V>();
         if (needBackward_) {
             LocalTensor<float> invUb = invQue_.AllocTensor<float>();
-            CopyCompactFloatsUb(invUb, sumSqAcc, blockCount_);
+            CopyCompactFloatsUb(invUb, sumSqAcc, blockCountU32_);
             invQue_.EnQue(invUb);
             invUb = invQue_.DeQue<float>();
-            DataCopyExtParams invParams{1, blockCount_ * static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-            const uint64_t gmOffset = static_cast<uint64_t>(tokenIdx) * blockCount_;
+            DataCopyExtParams invParams{1, static_cast<uint32_t>(blockCount_ * sizeof(float)), 0, 0, 0};
+            const int64_t gmOffset = tokenIdx * blockCount_;
             DataCopyPad(invNormGm_[gmOffset], invUb, invParams);
             invQue_.FreeTensor(invUb);
         }
@@ -295,25 +296,25 @@ private:
     __aicore__ inline void SoftmaxSmall()
     {
         LocalTensor<float> scoreAcc = GetScoreAcc();
-        RegBase::SoftmaxSmallRegBase(scoreAcc, blockCount_, metaAlign_, scalarLocal_, metaSoftmax_, metaBrc_);
+        RegBase::SoftmaxSmallRegBase(scoreAcc, blockCountU32_, metaAlign_, scalarLocal_, metaSoftmax_, metaBrc_);
         // 紧凑 prob → metaBrc[n*8]：零填充 staging 后单次 Brcb（repeat=ceil(B/8)）
         Duplicate(metaSoftmax_, 0.0f, metaAlign_);
         PipeBarrier<PIPE_V>();
-        CopyCompactFloatsUb(metaSoftmax_, scoreAcc, blockCount_);
-        const uint8_t brcRepeat = static_cast<uint8_t>((blockCount_ + ELEM_PER_BLK_FP32 - 1U) / ELEM_PER_BLK_FP32);
+        CopyCompactFloatsUb(metaSoftmax_, scoreAcc, blockCountU32_);
+        const uint8_t brcRepeat = static_cast<uint8_t>((blockCountU32_ + ELEM_PER_BLK_FP32 - 1U) / ELEM_PER_BLK_FP32);
         Brcb(metaBrc_, metaSoftmax_, brcRepeat, {1, MOV_8});
         PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline void WriteProbsQue(uint32_t tokenIdx)
+    __aicore__ inline void WriteProbsQue(int64_t tokenIdx)
     {
         LocalTensor<float> scoreAcc = GetScoreAcc();
         LocalTensor<float> probsUb = probsQue_.AllocTensor<float>();
-        CopyCompactFloatsUb(probsUb, scoreAcc, blockCount_);
+        CopyCompactFloatsUb(probsUb, scoreAcc, blockCountU32_);
         probsQue_.EnQue(probsUb);
         probsUb = probsQue_.DeQue<float>();
-        DataCopyExtParams probsParams{1, blockCount_ * static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-        const uint64_t gmOffset = static_cast<uint64_t>(tokenIdx) * blockCount_;
+        DataCopyExtParams probsParams{1, static_cast<uint32_t>(blockCount_ * sizeof(float)), 0, 0, 0};
+        const int64_t gmOffset = tokenIdx * blockCount_;
         DataCopyPad(probsGm_[gmOffset], probsUb, probsParams);
         probsQue_.FreeTensor(probsUb);
     }
@@ -325,17 +326,17 @@ private:
     }
 
     /*! Phase B：按 h 块加权输出，逐块 Cast → 写 hiddenStates 切片 */
-    __aicore__ inline void WeightedOutputSliced(uint32_t tokenIdx)
+    __aicore__ inline void WeightedOutputSliced(int64_t tokenIdx)
     {
-        for (uint32_t hc = 0; hc < hChunks_; ++hc) {
-            const uint32_t hcLen = (hc == hChunks_ - 1U) ? lastChunkLen_ : hiddenSizeChunk_;
-            const uint64_t hcOffset = static_cast<uint64_t>(hc) * hiddenSizeChunk_;
+        for (int64_t hc = 0; hc < hChunks_; ++hc) {
+            const uint32_t hcLen = static_cast<uint32_t>((hc + 1 == hChunks_) ? lastChunkLen_ : hiddenSizeChunk_);
+            const int64_t hcOffset = hc * hiddenSizeChunk_;
             Duplicate(outFp32_, 0.0f, hcLen);
             PipeBarrier<PIPE_V>();
             CopyInRowEnqueueOff(GetLogicRowGm(0), GetLogicRowOffset(tokenIdx, 0) + hcOffset, hcLen);
-            for (uint32_t n = 0; n < blockCount_; ++n) {
+            for (uint32_t n = 0; n < blockCountU32_; ++n) {
                 LocalTensor<D_IN> inLocal = CopyInRowDeQue();
-                if (n + 1U < blockCount_) {
+                if (n + 1U < blockCountU32_) {
                     CopyInRowEnqueueOff(GetLogicRowGm(n + 1U), GetLogicRowOffset(tokenIdx, n + 1U) + hcOffset, hcLen);
                 }
                 ProcessRowWeighted(inLocal, n, hcLen);
@@ -345,19 +346,19 @@ private:
         }
     }
 
-    __aicore__ inline void WriteHiddenStatesChunk(uint32_t tokenIdx, uint64_t hcOffset, uint32_t hcLen)
+    __aicore__ inline void WriteHiddenStatesChunk(int64_t tokenIdx, int64_t hcOffset, uint32_t hcLen)
     {
         LocalTensor<D_IN> outLocal = outQue_.AllocTensor<D_IN>();
         RegBase::CastFp32ToB16Dual(outLocal, outFp32_, hcLen);
         outQue_.EnQue(outLocal);
         outLocal = outQue_.DeQue<D_IN>();
-        const uint64_t outOffset = static_cast<uint64_t>(tokenIdx) * hiddenSize_ + hcOffset;
+        const int64_t outOffset = tokenIdx * hiddenSize_ + hcOffset;
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(hcLen * sizeof(D_IN)), 0, 0, 0};
         DataCopyPad(hiddenStatesGm_[outOffset], outLocal, copyParams);
         outQue_.FreeTensor(outLocal);
     }
 
-    __aicore__ inline void ProcessOneToken(uint32_t tokenIdx)
+    __aicore__ inline void ProcessOneToken(int64_t tokenIdx)
     {
         ComputePreSoftmaxScores(tokenIdx); // Phase A：切 h 累计 sumSq/score
         FinalizeScores(tokenIdx);          // invNorm + score 缩放
@@ -408,24 +409,26 @@ private:
     LocalTensor<float> scoreAcc_;
     LocalTensor<float> scoreComp_;
 
-    uint32_t numTokens_{0};
-    uint32_t numBlocks_{0};
-    uint32_t hiddenSize_{0};
-    uint32_t hiddenSizeChunk_{0};
+    int64_t numTokens_{0};
+    int64_t numBlocks_{0};
+    int64_t hiddenSize_{0};
+    int64_t hiddenSizeChunk_{0};
+    uint32_t hiddenSizeChunkU32_{0};
     uint32_t hChunkAlignBf16_{0};
     uint32_t hChunkAlignFp32_{0};
-    uint32_t hChunks_{0};
-    uint32_t lastChunkLen_{0};
-    uint32_t blockCount_{0};
+    int64_t hChunks_{0};
+    int64_t lastChunkLen_{0};
+    int64_t blockCount_{0};
+    uint32_t blockCountU32_{0};
     uint32_t metaAlign_{0};
-    uint32_t tokensPerCore_{0};
-    uint32_t tokenStart_{0};
-    uint32_t tokenNum_{0};
+    int64_t tokensPerCore_{0};
+    int64_t tokenStart_{0};
+    int64_t tokenNum_{0};
     uint32_t blockIdx_{0};
     uint32_t blockNum_{0};
     int32_t sumSqKahanPos_{0};
     int32_t scoreKahanPos_{0};
-    float normEps_{1e-5f};
+    float normEps_{1e-6F};
     float invHiddenSize_{0.0f};
     bool needBackward_{false};
 };

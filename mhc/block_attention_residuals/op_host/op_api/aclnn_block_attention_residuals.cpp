@@ -37,7 +37,7 @@ struct BlockAttentionResidualsParams {
     const aclTensor *projWeight{nullptr};
     const aclTensor *normWeight{nullptr};
     int64_t validBlockNum{0};
-    double normEps{1e-5};
+    double normEps{1e-6};
     bool needBackward{false};
     const aclTensor *hiddenStates{nullptr};
     const aclTensor *invNorm{nullptr};

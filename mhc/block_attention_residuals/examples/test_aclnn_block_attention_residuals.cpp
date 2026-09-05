@@ -50,7 +50,7 @@ constexpr int64_t BLOCK_RES_DIM_NUM = 3;
 constexpr int64_t PROJ_WEIGHT_DIM_NUM = 2;
 constexpr int64_t NORM_WEIGHT_DIM_NUM = 1;
 constexpr int64_t HIDDEN_STATES_DIM_NUM = 2;
-constexpr double DEFAULT_NORM_EPS = 1.0e-5;
+constexpr double DEFAULT_NORM_EPS = 1.0e-6;
 constexpr bool NEED_BACKWARD = false;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)

@@ -183,7 +183,7 @@ aclnnStatus aclnnBlockAttentionResiduals(
       <td>normEps（double）</td>
       <td>可选输入</td>
       <td>RMS归一化数值稳定性参数，对应公式中的norm_eps。</td>
-      <td><ul><li>须大于0。</li><li>默认值：1e-5。</li></ul></td>
+      <td><ul><li>须大于0。</li><li>默认值：1e-6。</li></ul></td>
       <td>DOUBLE</td>
       <td>-</td>
       <td>-</td>
@@ -360,7 +360,7 @@ aclnnStatus aclnnBlockAttentionResiduals(
   - partialBlock、blockRes、projWeight、normWeight、hiddenStates的数据类型须一致，支持FLOAT16、BFLOAT16、FLOAT32；invNorm、probs仅支持FLOAT32。
   - shape须满足：partialBlock为(T, H)，blockRes为(T, N, H)，projWeight为(H)或(1, H)，normWeight为(H)，hiddenStates为(T, H)；needBackward为true时invNorm、probs为(T, N+1)。
   - validBlockNum须等于blockRes的N。
-  - normEps须大于0，默认值为1e-5。
+  - normEps须大于0，默认值为1e-6。
   - 输入张量支持非连续Tensor，接口内部转为Contiguous后计算；输出不支持非连续Tensor。
   - workspace仅使用平台系统预留，不追加用户侧workspace。
 
@@ -473,7 +473,7 @@ int main()
     aclOpExecutor* executor = nullptr;
 
     ret = aclnnBlockAttentionResidualsGetWorkspaceSize(
-        partialBlockTensor, blockTensor, projTensor, normTensor, N, 1e-5, false,
+        partialBlockTensor, blockTensor, projTensor, normTensor, N, 1e-6, false,
         hiddenTensor, nullptr, nullptr, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnBlockAttentionResidualsGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 

@@ -44,8 +44,10 @@ public:
         invHiddenSize_ = tiling_->invHiddenSize;
         tokensPerCore_ = tiling_->tokensPerCore;
         needBackward_ = tiling_->needBackward != 0;
-        hiddenSizeAlignBf16_ = (hiddenSize_ + ELEM_PER_BLK_BF16 - 1U) / ELEM_PER_BLK_BF16 * ELEM_PER_BLK_BF16;
-        hiddenSizeAlignFp32_ = (hiddenSize_ + ELEM_PER_BLK_FP32 - 1U) / ELEM_PER_BLK_FP32 * ELEM_PER_BLK_FP32;
+        hiddenSizeU32_ = static_cast<uint32_t>(hiddenSize_);
+        blockCountU32_ = static_cast<uint32_t>(blockCount_);
+        hiddenSizeAlignBf16_ = (hiddenSizeU32_ + ELEM_PER_BLK_BF16 - 1U) / ELEM_PER_BLK_BF16 * ELEM_PER_BLK_BF16;
+        hiddenSizeAlignFp32_ = (hiddenSizeU32_ + ELEM_PER_BLK_FP32 - 1U) / ELEM_PER_BLK_FP32 * ELEM_PER_BLK_FP32;
     }
 
     __aicore__ inline void Init(const BlockAttentionResidualsInitParams &params)
@@ -56,7 +58,7 @@ public:
             return;
         }
 
-        tokenStart_ = blockIdx_ * tokensPerCore_;
+        tokenStart_ = static_cast<int64_t>(blockIdx_) * tokensPerCore_;
         if (tokenStart_ >= numTokens_) {
             tokenNum_ = 0;
             return;
@@ -85,7 +87,7 @@ public:
         if (tokenNum_ == 0 || hiddenSize_ == 0) {
             return;
         }
-        for (uint32_t localIdx = 0; localIdx < tokenNum_; ++localIdx) {
+        for (int64_t localIdx = 0; localIdx < tokenNum_; ++localIdx) {
             ProcessOneToken(tokenStart_ + localIdx);
         }
     }
@@ -95,12 +97,12 @@ private:
     {
         pipe_->InitBuffer(inQue_, BUFFER_NUM_RESIDENT, hiddenSizeAlignBf16_ * sizeof(D_IN));
         pipe_->InitBuffer(outQue_, BUFFER_NUM_RESIDENT, hiddenSizeAlignBf16_ * sizeof(D_IN));
-        pipe_->InitBuffer(vBf16Buf_, blockCount_ * hiddenSizeAlignBf16_ * sizeof(D_IN));
+        pipe_->InitBuffer(vBf16Buf_, blockCountU32_ * hiddenSizeAlignBf16_ * sizeof(D_IN));
         pipe_->InitBuffer(scoreWeightBuf_, hiddenSizeAlignFp32_ * sizeof(float));
         pipe_->InitBuffer(vRowBuf_, hiddenSizeAlignFp32_ * sizeof(float));
         pipe_->InitBuffer(outFp32Buf_, hiddenSizeAlignFp32_ * sizeof(float));
         // 与 arch22 一致：meta 按 32B block（8 fp32）对齐
-        metaAlign_ = (blockCount_ + ELEM_PER_BLK_FP32 - 1U) / ELEM_PER_BLK_FP32 * ELEM_PER_BLK_FP32;
+        metaAlign_ = (blockCountU32_ + ELEM_PER_BLK_FP32 - 1U) / ELEM_PER_BLK_FP32 * ELEM_PER_BLK_FP32;
         pipe_->InitBuffer(vecMetaBuf_, metaAlign_ * sizeof(float));
         pipe_->InitBuffer(metaSoftmaxBuf_, metaAlign_ * sizeof(float));
         // Softmax 期间作 fold/Brcb scratch；Softmax 后 Brcb 成 metaBrc[n*8] 供 Weighted
@@ -124,7 +126,7 @@ private:
         }
     }
 
-    __aicore__ inline LocalTensor<D_IN> CopyInRow(const GlobalTensor<D_IN> &srcGm, uint64_t srcOffset)
+    __aicore__ inline LocalTensor<D_IN> CopyInRow(const GlobalTensor<D_IN> &srcGm, int64_t srcOffset)
     {
         LocalTensor<D_IN> inLocal = inQue_.AllocTensor<D_IN>();
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(hiddenSize_ * sizeof(D_IN)), 0, 0, 0};
@@ -143,14 +145,14 @@ private:
     __aicore__ inline void LoadScoreWeight()
     {
         LocalTensor<D_IN> inLocal = CopyInRow(projWeightGm_, 0);
-        RegBase::CastB16ToFp32Dual(vRow_, inLocal, hiddenSize_);
+        RegBase::CastB16ToFp32Dual(vRow_, inLocal, hiddenSizeU32_);
         FreeInRow(inLocal);
 
         inLocal = CopyInRow(normWeightGm_, 0);
-        RegBase::CastB16ToFp32Dual(outFp32_, inLocal, hiddenSize_);
+        RegBase::CastB16ToFp32Dual(outFp32_, inLocal, hiddenSizeU32_);
         FreeInRow(inLocal);
 
-        RegBase::MulDual(scoreWeight_, vRow_, outFp32_, hiddenSize_);
+        RegBase::MulDual(scoreWeight_, vRow_, outFp32_, hiddenSizeU32_);
     }
 
     __aicore__ inline LocalTensor<D_IN> GetResidentRow(uint32_t n)
@@ -161,23 +163,23 @@ private:
     /*! Phase-1~3：搬入驻留 + 同趟 sumSq→invNorm→score（向量路径，无 Get/Set）
      *  行序（golden）：n < N → residual[n]；n == N → partial_block
      */
-    __aicore__ inline void LoadResidentAndScores(uint32_t tokenIdx)
+    __aicore__ inline void LoadResidentAndScores(int64_t tokenIdx)
     {
-        for (uint32_t n = 0; n < blockCount_; ++n) {
+        for (uint32_t n = 0; n < blockCountU32_; ++n) {
             LocalTensor<D_IN> inLocal;
             if (n < numBlocks_) {
-                const uint64_t blockBase = static_cast<uint64_t>(tokenIdx) * numBlocks_ * hiddenSize_;
-                inLocal = CopyInRow(blockResGm_, blockBase + static_cast<uint64_t>(n) * hiddenSize_);
+                const int64_t blockBase = tokenIdx * numBlocks_ * hiddenSize_;
+                inLocal = CopyInRow(blockResGm_, blockBase + static_cast<int64_t>(n) * hiddenSize_);
             } else {
-                inLocal = CopyInRow(partialBlockGm_, static_cast<uint64_t>(tokenIdx) * hiddenSize_);
+                inLocal = CopyInRow(partialBlockGm_, tokenIdx * hiddenSize_);
             }
             LocalTensor<D_IN> dstRow = GetResidentRow(n);
             // 单条 Level0 Copy 受 VL 上限约束；RegBase 按 VL 分段并只拷有效 H。
-            RegBase::CopyLocalExact(dstRow, inLocal, hiddenSize_);
-            RegBase::CastB16ToFp32Dual(vRow_, inLocal, hiddenSize_);
+            RegBase::CopyLocalExact(dstRow, inLocal, hiddenSizeU32_);
+            RegBase::CastB16ToFp32Dual(vRow_, inLocal, hiddenSizeU32_);
             FreeInRow(inLocal);
 
-            RegBase::ReduceSquareSum(scalarLocal_, vRow_, hiddenSize_);
+            RegBase::ReduceSquareSum(scalarLocal_, vRow_, hiddenSizeU32_);
             RegBase::InvRmsScalar(scalarLocal_, invHiddenSize_, normEps_);
             if (needBackward_) {
                 LocalTensor<float> invUb = invQue_.AllocTensor<float>();
@@ -185,59 +187,59 @@ private:
                 invQue_.EnQue(invUb);
                 invUb = invQue_.DeQue<float>();
                 DataCopyExtParams scalarParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-                const uint64_t gmOffset = static_cast<uint64_t>(tokenIdx) * blockCount_ + static_cast<uint64_t>(n);
+                const int64_t gmOffset = tokenIdx * blockCount_ + static_cast<int64_t>(n);
                 DataCopyPad(invNormGm_[gmOffset], invUb, scalarParams);
                 invQue_.FreeTensor(invUb);
             }
-            RegBase::BroadcastScalarMulDual(vRow_, vRow_, scalarLocal_, hiddenSize_);
-            RegBase::ReduceMulSum(vecMeta_[n], vRow_, scoreWeight_, hiddenSize_);
+            RegBase::BroadcastScalarMulDual(vRow_, vRow_, scalarLocal_, hiddenSizeU32_);
+            RegBase::ReduceMulSum(vecMeta_[n], vRow_, scoreWeight_, hiddenSizeU32_);
         }
     }
 
     /*! Phase-4：小 B Softmax；随后 Brcb 到 metaBrc[n*8] 供 Weighted */
     __aicore__ inline void SoftmaxSmall()
     {
-        RegBase::SoftmaxSmallRegBase(vecMeta_, blockCount_, metaAlign_, scalarLocal_, metaSoftmax_, metaBrc_);
-        const uint8_t brcRepeat = static_cast<uint8_t>((blockCount_ + ELEM_PER_BLK_FP32 - 1U) / ELEM_PER_BLK_FP32);
+        RegBase::SoftmaxSmallRegBase(vecMeta_, blockCountU32_, metaAlign_, scalarLocal_, metaSoftmax_, metaBrc_);
+        const uint8_t brcRepeat = static_cast<uint8_t>((blockCountU32_ + ELEM_PER_BLK_FP32 - 1U) / ELEM_PER_BLK_FP32);
         Brcb(metaBrc_, vecMeta_, brcRepeat, {1, MOV_8});
         PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline void WriteProbsQue(uint32_t tokenIdx)
+    __aicore__ inline void WriteProbsQue(int64_t tokenIdx)
     {
         LocalTensor<float> probsUb = probsQue_.AllocTensor<float>();
-        CopyCompactFloatsUb(probsUb, vecMeta_, blockCount_);
+        CopyCompactFloatsUb(probsUb, vecMeta_, blockCountU32_);
         probsQue_.EnQue(probsUb);
         probsUb = probsQue_.DeQue<float>();
-        DataCopyExtParams probsParams{1, blockCount_ * static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-        const uint64_t gmOffset = static_cast<uint64_t>(tokenIdx) * blockCount_;
+        DataCopyExtParams probsParams{1, static_cast<uint32_t>(blockCount_ * sizeof(float)), 0, 0, 0};
+        const int64_t gmOffset = tokenIdx * blockCount_;
         DataCopyPad(probsGm_[gmOffset], probsUb, probsParams);
         probsQue_.FreeTensor(probsUb);
     }
 
     __aicore__ inline void WeightedOutputResident()
     {
-        Duplicate(outFp32_, 0.0f, hiddenSize_);
+        Duplicate(outFp32_, 0.0f, hiddenSizeU32_);
         PipeBarrier<PIPE_V>();
-        for (uint32_t n = 0; n < blockCount_; ++n) {
+        for (uint32_t n = 0; n < blockCountU32_; ++n) {
             LocalTensor<D_IN> row = GetResidentRow(n);
-            RegBase::WeightedMulAddFromB16(outFp32_, row, metaBrc_[n * ELEM_PER_BLK_FP32], hiddenSize_);
+            RegBase::WeightedMulAddFromB16(outFp32_, row, metaBrc_[n * ELEM_PER_BLK_FP32], hiddenSizeU32_);
         }
     }
 
-    __aicore__ inline void WriteHiddenStates(uint32_t tokenIdx)
+    __aicore__ inline void WriteHiddenStates(int64_t tokenIdx)
     {
         LocalTensor<D_IN> outLocal = outQue_.AllocTensor<D_IN>();
-        RegBase::CastFp32ToB16Dual(outLocal, outFp32_, hiddenSize_);
+        RegBase::CastFp32ToB16Dual(outLocal, outFp32_, hiddenSizeU32_);
         outQue_.EnQue(outLocal);
         outLocal = outQue_.DeQue<D_IN>();
-        const uint64_t outOffset = static_cast<uint64_t>(tokenIdx) * hiddenSize_;
+        const int64_t outOffset = tokenIdx * hiddenSize_;
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(hiddenSize_ * sizeof(D_IN)), 0, 0, 0};
         DataCopyPad(hiddenStatesGm_[outOffset], outLocal, copyParams);
         outQue_.FreeTensor(outLocal);
     }
 
-    __aicore__ inline void ProcessOneToken(uint32_t tokenIdx)
+    __aicore__ inline void ProcessOneToken(int64_t tokenIdx)
     {
         LoadResidentAndScores(tokenIdx); // Phase-1~3：搬入 + 同趟 score
         SoftmaxSmall();                  // Phase-4
@@ -282,19 +284,21 @@ private:
     LocalTensor<float> metaBrc_;
     LocalTensor<float> scalarLocal_;
 
-    uint32_t numTokens_{0};
-    uint32_t numBlocks_{0};
-    uint32_t hiddenSize_{0};
+    int64_t numTokens_{0};
+    int64_t numBlocks_{0};
+    int64_t hiddenSize_{0};
+    uint32_t hiddenSizeU32_{0};
     uint32_t hiddenSizeAlignBf16_{0};
     uint32_t hiddenSizeAlignFp32_{0};
-    uint32_t blockCount_{0};
+    int64_t blockCount_{0};
+    uint32_t blockCountU32_{0};
     uint32_t metaAlign_{0};
-    uint32_t tokensPerCore_{0};
-    uint32_t tokenStart_{0};
-    uint32_t tokenNum_{0};
+    int64_t tokensPerCore_{0};
+    int64_t tokenStart_{0};
+    int64_t tokenNum_{0};
     uint32_t blockIdx_{0};
     uint32_t blockNum_{0};
-    float normEps_{1e-5f};
+    float normEps_{1e-6F};
     float invHiddenSize_{0.0f};
     bool needBackward_{false};
 };

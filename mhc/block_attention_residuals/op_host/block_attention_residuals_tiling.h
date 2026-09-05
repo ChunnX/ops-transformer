@@ -66,9 +66,9 @@ protected:
     ge::graphStatus GetNeedBackward();
     ge::graphStatus FillStagingFields();
     uint64_t EstimateUbComputeBytes(bool resident) const;
-    bool CanResidentAllBlocks(uint32_t blockCount, uint32_t hiddenSize) const;
-    uint32_t CalcMaxResidentRows(uint32_t hiddenSize) const;
-    uint32_t CalcHSliceChunk() const;
+    bool CanResidentAllBlocks(int64_t blockCount, int64_t hiddenSize) const;
+    uint32_t CalcMaxResidentRows(int64_t hiddenSize) const;
+    int64_t CalcHSliceChunk() const;
     uint32_t GetMinStagingBytes() const;
 
     BlockAttentionResidualsCompileInfo compileInfo_;

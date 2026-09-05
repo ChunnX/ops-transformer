@@ -56,7 +56,7 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         this->Attr("valid_block_num").AttrType(REQUIRED).Int();
-        this->Attr("norm_eps").AttrType(OPTIONAL).Float(1e-5f);
+        this->Attr("norm_eps").AttrType(OPTIONAL).Float(1e-6F);
         this->Attr("need_backward").AttrType(OPTIONAL).Bool(false);
 
         OpAICoreConfig aicoreConfig;

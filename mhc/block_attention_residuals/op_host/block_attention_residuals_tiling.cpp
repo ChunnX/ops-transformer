@@ -15,7 +15,6 @@
 #include "block_attention_residuals_tiling.h"
 
 #include <algorithm>
-#include <limits>
 
 #include "op_host/tiling_templates_registry.h"
 #include "register/op_def_registry.h"
@@ -23,7 +22,6 @@
 #include "err/ops_err.h"
 #include "log/log.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "util/math_util.h"
 
 namespace optiling {
 REGISTER_OPS_TILING_TEMPLATE(BlockAttentionResiduals, BlockAttentionResidualsTiling, 0);
@@ -66,6 +64,14 @@ static inline uint32_t AlignDownU32(uint32_t val, uint32_t align)
         return val;
     }
     return (val / align) * align;
+}
+
+static inline uint64_t AlignUpU64(uint64_t val, uint64_t align)
+{
+    if (align == 0) {
+        return val;
+    }
+    return (val + align - 1UL) / align * align;
 }
 
 void BlockAttentionResidualsTiling::InitCompileInfo()
@@ -113,46 +119,47 @@ uint32_t BlockAttentionResidualsTiling::GetMinStagingBytes() const
     return 0;
 }
 
-uint32_t BlockAttentionResidualsTiling::CalcMaxResidentRows(uint32_t hiddenSize) const
+uint32_t BlockAttentionResidualsTiling::CalcMaxResidentRows(int64_t hiddenSize) const
 {
     // UB ≈ B*H*2 + 4*H*4(scoreWeight/vRow/out/brc) + B*4 + 2*H*2(Que) + overhead (+ minStaging)
     // N_ub_max = floor( (UB - 4*H*4 - 2*H*2 - overhead - minStaging) / (H*2 + 4) )
     // 保持保守估计，避免误选 RESIDENT（大 H 下 B 稍大即可能 UB 打满/精度异常）
     // fp16/fp32 输入按元素字节数等比放大（fp32 为 2 倍）
-    if (hiddenSize == 0) {
+    if (hiddenSize <= 0) {
         return 0;
     }
     const uint32_t elemBytes = DtypeElemBytes();
-    const uint64_t workBytes = static_cast<uint64_t>(4U) * hiddenSize * sizeof(float) +
-                               static_cast<uint64_t>(2U) * hiddenSize * elemBytes + UB_OVERHEAD_BYTES +
-                               static_cast<uint64_t>(GetMinStagingBytes());
+    const uint64_t h = static_cast<uint64_t>(hiddenSize);
+    const uint64_t workBytes =
+        static_cast<uint64_t>(4U) * h * sizeof(float) + static_cast<uint64_t>(2U) * h * elemBytes +
+        UB_OVERHEAD_BYTES + static_cast<uint64_t>(GetMinStagingBytes());
     if (workBytes >= UB_AVAIL_BYTES) {
         return 0;
     }
     const uint64_t remain = UB_AVAIL_BYTES - workBytes;
-    const uint64_t perRow = static_cast<uint64_t>(hiddenSize) * elemBytes + sizeof(float);
+    const uint64_t perRow = h * elemBytes + sizeof(float);
     return static_cast<uint32_t>(remain / perRow);
 }
 
-bool BlockAttentionResidualsTiling::CanResidentAllBlocks(uint32_t blockCount, uint32_t hiddenSize) const
+bool BlockAttentionResidualsTiling::CanResidentAllBlocks(int64_t blockCount, int64_t hiddenSize) const
 {
-    return blockCount > 0 && blockCount <= CalcMaxResidentRows(hiddenSize);
+    return blockCount > 0 && blockCount <= static_cast<int64_t>(CalcMaxResidentRows(hiddenSize));
 }
 
-uint32_t BlockAttentionResidualsTiling::CalcHSliceChunk() const
+int64_t BlockAttentionResidualsTiling::CalcHSliceChunk() const
 {
     // TK-HSLICE 的 h 切块大小：取满足切块 UB 预算的最大 chunk。
     // 切块缓冲：inQue 2×chunk×elemBytes + outQue 1×chunk×elemBytes + 3 个 fp32 buf ×chunk×4B；
     // 元数据：vecMeta+metaSoftmax+sumSq+sumSqComp+score+scoreComp(各 metaAlign×4B)
     //         + metaBrc(metaAlign×8×4B) + scalar + 全局开销。
-    const uint32_t B = tilingData_.blockCount;
-    const uint32_t H = tilingData_.hiddenSize;
-    if (B == 0 || H == 0) {
+    const int64_t B = tilingData_.blockCount;
+    const int64_t H = tilingData_.hiddenSize;
+    if (B <= 0 || H <= 0) {
         return 0;
     }
     const uint32_t elemBytes = DtypeElemBytes();
     const uint32_t elemsPerBlk = DtypeElemsPerBlk();
-    const uint32_t metaAlign = AlignUpU32(B, ELEM_PER_BLK_FP32);
+    const uint32_t metaAlign = AlignUpU32(static_cast<uint32_t>(B), ELEM_PER_BLK_FP32);
     constexpr uint32_t META_FLOAT_PER_ALIGN =
         1U + 1U + 8U + 2U + 2U; // vecMeta + metaSoftmax + metaBrc + Kahan(sumSq, score)
     uint64_t metaBytes = static_cast<uint64_t>(metaAlign) * META_FLOAT_PER_ALIGN * sizeof(float) +
@@ -172,21 +179,21 @@ uint32_t BlockAttentionResidualsTiling::CalcHSliceChunk() const
     if (chunk < elemsPerBlk) {
         chunk = elemsPerBlk;
     }
-    if (chunk > H) {
-        chunk = H;
+    if (static_cast<int64_t>(chunk) > H) {
+        return H;
     }
-    return chunk;
+    return static_cast<int64_t>(chunk);
 }
 
 uint64_t BlockAttentionResidualsTiling::EstimateUbComputeBytes(bool resident) const
 {
-    const uint32_t H = tilingData_.hiddenSize;
-    const uint32_t B = tilingData_.blockCount;
-    const uint32_t HAlignBf16 = AlignUpU32(H, ELEM_PER_BLK_BF16);
-    const uint32_t HAlignFp32 = AlignUpU32(H, ELEM_PER_BLK_FP32);
+    const uint64_t H = static_cast<uint64_t>(tilingData_.hiddenSize);
+    const uint64_t B = static_cast<uint64_t>(tilingData_.blockCount);
+    const uint64_t HAlignBf16 = AlignUpU64(H, ELEM_PER_BLK_BF16);
+    const uint64_t HAlignFp32 = AlignUpU64(H, ELEM_PER_BLK_FP32);
     const uint32_t elemBytes = DtypeElemBytes();
     // 与 arch22 / kernel 一致：meta 按 32B block（8 fp32）对齐
-    const uint32_t metaAlign = AlignUpU32(B, ELEM_PER_BLK_FP32);
+    const uint32_t metaAlign = AlignUpU32(static_cast<uint32_t>(B), ELEM_PER_BLK_FP32);
 
     uint64_t ub = 0;
     if (resident) {
@@ -215,7 +222,8 @@ ge::graphStatus BlockAttentionResidualsTiling::FillStagingFields()
     // 无 staging：inv/probs 均 Que 直写
     tilingData_.stagingBytes = 0;
     tilingData_.tokensPerFlush = 0;
-    tilingData_.elemsPerToken = (tilingData_.needBackward != 0) ? tilingData_.blockCount : 0;
+    tilingData_.elemsPerToken =
+        (tilingData_.needBackward != 0) ? static_cast<uint32_t>(tilingData_.blockCount) : 0;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -223,17 +231,17 @@ ge::graphStatus BlockAttentionResidualsTiling::DoOpTiling()
 {
     if (tilingData_.numTokens == 0 || tilingData_.hiddenSize == 0) {
         tilingData_.tokensPerCore = 0;
-        tilingData_.blockCount = tilingData_.numBlocks + 1U;
+        tilingData_.blockCount = tilingData_.numBlocks + 1;
         tilingData_.stagingBytes = 0;
         tilingData_.tokensPerFlush = 0;
         tilingData_.elemsPerToken = 0;
         return ge::GRAPH_SUCCESS;
     }
 
-    const uint32_t coreNum = std::min(tilingData_.numTokens, tilingData_.usedCoreNum);
-    tilingData_.usedCoreNum = coreNum;
-    tilingData_.tokensPerCore = Ops::Base::CeilDiv(tilingData_.numTokens, coreNum);
-    tilingData_.blockCount = tilingData_.numBlocks + 1U;
+    const int64_t coreNum = std::min(tilingData_.numTokens, static_cast<int64_t>(tilingData_.usedCoreNum));
+    tilingData_.usedCoreNum = static_cast<uint32_t>(coreNum);
+    tilingData_.tokensPerCore = (coreNum == 0) ? 0 : (tilingData_.numTokens + coreNum - 1) / coreNum;
+    tilingData_.blockCount = tilingData_.numBlocks + 1;
     tilingData_.invHiddenSize =
         (tilingData_.hiddenSize > 0) ? (1.0f / static_cast<float>(tilingData_.hiddenSize)) : 0.0f;
     tilingData_.wsSizePerToken = 0;
@@ -243,25 +251,25 @@ ge::graphStatus BlockAttentionResidualsTiling::DoOpTiling()
 
 ge::graphStatus BlockAttentionResidualsTiling::DoLibApiTiling()
 {
-    const uint32_t B = tilingData_.blockCount;
-    const uint32_t H = tilingData_.hiddenSize;
+    const int64_t B = tilingData_.blockCount;
+    const int64_t H = tilingData_.hiddenSize;
     // dtype 不编码进 key：框架按 dtype 编译独立 kernel 二进制，key 只区分算法分支。
     // 此处仍按运行时 dtype 估算 UB，保证 RELOAD/RESIDENT/HSLICE 选择对 fp16/fp32 成立。
     uint64_t variantKey = TILING_KEY_RELOAD;
     if (CanResidentAllBlocks(B, H)) {
         variantKey = TILING_KEY_RESIDENT;
         tilingData_.hiddenSizeChunk = 0;
-        OP_LOGI(context_->GetNodeName(), "Select TK-RESIDENT (%lu): B=%u H=%u N_ub_max=%u needBackward=%u",
+        OP_LOGI(context_->GetNodeName(), "Select TK-RESIDENT (%lu): B=%ld H=%ld N_ub_max=%u needBackward=%u",
                 static_cast<unsigned long>(variantKey), B, H, CalcMaxResidentRows(H), tilingData_.needBackward);
     } else if (EstimateUbComputeBytes(false) <= UB_AVAIL_BYTES) {
         variantKey = TILING_KEY_RELOAD;
         tilingData_.hiddenSizeChunk = 0;
-        OP_LOGI(context_->GetNodeName(), "Select TK-RELOAD (%lu): B=%u H=%u N_ub_max=%u needBackward=%u",
+        OP_LOGI(context_->GetNodeName(), "Select TK-RELOAD (%lu): B=%ld H=%ld N_ub_max=%u needBackward=%u",
                 static_cast<unsigned long>(variantKey), B, H, CalcMaxResidentRows(H), tilingData_.needBackward);
     } else {
         variantKey = TILING_KEY_HSLICE;
         tilingData_.hiddenSizeChunk = CalcHSliceChunk();
-        OP_LOGI(context_->GetNodeName(), "Select TK-HSLICE (%lu): B=%u H=%u chunk=%u N_ub_max=%u needBackward=%u",
+        OP_LOGI(context_->GetNodeName(), "Select TK-HSLICE (%lu): B=%ld H=%ld chunk=%ld N_ub_max=%u needBackward=%u",
                 static_cast<unsigned long>(variantKey), B, H, tilingData_.hiddenSizeChunk, CalcMaxResidentRows(H),
                 tilingData_.needBackward);
     }
@@ -388,23 +396,18 @@ ge::graphStatus BlockAttentionResidualsTiling::AnalyzeShapes()
     const int64_t numTokens = partialBlockShape.GetDim(0);
     const int64_t hiddenSize = partialBlockShape.GetDim(1);
     const int64_t numBlocks = blockShape.GetDim(1);
-    constexpr int64_t U32_MAX = static_cast<int64_t>(std::numeric_limits<uint32_t>::max());
-    OP_CHECK_IF(numTokens < 0 || numTokens > U32_MAX || hiddenSize <= 0 || hiddenSize > U32_MAX || numBlocks < 1 ||
-                    numBlocks > static_cast<int64_t>(MAX_NUM_BLOCKS),
-                OP_LOGE(context_->GetNodeName(),
-                        "shape range requires 0<=T<=UINT32_MAX, 1<=H<=UINT32_MAX, "
-                        "and 1<=N<=%u",
-                        MAX_NUM_BLOCKS),
+    OP_CHECK_IF(numTokens < 0 || hiddenSize <= 0 || numBlocks < 1 || numBlocks > static_cast<int64_t>(MAX_NUM_BLOCKS),
+                OP_LOGE(context_->GetNodeName(), "shape range requires T>=0, H>=1, and 1<=N<=%u", MAX_NUM_BLOCKS),
                 return ge::GRAPH_FAILED);
 
-    tilingData_.numTokens = static_cast<uint32_t>(numTokens);
-    tilingData_.hiddenSize = static_cast<uint32_t>(hiddenSize);
-    tilingData_.numBlocks = static_cast<uint32_t>(numBlocks);
+    tilingData_.numTokens = numTokens;
+    tilingData_.hiddenSize = hiddenSize;
+    tilingData_.numBlocks = numBlocks;
 
-    OP_CHECK_IF(blockShape.GetDim(0) != static_cast<int64_t>(tilingData_.numTokens),
+    OP_CHECK_IF(blockShape.GetDim(0) != tilingData_.numTokens,
                 OP_LOGE(context_->GetNodeName(), "T mismatch between partial_block and block_res"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(blockShape.GetDim(2) != static_cast<int64_t>(tilingData_.hiddenSize),
+    OP_CHECK_IF(blockShape.GetDim(2) != tilingData_.hiddenSize,
                 OP_LOGE(context_->GetNodeName(), "H mismatch between partial_block and block_res"),
                 return ge::GRAPH_FAILED);
     const bool projShapeOk =
@@ -412,7 +415,7 @@ ge::graphStatus BlockAttentionResidualsTiling::AnalyzeShapes()
         (projShape.GetDimNum() == 2 && projShape.GetDim(0) == 1 && projShape.GetDim(1) == hiddenSize);
     OP_CHECK_IF(!projShapeOk, OP_LOGE(context_->GetNodeName(), "proj_weight shape must be [H] or [1,H]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(normShape.GetDimNum() != 1 || normShape.GetDim(0) != static_cast<int64_t>(tilingData_.hiddenSize),
+    OP_CHECK_IF(normShape.GetDimNum() != 1 || normShape.GetDim(0) != tilingData_.hiddenSize,
                 OP_LOGE(context_->GetNodeName(), "norm_weight shape must be [H]"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -422,9 +425,8 @@ ge::graphStatus BlockAttentionResidualsTiling::GetValidBlockNum()
     auto attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is null"), return ge::GRAPH_FAILED);
     const int64_t *validBlockNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_VALID_BLOCK_NUM_INDEX);
-    const int64_t validBlockNum =
-        (validBlockNumPtr != nullptr) ? *validBlockNumPtr : static_cast<int64_t>(tilingData_.numBlocks);
-    OP_CHECK_IF(validBlockNum != static_cast<int64_t>(tilingData_.numBlocks),
+    const int64_t validBlockNum = (validBlockNumPtr != nullptr) ? *validBlockNumPtr : tilingData_.numBlocks;
+    OP_CHECK_IF(validBlockNum != tilingData_.numBlocks,
                 OP_LOGE(context_->GetNodeName(), "only default valid_block_num=N is supported, got %ld", validBlockNum),
                 return ge::GRAPH_FAILED);
     tilingData_.validBlockNum = validBlockNum;
@@ -436,7 +438,7 @@ ge::graphStatus BlockAttentionResidualsTiling::GetNormEps()
     auto attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is null"), return ge::GRAPH_FAILED);
     const float *normEpsPtr = attrs->GetAttrPointer<float>(ATTR_NORM_EPS_INDEX);
-    tilingData_.normEps = (normEpsPtr != nullptr) ? *normEpsPtr : 1e-5f;
+    tilingData_.normEps = (normEpsPtr != nullptr) ? *normEpsPtr : 1e-6F;
     OP_CHECK_IF(tilingData_.normEps <= 0.0f, OP_LOGE(context_->GetNodeName(), "norm_eps must be > 0"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -470,11 +472,11 @@ ge::graphStatus BlockAttentionResidualsTiling::GetNeedBackward()
 
 void BlockAttentionResidualsTiling::PrintTilingData()
 {
-    OP_LOGD(context_->GetNodeName(), "numTokens=%u numBlocks=%u hiddenSize=%u tokensPerCore=%u usedCoreNum=%u",
+    OP_LOGD(context_->GetNodeName(), "numTokens=%ld numBlocks=%ld hiddenSize=%ld tokensPerCore=%ld usedCoreNum=%u",
             tilingData_.numTokens, tilingData_.numBlocks, tilingData_.hiddenSize, tilingData_.tokensPerCore,
             tilingData_.usedCoreNum);
     OP_LOGD(context_->GetNodeName(),
-            "blockCount=%u wsSizePerToken=%lu normEps=%f tilingKey=%lu N_ub_max=%u "
+            "blockCount=%ld wsSizePerToken=%lu normEps=%f tilingKey=%lu N_ub_max=%u "
             "needBackward=%u stagingBytes=%u tokensPerFlush=%u elemsPerToken=%u",
             tilingData_.blockCount, static_cast<unsigned long>(tilingData_.wsSizePerToken), tilingData_.normEps,
             static_cast<unsigned long>(tilingKey_), CalcMaxResidentRows(tilingData_.hiddenSize),

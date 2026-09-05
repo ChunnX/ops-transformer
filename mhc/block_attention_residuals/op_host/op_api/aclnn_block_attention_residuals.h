@@ -26,7 +26,7 @@ extern "C" {
  * @param projWeight [输入] 形状为[H]或[1, H]的ND张量，dtype须与partialBlock一致。
  * @param normWeight [输入] 形状为[H]的ND张量，dtype须与partialBlock一致。
  * @param validBlockNum [输入] 有效block数量，当前须等于blockRes的N。
- * @param normEps [输入] RMS归一化数值稳定性参数，须为大于0的DOUBLE，默认1e-5。
+ * @param normEps [输入] RMS归一化数值稳定性参数，须为大于0的DOUBLE，默认1e-6。
  * @param needBackward [输入] 是否保存invNorm和probs供反向使用；为true时后两者不能为空。
  * @param hiddenStates [输出] 形状为[T, H]的ND张量，dtype须与partialBlock一致。
  * @param invNorm [输出] 形状为[T, N+1]的FLOAT32 ND张量；needBackward为false时可传入nullptr。

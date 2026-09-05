@@ -16,7 +16,7 @@ from torch.library import impl
 
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
-DEFAULT_NORM_EPS = 1.0e-5
+DEFAULT_NORM_EPS = 1.0e-6
 PARTIAL_BLOCK_RANK = 2
 BLOCK_RES_RANK = 3
 NORM_WEIGHT_RANK = 1

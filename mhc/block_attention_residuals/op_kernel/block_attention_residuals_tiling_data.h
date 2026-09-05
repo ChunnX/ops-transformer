@@ -21,21 +21,21 @@ namespace BlockAttentionResiduals {
 #define BLOCK_ATTENTION_RESIDUALS_TILING_ALIGN 8
 #pragma pack(push, BLOCK_ATTENTION_RESIDUALS_TILING_ALIGN)
 struct alignas(BLOCK_ATTENTION_RESIDUALS_TILING_ALIGN) BlockAttentionResidualsTilingData {
-    uint32_t numTokens;
-    uint32_t numBlocks;
+    int64_t numTokens;
+    int64_t numBlocks;
     int64_t validBlockNum;
-    uint32_t hiddenSize;
-    uint32_t tokensPerCore;
+    int64_t hiddenSize;
+    int64_t tokensPerCore;
     uint32_t usedCoreNum;
     float normEps;
     float invHiddenSize;
     uint64_t wsSizePerToken;
-    uint32_t blockCount;
+    int64_t blockCount;
     uint32_t needBackward;    // 0/1
     uint32_t stagingBytes;    // 512 倍数；false 时为 0
     uint32_t tokensPerFlush;  // staging 可攒 token 数；false 时为 0
     uint32_t elemsPerToken;   // 2*blockCount；false 时可写 0
-    uint32_t hiddenSizeChunk; // HSLICE 分支的 h 切块大小；非 HSLICE 时可为 0
+    int64_t hiddenSizeChunk;  // HSLICE 分支的 h 切块大小；非 HSLICE 时可为 0
 };
 #pragma pack(pop)
 #undef BLOCK_ATTENTION_RESIDUALS_TILING_ALIGN

@@ -104,7 +104,7 @@
       <tr>
         <td>normEps</td>
         <td>可选属性</td>
-        <td>RMS 归一化数值稳定性参数，须大于 0，默认 1e-5。</td>
+        <td>RMS 归一化数值稳定性参数，须大于 0，默认 1e-6。</td>
         <td>DOUBLE</td>
         <td>-</td>
       </tr>

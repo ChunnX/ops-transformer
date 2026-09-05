@@ -95,7 +95,7 @@ cann_ops_transformer.block_attention_residuals(
     proj_weight,
     norm_weight,
     valid_block_num=None,
-    norm_eps=1.0e-5,
+    norm_eps=1.0e-6,
 ) -> Tensor
 ```
 
@@ -108,7 +108,7 @@ cann_ops_transformer.block_attention_residuals(
 | proj_weight | Tensor | 必选 | 投影权重，与 `norm_weight` 共同构成 $score\_weight$。数据格式为 ND；dtype 必须与 `partial_block` 一致。 | 同 partial_block | [H] 或 [1, H] |
 | norm_weight | Tensor | 必选 | RMS 缩放权重。数据格式为 ND；dtype 必须与 `partial_block` 一致。 | 同 partial_block | [H] |
 | valid_block_num | int | 可选 | Torch 适配层可选。不传或传入 `None` / `-1` 时默认使用 $N$，再下发给 ACLNN；当前仅支持等于 $N$，其它取值报错。 | int | - |
-| norm_eps | float | 可选 | RMS 归一化的数值稳定项，必须为有限正数，默认值为 `1.0e-5`。 | float | - |
+| norm_eps | float | 可选 | RMS 归一化的数值稳定项，必须为有限正数，默认值为 `1.0e-6`。 | float | - |
 
 ## 返回值说明
 
@@ -165,7 +165,7 @@ cann_ops_transformer.block_attention_residuals(
     proj_weight = torch.tensor([0.5, 0.25, 0.25, 0.0], dtype=torch.bfloat16, device="npu")
     norm_weight = torch.ones(4, dtype=torch.bfloat16, device="npu")
 
-    # valid_block_num / norm_eps 为可选参数；省略时分别使用 N、1e-5。反向未上库，仅返回 hidden_states。
+    # valid_block_num / norm_eps 为可选参数；省略时分别使用 N、1e-6。反向未上库，仅返回 hidden_states。
     hidden_states = cann_ops_transformer.block_attention_residuals(
         partial_block,
         block_res,
