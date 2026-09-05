@@ -350,6 +350,7 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     info.totalWinSizeEp = maxWindowSize;
     info.combineStateWinOffset = layout.combineStateWinOffset;
     info.combineDataWinOffset = layout.combineDataWinOffset;
+    info.combineFlagSourceWinOffset = layout.combineFlagSourceWinOffset;
     info.sendDataWorkspaceSizePerRank = layout.combineDataSize;
 
     return ge::GRAPH_SUCCESS;
@@ -405,7 +406,8 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
     //     SYSTEM_NEED_WORKSPACE + static_cast<uint64_t>(info.cfg.epWorldSize) * info.sendDataWorkspaceSizePerRank +
     //     static_cast<uint64_t>(aivNum) * COMM_ALIGN + static_cast<uint64_t>(info.cfg.epWorldSize) * COMM_ALIGN +
     //     static_cast<uint64_t>(aivNum) * perCoreRankCountStride;
-    // The direct path only needs one 512-byte flag source per AIV.
+    // TODO(delete): retain the former per-AIV flag workspace allocation during the lifetime-fix regression.
+    // The direct path now reads its flag source from the persistent communication window.
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<uint64_t>(aivNum) * COMM_ALIGN;
 
     uint32_t tplHasTopkWeights = info.hasTopkWeights ? 1 : 0;
