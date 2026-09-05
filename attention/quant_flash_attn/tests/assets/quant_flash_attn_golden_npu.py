@@ -1366,7 +1366,7 @@ def _compute_c1_npu(
         return _compute_c1_npu_batched(
             Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale, Qri=Qri, Krj=Krj
         )
-    if mode == "seq" or int(_os.environ.get("QFA_GOLDEN_SEQ", "0")):
+    if mode == "seq":
         return _compute_c1_npu_sequential(
             Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale, Qri=Qri, Krj=Krj
         )
@@ -1380,7 +1380,7 @@ def _compute_c2_npu_sequential(P, V, deq_scale_p, deq_scale_v):
     batch, headnum, M, PK = P.shape
     _, _, VK, N = V.shape
     if PK != VK:
-        print("❌ x1's K must be same with x2's K")
+        raise ValueError("x1's K must be same with x2's K")
     P = P.npu()
     V = V.npu()
     deq_scale_v = deq_scale_v.npu()
@@ -1410,7 +1410,7 @@ def _compute_c2_npu_batched(P, V, deq_scale_p, deq_scale_v):
     batch, headnum, M, PK = P.shape
     _, _, VK, N = V.shape
     if PK != VK:
-        print("❌ x1's K must be same with x2's K")
+        raise ValueError("x1's K must be same with x2's K")
     BN = batch * headnum
     x1 = P.to(torch.float8_e4m3fn).view(BN, M, PK).contiguous().npu()
     x2 = V.to(torch.float8_e4m3fn).view(BN, PK, N).contiguous().npu()
@@ -1437,7 +1437,7 @@ def _compute_c2_cpu(P, V, deq_scale_p, deq_scale_v):
     batch, headnum, M, PK = P.shape
     _, _, VK, N = V.shape
     if PK != VK:
-        print("❌ x1's K must be same with x2's K")
+        raise ValueError("x1's K must be same with x2's K")
     BN = batch * headnum
     G = PK // 32
     x1 = P.to(torch.float32).view(BN, M, PK)
@@ -1457,15 +1457,9 @@ def _compute_c2_npu(P, V, deq_scale_p, deq_scale_v):
     mode = _os.environ.get("QFA_GOLDEN_NPU", "")
     if mode == "batch":
         return _compute_c2_npu_batched(P, V, deq_scale_p, deq_scale_v)
-    if mode == "seq" or int(_os.environ.get("QFA_GOLDEN_SEQ", "0")):
+    if mode == "seq":
         return _compute_c2_npu_sequential(P, V, deq_scale_p, deq_scale_v)
     return _compute_c2_cpu(P, V, deq_scale_p, deq_scale_v)
-
-
-def _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale):
-    """计算单个 S block (attention score)"""
-    S_ij = torch.matmul(Qi * deq_scale_q_i, (Kj * deq_scale_k_j).permute(0, 1, 3, 2))
-    return S_ij * softmax_scale
 
 
 def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, mask_fill_value):
@@ -1510,7 +1504,6 @@ def cpu_mxfp8_golden(
     softmax_scale=None,
 ):
     """CPU Flash Attention golden with MXFP8, C1V1C1V1C2V2 流水"""
-    EPSILON = 1e-20
     Q_BLOCK_SIZE = 128
     if D == 256:
         K_BLOCK_SIZE = 128
@@ -1561,15 +1554,17 @@ def cpu_mxfp8_golden(
     kv_len_acl = torch.tensor(actual_seq_kv, dtype=torch.int32).view(b, 1, 1, 1)
     kv_pos_range = torch.arange(Skv, dtype=torch.int32).view(1, 1, 1, -1)
     qlen_acl_t = torch.tensor(actual_seq_q, dtype=torch.int32).view(b, 1, 1, 1)
-    kv_hi_t = kv_len_acl - (kv_len_acl % 64) + 64
-    kv_hi_t = torch.where(kv_len_acl % 64 == 0, kv_len_acl, kv_hi_t)
+    kv_hi_t = (kv_len_acl + 63) // 64 * 64  # kv 64 对齐上界
     t_loc_t = torch.arange(Sq, dtype=torch.int32).view(1, 1, Sq, 1)
-    min_k_t = (t_loc_t + kv_len_acl - qlen_acl_t).clamp(min=0)
+    # causal (sparse_mode=3) 才有 band 左界; 其他模式 min_k=0 不触发整块跳过
+    if SPARSE_MODE == 3:
+        min_k_t = (t_loc_t + kv_len_acl - qlen_acl_t).clamp(min=0)
+    else:
+        min_k_t = torch.zeros(1, 1, 1, 1, dtype=torch.int32)
     neg_inf_t = torch.tensor(float("-inf"), dtype=torch.float32)
     min_val_t = torch.tensor(minValue.item(), dtype=torch.float32)
 
     def _apply_tile_window(S_ij, Sk_start):
-
         width = S_ij.shape[-1]
         pos = kv_pos_range[:, :, :, Sk_start : Sk_start + width]
         skip = (Sk_start + width - 1 < min_k_t) | (Sk_start >= kv_hi_t)
