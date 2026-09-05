@@ -250,4 +250,3 @@ $$
 | 调用方式  | 样例代码                                                                | 说明                                                                                          |
 | ----------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | aclnn接口 | [test_aclnn_generic_block_sparse_attention_grad](./examples/test_aclnn_generic_block_sparse_attention_grad.cpp) | 通过[aclnnGenericBlockSparseAttentionGrad](./docs/aclnnGenericBlockSparseAttentionGrad.md)接口方式调用GenericBlockSparseAttentionGrad算子。 |
-| pytest调用 | [test_generic_block_sparse_attention_grad](./tests/pytest/test_generic_block_sparse_attention_grad.py) | 通过torch extension接口进行功能和精度验证。 |
