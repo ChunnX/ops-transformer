@@ -328,15 +328,51 @@ def test_peer_completion_signal_is_published_after_data_completion():
         / "kernel"
         / "ascend950_alltoallv_grouped_matmul.hpp"
     ).read_text(encoding="utf-8")
-    completion_comment = kernel.index("Publish completion only after")
-    finalize = kernel.index(
-        "blockRemoteCopy.FinalizeBlockLoop();", completion_comment
-    )
+    finalize = kernel.index("blockRemoteCopy.FinalizeBlockLoop();")
     completion_signal = kernel.index("syncCommFinish, completedBlocks,", finalize)
     receiver_wait = kernel.index(
         "syncCommFinish, ACLSHMEM_CMP_EQ, receiveAccum", completion_signal
     )
     assert finalize < completion_signal < receiver_wait
+
+
+def test_strong_ready_put_quiets_inline_without_deferred_state():
+    kernel = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "dgemm"
+        / "kernel"
+        / "ascend950_alltoallv_grouped_matmul.hpp"
+    ).read_text(encoding="utf-8")
+    block_dir = (
+        PROJECT_ROOT
+        / "csrc"
+        / "catccos_overlay"
+        / "include"
+        / "catccos"
+        / "comm"
+        / "block"
+    )
+    wrapper = (block_dir / "comm_block_mte_udma.hpp").read_text(encoding="utf-8")
+    remote = (block_dir / "comm_block_remote_copy.hpp").read_text(encoding="utf-8")
+
+    assert "blockRemoteCopy.PutRemoteContiguousWithSignalAndQuiet(" in kernel
+    assert "remoteComm.PutContiguousWithSignalAndQuiet(" in wrapper
+
+    inline_method = remote.split(
+        "void PutContiguousWithSignalAndQuiet(", 1
+    )[1].split("private:", 1)[0]
+    assert "tileRemoteCopy.PutContiguousWithSignal(" in inline_method
+    assert "tileRemoteCopy.Finalize(rankIdx);" in inline_method
+    assert "hasPendingCopy" not in inline_method
+
+    deferred_method = remote.split(
+        "void PutContiguousWithSignal(", 1
+    )[1].split("void PutContiguousWithSignalAndQuiet(", 1)[0]
+    assert "hasPendingCopy = true;" in deferred_method
 
 
 def test_delivery_route_metadata_and_export_worker_pool_are_optional():

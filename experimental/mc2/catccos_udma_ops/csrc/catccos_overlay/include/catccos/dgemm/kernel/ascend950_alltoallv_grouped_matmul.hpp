@@ -662,7 +662,7 @@ public:
                                         stageIdx * READY_SLOT_RANKS + rankIdx;
                                     uint64_t readyGeneration =
                                         static_cast<uint64_t>(commIdx + 1);
-                                    blockRemoteCopy.PutRemoteContiguousWithSignal(
+                                    blockRemoteCopy.PutRemoteContiguousWithSignalAndQuiet(
                                         gmCommSrc, layoutCommSrc,
                                         gmCommDst, layoutCommDst,
                                         actualCommShape,
@@ -692,9 +692,9 @@ public:
                     }
                 }
 
-                // UDMA puts are non-blocking. Publish completion only after
-                // quiet has drained this worker's queue; a fence alone does
-                // not make the remote stage consumable by the export path.
+                // Strong-ready remote puts were quieted immediately beside
+                // their WWN submission. Drain only deferred legacy UDMA and
+                // local MTE work here before the loop-end AIV barrier.
                 if constexpr (EXPORT_ALLTOALLV) {
                     if (isCommWorker) {
                         blockRemoteCopy.FinalizeBlockLoop();
