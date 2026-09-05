@@ -26,11 +26,15 @@
 #else
 #include "../kv_quant_sparse_flash_attention/kv_quant_sparse_flash_attention_template_tiling_key.h"
 #endif
+#if (__NPU_ARCH__ == 5102)
+#include "../../kv_quant_sparse_flash_attention/op_kernel/arch38/kv_quant_sparse_flash_attention_kernel_mla_arch38.h"
+#else
 #if __has_include( \
     "../../kv_quant_sparse_flash_attention/op_kernel/arch35/kv_quant_sparse_flash_attention_kernel_mla_arch35.h")
 #include "../../kv_quant_sparse_flash_attention/op_kernel/arch35/kv_quant_sparse_flash_attention_kernel_mla_arch35.h"
 #else
 #include "../kv_quant_sparse_flash_attention/arch35/kv_quant_sparse_flash_attention_kernel_mla_arch35.h"
+#endif
 #endif
 
 using namespace AscendC;
@@ -125,7 +129,11 @@ __global__ __aicore__ void kv_quant_sparse_flash_attention_v2(
     __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
     __gm__ uint8_t *tiling)
 {
+    #if (__NPU_ARCH__ == 5102)
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    #else
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+    #endif
 
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
