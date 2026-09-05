@@ -650,7 +650,8 @@ Status Fusion(const GraphPtr &graph, GNode &nodeGmmSwiglu, CustomPassContext &pa
 
 Status RunGroupedMatmulSwigluQuantTransposeFusion(const GraphPtr &graph, CustomPassContext &passContext)
 {
-    OP_LOGD(PASS_NAME, "Enter GroupedMatmulSwigluQuantV2 transpose fusion pass.");
+    OP_LOGD(PASS_NAME,
+        "[OPS_TRANSFORMER_GMM_TRANSPOSE_REBUILD] Enter migrated GroupedMatmulSwigluQuantV2 transpose fusion pass.");
     if (graph == nullptr || !graph->IsValid()) {
         OP_LOGW(PASS_NAME, "Graph is null or invalid, skip fusion pass.");
         return GRAPH_NOT_CHANGED;
@@ -672,6 +673,8 @@ Status RunGroupedMatmulSwigluQuantTransposeFusion(const GraphPtr &graph, CustomP
     for (auto &nodeGmmSwiglu : nodeGmmSwigluList) {
         auto status = Fusion(graph, nodeGmmSwiglu, passContext);
         if (status == SUCCESS) {
+            OP_LOGD(PASS_NAME,
+                "[OPS_TRANSFORMER_GMM_TRANSPOSE_REBUILD] GroupedMatmulSwigluQuantV2 fusion triggered.");
             changed = true;
             continue;
         }
