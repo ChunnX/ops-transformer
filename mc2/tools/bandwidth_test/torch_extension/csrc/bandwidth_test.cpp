@@ -31,7 +31,7 @@ std::tuple<at::Tensor, at::Tensor> bandwidth_test(
         y = at::empty({max_bs * world_size, x.size(1)}, x.options());
         receive_cnt = at::empty({world_size}, x.options().dtype(at::kInt));
     }
-    ACLNN_CMD(aclnnBandwidthTestWithContext, context, x, dstrank_id, group, world_size,
+    ACLNN_CMD(aclnnInnerBandwidthTest, context, x, dstrank_id, group, world_size,
               max_bs, mode, ccl_buffer_size, comm_alg, aiv_num, y, receive_cnt);
     return {y, receive_cnt};
 }
@@ -39,25 +39,5 @@ std::tuple<at::Tensor, at::Tensor> bandwidth_test(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("bandwidth_test", &bandwidth_test, "bandwidth_test");
-    // Diagnose the same resolver and process-local library cache used by ACLNN_CMD, without launching an op.
-    m.def("check_aclnn_api", []() {
-        pybind11::dict result;
-        const char *symbols[] = {
-            "aclnnMegaMoeGetWorkspaceSize", "aclnnMegaMoe",
-            "aclnnBandwidthTestGetWorkspaceSize", "aclnnBandwidthTest",
-            "aclnnInnerBandwidthTestGetWorkspaceSize", "aclnnInnerBandwidthTest",
-            "aclnnBandwidthTestWithContextGetWorkspaceSize", "aclnnBandwidthTestWithContext"};
-        for (const char *symbol : symbols) {
-            void *address = GetOpApiFuncAddr(symbol);
-            if (address == nullptr) {
-                result[pybind11::str(symbol)] = "MISSING";
-                continue;
-            }
-            Dl_info info{};
-            result[pybind11::str(symbol)] =
-                dladdr(address, &info) != 0 && info.dli_fname != nullptr ? info.dli_fname : "FOUND (path unavailable)";
-        }
-        return result;
-    });
 }
 } // namespace op_api

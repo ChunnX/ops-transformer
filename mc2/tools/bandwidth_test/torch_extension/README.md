@@ -13,7 +13,7 @@ python -m pip install ./torch_extension --no-build-isolation
 ```
 
 `bash build.sh --torch_extension` 只生成 Torch wheel，随后直接退出，不编译 ACLNN、tiling 或 kernel。
-因此仅安装该 wheel 不会更新 `aclnnBandwidthTestWithContext` 所在的算子动态库。
+更新本算子时需要重新安装算子包和 Torch 扩展，并重启测试进程。
 
 完整安装同时包含 `mc2/common` 的 context 支持。按算子打包时，
 `TORCH_EXTENSION_OPS` 必须包含 `bandwidth_test,common`，并从生成包的
@@ -56,33 +56,10 @@ torch.npu.synchronize()
 原测试脚本 `graph_type=0` 为 eager，`graph_type=3` 为 ACLNN 静态 kernel / ACL graph。
 Meta 输出为 `y[max_bs * world_size, hidden]`（FP16）和
 `receive_cnt[world_size]`（INT32）；GE Converter 与主线 OpDef 对齐。
-Eager 路径经 `aclnnBandwidthTestWithContext` 显式传递 Torch 创建的 context，
-第一段转发到 inner ACLNN，第二段在实际 executor 上设置 MTE server type 后下发，
-与 combine 的 AIV 通信下发方式一致。该包装层不重复创建 context。
+Eager 路径经 `aclnnInnerBandwidthTest` 显式传递 Torch 创建的 context，
+不再由公开 ACLNN 包装层重复创建 context。
 可选参数在 schema、Meta、PrivateUse1、GE converter 和 OpDef 中统一为
 `comm_alg=""`（MTE）、`aiv_num=-1`（平台默认核数）；Python 始终将这两个值显式传给 C++/ACLNN。
-更新此入口后，需要重新构建、安装 BandwidthTest 算子包和 Torch 扩展，并重启测试进程。
-
-出现 ACLNN 符号找不到时，更新 Torch wheel 后，在测试所用环境执行下面的只读检查。
-它加载测试所用的 Python 模块和 C++ 扩展，调用 `ACLNN_CMD` 使用的同一个
-`GetOpApiFuncAddr`，并列出符号实际所属动态库；不会创建通信域或下发 kernel。
-
-```python
-import importlib
-import torch_npu
-
-module = importlib.import_module("cann_ops_transformer.ops.tools.bandwidth_test.bandwidth_test")
-extension = module._bandwidth_test_op_builder.load()
-print("Python:", module.__file__)
-print("Extension:", extension.__file__)
-for symbol, library in extension.check_aclnn_api().items():
-    print(symbol, library)
-```
-
-`MISSING` 表示该加载器未解析到符号；若旧 BandwidthTest/inner 有而 WithContext 没有，
-应对照输出的实际库路径检查构建产物。MegaMoe 未安装时其符号缺失不代表 BandwidthTest 有问题。
-MegaMoe 的第二段直接调用 inner，不设置 HCCL server type；不能据此把 server type 设置差异
-视为当前符号解析失败或此前卡死的已证实原因。
 
 Ascend950 支持 MTE（同一 UB 内存域，`comm_alg="mte"` 或空字符串）和
 URMA（`comm_alg="urma"`，由已有 Torch context manager 建立 UBC_CTP channel）。
@@ -95,7 +72,7 @@ y, receive_cnt = bandwidth_test(sym_buffer, x, dstrank_id,
                                 sym_buffer.world_size, x.size(0), mode=0, comm_alg="urma")
 ```
 
-URMA 通过 Torch 的 `WithContext` ACLNN 路径使用现有 context；原有的
+URMA 通过 Torch 的 inner ACLNN 路径使用现有 context；公开的
 `aclnnBandwidthTestGetWorkspaceSize` 包装层不创建 URMA context，会拒绝 `urma`。
 `x` 必须为二维 FP16，`dstrank_id` 为长度等于 bs 的 INT32；
 所有输入位于同一 NPU。主线 kernel 按 max_bs 读取输入，要求 `bs == max_bs`、
