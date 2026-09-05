@@ -35,11 +35,6 @@ namespace {
 static bool CheckQkvDataType(const aclTensor *query, const aclTensor *key, const aclTensor *value)
 {
     const DataType qDtype = query->GetDataType();
-    const bool supported = qDtype == DataType::DT_FLOAT16 || qDtype == DataType::DT_BF16;
-    if (!supported) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "query dtype must be FLOAT16 or BF16, got %d.", static_cast<int>(qDtype));
-        return false;
-    }
     if (key->GetDataType() != qDtype || value->GetDataType() != qDtype) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "query, key, and value must use the same dtype.");
         return false;
