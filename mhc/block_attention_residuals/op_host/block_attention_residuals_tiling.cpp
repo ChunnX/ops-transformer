@@ -130,9 +130,9 @@ uint32_t BlockAttentionResidualsTiling::CalcMaxResidentRows(int64_t hiddenSize) 
     }
     const uint32_t elemBytes = DtypeElemBytes();
     const uint64_t h = static_cast<uint64_t>(hiddenSize);
-    const uint64_t workBytes =
-        static_cast<uint64_t>(4U) * h * sizeof(float) + static_cast<uint64_t>(2U) * h * elemBytes +
-        UB_OVERHEAD_BYTES + static_cast<uint64_t>(GetMinStagingBytes());
+    const uint64_t workBytes = static_cast<uint64_t>(4U) * h * sizeof(float) +
+                               static_cast<uint64_t>(2U) * h * elemBytes + UB_OVERHEAD_BYTES +
+                               static_cast<uint64_t>(GetMinStagingBytes());
     if (workBytes >= UB_AVAIL_BYTES) {
         return 0;
     }
@@ -222,8 +222,7 @@ ge::graphStatus BlockAttentionResidualsTiling::FillStagingFields()
     // 无 staging：inv/probs 均 Que 直写
     tilingData_.stagingBytes = 0;
     tilingData_.tokensPerFlush = 0;
-    tilingData_.elemsPerToken =
-        (tilingData_.needBackward != 0) ? static_cast<uint32_t>(tilingData_.blockCount) : 0;
+    tilingData_.elemsPerToken = (tilingData_.needBackward != 0) ? static_cast<uint32_t>(tilingData_.blockCount) : 0;
     return ge::GRAPH_SUCCESS;
 }
 

@@ -2297,9 +2297,10 @@ mhc:
       - mhc/block_attention_residuals/docs
       - mhc/block_attention_residuals/README.md
     ut_cov_exclude:
-      - mhc/block_attention_residuals
+      - mhc/block_attention_residuals/examples
+      - mhc/block_attention_residuals/tests
     test:
-      examples: False
+      examples: True
       ut: False
     options:
       - block_attention_residuals

@@ -23,22 +23,22 @@
 #include "aclnnop/aclnn_block_attention_residuals.h"
 
 #define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
 #define CHECK_FREE_RET(cond, return_expr) \
-    do {                                  \
-        if (!(cond)) {                    \
-            Finalize(deviceId, stream);   \
-            return_expr;                  \
-        }                                 \
+    do { \
+        if (!(cond)) { \
+            Finalize(deviceId, stream); \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)              \
-    do {                                     \
+#define LOG_PRINT(message, ...) \
+    do { \
         std::printf(message, ##__VA_ARGS__); \
     } while (0)
 
@@ -116,14 +116,14 @@ int CheckDocDims(const std::vector<int64_t> &partialBlockShape, const std::vecto
     CHECK_RET(static_cast<int64_t>(blockResShape.size()) == BLOCK_RES_DIM_NUM,
               LOG_PRINT("blockRes dim num mismatch, expect %ld got %zu\n", BLOCK_RES_DIM_NUM, blockResShape.size());
               return ACL_ERROR_INVALID_PARAM);
-    CHECK_RET(static_cast<int64_t>(projWeightShape.size()) == PROJ_WEIGHT_DIM_NUM,
-              LOG_PRINT("projWeight dim num mismatch, expect %ld got %zu\n", PROJ_WEIGHT_DIM_NUM,
-                        projWeightShape.size());
-              return ACL_ERROR_INVALID_PARAM);
-    CHECK_RET(static_cast<int64_t>(normWeightShape.size()) == NORM_WEIGHT_DIM_NUM,
-              LOG_PRINT("normWeight dim num mismatch, expect %ld got %zu\n", NORM_WEIGHT_DIM_NUM,
-                        normWeightShape.size());
-              return ACL_ERROR_INVALID_PARAM);
+    CHECK_RET(
+        static_cast<int64_t>(projWeightShape.size()) == PROJ_WEIGHT_DIM_NUM,
+        LOG_PRINT("projWeight dim num mismatch, expect %ld got %zu\n", PROJ_WEIGHT_DIM_NUM, projWeightShape.size());
+        return ACL_ERROR_INVALID_PARAM);
+    CHECK_RET(
+        static_cast<int64_t>(normWeightShape.size()) == NORM_WEIGHT_DIM_NUM,
+        LOG_PRINT("normWeight dim num mismatch, expect %ld got %zu\n", NORM_WEIGHT_DIM_NUM, normWeightShape.size());
+        return ACL_ERROR_INVALID_PARAM);
     CHECK_RET(static_cast<int64_t>(hiddenStatesShape.size()) == HIDDEN_STATES_DIM_NUM,
               LOG_PRINT("hiddenStates dim num mismatch, expect %ld got %zu\n", HIDDEN_STATES_DIM_NUM,
                         hiddenStatesShape.size());
@@ -176,7 +176,7 @@ int aclnnBlockAttentionResidualsTest(int32_t deviceId, aclrtStream &stream)
     ret = CreateAclTensor(partialBlockHostData, partialBlockShape, &partialBlockDeviceAddr, aclDataType::ACL_BF16,
                           &partialBlock);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> partialBlockTensorPtr(partialBlock,
-                                                                                        aclDestroyTensor);
+                                                                                         aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void *)> partialBlockDeviceAddrPtr(partialBlockDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
@@ -185,14 +185,14 @@ int aclnnBlockAttentionResidualsTest(int32_t deviceId, aclrtStream &stream)
     std::unique_ptr<void, aclError (*)(void *)> blockResDeviceAddrPtr(blockResDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    ret = CreateAclTensor(projWeightHostData, projWeightShape, &projWeightDeviceAddr, aclDataType::ACL_BF16,
-                          &projWeight);
+    ret =
+        CreateAclTensor(projWeightHostData, projWeightShape, &projWeightDeviceAddr, aclDataType::ACL_BF16, &projWeight);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> projWeightTensorPtr(projWeight, aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void *)> projWeightDeviceAddrPtr(projWeightDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    ret = CreateAclTensor(normWeightHostData, normWeightShape, &normWeightDeviceAddr, aclDataType::ACL_BF16,
-                          &normWeight);
+    ret =
+        CreateAclTensor(normWeightHostData, normWeightShape, &normWeightDeviceAddr, aclDataType::ACL_BF16, &normWeight);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> normWeightTensorPtr(normWeight, aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void *)> normWeightDeviceAddrPtr(normWeightDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -200,7 +200,7 @@ int aclnnBlockAttentionResidualsTest(int32_t deviceId, aclrtStream &stream)
     ret = CreateAclTensor(hiddenStatesHostData, hiddenStatesShape, &hiddenStatesDeviceAddr, aclDataType::ACL_BF16,
                           &hiddenStates);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> hiddenStatesTensorPtr(hiddenStates,
-                                                                                        aclDestroyTensor);
+                                                                                         aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void *)> hiddenStatesDeviceAddrPtr(hiddenStatesDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
@@ -209,8 +209,7 @@ int aclnnBlockAttentionResidualsTest(int32_t deviceId, aclrtStream &stream)
     ret = aclnnBlockAttentionResidualsGetWorkspaceSize(partialBlock, blockRes, projWeight, normWeight, N,
                                                        DEFAULT_NORM_EPS, NEED_BACKWARD, hiddenStates, nullptr, nullptr,
                                                        &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnBlockAttentionResidualsGetWorkspaceSize failed. ERROR: %d\n", ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnBlockAttentionResidualsGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
     void *workspaceAddr = nullptr;
