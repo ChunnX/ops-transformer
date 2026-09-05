@@ -92,9 +92,12 @@ class PytestResultComparator:
             )
         status, precision = result[:2]
         passed = str(status).strip().lower() == "pass"
+        # 兼容两种 precision: 数值(默认 stat_rel_err 标量) 或 字符串(cross_check 摘要串)。
+        if not isinstance(precision, str):
+            precision = float(precision)
         return {
             "pass": passed,
-            "precision": float(precision),
+            "precision": precision,
             "error_info": None
             if passed
             else (f"pytest check_result output[{output_index}] returned {status!r}"),
@@ -139,10 +142,72 @@ class PytestResultComparator:
             results.append(self.normalize_result(result, output_index))
         return results
 
+    def compare_triple(self, *outputs, up_goldens=None):
+        """三方比对：outputs 布局 [npu, 同精度 golden]，升精度 golden 从 up_golden 单独取。"""
+        if len(outputs) < 2 or len(outputs) % 2 != 0:
+            return {
+                "pass": False,
+                "precision": "invalid",
+                "error_info": "compare expects NPU outputs followed by golden outputs",
+            }
+        module = self.load_module()
+        output_len = len(outputs) // 2
+        if up_goldens is None or output_len != len(up_goldens):
+            return {
+                "pass": False,
+                "precision": "NO_UP_GOLDEN",
+                "error_info": "Ground truth is missing for the cross_check.",
+            }
+        results = []
+        for output_index, (npu_output, same_golden, up_golden) in enumerate(
+            zip(outputs[:output_len], outputs[output_len:], up_goldens)
+        ):
+            if same_golden is None:
+                results.append({"pass": True, "precision": "SUPPRESSED"})
+                continue
+            if npu_output is None:
+                results.append(
+                    {
+                        "pass": False,
+                        "precision": "NO_OUTPUT",
+                        "error_info": f"NPU output[{output_index}] is None",
+                    }
+                )
+                continue
+            if up_golden is None:
+                results.append(
+                    {
+                        "pass": False,
+                        "precision": "NO_UP_GOLDEN",
+                        "error_info": f"cross_check up_golden output[{output_index}] is missing",
+                    }
+                )
+                continue
+            result = module.check_result_triple(
+                self.to_torch(npu_output),
+                self.to_torch(same_golden),
+                self.to_torch(up_golden),
+            )
+            results.append(self.normalize_result(result, output_index))
+        return results
+
 
 COMPARATOR = PytestResultComparator()
 
 
-def compare(*outputs):
-    """Compare outputs with the operator's canonical pytest policy."""
+def compare(*outputs, up_goldens=None):
+    """Compare outputs with the operator's canonical pytest policy.
+    outputs 布局由 golden 插件决定：
+      - 默认模式：[npu, 同精度 golden]
+      - 三方模式：[npu, 同精度 golden]，升精度 golden 由 up_golden 提供
+    """
+    try:
+        from ttk.utilities.container_utils import get_global_storage
+    except Exception:
+        return COMPARATOR.compare(*outputs)
+
+    precision_mode = getattr(get_global_storage(), "compare_method", None)
+    if precision_mode == "cross_check":
+        return COMPARATOR.compare_triple(*outputs, up_goldens=up_goldens)
+
     return COMPARATOR.compare(*outputs)

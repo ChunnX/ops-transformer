@@ -21,6 +21,24 @@ from pathlib import Path
 
 import torch
 
+try:
+    from ttk.utilities.container_utils import get_global_storage
+except Exception:
+    get_global_storage = None
+
+
+def get_compare_method():
+    if get_global_storage is not None:
+        try:
+            return getattr(get_global_storage(), "compare_method", None)
+        except Exception:
+            return None
+    return None
+
+
+def compare_method_is_cross_check():
+    return get_compare_method() == "cross_check"
+
 
 class CaseDataStore:
     """Keep one pytest-generated result for each TTK testcase."""
@@ -183,18 +201,14 @@ class KvQuantSparseFlashAttentionV2PytestAdapter:
             "block_num",
             "enable_sinks",
             "return_softmax_lse",
-        ):
-            key = f"pytest_{name}"
-            if key in attributes:
-                pytest_params[name] = copy.deepcopy(attributes[key])
-        for name in (
             "range_query",
             "range_key",
             "range_query_rope",
             "range_key_rope",
             "range_dequant_scale",
-            "Testcase_Number",
             "range_sinks",
+            "Testcase_Number",
+            "precision_mode",
         ):
             key = f"pytest_{name}"
             if key in attributes:
@@ -229,9 +243,67 @@ def normalize_pytest_outputs(outputs, query, return_softmax_lse):
         attn_fp32,
     ).to(dtype=query.dtype)
     if not bool(return_softmax_lse):
-        empty = torch.zeros(0, dtype=torch.float32)
-        return attn_out, empty, empty
-    return tuple(output.detach().cpu() for output in outputs)
+        # 算子 return_softmax_lse=False 时只回传 attn 一个输出; golden 必须与设备输出 slot 数一致
+        return (attn_out,)
+    return (attn_out,) + tuple(output.detach().cpu() for output in outputs[1:])
+
+
+def _persist_golden_sidecar(testcase_name, up_goldens):
+    """将升精度 golden 写出到 manual-data 根目录外的 sidecar 文件，
+    replay 时 peek_golden 从该文件恢复。"""
+    try:
+        from ttk.core_modules.manual_data import case_directory_name
+
+        storage = get_global_storage()
+        if storage is None:
+            return
+        dirs = getattr(storage, "manual_data_dirs", None) or ()
+        if not dirs:
+            return
+        root = Path(list(dirs)[0])
+        sidecar_dir = root / "qsfa_up_goldens"
+        sidecar_dir.mkdir(parents=True, exist_ok=True)
+        path = sidecar_dir / f"{case_directory_name(str(testcase_name))}.pt"
+        torch.save(up_goldens, path)
+    except Exception:
+        pass
+
+
+def _load_golden_sidecar(testcase_name):
+    """回放阶段从 sidecar 文件加载 升精度 golden。"""
+    try:
+        from ttk.core_modules.manual_data import case_directory_name
+
+        storage = get_global_storage()
+        if storage is None:
+            return None
+        dirs = getattr(storage, "manual_data_dirs", None) or ()
+        for root in dirs:
+            path = (
+                Path(root)
+                / "qsfa_up_goldens"
+                / f"{case_directory_name(str(testcase_name))}.pt"
+            )
+            if path.exists():
+                payload = torch.load(str(path), map_location="cpu", weights_only=True)
+                return payload
+    except Exception:
+        pass
+    return None
+
+
+def peek_golden(testcase_name):
+    """取当前用例的三方标杆输出(cross_check 用)；
+    优先进程内 CASE_DATA，其次 manual-data 两阶段 sidecar 文件。"""
+    if testcase_name is None:
+        return None
+    entry = CASE_DATA.cases.get(str(testcase_name))
+    if entry is not None and entry.get("up_goldens") is not None:
+        return entry["up_goldens"]
+    fallback = _load_golden_sidecar(testcase_name)
+    if fallback is not None:
+        return fallback
+    return None
 
 
 def cpu_kv_quant_sparse_flash_attention_v2(
@@ -264,6 +336,7 @@ __golden__ = {
     "e2e": {
         "torch.ops.cann_ops_transformer.kv_quant_sparse_flash_attention": "cpu_kv_quant_sparse_flash_attention_v2",
         "torch_npu.npu_kv_quant_sparse_flash_attention_v2": "cpu_kv_quant_sparse_flash_attention_v2",
+        "torch_npu.npu_kv_quant_sparse_flash_attention": "cpu_kv_quant_sparse_flash_attention_v2",
         "qsfa_v2_ttk_ops.kv_quant_sparse_flash_attention_v2_ttk": "cpu_kv_quant_sparse_flash_attention_v2",
     }
 }

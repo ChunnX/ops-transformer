@@ -413,6 +413,8 @@ def get_param_fus(input_tensor_dict, params):
     fa_param["out_shape"] = fa_param["q_shape"]
     fa_param["out_dtype"] = trans_input_dtype(params["dtype_output"][0])
 
+    fa_param["precision_mode"] = params.get("precision_mode", 1)
+
     # >> batch_size info
     if fa_param["layout_query"] in ["TND"]:
         fa_param["b"] = len(fa_param["actualSeqLengths_q_raw"])
@@ -564,8 +566,8 @@ def generate_input_tensors(params):
 
 def compute_cpu(input_tensor_dict, params):
     try:
-        out_data, softmax_max, softmax_sum = compute_golden(input_tensor_dict, params)
-        return (out_data, softmax_max, softmax_sum), input_tensor_dict, params
+        outputs = compute_golden(input_tensor_dict, params)
+        return outputs, input_tensor_dict, params
     except Exception as e:
         import traceback
 
@@ -863,11 +865,10 @@ def compute_golden(input_tensor_dict, params):
         return early_exit, torch.empty(0), torch.empty(0)
 
     # ===计算入口===
-    y_all, softmax_max, softmax_sum = _t_increattention_bnsd(fa_param)
-    y_all = trans_bnsd_to_layout(
-        y_all, out_shape, layoutQuery, fa_param["actualSeqLengths_q"]
-    )
-    return y_all, softmax_max, softmax_sum
+    # precision_mode == 12(cross_check) 时返回[0:3]=同精度 golden, [3:6]=升精度 golden
+    if fa_param["precision_mode"] == 12:
+        return _t_increattention_bnsd(fa_param) + _t_increattention_bnsd_gold(fa_param)
+    return _t_increattention_bnsd(fa_param)
 
 
 def gatherKV(
@@ -933,8 +934,113 @@ def softmax(x, sinks=None):
     x_sum = y.sum(dim=-1, keepdim=True)
     if sinks is not None:
         x_sum = x_sum + torch.exp(sinks - x_max)
-    ans = y / x_sum
-    return ans, x_max, x_sum
+    # ans = y / x_sum
+    return y, x_max, x_sum
+
+
+def _t_increattention_bnsd_gold(fa_param):
+    batch_size = fa_param["b"]
+    numheads = fa_param["numHeads"]
+    numKeyValueHeads = fa_param["numKeyValueHeads"]
+    actualSeqLengths_q = fa_param["actualSeqLengths_q"]
+    actualSeqLengths_kv = fa_param["actualSeqLengths_kv"]
+    scaleValue = fa_param["scaleValue"]
+    sparse_blocksize = fa_param["sparse_blocksize"]
+    sparse_blockcount = fa_param["sparse_blockcount"]
+    sparseIndicesIndices = fa_param["sparse_indices_bnsd_tensor"]
+    out_shape_bnsd = fa_param["q_bnsd_shape"]
+    out_shape_bnsd[-1] = fa_param["v_bnsd_shape"][-1]
+    sparse_mode = fa_param["sparse_mode"]
+    g = numheads // numKeyValueHeads
+    sinks_tensor = fa_param.get("sinks_tensor")
+    if sinks_tensor is not None:
+        sinks_tensor = sinks_tensor.cpu().double()
+
+    q_bnsd_tensor = fa_param["q_bnsd_tensor"]
+    k_bnsd_tensor = fa_param["k_bnsd_tensor"].float()
+    k_dequant_scale_bnsd_tensor = fa_param["k_dequant_scale_bnsd_tensor"].float()
+    tile_size = 128
+    if fa_param["q_dtype"] == "float16":
+        k_bnsd_tensor[..., :512] = (
+            k_bnsd_tensor[..., :512]
+            * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)
+        ).to(torch.float16)
+    elif fa_param["q_dtype"] == "bfloat16":
+        k_bnsd_tensor[..., :512] = (
+            k_bnsd_tensor[..., :512]
+            * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)
+        ).to(torch.bfloat16)
+    elif fa_param["q_dtype"] == "float32":
+        k_bnsd_tensor[..., :512] = (
+            k_bnsd_tensor[..., :512]
+            * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)
+        ).to(torch.float32)
+    v_bnsd_tensor = k_bnsd_tensor[..., :512].clone()
+    y_gold = torch.zeros(out_shape_bnsd, dtype=torch.float64)
+
+    q_bnsd_tensor = fa_param["q_bnsd_tensor"].float()
+
+    layout_query = fa_param["layout_query"]
+    if layout_query == "BSND":
+        lse_shape = [batch_size, numKeyValueHeads, out_shape_bnsd[2], g]
+    else:
+        total_t1 = sum(actualSeqLengths_q)
+        lse_shape = [numKeyValueHeads, total_t1, g]
+    softmax_max_gold = torch.full(lse_shape, float("-inf"), dtype=torch.float64)
+    softmax_sum_gold = torch.zeros(lse_shape, dtype=torch.float64)
+
+    t_offset = 0
+    for batch in range(batch_size):
+        curr_actualSeq_q = actualSeqLengths_q[batch]
+        curr_actualSeq = actualSeqLengths_kv[batch]
+        for n2Idx in range(numKeyValueHeads):
+            for s1Idx in range(curr_actualSeq_q):
+                if s1Idx < curr_actualSeq_q - curr_actualSeq and sparse_mode != 0:
+                    y_gold[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = torch.zeros(
+                        [g, out_shape_bnsd[-1]], dtype=torch.float64
+                    )
+                    continue
+                q_curr = q_bnsd_tensor[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :]
+                sparse_indices_Indices = sparseIndicesIndices[batch, n2Idx, s1Idx, :]
+
+                emptyFlag, k_sparse, v_sparse = gatherKV(
+                    k_bnsd_tensor,
+                    v_bnsd_tensor,
+                    sparse_indices_Indices,
+                    sparse_blocksize,
+                    sparse_blockcount,
+                    batch,
+                    n2Idx,
+                    s1Idx,
+                    curr_actualSeq,
+                    curr_actualSeq_q,
+                    sparse_mode,
+                )
+                cur_sinks = None
+                if sinks_tensor is not None:
+                    cur_sinks = sinks_tensor[n2Idx * g : (n2Idx + 1) * g]
+                if emptyFlag:
+                    continue
+                bmm1Res = torch.matmul(q_curr.float(), k_sparse.float().T)
+                scaleRes = bmm1Res * scaleValue
+                softmax_res, x_max, x_sum = softmax(scaleRes.double(), cur_sinks)
+                bmm2Res = torch.matmul(softmax_res.double(), v_sparse.double()) / x_sum
+                y_gold[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = bmm2Res
+
+                if layout_query == "BSND":
+                    softmax_max_gold[batch, n2Idx, s1Idx, :] = x_max.squeeze(-1)
+                    softmax_sum_gold[batch, n2Idx, s1Idx, :] = x_sum.squeeze(-1)
+                else:
+                    softmax_max_gold[n2Idx, t_offset + s1Idx, :] = x_max.squeeze(-1)
+                    softmax_sum_gold[n2Idx, t_offset + s1Idx, :] = x_sum.squeeze(-1)
+        t_offset += curr_actualSeq_q
+    y_gold = trans_bnsd_to_layout(
+        y_gold,
+        fa_param["out_shape"],
+        fa_param["layout_query"],
+        fa_param["actualSeqLengths_q"],
+    )
+    return y_gold, softmax_max_gold, softmax_sum_gold
 
 
 def _t_increattention_bnsd(fa_param):
@@ -1043,7 +1149,12 @@ def _t_increattention_bnsd(fa_param):
                     softmax_max_all[n2Idx, t_offset + s1Idx, :] = x_max.squeeze(-1)
                     softmax_sum_all[n2Idx, t_offset + s1Idx, :] = x_sum.squeeze(-1)
         t_offset += curr_actualSeq_q
-
+    y = trans_bnsd_to_layout(
+        y,
+        fa_param["out_shape"],
+        fa_param["layout_query"],
+        fa_param["actualSeqLengths_q"],
+    )
     return y, softmax_max_all, softmax_sum_all
 
 
