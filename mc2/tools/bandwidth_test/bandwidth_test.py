@@ -142,8 +142,8 @@ def get_profiling(num_loop, num_repeat, num_warmup, profiling_output_path):
 
     experimental_config = torch_npu.profiler._ExperimentalConfig(
         export_type=torch_npu.profiler.ExportType.Text,
-        aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
-        profiler_level=torch_npu.profiler.ProfilerLevel.Level0,
+        aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
+        profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
         l2_cache=False,
         data_simplification=False,
     )
@@ -158,7 +158,7 @@ def get_profiling(num_loop, num_repeat, num_warmup, profiling_output_path):
         on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(
             profiling_output_path
         ),
-        profile_memory=False,
+        profile_memory=True,
         with_stack=False,
         with_flops=False,
         with_modules=False,

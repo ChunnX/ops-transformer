@@ -236,7 +236,7 @@ No.   BS       H          Rank Data(MB)    Batch Tokens   Batch Data(MB)   Mean 
 带宽数值继续沿用原来的跨卡数据量计算口径。
 
 采集循环只运行 BandwidthTest，已去掉辅助张量和 `torch.exp` 负载。
-profiler 使用 `Level0` 和 `AiCoreNone`，关闭额外的 AI Core 指标与内存采集；
+profiler 配置恢复到已验证可采集的 `124d318a` 基线：`Level1`、`PipeUtilization`、`profile_memory=True`；
 输入准备、参数检查、日志和结果校验位于 kernel 计时之外。
 报告基于 `op_summary` 的算子执行时间，包含必要的搬运、通信及完成等待，并非裸链路峰值。
 
