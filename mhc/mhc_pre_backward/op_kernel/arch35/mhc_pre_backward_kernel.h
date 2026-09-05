@@ -29,6 +29,7 @@ using namespace AscendC;
 using namespace MhcPreBackwardUtils;
 
 constexpr uint32_t GAMMA_REG_REUSE_T_THRESHOLD = 3072;
+constexpr uint32_t MHC_PRE_BACKWARD_IMPL_MODE_HF32 = 1U;
 
 template <class T, class P>
 class MhcPreBackwardKernel {
@@ -937,9 +938,12 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     if (GetBlockIdx() >= v1UsedCubeCoreNum_) {
         return;
     }
+    bool enableHf32 = tiling_->implMode == MHC_PRE_BACKWARD_IMPL_MODE_HF32;
     if ASCEND_IS_AIC {
-        AscendC::SetHF32Mode(1);
-        AscendC::SetHF32TransMode(1);
+        if (enableHf32) {
+            AscendC::SetHF32Mode(1);
+            AscendC::SetHF32TransMode(1);
+        }
     }
 
     uint32_t currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - dealStartND_);
@@ -978,7 +982,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     c0Basic_.End();
 
     if ASCEND_IS_AIC {
-        AscendC::SetHF32Mode(0);
+        if (enableHf32) {
+            AscendC::SetHF32Mode(0);
+        }
     }
 }
 

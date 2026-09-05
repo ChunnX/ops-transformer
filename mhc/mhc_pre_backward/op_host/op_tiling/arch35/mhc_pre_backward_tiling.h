@@ -35,6 +35,7 @@ TILING_DATA_FIELD_DEF(uint64_t, N);
 TILING_DATA_FIELD_DEF(uint64_t, D);
 TILING_DATA_FIELD_DEF(uint64_t, fusionSize); // N ^ 2 + 2 * N
 TILING_DATA_FIELD_DEF(float, hcEps);
+TILING_DATA_FIELD_DEF(uint32_t, implMode);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPreBackward, MhcPreBackwardTilingData);
@@ -120,6 +121,7 @@ private:
     uint64_t N_{0};
     uint64_t D_{0};
     float hcEps_{0.0f};
+    uint32_t implMode_{0U};
     uint64_t fusionSize_{0};
 };
 

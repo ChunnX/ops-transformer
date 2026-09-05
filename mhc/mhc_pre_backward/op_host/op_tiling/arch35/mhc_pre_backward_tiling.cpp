@@ -49,6 +49,9 @@ const constexpr uint32_t DEFAULT_TILING_PRIORITY = 1000;
 const constexpr uint32_t LEGAL_N_VALUES[] = {4, 6, 8};
 const constexpr uint32_t LEGAL_N_COUNT = 3;
 const constexpr float DEFAULT_HC_EPS = 1e-6f;
+const constexpr int64_t IMPL_MODE_FP32 = 0;
+const constexpr int64_t IMPL_MODE_HF32 = 1;
+const constexpr uint32_t IMPL_MODE_ATTR_INDEX = 1;
 
 const constexpr uint32_t C0_SET_VALUE = 2;
 const constexpr uint32_t ALPHA_GRAD_CORE_FACTOR = 24;
@@ -246,6 +249,16 @@ ge::graphStatus MhcPreBackwardTiling::ParseInputAndAttr()
     auto hcEpsPtr = attrs->GetAttrPointer<float>(0);
     hcEps_ = (hcEpsPtr != nullptr) ? *hcEpsPtr : DEFAULT_HC_EPS;
 
+    auto implModePtr = attrs->GetAttrPointer<int64_t>(IMPL_MODE_ATTR_INDEX);
+    int64_t implMode = (implModePtr != nullptr) ? *implModePtr : IMPL_MODE_FP32;
+    if (implMode != IMPL_MODE_FP32 && implMode != IMPL_MODE_HF32) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "op_impl_mode",
+                                              std::to_string(implMode).c_str(),
+                                              "op_impl_mode must be 0 (FP32) or 1 (HF32)");
+        return ge::GRAPH_FAILED;
+    }
+    implMode_ = static_cast<uint32_t>(implMode);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -287,6 +300,7 @@ void MhcPreBackwardTiling::SetCommonTilingParams()
     tilingData_.set_N(N_);
     tilingData_.set_D(D_);
     tilingData_.set_hcEps(hcEps_);
+    tilingData_.set_implMode(implMode_);
 }
 
 void MhcPreBackwardTiling::FillTilingData()
@@ -412,6 +426,7 @@ void MhcPreBackwardTiling::PrintTilingData()
     OP_LOGD(context_->GetNodeName(), "nD: [%lu]", tilingData_.get_nD());
     OP_LOGD(context_->GetNodeName(), "fusionSize: [%lu]", tilingData_.get_fusionSize());
     OP_LOGD(context_->GetNodeName(), "hcEps: [%f]", tilingData_.get_hcEps());
+    OP_LOGD(context_->GetNodeName(), "implMode: [%u]", tilingData_.get_implMode());
 }
 
 uint64_t MhcPreBackwardTiling::GetTilingKey() const
