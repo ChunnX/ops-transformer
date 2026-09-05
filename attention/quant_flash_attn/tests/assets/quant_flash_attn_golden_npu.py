@@ -1563,11 +1563,12 @@ def cpu_mxfp8_golden(
     out = torch.cat(o_BLOCKS, dim=2)
     out_sum = torch.cat(s_BLOCKS, dim=2)
     out = out / (out_sum)
-    # kernel 语义: s=0 的行 (全跳过/全溢出) 输出 0 而非 NaN
-    out = torch.where(out_sum > 0, out, torch.zeros_like(out))
 
     o_max = torch.cat(m_BLOCKS, dim=2)
     all_masked = o_max <= minValue.item()
+    out = torch.where(
+        (out_sum == 0) & all_masked, torch.zeros_like(out), out
+    )
     true_padding = mask_global.all(dim=-1).unsqueeze(-1).to(o_max.device)
     true_all_masked = all_masked & true_padding
     lse = torch.where(
