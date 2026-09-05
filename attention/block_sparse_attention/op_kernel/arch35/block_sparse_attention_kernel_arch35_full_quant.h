@@ -490,11 +490,14 @@ public:
         uint32_t qBaseTilePerSubCore = 64;
         uint32_t kvBaseTilePerSubCore = RoundUp(kvBaseTile_, 32);
         uint32_t embedPerSubCore = RoundUp(embed_, 32);
+        constexpr uint32_t ELE_NUM_PER_DATABLOCK = 32 / sizeof(ElementP);
+        uint32_t pNFractalNum = kvBaseTilePerSubCore / ELE_NUM_PER_DATABLOCK;
+        uint32_t pExtraElemNum = (pNFractalNum - 1) * ELE_NUM_PER_DATABLOCK;
         uint32_t sStartOffset = 0;
         uint32_t pStartOffset =
             sStartOffset + qBaseTilePerSubCore * kvBaseTilePerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES;
-        uint32_t loStartOffset =
-            pStartOffset + qBaseTilePerSubCore * kvBaseTilePerSubCore * sizeof(ElementP) * UB_S_OTMP_BUF_STAGES;
+        uint32_t loStartOffset = pStartOffset + (qBaseTilePerSubCore * kvBaseTilePerSubCore + pExtraElemNum) *
+                                                    sizeof(ElementP) * UB_S_OTMP_BUF_STAGES;
         uint32_t goStartOffset =
             loStartOffset + qBaseTilePerSubCore * embedPerSubCore * sizeof(ElementOTmp) * UB_S_OTMP_BUF_STAGES;
         uint32_t lmStartOffset = goStartOffset + qBaseTilePerSubCore * embedPerSubCore * sizeof(ElementOTmp);

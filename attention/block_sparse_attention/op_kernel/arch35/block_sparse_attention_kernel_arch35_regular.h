@@ -500,6 +500,10 @@ public:
         uint32_t pExtraElemNum = 0;
         if constexpr (transposedMm1) {
             pExtraElemNum = Max(qBaseTilePerSubCore, kvBaseTilePerSubCore);
+        } else {
+            constexpr uint32_t ELE_NUM_PER_DATABLOCK = 32 / sizeof(ElementP);
+            uint32_t pNFractalNum = kvBaseTilePerSubCore / ELE_NUM_PER_DATABLOCK;
+            pExtraElemNum = (pNFractalNum - 1) * ELE_NUM_PER_DATABLOCK;
         }
         uint32_t sStartOffset = 0;
         uint32_t pStartOffset =
