@@ -108,9 +108,8 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1
 template <TemplateMegaMoeA8W4WaveTypeClass>
 __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2CombineForWaveRange(
     const ExpertTokenPosition &waveBeginPosition, const ExpertTokenPosition &waveEndPosition,
-    uint32_t waveLastActiveExpertIdx, ExpertLoopState &gmm2State, GMMAddrInfo &gmm2AddrInfo,
-    uint32_t &startBlockIdx, WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence,
-    int32_t &gmm1TileReadySequence)
+    uint32_t waveLastActiveExpertIdx, ExpertLoopState &gmm2State, GMMAddrInfo &gmm2AddrInfo, uint32_t &startBlockIdx,
+    WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence, int32_t &gmm1TileReadySequence)
 {
     uint32_t waveGmm2ExpertEndExclusive =
         waveEndPosition.expertIdx + (waveEndPosition.tokenIndexInExpert == 0U ? 0U : 1U);
