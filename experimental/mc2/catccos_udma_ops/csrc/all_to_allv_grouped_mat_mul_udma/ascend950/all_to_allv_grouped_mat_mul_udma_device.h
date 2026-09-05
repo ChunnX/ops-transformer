@@ -88,7 +88,7 @@ struct AllToAllVGroupedMatMulUdmaConfig {
     using ProblemShape = Catccos::DGemm::AllToAllVAllGatherProblemShape;
     using Kernel = Catccos::DGemm::Kernel::Ascend950AllToAllVGroupedMatmul<
         ProblemShape, BlockMmad, BlockComm, BlockMmadScheduler, BlockScheduler,
-        WorkspaceStages, true, ExportAllToAllV, BlockExport>;
+        WorkspaceStages, ExportAllToAllV, BlockExport>;
     using Device = Catccos::DGemm::Device::DeviceDGemm<Kernel>;
 };
 

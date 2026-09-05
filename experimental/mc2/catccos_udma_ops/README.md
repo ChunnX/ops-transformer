@@ -45,49 +45,32 @@ python3 -m pip install --force-reinstall --no-deps dist/*.whl
 The two EP8/256-expert GroupedMatMul-AllToAllV delivery profiles use independent
 symmetric staging slots and do not recycle a slot within one launch. The
 `K=1024, N=2048` profile uses 19 slots; the `K=512, N=2048` profile uses 22.
-Choose the producer synchronization protocol when building the Wheel:
+Both supported builds use PIPE_FIX + local SyncAll + signal for producer
+readiness, with no all-PE producer barrier:
 
 ```bash
-# Recommended/default: no reuse plus an all-PE producer barrier.
-CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER=1 \
+CATCCOS_UDMA_MSSANITIZER=0 CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER=0 \
   bash scripts/build_wheel.sh
-
-# Experimental lower-overhead version: PIPE_FIX + local SyncAll + signal.
-CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER=0 \
+CATCCOS_UDMA_MSSANITIZER=1 CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER=0 \
   bash scripts/build_wheel.sh
 ```
 
-The choice is compiled into the device kernel; there is no runtime branch or
-public API difference. The second variant must pass repeated accuracy tests on
-the target topology before delivery. Both variants compile out root-cause
-records, producer-trace copies, diagnostic delays and device printf unless the
-corresponding diagnostic build switches are explicitly enabled. Other shapes
-retain the general two-stage kernel. The no-reuse profiles support at most 19
-and 22 communication rounds respectively; their current delivery target is the
-balanced `M=131072` business case.
+The default is MSSANITIZER=0. MSSANITIZER=1 retains source-line information
+(`-g`) and the ready-wait timeout assertion with its required AscendC Dump
+storage. The producer-full-barrier option accepts only 0. Other shapes retain
+the general two-stage production kernel. The no-reuse profiles support at
+most 19 and 22 communication rounds respectively; their current delivery
+target is the balanced `M=131072` business case.
 
 `build_wheel.sh` removes only this subproject's previous `build`, `dist`,
 `egg-info`, staged extension, and staged runtime libraries before rebuilding.
 It then rejects a Wheel unless its filename and sole `dist-info/METADATA` entry
 match the package version in `ops_transformer_catccos_udma/_version.py`.
 
-Production builds compile out every device-side `AscendC::printf` call and
-disable the AscendC Dump buffer. To inspect GET completion and ready-wait context,
-build and install a separate diagnostic Wheel:
-
-```bash
-CATCCOS_UDMA_DEVICE_DIAGNOSTICS=1 bash scripts/build_wheel.sh
-python3 -m pip install --force-reinstall --no-deps dist/*.whl
-```
-
-Both UDMA tiles complete through public `aclshmemx_udma_quiet(peer)`, leaving
-QP selection and direct/relay handling to SHMEM. There is no local QP table
-access or CQ polling implementation. Tiles expose void `Finalize(peer)`;
-communication blocks use void `FinalizeBlockLoop()` before completion
-publication or buffer reuse. There is no CQ status return or status-based
-completion guard. The diagnostic Wheel enables ready-wait diagnostics. Device
-printf reserves additional HBM and affects timing, so do not use that Wheel
-for performance measurement or model delivery.
+Both UDMA directions complete through public `aclshmemx_udma_quiet(peer)`,
+leaving QP selection and direct/relay handling to SHMEM. Alternative completion
+protocols, cache-bypass experiments, root-cause kernels, trace tensors and
+diagnostic build switches have been removed.
 
 `prepare_dependencies.sh` keeps the CatCCOS revision fixed and switches a clean
 SHMEM checkout to the pinned maintenance commit, including a checkout currently
@@ -230,17 +213,25 @@ to benchmark or validate the original non-export kernel explicitly. Performance
 preallocates both outputs before warm-up, so allocation and route-count
 preprocessing are excluded from the profiled launch loop.
 
-The export kernel uses the production `strong_ready` completion protocol by
-default. Each remote peer slice and its 64-bit per-stage/source generation are
-published by one UDMA WRITE_WITH_NOTIFY request. An entry SHMEM barrier runs
-immediately before the reusable MMAD/communication gates are cleared, followed
-by the existing post-initialization barrier. Staging keeps the default L2
-policy; cache bypass is not part of the production path. The
-`CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE` environment variable is reserved for A/B
-diagnosis (`baseline`, `barrier_only`, `generation_after_quiet`,
-`strong_ready`, or `strong_ready_cache_safe`). Calls that do not request the
-AllToAllV output retain their independently validated non-export completion
-path.
+Both AllToAllV-GroupedMatMul variants use the same strong-ready protocol.
+One AIV, `((rank+1)%world_size, subblock=1)`, sends to all remote ranks in
+cyclic order: `rank+1, rank+2, ..., rank-1`, wrapping at world_size.
+Each nonempty contiguous peer slice is sent with one WRITE_WITH_NOTIFY request
+carrying `ready[stage][source_rank] = commIdx+1`, immediately followed by
+`quiet(peer)` on that same AIV before the next destination is processed.
+Empty slices are skipped. A single-rank launch performs only local copies.
+
+The original self-copy worker count and MTE block distribution are retained.
+Self copy uses subblock 0 without export and subblock 1 with export; export
+keeps subblock 0, its original core count and task-modulo assignment.
+Root remains `GetBlockIdx()==0`. Entry barriers surround the reset of reusable
+signals. Before reusing a stage, AIV waits for the previous AIC consumer and
+publishes permission for peers to write. Root waits only for nonempty remote
+sources; every self-copy worker drains MTE before the loop-end AIV barrier.
+That barrier joins receive readiness, outgoing quiets, self copy and the
+previous stage's export before releasing AIC. Final export and AIC
+acknowledgements are drained before return. Staging retains the default L2
+policy.
 
 `grouped_mat_mul_all_to_allv` performs the inverse order: local grouped
 matmuls followed by UDMA AllToAllV. Its `x` and `weight` inputs remain ordinary
@@ -303,6 +294,19 @@ bash scripts/run_accuracy.sh --case-id aligned_m128_n256_k256_ep2_uniform
 bash scripts/run_accuracy.sh --include-tag smoke --output-dir /tmp/udma_accuracy
 ```
 
+After installing either production Wheel, validate the serial sender with:
+
+```bash
+bash scripts/run_accuracy.sh \
+  --cases validation/cases/alltoallv_serial_regression.yaml \
+  --check-reusable-out
+```
+
+This manifest covers single-rank copies, empty remote slices, cyclic rank
+wraparound, stage reuse and unbalanced routing, with and without export.
+The existing `model_case_1` and `model_case_2` cases cover the tuned export
+profiles with eight and four self-copy workers, respectively.
+
 The GroupedMatMul-AllToAllV BF16 cases use a separate manifest so their
 baselines and operator names cannot be mixed with the opposite direction:
 
@@ -329,9 +333,7 @@ plus `auto_repeat_0`. Before each call every Rank enters the same Gloo barrier;
 after the operator completes, each returned tensor is cloned to an immutable
 NPU snapshot. Consequently no Rank can begin call N+1 until every Rank has
 finished and preserved call N, and every per-call report describes that exact
-global invocation. Unaligned consecutive launches are intentionally confined
-to `scripts/run_sync_diagnosis.sh`, which passes `--automatic-only` to diagnose
-cross-Rank launch skew and cross-invocation synchronization.
+global invocation. Use continuous stress runs for unaligned consecutive launches.
 
 Reusable caller-provided outputs are not exercised by ordinary accuracy. Add
 `--check-reusable-out` when that overload is required; `--memory-safety`
@@ -505,54 +507,6 @@ completion); a correct export with a bad final output points to the GMM side.
 If an input is already different, inspect the preceding producer or run
 reproducibility before attributing the issue to the current operator.
 
-For the balanced GroupedMatMul-AllToAllV synchronization failure, run the
-single-process-lifetime no-reuse/delay matrix. It generates each Rank's input,
-final-output Golden and local-GMM producer Golden once, then reuses the same
-resident tensors for every mode and launch:
-
-```bash
-bash scripts/run_gmm_a2av_root_cause.sh \
-  --cases validation/cases/grouped_mat_mul_all_to_allv.yaml \
-  --case-id model_case_1 \
-  --launches-per-mode 3 \
-  --build-install
-```
-
-`--build-install` rebuilds and force-installs the Wheel before the one
-`torchrun`; it automatically sets
-`CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE=1`. When building manually, set the same
-environment variable before `scripts/build_wheel.sh`; the validation-only raw
-operator is compiled out of ordinary delivery Wheels. The default matrix runs:
-
-- `no_reuse_trace`: a dedicated profile-specific 19/22-stage kernel gives every
-  `commIdx` an independent symmetric stage, disables per-round recycle, waits
-  once at the end, and copies the retained producer staging into a regular NPU
-  tensor;
-- `pre_get_delay_medium`: 20,000 cycles after producer-ready wait and before
-  GET;
-- `post_quiet_delay_{short,medium,long}`: 2,000/20,000/200,000 cycles after
-  public UDMA quiet and before completion publication;
-- `baseline`: the original two-stage local-`SyncAll` diagnostic protocol.
-
-Use repeated `--mode <name>` options to select a subset. Barrier modes require
-`route: balanced` because every Rank must execute identical communication-loop
-counts. Delays are diagnostics, not delivery fixes.
-
-Every launch allocates a 1 MiB regular NPU diagnostic tensor. Device AIVs write
-per-round/source records containing actual rows, output offset, GET bytes,
-completion publication, delay placement, stage address/range and trace copy
-completion. Diagnostic format version 3 records `quiet_completed` and
-`producer_trace_copy_completed` as progress flags, with no CQ error codes.
-The matching validation scripts reject older diagnostic tensor versions. After
-stream synchronization Host writes these records to
-`rank_<N>/modes/<mode>/launch_<I>/diagnostic.json`. Device printf is not used,
-so the experiment does not reserve the AscendC printf buffer. For no-reuse,
-`producer_trace/report.json`, breakdown CSVs, optional failure rows, and
-`producer_trace/layout.json` distinguish a bad local GMM/staging payload from a
-bad GET/final output. `summary.json` classifies producer visibility,
-quiet-to-recycle timing, cyclic stage reuse, or CQ/transport failure. Input and
-Golden reuse identities are recorded in `reuse_manifest.json`.
-
 ### Continuous stress runs
 
 Use `run_stress.sh` to submit a fixed number of calls on one NPU stream per
@@ -602,23 +556,6 @@ before the loop, then drains the stream after the entire loop. It adds no
 barriers, stream switches, device reads, allocations or synchronization between
 calls; the operators retain their own required communication synchronization.
 
-Add `--sync-each-call` when diagnosing a hang. This creates one dedicated Gloo
-group and, after every operator call, performs an NPU synchronization followed
-by a `monitored_barrier`. The default barrier timeout is 120 seconds and can be
-changed with `--sync-timeout-seconds`:
-
-```bash
-bash scripts/run_stress.sh --mode chain --case-id model_case_1 --iterations 10000 \
-  --sync-each-call --sync-timeout-seconds 120
-```
-
-Rank 0 prints one line immediately before every operator call, containing the
-one-based iteration, call sequence and operator name. Output is shown live and
-also saved in `torchrun.log`. Because the monitored barrier prevents any rank
-from starting the next call early, the final `[stress-call]` line identifies the
-operator execution that stopped advancing. In `chain` mode A and B are
-synchronized and reported separately.
-
 Use `--timeout-seconds 3600` to set the per-case host deadline, including
 initialization and teardown, and `--fail-fast` to stop after a failed case.
 Results go to `validation_results/<timestamp>/stress` or `--output-dir`.
@@ -628,8 +565,7 @@ contains `environment.json` and `summary.json`. In the default mode submission
 counts are not completion counts: completion is confirmed only after the final
 stream drain. During the loop no progress files are written; if a process is
 killed while submitting, the saved counts reflect only the last checkpoint.
-With `--sync-each-call`, the live log gives the exact last operator call and a
-worker exception also persists it in `last_debug_event`. Overall elapsed time
+Overall elapsed time
 includes Python submission overhead
 and is not a per-kernel latency measurement. PASS indicates successful
 execution and teardown on every rank, not numerical correctness.

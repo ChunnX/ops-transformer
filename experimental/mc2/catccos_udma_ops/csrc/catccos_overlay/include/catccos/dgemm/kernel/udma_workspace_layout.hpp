@@ -41,8 +41,6 @@ struct UdmaWorkspaceLayout {
     static constexpr uint64_t kA2avGmmControlBytes = 2048;
     static constexpr uint64_t kA2avGmmSyncMmadOffset =
         kA2avGmmControlOffset;
-    static constexpr uint64_t kA2avGmmSyncCommOffset =
-        kA2avGmmControlOffset + kControlAlignment;
     static constexpr uint64_t kA2avGmmReadyOffset =
         kA2avGmmControlOffset + 2 * kControlAlignment;
     static constexpr uint32_t kA2avGmmReadyStages = 3;

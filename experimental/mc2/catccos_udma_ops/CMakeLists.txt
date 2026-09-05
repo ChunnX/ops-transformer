@@ -62,61 +62,21 @@ set(NPU_SOC_VERSION "ascend950" CACHE STRING "NPU SOC version")
 set(EXTENSION_MODULE_NAME "ops_transformer_catccos_udma" CACHE STRING "PyTorch operator namespace")
 option(CATCCOS_UDMA_MSSANITIZER
     "Build Ascend950 device kernels with source-line information for msSanitizer" OFF)
-option(CATCCOS_UDMA_DEVICE_DIAGNOSTICS
-    "Compile device-side printf diagnostics (never enable for performance delivery)" OFF)
-option(CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
-    "Compile the validation-only GMM-AllToAllV A/B/C/D root-cause matrix" OFF)
+# Retain the existing build command spelling, but only the production
+# local producer rendezvous is supported.
 option(CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER
-    "Use the all-PE producer barrier in the production no-reuse GMM-AllToAllV kernel" ON)
-set(CATCCOS_UDMA_ASCEND_SANITIZER_FLAGS "")
-if(CATCCOS_UDMA_MSSANITIZER)
-    # Ascend 950 does not support --cce-enable-sanitizer/--sanitizer. Those
-    # options also enable the SHMEM MSTX path, which requires the unsupported
-    # sanitizer_report.h device API. Keep only -g so msSanitizer can symbolize
-    # exceptions to source files, lines and call stacks on this platform.
-    set(CATCCOS_UDMA_ASCEND_SANITIZER_FLAGS "-g")
-    message(STATUS
-        "Enable Ascend950 msSanitizer source-line information (-g only)")
-endif()
-set(CATCCOS_UDMA_ASCEND_DIAGNOSTIC_FLAGS "-DASCENDC_DUMP=0")
-if(CATCCOS_UDMA_DEVICE_DIAGNOSTICS)
-    # AscendC printf enables the device Dump path and reserves per-core output
-    # storage. Keep both the call sites and Dump runtime out of production
-    # binaries; this switch is only for a dedicated diagnosis Wheel.
-    set(CATCCOS_UDMA_ASCEND_DIAGNOSTIC_FLAGS
-        "-DCATCCOS_UDMA_READY_WAIT_TIMEOUT_DIAGNOSTICS=1 -DCATCCOS_UDMA_DEVICE_DIAGNOSTICS=1 -DASCENDC_DUMP=1")
-    message(WARNING
-        "Enable device printf diagnostics; this Wheel is not valid for performance measurement")
-elseif(CATCCOS_UDMA_MSSANITIZER)
-    # The model hang leaves the root AIV in the production strong-ready wait.
-    # Keep all legacy device printf call sites disabled, but enable the
-    # one-shot timeout assertion and the Dump storage needed by
-    # ascendc_assert's formatted diagnostic record.
-    set(CATCCOS_UDMA_ASCEND_DIAGNOSTIC_FLAGS
-        "-DCATCCOS_UDMA_READY_WAIT_TIMEOUT_DIAGNOSTICS=1 -DCATCCOS_UDMA_DEVICE_DIAGNOSTICS=0 -DASCENDC_DUMP=1")
-    message(WARNING
-        "Enable only the A2AV-GMM ready-wait timeout assertion for the msSanitizer Wheel")
-else()
-    message(STATUS "Disable AscendC device Dump diagnostics in the production Wheel")
-endif()
-set(CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE_FLAG
-    "-DCATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE=0")
-if(CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE)
-    set(CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE_FLAG
-        "-DCATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE=1")
-    message(WARNING
-        "Enable validation-only GMM-AllToAllV root-cause kernels; do not use this Wheel for performance delivery")
-endif()
-set(CATCCOS_UDMA_GMM_A2AV_PRODUCER_SYNC_FLAG
-    "-DCATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER=0")
+    "Unsupported compatibility option; leave OFF" OFF)
 if(CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER)
-    set(CATCCOS_UDMA_GMM_A2AV_PRODUCER_SYNC_FLAG
-        "-DCATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER=1")
-    message(STATUS
-        "GMM-AllToAllV delivery synchronization: no-reuse with producer full barrier")
-else()
-    message(WARNING
-        "GMM-AllToAllV delivery synchronization: no-reuse without producer full barrier; validate precision on the target topology before delivery")
+    message(FATAL_ERROR "Only CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER=0 is supported")
+endif()
+set(CATCCOS_UDMA_ASCEND_FLAGS "-DCATCCOS_UDMA_MSSANITIZER=0 -DASCENDC_DUMP=0")
+if(CATCCOS_UDMA_MSSANITIZER)
+    # Ascend950 supports source-line information, but not --sanitizer or
+    # --cce-enable-sanitizer. Retain the ready-wait timeout assertion in this
+    # build; ASCENDC_DUMP supplies the storage needed by ascendc_assert.
+    set(CATCCOS_UDMA_ASCEND_FLAGS
+        "-g -DCATCCOS_UDMA_MSSANITIZER=1 -DASCENDC_DUMP=1")
+    message(STATUS "Enable msSanitizer source-line information and ready-wait timeout")
 endif()
 if(NOT NPU_SOC_VERSION STREQUAL "ascend950")
     message(FATAL_ERROR "CatCCOS UDMA operators currently support only NPU_SOC_VERSION=ascend950")
@@ -261,7 +221,6 @@ set(COMPILE_OPTIONS
     -DCATLASS_ARCH=3510
     -DL2_CACHE_HINT
     -DTORCH_MODE
-    ${CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE_FLAG}
 )
 
 set(OBJECTS_LIST "" CACHE INTERNAL "CatCCOS UDMA operator objects" FORCE)

@@ -29,7 +29,8 @@ def test_validation_uses_regular_reusable_output():
     performance = (PROJECT_ROOT / "validation" / "performance_worker.py").read_text(
         encoding="utf-8"
     )
-    assert "reusable_out = torch.empty((m, n)" in accuracy
+    assert "reusable_out = torch.empty(" in accuracy
+    assert "expected.shape, dtype=torch.bfloat16, device=device" in accuracy
     assert "reusable_out = udma.empty_symmetric" not in accuracy
     assert "out = udma.empty_symmetric" not in performance
 
@@ -41,7 +42,7 @@ def test_kernel_configuration_matches_bf16_udma_get_example():
     assert "MoeConstraints<1, 8, 32>" in source
     assert "BlockMmadSchedulerGmmAllToAllVTargetOrder" in source
     assert "BlockCommSchedulerGmmAllToAllVTargetOrder" in source
-    assert "kWorkspaceStages, kSymmetricDataBytes, true" in source
+    assert "kWorkspaceStages, kSymmetricDataBytes, NoReuseStaging" in source
     assert "CopyDirect::Get" in source
     assert "CopyTransport::Mte" in source
     assert "200UL * 1024 * 1024 * sizeof(uint16_t)" in source
@@ -65,7 +66,7 @@ def test_business_profiles_use_compile_time_no_reuse_delivery_kernel():
         / "grouped_matmul_alltoallv_tla.hpp"
     ).read_text(encoding="utf-8")
 
-    assert "const bool useNoReuseDelivery" in host
+    assert "const bool useNoReuseKernel" in host
     assert "worldSize == 8 && expertNum == 256 && n64 == 2048" in host
     assert "(k64 == 1024 || k64 == 512)" in host
     assert "useNoReuseKernel" in host
@@ -108,7 +109,7 @@ def test_no_reuse_delivery_retires_gets_once_instead_of_waiting_each_round():
         / "kernel"
         / "grouped_matmul_alltoallv_tla.hpp"
     ).read_text(encoding="utf-8")
-    target_order = kernel[kernel.index("void RunTargetOrderAivWithBlock("):]
+    target_order = kernel[kernel.index("void operator()<AscendC::AIV>("):]
 
     completion_signal = re.search(
         r"syncCommFinish, 1,\s+ACLSHMEM_SIGNAL_ADD, srcRankIdx", target_order
@@ -137,33 +138,6 @@ def test_no_reuse_delivery_retires_gets_once_instead_of_waiting_each_round():
     )
     assert final_retirement_guard > completion_wait
     assert final_retirement_barrier > final_retirement_guard
-
-
-def test_delivery_producer_sync_is_selected_at_build_time():
-    root_cmake = (PROJECT_ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
-    device_cmake = (
-        ASCEND950_ROOT / "CMakeLists.txt"
-    ).read_text(encoding="utf-8")
-    setup_source = (PROJECT_ROOT / "setup.py").read_text(encoding="utf-8")
-    kernel = (
-        PROJECT_ROOT
-        / "csrc"
-        / "catccos_overlay"
-        / "include"
-        / "catccos"
-        / "dgemm"
-        / "kernel"
-        / "grouped_matmul_alltoallv_tla.hpp"
-    ).read_text(encoding="utf-8")
-
-    assert "option(CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER" in root_cmake
-    assert "CATCCOS_UDMA_GMM_A2AV_PRODUCER_SYNC_FLAG" in root_cmake
-    assert "CATCCOS_UDMA_GMM_A2AV_PRODUCER_SYNC_FLAG" in device_cmake
-    assert '"CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER", "1"' in setup_source
-    assert "static constexpr bool PRODUCER_FULL_BARRIER" in kernel
-    assert "if constexpr (NO_REUSE_STAGING && PRODUCER_FULL_BARRIER)" in kernel
-    assert "if constexpr (PRODUCER_FULL_BARRIER)" in kernel
-    assert "AscendC::SyncAll<true>();" in kernel
 
 
 def test_kernel_applies_upstream_non_comm_core_deadlock_fix():
@@ -248,8 +222,8 @@ def test_target_order_scheduler_uses_final_upstream_coordinate_fixes():
     assert "blockOffset.m() / scheduler->blockShape.m()" in mm_scheduler
     assert "blockOffset.n()" in mm_scheduler
     assert "MatrixCoord blockOffsetB = blockOffset.GetCoordKN();" in kernel
-    assert "RunTargetOrderAic(params)" in kernel
-    assert "RunTargetOrderAiv(params)" in kernel
+    assert "void operator()<AscendC::AIC>" in kernel
+    assert "void operator()<AscendC::AIV>" in kernel
 
 
 def test_target_order_workspace_check_tracks_full_n_staging():
@@ -330,10 +304,8 @@ def test_workspace_reuse_guard_avoids_unsigned_underflow():
         / "kernel"
         / "grouped_matmul_alltoallv_tla.hpp"
     ).read_text(encoding="utf-8")
-    assert (
-        "commLoops >= WORKSPACE_STAGES &&\n"
-        "                commIdx < commLoops - WORKSPACE_STAGES"
-    ) in kernel
+    assert "commIdx + WORKSPACE_STAGES < commLoops" in kernel
+    assert "commLoops - WORKSPACE_STAGES" not in kernel
 
 
 def test_get_void_completion_precedes_acknowledgement():
@@ -350,55 +322,9 @@ def test_get_void_completion_precedes_acknowledgement():
 
     assert "quietStatus" not in kernel
     assert "GET CQ failure" not in kernel
-    legacy = kernel[:kernel.index("private:")]
-    target_order = kernel[kernel.index("void RunTargetOrderAivWithBlock("):]
-    for path in (legacy, target_order):
+    target_order = kernel[kernel.index("void operator()<AscendC::AIV>("):]
+    for path in (target_order,):
         quiet = path.index("blockRemoteCopy.FinalizeBlockLoop();")
         fence = path.index("aclshmem_fence();", quiet)
         completion = path.index("ACLSHMEM_SIGNAL_ADD, srcRankIdx", fence)
         assert quiet < fence < completion
-
-
-def test_device_printf_is_compiled_only_into_explicit_diagnostic_wheel():
-    root_cmake = (PROJECT_ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
-    setup_source = (PROJECT_ROOT / "setup.py").read_text(encoding="utf-8")
-    kernel = (
-        PROJECT_ROOT
-        / "csrc"
-        / "catccos_overlay"
-        / "include"
-        / "catccos"
-        / "dgemm"
-        / "kernel"
-        / "grouped_matmul_alltoallv_tla.hpp"
-    ).read_text(encoding="utf-8")
-
-    assert "option(CATCCOS_UDMA_DEVICE_DIAGNOSTICS" in root_cmake
-    assert 'set(CATCCOS_UDMA_ASCEND_DIAGNOSTIC_FLAGS "-DASCENDC_DUMP=0")' in root_cmake
-    assert "-DCATCCOS_UDMA_DEVICE_DIAGNOSTICS=1 -DASCENDC_DUMP=1" in root_cmake
-    assert 'cmake_boolean_from_env("CATCCOS_UDMA_DEVICE_DIAGNOSTICS")' in setup_source
-    for match in re.finditer("AscendC::printf\\(", kernel):
-        guard = kernel.rfind(
-            "#if defined(CATCCOS_UDMA_DEVICE_DIAGNOSTICS)", 0, match.start()
-        )
-        end = kernel.find("#endif", match.end())
-        assert guard >= 0
-        assert end > match.end()
-
-
-def test_balanced_route_experiment_runtime_selects_local_or_global_sync():
-    kernel = (
-        PROJECT_ROOT
-        / "csrc"
-        / "catccos_overlay"
-        / "include"
-        / "catccos"
-        / "dgemm"
-        / "kernel"
-        / "grouped_matmul_alltoallv_tla.hpp"
-    ).read_text(encoding="utf-8")
-
-    assert "UsesProducerBarrier(params.diagnosticMode)" in kernel
-    assert "UsesRecycleBarrier(params.diagnosticMode)" in kernel
-    assert kernel.count("AscendC::SyncAll<true>();") == 3
-    assert "Original protocol: only this rank's active AIVs" in kernel

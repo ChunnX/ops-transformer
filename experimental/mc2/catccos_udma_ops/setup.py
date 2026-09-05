@@ -111,17 +111,9 @@ class CMakeBuild(Command):
             "-DCATCCOS_UDMA_MSSANITIZER={}".format(
                 cmake_boolean_from_env("CATCCOS_UDMA_MSSANITIZER")
             ),
-            "-DCATCCOS_UDMA_DEVICE_DIAGNOSTICS={}".format(
-                cmake_boolean_from_env("CATCCOS_UDMA_DEVICE_DIAGNOSTICS")
-            ),
-            "-DCATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE={}".format(
-                cmake_boolean_from_env(
-                    "CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE"
-                )
-            ),
             "-DCATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER={}".format(
                 cmake_boolean_from_env(
-                    "CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER", "1"
+                    "CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER"
                 )
             ),
         ]

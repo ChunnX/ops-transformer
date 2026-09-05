@@ -194,10 +194,7 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
     const at::Tensor &globalTokensPerLocalExpert,
     int64_t epSize,
     int64_t expertNum,
-    const c10::optional<at::Tensor> &outputOptional,
-    const c10::optional<at::Tensor> &diagnosticOptional,
-    const c10::optional<at::Tensor> &producerTraceOptional,
-    uint32_t diagnosticMode, uint32_t delayCycles)
+    const c10::optional<at::Tensor> &outputOptional)
 {
     const c10::OptionalDeviceGuard guard(x.device());
     CheckNpuTensor(x, "x", at::kBFloat16);
@@ -239,77 +236,6 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
                 "local_tokens_per_expert must contain expert_num elements");
     TORCH_CHECK(globalTokensPerLocalExpert.numel() == worldSize * localExpertNum,
                 "global_tokens_per_local_expert must contain world_size * local_expert_num elements");
-#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
-    TORCH_CHECK(
-        diagnosticMode <=
-            Catccos::DGemm::Kernel::
-                GMM_A2AV_DIAGNOSTIC_NO_REUSE_TRACE,
-        "invalid grouped-matmul AllToAllV diagnostic mode");
-
-    at::Tensor diagnostic;
-    at::Tensor producerTrace;
-    if (diagnosticMode !=
-        Catccos::DGemm::Kernel::GMM_A2AV_DIAGNOSTIC_PRODUCTION) {
-        TORCH_CHECK(diagnosticOptional.has_value(),
-                    "diagnostic tensor is required for diagnostic modes");
-        diagnostic = diagnosticOptional.value();
-        CheckNpuTensor(diagnostic, "diagnostic", at::kLong);
-        TORCH_CHECK(diagnostic.device() == x.device(),
-                    "diagnostic and x must be on the same NPU");
-        TORCH_CHECK(diagnostic.dim() == 1 &&
-                        diagnostic.numel() >= kDiagnosticTensorWords,
-                    "diagnostic must be a contiguous int64 tensor with at least ",
-                    kDiagnosticTensorWords, " elements");
-        TORCH_CHECK(diagnostic.numel() <=
-                        std::numeric_limits<uint32_t>::max(),
-                    "diagnostic tensor is too large");
-        CheckNoTensorOverlap(diagnostic, "diagnostic", x, "x");
-        CheckNoTensorOverlap(diagnostic, "diagnostic", weight, "weight");
-        CheckNoTensorOverlap(
-            diagnostic, "diagnostic", localTokensPerExpert,
-            "local_tokens_per_expert");
-        CheckNoTensorOverlap(
-            diagnostic, "diagnostic", globalTokensPerLocalExpert,
-            "global_tokens_per_local_expert");
-        TORCH_CHECK(producerTraceOptional.has_value(),
-                    "producer_trace tensor is required for diagnostic modes");
-        producerTrace = producerTraceOptional.value();
-        CheckNpuTensor(producerTrace, "producer_trace", at::kBFloat16);
-        TORCH_CHECK(producerTrace.device() == x.device(),
-                    "producer_trace and x must be on the same NPU");
-        if (diagnosticMode == Catccos::DGemm::Kernel::
-                GMM_A2AV_DIAGNOSTIC_NO_REUSE_TRACE) {
-            TORCH_CHECK(
-                producerTrace.dim() == 2 &&
-                    producerTrace.size(0) == inputRows64 &&
-                    producerTrace.size(1) == n64,
-                "no_reuse_trace requires producer_trace shape [m, n]");
-        } else {
-            TORCH_CHECK(producerTrace.numel() == 0,
-                        "producer_trace must be empty outside no_reuse_trace");
-        }
-        CheckNoTensorOverlap(producerTrace, "producer_trace", x, "x");
-        CheckNoTensorOverlap(
-            producerTrace, "producer_trace", weight, "weight");
-        CheckNoTensorOverlap(
-            producerTrace, "producer_trace", diagnostic, "diagnostic");
-    } else {
-        TORCH_CHECK(!diagnosticOptional.has_value() &&
-                        !producerTraceOptional.has_value() && delayCycles == 0,
-                    "production launches must not provide diagnostic state");
-    }
-#else
-    TORCH_CHECK(
-        diagnosticMode ==
-            Catccos::DGemm::Kernel::GMM_A2AV_DIAGNOSTIC_PRODUCTION &&
-            !diagnosticOptional.has_value() &&
-            !producerTraceOptional.has_value() && delayCycles == 0,
-        "the grouped-matmul AllToAllV diagnostic entrypoint requires a Wheel "
-        "built with CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE=1");
-    at::Tensor diagnostic;
-    at::Tensor producerTrace;
-#endif
-
     const uint32_t blockDim =
         platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic();
     TORCH_CHECK(blockDim > 0, "failed to query Ascend AI-core count");
@@ -338,18 +264,13 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
     const uint64_t groupsPerCommInRank =
         std::max<uint64_t>(1, tilePerCommInRank / nLoops);
     const uint64_t stageRows = groupsPerCommInRank * tiling.m0;
-    const bool useNoReuseTrace = diagnosticMode ==
-        Catccos::DGemm::Kernel::GMM_A2AV_DIAGNOSTIC_NO_REUSE_TRACE;
     // The no-reuse delivery kernel is currently tuned and sized for the two
     // EP8/256-expert business profiles. Selection intentionally excludes M:
     // under an imbalanced route, local M can differ by rank while every PE
     // must launch an ABI-identical collective kernel.
-    const bool useNoReuseDelivery =
-        diagnosticMode ==
-            Catccos::DGemm::Kernel::GMM_A2AV_DIAGNOSTIC_PRODUCTION &&
+    const bool useNoReuseKernel =
         worldSize == 8 && expertNum == 256 && n64 == 2048 &&
         (k64 == 1024 || k64 == 512);
-    const bool useNoReuseKernel = useNoReuseTrace || useNoReuseDelivery;
     const uint32_t selectedWorkspaceStages = useNoReuseKernel
         ? NoReuseWorkspaceStages(tiling.kernelVariant) : kWorkspaceStages;
     const uint64_t selectedSymmetricDataBytes = useNoReuseKernel
@@ -390,13 +311,6 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
     CheckNoTensorOverlap(output, "out", localTokensPerExpert, "local_tokens_per_expert");
     CheckNoTensorOverlap(output, "out", globalTokensPerLocalExpert,
                          "global_tokens_per_local_expert");
-    if (diagnostic.defined()) {
-        CheckNoTensorOverlap(diagnostic, "diagnostic", output, "out");
-    }
-    if (producerTrace.defined()) {
-        CheckNoTensorOverlap(producerTrace, "producer_trace", output, "out");
-    }
-
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
     runtime.RecordStream(stream);
     Catlass::GemmCoord shape{m, n, k};
@@ -441,20 +355,6 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
             commBlockShape,
             commTileShape,
             static_cast<uint32_t>(outputRows64),
-            diagnostic.defined()
-                ? reinterpret_cast<uint8_t *>(diagnostic.data_ptr())
-                : nullptr,
-            diagnostic.defined()
-                ? static_cast<uint32_t>(diagnostic.numel())
-                : 0U,
-            diagnosticMode,
-            producerTrace.defined() && producerTrace.numel() != 0
-                ? reinterpret_cast<uint8_t *>(producerTrace.data_ptr())
-                : nullptr,
-            producerTrace.defined()
-                ? static_cast<uint32_t>(producerTrace.size(0))
-                : 0U,
-            delayCycles,
         };
 
         SelectedDeviceOp deviceOp;
@@ -469,39 +369,6 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
         };
         at_npu::native::OpCommand::RunOpApi("GroupedMatMulAllToAllVUdma", launch);
     };
-#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
-    const bool useMte3Udma = diagnosticMode ==
-        Catccos::DGemm::Kernel::GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_MTE3;
-    const bool useOfficialBlock = diagnosticMode ==
-        Catccos::DGemm::Kernel::
-            GMM_A2AV_DIAGNOSTIC_FULL_BARRIER_OFFICIAL_BLOCK;
-    if (tiling.kernelVariant == KernelVariant::kM0_256 &&
-        useNoReuseKernel) {
-        launchWithConfig(
-            TypeTag<GroupedMatMulAllToAllVUdmaM0_256NoReuseConfig>{});
-    } else if (useNoReuseKernel) {
-        launchWithConfig(
-            TypeTag<GroupedMatMulAllToAllVUdmaNoReuseConfig>{});
-    } else if (tiling.kernelVariant == KernelVariant::kM0_256 &&
-        useOfficialBlock) {
-        launchWithConfig(
-            TypeTag<
-                GroupedMatMulAllToAllVUdmaM0_256OfficialBlockConfig>{});
-    } else if (tiling.kernelVariant == KernelVariant::kM0_256 &&
-               useMte3Udma) {
-        launchWithConfig(
-            TypeTag<GroupedMatMulAllToAllVUdmaM0_256Mte3Config>{});
-    } else if (tiling.kernelVariant == KernelVariant::kM0_256) {
-        launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaM0_256Config>{});
-    } else if (useOfficialBlock) {
-        launchWithConfig(
-            TypeTag<GroupedMatMulAllToAllVUdmaOfficialBlockConfig>{});
-    } else if (useMte3Udma) {
-        launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaMte3Config>{});
-    } else {
-        launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaDefaultConfig>{});
-    }
-#else
     if (tiling.kernelVariant == KernelVariant::kM0_256 &&
         useNoReuseKernel) {
         launchWithConfig(
@@ -514,7 +381,6 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
     } else {
         launchWithConfig(TypeTag<GroupedMatMulAllToAllVUdmaDefaultConfig>{});
     }
-#endif
     return output;
 }
 
@@ -526,8 +392,7 @@ at::Tensor GroupedMatMulAllToAllVUdmaNpu(
 {
     return GroupedMatMulAllToAllVUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
-        epSize, expertNum, c10::nullopt, c10::nullopt, c10::nullopt,
-        Catccos::DGemm::Kernel::GMM_A2AV_DIAGNOSTIC_PRODUCTION, 0);
+        epSize, expertNum, c10::nullopt);
 }
 
 at::Tensor GroupedMatMulAllToAllVUdmaOutNpu(
@@ -538,38 +403,9 @@ at::Tensor GroupedMatMulAllToAllVUdmaOutNpu(
 {
     return GroupedMatMulAllToAllVUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
-        epSize, expertNum, output, c10::nullopt, c10::nullopt,
-        Catccos::DGemm::Kernel::GMM_A2AV_DIAGNOSTIC_PRODUCTION, 0);
+        epSize, expertNum, output);
 }
 
-#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
-at::Tensor GroupedMatMulAllToAllVUdmaDiagnosticNpu(
-    const at::Tensor &x, const at::Tensor &weight,
-    const at::Tensor &localTokensPerExpert,
-    const at::Tensor &globalTokensPerLocalExpert,
-    int64_t epSize, int64_t expertNum, const at::Tensor &output,
-    const at::Tensor &diagnostic, const at::Tensor &producerTrace,
-    int64_t diagnosticMode, int64_t delayCycles)
-{
-    TORCH_CHECK(diagnosticMode >= 1 && diagnosticMode <= 8,
-                "diagnostic_mode must be in [1, 8]");
-    TORCH_CHECK(delayCycles >= 0 &&
-                    delayCycles <= std::numeric_limits<uint32_t>::max(),
-                "delay_cycles must be in uint32 range");
-    const bool isDelayMode = diagnosticMode ==
-            Catccos::DGemm::Kernel::GMM_A2AV_DIAGNOSTIC_PRE_GET_DELAY ||
-        diagnosticMode == Catccos::DGemm::Kernel::
-            GMM_A2AV_DIAGNOSTIC_POST_QUIET_DELAY;
-    TORCH_CHECK((isDelayMode && delayCycles > 0) ||
-                    (!isDelayMode && delayCycles == 0),
-                "delay_cycles must be positive only for delay modes");
-    return GroupedMatMulAllToAllVUdmaImpl(
-        x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
-        epSize, expertNum, output, diagnostic, producerTrace,
-        static_cast<uint32_t>(diagnosticMode),
-        static_cast<uint32_t>(delayCycles));
-}
-#endif
 
 at::Tensor GroupedMatMulAllToAllVUdmaMeta(
     const at::Tensor &x, const at::Tensor &weight,
@@ -600,26 +436,6 @@ at::Tensor GroupedMatMulAllToAllVUdmaOutMeta(
     return output;
 }
 
-#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
-at::Tensor GroupedMatMulAllToAllVUdmaDiagnosticMeta(
-    const at::Tensor &x, const at::Tensor &weight,
-    const at::Tensor &, const at::Tensor &,
-    int64_t epSize, int64_t expertNum, const at::Tensor &output,
-    const at::Tensor &diagnostic, const at::Tensor &producerTrace,
-    int64_t diagnosticMode, int64_t delayCycles)
-{
-    TORCH_CHECK(diagnosticMode >= 1 && diagnosticMode <= 8,
-                "diagnostic_mode must be in [1, 8]");
-    TORCH_CHECK(delayCycles >= 0,
-                "delay_cycles must be non-negative");
-    TORCH_CHECK(diagnostic.dim() == 1,
-                "diagnostic must be one-dimensional");
-    TORCH_CHECK(producerTrace.dim() == 2,
-                "producer_trace must be two-dimensional");
-    return GroupedMatMulAllToAllVUdmaOutMeta(
-        x, weight, at::Tensor{}, at::Tensor{}, epSize, expertNum, output);
-}
-#endif
 
 } // namespace
 
@@ -631,13 +447,6 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
     m.def("grouped_mat_mul_all_to_allv_udma_out(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
           "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, "
           "Tensor(a!) out) -> Tensor(a!)");
-#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
-    m.def("_grouped_mat_mul_all_to_allv_diagnostic(Tensor x, Tensor weight, "
-          "Tensor local_tokens_per_expert, Tensor global_tokens_per_local_expert, "
-          "int ep_size, int expert_num, Tensor(a!) out, Tensor(b!) diagnostic, "
-          "Tensor(c!) producer_trace, int diagnostic_mode, int delay_cycles) "
-          "-> Tensor(a!)");
-#endif
 }
 
 TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
@@ -645,20 +454,12 @@ TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
     m.impl("_empty_symmetric", EmptySymmetric);
     m.impl("grouped_mat_mul_all_to_allv_udma", GroupedMatMulAllToAllVUdmaNpu);
     m.impl("grouped_mat_mul_all_to_allv_udma_out", GroupedMatMulAllToAllVUdmaOutNpu);
-#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
-    m.impl("_grouped_mat_mul_all_to_allv_diagnostic",
-           GroupedMatMulAllToAllVUdmaDiagnosticNpu);
-#endif
 }
 
 TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, Meta, m)
 {
     m.impl("grouped_mat_mul_all_to_allv_udma", GroupedMatMulAllToAllVUdmaMeta);
     m.impl("grouped_mat_mul_all_to_allv_udma_out", GroupedMatMulAllToAllVUdmaOutMeta);
-#if CATCCOS_UDMA_GMM_A2AV_ROOT_CAUSE
-    m.impl("_grouped_mat_mul_all_to_allv_diagnostic",
-           GroupedMatMulAllToAllVUdmaDiagnosticMeta);
-#endif
 }
 
 } // namespace OpsTransformer::CatccosUdma

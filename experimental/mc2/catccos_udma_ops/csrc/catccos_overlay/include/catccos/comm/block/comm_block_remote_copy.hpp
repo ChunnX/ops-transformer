@@ -368,35 +368,6 @@ class CommBlock<AtlasCommUdmaRemoteCopy<ArchTag_, UB_STAGES_>, SrcType_, DstType
         }
     }
 
-    CATLASS_DEVICE
-    void PutContiguousWithSignal(
-        AscendC::GlobalTensor<ElementSrc> const &gmSrc,
-        LayoutSrc const &layoutSrc,
-        AscendC::GlobalTensor<ElementDst> const &gmDst,
-        LayoutDst const &layoutDst,
-        MatrixCoord const &actualCommBlockShape,
-        __gm__ uint64_t *signalAddress,
-        uint64_t signalValue,
-        uint32_t rankIdx)
-    {
-        if (actualCommBlockShape.row() == 0) {
-            return;
-        }
-        if constexpr (TileRemoteCopyDefersQuiet<TileRemoteCopy>::value) {
-            if (hasPendingCopy && activePeerIdx != rankIdx) {
-                tileRemoteCopy.Finalize(activePeerIdx);
-                hasPendingCopy = false;
-            }
-        }
-        tileRemoteCopy.PutContiguousWithSignal(
-            gmDst, layoutDst, gmSrc, layoutSrc, actualCommBlockShape,
-            signalAddress, signalValue, rankIdx);
-        if constexpr (TileRemoteCopyDefersQuiet<TileRemoteCopy>::value) {
-            activePeerIdx = rankIdx;
-            hasPendingCopy = true;
-        }
-    }
-
     /// Submit one complete remote peer slice and drain that peer immediately.
     /// The strong-ready AllToAllV path deliberately bypasses the deferred
     /// hasPendingCopy bookkeeping so the quiet is adjacent to the WWN post on

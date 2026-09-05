@@ -20,7 +20,6 @@ import ops_transformer_catccos_udma as udma
 try:
     from .case_schema import read_resolved_cases
     from .common import (
-        sync_completion_mode_from_env,
         udma_init_method_from_env,
         validation_udma_heap_size,
         write_json,
@@ -36,7 +35,6 @@ try:
 except ImportError:  # Direct execution keeps the source tree out of package lookup.
     from case_schema import read_resolved_cases
     from common import (
-        sync_completion_mode_from_env,
         udma_init_method_from_env,
         validation_udma_heap_size,
         write_json,
@@ -637,7 +635,7 @@ def _run_case(
             "global_launch_index": (
                 len(launch_records) if synchronize_launches else None
             ),
-            "sync_diagnostic_mode": sync_completion_mode_from_env(),
+            "completion_protocol": "production",
             "output_prefill": output_prefill,
             "output": _tensor_metadata(output),
             "all_to_allv_output": (
@@ -1386,7 +1384,7 @@ def _run_case(
             "caller_provided_out": False if mssanitizer_enabled else None,
         },
         "sync_diagnosis": {
-            "mode": sync_completion_mode_from_env(),
+            "mode": "production",
             "automatic_only": automatic_only,
             "max_failure_dumps_per_role": max_failure_dumps_per_role,
             "failure_dumps_written": failure_dump_counts,

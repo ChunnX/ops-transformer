@@ -35,7 +35,6 @@ struct BlockCommSchedulerAllToAllVAllGather {
     MatrixCoord blockGrid;
 
     uint32_t commLoops;
-    uint32_t coreLoops;
 
     uint32_t inputSplitList[MoeConstraints::EP_SIZE_LIMIT]{0};  // Tokens sent to each EP
     uint64_t inputOffsetList[MoeConstraints::EP_SIZE_LIMIT]{0};  // Data offset for each EP
@@ -54,7 +53,6 @@ struct BlockCommSchedulerAllToAllVAllGather {
     {
         commShape = Catlass::MakeCoord<uint32_t>(commShapeM_, problemShape.k());
         blockGrid = CeilDiv(commShape, blockShape);
-        coreLoops = Numel(blockGrid) * problemShape.rankSize();
         commLoops = 0;
 
         int64_t tokenOffset = 0;
@@ -83,18 +81,6 @@ struct BlockCommSchedulerAllToAllVAllGather {
         return commLoops;
     }
 
-    CATLASS_DEVICE
-    uint32_t GetActualReceiveAccum(uint32_t commIdx) const
-    {
-        int64_t actualReceivedAccum = 0;
-        for (uint32_t rankIdx = 0; rankIdx < problemShape.rankSize(); ++rankIdx) {
-            auto actualTokens = GetActualReceiveRows(commIdx, rankIdx);
-            MatrixCoord actualReceiveShape{actualTokens, problemShape.k()};
-            actualReceivedAccum += Numel(CeilDiv(actualReceiveShape, blockShape));
-        }
-        return actualReceivedAccum;
-    }
-
     /// Number of rows expected from one source rank in this communication
     /// window.  Completion protocols use this to wait only for sources that
     /// really own payload in an imbalanced AllToAllV route.
@@ -108,48 +94,9 @@ struct BlockCommSchedulerAllToAllVAllGather {
     }
 
     CATLASS_DEVICE
-    uint32_t GetCoreLoops(uint32_t commIdx) const
-    {
-        (void)commIdx;
-        return coreLoops;  // Upper bound independent of commIdx
-    }
-
-    CATLASS_DEVICE
     uint32_t GetBlockCount() const
     {
         return Numel(blockGrid);
-    }
-
-    struct Iter {
-        uint32_t taskIdx{0};
-        uint32_t coreLoops{0};
-
-        CATLASS_DEVICE
-        void Next()
-        {
-            taskIdx += AscendC::GetBlockNum();
-        }
-
-        CATLASS_DEVICE
-        bool End()
-        {
-            return (AscendC::GetSubBlockIdx() == 1) || (taskIdx >= coreLoops);
-        }
-    };
-
-    CATLASS_DEVICE
-    Iter Begin(uint32_t commIdx) const
-    {
-        uint32_t taskIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
-        return {taskIdx, GetCoreLoops(commIdx)};
-    }
-
-    CATLASS_DEVICE
-    SymmMatrixCoord GetBlockOffset(Iter const &iter) const
-    {
-        auto dstRankIdx = iter.taskIdx % problemShape.rankSize();
-        auto blockIdx = iter.taskIdx / problemShape.rankSize();
-        return GetBlockOffset(blockIdx, dstRankIdx);
     }
 
     CATLASS_DEVICE

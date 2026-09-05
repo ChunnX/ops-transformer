@@ -309,31 +309,11 @@ def test_export_overlaps_previous_stage_with_current_communication():
     ).read_text(encoding="utf-8")
     assert "class AllToAllVExportPipeline<true, BlockExport>" in kernel
     assert "WORKSPACE_STAGES >= 2" in kernel
-    assert "USE_UDMA_PEER_SERIAL_SCHEDULE" in kernel
     assert "uint32_t exportIdx = commIdx - 1;" in kernel
-    assert "ownsPeer = subcoreIdx == 1 &&" in kernel
-    assert "selfWorkerIdx < selfCopyCores" in kernel
+    assert "bool isSelfCopyWorker" in kernel
+    assert "blockIdx += selfCopyCores" in kernel
     assert "exportPipeline.GetBlockExport()" in kernel
     assert "uint32_t exportIdx = commLoops - 1;" in kernel
-
-
-def test_peer_completion_signal_is_published_after_data_completion():
-    kernel = (
-        PROJECT_ROOT
-        / "csrc"
-        / "catccos_overlay"
-        / "include"
-        / "catccos"
-        / "dgemm"
-        / "kernel"
-        / "ascend950_alltoallv_grouped_matmul.hpp"
-    ).read_text(encoding="utf-8")
-    finalize = kernel.index("blockRemoteCopy.FinalizeBlockLoop();")
-    completion_signal = kernel.index("syncCommFinish, completedBlocks,", finalize)
-    receiver_wait = kernel.index(
-        "syncCommFinish, ACLSHMEM_CMP_EQ, receiveAccum", completion_signal
-    )
-    assert finalize < completion_signal < receiver_wait
 
 
 def test_strong_ready_put_quiets_inline_without_deferred_state():
@@ -369,10 +349,6 @@ def test_strong_ready_put_quiets_inline_without_deferred_state():
     assert "tileRemoteCopy.Finalize(rankIdx);" in inline_method
     assert "hasPendingCopy" not in inline_method
 
-    deferred_method = remote.split(
-        "void PutContiguousWithSignal(", 1
-    )[1].split("void PutContiguousWithSignalAndQuiet(", 1)[0]
-    assert "hasPendingCopy = true;" in deferred_method
 
 
 def test_delivery_route_metadata_and_export_worker_pool_are_optional():

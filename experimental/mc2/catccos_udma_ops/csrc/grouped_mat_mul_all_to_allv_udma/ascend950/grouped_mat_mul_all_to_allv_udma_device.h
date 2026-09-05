@@ -6,8 +6,6 @@
 #ifndef OPS_TRANSFORMER_GROUPED_MAT_MUL_ALL_TO_ALLV_UDMA_DEVICE_H
 #define OPS_TRANSFORMER_GROUPED_MAT_MUL_ALL_TO_ALLV_UDMA_DEVICE_H
 
-#include <type_traits>
-
 #include "info.h"
 
 #include "catlass/arch/arch.hpp"
@@ -36,7 +34,6 @@ namespace OpsTransformer::CatccosUdma {
 
 template <class ElementA, class LayoutA, class ElementB, class LayoutB,
           class ElementC, class LayoutC, uint32_t M0, uint32_t N0, uint32_t K0,
-          bool UseMte3Udma = false, bool UseOfficialUdmaBlock = false,
           uint32_t WorkspaceStages = 2,
           uint64_t SymmetricDataBytes =
               200UL * 1024 * 1024 * sizeof(uint16_t),
@@ -70,12 +67,8 @@ struct GroupedMatMulAllToAllVUdmaConfig {
     using TileLocalCopy = Catccos::Comm::Tile::TileRemoteCopy<
         ArchTag, kIsDynamic, CType, CType, void,
         Catccos::detail::CopyDirect::Get, Catccos::detail::CopyTransport::Mte>;
-    using TileRemoteCopy = std::conditional_t<
-        UseMte3Udma,
-        Catccos::Comm::Tile::TileRemoteCopyUdma2DWithScratch<
-            ArchTag, CType, CType, Catccos::detail::CopyDirect::Get>,
-        Catccos::Comm::Tile::TileRemoteCopyUdma2D<
-            ArchTag, CType, CType, Catccos::detail::CopyDirect::Get>>;
+    using TileRemoteCopy = Catccos::Comm::Tile::TileRemoteCopyUdma2D<
+        ArchTag, CType, CType, Catccos::detail::CopyDirect::Get>;
     using TileScheduler = Catlass::Epilogue::Tile::EpilogueIdentityTileSwizzle;
     using LocalDispatch = Catccos::Comm::AtlasCommRemoteCopy<ArchTag, kUbStages, kIsDynamic>;
     using RemoteDispatch = Catccos::Comm::AtlasCommUdmaRemoteCopy<ArchTag, kUbStages>;
@@ -83,24 +76,13 @@ struct GroupedMatMulAllToAllVUdmaConfig {
         LocalDispatch, CType, CType, void, TileLocalCopy, TileScheduler>;
     using BlockRemoteComm = Catccos::Comm::Block::CommBlock<
         RemoteDispatch, CType, CType, TileRemoteCopy>;
-    using HybridBlockComm =
+    using BlockComm =
         Catccos::Comm::Block::CommBlockMteUdma<BlockLocalComm, BlockRemoteComm>;
-    // Keep the validation path byte-for-byte on CatCCOS' public UDMA tile and
-    // block types. The kernel default-constructs this block exactly like the
-    // ascend950_mxfp8_matmul_alltoall example; no MTE/UDMA adapter participates.
-    using OfficialTile = Catccos::Comm::Tile::TileRemoteCopy<
-        ArchTag, kIsDynamic, CType, CType, void,
-        Catccos::detail::CopyDirect::Get,
-        Catccos::detail::CopyTransport::Udma>;
-    using OfficialBlockComm = Catccos::Comm::Block::CommBlock<
-        RemoteDispatch, CType, CType, OfficialTile>;
-    using BlockComm = HybridBlockComm;
 
     using ProblemShape = Catccos::DGemm::AllToAllVAllGatherProblemShape;
     using Kernel = Catccos::DGemm::Kernel::GroupedMatmulAllToAllVTla<
         ProblemShape, BlockMmad, BlockComm, BlockMmadScheduler,
-        BlockCommScheduler, kWorkspaceStages, kSymmetricDataBytes, true,
-        UseOfficialUdmaBlock, OfficialBlockComm, NoReuseStaging>;
+        BlockCommScheduler, kWorkspaceStages, kSymmetricDataBytes, NoReuseStaging>;
     using Device = Catccos::DGemm::Device::DeviceDGemm<Kernel>;
 };
 
@@ -116,38 +98,7 @@ using GroupedMatMulAllToAllVUdmaM0_256Config = GroupedMatMulAllToAllVUdmaConfig<
     bfloat16_t, Catlass::layout::RowMajor,
     256, 128, 256>;
 
-// Validation-only variants. They keep the same GMM and communication tiling,
-// but publish UDMA GET WQEs through the official PIPE_MTE3 + UB scratch path.
-using GroupedMatMulAllToAllVUdmaMte3Config = GroupedMatMulAllToAllVUdmaConfig<
-    bfloat16_t, Catlass::layout::RowMajor,
-    bfloat16_t, Catlass::layout::RowMajor,
-    bfloat16_t, Catlass::layout::RowMajor,
-    128, 256, 256, true>;
-
-using GroupedMatMulAllToAllVUdmaM0_256Mte3Config = GroupedMatMulAllToAllVUdmaConfig<
-    bfloat16_t, Catlass::layout::RowMajor,
-    bfloat16_t, Catlass::layout::RowMajor,
-    bfloat16_t, Catlass::layout::RowMajor,
-    256, 128, 256, true>;
-
-// Validation-only variants using CatCCOS' official UDMA block call. The
-// official TileRemoteCopy creates its own TPipe/TBuf WQE scratch, submits one
-// UDMA GET and performs its void quiet inside operator().
-using GroupedMatMulAllToAllVUdmaOfficialBlockConfig =
-    GroupedMatMulAllToAllVUdmaConfig<
-        bfloat16_t, Catlass::layout::RowMajor,
-        bfloat16_t, Catlass::layout::RowMajor,
-        bfloat16_t, Catlass::layout::RowMajor,
-        128, 256, 256, false, true>;
-
-using GroupedMatMulAllToAllVUdmaM0_256OfficialBlockConfig =
-    GroupedMatMulAllToAllVUdmaConfig<
-        bfloat16_t, Catlass::layout::RowMajor,
-        bfloat16_t, Catlass::layout::RowMajor,
-        bfloat16_t, Catlass::layout::RowMajor,
-        256, 128, 256, false, true>;
-
-// Delivery and validation no-reuse variants. Each tuned profile owns a
+// Production no-reuse variants. Each tuned profile owns a
 // profile-specific number of stages so every commIdx has a distinct staging
 // slot without adding empty producer barriers to the K=1024 profile:
 //   K=1024 / M0=128: 19 * 8 * 896 * 2048 * BF16 = 532 MiB
@@ -162,7 +113,7 @@ using GroupedMatMulAllToAllVUdmaNoReuseConfig =
         bfloat16_t, Catlass::layout::RowMajor,
         bfloat16_t, Catlass::layout::RowMajor,
         bfloat16_t, Catlass::layout::RowMajor,
-        128, 256, 256, false, false,
+        128, 256, 256,
         kNoReuseM0_128WorkspaceStages, kNoReuseSymmetricDataBytes, true>;
 
 using GroupedMatMulAllToAllVUdmaM0_256NoReuseConfig =
@@ -170,7 +121,7 @@ using GroupedMatMulAllToAllVUdmaM0_256NoReuseConfig =
         bfloat16_t, Catlass::layout::RowMajor,
         bfloat16_t, Catlass::layout::RowMajor,
         bfloat16_t, Catlass::layout::RowMajor,
-        256, 128, 256, false, false,
+        256, 128, 256,
         kNoReuseM0_256WorkspaceStages, kNoReuseSymmetricDataBytes, true>;
 
 } // namespace OpsTransformer::CatccosUdma

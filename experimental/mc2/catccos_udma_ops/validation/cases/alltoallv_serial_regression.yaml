@@ -1,0 +1,72 @@
+schema_version: 1
+
+defaults:
+  operator: all_to_allv_grouped_mat_mul
+  dtype: bfloat16
+  route: balanced
+  seed: 2026
+  input_distribution: {kind: uniform, low: -1.0, high: 1.0}
+  run: [accuracy]
+  tags: [serial_regression]
+  accuracy:
+    standard: opbase_experimental
+    auto_repeats: 3
+    repeats: 2
+
+cases:
+  - id: single_rank
+    world_size: 1
+    expert_num: 4
+    shape: {m: 129, n: 256, k: 256}
+    output_all_to_allv: false
+  - id: single_rank_export
+    world_size: 1
+    expert_num: 4
+    shape: {m: 129, n: 256, k: 256}
+    output_all_to_allv: true
+  # M=1 gives each rank only a self slice; M=2 adds exactly one remote slice,
+  # including the rank-7 -> rank-0 wrap, while all other peers are empty.
+  - id: ep8_self_only
+    world_size: 8
+    expert_num: 32
+    shape: {m: 1, n: 256, k: 256}
+    output_all_to_allv: false
+  - id: ep8_self_only_export
+    world_size: 8
+    expert_num: 32
+    shape: {m: 1, n: 256, k: 256}
+    output_all_to_allv: true
+  - id: ep8_sparse
+    world_size: 8
+    expert_num: 32
+    shape: {m: 2, n: 256, k: 256}
+    output_all_to_allv: false
+  - id: ep8_sparse_export
+    world_size: 8
+    expert_num: 32
+    shape: {m: 2, n: 256, k: 256}
+    output_all_to_allv: true
+  # Three rounds at the default 1280-row stage capacity exercise buffer reuse.
+  - id: ep8_rolling
+    world_size: 8
+    expert_num: 32
+    shape: {m: 25088, n: 256, k: 256}
+    output_all_to_allv: false
+  - id: ep8_rolling_export
+    world_size: 8
+    expert_num: 32
+    shape: {m: 25088, n: 256, k: 256}
+    output_all_to_allv: true
+  # After round zero, only rank 0 has inbound payload from remote ranks.
+  - id: ep8_unbalanced
+    world_size: 8
+    expert_num: 32
+    shape: {m: 4097, n: 256, k: 256}
+    route: unbalanced
+    output_all_to_allv: false
+  - id: ep8_unbalanced_export
+    world_size: 8
+    expert_num: 32
+    shape: {m: 4097, n: 256, k: 256}
+    route: unbalanced
+    output_all_to_allv: true

@@ -16,7 +16,6 @@ try:
     from .case_schema import load_case_manifest, select_cases, write_resolved_cases
     from .common import (
         environment_fingerprint,
-        sync_completion_mode_from_env,
         timestamp,
         write_csv,
         write_json,
@@ -30,7 +29,6 @@ except ImportError:
     from case_schema import load_case_manifest, select_cases, write_resolved_cases
     from common import (
         environment_fingerprint,
-        sync_completion_mode_from_env,
         timestamp,
         write_csv,
         write_json,
@@ -240,7 +238,7 @@ def main():
             "udma_master_addr": environment["UDMA_MASTER_ADDR"],
             "udma_master_port": udma_port,
             "udma_heap_size": environment.get("UDMA_HEAP_SIZE", "default"),
-            "sync_diagnostic_mode": sync_completion_mode_from_env(),
+            "completion_protocol": "production",
             "automatic_only": args.automatic_only,
             "cross_rank_launch_alignment": not args.automatic_only,
             "check_reusable_out": check_reusable_out,
@@ -355,7 +353,7 @@ def main():
     write_json(output_root / "summary.json", {
         "passed": bool(overall), "failed_launches": failed_launches,
         "case_count": len(cases), "results": rows,
-        "sync_diagnostic_mode": sync_completion_mode_from_env(),
+        "completion_protocol": "production",
         "automatic_only": args.automatic_only,
         "cross_rank_launch_alignment": not args.automatic_only,
         "check_reusable_out": check_reusable_out,

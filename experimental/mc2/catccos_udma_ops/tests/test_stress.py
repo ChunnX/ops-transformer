@@ -6,7 +6,6 @@ import subprocess
 import sys
 import types
 from contextlib import nullcontext
-from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -62,20 +61,16 @@ class Backend:
 
     def __init__(
         self, monkeypatch, mode, iterations, fail_drain=False, fail_call=None,
-        sync_each_call=False, fail_monitored_barrier=None, rank=0,
+        rank=0,
     ):
         self.calls = []
         self.sync_positions = []
         self.barrier_positions = []
-        self.monitored_barrier_positions = []
-        self.new_groups = []
         self.random_generations = 0
         self.route_generations = 0
         self.total_calls = iterations * (2 if mode == "chain" else 1)
         self.fail_drain = fail_drain
         self.fail_call = fail_call
-        self.sync_each_call = sync_each_call
-        self.fail_monitored_barrier = fail_monitored_barrier
         self.rank = rank
         self.allocations = []
         self.stream = types.SimpleNamespace(synchronize=self.synchronize)
@@ -90,8 +85,6 @@ class Backend:
         dist.is_gloo_available = lambda: True
         dist.init_process_group = lambda *args, **kwargs: None
         dist.destroy_process_group = lambda *args, **kwargs: None
-        dist.new_group = self.new_group
-        dist.monitored_barrier = self.monitored_barrier
         dist.barrier = self.barrier
         self.torch.distributed = dist
         torch_npu = types.ModuleType("torch_npu")
@@ -133,26 +126,13 @@ class Backend:
 
     def synchronize(self):
         self.sync_positions.append(len(self.calls))
-        if not self.sync_each_call:
-            assert len(self.calls) in (0, self.total_calls), "synchronization between operator calls"
+        assert len(self.calls) in (0, self.total_calls), "synchronization between operator calls"
         if self.fail_drain and self.calls:
             raise RuntimeError("device drain failed")
 
     def barrier(self):
         self.barrier_positions.append(len(self.calls))
         assert not self.calls, "rank barrier inside stress loop"
-
-    def new_group(self, **kwargs):
-        group = object()
-        self.new_groups.append((group, kwargs))
-        return group
-
-    def monitored_barrier(self, *, group, timeout):
-        assert self.new_groups and group is self.new_groups[0][0]
-        assert timeout > timedelta(0)
-        self.monitored_barrier_positions.append(len(self.calls))
-        if len(self.monitored_barrier_positions) == self.fail_monitored_barrier:
-            raise RuntimeError("monitored barrier failed")
 
     def launch(self, name, args, kwargs):
         if len(self.calls) == self.fail_call:
@@ -201,69 +181,6 @@ def test_worker_reuses_inputs_and_outputs_without_inter_call_sync(monkeypatch, t
     assert report["passed"]
     assert report["completed_iterations"] == iterations
     assert report["completed_calls"] == {name: iterations for name in pattern}
-
-
-def test_worker_can_diagnose_every_operator_call(monkeypatch, tmp_path, capsys):
-    backend = Backend(monkeypatch, "chain", 2, sync_each_call=True)
-    report = stress_worker.run_worker(
-        workload(), "chain", 2, tmp_path,
-        sync_each_call=True, sync_timeout_seconds=17,
-    )
-    assert [call[0] for call in backend.calls] == ["a2avgmm", "gmma2av"] * 2
-    assert backend.sync_positions == [0, 1, 2, 3, 4]
-    assert backend.barrier_positions == [0]
-    assert backend.monitored_barrier_positions == [1, 2, 3, 4]
-    assert len(backend.new_groups) == 1
-    assert backend.new_groups[0][1] == {
-        "backend": "gloo", "timeout": timedelta(seconds=17),
-    }
-    output = capsys.readouterr().out
-    for sequence, (iteration, name) in enumerate([
-        (1, "a2avgmm"), (1, "gmma2av"),
-        (2, "a2avgmm"), (2, "gmma2av"),
-    ], start=1):
-        assert "[stress-call] rank=0 iteration={} seq={} op={}".format(
-            iteration, sequence, name,
-        ) in output
-    assert len([
-        line for line in output.splitlines() if line.startswith("[stress-call]")
-    ]) == 4
-    assert "before_npu_sync" not in output
-    assert "after_npu_sync" not in output
-    assert "after_gloo_barrier" not in output
-    assert report["synchronized_calls"] == {"a2avgmm": 2, "gmma2av": 2}
-    assert report["last_debug_event"] == {
-        "rank": 0, "iteration": 2, "sequence": 4,
-        "operator": "gmma2av", "stage": "completed",
-    }
-
-
-def test_debug_barrier_failure_records_the_last_reached_stage(monkeypatch, tmp_path, capsys):
-    Backend(
-        monkeypatch, "chain", 2, sync_each_call=True,
-        fail_monitored_barrier=2,
-    )
-    with pytest.raises(RuntimeError, match="monitored barrier failed"):
-        stress_worker.run_worker(
-            workload(), "chain", 2, tmp_path,
-            sync_each_call=True, sync_timeout_seconds=17,
-        )
-    report = json.loads((tmp_path / "worker_rank_0.json").read_text())
-    assert report["submitted_calls"] == {"a2avgmm": 1, "gmma2av": 1}
-    assert report["synchronized_calls"] == {"a2avgmm": 1, "gmma2av": 0}
-    assert report["last_debug_event"]["sequence"] == 2
-    assert report["last_debug_event"]["stage"] == "running"
-    output = capsys.readouterr().out
-    assert "[stress-call] rank=0 iteration=1 seq=2 op=gmma2av" in output
-
-
-def test_only_rank_zero_prints_per_call_progress(monkeypatch, tmp_path, capsys):
-    Backend(monkeypatch, "a2avgmm", 2, sync_each_call=True, rank=1)
-    stress_worker.run_worker(
-        workload("a2avgmm"), "a2avgmm", 2, tmp_path,
-        sync_each_call=True,
-    )
-    assert "[stress-call]" not in capsys.readouterr().out
 
 
 def test_final_device_failure_is_not_reported_as_completed(monkeypatch, tmp_path):
@@ -344,12 +261,8 @@ def test_invalid_stress_workloads_fail_before_launch():
         stress_worker.validate_stress_environment({"CATCCOS_UDMA_VALIDATE_ROUTES": "1"})
 
 
-@pytest.mark.parametrize("sync_args,sync_each_call,sync_timeout", [
-    ([], False, None),
-    (["--sync-each-call", "--sync-timeout-seconds", "17"], True, 17.0),
-])
 def test_launcher_selects_a_case_and_passes_exact_chain_count(
-    monkeypatch, tmp_path, sync_args, sync_each_call, sync_timeout,
+    monkeypatch, tmp_path,
 ):
     monkeypatch.setenv("CATCCOS_UDMA_VALIDATE_ROUTES", "0")
     monkeypatch.setattr(run_stress, "environment_fingerprint", lambda: {})
@@ -362,16 +275,12 @@ def test_launcher_selects_a_case_and_passes_exact_chain_count(
         assert command[command.index("--mode") + 1] == "chain"
         assert "--max-restarts=0" in command
         assert not any("msprof" in item for item in command)
-        assert ("--sync-each-call" in command) is sync_each_call
-        if sync_each_call:
-            assert command[command.index("--sync-timeout-seconds") + 1] == "17.0"
         assert environment["CATCCOS_UDMA_VALIDATE_ROUTES"] == "0"
         assert timeout_seconds == 120
         for rank in range(8):
             run_stress.write_json(case_root / "worker_rank_{}.json".format(rank), {
                 "case_id": "model_case_1", "rank": rank, "mode": "chain", "passed": True,
                 "completed_iterations": 13, "completed_calls": {"a2avgmm": 13, "gmma2av": 13},
-                "sync_each_call": sync_each_call, "sync_timeout_seconds": sync_timeout,
                 "elapsed_seconds": 1.0,
             })
         return {"returncode": 0, "timed_out": False}
@@ -380,11 +289,9 @@ def test_launcher_selects_a_case_and_passes_exact_chain_count(
     assert run_stress.main([
         "--mode", "chain", "--iterations", "13", "--case-id", "model_case_1",
         "--output-dir", str(tmp_path), "--timeout-seconds", "120",
-    ] + sync_args) == 0
+    ]) == 0
     summary = json.loads((tmp_path / "summary.json").read_text())
     assert summary["passed"]
-    assert summary["sync_each_call"] is sync_each_call
-    assert summary["sync_timeout_seconds"] == sync_timeout
     assert summary["cases"][0]["requested_calls_per_rank"] == {"a2avgmm": 13, "gmma2av": 13}
 
 
@@ -392,7 +299,6 @@ def test_summary_requires_every_rank_and_device_completion(tmp_path):
     case = workload()
     result = {"returncode": 0, "timed_out": False}
     report = {"case_id": case["id"], "mode": "chain", "passed": True,
-              "sync_each_call": False,
               "completed_iterations": 3, "completed_calls": {"a2avgmm": 3, "gmma2av": 3}}
     run_stress.write_json(tmp_path / "worker_rank_0.json", dict(report, rank=0))
     assert not run_stress.summarize_case(case, "chain", 3, tmp_path, result)["passed"]

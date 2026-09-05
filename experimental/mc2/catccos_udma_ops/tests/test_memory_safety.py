@@ -59,7 +59,7 @@ def test_mssanitizer_wheel_enables_supported_ascend950_debug_information():
     root_cmake = (PROJECT_ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
     setup_source = (PROJECT_ROOT / "setup.py").read_text(encoding="utf-8")
     assert "option(CATCCOS_UDMA_MSSANITIZER" in root_cmake
-    assert 'set(CATCCOS_UDMA_ASCEND_SANITIZER_FLAGS "-g")' in root_cmake
+    assert '"-g -DCATCCOS_UDMA_MSSANITIZER=1 -DASCENDC_DUMP=1"' in root_cmake
     assert 'CATCCOS_UDMA_ASCEND_SANITIZER_LINK_OPTIONS' not in root_cmake
     assert '"-g --cce-enable-sanitizer"' not in root_cmake
     assert "--cce-fatobj-link" not in root_cmake
@@ -69,7 +69,7 @@ def test_mssanitizer_wheel_enables_supported_ascend950_debug_information():
         "csrc/grouped_mat_mul_all_to_allv_udma/ascend950/CMakeLists.txt",
     ):
         source = (PROJECT_ROOT / relative).read_text(encoding="utf-8")
-        assert "${CATCCOS_UDMA_ASCEND_SANITIZER_FLAGS}" in source
+        assert "${CATCCOS_UDMA_ASCEND_FLAGS}" in source
 
 
 def test_nan_red_zones_detect_a_corrupted_suffix():

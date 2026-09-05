@@ -23,7 +23,6 @@
 #include "platform/platform_ascendc.h"
 
 #include <cstdint>
-#include <cstdlib>
 #include <limits>
 #include <string>
 #include <tuple>
@@ -74,47 +73,6 @@ struct TilingProfile {
     uint32_t exportCoreCount;
     uint32_t selfCopyCores;
 };
-
-enum class CompletionMode : uint32_t {
-    kBaseline = 0,
-    kBarrierOnly = 1,
-    kGenerationAfterQuiet = 2,
-    kStrongReady = 3,
-    kStrongReadyCacheSafe = 4,
-};
-
-CompletionMode GetCompletionMode(bool outputAllToAllV)
-{
-    const char *raw = std::getenv("CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE");
-    const std::string value = raw == nullptr ? "production" : raw;
-    if (value.empty() || value == "production" || value == "default") {
-        // The WRITE_WITH_NOTIFY generation protocol is the production path
-        // for the optional AllToAllV export. The non-export kernel keeps its
-        // independently validated legacy completion path.
-        return outputAllToAllV ? CompletionMode::kStrongReady
-                               : CompletionMode::kBaseline;
-    }
-    if (value == "baseline" || value == "legacy" || value == "0") {
-        return CompletionMode::kBaseline;
-    }
-    if (value == "barrier_only" || value == "1") {
-        return CompletionMode::kBarrierOnly;
-    }
-    if (value == "generation_after_quiet" || value == "2") {
-        return CompletionMode::kGenerationAfterQuiet;
-    }
-    if (value == "strong_ready" || value == "3") {
-        return CompletionMode::kStrongReady;
-    }
-    if (value == "strong_ready_cache_safe" || value == "4") {
-        return CompletionMode::kStrongReadyCacheSafe;
-    }
-    TORCH_CHECK(false,
-        "CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE must be one of "
-        "production, baseline, barrier_only, generation_after_quiet, "
-        "strong_ready, or strong_ready_cache_safe; got ", value);
-    return CompletionMode::kBaseline;
-}
 
 constexpr TilingProfile kDefaultTiling{
     KernelVariant::kM0_128, 128, 256, 256, 10, 64, 64, 1, 16,
@@ -258,7 +216,6 @@ void InitializeAndLaunch(
     uint8_t *workspace,
     uint8_t *allToAllVOutput,
     uint8_t *routeMetadata,
-    uint32_t completionMode,
     uint32_t blockDim,
     aclrtStream stream,
     uint64_t fftsAddress)
@@ -296,7 +253,6 @@ void InitializeAndLaunch(
         tiling.stageRows,
         tiling.exportCoreCount,
         tiling.selfCopyCores,
-        completionMode,
     };
 
     DeviceOp deviceOp;
@@ -425,29 +381,15 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
         CheckNoTensorOverlap(allToAllVOutput, "all_to_allv_out", routeMetadata,
                              "route_metadata");
     }
-    const CompletionMode completionMode =
-        GetCompletionMode(allToAllVOutputOptional.has_value());
-    const bool usesStrongReady =
-        completionMode == CompletionMode::kStrongReady ||
-        completionMode == CompletionMode::kStrongReadyCacheSafe;
+    const uint64_t stageRows = tiling.stageRows == 0
+        ? static_cast<uint64_t>(tiling.commInterval) * tiling.m0
+        : tiling.stageRows;
+    const uint64_t maximumPeerSliceBytes =
+        stageRows * static_cast<uint64_t>(k64) * sizeof(uint16_t);
     TORCH_CHECK(
-        completionMode == CompletionMode::kBaseline ||
-            allToAllVOutputOptional.has_value(),
-        "non-baseline completion modes require "
-        "output_all_to_allv=True");
-    if (usesStrongReady) {
-        const uint64_t stageRows = tiling.stageRows == 0
-            ? static_cast<uint64_t>(tiling.commInterval) * tiling.m0
-            : tiling.stageRows;
-        const uint64_t maximumPeerSliceBytes =
-            stageRows * static_cast<uint64_t>(k64) * sizeof(uint16_t);
-        TORCH_CHECK(
-            maximumPeerSliceBytes <= kMaxUdmaWriteNotifyBytes,
-            "strong completion mode requires each staged peer slice to "
-            "fit one UDMA write-with-notify request; got ",
-            maximumPeerSliceBytes, " bytes, maximum ",
-            kMaxUdmaWriteNotifyBytes);
-    }
+        maximumPeerSliceBytes <= kMaxUdmaWriteNotifyBytes,
+        "each staged peer slice must fit one UDMA write-with-notify request; got ",
+        maximumPeerSliceBytes, " bytes, maximum ", kMaxUdmaWriteNotifyBytes);
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
     runtime.RecordStream(stream);
 
@@ -485,7 +427,6 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
             routeMetadataOptional.has_value()
                 ? reinterpret_cast<uint8_t *>(routeMetadataOptional.value().data_ptr())
                 : nullptr,
-            static_cast<uint32_t>(completionMode),
             blockDim, stream, fftsAddress);
     };
     auto launchByMSplit = [&](auto mSplit1, auto mSplit2, auto mSplit4) {

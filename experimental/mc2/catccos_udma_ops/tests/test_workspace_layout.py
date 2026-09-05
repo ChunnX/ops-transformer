@@ -37,7 +37,7 @@ def test_alltoallv_grouped_matmul_uses_only_its_control_slice():
     source = _read("ascend950_alltoallv_grouped_matmul.hpp")
 
     assert "WorkspaceLayout::kA2avGmmSyncMmadOffset" in source
-    assert "WorkspaceLayout::kA2avGmmSyncCommOffset" in source
+    assert "syncCommFinish" not in source
     assert "WorkspaceLayout::kA2avGmmReadyOffset" in source
     assert "WorkspaceLayout::kGmmA2avSyncMmadOffset" not in source
     assert "WorkspaceLayout::kGmmA2avSyncCommOffset" not in source
