@@ -57,7 +57,7 @@ class CopyAttenOutUbToGm<OUT_T, GM_FORMAT, UbFormat::GS1> {
 public:
     template <typename FaGmTensorType, bool ROW_PAD = true>
     __aicore__ inline void operator()(FaGmTensorType &dstTensor, FaUbTensor<OUT_T, ROW_PAD> &srcTensor,
-                                      GmCoord &gmCoord)
+                                      GmCoordGs1Merge &gmCoord)
     {
         auto &offsetCalculator = dstTensor.offsetCalculator;
         uint32_t s1Size = 0;
@@ -121,7 +121,7 @@ class CopyAttenOutUbToGm<OUT_T, GM_FORMAT, UbFormat::S1G> {
 public:
     template <typename FaGmTensorType, bool ROW_PAD = true>
     __aicore__ inline void operator()(FaGmTensorType &dstTensor, FaUbTensor<OUT_T, ROW_PAD> &srcTensor,
-                                      GmCoord &gmCoord)
+                                      GmCoordGs1Merge &gmCoord)
     {
         auto &offsetCalculator = dstTensor.offsetCalculator;
         uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
@@ -190,7 +190,7 @@ class CopyAttenOutUbToGm<OUT_T, GM_FORMAT, UbFormat::S1_ONLY> {
 public:
     template <typename FaGmTensorType, bool ROW_PAD = true>
     __aicore__ inline void operator()(FaGmTensorType &dstTensor, FaUbTensor<OUT_T, ROW_PAD> &srcTensor,
-                                      GmCoordT<InnerMLayout::S1_ONLY_LAYOUT> &gmCoord)
+                                      GmCoordS1Only &gmCoord)
     {
         auto &offsetCalculator = dstTensor.offsetCalculator;
         uint64_t gmOffset =

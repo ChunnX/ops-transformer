@@ -117,7 +117,7 @@ protected:
     __aicore__ inline void Bmm2CastAndCopyOut(const RunInfo &info, LocalTensor<MM2_OUT_T> &bmm2ResUb, uint32_t wsMStart,
                                               uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
                                               uint32_t actualColumnCount);
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUT_T> &ubTensor, GmCoord &gmCoord);
+    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUT_T> &ubTensor, GmCoordGs1Merge &gmCoord);
     __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfo &info, LocalTensor<OUT_T> &attenOutUb, uint32_t wsMStart,
                                                 uint32_t dealRowCount, uint32_t columnCount,
                                                 uint32_t actualColumnCount);
@@ -912,7 +912,7 @@ FiaBlockVecNonQuant<FIAT>::Bmm2CastAndCopyOut(const RunInfo &info, LocalTensor<M
 }
 
 template <typename FIAT>
-__aicore__ inline void FiaBlockVecNonQuant<FIAT>::CopyAttentionOut(FaUbTensor<OUT_T> &ubTensor, GmCoord &gmCoord)
+__aicore__ inline void FiaBlockVecNonQuant<FIAT>::CopyAttentionOut(FaUbTensor<OUT_T> &ubTensor, GmCoordGs1Merge &gmCoord)
 {
     if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
         constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
@@ -969,7 +969,7 @@ FiaBlockVecNonQuant<FIAT>::Bmm2DataCopyOutTrans(const RunInfo &info, LocalTensor
         .rowCount = dealRowCount,
         .colCount = columnCount,
     };
-    GmCoord gmCoord{.bIdx = info.bIdx,
+    GmCoordGs1Merge gmCoord{.bIdx = info.bIdx,
                     .n2Idx = info.n2Idx,
                     .gS1Idx = info.gS1Idx + wsMStart,
                     .dIdx = 0,
@@ -1413,7 +1413,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealZeroActSeqLenWithPostQuant
                 .rowCount = dealRowCount,
                 .colCount = columnCount,
             };
-            GmCoord gmCoord{.bIdx = bIdx,
+            GmCoordGs1Merge gmCoord{.bIdx = bIdx,
                             .n2Idx = n2Idx,
                             .gS1Idx = startRow,
                             .dIdx = 0,

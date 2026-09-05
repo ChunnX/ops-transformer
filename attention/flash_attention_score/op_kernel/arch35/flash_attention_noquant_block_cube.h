@@ -1018,7 +1018,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
                                     4 << 4; // NZ矩阵相邻Block起始地址之间的偏移，单位为Block个数，16对齐
                 }
 
-                GmCoord gmCoord{.bIdx = static_cast<uint32_t>(runInfo.boIdx),
+                GmCoordGs1Merge gmCoord{.bIdx = static_cast<uint32_t>(runInfo.boIdx),
                                 .n2Idx = static_cast<uint32_t>(runInfo.n2oIdx),
                                 .gS1Idx = static_cast<uint32_t>(runInfo.gS1Idx),
                                 .dIdx = 0,
@@ -1203,7 +1203,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
                 FaL1Tensor<INPUT_T, L1Format::NZ> dstTensor{.tensor = mm1BTensor,
                                                             .rowCount = static_cast<uint32_t>(subMSizeAlign)};
                 // gmCoord赋值
-                GmCoord gmCoord{.bIdx = static_cast<uint32_t>(runInfo.boIdx),
+                GmCoordGs1Merge gmCoord{.bIdx = static_cast<uint32_t>(runInfo.boIdx),
                                 .n2Idx = static_cast<uint32_t>(runInfo.n2oIdx),
                                 .gS1Idx = static_cast<uint32_t>(runInfo.gS1Idx),
                                 .dIdx = 0,
@@ -1600,7 +1600,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
                 FaL1Tensor<INPUT_T, L1Format::NZ> dstTensor = {.tensor = mm1ATensor,
                                                                .rowCount = static_cast<uint32_t>(subMSizeAlign)};
 
-                GmCoord gmCoord{.bIdx = static_cast<uint32_t>(runInfo.boIdx),
+                GmCoordGs1Merge gmCoord{.bIdx = static_cast<uint32_t>(runInfo.boIdx),
                                 .n2Idx = static_cast<uint32_t>(runInfo.n2oIdx),
                                 .gS1Idx = static_cast<uint32_t>(runInfo.gS1Idx),
                                 .dIdx = 0,
@@ -1760,7 +1760,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
                 if (IsGS1Merge(constInfo)) { // PFA
                     FaL1Tensor<INPUT_T, L1Format::NZ> dstTensor{.tensor = mm1ATensor[k * l1BaseKOffset],
                                                                 .rowCount = static_cast<uint32_t>(subMSizeAlign)};
-                    GmCoord gmCoord{.bIdx = static_cast<uint32_t>(runInfo.boIdx),
+                    GmCoordGs1Merge gmCoord{.bIdx = static_cast<uint32_t>(runInfo.boIdx),
                                     .n2Idx = static_cast<uint32_t>(runInfo.n2oIdx),
                                     .gS1Idx = static_cast<uint32_t>(runInfo.gS1Idx),
                                     .dIdx = static_cast<uint32_t>(k * baseK),
@@ -1891,7 +1891,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
                 }
 
                 // gm坐标赋值
-                GmCoord gmCoord{.bIdx = static_cast<uint32_t>(runInfo.boIdx),
+                GmCoordGs1Merge gmCoord{.bIdx = static_cast<uint32_t>(runInfo.boIdx),
                                 .n2Idx = static_cast<uint32_t>(runInfo.n2oIdx),
                                 .gS1Idx = static_cast<uint32_t>(runInfo.gS1Idx),
                                 .dIdx = 0,

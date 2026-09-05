@@ -115,7 +115,7 @@ class CopyQueryGmToL1<Q_T, GM_FORMAT, L1_FORMAT, InnerMLayout::GS1_MERGE_LAYOUT>
 public:
     template <typename FaGmTensorType>
     __aicore__ inline void operator()(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-                                      GmCoord &gmCoord)
+                                      GmCoordGs1Merge &gmCoord)
     {
         if constexpr ((GM_FORMAT == GmFormat::BSNGD) || (GM_FORMAT == GmFormat::TNGD)) {
             ProcessS1G(dstTensor, srcTensor, gmCoord);
@@ -134,7 +134,7 @@ public:
 private:
     template <typename FaGmTensorType>
     __aicore__ inline void ProcessS1G(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-                                      GmCoord &gmCoord)
+                                      GmCoordGs1Merge &gmCoord)
     {
         auto &offsetCalculator = srcTensor.offsetCalculator;
         uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
@@ -187,7 +187,7 @@ private:
 
     template <typename FaGmTensorType>
     __aicore__ inline void ProcessContinuous(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-                                             GmCoord &gmCoord)
+                                             GmCoordGs1Merge &gmCoord)
     {
         // B*N2*GS1*D
         auto &offsetCalculator = srcTensor.offsetCalculator;
@@ -201,7 +201,7 @@ private:
 
     template <typename FaGmTensorType>
     __aicore__ inline void ProcessGS1(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-                                      GmCoord &gmCoord)
+                                      GmCoordGs1Merge &gmCoord)
     {
         // N2*G*T(BS1)*D
         auto &offsetCalculator = srcTensor.offsetCalculator;
@@ -264,7 +264,7 @@ class CopyQueryGmToL1<Q_T, GM_FORMAT, L1_FORMAT, InnerMLayout::S1_ONLY_LAYOUT> {
 public:
     template <typename FaGmTensorType>
     __aicore__ inline void operator()(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-                                      GmCoordT<InnerMLayout::S1_ONLY_LAYOUT> &gmCoord)
+                                      GmCoordS1Only &gmCoord)
     {
         auto &offsetCalculator = srcTensor.offsetCalculator;
         uint64_t offset =
@@ -505,7 +505,7 @@ class CopyQueryScaleGmToL1 {
 public:
     template <typename FaGmTensorType>
     __aicore__ inline void operator()(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-                                      GmCoord &gmCoord)
+                                      GmCoordGs1Merge &gmCoord)
     {
         if constexpr (GM_FORMAT == GmFormat::NTGD) {
             ProcessS1G(dstTensor, srcTensor, gmCoord);
@@ -524,7 +524,7 @@ public:
 private:
     template <typename FaGmTensorType>
     __aicore__ inline void ProcessS1G(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-                                      GmCoord &gmCoord)
+                                      GmCoordGs1Merge &gmCoord)
     {
         auto &offsetCalculator = srcTensor.offsetCalculator;
         uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
@@ -539,7 +539,7 @@ private:
 
     template <typename FaGmTensorType>
     __aicore__ inline void ProcessS1(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-                                     GmCoord &gmCoord)
+                                     GmCoordGs1Merge &gmCoord)
     {
         auto &offsetCalculator = srcTensor.offsetCalculator;
         uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
@@ -553,7 +553,7 @@ private:
 
     template <typename FaGmTensorType>
     __aicore__ inline void ProcessContinuous(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-                                             GmCoord &gmCoord)
+                                             GmCoordGs1Merge &gmCoord)
     {
         // B*N2*GS1*D
         auto &offsetCalculator = srcTensor.offsetCalculator;
@@ -567,7 +567,7 @@ private:
 
     template <typename FaGmTensorType>
     __aicore__ inline void ProcessGS1(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-                                      GmCoord &gmCoord)
+                                      GmCoordGs1Merge &gmCoord)
     {
         // N2*G*T(BS1)*D
         auto &offsetCalculator = srcTensor.offsetCalculator;

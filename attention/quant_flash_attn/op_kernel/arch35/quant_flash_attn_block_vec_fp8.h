@@ -68,7 +68,7 @@ public:
     static constexpr UbFormat OUT_UB_FORMAT =
         USE_DN ? UbFormat::S1_ONLY : GetOutUbFormat<layout>();
     using OutGmCoord =
-        std::conditional_t<USE_DN, GmCoordT<InnerMLayout::S1_ONLY_LAYOUT>, GmCoord>;
+        std::conditional_t<USE_DN, GmCoordS1Only, GmCoordGs1Merge>;
     static constexpr bool IS_PER_TOEKN_HEAD = true;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
 
@@ -314,7 +314,7 @@ public:
             .colCount = dRealSize,
         };
 
-        GmCoord gmCoord{
+        GmCoordGs1Merge gmCoord{
             .bIdx = runInfo.bIdx,
             .n2Idx = runInfo.realN2Idx,
             .gS1Idx = runInfo.gS1Idx + runInfo.vecMbaseIdx,

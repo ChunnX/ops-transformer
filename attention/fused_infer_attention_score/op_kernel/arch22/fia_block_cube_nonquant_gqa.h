@@ -749,7 +749,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::CopyQToL1(uint32_t
     uint32_t nopeDealSize = constInfo.ropeSplitMode ? constInfo.headDim : (constInfo.headDim + constInfo.headDimRope);
 
     FaL1Tensor<Q_T, L1Format::NZ> dstTensor{.tensor = qL1Tensor, .rowCount = subMSizeAlign};
-    GmCoord gmCoord{.bIdx = info.bIdx,
+    GmCoordGs1Merge gmCoord{.bIdx = info.bIdx,
                     .n2Idx = info.n2Idx,
                     .gS1Idx = info.gS1Idx + subMStart,
                     .dIdx = 0,

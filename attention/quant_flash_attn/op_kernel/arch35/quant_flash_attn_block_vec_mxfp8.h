@@ -97,7 +97,7 @@ public:
     static constexpr UbFormat OUT_UB_FORMAT =
         USE_DN ? UbFormat::S1_ONLY : GetOutUbFormat<layout>();
     using OutGmCoord =
-        std::conditional_t<USE_DN, GmCoordT<InnerMLayout::S1_ONLY_LAYOUT>, GmCoord>;
+        std::conditional_t<USE_DN, GmCoordS1Only, GmCoordGs1Merge>;
 
     static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value &&
                                        !IsSameType<OUTPUT_T, float>::value;

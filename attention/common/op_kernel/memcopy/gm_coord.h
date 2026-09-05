@@ -44,5 +44,6 @@ struct GmCoordT<InnerMLayout::S1_ONLY_LAYOUT> {
     uint32_t dDealSize;
 };
 
-using GmCoord = GmCoordT<InnerMLayout::GS1_MERGE_LAYOUT>;
+using GmCoordGs1Merge = GmCoordT<InnerMLayout::GS1_MERGE_LAYOUT>;
+using GmCoordS1Only = GmCoordT<InnerMLayout::S1_ONLY_LAYOUT>;
 #endif

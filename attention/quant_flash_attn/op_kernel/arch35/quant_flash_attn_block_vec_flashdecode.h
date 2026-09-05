@@ -309,7 +309,7 @@ protected:
             .rowCount = dealRowCount,
             .colCount = columnCount,
         };
-        GmCoord gmCoord{.bIdx = taskInfo_.bIdx,
+        GmCoordGs1Merge gmCoord{.bIdx = taskInfo_.bIdx,
                         .n2Idx = taskInfo_.n2Idx,
                         .gS1Idx = taskInfo_.gS1Idx + startRow,
                         .dIdx = 0,

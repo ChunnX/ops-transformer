@@ -439,7 +439,7 @@ public:
         uint32_t dstStride = (runInfo.actMSize + 31) >> 5 << 5;
         FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmCoord gmCoord{.bIdx = runInfo.bIdx,
+        GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
                         .n2Idx = runInfo.realN2Idx,
                         .gS1Idx = runInfo.gS1Idx,
                         .dIdx = dOffset,
@@ -455,7 +455,7 @@ public:
             FaL1Tensor<ROPE_T, L1Format::NZ> l1Tensor{.tensor = (dstTensor[offset]).template ReinterpretCast<ROPE_T>(),
                                                       .rowCount = dstStrideRope};
 
-            GmCoord gmCoord = {.bIdx = runInfo.bIdx,
+            GmCoordGs1Merge gmCoord = {.bIdx = runInfo.bIdx,
                                .n2Idx = runInfo.realN2Idx,
                                .gS1Idx = runInfo.gS1Idx,
                                .dIdx = 0,
@@ -477,7 +477,7 @@ public:
         uint32_t dstStride = (runInfo.actMSize + 31) >> 5 << 5;
         FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmCoord gmCoord{.bIdx = runInfo.bIdx,
+        GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
                         .n2Idx = runInfo.realN2Idx,
                         .gS1Idx = runInfo.gS1Idx,
                         .dIdx = dOffset,

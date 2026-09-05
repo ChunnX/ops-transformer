@@ -1070,7 +1070,7 @@ FiaBlockVecNonQuantMla<FIAT>::Bmm2DataCopyOutTrans(const AttentionCommon::RunInf
                                                    uint32_t actualColumnCount)
 {
     FaUbTensor<OUT_T> ubTensor{.tensor = attenOutUb, .rowCount = dealRowCount, .colCount = columnCount};
-    GmCoord gmCoord{.bIdx = info.bIdx,
+    GmCoordGs1Merge gmCoord{.bIdx = info.bIdx,
                     .n2Idx = info.n2Idx,
                     .gS1Idx = info.gS1Idx + wsMStart,
                     .dIdx = 0,

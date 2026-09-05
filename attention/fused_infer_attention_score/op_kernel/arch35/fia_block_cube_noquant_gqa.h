@@ -275,7 +275,7 @@ public:
         if (nopeDealSize > 0) {
             FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-            GmCoord gmCoord{.bIdx = runInfo.bIdx,
+            GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
                             .n2Idx = runInfo.n2Idx,
                             .gS1Idx = runInfo.gS1Idx,
                             .dIdx = dOffset,

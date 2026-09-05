@@ -217,7 +217,7 @@ public:
         {
             FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-            GmCoord gmCoord{.bIdx = runInfo.bIdx,
+            GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
                             .n2Idx = runInfo.n2Idx,
                             .gS1Idx = runInfo.gS1Idx,
                             .dIdx = 0,
@@ -230,7 +230,7 @@ public:
             uint32_t queryRopeL1Offset = constInfo.dSize * dstStride;
             FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor[queryRopeL1Offset], .rowCount = dstStride};
 
-            GmCoord gmCoord{.bIdx = runInfo.bIdx,
+            GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
                             .n2Idx = runInfo.n2Idx,
                             .gS1Idx = runInfo.gS1Idx,
                             .dIdx = 0,

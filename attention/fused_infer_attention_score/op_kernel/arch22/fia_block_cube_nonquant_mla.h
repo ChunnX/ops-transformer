@@ -698,7 +698,7 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
                     if (kL1 == 0) {
                         FaL1Tensor<Q_T, L1Format::NZ> dstTensor{.tensor = aL1Tensor,
                                                                 .rowCount = AttentionCommon::Align(mL1Size, 16U)};
-                        GmCoord gmCoord{.bIdx = info.bIdx,
+                        GmCoordGs1Merge gmCoord{.bIdx = info.bIdx,
                                         .n2Idx = info.n2Idx,
                                         .gS1Idx = info.gS1Idx + mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE,
                                         .dIdx = kL1 * 256,
@@ -707,7 +707,7 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
                         LocalTensor<Q_T> qRopeTensor = aL1Tensor[mL1SizeAlign * 256];
                         FaL1Tensor<Q_T, L1Format::NZ> dstRopeTensor{.tensor = aL1Tensor[mL1SizeAlign * 256],
                                                                     .rowCount = AttentionCommon::Align(mL1Size, 16U)};
-                        GmCoord gmCoordQRope{.bIdx = info.bIdx,
+                        GmCoordGs1Merge gmCoordQRope{.bIdx = info.bIdx,
                                              .n2Idx = info.n2Idx,
                                              .gS1Idx = info.gS1Idx + mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE,
                                              .dIdx = 0,
@@ -731,7 +731,7 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
                         FaL1Tensor<Q_T, L1Format::NZ> dstTensor{
                             .tensor = aL1Tensor[mL1SizeAlign * 32], // 32 : rope headDim的一半
                             .rowCount = AttentionCommon::Align(mL1Size, 16U)};
-                        GmCoord gmCoord{.bIdx = info.bIdx,
+                        GmCoordGs1Merge gmCoord{.bIdx = info.bIdx,
                                         .n2Idx = info.n2Idx,
                                         .gS1Idx = info.gS1Idx + mSplitInfo.nBufferStartM + mL1 * M_L1_SPLIT_SIZE,
                                         .dIdx = kL1 * 256,

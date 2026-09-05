@@ -627,7 +627,7 @@ FiaBlockCubeNonQuant<FIAT>::CopyQDealSizeToL1(uint32_t DealSize, uint64_t queryL
                                               uint32_t mActSize, FaGmTensor<Q_T, Q_FORMAT> &qGmTensor)
 {
     FaL1Tensor<Q_T, L1Format::NZ> dstTensor{.tensor = qpL1Tensor[queryL1Offset], .rowCount = mActSizeAlign};
-    GmCoord gmCoord{
+    GmCoordGs1Merge gmCoord{
         .bIdx = bIdx, .n2Idx = n2Idx, .gS1Idx = gS1Idx, .dIdx = dIdx, .gS1DealSize = mActSize, .dDealSize = DealSize};
     copyQueryGmToL1(dstTensor, qGmTensor, gmCoord);
 }
