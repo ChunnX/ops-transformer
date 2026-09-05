@@ -525,7 +525,7 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
 
         // Phase 2: broadcast one precomputed sigmoid per row and accumulate attention.
         // Phase 1 stored sigmoid to UB scratch; make the store visible before VEC loads.
-        // AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
+        AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
         Reg::AddrReg offset;
         for (uint16_t row = 0; row < fullTileRows; ++row) {
             Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(
