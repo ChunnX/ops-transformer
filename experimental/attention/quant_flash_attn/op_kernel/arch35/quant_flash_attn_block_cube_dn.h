@@ -753,7 +753,7 @@ private:
         uint32_t offset = kBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
         uint32_t dstStride = info.actSingleLoopS2SizeAlign;
         uint32_t dDealSize = constInfo.dSize / MXFP_GROUP_SIZE;
-        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = kvDescaleL1Tensor[offset], .rowCount = dstStride};
+        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = kDescaleL1Tensor[offset], .rowCount = dstStride};
 
         GmKvCoord gmCoord{.bIdx = info.bIdx,
                           .n2Idx = info.n2Idx,
@@ -815,8 +815,8 @@ private:
         uint32_t kL1Offset = kBufId * (L1_KV_SIZE / sizeof(DATA_T));
         uint32_t kScaleL1Offset = kBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T)) +
                                   (info.prefetched ? (L1_KV_DESCALE_SIZE / sizeof(SCALE_T)) : 0);
-        LoadData(qkL0ATensor[qkL0Offset].ReinterpretCast<QUANT_T>(), kL1Tensor[kvL1Offset].ReinterpretCast<QUANT_T>(),
-                 kDescaleL1Tensor[kvScaleL1Offset], loadData2DParamsA, loadData2DMxParamsA);
+        LoadData(qkL0ATensor[qkL0Offset].ReinterpretCast<QUANT_T>(), kL1Tensor[kL1Offset].ReinterpretCast<QUANT_T>(),
+                 kDescaleL1Tensor[kScaleL1Offset], loadData2DParamsA, loadData2DMxParamsA);
     }
 
     __aicore__ inline void MatmulQK(const RunInfo &info, uint32_t actS2Size)
