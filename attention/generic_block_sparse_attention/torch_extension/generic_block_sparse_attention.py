@@ -85,7 +85,7 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
                 "int num_heads_q, int num_heads_kv, int head_dim, "
                 "int[] block_shape, *, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, "
                 "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
-                "int? max_seqlen_q=-1, int? max_seqlen_kv=-1, int is_packed_gqa=1, "
+                "int? max_seqlen_q=-1, int? max_seqlen_kv=-1, bool is_packed_gqa=True, "
                 'str layout_q="TND", str layout_kv="PA_BBND", '
                 "int mask_mode=1, int quant_mode=0, int softmax_precision=1, "
                 "int win_left=-1, int win_right=-1) -> Tensor"
@@ -106,7 +106,7 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
                 "Tensor? seqused_q=None, "
                 "Tensor? seqused_kv=None, "
                 "Tensor? block_table=None, "
-                "int is_packed_gqa=1, "
+                "bool is_packed_gqa=True, "
                 'str layout_q="TND", '
                 'str layout_kv="PA_BBND", '
                 "float softmax_scale=0.0, "
@@ -140,7 +140,7 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             seqused_kv=None,
             max_seqlen_q: Optional[int] = -1,
             max_seqlen_kv: Optional[int] = -1,
-            is_packed_gqa=1,
+            is_packed_gqa=True,
             layout_q="TND",
             layout_kv="PA_BBND",
             mask_mode=1,
@@ -173,7 +173,7 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             seqused_q: Optional[torch.Tensor] = None,
             seqused_kv: Optional[torch.Tensor] = None,
             block_table: Optional[torch.Tensor] = None,
-            is_packed_gqa: int = 1,
+            is_packed_gqa: bool = True,
             layout_q: str = "TND",
             layout_kv: str = "PA_BBND",
             softmax_scale: float = 0.0,
@@ -232,7 +232,7 @@ def generic_block_sparse_attention_metadata(
     seqused_kv=None,
     max_seqlen_q: Optional[int] = -1,
     max_seqlen_kv: Optional[int] = -1,
-    is_packed_gqa=1,
+    is_packed_gqa: bool = True,
     layout_q="TND",
     layout_kv="PA_BBND",
     mask_mode: Union[MaskMode, int] = MaskMode.CAUSAL,
@@ -287,7 +287,7 @@ def generic_block_sparse_attention_metadata_fallback(
     seqused_kv=None,
     max_seqlen_q: Optional[int] = -1,
     max_seqlen_kv: Optional[int] = -1,
-    is_packed_gqa=1,
+    is_packed_gqa: bool = True,
     layout_q="TND",
     layout_kv="PA_BBND",
     mask_mode: Union[MaskMode, int] = MaskMode.CAUSAL,
@@ -343,7 +343,7 @@ def generic_block_sparse_attention(
     seqused_q: Optional[torch.Tensor] = None,
     seqused_kv: Optional[torch.Tensor] = None,
     block_table: Optional[torch.Tensor] = None,
-    is_packed_gqa: int = 1,
+    is_packed_gqa: bool = True,
     layout_q: str = "TND",
     layout_kv: str = "PA_BBND",
     softmax_scale: float = 0.0,

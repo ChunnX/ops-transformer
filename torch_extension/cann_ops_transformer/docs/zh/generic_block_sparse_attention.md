@@ -67,7 +67,7 @@ cann_ops_transformer.generic_block_sparse_attention_metadata(
     seqused_kv=None,
     max_seqlen_q=-1,
     max_seqlen_kv=-1,
-    is_packed_gqa=1,
+    is_packed_gqa=True,
     layout_q="TND",
     layout_kv="PA_BBND",
     mask_mode=1,
@@ -98,7 +98,7 @@ cann_ops_transformer.generic_block_sparse_attention(
     seqused_q=None,
     seqused_kv=None,
     block_table=None,
-    is_packed_gqa=1,
+    is_packed_gqa=True,
     layout_q="TND",
     layout_kv="PA_BBND",
     softmax_scale=0.0,
@@ -131,7 +131,7 @@ cann_ops_transformer.generic_block_sparse_attention(
 | seqused_kv | Tensor | 可选 | 指定每batch中实际使用的kv序列长度，截断冗余运算 | int32 | ND | (B,) |
 | max_seqlen_q | int | 可选 | 指定query序列的长度上限，-1表示未指定（由底层推导）。默认值为-1 | int32 | - | - |
 | max_seqlen_kv | int | 可选 | 指定key/value序列的长度上限，-1表示未指定（由底层推导）。默认值为-1 | int32 | - | - |
-| is_packed_gqa | int | 可选 | 是否启用Packed GQA，默认1 | int32 | - | - |
+| is_packed_gqa | bool | 可选 | 是否启用Packed GQA，默认True（当前仅支持True） | bool | - | - |
 | layout_q | string | 可选 | 定义输入query张量的布局格式 | string | - | - |
 | layout_kv | string | 可选 | 定义输入key/value张量的布局格式 | string | - | - |
 | mask_mode | int/MaskMode | 可选 | 掩码模式，支持传入枚举或对应 int 值，枚举定义见「mask_mode 枚举」 | int32 | - | - |
@@ -161,7 +161,7 @@ cann_ops_transformer.generic_block_sparse_attention(
 | seqused_q | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) |
 | seqused_kv | Tensor | 可选 | 指定每batch中实际使用的kv序列长度，截断冗余运算 | int32 | ND | (B,) |
 | block_table | Tensor | 可选 | 用于Paged Attention计算中的块索引映射 | int32 | ND | (B, max_num_blocks_per_seq) |
-| is_packed_gqa | int | 可选 | 是否启用Packed GQA，默认1 | int32 | - | - |
+| is_packed_gqa | bool | 可选 | 是否启用Packed GQA，默认True（当前仅支持True） | bool | - | - |
 | layout_q | string | 可选 | 定义输入query张量的布局格式 | string | - | - |
 | layout_kv | string | 可选 | 定义输入key/value张量的布局格式 | string | - | - |
 | softmax_scale | float | 可选 | 可显式设置缩放因子，覆盖默认计算 | float32 | - | - |
@@ -404,7 +404,7 @@ cann_ops_transformer.generic_block_sparse_attention(
             <ul>
                 <li>当前topK不超过256</li>
                 <li>当前block_shape=[1, 128]</li>
-                <li>is_packed_gqa当前仅支持1</li>
+                <li>is_packed_gqa当前仅支持True</li>
             </ul>
         </td>
     </tr>
@@ -824,7 +824,7 @@ quant_mode参数解释见「quant_mode 枚举」。
         cu_seqlens_kv=cu_seqlens_kv,
         max_seqlen_q=Q_S,
         max_seqlen_kv=KV_S,
-        is_packed_gqa=1,
+        is_packed_gqa=True,
         layout_q="TND",
         layout_kv="PA_BBND",
         mask_mode=1,
@@ -843,7 +843,7 @@ quant_mode参数解释见「quant_mode 枚举」。
         cu_seqlens_q=cu_seqlens_q,
         cu_seqlens_kv=cu_seqlens_kv,
         block_table=block_table,
-        is_packed_gqa=1,
+        is_packed_gqa=True,
         layout_q="TND",
         layout_kv="PA_BBND",
         softmax_scale=1.0 / (D ** 0.5),
