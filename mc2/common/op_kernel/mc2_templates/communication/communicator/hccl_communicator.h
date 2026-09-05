@@ -16,6 +16,7 @@
 #ifndef MC2_HCCL_COMMUNICATOR_H
 #define MC2_HCCL_COMMUNICATOR_H
 
+#include "../../../mc2_tiling_struct.h"
 #include "../primitives/hccl_primitives.h"
 #if MC2_DFX_ENABLE
 #include "../../../mc2_runtime_info.h"

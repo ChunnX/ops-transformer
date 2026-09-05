@@ -38,6 +38,35 @@ if (BUILD_OPEN_PROJECT)
                     -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
                     -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel/apace/tests/st/.third_party/ops-tensor/include
         )
+        if (EXISTS ${ASCEND_CANN_PACKAGE_PATH}/asc/include/adv_api/hcomm/dfx/hcomm_channel_dump.h)
+            # shim 实现头会导出 hcomm_dfx_queue_read_kernel 等强符号，多个算子各自链接 shim .o
+            # 会在 cust_opmaster 内重复定义；用全局属性保证全工程只编译链接一份（首个处理的算子接线）
+            get_property(MC2_HCOMM_DFX_WIRED GLOBAL PROPERTY MC2_HCOMM_DFX_SHIM_WIRED SET)
+            if(NOT MC2_HCOMM_DFX_WIRED)
+                set_property(GLOBAL PROPERTY MC2_HCOMM_DFX_SHIM_WIRED TRUE)
+                set(HCOMM_DFX_SHIM_OBJ ${CMAKE_CURRENT_BINARY_DIR}/hcomm_dfx_shim_dav_c310.o)
+                add_custom_command(
+                    OUTPUT ${HCOMM_DFX_SHIM_OBJ}
+                    COMMAND ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/ccec_compiler/bin/bisheng
+                            --asc-aicore-lang --cce-aicore-arch=dav-c310 -std=c++17 -fPIC
+                            -I${ASCEND_CANN_PACKAGE_PATH}/asc/include
+                            -I${ASCEND_CANN_PACKAGE_PATH}/asc/include/adv_api
+                            -I${ASCEND_CANN_PACKAGE_PATH}/include
+                            -I${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include
+                            -c ${CMAKE_CURRENT_SOURCE_DIR}/op_tiling/hcomm_dfx_shim.asc
+                            -o ${HCOMM_DFX_SHIM_OBJ}
+                    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/op_tiling/hcomm_dfx_shim.asc
+                    COMMENT "Compiling hcomm dfx shim with bisheng (dav-c310)"
+                )
+                add_custom_target(allto_all_matmul_v2_hcomm_dfx_shim DEPENDS ${HCOMM_DFX_SHIM_OBJ})
+                add_dependencies(cust_opmaster allto_all_matmul_v2_hcomm_dfx_shim)
+                target_link_libraries(cust_opmaster PRIVATE
+                    ${HCOMM_DFX_SHIM_OBJ}
+                    ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/lib64/libascendc_runtime.a
+                )
+                target_compile_definitions(${OPHOST_NAME}_tiling_obj PRIVATE MC2_HCOMM_DFX_SHIM=1)
+            endif()
+        endif()
     endif()
 
     # Include apace headers for tiling code
@@ -46,6 +75,12 @@ if (BUILD_OPEN_PROJECT)
     target_include_directories(op_host_aclnnInner PRIVATE
         ${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
         ${CMAKE_SOURCE_DIR}/mc2
+        ${ASCEND_CANN_PACKAGE_PATH}/asc/include
+    )
+    target_include_directories(ophost_transformer_tiling_obj PRIVATE
+        ${ASCEND_CANN_PACKAGE_PATH}/asc/include
+        ${ASCEND_CANN_PACKAGE_PATH}/asc/include/basic_api
+        ${ASCEND_CANN_PACKAGE_PATH}/asc
     )
 else()
     add_mc2_modules_sources(OPTYPE allto_all_matmul_v2 allto_all_matmul_v2 ACLNNTYPE aclnn aclnn_inner)
