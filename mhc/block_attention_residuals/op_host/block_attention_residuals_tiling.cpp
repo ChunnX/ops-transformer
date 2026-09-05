@@ -424,10 +424,16 @@ ge::graphStatus BlockAttentionResidualsTiling::GetValidBlockNum()
     auto attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is null"), return ge::GRAPH_FAILED);
     const int64_t *validBlockNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_VALID_BLOCK_NUM_INDEX);
-    const int64_t validBlockNum = (validBlockNumPtr != nullptr) ? *validBlockNumPtr : tilingData_.numBlocks;
-    OP_CHECK_IF(validBlockNum != tilingData_.numBlocks,
-                OP_LOGE(context_->GetNodeName(), "only default valid_block_num=N is supported, got %ld", validBlockNum),
-                return ge::GRAPH_FAILED);
+    int64_t validBlockNum = (validBlockNumPtr != nullptr) ? *validBlockNumPtr : -1;
+    const int64_t inputValidBlockNum = validBlockNum;
+    if (validBlockNum == -1) {
+        validBlockNum = tilingData_.numBlocks;
+    }
+    OP_CHECK_IF(
+        validBlockNum != tilingData_.numBlocks,
+        OP_LOGE(context_->GetNodeName(), "valid_block_num must be -1 (default, use N) or equal to N(%ld), got %ld",
+                tilingData_.numBlocks, inputValidBlockNum),
+        return ge::GRAPH_FAILED);
     tilingData_.validBlockNum = validBlockNum;
     return ge::GRAPH_SUCCESS;
 }

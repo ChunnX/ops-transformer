@@ -133,7 +133,7 @@ int CheckDocDims(const std::vector<int64_t> &partialBlockShape, const std::vecto
     const int64_t n = blockResShape[1];
     CHECK_RET(blockResShape[0] == t && blockResShape[2] == h && projWeightShape[0] == 1 && projWeightShape[1] == h &&
                   normWeightShape[0] == h && hiddenStatesShape[0] == t && hiddenStatesShape[1] == h &&
-                  validBlockNum == n,
+                  (validBlockNum == -1 || validBlockNum == n),
               LOG_PRINT("example shapes are inconsistent with (T,N,H)\n");
               return ACL_ERROR_INVALID_PARAM);
     return ACL_SUCCESS;
@@ -153,7 +153,9 @@ int aclnnBlockAttentionResidualsTest(int32_t deviceId, aclrtStream &stream)
     const std::vector<int64_t> projWeightShape = {1, H};
     const std::vector<int64_t> normWeightShape = {H};
     const std::vector<int64_t> hiddenStatesShape = {T, H};
-    ret = CheckDocDims(partialBlockShape, blockResShape, projWeightShape, normWeightShape, hiddenStatesShape, N);
+    constexpr int64_t VALID_BLOCK_NUM = -1; // 默认-1，表示使用 blockRes 的 N
+    ret = CheckDocDims(partialBlockShape, blockResShape, projWeightShape, normWeightShape, hiddenStatesShape,
+                       VALID_BLOCK_NUM);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     std::vector<uint16_t> partialBlockHostData(GetShapeSize(partialBlockShape), 0x3C00);
@@ -206,7 +208,7 @@ int aclnnBlockAttentionResidualsTest(int32_t deviceId, aclrtStream &stream)
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
-    ret = aclnnBlockAttentionResidualsGetWorkspaceSize(partialBlock, blockRes, projWeight, normWeight, N,
+    ret = aclnnBlockAttentionResidualsGetWorkspaceSize(partialBlock, blockRes, projWeight, normWeight, VALID_BLOCK_NUM,
                                                        DEFAULT_NORM_EPS, NEED_BACKWARD, hiddenStates, nullptr, nullptr,
                                                        &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnBlockAttentionResidualsGetWorkspaceSize failed. ERROR: %d\n", ret);

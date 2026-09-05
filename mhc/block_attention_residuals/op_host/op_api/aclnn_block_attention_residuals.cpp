@@ -36,7 +36,7 @@ struct BlockAttentionResidualsParams {
     const aclTensor *blockRes{nullptr};
     const aclTensor *projWeight{nullptr};
     const aclTensor *normWeight{nullptr};
-    int64_t validBlockNum{0};
+    int64_t validBlockNum{-1};
     double normEps{1e-6};
     bool needBackward{false};
     const aclTensor *hiddenStates{nullptr};
@@ -92,7 +92,7 @@ static inline bool CheckDtypeValid(const BlockAttentionResidualsParams &params)
     return true;
 }
 
-static inline bool CheckShapeValid(const BlockAttentionResidualsParams &params)
+static inline bool CheckShapeValid(BlockAttentionResidualsParams &params)
 {
     const auto &partialBlockShape = params.partialBlock->GetViewShape();
     const auto &blockShape = params.blockRes->GetViewShape();
@@ -109,8 +109,13 @@ static inline bool CheckShapeValid(const BlockAttentionResidualsParams &params)
     const int64_t H = partialBlockShape.GetDim(DIM_INDEX_ONE);
     const int64_t N = blockShape.GetDim(DIM_INDEX_ONE);
     const int64_t B = blockShape.GetDim(DIM_INDEX_ONE) + 1;
+    const int64_t inputValidBlockNum = params.validBlockNum;
+    if (params.validBlockNum == -1) {
+        params.validBlockNum = N;
+    }
     if (params.validBlockNum != N) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "only default valid_block_num=N is supported, got %ld", params.validBlockNum);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "validBlockNum must be -1 (default, use N) or equal to N(%ld), got %ld", N,
+                inputValidBlockNum);
         return false;
     }
     if (T < 0 || H <= 0 || N < 1 || N > MAX_NUM_BLOCKS) {
@@ -213,8 +218,8 @@ aclnnStatus aclnnBlockAttentionResidualsGetWorkspaceSize(const aclTensor *partia
     auto normWeight_ = l0op::Contiguous(normWeight, uniqueExecutor.get());
     CHECK_RET(normWeight_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    auto outRet = l0op::BlockAttentionResiduals(partialBlock_, blockRes_, projWeight_, normWeight_, validBlockNum,
-                                                normEps, needBackward, uniqueExecutor.get());
+    auto outRet = l0op::BlockAttentionResiduals(partialBlock_, blockRes_, projWeight_, normWeight_,
+                                                params.validBlockNum, normEps, needBackward, uniqueExecutor.get());
     if (outRet[0] == nullptr) {
         return ACLNN_ERR_INNER_NULLPTR;
     }
