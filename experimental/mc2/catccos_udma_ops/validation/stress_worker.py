@@ -143,7 +143,7 @@ def prepare_workload(case, mode, rank, device):
 
 
 class DebugRankSynchronizer:
-    """Identify the exact launch, NPU drain, or peer rendezvous that stalls."""
+    """Identify the operator call that stalls with one progress line per call."""
 
     def __init__(self, dist, npu, group, timeout_seconds, rank, report):
         self.dist = dist
@@ -154,30 +154,30 @@ class DebugRankSynchronizer:
         self.report = report
         self.sequence = 0
 
-    def _log(self, name, iteration, stage):
-        event = {
+    def _set_event(self, name, iteration, stage):
+        self.report["last_debug_event"] = {
             "rank": self.rank, "iteration": iteration, "sequence": self.sequence,
             "operator": name, "stage": stage,
         }
-        self.report["last_debug_event"] = event
-        print(
-            "[debug] rank={} iteration={} seq={} op={} {}".format(
-                self.rank, iteration, self.sequence, name, stage,
-            ),
-            flush=True,
-        )
 
     def before_launch(self, name, iteration):
         self.sequence += 1
-        self._log(name, iteration, "before_launch")
+        self._set_event(name, iteration, "running")
+        # The per-call monitored barrier keeps every rank on the same sequence,
+        # so one rank is sufficient to identify the call that stopped advancing.
+        if self.rank == 0:
+            print(
+                "[stress-call] rank=0 iteration={} seq={} op={}".format(
+                    iteration, self.sequence, name,
+                ),
+                flush=True,
+            )
 
     def after_launch(self, name, iteration):
-        self._log(name, iteration, "before_npu_sync")
         self.npu.synchronize()
-        self._log(name, iteration, "after_npu_sync")
         self.dist.monitored_barrier(group=self.group, timeout=self.timeout)
         self.report["synchronized_calls"][name] += 1
-        self._log(name, iteration, "after_gloo_barrier")
+        self._set_event(name, iteration, "completed")
 
 
 def run_iterations(launches, iterations, report, debug_sync=None):

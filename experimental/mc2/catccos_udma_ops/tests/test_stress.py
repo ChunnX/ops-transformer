@@ -62,7 +62,7 @@ class Backend:
 
     def __init__(
         self, monkeypatch, mode, iterations, fail_drain=False, fail_call=None,
-        sync_each_call=False, fail_monitored_barrier=None,
+        sync_each_call=False, fail_monitored_barrier=None, rank=0,
     ):
         self.calls = []
         self.sync_positions = []
@@ -76,6 +76,7 @@ class Backend:
         self.fail_call = fail_call
         self.sync_each_call = sync_each_call
         self.fail_monitored_barrier = fail_monitored_barrier
+        self.rank = rank
         self.allocations = []
         self.stream = types.SimpleNamespace(synchronize=self.synchronize)
         self.torch = types.ModuleType("torch")
@@ -109,7 +110,7 @@ class Backend:
         for name, module in (("torch", self.torch), ("torch.distributed", dist),
                              ("torch_npu", torch_npu), ("ops_transformer_catccos_udma", udma)):
             monkeypatch.setitem(sys.modules, name, module)
-        for key, value in {"RANK": "0", "LOCAL_RANK": "0", "WORLD_SIZE": "2",
+        for key, value in {"RANK": str(rank), "LOCAL_RANK": str(rank), "WORLD_SIZE": "2",
                            "CATCCOS_UDMA_VALIDATE_ROUTES": "0", "UDMA_MASTER_PORT": "29601",
                            "UDMA_MASTER_ADDR": "127.0.0.1"}.items():
             monkeypatch.setenv(key, value)
@@ -157,9 +158,9 @@ class Backend:
         if len(self.calls) == self.fail_call:
             raise RuntimeError("submission failed")
         self.calls.append((name, args, kwargs))
-        assert kwargs["out"].device == "npu:0"
+        assert kwargs["out"].device == "npu:{}".format(self.rank)
         assert args[2].dtype == args[3].dtype == "int64"
-        assert args[2].device == args[3].device == "npu:0"
+        assert args[2].device == args[3].device == "npu:{}".format(self.rank)
         if name == "a2avgmm":
             assert kwargs["received_rows"] == 128  # Host integer, never device sum().item().
             assert kwargs["out"].shape == (128, 256)
@@ -221,15 +222,19 @@ def test_worker_can_diagnose_every_operator_call(monkeypatch, tmp_path, capsys):
         (1, "a2avgmm"), (1, "gmma2av"),
         (2, "a2avgmm"), (2, "gmma2av"),
     ], start=1):
-        prefix = "rank=0 iteration={} seq={} op={}".format(iteration, sequence, name)
-        for stage in (
-            "before_launch", "before_npu_sync", "after_npu_sync", "after_gloo_barrier",
-        ):
-            assert "{} {}".format(prefix, stage) in output
+        assert "[stress-call] rank=0 iteration={} seq={} op={}".format(
+            iteration, sequence, name,
+        ) in output
+    assert len([
+        line for line in output.splitlines() if line.startswith("[stress-call]")
+    ]) == 4
+    assert "before_npu_sync" not in output
+    assert "after_npu_sync" not in output
+    assert "after_gloo_barrier" not in output
     assert report["synchronized_calls"] == {"a2avgmm": 2, "gmma2av": 2}
     assert report["last_debug_event"] == {
         "rank": 0, "iteration": 2, "sequence": 4,
-        "operator": "gmma2av", "stage": "after_gloo_barrier",
+        "operator": "gmma2av", "stage": "completed",
     }
 
 
@@ -247,10 +252,18 @@ def test_debug_barrier_failure_records_the_last_reached_stage(monkeypatch, tmp_p
     assert report["submitted_calls"] == {"a2avgmm": 1, "gmma2av": 1}
     assert report["synchronized_calls"] == {"a2avgmm": 1, "gmma2av": 0}
     assert report["last_debug_event"]["sequence"] == 2
-    assert report["last_debug_event"]["stage"] == "after_npu_sync"
+    assert report["last_debug_event"]["stage"] == "running"
     output = capsys.readouterr().out
-    assert "seq=2 op=gmma2av after_npu_sync" in output
-    assert "seq=2 op=gmma2av after_gloo_barrier" not in output
+    assert "[stress-call] rank=0 iteration=1 seq=2 op=gmma2av" in output
+
+
+def test_only_rank_zero_prints_per_call_progress(monkeypatch, tmp_path, capsys):
+    Backend(monkeypatch, "a2avgmm", 2, sync_each_call=True, rank=1)
+    stress_worker.run_worker(
+        workload("a2avgmm"), "a2avgmm", 2, tmp_path,
+        sync_each_call=True,
+    )
+    assert "[stress-call]" not in capsys.readouterr().out
 
 
 def test_final_device_failure_is_not_reported_as_completed(monkeypatch, tmp_path):

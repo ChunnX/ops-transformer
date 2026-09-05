@@ -612,13 +612,12 @@ bash scripts/run_stress.sh --mode chain --case-id model_case_1 --iterations 1000
   --sync-each-call --sync-timeout-seconds 120
 ```
 
-Each rank prints `before_launch`, `before_npu_sync`, `after_npu_sync` and
-`after_gloo_barrier` with its one-based iteration and call sequence. Output is
-shown live and also saved in `torchrun.log`. A final `before_launch` means the
-Python operator call did not return; `before_npu_sync` without `after_npu_sync`
-means its NPU work did not finish; `after_npu_sync` without
-`after_gloo_barrier` means this rank finished but at least one peer did not
-reach the same barrier. In `chain` mode A and B are synchronized separately.
+Rank 0 prints one line immediately before every operator call, containing the
+one-based iteration, call sequence and operator name. Output is shown live and
+also saved in `torchrun.log`. Because the monitored barrier prevents any rank
+from starting the next call early, the final `[stress-call]` line identifies the
+operator execution that stopped advancing. In `chain` mode A and B are
+synchronized and reported separately.
 
 Use `--timeout-seconds 3600` to set the per-case host deadline, including
 initialization and teardown, and `--fail-fast` to stop after a failed case.
@@ -629,7 +628,7 @@ contains `environment.json` and `summary.json`. In the default mode submission
 counts are not completion counts: completion is confirmed only after the final
 stream drain. During the loop no progress files are written; if a process is
 killed while submitting, the saved counts reflect only the last checkpoint.
-With `--sync-each-call`, the live log gives the exact last reached stage and a
+With `--sync-each-call`, the live log gives the exact last operator call and a
 worker exception also persists it in `last_debug_event`. Overall elapsed time
 includes Python submission overhead
 and is not a per-kernel latency measurement. PASS indicates successful
