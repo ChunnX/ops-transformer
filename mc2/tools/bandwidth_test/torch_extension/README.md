@@ -59,7 +59,9 @@ Meta 输出为 `y[max_bs * world_size, hidden]`（FP16）和
 Eager 路径经 `aclnnInnerBandwidthTest` 显式传递 Torch 创建的 context，
 不再由公开 ACLNN 包装层重复创建 context。
 可选参数在 schema、Meta、PrivateUse1、GE converter 和 OpDef 中统一为
-`comm_alg=""`（MTE）、`aiv_num=-1`（平台默认核数）；Python 始终将这两个值显式传给 C++/ACLNN。
+`comm_alg=""`（MTE）、`aiv_num=-1`（平台默认核数）、`batch_tokens=0`（自动批量）；
+Python 始终将这些值显式传给 C++/ACLNN。新增属性改变了生成的 inner ACLNN 签名，
+更新后需同步重装算子包和 Torch 扩展；公开 MTE ACLNN 包装接口保持原签名，内部传入 0。
 
 Ascend950 支持 MTE（同一 UB 内存域，`comm_alg="mte"` 或空字符串）和
 URMA（`comm_alg="urma"`，由已有 Torch context manager 建立 UBC_CTP channel）。
@@ -69,7 +71,8 @@ URMA 要求安装支持 `MakeBatchHandle`、`BatchCommit`、`Drain(batchHandle)`
 ```python
 sym_buffer = BandwidthTestBuffer(group, comm_alg="urma")
 y, receive_cnt = bandwidth_test(sym_buffer, x, dstrank_id,
-                                sym_buffer.world_size, x.size(0), mode=0, comm_alg="urma")
+                                sym_buffer.world_size, x.size(0), mode=0, comm_alg="urma",
+                                batch_tokens=128)
 ```
 
 URMA 通过 Torch 的 inner ACLNN 路径使用现有 context；公开的
@@ -77,9 +80,13 @@ URMA 通过 Torch 的 inner ACLNN 路径使用现有 context；公开的
 `x` 必须为二维 FP16，`dstrank_id` 为长度等于 bs 的 INT32；
 所有输入位于同一 NPU。主线 kernel 按 max_bs 读取输入，要求 `bs == max_bs`、
 hidden 是 16 的倍数且小于 32768，
-各 rank 使用相同的 max_bs、hidden、world_size、mode、aiv_num。
+各 rank 使用相同的 max_bs、hidden、world_size、mode、aiv_num、batch_tokens。
 目标 rank ID 应在 `[0, world_size)`；扩展不会在捕获期间读取 NPU tensor 的值。
 `aiv_num=-1` 使用平台默认值，正值不应超过设备 AIV 核数。
+测试脚本在 `config.py` 的 `ModelConfig.batch_tokens` 设置每次提交的 token/WQE 数：
+0 自动选择容量；正数由 tiling 校验，通过后按原值提交；负数非法。
+`batch_tokens` 仅适用于 URMA，MTE 保持 0。每张目标卡的最后一批可以不足指定数，
+状态通知仍分别提交 count 和 ready flag，不受数据批量凑整影响。
 
 当前共用的 `CommContextManager` 创建并注册自定义通信窗口；扩展显式传入
 `2 * HCCL_BUFFSIZE * MiB` 字节，使实际分配与主线 A5 tiling 的窗口推导一致。
@@ -108,23 +115,30 @@ host 按完整的 248 KiB 可用 UB 计算分块容量，ID buffer 按 32 字节
 ```text
 N = ceil(world_size / aiv_num)
 fixed_bytes = 32 + align_up(N, 8) * 32 + hidden * 2 + 512
-capacity = min(align_up(max_bs, 8),
-               align_down((248 * 1024 - fixed_bytes) / (4 + 64), 8))
-rank_id_buffer_bytes = capacity * 4
+available_bytes = 248 * 1024 - fixed_bytes
+maximum = 最大满足 64 * B + align_up(4 * B, 32) <= available_bytes 的正整数 B
+capacity = maximum if batch_tokens == 0 else batch_tokens
+rank_id_buffer_bytes = align_up(capacity * 4, 32)
 batch_buffer_bytes = capacity * 64
 ```
 
 Ascend950 的 256 KiB UB 扣除系统预留的 8 KiB 后，算子使用完整的 248 KiB，
-不再对平台查询值额外扣减 8 KiB；总 token 数可以超过单批容量。
+不再对平台查询值额外扣减 8 KiB；不按 UB 批容量给 BS 设置上限，也不按 BS 截断 maximum。
+总 token 数可以超过单批容量，`batch_tokens` 也可以超过 BS（实际数据不足时形成尾批）。
+现有 INT32 计数表示检查和实际 tensor/通信窗口容量检查仍然有效。
+若传入正数超过 maximum，tiling 返回失败并报告 `batch_tokens=... exceeds maximum=...`；
+合法值会打印 `requested / selected / maximum`。UB 最大值与 BS 无关。
 例如 `world_size=8、aiv_num=64` 时，`max_bs=4096、hidden=16384` 的 UB 容量为
-**3240 个 token/WQE**，`max_bs=8192、hidden=8192` 为 **3480 个 token/WQE**。
-设备端每块扫描 `min(capacity, SQ深度-1, 剩余输入token数)` 个 ID（本卡无需 SQ 限制），
-只为其中属于该目标卡的 token 生成 WQE，因此实际提交数可以更少。
-非空块的末条 WQE 请求 CQE，随后 `BatchCommit → Drain`，再处理下一块；空块不提交。
+**3240 个 token/WQE**，`max_bs=8192、hidden=8192` 为 **3481 个 token/WQE**。
+设备端分块扫描 ID，为当前目标卡跨 ID 块累计 WQE；凑够指定数量或该卡数据结束时，
+末条 WQE 请求 CQE，随后 `BatchCommit → Drain` 并复用缓冲区。空目标卡不提交数据批次。
 发送中的单行 UB 不必保留到 URMA 完成：URMA 源数据已位于注册的 GM 中转区。
 中转区仍使用原 token 下标，避免不同目标卡所属核并发覆盖同一槽位。
 所有数据和状态通知完成后，`TPipe::Reset` 将发送阶段 UB 复用于等待和接收阶段。
-SQ 深度在持锁时从 URMA channel context 读取一次，要求深度至少为 2；不修改 batch handle 内部字段。
+SQ 深度在持锁时从 URMA channel context 读取一次，要求深度至少为 2。
+tiling 无法读取设备端 SQ 深度；自动模式将单批容量限制为 `min(maximum, SQ深度-1)`。
+正数模式若超过 `SQ深度-1`，kernel 打印该最大值并触发设备异常，不静默缩小提交数；
+深度小于 2 同样报错。不修改 batch handle 内部字段。
 该读取依赖 [Hcomm URMA 实现](https://gitcode.com/cann/asc-comm/blob/master/src/aicore/hcomm/impl/platform_v310/hcomm_aiv_urma.h)
 的 `ChannelEntity` / `sqContextAddr[0]` 布局；静态核对的 asc-comm 提交为
 `1529377b9e908d78ba5ba5d579edf1669fb99b01`，部署时须使用兼容版本。
@@ -144,5 +158,5 @@ SQ 深度在持锁时从 URMA channel context 读取一次，要求深度至少�
 需在装有 CANN、PyTorch、torch_npu 和兼容 TorchAir 的 Ascend950 多 rank 环境
 分别验证 eager 精度、图捕获及重复重放。本地静态检查不能替代上述验证。
 两份接收实现均包含状态 buffer 字节数、DataCopy 块长及 UB 记账修正；host 按实际缓冲区检查可用 UB。
-URMA kernel 不使用 ASSERT，也不检查通信接口返回值；参数和通信正确性由测试调用方保证。
+URMA kernel 对 SQ 容量不匹配使用 `Trap` 报错；仍未检查各 Hcomm 接口的失败返回值。
 这些修改仍需在目标 SDK 下验证编译和多卡可见性。

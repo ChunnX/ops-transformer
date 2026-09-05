@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Tuple
 class ShapeConfig:
     bs: int = 2  # 单配置时每个 rank 发送的 token 数，须 >= 1
     data_size: int = 8192  # 单配置时每个 token 的元素数 H，须 >= 1
-    max_bs: int = 2  # 单配置时每个 rank 的 token 容量上限，须 >= bs
+    max_bs: int = 2  # 与 bs 相等；总 token 数不受 URMA 单批提交容量限制
     # 多配置带宽测试的用例列表；字段含义同上。注释大小为 bs * H * 2 字节。
     test_configs: List[Dict[str, int]] = field(
         default_factory=lambda: [
@@ -66,6 +66,7 @@ class ParallelConfig:
 class ModelConfig:
     graph_type: int = 3  # 0：单算子；3：aclgraph（当前编译路径仅支持全核）
     comm_alg: str = "mte"  # 通信算法：mte 或 urma（URMA batch，按目标卡分核）
+    batch_tokens: int = 0  # URMA 每次提交的 token 数；0 自动取最大值，正数超出容量时由 tiling 报错
     static_kernel_path: str = "./static_kernel"  # aclgraph 静态内核构建目录，相对启动目录
 
 

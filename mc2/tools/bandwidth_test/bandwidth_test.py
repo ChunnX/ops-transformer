@@ -101,6 +101,7 @@ def print_setting():
     logger.info(f"{world_size=}")
     logger.info(f"{mode=}")
     logger.info(f"{CONFIG.model.comm_alg=}")
+    logger.info(f"{CONFIG.model.batch_tokens=}")
     logger.info(f"{CONFIG.model.graph_type=}")
     logger.info(f"{aiv_num=}")
     logger.info(f"{CONFIG.run.is_precision_test=}")
@@ -314,6 +315,7 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
         test_mode,
         test_comm_alg,
         test_aiv_num,
+        test_batch_tokens,
     ):
         local_loop = CONFIG.run.loop if CONFIG.run.is_bandwidth_test else 1
         output = None
@@ -327,6 +329,7 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
                 mode=test_mode,
                 comm_alg=test_comm_alg,
                 aiv_num=test_aiv_num,
+                batch_tokens=test_batch_tokens,
             )
         return output
 
@@ -571,6 +574,7 @@ def run_bandwidth_test_npu(
             "mode": test_mode,
             "comm_alg": CONFIG.model.comm_alg,
             "aiv_num": aiv_num,
+            "batch_tokens": CONFIG.model.batch_tokens,
         }
 
         if not is_perf_mode:
@@ -601,6 +605,7 @@ def run_bandwidth_test_npu(
             "test_mode": test_mode,
             "test_comm_alg": CONFIG.model.comm_alg,
             "test_aiv_num": aiv_num,
+            "test_batch_tokens": CONFIG.model.batch_tokens,
         }
         if not is_perf_mode:
             model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
@@ -713,6 +718,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
                 "mode": mode,
                 "comm_alg": CONFIG.model.comm_alg,
                 "aiv_num": aiv_num,
+                "batch_tokens": CONFIG.model.batch_tokens,
             }
             tensor = torch.ones(CONFIG.run.perf_tensor_shape).to(torch.float16).npu()
             with get_profiling(
@@ -737,6 +743,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
                 "test_mode": mode,
                 "test_comm_alg": CONFIG.model.comm_alg,
                 "test_aiv_num": aiv_num,
+                "test_batch_tokens": CONFIG.model.batch_tokens,
             }
             torch._dynamo.reset()
             tensor = torch.ones(CONFIG.run.perf_tensor_shape).to(torch.float16).npu()

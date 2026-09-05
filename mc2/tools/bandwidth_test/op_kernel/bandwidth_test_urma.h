@@ -142,6 +142,8 @@ private:
     uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE];
     uint32_t batchCapacity_{0};
     uint32_t batchBufferBytes_{0};
+    uint32_t requestedBatchTokens_{0};
+    uint32_t preparedWrites_{0};
     float sumTarget_;                 // 状态同步目标值 (1.0)
 };
 
@@ -239,7 +241,9 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::Init(GM
 
     // ============ 初始化其他缓冲区 ============
     batchBufferBytes_ = tilingData->batchBufferBytes;
+    requestedBatchTokens_ = tilingData->batchTokens;
     uint32_t rankIdBufferBytes = batchBufferBytes_ / BandwidthTestTiling::URMA_WQE_BYTES * sizeof(int32_t);
+    rankIdBufferBytes = Ceil(rankIdBufferBytes, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(dstRankIdsBuf_, rankIdBufferBytes);
     dstRankIdsTensor_ = dstRankIdsBuf_.Get<int32_t>();
     // ProcessToken waits for MTE3 before freeing the row, so the next token can reuse the same UB.
@@ -305,9 +309,18 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::BeginBa
     uint64_t channel = hcommHandle_[rankId];
     hcomm_.Lock(channel);
     auto entity = reinterpret_cast<__gm__ ChannelEntity *>(channel);
-    uint32_t sqCapacity = entity->sqContextAddr[0].contextInfo.ubJfs.sqDepth - 1;
+    uint32_t sqDepth = entity->sqContextAddr[0].contextInfo.ubJfs.sqDepth;
+    uint32_t sqCapacity = sqDepth > 1 ? sqDepth - 1 : 0;
+    // Tiling can inspect UB capacity; channel SQ depth is only available on the device.
+    if (sqCapacity == 0 || requestedBatchTokens_ > sqCapacity) {
+        hcomm_.Unlock(channel);
+        printf("BandwidthTest URMA batch_tokens=%u exceeds SQ maximum=%u, rank=%u\n",
+               requestedBatchTokens_, sqCapacity, rankId);
+        AscendC::Trap();
+    }
     uint32_t ubCapacity = batchBufferBytes_ / BandwidthTestTiling::URMA_WQE_BYTES;
     batchCapacity_ = ubCapacity < sqCapacity ? ubCapacity : sqCapacity;
+    preparedWrites_ = 0;
     batchHandle_ = hcomm_.MakeBatchHandle(
         channel, batchTensor_, batchCapacity_ * BandwidthTestTiling::URMA_WQE_BYTES,
         reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[rankId]));
@@ -317,13 +330,15 @@ template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::PrepareWrite(
     GM_ADDR dst, GM_ADDR src, uint32_t len, bool lastInBatch)
 {
-    if (lastInBatch) {
+    if (lastInBatch || preparedWrites_ + 1 == batchCapacity_) {
         hcomm_.WriteNbi<DEFAULT_CQE_WQE_CONFIG>(batchHandle_, dst, src, len);
         hcomm_.BatchCommit(batchHandle_);
         // Completion precedes reuse of this batch's UB and registered source data.
         hcomm_.Drain(batchHandle_);
+        preparedWrites_ = 0;
     } else {
         hcomm_.WriteNbi<DEFAULT_WQE_CONFIG>(batchHandle_, dst, src, len);
+        ++preparedWrites_;
     }
 }
 
@@ -341,6 +356,8 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::SendToM
             BeginBatch(rankId);
         }
         uint32_t curExpertCnt = 0;
+        GM_ADDR lastRemoteAddr = nullptr;
+        GM_ADDR lastLocalAddr = nullptr;
         for (uint32_t chunkStart = 0; chunkStart < axisBS_;) {
             uint32_t chunkTokens = axisBS_ - chunkStart;
             chunkTokens = chunkTokens < batchCapacity_ ? chunkTokens : batchCapacity_;
@@ -349,15 +366,13 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::SendToM
             SyncFunc<HardEvent::S_MTE2>();
             DataCopyPad(dstRankIdsTensor_, dstRankIdGMTensor_[chunkStart], idCopyParams, idPadParams);
             SyncFunc<HardEvent::MTE2_S>();
-            uint32_t lastMatch = chunkTokens;
-            for (uint32_t i = 0; i < chunkTokens; ++i) {
-                if (dstRankIdsTensor_(i) == static_cast<int32_t>(rankId)) {
-                    lastMatch = i;
-                }
-            }
             for (uint32_t i = 0; i < chunkTokens; ++i) {
                 if (dstRankIdsTensor_(i) != static_cast<int32_t>(rankId)) {
                     continue;
+                }
+                // Delay one WQE so the final write can request CQE without a full-BS pre-count.
+                if (isRemote && curExpertCnt != 0) {
+                    PrepareWrite(lastRemoteAddr, lastLocalAddr, hOutSize_, false);
                 }
                 uint32_t tokenIndex = chunkStart + i;
                 GM_ADDR remoteAddr = GetWindAddrByRankId(rankId) + epRankId_ * expertPerSizeOnWin_ +
@@ -368,13 +383,17 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::SendToM
                 ProcessToken(dstWinGMTensor, tokenIndex);
                 ++curExpertCnt;
                 if (isRemote) {
-                    PrepareWrite(remoteAddr, localAddr, hOutSize_, i == lastMatch);
+                    lastRemoteAddr = remoteAddr;
+                    lastLocalAddr = localAddr;
                 }
             }
             chunkStart += chunkTokens;
         }
         statusTensor_((rankId - startRankId_) * 8 + 1) = curExpertCnt;
         if (isRemote) {
+            if (curExpertCnt != 0) {
+                PrepareWrite(lastRemoteAddr, lastLocalAddr, hOutSize_, true);
+            }
             hcomm_.Unlock(hcommHandle_[rankId]);
         }
     }

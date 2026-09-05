@@ -57,14 +57,20 @@ is_single_test = True     # True: 单配置测试; False: 多配置批量测试
 
 ### 核心配置
 
-`graph_type` 位于 `ModelConfig`，核数配置位于 `ParallelConfig`。
+`graph_type`、`comm_alg` 和 `batch_tokens` 位于 `ModelConfig`，核数配置位于 `ParallelConfig`。
 
 ```python
 graph_type = 0            # 0: 单算子模式; 3: aclgraph模式
+comm_alg = "urma"        # mte 或 urma
+batch_tokens = 0         # URMA: 0 自动最大批量；正数超过 tiling 上限时报错并给出最大值
 is_full_core = True      # True: 使用全部核心; False: 使用部分核心
 partial_core_num = 16    # 非全核时的 AIC 数量，AIV 数量由脚本自动取其两倍
 aiv_num = None          # 算子 AIV 核数，None 使用自动值，也可单独指定
 ```
+
+`batch_tokens` 表示每张目标卡每次 BatchCommit 的 token 数，只有最后一批允许不足。
+BS 不受单批容量限制，tiling 的最大提交数也不按 BS 截断；MTE 使用 `batch_tokens=0`。
+UB 预算及设备 SQ 复核规则见 [Torch 扩展说明](torch_extension/README.md)。
 
 ### 性能采集配置
 
@@ -121,7 +127,7 @@ comm_alg = "mte"         # 通信算法
 ```python
 bs = 2                   # Batch size
 data_size = 8192         # 数据维度 H
-max_bs = 2               # 最大 batch size
+max_bs = 2               # 与 bs 相等；不受 URMA 单批提交容量限制
 ```
 
 **多配置测试** (`is_single_test = False`)：

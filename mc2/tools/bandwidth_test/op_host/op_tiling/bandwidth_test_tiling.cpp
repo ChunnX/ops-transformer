@@ -61,6 +61,7 @@ constexpr uint32_t ATTR_MODE_INDEX = 3U;       // 执行模式
 constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 4U;
 constexpr uint32_t ATTR_COMM_ALG_INDEX = 5U;
 constexpr uint32_t ATTR_AIV_NUM_INDEX = 6U;    // AIV核数量
+constexpr uint32_t ATTR_BATCH_TOKENS_INDEX = 7U;
 
 // ============ 其他常量 ============
 constexpr uint32_t TWO_DIMS = 2U;
@@ -92,6 +93,8 @@ static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &t
     OP_LOGD(nodeName, "aiv_num is %d.", tilingData.aivNum);
     OP_LOGD(nodeName, "total_ub_size is %lu.", tilingData.totalUbSize);
     OP_LOGD(nodeName, "batch_buffer_bytes is %u.", tilingData.batchBufferBytes);
+    OP_LOGD(nodeName, "batch_tokens requested=%u, ub_selected=%u.", tilingData.batchTokens,
+            tilingData.batchBufferBytes / URMA_WQE_BYTES);
     OP_LOGD(nodeName, "total_win_size is %lu.", tilingData.totalWinSize);
 }
 
@@ -427,22 +430,39 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     uint64_t rowBytes = static_cast<uint64_t>(tilingData->dataSize) * 2;
     uint64_t requiredUb = 0;
     tilingData->batchBufferBytes = 0;
+    auto batchTokensPtr = attrs->GetAttrPointer<int64_t>(ATTR_BATCH_TOKENS_INDEX);
+    OP_TILING_CHECK(batchTokensPtr == nullptr || *batchTokensPtr < 0,
+                    OP_LOGE(nodeName, "batch_tokens must be 0 (auto) or positive."), return ge::GRAPH_FAILED);
+    tilingData->batchTokens = 0;
     if (IsUrma(context)) {
-        // Only one row is live during staging. Rank IDs and WQEs are reused for each chunk.
+        // One staging row is live. IDs are reused per chunk; WQEs are reused after Commit/Drain.
         uint64_t fixedBytes = 32 + statusBytes + rowBytes + URMA_INIT_BYTES;
         constexpr uint64_t bytesPerToken = sizeof(int32_t) + URMA_WQE_BYTES;
-        constexpr uint64_t tokenAlignment = 32 / sizeof(int32_t);
-        OP_TILING_CHECK(fixedBytes > ubSize || ubSize - fixedBytes < tokenAlignment * bytesPerToken,
+        OP_TILING_CHECK(fixedBytes > ubSize || ubSize - fixedBytes < 32 + URMA_WQE_BYTES,
                         OP_LOGE(nodeName,
                                 "Insufficient UB for URMA batch: max_bs=%d, hidden=%d, world_size=%d, "
                                 "aiv_num=%u, platform_ub=%lu, usable_ub=%lu, fixed_bytes=%lu.",
                                 tilingData->maxBs, tilingData->dataSize, tilingData->worldSize, aivNum,
                                 platformUbSize, ubSize, fixedBytes), return ge::GRAPH_FAILED);
-        uint64_t batchTokens = (ubSize - fixedBytes) / bytesPerToken / tokenAlignment * tokenAlignment;
-        batchTokens = std::min(batchTokens, alignUp(tilingData->maxBs, tokenAlignment));
+        uint64_t availableBytes = ubSize - fixedBytes;
+        uint64_t maxBatchTokens = availableBytes / bytesPerToken;
+        // Rank IDs need one aligned allocation, not eight-token granularity for commits.
+        if (maxBatchTokens * URMA_WQE_BYTES + alignUp(maxBatchTokens * sizeof(int32_t), 32) > availableBytes) {
+            --maxBatchTokens;
+        }
+        OP_TILING_CHECK(static_cast<uint64_t>(*batchTokensPtr) > maxBatchTokens,
+                        OP_LOGE(nodeName, "batch_tokens=%ld exceeds maximum=%lu (usable_ub=%lu, fixed_bytes=%lu).",
+                                *batchTokensPtr, maxBatchTokens, ubSize, fixedBytes), return ge::GRAPH_FAILED);
+        uint64_t batchTokens = *batchTokensPtr == 0 ? maxBatchTokens : static_cast<uint64_t>(*batchTokensPtr);
+        tilingData->batchTokens = static_cast<uint32_t>(*batchTokensPtr);
         tilingData->batchBufferBytes = batchTokens * URMA_WQE_BYTES;
-        requiredUb = fixedBytes + batchTokens * bytesPerToken;
+        requiredUb = fixedBytes + batchTokens * URMA_WQE_BYTES + alignUp(batchTokens * sizeof(int32_t), 32);
+        OP_LOGI(nodeName, "URMA batch_tokens: requested=%ld, selected=%lu, maximum=%lu.",
+                *batchTokensPtr, batchTokens, maxBatchTokens);
     } else {
+        OP_TILING_CHECK(*batchTokensPtr != 0,
+                        OP_LOGE(nodeName, "batch_tokens is only supported for urma; use 0 for mte."),
+                        return ge::GRAPH_FAILED);
         uint64_t dstRankBytes = alignUp(static_cast<uint64_t>(tilingData->maxBs) * 4, 32);
         uint64_t dstRankBufferBytes =
             std::max(dstRankBytes, alignUp(static_cast<uint64_t>(tilingData->maxBs) * 2, 256));

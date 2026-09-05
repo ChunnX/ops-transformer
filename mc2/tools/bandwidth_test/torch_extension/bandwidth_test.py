@@ -34,21 +34,21 @@ class BandwidthTestOpBuilder(OpBuilder):
         return (
             "bandwidth_test(Tensor(a!) context, Tensor x, Tensor dstrank_id, str group, "
             "int world_size, int max_bs, int test_mode, int ccl_buffer_size, *, "
-            'str comm_alg="", int aiv_num=-1) -> (Tensor, Tensor)'
+            'str comm_alg="", int aiv_num=-1, int batch_tokens=0) -> (Tensor, Tensor)'
         )
 
     def register_meta(self):
         @impl(get_as_library(), self.name, "Meta")
         def bandwidth_test_meta(context, x, dstrank_id, group, world_size,
-                                max_bs, test_mode, ccl_buffer_size, comm_alg="", aiv_num=-1):
+                                max_bs, test_mode, ccl_buffer_size, comm_alg="", aiv_num=-1, batch_tokens=0):
             _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
-                          test_mode, ccl_buffer_size, comm_alg, aiv_num)
+                          test_mode, ccl_buffer_size, comm_alg, aiv_num, batch_tokens)
             return (x.new_empty((max_bs * world_size, x.size(1))),
                     x.new_empty((world_size,), dtype=torch.int32))
 
 
 def _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
-                  test_mode, ccl_buffer_size, comm_alg, aiv_num):
+                  test_mode, ccl_buffer_size, comm_alg, aiv_num, batch_tokens):
     torch._check(x.dim() == 2, lambda: "x must have shape [bs, hidden]")
     torch._check(x.dtype == torch.float16, lambda: "BandwidthTest supports only float16")
     torch._check(dstrank_id.dim() == 1 and dstrank_id.dtype == torch.int32,
@@ -73,6 +73,9 @@ def _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
     torch._check(test_mode in (0, 1), lambda: "test_mode must be 0 or 1")
     torch._check(comm_alg in ("", "mte", "urma"), lambda: "comm_alg must be mte or urma")
     torch._check(aiv_num == -1 or aiv_num > 0, lambda: "aiv_num must be -1 or positive")
+    torch._check(batch_tokens >= 0, lambda: "batch_tokens must be 0 (auto) or positive")
+    torch._check(comm_alg == "urma" or batch_tokens == 0,
+                 lambda: "batch_tokens is only supported for urma")
     # Kernel divides the data window in two and reserves one max_bs block per half.
     row_bytes = ((x.size(1) * 2 + 511) // 512) * 512
     required_bytes = 1024 * 1024 + 2 * (world_size + 1) * max_bs * row_bytes
@@ -86,12 +89,12 @@ _bandwidth_test_op_builder._ensure_initialized()
 
 @impl(get_as_library(), "bandwidth_test", "PrivateUse1")
 def _bandwidth_test(context, x, dstrank_id, group, world_size, max_bs, test_mode,
-                    ccl_buffer_size, comm_alg="", aiv_num=-1):
+                    ccl_buffer_size, comm_alg="", aiv_num=-1, batch_tokens=0):
     _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
-                  test_mode, ccl_buffer_size, comm_alg, aiv_num)
+                  test_mode, ccl_buffer_size, comm_alg, aiv_num, batch_tokens)
     return _bandwidth_test_op_builder.load().bandwidth_test(
         context, x, dstrank_id, group, world_size, max_bs, test_mode,
-        ccl_buffer_size, comm_alg, aiv_num)
+        ccl_buffer_size, comm_alg, aiv_num, batch_tokens)
 
 
 class BandwidthTestBuffer:
@@ -140,7 +143,7 @@ class BandwidthTestBuffer:
 
 def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
                    dstrank_id: torch.Tensor, world_size: int, max_bs: int,
-                   mode: int = 0, comm_alg: str = "", aiv_num: int = -1
+                   mode: int = 0, comm_alg: str = "", aiv_num: int = -1, batch_tokens: int = 0
                    ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Exchange rows using a BandwidthTestBuffer created before graph capture.
 
@@ -154,6 +157,7 @@ def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
         mode: 0 exchanges and receives rows; 1 sends and waits, without copying outputs.
         comm_alg: "mte", "" or "urma"; must match the context owner.
         aiv_num: -1 selects platform defaults; otherwise a positive AIV count.
+        batch_tokens: URMA tokens per commit; 0 selects capacity automatically.
 
     Returns:
         FP16 y [max_bs * world_size, hidden] and INT32 receive_cnt [world_size].
@@ -167,4 +171,4 @@ def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
     return torch.ops.cann_ops_transformer.bandwidth_test(
         sym_buffer.context, x, dstrank_id, sym_buffer.group_name,
         world_size, max_bs, mode, sym_buffer.ccl_buffer_size,
-        comm_alg=comm_alg, aiv_num=aiv_num)
+        comm_alg=comm_alg, aiv_num=aiv_num, batch_tokens=batch_tokens)

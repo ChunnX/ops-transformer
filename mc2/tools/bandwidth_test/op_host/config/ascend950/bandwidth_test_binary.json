@@ -87,6 +87,11 @@
                     "name": "aiv_num",
                     "dtype": "int",
                     "value": -1
+                },
+                {
+                    "name": "batch_tokens",
+                    "dtype": "int",
+                    "value": 0
                 }
             ]
         },
@@ -176,6 +181,11 @@
                     "name": "aiv_num",
                     "dtype": "int",
                     "value": -1
+                },
+                {
+                    "name": "batch_tokens",
+                    "dtype": "int",
+                    "value": 0
                 }
             ]
         }
