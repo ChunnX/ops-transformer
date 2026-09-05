@@ -30,7 +30,18 @@ python bandwidth_test.py
 
 ## 配置说明
 
+以下配置统一在同目录的 `config.py` 中修改，仍运行 `python bandwidth_test.py`。
+配置按用途分为 `ShapeConfig`、`ParallelConfig`、`ModelConfig`、`RunConfig` 和
+`DiagnosticsConfig`，每个字段都注明用途。直接修改对应类的字段默认值即可，脚本通过
+`CONFIG.shape`、`CONFIG.parallel`、`CONFIG.model`、`CONFIG.run`、`CONFIG.diagnostics` 读取。
+以下代码块展示要修改的字段值，不要另加同名的模块级变量或给冻结的 `CONFIG` 字段赋值。
+核数、world size、算子 mode 和 HCCL 缓冲区大小由测试脚本根据基础配置自动计算。
+图模式外层采集次数、采样条数、通信端口、输出目录和精度容差也在 `config.py` 中配置。
+`profiling_path` 请使用专用结果目录：每次带宽测试会清理该目录及其 `_config_数字` 同级目录。
+
 ### 测试模式配置
+
+修改 `RunConfig` 中的字段。
 
 ```python
 # 带宽测试与精度测试不能同时使能
@@ -41,14 +52,18 @@ is_single_test = True     # True: 单配置测试; False: 多配置批量测试
 
 ### 核心配置
 
+`graph_type` 位于 `ModelConfig`，核数配置位于 `ParallelConfig`。
+
 ```python
 graph_type = 0            # 0: 单算子模式; 3: aclgraph模式
-is_full_core = 1         # 1: 使用全部核心; 0: 使用部分核心
-core_num = 16            # is_full_core=0 时的核心数
-aiv_num = 32             # AIV 核心数 (core_num * 2)，后续存在core_num与aiv_num = 1:1
+is_full_core = True      # True: 使用全部核心; False: 使用部分核心
+partial_core_num = 16    # 非全核时的 AIC 数量，AIV 数量由脚本自动取其两倍
+aiv_num = None          # 算子 AIV 核数，None 使用自动值，也可单独指定
 ```
 
 ### 性能采集配置
+
+修改 `RunConfig` 中的字段。
 
 ```python
 loop = 100               # 总迭代次数
@@ -59,11 +74,13 @@ profiling_path = './Profiling_Result_bandwidth_test'  # Profiling 结果路径
 
 ### 通信域配置
 
+修改 `ParallelConfig` 中的字段。
+
 ```python
 server_num = 1           # 服务器数量
-is_cloud = 0             # 0: 本地环境; 1: 云环境
-rank_per_dev = 2         # 每个设备的 rank 数量
-world_size = server_num * rank_per_dev  # 总 world size
+is_cloud = False         # False: 本地环境; True: 云环境
+rank_per_dev = 8         # 每台服务器的 NPU 数量
+# world_size 由 server_num * rank_per_dev 自动计算，无需配置
 ```
 
 **云环境配置**：当 `is_cloud = 1` 时，需要设置环境变量：
@@ -73,6 +90,8 @@ world_size = server_num * rank_per_dev  # 总 world size
 
 ### 数据配置
 
+修改 `ShapeConfig` 中的字段。
+
 ```python
 x_dtype = 'fp16'         # 数据类型: 'fp16'
 random_seed = 90         # 随机种子
@@ -80,12 +99,17 @@ random_seed = 90         # 随机种子
 
 ### 算子配置
 
+修改 `ModelConfig` 中的字段。
+
 ```python
-mode = 0                 # 算子模式
+# mode 由 is_precision_test 自动决定：精度为 0，带宽为 1
 comm_alg = "mte"         # 通信算法
 ```
 
 ### 测试数据配置
+
+在 `RunConfig` 中选择 `is_single_test`，输入尺寸和列表在 `ShapeConfig` 中修改。
+多配置用例编辑 `test_configs` 的 `default_factory` 返回列表。
 
 **单配置测试** (`is_single_test = True`)：
 
@@ -108,12 +132,16 @@ test_configs = [
 
 ### 其他配置
 
+`is_save_tensor_to_bin` 位于 `DiagnosticsConfig`，`is_check_setting` 位于 `RunConfig`。
+
 ```python
 is_save_tensor_to_bin = False  # 是否保存 tensor 到 bin 文件
 is_check_setting = True        # 是否检查配置有效性
 ```
 
 ## 使用示例
+
+下列模式开关修改 `RunConfig` 的字段默认值，`bs`、`data_size`、`max_bs` 修改 `ShapeConfig` 的字段默认值。
 
 ### 示例 1：单配置精度测试
 
@@ -144,14 +172,6 @@ is_precision_test = False
 is_bandwidth_test = True
 is_single_test = False
 # 使用预设的多组配置
-```
-
-### 示例 4：精度+带宽联合测试
-
-```python
-is_precision_test = True
-is_bandwidth_test = True
-is_single_test = True
 ```
 
 ## 输出说明

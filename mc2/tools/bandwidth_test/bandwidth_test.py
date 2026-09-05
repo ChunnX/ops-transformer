@@ -14,6 +14,9 @@
 import os
 import socket
 import logging
+import shutil
+from pathlib import Path
+
 from typing import List, Tuple, Dict, Any
 import torch
 import torch_npu
@@ -25,44 +28,24 @@ import numpy as np
 
 from cann_ops_transformer.ops import BandwidthTestBuffer, bandwidth_test
 
+if __package__:
+    from .config import CONFIG
+else:
+    from config import CONFIG
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=CONFIG.diagnostics.log_level,
     format="[%(asctime)s] [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
-# region 配置参数
-
-# region 测试模式配置
-is_precision_test = False
-is_bandwidth_test = True
-is_single_test = False
-graph_type = 3
-is_full_core = 1
-core_num = 16 if not is_full_core else 32
-aic_core_num = core_num
-aiv_core_num = core_num * 2
-aiv_num = aiv_core_num
-# endregion
-
-# region 性能检测配置
-loop = 100
-repeat = 1
-warmup = 5
-profiling_path = "./Profiling_Result_bandwidth_test"
-# endregion
-
-# region 通信域配置
-server_num = 1
-is_cloud = 0
-
-if not is_cloud:
-    server_index = 0  # 多机每个脚本保持一致并递增index值
-    master_ip = (
-        "71.20.45.123" if server_num > 1 else "127.0.0.1"
-    )  # 如果通信不通，查看一下master_ip是否设对
-else:
+# Resolve the environment and derive runtime values from config.py.
+server_index = CONFIG.parallel.server_index
+master_ip = CONFIG.parallel.master_ip
+if master_ip is None:
+    master_ip = "71.20.45.123" if CONFIG.parallel.server_num > 1 else "127.0.0.1"
+if CONFIG.parallel.is_cloud:
     task_index = os.environ.get("VC_TASK_INDEX")
     if task_index is None:
         raise EnvironmentError("环境变量 VC_TASK_INDEX 未设置，请检查云环境配置")
@@ -73,13 +56,19 @@ else:
     host_url_list = host_urls.split(",")
     master_ip = socket.gethostbyname(host_url_list[0])
 
-rank_per_dev = 8
-world_size = server_num * rank_per_dev
-server_ranks = slice(
-    server_index * rank_per_dev, server_index * rank_per_dev + rank_per_dev
-)
+aic_core_num = 32 if CONFIG.parallel.is_full_core else CONFIG.parallel.partial_core_num
+aiv_core_num = aic_core_num * 2
+aiv_num = aiv_core_num if CONFIG.parallel.aiv_num is None else CONFIG.parallel.aiv_num
+world_size = CONFIG.parallel.server_num * CONFIG.parallel.rank_per_dev
 ranks_list = list(range(world_size))
-# endregion
+test_configs = (
+    [{"bs": CONFIG.shape.bs, "data_size": CONFIG.shape.data_size, "max_bs": CONFIG.shape.max_bs}]
+    if CONFIG.run.is_single_test
+    else CONFIG.shape.test_configs
+)
+input_dtype = torch.bfloat16 if CONFIG.shape.x_dtype == "bf16" else torch.float16
+dtype_bytes = torch.empty(0, dtype=input_dtype).element_size()
+mode = 0 if CONFIG.run.is_precision_test else 1
 
 
 def cal_hccl_buffsize(test_max_bs, h, ep_world_size):
@@ -89,86 +78,33 @@ def cal_hccl_buffsize(test_max_bs, h, ep_world_size):
     return str((required_bytes + 2 * 1024 * 1024 - 1) // (2 * 1024 * 1024))
 
 
-if is_single_test:
-    bs = 2
-    data_size = 8192
-    max_bs = 2
-    test_configs = [
-        {"bs": bs, "data_size": data_size, "max_bs": max_bs},
-    ]
-
-    # 计算 HCCL_BUFFSIZE 大小
-    os.environ["HCCL_BUFFSIZE"] = cal_hccl_buffsize(max_bs, data_size, world_size)
-else:
-    # region 输入维度配置 - 多组数据大小测试 (2KB 到 32MB, BS和H交替翻倍)
-    test_configs = [
-        {"bs": 1, "data_size": 1024, "max_bs": 1},  # 2KB
-        {"bs": 2, "data_size": 1024, "max_bs": 2},  # 4KB
-        {"bs": 2, "data_size": 2048, "max_bs": 2},  # 8KB
-        {"bs": 4, "data_size": 2048, "max_bs": 4},  # 16KB
-        {"bs": 4, "data_size": 4096, "max_bs": 4},  # 32KB
-        {"bs": 8, "data_size": 4096, "max_bs": 8},  # 64KB
-        {"bs": 16, "data_size": 4096, "max_bs": 16},  # 128KB
-        {"bs": 32, "data_size": 4096, "max_bs": 32},  # 256KB
-        {"bs": 32, "data_size": 8192, "max_bs": 32},  # 512KB
-        {"bs": 64, "data_size": 8192, "max_bs": 64},  # 1MB
-        {"bs": 128, "data_size": 8192, "max_bs": 128},  # 2MB
-        {"bs": 256, "data_size": 8192, "max_bs": 256},  # 4MB
-        {"bs": 256, "data_size": 16384, "max_bs": 256},  # 8MB
-        {"bs": 512, "data_size": 16384, "max_bs": 512},  # 16MB
-        {"bs": 1024, "data_size": 16384, "max_bs": 1024},  # 32MB
-        {"bs": 2048, "data_size": 16384, "max_bs": 2048},  # 64MB
-        {"bs": 4096, "data_size": 16384, "max_bs": 4096},  # 128MB
-        {"bs": 8192, "data_size": 8192, "max_bs": 8192},  # 128MB
-    ]
-    os.environ["HCCL_BUFFSIZE"] = str(
-        max(
-            int(cal_hccl_buffsize(cfg["max_bs"], cfg["data_size"], world_size))
-            for cfg in test_configs
-        )
+if not test_configs:
+    raise ValueError("CONFIG.shape.test_configs must not be empty")
+os.environ["HCCL_BUFFSIZE"] = str(
+    max(
+        int(cal_hccl_buffsize(cfg["max_bs"], cfg["data_size"], world_size))
+        for cfg in test_configs
     )
-# endregion
-
-# region 数据类型配置
-x_dtype = "fp16"
-random_seed = 90
-input_dtype = torch.bfloat16 if x_dtype == "bf16" else torch.float16
-dtype_bytes = torch.empty(0, dtype=input_dtype).element_size()
-# endregion
-
-# region 算子模式配置
-if is_precision_test:
-    mode = 0
-else:
-    mode = 1
-# endregion
-
-comm_alg = "mte"
-
-# region 其他配置
-is_save_tensor_to_bin = False
-is_check_setting = True
-# endregion
-
-# region 工具函数
+)
 
 
 def save_tensor_to_bin(tensor, bin_name):
-    if not os.path.exists("data"):
-        os.makedirs("data")
-    tensor.cpu().numpy().tofile(f"data/{bin_name}.bin")
+    os.makedirs(CONFIG.diagnostics.tensor_output_path, exist_ok=True)
+    tensor.cpu().numpy().tofile(
+        os.path.join(CONFIG.diagnostics.tensor_output_path, f"{bin_name}.bin")
+    )
 
 
 def print_setting():
-    logger.info(f"{server_num=}")
-    logger.info(f"{rank_per_dev=}")
+    logger.info(f"{CONFIG.parallel.server_num=}")
+    logger.info(f"{CONFIG.parallel.rank_per_dev=}")
     logger.info(f"{world_size=}")
     logger.info(f"{mode=}")
-    logger.info(f"{comm_alg=}")
-    logger.info(f"{graph_type=}")
+    logger.info(f"{CONFIG.model.comm_alg=}")
+    logger.info(f"{CONFIG.model.graph_type=}")
     logger.info(f"{aiv_num=}")
-    logger.info(f"{is_precision_test=}")
-    logger.info(f"{is_bandwidth_test=}")
+    logger.info(f"{CONFIG.run.is_precision_test=}")
+    logger.info(f"{CONFIG.run.is_bandwidth_test=}")
     logger.info(f"{test_configs=}")
 
 
@@ -185,13 +121,13 @@ def check_setting():
         if cfg["max_bs"] < cfg["bs"]:
             error_log_and_exit(f"test_configs[{i}]: max_bs 应大于等于 bs")
 
-    if (server_index < 0) or (server_index >= server_num):
+    if (server_index < 0) or (server_index >= CONFIG.parallel.server_num):
         error_log_and_exit("server_index 取值范围为 [0, server_num)")
 
-    if server_num * rank_per_dev != world_size:
+    if CONFIG.parallel.server_num * CONFIG.parallel.rank_per_dev != world_size:
         error_log_and_exit("server_num * rank_per_dev 必须等于 world_size")
 
-    if (graph_type == 1) or (graph_type == 2):
+    if (CONFIG.model.graph_type == 1) or (CONFIG.model.graph_type == 2):
         error_log_and_exit("当前不支持动态图模式, graph_type 合法值仅有 0 和 3")
 
 
@@ -231,8 +167,22 @@ def get_profiling(num_loop, num_repeat, num_warmup, profiling_output_path):
 
 
 def clean_previous_profiling_result():
-    profiling_result = "./Profiling_Result_"
-    os.system(f"rm -rf {profiling_result}*")
+    # Only remove results belonging to the configured profiling path.
+    result_path = Path(CONFIG.run.profiling_path).resolve()
+    working_path = Path.cwd().resolve()
+    if result_path == working_path or result_path in working_path.parents:
+        raise ValueError("profiling_path must not be the working directory or its ancestor")
+    paths = [result_path]
+    if result_path.parent.exists():
+        paths.extend(
+            path
+            for path in result_path.parent.iterdir()
+            if path.name.startswith(f"{result_path.name}_config_")
+            and path.name[len(result_path.name) + len("_config_") :].isdigit()
+        )
+    for path in paths:
+        if path.is_dir():
+            shutil.rmtree(path)
 
 
 def get_bandwidth_performance(
@@ -252,7 +202,7 @@ def get_bandwidth_performance(
                 if not bandwidth_test_info.empty:
                     op_execute_time_series = bandwidth_test_info[
                         "Task Duration(us)"
-                    ].tail(50)
+                    ].tail(CONFIG.run.performance_sample_count)
                     execution_times.extend(op_execute_time_series.tolist())
 
     if not execution_times:
@@ -313,15 +263,15 @@ def get_bandwidth_performance(
 
 
 def compile_model(model):
-    if graph_type == 0:
+    if CONFIG.model.graph_type == 0:
         raise RuntimeError("单算子模式下不应调用compile_model函数")
 
-    logger.info(f"------------------graph_type: {graph_type}------------------")
+    logger.info(f"------------------graph_type: {CONFIG.model.graph_type}------------------")
     import torchair
 
     from torchair.configs.compiler_config import CompilerConfig
 
-    if is_full_core:
+    if CONFIG.parallel.is_full_core:
         compiler_config = None
     else:
         compiler_config = CompilerConfig()
@@ -329,16 +279,18 @@ def compile_model(model):
         logger.info(f"当前图模式仅使用: {aic_core_num} aic核, {aiv_core_num} aiv核")
     npu_backend = torchair.get_npu_backend(compiler_config=compiler_config)
 
-    if graph_type == 3:
+    if CONFIG.model.graph_type == 3:
         logger.info("graph_type=3, 测试场景: aclgraph入图模式")
-        os.makedirs("./static_kernel", exist_ok=True)
+        os.makedirs(CONFIG.model.static_kernel_path, exist_ok=True)
         compiler_config = CompilerConfig()
         logger.info("启用aclnn静态内核（aclgraph），当前只支持全核")
         compiler_config.mode = "reduce-overhead"
         # 开启静态Kernel编译
         compiler_config.debug.aclgraph.clone_input = False
         compiler_config.experimental_config.aclgraph._aclnn_static_shape_kernel = True
-        compiler_config.experimental_config.aclgraph._aclnn_static_shape_kernel_build_dir = "./static_kernel"
+        compiler_config.experimental_config.aclgraph._aclnn_static_shape_kernel_build_dir = (
+            CONFIG.model.static_kernel_path
+        )
 
         npu_backend = torchair.get_npu_backend(compiler_config=compiler_config)
         compiled_model = torch.compile(
@@ -363,7 +315,7 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
         test_comm_alg,
         test_aiv_num,
     ):
-        local_loop = loop if is_bandwidth_test else 1
+        local_loop = CONFIG.run.loop if CONFIG.run.is_bandwidth_test else 1
         output = None
         for _ in range(local_loop):
             output = bandwidth_test(
@@ -385,7 +337,7 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
 
 
 def set_device(rank):
-    torch_npu.npu.set_device(rank % rank_per_dev)
+    torch_npu.npu.set_device(rank % CONFIG.parallel.rank_per_dev)
     logger.info(f"current device set: {torch_npu.npu.current_device()}")
 
 
@@ -395,7 +347,7 @@ def init_hccl_comm(rank, world_size_local):
         backend="hccl",
         rank=rank,
         world_size=world_size_local,
-        init_method=f"tcp://{master_ip}:50001",
+        init_method=f"tcp://{master_ip}:{CONFIG.parallel.master_port}",
     )
     logger.info(f"device_{rank} init_process_group success")
 
@@ -436,7 +388,7 @@ def generate_inputs(
     test_bs: int, test_data_size: int
 ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
     """生成测试输入数据，每个发送方内部的目标rank均衡"""
-    torch.manual_seed(random_seed)
+    torch.manual_seed(CONFIG.shape.random_seed)
 
     x_per_rank = [
         torch.empty([test_bs, test_data_size], dtype=input_dtype).uniform_(-1, 1)
@@ -505,9 +457,9 @@ def compare_result(
     npu_output,
     golden_output,
     name: str,
-    rtol: float = 1e-3,
-    atol: float = 1e-3,
-    verbose: bool = True,
+    rtol: float = CONFIG.diagnostics.precision_rtol,
+    atol: float = CONFIG.diagnostics.precision_atol,
+    verbose: bool = CONFIG.diagnostics.precision_verbose,
 ) -> bool:
     """对比 NPU 输出与 Golden 输出"""
     if isinstance(npu_output, (list, tuple)):
@@ -597,7 +549,7 @@ def run_bandwidth_test_npu(
     if sym_buffer is None:
         sym_buffer, _ = init_hccl_comm(rank, test_world_size)
 
-    if is_save_tensor_to_bin:
+    if CONFIG.diagnostics.is_save_tensor_to_bin:
         save_tensor_to_bin(x.to(torch.float32), "x_in_" + str(rank))
         save_tensor_to_bin(dstrank_id.to(torch.int32), "dstrank_id_" + str(rank))
 
@@ -609,7 +561,7 @@ def run_bandwidth_test_npu(
     logger.debug("[DEBUG] device_%s 开始调用算子", rank)
 
     # 根据模式执行
-    if graph_type == 0:
+    if CONFIG.model.graph_type == 0:
         bandwidth_test_kwargs = {
             "x": x_npu,
             "dstrank_id": dstrank_id_npu,
@@ -617,7 +569,7 @@ def run_bandwidth_test_npu(
             "world_size": test_world_size,
             "max_bs": test_max_bs,
             "mode": test_mode,
-            "comm_alg": comm_alg,
+            "comm_alg": CONFIG.model.comm_alg,
             "aiv_num": aiv_num,
         }
 
@@ -626,15 +578,17 @@ def run_bandwidth_test_npu(
                 **bandwidth_test_kwargs
             )
         else:
-            tensor = torch.ones(10000, 10000).to(torch.float16).npu()
-            with get_profiling(loop, repeat, warmup, profiling_path) as prof:
-                for i in range(loop):
+            tensor = torch.ones(CONFIG.run.perf_tensor_shape).to(torch.float16).npu()
+            with get_profiling(
+                CONFIG.run.loop, CONFIG.run.repeat, CONFIG.run.warmup, CONFIG.run.profiling_path
+            ) as prof:
+                for i in range(CONFIG.run.loop):
                     torch.npu.synchronize()
                     y, receive_cnt = bandwidth_test(
                         **bandwidth_test_kwargs
                     )
-                    if i == 1:
-                        for _ in range(100):
+                    if i == CONFIG.run.perf_exp_step:
+                        for _ in range(CONFIG.run.perf_exp_repeat):
                             torch.exp(tensor)
                     prof.step()
     else:
@@ -645,7 +599,7 @@ def run_bandwidth_test_npu(
             "test_world_size": test_world_size,
             "test_max_bs": test_max_bs,
             "test_mode": test_mode,
-            "test_comm_alg": comm_alg,
+            "test_comm_alg": CONFIG.model.comm_alg,
             "test_aiv_num": aiv_num,
         }
         if not is_perf_mode:
@@ -653,18 +607,18 @@ def run_bandwidth_test_npu(
             y, receive_cnt = model(**bandwidth_test_kwargs)
         else:
             torch._dynamo.reset()
-            tensor = torch.ones(10000, 10000).to(torch.float16).npu()
+            tensor = torch.ones(CONFIG.run.perf_tensor_shape).to(torch.float16).npu()
             model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
-            loop_time = 2
-            repeat_time = 1
-            warm_time = 1
             with get_profiling(
-                loop_time, repeat_time, warm_time, profiling_path
+                CONFIG.run.graph_loop,
+                CONFIG.run.graph_repeat,
+                CONFIG.run.graph_warmup,
+                CONFIG.run.profiling_path,
             ) as prof:
-                for i in range(loop_time):
+                for i in range(CONFIG.run.graph_loop):
                     y, receive_cnt = model(**bandwidth_test_kwargs)
-                    if i == 1:
-                        for _ in range(100):
+                    if i == CONFIG.run.perf_exp_step:
+                        for _ in range(CONFIG.run.perf_exp_repeat):
                             torch.exp(tensor)
                     prof.step()
 
@@ -676,7 +630,7 @@ def run_bandwidth_test_npu(
 
     logger.info(f"rank {rank} npu finished! \n")
 
-    if is_save_tensor_to_bin:
+    if CONFIG.diagnostics.is_save_tensor_to_bin:
         save_tensor_to_bin(y.to(torch.float32), "y_out_" + str(rank))
         save_tensor_to_bin(receive_cnt, "receive_cnt_" + str(rank))
 
@@ -747,9 +701,9 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
         logger.debug("[DEBUG] device_%s 开始调用算子", rank)
         dist.barrier()
 
-        config_profiling_path = f"{profiling_path}_config_{config_index}"
+        config_profiling_path = f"{CONFIG.run.profiling_path}_config_{config_index}"
 
-        if graph_type == 0:
+        if CONFIG.model.graph_type == 0:
             bandwidth_test_kwargs = {
                 "x": x_npu,
                 "dstrank_id": dstrank_id_npu,
@@ -757,18 +711,20 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
                 "world_size": test_world_size,
                 "max_bs": test_max_bs,
                 "mode": mode,
-                "comm_alg": comm_alg,
+                "comm_alg": CONFIG.model.comm_alg,
                 "aiv_num": aiv_num,
             }
-            tensor = torch.ones(10000, 10000).to(torch.float16).npu()
-            with get_profiling(loop, repeat, warmup, config_profiling_path) as prof:
-                for j in range(loop):
+            tensor = torch.ones(CONFIG.run.perf_tensor_shape).to(torch.float16).npu()
+            with get_profiling(
+                CONFIG.run.loop, CONFIG.run.repeat, CONFIG.run.warmup, config_profiling_path
+            ) as prof:
+                for j in range(CONFIG.run.loop):
                     torch.npu.synchronize()
                     y, receive_cnt = bandwidth_test(
                         **bandwidth_test_kwargs
                     )
-                    if j == 1:
-                        for _ in range(100):
+                    if j == CONFIG.run.perf_exp_step:
+                        for _ in range(CONFIG.run.perf_exp_repeat):
                             torch.exp(tensor)
                     prof.step()
         else:
@@ -779,22 +735,22 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
                 "test_world_size": test_world_size,
                 "test_max_bs": test_max_bs,
                 "test_mode": mode,
-                "test_comm_alg": comm_alg,
+                "test_comm_alg": CONFIG.model.comm_alg,
                 "test_aiv_num": aiv_num,
             }
             torch._dynamo.reset()
-            tensor = torch.ones(10000, 10000).to(torch.float16).npu()
+            tensor = torch.ones(CONFIG.run.perf_tensor_shape).to(torch.float16).npu()
             model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
-            loop_time = 2
-            repeat_time = 1
-            warm_time = 1
             with get_profiling(
-                loop_time, repeat_time, warm_time, config_profiling_path
+                CONFIG.run.graph_loop,
+                CONFIG.run.graph_repeat,
+                CONFIG.run.graph_warmup,
+                config_profiling_path,
             ) as prof:
-                for i in range(loop_time):
+                for i in range(CONFIG.run.graph_loop):
                     y, receive_cnt = model(**bandwidth_test_kwargs)
-                    if i == 1:
-                        for _ in range(100):
+                    if i == CONFIG.run.perf_exp_step:
+                        for _ in range(CONFIG.run.perf_exp_repeat):
                             torch.exp(tensor)
                     prof.step()
 
@@ -802,7 +758,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
         torch.npu.synchronize()
         torch.npu.empty_cache()
 
-        if is_save_tensor_to_bin:
+        if CONFIG.diagnostics.is_save_tensor_to_bin:
             save_tensor_to_bin(
                 y.to(torch.float32), f"y_out_{rank}_config{config_index}"
             )
@@ -954,7 +910,7 @@ def run_bandwidth_test(
 
     data_size_bytes = test_data_size * dtype_bytes
     perf_result = get_bandwidth_performance(
-        profiling_path, data_size_bytes, world_size, len(x_per_rank[0])
+        CONFIG.run.profiling_path, data_size_bytes, world_size, len(x_per_rank[0])
     )
 
     return perf_result
@@ -1017,7 +973,7 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
         data_size_bytes = test_data_size * dtype_bytes
         config_index = i + 1
 
-        config_profiling_path = f"{profiling_path}_config_{config_index}"
+        config_profiling_path = f"{CONFIG.run.profiling_path}_config_{config_index}"
         perf_result = get_bandwidth_performance(
             config_profiling_path, data_size_bytes, world_size, test_bs
         )
@@ -1085,10 +1041,10 @@ def print_summary_table(results: List[Dict[str, Any]]):
 
 def main():
     print_setting()
-    if is_check_setting:
+    if CONFIG.run.is_check_setting:
         check_setting()
 
-    if is_bandwidth_test and len(test_configs) > 1:
+    if CONFIG.run.is_bandwidth_test and len(test_configs) > 1:
         all_results = run_multi_config_bandwidth_test()
 
         logger.info("=" * 60)
@@ -1099,17 +1055,20 @@ def main():
         )
         logger.info("=" * 60)
     else:
+        bs = test_configs[0]["bs"]
+        data_size = test_configs[0]["data_size"]
+        max_bs = test_configs[0]["max_bs"]
         x_per_rank, dstrank_id_per_rank = generate_inputs(bs, data_size)
 
         precision_pass = True
         bandwidth_result = None
 
-        if is_precision_test:
+        if CONFIG.run.is_precision_test:
             precision_pass = run_precision_test(
                 x_per_rank, dstrank_id_per_rank, max_bs, data_size
             )
 
-        if is_bandwidth_test:
+        if CONFIG.run.is_bandwidth_test:
             bandwidth_result = run_bandwidth_test(
                 x_per_rank, dstrank_id_per_rank, max_bs, data_size
             )
@@ -1118,10 +1077,10 @@ def main():
         logger.info("Test Summary")
         logger.info("=" * 60)
 
-        if is_precision_test:
+        if CONFIG.run.is_precision_test:
             logger.info(f"Precision Test: {'PASS' if precision_pass else 'FAIL'}")
 
-        if is_bandwidth_test:
+        if CONFIG.run.is_bandwidth_test:
             if bandwidth_result:
                 logger.info("Bandwidth Test: Completed")
                 logger.info(
@@ -1135,7 +1094,7 @@ def main():
 
         logger.info("=" * 60)
 
-        if is_precision_test and not precision_pass:
+        if CONFIG.run.is_precision_test and not precision_pass:
             exit(1)
 
 
