@@ -301,12 +301,10 @@ private:
     static constexpr uint32_t GMM1_TILE_M = L1_TILE_M_256;
     static constexpr uint32_t EPILOGUE_TILE_M = TopkWeightsPrefetch ? L1_TILE_M_128 : L1_TILE_M_256;
 
-    using BlockEpilogue =
-        BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
-                                       EPILOGUE_TILE_M, L1_TILE_N, TopkWeightsPrefetch>;
+    using BlockEpilogue = BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, EPILOGUE_TILE_M, L1_TILE_N,
+                                                         TopkWeightsPrefetch>;
     using SharedBlockEpilogue =
-        BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
-                                       L1_TILE_M_256, L1_TILE_N, false>;
+        BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, L1_TILE_M_256, L1_TILE_N, false>;
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
 };
@@ -365,7 +363,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     params_.y2GmAddr = yOut;
     params_.expertTokenNumsOutGmAddr = expertTokenNumsOut;
     params_.probsGmAddr = topkWeights;
-    params_.workspaceInfo = WorkspaceInfo(workspaceGM, tilingData, serverNum_);
+    {
+        WorkspaceLayout workspaceLayout(tilingData, serverNum_);
+        params_.workspaceInfo.Bind(workspaceGM, workspaceLayout);
+    }
     params_.peermemInfo = PeermemInfo(g_winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE, serverNum_);
     params_.tilingData = tilingData;
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
@@ -383,9 +384,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
         reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.cumsumInfoPtr + cumsumStride * blockIdx_));
     epilogueOp_.Init({.yGmAddr = params_.workspaceInfo.activationQuantDataPtr,
                       .yScaleGmAddr = params_.workspaceInfo.activationQuantScalePtr,
-                      .x2ScaleGmAddr = nullptr,
-                      .x1ScaleGmAddr = nullptr,
-                      .biasGmAddr = nullptr,
                       .clampLimit = tilingData->clampLimit,
                       .actMode = static_cast<uint8_t>(ActivationQuantMsg::ActMode::SWIGLU),
                       .actSubMode = static_cast<uint8_t>(ActivationQuantMsg::ActSubMode::DEFAULT),
@@ -2519,9 +2517,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSh
 {
     sharedEpilogueOp_.Init({.yGmAddr = params_.workspaceInfo.sharedExpertActivationDataPtr,
                             .yScaleGmAddr = params_.workspaceInfo.sharedExpertActivationScalePtr,
-                            .x2ScaleGmAddr = nullptr,
-                            .x1ScaleGmAddr = nullptr,
-                            .biasGmAddr = nullptr,
                             .clampLimit = params_.tilingData->clampLimit,
                             .actMode = static_cast<uint8_t>(ActivationQuantMsg::ActMode::SWIGLU),
                             .actSubMode = static_cast<uint8_t>(ActivationQuantMsg::ActSubMode::DEFAULT),

@@ -21,16 +21,16 @@ QFA_METADATA_OP_NAME = "quant_flash_attn_metadata"
 class QuantMode(IntEnum):
     """quant_mode 枚举：对外字符串/int 经由本枚举映射为传给算子侧的 int。"""
 
+    A8C8_QKV_HIF8_PER_TENSOR_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 0
     A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 1
     A8C8_QKV_MXFP8_P_MXFP8_SOFTMAX_FP32 = 2
     A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16 = 3
     A8C8_QKV_MXFP8_P_MXFP8_SOFTMAX_FP16 = 4
     A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16 = 5
     A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 6
-    A8C8_QKV_HIF8_PER_TENSOR_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 0
-    A4C4_QKV_HIF4_P_HIF4_LEVEL1_SOFTMAX_FP16 = 8
-    A4C4_QKV_HIF4_P_HIF4_LEVEL2_SOFTMAX_FP16 = 9
-    A4C4_QKV_HIF4_P_HIF4_LEVEL3_SOFTMAX_FP16 = 10
+    A4C4_QKV_HIF4_P_HIF4_LEVEL1_SOFTMAX_FP16 = 7
+    A4C4_QKV_HIF4_P_HIF4_LEVEL2_SOFTMAX_FP16 = 8
+    A4C4_QKV_HIF4_P_HIF4_LEVEL3_SOFTMAX_FP16 = 9
 
 
 class MaskMode(IntEnum):
@@ -110,9 +110,9 @@ class QuantFlashAttnOpBuilder(OpBuilder):
         return [
             "quant_flash_attn_metadata(int num_heads_q, int num_heads_kv, int head_dim, int quant_mode, *, "
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, "
-            "Tensor? seqused_kv=None, Tensor? v_descale=None, "
+            "Tensor? seqused_kv=None, "
             "int? batch_size=None, int? max_seqlen_q=-1, int? max_seqlen_kv=-1, "
-            "int? mask_mode=0, int? win_left=-1, int? win_right=-1, "
+            "int? head_dim_v=None, int? mask_mode=0, int? win_left=-1, int? win_right=-1, "
             'str? layout_q="BSND", str? layout_q_descale="BSND", '
             'str? layout_kv="BSND", str? layout_out="BSND", '
             "bool is_grad_enabled=False) -> Tensor",
@@ -144,10 +144,10 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             cu_seqlens_kv: Optional[torch.Tensor] = None,
             seqused_q: Optional[torch.Tensor] = None,
             seqused_kv: Optional[torch.Tensor] = None,
-            v_descale: Optional[torch.Tensor] = None,
             batch_size: Optional[int] = None,
             max_seqlen_q: Optional[int] = -1,
             max_seqlen_kv: Optional[int] = -1,
+            head_dim_v: Optional[int] = None,
             mask_mode: Optional[Union[MaskMode, int]] = MaskMode.NO_MASK,
             win_left: Optional[int] = -1,
             win_right: Optional[int] = -1,
@@ -274,10 +274,10 @@ def quant_flash_attn_metadata(
     cu_seqlens_kv: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
     seqused_kv: Optional[torch.Tensor] = None,
-    v_descale: Optional[torch.Tensor] = None,
     batch_size: Optional[int] = None,
     max_seqlen_q: Optional[int] = -1,
     max_seqlen_kv: Optional[int] = -1,
+    head_dim_v: Optional[int] = None,
     mask_mode: Optional[Union[MaskMode, int]] = MaskMode.NO_MASK,
     win_left: Optional[int] = -1,
     win_right: Optional[int] = -1,
@@ -292,10 +292,10 @@ def quant_flash_attn_metadata(
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
     torch._check(
-        quant_mode in (1, 5, 0),
-        lambda: f"The quant_mode of quant_flash_attn_metadata only supports 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), "
-        f"5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16) "
-        f"or 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
+        quant_mode in (0, 1, 5),
+        lambda: f"The quant_mode of quant_flash_attn_metadata only supports 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), "
+        f"1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) "
+        f"or 5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16), but got {quant_mode}",
     )
     if layout_q == "TND":
         torch._check(
@@ -317,6 +317,7 @@ def quant_flash_attn_metadata(
     layout_q_descale = "BSND" if layout_q_descale is None else layout_q_descale
     layout_kv = "BSND" if layout_kv is None else layout_kv
     layout_out = "BSND" if layout_out is None else layout_out
+    head_dim_v = head_dim if head_dim_v is None else head_dim_v
 
     max_schedule_size = _calculate_max_schedule_size()
     output = torch.empty((2, max_schedule_size), dtype=torch.int32, device="npu")
@@ -327,13 +328,13 @@ def quant_flash_attn_metadata(
         cu_seqlens_kv,
         seqused_q,
         seqused_kv,
-        v_descale,
         batch_size,
         max_seqlen_q,
         max_seqlen_kv,
         num_heads_q,
         num_heads_kv,
         head_dim,
+        head_dim_v,
         quant_mode,
         mask_mode,
         win_left,
@@ -357,10 +358,10 @@ def quant_flash_attn_metadata_fallback(
     cu_seqlens_kv: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
     seqused_kv: Optional[torch.Tensor] = None,
-    v_descale: Optional[torch.Tensor] = None,
     batch_size: Optional[int] = None,
     max_seqlen_q: Optional[int] = -1,
     max_seqlen_kv: Optional[int] = -1,
+    head_dim_v: Optional[int] = None,
     mask_mode: Optional[Union[MaskMode, int]] = MaskMode.NO_MASK,
     win_left: Optional[int] = -1,
     win_right: Optional[int] = -1,
@@ -380,10 +381,10 @@ def quant_flash_attn_metadata_fallback(
         cu_seqlens_kv,
         seqused_q,
         seqused_kv,
-        v_descale,
         batch_size,
         max_seqlen_q,
         max_seqlen_kv,
+        head_dim_v,
         mask_mode,
         win_left,
         win_right,
@@ -430,10 +431,10 @@ def quant_flash_attn(
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     torch._check(
-        quant_mode in (1, 5, 0),
-        lambda: f"The quant_mode of quant_flash_attn only supports 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), "
-        f"5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16) "
-        f"or 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
+        quant_mode in (0, 1, 5),
+        lambda: f"The quant_mode of quant_flash_attn only supports 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), "
+        f"1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) "
+        f"or 5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16), but got {quant_mode}",
     )
     quant_mode = _resolve_quant_mode(quant_mode)
     mask_mode = _resolve_mask_mode(mask_mode)

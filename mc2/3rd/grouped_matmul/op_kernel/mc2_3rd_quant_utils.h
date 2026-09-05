@@ -19,7 +19,7 @@
 #include "mc2_3rd_grouped_matmul_utils.h"
 #include "lib/matmul_intf.h"
 
-#define LOCAL_TEMPLATE_CLASS_PARAMS                                                                                    \
+#define LOCAL_TEMPLATE_CLASS_PARAMS \
     template <class xType, class wType, class biasType, class scaleType, class yType, CubeFormat wFormat, bool aTrans, \
               bool bTrans>
 #define LOCAL_TEMPLATE_FUNC_PARAMS xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans
@@ -46,7 +46,7 @@ constexpr uint32_t WEIGHTNZ_N0_K0 = 512;
 constexpr float NEG_SQRT_EIGHT_OVER_PI = -1.595769121 * 0.044715;
 constexpr float TANH_APPROX_FACTOR = 1 / 0.044715;
 #if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
-constexpr AscendC::MicroAPI::DivSpecificMode mode = {AscendC::MicroAPI::MaskMergeMode::ZEROING, true};
+constexpr AscendC::Reg::DivSpecificMode mode = {AscendC::Reg::MaskMergeMode::ZEROING, true};
 #endif
 
 constexpr uint8_t SYNC_AIC_AIV_MODE = 4;

@@ -29,67 +29,63 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128VF(__ubuf__ T2 *expUb, __ubuf_
                                                      const uint32_t repeatStride, const uint16_t m, const T scale,
                                                      const T minValue, uint32_t pltOriTailN, uint32_t pltTailN)
 {
-    AscendC::MicroAPI::RegTensor<float> vreg_min;
-    AscendC::MicroAPI::RegTensor<float> vreg_input_x;
-    AscendC::MicroAPI::RegTensor<float> vreg_input_x_unroll;
-    AscendC::MicroAPI::RegTensor<float> vreg_input_x_unroll_new;
-    AscendC::MicroAPI::RegTensor<float> vreg_max_tmp;
-    AscendC::MicroAPI::RegTensor<float> vreg_input_max;
-    AscendC::MicroAPI::RegTensor<float> vreg_max_brc;
-    AscendC::MicroAPI::RegTensor<float> vreg_exp_sum;
-    AscendC::MicroAPI::RegTensor<float> vreg_exp_even;
-    AscendC::MicroAPI::RegTensor<float> vreg_exp_odd;
+    AscendC::Reg::RegTensor<float> vreg_min;
+    AscendC::Reg::RegTensor<float> vreg_input_x;
+    AscendC::Reg::RegTensor<float> vreg_input_x_unroll;
+    AscendC::Reg::RegTensor<float> vreg_input_x_unroll_new;
+    AscendC::Reg::RegTensor<float> vreg_max_tmp;
+    AscendC::Reg::RegTensor<float> vreg_input_max;
+    AscendC::Reg::RegTensor<float> vreg_max_brc;
+    AscendC::Reg::RegTensor<float> vreg_exp_sum;
+    AscendC::Reg::RegTensor<float> vreg_exp_even;
+    AscendC::Reg::RegTensor<float> vreg_exp_odd;
 
-    AscendC::MicroAPI::UnalignRegForStore ureg_max;
-    AscendC::MicroAPI::UnalignRegForStore ureg_exp_sum;
+    AscendC::Reg::UnalignRegForStore ureg_max;
+    AscendC::Reg::UnalignRegForStore ureg_exp_sum;
 
-    AscendC::MicroAPI::MaskReg preg_all = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-    AscendC::MicroAPI::MaskReg preg_all_b16 =
-        AscendC::MicroAPI::CreateMask<uint16_t, AscendC::MicroAPI::MaskPattern::ALL>();
-    AscendC::MicroAPI::MaskReg preg_all_b8 = AscendC::MicroAPI::CreateMask<T2, AscendC::MicroAPI::MaskPattern::ALL>();
-    AscendC::MicroAPI::MaskReg preg_tail_n = AscendC::MicroAPI::UpdateMask<float>(pltTailN);
-    AscendC::MicroAPI::MaskReg preg_ori_tail_n = AscendC::MicroAPI::UpdateMask<float>(pltOriTailN);
-    AscendC::MicroAPI::MaskReg preg_reduce_n =
-        AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::VL8>();
+    AscendC::Reg::MaskReg preg_all = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg preg_all_b16 = AscendC::Reg::CreateMask<uint16_t, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg preg_all_b8 = AscendC::Reg::CreateMask<T2, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg preg_tail_n = AscendC::Reg::UpdateMask<float>(pltTailN);
+    AscendC::Reg::MaskReg preg_ori_tail_n = AscendC::Reg::UpdateMask<float>(pltOriTailN);
+    AscendC::Reg::MaskReg preg_reduce_n = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::VL8>();
 
-    AscendC::MicroAPI::Duplicate(vreg_min, minValue);
+    AscendC::Reg::Duplicate(vreg_min, minValue);
     for (uint16_t i = 0; i < m; ++i) {
         TailScaleStoreMax128<T>(vreg_input_x, vreg_input_x_unroll, vreg_input_x_unroll_new, vreg_min, vreg_max_tmp,
                                 srcUb, i, s2BaseSize, scale, preg_all, preg_ori_tail_n, preg_tail_n);
-        AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
-            vreg_input_max, vreg_max_tmp, preg_all);
-        AscendC::MicroAPI::StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb),
-                                                                                        vreg_input_max, ureg_max, 1);
+        AscendC::Reg::Reduce<Reg::ReduceType::MAX, float, float, Reg::MaskMergeMode::ZEROING>(vreg_input_max,
+                                                                                              vreg_max_tmp, preg_all);
+        AscendC::Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb), vreg_input_max,
+                                                                              ureg_max, 1);
     }
 
-    AscendC::MicroAPI::StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb),
-                                                                                        ureg_max, 0);
-    AscendC::MicroAPI::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    AscendC::Reg::StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb), ureg_max, 0);
+    AscendC::Reg::LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
     for (uint16_t i = 0; i < m; ++i) {
-        AscendC::MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_max_brc, maxUbStart + i);
-        AscendC::MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg_input_x, vreg_input_x_unroll,
-                                                                             srcUb + i * s2BaseSize);
-        AscendC::MicroAPI::ExpSub(vreg_exp_even, vreg_input_x, vreg_max_brc, preg_all);
-        AscendC::MicroAPI::ExpSub(vreg_exp_odd, vreg_input_x_unroll, vreg_max_brc, preg_all);
+        AscendC::Reg::LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_max_brc, maxUbStart + i);
+        AscendC::Reg::LoadAlign<T, Reg::LoadDist::DIST_DINTLV_B32>(vreg_input_x, vreg_input_x_unroll,
+                                                                   srcUb + i * s2BaseSize);
+        AscendC::Reg::ExpSub(vreg_exp_even, vreg_input_x, vreg_max_brc, preg_all);
+        AscendC::Reg::ExpSub(vreg_exp_odd, vreg_input_x_unroll, vreg_max_brc, preg_all);
 
         ExpSumReduceStore128<T>(vreg_exp_sum, vreg_exp_even, vreg_exp_odd, ureg_exp_sum, expSumUb, preg_all);
 
         CastStoreExp128<T, T2>(vreg_exp_even, vreg_exp_odd, expUb, blockStride, repeatStride, preg_all, preg_all_b16,
                                indexesUb);
     }
-    AscendC::MicroAPI::StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb),
-                                                                                        ureg_exp_sum, 0);
+    AscendC::Reg::StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), ureg_exp_sum,
+                                                                              0);
 }
 
 // no update, 64 < originN <= 128
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128>
-__aicore__ inline void
-ProcessVec1NoUpdateGeneralImpl128(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor,
-                                  const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
-                                  const LocalTensor<T> &inMaxTensor, const LocalTensor<T> &sharedTmpBuffer,
-                                  const LocalTensor<uint8_t> &indexesTensor, const uint16_t m, const uint32_t originN,
-                                  const T scale, const T minValue)
+__aicore__ inline void ProcessVec1NoUpdateGeneralImpl128(
+    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expSumTensor,
+    const LocalTensor<T> &maxTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<T> &sharedTmpBuffer,
+    const LocalTensor<uint8_t> &indexesTensor, const uint16_t m, const uint32_t originN, const T scale,
+    const T minValue)
 {
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
     // stride, high 16bits: blockStride (65*16*2/32)，单位block, low 16bits: repeatStride (1)
