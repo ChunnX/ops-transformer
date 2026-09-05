@@ -97,8 +97,10 @@ def run_command(command, environment, case_root, timeout_seconds):
 
 
 def summarize_case(
-    case, mode, iterations, case_root, process_result,
+    case, mode, iterations, case_root, process_result, *,
+    sync_each_call=False, sync_timeout_seconds=120.0,
 ):
+    effective_sync_timeout = sync_timeout_seconds if sync_each_call else None
     errors = []
     if process_result["timed_out"]:
         errors.append("torchrun exceeded the case timeout")
@@ -120,11 +122,15 @@ def summarize_case(
             or report.get("mode") != mode or not report.get("passed")
             or report.get("completed_iterations") != iterations
             or report.get("completed_calls") != expected_calls
+            or report.get("sync_each_call") != sync_each_call
+            or report.get("sync_timeout_seconds") != effective_sync_timeout
         ):
             errors.append("rank {} did not confirm completion of the requested workload".format(rank))
     elapsed = [item["elapsed_seconds"] for item in ranks if "elapsed_seconds" in item]
     return {
         "case_id": case["id"], "mode": mode, "iterations": iterations,
+        "sync_each_call": sync_each_call,
+        "sync_timeout_seconds": effective_sync_timeout,
         "requested_calls_per_rank": expected_calls,
         "passed": not errors, "errors": errors, "ranks": ranks,
         "max_rank_elapsed_seconds": max(elapsed) if elapsed else None,
@@ -142,6 +148,14 @@ def main(argv=None):
     parser.add_argument("--output-dir")
     parser.add_argument("--timeout-seconds", type=positive_timeout_seconds, default=3600.0,
                         help="per-case deadline including initialization and teardown (default: 3600)")
+    parser.add_argument(
+        "--sync-each-call", action="store_true",
+        help="diagnose every call with NPU synchronization and a monitored Gloo barrier",
+    )
+    parser.add_argument(
+        "--sync-timeout-seconds", type=positive_timeout_seconds, default=120.0,
+        help="monitored Gloo barrier timeout used with --sync-each-call (default: 120)",
+    )
     parser.add_argument("--fail-fast", action="store_true")
     args = parser.parse_args(argv)
     validate_stress_environment(os.environ)
@@ -187,10 +201,18 @@ def main(argv=None):
             "--output-dir", str(case_root), "--mode", args.mode,
             "--iterations", str(args.iterations),
         ]
+        if args.sync_each_call:
+            command.extend([
+                "--sync-each-call", "--sync-timeout-seconds",
+                str(args.sync_timeout_seconds),
+            ])
         write_json(case_root / "launch.json", {
             "command": command, "mode": args.mode, "iterations": args.iterations,
             "timeout_seconds": args.timeout_seconds,
-
+            "sync_each_call": args.sync_each_call,
+            "sync_timeout_seconds": (
+                args.sync_timeout_seconds if args.sync_each_call else None
+            ),
             "udma_master_addr": process_environment["UDMA_MASTER_ADDR"],
             "udma_master_port": udma_port, "validation_master_port": rendezvous_port,
             "catccos_udma_validate_routes": "0", "console_log": str(case_root / "torchrun.log"),
@@ -203,6 +225,8 @@ def main(argv=None):
         process_result = run_command(command, process_environment, case_root, args.timeout_seconds)
         result = summarize_case(
             case, args.mode, args.iterations, case_root, process_result,
+            sync_each_call=args.sync_each_call,
+            sync_timeout_seconds=args.sync_timeout_seconds,
         )
         result["runtime_logs"] = collect_runtime_logs(snapshot, log_roots, case_root / "runtime_logs")
         write_json(case_root / "report.json", result)
@@ -213,7 +237,10 @@ def main(argv=None):
     summary = {
         "passed": len(results) == len(cases) and all(item["passed"] for item in results),
         "mode": args.mode, "iterations": args.iterations,
-
+        "sync_each_call": args.sync_each_call,
+        "sync_timeout_seconds": (
+            args.sync_timeout_seconds if args.sync_each_call else None
+        ),
         "environment": environment, "cases": results,
     }
     write_json(output_root / "summary.json", summary)

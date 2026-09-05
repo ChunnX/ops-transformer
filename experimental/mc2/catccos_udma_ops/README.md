@@ -556,6 +556,23 @@ before the loop, then drains the stream after the entire loop. It adds no
 barriers, stream switches, device reads, allocations or synchronization between
 calls; the operators retain their own required communication synchronization.
 
+Add `--sync-each-call` when diagnosing a hang. This creates one dedicated Gloo
+group and, after every operator call, performs an NPU synchronization followed
+by a `monitored_barrier`. The default barrier timeout is 120 seconds and can be
+changed with `--sync-timeout-seconds`:
+
+```bash
+bash scripts/run_stress.sh --mode chain --case-id model_case_1 --iterations 10000 \
+  --sync-each-call --sync-timeout-seconds 120
+```
+
+Rank 0 prints one line immediately before every operator call, containing the
+one-based iteration, call sequence and operator name. Output is shown live and
+also saved in `torchrun.log`. Because the monitored barrier prevents any rank
+from starting the next call early, the final `[stress-call]` line identifies the
+operator execution that stopped advancing. In `chain` mode A and B are
+synchronized and reported separately.
+
 Use `--timeout-seconds 3600` to set the per-case host deadline, including
 initialization and teardown, and `--fail-fast` to stop after a failed case.
 Results go to `validation_results/<timestamp>/stress` or `--output-dir`.
@@ -565,7 +582,8 @@ contains `environment.json` and `summary.json`. In the default mode submission
 counts are not completion counts: completion is confirmed only after the final
 stream drain. During the loop no progress files are written; if a process is
 killed while submitting, the saved counts reflect only the last checkpoint.
-Overall elapsed time
+With `--sync-each-call`, the live log gives the exact last operator call and a
+worker exception also persists it in `last_debug_event`. Overall elapsed time
 includes Python submission overhead
 and is not a per-kernel latency measurement. PASS indicates successful
 execution and teardown on every rank, not numerical correctness.
