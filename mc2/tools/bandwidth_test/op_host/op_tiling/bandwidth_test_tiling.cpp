@@ -93,8 +93,7 @@ static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &t
     OP_LOGD(nodeName, "aiv_num is %d.", tilingData.aivNum);
     OP_LOGD(nodeName, "total_ub_size is %lu.", tilingData.totalUbSize);
     OP_LOGD(nodeName, "batch_buffer_bytes is %u.", tilingData.batchBufferBytes);
-    OP_LOGD(nodeName, "batch_tokens requested=%u, ub_selected=%u.", tilingData.batchTokens,
-            tilingData.batchBufferBytes / URMA_WQE_BYTES);
+    OP_LOGD(nodeName, "batch_tokens is %u.", tilingData.batchTokens);
     OP_LOGD(nodeName, "total_win_size is %lu.", tilingData.totalWinSize);
 }
 
@@ -436,7 +435,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     tilingData->batchTokens = 0;
     if (IsUrma(context)) {
         // One staging row is live. IDs are reused per chunk; WQEs are reused after BatchCommit.
-        uint64_t fixedBytes = 32 + statusBytes + rowBytes + URMA_INIT_BYTES;
+        uint64_t fixedBytes = 32 + statusBytes + rowBytes;
         constexpr uint64_t bytesPerToken = sizeof(int32_t) + URMA_WQE_BYTES;
         OP_TILING_CHECK(fixedBytes > ubSize || ubSize - fixedBytes < 32 + URMA_WQE_BYTES,
                         OP_LOGE(nodeName,
@@ -450,11 +449,12 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
         if (maxBatchTokens * URMA_WQE_BYTES + alignUp(maxBatchTokens * sizeof(int32_t), 32) > availableBytes) {
             --maxBatchTokens;
         }
+        maxBatchTokens = std::min(maxBatchTokens, static_cast<uint64_t>(URMA_MAX_BATCH_TOKENS));
         OP_TILING_CHECK(static_cast<uint64_t>(*batchTokensPtr) > maxBatchTokens,
                         OP_LOGE(nodeName, "batch_tokens=%ld exceeds maximum=%lu (usable_ub=%lu, fixed_bytes=%lu).",
                                 *batchTokensPtr, maxBatchTokens, ubSize, fixedBytes), return ge::GRAPH_FAILED);
         uint64_t batchTokens = *batchTokensPtr == 0 ? maxBatchTokens : static_cast<uint64_t>(*batchTokensPtr);
-        tilingData->batchTokens = static_cast<uint32_t>(*batchTokensPtr);
+        tilingData->batchTokens = static_cast<uint32_t>(batchTokens);
         tilingData->batchBufferBytes = batchTokens * URMA_WQE_BYTES;
         requiredUb = fixedBytes + batchTokens * URMA_WQE_BYTES + alignUp(batchTokens * sizeof(int32_t), 32);
         OP_LOGI(nodeName, "URMA batch_tokens: requested=%ld, selected=%lu, maximum=%lu.",

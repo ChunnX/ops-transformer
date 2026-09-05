@@ -62,7 +62,7 @@ is_single_test = True     # True: 单配置测试; False: 多配置批量测试
 ```python
 graph_type = 0            # 0: 单算子模式; 3: aclgraph模式
 comm_alg = "urma"        # mte 或 urma
-batch_tokens = 0         # URMA: 0 自动最大批量；正数超过 tiling 上限时报错并给出最大值
+batch_tokens = 0         # URMA: 0 自动最大批量（最高 2048）；正数超限由 tiling 报最大值
 is_full_core = True      # True: 使用全部核心; False: 使用部分核心
 partial_core_num = 16    # 非全核时的 AIC 数量，AIV 数量由脚本自动取其两倍
 aiv_num = None          # 算子 AIV 核数，None 使用自动值，也可单独指定
@@ -70,7 +70,8 @@ aiv_num = None          # 算子 AIV 核数，None 使用自动值，也可单�
 
 `batch_tokens` 表示每张目标卡每次 BatchCommit 的 token 数，只有最后一批允许不足。
 BS 不受单批容量限制，tiling 的最大提交数也不按 BS 截断；MTE 使用 `batch_tokens=0`。
-UB 预算及设备 SQ 复核规则见 [Torch 扩展说明](torch_extension/README.md)。
+调用方必须保证通信参数有效，并自行确认选定批量小于所有使用的 SQ 深度（包括 0/最大值模式）。
+kernel 不做参数校验、打印或自动缩小批量；UB 预算与完成流控说明见 [Torch 扩展说明](torch_extension/README.md)。
 
 ### 性能采集配置
 
@@ -231,8 +232,13 @@ No.   BS       H          Rank Data(MB)    Batch Tokens   Batch Data(MB)   Mean 
 示例使用 FP16、URMA、`batch_tokens=256`。MB 按 `1024²` 字节计算：
 `Rank Data = BS × H × 元素字节数`，包含本卡目标数据；
 `Batch Data = batch_tokens × H × 元素字节数`，表示每个目标卡的配置满批数据量，实际尾批可以更小。
-自动批量 `0` 显示 `Auto`，实际容量由 tiling/SQ 决定；MTE 显示 `N/A`。
+自动批量 `0` 显示 `Auto`，容量由 tiling 决定且最高 2048；MTE 显示 `N/A`。
 带宽数值继续沿用原来的跨卡数据量计算口径。
+
+采集循环只运行 BandwidthTest，已去掉辅助张量和 `torch.exp` 负载。
+profiler 使用 `Level0` 和 `AiCoreNone`，关闭额外的 AI Core 指标与内存采集；
+输入准备、参数检查、日志和结果校验位于 kernel 计时之外。
+报告基于 `op_summary` 的算子执行时间，包含必要的搬运、通信及完成等待，并非裸链路峰值。
 
 ## 核心函数说明
 

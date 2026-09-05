@@ -142,8 +142,8 @@ def get_profiling(num_loop, num_repeat, num_warmup, profiling_output_path):
 
     experimental_config = torch_npu.profiler._ExperimentalConfig(
         export_type=torch_npu.profiler.ExportType.Text,
-        aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
-        profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
+        aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
+        profiler_level=torch_npu.profiler.ProfilerLevel.Level0,
         l2_cache=False,
         data_simplification=False,
     )
@@ -158,7 +158,7 @@ def get_profiling(num_loop, num_repeat, num_warmup, profiling_output_path):
         on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(
             profiling_output_path
         ),
-        profile_memory=True,
+        profile_memory=False,
         with_stack=False,
         with_flops=False,
         with_modules=False,
@@ -582,7 +582,6 @@ def run_bandwidth_test_npu(
                 **bandwidth_test_kwargs
             )
         else:
-            tensor = torch.ones(CONFIG.run.perf_tensor_shape).to(torch.float16).npu()
             with get_profiling(
                 CONFIG.run.loop, CONFIG.run.repeat, CONFIG.run.warmup, CONFIG.run.profiling_path
             ) as prof:
@@ -591,9 +590,6 @@ def run_bandwidth_test_npu(
                     y, receive_cnt = bandwidth_test(
                         **bandwidth_test_kwargs
                     )
-                    if i == CONFIG.run.perf_exp_step:
-                        for _ in range(CONFIG.run.perf_exp_repeat):
-                            torch.exp(tensor)
                     prof.step()
     else:
         bandwidth_test_kwargs = {
@@ -612,7 +608,6 @@ def run_bandwidth_test_npu(
             y, receive_cnt = model(**bandwidth_test_kwargs)
         else:
             torch._dynamo.reset()
-            tensor = torch.ones(CONFIG.run.perf_tensor_shape).to(torch.float16).npu()
             model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
             with get_profiling(
                 CONFIG.run.graph_loop,
@@ -622,9 +617,6 @@ def run_bandwidth_test_npu(
             ) as prof:
                 for i in range(CONFIG.run.graph_loop):
                     y, receive_cnt = model(**bandwidth_test_kwargs)
-                    if i == CONFIG.run.perf_exp_step:
-                        for _ in range(CONFIG.run.perf_exp_repeat):
-                            torch.exp(tensor)
                     prof.step()
 
     torch.npu.synchronize()
@@ -720,7 +712,6 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
                 "aiv_num": aiv_num,
                 "batch_tokens": CONFIG.model.batch_tokens,
             }
-            tensor = torch.ones(CONFIG.run.perf_tensor_shape).to(torch.float16).npu()
             with get_profiling(
                 CONFIG.run.loop, CONFIG.run.repeat, CONFIG.run.warmup, config_profiling_path
             ) as prof:
@@ -729,9 +720,6 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
                     y, receive_cnt = bandwidth_test(
                         **bandwidth_test_kwargs
                     )
-                    if j == CONFIG.run.perf_exp_step:
-                        for _ in range(CONFIG.run.perf_exp_repeat):
-                            torch.exp(tensor)
                     prof.step()
         else:
             bandwidth_test_kwargs = {
@@ -746,7 +734,6 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
                 "test_batch_tokens": CONFIG.model.batch_tokens,
             }
             torch._dynamo.reset()
-            tensor = torch.ones(CONFIG.run.perf_tensor_shape).to(torch.float16).npu()
             model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
             with get_profiling(
                 CONFIG.run.graph_loop,
@@ -756,9 +743,6 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
             ) as prof:
                 for i in range(CONFIG.run.graph_loop):
                     y, receive_cnt = model(**bandwidth_test_kwargs)
-                    if i == CONFIG.run.perf_exp_step:
-                        for _ in range(CONFIG.run.perf_exp_repeat):
-                            torch.exp(tensor)
                     prof.step()
 
         dist.barrier()
@@ -1042,7 +1026,7 @@ def print_summary_table(results: List[Dict[str, Any]]):
     logger.info("-" * len(header))
     logger.info("MB = 1024^2 bytes. Rank Data = BS * H * dtype bytes, including local-rank destinations.")
     logger.info("Batch Data is the configured full-batch payload per destination; the final batch may be smaller.")
-    logger.info("Auto: batch size is selected by tiling/SQ. N/A: MTE has no URMA batch submission.")
+    logger.info("Auto: batch size is selected by tiling (at most 2048). N/A: MTE has no URMA batch submission.")
 
     if max_bw_config:
         logger.info(f"\n{'*' * 90}")

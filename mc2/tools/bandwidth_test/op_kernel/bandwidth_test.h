@@ -28,7 +28,6 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
 
-#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_base.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_constant.h"
 
 namespace BandwidthTestImpl {
@@ -163,16 +162,20 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(GM_ADD
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
     uint32_t epRankIdHccl{0};
-    uint32_t epWorldSizeHccl{0};
     epRankIdHccl = context_->epRankId;
     statusSpaceGm_ = (GM_ADDR)(context_->epHcclBuffer_[epRankIdHccl]);
-    epWorldSizeHccl = epWorldSize_;
     GlobalTensor<uint32_t> selfDataStatusGMTensor;
     epRankId_ = epRankIdHccl;
     selfDataStatusGMTensor.SetGlobalBuffer(
         (__gm__ uint32_t *)(statusSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
-    dataState_ = MoeDistributeV2Base::InitWinState(selfDataStatusGMTensor, epRankIdHccl, epWorldSizeHccl, epRankId_,
-                                                   epWorldSize_, epWorldSize_, globalBS_, dataStateBuf);
+    // Only the ping-pong bit is needed by this benchmark; omit generic operator DFX bookkeeping.
+    LocalTensor<uint32_t> dataStateTensor = dataStateBuf.Get<uint32_t>();
+    DataCopy(dataStateTensor, selfDataStatusGMTensor, UB_ALIGN / sizeof(uint32_t));
+    SyncFunc<HardEvent::MTE2_S>();
+    dataState_ = dataStateTensor.GetValue(ZERONE_STATE_POS);
+    dataStateTensor.SetValue(ZERONE_STATE_POS, dataState_ == 0 ? 1 : 0);
+    SyncFunc<HardEvent::S_MTE3>();
+    DataCopy(selfDataStatusGMTensor, dataStateTensor, UB_ALIGN / sizeof(uint32_t));
 
     // ============ 设置全局张量 ============
     xGMTensor_.SetGlobalBuffer((__gm__ XType *)x);

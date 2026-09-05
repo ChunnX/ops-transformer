@@ -13,7 +13,7 @@
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 
 @dataclass(frozen=True)
@@ -66,7 +66,10 @@ class ParallelConfig:
 class ModelConfig:
     graph_type: int = 3  # 0：单算子；3：aclgraph（当前编译路径仅支持全核）
     comm_alg: str = "mte"  # 通信算法：mte 或 urma（URMA batch，按目标卡分核）
-    batch_tokens: int = 0  # URMA 每次提交的 token 数；0 自动取最大值，正数超出容量时由 tiling 报错
+    # 带宽测试由调用方保证通信参数正确：有效 channel、rank ID、Win 容量及各 rank 配置一致。
+    # 必须保证实际 batch_tokens < 每条使用的 SQ 深度；0 选 tiling 最大值（最高 2048）。
+    # kernel 不做参数校验、打印或自动缩小批量；误配会使测试结果无效。
+    batch_tokens: int = 0  # 0 自动；正数由 tiling 按 UB 和 2048 上限校验，BS 不受单批上限限制
     static_kernel_path: str = "./static_kernel"  # aclgraph 静态内核构建目录，相对启动目录
 
 
@@ -84,9 +87,6 @@ class RunConfig:
     performance_sample_count: int = 50  # 每份 op_summary 最后多少条算子记录参与带宽统计，须 > 0
     # 专用结果目录，相对启动目录；测试前清空此目录及其 _config_数字 同级目录。
     profiling_path: str = "./Profiling_Result_bandwidth_test"
-    perf_tensor_shape: Tuple[int, int] = (10000, 10000)  # 性能采集期间辅助 exp 负载的 FP16 张量形状
-    perf_exp_repeat: int = 100  # 触发辅助负载时执行 exp 的次数，0 表示不执行 exp
-    perf_exp_step: int = 1  # 执行辅助 exp 的外层迭代编号，从 0 开始
     is_check_setting: bool = True  # 主流程开始时检查用例尺寸、服务器编号及图模式等已有约束
 
 
@@ -105,7 +105,7 @@ class BandwidthTestConfig:
     shape: ShapeConfig = field(default_factory=ShapeConfig)  # 输入尺寸、用例列表、数据类型与随机种子
     parallel: ParallelConfig = field(default_factory=ParallelConfig)  # 通信拓扑、主节点与核数
     model: ModelConfig = field(default_factory=ModelConfig)  # 算子算法与图编译方式
-    run: RunConfig = field(default_factory=RunConfig)  # 测试模式、性能采集与辅助负载
+    run: RunConfig = field(default_factory=RunConfig)  # 测试模式与性能采集
     diagnostics: DiagnosticsConfig = field(default_factory=DiagnosticsConfig)  # 精度容差、张量落盘与日志
 
 

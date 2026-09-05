@@ -97,7 +97,8 @@ hidden 是 16 的倍数且小于 32768，
 MTE 和 URMA 共用 Win 布局：1 MiB 状态区和两个数据半区，每个半区需要
 `(world_size + 1) * max_bs * align_up(hidden * 2, 512)` 字节。
 URMA 将 MTE 已预留的首个 max_bs 数据块作为中转区；接收区仍按源 rank 分块。
-状态仍是 MTE 的 `[1.0f ready flag, count, ...]`，双缓冲由同一个 `InitWinState` 推进。
+状态仍是 MTE 的 `[1.0f ready flag, count, ...]`；两条路径只翻转原位置的双缓冲位，
+不再执行通用 `InitWinState` 的诊断字段和调用次数记账。
 中转数据和通知源地址全部位于 context 注册的 Win；workspace 仅保留框架系统空间。
 URMA 通过 MTE 的 `SplitToCore(world_size, aiv_num, ...)` 将连续的目标卡范围分配给各核，
 前面的核处理余数卡，本卡仍使用 `ProcessToken` 本地搬运。
@@ -107,6 +108,7 @@ URMA 是独立类，声明、类外实现和 `Process()` 分支排列与 MTE 一
 `mode=1` 顺序执行前三个阶段。
 通道句柄在初始化时按本核负责的目标卡读取一次并缓存。
 数据和状态通知的所有远端 Write 都经 batch 接口提交，包括只有一条请求的尾批。
+Batch 接口使用 handle 内的缓冲区，不再分配普通接口的 512 字节 scratch 或调用其 `Init`。
 每个阶段处理一张远端卡时创建一次 batch handle，全部 token 和 commit 复用它。
 URMA 分块读取 rank ID，发送时累计各目标卡的 token 数，不再分配全量 ID 和三个计数临时区。
 token 搬运只使用一行 UB，每行 MTE3 完成后复用；ID 和 WQE buffer 则逐批复用。
@@ -114,9 +116,10 @@ host 按完整的 248 KiB 可用 UB 计算分块容量，ID buffer 按 32 字节
 
 ```text
 N = ceil(world_size / aiv_num)
-fixed_bytes = 32 + align_up(N, 8) * 32 + hidden * 2 + 512
+fixed_bytes = 32 + align_up(N, 8) * 32 + hidden * 2
 available_bytes = 248 * 1024 - fixed_bytes
-maximum = 最大满足 64 * B + align_up(4 * B, 32) <= available_bytes 的正整数 B
+ub_maximum = 最大满足 64 * B + align_up(4 * B, 32) <= available_bytes 的正整数 B
+maximum = min(ub_maximum, 2048)
 capacity = maximum if batch_tokens == 0 else batch_tokens
 rank_id_buffer_bytes = align_up(capacity * 4, 32)
 batch_buffer_bytes = capacity * 64
@@ -128,8 +131,8 @@ Ascend950 的 256 KiB UB 扣除系统预留的 8 KiB 后，算子使用完整的
 现有 INT32 计数表示检查和实际 tensor/通信窗口容量检查仍然有效。
 若传入正数超过 maximum，tiling 返回失败并报告 `batch_tokens=... exceeds maximum=...`；
 合法值会打印 `requested / selected / maximum`。UB 最大值与 BS 无关。
-例如 `world_size=8、aiv_num=64` 时，`max_bs=4096、hidden=16384` 的 UB 容量为
-**3240 个 token/WQE**，`max_bs=8192、hidden=8192` 为 **3481 个 token/WQE**。
+例如 `world_size=8、aiv_num=64` 时，`max_bs=4096、hidden=16384` 和
+`max_bs=8192、hidden=8192` 的 tiling 最大提交数均为 **2048 个 token/WQE**。
 设备端分块扫描 ID，为当前目标卡跨 ID 块累计 WQE；凑够指定数量就 `BatchCommit`。
 SDK 将 WQE 拷入 SQ 并同步 UB 复用，后续批次可以继续准备和提交。
 只有剩余 SQ 空间不足容纳下一整批，或该目标卡数据结束时，末条 WQE 请求 CQE 并 `Drain`；
@@ -137,10 +140,11 @@ SDK 将 WQE 拷入 SQ 并同步 UB 复用，后续批次可以继续准备和提
 发送中的单行 UB 不必保留到 URMA 完成：URMA 源数据已位于注册的 GM 中转区。
 中转区仍使用原 token 下标，避免不同目标卡所属核并发覆盖同一槽位。
 所有数据和状态通知完成后，`TPipe::Reset` 将发送阶段 UB 复用于等待和接收阶段。
-SQ 深度在持锁时从 URMA channel context 读取一次，要求深度至少为 2。
-tiling 无法读取设备端 SQ 深度；自动模式将单批容量限制为 `min(maximum, SQ深度-1)`。
-正数模式若超过 `SQ深度-1`，kernel 打印该最大值并触发设备异常，不静默缩小提交数；
-深度小于 2 同样报错。不修改 batch handle 内部字段。
+这是带宽测试：调用方必须保证 channel、目标 rank、Win 容量和各 rank 配置正确，
+并保证 tiling 选出的 `batch_tokens < 每条使用的 SQ 深度`；使用 0/最大值时也须自行确认。
+本算子 kernel 直接使用 tiling 的有效批量，不额外做参数校验、打印、Trap 或自动缩小批量；SDK 内部检查沿用原实现。
+SQ 深度只在持锁创建 batch handle 时读取，用于批次边界的完成流控，防止覆盖在途 WQE；
+必要的最终 Drain、状态通知和接收等待保留，确保计时包含真实传输完成。
 该读取依赖 [Hcomm URMA 实现](https://gitcode.com/cann/asc-comm/blob/master/src/aicore/hcomm/impl/platform_v310/hcomm_aiv_urma.h)
 的 `ChannelEntity` / `sqContextAddr[0]` 布局；静态核对的 asc-comm 提交为
 `1529377b9e908d78ba5ba5d579edf1669fb99b01`，部署时须使用兼容版本。
@@ -152,7 +156,7 @@ tiling 无法读取设备端 SQ 深度；自动模式将单批容量限制为 `m
 `mode=0` 在相同流程后调用与 MTE 一致的 `LocalWindowCopy`，按源卡和原 token 顺序拼接有效输出。
 同一 context 的调用与图重放应串行下发，避免并发覆盖通信窗口。
 切换 shape、mode 或测试配置前，所有 rank 必须完成此前调用并同步；各 rank 调用次数和顺序须相同。
-同一 owner 的 `aiv_num` 必须固定；`InitWinState` 按核保存双缓冲位，改变核数需要同步后重建 owner。
+同一 owner 的 `aiv_num` 必须固定；窗口按核保存双缓冲位，改变核数需要同步后重建 owner。
 `mode=0` 仅 `y[:receive_cnt.sum()]` 有效；`mode=1` 不搬运输出，两个输出均不保证有效，
 测试脚本的图内循环因此继续使用原始输入。schema 将 context 声明为可变输入，
 沿用仓库通信算子的副作用约定；目标环境仍须确认优化后的图保留全部通信次数和顺序。
@@ -160,5 +164,5 @@ tiling 无法读取设备端 SQ 深度；自动模式将单批容量限制为 `m
 需在装有 CANN、PyTorch、torch_npu 和兼容 TorchAir 的 Ascend950 多 rank 环境
 分别验证 eager 精度、图捕获及重复重放。本地静态检查不能替代上述验证。
 两份接收实现均包含状态 buffer 字节数、DataCopy 块长及 UB 记账修正；host 按实际缓冲区检查可用 UB。
-URMA kernel 对 SQ 容量不匹配使用 `Trap` 报错；仍未检查各 Hcomm 接口的失败返回值。
+URMA kernel 不检查通信参数及 Hcomm 失败返回值；调用方负责保证上述通信前置条件。
 这些修改仍需在目标 SDK 下验证编译和多卡可见性。

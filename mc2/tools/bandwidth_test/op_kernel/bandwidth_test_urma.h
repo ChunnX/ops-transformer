@@ -29,7 +29,6 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
 
-#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_base.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_constant.h"
 
 namespace BandwidthTestImpl {
@@ -135,14 +134,12 @@ private:
     uint64_t totalWinSizeEp_{0};      // 总窗口大小
     Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
     using HcommBatchHandle = AscendC::BatchHandle<AscendC::ChannelHandle>;
-    TBuf<> hcommBuf_;
     TBuf<> batchBuf_;
     LocalTensor<uint8_t> batchTensor_;
     HcommBatchHandle batchHandle_{};
     uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE];
     uint32_t batchCapacity_{0};
     uint32_t batchBufferBytes_{0};
-    uint32_t requestedBatchTokens_{0};
     uint32_t preparedWrites_{0};
     uint32_t pendingWrites_{0};
     uint32_t sqCapacity_{0};
@@ -175,16 +172,20 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::Init(GM
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
     uint32_t epRankIdHccl{0};
-    uint32_t epWorldSizeHccl{0};
     epRankIdHccl = context_->epRankId;
     statusSpaceGm_ = (GM_ADDR)(context_->epHcclBuffer_[epRankIdHccl]);
-    epWorldSizeHccl = epWorldSize_;
     GlobalTensor<uint32_t> selfDataStatusGMTensor;
     epRankId_ = epRankIdHccl;
     selfDataStatusGMTensor.SetGlobalBuffer(
         (__gm__ uint32_t *)(statusSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
-    dataState_ = MoeDistributeV2Base::InitWinState(selfDataStatusGMTensor, epRankIdHccl, epWorldSizeHccl, epRankId_,
-                                                   epWorldSize_, epWorldSize_, globalBS_, dataStateBuf);
+    // Only the ping-pong bit is needed by this benchmark; omit generic operator DFX bookkeeping.
+    LocalTensor<uint32_t> dataStateTensor = dataStateBuf.Get<uint32_t>();
+    DataCopy(dataStateTensor, selfDataStatusGMTensor, UB_ALIGN / sizeof(uint32_t));
+    SyncFunc<HardEvent::MTE2_S>();
+    dataState_ = dataStateTensor.GetValue(ZERONE_STATE_POS);
+    dataStateTensor.SetValue(ZERONE_STATE_POS, dataState_ == 0 ? 1 : 0);
+    SyncFunc<HardEvent::S_MTE3>();
+    DataCopy(selfDataStatusGMTensor, dataStateTensor, UB_ALIGN / sizeof(uint32_t));
 
     // ============ 设置全局张量 ============
     xGMTensor_.SetGlobalBuffer((__gm__ XType *)x);
@@ -243,17 +244,15 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::Init(GM
 
     // ============ 初始化其他缓冲区 ============
     batchBufferBytes_ = tilingData->batchBufferBytes;
-    requestedBatchTokens_ = tilingData->batchTokens;
+    batchCapacity_ = tilingData->batchTokens;
     uint32_t rankIdBufferBytes = batchBufferBytes_ / BandwidthTestTiling::URMA_WQE_BYTES * sizeof(int32_t);
     rankIdBufferBytes = Ceil(rankIdBufferBytes, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(dstRankIdsBuf_, rankIdBufferBytes);
     dstRankIdsTensor_ = dstRankIdsBuf_.Get<int32_t>();
     // ProcessToken waits for MTE3 before freeing the row, so the next token can reuse the same UB.
     tpipe_->InitBuffer(xQueue_, BUFFER_SINGLE, hOutAlignUbSize_);
-    tpipe_->InitBuffer(hcommBuf_, BandwidthTestTiling::URMA_INIT_BYTES);
     tpipe_->InitBuffer(batchBuf_, batchBufferBytes_);
     batchTensor_ = batchBuf_.Get<uint8_t>();
-    hcomm_.Init(hcommBuf_.Get<uint8_t>(), BandwidthTestTiling::URMA_INIT_BYTES);
     SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, sendExpertNum_);
     for (uint32_t rankId = startRankId_; rankId < endRankId_; ++rankId) {
         if (rankId != static_cast<uint32_t>(epRankId_)) {
@@ -311,20 +310,10 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::BeginBa
     uint64_t channel = hcommHandle_[rankId];
     hcomm_.Lock(channel);
     auto entity = reinterpret_cast<__gm__ ChannelEntity *>(channel);
-    uint32_t sqDepth = entity->sqContextAddr[0].contextInfo.ubJfs.sqDepth;
-    uint32_t sqCapacity = sqDepth > 1 ? sqDepth - 1 : 0;
-    // Tiling can inspect UB capacity; channel SQ depth is only available on the device.
-    if (sqCapacity == 0 || requestedBatchTokens_ > sqCapacity) {
-        hcomm_.Unlock(channel);
-        printf("BandwidthTest URMA batch_tokens=%u exceeds SQ maximum=%u, rank=%u\n",
-               requestedBatchTokens_, sqCapacity, rankId);
-        AscendC::Trap();
-    }
-    uint32_t ubCapacity = batchBufferBytes_ / BandwidthTestTiling::URMA_WQE_BYTES;
-    batchCapacity_ = ubCapacity < sqCapacity ? ubCapacity : sqCapacity;
     preparedWrites_ = 0;
     pendingWrites_ = 0;
-    sqCapacity_ = sqCapacity;
+    // SQ metadata is used only for completion flow control; the caller guarantees batch validity.
+    sqCapacity_ = entity->sqContextAddr[0].contextInfo.ubJfs.sqDepth - 1;
     batchHandle_ = hcomm_.MakeBatchHandle(
         channel, batchTensor_, batchCapacity_ * BandwidthTestTiling::URMA_WQE_BYTES,
         reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[rankId]));
@@ -335,20 +324,22 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::Prepare
     GM_ADDR dst, GM_ADDR src, uint32_t len, bool lastInBatch)
 {
     ++preparedWrites_;
-    ++pendingWrites_;
     bool commit = lastInBatch || preparedWrites_ == batchCapacity_;
+    if (!commit) {
+        hcomm_.WriteNbi<DEFAULT_WQE_CONFIG>(batchHandle_, dst, src, len);
+        return;
+    }
+    pendingWrites_ += preparedWrites_;
     // Keep complete configured batches in flight until the SQ cannot hold another full batch.
-    bool drain = lastInBatch || (commit && sqCapacity_ - pendingWrites_ < batchCapacity_);
+    bool drain = lastInBatch || sqCapacity_ - pendingWrites_ < batchCapacity_;
     if (drain) {
         hcomm_.WriteNbi<DEFAULT_CQE_WQE_CONFIG>(batchHandle_, dst, src, len);
     } else {
         hcomm_.WriteNbi<DEFAULT_WQE_CONFIG>(batchHandle_, dst, src, len);
     }
-    if (commit) {
-        // The SDK copies WQEs to the SQ and synchronizes UB reuse; token sources remain in GM.
-        hcomm_.BatchCommit(batchHandle_);
-        preparedWrites_ = 0;
-    }
+    // The SDK copies WQEs to the SQ and synchronizes UB reuse; token sources remain in GM.
+    hcomm_.BatchCommit(batchHandle_);
+    preparedWrites_ = 0;
     if (drain) {
         hcomm_.Drain(batchHandle_);
         pendingWrites_ = 0;
@@ -364,7 +355,6 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::SendToM
     SyncFunc<HardEvent::V_S>();
     for (uint32_t rankId = startRankId_; rankId < endRankId_; ++rankId) {
         bool isRemote = rankId != static_cast<uint32_t>(epRankId_);
-        batchCapacity_ = batchBufferBytes_ / BandwidthTestTiling::URMA_WQE_BYTES;
         if (isRemote) {
             BeginBatch(rankId);
         }
