@@ -933,20 +933,29 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
             continue;
         }
         uint64_t dumpSize = seg.size;
-        std::vector<uint8_t> segBuf(dumpSize, 0);
         void *srcAddr = reinterpret_cast<void *>(workspaceGM + seg.offset);
         OP_LOGE(OP_NAME, "seg[%u]: type=%u, offset=%lu, size=%lu, dumpSize=%lu, srcAddr=0x%lx",
                 i, seg.type, seg.offset, seg.size, dumpSize,
                 static_cast<uint64_t>(reinterpret_cast<uintptr_t>(srcAddr)));
-        if (aclrtMemcpy(segBuf.data(), dumpSize, srcAddr, dumpSize,
-                        ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
-            OP_LOGE(OP_NAME, "aclrtMemcpy workspace seg[%u] failed, offset=%lu, size=%lu.", i, seg.offset, dumpSize);
+        try {
+            std::vector<uint8_t> segBuf(dumpSize, 0);
+            if (aclrtMemcpy(segBuf.data(), dumpSize, srcAddr, dumpSize,
+                            ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+                OP_LOGE(OP_NAME, "aclrtMemcpy workspace seg[%u] failed, offset=%lu, size=%lu.", i, seg.offset,
+                        dumpSize);
+                continue;
+            }
+            std::string segPrefix = "workspace_seg" + std::to_string(i) + "_type" + std::to_string(seg.type) + "_";
+            std::string segName = GenDumpFileNameWithPrefix(args, op, segPrefix.c_str());
+            if (DumpToFileWithSize(std::string(dumpPath), segName, deviceId, segBuf.data(), dumpSize) != 0) {
+                OP_LOGE(OP_NAME, "Failed to dump workspace seg[%u].", i);
+            }
+        } catch (const std::bad_alloc &) {
+            OP_LOGE(OP_NAME, "workspace seg[%u] host alloc %lu bytes failed, skip.", i, dumpSize);
             continue;
-        }
-        std::string segPrefix = "workspace_seg" + std::to_string(i) + "_type" + std::to_string(seg.type) + "_";
-        std::string segName = GenDumpFileNameWithPrefix(args, op, segPrefix.c_str());
-        if (DumpToFileWithSize(std::string(dumpPath), segName, deviceId, segBuf.data(), dumpSize) != 0) {
-            OP_LOGE(OP_NAME, "Failed to dump workspace seg[%u].", i);
+        } catch (...) {
+            OP_LOGE(OP_NAME, "workspace seg[%u] dump exception, skip.", i);
+            continue;
         }
     }
     OP_LOGE(OP_NAME, "Workspace dump done: op=%s, deviceId=%u.", op, deviceId);
@@ -1098,25 +1107,32 @@ inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_
                 if (seg.size == 0) {
                     continue;
                 }
-                uint32_t segDumpSize = static_cast<uint32_t>(
-                    std::min<uint64_t>(seg.size, MAX_PEERMEM_DUMP_SIZE));
-                std::vector<uint8_t> segBuf(segDumpSize, 0);
+                uint64_t segDumpSize = seg.size;
                 void *srcAddr = reinterpret_cast<void *>(selfWinAddr + seg.offset);
-                OP_LOGE(OP_NAME, "peermem seg[%u]: type=%u, offset=%lu, size=%lu, dumpSize=%u, srcAddr=0x%lx",
+                OP_LOGE(OP_NAME, "peermem seg[%u]: type=%u, offset=%lu, size=%lu, dumpSize=%lu, srcAddr=0x%lx",
                         i, seg.type, seg.offset, seg.size, segDumpSize,
                         static_cast<uint64_t>(selfWinAddr + seg.offset));
-                if (aclrtMemcpy(segBuf.data(), segDumpSize, srcAddr, segDumpSize,
-                                ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
-                    OP_LOGE(OP_NAME, "aclrtMemcpy peermem seg[%u] failed, offset=%lu, size=%u.",
-                            i, seg.offset, segDumpSize);
+                try {
+                    std::vector<uint8_t> segBuf(segDumpSize, 0);
+                    if (aclrtMemcpy(segBuf.data(), segDumpSize, srcAddr, segDumpSize,
+                                    ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+                        OP_LOGE(OP_NAME, "aclrtMemcpy peermem seg[%u] failed, offset=%lu, size=%lu.",
+                                i, seg.offset, segDumpSize);
+                        continue;
+                    }
+                    std::string segPrefix = "peermem_seg" + std::to_string(i) + "_type" +
+                                            std::to_string(seg.type) + "_";
+                    std::string segName = GenDumpFileNameWithPrefix(args, op, segPrefix.c_str());
+                    if (DumpToFileWithSize(std::string(dumpPath), segName, deviceId,
+                                           segBuf.data(), segDumpSize) != 0) {
+                        OP_LOGE(OP_NAME, "Failed to dump peermem seg[%u].", i);
+                    }
+                } catch (const std::bad_alloc &) {
+                    OP_LOGE(OP_NAME, "peermem seg[%u] host alloc %lu bytes failed, skip.", i, segDumpSize);
                     continue;
-                }
-                std::string segPrefix = "peermem_seg" + std::to_string(i) + "_type" +
-                                        std::to_string(seg.type) + "_";
-                std::string segName = GenDumpFileNameWithPrefix(args, op, segPrefix.c_str());
-                if (DumpToFileWithSize(std::string(dumpPath), segName, deviceId,
-                                       segBuf.data(), segDumpSize) != 0) {
-                    OP_LOGE(OP_NAME, "Failed to dump peermem seg[%u].", i);
+                } catch (...) {
+                    OP_LOGE(OP_NAME, "peermem seg[%u] dump exception, skip.", i);
+                    continue;
                 }
             }
             segDumped = true;
