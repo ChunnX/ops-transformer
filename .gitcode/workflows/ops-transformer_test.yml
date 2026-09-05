@@ -24,9 +24,17 @@ stages:
   stage2:
     name: compile
     jobs:
-      JOB_Pre_Compile:
+      JOB_Pre_Compile_dis:
         name: Compile_pre
         uses: .gitcode/workflows/compile_action_test.yml
+        with:
+          task_name: 'Pre_Compile'
+          image_version: 'ubuntu24.04_x86:lv6_v1.1131'
+          arch: 'x64'
+          spec: 'xlarge'
+      JOB_Pre_Compile_nodis:
+        name: Compile_pre
+        uses: .gitcode/workflows/compile_action_test_without.yml
         with:
           task_name: 'Pre_Compile'
           image_version: 'ubuntu24.04_x86:lv6_v1.1131'
