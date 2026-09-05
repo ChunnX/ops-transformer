@@ -995,6 +995,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
         SendChannelFlag(dstRank, 0U);
         FlushPreparedWrites();
     }
+    if (actualA_ != 0U) {
+        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
+    }
+    diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
 }
 
 // TODO(delete): legacy address-table path only.
