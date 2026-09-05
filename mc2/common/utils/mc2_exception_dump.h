@@ -817,12 +817,7 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
         OP_LOGE(OP_NAME, "aclrtMemcpy args buffer failed.");
         return;
     }
- 
-    // for (uint32_t i = 0; i < actualArgsDumpSize / sizeof(uint64_t); i++) {
-    //     uint64_t val = *reinterpret_cast<uint64_t *>(argsBuf.data() + i * sizeof(uint64_t));
-    //     OP_LOGE(OP_NAME, "args[%u] = 0x%lx (offset=%u)", i, val, i * sizeof(uint64_t));
-    // }
- 
+
     auto dumpPathFunc = GetAcldumpGetPathFunc();
     if (dumpPathFunc == nullptr) {
         OP_LOGE(OP_NAME, "Failed to load acldumpGetPath function.");
