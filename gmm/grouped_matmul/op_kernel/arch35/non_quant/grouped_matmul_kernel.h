@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "blaze/epilogue/block/block_epilogue_empty.h"
 #include "blaze/gemm/block/block_mmad_matmul_basic.h"
 #include "blaze/gemm/block/block_scheduler_grouped_matmul.h"
 #include "blaze/gemm/kernel/kernel_grouped_matmul.h"
@@ -24,9 +25,55 @@ using GMMNoQuantTilingData = GroupedMatmulTilingData::GMMNoQuantTilingData;
 
 namespace GROUPED_MATMUL {
 
-template <typename LayoutA, typename LayoutB>
+/*!
+ * \brief GELU epilogue placeholder aligned with the Blaze block epilogue interface.
+ * The concrete GELU-tanh vector computation on AIV is not implemented yet.
+ */
+class GroupedMatmulGeluEpilogue {
+public:
+    using BlockShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using BlockCoord = AscendC::Te::Coord<int64_t, int64_t, int64_t, int64_t>;
+
+    struct Params {
+        Params() = default;
+    };
+
+    __aicore__ inline GroupedMatmulGeluEpilogue()
+    {
+    }
+
+    __aicore__ inline void Run()
+    {
+        return;
+    }
+
+    __aicore__ inline void operator()(Params const& params)
+    {
+        Run();
+    }
+
+    __aicore__ inline void operator()(
+        BlockShape const& blockShape, BlockCoord const& blockCoord, int64_t dstStartOffset = 0,
+        int64_t srcStartOffset = 0)
+    {
+        return;
+    }
+};
+
+/*!
+ * \brief GELU post-process placeholder for the AIV side. Reserved for the GM read ->
+ * compute -> writeback flow synchronized with the AIC matmul; returns directly for now.
+ */
+__aicore__ inline void ProcessGeluEpilogue(GM_ADDR y, uint32_t activeType)
+{
+    (void)y;
+    (void)activeType;
+    return;
+}
+
+template <typename LayoutA, typename LayoutB, bool EnableGelu = false>
 __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR groupList, GM_ADDR y,
-                                           GM_ADDR tiling)
+                                            GM_ADDR tiling)
 {
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, gmmNoQuantParam, gmmBaseParams, tiling);
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, mmTilingData, mmTilingData, tiling);
@@ -42,7 +89,8 @@ __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
                                                               Blaze::Gemm::MatmulOutputMode::OVERWRITE>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
                                                     BiasType, LayoutBias>;
-    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueEmpty;
+    using BlockEpilogue = AscendC::Std::conditional_t<EnableGelu, GroupedMatmulGeluEpilogue,
+                                                      Blaze::Epilogue::Block::BlockEpilogueEmpty>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmNoQuant;
     using GroupedMatmulKernel =
         Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
@@ -101,6 +149,9 @@ __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
     Params params{problemShape, mmParams, {}, schedulerParams, gmmParams};
     GroupedMatmulKernel kernel;
     kernel(params);
+    if constexpr (EnableGelu) {
+        ProcessGeluEpilogue(y, gmmBaseParams.activeType);
+    }
 }
 
 } // namespace GROUPED_MATMUL

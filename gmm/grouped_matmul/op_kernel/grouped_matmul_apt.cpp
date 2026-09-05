@@ -268,7 +268,7 @@ template <int8_t W_TYPE, int8_t OFFSET_OR_BIAS_EXIT, int8_t C_QUANT_TYPE, int8_t
           int8_t WQ_A_TRANS, int8_t TEMPLATE_CUSTOM_SC, bool IS_SINGLE_MULTI_SINGLE, int8_t ALGORITHM_SUB_CATEGORY,
           int8_t ALGORITHM_CATEGORY>
 #else
-template <int8_t NO_QUANT_B_TRANS, int8_t NO_QUANT_A_TRANS>
+template <int8_t NO_QUANT_B_TRANS, int8_t NO_QUANT_A_TRANS, int8_t NO_QUANT_ACT>
 #endif
 __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR offset,
                                           GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR groupList,
@@ -548,29 +548,32 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #endif
 #else
     REGISTER_TILING_DEFAULT(GMMNoQuantTilingData);
+    if constexpr (NO_QUANT_ACT == GMM_ACT_GELU_TANH) {
+        KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2); // GELU epilogue 需 1:2 AIC:AIV
+    }
     if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) {
         if constexpr (wFormat == CubeFormat::NZ) {
-            GroupedMatMulKernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn>(x, weight, bias, groupList, y,
-                                                                                       tiling);
+            GroupedMatMulKernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn,
+                                NO_QUANT_ACT == GMM_ACT_GELU_TANH>(x, weight, bias, groupList, y, tiling);
         } else {
-            GroupedMatMulKernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(x, weight, bias, groupList, y,
-                                                                                          tiling);
+            GroupedMatMulKernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn,
+                                NO_QUANT_ACT == GMM_ACT_GELU_TANH>(x, weight, bias, groupList, y, tiling);
         }
     } else if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_TRANS) { // x transposed
         if constexpr (wFormat == CubeFormat::NZ) {
-            GroupedMatMulKernel<AscendC::Te::DNExtLayoutPtn, AscendC::Te::NZLayoutPtn>(x, weight, bias, groupList, y,
-                                                                                       tiling);
+            GroupedMatMulKernel<AscendC::Te::DNExtLayoutPtn, AscendC::Te::NZLayoutPtn,
+                                NO_QUANT_ACT == GMM_ACT_GELU_TANH>(x, weight, bias, groupList, y, tiling);
         } else {
-            GroupedMatMulKernel<AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(x, weight, bias, groupList, y,
-                                                                                          tiling);
+            GroupedMatMulKernel<AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn,
+                                NO_QUANT_ACT == GMM_ACT_GELU_TANH>(x, weight, bias, groupList, y, tiling);
         }
     } else if constexpr (NO_QUANT_B_TRANS == GMM_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) { // weight transposed
         if constexpr (wFormat == CubeFormat::NZ) {
-            GroupedMatMulKernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::ZNLayoutPtn>(x, weight, bias, groupList, y,
-                                                                                       tiling);
+            GroupedMatMulKernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::ZNLayoutPtn,
+                                NO_QUANT_ACT == GMM_ACT_GELU_TANH>(x, weight, bias, groupList, y, tiling);
         } else {
-            GroupedMatMulKernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn>(x, weight, bias, groupList, y,
-                                                                                          tiling);
+            GroupedMatMulKernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn,
+                                NO_QUANT_ACT == GMM_ACT_GELU_TANH>(x, weight, bias, groupList, y, tiling);
         }
     }
 #endif
