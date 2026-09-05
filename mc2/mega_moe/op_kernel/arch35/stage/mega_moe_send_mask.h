@@ -48,7 +48,6 @@ struct SendMaskScratch {
     LocalTensor<int32_t> sendCntAccTensor;
 };
 
-// 当前专家在 compact route 发送阶段使用的目标位置。
 struct ExpertRouteInfo {
     int32_t ownedIdx;
     int32_t globalExpertId;

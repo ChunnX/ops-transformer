@@ -263,7 +263,6 @@ struct WaveCombineBufferConfig {
     uint32_t rowBufferCount = 0;
 };
 
-// 跨 Wave 持续推进的 GMM2/Combine 运行态。
 struct WaveGmm2PipelineState {
     uint32_t &startBlockIdx;
     WaveCombineBufferConfig &combineBufferConfig;
