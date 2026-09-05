@@ -12,6 +12,7 @@
 #define TORCHNPU_TORCH_NPU_CSRC_ATEN_OPS_OP_API_PTA_COMMON_H_
 
 #include <fstream>
+#include <iostream>
 #include <sys/stat.h>
 #include <dlfcn.h>
 #include <vector>
@@ -928,6 +929,20 @@ inline void UnInitCacheThreadLocal()
     }
 }
 
+inline void CheckAclnnStatusWithDetail(int status, const char *apiName)
+{
+    if (status == 0) {
+        return;
+    }
+    const char *recentError = aclGetRecentErrMsg();
+    const std::string detail = recentError == nullptr ? "unknown ACLNN error" : recentError;
+    // Some TTK assert paths catch the c10::Error and only print the matched
+    // validation sentence.  Emit the complete ACLNN error before throwing so
+    // the original detail is still visible on the terminal.
+    std::cerr << "RuntimeError: call " << apiName << " failed, detail:" << detail << std::endl;
+    TORCH_CHECK(false, "call ", apiName, " failed, detail:", detail);
+}
+
 #define EXEC_NPU_CMD_V1(aclnn_api, ...) \
     do { \
         static const auto getWorkspaceSizeFuncAddr = GetOpApiFuncAddr(#aclnn_api "GetWorkspaceSize"); \
@@ -960,7 +975,7 @@ inline void UnInitCacheThreadLocal()
         auto converted_params = ConvertTypes(__VA_ARGS__, workspace_size_addr, executor_addr); \
         static auto getWorkspaceSizeFunc = ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr); \
         auto workspace_status = call(getWorkspaceSizeFunc, converted_params); \
-        TORCH_CHECK(workspace_status == 0, "call " #aclnn_api " failed, detail:", aclGetRecentErrMsg()); \
+        CheckAclnnStatusWithDetail(workspace_status, #aclnn_api); \
         void *workspace_addr = nullptr; \
         at::Tensor workspace_tensor; \
         if (workspace_size != 0) { \
@@ -971,7 +986,7 @@ inline void UnInitCacheThreadLocal()
         auto acl_call = [converted_params, workspace_addr, workspace_size, acl_stream, executor]() { \
             OpApiFunc opApiFunc = reinterpret_cast<OpApiFunc>(opApiFuncAddr); \
             auto api_ret = opApiFunc(workspace_addr, workspace_size, executor, acl_stream); \
-            TORCH_CHECK(api_ret == 0, "call " #aclnn_api " failed, detail:", aclGetRecentErrMsg()); \
+            CheckAclnnStatusWithDetail(api_ret, #aclnn_api); \
             ReleaseConvertTypes(converted_params); \
             ReleaseHugeMem releaseMemFunc = reinterpret_cast<ReleaseHugeMem>(releaseMemAddr); \
             if (releaseMemFunc) { \
