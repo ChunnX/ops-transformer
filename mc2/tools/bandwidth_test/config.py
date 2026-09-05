@@ -65,8 +65,8 @@ class ParallelConfig:
 @dataclass(frozen=True)
 class ModelConfig:
     graph_type: int = 3  # 0：单算子；3：aclgraph（当前编译路径仅支持全核）
-    comm_alg: str = "mte"  # 通信算法：mte 或 urma（URMA batch，按目标卡分核）
-    mode: Optional[int] = None  # None 沿用精度0/带宽1；3 为URMA直接Win打流，不支持精度校验
+    comm_alg: str = "urma"  # 通信算法：mte 或 urma（URMA batch，按目标卡分核）
+    mode: Optional[int] = 3  # 默认URMA直接Win打流；None 沿用精度0/带宽1，精度测试需设为0或None
     # 带宽测试由调用方保证通信参数正确：有效 channel、rank ID、Win 容量及各 rank 配置一致。
     # 必须保证实际 batch_tokens 小于每条使用的 SQ 和 CQ 深度；0 选 tiling 最大值（最高 2048）。
     # kernel 不做参数校验、打印或自动缩小批量；误配会使测试结果无效。

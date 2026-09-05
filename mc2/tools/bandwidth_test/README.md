@@ -30,7 +30,8 @@ python bandwidth_test.py
 
 ## 配置说明
 
-`ModelConfig.comm_alg` 可设为 `"urma"`，使用 Torch context、URMA batch 接口和 Win 中转区。
+默认使用 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 3`，运行多配置带宽测试。
+模式 3 使用 Torch context、URMA batch 接口和 Win 直接打流。
 每个目标卡固定由一个 AIV 负责，handle 在该卡的发送循环外创建一次并复用。
 精度模式和带宽模式沿用原配置开关，URMA 的窗口容量和依赖见
 [Torch Extension 说明](torch_extension/README.md)。
@@ -50,9 +51,9 @@ python bandwidth_test.py
 
 ```python
 # 带宽测试与精度测试不能同时使能
-is_precision_test = True   # 是否进行精度测试
-is_bandwidth_test = False # 是否进行带宽测试
-is_single_test = True     # True: 单配置测试; False: 多配置批量测试
+is_precision_test = False # 是否进行精度测试
+is_bandwidth_test = True  # 是否进行带宽测试
+is_single_test = False    # True: 单配置测试; False: 多配置批量测试
 ```
 
 ### 核心配置
@@ -60,8 +61,9 @@ is_single_test = True     # True: 单配置测试; False: 多配置批量测试
 `graph_type`、`mode`、`comm_alg` 和 `batch_tokens` 位于 `ModelConfig`，核数配置位于 `ParallelConfig`。
 
 ```python
-graph_type = 0            # 0: 单算子模式; 3: aclgraph模式
+graph_type = 3           # 0: 单算子模式; 3: aclgraph模式
 comm_alg = "urma"        # mte 或 urma
+mode = 3                # URMA直接Win打流；精度测试改为0或None
 batch_tokens = 0         # URMA: 0 自动最大批量（最高 2048）；正数超限由 tiling 报最大值
 is_full_core = True      # True: 使用全部核心; False: 使用部分核心
 partial_core_num = 16    # 非全核时的 AIC 数量，AIV 数量由脚本自动取其两倍
@@ -115,7 +117,8 @@ random_seed = 90         # 随机种子
 
 ```python
 # ModelConfig.mode 为 None 时自动决定：精度为 0，带宽为 1；显式设为 3 启用 URMA Win 打流
-comm_alg = "mte"         # 通信算法
+comm_alg = "urma"        # 默认通信算法
+mode = 3                # 默认URMA Win打流
 ```
 
 ### 测试数据配置
@@ -153,11 +156,12 @@ is_check_setting = True        # 是否检查配置有效性
 
 ## 使用示例
 
-下列模式开关修改 `RunConfig` 的字段默认值，`bs`、`data_size`、`max_bs` 修改 `ShapeConfig` 的字段默认值。
+下列测试开关修改 `RunConfig`，`mode` 修改 `ModelConfig`，`bs`、`data_size`、`max_bs` 修改 `ShapeConfig`。
 
 ### 示例 1：单配置精度测试
 
 ```python
+mode = 0
 is_precision_test = True
 is_bandwidth_test = False
 is_single_test = True
@@ -224,16 +228,19 @@ Bandwidth Test Summary - All Configurations
 ==========================================================================================
 No.   BS       H          Rank Data(MB)    Batch Tokens   Batch Data(MB)   Mean BW(GB/s)    Max BW(GB/s)     Mean Time(us)
 ------------------------------------------------------------------------------------------
-1     1        1024       0.0020           256            0.5000           45.23            48.12            88.56
-2     2        1024       0.0039           256            0.5000           78.45            82.31            102.34
+1     1        1024       0.0000           0              0.0000           0.00             0.00             5.00
+2     2048     8192       28.0000          256            4.0000           136.72           151.91           200.00
+3     8192     8192       112.0000         512            8.0000           136.72           151.91           800.00
 ...
 ```
 
-示例使用 FP16、URMA、`batch_tokens=256`。MB 按 `1024²` 字节计算：
-`Rank Data = BS × H × 元素字节数`，包含本卡目标数据；
-`Batch Data = batch_tokens × H × 元素字节数`，表示每个目标卡的配置满批数据量，实际尾批可以更小。
-自动批量 `0` 按当前 tiling 规则显示 `2048` 和对应的满批 MB；MTE 显示 `N/A`。
-带宽数值继续沿用原来的跨卡数据量计算口径。
+示例仅演示报告格式，使用 FP16、URMA 模式 3、8 卡、`batch_tokens=512`，耗时和带宽为示意数值。
+MB 按 `1024²` 字节计算，`Rank Data = (BS // world_size) × (world_size - 1) × H × 元素字节数`。
+`Batch Tokens = min(选定批量, BS // world_size)`，`Batch Data = Batch Tokens × H × 元素字节数`，
+表示该用例实际最大的单次远端数据提交；有多次提交时，最后一批仍可能更小。
+自动批量 `0` 先按当前 tiling 规则选择 2048，再按实际目标卡数据量计算显示值；请求值仍在表头日志中显示。
+无远端数据时两列显示 0；MTE 显示 `N/A`。
+模式 0/1 的 `Rank Data` 仍包含本卡目标数据，`Batch Tokens = min(选定批量, ceil(BS/world_size))`，与脚本均衡分配的输入一致。
 
 采集循环只运行 BandwidthTest，已去掉辅助张量和 `torch.exp` 负载。
 profiler 配置恢复到已验证可采集的 `124d318a` 基线：`Level1`、`PipeUtilization`、`profile_memory=True`；
@@ -244,8 +251,8 @@ profiler 配置恢复到已验证可采集的 `124d318a` 基线：`Level1`、`Pi
 
 ### URMA 极限带宽模式 3
 
-在 `config.py` 中设置 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 3`，
-并关闭 `RunConfig.is_precision_test`。`graph_type` 仍独立选择 eager 或 aclgraph。
+`config.py` 默认设置 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 3`，
+开启带宽测试并关闭精度测试。`graph_type` 仍独立选择 eager 或 aclgraph。
 调节 `batch_tokens`（0 自动选择 2048）和 `ShapeConfig.data_size`（H）观察带宽；BS 决定发送持续量，
 应足够大，使 `BS // world_size` 能形成多次满批提交。
 
@@ -253,13 +260,16 @@ profiler 配置恢复到已验证可采集的 `124d318a` 基线：`Level1`、`Pi
 每个远端目标发送 `BS // world_size` 个 token，自卡跳过，除法余数不参与传输。
 不足一条 token 时只交换完成 flag，数据带宽为 0。
 `Rank Data` 和带宽分子均使用实际远端字节数：
-`(BS // world_size) * (world_size - 1) * H * 2`；`Batch Data` 仍是满批容量，尾批可以更小。
+`(BS // world_size) * (world_size - 1) * H * 2`；`Batch Data` 按实际最大单次提交计算，不超过每个目标卡的数据量。
 
 kernel 直接从已注册 Win 的只读源区向远端独立接收区逐 token 调用 Batch Write，
 只分配 WQE buffer，不读取 x 或目标 ID，不做 token 搬运、统计、输出拷贝或双缓冲初始化。
 所有 URMA 模式直接调用 `hcomm_.WriteNbi(handle, dst, src, len)`，不传 WQE 配置，完全使用 SDK 默认值。
-每次凑够 batch 就 Commit，SQ/CQ 剩余空间不足下一批时收齐已提交请求的 CQE。
-数据结束后先收齐全部数据 CQE，再单独发送 flag 并确认 flag 完成。
+所有 URMA 模式通过公开 Hcomm 接口提交通信，不读取 channel entity、队列深度或 handle 内部字段。
+每次凑够 batch 就 Commit，再通过 Drain 确认该批完成；不根据私有队列信息决定在途批次数。
+模式 3 的尾批未满时，将 flag 接在尾批后一起 Commit，数据与 flag 合计不超过配置批量。
+当前 SDK 默认的 fence 保证 flag 在前面的数据完成后到达，最终一次 Drain 收齐尾批数据和 flag 的完成通知。
+数据恰好满批时先完成该批，再单独提交并完成 flag；报告只计算数据 token 和字节，不计 flag。
 最后各核等待负责的来源卡 flag，全部核退出后算子才结束。
 
 flag 使用 Win 中独立的递增序号，避免清零和旧 flag 误判；Win 在通信接口初始化时已清零。
@@ -269,6 +279,7 @@ flag 使用 Win 中独立的递增序号，避免清零和旧 flag 误判；Win 
 Batch buffer 复用不代表网络完成；报告时间包含 CQE 回收及 flag 等待。
 模式 3 与模式 0/1 共用 `BandwidthTestUrma`，在 `Process()` 的 `mode_ == 3` 分支执行；
 `Init()` 只读取该模式需要的通信参数便返回，业务缓冲区不初始化，沿用原有 URMA tiling key。
+超出目标卡范围的核在读取通信 context 前返回；只负责自卡的核不分配 WQE buffer 或更新序号。
 
 | 函数名 | 功能 |
 |--------|------|

@@ -140,8 +140,6 @@ private:
     uint32_t batchCapacity_{0};
     uint32_t batchBufferBytes_{0};
     uint32_t preparedWrites_{0};
-    uint32_t pendingWrites_{0};
-    uint32_t queueCapacity_{0};
     float sumTarget_;                 // 状态同步目标值 (1.0)
 
     // Mode 3 uses separate slots inside the 1 MiB state area, outside the business status/ping-pong fields.
@@ -158,15 +156,18 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::Init(GM
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx(); // 获取当前核ID
+    mode_ = tilingData->mode;
+    epWorldSize_ = tilingData->worldSize;
+    if (mode_ == 3 && aivId_ >= epWorldSize_) {
+        return;
+    }
 
     context_ = (__gm__ Mc2MoeContext *)context;
 
     // ============ 从tiling获取配置参数 ============
     axisBS_ = tilingData->maxBs;   // token数量
     axisH_ = tilingData->dataSize; // hidden size
-    epWorldSize_ = tilingData->worldSize;
     aivNum_ = tilingData->aivNum;
-    mode_ = tilingData->mode;
     epRankId_ = context_->epRankId;
     hOutSize_ = axisH_ * sizeof(XType);
     batchBufferBytes_ = tilingData->batchBufferBytes;
@@ -315,13 +316,7 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::BeginBa
 {
     uint64_t channel = hcommHandle_[rankId];
     hcomm_.Lock(channel);
-    auto entity = reinterpret_cast<__gm__ ChannelEntity *>(channel);
     preparedWrites_ = 0;
-    pendingWrites_ = 0;
-    // Queue metadata is used only for completion flow control; the caller guarantees batch validity.
-    uint32_t sqCapacity = entity->sqContextAddr[0].contextInfo.ubJfs.sqDepth - 1;
-    uint32_t cqCapacity = entity->cqContextAddr[0].contextInfo.ubJfc.cqDepth - 1;
-    queueCapacity_ = sqCapacity < cqCapacity ? sqCapacity : cqCapacity;
     batchHandle_ = hcomm_.MakeBatchHandle(
         channel, batchTensor_, batchCapacity_ * BandwidthTestTiling::URMA_WQE_BYTES,
         reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[rankId]));
@@ -337,16 +332,10 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::Prepare
     if (!commit) {
         return;
     }
-    pendingWrites_ += preparedWrites_;
-    // Keep complete configured batches in flight until SQ or CQ cannot hold another full batch.
-    bool drain = lastInBatch || queueCapacity_ - pendingWrites_ < batchCapacity_;
-    // The SDK copies WQEs to the SQ and synchronizes UB reuse; token sources remain in GM.
     hcomm_.BatchCommit(batchHandle_);
     preparedWrites_ = 0;
-    if (drain) {
-        hcomm_.Drain(batchHandle_);
-        pendingWrites_ = 0;
-    }
+    // Complete each batch through the API without inspecting private queue capacity or cursors.
+    hcomm_.Drain(batchHandle_);
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -620,34 +609,27 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::SendWin
     hcomm_.Lock(channel);
     GM_ADDR remoteWin = reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[rankId]);
     auto handle = hcomm_.MakeBatchHandle(channel, batchTensor_, batchBufferBytes_, remoteWin, windowGM_);
-    auto entity = reinterpret_cast<__gm__ ChannelEntity *>(channel);
-    uint32_t sqCapacity = entity->sqContextAddr[0].contextInfo.ubJfs.sqDepth - 1;
-    uint32_t cqCapacity = entity->cqContextAddr[0].contextInfo.ubJfc.cqDepth - 1;
-    uint32_t capacity = sqCapacity < cqCapacity ? sqCapacity : cqCapacity;
     uint32_t remaining = axisBS_ / epWorldSize_;
     uint64_t peerBytes = static_cast<uint64_t>(remaining) * hOutSize_;
     uint64_t sourceBytes = static_cast<uint64_t>(axisBS_) * hOutSize_;
     GM_ADDR src = windowGM_ + STATE_SIZE + rankId * peerBytes;
     GM_ADDR dst = remoteWin + STATE_SIZE + sourceBytes + epRankId_ * peerBytes;
-    uint32_t pending = 0;
     while (remaining != 0) {
         uint32_t count = remaining < batchCapacity_ ? remaining : batchCapacity_;
         remaining -= count;
-        uint32_t nextCount = remaining < batchCapacity_ ? remaining : batchCapacity_;
-        pending += count;
-        bool drain = remaining == 0 || capacity - pending < nextCount;
         for (uint32_t i = 0; i < count; ++i) {
             hcomm_.WriteNbi(handle, dst, src, hOutSize_);
             src += hOutSize_;
             dst += hOutSize_;
         }
-        hcomm_.BatchCommit(handle);
-        if (drain) {
-            hcomm_.Drain(handle);
-            pending = 0;
+        // Earlier batches are complete; a partial tail has one free WQE slot for the flag.
+        if (remaining == 0 && count < batchCapacity_) {
+            break;
         }
+        hcomm_.BatchCommit(handle);
+        hcomm_.Drain(handle);
     }
-    // Complete the data before publishing the flag used by the receiver and benchmark timing.
+    // The SDK default fence orders the flag after payload completion; one Drain completes both.
     hcomm_.WriteNbi(handle, remoteWin + STREAM_FLAGS_OFFSET + epRankId_ * STREAM_FLAG_STRIDE,
                    epochAddr, sizeof(uint32_t));
     hcomm_.BatchCommit(handle);
@@ -658,7 +640,8 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::SendWin
 template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::StreamFromWindow()
 {
-    if (aivId_ >= epWorldSize_) {
+    if (aivId_ >= epWorldSize_ ||
+        (aivId_ == static_cast<uint32_t>(epRankId_) && aivId_ + aivNum_ >= epWorldSize_)) {
         return;
     }
     tpipe_->InitBuffer(batchBuf_, batchBufferBytes_);

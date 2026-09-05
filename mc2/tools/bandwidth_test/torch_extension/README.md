@@ -134,22 +134,22 @@ Ascend950 的 256 KiB UB 扣除系统预留的 8 KiB 后，算子使用完整的
 例如 `world_size=8、aiv_num=64` 时，`max_bs=4096、hidden=16384` 和
 `max_bs=8192、hidden=8192` 的 tiling 最大提交数均为 **2048 个 token/WQE**。
 设备端分块扫描 ID，为当前目标卡跨 ID 块累计 WQE；凑够指定数量就 `BatchCommit`。
-SDK 将 WQE 拷入 SQ 并同步 UB 复用，后续批次可以继续准备和提交。
+每批经 `BatchCommit` 提交、`Drain` 完成后，再准备下一批。
 所有 URMA 模式直接调用 `hcomm_.WriteNbi(handle, dst, src, len)`，不传 WQE 配置或模板实参。
 WQE 行为完全由 SDK 默认值决定，算子不覆盖 `odr`、`fence` 或 `cqe`。
 下述已核对 SDK 版本的默认值为 `odr=5、fence=1、cqe=1`，直接调用并不表示把这些字段置零。
-当前 SDK 默认每条请求生成 CQE，剩余 SQ/CQ 空间不足容纳下一整批或目标卡数据结束时 `Drain` 收齐完成通知；
-不会因为一个 ID 块结束或 WQE UB 缓冲写满就等待通信完成。空目标卡不提交数据批次。
+当前 SDK 默认每条请求生成 CQE，`Drain` 收齐该批完成通知；不会因为一个 ID 块结束就提交未满的数据批次。
+空目标卡不提交数据批次。
 发送中的单行 UB 不必保留到 URMA 完成：URMA 源数据已位于注册的 GM 中转区。
 中转区仍使用原 token 下标，避免不同目标卡所属核并发覆盖同一槽位。
 所有数据和状态通知完成后，`TPipe::Reset` 将发送阶段 UB 复用于等待和接收阶段。
 这是带宽测试：调用方必须保证 channel、目标 rank、Win 容量和各 rank 配置正确，
 并保证 tiling 选出的 `batch_tokens` 小于每条使用的 SQ 和 CQ 深度；使用 0/最大值时也须自行确认。
 本算子 kernel 直接使用 tiling 的有效批量，不额外做参数校验、打印、Trap 或自动缩小批量；SDK 内部检查沿用原实现。
-SQ/CQ 深度只在持锁创建 batch handle 时读取，用于批次边界的完成流控，防止覆盖在途 WQE/CQE；
-必要的最终 Drain、状态通知和接收等待保留，确保计时包含真实传输完成。
-该读取依赖 [Hcomm URMA 实现](https://gitcode.com/cann/asc-comm/blob/master/src/aicore/hcomm/impl/platform_v310/hcomm_aiv_urma.h)
-的 `ChannelEntity` / `sqContextAddr[0]` 布局；静态核对的 asc-comm 提交为
+kernel 只通过公开 Hcomm 接口提交、完成和锁定通信，不读取 channel entity、队列深度、游标或 batch handle 内部字段。
+当前 Batch 接口未提供队列余量查询，也未承诺自动处理多批在途的溢出；因此每批提交后调用 Drain，再复用下一批。
+多批数据的计时包含这些完成等待，不能假定更小的 batch 会降低耗时。
+已核对 [Hcomm 公共接口](https://gitcode.com/cann/asc-comm/blob/master/include/aicore/hcomm/hcomm.h)，asc-comm 提交为
 `1529377b9e908d78ba5ba5d579edf1669fb99b01`，部署时须使用兼容版本。
 该 SDK 的 `PollBatchCq` 在目标 CQ 游标等于 0 时直接返回，即使还有未完成请求。
 长期打流中，32 位 `cqHead` 恰好在 Drain 边界回绕为 0 时可能漏等完成；
@@ -171,10 +171,13 @@ SQ/CQ 深度只在持锁创建 batch handle 时读取，用于批次边界的完
 `mode=3` 仅支持此 Torch context 的 URMA 路径，直接从 Win 发送 `BS // world_size` 个 token 到每个远端卡。
 它在同一个 `BandwidthTestUrma::Process()` 的 `mode_ == 3` 分支中执行，沿用原有 URMA tiling key。
 `Init()` 读取通信参数后提前返回，不做 mode 0/1 的业务初始化、ID 扫描和数据搬运；
-`StreamFromWindow()` 只分配 `batch_tokens * 64` 字节 UB。
+`StreamFromWindow()` 只为有远端任务的核分配 `batch_tokens * 64` 字节 UB。
 Win 使用紧凑 H 行，最小容量为 `1 MiB + 2 * BS * H * 2`；该模式不适用上文 mode 0/1 的双缓冲及 ID 预算公式。
 flag 位于 Win 的 128 KiB 处（每个来源卡 32B），本核序号位于 160 KiB 处（每核 32B）。
-每次调用递增本核序号，收齐所有数据 CQE 后再发 flag；等待时允许对方序号超前一轮，支持 uint32 回绕。
+有远端任务的核每次调用递增本核序号；尾批未满时，将 flag 并入尾批 Commit，WQE 总数不超过配置批量。
+满批先 Commit/Drain，随后单独 Commit/Drain flag；合并尾批时只需一次 Commit/Drain。
+flag 的先后关系依赖当前 SDK 默认的 `fence=1`，算子不显式传配置；部署 SDK 的默认值必须保留该完成顺序及 CQE。
+等待时允许对方序号超前一轮，支持 uint32 回绕。
 不读取 x/dstrank_id 内容，仍保留原 tensor shape/type 接口约定；完整使用和计时口径见主目录 README。
 
 需在装有 CANN、PyTorch、torch_npu 和兼容 TorchAir 的 Ascend950 多 rank 环境

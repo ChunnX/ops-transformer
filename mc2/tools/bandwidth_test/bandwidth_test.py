@@ -1035,7 +1035,12 @@ def print_summary_table(results: List[Dict[str, Any]]):
         if CONFIG.model.comm_alg != "urma":
             batch_tokens_text = batch_data_mb_text = "N/A"
         else:
-            batch_tokens = CONFIG.model.batch_tokens or URMA_MAX_BATCH_TOKENS
+            batch_capacity = CONFIG.model.batch_tokens or URMA_MAX_BATCH_TOKENS
+            max_peer_tokens = cfg["bs"] // world_size
+            # Business inputs distribute the remainder; mode 3 sends only floor(BS/world_size).
+            if mode != 3 and cfg["bs"] % world_size:
+                max_peer_tokens += 1
+            batch_tokens = min(batch_capacity, max_peer_tokens) if world_size > 1 else 0
             batch_tokens_text = str(batch_tokens)
             batch_data_mb_text = f"{batch_tokens * token_bytes / (1024 * 1024):.4f}"
         row = (
@@ -1053,7 +1058,8 @@ def print_summary_table(results: List[Dict[str, Any]]):
     logger.info("-" * len(header))
     logger.info("MB = 1024^2 bytes. Mode 0/1 Rank Data includes local destinations.")
     logger.info("Mode 3 Rank Data = floor(BS/world_size) * (world_size-1) * H * dtype bytes; only remote payload.")
-    logger.info("Batch Data is the configured full-batch payload per destination; the final batch may be smaller.")
+    logger.info("Batch Tokens/Data show the largest actual data commit to one remote destination; smaller tails may exist.")
+    logger.info("Mode 3 Batch Tokens = min(selected batch, floor(BS/world_size)); no remote payload means 0.")
     logger.info("URMA batch_tokens=0 uses the current tiling maximum of 2048. N/A: MTE has no URMA batch submission.")
 
     if max_bw_config:
