@@ -22,13 +22,13 @@ if _TORCHAIR_AVAILABLE:
 
     @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.bandwidth_test.default)
     def convert_bandwidth_test(context, x, dstrank_id, group, world_size,
-                               max_bs, mode, ccl_buffer_size, comm_alg="mte",
+                               max_bs, test_mode, ccl_buffer_size, comm_alg="mte",
                                aiv_num=-1, meta_outputs=None):
         return ge_op(
             op_type="BandwidthTest",
             inputs={"context": context, "x": x, "dst_rank_id": dstrank_id},
             attrs={"group": attr.Str(group), "world_size": attr.Int(world_size),
-                   "max_bs": attr.Int(max_bs), "mode": attr.Int(mode),
+                   "max_bs": attr.Int(max_bs), "mode": attr.Int(test_mode),
                    "ccl_buffer_size": attr.Int(ccl_buffer_size),
                    "comm_alg": attr.Str(comm_alg), "aiv_num": attr.Int(aiv_num)},
             outputs=["y", "receive_cnt"],

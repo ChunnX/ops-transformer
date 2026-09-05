@@ -29,25 +29,26 @@ class BandwidthTestOpBuilder(OpBuilder):
         return ["csrc/tools/bandwidth_test.cpp"]
 
     def schema(self):
+        # Avoid the mode parameter used by PyTorch auto-functionalization handlers.
         # Communication changes context-owned memory, even when outputs are unused.
         return (
             "bandwidth_test(Tensor(a!) context, Tensor x, Tensor dstrank_id, str group, "
-            "int world_size, int max_bs, int mode, int ccl_buffer_size, *, "
+            "int world_size, int max_bs, int test_mode, int ccl_buffer_size, *, "
             'str comm_alg="mte", int aiv_num=-1) -> (Tensor, Tensor)'
         )
 
     def register_meta(self):
         @impl(get_as_library(), self.name, "Meta")
         def bandwidth_test_meta(context, x, dstrank_id, group, world_size,
-                                max_bs, mode, ccl_buffer_size, comm_alg="mte", aiv_num=-1):
+                                max_bs, test_mode, ccl_buffer_size, comm_alg="mte", aiv_num=-1):
             _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
-                          mode, ccl_buffer_size, comm_alg, aiv_num)
+                          test_mode, ccl_buffer_size, comm_alg, aiv_num)
             return (x.new_empty((max_bs * world_size, x.size(1))),
                     x.new_empty((world_size,), dtype=torch.int32))
 
 
 def _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
-                  mode, ccl_buffer_size, comm_alg, aiv_num):
+                  test_mode, ccl_buffer_size, comm_alg, aiv_num):
     torch._check(x.dim() == 2, lambda: "x must have shape [bs, hidden]")
     torch._check(x.dtype == torch.float16, lambda: "BandwidthTest supports only float16")
     torch._check(dstrank_id.dim() == 1 and dstrank_id.dtype == torch.int32,
@@ -69,7 +70,7 @@ def _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
                  lambda: "all inputs must be on the same device")
     torch._check(0 < len(group.encode()) < 128 and "\0" not in group,
                  lambda: "group must be a valid HCCL group name")
-    torch._check(mode in (0, 1), lambda: "mode must be 0 or 1")
+    torch._check(test_mode in (0, 1), lambda: "test_mode must be 0 or 1")
     torch._check(comm_alg in ("", "mte"), lambda: "BandwidthTest implements only MTE")
     torch._check(aiv_num == -1 or aiv_num > 0, lambda: "aiv_num must be -1 or positive")
     # Kernel divides the data window in two and reserves one max_bs block per half.
@@ -84,12 +85,12 @@ _bandwidth_test_op_builder._ensure_initialized()
 
 
 @impl(get_as_library(), "bandwidth_test", "PrivateUse1")
-def _bandwidth_test(context, x, dstrank_id, group, world_size, max_bs, mode,
+def _bandwidth_test(context, x, dstrank_id, group, world_size, max_bs, test_mode,
                     ccl_buffer_size, comm_alg="mte", aiv_num=-1):
     _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
-                  mode, ccl_buffer_size, comm_alg, aiv_num)
+                  test_mode, ccl_buffer_size, comm_alg, aiv_num)
     return _bandwidth_test_op_builder.load().bandwidth_test(
-        context, x, dstrank_id, group, world_size, max_bs, mode,
+        context, x, dstrank_id, group, world_size, max_bs, test_mode,
         ccl_buffer_size, comm_alg, aiv_num)
 
 
