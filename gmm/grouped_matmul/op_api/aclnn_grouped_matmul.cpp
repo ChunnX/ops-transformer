@@ -2893,8 +2893,8 @@ static const aclTensor *SetTensorToNZFormat(const aclTensor *input, op::Shape &s
 {
     auto formatTensor = executor->CreateView(input, shape, input->GetViewOffset());
     if (formatTensor == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnGroupedMatmulWeightNz", "CreateView result", "nullptr",
-                                              "Failed to create the NZ-format view");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("aclnnGroupedMatmulWeightNz", "NZ-format view",
+                                                 "CreateView for NZ format failed");
         return nullptr;
     }
     formatTensor->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);

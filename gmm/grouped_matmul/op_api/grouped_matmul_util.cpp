@@ -75,8 +75,8 @@ bool CreateContiguousTensorListForPertoken(const aclTensorList *tensorList, std:
         aclTensor *tensor =
             executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
         if (tensor == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul", "CreateView result", "nullptr",
-                                                  "Failed to create the contiguous per-token scale view");
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul", "contiguous per-token scale view",
+                                                     "CreateView for contiguous per-token scale failed");
             return false;
         }
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());
@@ -108,8 +108,8 @@ bool CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList, 
         aclTensor *tensor =
             executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
         if (tensor == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul", "CreateView result", "nullptr",
-                                                  "Failed to create the contiguous MX scale view");
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul", "contiguous MX scale view",
+                                                     "CreateView for contiguous MX scale failed");
             return false;
         }
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());
@@ -138,8 +138,8 @@ bool CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<acl
         aclTensor *tensor =
             executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
         if (tensor == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul", "CreateView result", "nullptr",
-                                                  "Failed to create the contiguous tensor view");
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul", "contiguous tensor view",
+                                                     "CreateView for contiguous tensor failed");
             return false;
         }
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());

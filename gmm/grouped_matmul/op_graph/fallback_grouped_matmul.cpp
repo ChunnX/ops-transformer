@@ -133,9 +133,8 @@ static inline aclTensor *GeTensor2AclTensor(const gert::Tensor *geTensor, bool e
                                             bool enableNZ = false)
 {
     OP_CHECK_IF(geTensor == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul aclnnfallback",
-                                                      ("input tensor at index " + std::to_string(index)).c_str(),
-                                                      "nullptr", "Input tensor conversion requires a non-null tensor"),
+                OP_LOGE_WITH_INVALID_INPUT("GroupedMatmul aclnnfallback",
+                                           ("input tensor at index " + std::to_string(index)).c_str()),
                 return nullptr);
     auto storageShape = geTensor->GetStorageShape();
     if (storageShape.GetDimNum() <= 1) {
@@ -148,8 +147,8 @@ static inline aclTensor *GeTensor2AclTensor(const gert::Tensor *geTensor, bool e
 
     static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
     OP_CHECK_IF(aclCreateTensor == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul aclnnfallback", "aclCreateTensor lookup result",
-                                                      "nullptr", "Failed to load aclCreateTensor"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul aclnnfallback", "aclCreateTensor",
+                                                         "Failed to load opapi func aclCreateTensor"),
                 return nullptr);
 
     void *deviceAddr = const_cast<void *>(geTensor->GetAddr());
@@ -191,8 +190,8 @@ static inline aclTensor *GeTensor2AclTensor(const gert::Tensor *geTensor, bool e
     aclTensor *out = aclCreateTensor(viewShape.data(), viewShape.size(), dataType, strides.data(), 0, aclFormat,
                                      storageShapeVec.data(), storageShapeVec.size(), deviceAddr);
     OP_CHECK_IF(out == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul aclnnfallback", "aclCreateTensor result",
-                                                      "nullptr", "Failed to create an ACL tensor"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul aclnnfallback", "output tensor",
+                                                         "aclCreateTensor failed to create an ACL tensor"),
                 return nullptr);
     return out;
 }
@@ -240,7 +239,7 @@ static graphStatus PrepareOutputTensorVector(const OpExecuteContext *host_api_ct
     } else if (2 == splitItem || 3 == splitItem) { // Length of tensorListY equals 1 when split_item = 2 / 3
         numGeY = 1;
     } else {
-        OP_LOGE_FOR_INVALID_VALUE("aclnnfallback", "split_item", std::to_string(splitItem), "0/1/2/3");
+        OP_LOGE_FOR_INVALID_VALUE("GroupedMatmul aclnnfallback", "split_item", std::to_string(splitItem), "0/1/2/3");
         return GRAPH_FAILED;
     }
 
@@ -304,15 +303,15 @@ static bool IsPerTileQuantMode(const OpExecuteContext *host_api_ctx, bool transp
 static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext *host_api_ctx)
 {
     OP_CHECK_IF(host_api_ctx == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul aclnnfallback", "execution context", "nullptr",
-                                                      "execution context must not be null"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul aclnnfallback", "execution context",
+                                                         "GroupedMatmulExecuteFunc received a null execution context"),
                 return GRAPH_FAILED);
 
     auto attrs = host_api_ctx->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul aclnnfallback", "GetAttrs result", "nullptr",
-                                                      "attribute lookup failed"),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(
+        attrs == nullptr,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul aclnnfallback", "attrs", "GetAttrs returned nullptr"),
+        return GRAPH_FAILED);
     const int64_t *splitItemGe = attrs->GetAttrPointer<int64_t>(INDEX_GMM_ATTR_SPLIT_ITEM);
     OP_CHECK_IF(splitItemGe == nullptr, OP_LOGE_WITH_INVALID_INPUT("GroupedMatmul aclnnfallback", "split_item"),
                 return GRAPH_FAILED);
@@ -336,11 +335,10 @@ static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext *host_api_ctx)
                 return GRAPH_FAILED);
 
     static const auto aclCreateTensorList = GET_OP_API_FUNC(aclCreateTensorList);
-    OP_CHECK_IF(
-        aclCreateTensorList == nullptr,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul aclnnfallback", "aclCreateTensorList lookup result",
-                                              "nullptr", "Failed to load aclCreateTensorList"),
-        return GRAPH_FAILED);
+    OP_CHECK_IF(aclCreateTensorList == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul aclnnfallback", "aclCreateTensorList",
+                                                         "Failed to load opapi func aclCreateTensorList"),
+                return GRAPH_FAILED);
 
     std::vector<const aclTensor *> aclTensorVectorX;
     PrepareAclTensorVector(host_api_ctx, aclTensorVectorX, INDEX_GMM_INPUT_X, *isXTransposed, false);
@@ -381,17 +379,17 @@ static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext *host_api_ctx)
     if (perTokenScale == nullptr) {
         std::vector<int64_t> shape{0};
         static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
-        OP_CHECK_IF(
-            aclCreateTensor == nullptr,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul aclnnfallback", "aclCreateTensor lookup result",
-                                                  "nullptr", "Failed to load aclCreateTensor"),
-            return GRAPH_FAILED);
+        OP_CHECK_IF(aclCreateTensor == nullptr,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul aclnnfallback", "aclCreateTensor",
+                                                             "Failed to load opapi func aclCreateTensor"),
+                    return GRAPH_FAILED);
         perTokenScale = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(), 0,
                                         aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(), nullptr);
-        OP_CHECK_IF(perTokenScale == nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul aclnnfallback", "aclCreateTensor result",
-                                                          "nullptr", "Failed to create the perTokenScale placeholder"),
-                    return GRAPH_FAILED);
+        OP_CHECK_IF(
+            perTokenScale == nullptr,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul aclnnfallback", "perTokenScale",
+                                                     "aclCreateTensor failed to create the perTokenScale placeholder"),
+            return GRAPH_FAILED);
     }
     if (perTokenScaleTensor != nullptr &&
         (perTokenScaleTensor->GetDataType() == ge::DataType::DT_FLOAT8_E8M0 || isPerTile)) {
@@ -423,9 +421,9 @@ static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext *host_api_ctx)
         *splitItemGe, *groupTypeGe, *groupListTypeGe, *actTypeGe, tuningConfig, geTensorVectorY, actFeatureOutOptional,
         dynQuantScaleOutOptional);
     OP_CHECK_IF(api_ret_gmm != GRAPH_SUCCESS,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul aclnnfallback", "aclnnGroupedMatmulV5 status",
-                                                      std::to_string(static_cast<unsigned int>(api_ret_gmm)),
-                                                      "aclnnGroupedMatmulV5 must return GRAPH_SUCCESS"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul aclnnfallback", "input",
+                                                         "aclnnGroupedMatmulV5 execution failed, status = " +
+                                                             std::to_string(static_cast<unsigned int>(api_ret_gmm))),
                 return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }

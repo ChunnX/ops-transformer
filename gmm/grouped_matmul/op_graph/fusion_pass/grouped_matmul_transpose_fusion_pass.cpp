@@ -837,13 +837,15 @@ Status FusionTransposeNode(GraphPtr &graph, GNode &groupedMatmulNode, int32_t in
         return GRAPH_NOT_CHANGED;
     }
     if (!RelinkInput(graph, groupedMatmulNode, index, pattern)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kPassName, "input index", std::to_string(index),
-                                              "Failed to relink the GroupedMatmul input");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+            kPassName, "input", "Failed to relink the GroupedMatmul input at index " + std::to_string(index));
         return GRAPH_FAILED;
     }
     if (!SetTransposeAttr(groupedMatmulNode, index)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kPassName, "input index", std::to_string(index),
-                                              "Failed to update the GroupedMatmul transpose attribute");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(kPassName, "transpose attribute",
+                                                 "Failed to update the GroupedMatmul transpose attribute for input "
+                                                 "index " +
+                                                     std::to_string(index));
         return GRAPH_FAILED;
     }
     fusedPatterns.emplace_back(pattern);
@@ -1006,8 +1008,9 @@ Status RunGroupedMatmulTransposeFusion(GraphPtr &graph, CustomPassContext &passC
             continue;
         }
         if (status != GRAPH_NOT_CHANGED) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kPassName, "Fusion status", std::to_string(status),
-                                                  "Fusion status must be SUCCESS or GRAPH_NOT_CHANGED");
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                kPassName, "graph",
+                "GroupedMatmul transpose fusion failed, status = " + std::to_string(static_cast<unsigned int>(status)));
             return status;
         }
     }

@@ -44,8 +44,8 @@ const aclTensorList *GroupedMatmul(const aclTensorList *x, const aclTensorList *
     for (size_t i(0); i < outLength; ++i) {
         auto outTensor = executor->AllocTensor(yDtype, x0->GetStorageFormat(), x0->GetOriginalFormat());
         if (outTensor == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul", "AllocTensor result", "nullptr",
-                                                  "Failed to allocate GroupedMatmul output");
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul", "output",
+                                                     "AllocTensor for GroupedMatmul output failed");
             return nullptr;
         }
         tensorsVec.emplace_back(outTensor);
@@ -54,8 +54,8 @@ const aclTensorList *GroupedMatmul(const aclTensorList *x, const aclTensorList *
     int64_t outputDtype = yDtype == DataType::DT_INT32 ? 2 : -1;
     auto out = executor->AllocTensorList(tensorsVec.data(), outLength);
     if (out == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul", "AllocTensorList result", "nullptr",
-                                              "Failed to allocate GroupedMatmul output list");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul", "output list",
+                                                 "AllocTensorList for GroupedMatmul output failed");
         return nullptr;
     }
 
@@ -66,9 +66,8 @@ const aclTensorList *GroupedMatmul(const aclTensorList *x, const aclTensorList *
         OP_OUTPUT(out),
         OP_ATTR(splitItem, outputDtype, transposeWeight, transposeX, groupType, groupListType, actType, tuningConfig));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul", "InferShape status",
-                                              std::to_string(static_cast<int64_t>(ret)),
-                                              "InferShape must return ACLNN_SUCCESS");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+            "GroupedMatmul", "input", "InferShape failed, ret = " + std::to_string(static_cast<int64_t>(ret)));
         return nullptr;
     }
     ret = ADD_TO_LAUNCHER_LIST_AICORE(
@@ -78,9 +77,9 @@ const aclTensorList *GroupedMatmul(const aclTensorList *x, const aclTensorList *
         OP_OUTPUT(out),
         OP_ATTR(splitItem, outputDtype, transposeWeight, transposeX, groupType, groupListType, actType, tuningConfig));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul", "ADD_TO_LAUNCHER_LIST_AICORE status",
-                                              std::to_string(static_cast<int64_t>(ret)),
-                                              "ADD_TO_LAUNCHER_LIST_AICORE must return ACLNN_SUCCESS");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+            "GroupedMatmul", "input",
+            "ADD_TO_LAUNCHER_LIST_AICORE failed, ret = " + std::to_string(static_cast<int64_t>(ret)));
         return nullptr;
     }
 
