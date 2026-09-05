@@ -1006,20 +1006,31 @@ def print_summary_table(results: List[Dict[str, Any]]):
         return
 
     header = (
-        f"{'No.':<5} {'BS':<5} {'H':<10} {'Total Data(KB)':<16} "
+        f"{'No.':<5} {'BS':<8} {'H':<10} {'Rank Data(MB)':<16} "
+        f"{'Batch Tokens':<14} {'Batch Data(MB)':<16} "
         f"{'Mean BW(GB/s)':<16} {'Max BW(GB/s)':<16} {'Mean Time(us)':<14}"
     )
     logger.info(header)
-    logger.info("-" * 90)
+    logger.info("-" * len(header))
 
     max_bandwidth = 0
     max_bw_config = None
 
     for r in results:
         cfg = r["config"]
+        token_bytes = cfg["data_size"] * dtype_bytes
+        rank_data_mb = cfg["bs"] * token_bytes / (1024 * 1024)
+        if CONFIG.model.comm_alg != "urma":
+            batch_tokens_text = batch_data_mb_text = "N/A"
+        elif CONFIG.model.batch_tokens == 0:
+            batch_tokens_text = batch_data_mb_text = "Auto"
+        else:
+            batch_tokens_text = str(CONFIG.model.batch_tokens)
+            batch_data_mb_text = f"{CONFIG.model.batch_tokens * token_bytes / (1024 * 1024):.4f}"
         row = (
-            f"{r['config_index']:<5} {cfg['bs']:<5} {cfg['data_size']:<10} "
-            f"{r['single_rank_data_kb']:<16.4f} {r['mean_bandwidth_gbps']:<16.2f} "
+            f"{r['config_index']:<5} {cfg['bs']:<8} {cfg['data_size']:<10} "
+            f"{rank_data_mb:<16.4f} {batch_tokens_text:<14} {batch_data_mb_text:<16} "
+            f"{r['mean_bandwidth_gbps']:<16.2f} "
             f"{r['max_bandwidth_gbps']:<16.2f} {r['mean_time_us']:<14.2f}"
         )
         logger.info(row)
@@ -1028,7 +1039,10 @@ def print_summary_table(results: List[Dict[str, Any]]):
             max_bandwidth = r["max_bandwidth_gbps"]
             max_bw_config = r
 
-    logger.info("-" * 90)
+    logger.info("-" * len(header))
+    logger.info("MB = 1024^2 bytes. Rank Data = BS * H * dtype bytes, including local-rank destinations.")
+    logger.info("Batch Data is the configured full-batch payload per destination; the final batch may be smaller.")
+    logger.info("Auto: batch size is selected by tiling/SQ. N/A: MTE has no URMA batch submission.")
 
     if max_bw_config:
         logger.info(f"\n{'*' * 90}")
@@ -1036,7 +1050,9 @@ def print_summary_table(results: List[Dict[str, Any]]):
             f"Maximum Bandwidth: {max_bw_config['max_bandwidth_gbps']:.2f} GB/s"
         )
         logger.info(f"  H: {max_bw_config['config']['data_size']}")
-        logger.info(f"  Total Data: {max_bw_config['single_rank_data_kb']:.4f} KB")
+        best_cfg = max_bw_config["config"]
+        best_rank_data_mb = best_cfg["bs"] * best_cfg["data_size"] * dtype_bytes / (1024 * 1024)
+        logger.info(f"  Rank Data: {best_rank_data_mb:.4f} MB")
         logger.info(f"  Mean Time: {max_bw_config['mean_time_us']:.2f} us")
         logger.info(f"{'*' * 90}")
 
