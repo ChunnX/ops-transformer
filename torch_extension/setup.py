@@ -156,38 +156,6 @@ if _selected_ops is not None:
         _entry_points.append(
             "%s = %s.ops.%s.%s:%s" % (_op_name, PACKAGE_NAME, _cat, _op_name, _op_name)
         )
-        # 一个 torch_extension 可导出多个公共算子(如 flash_attn 的 __all__ 还含
-        # flash_attn_metadata): AST 解析其 __all__, 为其余导出名补 entry point
-        _te_init = os.path.join(
-            OPS_TRANSFORMER_ROOT, _cat, _op_name, "torch_extension", "__init__.py"
-        )
-        _extra_names = []
-        if os.path.isfile(_te_init):
-            import ast as _ast
-
-            with open(_te_init) as _fh:
-                _tree = _ast.parse(_fh.read())
-            for _node in _tree.body:
-                if isinstance(_node, _ast.Assign) and any(
-                    getattr(_t, "id", None) == "__all__" for _t in _node.targets
-                ):
-                    _extra_names = [
-                        _e.value
-                        for _e in _node.value.elts
-                        if isinstance(_e, _ast.Constant) and isinstance(_e.value, str)
-                    ]
-                    break
-            _extra_names = [
-                _n
-                for _n in _extra_names
-                if _n != _op_name
-                and not _n.startswith("_")
-                and not _n.startswith("graph_convert")
-            ]
-        for _n in _extra_names:
-            _entry_points.append(
-                "%s = %s.ops.%s.%s:%s" % (_n, PACKAGE_NAME, _cat, _op_name, _n)
-            )
 
 
 class Clean(Command):
