@@ -157,4 +157,21 @@ extern "C" __global__ __aicore__ void moe_init_routing_quant_v2(
         gatherDynamicQuantDroppadOp.Process();
         gatherPipe.Destroy();
     }
+
+    // TODO(#debug): 临时调试通道，定位后删除。将二进制指纹与 kernel 侧输出地址写入 cumsum 输出前 5 个元素
+    if ((TILING_KEY_IS(11000) || TILING_KEY_IS(11010)) && t->expertTokensCountOrCumsumFlag != EXERPT_TOKENS_NONE &&
+        GetBlockIdx() == 0) {
+        GlobalTensor<int32_t> dbgGm;
+        dbgGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensCountOrCumsum);
+        MoeInitRoutingQuantV2::SetWaitFlag<AscendC::HardEvent::MTE3_S>(AscendC::HardEvent::MTE3_S);
+        uint64_t scaleAddr = reinterpret_cast<uint64_t>(dynamicQuantScale);
+        uint64_t xAddr = reinterpret_cast<uint64_t>(expandedX);
+        dbgGm.SetValue(0, 0x20260906);
+        dbgGm.SetValue(1, static_cast<int32_t>(scaleAddr & 0xFFFFFFFF));
+        dbgGm.SetValue(2, static_cast<int32_t>(scaleAddr >> 32));
+        dbgGm.SetValue(3, static_cast<int32_t>(xAddr & 0xFFFFFFFF));
+        dbgGm.SetValue(4, static_cast<int32_t>(xAddr >> 32));
+        AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(dbgGm);
+    }
 }
