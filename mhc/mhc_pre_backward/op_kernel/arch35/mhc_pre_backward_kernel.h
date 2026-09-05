@@ -20,6 +20,7 @@
 #include "lib/matmul_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "mhc_pre_backward_utils.h"
+#include "mhc_pre_backward_cube_compute.h"
 
 namespace MhcPreBackward {
 
@@ -32,7 +33,7 @@ constexpr uint32_t GAMMA_REG_REUSE_T_THRESHOLD = 3072;
 template <class T, class P>
 class MhcPreBackwardKernel {
 public:
-    __aicore__ inline MhcPreBackwardKernel(MT_C0 &matmul0, MT_C1 &matmul1) : mm0(matmul0), mm1(matmul1)
+    __aicore__ inline MhcPreBackwardKernel(MT_C1 &matmul1) : mm1(matmul1)
     {
     }
     // 入口函数
@@ -128,8 +129,8 @@ public:
     __aicore__ inline void VFDoV3ProcessAlphaGrad(__ubuf__ P *alphaGradOut, __ubuf__ P *alphaGradIn);
 
 private:
-    MT_C0 &mm0;
     MT_C1 &mm1;
+    MhcPreBackwardC0Basic c0Basic_;
     uint32_t coreNum_;
     uint64_t totalLength_;
     uint64_t vecDealBSPeCore_;
@@ -291,6 +292,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
     gradHPostOffset_ = hPreMaxBufLen_ * sizeof(P);
     gradHResBufLen_ = vecDealChunk_ * N_ * N_;
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + gradHResBufLen_;
+    if ASCEND_IS_AIC {
+        pipe_ = initParams.tPipeIn;
+        c0Basic_.Init(pipe_);
+    }
     if ASCEND_IS_AIV {
         pipe_ = initParams.tPipeIn;
         pipe_->InitBuffer(vecInQueue0_, 2, INOUT_QUEUE_SIZE);
@@ -986,22 +991,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
                                                              uint32_t buffIdx)
 {
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
-    // 设置矩阵形状
-    mm0.SetOrgShape(totalLength_, nD_, fusionSize_);
-    mm0.SetSingleShape(currentBSBlock, currentNDBlock, fusionSize_);
-    // h_mix_grad @ phi
-    mm0.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)]); // [BS, N^2+2N]
-    mm0.SetTensorB(phiGm_[offsetND], false);                                 // [N^2+2N, ND]
-    // 计算
     uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffIdx);
-    while (mm0.Iterate()) {
-        mm0.GetTensorC(workSpaceGm_[writeOffset], 0, true); // 连续写
-        // 每个128行结果写回完成后发布一次，包含最后不足128行的尾块。
-        AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(CROSS_CORE_WAIT_FLAG_C0);
-        writeOffset += MATMUL_WRITE_OFFSET_M * MATMUL_WRITE_OFFSET_N;
-    }
-    mm0.End();
-
+    c0Basic_.Process(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], phiGm_[offsetND],
+                     workSpaceGm_[writeOffset], currentBSBlock, currentNDBlock, fusionSize_, nD_);
 }
 
 template <class T, class P>
