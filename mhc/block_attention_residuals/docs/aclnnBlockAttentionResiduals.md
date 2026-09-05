@@ -353,7 +353,7 @@ aclnnStatus aclnnBlockAttentionResiduals(
   - aclnnBlockAttentionResiduals默认确定性实现。
 
 - Batch一致性说明：
-  - 默认非Batch一致性实现，不支持通过aclrtSetSysParamOpt开启Batch一致性。
+  - aclnnBlockAttentionResiduals默认Batch一致性实现。
 
 - 规格约束：
   - T大于等于0，H大于等于1，N取值范围为1~100。
