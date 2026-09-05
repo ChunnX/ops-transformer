@@ -1,12 +1,14 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-"""Continuously submit resident UDMA workloads without inter-call synchronization."""
+"""Continuously run resident UDMA workloads with optional per-call diagnosis."""
 
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import sys
 import time
+from datetime import timedelta
 from functools import partial
 from pathlib import Path
 
@@ -30,6 +32,20 @@ def positive_iterations(value):
         raise argparse.ArgumentTypeError("iterations must be a positive integer") from error
     if result <= 0:
         raise argparse.ArgumentTypeError("iterations must be a positive integer")
+    return result
+
+
+def positive_timeout_seconds(value):
+    try:
+        result = float(value)
+    except (ValueError, TypeError) as error:
+        raise argparse.ArgumentTypeError(
+            "timeout must be a finite positive number of seconds"
+        ) from error
+    if not math.isfinite(result) or result <= 0:
+        raise argparse.ArgumentTypeError(
+            "timeout must be a finite positive number of seconds"
+        )
     return result
 
 
@@ -126,18 +142,65 @@ def prepare_workload(case, mode, rank, device):
     return launches, metadata
 
 
-def run_iterations(launches, iterations, report):
-    """No allocations of device storage, result reads, logging or sync in this loop."""
-    for _ in range(iterations):
+class DebugRankSynchronizer:
+    """Identify the exact launch, NPU drain, or peer rendezvous that stalls."""
+
+    def __init__(self, dist, npu, group, timeout_seconds, rank, report):
+        self.dist = dist
+        self.npu = npu
+        self.group = group
+        self.timeout = timedelta(seconds=timeout_seconds)
+        self.rank = rank
+        self.report = report
+        self.sequence = 0
+
+    def _log(self, name, iteration, stage):
+        event = {
+            "rank": self.rank, "iteration": iteration, "sequence": self.sequence,
+            "operator": name, "stage": stage,
+        }
+        self.report["last_debug_event"] = event
+        print(
+            "[debug] rank={} iteration={} seq={} op={} {}".format(
+                self.rank, iteration, self.sequence, name, stage,
+            ),
+            flush=True,
+        )
+
+    def before_launch(self, name, iteration):
+        self.sequence += 1
+        self._log(name, iteration, "before_launch")
+
+    def after_launch(self, name, iteration):
+        self._log(name, iteration, "before_npu_sync")
+        self.npu.synchronize()
+        self._log(name, iteration, "after_npu_sync")
+        self.dist.monitored_barrier(group=self.group, timeout=self.timeout)
+        self.report["synchronized_calls"][name] += 1
+        self._log(name, iteration, "after_gloo_barrier")
+
+
+def run_iterations(launches, iterations, report, debug_sync=None):
+    """Run the fixed launch sequence, optionally diagnosing every call."""
+    for iteration_index in range(iterations):
+        iteration = iteration_index + 1
         for name, launch in launches:
+            if debug_sync is not None:
+                debug_sync.before_launch(name, iteration)
             launch()
             report["submitted_calls"][name] += 1
+            if debug_sync is not None:
+                debug_sync.after_launch(name, iteration)
         report["submitted_iterations"] += 1
 
 
-def run_worker(case, mode, iterations, output_dir):
+def run_worker(
+    case, mode, iterations, output_dir, *, sync_each_call=False,
+    sync_timeout_seconds=120.0,
+):
     validate_stress_case(case, mode)
     validate_stress_environment(os.environ)
+    sync_timeout_seconds = positive_timeout_seconds(sync_timeout_seconds)
     import torch
     import torch.distributed as dist
     import torch_npu
@@ -154,12 +217,17 @@ def run_worker(case, mode, iterations, output_dir):
         "iterations": iterations, "requested_calls": {name: iterations for name in names},
         "submitted_iterations": 0, "submitted_calls": {name: 0 for name in names},
         "completed_iterations": None, "completed_calls": None,
+        "sync_each_call": sync_each_call,
+        "sync_timeout_seconds": sync_timeout_seconds if sync_each_call else None,
+        "synchronized_calls": {name: 0 for name in names} if sync_each_call else None,
+        "last_debug_event": None,
         "passed": False, "stage": "initializing", "errors": [],
     }
     report_path = Path(output_dir) / "worker_rank_{}.json".format(rank)
     write_json(report_path, report)
     initialized_dist = False
     initialized_udma = False
+    debug_group = None
     launches = None
     try:
         torch_npu.npu.set_device(local_rank)
@@ -167,6 +235,12 @@ def run_worker(case, mode, iterations, output_dir):
             raise RuntimeError("stress requires PyTorch Gloo support for initial rank coordination")
         dist.init_process_group("gloo", rank=rank, world_size=world_size)
         initialized_dist = True
+        if sync_each_call:
+            # Keep diagnostics independent from the default process group so a
+            # monitored timeout reports peers that did not reach this call.
+            debug_group = dist.new_group(
+                backend="gloo", timeout=timedelta(seconds=sync_timeout_seconds),
+            )
         udma.init_udma_group(
             rank=rank, world_size=world_size, local_rank=local_rank,
             init_method=udma_init_method_from_env(), heap_size=validation_udma_heap_size(),
@@ -182,13 +256,24 @@ def run_worker(case, mode, iterations, output_dir):
             dist.barrier()
             report["stage"] = "submitting"
             write_json(report_path, report)
-            print("[stress] rank={} mode={} iterations={} starting".format(rank, mode, iterations), flush=True)
+            print(
+                "[stress] rank={} mode={} iterations={} sync_each_call={} starting".format(
+                    rank, mode, iterations, sync_each_call,
+                ),
+                flush=True,
+            )
             started = time.perf_counter()
-            run_iterations(launches, iterations, report)
+            debug_sync = None
+            if sync_each_call:
+                debug_sync = DebugRankSynchronizer(
+                    dist, torch_npu.npu, debug_group, sync_timeout_seconds, rank, report,
+                )
+            run_iterations(launches, iterations, report, debug_sync)
             report["stage"] = "draining"
             report["submission_seconds"] = time.perf_counter() - started
             write_json(report_path, report)
-            stream.synchronize()
+            if not sync_each_call:
+                stream.synchronize()
             report["elapsed_seconds"] = time.perf_counter() - started
             report["completed_iterations"] = iterations
             report["completed_calls"] = dict(report["submitted_calls"])
@@ -232,11 +317,23 @@ def main():
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--mode", choices=STRESS_MODES, required=True)
     parser.add_argument("--iterations", type=positive_iterations, required=True)
+    parser.add_argument(
+        "--sync-each-call", action="store_true",
+        help="synchronize NPU work and enter a monitored Gloo barrier after every operator call",
+    )
+    parser.add_argument(
+        "--sync-timeout-seconds", type=positive_timeout_seconds, default=120.0,
+        help="monitored Gloo barrier timeout used with --sync-each-call (default: 120)",
+    )
     args = parser.parse_args()
     cases = read_resolved_cases(args.resolved_case)
     if len(cases) != 1:
         raise ValueError("stress worker requires exactly one resolved case")
-    run_worker(cases[0], args.mode, args.iterations, args.output_dir)
+    run_worker(
+        cases[0], args.mode, args.iterations, args.output_dir,
+        sync_each_call=args.sync_each_call,
+        sync_timeout_seconds=args.sync_timeout_seconds,
+    )
     return 0
 
 

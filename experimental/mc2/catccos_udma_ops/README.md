@@ -597,21 +597,41 @@ Inputs, both weights, contiguous NPU int64 routes and output buffers are
 prepared once. All calls pass reusable `out` tensors; A also receives the
 host-known row count. Route diagnostics must be disabled
 (`CATCCOS_UDMA_VALIDATE_ROUTES=0`) because they read device counts back on every
-call. The framework synchronizes preparation and aligns ranks once before
-the loop, then drains the stream after the entire loop. It adds no barriers,
-stream switches, device reads, allocations or synchronization between calls;
-the operators retain their own required communication synchronization.
+call. By default the framework synchronizes preparation and aligns ranks once
+before the loop, then drains the stream after the entire loop. It adds no
+barriers, stream switches, device reads, allocations or synchronization between
+calls; the operators retain their own required communication synchronization.
+
+Add `--sync-each-call` when diagnosing a hang. This creates one dedicated Gloo
+group and, after every operator call, performs an NPU synchronization followed
+by a `monitored_barrier`. The default barrier timeout is 120 seconds and can be
+changed with `--sync-timeout-seconds`:
+
+```bash
+bash scripts/run_stress.sh --mode chain --case-id model_case_1 --iterations 10000 \
+  --sync-each-call --sync-timeout-seconds 120
+```
+
+Each rank prints `before_launch`, `before_npu_sync`, `after_npu_sync` and
+`after_gloo_barrier` with its one-based iteration and call sequence. Output is
+shown live and also saved in `torchrun.log`. A final `before_launch` means the
+Python operator call did not return; `before_npu_sync` without `after_npu_sync`
+means its NPU work did not finish; `after_npu_sync` without
+`after_gloo_barrier` means this rank finished but at least one peer did not
+reach the same barrier. In `chain` mode A and B are synchronized separately.
 
 Use `--timeout-seconds 3600` to set the per-case host deadline, including
 initialization and teardown, and `--fail-fast` to stop after a failed case.
 Results go to `validation_results/<timestamp>/stress` or `--output-dir`.
 Each case contains `resolved_case.json`, `launch.json`, `torchrun.log`, per-rank
 `worker_rank_<rank>.json`, `report.json` and collected runtime logs; the root
-contains `environment.json` and `summary.json`. Submission counts are not
-completion counts: completion is confirmed only after the final stream drain.
-During the loop no progress files are written; if a process is killed while
-submitting, the saved counts reflect only the last checkpoint, not the exact
-failure location. Overall elapsed time includes Python submission overhead
+contains `environment.json` and `summary.json`. In the default mode submission
+counts are not completion counts: completion is confirmed only after the final
+stream drain. During the loop no progress files are written; if a process is
+killed while submitting, the saved counts reflect only the last checkpoint.
+With `--sync-each-call`, the live log gives the exact last reached stage and a
+worker exception also persists it in `last_debug_event`. Overall elapsed time
+includes Python submission overhead
 and is not a per-kernel latency measurement. PASS indicates successful
 execution and teardown on every rank, not numerical correctness.
 
