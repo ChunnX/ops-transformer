@@ -152,7 +152,7 @@ $$
   <tr>
     <td class="tg-0pky">blockShape</td>
     <td class="tg-0pky">属性</td>
-    <td class="tg-0pky">稀疏块形状[blockShapeX, blockShapeY]，当前支持[1, 128]。</td>
+    <td class="tg-0pky">稀疏块形状[blockShapeX, blockShapeY]；X仅支持1，Y须≥128且为64倍数。</td>
     <td class="tg-0pky">INT64</td>
     <td class="tg-0pky">-</td>
   </tr>
@@ -241,7 +241,7 @@ $$
 * 须先调用GenericBlockSparseAttentionGradMetadata生成metadata，再调用本算子。
 * qInputLayout与kvInputLayout须相同，取值TND/BNSD/BSND；TND布局下须传入对应cuSeqLengths。
 * HeadDim固定为128；N1/N2取值范围[1, 128]，且N1 % N2 == 0。
-* blockShape当前仅支持[1, 128]；isPackedGqa当前仅支持1；maskType当前仅支持1。
+* blockShape：blockShapeX仅支持1；blockShapeY须≥128且为64的倍数（Cube按baseN=128切分S2）；isPackedGqa当前仅支持1；maskType当前仅支持1。
 * windowSizeLeft/windowSizeRight不使能时必须为-1；attenMaskOptional当前应传nullptr。
 * 默认为非确定性实现，暂不支持确定性实现。
 
