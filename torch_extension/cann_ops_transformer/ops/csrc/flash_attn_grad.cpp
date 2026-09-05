@@ -53,7 +53,7 @@ FlashAttnGrad(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v,
     char *layoutKvPtr = const_cast<char *>(layoutKv.c_str());
     char *layoutOutPtr = const_cast<char *>(layoutOut.c_str());
 
-    ACLNN_CMD(aclnnFlashAttnGrad, q, k, v, doTensor, attnOut, softmaxLse,
+    ACLNN_CMD(aclnnInnerFlashAttnGrad, q, k, v, doTensor, attnOut, softmaxLse,
               cuSeqlensQ, cuSeqlensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata,
               softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKv,
               layoutQPtr, layoutKvPtr, layoutOutPtr, dq, dk, dv);
