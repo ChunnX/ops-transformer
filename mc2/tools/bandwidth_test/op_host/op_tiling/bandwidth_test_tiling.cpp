@@ -404,8 +404,10 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     uint32_t numBlocks = 1U;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t platformAivNum = ascendcPlatform.GetCoreNumAiv();
-    uint64_t ubSize = 0UL;
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    uint64_t platformUbSize = 0UL;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, platformUbSize);
+    // Ascend950 has 256 KiB UB; the system's 8 KiB reservation is already excluded here.
+    constexpr uint64_t ubSize = 248 * 1024;
 
     auto attrs = context->GetAttrs();
     auto aivNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_AIV_NUM_INDEX);
@@ -418,25 +420,35 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     }
 
     OP_TILING_CHECK(aivNum == 0, OP_LOGE(nodeName, "Platform has no AIV cores."), return ge::GRAPH_FAILED);
-    constexpr uint64_t systemUbBytes = 8 * 1024;
-    OP_TILING_CHECK(ubSize <= systemUbBytes, OP_LOGE(nodeName, "Insufficient usable UB."), return ge::GRAPH_FAILED);
-    ubSize = std::min(ubSize - systemUbBytes, uint64_t(248 * 1024));
     auto alignUp = [](uint64_t value, uint64_t alignment) { return (value + alignment - 1) / alignment * alignment; };
     // Match the kernel's status allocation for the actual world size, including uneven rank splits.
     uint64_t ranksPerCore = (static_cast<uint64_t>(tilingData->worldSize) + aivNum - 1) / aivNum;
     uint64_t statusBytes = alignUp(ranksPerCore, 8) * 32;
-    uint64_t dstRankBytes = alignUp(static_cast<uint64_t>(tilingData->maxBs) * 4, 32);
-    uint64_t dstRankBufferBytes = std::max(dstRankBytes, alignUp(static_cast<uint64_t>(tilingData->maxBs) * 2, 256));
     uint64_t rowBytes = static_cast<uint64_t>(tilingData->dataSize) * 2;
-    uint64_t initBytes = 32 + statusBytes + dstRankBufferBytes + 3 * std::max(rowBytes * 2, dstRankBytes);
-    uint64_t queueCount = initBytes + rowBytes * 2 > 170 * 1024 ? 1 : 2;
-    uint64_t requiredUb = initBytes + queueCount * rowBytes;
+    uint64_t requiredUb = 0;
     tilingData->batchBufferBytes = 0;
     if (IsUrma(context)) {
-        requiredUb += URMA_INIT_BYTES;
-        OP_TILING_CHECK(requiredUb > ubSize || ubSize - requiredUb < URMA_WQE_BYTES,
-                        OP_LOGE(nodeName, "Insufficient UB for one URMA WQE."), return ge::GRAPH_FAILED);
-        tilingData->batchBufferBytes = (ubSize - requiredUb) / URMA_WQE_BYTES * URMA_WQE_BYTES;
+        // Only one row is live during staging. Rank IDs and WQEs are reused for each chunk.
+        uint64_t fixedBytes = 32 + statusBytes + rowBytes + URMA_INIT_BYTES;
+        constexpr uint64_t bytesPerToken = sizeof(int32_t) + URMA_WQE_BYTES;
+        constexpr uint64_t tokenAlignment = 32 / sizeof(int32_t);
+        OP_TILING_CHECK(fixedBytes > ubSize || ubSize - fixedBytes < tokenAlignment * bytesPerToken,
+                        OP_LOGE(nodeName,
+                                "Insufficient UB for URMA batch: max_bs=%d, hidden=%d, world_size=%d, "
+                                "aiv_num=%u, platform_ub=%lu, usable_ub=%lu, fixed_bytes=%lu.",
+                                tilingData->maxBs, tilingData->dataSize, tilingData->worldSize, aivNum,
+                                platformUbSize, ubSize, fixedBytes), return ge::GRAPH_FAILED);
+        uint64_t batchTokens = (ubSize - fixedBytes) / bytesPerToken / tokenAlignment * tokenAlignment;
+        batchTokens = std::min(batchTokens, alignUp(tilingData->maxBs, tokenAlignment));
+        tilingData->batchBufferBytes = batchTokens * URMA_WQE_BYTES;
+        requiredUb = fixedBytes + batchTokens * bytesPerToken;
+    } else {
+        uint64_t dstRankBytes = alignUp(static_cast<uint64_t>(tilingData->maxBs) * 4, 32);
+        uint64_t dstRankBufferBytes =
+            std::max(dstRankBytes, alignUp(static_cast<uint64_t>(tilingData->maxBs) * 2, 256));
+        uint64_t initBytes = 32 + statusBytes + dstRankBufferBytes + 3 * std::max(rowBytes * 2, dstRankBytes);
+        uint64_t queueCount = initBytes + rowBytes * 2 > 170 * 1024 ? 1 : 2;
+        requiredUb = initBytes + queueCount * rowBytes;
     }
     uint64_t waitBytes = std::max(alignUp(ranksPerCore, 8) * 32, uint64_t(256));
     uint64_t gatherBytes = alignUp(std::max(static_cast<uint64_t>(tilingData->worldSize) * 4,

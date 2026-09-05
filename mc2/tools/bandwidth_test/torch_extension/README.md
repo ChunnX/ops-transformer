@@ -101,27 +101,29 @@ URMA 是独立类，声明、类外实现和 `Process()` 分支排列与 MTE 一
 通道句柄在初始化时按本核负责的目标卡读取一次并缓存。
 数据和状态通知的所有远端 Write 都经 batch 接口提交，包括只有一条请求的尾批。
 每个阶段处理一张远端卡时创建一次 batch handle，全部 token 和 commit 复用它。
-保留现有工作 buffer 和 token 队列配置，WQE 缓冲区取剩余可用 UB 的最大 64 字节整数倍：
+URMA 分块读取 rank ID，发送时累计各目标卡的 token 数，不再分配全量 ID 和三个计数临时区。
+token 搬运只使用一行 UB，每行 MTE3 完成后复用；ID 和 WQE buffer 则逐批复用。
+host 按完整的 248 KiB 可用 UB 计算分块容量，ID buffer 按 32 字节对齐：
 
 ```text
 N = ceil(world_size / aiv_num)
-R = align_up(max_bs * 4, 32)
-I = 32 + align_up(N, 8) * 32
-    + max(R, align_up(max_bs * 2, 256)) + 3 * max(hidden * 4, R)
-Q = 1 if I + hidden * 4 > 170 * 1024 else 2
-batch_buffer_bytes = align_down(248 * 1024 - I - Q * hidden * 2 - 512, 64)
+fixed_bytes = 32 + align_up(N, 8) * 32 + hidden * 2 + 512
+capacity = min(align_up(max_bs, 8),
+               align_down((248 * 1024 - fixed_bytes) / (4 + 64), 8))
+rank_id_buffer_bytes = capacity * 4
+batch_buffer_bytes = capacity * 64
 ```
 
-平台实际可用 UB 更小时按更小值计算；至少要能容纳一条 64 字节 WQE。
-例如 `world_size=8、aiv_num=64、max_bs=2、hidden=8192` 时，其他 buffer 占 132128 字节，
-batch 可用 **121792 字节（1903 条 WQE）**，仅余 32 字节不足一条 WQE。
-卡数使用实际 `world_size` 动态计算，`max_bs=2` 表示每卡 token 数，不是卡数。
-保持上述 `max_bs` 和 `hidden`，128 卡、64 核时每核处理 2 卡；状态 buffer 按 8 卡对齐，
-因此 batch 仍为 121792 字节。128 卡、8 核时每核处理 16 卡，状态 buffer 增加 256 字节，
-batch 相应减为 **121536 字节（1899 条 WQE）**。非整除时前面的核多处理一张卡。
-实际单批上限为 `min(batch_buffer_bytes / 64, SQ深度-1)`。
-UB 满时仅 `BatchCommit`，清空已准备计数后继续填充；在途 WQE 达到 SQ 上限或该卡尾批结束时，
-末条请求 CQE、提交并 `Drain`，防止 SQ 覆盖及源数据提前复用。
+Ascend950 的 256 KiB UB 扣除系统预留的 8 KiB 后，算子使用完整的 248 KiB，
+不再对平台查询值额外扣减 8 KiB；总 token 数可以超过单批容量。
+例如 `world_size=8、aiv_num=64` 时，`max_bs=4096、hidden=16384` 的 UB 容量为
+**3240 个 token/WQE**，`max_bs=8192、hidden=8192` 为 **3480 个 token/WQE**。
+设备端每块扫描 `min(capacity, SQ深度-1, 剩余输入token数)` 个 ID（本卡无需 SQ 限制），
+只为其中属于该目标卡的 token 生成 WQE，因此实际提交数可以更少。
+非空块的末条 WQE 请求 CQE，随后 `BatchCommit → Drain`，再处理下一块；空块不提交。
+发送中的单行 UB 不必保留到 URMA 完成：URMA 源数据已位于注册的 GM 中转区。
+中转区仍使用原 token 下标，避免不同目标卡所属核并发覆盖同一槽位。
+所有数据和状态通知完成后，`TPipe::Reset` 将发送阶段 UB 复用于等待和接收阶段。
 SQ 深度在持锁时从 URMA channel context 读取一次，要求深度至少为 2；不修改 batch handle 内部字段。
 该读取依赖 [Hcomm URMA 实现](https://gitcode.com/cann/asc-comm/blob/master/src/aicore/hcomm/impl/platform_v310/hcomm_aiv_urma.h)
 的 `ChannelEntity` / `sqContextAddr[0]` 布局；静态核对的 asc-comm 提交为
