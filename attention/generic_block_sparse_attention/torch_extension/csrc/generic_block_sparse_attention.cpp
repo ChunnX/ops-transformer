@@ -43,7 +43,7 @@ at::Tensor GenericBlockSparseAttentionMetadata(
 }
 
 std::tuple<at::Tensor, at::Tensor> GenericBlockSparseAttention(
-    const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &sparse_block_idx,
+    const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, const at::Tensor &sparse_block_idx,
     const at::Tensor &sparse_block_count, std::vector<int64_t> block_shape, const c10::optional<at::Tensor> &metadata,
     const c10::optional<at::Tensor> &attn_mask, const c10::optional<at::Tensor> &q_dequant_scale,
     const c10::optional<at::Tensor> &k_dequant_scale, const c10::optional<at::Tensor> &v_dequant_scale,
@@ -63,24 +63,24 @@ std::tuple<at::Tensor, at::Tensor> GenericBlockSparseAttention(
     at::ScalarType out_dtype;
     if (attention_out_dtype.has_value()) {
         out_dtype = *attention_out_dtype;
-    } else if (query.scalar_type() != at::kFloat8_e4m3fn) {
-        out_dtype = query.scalar_type();
+    } else if (q.scalar_type() != at::kFloat8_e4m3fn) {
+        out_dtype = q.scalar_type();
     } else {
-        TORCH_CHECK(false, "attention_out_dtype must be specified when query dtype is float8_e4m3fn");
+        TORCH_CHECK(false, "attention_out_dtype must be specified when q dtype is float8_e4m3fn");
     }
 
-    at::Tensor attention_out = at::empty(query.sizes(), query.options().dtype(out_dtype));
+    at::Tensor attention_out = at::empty(q.sizes(), q.options().dtype(out_dtype));
 
     at::Tensor softmax_lse;
-    auto opts_f32 = query.options().dtype(at::kFloat);
+    auto opts_f32 = q.options().dtype(at::kFloat);
     if (return_softmax_lse) {
         if (layout_q == "TND") {
-            softmax_lse = at::empty({query.size(0), query.size(1), 1}, opts_f32);
+            softmax_lse = at::empty({q.size(0), q.size(1), 1}, opts_f32);
         } else if (layout_q == "BNSD") {
-            softmax_lse = at::empty({query.size(0), query.size(1), query.size(2), 1}, opts_f32);
+            softmax_lse = at::empty({q.size(0), q.size(1), q.size(2), 1}, opts_f32);
         } else {
             // BSND
-            softmax_lse = at::empty({query.size(0), query.size(2), query.size(1), 1}, opts_f32);
+            softmax_lse = at::empty({q.size(0), q.size(2), q.size(1), 1}, opts_f32);
         }
     } else {
         softmax_lse = at::empty({0}, opts_f32);
@@ -92,11 +92,11 @@ std::tuple<at::Tensor, at::Tensor> GenericBlockSparseAttention(
     char *layout_kv_ptr = const_cast<char *>(layout_kv_str.c_str());
 
     const int64_t return_softmax_lse_flag = return_softmax_lse ? 1 : 0;
-    ACLNN_CMD(aclnnGenericBlockSparseAttention, query, key, value, sparse_block_idx, sparse_block_count, metadata,
-              attn_mask, q_dequant_scale, k_dequant_scale, v_dequant_scale, p_quant_scale, cu_seqlens_q,
-              cu_seqlens_kv, seqused_q, seqused_kv, block_table, block_shape_ref, is_packed_gqa, layout_q_ptr,
-              layout_kv_ptr, softmax_scale, mask_mode, quant_mode, dst_type_max, softmax_precision, win_left, win_right,
-              return_softmax_lse_flag, attention_out, softmax_lse);
+    ACLNN_CMD(aclnnGenericBlockSparseAttention, q, k, v, sparse_block_idx, sparse_block_count, metadata, attn_mask,
+              q_dequant_scale, k_dequant_scale, v_dequant_scale, p_quant_scale, cu_seqlens_q, cu_seqlens_kv, seqused_q,
+              seqused_kv, block_table, block_shape_ref, is_packed_gqa, layout_q_ptr, layout_kv_ptr, softmax_scale,
+              mask_mode, quant_mode, dst_type_max, softmax_precision, win_left, win_right, return_softmax_lse_flag,
+              attention_out, softmax_lse);
     return std::make_tuple(attention_out, softmax_lse);
 }
 

@@ -82,16 +82,17 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             (
                 "generic_block_sparse_attention_metadata("
                 "Tensor sparse_block_idx, Tensor sparse_block_count, "
-                "int max_seqlen_q, int max_seqlen_kv, int num_heads_q, int num_heads_kv, int head_dim, "
+                "int num_heads_q, int num_heads_kv, int head_dim, "
                 "int[] block_shape, *, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, "
-                "Tensor? seqused_q=None, Tensor? seqused_kv=None, int is_packed_gqa=1, "
+                "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
+                "int? max_seqlen_q=-1, int? max_seqlen_kv=-1, int is_packed_gqa=1, "
                 'str layout_q="TND", str layout_kv="PA_BBND", '
                 "int mask_mode=1, int quant_mode=0, int softmax_precision=1, "
                 "int win_left=-1, int win_right=-1) -> Tensor"
             ),
             (
                 "generic_block_sparse_attention("
-                "Tensor query, Tensor key, Tensor value, "
+                "Tensor q, Tensor k, Tensor v, "
                 "Tensor sparse_block_idx, Tensor sparse_block_count, "
                 "int[] block_shape, *, "
                 "Tensor? metadata=None, "
@@ -128,8 +129,6 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
         def generic_block_sparse_attention_metadata_meta(
             sparse_block_idx,
             sparse_block_count,
-            max_seqlen_q,
-            max_seqlen_kv,
             num_heads_q,
             num_heads_kv,
             head_dim,
@@ -139,6 +138,8 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             cu_seqlens_kv=None,
             seqused_q=None,
             seqused_kv=None,
+            max_seqlen_q: Optional[int] = -1,
+            max_seqlen_kv: Optional[int] = -1,
             is_packed_gqa=1,
             layout_q="TND",
             layout_kv="PA_BBND",
@@ -154,9 +155,9 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
 
         @impl(get_as_library(), self.name, "Meta")
         def generic_block_sparse_attention_meta(
-            query: torch.Tensor,
-            key: torch.Tensor,
-            value: torch.Tensor,
+            q: torch.Tensor,
+            k: torch.Tensor,
+            v: torch.Tensor,
             sparse_block_idx: torch.Tensor,
             sparse_block_count: torch.Tensor,
             block_shape: List[int],
@@ -185,30 +186,30 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             return_softmax_lse: bool = False,
             attention_out_dtype: Optional[torch.dtype] = None,
         ):
-            if query.dtype == torch.float8_e4m3fn:
+            if q.dtype == torch.float8_e4m3fn:
                 if attention_out_dtype is None:
                     attention_out_dtype = torch.bfloat16
                 if attention_out_dtype not in (torch.half, torch.bfloat16):
                     raise ValueError(
-                        "attention_out_dtype must be half or bfloat16 when query dtype is float8_e4m3fn"
+                        "attention_out_dtype must be half or bfloat16 when q dtype is float8_e4m3fn"
                     )
                 out_dtype = attention_out_dtype
             elif attention_out_dtype is not None:
                 out_dtype = attention_out_dtype
             else:
-                out_dtype = query.dtype
+                out_dtype = q.dtype
 
-            attn = query.new_empty(query.shape, dtype=out_dtype)
+            attn = q.new_empty(q.shape, dtype=out_dtype)
             if return_softmax_lse:
-                if query.dim() == 3:
-                    lse_shape = (query.size(0), query.size(1), 1)
+                if q.dim() == 3:
+                    lse_shape = (q.size(0), q.size(1), 1)
                 elif layout_q == "BNSD":
-                    lse_shape = (query.size(0), query.size(1), query.size(2), 1)
+                    lse_shape = (q.size(0), q.size(1), q.size(2), 1)
                 else:
-                    lse_shape = (query.size(0), query.size(2), query.size(1), 1)
-                lse = query.new_empty(lse_shape, dtype=torch.float32)
+                    lse_shape = (q.size(0), q.size(2), q.size(1), 1)
+                lse = q.new_empty(lse_shape, dtype=torch.float32)
             else:
-                lse = query.new_empty((0,), dtype=torch.float32)
+                lse = q.new_empty((0,), dtype=torch.float32)
             return attn, lse
 
 
@@ -220,8 +221,6 @@ generic_block_sparse_attention_op_builder._ensure_initialized()
 def generic_block_sparse_attention_metadata(
     sparse_block_idx,
     sparse_block_count,
-    max_seqlen_q,
-    max_seqlen_kv,
     num_heads_q,
     num_heads_kv,
     head_dim,
@@ -231,6 +230,8 @@ def generic_block_sparse_attention_metadata(
     cu_seqlens_kv=None,
     seqused_q=None,
     seqused_kv=None,
+    max_seqlen_q: Optional[int] = -1,
+    max_seqlen_kv: Optional[int] = -1,
     is_packed_gqa=1,
     layout_q="TND",
     layout_kv="PA_BBND",
@@ -242,6 +243,8 @@ def generic_block_sparse_attention_metadata(
 ):
     mask_mode = _resolve_mask_mode(mask_mode)
     quant_mode = _resolve_quant_mode(quant_mode)
+    max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
+    max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
     op_module = generic_block_sparse_attention_op_builder.load()
     return op_module.generic_block_sparse_attention_metadata(
         sparse_block_idx,
@@ -273,8 +276,6 @@ def generic_block_sparse_attention_metadata(
 def generic_block_sparse_attention_metadata_fallback(
     sparse_block_idx,
     sparse_block_count,
-    max_seqlen_q,
-    max_seqlen_kv,
     num_heads_q,
     num_heads_kv,
     head_dim,
@@ -284,6 +285,8 @@ def generic_block_sparse_attention_metadata_fallback(
     cu_seqlens_kv=None,
     seqused_q=None,
     seqused_kv=None,
+    max_seqlen_q: Optional[int] = -1,
+    max_seqlen_kv: Optional[int] = -1,
     is_packed_gqa=1,
     layout_q="TND",
     layout_kv="PA_BBND",
@@ -296,8 +299,6 @@ def generic_block_sparse_attention_metadata_fallback(
     return generic_block_sparse_attention_metadata(
         sparse_block_idx,
         sparse_block_count,
-        max_seqlen_q,
-        max_seqlen_kv,
         num_heads_q,
         num_heads_kv,
         head_dim,
@@ -306,6 +307,8 @@ def generic_block_sparse_attention_metadata_fallback(
         cu_seqlens_kv=cu_seqlens_kv,
         seqused_q=seqused_q,
         seqused_kv=seqused_kv,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_kv=max_seqlen_kv,
         is_packed_gqa=is_packed_gqa,
         layout_q=layout_q,
         layout_kv=layout_kv,
@@ -322,9 +325,9 @@ torch.compiler.allow_in_graph(generic_block_sparse_attention_metadata)
 
 @impl(get_as_library(), generic_block_sparse_attention_op_builder.name, "PrivateUse1")
 def generic_block_sparse_attention(
-    query: torch.Tensor,
-    key: torch.Tensor,
-    value: torch.Tensor,
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
     sparse_block_idx: torch.Tensor,
     sparse_block_count: torch.Tensor,
     block_shape: List[int],
@@ -353,7 +356,7 @@ def generic_block_sparse_attention(
     return_softmax_lse: bool = False,
     attention_out_dtype: Optional[torch.dtype] = None,
 ):
-    if query.dtype == torch.float8_e4m3fn and attention_out_dtype is None:
+    if q.dtype == torch.float8_e4m3fn and attention_out_dtype is None:
         attention_out_dtype = torch.bfloat16
 
     mask_mode = _resolve_mask_mode(mask_mode)
@@ -361,9 +364,9 @@ def generic_block_sparse_attention(
 
     op_module = generic_block_sparse_attention_op_builder.load()
     return op_module.generic_block_sparse_attention(
-        query,
-        key,
-        value,
+        q,
+        k,
+        v,
         sparse_block_idx,
         sparse_block_count,
         block_shape,
