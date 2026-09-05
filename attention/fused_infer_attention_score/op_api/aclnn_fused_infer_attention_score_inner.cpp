@@ -843,22 +843,6 @@ static aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSizeImpl(
         ProcessCacheForL0Input(processedKey, processedValue, processedKeyRope, cacheStridePolicy, l0Executor);
     CHECK_RET(cacheProcessRet == ACLNN_SUCCESS, cacheProcessRet);
 
-    // 输出直连条件: 用户输出张量连续(kernel 可直接写入用户显存), 且未开启 lse 或 lse 输出也连续。
-    const bool bindUserOutput =
-        IsContiguous(attentionOut) && (!softmaxLseFlag || (softmaxLse != nullptr && IsContiguous(softmaxLse)));
-    if (bindUserOutput) {
-        // 直连时用户张量成为算子输出, 宿侧 checker 要求 format 为 ND 等合法值;
-        // 入图路径5传入的输出张量 format 可能为 RESERVED(此前 AllocTensor 显式设 ND 掩盖了这一点),
-        // 此处原地归一化为 ND(与 base_aclnn.cpp ConvertIntArrayToTensor 的做法一致)。
-        const_cast<aclTensor *>(attentionOut)->SetViewFormat(Format::FORMAT_ND);
-        const_cast<aclTensor *>(attentionOut)->SetStorageFormat(Format::FORMAT_ND);
-        const_cast<aclTensor *>(attentionOut)->SetOriginalFormat(Format::FORMAT_ND);
-        if (softmaxLseFlag && softmaxLse != nullptr) {
-            const_cast<aclTensor *>(softmaxLse)->SetViewFormat(Format::FORMAT_ND);
-            const_cast<aclTensor *>(softmaxLse)->SetStorageFormat(Format::FORMAT_ND);
-            const_cast<aclTensor *>(softmaxLse)->SetOriginalFormat(Format::FORMAT_ND);
-        }
-    }
     auto l0Out = l0op::FusedInferAttentionScore(
         processedQuery, processedKey, processedValue, processedPseShift, processedAttenMask, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, processedDeqScale1, processedQuantScale1, processedDeqScale2, processedQuantScale2,
@@ -869,7 +853,7 @@ static aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSizeImpl(
         processedKeyRopeAntiquantScale, processedDequantScaleQuery, processedLearnableSink, qStartIdxOptional,
         kvStartIdxOptional, numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode,
         innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode, queryQuantMode,
-        pseType, outDtype, attentionOut, softmaxLse, bindUserOutput, l0Executor);
+        pseType, outDtype, attentionOut, softmaxLse, l0Executor);
 
     auto l0AttentionOut = std::get<0>(l0Out);
     auto l0SoftmaxLse = std::get<1>(l0Out);
@@ -877,17 +861,16 @@ static aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSizeImpl(
         return ACLNN_ERR_INNER_NULLPTR;
     }
 
-    // 输出直连(用户输出连续时 l0op 直接绑定用户张量, kernel 已写入用户显存)则跳过 ViewCopy,
-    // 避免图模式路径5固化全量输出拷贝节点; 仅在输出为 executor 分配张量时才需拷回。
-    if (l0AttentionOut != attentionOut) {
-        auto attentionViewCopy = l0op::ViewCopy(l0AttentionOut, attentionOut, l0Executor);
-        if (attentionViewCopy == nullptr) {
-            return ACLNN_ERR_INNER_NULLPTR;
-        }
+    // 输出侧改用 ReViewToOut: 在输出侧生成零拷贝 View 节点(与输入侧 executor->CreateView 同机制),
+    // 图模式路径5下 FIA 节点输出经 View 适配到用户输出 placeholder, 规避 ViewCopy 固化的全量输出拷贝节点;
+    // desc 无法对齐时由 ReViewToOut 内部回退真实拷贝, 保证功能正确。
+    auto attentionOutFinal = l0op::ReViewToOut(l0AttentionOut, attentionOut, l0Executor);
+    if (attentionOutFinal == nullptr) {
+        return ACLNN_ERR_INNER_NULLPTR;
     }
-    if (softmaxLseFlag && l0SoftmaxLse != softmaxLse) {
-        auto softmaxLseViewCopy = l0op::ViewCopy(l0SoftmaxLse, softmaxLse, l0Executor);
-        CHECK_RET(softmaxLseViewCopy != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    if (softmaxLseFlag) {
+        auto softmaxLseFinal = l0op::ReViewToOut(l0SoftmaxLse, softmaxLse, l0Executor);
+        CHECK_RET(softmaxLseFinal != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();

@@ -88,7 +88,6 @@ std::tuple<const aclTensor *, const aclTensor *> FusedInferAttentionScore(
     int64_t outDtype,
     const aclTensor *attentionOut,
     const aclTensor *softmaxLse,
-    bool bindUserOutput,
     aclOpExecutor *executor)
 {
     L0_DFX(FusedInferAttentionScore, query, key, value, pseShiftOptional, attenMaskOptional,
@@ -130,20 +129,12 @@ std::tuple<const aclTensor *, const aclTensor *> FusedInferAttentionScore(
         return {nullptr, nullptr};
     }
 
-    // 输出直连: bindUserOutput 由 inner 层判断(用户输出连续且 lse 输出连续/无需 lse)后传入,
-    // 直接绑定用户张量为算子输出, kernel 直接写入用户显存, 避免 AllocTensor + ViewCopy 在图模式
-    // (入图路径5)固化为全量输出拷贝节点(与 autogen 框架行为一致); 否则回退 AllocTensor + ViewCopy。
-    auto attentionOutOut = bindUserOutput ?
-        attentionOut :
-        executor->AllocTensor(attentionOut->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
+    auto attentionOutOut = executor->AllocTensor(attentionOut->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
     if (attentionOutOut == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "FusedInferAttentionScore: alloc attentionOutOut failed.");
         return {nullptr, nullptr};
     }
-    const bool directSoftmaxLse = bindUserOutput && softmaxLseFlag;
-    auto softmaxLseOut = directSoftmaxLse ?
-        softmaxLse :
-        executor->AllocTensor(softmaxLse->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
+    auto softmaxLseOut = executor->AllocTensor(softmaxLse->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
     if (softmaxLseOut == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "FusedInferAttentionScore: alloc softmaxLseOut failed.");
         return {nullptr, nullptr};

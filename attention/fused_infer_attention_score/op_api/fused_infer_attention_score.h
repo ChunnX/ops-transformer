@@ -65,7 +65,6 @@ std::tuple<const aclTensor *, const aclTensor *> FusedInferAttentionScore(
     int64_t outDtype,
     const aclTensor *attentionOut,
     const aclTensor *softmaxLse,
-    bool bindUserOutput,
     aclOpExecutor *executor);
 }
 
