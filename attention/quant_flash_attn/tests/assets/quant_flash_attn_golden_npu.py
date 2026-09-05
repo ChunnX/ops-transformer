@@ -1215,9 +1215,8 @@ def _build_attention_mask(b, Sq, Skv, actual_seq_q, actual_seq_kv, sparse_mode):
     k_padding_mask = k_range >= k_lens_acl
 
     if sparse_mode == 3:
-        # RIGHT_DOWN causal: 行 t 对角线 p_t = t + kv_b - qlen_b (实板实测 kernel 边界,
-        # 对角位置本身被打 mask), 右上 k > p_t 打 mask; k < kv_b 的 in-block padding
-        # 交给 S 层填 minValue, 不进全局 mask
+        # RIGHT_DOWN causal: 对角线 p_t = t + kv_b - qlen_b, 右上 k > p_t 打 mask;
+        # in-block padding (k >= kv_b) 交给 tile window 填 minValue, 不进全局 mask
         delta = k_lens_acl - q_lens_acl
         causal_mask = (k_range > (q_range + delta)) & (k_range < k_lens_acl)
         return causal_mask | q_padding_mask
@@ -1389,18 +1388,15 @@ def cpu_mxfp8_golden(
         b, Sq, Skv, actual_seq_q, actual_seq_kv, SPARSE_MODE
     )
 
-    # kernel tile 跳过语义 (实板 000047/000029 对照结论): 行 (b, t) 的 causal 对角线
-    # p_t = t + kv_b - qlen_b, kernel 只处理与 [0, p_t] 相交的 KV tile,
-    # 整体在对角线右侧的 tile 整块跳过 → -inf;
-    # k >= kv_hi (64 对齐外) → -inf; in-block padding [kv_b, kv_hi) → minValue
-    # (全 mask 行 m=minValue 时 P=1 计入分母, 正常行 exp(minValue-m)=0 无贡献)
+    # kernel tile 跳过语义: causal 对角线右侧整块跳过、kv 64 对齐窗口外 → -inf;
+    # in-block padding [kv_b, kv_hi) → minValue (全 mask 行 P=1 计入分母, 正常行无贡献)
     kv_len_acl = torch.tensor(actual_seq_kv, dtype=torch.int32).view(b, 1, 1, 1)
     kv_pos_range = torch.arange(Skv, dtype=torch.int32).view(1, 1, 1, -1)
     qlen_acl_t = torch.tensor(actual_seq_q, dtype=torch.int32).view(b, 1, 1, 1)
     kv_hi_t = (kv_len_acl + 63) // 64 * 64  # kv 64 对齐上界
     t_loc_t = torch.arange(Sq, dtype=torch.int32).view(1, 1, Sq, 1)
-    # causal (sparse_mode=3) 才有对角线右界跳过; 其他模式不跳过
     if SPARSE_MODE == 3:
+        # causal 才有对角线右界跳过
         diag_t = (t_loc_t + kv_len_acl - qlen_acl_t).clamp(min=0)
     else:
         diag_t = None
@@ -1566,6 +1562,7 @@ def cpu_mxfp8_golden(
 
     o_max = torch.cat(m_BLOCKS, dim=2)
     all_masked = o_max <= minValue.item()
+    # kernel 语义: 全跳过行 (s=0 且 m 未更新) 输出 0, 其余 0/0=NaN 保留
     out = torch.where(
         (out_sum == 0) & all_masked, torch.zeros_like(out), out
     )
