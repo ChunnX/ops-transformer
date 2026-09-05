@@ -2293,6 +2293,9 @@ mhc:
     module: True
     src:
       - mhc/block_attention_residuals
+    exclude:
+      - mhc/block_attention_residuals/docs
+      - mhc/block_attention_residuals/README.md
     ut_cov_exclude:
       - mhc/block_attention_residuals/examples
       - mhc/block_attention_residuals/tests
