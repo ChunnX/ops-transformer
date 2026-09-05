@@ -116,9 +116,9 @@ private:
                 uint32_t remainKL0 = currentKL1 - offsetKL0;
                 uint32_t currentKL0 = remainKL0 < BASIC_CUBE_K_L0 ? remainKL0 : BASIC_CUBE_K_L0;
                 uint32_t l0Slot = l0LoopCount_ & 1U;
-                // 组合消融：L0A固定第0槽，L0B保留ping-pong。
-                uint32_t aL0Slot = 0U;
-                uint32_t bL0Slot = l0Slot;
+                // 组合消融：L0A保留ping-pong，L0B固定第0槽。
+                uint32_t aL0Slot = l0Slot;
+                uint32_t bL0Slot = 0U;
                 LocalTensor<float> currentA2 = aL0_[aL0Slot * BASIC_CUBE_L0_SLOT_ELEMS];
                 LocalTensor<float> currentB2 = bL0_[bL0Slot * BASIC_CUBE_L0_SLOT_ELEMS];
 
