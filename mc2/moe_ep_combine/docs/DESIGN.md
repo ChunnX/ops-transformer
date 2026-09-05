@@ -12,7 +12,7 @@
 - 本卡使用全部 AIV 并行执行 DataCopy，完成后再进入远端发送阶段。
 - 远端保持“一 rank 一 channel、一个 channel 仅由一个核访问”的约束。
 - `MoeEpCombine` 主 kernel 只保留一次全核 `SyncAll`。
-- 保持 Combine 通信窗口、完成 flag 和 `MoeEpCombineEpilogue` 协议不变。
+- 保持接收完成 flag 协议不变；Combine state 尾部增加 512B 常量发送源，后续数据区偏移统一后移。
 
 当前设计面向“一 rank 一 channel”。未来若单 Jetty/channel 对应多个 rank，分核所有权需要从 rank 提升为 channel，但本文的数据路径和同步原则保持不变。
 
@@ -81,7 +81,7 @@ rank_end   = recv_rank_offsets[rank + 1]
     │     ├─ 连续读取 recv_rank_offsets
     │     ├─ 从最后一个 offset 得到 actualA
     │     ├─ 初始化 metadata UB、token queue、weight buffer/queue
-    │     └─ 初始化每核 Hcomm batch 和 flag source
+    │     └─ 初始化每核 Hcomm batch 和 UB flag；AIV0 初始化 win 中共享的 flag source
     │
     ├─ 2. 定位本卡 metadata 区间
     │     └─ 直接读取 offsets[rankId:rankId + 2]
@@ -269,6 +269,21 @@ x/weight GM -> UB 完成
 - flag 使用 `so/odr=6` 和 fence 配置，保证接收端看到 flag 时该 rank 数据已经可见。
 - 即使某个远端 rank 的 metadata 区间为空，也必须发布 flag。
 
+远端 flag 的非 inline 发送源位于本卡持久通信窗口，不再位于临时算子 workspace：
+
+```text
+Combine state = [nmt * topK 个 512B token/weight 槽]
+              + [epWorldSize 个 512B 接收完成 flag 槽]
+              + [1 个 512B 常量发送源槽]
+```
+
+`combineFlagSourceWinOffset` 由公共窗口布局计算并通过 Combine tiling 传入。
+每次 Combine 的 AIV0 将源槽完整写为 64 个 `uint64_t(1)`，经 `MTE3_S` 后，
+复用本卡搬运之后已有的全核 `SyncAll` 向远端发送核保证初始化完成。
+源槽不参与接收 flag 清零，后续调用只重写相同常量；单跑 Combine 无需依赖 Dispatch 初始化。
+末尾只提交 batch，不执行无条件 Drain；SQ 水位保护仍保留。
+四个算子必须使用更新后的公共布局，Python 容量估算同步增加每卡 512B，并重新创建通信窗口。
+
 ## 6. 建议的 Process 伪代码
 
 ```cpp
@@ -387,8 +402,8 @@ H：典型 4096/7168/8192，不能按固定上限设计索引
 
 - metadata dim1 校验从 4 改为 5。
 - 增加 `recv_rank_offsets` 的一维 shape、长度和 int32 dtype 校验。
-- 保留通信窗口大小和 offset 的计算。
-- workspace 生效值改为系统预留空间加每 AIV 512B flag source；旧地址表 workspace 公式仅注释并标记 `TODO(delete)`。
+- 公共布局在 Combine 接收 flag 后预留 512B，统一更新 direct/hybrid 的后续偏移及容量检查。
+- 原每 AIV 512B 的 workspace 预留暂时保留以便回归对照，但有效路径不再用它作为发送源；旧代码标记 `TODO(delete)`。
 - `aivNum` 继续使用本次平台和控核结果，不写死 56 或 72。
 - 通过 tiling 新增 `recvCapacity=x.shape[0]`，设备侧将 `actualA` 限制在该容量内；Host 同时保证 metadata 和可选 weight 的 dim0 与 `x` 一致。
 
@@ -396,7 +411,7 @@ H：典型 4096/7168/8192，不能按固定上限设计索引
 
 - Dispatch 主 kernel：不消费 Combine metadata。
 - Dispatch Epilogue：负责生产 5 列 metadata、`recv_x_idx` 和 `recv_rank_offsets`。
-- Combine Epilogue：不读取 metadata；只要窗口布局和每 sender rank 一个完成 flag 的协议不变，就不需要因本设计修改。
+- Combine Epilogue：不读取 metadata；接收 flag 读取/清零范围不变，通过公共 Host 布局获取更新后的数据区偏移。
 
 ## 9. 实现检查项
 

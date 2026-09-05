@@ -270,7 +270,9 @@ def _get_moe_ep_window_layout(
         + world_size * dispatch_notify_count * win_addr_align
     )
     combine_state_size = (
-        num_max_tokens_per_rank * topk * win_addr_align + world_size * win_addr_align
+        num_max_tokens_per_rank * topk * win_addr_align
+        + world_size * win_addr_align
+        + win_addr_align  # Persistent constant source for asynchronous combine completion flags.
     )
     state_buffer_size = (
         dump_metadata_bytes

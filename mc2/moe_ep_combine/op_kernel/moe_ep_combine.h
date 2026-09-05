@@ -93,6 +93,12 @@ static constexpr uint32_t ADDRESS_TABLE_BUFFER_BYTES = 40U * 1024U;
 static constexpr uint32_t META_CHUNK_TOKEN_MAX = 2048U;
 static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 static constexpr struct UrmaWqeEntry DEFAULT_CQE_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
+// Keep the final flag ordered after payload writes without requesting an unconsumed CQE on every invocation.
+// CQE-enabled payload checkpoints and Drain remain in the SQ high-watermark path.
+// TODO(delete): diagnostic final-flag completion configuration; restore together with the final blocking flush
+// only when investigating asynchronous send completion.
+// static constexpr struct UrmaWqeEntry CHANNEL_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 1, .inlineEn =
+// 0};
 static constexpr struct UrmaWqeEntry CHANNEL_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
@@ -101,8 +107,7 @@ public:
 
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR recvSrcMetadata,
                                 GM_ADDR recvRankOffsets, GM_ADDR numRecvPerExpert, GM_ADDR topkWeights,
-                                GM_ADDR workspace, GM_ADDR tilingGM, TPipe *pipe,
-                                const MoeEpCombineInfo *tilingData);
+                                GM_ADDR workspace, GM_ADDR tilingGM, TPipe *pipe, const MoeEpCombineInfo *tilingData);
 
     __aicore__ inline void Process();
 
@@ -119,7 +124,7 @@ private:
     __aicore__ inline void InitFlagSource();
     template <auto const &config>
     __aicore__ inline void PrepareWrite(GM_ADDR dst, GM_ADDR src, uint64_t len);
-    __aicore__ inline void FlushPreparedWrites(bool keepHandle = false);
+    __aicore__ inline void FlushPreparedWrites(bool keepHandle = false, bool waitCompletion = false);
     // TODO(delete): legacy address-table construction path; no longer called by the direct metadata path.
     __aicore__ inline void BuildAddressTable();
     // TODO(delete): legacy address-table path only.
@@ -233,6 +238,7 @@ private:
     uint64_t hcommHandle_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
     GM_ADDR combineSendDataWorkspaceAddr_{nullptr};
     GM_ADDR flagWorkspaceAddr_{nullptr};
+    GM_ADDR flagSourceWinAddr_{nullptr};
     GM_ADDR rankCountWorkspaceAddr_{nullptr};
     GM_ADDR perCoreRankCountWorkspaceAddr_{nullptr};
     uint64_t perCoreRankCountStride_{0};
@@ -248,10 +254,9 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx,
                                                                         GM_ADDR recvSrcMetadata,
                                                                         GM_ADDR recvRankOffsets,
-                                                                        GM_ADDR numRecvPerExpert,
-                                                                        GM_ADDR topkWeights, GM_ADDR workspace,
-                                                                        GM_ADDR tilingGM, TPipe *pipe,
-                                                                        const MoeEpCombineInfo *tilingData)
+                                                                        GM_ADDR numRecvPerExpert, GM_ADDR topkWeights,
+                                                                        GM_ADDR workspace, GM_ADDR tilingGM,
+                                                                        TPipe *pipe, const MoeEpCombineInfo *tilingData)
 {
     tpipe_ = pipe;
     tilingData_ = tilingData;
@@ -269,7 +274,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     // TODO(delete): legacy address-table workspace placed flag storage after every rank's send table.
     // flagWorkspaceAddr_ = combineSendDataWorkspaceAddr_ + epWorldSize_ * sendDataWorkspaceSizePerRank_ +
     //                      static_cast<uint64_t>(aivId_) * WIN_ADDR_ALIGN;
-    flagWorkspaceAddr_ = combineSendDataWorkspaceAddr_ + static_cast<uint64_t>(aivId_) * WIN_ADDR_ALIGN;
+    // TODO(delete): temporary source could be recycled before non-inline remote reads completed.
+    // flagWorkspaceAddr_ = combineSendDataWorkspaceAddr_ + static_cast<uint64_t>(aivId_) * WIN_ADDR_ALIGN;
     rankCountWorkspaceAddr_ = combineSendDataWorkspaceAddr_ + epWorldSize_ * sendDataWorkspaceSizePerRank_ +
                               static_cast<uint64_t>(aivNum_) * WIN_ADDR_ALIGN;
     perCoreRankCountStride_ = Ceil(static_cast<uint64_t>(epWorldSize_) * UB_ALIGN, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
@@ -307,18 +313,18 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
 
     combineStateWinOffset_ = tilingData->combineStateWinOffset;
     combineDataWinOffset_ = tilingData->combineDataWinOffset;
+    flagSourceWinAddr_ = GetUrmaStateAddrByRankId(rankId_, tilingData->combineFlagSourceWinOffset);
 
     xGm_.SetGlobalBuffer((__gm__ XType *)x);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t *)recvSrcMetadata);
     recvRankOffsetsGm_.SetGlobalBuffer((__gm__ int32_t *)recvRankOffsets);
     numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t *)numRecvPerExpert);
 
-    uint32_t rankOffsetsBytes =
-        Ceil(static_cast<uint64_t>(epWorldSize_ + 1U) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    uint32_t rankOffsetsBytes = Ceil(static_cast<uint64_t>(epWorldSize_ + 1U) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(rankOffsetsBuf_, rankOffsetsBytes);
     rankOffsetsTensor_ = rankOffsetsBuf_.Get<int32_t>();
-    DataCopyExtParams rankOffsetsCopyParams{
-        1U, static_cast<uint32_t>((epWorldSize_ + 1U) * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyExtParams rankOffsetsCopyParams{1U, static_cast<uint32_t>((epWorldSize_ + 1U) * sizeof(int32_t)), 0U, 0U,
+                                            0U};
     DataCopyPadExtParams<int32_t> rankOffsetsPadParams{false, 0U, 0U, 0U};
     DataCopyPad(rankOffsetsTensor_, recvRankOffsetsGm_, rankOffsetsCopyParams, rankOffsetsPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
@@ -619,11 +625,21 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendLocalToke
 }
 
 template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPreparedWrites(bool keepHandle)
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPreparedWrites(bool keepHandle,
+                                                                                       bool waitCompletion)
 {
     if (preparedWriteCount_ != 0) {
-        (void)hcomm_.BatchCommit(activeBatchHandle_);
+        int32_t ret = hcomm_.BatchCommit(activeBatchHandle_);
+        // ascendc_assert(ret == HCOMM_SUCCESS, "BatchCommit failed, ret=%d, rankId=%u, aivId=%u", ret, rankId_, aivId_);
+        (void)ret;
         preparedWriteCount_ = 0;
+        if (waitCompletion) {
+            int32_t drainRet = hcomm_.Drain(activeBatchHandle_);
+            // ascendc_assert(drainRet == HCOMM_SUCCESS, "Batch Drain failed, ret=%d, rankId=%u, aivId=%u", drainRet,
+            //                rankId_, aivId_);
+            (void)drainRet;
+            sqWriteCount_ = 0U;
+        }
     }
     if (!keepHandle) {
         activeBatchHandle_ = {};
@@ -658,7 +674,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
         // BatchCommit resets the WQE count in the handle; keep using it for this channel as PR 10309 does.
         FlushPreparedWrites(true);
     }
-    (void)hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, len);
+    int32_t ret = hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, len);
+    // ascendc_assert(ret == HCOMM_SUCCESS, "WriteNbi failed, ret=%d, rankId=%u, aivId=%u", ret, rankId_, aivId_);
+    (void)ret;
     ++preparedWriteCount_;
     ++sqWriteCount_;
 }
@@ -739,7 +757,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFl
         return;
     }
     BeginPreparedWrites(dstRank, channelIndex);
-    PrepareWrite<CHANNEL_FLAG_WQE_CONFIG>(flagAddr, flagWorkspaceAddr_, WIN_ADDR_ALIGN);
+    // TODO(delete): the old non-inline source belonged to the temporary operator workspace.
+    // PrepareWrite<CHANNEL_FLAG_WQE_CONFIG>(flagAddr, flagWorkspaceAddr_, WIN_ADDR_ALIGN);
+    PrepareWrite<CHANNEL_FLAG_WQE_CONFIG>(flagAddr, flagSourceWinAddr_, WIN_ADDR_ALIGN);
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -748,10 +768,19 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::InitFlagSourc
     LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
     Duplicate<uint64_t>(flagTensor, 1U, WIN_ADDR_ALIGN / sizeof(uint64_t));
     SyncFunc<AscendC::HardEvent::V_MTE3>();
-    GlobalTensor<uint64_t> flagWorkspace;
-    flagWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagWorkspaceAddr_));
-    DataCopy(flagWorkspace, flagTensor, WIN_ADDR_ALIGN / sizeof(uint64_t));
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    // All AIVs retain their UB flag value for the local MTE path, but only AIV0 writes the shared GM source.
+    // Reinitialize to the same constant for standalone combine as well; no receive/clear path touches this slot.
+    // TODO(delete): old per-AIV temporary source initialization.
+    // GlobalTensor<uint64_t> flagWorkspace;
+    // flagWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagWorkspaceAddr_));
+    // DataCopy(flagWorkspace, flagTensor, WIN_ADDR_ALIGN / sizeof(uint64_t));
+    // SyncFunc<AscendC::HardEvent::MTE3_S>();
+    if (aivId_ == 0U) {
+        GlobalTensor<uint64_t> flagSource;
+        flagSource.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagSourceWinAddr_));
+        DataCopy(flagSource, flagTensor, WIN_ADDR_ALIGN / sizeof(uint64_t));
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+    }
 }
 
 // TODO(delete): rank offsets replaced metadata rank probing.
@@ -856,10 +885,31 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteMet
     uint64_t dstSlot =
         static_cast<uint64_t>(static_cast<uint32_t>(srcTokenIdx)) * topK_ + static_cast<uint32_t>(srcTopKIdx);
     GM_ADDR tokenAddr = reinterpret_cast<GM_ADDR>(xGm_.GetPhyAddr(static_cast<uint64_t>(recvXIdx) * axisH_));
-    PrepareWrite<DEFAULT_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
+    // Keep the SQ protection of the legacy address-table path.  The direct metadata path originally omitted this
+    // completion edge, so an unusually skewed rank range could fill the SQ and silently lose the later flag WQE.
+    constexpr uint32_t writesPerToken = HasTopkWeight == 1 ? 2U : 1U;
+    bool drainAfterToken = sqWriteCount_ + 2U * writesPerToken > HCOMM_SQ_MAX_PENDING;
+    if constexpr (HasTopkWeight == 1) {
+        PrepareWrite<DEFAULT_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
+    } else if (drainAfterToken) {
+        PrepareWrite<DEFAULT_CQE_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
+    } else {
+        PrepareWrite<DEFAULT_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
+    }
     if constexpr (HasTopkWeight == 1) {
         GM_ADDR weightAddr = reinterpret_cast<GM_ADDR>(topkWeightsGm_.GetPhyAddr(recvXIdx));
-        PrepareWrite<DEFAULT_WQE_CONFIG>(remoteStateBase + dstSlot * WIN_ADDR_ALIGN, weightAddr, sizeof(float));
+        if (drainAfterToken) {
+            PrepareWrite<DEFAULT_CQE_WQE_CONFIG>(remoteStateBase + dstSlot * WIN_ADDR_ALIGN, weightAddr, sizeof(float));
+        } else {
+            PrepareWrite<DEFAULT_WQE_CONFIG>(remoteStateBase + dstSlot * WIN_ADDR_ALIGN, weightAddr, sizeof(float));
+        }
+    }
+    if (drainAfterToken) {
+        FlushPreparedWrites(true);
+        int32_t ret = hcomm_.Drain(activeBatchChannel_);
+        // ascendc_assert(ret == HCOMM_SUCCESS, "Drain failed, ret=%d, rankId=%u, aivId=%u", ret, rankId_, aivId_);
+        (void)ret;
+        sqWriteCount_ = 0U;
     }
 }
 
@@ -954,6 +1004,18 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
 
     InitFlagSource();
 
+    // Diagnostic offset validation disabled together with its assertion-only scan.
+    // uint32_t previousOffset = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(0U));
+    // ascendc_assert(previousOffset == 0U, "recv_rank_offsets[0] must be 0, got=%u, rankId=%u, aivId=%u", previousOffset,
+    //                rankId_, aivId_);
+    // for (uint32_t offsetIdx = 1U; offsetIdx <= epWorldSize_; ++offsetIdx) {
+    //     uint32_t currentOffset = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(offsetIdx));
+    //     ascendc_assert(currentOffset >= previousOffset && static_cast<uint64_t>(currentOffset) <= actualA_,
+    //                    "invalid recv_rank_offsets[%u]=%u, prev=%u, actualA=%llu, rankId=%u, aivId=%u", offsetIdx,
+    //                    currentOffset, previousOffset, actualA_, rankId_, aivId_);
+    //     previousOffset = currentOffset;
+    // }
+
     // TODO(delete): rank boundaries now come directly from Dispatch Epilogue.
     // uint64_t localBegin = LowerBoundSrcRank(rankId_);
     // uint64_t localEnd = LowerBoundSrcRank(rankId_ + 1U);
@@ -968,6 +1030,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
     }
 
     // All AIVs must reach this barrier, including empty local ranges and actualA_ == 0.
+    // It also publishes AIV0's completed constant-source initialization before any remote flag is submitted.
     SyncAll<true>();
 
     if (aivId_ == 0U) {
@@ -993,8 +1056,16 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
         BeginPreparedWrites(dstRank, 0U);
         ProcessRemoteMetadataRange(dstRank, rankBegin, rankEnd);
         SendChannelFlag(dstRank, 0U);
+        // Submit the ordered completion flag and return without waiting for remote completion.
+        // Combine Epilogue polls the receive flags; only SQ high-watermark checkpoints drain here.
+        // TODO(delete): diagnostic blocking flush; requires the CQE-enabled final-flag configuration above.
+        // FlushPreparedWrites(false, true);
         FlushPreparedWrites();
     }
+    if (actualA_ != 0U) {
+        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
+    }
+    diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
 }
 
 // TODO(delete): legacy address-table path only.
