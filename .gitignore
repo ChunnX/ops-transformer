@@ -48,6 +48,7 @@ third_party/
 .agents/
 .opencode/
 .claude/
+.arts/
 
 # pre-commit log
 log/

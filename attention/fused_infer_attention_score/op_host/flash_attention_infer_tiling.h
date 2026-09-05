@@ -352,10 +352,11 @@ void FAInferTiling::FillWorkSpaceTilingData(FAInferTilingData &faTilingData)
     uint64_t splitLseTotalSize = 0;
     uint64_t splitOTotalSize = 0;
     if (faInfo_.isTilingSink) {
-        splitLseTotalSize = SPLIT_WORKSPACE_FACTOR * static_cast<uint64_t>(blockNum_) * Q_TILE_CEIL * SIZE_OF_32BIT * faInfo_.numHeads;
+        splitLseTotalSize =
+            SPLIT_WORKSPACE_FACTOR * static_cast<uint64_t>(blockNum_) * Q_TILE_CEIL * SIZE_OF_32BIT * faInfo_.numHeads;
         uint32_t embeddingSizeV = static_cast<uint32_t>(faInfo_.embeddingSizeV);
-        splitOTotalSize =
-            SPLIT_WORKSPACE_FACTOR * static_cast<uint64_t>(blockNum_) * Q_TILE_CEIL * embeddingSizeV * SIZE_OF_32BIT * faInfo_.numHeads;
+        splitOTotalSize = SPLIT_WORKSPACE_FACTOR * static_cast<uint64_t>(blockNum_) * Q_TILE_CEIL * embeddingSizeV *
+                          SIZE_OF_32BIT * faInfo_.numHeads;
         faTilingData.set_splitLseTotalSize(splitLseTotalSize);
         faTilingData.set_splitOTotalSize(splitOTotalSize);
         faTilingData.set_needCoreNum(blockNum_);
