@@ -653,7 +653,8 @@ Status Fusion(const GraphPtr &graph, GNode &nodeGmmFr, CustomPassContext &passCo
 
 Status RunGroupedMatmulFinalizeRoutingTransposeFusion(const GraphPtr &graph, CustomPassContext &passContext)
 {
-    OP_LOGD(PASS_NAME, "Enter GroupedMatmulFinalizeRouting transpose fusion pass.");
+    OP_LOGD(PASS_NAME,
+        "[OPS_TRANSFORMER_GMM_TRANSPOSE_REBUILD] Enter migrated GroupedMatmulFinalizeRouting transpose fusion pass.");
     if (graph == nullptr || !graph->IsValid()) {
         OP_LOGW(PASS_NAME, "Graph is null or invalid, skip fusion pass.");
         return GRAPH_NOT_CHANGED;
@@ -675,6 +676,8 @@ Status RunGroupedMatmulFinalizeRoutingTransposeFusion(const GraphPtr &graph, Cus
     for (auto &nodeGmmFr : nodeGmmFrList) {
         auto status = Fusion(graph, nodeGmmFr, passContext);
         if (status == SUCCESS) {
+            OP_LOGD(PASS_NAME,
+                "[OPS_TRANSFORMER_GMM_TRANSPOSE_REBUILD] GroupedMatmulFinalizeRouting fusion triggered.");
             changed = true;
             continue;
         }

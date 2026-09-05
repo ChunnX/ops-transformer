@@ -277,6 +277,8 @@ ge::Status FuseNode(ge::GraphPtr &graph, ge::GNode &target)
 
 ge::Status RunFusion(ge::GraphPtr &graph, ge::CustomPassContext &passContext)
 {
+    OP_LOGD(kPassName,
+        "[OPS_TRANSFORMER_GMM_TRANSPOSE_REBUILD] Enter migrated QuantGroupedMatmulInplaceAdd transpose fusion pass.");
     if (graph == nullptr || !graph->IsValid()) {
         return ge::GRAPH_NOT_CHANGED;
     }
@@ -291,6 +293,8 @@ ge::Status RunFusion(ge::GraphPtr &graph, ge::CustomPassContext &passContext)
     for (auto &target : targets) {
         const auto status = FuseNode(graph, target);
         if (status == ge::SUCCESS) {
+            OP_LOGD(kPassName,
+                "[OPS_TRANSFORMER_GMM_TRANSPOSE_REBUILD] QuantGroupedMatmulInplaceAdd fusion triggered.");
             changed = true;
         } else if (status != ge::GRAPH_NOT_CHANGED) {
             return status;
