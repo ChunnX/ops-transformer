@@ -20,6 +20,19 @@
 #include "log/log.h"
 #include "version/ge-compiler_version.h"
 
+namespace ge {
+namespace fusion {
+// GE 9.1 exposes the inspector implementation at link time, but older public
+// headers do not declare it.  Keep the declaration weak and local to preserve
+// compatibility with both GE versions.
+class GraphFuseInspectorUtils {
+public:
+    static Status ReportFuse(const std::vector<GNode> &nodesBeforeFuse,
+        const std::vector<GNode> &nodesAfterFuse, CustomPassContext &ctx) __attribute__((weak));
+};
+} // namespace fusion
+} // namespace ge
+
 namespace ops {
 namespace {
 constexpr char kPassName[] = "QuantGroupedMatmulInplaceAddTransposeFusionPass";
@@ -249,7 +262,27 @@ bool RemoveNodeIfUnused(ge::GraphPtr &graph, const ge::GNodePtr &node)
     return true;
 }
 
-ge::Status FuseNode(ge::GraphPtr &graph, ge::GNode &target)
+void ReportFusion(const std::vector<ge::GNode> &nodesBeforeFuse, const ge::GNode &target,
+                  ge::CustomPassContext &passContext)
+{
+    const auto reportFuse = ge::fusion::GraphFuseInspectorUtils::ReportFuse;
+    if (reportFuse == nullptr) {
+        OP_LOGD(kPassName, "Skip reporting fusion result because GraphFuseInspector is unavailable.");
+        return;
+    }
+    if (reportFuse(nodesBeforeFuse, {target}, passContext) != ge::SUCCESS) {
+        OP_LOGW(kPassName, "Failed to report fusion result.");
+    }
+}
+
+void AddNodeToReport(const ge::GNodePtr &node, std::vector<ge::GNode> &nodesBeforeFuse)
+{
+    if (node != nullptr) {
+        nodesBeforeFuse.emplace_back(*node);
+    }
+}
+
+ge::Status FuseNode(ge::GraphPtr &graph, ge::GNode &target, ge::CustomPassContext &passContext)
 {
     if (!CheckTarget(target)) {
         return ge::GRAPH_NOT_CHANGED;
@@ -268,6 +301,13 @@ ge::Status FuseNode(ge::GraphPtr &graph, ge::GNode &target)
         (isMx && !RelinkInput(graph, target, kScale1Index, scale1Pattern))) {
         return ge::GRAPH_FAILED;
     }
+    std::vector<ge::GNode> nodesBeforeFuse;
+    nodesBeforeFuse.emplace_back(target);
+    AddNodeToReport(x1Pattern.transposeLike, nodesBeforeFuse);
+    if (isMx) {
+        AddNodeToReport(scale1Pattern.transposeLike, nodesBeforeFuse);
+    }
+    ReportFusion(nodesBeforeFuse, target, passContext);
     if (!RemoveNodeIfUnused(graph, x1Pattern.transposeLike) ||
         (isMx && !RemoveNodeIfUnused(graph, scale1Pattern.transposeLike))) {
         return ge::GRAPH_FAILED;
@@ -291,7 +331,7 @@ ge::Status RunFusion(ge::GraphPtr &graph, ge::CustomPassContext &passContext)
     }
     bool changed = false;
     for (auto &target : targets) {
-        const auto status = FuseNode(graph, target);
+        const auto status = FuseNode(graph, target, passContext);
         if (status == ge::SUCCESS) {
             OP_LOGD(kPassName,
                 "[OPS_TRANSFORMER_GMM_TRANSPOSE_REBUILD] QuantGroupedMatmulInplaceAdd fusion triggered.");
