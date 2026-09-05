@@ -666,7 +666,7 @@ aclnnStatus aclnnPromptFlashAttentionV2(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
-```c++
+```cpp
 #include <iostream>
 #include <vector>
 #include <math.h>
@@ -787,8 +787,8 @@ int main() {
   int64_t numHeads=2; // N
   int64_t numKeyValueHeads = numHeads;
   double scaleValue= 1 / sqrt(2); // 1/sqrt(d)
-  int64_t preTokens = 65535;
-  int64_t nextTokens = 65535;
+  int64_t preTokens = 2147483647;
+  int64_t nextTokens = 0;
   char layerOut[] = "BNSD";
   int64_t sparseMode = 0;
   // 3. Call the CANN operator library API
