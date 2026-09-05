@@ -36,15 +36,14 @@ public:
         aL0_ = LocalTensor<float>(TPosition::A2, 0, C0_BASIC_BUFFER_SIZE / sizeof(float));
         bL0_ = LocalTensor<float>(TPosition::B2, 0, C0_BASIC_BUFFER_SIZE / sizeof(float));
         cL0_ = LocalTensor<float>(TPosition::CO1, 0, C0_BASIC_BUFFER_SIZE / sizeof(float));
+        SetFlag<HardEvent::M_MTE1>(3);
+        SetFlag<HardEvent::FIX_M>(0);
     }
 
     __aicore__ inline void Process(const GlobalTensor<float> &a, const GlobalTensor<float> &b,
                                    const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
                                    uint32_t bGmStride)
     {
-        // 每次调用独立初始化并排空L0所有权令牌，避免与后续高阶C1 Matmul共享残留事件。
-        SetFlag<HardEvent::M_MTE1>(3);
-        SetFlag<HardEvent::FIX_M>(0);
         CopyInB1(b, n, k, bGmStride);
         for (uint32_t offsetM = 0; offsetM < m; offsetM += C0_BASIC_M) {
             uint32_t remainM = m - offsetM;
@@ -67,16 +66,12 @@ public:
                 MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0);
             SetFlag<HardEvent::FIX_M>(0);
         }
-        WaitFlag<HardEvent::M_MTE1>(3);
-        WaitFlag<HardEvent::FIX_M>(0);
     }
 
     __aicore__ inline void ProcessC1(const GlobalTensor<float> &a, const GlobalTensor<float> &b,
                                      const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
                                      uint32_t aGmStride, uint32_t bGmStride, uint32_t cGmStride, bool atomicAdd)
     {
-        SetFlag<HardEvent::M_MTE1>(3);
-        SetFlag<HardEvent::FIX_M>(0);
         WaitFlag<HardEvent::FIX_M>(0);
         for (uint32_t offsetK = 0; offsetK < k; offsetK += C0_BASIC_M) {
             uint32_t remainK = k - offsetK;
@@ -103,6 +98,10 @@ public:
             DisableDmaAtomic();
         }
         SetFlag<HardEvent::FIX_M>(0);
+    }
+
+    __aicore__ inline void End()
+    {
         WaitFlag<HardEvent::M_MTE1>(3);
         WaitFlag<HardEvent::FIX_M>(0);
     }

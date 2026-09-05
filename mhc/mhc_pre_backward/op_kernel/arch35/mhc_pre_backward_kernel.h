@@ -975,6 +975,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
             buffId++;
         }
     }
+    c0Basic_.End();
 
     if ASCEND_IS_AIC {
         AscendC::SetHF32Mode(0);
