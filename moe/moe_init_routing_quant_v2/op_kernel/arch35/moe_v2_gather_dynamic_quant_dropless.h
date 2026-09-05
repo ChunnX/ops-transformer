@@ -183,7 +183,7 @@ __aicore__ inline void MoeV2GatherDynamicQuantDropless<T>::Compute(LocalTensor<f
     float maxValue = dynamicQuantLocal.GetValue(0) / MAX_INT8;
     MoeInitRoutingQuantV2::SetWaitFlag<HardEvent::S_V>(HardEvent::S_V);
 
-    Duplicate<float>(dynamicQuantLocal, maxValue, 8);
+    Duplicate<float>(dynamicQuantLocal, 123.0f, 8);
     Duplicate<float>(tempLocal, maxValue, cols_);
     AscendC::PipeBarrier<PIPE_V>();
     Div(tempLocal, inLocal, tempLocal, cols_);
