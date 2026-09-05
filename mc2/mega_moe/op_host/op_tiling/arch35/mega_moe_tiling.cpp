@@ -1955,8 +1955,7 @@ static ge::graphStatus CheckBasicInputTensorDim(const gert::TilingContext *conte
     OP_LOGD(nodeName, "topkWeights dim0 = %ld", topkWeightsDim0);
     OP_LOGD(nodeName, "topkWeights dim1 = %ld", topkWeightsDim1);
 
-    return CheckBasicInputShapeDimRelation(nodeName, xDim0, topkIdsDim0, topkWeightsDim0, topkIdsDim1,
-                                           topkWeightsDim1);
+    return CheckBasicInputShapeDimRelation(nodeName, xDim0, topkIdsDim0, topkWeightsDim0, topkIdsDim1, topkWeightsDim1);
 }
 
 /*

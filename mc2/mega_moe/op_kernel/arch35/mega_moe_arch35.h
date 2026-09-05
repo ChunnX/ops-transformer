@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -101,8 +101,9 @@ protected:
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void ProcessInputPreparationStage();
     __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
-                                                   WaveGmm2PipelineState &runtimeState, uint32_t tokenStartIndexInExpert,
-                                                   uint32_t sliceTokenCount, bool isFinalCombine);
+                                                   WaveGmm2PipelineState &runtimeState,
+                                                   uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount,
+                                                   bool isFinalCombine);
     template <bool WaitForTokenCountReady>
     __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx);
     __aicore__ inline void ProcessSharedExpertGmm1(int32_t &gmm1TileReadySequence);
