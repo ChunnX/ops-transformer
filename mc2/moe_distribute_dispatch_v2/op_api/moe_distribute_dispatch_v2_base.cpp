@@ -86,7 +86,7 @@ bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertIds, const 
 aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, const aclTensor *scalesOptional,
                                 const char *groupEp, const char *groupTp, int64_t quantMode, aclTensor *expandX,
                                 aclTensor *dynamicScales, aclTensor *assistInfoForCombine, aclTensor *expertTokensNums,
-                                aclTensor *epRecvCounts, aclTensor *tpRecvCounts)
+                                aclTensor *epRecvCounts)
 {
     CHECK_RET(DispatchCheckNotNull(x, expertIds, groupEp, groupTp, expandX, dynamicScales, assistInfoForCombine,
                                    expertTokensNums, epRecvCounts),
@@ -100,7 +100,7 @@ aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, 
         OP_LOGD("quantMode = 2, dynamicScales can't be null");
         CHECK_RET(dynamicScales != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     }
-    if (x->GetDataType() == ACL_INT32) {
+    if (static_cast<int32_t>(x->GetDataType()) == static_cast<int32_t>(ACL_INT32)) {
         OP_LOGD("x dtype is INT32, scales and dynamicScales can't be null");
         CHECK_RET(scalesOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
         CHECK_RET(dynamicScales != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -164,9 +164,8 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     OP_LOGD("enter to the  aclnnMoeDistributeDispatchGetWorkspaceSizeBase\n");
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
-    auto retParam =
-        DispatchCheckParams(x, expertIds, scalesOptional, groupEp, groupTp, quantMode, expandXOut, dynamicScalesOut,
-                            assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut);
+    auto retParam = DispatchCheckParams(x, expertIds, scalesOptional, groupEp, groupTp, quantMode, expandXOut,
+                                        dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
 
     aclTensor *mc2Context = nullptr;
