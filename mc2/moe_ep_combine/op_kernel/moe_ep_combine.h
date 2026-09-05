@@ -622,7 +622,8 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPreparedWrites(bool keepHandle)
 {
     if (preparedWriteCount_ != 0) {
-        (void)hcomm_.BatchCommit(activeBatchHandle_);
+        int32_t ret = hcomm_.BatchCommit(activeBatchHandle_);
+        ascendc_assert(ret == HCOMM_SUCCESS, "BatchCommit failed, ret=%d, rankId=%u, aivId=%u", ret, rankId_, aivId_);
         preparedWriteCount_ = 0;
     }
     if (!keepHandle) {
@@ -658,7 +659,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
         // BatchCommit resets the WQE count in the handle; keep using it for this channel as PR 10309 does.
         FlushPreparedWrites(true);
     }
-    (void)hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, len);
+    int32_t ret = hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, len);
+    ascendc_assert(ret == HCOMM_SUCCESS, "WriteNbi failed, ret=%d, rankId=%u, aivId=%u", ret, rankId_, aivId_);
     ++preparedWriteCount_;
     ++sqWriteCount_;
 }
@@ -856,10 +858,30 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteMet
     uint64_t dstSlot =
         static_cast<uint64_t>(static_cast<uint32_t>(srcTokenIdx)) * topK_ + static_cast<uint32_t>(srcTopKIdx);
     GM_ADDR tokenAddr = reinterpret_cast<GM_ADDR>(xGm_.GetPhyAddr(static_cast<uint64_t>(recvXIdx) * axisH_));
-    PrepareWrite<DEFAULT_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
+    // Keep the SQ protection of the legacy address-table path.  The direct metadata path originally omitted this
+    // completion edge, so an unusually skewed rank range could fill the SQ and silently lose the later flag WQE.
+    constexpr uint32_t writesPerToken = HasTopkWeight == 1 ? 2U : 1U;
+    bool drainAfterToken = sqWriteCount_ + 2U * writesPerToken > HCOMM_SQ_MAX_PENDING;
+    if constexpr (HasTopkWeight == 1) {
+        PrepareWrite<DEFAULT_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
+    } else if (drainAfterToken) {
+        PrepareWrite<DEFAULT_CQE_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
+    } else {
+        PrepareWrite<DEFAULT_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
+    }
     if constexpr (HasTopkWeight == 1) {
         GM_ADDR weightAddr = reinterpret_cast<GM_ADDR>(topkWeightsGm_.GetPhyAddr(recvXIdx));
-        PrepareWrite<DEFAULT_WQE_CONFIG>(remoteStateBase + dstSlot * WIN_ADDR_ALIGN, weightAddr, sizeof(float));
+        if (drainAfterToken) {
+            PrepareWrite<DEFAULT_CQE_WQE_CONFIG>(remoteStateBase + dstSlot * WIN_ADDR_ALIGN, weightAddr, sizeof(float));
+        } else {
+            PrepareWrite<DEFAULT_WQE_CONFIG>(remoteStateBase + dstSlot * WIN_ADDR_ALIGN, weightAddr, sizeof(float));
+        }
+    }
+    if (drainAfterToken) {
+        FlushPreparedWrites(true);
+        int32_t ret = hcomm_.Drain(activeBatchChannel_);
+        ascendc_assert(ret == HCOMM_SUCCESS, "Drain failed, ret=%d, rankId=%u, aivId=%u", ret, rankId_, aivId_);
+        sqWriteCount_ = 0U;
     }
 }
 
@@ -954,6 +976,19 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
 
     InitFlagSource();
 
+    // Fail at the producer/consumer boundary instead of turning malformed or not-yet-visible offsets into an
+    // unbounded metadata loop followed by a combine-epilogue flag wait.
+    uint32_t previousOffset = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(0U));
+    ascendc_assert(previousOffset == 0U, "recv_rank_offsets[0] must be 0, got=%u, rankId=%u, aivId=%u",
+                   previousOffset, rankId_, aivId_);
+    for (uint32_t offsetIdx = 1U; offsetIdx <= epWorldSize_; ++offsetIdx) {
+        uint32_t currentOffset = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(offsetIdx));
+        ascendc_assert(currentOffset >= previousOffset && static_cast<uint64_t>(currentOffset) <= actualA_,
+                       "invalid recv_rank_offsets[%u]=%u, prev=%u, actualA=%llu, rankId=%u, aivId=%u", offsetIdx,
+                       currentOffset, previousOffset, actualA_, rankId_, aivId_);
+        previousOffset = currentOffset;
+    }
+
     // TODO(delete): rank boundaries now come directly from Dispatch Epilogue.
     // uint64_t localBegin = LowerBoundSrcRank(rankId_);
     // uint64_t localEnd = LowerBoundSrcRank(rankId_ + 1U);
@@ -995,6 +1030,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
         SendChannelFlag(dstRank, 0U);
         FlushPreparedWrites();
     }
+    if (actualA_ != 0U) {
+        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
+    }
+    diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
 }
 
 // TODO(delete): legacy address-table path only.
