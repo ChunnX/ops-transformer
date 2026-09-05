@@ -39,12 +39,10 @@ __global__ __aicore__ void bandwidth_test(GM_ADDR context, GM_ADDR x, GM_ADDR ds
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(BandwidthTestTilingData, tilingData, tilingGM);
         if constexpr (CommMode == TILINGKEY_TPL_URMA) {
-            printf("urma\n");
             BandwidthTestUrma<DTYPE_X, DTYPE_Y> op;
             op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
             op.Process();
         } else {
-            printf("mte\n");
             BandwidthTest<DTYPE_X, DTYPE_Y> op;
             op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
             op.Process();
