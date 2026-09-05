@@ -68,6 +68,7 @@ struct FlashMlaWithKvcacheRunInfoX {
     bool isChangeBatch = false;
     bool isFirstS2Loop = false;
     bool isLastS2Loop = false;
+    bool qPreloaded = false; // 本任务 Q 的 MTE2 已提前一轮发起（启动首任务/Q 块边界）
 
     uint32_t bIdx = 0;
     uint32_t n2Idx = 0;
