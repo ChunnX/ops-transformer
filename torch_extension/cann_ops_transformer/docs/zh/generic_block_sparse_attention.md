@@ -134,8 +134,8 @@ cann_ops_transformer.generic_block_sparse_attention(
 | is_packed_gqa | int | 可选 | 是否启用Packed GQA，默认1 | int32 | - | - |
 | layout_q | string | 可选 | 定义输入query张量的布局格式 | string | - | - |
 | layout_kv | string | 可选 | 定义输入key/value张量的布局格式 | string | - | - |
-| mask_mode | int | 可选 | 掩码模式 | int32 | - | - |
-| quant_mode | int | 可选 | 量化模式 | int32 | - | - |
+| mask_mode | int/MaskMode | 可选 | 掩码模式，支持传入枚举或对应 int 值，枚举定义见「mask_mode 枚举」 | int32 | - | - |
+| quant_mode | int/QuantMode | 可选 | 量化模式，支持传入枚举或对应 int 值，枚举定义见「quant_mode 枚举」 | int32 | - | - |
 | softmax_precision | int | 可选 | Softmax精度模式 | int32 | - | - |
 | win_left | int | 可选 | window左界限 | int32 | - | - |
 | win_right | int | 可选 | window右界限 | int32 | - | - |
@@ -165,8 +165,8 @@ cann_ops_transformer.generic_block_sparse_attention(
 | layout_q | string | 可选 | 定义输入query张量的布局格式 | string | - | - |
 | layout_kv | string | 可选 | 定义输入key/value张量的布局格式 | string | - | - |
 | softmax_scale | float | 可选 | 可显式设置缩放因子，覆盖默认计算 | float32 | - | - |
-| mask_mode | int | 可选 | 掩码模式 | int32 | - | - |
-| quant_mode | int | 可选 | 量化模式 | int32 | - | - |
+| mask_mode | int/MaskMode | 可选 | 掩码模式，支持传入枚举或对应 int 值，枚举定义见「mask_mode 枚举」 | int32 | - | - |
+| quant_mode | int/QuantMode | 可选 | 量化模式，支持传入枚举或对应 int 值，枚举定义见「quant_mode 枚举」 | int32 | - | - |
 | dst_type_max | float | 可选 | 量化相关参数 | float32 | - | - |
 | softmax_precision | int | 可选 | Softmax精度模式 | int32 | - | - |
 | win_left | int | 可选 | window左界限 | int32 | - | - |
@@ -193,6 +193,33 @@ cann_ops_transformer.generic_block_sparse_attention(
 
 - attention_out：限制：该输出参数的shape与入参query的shape保持一致；FP8输入时dtype由attention_out_dtype指定。
 - softmax_lse：return_softmax_lse为True时，TND布局下输出shape为(Q_T, Q_N, 1)的Tensor；return_softmax_lse为False时，则输出空Tensor。
+
+## 枚举说明
+
+`quant_mode` 与 `mask_mode` 在 Python 接口中支持传入 `IntEnum` 枚举或对应 int 值，枚举定义于 `cann_ops_transformer.ops.generic_block_sparse_attention`：
+
+### quant_mode 枚举
+
+| 枚举名 | 值 | 含义 |
+| :--- | :---: | :--- |
+| `NO_QUANT` | 0 | 非量化（默认值） |
+| `FP8_E4M3_STATIC_PER_GROUP` | 1 | FP8_E4M3 静态 per-group（当前不支持） |
+| `FP8_E4M3_DYNAMIC_MX` | 2 | FP8_E4M3 动态 MX（当前不支持） |
+| `FP4_E2M1_DYNAMIC_OCP` | 3 | FP4_E2M1 动态 OCP（当前不支持） |
+| `FP4_E2M1_DYNAMIC_CX` | 4 | FP4_E2M1 动态 CX（当前不支持） |
+| `FP8_E4M3_STATIC_CAST_P` | 5 | FP8_E4M3 静态 cast P（Ascend 950 可选） |
+
+### mask_mode 枚举
+
+| 枚举名 | 值 | 含义 |
+| :--- | :---: | :--- |
+| `NO_MASK` | 0 | 不加 mask（当前不支持） |
+| `CAUSAL` | 1 | Causal 模式（默认值） |
+| `WINDOW` | 2 | Window 模式（当前不支持） |
+
+> [!NOTE]
+>
+> 枚举为 `IntEnum`，可直接作为 int 传入底层算子；接口支持传入枚举、对应 int 值或枚举名字符串（大小写不敏感）。当前仅支持 `mask_mode=1`（`CAUSAL`）；`quant_mode` 当前支持 `0`（`NO_QUANT`）与 `5`（`FP8_E4M3_STATIC_CAST_P`，Ascend 950）。亦可从 op 句柄访问：`generic_block_sparse_attention.MaskMode` / `QuantMode`（metadata 接口同理）。
 
 ## 约束说明
 
@@ -439,14 +466,7 @@ cann_ops_transformer.generic_block_sparse_attention(
 
 #### Mask参数组
 
-mask_mode参数解释
-<ul>
-    <li>mask_mode=0，不加mask（当前不支持）</li>
-    <li>mask_mode=1，Causal模式（当前默认且唯一支持）</li>
-    <li>mask_mode=2，Window模式（当前不支持）</li>
-</ul>
-
-Python接口中mask_mode与quant_mode支持传入IntEnum枚举或对应int值，枚举定义于`cann_ops_transformer.ops.generic_block_sparse_attention`。
+mask_mode参数解释见「mask_mode 枚举」。
 
 <table style="undefined;table-layout: fixed; width:1625px">
     <colgroup>
@@ -630,12 +650,7 @@ Python接口中mask_mode与quant_mode支持传入IntEnum枚举或对应int值，
 
 #### Quant参数组
 
-quant_mode参数解释
-<ul>
-    <li>quant_mode=0，非量化（默认值）</li>
-    <li>quant_mode=5，FP8_E4M3静态cast P（Ascend 950可选）</li>
-    <li>quant_mode=1~4，当前不支持</li>
-</ul>
+quant_mode参数解释见「quant_mode 枚举」。
 
 <table style="undefined;table-layout: fixed; width:1625px">
     <colgroup>
