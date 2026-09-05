@@ -125,7 +125,7 @@ public:
     GlobalTensor<float> accumOutGm_;
     GlobalTensor<float> softmaxFDSumGm_;
     GlobalTensor<float> softmaxFDMaxGm_;
-    GlobalTensor<INPUT_T> sinkGm_;
+    GlobalTensor<float> sinkGm_;
 
     T negativeFloatScalar_;
 
@@ -158,7 +158,7 @@ public:
                                             constInfo_.logSumExpSize);
         }
         if (constInfo_.learnableSinkFlag) {
-            sinkGm_.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
+            sinkGm_.SetGlobalBuffer((__gm__ float *)learnableSink);
         }
     }
 
@@ -215,8 +215,8 @@ public:
 
             Mutex::Lock<PIPE_MTE2>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
             {
-                LocalTensor<INPUT_T> sinkTmpUb =
-                    ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
+                LocalTensor<float> sinkTmpUb =
+                    ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<float>();
                 if constexpr (LAYOUT_T == FA_LAYOUT::BSND || LAYOUT_T == FA_LAYOUT::TND) {
                     AttentionCommon::SinkCopyInS1G(sinkTmpUb, sinkGm_, gs1Start, runInfo.actVecMSize, runInfo.actS1Size,
                                                    runInfo.n2Idx, constInfo_.gSize);
@@ -229,15 +229,15 @@ public:
 
             Mutex::Lock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
             {
-                LocalTensor<INPUT_T> sinkTmpUb =
-                    ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
+                LocalTensor<float> sinkTmpUb =
+                    ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<float>();
 
                 if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
-                    AttentionCommon::SinkExpandMaxVf<T, INPUT_T, true>(maxUb, sinkTmpUb, gs1Start, runInfo.actVecMSize,
-                                                                       runInfo.actS1Size, constInfo_.gSize);
+                    AttentionCommon::SinkExpandMaxVf<T, float, true>(maxUb, sinkTmpUb, gs1Start, runInfo.actVecMSize,
+                                                                     runInfo.actS1Size, constInfo_.gSize);
                 } else {
-                    AttentionCommon::SinkExpandMaxVf<T, INPUT_T, false>(maxUb, sinkTmpUb, gs1Start, runInfo.actVecMSize,
-                                                                        runInfo.actS1Size, constInfo_.gSize);
+                    AttentionCommon::SinkExpandMaxVf<T, float, false>(maxUb, sinkTmpUb, gs1Start, runInfo.actVecMSize,
+                                                                      runInfo.actS1Size, constInfo_.gSize);
                 }
             }
             Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
