@@ -23,14 +23,14 @@
 
 ## 功能说明
 
-- **接口功能**：将 `partial_block` 与 `block_res` 按 block 维拼接后，完成 RMS 归一化、`norm_weight ⊙ proj_weight` 投影打分、Softmax 加权融合，输出 `hidden_states`。当 `need_backward=True` 时，同时输出逐行 `inv_norm` 与 Softmax 概率 `probs`，供反向使用。
+- **接口功能**：将 `partial_block` 与 `block_res` 按 block 维拼接后，完成 RMS 归一化、`norm_weight ⊙ proj_weight` 投影打分、Softmax 加权融合，输出 `hidden_states`。
 
 - **计算公式**：
 
     $$
     \operatorname{block\_attention\_residuals}
     \left(partial\_block, block\_res, proj\_weight, norm\_weight; valid\_block\_num, norm\_eps\right)
-    \longrightarrow hidden\_states \ [,\ inv\_norm,\ probs].
+    \longrightarrow hidden\_states.
     $$
 
     记 token 数为 $T$，block 数为 $N$，hidden size 为 $H$，拼接后逻辑行数 $B = N + 1$。行序与 golden 一致：前 $N$ 行来自 `block_res`，最后一行来自 `partial_block`。
@@ -71,10 +71,7 @@
     hidden\_states_{t,h} = \sum_{i=0}^{N} probs_{t,i} \cdot v_{t,i,h}
     $$
 
-    加权融合使用**原始** $v$（非 RMS 后的 $k$）。`need_backward=True` 时额外输出：
-
-    - $inv\_norm_{t,i} = inv\_rms_{t,i}$，dtype 为 float32，shape 为 $[T, B]$
-    - $probs_{t,i}$，dtype 为 float32，shape 为 $[T, B]$
+    加权融合使用**原始** $v$（非 RMS 后的 $k$）。Torch 接口当前仅返回 $hidden\_states$。
 
     其中：
 
@@ -97,11 +94,9 @@ cann_ops_transformer.block_attention_residuals(
     block_res,
     proj_weight,
     norm_weight,
-    *,
     valid_block_num=None,
     norm_eps=1.0e-5,
-    need_backward=None,
-) -> Union[Tensor, Tuple[Tensor, Tensor, Tensor]]
+) -> Tensor
 ```
 
 ## 参数说明
@@ -114,23 +109,20 @@ cann_ops_transformer.block_attention_residuals(
 | norm_weight | Tensor | 必选 | RMS 缩放权重。数据格式为 ND；dtype 必须与 `partial_block` 一致。 | 同 partial_block | [H] |
 | valid_block_num | int | 可选 | Torch 适配层可选。不传或传入 `None` / `-1` 时默认使用 $N$，再下发给 ACLNN；当前仅支持等于 $N$，其它取值报错。 | int | - |
 | norm_eps | float | 可选 | RMS 归一化的数值稳定项，必须为有限正数，默认值为 `1.0e-5`。 | float | - |
-| need_backward | bool | 可选 | 是否写出反向中间量。默认 `None`：四个输入均 `requires_grad=True` 时按 `True` 处理，否则按 `False`。 | bool | - |
 
 ## 返回值说明
 
-`need_backward=False` 时返回 `(hidden_states, None, None)`。`need_backward=True` 时返回 `(hidden_states, inv_norm, probs)`。
+始终返回 `hidden_states`。反向算子未上库，不返回 `inv_norm` / `probs`。
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
 | hidden_states | Tensor | 必选 | 加权融合结果，对应公式中的 $hidden\_states$。数据格式为 ND。 | 同 partial_block | [T, H] |
-| inv_norm | Tensor | 可选 | 逐行 RMS 归一化系数，对应公式中的 $inv\_rms$。`need_backward=False` 时为 `None` 占位。数据格式为 ND。 | float32 | [T, N+1] |
-| probs | Tensor | 可选 | Softmax 概率，对应公式中的 $probs$。`need_backward=False` 时为 `None` 占位。数据格式为 ND。 | float32 | [T, N+1] |
 
 ## 约束说明
 
-- 该接口支持训练、推理场景下使用。
+- 当前反向算子未上库，Torch 接口仅支持正向调用。
 - 该接口支持单算子模式调用，暂不支持 TorchAir 图模式调用。
-- 主路径 dtype 必须一致，支持 float16 / bfloat16 / float32；`inv_norm` / `probs` 仅 float32。
+- 主路径 dtype 必须一致，支持 float16 / bfloat16 / float32。
 - shape 要求：`T >= 0`，`H >= 1`，`1 <= N <= 100`。`T == 0` 时返回对应 shape 的空输出。
 - `block_res.shape[0]`、`block_res.shape[2]` 必须分别等于 `partial_block` 的 $T$、$H$；`proj_weight` 最后一维与 `norm_weight` 长度必须等于 $H$。
 - `valid_block_num` 为 Torch 适配层可选参数：不传或传入 `None` / `-1` 时默认等于 $N$，由适配层解析后再调用 ACLNN。ACLNN / 算子侧该属性仍为必选且必须等于 $N$。
@@ -173,26 +165,16 @@ cann_ops_transformer.block_attention_residuals(
     proj_weight = torch.tensor([0.5, 0.25, 0.25, 0.0], dtype=torch.bfloat16, device="npu")
     norm_weight = torch.ones(4, dtype=torch.bfloat16, device="npu")
 
-    # valid_block_num / norm_eps / need_backward 为可选参数；省略时分别使用 N、1e-5、自动推断。
-    hidden_states, inv_norm, probs = cann_ops_transformer.block_attention_residuals(
+    # valid_block_num / norm_eps 为可选参数；省略时分别使用 N、1e-5。反向未上库，仅返回 hidden_states。
+    hidden_states = cann_ops_transformer.block_attention_residuals(
         partial_block,
         block_res,
         proj_weight,
         norm_weight,
-    )
-
-    hidden_states, inv_norm, probs = cann_ops_transformer.block_attention_residuals(
-        partial_block,
-        block_res,
-        proj_weight,
-        norm_weight,
-        need_backward=True,
     )
     torch_npu.npu.synchronize()
 
     print("hidden_states:", hidden_states)
-    print("inv_norm:", inv_norm)
-    print("probs:", probs)
     ```
 
 - TorchAir 图模式调用：暂不支持。
