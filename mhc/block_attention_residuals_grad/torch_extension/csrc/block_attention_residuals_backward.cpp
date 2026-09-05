@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file block_attention_residuals_grad.cpp
+ * \file block_attention_residuals_backward.cpp
  * \brief ACLNN wrapper for aclnnBlockAttentionResidualsGrad.
  */
 
@@ -40,7 +40,7 @@ bool IsSupportedMainDtype(at::ScalarType dtype)
 
 } // namespace
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> block_attention_residuals_grad(
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> block_attention_residuals_backward(
     const at::Tensor &partial_block, const at::Tensor &block_res, const at::Tensor &proj_weight,
     const at::Tensor &norm_weight, const at::Tensor &grad_hidden_states, const at::Tensor &inv_norm,
     const at::Tensor &probs, int64_t valid_block_num)
@@ -124,7 +124,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> block_attention_resid
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("block_attention_residuals_grad", &block_attention_residuals_grad, "block_attention_residuals_grad");
+    m.def("block_attention_residuals_backward", &block_attention_residuals_backward,
+          "block_attention_residuals_backward");
 }
 
 } // namespace op_api

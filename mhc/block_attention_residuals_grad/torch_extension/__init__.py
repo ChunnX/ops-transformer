@@ -8,6 +8,9 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-__all__ = ["block_attention_residuals_grad"]
+__all__ = ["block_attention_residuals_backward"]
 
-from .block_attention_residuals_grad import block_attention_residuals_grad
+from .block_attention_residuals_backward import block_attention_residuals_backward
+
+# Keep the source-directory name available for automatic op discovery.
+block_attention_residuals_grad = block_attention_residuals_backward

@@ -54,8 +54,7 @@ def _check_dtypes(
     for tensor_name, tensor in main_tensors[1:]:
         torch_check(
             tensor.dtype == partial_block.dtype,
-            lambda tensor_name=tensor_name,
-            tensor=tensor: (
+            lambda tensor_name=tensor_name, tensor=tensor: (
                 f"{tensor_name} dtype must be same as partial_block dtype, "
                 f"but got {tensor.dtype} and {partial_block.dtype}"
             ),
@@ -90,7 +89,9 @@ def _check_dimensions(
     for tensor_name, tensor, expected_rank in tensor_dimensions:
         torch_check(
             tensor.dim() == expected_rank,
-            lambda tensor_name=tensor_name, tensor=tensor, expected_rank=expected_rank: (
+            lambda tensor_name=tensor_name,
+            tensor=tensor,
+            expected_rank=expected_rank: (
                 f"{tensor_name} must be a {expected_rank}D tensor, but got {tensor.dim()}D"
             ),
         )
@@ -135,7 +136,8 @@ def _check_shapes(
         ),
     )
     torch_check(
-        proj_weight.size(DIM_INDEX_BATCH) == 1 and proj_weight.size(DIM_INDEX_HIDDEN) == hidden_size,
+        proj_weight.size(DIM_INDEX_BATCH) == 1
+        and proj_weight.size(DIM_INDEX_HIDDEN) == hidden_size,
         lambda: f"proj_weight must have shape [1, {hidden_size}], but got {proj_weight.shape}",
     )
     torch_check(
@@ -149,7 +151,8 @@ def _check_shapes(
     )
     for tensor_name, tensor in (("inv_norm", inv_norm), ("probs", probs)):
         torch_check(
-            tensor.size(DIM_INDEX_BATCH) == token_num and tensor.size(DIM_INDEX_BLOCK) == block_num + 1,
+            tensor.size(DIM_INDEX_BATCH) == token_num
+            and tensor.size(DIM_INDEX_BLOCK) == block_num + 1,
             lambda tensor_name=tensor_name, tensor=tensor: (
                 f"{tensor_name} must have shape [{token_num}, {block_num + 1}], but got {tensor.shape}"
             ),
@@ -193,22 +196,54 @@ def _check_inputs(
     inv_norm: torch.Tensor,
     probs: torch.Tensor,
 ) -> None:
-    _check_dimensions(partial_block, block_res, proj_weight, norm_weight, grad_hidden_states, inv_norm, probs)
-    _check_dtypes(partial_block, block_res, proj_weight, norm_weight, grad_hidden_states, inv_norm, probs)
-    _check_shapes(partial_block, block_res, proj_weight, norm_weight, grad_hidden_states, inv_norm, probs)
-    _check_device(partial_block, block_res, proj_weight, norm_weight, grad_hidden_states, inv_norm, probs)
+    _check_dimensions(
+        partial_block,
+        block_res,
+        proj_weight,
+        norm_weight,
+        grad_hidden_states,
+        inv_norm,
+        probs,
+    )
+    _check_dtypes(
+        partial_block,
+        block_res,
+        proj_weight,
+        norm_weight,
+        grad_hidden_states,
+        inv_norm,
+        probs,
+    )
+    _check_shapes(
+        partial_block,
+        block_res,
+        proj_weight,
+        norm_weight,
+        grad_hidden_states,
+        inv_norm,
+        probs,
+    )
+    _check_device(
+        partial_block,
+        block_res,
+        proj_weight,
+        norm_weight,
+        grad_hidden_states,
+        inv_norm,
+        probs,
+    )
 
 
-class BlockAttentionResidualsGradOpBuilder(OpBuilder):
+class BlockAttentionResidualsBackwardOpBuilder(OpBuilder):
     def __init__(self):
-        super().__init__("block_attention_residuals_grad", category="mhc")
+        super().__init__("block_attention_residuals_backward", category="mhc")
 
     def sources(self):
-        return ["csrc/mhc/block_attention_residuals_grad.cpp"]
+        return ["csrc/mhc/block_attention_residuals_backward.cpp"]
 
     def schema(self) -> str:
         return (
-            "block_attention_residuals_grad(Tensor partial_block, Tensor block_res, "
+            "block_attention_residuals_backward(Tensor partial_block, Tensor block_res, "
             "Tensor proj_weight, Tensor norm_weight, Tensor grad_hidden_states, "
             "Tensor inv_norm, Tensor probs, *, int valid_block_num=0) -> "
             "(Tensor, Tensor, Tensor, Tensor)"
@@ -216,7 +251,7 @@ class BlockAttentionResidualsGradOpBuilder(OpBuilder):
 
     def register_meta(self):
         @impl(get_as_library(), self.name, "Meta")
-        def block_attention_residuals_grad_meta(
+        def block_attention_residuals_backward_meta(
             partial_block,
             block_res,
             proj_weight,
@@ -227,21 +262,38 @@ class BlockAttentionResidualsGradOpBuilder(OpBuilder):
             *,
             valid_block_num=DEFAULT_VALID_BLOCK_NUM,
         ):
-            _check_inputs(partial_block, block_res, proj_weight, norm_weight, grad_hidden_states, inv_norm, probs)
+            _check_inputs(
+                partial_block,
+                block_res,
+                proj_weight,
+                norm_weight,
+                grad_hidden_states,
+                inv_norm,
+                probs,
+            )
             meta_options = {"dtype": partial_block.dtype, "device": "meta"}
             grad_partial_block = torch.empty(partial_block.shape, **meta_options)
             grad_block_res = torch.empty(block_res.shape, **meta_options)
             grad_proj_weight = torch.empty(proj_weight.shape, **meta_options)
             grad_norm_weight = torch.empty(norm_weight.shape, **meta_options)
-            return grad_partial_block, grad_block_res, grad_proj_weight, grad_norm_weight
+            return (
+                grad_partial_block,
+                grad_block_res,
+                grad_proj_weight,
+                grad_norm_weight,
+            )
 
 
-block_attention_residuals_grad_op_builder = BlockAttentionResidualsGradOpBuilder()
-block_attention_residuals_grad_op_builder._ensure_initialized()
+block_attention_residuals_backward_op_builder = (
+    BlockAttentionResidualsBackwardOpBuilder()
+)
+block_attention_residuals_backward_op_builder._ensure_initialized()
 
 
-@impl(get_as_library(), block_attention_residuals_grad_op_builder.name, "PrivateUse1")
-def _block_attention_residuals_grad_dispatch(
+@impl(
+    get_as_library(), block_attention_residuals_backward_op_builder.name, "PrivateUse1"
+)
+def _block_attention_residuals_backward_dispatch(
     partial_block: torch.Tensor,
     block_res: torch.Tensor,
     proj_weight: torch.Tensor,
@@ -252,8 +304,8 @@ def _block_attention_residuals_grad_dispatch(
     *,
     valid_block_num: int = DEFAULT_VALID_BLOCK_NUM,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    op_module = block_attention_residuals_grad_op_builder.load()
-    return op_module.block_attention_residuals_grad(
+    op_module = block_attention_residuals_backward_op_builder.load()
+    return op_module.block_attention_residuals_backward(
         partial_block,
         block_res,
         proj_weight,
@@ -265,7 +317,7 @@ def _block_attention_residuals_grad_dispatch(
     )
 
 
-def block_attention_residuals_grad(
+def block_attention_residuals_backward(
     partial_block: torch.Tensor,
     block_res: torch.Tensor,
     proj_weight: torch.Tensor,
@@ -298,8 +350,16 @@ def block_attention_residuals_grad(
         block_res, proj_weight and norm_weight with shapes identical to the
         corresponding inputs.
     """
-    _check_inputs(partial_block, block_res, proj_weight, norm_weight, grad_hidden_states, inv_norm, probs)
-    return torch.ops.cann_ops_transformer.block_attention_residuals_grad(
+    _check_inputs(
+        partial_block,
+        block_res,
+        proj_weight,
+        norm_weight,
+        grad_hidden_states,
+        inv_norm,
+        probs,
+    )
+    return torch.ops.cann_ops_transformer.block_attention_residuals_backward(
         partial_block,
         block_res,
         proj_weight,
