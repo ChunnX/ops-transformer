@@ -29,19 +29,19 @@
 
   `generic_block_sparse_attention_metadata`是`generic_block_sparse_attention`的元数据生成接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子可选择传入该metadata以优化调度。典型调用流程如下：
 
-  1. 准备`q`、`k`、`v`、`sparse_block_idx`、`sparse_block_count`、`cu_seqlens_q`、`cu_seqlens_kv`、`block_table`等输入。
+  1. 准备`q`、`k`、`v`、`sparse_block_idx`、`sparse_block_count`等输入。
   2. 调用`generic_block_sparse_attention_metadata`生成`metadata`。
   3. 调用`generic_block_sparse_attention`，将上一步得到的`metadata`传入主算子。
 
 - **计算公式**：
 
-  稀疏块大小为$blockShapeX \times blockShapeY$。
+  本算子完成块稀疏注意力计算。稀疏块大小为$blockShapeX \times blockShapeY$，由`sparse_block_idx`/`sparse_block_count`指定每个Q块参与计算的KV块。
 
   $$
-  attentionOut = Softmax(scaleValue \cdot query \cdot key_{sparse}^{T} + atten\_mask) \cdot value_{sparse}
+  attention\_out = Softmax(softmax\_scale \cdot q \cdot k_{sparse}^{T} + attn\_mask) \cdot v_{sparse}
   $$
 
-  其中$query \cdot key_{sparse}^{T}$仅对`sparse_block_idx`/`sparse_block_count`指定的KV块计算；`scaleValue`默认回落为$D^{-0.5}$。
+  其中$softmax\_scale$一般取$D^{-0.5}$，$k_{sparse}$、$v_{sparse}$为选取的KV块。
 
 > [!NOTE]
 >
