@@ -37,6 +37,11 @@ public:
             .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("recv_rank_offsets")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("num_recv_tokens_per_expert")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT64})

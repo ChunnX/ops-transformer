@@ -37,6 +37,7 @@ struct MoeEpDispatchEpilogueInfo {
     uint64_t slotWinStateOffset = 0;  // slot state offset
     uint32_t cached = 0;              // 0 = non-cached path, 1 = cached path
     uint32_t isMxQuant = 0;           // 0 = float scales, 1 = fp8_e8m0 scales (MX quant)
+    uint64_t rankHitCountOffset = 0;  // rank hit-count matrix offset in workspace
 };
 
 struct MoeEpDispatchEpilogueTilingData {
