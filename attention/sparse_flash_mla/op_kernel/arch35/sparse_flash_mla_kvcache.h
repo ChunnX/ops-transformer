@@ -412,4 +412,54 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr &runParam, RunInfo &
     runInfo.cmpSparseBlockCount = runParam.cmpSparseBlockCount;
 }
 
+TEMPLATE_INTF
+__aicore__ inline int32_t GetKvPhyAddrSeqLen(int32_t bIdx, bool hasActualSeq, bool hasCuSeqlens,
+                                             GlobalTensor<int32_t> &actualSeqGm,
+                                             GlobalTensor<int32_t> &cuSeqlensGm, int64_t defaultSize)
+{
+    if (hasActualSeq) {
+        return actualSeqGm.GetValue(bIdx);
+    } else if (hasCuSeqlens) {
+        return cuSeqlensGm.GetValue(bIdx + 1) - cuSeqlensGm.GetValue(bIdx);
+    } else {
+        return defaultSize;
+    }
+}
+
+TEMPLATE_INTF
+__aicore__ inline int32_t CalcRestoredSize(int32_t bIdx, bool hasActualSeqKvlen, bool hasCuSeqlensKv,
+                                           GlobalTensor<int32_t> &actualSeqKvlenGm,
+                                           GlobalTensor<int32_t> &cuSeqlensKvGm,
+                                           GlobalTensor<int32_t> &cmpResidualKvGm, const ConstInfo &constInfo,
+                                           bool isOriKv)
+{
+    int32_t restoredSize = 0;
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (!isOriKv && constInfo.cmpMaskMode != 0) {
+            int32_t actualKvSize = GetKvPhyAddrSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
+                                                       cuSeqlensKvGm, constInfo.cmpS2Size);
+            restoredSize = actualKvSize * static_cast<int32_t>(constInfo.cmpRatio) + cmpResidualKvGm.GetValue(bIdx);
+        }
+    }
+    return restoredSize;
+}
+
+TEMPLATE_INTF
+__aicore__ inline int32_t CalcActualOriS2Size(int32_t bIdx, bool hasActualSeqKvlen, bool hasCuSeqlensKv,
+                                              GlobalTensor<int32_t> &actualSeqKvlenGm,
+                                              GlobalTensor<int32_t> &cuSeqlensKvGm, const ConstInfo &constInfo,
+                                              bool isOriKv)
+{
+    int32_t actualOriS2Size = 0;
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (isOriKv && constInfo.oriMaskMode != 0) {
+            actualOriS2Size = GetKvPhyAddrSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
+                                                 cuSeqlensKvGm, constInfo.s2Size);
+        }
+    }
+    return actualOriS2Size;
+}
+
 #endif // SPARSE_FLASH_MLA_KVCACHE_H
