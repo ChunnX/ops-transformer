@@ -41,6 +41,9 @@ public:
                                    const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
                                    uint32_t bGmStride)
     {
+        // 每次调用独立初始化并排空L0所有权令牌，避免与后续高阶C1 Matmul共享残留事件。
+        SetFlag<HardEvent::M_MTE1>(3);
+        SetFlag<HardEvent::FIX_M>(0);
         CopyInB1(b, n, k, bGmStride);
         for (uint32_t offsetM = 0; offsetM < m; offsetM += C0_BASIC_M) {
             uint32_t remainM = m - offsetM;
@@ -48,20 +51,23 @@ public:
             CopyInA1(a[offsetM * k], curM, k);
             SetFlag<HardEvent::MTE2_MTE1>(2);
             WaitFlag<HardEvent::MTE2_MTE1>(2);
+            WaitFlag<HardEvent::M_MTE1>(3);
             CopyInA2(curM, k);
             CopyInB2(n, k);
             SetFlag<HardEvent::MTE1_M>(0);
             WaitFlag<HardEvent::MTE1_M>(0);
+            WaitFlag<HardEvent::FIX_M>(0);
             Compute(curM, n, k);
+            SetFlag<HardEvent::M_MTE1>(3);
             SetFlag<HardEvent::M_FIX>(0);
             WaitFlag<HardEvent::M_FIX>(0);
             CopyOut(c[offsetM * C0_BASIC_N_STRIDE], curM, n);
             CrossCoreSetFlag<MhcPreBackwardUtils::CROSS_CORE_FLAG_INDEX, PIPE_FIX>(
                 MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0);
-            // 清空基础API事件后再进入后续C1 Matmul。
             SetFlag<HardEvent::FIX_M>(0);
-            WaitFlag<HardEvent::FIX_M>(0);
         }
+        WaitFlag<HardEvent::M_MTE1>(3);
+        WaitFlag<HardEvent::FIX_M>(0);
     }
 
 private:
