@@ -37,6 +37,7 @@ public:
         aL0_ = LocalTensor<float>(TPosition::A2, 0, C0_BASIC_L0_BUFFER_SIZE / sizeof(float));
         bL0_ = LocalTensor<float>(TPosition::B2, 0, C0_BASIC_L0_BUFFER_SIZE / sizeof(float));
         cL0_ = LocalTensor<float>(TPosition::CO1, 0, C0_BASIC_L0_BUFFER_SIZE / sizeof(float));
+        SetFlag<HardEvent::MTE1_MTE2>(1);
         SetFlag<HardEvent::M_MTE1>(3);
         SetFlag<HardEvent::FIX_M>(0);
     }
@@ -45,8 +46,12 @@ public:
                                    const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
                                    uint32_t bGmStride)
     {
+        WaitFlag<HardEvent::MTE1_MTE2>(1);
         CopyInB1(b, n, k, bGmStride);
         for (uint32_t offsetM = 0; offsetM < m; offsetM += C0_BASIC_M) {
+            if (offsetM != 0U) {
+                WaitFlag<HardEvent::MTE1_MTE2>(1);
+            }
             uint32_t remainM = m - offsetM;
             uint32_t curM = remainM < C0_BASIC_M ? remainM : C0_BASIC_M;
             CopyInA1(a[offsetM * k], curM, k);
@@ -55,6 +60,7 @@ public:
             WaitFlag<HardEvent::M_MTE1>(3);
             CopyInA2(curM, k);
             CopyInB2(n, k);
+            SetFlag<HardEvent::MTE1_MTE2>(1);
             SetFlag<HardEvent::MTE1_M>(0);
             WaitFlag<HardEvent::MTE1_M>(0);
             WaitFlag<HardEvent::FIX_M>(0);
@@ -75,6 +81,7 @@ public:
     {
         WaitFlag<HardEvent::FIX_M>(0);
         for (uint32_t offsetK = 0; offsetK < k; offsetK += C0_BASIC_M) {
+            WaitFlag<HardEvent::MTE1_MTE2>(1);
             uint32_t remainK = k - offsetK;
             uint32_t curK = remainK < C0_BASIC_M ? remainK : C0_BASIC_M;
             CopyInA1Trans(a[offsetK * aGmStride], m, curK, aGmStride);
@@ -84,6 +91,7 @@ public:
             WaitFlag<HardEvent::M_MTE1>(3);
             CopyInA2Trans(m, curK);
             CopyInB2(n, curK);
+            SetFlag<HardEvent::MTE1_MTE2>(1);
             SetFlag<HardEvent::MTE1_M>(0);
             WaitFlag<HardEvent::MTE1_M>(0);
             Compute(m, n, curK, offsetK == 0U, offsetK + curK >= k);
@@ -103,6 +111,7 @@ public:
 
     __aicore__ inline void End()
     {
+        WaitFlag<HardEvent::MTE1_MTE2>(1);
         WaitFlag<HardEvent::M_MTE1>(3);
         WaitFlag<HardEvent::FIX_M>(0);
     }
