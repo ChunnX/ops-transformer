@@ -42,6 +42,16 @@ constexpr uint64_t A35_H_INPUT_ALIGN_ELEMS = 16UL;
 constexpr int64_t FP32_ELEM_PER_32B = 8;
 constexpr int64_t FP16_ELEM_PER_32B = 16;
 constexpr int64_t MAX_NUM_BLOCKS = 128;
+constexpr size_t PARTIAL_BLOCK_RANK = 2;
+constexpr size_t BLOCK_RES_RANK = 3;
+// Input tensor positions, keep in sync with the op def registration order.
+constexpr size_t INPUT_PARTIAL_BLOCK = 0;
+constexpr size_t INPUT_BLOCK_RES = 1;
+constexpr size_t INPUT_PROJ_WEIGHT = 2;
+constexpr size_t INPUT_NORM_WEIGHT = 3;
+constexpr size_t INPUT_GRAD_HIDDEN_STATES = 4;
+constexpr size_t INPUT_INV_NORM = 5;
+constexpr size_t INPUT_PROBS = 6;
 
 static uint64_t AlignUp(uint64_t value, uint64_t alignment)
 {
@@ -262,14 +272,16 @@ static ge::graphStatus CheckShapeBlockAttentionResidualsGrad(gert::TilingContext
 {
     const gert::Shape &partialBlockShape = EnsureNotScalar(context->GetInputShape(0)->GetStorageShape());
     const gert::Shape &blockResShape = EnsureNotScalar(context->GetInputShape(1)->GetStorageShape());
-    if (partialBlockShape.GetDimNum() != 2) {
+    if (partialBlockShape.GetDimNum() != PARTIAL_BLOCK_RANK) {
         OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "partial_block",
-                                     std::to_string(partialBlockShape.GetDimNum()).c_str(), "2");
+                                     std::to_string(partialBlockShape.GetDimNum()).c_str(),
+                                     std::to_string(PARTIAL_BLOCK_RANK).c_str());
         return ge::GRAPH_FAILED;
     }
-    if (blockResShape.GetDimNum() != 3) {
+    if (blockResShape.GetDimNum() != BLOCK_RES_RANK) {
         OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "block_res",
-                                     std::to_string(blockResShape.GetDimNum()).c_str(), "3");
+                                     std::to_string(blockResShape.GetDimNum()).c_str(),
+                                     std::to_string(BLOCK_RES_RANK).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -333,14 +345,6 @@ static ge::graphStatus CheckMainInputDtypeSupported(gert::TilingContext *context
 
 static ge::graphStatus CheckInputDtypeBlockAttentionResidualsGrad(gert::TilingContext *context)
 {
-    constexpr size_t INPUT_PARTIAL_BLOCK = 0;
-    constexpr size_t INPUT_BLOCK_RES = 1;
-    constexpr size_t INPUT_PROJ_WEIGHT = 2;
-    constexpr size_t INPUT_NORM_WEIGHT = 3;
-    constexpr size_t INPUT_GRAD_HIDDEN_STATES = 4;
-    constexpr size_t INPUT_INV_NORM = 5;
-    constexpr size_t INPUT_PROBS = 6;
-
     if (CheckMainInputDtypeSupported(context, INPUT_PARTIAL_BLOCK, "partial_block") != ge::GRAPH_SUCCESS ||
         CheckMainInputDtypeSupported(context, INPUT_BLOCK_RES, "block_res") != ge::GRAPH_SUCCESS ||
         CheckMainInputDtypeSupported(context, INPUT_PROJ_WEIGHT, "proj_weight") != ge::GRAPH_SUCCESS ||
