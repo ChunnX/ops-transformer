@@ -12,7 +12,9 @@ namespace MhcPreBackward {
 using namespace AscendC;
 constexpr uint32_t C0_BASIC_M = 128U;
 constexpr uint32_t C0_BASIC_N_STRIDE = 128U;
-constexpr uint32_t C0_BASIC_BUFFER_SIZE = 64U * 1024U;
+constexpr uint32_t C0_BASIC_L1_BUFFER_SIZE = 512U * 1024U;
+constexpr uint32_t C0_BASIC_L1_AB_OFFSET = 2U * 128U * 256U;
+constexpr uint32_t C0_BASIC_L0_BUFFER_SIZE = 64U * 1024U;
 constexpr uint32_t C0_BASIC_FINAL = 3U;
 constexpr uint32_t C0_BASIC_NON_FINAL = 2U;
 
@@ -29,13 +31,12 @@ class MhcPreBackwardC0Basic {
 public:
     __aicore__ inline void Init(TPipe *pipe)
     {
-        pipe->InitBuffer(aL1Buffer_, C0_BASIC_BUFFER_SIZE);
-        pipe->InitBuffer(bL1Buffer_, C0_BASIC_BUFFER_SIZE);
-        aL1_ = aL1Buffer_.Get<float>();
-        bL1_ = bL1Buffer_.Get<float>();
-        aL0_ = LocalTensor<float>(TPosition::A2, 0, C0_BASIC_BUFFER_SIZE / sizeof(float));
-        bL0_ = LocalTensor<float>(TPosition::B2, 0, C0_BASIC_BUFFER_SIZE / sizeof(float));
-        cL0_ = LocalTensor<float>(TPosition::CO1, 0, C0_BASIC_BUFFER_SIZE / sizeof(float));
+        pipe->InitBuffer(l1Buffer_, C0_BASIC_L1_BUFFER_SIZE);
+        aL1_ = l1Buffer_.Get<float>();
+        bL1_ = aL1_[C0_BASIC_L1_AB_OFFSET];
+        aL0_ = LocalTensor<float>(TPosition::A2, 0, C0_BASIC_L0_BUFFER_SIZE / sizeof(float));
+        bL0_ = LocalTensor<float>(TPosition::B2, 0, C0_BASIC_L0_BUFFER_SIZE / sizeof(float));
+        cL0_ = LocalTensor<float>(TPosition::CO1, 0, C0_BASIC_L0_BUFFER_SIZE / sizeof(float));
         SetFlag<HardEvent::M_MTE1>(3);
         SetFlag<HardEvent::FIX_M>(0);
     }
@@ -218,8 +219,7 @@ private:
         DataCopy(dst, cL0_, p);
     }
 
-    TBuf<TPosition::A1> aL1Buffer_;
-    TBuf<TPosition::B1> bL1Buffer_;
+    TBuf<TPosition::A1> l1Buffer_;
     LocalTensor<float> aL1_;
     LocalTensor<float> bL1_;
     LocalTensor<float> aL0_;
