@@ -18,6 +18,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -57,6 +58,8 @@ constexpr uint32_t ATTR_GROUP_INDEX = 0U;      // 通信组名称
 constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U; // 世界大小
 constexpr uint32_t ATTR_MAX_BS_INDEX = 2U;     // 最大batch size
 constexpr uint32_t ATTR_MODE_INDEX = 3U;       // 执行模式
+constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 4U;
+constexpr uint32_t ATTR_COMM_ALG_INDEX = 5U;
 constexpr uint32_t ATTR_AIV_NUM_INDEX = 6U;    // AIV核数量
 
 // ============ 其他常量 ============
@@ -74,6 +77,11 @@ const int64_t MIN_WORLD_SIZE = 1;
 // ============ Tiling Key ============
 constexpr uint64_t TILING_KEY_BASE_A5 = 2ULL; // A5架构base key
 
+static bool IsUrma(const gert::TilingContext *context)
+{
+    return std::strcmp(context->GetAttrs()->GetAttrPointer<char>(ATTR_COMM_ALG_INDEX), "urma") == 0;
+}
+
 // 打印TilingData调试信息
 static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &tilingData)
 {
@@ -83,6 +91,7 @@ static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &t
     OP_LOGD(nodeName, "mode is %d.", tilingData.mode);
     OP_LOGD(nodeName, "aiv_num is %d.", tilingData.aivNum);
     OP_LOGD(nodeName, "total_ub_size is %lu.", tilingData.totalUbSize);
+    OP_LOGD(nodeName, "batch_buffer_bytes is %u.", tilingData.batchBufferBytes);
     OP_LOGD(nodeName, "total_win_size is %lu.", tilingData.totalWinSize);
 }
 
@@ -120,12 +129,12 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
-        (*worldSizePtr < MIN_WORLD_SIZE),
-        OP_LOGE(nodeName, "worldSize is invalid, should be positive, but got worldSize=%ld.", *worldSizePtr),
+        (*worldSizePtr < MIN_WORLD_SIZE || *worldSizePtr > 1024),
+        OP_LOGE(nodeName, "worldSize must be in [1, 1024], got %ld.", *worldSizePtr),
         return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK((*maxBsPtr <= 0),
-                    OP_LOGE(nodeName, "maxBs is invalid, should be positive, but got maxBs=%ld.", *maxBsPtr),
+    OP_TILING_CHECK((*maxBsPtr <= 0 || *maxBsPtr > INT32_MAX / *worldSizePtr),
+                    OP_LOGE(nodeName, "maxBs must be in [1, INT32_MAX/worldSize], got %ld.", *maxBsPtr),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK((*modePtr < 0) || (*modePtr > 1),
@@ -157,6 +166,12 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
     tilingData.worldSize = static_cast<int32_t>(*worldSizePtr);
     tilingData.maxBs = static_cast<int32_t>(*maxBsPtr);
     tilingData.mode = static_cast<int32_t>(*modePtr);
+
+    auto commAlg = attrs->GetAttrPointer<char>(ATTR_COMM_ALG_INDEX);
+    OP_TILING_CHECK(commAlg == nullptr ||
+                        (std::strcmp(commAlg, "") != 0 && std::strcmp(commAlg, "mte") != 0 &&
+                         std::strcmp(commAlg, "urma") != 0),
+                    OP_LOGE(nodeName, "comm_alg must be mte or urma."), return ge::GRAPH_FAILED);
 
     OP_LOGD(nodeName, "group = %s", groupPtr);
     OP_LOGD(nodeName, "worldSize = %ld", *worldSizePtr);
@@ -190,6 +205,9 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "x dim1 (data_size)", std::to_string(xDim1).c_str(), "positive"),
         return ge::GRAPH_FAILED);
 
+    OP_TILING_CHECK(xDim0 != tilingData.maxBs || xDim1 >= 32768 || xDim1 % 16 != 0,
+                    OP_LOGE(nodeName, "Require bs == max_bs and hidden in [16, 32768), divisible by 16."),
+                    return ge::GRAPH_FAILED);
     tilingData.dataSize = static_cast<int32_t>(xDim1);
 
     const gert::StorageShape *dstRankIdStorageShape = context->GetInputShape(INPUT_DST_RANK_ID_INDEX);
@@ -273,10 +291,11 @@ static ge::graphStatus CheckTensorShape(gert::TilingContext *context, const char
 }
 
 // 根据NPU架构计算TilingKey
-static uint64_t CalTilingKey()
+static uint64_t CalTilingKey(const gert::TilingContext *context)
 {
     uint64_t archTag = TILING_KEY_BASE_A5;
-    uint64_t tilingKey = GET_TPL_TILING_KEY(archTag);
+    uint64_t commMode = IsUrma(context) ? TILINGKEY_TPL_URMA : TILINGKEY_TPL_MTE;
+    uint64_t tilingKey = GET_TPL_TILING_KEY(archTag, commMode);
     return tilingKey;
 }
 
@@ -299,6 +318,22 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestT
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, BandwidthTestTilingData *tilingData,
                                     const char *nodeName)
 {
+    if (IsUrma(context)) {
+        auto bufferSize = context->GetAttrs()->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
+        OP_TILING_CHECK(bufferSize == nullptr || *bufferSize <= 0,
+                        OP_LOGE(nodeName, "ccl_buffer_size must describe the context-owned Win."),
+                        return ge::GRAPH_FAILED);
+        uint64_t rowBytes = (static_cast<uint64_t>(tilingData->dataSize) * 2 + 511) / 512 * 512;
+        uint64_t rankBytes = static_cast<uint64_t>(tilingData->maxBs) * rowBytes;
+        uint64_t worldSize = tilingData->worldSize;
+        // Reuse the MTE state area and its reserved max_bs staging block in each data half.
+        uint64_t required = MB_SIZE + 2 * (worldSize + 1) * rankBytes;
+        OP_TILING_CHECK(static_cast<uint64_t>(*bufferSize) < required,
+                        OP_LOGE(nodeName, "Context Win too small: need %lu bytes, got %ld.", required, *bufferSize),
+                        return ge::GRAPH_FAILED);
+        tilingData->totalWinSize = static_cast<uint64_t>(*bufferSize) - MB_SIZE;
+        return ge::GRAPH_SUCCESS;
+    }
     uint64_t hcclBufferSize = 0;
     uint64_t maxWindowSize = 0;
 
@@ -362,7 +397,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     OP_TILING_CHECK(BandwidthTestTilingCheckAttr(context) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "BandwidthTest tiling check failed."), return ge::GRAPH_FAILED);
 
-    uint64_t tilingKey = CalTilingKey();
+    uint64_t tilingKey = CalTilingKey(context);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
 
@@ -375,10 +410,41 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     auto attrs = context->GetAttrs();
     auto aivNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_AIV_NUM_INDEX);
     uint32_t aivNum = platformAivNum;
-    if (*aivNumPtr > 0 && *aivNumPtr <= platformAivNum) {
+    OP_TILING_CHECK(aivNumPtr == nullptr || (*aivNumPtr != -1 && (*aivNumPtr <= 0 || *aivNumPtr > platformAivNum)),
+                    OP_LOGE(nodeName, "aiv_num must be -1 or in [1, platform AIV count]."),
+                    return ge::GRAPH_FAILED);
+    if (*aivNumPtr > 0) {
         aivNum = static_cast<uint32_t>(*aivNumPtr);
     }
 
+    OP_TILING_CHECK(aivNum == 0, OP_LOGE(nodeName, "Platform has no AIV cores."), return ge::GRAPH_FAILED);
+    constexpr uint64_t systemUbBytes = 8 * 1024;
+    OP_TILING_CHECK(ubSize <= systemUbBytes, OP_LOGE(nodeName, "Insufficient usable UB."), return ge::GRAPH_FAILED);
+    ubSize = std::min(ubSize - systemUbBytes, uint64_t(248 * 1024));
+    auto alignUp = [](uint64_t value, uint64_t alignment) { return (value + alignment - 1) / alignment * alignment; };
+    // Match the kernel's status allocation for the actual world size, including uneven rank splits.
+    uint64_t ranksPerCore = (static_cast<uint64_t>(tilingData->worldSize) + aivNum - 1) / aivNum;
+    uint64_t statusBytes = alignUp(ranksPerCore, 8) * 32;
+    uint64_t dstRankBytes = alignUp(static_cast<uint64_t>(tilingData->maxBs) * 4, 32);
+    uint64_t dstRankBufferBytes = std::max(dstRankBytes, alignUp(static_cast<uint64_t>(tilingData->maxBs) * 2, 256));
+    uint64_t rowBytes = static_cast<uint64_t>(tilingData->dataSize) * 2;
+    uint64_t initBytes = 32 + statusBytes + dstRankBufferBytes + 3 * std::max(rowBytes * 2, dstRankBytes);
+    uint64_t queueCount = initBytes + rowBytes * 2 > 170 * 1024 ? 1 : 2;
+    uint64_t requiredUb = initBytes + queueCount * rowBytes;
+    tilingData->batchBufferBytes = 0;
+    if (IsUrma(context)) {
+        requiredUb += URMA_INIT_BYTES;
+        OP_TILING_CHECK(requiredUb > ubSize || ubSize - requiredUb < URMA_WQE_BYTES,
+                        OP_LOGE(nodeName, "Insufficient UB for one URMA WQE."), return ge::GRAPH_FAILED);
+        tilingData->batchBufferBytes = (ubSize - requiredUb) / URMA_WQE_BYTES * URMA_WQE_BYTES;
+    }
+    uint64_t waitBytes = std::max(alignUp(ranksPerCore, 8) * 32, uint64_t(256));
+    uint64_t gatherBytes = alignUp(std::max(static_cast<uint64_t>(tilingData->worldSize) * 4,
+                                          alignUp(ranksPerCore * 4, 32)), 32);
+    uint64_t receiveBytes = waitBytes + gatherBytes + 64 + static_cast<uint64_t>(tilingData->worldSize) * 32;
+    OP_TILING_CHECK(requiredUb > ubSize || receiveBytes + rowBytes * 2 > ubSize,
+                    OP_LOGE(nodeName, "Insufficient UB for BandwidthTest send or receive buffers."),
+                    return ge::GRAPH_FAILED);
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
 
     context->SetBlockDim(numBlocks);

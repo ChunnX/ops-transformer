@@ -1,5 +1,8 @@
 # aclnnBandwidthTest
 
+URMA batch 带宽测试使用 [Torch 接口](../torch_extension/README.md) 和 Torch 已创建的 context。
+本页公开 ACLNN 包装接口不创建 URMA context；传入 `commAlg="urma"` 会报参数错误。
+
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |

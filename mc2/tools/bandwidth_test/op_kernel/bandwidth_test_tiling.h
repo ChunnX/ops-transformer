@@ -18,6 +18,11 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
+namespace BandwidthTestTiling {
+constexpr uint32_t URMA_INIT_BYTES = 512;
+constexpr uint32_t URMA_WQE_BYTES = 64;
+} // namespace BandwidthTestTiling
+
 struct BandwidthTestTilingData {
     // ============ HCCL通信相关Tiling ============
     int32_t dataSize;      // hidden size，即特征维度大小
@@ -25,6 +30,7 @@ struct BandwidthTestTilingData {
     int32_t maxBs;         // batch size，即token数量
     int32_t mode;          // 执行模式: 0=完整流程(发送+同步+接收), 1=仅发送
     int32_t aivNum;        // AIV核总数，用于任务分发
+    uint32_t batchBufferBytes; // URMA WQE buffer: all remaining usable UB, rounded down to 64 bytes
     uint64_t totalUbSize;  // 总UB大小，用于内存规划
     uint64_t totalWinSize; // HCCL通信窗口总大小
 };

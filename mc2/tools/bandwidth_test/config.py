@@ -65,7 +65,7 @@ class ParallelConfig:
 @dataclass(frozen=True)
 class ModelConfig:
     graph_type: int = 3  # 0：单算子；3：aclgraph（当前编译路径仅支持全核）
-    comm_alg: str = "mte"  # 传给 bandwidth_test 算子的通信算法名，沿用 mte
+    comm_alg: str = "mte"  # 通信算法：mte 或 urma（URMA batch，按目标卡分核）
     static_kernel_path: str = "./static_kernel"  # aclgraph 静态内核构建目录，相对启动目录
 
 

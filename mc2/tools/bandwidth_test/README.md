@@ -30,6 +30,11 @@ python bandwidth_test.py
 
 ## 配置说明
 
+`ModelConfig.comm_alg` 可设为 `"urma"`，使用 Torch context、URMA batch 接口和 Win 中转区。
+每个目标卡固定由一个 AIV 负责，handle 在该卡的发送循环外创建一次并复用。
+精度模式和带宽模式沿用原配置开关，URMA 的窗口容量和依赖见
+[Torch Extension 说明](torch_extension/README.md)。
+
 以下配置统一在同目录的 `config.py` 中修改，仍运行 `python bandwidth_test.py`。
 配置按用途分为 `ShapeConfig`、`ParallelConfig`、`ModelConfig`、`RunConfig` 和
 `DiagnosticsConfig`，每个字段都注明用途。直接修改对应类的字段默认值即可，脚本通过

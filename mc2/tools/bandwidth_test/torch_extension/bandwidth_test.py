@@ -71,7 +71,7 @@ def _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
     torch._check(0 < len(group.encode()) < 128 and "\0" not in group,
                  lambda: "group must be a valid HCCL group name")
     torch._check(test_mode in (0, 1), lambda: "test_mode must be 0 or 1")
-    torch._check(comm_alg in ("", "mte"), lambda: "BandwidthTest implements only MTE")
+    torch._check(comm_alg in ("", "mte", "urma"), lambda: "comm_alg must be mte or urma")
     torch._check(aiv_num == -1 or aiv_num > 0, lambda: "aiv_num must be -1 or positive")
     # Kernel divides the data window in two and reserves one max_bs block per half.
     row_bytes = ((x.size(1) * 2 + 511) // 512) * 512
@@ -98,12 +98,16 @@ class BandwidthTestBuffer:
     """Own the Torch context for an initialized HCCL ProcessGroup.
 
     All group ranks must construct this object on their current Ascend950 NPU,
-    outside torch.compile. The group must fit one UB memory domain. Set
+    outside torch.compile. MTE requires one UB memory domain; URMA requires
+    UBC_CTP links provided by the shared context manager. Set
     HCCL_BUFFSIZE before group creation and retain this object and the group
     until all operations and graph replays have completed.
     """
 
-    def __init__(self, group):
+    def __init__(self, group, comm_alg="mte"):
+        if comm_alg not in ("", "mte", "urma"):
+            raise ValueError("comm_alg must be mte or urma")
+        self.comm_alg = comm_alg or "mte"
         self.group = group
         self.world_size = torch.distributed.get_world_size(group)
         if not 0 < self.world_size <= 1024:
@@ -123,11 +127,12 @@ class BandwidthTestBuffer:
         _CONTEXT_SEQUENCE[self.group_name] = sequence + 1
         self._ctx_manager = CommContextManager(
             self.group_name, self.world_size, backend={"Ascend950": "channel"},
-            commAlg="ub-mem", opName=f"bandwidth_test_torch_{sequence}",
+            commAlg="urma" if self.comm_alg == "urma" else "ub-mem",
+            opName=f"bandwidth_test_torch_{self.comm_alg}_{sequence}",
             customCclBufferSize=2 * buffer_mb * 1024 * 1024)
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
-        if self._ctx_manager.rank_num_per_server != self.world_size:
+        if self.comm_alg == "mte" and self._ctx_manager.rank_num_per_server != self.world_size:
             raise ValueError("BandwidthTest requires all ranks in one UB memory domain")
         # Compile the wrapper before ACL graph capture starts.
         _bandwidth_test_op_builder.load()
@@ -146,8 +151,8 @@ def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
             in [0, world_size). Device values are not checked during capture.
         world_size: Group size in [1, 1024], matching sym_buffer.
         max_bs: Positive row count shared by all ranks.
-        mode: 0 exchanges and receives rows; 1 benchmarks sending only.
-        comm_alg: "mte" or ""; the kernel implements MTE communication.
+        mode: 0 exchanges and receives rows; 1 sends and waits, without copying outputs.
+        comm_alg: "mte", "" or "urma"; must match the context owner.
         aiv_num: -1 selects platform defaults; otherwise a positive AIV count.
 
     Returns:
@@ -157,6 +162,8 @@ def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
     """
     if world_size != sym_buffer.world_size:
         raise ValueError("world_size must match the context communication group")
+    if (comm_alg or "mte") != sym_buffer.comm_alg:
+        raise ValueError("comm_alg must match BandwidthTestBuffer")
     return torch.ops.cann_ops_transformer.bandwidth_test(
         sym_buffer.context, x, dstrank_id, sym_buffer.group_name,
         world_size, max_bs, mode, sym_buffer.ccl_buffer_size,

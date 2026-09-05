@@ -9,6 +9,7 @@
  */
 #include "aclnn_bandwidth_test.h"
 #include <algorithm>
+#include <cstring>
 #include "op_mc2.h"
 #include "op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
@@ -97,6 +98,10 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(const aclTensor *x, const aclTens
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize start");
     auto ret_param = CheckParams(x, dstRankId, group, worldSize, maxBs, mode, y, receiveCnt);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
+    if (commAlg != nullptr && std::strcmp(commAlg, "urma") == 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "URMA requires the Torch-owned BandwidthTestBuffer context.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     aclnnStatus aclnnRet = ACLNN_ERR_INNER;
 
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION

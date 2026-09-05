@@ -212,7 +212,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(GM_ADD
     uint32_t statusBufCntAlign = Ceil(Ceil(epWorldSize_, aivNum_), 8) * 8;
     uint32_t statusBufSize = statusBufCntAlign * UB_ALIGN;
     tpipe_->InitBuffer(statusBuf_, statusBufSize);
-    totalUsedUB_ += statusBufSize;
+    totalUsedUB_ += UB_ALIGN + statusBufSize;
     statusTensor_ = statusBuf_.Get<int32_t>();
     Duplicate<int32_t>(statusTensor_, 0, statusBufCntAlign * 8);
     statusSpaceGm_ = GetWindStateAddrByRankId(epRankId_);
@@ -228,6 +228,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(GM_ADD
     winDataSizeOffset_ = dataState_ * (totalWinSizeEp_ / 2) + axisMaxBS * hSizeAlignCombine;
     windowGM_ = GetWindAddrByRankId(epRankId_);
     windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float *)(statusSpaceGm_));
+    windowInStatusFp32Tensor_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
 
     // ============ 初始化其他缓冲区 ============
     uint32_t dstRankIdsSize = Ceil(axisBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
@@ -409,13 +410,16 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::BufferInit(
     // 重新初始化缓冲区，用于WaitDispatch阶段
     tpipe_->Reset();
     totalUsedUB_ = 0U;
-    uint32_t waitStatusBufSize = (((recStatusNumPerCore_ * UB_ALIGN) > 256) ? (recStatusNumPerCore_ * UB_ALIGN) : 256);
+    // WaitDispatch clears flags in groups of eight 32-byte status blocks.
+    uint32_t waitStatusBufSize = Ceil(recStatusNumPerCore_, 8) * 8 * UB_ALIGN;
+    waitStatusBufSize = waitStatusBufSize > 256 ? waitStatusBufSize : 256;
     tpipe_->InitBuffer(waitStatusBuf_, waitStatusBufSize);
     totalUsedUB_ += waitStatusBufSize;
     uint64_t recvWinBlockNumSpace = epWorldSize_ * sizeof(float);
     uint64_t recStatusNumPerCoreSpace = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
     uint64_t gatherMaskOutSize =
         (recStatusNumPerCoreSpace > recvWinBlockNumSpace) ? recStatusNumPerCoreSpace : recvWinBlockNumSpace;
+    gatherMaskOutSize = Ceil(gatherMaskOutSize, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(gatherMaskOutBuf_, gatherMaskOutSize);
     totalUsedUB_ += gatherMaskOutSize;
 
@@ -489,14 +493,15 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
     // ============ 读取状态数据 ============
     TBuf<> localStatusBuf;
     // 状态区包含 world_size 个状态块，每个块 8 个 int32 (32B)
-    const uint32_t statusCopySize = Ceil(epWorldSize_ * 8 * sizeof(int32_t), UB_ALIGN);
+    const uint32_t statusCopySize = epWorldSize_ * UB_ALIGN;
     tpipe_->InitBuffer(localStatusBuf, statusCopySize);
+    totalUsedUB_ += statusCopySize;
     // 获取状态张量（int32 视图）
     LocalTensor<int32_t> localStatusTensor = localStatusBuf.Get<int32_t>();
 
     // 从窗口状态区读取所有状态
     GlobalTensor<int32_t> srcStatus = windowInStatusFp32Tensor_.ReinterpretCast<int32_t>();
-    DataCopyParams statusCopyParams{static_cast<uint16_t>(epWorldSize_), 8, 0, 0};
+    DataCopyParams statusCopyParams{static_cast<uint16_t>(epWorldSize_), 1, 0, 0};
     DataCopy(localStatusTensor, srcStatus, statusCopyParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
 
@@ -507,10 +512,10 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
         preCnt += value; // token数量存储在位置1
     }
 
-    for (uint32_t idx = 0; idx < epWorldSize_; idx++) {
+    for (uint32_t idx = startRankId_; idx < endRankId_; idx++) {
         // 只取 token 计数（索引 1）
         uint32_t receiveCount = localStatusTensor(idx * 8 + 1);
-        receiveCntGMTensor_.SetValue(idx, receiveCount);
+        WriteGmByPassDCache(reinterpret_cast<__gm__ uint32_t *>(receiveCntGM_) + idx, receiveCount);
     }
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 
@@ -521,7 +526,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
     // ============ 初始化数据拷贝队列 ============
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> tripleQueue;
     uint32_t leftUBSize = ((totalUbSize_ - totalUsedUB_) / UB_ALIGN) * UB_ALIGN;
-    uint32_t dataSize = leftUBSize / BUFFER_NUM;
+    uint32_t dataSize = (leftUBSize / BUFFER_NUM / UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(tripleQueue, BUFFER_NUM, dataSize);
 
     uint32_t countPerDataSize = dataSize / hOutAlignUbSize_; // 每次拷贝的token数量

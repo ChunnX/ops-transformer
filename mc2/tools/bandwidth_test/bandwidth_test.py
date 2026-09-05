@@ -376,7 +376,7 @@ def init_hccl_comm(rank, world_size_local):
     torch.npu.synchronize()
     logger.debug("[DEBUG] device_%s 通信域完全就绪", rank)
 
-    return BandwidthTestBuffer(comm_group), comm_group
+    return BandwidthTestBuffer(comm_group, comm_alg=CONFIG.model.comm_alg), comm_group
 
 
 # endregion
