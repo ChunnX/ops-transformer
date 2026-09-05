@@ -160,10 +160,7 @@ def run_case(
         for k, v in cpu_inputs.items()
     }
     if params.get("sinks") is not None and "sinks" in dev_inputs:
-        q_dtype = (
-            torch.float16 if params.get("Dtype", "fp16") == "fp16" else torch.bfloat16
-        )
-        dev_inputs["sinks"] = dev_inputs["sinks"].to(q_dtype)
+        dev_inputs["sinks"] = dev_inputs["sinks"].to(torch.float32)
     primary_out_raw = primary.compute(dev_inputs, params)
     primary_out = {
         k: v.cpu() if isinstance(v, torch.Tensor) else v
