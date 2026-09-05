@@ -9,6 +9,7 @@
  */
 
 #include "grouped_matmul_util.h"
+#include "log/log.h"
 
 using namespace gmm;
 
@@ -74,7 +75,8 @@ bool CreateContiguousTensorListForPertoken(const aclTensorList *tensorList, std:
         aclTensor *tensor =
             executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
         if (tensor == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CreateView for contiguous per-token scale failed.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul", "CreateView result", "nullptr",
+                                                  "Failed to create the contiguous per-token scale view");
             return false;
         }
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());
@@ -106,7 +108,8 @@ bool CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList, 
         aclTensor *tensor =
             executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
         if (tensor == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CreateView for contiguous MX scale failed.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul", "CreateView result", "nullptr",
+                                                  "Failed to create the contiguous MX scale view");
             return false;
         }
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());
@@ -135,7 +138,8 @@ bool CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<acl
         aclTensor *tensor =
             executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
         if (tensor == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CreateView for contiguous tensor failed.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmul", "CreateView result", "nullptr",
+                                                  "Failed to create the contiguous tensor view");
             return false;
         }
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());
