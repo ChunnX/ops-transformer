@@ -97,7 +97,8 @@ private:
         for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += BASIC_CUBE_K_L1) {
             uint32_t remainKL1 = k - offsetKL1;
             uint32_t currentKL1 = remainKL1 < BASIC_CUBE_K_L1 ? remainKL1 : BASIC_CUBE_K_L1;
-            uint32_t l1Slot = l1LoopCount_ & 1U;
+            // 消融实验：固定使用L1的第0槽，仅关闭L1双缓冲。
+            uint32_t l1Slot = 0U;
             LocalTensor<float> currentA1 = aL1_[l1Slot * BASIC_CUBE_L1_SLOT_ELEMS];
             LocalTensor<float> currentB1 = bL1_[l1Slot * BASIC_CUBE_L1_SLOT_ELEMS];
 
