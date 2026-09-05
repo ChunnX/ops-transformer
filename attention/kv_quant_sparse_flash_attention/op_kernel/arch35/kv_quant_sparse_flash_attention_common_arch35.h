@@ -49,7 +49,11 @@ constexpr uint32_t BUFFER_SIZE_128K = 131072; // 131072表示128 * 1024
 constexpr uint32_t L0AB_SHARED_SIZE_64K = 65536;  // 65536表示64*1024
 constexpr uint32_t L0C_SHARED_SIZE_256K = 262144; // 262144表示256 * 1024
 
+#if (__NPU_ARCH__ == 5102)
+constexpr uint32_t CV_RATIO = 1;
+#else
 constexpr uint32_t CV_RATIO = 2;
+#endif
 constexpr uint64_t SYNC_MODE = 4;
 
 static constexpr uint32_t QSFA_SYNC_MODE0 = 0;
