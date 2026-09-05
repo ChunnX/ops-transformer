@@ -724,6 +724,9 @@ protected:
 
         OP_LOGI(opName, "localMatmul precisionMode=%u", precisionMode_);
 
+        platform_ascendc::PlatformAscendC ascendcPlatform(context_->GetPlatformInfo());
+        libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
+
         td->workspaceLayout.totalSize = libApiWorkSpaceSize_ + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
         td->workspaceLayout.segCount = 2;
         td->workspaceLayout.segments[0] = {0UL, libApiWorkSpaceSize_,
@@ -759,14 +762,10 @@ protected:
 
     ge::graphStatus GetWorkspaceSize() override
     {
-        auto *platformInfo = context_->GetPlatformInfo();
-        if (platformInfo == nullptr) {
-            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "platformInfo");
-            return ge::GRAPH_FAILED;
-        }
-        platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-        libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
         workspaceSize_ = libApiWorkSpaceSize_ + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+        OP_LOGI(context_->GetNodeName(),
+                "AAMV2 workspace: libApiWorkSpaceSize=%lu, runtimeInfoSize=%lu, workspaceSize=%lu",
+                libApiWorkSpaceSize_, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE, workspaceSize_);
         auto *wsBuf = context_->GetWorkspaceSizes(1);
         if (wsBuf != nullptr) {
             wsBuf[0] = workspaceSize_;
