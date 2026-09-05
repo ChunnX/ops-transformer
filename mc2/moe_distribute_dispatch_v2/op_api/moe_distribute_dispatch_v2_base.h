@@ -45,7 +45,7 @@ ACLNN_API aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *e
                                           const aclTensor *scalesOptional, const char *groupEp, const char *groupTp,
                                           int64_t quantMode, aclTensor *expandX, aclTensor *dynamicScales,
                                           aclTensor *assistInfoForCombine, aclTensor *expertTokensNums,
-                                          aclTensor *epRecvCounts, aclTensor *tpRecvCounts);
+                                          aclTensor *epRecvCounts);
 
 ACLNN_API aclnnStatus aclnnMoeDistributeDispatchBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                      aclrtStream stream);
