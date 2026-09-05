@@ -481,6 +481,13 @@ public:
         info.actSingleLoopS2SizeAlign64 =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)BUFFER_SIZE_BYTE_64B); // 统一对齐到64
 
+        info.prefetched = (((s2Cur - curS2Start) & 1) == 1);
+        info.pairKVCopyS2Size = info.actSingleLoopS2Size;
+        if (!info.prefetched && (s2Cur + 1) < curS2End) {
+            uint64_t nextSize = info.actS2Size - (uint64_t)(s2Cur + 1) * s2BaseSize;
+            info.pairKVCopyS2Size = s2BaseSize + static_cast<uint32_t>(nextSize > s2BaseSize ? s2BaseSize : nextSize);
+        }
+
         info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;

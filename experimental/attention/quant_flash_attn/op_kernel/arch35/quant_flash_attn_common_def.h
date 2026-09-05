@@ -149,6 +149,10 @@ struct RunInfo {
     uint32_t actSingleLoopS2SizeAlign = 0;   // 对齐到32
     uint32_t actSingleLoopS2SizeAlign16 = 0; // 对齐到16
     uint32_t actSingleLoopS2SizeAlign64 = 0; // 对齐到64
+
+    uint32_t pairKVCopyS2Size = 0;
+    bool prefetched = false;
+
     uint32_t curS2LoopTimes = 0;
     bool isS2SplitCore = false;
     uint32_t faTmpOutWsPos = 0; // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块

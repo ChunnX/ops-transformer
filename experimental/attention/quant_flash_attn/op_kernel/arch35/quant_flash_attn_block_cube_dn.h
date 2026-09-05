@@ -203,12 +203,12 @@ private:
     // =================================L1 Buffer=================================
     static constexpr uint32_t L1_Q_SIZE = 128 * 128 / 2;                               // 8K, 2个fp4_e2m1元素为1B
     static constexpr uint32_t L1_Q_DESCALE_SIZE = 128 * (128 / 32) * sizeof(SCALE_T);  // 0.5K
-    static constexpr uint32_t L1_KV_SIZE = 256 * 128 / 2;                              // 16K, 2个fp4_e2m1元素为1B, s2单次最大256行
-    static constexpr uint32_t L1_KV_DESCALE_SIZE = 256 * (128 / 32) * sizeof(SCALE_T); // 1K
+    static constexpr uint32_t L1_KV_SIZE = 512 * 128 / 2;                              // 32K, 2个fp4_e2m1元素为1B, s2单次最大256行
+    static constexpr uint32_t L1_KV_DESCALE_SIZE = 512 * (128 / 32) * sizeof(SCALE_T); // 2K
     static constexpr uint32_t L1_P_SIZE = 128 * 256 / 2;                               // 16K, 2个fp4_e2m1元素为1B
     static constexpr uint32_t L1_P_DESCALE_SIZE = 128 * 2 * (256 / 64 + 1) * sizeof(SCALE_T); // 1.25K
-    static constexpr uint32_t L1_Q_BUFCNT = 2;
-    static constexpr uint32_t L1_KV_BUFCNT = 7;
+    static constexpr uint32_t L1_Q_BUFCNT = 1;
+    static constexpr uint32_t L1_KV_BUFCNT = 2;
     static constexpr uint32_t L1_P_BUFCNT = 20;
 
     static constexpr uint32_t L1_SINGLE_GLOBAL_MAX_SIZE = 128;
@@ -218,8 +218,10 @@ private:
     LocalTensor<SCALE_T> pDescaleL1Tensor;
     LocalTensor<DATA_T> qL1Tensor;
     LocalTensor<SCALE_T> qDescaleL1Tensor;
-    LocalTensor<DATA_T> kvL1Tensor;
-    LocalTensor<SCALE_T> kvDescaleL1Tensor;
+    LocalTensor<DATA_T> kL1Tensor;
+    LocalTensor<SCALE_T> kDescaleL1Tensor;
+    LocalTensor<DATA_T> vL1Tensor;
+    LocalTensor<SCALE_T> vDescaleL1Tensor;
     LocalTensor<half> localGlobalMaxL1;
     // 刷"1"矩阵专用常驻buffer, 避免每次isLastS2Loop重复向L1 Fill
     LocalTensor<DATA_T> vSumL1Tensor;
@@ -260,23 +262,26 @@ private:
     // 每个 buffer 分配独立的 mutexId，静态分配 0-27 内连续 ID，配合 bufId 偏移使用
     // Q buffer (L1) : mte2 (producer) <> mte1 (consumer)
     static constexpr uint32_t Q_MUTEX_ID_BASE = 0;
-    uint32_t qBufId = 0;
+ 
     // KV buffer (L1) : mte2 (producer) <> mte1 (consumer)
-    static constexpr uint32_t KV_MUTEX_ID_BASE = 2;
-    uint32_t kvBufId = 0;
+    static constexpr uint32_t K_MUTEX_ID_BASE = 1;
+    uint32_t kBufId = 0;
+
+    static constexpr uint32_t V_MUTEX_ID_BASE = 3;
+    uint32_t vBufId = 0;
     // vSum buffer (L1) : mte2 (Fill常驻) <> mte1 (LoadData到L0A)
-    static constexpr uint32_t VSUM_MUTEX_ID_BASE = 9;
+    static constexpr uint32_t VSUM_MUTEX_ID_BASE = 5;
     // QK L0AB buffer : mte1 (producer) <> m (consumer)
-    static constexpr uint32_t QK_L0AB_MUTEX_ID_BASE = 10;
+    static constexpr uint32_t QK_L0AB_MUTEX_ID_BASE = 6;
     uint32_t qkL0abBufId = 0;
     // PV L0AB buffer : mte1 (producer) <> m (consumer)
-    static constexpr uint32_t PV_L0AB_MUTEX_ID_BASE = 12;
+    static constexpr uint32_t PV_L0AB_MUTEX_ID_BASE = 8;
     uint32_t pvL0abBufId = 0;
     // QK L0C buffer : m (producer) <> fix (consumer)
-    static constexpr uint32_t QK_L0C_MUTEX_ID_BASE = 14;
+    static constexpr uint32_t QK_L0C_MUTEX_ID_BASE = 10;
     uint32_t qkL0cBufId = 0;
     // PV L0C buffer : m (producer) <> fix (consumer)
-    static constexpr uint32_t PV_L0C_MUTEX_ID_BASE = 16;
+    static constexpr uint32_t PV_L0C_MUTEX_ID_BASE = 12;
     uint32_t pvL0cBufId = 0;
 
     uint32_t headDimInt8 = 0;
@@ -324,18 +329,25 @@ public:
             LocalTensor<SCALE_T>(TPosition::A1, addrL1Start, L1_P_DESCALE_SIZE * L1_P_BUFCNT); // 1.25K * 20 = 25K
 
         addrL1Start += L1_P_DESCALE_SIZE * L1_P_BUFCNT;
-        qL1Tensor = LocalTensor<DATA_T>(TPosition::A1, addrL1Start, L1_Q_SIZE * L1_Q_BUFCNT); // 8K * 2 = 16K
+        qL1Tensor = LocalTensor<DATA_T>(TPosition::A1, addrL1Start, L1_Q_SIZE * L1_Q_BUFCNT); // 8K * 1 = 8K
 
         addrL1Start += L1_Q_SIZE * L1_Q_BUFCNT;
         qDescaleL1Tensor =
-            LocalTensor<SCALE_T>(TPosition::A1, addrL1Start, L1_Q_DESCALE_SIZE * L1_Q_BUFCNT); // 0.5K * 2 = 1K
+            LocalTensor<SCALE_T>(TPosition::A1, addrL1Start, L1_Q_DESCALE_SIZE * L1_Q_BUFCNT); // 0.5K * 1 = 0.5K
 
         addrL1Start += L1_Q_DESCALE_SIZE * L1_Q_BUFCNT;
-        kvL1Tensor = LocalTensor<DATA_T>(TPosition::A1, addrL1Start, L1_KV_SIZE * L1_KV_BUFCNT); // 16K * 7 = 112K
+        kL1Tensor = LocalTensor<DATA_T>(TPosition::A1, addrL1Start, L1_KV_SIZE * L1_KV_BUFCNT); // 16K * 4 = 64K
+        
+        addrL1Start += L1_KV_SIZE * L1_KV_BUFCNT;
+        vL1Tensor = LocalTensor<DATA_T>(TPosition::A1, addrL1Start, L1_KV_SIZE * L1_KV_BUFCNT); // 16K * 4 = 64K
 
         addrL1Start += L1_KV_SIZE * L1_KV_BUFCNT;
-        kvDescaleL1Tensor =
-            LocalTensor<SCALE_T>(TPosition::A1, addrL1Start, L1_KV_DESCALE_SIZE * L1_KV_BUFCNT); // 1K * 7 = 7K
+        kDescaleL1Tensor =
+            LocalTensor<SCALE_T>(TPosition::A1, addrL1Start, L1_KV_DESCALE_SIZE * L1_KV_BUFCNT); // 1K * 4 = 4K
+
+        addrL1Start += L1_KV_DESCALE_SIZE * L1_KV_BUFCNT;
+        vDescaleL1Tensor =
+            LocalTensor<SCALE_T>(TPosition::A1, addrL1Start, L1_KV_DESCALE_SIZE * L1_KV_BUFCNT); // 1K * 4 = 4K
 
         addrL1Start += L1_KV_DESCALE_SIZE * L1_KV_BUFCNT;
         vSumL1Tensor = LocalTensor<DATA_T>(TPosition::A1, addrL1Start, PV_L0A_SIZE); // 18K * 1 = 18K
@@ -382,11 +394,11 @@ public:
     __aicore__ inline void ComputeMm1(const RunInfo &info)
     {
         if (unlikely(info.isFirstS2Loop)) {
-            Mutex::Lock<PIPE_MTE2>(Q_MUTEX_ID_BASE + qBufId);
+            Mutex::Lock<PIPE_MTE2>(Q_MUTEX_ID_BASE);
             CopyQGmToL1(info); // 单次最大128行
             CopyQScaleGmToL1(info);
-            Mutex::Unlock<PIPE_MTE2>(Q_MUTEX_ID_BASE + qBufId);
-            Mutex::Lock<PIPE_MTE1>(Q_MUTEX_ID_BASE + qBufId);
+            Mutex::Unlock<PIPE_MTE2>(Q_MUTEX_ID_BASE);
+            Mutex::Lock<PIPE_MTE1>(Q_MUTEX_ID_BASE);
             // Q 常驻 L0B: Q 在整个 task 序列内不变, 且 QK 的 L0B([0..16K))与 PV 的 L0B([16K起))分属
             // 不同区间, mm1/mm2 交错执行也不会覆写 QK L0B, 故首个 s2 loop 一次灌满两个 ping-pong 槽,
             // 后续 subloop 只装 K, 消除对同一份 Q 的重复 L1->L0 装载(QK 内层 MTE1 流量减半)
@@ -398,11 +410,14 @@ public:
             }
         }
 
-        Mutex::Lock<PIPE_MTE2>(KV_MUTEX_ID_BASE + kvBufId);
-        CopyKGmToL1(info); // 单次最大256行
-        CopyKScaleGmToL1(info);
-        Mutex::Unlock<PIPE_MTE2>(KV_MUTEX_ID_BASE + kvBufId);
-        Mutex::Lock<PIPE_MTE1>(KV_MUTEX_ID_BASE + kvBufId);
+        if (!info.prefetched) {
+            Mutex::Lock<PIPE_MTE2>(K_MUTEX_ID_BASE + kBufId);
+            CopyKGmToL1(info); // 单次最大512行
+            CopyKScaleGmToL1(info);
+            Mutex::Unlock<PIPE_MTE2>(K_MUTEX_ID_BASE + kBufId);
+            Mutex::Lock<PIPE_MTE1>(K_MUTEX_ID_BASE + kBufId);
+        }
+        
         {
             uint32_t loopCnt = CeilDiv((uint32_t)info.actSingleLoopS2Size, (uint32_t)QK_L0_S2_SPLIT_SIZE);
             uint32_t actS2Size = QK_L0_S2_SPLIT_SIZE;
@@ -451,18 +466,20 @@ public:
                 Mutex::Unlock<PIPE_FIX>(QK_L0C_MUTEX_ID_BASE + pendL0cBufId);
             }
         }
-        Mutex::Unlock<PIPE_MTE1>(KV_MUTEX_ID_BASE + kvBufId);
-        kvBufId = (kvBufId + 1) % L1_KV_BUFCNT;
+
+        if (info.pairKVCopyS2Size <= s2BaseSize) {
+            Mutex::Unlock<PIPE_MTE1>(K_MUTEX_ID_BASE + kBufId);
+            kBufId = (kBufId + 1) % L1_KV_BUFCNT;
+        }
 
         if (unlikely(info.isLastS2Loop)) {
-            Mutex::Unlock<PIPE_MTE1>(Q_MUTEX_ID_BASE + qBufId);
-            qBufId = (qBufId + 1) % L1_Q_BUFCNT;
+            Mutex::Unlock<PIPE_MTE1>(Q_MUTEX_ID_BASE);
         }
     }
 
     __aicore__ inline void ComputeMm2(const RunInfo &info)
     {
-        Mutex::Lock<PIPE_MTE2>(KV_MUTEX_ID_BASE + kvBufId);
+        Mutex::Lock<PIPE_MTE2>(V_MUTEX_ID_BASE + vBufId);
         if (info.actSingleLoopS2SizeAlign != info.actSingleLoopS2SizeAlign64) {
             InitConstValueParams<uint16_t> PL1InitParams(
                 1, static_cast<uint16_t>(info.actSingleLoopS2SizeAlign64 - info.actSingleLoopS2SizeAlign), 0, 0x0000);
@@ -478,23 +495,27 @@ public:
         if (info.actSingleLoopS2Size != info.actSingleLoopS2SizeAlign64) {
             InitConstValueParams<uint16_t> kvL1InitParams(
                 1, static_cast<uint16_t>((info.actSingleLoopS2SizeAlign64 - info.actSingleLoopS2Size)), 0, 0x0000);
-            uint32_t l1V_Base_Offset = kvBufId * L1_KV_SIZE;
-            uint32_t vOffset = constInfo.dSize / 4 * info.actSingleLoopS2Size;
-            Fill(kvL1Tensor[l1V_Base_Offset + constInfo.dSize / 4 * info.actSingleLoopS2Size]
+            uint32_t l1V_Base_Offset = vBufId * L1_KV_SIZE;
+            uint32_t vOffset = info.prefetched ? s2BaseSize * (constInfo.dSize / 4) : 0;
+            Fill(vL1Tensor[l1V_Base_Offset + vOffset + constInfo.dSize / 4 * info.actSingleLoopS2Size]
                      .template ReinterpretCast<uint16_t>(),
                  kvL1InitParams);
-            Fill(kvL1Tensor[l1V_Base_Offset + constInfo.dSize / 4 * info.actSingleLoopS2Size * 2 +
+            Fill(vL1Tensor[l1V_Base_Offset + vOffset + constInfo.dSize / 4 * info.actSingleLoopS2Size * 2 +
                             (info.actSingleLoopS2SizeAlign64 - info.actSingleLoopS2Size) * constInfo.dSize / 4]
                      .template ReinterpretCast<uint16_t>(),
                  kvL1InitParams);
         }
-        CopyVGmToL1(info);
-        CopyVScaleGmToL1(info);
-        Mutex::Unlock<PIPE_MTE2>(KV_MUTEX_ID_BASE + kvBufId);
+
+        if (!info.prefetched) {
+            CopyVGmToL1(info);
+            CopyVScaleGmToL1(info);
+        }
+        
+        Mutex::Unlock<PIPE_MTE2>(V_MUTEX_ID_BASE + vBufId);
         if (info.isLastS2Loop) {
             InitL0MXBufferForReduceSum();
         }
-        Mutex::Lock<PIPE_MTE1>(KV_MUTEX_ID_BASE + kvBufId);
+        Mutex::Lock<PIPE_MTE1>(V_MUTEX_ID_BASE + vBufId);
         {
             if (info.isC2Sync) {
                 Mutex::Lock<PIPE_M>(PV_L0C_MUTEX_ID_BASE);
@@ -515,8 +536,11 @@ public:
                 Mutex::Unlock<PIPE_FIX>(PV_L0C_MUTEX_ID_BASE);
             }
         }
-        Mutex::Unlock<PIPE_MTE1>(KV_MUTEX_ID_BASE + kvBufId);
-        kvBufId = (kvBufId + 1) % L1_KV_BUFCNT;
+        Mutex::Unlock<PIPE_MTE1>(V_MUTEX_ID_BASE + vBufId);
+        if (info.pairKVCopyS2Size <= s2BaseSize) {
+            vBufId = (vBufId + 1) % L1_KV_BUFCNT;
+        }
+        
     }
 
     __aicore__ inline void CopyGMaxL1ToUb(const RunInfo &runInfo)
@@ -662,7 +686,7 @@ private:
 
     __aicore__ inline void CopyQGmToL1(const RunInfo &info)
     {
-        uint64_t queryL1BaseOffset = qBufId * (L1_Q_SIZE / sizeof(DATA_T));
+        uint64_t queryL1BaseOffset = 0;
         uint32_t dstStride = (info.actMSizeAlign128 + 31) >> 5 << 5;
         // dSize是QUANT_T的元素数, 先转换为字节数, 再转成DATA_T的元素数
         FaL1Tensor<DATA_T, L1Format::NZ> l1Tensor{.tensor = qL1Tensor[queryL1BaseOffset], .rowCount = dstStride};
@@ -678,30 +702,30 @@ private:
 
     __aicore__ inline void CopyKGmToL1(const RunInfo &info)
     {
-        uint64_t l1BaseOffset = kvBufId * (L1_KV_SIZE / sizeof(DATA_T));
-        uint32_t dstStride = info.actSingleLoopS2SizeAlign;
-        FaL1Tensor<DATA_T, L1Format::NZ> l1Tensor{.tensor = kvL1Tensor[l1BaseOffset], .rowCount = dstStride};
+        uint64_t l1BaseOffset = kBufId * (L1_KV_SIZE / sizeof(DATA_T));
+        uint32_t dstStride = s2BaseSize * 2;
+        FaL1Tensor<DATA_T, L1Format::NZ> l1Tensor{.tensor = kL1Tensor[l1BaseOffset], .rowCount = dstStride};
 
         GmKvCoord gmCoord{.bIdx = info.bIdx,
                           .n2Idx = info.n2Idx,
                           .s2Idx = info.s2Idx,
                           .dIdx = 0,
-                          .s2DealSize = info.actSingleLoopS2Size,
+                          .s2DealSize = info.pairKVCopyS2Size,
                           .dDealSize = headDimInt8};
         copyKvGmToL1(l1Tensor, keyGm, gmCoord);
     }
 
     __aicore__ inline void CopyVGmToL1(const RunInfo &info)
     {
-        uint64_t l1BaseOffset = kvBufId * (L1_KV_SIZE / sizeof(DATA_T));
-        uint32_t dstStride = info.actSingleLoopS2SizeAlign64;
-        FaL1Tensor<DATA_T, L1Format::NZ> l1Tensor{.tensor = kvL1Tensor[l1BaseOffset], .rowCount = dstStride};
+        uint64_t l1BaseOffset = vBufId * (L1_KV_SIZE / sizeof(DATA_T));
+        uint32_t dstStride = s2BaseSize * 2;
+        FaL1Tensor<DATA_T, L1Format::NZ> l1Tensor{.tensor = vL1Tensor[l1BaseOffset], .rowCount = dstStride};
 
         GmKvCoord gmCoord{.bIdx = info.bIdx,
                           .n2Idx = info.n2Idx,
                           .s2Idx = info.s2Idx,
                           .dIdx = 0,
-                          .s2DealSize = info.actSingleLoopS2Size,
+                          .s2DealSize = info.pairKVCopyS2Size,
                           .dDealSize = headDimInt8};
         copyKvGmToL1(l1Tensor, valueGm, gmCoord);
     }
@@ -709,7 +733,7 @@ private:
     // copy query scale with full s1g
     __aicore__ inline void CopyQScaleGmToL1(const RunInfo &info)
     {
-        uint32_t offset = qBufId * (L1_Q_DESCALE_SIZE / sizeof(SCALE_T));
+        uint32_t offset = 0;
         uint32_t dstStride = (info.actMSizeAlign128 + 31) >> 5 << 5;
         uint32_t dDealSize = constInfo.dSize / MXFP_GROUP_SIZE;
         FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = qDescaleL1Tensor[offset], .rowCount = dstStride};
@@ -726,7 +750,7 @@ private:
     // copy key scale with full s2
     __aicore__ inline void CopyKScaleGmToL1(const RunInfo &info)
     {
-        uint32_t offset = kvBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
+        uint32_t offset = kBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
         uint32_t dstStride = info.actSingleLoopS2SizeAlign;
         uint32_t dDealSize = constInfo.dSize / MXFP_GROUP_SIZE;
         FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = kvDescaleL1Tensor[offset], .rowCount = dstStride};
@@ -735,7 +759,7 @@ private:
                           .n2Idx = info.n2Idx,
                           .s2Idx = info.s2Idx,
                           .dIdx = 0,
-                          .s2DealSize = info.actSingleLoopS2Size,
+                          .s2DealSize = info.pairKVCopyS2Size,
                           .dDealSize = dDealSize};
         copyKeyScaleGmToL1(l1Tensor, keyScaleGm, gmCoord);
     }
@@ -760,25 +784,27 @@ private:
         loadData2DMxParamsA.dstStride = loadData2DMxParamsA.yStep;
 
         uint32_t qkL0Offset = qkL0abBufId * (QK_L0B_SIZE / sizeof(DATA_T));
-        uint32_t qL1Offset = qBufId * (L1_Q_SIZE / sizeof(DATA_T));
-        uint32_t qScaleL1Offset = qBufId * (L1_Q_DESCALE_SIZE / sizeof(SCALE_T));
+        uint32_t qL1Offset = 0;
+        uint32_t qScaleL1Offset = 0;
         LoadData(qkL0BTensor[qkL0Offset].ReinterpretCast<QUANT_T>(), qL1Tensor[qL1Offset].ReinterpretCast<QUANT_T>(),
                  qDescaleL1Tensor[qScaleL1Offset], loadData2DParamsA, loadData2DMxParamsA);
     }
 
     __aicore__ inline void LoadKToL0(const RunInfo &info, uint32_t subLoop, uint32_t actS2SizeAlign)
     {
+        uint32_t rowOffset = info.prefetched ? (s2BaseSize / 16) : 0;
+
         LoadData2DParamsV2 loadData2DParamsA;
-        loadData2DParamsA.mStartPosition = subLoop * (QK_L0_S2_SPLIT_SIZE / 16);
+        loadData2DParamsA.mStartPosition = rowOffset + subLoop * (QK_L0_S2_SPLIT_SIZE / 16);
         loadData2DParamsA.kStartPosition = 0;
         loadData2DParamsA.mStep = actS2SizeAlign / 16;
         loadData2DParamsA.kStep = constInfo.dSize / GetBlockElemCnt<QUANT_T>();
-        loadData2DParamsA.srcStride = info.actSingleLoopS2SizeAlign / 16;
+        loadData2DParamsA.srcStride = s2BaseSize * 2 / 16;
         loadData2DParamsA.dstStride = actS2SizeAlign / 16;
         loadData2DParamsA.ifTranspose = false;
 
         LoadData2DMxParams loadData2DMxParamsA;
-        loadData2DMxParamsA.xStartPosition = subLoop * (QK_L0_S2_SPLIT_SIZE / 16);
+        loadData2DMxParamsA.xStartPosition = rowOffset + subLoop * (QK_L0_S2_SPLIT_SIZE / 16);
         loadData2DMxParamsA.yStartPosition = 0;
         loadData2DMxParamsA.xStep = actS2SizeAlign / 16;
         loadData2DMxParamsA.yStep = loadData2DParamsA.kStep;
@@ -786,10 +812,11 @@ private:
         loadData2DMxParamsA.dstStride = loadData2DMxParamsA.yStep;
 
         uint32_t qkL0Offset = qkL0abBufId * (QK_L0A_SIZE / sizeof(DATA_T));
-        uint32_t kvL1Offset = kvBufId * (L1_KV_SIZE / sizeof(DATA_T));
-        uint32_t kvScaleL1Offset = kvBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
-        LoadData(qkL0ATensor[qkL0Offset].ReinterpretCast<QUANT_T>(), kvL1Tensor[kvL1Offset].ReinterpretCast<QUANT_T>(),
-                 kvDescaleL1Tensor[kvScaleL1Offset], loadData2DParamsA, loadData2DMxParamsA);
+        uint32_t kL1Offset = kBufId * (L1_KV_SIZE / sizeof(DATA_T));
+        uint32_t kScaleL1Offset = kBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T)) +
+                                  (info.prefetched ? (L1_KV_DESCALE_SIZE / sizeof(SCALE_T)) : 0);
+        LoadData(qkL0ATensor[qkL0Offset].ReinterpretCast<QUANT_T>(), kL1Tensor[kvL1Offset].ReinterpretCast<QUANT_T>(),
+                 kDescaleL1Tensor[kvScaleL1Offset], loadData2DParamsA, loadData2DMxParamsA);
     }
 
     __aicore__ inline void MatmulQK(const RunInfo &info, uint32_t actS2Size)
@@ -839,15 +866,15 @@ private:
 
     __aicore__ inline void CopyVScaleGmToL1(const RunInfo &info)
     {
-        uint32_t offset = kvBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
-        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = kvDescaleL1Tensor[offset],
-                                                   .rowCount = info.actSingleLoopS2SizeAlign64 / 64};
+        uint32_t offset = vBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
+        FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = vDescaleL1Tensor[offset],
+                                                   .rowCount = s2BaseSize * 2 / 64};
 
         GmKvCoord gmCoord{.bIdx = info.bIdx,
                           .n2Idx = info.n2Idx,
                           .s2Idx = info.s2Idx / 64,
                           .dIdx = 0,
-                          .s2DealSize = info.actSingleLoopS2SizeAlign64 / 64,
+                          .s2DealSize = (info.pairKVCopyS2Size + 63) / 64,
                           .dDealSize = 2 * constInfo.dSize};
 
         copyValueScaleGmToL1(l1Tensor, valueScaleGm, gmCoord);
@@ -886,30 +913,31 @@ private:
     __aicore__ inline void LoadVToL0(const RunInfo &info)
     {
         LoadData2DParamsV2 loadData2DParamsA;
-        loadData2DParamsA.mStartPosition = 0;
+        loadData2DParamsA.mStartPosition = info.prefetched ? (s2BaseSize / 16) : 0;
         loadData2DParamsA.kStartPosition = 0;
         loadData2DParamsA.mStep = info.actSingleLoopS2SizeAlign64 / 16;
         loadData2DParamsA.kStep = constInfo.dSize / GetBlockElemCnt<QUANT_T>();
 
-        loadData2DParamsA.srcStride = info.actSingleLoopS2SizeAlign64 / 16;
+        loadData2DParamsA.srcStride = s2BaseSize * 2 / 16;
         loadData2DParamsA.dstStride = (constInfo.dSize + 15) / 16 + 1;
         loadData2DParamsA.ifTranspose = true;
 
         LoadData2DMxParams load2DMxParamsA;
         load2DMxParamsA.xStartPosition = 0;
-        load2DMxParamsA.yStartPosition = 0;
+        load2DMxParamsA.yStartPosition = info.prefetched ? (s2BaseSize / 64) : 0;
         load2DMxParamsA.xStep = (constInfo.dSize + 15) / 16;
         load2DMxParamsA.yStep =
             (info.actSingleLoopS2SizeAlign64 + GetBlockElemCnt<QUANT_T>() - 1) /
             GetBlockElemCnt<QUANT_T>(); // 2Byte分形的行数，64个V在S2方向上的元素一组对应一个2Byte分形
-        load2DMxParamsA.srcStride = load2DMxParamsA.yStep;
+        load2DMxParamsA.srcStride = s2BaseSize * 2 / 64;
         load2DMxParamsA.dstStride = load2DMxParamsA.yStep;
 
         uint32_t pvL0AOffset = pvL0abBufId * (PV_L0A_SIZE / sizeof(DATA_T));
-        uint32_t kvL1Offset = kvBufId * (L1_KV_SIZE / sizeof(DATA_T));
-        uint32_t vScaleL1Offset = kvBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
-        LoadData(pvL0ATensor[pvL0AOffset].ReinterpretCast<QUANT_T>(), kvL1Tensor[kvL1Offset].ReinterpretCast<QUANT_T>(),
-                 kvDescaleL1Tensor[vScaleL1Offset], loadData2DParamsA, load2DMxParamsA);
+        uint32_t vL1Offset = vBufId * (L1_KV_SIZE / sizeof(DATA_T));
+        uint32_t vScaleL1Offset = vBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T)) +
+                                  (info.prefetched ? (L1_KV_DESCALE_SIZE / sizeof(SCALE_T)) : 0);
+        LoadData(pvL0ATensor[pvL0AOffset].ReinterpretCast<QUANT_T>(), vL1Tensor[vL1Offset].ReinterpretCast<QUANT_T>(),
+                 vDescaleL1Tensor[vScaleL1Offset], loadData2DParamsA, load2DMxParamsA);
     }
 
     __aicore__ inline void MatmulPV(const RunInfo &info)
