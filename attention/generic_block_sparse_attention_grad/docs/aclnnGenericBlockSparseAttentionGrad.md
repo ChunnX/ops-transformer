@@ -311,7 +311,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                       <ul>
                           <li>含两个元素[blockShapeX, blockShapeY]。</li>
                           <li>blockShapeX当前仅支持1。</li>
-                          <li>blockShapeY须≥128且按64对齐；当前实现仅支持128。</li>
+                          <li>blockShapeY须≥128且按64对齐。Cube/Softmax按baseN=128对每个稀疏块做S2切分（LSE Softmax，与整块数值等价）。</li>
                       </ul>
                   </td>
                   <td>INT64</td>
@@ -552,7 +552,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
 - qInputLayout和kvInputLayout当前支持TND、BNSD、BSND，且必须保持一致。
 - 当qInputLayout为TND时，需要传入cuSeqLengthsOptional；当kvInputLayout为TND时，需要传入cuSeqLengthsKvOptional。
 - HeadDim固定为128；N1/N2取值范围[1, 128]，且N1 % N2 == 0。
-- blockShape当前仅支持[1, 128]；isPackedGqa当前仅支持1；maskType当前仅支持1。
+- blockShape：blockShapeX仅支持1；blockShapeY须≥128且为64的倍数（Cube按baseN=128对每个稀疏块做S2切分）；isPackedGqa当前仅支持1；maskType当前仅支持1。
 - windowSizeLeft和windowSizeRight不使能时必须为-1；attenMaskOptional当前应传nullptr。
 - Softmax LSE的head/seq轴语义须与query布局一致。
 - `rsvdBlockIdx`第4维maxS1应≥`rsvdBlockCount`中所有元素的最大值。

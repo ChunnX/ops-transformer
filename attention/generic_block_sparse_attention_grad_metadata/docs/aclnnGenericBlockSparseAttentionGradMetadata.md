@@ -212,7 +212,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradMetadata(
         <td>blockShape</td>
         <td>输入</td>
         <td>稀疏块形状数组。</td>
-        <td>含两个元素[blockShapeX, blockShapeY]。blockShapeX当前仅支持1；blockShapeY当前仅支持128。</td>
+        <td>含两个元素[blockShapeX, blockShapeY]。blockShapeX当前仅支持1；blockShapeY须≥128且为64的倍数（Cube按baseN=128切分S2）。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>

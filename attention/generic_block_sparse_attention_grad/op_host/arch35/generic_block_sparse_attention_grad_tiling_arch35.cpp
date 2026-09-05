@@ -62,12 +62,8 @@ protected:
             OP_LOGE(context_->GetNodeName(), "block_shape[1] must be >= 128 and 64-aligned.");
             return false;
         }
-        // Cube tile baseN shares UB/L1 with baseM; current layout budgets baseN<=128.
-        if (blockShapeY_ > BASE_M) {
-            OP_LOGE(context_->GetNodeName(), "block_shape[1]=%ld exceeds supported cube baseN=%ld (UB/L1 budget).",
-                    blockShapeY_, BASE_M);
-            return false;
-        }
+        // BlockY is sparse-block width only. Cube/Softmax tile is fixed baseN=128;
+        // kernel splits each J block into S2 tiles of size <= baseN.
         if (isPackedGqa_ != 1) {
             OP_LOGE(context_->GetNodeName(), "only support is_packed_gqa == 1.");
             return false;
@@ -214,8 +210,9 @@ protected:
     {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
         auto cubeCoreNum = ascendcPlatform.GetCoreNumAic();
+        // Decouple sparse BlockY from Cube tile: UB/L1 always budgets baseM x baseN.
         uint32_t baseM = BASE_M;
-        uint32_t baseN = static_cast<uint32_t>(blockShapeY_);
+        uint32_t baseN = BASE_M; // 128; addr_compute S2-tiles each J block
 
         tilingData_.set_BlockX(static_cast<uint32_t>(blockShapeX_));
         tilingData_.set_BlockY(static_cast<uint32_t>(blockShapeY_));

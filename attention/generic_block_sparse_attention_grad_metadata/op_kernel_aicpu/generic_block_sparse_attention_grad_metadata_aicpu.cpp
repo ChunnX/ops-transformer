@@ -138,7 +138,8 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernel::ParamsInit()
     }
 
     baseM_ = GSAG_DEFAULT_BASE_M;
-    baseN_ = static_cast<uint32_t>(blockShapeY_ > 0 ? blockShapeY_ : GSAG_DEFAULT_BASE_N);
+    // Cube/Softmax tile size (decoupled from sparse BlockY).
+    baseN_ = GSAG_DEFAULT_BASE_N;
     coreGroupStart_.assign(aicCoreNum_, 0U);
     coreGroupEnd_.assign(aicCoreNum_, 0U);
     return true;
@@ -160,12 +161,13 @@ uint32_t GenericBlockSparseAttentionGradMetadataCpuKernel::GetKvSeqLen(uint32_t 
 uint32_t GenericBlockSparseAttentionGradMetadataCpuKernel::GetKvBlockLen(uint32_t bIdx, uint32_t jIdx) const
 {
     const uint32_t actS2 = GetKvSeqLen(bIdx);
-    const uint32_t s2Start = jIdx * baseN_;
+    const uint32_t blockY = static_cast<uint32_t>(blockShapeY_ > 0 ? blockShapeY_ : GSAG_DEFAULT_BASE_N);
+    const uint32_t s2Start = jIdx * blockY;
     if (s2Start >= actS2) {
         return 0U;
     }
     const uint32_t remain = actS2 - s2Start;
-    return remain < baseN_ ? remain : baseN_;
+    return remain < blockY ? remain : blockY;
 }
 
 uint64_t GenericBlockSparseAttentionGradMetadataCpuKernel::CalcGroupBlockCost(int32_t count, uint32_t kvBlockLen) const
@@ -178,7 +180,8 @@ uint64_t GenericBlockSparseAttentionGradMetadataCpuKernel::CalcGroupBlockCost(in
     return mTiles * nTiles * static_cast<uint64_t>(groupSize_);
 }
 
-// 构建 KV 块组,遍历顺序 B → N2 → J。每个 count>0 的 (b,n2,j) 成一个 KV 块组，并记录总的任务数量（baseN=128）
+// 构建 KV 块组,遍历顺序 B → N2 → J。每个 count>0 的 (b,n2,j) 成一个 KV 块组。
+// cost = mTiles * nTiles * G，nTiles = CeilDiv(kvBlockLen, baseN)，baseN 为 Cube tile(128)。
 bool GenericBlockSparseAttentionGradMetadataCpuKernel::BuildKvBlockGroups()
 {
     const int32_t *countPtr = static_cast<const int32_t *>(rsvdBlockCount_->GetData());
@@ -186,9 +189,10 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernel::BuildKvBlockGroups()
     totalBlockCost_ = 0U;
     maxTaskCount_ = 0;
 
+    const uint32_t blockY = static_cast<uint32_t>(blockShapeY_ > 0 ? blockShapeY_ : GSAG_DEFAULT_BASE_N);
     // Traverse B → N2 → J; each (b,n2,j) with count>0 is one schedulable KV block.
     for (uint32_t bIdx = 0U; bIdx < batchSize_; ++bIdx) {
-        const uint32_t jLimit = CeilDiv(GetKvSeqLen(bIdx), baseN_);
+        const uint32_t jLimit = CeilDiv(GetKvSeqLen(bIdx), blockY);
         for (uint32_t n2Idx = 0U; n2Idx < n2Size_; ++n2Idx) {
             for (uint32_t jIdx = 0U; jIdx < jSize_; ++jIdx) {
                 if (jIdx >= jLimit) {
