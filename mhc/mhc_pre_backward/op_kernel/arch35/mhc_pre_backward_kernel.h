@@ -978,7 +978,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
                                                              uint64_t offsetBS, uint32_t currentBSBlock,
                                                              uint32_t buffIdx)
 {
-    AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
+    // V2通过MTE3写完x_rs后才发布信号；将等待明确挂到MTE2，保证C1的GM到L1搬运不会越过该依赖。
+    AscendC::CrossCoreWaitFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE2>(CROSS_CORE_WAIT_FLAG_C1);
     // 1C2V 对应操作两块 workspaceGm_
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffIdx);
