@@ -14,7 +14,6 @@
 import os
 import socket
 import logging
-from math import ceil
 from typing import List, Tuple, Dict, Any
 import torch
 import torch_npu
@@ -24,7 +23,7 @@ from torch.multiprocessing import Process, Manager
 import pandas as pd
 import numpy as np
 
-import npu_ops_transformer
+from cann_ops_transformer.ops import BandwidthTestBuffer, bandwidth_test
 
 logging.basicConfig(
     level=logging.INFO,
@@ -83,25 +82,11 @@ ranks_list = list(range(world_size))
 # endregion
 
 
-def cal_hccl_buffsize(test_bs, h, ep_world_size):
-    MAX_OUT_DTYPE_SIZE = 2
-    WIN_ADDR_ALIGN = 512
-    UB_ALIGN = 32
-    SCALE_EXPAND_IDX_BUFFER = 44
-    DOUBLE_DATA_BUFFER = 2
-
-    token_actual_len = (
-        (h * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) // UB_ALIGN
-    ) * UB_ALIGN + SCALE_EXPAND_IDX_BUFFER
-    token_need_size_dispatch = (
-        (token_actual_len + WIN_ADDR_ALIGN - 1) // WIN_ADDR_ALIGN
-    ) * WIN_ADDR_ALIGN
-    actual_size = (
-        test_bs * token_need_size_dispatch * ep_world_size
-    ) * DOUBLE_DATA_BUFFER
-
-    hccl_buffsize = ceil(actual_size / 1024 / 1024 / 2) + 5  # 留出 5MB 空间余量
-    return str(hccl_buffsize)
+def cal_hccl_buffsize(test_max_bs, h, ep_world_size):
+    # A5 allocates twice HCCL_BUFFSIZE; each half includes one reserved token block.
+    row_bytes = ((h * 2 + 511) // 512) * 512
+    required_bytes = 1024 * 1024 + 2 * (ep_world_size + 1) * test_max_bs * row_bytes
+    return str((required_bytes + 2 * 1024 * 1024 - 1) // (2 * 1024 * 1024))
 
 
 if is_single_test:
@@ -113,7 +98,7 @@ if is_single_test:
     ]
 
     # 计算 HCCL_BUFFSIZE 大小
-    os.environ["HCCL_BUFFSIZE"] = cal_hccl_buffsize(bs, data_size, world_size)
+    os.environ["HCCL_BUFFSIZE"] = cal_hccl_buffsize(max_bs, data_size, world_size)
 else:
     # region 输入维度配置 - 多组数据大小测试 (2KB 到 32MB, BS和H交替翻倍)
     test_configs = [
@@ -136,14 +121,19 @@ else:
         {"bs": 4096, "data_size": 16384, "max_bs": 4096},  # 128MB
         {"bs": 8192, "data_size": 8192, "max_bs": 8192},  # 128MB
     ]
-    os.environ["HCCL_BUFFSIZE"] = cal_hccl_buffsize(8192, 8192, world_size)
+    os.environ["HCCL_BUFFSIZE"] = str(
+        max(
+            int(cal_hccl_buffsize(cfg["max_bs"], cfg["data_size"], world_size))
+            for cfg in test_configs
+        )
+    )
 # endregion
 
 # region 数据类型配置
 x_dtype = "fp16"
 random_seed = 90
 input_dtype = torch.bfloat16 if x_dtype == "bf16" else torch.float16
-dtype_bytes = torch.empty(0, dtype=x_dtype).element_size()
+dtype_bytes = torch.empty(0, dtype=input_dtype).element_size()
 # endregion
 
 # region 算子模式配置
@@ -366,7 +356,7 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
         self,
         x,
         dstrank_id,
-        group,
+        sym_buffer,
         test_world_size,
         test_max_bs,
         test_mode,
@@ -374,21 +364,18 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
         test_aiv_num,
     ):
         local_loop = loop if is_bandwidth_test else 1
-        input_x = x
         output = None
         for _ in range(local_loop):
-            output = npu_ops_transformer.ops.npu_bandwidth_test(
-                x=input_x,
+            output = bandwidth_test(
+                x=x,
                 dstrank_id=dstrank_id,
-                group=group,
+                sym_buffer=sym_buffer,
                 world_size=test_world_size,
                 max_bs=test_max_bs,
                 mode=test_mode,
                 comm_alg=test_comm_alg,
                 aiv_num=test_aiv_num,
             )
-            [y, receive_cnt] = output
-            input_x = y[:test_max_bs]
         return output
 
 
@@ -422,22 +409,22 @@ def init_hccl_comm(rank, world_size_local):
     torch.npu.synchronize()
     logger.debug("[DEBUG] device_%s NPU同步完成", rank)
 
-    hcomm_info = comm_group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
+    group_name = comm_group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
     logger.debug(
         "[DEBUG] device_%s HCCL通信域名称: %s, 长度: %s",
         rank,
-        hcomm_info,
-        len(hcomm_info) if hcomm_info else 0,
+        group_name,
+        len(group_name) if group_name else 0,
     )
 
-    if not hcomm_info or len(hcomm_info) == 0:
+    if not group_name or len(group_name) == 0:
         raise RuntimeError(f"device_{rank} HCCL通信域获取失败")
 
     dist.barrier()
     torch.npu.synchronize()
     logger.debug("[DEBUG] device_%s 通信域完全就绪", rank)
 
-    return hcomm_info, comm_group
+    return BandwidthTestBuffer(comm_group), comm_group
 
 
 # endregion
@@ -597,7 +584,7 @@ def run_bandwidth_test_npu(
     rank,
     x,
     dstrank_id,
-    hcomm_info,
+    sym_buffer,
     test_max_bs=None,
     test_mode=None,
     test_world_size=None,
@@ -607,8 +594,8 @@ def run_bandwidth_test_npu(
     """执行 bandwidth_test 算子"""
     set_device(rank)
 
-    if hcomm_info is None:
-        hcomm_info, _ = init_hccl_comm(rank, test_world_size)
+    if sym_buffer is None:
+        sym_buffer, _ = init_hccl_comm(rank, test_world_size)
 
     if is_save_tensor_to_bin:
         save_tensor_to_bin(x.to(torch.float32), "x_in_" + str(rank))
@@ -626,7 +613,7 @@ def run_bandwidth_test_npu(
         bandwidth_test_kwargs = {
             "x": x_npu,
             "dstrank_id": dstrank_id_npu,
-            "group": hcomm_info,
+            "sym_buffer": sym_buffer,
             "world_size": test_world_size,
             "max_bs": test_max_bs,
             "mode": test_mode,
@@ -635,7 +622,7 @@ def run_bandwidth_test_npu(
         }
 
         if not is_perf_mode:
-            y, receive_cnt = npu_ops_transformer.ops.npu_bandwidth_test(
+            y, receive_cnt = bandwidth_test(
                 **bandwidth_test_kwargs
             )
         else:
@@ -643,7 +630,7 @@ def run_bandwidth_test_npu(
             with get_profiling(loop, repeat, warmup, profiling_path) as prof:
                 for i in range(loop):
                     torch.npu.synchronize()
-                    y, receive_cnt = npu_ops_transformer.ops.npu_bandwidth_test(
+                    y, receive_cnt = bandwidth_test(
                         **bandwidth_test_kwargs
                     )
                     if i == 1:
@@ -654,7 +641,7 @@ def run_bandwidth_test_npu(
         bandwidth_test_kwargs = {
             "x": x_npu,
             "dstrank_id": dstrank_id_npu,
-            "group": hcomm_info,
+            "sym_buffer": sym_buffer,
             "test_world_size": test_world_size,
             "test_max_bs": test_max_bs,
             "test_mode": test_mode,
@@ -731,7 +718,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
     _, _, _, _, test_world_size, _ = configs[0]
 
     logger.info(f"[INFO] device_{rank} 创建通信域（多配置共享）")
-    hcomm_info, _ = init_hccl_comm(rank, test_world_size)
+    sym_buffer, _ = init_hccl_comm(rank, test_world_size)
 
     results = []
 
@@ -766,7 +753,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
             bandwidth_test_kwargs = {
                 "x": x_npu,
                 "dstrank_id": dstrank_id_npu,
-                "group": hcomm_info,
+                "sym_buffer": sym_buffer,
                 "world_size": test_world_size,
                 "max_bs": test_max_bs,
                 "mode": mode,
@@ -777,7 +764,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
             with get_profiling(loop, repeat, warmup, config_profiling_path) as prof:
                 for j in range(loop):
                     torch.npu.synchronize()
-                    y, receive_cnt = npu_ops_transformer.ops.npu_bandwidth_test(
+                    y, receive_cnt = bandwidth_test(
                         **bandwidth_test_kwargs
                     )
                     if j == 1:
@@ -788,7 +775,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
             bandwidth_test_kwargs = {
                 "x": x_npu,
                 "dstrank_id": dstrank_id_npu,
-                "group": hcomm_info,
+                "sym_buffer": sym_buffer,
                 "test_world_size": test_world_size,
                 "test_max_bs": test_max_bs,
                 "test_mode": mode,
@@ -908,7 +895,8 @@ def run_precision_test(
 
         npu_y, npu_receive_cnt = npu_outputs[rank]
 
-        y_pass = compare_result(npu_y, golden_y, f"rank_{rank}_y")
+        valid_rows = int(golden_receive_cnt.sum().item())
+        y_pass = compare_result(npu_y[:valid_rows], golden_y[:valid_rows], f"rank_{rank}_y")
         receive_cnt_pass = compare_result(
             npu_receive_cnt, golden_receive_cnt, f"rank_{rank}_receive_cnt"
         )

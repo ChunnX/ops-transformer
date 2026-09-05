@@ -2,7 +2,7 @@
 
 ## 概述
 
-`bandwidth_test.py` 是一个用于测试 NPU 带宽测试算子 (`npu_bandwidth_test`) 的脚本，支持精度验证和性能测试两种模式，可进行单配置或多配置批量测试。
+`bandwidth_test.py` 是一个用于测试 NPU 带宽测试算子 (`bandwidth_test`) 的脚本，支持精度验证和性能测试两种模式，可进行单配置或多配置批量测试。
 
 ## 功能特性
 
@@ -16,10 +16,13 @@
 - Python 3.8+
 - PyTorch
 - TorchNPU
-- npu_ops_transformer
+- cann_ops_transformer（安装仓库根目录的 torch_extension）
 - pandas, numpy
 
 ## 快速开始
+
+Torch 接口、context 生命周期和 `aclnn_graph` 示例见
+[Torch Extension 说明](torch_extension/README.md)。
 
 ```bash
 python bandwidth_test.py
