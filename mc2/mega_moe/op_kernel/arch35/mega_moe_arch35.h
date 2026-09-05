@@ -101,8 +101,10 @@ protected:
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void ProcessInputPreparationStage();
     __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
-                                                   WaveGmm2PipelineState &runtimeState,
-                                                   uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount,
+                                                   uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
+                                                   uint32_t sliceTokenCount,
+                                                   WaveCombineBufferConfig &combineBufferConfig,
+                                                   uint32_t &combineRowSequence, int32_t &pairwiseTileSequence,
                                                    bool isFinalCombine);
     template <bool WaitForTokenCountReady>
     __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx);
@@ -537,13 +539,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
 // 非量化路径由 AIV1 在 GMM2 scheduler 内逐 tile 调用统一的 CombineTokenRange。
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert(
-    ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, WaveGmm2PipelineState &runtimeState,
-    uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount, bool isFinalCombine)
+    ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
+    uint32_t sliceTokenCount, WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence,
+    int32_t &pairwiseTileSequence, bool isFinalCombine)
 {
     uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     uint32_t gmm2NTileCount = Ops::Base::CeilDiv(commonConfig_.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
     uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm2NTileCount;
-    if (!HandleWaveProblemWithoutWork(problemTileCount, gmmExecutionConfig_.blockJob, runtimeState.startBlockIdx)) {
+    if (!HandleWaveProblemWithoutWork(problemTileCount, gmmExecutionConfig_.blockJob, startBlockIdx)) {
         UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType>(
             gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo,
             state, tokenStartIndexInExpert);
@@ -557,11 +560,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
         Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
         int32_t *gmm2TileSequence = nullptr;
         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-            gmm2TileSequence = &runtimeState.pairwiseTileSequence;
+            gmm2TileSequence = &pairwiseTileSequence;
         }
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
                     TopkWeightsPrefetch, false, false, true, CombineQuantMode == COMBINE_NO_QUANT>(
-            sliceProblemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
+            sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
             tokenStartIndexInExpert, &params_, gmm2TileSequence);
     }
 
@@ -584,16 +587,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
                 SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID0>();
             }
         }
-        runtimeState.combineBufferConfig = PrepareFinalWaveCombineBuffers<CombineQuantMode>(
-            commonConfig_, runtimeState.combineBufferConfig, waveCombineScratch_);
-        RunWaveCombineStage<CombineQuantMode, true>(commonConfig_, waveCombineJob_, runtimeState.combineBufferConfig,
+        combineBufferConfig =
+            PrepareFinalWaveCombineBuffers<CombineQuantMode>(commonConfig_, combineBufferConfig, waveCombineScratch_);
+        RunWaveCombineStage<CombineQuantMode, true>(commonConfig_, waveCombineJob_, combineBufferConfig,
                                                     waveCombineScratch_, params_, gmmAddrInfo, state, state.expertIdx,
-                                                    runtimeState.combineRowSequence);
+                                                    combineRowSequence);
         return;
     }
-    RunWaveCombineStage<CombineQuantMode>(commonConfig_, waveCombineJob_, runtimeState.combineBufferConfig,
-                                          waveCombineScratch_, params_, gmmAddrInfo, state, state.expertIdx,
-                                          runtimeState.combineRowSequence);
+    RunWaveCombineStage<CombineQuantMode>(commonConfig_, waveCombineJob_, combineBufferConfig, waveCombineScratch_,
+                                          params_, gmmAddrInfo, state, state.expertIdx, combineRowSequence);
 }
 
 // 从 workspace 读取 token 数并准备 GMM 专家状态；GMM1 可按需先等待 token count ready。

@@ -221,8 +221,9 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                                   expertIdx == waveLastActiveExpertIdx &&
                                   sliceTokenEndIndexInExpert >= expertTokenCount;
             // W4 的 GMM2/Combine 调度集中在基类，派生模板只负责提供当前专家 slice。
-            RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, runtimeState, sliceTokenStartIndexInExpert,
-                                    sliceTokenCount, isFinalCombine);
+            RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, runtimeState.startBlockIdx,
+                                    sliceTokenStartIndexInExpert, sliceTokenCount, runtimeState.combineBufferConfig,
+                                    runtimeState.combineRowSequence, runtimeState.pairwiseTileSequence, isFinalCombine);
         }
     }
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
