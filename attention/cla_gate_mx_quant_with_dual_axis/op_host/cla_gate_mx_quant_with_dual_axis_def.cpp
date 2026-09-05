@@ -25,10 +25,10 @@ public:
         this->Output("row_scale").ParamType(REQUIRED).DataType(scaleTypes).Format(formats);
         this->Output("col_data").ParamType(REQUIRED).DataType(dataTypes).Format(formats);
         this->Output("col_scale").ParamType(REQUIRED).DataType(scaleTypes).Format(formats);
-        this->Attr("dst_type").AttrType(OPTIONAL).Int(DEFAULT_DST_TYPE);
         this->Attr("scale_alg").AttrType(OPTIONAL).Int(DEFAULT_SCALE_ALG);
+        this->Attr("dst_type").AttrType(OPTIONAL).Int(DEFAULT_DST_TYPE);
         OpAICoreConfig config;
-        config.DynamicCompileStaticFlag(true).DynamicRankSupportFlag(false).DynamicShapeSupportFlag(false)
+        config.DynamicCompileStaticFlag(true).DynamicRankSupportFlag(true).DynamicShapeSupportFlag(true)
             .ExtendCfgInfo("opFile.value", "cla_gate_mx_quant_with_dual_axis_apt");
         this->AICore().AddConfig("ascend950", config);
     }

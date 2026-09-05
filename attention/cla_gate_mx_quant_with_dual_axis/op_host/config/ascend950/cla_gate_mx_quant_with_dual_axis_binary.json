@@ -2,10 +2,10 @@
   "op_type": "ClaGateMxQuantWithDualAxis",
   "op_list": [
     {
-      "bin_filename": "ClaGateMxQuantWithDualAxis_bf16toe2m1",
+      "bin_filename": "ClaGateMxQuantWithDualAxis_1a27dbfbb98bcb1be8bfc57b3f249e03",
       "inputs": [
         {
-          "name": "x",
+          "name": "global_out",
           "index": 0,
           "dtype": "bfloat16",
           "format": "ND",
@@ -16,97 +16,8 @@
           "format_match_mode": "FormatAgnostic"
         },
         {
-          "name": "group_index",
+          "name": "local_out",
           "index": 1,
-          "dtype": "int64",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "y1",
-          "index": 0,
-          "dtype": "float4_e2m1",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "mx_scale1",
-          "index": 1,
-          "dtype": "float8_e8m0",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "y2",
-          "index": 2,
-          "dtype": "float4_e2m1",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "mx_scale2",
-          "index": 3,
-          "dtype": "float8_e8m0",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        }
-      ],
-      "attrs": [
-        {
-          "name": "dst_type",
-          "dtype": "int",
-          "value": null
-        },
-        {
-          "name": "scale_alg",
-          "dtype": "int",
-          "value": null
-        },
-        {
-          "name": "round_mode",
-          "dtype": "string",
-          "value": null
-        },
-        {
-          "name": "activate_left",
-          "dtype": "bool",
-          "value": null
-        },
-        {
-          "name": "max_dtype_value",
-          "dtype": "float",
-          "value": null
-        }
-      ]
-    },
-    {
-      "bin_filename": "ClaGateMxQuantWithDualAxis_bf16toe1m2",
-      "inputs": [
-        {
-          "name": "x",
-          "index": 0,
           "dtype": "bfloat16",
           "format": "ND",
           "paramType": "required",
@@ -116,297 +27,8 @@
           "format_match_mode": "FormatAgnostic"
         },
         {
-          "name": "group_index",
-          "index": 1,
-          "dtype": "int64",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "y1",
-          "index": 0,
-          "dtype": "float4_e1m2",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "mx_scale1",
-          "index": 1,
-          "dtype": "float8_e8m0",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "y2",
+          "name": "global_gate_logits",
           "index": 2,
-          "dtype": "float4_e1m2",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "mx_scale2",
-          "index": 3,
-          "dtype": "float8_e8m0",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        }
-      ],
-      "attrs": [
-        {
-          "name": "dst_type",
-          "dtype": "int",
-          "value": null
-        },
-        {
-          "name": "scale_alg",
-          "dtype": "int",
-          "value": null
-        },
-        {
-          "name": "round_mode",
-          "dtype": "string",
-          "value": null
-        },
-        {
-          "name": "activate_left",
-          "dtype": "bool",
-          "value": null
-        },
-        {
-          "name": "max_dtype_value",
-          "dtype": "float",
-          "value": null
-        }
-      ]
-    },
-    {
-      "bin_filename": "ClaGateMxQuantWithDualAxis_fp16toe2m1",
-      "inputs": [
-        {
-          "name": "x",
-          "index": 0,
-          "dtype": "float16",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "group_index",
-          "index": 1,
-          "dtype": "int64",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "y1",
-          "index": 0,
-          "dtype": "float4_e2m1",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "mx_scale1",
-          "index": 1,
-          "dtype": "float8_e8m0",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "y2",
-          "index": 2,
-          "dtype": "float4_e2m1",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "mx_scale2",
-          "index": 3,
-          "dtype": "float8_e8m0",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        }
-      ],
-      "attrs": [
-        {
-          "name": "dst_type",
-          "dtype": "int",
-          "value": null
-        },
-        {
-          "name": "scale_alg",
-          "dtype": "int",
-          "value": null
-        },
-        {
-          "name": "round_mode",
-          "dtype": "string",
-          "value": null
-        },
-        {
-          "name": "activate_left",
-          "dtype": "bool",
-          "value": null
-        },
-        {
-          "name": "max_dtype_value",
-          "dtype": "float",
-          "value": null
-        }
-      ]
-    },
-    {
-      "bin_filename": "ClaGateMxQuantWithDualAxis_fp16toe1m2",
-      "inputs": [
-        {
-          "name": "x",
-          "index": 0,
-          "dtype": "float16",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "group_index",
-          "index": 1,
-          "dtype": "int64",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "y1",
-          "index": 0,
-          "dtype": "float4_e1m2",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "mx_scale1",
-          "index": 1,
-          "dtype": "float8_e8m0",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "y2",
-          "index": 2,
-          "dtype": "float4_e1m2",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "mx_scale2",
-          "index": 3,
-          "dtype": "float8_e8m0",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        }
-      ],
-      "attrs": [
-        {
-          "name": "dst_type",
-          "dtype": "int",
-          "value": null
-        },
-        {
-          "name": "scale_alg",
-          "dtype": "int",
-          "value": null
-        },
-        {
-          "name": "round_mode",
-          "dtype": "string",
-          "value": null
-        },
-        {
-          "name": "activate_left",
-          "dtype": "bool",
-          "value": null
-        },
-        {
-          "name": "max_dtype_value",
-          "dtype": "float",
-          "value": null
-        }
-      ]
-    },
-    {
-      "bin_filename": "ClaGateMxQuantWithDualAxis_bf16toe4m3",
-      "inputs": [
-        {
-          "name": "x",
-          "index": 0,
           "dtype": "bfloat16",
           "format": "ND",
           "paramType": "required",
@@ -416,97 +38,8 @@
           "format_match_mode": "FormatAgnostic"
         },
         {
-          "name": "group_index",
-          "index": 1,
-          "dtype": "int64",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "y1",
-          "index": 0,
-          "dtype": "float8_e4m3fn",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "mx_scale1",
-          "index": 1,
-          "dtype": "float8_e8m0",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "y2",
-          "index": 2,
-          "dtype": "float8_e4m3fn",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "mx_scale2",
+          "name": "local_gate_logits",
           "index": 3,
-          "dtype": "float8_e8m0",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        }
-      ],
-      "attrs": [
-        {
-          "name": "dst_type",
-          "dtype": "int",
-          "value": null
-        },
-        {
-          "name": "scale_alg",
-          "dtype": "int",
-          "value": null
-        },
-        {
-          "name": "round_mode",
-          "dtype": "string",
-          "value": null
-        },
-        {
-          "name": "activate_left",
-          "dtype": "bool",
-          "value": null
-        },
-        {
-          "name": "max_dtype_value",
-          "dtype": "float",
-          "value": null
-        }
-      ]
-    },
-    {
-      "bin_filename": "ClaGateMxQuantWithDualAxis_bf16toe5m2",
-      "inputs": [
-        {
-          "name": "x",
-          "index": 0,
           "dtype": "bfloat16",
           "format": "ND",
           "paramType": "required",
@@ -514,122 +47,11 @@
             -2
           ],
           "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "group_index",
-          "index": 1,
-          "dtype": "int64",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
         }
       ],
       "outputs": [
         {
-          "name": "y1",
-          "index": 0,
-          "dtype": "float8_e5m2",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "mx_scale1",
-          "index": 1,
-          "dtype": "float8_e8m0",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "y2",
-          "index": 2,
-          "dtype": "float8_e5m2",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "mx_scale2",
-          "index": 3,
-          "dtype": "float8_e8m0",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        }
-      ],
-      "attrs": [
-        {
-          "name": "dst_type",
-          "dtype": "int",
-          "value": null
-        },
-        {
-          "name": "scale_alg",
-          "dtype": "int",
-          "value": null
-        },
-        {
-          "name": "round_mode",
-          "dtype": "string",
-          "value": null
-        },
-        {
-          "name": "activate_left",
-          "dtype": "bool",
-          "value": null
-        },
-        {
-          "name": "max_dtype_value",
-          "dtype": "float",
-          "value": null
-        }
-      ]
-    },
-    {
-      "bin_filename": "ClaGateMxQuantWithDualAxis_fp16toe4m3",
-      "inputs": [
-        {
-          "name": "x",
-          "index": 0,
-          "dtype": "float16",
-          "format": "ND",
-          "paramType": "required",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        },
-        {
-          "name": "group_index",
-          "index": 1,
-          "dtype": "int64",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "y1",
+          "name": "row_data",
           "index": 0,
           "dtype": "float8_e4m3fn",
           "format": "ND",
@@ -640,7 +62,7 @@
           "format_match_mode": "FormatAgnostic"
         },
         {
-          "name": "mx_scale1",
+          "name": "row_scale",
           "index": 1,
           "dtype": "float8_e8m0",
           "format": "ND",
@@ -651,7 +73,7 @@
           "format_match_mode": "FormatAgnostic"
         },
         {
-          "name": "y2",
+          "name": "col_data",
           "index": 2,
           "dtype": "float8_e4m3fn",
           "format": "ND",
@@ -662,7 +84,7 @@
           "format_match_mode": "FormatAgnostic"
         },
         {
-          "name": "mx_scale2",
+          "name": "col_scale",
           "index": 3,
           "dtype": "float8_e8m0",
           "format": "ND",
@@ -675,37 +97,22 @@
       ],
       "attrs": [
         {
-          "name": "dst_type",
-          "dtype": "int",
-          "value": null
-        },
-        {
           "name": "scale_alg",
           "dtype": "int",
-          "value": null
+          "value": 0
         },
         {
-          "name": "round_mode",
-          "dtype": "string",
-          "value": null
-        },
-        {
-          "name": "activate_left",
-          "dtype": "bool",
-          "value": null
-        },
-        {
-          "name": "max_dtype_value",
-          "dtype": "float",
-          "value": null
+          "name": "dst_type",
+          "dtype": "int",
+          "value": 0
         }
       ]
     },
     {
-      "bin_filename": "ClaGateMxQuantWithDualAxis_fp16toe5m2",
+      "bin_filename": "ClaGateMxQuantWithDualAxis_9618d98448cc883682a347cd788037b7",
       "inputs": [
         {
-          "name": "x",
+          "name": "global_out",
           "index": 0,
           "dtype": "float16",
           "format": "ND",
@@ -716,22 +123,9 @@
           "format_match_mode": "FormatAgnostic"
         },
         {
-          "name": "group_index",
+          "name": "local_out",
           "index": 1,
-          "dtype": "int64",
-          "format": "ND",
-          "paramType": "optional",
-          "shape": [
-            -2
-          ],
-          "format_match_mode": "FormatAgnostic"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "y1",
-          "index": 0,
-          "dtype": "float8_e5m2",
+          "dtype": "float16",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -740,7 +134,42 @@
           "format_match_mode": "FormatAgnostic"
         },
         {
-          "name": "mx_scale1",
+          "name": "global_gate_logits",
+          "index": 2,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "local_gate_logits",
+          "index": 3,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "row_data",
+          "index": 0,
+          "dtype": "float8_e4m3fn",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "row_scale",
           "index": 1,
           "dtype": "float8_e8m0",
           "format": "ND",
@@ -751,9 +180,9 @@
           "format_match_mode": "FormatAgnostic"
         },
         {
-          "name": "y2",
+          "name": "col_data",
           "index": 2,
-          "dtype": "float8_e5m2",
+          "dtype": "float8_e4m3fn",
           "format": "ND",
           "paramType": "required",
           "shape": [
@@ -762,7 +191,7 @@
           "format_match_mode": "FormatAgnostic"
         },
         {
-          "name": "mx_scale2",
+          "name": "col_scale",
           "index": 3,
           "dtype": "float8_e8m0",
           "format": "ND",
@@ -775,29 +204,14 @@
       ],
       "attrs": [
         {
-          "name": "dst_type",
-          "dtype": "int",
-          "value": null
-        },
-        {
           "name": "scale_alg",
           "dtype": "int",
-          "value": null
+          "value": 0
         },
         {
-          "name": "round_mode",
-          "dtype": "string",
-          "value": null
-        },
-        {
-          "name": "activate_left",
-          "dtype": "bool",
-          "value": null
-        },
-        {
-          "name": "max_dtype_value",
-          "dtype": "float",
-          "value": null
+          "name": "dst_type",
+          "dtype": "int",
+          "value": 0
         }
       ]
     }

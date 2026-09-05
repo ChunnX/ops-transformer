@@ -177,15 +177,18 @@ private:
 
     // pipe & queue & buf
     TPipe* pipe_;
-    TQue<QuePosition::VECIN, 1> inQueue_;
+    // Double-buffered input queues: activation halves and gate scalars are split
+    // so their lifetimes/synchronization can be managed independently.
+    TQue<QuePosition::VECIN, DB_BUFFER> actInQueue_;
+    TQue<QuePosition::VECIN, DB_BUFFER> gateInQueue_;
     TBuf<TPosition::VECCALC> claGateBuf_;
     // One full FP32 register slot per row. Sigmoid is calculated only in lane 0;
     // StoreAlign + LoadAlign(DIST_BRC_B32) expands that scalar for the D lanes.
     TBuf<TPosition::VECCALC> sigmoidBroadcastBuf_;
-    TQue<QuePosition::VECOUT, 1> outQueue1_;
-    TQue<QuePosition::VECOUT, 1> outQueue2_;
-    TQue<QuePosition::VECOUT, 1> mxScaleQueue1_;
-    TQue<QuePosition::VECOUT, 1> mxScaleQueue2_;
+    TQue<QuePosition::VECOUT, DB_BUFFER> outQueue1_;
+    TQue<QuePosition::VECOUT, DB_BUFFER> outQueue2_;
+    TQue<QuePosition::VECOUT, DB_BUFFER> mxScaleQueue1_;
+    TQue<QuePosition::VECOUT, DB_BUFFER> mxScaleQueue2_;
     TBuf<TPosition::VECCALC> mxScale1ReciprocalBuf_;
     TBuf<TPosition::VECCALC> mxScale2ReciprocalBuf_;
 
@@ -285,17 +288,20 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
     // axis=-2 1/scale (xDtype sized for bf16 reciprocal storage)
     int64_t tmpScale2BufferSize = ubRowLen_ * DIGIT_TWO * static_cast<int64_t>(sizeof(xDtype));
 
-    // Allocate buffers with double buffering (DB_BUFFER=2)
-    // inQueue_ holds left + right halves in a single buffer (2 * inBufferSize_)
-    pipe_->InitBuffer(inQueue_, 1, inBufferSize * DIGIT_TWO +
-                      DIGIT_TWO * ubRowCount_ * static_cast<int64_t>(sizeof(xDtype)));
+    // Allocate queues with double buffering (DB_BUFFER=2).
+    // actInQueue_ holds the two 64x256 activation halves (global/local).
+    // gateInQueue_ holds the two compact per-row gate vectors (global/local).
+    int64_t actFrameBytes = inBufferSize * DIGIT_TWO;
+    int64_t gateFrameBytes = DIGIT_TWO * ubRowCount_ * static_cast<int64_t>(sizeof(xDtype));
+    pipe_->InitBuffer(actInQueue_, DB_BUFFER, actFrameBytes);
+    pipe_->InitBuffer(gateInQueue_, DB_BUFFER, gateFrameBytes);
     pipe_->InitBuffer(claGateBuf_, inBufferSize);
-    // Keep global and local sigmoid in clearly separated 64-float regions.
-    pipe_->InitBuffer(sigmoidBroadcastBuf_, DIGIT_TWO * DOUBLE_BLOCK_SIZE * VF_LEN_FP32 * sizeof(float));
-    pipe_->InitBuffer(outQueue1_, 1, inHalfSize_);
-    pipe_->InitBuffer(outQueue2_, 1, inHalfSize_);
-    pipe_->InitBuffer(mxScaleQueue1_, 1, mxScale1BufferSize);
-    pipe_->InitBuffer(mxScaleQueue2_, 1, mxScale2BufferSize);
+    // Sigmoid scratch: one 64-element region per global/local side.
+    pipe_->InitBuffer(sigmoidBroadcastBuf_, DIGIT_TWO * DOUBLE_BLOCK_SIZE * sizeof(xDtype));
+    pipe_->InitBuffer(outQueue1_, DB_BUFFER, inHalfSize_);
+    pipe_->InitBuffer(outQueue2_, DB_BUFFER, inHalfSize_);
+    pipe_->InitBuffer(mxScaleQueue1_, DB_BUFFER, mxScale1BufferSize);
+    pipe_->InitBuffer(mxScaleQueue2_, DB_BUFFER, mxScale2BufferSize);
     pipe_->InitBuffer(mxScale1ReciprocalBuf_, mxScale1BufferSize);
     pipe_->InitBuffer(mxScale2ReciprocalBuf_, tmpScale2BufferSize); // 后续检查下这些ub大小是否正确
 }
@@ -320,6 +326,15 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
     int64_t firstBlock = blockIdx_ * (totalBlocks / coreCount) +
                          (blockIdx_ < totalBlocks % coreCount ? blockIdx_ : totalBlocks % coreCount);
 
+    // Prologue: issue the first MTE2 transfer before entering the compute loop.
+    if (loops > 0) {
+        int64_t firstRowBlockIdx = firstBlock / tilingData_->dimNBlockNum;
+        int64_t firstColBlockIdx = firstBlock % tilingData_->dimNBlockNum;
+        int64_t firstAbsRowStart = firstRowBlockIdx * ubRowCount_;
+        int64_t firstColOffset = firstColBlockIdx * ubRowLen_;
+        CopyInClaGate(firstAbsRowStart, firstColOffset, ubRowCount_, ubRowLen_);
+    }
+
     for (int64_t i = 0; i < loops; ++i) {
         int64_t block = firstBlock + i;
         int64_t rowBlockIdx = block / tilingData_->dimNBlockNum;
@@ -327,28 +342,36 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
         int64_t absRowStart = rowBlockIdx * ubRowCount_;
         int64_t colOffset = colBlockIdx * ubRowLen_;
 
-        CopyInClaGate(absRowStart, colOffset, ubRowCount_, ubRowLen_);
-        LocalTensor<xDtype> input = inQueue_.template DeQue<xDtype>();
+        // Consume the double-buffered input. DeQue waits only when the
+        // corresponding MTE2 transfer has not completed yet.
+        LocalTensor<xDtype> input = actInQueue_.template DeQue<xDtype>();
+        LocalTensor<xDtype> gateInput = gateInQueue_.template DeQue<xDtype>();
         LocalTensor<xDtype> merged = claGateBuf_.template Get<xDtype>();
         auto globalAddr = (__ubuf__ xDtype*)input.GetPhyAddr();
         auto localAddr = (__ubuf__ xDtype*)input[inHalfSize_].GetPhyAddr();
-        auto globalGateAddr = (__ubuf__ xDtype*)input[2 * inHalfSize_].GetPhyAddr();
-        auto localGateAddr = (__ubuf__ xDtype*)input[2 * inHalfSize_ + ubRowCount_].GetPhyAddr();
+        auto globalGateAddr = (__ubuf__ xDtype*)gateInput.GetPhyAddr();
+        auto localGateAddr = (__ubuf__ xDtype*)gateInput[ubRowCount_].GetPhyAddr();
         auto mergedAddr = (__ubuf__ xDtype*)merged.GetPhyAddr();
 
+        // Prefetch the next block while the current block is still being computed.
+        if (i + 1 < loops) {
+            int64_t nextBlock = firstBlock + i + 1;
+            int64_t nextRowBlockIdx = nextBlock / tilingData_->dimNBlockNum;
+            int64_t nextColBlockIdx = nextBlock % tilingData_->dimNBlockNum;
+            int64_t nextAbsRowStart = nextRowBlockIdx * ubRowCount_;
+            int64_t nextColOffset = nextColBlockIdx * ubRowLen_;
+            CopyInClaGate(nextAbsRowStart, nextColOffset, ubRowCount_, ubRowLen_);
+        }
 
         ComputeClaGateFullTile(globalAddr, localAddr, globalGateAddr, localGateAddr, mergedAddr);
 
-        inQueue_.template FreeTensor(input);
+        actInQueue_.template FreeTensor(input);
+        gateInQueue_.template FreeTensor(gateInput);
 
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(2);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(2);
         LocalTensor<uint8_t> scale1 = mxScaleQueue1_.template AllocTensor<uint8_t>();
         LocalTensor<uint8_t> scale2 = mxScaleQueue2_.template AllocTensor<uint8_t>();
         LocalTensor<uint8_t> y1 = outQueue1_.template AllocTensor<uint8_t>();
         LocalTensor<uint8_t> y2 = outQueue2_.template AllocTensor<uint8_t>();
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(4);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(4);
         LocalTensor<uint16_t> scale1Recip = mxScale1ReciprocalBuf_.template Get<uint16_t>();
         LocalTensor<uint16_t> scale2Recip = mxScale2ReciprocalBuf_.template Get<uint16_t>();
         auto y1Addr = (__ubuf__ uint8_t*)y1.GetPhyAddr();
@@ -357,7 +380,6 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
         auto scale2Addr = (__ubuf__ uint8_t*)scale2.GetPhyAddr();
         auto scale1RecipAddr = (__ubuf__ uint16_t*)scale1Recip.GetPhyAddr();
         auto scale2RecipAddr = (__ubuf__ uint16_t*)scale2Recip.GetPhyAddr();
-        
 
         if constexpr (scaleAlg == TPL_SCALE_ALG_1) {
             ComputeScaleCuBLAS(ONCE_ROW_LEN, DOUBLE_BLOCK_SIZE, mergedAddr, y1Addr, scale1Addr,
@@ -387,8 +409,6 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
             }
         }
 
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(3);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(3);
         mxScaleQueue1_.template EnQue(scale1);
         outQueue1_.template EnQue(y1);
         mxScaleQueue2_.template EnQue(scale2);
@@ -396,14 +416,11 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
         int64_t yOffset = absRowStart * dimN_ + colOffset;
         int64_t scale1Offset = absRowStart * dimNeg1ScaleNum_ + colOffset / BLOCK_SIZE;
         int64_t scale2Offset = rowBlockIdx * DIGIT_TWO * dimN_ + colOffset * DIGIT_TWO;
-        
+
         CopyOut(yOffset, scale1Offset, scale2Offset, DOUBLE_BLOCK_SIZE, DOUBLE_BLOCK_SIZE,
                 ONCE_ROW_LEN, ONCE_ROW_LEN);
-
-
     }
 }
-
 template <typename xDtype, typename y1Dtype, uint64_t mode, AscendC::RoundMode roundMode, uint64_t scaleAlg,
           uint64_t isGroupIdx>
 __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, roundMode, scaleAlg,
@@ -430,7 +447,8 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
                                                      isGroupIdx>::CopyInClaGate(int64_t absRowStart, int64_t colOffset,
                                                                                int64_t calcRow, int64_t calcCol)
 {
-    LocalTensor<xDtype> input = inQueue_.template AllocTensor<xDtype>();
+    LocalTensor<xDtype> actInput = actInQueue_.template AllocTensor<xDtype>();
+    LocalTensor<xDtype> gateInput = gateInQueue_.template AllocTensor<xDtype>();
     DataCopyExtParams outCopy = {static_cast<uint16_t>(calcRow),
                                  static_cast<uint32_t>(calcCol * sizeof(xDtype)),
                                  static_cast<uint32_t>((dimN_ - calcCol) * sizeof(xDtype)), 0, 0};
@@ -444,15 +462,16 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
                                   static_cast<uint32_t>((CLA_HEAD_NUM - 1) * sizeof(xDtype)),
                                   0, 0};
     int64_t gateOffset = absRowStart * CLA_HEAD_NUM + headIdx;
-    DataCopyPad(input, globalOutGm_[outOffset], outCopy, pad);
-    DataCopyPad(input[inHalfSize_], localOutGm_[outOffset], outCopy, pad);
-    DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(input[2 * inHalfSize_], globalGateGm_[gateOffset],
+    DataCopyPad(actInput, globalOutGm_[outOffset], outCopy, pad);
+    DataCopyPad(actInput[inHalfSize_], localOutGm_[outOffset], outCopy, pad);
+    DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(gateInput, globalGateGm_[gateOffset],
                                                        gateCopy, pad);
     DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(
-        input[2 * inHalfSize_ + ubRowCount_], localGateGm_[gateOffset], gateCopy, pad);
-    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
-    inQueue_.template EnQue(input);
+        gateInput[ubRowCount_], localGateGm_[gateOffset], gateCopy, pad);
+    // Do not wait here. The DeQue() in Process is the consumer-side sync point;
+    // with depth=DB_BUFFER, the next MTE2 can overlap the current vector compute.
+    actInQueue_.template EnQue(actInput);
+    gateInQueue_.template EnQue(gateInput);
 }
 
 // merged = sigmoid(global_gate) * global_out + sigmoid(local_gate) * local_out.
@@ -472,17 +491,16 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
     constexpr uint16_t vfsPerRow = static_cast<uint16_t>(ONCE_ROW_LEN / VF_LEN_FP32);
     __VEC_SCOPE__ {
         Reg::RegTensor<xDtype> globalReg, localReg, gateReg;
-        Reg::RegTensor<float> globalF, localF, gateF, tmpF, oneF;
+        Reg::RegTensor<float> gateF, tmpF, oneF;
         Reg::RegTensor<float> globalSigmoidF, localSigmoidF;
         Reg::RegTensor<xDtype> globalSigmoidBf16, localSigmoidBf16;
-        Reg::RegTensor<float> globalSigmoidBroadcastF, localSigmoidBroadcastF, outputF;
         Reg::RegTensor<xDtype> outputReg;
         Reg::MaskReg allMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
         // Sigmoid scratch stores bf16/fp16 values. Keep global/local regions separated.
         __ubuf__ uint8_t* sigmoidBytes = (__ubuf__ uint8_t*)sigmoidBroadcastBuf_.Get<float>().GetPhyAddr();
         __ubuf__ xDtype* globalSigmoidUb = (__ubuf__ xDtype*)sigmoidBytes;
         __ubuf__ xDtype* localSigmoidUb =
-            (__ubuf__ xDtype*)(sigmoidBytes + fullTileRows * VF_LEN_FP32 * sizeof(float));
+            (__ubuf__ xDtype*)(sigmoidBytes + fullTileRows * sizeof(xDtype));
 
         // Phase 1: vectorized sigmoid over the 64 per-row gate values.
         Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(gateReg, globalGateAddr);
@@ -507,35 +525,25 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
 
         // Phase 2: broadcast one precomputed sigmoid per row and accumulate attention.
         // Phase 1 stored sigmoid to UB scratch; make the store visible before VEC loads.
-        AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
+        // AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
         Reg::AddrReg offset;
         for (uint16_t row = 0; row < fullTileRows; ++row) {
             Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(
                 globalSigmoidBf16, globalSigmoidUb + row);
-            Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(globalSigmoidBroadcastF, globalSigmoidBf16, allMask);
             Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(
                 localSigmoidBf16, localSigmoidUb + row);
-            Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(localSigmoidBroadcastF, localSigmoidBf16, allMask);
 
             for (uint16_t vf = 0; vf < vfsPerRow; ++vf) {
                 offset = Reg::CreateAddrReg<xDtype>(row, ONCE_ROW_LEN, vf, VF_LEN_FP32);
-                // global branch: bf16(go * sigmoid_bf16)
+                // Native xDtype multiply-add: use half/bf16 arithmetic directly,
+                // avoiding the FP32 casts in the inner SwiGLU accumulation loop.
                 Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(globalReg, globalAddr, offset);
-                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(globalF, globalReg, allMask);
-                Reg::Mul(outputF, globalF, globalSigmoidBroadcastF, allMask);
-                Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(globalReg, outputF, allMask);
-                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(globalF, globalReg, allMask);
-
-                // local branch: bf16(lo * sigmoid_bf16)
                 Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(localReg, localAddr, offset);
-                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(localF, localReg, allMask);
-                Reg::Mul(outputF, localF, localSigmoidBroadcastF, allMask);
-                Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(localReg, outputF, allMask);
-                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(localF, localReg, allMask);
 
-                // bf16(global_bf16 + local_bf16)
-                Reg::Add(outputF, globalF, localF, allMask);
-                Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(outputReg, outputF, allMask);
+                Reg::Mul(globalReg, globalReg, globalSigmoidBf16, allMask);
+                Reg::Mul(localReg, localReg, localSigmoidBf16, allMask);
+                Reg::Add(outputReg, globalReg, localReg, allMask);
+
                 Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(outputAddr, outputReg, offset, allMask);
             }
         }

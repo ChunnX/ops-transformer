@@ -42,8 +42,8 @@ constexpr int64_t DIM_M = EXPECTED_S * EXPECTED_B;
 constexpr int64_t DIM_K = EXPECTED_N * EXPECTED_D;
 constexpr int64_t BLOCK_W = 256;
 constexpr int64_t BLOCK_H = 64;
-constexpr int64_t ATTR_DST_TYPE = 0;
-constexpr int64_t ATTR_SCALE_ALG = 1;
+constexpr int64_t ATTR_SCALE_ALG = 0;
+constexpr int64_t ATTR_DST_TYPE = 1;
 
 bool IsShape(const gert::Shape& shape, std::initializer_list<int64_t> expected)
 {
