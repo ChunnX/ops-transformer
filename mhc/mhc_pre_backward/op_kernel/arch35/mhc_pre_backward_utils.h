@@ -63,12 +63,9 @@ using namespace AscendC;
 constexpr uint32_t DOUBLE_BUFFER = 2;
 constexpr uint32_t INOUT_QUEUE_SIZE = 32 * 1024;              // 32KB
 constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;               // 1KB
-// q0保留双缓冲以支持V0提前搬运grad_h_res；q1和qout使用单缓冲。
-// 119KB TBuf可同时容纳64KB C0直连槽和约43KB V2工作区。
-constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 4 - 1) * 1024; // 119KB
-constexpr uint32_t C0_DIRECT_UB_SLOT_SIZE = 32 * 1024;        // 每个AIV保存128x64个FP32
-constexpr uint32_t C0_DIRECT_UB_SIZE = DOUBLE_BUFFER * C0_DIRECT_UB_SLOT_SIZE;
-constexpr uint32_t C0_DIRECT_UB_SLOT_ELEMS = C0_DIRECT_UB_SLOT_SIZE / sizeof(float);
+// V0/V1的最大占用约49.5KB；V2统一使用64行chunk后最大占用约42.75KB。
+// 将TBuf压缩到55KB，为后续VECOUT双缓冲预留32KB。
+constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 6 - 1) * 1024; // 55KB；两个VECIN队列均使用双缓冲
 constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 128;               // ProcessV2函数使用的chunk大小
 constexpr uint32_t SINGLE_M = 512;
 constexpr uint32_t ND_BLOCK_SIZE = 128;
@@ -94,9 +91,6 @@ constexpr uint32_t MATMUL_WRITE_OFFSET_N = 128;
 constexpr uint32_t CROSS_CORE_FLAG_INDEX = 0x2;
 constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0 = 0x9;
 constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1 = 0x8;
-constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0_READY_PONG = 0xA;
-constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0_DONE_PING = 0xB;
-constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0_DONE_PONG = 0xC;
 constexpr uint32_t VEC_DEAL_VECIDX_DIV = 2;
 
 constexpr Reg::CastTrait ctHalf2Fp32Zero = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING,

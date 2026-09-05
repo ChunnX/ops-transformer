@@ -54,35 +54,17 @@ public:
             SetFlag<HardEvent::M_MTE1>(BASIC_CUBE_L0_EVENT_BASE + slot);
             SetFlag<HardEvent::FIX_M>(slot);
         }
-        directProduceCount_ = 0;
-        directReclaimCount_ = 0;
     }
 
     __aicore__ inline void Process(const GlobalTensor<float> &a, const GlobalTensor<float> &b,
-                                   const LocalTensor<float> &directUb, uint32_t m, uint32_t n, uint32_t k,
+                                   const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
                                    uint32_t bGmStride)
     {
         for (uint32_t offsetM = 0; offsetM < m; offsetM += BASIC_CUBE_M) {
             uint32_t remainM = m - offsetM;
             uint32_t currentM = remainM < BASIC_CUBE_M ? remainM : BASIC_CUBE_M;
-            uint32_t directSlot = directProduceCount_ & 1U;
-            // 两个直连槽均在途时，只等待即将覆盖的同名槽被两个AIV消费完。
-            if (directProduceCount_ >= BASIC_CUBE_BUFFER_NUM) {
-                uint32_t doneFlag = directSlot == 0U ? MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0_DONE_PING :
-                                                       MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0_DONE_PONG;
-                CrossCoreWaitFlag(doneFlag);
-                ++directReclaimCount_;
-            }
-
-            LocalTensor<float> currentDirectUb =
-                directUb[directSlot * MhcPreBackwardUtils::C0_DIRECT_UB_SLOT_ELEMS];
-            ComputeTile(a[offsetM * k], b, currentDirectUb, currentM, n, k, k, bGmStride, n >> 1U,
-                        false, false, true);
-
-            uint32_t readyFlag = directSlot == 0U ? MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0 :
-                                                    MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0_READY_PONG;
-            CrossCoreSetFlag<MhcPreBackwardUtils::CROSS_CORE_FLAG_INDEX, PIPE_FIX>(readyFlag);
-            ++directProduceCount_;
+            ComputeTile(a[offsetM * k], b, c[offsetM * BASIC_CUBE_N_STRIDE], currentM, n, k, k,
+                        bGmStride, BASIC_CUBE_N_STRIDE, false, false, true);
         }
     }
 
@@ -95,14 +77,6 @@ public:
 
     __aicore__ inline void End()
     {
-        // 回收最后两个未复用的直连槽，避免完成事件残留到下一次kernel执行。
-        while (directReclaimCount_ < directProduceCount_) {
-            uint32_t directSlot = directReclaimCount_ & 1U;
-            uint32_t doneFlag = directSlot == 0U ? MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0_DONE_PING :
-                                                   MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0_DONE_PONG;
-            CrossCoreWaitFlag(doneFlag);
-            ++directReclaimCount_;
-        }
         for (uint32_t slot = 0; slot < BASIC_CUBE_BUFFER_NUM; ++slot) {
             WaitFlag<HardEvent::MTE1_MTE2>(slot);
             WaitFlag<HardEvent::M_MTE1>(BASIC_CUBE_L0_EVENT_BASE + slot);
@@ -111,11 +85,10 @@ public:
     }
 
 private:
-    template <class C_TENSOR>
     __aicore__ inline void ComputeTile(const GlobalTensor<float> &a, const GlobalTensor<float> &b,
-                                       const C_TENSOR &c, uint32_t m, uint32_t n, uint32_t k,
+                                       const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
                                        uint32_t aGmStride, uint32_t bGmStride, uint32_t cGmStride, bool transA,
-                                       bool atomicAdd, bool directOutput)
+                                       bool atomicAdd, bool publishC0)
     {
         // 最优组合：L0A/L0B保留ping-pong，L0C固定使用第0槽。
         uint32_t cSlot = 0U;
@@ -159,10 +132,7 @@ private:
                 WaitFlag<HardEvent::MTE1_M>(l0Slot);
 
                 bool initC = (offsetKL1 == 0U && offsetKL0 == 0U);
-                bool finalAccumulation =
-                    (offsetKL1 + currentKL1 >= k) && (offsetKL0 + currentKL0 >= currentKL1);
-                Compute(currentC, currentA2, currentB2, m, n, currentKL0, initC, directOutput,
-                        finalAccumulation);
+                Compute(currentC, currentA2, currentB2, m, n, currentKL0, initC);
                 SetFlag<HardEvent::M_MTE1>(BASIC_CUBE_L0_EVENT_BASE + l0Slot);
                 ++l0LoopCount_;
             }
@@ -180,6 +150,11 @@ private:
         CopyOut(c, currentC, m, n, cGmStride);
         if (atomicAdd) {
             DisableDmaAtomic();
+        }
+        if (publishC0) {
+            // FIX流水完成当前最多128行C0写回后，按原粒度唤醒对应Vector核。
+            CrossCoreSetFlag<MhcPreBackwardUtils::CROSS_CORE_FLAG_INDEX, PIPE_FIX>(
+                MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0);
         }
         SetFlag<HardEvent::FIX_M>(cSlot);
         ++l0cLoopCount_;
@@ -273,8 +248,7 @@ private:
     }
 
     __aicore__ inline void Compute(const LocalTensor<float> &c, const LocalTensor<float> &a,
-                                   const LocalTensor<float> &b, uint32_t m, uint32_t n, uint32_t k, bool initC,
-                                   bool directOutput, bool finalAccumulation)
+                                   const LocalTensor<float> &b, uint32_t m, uint32_t n, uint32_t k, bool initC)
     {
         MmadParams p;
         p.m = m;
@@ -283,8 +257,8 @@ private:
         p.disableGemv = true;
         p.cmatrixInitVal = initC;
         p.cmatrixSource = false;
-        // UB直连需要完整的非末次/末次令牌链；GM通路继续使用原来的显式事件同步。
-        p.unitFlag = directOutput ? (finalAccumulation ? 3U : 2U) : 0U;
+        // unitFlag=0，L0C的生产/消费完全由M_FIX与FIX_M事件管理。
+        p.unitFlag = 0;
         Mmad(c, a, b, p);
     }
 
@@ -303,23 +277,6 @@ private:
         DataCopy(dst, src, p);
     }
 
-    __aicore__ inline void CopyOut(const LocalTensor<float> &dst, const LocalTensor<float> &src, uint32_t m,
-                                   uint32_t n, uint32_t dstStride)
-    {
-        (void)dstStride;
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> p;
-        p.nSize = static_cast<uint16_t>(n);
-        p.mSize = static_cast<uint16_t>(m);
-        p.srcStride = static_cast<uint16_t>(BasicCubeAlign(m, BLOCK_CUBE));
-        p.dstStride = static_cast<uint16_t>(n >> 1U);
-        p.quantPre = QuantMode_t::NoQuant;
-        p.dualDstCtl = static_cast<uint8_t>(McgShfMode::DUAL_DST_SPLIT_N);
-        // 基础API不经过Matmul模块，AIC侧固定从sub-block 0发起双目的Fixpipe。
-        p.subBlockId = 0U;
-        p.unitFlag = 3U;
-        Fixpipe<float, float, Impl::CFG_ROW_MAJOR_UB>(dst, src, p);
-    }
-
     TBuf<TPosition::A1> l1Buffer_;
     LocalTensor<float> aL1_;
     LocalTensor<float> bL1_;
@@ -329,8 +286,6 @@ private:
     uint32_t l1LoopCount_{0};
     uint32_t l0LoopCount_{0};
     uint32_t l0cLoopCount_{0};
-    uint32_t directProduceCount_{0};
-    uint32_t directReclaimCount_{0};
 };
 } // namespace MhcPreBackward
 #endif

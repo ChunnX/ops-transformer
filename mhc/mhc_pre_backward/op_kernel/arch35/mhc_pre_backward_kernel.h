@@ -219,9 +219,6 @@ private:
     uint16_t eleNumPerVf_;
     bool withGamma_;
     bool withGradXPost_;
-    uint32_t c0DirectConsumeCount_;
-    uint32_t c0DirectConsumeSlot_;
-    bool c0DirectReleaseAfterChunk_;
     float scaleMean_;
 };
 
@@ -292,17 +289,17 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
     gradHPostOffset_ = hPreMaxBufLen_ * sizeof(P);
     gradHResBufLen_ = vecDealChunk_ * N_ * N_;
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + gradHResBufLen_;
-    // AIC和两个AIV按相同顺序初始化UB对象，确保L0C双目的Fixpipe看到相同物理偏移。
-    pipe_ = initParams.tPipeIn;
-    pipe_->InitBuffer(vecInQueue0_, 2, INOUT_QUEUE_SIZE);
-    pipe_->InitBuffer(vecOutQueue1_, 1, INOUT_QUEUE_SIZE);
-    pipe_->InitBuffer(vecInQueue1_, 1, INOUT_QUEUE_SIZE);
-    pipe_->InitBuffer(vecOutQueueSmall_, 1, SMALL_QUEUE_SIZE);
-    pipe_->InitBuffer(fp32TBuf_, FP32_BUF_SIZE);
     if ASCEND_IS_AIC {
+        pipe_ = initParams.tPipeIn;
         c0Basic_.Init(pipe_);
     }
     if ASCEND_IS_AIV {
+        pipe_ = initParams.tPipeIn;
+        pipe_->InitBuffer(vecInQueue0_, 2, INOUT_QUEUE_SIZE);
+        pipe_->InitBuffer(vecOutQueue1_, 1, INOUT_QUEUE_SIZE);
+        pipe_->InitBuffer(vecInQueue1_, 2, INOUT_QUEUE_SIZE);
+        pipe_->InitBuffer(vecOutQueueSmall_, 1, SMALL_QUEUE_SIZE);
+        pipe_->InitBuffer(fp32TBuf_, FP32_BUF_SIZE);
         globalUbOffset_ = 0; // V0V1部分开始分配fp32TBuf_
         globalUbOffset_ += hFusionBufLen_ * sizeof(P);
         vecDealBSPeCore_ = totalLength_ / vecCoreNum_;
@@ -325,9 +322,6 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::InitStage2AndDataCopy()
 {
     v1UsedCubeCoreNum_ = 0;
-    c0DirectConsumeCount_ = 0;
-    c0DirectConsumeSlot_ = 0;
-    c0DirectReleaseAfterChunk_ = false;
     cubeDealnDPeCore_ = nD_ / GetBlockNum();
     if (cubeDealnDPeCore_ == 0) {
         cubeDealnDPeCore_ = nD_;
@@ -994,10 +988,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
                                                              uint64_t offsetBS, uint32_t currentBSBlock,
                                                              uint32_t buffIdx)
 {
-    (void)buffIdx;
-    LocalTensor<P> c0DirectUb = fp32TBuf_.GetWithOffset<P>(C0_DIRECT_UB_SLOT_ELEMS * DOUBLE_BUFFER, 0);
+    buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
+    uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffIdx);
     c0Basic_.Process(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], phiGm_[offsetND],
-                     c0DirectUb, currentBSBlock, currentNDBlock, fusionSize_, nD_);
+                     workSpaceGm_[writeOffset], currentBSBlock, currentNDBlock, fusionSize_, nD_);
 }
 
 template <class T, class P>
@@ -1021,8 +1015,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
     if (blockIdx_ >= 2 * v1UsedCubeCoreNum_) {
         return;
     }
-    // 前64KB固定保存C0直连ping/pong槽，V2工作区从其后开始。
-    globalUbOffset_ = C0_DIRECT_UB_SIZE;
+    hPreGatherOffsetBuf_ = fp32TBuf_.GetWithOffset<uint32_t>(PROCESS_V2_CHUNK_SIZE, 0);
+    globalUbOffset_ = PROCESS_V2_CHUNK_SIZE * sizeof(uint32_t); // V2部分开始分配fp32TBuf_
+    for (uint32_t i = 0; i < PROCESS_V2_CHUNK_SIZE; i++) {
+        hPreGatherOffsetBuf_.SetValue(i, i * N_ * sizeof(P));
+    }
 
     // 确定处理范围 （1C2V 模式）
     uint32_t vecIdx = blockIdx_ % VEC_CORE_VECIDX_MOD;
@@ -1255,22 +1252,12 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
         uint32_t currentChunkSize = static_cast<uint32_t>(bsChunkEnd - bsChunkStart);
         uint32_t chunkNDSize = currentChunkSize * copySizeND;
 
-        // C0每完成128行发布一个ping/pong槽；两个64行chunk共同消费该槽。
-        bool isC0TileStart = ((bsChunkStart - bsStart) % MATMUL_WRITE_OFFSET_M == 0);
-        if (isC0TileStart) {
-            c0DirectConsumeSlot_ = c0DirectConsumeCount_ & 1U;
-            uint32_t readyFlag = c0DirectConsumeSlot_ == 0U ? CROSS_CORE_WAIT_FLAG_C0 :
-                                                              CROSS_CORE_WAIT_FLAG_C0_READY_PONG;
-            AscendC::CrossCoreWaitFlag(readyFlag);
+        // C0每完成128行发布一次；两个64行chunk共同消费一块C0结果。
+        if ((bsChunkStart - bsStart) % MATMUL_WRITE_OFFSET_M == 0) {
+            AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0);
         }
-        c0DirectReleaseAfterChunk_ =
-            (((bsChunkStart - bsStart) % MATMUL_WRITE_OFFSET_M) + currentChunkSize == MATMUL_WRITE_OFFSET_M) ||
-            (bsChunkEnd == bsEnd);
         ProcessV2ChunkLoop(offsetND, copySizeND, bsStart, bsChunkStart, currentChunkSize, chunkNDSize, currentN, buffId,
                            sumBuf);
-        if (c0DirectReleaseAfterChunk_) {
-            ++c0DirectConsumeCount_;
-        }
     }
 }
 
@@ -1288,13 +1275,6 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copyS
 
     // 4. 融合计算xRsGrad并处理xRsGradMm
     ProcessV2ChunkProcessXRsGradMm(bsStart, bsChunkStart, copySizeND, currentChunkSize, buffId, sumBuf);
-
-    // 当前tile的直连输入已被Vector流水消费，尽早通知C0复用该槽。
-    if (c0DirectReleaseAfterChunk_) {
-        uint32_t doneFlag = c0DirectConsumeSlot_ == 0U ? CROSS_CORE_WAIT_FLAG_C0_DONE_PING :
-                                                         CROSS_CORE_WAIT_FLAG_C0_DONE_PONG;
-        AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_V>(doneFlag);
-    }
 
     // 5. 融合处理gradXPost并输出grad_x
     ProcessV2ChunkOutputXGrad(offsetND, copySizeND, bsChunkStart, currentChunkSize, chunkNDSize);
@@ -1420,11 +1400,21 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint64_t bsStart, uin
                                                            uint32_t currentChunkSize, uint32_t buffId,
                                                            LocalTensor<P> &sumBuf)
 {
-    (void)buffId;
-    LocalTensor<P> c0DirectUb = fp32TBuf_.GetWithOffset<P>(
-        C0_DIRECT_UB_SLOT_ELEMS, c0DirectConsumeSlot_ * C0_DIRECT_UB_SLOT_SIZE);
-    uint32_t rowInC0Tile = static_cast<uint32_t>((bsChunkStart - bsStart) % MATMUL_WRITE_OFFSET_M);
-    xRsGradMmInBuf_ = c0DirectUb[rowInC0Tile * copySizeND];
+    DataCopyPadParams dataCopyPadParams;
+    dataCopyPadParams.isPad = false;
+    uint32_t vecIdx = blockIdx_ % 2;
+    uint64_t offsetXRsGradMm = workspaceBuf_.GetXRsGradOffset(GetBlockIdx() / VEC_DEAL_VECIDX_DIV, buffId);
+    offsetXRsGradMm += (bsChunkStart - bsStart) * ND_BLOCK_SIZE + vecIdx * (ND_BLOCK_SIZE / 2);
+
+    vecInQueue0_.AllocTensor<P>(xRsGradMmInBuf_);
+    DataCopyParams blockCopyParams;
+    blockCopyParams.blockCount = currentChunkSize;
+    blockCopyParams.blockLen = copySizeND * sizeof(P);
+    blockCopyParams.srcStride = (ND_BLOCK_SIZE - copySizeND) * sizeof(P);
+    blockCopyParams.dstStride = 0;
+    DataCopyPad(xRsGradMmInBuf_, workSpaceGm_[offsetXRsGradMm], blockCopyParams, dataCopyPadParams);
+    vecInQueue0_.EnQue(xRsGradMmInBuf_);
+    vecInQueue0_.DeQue<P>(xRsGradMmInBuf_);
 
     __ubuf__ P *xRsGradMmInBufAddr = (__ubuf__ P *)xRsGradMmInBuf_.GetPhyAddr();
     __ubuf__ P *xGradVec3Addr = (__ubuf__ P *)xGradVec3Buf_.GetPhyAddr();
@@ -1454,6 +1444,8 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint64_t bsStart, uin
         }
         PipeBarrier<PIPE_V>();
     }
+    vecInQueue0_.FreeTensor(xRsGradMmInBuf_);
+
     PipeBarrier<PIPE_V>();
 }
 
