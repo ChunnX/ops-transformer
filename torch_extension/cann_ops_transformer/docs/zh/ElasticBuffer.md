@@ -25,7 +25,7 @@
 
 ElasticBuffer类提供统一的分布式通信buffer管理能力：
 
-- Engram存储接口用于分布式Engram存储管理，支持将本rank的表注册为通信可达的存储（推理模式写入host pinned共享段，训练模式直接映射上层表内存，零拷贝），以及通过RDMA从远端rank抓取Engram数据。需与 [get_engram_storage_size_hint](#get_engram_storage_size_hint静态方法) 配套使用。
+- Engram存储接口用于分布式Engram存储管理，支持将本rank的表注册为通信可达的存储（推理模式写入host pinned共享段，训练模式直接映射上层锁页表内存，零拷贝），以及通过RDMA从远端rank抓取Engram数据。需与 [get_engram_storage_size_hint](#get_engram_storage_size_hint静态方法) 配套使用。
 - Engram训练接口在推理接口的基础上，通过 `with_grad=True` 开启训练模式。前向 [engram_fetch](#engram_fetch) 在抓取数据的同时保存反向所需的通信元数据（封装为 [EngramFetchCtx](#engramfetchctx)），反向 [engram_fetch_grad](#engram_fetch_grad) 根据这些元数据将梯度沿前向路径反向交换并按local entry稀疏累加，产出稀疏梯度用于优化器更新。
 - Dispatch/Combine接口用于MoE的Expert Parallelism（EP）并行部署，支持通过[dispatch](#dispatch)将token数据分发到对应专家卡，再通过[combine](#combine)将专家输出按原路由聚合回原始序列。所需的CCL通信buffer由ElasticBuffer内部按算子参数自动计算并申请，无需手动配置。
 
@@ -135,13 +135,13 @@ class ElasticBuffer:
 **功能**：将本rank的Engram表注册为通信可达的Engram storage，使其他rank可读取该数据。按构造时的 `with_grad` 区分两种行为：
 
 - **推理**（`with_grad=False`）：将 `storage` 数据拷贝到内部host pinned共享内存段。
-- **训练**（`with_grad=True`）：将 `storage` 的内存直接映射为Engram storage（零拷贝，无数据搬运），`storage` 的原地更新对后续 [engram_fetch](#engram_fetch) 可见。
+- **训练**（`with_grad=True`）：将 `storage` 的锁页内存直接映射为Engram storage（零拷贝，无数据搬运），`storage` 的原地更新对后续 [engram_fetch](#engram_fetch) 可见。
 
 两种模式写入完成后，内部都会自动获取通信上下文tensor、本地storage地址、通信buffer大小和rank数等信息，供后续 [engram_fetch](#engram_fetch) 使用。
 
 > **host pinned共享内存段**（推理模式）：指通过 `aclrtMallocHost` 分配的页锁定（pinned）主机内存，并经 `aclrtHostRegisterV2` 映射后获得设备可访问地址。该内存段既可被本卡NPU直接访问，也可被远端rank的NPU通过RDMA读取，从而实现跨rank的零拷贝数据共享。其大小由构造函数的 `num_cpu_bytes` 参数指定。
 
-> **训练模式内存映射**：`storage` 的主机内存经 `aclrtHostRegisterV2` 注册并映射到设备地址，再注册到HCCL通信域供远端rank访问。要求：`storage` 在本ElasticBuffer生命周期内必须保持存活且地址不变；主机内存需支持映射到设备——Ascend 950支持普通CPU内存，Ascend 910要求锁页内存（如 `pin_memory()` 分配）。重复调用本接口须传入同一 `storage`（可作为表原地更新后的跨rank同步点），传入其他地址会报错。
+> **训练模式内存映射**：`storage` 的锁页主机内存经 `aclrtHostRegisterV2` 注册并映射到设备地址，再注册到HCCL通信域供远端rank访问。要求：`storage` 必须为锁页内存（如 `pin_memory()` 或 `torch.empty(..., pin_memory=True)` 分配）；普通（非锁页）CPU内存在当前驱动的主机注册路径下不受支持，会在首次调用时报 `aclrtHostGetDevicePointer` 失败；`storage` 在本ElasticBuffer生命周期内必须保持存活且地址不变。重复调用本接口须传入同一 `storage`（可作为表原地更新后的跨rank同步点），传入其他地址会报错。
 
 **计算公式**：
 
@@ -487,7 +487,7 @@ ElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hi
   - `with_grad=True` 时，[engram_fetch](#engram_fetch) 返回的 `fetch_ctx` 为局部变量，多次fetch不会覆盖（每次调用返回独立的ctx）。
   - [engram_fetch_grad](#engram_fetch_grad) 的 `grad_fetched` shape 必须与前向 `fetched` 一致。
   - 训练模式下，通信buffer使用HCCL默认buffer（大小受 `HCCL_BUFFSIZE` 环境变量控制，默认200MB），由框架管理，无需手动申请或释放。
-  - 训练模式下，[engram_write](#engram_write) 直接映射 `storage` 内存（零拷贝）：`storage` 必须非空，其主机内存需可映射到设备，且在ElasticBuffer生命周期内保持存活、地址不变；重复调用须传入同一 `storage`。
+  - 训练模式下，[engram_write](#engram_write) 直接映射 `storage` 锁页内存（零拷贝）：`storage` 必须为**锁页内存**（`pin_memory()` 分配），普通（非锁页）CPU内存不受支持；`storage` 必须非空，且在ElasticBuffer生命周期内保持存活、地址不变；重复调用须传入同一 `storage`。
 
 - **Engram数值约束**：
   - `num_cpu_bytes`、`num_entries`必须非负。

@@ -1446,11 +1446,16 @@ ElasticBuffer::EngramFetchTrainOutput ElasticBuffer::EngramFetchTrain(
                 "numMaxTokensPerRank * rankSize overflow, got numMaxTokensPerRank=", numMaxTokensPerRank,
                 ", rankSize=", rankSize);
     int64_t maxR = numMaxTokensPerRank * rankSize;
-    at::Tensor perm = at::empty({numTokens}, intOpts);
-    at::Tensor sendCounts = at::empty({rankSize * SEND_COUNTS_ALIGN_FACTOR}, intOpts); // 32b对齐
-    at::Tensor recvCounts = at::empty({rankSize}, intOpts);
-    at::Tensor recvLocalEntry = at::empty({maxR}, intOpts);
-    at::Tensor numRecv = at::empty({1}, intOpts);
+    // numTokens==0 时 forward kernel 直接早退（EngramFetchTrainArch35::Process），ctx 五个
+    // tensor 不会被 kernel 写入；而 EngramFetchGrad 侧无条件启动，若此处保持 at::empty，
+    // grad 接收核将按垃圾 recvCounts 死等对端 notify 直至看门狗超时。
+    // 清零保证"零 token ⇒ 全零计数"是 kernel 可处理的合法一致输入（send/recv 全跳过、
+    // numRecv==0 走 WriteNumUniqueZero 快速路径）
+    at::Tensor perm = at::zeros({numTokens}, intOpts);
+    at::Tensor sendCounts = at::zeros({rankSize * SEND_COUNTS_ALIGN_FACTOR}, intOpts); // 32b对齐
+    at::Tensor recvCounts = at::zeros({rankSize}, intOpts);
+    at::Tensor recvLocalEntry = at::zeros({maxR}, intOpts);
+    at::Tensor numRecv = at::zeros({1}, intOpts);
 
     if (numTokens > 0) {
         constexpr int64_t withGrad = 1;
