@@ -598,13 +598,23 @@ class ElasticBuffer:
             as the Engram storage (zero-copy, no data copy): `storage` must stay alive and
             keep its address for the lifetime of this buffer, and in-place updates of
             `storage` are visible to subsequent engram_fetch calls. The host memory of
-            `storage` must be mappable to the device: plain CPU memory is supported on
-            Ascend 950, pinned memory is required on Ascend 910.
+            `storage` must be pinned (e.g. allocated via `storage.pin_memory()` or
+            `torch.empty(..., pin_memory=True)`); plain (non-pinned) CPU memory is not
+            supported by the driver's host-register path.
         """
         torch._check(
             storage.is_cpu,
             lambda: f"storage must be on CPU, got device: {storage.device}",
         )
+        if self._with_grad:
+            torch._check(
+                storage.is_pinned(),
+                lambda: (
+                    "engram_write in with_grad mode maps storage host memory directly and "
+                    "requires pinned memory (e.g. storage.pin_memory() or "
+                    "torch.empty(..., pin_memory=True)), got a non-pinned CPU tensor"
+                ),
+            )
         torch._check(
             storage.dim() == 2,
             lambda: f"storage must be 2D, got dimensions: {storage.dim()}",
