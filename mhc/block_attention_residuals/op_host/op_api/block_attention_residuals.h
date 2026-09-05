@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef PTA_NPU_OP_API_COMMON_INC_LEVEL0_OP_BLOCK_ATTENTION_RESIDUALS
-#define PTA_NPU_OP_API_COMMON_INC_LEVEL0_OP_BLOCK_ATTENTION_RESIDUALS
+#ifndef MHC_BLOCK_ATTENTION_RESIDUALS_OP_HOST_OP_API_BLOCK_ATTENTION_RESIDUALS_H_
+#define MHC_BLOCK_ATTENTION_RESIDUALS_OP_HOST_OP_API_BLOCK_ATTENTION_RESIDUALS_H_
 
 #include <array>
 #include "opdev/op_executor.h"
@@ -22,4 +22,4 @@ const std::array<const aclTensor *, 3> BlockAttentionResiduals(const aclTensor *
                                                                aclOpExecutor *executor);
 } // namespace l0op
 
-#endif // PTA_NPU_OP_API_COMMON_INC_LEVEL0_OP_BLOCK_ATTENTION_RESIDUALS
+#endif // MHC_BLOCK_ATTENTION_RESIDUALS_OP_HOST_OP_API_BLOCK_ATTENTION_RESIDUALS_H_
