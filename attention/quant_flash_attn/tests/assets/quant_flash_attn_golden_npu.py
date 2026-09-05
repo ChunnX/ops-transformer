@@ -1215,20 +1215,11 @@ def _build_attention_mask(b, Sq, Skv, actual_seq_q, actual_seq_kv, sparse_mode):
     k_padding_mask = k_range >= k_lens_acl
 
     if sparse_mode == 3:
+        # RIGHT_DOWN causal: 行 t 对角线 p_t = t + kv_b - qlen_b (实板实测 kernel 边界,
+        # 对角位置本身被打 mask), 右上 k > p_t 打 mask; k < kv_b 的 in-block padding
+        # 交给 S 层填 minValue, 不进全局 mask
         delta = k_lens_acl - q_lens_acl
         causal_mask = (k_range > (q_range + delta)) & (k_range < k_lens_acl)
-
-        # q_len 偶数时最后 2 行 causal 边界右移 1, 对齐 kernel 2 行粒度 band 处理
-        t_loc = torch.arange(Sq, dtype=torch.int32).view(1, Sq)
-        even_sec = (
-            (q_lens_t % 2 == 0).view(b, 1) & (t_loc >= (q_lens_t - 2).view(b, 1))
-        ).view(b, 1, Sq, 1)
-        delta_eff = (delta + even_sec).to(torch.int32)
-        causal_mask = torch.where(
-            even_sec,
-            (k_range > (q_range + delta_eff)) & (k_range < k_lens_acl),
-            causal_mask,
-        )
         return causal_mask | q_padding_mask
     else:
         return q_padding_mask | k_padding_mask
@@ -1398,27 +1389,30 @@ def cpu_mxfp8_golden(
         b, Sq, Skv, actual_seq_q, actual_seq_kv, SPARSE_MODE
     )
 
-    # kernel tile 跳过语义: causal band 左界整块跳过 / kv 64 对齐窗口外整块跳过 → -inf
-    # [kv_len, kv_hi) 窗口内 kernel 仍参与计算 → minValue
+    # kernel tile 跳过语义 (实板 000047/000029 对照结论): 行 (b, t) 的 causal 对角线
+    # p_t = t + kv_b - qlen_b, kernel 只处理与 [0, p_t] 相交的 KV tile,
+    # 整体在对角线右侧的 tile 整块跳过 → -inf;
+    # k >= kv_hi (64 对齐外) → -inf; in-block padding [kv_b, kv_hi) → minValue
+    # (全 mask 行 m=minValue 时 P=1 计入分母, 正常行 exp(minValue-m)=0 无贡献)
     kv_len_acl = torch.tensor(actual_seq_kv, dtype=torch.int32).view(b, 1, 1, 1)
     kv_pos_range = torch.arange(Skv, dtype=torch.int32).view(1, 1, 1, -1)
     qlen_acl_t = torch.tensor(actual_seq_q, dtype=torch.int32).view(b, 1, 1, 1)
     kv_hi_t = (kv_len_acl + 63) // 64 * 64  # kv 64 对齐上界
     t_loc_t = torch.arange(Sq, dtype=torch.int32).view(1, 1, Sq, 1)
-    # causal (sparse_mode=3) 才有 band 左界; 其他模式 min_k=0 不触发整块跳过
+    # causal (sparse_mode=3) 才有对角线右界跳过; 其他模式不跳过
     if SPARSE_MODE == 3:
-        min_k_t = (t_loc_t + kv_len_acl - qlen_acl_t).clamp(min=0)
+        diag_t = (t_loc_t + kv_len_acl - qlen_acl_t).clamp(min=0)
     else:
-        min_k_t = torch.zeros_like(t_loc_t)
+        diag_t = None
     neg_inf_t = torch.tensor(float("-inf"), dtype=torch.float32)
     min_val_t = torch.tensor(minValue.item(), dtype=torch.float32)
 
     def _apply_tile_window(S_ij, Sq_start, Sk_start):
         height, width = S_ij.shape[2], S_ij.shape[-1]
         pos = kv_pos_range[:, :, :, Sk_start : Sk_start + width]
-        min_k = min_k_t[:, :, Sq_start : Sq_start + height, :]
-        skip = (Sk_start + width - 1 < min_k) | (Sk_start >= kv_hi_t)
-        S_ij = S_ij.masked_fill(skip, neg_inf_t)
+        if diag_t is not None:
+            skip = Sk_start > diag_t[:, :, Sq_start : Sq_start + height, :]
+            S_ij = S_ij.masked_fill(skip, neg_inf_t)
         S_ij = S_ij.masked_fill(pos >= kv_hi_t, neg_inf_t)
         return torch.where((pos >= kv_len_acl) & (pos < kv_hi_t), min_val_t, S_ij)
 
