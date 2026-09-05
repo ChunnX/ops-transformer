@@ -33,9 +33,7 @@ constexpr uint32_t GAMMA_REG_REUSE_T_THRESHOLD = 3072;
 template <class T, class P>
 class MhcPreBackwardKernel {
 public:
-    __aicore__ inline MhcPreBackwardKernel(MT_C1 &matmul1) : mm1(matmul1)
-    {
-    }
+    __aicore__ inline MhcPreBackwardKernel() = default;
     // 入口函数
     __aicore__ inline void Init(InitParams initParams);
     __aicore__ inline void Process();
@@ -129,7 +127,6 @@ public:
     __aicore__ inline void VFDoV3ProcessAlphaGrad(__ubuf__ P *alphaGradOut, __ubuf__ P *alphaGradIn);
 
 private:
-    MT_C1 &mm1;
     MhcPreBackwardC0Basic c0Basic_;
     uint32_t coreNum_;
     uint64_t totalLength_;
@@ -1004,17 +1001,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
     AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
     // 1C2V 对应操作两块 workspaceGm_
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
-    // 设置矩阵形状
     uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffIdx);
-    mm1.SetOrgShape(fusionSize_, currentNDBlock, totalLength_, currentBSBlock, nD_); // [M,N,Ka,Kb,orgKc]
-    mm1.SetSingleShape(fusionSize_, currentNDBlock, currentBSBlock);                 // [sM, sN, sK]
-    // h_mix_grad^T @ x_rs
-    mm1.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], true); // [BS, N^2+2N]
-    mm1.SetTensorB(workSpaceGm_[offsetXs], false);                                 // [BS, NDBlock]
-    // 计算
     bool enAtomic = (offsetBS != 0);
-    mm1.IterateAll(gradPhiGm_[offsetND], enAtomic); // 非连续写
-    mm1.End();
+    c0Basic_.ProcessC1(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], workSpaceGm_[offsetXs],
+                       gradPhiGm_[offsetND], fusionSize_, currentNDBlock, currentBSBlock, fusionSize_,
+                       ND_BLOCK_SIZE, nD_, enAtomic);
 }
 
 template <class T, class P>
