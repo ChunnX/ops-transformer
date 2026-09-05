@@ -2,6 +2,8 @@
 
 import importlib.util
 import sys
+import types
+from unittest import mock
 from pathlib import Path
 
 import pytest
@@ -12,7 +14,13 @@ COMMON_FILE = Path(__file__).parents[1] / "validation" / "common.py"
 SPEC = importlib.util.spec_from_file_location("catccos_udma_runtime", RUNTIME_FILE)
 runtime = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = runtime
-SPEC.loader.exec_module(runtime)
+# These tests inspect bootstrap and workspace metadata, and never execute a
+# tensor operation. Keep them runnable on the CPU-only development host.
+if importlib.util.find_spec("torch") is None:
+    with mock.patch.dict(sys.modules, {"torch": types.SimpleNamespace(Tensor=object, bfloat16=object())}):
+        SPEC.loader.exec_module(runtime)
+else:
+    SPEC.loader.exec_module(runtime)
 COMMON_SPEC = importlib.util.spec_from_file_location("catccos_udma_validation_common", COMMON_FILE)
 common = importlib.util.module_from_spec(COMMON_SPEC)
 COMMON_SPEC.loader.exec_module(common)

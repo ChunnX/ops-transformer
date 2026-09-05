@@ -2,6 +2,30 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 set -euo pipefail
 
+BACKEND=${CATCCOS_BACKEND:-udma}
+WITH_TUNING=${CATCCOS_MTE_WITH_TUNING:-0}
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --backend)
+            [[ $# -ge 2 ]] || { echo "error: --backend requires udma or mte" >&2; exit 2; }
+            BACKEND=$2; shift 2 ;;
+        --with-tuning) WITH_TUNING=1; shift ;;
+        --help|-h) echo "Usage: $0 [--backend udma|mte] [--with-tuning]"; exit 0 ;;
+        *) echo "error: unknown argument $1" >&2; exit 2 ;;
+    esac
+done
+[[ "$BACKEND" == "udma" || "$BACKEND" == "mte" ]] || { echo "error: invalid backend $BACKEND" >&2; exit 2; }
+case "${WITH_TUNING,,}" in
+    1|on|true|yes) WITH_TUNING=1 ;;
+    ""|0|off|false|no) WITH_TUNING=0 ;;
+    *) echo "error: CATCCOS_MTE_WITH_TUNING must be boolean" >&2; exit 2 ;;
+esac
+if [[ "$WITH_TUNING" != "0" && "$BACKEND" != "mte" ]]; then
+    echo "error: --with-tuning requires --backend mte" >&2; exit 2
+fi
+export CATCCOS_BACKEND=$BACKEND
+export CATCCOS_MTE_WITH_TUNING=$WITH_TUNING
+
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_DIR=$(cd -- "${SCRIPT_DIR}/.." && pwd)
 REPO_ROOT=$(cd -- "${PROJECT_DIR}/../../.." && pwd)
@@ -11,7 +35,12 @@ CATCCOS_DIR=${CATCCOS_SOURCE_PATH:-"${REPO_ROOT}/3rdparty/catccos"}
 SHMEM_REPOSITORY=https://gitcode.com/cann/shmem.git
 # Official release/v1.6.0 maintenance snapshot (2026-09-04).
 SHMEM_COMMIT=7fa19662da0093587d9a332e740b91d6c929cdcf
-SHMEM_DIR=${SHMEM_SOURCE_PATH:-"${REPO_ROOT}/3rdparty/shmem"}
+if [[ "$BACKEND" == "mte" ]]; then
+    SHMEM_COMMIT=aee374a396b389626f68fab74ec8c555e18978a7
+    SHMEM_DIR=${SHMEM_SOURCE_PATH:-"${REPO_ROOT}/3rdparty/shmem-mte"}
+else
+    SHMEM_DIR=${SHMEM_SOURCE_PATH:-"${REPO_ROOT}/3rdparty/shmem"}
+fi
 
 if [[ ! -d "${CATCCOS_DIR}/.git" ]]; then
     if [[ -e "${CATCCOS_DIR}" ]]; then
@@ -33,12 +62,14 @@ fi
 # independent SHMEM checkout below instead of this revision's SHMEM gitlink.
 git -C "${CATCCOS_DIR}" submodule update --init --recursive 3rdparty/catlass 3rdparty/shmem
 
+CLONED_SHMEM=0
 if [[ ! -e "${SHMEM_DIR}/.git" ]]; then
     if [[ -e "${SHMEM_DIR}" ]]; then
         echo "error: ${SHMEM_DIR} exists but is not a Git checkout" >&2
         exit 1
     fi
     git clone "${SHMEM_REPOSITORY}" "${SHMEM_DIR}"
+    CLONED_SHMEM=1
 fi
 
 # Keep user edits intact and never label a modified checkout as the official
@@ -51,6 +82,10 @@ if [[ -n "${SHMEM_WORKTREE_STATUS}" ]]; then
 fi
 ACTUAL_SHMEM_COMMIT=$(git -C "${SHMEM_DIR}" rev-parse HEAD)
 if [[ "${ACTUAL_SHMEM_COMMIT}" != "${SHMEM_COMMIT}" ]]; then
+    if [[ "${BACKEND:-udma}" == "mte" && "${CLONED_SHMEM:-0}" == "0" ]]; then
+        echo "error: existing SHMEM source is not the MTE baseline ${SHMEM_COMMIT}; use a separate checkout" >&2
+        exit 1
+    fi
     if ! git -C "${SHMEM_DIR}" cat-file -e "${SHMEM_COMMIT}^{commit}" 2>/dev/null; then
         git -C "${SHMEM_DIR}" fetch --no-tags "${SHMEM_REPOSITORY}" "${SHMEM_COMMIT}"
     fi

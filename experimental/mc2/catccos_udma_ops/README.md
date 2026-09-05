@@ -1,5 +1,9 @@
 # CatCCOS UDMA operators for PyTorch
 
+For independently built MTE versions of both operators, with the same mathematical
+APIs and communication tiling search, see [MTE.md](MTE.md) and the
+[tuning workflow](ops_transformer_catccos_mte/tuning/README.md).
+
 This standalone project delivers the Ascend950 BF16
 `alltoallvgroupedmatmul` and `groupedmatmulalltoallv` UDMA BF16 kernels as an
 installable Wheel. The Wheel contains the C++/AscendC extension (`_C.abi3.so`)

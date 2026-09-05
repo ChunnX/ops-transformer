@@ -17,10 +17,22 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     return()
 endif()
 
+set(CATCCOS_BACKEND "udma" CACHE STRING "Communication backend: udma or mte")
+set_property(CACHE CATCCOS_BACKEND PROPERTY STRINGS udma mte)
+if(NOT CATCCOS_BACKEND MATCHES "^(udma|mte)$")
+    message(FATAL_ERROR "CATCCOS_BACKEND must be udma or mte")
+endif()
+option(CATCCOS_MTE_WITH_TUNING "Enable the private MTE tuning bridge" OFF)
+if(CATCCOS_MTE_WITH_TUNING AND NOT CATCCOS_BACKEND STREQUAL "mte")
+    message(FATAL_ERROR "MTE tuning requires CATCCOS_BACKEND=mte")
+endif()
+set(CATCCOS_PACKAGE "ops_transformer_catccos_${CATCCOS_BACKEND}")
+set(CATCCOS_EXTENSION_TARGET "catccos_${CATCCOS_BACKEND}_extension")
+
 find_package(ASC REQUIRED)
 find_package(AICPU REQUIRED)
 file(READ
-    "${CMAKE_CURRENT_SOURCE_DIR}/ops_transformer_catccos_udma/_version.py"
+    "${CMAKE_CURRENT_SOURCE_DIR}/${CATCCOS_PACKAGE}/_version.py"
     OPS_TRANSFORMER_CATCCOS_UDMA_VERSION_SOURCE
 )
 string(REGEX MATCH
@@ -56,17 +68,20 @@ include("${FAST_LAUNCH_ROOT}/cmake/python.cmake")
 include("${FAST_LAUNCH_ROOT}/cmake/torch.cmake")
 include("${FAST_LAUNCH_ROOT}/cmake/torch_npu.cmake")
 include("${FAST_LAUNCH_ROOT}/cmake/func.cmake")
+if(CATCCOS_BACKEND STREQUAL "mte")
+    set(CATCCOS_TAG_ID "878c2e0a504be8c49c03b5e1157a7c714a628e29" CACHE STRING "MTE baseline CatCCOS revision" FORCE)
+endif()
 include("${OPS_TRANSFORMER_ROOT}/cmake/third_party/catccos.cmake")
 
 set(NPU_SOC_VERSION "ascend950" CACHE STRING "NPU SOC version")
-set(EXTENSION_MODULE_NAME "ops_transformer_catccos_udma" CACHE STRING "PyTorch operator namespace")
+set(EXTENSION_MODULE_NAME "${CATCCOS_PACKAGE}")
 option(CATCCOS_UDMA_MSSANITIZER
     "Build Ascend950 device kernels with source-line information for msSanitizer" OFF)
 # Retain the existing build command spelling, but only the production
 # local producer rendezvous is supported.
 option(CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER
     "Unsupported compatibility option; leave OFF" OFF)
-if(CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER)
+if(CATCCOS_BACKEND STREQUAL "udma" AND CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER)
     message(FATAL_ERROR "Only CATCCOS_UDMA_GMM_A2AV_PRODUCER_FULL_BARRIER=0 is supported")
 endif()
 set(CATCCOS_UDMA_ASCEND_FLAGS "-DCATCCOS_UDMA_MSSANITIZER=0 -DASCENDC_DUMP=0")
@@ -89,13 +104,19 @@ else()
 endif()
 # Exact official release/v1.6.0 maintenance snapshot (2026-09-04).
 # A normal variable also overrides an old SHMEM_TAG_ID left in CMakeCache.txt.
-set(SHMEM_TAG_ID "7fa19662da0093587d9a332e740b91d6c929cdcf")
+if(CATCCOS_BACKEND STREQUAL "mte")
+    set(SHMEM_TAG_ID "aee374a396b389626f68fab74ec8c555e18978a7")
+    set(CATCCOS_DEFAULT_SHMEM_DIR "${OPS_TRANSFORMER_ROOT}/3rdparty/shmem-mte")
+else()
+    set(SHMEM_TAG_ID "7fa19662da0093587d9a332e740b91d6c929cdcf")
+    set(CATCCOS_DEFAULT_SHMEM_DIR "${OPS_TRANSFORMER_ROOT}/3rdparty/shmem")
+endif()
 if(SHMEM_SOURCE_PATH)
     get_filename_component(SHMEM_SOURCE_PATH "${SHMEM_SOURCE_PATH}" REALPATH)
 elseif(DEFINED ENV{SHMEM_SOURCE_PATH} AND IS_DIRECTORY "$ENV{SHMEM_SOURCE_PATH}")
     get_filename_component(SHMEM_SOURCE_PATH "$ENV{SHMEM_SOURCE_PATH}" REALPATH)
-elseif(IS_DIRECTORY "${OPS_TRANSFORMER_ROOT}/3rdparty/shmem")
-    get_filename_component(SHMEM_SOURCE_PATH "${OPS_TRANSFORMER_ROOT}/3rdparty/shmem" REALPATH)
+elseif(IS_DIRECTORY "${CATCCOS_DEFAULT_SHMEM_DIR}")
+    get_filename_component(SHMEM_SOURCE_PATH "${CATCCOS_DEFAULT_SHMEM_DIR}" REALPATH)
 else()
     message(FATAL_ERROR
         "The pinned official SHMEM release/v1.6.0 checkout was not found. "
@@ -159,8 +180,17 @@ if(NOT SHMEM_BUILT_REVISION STREQUAL SHMEM_TAG_ID)
         "got ${SHMEM_BUILT_REVISION}")
 endif()
 
+if(CATCCOS_BACKEND STREQUAL "mte")
+    # The pinned bootstrap ABI is needed to aggregate probe failures before
+    # launching a collective. Reject libraries hiding it before device build.
+    set(CATCCOS_MTE_SHMEM_LIBRARY "${SHMEM_HOME_PATH}/shmem/lib/libshmem.so")
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_mte_shmem_exports.cmake")
+    set(CATCCOS_OVERLAY_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/csrc/mte/include")
+else()
+    set(CATCCOS_OVERLAY_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/csrc/catccos_overlay/include")
+endif()
 set(INCLUDE_DIRECTORIES
-    ${CMAKE_CURRENT_SOURCE_DIR}/csrc/catccos_overlay/include
+    ${CATCCOS_OVERLAY_INCLUDE}
     ${Python3_INCLUDE_DIRS}
     ${TORCH_INCLUDE_DIRS}
     ${TORCH_NPU_INCLUDE_PATH}
@@ -171,6 +201,7 @@ set(INCLUDE_DIRECTORIES
     ${CATCCOS_UTILS_INCLUDE_DIR}
     ${SHMEM_SOURCE_PATH}/include
     ${SHMEM_SOURCE_PATH}/src
+    ${SHMEM_SOURCE_PATH}/src/host
     ${SHMEM_SOURCE_PATH}/src/device
     ${SHMEM_HOME_PATH}/shmem/include
     ${SHMEM_HOME_PATH}/shmem/src
@@ -223,14 +254,14 @@ set(COMPILE_OPTIONS
     -DTORCH_MODE
 )
 
-set(OBJECTS_LIST "" CACHE INTERNAL "CatCCOS UDMA operator objects" FORCE)
+set(OBJECTS_LIST "")
 add_subdirectory(csrc)
 
-add_library(_C SHARED
+add_library(${CATCCOS_EXTENSION_TARGET} SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/csrc/extension.cpp
     ${OBJECTS_LIST}
 )
-set_target_properties(_C PROPERTIES
+set_target_properties(${CATCCOS_EXTENSION_TARGET} PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     PREFIX ""
     SUFFIX ".abi3.so"
@@ -239,35 +270,35 @@ set_target_properties(_C PROPERTIES
     INSTALL_RPATH "\$ORIGIN/.libs"
     BUILD_RPATH_USE_ORIGIN ON
 )
-target_link_options(_C PRIVATE -Wl,--disable-new-dtags)
-target_compile_definitions(_C PRIVATE Py_LIMITED_API=0x03080000)
-target_compile_options(_C PRIVATE ${COMPILE_OPTIONS})
-target_include_directories(_C PRIVATE ${INCLUDE_DIRECTORIES})
-target_link_directories(_C PRIVATE ${LINK_DIRECTORIES})
-target_link_libraries(_C PRIVATE ${LINK_LIBRARIES})
+target_link_options(${CATCCOS_EXTENSION_TARGET} PRIVATE -Wl,--disable-new-dtags)
+target_compile_definitions(${CATCCOS_EXTENSION_TARGET} PRIVATE Py_LIMITED_API=0x03080000)
+target_compile_options(${CATCCOS_EXTENSION_TARGET} PRIVATE ${COMPILE_OPTIONS})
+target_include_directories(${CATCCOS_EXTENSION_TARGET} PRIVATE ${INCLUDE_DIRECTORIES})
+target_link_directories(${CATCCOS_EXTENSION_TARGET} PRIVATE ${LINK_DIRECTORIES})
+target_link_libraries(${CATCCOS_EXTENSION_TARGET} PRIVATE ${LINK_LIBRARIES})
 
-set(PYTHON_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ops_transformer_catccos_udma")
+set(PYTHON_PACKAGE_DIR "${CMAKE_CURRENT_BINARY_DIR}/stage/${CATCCOS_PACKAGE}")
 set(COPY_MEMFABRIC_COMMANDS "")
 if(IS_DIRECTORY "${SHMEM_HOME_PATH}/memfabric_hybrid/lib")
     list(APPEND COPY_MEMFABRIC_COMMANDS
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${SHMEM_HOME_PATH}/memfabric_hybrid/lib" "${PYTHON_PACKAGE_DIR}/.libs")
 endif()
-add_custom_command(TARGET _C POST_BUILD
+add_custom_command(TARGET ${CATCCOS_EXTENSION_TARGET} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "${PYTHON_PACKAGE_DIR}/.libs"
-    COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:_C>" "${PYTHON_PACKAGE_DIR}/$<TARGET_FILE_NAME:_C>"
+    COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:${CATCCOS_EXTENSION_TARGET}>" "${PYTHON_PACKAGE_DIR}/$<TARGET_FILE_NAME:${CATCCOS_EXTENSION_TARGET}>"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${SHMEM_HOME_PATH}/shmem/lib" "${PYTHON_PACKAGE_DIR}/.libs"
     ${COPY_MEMFABRIC_COMMANDS}
     COMMENT "Stage the PyTorch extension and SHMEM user-space runtime for wheel packaging"
 )
 
-install(TARGETS _C LIBRARY DESTINATION ops_transformer_catccos_udma)
+install(TARGETS ${CATCCOS_EXTENSION_TARGET} LIBRARY DESTINATION ${CATCCOS_PACKAGE})
 install(DIRECTORY "${SHMEM_HOME_PATH}/shmem/lib/"
-    DESTINATION ops_transformer_catccos_udma/.libs
+    DESTINATION ${CATCCOS_PACKAGE}/.libs
     FILES_MATCHING PATTERN "*.so" PATTERN "*.so.*")
 if(IS_DIRECTORY "${SHMEM_HOME_PATH}/memfabric_hybrid/lib")
     install(DIRECTORY "${SHMEM_HOME_PATH}/memfabric_hybrid/lib/"
-        DESTINATION ops_transformer_catccos_udma/.libs
+        DESTINATION ${CATCCOS_PACKAGE}/.libs
         FILES_MATCHING PATTERN "*.so" PATTERN "*.so.*")
 endif()

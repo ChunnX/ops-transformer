@@ -28,7 +28,8 @@ def test_package_version_has_one_source_of_truth():
     cmake_source = (PROJECT_ROOT / "CMakeLists.txt").read_text()
     assert 'PACKAGE_NAME, "_version.py"' in setup_source
     assert "from ._version import __version__" in package_source
-    assert "ops_transformer_catccos_udma/_version.py" in cmake_source
+    assert '${CATCCOS_PACKAGE}/_version.py' in cmake_source
+    assert 'set(CATCCOS_PACKAGE "ops_transformer_catccos_${CATCCOS_BACKEND}")' in cmake_source
     assert "VERSION \"${OPS_TRANSFORMER_CATCCOS_UDMA_VERSION}\"" in cmake_source
     assert "VERSION 0." not in cmake_source
 
