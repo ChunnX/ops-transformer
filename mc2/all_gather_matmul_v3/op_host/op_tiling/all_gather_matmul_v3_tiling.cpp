@@ -13,10 +13,17 @@
  * \brief host侧tiling实现 (AllGatherMatmulV3, MX-quant FP8/FP4, apace UDMA path)
  */
 
+#include <atomic>
+#include <chrono>
 #include <climits>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <string>
+#include <system_error>
+#include <thread>
+#include <unistd.h>
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
