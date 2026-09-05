@@ -83,7 +83,7 @@ ge::graphStatus LightningIndexerV2BaseChecker::CheckDtype(const LightningIndexer
 
 ge::graphStatus LightningIndexerV2BaseChecker::CheckRank(const LightningIndexerV2CheckerInfo &info,
                                                          const CheckerTensor &tensor, const char *name,
-                                                         uint32_t expected) const
+                                                         uint32_t expected, const std::string &condition) const
 {
     if (!tensor.IsPresent()) {
         return ge::GRAPH_SUCCESS;
@@ -97,6 +97,11 @@ ge::graphStatus LightningIndexerV2BaseChecker::CheckRank(const LightningIndexerV
     if (actual != expected) {
         const std::string actualText = std::to_string(actual) + "D";
         const std::string expectedText = std::to_string(expected) + "D";
+        if (!condition.empty()) {
+            const std::string reason = "When " + condition + ", the tensor must be " + expectedText;
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(info.opName, name, actualText.c_str(), reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
         OP_LOGE_FOR_INVALID_SHAPEDIM(info.opName, name, actualText.c_str(), expectedText.c_str());
         return ge::GRAPH_FAILED;
     }
@@ -117,7 +122,8 @@ ge::graphStatus LightningIndexerV2BaseChecker::CheckElementCount(const Lightning
     }
     if (shape->GetShapeSize() != expected) {
         const std::string actual = ShapeToString(tensor);
-        const std::string reason = "The tensor must contain " + std::to_string(expected) + " elements";
+        const std::string reason = "The tensor shape must be [B], where B is batch size (" +
+                                   std::to_string(expected) + ")";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, name, actual.c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }

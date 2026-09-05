@@ -21,10 +21,17 @@ namespace optiling {
 namespace lightning_indexer_v2_checker {
 namespace {
 constexpr int64_t MIN_CU_SEQLENS_SIZE = 1;
+constexpr uint32_t SEQ_LEN_RANK = 1U;
 } // namespace
 
 ge::graphStatus SeqLenChecker::CheckSinglePara(const LightningIndexerV2CheckerInfo &info) const
 {
+    if (CheckRank(info, info.cuSeqlensQ, "cu_seqlens_q", SEQ_LEN_RANK) != ge::GRAPH_SUCCESS ||
+        CheckRank(info, info.cuSeqlensK, "cu_seqlens_k", SEQ_LEN_RANK) != ge::GRAPH_SUCCESS ||
+        CheckRank(info, info.sequsedQ, "seqused_q", SEQ_LEN_RANK) != ge::GRAPH_SUCCESS ||
+        CheckRank(info, info.sequsedK, "seqused_k", SEQ_LEN_RANK) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     if (info.layoutK == CheckerLayout::TND &&
         CheckDtype(info, info.cuSeqlensK, "cu_seqlens_k", {ge::DT_INT32}) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -101,15 +108,7 @@ ge::graphStatus SeqLenChecker::CheckMultiPara(const LightningIndexerV2CheckerInf
             return ge::GRAPH_FAILED;
         }
     }
-    if (info.quantized && info.layoutQ == CheckerLayout::BSND &&
-        CheckElementCount(info, info.sequsedQ, "seqused_q", info.batch) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    if (info.layoutK == CheckerLayout::PA_BBND &&
-        CheckElementCount(info, info.sequsedK, "seqused_k", info.batch) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    if (info.quantized && info.layoutK == CheckerLayout::BSND &&
+    if (CheckElementCount(info, info.sequsedQ, "seqused_q", info.batch) != ge::GRAPH_SUCCESS ||
         CheckElementCount(info, info.sequsedK, "seqused_k", info.batch) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }

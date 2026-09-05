@@ -36,7 +36,7 @@ protected:
     ge::graphStatus CheckDtype(const LightningIndexerV2CheckerInfo &info, const CheckerTensor &tensor, const char *name,
                                const std::vector<ge::DataType> &expected) const;
     ge::graphStatus CheckRank(const LightningIndexerV2CheckerInfo &info, const CheckerTensor &tensor, const char *name,
-                              uint32_t expected) const;
+                              uint32_t expected, const std::string &condition = "") const;
     ge::graphStatus CheckElementCount(const LightningIndexerV2CheckerInfo &info, const CheckerTensor &tensor,
                                       const char *name, int64_t expected) const;
     static std::string DtypesToString(const std::vector<ge::DataType> &dtypes);

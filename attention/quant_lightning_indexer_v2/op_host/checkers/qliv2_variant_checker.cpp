@@ -100,15 +100,20 @@ ge::graphStatus QLIV2VariantChecker::CheckScaleShape(const LightningIndexerV2Che
     if (scaleShape.GetDimNum() != expectedRank) {
         const std::string actual = std::to_string(scaleShape.GetDimNum()) + "D";
         const std::string expected = std::to_string(expectedRank) + "D";
-        OP_LOGE_FOR_INVALID_SHAPEDIM(info.opName, scaleName, actual.c_str(), expected.c_str());
+        const std::string layout = &input == &info.query ? "layout_q is " + info.layoutQText :
+                                                         "layout_k is " + info.layoutKText;
+        const std::string reason = "When " + layout + " and quant_mode is " + std::to_string(info.quantMode) +
+                                   ", the tensor must be " + expected;
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(info.opName, scaleName, actual.c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     for (uint32_t i = 0; i < inputRank - 1U; ++i) {
         if (scaleShape.GetDim(i) != inputShape.GetDim(i)) {
+            const std::string names = std::string(inputName) + " and " + scaleName;
             const std::string actual = ShapeToString(input) + " and " + ShapeToString(scale);
             const std::string reason = std::string("Input ") + inputName + " and " + scaleName +
                                        " must have equal dimensions before the head_dim axis";
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(info.opName, scaleName, actual.c_str(), reason.c_str());
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(info.opName, names.c_str(), actual.c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
     }

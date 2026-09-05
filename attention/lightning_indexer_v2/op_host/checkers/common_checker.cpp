@@ -193,18 +193,20 @@ ge::graphStatus CommonChecker::CheckSinglePara(const LightningIndexerV2CheckerIn
     }
     const uint32_t qRank = info.layoutQ == CheckerLayout::BSND ? BSND_RANK : TND_RANK;
     const uint32_t kRank = info.layoutK == CheckerLayout::TND ? TND_RANK : BSND_RANK;
-    if (CheckRank(info, info.query, "q", qRank) != ge::GRAPH_SUCCESS ||
-        CheckRank(info, info.key, "k", kRank) != ge::GRAPH_SUCCESS ||
-        CheckRank(info, info.weights, "w", qRank - 1U) != ge::GRAPH_SUCCESS ||
-        CheckRank(info, info.sparseIndices, "sparse_indices", qRank) != ge::GRAPH_SUCCESS) {
+    const std::string qCondition = "layout_q is " + info.layoutQText;
+    const std::string kCondition = "layout_k is " + info.layoutKText;
+    if (CheckRank(info, info.query, "q", qRank, qCondition) != ge::GRAPH_SUCCESS ||
+        CheckRank(info, info.key, "k", kRank, kCondition) != ge::GRAPH_SUCCESS ||
+        CheckRank(info, info.weights, "w", qRank - 1U, qCondition) != ge::GRAPH_SUCCESS ||
+        CheckRank(info, info.sparseIndices, "sparse_indices", qRank, qCondition) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (info.returnValue == RETURN_VALUE_WITH_VALUES &&
-        CheckRank(info, info.sparseValues, "sparse_values", qRank) != ge::GRAPH_SUCCESS) {
+        CheckRank(info, info.sparseValues, "sparse_values", qRank, qCondition) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (info.outputIdxOffset.IsPresent() &&
-        CheckRank(info, info.outputIdxOffset, "output_idx_offset", qRank - 1U) != ge::GRAPH_SUCCESS) {
+        CheckRank(info, info.outputIdxOffset, "output_idx_offset", qRank - 1U, qCondition) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
