@@ -1720,7 +1720,8 @@ ge::graphStatus FiaInfoParser::GetPostQuantInfo()
 ge::graphStatus FiaInfoParser::GetFullQuantMode()
 {
     if (quantMode_ == FiaQuantMode::FULL_QUANT) {
-        if (*opParamInfo_.queryQuantMode == arch35FIA::PER_BLOCK_MODE && *opParamInfo_.keyAntiquantMode == arch35FIA::PER_BLOCK_MODE &&
+        if (*opParamInfo_.queryQuantMode == arch35FIA::PER_BLOCK_MODE &&
+            *opParamInfo_.keyAntiquantMode == arch35FIA::PER_BLOCK_MODE &&
             *opParamInfo_.valueAntiquantMode == arch35FIA::PER_BLOCK_MODE) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 opName_, "QuantMode", std::to_string(*opParamInfo_.queryQuantMode).c_str(),

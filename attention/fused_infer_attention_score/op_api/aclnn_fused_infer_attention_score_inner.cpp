@@ -293,8 +293,8 @@ bool IsArch22MlaD512RoutingCandidate(const aclTensor *query, const aclTensorList
 
     const std::string inputLayoutStr(inputLayout);
     if (!IsSupportedArch22MlaLayout(inputLayoutStr) ||
-        (sparseMode != SPARSE_MODE_NO_MASK && sparseMode != SPARSE_MODE_RIGHT_DOWN &&
-         sparseMode != SPARSE_MODE_BAND && sparseMode != SPARSE_MODE_TREE)) {
+        (sparseMode != SPARSE_MODE_NO_MASK && sparseMode != SPARSE_MODE_RIGHT_DOWN && sparseMode != SPARSE_MODE_BAND &&
+         sparseMode != SPARSE_MODE_TREE)) {
         return false;
     }
     const bool hiddenLayout = inputLayoutStr == "BSH" || inputLayoutStr == "BSH_NBSD";
@@ -348,8 +348,8 @@ bool IsFAIRoutingCandidate(const aclTensor *query, const aclTensorList *key, con
         learnableSinkSupported = false;
     }
     const bool isRopeSplitMla = queryRopeOptional != nullptr && keyRopeOptional != nullptr;
-    const bool sparseModeSupported = sparseMode == SPARSE_MODE_NO_MASK || sparseMode == SPARSE_MODE_RIGHT_DOWN ||
-                                     sparseMode == SPARSE_MODE_BAND;
+    const bool sparseModeSupported =
+        sparseMode == SPARSE_MODE_NO_MASK || sparseMode == SPARSE_MODE_RIGHT_DOWN || sparseMode == SPARSE_MODE_BAND;
     const bool isMha = numKeyValueHeads == 0 || numHeads == numKeyValueHeads;
     const bool mhaConditions = isMha &&
                                !(queryDtype == DataType::DT_BF16 && innerPrecise == INNER_PRECISE_HIGH_PERFORMANCE) &&
@@ -389,8 +389,7 @@ bool IsFAIRoutingCandidate(const aclTensor *query, const aclTensorList *key, con
         const int64_t valueHeadDim = valueShape.GetDim(DIM_2) * NZ_INNER_BLOCK;
         const bool headDimSupported = queryHeadDim <= MAX_HEAD_DIM && keyHeadDim <= MAX_HEAD_DIM &&
                                       valueHeadDim <= MAX_HEAD_DIM && queryHeadDim == keyHeadDim &&
-                                      queryHeadDim == valueHeadDim && queryHeadDim != DIM_64 &&
-                                      queryHeadDim != DIM_128;
+                                      queryHeadDim == valueHeadDim && queryHeadDim != DIM_64 && queryHeadDim != DIM_128;
         return headDimSupported && blockSize % BLOCK_SIZE_ALIGNMENT == 0 && blockSize <= MAX_BLOCK_SIZE;
     }
     return false;
