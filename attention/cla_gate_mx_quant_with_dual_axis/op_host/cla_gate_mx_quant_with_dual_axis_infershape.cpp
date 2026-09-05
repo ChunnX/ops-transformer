@@ -1,5 +1,6 @@
 /** Copyright (c) 2026 Huawei Technologies Co., Ltd. */
-#include "error_util.h"
+#include "err/ops_err.h"
+#include "log/log.h"
 #include "register/op_impl_registry.h"
 namespace ops {
 constexpr int64_t CLA_M = 256 * 4;             // S * B

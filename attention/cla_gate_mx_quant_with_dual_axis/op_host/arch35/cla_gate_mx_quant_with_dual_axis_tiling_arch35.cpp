@@ -15,9 +15,10 @@
 
 #include "cla_gate_mx_quant_with_dual_axis_tiling_arch35.h"
 #include "op_common/op_host/util/platform_util.h"
-#include "error_util.h"
+#include "err/ops_err.h"
+#include "log/log.h"
 #include "util/math_util.h"
-#include "quant/cla_gate_mx_quant_with_dual_axis/op_kernel/arch35/cla_gate_mx_quant_with_dual_axis_tiling_key.h"
+#include "../../op_kernel/arch35/cla_gate_mx_quant_with_dual_axis_tiling_key.h"
 
 using namespace std;
 using namespace ge;
