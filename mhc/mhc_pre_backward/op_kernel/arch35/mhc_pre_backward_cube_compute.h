@@ -43,7 +43,8 @@ public:
     {
         CopyInB1(b, n, k, bGmStride);
         for (uint32_t offsetM = 0; offsetM < m; offsetM += C0_BASIC_M) {
-            uint32_t curM = Min(C0_BASIC_M, m - offsetM);
+            uint32_t remainM = m - offsetM;
+            uint32_t curM = remainM < C0_BASIC_M ? remainM : C0_BASIC_M;
             CopyInA1(a[offsetM * k], curM, k);
             SetFlag<HardEvent::MTE2_MTE1>(2);
             WaitFlag<HardEvent::MTE2_MTE1>(2);
