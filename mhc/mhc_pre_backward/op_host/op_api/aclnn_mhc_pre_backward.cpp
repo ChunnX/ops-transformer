@@ -16,6 +16,7 @@
 #include <string>
 #include <unordered_map>
 #include "securec.h"
+#include "log/log.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/op_dfx.h"
@@ -36,6 +37,7 @@ extern "C" {
 
 namespace {
 
+constexpr const char *ACLNN_OP_NAME = "aclnnMhcPreBackwardGetWorkspaceSize";
 constexpr int64_t MHC_PRE_BACKWARD_USE_FP32 = 0;
 constexpr int64_t MHC_PRE_BACKWARD_USE_HF32 = 1;
 
