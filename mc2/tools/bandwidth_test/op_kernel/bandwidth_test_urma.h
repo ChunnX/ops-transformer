@@ -144,6 +144,8 @@ private:
     uint32_t batchBufferBytes_{0};
     uint32_t requestedBatchTokens_{0};
     uint32_t preparedWrites_{0};
+    uint32_t pendingWrites_{0};
+    uint32_t sqCapacity_{0};
     float sumTarget_;                 // 状态同步目标值 (1.0)
 };
 
@@ -321,6 +323,8 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::BeginBa
     uint32_t ubCapacity = batchBufferBytes_ / BandwidthTestTiling::URMA_WQE_BYTES;
     batchCapacity_ = ubCapacity < sqCapacity ? ubCapacity : sqCapacity;
     preparedWrites_ = 0;
+    pendingWrites_ = 0;
+    sqCapacity_ = sqCapacity;
     batchHandle_ = hcomm_.MakeBatchHandle(
         channel, batchTensor_, batchCapacity_ * BandwidthTestTiling::URMA_WQE_BYTES,
         reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[rankId]));
@@ -330,15 +334,24 @@ template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::PrepareWrite(
     GM_ADDR dst, GM_ADDR src, uint32_t len, bool lastInBatch)
 {
-    if (lastInBatch || preparedWrites_ + 1 == batchCapacity_) {
+    ++preparedWrites_;
+    ++pendingWrites_;
+    bool commit = lastInBatch || preparedWrites_ == batchCapacity_;
+    // Keep complete configured batches in flight until the SQ cannot hold another full batch.
+    bool drain = lastInBatch || (commit && sqCapacity_ - pendingWrites_ < batchCapacity_);
+    if (drain) {
         hcomm_.WriteNbi<DEFAULT_CQE_WQE_CONFIG>(batchHandle_, dst, src, len);
-        hcomm_.BatchCommit(batchHandle_);
-        // Completion precedes reuse of this batch's UB and registered source data.
-        hcomm_.Drain(batchHandle_);
-        preparedWrites_ = 0;
     } else {
         hcomm_.WriteNbi<DEFAULT_WQE_CONFIG>(batchHandle_, dst, src, len);
-        ++preparedWrites_;
+    }
+    if (commit) {
+        // The SDK copies WQEs to the SQ and synchronizes UB reuse; token sources remain in GM.
+        hcomm_.BatchCommit(batchHandle_);
+        preparedWrites_ = 0;
+    }
+    if (drain) {
+        hcomm_.Drain(batchHandle_);
+        pendingWrites_ = 0;
     }
 }
 

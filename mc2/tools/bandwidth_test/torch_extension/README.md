@@ -130,8 +130,10 @@ Ascend950 的 256 KiB UB 扣除系统预留的 8 KiB 后，算子使用完整的
 合法值会打印 `requested / selected / maximum`。UB 最大值与 BS 无关。
 例如 `world_size=8、aiv_num=64` 时，`max_bs=4096、hidden=16384` 的 UB 容量为
 **3240 个 token/WQE**，`max_bs=8192、hidden=8192` 为 **3481 个 token/WQE**。
-设备端分块扫描 ID，为当前目标卡跨 ID 块累计 WQE；凑够指定数量或该卡数据结束时，
-末条 WQE 请求 CQE，随后 `BatchCommit → Drain` 并复用缓冲区。空目标卡不提交数据批次。
+设备端分块扫描 ID，为当前目标卡跨 ID 块累计 WQE；凑够指定数量就 `BatchCommit`。
+SDK 将 WQE 拷入 SQ 并同步 UB 复用，后续批次可以继续准备和提交。
+只有剩余 SQ 空间不足容纳下一整批，或该目标卡数据结束时，末条 WQE 请求 CQE 并 `Drain`；
+不会因为一个 ID 块结束或 WQE UB 缓冲写满就等待通信完成。空目标卡不提交数据批次。
 发送中的单行 UB 不必保留到 URMA 完成：URMA 源数据已位于注册的 GM 中转区。
 中转区仍使用原 token 下标，避免不同目标卡所属核并发覆盖同一槽位。
 所有数据和状态通知完成后，`TPipe::Reset` 将发送阶段 UB 复用于等待和接收阶段。

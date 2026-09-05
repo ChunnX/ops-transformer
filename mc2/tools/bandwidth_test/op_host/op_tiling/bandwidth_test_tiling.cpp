@@ -435,7 +435,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
                     OP_LOGE(nodeName, "batch_tokens must be 0 (auto) or positive."), return ge::GRAPH_FAILED);
     tilingData->batchTokens = 0;
     if (IsUrma(context)) {
-        // One staging row is live. IDs are reused per chunk; WQEs are reused after Commit/Drain.
+        // One staging row is live. IDs are reused per chunk; WQEs are reused after BatchCommit.
         uint64_t fixedBytes = 32 + statusBytes + rowBytes + URMA_INIT_BYTES;
         constexpr uint64_t bytesPerToken = sizeof(int32_t) + URMA_WQE_BYTES;
         OP_TILING_CHECK(fixedBytes > ubSize || ubSize - fixedBytes < 32 + URMA_WQE_BYTES,
