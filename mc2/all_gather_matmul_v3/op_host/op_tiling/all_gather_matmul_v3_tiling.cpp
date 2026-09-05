@@ -13,10 +13,17 @@
  * \brief host侧tiling实现 (AllGatherMatmulV3, MX-quant FP8/FP4, apace UDMA path)
  */
 
-#include <string>
+#include <atomic>
+#include <chrono>
 #include <climits>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
+#include <mutex>
+#include <string>
+#include <system_error>
+#include <thread>
+#include <unistd.h>
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
@@ -1036,6 +1043,7 @@ inline void AllGatherMatmulV3ExceptionImplWrapper(aclrtExceptionInfo *args, void
     if (std::strstr(socName, "Ascend950") == nullptr) {
         return;
     }
+    uint64_t channelHandle = 0U;
     Mc2Exception::Mc2DumpTilingData(args, "AllGatherMatmulV3",
         10U,  // tilingGmArgIdx
         0U,   // argsOffset
