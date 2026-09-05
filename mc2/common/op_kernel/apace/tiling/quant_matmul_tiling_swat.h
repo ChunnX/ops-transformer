@@ -87,15 +87,15 @@ private:
         tilingData.m = static_cast<uint32_t>(args_.m);
         tilingData.n = static_cast<uint32_t>(args_.n);
         tilingData.k = static_cast<uint32_t>(args_.k);
-        tilingData.baseM = static_cast<uint32_t>(runInfo_.baseM);
-        tilingData.baseN = static_cast<uint32_t>(runInfo_.baseN);
+        tilingData.schedulerParams.baseM = static_cast<uint32_t>(runInfo_.baseM);
+        tilingData.schedulerParams.baseN = static_cast<uint32_t>(runInfo_.baseN);
         tilingData.baseK = static_cast<uint32_t>(runInfo_.baseK);
-        tilingData.mTailTile = static_cast<uint32_t>(runInfo_.mTailTile);
-        tilingData.nTailTile = static_cast<uint32_t>(runInfo_.nTailTile);
-        tilingData.mBaseTailSplitCnt = static_cast<uint32_t>(runInfo_.mBaseTailSplitCnt);
-        tilingData.nBaseTailSplitCnt = static_cast<uint32_t>(runInfo_.nBaseTailSplitCnt);
-        tilingData.mTailMain = static_cast<uint32_t>(runInfo_.mTailMain);
-        tilingData.nTailMain = static_cast<uint32_t>(runInfo_.nTailMain);
+        tilingData.schedulerParams.mTailTile = static_cast<uint32_t>(runInfo_.mTailTile);
+        tilingData.schedulerParams.nTailTile = static_cast<uint32_t>(runInfo_.nTailTile);
+        tilingData.schedulerParams.mBaseTailSplitCnt = static_cast<uint32_t>(runInfo_.mBaseTailSplitCnt);
+        tilingData.schedulerParams.nBaseTailSplitCnt = static_cast<uint32_t>(runInfo_.nBaseTailSplitCnt);
+        tilingData.schedulerParams.mTailMain = static_cast<uint32_t>(runInfo_.mTailMain);
+        tilingData.schedulerParams.nTailMain = static_cast<uint32_t>(runInfo_.nTailMain);
         tilingData.usedCoreNum =
             static_cast<uint32_t>((runInfo_.totalBlockCnt > 1UL || runInfo_.tailBlockCnt == 0UL) ?
                                       platformInfo_.aicNum :

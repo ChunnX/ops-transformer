@@ -90,38 +90,16 @@ public:
     template <uint8_t BarrierMode = BARRIER_BOTH>
     __aicore__ inline void Commit()
     {
-        if (remainingChunkSize_ <= 0) {
-            return;
-        }
+        useCompactLayout_ = false;
+        CommitImpl<BarrierMode>();
+    }
 
-        uint64_t currentTileSize;
-        if (currentTileIdx_ < tilingData_->splitAxisTileCnt) {
-            currentTileSize = tilingData_->splitAxisTileSize;
-        } else {
-            currentTileSize = tilingData_->splitAxisTailSize;
-        }
-        if (currentTileSize > remainingChunkSize_) {
-            currentTileSize = remainingChunkSize_;
-        }
-
-        uint64_t nonSplitAxisBytes = tilingData_->nonSplitAxisSize * sizeof(Dtype);
-        uint64_t currentTileByteSize = currentTileSize * nonSplitAxisBytes;
-        uint64_t slotBytes = udmaCtx_->rankSize * tileMaxByteSize_;
-        if (targetRankCnt_ > 0) {
-            const uint32_t targetRankStart = targetRankStart_;
-            const uint32_t targetRankCnt = targetRankCnt_;
-
-            for (uint32_t i = 0; i < targetRankCnt; i++) {
-                uint32_t targetRankId = targetRankStart + i;
-                static_cast<Impl *>(this)->template DoCommit<BarrierMode>(targetRankId, currentTileByteSize);
-            }
-        }
-
-        currentTileIdx_++;
-        slotByteOffset_ += slotBytes;
-        tileByteOffset_ += currentTileByteSize;
-        chunkByteOffset_ += chunkBytes_;
-        remainingChunkSize_ -= currentTileSize;
+    template <uint8_t BarrierMode = BARRIER_BOTH>
+    __aicore__ inline void Commit(uint64_t bufferOffset)
+    {
+        useCompactLayout_ = true;
+        bufferOffset_ = bufferOffset;
+        CommitImpl<BarrierMode>();
     }
 
     template <uint8_t BarrierMode = BARRIER_BOTH>
@@ -173,6 +151,47 @@ protected:
 
     uint32_t targetRankStart_;
     uint32_t targetRankCnt_;
+
+    bool useCompactLayout_{false};
+    uint64_t bufferOffset_{0};
+
+private:
+    template <uint8_t BarrierMode>
+    __aicore__ inline void CommitImpl()
+    {
+        if (remainingChunkSize_ <= 0) {
+            return;
+        }
+
+        uint64_t currentTileSize;
+        if (currentTileIdx_ < tilingData_->splitAxisTileCnt) {
+            currentTileSize = tilingData_->splitAxisTileSize;
+        } else {
+            currentTileSize = tilingData_->splitAxisTailSize;
+        }
+        if (currentTileSize > remainingChunkSize_) {
+            currentTileSize = remainingChunkSize_;
+        }
+
+        uint64_t nonSplitAxisBytes = tilingData_->nonSplitAxisSize * sizeof(Dtype);
+        uint64_t currentTileByteSize = currentTileSize * nonSplitAxisBytes;
+        uint64_t slotBytes = udmaCtx_->rankSize * tileMaxByteSize_;
+        if (targetRankCnt_ > 0) {
+            const uint32_t targetRankStart = targetRankStart_;
+            const uint32_t targetRankCnt = targetRankCnt_;
+
+            for (uint32_t i = 0; i < targetRankCnt; i++) {
+                uint32_t targetRankId = targetRankStart + i;
+                static_cast<Impl *>(this)->template DoCommit<BarrierMode>(targetRankId, currentTileByteSize);
+            }
+        }
+
+        currentTileIdx_++;
+        slotByteOffset_ += slotBytes;
+        tileByteOffset_ += currentTileByteSize;
+        chunkByteOffset_ += chunkBytes_;
+        remainingChunkSize_ -= currentTileSize;
+    }
 };
 
 } // namespace AivComm

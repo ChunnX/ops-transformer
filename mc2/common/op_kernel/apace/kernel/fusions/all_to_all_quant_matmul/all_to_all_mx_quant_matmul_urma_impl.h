@@ -299,17 +299,11 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     mmadParams.scaleBGmAddr = baseParams_.scaleBGm;
     mmadParams.biasGmAddr = baseParams_.biasGm;
 
-    // 调度器参数
-    BlockSchedulerParams schedulerParams{mmTile->baseM,
-                                         mmTile->baseN,
-                                         mmTile->mTailTile,
-                                         mmTile->nTailTile,
-                                         mmTile->mBaseTailSplitCnt,
-                                         mmTile->nBaseTailSplitCnt,
-                                         mmTile->mTailMain,
-                                         mmTile->nTailMain};
+    // 调度器参数：直接引用 tiling 内的 schedulerParams 子结构体（layout-compatible）
+    const auto &schedulerParams = reinterpret_cast<const BlockSchedulerParams &>(mmTile->schedulerParams);
+    static_assert(sizeof(mmTile->schedulerParams) == sizeof(BlockSchedulerParams), "SchedulerParams layout mismatch");
     // 基础 Tiling 参数
-    QBMMTiling qbmmParams{mmTile->baseM, mmTile->baseN, mmTile->baseK, mmTile->dbL0c, false};
+    QBMMTiling qbmmParams{mmTile->schedulerParams.baseM, mmTile->schedulerParams.baseN, mmTile->baseK, mmTile->dbL0c, false};
 
     out = {problemShape, mmadParams, l1Params, schedulerParams, qbmmParams, localParams};
 }

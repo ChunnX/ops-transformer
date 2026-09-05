@@ -47,8 +47,15 @@ private:
         }
         GM_ADDR srcAddr = this->localAddr_ + this->tileByteOffset_;
 
-        GM_ADDR dstAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_) +
-                          this->udmaCtx_->rankId * this->chunkBytes_ + this->tileByteOffset_;
+        GM_ADDR dstAddr;
+        if (this->useCompactLayout_) {
+            uint32_t remoteIdx = (targetRankId > this->udmaCtx_->rankId) ? (targetRankId - 1) : targetRankId;
+            dstAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_) +
+                      this->bufferOffset_ + static_cast<GM_ADDR>(remoteIdx) * this->tileMaxByteSize_;
+        } else {
+            dstAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_) +
+                      this->udmaCtx_->rankId * this->chunkBytes_ + this->tileByteOffset_;
+        }
 
         int32_t ret = this->comm_.WriteNbi(static_cast<ChannelHandle>(this->udmaCtx_->channelHandles[targetRankId]),
                                            dstAddr, srcAddr, tileByteSize);

@@ -729,6 +729,28 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
     tilingData->commTile.splitAxisTailCnt = tailCnt;
     tilingData->commTile.nonSplitAxisSize = k;
 
+    // win buffer slot sizes (host pre-computed, device uses directly)
+    auto x1Dtype = context->GetInputDesc(IDX_INPUT_X1)->GetDataType();
+    uint64_t maxTileM = (tileM > tailM) ? tileM : tailM;
+    uint64_t dataBytesPerMRow = (x1Dtype == ge::DT_FLOAT4_E2M1) ? (k >> 1) : k;
+    uint64_t scaleKGroups = (k + MX_SCALE_BLOCK - 1UL) / MX_SCALE_BLOCK;
+    uint64_t scaleBytesPerMRow = scaleKGroups * SCALE_LAST_DIM;
+    tilingData->commTile.dataSlotSize = (rankSize - 1UL) * maxTileM * dataBytesPerMRow;
+    tilingData->commTile.scaleSlotSize = (rankSize - 1UL) * maxTileM * scaleBytesPerMRow;
+    tilingData->commTile.scaleNonSplitAxisSize = scaleKGroups * SCALE_LAST_DIM;
+
+    // win buffer reuse slot count: per-rank win buffer / dataSlotSize
+    // When slotNum >= commTurn, device degenerates to no-reuse automatically.
+    uint64_t commTurn = tileCnt + tailCnt;
+    auto attrs = context->GetAttrs();
+    int64_t hcclBufferSize = *attrs->GetAttrPointer<int64_t>(ATTR_HCCL_BUFFER_SIZE_INDEX);
+    uint64_t winBufferBytes = static_cast<uint64_t>(hcclBufferSize) - HCCL_BUFFER_RESERVED_BYTES;
+    uint64_t scaleRegionBytes = commTurn * tilingData->commTile.scaleSlotSize;
+    uint64_t dataRegionBytes = (winBufferBytes > scaleRegionBytes) ? (winBufferBytes - scaleRegionBytes) : 0;
+    uint64_t slotNum = (tilingData->commTile.dataSlotSize > 0) ?
+                        dataRegionBytes / tilingData->commTile.dataSlotSize : 0;
+    tilingData->commTile.slotNum = slotNum;
+
     // mm tiling via SWAT engine：按 x1 实际 dtype 分发。 fp8 统一用 e4m3 实例化，fp4统一用 e2m1 实例化
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     if (context->GetInputDesc(IDX_INPUT_X1)->GetDataType() == ge::DT_FLOAT4_E2M1) {
@@ -749,7 +771,8 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
         tilingEngine.GetTilingData(totalLogicalM, n, k, tilingData->mmTile);
     }
     OP_LOGD(nodeName, "mmTile(swat): baseM=%u baseN=%u baseK=%u dbL0c=%u swatUsedCoreNum=%u",
-            static_cast<uint32_t>(tilingData->mmTile.baseM), static_cast<uint32_t>(tilingData->mmTile.baseN),
+            static_cast<uint32_t>(tilingData->mmTile.schedulerParams.baseM),
+            static_cast<uint32_t>(tilingData->mmTile.schedulerParams.baseN),
             static_cast<uint32_t>(tilingData->mmTile.baseK), static_cast<uint32_t>(tilingData->mmTile.dbL0c),
             static_cast<uint32_t>(tilingData->mmTile.usedCoreNum));
 
@@ -771,10 +794,13 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
 
     OP_LOGI(nodeName,
             "AllGatherMatmulV3 tiling: mPerRank=%lu totalLogicalM=%lu k=%lu n=%lu rankSize=%lu usedCoreNum=%u "
-            "isBias=%u commTile[tileSize=%lu tileCnt=%lu tailSize=%lu tailCnt=%lu]",
+            "isBias=%u commTile[tileSize=%lu tileCnt=%lu tailSize=%lu tailCnt=%lu "
+            "dataSlotSize=%lu scaleSlotSize=%lu slotNum=%lu]",
             m, totalLogicalM, k, n, rankSize, usedCoreNum, static_cast<uint32_t>(tilingData->isBias),
             tilingData->commTile.splitAxisTileSize, tilingData->commTile.splitAxisTileCnt,
-            tilingData->commTile.splitAxisTailSize, tilingData->commTile.splitAxisTailCnt);
+            tilingData->commTile.splitAxisTailSize, tilingData->commTile.splitAxisTailCnt,
+            tilingData->commTile.dataSlotSize, tilingData->commTile.scaleSlotSize,
+            tilingData->commTile.slotNum);
 
     return ge::GRAPH_SUCCESS;
 }

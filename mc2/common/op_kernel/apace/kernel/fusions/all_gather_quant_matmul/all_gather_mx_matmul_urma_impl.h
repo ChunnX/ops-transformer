@@ -208,8 +208,8 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::MatmulPro
 {
     KernelParams params;
     params.mmTile = &tilingData_->mmTile;
-    params.qbmmParams = {tilingData_->mmTile.baseM, tilingData_->mmTile.baseN, tilingData_->mmTile.baseK,
-                         tilingData_->mmTile.dbL0c};
+    params.qbmmParams = {tilingData_->mmTile.schedulerParams.baseM, tilingData_->mmTile.schedulerParams.baseN,
+                         tilingData_->mmTile.baseK, tilingData_->mmTile.dbL0c};
     params.fragParams = {tileCnt_,
                          tileM_,
                          tailCnt_,

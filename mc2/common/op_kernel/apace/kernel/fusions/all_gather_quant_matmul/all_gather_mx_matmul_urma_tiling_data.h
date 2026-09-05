@@ -20,16 +20,6 @@
 #include "apace/tiling/comm_tiling_data.h"
 #include "apace/core/aiv_comm/collective_comm_context.h"
 
-namespace Apace {
-namespace AivComm {
-// Convenience wrapper so the kernel receives one pointer instead of two.
-struct CommContext {
-    CommUdmaContext udmaCtx;
-    CommUbmemContext ubmemCtx;
-};
-} // namespace AivComm
-} // namespace Apace
-
 using Apace::AivComm::CommContext;
 
 #pragma pack(push, 8)

@@ -38,5 +38,10 @@ struct CommUbmemContext {
     uint64_t commBufferAddrs[COMM_MAX_RANK_NUM];
 };
 
+struct CommContext {
+    CommUdmaContext udmaCtx;
+    CommUbmemContext ubmemCtx;
+};
+
 } // namespace AivComm
 } // namespace Apace

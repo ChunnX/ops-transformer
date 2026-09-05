@@ -266,16 +266,10 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
 
     L1Params l1Params{static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK, mmTile.scaleKL1, mmTile.nBufferNum};
 
-    BlockSchedulerParams schedulerParams{mmTile.baseM,
-                                         mmTile.baseN,
-                                         mmTile.mTailTile,
-                                         mmTile.nTailTile,
-                                         mmTile.mBaseTailSplitCnt,
-                                         mmTile.nBaseTailSplitCnt,
-                                         mmTile.mTailMain,
-                                         mmTile.nTailMain};
+    const auto &schedulerParams = reinterpret_cast<const BlockSchedulerParams &>(mmTile.schedulerParams);
+    static_assert(sizeof(mmTile.schedulerParams) == sizeof(BlockSchedulerParams), "SchedulerParams layout mismatch");
 
-    QBMMTiling qbmmParams{mmTile.baseM, mmTile.baseN, mmTile.baseK, mmTile.dbL0c, isBias_};
+    QBMMTiling qbmmParams{mmTile.schedulerParams.baseM, mmTile.schedulerParams.baseN, mmTile.baseK, mmTile.dbL0c, isBias_};
 
     out = {problemShape, mmadParams, l1Params, schedulerParams, qbmmParams, localParams};
 }

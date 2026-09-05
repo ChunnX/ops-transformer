@@ -121,9 +121,9 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
     QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
     tilingEngine.GetTilingData(m, n, ka, false, true, tilingData.tileQbmmTilingData);
 
-    auto nTile = CeilDiv(n, tilingData.tileQbmmTilingData.baseN);
+    auto nTile = CeilDiv(n, tilingData.tileQbmmTilingData.schedulerParams.baseN);
     uint32_t headMSize =
-        CeilDiv(tilingData.tileQbmmTilingData.usedCoreNum, nTile) * tilingData.tileQbmmTilingData.baseM;
+        CeilDiv(tilingData.tileQbmmTilingData.usedCoreNum, nTile) * tilingData.tileQbmmTilingData.schedulerParams.baseM;
     uint32_t headTileCnt = static_cast<uint32_t>(m) / headMSize;
     uint32_t tailMSize = static_cast<uint32_t>(m) % headMSize;
     uint32_t tailTileCnt = (tailMSize > 0) ? 1 : 0;

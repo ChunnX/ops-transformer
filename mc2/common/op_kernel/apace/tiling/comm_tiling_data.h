@@ -48,4 +48,8 @@ struct CommTilingData {
     uint64_t splitAxisTailSize{0}; // 切分轴尾块大小（元素个数）
     uint64_t splitAxisTailCnt{0};  // 切分轴尾块数量
     uint64_t nonSplitAxisSize{0};  // 非切分轴数据块大小（元素个数，所有内轴乘积）
+    uint64_t slotNum{0};           // win buffer 复用槽位数（0=不复用，全量分配）
+    uint64_t dataSlotSize{0};      // data 每轮通信 slot 字节大小（host 预算）
+    uint64_t scaleSlotSize{0};     // scale 每轮通信 slot 字节大小（host 预算）
+    uint64_t scaleNonSplitAxisSize{0}; // scale 非切分轴大小（元素个数 = CeilDiv(k,64)*2，host 预算）
 };

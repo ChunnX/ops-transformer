@@ -30,31 +30,29 @@ struct alignas(8) QuantMatmulTilingData {
     uint32_t n{0};
     uint32_t k{0};
 
-    // Base tile shape selected by the tiling engine.
-    uint32_t baseM{0};
-    uint32_t baseN{0};
+    // Block-scheduler parameters (layout-compatible with BlockSchedulerQuantBatchMatmulV3::Params).
+    // Constructed on host, consumed by kernel via reinterpret_cast — no per-call reconstruction.
+    struct SchedulerParams {
+        uint32_t baseM{0};
+        uint32_t baseN{0};
+        uint32_t mTailTile{1};
+        uint32_t nTailTile{1};
+        uint32_t mBaseTailSplitCnt{1};
+        uint32_t nBaseTailSplitCnt{1};
+        uint32_t mTailMain{0};
+        uint32_t nTailMain{0};
+    } schedulerParams;
+
+    // Base K tile selected by the tiling engine.
     uint32_t baseK{0};
 
     // Amount of K covered by one scale fragment staged in L1.
     uint32_t scaleKL1{0};
 
-    // Tail split factors used in the final scheduling round.
-    uint32_t mTailTile{1};
-    uint32_t nTailTile{1};
-    uint32_t mBaseTailSplitCnt{1};
-    uint32_t nBaseTailSplitCnt{1};
-    uint32_t mTailMain{0};
-    uint32_t nTailMain{0};
-
     // Launch-time AIC count and buffering parameters.
-    // Number of AICs launched for this kernel instance.
     uint32_t usedCoreNum{0};
-    // Number of baseK tiles consumed before the rolling L1 buffers advance.
     uint8_t stepK{0};
-    // Number of rolling A/B buffer slots reserved in L1.
     uint8_t nBufferNum{0};
-
-    // Output buffering mode selected for the kernel implementation.
     uint8_t dbL0c{0};
 };
 #pragma pack(pop)

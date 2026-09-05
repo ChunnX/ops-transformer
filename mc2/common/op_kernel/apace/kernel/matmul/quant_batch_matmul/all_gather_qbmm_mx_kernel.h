@@ -294,18 +294,10 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Run(const Par
     const int64_t tailRows = hasTail ? static_cast<int64_t>(fp.rankSize) * static_cast<int64_t>(fp.paddedTailM) : 0;
     const int64_t totalLogicalM = headMainRows + mainSectionRows + tailRows;
 
-    // 调度器参数
-    BlockSchedulerParams schParams;
-    schParams.baseM = mmT.baseM;
-    schParams.baseN = mmT.baseN;
-    schParams.mTailTile = mmT.mTailTile;
-    schParams.nTailTile = mmT.nTailTile;
-    schParams.mBaseTailSplitCnt = mmT.mBaseTailSplitCnt;
-    schParams.nBaseTailSplitCnt = mmT.nBaseTailSplitCnt;
-    schParams.mTailMain = mmT.mTailMain;
-    schParams.nTailMain = mmT.nTailMain;
+    const auto &schParams = reinterpret_cast<const BlockSchedulerParams &>(mmT.schedulerParams);
+    static_assert(sizeof(mmT.schedulerParams) == sizeof(BlockSchedulerParams), "SchedulerParams layout mismatch");
 
-    FragBlockShape l0TileShape{static_cast<int64_t>(mmT.baseM), static_cast<int64_t>(mmT.baseN),
+    FragBlockShape l0TileShape{static_cast<int64_t>(mmT.schedulerParams.baseM), static_cast<int64_t>(mmT.schedulerParams.baseN),
                                static_cast<int64_t>(mmT.baseK), 0L};
     FragL1Params fragL1{static_cast<uint64_t>(mmT.stepK) * mmT.baseK, mmT.scaleKL1, mmT.nBufferNum};
 
@@ -344,8 +336,8 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
     auto gmBias =
         Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasPtr), Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, Ni));
 
-    const auto &mTailTile = mmT.mTailTile;
-    const auto &nTailTile = mmT.nTailTile;
+    const auto &mTailTile = mmT.schedulerParams.mTailTile;
+    const auto &nTailTile = mmT.schedulerParams.nTailTile;
     // 尾块拆分：需核数(尾块数×M拆分×N拆分)≤总核数才拆分；mTailTile=nTailTile=1时等价no-op。
     if ((sch.GetEndBlockIdx() + 1) * mTailTile * nTailTile <= AscendC::GetBlockNum()) {
         sch.UpdateTailTile(mTailTile, nTailTile);

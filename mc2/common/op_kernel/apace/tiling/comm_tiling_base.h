@@ -45,8 +45,8 @@ public:
     static void GetCommTilingData(uint64_t m, uint64_t n, uint64_t ka, const QuantMatmulTilingData &mmTiling,
                                   CommTilingData &dataTiling, CommTilingData &scaleTiling)
     {
-        uint64_t baseM = mmTiling.baseM;
-        uint64_t baseN = mmTiling.baseN;
+        uint64_t baseM = mmTiling.schedulerParams.baseM;
+        uint64_t baseN = mmTiling.schedulerParams.baseN;
         uint64_t usedCoreNum = mmTiling.usedCoreNum;
 
         // 防御性零值守卫：baseM/baseN/usedCoreNum 为 0 说明 matmul tiling 异常，
