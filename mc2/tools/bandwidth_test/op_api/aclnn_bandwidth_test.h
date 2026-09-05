@@ -53,6 +53,15 @@ ACLNN_API aclnnStatus aclnnBandwidthTestGetWorkspaceSize(const aclTensor *x, con
  */
 ACLNN_API aclnnStatus aclnnBandwidthTest(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                          aclrtStream stream);
+
+// Context-owned entry for Torch callers; context and its registered Win remain owned by the caller.
+ACLNN_API aclnnStatus aclnnBandwidthTestWithContextGetWorkspaceSize(
+    const aclTensor *context, const aclTensor *x, const aclTensor *dstRankId, char *group,
+    int64_t worldSize, int64_t maxBs, int64_t mode, int64_t cclBufferSize, char *commAlg,
+    int64_t aivNum, aclTensor *y, aclTensor *receiveCnt, uint64_t *workspaceSize, aclOpExecutor **executor);
+
+ACLNN_API aclnnStatus aclnnBandwidthTestWithContext(
+    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 #ifdef __cplusplus
 }
 #endif

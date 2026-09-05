@@ -34,13 +34,13 @@ class BandwidthTestOpBuilder(OpBuilder):
         return (
             "bandwidth_test(Tensor(a!) context, Tensor x, Tensor dstrank_id, str group, "
             "int world_size, int max_bs, int test_mode, int ccl_buffer_size, *, "
-            'str comm_alg="mte", int aiv_num=-1) -> (Tensor, Tensor)'
+            'str comm_alg="", int aiv_num=-1) -> (Tensor, Tensor)'
         )
 
     def register_meta(self):
         @impl(get_as_library(), self.name, "Meta")
         def bandwidth_test_meta(context, x, dstrank_id, group, world_size,
-                                max_bs, test_mode, ccl_buffer_size, comm_alg="mte", aiv_num=-1):
+                                max_bs, test_mode, ccl_buffer_size, comm_alg="", aiv_num=-1):
             _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
                           test_mode, ccl_buffer_size, comm_alg, aiv_num)
             return (x.new_empty((max_bs * world_size, x.size(1))),
@@ -86,7 +86,7 @@ _bandwidth_test_op_builder._ensure_initialized()
 
 @impl(get_as_library(), "bandwidth_test", "PrivateUse1")
 def _bandwidth_test(context, x, dstrank_id, group, world_size, max_bs, test_mode,
-                    ccl_buffer_size, comm_alg="mte", aiv_num=-1):
+                    ccl_buffer_size, comm_alg="", aiv_num=-1):
     _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
                   test_mode, ccl_buffer_size, comm_alg, aiv_num)
     return _bandwidth_test_op_builder.load().bandwidth_test(
@@ -104,7 +104,7 @@ class BandwidthTestBuffer:
     until all operations and graph replays have completed.
     """
 
-    def __init__(self, group, comm_alg="mte"):
+    def __init__(self, group, comm_alg=""):
         if comm_alg not in ("", "mte", "urma"):
             raise ValueError("comm_alg must be mte or urma")
         self.comm_alg = comm_alg or "mte"
@@ -140,7 +140,7 @@ class BandwidthTestBuffer:
 
 def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
                    dstrank_id: torch.Tensor, world_size: int, max_bs: int,
-                   mode: int = 0, comm_alg: str = "mte", aiv_num: int = -1
+                   mode: int = 0, comm_alg: str = "", aiv_num: int = -1
                    ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Exchange rows using a BandwidthTestBuffer created before graph capture.
 

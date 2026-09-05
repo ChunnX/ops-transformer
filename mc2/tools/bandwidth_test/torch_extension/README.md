@@ -51,8 +51,12 @@ torch.npu.synchronize()
 原测试脚本 `graph_type=0` 为 eager，`graph_type=3` 为 ACLNN 静态 kernel / ACL graph。
 Meta 输出为 `y[max_bs * world_size, hidden]`（FP16）和
 `receive_cnt[world_size]`（INT32）；GE Converter 与主线 OpDef 对齐。
-Eager 路径经 `aclnnInnerBandwidthTest` 显式传递 Torch 创建的 context，
-不再由公开 ACLNN 包装层重复创建 context。
+Eager 路径经 `aclnnBandwidthTestWithContext` 显式传递 Torch 创建的 context，
+第一段转发到 inner ACLNN，第二段在实际 executor 上设置 MTE server type 后下发，
+与 combine 的 AIV 通信下发方式一致。该包装层不重复创建 context。
+可选参数在 schema、Meta、PrivateUse1、GE converter 和 OpDef 中统一为
+`comm_alg=""`（MTE）、`aiv_num=-1`（平台默认核数）；Python 始终将这两个值显式传给 C++/ACLNN。
+更新此入口后，需要重新构建、安装 BandwidthTest 算子包和 Torch 扩展，并重启测试进程。
 
 Ascend950 支持 MTE（同一 UB 内存域，`comm_alg="mte"` 或空字符串）和
 URMA（`comm_alg="urma"`，由已有 Torch context manager 建立 UBC_CTP channel）。
@@ -65,7 +69,7 @@ y, receive_cnt = bandwidth_test(sym_buffer, x, dstrank_id,
                                 sym_buffer.world_size, x.size(0), mode=0, comm_alg="urma")
 ```
 
-URMA 通过 Torch 的 inner ACLNN 路径使用现有 context；公开的
+URMA 通过 Torch 的 `WithContext` ACLNN 路径使用现有 context；原有的
 `aclnnBandwidthTestGetWorkspaceSize` 包装层不创建 URMA context，会拒绝 `urma`。
 `x` 必须为二维 FP16，`dstrank_id` 为长度等于 bs 的 INT32；
 所有输入位于同一 NPU。主线 kernel 按 max_bs 读取输入，要求 `bs == max_bs`、

@@ -15,7 +15,7 @@
                 },
                 {
                     "name": "x",
-                    "index": 0,
+                    "index": 1,
                     "dtype": "float16",
                     "format": "ND",
                     "paramType": "required",
@@ -24,7 +24,7 @@
                 },
                 {
                     "name": "dst_rank_id",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "required",

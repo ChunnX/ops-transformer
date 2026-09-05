@@ -114,10 +114,6 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(const aclTensor *x, const aclTens
         aclnnInnerBandwidthTestGetWorkspaceSize(mc2Context, x, dstRankId, group, worldSize, maxBs, mode, hcclBuffSize,
                                                 commAlg, aivNum, y, receiveCnt, workspaceSize, executor);
 #endif
-    if (NnopbaseSetHcclServerType) {
-        NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
-    }
-
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize end");
     return aclnnRet;
 }
@@ -126,9 +122,31 @@ aclnnStatus aclnnBandwidthTest(void *workspace, uint64_t workspaceSize, aclOpExe
 {
     OP_LOGD("aclnnBandwidthTest start");
 
+    // Match MoeEpCombine: select AIV communication on the actual executor before launch.
+    if (NnopbaseSetHcclServerType) {
+        NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    }
     aclnnStatus ret = aclnnInnerBandwidthTest(workspace, workspaceSize, executor, stream);
     OP_LOGD("aclnnBandwidthTest end");
     return ret;
+}
+
+aclnnStatus aclnnBandwidthTestWithContextGetWorkspaceSize(
+    const aclTensor *context, const aclTensor *x, const aclTensor *dstRankId, char *group,
+    int64_t worldSize, int64_t maxBs, int64_t mode, int64_t cclBufferSize, char *commAlg,
+    int64_t aivNum, aclTensor *y, aclTensor *receiveCnt, uint64_t *workspaceSize, aclOpExecutor **executor)
+{
+    OP_CHECK_NULL(context, return ACLNN_ERR_PARAM_NULLPTR);
+    auto ret = CheckParams(x, dstRankId, group, worldSize, maxBs, mode, y, receiveCnt);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    return aclnnInnerBandwidthTestGetWorkspaceSize(context, x, dstRankId, group, worldSize, maxBs, mode,
+                                                   cclBufferSize, commAlg, aivNum, y, receiveCnt, workspaceSize, executor);
+}
+
+aclnnStatus aclnnBandwidthTestWithContext(
+    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+{
+    return aclnnBandwidthTest(workspace, workspaceSize, executor, stream);
 }
 
 #ifdef __cplusplus

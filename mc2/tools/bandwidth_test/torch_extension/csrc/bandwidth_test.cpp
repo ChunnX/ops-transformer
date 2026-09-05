@@ -31,7 +31,7 @@ std::tuple<at::Tensor, at::Tensor> bandwidth_test(
         y = at::empty({max_bs * world_size, x.size(1)}, x.options());
         receive_cnt = at::empty({world_size}, x.options().dtype(at::kInt));
     }
-    ACLNN_CMD(aclnnInnerBandwidthTest, context, x, dstrank_id, group, world_size,
+    ACLNN_CMD(aclnnBandwidthTestWithContext, context, x, dstrank_id, group, world_size,
               max_bs, mode, ccl_buffer_size, comm_alg, aiv_num, y, receive_cnt);
     return {y, receive_cnt};
 }
