@@ -1607,8 +1607,13 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
                        gmmParams.activeType);
             return gmm::AclnnGroupedMatmulWeightQuantDAV3510Checker(gmmParams).CheckGroupedMatmulWeightQuantDAV3510();
         } else {
-            CHECK_COND(isNoActivation, ACLNN_ERR_PARAM_INVALID,
-                       "When input is No-Quant, activation is not supported on this platforms."
+            // No-quant: only GELU_TANH post-process is enabled on DAV_3510, with FP16/BF16 output.
+            DataType yDtype = (*gmmParams.y)[0]->GetDataType();
+            bool isGeluSupported = gmmParams.activeType == GMMActType::GMM_ACT_TYPE_GELU_TANH &&
+                                   (yDtype == DataType::DT_FLOAT16 || yDtype == DataType::DT_BFLOAT16);
+            CHECK_COND(isNoActivation || isGeluSupported, ACLNN_ERR_PARAM_INVALID,
+                       "When input is No-Quant, activation is not supported on this platform"
+                       " except GELU_TANH with FP16/BF16 output."
                        " activeType[%ld] is not supported.",
                        gmmParams.activeType);
         }
@@ -1638,7 +1643,11 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
         }
         CHECK_COND(CheckNonQuantMatmulDataType(gmmParams, weightDtype, opName) == ACLNN_SUCCESS,
                    ACLNN_ERR_PARAM_INVALID, "In op [%s], when non-quant, data type check failed.", opName);
-        CHECK_COND(isNoActivation, ACLNN_ERR_PARAM_INVALID,
+        // No-quant GELU_TANH is only enabled on DAV_3510 (y dtype checked in the DAV_3510 branch above).
+        bool isNoQuantActAllowed =
+            isNoActivation || (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
+                               gmmParams.activeType == GMMActType::GMM_ACT_TYPE_GELU_TANH);
+        CHECK_COND(isNoQuantActAllowed, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when %s, [%s] is not supported, got [%ld]. Constraint:[activation is not supported].",
                    opName, GetGmmScenarioName(gmmParams.xDtype, weightDtype), "activeType", gmmParams.activeType);
         return CheckNonQuant(gmmParams, opName);
