@@ -10,12 +10,14 @@
 
 #include "aclnn_block_attention_residuals_grad.h"
 #include "block_attention_residuals_grad.h"
+#include "log/log.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_executor.h"
 #include "aclnn/aclnn_base.h"
 #include "opdev/op_log.h"
 #include "opdev/op_dfx.h"
+#include "opdev/tensor_view_utils.h"
 
 #include "aclnn_kernels/contiguous.h"
 
