@@ -107,7 +107,7 @@ cann_ops_transformer.block_attention_residuals(
 | block_res | Tensor | 必选 | 前 $N$ 行 value，对应公式中的 $block\_res$。数据格式为 ND；dtype 必须与 `partial_block` 一致。 | 同 partial_block | [T, N, H] |
 | proj_weight | Tensor | 必选 | 投影权重，与 `norm_weight` 共同构成 $score\_weight$。数据格式为 ND；dtype 必须与 `partial_block` 一致。 | 同 partial_block | [H] 或 [1, H] |
 | norm_weight | Tensor | 必选 | RMS 缩放权重。数据格式为 ND；dtype 必须与 `partial_block` 一致。 | 同 partial_block | [H] |
-| valid_block_num | int | 可选 | Torch 适配层可选。不传或传入 `None` / `-1` 时默认使用 $N$，再下发给 ACLNN；当前仅支持等于 $N$，其它取值报错。 | int | - |
+| valid_block_num | int | 可选 | 不传或传入 `None` / `-1` 时默认使用 $N$；当前仅支持等于 $N$，其它取值报错。 | int | - |
 | norm_eps | float | 可选 | RMS 归一化的数值稳定项，必须为有限正数，默认值为 `1.0e-6`。 | float | - |
 
 ## 返回值说明
@@ -125,7 +125,7 @@ cann_ops_transformer.block_attention_residuals(
 - 主路径 dtype 必须一致，支持 float16 / bfloat16 / float32。
 - shape 要求：`T >= 0`，`H >= 1`，`1 <= N <= 100`。`T == 0` 时返回对应 shape 的空输出。
 - `block_res.shape[0]`、`block_res.shape[2]` 必须分别等于 `partial_block` 的 $T$、$H$；`proj_weight` 最后一维与 `norm_weight` 长度必须等于 $H$。
-- `valid_block_num` 为 Torch 适配层可选参数：不传或传入 `None` / `-1` 时默认等于 $N$，由适配层解析后再调用 ACLNN。ACLNN / 算子侧该属性仍为必选且必须等于 $N$。
+- `valid_block_num` 为可选参数：Torch 不传或传入 `None` / `-1` 时默认等于 $N$；ACLNN 传 `-1` 时同样回落到 $N$。当前仅支持该默认值（等于 $N$）。
 - `norm_eps` 必须为有限正数。
 - 输入 Tensor 支持非连续布局，接口内部转为连续后再计算。
 - `partial_block` 或 `block_res` 含 `NaN`、`Inf`，或平方、乘法及累加发生溢出时，结果可能包含 `NaN` 或 `Inf`。
