@@ -25,7 +25,7 @@ _ENGRAM_DTYPE_TO_INT = {
     torch.float16: 5,
     torch.float32: 6,
     torch.bfloat16: 15,
-    torch.float8_e4m3fn: 4,  # at::ScalarType::kUInt8, viewed as fp8_e4m3fn in Python
+    torch.float8_e4m3fn: 0,  # at::ScalarType::kByte (uint8), viewed as fp8_e4m3fn in Python
 }
 _ENGRAM_INT_TO_DTYPE = {v: k for k, v in _ENGRAM_DTYPE_TO_INT.items()}
 
