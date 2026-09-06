@@ -189,6 +189,9 @@ ge::graphStatus MatmulReduceScatterV2Tiling::DoOpTiling()
 
 ge::graphStatus MatmulReduceScatterV2Tiling::PostTiling()
 {
+    matmulReduceScatterV2TilingData_->quantMode = 0;
+    matmulReduceScatterV2TilingData_->tilingKey = GetTilingKey();
+    matmulReduceScatterV2TilingData_->workspaceLayout = workspaceLayout_;
     auto rawTilingDataPtr = context_->GetRawTilingData();
     OP_TILING_CHECK((rawTilingDataPtr == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "rawTilingDataPtr"),
                     return ge::GRAPH_FAILED);
