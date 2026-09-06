@@ -147,13 +147,17 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernel::ParamsInit()
 
 uint32_t GenericBlockSparseAttentionGradMetadataCpuKernel::GetKvSeqLen(uint32_t bIdx) const
 {
-    if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
-        const int32_t *sequsedPtr = static_cast<const int32_t *>(sequsedKv_->GetData());
-        return static_cast<uint32_t>(sequsedPtr[bIdx]);
-    }
-    if (layoutKv_ == "TND" && cuSeqLengthsKv_ != nullptr && cuSeqLengthsKv_->GetData() != nullptr) {
-        const int64_t *cuPtr = static_cast<const int64_t *>(cuSeqLengthsKv_->GetData());
-        return static_cast<uint32_t>(cuPtr[bIdx + 1U] - cuPtr[bIdx]);
+    // seqused_kv is only meaningful for TND (same contract as Grad kernel).
+    // BNSD/BSND must use max_kv_seqlen (aligned with dense Q/K S dims).
+    if (layoutKv_ == "TND") {
+        if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
+            const int32_t *sequsedPtr = static_cast<const int32_t *>(sequsedKv_->GetData());
+            return static_cast<uint32_t>(sequsedPtr[bIdx]);
+        }
+        if (cuSeqLengthsKv_ != nullptr && cuSeqLengthsKv_->GetData() != nullptr) {
+            const int64_t *cuPtr = static_cast<const int64_t *>(cuSeqLengthsKv_->GetData());
+            return static_cast<uint32_t>(cuPtr[bIdx + 1U] - cuPtr[bIdx]);
+        }
     }
     return static_cast<uint32_t>(maxKvSeqlen_);
 }

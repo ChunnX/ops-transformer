@@ -124,28 +124,28 @@ $$
   <tr>
     <td class="tg-0pky">cuSeqLengthsQOptional</td>
     <td class="tg-0pky">可选输入</td>
-    <td class="tg-0pky">TND layout下query的累积序列长度。</td>
+    <td class="tg-0pky">TND layout下query的序列前缀和，layout为TND时必传。</td>
     <td class="tg-0pky">INT64</td>
     <td class="tg-0pky">ND</td>
   </tr>
   <tr>
     <td class="tg-0pky">cuSeqLengthsKvOptional</td>
     <td class="tg-0pky">可选输入</td>
-    <td class="tg-0pky">TND layout下key/value的累积序列长度。</td>
+    <td class="tg-0pky">TND layout下key/value的序列前缀和，layout为TND时必传。</td>
     <td class="tg-0pky">INT64</td>
     <td class="tg-0pky">ND</td>
   </tr>
   <tr>
     <td class="tg-0pky">sequsedQOptional</td>
     <td class="tg-0pky">可选输入</td>
-    <td class="tg-0pky">各batch中query的实际序列长度。</td>
+    <td class="tg-0pky">各batch中query的实际序列长度。仅layout为TND时生效；BNSD/BSND须传nullptr，实际长度取自query的S维。</td>
     <td class="tg-0pky">INT32</td>
     <td class="tg-0pky">ND</td>
   </tr>
   <tr>
     <td class="tg-0pky">sequsedKvOptional</td>
     <td class="tg-0pky">可选输入</td>
-    <td class="tg-0pky">各batch中kv的实际序列长度。</td>
+    <td class="tg-0pky">各batch中kv的实际序列长度。仅layout为TND时生效；BNSD/BSND须传nullptr，实际长度取自key/value的S维。</td>
     <td class="tg-0pky">INT32</td>
     <td class="tg-0pky">ND</td>
   </tr>
@@ -240,8 +240,12 @@ $$
 * <term>Ascend 950PR/Ascend 950DT</term>：支持FLOAT16、BFLOAT16的query/key/value/dout/out/dQuery/dKey/dValue，且数据类型保持一致；lse为FLOAT32。
 * 须先调用GenericBlockSparseAttentionGradMetadata生成metadata，再调用本算子。
 * layoutQ与layoutKv须相同，取值TND/BNSD/BSND；TND布局下须传入对应cuSeqLengths。
+* sequsedQOptional/sequsedKvOptional仅在TND时生效；BNSD/BSND须传nullptr，实际序列长度取自Q/K的S维。
 * HeadDim固定为128；N1/N2取值范围[1, 128]，且N1 % N2 == 0。
-* blockShape：blockShapeX仅支持1；blockShapeY须≥128且为64的倍数（Cube按baseN=128切分S2）；isPackedGQA当前仅支持1；maskType当前仅支持1。
+* blockShape：blockShapeX仅支持1；blockShapeY须≥128且为64的倍数（Cube按baseN=128切分S2）；
+* isPackedGQA当前仅支持1；
+* maskType当前仅支持1。
+* softmaxPrecision当前仅支持0；
 * winLeft/winRight不使能时必须为-1；attenMaskOptional当前应传nullptr。
 * 默认为非确定性实现，暂不支持确定性实现。
 
