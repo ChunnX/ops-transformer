@@ -110,36 +110,28 @@ inline __aicore__ void quant_flash_attn_gqa_fp8(
     constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);
     constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv);
 
-    constexpr bool useDn = true;
+    // fp8: useDn 恒 true、isDAligned 无此概念恒 true（对照 QFAType 参数序）
+    using FA_T =
+        BaseApi::QFAType<INPUT_T, OUT_T, inputLayoutType, inputLayoutType, outputLayoutType, s1TemplateType,
+                         s2TemplateType, dTemplateType, dVTemplateType, KvLayoutType, hasAttenMask, false, true, true>;
 
-    using Fp8CubeBlock =
-        BaseApi::QuantFlashAttnBlockCubeGqaFp8<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-                                               dTemplateType, dVTemplateType, KvLayoutType, useDn>;
-    using Fp8VecFaBlock =
-        BaseApi::QuantFlashAttnBlockVecGqaFp8<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
-                                              s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType,
-                                              false, useDn>;
-    using VecFdBlock =
-        BaseApi::QuantFlashAttnBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                   s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                   hasAttenMask, KvLayoutType, useDn>;
+    using Fp8CubeBlock = BaseApi::QuantFlashAttnBlockCubeGqaFp8<FA_T>;
+    using Fp8VecFaBlock = BaseApi::QuantFlashAttnBlockVecGqaFp8<FA_T>;
+    // FD block 待三路径全部FA_T化后统一转换（Q-A: 保持现签名，参数从FA_T展开）
+    using VecFdBlock = BaseApi::QuantFlashAttnBlockVecFlashDecode<
+        typename FA_T::inputType, float, typename FA_T::outputType, FA_T::qLayout, FA_T::attnOutLayout, FA_T::mBaseSize,
+        FA_T::s2BaseSize, FA_T::dBaseSize, FA_T::dVBaseSize, FA_T::hasMask, FA_T::kvLayoutType, FA_T::useDn>;
 
-    using Fp8CubeBlockDummy =
-        BaseApi::QuantFlashAttnBlockCubeGqaFp8Dummy<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-                                                    dTemplateType, dVTemplateType, KvLayoutType, useDn>;
-    using Fp8VecFaBlockDummy =
-        BaseApi::QuantFlashAttnBlockVecGqaFp8Dummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                   s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                   hasAttenMask, KvLayoutType, false, useDn>;
-    using VecFdBlockDummy =
-        BaseApi::QuantFlashAttnBlockVecFlashDecodeDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                        hasAttenMask, KvLayoutType, useDn>;
+    using Fp8CubeBlockDummy = BaseApi::QuantFlashAttnBlockCubeGqaFp8Dummy<FA_T>;
+    using Fp8VecFaBlockDummy = BaseApi::QuantFlashAttnBlockVecGqaFp8Dummy<FA_T>;
+    using VecFdBlockDummy = BaseApi::QuantFlashAttnBlockVecFlashDecodeDummy<
+        typename FA_T::inputType, float, typename FA_T::outputType, FA_T::qLayout, FA_T::attnOutLayout, FA_T::mBaseSize,
+        FA_T::s2BaseSize, FA_T::dBaseSize, FA_T::dVBaseSize, FA_T::hasMask, FA_T::kvLayoutType, FA_T::useDn>;
 
 #ifdef __DAV_C310_CUBE__
-    using Kernel = BaseApi::QuantFlashAttnKernelFp8<Fp8CubeBlock, Fp8VecFaBlockDummy, VecFdBlockDummy>;
+    using Kernel = BaseApi::QuantFlashAttnKernelFp8<FA_T, Fp8CubeBlock, Fp8VecFaBlockDummy, VecFdBlockDummy>;
 #else
-    using Kernel = BaseApi::QuantFlashAttnKernelFp8<Fp8CubeBlockDummy, Fp8VecFaBlock, VecFdBlock>;
+    using Kernel = BaseApi::QuantFlashAttnKernelFp8<FA_T, Fp8CubeBlockDummy, Fp8VecFaBlock, VecFdBlock>;
 #endif
 
     // 静态Tensor范式：手动初始化全局状态寄存器（TPipe范式下由TPipe完成）
