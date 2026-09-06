@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ACLNN_GENERIC_SPARSE_ATTENTION_GRAD_H
-#define ACLNN_GENERIC_SPARSE_ATTENTION_GRAD_H
+#ifndef ACLNN_GENERIC_BLOCK_SPARSE_ATTENTION_GRAD_H
+#define ACLNN_GENERIC_BLOCK_SPARSE_ATTENTION_GRAD_H
 
 #include "aclnn/acl_meta.h"
 
@@ -42,4 +42,4 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
 }
 #endif
 
-#endif // ACLNN_GENERIC_SPARSE_ATTENTION_GRAD_H
+#endif // ACLNN_GENERIC_BLOCK_SPARSE_ATTENTION_GRAD_H

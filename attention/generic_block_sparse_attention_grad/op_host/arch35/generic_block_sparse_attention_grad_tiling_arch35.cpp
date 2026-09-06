@@ -59,9 +59,13 @@ protected:
             return false;
         }
         if (blockShapeY_ < 128 || blockShapeY_ % 64 != 0) {
-            OP_LOGE(context_->GetNodeName(), "block_shape[1] must be >= 128 and 64-aligned.");
+            OP_LOGE(context_->GetNodeName(),
+                    "block_shape[1] must be >= 128 and 64-aligned, got blockShapeY=%ld.",
+                    static_cast<int64_t>(blockShapeY_));
             return false;
         }
+        OP_LOGI(context_->GetNodeName(), "block_shape[1] check passed, blockShapeY=%ld.",
+                static_cast<int64_t>(blockShapeY_));
         // BlockY is sparse-block width only. Cube/Softmax tile is fixed baseN=128;
         // kernel splits each J block into S2 tiles of size <= baseN.
         if (isPackedGQA_ != 1) {
