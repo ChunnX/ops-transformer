@@ -61,7 +61,10 @@ public:
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+    // task ring buffer 至少需要 PRELOAD_N+1(=3) 个slot；为了用位掩码(loop & MASK)代替取模(loop % SIZE)，
+    // 将容量向上取整到最近的2的幂(=4)。代价仅为多1个RunInfo slot，换取消除内层循环的取模scalar bound。
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
     static constexpr bool FLASH_DECODE = VecFaBlockType::FLASH_DECODE;
@@ -74,27 +77,6 @@ public:
     using T = typename CubeBlockType::MM_T;
     using OUT_T = typename VecFaBlockType::OUT_T;
     using ConstInfoX = typename CubeBlockType::ConstInfoX;
-
-    // CV buffers
-    BufferManager<BufferType::GM> gmBufferManager_;
-    BufferManager<BufferType::UB> ubBufferManager_;
-    BufferManager<BufferType::L1> l1BufferManager_;
-    BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers_;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers_;
-    BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers_;
-    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers_;
-
-    // 核间同步ID（静态Tensor范式，取代MAKE_ID动态计数器；AIV1侧经+16偏移镜像）
-    // id0 = AIC→AIV 数据就绪方向；id1 = AIV→AIC buffer释放方向；FORWARD型仅需id0
-    static constexpr uint32_t CC_BMM1_PING_ID0 = 0U;
-    static constexpr uint32_t CC_BMM1_PING_ID1 = 1U;
-    static constexpr uint32_t CC_BMM1_PONG_ID0 = 2U;
-    static constexpr uint32_t CC_BMM1_PONG_ID1 = 3U;
-    static constexpr uint32_t CC_BMM2_ID0 = 4U;
-    static constexpr uint32_t CC_BMM2_ID1 = 5U;
-    static constexpr uint32_t CC_L1P_0 = 6U;
-    static constexpr uint32_t CC_L1P_1 = 7U;
-    static constexpr uint32_t CC_L1P_2 = 8U;
 
     GlobalTensor<int32_t> cuSeqLensGmQ_;
     GlobalTensor<int32_t> cuSeqLensGmKv_;
@@ -192,8 +174,6 @@ public:
         InitQCuSeqLensParser(cuSeqLensQ, sequsedQ);
         InitKvCuSeqLensParser(cuSeqLensKv, sequsedKv);
 
-        InitMMResBuf(workspace);
-
         if ASCEND_IS_AIV {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 vecFaBlock_.InitVecBlock(cuSeqLensQ, cuSeqLensKv, pScale, attnMask, softmaxLse, attnOut, workspace);
@@ -207,11 +187,11 @@ public:
 
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                cubeBlock_.InitCubeBlock(&l1BufferManager_, query, key, value, blockTable, dequantScaleQuery,
-                                         dequantScaleKey, dequantScaleValue, qCuSeqLensParser_, kvCuSeqLensParser_);
+                cubeBlock_.InitCubeBlock(query, key, value, blockTable, dequantScaleQuery, dequantScaleKey,
+                                         dequantScaleValue, qCuSeqLensParser_, kvCuSeqLensParser_);
             } else {
-                cubeBlock_.InitCubeBlock(&l1BufferManager_, query, key, value, blockTable, dequantScaleQuery,
-                                         dequantScaleKey, dequantScaleValue, qSeqUsedParser_, kvSeqUsedParser_);
+                cubeBlock_.InitCubeBlock(query, key, value, blockTable, dequantScaleQuery, dequantScaleKey,
+                                         dequantScaleValue, qSeqUsedParser_, kvSeqUsedParser_);
             }
         }
         if constexpr (FLASH_DECODE) {
@@ -234,29 +214,6 @@ public:
                 }
             }
         }
-    }
-
-    __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)
-    {
-        uint32_t mm1OutDtype = sizeof(T);
-
-        uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype / 2;
-        constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
-        constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T) + mBaseSize * s2BaseSize / 32;
-        // 静态Tensor范式：直接构造指定地址的LocalTensor，不经TPipe
-        l1BufferManager_.Init(524288); // 512 * 1024
-        // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
-        l1PBuffers_.Init(l1BufferManager_, mm2LeftSize);
-        ubBufferManager_.Init(mm1ResultSize * 2 + mm2ResultSize);
-        bmm2Buffers_.Init(ubBufferManager_, mm2ResultSize);
-        bmm1Buffers_.Init(ubBufferManager_, mm1ResultSize);
-        // 注入静态核间同步ID（AIC/AIV两侧常量一致，取代动态计数器分配）
-        bmm2Buffers_.Get().SetCrossCoreID(CC_BMM2_ID0, CC_BMM2_ID1);
-        bmm1Buffers_.Get().SetCrossCoreID(CC_BMM1_PONG_ID0, CC_BMM1_PONG_ID1);
-        bmm1Buffers_.Get().SetCrossCoreID(CC_BMM1_PING_ID0, CC_BMM1_PING_ID1);
-        l1PBuffers_.Get().SetCrossCoreID(CC_L1P_0, INVALID_CROSS_CORE_EVENT_ID);
-        l1PBuffers_.Get().SetCrossCoreID(CC_L1P_1, INVALID_CROSS_CORE_EVENT_ID);
-        l1PBuffers_.Get().SetCrossCoreID(CC_L1P_2, INVALID_CROSS_CORE_EVENT_ID);
     }
 
     __aicore__ inline void InitConstInfo()
@@ -360,29 +317,6 @@ public:
     __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
         return QFA_FD_METADATA_SIZE * QFA_AIV_CORE_NUM * sectionIdx + QFA_FD_METADATA_SIZE * coreIdx + metaIdx;
-    }
-
-    __aicore__ inline void CrossCoreBufferInit()
-    {
-        if ASCEND_IS_AIV {
-            bmm2Buffers_.Get().SetCrossCore();
-        }
-
-        if ASCEND_IS_AIV {
-            bmm1Buffers_.Get().SetCrossCore();
-            bmm1Buffers_.Get().SetCrossCore();
-        }
-    }
-
-    __aicore__ inline void CrossCoreBufferUnInit()
-    {
-        if ASCEND_IS_AIC {
-            bmm1Buffers_.Get().WaitCrossCore();
-            bmm1Buffers_.Get().WaitCrossCore();
-        }
-        if ASCEND_IS_AIC {
-            bmm2Buffers_.Get().WaitCrossCore();
-        }
     }
 
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
@@ -603,8 +537,8 @@ public:
 
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务
-        RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
+        RunInfoX &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK];                  // 本轮任务
+        RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
         if (runInfo0.isValid) {
             uint32_t c1v1Loop = CeilDiv(runInfo0.actSingleLoopS2Size, s2SplitSize);
             for (uint32_t subLoop = 0; subLoop < c1v1Loop; ++subLoop) {
@@ -630,32 +564,28 @@ public:
 
     __aicore__ inline void ComputeMm1(RunInfoX &runInfo, uint32_t subLoop)
     {
-        cubeBlock_.IterateBmm1(this->bmm1Buffers_.Get(), runInfo, subLoop);
+        cubeBlock_.IterateBmm1(runInfo, subLoop);
     }
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {
-        cubeBlock_.IterateBmm2(this->bmm2Buffers_.Get(), this->l1PBuffers_, runInfo);
+        cubeBlock_.IterateBmm2(runInfo);
     }
 
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo, uint32_t subLoop)
     {
-        if (subLoop % 2 == 0) {
-            vecFaBlock_.ProcessVec1(this->l1PBuffers_.Get(), this->bmm1Buffers_.Get(), runInfo, subLoop);
-        } else {
-            vecFaBlock_.ProcessVec1(this->l1PBuffers_.GetPre(), this->bmm1Buffers_.Get(), runInfo, subLoop);
-        }
+        vecFaBlock_.ProcessVec1(runInfo, subLoop);
     }
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
     {
-        this->vecFaBlock_.ProcessVec2(this->bmm2Buffers_.Get(), runInfo);
+        this->vecFaBlock_.ProcessVec2(runInfo);
     }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
+        RunInfoX &runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
         CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
     }
@@ -811,15 +741,14 @@ public:
 
     __aicore__ inline void Process()
     {
-        if (constInfo_.aicIdx < constInfo_.coreNum) {
-            CrossCoreBufferInit();
-            if ASCEND_IS_AIV {
-                vecFaBlock_.InitBuffers();
-                vecFaBlock_.AllocEventID();
-            } else {
-                cubeBlock_.InitBuffers();
-                cubeBlock_.AllocEventID();
-            }
+        if ASCEND_IS_AIV {
+            vecFaBlock_.InitBuffers();
+            vecFaBlock_.InitCrossCoreSync();
+            vecFaBlock_.AllocEventID();
+        } else {
+            cubeBlock_.InitBuffers();
+            cubeBlock_.InitCrossCoreSync();
+            cubeBlock_.AllocEventID();
         }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
             if (constInfo_.aicIdx < constInfo_.coreNum) {
@@ -832,13 +761,12 @@ public:
             }
         }
 
-        if (constInfo_.aicIdx < constInfo_.coreNum) {
-            if ASCEND_IS_AIV {
-                vecFaBlock_.FreeEventID();
-            } else {
-                cubeBlock_.FreeEventID();
-            }
-            CrossCoreBufferUnInit();
+        if ASCEND_IS_AIV {
+            vecFaBlock_.FreeEventID();
+            vecFaBlock_.UnInitCrossCoreSync();
+        } else {
+            cubeBlock_.FreeEventID();
+            cubeBlock_.UnInitCrossCoreSync();
         }
     }
 }; // QuantFlashAttnKernelMxfp8

@@ -122,8 +122,20 @@ public:
     // ====================静态UB布局====================
     // vec 区基址 = kernel 侧 ubBufferManager_ 的总量（mm1ResultSize*2 + mm2ResultSize），
     // vec 侧按 kernel 公式 constexpr 重算，AIC/AIV 两侧一致
-    static constexpr uint32_t VEC_UB_BASE = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T) / 2 * 2 +
-                                            mBaseSize / CV_RATIO * (uint32_t)dVTemplateType * sizeof(T);
+    // fa式跨核共享区（cube/vec双侧各自持有同布局裸数组，跨核flag=slotID，AIC侧±16双AIV镜像）：
+    // UB: [bmm2Res 1槽][bmm1Res 2槽] 从0起（vec专用区紧随其后）；L1: P区3槽从0起（cube侧Q/KV紧随其后）
+    static constexpr uint32_t MM1_RES_BUFCNT = 2U;
+    static constexpr uint32_t MM1_RES_BUF_BYTES = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T) / 2;
+    static constexpr uint32_t MM2_RES_BUF_BYTES = mBaseSize / CV_RATIO * (uint32_t)dVTemplateType * sizeof(T);
+    static constexpr uint32_t L1_P_BUFCNT = 3U;
+    static constexpr uint32_t L1_P_BUF_BYTES =
+        mBaseSize * s2BaseSize * sizeof(INPUT_T) + mBaseSize * s2BaseSize / MXFP_GROUP_SIZE;
+    static constexpr uint32_t VEC_UB_BASE = MM2_RES_BUF_BYTES + MM1_RES_BUFCNT * MM1_RES_BUF_BYTES;
+    // 跨核flag ID（mode 4 独立编号空间）
+    static constexpr uint32_t CC_MM_BMM1_0 = 0U;
+    static constexpr uint32_t CC_MM_BMM1_1 = 1U;
+    static constexpr uint32_t CC_MM_BMM2_0 = 2U;
+    static constexpr uint32_t CC_L1P_0 = 3U;
     static constexpr uint32_t SOFTMAX_BUF_BYTES = 256; // [64, 1]
     static constexpr uint32_t BRDCT_BUF_BYTES = 2048;  // [64, 8]
     static constexpr uint32_t STAGE2_OUT_BUF_BYTES = 64 * dTemplateAlign64 * sizeof(T);
@@ -211,6 +223,12 @@ public:
     flashdecodeGmType softmaxFDSumGm_;
     flashdecodeGmType softmaxFDMaxGm_;
 
+    // 跨核共享区（fa式：与cube侧同布局裸数组；AIV写P/读mmRes）
+    LocalTensor<uint8_t> l1PBuffers_;
+    LocalTensor<uint8_t> ubBmm1ResBuffers_;
+    LocalTensor<uint8_t> ubBmm2ResBuffers_;
+    uint32_t mm1ResBufId_ = 0U;
+
     // ub（静态Tensor范式：LocalTensor 直连 UB 绝对偏移，布局见 InitBuffers）
     LocalTensor<uint8_t> commonTBuf_;                 // common的复用空间
     LocalTensor<uint8_t> stage1OutBuf_[2];            // softmax结果拷至L1
@@ -282,24 +300,38 @@ public:
         }
     }
 
-    __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                       RunInfoX runInfo, uint32_t subLoop)
+    __aicore__ inline void ProcessVec1(RunInfoX runInfo, uint32_t subLoop)
     {
-        bmm1ResBuf.WaitCrossCore();
+        uint32_t mm1ResBufId = mm1ResBufId_;
+        mm1ResBufId_ = (mm1ResBufId_ + 1) % MM1_RES_BUFCNT;
+        uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
+        uint32_t mmSyncIdx = CC_MM_BMM1_0 + mm1ResBufId;
+        uint32_t v1c2CrossCoreSyncIdx = CC_L1P_0 + pL1BufId;
+        LocalTensor<uint8_t> pL1Buf = l1PBuffers_[pL1BufId * L1_P_BUF_BYTES];
+        LocalTensor<T> mm1ResUbTensor =
+            ubBmm1ResBuffers_[mm1ResBufId * MM1_RES_BUF_BYTES].template ReinterpretCast<T>();
+        // P槽的完整写入跨本任务全部subLoop，ready仅在末subLoop置位
+        uint32_t c1v1Loop = CeilDiv(runInfo.actSingleLoopS2Size, s2SplitSize);
+        bool isLastSubLoop = (subLoop == c1v1Loop - 1);
+
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx); // 等AIC写入该槽（ready）
         if (unlikely(runInfo.actVecMSize == 0)) {
-            bmm1ResBuf.SetCrossCore();
-            if (((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) ||
-                (runInfo.actSingleLoopS2Size <= s2SplitSize)) {
-                outputBuf.SetCrossCore();
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx); // free
+            if (isLastSubLoop) {
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(
+                    v1c2CrossCoreSyncIdx); // P ready（内容未写，Bmm2输出被Vec2丢弃）
             }
             return;
         }
 
         if constexpr (USE_DN) {
-            ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo, subLoop);
+            ProcessVec1Dn(pL1Buf, mm1ResUbTensor, runInfo, subLoop);
         } else {
-            ProcessVec1Nd(outputBuf, bmm1ResBuf, runInfo, subLoop);
+            ProcessVec1Nd(pL1Buf, mm1ResUbTensor, runInfo, subLoop);
+        }
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx); // 读完mmRes，free
+        if (isLastSubLoop) {
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(v1c2CrossCoreSyncIdx); // P ready
         }
     }
 
@@ -345,9 +377,8 @@ public:
 
     // =================================Private Functions=================================
 
-    __aicore__ inline void ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                         RunInfoX runInfo, uint32_t subLoop)
+    __aicore__ inline void ProcessVec1Dn(LocalTensor<uint8_t> &pL1Buf, LocalTensor<T> &mm1ResUbTensor, RunInfoX runInfo,
+                                         uint32_t subLoop)
     {
         int64_t maskLine = 0;
         if constexpr (HAS_MASK) {
@@ -368,7 +399,7 @@ public:
         LocalTensor<float> firstLoopSumUb = this->firstLoopSumBuf_;
         LocalTensor<T> expUb = this->softmaxExpBuf_[expBufIdx];
 
-        LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
+        LocalTensor<T> mmRes = mm1ResUbTensor;
         // 静态同步协议（照 fa vec 模式）：V 侧 Lock→VF 写→Unlock→MTE3 Lock→DataCopy UB→L1→Unlock
         Mutex::Lock<PIPE_V>(STAGE1_OUT_MUTEX_ID0 + static_cast<uint32_t>(stage1Offset));
         LocalTensor<INPUT_T> stage1CastTensor = this->stage1OutBuf_[stage1Offset].template ReinterpretCast<INPUT_T>();
@@ -412,13 +443,11 @@ public:
                     preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             }
         }
-        bmm1ResBuf.SetCrossCore();
-
         Mutex::Unlock<PIPE_V>(STAGE1_OUT_MUTEX_ID0 + static_cast<uint32_t>(stage1Offset));
         Mutex::Lock<PIPE_MTE3>(STAGE1_OUT_MUTEX_ID0 + static_cast<uint32_t>(stage1Offset));
         //-------------------------Data copy to l1-------------------------
         uint64_t pScaleL1Offset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）
-        LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
+        LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor = pL1Buf[pScaleL1Offset].template ReinterpretCast<fp8_e8m0_t>();
         constexpr uint64_t pScaleDataLen = (mBaseSize >> 1) * s2BaseSizeCur / MXFP_GROUP_SIZE;
         constexpr uint16_t pScaleDstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
         uint64_t vecOffset = constInfo_.subBlockIdx * pScaleDataLen;
@@ -430,7 +459,7 @@ public:
             }
         }
 
-        LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
+        LocalTensor<INPUT_T> mm2AL1Tensor = pL1Buf.template ReinterpretCast<INPUT_T>();
         int64_t subLoopOffset = s2BaseSizeCur * mBaseSize * subLoop;
         constexpr uint16_t elementSize = 32;
         constexpr uint32_t singleProcessSOuterSize = mBaseSize >> 1;
@@ -449,10 +478,6 @@ public:
         //-----------------------------------------------------------------
         Mutex::Unlock<PIPE_MTE3>(STAGE1_OUT_MUTEX_ID0 + static_cast<uint32_t>(stage1Offset));
 
-        if (((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) ||
-            (runInfo.actSingleLoopS2Size <= s2SplitSize)) {
-            outputBuf.SetCrossCore();
-        }
         if (unlikely(runInfo.isLastS2Loop)) {
             SoftmaxDataCopyOut(runInfo, sumUb, maxUb);
         }
@@ -558,9 +583,8 @@ public:
         Mutex::Unlock<PIPE_MTE3>(LSE_OUT_MUTEX_ID);
     }
 
-    __aicore__ inline void ProcessVec1Nd(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                         RunInfoX runInfo, uint32_t subLoop)
+    __aicore__ inline void ProcessVec1Nd(LocalTensor<uint8_t> &pL1Buf, LocalTensor<T> &mm1ResUbTensor, RunInfoX runInfo,
+                                         uint32_t subLoop)
     {
         LocalTensor<pseShiftType> pseUb;
         LocalTensor<uint8_t> dropMaskUb;
@@ -598,7 +622,7 @@ public:
         float descaleQK = 1.0;
         float deSCaleKValue = 1.0;
 
-        LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
+        LocalTensor<T> mmRes = mm1ResUbTensor;
         // 静态同步协议（照 fa vec 模式）：V 侧 Lock→VF 写→Unlock→MTE3 Lock→DataCopy UB→L1→Unlock
         Mutex::Lock<PIPE_V>(STAGE1_OUT_MUTEX_ID0 + static_cast<uint32_t>(stage1Offset));
         LocalTensor<INPUT_T> stage1CastTensor = this->stage1OutBuf_[stage1Offset].template ReinterpretCast<INPUT_T>();
@@ -688,7 +712,6 @@ public:
                 }
             }
         }
-        bmm1ResBuf.SetCrossCore();
         if constexpr (HAS_MASK) {
             Mutex::Unlock<PIPE_V>(MASK_MTE2_MUTEX_ID);
         }
@@ -697,7 +720,7 @@ public:
         Mutex::Unlock<PIPE_V>(STAGE1_OUT_MUTEX_ID0 + static_cast<uint32_t>(stage1Offset));
         Mutex::Lock<PIPE_MTE3>(STAGE1_OUT_MUTEX_ID0 + static_cast<uint32_t>(stage1Offset));
         uint64_t pScaleL1Offset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）
-        LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
+        LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor = pL1Buf[pScaleL1Offset].template ReinterpretCast<fp8_e8m0_t>();
         uint64_t pScaleDataLen = actVecMSizeAlign16 * s2BaseSizeCur / MXFP_GROUP_SIZE;
         constexpr uint16_t pScaleDstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
         uint64_t pScaleSubLoopOffset = pScaleDataLen * 2;
@@ -720,8 +743,7 @@ public:
             }
         }
 
-        LocalTensor<INPUT_T> mm2AL1Tensor;
-        mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
+        LocalTensor<INPUT_T> mm2AL1Tensor = pL1Buf.template ReinterpretCast<INPUT_T>();
         if (likely(runInfo.actVecMSize != 0)) {
             int64_t dstOffset = constInfo_.subBlockIdx * (blockBytes / sizeof(INPUT_T)) * actVecMSizeAlign16 +
                                 s2BaseSizeCur * mBaseSize * subLoop;
@@ -731,21 +753,14 @@ public:
         }
         Mutex::Unlock<PIPE_MTE3>(STAGE1_OUT_MUTEX_ID0 + static_cast<uint32_t>(stage1Offset));
 
-        if (((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) ||
-            (runInfo.actSingleLoopS2Size <= s2SplitSize)) {
-            outputBuf.SetCrossCore();
-        }
-
         if (unlikely(runInfo.isLastS2Loop)) {
             SoftmaxDataCopyOut(runInfo, sumUb, maxUb);
         }
     }
 
-    __aicore__ inline void ProcessVec2OnUb(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
-                                           RunInfoX runInfo)
+    __aicore__ inline void ProcessVec2OnUb(LocalTensor<T> &mm2ResUbTensor, RunInfoX runInfo)
     {
         if (unlikely(runInfo.actVecMSize == 0)) {
-            bmm2ResBuf.SetCrossCore();
             return;
         }
 
@@ -754,7 +769,7 @@ public:
         constexpr float deSCaleVValue = 1.0f;
 
         LocalTensor<T> vec2ResUb = this->stage2OutBuf_;
-        LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
+        LocalTensor<T> mmRes = mm2ResUbTensor;
         WaitFlag<HardEvent::MTE3_V>(MTE3_TO_V_EVENT_ID0);
         if (unlikely(runInfo.isFirstS2Loop)) {
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
@@ -772,7 +787,6 @@ public:
                     vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
             }
         }
-        bmm2ResBuf.SetCrossCore();
         if (unlikely(runInfo.isLastS2Loop)) {
             if (unlikely(runInfo.isFirstS2Loop)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf_[runInfo.mloop % (PRELOAD_N + 1)];
@@ -1016,10 +1030,12 @@ public:
         DataCopyPad(accumOutGm_[gmOffset], vec2ResUb, dataCopyParams);
     }
 
-    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfoX runInfo)
+    __aicore__ inline void ProcessVec2(RunInfoX runInfo)
     {
-        bmm2ResBuf.WaitCrossCore();
-        ProcessVec2OnUb(bmm2ResBuf, runInfo);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_BMM2_0); // 等AIC写入（ready）
+        LocalTensor<T> mm2ResUbTensor = ubBmm2ResBuffers_.template ReinterpretCast<T>();
+        ProcessVec2OnUb(mm2ResUbTensor, runInfo);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_BMM2_0); // 读完，free
         return;
     }
 
@@ -1054,6 +1070,10 @@ public:
 
     __aicore__ inline void InitBuffers()
     {
+        l1PBuffers_ = LocalTensor<uint8_t>(TPosition::A1, 0U, L1_P_BUFCNT * L1_P_BUF_BYTES);
+        ubBmm2ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, 0U, MM2_RES_BUF_BYTES);
+        ubBmm1ResBuffers_ =
+            LocalTensor<uint8_t>(TPosition::VECIN, MM2_RES_BUF_BYTES, MM1_RES_BUFCNT * MM1_RES_BUF_BYTES);
         SoftmaxInitBuffer();
         stage2OutBuf_ =
             LocalTensor<uint8_t>(TPosition::VECIN, OFF_STAGE2_OUT, STAGE2_OUT_BUF_BYTES).template ReinterpretCast<T>();
@@ -1099,6 +1119,16 @@ public:
             }
         }
     }
+
+    __aicore__ inline void InitCrossCoreSync()
+    {
+        // 预置全部mmRes槽为free（AIC首写前无需等待）
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_BMM1_0);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_BMM1_1);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_BMM2_0);
+    }
+
+    __aicore__ inline void UnInitCrossCoreSync() {}
 
     __aicore__ inline void AllocEventID()
     {
