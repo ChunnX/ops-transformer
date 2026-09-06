@@ -47,8 +47,8 @@ namespace Mc2Kernel {
 #if defined(ENABLE_ENGRAM_FETCH_KERNEL)
 
 constexpr AscendC::UrmaWqeEntry URMA_UNORDERED_CFG = {
-    .odr = 0,
-    .fence = 0,
+    .odr = 5,
+    .fence = 1,
     .se = 0,
     .cqe = 0,
     .inlineEn = 0,
@@ -122,8 +122,9 @@ private:
     AscendC::Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> hcomm_;
     using HcommBatchHandle = AscendC::BatchHandle<AscendC::ChannelHandle>;
     HcommBatchHandle activeBatchHandle_{};
-    uint64_t activeBatchChannel_{0};
+    uint64_t activeChannelHandle_{0};
     uint32_t preparedReadCount_{0};
+    uint32_t sqReadCount_{0};
 
     template <auto const &config>
     __aicore__ inline void PrepareRead(uint64_t commHandle, GM_ADDR remoteBase, GM_ADDR dst, GM_ADDR src, uint64_t len);
@@ -340,8 +341,9 @@ template <auto const &config>
 __aicore__ inline void EngramFetchArch35::PrepareRead(uint64_t commHandle, GM_ADDR remoteBase, GM_ADDR dst, GM_ADDR src,
                                                       uint64_t len)
 {
-    if (preparedReadCount_ != 0U && activeBatchChannel_ != commHandle) {
+    if (preparedReadCount_ != 0U && activeChannelHandle_ != commHandle) {
         FlushPreparedReads();
+        sqReadCount_ = 0;
     }
     if (preparedReadCount_ == ENGRAM_BATCH_CAPACITY) {
         FlushPreparedReads();
@@ -350,11 +352,12 @@ __aicore__ inline void EngramFetchArch35::PrepareRead(uint64_t commHandle, GM_AD
         AscendC::LocalTensor<uint8_t> hcommBatchTensor = hcommBatchBuf_.Get<uint8_t>();
         activeBatchHandle_ =
             hcomm_.MakeBatchHandle(commHandle, hcommBatchTensor, ENGRAM_BATCH_BUFFER_BYTES, remoteBase);
-        activeBatchChannel_ = commHandle;
+        activeChannelHandle_ = commHandle;
     }
     int32_t ret = hcomm_.ReadNbi<config>(activeBatchHandle_, dst, src, static_cast<uint32_t>(len));
     ascendc_assert(ret == 0, "batch ReadNbi failed, ret=%d", ret);
     ++preparedReadCount_;
+    ++sqReadCount_;
 }
 
 __aicore__ inline void EngramFetchArch35::FlushPreparedReads()
@@ -365,7 +368,7 @@ __aicore__ inline void EngramFetchArch35::FlushPreparedReads()
     int32_t ret = hcomm_.BatchCommit(activeBatchHandle_);
     ascendc_assert(ret == 0, "BatchCommit failed, ret=%d", ret);
     activeBatchHandle_ = {};
-    activeBatchChannel_ = 0;
+    activeChannelHandle_ = 0;
     preparedReadCount_ = 0U;
 }
 
@@ -399,10 +402,17 @@ __aicore__ inline void EngramFetchArch35::RemoteFetchRank(uint32_t ownerRank, ui
         GM_ADDR dst = fetchedGM_ + globalTokenIdx * hiddenBytes;
         GM_ADDR remoteSrcAddr = remoteBase + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
         bool isLast = (tokenPos + channelCount >= cnt);
-        if (isLast) {
+        bool needDrain = (sqReadCount_ + 1U >= HCOMM_SQ_MAX_PENDING);
+        if (isLast || needDrain) {
             PrepareRead<URMA_CQE_CFG>(channelHandle, remoteBase, dst, remoteSrcAddr, hiddenBytes);
         } else {
             PrepareRead<URMA_UNORDERED_CFG>(channelHandle, remoteBase, dst, remoteSrcAddr, hiddenBytes);
+        }
+        if (needDrain && !isLast) {
+            FlushPreparedReads();
+            int32_t drainRet = hcomm_.Drain(channelHandle);
+            ascendc_assert(drainRet == 0, "mid-stream Drain failed, ret=%d", drainRet);
+            sqReadCount_ = 0;
         }
     }
     FlushPreparedReads();
