@@ -236,6 +236,7 @@ cann_ops_transformer.generic_block_sparse_attention(
 |                      |  sparse_block_idx  |      INPUT      |   Tensor   |
 |                      | sparse_block_count  |      INPUT      |   Tensor   |
 |                      |     block_shape     |   ATTR(REQUIRED) |  int[]  |
+|                      |    is_packed_gqa    | ATTR(OPTIONAL) |   bool   |
 |                      |       metadata       | INPUT(OPTIONAL) |   Tensor   |
 |                      |    softmax_scale    | ATTR(OPTIONAL) |   float   |
 |                      |  softmax_precision  | ATTR(OPTIONAL) |   int   |
@@ -393,7 +394,7 @@ cann_ops_transformer.generic_block_sparse_attention(
     </tbody>
     </table>
 
-- sparse_block_idx、sparse_block_count、block_shape校验:
+- sparse_block_idx、sparse_block_count、block_shape、is_packed_gqa校验:
 
     <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
     <col style="width: 147px">
@@ -431,7 +432,6 @@ cann_ops_transformer.generic_block_sparse_attention(
             <ul>
                 <li>当前topK不超过256</li>
                 <li>当前block_shape=[1, 128]</li>
-                <li>is_packed_gqa默认值为True，当前仅支持True</li>
             </ul>
         </td>
     </tr>
@@ -449,6 +449,22 @@ cann_ops_transformer.generic_block_sparse_attention(
         <td>
             <ul>
                 <li>长度为2的int列表</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <td>is_packed_gqa</td>
+        <td>
+            <ul>
+                <li>data_type仅支持BOOL</li>
+                <li>当前仅支持True</li>
+            </ul>
+        </td>
+        <td>可选属性，默认值为True</td>
+        <td>metadata接口与主算子须一致</td>
+        <td>
+            <ul>
+                <li>为True时，sparse_block_idx/sparse_block_count按KV_N维排布，shape见单参数校验</li>
             </ul>
         </td>
     </tr>
