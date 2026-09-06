@@ -32,6 +32,15 @@ __global__ __aicore__ void all_gather_matmul_v3(GM_ADDR context, GM_ADDR x1, GM_
     (void)gather_out;
     (void)amax_out;
     (void)workspaceGM;
+    printf("apt workspaceGM=0x%lx tilingGM=0x%lx\n",
+               static_cast<uint64_t>(reinterpret_cast<uintptr_t>(workspaceGM)), 
+               static_cast<uint64_t>(reinterpret_cast<uintptr_t>(tilingGM)));
+    AscendC::GlobalTensor<DTYPE_X1> x1DumpGM;
+    x1DumpGM.SetGlobalBuffer(reinterpret_cast<__gm__ DTYPE_X1 *>(x1));
+    AscendC::DumpTensor(x1DumpGM, 9001, 64);
+    AscendC::GlobalTensor<AscendC::fp8_e8m0_t> x1ScaleDumpGM;
+    x1ScaleDumpGM.SetGlobalBuffer(reinterpret_cast<__gm__ AscendC::fp8_e8m0_t *>(x1_scale));
+    AscendC::DumpTensor(x1ScaleDumpGM, 9002, 64);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
 
     REGISTER_TILING_DEFAULT(AllGatherMxMatmulUrmaTilingData);
@@ -49,4 +58,5 @@ __global__ __aicore__ void all_gather_matmul_v3(GM_ADDR context, GM_ADDR x1, GM_
 #endif
     impl.Init(hcommCtx, x1, x1_scale, x2, x2_scale, y, bias, &tilingData);
     impl.Process();
+    trap();
 }
