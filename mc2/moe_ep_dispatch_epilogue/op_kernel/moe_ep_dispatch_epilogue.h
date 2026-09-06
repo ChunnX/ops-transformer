@@ -383,6 +383,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         if (totalHits != 0) {
             CopyFromWindowByExpert();
         }
+        // recv_x/metadata/weights are consumed immediately by MoeEpCombine in continue mode.  Do not rely on the
+        // diagnostic write below (or on kernel-tail draining) to complete preceding MTE3 writes.
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_OUTPUT_DONE);
     } else {
         WaitDispatch();
@@ -390,6 +393,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_WAIT_DONE);
         CopyCachedRankOffsets();
         CopyFromWindowByCachedMeta();
+        // The cached metadata path ends with MTE3_MTE2 for UB reuse.  Add an explicit producer-completion edge for
+        // the following combine kernel, which consumes all five metadata fields and recv_rank_offsets.
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_OUTPUT_DONE);
     }
 }
@@ -425,6 +431,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     Duplicate<int32_t>(ubWaitStatus_, 0, totalNotifyCnt_ * UB_ALIGN / sizeof(int32_t));
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(statusGMTensor, ubWaitStatus_, clearStatusCopyParams);
+    // Dispatch reuses these notification slots in the next continue round.  SyncAll only synchronizes AIVs; it does
+    // not replace the MTE3 completion required before a later kernel can publish the next round's notifications.
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
