@@ -74,8 +74,8 @@ class EngramFetchArch35 {
 public:
     __aicore__ inline EngramFetchArch35() = default;
 
-    __aicore__ inline void Init(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR workspaceGM,
-                                AscendC::TPipe *pipe, const EngramFetchTilingData *tilingData);
+    __aicore__ inline void Init(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR fetchedSf,
+                                GM_ADDR workspaceGM, AscendC::TPipe *pipe, const EngramFetchTilingData *tilingData);
 
     __aicore__ inline void Process();
 
@@ -126,18 +126,24 @@ private:
     uint32_t preparedReadCount_{0};
     uint32_t sqReadCount_{0};
 
+    __gm__ uint8_t *sfTableGM_{nullptr};
+    GM_ADDR fetchedSfGM_{nullptr};
+    int64_t numSfPacks_{0};
+    int64_t sfElemSize_{0};
+
     template <auto const &config>
     __aicore__ inline void PrepareRead(uint64_t commHandle, GM_ADDR remoteBase, GM_ADDR dst, GM_ADDR src, uint64_t len);
     __aicore__ inline void FlushPreparedReads();
 };
 
-__aicore__ inline void EngramFetchArch35::Init(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched,
+__aicore__ inline void EngramFetchArch35::Init(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR fetchedSf,
                                                GM_ADDR workspaceGM, AscendC::TPipe *pipe,
                                                const EngramFetchTilingData *tilingData)
 {
     tpipe_ = pipe;
     indicesGM_ = indices;
     fetchedGM_ = fetched;
+    fetchedSfGM_ = fetchedSf;
     aivId_ = AscendC::GetBlockIdx();
     (void)workspaceGM;
 
@@ -153,6 +159,10 @@ __aicore__ inline void EngramFetchArch35::Init(GM_ADDR commContext, GM_ADDR indi
     numTokens_ = tilingData->numTokens;
     hiddenBytes_ = tilingData->hiddenBytes;
     ubSize_ = tilingData->ubSize;
+
+    sfTableGM_ = reinterpret_cast<__gm__ uint8_t *>(tilingData->sfTableAddr);
+    numSfPacks_ = tilingData->numSfPacks;
+    sfElemSize_ = tilingData->sfElemSize;
 
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     AscendC::LocalTensor<uint8_t> hcommTensor = hcommBuf_.Get<uint8_t>();
@@ -245,7 +255,6 @@ __aicore__ inline void EngramFetchArch35::GatherRankTokens(uint32_t ownerRank, u
     AscendC::LocalTensor<int32_t> dstRegion = tokenIdxInRank[runningOffset].ReinterpretCast<int32_t>();
     uint64_t rsvdCnt = 0;
     AscendC::GatherMask(dstRegion, positions, mask.ReinterpretCast<uint32_t>(), true, batchLen, {1, 1, 0, 0}, rsvdCnt);
-    AscendC::PipeBarrier<PIPE_V>();
     SyncFunc<AscendC::HardEvent::V_S>();
 
     uint32_t count = static_cast<uint32_t>(rsvdCnt);
@@ -272,7 +281,6 @@ __aicore__ inline void EngramFetchArch35::ScatterByRank(uint32_t batchLen)
     AscendC::PipeBarrier<PIPE_V>();
 
     AscendC::Div<int32_t>(rankIDs, indicesLocal, divisor, batchLen);
-    AscendC::PipeBarrier<PIPE_V>();
     SyncFunc<AscendC::HardEvent::V_S>();
 
     uint32_t runningOffset = 0;
@@ -325,6 +333,8 @@ __aicore__ inline void EngramFetchArch35::LocalFetchTokens(uint32_t indicesBatch
     uint32_t localIdxStart = rankId_ * numEntriesPerRank;
     uint32_t rankStart = rankOffsets(rankId_);
     uint32_t cnt = rankCounts(rankId_);
+    uint32_t sfBytes = static_cast<uint32_t>(numSfPacks_) * static_cast<uint32_t>(sfElemSize_);
+    bool hasSf = (numSfPacks_ > 0 && sfTableGM_ != nullptr && fetchedSfGM_ != nullptr);
     for (uint32_t tokenPos = tokenOffset; tokenPos < cnt; tokenPos += tokenStride) {
         uint32_t i = tokenIdxInRank(rankStart + tokenPos);
         int32_t globalIdx = indicesLocal(i);
@@ -333,6 +343,23 @@ __aicore__ inline void EngramFetchArch35::LocalFetchTokens(uint32_t indicesBatch
         GM_ADDR dst = fetchedGM_ + globalTokenIdx * hiddenBytes;
         GM_ADDR src = (GM_ADDR)commBufferLocal(rankId_) + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
         LocalCopySlice(dst, src, hiddenBytes);
+        if (hasSf) {
+            GM_ADDR sfSrc = sfTableGM_ + static_cast<uint64_t>(globalIdx) * sfBytes;
+            GM_ADDR sfDst = fetchedSfGM_ + globalTokenIdx * sfBytes;
+            AscendC::GlobalTensor<uint8_t> sfSrcGm;
+            AscendC::GlobalTensor<uint8_t> sfDstGm;
+            sfSrcGm.SetGlobalBuffer((__gm__ uint8_t *)sfSrc);
+            sfDstGm.SetGlobalBuffer((__gm__ uint8_t *)sfDst);
+            AscendC::LocalTensor<uint8_t> sfTmp = relayQue_.AllocTensor<uint8_t>();
+            AscendC::DataCopyExtParams sfCopyIn{1U, sfBytes, 0U, 0U, 0U};
+            AscendC::DataCopyPadExtParams<uint8_t> sfPadIn{false, 0, 0, 0};
+            AscendC::DataCopyPad(sfTmp, sfSrcGm, sfCopyIn, sfPadIn);
+            relayQue_.EnQue<uint8_t>(sfTmp);
+            sfTmp = relayQue_.DeQue<uint8_t>();
+            AscendC::DataCopyExtParams sfCopyOut{1U, sfBytes, 0U, 0U, 0U};
+            AscendC::DataCopyPad(sfDstGm, sfTmp, sfCopyOut);
+            relayQue_.FreeTensor<uint8_t>(sfTmp);
+        }
     }
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
@@ -393,6 +420,8 @@ __aicore__ inline void EngramFetchArch35::RemoteFetchRank(uint32_t ownerRank, ui
     }
     uint64_t channelHandle = hcommHandleLocal(ownerRank * channelsPerRank_ + channelIdxInRank);
     GM_ADDR remoteBase = (GM_ADDR)commBufferLocal(ownerRank);
+    uint32_t sfBytes = static_cast<uint32_t>(numSfPacks_) * static_cast<uint32_t>(sfElemSize_);
+    bool hasSf = (numSfPacks_ > 0 && sfTableGM_ != nullptr && fetchedSfGM_ != nullptr);
 
     for (uint32_t tokenPos = channelIdxInRank; tokenPos < cnt; tokenPos += channelCount) {
         uint32_t i = tokenIdxInRank(rankStart + tokenPos);
@@ -413,6 +442,23 @@ __aicore__ inline void EngramFetchArch35::RemoteFetchRank(uint32_t ownerRank, ui
             int32_t drainRet = hcomm_.Drain(channelHandle);
             ascendc_assert(drainRet == 0, "mid-stream Drain failed, ret=%d", drainRet);
             sqReadCount_ = 0;
+        }
+        if (hasSf) {
+            GM_ADDR sfSrc = sfTableGM_ + static_cast<uint64_t>(globalIdx) * sfBytes;
+            GM_ADDR sfDst = fetchedSfGM_ + globalTokenIdx * sfBytes;
+            AscendC::GlobalTensor<uint8_t> sfSrcGm;
+            AscendC::GlobalTensor<uint8_t> sfDstGm;
+            sfSrcGm.SetGlobalBuffer((__gm__ uint8_t *)sfSrc);
+            sfDstGm.SetGlobalBuffer((__gm__ uint8_t *)sfDst);
+            AscendC::LocalTensor<uint8_t> sfTmp = relayQue_.AllocTensor<uint8_t>();
+            AscendC::DataCopyExtParams sfCopyIn{1U, sfBytes, 0U, 0U, 0U};
+            AscendC::DataCopyPadExtParams<uint8_t> sfPadIn{false, 0, 0, 0};
+            AscendC::DataCopyPad(sfTmp, sfSrcGm, sfCopyIn, sfPadIn);
+            relayQue_.EnQue<uint8_t>(sfTmp);
+            sfTmp = relayQue_.DeQue<uint8_t>();
+            AscendC::DataCopyExtParams sfCopyOut{1U, sfBytes, 0U, 0U, 0U};
+            AscendC::DataCopyPad(sfDstGm, sfTmp, sfCopyOut);
+            relayQue_.FreeTensor<uint8_t>(sfTmp);
         }
     }
     FlushPreparedReads();
