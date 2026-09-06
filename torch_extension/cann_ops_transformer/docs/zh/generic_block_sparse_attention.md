@@ -393,8 +393,6 @@ cann_ops_transformer.generic_block_sparse_attention(
     </tbody>
     </table>
 
-    > 当前仅支持上表组合；无独立 `layout_out` 参数，`attention_out` 排布与 `layout_q` 一致。`return_softmax_lse` 为 False 时，`softmax_lse` 输出空 Tensor。
-
 - sparse_block_idx、sparse_block_count、block_shape校验:
 
     <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
