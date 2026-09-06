@@ -55,6 +55,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
             &SchedulerImpl); \
         op.Init(x1, x2, bias, y, all2all_out, workspaceGM, &tilingData, &pipe); \
         op.Process(); \
+        trap(); \
     } while (0)
 #endif
 
@@ -81,6 +82,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
             &SchedulerImpl); \
         op.Init(x1, x2, bias, y, all2all_out, workspaceGM, &tilingData, &pipe); \
         op.Process(); \
+        trap(); \
     } while (0)
 #endif
 
@@ -103,6 +105,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
             &SchedulerImpl); \
         op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, x2_offset, workspaceGM, &tilingData, &pipe); \
         op.Process(); \
+        trap(); \
     } while (0)
 #endif
 
@@ -129,15 +132,47 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
             op(&SchedulerImpl, hcclDataType); \
         op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM, &tilingData, &pipe); \
         op.Process(); \
+        trap(); \
     } while (0)
+#endif
+
+// DUMP调试: x1_scale的实际dtype随量化模式变化(MX量化为E8M0, KC量化为FP32, FP非量化场景无x1_scale输入)
+#if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
+using DumpX1ScaleType = float;
+#elif (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
+       ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
+using DumpX1ScaleType = AscendC::fp8_e8m0_t;
+#elif ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
+using DumpX1ScaleType = AscendC::fp8_e8m0_t;
+#else
+using DumpX1ScaleType = float;
 #endif
 
 template <uint32_t QUANTMODE, bool X2TRANSPOSE, uint32_t DTYPEBIAS, bool ISSMALLK, uint32_t COMMTYPE,
           bool USING_APACE_IMPL, uint32_t ADDBIASSPLITMODE>
 __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR x1_scale, GM_ADDR x2_scale,
-                                            GM_ADDR comm_scale, GM_ADDR x1_offset, GM_ADDR x2_offset, GM_ADDR y,
-                                            GM_ADDR all2all_out, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+                                             GM_ADDR comm_scale, GM_ADDR x1_offset, GM_ADDR x2_offset, GM_ADDR y,
+                                             GM_ADDR all2all_out, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+    // DUMP调试: 主线MIX路线在AIV block0执行; Apace路线为AIC_ONLY(无AIV), 在AIC block0执行
+    bool doDump = false;
+    if constexpr (USING_APACE_IMPL) {
+        doDump = (AscendC::GetBlockIdx() == 0);
+    } else if ASCEND_IS_AIV {
+        doDump = (AscendC::GetBlockIdx() == 0);
+    }
+    if (doDump) {
+        printf("workspaceGM=0x%lx tilingGM=0x%lx\n",
+               static_cast<uint64_t>(reinterpret_cast<uintptr_t>(workspaceGM)), static_cast<uint64_t>(reinterpret_cast<uintptr_t>(tilingGM)));
+        AscendC::GlobalTensor<DTYPE_X1> x1DumpGM;
+        x1DumpGM.SetGlobalBuffer(reinterpret_cast<__gm__ DTYPE_X1 *>(x1));
+        AscendC::DumpTensor(x1DumpGM, 9001, 64);
+        if (x1_scale != nullptr) {
+            AscendC::GlobalTensor<DumpX1ScaleType> x1ScaleDumpGM;
+            x1ScaleDumpGM.SetGlobalBuffer(reinterpret_cast<__gm__ DumpX1ScaleType *>(x1_scale));
+            AscendC::DumpTensor(x1ScaleDumpGM, 9002, 64);
+        }
+    }
     TPipe pipe;
     constexpr HcclServerType hcclServerType = COMMTYPE == ALL2ALL_COMM_TYPE_CCU ?
                                                   HcclServerType::HCCL_SERVER_TYPE_CCU :
@@ -165,6 +200,7 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
             op(&tilingData);
         op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM);
         op.Run();
+        trap();
     } else {
         GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
         AscendC::HcclDataType hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E4M3;
@@ -181,6 +217,7 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
             op(&tilingData);
         op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM);
         op.Run();
+        trap(); 
     } else {
         GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
         ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, AscendC::HCCL_DATA_TYPE_UINT8, uint8_t, true);
@@ -194,4 +231,5 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     }
 #endif
 #endif
+    trap();
 }

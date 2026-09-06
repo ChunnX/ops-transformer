@@ -973,12 +973,12 @@ void AllToAllMxQuantMatmulTilingBase::BuildWorkspaceLayout()
     uint64_t offset = 0;
     uint32_t idx = 0;
  
-    // [0] 系统库预留空间，必须在第一个
-    if (libApiWorkSpaceSize_ > 0) {
-        workspaceLayout_.segments[idx++] = {offset, libApiWorkSpaceSize_,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
-        offset += libApiWorkSpaceSize_;
-    }
+    // // [0] 系统库预留空间，必须在第一个
+    // if (libApiWorkSpaceSize_ > 0) {
+    //     workspaceLayout_.segments[idx++] = {offset, libApiWorkSpaceSize_,
+    //                                         static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
+    //     offset += libApiWorkSpaceSize_;
+    // }
  
     // [1] x1Scale 通信接收区 (commX1Scale), 对应 kernel 中 commX1ScaleGM1_ = workspaceGM
     if (inferredInfo_.commScaleLen > 0) {
@@ -1025,12 +1025,12 @@ void AllToAllMxQuantMatmulTilingBase::BuildWorkspaceLayoutApace()
     uint64_t offset = 0;
     uint32_t idx = 0;
  
-    // [0] 系统库预留空间，必须在第一个
-    if (libApiWorkSpaceSize_ > 0) {
-        workspaceLayout_.segments[idx++] = {offset, libApiWorkSpaceSize_,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
-        offset += libApiWorkSpaceSize_;
-    }
+    // // [0] 系统库预留空间，必须在第一个
+    // if (libApiWorkSpaceSize_ > 0) {
+    //     workspaceLayout_.segments[idx++] = {offset, libApiWorkSpaceSize_,
+    //                                         static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
+    //     offset += libApiWorkSpaceSize_;
+    // }
     // [1] x1Scale 通信接收区 (commX1Scale)
     if (inferredInfo_.commScaleLen > 0) {
         workspaceLayout_.segments[idx++] = {offset, inferredInfo_.commScaleLen,
@@ -1068,10 +1068,10 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::GetWorkspaceSize()
     }else {
         BuildWorkspaceLayout();
     }
-    uint64_t workspaceSize = workspaceLayout_.totalSize;
+    uint64_t workspaceSize = libApiWorkSpaceSize_ + workspaceLayout_.totalSize;
     workspaces[0] = workspaceSize;
-    OP_LOGD(opName_, "Workspaces[0] size=%zu, commlen=%zu, permuteLen=%zu", workspaces[0], inferredInfo_.commLen,
-            inferredInfo_.permuteLen);
+    OP_LOGD(opName_, "Workspaces[0] size=%zu, libApiWorkSpaceSize_=%zu, commlen=%zu, permuteLen=%zu", workspaces[0], libApiWorkSpaceSize_,
+        inferredInfo_.commLen, inferredInfo_.permuteLen);
     return ge::GRAPH_SUCCESS;
 }
 
