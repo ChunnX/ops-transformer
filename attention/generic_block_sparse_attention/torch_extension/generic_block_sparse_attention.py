@@ -123,9 +123,7 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
         ]
 
     def register_meta(self):
-        @torch.library.register_fake(
-            "cann_ops_transformer::" + GBSA_METADATA_OP_NAME
-        )
+        @torch.library.register_fake("cann_ops_transformer::" + GBSA_METADATA_OP_NAME)
         def generic_block_sparse_attention_metadata_meta(
             sparse_block_idx,
             sparse_block_count,
@@ -149,9 +147,7 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             win_left=-1,
             win_right=-1,
         ):
-            return torch.empty(
-                (GBSA_METADATA_SIZE,), dtype=torch.int32, device="meta"
-            )
+            return torch.empty((GBSA_METADATA_SIZE,), dtype=torch.int32, device="meta")
 
         @impl(get_as_library(), self.name, "Meta")
         def generic_block_sparse_attention_meta(
@@ -270,9 +266,7 @@ def generic_block_sparse_attention_metadata(
     )
 
 
-@torch.library.register_kernel(
-    "cann_ops_transformer::" + GBSA_METADATA_OP_NAME, None
-)
+@torch.library.register_kernel("cann_ops_transformer::" + GBSA_METADATA_OP_NAME, None)
 def generic_block_sparse_attention_metadata_fallback(
     sparse_block_idx,
     sparse_block_count,

@@ -37,9 +37,9 @@ at::Tensor GenericBlockSparseAttentionMetadata(
     const int64_t is_packed_gqa_flag = is_packed_gqa ? 1 : 0;
 
     ACLNN_CMD(aclnnGenericBlockSparseAttentionMetadata, sparse_block_idx, sparse_block_count, cu_seqlens_q,
-              cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv, num_heads_q, num_heads_kv,
-              head_dim, block_shape, is_packed_gqa_flag, layout_q_ptr, layout_kv_ptr, mask_mode, quant_mode,
-              softmax_precision, win_left, win_right, metadata);
+              cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv, num_heads_q, num_heads_kv, head_dim,
+              block_shape, is_packed_gqa_flag, layout_q_ptr, layout_kv_ptr, mask_mode, quant_mode, softmax_precision,
+              win_left, win_right, metadata);
     return metadata;
 }
 
