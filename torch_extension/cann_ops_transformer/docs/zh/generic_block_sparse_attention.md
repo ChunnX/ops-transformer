@@ -279,11 +279,11 @@ cann_ops_transformer.generic_block_sparse_attention(
 |    KV_N    |    输入k/v tensor的头数，对应k/v shape中的N    |
 |     Q_T     |          输入q tensor所有batch序列长度的累加和          |
 |    KV_T    |          输入k/v所有batch序列长度的累加和          |
+|     Q_S     |      各batch的query序列长度，TND下一般由cu_seqlens_q差分得到      |
+|    KV_S    |  各batch的key/value序列长度，TND/PA下一般由cu_seqlens_kv差分得到  |
 |     D     |          输入q/k/v tensor隐藏层最小的单元尺寸headdim         |
 |  topK  | sparse_block_idx最后一维，表示每个Q块最多选择的KV块数 |
-| qStorageLen_i | 第i个batch的query存储长度，一般由cu_seqlens_q差分得到 |
-| kvStorageLen_i | 第i个batch的key/value存储长度，一般由cu_seqlens_kv差分得到 |
-| totalQBlocks | TND下各batch按query存储长度分块后的Q块总数，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$；为`sparse_block_idx`/`sparse_block_count`的第二维 |
+| totalQBlocks | TND下各batch按Q_S分块后的Q块总数，即$\sum_i \mathrm{ceilDiv}(Q\_S_i, blockShapeX)$；为`sparse_block_idx`/`sparse_block_count`的第二维 |
 | num_blocks | Paged KV Cache物理页总数 |
 | block_size | Paged KV Cache单页token数 |
 
@@ -635,11 +635,16 @@ mask_mode参数解释见「mask_mode 枚举」。
                     <li>tensor_type支持int32</li>
                     <li>tensor_shape为(B,)</li>
                     <li>仅支持非负整数</li>
-                    <li>seqused_q中各batch的值须小于等于对应qStorageLen_i</li>
-                    <li>seqused_kv中各batch的值须小于等于对应kvStorageLen_i</li>
+                    <li>seqused_q中的值需小于等于对应batch的Q_S</li>
+                    <li>seqused_kv中的值需小于等于对应batch的KV_S</li>
                 </ul>
             </td>
-            <td rowspan="2">可选参数</td>
+            <td rowspan="2">
+                <ul>
+                    <li>可选参数</li>
+                    <li>不传入时，各batch有效长度分别等于对应Q_S / KV_S</li>
+                </ul>
+            </td>
             <td rowspan="4">无</td>
             <td rowspan="4">无</td>
         </tr>
@@ -660,7 +665,10 @@ mask_mode参数解释见「mask_mode 枚举」。
             </td>
             <td rowspan="2">
                 <ul>
-                    <li>cu_seqlens_q与cu_seqlens_kv均须传入</li>
+                    <li>当layout_q为TND时，cu_seqlens_q必须传入</li>
+                    <li>当layout_q不为TND时，cu_seqlens_q不支持传入</li>
+                    <li>当layout_kv为TND或PA_BBND时，cu_seqlens_kv必须传入</li>
+                    <li>当layout_kv不为TND且不为PA_BBND时，cu_seqlens_kv不支持传入</li>
                 </ul>
             </td>
         </tr>
@@ -724,6 +732,8 @@ mask_mode参数解释见「mask_mode 枚举」。
             <td>
                 <ul>
                     <li>当前layout_kv="PA_BBND"时，block_table必须传入</li>
+                    <li>当前layout_kv="PA_BBND"时，cu_seqlens_kv必须传入</li>
+                    <li>当前layout_kv="PA_BBND"时，seqused_kv为可选；不传入时有效长度等于对应batch的KV_S</li>
                 </ul>
             </td>
         </tr>
