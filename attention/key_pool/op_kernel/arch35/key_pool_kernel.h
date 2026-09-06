@@ -205,7 +205,7 @@ __aicore__ inline void KeyPoolKernel<COMP>::SplitK()
         mSize += bSeqUsed;
     }
     uint32_t mBaseNum = CeilDivT(mSize, constInfo.mBaseSize);
-    constexpr uint32_t SPLIT_K_THRESHOLD_FACTOR = 2U;
+    constexpr uint32_t SPLIT_K_THRESHOLD_FACTOR = 4U;
     uint64_t mTaskNum = static_cast<uint64_t>(constInfo.dBasicBlockNum) * mBaseNum;
     if (mTaskNum * SPLIT_K_THRESHOLD_FACTOR < constInfo.usedCoreNum &&
         constInfo.batchConsistency != BATCH_CONSISTENCY) {
