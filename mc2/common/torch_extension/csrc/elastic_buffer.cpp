@@ -103,27 +103,27 @@ static inline int64_t AlignTo(int64_t x, int64_t y)
     return CeilDiv(x, y) * y;
 }
 
-static inline void CheckMoeEpMetadataTensor(const at::Tensor &metadata, const char *name,
-                                            int64_t expectedCapacity, const at::Device &expectedDevice)
+static inline void CheckMoeEpMetadataTensor(const at::Tensor &metadata, const char *name, int64_t expectedCapacity,
+                                            const at::Device &expectedDevice)
 {
     TORCH_CHECK(metadata.scalar_type() == at::kInt, name, " dtype must be int32, but got ", metadata.scalar_type());
     TORCH_CHECK(metadata.dim() == DIM_TWO, name, " dims must be 2, but got ", metadata.dim());
-    TORCH_CHECK(metadata.size(0) == expectedCapacity, name, " dim0 must equal recv_x dim0(A_alloc)=",
-                expectedCapacity, ", but got ", metadata.size(0));
+    TORCH_CHECK(metadata.size(0) == expectedCapacity, name, " dim0 must equal recv_x dim0(A_alloc)=", expectedCapacity,
+                ", but got ", metadata.size(0));
     TORCH_CHECK(metadata.size(1) == MOE_EP_METADATA_FIELDS, name, " dim1 must be ", MOE_EP_METADATA_FIELDS,
                 ", but got ", metadata.size(1));
     TORCH_CHECK(metadata.device() == expectedDevice, name, " must be on device ", expectedDevice, ", but got ",
                 metadata.device());
 }
 
-static inline void CheckMoeEpRankOffsetsTensor(const at::Tensor &rankOffsets, const char *name,
-                                               int64_t epWorldSize, const at::Device &expectedDevice)
+static inline void CheckMoeEpRankOffsetsTensor(const at::Tensor &rankOffsets, const char *name, int64_t epWorldSize,
+                                               const at::Device &expectedDevice)
 {
     TORCH_CHECK(rankOffsets.scalar_type() == at::kInt, name, " dtype must be int32, but got ",
                 rankOffsets.scalar_type());
     TORCH_CHECK(rankOffsets.dim() == DIM_ONE, name, " dims must be 1, but got ", rankOffsets.dim());
-    TORCH_CHECK(rankOffsets.size(0) == epWorldSize + 1, name, " dim0 must equal ep_world_size + 1=",
-                epWorldSize + 1, ", but got ", rankOffsets.size(0));
+    TORCH_CHECK(rankOffsets.size(0) == epWorldSize + 1, name, " dim0 must equal ep_world_size + 1=", epWorldSize + 1,
+                ", but got ", rankOffsets.size(0));
     TORCH_CHECK(rankOffsets.device() == expectedDevice, name, " must be on device ", expectedDevice, ", but got ",
                 rankOffsets.device());
 }
@@ -1212,8 +1212,8 @@ public:
                                             at::ScalarType dtype = at::kBFloat16);
 
     using DispatchTensorList = std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
-    using DispatchEpilogueTensorList = std::tuple<at::Tensor, at::Tensor, c10::optional<at::Tensor>,
-                                                  c10::optional<at::Tensor>, at::Tensor>;
+    using DispatchEpilogueTensorList =
+        std::tuple<at::Tensor, at::Tensor, c10::optional<at::Tensor>, c10::optional<at::Tensor>, at::Tensor>;
     using CombineEpilogueTensorList = std::tuple<at::Tensor, c10::optional<at::Tensor>>;
 
     DispatchTensorList MoeEpDispatch(
@@ -1225,11 +1225,10 @@ public:
         int64_t hostPinnedCounterAddr, int64_t cclBufferSize);
     DispatchEpilogueTensorList MoeEpDispatchEpilogue(
         const at::Tensor &dstBufferSlotIdx, const at::Tensor &numRecvPerRank, const at::Tensor &numRecvPerExpert,
-        const c10::optional<at::Tensor> &cachedRecvSrcMetadata,
-        const c10::optional<at::Tensor> &cachedRecvRankOffsets, int64_t epWorldSize, int64_t epRankId,
-        int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize, at::Tensor &recvX, at::Tensor &recvSrcMetadata,
-        const c10::optional<at::Tensor> &recvTopkWeightsOpt, const c10::optional<at::Tensor> &recvScalesOpt,
-        at::Tensor &recvRankOffsets);
+        const c10::optional<at::Tensor> &cachedRecvSrcMetadata, const c10::optional<at::Tensor> &cachedRecvRankOffsets,
+        int64_t epWorldSize, int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize,
+        at::Tensor &recvX, at::Tensor &recvSrcMetadata, const c10::optional<at::Tensor> &recvTopkWeightsOpt,
+        const c10::optional<at::Tensor> &recvScalesOpt, at::Tensor &recvRankOffsets);
     void MoeEpCombine(const at::Tensor &x, const at::Tensor &topkIdx, const at::Tensor &recvSrcMetadata,
                       const at::Tensor &recvRankOffsets, const at::Tensor &numRecvTokensPerExpert,
                       const c10::optional<at::Tensor> &topkWeights, int64_t epWorldSize, int64_t epRankId,
@@ -1777,11 +1776,10 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
 
 Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDispatchEpilogue(
     const at::Tensor &dstBufferSlotIdx, const at::Tensor &numRecvPerRank, const at::Tensor &numRecvPerExpert,
-    const c10::optional<at::Tensor> &cachedRecvSrcMetadata,
-    const c10::optional<at::Tensor> &cachedRecvRankOffsets, int64_t epWorldSize, int64_t epRankId, int64_t numExperts,
-    int64_t numMaxTokensPerRank, int64_t cclBufferSize, at::Tensor &recvX, at::Tensor &recvSrcMetadata,
-    const c10::optional<at::Tensor> &recvTopkWeightsOpt, const c10::optional<at::Tensor> &recvScalesOpt,
-    at::Tensor &recvRankOffsets)
+    const c10::optional<at::Tensor> &cachedRecvSrcMetadata, const c10::optional<at::Tensor> &cachedRecvRankOffsets,
+    int64_t epWorldSize, int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize,
+    at::Tensor &recvX, at::Tensor &recvSrcMetadata, const c10::optional<at::Tensor> &recvTopkWeightsOpt,
+    const c10::optional<at::Tensor> &recvScalesOpt, at::Tensor &recvRankOffsets)
 {
     TORCH_CHECK(recvX.dim() == DIM_TWO, "recv_x dims must be 2, but got ", recvX.dim());
     CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", recvX.size(0), recvX.device());
@@ -1800,8 +1798,7 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
     int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
 
     at::Tensor cachedRecvSrcMetadataTensor = cachedRecvSrcMetadata.has_value() ? *cachedRecvSrcMetadata : at::Tensor();
-    at::Tensor cachedRecvRankOffsetsTensor =
-        cachedRecvRankOffsets.has_value() ? *cachedRecvRankOffsets : at::Tensor();
+    at::Tensor cachedRecvRankOffsetsTensor = cachedRecvRankOffsets.has_value() ? *cachedRecvRankOffsets : at::Tensor();
 
     aclDataType recvScalesDtype = aclDataType::ACL_FLOAT;
     at::Tensor recvScalesTensor =

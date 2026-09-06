@@ -78,8 +78,8 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpCombineInfo &in
     OP_LOGD(nodeName,
             "totalWinSizeEp=%lu, combineStateWinOffset=%lu, combineDataWinOffset=%lu, "
             "combineFlagSourceWinOffset=%lu, totalUbSize=%lu",
-            info.totalWinSizeEp, info.combineStateWinOffset, info.combineDataWinOffset,
-            info.combineFlagSourceWinOffset, info.totalUbSize);
+            info.totalWinSizeEp, info.combineStateWinOffset, info.combineDataWinOffset, info.combineFlagSourceWinOffset,
+            info.totalUbSize);
 }
 
 static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context, const char *nodeName,

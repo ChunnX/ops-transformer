@@ -84,10 +84,9 @@ aclnnStatus aclnnMoeEpCombineGetWorkspaceSize(const aclTensor *context, const ac
                                               int64_t rankNumPerServer, uint64_t *workspaceSize,
                                               aclOpExecutor **executor)
 {
-    return MoeEpCombineGetWorkspaceSize(context, x, topkIdx, recvSrcMetadata, recvRankOffsets,
-                                        numRecvTokensPerExpert, topkWeights, epWorldSize, epRankId, numExperts,
-                                        numMaxTokensPerRank, cclBufferSize, topoType, rankNumPerServer, workspaceSize,
-                                        executor);
+    return MoeEpCombineGetWorkspaceSize(context, x, topkIdx, recvSrcMetadata, recvRankOffsets, numRecvTokensPerExpert,
+                                        topkWeights, epWorldSize, epRankId, numExperts, numMaxTokensPerRank,
+                                        cclBufferSize, topoType, rankNumPerServer, workspaceSize, executor);
 }
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);

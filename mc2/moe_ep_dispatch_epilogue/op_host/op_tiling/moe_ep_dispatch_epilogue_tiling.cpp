@@ -275,11 +275,10 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
 
         const gert::StorageShape *recvRankOffsetsShape = context->GetInputShape(CACHED_RECV_RANK_OFFSETS_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, recvRankOffsetsShape);
-        OP_TILING_CHECK(
-            recvRankOffsetsShape->GetStorageShape().GetDimNum() != ONE_DIM,
-            OP_LOGE(nodeName, "cached_recv_rank_offsets dims must be 1, but got %lu.",
-                    recvRankOffsetsShape->GetStorageShape().GetDimNum()),
-            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(recvRankOffsetsShape->GetStorageShape().GetDimNum() != ONE_DIM,
+                        OP_LOGE(nodeName, "cached_recv_rank_offsets dims must be 1, but got %lu.",
+                                recvRankOffsetsShape->GetStorageShape().GetDimNum()),
+                        return ge::GRAPH_FAILED);
         OP_TILING_CHECK(
             recvRankOffsetsShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(info.cfg.epWorldSize + 1U),
             OP_LOGE(nodeName, "cached_recv_rank_offsets dim0 must equal ep_world_size + 1=%u, but got %ld.",
@@ -380,8 +379,9 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
                 aUpper, aAlloc),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(aAlloc > INT32_MAX,
-                    OP_LOGE(nodeName, "recv_x dim0(A_alloc) must not exceed INT32_MAX because metadata stores "
-                                      "recv_x_idx as int32, but got %ld.",
+                    OP_LOGE(nodeName,
+                            "recv_x dim0(A_alloc) must not exceed INT32_MAX because metadata stores "
+                            "recv_x_idx as int32, but got %ld.",
                             aAlloc),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((hidden <= 0) || (hidden > H_MAX),
@@ -449,8 +449,7 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
         OP_CHECK_NULL_WITH_CONTEXT(context, cachedRecvSrcMetaShape);
         OP_TILING_CHECK(
             cachedRecvSrcMetaShape->GetStorageShape().GetDim(0) != aAlloc,
-            OP_LOGE(nodeName,
-                    "cached_recv_src_metadata dim0 must equal recv_x dim0(A_alloc)=%ld, but got %ld.", aAlloc,
+            OP_LOGE(nodeName, "cached_recv_src_metadata dim0 must equal recv_x dim0(A_alloc)=%ld, but got %ld.", aAlloc,
                     cachedRecvSrcMetaShape->GetStorageShape().GetDim(0)),
             return ge::GRAPH_FAILED);
     }
@@ -458,11 +457,10 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
     // ---- recvRankOffsets [ep_world_size + 1] int32 ----
     auto recvRankOffsetsShape = context->GetOutputShape(OUT_RECV_RANK_OFFSETS_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvRankOffsetsShape);
-    OP_TILING_CHECK(
-        recvRankOffsetsShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE(nodeName, "recv_rank_offsets dims must be 1, but got %lu.",
-                recvRankOffsetsShape->GetStorageShape().GetDimNum()),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(recvRankOffsetsShape->GetStorageShape().GetDimNum() != ONE_DIM,
+                    OP_LOGE(nodeName, "recv_rank_offsets dims must be 1, but got %lu.",
+                            recvRankOffsetsShape->GetStorageShape().GetDimNum()),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         recvRankOffsetsShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(info.cfg.epWorldSize + 1U),
         OP_LOGE(nodeName, "recv_rank_offsets dim0 must equal ep_world_size + 1=%u, but got %ld.",
@@ -528,11 +526,11 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
 
     bool cached = (context->GetInputShape(CACHED_RECV_SRC_METADATA_INDEX) != nullptr);
     bool hasCachedRankOffsets = (context->GetInputShape(CACHED_RECV_RANK_OFFSETS_INDEX) != nullptr);
-    OP_TILING_CHECK(cached != hasCachedRankOffsets,
-                    OP_LOGE(nodeName,
-                            "cached_recv_src_metadata and cached_recv_rank_offsets must either both be provided or "
-                            "both be absent."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        cached != hasCachedRankOffsets,
+        OP_LOGE(nodeName, "cached_recv_src_metadata and cached_recv_rank_offsets must either both be provided or "
+                          "both be absent."),
+        return ge::GRAPH_FAILED);
     info.cached = cached ? 1U : 0U;
 
     auto attrs = context->GetAttrs();
@@ -597,8 +595,7 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     uint64_t hitCountBytesAlign512 = ((hitCountBytes + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     uint32_t epWorldSizeAlign8 = (info.cfg.epWorldSize + 7) / 8 * 8;
     uint64_t rankHitCountBytes = static_cast<uint64_t>(aivNum) * epWorldSizeAlign8 * sizeof(int32_t);
-    uint64_t rankHitCountBytesAlign512 =
-        ((rankHitCountBytes + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    uint64_t rankHitCountBytesAlign512 = ((rankHitCountBytes + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
 
     // The first matrix keeps per-core expert counts. The second matrix keeps per-core rank counts; every core reads
     // it to build its own compact metadata write offsets in local UB.

@@ -108,13 +108,16 @@ private:
     __aicore__ inline void FlushPreparedWrites(bool keepHandle = false);
     __aicore__ inline void SplitRange(uint64_t rangeBegin, uint64_t rangeEnd, uint32_t coreCount, uint32_t coreIndex,
                                       uint64_t &coreBegin, uint64_t &coreEnd);
+    __aicore__ inline void GetCoreAssignment(uint32_t totalBlocks, uint32_t &targetRank, uint32_t &coreIndexInGroup,
+                                             uint32_t &groupSize);
     __aicore__ inline void SendLocalWeight(uint32_t recvXIdx, GM_ADDR dstAddr);
     __aicore__ inline void SendLocalMetadataSlot(uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx,
                                                  GM_ADDR localDataBase, GM_ADDR localStateBase);
     __aicore__ inline void SendRemoteMetadataSlot(uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx,
                                                   GM_ADDR remoteDataBase, GM_ADDR remoteStateBase, uint64_t tokenBytes);
     __aicore__ inline bool ProcessLocalMetadataRange(uint64_t rangeBegin, uint64_t rangeEnd);
-    __aicore__ inline void ProcessRemoteMetadataRange(uint32_t targetRank, uint64_t rangeBegin, uint64_t rangeEnd);
+    __aicore__ inline void ProcessRemoteMetadataRange(uint32_t targetRank, uint64_t rangeBegin, uint64_t rangeEnd,
+                                                      uint32_t channelIndex);
     __aicore__ inline void SendPhaseDirectFromMetadata();
 
     __aicore__ inline uint64_t GetCommHandle(uint32_t rankId, uint32_t channelIndex)
@@ -502,8 +505,13 @@ __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessLocalM
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessRemoteMetadataRange(uint32_t targetRank,
                                                                                               uint64_t rangeBegin,
-                                                                                              uint64_t rangeEnd)
+                                                                                              uint64_t rangeEnd,
+                                                                                              uint32_t channelIndex)
 {
+    if (rangeBegin >= rangeEnd) {
+        return;
+    }
+    BeginPreparedWrites(targetRank, channelIndex);
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
     LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
     const DataCopyPadExtParams<int32_t> padParams{false, 0U, 0U, 0U};
@@ -532,6 +540,48 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessRemote
 }
 
 template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GetCoreAssignment(uint32_t totalBlocks,
+                                                                                     uint32_t &targetRank,
+                                                                                     uint32_t &coreIndexInGroup,
+                                                                                     uint32_t &groupSize)
+{
+    uint32_t maxChannelAivNum = epWorldSize_ * combineChannelCount_;
+    bool assignRemainingToLocal = totalBlocks > maxChannelAivNum;
+    if (assignRemainingToLocal) {
+        // Put all remote communication AIVs first, then give every remaining AIV to local copies.
+        uint32_t remoteAivNum = (epWorldSize_ - 1U) * combineChannelCount_;
+        if (aivId_ < remoteAivNum) {
+            uint32_t remoteRankIndex = aivId_ / combineChannelCount_;
+            targetRank = remoteRankIndex < rankId_ ? remoteRankIndex : remoteRankIndex + 1U;
+            coreIndexInGroup = aivId_ % combineChannelCount_;
+            groupSize = combineChannelCount_;
+        } else {
+            targetRank = rankId_;
+            coreIndexInGroup = aivId_ - remoteAivNum;
+            groupSize = totalBlocks - remoteAivNum;
+        }
+        return;
+    }
+
+    uint32_t baseGroupSize = totalBlocks / epWorldSize_;
+    uint32_t remainder = totalBlocks % epWorldSize_;
+    uint32_t accumulated = 0;
+    for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
+        uint32_t currentGroupSize = baseGroupSize + ((rank < remainder) ? 1U : 0U);
+        if (aivId_ < accumulated + currentGroupSize) {
+            targetRank = rank;
+            groupSize = currentGroupSize;
+            coreIndexInGroup = aivId_ - accumulated;
+            return;
+        }
+        accumulated += currentGroupSize;
+    }
+    targetRank = epWorldSize_;
+    groupSize = 0;
+    coreIndexInGroup = 0;
+}
+
+template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDirectFromMetadata()
 {
     if (epWorldSize_ == 0U || aivNum_ == 0U) {
@@ -554,41 +604,60 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
     // It also publishes AIV0's completed constant-source initialization before any remote flag is submitted.
     SyncAll<true>();
 
-    if (aivId_ == 0U) {
-        for (uint32_t channelIndex = 0U; channelIndex < combineChannelCount_; ++channelIndex) {
-            SendChannelFlag(rankId_, channelIndex);
-        }
-    }
-
+    uint32_t activeAivNum = aivNum_;
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0U;
     preparedWriteCount_ = 0U;
+    sqWriteCount_ = 0U;
     activeBatchInitialized_ = false;
 
-    uint64_t remoteTaskBegin = 0U;
-    uint64_t remoteTaskEnd = 0U;
-    uint32_t remoteRankCount = epWorldSize_ - 1U;
-    uint64_t remoteTaskCount = static_cast<uint64_t>(remoteRankCount) * combineChannelCount_;
-    // A rank/channel has one owner; a low core count assigns multiple channel tasks to the same AIV.
-    SplitRange(0U, remoteTaskCount, aivNum_, aivId_, remoteTaskBegin, remoteTaskEnd);
-    for (uint64_t task = remoteTaskBegin; task < remoteTaskEnd; ++task) {
-        uint64_t ordinal = task / combineChannelCount_;
-        uint32_t channelIndex = static_cast<uint32_t>(task % combineChannelCount_);
-        uint32_t dstRank = (ordinal < rankId_) ? static_cast<uint32_t>(ordinal) : static_cast<uint32_t>(ordinal + 1U);
-        uint64_t rankBegin = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(dstRank));
-        uint64_t rankEnd = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(dstRank + 1U));
-        uint64_t channelBegin = 0U;
-        uint64_t channelEnd = 0U;
-        SplitRange(rankBegin, rankEnd, combineChannelCount_, channelIndex, channelBegin, channelEnd);
-        BeginPreparedWrites(dstRank, channelIndex);
-        ProcessRemoteMetadataRange(dstRank, channelBegin, channelEnd);
-        // Empty channel slices must also publish a completion flag.
-        SendChannelFlag(dstRank, channelIndex);
-        // Submit the ordered completion flag and return without waiting for remote completion.
-        // Combine Epilogue polls the receive flags; only SQ high-watermark checkpoints drain here.
-        FlushPreparedWrites();
+    // Match upstream's rank/channel owners, including the local flag group and low-AIV rank stride.
+    bool splitRankTokens = activeAivNum >= epWorldSize_;
+    uint32_t targetRank = epWorldSize_;
+    uint32_t coreIndexInGroup = 0U;
+    uint32_t groupSize = 1U;
+    if (splitRankTokens && aivId_ < activeAivNum) {
+        GetCoreAssignment(activeAivNum, targetRank, coreIndexInGroup, groupSize);
     }
-    if (actualA_ != 0U) {
+    bool sendsTokens = actualA_ != 0U && aivId_ < activeAivNum;
+    if (sendsTokens) {
+        if (splitRankTokens) {
+            // Local payload was copied before SyncAll, just as upstream excludes it from address tables.
+            if (targetRank != rankId_) {
+                uint64_t rankBegin = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(targetRank));
+                uint64_t rankEnd = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(targetRank + 1U));
+                uint64_t entryBegin = 0U;
+                uint64_t entryEnd = 0U;
+                SplitRange(rankBegin, rankEnd, groupSize, coreIndexInGroup, entryBegin, entryEnd);
+                ProcessRemoteMetadataRange(targetRank, entryBegin, entryEnd, coreIndexInGroup);
+            }
+        } else {
+            for (uint32_t rank = aivId_; rank < epWorldSize_; rank += activeAivNum) {
+                if (rank == rankId_) {
+                    continue;
+                }
+                uint64_t rankBegin = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(rank));
+                uint64_t rankEnd = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(rank + 1U));
+                ProcessRemoteMetadataRange(rank, rankBegin, rankEnd, 0U);
+            }
+        }
+    }
+
+    // Match upstream: publish flags after this AIV's payload phase, even for empty rank/channel slices.
+    // In the low-AIV branch the same strided rank list is visited again, using channel 0 only.
+    bool publishesChannelFlag = aivId_ < activeAivNum && (!splitRankTokens || coreIndexInGroup < combineChannelCount_);
+    if (publishesChannelFlag) {
+        if (splitRankTokens) {
+            SendChannelFlag(targetRank, coreIndexInGroup);
+        } else {
+            for (uint32_t dstRank = aivId_; dstRank < epWorldSize_; dstRank += activeAivNum) {
+                SendChannelFlag(dstRank, 0U);
+            }
+        }
+    }
+    // Only SQ high-watermark checkpoints drain; the final ordered flag is submitted without waiting here.
+    FlushPreparedWrites();
+    if (sendsTokens) {
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     }
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
