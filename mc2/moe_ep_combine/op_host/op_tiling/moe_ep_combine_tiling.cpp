@@ -77,9 +77,9 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpCombineInfo &in
             info.hasTopkWeights, info.aivNum, info.recvCapacity);
     OP_LOGD(nodeName,
             "totalWinSizeEp=%lu, combineStateWinOffset=%lu, combineDataWinOffset=%lu, "
-            "sendDataWorkspaceSizePerRank=%lu, totalUbSize=%lu",
+            "combineFlagSourceWinOffset=%lu, totalUbSize=%lu",
             info.totalWinSizeEp, info.combineStateWinOffset, info.combineDataWinOffset,
-            info.sendDataWorkspaceSizePerRank, info.totalUbSize);
+            info.combineFlagSourceWinOffset, info.totalUbSize);
 }
 
 static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context, const char *nodeName,
@@ -350,7 +350,7 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     info.totalWinSizeEp = maxWindowSize;
     info.combineStateWinOffset = layout.combineStateWinOffset;
     info.combineDataWinOffset = layout.combineDataWinOffset;
-    info.sendDataWorkspaceSizePerRank = layout.combineDataSize;
+    info.combineFlagSourceWinOffset = layout.combineFlagSourceWinOffset;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -398,15 +398,9 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
 
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
-    // TODO(delete): legacy address-table workspace sizing after the direct-metadata path is validated.
-    // uint64_t perCoreRankCountStride =
-    //     ops::CeilDiv(static_cast<uint64_t>(info.cfg.epWorldSize) * UB_ALIGN, COMM_ALIGN) * COMM_ALIGN;
-    // workSpaces[0] =
-    //     SYSTEM_NEED_WORKSPACE + static_cast<uint64_t>(info.cfg.epWorldSize) * info.sendDataWorkspaceSizePerRank +
-    //     static_cast<uint64_t>(aivNum) * COMM_ALIGN + static_cast<uint64_t>(info.cfg.epWorldSize) * COMM_ALIGN +
-    //     static_cast<uint64_t>(aivNum) * perCoreRankCountStride;
-    // The direct path only needs one 512-byte flag source per AIV.
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<uint64_t>(aivNum) * COMM_ALIGN;
+    // Metadata provides the addresses and the persistent window holds the flag source.
+    // No operator-private address table or per-AIV flag workspace is needed.
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE;
 
     uint32_t tplHasTopkWeights = info.hasTopkWeights ? 1 : 0;
     uint64_t tilingKey = GET_TPL_TILING_KEY(tplHasTopkWeights, TILINGKEY_TPL_A5);
