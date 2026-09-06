@@ -89,6 +89,10 @@ public:
     static constexpr uint32_t LSE_OUT_MUTEX_ID = 3;
     static constexpr uint32_t BRDCT_SUM_MUTEX_ID = 4; // FD only
     static constexpr uint32_t BRDCT_MAX_MUTEX_ID = 5; // FD only
+    // qScale/kScale 拷入buf跨任务读写保护：单块任务(KV<=s2BaseSize)每任务 isFirstS2Loop 均为 true，
+    // MTE2 重写同一 buf 与上一任务 V 侧 VF 读无天然屏障（动态版 TBuf 裸奔，静态版时序放大竞态窗口），
+    // 照 fa mask 模式加 MTE2↔V 双向握手（MTE2 拿锁写 / V 拿锁读）
+    static constexpr uint32_t QK_SCALE_MUTEX_ID = 6;
 
     // SetFlag/WaitFlag 事件ID（MTE3_V / V_MTE3 / MTE2_V 各自独立编号空间）
     static constexpr uint32_t MTE3_TO_V_EVENT_ID0 = 0;      // MTE3_V，stage2OutBuf 保护
@@ -439,14 +443,16 @@ public:
 
         float descaleQK = 1.0;
 
-        // 加载qScale/kScale
+        // 加载qScale/kScale（MTE2 写侧拿锁，跨任务与 V 读串行化）
         LocalTensor<float> qScaleUbTensor;
         LocalTensor<float> kScaleUbTensor;
         if (unlikely(runInfo.isFirstS2Loop)) {
             qScaleUbTensor = queryAntiqScaleBuf_;
-            CopyQueryScaleTile(qScaleUbTensor, runInfo);
             kScaleUbTensor = keyAntiqScaleBuf_[kscaleOffset];
+            Mutex::Lock<PIPE_MTE2>(QK_SCALE_MUTEX_ID);
+            CopyQueryScaleTile(qScaleUbTensor, runInfo);
             CopyKeyScaleTile(kScaleUbTensor, runInfo, false);
+            Mutex::Unlock<PIPE_MTE2>(QK_SCALE_MUTEX_ID);
         } else {
             kScaleUbTensor = keyAntiqScaleBuf_[kscaleOffset];
         }
@@ -454,6 +460,8 @@ public:
         // 静态Tensor范式：固定事件ID的MTE2→V flush（原FetchEventID动态申请，Set/Wait配对可复用）
         SetFlag<HardEvent::MTE2_V>(MTE2_TO_V_FLUSH_EVENT_ID);
         WaitFlag<HardEvent::MTE2_V>(MTE2_TO_V_FLUSH_EVENT_ID);
+        // V 读侧拿锁：等 MTE2 拷入完成（Unlock 生效），并阻止下一任务 MTE2 提前覆写
+        Mutex::Lock<PIPE_V>(QK_SCALE_MUTEX_ID);
 
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
         // 静态同步协议（照 fa vec 模式）：V 侧 Lock→VF 写→Unlock→MTE3 Lock→DataCopy UB→L1→Unlock
@@ -507,6 +515,9 @@ public:
                     negativeFloatScalar_, 0.0F, maskLine);
             }
         }
+
+        // V 侧读锁释放：VF 读 q/k 完成，允许下一任务 MTE2 覆写
+        Mutex::Unlock<PIPE_V>(QK_SCALE_MUTEX_ID);
 
         if (likely(!runInfo.isLastS2Loop)) {
             LocalTensor<float> kScaleUbNextTensor = keyAntiqScaleBuf_[1 - kscaleOffset];
