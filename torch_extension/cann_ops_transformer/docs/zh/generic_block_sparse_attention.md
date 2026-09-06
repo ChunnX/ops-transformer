@@ -488,6 +488,29 @@ cann_ops_transformer.generic_block_sparse_attention(
                 <td>无</td>
                 <td>传入时需与generic_block_sparse_attention_metadata生成的结果一致</td>
             </tr>
+        </tbody>
+    </table>
+
+- softmax_precision校验:
+
+    <table style="undefined;table-layout: fixed; width:1625px">
+        <colgroup>
+            <col style="width: 147px">
+            <col style="width: 232px">
+            <col style="width: 232px">
+            <col style="width: 293px">
+            <col style="width: 185px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>参数</th>
+                <th>单参数校验</th>
+                <th>存在性校验</th>
+                <th>一致性校验</th>
+                <th>特性交叉校验</th>
+            </tr>
+        </thead>
+        <tbody>
             <tr>
                 <td>softmax_precision</td>
                 <td>
