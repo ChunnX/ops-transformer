@@ -3,8 +3,8 @@
 
 # ----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software: you can redistribute it and/or modify it under terms and conditions of
-# the CANN Open Software License Agreement Version 2.0 (the "License").
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -20,15 +20,20 @@ import torch
 # Precision standard for MXFP8 quantized matmul with BF16 output
 # Reference: DESIGN.md § 精度分析
 ERROR_TOL_RTOL = 0.02  # 2% relative tolerance
-ERROR_TOL_ATOL = 0.2   # absolute tolerance
+ERROR_TOL_ATOL = 0.2  # absolute tolerance
 DATA_TYPE = np.uint16
 FULL_TENSOR_PRINT_MAX_ELEMENTS = 1024
 CORNER_ROWS = 4
 CORNER_COLS = 4
 
 
-def _print_large_tensor_summary(golden_tensor: torch.Tensor, npu_output_tensor: torch.Tensor,
-                                m_total: int, n_per_rank: int, rank_id: int = -1) -> None:
+def _print_large_tensor_summary(
+    golden_tensor: torch.Tensor,
+    npu_output_tensor: torch.Tensor,
+    m_total: int,
+    n_per_rank: int,
+    rank_id: int = -1,
+) -> None:
     """Print summary statistics for large tensors."""
     g = golden_tensor.float()
     p = npu_output_tensor.float()
@@ -41,8 +46,10 @@ def _print_large_tensor_summary(golden_tensor: torch.Tensor, npu_output_tensor: 
     over_tol = (abs_err > ERROR_TOL_ATOL).sum().item()
 
     rank_prefix = f"[Rank {rank_id}] " if rank_id >= 0 else ""
-    print(f"\n{rank_prefix}[verify] shape=({m_total}, {n_per_rank}), elements={numel} - "
-          f"summary (large matrix, full tensors omitted)")
+    print(
+        f"\n{rank_prefix}[verify] shape=({m_total}, {n_per_rank}), elements={numel} - "
+        f"summary (large matrix, full tensors omitted)"
+    )
     print(
         f"  abs_err: max={abs_err.max().item():.6e}, mean={abs_err.mean().item():.6e}, "
         f"rmse={(diff.pow(2).mean().sqrt()).item():.6e}"
@@ -57,8 +64,13 @@ def _print_large_tensor_summary(golden_tensor: torch.Tensor, npu_output_tensor: 
         print(f"  npu output (top-left {cr}x{cc}):\n{npu_output_tensor[:cr, :cc]}")
 
 
-def verify_single_rank(m_total: int, n_per_rank: int, rank_id: int, base_dir: str = "./output",
-                       out_dtype: torch.dtype = torch.bfloat16) -> bool:
+def verify_single_rank(
+    m_total: int,
+    n_per_rank: int,
+    rank_id: int,
+    base_dir: str = "./output",
+    out_dtype: torch.dtype = torch.bfloat16,
+) -> bool:
     """
     Verify NPU output for a single rank.
 
@@ -85,27 +97,46 @@ def verify_single_rank(m_total: int, n_per_rank: int, rank_id: int, base_dir: st
 
     expected_size = m_total * n_per_rank
     if output.size != expected_size:
-        raise ValueError(f"[Rank {rank_id}] npu output size {output.size} != expected size {expected_size}")
+        raise ValueError(
+            f"[Rank {rank_id}] npu output size {output.size} != expected size {expected_size}"
+        )
     if golden.size != expected_size:
-        raise ValueError(f"[Rank {rank_id}] cpu output size {golden.size} != expected size {expected_size}")
+        raise ValueError(
+            f"[Rank {rank_id}] cpu output size {golden.size} != expected size {expected_size}"
+        )
 
-    npu_output_tensor = torch.from_numpy(output).view(out_dtype).reshape(m_total, n_per_rank)
-    golden_tensor = torch.from_numpy(golden).view(out_dtype).reshape(m_total, n_per_rank)
+    npu_output_tensor = (
+        torch.from_numpy(output).view(out_dtype).reshape(m_total, n_per_rank)
+    )
+    golden_tensor = (
+        torch.from_numpy(golden).view(out_dtype).reshape(m_total, n_per_rank)
+    )
 
     numel = m_total * n_per_rank
     if numel <= FULL_TENSOR_PRINT_MAX_ELEMENTS:
         print(f"\n[Rank {rank_id}] cpu golden:\n", golden_tensor)
         print(f"[Rank {rank_id}] npu output:\n", npu_output_tensor)
     else:
-        _print_large_tensor_summary(golden_tensor, npu_output_tensor, m_total, n_per_rank, rank_id)
+        _print_large_tensor_summary(
+            golden_tensor, npu_output_tensor, m_total, n_per_rank, rank_id
+        )
 
     return torch.allclose(
-        golden_tensor, npu_output_tensor, rtol=ERROR_TOL_RTOL, atol=ERROR_TOL_ATOL, equal_nan=True
+        golden_tensor,
+        npu_output_tensor,
+        rtol=ERROR_TOL_RTOL,
+        atol=ERROR_TOL_ATOL,
+        equal_nan=True,
     )
 
 
-def verify_result(m: int, n: int, rank_num: int, base_dir: str = "./output",
-                  out_dtype: torch.dtype = torch.bfloat16) -> bool:
+def verify_result(
+    m: int,
+    n: int,
+    rank_num: int,
+    base_dir: str = "./output",
+    out_dtype: torch.dtype = torch.bfloat16,
+) -> bool:
     """
     Verify results for all ranks.
 

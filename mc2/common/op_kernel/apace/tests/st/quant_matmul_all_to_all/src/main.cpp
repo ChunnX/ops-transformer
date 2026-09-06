@@ -1,7 +1,7 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software: you can redistribute it and/or modify it under the terms and conditions of
- * the CANN Open Software License Agreement Version 2.0 (the "License").
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -79,8 +79,10 @@ struct AllToAllArgs {
 
 void PrintAllToAllUsage(const std::string &programName)
 {
-    std::cerr << "Usage: " << programName << " m k n rankNum [quantType] [isFp16] [isBias] [tileCnt] [tileSize]"
-                                         " [tailSize] [isLocalDelayed]" << std::endl;
+    std::cerr << "Usage: " << programName
+              << " m k n rankNum [quantType] [isFp16] [isBias] [tileCnt] [tileSize]"
+                 " [tailSize] [isLocalDelayed]"
+              << std::endl;
     std::cerr << "Args: " << std::endl;
     std::cerr << "  m: row of matrix A" << std::endl;
     std::cerr << "  k: col of matrix A (= row of matrix B, full K, not split)" << std::endl;
@@ -152,8 +154,8 @@ void ParseArgs(int argc, char *argv[], AllToAllArgs &args)
     if (args.tileSize <= 0) {
         args.tileSize = args.m / args.tileCnt;
     }
-    int64_t rem = static_cast<int64_t>(args.m) -
-                  static_cast<int64_t>(args.tileSize) * static_cast<int64_t>(args.tileCnt);
+    int64_t rem =
+        static_cast<int64_t>(args.m) - static_cast<int64_t>(args.tileSize) * static_cast<int64_t>(args.tileCnt);
     if (rem < 0) {
         throw std::invalid_argument("ERROR: tileSize * tileCnt exceeds m");
     }
@@ -167,23 +169,34 @@ void ParseArgs(int argc, char *argv[], AllToAllArgs &args)
     }
 }
 
-static void LaunchKernel(uint32_t usedCoreNum, aclrtStream stream, CommContext *hcommCtx,
-                         GM_ADDR deviceA, GM_ADDR deviceScaleA, GM_ADDR deviceB, GM_ADDR deviceScaleB,
-                         GM_ADDR deviceBias, GM_ADDR deviceOutput, MatmulAllToAllTilingData &tilingData,
-                         int quantType, int isFp16, int isLocalDelayed)
+static void LaunchKernel(uint32_t usedCoreNum, aclrtStream stream, CommContext *hcommCtx, GM_ADDR deviceA,
+                         GM_ADDR deviceScaleA, GM_ADDR deviceB, GM_ADDR deviceScaleB, GM_ADDR deviceBias,
+                         GM_ADDR deviceOutput, MatmulAllToAllTilingData &tilingData, int quantType, int isFp16,
+                         int isLocalDelayed)
 {
 #define A2A_MX_LAUNCH(kernelName) \
-    kernelName<<<usedCoreNum, nullptr, stream>>>( \
-        hcommCtx, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceBias, deviceOutput, tilingData)
+    kernelName<<<usedCoreNum, nullptr, stream>>>(hcommCtx, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceBias, \
+                                                 deviceOutput, tilingData)
 #define A2A_MX_LAUNCH_QUANT(typeSuffix) \
     do { \
         switch (quantType) { \
-            case QUANT_E2M1_E2M1: A2A_MX_LAUNCH(MatmulAllToAllMxKernelE2M1E2M1##typeSuffix); break; \
-            case QUANT_E4M3_E4M3: A2A_MX_LAUNCH(MatmulAllToAllMxKernelE4M3E4M3##typeSuffix); break; \
-            case QUANT_E5M2_E5M2: A2A_MX_LAUNCH(MatmulAllToAllMxKernelE5M2E5M2##typeSuffix); break; \
-            case QUANT_E4M3_E5M2: A2A_MX_LAUNCH(MatmulAllToAllMxKernelE4M3E5M2##typeSuffix); break; \
-            case QUANT_E5M2_E4M3: A2A_MX_LAUNCH(MatmulAllToAllMxKernelE5M2E4M3##typeSuffix); break; \
-            default: break; \
+            case QUANT_E2M1_E2M1: \
+                A2A_MX_LAUNCH(MatmulAllToAllMxKernelE2M1E2M1##typeSuffix); \
+                break; \
+            case QUANT_E4M3_E4M3: \
+                A2A_MX_LAUNCH(MatmulAllToAllMxKernelE4M3E4M3##typeSuffix); \
+                break; \
+            case QUANT_E5M2_E5M2: \
+                A2A_MX_LAUNCH(MatmulAllToAllMxKernelE5M2E5M2##typeSuffix); \
+                break; \
+            case QUANT_E4M3_E5M2: \
+                A2A_MX_LAUNCH(MatmulAllToAllMxKernelE4M3E5M2##typeSuffix); \
+                break; \
+            case QUANT_E5M2_E4M3: \
+                A2A_MX_LAUNCH(MatmulAllToAllMxKernelE5M2E4M3##typeSuffix); \
+                break; \
+            default: \
+                break; \
         } \
     } while (0)
     if (isLocalDelayed != 0) {
@@ -213,8 +226,8 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
 
     INFO_LOG("rankNum=%d, rankId=%d, ipport=%s, quantType=%d, isFp16=%d, isBias=%d, tileCnt=%d, "
              "tileSize=%d, tailSize=%d, isLocalDelayed=%d",
-             rankNum, rankId, ipport, args.quantType, args.isFp16, args.isBias, args.tileCnt,
-             args.tileSize, args.tailSize, args.isLocalDelayed);
+             rankNum, rankId, ipport, args.quantType, args.isFp16, args.isBias, args.tileCnt, args.tileSize,
+             args.tailSize, args.isLocalDelayed);
 
     uint32_t np = static_cast<uint32_t>(n) / static_cast<uint32_t>(rankNum);
 
@@ -274,8 +287,8 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
     exchanger.Barrier();
     exchanger.Close();
 
-    uint32_t remoteBatch = (args.isLocalDelayed != 0) ? static_cast<uint32_t>(rankNum) - 1
-                                                      : static_cast<uint32_t>(rankNum);
+    uint32_t remoteBatch =
+        (args.isLocalDelayed != 0) ? static_cast<uint32_t>(rankNum) - 1 : static_cast<uint32_t>(rankNum);
     uint32_t mmTileM = static_cast<uint32_t>(commTd.splitAxisTileSize);
     INFO_LOG("isLocalDelayed = %d, quantType = %d, isBias = %d, isFp16 = %d", args.isLocalDelayed, args.quantType,
              args.isBias, args.isFp16);
@@ -283,8 +296,7 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
 #define DO_TILING(dTypeA, dTypeB) \
     do { \
         QuantMatmulTilingSwat<dTypeA, dTypeB> tilingEngine; \
-        tilingEngine.GetTilingData(mmTileM, np, static_cast<uint64_t>(k), tilingData.tileQbmmTilingData, \
-                                   remoteBatch); \
+        tilingEngine.GetTilingData(mmTileM, np, static_cast<uint64_t>(k), tilingData.tileQbmmTilingData, remoteBatch); \
         if (tailSize > 0) { \
             tilingEngine.GetTilingData(static_cast<uint64_t>(tailSize), np, static_cast<uint64_t>(k), \
                                        tilingData.tailQbmmTilingData, remoteBatch); \
@@ -403,9 +415,9 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
 
     WriteFile(outputDir + "/npu_out.bin", hostOutput.data(), sizeOutput);
 
-    std::cout << std::fixed << std::setprecision(3) << "[Rank " << rankId << "] Kernel elapsed time: "
-              << kernelElapsedUs / BENCHMARK_ITERATIONS << " us (avg over " << BENCHMARK_ITERATIONS
-              << " iterations)" << std::endl;
+    std::cout << std::fixed << std::setprecision(3) << "[Rank " << rankId
+              << "] Kernel elapsed time: " << kernelElapsedUs / BENCHMARK_ITERATIONS << " us (avg over "
+              << BENCHMARK_ITERATIONS << " iterations)" << std::endl;
 
     if (kernelEndEvent != nullptr) {
         aclrtDestroyEvent(kernelEndEvent);
@@ -445,8 +457,8 @@ int main(int argc, char *argv[])
 
     INFO_LOG("Master (PID=%d) will fork %d processes (quantType=%d, isFp16=%d, isBias=%d, tileCnt=%d, "
              "tileSize=%d, tailSize=%d, isLocalDelayed=%d)",
-             getpid(), args.rankNum, args.quantType, args.isFp16, args.isBias, args.tileCnt,
-             args.tileSize, args.tailSize, args.isLocalDelayed);
+             getpid(), args.rankNum, args.quantType, args.isFp16, args.isBias, args.tileCnt, args.tileSize,
+             args.tailSize, args.isLocalDelayed);
 
     std::vector<pid_t> pids(args.rankNum);
     for (int rankId = 0; rankId < args.rankNum; ++rankId) {

@@ -1,12 +1,12 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
-  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-  * CANN Open Software License Agreement Version 2.0 (the "License").
-  * Please refer to the License for details. You may not use this file except in compliance with the License.
-  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-  * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
   * \file mx_quant_matmul_all_to_all_urma_impl.h
@@ -45,11 +45,9 @@ public:
     /**
      * @brief 初始化算子状态和参数
      */
-    __aicore__ inline void Init(__gm__ CommContext *hcommCtx,
-        GM_ADDR aGM, GM_ADDR scaleAGM,
-        GM_ADDR bGM, GM_ADDR scaleBGM,
-        GM_ADDR biasGM, GM_ADDR cGM,
-        const MatmulAllToAllTilingData *tilingData);
+    __aicore__ inline void Init(__gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR scaleAGM, GM_ADDR bGM,
+                                GM_ADDR scaleBGM, GM_ADDR biasGM, GM_ADDR cGM,
+                                const MatmulAllToAllTilingData *tilingData);
 
     /**
      * @brief 执行算子逻辑（包含 AIC/AIV 分离逻辑）
@@ -65,13 +63,13 @@ public:
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 
     // 组件定义
-    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<
-        ProblemShape, 0, LayoutA, LayoutB, AType>;
+    using BlockScheduler =
+        Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<ProblemShape, 0, LayoutA, LayoutB, AType>;
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<0, false>;
-    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-        DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC, BiasType, LayoutBias>;
-    using QuantMatmulKernelImpl = Blaze::Gemm::Kernel::QuantBatchMatmulMxKernel<
-        ProblemShape, BlockMmad, BlockScheduler>;
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
+                                                    BiasType, LayoutBias>;
+    using QuantMatmulKernelImpl =
+        Blaze::Gemm::Kernel::QuantBatchMatmulMxKernel<ProblemShape, BlockMmad, BlockScheduler>;
 
     // 参数类型
     using Params = typename QuantMatmulKernelImpl::Params;
@@ -85,8 +83,8 @@ public:
 
 private:
     // ---------------- 通信相关组件与参数 ----------------
-    __gm__ CommUbmemContext* barrierCtx_{nullptr};
-    __gm__ CommUdmaContext* udmaCtx_{nullptr};
+    __gm__ CommUbmemContext *barrierCtx_{nullptr};
+    __gm__ CommUdmaContext *udmaCtx_{nullptr};
     CollectiveComm<CommCollectiveOp::AllToAll, CommMode::GET, CType, TeamBarrier> allToAll_;
     TeamBarrier teamBarrier_;
 
@@ -128,12 +126,11 @@ private:
 
     // ---------------- 私有方法 ----------------
     __aicore__ inline void InitBaseParams();
-    __aicore__ inline void SetupParams(const QuantMatmulTilingData &mmTile,
-        uint32_t batchSize, uint32_t batchRankOffset, bool isLocal, Params &params);
+    __aicore__ inline void SetupParams(const QuantMatmulTilingData &mmTile, uint32_t batchSize,
+                                       uint32_t batchRankOffset, bool isLocal, Params &params);
     __aicore__ inline void RunMatmul();
     __aicore__ inline void RunLocalMatmul();
     __aicore__ inline void RunAllToAll();
-
 };
 
 // =================================================================================
@@ -142,9 +139,8 @@ private:
 
 template <typename AType, typename BType, typename CType, bool LocalDelay>
 __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Init(
-    __gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR scaleAGM, GM_ADDR bGM, GM_ADDR scaleBGM,
-    GM_ADDR biasGM, GM_ADDR cGM,
-    const MatmulAllToAllTilingData *tilingData)
+    __gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR scaleAGM, GM_ADDR bGM, GM_ADDR scaleBGM, GM_ADDR biasGM,
+    GM_ADDR cGM, const MatmulAllToAllTilingData *tilingData)
 {
     tilingData_ = tilingData;
 
@@ -164,8 +160,8 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::In
 
     // selfCBase 为 all2all 中不参与通信的归属本 rank 计算结果输出地址；
     // selfWinAddr 为 本 rank win区地址
-    baseParams_.selfCBase = baseParams_.cGm + static_cast<uint64_t>(baseParams_.rankId) *
-        baseParams_.axisM * baseParams_.cByteStrideN;
+    baseParams_.selfCBase =
+        baseParams_.cGm + static_cast<uint64_t>(baseParams_.rankId) * baseParams_.axisM * baseParams_.cByteStrideN;
     baseParams_.selfWinAddr = reinterpret_cast<GM_ADDR>(udmaCtx_->commBufferAddrs[baseParams_.rankId]);
 
     uint32_t ubOffset = 0;
@@ -176,7 +172,7 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::In
 
     CommTilingData commTilingData = tilingData->commTilingData;
     allToAll_.Init(udmaCtx_, teamBarrier_, commTilingData, cGM, commPtr.Get(),
-        static_cast<uint32_t>(udmaCtx_->rankSize), static_cast<uint32_t>(GetBlockIdx()));
+                   static_cast<uint32_t>(udmaCtx_->rankSize), static_cast<uint32_t>(GetBlockIdx()));
 }
 
 template <typename AType, typename BType, typename CType, bool LocalDelay>
@@ -211,7 +207,7 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::In
     baseParams_.tailCnt = static_cast<uint32_t>(commTilingData.splitAxisTailCnt);
     baseParams_.totalTileCnt = baseParams_.tileCnt + baseParams_.tailCnt;
     baseParams_.axisM = static_cast<uint64_t>(baseParams_.tileCnt) * baseParams_.tileM +
-        static_cast<uint64_t>(baseParams_.tailCnt) * baseParams_.tailM;
+                        static_cast<uint64_t>(baseParams_.tailCnt) * baseParams_.tailM;
     baseParams_.maxTileM = (baseParams_.tileM > baseParams_.tailM) ? baseParams_.tileM : baseParams_.tailM;
     baseParams_.cByteStrideN = baseParams_.axisNPerRank * sizeof(CType);
     uint32_t scaleKGroups = (baseParams_.axisK + Blaze::Gemm::MXFP_DIVISOR_SIZE - 1) / Blaze::Gemm::MXFP_DIVISOR_SIZE;
@@ -230,37 +226,45 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Se
 {
     // problemShape 语义为 [M, N, K, Batch]：M 为当前 tiling 的 tile 行数（主/尾/local块不同），
     // N/K 每卡固定，Batch 等于参与计算的 rank 数
-    params.problemShape = ProblemShape{
-        static_cast<int64_t>(mmTile.m),
-        static_cast<int64_t>(baseParams_.axisNPerRank),
-        static_cast<int64_t>(baseParams_.axisK),
-        static_cast<int64_t>(batchSize)};
+    params.problemShape = ProblemShape{static_cast<int64_t>(mmTile.m), static_cast<int64_t>(baseParams_.axisNPerRank),
+                                       static_cast<int64_t>(baseParams_.axisK), static_cast<int64_t>(batchSize)};
 
     GM_ADDR biasAddr = nullptr;
     // B/scaleB/bias 按 rank 分段存储，由batchRankOffset 定位到偏移基地址
-    //（非local 场景恒为 0：由 kernel 内 realRank 逐 batch 推进；local 场景为 rankId）
+    // （非local 场景恒为 0：由 kernel 内 realRank 逐 batch 推进；local 场景为 rankId）
     if (baseParams_.biasGm != nullptr) {
-        biasAddr = baseParams_.biasGm +
-            static_cast<uint64_t>(batchRankOffset) * baseParams_.axisNPerRank * sizeof(BiasType);
+        biasAddr =
+            baseParams_.biasGm + static_cast<uint64_t>(batchRankOffset) * baseParams_.axisNPerRank * sizeof(BiasType);
     }
     params.mmadParams = BlockMmadParams{
         baseParams_.aGm,
-        baseParams_.bGm + ((static_cast<uint64_t>(batchRankOffset) *
-            baseParams_.axisNPerRank * baseParams_.axisK) >> SIZE_SHIFT),
+        baseParams_.bGm +
+            ((static_cast<uint64_t>(batchRankOffset) * baseParams_.axisNPerRank * baseParams_.axisK) >> SIZE_SHIFT),
         isLocal ? baseParams_.selfCBase : baseParams_.selfWinAddr,
         biasAddr,
-        baseParams_.scaleAGm, baseParams_.scaleBGm + static_cast<uint64_t>(batchRankOffset) *
-            baseParams_.axisNPerRank * baseParams_.scaleAElemCnt};
+        baseParams_.scaleAGm,
+        baseParams_.scaleBGm +
+            static_cast<uint64_t>(batchRankOffset) * baseParams_.axisNPerRank * baseParams_.scaleAElemCnt};
     params.l1Params = L1Params{static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK, mmTile.scaleKL1, mmTile.nBufferNum};
-    params.schParams = BlockSchedulerParams{mmTile.baseM, mmTile.baseN, mmTile.mTailTile, mmTile.nTailTile,
-        mmTile.mBaseTailSplitCnt, mmTile.nBaseTailSplitCnt, mmTile.mTailMain, mmTile.nTailMain};
-    params.qbmmParams = QBMMTiling{batchSize, mmTile.baseM, mmTile.baseN, mmTile.baseK,
-        baseParams_.biasGm != nullptr ? QBMMTiling::BIAS_ENABLED : QBMMTiling::BIAS_DISABLED,
-        mmTile.dbL0c, LocalDelay && !isLocal};
+    params.schParams = BlockSchedulerParams{mmTile.baseM,
+                                            mmTile.baseN,
+                                            mmTile.mTailTile,
+                                            mmTile.nTailTile,
+                                            mmTile.mBaseTailSplitCnt,
+                                            mmTile.nBaseTailSplitCnt,
+                                            mmTile.mTailMain,
+                                            mmTile.nTailMain};
+    params.qbmmParams = QBMMTiling{batchSize,
+                                   mmTile.baseM,
+                                   mmTile.baseN,
+                                   mmTile.baseK,
+                                   baseParams_.biasGm != nullptr ? QBMMTiling::BIAS_ENABLED : QBMMTiling::BIAS_DISABLED,
+                                   mmTile.dbL0c,
+                                   LocalDelay && !isLocal};
     // skipSelfBatch 仅在"Local块后置计算 且 非local块"时为 true：
     // 本 rank 的 batch 延后到 RunLocalMatmul 单独算，非local块 遍历时跳过自身 batch
-    params.localParams = LocalParams{baseParams_.maxTileM, baseParams_.rankId,
-        baseParams_.selfCBase, LocalDelay && !isLocal};
+    params.localParams =
+        LocalParams{baseParams_.maxTileM, baseParams_.rankId, baseParams_.selfCBase, LocalDelay && !isLocal};
 }
 
 // =================================================================================
@@ -303,7 +307,7 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Ru
 
         // 通知 AIV：本 tile 全部 batch 已写完 Win 区
         CrossCoreSetFlag<0x2, PIPE_FIX>(tid);
-        
+
         aCur += curTileM * baseParams_.aByteStrideK;
         aScaleCur += curTileM * baseParams_.scaleAByteStride;
         cSelfCur += curTileM * baseParams_.cByteStrideN;
@@ -341,4 +345,3 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Ru
 }
 
 } // namespace Apace
-

@@ -3,8 +3,8 @@
 
 # ----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software: you can redistribute it and/or modify it under terms and conditions of
-# the CANN Open Software License Agreement Version 2.0 (the "License").
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -85,6 +85,7 @@ def write_artifacts(base_dir, rank_id, a_file, b_file, a_scale, b_scale, bias, o
 
 # ---------------- FP8 E4M3FN (NPU bias=7) ----------------
 
+
 def float8_e4m3fn_to_float(data_uint8):
     """Convert FP8E4M3FN (uint8) to FP32 with NPU bias=7."""
     data = data_uint8.astype(np.uint8)
@@ -135,6 +136,7 @@ def float_to_fp8_e4m3fn_vec(fp32_arr):
 
 # ---------------- FP8 E5M2 (standard bias=15) ----------------
 
+
 def float8_e5m2_to_float(data_uint8):
     """Convert FP8E5M2 (uint8) to FP32 with standard bias=15."""
     data = data_uint8.astype(np.uint8)
@@ -180,6 +182,7 @@ def float_to_fp8_e5m2_vec(fp32_arr):
 
 # ---------------- FP4 E2M1 (packed fp4x2) ----------------
 
+
 def float_to_fp4_e2m1_vec(fp32_arr):
     """FP32 -> FP4 E2M1 element codes (uint8 nibble, bit3=sign, bits2-0=magnitude code)."""
     fp32 = fp32_arr.astype(np.float32)
@@ -190,9 +193,9 @@ def float_to_fp4_e2m1_vec(fp32_arr):
     codes = np.empty(flat.shape, dtype=np.uint8)
     chunk = 1 << 20
     for s in range(0, flat.size, chunk):
-        blk = flat[s:s + chunk]
+        blk = flat[s : s + chunk]
         idx = np.argmin(np.abs(blk[:, None] - FP4_MAGS), axis=-1)
-        codes[s:s + chunk] = idx
+        codes[s : s + chunk] = idx
     codes = codes.reshape(abs_val.shape)
     return (sign << 3) | codes
 
@@ -213,6 +216,7 @@ def pack_fp4x2(codes):
 
 # ---------------- Scale (FP8 E8M0) ----------------
 
+
 def generate_fp8_e8m0_scale(shape):
     """Generate FP8E8M0 scale values (exp ~127-129 -> scale ~1-4)."""
     exp_values = np.random.randint(127, 129, shape).astype(np.uint8)
@@ -226,6 +230,7 @@ def float8_e8m0_to_float(scale_uint8):
 
 
 # ---------------- Quantize / dequantize helpers ----------------
+
 
 def quantize(kind, fp32_arr):
     """FP32 -> element codes (uint8 per element; nibble code for FP4)."""
@@ -274,14 +279,20 @@ def apply_mxfp_scale(data_fp32, scale_fp8, divisor=64, c0=2):
 
     if is_a_scale:
         k_shape = data_fp32.shape[1]
-        bcast = np.repeat(fp32_scale.reshape(fp32_scale.shape[0], -1), sub_group, axis=-1)[..., :k_shape]
+        bcast = np.repeat(
+            fp32_scale.reshape(fp32_scale.shape[0], -1), sub_group, axis=-1
+        )[..., :k_shape]
         return data_fp32 * bcast
     if is_b_scale:
         k_shape = data_fp32.shape[0]
         # [CK, 2, N] -> [N, CK*2], expand 32x along K, back to [K, N]
         bcast_t = np.repeat(
-            np.ascontiguousarray(fp32_scale.transpose(2, 0, 1)).reshape(fp32_scale.shape[2], -1),
-            sub_group, axis=-1)[..., :k_shape]
+            np.ascontiguousarray(fp32_scale.transpose(2, 0, 1)).reshape(
+                fp32_scale.shape[2], -1
+            ),
+            sub_group,
+            axis=-1,
+        )[..., :k_shape]
         return data_fp32 * bcast_t.T
     raise ValueError(f"Unexpected scale shape: {scale_fp8.shape}")
 
@@ -305,8 +316,10 @@ def gen_golden_data_matmul_all_to_all(m, k, n, rank_num, quant_type, is_fp16, is
     np_ = N // rank_num
     ck = math.ceil(K / 64)
 
-    print(f"  M={M}, K={K}, N={N}, Np={np_} (per rank), quantType={quant_type} (A={a_kind}, B={b_kind}), "
-          f"isFp16={is_fp16}, isBias={is_bias}")
+    print(
+        f"  M={M}, K={K}, N={N}, Np={np_} (per rank), quantType={quant_type} (A={a_kind}, B={b_kind}), "
+        f"isFp16={is_fp16}, isBias={is_bias}"
+    )
 
     # 每个 rank 的 A / scaleA / B / scaleB / bias 都用独立 seed 生成
     a_codes_list = []
@@ -328,37 +341,61 @@ def gen_golden_data_matmul_all_to_all(m, k, n, rank_num, quant_type, is_fp16, is
         b_scale_list.append(b_scale)
         bias_list.append(None)
 
-    print(f"  [DIAG] A[0]: {a_kind} shape={a_codes_list[0].shape}, scale.shape={a_scale_list[0].shape}")
-    print(f"  [DIAG] B[0]: {b_kind} shape={b_codes_list[0].shape}, scale.shape={b_scale_list[0].shape}")
+    print(
+        f"  [DIAG] A[0]: {a_kind} shape={a_codes_list[0].shape}, scale.shape={a_scale_list[0].shape}"
+    )
+    print(
+        f"  [DIAG] B[0]: {b_kind} shape={b_codes_list[0].shape}, scale.shape={b_scale_list[0].shape}"
+    )
 
     # bias 幅度按典型 C 量级自适应（~1/8），避免大数值 matmul 输出把 bias 淹没
     bias_scale = 0.0
     if is_bias:
-        a_mean = float(np.abs(apply_mxfp_scale(dequantize(a_kind, a_codes_list[0]), a_scale_list[0])).mean())
-        b_mean = float(np.abs(apply_mxfp_scale(dequantize(b_kind, b_codes_list[0]), b_scale_list[0])).mean())
+        a_mean = float(
+            np.abs(
+                apply_mxfp_scale(dequantize(a_kind, a_codes_list[0]), a_scale_list[0])
+            ).mean()
+        )
+        b_mean = float(
+            np.abs(
+                apply_mxfp_scale(dequantize(b_kind, b_codes_list[0]), b_scale_list[0])
+            ).mean()
+        )
         bias_scale = 0.125 * a_mean * b_mean * K
     for rank_id in range(rank_num):
         if is_bias:
             np.random.seed(BASE_SEED + 100 + rank_id)
-            bias_list[rank_id] = np.random.uniform(-bias_scale, bias_scale, (N,)).astype(np.float32)
+            bias_list[rank_id] = np.random.uniform(
+                -bias_scale, bias_scale, (N,)
+            ).astype(np.float32)
     if is_bias:
-        print(f"  [DIAG] bias range [-{bias_scale:.1f}, {bias_scale:.1f}] (auto-scaled to typical C magnitude)")
+        print(
+            f"  [DIAG] bias range [-{bias_scale:.1f}, {bias_scale:.1f}] (auto-scaled to typical C magnitude)"
+        )
 
     # Step 1: per-rank MXFP dequantize -> FP32 matmul (+ bias) -> C_i [M, N]
     cpu_outputs_full = []
     for rank_id in range(rank_num):
-        a_deq = apply_mxfp_scale(dequantize(a_kind, a_codes_list[rank_id]), a_scale_list[rank_id])
-        b_deq = apply_mxfp_scale(dequantize(b_kind, b_codes_list[rank_id]), b_scale_list[rank_id])
+        a_deq = apply_mxfp_scale(
+            dequantize(a_kind, a_codes_list[rank_id]), a_scale_list[rank_id]
+        )
+        b_deq = apply_mxfp_scale(
+            dequantize(b_kind, b_codes_list[rank_id]), b_scale_list[rank_id]
+        )
         a_cpu = torch.from_numpy(a_deq)
         b_cpu = torch.from_numpy(b_deq)
         c_full = torch.matmul(a_cpu, b_cpu)  # [M, N]
         if is_bias:
             c_full = c_full + torch.from_numpy(bias_list[rank_id])
         cpu_outputs_full.append(c_full)
-        print(f"  Rank {rank_id}: C shape {c_full.shape}, range [{c_full.min():.2f}, {c_full.max():.2f}]")
+        print(
+            f"  Rank {rank_id}: C shape {c_full.shape}, range [{c_full.min():.2f}, {c_full.max():.2f}]"
+        )
 
     # Step 2: permute — C.view(M, rankSize, Np).permute(1, 0, 2) -> [rankSize, M, Np]
-    allto_all_inputs = [c.view(M, rank_num, np_).permute(1, 0, 2) for c in cpu_outputs_full]
+    allto_all_inputs = [
+        c.view(M, rank_num, np_).permute(1, 0, 2) for c in cpu_outputs_full
+    ]
 
     # Step 3: AllToAll exchange — rank j gets C_i[:, j*Np:(j+1)*Np] from every rank i
     allto_all_outputs = []
@@ -390,12 +427,16 @@ def gen_golden_data_matmul_all_to_all(m, k, n, rank_num, quant_type, is_fp16, is
 
 if __name__ == "__main__":
     if len(sys.argv) < 5 or len(sys.argv) > 8:
-        print("Usage: python3 gen_data.py m k n rank_num [quant_type] [is_fp16] [is_bias]")
+        print(
+            "Usage: python3 gen_data.py m k n rank_num [quant_type] [is_fp16] [is_bias]"
+        )
         print("  m: matrix A row dimension M")
         print("  k: matrix A column dimension K (full K, not split)")
         print("  n: matrix B column dimension N (split to N/rank_num per rank)")
         print("  rank_num: number of ranks")
-        print("  quant_type: 0=E2M1E2M1(FP4), 1=E4M3E4M3, 2=E5M2E5M2, 3=E4M3E5M2, 4=E5M2E4M3 (default: 1)")
+        print(
+            "  quant_type: 0=E2M1E2M1(FP4), 1=E4M3E4M3, 2=E5M2E5M2, 3=E4M3E5M2, 4=E5M2E4M3 (default: 1)"
+        )
         print("  is_fp16: output float16 instead of bfloat16 (default: 0)")
         print("  is_bias: add bias input [N] (default: 0)")
         print("\nExample: python3 gen_data.py 2048 3584 4096 4 1 0 0")
