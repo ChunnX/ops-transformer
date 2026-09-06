@@ -64,14 +64,14 @@ $$
   <tr>
     <td class="tg-0pky">sequsedQOptional</td>
     <td class="tg-0pky">可选输入</td>
-    <td class="tg-0pky">各batch中query的实际序列长度。</td>
+    <td class="tg-0pky">各batch中query的实际序列长度。仅layout为TND时生效；BNSD/BSND须传nullptr，实际长度与maxQSeqlen/query的S维一致。</td>
     <td class="tg-0pky">INT32</td>
     <td class="tg-0pky">ND</td>
   </tr>
   <tr>
     <td class="tg-0pky">sequsedKvOptional</td>
     <td class="tg-0pky">可选输入</td>
-    <td class="tg-0pky">各batch中kv的实际序列长度。</td>
+    <td class="tg-0pky">各batch中kv的实际序列长度。仅layout为TND时生效；BNSD/BSND须传nullptr，实际长度取自maxKvSeqlen（须与key/value的S维一致）。</td>
     <td class="tg-0pky">INT32</td>
     <td class="tg-0pky">ND</td>
   </tr>
@@ -180,6 +180,7 @@ $$
 * <term>Ascend 950PR/Ascend 950DT</term>：支持本算子。
 * 须与aclnnGenericBlockSparseAttentionGrad配合使用；主算子调用前必须先成功执行本算子。
 * layoutQ与layoutKv须相同，取值TND/BNSD/BSND；TND布局下cuSeqLengthsQOptional/cuSeqLengthsKvOptional必选。
+* sequsedQOptional/sequsedKvOptional仅在TND时生效；BNSD/BSND须传nullptr，实际序列长度取自maxQSeqlen/maxKvSeqlen（须与Q/K的S维一致）。
 * HeadDim固定为128；numQHeads/numKvHeads取值范围[1, 128]，且numQHeads % numKvHeads == 0。
 * blockShape当前仅支持[1, 128]；isPackedGQA当前仅支持1；maskType当前仅支持1。
 * winLeft/winRight不使能时必须为-1。

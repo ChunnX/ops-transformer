@@ -85,7 +85,7 @@ class GenericBlockSparseAttentionGradOpBuilder(OpBuilder):
             "Tensor sparse_block_idx, Tensor sparse_block_count, Tensor metadata, "
             "Tensor? attn_mask=None, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, "
             "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
-            "int[] block_shape=[0], int is_packed_gqa=1, "
+            "int[] block_shape=[1, 128], int is_packed_gqa=1, "
             'str layout_q="TND", str layout_kv="TND", '
             "float softmax_scale=1.0, int mask_mode=1, int softmax_precision=0, "
             "int win_left=-1, int win_right=-1) -> (Tensor, Tensor, Tensor)",
@@ -282,7 +282,7 @@ def generic_block_sparse_attention_grad(
     win_right: int = -1,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if block_shape is None:
-        block_shape = [0]
+        block_shape = [1, 128]
     mask_mode_i = _resolve_mask_mode(mask_mode)
     op_module = generic_block_sparse_attention_grad_op_builder.load()
     return op_module.generic_block_sparse_attention_grad(
