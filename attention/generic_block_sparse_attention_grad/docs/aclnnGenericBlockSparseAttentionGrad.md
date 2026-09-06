@@ -286,7 +286,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
               <tr>
                   <td>sequsedQOptional</td>
                   <td>可选输入</td>
-                  <td>各batch中query的实际序列长度。</td>
+                  <td>各batch中query的实际序列长度。仅layoutQ为"TND"时生效；为"BNSD"或"BSND"时须传nullptr，实际长度取自query的S维。</td>
                   <td>长度为B。</td>
                   <td>INT32</td>
                   <td>ND</td>
@@ -296,7 +296,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
               <tr>
                   <td>sequsedKvOptional</td>
                   <td>可选输入</td>
-                  <td>各batch中kv的实际序列长度。</td>
+                  <td>各batch中kv的实际序列长度。仅layoutKv为"TND"时生效；为"BNSD"或"BSND"时须传nullptr，实际长度取自key/value的S维。</td>
                   <td>长度为B。</td>
                   <td>INT32</td>
                   <td>ND</td>
@@ -551,7 +551,8 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
 - 参数cuSeqLengthsQOptional、cuSeqLengthsKvOptional、metadata的数据类型应为INT64。
 - layoutQ和layoutKv当前支持TND、BNSD、BSND，且必须保持一致。
 - 当layoutQ为TND时，需要传入cuSeqLengthsQOptional；当layoutKv为TND时，需要传入cuSeqLengthsKvOptional。
-- HeadDim固定为128；N1/N2取值范围[1, 128]，且N1 % N2 == 0。
+- sequsedQOptional/sequsedKvOptional仅在TND时生效；BNSD/BSND须传nullptr，实际序列长度取自Q/K的S维。
+- HeadDim固定为128；N1/N2取值范围[1, 128]，且N1 > N2，N1 % N2 == 0。
 - blockShape：blockShapeX仅支持1；blockShapeY须≥128且为64的倍数（Cube按baseN=128对每个稀疏块做S2切分）；isPackedGQA当前仅支持1；maskType当前仅支持1。
 - winLeft和winRight不使能时必须为-1；attenMaskOptional当前应传nullptr。
 - Softmax LSE的head/seq轴语义须与query布局一致。

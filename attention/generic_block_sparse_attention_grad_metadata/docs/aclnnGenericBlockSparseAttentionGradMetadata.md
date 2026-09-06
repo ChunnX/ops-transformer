@@ -141,7 +141,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradMetadata(
       <tr>
         <td>sequsedQOptional</td>
         <td>可选输入</td>
-        <td>各batch中query的实际序列长度。</td>
+        <td>各batch中query的实际序列长度。仅layoutQ为"TND"时生效；为"BNSD"或"BSND"时须传nullptr，实际长度与maxQSeqlen/query的S维一致。</td>
         <td>长度为B。</td>
         <td>INT32</td>
         <td>ND</td>
@@ -151,7 +151,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradMetadata(
       <tr>
         <td>sequsedKvOptional</td>
         <td>可选输入</td>
-        <td>各batch中kv的实际序列长度。</td>
+        <td>各batch中kv的实际序列长度。仅layoutKv为"TND"时生效；为"BNSD"或"BSND"时须传nullptr，实际长度取自maxKvSeqlen（须与key/value的S维一致）。</td>
         <td>长度为B。</td>
         <td>INT32</td>
         <td>ND</td>
@@ -212,7 +212,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradMetadata(
         <td>blockShape</td>
         <td>输入</td>
         <td>稀疏块形状数组。</td>
-        <td>含两个元素[blockShapeX, blockShapeY]。blockShapeX当前仅支持1；blockShapeY须≥128且为64的倍数（Cube按baseN=128切分S2）。</td>
+        <td>含两个元素[blockShapeX, blockShapeY]。blockShapeX当前仅支持1；blockShapeY须≥128且为64的倍数。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -413,6 +413,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradMetadata(
 - HeadDim固定为128；numQHeads/numKvHeads须落在[1, 128]，且numQHeads % numKvHeads == 0。
 - blockShape当前仅支持[1, 128]；isPackedGQA当前仅支持1；maskType当前仅支持1。
 - layoutQ与layoutKv须相同，取值"TND"/"BNSD"/"BSND"；TND布局下cuSeqLengthsQOptional/cuSeqLengthsKvOptional必选。
+- sequsedQOptional/sequsedKvOptional仅在TND时生效；BNSD/BSND须传nullptr，实际序列长度取自maxQSeqlen/maxKvSeqlen（须与Q/K的S维一致）。
 - winLeft和winRight不使能时必须为-1。
 - sparseBlockIdx最后一维maxS1须≥maxQSeqlen；J = ceilDiv(maxKvSeqlen, blockShapeY)须与sparseBlockIdx第3维一致。
 - metadata长度须满足shape[0] ≥ 80 + B × numQHeads × J × 4；任务数上界B × numQHeads × J ≤ 1048576。
