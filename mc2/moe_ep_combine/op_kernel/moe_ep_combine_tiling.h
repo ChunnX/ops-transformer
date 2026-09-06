@@ -40,9 +40,9 @@ struct MoeEpCombineInfo {
     uint64_t recvCapacity = 0;
     uint64_t totalWinSizeEp = 0;
     uint64_t totalUbSize = 0;
-    uint64_t sendDataWorkspaceSizePerRank = 0; // N * K * actual perSlotBytes
     uint64_t combineStateWinOffset = 0;
     uint64_t combineDataWinOffset = 0;
+    uint64_t combineFlagSourceWinOffset = 0;
 };
 
 struct MoeEpCombineTilingData {

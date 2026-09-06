@@ -10,11 +10,11 @@
 - 使用 metadata 第 5 列 `recv_x_idx` 定位 token 和 weight 的输入行。
 - token 与 weight 保持独立输入和独立发送，不拼接 payload。
 - 本卡使用全部 AIV 并行执行 DataCopy，完成后再进入远端发送阶段。
-- 远端保持“一 rank 一 channel、一个 channel 仅由一个核访问”的约束。
+- 远端沿用 upstream 动态多 channel；每个 rank/channel 仅由一个核访问。
 - `MoeEpCombine` 主 kernel 只保留一次全核 `SyncAll`。
-- 保持 Combine 通信窗口、完成 flag 和 `MoeEpCombineEpilogue` 协议不变。
+- 保持接收完成 flag 协议不变；Combine state 尾部增加 512B 常量发送源，后续数据区偏移统一后移。
 
-当前设计面向“一 rank 一 channel”。未来若单 Jetty/channel 对应多个 rank，分核所有权需要从 rank 提升为 channel，但本文的数据路径和同步原则保持不变。
+每个 rank 的有效 channel 数由容量、通信 context 和 7-channel 上限共同决定；发送端与接收端使用同一计算规则。
 
 ## 2. 输入与 metadata 契约
 
@@ -81,7 +81,7 @@ rank_end   = recv_rank_offsets[rank + 1]
     │     ├─ 连续读取 recv_rank_offsets
     │     ├─ 从最后一个 offset 得到 actualA
     │     ├─ 初始化 metadata UB、token queue、weight buffer/queue
-    │     └─ 初始化每核 Hcomm batch 和 flag source
+    │     └─ 初始化每核 Hcomm batch 和 UB flag；AIV0 初始化 win 中共享的 flag source
     │
     ├─ 2. 定位本卡 metadata 区间
     │     └─ 直接读取 offsets[rankId:rankId + 2]
@@ -99,8 +99,8 @@ rank_end   = recv_rank_offsets[rank + 1]
     │
     ├─ 6. 全核按远端 rank 重新分配任务
     │     ├─ 排除本卡 rank
-    │     ├─ 每个远端 rank 仅有一个 owner 核
-    │     └─ rank 数大于核数时，一个核顺序处理多个 rank/channel
+    │     ├─ 每个远端 rank/channel 仅有一个 owner 核
+    │     └─ 任务数大于核数时，一个核顺序处理多个 rank/channel
     │
     ├─ 7. owner 核直接发送远端数据
     │     ├─ x[recv_x_idx] -> token WriteNbi
@@ -163,43 +163,28 @@ coreEnd   = coreBegin + coreCount
 
 ### 4.2 远端阶段：按 rank/channel 分核
 
-当前一 rank 一 channel，先将远端 rank 映射为不包含本卡的 ordinal：
+设有效通道数为 Q，沿用 upstream 规则：
 
 ```text
-remoteRankCount = R - 1
-remoteOrdinal in [0, remoteRankCount)
-
-dstRank = remoteOrdinal < r ? remoteOrdinal : remoteOrdinal + 1
+Q = min(max(ceil(numMaxTokensPerRank * topK / 32368), 1),
+        max(context.channelsPerRank, 1), 7)
+remoteTaskCount = (R - 1) * Q
+ordinal = task / Q
+channel = task % Q
+dstRank = ordinal < r ? ordinal : ordinal + 1
 ```
 
-再将 `remoteRankCount` 均分给全部 `C` 个核：
+使用 SplitRange 将全部任务均分给 C 个 AIV，再把目标 rank 的 metadata 连续区间
+按 Q 个 channel 均分。每个任务使用独立 channel 完成 Begin、payload 提交、flag 提交、Flush。
+同一个 rank 可多 channel 并行，但同一个 channel 不能跨核拆分；空分片仍发 flag。
+任务数超过核数时，每核顺序处理多个任务，不减少有效 channel 数。
 
-```text
-base      = remoteRankCount / C
-remainder = remoteRankCount % C
+本卡数据仍由全部 AIV 通过 MTE 搬运；同步后 AIV0 发布全部 Q 个本卡 flag。
+Combine epilogue 等待并清零 R*Q 个紧凑排列的 flag，与 AIV 数无关；
+低核数、空数据和 R=1 都遵循同一规则。
 
-rankCount = base + (aivId < remainder ? 1 : 0)
-rankBegin = aivId * base + min(aivId, remainder)
-rankEnd   = rankBegin + rankCount
-```
-
-分核流程：
-
-```text
-远端 rank ordinal [0, R-1)
-          │
-          ├─ owner core 0: 完整 rank 区间 0
-          ├─ owner core 1: 完整 rank 区间 1
-          ├─ ...
-          └─ owner core C-1: 完整 rank 区间 C-1
-
-单个 rank 的 metadata 区间不能跨 owner 核拆分
-一个 owner 核可以顺序处理多个 rank/channel
-```
-
-当 `R - 1 > C` 时，每核处理约 `ceil((R - 1) / C)` 个 rank。例如 `R=1024, C=56` 时，15 个核各处理 19 个远端 rank，其余 41 个核各处理 18 个远端 rank。
-
-当前路由期望各 rank 数据量近似均匀，因此第一版按 rank 数静态均分。若后续出现明显倾斜，再考虑按各 rank 的 metadata 数加权分配，但仍禁止拆分单个 channel。
+例如 EP=8、nmt=4096、topK=8、纯 scale-up 的 context.channelsPerRank=8：
+Q=2，远端任务数为 14；AIV=64 时最多 14 核并行提交远端 WQE。
 
 ### 4.3 两阶段复用同一批核
 
@@ -257,7 +242,7 @@ x/weight GM -> UB 完成
 
 本卡 flag：
 
-- 仅由 AIV0 发布。
+- 仅由 AIV0 发布，覆盖本卡全部有效 channel。
 - 必须在全核 `SyncAll` 后发布。
 - 不依赖 URMA `so/odr`。
 
@@ -265,56 +250,54 @@ x/weight GM -> UB 完成
 
 - 每个 rank/channel 仅由其 owner 核发布。
 - token、weight 和 flag 使用同一个 channel。
-- flag 位于该 rank 所有 token/weight WQE 之后。
-- flag 使用 `so/odr=6` 和 fence 配置，保证接收端看到 flag 时该 rank 数据已经可见。
+- flag 位于该 rank/channel 分片所有 token/weight WQE 之后。
+- flag 使用 `so/odr=6` 和 fence 配置，保证接收端看到 flag 时对应 channel 的数据已经可见；收齐全部 channel 后归约。
 - 即使某个远端 rank 的 metadata 区间为空，也必须发布 flag。
 
-## 6. 建议的 Process 伪代码
+远端 flag 的非 inline 发送源位于本卡持久通信窗口，不再位于临时算子 workspace：
+
+```text
+Combine state = [nmt * topK 个 512B token/weight 槽]
+              + [epWorldSize * 7 个 512B 接收完成 flag 预留槽]
+              + [1 个 512B 常量发送源槽]
+```
+
+`combineFlagSourceWinOffset` 位于完整的 7-channel 预留区之后，由公共布局计算并通过 Combine tiling 传入。
+实际接收 flag 紧凑排列为 `senderRank * Q + channel`，固定预留上限 7 不是实际 stride。
+每次 Combine 的 AIV0 将源槽完整写为 64 个 `uint64_t(1)`，经 `MTE3_S` 后，
+复用本卡搬运之后已有的全核 `SyncAll` 向远端发送核保证初始化完成。
+源槽不参与接收 flag 清零，后续调用只重写相同常量；单跑 Combine 无需依赖 Dispatch 初始化。
+末尾只提交 batch，不执行无条件 Drain；SQ 水位保护仍保留。
+四个算子必须使用更新后的公共布局，Python 容量估算同步增加每卡 512B，并重新创建通信窗口。
+
+## 6. Process 伪代码
 
 ```cpp
-__aicore__ inline void Process()
-{
-    // 每核连续加载 rank offsets，避免为 actualA/rank boundary 增加同步。
-    PrepareRuntimeInfo();
-    InitPerCoreBuffersAndFlagSource();
-
-    uint64_t localBegin = rankOffsets[rankId_];
-    uint64_t localEnd = rankOffsets[rankId_ + 1U];
-
-    uint64_t coreBegin;
-    uint64_t coreEnd;
-    SplitRange(localBegin, localEnd, aivNum_, aivId_, coreBegin, coreEnd);
-
-    bool didLocalWrite = ProcessLocalMetadataRange(coreBegin, coreEnd);
-    if (didLocalWrite) {
-        SyncFunc<HardEvent::MTE3_S>();
-    }
-
-    // 所有 AIV 必须无条件到达。
-    SyncAll<true>();
-
-    if (aivId_ == 0U) {
-        SendChannelFlag(rankId_);
-    }
-
-    uint32_t remoteOrdinalBegin;
-    uint32_t remoteOrdinalEnd;
-    SplitRange(0U, epWorldSize_ - 1U, aivNum_, aivId_,
-               remoteOrdinalBegin, remoteOrdinalEnd);
-
-    for (uint32_t ordinal = remoteOrdinalBegin;
-         ordinal < remoteOrdinalEnd;
-         ++ordinal) {
-        uint32_t dstRank = ordinal < rankId_ ? ordinal : ordinal + 1U;
-        uint64_t rankBegin = rankOffsets[dstRank];
-        uint64_t rankEnd = rankOffsets[dstRank + 1U];
-
-        BeginPreparedWrites(dstRank);
-        ProcessRemoteMetadataRange(dstRank, rankBegin, rankEnd);
-        SendChannelFlag(dstRank);
-        FlushPreparedWrites();
+PrepareRuntimeInfo();
+InitFlagSource();
+SplitRange(offsets[rankId_], offsets[rankId_ + 1], aivNum_, aivId_, localBegin, localEnd);
+if (ProcessLocalMetadataRange(localBegin, localEnd)) {
+    SyncFunc<HardEvent::MTE3_S>();
+}
+SyncAll<true>();
+if (aivId_ == 0U) {
+    for (uint32_t channel = 0; channel < combineChannelCount_; ++channel) {
+        SendChannelFlag(rankId_, channel);
     }
 }
+SplitRange(0, (epWorldSize_ - 1) * combineChannelCount_, aivNum_, aivId_, taskBegin, taskEnd);
+for (uint64_t task = taskBegin; task < taskEnd; ++task) {
+    uint32_t ordinal = task / combineChannelCount_;
+    uint32_t channel = task % combineChannelCount_;
+    uint32_t dstRank = ordinal < rankId_ ? ordinal : ordinal + 1;
+    SplitRange(offsets[dstRank], offsets[dstRank + 1],
+               combineChannelCount_, channel, channelBegin, channelEnd);
+    BeginPreparedWrites(dstRank, channel);
+    ProcessRemoteMetadataRange(dstRank, channelBegin, channelEnd);
+    SendChannelFlag(dstRank, channel);
+    FlushPreparedWrites();
+}
+// 保留整个 data cache 的 DCCI 和原有发送完成位置诊断记录。
 ```
 
 ## 7. 设计约束
@@ -328,7 +311,7 @@ __aicore__ inline void Process()
 - Combine Kernel 热路径不逐行检查 metadata 字段合法性，信任 Dispatch Epilogue 或 cached handle 的 metadata 契约。字段范围和排序必须由 metadata 生产侧保证。
 - metadata 有效前缀必须按 `src_rank` 非降序，并与 `recv_rank_offsets` 描述的 rank 区间一致。
 - metadata 行号不能作为 token/weight 源索引。
-- token 和 weight 保持独立输入、独立目的区域，不修改通信窗口布局。
+- token 和 weight 保持独立输入、独立目的区域；公共通信窗口布局额外预留第 5.3 节所述的常量 flag 源槽。
 - 每个 rank/channel 在一次 kernel 执行中只能有一个 owner 核。
 - 一个核可顺序访问多个不同 channel；切换 channel 前必须提交前一个 batch。
 - 所有核必须无条件到达唯一的 `SyncAll`，不得因 `actualA==0`、空分片或非法行而提前返回。
@@ -358,9 +341,9 @@ H：典型 4096/7168/8192，不能按固定上限设计索引
 
 - 本卡按 metadata 记录数切分，不按 rank 数切分。
 - 远端按完整 rank/channel 切分，不能为利用更多核而跨核拆同一 channel。
-- 第一版按 rank 数均分，依赖实际业务中各 rank 数据量近似均匀的假设。
-- `R < C` 时远端阶段最多使用 `R-1` 个核，这是单 channel 约束下的并行上限。
-- `R > C` 时一个核顺序处理多个 rank，需在 Hcomm batch 容量边界正确提交。
+- 按 rank/channel 任务数均分；rank 内 metadata 再按有效 channel 数均分。
+- 远端阶段最多使用 `min(C, (R-1)*Q)` 个核。
+- 任务数大于 C 时一个核顺序处理多个 channel，切换 channel 和 batch 满时均正确提交。
 - rank 边界必须直接来自 Epilogue 输出，不应重新引入 lower-bound、`O(actualA)` 的全量 rank 扫描
   或逐 token workspace。
 
@@ -371,24 +354,24 @@ H：典型 4096/7168/8192，不能按固定上限设计索引
 - `RECV_META_FIELDS` 从 4 改为 5，并增加五个字段 offset。
 - 增加 `recv_rank_offsets` 输入，每核一次性连续搬入 UB；`actualA` 取最后一个 offset。
 - `Process()` 已切换到 `SendPhaseDirectFromMetadata()`。
-- 原地址表入口 `SendPhaseExpertToToken()` 仅在调用点注释，并标记 `TODO(delete)`；相关函数和成员暂时保留，待直接路径完成板上验证后统一删除。
-- `IsMetadataRowValid()` 定义暂时保留，本卡和远端热路径调用点均已注释，不产生逐行校验开销。
+- 已删除原地址表入口及其构表、计数、发送、分核函数，以及专属 workspace 指针、UB buffer 和常量。
+- 已删除不再调用的逐行合法性校验函数，热路径继续信任生产侧 metadata 契约。
 - 增加：
   - `SplitRange`；
   - `ProcessLocalMetadataRange`；
   - `ProcessRemoteMetadataRange`。
-- `ReadMetadataRank()` 和 `LowerBoundSrcRank()` 的定义暂时保留，调用点已注释，待 rank-offset
-  路径完成板上验证后统一删除。
-- `SendLocalSlot` 和 `SendRemoteSlot` 的源参数改为 `recvXIdx`。
+- 已删除 rank lower-bound 查询和旧 actualA 归约代码，直接使用 rank offsets。
+- `SendLocalMetadataSlot` 和 `SendRemoteMetadataSlot` 使用 `recvXIdx` 定位输入；旧的两套 slot 发送函数已删除。
 - 本卡 token 和 weight 使用独立搬运路径。
-- 有效直接路径按第 6 节流程执行，只保留一次 `SyncAll`。旧地址表函数定义中仍有历史 `SyncAll`，但该入口不再被调用。
+- 有效直接路径按第 6 节流程执行，只保留一次 `SyncAll`；原有诊断记录、DCCI、SQ 高水位 CQE/Drain 均保留。
 
 ### 8.2 Combine Host Tiling
 
 - metadata dim1 校验从 4 改为 5。
 - 增加 `recv_rank_offsets` 的一维 shape、长度和 int32 dtype 校验。
-- 保留通信窗口大小和 offset 的计算。
-- workspace 生效值改为系统预留空间加每 AIV 512B flag source；旧地址表 workspace 公式仅注释并标记 `TODO(delete)`。
+- 公共布局在 Combine 接收 flag 后预留 512B，统一更新 direct/hybrid 的后续偏移及容量检查。
+- 删除已无消费者的每 AIV 512B workspace 预留，仅保留 `SYSTEM_NEED_WORKSPACE`。
+- 删除旧地址表专用 tiling 字段；Host 和 Kernel 必须成套重新编译，不能混用清理前后的 tiling 二进制布局。
 - `aivNum` 继续使用本次平台和控核结果，不写死 56 或 72。
 - 通过 tiling 新增 `recvCapacity=x.shape[0]`，设备侧将 `actualA` 限制在该容量内；Host 同时保证 metadata 和可选 weight 的 dim0 与 `x` 一致。
 
@@ -396,7 +379,7 @@ H：典型 4096/7168/8192，不能按固定上限设计索引
 
 - Dispatch 主 kernel：不消费 Combine metadata。
 - Dispatch Epilogue：负责生产 5 列 metadata、`recv_x_idx` 和 `recv_rank_offsets`。
-- Combine Epilogue：不读取 metadata；只要窗口布局和每 sender rank 一个完成 flag 的协议不变，就不需要因本设计修改。
+- Combine Epilogue：不读取 metadata；接收 flag 读取/清零范围不变，通过公共 Host 布局获取更新后的数据区偏移。
 
 ## 9. 实现检查项
 
@@ -406,9 +389,9 @@ H：典型 4096/7168/8192，不能按固定上限设计索引
 - [x] Combine 有效直接路径仅有一次 `SyncAll`。
 - [x] 静态检查确认 `actualA==0` 和空分片仍能到达该 `SyncAll`。
 - [x] 本卡有写入的核在 barrier 前等待 MTE3 完成。
-- [x] 每个远端 rank 的 token、weight、flag 由同一 owner 核访问同一 channel。
+- [x] 每个远端 rank/channel 分片的 token、weight、flag 由同一 owner 核访问同一 channel。
 - [x] 空 rank 也发送完成 flag。
-- [x] metadata 逐行合法性校验已从有效热路径注释掉，Kernel 信任生产侧契约。
+- [x] metadata 逐行合法性校验旧代码已删除，Kernel 信任生产侧契约。
 - [x] 分核模型检查覆盖 `R<C`、`R=C`、`R>C` 和 `R=1024`，确认 rank 归属无重叠、无遗漏。
 - [ ] 覆盖 `actualA=0`、本卡空区间和 metadata chunk 边界。
 - [ ] 覆盖 Hcomm batch 容量边界及一个核连续切换多个 channel。
@@ -424,3 +407,5 @@ H：典型 4096/7168/8192，不能按固定上限设计索引
 | 0.2 | 2026-08-28 | 记录直接路径代码映射、旧地址表保留策略和当前静态验证状态 |
 | 0.3 | 2026-08-28 | 按性能约束关闭 Kernel metadata 逐行合法性校验 |
 | 0.4 | 2026-09-04 | 增加 Epilogue rank offsets 输出，停用 Combine 的 actualA 归约和 rank lower-bound 调用 |
+| 0.5 | 2026-09-07 | 在已跑通版本上删除废弃地址表路径、旧 workspace 及 tiling 字段，保留有效同步与发送逻辑 |
+| 0.6 | 2026-09-07 | Rebase upstream 32d64c27f：动态多 channel 分片收发，完整预留区之后放常量 flag 源 |
