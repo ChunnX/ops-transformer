@@ -278,6 +278,7 @@ cann_ops_transformer.generic_block_sparse_attention(
 |     Q_N     |        输入q tensor的头数，对应q shape中的N        |
 |    KV_N    |    输入k/v tensor的头数，对应k/v shape中的N    |
 |     Q_T     |          输入q tensor所有batch序列长度的累加和          |
+|    KV_T    |          输入k/v所有batch序列长度的累加和          |
 |     D     |          输入q/k/v tensor隐藏层最小的单元尺寸headdim         |
 |  topK  | sparse_block_idx最后一维，表示每个Q块最多选择的KV块数 |
 | qStorageLen_i | 第i个batch的query存储长度，一般由cu_seqlens_q差分得到 |
@@ -654,13 +655,12 @@ mask_mode参数解释见「mask_mode 枚举」。
                     <li>值仅支持非负整数</li>
                     <li>其值应非递减（大于等于前一个值）排列</li>
                     <li>cu_seqlens_q：第一个元素为0且最后一个元素等于Q_T</li>
-                    <li>cu_seqlens_kv：第一个元素为0且最后一个元素等于各batch kvStorageLen_i之和</li>
+                    <li>cu_seqlens_kv：第一个元素为0且最后一个元素等于KV_T</li>
                 </ul>
             </td>
             <td rowspan="2">
                 <ul>
-                    <li>当前layout_q="TND"时，cu_seqlens_q必须传入</li>
-                    <li>当前layout_kv="PA_BBND"时，cu_seqlens_kv必须传入</li>
+                    <li>cu_seqlens_q与cu_seqlens_kv均须传入</li>
                 </ul>
             </td>
         </tr>
