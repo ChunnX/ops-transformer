@@ -115,8 +115,6 @@ inline __aicore__ void quant_flash_attn_gqa_fp8(
     __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse,
     __gm__ uint8_t *workspace, __tiling_data_ptr__ QuantFlashAttnTilingData *tilingData)
 {
-    fa_base_matmul::ResetIdCounter();
-
     constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]);
     constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]);
 
@@ -157,11 +155,16 @@ inline __aicore__ void quant_flash_attn_gqa_fp8(
     using Kernel = BaseApi::QuantFlashAttnKernelFp8<Fp8CubeBlockDummy, Fp8VecFaBlock, VecFdBlock>;
 #endif
 
-    TPipe tPipe;
+    // 静态Tensor范式：手动初始化全局状态寄存器（TPipe范式下由TPipe完成）
+    InitSocState();
+
     Kernel op;
     op.Init(query, key, value, sinks, cuSeqLensQ, cuSeqLensKv, blockTable, qDescale, kDescale, vDescale, pScale,
-            softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, tilingData, &tPipe);
+            softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, tilingData);
     op.Process();
+
+    // 静态Tensor范式：kernel结束前手动全流水屏障
+    AscendC::PipeBarrier<PIPE_ALL>();
 }
 
 template <uint8_t inOutLayoutType, uint16_t config, uint8_t quantMode, bool hasAttenMask, uint8_t KvLayoutType,

@@ -41,22 +41,48 @@ class QuantFlashAttnBlockCubeGqaFp8 {
 public:
     /* ============确定L0A的类型============= */
     struct L0ABuffSel {
-        using Type = BuffersPolicyDB<BufferType::L0A>;
+        using Type =
+            BuffersPolicyDB<BufferType::L0A, SyncType::INNER_CORE_SYNC, SyncMode::SET_WAIT_FLAG, IdSource::EXTERNAL>;
     };
     /* ============确定L0B的类型============= */
     template <uint32_t s2BaseSize, uint32_t dBaseSize>
     struct L0BBuffSel {
-        using Type = std::conditional_t<(s2BaseSize == 256 && dBaseSize > 128),
-                                        BuffersPolicySingleBuffer<BufferType::L0B>, BuffersPolicyDB<BufferType::L0B>>;
+        using Type = std::conditional_t<
+            (s2BaseSize == 256 && dBaseSize > 128),
+            BuffersPolicySingleBuffer<BufferType::L0B, SyncType::INNER_CORE_SYNC, SyncMode::SET_WAIT_FLAG,
+                                      IdSource::EXTERNAL>,
+            BuffersPolicyDB<BufferType::L0B, SyncType::INNER_CORE_SYNC, SyncMode::SET_WAIT_FLAG, IdSource::EXTERNAL>>;
     };
 
     /* ============确定L0C的类型============= */
     template <uint32_t mBaseSize, uint32_t s2BaseSize, uint32_t dVBaseSize>
     struct L0CBuffSel {
-        using Type = std::conditional_t<(mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
-                                         mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
-                                        BuffersPolicy4buff<BufferType::L0C>, BuffersPolicyDB<BufferType::L0C>>;
+        using Type = std::conditional_t<
+            (mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
+             mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
+            BuffersPolicy4buff<BufferType::L0C, SyncType::INNER_CORE_SYNC, SyncMode::SET_WAIT_FLAG, IdSource::EXTERNAL>,
+            BuffersPolicyDB<BufferType::L0C, SyncType::INNER_CORE_SYNC, SyncMode::SET_WAIT_FLAG, IdSource::EXTERNAL>>;
     };
+
+    // 核内同步ID（静态Tensor范式，AIC侧独立；取代TPipe动态AllocEventID）。
+    // 注意：SET_WAIT_FLAG 事件ID按 HardEvent 类型分池（每池 [0,8)），同池内不同 buffer 的 ID 必须互异：
+    //   L1 池（MTE2_MTE1/MTE1_MTE2）：Q_L1 0/1 + KV_L1 2-5
+    //   L0A/L0B 池（M_MTE1/MTE1_M）：L0A 0/1、L0B 2（SingleBuffer 仅占 1 个）
+    //   L0C 池（M_FIX/FIX_M）：DB 0/1；4buff 0-3
+    static constexpr uint32_t Q_L1_BUFFER_ID0 = 0U;
+    static constexpr uint32_t Q_L1_BUFFER_ID1 = 1U;
+    static constexpr uint32_t KV_L1_BUFFER_ID0 = 2U;
+    static constexpr uint32_t KV_L1_BUFFER_ID1 = 3U;
+    static constexpr uint32_t KV_L1_BUFFER_ID2 = 4U;
+    static constexpr uint32_t KV_L1_BUFFER_ID3 = 5U;
+    static constexpr uint32_t L0A_BUFFER_ID0 = 0U;
+    static constexpr uint32_t L0A_BUFFER_ID1 = 1U;
+    static constexpr uint32_t L0B_BUFFER_ID0 = 2U;
+    static constexpr uint32_t L0B_BUFFER_ID1 = 3U;
+    static constexpr uint32_t L0C_BUFFER_ID0 = 0U;
+    static constexpr uint32_t L0C_BUFFER_ID1 = 1U;
+    static constexpr uint32_t L0C_BUFFER_ID2 = 2U;
+    static constexpr uint32_t L0C_BUFFER_ID3 = 3U;
 
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
@@ -81,7 +107,10 @@ public:
     using MM2_DBUF_T = mm2ResPos;
 
     /* ============确定key scale的类型============= */
-    using L1KvType = BuffersPolicy4buff<BufferType::L1>;
+    using L1KvType =
+        BuffersPolicy4buff<BufferType::L1, SyncType::INNER_CORE_SYNC, SyncMode::SET_WAIT_FLAG, IdSource::EXTERNAL>;
+    using L1QType =
+        BuffersPolicyDB<BufferType::L1, SyncType::INNER_CORE_SYNC, SyncMode::SET_WAIT_FLAG, IdSource::EXTERNAL>;
     using L0AType = typename L0ABuffSel::Type;
     using L0BType = typename L0BBuffSel<s2BaseSize, dBaseSize>::Type;
     using L0CType = typename L0CBuffSel<mBaseSize, s2BaseSize, dVBaseSize>::Type;
@@ -105,7 +134,6 @@ public:
     using FaGmTensorKV = FaGmTensor<KV_T, KV_FORMAT, int32_t, KV_NEEDS_WZH>;
 
     using ConstInfoX = ConstInfo_t;
-    TPipe *tPipe_ = nullptr;
     /* =====================GM变量(with layout)==================== */
     FaGmTensorQ queryGm_;
     FaGmTensorKV keyGm_;
@@ -124,9 +152,8 @@ public:
     BufferManager<BufferType::L0B> l0bBufferManager_;
     BufferManager<BufferType::L0C> l0cBufferManager_;
 
-    BuffersPolicyDB<BufferType::L1> l1QBuffers_;
+    L1QType l1QBuffers_;
     L1KvType l1KVBuffers_;
-    BuffersPolicyDB<BufferType::L1> l1VBuffers_;
 
     L0AType mmL0ABuffers_;
     L0BType mmL0BBuffers_;
@@ -141,11 +168,10 @@ public:
     __aicore__ inline QuantFlashAttnBlockCubeGqaFp8(ConstInfoX &constInfo)
         : constInfo_(constInfo){};
 
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query,
+    __aicore__ inline void InitCubeBlock(BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query,
                                          __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
                                          QSeqParserType &qParser, KvSeqParserType &kvParser)
     {
-        tPipe_ = pipe;
         l1BufferManagerPtr_ = l1BuffMgr;
         this->qSeqParserPtr_ = &qParser;
         this->kvSeqParserPtr_ = &kvParser;
@@ -157,21 +183,27 @@ public:
         constexpr uint32_t mm1QSize = mBaseSize * dBaseSize * sizeof(INPUT_T);
         constexpr uint32_t mmKVSize = dBaseSize * s2BaseSize * sizeof(INPUT_T);
 
-        l1QBuffers_.Init((*l1BufferManagerPtr_), mm1QSize);
-        l1KVBuffers_.Init((*l1BufferManagerPtr_), mmKVSize);
+        l1QBuffers_.Init((*l1BufferManagerPtr_), mm1QSize, Q_L1_BUFFER_ID0, Q_L1_BUFFER_ID1);
+        l1KVBuffers_.Init((*l1BufferManagerPtr_), mmKVSize, KV_L1_BUFFER_ID0, KV_L1_BUFFER_ID1, KV_L1_BUFFER_ID2,
+                          KV_L1_BUFFER_ID3);
 
-        // L0A B C 当前写死
-        l0aBufferManager_.Init(tPipe_, 65536);  // 64 * 1024
-        l0bBufferManager_.Init(tPipe_, 65536);  // 64 * 1024
-        l0cBufferManager_.Init(tPipe_, 262144); // 256 * 1024
-        mmL0ABuffers_.Init(l0aBufferManager_, 32 * 1024);
-        mmL0BBuffers_.Init(l0bBufferManager_, 32 * 1024);
+        // L0A B C 当前写死；静态Tensor范式：直接构造指定地址的LocalTensor，静态ID经EXTERNAL传入
+        l0aBufferManager_.Init(65536);  // 64 * 1024
+        l0bBufferManager_.Init(65536);  // 64 * 1024
+        l0cBufferManager_.Init(262144); // 256 * 1024
+        mmL0ABuffers_.Init(l0aBufferManager_, 32 * 1024, L0A_BUFFER_ID0, L0A_BUFFER_ID1);
+        if constexpr (s2BaseSize == 256 && dBaseSize > 128) {
+            mmL0BBuffers_.Init(l0bBufferManager_, 32 * 1024, L0B_BUFFER_ID0);
+        } else {
+            mmL0BBuffers_.Init(l0bBufferManager_, 32 * 1024, L0B_BUFFER_ID0, L0B_BUFFER_ID1);
+        }
 
         if constexpr (mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
                       mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4) {
-            mmL0CBuffers_.Init(l0cBufferManager_, (L0C_SIZE / NUM_4) * KB_TO_BYTES);
+            mmL0CBuffers_.Init(l0cBufferManager_, (L0C_SIZE / NUM_4) * KB_TO_BYTES, L0C_BUFFER_ID0, L0C_BUFFER_ID1,
+                               L0C_BUFFER_ID2, L0C_BUFFER_ID3);
         } else {
-            mmL0CBuffers_.Init(l0cBufferManager_, (L0C_SIZE / NUM_2) * KB_TO_BYTES);
+            mmL0CBuffers_.Init(l0cBufferManager_, (L0C_SIZE / NUM_2) * KB_TO_BYTES, L0C_BUFFER_ID0, L0C_BUFFER_ID1);
         }
     }
 

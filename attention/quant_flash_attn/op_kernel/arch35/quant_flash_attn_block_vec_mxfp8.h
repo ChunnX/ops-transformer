@@ -43,23 +43,13 @@
 #include "../../common/op_kernel/init_output.h"
 #endif
 #include "attenmask_gs1_static_qfa.h"
+#include "quant_flash_attn_vselr_buf.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 using namespace AttentionCommon;
-
-// 静态Tensor范式的 vselrIndexesBuf wrapper：替代 TBuf<> 传入 common VF 接口
-// （VF 侧通过尾部默认模板参数 VselrBufT 兼容 TBuf<> 与本 wrapper）
-struct VselrIndexesBuffer {
-    LocalTensor<uint8_t> tensor;
-    template <typename T>
-    __aicore__ inline LocalTensor<T> Get() const
-    {
-        return tensor.template ReinterpretCast<T>();
-    }
-};
 
 /* ============确定bmm2ResBuffer的类型============= */
 template <bool useDn, bool isFp8>
