@@ -227,8 +227,16 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline uint32_t MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::GetCompletionChannelCount()
 {
-    // The metadata sender publishes every active channel, even with fewer AIVs than channel tasks.
-    return combineChannelCount_;
+    if (aivNum_ < epWorldSize_) {
+        return 1U;
+    }
+    uint32_t maxChannelAivNum = epWorldSize_ * combineChannelCount_;
+    if (aivNum_ > maxChannelAivNum) {
+        return combineChannelCount_;
+    }
+    uint32_t baseGroupSize = aivNum_ / epWorldSize_;
+    uint32_t remainder = aivNum_ % epWorldSize_;
+    return baseGroupSize + ((rankId_ < remainder) ? 1U : 0U);
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
