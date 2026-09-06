@@ -36,8 +36,8 @@ using namespace AscendC;
 template <uint32_t ArchTag, bool IsCached, bool HasTopkWeights, bool IsMxQuant>
 __global__ __aicore__ void moe_ep_dispatch_epilogue(GM_ADDR context, GM_ADDR dstBufferSlotIdx, GM_ADDR numRecvPerRank,
                                                     GM_ADDR numRecvPerExpert, GM_ADDR cachedRecvSrcMetadata,
-                                                    GM_ADDR cachedRecvRankOffsets,
-                                                    GM_ADDR recvX, GM_ADDR recvSrcMetadata, GM_ADDR recvTopkWeights,
+                                                    GM_ADDR cachedRecvRankOffsets, GM_ADDR recvX,
+                                                    GM_ADDR recvSrcMetadata, GM_ADDR recvTopkWeights,
                                                     GM_ADDR recvScales, GM_ADDR recvRankOffsets, GM_ADDR workspace,
                                                     GM_ADDR tilingGM)
 {
