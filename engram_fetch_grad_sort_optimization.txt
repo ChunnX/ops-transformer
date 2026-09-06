@@ -1,0 +1,238 @@
+================================================================================
+engram_fetch_grad_sort.h 性能优化思路
+文件: mc2/engram_fetch_grad/op_kernel/arch35/engram_fetch_grad_sort.h
+场景: 4096 bs, 2 轮 LSD radix sort, 当前耗时 40us
+================================================================================
+
+按影响大小排序，预估总收益可将 40us 降至 ~10-15us。
+
+--------------------------------------------------------------------------------
+优化 1（最大）: SIMT 替换 ProcessScatter 中的标量 globalPos 循环
+预估节省: 16-32us
+难度: 中
+位置: engram_fetch_grad_sort.h:783-798
+--------------------------------------------------------------------------------
+
+【问题】
+ProcessScatter 在 Sort 之后用标量循环计算每个元素的全局位置：
+
+    uint8_t curKey = sortedKey.GetValue(0);       // 标量 UB 读
+    for (uint32_t i = 1; i <= tileLen; i++) {
+        if (i == tileLen || sortedKey.GetValue(i) != curKey) {  // 标量 UB 读
+            int32_t gmStart = prefixLocal.GetValue(curKey)
+                            + offsetLocal.GetValue(curKey);     // 2x 标量读
+            for (uint32_t j = 0; j < keyCount; j++) {
+                globalPosUb.SetValue(keyStart + j, gmStart + ...);  // 标量 UB 写
+            }
+            offsetLocal.SetValue(curKey, ...);    // 标量 UB 写
+        }
+    }
+
+GetValue/SetValue 是标量 UB 访问，在向量处理器上极慢（每次 ~10-20 cycle）。
+对 512 元素/tile，约 1024 次标量访问 ≈ 10K-20K cycle ≈ 8-16us/tile/round。
+2 轮 ≈ 16-32us，占 40us 的 40-80%。
+
+【方案】
+Sort 后 key 已有序，每个元素的全局位置可直接计算：
+
+    pos[i] = basePos[sortedKey[i]] + (i - binStart[sortedKey[i]])
+
+其中：
+  - basePos[k] = prefixLocal[k] + offsetLocal[k]  (256 entry, 向量 Add 即可)
+  - binStart[k] = 直方图排他前缀和
+    (Hist 阶段 ComputeTileHistogram 已算过 excl0 = cumu0 - hist0,
+     存于 cumulativeBuffer_; ComputePrefixAndOffsets 不触碰该 buffer, 可直接复用)
+
+用 SIMT 并行计算位置 + scatter，替换标量循环 + 独立 ScatterSimt：
+
+    __simt_vf__ LAUNCH_BOUND(SIMT_THREAD_NUM)
+    __aicore__ inline void ScatterWithPosSimt(
+        uint32_t tileLen,
+        __ubuf__ uint8_t *sortedKey, __ubuf__ uint32_t *sortedIndex,
+        __ubuf__ uint32_t *binStart,   // 256 entries, exclusive prefix sum of histogram
+        __ubuf__ uint32_t *basePos,    // 256 entries, prefix + tileOffset
+        __ubuf__ int32_t *value, __ubuf__ int32_t *index,
+        __gm__ int32_t *dstValueGm, __gm__ int32_t *dstIndexGm)
+    {
+        for (uint32_t i = threadIdx.x; i < tileLen; i += SIMT_THREAD_NUM) {
+            uint8_t k = sortedKey[i];
+            uint32_t gmPos = basePos[k] + (i - binStart[k]);
+            uint32_t srcIdx = sortedIndex[i];
+            dstValueGm[gmPos] = value[srcIdx];
+            dstIndexGm[gmPos] = index[srcIdx];
+        }
+    }
+
+替换 lines 780-808，消除：
+  - 标量循环
+  - globalPosUb 中间 buffer
+  - 独立 ScatterSimt 调用
+
+binStart 的获取：
+  cumulativeBuffer_ 在 Hist 阶段由 ComputeTileHistogram 写入 (excl0 = cumu0 - hist0),
+  ComputePrefixAndOffsets 不使用 cumulativeBuffer_,
+  Scatter 阶段可直接读取。需 cast uint16 -> uint32。
+
+--------------------------------------------------------------------------------
+优化 2: 复用 Hist 阶段已提取的 key
+预估节省: 2-4us
+难度: 低
+位置: engram_fetch_grad_sort.h:742-768 (ProcessScatter 中的 key 提取)
+--------------------------------------------------------------------------------
+
+【问题】
+ProcessScatter 中 lines 742-768 重新从 value 提取 byte key：
+  - ShiftRight x4
+  - DeInterleave x6
+  - DataCopy x1
+
+但 ComputeTileHistogram 已将 byte key 存入 keyBuffer_ (line 222),
+且 ComputePrefixAndOffsets 不触碰 keyBuffer_，
+所以 Scatter 阶段 key 仍在 UB 中。
+
+【方案】
+删除 lines 742-768 的 key 提取代码，直接用 keyBuffer_ 中的 key 调 Sort。
+省掉 ~8 轮向量运算 + PipeBarrier。
+
+注意：当前 key 提取代码与 ComputeTileHistogram 内部提取逻辑重复，
+且 ComputeTileHistogram 的 key 提取使用 POST_MODE_UPDATE 移动指针，
+Scatter 阶段需确认 keyBuffer_ 的内容对应正确的 byteRound。
+
+--------------------------------------------------------------------------------
+优化 3: Sort 与 MTE2 重叠
+预估节省: 1-2us
+难度: 低
+位置: engram_fetch_grad_sort.h:730-776 (ProcessScatter)
+--------------------------------------------------------------------------------
+
+【问题】
+当前流程是串行的：
+
+    MTE2(value, index, offsets) -> wait MTE2_V -> key提取V -> Sort V -> wait V_S -> 标量pos -> SIMT
+
+【方案】
+结合优化 2（key 已在 UB），Sort 只依赖 keyBuffer_，可与 MTE2 并行：
+
+    // 先发起 Sort（key 已在 keyBuffer_ 中）
+    AscendC::Sort<uint8_t, false, sortConfig>(sortedKey, sortIndices, keyLocal, sortTemp, tileLen);
+
+    // 再发起 MTE2
+    AscendC::DataCopyPad(valueLocal, (*srcValueGm)[offset], valParam, valPad);
+    AscendC::DataCopyPad(indexLocal, (*srcIdx)[offset], valParam, valPad);
+    AscendC::DataCopyPad(offsetLocal, tileOffsetsGm[tileId * HISTOGRAM_BINS], histParam, valPad);
+
+    // 等待两路都完成
+    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
+    AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS2);
+    AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS2);
+
+--------------------------------------------------------------------------------
+优化 4（可选，更激进）: 消除 Sort，用 counting scatter
+预估节省: 2-4us
+难度: 高
+位置: engram_fetch_grad_sort.h:771-773 (Sort 调用)
+--------------------------------------------------------------------------------
+
+【方案】
+LSD radix sort 的 scatter 本质上不需要 Sort——直接用 key + atomicAdd 计数即可：
+
+    pos = atomicAdd(&counter[key[i]], 1) + baseOffset[key[i]]
+
+若 SIMT 支持 local memory atomicAdd，可完全删除 AscendC::Sort 调用、
+sortedKeyBuffer_、sortTemp buffer。
+
+需确认 arch35 SIMT 是否支持 atomic on local memory。
+
+--------------------------------------------------------------------------------
+优化 5: 融合 ApplyValueOffset / RestoreValueOffset 到 key 提取
+预估节省: 4-6us
+难度: 中
+位置: engram_fetch_grad_sort.h:371-444 (ApplyValueOffset + RestoreValueOffset)
+--------------------------------------------------------------------------------
+
+【问题】
+ApplyValueOffset (lines 371-407) 和 RestoreValueOffset (lines 409-444)
+各做一次全量 GM->UB->V->GM 往返 + SyncAll。
+对 4096 元素，约 2-3us x 2 = 4-6us。
+
+【方案】
+将 offset 融入 key 提取：在 ComputeTileHistogram 和 scatter 的 key 提取中，
+用 (value - valueOffset_) 代替预处理后的 value，避免修改原始数据。
+这样 scatter 写出的是原始 value，无需 restore。
+
+具体做法：
+  - 在 ComputeTileHistogram 的 ShiftRight 之前加一个 Sub（减 valueOffset_）
+  - 在 ProcessScatter 的 value 提取中同样加 Sub
+  - 删除 ApplyValueOffset 和 RestoreValueOffset 的调用和 SyncAll
+
+注意：Sub 只需对当前 byteRound 对应的字节有效，需确保 offset 不会影响
+其他字节（offset 只影响低位字节，高位 byteRound 不受影响）。
+
+--------------------------------------------------------------------------------
+优化 6: ComputePrefixAndOffsets 的串行跨核前缀和
+预估节省: 1-2us
+难度: 中
+位置: engram_fetch_grad_sort.h:510-521
+--------------------------------------------------------------------------------
+
+【问题】
+Lines 510-521: for (c = 0; c < coreId; c++) 串行累加前序 core 的 histogram。
+core 0 做 0 次迭代，core N-1 做 N-1 次，负载不均衡。
+
+【方案】
+方案 A: 树形前缀和（O(log N) 步）
+方案 B: 对小规模直接用单 core 汇总后广播
+        (48 tiles x 256 bins = 12K int32，单 core CumSum 很快)
+
+--------------------------------------------------------------------------------
+优化 7: 减少 SyncAll 屏障
+预估节省: 1-2us
+难度: 中
+位置: 全文多处 SyncAll<true>()
+--------------------------------------------------------------------------------
+
+【问题】
+2 轮 x (Hist SyncAll + Prefix 2x SyncAll + Scatter SyncAll) = 8 次 SyncAll。
+每次 ~1-2us ≈ 8-16us。
+
+【方案】
+Prefix 阶段的 2 次 SyncAll (lines 486, 581) 是必需的
+（写 coreSums -> 读 -> 写 tileOffsets）。
+但可将 Prefix 的尾 SyncAll 与 Scatter 首批次 MTE2 重叠
+（Scatter 的 MTE2 不依赖 tileOffsets 之外的 Prefix 结果时）。
+
+================================================================================
+优化收益汇总
+================================================================================
+
+  优化                           预估节省      难度
+  ----------------------------------------------------
+  ① SIMT 替换标量 globalPos 循环   16-32us      中
+  ② 复用 Hist 阶段 key             2-4us        低
+  ③ Sort 与 MTE2 重叠              1-2us        低
+  ⑤ 融合 valueOffset 到 key 提取   4-6us        中
+  ⑥ 树形跨核前缀和                 1-2us        中
+  ④ 消除 Sort（counting scatter）  2-4us        高
+  ⑦ 减少 SyncAll 屏障              1-2us        中
+
+  优先做 ①②③，预估可将 40us 降至 ~15-20us。
+  加上 ⑤ 可进一步降至 ~10-15us。
+
+================================================================================
+参考代码位置
+================================================================================
+
+  - ScatterSimt 函数定义:           engram_fetch_grad_sort.h:22-32
+  - ComputeTileHistogram:           engram_fetch_grad_sort.h:189-263
+  - ComputePrefixAndOffsets:        engram_fetch_grad_sort.h:446-582
+  - ProcessHist:                    engram_fetch_grad_sort.h:618-682
+  - ProcessScatter:                 engram_fetch_grad_sort.h:684-820
+  - ProcessOneByteRound:            engram_fetch_grad_sort.h:864-888
+  - Process:                        engram_fetch_grad_sort.h:890-931
+  - ApplyValueOffset:               engram_fetch_grad_sort.h:371-407
+  - RestoreValueOffset:             engram_fetch_grad_sort.h:409-444
+  - RunSort (调用方):               engram_fetch_grad_arch35.h:702-708
+  - Process (调用方):               engram_fetch_grad_arch35.h:850-939
+
+================================================================================

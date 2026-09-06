@@ -1,0 +1,199 @@
+================================================================================
+Engram Fetch 支持 FP8 量化 (SF 本地 Gather) 方案
+================================================================================
+
+## 目标
+
+在 ElasticBuffer 的 engram_write / engram_fetch 中支持 FP8 量化表 (scaling factor)，
+对标 DeepEP 的 engram_write(storage, sf) / engram_fetch 返回 (fetched, fetched_sf)。
+
+## 核心设计
+
+- SF 是外部传入的 device tensor，每个 rank 都有同一份（全局复制）。
+- engram_write 时保留 sf 的 device 指针和形状信息，不拷贝到 host buffer。
+- engram_fetch 时数据走 RDMA 远读（不变），SF 走本地 gather（按 indices 从 sf_table 查表）。
+- 返回 (fetched_data, fetched_sf)，无 sf 时 fetched_sf 为 None。
+- 不做 TMA 对齐列主序布局，只做行主序。
+- 不改 engram_fetch_grad。
+
+## 数据流
+
+engram_write(storage, sf):
+  storage → memcpy 到 host pinned buffer（不变）
+  sf → 保留 device 指针 + numSfPacks，不拷贝
+
+engram_fetch(indices):
+  RDMA read: remote_host_buf[indices] → fetched_data  （现有逻辑不变）
+  Local gather: sf_table[indices] → fetched_sf          （新增）
+  return (fetched_data, fetched_sf)
+
+## 改动清单
+
+### 1. Python 层 (elastic_buffer.py)
+
+#### 1.1 dtype 映射增加 FP8
+
+  _ENGRAM_DTYPE_TO_INT = {
+      torch.float16: 5,
+      torch.float32: 6,
+      torch.bfloat16: 15,
+      torch.float8_e4m3fn: 9,   # 新增
+  }
+
+#### 1.2 engram_write 签名加 sf
+
+  def engram_write(self, storage: torch.Tensor, sf: Optional[torch.Tensor] = None) -> None:
+
+  - sf: GPU tensor, shape [num_entries, num_sf_packs], dtype uint8 (packed)
+  - 校验: sf 是 GPU、2D、contiguous
+  - 调用 self._runtime.engram_write(storage, sf)
+
+#### 1.3 engram_fetch 返回值加 fetched_sf
+
+  推理模式:
+    - 当有 sf: _wait() 返回 (fetched, fetched_sf)
+    - 当无 sf: _wait() 返回 fetched（保持向后兼容）
+
+  fetched_sf shape = [num_tokens, num_sf_packs], dtype 与 sf 一致
+
+#### 1.4 torch op schema 更新
+
+  engram_fetch 的 schema 增加 sf 相关参数:
+    "engram_fetch(Tensor context, Tensor indices, int hidden_size, "
+    "int num_entries, int dtype, int num_sf_packs) -> Tensor"
+
+### 2. C++ Host 层 (elastic_buffer.cpp)
+
+#### 2.1 新增成员变量
+
+  void* engramSfTablePtr_ = nullptr;    // sf device tensor 的 data_ptr
+  int64_t engramSfNumPacks_ = 0;         // sf.shape[1] = ceil(hidden/32)
+
+#### 2.2 EngramWrite 增加 sf 参数
+
+  void ElasticBuffer::EngramWrite(const at::Tensor &storage, const std::optional<at::Tensor> &sf)
+
+  - sf 有值时记录 engramSfTablePtr_ = sf->data_ptr() 和 engramSfNumPacks_ = sf->size(1)
+  - sf 为空时 engramSfTablePtr_ = nullptr, engramSfNumPacks_ = 0
+
+#### 2.3 EngramFetch 增加 sf 输出
+
+  推理 EngramFetch:
+    - 当 engramSfNumPacks_ > 0 且 engramSfTablePtr_ != nullptr:
+        分配 fetched_sf = at::empty({numTokens, engramSfNumPacks_}, ...)
+    - ACLNN_CMD 传入 sfTablePtr, fetchedSf, numSfPacks
+
+#### 2.4 pybind11 绑定更新
+
+  .def("engram_write", &ElasticBuffer::EngramWrite,
+       pybind11::arg("storage").noconvert(),
+       pybind11::arg("sf") = std::nullopt)
+
+### 3. aclnn API 层 (aclnn_engram_fetch.cpp)
+
+新增可选参数:
+  - sfTable (输入, GM 地址, 可为空)
+  - fetchedSf (输出 tensor, 可为空)
+  - numSfPacks (int64, 0 表示无量化)
+
+当 sfTable != nullptr 时, kernel 做 SF gather; 否则跳过。
+
+### 4. Tiling 层 (engram_fetch_tiling_data.h / engram_fetch_tiling.cpp)
+
+#### 4.1 新增 tiling 字段
+
+  engram_fetch_tiling_data.h:
+    GM_ADDR sfTable        // sf_table 的 GM 地址
+    GM_ADDR fetchedSf      // fetched_sf 输出的 GM 地址
+    int64_t numSfPacks     // sf pack 数量, 0 表示无量化
+
+#### 4.2 tiling 计算传递 sf 相关参数
+
+  engram_fetch_tiling.cpp:
+    - 从 aclnn 参数中获取 sfTable, fetchedSf, numSfPacks
+    - 填入 tiling data
+
+### 5. Kernel 层 (engram_fetch_arch35.h)
+
+#### 5.1 Init 读取 sf tiling
+
+  从 tiling data 读取:
+    sfTableGM_    = (__gm__ uint8_t *)tilingData->sfTable
+    fetchedSfGM_  = (__gm__ uint8_t *)tilingData->fetchedSf
+    numSfPacks_   = tilingData->numSfPacks
+
+#### 5.2 新增 GatherSfTable
+
+  __aicore__ inline void GatherSfTable()
+  {
+      if (numSfPacks_ == 0 || sfTableGM_ == nullptr || fetchedSfGM_ == nullptr) {
+          return;
+      }
+      AscendC::LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
+      uint32_t numTokens = static_cast<uint32_t>(numTokens_);
+      uint32_t sfBytes = numSfPacks_;  // uint8 packs, 每包 1 字节
+
+      for (uint32_t t = aivId_; t < numTokens; t += AscendC::GetBlockNum()) {
+          int32_t entryIdx = indicesLocal(t);
+          GM_ADDR src = sfTableGM_ + static_cast<uint64_t>(entryIdx) * sfBytes;
+          GM_ADDR dst = fetchedSfGM_ + static_cast<uint64_t>(t) * sfBytes;
+          // GM -> GM copy (通过 relayQue_ 中转)
+          LocalCopySlice(dst, src, sfBytes);
+      }
+      SyncFunc<AscendC::HardEvent::MTE3_S>();
+  }
+
+#### 5.3 Process 末尾调用
+
+  Process():
+    // 现有 fetch 逻辑（不变）
+    while (...) {
+        CopyIndicesToUb(...);
+        ScatterByRank(...);
+        FetchByRank(...);
+    }
+    // 新增 SF gather
+    GatherSfTable();
+
+#### 5.4 新增成员变量
+
+  __gm__ uint8_t *sfTableGM_ = nullptr;
+  __gm__ uint8_t *fetchedSfGM_ = nullptr;
+  int64_t numSfPacks_ = 0;
+
+### 6. 不改动的部分
+
+  - EngramCommContext 结构体不变（sf_table 不放入 context）
+  - engram_fetch_grad 不改（不支持 FP8 反向）
+  - engram_fetch_train 不改
+  - engram_fetch_wait 不改（SF 是本地 gather，不需要 wait RDMA）
+  - HCCL channel 创建逻辑不变
+
+## 关键决策
+
+1. SF 不走 RDMA: sf_table 是全局复制的 device tensor, 本地按 indices 查表 gather
+2. SF 存储位置: 作为 aclnn 参数传入 tiling, 不放入 EngramCommContext
+3. SF gather 时机: 放在 FetchByRank 之后, FetchWait 之前
+4. UB 空间: SF gather 需要的 UB 很小 (一个 token 的 SF packs), 复用 relayQue_ 即可
+5. 向后兼容: sf=None 时行为和现有完全一致
+
+## 文件改动总览
+
+| 文件                                    | 改动                                         |
+|-----------------------------------------|----------------------------------------------|
+| elastic_buffer.py                       | engram_write 加 sf, engram_fetch 返回 sf, dtype 加 FP8 |
+| elastic_buffer.cpp                      | EngramWrite 加 sf, EngramFetch 传 sfTable/fetchedSf, 新增成员变量 |
+| aclnn_engram_fetch.cpp                  | 新增 sfTable/fetchedSf/numSfPacks 可选参数     |
+| engram_fetch_tiling_data.h              | 新增 sfTable/fetchedSf/numSfPacks tiling 字段  |
+| engram_fetch_tiling.cpp                 | tiling 计算传递 sf 相关参数                     |
+| engram_fetch_arch35.h                   | Init 读取 sf tiling, 新增 GatherSfTable, Process 末尾调用 |
+
+## 实施顺序
+
+1. Tiling data 结构 + tiling 计算传参
+2. aclnn API 层加参数
+3. Kernel 层 GatherSfTable 实现
+4. C++ Host 层 EngramWrite/EngramFetch 改造
+5. Python 层改造 + dtype 映射
+6. pybind11 绑定更新
+7. 测试验证

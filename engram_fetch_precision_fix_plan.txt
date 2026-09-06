@@ -1,0 +1,211 @@
+================================================================================
+engram_fetch / engram_fetch_wait 精度异常修复方案
+================================================================================
+
+## 1. 问题现象
+
+engram_fetch_arch35.h 和 engram_fetch_wait_arch35.h 在数据量超过一百万（>1M tokens）
+时出现精度异常（部分 token 数据丢失/错误）。
+
+## 2. 根因分析
+
+### 2.1 根因：URMA SQ（提交队列）深度溢出
+
+URMA 硬件的 Submission Queue（SQ）深度上限为 32768 条 WQE。
+engram_fetch 推理模式下，所有远程 token 的 ReadNbi 请求堆积在 SQ 中，
+直到 engram_fetch_wait kernel 才统一 Drain。当数据量超过 ~32K/通道时，
+SQ 溢出导致部分 WQE 被静默丢弃或损坏，从而产生精度异常。
+
+### 2.2 量化分析
+
+| 参数                        | 值                          |
+|-----------------------------|----------------------------|
+| SQ 深度上限                 | 32768                      |
+| 1M tokens / 8 ranks         | ~125K tokens/rank          |
+| channelsPerRank_=1 时每通道 outstanding reads | ~125K      |
+| 125K vs 32768               | 溢出 3.8 倍                |
+| ENGRAM_BATCH_CAPACITY       | 128（batch 攒满即 flush，但 flush 只 commit 不 drain） |
+
+数据流：
+  engram_fetch: 逐 batch PrepareRead → FlushPreparedReads(BatchCommit，不 drain)
+                → 所有 WQE 堆积在 SQ
+  engram_fetch_wait: Drain（poll CQ 等待完成）
+
+>1M 数据时 SQ 中 outstanding WQE 数远超 32768 → 溢出 → 精度异常。
+
+### 2.3 证据链
+
+#### 证据1：moe_ep_combine 同类问题已修复（commit 0e678bfcd）
+
+Commit 标题："combine修改为动态channel 解决超sq深度32768 导致精度问题"
+
+该 commit 在 moe_ep_combine 中增加了：
+- HCOMM_SQ_MAX_PENDING = 32767U 常量
+- sqWriteCount_ 成员变量跟踪每通道未完成 WQE 数
+- 当 sqWriteCount_ 接近上限时：
+  - 改用 DEFAULT_CQE_WQE_CONFIG（cqe=1）生成 CQE
+  - FlushPreparedWrites(keepHandle=true)
+  - hcomm_.Drain(activeBatchChannel_) 等待完成
+  - sqWriteCount_ = 0 重置计数器
+- 动态 channel 分配：combineChannelCount_ 根据 numMaxTokensPerRank * topK 计算
+
+#### 证据2：设计文档记录（engram_fetch_range_read_design.txt:32,124-125,188）
+
+> "去掉 fence（odr=0, fence=0）| Drain 报错 | 乱序 READ 与 CQE 轮询机制不兼容（或硬件限制），保留强序"
+> "URMA_DEFAULT_CFG（odr=5 强序 + fence=1 + cqe=1）。去 fence 的乱序 READ 实测导致 Drain 轮询失败，不要用。"
+> "去 fence 乱序 READ 与 CQE 轮询不兼容 | 恢复 URMA_DEFAULT_CFG 保序"
+
+当前 engram_fetch_arch35.h:49-55 的 URMA_UNORDERED_CFG 正是 {odr=0, fence=0}，
+与设计文档的排错记录直接矛盾。
+
+#### 证据3：PR 代码检视存疑（pr-11111-code-review.txt:272-312，风险点7）
+
+> "风险点7: odr=0 + fence=0 的无序 read 在硬件层面的实际行为，建议上板性能/精度验证"
+> 自信值仅 50%，判定 PASS（存疑）
+
+#### 证据4：训练模式对比（engram_fetch_train_arch35.h）
+
+| 方面                | 推理模式（有问题）              | 训练模式（无问题）              |
+|---------------------|-------------------------------|-------------------------------|
+| 非末条 WQE 配置     | URMA_UNORDERED_CFG odr=0,fence=0 | URMA_NO_CQE_CFG odr=5,fence=1 |
+| 中间 drain          | 无（全部延迟到 wait kernel）    | FlushAndDrain() 每 batch 立即 drain |
+| SQ 溢出风险         | 高（>1M 数据必溢出）           | 无（outstanding ≤ 128）       |
+
+训练模式每 batch 立即 drain，outstanding WQE 不超过 128，不会溢出。
+推理模式全部堆积到 wait kernel，>1M 数据必溢出。
+
+## 3. 修复方案
+
+### 3.1 修改范围
+
+| 文件                                        | 修改内容                          |
+|---------------------------------------------|----------------------------------|
+| mc2/engram_fetch/op_kernel/engram_fetch_utils.h | 新增 HCOMM_SQ_MAX_PENDING 常量 |
+| mc2/engram_fetch/op_kernel/arch35/engram_fetch_arch35.h | URMA配置修改 + SQ深度跟踪 + 中间drain |
+| mc2/engram_fetch_wait/op_kernel/arch35/engram_fetch_wait_arch35.h | 不改动               |
+
+### 3.2 修改1：engram_fetch_utils.h — 新增 SQ 深度常量
+
+在文件中新增：
+  constexpr uint32_t HCOMM_SQ_MAX_PENDING = 32767U;
+
+参照 moe_ep_combine.h:74 的定义：
+  // Keep one SQ entry unused. A token that would make the following token cross this limit requests a CQE and drains.
+  static constexpr uint32_t HCOMM_SQ_MAX_PENDING = 32767U;
+
+### 3.3 修改2：engram_fetch_arch35.h:49-55 — 修改 URMA_UNORDERED_CFG
+
+将 odr=0/fence=0 改为 odr=5/fence=1，与 moe_ep_combine 的 DEFAULT_WQE_CONFIG
+和训练模式的 URMA_NO_CQE_CFG 保持一致。
+
+修改前：
+  constexpr AscendC::UrmaWqeEntry URMA_UNORDERED_CFG = {
+      .odr = 0,
+      .fence = 0,
+      .se = 0,
+      .cqe = 0,
+      .inlineEn = 0,
+  };
+
+修改后：
+  constexpr AscendC::UrmaWqeEntry URMA_UNORDERED_CFG = {
+      .odr = 5,
+      .fence = 1,
+      .se = 0,
+      .cqe = 0,
+      .inlineEn = 0,
+  };
+
+### 3.4 修改3：engram_fetch_arch35.h — 新增 sqReadCount_ 成员变量
+
+在 EngramFetchArch35 类的 private 成员中新增：
+  uint32_t sqReadCount_{0};
+
+### 3.5 修改4：engram_fetch_arch35.h — PrepareRead 中增加 SQ 深度跟踪和中间 drain
+
+参照 moe_ep_combine.h:625-653 的 SendRemoteSlot 中 drainAfterToken 逻辑。
+
+修改 PrepareRead 函数，在递增 preparedReadCount_ 后递增 sqReadCount_，
+当 sqReadCount_ 接近 HCOMM_SQ_MAX_PENDING 时：
+  1. 将当前 WQE 改用 URMA_CQE_CFG（生成 CQE）
+  2. FlushPreparedReads()（提交 batch）
+  3. hcomm_.Drain(activeBatchChannel_)（等待完成）
+  4. sqReadCount_ = 0（重置计数器）
+
+具体实现思路：
+  - 在 PrepareRead 中，调用 ReadNbi 后 ++sqReadCount_
+  - 当 sqReadCount_ >= HCOMM_SQ_MAX_PENDING 时：
+    - FlushPreparedReads()
+    - hcomm_.Drain(activeBatchChannel_)
+    - sqReadCount_ = 0
+
+  或者更精细的实现（参照 moe_ep_combine）：
+  - 在调用 PrepareRead 之前判断：如果 sqReadCount_ + 1 > HCOMM_SQ_MAX_PENDING，
+    则先 flush + drain + 重置
+  - 这样不需要改变当前 WQE 的 config，只需要在溢出前先 drain 排空 SQ
+
+### 3.6 修改5：engram_fetch_arch35.h — channel 切换时重置 sqReadCount_
+
+在 PrepareRead 中 channel 切换（activeBatchChannel_ != commHandle）触发
+FlushPreparedReads 后，重置 sqReadCount_ = 0。
+
+FlushPreparedReads 函数中也在 reset 时一并重置 sqReadCount_ = 0。
+
+### 3.7 engram_fetch_wait_arch35.h — 不改动
+
+engram_fetch_wait 的 Drain 轮询通道级 CQ。推理模式增加中间 drain 后：
+  - 中间 drain 消费的 CQE 已被处理
+  - 最后一批 CQE 仍由 engram_fetch_wait drain
+  - 若所有 CQE 已被推理模式 drain 完，engram_fetch_wait 的 Drain 立即返回（no-op）
+  - 数据完整性不受影响
+
+## 4. 参考实现（moe_ep_combine commit 0e678bfcd）
+
+moe_ep_combine.h 关键改动摘要：
+
+```
+// 新增常量
+static constexpr uint32_t HCOMM_SQ_MAX_PENDING = 32767U;
+static constexpr struct UrmaWqeEntry DEFAULT_CQE_WQE_CONFIG = {.odr=5,.fence=1,.se=0,.cqe=1,.inlineEn=0};
+
+// 新增成员
+uint32_t sqWriteCount_{0};
+
+// PrepareWrite 中递增
+++sqWriteCount_;
+
+// SendRemoteSlot 中溢出检查
+bool drainAfterToken = sqWriteCount_ + 2U * writesPerToken > HCOMM_SQ_MAX_PENDING;
+if (drainAfterToken) {
+    PrepareWrite<DEFAULT_CQE_WQE_CONFIG>(...);  // 改用 CQE config
+} else {
+    PrepareWrite<DEFAULT_WQE_CONFIG>(...);
+}
+if (drainAfterToken) {
+    FlushPreparedWrites(true);        // keepHandle=true 保留 handle
+    (void)hcomm_.Drain(activeBatchChannel_);
+    sqWriteCount_ = 0;
+}
+
+// BeginPreparedWrites 中重置
+sqWriteCount_ = 0;
+```
+
+## 5. 验证计划
+
+1. 编译验证：确保修改后编译通过
+2. UT 验证：运行 engram_fetch UT（test_engram_fetch_tiling.cpp, test_aclnn_engram_fetch.cpp）
+3. ST 精度验证：>1M 数据量场景下的精度比对（bf16/fp16/fp32）
+4. 性能验证：确认中间 drain 的开销在可接受范围内
+   - 预期：>1M 场景下性能略有下降（增加 drain 次数），但精度正确
+   - <32K 场景下无性能影响（不触发中间 drain）
+
+## 6. 风险评估
+
+| 风险                    | 级别 | 缓解措施                        |
+|-------------------------|------|--------------------------------|
+| 中间 drain 导致性能下降  | 低   | 仅在 >32K 数据量时触发         |
+| Drain 返回非零           | 低   | 增加 ascendc_assert 检查       |
+| engram_fetch_wait no-op | 无   | Drain 空队列立即返回，无副作用 |
+
+================================================================================

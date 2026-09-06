@@ -1,0 +1,111 @@
+# engram_fetch_grad sort+unique 优化大纲
+
+## 一、已完成的优化
+
+### 1. Sort 多核 prefix 优化
+- Phase 1（局部和）：所有核并行，每核累加自己的 tile 直方图
+- Phase 2（全局 prefix）：批量 MTE2 读 coreSums + __VEC_SCOPE__ 寄存器累加 + CumSum 链
+- Phase 3（tile 偏移）：所有核并行写 tileOffsetsGm
+- 优化点：phase1 V_S→V_MTE2、phase2 去V_S、FetchEventID提前、去冗余V_MTE2
+
+### 2. Sort 单核快速路径（ProcessSingleCore）
+- 触发条件：actualCount <= DEFAULT_TILE_SIZE(4096) 且 core 0
+- 用 Sort<int32_t, uint32_t> API 一步排序 value+index
+- 跳过多核协调开销（SyncAll + GM 往返）
+
+### 3. Sort buffer 合并（sortWorkspace_ + GetWithOffset）
+- 5个大 TBuf 合并为 1 个 sortWorkspace_，各阶段用 GetWithOffset 取切片
+- Phase 1: value(0) + exclusive(tileAlignBytes)
+- Phase 2: coreSums(0) + inclBuf(coreCount_*256*4)
+- Phase 3: value(0) + index(tileAlignBytes) + sortIndices(2*) + sortTemp(3*) + globalPos(4*)
+
+### 4. TBufPool 跨阶段 UB 复用
+- sortPool_ 管理 sort + comm + unique 三阶段 buffer
+- Init: 分配 ping/pong(64KB) → Reset → sorter分配sort buffers
+- Process RunSort 后: Reset → 重新分配 ping/pong + gradSumBuf 给 unique
+- sort 用完释放 ~100KB 给 unique
+
+### 5. pingBuf/pongBuf 增大到 64KB
+- 从 32KB 改为 64KB（TILE_BYTES → 64KB）
+- comm 阶段 LocalCopySlice 双缓冲更大 tile
+- unique 阶段更多空间
+
+### 6. GRAD_SUB_BATCH 动态化
+- 从 constexpr 8 改为 tiling data 传入的动态值
+- host tiling 根据 hiddenDim/hiddenBytes/ubSize 计算：
+  gradSubBatch = availableUb / (hiddenBytes + hiddenDim*4)
+  约束：min(pongBufSize/hiddenBytes, gradSumBufSize/(hiddenDim*4))
+- unique.h 新增 gradSubBatch_ 成员 + SetGradSubBatch()
+- ProcessScatterBatch 用 gradSubBatch_ 代替 Mc2Kernel::GRAD_SUB_BATCH
+
+### 7. 72核 UB 溢出修复
+- sortWorkspace_ 大小 = max(phaseHist, phasePrefix, phaseScatter)
+- phasePrefix = numCores * 256 * 4 + tileAlignBytes（随核数动态）
+- 72核时 sortWorkspace_ = 88KB，总 UB = 189KB < 192KB
+
+### 8. 通信与 sort 重叠
+- SendGradToPeers（异步发送）→ InitCompanion → RunSort（掩盖通信）→ FinishExchangeGrad（drain）
+- sort 计算时间掩盖通信等待
+
+## 二、待完成的优化
+
+### 9. Cast 阶段双缓冲流水
+- 当前：串行 MTE2→V→MTE3→MTE2→V→MTE3...
+- 优化：ping/pong 交替，MTE2(tile N+1) 与 V(tile N) 并行
+- 用 entryBuf 和 gradBuf 交替做读/写 buffer
+- 参考 moe_token_unpermute_with_routing_map_grad 的 EVENT_ID 交替模式
+
+### 10. Buffer 改名
+| 旧名 | 新名 | 含义 |
+|------|------|------|
+| pingBuf_ | entryBuf_ | entry/comp/compactIdx + Cast fp32 tile |
+| pongBuf_ | gradBuf_ | 原始grad + Cast输出 |
+| gradSumBuf_ | castFp32Buf_ | Cast后fp32（给atomicAdd） |
+
+### 11. unique ScatterAdd 内部优化
+- 同一 unique 组内多个 grad 先在 UB 累加（fp32 Add），最后一次 atomicAdd
+- 减少 atomicAdd 次数（numRecv → numUnique）
+- 参考 compressor_grad 的 zero→load-loop-add→single store 模式
+
+## 三、文件改动清单
+
+### engram_fetch_grad_utils.h
+- GRAD_SUB_BATCH 保留 constexpr（作为默认值/fallback）
+
+### engram_fetch_grad_tiling_data.h
+- 新增 uint32_t gradSubBatch 字段
+
+### engram_fetch_grad_tiling.cpp (host)
+- 动态计算 gradSubBatch，写入 tiling data
+- sortTileCount 同步更新
+
+### engram_fetch_grad_sort.h
+- sortWorkspace_ + GetWithOffset（5个大buffer合并）
+- GetUbSize() 静态方法（返回 sort 总 UB 需求）
+- Init 接受 TBufPool 参数
+- ComputePrefixAndOffsets: 批量 MTE2 + __VEC_SCOPE__ 寄存器累加 + CumSum
+- ProcessSingleCore: Sort<int32_t,uint32_t> API 单核路径
+- 打点：SORT Detail + ROUND 逐阶段耗时
+
+### engram_fetch_grad_unique.h
+- SetGradSumBuf() / SetGradSubBatch() 延迟设置
+- gradSubBatch_ 成员变量
+- ProcessScatterBatch 用 gradSubBatch_
+- ScatterCastFused（未启用，保留备用）
+
+### engram_fetch_grad_arch35.h
+- sortPool_ (TBufPool) 管理三阶段 buffer
+- pingBuf/pongBuf 从永久改为 pool，增大到 64KB
+- gradSubBatch_ 成员变量
+- Process(): comm→Reset→sort→Reset→unique 三阶段
+- 打点：ENGRAM 逐阶段耗时
+
+## 四、编译命令
+# 编译 kernel
+bash build.sh --ops=engram_fetch_grad --soc=ascend950 -j64
+
+# UT - host
+bash build.sh -u --ophost --ops=engram_fetch_grad --soc=ascend950 -j64
+
+# UT - api
+bash build.sh -u --opapi --ops=engram_fetch_grad -j64

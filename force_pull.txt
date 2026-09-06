@@ -1,0 +1,3 @@
+git fetch origin
+git reset --hard origin/<分支名>
+git clean -fd
