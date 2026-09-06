@@ -92,6 +92,16 @@
                     "name": "batch_tokens",
                     "dtype": "int",
                     "value": 0
+                },
+                {
+                    "name": "shared_jetty",
+                    "dtype": "bool",
+                    "value": false
+                },
+                {
+                    "name": "shared_jetty_num",
+                    "dtype": "int",
+                    "value": 1
                 }
             ]
         },
@@ -186,6 +196,16 @@
                     "name": "batch_tokens",
                     "dtype": "int",
                     "value": 0
+                },
+                {
+                    "name": "shared_jetty",
+                    "dtype": "bool",
+                    "value": false
+                },
+                {
+                    "name": "shared_jetty_num",
+                    "dtype": "int",
+                    "value": 1
                 }
             ]
         }

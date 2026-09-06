@@ -32,7 +32,8 @@ python bandwidth_test.py
 
 默认使用 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 3`，运行多配置带宽测试。
 模式 3 使用 Torch context、URMA batch 接口和 Win 直接打流。
-每个目标卡固定由一个 AIV 负责，handle 在该卡的发送循环外创建一次并复用。
+默认每个目标卡固定由一个 AIV 负责；开启共享 jetty 后，tiling 仍按原有 `aiv_num` 规则启动 AIV，
+仅前 `shared_jetty_num` 个核按 BS 分片并各自独占一个共享 jetty，其余核参与状态等待和接收搬运。
 精度模式和带宽模式沿用原配置开关，URMA 的窗口容量和依赖见
 [Torch Extension 说明](torch_extension/README.md)。
 
@@ -58,11 +59,14 @@ is_single_test = False    # True: 单配置测试; False: 多配置批量测试
 
 ### 核心配置
 
-`graph_type`、`mode`、`comm_alg` 和 `batch_tokens` 位于 `ModelConfig`，核数配置位于 `ParallelConfig`。
+`graph_type`、`mode`、`comm_alg`、`batch_tokens`、`shared_jetty` 和 `shared_jetty_num`
+位于 `ModelConfig`，核数配置位于 `ParallelConfig`。
 
 ```python
 graph_type = 3           # 0: 单算子模式; 3: aclgraph模式
 comm_alg = "urma"        # mte 或 urma
+shared_jetty = False     # True: URMA 共享 jetty；MTE 不支持
+shared_jetty_num = 1     # 共享 jetty 及发送核数量；tiling 校验不超过所选 AIV 核数且最多 56
 mode = 3                # URMA直接Win打流；精度测试改为0或None
 batch_tokens = 0         # URMA: 0 自动最大批量（最高 2048）；正数超限由 tiling 报最大值
 is_full_core = True      # True: 使用全部核心; False: 使用部分核心
@@ -256,7 +260,8 @@ profiler 配置恢复到已验证可采集的 `124d318a` 基线：`Level1`、`Pi
 调节 `batch_tokens`（0 自动选择 2048）和 `ShapeConfig.data_size`（H）观察带宽；BS 决定发送持续量，
 应足够大，使 `BS // world_size` 能形成多次满批提交。
 
-每个目标卡由一个 AIV 核负责，目标卡数多于核数时按核号步进处理。
+普通 URMA 下每个目标卡由一个 AIV 核负责，目标卡数多于核数时按核号步进处理。
+共享 jetty 下由前 N 个核共同拆分每个对端的 BS，N 为 `shared_jetty_num`。
 每个远端目标发送 `BS // world_size` 个 token，自卡跳过，除法余数不参与传输。
 不足一条 token 时只交换完成 flag，数据带宽为 0。
 `Rank Data` 和带宽分子均使用实际远端字节数：
@@ -267,18 +272,22 @@ kernel 直接从已注册 Win 的只读源区向远端独立接收区逐 token �
 所有 URMA 模式直接调用 `hcomm_.WriteNbi(handle, dst, src, len)`，不传 WQE 配置，完全使用 SDK 默认值。
 所有 URMA 模式通过公开 Hcomm 接口提交通信，不读取 channel entity、队列深度或 handle 内部字段。
 每次凑够 batch 就 Commit，再通过 Drain 确认该批完成；不根据私有队列信息决定在途批次数。
-模式 3 的尾批未满时，将 flag 接在尾批后一起 Commit，数据与 flag 合计不超过配置批量。
-当前 SDK 默认的 fence 保证 flag 在前面的数据完成后到达，最终一次 Drain 收齐尾批数据和 flag 的完成通知。
-数据恰好满批时先完成该批，再单独提交并完成 flag；报告只计算数据 token 和字节，不计 flag。
-最后各核等待负责的来源卡 flag，全部核退出后算子才结束。
+普通 URMA 模式 3 的尾批未满时，将 flag 接在尾批后一起 Commit，数据与 flag 合计不超过配置批量；
+SDK 默认的 fence 保证 flag 在前面的数据完成后到达，最终一次 Drain 收齐尾批数据和 flag 的完成通知。
+数据恰好满批时先完成该批，再单独提交并完成 flag。共享 jetty 模式始终先完成数据批，
+再单独 batch 提交并完成 flag。两条路径的报告都只计算数据 token 和字节，不计 flag。
+最后参与发送的各核等待负责的来源卡 flag，全部核退出后算子才结束。
 
 flag 使用 Win 中独立的递增序号，避免清零和旧 flag 误判；Win 在通信接口初始化时已清零。
-同一 context 的调用必须串行，所有 rank 的模式、shape、核数和调用顺序必须一致，核数变化需要重建 context。
+同一 context 的调用必须串行，所有 rank 的模式、shape、当次核数和调用顺序必须一致。
+普通 URMA 路径改变核数需要重建 context；共享 jetty 路径使用公共双缓冲位，同步完成后可以改变
+`aiv_num`，但仍须满足 `aiv_num >= shared_jetty_num`。
 此模式不校验数据内容，y 和 receive_cnt 不保证有效；脚本不初始化输入内容、不保存或回传无效输出。
 输出 tensor 形状沿用接口约定。窗口最小值为 `1 MiB + 2 * BS * H * 2`，包含分离的源区和接收区。
 Batch buffer 复用不代表网络完成；报告时间包含 CQE 回收及 flag 等待。
-模式 3 与模式 0/1 共用 `BandwidthTestUrma`，在 `Process()` 的 `mode_ == 3` 分支执行；
-`Init()` 只读取该模式需要的通信参数便返回，业务缓冲区不初始化，沿用原有 URMA tiling key。
+普通 URMA 的模式 3 与模式 0/1 共用 `BandwidthTestUrma`，在 `Process()` 的 `mode_ == 3` 分支执行；
+共享 jetty 使用 `BandwidthTestUrmaSharedJetty` 和共享 tiling key。两者的 `Init()` 都只读取该模式需要的
+通信参数便返回，不初始化 mode 0/1 的业务缓冲区。
 超出目标卡范围的核在读取通信 context 前返回；只负责自卡的核不分配 WQE buffer 或更新序号。
 
 | 函数名 | 功能 |

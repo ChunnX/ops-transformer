@@ -15,7 +15,8 @@ namespace op_api {
 std::tuple<at::Tensor, at::Tensor> bandwidth_test(
     const at::Tensor &context, const at::Tensor &x, const at::Tensor &dstrank_id,
     std::string group, int64_t world_size, int64_t max_bs, int64_t mode,
-    int64_t ccl_buffer_size, std::string comm_alg, int64_t aiv_num, int64_t batch_tokens)
+    int64_t ccl_buffer_size, std::string comm_alg, int64_t aiv_num, int64_t batch_tokens,
+    bool shared_jetty, int64_t shared_jetty_num)
 {
     TORCH_CHECK(x.device().type() == c10::DeviceType::PrivateUse1, "x must be on NPU");
     TORCH_CHECK(context.device() == x.device() && dstrank_id.device() == x.device(),
@@ -33,8 +34,8 @@ std::tuple<at::Tensor, at::Tensor> bandwidth_test(
         y = at::empty({max_bs * world_size, x.size(1)}, x.options());
         receive_cnt = at::empty({world_size}, x.options().dtype(at::kInt));
     }
-    ACLNN_CMD(aclnnInnerBandwidthTest, context, x, dstrank_id, group, world_size,
-              max_bs, mode, ccl_buffer_size, comm_alg, aiv_num, batch_tokens, y, receive_cnt);
+    ACLNN_CMD(aclnnInnerBandwidthTest, context, x, dstrank_id, group, world_size, max_bs, mode, ccl_buffer_size,
+              comm_alg, aiv_num, batch_tokens, shared_jetty, shared_jetty_num, y, receive_cnt);
     return {y, receive_cnt};
 }
 

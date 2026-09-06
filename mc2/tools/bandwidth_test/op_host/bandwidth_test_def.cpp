@@ -38,6 +38,8 @@ public:
         this->Attr("comm_alg").AttrType(OPTIONAL).String("");
         this->Attr("aiv_num").AttrType(OPTIONAL).Int(-1);
         this->Attr("batch_tokens").AttrType(OPTIONAL).Int(0);
+        this->Attr("shared_jetty").AttrType(OPTIONAL).Bool(false);
+        this->Attr("shared_jetty_num").AttrType(OPTIONAL).Int(1);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)

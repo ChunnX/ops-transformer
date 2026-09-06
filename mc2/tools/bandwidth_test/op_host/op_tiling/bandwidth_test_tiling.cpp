@@ -62,6 +62,8 @@ constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 4U;
 constexpr uint32_t ATTR_COMM_ALG_INDEX = 5U;
 constexpr uint32_t ATTR_AIV_NUM_INDEX = 6U;    // AIV核数量
 constexpr uint32_t ATTR_BATCH_TOKENS_INDEX = 7U;
+constexpr uint32_t ATTR_SHARED_JETTY_INDEX = 8U;
+constexpr uint32_t ATTR_SHARED_JETTY_NUM_INDEX = 9U;
 
 // ============ 其他常量 ============
 constexpr uint32_t TWO_DIMS = 2U;
@@ -83,6 +85,12 @@ static bool IsUrma(const gert::TilingContext *context)
     return std::strcmp(context->GetAttrs()->GetAttrPointer<char>(ATTR_COMM_ALG_INDEX), "urma") == 0;
 }
 
+static bool IsSharedJetty(const gert::TilingContext *context)
+{
+    auto shared = context->GetAttrs()->GetAttrPointer<bool>(ATTR_SHARED_JETTY_INDEX);
+    return IsUrma(context) && shared != nullptr && *shared;
+}
+
 // 打印TilingData调试信息
 static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &tilingData)
 {
@@ -91,6 +99,7 @@ static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &t
     OP_LOGD(nodeName, "max_bs is %d.", tilingData.maxBs);
     OP_LOGD(nodeName, "mode is %d.", tilingData.mode);
     OP_LOGD(nodeName, "aiv_num is %d.", tilingData.aivNum);
+    OP_LOGD(nodeName, "shared_jetty_num is %d.", tilingData.sharedJettyNum);
     OP_LOGD(nodeName, "total_ub_size is %lu.", tilingData.totalUbSize);
     OP_LOGD(nodeName, "batch_buffer_bytes is %u.", tilingData.batchBufferBytes);
     OP_LOGD(nodeName, "batch_tokens is %u.", tilingData.batchTokens);
@@ -176,6 +185,16 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
                     OP_LOGE(nodeName, "comm_alg must be mte or urma."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(tilingData.mode == 3 && std::strcmp(commAlg, "urma") != 0,
                     OP_LOGE(nodeName, "mode=3 requires comm_alg=urma."), return ge::GRAPH_FAILED);
+
+    auto shared = attrs->GetAttrPointer<bool>(ATTR_SHARED_JETTY_INDEX);
+    auto jettyNum = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_JETTY_NUM_INDEX);
+    OP_TILING_CHECK(shared == nullptr || jettyNum == nullptr || *jettyNum < 1 ||
+                        *jettyNum > URMA_MAX_SHARED_JETTYS,
+                    OP_LOGE(nodeName, "shared_jetty_num must be in [1, %u].", URMA_MAX_SHARED_JETTYS),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*shared && std::strcmp(commAlg, "urma") != 0,
+                    OP_LOGE(nodeName, "shared_jetty requires comm_alg=urma."), return ge::GRAPH_FAILED);
+    tilingData.sharedJettyNum = static_cast<int32_t>(*jettyNum);
 
     OP_LOGD(nodeName, "group = %s", groupPtr);
     OP_LOGD(nodeName, "worldSize = %ld", *worldSizePtr);
@@ -299,7 +318,7 @@ static uint64_t CalTilingKey(const gert::TilingContext *context)
 {
     uint64_t archTag = TILING_KEY_BASE_A5;
     uint64_t commMode = IsUrma(context) ? TILINGKEY_TPL_URMA : TILINGKEY_TPL_MTE;
-    uint64_t tilingKey = GET_TPL_TILING_KEY(archTag, commMode);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(archTag, commMode, IsSharedJetty(context) ? 1 : 0);
     return tilingKey;
 }
 
@@ -317,6 +336,10 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestT
         workSpaces[0] += static_cast<size_t>(WORKSPACE_ELEMENT_OFFSET * aivNum * aivNum);
     }
 
+    if (IsSharedJetty(context) && tilingData->mode != 3) {
+        uint64_t countStride = (static_cast<uint64_t>(tilingData->worldSize) + 7) / 8 * 8;
+        workSpaces[0] += static_cast<uint64_t>(tilingData->sharedJettyNum) * countStride * sizeof(uint32_t);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -430,11 +453,20 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
         aivNum = static_cast<uint32_t>(*aivNumPtr);
     }
 
+    if (IsSharedJetty(context)) {
+        OP_TILING_CHECK(static_cast<uint32_t>(tilingData->sharedJettyNum) > aivNum,
+                        OP_LOGE(nodeName, "shared_jetty_num=%d exceeds selected AIV count=%u.",
+                                tilingData->sharedJettyNum, aivNum), return ge::GRAPH_FAILED);
+    }
+
     OP_TILING_CHECK(aivNum == 0, OP_LOGE(nodeName, "Platform has no AIV cores."), return ge::GRAPH_FAILED);
     auto alignUp = [](uint64_t value, uint64_t alignment) { return (value + alignment - 1) / alignment * alignment; };
-    // Match the kernel's status allocation for the actual world size, including uneven rank splits.
-    uint64_t ranksPerCore = (static_cast<uint64_t>(tilingData->worldSize) + aivNum - 1) / aivNum;
-    uint64_t statusBytes = alignUp(ranksPerCore, 8) * 32;
+    // Shared send/status work belongs to the jetty-owning cores; receive waiting still uses every launched AIV.
+    uint64_t waitRanksPerCore = (static_cast<uint64_t>(tilingData->worldSize) + aivNum - 1) / aivNum;
+    uint64_t statusCoreNum = IsSharedJetty(context) ? tilingData->sharedJettyNum : aivNum;
+    uint64_t statusRanksPerCore =
+        (static_cast<uint64_t>(tilingData->worldSize) + statusCoreNum - 1) / statusCoreNum;
+    uint64_t statusBytes = alignUp(statusRanksPerCore, 8) * 32;
     uint64_t rowBytes = static_cast<uint64_t>(tilingData->dataSize) * 2;
     uint64_t requiredUb = 0;
     tilingData->batchBufferBytes = 0;
@@ -445,7 +477,9 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     bool directWin = tilingData->mode == 3;
     if (IsUrma(context)) {
         // Direct Win streaming only needs WQEs; business modes also stage one row and a chunk of IDs.
-        uint64_t fixedBytes = directWin ? 0 : 32 + statusBytes + rowBytes;
+        uint64_t countBytes =
+            IsSharedJetty(context) ? alignUp(static_cast<uint64_t>(tilingData->worldSize) * 4, 32) : 0;
+        uint64_t fixedBytes = directWin ? 0 : 32 + statusBytes + rowBytes + countBytes;
         uint64_t idBytesPerToken = directWin ? 0 : sizeof(int32_t);
         uint64_t bytesPerToken = idBytesPerToken + URMA_WQE_BYTES;
         OP_TILING_CHECK(fixedBytes > ubSize || ubSize - fixedBytes < 32 + URMA_WQE_BYTES,
@@ -481,9 +515,9 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
         uint64_t queueCount = initBytes + rowBytes * 2 > 170 * 1024 ? 1 : 2;
         requiredUb = initBytes + queueCount * rowBytes;
     }
-    uint64_t waitBytes = std::max(alignUp(ranksPerCore, 8) * 32, uint64_t(256));
+    uint64_t waitBytes = std::max(alignUp(waitRanksPerCore, 8) * 32, uint64_t(256));
     uint64_t gatherBytes = alignUp(std::max(static_cast<uint64_t>(tilingData->worldSize) * 4,
-                                          alignUp(ranksPerCore * 4, 32)), 32);
+                                          alignUp(waitRanksPerCore * 4, 32)), 32);
     uint64_t receiveBytes = waitBytes + gatherBytes + 64 + static_cast<uint64_t>(tilingData->worldSize) * 32;
     OP_TILING_CHECK(requiredUb > ubSize || (!directWin && receiveBytes + rowBytes * 2 > ubSize),
                     OP_LOGE(nodeName, "Insufficient UB for BandwidthTest send or receive buffers."),

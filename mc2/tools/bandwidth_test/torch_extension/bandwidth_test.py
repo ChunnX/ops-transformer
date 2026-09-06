@@ -34,21 +34,23 @@ class BandwidthTestOpBuilder(OpBuilder):
         return (
             "bandwidth_test(Tensor(a!) context, Tensor x, Tensor dstrank_id, str group, "
             "int world_size, int max_bs, int test_mode, int ccl_buffer_size, *, "
-            'str comm_alg="", int aiv_num=-1, int batch_tokens=0) -> (Tensor, Tensor)'
+            'str comm_alg="", int aiv_num=-1, int batch_tokens=0, '
+            'bool shared_jetty=False, int shared_jetty_num=1) -> (Tensor, Tensor)'
         )
 
     def register_meta(self):
         @impl(get_as_library(), self.name, "Meta")
         def bandwidth_test_meta(context, x, dstrank_id, group, world_size,
-                                max_bs, test_mode, ccl_buffer_size, comm_alg="", aiv_num=-1, batch_tokens=0):
+                                max_bs, test_mode, ccl_buffer_size, comm_alg="", aiv_num=-1,
+                                batch_tokens=0, shared_jetty=False, shared_jetty_num=1):
             _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
-                          test_mode, ccl_buffer_size, comm_alg, aiv_num, batch_tokens)
+                          test_mode, ccl_buffer_size, comm_alg, aiv_num, batch_tokens, shared_jetty, shared_jetty_num)
             return (x.new_empty((max_bs * world_size, x.size(1))),
                     x.new_empty((world_size,), dtype=torch.int32))
 
 
 def _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
-                  test_mode, ccl_buffer_size, comm_alg, aiv_num, batch_tokens):
+                  test_mode, ccl_buffer_size, comm_alg, aiv_num, batch_tokens, shared_jetty=False, shared_jetty_num=1):
     torch._check(x.dim() == 2, lambda: "x must have shape [bs, hidden]")
     torch._check(x.dtype == torch.float16, lambda: "BandwidthTest supports only float16")
     torch._check(dstrank_id.dim() == 1 and dstrank_id.dtype == torch.int32,
@@ -77,6 +79,10 @@ def _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
     torch._check(batch_tokens >= 0, lambda: "batch_tokens must be 0 (auto) or positive")
     torch._check(comm_alg == "urma" or batch_tokens == 0,
                  lambda: "batch_tokens is only supported for urma")
+    torch._check(not shared_jetty or comm_alg == "urma", lambda: "shared_jetty requires urma")
+    torch._check(1 <= shared_jetty_num <= 56, lambda: "shared_jetty_num must be in [1, 56]")
+    torch._check(not shared_jetty or aiv_num == -1 or shared_jetty_num <= aiv_num,
+                 lambda: "shared_jetty_num must not exceed aiv_num")
     # Kernel divides the data window in two and reserves one max_bs block per half.
     row_bytes = ((x.size(1) * 2 + 511) // 512) * 512
     required_bytes = 1024 * 1024 + 2 * (world_size + 1) * max_bs * row_bytes
@@ -92,12 +98,12 @@ _bandwidth_test_op_builder._ensure_initialized()
 
 @impl(get_as_library(), "bandwidth_test", "PrivateUse1")
 def _bandwidth_test(context, x, dstrank_id, group, world_size, max_bs, test_mode,
-                    ccl_buffer_size, comm_alg="", aiv_num=-1, batch_tokens=0):
+                    ccl_buffer_size, comm_alg="", aiv_num=-1, batch_tokens=0, shared_jetty=False, shared_jetty_num=1):
     _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
-                  test_mode, ccl_buffer_size, comm_alg, aiv_num, batch_tokens)
+                  test_mode, ccl_buffer_size, comm_alg, aiv_num, batch_tokens, shared_jetty, shared_jetty_num)
     return _bandwidth_test_op_builder.load().bandwidth_test(
         context, x, dstrank_id, group, world_size, max_bs, test_mode,
-        ccl_buffer_size, comm_alg, aiv_num, batch_tokens)
+        ccl_buffer_size, comm_alg, aiv_num, batch_tokens, shared_jetty, shared_jetty_num)
 
 
 class BandwidthTestBuffer:
@@ -105,15 +111,22 @@ class BandwidthTestBuffer:
 
     All group ranks must construct this object on their current Ascend950 NPU,
     outside torch.compile. MTE requires one UB memory domain; URMA requires
-    UBC_CTP links provided by the shared context manager. Set
-    HCCL_BUFFSIZE before group creation and retain this object and the group
+    UBC_CTP links in the ordinary context. The independent shared jetty builder
+    supports UBC_CTP and cross-supernode UB_RTP (UBG) with the integration package.
+    Set HCCL_BUFFSIZE before group creation and retain this object and the group
     until all operations and graph replays have completed.
     """
 
-    def __init__(self, group, comm_alg=""):
+    def __init__(self, group, comm_alg="", shared_jetty=False, shared_jetty_num=1):
         if comm_alg not in ("", "mte", "urma"):
             raise ValueError("comm_alg must be mte or urma")
         self.comm_alg = comm_alg or "mte"
+        if shared_jetty and self.comm_alg != "urma":
+            raise ValueError("shared_jetty requires comm_alg=urma")
+        if not 1 <= shared_jetty_num <= 56:
+            raise ValueError("shared_jetty_num must be in [1, 56]")
+        self.shared_jetty = shared_jetty
+        self.shared_jetty_num = shared_jetty_num
         self.group = group
         self.world_size = torch.distributed.get_world_size(group)
         if not 0 < self.world_size <= 1024:
@@ -131,6 +144,15 @@ class BandwidthTestBuffer:
         # Use a fresh collective tag for each owner, including after its release.
         sequence = _CONTEXT_SEQUENCE.get(self.group_name, 0)
         _CONTEXT_SEQUENCE[self.group_name] = sequence + 1
+        if self.shared_jetty:
+            from .shared_jetty_context import SharedJettyContextManager
+            self._ctx_manager = SharedJettyContextManager(
+                group, self.group_name, self.world_size, shared_jetty_num,
+                2 * buffer_mb * 1024 * 1024, sequence)
+            self.context = self._ctx_manager.create_context()
+            self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
+            _bandwidth_test_op_builder.load()
+            return
         self._ctx_manager = CommContextManager(
             self.group_name, self.world_size, backend={"Ascend950": "channel"},
             commAlg="urma" if self.comm_alg == "urma" else "ub-mem",
@@ -146,7 +168,8 @@ class BandwidthTestBuffer:
 
 def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
                    dstrank_id: torch.Tensor, world_size: int, max_bs: int,
-                   mode: int = 0, comm_alg: str = "", aiv_num: int = -1, batch_tokens: int = 0
+                   mode: int = 0, comm_alg: str = "", aiv_num: int = -1, batch_tokens: int = 0,
+                   shared_jetty: bool = False, shared_jetty_num: int = 1
                    ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Exchange rows using a BandwidthTestBuffer created before graph capture.
 
@@ -161,6 +184,8 @@ def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
         comm_alg: "mte", "" or "urma"; must match the context owner.
         aiv_num: -1 selects platform defaults; otherwise a positive AIV count.
         batch_tokens: URMA tokens per commit; 0 selects capacity automatically.
+        shared_jetty: Enable the URMA shared jetty kernel and context.
+        shared_jetty_num: Number of shared jettys and sending AIVs, in [1, min(aiv_num, 56)].
 
     Returns:
         FP16 y [max_bs * world_size, hidden] and INT32 receive_cnt [world_size].
@@ -171,7 +196,10 @@ def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
         raise ValueError("world_size must match the context communication group")
     if (comm_alg or "mte") != sym_buffer.comm_alg:
         raise ValueError("comm_alg must match BandwidthTestBuffer")
+    if shared_jetty != sym_buffer.shared_jetty or shared_jetty_num != sym_buffer.shared_jetty_num:
+        raise ValueError("shared jetty settings must match BandwidthTestBuffer")
     return torch.ops.cann_ops_transformer.bandwidth_test(
         sym_buffer.context, x, dstrank_id, sym_buffer.group_name,
         world_size, max_bs, mode, sym_buffer.ccl_buffer_size,
-        comm_alg=comm_alg, aiv_num=aiv_num, batch_tokens=batch_tokens)
+        comm_alg=comm_alg, aiv_num=aiv_num, batch_tokens=batch_tokens,
+        shared_jetty=shared_jetty, shared_jetty_num=shared_jetty_num)

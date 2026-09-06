@@ -112,7 +112,7 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(const aclTensor *x, const aclTens
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     aclnnRet =
         aclnnInnerBandwidthTestGetWorkspaceSize(mc2Context, x, dstRankId, group, worldSize, maxBs, mode, hcclBuffSize,
-                                                commAlg, aivNum, 0, y, receiveCnt, workspaceSize, executor);
+                                                commAlg, aivNum, 0, false, 1, y, receiveCnt, workspaceSize, executor);
 #endif
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize end");
     return aclnnRet;

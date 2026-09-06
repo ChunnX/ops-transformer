@@ -75,6 +75,11 @@ if mode is None:
     mode = 0 if CONFIG.run.is_precision_test else 1
 if mode not in (0, 1, 3):
     raise ValueError("mode must be 0, 1 or 3")
+if CONFIG.model.shared_jetty:
+    if CONFIG.model.comm_alg != "urma" or not 1 <= CONFIG.model.shared_jetty_num <= 56:
+        raise ValueError("shared_jetty requires urma and shared_jetty_num in [1, 56]")
+    if aiv_num != -1 and CONFIG.model.shared_jetty_num > aiv_num:
+        raise ValueError("shared_jetty_num must not exceed aiv_num")
 if mode == 3 and CONFIG.model.comm_alg != "urma":
     raise ValueError("mode=3 requires comm_alg=urma")
 if CONFIG.run.is_precision_test and mode != 0:
@@ -114,6 +119,7 @@ def print_setting():
     logger.info(f"{mode=}")
     logger.info(f"{CONFIG.model.comm_alg=}")
     logger.info(f"{CONFIG.model.batch_tokens=}")
+    logger.info(f"{CONFIG.model.shared_jetty=}, {CONFIG.model.shared_jetty_num=}")
     logger.info(f"{CONFIG.model.graph_type=}")
     logger.info(f"{aiv_num=}")
     logger.info(f"{CONFIG.run.is_precision_test=}")
@@ -330,6 +336,8 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
         test_comm_alg,
         test_aiv_num,
         test_batch_tokens,
+        test_shared_jetty,
+        test_shared_jetty_num,
     ):
         local_loop = CONFIG.run.loop if CONFIG.run.is_bandwidth_test else 1
         output = None
@@ -344,6 +352,8 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
                 comm_alg=test_comm_alg,
                 aiv_num=test_aiv_num,
                 batch_tokens=test_batch_tokens,
+                shared_jetty=test_shared_jetty,
+                shared_jetty_num=test_shared_jetty_num,
             )
         return output
 
@@ -393,7 +403,9 @@ def init_hccl_comm(rank, world_size_local):
     torch.npu.synchronize()
     logger.debug("[DEBUG] device_%s 通信域完全就绪", rank)
 
-    return BandwidthTestBuffer(comm_group, comm_alg=CONFIG.model.comm_alg), comm_group
+    return BandwidthTestBuffer(comm_group, comm_alg=CONFIG.model.comm_alg,
+                               shared_jetty=CONFIG.model.shared_jetty,
+                               shared_jetty_num=CONFIG.model.shared_jetty_num), comm_group
 
 
 # endregion
@@ -599,6 +611,8 @@ def run_bandwidth_test_npu(
             "comm_alg": CONFIG.model.comm_alg,
             "aiv_num": aiv_num,
             "batch_tokens": CONFIG.model.batch_tokens,
+            "shared_jetty": CONFIG.model.shared_jetty,
+            "shared_jetty_num": CONFIG.model.shared_jetty_num,
         }
 
         if not is_perf_mode:
@@ -626,6 +640,8 @@ def run_bandwidth_test_npu(
             "test_comm_alg": CONFIG.model.comm_alg,
             "test_aiv_num": aiv_num,
             "test_batch_tokens": CONFIG.model.batch_tokens,
+            "test_shared_jetty": CONFIG.model.shared_jetty,
+            "test_shared_jetty_num": CONFIG.model.shared_jetty_num,
         }
         if not is_perf_mode:
             model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
@@ -735,6 +751,8 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
                 "comm_alg": CONFIG.model.comm_alg,
                 "aiv_num": aiv_num,
                 "batch_tokens": CONFIG.model.batch_tokens,
+                "shared_jetty": CONFIG.model.shared_jetty,
+                "shared_jetty_num": CONFIG.model.shared_jetty_num,
             }
             with get_profiling(
                 CONFIG.run.loop, CONFIG.run.repeat, CONFIG.run.warmup, config_profiling_path
@@ -756,6 +774,8 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
                 "test_comm_alg": CONFIG.model.comm_alg,
                 "test_aiv_num": aiv_num,
                 "test_batch_tokens": CONFIG.model.batch_tokens,
+                "test_shared_jetty": CONFIG.model.shared_jetty,
+                "test_shared_jetty_num": CONFIG.model.shared_jetty_num,
             }
             torch._dynamo.reset()
             model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
@@ -931,6 +951,27 @@ def run_bandwidth_test(
     return perf_result
 
 
+def shared_jetty_batch_tokens(dstrank_id_per_rank, test_bs, ep_world_size, test_mode,
+                              shared_jetty_num, requested_batch_tokens):
+    """Largest actual payload batch after the kernel's BS split, excluding local copies."""
+    if ep_world_size == 1:
+        return 0
+    capacity = requested_batch_tokens or URMA_MAX_BATCH_TOKENS
+    if test_mode == 3:
+        return min(capacity, (test_bs // ep_world_size + shared_jetty_num - 1) // shared_jetty_num)
+    largest = 0
+    base, remainder = divmod(test_bs, shared_jetty_num)
+    for rank, destinations in enumerate(dstrank_id_per_rank):
+        start = 0
+        for core in range(shared_jetty_num):
+            end = start + base + (core < remainder)
+            counts = torch.bincount(destinations[start:end].to(torch.int64), minlength=ep_world_size)
+            counts[rank] = 0
+            largest = max(largest, int(counts.max()))
+            start = end
+    return min(capacity, largest)
+
+
 def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
     """运行多配置带宽测试（共享通信域）"""
     all_results = []
@@ -996,6 +1037,10 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
         if perf_result:
             perf_result["config_index"] = config_index
             perf_result["config"] = cfg
+            if CONFIG.model.shared_jetty:
+                perf_result["shared_jetty_batch_tokens"] = shared_jetty_batch_tokens(
+                    all_inputs[i][1], test_bs, world_size, mode,
+                    CONFIG.model.shared_jetty_num, CONFIG.model.batch_tokens)
             all_results.append(perf_result)
 
     print_summary_table(all_results)
@@ -1034,6 +1079,10 @@ def print_summary_table(results: List[Dict[str, Any]]):
             rank_data_mb = (cfg["bs"] // world_size) * (world_size - 1) * token_bytes / (1024 * 1024)
         if CONFIG.model.comm_alg != "urma":
             batch_tokens_text = batch_data_mb_text = "N/A"
+        elif CONFIG.model.shared_jetty:
+            batch_tokens = r["shared_jetty_batch_tokens"]
+            batch_tokens_text = str(batch_tokens)
+            batch_data_mb_text = f"{batch_tokens * token_bytes / (1024 * 1024):.4f}"
         else:
             batch_capacity = CONFIG.model.batch_tokens or URMA_MAX_BATCH_TOKENS
             max_peer_tokens = cfg["bs"] // world_size
@@ -1058,8 +1107,10 @@ def print_summary_table(results: List[Dict[str, Any]]):
     logger.info("-" * len(header))
     logger.info("MB = 1024^2 bytes. Mode 0/1 Rank Data includes local destinations.")
     logger.info("Mode 3 Rank Data = floor(BS/world_size) * (world_size-1) * H * dtype bytes; only remote payload.")
-    logger.info("Batch Tokens/Data show the largest actual data commit to one remote destination; smaller tails may exist.")
-    logger.info("Mode 3 Batch Tokens = min(selected batch, floor(BS/world_size)); no remote payload means 0.")
+    logger.info(
+        "Batch Tokens/Data show the largest actual data commit to one remote destination; smaller tails may exist.")
+    logger.info("Shared jetty Batch Tokens account for the BS split across shared_jetty_num cores.")
+    logger.info("Ordinary URMA mode 3 Batch Tokens = min(selected batch, floor(BS/world_size)).")
     logger.info("URMA batch_tokens=0 uses the current tiling maximum of 2048. N/A: MTE has no URMA batch submission.")
 
     if max_bw_config:

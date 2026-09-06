@@ -21,6 +21,7 @@
 namespace BandwidthTestTiling {
 constexpr uint32_t URMA_WQE_BYTES = 64;
 constexpr uint32_t URMA_MAX_BATCH_TOKENS = 2048;
+constexpr uint32_t URMA_MAX_SHARED_JETTYS = 56;
 } // namespace BandwidthTestTiling
 
 struct BandwidthTestTilingData {
@@ -30,6 +31,7 @@ struct BandwidthTestTilingData {
     int32_t maxBs;         // batch size，即token数量
     int32_t mode;          // 0=完整流程, 1=业务发送, 3=URMA Win直接打流
     int32_t aivNum;        // AIV核总数，用于任务分发
+    int32_t sharedJettyNum; // 共享jetty数量，也是按BS分片的通信核数量
     uint32_t batchBufferBytes; // URMA WQE bytes; rank-ID capacity is batchBufferBytes / URMA_WQE_BYTES
     uint32_t batchTokens;  // Effective URMA tokens per commit, selected by tiling
     uint64_t totalUbSize;  // 总UB大小，用于内存规划

@@ -1,5 +1,64 @@
 # Torch Extension
 
+## URMA 共享 jetty
+
+在 `config.py` 中设置 `shared_jetty=True`、`shared_jetty_num=N`，保留 `comm_alg="urma"`。
+`N` 为实际建立的共享队列数量，也是按 BS 分片的发送核数。tiling 仍沿用原有 `aiv_num`
+规则选择并启动全部 AIV（设备当前最多 72 个）；只允许 `1 <= N <= min(所选 AIV 数, 56)`。
+`aiv_num=-1` 时使用设备 AIV 数。该数量关系在 tiling 中校验。
+关闭共享 jetty 时沿用现有 MTE / 普通 URMA 路径。MTE 开启此开关会报参数错误。
+
+```python
+sym_buffer = BandwidthTestBuffer(group, comm_alg="urma", shared_jetty=True, shared_jetty_num=8)
+y, receive_cnt = bandwidth_test(
+    sym_buffer, x, dstrank_id, sym_buffer.world_size, x.size(0),
+    mode=0, comm_alg="urma", shared_jetty=True, shared_jetty_num=8, batch_tokens=128)
+```
+
+依赖 [asc-comm 0eff184](https://gitcode.com/cann/asc-comm/commit/0eff184c367e6d67263745e57abc485237d34019)
+提供的公开 `MakeMultiChannelHandle` / `GetHandleRef` 接口及对应 HCCL 共享队列支持。
+Host 使用 `torch_extension/shared_jetty_context.py` 和同目录 `csrc` 中的独立实现，
+逐对端查询实际网络层，优先选择域内 `UBC_CTP`（即 `UB_CTP`），否则选择跨超 `UB_RTP`（UBG）。
+两者均按 URMA 建链，保留各对端实际的 `channelProtocol`。UBG 共享 jetty 使用用户提供的
+支持该能力的联调包；不按公开仓库旧版文档拦截，也不将 UBG 归类为 MTE。
+每个共享 jetty 使用独立 tag，包含按 rank 排序、跳过本卡的所有对端 descriptor；
+context 保留共享 jetty 的环境和兼容性检查：仅支持 Ascend950，
+从各对端候选链中选择共同的本地 endpoint，无交集时明确报错。这是本算子参考官方示例
+采用的共享队列选择约束；不会因为链路协议是 `UB_RTP` 而拒绝它。
+共享队列 API 不可用或 HCCL 建链失败时，同样在 context 创建阶段报错，报告 jetty 编号及返回码。
+底层 C++ context 不查询设备核数，也不承担共享 jetty 数量上限校验；数量限制由 tiling 统一处理。
+不会隐式创建额外 jetty 或回退普通 channel；单 rank 无远端，跳过建链。
+
+Win 通过 HCCL engine context 分配、清零并注册；构造阶段通过组内 collective 交换 Win 地址，
+同时核对共享 jetty 数、窗口大小和构造顺序。句柄、注册和 Win 均由 communicator 管理，
+Python owner 保留 ProcessGroup。多配置和图重放应复用 owner；所有 kernel 完成后销毁通信组
+才释放这些资源。构造中途失败的 HCCL 资源同样保留到通信组销毁，不能重试同一个失败 owner。
+
+tiling key 先选择通信算法，再在 URMA 下选择 `SHARED_JETTY`；kernel 独立文件为
+`op_kernel/bandwidth_test_urma_shared_jetty.h`，保留 mode 0/1/3：
+
+- mode 0/1：将输入 BS 的完整 token 连续分给 N 核，先在 workspace 写各核各对端计数，
+  同步后按核号前缀计算紧凑发送位置。每核独占中转 token 区间，全部数据完成后再汇总并发送
+  count / ready。其余已启动 AIV 继续参与全核同步、状态等待和接收搬运，mode 0 沿用原来的
+  接收和输出排列。
+- mode 3：将每个对端的 `floor(BS/world_size)` 个完整 token 分给 N 核；每核遍历全部远端。
+  总流量口径不变，各 `(源 rank, 核)` 使用独立 epoch flag，空区间仍通知完成。
+- 每个发送核只操作自己的共享 jetty。数据、count、ready 和 epoch 的远端写都使用
+  `GetHandleRef → WriteNbi(batch) → BatchCommit(outer batch) → Drain(outer batch)`。
+  `batch_tokens` 是每核向一个目标卡提交的 payload token 数，尾批可以不足；
+  统计表根据实际 BS 分核后的路由计算最大数据批量，状态通知不计入 payload。
+  `WriteNbi`、`BatchCommit`、`Drain` 返回错误时触发 `Trap()`，中止 kernel，避免继续发布成功标志。
+
+共享模式的新增 workspace 为 `N * align_up(world_size, 8) * 4` 字节计数表；
+发送 UB 还包含一份按 world_size 对齐的本核计数。tiling 按 248 KiB 可用 UB 校验容量。
+以下原有普通 URMA / MTE 布局说明中的按目标卡分核和 channel 锁仅适用于非共享路径。
+
+当前交付基于静态分析；仍需在支持上述接口的 CANN 上编译，并验证多 rank 的
+mode 0 精度、mode 1/3 重复调用、图重放、非整除 BS、空区间、56 jetty，以及联调包的
+跨超 UBG 和混合 CTP/UBG 拓扑。这里的静态检查不代表目标包编译或实机通信已验证。
+
+## 安装和原有调用方式
+
 实现复用 MegaMoe 的 `OpBuilder`、`CommContextManager` 和 `ACLNN_CMD`。
 现有安装脚本将三级目录收集到 `cann_ops_transformer.ops.tools.bandwidth_test`，
 C++ 源码放入 `csrc/tools/`，无需修改公共打包逻辑。
@@ -59,9 +118,11 @@ Meta 输出为 `y[max_bs * world_size, hidden]`（FP16）和
 Eager 路径经 `aclnnInnerBandwidthTest` 显式传递 Torch 创建的 context，
 不再由公开 ACLNN 包装层重复创建 context。
 可选参数在 schema、Meta、PrivateUse1、GE converter 和 OpDef 中统一为
-`comm_alg=""`（MTE）、`aiv_num=-1`（平台默认核数）、`batch_tokens=0`（自动批量）；
+`comm_alg=""`（MTE）、`aiv_num=-1`（平台默认核数）、`batch_tokens=0`（自动批量）、
+`shared_jetty=False`、`shared_jetty_num=1`；
 Python 始终将这些值显式传给 C++/ACLNN。新增属性改变了生成的 inner ACLNN 签名，
-更新后需同步重装算子包和 Torch 扩展；公开 MTE ACLNN 包装接口保持原签名，内部传入 0。
+更新后需同步重装算子包和 Torch 扩展；公开 MTE ACLNN 包装接口保持原签名，
+内部为新增参数传入 `batch_tokens=0, shared_jetty=false, shared_jetty_num=1`。
 
 Ascend950 支持 MTE（同一 UB 内存域，`comm_alg="mte"` 或空字符串）和
 URMA（`comm_alg="urma"`，由已有 Torch context manager 建立 UBC_CTP channel）。
@@ -163,7 +224,8 @@ kernel 只通过公开 Hcomm 接口提交、完成和锁定通信，不读取 ch
 `mode=0` 在相同流程后调用与 MTE 一致的 `LocalWindowCopy`，按源卡和原 token 顺序拼接有效输出。
 同一 context 的调用与图重放应串行下发，避免并发覆盖通信窗口。
 切换 shape、mode 或测试配置前，所有 rank 必须完成此前调用并同步；各 rank 调用次数和顺序须相同。
-同一 owner 的 `aiv_num` 必须固定；窗口按核保存双缓冲位，改变核数需要同步后重建 owner。
+普通 URMA owner 的 `aiv_num` 必须固定；该路径按核保存双缓冲位，改变核数需要同步后重建 owner。
+共享 jetty owner 使用公共双缓冲位，同步完成后允许改变 `aiv_num`，但不得小于 `shared_jetty_num`。
 `mode=0` 仅 `y[:receive_cnt.sum()]` 有效；`mode=1/3` 不搬运输出，两个输出均不保证有效，
 测试脚本的图内循环因此继续使用原始输入。schema 将 context 声明为可变输入，
 沿用仓库通信算子的副作用约定；目标环境仍须确认优化后的图保留全部通信次数和顺序。
