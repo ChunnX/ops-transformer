@@ -326,7 +326,7 @@ cann_ops_transformer.generic_block_sparse_attention(
             <ul>
                 <li>q、k、v的数据类型需相同</li>
                 <li>k、v的shape需相同</li>
-                <li>当前仅支持layout_q="TND"、layout_kv="PA_BBND"</li>
+                <li>Layout校验规则见<a href="#layout匹配关系表">layout匹配关系表</a></li>
             </ul>
         </td>
         <td rowspan="4">
@@ -366,6 +366,34 @@ cann_ops_transformer.generic_block_sparse_attention(
     </tr>
     </tbody>
     </table>
+
+- layout匹配关系表：<a name="layout匹配关系表"></a>
+
+    <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
+    <col style="width: 247px">
+    <col style="width: 232px">
+    <col style="width: 293px">
+    <col style="width: 293px">
+    </colgroup>
+    <thead>
+    <tr>
+        <th>layout_q</th>
+        <th>layout_kv</th>
+        <th>attention_out</th>
+        <th>softmax_lse</th>
+    </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>TND</td>
+            <td>PA_BBND</td>
+            <td>(Q_T, Q_N, D)</td>
+            <td>(Q_T, Q_N, 1)</td>
+        </tr>
+    </tbody>
+    </table>
+
+    > 当前仅支持上表组合；无独立 `layout_out` 参数，`attention_out` 排布与 `layout_q` 一致。`return_softmax_lse` 为 False 时，`softmax_lse` 输出空 Tensor。
 
 - sparse_block_idx、sparse_block_count、block_shape校验:
 
@@ -763,6 +791,7 @@ quant_mode参数解释见「quant_mode 枚举」。
             <td rowspan="2">
                 <ul>
                     <li>return_softmax_lse为False时，softmax_lse输出空Tensor</li>
+                    <li>return_softmax_lse为True时，输出shape见<a href="#layout匹配关系表">layout匹配关系表</a></li>
                 </ul>
             </td>
             <td>无</td>
