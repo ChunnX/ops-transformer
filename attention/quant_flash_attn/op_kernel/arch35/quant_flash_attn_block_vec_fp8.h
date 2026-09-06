@@ -28,6 +28,7 @@
 #include "../../../common/op_kernel/init_output.h"
 #include "memory_copy_arch35_quant_flash_attn.h"
 #include "quant_flash_attn_vselr_buf.h"
+#include "quant_flash_attn_type.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -43,17 +44,25 @@ using namespace AttentionCommon;
 
 namespace BaseApi {
 
-template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0,
-          bool isFd = false, bool useDn = false>
+template <typename FA_T>
 class QuantFlashAttnBlockVecGqaFp8 {
 public:
-    /* =================编译期常量的基本块信息================= */
-    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
-    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
+    /* ============FA_T派生的基本块信息（对齐fa）============= */
+    using INPUT_T = typename FA_T::inputType;
+    using T = float;
+    using OUTPUT_T = typename FA_T::outputType;
+    using ConstInfoX = ConstInfo_t;
+    // fp8 原分派为 TND||NTD→cuParser（与 mxfp8 仅 TND 不同），tool 侧 INCLUDE_NTD=true
+    using QSeqLensToolType = QFASeqLensTool<FA_T::qLayout, false, true, int32_t, GetQActSeqMode<FA_T::qLayout>()>;
+    static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
+    static constexpr uint32_t s2BaseSize = (uint32_t)FA_T::s2BaseSize;
+    static constexpr DTemplateType dTemplateType = FA_T::dBaseSize;
+    static constexpr DTemplateType dVTemplateType = FA_T::dVBaseSize;
+    static constexpr LayOutTypeEnum layout = FA_T::qLayout;
+    static constexpr LayOutTypeEnum outLayout = FA_T::attnOutLayout;
+    static constexpr bool hasAtten = FA_T::hasMask;
+    static constexpr bool isFd = FA_T::isFd;
+    static constexpr bool useDn = FA_T::useDn;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
     static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                   IsSameType<INPUT_T, hifloat8_t>::value;
@@ -62,13 +71,11 @@ public:
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
 
-    static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
-
     static constexpr bool USE_DN = useDn;
     static constexpr UbFormat OUT_UB_FORMAT = USE_DN ? UbFormat::S1_ONLY : GetOutUbFormat<layout>();
     using OutGmCoord = std::conditional_t<USE_DN, GmCoordS1Only, GmCoordGs1Merge>;
     static constexpr bool IS_PER_TOEKN_HEAD = true;
-    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
+    static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
 
     // ClearOutput 专用静态ID/地址（静态Tensor范式）。
     // matmul::InitOutput 内部依赖 GetTPipePtr()->FetchEventID（无TPipe会崩溃），改用 common 静态版
@@ -93,19 +100,24 @@ public:
     // MTE2 重写同一 buf 与上一任务 V 侧 VF 读无天然屏障（动态版 TBuf 裸奔，静态版时序放大竞态窗口），
     // 照 fa mask 模式加 MTE2↔V 双向握手（MTE2 拿锁写 / V 拿锁读）
     static constexpr uint32_t QK_SCALE_MUTEX_ID = 6;
-
-    // SetFlag/WaitFlag 事件ID（MTE3_V / V_MTE3 / MTE2_V 各自独立编号空间）
-    static constexpr uint32_t MTE3_TO_V_EVENT_ID0 = 0;      // MTE3_V，stage2OutBuf 保护
-    static constexpr uint32_t MTE3_TO_V_EVENT_ID1 = 1;      // MTE3_V，仅 AllocEventID 预置/FreeEventID drain 配平
-    static constexpr uint32_t V_TO_MTE3_EVENT_ID0 = 1;      // V_MTE3，copyout 前序
-    static constexpr uint32_t V_TO_MTE3_EVENT_ID1 = 2;      // V_MTE3，FD ping-pong
-    static constexpr uint32_t MTE2_TO_V_FLUSH_EVENT_ID = 0; // MTE2_V，scale 拷入 flush（Set后紧跟Wait，可复用）
+    static constexpr uint32_t UB_OUT_VEC2_RES_MUTEX_ID =
+        7; // vec2Res(V计算)↔MTE3(copyout)所有权交接（fa UB_OUT_VEC2_RES）
 
     // ====================静态UB布局====================
-    // vec 区基址 = kernel 侧 ubBufferManager_ 的总量（mm1ResultSize*2 + mm2ResultSize），
-    // vec 侧按 kernel 公式 constexpr 重算，AIC/AIV 两侧一致
-    static constexpr uint32_t VEC_UB_BASE =
-        mBaseSize / CV_RATIO * s2BaseSize * sizeof(T) * 2 + mBaseSize / CV_RATIO * (uint32_t)dVTemplateType * sizeof(T);
+    // fa式跨核共享区（cube/vec双侧各自持有同布局裸数组，跨核flag=slotID，AIC侧±16双AIV镜像）：
+    // UB: [bmm2Res 1槽][bmm1Res 2槽] 从0起（vec专用区紧随其后）；L1: P区3槽从0起（cube侧Q/KV紧随其后）
+    // fp8 无 s2 拆分，MM1_RES 公式无 /2（对照现 kernel_fp8 InitMMResBuf）
+    static constexpr uint32_t MM1_RES_BUFCNT = 2U;
+    static constexpr uint32_t MM1_RES_BUF_BYTES = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
+    static constexpr uint32_t MM2_RES_BUF_BYTES = mBaseSize / CV_RATIO * (uint32_t)dVTemplateType * sizeof(T);
+    static constexpr uint32_t L1_P_BUFCNT = 3U;
+    static constexpr uint32_t L1_P_BUF_BYTES = mBaseSize * s2BaseSize * sizeof(INPUT_T);
+    static constexpr uint32_t VEC_UB_BASE = MM2_RES_BUF_BYTES + MM1_RES_BUFCNT * MM1_RES_BUF_BYTES;
+    // 跨核flag ID（mode 4 独立编号空间）
+    static constexpr uint32_t CC_MM_BMM1_0 = 0U;
+    static constexpr uint32_t CC_MM_BMM1_1 = 1U;
+    static constexpr uint32_t CC_MM_BMM2_0 = 2U;
+    static constexpr uint32_t CC_L1P_0 = 3U;
     static constexpr uint32_t SOFTMAX_BUF_BYTES = 256; // [64, 1]
     static constexpr uint32_t QSCALE_BUF_BYTES = (mBaseSize >> 1U) * sizeof(float);
     static constexpr uint32_t KSCALE_BUF_BYTES =
@@ -140,14 +152,10 @@ public:
     static constexpr GmFormat K_SCALE_FORMAT = GmFormat::PA_BnNBs;
     using pseShiftType = half;
 
-    using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
-
     using postQuantGmType = typename std::conditional<POST_QUANT, GlobalTensor<float>, int8_t>::type;
     using postQuantBf16GmType = typename std::conditional<POST_QUANT, GlobalTensor<bfloat16_t>, int8_t>::type;
     using flashdecodeGmType = typename std::conditional<FLASH_DECODE, GlobalTensor<float>, int8_t>::type;
     using quantGmType = typename std::conditional<(isFp8), GlobalTensor<float>, int8_t>::type;
-
-    using ConstInfoX = ConstInfo_t;
 
     using MM1_OUT_T = T;
     using MM2_OUT_T = T;
@@ -162,11 +170,7 @@ public:
     GlobalTensor<float> softmaxLseGm_;
 
     GlobalTensor<int32_t> actualSeqLengthsGmQ_;
-    using QSeqParserType =
-        typename std::conditional<(layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD),
-                                  ActualSeqLensParser<Q_MODE, int32_t, true>,
-                                  ActualSeqLensParser<Q_MODE, int32_t>>::type;
-    QSeqParserType *qActSeqLensParser_ = nullptr;
+    QSeqLensToolType &qSeqLensTool_;
 
     GlobalTensor<int32_t> blockTableGm_;
 
@@ -187,6 +191,12 @@ public:
     flashdecodeGmType softmaxFDMaxGm_;
 
     CopyQueryScaleGmToUb<float, Q_SCALE_FORMAT> copyQueryScaleGmToUb_;
+    // 跨核共享区（fa式：与cube侧同布局裸数组；AIV写P/读mmRes）
+    LocalTensor<uint8_t> l1PBuffers_;
+    LocalTensor<uint8_t> ubBmm1ResBuffers_;
+    LocalTensor<uint8_t> ubBmm2ResBuffers_;
+    uint32_t mm1ResBufId_ = 0U;
+
     // ub（静态Tensor范式：LocalTensor 直连 UB 绝对偏移，布局见 InitBuffers）
     LocalTensor<uint8_t> stage1OutBuf_[2];            // softmax结果拷至L1
     LocalTensor<T> stage2OutBuf_;                     // 输出BUF: attn_out中间结果
@@ -205,16 +215,16 @@ public:
     bool isSkipMask_{false};
 
     // ==================== Functions ======================
-    __aicore__ inline QuantFlashAttnBlockVecGqaFp8(ConstInfoX &constInfo)
-        : constInfo_(constInfo){};
+    __aicore__ inline QuantFlashAttnBlockVecGqaFp8(ConstInfoX &constInfo, QSeqLensToolType &qSeqLensTool)
+        : constInfo_(constInfo),
+          qSeqLensTool_(qSeqLensTool){};
 
     __aicore__ inline void InitVecBlock(__gm__ uint8_t *actualSeqQlenAddr, __gm__ uint8_t *actualSeqKvlenAddr,
                                         __gm__ uint8_t *pScale, __gm__ uint8_t *blockTable, __gm__ uint8_t *deqScaleQ,
                                         __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
                                         __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-                                        __gm__ uint8_t *workspace, QSeqParserType &qParser)
+                                        __gm__ uint8_t *workspace)
     {
-        this->qActSeqLensParser_ = &qParser;
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
         this->negativeFloatScalar_ = *((T *)&tmp1);
 
@@ -266,7 +276,7 @@ public:
     {
         qScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ float *)gm);
         if constexpr (GmLayoutParams<Q_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_ANTIQ_NT) {
-            qScaleGmTensor.offsetCalculator.Init(n2Size, gSize, *this->qActSeqLensParser_);
+            qScaleGmTensor.offsetCalculator.Init(n2Size, gSize, qSeqLensTool_.cuSeqLensParser);
         }
     }
 
@@ -279,20 +289,30 @@ public:
                                              bnStrides, n2Strides);
     }
 
-    __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                       RunInfoX runInfo)
+    __aicore__ inline void ProcessVec1(RunInfoX runInfo)
     {
-        bmm1ResBuf.WaitCrossCore();
+        uint32_t mm1ResBufId = mm1ResBufId_;
+        mm1ResBufId_ = (mm1ResBufId_ + 1) % MM1_RES_BUFCNT;
+        uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
+        uint32_t mmSyncIdx = CC_MM_BMM1_0 + mm1ResBufId;
+        uint32_t v1c2CrossCoreSyncIdx = CC_L1P_0 + pL1BufId;
+        LocalTensor<uint8_t> pL1Buf = l1PBuffers_[pL1BufId * L1_P_BUF_BYTES];
+        LocalTensor<T> mm1ResUbTensor =
+            ubBmm1ResBuffers_[mm1ResBufId * MM1_RES_BUF_BYTES].template ReinterpretCast<T>();
+
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx); // 等AIC写入该槽（ready）
         if (unlikely(runInfo.actVecMSize == 0)) {
-            bmm1ResBuf.SetCrossCore();
-            outputBuf.SetCrossCore();
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx); // free
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(
+                v1c2CrossCoreSyncIdx); // P ready（内容未写，Bmm2输出被Vec2丢弃）
             return;
         }
 
         if constexpr (USE_DN) {
-            ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo);
+            ProcessVec1Dn(pL1Buf, mm1ResUbTensor, runInfo);
         }
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);               // 读完mmRes，free
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(v1c2CrossCoreSyncIdx); // P ready
     }
 
     __aicore__ inline void ClearOutput()
@@ -301,7 +321,7 @@ public:
             int64_t tSize = constInfo_.bSize * constInfo_.s1Size;
             if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD ||
                           layout == LayOutTypeEnum::LAYOUT_NTD_TND) {
-                tSize = qActSeqLensParser_->GetTSize();
+                tSize = qSeqLensTool_.cuSeqLensParser.GetTSize();
             }
             int64_t totalOutputSize = tSize * constInfo_.realN2Size * constInfo_.realGSize * constInfo_.dSizeV;
             if constexpr (POST_QUANT) {
@@ -425,9 +445,7 @@ public:
 
     // =================================Private Functions=================================
 
-    __aicore__ inline void ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                         RunInfoX runInfo)
+    __aicore__ inline void ProcessVec1Dn(LocalTensor<uint8_t> &pL1Buf, LocalTensor<T> &mm1ResUbTensor, RunInfoX runInfo)
     {
         int64_t maskLine = 0;
         if constexpr (HAS_MASK) {
@@ -443,7 +461,8 @@ public:
 
         float descaleQK = 1.0;
 
-        // 加载qScale/kScale（MTE2 写侧拿锁，跨任务与 V 读串行化）
+        // 加载qScale/kScale（MTE2 写侧拿锁，跨任务与 V 读串行化；
+        // Lock<V> 在 Unlock<MTE2> 之后，已提供 MTE2→V 的等价顺序保证，无需 MTE2_V flush）
         LocalTensor<float> qScaleUbTensor;
         LocalTensor<float> kScaleUbTensor;
         if (unlikely(runInfo.isFirstS2Loop)) {
@@ -457,13 +476,10 @@ public:
             kScaleUbTensor = keyAntiqScaleBuf_[kscaleOffset];
         }
 
-        // 静态Tensor范式：固定事件ID的MTE2→V flush（原FetchEventID动态申请，Set/Wait配对可复用）
-        SetFlag<HardEvent::MTE2_V>(MTE2_TO_V_FLUSH_EVENT_ID);
-        WaitFlag<HardEvent::MTE2_V>(MTE2_TO_V_FLUSH_EVENT_ID);
         // V 读侧拿锁：等 MTE2 拷入完成（Unlock 生效），并阻止下一任务 MTE2 提前覆写
         Mutex::Lock<PIPE_V>(QK_SCALE_MUTEX_ID);
 
-        LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
+        LocalTensor<T> mmRes = mm1ResUbTensor;
         // 静态同步协议（照 fa vec 模式）：V 侧 Lock→VF 写→Unlock→MTE3 Lock→DataCopy UB→L1→Unlock
         Mutex::Lock<PIPE_V>(STAGE1_OUT_MUTEX_ID0 + static_cast<uint32_t>(stage1Offset));
         LocalTensor<INPUT_T> stage1CastTensor = this->stage1OutBuf_[stage1Offset].template ReinterpretCast<INPUT_T>();
@@ -524,12 +540,10 @@ public:
             CopyKeyScaleTile(kScaleUbNextTensor, runInfo, true);
         }
 
-        bmm1ResBuf.SetCrossCore();
-
         Mutex::Unlock<PIPE_V>(STAGE1_OUT_MUTEX_ID0 + static_cast<uint32_t>(stage1Offset));
         Mutex::Lock<PIPE_MTE3>(STAGE1_OUT_MUTEX_ID0 + static_cast<uint32_t>(stage1Offset));
         //-------------------------Data copy to l1-------------------------
-        LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
+        LocalTensor<INPUT_T> mm2AL1Tensor = pL1Buf.template ReinterpretCast<INPUT_T>();
 
         // 按照64对齐搬运
         uint32_t singleProcessSOuterSize = mBaseSize >> 1;
@@ -542,8 +556,6 @@ public:
 
         //-----------------------------------------------------------------
         Mutex::Unlock<PIPE_MTE3>(STAGE1_OUT_MUTEX_ID0 + static_cast<uint32_t>(stage1Offset));
-
-        outputBuf.SetCrossCore();
 
         if (unlikely(runInfo.isLastS2Loop)) {
             SoftmaxDataCopyOut(runInfo, sumUb, maxUb);
@@ -586,7 +598,7 @@ public:
         Mutex::Unlock<PIPE_V>(LSE_OUT_MUTEX_ID);
         Mutex::Lock<PIPE_MTE3>(LSE_OUT_MUTEX_ID);
 
-        uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(runInfo.bIdx);
+        uint32_t prefixBS1 = qSeqLensTool_.cuSeqLensParser.GetTBase(runInfo.bIdx);
         uint64_t bN2Offset = runInfo.realN2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
         DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx,
                                                                  runInfo.actVecMSize, constInfo_);
@@ -594,11 +606,9 @@ public:
         Mutex::Unlock<PIPE_MTE3>(LSE_OUT_MUTEX_ID);
     }
 
-    __aicore__ inline void ProcessVec2OnUb(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
-                                           RunInfoX runInfo)
+    __aicore__ inline void ProcessVec2OnUb(LocalTensor<T> &mm2ResUbTensor, RunInfoX runInfo)
     {
         if (unlikely(runInfo.actVecMSize == 0)) {
-            bmm2ResBuf.SetCrossCore();
             return;
         }
 
@@ -607,8 +617,9 @@ public:
         float deScaleVValue = this->deScaleVGm_.GetValue(deScaleVOffset); // GQA: per-head V descale
 
         LocalTensor<T> vec2ResUb = this->stage2OutBuf_;
-        LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
-        WaitFlag<HardEvent::MTE3_V>(MTE3_TO_V_EVENT_ID0);
+        LocalTensor<T> mmRes = mm2ResUbTensor;
+        // fa式锁交接（UB_OUT_VEC2_RES）：V持锁计算，释放后MTE3持锁copyout
+        Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_MUTEX_ID);
         if (unlikely(runInfo.isFirstS2Loop)) {
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
         } else {
@@ -639,16 +650,17 @@ public:
                 }
             }
         }
-        bmm2ResBuf.SetCrossCore();
-        if (runInfo.isLastS2Loop) {
+        if (unlikely(runInfo.isLastS2Loop)) {
             if (unlikely(runInfo.isFirstS2Loop)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf_[runInfo.mloop % (PRELOAD_N + 1)];
                 LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
                     vec2ResUb, vec2ResUb, sumUb, runInfo.actVecMSize, (uint16_t)dTemplateAlign64, deScaleVValue);
             }
+            Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_MUTEX_ID);
             CopyOutAttentionOut(runInfo, vec2ResUb, 0, runInfo.actVecMSize);
+            return;
         }
-        SetFlag<HardEvent::MTE3_V>(MTE3_TO_V_EVENT_ID0);
+        Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_MUTEX_ID);
     }
 
     __aicore__ inline int64_t ComputeMaskLineDN(RunInfoX &runInfo, uint32_t vecMIdx)
@@ -675,6 +687,7 @@ public:
 
         attenOut.SetAddr(vec2ResUb.address_);
 
+        Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_MUTEX_ID);
         if constexpr (!POST_QUANT) {
             RowInvalid(vec2ResUb, mStartVec, mDealSize, runInfo, dSizeAligned64);
             Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, mDealSize * dSizeAligned64);
@@ -682,10 +695,12 @@ public:
             PostQuant(runInfo, attenOut, vec2ResUb, mStartVec, mDealSize, dSizeAligned64);
             RowInvalid(vec2ResUb, mStartVec, mDealSize, runInfo, dSizeAligned64);
         }
-        SetFlag<HardEvent::V_MTE3>(V_TO_MTE3_EVENT_ID0);
-        WaitFlag<HardEvent::V_MTE3>(V_TO_MTE3_EVENT_ID0);
+        Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_MUTEX_ID);
+        Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC2_RES_MUTEX_ID);
 
         Bmm2DataCopyOutTrans(runInfo, attenOut, mStartVec, mDealSize);
+
+        Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC2_RES_MUTEX_ID);
     }
 
     template <typename VEC2_RES_T>
@@ -804,7 +819,7 @@ public:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm_;
             outGmTensor.offsetCalculator.Init(constInfo_.realN2Size, constInfo_.realGSize, constInfo_.dSizeV,
-                                              *qActSeqLensParser_);
+                                              qSeqLensTool_.cuSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, OUT_UB_FORMAT> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_NTD) {
@@ -812,7 +827,7 @@ public:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm_;
             outGmTensor.offsetCalculator.Init(constInfo_.realN2Size, constInfo_.realGSize, constInfo_.dSizeV,
-                                              *qActSeqLensParser_);
+                                              qSeqLensTool_.cuSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, OUT_UB_FORMAT> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
@@ -820,7 +835,7 @@ public:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm_;
             outGmTensor.offsetCalculator.Init(constInfo_.bSize, constInfo_.realN2Size, constInfo_.realGSize,
-                                              constInfo_.s1Size, constInfo_.dSizeV, *qActSeqLensParser_);
+                                              constInfo_.s1Size, constInfo_.dSizeV, qSeqLensTool_.cuSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, OUT_UB_FORMAT> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
@@ -828,7 +843,7 @@ public:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm_;
             outGmTensor.offsetCalculator.Init(constInfo_.bSize, constInfo_.realN2Size, constInfo_.realGSize,
-                                              constInfo_.s1Size, constInfo_.dSizeV, *qActSeqLensParser_);
+                                              constInfo_.s1Size, constInfo_.dSizeV, qSeqLensTool_.cuSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, OUT_UB_FORMAT> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
@@ -875,8 +890,9 @@ public:
                                                uint32_t mDealSize)
     {
         int64_t dSizeAligned64 = (int64_t)dVTemplateType;
-        SetFlag<HardEvent::V_MTE3>(V_TO_MTE3_EVENT_ID0 + (runInfo.loop % DB));
-        WaitFlag<HardEvent::V_MTE3>(V_TO_MTE3_EVENT_ID0 + (runInfo.loop % DB));
+        Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_MUTEX_ID);
+        Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_MUTEX_ID);
+        Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC2_RES_MUTEX_ID);
         uint64_t gmOffset = runInfo.faTmpOutWsPos * mBaseSize * constInfo_.dSizeV +
                             (runInfo.vecMbaseIdx + mStartVec) * constInfo_.dSizeV;
 
@@ -886,12 +902,15 @@ public:
         dataCopyParams.srcStride = (dSizeAligned64 - constInfo_.dSizeV) / (FA_BYTE_BLOCK / sizeof(T));
         dataCopyParams.dstStride = 0;
         DataCopyPad(accumOutGm_[gmOffset], vec2ResUb, dataCopyParams);
+        Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC2_RES_MUTEX_ID);
     }
 
-    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfoX runInfo)
+    __aicore__ inline void ProcessVec2(RunInfoX runInfo)
     {
-        bmm2ResBuf.WaitCrossCore();
-        ProcessVec2OnUb(bmm2ResBuf, runInfo);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_BMM2_0); // 等AIC写入（ready）
+        LocalTensor<T> mm2ResUbTensor = ubBmm2ResBuffers_.template ReinterpretCast<T>();
+        ProcessVec2OnUb(mm2ResUbTensor, runInfo);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_BMM2_0); // 读完，free
         return;
     }
 
@@ -919,6 +938,11 @@ public:
 
     __aicore__ inline void InitBuffers()
     {
+        // fa式跨核共享区（与cube侧同布局：L1 P区3槽从A1偏移0起；UB bmm2Res单槽+bmm1Res双槽从VECIN偏移0起）
+        l1PBuffers_ = LocalTensor<uint8_t>(TPosition::A1, 0U, L1_P_BUFCNT * L1_P_BUF_BYTES);
+        ubBmm2ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, 0U, MM2_RES_BUF_BYTES);
+        ubBmm1ResBuffers_ =
+            LocalTensor<uint8_t>(TPosition::VECIN, MM2_RES_BUF_BYTES, MM1_RES_BUFCNT * MM1_RES_BUF_BYTES);
         SoftmaxInitBuffer();
         queryAntiqScaleBuf_ =
             LocalTensor<uint8_t>(TPosition::VECIN, OFF_QSCALE, QSCALE_BUF_BYTES).template ReinterpretCast<float>();
@@ -967,34 +991,30 @@ public:
         }
     }
 
-    __aicore__ inline void AllocEventID()
+    __aicore__ inline void InitCrossCoreSync()
     {
-        // 静态Tensor范式：事件ID为静态常量，无需动态分配/释放；
-        // 保留原预置语义（首轮无前置生产者，预置 [0]/[1] 两个并保持计数器平衡）
-        SetFlag<HardEvent::MTE3_V>(MTE3_TO_V_EVENT_ID0);
-        SetFlag<HardEvent::MTE3_V>(MTE3_TO_V_EVENT_ID1);
+        // 预置全部mmRes槽为free（AIC首写前无需等待）
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_BMM1_0);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_BMM1_1);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_BMM2_0);
     }
 
-    __aicore__ inline void FreeEventID()
-    {
-        WaitFlag<AscendC::HardEvent::MTE3_V>(MTE3_TO_V_EVENT_ID0);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(MTE3_TO_V_EVENT_ID1);
-    }
+    __aicore__ inline void UnInitCrossCoreSync() {}
+
+    __aicore__ inline void AllocEventID() {}
+
+    __aicore__ inline void FreeEventID() {}
 };
 
-template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0,
-          bool isFd = false, bool useDn = false>
+template <typename FA_T>
 class QuantFlashAttnBlockVecGqaFp8Dummy {
 public:
-    static constexpr bool HAS_MASK = hasAtten;
-    static constexpr bool FLASH_DECODE = isFd;
-    using OUT_T = OUTPUT_T;
+    static constexpr bool HAS_MASK = FA_T::hasMask;
+    static constexpr bool FLASH_DECODE = FA_T::isFd;
+    using OUT_T = typename FA_T::outputType;
     using ConstInfoX = ConstInfo_t;
-    __aicore__ inline QuantFlashAttnBlockVecGqaFp8Dummy(ConstInfoX &constInfo){};
+    using QSeqLensToolType = QFASeqLensTool<FA_T::qLayout, false, true, int32_t, GetQActSeqMode<FA_T::qLayout>()>;
+    __aicore__ inline QuantFlashAttnBlockVecGqaFp8Dummy(ConstInfoX &constInfo, QSeqLensToolType &){};
 };
 } // namespace BaseApi
 #endif // QUANT_FLASH_ATTN_BLOCK_VEC_FULLQUANT_FP8_H_
