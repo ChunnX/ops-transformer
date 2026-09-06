@@ -238,6 +238,7 @@ cann_ops_transformer.generic_block_sparse_attention(
 |                      |     block_shape     |   ATTR(REQUIRED) |  int[]  |
 |                      |       metadata       | INPUT(OPTIONAL) |   Tensor   |
 |                      |    softmax_scale    | ATTR(OPTIONAL) |   float   |
+|                      |  softmax_precision  | ATTR(OPTIONAL) |   int   |
 |                      |      layout_q       | ATTR(OPTIONAL) |   string   |
 |                      |      layout_kv      | ATTR(OPTIONAL) |   string   |
 |                      |   attention_out   |     OUTPUT     |   Tensor   |
@@ -264,7 +265,6 @@ cann_ops_transformer.generic_block_sparse_attention(
 |                      |  dst_type_max  | ATTR(OPTIONAL) |  float  |
 |                      | attention_out_dtype | ATTR(OPTIONAL) | ScalarType |
 |   SoftmaxLSE参数组   | return_softmax_lse | ATTR(OPTIONAL) |    bool    |
-|                      |  softmax_precision  | ATTR(OPTIONAL) |   int   |
 |                      |    softmax_lse    |     OUTPUT     |   Tensor   |
 
 ### 基准信息说明
@@ -461,6 +461,18 @@ cann_ops_transformer.generic_block_sparse_attention(
                 <td>可选参数</td>
                 <td>无</td>
                 <td>传入时需与generic_block_sparse_attention_metadata生成的结果一致</td>
+            </tr>
+            <tr>
+                <td>softmax_precision</td>
+                <td>
+                    <ul>
+                        <li>data_type支持INT</li>
+                        <li>Ascend 950当前仅支持1</li>
+                    </ul>
+                </td>
+                <td>可选属性，默认值为1</td>
+                <td>metadata接口与主算子须一致</td>
+                <td>无</td>
             </tr>
         </tbody>
     </table>
@@ -765,18 +777,6 @@ quant_mode参数解释见「quant_mode 枚举」。
             <td>无</td>
             <td>无</td>
         </tr>
-        <tr>
-            <td>softmax_precision</td>
-            <td>
-                <ul>
-                    <li>data_type支持INT</li>
-                    <li>Ascend 950当前仅支持1</li>
-                </ul>
-            </td>
-            <td>可选属性，默认值为1</td>
-            <td>metadata接口与主算子须一致</td>
-            <td>无</td>
-        </tr>
     </tbody>
 </table>
 
@@ -814,7 +814,7 @@ quant_mode参数解释见「quant_mode 枚举」。
     block_table = torch.arange(num_blocks, dtype=torch.int32, device="npu").view(1, -1)
     block_shape = [block_x, block_y]
 
-    metadata = cann_ops_transformer.generic_block_sparse_attention_metadata(
+    metadata = cann_ops_transformer.ops.generic_block_sparse_attention_metadata(
         sparse_block_idx,
         sparse_block_count,
         Q_N,
@@ -833,7 +833,7 @@ quant_mode参数解释见「quant_mode 枚举」。
         softmax_precision=1,
     )
 
-    attention_out, softmax_lse = cann_ops_transformer.generic_block_sparse_attention(
+    attention_out, softmax_lse = cann_ops_transformer.ops.generic_block_sparse_attention(
         q,
         k,
         v,
