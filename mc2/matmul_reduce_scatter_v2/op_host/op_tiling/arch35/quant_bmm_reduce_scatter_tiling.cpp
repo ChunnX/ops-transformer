@@ -596,23 +596,21 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
 
 ge::graphStatus QuantBmmReduceScatterTiling::BuildQuantWorkspaceLayout()
 {
-    static_assert(Mc2Tiling::MAX_WORKSPACE_SEGMENTS >= 6U, "Quant MMRS workspace layout capacity is insufficient");
-    // The matmul helper includes LIB_API in its workspace size. Kernel workspaceGM
-    // starts after LIB_API: send/result, optional receive, then matmul scratch.
-    OP_TILING_CHECK(myWorkSpaceSize_ < libApiWorkSpaceSize_,
-                    OP_LOGE(opName_, "matmul workspace is smaller than LIB_API"), return ge::GRAPH_FAILED);
+    static_assert(Mc2Tiling::MAX_WORKSPACE_SEGMENTS >= 5U, "Quant MMRS workspace layout capacity is insufficient");
+    // launch 层不会为 mmrsv2 跳过系统 LibApi 段，kernel 直接以 workspaceGM 为用户区起点，
+    // 段表 offset 即 kernel workspaceGM 的相对偏移，不设 LIB_API 头段。
+    // GetWorkspaceSize 已按 factor 倍 cToFloatLen 累加出总分配 (A2A: send+recv+matmul; RS: result+matmul)，
+    // 其中通信缓冲在此单独成段，剩余部分 (helper 声明 + A2A 预留) 即为 matmul workspace。
     const uint64_t resultSize = MutableRCSTilingDataA5().cToFloatLen;
-    const uint64_t helperUserSize = myWorkSpaceSize_ - libApiWorkSpaceSize_;
-    // The original A2A allocation reserves a third cToFloatLen after send/recv for the Matmul workSpace pointer.
-    // Direct RS has no such extra reserve; any real helper scratch is still kept in helperUserSize.
-    const uint64_t a2aMatmulReserveSize = isA2APath_ ? resultSize : 0U;
-    const uint64_t matmulWorkspaceSize = helperUserSize + a2aMatmulReserveSize;
+    const uint64_t commBufSize = isA2APath_ ? resultSize * 2U : resultSize;
+    OP_TILING_CHECK(myWorkSpaceSize_ < commBufSize,
+                    OP_LOGE(opName_, "matmul workspace size %lu is smaller than comm buffer size %lu",
+                            myWorkSpaceSize_, commBufSize),
+                    return ge::GRAPH_FAILED);
+    const uint64_t matmulWorkspaceSize = myWorkSpaceSize_ - commBufSize;
     workspaceLayout_ = {};
     uint32_t idx = 0;
     uint64_t offset = 0;
-    workspaceLayout_.segments[idx++] = {offset, libApiWorkSpaceSize_,
-                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
-    offset += libApiWorkSpaceSize_;
     // Direct RS: gmToFloat_ = workspaceGM. A2A: sendBuf_ = workspaceGM.
     workspaceLayout_.segments[idx++] = {offset, resultSize,
                                         static_cast<uint8_t>(Mc2Tiling::WS_SEG_MM_RESULT), {}};
@@ -633,7 +631,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::BuildQuantWorkspaceLayout()
 #if MC2_DFX_ENABLE
     // DFX: 运行时信息段前做512B对齐padding，再追加64KB RUNTIME_INFO段
     const uint64_t alignment = Mc2Tiling::RUNTIME_INFO_PER_CORE_SIZE;
-    const uint64_t padding = (alignment - (offset - libApiWorkSpaceSize_) % alignment) % alignment;
+    const uint64_t padding = (alignment - offset % alignment) % alignment;
     if (padding != 0U) {
         workspaceLayout_.segments[idx++] = {offset, padding,
                                             static_cast<uint8_t>(Mc2Tiling::WS_SEG_RESERVED), {}};
@@ -647,9 +645,8 @@ ge::graphStatus QuantBmmReduceScatterTiling::BuildQuantWorkspaceLayout()
     workspaceLayout_.segCount = idx;
     for (uint32_t i = 0; i < workspaceLayout_.segCount; ++i) {
         const auto &seg = workspaceLayout_.segments[i];
-        const uint64_t userOffset = seg.type == Mc2Tiling::WS_SEG_LIB_API ? 0U : seg.offset - libApiWorkSpaceSize_;
-        OP_LOGI(opName_, "Quant MMRS workspace seg[%u]: type=%u, offset=%lu, userOffset=%lu, size=%lu",
-                i, seg.type, seg.offset, userOffset, seg.size);
+        OP_LOGI(opName_, "Quant MMRS workspace seg[%u]: type=%u, offset=%lu, size=%lu",
+                i, seg.type, seg.offset, seg.size);
     }
     return ge::GRAPH_SUCCESS;
 }
