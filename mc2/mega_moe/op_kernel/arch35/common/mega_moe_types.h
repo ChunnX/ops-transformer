@@ -15,7 +15,7 @@
 #include "tensor_api/tensor.h"
 #include "../mega_moe_tiling.h"
 #include "mega_moe_constants.h"
-#include "mega_moe_gmm_common.h"
+#include "apace/kernel/matmul/grouped_matmul_wave/gmm_common.h"
 #include "mega_moe_workspace.h"
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
 #include "adv_api/hcomm/hcomm.h"
@@ -31,7 +31,7 @@ namespace MegaMoeImpl {
 using namespace AscendC;
 
 using ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
-using GmmKernel::GmmTensorAddrs;
+using Apace::Gemm::Kernel::GmmTensorAddrs;
 
 // GMM1/GMM2 逐专家遍历的公共状态。expertIdx 标识当前专家，globalTokenStartIndex 表示该专家
 // 在本卡 MoE 专家紧凑 token 序列中的起始索引。
@@ -76,7 +76,7 @@ struct GMMAddrInfo {
     __gm__ int32_t *sharedExpertGmm2TileCounter;
 };
 
-using BlockJobContext = GmmKernel::BlockJobContext;
+using BlockJobContext = Apace::Gemm::Kernel::BlockJobContext;
 
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
 struct CombineCommParams {

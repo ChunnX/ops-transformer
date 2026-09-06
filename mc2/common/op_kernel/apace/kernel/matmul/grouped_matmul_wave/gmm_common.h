@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef MEGA_MOE_GMM_COMMON_H
-#define MEGA_MOE_GMM_COMMON_H
+#ifndef APACE_GMM_COMMON_H
+#define APACE_GMM_COMMON_H
 
 #include "kernel_operator.h"
 #include "tensor_api/tensor.h"
@@ -20,15 +20,16 @@
 #include "apace/block/mmad/block_mmad_mx_fp8fp4.h"
 #include "apace/block/prologue/block_prologue_mx_fp8fp4.h"
 
-namespace MegaMoeImpl {
+namespace Apace {
+namespace Gemm {
 
 using namespace AscendC;
 
-namespace GmmKernel {
+namespace Kernel {
 
 using AscendC::Te::Get;
 
-// 通用 matmul 常量（自持定义，值与 mega_moe_constants.h 同源；P7 随本文件进 apace）。
+// 通用 matmul 常量
 constexpr uint64_t M_VALUE = 0UL;
 constexpr uint64_t N_VALUE = 1UL;
 constexpr uint64_t K_VALUE = 2UL;
@@ -456,7 +457,8 @@ struct GroupMatmulWorkSet {
     TensorC &gmC;
 };
 
-} // namespace GmmKernel
-} // namespace MegaMoeImpl
+} // namespace Kernel
+} // namespace Gemm
+} // namespace Apace
 
-#endif // MEGA_MOE_GMM_COMMON_H
+#endif // APACE_GMM_COMMON_H

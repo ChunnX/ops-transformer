@@ -12,9 +12,11 @@
 #define MOE_GMM_SYNC_POLICY_H
 
 #include "common/mega_moe_utils.h"
-#include "common/mega_moe_gmm_common.h"
+#include "apace/kernel/matmul/grouped_matmul_wave/gmm_common.h"
 
 namespace MegaMoeImpl {
+
+using namespace Apace::Gemm::Kernel;
 
 /*
  * GMM1 同步策略：封装 GMM1 三条执行路径的 MoE 专属同步逻辑。
@@ -286,8 +288,8 @@ public:
             if (upstreamReady_) {
                 return;
             }
-            GmmKernel::BlockScheduler gmmBlockScheduler(
-                {m_, k_, n_}, GmmKernel::BlockScheduler::Params{
+            BlockScheduler gmmBlockScheduler(
+                {m_, k_, n_}, BlockScheduler::Params{
                                   Te::MakeCoord(static_cast<int64_t>(activationTileM_), static_cast<int64_t>(L1_TILE_N))});
             uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
             WaitUntilGmFlagEquals(activationToGmm2Flag_, static_cast<int32_t>(targetLoops));
@@ -397,8 +399,8 @@ public:
             if (upstreamReady_) {
                 return;
             }
-            GmmKernel::BlockScheduler gmmBlockScheduler(
-                {m_, k_, n_}, GmmKernel::BlockScheduler::Params{
+            BlockScheduler gmmBlockScheduler(
+                {m_, k_, n_}, BlockScheduler::Params{
                                   Te::MakeCoord(static_cast<int64_t>(activationTileM_), static_cast<int64_t>(L1_TILE_N))});
             uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
             WaitUntilGmFlagEquals(activationToGmm2Flag_, static_cast<int32_t>(targetLoops));
