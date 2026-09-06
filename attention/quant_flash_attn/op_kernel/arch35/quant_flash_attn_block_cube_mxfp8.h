@@ -31,6 +31,7 @@
 #endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "memory_copy_arch35_quant_flash_attn.h"
+#include "quant_flash_attn_type.h"
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
@@ -63,12 +64,7 @@ __aicore__ inline constexpr GmFormat GetKVGmFormat()
     }
 }
 
-template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = false,
-          bool isDAligned = true>
+template <typename FA_T>
 class QuantFlashAttnBlockCubeMxfp8 {
 public:
     /* ============确定L0A的类型============= */
@@ -94,19 +90,34 @@ public:
     static constexpr uint32_t L0B_BUFFER_ID1 = 9U;
     static constexpr uint32_t L0C_BUFFER_ID0 = 10U;
 
-    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
-    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
-    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
-    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
+    /* ============FA_T派生的基本块信息（对齐fa）============= */
+    using INPUT_T = typename FA_T::inputType;
+    using Q_T = typename FA_T::inputType;
+    using KV_T = typename FA_T::inputType;
+    using SCALE_T = fp8_e8m0_t;
+    using MM_T = float;
+    using T = float;
+    using QSeqLensToolType = QFASeqLensTool<FA_T::qLayout, false, false, int32_t, GetQActSeqMode<FA_T::qLayout>()>;
+    using KvSeqLensToolType = QFASeqLensTool<FA_T::kvLayout, FA_T::pageAttention, false, int32_t,
+                                             GetKvActSeqMode<FA_T::kvLayout, FA_T::pageAttention>()>;
+    static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
+    static constexpr uint32_t s2BaseSize = (uint32_t)FA_T::s2BaseSize;
+    static constexpr uint32_t dBaseSize = (uint32_t)FA_T::dBaseSize;
+    static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
+    static constexpr DTemplateType dTemplateType = FA_T::dBaseSize;
+    static constexpr DTemplateType dVTemplateType = FA_T::dVBaseSize;
+    static constexpr bool isDAligned = FA_T::isDAligned;
     static constexpr uint32_t l1BaseD = 128;
     static constexpr uint32_t s2SplitSize =
         (dBaseSize == static_cast<uint32_t>(DTemplateType::Aligned256)) ? 128U : 256U;
     static constexpr uint32_t MXFP_GROUP_SIZE = 32U;
     static constexpr uint32_t MXFP_DIVISOR_SIZE = 64U;
     static constexpr uint32_t MXFP_MULTI_BASE_SIZE = 2U;
-    static constexpr LayOutTypeEnum LAYOUT = layout;
-    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
-    static constexpr bool USE_DN = useDn;
+    static constexpr LayOutTypeEnum LAYOUT = FA_T::qLayout;
+    static constexpr LayOutTypeEnum layout = FA_T::qLayout; // 内部小写引用兼容（GetKVGmFormat等）
+    static constexpr uint8_t KvLayoutType = FA_T::kvLayoutType;
+    static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
+    static constexpr bool USE_DN = FA_T::useDn;
     static constexpr InnerMLayout Q_M_LAYOUT = USE_DN ? InnerMLayout::S1_ONLY_LAYOUT : InnerMLayout::GS1_MERGE_LAYOUT;
 
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, true};
@@ -115,11 +126,6 @@ public:
     static constexpr GmFormat Q_SCALE_FORMAT = GetQueryScaleGmFormat<layout, USE_DN>();
     static constexpr GmFormat K_SCALE_FORMAT = GetKeyScaleGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
     static constexpr GmFormat V_SCALE_FORMAT = GetValueScaleGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
-
-    using Q_T = INPUT_T;
-    using KV_T = INPUT_T;
-    using SCALE_T = fp8_e8m0_t;
-    using MM_T = T;
 
     // fa式L1/L0C布局：裸数组+显式bufId_轮转。L1的P区由kernel侧l1BufferManager_分配（起始0，
     // 保证AIC/AIV跨核同址），Q/KV从P区末尾起算（kernel侧mm2LeftSize公式在cube侧重算，同vec侧VEC_UB_BASE模式）。
@@ -183,13 +189,6 @@ public:
     static constexpr ActualSeqLensMode Q_PARSER_MODE = GetQActSeqMode<LAYOUT>();
     static constexpr ActualSeqLensMode KV_PARSER_MODE = GetKvActSeqMode<LAYOUT, PAGE_ATTENTION>();
 
-    using QSeqParserType = typename std::conditional<IS_TND_LAYOUT, ActualSeqLensParser<Q_PARSER_MODE, int32_t, true>,
-                                                     ActualSeqLensParser<Q_PARSER_MODE, int32_t>>::type;
-
-    using KvSeqParserType = typename std::conditional<(!PAGE_ATTENTION && IS_TND_LAYOUT),
-                                                      ActualSeqLensParser<KV_PARSER_MODE, int32_t, true>,
-                                                      ActualSeqLensParser<KV_PARSER_MODE, int32_t>>::type;
-
     using FaGmTensorQ = FaGmTensor<Q_T, Q_FORMAT, int32_t, Q_NEEDS_WZH>;
     using FaGmTensorKV = FaGmTensor<KV_T, KV_FORMAT, int32_t, KV_NEEDS_WZH>;
     using FaGmTensorQScale = FaGmTensor<SCALE_T, Q_SCALE_FORMAT, int32_t, Q_NEEDS_WZH>;
@@ -206,8 +205,8 @@ public:
     FaGmTensorVScale valueScaleGm_;
     GlobalTensor<int32_t> blockTableGm_;
 
-    QSeqParserType *qSeqParserPtr_ = nullptr;
-    KvSeqParserType *kvSeqParserPtr_ = nullptr;
+    QSeqLensToolType &qSeqLensTool_;
+    KvSeqLensToolType &kvSeqLensTool_;
 
     CopyQueryGmToL1<Q_T, Q_FORMAT, L1Format::NZ, Q_M_LAYOUT> copyQueryGmToL1_;
     CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1_;
@@ -241,16 +240,16 @@ public:
     const ConstInfoX &constInfo_;
 
     /*============================================================================== */
-    __aicore__ inline QuantFlashAttnBlockCubeMxfp8(ConstInfoX &constInfo)
-        : constInfo_(constInfo){};
+    __aicore__ inline QuantFlashAttnBlockCubeMxfp8(ConstInfoX &constInfo, QSeqLensToolType &qSeqLensTool,
+                                                   KvSeqLensToolType &kvSeqLensTool)
+        : constInfo_(constInfo),
+          qSeqLensTool_(qSeqLensTool),
+          kvSeqLensTool_(kvSeqLensTool){};
 
     __aicore__ inline void InitCubeBlock(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                          __gm__ uint8_t *blockTable, __gm__ uint8_t *dequantScaleQuery,
-                                         __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue,
-                                         QSeqParserType &qParser, KvSeqParserType &kvParser)
+                                         __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue)
     {
-        this->qSeqParserPtr_ = &qParser;
-        this->kvSeqParserPtr_ = &kvParser;
         InitCubeInput(query, key, value, blockTable, dequantScaleQuery, dequantScaleKey, dequantScaleValue);
     }
 
@@ -317,9 +316,10 @@ public:
     {
         qGmTensor.gmTensor.SetGlobalBuffer((__gm__ Q_T *)gm);
         if constexpr (Q_NEEDS_WZH) {
-            qGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, *this->qSeqParserPtr_);
+            qGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, this->qSeqLensTool_.cuSeqLensParser);
         } else {
-            qGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, *this->qSeqParserPtr_);
+            qGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim,
+                                            this->qSeqLensTool_.cuSeqLensParser);
         }
     }
 
@@ -328,9 +328,10 @@ public:
     {
         qScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ SCALE_T *)gm);
         if constexpr (Q_NEEDS_WZH) {
-            qScaleGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, *this->qSeqParserPtr_);
+            qScaleGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, this->qSeqLensTool_.cuSeqLensParser);
         } else {
-            qScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, *this->qSeqParserPtr_);
+            qScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim,
+                                                 this->qSeqLensTool_.cuSeqLensParser);
         }
     }
 
@@ -348,10 +349,10 @@ public:
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm_,
                                              constInfo_.maxBlockNumPerBatch, bnStride, n2Stride);
         } else if constexpr (KV_NEEDS_WZH) {
-            kvGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr_);
+            kvGmTensor.offsetCalculator.Init(n2Size, headDim, this->kvSeqLensTool_.cuSeqLensParser);
         } else {
             kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim);
-            kvGmTensor.offsetCalculator.Init(*this->kvSeqParserPtr_);
+            kvGmTensor.offsetCalculator.Init(this->kvSeqLensTool_.cuSeqLensParser);
         }
     }
 
@@ -372,10 +373,10 @@ public:
                                                  constInfo_.kDescaleStrides.bnStride,
                                                  constInfo_.kDescaleStrides.n2Stride);
         } else if constexpr (KV_NEEDS_WZH) {
-            kScaleGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr_);
+            kScaleGmTensor.offsetCalculator.Init(n2Size, headDim, this->kvSeqLensTool_.cuSeqLensParser);
         } else {
             kScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim);
-            kScaleGmTensor.offsetCalculator.Init(*this->kvSeqParserPtr_);
+            kScaleGmTensor.offsetCalculator.Init(this->kvSeqLensTool_.cuSeqLensParser);
         }
     }
 
@@ -395,10 +396,10 @@ public:
                                                  constInfo_.maxBlockNumPerBatch, constInfo_.vDescaleStrides.bnStride,
                                                  constInfo_.vDescaleStrides.n2Stride);
         } else if constexpr (KV_NEEDS_WZH) {
-            vScaleGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr_);
+            vScaleGmTensor.offsetCalculator.Init(n2Size, headDim, this->kvSeqLensTool_.cuSeqLensParser);
         } else {
             vScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim);
-            vScaleGmTensor.offsetCalculator.Init(*this->kvSeqParserPtr_);
+            vScaleGmTensor.offsetCalculator.Init(this->kvSeqLensTool_.cuSeqLensParser);
         }
     }
 
@@ -574,7 +575,7 @@ public:
         uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(this->keyPtr_, bIdx);
         keyGm_.gmTensor.SetGlobalBuffer((__gm__ KV_T *)key_);
         keyGm_.offsetCalculator.Init(0, constInfo_.n2Size, s2Size, constInfo_.dSize);
-        keyGm_.offsetCalculator.Init(*this->kvSeqParserPtr_);
+        keyGm_.offsetCalculator.Init(this->kvSeqLensTool_.cuSeqLensParser);
     }
 
     __aicore__ inline void UpdateValue(uint32_t bIdx)
@@ -584,7 +585,7 @@ public:
         uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(valuePtr_, bIdx);
         valueGm_.gmTensor.SetGlobalBuffer((__gm__ KV_T *)value_);
         valueGm_.offsetCalculator.Init(0, constInfo_.n2Size, s2Size, constInfo_.dSizeV);
-        valueGm_.offsetCalculator.Init(*this->kvSeqParserPtr_);
+        valueGm_.offsetCalculator.Init(this->kvSeqLensTool_.cuSeqLensParser);
     }
 
     __aicore__ inline void IterateBmm1(RunInfoX &runInfo, uint32_t subLoop)
@@ -1001,27 +1002,29 @@ public:
     }
 }; // QuantFlashAttnBlockCubeMxfp8
 
-template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = false>
+template <typename FA_T>
 class QuantFlashAttnBlockCubeMxfp8Dummy {
 public:
-    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
-    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
-    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
-    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
-    static constexpr LayOutTypeEnum LAYOUT = layout;
-    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
-    static constexpr bool USE_DN = useDn;
+    static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
+    static constexpr uint32_t s2BaseSize = (uint32_t)FA_T::s2BaseSize;
+    static constexpr uint32_t dBaseSize = (uint32_t)FA_T::dBaseSize;
+    static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
+    static constexpr LayOutTypeEnum LAYOUT = FA_T::qLayout;
+    static constexpr LayOutTypeEnum layout = FA_T::qLayout; // 内部小写引用兼容（GetKVGmFormat等）
+    static constexpr uint8_t KvLayoutType = FA_T::kvLayoutType;
+    static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
+    static constexpr bool USE_DN = FA_T::useDn;
 
-    using Q_T = INPUT_T;
-    using KV_T = INPUT_T;
-    using MM_T = T;
+    using Q_T = typename FA_T::inputType;
+    using KV_T = typename FA_T::inputType;
+    using MM_T = float;
 
     using ConstInfoX = ConstInfo_t;
-    __aicore__ inline QuantFlashAttnBlockCubeMxfp8Dummy(ConstInfoX &constInfo){};
+    using QSeqLensToolType = QFASeqLensTool<FA_T::qLayout, false, false, int32_t, GetQActSeqMode<FA_T::qLayout>()>;
+    using KvSeqLensToolType = QFASeqLensTool<FA_T::kvLayout, FA_T::pageAttention, false, int32_t,
+                                             GetKvActSeqMode<FA_T::kvLayout, FA_T::pageAttention>()>;
+    __aicore__ inline QuantFlashAttnBlockCubeMxfp8Dummy(ConstInfoX &constInfo, QSeqLensToolType &,
+                                                        KvSeqLensToolType &){};
 };
 } // namespace BaseApi
 
