@@ -281,6 +281,7 @@ cann_ops_transformer.generic_block_sparse_attention(
 |     D     |          输入q/k/v tensor隐藏层最小的单元尺寸headdim         |
 |  topK  | sparse_block_idx最后一维，表示每个Q块最多选择的KV块数 |
 | qStorageLen_i | 第i个batch的query存储长度，一般由cu_seqlens_q差分得到 |
+| kvStorageLen_i | 第i个batch的key/value存储长度，一般由cu_seqlens_kv差分得到 |
 | totalQBlocks | TND下各batch按query存储长度分块后的Q块总数，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$；为`sparse_block_idx`/`sparse_block_count`的第二维 |
 | num_blocks | Paged KV Cache物理页总数 |
 | block_size | Paged KV Cache单页token数 |
@@ -637,6 +638,8 @@ mask_mode参数解释见「mask_mode 枚举」。
                     <li>tensor_type支持int32</li>
                     <li>tensor_shape为(B,)</li>
                     <li>仅支持非负整数</li>
+                    <li>seqused_q中各batch的值须不大于对应qStorageLen_i</li>
+                    <li>seqused_kv中各batch的值须不大于对应kvStorageLen_i</li>
                 </ul>
             </td>
             <td rowspan="2">可选参数</td>
