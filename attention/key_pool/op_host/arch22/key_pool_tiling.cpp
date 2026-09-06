@@ -195,7 +195,9 @@ ge::graphStatus KeyPoolTiling::SetInnerSplitInfo()
         baseParams_->coreGroupNum = baseParams_->usedCoreNum / dBaseNum;
         baseParams_->kBaseNum = 1;
         baseParams_->kBaseSize = baseParams_->hiddenSize;
-        if ((dBaseNum * mBaseNum) < baseParams_->usedCoreNum) {
+        constexpr uint32_t SPLIT_K_THRESHOLD_FACTOR = 4U;
+        uint64_t mTaskNum = static_cast<uint64_t>(dBaseNum) * mBaseNum;
+        if (mTaskNum * SPLIT_K_THRESHOLD_FACTOR < baseParams_->usedCoreNum) {
             baseParams_->kBaseNum = baseParams_->usedCoreNum / dBaseNum;
             baseParams_->kBaseSize = kAlignNum / baseParams_->kBaseNum * 128;
         }
