@@ -138,7 +138,7 @@ cann_ops_transformer.generic_block_sparse_attention(
 
 > [!NOTE]
 >
-> 枚举为 `IntEnum`，可直接作为 int 传入底层算子；接口支持传入枚举、对应 int 值或枚举名字符串（大小写不敏感）。亦可从 op 句柄访问：`generic_block_sparse_attention.MaskMode` / `QuantMode`（metadata 接口同理）。当前仅支持 `mask_mode=1`（`CAUSAL`）；`quant_mode` 当前支持 `0`（`NO_QUANT`）与 `5`（`FP8_E4M3_STATIC_CAST_P`，Ascend 950），其余取值暂不支持。
+> 枚举为 `IntEnum`，可直接作为 int 传入底层算子；接口仅支持传入枚举或对应 int 值。当前仅支持 mask_mode = 1（`CAUSAL`）；quant_mode 当前仅支持 0（`NO_QUANT`）与 5（`FP8_E4M3_STATIC_CAST_P`）。
 
 ## 参数说明
 
