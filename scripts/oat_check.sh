@@ -15,6 +15,41 @@
 
 set -e
 
+# OAT 2.x is compiled for Java 17. Some CI images expose Java 8 as the
+# default even when a Java 17 installation is present, which makes the OAT
+# JVM exit before the compliance report is generated. Prefer Java 17 and
+# only attempt installation when no usable runtime can be found.
+JAVA_MIN_MAJOR=17
+
+java_major() {
+    version=$(java -version 2>&1 | sed -n 's/.*version "\([^"]*\)".*/\1/p')
+    case "$version" in
+        1.*) echo "$version" | cut -d. -f2 ;;
+        [0-9]*) echo "$version" | cut -d. -f1 ;;
+        *) echo 0 ;;
+    esac
+}
+
+select_java17() {
+    for java_home in \
+        /usr/lib/jvm/java-17-openjdk \
+        /usr/lib/jvm/jre-17-openjdk \
+        /usr/lib/jvm/java-17-openjdk-* \
+        /usr/lib/jvm/jre-17-openjdk-* \
+        /Library/Java/JavaVirtualMachines/*17*.jdk/Contents/Home; do
+        if [ -x "$java_home/bin/java" ]; then
+            export JAVA_HOME="$java_home"
+            export PATH="$JAVA_HOME/bin:$PATH"
+            return 0
+        fi
+    done
+    return 1
+}
+
+if command -v java >/dev/null 2>&1 && [ "$(java_major)" -lt "$JAVA_MIN_MAJOR" ]; then
+    select_java17 || true
+fi
+
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 REPO_NAME=$(basename "$REPO_ROOT")
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -64,7 +99,7 @@ done
 echo ""
 echo "[OAT] Checking runtime environment..."
 
-if ! command -v java >/dev/null 2>&1; then
+if ! command -v java >/dev/null 2>&1 || [ "$(java_major)" -lt "$JAVA_MIN_MAJOR" ]; then
     echo ""
     echo "===================================================================="
     echo "  Java 未安装 - 正在尝试自动安装"
@@ -156,7 +191,7 @@ if ! command -v java >/dev/null 2>&1; then
     
     # Verify installation
     if [ "$JAVA_INSTALLED" = true ]; then
-        if command -v java >/dev/null 2>&1; then
+        if (select_java17 || command -v java >/dev/null 2>&1) && [ "$(java_major)" -ge "$JAVA_MIN_MAJOR" ]; then
             JAVA_VERSION=$(java -version 2>&1 | head -n 1)
             echo "[OAT] [OK] Java 安装验证通过: $JAVA_VERSION"
             echo ""
