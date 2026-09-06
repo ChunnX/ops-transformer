@@ -341,7 +341,9 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Ru
             allToAll_.Wait(true);
         }
     }
-    allToAll_.Finalize();
+    if (GetBlockIdx() < baseParams_.rankSize) {
+        allToAll_.Finalize();
+    }
 }
 
 } // namespace Apace

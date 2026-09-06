@@ -16,7 +16,7 @@
 #pragma once
 
 #include <cstdint>
-#include "../../..//tiling/quant_matmul_tiling_data.h"
+#include "../../../tiling/quant_matmul_tiling_data.h"
 #include "../../../tiling/comm_tiling_data.h"
 #include "../../../core/aiv_comm/collective_comm_context.h"
 
