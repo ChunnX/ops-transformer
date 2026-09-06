@@ -557,13 +557,13 @@ mask_mode参数解释见「mask_mode 枚举」。
                 </ul>
             </td>
             <td>可选输入，默认值为1</td>
-            <td rowspan="3">
+            <td rowspan="4">
                 <ul>
                     <li>metadata接口与主算子的mask_mode须一致</li>
                     <li>当前win_left和win_right须为-1</li>
                 </ul>
             </td>
-            <td rowspan="3">
+            <td rowspan="4">
                 <ul>
                     <li>mask_mode=1时使用算子内置causal mask</li>
                 </ul>
@@ -579,14 +579,17 @@ mask_mode参数解释见「mask_mode 枚举」。
             <td>无</td>
         </tr>
         <tr>
-            <td>win_left / win_right</td>
-            <td>
+            <td>win_left</td>
+            <td rowspan="2">
                 <ul>
                     <li>data_type支持INT</li>
                     <li>当前仅支持-1</li>
                 </ul>
             </td>
-            <td>可选输入，默认值为-1</td>
+            <td rowspan="2">可选输入，默认值为-1</td>
+        </tr>
+        <tr>
+            <td>win_right</td>
         </tr>
     </tbody>
 </table>
