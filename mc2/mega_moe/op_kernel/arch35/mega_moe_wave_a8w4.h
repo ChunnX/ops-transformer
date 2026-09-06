@@ -90,11 +90,16 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1
         gmmAddrInfo, state, tokenStartIndexInExpert, gmm1TilesPerMGroup);
     ProblemShape sliceProblemShape = state.problemShape;
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
-    RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                EPILOGUE_TILE_M, TopkWeightsPrefetch, false, true>(
-        epilogueOp_, params_, sliceProblemShape, gmmAddrInfo, startBlockIdx, gmm1TileReadySequence,
-        gmmExecutionConfig_.blockJob, static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert,
-        state.expertIdx);
+    Gmm1A8W4SyncPolicy<false, true, TopkWeightsPrefetch> sync(
+        gmmAddrInfo, static_cast<uint32_t>(Get<M_VALUE>(sliceProblemShape)), GMM1_TILE_M, state.expertIdx,
+        gmm1TileReadySequence);
+    Gmm1ActivationQuantEpilogue<decltype(epilogueOp_), TopkWeightsPrefetch, false> gmm1Epilogue(epilogueOp_);
+    if constexpr (TopkWeightsPrefetch) {
+        gmm1Epilogue.SetMetaInfo(gmmAddrInfo.metaInfoGlobal,
+                                 static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert);
+    }
+    RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M>(
+        gmm1Epilogue, sliceProblemShape, gmmAddrInfo.tensorAddrs, startBlockIdx, gmmExecutionConfig_.blockJob, sync);
 }
 
 /*

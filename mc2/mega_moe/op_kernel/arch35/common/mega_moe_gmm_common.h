@@ -13,9 +13,8 @@
 
 #include "kernel_operator.h"
 #include "tensor_api/tensor.h"
-#include "mega_moe_constants.h"
-#include "mega_moe_types.h"
-#include "mega_moe_utils.h"
+#include "lib/matmul_intf.h"
+#include "op_kernel/math_util.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "apace/block/scheduler/block_scheduler_swizzle.h"
 #include "apace/block/mmad/block_mmad_mx_fp8fp4.h"
@@ -27,8 +26,40 @@ using namespace AscendC;
 
 namespace GmmKernel {
 
+using AscendC::Te::Get;
+
+// 通用 matmul 常量（自持定义，值与 mega_moe_constants.h 同源；P7 随本文件进 apace）。
+constexpr uint64_t M_VALUE = 0UL;
+constexpr uint64_t N_VALUE = 1UL;
+constexpr uint64_t K_VALUE = 2UL;
+constexpr uint32_t MXFP_DIVISOR_SIZE = 64U;
+constexpr int32_t MXFP_MULTI_BASE_SIZE = 2;
+constexpr uint32_t L1_TILE_M_256 = 256U;
+constexpr uint32_t L1_TILE_M_128 = 128U;
+constexpr uint32_t L1_TILE_N = 256U;
+constexpr uint32_t L0_TILE_K = 128U;
+constexpr uint32_t ACTIVATION_N_HALF = 2U;
+
 constexpr uint32_t L1_TILE_K = 256U;
 constexpr uint32_t SCALE_K_L1_RATE = 2U;
+constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = 128U * 256U;
+constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_256 = 256U * 256U;
+
+using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
+
+struct GmmTensorAddrs {
+    GM_ADDR aGlobal;
+    GM_ADDR bGlobal;
+    GM_ADDR aScaleGlobal;
+    GM_ADDR bScaleGlobal;
+    GM_ADDR gmm1OutGlobal;
+    GM_ADDR gmm2OutGlobal;
+};
+
+struct BlockJobContext {
+    uint32_t jobIndex;
+    uint32_t totalJobs;
+};
 
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 0>; // 3: SwizzleOffset
 
@@ -56,13 +87,10 @@ struct BlockMmadSelector<true, C> {
 };
 
 // 汇总 GMM1/GMM2 在不同量化路径下共用的类型、shape 和 layout 配置。
-template <bool IsA8W4, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
-          typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool TopkWeightsPrefetch = false,
-          bool IsShared = false, bool IsLayered = false, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
+template <bool IsA8W4, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
+          typename ElementMxScaleB, bool IsWeightNZ = false, bool IsGmm1Interleaved = false>
 struct Config {
-    static constexpr bool IS_SHARED = IsShared;
     static constexpr bool IS_WEIGHT_NZ = IsWeightNZ;
-    static constexpr bool TOPK_WEIGHTS_PREFETCH = TopkWeightsPrefetch;
     using ElementAType = ElementA;
     using ElementBType = ElementB;
     using ElementCType = ElementC;
@@ -264,8 +292,6 @@ struct Config {
 
     struct ProblemConfig {
         using KernelConfig = Config;
-        static constexpr bool SOURCE_GMM1_INTERLEAVED = IsGmm1Interleaved;
-        static constexpr bool IS_WAVE_FLAG_GRAINED = IsWaveFlagGrained;
 
         uint32_t m = 0;
         uint32_t n = 0;
@@ -276,7 +302,6 @@ struct Config {
         uint32_t blockIdx = 0;
         uint32_t scaleK = 0;
         uint32_t tileM = 0;
-        uint32_t activationTileM = L1_TILE_M_256;
         BlockMmadTilingConfig blockMmadTiling{};
     };
 
@@ -289,13 +314,11 @@ struct Config {
         LayoutBiasType bias;
     };
 
-    __aicore__ static inline void FinalizeProblemConfig(ProblemConfig &config, const BlockJobContext &blockJob,
-                                                        uint32_t gmm1TileM)
+    __aicore__ static inline void FinalizeProblemConfig(ProblemConfig &config, const BlockJobContext &blockJob)
     {
         config.blockNum = blockJob.totalJobs;
         config.blockIdx = blockJob.jobIndex;
-        config.scaleK = CeilDiv(config.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-        config.activationTileM = TopkWeightsPrefetch ? L1_TILE_M_128 : gmm1TileM;
+        config.scaleK = Ops::Base::CeilDiv(config.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         config.blockMmadTiling = SelectBlockMmadTilingConfig(config.m, config.k, config.tileM);
     }
 
@@ -309,12 +332,12 @@ struct Config {
         config.outputN = config.n / ACTIVATION_N_HALF;
         config.schedulerN = IsGmm1Interleaved ? config.n : config.outputN;
         config.tileM = gmm1TileM;
-        FinalizeProblemConfig(config, blockJob, gmm1TileM);
+        FinalizeProblemConfig(config, blockJob);
         return config;
     }
 
     __aicore__ static inline ProblemConfig BuildGmm2ProblemConfig(const ProblemShape &problemShape,
-                                                                  const BlockJobContext &blockJob, uint32_t gmm1TileM)
+                                                                  const BlockJobContext &blockJob)
     {
         ProblemConfig config;
         config.m = Get<M_VALUE>(problemShape);
@@ -323,7 +346,7 @@ struct Config {
         config.outputN = config.n;
         config.schedulerN = config.outputN;
         config.tileM = L1_TILE_M_256;
-        FinalizeProblemConfig(config, blockJob, gmm1TileM);
+        FinalizeProblemConfig(config, blockJob);
         return config;
     }
 

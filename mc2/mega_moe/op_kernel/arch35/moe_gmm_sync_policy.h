@@ -32,17 +32,16 @@ template <bool IsShared, bool IsGmm1Interleaved, bool IsWaveFlagGrained = false,
           bool TopkWeightsPrefetch = false>
 class Gmm1GenericSyncPolicy {
 public:
-    template <typename Config>
-    __aicore__ inline Gmm1GenericSyncPolicy(const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t expertIdx,
-                                            int32_t &vecSetSyncCom, uint16_t &pingpongIdx)
+    __aicore__ inline Gmm1GenericSyncPolicy(const GMMAddrInfo &gmmAddrInfo, uint32_t m, uint32_t tileM,
+                                            uint32_t expertIdx, int32_t &vecSetSyncCom, uint16_t &pingpongIdx)
         : dispatchToGmm1Flag_(gmmAddrInfo.dispatchToGmm1Flag),
           activationToGmm2Flag_(gmmAddrInfo.activationToGmm2Flag),
           gmm1TileStatus_(gmmAddrInfo.gmm1TileStatus),
           expertIdx_(expertIdx),
           vecSetSyncCom_(vecSetSyncCom),
           pingpongIdx_(pingpongIdx),
-          m_(config.m),
-          tileM_(config.tileM)
+          m_(m),
+          tileM_(tileM)
     {
     }
 
@@ -153,8 +152,7 @@ private:
 template <bool IsShared, bool IsWaveFlagGrained = false, bool TopkWeightsPrefetch = false>
 class Gmm1A8W4SyncPolicy {
 public:
-    template <typename Config>
-    __aicore__ inline Gmm1A8W4SyncPolicy(const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t expertIdx,
+    __aicore__ inline Gmm1A8W4SyncPolicy(const GMMAddrInfo &gmmAddrInfo, uint32_t m, uint32_t tileM, uint32_t expertIdx,
                                          int32_t &gmm1TileReadySequence)
         : dispatchToGmm1Flag_(gmmAddrInfo.dispatchToGmm1Flag),
           activationToGmm2Flag_(gmmAddrInfo.activationToGmm2Flag),
@@ -162,8 +160,8 @@ public:
           gmm1TileStatus_(gmmAddrInfo.gmm1TileStatus),
           expertIdx_(expertIdx),
           gmm1TileReadySequence_(gmm1TileReadySequence),
-          m_(config.m),
-          tileM_(config.tileM)
+          m_(m),
+          tileM_(tileM)
     {
     }
 
@@ -239,20 +237,22 @@ private:
 template <bool IsLayered, bool IsShared, bool IsWaveFlagGrained, bool IsGmm1Interleaved,
           bool NotifyCombineTileReady = false>
 class Gmm2GenericSyncPolicy {
+    static_assert(!IsShared || !NotifyCombineTileReady, "Shared expert GMM2 has its own completion counter");
+    static_assert(!IsLayered || !NotifyCombineTileReady, "Layered GMM2 selects its synchronization through IsLayered");
 public:
-    template <typename Config>
-    __aicore__ inline Gmm2GenericSyncPolicy(const GMMAddrInfo &gmmAddrInfo, const Config &config,
-                                       int32_t *gmTileSequence = nullptr)
+    __aicore__ inline Gmm2GenericSyncPolicy(const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape,
+                                            uint32_t activationTileM, uint32_t blockNum,
+                                            int32_t *gmTileSequence = nullptr)
         : activationToGmm2Flag_(gmmAddrInfo.activationToGmm2Flag),
           gmm2CombineSyncCounter_(gmmAddrInfo.gmm2CombineSyncCounter),
           sharedExpertGmm2TileCounter_(gmmAddrInfo.sharedExpertGmm2TileCounter),
           gmmToEpilogueFlag_(gmmAddrInfo.gmmToEpilogueFlag),
           gmTileSequence_(gmTileSequence),
-          m_(config.m),
-          k_(config.k),
-          n_(config.n),
-          activationTileM_(config.activationTileM),
-          blockNum_(config.blockNum)
+          m_(static_cast<uint32_t>(Get<M_VALUE>(problemShape))),
+          k_(static_cast<uint32_t>(Get<N_VALUE>(problemShape)) / ACTIVATION_N_HALF),
+          n_(static_cast<uint32_t>(Get<K_VALUE>(problemShape))),
+          activationTileM_(activationTileM),
+          blockNum_(blockNum)
     {
         if constexpr (IsLayered && !IsShared) {
             uint32_t logicalCoreCount = blockNum_;
@@ -351,22 +351,23 @@ private:
 template <bool IsLayered, bool IsShared, bool IsWaveFlagGrained, bool IsGmm1Interleaved,
           bool NotifyCombineTileReady = false>
 class Gmm2A8W4SyncPolicy {
+    static_assert(!IsShared || !NotifyCombineTileReady, "Shared expert GMM2 has its own completion counter");
+    static_assert(!IsLayered || !NotifyCombineTileReady, "Layered GMM2 selects its synchronization through IsLayered");
 public:
-    template <typename Config>
-    __aicore__ inline Gmm2A8W4SyncPolicy(const GMMAddrInfo &gmmAddrInfo, const Config &config,
-                                         uint32_t expertTokenCount, uint32_t rowOffsetInExpert,
-                                         int32_t *gmTileSequence = nullptr)
+    __aicore__ inline Gmm2A8W4SyncPolicy(const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape,
+                                         uint32_t activationTileM, uint32_t blockNum, uint32_t expertTokenCount,
+                                         uint32_t rowOffsetInExpert, int32_t *gmTileSequence = nullptr)
         : activationToGmm2Flag_(gmmAddrInfo.activationToGmm2Flag),
           gmm2CombineSyncCounter_(gmmAddrInfo.gmm2CombineSyncCounter),
           sharedExpertGmm2TileCounter_(gmmAddrInfo.sharedExpertGmm2TileCounter),
           gmmToEpilogueFlag_(gmmAddrInfo.gmmToEpilogueFlag),
           gmTileSequence_(gmTileSequence),
           rowOffsetInExpert_(rowOffsetInExpert),
-          m_(config.m),
-          k_(config.k),
-          n_(config.n),
-          activationTileM_(config.activationTileM),
-          blockNum_(config.blockNum)
+          m_(static_cast<uint32_t>(Get<M_VALUE>(problemShape))),
+          k_(static_cast<uint32_t>(Get<N_VALUE>(problemShape)) / ACTIVATION_N_HALF),
+          n_(static_cast<uint32_t>(Get<K_VALUE>(problemShape))),
+          activationTileM_(activationTileM),
+          blockNum_(blockNum)
     {
         if constexpr (IsLayered && !IsShared) {
             groupSyncSlotLayout_ = CalcGroupSyncSlotLayout(expertTokenCount, blockNum_);

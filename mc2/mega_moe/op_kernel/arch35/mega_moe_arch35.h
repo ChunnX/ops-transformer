@@ -488,7 +488,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
                                                         sharedExpertIdx);
         RunSharedExpertGmm1ActivationStage<QuantOutType, Weight1Type, ActivationQuantOutType, QuantScaleOutType,
                                            ENABLE_A8W4, GMM1_TILE_M>(
-            commonConfig_, gmmExecutionConfig_, params_, sharedEpilogueOp_, gmmAddrInfo, problemShape, runtimeState,
+            commonConfig_, gmmExecutionConfig_, sharedEpilogueOp_, gmmAddrInfo, problemShape, runtimeState,
             sharedExpertIdx, &gmm1TileReadySequence);
     }
     EndSync(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
@@ -510,7 +510,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
             commonConfig_, gmmExecutionConfig_, params_.workspaceInfo, sharedWeightTensorListAddrs_, gmmAddrInfo,
             sharedExpertIdx);
         RunGmm2ByMode<COMBINE_NO_QUANT, QuantOutType, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
-                      ENABLE_A8W4, ENABLE_A4W4, GMM1_TILE_M, false, true, false, false>(
+                      ENABLE_A8W4, ENABLE_A4W4, GMM1_TILE_M, false, true, false, false, false>(
             gmmExecutionConfig_, gmmAddrInfo, problemShape, runtimeState);
     }
 }
@@ -542,17 +542,22 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
             gmm2TileSequence = &pairwiseTileSequence;
         }
+        uint32_t gmm2ActivationTileM = TopkWeightsPrefetch ? L1_TILE_M_128 : GMM1_TILE_M;
         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+            Gmm2A8W4SyncPolicy<false, false, true, false, true> sync(
+                gmmAddrInfo, sliceProblemShape, gmm2ActivationTileM, gmmExecutionConfig_.blockJob.totalJobs,
+                expertTokenCount, tokenStartIndexInExpert, gmm2TileSequence);
             CombineEpilogueOp<bfloat16_t> gmm2AivEpilogue(&params_, gmmAddrInfo.metaInfoGlobal);
             RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                        GMM1_TILE_M, TopkWeightsPrefetch, false, false, true, true>(
-                sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
-                tokenStartIndexInExpert, &params_, gmm2TileSequence, &gmm2AivEpilogue);
+                        CombineEpilogueOp<bfloat16_t>>(
+                sliceProblemShape, gmmAddrInfo.tensorAddrs, startBlockIdx, gmmExecutionConfig_.blockJob, sync,
+                &gmm2AivEpilogue);
         } else {
-            RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                        GMM1_TILE_M, TopkWeightsPrefetch, false, false, true, false>(
-                sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
-                tokenStartIndexInExpert, &params_, gmm2TileSequence);
+            Gmm2A8W4SyncPolicy<false, false, true, false, false> sync(
+                gmmAddrInfo, sliceProblemShape, gmm2ActivationTileM, gmmExecutionConfig_.blockJob.totalJobs,
+                expertTokenCount, tokenStartIndexInExpert);
+            RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                sliceProblemShape, gmmAddrInfo.tensorAddrs, startBlockIdx, gmmExecutionConfig_.blockJob, sync);
         }
     }
 
