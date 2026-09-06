@@ -136,24 +136,46 @@ protected:
     TaskInfo taskInfo_{};
 
 private:
-    // ================================FD Local Buffer区====================================
-    TBuf<> fdSumBuf1_;    // 1.5k: 16*24*4
-    TBuf<> fdSumBuf2_;    // 1.5k: 16*24*4
-    TBuf<> fdMaxBuf1_;    // 1.5k: 16*24*4
-    TBuf<> fdMaxBuf2_;    // 1.5k: 16*24*4
-    TBuf<> fdLseExpBuf_;  // 1.5k: 16*24*4
-    TBuf<> fdMm2ResBuf1_; // 32k: 16*512*4
-    TBuf<> fdMm2ResBuf2_; // 32k: 16*512*4
-    TBuf<> fdReduceBuf_;  // 32k: 16*512*4
-    TBuf<> fdOutputBuf_;  // 32k: 16*512*4
-    TBuf<> fdSinkCopyInBuf_;
-    TBuf<> fdSinkValueBuf_;
-    TBuf<> fdSinkExpBuf_;
-    TBuf<> fdSinkTmpBuf_;
+    // ================================FD Local Buffer区（静态Tensor范式）====================================
+    // 镜像 pipe->Reset() 后重新分配的语义：FD 布局从 UB offset 0 起排，
+    // 与 FA 阶段全区重叠（安全性由 kernel 的 SyncAll 分隔——保持动态版既有行为）
+    static constexpr uint32_t FD_SUM_MAX_LSE_BUF_BYTES = BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K; // 6144: 16*24*4
+    static constexpr uint32_t OFF_FD_SUM1 = 0;
+    static constexpr uint32_t OFF_FD_SUM2 = OFF_FD_SUM1 + FD_SUM_MAX_LSE_BUF_BYTES;
+    static constexpr uint32_t OFF_FD_MAX1 = OFF_FD_SUM2 + FD_SUM_MAX_LSE_BUF_BYTES;
+    static constexpr uint32_t OFF_FD_MAX2 = OFF_FD_MAX1 + FD_SUM_MAX_LSE_BUF_BYTES;
+    static constexpr uint32_t OFF_FD_LSE_EXP = OFF_FD_MAX2 + FD_SUM_MAX_LSE_BUF_BYTES;
+    static constexpr uint32_t OFF_FD_MM2RES1 = OFF_FD_LSE_EXP + FD_SUM_MAX_LSE_BUF_BYTES;
+    static constexpr uint32_t OFF_FD_MM2RES2 = OFF_FD_MM2RES1 + BUFFER_SIZE_BYTE_16K;
+    static constexpr uint32_t OFF_FD_REDUCE = OFF_FD_MM2RES2 + BUFFER_SIZE_BYTE_16K;
+    static constexpr uint32_t OFF_FD_OUTPUT = OFF_FD_REDUCE + BUFFER_SIZE_BYTE_16K;
+    static constexpr uint32_t OFF_FD_LSE_MAX_UB1 = OFF_FD_OUTPUT + BUFFER_SIZE_BYTE_16K;
+    static constexpr uint32_t OFF_FD_LSE_MAX_UB2 = OFF_FD_LSE_MAX_UB1 + BUFFER_SIZE_BYTE_256B;
+    static constexpr uint32_t OFF_FD_LSE_UB = OFF_FD_LSE_MAX_UB2 + BUFFER_SIZE_BYTE_256B;
+    static constexpr uint32_t OFF_FD_SINK_COPY_IN = OFF_FD_LSE_UB + BUFFER_SIZE_BYTE_256B;
+    static constexpr uint32_t OFF_FD_SINK_VALUE = OFF_FD_SINK_COPY_IN + BUFFER_SIZE_BYTE_2K;
+    static constexpr uint32_t OFF_FD_SINK_TMP = OFF_FD_SINK_VALUE + BUFFER_SIZE_BYTE_2K;
+    static constexpr uint32_t OFF_FD_SINK_EXP = OFF_FD_SINK_TMP + BUFFER_SIZE_BYTE_2K;
+    static constexpr uint32_t FD_UB_TOTAL = OFF_FD_SINK_EXP + BUFFER_SIZE_BYTE_256B;
+    static_assert(FD_UB_TOTAL <= 248 * 1024, "FD UB buffer too large");
 
-    TBuf<> fdLseMaxUbBuf1_;
-    TBuf<> fdLseMaxUbBuf2_;
-    TBuf<> fdLseUbBuf_;
+    LocalTensor<T> fdSumBuf1_;          // 6k: 16*24*4*4
+    LocalTensor<T> fdSumBuf2_;          // 6k: 16*24*4*4
+    LocalTensor<T> fdMaxBuf1_;          // 6k: 16*24*4*4
+    LocalTensor<T> fdMaxBuf2_;          // 6k: 16*24*4*4
+    LocalTensor<T> fdLseExpBuf_;        // 6k: 16*24*4*4
+    LocalTensor<T> fdMm2ResBuf1_;       // 16k: 16*512*4
+    LocalTensor<T> fdMm2ResBuf2_;       // 16k: 16*512*4
+    LocalTensor<T> fdReduceBuf_;        // 16k: 16*512*4
+    LocalTensor<OUTPUT_T> fdOutputBuf_; // 16k: 16*512*4
+    LocalTensor<uint8_t> fdSinkCopyInBuf_;
+    LocalTensor<T> fdSinkValueBuf_;
+    LocalTensor<T> fdSinkTmpBuf_;
+    LocalTensor<T> fdSinkExpBuf_;
+
+    LocalTensor<T> fdLseMaxUbBuf1_;
+    LocalTensor<T> fdLseMaxUbBuf2_;
+    LocalTensor<T> fdLseUbBuf_;
 
 public:
     __aicore__ inline QuantFlashAttnBlockVecFlashDecode(ConstInfoX &constInfo)
@@ -189,40 +211,44 @@ public:
     {
         this->dSizeV_Align_ = this->Align(constInfo_.dSizeV, FP32_REPEAT_ELEMENT_NUM);
     }
-    __aicore__ inline void InitBuffers(TPipe *pipe)
+    __aicore__ inline void InitBuffers()
     {
         if ASCEND_IS_AIV {
-            pipe->Reset();
-            // InQue, DB, SYNC_LSE_MAX_SUM_BUF1_FLAG SYNC_LSE_MAX_SUM_BUF2_FLAG
-            pipe->InitBuffer(fdSumBuf1_, BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K);
+            // 静态Tensor范式：LocalTensor 直连 UB 绝对偏移（布局常量见 FD Local Buffer 区），
+            // 镜像原 pipe->Reset() 后从 0 重新分配的语义（与 FA 阶段重叠，SyncAll 分隔）
+            fdSumBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_SUM1, FD_SUM_MAX_LSE_BUF_BYTES)
+                             .template ReinterpretCast<T>();
+            fdSumBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_SUM2, FD_SUM_MAX_LSE_BUF_BYTES)
+                             .template ReinterpretCast<T>();
+            fdMaxBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_MAX1, FD_SUM_MAX_LSE_BUF_BYTES)
+                             .template ReinterpretCast<T>();
+            fdMaxBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_MAX2, FD_SUM_MAX_LSE_BUF_BYTES)
+                             .template ReinterpretCast<T>();
+            fdLseExpBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_LSE_EXP, FD_SUM_MAX_LSE_BUF_BYTES)
+                               .template ReinterpretCast<T>();
+            fdMm2ResBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_MM2RES1, BUFFER_SIZE_BYTE_16K)
+                                .template ReinterpretCast<T>();
+            fdMm2ResBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_MM2RES2, BUFFER_SIZE_BYTE_16K)
+                                .template ReinterpretCast<T>();
+            fdReduceBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_REDUCE, BUFFER_SIZE_BYTE_16K)
+                               .template ReinterpretCast<T>();
+            fdOutputBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_OUTPUT, BUFFER_SIZE_BYTE_16K)
+                               .template ReinterpretCast<OUTPUT_T>();
+            fdLseMaxUbBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_LSE_MAX_UB1, BUFFER_SIZE_BYTE_256B)
+                                  .template ReinterpretCast<T>();
+            fdLseMaxUbBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_LSE_MAX_UB2, BUFFER_SIZE_BYTE_256B)
+                                  .template ReinterpretCast<T>();
+            fdLseUbBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_LSE_UB, BUFFER_SIZE_BYTE_256B)
+                              .template ReinterpretCast<T>();
 
-            pipe->InitBuffer(fdSumBuf2_, BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K);
-            pipe->InitBuffer(fdMaxBuf1_, BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K);
-            pipe->InitBuffer(fdMaxBuf2_, BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K);
-            // TmpBuf
-            pipe->InitBuffer(fdLseExpBuf_, BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K);
-            // InQue, DB, SYNC_MM2RES_BUF1_FLAG SYNC_MM2RES_BUF2_FLAG
-            pipe->InitBuffer(fdMm2ResBuf1_, BUFFER_SIZE_BYTE_16K);
-            pipe->InitBuffer(fdMm2ResBuf2_, BUFFER_SIZE_BYTE_16K);
-            // TmpBuf
-            pipe->InitBuffer(fdReduceBuf_, BUFFER_SIZE_BYTE_16K);
-            // OutQue, SYNC_FDOUTPUT_BUF_FLAG
-            pipe->InitBuffer(fdOutputBuf_, BUFFER_SIZE_BYTE_16K);
-            pipe->InitBuffer(fdLseMaxUbBuf1_, BUFFER_SIZE_BYTE_256B);
-            pipe->InitBuffer(fdLseMaxUbBuf2_, BUFFER_SIZE_BYTE_256B);
-            // OutQue, SYNC_LSEOUTPUT_BUF_FLAG
-            pipe->InitBuffer(fdLseUbBuf_, BUFFER_SIZE_BYTE_256B);
-
-            // TmpBuf
-            if (unlikely(learnableSinkFlag_)) {
-                // InQue, DB, SYNC_SINK_BUF1_FLAG SYNC_SINK_BUF2_FLAG
-                pipe->InitBuffer(fdSinkCopyInBuf_, BUFFER_SIZE_BYTE_2K);
-                // TmpBuf
-                pipe->InitBuffer(fdSinkValueBuf_, BUFFER_SIZE_BYTE_2K);
-                pipe->InitBuffer(fdSinkTmpBuf_, BUFFER_SIZE_BYTE_2K);
-            }
-            // 后面要取地址，放到外面
-            pipe->InitBuffer(fdSinkExpBuf_, BUFFER_SIZE_BYTE_256B);
+            // sink 缓冲区常驻分配（动态版按 learnableSinkFlag_ 运行时条件分配，静态版固定布局）
+            fdSinkCopyInBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_SINK_COPY_IN, BUFFER_SIZE_BYTE_2K);
+            fdSinkValueBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_SINK_VALUE, BUFFER_SIZE_BYTE_2K)
+                                  .template ReinterpretCast<T>();
+            fdSinkTmpBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_SINK_TMP, BUFFER_SIZE_BYTE_2K)
+                                .template ReinterpretCast<T>();
+            fdSinkExpBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_SINK_EXP, BUFFER_SIZE_BYTE_256B)
+                                .template ReinterpretCast<T>();
         }
     }
     __aicore__ inline void AllocEventID()
@@ -270,8 +296,8 @@ protected:
     }
     __aicore__ inline void CopyLseIn(uint32_t startRow, uint32_t dealRowCount, uint64_t baseOffset, uint32_t cntM)
     {
-        LocalTensor<T> lseSum = (cntM & 1) == 0 ? fdSumBuf1_.Get<T>() : fdSumBuf2_.Get<T>();
-        LocalTensor<T> lseMax = (cntM & 1) == 0 ? fdMaxBuf1_.Get<T>() : fdMaxBuf2_.Get<T>();
+        LocalTensor<T> lseSum = (cntM & 1) == 0 ? fdSumBuf1_ : fdSumBuf2_;
+        LocalTensor<T> lseMax = (cntM & 1) == 0 ? fdMaxBuf1_ : fdMaxBuf2_;
 
         uint64_t combineLseOffset = (baseOffset + startRow) * BLOCK_ELEMENT_NUM;
         uint64_t combineLoopOffset = s1BaseSize * BLOCK_ELEMENT_NUM;
@@ -288,15 +314,15 @@ protected:
     __aicore__ inline void ComputeScaleValue(LocalTensor<T> &lseExp, uint32_t dealRowCount,
                                              uint32_t actualCombineLoopSize, uint32_t cntM, uint32_t startRow)
     {
-        LocalTensor<T> lseSum = (cntM & 1) == 0 ? fdSumBuf1_.Get<T>() : fdSumBuf2_.Get<T>();
-        LocalTensor<T> lseMax = (cntM & 1) == 0 ? fdMaxBuf1_.Get<T>() : fdMaxBuf2_.Get<T>();
+        LocalTensor<T> lseSum = (cntM & 1) == 0 ? fdSumBuf1_ : fdSumBuf2_;
+        LocalTensor<T> lseMax = (cntM & 1) == 0 ? fdMaxBuf1_ : fdMaxBuf2_;
         if (unlikely(learnableSinkFlag_)) {
             SinkMax(startRow, dealRowCount);
         }
-        LocalTensor<T> lseMaxUb = (cntM & 1) == 0 ? fdLseMaxUbBuf1_.Get<T>() : fdLseMaxUbBuf2_.Get<T>();
+        LocalTensor<T> lseMaxUb = (cntM & 1) == 0 ? fdLseMaxUbBuf1_ : fdLseMaxUbBuf2_;
 
-        LocalTensor<T> sinkExpBuf = fdSinkExpBuf_.Get<T>();
-        LocalTensor<T> maxLseUb = fdLseUbBuf_.Get<T>();
+        LocalTensor<T> sinkExpBuf = fdSinkExpBuf_;
+        LocalTensor<T> maxLseUb = fdLseUbBuf_;
         ComputeScaleValue_VF_FD(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount,
                                 actualCombineLoopSize, constInfo_.isSoftmaxLseEnable, learnableSinkFlag_);
     }
@@ -359,7 +385,7 @@ protected:
     __aicore__ inline void CopyFinalResOut(LocalTensor<T> &accumOutLocal, uint32_t startRow, uint32_t dealRowCount,
                                            uint32_t cntM)
     {
-        LocalTensor<OUTPUT_T> tmpBmm2ResCastTensor = fdOutputBuf_.Get<OUTPUT_T>();
+        LocalTensor<OUTPUT_T> tmpBmm2ResCastTensor = fdOutputBuf_;
         AscendC::PipeBarrier<PIPE_V>();
         DealInvalidRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align_);
         DealInvalidMaskRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align_, cntM);
@@ -406,7 +432,7 @@ protected:
     __aicore__ inline void CopySinkIn(uint32_t cntM)
     {
         LocalTensor<SINK_T> sinkCopyInBuf =
-            fdSinkCopyInBuf_.GetWithOffset<SINK_T>(BUFFER_SIZE_BYTE_1K, (cntM & 1) * BUFFER_SIZE_BYTE_1K);
+            fdSinkCopyInBuf_[(cntM & 1) * BUFFER_SIZE_BYTE_1K].template ReinterpretCast<SINK_T>();
 
         uint64_t sinkGmOffset = taskInfo_.n2Idx * constInfo_.gSize;
         DataCopyExtParams sinkCopyParams;
@@ -423,13 +449,13 @@ protected:
         SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
         WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
 
-        LocalTensor<T> tmpSinkCastBuf = fdSinkTmpBuf_.Get<T>();
+        LocalTensor<T> tmpSinkCastBuf = fdSinkTmpBuf_;
         Cast(tmpSinkCastBuf, sinkCopyInBuf, AscendC::RoundMode::CAST_NONE, constInfo_.gSize);
         AscendC::PipeBarrier<PIPE_V>();
 
         SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
 
-        LocalTensor<T> sinkBrcbBuf = fdSinkValueBuf_.Get<T>();
+        LocalTensor<T> sinkBrcbBuf = fdSinkValueBuf_;
         Brcb(sinkBrcbBuf, tmpSinkCastBuf, (constInfo_.gSize + BLOCK_ELEMENT_NUM - 1) / BLOCK_ELEMENT_NUM,
              {1, BLOCK_ELEMENT_NUM});
         AscendC::PipeBarrier<PIPE_V>();
@@ -438,8 +464,8 @@ protected:
     {
         constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
         int64_t gIdx = 0;
-        LocalTensor<T> sinkBrcbBuf = fdSinkValueBuf_.Get<T>();
-        LocalTensor<T> sinkExpBuf = fdSinkExpBuf_.Get<T>();
+        LocalTensor<T> sinkBrcbBuf = fdSinkValueBuf_;
+        LocalTensor<T> sinkExpBuf = fdSinkExpBuf_;
 
         for (int64_t row = 0; row < dealRowCount; ++row) {
             if constexpr ((Q_FORMAT == GmFormat::BSNGD) || (Q_FORMAT == GmFormat::TNGD)) { // 内存按照S1G排布
@@ -489,7 +515,7 @@ protected:
         if (constInfo_.sparseMode != DEFAULT_MASK && constInfo_.sparseMode != ALL_MASK) {
             return;
         }
-        LocalTensor<T> lseMaxUb = (cntM & 1) == 0 ? fdLseMaxUbBuf1_.Get<T>() : fdLseMaxUbBuf2_.Get<T>();
+        LocalTensor<T> lseMaxUb = (cntM & 1) == 0 ? fdLseMaxUbBuf1_ : fdLseMaxUbBuf2_;
 
         // 这里要找到lseMaxUb 最大值为-inf 与 attenOutUb的对应位置之间的关系
         // 由于到这里的lseMaxUb 和 attenOutUb都是经过偏移后的，所以offset = 0
@@ -527,8 +553,8 @@ public:
             }
             uint32_t startRow = fd.mStart + fdS1gOuterMIdx * fdBalanceMBaseSize;
 
-            LocalTensor<T> lseExp = fdLseExpBuf_.Get<T>();
-            LocalTensor<T> reduceOut = fdReduceBuf_.Get<T>();
+            LocalTensor<T> lseExp = fdLseExpBuf_;
+            LocalTensor<T> reduceOut = fdReduceBuf_;
             WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
             CopyLseIn(startRow, actualGSplitSize, taskOffset, reduceMLoop);
             SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
@@ -537,8 +563,7 @@ public:
                 CopySinkIn(reduceMLoop);
             }
             for (uint32_t preLoadIdx = 0; preLoadIdx < preLoadNum_; ++preLoadIdx) {
-                LocalTensor<T> mm2Res =
-                    ((reduceGlobaLoop + preLoadIdx) & 1) == 0 ? fdMm2ResBuf1_.Get<T>() : fdMm2ResBuf2_.Get<T>();
+                LocalTensor<T> mm2Res = ((reduceGlobaLoop + preLoadIdx) & 1) == 0 ? fdMm2ResBuf1_ : fdMm2ResBuf2_;
                 WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + ((reduceGlobaLoop + preLoadIdx) & 1));
                 CopyAccumOutIn(mm2Res, preLoadIdx, taskOffset + startRow, actualGSplitSize);
                 SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + ((reduceGlobaLoop + preLoadIdx) & 1));
@@ -547,7 +572,7 @@ public:
             CalcPreNextTokens();
             if (constInfo_.isSoftmaxLseEnable) {
                 // lse行无效在ComputeScaleValue的VF计算时已经进行了赋值inf处理
-                LocalTensor<T> maxLseUb = fdLseUbBuf_.Get<T>();
+                LocalTensor<T> maxLseUb = fdLseUbBuf_;
                 // 判断是否行无效
                 SetFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
                 WaitFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
@@ -585,7 +610,7 @@ public:
             SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
 
             for (uint32_t i = 0; i < taskInfo_.actualCombineLoopSize; ++i) {
-                LocalTensor<T> mm2Res = (reduceGlobaLoop & 1) == 0 ? fdMm2ResBuf1_.Get<T>() : fdMm2ResBuf2_.Get<T>();
+                LocalTensor<T> mm2Res = (reduceGlobaLoop & 1) == 0 ? fdMm2ResBuf1_ : fdMm2ResBuf2_;
                 if (i >= preLoadNum_) {
                     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
                     CopyAccumOutIn(mm2Res, i, taskOffset + startRow, actualGSplitSize);
