@@ -113,6 +113,33 @@ cann_ops_transformer.generic_block_sparse_attention(
 ) -> (Tensor, Tensor)
 ```
 
+## 枚举说明
+
+`quant_mode` 与 `mask_mode` 在 Python 接口中支持传入 `IntEnum` 枚举或对应 int 值，枚举定义于 `cann_ops_transformer.ops.generic_block_sparse_attention`：
+
+### quant_mode 枚举
+
+| 枚举名 | 值 | 含义 |
+| :--- | :---: | :--- |
+| `NO_QUANT` | 0 | 非量化（默认值） |
+| `FP8_E4M3_STATIC_PER_GROUP` | 1 | FP8_E4M3 静态 per-group |
+| `FP8_E4M3_DYNAMIC_MX` | 2 | FP8_E4M3 动态 MX |
+| `FP4_E2M1_DYNAMIC_OCP` | 3 | FP4_E2M1 动态 OCP |
+| `FP4_E2M1_DYNAMIC_CX` | 4 | FP4_E2M1 动态 CX |
+| `FP8_E4M3_STATIC_CAST_P` | 5 | FP8_E4M3 静态 cast P |
+
+### mask_mode 枚举
+
+| 枚举名 | 值 | 含义 |
+| :--- | :---: | :--- |
+| `NO_MASK` | 0 | 不加 mask |
+| `CAUSAL` | 1 | Causal 模式（默认值） |
+| `WINDOW` | 2 | Window 模式 |
+
+> [!NOTE]
+>
+> 枚举为 `IntEnum`，可直接作为 int 传入底层算子；接口支持传入枚举、对应 int 值或枚举名字符串（大小写不敏感）。亦可从 op 句柄访问：`generic_block_sparse_attention.MaskMode` / `QuantMode`（metadata 接口同理）。当前仅支持 `mask_mode=1`（`CAUSAL`）；`quant_mode` 当前支持 `0`（`NO_QUANT`）与 `5`（`FP8_E4M3_STATIC_CAST_P`，Ascend 950），其余取值暂不支持。
+
 ## 参数说明
 
 ### generic_block_sparse_attention_metadata
@@ -193,33 +220,6 @@ cann_ops_transformer.generic_block_sparse_attention(
 
 - attention_out：限制：该输出参数的shape与入参query的shape保持一致；FP8输入时dtype由attention_out_dtype指定。
 - softmax_lse：return_softmax_lse为True时，TND布局下输出shape为(Q_T, Q_N, 1)的Tensor；return_softmax_lse为False时，则输出空Tensor。
-
-## 枚举说明
-
-`quant_mode` 与 `mask_mode` 在 Python 接口中支持传入 `IntEnum` 枚举或对应 int 值，枚举定义于 `cann_ops_transformer.ops.generic_block_sparse_attention`：
-
-### quant_mode 枚举
-
-| 枚举名 | 值 | 含义 |
-| :--- | :---: | :--- |
-| `NO_QUANT` | 0 | 非量化（默认值） |
-| `FP8_E4M3_STATIC_PER_GROUP` | 1 | FP8_E4M3 静态 per-group |
-| `FP8_E4M3_DYNAMIC_MX` | 2 | FP8_E4M3 动态 MX |
-| `FP4_E2M1_DYNAMIC_OCP` | 3 | FP4_E2M1 动态 OCP |
-| `FP4_E2M1_DYNAMIC_CX` | 4 | FP4_E2M1 动态 CX |
-| `FP8_E4M3_STATIC_CAST_P` | 5 | FP8_E4M3 静态 cast P |
-
-### mask_mode 枚举
-
-| 枚举名 | 值 | 含义 |
-| :--- | :---: | :--- |
-| `NO_MASK` | 0 | 不加 mask |
-| `CAUSAL` | 1 | Causal 模式（默认值） |
-| `WINDOW` | 2 | Window 模式 |
-
-> [!NOTE]
->
-> 枚举为 `IntEnum`，可直接作为 int 传入底层算子；接口支持传入枚举、对应 int 值或枚举名字符串（大小写不敏感）。亦可从 op 句柄访问：`generic_block_sparse_attention.MaskMode` / `QuantMode`（metadata 接口同理）。当前仅支持 `mask_mode=1`（`CAUSAL`）；`quant_mode` 当前支持 `0`（`NO_QUANT`）与 `5`（`FP8_E4M3_STATIC_CAST_P`，Ascend 950），其余取值暂不支持。
 
 ## 约束说明
 
