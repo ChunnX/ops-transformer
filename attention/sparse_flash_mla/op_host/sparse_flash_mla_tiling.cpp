@@ -1646,28 +1646,27 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpRatio() const
                                                       "Cmp_ratio should be in range [1, 128] on " + A5_PLATFORM_LOG),
                 return ge::GRAPH_FAILED);
         }
-    } else {
-        uint32_t expectedCmpRatio = 1;
-        const char *modeName = "SWA";
-        const char *modeReason = "when cmp_kv is not provided";
-        if (smlaInfo_.perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE) {
-            expectedCmpRatio = 4; // CSA原有倍率，另支持2
-            modeName = "CSA";
-            modeReason = "when cmp_sparse_indices is provided";
-        } else if (smlaInfo_.perfMode == SMLATemplateMode::HCA_TEMPLATE_MODE) {
-            expectedCmpRatio = 128; // HCA保持原有倍率
-            modeName = "HCA";
-            modeReason = "when cmp_sparse_indices is not provided";
-        }
-        const bool isCsaTemplate = smlaInfo_.perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE;
-        const bool ratioSupported = cmpRatio_ == expectedCmpRatio || (isCsaTemplate && cmpRatio_ == 2U);
-        OP_CHECK_IF(!ratioSupported,
-                    OP_LOGE(opName_, "cmpRatio should be %s%u in %s on %s %s, but got %ld.",
-                            isCsaTemplate ? "2 or " : "", expectedCmpRatio, modeName,
+        return ge::GRAPH_SUCCESS;
+    }
+
+    const auto checkRatio = [this](bool isSupported, const char *expectedRatios, const char *modeName,
+                                   const char *modeReason) {
+        OP_CHECK_IF(!isSupported,
+                    OP_LOGE(opName_, "cmpRatio should be %s in %s on %s %s, but got %ld.", expectedRatios, modeName,
                             A2_A3_PLATFORM_LOG.c_str(), modeReason, cmpRatio_),
                     return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    };
+
+    switch (smlaInfo_.perfMode) {
+        case SMLATemplateMode::CSA_TEMPLATE_MODE:
+            return checkRatio(cmpRatio_ == 2 || cmpRatio_ == 4, "2 or 4", "CSA",
+                              "when cmp_sparse_indices is provided");
+        case SMLATemplateMode::HCA_TEMPLATE_MODE:
+            return checkRatio(cmpRatio_ == 128, "128", "HCA", "when cmp_sparse_indices is not provided");
+        default:
+            return checkRatio(cmpRatio_ == 1, "1", "SWA", "when cmp_kv is not provided");
     }
-    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaOriMaskMode() const
