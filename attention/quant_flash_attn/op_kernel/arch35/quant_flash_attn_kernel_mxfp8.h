@@ -84,6 +84,18 @@ public:
     BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers_;
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers_;
 
+    // 核间同步ID（静态Tensor范式，取代MAKE_ID动态计数器；AIV1侧经+16偏移镜像）
+    // id0 = AIC→AIV 数据就绪方向；id1 = AIV→AIC buffer释放方向；FORWARD型仅需id0
+    static constexpr uint32_t CC_BMM1_PING_ID0 = 0U;
+    static constexpr uint32_t CC_BMM1_PING_ID1 = 1U;
+    static constexpr uint32_t CC_BMM1_PONG_ID0 = 2U;
+    static constexpr uint32_t CC_BMM1_PONG_ID1 = 3U;
+    static constexpr uint32_t CC_BMM2_ID0 = 4U;
+    static constexpr uint32_t CC_BMM2_ID1 = 5U;
+    static constexpr uint32_t CC_L1P_0 = 6U;
+    static constexpr uint32_t CC_L1P_1 = 7U;
+    static constexpr uint32_t CC_L1P_2 = 8U;
+
     GlobalTensor<int32_t> cuSeqLensGmQ_;
     GlobalTensor<int32_t> cuSeqLensGmKv_;
     GlobalTensor<int32_t> seqUsedGmQ_;
@@ -96,8 +108,7 @@ public:
 
     ConstInfoX constInfo_;
 
-    const __gm__ QuantFlashAttnTilingData *__restrict tilingData_;
-    TPipe *pipe_ = nullptr;
+    __tiling_data_ptr__ QuantFlashAttnQuantTilingArch35 *tilingData_;
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
     VecFdBlockType vecFdBlock_;
@@ -153,9 +164,8 @@ public:
                                 __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attnOut, __gm__ uint8_t *workspace, __gm__ uint8_t *metadata,
                                 __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
-                                const __gm__ QuantFlashAttnTilingData *__restrict tiling, TPipe *tPipe)
+                                __tiling_data_ptr__ QuantFlashAttnQuantTilingArch35 *tiling)
     {
-        this->pipe_ = tPipe;
         this->tilingData_ = tiling;
 
         InitConstInfo();
@@ -190,11 +200,10 @@ public:
 
         if ASCEND_IS_AIV {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                vecFaBlock_.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, pScale, attnMask, softmaxLse, attnOut,
-                                         workspace);
+                vecFaBlock_.InitVecBlock(cuSeqLensQ, cuSeqLensKv, pScale, attnMask, softmaxLse, attnOut, workspace);
                 vecFaBlock_.SetCuSeqLensParser(qCuSeqLensParser_);
             } else {
-                vecFaBlock_.InitVecBlock(tPipe, sequsedQ, sequsedKv, pScale, attnMask, softmaxLse, attnOut, workspace);
+                vecFaBlock_.InitVecBlock(sequsedQ, sequsedKv, pScale, attnMask, softmaxLse, attnOut, workspace);
                 vecFaBlock_.SetCuSeqLensParser(qSeqUsedParser_);
             }
             vecFaBlock_.ClearOutput();
@@ -202,10 +211,10 @@ public:
 
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                cubeBlock_.InitCubeBlock(tPipe, &l1BufferManager_, query, key, value, blockTable, dequantScaleQuery,
+                cubeBlock_.InitCubeBlock(&l1BufferManager_, query, key, value, blockTable, dequantScaleQuery,
                                          dequantScaleKey, dequantScaleValue, qCuSeqLensParser_, kvCuSeqLensParser_);
             } else {
-                cubeBlock_.InitCubeBlock(tPipe, &l1BufferManager_, query, key, value, blockTable, dequantScaleQuery,
+                cubeBlock_.InitCubeBlock(&l1BufferManager_, query, key, value, blockTable, dequantScaleQuery,
                                          dequantScaleKey, dequantScaleValue, qSeqUsedParser_, kvSeqUsedParser_);
             }
         }
@@ -238,13 +247,20 @@ public:
         uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype / 2;
         constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
         constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T) + mBaseSize * s2BaseSize / 32;
-        l1BufferManager_.Init(pipe_, 524288); // 512 * 1024
+        // 静态Tensor范式：直接构造指定地址的LocalTensor，不经TPipe
+        l1BufferManager_.Init(524288); // 512 * 1024
         // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
-        // TODO，共享buffer初始化放到block层
         l1PBuffers_.Init(l1BufferManager_, mm2LeftSize);
-        ubBufferManager_.Init(pipe_, mm1ResultSize * 2 + mm2ResultSize);
+        ubBufferManager_.Init(mm1ResultSize * 2 + mm2ResultSize);
         bmm2Buffers_.Init(ubBufferManager_, mm2ResultSize);
         bmm1Buffers_.Init(ubBufferManager_, mm1ResultSize);
+        // 注入静态核间同步ID（AIC/AIV两侧常量一致，取代动态计数器分配）
+        bmm2Buffers_.Get().SetCrossCoreID(CC_BMM2_ID0, CC_BMM2_ID1);
+        bmm1Buffers_.Get().SetCrossCoreID(CC_BMM1_PONG_ID0, CC_BMM1_PONG_ID1);
+        bmm1Buffers_.Get().SetCrossCoreID(CC_BMM1_PING_ID0, CC_BMM1_PING_ID1);
+        l1PBuffers_.Get().SetCrossCoreID(CC_L1P_0, INVALID_CROSS_CORE_EVENT_ID);
+        l1PBuffers_.Get().SetCrossCoreID(CC_L1P_1, INVALID_CROSS_CORE_EVENT_ID);
+        l1PBuffers_.Get().SetCrossCoreID(CC_L1P_2, INVALID_CROSS_CORE_EVENT_ID);
     }
 
     __aicore__ inline void InitConstInfo()
@@ -257,10 +273,10 @@ public:
             constInfo_.subBlockIdx = GetSubBlockIdx();
         }
 
-        const auto &qfaBaseParams = this->tilingData_->baseTiling.quantFlashAttnBaseParams;
-        const auto &qfaAttenMaskParams = this->tilingData_->baseTiling.quantFlashAttnAttenMaskParams;
-        const auto &qfaPageAttentionParams = this->tilingData_->baseTiling.quantFlashAttnPageAttentionParams;
-        const auto &qfaWorkspaceParams = this->tilingData_->baseTiling.quantFlashAttnWorkspaceParams;
+        const auto &qfaBaseParams = this->tilingData_->quantFlashAttnBaseParams;
+        const auto &qfaAttenMaskParams = this->tilingData_->quantFlashAttnAttenMaskParams;
+        const auto &qfaPageAttentionParams = this->tilingData_->quantFlashAttnPageAttentionParams;
+        const auto &qfaWorkspaceParams = this->tilingData_->quantFlashAttnWorkspaceParams;
 
         constInfo_.bSize = qfaBaseParams.bSize;
         constInfo_.t1Size = qfaBaseParams.t1Size;
@@ -758,7 +774,7 @@ public:
         if (!fdParams_.fdCoreEnable) {
             return;
         }
-        vecFdBlock_.InitBuffers(this->pipe_);
+        vecFdBlock_.InitBuffers();
         AscendC::ICachePreLoad(2);
         vecFdBlock_.AllocEventID();
         SyncAll();

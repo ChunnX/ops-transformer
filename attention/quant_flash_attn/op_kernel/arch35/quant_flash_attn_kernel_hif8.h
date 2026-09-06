@@ -95,7 +95,7 @@ public:
 
     ConstInfoX constInfo_;
 
-    const __gm__ QuantFlashAttnTilingData *__restrict tilingData_;
+    __tiling_data_ptr__ QuantFlashAttnTilingData *tilingData_;
     TPipe *pipe_ = nullptr;
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
@@ -152,7 +152,7 @@ public:
                                 __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attnOut, __gm__ uint8_t *workspace, __gm__ uint8_t *metadata,
                                 __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
-                                const __gm__ QuantFlashAttnTilingData *__restrict tiling, TPipe *tPipe)
+                                __tiling_data_ptr__ QuantFlashAttnTilingData *tiling, TPipe *tPipe)
     {
         this->pipe_ = tPipe;
         this->tilingData_ = tiling;
@@ -738,7 +738,7 @@ public:
         if (!fdParams_.fdCoreEnable) {
             return;
         }
-        vecFdBlock_.InitBuffers(this->pipe_);
+        vecFdBlock_.InitBuffers();
         AscendC::ICachePreLoad(2);
         vecFdBlock_.AllocEventID();
         SyncAll();
