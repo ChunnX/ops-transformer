@@ -1607,13 +1607,15 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
                        gmmParams.activeType);
             return gmm::AclnnGroupedMatmulWeightQuantDAV3510Checker(gmmParams).CheckGroupedMatmulWeightQuantDAV3510();
         } else {
-            // No-quant: only GELU_TANH post-process is enabled on DAV_3510, with FP16/BF16 output.
+            // No-quant: GELU_TANH post-process is enabled on DAV_3510 for FP16/BF16 output. The first
+            // phase restricts it to NO_SPLIT(-1)/SPLIT_M(0); SPLIT_K(2) is deferred.
             DataType yDtype = (*gmmParams.y)[0]->GetDataType();
             bool isGeluSupported = gmmParams.activeType == GMMActType::GMM_ACT_TYPE_GELU_TANH &&
-                                   (yDtype == DataType::DT_FLOAT16 || yDtype == DataType::DT_BFLOAT16);
+                                   (yDtype == DataType::DT_FLOAT16 || yDtype == DataType::DT_BFLOAT16) &&
+                                   (gmmParams.groupType == -1L || gmmParams.groupType == 0L);
             CHECK_COND(isNoActivation || isGeluSupported, ACLNN_ERR_PARAM_INVALID,
                        "When input is No-Quant, activation is not supported on this platform"
-                       " except GELU_TANH with FP16/BF16 output."
+                       " except GELU_TANH with FP16/BF16 output and groupType in {-1, 0}."
                        " activeType[%ld] is not supported.",
                        gmmParams.activeType);
         }
