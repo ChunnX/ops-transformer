@@ -463,11 +463,7 @@ cann_ops_transformer.generic_block_sparse_attention(
         </td>
         <td>可选属性，默认值为True</td>
         <td>metadata接口与主算子须一致</td>
-        <td>
-            <ul>
-                <li>为True时，sparse_block_idx/sparse_block_count按KV_N维排布，shape见单参数校验</li>
-            </ul>
-        </td>
+        <td>无</td>
     </tr>
     </tbody>
     </table>
@@ -638,8 +634,8 @@ mask_mode参数解释见「mask_mode 枚举」。
                     <li>tensor_type支持int32</li>
                     <li>tensor_shape为(B,)</li>
                     <li>仅支持非负整数</li>
-                    <li>seqused_q中各batch的值须不大于对应qStorageLen_i</li>
-                    <li>seqused_kv中各batch的值须不大于对应kvStorageLen_i</li>
+                    <li>seqused_q中各batch的值须小于等于对应qStorageLen_i</li>
+                    <li>seqused_kv中各batch的值须小于等于对应kvStorageLen_i</li>
                 </ul>
             </td>
             <td rowspan="2">可选参数</td>
@@ -657,12 +653,14 @@ mask_mode参数解释见「mask_mode 枚举」。
                     <li>tensor_shape为(B+1,)</li>
                     <li>值仅支持非负整数</li>
                     <li>其值应非递减（大于等于前一个值）排列</li>
-                    <li>第一个元素须为0</li>
+                    <li>cu_seqlens_q：第一个元素为0且最后一个元素等于Q_T</li>
+                    <li>cu_seqlens_kv：第一个元素为0且最后一个元素等于各batch kvStorageLen_i之和</li>
                 </ul>
             </td>
             <td rowspan="2">
                 <ul>
                     <li>当前layout_q="TND"时，cu_seqlens_q必须传入</li>
+                    <li>当前layout_kv="PA_BBND"时，cu_seqlens_kv必须传入</li>
                 </ul>
             </td>
         </tr>
