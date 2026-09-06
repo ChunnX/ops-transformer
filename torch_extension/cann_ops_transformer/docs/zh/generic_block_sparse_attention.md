@@ -25,7 +25,7 @@
 
 - **接口功能**：
 
-  `generic_block_sparse_attention`是基于`TorchNPU`的`cann_ops_transformer`扩展接口，用于调用`GenericBlockSparseAttention`算子完成任意粒度块稀疏注意力计算。通过`sparse_block_idx`指定每个Q块选择的KV块，`sparse_block_count`指定每个Q块保留的KV块数量。
+  `generic_block_sparse_attention`是基于`TorchNPU`的`cann_ops_transformer`扩展接口，用于调用`GenericBlockSparseAttention`算子完成任意粒度块稀疏注意力计算。
 
   `generic_block_sparse_attention_metadata`是`generic_block_sparse_attention`的元数据生成接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子可选择传入该metadata以优化调度。典型调用流程如下：
 
@@ -35,18 +35,18 @@
 
 - **计算公式**：
 
-  本算子完成块稀疏注意力计算。稀疏块大小为$blockShapeX \times blockShapeY$，由`sparse_block_idx`/`sparse_block_count`指定每个Q块参与计算的KV块。
+  本算子在标准 Attention 基础上，沿序列维按块进行稀疏计算。稀疏块大小为$blockShapeX \times blockShapeY$：Q 按$blockShapeX$、KV 按$blockShapeY$划分；`sparse_block_idx`给出每个Q块选中的KV块索引，`sparse_block_count`给出每个Q块实际参与计算的KV块个数，仅对这些块完成$q k^{T}$、Softmax及与$v$的乘积。
 
   $$
   attention\_out = Softmax(softmax\_scale \cdot q \cdot k_{sparse}^{T} + attn\_mask) \cdot v_{sparse}
   $$
 
-  其中$softmax\_scale$一般取$D^{-0.5}$，$k_{sparse}$、$v_{sparse}$为选取的KV块。
+  其中$softmax\_scale$为缩放系数；$k_{sparse}$、$v_{sparse}$表示按上述索引选取后的KV块。
 
 > [!NOTE]
 >
-> q、k、v数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim。
-> TND中的N为query的headNum（记为Q_N），PA_BBND中的N为key/value的headNum（记为KV_N）。Q_T表示所有query Batch输入样本序列长度的累加和；totalQBlocks = Σ ceilDiv(qStorageLen_i, blockShapeX)。
+> q、k、v数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim，且满足D=H/N、Q_T表示所有query Batch输入样本序列长度的累加和，KV_T表示所有k、v Batch输入样本序列长度的累加和。
+> Q_S表示seqlen_q，Q_N表示nheads_q，KV_S表示seqlen_kv，KV_N表示nheads_kv。
 
 ## 函数原型
 
@@ -279,7 +279,8 @@ cann_ops_transformer.generic_block_sparse_attention(
 |     Q_T     |          输入q tensor所有batch序列长度的累加和          |
 |     D     |          输入q/k/v tensor隐藏层最小的单元尺寸headdim         |
 |  topK  | sparse_block_idx最后一维，表示每个Q块最多选择的KV块数 |
-| totalQBlocks | 按各Batch的Query存储长度划分后的Q块总数 |
+| qStorageLen_i | 第i个batch的query存储长度，一般由cu_seqlens_q差分得到 |
+| totalQBlocks | TND下各batch按query存储长度分块后的Q块总数，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$；为`sparse_block_idx`/`sparse_block_count`的第二维 |
 | num_blocks | Paged KV Cache物理页总数 |
 | block_size | Paged KV Cache单页token数 |
 
