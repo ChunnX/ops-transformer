@@ -1,0 +1,83 @@
+"""A2/A3 ratio=2 regression through Metadata + SparseFlashMla on an NPU."""
+
+import pytest
+import torch
+import torch_npu
+
+import result_compare_method
+import sparse_flash_mla_golden
+import utils
+from batch import sparse_flash_mla_process
+
+
+@pytest.mark.parametrize("layout", ["BSND", "TND", "PA_BBND"])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("ori_len", [2, 3, 1022, 1023, 1024, 1025, 1026, 1027])
+def test_ratio2(layout, dtype, ori_len):
+    # Odd lengths exercise residual=1. 511/512/513 compressed tokens exercise
+    # the arch22 S2 boundary.
+    mode = "CSA"
+    batch = 2
+    q_len = min(7, ori_len)
+    cmp_len = ori_len // 2
+    q_layout = "BSND" if layout == "BSND" else "TND"
+    params = {
+        "testcase_name": f"ratio2_{mode}_{layout}_{ori_len}",
+        "template_mode": mode,
+        "layout_q": q_layout,
+        "layout_kv": layout,
+        "q_type": dtype,
+        "ori_kv_type": dtype,
+        "cmp_kv_type": dtype,
+        "B": batch,
+        "S1": q_len,
+        "S2": ori_len,
+        "T1": batch * q_len,
+        "T2": batch * ori_len,
+        "T3": batch * cmp_len,
+        "N1": 32,
+        "N2": 1,
+        "D": 512,
+        "K": 1024,
+        "cmp_ratio": 2,
+        "seqused_ori_kv": [ori_len] * batch,
+        "seqused_cmp_kv": [cmp_len] * batch,
+        "cmp_residual_kv": [ori_len % 2] * batch,
+        "ori_mask_mode": 4,
+        "cmp_mask_mode": 3,
+        "ori_win_left": 127,
+        "ori_win_right": 0,
+        "softmax_scale": 512 ** -0.5,
+        "return_softmax_lse": True,
+        "q_datarange": [-2, 2],
+        "ori_kv_datarange": [-2, 2],
+        "cmp_kv_datarange": [-2, 2],
+    }
+    if q_layout == "TND":
+        params["cu_seqlens_q"] = [0, q_len, batch * q_len]
+    if layout == "TND":
+        # Compress each batch separately before accumulating its storage offset.
+        params["cu_seqlens_ori_kv"] = [0, ori_len, batch * ori_len]
+        params["cu_seqlens_cmp_kv"] = [0, cmp_len, batch * cmp_len]
+    if layout == "PA_BBND":
+        params.update({
+            "block_size1": 128,
+            "block_size2": 16,
+            "block_num1": batch * ((ori_len + 127) // 128),
+            "block_num2": batch * ((cmp_len + 15) // 16),
+        })
+
+    torch_npu.npu.set_device(0)
+    torch.manual_seed(0)
+    # Use the same two-step default expansion as the existing single-case runner.
+    combinations = utils.generate_param_combinations([{key: [value] for key, value in params.items()}])
+    case = utils.generate_case_with_default_param(combinations[0], "off")
+    data = sparse_flash_mla_golden.gen_data(case)
+    output, lse = sparse_flash_mla_process.call_npu(data)
+    for name, expected, actual in (
+        ("attn_out", data["cpu_output"], output),
+        ("softmax_lse", data["softmax_lse"], lse),
+    ):
+        assert actual.shape == expected.shape, f"{name}: {actual.shape} != {expected.shape}"
+        result, percent = result_compare_method.check_result(expected, actual)
+        assert result == "Pass", f"{name}: {result}, {percent}%"

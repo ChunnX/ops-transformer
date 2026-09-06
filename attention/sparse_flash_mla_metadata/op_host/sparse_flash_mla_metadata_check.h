@@ -56,7 +56,7 @@ inline bool IsCmpRatioSupportSmla(const char *socVersion, bool hasCmpKv, int64_t
     if (socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) {
         return cmpRatio >= SMLA_CMP_RATIO_LOWER_BOUND && cmpRatio <= SMLA_CMP_RATIO_UPPER_BOUND;
     }
-    return (cmpTopk > 0) ? (cmpRatio == 4) : (cmpRatio == 128);
+    return (cmpTopk > 0) ? (cmpRatio == 2 || cmpRatio == 4) : (cmpRatio == 128);
 }
 
 inline bool IsTensorExistSmla(const aclTensor *tensor)
@@ -298,7 +298,7 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_ratio", std::to_string(cmpRatio),
                                                           "When has_cmp_kv is true and cmp_topk is non-zero"
                                                           "(CSA with cmp_sparse_indices), "
-                                                          "the value of cmp_ratio must be " +
+                                                          "the value of cmp_ratio must be 2 or " +
                                                               std::to_string(expectedCmpRatio));
                 } else {
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "cmp_ratio", std::to_string(cmpRatio),

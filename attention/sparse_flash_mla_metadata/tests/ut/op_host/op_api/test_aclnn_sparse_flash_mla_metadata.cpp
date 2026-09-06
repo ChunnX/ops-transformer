@@ -45,17 +45,41 @@ struct TndC4aParams {
         TensorDesc({optiling::SMLA_METADATA_TOTAL_SIZE}, ACL_INT32, ACL_FORMAT_ND).ToAclType();
 };
 
-aclnnStatus RunParamsCheck(const TndC4aParams &params, const aclTensor *cmpResidualKv)
+aclnnStatus RunParamsCheck(const TndC4aParams &params, const aclTensor *cmpResidualKv,
+                          int64_t cmpRatio = CMP_RATIO, int64_t cmpTopk = CMP_TOPK,
+                          const char *soc = "Ascend910B")
 {
     return ParamsCheck(params.cuSeqlensQ.get(), params.cuSeqlensOriKv.get(), params.cuSeqlensCmpKv.get(),
                        nullptr, nullptr, nullptr, cmpResidualKv, nullptr, nullptr, NUM_HEADS_Q, NUM_HEADS_KV,
                        HEAD_DIM, BATCH_SIZE, MAX_SEQLEN_Q, MAX_SEQLEN_ORI_KV, MAX_SEQLEN_CMP_KV, ORI_TOPK,
-                       CMP_TOPK, CMP_RATIO, ORI_MASK_MODE, CMP_MASK_MODE, ORI_WIN_LEFT, ORI_WIN_RIGHT, "TND",
-                       "TND", true, true, AIC_CORE_NUM, AIV_CORE_NUM, "Ascend910B", params.metadata.get());
+                       cmpTopk, cmpRatio, ORI_MASK_MODE, CMP_MASK_MODE, ORI_WIN_LEFT, ORI_WIN_RIGHT, "TND",
+                       "TND", true, true, AIC_CORE_NUM, AIV_CORE_NUM, soc, params.metadata.get());
 }
 } // namespace
 
 class SparseFlashMlaMetadataApiTest : public testing::Test {};
+
+TEST_F(SparseFlashMlaMetadataApiTest, a2a3_compressed_ratio_support)
+{
+    TndC4aParams params;
+    for (const char *soc : {"Ascend910B", "Ascend910_93"}) {
+        for (int64_t topk : {0, 512}) {
+            SCOPED_TRACE(soc);
+            SCOPED_TRACE(topk);
+            EXPECT_EQ(RunParamsCheck(params, params.cmpResidualKv.get(), 2, topk, soc),
+                      topk > 0 ? ACLNN_SUCCESS : ACLNN_ERR_PARAM_INVALID);
+            EXPECT_EQ(RunParamsCheck(params, nullptr, topk > 0 ? 2 : 128, topk, soc), ACLNN_ERR_PARAM_INVALID);
+            EXPECT_EQ(RunParamsCheck(params, params.cmpResidualKv.get(), topk == 0 ? 128 : 4, topk, soc),
+                      ACLNN_SUCCESS);
+            for (int64_t ratio : {0, 1, 3, 8, 129}) {
+                EXPECT_EQ(RunParamsCheck(params, params.cmpResidualKv.get(), ratio, topk, soc),
+                          ACLNN_ERR_PARAM_INVALID);
+            }
+        }
+        EXPECT_FALSE(IsCmpRatioSupportSmla(soc, false, 0, 2));
+        EXPECT_TRUE(IsCmpRatioSupportSmla(soc, false, 0, 1));
+    }
+}
 
 TEST_F(SparseFlashMlaMetadataApiTest, tnd_c4a_requires_cmp_residual_kv)
 {

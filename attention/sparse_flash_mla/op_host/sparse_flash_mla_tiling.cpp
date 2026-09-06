@@ -1651,16 +1651,19 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpRatio() const
         const char *modeName = "SWA";
         const char *modeReason = "when cmp_kv is not provided";
         if (smlaInfo_.perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE) {
-            expectedCmpRatio = 4; // 4：CSA模式下的固定压缩比
+            expectedCmpRatio = 4; // CSA原有倍率，另支持2
             modeName = "CSA";
             modeReason = "when cmp_sparse_indices is provided";
         } else if (smlaInfo_.perfMode == SMLATemplateMode::HCA_TEMPLATE_MODE) {
-            expectedCmpRatio = 128; // 128：HCA模式下的最大压缩比
+            expectedCmpRatio = 128; // HCA保持原有倍率
             modeName = "HCA";
             modeReason = "when cmp_sparse_indices is not provided";
         }
-        OP_CHECK_IF(cmpRatio_ != expectedCmpRatio,
-                    OP_LOGE(opName_, "cmpRatio should be %u in %s on %s %s, but got %ld.", expectedCmpRatio, modeName,
+        const bool isCsaTemplate = smlaInfo_.perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE;
+        const bool ratioSupported = cmpRatio_ == expectedCmpRatio || (isCsaTemplate && cmpRatio_ == 2U);
+        OP_CHECK_IF(!ratioSupported,
+                    OP_LOGE(opName_, "cmpRatio should be %s%u in %s on %s %s, but got %ld.",
+                            isCsaTemplate ? "2 or " : "", expectedCmpRatio, modeName,
                             A2_A3_PLATFORM_LOG.c_str(), modeReason, cmpRatio_),
                     return ge::GRAPH_FAILED);
     }
