@@ -16,7 +16,7 @@
 
 #include <functional>
 #include <algorithm>
-#include <unordered_map>
+#include <sstream>
 #include <graph/utils/type_utils.h>
 #include "err/ops_err.h"
 #include "register/op_def_registry.h"
@@ -146,8 +146,7 @@ ge::graphStatus KeyPoolTiling::SetBaseInfo()
     baseParams_->usedCoreNum = aicNum_;
     baseParams_->batchConsistency = static_cast<uint32_t>(context_->batchConsistency);
     OP_LOGI(context_->opName, "[TILING] bSize:%u  tSize:%u cmpRatio:%u, stateCacheStrideDim0:%u",
-            baseParams_->batchSize, baseParams_->tokenSize, baseParams_->cmpRatio,
-            baseParams_->stateCacheStrideDim0);
+            baseParams_->batchSize, baseParams_->tokenSize, baseParams_->cmpRatio, baseParams_->stateCacheStrideDim0);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -172,8 +171,6 @@ ge::graphStatus KeyPoolTiling::SetWorkSpaceInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KeyPoolTiling::SetScenarioInfo() { return ge::GRAPH_SUCCESS; }
-
 ge::graphStatus KeyPoolTiling::SetTemplateId()
 {
     if (context_->templateId == TemplateId::EMPTY_HIDDEN_STATES) {
@@ -181,9 +178,8 @@ ge::graphStatus KeyPoolTiling::SetTemplateId()
     }
     if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
         // 设置高性能模板
-        if (context_->normWeight.desc == nullptr &&
-            context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= 4 &&
-            baseParams_->tokenSize <= 256) {
+        if (context_->normWeight.desc == nullptr && context_->layout == LayoutType::LAYOUT_BSH &&
+            baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 256) {
             context_->templateId = TemplateId::FULL_LOAD;
         }
         return ge::GRAPH_SUCCESS;
@@ -194,7 +190,7 @@ ge::graphStatus KeyPoolTiling::SetTemplateId()
 ge::graphStatus KeyPoolTiling::SetInnerSplitInfo()
 {
     if (context_->templateId == TemplateId::FULL_LOAD) {
-        innerSplitParams_->mBaseSize = 256;              // 256:核间切分，M轴基本块大小
+        innerSplitParams_->mBaseSize = 256; // 256:核间切分，M轴基本块大小
         innerSplitParams_->dBaseSize = 128; // nBase = dBase * 2
         uint32_t dBaseNum = baseParams_->headDim / innerSplitParams_->dBaseSize;
         uint32_t mBaseNum = (baseParams_->tokenSize + innerSplitParams_->mBaseSize - 1) / innerSplitParams_->mBaseSize;
@@ -235,7 +231,7 @@ ge::graphStatus KeyPoolTiling::SetInnerSplitInfo()
             }
         }
     } else {
-        innerSplitParams_->mBaseSize = 256;        // 256:核间切分，M轴基本块大小
+        innerSplitParams_->mBaseSize = 256; // 256:核间切分，M轴基本块大小
         innerSplitParams_->dBaseSize = 128; // 128：核间切分，D轴基本块大小
     }
     return ge::GRAPH_SUCCESS;
@@ -256,9 +252,8 @@ ge::graphStatus KeyPoolTiling::CalcWorkSpace()
     workspaceSize_ +=
         workspaceParams_->vec1ResSize * maxGroupNum * V1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio;
     if (context_->normWeight.desc != nullptr) {
-        workspaceSize_ +=
-            workspaceParams_->mm1KvResSize * baseParams_->usedCoreNum * 2U *
-            MM1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio;
+        workspaceSize_ += workspaceParams_->mm1KvResSize * baseParams_->usedCoreNum * 2U * MM1_RES_ELEM_SIZE *
+                          workspaceParams_->dbWorkspaceRatio;
     }
 
     if (context_->workSpaces) {
@@ -311,8 +306,7 @@ ge::graphStatus KeyPoolTiling::RunBigKernelTiling(KeyPoolTilingData *tilingData)
                                                     std::bind(&KeyPoolTiling::CheckBlockDimConstrain, this),
                                                     std::bind(&KeyPoolTiling::SetTemplateId, this),
                                                     std::bind(&KeyPoolTiling::SetInnerSplitInfo, this),
-                                                    std::bind(&KeyPoolTiling::SetWorkSpaceInfo, this),
-                                                    std::bind(&KeyPoolTiling::SetScenarioInfo, this)};
+                                                    std::bind(&KeyPoolTiling::SetWorkSpaceInfo, this)};
     for (const auto &func : requiredTilingFuncs) {
         if (func() != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -377,8 +371,8 @@ ge::graphStatus KeyPoolTiling::CheckSinglePara() const
         ge::GRAPH_SUCCESS != CheckSingleParaApe() || ge::GRAPH_SUCCESS != CheckSingleParaNormWeight() ||
         ge::GRAPH_SUCCESS != CheckSingleParaNormBias() || ge::GRAPH_SUCCESS != CheckSingleParaCacheBlockTable() ||
         ge::GRAPH_SUCCESS != CheckSingleParaSeqLens() || ge::GRAPH_SUCCESS != CheckSingleParaSeqUsed() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaStartPos() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaPooledKey() || ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio()) {
+        ge::GRAPH_SUCCESS != CheckSingleParaStartPos() || ge::GRAPH_SUCCESS != CheckSingleParaPooledKey() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio()) {
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(context_->normEps != nullptr && *context_->normEps <= 0.0f,
@@ -389,8 +383,8 @@ ge::graphStatus KeyPoolTiling::CheckSinglePara() const
 
 template <typename T>
 ge::graphStatus KeyPoolTiling::CheckFeatureValueSupport(const T *featureValue,
-                                                           const std::vector<T> &expectFeatureValList,
-                                                           const std::string &name) const
+                                                        const std::vector<T> &expectFeatureValList,
+                                                        const std::string &name) const
 {
     if (std::find(expectFeatureValList.begin(), expectFeatureValList.end(), *featureValue) ==
         expectFeatureValList.end()) {
@@ -402,7 +396,7 @@ ge::graphStatus KeyPoolTiling::CheckFeatureValueSupport(const T *featureValue,
 
 template <typename T>
 ge::graphStatus KeyPoolTiling::CheckAttrValueSupport(const T *attrValue, const std::vector<T> &expectAttrValList,
-                                                        const std::string &name) const
+                                                     const std::string &name) const
 {
     if (attrValue == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -428,7 +422,7 @@ std::string to_string(const T &value)
 
 template <typename T>
 void KeyPoolTiling::LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue,
-                                             const std::string &name, const std::string subName) const
+                                          const std::string &name, const std::string subName) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectNumberList.size(); ++i) {
@@ -455,7 +449,7 @@ static std::string LayoutTypeToStr(LayoutType layout)
 }
 
 ge::graphStatus KeyPoolTiling::CheckDimNumInLayoutSupport(const std::string &layout, const gert::StorageShape *shape,
-                                                             const std::string &name) const
+                                                          const std::string &name) const
 {
     const auto &dimIt = LAYOUT_DIM_MAP.find(layout);
     OP_CHECK_IF(shape->GetStorageShape().GetDimNum() != dimIt->second,
@@ -465,8 +459,7 @@ ge::graphStatus KeyPoolTiling::CheckDimNumInLayoutSupport(const std::string &lay
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KeyPoolTiling::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
-                                                    const std::string &name) const
+ge::graphStatus KeyPoolTiling::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const
 {
     if (desc != nullptr) {
         const auto &it = DTYPE_SUPPORT_MAP.find(name);
@@ -483,7 +476,7 @@ ge::graphStatus KeyPoolTiling::CheckDtypeSupport(const gert::CompileTimeTensorDe
 }
 
 void KeyPoolTiling::LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
-                                            const ge::DataType &actualDtype, const std::string &name) const
+                                         const ge::DataType &actualDtype, const std::string &name) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectDtypeList.size(); ++i) {
@@ -529,7 +522,8 @@ ge::graphStatus KeyPoolTiling::CheckSingleParaHiddenStates() const
 {
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->hidden_states.desc, HIDDEN_STATES_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->hidden_states.shape, HIDDEN_STATES_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(LayoutTypeToStr(context_->layout), context_->hidden_states.shape, HIDDEN_STATES_NAME)) {
+        ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(LayoutTypeToStr(context_->layout),
+                                                        context_->hidden_states.shape, HIDDEN_STATES_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -619,8 +613,7 @@ ge::graphStatus KeyPoolTiling::CheckSingleParaNormWeight() const
 {
     bool hasWeight = context_->normWeight.desc != nullptr;
     bool hasBias = context_->normBias.desc != nullptr;
-    OP_CHECK_IF(hasWeight != hasBias,
-                OP_LOGE(context_->opName, "norm_weight and norm_bias must be provided together"),
+    OP_CHECK_IF(hasWeight != hasBias, OP_LOGE(context_->opName, "norm_weight and norm_bias must be provided together"),
                 return ge::GRAPH_FAILED);
     if (!hasWeight) {
         return ge::GRAPH_SUCCESS;
@@ -678,7 +671,8 @@ ge::graphStatus KeyPoolTiling::CheckRequiredInOutExistence() const
 {
     OP_CHECK_IF(context_->hidden_states.shape == nullptr, OP_LOGE(context_->opName, "tensor hidden_states is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->hidden_states.desc == nullptr, OP_LOGE(context_->opName, "tensor hidden_states is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->hidden_states.desc == nullptr, OP_LOGE(context_->opName, "tensor hidden_states is nullptr"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->wk.shape == nullptr, OP_LOGE(context_->opName, "tensor wk is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->wk.desc == nullptr, OP_LOGE(context_->opName, "tensor wk is nullptr"),
@@ -753,8 +747,8 @@ ge::graphStatus KeyPoolTiling::CheckFeature() const
 }
 
 ge::graphStatus KeyPoolTiling::LogErrorShapeConsistency(const std::string &name, const gert::StorageShape *shape,
-                                                           const uint32_t &dimNum, const std::string &subName,
-                                                           const uint32_t &expectNum) const
+                                                        const uint32_t &dimNum, const std::string &subName,
+                                                        const uint32_t &expectNum) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -782,36 +776,36 @@ ge::graphStatus KeyPoolTiling::CheckShapeConsistency() const
                                                       baseParams_->hiddenSize) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("gate_weight", context_->gate_weight.shape, KEY_POOL_DIM_INDEX_1,
                                                       "hiddenSize", baseParams_->hiddenSize) ||
-        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wk", context_->wk.shape, KEY_POOL_DIM_INDEX_0,
-                                                      "headDim", baseParams_->headDim) ||
+        ge::GRAPH_SUCCESS !=
+            LogErrorShapeConsistency("wk", context_->wk.shape, KEY_POOL_DIM_INDEX_0, "headDim", baseParams_->headDim) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("gate_weight", context_->gate_weight.shape, KEY_POOL_DIM_INDEX_0,
                                                       "headDim", baseParams_->headDim) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("stateCache", context_->stateCache.shape, KEY_POOL_DIM_INDEX_2,
                                                       "2*headDim", stateNum * baseParams_->headDim) ||
-        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("ape", context_->ape.shape, KEY_POOL_DIM_INDEX_1,
-                                                      "headDim", baseParams_->headDim) ||
+        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("ape", context_->ape.shape, KEY_POOL_DIM_INDEX_1, "headDim",
+                                                      baseParams_->headDim) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("ape", context_->ape.shape, KEY_POOL_DIM_INDEX_0, "cmpRatio",
                                                       baseParams_->cmpRatio)) {
         return ge::GRAPH_FAILED;
     }
     if (context_->normWeight.shape != nullptr &&
         (ge::GRAPH_SUCCESS != LogErrorShapeConsistency("norm_weight", context_->normWeight.shape, KEY_POOL_DIM_INDEX_0,
-                                                        "headDim", baseParams_->headDim) ||
+                                                       "headDim", baseParams_->headDim) ||
          ge::GRAPH_SUCCESS != LogErrorShapeConsistency("norm_bias", context_->normBias.shape, KEY_POOL_DIM_INDEX_0,
                                                        "headDim", baseParams_->headDim))) {
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != LogErrorShapeConsistency("stateCache", context_->stateCache.shape, KEY_POOL_DIM_INDEX_0,
-                                                       "blockNum", pageAttentionParams_->blockNum) ||
-         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("stateCache", context_->stateCache.shape, KEY_POOL_DIM_INDEX_1,
-                                                       "blockSize", pageAttentionParams_->blockSize)) {
+                                                      "blockNum", pageAttentionParams_->blockNum) ||
+        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("stateCache", context_->stateCache.shape, KEY_POOL_DIM_INDEX_1,
+                                                      "blockSize", pageAttentionParams_->blockSize)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus KeyPoolTiling::CheckDtypeConsistencyHiddenStates(const gert::CompileTimeTensorDesc *desc,
-                                                         const std::string &name) const
+                                                                 const std::string &name) const
 {
     const auto actualDtype = desc->GetDataType();
     OP_CHECK_IF(actualDtype != context_->dtype,
@@ -834,8 +828,7 @@ ge::graphStatus KeyPoolTiling::CheckDtypeConsistency() const
 ge::graphStatus KeyPoolTiling::CheckDimNumConsistency() const
 {
     OP_CHECK_IF(context_->pooledKey.shape->GetStorageShape().GetDimNum() != KEY_POOL_DIM_NUM_3,
-                OP_LOGE(context_->opName, "pooledKey must be a BSH rank-3 tensor"),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_->opName, "pooledKey must be a BSH rank-3 tensor"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

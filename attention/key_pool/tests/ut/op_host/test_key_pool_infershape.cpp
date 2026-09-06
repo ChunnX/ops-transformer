@@ -9,260 +9,104 @@
  */
 
 #include <gtest/gtest.h>
-#include <iostream>
-#include "infer_shape_context_faker.h"
+#include <algorithm>
+#include <cstdint>
+#include <string>
+#include <vector>
+
 #include "infer_shape_case_executor.h"
+#include "infer_shape_context_faker.h"
 
-class KeyPoolInfershape : public testing::Test {
-protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "KeyPoolInfershape SetUp" << std::endl;
+namespace {
+using TensorDesc = gert::InfershapeContextPara::TensorDescription;
+using OpAttr = gert::InfershapeContextPara::OpAttr;
+
+TensorDesc Desc(const std::vector<int64_t> &dims, ge::DataType dtype)
+{
+    return TensorDesc(gert::StorageShape(dims, dims), dtype, ge::FORMAT_ND);
+}
+
+TensorDesc Empty(ge::DataType dtype)
+{
+    return Desc({}, dtype);
+}
+
+gert::InfershapeContextPara MakePara(const std::string &layout, ge::DataType dtype, int64_t batch, int64_t sequence,
+                                     int64_t hidden, int64_t headDim, int64_t cmpRatio, int64_t blockSize,
+                                     int64_t maxBlocks, bool withNorm = false)
+{
+    const int64_t tokenCount = layout == "BSH" ? batch * sequence : sequence;
+    const int64_t blockNum = std::max<int64_t>(1, batch * maxBlocks);
+    std::vector<TensorDesc> inputs;
+    if (layout == "BSH") {
+        inputs.emplace_back(Desc({batch, sequence, hidden}, dtype));
+    } else {
+        inputs.emplace_back(Desc({tokenCount, hidden}, dtype));
     }
+    inputs.emplace_back(Desc({headDim, hidden}, dtype));
+    inputs.emplace_back(Desc({headDim, hidden}, dtype));
+    inputs.emplace_back(Desc({cmpRatio, headDim}, ge::DT_FLOAT));
+    inputs.emplace_back(Desc({blockNum, blockSize, 2 * headDim}, ge::DT_FLOAT));
+    inputs.emplace_back(Desc({batch, maxBlocks}, ge::DT_INT32));
+    inputs.emplace_back(Desc({batch}, ge::DT_INT32));
+    inputs.emplace_back(withNorm ? Desc({headDim}, ge::DT_FLOAT) : Empty(ge::DT_FLOAT));
+    inputs.emplace_back(withNorm ? Desc({headDim}, ge::DT_FLOAT) : Empty(ge::DT_FLOAT));
+    inputs.emplace_back(Empty(ge::DT_BF16));
+    inputs.emplace_back(Empty(ge::DT_BF16));
+    inputs.emplace_back(layout == "TH" ? Desc({batch + 1}, ge::DT_INT32) : Empty(ge::DT_INT32));
+    inputs.emplace_back(Empty(ge::DT_INT32));
 
-    static void TearDownTestCase()
-    {
-        std::cout << "KeyPoolInfershape TearDown" << std::endl;
-    }
-};
+    std::vector<TensorDesc> outputs{Empty(dtype)};
+    std::vector<OpAttr> attrs{
+        {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(cmpRatio)},
+        {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6F)},
+        {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(blockSize * 2 * headDim)},
+    };
 
-// ====================================================================
-// BSH Layout Tests
-// ====================================================================
+    gert::InfershapeContextPara para("KeyPool", inputs, outputs, attrs);
+    return para;
+}
+} // namespace
 
-// C4A: B=2, S=4, H=4096, D=512, coff=2, cmp_ratio=4
-// Sr = ceil(4/4) = 1, output: [2, 1, 512]
-TEST_F(KeyPoolInfershape, bsh_c4a_bf16)
+TEST(KeyPoolInfershape, BshBf16D128)
 {
-    gert::InfershapeContextPara para("KeyPool",
-                                     {
-                                         // input 0: hidden_states [B, S, H]
-                                         {{{2, 4, 4096}, {2, 4, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         // input 1: wk [coff*D, H] = [1024, 4096]
-                                         {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         // input 2: gate_weight [coff*D, H] = [1024, 4096]
-                                         {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         // input 3: state_cache [block_num, block_size, 2*coff*D]
-                                         {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         // input 4: ape [cmp_ratio, coff*D] = [4, 1024]
-                                         {{{4, 1024}, {4, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         // optional inputs (not used in BSH layout)
-                                         {{{2, 4}, {2, 4}}, ge::DT_INT32, ge::FORMAT_ND}, // cache_block_table
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // seq_lens
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // seq_used
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // start_pos
-                                     },
-                                     {
-                                         // output 0: pooled_key (placeholder)
-                                         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-                                     },
-                                     {
-                                         // attrs
-                                         {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-                                         {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-                                     });
-    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 1, 512}};
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+    auto para = MakePara("BSH", ge::DT_BF16, 2, 8, 2048, 128, 4, 4, 2);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{2, 2, 128}});
 }
 
-// C4A fp16: B=2, S=4, H=4096, D=512, coff=2, cmp_ratio=4
-TEST_F(KeyPoolInfershape, bsh_c4a_fp16)
+TEST(KeyPoolInfershape, BshFp16D512)
 {
-    gert::InfershapeContextPara para("KeyPool",
-                                     {
-                                         {{{2, 4, 4096}, {2, 4, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         {{{1024, 4096}, {1024, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         {{{1024, 4096}, {1024, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                         {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         {{{4, 1024}, {4, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         {{{2, 4}, {2, 4}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-                                     },
-                                     {
-                                         {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                     },
-                                     {
-                                         {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-                                         {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-                                     });
-    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 1, 512}};
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+    auto para = MakePara("BSH", ge::DT_FLOAT16, 1, 256, 4096, 512, 128, 128, 2);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{1, 2, 512}});
 }
 
-// C4Li: B=2, S=4, H=2048, D=128, coff=2, cmp_ratio=4
-// Sr = ceil(4/4) = 1, output: [2, 1, 128]
-TEST_F(KeyPoolInfershape, bsh_c4li_bf16)
+TEST(KeyPoolInfershape, BshLayerNorm)
 {
-    gert::InfershapeContextPara para("KeyPool",
-                                     {
-                                         {{{2, 4, 2048}, {2, 4, 2048}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         {{{256, 2048}, {256, 2048}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         {{{256, 2048}, {256, 2048}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         {{{4, 128, 512}, {4, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         {{{4, 256}, {4, 256}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         {{{2, 4}, {2, 4}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-                                     },
-                                     {
-                                         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-                                     },
-                                     {
-                                         {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-                                         {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-                                     });
-    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 1, 128}};
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+    auto para = MakePara("BSH", ge::DT_BF16, 2, 16, 4096, 512, 8, 8, 2, true);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{2, 2, 512}});
 }
 
-// C128A: B=2, S=8, H=4096, D=512, coff=1, cmp_ratio=128
-// Sr = ceil(8/128) = 1, output: [2, 1, 512]
-TEST_F(KeyPoolInfershape, bsh_c128a_bf16)
+TEST(KeyPoolInfershape, ThUnevenBatch)
 {
-    gert::InfershapeContextPara para("KeyPool",
-                                     {
-                                         {{{2, 8, 4096}, {2, 8, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         {{{512, 4096}, {512, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         {{{512, 4096}, {512, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         {{{4, 128, 1024}, {4, 128, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         {{{128, 512}, {128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-                                     },
-                                     {
-                                         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-                                     },
-                                     {
-                                         {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-                                         {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-                                     });
-    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 1, 512}};
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+    auto para = MakePara("TH", ge::DT_BF16, 3, 17, 4096, 512, 4, 4, 4);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{3, 4, 512}});
 }
 
-// BSH non-divisible: B=1, S=6, H=2048, D=128, coff=2, cmp_ratio=4
-// Sr = ceil(6/4) = 2, output: [1, 2, 128]
-TEST_F(KeyPoolInfershape, bsh_non_divisible)
+TEST(KeyPoolInfershape, ThFp16)
 {
-    gert::InfershapeContextPara para("KeyPool",
-                                     {
-                                         {{{1, 6, 2048}, {1, 6, 2048}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         {{{256, 2048}, {256, 2048}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         {{{256, 2048}, {256, 2048}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         {{{2, 128, 512}, {2, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         {{{4, 256}, {4, 256}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         {{{1, 6}, {1, 6}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-                                     },
-                                     {
-                                         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-                                     },
-                                     {
-                                         {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-                                         {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-                                     });
-    std::vector<std::vector<int64_t>> expectOutputShape = {{1, 2, 128}};
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+    auto para = MakePara("TH", ge::DT_FLOAT16, 2, 256, 2048, 128, 16, 16, 2);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{2, 2, 128}});
 }
 
-// ====================================================================
-// TH Layout Tests
-// ====================================================================
-
-// TH: T=8, H=128, B=2, seqLens=[0,4,8]
-// Sr = min(8, 8/4 + 3 - 1) = min(8, 4) = 4, output: [4, 512]
-TEST_F(KeyPoolInfershape, th_c4a_bf16)
+TEST(KeyPoolInfershape, EmptyBatch)
 {
-    gert::InfershapeContextPara para("KeyPool",
-                                     {
-                                         // hidden_states [T, H] = [8, 4096]
-                                         {{{8, 4096}, {8, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         // wk [coff*D, H] = [1024, 4096]
-                                         {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         // gate_weight [coff*D, H] = [1024, 4096]
-                                         {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         // state_cache [block_num, block_size, 2*coff*D]
-                                         {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         // ape [cmp_ratio, coff*D] = [4, 1024]
-                                         {{{4, 1024}, {4, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         // optional inputs
-                                         {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND}, // cache_block_table
-                                                                                  // seq_lens [B+1] = [3]
-                                         {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // seq_used
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // start_pos
-                                     },
-                                     {
-                                         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-                                     },
-                                     {
-                                         {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-                                         {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-                                     });
-    std::vector<std::vector<int64_t>> expectOutputShape = {{4, 512}};
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+    auto para = MakePara("BSH", ge::DT_BF16, 0, 8, 4096, 512, 4, 4, 2);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{0, 2, 512}});
 }
 
-// TH: T=16, H=4096, B=3, seqLens=[0,4,10,16]
-// Sr = min(16, 16/4 + 4 - 1) = min(16, 7) = 7, output: [7, 512]
-TEST_F(KeyPoolInfershape, th_c4a_multi_batch)
+TEST(KeyPoolInfershape, ZeroCmpRatio)
 {
-    gert::InfershapeContextPara para("KeyPool",
-                                     {
-                                         {{{16, 4096}, {16, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         {{{4, 1024}, {4, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         {{{3, 16}, {3, 16}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-                                     },
-                                     {
-                                         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-                                     },
-                                     {
-                                         {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-                                         {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-                                     });
-    std::vector<std::vector<int64_t>> expectOutputShape = {{7, 512}};
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
-}
-
-// ====================================================================
-// Empty tensor (B=0 in BSH) — infershape should still succeed
-// ====================================================================
-
-TEST_F(KeyPoolInfershape, bsh_empty_batch)
-{
-    gert::InfershapeContextPara para("KeyPool",
-                                     {
-                                         {{{0, 4, 4096}, {0, 4, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         {{{4, 1024}, {4, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                         {{{0, 4}, {0, 4}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-                                     },
-                                     {
-                                         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-                                     },
-                                     {
-                                         {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-                                         {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-                                     });
-    // B=0, Sr=ceil(4/4)=1, output: [0, 1, 512]
-    std::vector<std::vector<int64_t>> expectOutputShape = {{0, 1, 512}};
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+    auto para = MakePara("BSH", ge::DT_BF16, 2, 8, 2048, 128, 0, 4, 2);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
 }

@@ -1,8 +1,11 @@
-"""CPU Golden and an independent Torch Oracle for KeyPool.
-
-The first implementation intentionally rejects non-empty RoPE inputs because the
-first KeyPool kernel version keeps the interface but does not implement RoPE.
-"""
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 
 from __future__ import annotations
 
@@ -48,7 +51,9 @@ def _split_hidden(
         raise ValueError("cu_seqlens must be nondecreasing")
     if offsets[-1] != hidden_states.size(0):
         raise ValueError("cu_seqlens[-1] must equal hidden_states.shape[0]")
-    lengths = [next_offset - offset for offset, next_offset in zip(offsets, offsets[1:])]
+    lengths = [
+        next_offset - offset for offset, next_offset in zip(offsets, offsets[1:])
+    ]
     chunks = []
     offset = 0
     for length in lengths:
@@ -145,8 +150,12 @@ def validate_inputs(
         if int(start_pos[batch]) + length > capacity:
             raise ValueError("updated sequence length exceeds logical cache capacity")
         if int(start_pos[batch]) + length > 0:
-            required_blocks = (int(start_pos[batch]) + length + state_cache.size(1) - 1) // state_cache.size(1)
-            if any(int(value) == 0 for value in cache_block_table[batch, :required_blocks]):
+            required_blocks = (
+                int(start_pos[batch]) + length + state_cache.size(1) - 1
+            ) // state_cache.size(1)
+            if any(
+                int(value) == 0 for value in cache_block_table[batch, :required_blocks]
+            ):
                 raise ValueError("physical block 0 is invalid for a used logical block")
 
 
@@ -154,13 +163,12 @@ def _project(
     hidden: torch.Tensor,
     wk: torch.Tensor,
     gate_weight: torch.Tensor,
-    norm_weight: Optional[torch.Tensor],
-    norm_bias: Optional[torch.Tensor],
-    norm_eps: float,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     hidden_fp32 = hidden.float()
     k = torch.matmul(hidden_fp32, wk.float().transpose(-1, -2)).to(hidden.dtype)
-    gate = torch.matmul(hidden_fp32, gate_weight.float().transpose(-1, -2)).to(hidden.dtype)
+    gate = torch.matmul(hidden_fp32, gate_weight.float().transpose(-1, -2)).to(
+        hidden.dtype
+    )
     return k, gate
 
 
@@ -175,8 +183,9 @@ def _normalize_key(
     key_fp32 = key.float()
     mean = key_fp32.mean(dim=-1, keepdim=True)
     variance = (key_fp32 - mean).square().mean(dim=-1, keepdim=True)
-    return (((key_fp32 - mean) / torch.sqrt(variance + norm_eps)) *
-            norm_weight + norm_bias).to(key.dtype)
+    return (
+        ((key_fp32 - mean) / torch.sqrt(variance + norm_eps)) * norm_weight + norm_bias
+    ).to(key.dtype)
 
 
 def _write_cache(
@@ -218,7 +227,9 @@ def _read_cache(
     if physical_block == 0:
         raise ValueError("attempted to read through invalid physical block 0")
     width = state_cache.size(-1) // 2
-    return state_cache[physical_block, offset, :width], state_cache[physical_block, offset, width:]
+    return state_cache[physical_block, offset, :width], state_cache[
+        physical_block, offset, width:
+    ]
 
 
 def _pool_one_batch_loop(
@@ -246,7 +257,9 @@ def _pool_one_batch_loop(
                 key = current_k[current_index].float()
                 gate = current_gate[current_index].float()
             else:
-                key, gate = _read_cache(state_cache, cache_block_table, batch, logical_pos)
+                key, gate = _read_cache(
+                    state_cache, cache_block_table, batch, logical_pos
+                )
             keys.append(key)
             gates.append(gate + ape[relative])
         key_tensor = torch.stack(keys, dim=0)
@@ -254,8 +267,8 @@ def _pool_one_batch_loop(
         probabilities = torch.softmax(logits, dim=0)
         probabilities = probabilities.to(torch.bfloat16).float()
         output[batch, pool - first_pool] = (
-            probabilities * key_tensor
-        ).sum(dim=0).to(torch.bfloat16)
+            (probabilities * key_tensor).sum(dim=0).to(torch.bfloat16)
+        )
 
 
 def run_key_pool_golden(
@@ -279,8 +292,22 @@ def run_key_pool_golden(
 ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
     """Reference implementation using scalar logical Cache traversal."""
     validate_inputs(
-        hidden_states, wk, gate_weight, ape, state_cache, cache_block_table, start_pos,
-        norm_weight, norm_bias, cos, sin, cu_seqlens, seqused, cmp_ratio, norm_eps, rotary_mode,
+        hidden_states,
+        wk,
+        gate_weight,
+        ape,
+        state_cache,
+        cache_block_table,
+        start_pos,
+        norm_weight,
+        norm_bias,
+        cos,
+        sin,
+        cu_seqlens,
+        seqused,
+        cmp_ratio,
+        norm_eps,
+        rotary_mode,
         enforce_model_dims,
     )
     batch_hidden, lengths = _split_hidden(
@@ -289,16 +316,22 @@ def run_key_pool_golden(
     k_parts = []
     gate_parts = []
     for hidden in batch_hidden:
-        k, gate = _project(hidden, wk, gate_weight, norm_weight, norm_bias, norm_eps)
+        k, gate = _project(hidden, wk, gate_weight)
         k = _normalize_key(k.float(), norm_weight, norm_bias, norm_eps)
         k_parts.append(k)
         gate_parts.append(gate)
     for batch, (k, gate) in enumerate(zip(k_parts, gate_parts)):
-        _write_cache(state_cache, cache_block_table, start_pos, batch, k, gate, cmp_ratio)
+        _write_cache(
+            state_cache, cache_block_table, start_pos, batch, k, gate, cmp_ratio
+        )
 
-    pcap = (cache_block_table.size(1) * state_cache.size(1) + cmp_ratio - 1) // cmp_ratio
+    pcap = (
+        cache_block_table.size(1) * state_cache.size(1) + cmp_ratio - 1
+    ) // cmp_ratio
     output = torch.zeros(
-        (len(batch_hidden), pcap, wk.size(0)), dtype=torch.bfloat16, device=state_cache.device
+        (len(batch_hidden), pcap, wk.size(0)),
+        dtype=torch.bfloat16,
+        device=state_cache.device,
     )
     for batch, length in enumerate(lengths):
         updated_len = int(start_pos[batch]) + length
@@ -316,7 +349,9 @@ def run_key_pool_golden(
         )
     intermediates = {
         "k_projection": torch.cat(k_parts, dim=0) if k_parts else torch.empty(0),
-        "gate_projection": torch.cat(gate_parts, dim=0) if gate_parts else torch.empty(0),
+        "gate_projection": torch.cat(gate_parts, dim=0)
+        if gate_parts
+        else torch.empty(0),
         "state_cache": state_cache,
     }
     return output, intermediates
@@ -343,8 +378,22 @@ def run_key_pool_oracle(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Independent vectorized Pool read/softmax implementation."""
     validate_inputs(
-        hidden_states, wk, gate_weight, ape, state_cache, cache_block_table, start_pos,
-        norm_weight, norm_bias, cos, sin, cu_seqlens, seqused, cmp_ratio, norm_eps, rotary_mode,
+        hidden_states,
+        wk,
+        gate_weight,
+        ape,
+        state_cache,
+        cache_block_table,
+        start_pos,
+        norm_weight,
+        norm_bias,
+        cos,
+        sin,
+        cu_seqlens,
+        seqused,
+        cmp_ratio,
+        norm_eps,
+        rotary_mode,
         enforce_model_dims,
     )
     batch_hidden, lengths = _split_hidden(
@@ -353,11 +402,13 @@ def run_key_pool_oracle(
     k_parts = []
     gate_parts = []
     for batch, hidden in enumerate(batch_hidden):
-        k, gate = _project(hidden, wk, gate_weight, norm_weight, norm_bias, norm_eps)
+        k, gate = _project(hidden, wk, gate_weight)
         k = _normalize_key(k.float(), norm_weight, norm_bias, norm_eps)
         k_parts.append(k)
         gate_parts.append(gate)
-        _write_cache(state_cache, cache_block_table, start_pos, batch, k, gate, cmp_ratio)
+        _write_cache(
+            state_cache, cache_block_table, start_pos, batch, k, gate, cmp_ratio
+        )
 
     batch_size = len(batch_hidden)
     block_size = state_cache.size(1)
@@ -379,7 +430,9 @@ def run_key_pool_oracle(
     offsets = offsets.to(torch.long)
     gathered = state_cache[physical, offsets]
     gathered = gathered.view(batch_size, pcap, cmp_ratio, -1)
-    updated_lens = start_pos.to(torch.long) + torch.tensor(lengths, device=start_pos.device)
+    updated_lens = start_pos.to(torch.long) + torch.tensor(
+        lengths, device=start_pos.device
+    )
     # Completed pools may contain current-call tokens that are intentionally
     # absent from the final tail-only state_cache. Overlay those tokens from
     # the current projection before pooling.
@@ -387,9 +440,8 @@ def run_key_pool_oracle(
     for batch, (k, gate) in enumerate(zip(k_parts, gate_parts)):
         current_start = int(start_pos[batch])
         current_end = int(updated_lens[batch])
-        current_mask = (
-            (logical_positions[batch] >= current_start)
-            & (logical_positions[batch] < current_end)
+        current_mask = (logical_positions[batch] >= current_start) & (
+            logical_positions[batch] < current_end
         )
         current_index = (logical_positions[batch] - current_start).clamp(
             min=0, max=max(k.size(0) - 1, 0)
@@ -402,10 +454,15 @@ def run_key_pool_oracle(
         ].float()
     keys = gathered[..., : wk.size(0)]
     gates = gathered[..., wk.size(0) :]
-    valid = logical_positions.view(batch_size, pcap, cmp_ratio) < updated_lens[:, None, None]
+    valid = (
+        logical_positions.view(batch_size, pcap, cmp_ratio)
+        < updated_lens[:, None, None]
+    )
     logits = gates + ape.view(1, 1, cmp_ratio, -1)
     logits = logits.masked_fill(~valid[..., None], float("-inf"))
-    probabilities = torch.nan_to_num(torch.softmax(logits, dim=2)).to(torch.bfloat16).float()
+    probabilities = (
+        torch.nan_to_num(torch.softmax(logits, dim=2)).to(torch.bfloat16).float()
+    )
     pooled = (probabilities * keys).sum(dim=2).to(torch.bfloat16)
     complete = valid.all(dim=2)
     pooled = pooled.masked_fill(~complete[..., None], 0)

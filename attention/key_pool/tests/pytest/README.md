@@ -1,32 +1,50 @@
-# KeyPool Phase 1 CPU Golden
+# KeyPool Tests
 
-`key_pool_golden.py`包含两套实现：
+This directory contains the maintained KeyPool precision validation entry
+point. The test uses the public `torch_npu.key_pool` interface and the
+independent CPU Golden implementation. Legacy parameter-combination,
+equivalence, profiling, and ad-hoc regression scripts are intentionally not
+part of the release tree.
 
-- `run_key_pool_golden`：逐Batch、逐Token读取Block Table和State Cache的参考实现。
-- `run_key_pool_oracle`：向量化读取Cache、分组Softmax和加权ReduceSum的独立Torch实现。
+## Maintained Files
 
-两套实现都覆盖：
+| File | Purpose |
+| --- | --- |
+| `test_key_pool_precision_standalone.py` | Direct NPU-versus-Golden precision check |
+| `key_pool_golden.py` | CPU Golden and independent Torch Oracle used by the precision check |
+| `key_pool_public_loader.py` | Loads only the installed KeyPool public module |
+
+## Coverage
+
+The standalone check covers representative:
 
 ```text
-BSH [B,S,H]
-TH  [T,H] + cu_seqlens[B+1]
-K/Gate投影
-可选LayerNorm
-State Cache写入
-Block Table寻址
-Gate + APE
-逐通道Softmax
-BF16概率量化
-加权K归约
-固定容量输出和无效尾部清零
+BSH [B, S, H]
+TH  [T, H] with cu_seqlens
+K/Gate projection
+optional LayerNorm
+state-cache update and Block Table addressing
+Gate + APE pooling
+all supported compression ratios
+fixed-capacity pooled output and zero tail
+non-empty RoPE rejection through the public interface contract
 ```
 
-首版本RoPE接口保留，但传入非空`cos/sin`时显式抛出
-`NotImplementedError`，不静默忽略。
+RoPE remains an interface placeholder. Non-empty `cos`/`sin` inputs must be
+rejected explicitly and must not be silently ignored.
 
-设置`KEYPOOL_CASE_ROOT`后，`test_key_pool_manifest.py`会读取Phase 0.5归档的
-Smoke、Typical、Full和Performance manifest。正常用例执行两套Oracle
-bitwise比对；异常用例在接口阶段继续补充逐项拒绝验证。
+The NPU scripts are intended to run after the CANN, custom OPP, and wheel
+environments have been loaded. They do not require `torchair`.
 
-本地Windows没有PyTorch/CANN运行环境，因此测试在A2/A5远端CPU Python环境中
-执行。此阶段不调用NPU算子，也不声称NPU精度通过。
+Run the maintained validation directly:
+
+```bash
+python3 test_key_pool_precision_standalone.py
+```
+
+The script has no command-line parameters. It generates four representative
+BSH/TH cases, with and without LayerNorm, historical cache data, non-trivial
+start positions, shuffled block tables, zero-length TH batches, and multiple
+compression ratios. It validates both `pooled_key` and the in-place
+`state_cache` update against the CPU Golden and exits with a non-zero status
+when any case fails.

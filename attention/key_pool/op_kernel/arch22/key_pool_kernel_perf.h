@@ -23,7 +23,6 @@
 #include "key_pool_block_cube_perf.h"
 #include "key_pool_block_vec_perf.h"
 
-
 using namespace AscendC;
 
 namespace KeyPool {
@@ -32,15 +31,15 @@ template <typename COMP>
 class KeyPoolKernelPerf {
 public:
     __aicore__ inline KeyPoolKernelPerf(TPipe *pipe, const optiling::KeyPoolTilingData *__restrict tilingData)
-        : pipe_(pipe), tilingData_(tilingData)
-    {
-    }
+        : pipe_(pipe),
+          tilingData_(tilingData)
+    {}
 
     __aicore__ inline void Init(__gm__ uint8_t *hidden_states, __gm__ uint8_t *wk, __gm__ uint8_t *gateWeight,
-                                __gm__ uint8_t *normWeight, __gm__ uint8_t *normBias,
-                                __gm__ uint8_t *stateCache, __gm__ uint8_t *ape, __gm__ uint8_t *cacheBlockTable,
-                                __gm__ uint8_t *seqLens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
-                                __gm__ uint8_t *pooledKeyOut, __gm__ uint8_t *workspace);
+                                __gm__ uint8_t *normWeight, __gm__ uint8_t *normBias, __gm__ uint8_t *stateCache,
+                                __gm__ uint8_t *ape, __gm__ uint8_t *cacheBlockTable, __gm__ uint8_t *seqLens,
+                                __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos, __gm__ uint8_t *pooledKeyOut,
+                                __gm__ uint8_t *workspace);
     __aicore__ inline void Process();
 
 private:
@@ -66,7 +65,8 @@ private:
     __aicore__ inline bool IsNeedExcuteC1(RunInfo info);
     __aicore__ inline void CalcC1V1Params(RunInfo &info, Vec1RunInfo &vec1Info, BatchInfo &batchInfo, uint32_t loopIdx);
 
-    using HIDDEN_STATES_T = typename AscendC::Conditional<COMP::hiddenStatesDtype == HIDDEN_STATES_DTYPE::BF16, bfloat16_t, half>::type;
+    using HIDDEN_STATES_T =
+        typename AscendC::Conditional<COMP::hiddenStatesDtype == HIDDEN_STATES_DTYPE::BF16, bfloat16_t, half>::type;
     using T = float;
     using MM1_OUT_T = T;
     using VEC1_OUT_T = T;
@@ -106,12 +106,13 @@ private:
 };
 
 template <typename COMP>
-__aicore__ inline void
-KeyPoolKernelPerf<COMP>::Init(__gm__ uint8_t *hidden_states, __gm__ uint8_t *wk, __gm__ uint8_t *gateWeight,
-                                 __gm__ uint8_t *normWeight, __gm__ uint8_t *normBias,
-                                 __gm__ uint8_t *stateCache, __gm__ uint8_t *ape, __gm__ uint8_t *cacheBlockTable,
-                                 __gm__ uint8_t *seqLens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
-                                 __gm__ uint8_t *pooledKeyOut, __gm__ uint8_t *workspace)
+__aicore__ inline void KeyPoolKernelPerf<COMP>::Init(__gm__ uint8_t *hidden_states, __gm__ uint8_t *wk,
+                                                     __gm__ uint8_t *gateWeight, __gm__ uint8_t *normWeight,
+                                                     __gm__ uint8_t *normBias, __gm__ uint8_t *stateCache,
+                                                     __gm__ uint8_t *ape, __gm__ uint8_t *cacheBlockTable,
+                                                     __gm__ uint8_t *seqLens, __gm__ uint8_t *seqUsed,
+                                                     __gm__ uint8_t *startPos, __gm__ uint8_t *pooledKeyOut,
+                                                     __gm__ uint8_t *workspace)
 {
     if ASCEND_IS_AIV {
         constInfo.aiCoreIdx = GetBlockIdx() / 2;
@@ -150,8 +151,8 @@ KeyPoolKernelPerf<COMP>::Init(__gm__ uint8_t *hidden_states, __gm__ uint8_t *wk,
     // 4. 初始化block层
     if ASCEND_IS_AIC {
         blockCube_.InitParams(constInfo, tools_);
-        blockCube_.Init(hidden_states, wk, gateWeight, stateCache, ape, cacheBlockTable, seqLens,
-                        seqUsed, startPos, pooledKeyOut);
+        blockCube_.Init(hidden_states, wk, gateWeight, stateCache, ape, cacheBlockTable, seqLens, seqUsed, startPos,
+                        pooledKeyOut);
         blockCube_.InitBuffers(pipe_);
         blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
     } else {
@@ -247,7 +248,6 @@ __aicore__ inline void KeyPoolKernelPerf<COMP>::SetBaseSize()
     }
 }
 
-
 template <typename COMP>
 __aicore__ inline void KeyPoolKernelPerf<COMP>::SkipInvalidBatch(BatchInfo &batchInfo)
 {
@@ -275,10 +275,9 @@ __aicore__ inline void KeyPoolKernelPerf<COMP>::SkipInvalidBatch(BatchInfo &batc
     }
 }
 
-
 template <typename COMP>
 __aicore__ inline void KeyPoolKernelPerf<COMP>::UpdateCurGroup(BasicBlockInfo &basicBlockInfo, BatchInfo batchInfo,
-                                                                  uint32_t &curGroupQuota, uint32_t curDealSeq)
+                                                               uint32_t &curGroupQuota, uint32_t curDealSeq)
 {
     // 更新当前组的信息
     if (curGroupQuota == 0 && !isFirstUpdateCurGroup) {
@@ -369,7 +368,6 @@ __aicore__ inline BasicBlockInfo KeyPoolKernelPerf<COMP>::SkipOneLoop(BatchInfo 
     return basicBlockInfo;
 }
 
-
 template <typename COMP>
 __aicore__ inline uint32_t KeyPoolKernelPerf<COMP>::GetLoopTimes()
 {
@@ -397,9 +395,8 @@ __aicore__ inline void KeyPoolKernelPerf<COMP>::CalcSplitCoreInfo()
 
     constInfo.mm1ResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * constInfo.coreGroupNum;
 
-    constexpr uint32_t coff = 1;
-    constInfo.mm1KvResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * coff;
-    constInfo.mm1ScoreResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * coff;
+    constInfo.mm1KvResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim;
+    constInfo.mm1ScoreResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim;
     constInfo.vec1ResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
 
     constInfo.dbSize = (uint64_t)constInfo.coreGroupNum * constInfo.mm1KvResSize;
@@ -436,8 +433,7 @@ __aicore__ inline void KeyPoolKernelPerf<COMP>::InitWorkspace(__gm__ uint8_t *wo
     offset += constInfo.dbWorkspaceRatio * constInfo.vec1TailCacheSize * sizeof(MM1_OUT_T);
 
     normalizedKvGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset));
-    offset += static_cast<uint64_t>(constInfo.dbWorkspaceRatio) *
-              constInfo.usedCoreNum * 2U * constInfo.vec1ResSize *
+    offset += static_cast<uint64_t>(constInfo.dbWorkspaceRatio) * constInfo.usedCoreNum * 2U * constInfo.vec1ResSize *
               sizeof(MM1_OUT_T);
 }
 
@@ -502,7 +498,7 @@ __aicore__ inline bool KeyPoolKernelPerf<COMP>::IsNeedExcuteC1(RunInfo info)
 
 template <typename COMP>
 __aicore__ inline void KeyPoolKernelPerf<COMP>::CalcC1V1Params(RunInfo &info, Vec1RunInfo &vec1Info,
-                                                                  BatchInfo &batchInfo, uint32_t loopIdx)
+                                                               BatchInfo &batchInfo, uint32_t loopIdx)
 {
     vec1Info.bStart = batchInfo.bIdx;
     vec1Info.sStart = batchInfo.sIdx;

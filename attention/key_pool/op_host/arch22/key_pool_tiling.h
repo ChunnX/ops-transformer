@@ -20,8 +20,6 @@
 #include <string>
 #include <vector>
 #include <map>
-#include <unordered_map>
-#include <sstream>
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "exe_graph/runtime/tiling_context.h"
@@ -66,11 +64,9 @@ constexpr uint32_t POOLED_KEY_OUTPUT_INDEX = 0;
 constexpr uint32_t KEY_POOL_DIM_NUM_1 = 1;
 constexpr uint32_t KEY_POOL_DIM_NUM_2 = 2;
 constexpr uint32_t KEY_POOL_DIM_NUM_3 = 3;
-constexpr uint32_t KEY_POOL_DIM_NUM_4 = 4;
 constexpr uint32_t KEY_POOL_DIM_INDEX_0 = 0;
 constexpr uint32_t KEY_POOL_DIM_INDEX_1 = 1;
 constexpr uint32_t KEY_POOL_DIM_INDEX_2 = 2;
-constexpr uint32_t KEY_POOL_DIM_INDEX_3 = 3;
 
 // CONSTRAINTS
 constexpr uint32_t MAX_HIDDEN_SIZE = 10240;
@@ -184,26 +180,20 @@ struct RequiredParaInfo {
 struct OptionalParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::StorageShape *shape;
-    const gert::Tensor *tensor;
 };
 
-enum class LayoutType { LAYOUT_BSH, LAYOUT_TH };
+enum class LayoutType {
+    LAYOUT_BSH,
+    LAYOUT_TH
+};
 
-enum class TemplateId : uint8_t { NORMAL = 0, EMPTY_HIDDEN_STATES = 1, FULL_LOAD = 2 };
+enum class TemplateId : uint8_t {
+    NORMAL = 0,
+    EMPTY_HIDDEN_STATES = 1,
+    FULL_LOAD = 2
+};
 
 CMP_EXTERN_C ge::graphStatus TilingKeyPool(gert::TilingContext *context);
-struct KeyPoolBaseShapeInfo {
-    uint32_t bSize = 0;    // B
-    uint32_t sSize = 0;    // S
-    uint32_t hSize = 0;    // Hidden size
-    uint32_t tSize = 0;    // T
-    uint32_t nSize = 0;    // N
-    uint32_t dSize = 0;    // D
-    uint32_t csSize = 0;   // Compress sequence len
-    uint32_t rSize = 0;    // Compress ratio
-    uint32_t drSize = 0;   // Dr
-};
-
 #ifdef DAY0_SCOPE
 const std::vector<int> CMP_RATIO{4, 128};
 #else
@@ -247,7 +237,9 @@ struct KeyPoolContext {
 
 class KeyPoolTiling {
 public:
-    explicit KeyPoolTiling(KeyPoolContext *context) : context_(context) {}
+    explicit KeyPoolTiling(KeyPoolContext *context)
+        : context_(context)
+    {}
     ~KeyPoolTiling() = default;
 
     static ge::graphStatus ConvertContext(gert::TilingContext &context, KeyPoolContext &key_poolContext);
@@ -261,7 +253,6 @@ private:
     ge::graphStatus SetBaseInfo();
     ge::graphStatus SetPageAttentionInfo();
     ge::graphStatus SetWorkSpaceInfo();
-    ge::graphStatus SetScenarioInfo();
     ge::graphStatus SetTemplateId();
     ge::graphStatus SetInnerSplitInfo();
     ge::graphStatus CalcWorkSpace();
@@ -303,28 +294,23 @@ private:
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckFeature() const;
     ge::graphStatus CheckShapeConsistency() const;
-    ge::graphStatus CheckDtypeConsistencyHiddenStates(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
+    ge::graphStatus CheckDtypeConsistencyHiddenStates(const gert::CompileTimeTensorDesc *desc,
+                                                      const std::string &name) const;
     ge::graphStatus CheckDtypeConsistency() const;
     ge::graphStatus CheckMultiParaConsistency() const;
     ge::graphStatus CheckDimNumConsistency() const;
     ge::graphStatus CheckEmptyTensor() const;
-    ge::graphStatus CheckScenarioConsistency() const;
     ge::graphStatus CheckBlockDimConstrain() const;
 
     size_t ubSize_ = 0;
     size_t l1Size_ = 0;
     size_t l0cSize_ = 0;
     size_t l0bSize_ = 0;
-    uint32_t coreNum_ = 0;
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     size_t libapiSize_ = 0;
     size_t workspaceSize_ = 0;
-    uint32_t mBaseSize = 0;
-    uint32_t dbaseSize = 0;
-
-    KeyPoolBaseShapeInfo baseShapeInfo_;
     KeyPoolContext *context_ = nullptr;
     KeyPoolBaseParams *baseParams_ = nullptr;
     KeyPoolPageAttentionParams *pageAttentionParams_ = nullptr;

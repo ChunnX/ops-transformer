@@ -75,14 +75,23 @@ __aicore__ inline T CeilPow2(T num)
     return num;
 }
 
-enum class HIDDEN_STATES_LAYOUT : std::uint8_t { BSH = static_cast<std::uint8_t>(0), TH = static_cast<std::uint8_t>(1) };
+enum class HIDDEN_STATES_LAYOUT : std::uint8_t {
+    BSH = static_cast<std::uint8_t>(0),
+    TH = static_cast<std::uint8_t>(1)
+};
 
-enum class HIDDEN_STATES_DTYPE : std::uint8_t { BF16 = static_cast<std::uint8_t>(0), FP16 = static_cast<std::uint8_t>(1) };
+enum class HIDDEN_STATES_DTYPE : std::uint8_t {
+    BF16 = static_cast<std::uint8_t>(0),
+    FP16 = static_cast<std::uint8_t>(1)
+};
 
 // KeyPool currently instantiates only the non-overlap, linear-cache path.
 // Keep the compile-time compatibility values until the legacy vector cleanup
 // is completed without changing the validated execution path.
-enum class COFF : std::uint8_t { DISABLE = static_cast<std::uint8_t>(1), OVERLAP = static_cast<std::uint8_t>(2) };
+enum class COFF : std::uint8_t {
+    DISABLE = static_cast<std::uint8_t>(1),
+    OVERLAP = static_cast<std::uint8_t>(2)
+};
 // The public interface is fixed to linear cache. Keep the legacy enum value
 // because some uninstantiated vector helpers still reference it.
 enum class CACHE_MODE : std::uint8_t {
@@ -90,7 +99,11 @@ enum class CACHE_MODE : std::uint8_t {
     RING_BUFFER = static_cast<std::uint8_t>(2)
 };
 
-enum class TEMPLATE_ID : uint8_t { NORMAL = 0, EMPTY_HIDDEN_STATES = 1, FULL_LOAD = 2 };
+enum class TEMPLATE_ID : uint8_t {
+    NORMAL = 0,
+    EMPTY_HIDDEN_STATES = 1,
+    FULL_LOAD = 2
+};
 
 template <HIDDEN_STATES_LAYOUT HIDDEN_STATES_L, HIDDEN_STATES_DTYPE HIDDEN_STATES_T, typename... Args>
 struct COMPType {
@@ -103,7 +116,9 @@ struct COMPType {
 struct CmpBlockInfo {
     __aicore__ inline CmpBlockInfo(){};
     __aicore__ inline CmpBlockInfo(uint32_t bIdx, uint32_t sIdx, bool needReset = false)
-        : bIdx(bIdx), sIdx(sIdx), needReset(needReset){};
+        : bIdx(bIdx),
+          sIdx(sIdx),
+          needReset(needReset){};
 
     uint32_t bIdx = 0U;
     uint32_t sIdx = 0U;
@@ -261,7 +276,9 @@ struct MSplitInfo {
 
 struct BlockInfo {
     __aicore__ inline BlockInfo(uint32_t bIdx, uint32_t sIdx, uint32_t dealSeqSize)
-        : bIdx(bIdx), sIdx(sIdx), dealSeqSize(dealSeqSize){};
+        : bIdx(bIdx),
+          sIdx(sIdx),
+          dealSeqSize(dealSeqSize){};
     uint32_t bIdx = 0U;
     uint32_t sIdx = 0U;
     uint32_t dealSeqSize = 0;
@@ -333,19 +350,11 @@ __aicore__ inline constexpr uint32_t BlockElementNum()
     return static_cast<uint32_t>(BYTE_BLOCK / sizeof(C));
 }
 
-template <typename C>
-__aicore__ inline constexpr uint32_t RepeatElementNum()
-{
-    return static_cast<uint32_t>(REPEAT_BLOCK_BYTE / sizeof(C));
-}
-
 // BLOCK和REPEAT的FP32元素数
 inline constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float);         // 8
 inline constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(float); // 64
 inline constexpr uint32_t REPEAT_STRIDE_NUM = REPEAT_BLOCK_BYTE / BYTE_BLOCK;          // 8
 inline constexpr uint32_t REPEAT_MAX_NUM = 255;
-inline constexpr uint32_t BRCB_NUM = 8;
-inline constexpr uint32_t MAX_R = 256;
 
 inline constexpr uint32_t NZ_FRACTAL_DIM = 16;
 inline constexpr uint32_t WEIGHT_MATRIX_NUM = 2;

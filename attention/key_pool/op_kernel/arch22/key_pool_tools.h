@@ -30,12 +30,9 @@ struct ToolsParams {
 template <typename COMP>
 class KeyPoolTools {
 public:
-    __aicore__ inline KeyPoolTools()
-    {
-    }
+    __aicore__ inline KeyPoolTools() {}
 
-    __aicore__ inline void Init(__gm__ uint8_t *startPos, __gm__ uint8_t *seqUsed,
-                                __gm__ uint8_t *seqLens);
+    __aicore__ inline void Init(__gm__ uint8_t *startPos, __gm__ uint8_t *seqUsed, __gm__ uint8_t *seqLens);
 
     __aicore__ inline uint32_t GetSeqUsed(uint32_t bIdx);
     __aicore__ inline uint64_t GetStartPos(uint32_t bIdx);
@@ -55,7 +52,7 @@ private:
 
 template <typename COMP>
 __aicore__ inline void KeyPoolTools<COMP>::Init(__gm__ uint8_t *startPos, __gm__ uint8_t *seqUsed,
-                                                   __gm__ uint8_t *seqLens)
+                                                __gm__ uint8_t *seqLens)
 {
     isExistStartPos_ = (startPos != nullptr);
     if (isExistStartPos_) {
@@ -119,7 +116,9 @@ __aicore__ inline uint64_t KeyPoolTools<COMP>::GetTIdxByBatch(uint32_t bIdx)
 // iterator
 struct SliceInfo {
     __aicore__ inline SliceInfo(){};
-    __aicore__ inline SliceInfo(uint32_t bIdx, uint32_t sIdx) : bIdx(bIdx), sIdx(sIdx){};
+    __aicore__ inline SliceInfo(uint32_t bIdx, uint32_t sIdx)
+        : bIdx(bIdx),
+          sIdx(sIdx){};
 
     uint32_t bIdx = 0U;
     uint32_t sIdx = 0U;
@@ -138,9 +137,9 @@ struct SliceInfo {
 template <typename COMP>
 class KeyPoolSliceIterator {
 public:
-    __aicore__ inline KeyPoolSliceIterator(KeyPoolTools<COMP> &tools) : tools_(tools)
-    {
-    }
+    __aicore__ inline KeyPoolSliceIterator(KeyPoolTools<COMP> &tools)
+        : tools_(tools)
+    {}
 
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx);
     __aicore__ inline void SetMaxBatchSize(uint32_t batch_size);
@@ -303,7 +302,8 @@ __aicore__ inline SliceInfo &KeyPoolSliceIterator<COMP>::GetSlice()
 
 struct SplitCoreSliceInfo : public SliceInfo {
     __aicore__ inline SplitCoreSliceInfo(){};
-    __aicore__ inline SplitCoreSliceInfo(uint32_t bIdx, uint32_t sIdx) : SliceInfo(bIdx, sIdx){};
+    __aicore__ inline SplitCoreSliceInfo(uint32_t bIdx, uint32_t sIdx)
+        : SliceInfo(bIdx, sIdx){};
 
     uint32_t preFirstSeqCnt = 0U; // 左边每次迭代基本块的第一个seqCnt大小
 };
@@ -311,9 +311,9 @@ struct SplitCoreSliceInfo : public SliceInfo {
 template <typename COMP>
 class KeyPoolSplitCoreSliceIterator {
 public:
-    __aicore__ inline KeyPoolSplitCoreSliceIterator(KeyPoolTools<COMP> &tools) : tools_(tools)
-    {
-    }
+    __aicore__ inline KeyPoolSplitCoreSliceIterator(KeyPoolTools<COMP> &tools)
+        : tools_(tools)
+    {}
 
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx);
     __aicore__ inline void SetMaxBatchSize(uint32_t batch_size);
@@ -525,9 +525,11 @@ __aicore__ inline SplitCoreSliceInfo &KeyPoolSplitCoreSliceIterator<COMP>::GetRi
 
 struct Vec1SliceInfo : public SliceInfo {
     __aicore__ inline Vec1SliceInfo(){};
-    __aicore__ inline Vec1SliceInfo(uint32_t bIdx, uint32_t sIdx) : SliceInfo(bIdx, sIdx){};
+    __aicore__ inline Vec1SliceInfo(uint32_t bIdx, uint32_t sIdx)
+        : SliceInfo(bIdx, sIdx){};
     __aicore__ inline Vec1SliceInfo(uint32_t bIdx, uint32_t sIdx, uint32_t dealedSeqCnt)
-        : SliceInfo(bIdx, sIdx), dealedSeqCnt(dealedSeqCnt){};
+        : SliceInfo(bIdx, sIdx),
+          dealedSeqCnt(dealedSeqCnt){};
 
     uint32_t dealedSeqCnt = 0U;
     uint32_t dealedTcCnt = 0U;
@@ -540,7 +542,9 @@ struct Vec1SliceInfo : public SliceInfo {
 struct StatisticInfo {
     __aicore__ inline StatisticInfo(){};
     __aicore__ inline StatisticInfo(uint32_t actualTcCnt, uint32_t dealSeqCnt, uint32_t key_poolScCnt)
-        : actualTcCnt(actualTcCnt), dealSeqCnt(dealSeqCnt), key_poolScCnt(key_poolScCnt){};
+        : actualTcCnt(actualTcCnt),
+          dealSeqCnt(dealSeqCnt),
+          key_poolScCnt(key_poolScCnt){};
 
     uint32_t actualTcCnt = 0U;
     uint32_t dealSeqCnt = 0U;
@@ -550,9 +554,9 @@ struct StatisticInfo {
 template <typename COMP>
 class KeyPoolVec1SliceIterator {
 public:
-    __aicore__ inline KeyPoolVec1SliceIterator(KeyPoolTools<COMP> &tools) : tools_(tools)
-    {
-    }
+    __aicore__ inline KeyPoolVec1SliceIterator(KeyPoolTools<COMP> &tools)
+        : tools_(tools)
+    {}
 
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx);
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx, uint32_t dealedSeqCnt, uint32_t key_pooledScCnt);
@@ -599,7 +603,7 @@ __aicore__ inline void KeyPoolVec1SliceIterator<COMP>::Reset(uint32_t bIdx, uint
 
 template <typename COMP>
 __aicore__ inline void KeyPoolVec1SliceIterator<COMP>::Reset(uint32_t bIdx, uint32_t sIdx, uint32_t dealedSeqCnt,
-                                                                uint32_t key_pooledScCnt)
+                                                             uint32_t key_pooledScCnt)
 {
     Reset(bIdx, sIdx);
     SetDealedSeqCnt(dealedSeqCnt);
@@ -651,36 +655,63 @@ __aicore__ inline void KeyPoolVec1SliceIterator<COMP>::IteratorSlice()
     sliceInfo_.sIdx += sliceInfo_.validSeqCnt;
     if (sliceInfo_.sIdx >= sliceInfo_.bSeqUsed) {
         do {
-            uint32_t seqLength = tools_.GetSeqLength(sliceInfo_.bIdx);
+            const uint32_t seqLength = tools_.GetSeqLength(sliceInfo_.bIdx);
             if (sliceInfo_.bSeqUsed < seqLength) {
-                uint64_t nextAlignSIdx = Align(sliceInfo_.bStartPos + sliceInfo_.sIdx, (uint64_t)cmpRatio) -
-                    sliceInfo_.bStartPos;
-                sliceInfo_.dealedSeqCnt += nextAlignSIdx - sliceInfo_.sIdx;
-                uint32_t tcGap = CeilDivT(static_cast<int32_t>(seqLength - nextAlignSIdx),
-                                    static_cast<int32_t>(cmpRatio));
-                if (sliceInfo_.bSeqUsed == 0 && nextAlignSIdx > sliceInfo_.sIdx) {
-                    // 此时bseqused所在压缩块未被纳入计算
-                    tcGap++;
+                if (sliceInfo_.sIdx > 0) {
+                    uint64_t nextAlignSIdx =
+                        Align(sliceInfo_.bStartPos + sliceInfo_.sIdx, static_cast<uint64_t>(cmpRatio)) -
+                        sliceInfo_.bStartPos;
+                    uint32_t align =
+                        min(static_cast<uint32_t>(nextAlignSIdx - sliceInfo_.sIdx), seqLength - sliceInfo_.sIdx);
+                    sliceInfo_.dealedSeqCnt += align;
+                    sliceInfo_.sIdx += align;
                 }
-                sliceInfo_.sIdx = nextAlignSIdx;
+
+                const uint32_t gapRows = seqLength - sliceInfo_.sIdx;
+                uint32_t tcGap;
+                if (sliceInfo_.sIdx == 0) {
+                    tcGap = static_cast<uint32_t>(
+                        CeilDivT(sliceInfo_.bStartPos + seqLength, static_cast<uint64_t>(cmpRatio)) -
+                        sliceInfo_.bStartPos / static_cast<uint64_t>(cmpRatio));
+                } else {
+                    tcGap = static_cast<uint32_t>(
+                        CeilDivT(sliceInfo_.bStartPos + seqLength, static_cast<uint64_t>(cmpRatio)) -
+                        CeilDivT(sliceInfo_.bStartPos + sliceInfo_.sIdx, static_cast<uint64_t>(cmpRatio)));
+                }
+
                 if (needDealTcSize_ < tcGap) {
-                    sliceInfo_.dealedSeqCnt += needDealTcSize_ * cmpRatio;
-                    sliceInfo_.sIdx += needDealTcSize_ * cmpRatio;
+                    uint32_t skip = 0;
+                    if (needDealTcSize_ > 0) {
+                        uint64_t globalStartSeqIdx = sliceInfo_.bStartPos + sliceInfo_.sIdx;
+                        uint64_t skipEndSeqIdx =
+                            (globalStartSeqIdx / static_cast<uint64_t>(cmpRatio) + needDealTcSize_) *
+                            static_cast<uint64_t>(cmpRatio);
+                        skip = min(static_cast<uint32_t>(skipEndSeqIdx - globalStartSeqIdx), gapRows);
+                    }
+                    sliceInfo_.dealedSeqCnt += skip;
+                    sliceInfo_.sIdx += skip;
                     needDealTcSize_ = 0;
                     break;
                 }
-                sliceInfo_.dealedSeqCnt += seqLength - sliceInfo_.sIdx;
+                sliceInfo_.dealedSeqCnt += gapRows;
+                sliceInfo_.sIdx += gapRows;
                 needDealTcSize_ -= tcGap;
             }
             sliceInfo_.bIdx++;
             if (sliceInfo_.bIdx == batch_size_) {
-                sliceInfo_.bIdx = 0;
+                sliceInfo_.bIdx = batch_size_ - 1;
+                sliceInfo_.sIdx = 0;
+                sliceInfo_.bSeqUsed = 0;
+                sliceInfo_.bStartPos = tools_.GetStartPos(sliceInfo_.bIdx);
+                sliceInfo_.bSeqLength = tools_.GetSeqLength(sliceInfo_.bIdx);
+                needDealTcSize_ = 0;
+                break;
             }
             sliceInfo_.sIdx = 0;
             sliceInfo_.bSeqUsed = tools_.GetSeqUsed(sliceInfo_.bIdx);
+            sliceInfo_.bStartPos = tools_.GetStartPos(sliceInfo_.bIdx);
+            sliceInfo_.bSeqLength = tools_.GetSeqLength(sliceInfo_.bIdx);
         } while (sliceInfo_.bSeqUsed == 0);
-        sliceInfo_.bSeqLength = tools_.GetSeqLength(sliceInfo_.bIdx);
-        sliceInfo_.bStartPos = tools_.GetStartPos(sliceInfo_.bIdx);
     }
     if (isFirst_) {
         isFirst_ = false;
@@ -692,7 +723,6 @@ __aicore__ inline uint32_t KeyPoolVec1SliceIterator<COMP>::GetNeedDealTcSize()
 {
     return needDealTcSize_;
 }
-
 
 template <typename COMP>
 __aicore__ inline bool KeyPoolVec1SliceIterator<COMP>::IsEnd()

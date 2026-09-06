@@ -30,14 +30,15 @@ template <typename COMP>
 class KeyPoolKernelFullLoad {
 public:
     __aicore__ inline KeyPoolKernelFullLoad(TPipe *pipe, const optiling::KeyPoolTilingData *__restrict tilingData)
-        : pipe_(pipe), tilingData_(tilingData)
+        : pipe_(pipe),
+          tilingData_(tilingData)
     {}
 
     __aicore__ inline void Init(__gm__ uint8_t *hidden_states, __gm__ uint8_t *wk, __gm__ uint8_t *gateWeight,
-                                __gm__ uint8_t *normWeight, __gm__ uint8_t *normBias,
-                                __gm__ uint8_t *stateCache, __gm__ uint8_t *ape, __gm__ uint8_t *cacheBlockTable,
-                                __gm__ uint8_t *seqLens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
-                                __gm__ uint8_t *pooledKeyOut, __gm__ uint8_t *workspace);
+                                __gm__ uint8_t *normWeight, __gm__ uint8_t *normBias, __gm__ uint8_t *stateCache,
+                                __gm__ uint8_t *ape, __gm__ uint8_t *cacheBlockTable, __gm__ uint8_t *seqLens,
+                                __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos, __gm__ uint8_t *pooledKeyOut,
+                                __gm__ uint8_t *workspace);
     __aicore__ inline void Process();
 
 private:
@@ -45,8 +46,6 @@ private:
     __aicore__ inline void InitWorkspace(__gm__ uint8_t *workspace);
     // ================================Process functions================================
     __aicore__ inline void InitTilingData();
-    // 获取基本块数量
-    __aicore__ inline void SkipInvalidBatch(BatchInfo &batchInfo);
     // 计算分核基本信息
     __aicore__ inline void CalcSplitCoreInfo();
 
@@ -55,11 +54,11 @@ private:
     __aicore__ inline void ComputeMm1(const RunInfo &info);
     __aicore__ inline void ComputeVec1(const Vec1RunInfo &info);
 
-    __aicore__ inline bool IsNeedExcuteC1(RunInfo info);
     __aicore__ inline void CalcCubeParams(RunInfo &info);
     __aicore__ inline void CalcV1Params(Vec1RunInfo &vec1Info);
 
-    using HIDDEN_STATES_T = typename AscendC::Conditional<COMP::hiddenStatesDtype == HIDDEN_STATES_DTYPE::BF16, bfloat16_t, half>::type;
+    using HIDDEN_STATES_T =
+        typename AscendC::Conditional<COMP::hiddenStatesDtype == HIDDEN_STATES_DTYPE::BF16, bfloat16_t, half>::type;
     using T = float;
     using MM1_OUT_T = T;
     using VEC1_OUT_T = T;
@@ -95,18 +94,16 @@ private:
     uint32_t loopTimes = 0;
     uint32_t cubeLoop = 0;
     uint32_t vec1Loop = 0;
-    uint32_t kStartIdx_ = 0;
-    uint32_t dealKSize_ = 0;
 };
 
 template <typename COMP>
 __aicore__ inline void KeyPoolKernelFullLoad<COMP>::Init(__gm__ uint8_t *hidden_states, __gm__ uint8_t *wk,
-                                                            __gm__ uint8_t *gateWeight, __gm__ uint8_t *normWeight,
-                                                            __gm__ uint8_t *normBias, __gm__ uint8_t *stateCache,
-                                                            __gm__ uint8_t *ape, __gm__ uint8_t *cacheBlockTable,
-                                                            __gm__ uint8_t *seqLens, __gm__ uint8_t *seqUsed,
-                                                            __gm__ uint8_t *startPos, __gm__ uint8_t *pooledKeyOut,
-                                                            __gm__ uint8_t *workspace)
+                                                         __gm__ uint8_t *gateWeight, __gm__ uint8_t *normWeight,
+                                                         __gm__ uint8_t *normBias, __gm__ uint8_t *stateCache,
+                                                         __gm__ uint8_t *ape, __gm__ uint8_t *cacheBlockTable,
+                                                         __gm__ uint8_t *seqLens, __gm__ uint8_t *seqUsed,
+                                                         __gm__ uint8_t *startPos, __gm__ uint8_t *pooledKeyOut,
+                                                         __gm__ uint8_t *workspace)
 {
     if ASCEND_IS_AIV {
         constInfo.aiCoreIdx = GetBlockIdx() / 2;
@@ -145,13 +142,14 @@ __aicore__ inline void KeyPoolKernelFullLoad<COMP>::Init(__gm__ uint8_t *hidden_
     // 4. 初始化block层
     if ASCEND_IS_AIC {
         blockCube_.InitParams(constInfo, tools_);
-        blockCube_.Init(hidden_states, wk, gateWeight, stateCache, ape, cacheBlockTable, seqLens, seqUsed, startPos, pooledKeyOut);
+        blockCube_.Init(hidden_states, wk, gateWeight, stateCache, ape, cacheBlockTable, seqLens, seqUsed, startPos,
+                        pooledKeyOut);
         blockCube_.InitBuffers(pipe_);
         blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
     } else {
         blockVec_.InitParams(constInfo, tools_);
-        blockVec_.Init(hidden_states, wk, gateWeight, normWeight, normBias, stateCache, ape, cacheBlockTable,
-                       seqLens, seqUsed, startPos, pooledKeyOut);
+        blockVec_.Init(hidden_states, wk, gateWeight, normWeight, normBias, stateCache, ape, cacheBlockTable, seqLens,
+                       seqUsed, startPos, pooledKeyOut);
         blockVec_.InitBuffers(pipe_);
         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm);
     }
@@ -191,33 +189,6 @@ __aicore__ inline void KeyPoolKernelFullLoad<COMP>::InitTilingData()
 }
 
 template <typename COMP>
-__aicore__ inline void KeyPoolKernelFullLoad<COMP>::SkipInvalidBatch(BatchInfo &batchInfo)
-{
-    for (; batchInfo.bIdx < constInfo.batchSize; ++batchInfo.bIdx) {
-        batchInfo.seqCnt = tools_.GetSeqLength(batchInfo.bIdx);
-        if (batchInfo.seqCnt > 0) {
-            break;
-        }
-    }
-    batchInfo.remSeqCnt = batchInfo.seqCnt;
-    if (tools_.isExistSeqUsed_) {
-        batchInfo.seqUsedCnt = tools_.GetSeqUsed(batchInfo.bIdx);
-    } else {
-        batchInfo.seqUsedCnt = batchInfo.seqCnt;
-    }
-    if (batchInfo.bIdx < constInfo.batchSize) {
-        batchInfo.bStartPos = tools_.GetStartPos(batchInfo.bIdx);
-        batchInfo.sIdx = 0;
-        batchInfo.headHolderSeq = batchInfo.bStartPos % constInfo.cmpRatio;
-        batchInfo.tcNum =
-            (uint32_t)((batchInfo.bStartPos + batchInfo.seqCnt + constInfo.cmpRatio - 1) / constInfo.cmpRatio -
-                       batchInfo.bStartPos / constInfo.cmpRatio);
-        batchInfo.compressedTcNum = (uint32_t)((batchInfo.bStartPos + batchInfo.seqUsedCnt) / constInfo.cmpRatio -
-                                               batchInfo.bStartPos / constInfo.cmpRatio);
-    }
-}
-
-template <typename COMP>
 __aicore__ inline void KeyPoolKernelFullLoad<COMP>::CalcSplitCoreInfo()
 {
     // D方向的基本块数量
@@ -229,9 +200,8 @@ __aicore__ inline void KeyPoolKernelFullLoad<COMP>::CalcSplitCoreInfo()
     constInfo.mGroupNum = constInfo.coreGroupNum;
     constInfo.mCurGroupIdx = constInfo.curGroupIdx;
 
-    constexpr uint32_t coff = 1;
-    constInfo.mm1KvResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * coff;
-    constInfo.mm1ScoreResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * coff;
+    constInfo.mm1KvResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim;
+    constInfo.mm1ScoreResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim;
     constInfo.vec1ResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
 
     constInfo.dbSize = (uint64_t)constInfo.coreGroupNum * constInfo.mm1KvResSize;
@@ -316,13 +286,6 @@ __aicore__ inline void KeyPoolKernelFullLoad<COMP>::FreeEventID()
         CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG2 + loopTimes % constInfo.dbWorkspaceRatio);
         blockVec_.FreeEventID();
     }
-}
-
-template <typename COMP>
-__aicore__ inline bool KeyPoolKernelFullLoad<COMP>::IsNeedExcuteC1(RunInfo info)
-{
-    // B超出范围则cube不执行
-    return info.bStart < constInfo.batchSize;
 }
 
 template <typename COMP>

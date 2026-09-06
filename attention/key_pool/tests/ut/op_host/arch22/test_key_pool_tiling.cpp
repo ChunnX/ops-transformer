@@ -8,377 +8,116 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <algorithm>
+#include <cstdint>
+#include <string>
+#include <vector>
+
 #include <gtest/gtest.h>
-#include <iostream>
 
 #include "../../../../op_host/arch22/key_pool_tiling.h"
-#include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
+#include "tiling_context_faker.h"
 
-using namespace std;
+namespace {
+using TensorDesc = gert::TilingContextPara::TensorDescription;
+using OpAttr = gert::TilingContextPara::OpAttr;
 
-// 构造版本
-std::string KeyPool_tiling_A3SocInfo =
-    "{\n"
-    "  \"hardware_info\": {\n"
-    "    \"BT_SIZE\": 0,\n"
-    "    \"load3d_constraints\": \"1\",\n"
-    "    \"Intrinsic_fix_pipe_l0c2out\": false,\n"
-    "    \"Intrinsic_data_move_l12ub\": true,\n"
-    "    \"Intrinsic_data_move_l0c2ub\": true,\n"
-    "    \"Intrinsic_data_move_out2l1_nd2nz\": false,\n"
-    "    \"4096\": 196608,\n"
-    "    \"L2_SIZE\": 201326592,\n"
-    "    \"L1_SIZE\": 524288,\n"
-    "    \"L0A_SIZE\": 65536,\n"
-    "    \"L0B_SIZE\": 65536,\n"
-    "    \"L0C_SIZE\": 131072,\n"
-    "    \"vector_core_cnt\": 40,\n"
-    "    \"cube_core_cnt\": 20,\n"
-    "    \"socVersion\": \"Ascend910_93\"\n"
-    "  }\n"
-    "}";
+const char *kA2SocInfo = "{"
+                         "\"hardware_info\":{"
+                         "\"BT_SIZE\":0,"
+                         "\"load3d_constraints\":\"1\","
+                         "\"Intrinsic_fix_pipe_l0c2out\":false,"
+                         "\"Intrinsic_data_move_l12ub\":true,"
+                         "\"Intrinsic_data_move_l0c2ub\":true,"
+                         "\"Intrinsic_data_move_out2l1_nd2nz\":false,"
+                         "\"4096\":196608,"
+                         "\"L2_SIZE\":201326592,"
+                         "\"L1_SIZE\":524288,"
+                         "\"L0A_SIZE\":65536,"
+                         "\"L0B_SIZE\":65536,"
+                         "\"L0C_SIZE\":131072,"
+                         "\"vector_core_cnt\":40,"
+                         "\"cube_core_cnt\":20,"
+                         "\"socVersion\":\"Ascend910B\""
+                         "}"
+                         "}";
 
-// ====================================================================
-// BSH Layout Tiling Tests
-// ====================================================================
-
-class KeyPoolTilingArch22 : public testing::Test {
-protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "KeyPoolTilingArch22 SetUp" << std::endl;
-    }
-    static void TearDownTestCase()
-    {
-        std::cout << "KeyPoolTilingArch22 TearDown" << std::endl;
-    }
-};
-
-// C4A bf16: B=2, S=8, H=4096, D=512, coff=2, cmp_ratio=4
-TEST_F(KeyPoolTilingArch22, test1)
+TensorDesc Desc(const std::vector<int64_t> &dims, ge::DataType dtype)
 {
-    optiling::KeyPoolCompileInfo compileInfo = {};
-    gert::TilingContextPara tilingContextPara(
-        "KeyPool",
-        {
-            {{{2, 8, 4096}, {2, 8, 4096}}, ge::DT_BF16, ge::FORMAT_ND},      // hidden_states
-            {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},      // wk
-            {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},      // gate_weight
-            {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND}, // state_cache
-            {{{4, 1024}, {4, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},           // ape
-            {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND},                 // cache_block_table
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // seq_lens
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // seq_used
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // start_pos
-        },
-        {
-            {{{2, 2, 512}, {2, 2, 512}}, ge::DT_BF16, ge::FORMAT_ND},        // pooled_key
-            {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND}, // state_cache (in-place)
-        },
-        {
-            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
-        },
-        &compileInfo, "Ascend910_93", KeyPool_tiling_A3SocInfo, 4096);
-    int64_t expectTilingKey = 32;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    return TensorDesc(gert::StorageShape(dims, dims), dtype, ge::FORMAT_ND);
 }
 
-// C4A fp16: B=2, S=8, H=4096, D=512, coff=2, cmp_ratio=4
-TEST_F(KeyPoolTilingArch22, test2)
+TensorDesc Empty(ge::DataType dtype)
 {
-    optiling::KeyPoolCompileInfo compileInfo = {};
-    gert::TilingContextPara tilingContextPara(
-        "KeyPool",
-        {
-            {{{2, 8, 4096}, {2, 8, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{1024, 4096}, {1024, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{1024, 4096}, {1024, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{4, 1024}, {4, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {{{2, 2, 512}, {2, 2, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
-        },
-        &compileInfo, "Ascend910_93", KeyPool_tiling_A3SocInfo, 4096);
-    int64_t expectTilingKey = 34;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    return Desc({}, dtype);
 }
 
-// C4Li bf16: B=2, S=8, H=2048, D=128, coff=2, cmp_ratio=4
-TEST_F(KeyPoolTilingArch22, test3)
+gert::TilingContextPara MakePara(const std::string &layout, ge::DataType dtype, int64_t batch, int64_t sequence,
+                                 int64_t hidden, int64_t headDim, int64_t cmpRatio, int64_t blockSize,
+                                 int64_t maxBlocks, bool withNorm = false)
 {
-    optiling::KeyPoolCompileInfo compileInfo = {};
-    gert::TilingContextPara tilingContextPara(
-        "KeyPool",
-        {
-            {{{2, 8, 2048}, {2, 8, 2048}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{256, 2048}, {256, 2048}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{256, 2048}, {256, 2048}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{4, 128, 512}, {4, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{4, 256}, {4, 256}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {{{2, 2, 128}, {2, 2, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{4, 128, 512}, {4, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
-        },
-        &compileInfo, "Ascend910_93", KeyPool_tiling_A3SocInfo, 4096);
-    int64_t expectTilingKey = 32;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    const int64_t tokenCount = layout == "BSH" ? batch * sequence : sequence;
+    const int64_t blockNum = std::max<int64_t>(1, batch * maxBlocks);
+    std::vector<TensorDesc> inputs;
+    inputs.emplace_back(layout == "BSH" ? Desc({batch, sequence, hidden}, dtype) : Desc({tokenCount, hidden}, dtype));
+    inputs.emplace_back(Desc({headDim, hidden}, dtype));
+    inputs.emplace_back(Desc({headDim, hidden}, dtype));
+    inputs.emplace_back(Desc({cmpRatio, headDim}, ge::DT_FLOAT));
+    inputs.emplace_back(Desc({blockNum, blockSize, 2 * headDim}, ge::DT_FLOAT));
+    inputs.emplace_back(Desc({batch, maxBlocks}, ge::DT_INT32));
+    inputs.emplace_back(Desc({batch}, ge::DT_INT32));
+    inputs.emplace_back(withNorm ? Desc({headDim}, ge::DT_FLOAT) : Empty(ge::DT_FLOAT));
+    inputs.emplace_back(withNorm ? Desc({headDim}, ge::DT_FLOAT) : Empty(ge::DT_FLOAT));
+    inputs.emplace_back(Empty(ge::DT_BF16));
+    inputs.emplace_back(Empty(ge::DT_BF16));
+    inputs.emplace_back(layout == "TH" ? Desc({batch + 1}, ge::DT_INT32) : Empty(ge::DT_INT32));
+    inputs.emplace_back(Empty(ge::DT_INT32));
+
+    const int64_t outputCapacity = (maxBlocks * blockSize + cmpRatio - 1) / cmpRatio;
+    std::vector<TensorDesc> outputs{Desc({batch, outputCapacity, headDim}, dtype)};
+    std::vector<OpAttr> attrs{
+        {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(cmpRatio)},
+        {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6F)},
+        {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(blockSize * 2 * headDim)},
+    };
+    return gert::TilingContextPara("KeyPool", inputs, outputs, attrs, nullptr, "Ascend910B", kA2SocInfo, 4096);
+}
+} // namespace
+
+TEST(KeyPoolTilingArch22, BshBf16)
+{
+    auto para = MakePara("BSH", ge::DT_BF16, 2, 8, 4096, 512, 4, 4, 2);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 32);
 }
 
-// C128A bf16: B=2, S=16, H=4096, D=512, coff=1, cmp_ratio=128
-TEST_F(KeyPoolTilingArch22, test4)
+TEST(KeyPoolTilingArch22, BshFp16)
 {
-    optiling::KeyPoolCompileInfo compileInfo = {};
-    gert::TilingContextPara tilingContextPara(
-        "KeyPool",
-        {
-            {{{2, 16, 4096}, {2, 16, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{512, 4096}, {512, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{512, 4096}, {512, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{4, 128, 1024}, {4, 128, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{128, 512}, {128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2, 16}, {2, 16}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {{{2, 1, 512}, {2, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{4, 128, 1024}, {4, 128, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-            {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(131072)},
-        },
-        &compileInfo, "Ascend910_93", KeyPool_tiling_A3SocInfo, 4096);
-    int64_t expectTilingKey = 0;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    auto para = MakePara("BSH", ge::DT_FLOAT16, 1, 256, 4096, 512, 128, 128, 2);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 34);
 }
 
-// Non-divisible S: B=1, S=6, H=2048, D=128, coff=2, cmp_ratio=4, Sr=ceil(6/4)=2
-TEST_F(KeyPoolTilingArch22, test5)
+TEST(KeyPoolTilingArch22, BshLayerNorm)
 {
-    optiling::KeyPoolCompileInfo compileInfo = {};
-    gert::TilingContextPara tilingContextPara(
-        "KeyPool",
-        {
-            {{{1, 6, 2048}, {1, 6, 2048}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{256, 2048}, {256, 2048}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{256, 2048}, {256, 2048}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{2, 128, 512}, {2, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{4, 256}, {4, 256}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1, 6}, {1, 6}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {{{1, 2, 128}, {1, 2, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{2, 128, 512}, {2, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
-        },
-        &compileInfo, "Ascend910_93", KeyPool_tiling_A3SocInfo, 4096);
-    int64_t expectTilingKey = 32;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    auto para = MakePara("BSH", ge::DT_BF16, 2, 16, 2048, 128, 8, 8, 2, true);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 32);
 }
 
-// ====================================================================
-// TH Layout Tiling Tests
-// ====================================================================
-
-// TH C4A: T=8, H=4096, B=2, seq_lens=[0,4,8]
-TEST_F(KeyPoolTilingArch22, test6)
+TEST(KeyPoolTilingArch22, ThUnevenBatch)
 {
-    optiling::KeyPoolCompileInfo compileInfo = {};
-    gert::TilingContextPara tilingContextPara(
-        "KeyPool",
-        {
-            {{{8, 4096}, {8, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{4, 1024}, {4, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {{{2, 512}, {2, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
-        },
-        &compileInfo, "Ascend910_93", KeyPool_tiling_A3SocInfo, 4096);
-    int64_t expectTilingKey = 33;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+    auto para = MakePara("TH", ge::DT_BF16, 3, 17, 4096, 512, 4, 4, 4);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 33);
 }
 
-// ====================================================================
-// Error Cases — expected FAIL
-// ====================================================================
-
-// Unsupported cmp_ratio=3
-TEST_F(KeyPoolTilingArch22, test7)
+TEST(KeyPoolTilingArch22, EmptyBatch)
 {
-    optiling::KeyPoolCompileInfo compileInfo = {};
-    gert::TilingContextPara tilingContextPara(
-        "KeyPool",
-        {
-            {{{2, 8, 4096}, {2, 8, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{4, 1024}, {4, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {{{2, 2, 512}, {2, 2, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-            {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
-        },
-        &compileInfo, "Ascend910_93", KeyPool_tiling_A3SocInfo, 4096);
-    int64_t expectTilingKey = 32;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+    auto para = MakePara("BSH", ge::DT_BF16, 0, 8, 4096, 512, 4, 4, 2);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 48);
 }
 
-// Unsupported coff=3
-TEST_F(KeyPoolTilingArch22, test8)
+TEST(KeyPoolTilingArch22, RejectsUnsupportedCompressionRatio)
 {
-    optiling::KeyPoolCompileInfo compileInfo = {};
-    gert::TilingContextPara tilingContextPara(
-        "KeyPool",
-        {
-            {{{2, 8, 4096}, {2, 8, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{4, 1024}, {4, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {{{2, 2, 512}, {2, 2, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
-        },
-        &compileInfo, "Ascend910_93", KeyPool_tiling_A3SocInfo, 4096);
-    int64_t expectTilingKey = 32;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
-}
-
-// Unsupported headDim=256 (only 128 and 512 supported)
-TEST_F(KeyPoolTilingArch22, test9)
-{
-    optiling::KeyPoolCompileInfo compileInfo = {};
-    gert::TilingContextPara tilingContextPara(
-        "KeyPool",
-        {
-            {{{2, 8, 2048}, {2, 8, 2048}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{512, 2048}, {512, 2048}}, ge::DT_BF16, ge::FORMAT_ND}, // coff*headDim = 2*256 = 512
-            {{{512, 2048}, {512, 2048}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{4, 128, 1024}, {4, 128, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{4, 512}, {4, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {{{2, 2, 256}, {2, 2, 256}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{4, 128, 1024}, {4, 128, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
-        },
-        &compileInfo, "Ascend910_93", KeyPool_tiling_A3SocInfo, 4096);
-    int64_t expectTilingKey = 32;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
-}
-
-// Unsupported hiddenSize=3000 (not 512-aligned)
-TEST_F(KeyPoolTilingArch22, test10)
-{
-    optiling::KeyPoolCompileInfo compileInfo = {};
-    gert::TilingContextPara tilingContextPara(
-        "KeyPool",
-        {
-            {{{2, 8, 3000}, {2, 8, 3000}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1024, 3000}, {1024, 3000}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1024, 3000}, {1024, 3000}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{4, 1024}, {4, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {{{2, 2, 512}, {2, 2, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"coff", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
-        },
-        &compileInfo, "Ascend910_93", KeyPool_tiling_A3SocInfo, 4096);
-    int64_t expectTilingKey = 32;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
+    auto para = MakePara("BSH", ge::DT_BF16, 2, 8, 4096, 512, 3, 4, 2);
+    ExecuteTestCase(para, ge::GRAPH_FAILED, 32);
 }
