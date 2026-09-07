@@ -275,7 +275,7 @@ __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTens
     int64_t s2IdLimit = runInfo.s2RealSize;
     s2IdLimit = (runInfo.s2RealSize - runInfo.actualS1Size + runInfo.s1oIdx + 1) / constInfo.cmpRatio;
     uint32_t dealRow = 0;
-    for (uint32_t i = 0; i < 8; i += 2) {
+    for (uint32_t i = 0; i < 8; i += 2) { // 遍历8个元素的数组/缓冲区，每次处理2个元素
         int64_t keyOffset0 = GetkeyOffset(tokenData[i], runInfo, constInfo);
         int64_t keyOffset1 = GetkeyOffset(tokenData[i + 1], runInfo, constInfo);
         if (unlikely(keyOffset0 < 0 && keyOffset1 < 0)) {
@@ -311,7 +311,7 @@ __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTens
             DataCopyPad(kvInUb[startRow * combineDimAlign], keyGm[keyOffset], intriParams, padParams);
         }
         dealRow += (keyOffset0 >= 0) + (keyOffset1 >= 0);
-        startRow += 2;
+        startRow += 2; // 每次迭代处理2个输入元素
     }
     return dealRow;
 }

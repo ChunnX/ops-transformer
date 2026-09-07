@@ -336,7 +336,7 @@ __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTens
             DataCopyPad(kvInUb[startRow * combineDimAlign], keyGm[keyOffset], intriParams, padParams);
         }
         dealRow += (keyOffset0 >= 0) + (keyOffset1 >= 0);
-        startRow += 2;
+        startRow += 2; // 每次迭代处理2个输入元素
     }
     return dealRow;
 }
