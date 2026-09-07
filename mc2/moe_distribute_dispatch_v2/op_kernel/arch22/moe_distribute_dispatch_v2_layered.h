@@ -136,8 +136,7 @@ private:
                                                       LocalTensor<uint8_t> receiveTokenStructU8Lt);
     __aicore__ inline void CreateZeroInnerCnt(uint32_t curServerId);
     __aicore__ inline uint32_t CalExpCntAndOffset(uint32_t realBS, uint32_t currServerExpBegin,
-                                                  uint32_t currServerExpEnd,
-                                                  LocalTensor<int32_t> tokenTopKInfoI32Lt);
+                                                  uint32_t currServerExpEnd, LocalTensor<int32_t> tokenTopKInfoI32Lt);
     __aicore__ inline void CalInnerCntxAndOffset(uint32_t realBS, LocalTensor<int32_t> tokenTopKInfoI32Lt);
     __aicore__ inline void TransInnerToEpRecvCountsOutGM(uint32_t realBS, uint32_t curServerId);
     __aicore__ inline void TransOuterToEpRecvCountsOutGM();
@@ -860,8 +859,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     uint32_t currServerExpEnd = currServerExpBegin + moeExpertNumInServer_;           // 目标Server的结束专家
     uint32_t expOccurNum = 0;
     // 计算exportCnt累加表,combineReduceInfo和tokenOffset
-    uint32_t validTokenNum =
-        CalExpCntAndOffset(realBS, currServerExpBegin, currServerExpEnd, tokenTopKInfoI32Lt);
+    uint32_t validTokenNum = CalExpCntAndOffset(realBS, currServerExpBegin, currServerExpEnd, tokenTopKInfoI32Lt);
 
     // Tokens are already stably ordered by their minimum expert in the current server.
     for (uint32_t tokenOccurNum = 0; tokenOccurNum < validTokenNum; ++tokenOccurNum) {
@@ -1299,8 +1297,8 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
     PipeBarrier<PIPE_MTE2>();
     DataCopy(statusTensor[copyNum], TokenFlagGtU64[(TokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)], copyNum);
     PipeBarrier<PIPE_MTE2>();
-    DataCopy(statusTensor[copyNum * 2U],
-             TokenFlagGtU64[(nextTokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)], copyNum);
+    DataCopy(statusTensor[copyNum * 2U], TokenFlagGtU64[(nextTokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
+             copyNum);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint64_t endFlagValue = statusTensor.GetValue(0);
     uint64_t tokenFlagValue = statusTensor.GetValue(copyNum);

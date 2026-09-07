@@ -262,7 +262,6 @@ private:
     uint32_t scaleNum_{0};
     uint32_t scaleNumAlign_;
     uint32_t scale_granu_;
-
 };
 
 template <TemplateMC2TypeV2LayeredClass>
