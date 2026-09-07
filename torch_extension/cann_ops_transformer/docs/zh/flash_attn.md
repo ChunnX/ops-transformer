@@ -106,7 +106,8 @@ cann_ops_transformer.flash_attn_metadata(
     win_right=None,
     layout_q=None,
     layout_kv=None,
-    layout_out=None
+    layout_out=None,
+    is_grad_enabled=False
 ) -> Tensor
 ```
 
@@ -158,6 +159,7 @@ cann_ops_transformer.flash_attn(
 | layout_q | string | 可选 | 定义输入q张量的布局格式 | string | - | - |
 | layout_kv | string | 可选 | 定义输入k和v张量的布局格式 | string | - | - |
 | layout_out | string | 可选 | 定义输出张量的布局格式 | string | - | - |
+| is_grad_enabled | bool | 可选 | 是否生成反向梯度所需的metadata。默认值为False。当为True时，metadata将包含反向所需的flash_attn_grad信息 | bool | - | - |
 
 ### flash_attn
 
