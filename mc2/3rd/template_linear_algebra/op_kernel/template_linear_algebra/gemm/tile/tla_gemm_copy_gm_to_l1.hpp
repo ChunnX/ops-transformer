@@ -564,7 +564,7 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
         // There is an issue with AscenC in the data migration of nd2nz of type int4b_t: dValue needs to be passed
         // with the length of int8, and it is uncertain whether this will be fixed in subsequent versions.
         if constexpr (std::is_same_v<Element, AscendC::int4b_t>) {
-            intriParams.dValue = CeilDiv(intriParams.dValue, 2);
+            intriParams.dValue = CeilDiv(intriParams.dValue, static_cast<decltype(intriParams.dValue)>(2));
         }
         intriParams.srcNdMatrixStride = 0;
         intriParams.dstNzC0Stride = layoutDst.stride(3) / ELE_NUM_PER_C0;
@@ -574,7 +574,7 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
             intriParams.nValue = layoutSrc.shape(0);
             intriParams.srcDValue = layoutSrc.stride(0);
             if constexpr (std::is_same_v<Element, AscendC::int4b_t>) {
-                intriParams.srcDValue = CeilDiv(intriParams.srcDValue, 2);
+                intriParams.srcDValue = CeilDiv(intriParams.srcDValue, static_cast<decltype(intriParams.srcDValue)>(2));
             }
             intriParams.dstNzNStride = layoutDst.stride(0) / ELE_NUM_PER_C0;
             AscendC::DataCopy(dstTensor, srcTensor, intriParams);
@@ -641,7 +641,7 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::ColumnMajor>> {
         // There is an issue with AscenC in the data migration of nd2nz of type int4b_t: dValue needs to be passed
         // with the length of int8, and it is uncertain whether this will be fixed in subsequent versions.
         if constexpr (std::is_same_v<Element, AscendC::int4b_t>) {
-            intriParams.dValue = CeilDiv(intriParams.dValue, 2);
+            intriParams.dValue = CeilDiv(intriParams.dValue, static_cast<decltype(intriParams.dValue)>(2));
         }
         intriParams.srcNdMatrixStride = 0;
         intriParams.dstNzC0Stride = layoutDst.stride(1) / ELE_NUM_PER_C0;
@@ -651,7 +651,7 @@ struct CopyGmToL1<Arch::AtlasA2, Gemm::GemmType<Element, layout::ColumnMajor>> {
             intriParams.nValue = layoutSrc.shape(1);
             intriParams.srcDValue = layoutSrc.stride(1);
             if constexpr (std::is_same_v<Element, AscendC::int4b_t>) {
-                intriParams.srcDValue = CeilDiv(intriParams.srcDValue, 2);
+                intriParams.srcDValue = CeilDiv(intriParams.srcDValue, static_cast<decltype(intriParams.srcDValue)>(2));
             }
             intriParams.dstNzNStride = layoutDst.stride(2) / ELE_NUM_PER_C0;
             AscendC::DataCopy(dstTensor, srcTensor, intriParams);
