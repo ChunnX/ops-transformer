@@ -212,8 +212,7 @@ public:
         addrL1Start += L1_P_SIZE * L1_P_BUFCNT;
         pScaleL1 = LocalTensor<uint8_t>(TPosition::A1, addrL1Start, L1_P_DESCALE_SIZE * L1_P_BUFCNT); // 1K * 20 = 20K
 
-        // 偏移需与 cube 侧 L1 布局对齐: cube 侧 7 KV buffer + vSum 常驻后 localGlobalMaxL1 位于 521344
-        localGlobalMaxL1 = LocalTensor<half>(TPosition::A1, 521344, 256);
+        localGlobalMaxL1 = LocalTensor<half>(TPosition::A1, 520832, 256);
 
         // =================================UB Tensor Init=================================
         uint32_t addrUBStart = 0;

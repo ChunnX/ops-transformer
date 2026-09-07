@@ -792,8 +792,9 @@ private:
 
         uint32_t qkL0Offset = qkL0abBufId * (QK_L0A_SIZE / sizeof(DATA_T));
         uint32_t kL1Offset = kBufId * (L1_KV_SIZE / sizeof(DATA_T));
-        uint32_t kScaleL1Offset = kBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T)) +
-                                  (info.prefetched ? (L1_KV_DESCALE_SIZE / sizeof(SCALE_T)) : 0);
+        // pair预取时，第二半数据在L1中的行偏移(256行)已由loadData2DMxParamsA.xStartPosition(=16个16行分形)处理，
+        // 此处tensor基址无需再加prefetched偏移，否则双重偏移会读到其他缓冲区的陈旧scale数据
+        uint32_t kScaleL1Offset = kBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
         LoadData(qkL0ATensor[qkL0Offset].ReinterpretCast<QUANT_T>(), kL1Tensor[kL1Offset].ReinterpretCast<QUANT_T>(),
                  kDescaleL1Tensor[kScaleL1Offset], loadData2DParamsA, loadData2DMxParamsA);
     }
@@ -912,8 +913,9 @@ private:
 
         uint32_t pvL0AOffset = pvL0abBufId * (PV_L0A_SIZE / sizeof(DATA_T));
         uint32_t vL1Offset = vBufId * (L1_KV_SIZE / sizeof(DATA_T));
-        uint32_t vScaleL1Offset = vBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T)) +
-                                  (info.prefetched ? (L1_KV_DESCALE_SIZE / sizeof(SCALE_T)) : 0);
+        // pair预取时，第二半数据在L1中的S2方向偏移(256元素)已由load2DMxParamsA.yStartPosition(=4个64元素分形)处理，
+        // 此处tensor基址无需再加prefetched偏移，否则双重偏移会读到其他缓冲区的陈旧scale数据
+        uint32_t vScaleL1Offset = vBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
         LoadData(pvL0ATensor[pvL0AOffset].ReinterpretCast<QUANT_T>(), vL1Tensor[vL1Offset].ReinterpretCast<QUANT_T>(),
                  vDescaleL1Tensor[vScaleL1Offset], loadData2DParamsA, load2DMxParamsA);
     }
