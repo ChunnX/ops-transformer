@@ -31,6 +31,7 @@ constexpr uint32_t MHC_PRE_3BF16_PART_COUNT = 3U;
 constexpr float MHC_PRE_3BF16_MID_SCALE = 0.00390625F;
 constexpr float MHC_PRE_3BF16_LOW_SCALE = 0.0000152587890625F;
 constexpr uint16_t MHC_PRE_3BF16_MM_READY_FLAG = 3U;
+constexpr uint32_t MHC_PRE_3BF16_QUEUE_BYTES = 20U * 1024U;
 
 template <class T, class P, int8_t RESI_MODE>
 class MhcPre3Bf16 {
@@ -89,8 +90,8 @@ private:
         if ASCEND_IS_NOT_AIV {
             return;
         }
-        vector_.pipe_->InitBuffer(vector_.xInQueue_, vector_.kDoubleBufferCount, vector_.kXInQueueBufferBytes);
-        vector_.pipe_->InitBuffer(vector_.outQueue_, vector_.kDoubleBufferCount, vector_.kOutQueueBufferBytes);
+        vector_.pipe_->InitBuffer(vector_.xInQueue_, vector_.kDoubleBufferCount, MHC_PRE_3BF16_QUEUE_BYTES);
+        vector_.pipe_->InitBuffer(vector_.outQueue_, vector_.kDoubleBufferCount, MHC_PRE_3BF16_QUEUE_BYTES);
         uint32_t invRmsRows = (vector_.curSingleT_ + 1U) / 2U;
         uint32_t invRmsBytes = MhcPreAlign(invRmsRows, vector_.kAlignmentBytes / sizeof(P)) * sizeof(P);
         vector_.pipe_->InitBuffer(vector_.invRmsOutQueue_, 1U, invRmsBytes);
