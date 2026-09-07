@@ -1396,8 +1396,9 @@ static ge::graphStatus SplitMSingleXSingleWeightSingleY(gert::InferShapeContext 
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "weight",
                                                          "k dim value of x and weight is not matched"),
                 return GRAPH_FAILED);
-    innerAxisDimId = specialWeightFormat ? static_cast<int64_t>(weightAxis.n) :
-                                           (!transposeWeight ? 2 : -1); // 非转置时 weight 内轴 N 位于第 3 维（索引 2），转置时置 -1 跳过
+    innerAxisDimId = specialWeightFormat ?
+                         static_cast<int64_t>(weightAxis.n) :
+                         (!transposeWeight ? 2 : -1); // 非转置时 weight 内轴 N 位于第 3 维（索引 2），转置时置 -1 跳过
     OP_CHECK_IF(
         CheckInnerAxisOfTensorList(context, GMM_INDEX_IN_WEIGHT, innerAxisDimId, paramsInfo.numWeight, "weight") !=
             GRAPH_SUCCESS,
@@ -1899,22 +1900,24 @@ static ge::graphStatus ParseAttrsAndCountInputs(gert::InferShapeContext *context
     lenGroupList = 0;
     if (GetNumOfInputs(context, numX, numWeight, lenGroupList) != GRAPH_SUCCESS) {
         OP_CHECK_IF(CheckDimNum(context, numX, GMM_MIN_FM_DIM, "x") != GRAPH_SUCCESS,
-                  OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "x",
-                                                            "Dim num of tensor in tensorList x is invalid"),
-                  return GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "x",
+                                                             "Dim num of tensor in tensorList x is invalid"),
+                    return GRAPH_FAILED);
         return GRAPH_SUCCESS;
     }
     size_t numY = context->GetComputeNodeOutputNum();
     GMMParamsInfo paramsInfo{numX, numWeight, numY, lenGroupList, 0, 0, 0, 0, 0, PlatformID::UNKNOWN};
     OP_CHECK_IF(GetGroupSize(context, paramsInfo) != GRAPH_SUCCESS,
-              OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input",
-                                                       "check groupNum failed"), return GRAPH_FAILED);
-    OP_CHECK_IF(CheckFunctionParamsForShape(context, gmmAttrs, paramsInfo) != GRAPH_SUCCESS,
-              OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input",
-                                                       "CheckFunctionParamsForShape failed"), return GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input", "check groupNum failed"),
+                return GRAPH_FAILED);
+    OP_CHECK_IF(
+        CheckFunctionParamsForShape(context, gmmAttrs, paramsInfo) != GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input", "CheckFunctionParamsForShape failed"),
+        return GRAPH_FAILED);
     OP_CHECK_IF(CheckParamDifferentGroupType(context, gmmAttrs, paramsInfo) != GRAPH_SUCCESS,
-              OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "groupType",
-                                                       "CheckParamDifferentGroupType failed"), return GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "groupType",
+                                                         "CheckParamDifferentGroupType failed"),
+                return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 
@@ -1942,8 +1945,8 @@ static ge::graphStatus ComputeAndSetOutputShape(gert::InferShapeContext *context
     outputParams.lenGroupList = lenGroupList;
     outputParams.numWeight = numWeight;
     OP_CHECK_IF(GMMSetOutputShape(context, gmmAttrs, outputParams, x0Shape, w0Shape) != GRAPH_SUCCESS,
-              OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input",
-                                                       "GMMSetOutputShape failed"), return GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input", "GMMSetOutputShape failed"),
+                return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 
@@ -1957,13 +1960,15 @@ static ge::graphStatus InferShape4GroupedMatmul(gert::InferShapeContext *context
     }
     GMMAttrs gmmAttrs{GMM_X_Y_SEPARATED, 0, GMM_NO_SPLIT, false, false, 0, 0};
     OP_CHECK_IF(GetAttrsValue(context, gmmAttrs) != GRAPH_SUCCESS || CheckAttrs(context, gmmAttrs) != GRAPH_SUCCESS,
-              OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input",
-                                                       "Failed to get attrs"), return GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input", "Failed to get attrs"),
+                return GRAPH_FAILED);
     size_t numX = 0;
     size_t numWeight = 0;
     int64_t lenGroupList = 0;
-    OP_CHECK_IF(ParseAttrsAndCountInputs(context, gmmAttrs, numX, numWeight, lenGroupList) != GRAPH_SUCCESS,
-                OP_LOGE(context->GetNodeName(), "ParseAttrsAndCountInputs failed."), return GRAPH_FAILED);
+    OP_CHECK_IF(
+        ParseAttrsAndCountInputs(context, gmmAttrs, numX, numWeight, lenGroupList) != GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input", "ParseAttrsAndCountInputs failed"),
+        return GRAPH_FAILED);
     return ComputeAndSetOutputShape(context, gmmAttrs, numX, numWeight, lenGroupList);
 }
 
