@@ -385,13 +385,17 @@ def _collect_json_dtypes(value, result):
             _collect_json_dtypes(child, result)
 
 
-def load_sidecar_dtypes(source):
+def load_sidecar_dtypes(source, operator_name=""):
     """Read input/output dtype fallbacks from the operator JSON beside a dump."""
     result = {"input": {}, "output": {}}
+    normalized_operator = normalize_dtype(operator_name)
     candidates = sorted(
         (path for path in source.parent.glob("*.json") if path.name != source.name + ".json"),
-        key=lambda path: (path.stat().st_mtime_ns, path.name),
-        reverse=True,
+        key=lambda path: (
+            normalized_operator not in normalize_dtype(path.name) if normalized_operator else True,
+            -path.stat().st_mtime_ns,
+            path.name,
+        ),
     )
     for candidate in candidates:
         try:
@@ -441,7 +445,12 @@ def export_binary_region(source, source_offset, byte_size, output, storage_dtype
         shape = []
     dtype = np.dtype(storage_dtype)
     element_count = byte_size // item_size
-    output_shape = tuple(shape) if shape and math.prod(shape) == element_count else (element_count,)
+    valid_shape = (
+        shape
+        and all(isinstance(dim, int) and 0 <= dim <= sys.maxsize for dim in shape)
+        and math.prod(shape) == element_count
+    )
+    output_shape = tuple(shape) if valid_shape else (element_count,)
     output.parent.mkdir(parents=True, exist_ok=True)
     if element_count == 0:
         np.save(output, np.empty(output_shape, dtype=dtype), allow_pickle=False)
@@ -504,7 +513,7 @@ def export_exception_info(source, export_dir, operator="unknown"):
             )
         header_data = source_file.read(header_length)
     header = parse_dump_data_header(header_data)
-    sidecar_dtypes = load_sidecar_dtypes(source)
+    sidecar_dtypes = load_sidecar_dtypes(source, header["op_name"] or operator)
     export_dir.mkdir(parents=True, exist_ok=True)
 
     records = []
@@ -699,7 +708,7 @@ def main(argv=None):
         description="直接解析 exception_info.*，或转换已解包目录中的异常张量"
     )
     parser.add_argument("input_path", help="原始 exception_info.* 文件或已解包张量目录")
-    parser.add_argument("--operator", default="unknown", help="算子名，仅用于 manifest 标注")
+    parser.add_argument("--operator", default="unknown", help="算子名，仅用于输出元数据标注")
     parser.add_argument("--export-npy", required=True, help="NPY 输出目录")
     args = parser.parse_args(argv)
 

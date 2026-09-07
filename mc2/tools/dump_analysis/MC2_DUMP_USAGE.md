@@ -90,6 +90,7 @@ python3 parse_mc2_dump.py --help
 
 主要结果包括：
 
+- 终端继续显示 TilingData 和 Workspace 后端脚本原有的字段级解析结果；NPY 是额外的持久化输出。
 - 每个 Tiling、Args、Workspace、XN/CKE、通信上下文和 Peermem 输入文件各生成一个同名 `.npy`，并保留原 rank 子目录。
 - Tiling、Args 和 `type12/RUNTIME_INFO` 为对象型 NPY；XN/CKE 为二维 `uint64`。
 - MMRS `type8/MM_RESULT`、`type9/RECV_BUF` 根据同次 TilingData 自动保存输出 dtype 和 `(rankM, rankN)`；BF16 以 `uint16` 原始位模式存储。
