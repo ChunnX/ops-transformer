@@ -560,8 +560,8 @@ int main(int argc, char **argv)
     actualCmpQSeqLen = aclCreateIntArray(actualCmpQSeqLenVector.data(), actualCmpQSeqLenVector.size());
     int64_t d1 = 192;
     int64_t d2 = 128;
-    int64_t numHeads = 1;          // query和output的head个数
-    int64_t numKeyValueHeads = 1;  // key和value的kv head个数
+    int64_t numHeads = 1;
+    int64_t numKeyValueHeads = 1;
     int64_t blockSize = 64;
     int64_t selectBlockSize = 64;
     int64_t selectBlockCount = 1;
