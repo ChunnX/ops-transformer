@@ -269,6 +269,8 @@
   - D：仅支持512。
   - Drope：仅支持64。
   - topk：1024、2048、3072、4096、5120、6144、7168、8192。
+    - <term>Ascend 950PR/Ascend 950DT</term>：
+      - 额外还支持2051。
     - <term>不建议topk * sparseBlockSize超过100k，由于内部算法硬件限制可能会导致oom。</term>
 - 确定性计算：
   - SparseFlashAttentionGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。

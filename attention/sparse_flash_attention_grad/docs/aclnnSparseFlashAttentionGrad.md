@@ -683,7 +683,9 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         </tr>
         <tr>
             <td>K</td>
-            <td>1024、2048、3072、4096、5120、6144、7168、8192</td>
+            <td>1024、2048、3072、4096、5120、6144、7168、8192<br>
+            <term>Ascend 950PR/Ascend 950DT</term>额外还支持2051
+            </td>
             <td>不建议K * sparseBlockSize超过100k，由于内部算法硬件限制可能会导致oom</td>
         </tr>
         <tr>
