@@ -242,6 +242,9 @@ def main():
     )
     args = parser.parse_args()
     prof_base = os.path.abspath(args.prof_dir)
+    if not os.path.isdir(prof_base):
+        print(f"Error: prof directory not found: {prof_base}", file=sys.stderr)
+        return 1
 
     prof_dirs = [d for d in os.listdir(prof_base) if re.match(r"PROF_\d+_\d{17}_", d)]
     if not prof_dirs:

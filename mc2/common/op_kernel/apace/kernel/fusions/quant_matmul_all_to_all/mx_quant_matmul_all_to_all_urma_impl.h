@@ -22,7 +22,6 @@
 #include "basic_api/kernel_basic_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "matmul_all_to_all_tiling_data.h"
-#include "adv_api/hcomm/hcomm.h"
 
 #include "../../matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel_tpn.h"
 #include "../../../core/aiv_comm/collective_comm_api.h"
@@ -169,9 +168,7 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::In
     ubOffset += COMM_WORKSPACE_SIZE;
     auto barrierPtr = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
     teamBarrier_.Init(barrierPtr.Get(), barrierCtx_, udmaCtx_->rankSize, static_cast<uint32_t>(GetBlockIdx()));
-
-    CommTilingData commTilingData = tilingData->commTilingData;
-    allToAll_.Init(udmaCtx_, teamBarrier_, commTilingData, cGM, commPtr.Get(),
+    allToAll_.Init(udmaCtx_, teamBarrier_, tilingData->commTilingData, cGM, commPtr.Get(),
                    static_cast<uint32_t>(udmaCtx_->rankSize), static_cast<uint32_t>(GetBlockIdx()));
 }
 
@@ -258,7 +255,8 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Se
                                    mmTile.baseM,
                                    mmTile.baseN,
                                    mmTile.baseK,
-                                   baseParams_.biasGm != nullptr ? QBMMTiling::BIAS_ENABLED : QBMMTiling::BIAS_DISABLED,
+                                   baseParams_.biasGm != nullptr ? QBMMTiling::BIAS_ENABLED :
+                                                                   QBMMTiling::BIAS_DISABLED,
                                    mmTile.dbL0c,
                                    LocalDelay && !isLocal};
     // skipSelfBatch 仅在"Local块后置计算 且 非local块"时为 true：

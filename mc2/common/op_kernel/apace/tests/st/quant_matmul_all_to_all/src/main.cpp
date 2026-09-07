@@ -19,7 +19,7 @@
  *     from every rank i, concatenated along M -> [rankNum*M, Np] (BF16/FP16)
  */
 
-#include <cmath>
+#include <cstring>
 #include <iostream>
 #include <iomanip>
 #include <limits.h>
@@ -46,6 +46,9 @@
 #include "../../utils/root_info_exchanger.h"
 
 static constexpr int32_t BENCHMARK_ITERATIONS = 10;
+static constexpr int32_t MXFP_K_ALIGN_SIZE = 32;
+static constexpr uint16_t HCCL_ROOT_INFO_PORT = 8998;
+static constexpr double MS_TO_US = 1000.0;
 
 enum QuantType {
     QUANT_E2M1_E2M1 = 0,
@@ -54,14 +57,6 @@ enum QuantType {
     QUANT_E4M3_E5M2 = 3,
     QUANT_E5M2_E4M3 = 4,
 };
-
-#define HCCL_CHECK(status) \
-    do { \
-        HcclResult ret = (status); \
-        if (ret != HCCL_SUCCESS) { \
-            std::cerr << __FILE__ << ":" << __LINE__ << " HcclResult:" << ret << std::endl; \
-        } \
-    } while (0)
 
 struct AllToAllArgs {
     int m{0};
@@ -129,10 +124,10 @@ void ParseArgs(int argc, char *argv[], AllToAllArgs &args)
     if (args.m <= 0 || args.k <= 0 || args.n <= 0 || args.rankNum <= 0 || args.tileCnt <= 0) {
         throw std::invalid_argument("ERROR: m k n rankNum tileCnt must be positive");
     }
-    if (args.k % 32 != 0) {
+    if (args.k % MXFP_K_ALIGN_SIZE != 0) {
         throw std::invalid_argument("ERROR: K must be divisible by 32 for MXFP quantization");
     }
-    if (CeilDiv(args.k, static_cast<int>(::MXFP_DIVISOR_SIZE)) % 2 != 0) {
+    if (CeilDiv(args.k, static_cast<int>(::MXFP_DIVISOR_SIZE)) % ::MXFP_MULTI_BASE_SIZE != 0) {
         throw std::invalid_argument("ERROR: CeilDiv(K, 64) must be an even number");
     }
     if (args.n % args.rankNum != 0) {
@@ -150,9 +145,15 @@ void ParseArgs(int argc, char *argv[], AllToAllArgs &args)
     if (args.isLocalDelayed != 0 && args.isLocalDelayed != 1) {
         throw std::invalid_argument("ERROR: isLocalDelayed must be 0 or 1");
     }
+    if (args.rankNum == 1 && args.isLocalDelayed != 0) {
+        throw std::invalid_argument("ERROR: isLocalDelayed=1 requires rankNum >= 2");
+    }
 
     if (args.tileSize <= 0) {
         args.tileSize = args.m / args.tileCnt;
+    }
+    if (args.tileSize <= 0) {
+        throw std::invalid_argument("ERROR: tileSize must be positive, check m >= tileCnt");
     }
     int64_t rem =
         static_cast<int64_t>(args.m) - static_cast<int64_t>(args.tileSize) * static_cast<int64_t>(args.tileCnt);
@@ -171,7 +172,7 @@ void ParseArgs(int argc, char *argv[], AllToAllArgs &args)
 
 static void LaunchKernel(uint32_t usedCoreNum, aclrtStream stream, CommContext *hcommCtx, GM_ADDR deviceA,
                          GM_ADDR deviceScaleA, GM_ADDR deviceB, GM_ADDR deviceScaleB, GM_ADDR deviceBias,
-                         GM_ADDR deviceOutput, MatmulAllToAllTilingData &tilingData, int quantType, int isFp16,
+                         GM_ADDR deviceOutput, const MatmulAllToAllTilingData &tilingData, int quantType, int isFp16,
                          int isLocalDelayed)
 {
 #define A2A_MX_LAUNCH(kernelName) \
@@ -216,9 +217,18 @@ static void LaunchKernel(uint32_t usedCoreNum, aclrtStream stream, CommContext *
 #undef A2A_MX_LAUNCH
 }
 
+static void ReleaseStreamDevice(aclrtStream stream, int32_t deviceId)
+{
+    if (stream != nullptr) {
+        aclrtDestroyStream(stream);
+    }
+    aclrtResetDevice(deviceId);
+    aclFinalize();
+}
+
 int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
 {
-    const char *ipport = "tcp://127.0.0.1:8998";
+    std::string ipport = "tcp://127.0.0.1:" + std::to_string(HCCL_ROOT_INFO_PORT);
     int rankNum = args.rankNum;
     int m = args.m;
     int k = args.k;
@@ -226,7 +236,7 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
 
     INFO_LOG("rankNum=%d, rankId=%d, ipport=%s, quantType=%d, isFp16=%d, isBias=%d, tileCnt=%d, "
              "tileSize=%d, tailSize=%d, isLocalDelayed=%d",
-             rankNum, rankId, ipport, args.quantType, args.isFp16, args.isBias, args.tileCnt, args.tileSize,
+             rankNum, rankId, ipport.c_str(), args.quantType, args.isFp16, args.isBias, args.tileCnt, args.tileSize,
              args.tailSize, args.isLocalDelayed);
 
     uint32_t np = static_cast<uint32_t>(n) / static_cast<uint32_t>(rankNum);
@@ -248,16 +258,28 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
 
     INFO_LOG("CommTurnSet: tileCnt=%u tileM=%u tailM=%u tailCnt=%u", tileCnt, tileSize, tailSize, tailCnt);
 
-    ACL_CHECK(aclInit(nullptr));
+    if (aclInit(nullptr) != ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclInit failed", rankId);
+        return -1;
+    }
     int32_t deviceId = rankId;
-    ACL_CHECK(aclrtSetDevice(deviceId));
+    if (aclrtSetDevice(deviceId) != ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtSetDevice failed", rankId);
+        return -1;
+    }
     aclrtStream stream = nullptr;
-    ACL_CHECK(aclrtCreateStream(&stream));
+    if (aclrtCreateStream(&stream) != ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtCreateStream failed", rankId);
+        ReleaseStreamDevice(stream, deviceId);
+        return -1;
+    }
 
     RootInfoExchanger exchanger(static_cast<uint32_t>(rankId), static_cast<uint32_t>(rankNum), ipport);
     HcclRootInfo rootInfo;
     if (!exchanger.Exchange(rootInfo)) {
         ERROR_LOG("rank %d exchange rootInfo failed", rankId);
+        memset(&rootInfo, 0, sizeof(rootInfo));
+        ReleaseStreamDevice(stream, deviceId);
         return -1;
     }
 
@@ -265,12 +287,15 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
     HcclCommConfigInit(&config);
     config.hcclWorldRankID = static_cast<uint32_t>(rankId);
     HcclComm comm = nullptr;
-    HCCL_CHECK(HcclCommInitRootInfoConfig(static_cast<uint32_t>(rankNum), &rootInfo, static_cast<uint32_t>(rankId),
-                                          &config, &comm));
-    if (comm == nullptr) {
-        ERROR_LOG("rank %d HcclCommInitRootInfoConfig failed", rankId);
+    HcclResult hcclRet = HcclCommInitRootInfoConfig(static_cast<uint32_t>(rankNum), &rootInfo,
+                                                    static_cast<uint32_t>(rankId), &config, &comm);
+    if (hcclRet != HCCL_SUCCESS || comm == nullptr) {
+        ERROR_LOG("rank %d HcclCommInitRootInfoConfig failed, HcclResult:%d", rankId, static_cast<int>(hcclRet));
+        memset(&rootInfo, 0, sizeof(rootInfo));
+        ReleaseStreamDevice(stream, deviceId);
         return -1;
     }
+    memset(&rootInfo, 0, sizeof(rootInfo));
 
     CommChannelBuilder<> builder(comm);
     CommContext hostCtx = {};
@@ -281,6 +306,8 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
         builder.CreateDeviceContext(&hostCtx, sizeof(CommContext), ctxTag, &hostCtx.udmaCtx, &hostCtx.ubmemCtx));
     if (devContext == nullptr) {
         ERROR_LOG("rank %d CreateDeviceContext failed", rankId);
+        HcclCommDestroy(comm);
+        ReleaseStreamDevice(stream, deviceId);
         return -1;
     }
 
@@ -329,6 +356,13 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
 #undef DO_TILING
 
     uint32_t usedCoreNum = tilingData.tileQbmmTilingData.usedCoreNum;
+    if (usedCoreNum < static_cast<uint32_t>(rankNum)) {
+        ERROR_LOG("rank %d usedCoreNum(%u) < rankNum(%d), TeamBarrier requires at least rankNum blocks", rankId,
+                  usedCoreNum, rankNum);
+        HcclCommDestroy(comm);
+        ReleaseStreamDevice(stream, deviceId);
+        return -1;
+    }
     INFO_LOG("Tiling: usedCoreNum=%u", usedCoreNum);
 
     bool isFp4 = (args.quantType == QUANT_E2M1_E2M1);
@@ -348,6 +382,43 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
     std::vector<float> hostBias((args.isBias != 0) ? n : 0, 0.0F);
     std::vector<uint16_t> hostOutput(sizeOutput / sizeof(uint16_t), 0);
 
+    GM_ADDR deviceA = nullptr;
+    GM_ADDR deviceB = nullptr;
+    GM_ADDR deviceScaleA = nullptr;
+    GM_ADDR deviceScaleB = nullptr;
+    GM_ADDR deviceBias = nullptr;
+    GM_ADDR deviceOutput = nullptr;
+    aclrtEvent kernelStartEvent = nullptr;
+    aclrtEvent kernelEndEvent = nullptr;
+    auto releaseAll = [&]() {
+        if (kernelEndEvent != nullptr) {
+            aclrtDestroyEvent(kernelEndEvent);
+        }
+        if (kernelStartEvent != nullptr) {
+            aclrtDestroyEvent(kernelStartEvent);
+        }
+        if (deviceOutput != nullptr) {
+            aclrtFree(deviceOutput);
+        }
+        if (deviceBias != nullptr) {
+            aclrtFree(deviceBias);
+        }
+        if (deviceScaleB != nullptr) {
+            aclrtFree(deviceScaleB);
+        }
+        if (deviceScaleA != nullptr) {
+            aclrtFree(deviceScaleA);
+        }
+        if (deviceB != nullptr) {
+            aclrtFree(deviceB);
+        }
+        if (deviceA != nullptr) {
+            aclrtFree(deviceA);
+        }
+        HcclCommDestroy(comm);
+        ReleaseStreamDevice(stream, deviceId);
+    };
+
     char exePath[PATH_MAX];
     ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
     std::string baseDir = ".";
@@ -361,59 +432,137 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
     }
     std::string inputDir = baseDir + "/input/" + std::to_string(rankId);
     std::string outputDir = baseDir + "/output/" + std::to_string(rankId);
-    ReadFile(inputDir + "/input_a.bin", hostA.data(), sizeA);
-    ReadFile(inputDir + "/input_b.bin", hostB.data(), sizeB);
-    ReadFile(inputDir + "/input_scaleA.bin", hostScaleA.data(), sizeScaleA);
-    ReadFile(inputDir + "/input_scaleB.bin", hostScaleB.data(), sizeScaleB);
-    if (args.isBias != 0) {
-        ReadFile(inputDir + "/input_bias.bin", hostBias.data(), sizeBias);
+    auto readInput = [&](const std::string &fileName, void *buffer, size_t size) -> bool {
+        std::string path = inputDir + "/" + fileName;
+        if (!ReadFile(path, buffer, size)) {
+            ERROR_LOG("rank %d read %s failed. path = %s", rankId, fileName.c_str(), path.c_str());
+            return false;
+        }
+        return true;
+    };
+    if (!readInput("input_a.bin", hostA.data(), sizeA) || !readInput("input_b.bin", hostB.data(), sizeB) ||
+        !readInput("input_scaleA.bin", hostScaleA.data(), sizeScaleA) ||
+        !readInput("input_scaleB.bin", hostScaleB.data(), sizeScaleB) ||
+        (args.isBias != 0 && !readInput("input_bias.bin", hostBias.data(), sizeBias))) {
+        releaseAll();
+        return -1;
     }
 
-    GM_ADDR deviceA = nullptr;
-    GM_ADDR deviceB = nullptr;
-    GM_ADDR deviceScaleA = nullptr;
-    GM_ADDR deviceScaleB = nullptr;
-    GM_ADDR deviceBias = nullptr;
-    GM_ADDR deviceOutput = nullptr;
-
-    ACL_CHECK(aclrtMalloc((void **)&deviceA, sizeA, ACL_MEM_MALLOC_HUGE_ONLY));
-    ACL_CHECK(aclrtMalloc((void **)&deviceB, sizeB, ACL_MEM_MALLOC_HUGE_ONLY));
-    ACL_CHECK(aclrtMalloc((void **)&deviceScaleA, sizeScaleA, ACL_MEM_MALLOC_HUGE_ONLY));
-    ACL_CHECK(aclrtMalloc((void **)&deviceScaleB, sizeScaleB, ACL_MEM_MALLOC_HUGE_ONLY));
-    if (args.isBias != 0) {
-        ACL_CHECK(aclrtMalloc((void **)&deviceBias, sizeBias, ACL_MEM_MALLOC_HUGE_ONLY));
+    if (aclrtMalloc((void **)&deviceA, sizeA, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtMalloc deviceA failed", rankId);
+        releaseAll();
+        return -1;
     }
-    ACL_CHECK(aclrtMalloc((void **)&deviceOutput, sizeOutput, ACL_MEM_MALLOC_HUGE_ONLY));
-
-    ACL_CHECK(aclrtMemcpy(deviceA, sizeA, hostA.data(), sizeA, ACL_MEMCPY_HOST_TO_DEVICE));
-    ACL_CHECK(aclrtMemcpy(deviceB, sizeB, hostB.data(), sizeB, ACL_MEMCPY_HOST_TO_DEVICE));
-    ACL_CHECK(aclrtMemcpy(deviceScaleA, sizeScaleA, hostScaleA.data(), sizeScaleA, ACL_MEMCPY_HOST_TO_DEVICE));
-    ACL_CHECK(aclrtMemcpy(deviceScaleB, sizeScaleB, hostScaleB.data(), sizeScaleB, ACL_MEMCPY_HOST_TO_DEVICE));
+    if (aclrtMalloc((void **)&deviceB, sizeB, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtMalloc deviceB failed", rankId);
+        releaseAll();
+        return -1;
+    }
+    if (aclrtMalloc((void **)&deviceScaleA, sizeScaleA, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtMalloc deviceScaleA failed", rankId);
+        releaseAll();
+        return -1;
+    }
+    if (aclrtMalloc((void **)&deviceScaleB, sizeScaleB, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtMalloc deviceScaleB failed", rankId);
+        releaseAll();
+        return -1;
+    }
     if (args.isBias != 0) {
-        ACL_CHECK(aclrtMemcpy(deviceBias, sizeBias, hostBias.data(), sizeBias, ACL_MEMCPY_HOST_TO_DEVICE));
+        if (aclrtMalloc((void **)&deviceBias, sizeBias, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
+            ERROR_LOG("rank %d aclrtMalloc deviceBias failed", rankId);
+            releaseAll();
+            return -1;
+        }
+    }
+    if (aclrtMalloc((void **)&deviceOutput, sizeOutput, ACL_MEM_MALLOC_HUGE_ONLY) != ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtMalloc deviceOutput failed", rankId);
+        releaseAll();
+        return -1;
     }
 
-    aclrtEvent kernelStartEvent = nullptr;
-    aclrtEvent kernelEndEvent = nullptr;
-    ACL_CHECK(aclrtCreateEvent(&kernelStartEvent));
-    ACL_CHECK(aclrtCreateEvent(&kernelEndEvent));
-    ACL_CHECK(aclrtRecordEvent(kernelStartEvent, stream));
+    if (aclrtMemcpy(deviceA, sizeA, hostA.data(), sizeA, ACL_MEMCPY_HOST_TO_DEVICE) != ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtMemcpy deviceA failed", rankId);
+        releaseAll();
+        return -1;
+    }
+    if (aclrtMemcpy(deviceB, sizeB, hostB.data(), sizeB, ACL_MEMCPY_HOST_TO_DEVICE) != ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtMemcpy deviceB failed", rankId);
+        releaseAll();
+        return -1;
+    }
+    if (aclrtMemcpy(deviceScaleA, sizeScaleA, hostScaleA.data(), sizeScaleA, ACL_MEMCPY_HOST_TO_DEVICE) !=
+        ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtMemcpy deviceScaleA failed", rankId);
+        releaseAll();
+        return -1;
+    }
+    if (aclrtMemcpy(deviceScaleB, sizeScaleB, hostScaleB.data(), sizeScaleB, ACL_MEMCPY_HOST_TO_DEVICE) !=
+        ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtMemcpy deviceScaleB failed", rankId);
+        releaseAll();
+        return -1;
+    }
+    if (args.isBias != 0) {
+        if (aclrtMemcpy(deviceBias, sizeBias, hostBias.data(), sizeBias, ACL_MEMCPY_HOST_TO_DEVICE) !=
+            ACL_ERROR_NONE) {
+            ERROR_LOG("rank %d aclrtMemcpy deviceBias failed", rankId);
+            releaseAll();
+            return -1;
+        }
+    }
+
+    if (aclrtCreateEvent(&kernelStartEvent) != ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtCreateEvent kernelStartEvent failed", rankId);
+        releaseAll();
+        return -1;
+    }
+    if (aclrtCreateEvent(&kernelEndEvent) != ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtCreateEvent kernelEndEvent failed", rankId);
+        releaseAll();
+        return -1;
+    }
+    if (aclrtRecordEvent(kernelStartEvent, stream) != ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtRecordEvent kernelStartEvent failed", rankId);
+        releaseAll();
+        return -1;
+    }
 
     for (int i = 0; i < BENCHMARK_ITERATIONS; ++i) {
         LaunchKernel(usedCoreNum, stream, devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceBias,
                      deviceOutput, tilingData, args.quantType, args.isFp16, args.isLocalDelayed);
     }
     std::cout << "LaunchKernel finished" << std::endl;
-    ACL_CHECK(aclrtRecordEvent(kernelEndEvent, stream));
-    ACL_CHECK(aclrtSynchronizeStream(stream));
+    if (aclrtRecordEvent(kernelEndEvent, stream) != ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtRecordEvent kernelEndEvent failed", rankId);
+        releaseAll();
+        return -1;
+    }
+    if (aclrtSynchronizeStream(stream) != ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtSynchronizeStream failed", rankId);
+        releaseAll();
+        return -1;
+    }
 
     float kernelElapsedMs = 0.0F;
-    ACL_CHECK(aclrtEventElapsedTime(&kernelElapsedMs, kernelStartEvent, kernelEndEvent));
-    double kernelElapsedUs = static_cast<double>(kernelElapsedMs) * 1000.0;
+    if (aclrtEventElapsedTime(&kernelElapsedMs, kernelStartEvent, kernelEndEvent) != ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtEventElapsedTime failed", rankId);
+        releaseAll();
+        return -1;
+    }
+    double kernelElapsedUs = static_cast<double>(kernelElapsedMs) * MS_TO_US;
 
-    ACL_CHECK(aclrtMemcpy(hostOutput.data(), sizeOutput, deviceOutput, sizeOutput, ACL_MEMCPY_DEVICE_TO_HOST));
+    if (aclrtMemcpy(hostOutput.data(), sizeOutput, deviceOutput, sizeOutput, ACL_MEMCPY_DEVICE_TO_HOST) !=
+        ACL_ERROR_NONE) {
+        ERROR_LOG("rank %d aclrtMemcpy deviceOutput to host failed", rankId);
+        releaseAll();
+        return -1;
+    }
 
-    WriteFile(outputDir + "/npu_out.bin", hostOutput.data(), sizeOutput);
+    bool writeOk = WriteFile(outputDir + "/npu_out.bin", hostOutput.data(), sizeOutput);
+    if (!writeOk) {
+        ERROR_LOG("rank %d write npu_out.bin failed. path = %s", rankId, (outputDir + "/npu_out.bin").c_str());
+    }
 
     std::cout << std::fixed << std::setprecision(3) << "[Rank " << rankId
               << "] Kernel elapsed time: " << kernelElapsedUs / BENCHMARK_ITERATIONS << " us (avg over "
@@ -441,7 +590,7 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
     ACL_CHECK(aclrtResetDevice(deviceId));
     ACL_CHECK(aclFinalize());
 
-    return 0;
+    return writeOk ? 0 : -1;
 }
 
 int main(int argc, char *argv[])

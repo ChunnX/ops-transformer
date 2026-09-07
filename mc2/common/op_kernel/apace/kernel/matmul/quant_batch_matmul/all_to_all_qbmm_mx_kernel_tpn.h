@@ -60,10 +60,10 @@ public:
     using TypeScaleA = ::fp8_e8m0_t;
     using TypeScaleB = ::fp8_e8m0_t;
 
-    static constexpr bool weightNz = BlockMmad::WEIGHT_NZ;
-    static constexpr bool transB = BlockMmad::TRANS_B;
+    static constexpr bool WEIGHT_NZ = BlockMmad::WEIGHT_NZ;
+    static constexpr bool TRANS_B = BlockMmad::TRANS_B;
     static constexpr int64_t C0_SIZE = IsFp4<AType>() ? C0_SIZE_B4 : C0_SIZE_B8;
-    static constexpr int64_t kCacheLineAlignMask = IsFp4<AType>() ? 0xff : 0x7f;
+    static constexpr int64_t CACHE_LINE_ALIGN_MASK = IsFp4<AType>() ? 0xff : 0x7f;
     static constexpr int32_t SCALE_C0 = 2;
     static constexpr uint64_t SIZE_SHIFT = IsFp4<AType>() ? 1 : 0; // FP4 两元素共 1 字节，元素数转字节数右移 1
 
@@ -172,9 +172,9 @@ __aicore__ inline void QuantBatchMatmulMxKernel<QBMM_MX_KERNEL_TPN_FUNC_TEM_PARA
 
     BlockScheduler bs(params.problemShape, params.schParams);
 
-    int64_t N = Te::Get<MNK_N>(params.problemShape);
-    int64_t K = Te::Get<MNK_K>(params.problemShape);
-    int64_t scaleKLen = Blaze::Gemm::CeilDiv(K, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+    int64_t n = Te::Get<MNK_N>(params.problemShape);
+    int64_t k = Te::Get<MNK_K>(params.problemShape);
+    int64_t scaleKLen = Blaze::Gemm::CeilDiv(k, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
 
     uint32_t batchCnt = params.qbmmParams.batchCount;
     uint64_t singleBatchTileCnt = bs.GetTotalCnt();
@@ -191,17 +191,17 @@ __aicore__ inline void QuantBatchMatmulMxKernel<QBMM_MX_KERNEL_TPN_FUNC_TEM_PARA
 
         ResetGmAddr(params);
         // B/scaleB/bias 按 rank 分段，寻址到起始地址
-        bGmAddr_ += (static_cast<uint64_t>(realRank) * N * K) >> SIZE_SHIFT;
-        scaleBGmAddr_ += static_cast<uint64_t>(realRank) * N * static_cast<uint64_t>(scaleKLen);
+        bGmAddr_ += (static_cast<uint64_t>(realRank) * n * k) >> SIZE_SHIFT;
+        scaleBGmAddr_ += static_cast<uint64_t>(realRank) * n * static_cast<uint64_t>(scaleKLen);
         if (isBias_) {
-            biasGmAddr_ += static_cast<uint64_t>(realRank) * N;
+            biasGmAddr_ += static_cast<uint64_t>(realRank) * n;
         }
 
         // C 写入去向：本 rank batch 直写 cGmSelfAddr，其余写 Win 区
         if (!params.localParams.skipSelfBatch && b == params.localParams.selfBatchIdx) {
             cGmAddr_ = cGmSelfAddr_;
         } else {
-            cGmAddr_ += static_cast<uint64_t>(realRank) * params.localParams.origM * N;
+            cGmAddr_ += static_cast<uint64_t>(realRank) * params.localParams.origM * n;
         }
 
         ProcessSingleBatch(params, bs, restBatch, isTailRound);
@@ -265,7 +265,7 @@ __aicore__ inline void QuantBatchMatmulMxKernel<QBMM_MX_KERNEL_TPN_FUNC_TEM_PARA
     constexpr int64_t kPos = 0L;
     while (bs.GetTileIdx(blockIdx)) {
         BlockShape singleShape =
-            bs.template GetBlockShape<QuantMode::MX_PERGROUP_MODE, QuantMode::MX_PERGROUP_MODE, weightNz>(blockIdx);
+            bs.template GetBlockShape<QuantMode::MX_PERGROUP_MODE, QuantMode::MX_PERGROUP_MODE, WEIGHT_NZ>(blockIdx);
         const auto baseM = Te::Get<IDX_M_TILEIDX>(singleShape);
         const auto baseN = Te::Get<IDX_N_TILEIDX>(singleShape);
         if (baseM <= 0 || baseN <= 0) {
@@ -296,20 +296,20 @@ __aicore__ inline void QuantBatchMatmulMxKernel<QBMM_MX_KERNEL_TPN_FUNC_TEM_PARA
     if (Te::Get<MNK_B>(problemShape) != 1) {
         return;
     }
-    if constexpr (transB) {
+    if constexpr (TRANS_B) {
         const int64_t scaleKRowBytes =
             Blaze::Gemm::CeilDiv(Te::Get<MNK_K>(problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
             MXFP_MULTI_BASE_SIZE;
         const int64_t scaleKL1RowBytes = Blaze::Gemm::CeilDiv(scaleKL1, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         const bool scaleAlignForL2Stream =
-            (scaleKRowBytes & kCacheLineAlignMask) == 0 && (scaleKL1RowBytes & kCacheLineAlignMask) == 0;
+            (scaleKRowBytes & CACHE_LINE_ALIGN_MASK) == 0 && (scaleKL1RowBytes & CACHE_LINE_ALIGN_MASK) == 0;
         gmScaleB.SetL2CacheHint(scaleAlignForL2Stream ? Te::CacheMode::CACHE_MODE_DISABLE :
                                                         Te::CacheMode::CACHE_MODE_NORMAL);
     } else {
         const int64_t scaleNStrideBytes = Te::Get<MNK_N>(problemShape) * MXFP_MULTI_BASE_SIZE;
         const int64_t scaleBaseNStrideBytes = baseN * MXFP_MULTI_BASE_SIZE;
         const bool scaleAlignForL2Stream =
-            (scaleNStrideBytes & kCacheLineAlignMask) == 0 && (scaleBaseNStrideBytes & kCacheLineAlignMask) == 0;
+            (scaleNStrideBytes & CACHE_LINE_ALIGN_MASK) == 0 && (scaleBaseNStrideBytes & CACHE_LINE_ALIGN_MASK) == 0;
         gmScaleB.SetL2CacheHint(scaleAlignForL2Stream ? Te::CacheMode::CACHE_MODE_DISABLE :
                                                         Te::CacheMode::CACHE_MODE_NORMAL);
     }
@@ -332,16 +332,16 @@ __aicore__ inline void QuantBatchMatmulMxKernel<QBMM_MX_KERNEL_TPN_FUNC_TEM_PARA
 
     SetScaleL2Cache(problemShape, baseN, scaleKL1, gmScaleB);
 
-    if constexpr (weightNz) {
+    if constexpr (WEIGHT_NZ) {
         gmB.SetL2CacheHint(Te::CacheMode::CACHE_MODE_DISABLE);
     } else {
-        if constexpr (transB) {
-            bool bAlignForL2Stream = (Te::Get<MNK_K>(problemShape) & kCacheLineAlignMask) == 0;
+        if constexpr (TRANS_B) {
+            bool bAlignForL2Stream = (Te::Get<MNK_K>(problemShape) & CACHE_LINE_ALIGN_MASK) == 0;
             gmB.SetL2CacheHint(bAlignForL2Stream ? Te::CacheMode::CACHE_MODE_DISABLE :
                                                    Te::CacheMode::CACHE_MODE_NORMAL);
         } else {
             bool bAlignForL2Stream =
-                (Te::Get<MNK_N>(problemShape) & kCacheLineAlignMask) == 0 && (baseN & kCacheLineAlignMask) == 0;
+                (Te::Get<MNK_N>(problemShape) & CACHE_LINE_ALIGN_MASK) == 0 && (baseN & CACHE_LINE_ALIGN_MASK) == 0;
             gmB.SetL2CacheHint(bAlignForL2Stream ? Te::CacheMode::CACHE_MODE_DISABLE :
                                                    Te::CacheMode::CACHE_MODE_NORMAL);
         }

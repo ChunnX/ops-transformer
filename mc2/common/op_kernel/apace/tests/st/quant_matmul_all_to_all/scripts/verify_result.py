@@ -126,7 +126,6 @@ def verify_single_rank(
         npu_output_tensor,
         rtol=ERROR_TOL_RTOL,
         atol=ERROR_TOL_ATOL,
-        equal_nan=True,
     )
 
 
@@ -219,6 +218,9 @@ if __name__ == "__main__":
     out_dtype = torch.float16 if is_fp16 else torch.bfloat16
 
     # Validate parameters
+    if rank_num <= 0:
+        print(f"Error: rank_num={rank_num} must be a positive integer")
+        sys.exit(1)
     if n % rank_num != 0:
         print(f"Error: n={n} is not divisible by rank_num={rank_num}")
         sys.exit(1)
