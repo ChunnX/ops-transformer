@@ -174,7 +174,14 @@ def discover_files(dump_dir, output_dir, profile_key):
         path for path in dump_dir.rglob("*")
         if path.is_file() and output_dir not in path.parents
     ]
-    operator_dirs = {path.parent for path in all_files if matches_operator(path, profile_key)}
+    profile = PROFILES[profile_key]
+    operator_files = [path for path in all_files if matches_operator(path, profile_key)]
+    operator_dirs = {path.parent for path in operator_files}
+    operator_invocations = {}
+    for path in operator_files:
+        invocation = operator_suffix(path, profile)
+        if invocation is not None:
+            operator_invocations.setdefault(path.parent, set()).add(invocation)
     raw_exceptions = [path for path in all_files if is_raw_exception(path)]
     # A raw exception filename does not contain the operator name. Associate it
     # with the operator through sibling dump/.o/.json files in the same rank dir.
@@ -185,7 +192,10 @@ def discover_files(dump_dir, output_dir, profile_key):
     for path in all_files:
         kind = classify_file(path)
         if kind == "exception" and path.parent in operator_dirs:
-            files.append((kind, path))
+            invocation = exception_suffix(path)
+            known_invocations = operator_invocations.get(path.parent, set())
+            if invocation is None or not known_invocations or invocation in known_invocations:
+                files.append((kind, path))
         elif kind is not None and matches_operator(path, profile_key):
             files.append((kind, path))
     return sorted(files, key=lambda item: (KIND_ORDER[item[0]], str(item[1]).lower()))
@@ -245,8 +255,14 @@ def infer_aic_core_num(profile, tiling_file):
             sys.path.pop(0)
 
 
+def stream_task_suffix(value):
+    """Normalize ``.streamId.taskId.timestamp`` to ``.streamId.taskId``."""
+    match = re.match(r"^\.(\d+)\.(\d+)(?:\.|$)", value)
+    return f".{match.group(1)}.{match.group(2)}" if match else None
+
+
 def operator_suffix(path, profile):
-    """Return the invocation suffix shared by tiling/workspace files."""
+    """Return the stream/task identity shared by files from one invocation."""
     candidates = [profile["name"]]
     if profile["name"] == "MatmulReduceScatterV2":
         candidates.append("MatmulReduceScatter")
@@ -254,8 +270,16 @@ def operator_suffix(path, profile):
     for candidate in candidates:
         index = lowered.find(candidate.lower())
         if index >= 0:
-            return lowered[index + len(candidate):]
-    return lowered
+            suffix = lowered[index + len(candidate):]
+            return stream_task_suffix(suffix)
+    return None
+
+
+def exception_suffix(path):
+    """Return the stream/task identity embedded in ``exception_info.*``."""
+    lowered = path.name.lower()
+    suffix = lowered[len("exception_info"):]
+    return stream_task_suffix(suffix)
 
 
 def build_core_index(profile, tiling_files):
@@ -266,7 +290,9 @@ def build_core_index(profile, tiling_files):
         core_num = infer_aic_core_num(profile, tiling_file)
         if core_num is None:
             continue
-        exact[(tiling_file.parent, operator_suffix(tiling_file, profile))] = core_num
+        invocation = operator_suffix(tiling_file, profile)
+        if invocation is not None:
+            exact[(tiling_file.parent, invocation)] = core_num
         per_parent.setdefault(tiling_file.parent, set()).add(core_num)
         values.add(core_num)
     return exact, per_parent, values
@@ -274,7 +300,8 @@ def build_core_index(profile, tiling_files):
 
 def core_num_for_file(path, profile, core_index):
     exact, per_parent, values = core_index
-    core_num = exact.get((path.parent, operator_suffix(path, profile)))
+    invocation = operator_suffix(path, profile)
+    core_num = exact.get((path.parent, invocation)) if invocation is not None else None
     if core_num is not None:
         return core_num
     parent_values = per_parent.get(path.parent, set())
