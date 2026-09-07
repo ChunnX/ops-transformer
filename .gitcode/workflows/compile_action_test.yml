@@ -67,8 +67,6 @@ jobs:
             unset XCACHE_IN_NEXTBUILD
             unset NB_CACHE
             unset NB_RDECO_TOOL_PATH
-            unset NB_UNLOAD_CMD_PATTERN
-            export NB_LOCAL_CMD_PATTERN=CMakeScratch/TryCompile
             unset NB_RDECO_ENABLE
             env|grep NB
             env|grep XCACHE
