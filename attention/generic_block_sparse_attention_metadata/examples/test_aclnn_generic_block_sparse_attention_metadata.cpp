@@ -266,7 +266,7 @@ aclnnStatus CreateTndSeqUsedCase(CaseContext &context)
     ret = CreateTensor(ACL_INT64, {static_cast<int64_t>(cuSeqLengths.size())}, cuSeqLengths, context.cuSeqLengths);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "create TND cuSeqLengths failed, error: %d", ret);
     const std::vector<int32_t> seqUsedKv = {static_cast<int32_t>(kvStorageLengthPerBatch),
-                                           static_cast<int32_t>(kvStorageLengthPerBatch)};
+                                            static_cast<int32_t>(kvStorageLengthPerBatch)};
     ret = CreateTensor(ACL_INT32, {batchSize}, seqUsedKv, context.seqUsedKv);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "create PA seqUsedKv failed, error: %d", ret);
     ret = CreateTensor(ACL_INT32, {batchSize}, seqUsedQ, context.seqUsedQ);

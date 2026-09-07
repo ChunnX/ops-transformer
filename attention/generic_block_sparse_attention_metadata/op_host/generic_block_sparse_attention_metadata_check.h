@@ -307,8 +307,7 @@ aclnnStatus CheckGbsaSeqLengthInputs(const aclTensor *cuSeqLengthsOptional, cons
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cuSeqLengths is required for TND query.");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    const bool isPaKv =
-        GbsaIsLayout(kvInputLayout, "PA_BBND") || GbsaIsLayout(kvInputLayout, "PA_BNBD");
+    const bool isPaKv = GbsaIsLayout(kvInputLayout, "PA_BBND") || GbsaIsLayout(kvInputLayout, "PA_BNBD");
     if (GbsaIsLayout(kvInputLayout, "TND")) {
         if (!GbsaTensorValid(cuSeqLengthsKvOptional)) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cuSeqLengthsKv is required for TND KV.");
