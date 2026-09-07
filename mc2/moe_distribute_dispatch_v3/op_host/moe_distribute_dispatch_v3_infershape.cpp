@@ -134,7 +134,7 @@ static ge::DataType InferDataTypeDynamicScales(int64_t quantMode, ge::DataType s
     return dynamicScalesDtype;
 }
 
-static ge::graphStatus InferShapeMoeDistributeDispatchV3(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeMoeDistributeDispatchV3Common(gert::InferShapeContext *context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
@@ -373,7 +373,7 @@ static ge::graphStatus CheckQuantMode(const gert::InferDataTypeContext *context,
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeMoeDistributeDispatchV3(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeMoeDistributeDispatchV3Common(gert::InferDataTypeContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do InferDataTypeMoeDistributeDispatchV3.");
     auto xDtype = context->GetInputDataType(DISPATCH_INPUT_X_INDEX);
@@ -410,7 +410,61 @@ static ge::graphStatus InferDataTypeMoeDistributeDispatchV3(gert::InferDataTypeC
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus InferShapeMoeDistributeDispatchV3(gert::InferShapeContext *context)
+{
+    auto status = InferShapeMoeDistributeDispatchV3Common(context);
+    if (status != ge::GRAPH_SUCCESS) {
+        return status;
+    }
+    const auto attrs = context->GetAttrs();
+    OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    if (context->GetOptionalInputShape(8U) == nullptr) {
+        return status;
+    }
+    const auto rank = attrs->GetAttrPointer<int64_t>(1U);
+    const auto sharedRanks = attrs->GetAttrPointer<int64_t>(8U);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, rank);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, sharedRanks);
+    auto output = context->GetOutputShape(0U);
+    if (*rank < *sharedRanks) {
+        output->SetDim(1U, context->GetOptionalInputShape(8U)->GetDim(1U));
+        auto scales = context->GetOutputShape(1U);
+        scales->SetDimNum(1U);
+        scales->SetDim(0U, output->GetDim(0U));
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus InferDataTypeMoeDistributeDispatchV3(gert::InferDataTypeContext *context)
+{
+    auto status = InferDataTypeMoeDistributeDispatchV3Common(context);
+    if (status != ge::GRAPH_SUCCESS) {
+        return status;
+    }
+    if (context->GetOptionalInputDataType(8U) != ge::DT_UNDEFINED) {
+        const auto attrs = context->GetAttrs();
+        OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
+        const auto quant = attrs->GetAttrPointer<int64_t>(9U);
+        const auto dtype = attrs->GetAttrPointer<int64_t>(16U);
+        OPS_CHECK_NULL_WITH_CONTEXT(context, quant);
+        OPS_CHECK_NULL_WITH_CONTEXT(context, dtype);
+        if (*dtype == ge::DT_UNDEFINED && (*quant == 4 || *quant == 5)) {
+            context->SetOutputDataType(0U, ge::DT_FLOAT8_E4M3FN);
+        }
+        const auto rank = attrs->GetAttrPointer<int64_t>(1U);
+        const auto sharedRanks = attrs->GetAttrPointer<int64_t>(8U);
+        OPS_CHECK_NULL_WITH_CONTEXT(context, rank);
+        OPS_CHECK_NULL_WITH_CONTEXT(context, sharedRanks);
+        if (*rank < *sharedRanks) {
+            context->SetOutputDataType(0U, context->GetInputDataType(1U));
+            context->SetOutputDataType(1U, ge::DT_FLOAT);
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 IMPL_OP_INFERSHAPE(MoeDistributeDispatchV3)
     .InferShape(InferShapeMoeDistributeDispatchV3)
     .InferDataType(InferDataTypeMoeDistributeDispatchV3);
+
 } // namespace ops

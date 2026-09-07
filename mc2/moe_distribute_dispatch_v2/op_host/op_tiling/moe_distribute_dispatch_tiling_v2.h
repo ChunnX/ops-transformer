@@ -63,6 +63,9 @@ struct DispatchV2Config {
     uint32_t attrCopyExpertNumIndex = 15;  // 15: 根据dispatchV2算子原型标志位初始化copyExpertNumIndex索引
     uint32_t attrConstExpertNumIndex = 16; // 16: 根据dispatchV2算子原型标志位初始化constExpertNumIndex索引
     bool isMc2Context = false;
+    bool enableIndependentSharedExpert = false;
+    bool isIndependentSharedRank = false;
+    ge::DataType moeExpertDtype = ge::DT_UNDEFINED;
 };
 using namespace Ops::Transformer::OpTiling;
 

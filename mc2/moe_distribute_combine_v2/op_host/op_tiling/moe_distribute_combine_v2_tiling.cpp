@@ -1069,6 +1069,9 @@ static bool CheckZeroComputeExpertsTensorShape(const gert::TilingContext *contex
 {
     const gert::StorageShape *oriXShape = context->GetOptionalInputShape(config.oriXIndex);
     int64_t expandXDim1 = (context->GetInputShape(config.expandXIndex))->GetStorageShape().GetDim(1);
+    if (config.isIndependentSharedRank) {
+        expandXDim1 /= 2;
+    }
     if (oriXShape != nullptr) {
         int64_t oriXDim0 = oriXShape->GetStorageShape().GetDim(0);
         int64_t oriXDim1 = oriXShape->GetStorageShape().GetDim(1);
@@ -1232,7 +1235,8 @@ static bool CheckFromDispatchTensorShape(const gert::TilingContext *context,
                         nodeName, "expandX(H)", std::to_string(expandXDim1).c_str(),
                         ("should be in [" + std::to_string(hMin) + ", " + std::to_string(hMax) + "]").c_str()),
                     return false); // 32对齐
-    tilingData.moeDistributeCombineV2Info.h = static_cast<uint32_t>(expandXDim1);
+    tilingData.moeDistributeCombineV2Info.h =
+        static_cast<uint32_t>(config.isIndependentSharedRank ? expandXDim1 / 2 : expandXDim1);
     if (expandXDim1 != 0) {
         tilingData.moeDistributeCombineV2Info.armAvgFactor = 1.0f / expandXDim1;
     }
@@ -1961,7 +1965,8 @@ static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context,
                                           const bool isSetFullMeshV2, uint32_t localMoeExpertNum, bool isLayered,
                                           const CombineV2Config &config)
 {
-    CheckWinSizeData winSizeData;
+    CheckWinSizeData winSizeData{};
+    winSizeData.enableIndependentSharedExpert = config.enableIndependentSharedExpert;
     winSizeData.localMoeExpertNum = localMoeExpertNum;
     winSizeData.sharedExpertNum = tilingData.moeDistributeCombineV2Info.sharedExpertNum;
     winSizeData.a = static_cast<uint64_t>(tilingData.moeDistributeCombineV2Info.a);
@@ -2007,7 +2012,8 @@ static ge::graphStatus CheckCombineOrARN(gert::TilingContext *context, MoeDistri
                         return ge::GRAPH_FAILED);
     } else {
         // 校验combine输出的维数与shape
-        OP_TILING_CHECK(!CheckOutputTensorDim(context, nodeName, config, expertIdsDim0, expandXDim1),
+        OP_TILING_CHECK(!CheckOutputTensorDim(context, nodeName, config, expertIdsDim0,
+                                              config.isIndependentSharedRank ? expandXDim1 / 2 : expandXDim1),
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "output tensor", "",
                                                               "param shape of output tensor is invalid"),
                         return ge::GRAPH_FAILED);
@@ -2087,6 +2093,10 @@ ge::graphStatus CheckAndSetPlatformInfo(gert::TilingContext *context, MoeDistrib
                     return ge::GRAPH_FAILED);
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    if (config.enableIndependentSharedExpert ||
+        (mc2tiling::GetSocVersion(context) == "Ascend950" && tilingData->moeDistributeCombineV2Info.k > 12U)) {
+        ubSize = std::min(ubSize, uint64_t{248U * 1024U});
+    }
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
     context->SetBlockDim(numBlocks);
     tilingData->moeDistributeCombineV2Info.aivNum = aivNum;
@@ -2150,8 +2160,21 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3Tili
                         OP_LOGE_WITHOUT_REPORT(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
     }
     tilingData->moeDistributeCombineV2Info.isMc2Context = config.isMc2Context;
+    tilingData->moeDistributeCombineV2Info.reserved1 = config.enableIndependentSharedExpert;
     uint64_t tilingKey = CalTilingKey(commQuantMode, isLayered);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
+    if (config.isMc2Context) {
+        const auto &info = tilingData->moeDistributeCombineV2Info;
+        const char *role = info.epRankId < info.sharedExpertRankNum ? "shared" : "moe";
+        OP_LOGI(nodeName,
+                "[latent_ep][tiling] combine selected: ep_rank=%u/%u, role=%s, "
+                "independent_shared=%d, layered=%d, BS=%u, H_moe=%u, K=%u, comm_quant_mode=%u, "
+                "separate_shared_output=%d, tiling_key=%llu, UB=%llu, win=%llu.",
+                info.epRankId, info.epWorldSize, role, static_cast<int>(info.reserved1), static_cast<int>(isLayered),
+                info.bs, info.h, info.k, static_cast<unsigned int>(commQuantMode), static_cast<int>(info.reserved1),
+                static_cast<unsigned long long>(tilingKey), static_cast<unsigned long long>(info.totalUbSize),
+                static_cast<unsigned long long>(info.totalWinSizeEp));
+    }
     context->SetTilingKey(tilingKey);
 
     OP_TILING_CHECK(CheckAndSetPlatformInfo(context, tilingData, isLayered, nodeName, config) != ge::GRAPH_SUCCESS,

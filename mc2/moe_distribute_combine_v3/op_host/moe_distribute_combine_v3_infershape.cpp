@@ -27,7 +27,7 @@ static constexpr size_t COMBINE_INPUT_EXPAND_X_INDEX = 1;
 static constexpr size_t COMBINE_INPUT_EXPERT_IDS_INDEX = 2;
 static constexpr size_t COMBINE_OUTPUT_X_INDEX = 0;
 
-static ge::graphStatus InferShapeMoeDistributeCombineV3(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeMoeDistributeCombineV3Common(gert::InferShapeContext *context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
@@ -53,7 +53,7 @@ static ge::graphStatus InferShapeMoeDistributeCombineV3(gert::InferShapeContext 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeMoeDistributeCombineV3(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeMoeDistributeCombineV3Common(gert::InferDataTypeContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do InferDataTypeMoeDistributeCombineV3.");
     auto xDtype = context->GetInputDataType(COMBINE_INPUT_EXPAND_X_INDEX);
@@ -62,7 +62,53 @@ static ge::graphStatus InferDataTypeMoeDistributeCombineV3(gert::InferDataTypeCo
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus InferShapeMoeDistributeCombineV3(gert::InferShapeContext *context)
+{
+    auto status = InferShapeMoeDistributeCombineV3Common(context);
+    if (status != ge::GRAPH_SUCCESS) {
+        return status;
+    }
+    const auto attrs = context->GetAttrs();
+    OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    const auto enabled = attrs->GetAttrPointer<bool>(17U);
+    auto shared = context->GetOutputShape(1U);
+    if (enabled == nullptr || !*enabled) {
+        if (shared != nullptr) {
+            shared->SetDimNum(1U);
+            shared->SetDim(0U, 0);
+        }
+        return status;
+    }
+    OPS_CHECK_NULL_WITH_CONTEXT(context, shared);
+    const auto rank = attrs->GetAttrPointer<int64_t>(1U);
+    const auto sharedRanks = attrs->GetAttrPointer<int64_t>(8U);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, rank);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, sharedRanks);
+    auto output = context->GetOutputShape(0U);
+    int64_t h = output->GetDim(1U);
+    if (*rank < *sharedRanks && h > 0) {
+        h /= 2;
+        output->SetDim(1U, h);
+    }
+    *shared = *output;
+    shared->SetDim(1U, h > 0 ? h * 2 : h);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus InferDataTypeMoeDistributeCombineV3(gert::InferDataTypeContext *context)
+{
+    auto status = InferDataTypeMoeDistributeCombineV3Common(context);
+    if (status != ge::GRAPH_SUCCESS) {
+        return status;
+    }
+    if (context->GetComputeNodeOutputNum() > 1U) {
+        return context->SetOutputDataType(1U, context->GetInputDataType(COMBINE_INPUT_EXPAND_X_INDEX));
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 IMPL_OP_INFERSHAPE(MoeDistributeCombineV3)
     .InferShape(InferShapeMoeDistributeCombineV3)
     .InferDataType(InferDataTypeMoeDistributeCombineV3);
+
 } // namespace ops
