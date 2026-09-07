@@ -172,8 +172,8 @@ cann_ops_transformer.generic_block_sparse_attention(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | q | Tensor | 必选 | 公式中的q | bfloat16/float16/float8_e4m3fn | ND | (Q_T, Q_N, D) |
-| k | Tensor | 必选 | Paged KV Cache中的k | bfloat16/float16/float8_e4m3fn | ND | (num_blocks, block_size, KV_N, D) |
-| v | Tensor | 必选 | Paged KV Cache中的v | bfloat16/float16/float8_e4m3fn | ND | (num_blocks, block_size, KV_N, D) |
+| k | Tensor | 必选 | 公式中的k | bfloat16/float16/float8_e4m3fn | ND | (num_blocks, block_size, KV_N, D) |
+| v | Tensor | 必选 | 公式中的v | bfloat16/float16/float8_e4m3fn | ND | (num_blocks, block_size, KV_N, D) |
 | sparse_block_idx | Tensor | 必选 | 每个Q块选择的KV块索引 | int32 | ND | (KV_N, totalQBlocks, topK) |
 | sparse_block_count | Tensor | 必选 | 每个Q块实际保留的KV块数量 | int32 | ND | (KV_N, totalQBlocks) |
 | block_shape | list[int] | 必选 | 稀疏块形状 `[block_x, block_y]` | int64 | - | 长度为2 |
@@ -199,7 +199,7 @@ cann_ops_transformer.generic_block_sparse_attention(
 | win_left | int | 可选 | window左界限 | int32 | - | - |
 | win_right | int | 可选 | window右界限 | int32 | - | - |
 | return_softmax_lse | bool | 可选 | 是否需要获取softmax的LSE结果 | bool | - | - |
-| attention_out_dtype | dtype | 可选 | FP8输入时指定输出dtype | ScalarType | - | - |
+| attention_out_dtype | dtype | 可选 | 输出dtype；`quant_mode!=0`时必填，`quant_mode=0`且未指定时与q一致 | ScalarType | - | - |
 
 ## 返回值说明
 
@@ -218,7 +218,7 @@ cann_ops_transformer.generic_block_sparse_attention(
 
 **说明**
 
-- attention_out：限制：该输出参数的shape与入参query的shape保持一致；FP8输入时dtype由attention_out_dtype指定。
+- attention_out：限制：该输出参数的shape与入参query的shape保持一致；`quant_mode=0`时dtype默认与q一致，`quant_mode!=0`时由attention_out_dtype指定。
 - softmax_lse：return_softmax_lse为True时，TND布局下输出shape为(Q_T, Q_N, 1)的Tensor；return_softmax_lse为False时，则输出空Tensor。
 
 ## 约束说明
@@ -279,11 +279,11 @@ cann_ops_transformer.generic_block_sparse_attention(
 |    KV_N    |    输入k/v tensor的头数，对应k/v shape中的N    |
 |     Q_T     |          输入q tensor所有batch序列长度的累加和          |
 |    KV_T    |          输入k/v所有batch序列长度的累加和          |
-|     Q_S     |      各batch的query序列长度，TND下一般由cu_seqlens_q差分得到      |
-|    KV_S    |  各batch的key/value序列长度，TND下一般由cu_seqlens_kv差分得到  |
+|     Q_S     |      各batch的query逻辑序列长度，TND下一般由cu_seqlens_q差分得到      |
+|    KV_S    |  各batch的key/value逻辑序列长度；TND下一般由cu_seqlens_kv差分得到，Paged Attention下为block_table映射对应的逻辑KV长度  |
 |     D     |          输入q/k/v tensor隐藏层最小的单元尺寸headdim         |
 |  topK  | sparse_block_idx最后一维，表示每个Q块最多选择的KV块数 |
-| totalQBlocks | TND下各batch按Q_S分块后的Q块总数，即$\sum_i \mathrm{ceilDiv}(Q\_S_i, blockShapeX)$；为`sparse_block_idx`/`sparse_block_count`的第二维 |
+| totalQBlocks | TND下各batch按Q_S分块后的Q块总数；$\sum_i\mathrm{ceil}(Q\_S_i / block\_x)$，为`sparse_block_idx`/`sparse_block_count`第二维 |
 | num_blocks | Paged KV Cache物理页总数 |
 | block_size | Paged KV Cache单页token数 |
 
@@ -362,7 +362,7 @@ cann_ops_transformer.generic_block_sparse_attention(
         <td>attention_out</td>
         <td>
             <ul>
-                <li>data_type与q一致，FP8场景由attention_out_dtype指定</li>
+                <li>quant_mode=0时data_type与q一致；quant_mode!=0时由attention_out_dtype指定</li>
                 <li>shape与q一致</li>
             </ul>
         </td>
@@ -773,7 +773,7 @@ quant_mode参数解释见「quant_mode 枚举」。
             <td rowspan="5">
                 <ul>
                     <li>quant_mode=0时，q/k/v_dequant_scale须为None</li>
-                    <li>FP8输入时attention_out_dtype须为float16或bfloat16</li>
+                    <li>quant_mode!=0时attention_out_dtype必须传入，当前量化场景输出dtype须为float16或bfloat16</li>
                 </ul>
             </td>
         </tr>
