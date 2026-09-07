@@ -125,7 +125,15 @@ def get_asc_file_path(opname: str):
             for op_dir in os.listdir(repo_dir_path):
                 if op_dir == opname:
                     asc_file_path = os.path.join(repo_dir_path, op_dir) + f"/op_kernel/{opname}.cpp"
-                    return asc_file_path
+                    if os.path.isfile(asc_file_path):
+                        return asc_file_path
+    # Experimental operators may live below a nested category (for example
+    # experimental/attention).  Keep the legacy fast path above and fall
+    # back to a recursive lookup so kernel UT generation works for them too.
+    for root, _, _ in os.walk(project_path):
+        candidate = os.path.join(root, "op_kernel", f"{opname}.cpp")
+        if os.path.basename(root) == opname and os.path.isfile(candidate):
+            return candidate
     return asc_file_path
 
 

@@ -22,20 +22,45 @@
 namespace optiling {
 static ge::graphStatus StreamingTopKBlockedTiling(gert::TilingContext *context)
 {
-    const auto &q = context->GetInputShape(0)->GetStorageShape();
-    const auto &kTranspose = context->GetInputShape(1)->GetStorageShape();
-    const auto &weight = context->GetInputShape(2)->GetStorageShape();
-    if (q.GetDimNum() != 5 || kTranspose.GetDimNum() != 4 || weight.GetDimNum() != 4)
+    const auto *qDesc = context->GetInputDesc(0);
+    const auto *kDesc = context->GetInputDesc(1);
+    const auto *weightDesc = context->GetInputDesc(2);
+    const auto *indexDesc = context->GetOutputDesc(0);
+    const auto *validDesc = context->GetOutputDesc(1);
+    if (qDesc == nullptr || kDesc == nullptr || weightDesc == nullptr || indexDesc == nullptr || validDesc == nullptr ||
+        qDesc->GetDataType() != ge::DT_FLOAT || kDesc->GetDataType() != ge::DT_FLOAT ||
+        weightDesc->GetDataType() != ge::DT_FLOAT || indexDesc->GetDataType() != ge::DT_INT32 ||
+        validDesc->GetDataType() != ge::DT_UINT8) {
+        return ge::GRAPH_FAILED;
+    }
+    const auto *qShape = context->GetInputShape(0);
+    const auto *kShape = context->GetInputShape(1);
+    const auto *weightShape = context->GetInputShape(2);
+    const auto *indexShape = context->GetOutputShape(0);
+    const auto *validShape = context->GetOutputShape(1);
+    if (qShape == nullptr || kShape == nullptr || weightShape == nullptr || indexShape == nullptr ||
+        validShape == nullptr)
+        return ge::GRAPH_FAILED;
+    const auto &q = qShape->GetStorageShape();
+    const auto &kTranspose = kShape->GetStorageShape();
+    const auto &weight = weightShape->GetStorageShape();
+    if (q.GetDimNum() != 5 || kTranspose.GetDimNum() != 4 || weight.GetDimNum() != 4 ||
+        indexShape->GetStorageShape().GetDimNum() != 4 || validShape->GetStorageShape().GetDimNum() != 4)
         return ge::GRAPH_FAILED;
     const int64_t batch = q.GetDim(0), heads = q.GetDim(1), leaves = q.GetDim(2);
     const int64_t groups = q.GetDim(3), indexDim = q.GetDim(4);
     const int64_t paddedLeaves = kTranspose.GetDim(3);
     const int64_t *topKAttr = context->GetAttrs()->GetInt(0);
     const int64_t topK = topKAttr == nullptr ? 1 : *topKAttr;
+    const auto &indexOut = indexShape->GetStorageShape();
+    const auto &validOut = validShape->GetStorageShape();
     if (batch <= 0 || heads <= 0 || leaves <= 0 || groups <= 0 || groups > 4 || indexDim <= 0 || indexDim > 16 ||
         topK <= 0 || topK > 16 || paddedLeaves < leaves || paddedLeaves % 1024 != 0 || kTranspose.GetDim(0) != batch ||
         kTranspose.GetDim(1) != heads || kTranspose.GetDim(2) != indexDim || weight.GetDim(0) != batch ||
-        weight.GetDim(1) != heads || weight.GetDim(2) != leaves || weight.GetDim(3) != groups) {
+        weight.GetDim(1) != heads || weight.GetDim(2) != leaves || weight.GetDim(3) != groups ||
+        indexOut.GetDim(0) != batch || indexOut.GetDim(1) != heads || indexOut.GetDim(2) != leaves ||
+        indexOut.GetDim(3) != topK || validOut.GetDim(0) != batch || validOut.GetDim(1) != heads ||
+        validOut.GetDim(2) != leaves || validOut.GetDim(3) != topK) {
         return ge::GRAPH_FAILED;
     }
     const uint64_t bh64 = static_cast<uint64_t>(batch) * heads;
