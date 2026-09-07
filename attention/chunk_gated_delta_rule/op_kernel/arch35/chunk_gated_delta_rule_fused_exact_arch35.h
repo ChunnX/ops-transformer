@@ -52,9 +52,17 @@ struct FusedStage123ExactParams {
 };
 
 /*
- * Exact arch35 engine. One AIC and its two AIVs own one batch/value-head
- * work item for every padded chunk, so state and every cross-stage intermediate
- * stay in UB/L1.
+ * arch35 三阶段融合实现：一个 AIC 及其两个 AIV 持续拥有一个 (batch, value-head)，
+ * 沿该序列顺序递推 chunk。AIC 负责矩阵乘，AIV 负责门控、求逆和状态更新；中间量驻留 UB/L1，
+ * 避免旧实现各阶段之间的 GM 往返及 SyncAll。计算量很小时可改走纯 AIV 逐 token 递推。
+ *
+ * 单个 chunk 的数学约定（省略 BF16 转换）：Q/K 为 [C,Dk]，V 为 [C,Dv]，S 为 [Dv,Dk]。
+ * G_i = sum(g_0..g_i)，L_ij = beta_i * (K_i K_j^T) * exp(G_i-G_j)，仅 j<i 非零，A=(I+L)^(-1)。
+ * rawKcd_i=-beta_i*exp(G_i)*K_i，vBeta_i=beta_i*V_i，qPrime_i=scale*exp(G_i)*Q_i，
+ * kg_i=exp(G_last-G_i)*K_i；令 kcd=A*rawKcd，则：
+ *   Vnew = A*vBeta + kcd*S^T；S_next = exp(G_last)*S + Vnew^T*kg；
+ *   O = qPrime*S^T + maskedQkt*Vnew，其中 maskedQkt_ij=scale*(Q_i K_j^T)*exp(G_i-G_j)，j<=i。
+ * rawKcd 已带负号，因此残差可直接累加进 L0C。Exact 表示实现递推语义，不表示无 BF16 舍入。
  */
 template <typename stateType, bool hasGamma>
 class FusedStage123Exact {
@@ -72,17 +80,15 @@ public:
         if ASCEND_IS_AIV {
             ProcessAiv();
         }
-        // Drain all exact-path pipelines and counted cross-core protocols
-        // before returning to the wrapper.
+        // 各 head 内的计数握手先由对应循环收尾；最后汇合所有核，确保流水排空后再退出内核。
         SyncAll<false>();
     }
 
 private:
     using ArchTag = Catlass::Arch::Ascend950;
     static constexpr bool STATE_FP32 = std::is_same_v<stateType, float>;
-    // The exact path manages every dependency explicitly, so expose the
-    // physical address spaces directly and avoid implicit allocator state or
-    // lifecycle side effects.
+    // 按固定字节偏移直接构造物理内存视图，不经过 TPipe 分配器。
+    // 地址复用的正确性依赖下方 Mutex/跨核 flag 的生命周期，调整布局时必须同时核对消费者何时结束。
     template <TPosition position, uint32_t capacity>
     struct PhysicalBufferView {
         template <class Element>
@@ -101,15 +107,18 @@ private:
     };
     static constexpr uint32_t CHUNK = 64;
     static constexpr uint32_t HALF_CHUNK = 32;
-    // The first complete-spec correctness path retains the validated maximum
-    // physical feature tile. Logical Dk/Dv only bound GM traffic; every
-    // physical suffix is explicitly zeroed before it reaches MMAD.
+    // Cube 始终按最大物理特征维 128 计算；逻辑 Dk/Dv 只约束有效数据的搬运与写回。
+    // 尾 chunk、特征尾部在送入 MMAD 前补零，不能把一次 DMA 的对齐补零误当成整个 tile 已清零。
     static constexpr uint32_t DIM = 128;
     static constexpr uint32_t HALF_DIM = 64;
     static constexpr uint32_t STATE_SLICE_ELEMS = HALF_DIM * DIM;
     static constexpr uint32_t SCORE_SLICE_ELEMS = HALF_CHUNK * CHUNK;
     static constexpr uint32_t INVERSE_SLICE_ELEMS = HALF_CHUNK * CHUNK;
 
+    // 两类同步不可互相替代：Mutex 约束同一核内各 PIPE；mode-2 flag 约束 AIC 与两个 AIV。
+    // DIRECT_READY/FREE：AIC 发布 L0C->UB 结果 / AIV 消费后归还；PREFIX_READY：AIV 的 UB->L1 完成。
+    // STATE_READY/FREE：AIV 发布状态 / AIC 已把状态搬入 L0B；SLOT_FREE：允许 AIV 复用某个 L1 槽。
+    // CRITICAL_READY 比完整 PREFIX_READY 提前发出，使求逆和状态递推无需等待输出用的 maskedQkt。
     static constexpr uint64_t PREFIX_DIRECT0_READY_FLAG = 0;
     static constexpr uint64_t PREFIX_DIRECT0_FREE_FLAG = 1;
     static constexpr uint64_t RECURRENCE_DIRECT0_READY_FLAG = 2;
@@ -125,6 +134,8 @@ private:
     static constexpr uint64_t SLOT1_FREE_FLAG = 12;
     static constexpr uint64_t PREFIX_DIRECT1_FREE_FLAG = 13;
 
+    // L1：两个 160 KiB 的 chunk 槽按 chunk&1 交替，随后是共享的 32 KiB BF16 状态，共 352 KiB。
+    // 每槽的 KCD 区有 128 行：前 64 行存 kcd，后 64 行存 qPrime，方便连续使用同一份 L0B 状态。
     static constexpr uint32_t L1_SLOT_BYTES = 160 * 1024;
     static constexpr uint32_t L1_Q_OFFSET = 0;
     static constexpr uint32_t L1_K_OFFSET = 16 * 1024;
@@ -140,6 +151,9 @@ private:
     static constexpr uint32_t L0C_VNEW_OFFSET = 64 * 1024;
     static constexpr uint32_t L0C_OUTPUT_OFFSET = 96 * 1024;
 
+    // UB 布局是每个 AIV 独立的一份：预处理按 32 个 token 分工，状态按 Dv 的 64 行分工。
+    // BF16 状态采用 compact zN，FP32 主状态采用行主序；其 BF16 发布副本只供 Cube 读取。
+    // FP32 的状态增量复用当前槽的 Stage1 发布区，必须等该槽的 UB->L1 搬运完成后才能覆盖。
     static constexpr uint32_t UB_DIRECT0_OFFSET = 0;
     static constexpr uint32_t UB_STATE_OFFSET = STATE_FP32 ? 0 : 16 * 1024;
     static constexpr uint32_t UB_ATTN_OFFSET = 40 * 1024;
@@ -168,11 +182,11 @@ private:
     static constexpr uint32_t UB_PREFIX_DIRECT_BYTES = 2 * SCORE_SLICE_ELEMS * sizeof(bfloat16_t);
     static constexpr uint32_t INPUT_BATCH_ROWS = HALF_CHUNK / 2;
 
-    // The streaming branch is exclusive with the cube branch and therefore
-    // reuses the same physical UB.  FP32 state is its sole canonical state;
-    // every following region is a derived, short-lived transport view.
+    // Streaming 与 Cube 分支互斥，复用同一物理 UB。无论接口状态类型如何，Streaming 都以 FP32
+    // 持续递推；BF16 区仅用于初始状态搬入和最终状态转换，不在每个 token 后量化主状态。
     static constexpr uint32_t UB_STREAM_STATE_FP32_OFFSET = 0;
     static constexpr uint32_t UB_STREAM_STATE_BF16_OFFSET = 32 * 1024;
+    // 每批最多 64 个 token；输入和输出按批搬运，VF 内沿 token 顺序递推。
     static constexpr uint32_t STREAM_BATCH_TOKENS = CHUNK;
     static constexpr uint32_t UB_STREAM_Q_OFFSET = 48 * 1024;
     static constexpr uint32_t UB_STREAM_K_OFFSET = UB_STREAM_Q_OFFSET + STREAM_BATCH_TOKENS * DIM * sizeof(bfloat16_t);
@@ -191,9 +205,8 @@ private:
     static constexpr uint32_t UB_STREAM_END =
         UB_STREAM_OUT_BF16_OFFSET + STREAM_BATCH_TOKENS * HALF_DIM * sizeof(bfloat16_t);
 
-    // Conservative static selector.  One unit of vector recurrence work is
-    // charged 256x one padded cube MAC proxy until matched device data can
-    // replace this fail-closed calibration.
+    // 静态代价模型：逐 token 工作量约为 7*L*Dk*Dv，再乘 256 的 Vector 相对代价权重；
+    // Cube 每 chunk 的固定 MAC 数为 5832704，乘 2 后按乘、加操作数比较。它不是设备实测耗时模型。
     static constexpr uint64_t STREAM_ARITHMETIC_FACTOR = 7;
     static constexpr uint64_t STREAM_VECTOR_COST = 256;
     static constexpr uint64_t CUBE_MAC_PER_CHUNK = 5832704;
@@ -233,15 +246,13 @@ private:
     static_assert(2 * HALF_DIM == DIM && 2 * HALF_CHUNK == CHUNK,
                   "arch35 exact AIV split must cover each physical tile exactly");
 
+    // L0A/L0B 各分成两个 stage，MTE1 装载下一组操作数时可与 M 流水消费另一组重叠。
     static constexpr uint32_t L0AB_STAGES = 2;
     static constexpr uint32_t L0A_STAGE_BYTES = ArchTag::L0A_SIZE / L0AB_STAGES;
     static constexpr uint32_t L0B_STAGE_BYTES = ArchTag::L0B_SIZE / L0AB_STAGES;
 
-    // The exact engine is the only mutex owner before it returns. Fixed IDs
-    // keep get_buf/rls_buf operands immediate in the hot loop and avoid
-    // depending on allocator state. AIC and AIV execute on different core
-    // roles, so each role can use the same private range. SyncAll above drains
-    // them before the exact path returns to its wrapper.
+    // 融合内核独占固定 Mutex ID，使热循环中的 get_buf/rls_buf 使用立即数，避免动态分配状态。
+    // AIC 与 AIV 是不同核角色，可各自复用同一段私有 ID；函数返回前必须完成所有流水和握手。
     static constexpr uint32_t MUTEX_COUNT = 8;
     static constexpr uint32_t AIC_L0AB_MUTEX_BASE = 0;
     static constexpr uint32_t AIC_L0C_TMP_MUTEX = 2;
@@ -277,6 +288,7 @@ private:
 
     __aicore__ inline uint32_t SetWorkContext(uint64_t workId, uint64_t &scannedBatch, uint64_t &seqStart)
     {
+        // workId=batchId*Nv+nvId 单调递增，累加经过的序列长度即可定位 TND 起点，无需每次从 batch 0 扫描。
         const uint64_t batchId = workId / params_.nv;
         while (scannedBatch < batchId) {
             seqStart += static_cast<uint32_t>(params_.actualSeqLengths.GetValue(scannedBatch));
@@ -323,6 +335,8 @@ private:
 
     __aicore__ inline bool UseStreamingExact() const
     {
+        // AIC/AIV 必须用相同元数据作出相同选择；Streaming 下 AIC 不进入任何 chunk 握手。
+        // 该算术量模型未显式计入批搬运/同步与活跃核数，长序列下 L 近乎相消；空序列仅复制状态。
         if (currentLength_ == 0) {
             return true;
         }
@@ -429,6 +443,7 @@ private:
             CrossCoreWaitFlag(freeFlag);
         }
         if constexpr (directSlot == 0) {
+            // 状态增量沿 Dv 方向的物理 M=128 平分；FP32 保留行主序 FP32，BF16 随 Fixpipe 转为 compact zN。
             static_assert(!splitN, "state update direct output splits along M");
             if constexpr (STATE_FP32) {
                 auto direct = resource_.ubBuf.template GetBufferByByte<float>(RecurrenceDirectOffset(prefixSlot));
@@ -462,6 +477,7 @@ private:
             }
         } else {
             auto direct = resource_.ubBuf.template GetBufferByByte<bfloat16_t>(PrefixDirectOffset(prefixSlot));
+            // 前缀 KKT/QKT 直接从 L0C 发往各 AIV 的 UB，并随路转为行主序 BF16，免去 GM 中转。
             FixpipeParamsC310<CO2Layout::ROW_MAJOR> params;
             params.srcStride = MmAlign(m, MM_BLOCK_CUBE);
             params.quantPre = QuantMode_t::F322BF16;
@@ -493,6 +509,7 @@ private:
 
     __aicore__ inline uint32_t GetZnOffset(uint32_t row, uint32_t col, uint32_t fullRows)
     {
+        // compact zN/NZ 按 16 列成块：offset=(col/16)*align(fullRows,16)*16+row*16+col%16。
         return (row % MM_BLOCK_CUBE) * MM_NZ_FRACTAL + (row / MM_BLOCK_CUBE) * MM_BLOCK_CUBE * MM_NZ_FRACTAL +
                (col % MM_NZ_FRACTAL) + (col / MM_NZ_FRACTAL) * MmAlign(fullRows, MM_BLOCK_CUBE) * MM_NZ_FRACTAL;
     }
@@ -628,6 +645,8 @@ private:
                                         LocalTensor<float> l0cOutput, LocalTensor<bfloat16_t> l1Kcd,
                                         LocalTensor<bfloat16_t> l1State)
     {
+        // 两次 MMAD 共用 L0B 中的 S：先将 kcd*S^T 累加到 A*vBeta，再计算 qPrime*S^T。
+        // STATE_FREE 在 L1->L0B 完成后即可发出；L0B 的 Mutex 则保持到两次矩阵乘均结束。
         const uint32_t stateStage = NextL0AbStage();
         const uint32_t outputStage = NextL0AbStage();
         const MutexID stateMutex = MutexId(AIC_L0AB_MUTEX_BASE + stateStage);
@@ -661,6 +680,8 @@ private:
     __aicore__ inline void RunQkPrefixMm(LocalTensor<bfloat16_t> l1Q, LocalTensor<bfloat16_t> l1K, uint32_t prefixSlot,
                                          bool waitDirectFree)
     {
+        // L0A 按 [K前32行, Q前32行, K后32行, Q后32行] 拼接，一次 [128,128]*K^T 同时得到 KKT/QKT。
+        // 结果沿 M 平分后，每个 AIV 恰好收到自己 32 个 token 的 KKT 和 QKT，复用同一份 L0B 的 K。
         const uint32_t stage = NextL0AbStage();
         const MutexID l0abMutex = MutexId(AIC_L0AB_MUTEX_BASE + stage);
         const MutexID qkMutex = MutexId(AIC_L1_QK_MUTEX_BASE + prefixSlot);
@@ -712,6 +733,7 @@ private:
         const MutexID qkMutex = MutexId(AIC_L1_QK_MUTEX_BASE + slot);
         Mutex::Lock<PIPE_MTE2>(qkMutex);
         if (validRows < CHUNK || params_.dk < DIM) {
+            // 先清完整物理 Q/K，再覆盖有效矩形；尾部零值保证 padding token 不影响分数和状态。
             constexpr uint16_t L1_QK_BLOCKS = CHUNK * DIM * sizeof(bfloat16_t) / BLOCK_SIZE;
             InitConstValueParams<bfloat16_t> zeroParams{1, L1_QK_BLOCKS, 0, static_cast<bfloat16_t>(0)};
             Fill(l1Q, zeroParams);
@@ -749,10 +771,13 @@ private:
         auto l1MaskedQkt = resource_.l1Buf.template GetBufferByByte<bfloat16_t>(slotBase + L1_MASKED_QKT_OFFSET);
 
         if (chunk + 1 < chunkNum) {
+            // 下一 chunk 的 QK 前缀不依赖当前状态，提前计算以重叠 AIV 求逆和当前 chunk 的递推。
             PrefetchPrefixQkAic(kvHead, chunk + 1);
             RunPrefetchedPrefixQkAic(chunk + 1);
         }
         CrossCoreWaitFlag(PrefixCriticalReadyFlag(slot));
+        // AIV 已求得两个 32x32 对角逆块 A00/A11，并保留左下块 -L10。
+        // 两次 Cube 乘法补齐 A10=A11*(-L10)*A00，构成完整 A=(I+L)^(-1)。
         RunMmToL1<false, true>(l1Lower, l1Attn, l1Attn, HALF_CHUNK, HALF_CHUNK, HALF_CHUNK, HALF_CHUNK, HALF_CHUNK,
                                HALF_CHUNK, HALF_CHUNK, HALF_CHUNK, 0, 0, CHUNK, HALF_CHUNK, 0, CHUNK, 0, 0);
 
@@ -760,6 +785,7 @@ private:
                                      HALF_CHUNK, HALF_CHUNK, HALF_CHUNK, CHUNK, HALF_CHUNK, 0, CHUNK, HALF_CHUNK,
                                      HALF_CHUNK, HALF_CHUNK, 0, 0);
 
+        // kcd=A*rawKcd；l1Kcd 的后 64 行 qPrime 由 AIV 发布，这次乘法只更新前 64 行。
         RunMmToL1<false, true, true>(l1Kcd, l1Attn, l1RawKcd, CHUNK, CHUNK, CHUNK, DIM, CHUNK, DIM, CHUNK, DIM);
 
         auto l0cVnew = resource_.l0CBuf.template GetBufferByByte<float>(L0C_VNEW_OFFSET);
@@ -768,11 +794,13 @@ private:
                                             MutexId(AIC_L0C_VNEW_MUTEX));
         CrossCoreWaitFlag(STATE_READY_FLAG);
         RunStatePair(l1Vnew, l0cVnew, l0cOutput, l1Kcd, l1State);
+        // Vnew^T*kg 直接交给 AIV 更新状态；输出两项则始终在 L0C FP32 累加，最终只写一次 GM。
         RunMm<true, true, false, 0>(l1Vnew, l1Kg, CHUNK, DIM, CHUNK, DIM, DIM, DIM, CHUNK, chunk != 0, slot);
         CrossCoreWaitFlag(PrefixReadyFlag(slot));
         RunMmToL0C<false, true, false, false>(l0cOutput, l1MaskedQkt, l1Vnew, CHUNK, CHUNK, CHUNK, DIM, CHUNK, DIM,
                                               CHUNK, MutexId(AIC_L0C_OUTPUT_MUTEX));
         if (chunk + 2 < chunkNum) {
+            // 当前槽的 L1 操作数已搬入 L0，允许 AIV 为 chunk+2 复用；输出仍可在独立 L0C/FIX 上完成。
             CrossCoreSetFlag<0x2, PIPE_MTE1>(SlotFreeFlag(slot));
         }
         PublishOutput(nvId, chunk, validRows, l0cOutput);
@@ -798,6 +826,7 @@ private:
         for (uint32_t chunk = 0; chunk < chunkNum; ++chunk) {
             ProcessRecurrenceAic(nvId, kvHead, chunk);
         }
+        // 收回最后一次发布的归还信号，避免计数 token 遗留到同一核组处理的下一个 head。
         CrossCoreWaitFlag(RECURRENCE_DIRECT0_FREE_FLAG);
         CrossCoreWaitFlag(PREFIX_DIRECT0_FREE_FLAG);
         if (chunkNum > 1) {
@@ -807,6 +836,7 @@ private:
 
     __aicore__ inline void ProcessAic()
     {
+        // 按 (batch, value-head) 轮转分工，而非按 chunk 跨核分工；同一 head 的状态递推始终留在本组。
         SetLoadDataPaddingValue<bfloat16_t>(static_cast<bfloat16_t>(0));
         const uint64_t totalWork = params_.batchCount * params_.nv;
         uint64_t scannedBatch = 0;
@@ -959,6 +989,7 @@ private:
             PipeBarrier<PIPE_V>();
         }
 
+        // 当前仍是单批缓冲及同一 tokenMutex：MTE2 -> V -> MTE3 顺序复用，尚无跨批预取。
         for (uint32_t token = 0; token < currentLength_; token += STREAM_BATCH_TOKENS) {
             const uint32_t tokenCount =
                 currentLength_ - token < STREAM_BATCH_TOKENS ? currentLength_ - token : STREAM_BATCH_TOKENS;
@@ -1039,6 +1070,7 @@ private:
 
     __aicore__ inline void CopyEmptyStateAiv(uint32_t nvId, uint32_t subBlockIdx)
     {
+        // L=0 时 finalState=initialState。初态支持 batch/head stride（包括 0），终态按连续布局写回。
         const uint32_t stateRowBegin = subBlockIdx * HALF_DIM;
         const uint32_t stateValidRows = StateValidRows(subBlockIdx);
         if (stateValidRows == 0) {
@@ -1141,8 +1173,8 @@ private:
         }
         Mutex::Unlock<PIPE_MTE2>(inputTailMutex);
 
-        // The caller consumes the first input half immediately after the
-        // shared g/beta preprocessing, so retain V ownership across return.
+        // g/beta 整理后调用方立即消费前 16 行，跨函数保留 inputHeadMutex 的 V 所有权。
+        // 尾 chunk 的 g 补 0，使 G[63] 等于真实末 token 的累积门控；beta 补 0 使补齐行没有更新量。
         Mutex::Lock<PIPE_V>(inputHeadMutex);
         if constexpr (hasGamma) {
             if (validRows < CHUNK) {
@@ -1178,6 +1210,7 @@ private:
     __aicore__ inline void BuildInverseSlice(uint32_t subBlockIdx, LocalTensor<float> attn, LocalTensor<float> inverse,
                                              LocalTensor<float> identity, LocalTensor<bfloat16_t> derived)
     {
+        // 每个 AIV 仅求自己的 32x32 对角块；inverse 其余位置保留初始化的 -L，供 AIC 拼出左下逆块。
         InverseAIVPanel8VF(attn, inverse, identity, subBlockIdx * HALF_CHUNK, CHUNK);
         PipeBarrier<PIPE_V>();
         auto inverseAddr = reinterpret_cast<__ubuf__ float *>(inverse.GetPhyAddr());
@@ -1277,10 +1310,8 @@ private:
                 static_cast<uint16_t>(DIM), 0, static_cast<uint16_t>(HALF_CHUNK));
         }
         Mutex::Unlock<PIPE_V>(inputHeadMutex);
-        // The first 16 rows are dead after this VF call. Reuse their existing
-        // Mutex lifecycle to load the next chunk while PIPE_V consumes the
-        // disjoint tail rows. The next invocation acquires the same mutex on
-        // PIPE_V, so no event token is carried across chunks.
+        // 本 chunk 的前 16 行已被 VF 消费，其 UB 可立即装入下一 chunk 的前 16 行。
+        // MTE2 预取与 V 消费当前后 16 行使用不重叠的区域，并通过各自的 Mutex 管理读写依赖。
         if (chunk + 1 < ChunkNum()) {
             IssueInputHeadMte2(nvId, kvHead, chunk + 1, subBlockIdx, q, k, v);
         }
@@ -1304,9 +1335,8 @@ private:
         PipeBarrier<PIPE_V>();
         Mutex::Unlock<PIPE_V>(inputTailMutex);
         Mutex::Unlock<PIPE_V>(stage1PubMutex);
-        // These Stage1 results do not depend on the prefix MM. Queue their UB->L1 copies now so MTE3 can
-        // overlap the KKT/QKT wait and the following inverse construction. PrefixReadyFlag remains
-        // ordered after the dependent inverse/qkt copies below on the same MTE3 pipeline.
+        // 四个 Stage1 变换不依赖 KKT/QKT，先发出 UB->L1，让 MTE3 与等待分数、构造逆矩阵重叠。
+        // rawKcd/vBeta 在源和目标均相邻，合并成一次跨步搬运；同一 MTE3 上后发的 READY 同时覆盖这些写入。
         Mutex::Lock<PIPE_MTE3>(stage1PubMutex);
         CopyCompactZnToL1<HALF_CHUNK, DIM, CHUNK, 2>(rawKcdPub, l1RawKcd, tokenBegin);
         CopyCompactZnToL1<HALF_CHUNK, DIM, DIM>(qPrimePub, l1Kcd, CHUNK + tokenBegin);
@@ -1329,6 +1359,7 @@ private:
         Mutex::Unlock<PIPE_V>(prefixPubMutex);
         Mutex::Lock<PIPE_MTE3>(prefixPubMutex);
         CopyCompactZnToL1<HALF_CHUNK, CHUNK, CHUNK>(inversePub, l1Attn, tokenBegin);
+        // 提前发布递推关键输入；maskedQkt 只用于最终输出，AIC 可在其搬运时开始拼接逆矩阵。
         CrossCoreSetFlag<0x2, PIPE_MTE3>(PrefixCriticalReadyFlag(slot));
         CopyCompactZnToL1<HALF_CHUNK, CHUNK, CHUNK>(maskedQktPub, l1MaskedQkt, tokenBegin);
         CrossCoreSetFlag<0x2, PIPE_MTE3>(PrefixReadyFlag(slot));
@@ -1417,6 +1448,8 @@ private:
 
         WaitDirect<0>();
         CrossCoreWaitFlag(STATE_FREE_FLAG);
+        // 下一 chunk 的预处理已完成；确认当前增量到达且旧 L1 状态已读走后，执行 S=exp(G_last)*S+增量。
+        // gCum 必须按 chunk 双缓冲，避免下一 chunk 的前缀和覆盖本次递推仍需使用的 G_last。
         Mutex::Lock<PIPE_V>(MutexId(AIV_STATE_MUTEX));
         auto gCumAddr = reinterpret_cast<__ubuf__ float *>(gCum.GetPhyAddr());
         auto direct = resource_.ubBuf.template GetBufferByByte<stateType>(RecurrenceDirectOffset(slot));
@@ -1479,8 +1512,7 @@ private:
             gather.SetValue(i, i * BLOCK_SIZE);
         }
         Mutex::Unlock<PIPE_S>(scalarMutex);
-        // No scalar writer exists after initialization. Retain V ownership for
-        // all identity/gather consumers and release it at the end of this head.
+        // identity/gather 只在每个 head 初始化一次；此后没有标量写入，V 所有权保留到 head 结束。
         Mutex::Lock<PIPE_V>(scalarMutex);
 
         const uint64_t initialStateOffset = currentBatchId_ * params_.stateStride0 +
@@ -1536,6 +1568,7 @@ private:
 
     __aicore__ inline void ProcessAiv()
     {
+        // 两个 AIV 映射到同一 mixedGroupIdx，与 AIC 的 workId 序列一致；仅 subBlockIdx 区分各自切片。
         const uint32_t subBlockIdx = static_cast<uint32_t>(GetSubBlockIdx());
         const uint32_t mixedGroupIdx = static_cast<uint32_t>(GetBlockIdx()) / static_cast<uint32_t>(GetSubBlockNum());
         const uint64_t totalWork = params_.batchCount * params_.nv;

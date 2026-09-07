@@ -106,7 +106,10 @@ __simd_vf__ inline void ScaleBf16StateVF(__ubuf__ bfloat16_t *dstAddr, __ubuf__ 
     }
 }
 
-/* Keep the chunk state update in FP32 and round once when the recurrent state is stored. */
+/*
+ * BF16 chunk 状态：把旧状态和 Cube 已转成 BF16 的增量升到 FP32，计算 exp(G_last)*S+update，
+ * 最后一次舍入写回 BF16 状态。此处融合衰减与加法，避免在两者之间再落地一个 BF16 中间状态。
+ */
 __simd_vf__ inline void UpdateBf16StateByExpVF(__ubuf__ bfloat16_t *stateAddr, __ubuf__ bfloat16_t *updateAddr,
                                                __ubuf__ float *gCumLastAddr, uint32_t count)
 {
@@ -141,8 +144,10 @@ __simd_vf__ inline void UpdateBf16StateByExpVF(__ubuf__ bfloat16_t *stateAddr, _
     }
 }
 
-/* Keep the canonical FP32 state in row-major UB and preserve the Golden
- * multiply-then-add recurrence without an intermediate BF16 rounding. */
+/*
+ * FP32 chunk 主状态常驻行主序 UB；Cube 增量通过 Fixpipe 以 FP32 直接送达。
+ * 保持先乘后加的递推顺序，中间不做 BF16 舍入；但 Cube 的矩阵输入仍是 BF16，并非全链路 FP32。
+ */
 __simd_vf__ inline void UpdateFp32StateByExpVF(__ubuf__ float *stateAddr, __ubuf__ float *updateAddr,
                                                __ubuf__ float *gCumLastAddr, uint32_t count)
 {
@@ -167,8 +172,10 @@ __simd_vf__ inline void UpdateFp32StateByExpVF(__ubuf__ float *stateAddr, __ubuf
     }
 }
 
-/* Publish a row-major FP32 state as the compact BF16 zN shadow consumed by
- * AIC.  FP32 remains the sole canonical state; this is a derived RNE view. */
+/*
+ * 将行主序 FP32 主状态转成 compact zN 的 BF16 副本供 AIC 读取，舍入方式为 CAST_RINT。
+ * 转换不覆盖 FP32 主状态，后续跨 chunk 的衰减和累加继续使用原 FP32 值。
+ */
 __simd_vf__ inline void RowMajorFp32ToCompactZnBf16VF(__ubuf__ float *srcAddr, __ubuf__ bfloat16_t *dstZnAddr,
                                                       uint16_t rowCount, uint16_t colCount, uint16_t srcRowStride,
                                                       uint16_t dstFullRows)
@@ -204,8 +211,7 @@ __simd_vf__ inline void RowMajorFp32ToCompactZnBf16VF(__ubuf__ float *srcAddr, _
     }
 }
 
-/* Convert a row-major BF16 matrix to the compact zN layout consumed by both
- * the recurrence update and the explicit UB/L1 publication path. */
+// 初始 BF16 状态从行主序转为 compact zN；之后状态更新和 UB->L1 发布一直沿用该布局。
 __simd_vf__ inline void RowMajorToCompactZnBf16VF(__ubuf__ bfloat16_t *srcAddr, __ubuf__ bfloat16_t *dstZnAddr,
                                                   uint16_t rowCount, uint16_t colCount, uint16_t srcRowStride,
                                                   uint16_t dstFullRows)
@@ -235,9 +241,9 @@ __simd_vf__ inline void RowMajorToCompactZnBf16VF(__ubuf__ bfloat16_t *srcAddr, 
     }
 }
 
-// One 32-byte FP32 data block holds a complete dk<=8 state row. Pack eight
-// independent value rows into a register, and reduce each data block separately.
-// Transport strides and FP32 state semantics are shared with the batch engine.
+// Dk<=8 时，一个 32 字节 FP32 数据块可容纳一整行状态；将 8 个独立 Dv 行打包进一个寄存器。
+// ReduceDataBlock 按 8 元素分组归约，padding lane 必须排除在乘法和归约之外。
+// 每批 token 内状态保留在寄存器，仅在批首 Gather、批尾 Scatter；搬运步长与通用批处理一致。
 template <bool hasGamma>
 __simd_vf__ inline void StreamingExactPackedRowsVF(__ubuf__ float *stateAddr, __ubuf__ bfloat16_t *queryAddr,
                                                    __ubuf__ bfloat16_t *keyAddr, __ubuf__ float *valueAddr,
@@ -256,12 +262,12 @@ __simd_vf__ inline void StreamingExactPackedRowsVF(__ubuf__ float *stateAddr, __
     ShiftRights(rowIndex, lane, static_cast<int16_t>(3), allMask);
     Muls(tempIndex, rowIndex, static_cast<int32_t>(8), allMask);
     Sub(featureIndex, lane, tempIndex, allMask);
-    // Padding is storage only: exclude it from arithmetic and both reductions.
+    // Padding 只占存储空间；乘法及两次分段归约都必须使用排除 padding 的掩码。
     MaskReg featureMask;
     Compares<int32_t, CMPMODE::LT>(featureMask, featureIndex, static_cast<int32_t>(dk), allMask);
     Muls(offset, rowIndex, static_cast<int32_t>(stateRowStride), allMask);
     Add(offset, offset, featureIndex, allMask);
-    // UB Gather/Scatter indices are typed element offsets, not byte offsets.
+    // UB Gather/Scatter 索引以对应类型的元素数计，不能乘 sizeof(float) 当作字节偏移。
 
     for (uint16_t rowBegin = 0; rowBegin < rowCount; rowBegin += 8) {
         uint32_t validRows = rowCount - rowBegin < 8 ? rowCount - rowBegin : 8;
@@ -311,10 +317,11 @@ __simd_vf__ inline void StreamingExactPackedRowsVF(__ubuf__ float *stateAddr, __
 }
 
 /*
- * Direct public recurrence for the low-work exact path.  Each invocation owns
- * a token batch and one AIV's independent state-row slice. The canonical state is
- * FP32 for both public state dtypes and is rounded only when a BF16 final state
- * is published by the caller.
+ * 通用 Streaming 每次 VF 处理一批 token 和一个 AIV 独立拥有的 Dv 行切片。
+ * 状态行之间无依赖，因此先遍历行，再在寄存器中沿 token 递推，减少 UB 状态读写：
+ * delta_r=beta*(v_r-alpha*dot(S_r,k))，S_r=alpha*S_r+delta_r*k，out_r=dot(S_r,scale*q)。
+ * 两种接口状态类型都以 FP32 持续递推，仅在调用方写出 BF16 finalState 时量化状态。
+ * 因而该路径与 BF16 chunk 路径的舍入位置不同，不能将 Exact 理解为逐位相同。
  */
 template <bool hasGamma>
 __simd_vf__ inline void StreamingExactBatchVF(__ubuf__ float *stateAddr, __ubuf__ bfloat16_t *queryAddr,
@@ -348,8 +355,8 @@ __simd_vf__ inline void StreamingExactBatchVF(__ubuf__ float *stateAddr, __ubuf_
     uint32_t highCount = dk > elementsPerRepeat ? dk - elementsPerRepeat : 0;
     MaskReg lowMask = UpdateMask<float>(lowCount);
     MaskReg highMask = UpdateMask<float>(highCount);
-    // Rows are independent. Keep both feature halves of one row in registers
-    // across the token batch; retain the original two ReduceSum/Add order.
+    // 状态行相互独立；一行的前后两个特征片段在整批 token 内驻留寄存器。
+    // Dk>64 时保持两次 ReduceSum/Add 的原有顺序，避免额外改变浮点累加顺序。
     for (uint16_t row = 0; row < rowCount; ++row) {
         const uint32_t stateOffset = static_cast<uint32_t>(row) * stateRowStride;
         LoadAlign(stateLowReg, stateAddr + stateOffset);
@@ -384,6 +391,7 @@ __simd_vf__ inline void StreamingExactBatchVF(__ubuf__ float *stateAddr, __ubuf_
             Mul(productReg, alphaReg, totalReg, oneMask);
             Sub(deltaReg, valueReg, productReg, oneMask);
             Mul(deltaReg, deltaReg, betaReg, oneMask);
+            // 标量递推仅定义 lane 0；外积更新前须广播到全部有效 Dk lane。
             Duplicate(deltaBroadcastReg, deltaReg, allMask);
 
             Mul(stateLowReg, stateLowReg, alphaReg, lowMask);

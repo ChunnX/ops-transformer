@@ -76,7 +76,10 @@ __simd_vf__ inline void CumSumExpVF(__ubuf__ float *gAddr, __ubuf__ float *gCumA
     }
 }
 
-/* Exact arch35 fast path: both AIVs retain the complete 64-element g prefix. */
+/*
+ * 融合路径中两个 AIV 各自保留完整 64 元素的 G 和 exp(G)，以少量重复计算消除跨 AIV 的前缀和传递。
+ * 使用寄存器内 Hillis-Steele 扫描，步长 1/2/4/8/16/32；Gamma 不在此物化，由分数后处理按行生成。
+ */
 __simd_vf__ inline void CumSumExpExactVF(__ubuf__ float *gAddr, __ubuf__ float *gCumAddr, __ubuf__ float *gCumExpAddr,
                                          uint16_t chunkSize)
 {
@@ -106,9 +109,9 @@ __simd_vf__ inline void CumSumExpExactVF(__ubuf__ float *gAddr, __ubuf__ float *
 }
 
 /*
- * Full-width specialization of the Stage1 transform.  Keeping Q/K/V in one
- * constant-width loop preserves the proven arch35 VF schedule for dk=dv=128;
- * the generic exact path below remains the source of truth for smaller widths.
+ * Dk=Dv=128 的常用维度特化：同一固定宽度循环加载 Q/K/V，在 FP32 寄存器中生成四个 BF16 矩阵：
+ * rawKcd=-beta*exp(G)*K，vBeta=beta*V，qPrime=scale*exp(G)*Q，kg=exp(G_last-G)*K。
+ * 缩放、类型转换和 compact zN 写出融合在一次 VF 内，省去多个中间 UB 张量和独立的格式转换。
  */
 __simd_vf__ inline void PrepareStage1FullDimSliceVF(__ubuf__ bfloat16_t *qAddr, __ubuf__ bfloat16_t *kAddr,
                                                     __ubuf__ bfloat16_t *vAddr, __ubuf__ bfloat16_t *rawKcdZnAddr,
@@ -199,9 +202,9 @@ __simd_vf__ inline void PrepareStage1FullDimSliceVF(__ubuf__ bfloat16_t *qAddr, 
 }
 
 /*
- * Build a row range of the four BF16 Stage1 right-hand sides.  The sources are
- * row-major while the destinations retain the full-slice compact zN stride, so
- * disjoint input batches can fill one tile before its strided publication to L1.
+ * 上述四个矩阵的通用维度版本：Q/K 与 V 分别按 Dk/Dv 建掩码，只处理有效特征。
+ * 输入为行主序，输出直接按整个 32 行切片的 compact zN 步长写入；两次 16 行输入可填充同一输出 tile。
+ * 无效行列由调用方预先清零，避免固定 128 维的后续 Cube 计算读到旧数据。
  */
 __simd_vf__ inline void PrepareStage1SliceVF(__ubuf__ bfloat16_t *qAddr, __ubuf__ bfloat16_t *kAddr,
                                              __ubuf__ bfloat16_t *vAddr, __ubuf__ bfloat16_t *rawKcdZnAddr,
@@ -305,8 +308,10 @@ __simd_vf__ inline void PrepareStage1SliceVF(__ubuf__ bfloat16_t *qAddr, __ubuf_
 }
 
 /*
- * Exact arch35 prefix postprocess.  One stable pairwise decay serves both
- * strict-lower KKT (inverse input) and lower-inclusive QKT (output attention).
+ * 一次计算 exp(G_i-G_j)，同时用于严格下三角 KKT（L，求逆输入）和含对角线的 QKT（输出注意力）。
+ * 前者必须排除当前 token，后者必须包含当前 token；两种 mask 不可混用。
+ * 直接对前缀和之差取 exp，避免先算 exp(G_i)/exp(G_j) 时的小数相除；上三角在取 exp 前置零，
+ * 随后通过乘法掩码清零。inverse 初始化为 -L，两个对角块稍后被各自的 (I+L_diag)^(-1) 覆盖。
  */
 __simd_vf__ inline void BuildAttnMaskedQktExactSliceVF(__ubuf__ float *attnAddr, __ubuf__ float *inverseAddr,
                                                        __ubuf__ bfloat16_t *maskedQktZnAddr,
@@ -371,7 +376,7 @@ __simd_vf__ inline void BuildAttnMaskedQktExactSliceVF(__ubuf__ float *attnAddr,
     }
 }
 
-/* Convert one row-major FP32 tile to BF16 while storing it directly as compact zN. */
+// FP32 行主序矩阵在寄存器内转 BF16，Pack 后按 16 元素块跨步写出 compact zN，供 UB->L1 直接搬运。
 __simd_vf__ inline void CastFp32ToCompactZnBf16VF(__ubuf__ float *srcAddr, __ubuf__ bfloat16_t *dstZnAddr,
                                                   uint16_t rowCount, uint16_t colCount)
 {
@@ -457,9 +462,8 @@ __aicore__ inline void InverseAIVVF(const LocalTensor<float> &attnUb, const Loca
 }
 
 /*
- * Fixed 32x32 exact-path inverse in eight-row panels. Compared with the four-row panel,
- * each previously solved inverse row is reused by twice as many accumulators before it
- * leaves the register file. The contribution order for every output row remains j=0..i-1.
+ * 32x32 对角块的八行分组求逆版本：一次加载的已求逆行可服务八个累加器，减少 UB 重复读取。
+ * 每个目标行仍按 j=0..i-1 顺序累加。当前入口选用下方 DirectBrc 版本，此处保留 Gather 版本。
  */
 __simd_vf__ inline void InverseAIVPanel8VFImpl(__ubuf__ float *attnUb, __ubuf__ float *invResUb, __ubuf__ float *eiUb,
                                                uint32_t offset, uint32_t chunkSize)
@@ -936,7 +940,12 @@ __simd_vf__ inline void InverseAIVPanel8PairAoSoAVFImpl(__ubuf__ float *pairAttn
 #undef CGDR_INVERSE_PAIR_PREPARE_ROW
 }
 
-/* Read each scalar coefficient directly from UB with B32 broadcast. */
+/*
+ * 当前融合路径实际使用的八行分组前代求逆：inv_i=e_i-sum_{j<i}(L_ij*inv_j)。
+ * 每组共同依赖的旧逆行仅加载一次，分组内新求得的八行留在寄存器中，直接用于后续行。
+ * 系数 L_ij 通过 B32 从 UB 直接广播，省去常驻的八个系数行寄存器以及索引构造/Gather。
+ * 各行的 j 累加顺序不变；组末的 store->load 屏障保证下一组读到完整的旧逆行。
+ */
 __simd_vf__ inline void InverseAIVPanel8DirectBrcVFImpl(__ubuf__ float *attnUb, __ubuf__ float *invResUb,
                                                         __ubuf__ float *eiUb, uint32_t offset, uint32_t chunkSize)
 {
@@ -1055,6 +1064,7 @@ __aicore__ inline void InverseAIVPanel8VF(const LocalTensor<float> &attnUb, cons
     auto attn = reinterpret_cast<__ubuf__ float *>(attnUb.GetPhyAddr());
     auto inv = reinterpret_cast<__ubuf__ float *>(invResUb.GetPhyAddr());
     auto ei = reinterpret_cast<__ubuf__ float *>(eiUb.GetPhyAddr());
+    // Pair/AoSoA/Gather 等保留版本不在当前调用链中，性能分析应以此 DirectBrc 实现为准。
     InverseAIVPanel8DirectBrcVFImpl(attn, inv, ei, offset, chunkSize);
 }
 } // namespace ChunkGatedDeltaRule

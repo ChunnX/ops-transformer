@@ -36,6 +36,7 @@ struct CGDRInitParams {
     GM_ADDR finalState;
 };
 
+// arch35 入口仅绑定输入输出并校验融合路径的约束；原 Stage1/2/3 的 GM 工作区和逐阶段调度已移除。
 template <typename lowType, typename highType, typename stateType = lowType, bool gOptional = false>
 class CGDR {
 public:
@@ -79,6 +80,7 @@ public:
 private:
     __aicore__ inline bool HasValidExactInputs() const
     {
+        // 固定物理 tile 为 C=64、Dk/Dv=128，逻辑维度可更小；不满足条件时直接返回，不会回退到旧实现。
         if (tiling_->b <= 0 || tiling_->t <= 0 || tiling_->nk <= 0 || tiling_->nv <= 0 ||
             tiling_->nv % tiling_->nk != 0 || tiling_->dk <= 0 || tiling_->dk > 128 || tiling_->dv <= 0 ||
             tiling_->dv > 128 || tiling_->chunkSize != 64 || tiling_->aiCoreNum <= 0 || tiling_->stateStride0 < 0 ||
@@ -87,6 +89,8 @@ private:
         }
         const uint64_t targetLength = static_cast<uint64_t>(tiling_->t);
         uint64_t totalLength = 0;
+        // actualSeqLengths 保存各 batch 的长度而非累积终点；允许空序列，但长度之和必须恰好覆盖 T。
+        // 所有 AIC/AIV 在进入跨核握手前执行相同校验，避免一方提前退出而另一方永久等待。
         for (int64_t bid = 0; bid < tiling_->b; ++bid) {
             const int32_t length = actualSeqLens_.GetValue(bid);
             if (length < 0 || static_cast<uint64_t>(length) > targetLength - totalLength) {
