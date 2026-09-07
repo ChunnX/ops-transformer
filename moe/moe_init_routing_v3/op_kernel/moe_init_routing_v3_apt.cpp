@@ -165,13 +165,13 @@
 /*
  * CountingSort 性能模板（计数排序）
  */
-#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_GATHER 10000010          // 模板1、非量化、GATHER
-#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_SCATTER 10001010         // 模板1、非量化、SCATTER
-#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_GATHER 10000020         // 模板2、非量化、GATHER
-#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_GATHER 10010020        // 模板2、静态量化、GATHER
-#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_SCATTER 10001020        // 模板2、非量化、SCATTER
-#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_SCATTER 10011020       // 模板2、静态量化、SCATTER
-#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_DROPPAD_GATHER 10000120 // 模板2、非量化、GATHER、dropPad
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_GATHER 10000010    // COUTSORT全载、非量化、GATHER
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_SCATTER 10001010   // COUTSORT全载、非量化、SCATTER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_GATHER 10000020   // COUTSORT非全载、非量化、GATHER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_GATHER 10010020  // COUTSORT非全载、静态量化、GATHER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_SCATTER 10001020  // COUTSORT非全载、非量化、SCATTER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_SCATTER 10011020 // COUTSORT非全载、静态量化、SCATTER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_DROPPAD_GATHER 10000120 // COUTSORT非全载、非量化、GATHER、dropPad
 
 #define EMPTY_TENSOR 3000000
 
@@ -290,7 +290,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         return;
     }
 
-    // CountingSort 性能模板（模板1 FullLoad / 模板2 CutOrigin）
+    // CountingSort 性能模板（COUTSORT全载 FullLoad / COUTSORT非全载 CutOrigin）
     // 类型守卫：仅承接 X∈{bf16,fp16,fp32} 的非量化/静态量化场景（dynamic 已被 tiling IsCountingSortApplicable 排除），
     // 其余扩展类型（fp8/fp4/hifloat8/int8 X 等）回退到原分阶段路径。
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_GATHER) ||
@@ -299,8 +299,10 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                       IsSameType<DTYPE_X, float>::value || IsSameType<DTYPE_X, int8_t>::value) {
             TPipe csPipe;
             MoeV3CountingSortFullLoadUnquantized<DTYPE_X> csOp;
-            csOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale, userWS,
-                      t, &csPipe);
+            // V3 不带 topk_weight（isInputTopkWeight 恒 0），topkWeight/expandedTopkWeight 传 nullptr 占位。
+            // Init 内仅 isInputTopkWeight==1 时 SetGlobalBuffer，故 nullptr 安全。
+            csOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale, nullptr,
+                      nullptr, userWS, t, &csPipe);
             csOp.Process();
             csPipe.Destroy();
         }
