@@ -812,6 +812,9 @@ ge::graphStatus CompressorTiling::CheckRequiredParaExistence() const
 }
 
 // ── 辅助函数：检查单个 tensor 的 shape 和 desc 均不为空 ──
+static ge::graphStatus CheckTensorShapeAndDesc(const char *opName, const char *tensorName,
+                                               const gert::CompileTimeTensorDesc *desc, const gert::StorageShape *shape)
+{
     OP_CHECK_IF(shape == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, tensorName, "shape is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(desc == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, tensorName, "desc is nullptr"),
@@ -854,7 +857,6 @@ ge::graphStatus CompressorTiling::CheckRequiredInOutExistence() const
         return ge::GRAPH_FAILED;
     }
     // cuSeqlens 特殊校验：TH 布局必须非空，BSH 布局必须为空
-
     if (context_->layout == LayoutType::LAYOUT_TH) {
         OP_CHECK_IF(context_->cuSeqlens.desc == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cu_seqlens",
