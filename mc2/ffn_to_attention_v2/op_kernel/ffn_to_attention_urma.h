@@ -255,8 +255,6 @@ template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::ReadTokenMetaData(
     ReadTokenMetaDataStruct &metaDataStruct, uint64_t yOffset)
 {
-    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-        sessionIdsGMTensor_[yOffset]);
     int32_t curAttenWorkId = sessionIdsGMTensor_.GetValue(yOffset);
     ascendc_assert(curAttenWorkId >= 0, "sessionId must be non-negative, sessionId=%d, yOffset=%lu", curAttenWorkId,
                    yOffset);
@@ -267,8 +265,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::R
         ascendc_assert(metaDataStruct.curAttenWorkIds < axisA_,
                        "sessionId exceeds attnRankTable, sessionId=%u, attnRankNum=%u, yOffset=%lu",
                        metaDataStruct.curAttenWorkIds, axisA_, yOffset);
-        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-            attnRankTableGMTensor_[metaDataStruct.curAttenWorkIds]);
         int32_t curAttenWorkRank = attnRankTableGMTensor_.GetValue(metaDataStruct.curAttenWorkIds);
         ascendc_assert(curAttenWorkRank >= 0, "attention rank must be non-negative, rank=%d, sessionId=%u",
                        curAttenWorkRank, metaDataStruct.curAttenWorkIds);
@@ -278,22 +274,17 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::R
                    "attention rank exceeds worldSize, rank=%u, worldSize=%u, yOffset=%lu",
                    metaDataStruct.curAttenWorkRank, worldSize_, yOffset);
 
-    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-        microBatchIdsGMTensor_[yOffset]);
     int32_t curMicroBatchId = microBatchIdsGMTensor_.GetValue(yOffset);
     ascendc_assert(curMicroBatchId >= 0 && static_cast<uint32_t>(curMicroBatchId) < microBatchNum_,
                    "microBatchId out of range, microBatchId=%d, microBatchNum=%u, yOffset=%lu", curMicroBatchId,
                    microBatchNum_, yOffset);
     metaDataStruct.curMicroBatchIds = static_cast<uint32_t>(curMicroBatchId);
 
-    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(tokenIdsGMTensor_[yOffset]);
     int32_t curTokenBatchOffset = tokenIdsGMTensor_.GetValue(yOffset);
     ascendc_assert(curTokenBatchOffset >= 0 && static_cast<uint32_t>(curTokenBatchOffset) < axisBS_,
                    "tokenId out of range, tokenId=%d, BS=%u, yOffset=%lu", curTokenBatchOffset, axisBS_, yOffset);
     metaDataStruct.curTokenBatchOffset = static_cast<uint32_t>(curTokenBatchOffset);
 
-    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-        expertOffsetsGMTensor_[yOffset]);
     int32_t curTokenTopkOffset = expertOffsetsGMTensor_.GetValue(yOffset);
     ascendc_assert(curTokenTopkOffset >= 0 && static_cast<uint32_t>(curTokenTopkOffset) < expertNumPerToken_,
                    "expertOffset out of range, expertOffset=%d, expertNumPerToken=%u, yOffset=%lu", curTokenTopkOffset,
