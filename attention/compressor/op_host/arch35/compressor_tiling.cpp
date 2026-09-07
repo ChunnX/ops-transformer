@@ -97,10 +97,10 @@ ge::graphStatus CompressorTiling::ConvertContext(gert::TilingContext &context, C
     ConvertOptionalParams(context, compressorContext);
 
     auto attrs = context.GetAttrs();
-    OP_CHECK_IF(
-        attrs == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.GetNodeName(), "attrs", "attrs got from ge is nullptr"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(attrs == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.GetNodeName(), "attrs",
+                                                         "attrs got from TilingContext is nullptr"),
+                return ge::GRAPH_FAILED);
     compressorContext.coff = attrs->GetAttrPointer<int>(COFF_ATTR_INDEX);
     compressorContext.cmpRatio = attrs->GetAttrPointer<int>(CMP_RATIO_ATTR_INDEX);
     compressorContext.cacheMode = attrs->GetAttrPointer<int>(CACHE_MODE_ATTR_INDEX);
@@ -110,7 +110,7 @@ ge::graphStatus CompressorTiling::ConvertContext(gert::TilingContext &context, C
     compressorContext.gradEnabled = attrs->GetAttrPointer<bool>(GRAD_ENABLED_ATTR_INDEX);
     OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.GetNodeName(), "workSpaceSize",
-                                                         "workSpaceSize got from ge is nullptr"),
+                                                         "workSpaceSize got from TilingContext is nullptr"),
                 return ge::GRAPH_FAILED);
     compressorContext.workSpaces = context.GetWorkspaceSizes(1);
     return ge::GRAPH_SUCCESS;

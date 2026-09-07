@@ -100,10 +100,10 @@ ge::graphStatus QuantCompressorTiling::ConvertContext(gert::TilingContext &conte
     ConvertOptionalParams(context, quantCompressorContext);
 
     auto attrs = context.GetAttrs();
-    OP_CHECK_IF(
-        attrs == nullptr,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.GetNodeName(), "attrs", "attrs got from ge is nullptr"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(attrs == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.GetNodeName(), "attrs",
+                                                         "attrs got from TilingContext is nullptr"),
+                return ge::GRAPH_FAILED);
     quantCompressorContext.quantMode = attrs->GetAttrPointer<int>(QUANT_MODE_ATTR_INDEX);
     quantCompressorContext.coff = attrs->GetAttrPointer<int>(COFF_ATTR_INDEX);
     quantCompressorContext.cmpRatio = attrs->GetAttrPointer<int>(CMP_RATIO_ATTR_INDEX);
@@ -113,7 +113,7 @@ ge::graphStatus QuantCompressorTiling::ConvertContext(gert::TilingContext &conte
     OP_LOGD(context.GetNodeName(), "deterministic_level=%d", context.GetDeterministicLevel());
     OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.GetNodeName(), "workSpaceSize",
-                                                         "workSpaceSize got from ge is nullptr"),
+                                                         "workSpaceSize got from TilingContext is nullptr"),
                 return ge::GRAPH_FAILED);
     quantCompressorContext.workSpaces = context.GetWorkspaceSizes(1);
     return ge::GRAPH_SUCCESS;
