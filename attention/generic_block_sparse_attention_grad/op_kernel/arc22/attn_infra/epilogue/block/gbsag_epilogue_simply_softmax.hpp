@@ -284,7 +284,7 @@ public:
         set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID5);
         set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID4);
 
-        // 迭代14（§6.7 候选2）：删除原入口的 V→MTE2 排空对。它存在的唯一理由
+        // 删除原入口的 V→MTE2 排空对。它存在的唯一理由
         // 是旧布局里 prepD 的 V（cast+front）会读写 [0,144K)，与 S/LSE/dP 的
         // MTE2 载入区互踩，S 载入必须等 prepD 的 V 全部排空。现在 prepD 整体
         // 迁入 [104K,244K) 私有区（PacketSoftmaxUbLayout），与本阶段 MTE2 覆写
@@ -348,7 +348,7 @@ public:
         const int64_t kLast = kSeqEnd - 1;
         const uint32_t packetRowEnd = packetRowBegin + rows;
 
-        // 迭代3 精简：整 token 切分下 tile 恒均匀（packStart = s * tileRows），
+        // 精简：整 token 切分下 tile 恒均匀（packStart = s * tileRows），
         // 相交 tile 是连续区间，闭式定位首尾即可；rsvdBlockIdx 输入契约为
         // 升序，token 随 tile 下标单调递增，首尾 tile 即本 AIV 的 Q token 范围。
         const uint32_t tileRows = GBSAG::GetQPacketTileRows(packetGroupSize);
@@ -373,7 +373,7 @@ public:
 
         bool hasFullRun = false;
         uint32_t fullRunStart = 0;
-        // 迭代7：阶梯从"行"粒度升到"tile"粒度——tile 内 G 行共享 token/legalEnd，
+        // 阶梯从"行"粒度升到"tile"粒度——tile 内 G 行共享 token/legalEnd，
         // 循环次数 rows(<=64) → 本 chunk 的 tile 数（G=16 时 64→4）；
         // qStart[] 读、三分类判定、full-run 边界全部按 tile 一次。
         // 快路径（rowStride 为 64 倍数，标准 128 宽块）：部分 tile 用跨行周期
@@ -611,7 +611,7 @@ public:
         // 仅当相邻 token 的源间距 gap 均匀（G==1；或 TND/BSND 且 G==n1）时
         // 合并连续 token，保持与原逐行实现相同的搬运次数下限。
         const uint32_t groupSize = packetGroupSize;
-        // 迭代3 精简：tile 恒均匀，packStart/segmentRows/headStart 闭式推导。
+        // 精简：tile 恒均匀，packStart/segmentRows/headStart 闭式推导。
         const uint32_t tileRows = GBSAG::GetQPacketTileRows(groupSize);
         uint64_t pendSrc = 0;
         uint32_t pendRow = 0;
@@ -619,7 +619,7 @@ public:
         uint32_t pendGap = 0;
         uint32_t pendToken = 0;
         uint32_t pendHeads = 0;
-        // 迭代8：闭式定位相交段区间，只遍历本 chunk 的段（首段从 curS1Idx
+        // 闭式定位相交段区间，只遍历本 chunk 的段（首段从 curS1Idx
         // 起，末段止于 packetRowEnd，段边界增量推进），免去全段扫描求交。
         // 段号用移位求（tileRows 为 2 的幂时），避免 AIV 标量软件除法。
         const uint32_t tileShift = GBSAG::GetQPacketTileShift(tileRows);

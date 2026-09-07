@@ -420,12 +420,12 @@ public:
         auto eventID1 = EVENT_ID6;
         set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID6);
         wait_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID6);
-        // 迭代8：闭式定位相交段区间（tile 恒均匀），只遍历本 AIV 拥有的段，
+        // 闭式定位相交段区间（tile 恒均匀），只遍历本 AIV 拥有的段，
         // 免去对另一半段的空跑与逐段求交；首段从 range.begin 起（可能段内
         // 偏移），末段止于 range.end，中间段整段在范围内且 headOffset 恒为
         // headStart0，段边界增量推进。段号用移位求（tileRows 为 2 的幂时），
         // 避免 AIV 标量核软件除法吃掉省下的指令。
-        // 迭代8：闭式定位相交段区间（tile 恒均匀），只遍历本 AIV 拥有的段，
+        // 闭式定位相交段区间（tile 恒均匀），只遍历本 AIV 拥有的段，
         // 免去对另一半段的空跑与逐段求交；首段从 range.begin 起（可能段内
         // 偏移），末段止于 range.end，中间段整段在范围内且 headOffset 恒为
         // headStart0，段边界增量推进。段号用移位求（tileRows 为 2 的幂时），
@@ -558,7 +558,7 @@ public:
         if (enableAtomicAdd) {
             AscendC::SetAtomicAdd<InputType>();
         }
-        // 迭代8：闭式定位相交段区间（同 Gather），只遍历本 AIV 拥有的段。
+        // 闭式定位相交段区间（同 Gather），只遍历本 AIV 拥有的段。
         const uint32_t tileRows = params.tileRows;
         const uint32_t tileShift = GetQPacketTileShift(tileRows);
         const uint32_t firstSeg = SegIndexByTileRows(range.begin, tileRows, tileShift);

@@ -44,7 +44,7 @@ public:
     __aicore__ inline explicit SoftmaxGrad(NpuArch::Arch::Resource<ArchTag> &resource_)
         : resource(resource_)
     {
-        // 迭代14（§6.7 候选2）：prepD 整体迁入 [PREPD_BASE, 192K) 私有区，与
+        // prepD 整体迁入 [PREPD_BASE, 192K) 私有区，与
         // softmax 的 [0,104K) 区域彻底分离（布局见 PacketSoftmaxUbLayout）。
         // 输入按 headDim=128 全量定容（host 侧 EZ1001 锁死 128）；
         // CAST 按半行块（32 行）定容，ProcessPacket 分块处理。
@@ -79,7 +79,7 @@ public:
         auto eventId = EVENT_ID2;
         const uint64_t calcSize = static_cast<uint64_t>(rows) * headDim;
 
-        // 迭代14：prepD 私有区（[PREPD_BASE,192K)，见 PacketSoftmaxUbLayout）。
+        // prepD 私有区（[PREPD_BASE,192K)，见 PacketSoftmaxUbLayout）。
         // 此处 MTE3→MTE2 等待是 pack GM 的 RAW 闸（GatherOut 刚写完 pack），
         // 与 UB 分区无关，必须保留。
         set_flag(PIPE_MTE3, PIPE_MTE2, eventId);
@@ -91,7 +91,7 @@ public:
         set_flag(PIPE_MTE2, PIPE_V, eventId);
         wait_flag(PIPE_MTE2, PIPE_V, eventId);
 
-        // 迭代14：192K UB 窗口放不下全量 CAST（2×32K），CAST 区按半行块
+        // 192K UB 窗口放不下全量 CAST（2×32K），CAST 区按半行块
         // （CAST_BUFFER_BYTES=16K → 32 行）定容，64 行拆块逐块 cast + front。
         // 逐行规约（D=Σ_dout·out）行独立，分块结果与全量逐位一致。
         constexpr uint32_t CAST_CHUNK_ROWS = static_cast<uint32_t>(CAST_BUFFER_LEN / (128 * sizeof(float))); // 32

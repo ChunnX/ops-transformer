@@ -1,15 +1,15 @@
-/**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
- * \file generic_block_sparse_attention_grad_kernel.h
+ * \file generic_block_sparse_attention_grad_k_out_kernel.h
  * \brief Block Sparse Attention Grad Kernel Implementation
  */
 
@@ -457,7 +457,7 @@ private:
                     isComputed = true;
                 }
                 for (uint32_t packetIdx = 0; packetIdx < packetCount; ++packetIdx) {
-                    // 迭代3 精简：AIV 填充 qStart（闭式标量 + 顺序走查），
+                    // 精简：AIV 填充 qStart（闭式标量 + 顺序走查），
                     // AIC 仅闭式标量（GEMM 只需要 rows），消除 AIC 侧冗余走查。
 #ifdef __DAV_C220_VEC__
                     aggregateOp.Aggregate(curInfo.qPacket);
