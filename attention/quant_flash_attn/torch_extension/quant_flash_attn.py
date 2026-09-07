@@ -16,21 +16,24 @@ from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 from torch.library import impl
 
 QFA_METADATA_OP_NAME = "quant_flash_attn_metadata"
+METADATA_STRIDE = (
+    16  # 每核 metadata 字段数, 与 AICPU/kernel 侧 METADATA_STRIDE 同名同值
+)
 
 
 class QuantMode(IntEnum):
     """quant_mode 枚举：对外字符串/int 经由本枚举映射为传给算子侧的 int。"""
 
+    A8C8_QKV_HIF8_PER_TENSOR_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 0
     A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 1
     A8C8_QKV_MXFP8_P_MXFP8_SOFTMAX_FP32 = 2
     A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16 = 3
     A8C8_QKV_MXFP8_P_MXFP8_SOFTMAX_FP16 = 4
     A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16 = 5
     A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 6
-    A8C8_QKV_HIF8_PER_TENSOR_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 0
-    A4C4_QKV_HIF4_P_HIF4_LEVEL1_SOFTMAX_FP16 = 8
-    A4C4_QKV_HIF4_P_HIF4_LEVEL2_SOFTMAX_FP16 = 9
-    A4C4_QKV_HIF4_P_HIF4_LEVEL3_SOFTMAX_FP16 = 10
+    A4C4_QKV_HIF4_P_HIF4_LEVEL1_SOFTMAX_FP16 = 7
+    A4C4_QKV_HIF4_P_HIF4_LEVEL2_SOFTMAX_FP16 = 8
+    A4C4_QKV_HIF4_P_HIF4_LEVEL3_SOFTMAX_FP16 = 9
 
 
 class MaskMode(IntEnum):
@@ -79,8 +82,32 @@ def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
     return 0
 
 
-def _calculate_max_schedule_size():
-    return 4096
+def _calculate_max_schedule_size(batch_size, num_heads_kv):
+    """dim0 按 sectionNum 最坏值(batch*num_heads_kv)动态计算, 开启 section 后
+    FA/FD 调度区需求随 section 数线性增长, 固定值无法覆盖; 对齐 4096 便于对拍。
+    (2, dim0) 布局中第二行即反向 FAG 区, grad 按 shape.GetDim(1)=dim0 推导其偏移。"""
+    align_size = 4096
+    head_size = METADATA_STRIDE  # head 区占 1 个 stride
+    # batch_size 为 -1/None/0(未知, 由 AICPU 从 varlen tensor 推断)时无法预估 section 数,
+    # 按 1 兜底: sn 恒为 1 时需求为 16+(aic+aiv)*16, 4096 预算已覆盖
+    batch_size = batch_size if batch_size and batch_size > 0 else 1
+    aic_num, aiv_num = _get_core_nums()
+    fa_size = aic_num * METADATA_STRIDE * batch_size * num_heads_kv
+    fd_size = aiv_num * METADATA_STRIDE * batch_size * num_heads_kv
+
+    schedule_size = head_size + fa_size + fd_size
+    return ((schedule_size + align_size - 1) // align_size) * align_size
+
+
+def _get_core_nums():
+    """惰性获取设备核数(理论上限, 与 AICPU 调度/kernel grid 口径一致);
+    仅无 NPU 环境(meta/fallback)返回默认值。真机上查询失败时向上抛出,
+    避免静默用默认核数导致 metadata 欠分配越界。"""
+    npu = getattr(torch, "npu", None)
+    if npu is None or not npu.is_available():
+        return 36, 72
+    props = npu.get_device_properties()
+    return props.cube_core_num, props.vector_core_num
 
 
 # 各 layout 期望的 Q/K/V tensor 维度数 (N2TGD 是 descale 专用 layout, 不在此表)
@@ -157,7 +184,8 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             layout_out: Optional[str] = "BSND",
             is_grad_enabled: Optional[bool] = False,
         ):
-            max_schedule_size = _calculate_max_schedule_size()
+            b_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
+            max_schedule_size = _calculate_max_schedule_size(b_size, num_heads_kv)
             return torch.empty((2, max_schedule_size), dtype=torch.int32, device="npu")
 
         @impl(get_as_library(), self.name, "Meta")
@@ -292,10 +320,11 @@ def quant_flash_attn_metadata(
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
     torch._check(
-        quant_mode in (1, 5, 0),
-        lambda: f"The quant_mode of quant_flash_attn_metadata only supports 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), "
+        quant_mode in (0, 1, 5, 6),
+        lambda: f"The quant_mode of quant_flash_attn_metadata only supports 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), "
+        f"1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), "
         f"5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16) "
-        f"or 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
+        f"or 6 (A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
     )
     if layout_q == "TND":
         torch._check(
@@ -319,7 +348,7 @@ def quant_flash_attn_metadata(
     layout_out = "BSND" if layout_out is None else layout_out
     head_dim_v = head_dim if head_dim_v is None else head_dim_v
 
-    max_schedule_size = _calculate_max_schedule_size()
+    max_schedule_size = _calculate_max_schedule_size(batch_size, num_heads_kv)
     output = torch.empty((2, max_schedule_size), dtype=torch.int32, device="npu")
 
     op_module = quant_flash_attn_op_builder.load()
@@ -431,10 +460,11 @@ def quant_flash_attn(
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     torch._check(
-        quant_mode in (1, 5, 0),
-        lambda: f"The quant_mode of quant_flash_attn only supports 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), "
+        quant_mode in (0, 1, 5, 6),
+        lambda: f"The quant_mode of quant_flash_attn only supports 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), "
+        f"1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), "
         f"5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16) "
-        f"or 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
+        f"or 6 (A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
     )
     quant_mode = _resolve_quant_mode(quant_mode)
     mask_mode = _resolve_mask_mode(mask_mode)

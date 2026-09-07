@@ -251,7 +251,7 @@ def _get_moe_ep_window_layout(
     win_addr_align = 512
     ub_align = 32
     notify_cnt_align = 15000
-    combine_channel_count = 6
+    combine_channel_count = 7
     max_out_dtype_size = 2
     metadata_dtype_size = 4
     state_dtype_size = 4
@@ -311,6 +311,79 @@ def _get_moe_ep_direct_window_bytes(
         + layout.scaleup_receive_buffer_bytes * 2
         + combine_receive_buffer_bytes
     )
+
+
+def _get_moe_ep_window_bytes(
+    world_size: int,
+    num_max_tokens_per_rank: int,
+    hidden: int,
+    num_experts: int,
+    topk: int,
+) -> int:
+    torch._check(
+        2 <= num_experts <= 2048,
+        lambda: f"num_experts only support in [2, 2048], but got {num_experts=}.",
+    )
+    torch._check(
+        1 <= topk <= 32,
+        lambda: f"topk only support in [1, 32], but got {topk=}.",
+    )
+
+    mb_conversion = 1024 * 1024
+    window_layout = _get_moe_ep_window_layout(
+        world_size,
+        num_max_tokens_per_rank,
+        hidden,
+        num_experts,
+        topk,
+    )
+    direct_minimum_window_bytes = _get_moe_ep_direct_window_bytes(
+        window_layout,
+        num_max_tokens_per_rank,
+        topk,
+    )
+    win_addr_align = 512
+    state_dtype_size = 4
+
+    def get_dispatch_buffer_size(rank_num_per_server):
+        scaleout_rank_count = world_size // rank_num_per_server
+        scaleout_per_slot_bytes = _inline_align(
+            window_layout.dispatch_slot_bytes + topk * state_dtype_size,
+            win_addr_align,
+        )
+        scaleout_recv_data_size = (
+            scaleout_rank_count * num_max_tokens_per_rank * scaleout_per_slot_bytes
+        )
+        scaleout_recv_status_size = (
+            scaleout_rank_count * num_max_tokens_per_rank * win_addr_align
+        )
+        payload_stash_size = num_max_tokens_per_rank * scaleout_per_slot_bytes
+        return (
+            scaleout_recv_data_size
+            + window_layout.scaleup_receive_buffer_bytes
+            + scaleout_recv_status_size
+            + payload_stash_size
+        )
+
+    # Context topology is unavailable here, so reserve for the largest valid hybrid layout.
+    rank_num_per_server_candidates = [
+        rank_num_per_server
+        for rank_num_per_server in range(1, world_size + 1)
+        if world_size % rank_num_per_server == 0
+    ]
+    dispatch_buffer_size = max(
+        get_dispatch_buffer_size(rank_num_per_server)
+        for rank_num_per_server in rank_num_per_server_candidates
+    )
+    combine_buffer_size = (
+        num_max_tokens_per_rank * window_layout.combine_slot_bytes * topk
+    )
+
+    hybrid_minimum_window_bytes = (
+        window_layout.state_buffer_bytes + dispatch_buffer_size + combine_buffer_size
+    )
+    minimum_window_bytes = max(direct_minimum_window_bytes, hybrid_minimum_window_bytes)
+    return _inline_align(minimum_window_bytes, 2 * mb_conversion)
 
 
 @dataclass
@@ -430,7 +503,7 @@ class ElasticBuffer:
 
         Arguments:
             num_entries: the number of entries in the Engram storage (must be non-negative).
-            hidden: the hidden dimension of each entry (must be 128-aligned and positive).
+            hidden: the hidden dimension of each entry (must be positive).
             dtype: the data type, defaults to `torch.bfloat16`.
 
         Returns:
@@ -443,10 +516,6 @@ class ElasticBuffer:
         torch._check(
             hidden > 0,
             lambda: f"hidden must be positive, got {hidden}",
-        )
-        torch._check(
-            hidden % 128 == 0,
-            lambda: f"hidden must be 128-aligned, got {hidden}",
         )
         torch._check(
             dtype in (torch.bfloat16, torch.float16, torch.float32),
@@ -465,80 +534,11 @@ class ElasticBuffer:
         num_experts: int,
         topk: int,
     ) -> int:
-        torch._check(
-            2 <= num_experts <= 2048,
-            lambda: f"num_experts only support in [2, 2048], but got {num_experts=}.",
-        )
-        torch._check(
-            1 <= topk <= 32,
-            lambda: f"topk only support in [1, 32], but got {topk=}.",
-        )
-
-        mb_conversion = 1024 * 1024
-        window_layout = _get_moe_ep_window_layout(
-            world_size,
-            num_max_tokens_per_rank,
-            hidden,
-            num_experts,
-            topk,
-        )
-        direct_minimum_window_bytes = _get_moe_ep_direct_window_bytes(
-            window_layout,
-            num_max_tokens_per_rank,
-            topk,
-        )
-        win_addr_align = 512
-        state_dtype_size = 4
-
-        def get_dispatch_buffer_size(rank_num_per_server):
-            scaleout_rank_count = world_size // rank_num_per_server
-            scaleout_per_slot_bytes = _inline_align(
-                window_layout.dispatch_slot_bytes + topk * state_dtype_size,
-                win_addr_align,
-            )
-            scaleout_recv_data_size = (
-                scaleout_rank_count * num_max_tokens_per_rank * scaleout_per_slot_bytes
-            )
-            scaleout_recv_status_size = (
-                scaleout_rank_count * num_max_tokens_per_rank * win_addr_align
-            )
-            payload_stash_size = num_max_tokens_per_rank * scaleout_per_slot_bytes
-            return (
-                scaleout_recv_data_size
-                + window_layout.scaleup_receive_buffer_bytes
-                + scaleout_recv_status_size
-                + payload_stash_size
-            )
-
-        # Context topology is unavailable here, so reserve for the largest valid hybrid layout.
-        rank_num_per_server_candidates = [
-            rank_num_per_server
-            for rank_num_per_server in range(1, world_size + 1)
-            if world_size % rank_num_per_server == 0
-        ]
-        dispatch_buffer_size = max(
-            get_dispatch_buffer_size(rank_num_per_server)
-            for rank_num_per_server in rank_num_per_server_candidates
-        )
-        combine_buffer_size = (
-            num_max_tokens_per_rank * window_layout.combine_slot_bytes * topk
-        )
-
-        hybrid_minimum_window_bytes = (
-            window_layout.state_buffer_bytes
-            + dispatch_buffer_size
-            + combine_buffer_size
-        )
-        minimum_window_bytes = max(
-            direct_minimum_window_bytes, hybrid_minimum_window_bytes
-        )
-        return (
-            _inline_align(
-                _inline_align(minimum_window_bytes, mb_conversion) // mb_conversion,
-                2,
-            )
-            // 2
-        )
+        """返回默认CCL通信buffer大小（MB）。当前dispatch和combine所需的通信buffer
+        已由内部按算子参数自动计算并申请，该接口仅返回默认值。
+        """
+        default_buffer_size = 200
+        return default_buffer_size
 
     @staticmethod
     def _validate_init_args(group, num_cpu_bytes, moe_args, with_grad):
@@ -610,10 +610,6 @@ class ElasticBuffer:
         torch._check(
             storage.size(1) > 0,
             lambda: f"storage second dimension must be positive, got: {storage.size(1)}",
-        )
-        torch._check(
-            storage.size(1) % 128 == 0,
-            lambda: f"storage second dimension must be 128-aligned, got: {storage.size(1)}",
         )
         self._runtime.engram_write(storage)
         self._engram_context_tensor = self._runtime.get_context_tensor()
@@ -755,12 +751,6 @@ class ElasticBuffer:
             lambda: (
                 f"grad_fetched hidden size ({grad_fetched.size(1)}) must match storage hidden size "
                 f"({self._engram_hidden_size})"
-            ),
-        )
-        _torch_check(
-            grad_fetched.size(1) % 128 == 0,
-            lambda: (
-                f"grad_fetched hidden size must be 128-aligned, got {grad_fetched.size(1)}"
             ),
         )
         for _name, _tensor in (
@@ -925,6 +915,14 @@ class ElasticBuffer:
             ),
         )
         hp_addr = self._prepare_host_counter(args.do_cpu_sync)
+        # 首次调用时按算子参数计算CCL通信buffer大小(MB)，由C++ EnsureMoeContext内部申请注册
+        ccl_buffer_size = _get_moe_ep_window_bytes(
+            self._ep_world_size,
+            args.num_max_tokens_per_rank,
+            self._hidden,
+            args.num_experts,
+            self._num_topk,
+        )
 
         (
             num_recv_per_rank,
@@ -949,6 +947,7 @@ class ElasticBuffer:
             args.expert_alignment,
             args.do_cpu_sync,
             hp_addr,
+            ccl_buffer_size,
         )
 
         actual_a = self._get_dispatch_recv_count(args)
@@ -966,6 +965,7 @@ class ElasticBuffer:
                 self._rank_id,
                 args.num_experts,
                 args.num_max_tokens_per_rank,
+                ccl_buffer_size,
                 recv_x,
                 recv_src_meta,
                 recv_topk_weights,
@@ -1026,6 +1026,14 @@ class ElasticBuffer:
             if topk_weights is None
             else torch.empty((num_tokens, topk), dtype=torch.float32, device=x.device)
         )
+        # 首次调用时按算子参数计算CCL通信buffer大小(MB)，由C++ EnsureMoeContext内部申请注册
+        ccl_buffer_size = _get_moe_ep_window_bytes(
+            self._ep_world_size,
+            handle.num_max_tokens_per_rank,
+            self._hidden,
+            handle.num_experts,
+            self._num_topk,
+        )
 
         self._runtime.moe_ep_combine(
             x,
@@ -1037,6 +1045,7 @@ class ElasticBuffer:
             self._rank_id,
             handle.num_experts,
             handle.num_max_tokens_per_rank,
+            ccl_buffer_size,
         )
 
         combined_x, combined_topk_weights = self._runtime.moe_ep_combine_epilogue(
@@ -1046,6 +1055,7 @@ class ElasticBuffer:
             self._rank_id,
             handle.num_experts,
             handle.num_max_tokens_per_rank,
+            ccl_buffer_size,
             combined_x,
             combined_topk_weights,
         )

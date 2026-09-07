@@ -31,7 +31,7 @@
   attentionOut = Softmax(scaleValue \cdot query \cdot key_{sparse}^{T} + atten\_mask) \cdot value_{sparse}
   $$
 
-  输入排布由layoutQ、layoutKv指定，当前仅支持layoutQ="TND"、layoutKv="PAGED_BBND"。
+  输入排布由layoutQ、layoutKv指定，当前仅支持layoutQ="TND"、layoutKv="PA_BBND"。
 
 ## 函数原型
 
@@ -125,7 +125,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>key</td>
       <td>输入</td>
       <td>公式中的key。</td>
-      <td>可作为原始Key或Paged KV Cache。当前仅支持layoutKv="PAGED_BBND"。其余layout及原始KV的shape见<a href="#layout对应关系说明">layout对应关系说明</a>、<a href="#paged-attention相关说明">Paged Attention相关说明</a>；dim0非连续见<a href="#其他约束">其他约束</a>。</td>
+      <td>可作为原始Key或Paged KV Cache。当前仅支持layoutKv="PA_BBND"。其余layout及原始KV的shape见<a href="#layout对应关系说明">layout对应关系说明</a>、<a href="#paged-attention相关说明">Paged Attention相关说明</a>；dim0非连续见<a href="#其他约束">其他约束</a>。</td>
       <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT4_E2M1FN、HIFLOAT8</td>
       <td>ND</td>
       <td>[numBlocks, blockSize, numKeyValueHeads, headDim]</td>
@@ -135,7 +135,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>value</td>
       <td>输入</td>
       <td>公式中的value。</td>
-      <td>可作为原始Value输入或Paged KV Cache输入，shape与key一致。当前仅支持layoutKv="PAGED_BBND"。</td>
+      <td>可作为原始Value输入或Paged KV Cache输入，shape与key一致。当前仅支持layoutKv="PA_BBND"。</td>
       <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT4_E2M1FN、HIFLOAT8</td>
       <td>ND</td>
       <td>与key一致</td>
@@ -250,7 +250,8 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>
         可选输入，用于变长序列场景。
         <ul>
-          <li>layoutKv为TND/PAGED_BBND/PAGED_BNBD时必须传入。当前仅支持PAGED_BBND。</li>
+          <li>layoutKv为TND时必须传入。</li>
+          <li>layoutKv非TND时不传（须为nullptr）。当前仅支持PA_BBND。</li>
           <li>layoutKv为BNSD/BSND时：如传入，算子内按该输入指定的实际序列长度处理；如传入nullptr，按key/value的shape中的S处理（当前不支持）。</li>
           <li>元素为前缀和：第0个元素为0，最后一个元素等于各batch KV存储长度之和，后一个元素须≥前一个元素。</li>
         </ul>
@@ -281,8 +282,8 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>各batch中kv的实际序列长度。</td>
       <td>
         <ul>
-          <li>不指定实际长度可传入nullptr，表示与cuSeqLengthsKvOptional差分得到的存储长度相同。</li>
-          <li>传入时shape为(B,)，每个元素须≥0且≤对应batch的cu存储长度。与cu并存时的双长度语义见<a href="#其他约束">其他约束</a>。</li>
+          <li>layoutKv为PA_BBND时必须传入，shape为(B,)，每个元素须≥0。</li>
+          <li>layoutKv为TND时：不指定实际长度可传入nullptr，表示与cuSeqLengthsKvOptional差分得到的存储长度相同；传入时shape为(B,)，每个元素须≥0且≤对应batch的cu存储长度。与cu并存时的双长度语义见<a href="#其他约束">其他约束</a>。</li>
         </ul>
       </td>
       <td>INT32</td>
@@ -294,7 +295,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>blockTableOptional</td>
       <td>输入</td>
       <td>Block表用于PagedAttention。</td>
-      <td>如配置此输入，则表示使用PagedAttention。当前必须传入，且layoutKv须为PAGED_BBND。详见<a href="#paged-attention相关说明">Paged Attention相关说明</a>。</td>
+      <td>如配置此输入，则表示使用PagedAttention。当前必须传入，且layoutKv须为PA_BBND。详见<a href="#paged-attention相关说明">Paged Attention相关说明</a>。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B, maxNumBlocksPerBatch)</td>
@@ -334,7 +335,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>layoutKv</td>
       <td>输入</td>
       <td>代表输入key、value的数据排布格式。</td>
-      <td>目标支持"TND""BNSD""BSND""PAGED_BBND""PAGED_BNBD"，详见<a href="#layout对应关系说明">layout对应关系说明</a>。当前仅支持"PAGED_BBND"。</td>
+      <td>目标支持"TND""BNSD""BSND""PA_BBND""PA_BNBD"，详见<a href="#layout对应关系说明">layout对应关系说明</a>。当前仅支持"PA_BBND"。</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
@@ -617,11 +618,11 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>用于原始KV输入，每个batch的seqlen拼接在一起的场景。</td>
     </tr>
     <tr>
-      <td>PAGED_BBND</td>
+      <td>PA_BBND</td>
       <td>用于paged kv cache输入，数据按[numBlocks, blockSize, numKeyValueHeads, headDim]排布。</td>
     </tr>
     <tr>
-      <td>PAGED_BNBD</td>
+      <td>PA_BNBD</td>
       <td>用于paged kv cache输入，数据按[numBlocks, numKeyValueHeads, blockSize, headDim]排布。</td>
     </tr>
     <tr>
@@ -630,11 +631,11 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>用于原始KV输入。</td>
     </tr>
     <tr>
-      <td>PAGED_BBND</td>
+      <td>PA_BBND</td>
       <td>用于paged kv cache输入，数据按[numBlocks, blockSize, numKeyValueHeads, headDim]排布。</td>
     </tr>
     <tr>
-      <td>PAGED_BNBD</td>
+      <td>PA_BNBD</td>
       <td>用于paged kv cache输入，数据按[numBlocks, numKeyValueHeads, blockSize, headDim]排布。</td>
     </tr>
     <tr>
@@ -643,17 +644,17 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>用于原始KV输入。</td>
     </tr>
     <tr>
-      <td>PAGED_BBND</td>
+      <td>PA_BBND</td>
       <td>用于paged kv cache输入，数据按[numBlocks, blockSize, numKeyValueHeads, headDim]排布。</td>
     </tr>
     <tr>
-      <td>PAGED_BNBD</td>
+      <td>PA_BNBD</td>
       <td>用于paged kv cache输入，数据按[numBlocks, numKeyValueHeads, blockSize, headDim]排布。</td>
     </tr>
   </tbody>
   </table>
 
-当前支持组合：layoutQ="TND" + layoutKv="PAGED_BBND"。其余layoutQ/layoutKv组合当前不支持。
+当前支持组合：layoutQ="TND" + layoutKv="PA_BBND"。其余layoutQ/layoutKv组合当前不支持。
 
 query、attentionOut的shape由layoutQ决定：
 
@@ -751,11 +752,11 @@ key、value的shape由layoutKv及是否使能Paged Cache决定，见<a href="#pa
   <tbody>
     <tr>
       <td rowspan="2">非空，shape为[batch, maxNumBlocksPerBatch]，代表使能paged cache</td>
-      <td>PAGED_BBND</td>
+      <td>PA_BBND</td>
       <td>[numBlocks, blockSize, numKeyValueHeads, headDim]</td>
     </tr>
     <tr>
-      <td>PAGED_BNBD</td>
+      <td>PA_BNBD</td>
       <td>[numBlocks, numKeyValueHeads, blockSize, headDim]</td>
     </tr>
     <tr>
@@ -774,7 +775,7 @@ key、value的shape由layoutKv及是否使能Paged Cache决定，见<a href="#pa
   </tbody>
   </table>
 
-当前必须传入非空blockTable，且layoutKv为PAGED_BBND。blockTable为nullptr（原始KV）及PAGED_BNBD当前不支持。
+当前必须传入非空blockTable，且layoutKv为PA_BBND。blockTable为nullptr（原始KV）及PA_BNBD当前不支持。
 
 ### 量化相关说明
 
@@ -833,16 +834,16 @@ key、value的shape由layoutKv及是否使能Paged Cache决定，见<a href="#pa
           <li>TND: [batch*ceilDiv(qSeqLength, blockShapeY), kvHeadNum, 1]。</li>
           <li>BNSD: [batch, kvHeadNum, ceilDiv(maxKvSeqLength, blockShapeY), 1]。</li>
           <li>BSND: [batch, ceilDiv(maxKvSeqLength, blockShapeY), kvHeadNum, 1]。</li>
-          <li>PAGED_BBND: [batch, ceilDiv(blockSize, blockShapeY), kvHeadNum, 1]。</li>
-          <li>PAGED_BNBD: [batch, kvHeadNum, ceilDiv(blockSize, blockShapeY), 1]。</li>
+          <li>PA_BBND: [batch, ceilDiv(blockSize, blockShapeY), kvHeadNum, 1]。</li>
+          <li>PA_BNBD: [batch, kvHeadNum, ceilDiv(blockSize, blockShapeY), 1]。</li>
         </ul>
         vDequantScaleOptional(必选)：
         <ul>
           <li>TND: [batch*ceilDiv(qSeqLength, blockShapeY), kvHeadNum, 1]。</li>
           <li>BNSD: [batch, kvHeadNum, ceilDiv(maxKvSeqLength, blockShapeY), 1]。</li>
           <li>BSND: [batch, ceilDiv(maxKvSeqLength, blockShapeY), kvHeadNum, 1]。</li>
-          <li>PAGED_BBND: [batch, ceilDiv(blockSize, blockShapeY), kvHeadNum, 1]。</li>
-          <li>PAGED_BNBD: [batch, kvHeadNum, ceilDiv(blockSize, blockShapeY), 1]。</li>
+          <li>PA_BBND: [batch, ceilDiv(blockSize, blockShapeY), kvHeadNum, 1]。</li>
+          <li>PA_BNBD: [batch, kvHeadNum, ceilDiv(blockSize, blockShapeY), 1]。</li>
         </ul>
         pQuantScaleOptional(可选)：
         <ul>
@@ -868,16 +869,16 @@ key、value的shape由layoutKv及是否使能Paged Cache决定，见<a href="#pa
           <li>TND: [totalKTokens, kvHeadNum, ceilDiv(headDim, 64), 2]。</li>
           <li>BNSD: [batch, kvHeadNum, maxKvSeqLength, ceilDiv(headDim, 64), 2]。</li>
           <li>BSND: [batch, maxKvSeqLength, kvHeadNum, ceilDiv(headDim, 64), 2]。</li>
-          <li>PAGED_BBND: [batch, blockSize, kvHeadNum, ceilDiv(headDim, 64), 2]。</li>
-          <li>PAGED_BNBD: [batch, kvHeadNum, blockSize, ceilDiv(headDim, 64), 2]。</li>
+          <li>PA_BBND: [batch, blockSize, kvHeadNum, ceilDiv(headDim, 64), 2]。</li>
+          <li>PA_BNBD: [batch, kvHeadNum, blockSize, ceilDiv(headDim, 64), 2]。</li>
         </ul>
         vDequantScaleOptional(必选)：
         <ul>
           <li>TND: [batch*ceilDiv(kvSeqLength, 64), kvHeadNum, headDim, 2]。</li>
           <li>BNSD: [batch, kvHeadNum, ceilDiv(maxKvSeqLength, 64), headDim, 2]。</li>
           <li>BSND: [batch, ceilDiv(maxKvSeqLength, 64), kvHeadNum, headDim, 2]。</li>
-          <li>PAGED_BBND: [batch, ceilDiv(blockSize, 64), kvHeadNum, headDim, 2]。</li>
-          <li>PAGED_BNBD: [batch, kvHeadNum, ceilDiv(blockSize, 64), headDim, 2]。</li>
+          <li>PA_BBND: [batch, ceilDiv(blockSize, 64), kvHeadNum, headDim, 2]。</li>
+          <li>PA_BNBD: [batch, kvHeadNum, ceilDiv(blockSize, 64), headDim, 2]。</li>
         </ul>
       </td>
       <td rowspan="3">FLOAT8_E4M3</td>
@@ -962,9 +963,10 @@ key、value的shape由layoutKv及是否使能Paged Cache决定，见<a href="#pa
 - 调用前须先执行aclnnGenericBlockSparseAttentionMetadata生成metadataOptional，再调用本接口；metadata须与当前输入/属性配套，每次调用须重新生成。
 - query/key/value的headDim(D)当前仅支持128；KV页blockSize当前仅支持128，且须等于blockShapeY。
 - TND + isPackedGQA=1时：totalQBlocks按cuSeqLengthsQ差分得到的存储长度分块，即$\sum_i \mathrm{ceilDiv}(qStorageLen_i, blockShapeX)$；sparse分块与QKV寻址均按该存储长度，不以seqused重切分。
-- sequsedQOptional/sequsedKvOptional与cu前缀和同时传入时：分核/任务空间按各batch实际有效长度（seqused）累加；各batch的seqused元素须≤对应cu存储长度，且须与Metadata侧完全一致。
+- layoutKv为PA_BBND时须传sequsedKvOptional，不传cuSeqLengthsKvOptional。
+- seqused与对应cu前缀和同时传入时（Q侧，及layoutKv为TND时的KV侧）：分核/任务空间按各batch实际有效长度（seqused）累加；各batch的seqused元素须≤对应cu存储长度，且须与Metadata侧完全一致。
 - 输入query、key、value的数据类型必须一致。
-- PAGED_BBND下key/value仅dim0（物理页轴）可非连续；页内blockSize×numKeyValueHeads×headDim须连续；stride0 ≥ blockSize×numKeyValueHeads×headDim且按numKeyValueHeads×headDim对齐。
+- PA_BBND下key/value仅dim0（物理页轴）可非连续；页内blockSize×numKeyValueHeads×headDim须连续；stride0 ≥ blockSize×numKeyValueHeads×headDim且按numKeyValueHeads×headDim对齐。
 
 ## 调用示例
 
@@ -1108,7 +1110,7 @@ int main()
   auto ret = Init(deviceId, &context, &stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-  // Regular path smoke case: TND query + PAGED_BBND KV
+  // Regular path smoke case: TND query + PA_BBND KV
   int64_t B = 1;
   int64_t S1 = 4;
   int64_t S2 = 256;
@@ -1131,7 +1133,7 @@ int main()
   std::vector<int64_t> sparseCountShape = {N2, totalQBlocks};
   std::vector<int64_t> blockTableShape = {B, maxBlocks};
   std::vector<int64_t> cuSeqQShape = {B + 1};
-  std::vector<int64_t> cuSeqKvShape = {B + 1};
+  std::vector<int64_t> sequsedKvShape = {B};
   std::vector<int64_t> metadataShape = {1024};
   std::vector<int64_t> attnOutShape = {T, N1, D};
 
@@ -1142,7 +1144,7 @@ int main()
   void* sparseCountDeviceAddr = nullptr;
   void* metadataDeviceAddr = nullptr;
   void* cuSeqQDeviceAddr = nullptr;
-  void* cuSeqKvDeviceAddr = nullptr;
+  void* sequsedKvDeviceAddr = nullptr;
   void* blockTableDeviceAddr = nullptr;
   void* attnOutDeviceAddr = nullptr;
 
@@ -1153,7 +1155,7 @@ int main()
   aclTensor* sparseCount = nullptr;
   aclTensor* metadata = nullptr;
   aclTensor* cuSeqQ = nullptr;
-  aclTensor* cuSeqKv = nullptr;
+  aclTensor* sequsedKv = nullptr;
   aclTensor* blockTable = nullptr;
   aclTensor* attnOut = nullptr;
 
@@ -1172,7 +1174,7 @@ int main()
   std::vector<int32_t> blockTableHostData(blockTableSize);
   std::iota(blockTableHostData.begin(), blockTableHostData.end(), 0);
   std::vector<int64_t> cuSeqQHostData = {0, S1};
-  std::vector<int64_t> cuSeqKvHostData = {0, S2};
+  std::vector<int32_t> sequsedKvHostData = {static_cast<int32_t>(S2)};
   std::vector<int32_t> metadataHostData(1024, 0);
   std::vector<uint16_t> attnOutHostData = MakeFp16Data(attnOutSize, 0.0f);
 
@@ -1204,7 +1206,7 @@ int main()
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(cuSeqQHostData, cuSeqQShape, &cuSeqQDeviceAddr, aclDataType::ACL_INT64, &cuSeqQ);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(cuSeqKvHostData, cuSeqKvShape, &cuSeqKvDeviceAddr, aclDataType::ACL_INT64, &cuSeqKv);
+  ret = CreateAclTensor(sequsedKvHostData, sequsedKvShape, &sequsedKvDeviceAddr, aclDataType::ACL_INT32, &sequsedKv);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(blockTableHostData, blockTableShape, &blockTableDeviceAddr, aclDataType::ACL_INT32,
                         &blockTable);
@@ -1217,13 +1219,13 @@ int main()
   CHECK_RET(blockShape != nullptr, LOG_PRINT("aclCreateIntArray failed\n"); return -1);
 
   char layoutQ[] = "TND";
-  char layoutKv[] = "PAGED_BBND";
+  char layoutKv[] = "PA_BBND";
 
   // 3. 先调用 Metadata，再调用主算子
   uint64_t metadataWorkspaceSize = 0;
   aclOpExecutor* metadataExecutor = nullptr;
   ret = aclnnGenericBlockSparseAttentionMetadataGetWorkspaceSize(
-      sparseIdx, sparseCount, cuSeqQ, cuSeqKv, nullptr, nullptr, S1, S2, N1, N2, D, blockShape, 1, layoutQ, layoutKv, 1,
+      sparseIdx, sparseCount, cuSeqQ, nullptr, nullptr, sequsedKv, S1, S2, N1, N2, D, blockShape, 1, layoutQ, layoutKv, 1,
       0, 1, -1, -1, metadata, &metadataWorkspaceSize, &metadataExecutor);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnGenericBlockSparseAttentionMetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
@@ -1248,8 +1250,8 @@ int main()
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
   ret = aclnnGenericBlockSparseAttentionGetWorkspaceSize(
-      q, k, v, sparseIdx, sparseCount, metadata, nullptr, nullptr, nullptr, nullptr, nullptr, cuSeqQ, cuSeqKv, nullptr,
-      nullptr, blockTable, blockShape, 1, layoutQ, layoutKv, scaleValue, 1, 0, 0.0, 1, -1, -1, 0, attnOut, nullptr,
+      q, k, v, sparseIdx, sparseCount, metadata, nullptr, nullptr, nullptr, nullptr, nullptr, cuSeqQ, nullptr, nullptr,
+      sequsedKv, blockTable, blockShape, 1, layoutQ, layoutKv, scaleValue, 1, 0, 0.0, 1, -1, -1, 0, attnOut, nullptr,
       &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnGenericBlockSparseAttentionGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
@@ -1278,7 +1280,7 @@ int main()
   aclDestroyTensor(sparseCount);
   aclDestroyTensor(metadata);
   aclDestroyTensor(cuSeqQ);
-  aclDestroyTensor(cuSeqKv);
+  aclDestroyTensor(sequsedKv);
   aclDestroyTensor(blockTable);
   aclDestroyTensor(attnOut);
 
@@ -1290,7 +1292,7 @@ int main()
   aclrtFree(sparseCountDeviceAddr);
   aclrtFree(metadataDeviceAddr);
   aclrtFree(cuSeqQDeviceAddr);
-  aclrtFree(cuSeqKvDeviceAddr);
+  aclrtFree(sequsedKvDeviceAddr);
   aclrtFree(blockTableDeviceAddr);
   aclrtFree(attnOutDeviceAddr);
   if (metadataWorkspaceSize > 0) {

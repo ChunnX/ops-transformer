@@ -118,6 +118,26 @@ Ascend 950支持的算子分类和算子列表如下：
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/generic_block_sparse_attention_grad/README.md">generic_block_sparse_attention_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>通用块稀疏注意力反向算子，依据rsvdBlockIdx/rsvdBlockCount在被选中的Q块上计算并传播梯度。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/generic_block_sparse_attention_grad_metadata/README.md">generic_block_sparse_attention_grad_metadata</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI CPU</td>
+    <td>generic_block_sparse_attention_grad算子的前置算子，用于计算generic_block_sparse_attention_grad的负载均衡。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/inplace_fused_causal_conv1d/README.md">inplace_fused_causal_conv1d</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -698,6 +718,16 @@ Ascend 950支持的算子分类和算子列表如下：
   </tr>
   <tr>
     <td>mhc</td>
+    <td><a href="../../mhc/mhc_pre_sinkhorn/README.md">mhc_pre_sinkhorn</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>mhc_pre_sinkhorn算子，支持MHC架构中Hin、Hpre、Hres和Hpost矩阵输出。</td>
+  </tr>
+  <tr>
+    <td>mhc</td>
     <td><a href="../../mhc/mhc_sinkhorn/README.md">mhc_sinkhorn</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -715,6 +745,16 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✗</td>
     <td>AI Core</td>
     <td>mhc_sinkhorn的反向算子。</td>
+  </tr>
+  <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/block_attention_residuals_grad/README.md">block_attention_residuals_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>BlockAttentionResiduals的反向算子，计算partial_block、block_res、proj_weight、norm_weight的梯度。</td>
   </tr>
   <tr>
     <td>moe</td>
