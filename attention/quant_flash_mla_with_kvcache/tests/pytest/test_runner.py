@@ -72,7 +72,7 @@ def execute_test(params, mode, cdir=None):
     # ---- Step 1: 输入数据 ----
     block_table_torch = None
     if "gen" in mode:
-        (q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, p_scale, qr_bf16, kr_bf16) = (
+        (q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, p_scale) = (
             golden.generate_data()
         )
         golden_cache.save_input(
@@ -85,8 +85,6 @@ def execute_test(params, mode, cdir=None):
                 deq_k,
                 deq_v,
                 p_scale,
-                qr_bf16,
-                kr_bf16,
                 None,
                 golden.NUM_BLOCKS,
                 golden.KV_CACHE_LAYOUT,
@@ -102,8 +100,6 @@ def execute_test(params, mode, cdir=None):
             deq_k,
             deq_v,
             p_scale,
-            qr_bf16,
-            kr_bf16,
             block_table_torch,
             num_blocks_loaded,
             kv_layout_loaded,
@@ -130,8 +126,6 @@ def execute_test(params, mode, cdir=None):
                 p_scale,
                 golden.ACTUAL_SEQ_Q,
                 golden.ACTUAL_SEQ_KV,
-                qr_bf16,
-                kr_bf16,
             )
             golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cdir)
     else:
@@ -155,8 +149,6 @@ def execute_test(params, mode, cdir=None):
                 golden.ACTUAL_SEQ_Q,
                 golden.ACTUAL_SEQ_KV,
                 block_table_torch,
-                qr_bf16,
-                kr_bf16,
             )
         npu_out, lse_out = output
         golden_cache.save_npu_output(case_name, npu_out, lse_out, cache_dir=cdir)
@@ -168,8 +160,8 @@ def execute_test(params, mode, cdir=None):
 
     # ---- Step 3.5: NUM_BLOCKS != 0 时重建 CPU golden ----
     if cache_info is not None and cpu_out is None:
-        k_pa_cache, v_pa_cache, bt_cache, k_rope_pa_cache = cache_info
-        k_bnsd_recon, v_bnsd_recon, kr_bnsd_recon = golden.pa_cache_to_bnsd(
+        k_pa_cache, v_pa_cache, bt_cache = cache_info
+        k_bnsd_recon, v_bnsd_recon = golden.pa_cache_to_bnsd(
             k_pa_cache,
             v_pa_cache,
             bt_cache,
@@ -177,10 +169,6 @@ def execute_test(params, mode, cdir=None):
             golden.BLOCK_SIZE,
             kv_layout=golden.KV_CACHE_LAYOUT,
             n_kv=golden.N_kv,
-            k_rope_pa=k_rope_pa_cache,
-        )
-        kr_bf16_recon = (
-            kr_bnsd_recon.to(torch.bfloat16) if kr_bnsd_recon is not None else kr_bf16
         )
         cpu_out, cpu_lse = golden.cpu_fp8_fullquant_mla_golden(
             q_fp8,
@@ -192,8 +180,6 @@ def execute_test(params, mode, cdir=None):
             p_scale,
             golden.ACTUAL_SEQ_Q,
             golden.ACTUAL_SEQ_KV,
-            qr_bf16,
-            kr_bf16_recon,
         )
         if "cpu" in mode:
             golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cdir)
