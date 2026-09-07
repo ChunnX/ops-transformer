@@ -624,9 +624,14 @@ protected:
             constexpr uint64_t HCCL_BUFFER_RESERVED_BYTES = 2UL * 1024UL * 1024UL;
             uint64_t needBytes = commDataBytes + HCCL_BUFFER_RESERVED_BYTES;
             if (hccBufPtr != nullptr && static_cast<uint64_t>(*hccBufPtr) < needBytes) {
+                constexpr uint64_t BYTES_PER_MB = 1024UL * 1024UL;
                 OP_LOGE_WITH_INVALID_ATTR(
                     opName, "hccl_buffer_size", std::to_string(*hccBufPtr).c_str(),
-                    "no less than worldSize * mPerRank * (Ka * dataTypeBits + scaleBytes) / 8 + 2MB reserved bytes");
+                    ("no less than " + std::to_string(needBytes) + " bytes (" +
+                     std::to_string((needBytes + BYTES_PER_MB - 1UL) / BYTES_PER_MB) +
+                     " MB). Please export HCCL_BUFFSIZE=" +
+                     std::to_string((needBytes + BYTES_PER_MB - 1UL) / BYTES_PER_MB) + " and retry.")
+                        .c_str());
                 return ge::GRAPH_FAILED;
             }
         }
