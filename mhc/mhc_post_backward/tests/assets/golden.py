@@ -15,7 +15,7 @@ ACLNN/E2E 的 golden 直接收到 torch.Tensor（已在设备上），无需转�
 MhcPostBackward 无 torch 现成接口，golden 按文档公式用 torch 小算子拼接：
 
     grad_x      = h_res @ grad_y
-    grad_h_res  = x @ grad_y^T
+    grad_h_res  = x @ grad_y^T  (baseK 分块累加，匹配硬件 matmul 累加序)
     grad_h_out  = (grad_y * h_post.unsqueeze(-1)).sum(-2)
     grad_h_post = (grad_y * h_out.unsqueeze(-2)).sum(-1)
 
@@ -34,14 +34,28 @@ import numpy as np
 import torch
 
 
-def _mhc_post_backward_compute(grad_y_f32, x_f32, h_res_f32, h_out_f32, h_post_f32):
+def _matmul_k_chunked(A_f32, B_f32, baseK):
+    """C = A @ B^T, K 维按 baseK 分块累加，匹配硬件 matmul 累加序。"""
+    D = A_f32.shape[-1]
+    n = A_f32.shape[-2]
+    batch_shape = A_f32.shape[:-2]
+    C = torch.zeros(*batch_shape, n, n, dtype=torch.float32)
+    for k_start in range(0, D, baseK):
+        k_end = min(k_start + baseK, D)
+        C += A_f32[..., k_start:k_end] @ B_f32[..., k_start:k_end].transpose(-1, -2)
+    return C
+
+
+def _mhc_post_backward_compute(
+    grad_y_f32, x_f32, h_res_f32, h_out_f32, h_post_f32, baseK=16
+):
     """Shared torch composition; all inputs are float32 tensors."""
     if h_res_f32 is None or h_res_f32.numel() == 0:
         grad_x = grad_y_f32.clone()
     else:
         grad_x = torch.matmul(h_res_f32, grad_y_f32)
 
-    grad_h_res = torch.matmul(x_f32, grad_y_f32.transpose(-1, -2))
+    grad_h_res = _matmul_k_chunked(x_f32, grad_y_f32, baseK)
 
     grad_h_out = (grad_y_f32 * h_post_f32.unsqueeze(-1)).sum(dim=-2)
 
@@ -72,7 +86,7 @@ class MhcPostBackwardTestSpec:
     h_out, h_post; no attributes.
     """
 
-    def golden(grad_y, x, h_res=None, h_out=None, h_post=None, **kwargs):
+    def golden(grad_y, x, h_res=None, h_out=None, h_post=None, baseK=16, **kwargs):
         grad_y_f32 = torch.from_numpy(grad_y.astype(np.float32))
         x_f32 = torch.from_numpy(x.astype(np.float32))
         h_res_f32 = (
@@ -82,7 +96,7 @@ class MhcPostBackwardTestSpec:
         h_post_f32 = torch.from_numpy(h_post.astype(np.float32))
 
         grad_x, grad_h_res, grad_h_out, grad_h_post = _mhc_post_backward_compute(
-            grad_y_f32, x_f32, h_res_f32, h_out_f32, h_post_f32
+            grad_y_f32, x_f32, h_res_f32, h_out_f32, h_post_f32, baseK
         )
         dt_x, dt_hres, dt_hout, dt_hpost = _backward_dtypes(grad_y)
         return [
@@ -93,17 +107,19 @@ class MhcPostBackwardTestSpec:
         ]
 
     class ThirdPartyImpl:
-        # __init__ 只预提取输出 dtype；__call__ 只放纯计算（计入性能比对时间）
         def __init__(self, grad_y, **kwargs):
             self.out_dtype = grad_y.dtype
 
-        def __call__(self, grad_y, x, h_res=None, h_out=None, h_post=None, **kwargs):
+        def __call__(
+            self, grad_y, x, h_res=None, h_out=None, h_post=None, baseK=16, **kwargs
+        ):
             grad_x, grad_h_res, grad_h_out, grad_h_post = _mhc_post_backward_compute(
                 grad_y.float(),
                 x.float(),
                 None if h_res is None else h_res.float(),
                 h_out.float(),
                 h_post.float(),
+                baseK,
             )
             dt_x, dt_hres, dt_hout, dt_hpost = _backward_dtypes_torch(grad_y)
             return [
@@ -128,13 +144,14 @@ class AclnnMhcPostBackwardTestSpec:
     gradX, gradHRes, gradHOut, gradHPost (outputs).
     """
 
-    def golden(gradOutput, x, hRes, hOut, hPost, **kwargs):
+    def golden(gradOutput, x, hRes, hOut, hPost, baseK=16, **kwargs):
         grad_x, grad_h_res, grad_h_out, grad_h_post = _mhc_post_backward_compute(
             gradOutput.float(),
             x.float(),
             None if hRes is None else hRes.float(),
             hOut.float(),
             hPost.float(),
+            baseK,
         )
         dt_x, dt_hres, dt_hout, dt_hpost = _backward_dtypes_torch(gradOutput)
         return [
@@ -148,13 +165,14 @@ class AclnnMhcPostBackwardTestSpec:
         def __init__(self, gradOutput, **kwargs):
             self.out_dtype = gradOutput.dtype
 
-        def __call__(self, gradOutput, x, hRes, hOut, hPost, **kwargs):
+        def __call__(self, gradOutput, x, hRes, hOut, hPost, baseK=16, **kwargs):
             grad_x, grad_h_res, grad_h_out, grad_h_post = _mhc_post_backward_compute(
                 gradOutput.float(),
                 x.float(),
                 None if hRes is None else hRes.float(),
                 hOut.float(),
                 hPost.float(),
+                baseK,
             )
             dt_x, dt_hres, dt_hout, dt_hpost = _backward_dtypes_torch(gradOutput)
             return [
@@ -179,13 +197,14 @@ class TorchMhcPostBackwardTestSpec:
     Tensor hPost) -> (Tensor, Tensor, Tensor, Tensor).
     """
 
-    def golden(gradOutput, x, hRes, hOut, hPost, **kwargs):
+    def golden(gradOutput, x, hRes, hOut, hPost, baseK=16, **kwargs):
         grad_x, grad_h_res, grad_h_out, grad_h_post = _mhc_post_backward_compute(
             gradOutput.float(),
             x.float(),
             None if hRes is None else hRes.float(),
             hOut.float(),
             hPost.float(),
+            baseK,
         )
         dt_x, dt_hres, dt_hout, dt_hpost = _backward_dtypes_torch(gradOutput)
         return [
@@ -199,13 +218,14 @@ class TorchMhcPostBackwardTestSpec:
         def __init__(self, gradOutput, **kwargs):
             self.out_dtype = gradOutput.dtype
 
-        def __call__(self, gradOutput, x, hRes, hOut, hPost, **kwargs):
+        def __call__(self, gradOutput, x, hRes, hOut, hPost, baseK=16, **kwargs):
             grad_x, grad_h_res, grad_h_out, grad_h_post = _mhc_post_backward_compute(
                 gradOutput.float(),
                 x.float(),
                 None if hRes is None else hRes.float(),
                 hOut.float(),
                 hPost.float(),
+                baseK,
             )
             dt_x, dt_hres, dt_hout, dt_hpost = _backward_dtypes_torch(gradOutput)
             return [
