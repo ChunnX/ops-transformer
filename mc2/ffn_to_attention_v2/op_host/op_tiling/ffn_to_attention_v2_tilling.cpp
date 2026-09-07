@@ -49,7 +49,7 @@ constexpr size_t URMA_X_TYPE_SIZE = sizeof(uint16_t);
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1U;
 constexpr size_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 64LL;
 constexpr size_t PERF_DATA_INDEX = 8U;
-constexpr int64_t PERF_FIELD_NUM = 8;
+constexpr int64_t PERF_STORAGE_FIELD_NUM = 16;
 
 ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
 {
@@ -99,8 +99,8 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     if (perfDataShape != nullptr) {
         const auto &shape = perfDataShape->GetStorageShape();
         OP_TILING_CHECK(shape.GetDimNum() != 2U || shape.GetDim(0) < static_cast<int64_t>(aivNum) ||
-                            shape.GetDim(1) != PERF_FIELD_NUM,
-                        OP_LOGE(context->GetNodeName(), "perf_data shape must be [at least aivNum, 8]"),
+                            shape.GetDim(1) != PERF_STORAGE_FIELD_NUM,
+                        OP_LOGE(context->GetNodeName(), "perf_data shape must be [at least aivNum, 16]"),
                         return ge::GRAPH_FAILED);
     }
     const size_t tokenBytes = axisH * URMA_X_TYPE_SIZE;

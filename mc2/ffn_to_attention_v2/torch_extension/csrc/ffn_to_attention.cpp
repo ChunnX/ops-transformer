@@ -49,7 +49,7 @@ void NpuFFNToAttention(const at::Tensor &context, const at::Tensor &x, const at:
     TORCH_CHECK((expertOffsets.scalar_type() == at::kInt), "dtype of expertOffsets should be int32.");
     TORCH_CHECK((actualTokenNum.scalar_type() == at::kLong), "dtype of actualTokenNum should be int64.");
     if (perfData.has_value()) {
-        TORCH_CHECK(perfData->dim() == DIM_TWO && perfData->size(1) == 8, "perfData should have shape [aivNum, 8].");
+        TORCH_CHECK(perfData->dim() == DIM_TWO && perfData->size(1) == 16, "perfData should have shape [aivNum, 16].");
         TORCH_CHECK(perfData->scalar_type() == at::kLong, "dtype of perfData should be int64.");
     }
 

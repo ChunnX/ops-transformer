@@ -83,8 +83,8 @@ class _FFNToAttentionOpBuilder(OpBuilder):
             )
             if perf_data is not None:
                 torch._check(
-                    perf_data.dim() == 2 and perf_data.size(1) == 8,
-                    lambda: f"perf_data must have shape [aivNum, 8], {ops_error(ErrCode.VALUE)}.",
+                    perf_data.dim() == 2 and perf_data.size(1) == 16,
+                    lambda: f"perf_data must have shape [aivNum, 16], {ops_error(ErrCode.VALUE)}.",
                 )
                 torch._check(
                     perf_data.dtype == torch.int64,
@@ -135,9 +135,15 @@ def _npu_ffn_to_attention(
 def _get_hccl_comm_name(group, rank_id):
     """Get HCCL communicator name from a torch.distributed ProcessGroup."""
     if hasattr(group, "get_hccl_comm_name"):
-        return group.get_hccl_comm_name(rank_id, init_comm=False)
-    get_backend = getattr(group, "".join(["_get", "_backend"]))
-    return get_backend(torch.device("npu")).get_hccl_comm_name(rank_id, init_comm=False)
+        group_name = group.get_hccl_comm_name(rank_id, init_comm=True)
+    else:
+        get_backend = getattr(group, "".join(["_get", "_backend"]))
+        group_name = get_backend(torch.device("npu")).get_hccl_comm_name(
+            rank_id, init_comm=True
+        )
+    if not group_name:
+        raise RuntimeError(f"failed to initialize HCCL communicator for rank {rank_id}")
+    return group_name
 
 
 def _calc_window_size(token_info_table_shape, token_data_shape):
@@ -269,7 +275,7 @@ def ffn_to_attention(
         actual_token_num (Tensor): Actual token count to send, shape (1,), dtype int64.
         attn_rank_table (Tensor, optional): Maps attention worker id to rank id,
             shape (attnRankNum,), dtype int32. If None, worker id == rank id.
-        perf_data (Tensor, optional): Per-AIV cycle counters, shape (aivNum, 8), dtype int64.
+        perf_data (Tensor, optional): Per-AIV cycle storage, shape (aivNum, 16), dtype int64.
 
     Returns:
         None. Data is sent to peer ranks via the HCCL window; no host-visible output.
@@ -299,8 +305,12 @@ def save_ffn_to_attention_perf_csv(
     rank: Optional[int] = None,
 ) -> str:
     """Synchronize and save per-AIV kernel cycle counters as CSV."""
-    if perf_data.dtype != torch.int64 or perf_data.dim() != 2 or perf_data.size(1) != 8:
-        raise ValueError("perf_data must have shape [aivNum, 8] and dtype int64")
+    if (
+        perf_data.dtype != torch.int64
+        or perf_data.dim() != 2
+        or perf_data.size(1) != 16
+    ):
+        raise ValueError("perf_data must have shape [aivNum, 16] and dtype int64")
 
     torch.npu.synchronize()
     values = perf_data.cpu().tolist()
@@ -310,18 +320,22 @@ def save_ffn_to_attention_perf_csv(
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, f"ffn_to_attention_perf_rank{rank}.csv")
     fields = [
-        "total_cycles",
-        "init_cycles",
-        "metadata_stage_cycles",
-        "stage_sync_cycles",
-        "relay_plan_cycles",
-        "wqe_commit_cycles",
-        "drain_cycles",
-        "final_sync_cycles",
+        "prof1_ReadTokenMetaData_cycles",
+        "prof2_LocalAddressAndOffset_cycles",
+        "prof3_SendToLocal_cycles",
+        "prof4_StageRemoteData_cycles",
+        "prof5_RemoteReadTokenMetaData_cycles",
+        "prof6_RemoteAddressAndRelayInfo_cycles",
+        "prof7_StoreRemoteRelayInfo_cycles",
+        "prof8_FindDestinationTokens_cycles",
+        "prof9_MakeBatchHandle_cycles",
+        "prof10_AppendRemoteDataWrite_cycles",
+        "prof11_AppendRemoteFlagWrite_cycles",
+        "prof12_BatchCommitAndDrain_cycles",
     ]
     with open(output_path, "w", newline="", encoding="utf-8") as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(["rank", "aiv_id", *fields])
         for aiv_id, cycles in enumerate(values):
-            writer.writerow([rank, aiv_id, *cycles])
+            writer.writerow([rank, aiv_id, *cycles[: len(fields)]])
     return output_path
