@@ -240,7 +240,7 @@ python3 parse_mc2_dump.py MatmulReduceScatterV2 /path/to/data-dump
 | `peermem_window_`、`peermem_segN_typeM_` | URMA peermem 布局、段类型、大小和数据预览 |
 | `exception_info.*` | 调用 CANN `msaicerr.py` 解包，并将 input/output/workspace 张量导出为 NPY |
 
-结果输出到 `<dump根目录>/mc2_dump_analysis/<标准算子名>/`，保留原 rank 子目录，并让每个输入文件分别生成同名 NPY，不再生成统一的 `analysis.txt`。Tiling、Args 和 `type12/RUNTIME_INFO` 为对象型 NPY；普通 Workspace/Peermem 为完整 `uint8`；XN/CKE 为二维 `uint64`。
+结果输出到 `<dump根目录>/mc2_dump_analysis/<标准算子名>/`，保留原 rank 子目录，并让每个输入文件分别生成同名 NPY，不再生成统一的 `analysis.txt`。Tiling、Args 和 `type12/RUNTIME_INFO` 为对象型 NPY；XN/CKE 为二维 `uint64`。MMRS 的 `type8/MM_RESULT` 和 `type9/RECV_BUF` 会从同次 TilingData 自动取得输出 dtype、`rankM`、`rankN` 并保存为二维 NPY；BF16 用 `uint16` 保留原始位模式。无法可靠确定类型的 Workspace/Peermem 仍按完整 `uint8` 保存。
 
 原始异常文件会输出到：
 
@@ -304,7 +304,7 @@ python3 -c "import numpy as np; a=np.load('xn_addr_info_xxx.npy'); print(a[:2, :
 | 12 | RUNTIME_INFO | 13 | MM_WORKSPACE |
 | 255 | RESERVED |  |  |
 
-其中 `type12` 是每核通信运行状态，不是矩阵结果；它会把每核 magic 有效性、执行位置、通信阶段、commit、wait 和 pending 数保存进对象型 NPY。其他 Workspace 段完整保存为 `uint8` NPY；若要按真实数据类型和矩阵形状查看，继续对原始 dump 使用下面的 `parse_matrix.py`。
+其中 `type12` 是每核通信运行状态，不是矩阵结果；终端会显示有效核数、commit/wait 总数及未平衡核摘要，每核字段保存在对象型 NPY 的 `runtimeInfo.slots` 中。MMRS 的 `type8/type9` 会优先按配对 TilingData 保存真实存储 dtype 和二维 shape；其他无法可靠确定类型的 Workspace 段保存为 `uint8` NPY。若要指定行列或解码特殊数据类型，仍可对原始 dump 使用下面的 `parse_matrix.py`。
 
 `type13/MM_WORKSPACE` 是 Matmul helper 使用的内部临时区，不是 Matmul 结果。它没有固定元素类型或逻辑 shape，因此统一入口只按原始 `uint8` 字节显示；MMRS 的 Matmul 结果应查看 `type8/MM_RESULT`。
 
@@ -365,9 +365,10 @@ URMA 算子的后端脚本还支持 `--comm-ctx` 和 `--peermem`。建议日常�
 
 - 提示“没有找到受支持 dump 文件”：确认传入的是 `data-dump` 根目录，并确认文件名中包含正确的算子名。统一入口按文件名关联同一次算子 dump，不会把其他算子的同名前缀文件混进来。
 - 提示“未找到 CANN ms_interface”：先加载 CANN 环境；也可以使用 `--msaicerr` 指定脚本，或设置 `MSAICERR_PATH`。运行环境还必须配置 CANN 所需的 `ASCEND_OPP_PATH`。
+- 提示“未加载 libascend_dump_parser.so”：虽然找到了 `msaicerr.py`，但 CANN 动态库环境尚未生效。统一入口会尝试在新进程中自动加载同一 CANN 目录的 `set_env.sh` 后重试；若机器上无法定位该脚本，再手工执行 `source /usr/local/Ascend/cann/set_env.sh`（以实际路径为准）。异常解包仍无张量产出时会立即停止，不再追加“没有找到张量文件”的二次报错。
 - RuntimeInfo 中核类型显示“未知”：一般是同次调用的 `tiling_data` 缺失、损坏，或文件名后缀无法关联；RuntimeInfo 字段仍会解析，但无法可靠区分 C 核和 V 核。
 - workspace 文件大小和 shape 不一致：先检查 WorkspaceLayout 中该段的 `size` 是否等于 dump 文件大小，再检查量化类型、对齐/padding 和通信 rank 维度。
-- `type12` 中所有预期 slot 的 magic 都无效：这不是 commit/wait 字段偏移问题，而是该 RuntimeInfo 段没有被 Kernel 初始化，或 Dump 的段起始地址/时机不正确。脚本仍会列出每个预期 C/V 核的原始 commit/wait，并标记为 `NOT_WRITTEN`；如果 magic 出现在非 512B 对齐位置，还会提示可能的段起点错位。
+- `type12` 中所有预期 slot 的 magic 都无效：这不是 commit/wait 字段偏移问题，而是该 RuntimeInfo 段没有被 Kernel 初始化，或 Dump 的段起始地址/时机不正确。统一入口会给出明确警告；每核原始字段仍保存在 NPY 中，单文件后端脚本也可逐核打印并标记为 `NOT_WRITTEN`。如果 magic 出现在非 512B 对齐位置，还会提示可能的段起点错位。
 
 ## 样例代码结果说明
 

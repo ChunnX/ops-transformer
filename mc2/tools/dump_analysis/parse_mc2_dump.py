@@ -16,13 +16,12 @@ file; no combined text report is generated.
 """
 
 import argparse
-from contextlib import redirect_stderr, redirect_stdout
 import importlib
-import io
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -122,7 +121,29 @@ WORKSPACE_SEG_DESCRIPTIONS = {
     255: "对齐或预留空间",
 }
 
-WORKSPACE_PREVIEW_SIZE = 64
+WORKSPACE_PREVIEW_SIZE = 16
+
+# HCCL dataType in MMRS TilingData -> NumPy storage information.  BF16 and
+# FP8 have no portable NumPy arithmetic dtype, so their exact bit patterns are
+# retained in uint16/uint8 storage.  This is still more useful than treating a
+# BF16 matrix as a flat byte array because its logical matrix shape is kept.
+HCCL_WORKSPACE_DTYPES = {
+    0: ("int8", 1, "INT8", "typed"),
+    1: ("<i2", 2, "INT16", "typed"),
+    2: ("<i4", 4, "INT32", "typed"),
+    3: ("<i8", 8, "INT64", "typed"),
+    4: ("<f2", 2, "FP16", "typed"),
+    5: ("<f4", 4, "FP32", "typed"),
+    7: ("<f8", 8, "FP64", "typed"),
+    8: ("<u2", 2, "BF16", "raw_bits"),
+    10: ("uint8", 1, "UINT8", "typed"),
+    11: ("<u2", 2, "UINT16", "typed"),
+    12: ("<u4", 4, "UINT32", "typed"),
+    13: ("<u8", 8, "UINT64", "typed"),
+    14: ("uint8", 1, "FP8_E5M2", "raw_bits"),
+    15: ("uint8", 1, "FP8_E4M3FN", "raw_bits"),
+    16: ("<u2", 2, "BF16", "raw_bits"),
+}
 
 PEERMEM_SEG_TYPE_NAMES = {
     0: "DATA", 1: "SCALE", 2: "BIAS", 3: "FLAG", 255: "RESERVED",
@@ -212,15 +233,8 @@ def read_preview(path, size=256):
 
 
 def emit_decimal_byte_preview(lines, data):
-    """Print an unambiguous decimal preview when the segment element type is unknown."""
-    emit(lines, "previewType: uint8 raw bytes")
-    emit(lines, f"previewRange: byte[0:{len(data)}]")
-    emit(lines, f"previewAllZero: {not any(data)}")
-    emit(lines, "decimalPreview (each value is one raw uint8 byte):")
-    for offset in range(0, len(data), 16):
-        row = data[offset:offset + 16]
-        values = " ".join(f"{value:3d}" for value in row)
-        emit(lines, f"  byte[{offset:04d}:{offset + len(row):04d}] : {values}")
+    """Print one compact decimal preview when the segment dtype is unknown."""
+    emit(lines, f"rawBytePreview[0:{len(data)}]: {list(data)} | allZero={not any(data)}")
 
 
 def segment_identity(path, prefix):
@@ -280,6 +294,34 @@ def exception_suffix(path):
     lowered = path.name.lower()
     suffix = lowered[len("exception_info"):]
     return stream_task_suffix(suffix)
+
+
+def dump_timestamp(path):
+    """Return the numeric timestamp suffix used to pair files from one run."""
+    match = re.search(r"\.(\d{14,})$", path.name)
+    return int(match.group(1)) if match else None
+
+
+def nearest_tiling_result(path, profile, parsed_tilings):
+    """Find the parsed TilingData that is closest to one dump segment."""
+    invocation = operator_suffix(path, profile)
+    candidates = [
+        (tiling_path, parsed)
+        for tiling_path, parsed in parsed_tilings
+        if tiling_path.parent == path.parent
+        and (invocation is None or operator_suffix(tiling_path, profile) == invocation)
+    ]
+    if not candidates:
+        return None
+    timestamp = dump_timestamp(path)
+    if timestamp is None:
+        return candidates[0][1] if len(candidates) == 1 else None
+
+    def distance(item):
+        tiling_timestamp = dump_timestamp(item[0])
+        return abs(timestamp - tiling_timestamp) if tiling_timestamp is not None else sys.maxsize
+
+    return min(candidates, key=distance)[1]
 
 
 def build_core_index(profile, tiling_files):
@@ -366,145 +408,96 @@ def save_raw_npy(input_path, output_path):
         del raw
 
 
-def find_msaicerr(explicit_path=None):
-    candidates = []
-    if explicit_path:
-        candidates.append(Path(explicit_path).expanduser())
-    for variable in ("MSAICERR_PATH", "ASCEND_TOOLKIT_HOME", "TOOL_PATH"):
-        value = os.environ.get(variable)
-        if not value:
-            continue
-        candidate = Path(value).expanduser()
-        if variable != "MSAICERR_PATH":
-            candidate = candidate / "tools" / "msaicerr" / "msaicerr.py"
-        candidates.append(candidate)
-    candidates.extend((
-        Path("/home/w00955510/Ascend0901/cann-9.2.0/tools/msaicerr/msaicerr.py"),
-        Path("/usr/local/Ascend/ascend-toolkit/latest/tools/msaicerr/msaicerr.py"),
-    ))
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate.resolve()
-    return None
+def mmrs_workspace_spec(seg_type, tiling_result, byte_size):
+    """Infer the safe storage dtype/shape of MMRS result/send/receive buffers."""
+    if seg_type not in (8, 9) or not isinstance(tiling_result, dict):
+        return None
+    param = tiling_result.get("param", {})
+    rank_m = param.get("rankM")
+    rank_n = param.get("rankN")
+    dtype_spec = HCCL_WORKSPACE_DTYPES.get(tiling_result.get("dataType"))
+    if dtype_spec is None or not isinstance(rank_m, int) or not isinstance(rank_n, int):
+        return None
+    storage_dtype, item_size, logical_dtype, interpretation = dtype_spec
+    if rank_m <= 0 or rank_n <= 0 or byte_size % item_size != 0:
+        return None
+    element_count = byte_size // item_size
+    logical_count = rank_m * rank_n
+    shape = (rank_m, rank_n) if logical_count == element_count else (element_count,)
+    return {
+        "storageDtype": storage_dtype,
+        "itemSize": item_size,
+        "logicalDtype": logical_dtype,
+        "interpretation": interpretation,
+        "shape": shape,
+        "expectedShape": (rank_m, rank_n),
+        "shapeMatched": logical_count == element_count,
+    }
+
+
+def save_typed_npy(input_path, output_path, storage_dtype, shape):
+    """Save one typed segment without loading the complete buffer into RAM."""
+    np = require_numpy()
+    dtype = np.dtype(storage_dtype)
+    source = np.memmap(input_path, dtype=dtype, mode="r", shape=shape)
+    try:
+        target = np.lib.format.open_memmap(output_path, mode="w+", dtype=dtype, shape=shape)
+        source_flat = source.reshape(-1)
+        target_flat = target.reshape(-1)
+        chunk_elements = max(1, (16 * 1024 * 1024) // dtype.itemsize)
+        for begin in range(0, source_flat.size, chunk_elements):
+            end = min(begin + chunk_elements, source_flat.size)
+            target_flat[begin:end] = source_flat[begin:end]
+        target.flush()
+        del target
+    finally:
+        del source
+    return str(dtype), shape
+
+
+def typed_value_preview(input_path, spec, count=8):
+    """Return a small numeric preview, decoding BF16 bits for readability."""
+    np = require_numpy()
+    values = np.fromfile(input_path, dtype=np.dtype(spec["storageDtype"]), count=count)
+    if spec["logicalDtype"] == "BF16":
+        values = (values.astype(np.uint32) << 16).view(np.float32)
+        label = "BF16 decoded as FP32"
+    elif spec["interpretation"] == "raw_bits":
+        label = f"{spec['logicalDtype']} raw bits"
+    else:
+        label = spec["logicalDtype"]
+    return label, values.tolist()
 
 
 def safe_path_component(value):
     return re.sub(r"[^A-Za-z0-9._-]+", "_", value)
 
 
-def run_command(command, cwd=None):
-    child_env = os.environ.copy()
-    child_env["PYTHONIOENCODING"] = "utf-8"
-    process = subprocess.run(
-        [str(item) for item in command],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=child_env,
-        cwd=str(cwd) if cwd is not None else None,
-        check=False,
-    )
-    return process.returncode, process.stdout.rstrip()
-
-
-def run_embedded_msaicerr(source, output_dir, msaicerr_path):
-    """Call the parsing core used by msaicerr.py directly.
-
-    ``msaicerr.py`` is only a CLI wrapper. Its ``-d`` branch ultimately calls
-    ``DumpDataParser(...).parse()``; using that API here removes the extra
-    manual command while keeping the implementation supplied by CANN.
-    """
-    added_path = None
-    if msaicerr_path is not None:
-        added_path = str(msaicerr_path.parent)
-        if added_path not in sys.path:
-            sys.path.insert(0, added_path)
-        else:
-            added_path = None
-
-    capture = io.StringIO()
+def parse_exception_info(profile, source, relative_path, output_dir):
+    """Parse one raw exception container with the repository-owned decoder."""
+    invocation_dir = output_dir / "exception" / relative_path.parent / safe_path_component(source.name)
+    details = [f"NPY output: {invocation_dir}"]
     try:
-        try:
-            from ms_interface.aic_error_info import AicErrorInfo
-            from ms_interface.dump_data_parser import DumpDataParser
-        except ImportError as error:
-            return None, f"embedded msaicerr unavailable: {error}"
-
-        try:
-            with redirect_stdout(capture), redirect_stderr(capture):
-                dump_info = AicErrorInfo()
-                DumpDataParser(str(source), dump_info, "", str(output_dir)).parse()
-            return 0, capture.getvalue().rstrip()
-        except Exception as error:  # CANN parser uses several implementation-specific exception types.
-            output = capture.getvalue().rstrip()
-            message = f"embedded DumpDataParser failed: {type(error).__name__}: {error}"
-            return 1, "\n".join(item for item in (output, message) if item)
-    finally:
-        if added_path is not None and sys.path and sys.path[0] == added_path:
-            sys.path.pop(0)
-
-
-def export_exception_npy(report_dir, npy_output, operator):
+        if invocation_dir.exists():
+            shutil.rmtree(invocation_dir)
+        invocation_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        details.append(f"ERROR: 无法准备异常解析目录: {error}")
+        return 1, details
     sys.path.insert(0, str(SCRIPT_DIR))
-    capture = io.StringIO()
     try:
         module = importlib.import_module("parse_mc2_exception_report")
-        with redirect_stdout(capture), redirect_stderr(capture):
-            module.export_report(report_dir, npy_output, operator)
-        return 0, capture.getvalue().rstrip()
-    except (ImportError, OSError, RuntimeError, ValueError) as error:
-        output = capture.getvalue().rstrip()
-        message = f"NPY export failed: {type(error).__name__}: {error}"
-        return 1, "\n".join(item for item in (output, message) if item)
+        _, _, parser_lines = module.export_exception_info(
+            source, invocation_dir, profile["name"]
+        )
+        details.extend(parser_lines)
+        return 0, details
+    except (ImportError, OSError, RuntimeError, ValueError, struct.error) as error:
+        details.append(f"ERROR: exception_info 解析失败: {type(error).__name__}: {error}")
+        return 1, details
     finally:
         if sys.path and sys.path[0] == str(SCRIPT_DIR):
             sys.path.pop(0)
-
-
-def parse_exception_info(profile, source, relative_path, output_dir, msaicerr_path):
-    invocation_dir = output_dir / "exception" / relative_path.parent / safe_path_component(source.name)
-    msaicerr_output = invocation_dir / "msaicerr"
-    npy_output = invocation_dir / "npy"
-    msaicerr_output.mkdir(parents=True, exist_ok=True)
-    details = [f"msaicerr output: {msaicerr_output}"]
-    return_code, output = run_embedded_msaicerr(source, msaicerr_output, msaicerr_path)
-    if return_code is None:
-        details.append(output)
-        if msaicerr_path is None:
-            details.append(
-                "ERROR: 未找到 CANN ms_interface；请确认 CANN 环境已加载，"
-                "或使用 --msaicerr 指定 msaicerr.py"
-            )
-            return 1, details
-        msaicerr_command = [
-            sys.executable,
-            str(msaicerr_path),
-            "-d",
-            str(source),
-            "--output_path",
-            str(msaicerr_output),
-        ]
-        # Compatibility fallback for CANN versions whose Python API cannot be
-        # imported directly from this process.
-        return_code, output = run_command(msaicerr_command, cwd=source.parent)
-        details.append("msaicerr mode: command-line fallback")
-    else:
-        details.append("msaicerr mode: embedded DumpDataParser")
-    if output:
-        details.extend(output.splitlines())
-    if return_code != 0:
-        details.append(f"ERROR: msaicerr exited with code {return_code}")
-        return return_code, details
-
-    return_code, output = export_exception_npy(msaicerr_output, npy_output, profile["name"])
-    details.append(f"NPY output: {npy_output}")
-    if output:
-        details.extend(output.splitlines())
-    if return_code != 0:
-        details.append(f"ERROR: exception report parser exited with code {return_code}")
-    return return_code, details
 
 
 def backend_command(profile, kind, path, aic_core_num):
@@ -539,9 +532,76 @@ def run_backend(profile, kind, path, aic_core_num):
     return process.returncode, process.stdout.rstrip(), process.stderr.rstrip()
 
 
+def run_backend_human(profile, kind, path, aic_core_num):
+    """Run the backend's existing readable formatter for terminal display."""
+    command = backend_command(profile, kind, path, aic_core_num)
+    if command and command[-1] == "--json":
+        command.pop()
+    child_env = os.environ.copy()
+    child_env["PYTHONIOENCODING"] = "utf-8"
+    process = subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=child_env,
+        check=False,
+    )
+    return process.returncode, process.stdout.rstrip(), process.stderr.rstrip()
+
+
 def emit(lines, value=""):
     print(value)
     lines.append(value)
+
+
+def short_output_path(path, output_dir):
+    try:
+        return path.relative_to(output_dir)
+    except ValueError:
+        return path
+
+
+def emit_runtime_summary(lines, parsed):
+    """Print the useful RuntimeInfo counters without expanding 128 raw slots."""
+    runtime_info = parsed.get("runtimeInfo", {}) if isinstance(parsed, dict) else {}
+    if not runtime_info:
+        return
+    slots = runtime_info.get("slots", [])
+    active = runtime_info.get("activeSlots", 0)
+    expected = runtime_info.get("expectedSlots", runtime_info.get("maxSlots", "?"))
+    expected_slots = slots[:expected] if isinstance(expected, int) else slots
+    valid_slots = [slot for slot in expected_slots if slot.get("magicValid")]
+    commit_total = runtime_info.get(
+        "commitTotal", sum(slot.get("commCommitCount", 0) for slot in valid_slots)
+    )
+    wait_total = runtime_info.get(
+        "waitTotal", sum(slot.get("commWaitCount", 0) for slot in valid_slots)
+    )
+    pending_slots = [
+        slot for slot in valid_slots
+        if slot.get("commCommitCount", 0) != slot.get("commWaitCount", 0)
+    ]
+    pending_count = runtime_info.get("pendingCoreCount", len(pending_slots))
+    emit(
+        lines,
+        "RuntimeInfo: "
+        f"active={active}/{expected} | commit={commit_total} | "
+        f"wait={wait_total} | pendingCores={pending_count}",
+    )
+    if active == 0:
+        emit(lines, "WARNING: 没有有效 RuntimeInfo slot；请检查 Kernel 初始化、段起始地址和 Dump 时机")
+    elif pending_slots:
+        preview = ", ".join(
+            f"slot{slot.get('slotIdx', slot.get('coreId', '?'))}({slot.get('coreType', '未知')}:"
+            f"commit={slot.get('commCommitCount')},wait={slot.get('commWaitCount')})"
+            for slot in pending_slots[:16]
+        )
+        suffix = " ..." if len(pending_slots) > 16 else ""
+        emit(lines, f"unbalanced: {preview}{suffix}")
+    emit(lines, "perCoreDetail: NPY -> runtimeInfo.slots[*].commCommitCount/commWaitCount")
 
 
 def main(argv=None):
@@ -555,10 +615,6 @@ def main(argv=None):
     )
     parser.add_argument("operator", help="算子名或别名，例如 AlltoAllMatmul、AllGatherMatmulV3、mmrs")
     parser.add_argument("dump_dir", nargs="?", default=".", help="dump 根目录，默认当前目录")
-    parser.add_argument(
-        "--msaicerr",
-        help="msaicerr.py 路径；未指定时读取 MSAICERR_PATH/ASCEND_TOOLKIT_HOME/TOOL_PATH 并检查常用路径",
-    )
     args = parser.parse_args(argv)
 
     try:
@@ -581,16 +637,20 @@ def main(argv=None):
     core_index = build_core_index(profile, tiling_files)
     core_values = sorted(core_index[2])
     core_summary = core_values[0] if len(core_values) == 1 else (core_values or "unknown")
+    kind_counts = {}
+    for kind, _ in files:
+        kind_counts[kind] = kind_counts.get(kind, 0) + 1
+    file_summary = ", ".join(f"{kind}={count}" for kind, count in kind_counts.items())
     report_lines = []
     emit(report_lines, "=" * 88)
     emit(report_lines, f"MC2 dump analysis: {profile['name']} | path: {profile['path']}")
     emit(report_lines, f"dump dir: {dump_dir}")
-    emit(report_lines, f"matched files: {len(files)} | inferred AIC cores: {core_summary}")
+    emit(report_lines, f"matched files: {len(files)} ({file_summary})")
+    emit(report_lines, f"inferred AIC cores: {core_summary} | NPY output: {output_dir}")
     emit(report_lines, "=" * 88)
 
     failures = 0
-    exception_files = [path for kind, path in files if kind == "exception"]
-    msaicerr_path = find_msaicerr(args.msaicerr) if exception_files else None
+    parsed_tilings = []
     for kind, path in files:
         relative_path = path.relative_to(dump_dir)
         emit(report_lines)
@@ -605,7 +665,7 @@ def main(argv=None):
                 rows, values, nonzero = parse_address_table(path, output_path)
                 message = (
                     f"saved NPY: dtype=uint64 shape=({rows}, 64) values={values} "
-                    f"nonzero={nonzero} -> {output_path}"
+                    f"nonzero={nonzero} -> {short_output_path(output_path, output_dir)}"
                 )
                 emit(report_lines, message)
             except (OSError, RuntimeError, ValueError) as error:
@@ -614,29 +674,55 @@ def main(argv=None):
             continue
 
         if kind == "exception":
-            emit(report_lines, f"msaicerr: {msaicerr_path or 'CANN ms_interface from Python environment'}")
-            return_code, details = parse_exception_info(
-                profile, path, relative_path, output_dir, msaicerr_path
-            )
+            return_code, details = parse_exception_info(profile, path, relative_path, output_dir)
             for line in details:
                 emit(report_lines, line)
             if return_code != 0:
                 failures += 1
             continue
 
-        # RuntimeInfo remains structurally parsed; other data segments are saved as raw uint8.
+        # RuntimeInfo remains structurally parsed.  MMRS result/send/receive
+        # buffers use the output dtype and shape recorded in the paired tiling.
         if kind == "workspace":
             identity = segment_identity(path, "workspace")
             if identity is not None and identity[1] != 12:
                 seg_index, seg_type = identity
                 output_path = npy_output_path(output_dir, relative_path)
                 try:
-                    shape, dtype = save_raw_npy(path, output_path)
                     emit(report_lines, f"segIdx: {seg_index}")
                     emit(report_lines, f"segType: {seg_type} ({WORKSPACE_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
                     emit(report_lines, f"dataMeaning: {WORKSPACE_SEG_DESCRIPTIONS.get(seg_type, '未知 Workspace 段')}")
-                    emit(report_lines, f"saved NPY: dtype={dtype} shape={shape} -> {output_path}")
-                    emit_decimal_byte_preview(report_lines, read_preview(path, WORKSPACE_PREVIEW_SIZE))
+                    tiling_result = nearest_tiling_result(path, profile, parsed_tilings)
+                    spec = (
+                        mmrs_workspace_spec(seg_type, tiling_result, path.stat().st_size)
+                        if profile_key == "matmulreducescatterv2" else None
+                    )
+                    if spec is not None:
+                        dtype, shape = save_typed_npy(
+                            path, output_path, spec["storageDtype"], spec["shape"]
+                        )
+                        emit(
+                            report_lines,
+                            f"saved NPY: logicalDtype={spec['logicalDtype']} storageDtype={dtype} "
+                            f"shape={shape} interpretation={spec['interpretation']} -> "
+                            f"{short_output_path(output_path, output_dir)}",
+                        )
+                        if not spec["shapeMatched"]:
+                            emit(
+                                report_lines,
+                                f"WARNING: 文件大小与 TilingData shape={spec['expectedShape']} 不匹配，"
+                                "NPY 保留为一维数组",
+                            )
+                        preview_label, preview_values = typed_value_preview(path, spec)
+                        emit(report_lines, f"valuePreview[0:{len(preview_values)}] ({preview_label}): {preview_values}")
+                    else:
+                        shape, dtype = save_raw_npy(path, output_path)
+                        emit(
+                            report_lines,
+                            f"saved NPY: dtype={dtype} shape={shape} interpretation=raw_bytes -> "
+                            f"{short_output_path(output_path, output_dir)}",
+                        )
+                        emit_decimal_byte_preview(report_lines, read_preview(path, WORKSPACE_PREVIEW_SIZE))
                 except (OSError, RuntimeError, ValueError) as error:
                     failures += 1
                     emit(report_lines, f"ERROR: {error}")
@@ -651,7 +737,11 @@ def main(argv=None):
             output_path = npy_output_path(output_dir, relative_path)
             try:
                 shape, dtype = save_raw_npy(path, output_path)
-                emit(report_lines, f"saved NPY: dtype={dtype} shape={shape} -> {output_path}")
+                emit(
+                    report_lines,
+                    f"saved NPY: dtype={dtype} shape={shape} -> "
+                    f"{short_output_path(output_path, output_dir)}",
+                )
             except (OSError, RuntimeError, ValueError) as error:
                 failures += 1
                 emit(report_lines, f"ERROR: {error}")
@@ -670,7 +760,31 @@ def main(argv=None):
         try:
             parsed = json.loads(output)
             save_structured_npy(output_path, parsed)
-            emit(report_lines, f"saved NPY: object -> {output_path}")
+            if kind == "tiling":
+                parsed_tilings.append((path, parsed))
+            if kind == "workspace":
+                identity = segment_identity(path, "workspace")
+                if identity is not None:
+                    seg_index, seg_type = identity
+                    emit(report_lines, f"segIdx: {seg_index}")
+                    emit(report_lines, f"segType: {seg_type} ({WORKSPACE_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
+                    emit(report_lines, f"dataMeaning: {WORKSPACE_SEG_DESCRIPTIONS.get(seg_type, '未知 Workspace 段')}")
+            emit(
+                report_lines,
+                f"saved NPY: object -> {short_output_path(output_path, output_dir)}",
+            )
+            if kind in ("tiling", "workspace"):
+                display_code, display_output, display_log = run_backend_human(
+                    profile, kind, path, aic_core_num
+                )
+                emit(report_lines, "parsedResult:")
+                for text in (display_log, display_output):
+                    for line in text.splitlines():
+                        emit(report_lines, line)
+                if display_code != 0:
+                    emit(report_lines, f"WARNING: 可读结果格式化失败，退出码 {display_code}")
+            if kind == "workspace":
+                emit_runtime_summary(report_lines, parsed)
         except (json.JSONDecodeError, OSError, RuntimeError, ValueError) as error:
             failures += 1
             if backend_log:

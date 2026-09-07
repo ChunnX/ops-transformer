@@ -91,7 +91,9 @@ python3 parse_mc2_dump.py --help
 主要结果包括：
 
 - 每个 Tiling、Args、Workspace、XN/CKE、通信上下文和 Peermem 输入文件各生成一个同名 `.npy`，并保留原 rank 子目录。
-- Tiling、Args 和 `type12/RUNTIME_INFO` 为对象型 NPY；普通 Workspace/Peermem 为完整 `uint8`；XN/CKE 为二维 `uint64`。
+- Tiling、Args 和 `type12/RUNTIME_INFO` 为对象型 NPY；XN/CKE 为二维 `uint64`。
+- MMRS `type8/MM_RESULT`、`type9/RECV_BUF` 根据同次 TilingData 自动保存输出 dtype 和 `(rankM, rankN)`；BF16 以 `uint16` 原始位模式存储。
+- 无法可靠确定 dtype/shape 的其他 Workspace/Peermem 仍完整保存为 `uint8`。
 - `exception/<exception_info文件名>/msaicerr`：CANN 异常解包中间结果。
 - `exception/<exception_info文件名>/npy`：异常 input/output/workspace 的独立 NPY。
 
@@ -152,7 +154,7 @@ python3 -c "import numpy as np; d=np.load('/path/to/tiling_data_xxx.npy', allow_
 python3 -c "import numpy as np; a=np.load('/path/to/xn_addr_info_xxx.npy'); print(a[:2, :8])"
 ```
 
-需要按 BF16/FP8/E8M0 和行列查看时，继续对原始 `workspace_seg*` 文件使用已有的 `parse_matrix.py`，无需新增查看脚本。
+MMRS `type8/type9` 的 NPY 已带二维 shape，可以直接切片；其中 BF16 NPY 保存的是 `uint16` 位模式。需要把 BF16 解码成浮点数，或按 FP8/E8M0 和指定行列查看时，继续对原始 `workspace_seg*` 文件使用已有的 `parse_matrix.py`。
 
 ## 5. 单独解析某个文件
 
@@ -297,7 +299,7 @@ python3 parse_matrix.py workspace.bin \
 
 不同分支中的枚举可能存在差异。最终以当前代码的 `WorkspaceSegType`、Tiling 侧 `BuildWorkspaceLayout()` 和 Kernel 侧 Workspace 地址偏移为准。
 
-统一入口把普通 Workspace 段完整保存为一维 `uint8` NPY。`type13/MM_WORKSPACE` 是 Matmul 内部临时区，不是结果矩阵；MMRS 的 Matmul 输出对应 `type8/MM_RESULT`。由于 `type13` 没有固定 dtype 和逻辑 shape，脚本不会把它强行解释成 BF16 或 FP16。
+统一入口会把 MMRS `type8/MM_RESULT` 和 `type9/RECV_BUF` 与时间最接近的同 stream/task TilingData 配对，并按输出 dtype、`rankM`、`rankN` 保存二维 NPY。`type13/MM_WORKSPACE` 是 Matmul 内部临时区，不是结果矩阵；由于它没有固定 dtype 和逻辑 shape，脚本仍以一维 `uint8` 保存，不会强行解释成 BF16 或 FP16。
 
 ## 8. 如何确定 dtype、rows 和 cols
 
@@ -340,6 +342,17 @@ python3 parse_mc2_dump.py mmrs /path/to/dump
 - 文件名是否包含正确的算子名。
 - 算子名或别名是否正确。
 - Dump 配置是否开启了 TilingData、Args 或 Workspace 分段导出。
+
+### 找到 `msaicerr.py`，但提示 `libascend_dump_parser.so` 无法加载
+
+这表示 Python 脚本路径正确，但 CANN 动态库环境没有加载。统一入口会先尝试自动 `source` 与 `msaicerr.py` 同一安装目录的 `set_env.sh`，并在新进程中重试。只有无法自动定位环境脚本时，才需要手工执行：
+
+```bash
+source /usr/local/Ascend/cann/set_env.sh   # 以机器上的实际路径为准
+python3 parse_mc2_dump.py mmrs /path/to/dump
+```
+
+统一入口会检查 `msaicerr` 是否真正生成了 input/output/workspace 张量；如果没有产出，会直接提示环境问题并停止该 exception 的 NPY 导出，不再继续产生第二个“没有找到张量文件”的报错。
 
 ### `workspace_seg2_type12` 为什么不是矩阵结果？
 
