@@ -19,7 +19,7 @@
 
 #include "quant_matmul_tiling_base.h"
 
-template <mm::DataType aDataType, mm::DataType bDataType>
+template <mm::DataType aDataType, mm::DataType bDataType, mm::BiasDataType biasDtype>
 class QuantMatmulTilingSwat : public QuantMatmulTilingBase<aDataType, bDataType> {
 public:
     QuantMatmulTilingSwat()
@@ -35,6 +35,13 @@ public:
     void SetMaxBaseM(uint64_t v)
     {
         maxBaseM_ = v;
+    }
+
+    // biasDtype is the class template parameter and must match the kernel-side
+    // BiasType instantiation (fp32/fp16/bf16).
+    void SetBiasInfo(bool hasBias)
+    {
+        hasBias_ = hasBias;
     }
 
 protected:
@@ -69,6 +76,7 @@ private:
 
     bool enableBaseMHalving_{false};
     uint64_t maxBaseM_{0};
+    bool hasBias_{false};
 
 private:
     uint32_t CalcScaleKL1() const
@@ -190,9 +198,14 @@ private:
             Align(CeilDiv(runInfo_.baseK, MX_GROUP_SIZE), TILING_MXFP_MULTI_BASE_SIZE) * runInfo_.baseM;
         uint64_t baseScaleBSize =
             Align(CeilDiv(runInfo_.baseK, MX_GROUP_SIZE), TILING_MXFP_MULTI_BASE_SIZE) * runInfo_.baseN;
+        // Bias occupies DB_SIZE ping-pong L1 buffers next to the scale windows.
+        runInfo_.biasL1Size = hasBias_ ?
+                                  DB_SIZE * Align(runInfo_.baseN, CUBE_BLOCK) * mm::GetBiasDataSize<biasDtype>() :
+                                  0UL;
+        uint64_t availL1Size = platformInfo_.l1Size - runInfo_.biasL1Size;
         uint64_t baseL1Size = baseASize + baseBSize + baseScaleASize + baseScaleBSize;
-        uint64_t depthInit = GetDepthA1B1(runInfo_, platformInfo_.l1Size, baseL1Size, 1UL);
-        uint64_t leftL1SizeByDepthInit = platformInfo_.l1Size - depthInit * baseL1Size;
+        uint64_t depthInit = GetDepthA1B1(runInfo_, availL1Size, baseL1Size, 1UL);
+        uint64_t leftL1SizeByDepthInit = availL1Size - depthInit * baseL1Size;
         uint64_t depthASec =
             GetDepthA1B1(runInfo_, leftL1SizeByDepthInit, (baseASize + baseScaleASize) * depthInit, depthInit);
         uint64_t depthBSec =
@@ -201,7 +214,7 @@ private:
         // budget cannot sustain the larger common depth on both sides.
         runInfo_.depthA1 = std::max(depthASec, depthBSec);
         runInfo_.depthB1 = runInfo_.depthA1;
-        if (runInfo_.depthA1 * baseL1Size > platformInfo_.l1Size) {
+        if (runInfo_.depthA1 * baseL1Size > availL1Size) {
             runInfo_.depthA1 = depthASec >= depthBSec ? depthASec : depthInit;
             runInfo_.depthB1 = depthASec < depthBSec ? depthBSec : depthInit;
         }
@@ -486,7 +499,8 @@ private:
         // `scaleInit` is the balanced reuse factor both sides can afford
         // without favoring either A or B. Any leftover space is then assigned
         // to the side that can still benefit from deeper scale reuse.
-        uint64_t leftL1Size = platformInfo.l1Size - (runInfo.depthA1 * baseASize + runInfo.depthB1 * baseBSize);
+        uint64_t leftL1Size = platformInfo.l1Size - runInfo.biasL1Size -
+                              (runInfo.depthA1 * baseASize + runInfo.depthB1 * baseBSize);
         uint64_t scaleInit = leftL1Size / (runInfo.depthA1 * baseScaleASize + runInfo.depthB1 * baseScaleBSize);
         if (runInfo.scaleFactorA <= scaleInit && runInfo.scaleFactorB > scaleInit) {
             leftL1Size -= runInfo.scaleFactorA * runInfo.depthA1 * baseScaleASize;
