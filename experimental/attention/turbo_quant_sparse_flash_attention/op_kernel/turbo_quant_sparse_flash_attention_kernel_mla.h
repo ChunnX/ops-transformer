@@ -201,6 +201,7 @@ __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::InitTilingData(
     constInfo.qSeqSize = tilingData->baseParams.qSeqSize;
     constInfo.maxBlockNumPerBatch = tilingData->baseParams.maxBlockNumPerBatch;
     constInfo.kvCacheBlockSize = tilingData->baseParams.blockSize;
+    constInfo.keyStride0 = tilingData->baseParams.keyStride0;
     constInfo.outputLayout = static_cast<QSFA_LAYOUT>(tilingData->baseParams.outputLayout);
     constInfo.mBaseSize = tilingData->innerSplitParams.mBaseSize;
     constInfo.s2BaseSize = tilingData->innerSplitParams.s2BaseSize;

@@ -47,14 +47,15 @@ std::vector<TensorDesc> BaseOutputs()
 }
 
 // 属性基线取 host 侧唯一合法值，负向用例在此基础上单点改写。
-std::vector<OpAttr> BaseAttrs(const std::string &layoutQuery = "TND", bool returnSoftmaxLse = false)
+std::vector<OpAttr> BaseAttrs(const std::string &layoutQuery = "TND", bool returnSoftmaxLse = false,
+                              const std::string &layoutKv = "PA_BSND")
 {
     return {{"scale_value", AnyValue::CreateFrom<float>(0.044194173f)},
             {"key_quant_mode", AnyValue::CreateFrom<int64_t>(3)},
             {"value_quant_mode", AnyValue::CreateFrom<int64_t>(3)},
             {"sparse_block_size", AnyValue::CreateFrom<int64_t>(1)},
             {"layout_query", AnyValue::CreateFrom<std::string>(layoutQuery)},
-            {"layout_kv", AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"layout_kv", AnyValue::CreateFrom<std::string>(layoutKv)},
             {"sparse_mode", AnyValue::CreateFrom<int64_t>(3)},
             {"pre_tokens", AnyValue::CreateFrom<int64_t>(INT64_MAX)},
             {"next_tokens", AnyValue::CreateFrom<int64_t>(INT64_MAX)},
@@ -68,9 +69,15 @@ std::vector<OpAttr> BaseAttrs(const std::string &layoutQuery = "TND", bool retur
 
 class TurboQuantSparseFlashAttentionProto : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "TurboQuantSparseFlashAttentionProto SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "TurboQuantSparseFlashAttentionProto SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "TurboQuantSparseFlashAttentionProto TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "TurboQuantSparseFlashAttentionProto TearDown" << std::endl;
+    }
 };
 
 // attention_out 最后一维 = query 最后一维 - rope_head_dim = 576 - 64 = 512。
@@ -103,7 +110,7 @@ TEST_F(TurboQuantSparseFlashAttentionProto, TurboQuantSparseFlashAttention_infer
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-TEST_F(TurboQuantSparseFlashAttentionProto, TurboQuantSparseFlashAttention_inferdtype)
+TEST_F(TurboQuantSparseFlashAttentionProto, TurboQuantSparseFlashAttention_inferdtype_bf16)
 {
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);
@@ -145,8 +152,7 @@ TEST_F(TurboQuantSparseFlashAttentionProto, TurboQuantSparseFlashAttention_infer
     EXPECT_EQ(context->GetOutputDataType(2), ge::DT_FLOAT);
 }
 
-// 算子仅支持 BFLOAT16：非法 dtype 不应先得到一份看似合法的图推导结果。
-TEST_F(TurboQuantSparseFlashAttentionProto, TurboQuantSparseFlashAttention_inferdtype_fp16_rejected)
+TEST_F(TurboQuantSparseFlashAttentionProto, TurboQuantSparseFlashAttention_inferdtype_fp16)
 {
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);
@@ -167,5 +173,79 @@ TEST_F(TurboQuantSparseFlashAttentionProto, TurboQuantSparseFlashAttention_infer
                              .Build();
     auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
     ASSERT_NE(context, nullptr);
+    EXPECT_EQ(dataTypeFunc(context), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(context->GetOutputDataType(0), ge::DT_FLOAT16);
+    EXPECT_EQ(context->GetOutputDataType(1), ge::DT_FLOAT);
+    EXPECT_EQ(context->GetOutputDataType(2), ge::DT_FLOAT);
+}
+
+TEST_F(TurboQuantSparseFlashAttentionProto, TurboQuantSparseFlashAttention_inferdtype_fp32_rejected)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto dataTypeFunc = spaceRegistry->GetOpImpl("TurboQuantSparseFlashAttention")->infer_datatype;
+    ASSERT_NE(dataTypeFunc, nullptr);
+
+    ge::DataType queryType = ge::DT_FLOAT;
+    ge::DataType kvType = ge::DT_INT8;
+    ge::DataType indexType = ge::DT_INT32;
+    ge::DataType scaleType = ge::DT_FLOAT;
+    auto contextHolder = gert::InferDataTypeContextFaker()
+                             .NodeIoNum(9, 3)
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .InputDataTypes({&queryType, &kvType, &kvType, &indexType, &scaleType, &scaleType,
+                                              &indexType, &indexType, &indexType})
+                             .Build();
+    auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
+    ASSERT_NE(context, nullptr);
     EXPECT_EQ(dataTypeFunc(context), ge::GRAPH_FAILED);
+}
+
+class TurboQuantSparseFlashAttentionBnbdProto : public testing::TestWithParam<bool> {};
+
+TEST_P(TurboQuantSparseFlashAttentionBnbdProto, InfersBnbdAndDynamicShapes)
+{
+    for (bool dynamic : {false, true}) {
+        SCOPED_TRACE(dynamic);
+        auto inputs = BaseInputs();
+        inputs[1].shape_ = inputs[2].shape_ = {{4, 1, 128, 386}, {4, 1, 128, 386}};
+        const int64_t tokens = dynamic ? -1 : 1;
+        const int64_t heads = dynamic ? -1 : 8;
+        const int64_t headDim = dynamic ? -1 : 576;
+        inputs[0].shape_ = {{tokens, heads, headDim}, {tokens, heads, headDim}};
+        gert::InfershapeContextPara para("TurboQuantSparseFlashAttention", inputs, BaseOutputs(),
+                                         BaseAttrs("TND", GetParam(), "PA_BNBD"));
+        std::vector<int64_t> stats = GetParam() ? std::vector<int64_t>{1, tokens, heads} : std::vector<int64_t>{0};
+        ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{tokens, heads, dynamic ? -1 : 512}, stats, stats});
+    }
+}
+
+TEST_P(TurboQuantSparseFlashAttentionBnbdProto, RejectsWrongHeadAxisAndUnknownLayout)
+{
+    for (const std::string &layout : {"PA_BNBD", "PA_BNSD", "BNBD", "UNKNOWN"}) {
+        SCOPED_TRACE(layout);
+        gert::InfershapeContextPara para("TurboQuantSparseFlashAttention", BaseInputs(), BaseOutputs(),
+                                         BaseAttrs("TND", GetParam(), layout));
+        ExecuteTestCase(para, ge::GRAPH_FAILED);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(SoftmaxOutputs, TurboQuantSparseFlashAttentionBnbdProto, testing::Bool());
+
+TEST_P(TurboQuantSparseFlashAttentionBnbdProto, InfersEmptyQuery)
+{
+    for (const std::string &layout : {"PA_BSND", "PA_BNBD"}) {
+        SCOPED_TRACE(layout);
+        auto inputs = BaseInputs();
+        inputs[0].shape_ = {{0, 8, 576}, {0, 8, 576}};
+        if (layout == "PA_BNBD") {
+            inputs[1].shape_ = inputs[2].shape_ = {{4, 1, 128, 386}, {4, 1, 128, 386}};
+        }
+        gert::InfershapeContextPara para("TurboQuantSparseFlashAttention", inputs, BaseOutputs(),
+                                         BaseAttrs("TND", GetParam(), layout));
+        const std::vector<int64_t> stats = GetParam() ? std::vector<int64_t>{1, 0, 8} : std::vector<int64_t>{0};
+        ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{0, 8, 512}, stats, stats});
+    }
 }

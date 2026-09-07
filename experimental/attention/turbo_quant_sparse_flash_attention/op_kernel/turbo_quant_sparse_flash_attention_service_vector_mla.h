@@ -78,7 +78,7 @@ public:
                                    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
     // ================================Vector0==========================================
     __aicore__ inline void MergeKv(const RunInfo &runInfo);
-    __aicore__ inline int64_t GetKeyBNBOffset(int64_t realS2Idx, const RunInfo &runInfo, int64_t s2IdLimit);
+    __aicore__ inline int64_t GetKeyByteOffset(int64_t realS2Idx, const RunInfo &runInfo, int64_t s2IdLimit);
     __aicore__ inline void GetRealS2Idx(int64_t s2GmOffset, int64_t &realS2Idx, int64_t topkGmBaseOffset,
                                         const RunInfo &runInfo);
     __aicore__ inline void SetInfInBlk(const LocalTensor<T> &mmResUb, uint32_t dealRowCount, uint32_t columnCount,
@@ -90,8 +90,8 @@ public:
     __aicore__ inline void CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size, int64_t s2StartGmOffset,
                                              int64_t mergeMte3Idx, const RunInfo &runInfo);
     __aicore__ inline void CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx,
-                                          int64_t keyBNBOffset, int64_t s2IdLimit, const RunInfo &runInfo);
-    // [TQ4] codebook dequant of dealRow combined slots -> antiKvTensorAsB16 [dealRow,512] bf16 (Phase B)
+                                          int64_t keyByteOffset, int64_t s2IdLimit, const RunInfo &runInfo);
+    // [TQ4] codebook dequant of dealRow combined slots -> antiKvTensorAsB16 [dealRow,512] in query dtype
     __aicore__ inline void Tq4DequantRows(LocalTensor<KV_T> &srcTensor, LocalTensor<K_ROPE_T> &dstB16, int32_t dealRow);
     // ================================Vector1==========================================
     __aicore__ inline void ProcessVec1SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo);
@@ -835,29 +835,28 @@ __aicore__ inline void QSFAVectorService<QSFAT>::GetRealS2Idx(int64_t s2GmOffset
 }
 
 template <typename QSFAT>
-__aicore__ inline int64_t QSFAVectorService<QSFAT>::GetKeyBNBOffset(int64_t realS2Idx, const RunInfo &runInfo,
-                                                                    int64_t s2IdLimit)
+__aicore__ inline int64_t QSFAVectorService<QSFAT>::GetKeyByteOffset(int64_t realS2Idx, const RunInfo &runInfo,
+                                                                     int64_t s2IdLimit)
 {
     if (realS2Idx < 0 || realS2Idx >= s2IdLimit) {
         return -1;
     }
-    int64_t realKeyBNBOffset = 0;
+    const int64_t slotBytes = tilingData->baseParams.dSizeVInput;
+    int64_t keyByteOffset = 0;
     if constexpr (PAGE_ATTENTION) {
         int64_t blkTableIdx = realS2Idx / constInfo.kvCacheBlockSize;
         int64_t blkTableOffset = realS2Idx % constInfo.kvCacheBlockSize;
-        realKeyBNBOffset = blkTableGm_.GetValue(runInfo.bIdx * constInfo.maxBlockNumPerBatch + blkTableIdx) *
-                               static_cast<int64_t>(constInfo.kvCacheBlockSize) *
-                               static_cast<int64_t>(constInfo.kvHeadNum) +
-                           blkTableOffset;
+        const int64_t physicalBlock = blkTableGm_.GetValue(runInfo.bIdx * constInfo.maxBlockNumPerBatch + blkTableIdx);
+        keyByteOffset = physicalBlock * constInfo.keyStride0 + blkTableOffset * slotBytes;
     } else {
-        realKeyBNBOffset = (runInfo.tensorBOffset + realS2Idx * constInfo.kvHeadNum * constInfo.combineHeadDim) /
-                           constInfo.combineHeadDim;
+        keyByteOffset = (runInfo.tensorBOffset + realS2Idx * constInfo.kvHeadNum * constInfo.combineHeadDim) /
+                        constInfo.combineHeadDim * slotBytes;
     }
-    return realKeyBNBOffset;
+    return keyByteOffset;
 }
 
 // [TQ4] Phase B: codebook dequant of `dealRow` combined slots (int4 nope + rope + 2B scale)
-// -> dstB16 [dealRow,headDim] bf16 (Hadamard-space K=V). bf16 path: 32B-burst compact
+// -> dstB16 [dealRow,headDim] in query dtype (Hadamard-space K=V). bf16 path: 32B-burst compact
 // the packed bytes then one byte-LUT Gather per byte (uint32 carries 2 centroids);
 // other dtypes: per-nibble int4b_t Cast/index/Gather/output Cast in 4-row chunks.
 // The 2B slot scale is expected to be vecNorm/sqrt(Sum c^2) on the fused-SFA write path.
@@ -965,10 +964,10 @@ __aicore__ inline void QSFAVectorService<QSFAT>::Tq4DequantRows(LocalTensor<KV_T
 template <typename QSFAT>
 __aicore__ inline void QSFAVectorService<QSFAT>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size,
                                                                 int64_t mergeMte3Idx, int64_t realS2Idx,
-                                                                int64_t keyBNBOffset, int64_t s2IdLimit,
+                                                                int64_t keyByteOffset, int64_t s2IdLimit,
                                                                 const RunInfo &runInfo)
 {
-    if (keyBNBOffset < 0) {
+    if (keyByteOffset < 0) {
         return;
     }
     int64_t validS2Count =
@@ -992,7 +991,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyInSingleKv(int64_t &mte2Siz
         padParams.paddingValue = 0;
         DataCopyPad(
             kvMergUb_[mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T) + (mte2Size - mte3Size) * combineDimAlign],
-            keyGm_[keyBNBOffset * combineDim], intriParams, padParams);
+            keyGm_[keyByteOffset / sizeof(KV_T)], intriParams, padParams);
     }
     mte2Size += validS2Count;
 }
@@ -1007,34 +1006,33 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyInKv(int64_t &mte2Size, int
         s2IdLimit = runInfo.curActualSeqLenOri - runInfo.actS1Size + runInfo.gS1Idx / constInfo.gSize + 1;
     }
 
-    int64_t keyBNBOffset1 = GetKeyBNBOffset(realS2Idx1, runInfo, s2IdLimit);
-    int64_t keyBNBOffset2 = GetKeyBNBOffset(realS2Idx2, runInfo, s2IdLimit);
-    if (unlikely(keyBNBOffset1 < 0 && keyBNBOffset2 < 0)) {
+    int64_t keyByteOffset1 = GetKeyByteOffset(realS2Idx1, runInfo, s2IdLimit);
+    int64_t keyByteOffset2 = GetKeyByteOffset(realS2Idx2, runInfo, s2IdLimit);
+    if (unlikely(keyByteOffset1 < 0 && keyByteOffset2 < 0)) {
         return;
     }
 
-    int64_t sparseBlockSrcStride =
-        ((keyBNBOffset1 > keyBNBOffset2 ? (keyBNBOffset1 - keyBNBOffset2) : (keyBNBOffset2 - keyBNBOffset1)) -
-         constInfo.sparseBlockSize);
     // [TQ4] slot = headDim/2 int4 nope + headDimRope*sizeof(K_ROPE_T) + 2B vecNorm(fp16)
     uint32_t combineBytes = constInfo.headDim / 2 + constInfo.headDimRope * sizeof(K_ROPE_T) + sizeof(half);
-    int64_t keySrcStride = sparseBlockSrcStride * combineBytes;
+    const int64_t byteDistance =
+        keyByteOffset1 > keyByteOffset2 ? keyByteOffset1 - keyByteOffset2 : keyByteOffset2 - keyByteOffset1;
+    int64_t keySrcStride = byteDistance - static_cast<int64_t>(constInfo.sparseBlockSize) * combineBytes;
     if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0 || realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit ||
                  realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit) ||
         constInfo.sparseBlockSize > 1) {
         // stride溢出、stride为负数、s2超长等异常场景，还原成2条搬运指令
-        CopyInSingleKv(mte2Size, mte3Size, mergeMte3Idx, realS2Idx1, keyBNBOffset1, s2IdLimit, runInfo);
-        CopyInSingleKv(mte2Size, mte3Size, mergeMte3Idx, realS2Idx2, keyBNBOffset2, s2IdLimit, runInfo);
+        CopyInSingleKv(mte2Size, mte3Size, mergeMte3Idx, realS2Idx1, keyByteOffset1, s2IdLimit, runInfo);
+        CopyInSingleKv(mte2Size, mte3Size, mergeMte3Idx, realS2Idx2, keyByteOffset2, s2IdLimit, runInfo);
     } else {
         DataCopyExtParams intriParams;
-        intriParams.blockCount = (keyBNBOffset1 >= 0) + (keyBNBOffset2 >= 0);
+        intriParams.blockCount = (keyByteOffset1 >= 0) + (keyByteOffset2 >= 0);
         intriParams.dstStride = 0;
         intriParams.srcStride = keySrcStride;
         DataCopyPadExtParams<KV_T> padParams;
 
-        int64_t startGmOffset = keyBNBOffset1 > -1 ? keyBNBOffset1 : keyBNBOffset2;
-        if (keyBNBOffset2 > -1 && keyBNBOffset2 < keyBNBOffset1) {
-            startGmOffset = keyBNBOffset2;
+        int64_t startGmOffset = keyByteOffset1 > -1 ? keyByteOffset1 : keyByteOffset2;
+        if (keyByteOffset2 > -1 && keyByteOffset2 < keyByteOffset1) {
+            startGmOffset = keyByteOffset2;
         }
 
         // 当前仅支持COMBINE模式
@@ -1048,9 +1046,9 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyInKv(int64_t &mte2Size, int
             padParams.paddingValue = 0;
             DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T) +
                                   (mte2Size - mte3Size) * combineDimAlign],
-                        keyGm_[startGmOffset * combineDim], intriParams, padParams);
+                        keyGm_[startGmOffset / sizeof(KV_T)], intriParams, padParams);
         }
-        mte2Size += ((keyBNBOffset1 > -1) + (keyBNBOffset2 > -1)) * constInfo.sparseBlockSize;
+        mte2Size += ((keyByteOffset1 > -1) + (keyByteOffset2 > -1)) * constInfo.sparseBlockSize;
     }
 }
 

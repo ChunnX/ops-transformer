@@ -71,23 +71,27 @@ ge::graphStatus InferShapeTurboQuantSparseFlashAttention(gert::InferShapeContext
         inputLayoutQueryPtrStr != "TND",
         OPS_REPORT_VECTOR_INNER_ERR("TurboQuantSparseFlashAttention", "layout_query invalid, only TND is supported"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        inputLayoutKvPtrStr != "PA_BSND",
-        OPS_REPORT_VECTOR_INNER_ERR("TurboQuantSparseFlashAttention", "layout_kv invalid, only PA_BSND is supported"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(inputLayoutKvPtrStr != "PA_BSND" && inputLayoutKvPtrStr != "PA_BNBD",
+                OPS_REPORT_VECTOR_INNER_ERR("TurboQuantSparseFlashAttention", "layout_kv must be PA_BSND or PA_BNBD"),
+                return ge::GRAPH_FAILED);
 
-    // query 为 TND 的 3 维、KV 为 PA_BSND 的 4 维；下面的 dim 访问与除法均依赖于此。
+    // Validate ranks before accessing layout-dependent axes.
     OP_CHECK_IF(
         queryShape->GetDimNum() != DIM_NUM_3,
         OPS_REPORT_VECTOR_INNER_ERR("TurboQuantSparseFlashAttention", "query shape dim num invalid, TND requires 3"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        keyShape->GetDimNum() != DIM_NUM_4,
-        OPS_REPORT_VECTOR_INNER_ERR("TurboQuantSparseFlashAttention", "key shape dim num invalid, PA_BSND requires 4"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ropeHeadDim < 0 || ropeHeadDim >= queryShape->GetDim(DIM_INDEX_2),
-                OPS_REPORT_VECTOR_INNER_ERR("TurboQuantSparseFlashAttention", "rope_head_dim invalid"),
+    OP_CHECK_IF(keyShape->GetDimNum() != DIM_NUM_4,
+                OPS_REPORT_VECTOR_INNER_ERR("TurboQuantSparseFlashAttention", "paged key requires 4 dimensions"),
                 return ge::GRAPH_FAILED);
+    const auto kvHeadAxis = inputLayoutKvPtrStr == "PA_BNBD" ? DIM_INDEX_1 : DIM_INDEX_2;
+    const int64_t kvHeadDim = keyShape->GetDim(kvHeadAxis);
+    OP_CHECK_IF(kvHeadDim != -1 && kvHeadDim != 1,
+                OPS_REPORT_VECTOR_INNER_ERR("TurboQuantSparseFlashAttention", "kv head num must be 1"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        ropeHeadDim < 0 || (queryShape->GetDim(DIM_INDEX_2) != -1 && ropeHeadDim >= queryShape->GetDim(DIM_INDEX_2)),
+        OPS_REPORT_VECTOR_INNER_ERR("TurboQuantSparseFlashAttention", "rope_head_dim invalid"),
+        return ge::GRAPH_FAILED);
 
     *attentionOutShape = *queryShape;
     attentionOutShape->SetDimNum(DIM_NUM_3);
@@ -98,20 +102,15 @@ ge::graphStatus InferShapeTurboQuantSparseFlashAttention(gert::InferShapeContext
     }
 
     if (return_softmax_lse) {
-        // KV 为 PA_BSND，N2 位于 dim2；query 已校验为 3 维，故不再有 4 维 LSE 分支。
-        int64_t kvHeadDim = keyShape->GetDim(DIM_INDEX_2);
-        OP_CHECK_IF(
-            kvHeadDim <= 0,
-            OPS_REPORT_VECTOR_INNER_ERR("TurboQuantSparseFlashAttention", "kv head num should be greater than 0"),
-            return ge::GRAPH_FAILED);
+        // The only supported KV head count is 1, including when it is not yet inferred.
         softmaxMaxShape->SetDimNum(DIM_NUM_3);
-        softmaxMaxShape->SetDim(DIM_INDEX_0, kvHeadDim);
+        softmaxMaxShape->SetDim(DIM_INDEX_0, 1);
         softmaxMaxShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
-        softmaxMaxShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / kvHeadDim);
+        softmaxMaxShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1));
         softmaxSumShape->SetDimNum(DIM_NUM_3);
-        softmaxSumShape->SetDim(DIM_INDEX_0, kvHeadDim);
+        softmaxSumShape->SetDim(DIM_INDEX_0, 1);
         softmaxSumShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
-        softmaxSumShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / kvHeadDim);
+        softmaxSumShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1));
     } else {
         softmaxMaxShape->SetDimNum(DIM_NUM_1);
         softmaxMaxShape->SetDim(DIM_INDEX_0, 0);
@@ -126,14 +125,12 @@ ge::graphStatus InferDataTypeTurboQuantSparseFlashAttention(gert::InferDataTypeC
     OP_CHECK_IF(context == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR("TurboQuantSparseFlashAttention", "InferShapeContext invalid"),
                 return ge::GRAPH_FAILED);
-    // 算子仅支持 BFLOAT16；此处若照搬 query 的 dtype，非法 dtype 会先得到一份看似
-    // 合法的图推导结果，直到 tiling 阶段才失败。
     const auto inputDataType = context->GetInputDataType(QUERY_INPUT_INDEX);
-    OP_CHECK_IF(inputDataType != ge::DT_BF16,
+    OP_CHECK_IF(inputDataType != ge::DT_FLOAT16 && inputDataType != ge::DT_BF16,
                 OPS_REPORT_VECTOR_INNER_ERR("TurboQuantSparseFlashAttention",
-                                            "query dtype invalid, only BFLOAT16 is supported"),
+                                            "query dtype invalid, only FLOAT16 and BFLOAT16 are supported"),
                 return ge::GRAPH_FAILED);
-    context->SetOutputDataType(0, ge::DT_BF16);
+    context->SetOutputDataType(0, inputDataType);
     context->SetOutputDataType(OUTPUT_INDEX_1, ge::DT_FLOAT);
     context->SetOutputDataType(OUTPUT_INDEX_2, ge::DT_FLOAT);
     return ge::GRAPH_SUCCESS;

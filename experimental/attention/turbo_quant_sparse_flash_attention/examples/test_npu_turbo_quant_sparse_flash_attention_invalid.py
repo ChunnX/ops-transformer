@@ -28,7 +28,6 @@ except ImportError:
     run_tests = unittest.main
 
 from test_npu_turbo_quant_sparse_flash_attention import (  # noqa: E402
-    BLOCK,
     DN,
     NHEAD,
     build_case,
@@ -59,7 +58,7 @@ class TestTurboQuantSparseFlashAttentionInvalid(TestCase):
             value_quant_mode=3,
             sparse_block_size=1,
             layout_query="TND",
-            layout_kv="PA_BSND",
+            layout_kv=c.get("layout_kv", "PA_BSND"),
             sparse_mode=3,
             pre_tokens=INT64_MAX,
             next_tokens=INT64_MAX,
@@ -113,16 +112,72 @@ class TestTurboQuantSparseFlashAttentionInvalid(TestCase):
         self._assert_rejected("quant_scale_repo_mode=0", quant_scale_repo_mode=0)
 
     def test_invalid_layout(self):
-        """layout：query 仅 TND，KV 仅 PA_BSND / BSND。"""
+        """Only TND query and the two explicitly named paged KV layouts are accepted."""
         self._assert_rejected("layout_query=BSND", layout_query="BSND")
         self._assert_rejected("layout_query=BNSD", layout_query="BNSD")
         self._assert_rejected("layout_kv=TND", layout_kv="TND")
         self._assert_rejected("layout_kv=BSND", layout_kv="BSND")
+        self._assert_rejected("layout_kv=PA_BNSD", layout_kv="PA_BNSD")
+        self._assert_rejected("layout_kv=BNBD", layout_kv="BNBD")
+
+    def test_bnbd_invalid_axes_and_bounds(self):
+        shapes = [
+            (4, 128, 1, 386),
+            (4, 2, 128, 386),
+            (4, 0, 128, 386),
+            (4, 1, 0, 386),
+            (4, 1, 8, 386),
+            (4, 1, 1040, 386),
+            (4, 1, 128, 385),
+            (4, 128, 386),
+        ]
+        for device in ("meta", "npu"):
+            for shape in shapes:
+                with self.subTest(device=device, shape=shape):
+                    kv = torch.empty(shape, dtype=torch.int8, device=device)
+                    with self.assertRaises(RuntimeError):
+                        self._call(
+                            q=self.c["q"].to(device), k=kv, v=kv, layout_kv="PA_BNBD"
+                        )
+        kv = self.c["kv"].transpose(1, 2)
+        self._assert_rejected("BNBD value in BSND shape", k=kv, layout_kv="PA_BNBD")
+
+    def test_paged_layout_empty_rows(self):
+        for dtype in (torch.float16, torch.bfloat16):
+            for empty in ("zero_kv", "invalid_sparse"):
+                results = []
+                for layout in ("PA_BSND", "PA_BNBD"):
+                    c = build_case(
+                        2, [17, 29], 32, 9200, dtype, "normal", layout_kv=layout
+                    )
+                    with self.subTest(dtype=dtype, layout=layout, empty=empty):
+                        over = {}
+                        if empty == "zero_kv":
+                            over["actual_seq_lengths_kv"] = torch.zeros_like(c["ask"])
+                        else:
+                            c["si"].fill_(-1)
+                        out, smax, ssum = self._call_on(
+                            c, return_softmax_lse=True, **over
+                        )
+                        out, smax, ssum = out.cpu(), smax.cpu(), ssum.cpu()
+                        self.assertTrue(torch.equal(out, torch.zeros_like(out)))
+                        self.assertTrue((smax < -1e38).all().item())
+                        if empty == "zero_kv":
+                            self.assertTrue(torch.equal(ssum, torch.zeros_like(ssum)))
+                        else:
+                            # All-masked scores use a finite sentinel in the existing kernel.
+                            # Exp(score - max) is 1, unlike the zero-length KV fast path.
+                            expected_sum = (
+                                c["ask"].cpu().float().reshape(1, 2, 1).expand_as(ssum)
+                            )
+                            self.assertTrue(torch.equal(ssum, expected_sum))
+                        results.append((out, smax, ssum))
+                for bsnd, bnbd in zip(*results):
+                    self.assertTrue(torch.equal(bsnd, bnbd))
 
     def test_invalid_dtype(self):
-        """dtype：query 仅 BFLOAT16；actual_seq_lengths 仅 INT32。"""
+        """dtype：query 支持 FP16/BF16；actual_seq_lengths 仅 INT32。"""
         c = self.c
-        self._assert_rejected("query=float16", q=c["q"].to(torch.float16))
         self._assert_rejected("query=float32", q=c["q"].float())
         self._assert_rejected(
             "actual_seq_lengths_kv=int64", actual_seq_lengths_kv=c["ask"].long()
@@ -235,6 +290,36 @@ class TestTurboQuantSparseFlashAttentionInvalid(TestCase):
             "  [PASS] rope_head_dim=100: Meta 得 %s，runtime 拒绝" % meta_shape,
             flush=True,
         )
+
+    def test_meta_accepts_fp16_and_bf16(self):
+        from torch._subclasses.fake_tensor import FakeTensorMode
+
+        c = self.c
+        for dtype in (torch.float16, torch.bfloat16):
+            query = c["q"].to(dtype)
+            for layout in ("PA_BSND", "PA_BNBD"):
+                kv = c["kv"].transpose(1, 2) if layout == "PA_BNBD" else c["kv"]
+                for lse in (False, True):
+                    with (
+                        self.subTest(dtype=dtype, layout=layout, lse=lse),
+                        FakeTensorMode(allow_non_fake_inputs=True),
+                    ):
+                        out, smax, ssum = self._call_on(
+                            c,
+                            q=query,
+                            k=kv,
+                            v=kv,
+                            layout_kv=layout,
+                            return_softmax_lse=lse,
+                        )
+                        self.assertEqual(out.dtype, dtype)
+                        self.assertEqual(list(out.shape), [1, NHEAD, DN])
+                        self.assertEqual(smax.dtype, torch.float32)
+                        self.assertEqual(ssum.dtype, torch.float32)
+                        self.assertEqual(
+                            tuple(smax.shape), (1, 1, NHEAD) if lse else (0,)
+                        )
+                        self.assertEqual(smax.shape, ssum.shape)
 
     def test_softmax_lse_shape(self):
         """softmax_max / softmax_sum 的 shape 随 return_softmax_lse 变化。

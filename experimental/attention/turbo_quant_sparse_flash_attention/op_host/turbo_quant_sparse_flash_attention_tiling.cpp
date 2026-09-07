@@ -14,6 +14,7 @@
  */
 
 #include <map>
+#include <limits>
 #include <vector>
 #include <algorithm>
 #include <graph/utils/type_utils.h>
@@ -39,20 +40,20 @@ static const std::string VALUE_NAME = "value";
 static const std::string SPARSE_INDICES_NAME = "sparse_indices";
 static const std::string ATTEN_OUT_NAME = "attention_out";
 
-const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {{QUERY_NAME, {ge::DT_BF16}},
-                                                                            {KEY_NAME, {ge::DT_INT8}},
-                                                                            {VALUE_NAME, {ge::DT_INT8}},
-                                                                            {ATTEN_OUT_NAME, {ge::DT_BF16}},
-                                                                            {SPARSE_INDICES_NAME, {ge::DT_INT32}}};
+const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
+    {QUERY_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
+    {KEY_NAME, {ge::DT_INT8}},
+    {VALUE_NAME, {ge::DT_INT8}},
+    {ATTEN_OUT_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
+    {SPARSE_INDICES_NAME, {ge::DT_INT32}}};
 
 // query 与 attention_out 仅支持 TND：PyTorch launcher 强制 query 为 3D，
 // 且输出固定按 TND 构造，BSND 无对应的 launcher / Meta / 输出 shape 实现。
-// KV 仅支持 PA_BSND：GetKvLayout() 要求非 PA_BSND 的 KV layout 必须与 query 相同，
-// 而 query 已限定为 TND，故 BSND 的 KV 不可达，TND 的 KV 亦无对应实现。
+// Both paged KV layouts require a single KV head.
 const std::map<std::string, std::vector<TQSFALayout>> LAYOUT_SUPPORT_MAP = {
     {QUERY_NAME, {TQSFALayout::TND}},
-    {KEY_NAME, {TQSFALayout::PA_BSND}},
-    {VALUE_NAME, {TQSFALayout::PA_BSND}},
+    {KEY_NAME, {TQSFALayout::PA_BSND, TQSFALayout::PA_BNBD}},
+    {VALUE_NAME, {TQSFALayout::PA_BSND, TQSFALayout::PA_BNBD}},
     {ATTEN_OUT_NAME, {TQSFALayout::TND}},
 };
 
@@ -100,12 +101,14 @@ static const std::map<TQSFALayout, std::vector<TQSFAAxis>> TQSFA_LAYOUT_AXIS_MAP
     {TQSFALayout::BSND, {TQSFAAxis::B, TQSFAAxis::S, TQSFAAxis::N, TQSFAAxis::D}},
     {TQSFALayout::TND, {TQSFAAxis::T, TQSFAAxis::N, TQSFAAxis::D}},
     {TQSFALayout::PA_BSND, {TQSFAAxis::Bn, TQSFAAxis::Bs, TQSFAAxis::N, TQSFAAxis::D}},
+    {TQSFALayout::PA_BNBD, {TQSFAAxis::Bn, TQSFAAxis::N, TQSFAAxis::Bs, TQSFAAxis::D}},
 };
 
 static const std::map<TQSFALayout, size_t> TQSFA_LAYOUT_DIM_MAP = {
     {TQSFALayout::BSND, DIM_NUM_FOUR},
     {TQSFALayout::TND, DIM_NUM_THREE},
     {TQSFALayout::PA_BSND, DIM_NUM_FOUR},
+    {TQSFALayout::PA_BNBD, DIM_NUM_FOUR},
 };
 
 static std::string TQSFADataTypeToSerialString(ge::DataType type)
@@ -128,6 +131,8 @@ std::string TQSFALayoutToSerialString(TQSFALayout layout)
             return "TND";
         case TQSFALayout::PA_BSND:
             return "PA_BSND";
+        case TQSFALayout::PA_BNBD:
+            return "PA_BNBD";
         default:
             return "UNKNOWN";
     }
@@ -187,9 +192,11 @@ ge::graphStatus TQSFAMlaTiling::GetPlatformInfo()
 void TQSFAMlaTiling::GenTilingKey()
 {
     uint32_t layoutQuery = static_cast<uint32_t>(qsfaInfo_->qLayout);
-    uint32_t layoutKV = static_cast<uint32_t>(qsfaInfo_->kvLayout);
+    // N=1 makes both contiguous layouts byte-identical; preserve the existing kernel key.
+    uint32_t layoutKV = qsfaInfo_->kvLayout == TQSFALayout::PA_BNBD ? static_cast<uint32_t>(TQSFALayout::PA_BSND) :
+                                                                      static_cast<uint32_t>(qsfaInfo_->kvLayout);
     uint32_t pageAttention = 0U;
-    if (qsfaInfo_->kvLayout == TQSFALayout::PA_BSND) {
+    if (layoutKV == static_cast<uint32_t>(TQSFALayout::PA_BSND)) {
         pageAttention = 1U;
     }
 
@@ -219,7 +226,10 @@ void TQSFAMlaTiling::CalcUbBmm()
     qPreSizeMla_ = qsfaInfo_->gSize * (headDimAlign_ + qsfaInfo_->ropeHeadDim) * qsfaInfo_->s1Size;
 }
 
-void TQSFAMlaTiling::CheckUbSpace() { CalcUbBmm(); }
+void TQSFAMlaTiling::CheckUbSpace()
+{
+    CalcUbBmm();
+}
 
 void TQSFAMlaTiling::CalcInnerSize(uint32_t qsfaS2Size)
 {
@@ -254,7 +264,10 @@ void TQSFAMlaTiling::SplitBalanced()
     usedCoreNum_ = aicNum_;
 }
 
-void TQSFAMlaTiling::Split() { SplitBalanced(); }
+void TQSFAMlaTiling::Split()
+{
+    SplitBalanced();
+}
 
 void TQSFAMlaTiling::FillTilingBaseParamsMla()
 {
@@ -262,6 +275,7 @@ void TQSFAMlaTiling::FillTilingBaseParamsMla()
     tilingData_.baseParams.set_seqSize(qsfaInfo_->s2Size);
     tilingData_.baseParams.set_qSeqSize(qsfaInfo_->s1Size);
     tilingData_.baseParams.set_blockSize(qsfaInfo_->blockSize);
+    tilingData_.baseParams.set_keyStride0(qsfaInfo_->keyStride0);
     tilingData_.baseParams.set_maxBlockNumPerBatch(qsfaInfo_->maxBlockNumPerBatch);
     tilingData_.baseParams.set_scaleValue(qsfaInfo_->scaleValue);
     tilingData_.baseParams.set_nNumOfQInOneGroup(qsfaInfo_->n1Size / qsfaInfo_->n2Size);
@@ -297,7 +311,10 @@ void TQSFAMlaTiling::FillTilingSplitKVMla()
     }
 }
 
-void TQSFAMlaTiling::FillTilingSingleCoreParamsMla() { tilingData_.singleCoreParams.set_usedCoreNum(usedCoreNum_); }
+void TQSFAMlaTiling::FillTilingSingleCoreParamsMla()
+{
+    tilingData_.singleCoreParams.set_usedCoreNum(usedCoreNum_);
+}
 
 void TQSFAMlaTiling::FillTilingSingleCoreTensorSizeMla()
 {
@@ -331,7 +348,10 @@ void TQSFAMlaTiling::NormalCalcFDWorkSpace(const uint32_t actCoreNum)
     }
 }
 
-void TQSFAMlaTiling::CalcFDWorkSpace(const uint32_t actCoreNum) { NormalCalcFDWorkSpace(actCoreNum); }
+void TQSFAMlaTiling::CalcFDWorkSpace(const uint32_t actCoreNum)
+{
+    NormalCalcFDWorkSpace(actCoreNum);
+}
 
 void TQSFAMlaTiling::GetWorkspaceSize()
 {
@@ -381,10 +401,17 @@ ge::graphStatus TQSFAMlaTiling::DoOpTiling(TQSFATilingInfo *qsfaInfo)
         return ge::GRAPH_FAILED;
     }
     InitParams();
-    Split();
+    if (qsfaInfo_->qTSize == 0) {
+        // Keep a valid launch dimension; the entry exits before using buffers or workspace.
+        usedCoreNum_ = 1;
+        tilingData_.innerSplitParams.set_mBaseSize(0);
+        tilingData_.innerSplitParams.set_s2BaseSize(0);
+    } else {
+        Split();
+        GetWorkspaceSize();
+    }
     FillTiling();
     CalcBlockDim();
-    GetWorkspaceSize();
     GenTilingKey();
 
     if ((SetBlockDim(blockDim_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
@@ -428,6 +455,8 @@ ge::graphStatus TQSFATilingCheck::GetExpectedShape(gert::Shape &shapeExpected,
         shapeExpected = gert::Shape({param.T, param.N, param.D});
     } else if (layout == TQSFALayout::PA_BSND) {
         shapeExpected = gert::Shape({param.Bn, param.Bs, param.N, param.D});
+    } else if (layout == TQSFALayout::PA_BNBD) {
+        shapeExpected = gert::Shape({param.Bn, param.N, param.Bs, param.D});
     } else {
         OP_LOGE(opName_, "layout %s is unsupported", TQSFALayoutToSerialString(layout).c_str());
         return ge::GRAPH_FAILED;
@@ -634,7 +663,7 @@ ge::graphStatus TQSFATilingCheck::CheckSinglePara() const
 
 ge::graphStatus TQSFATilingCheck::CheckParaExistenceMlaAntiquant() const
 {
-    // KV 仅支持 PA_BSND，两个输入均为必需。
+    // Both paged KV layouts require actual sequence lengths and block tables.
     OP_CHECK_IF(opParamInfo_.actualSeqLengths.tensor == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName_, "actualSeqLengthsKv invalid"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName_, "blockTable invalid"),
@@ -642,9 +671,15 @@ ge::graphStatus TQSFATilingCheck::CheckParaExistenceMlaAntiquant() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSFATilingCheck::CheckParaExistenceMla() const { return CheckParaExistenceMlaAntiquant(); }
+ge::graphStatus TQSFATilingCheck::CheckParaExistenceMla() const
+{
+    return CheckParaExistenceMlaAntiquant();
+}
 
-ge::graphStatus TQSFATilingCheck::CheckParaExistence() { return CheckParaExistenceMla(); }
+ge::graphStatus TQSFATilingCheck::CheckParaExistence()
+{
+    return CheckParaExistenceMla();
+}
 
 static ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, const std::string &name,
                                            const char *opName)
@@ -866,7 +901,7 @@ ge::graphStatus TQSFATilingCheck::CheckFeatureMlaAntiquantShapeSizes() const
 {
     OP_CHECK_IF(bSize_ <= 0, OPS_REPORT_VECTOR_INNER_ERR(opName_, "batch_size invalid"), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(qTSize_ <= 0 && (qLayout_ == TQSFALayout::TND),
+    OP_CHECK_IF(opParamInfo_.query.shape->GetStorageShape().GetDim(0) < 0 && (qLayout_ == TQSFALayout::TND),
                 OPS_REPORT_VECTOR_INNER_ERR(opName_, "T_size of query invalid"), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(n1Size_ <= 0, OPS_REPORT_VECTOR_INNER_ERR(opName_, "q_head_num invalid"), return ge::GRAPH_FAILED);
@@ -901,7 +936,7 @@ ge::graphStatus TQSFATilingCheck::CheckFeatureMlaAntiquantShapeSparseAndHeadDim(
     // slot 字节数由上述头维派生，三者必须自洽；不等即说明布局协议被改动。
     OP_CHECK_IF(kvLoraRank / 2U + static_cast<uint32_t>(ropeHeadDim_) * 2U + 2U != TQ4_KV_SLOT_BYTES,
                 OPS_REPORT_VECTOR_INNER_ERR(opName_, "kv slot layout invalid"), return ge::GRAPH_FAILED);
-    uint32_t tq4SlotBytes = kvLoraRank / 2 + ropeHeadDim_ * NUM_BYTES_BF16 + NUM_BYTES_FLOAT16;
+    uint32_t tq4SlotBytes = kvLoraRank / 2 + ropeHeadDim_ * NUM_BYTES_16BIT + NUM_BYTES_FLOAT16;
     uint32_t expectedKHeadDim = tq4SlotBytes;
     OP_CHECK_IF(kHeadDim_ != expectedKHeadDim, OPS_REPORT_VECTOR_INNER_ERR(opName_, "kHeadDim_ invalid"),
                 return ge::GRAPH_FAILED);
@@ -923,12 +958,10 @@ ge::graphStatus TQSFATilingCheck::CheckFeatureMlaAntiquantLayout() const
 
 ge::graphStatus TQSFATilingCheck::CheckFeatureMlaAntiquantDtype() const
 {
-    // 算子声明与 DTYPE_SUPPORT_MAP 均仅支持 BFLOAT16，此处同口径收窄，
-    // 避免 feature checker 放行 FP16 而由上游 dtype 校验兜底的语义矛盾。
-    OP_CHECK_IF(inputQType_ != ge::DT_BF16,
+    OP_CHECK_IF(inputQType_ != ge::DT_FLOAT16 && inputQType_ != ge::DT_BF16,
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, QUERY_NAME.c_str(),
                                                       TQSFADataTypeToSerialString(inputQType_).c_str(),
-                                                      "The dtype of query must be DT_BF16"),
+                                                      "The dtype of query must be DT_FLOAT16 or DT_BF16"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(inputKvType_ != ge::DT_INT8, OPS_REPORT_VECTOR_INNER_ERR(opName_, "key and value invalid"),
@@ -996,9 +1029,15 @@ ge::graphStatus TQSFATilingCheck::CheckFeatureMlaAntiquant() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSFATilingCheck::CheckFeatureMla() const { return CheckFeatureMlaAntiquant(); }
+ge::graphStatus TQSFATilingCheck::CheckFeatureMla() const
+{
+    return CheckFeatureMlaAntiquant();
+}
 
-ge::graphStatus TQSFATilingCheck::CheckFeature() const { return CheckFeatureMla(); }
+ge::graphStatus TQSFATilingCheck::CheckFeature() const
+{
+    return CheckFeatureMla();
+}
 
 void TQSFATilingCheck::Init()
 {
@@ -1310,20 +1349,18 @@ ge::graphStatus TQSFAInfoParser::GetS1Size()
 
 ge::graphStatus TQSFAInfoParser::GetKvLayout()
 {
-    // 仅 PA_BSND 可达：非 PA_BSND 的 KV 要求与 query 同 layout，而 query 限定为 TND，
-    // TND 的 KV 又无对应实现，故此处不再接受其它取值。
-    const map<string, TQSFALayout> layoutKVMap = {{"PA_BSND", TQSFALayout::PA_BSND}};
+    const map<string, TQSFALayout> layoutKVMap = {{"PA_BSND", TQSFALayout::PA_BSND}, {"PA_BNBD", TQSFALayout::PA_BNBD}};
 
     std::string layout(opParamInfo_.layoutKV);
     auto it = layoutKVMap.find(layout);
     if (it != layoutKVMap.end()) {
         kvLayout_ = it->second;
     } else {
-        OPS_REPORT_VECTOR_INNER_ERR(opName_, "KV invalid");
+        OPS_REPORT_VECTOR_INNER_ERR(opName_, "layout_kv must be PA_BSND or PA_BNBD");
         return ge::GRAPH_FAILED;
     }
     uint32_t keyDimNum = opParamInfo_.key.shape->GetStorageShape().GetDimNum();
-    if (kvLayout_ == TQSFALayout::PA_BSND && keyDimNum != 4U) {
+    if (keyDimNum != DIM_NUM_FOUR) {
         OPS_REPORT_VECTOR_INNER_ERR(opName_, "key invalid");
         return ge::GRAPH_FAILED;
     }
@@ -1373,7 +1410,7 @@ ge::graphStatus TQSFAInfoParser::GetS2SizeForPageAttention()
 
 ge::graphStatus TQSFAInfoParser::GetS2Size()
 {
-    // KV 仅支持 PA_BSND：S2 = block_table.dim1 * block_size
+    // Paged KV: S2 = block_table.dim1 * block_size.
     return GetS2SizeForPageAttention();
 }
 
@@ -1471,6 +1508,47 @@ ge::graphStatus TQSFAInfoParser::GetShapeAndSizeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus TQSFAInfoParser::GetCacheStrides()
+{
+    for (const uint32_t inputIndex : {KEY_INPUT_INDEX, VALUE_INPUT_INDEX}) {
+        const auto &shape = inputIndex == KEY_INPUT_INDEX ? keyShape_ : valueShape_;
+        const auto *stride = context_->GetInputStride(inputIndex);
+        const bool hasStride = stride != nullptr && stride->GetDimNum() != 0;
+        OP_CHECK_IF(shape.GetDimNum() != DIM_NUM_FOUR || shape.GetDim(0) <= 0,
+                    OPS_REPORT_VECTOR_INNER_ERR(opName_, "KV cache must be rank 4 with nonempty blocks."),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(hasStride && stride->GetDimNum() != DIM_NUM_FOUR,
+                    OPS_REPORT_VECTOR_INNER_ERR(opName_, "KV cache stride must be rank 4."), return ge::GRAPH_FAILED);
+
+        int64_t pageBytes = 1;
+        for (int32_t axis = DIM_NUM_FOUR - 1; axis > 0; --axis) {
+            const int64_t dim = shape.GetDim(axis);
+            OP_CHECK_IF(dim <= 0 || pageBytes > std::numeric_limits<int64_t>::max() / dim,
+                        OPS_REPORT_VECTOR_INNER_ERR(opName_, "KV cache page size is invalid."),
+                        return ge::GRAPH_FAILED);
+            // Singleton dimensions do not constrain the physical layout.
+            OP_CHECK_IF(
+                hasStride && dim > 1 && stride->GetStride(axis) != pageBytes,
+                OPS_REPORT_VECTOR_INNER_ERR(
+                    opName_, "KV cache only supports non-contiguous tensor on axis 0; each page must be contiguous."),
+                return ge::GRAPH_FAILED);
+            pageBytes *= dim;
+        }
+        // Cache dtype is INT8, so strides are also byte offsets.
+        const int64_t stride0 = hasStride ? stride->GetStride(0) : pageBytes;
+        const int64_t pages = shape.GetDim(0);
+        OP_CHECK_IF(stride0 < 0 || (pages > 1 && stride0 < pageBytes),
+                    OPS_REPORT_VECTOR_INNER_ERR(opName_, "KV cache pages must not overlap."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(pages > 1 && stride0 > (std::numeric_limits<int64_t>::max() - pageBytes) / (pages - 1),
+                    OPS_REPORT_VECTOR_INNER_ERR(opName_, "KV cache address span exceeds INT64_MAX."),
+                    return ge::GRAPH_FAILED);
+        if (inputIndex == KEY_INPUT_INDEX) {
+            keyStride0_ = stride0;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 void TQSFAInfoParser::GenerateInfo(TQSFATilingInfo &qsfaInfo)
 {
     qsfaInfo.opName = opName_;
@@ -1500,6 +1578,7 @@ void TQSFAInfoParser::GenerateInfo(TQSFATilingInfo &qsfaInfo)
     qsfaInfo.totalBlockNum = opParamInfo_.key.shape->GetStorageShape().GetDim(0);
     qsfaInfo.scaleValue = *opParamInfo_.scaleValue;
     qsfaInfo.blockSize = blockSize_;
+    qsfaInfo.keyStride0 = keyStride0_;
     qsfaInfo.blockTypeSize = sizeof(float);
     qsfaInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
 
@@ -1536,7 +1615,7 @@ void TQSFAInfoParser::FillTilingInfoAttrsAndLayouts(TQSFATilingInfo &qsfaInfo)
     uint32_t tileSize = static_cast<uint32_t>(qsfaInfo.tileSize);
     if (qHeadDim_ > qsfaInfo.ropeHeadDim && tileSize > 0) {
         uint32_t kvLoraRank = qHeadDim_ - qsfaInfo.ropeHeadDim;
-        qsfaInfo.dSizeVInput = kvLoraRank / 2 + qsfaInfo.ropeHeadDim * NUM_BYTES_BF16 + NUM_BYTES_FLOAT16;
+        qsfaInfo.dSizeVInput = kvLoraRank / 2 + qsfaInfo.ropeHeadDim * NUM_BYTES_16BIT + NUM_BYTES_FLOAT16;
     } else {
         qsfaInfo.dSizeVInput = dSizeKV_;
     }
@@ -1562,7 +1641,7 @@ ge::graphStatus TQSFAInfoParser::Parse(TQSFATilingInfo &qsfaInfo)
         return ge::GRAPH_FAILED;
     }
 
-    if (ge::GRAPH_SUCCESS != GetActualseqInfo()) {
+    if (ge::GRAPH_SUCCESS != GetCacheStrides() || ge::GRAPH_SUCCESS != GetActualseqInfo()) {
         return ge::GRAPH_FAILED;
     }
 

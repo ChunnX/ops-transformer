@@ -177,6 +177,7 @@ struct ConstInfo {
     uint64_t kvSeqSize = 0ULL;        // kv最大S长度
     uint64_t qSeqSize = 1ULL;         // q最大S长度
     int64_t kvCacheBlockSize = 0;     // PA场景的block size
+    int64_t keyStride0 = 0;           // Physical cache page stride in bytes.
     uint32_t maxBlockNumPerBatch = 0; // PA场景的最大单batch block number
     uint32_t splitKVNum = 0U;         // S2核间切分的切分份数
     QSFA_LAYOUT outputLayout;         // 输出的Transpose格式
