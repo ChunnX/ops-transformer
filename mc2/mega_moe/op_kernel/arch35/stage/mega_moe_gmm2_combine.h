@@ -62,6 +62,29 @@ __aicore__ inline uint64_t GetCombineDstRowIndex(const CombineTokenRoute &route,
     return static_cast<uint64_t>(route.tokenIdx) * params.tilingData->topK + route.topkIdx;
 }
 
+// 为 tile 内每个 token 行发送一段有效的 GMM2 tile 数据。
+template <typename ElementMMadOut2, typename BlockShape>
+__aicore__ inline void CombineTokens(uint32_t nLoc, uint32_t n, LocalTensor<int32_t> &metaInfoTensor,
+                                     LocalTensor<ElementMMadOut2> &l0cOutUbGMM2, BlockShape &actualBlockShape,
+                                     uint32_t ubTileN, const Params &params)
+{
+    // 调用方在进入该数据操作前，保证批量加载的 metadata 对 Scalar 可见。
+    int32_t lenTile = Get<M_VALUE>(actualBlockShape);
+    AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
+    uint64_t gmRemoteBaseOffset =
+        static_cast<uint64_t>(params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr);
+    AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
+    ub2GmParams.blockCount = 1;
+    ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
+    for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
+        CombineTokenRoute route = LoadCombineTokenRoute(metaInfoTensor, static_cast<uint32_t>(tileIdx));
+        gmRemoteD.SetGlobalBuffer(
+            reinterpret_cast<__gm__ ElementMMadOut2 *>(GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
+        uint64_t gmDstOffset = GetCombineDstRowIndex(route, params) * n + nLoc;
+        AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * ubTileN], ub2GmParams);
+    }
+}
+
 // 发送一行完整的 Combine 数据，BF16 与 FP8 记录复用相同的定长搬运流程。
 template <typename Element>
 __aicore__ inline void SendCombineTokenRow(uint32_t rowElements, uint64_t gmRemoteBaseOffset,
@@ -233,8 +256,6 @@ constexpr uint32_t WAVE_COMBINE_MIN_ROW_BUFFER_COUNT = 2U;
 constexpr uint32_t WAVE_COMBINE_STEADY_ROW_BUFFER_COUNT = 1U;
 constexpr uint32_t WAVE_COMBINE_MAX_ROW_BUFFER_COUNT = 6U;
 constexpr uint32_t WAVE_COMBINE_UB_BASE = 64U * 1024U;
-// Event pairs rotate independently of the full-tile UB row addresses.
-constexpr uint32_t NO_QUANT_COMBINE_EVENT_COUNT = 4U;
 // [64 KiB, 184 KiB) is dedicated to the Combine row ring and quant scratch.
 // The ready scan starts at 184 KiB, so adaptive row buffers must stay below it.
 constexpr uint32_t WAVE_COMBINE_UB_LIMIT = 184U * 1024U;
@@ -571,91 +592,45 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
     }
 }
 
-// Each row has its own UB storage for the lifetime of the tile.
-template <typename ElementC>
-__aicore__ inline void SendNoQuantCombineTileRow(uint32_t nLoc, uint32_t n, uint32_t actualN,
-                                               LocalTensor<int32_t> &metaInfoTensor, uint32_t localRowIdx,
-                                               LocalTensor<ElementC> &tileUb, uint32_t rowCount,
-                                               GlobalTensor<ElementC> &gmm2OutGm, uint64_t gmSrcOffset,
-                                               const Params &params, uint64_t gmRemoteBaseOffset,
-                                               GlobalTensor<ElementC> &gmRemoteD)
-{
-    TEventID eventId = static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) +
-                                            localRowIdx % NO_QUANT_COMBINE_EVENT_COUNT);
-    CombineImpl::CombineTokenRoute route = CombineImpl::LoadCombineTokenRoute(metaInfoTensor, localRowIdx);
-    gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(
-        GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
-    uint64_t gmDstOffset = CombineImpl::GetCombineDstRowIndex(route, params) * n + nLoc;
-    LocalTensor<ElementC> rowUb = tileUb[localRowIdx * L1_TILE_N];
-    DataCopyExtParams copyParams{1U, static_cast<uint32_t>(actualN * sizeof(ElementC)), 0U, 0U, 0U};
-    DataCopyPadExtParams<ElementC> padParams{false, 0U, 0U, 0U};
-    DataCopyPad(rowUb, gmm2OutGm[gmSrcOffset], copyParams, padParams);
-    // Reuse a ready event only after MTE3 consumed its previous generation. The
-    // acknowledgement precedes that row's send; UB rows themselves are never reused.
-    if (localRowIdx >= NO_QUANT_COMBINE_EVENT_COUNT) {
-        WaitFlag<HardEvent::MTE3_MTE2>(eventId);
-    }
-    SetFlag<HardEvent::MTE2_MTE3>(eventId);
-    WaitFlag<HardEvent::MTE2_MTE3>(eventId);
-    if (localRowIdx + NO_QUANT_COMBINE_EVENT_COUNT < rowCount) {
-        SetFlag<HardEvent::MTE3_MTE2>(eventId);
-    }
-    DataCopyPad(gmRemoteD[gmDstOffset], rowUb, copyParams);
-}
-
-// All rows remain intact in UB until the tile's final send completes.
-__aicore__ inline void DrainNoQuantCombineTile()
-{
-    SetFlag<HardEvent::MTE3_S>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE3_S>(EVENT_ID0);
-}
-
-// Each AIV1 replays its paired AIC's tile assignment and sends all rows of each owned tile.
-// Load metadata once, then issue paired row GM2UB/UB2GM into distinct rows of a full-tile UB buffer.
-// There is no stage ring or per-row Scalar wait; drain only at the tile boundary, without DDR DSB.
-template <typename ElementC, typename Scheduler, typename Config>
-__aicore__ inline void CombineTokenRange(Scheduler &scheduler, const Params &params,
+// 非量化 Combine 的统一入口。AIV1 直接使用 GMM2 已构造的 scheduler，逐 tile 等待配对 AIC 并消费。
+// 当前 GMM2 problem 的起始地址和 M 大小共同限定 token 范围，无需再次遍历专家或重建 scheduler。
+// UB 从 64 KiB 起步，避开 AIV1 Dispatch 跨 wave 保留在低区的 cumsum 状态。
+template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config>
+__aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm, const Params &params,
                                          const GMMAddrInfo &gmmAddrInfo, int32_t &gmTileSequence, const Config &config,
                                          uint32_t startLoopIdx, uint32_t tileNum)
 {
-    uint64_t gmRemoteBaseOffset =
-        static_cast<uint64_t>(params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr);
-    GlobalTensor<ElementC> gmRemoteD;
-    GlobalTensor<ElementC> gmm2OutGm;
-    gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(gmmAddrInfo.gmm2OutGlobal));
-    GlobalTensor<int32_t> metaInfoGm;
-    metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(gmmAddrInfo.metaInfoGlobal));
-    // This paired path does not use the wave-ready scan at 184 KiB. A BF16 256x256
-    // tile occupies [64, 192) KiB, below metadata at 200 KiB, as in the baseline.
-    static_assert(L1_TILE_M_256 * L1_TILE_N * sizeof(ElementC) <=
-                  META_INFO_TENSOR_ADDR - WAVE_COMBINE_UB_BASE, "Combine tile overlaps metadata");
-    LocalTensor<ElementC> tileUb(TPosition::VECIN, WAVE_COMBINE_UB_BASE,
-                                L1_TILE_M_256 * L1_TILE_N);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
-        uint32_t lenTile = static_cast<uint32_t>(Get<M_VALUE>(actualShape));
-        uint32_t actualN = static_cast<uint32_t>(Get<N_VALUE>(actualShape));
+
         int32_t expectedReadySequence = gmTileSequence + 1;
         WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag, expectedReadySequence);
-        gmTileSequence = expectedReadySequence;
-        if (lenTile == 0U || actualN == 0U) {
-            continue;
-        }
-        LocalTensor<int32_t> metaInfoTensor =
-            LocalTensor<int32_t>(TPosition::VECIN, META_INFO_TENSOR_ADDR, lenTile * META_INFO_SIZE);
-        DataCopy(metaInfoTensor, metaInfoGm[static_cast<uint64_t>(mLoc) * META_INFO_SIZE], lenTile * META_INFO_SIZE);
-        SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
+        auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
+                                            Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+        constexpr uint32_t tileUbBase = WAVE_COMBINE_UB_BASE;
+        auto layoutTileUb = MakeLayoutC{}(config.tileM, L1_TILE_N);
+        auto tensorBlockUb = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(tileUbBase), layoutTileUb);
+        LocalTensor<ElementC> tileUb = LocalTensor<ElementC>(TPosition::VECIN, tileUbBase, config.tileM * L1_TILE_N);
+        auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
+        AscendC::Te::Copy(copyGM2UB, tensorBlockUb, tensorBlockGm);
 
-        for (uint32_t rowIdx = 0U; rowIdx < lenTile; ++rowIdx) {
-            uint64_t gmSrcOffset = (static_cast<uint64_t>(mLoc) + rowIdx) * config.n + nLoc;
-            SendNoQuantCombineTileRow<ElementC>(nLoc, config.n, actualN, metaInfoTensor, rowIdx,
-                tileUb, lenTile, gmm2OutGm, gmSrcOffset, params, gmRemoteBaseOffset, gmRemoteD);
-        }
-        DrainNoQuantCombineTile();
+        int32_t lenTile = Get<M_VALUE>(actualShape);
+        GlobalTensor<int32_t> metaInfoGm;
+        LocalTensor<int32_t> metaInfoTensor =
+            LocalTensor<int32_t>(TPosition::VECCALC, META_INFO_TENSOR_ADDR, lenTile * META_INFO_SIZE);
+        metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+            gmmAddrInfo.metaInfoGlobal + static_cast<uint64_t>(mLoc) * META_INFO_SIZE * sizeof(int32_t)));
+        AscendC::DataCopy(metaInfoTensor, metaInfoGm, lenTile * META_INFO_SIZE);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+        CombineImpl::CombineTokens<ElementC, decltype(actualShape)>(nLoc, config.n, metaInfoTensor, tileUb, actualShape,
+                                                                    L1_TILE_N, params);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+        gmTileSequence = expectedReadySequence;
     }
 }
 
@@ -784,8 +759,9 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &
         }
     } else if constexpr (NotifyCombineTileReady) {
         if (GetSubBlockIdx() == 1U) {
-            CombineTokenRange<ElementC>(workSet.scheduler, *params, gmmAddrInfo, *gmTileSequence, config,
-                                       startLoopIdx, tileNum);
+            using MakeLayoutC = typename KernelConfig::MakeLayoutC;
+            CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo,
+                                                     *gmTileSequence, config, startLoopIdx, tileNum);
         }
     }
 }
@@ -841,8 +817,9 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
             BlockPrologue blockPrologue;
             Gmm2Aiv0PrologueA8W4(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
         } else if constexpr (NotifyCombineTileReady) {
-            CombineTokenRange<ElementC>(workSet.scheduler, *params, gmmAddrInfo, *gmTileSequence, config,
-                                       startLoopIdx, tileNum);
+            using MakeLayoutC = typename KernelConfig::MakeLayoutC;
+            CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo,
+                                                     *gmTileSequence, config, startLoopIdx, tileNum);
         }
     }
 }
