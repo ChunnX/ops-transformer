@@ -78,7 +78,7 @@ __simd_vf__ inline void GmmSituVf(__ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTy
             uint32_t l0cOutOffset = mIdx * nSrcUbAligned + vfBlockIdx * sizePerRepeat;
 
             AscendC::MicroAPI::LoadAlign(gateInput, firstSrc + l0cOutOffset);
-            MicroAPI::Muls(gateInput, gateInput, mulFactor, mask);
+            AscendC::MicroAPI::Muls(gateInput, gateInput, mulFactor, mask);
 
             AscendC::MicroAPI::Muls(tmp, gateInput, -(scalarTwo / situBeta), mask);
             AscendC::MicroAPI::Exp(tmp, tmp, mask);
@@ -94,7 +94,7 @@ __simd_vf__ inline void GmmSituVf(__ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTy
             AscendC::MicroAPI::Div<float, &DIV_MODE>(gateBranch, gateBranch, tmp, mask);
 
             AscendC::MicroAPI::LoadAlign(upInput, secondSrc + l0cOutOffset);
-            MicroAPI::Muls(upInput, upInput, mulFactor, mask);
+            AscendC::MicroAPI::Muls(upInput, upInput, mulFactor, mask);
 
             AscendC::MicroAPI::Muls(tmp, upInput, -(scalarTwo / situAlpha), mask);
             AscendC::MicroAPI::Exp(tmp, tmp, mask);
