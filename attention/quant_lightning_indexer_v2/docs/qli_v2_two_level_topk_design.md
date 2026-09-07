@@ -127,7 +127,7 @@ dtype/精度约束：score 全程 fp32（现有路径不变）；块化 amax 与
 
 **功能验收**（mode=3 回归为正确性门禁，非性能）：
 - candidate_mode ∈ {1, 2, 3}；mode=3 输出与现网 bit 级一致（回归，默认值保证既有调用零影响）。
-- **layout_q 仅 BSND**（用户指定本轮范围；layout_k = PA_BBND，910b 仅支持 PA）。TND 既有路径不动、本轮不覆盖不回归。
+- **layout_q：BSND（本轮已实现）+ TND（2026-09-07 需求追加，见 §11）**；layout_k = PA_BBND（BSND 时）或 TND（TND 时，cu_seqlens_k 变长拼接）。**key 0 轴非连续**（PA_BBND 第 0 维 stride > 块逻辑大小）为追加需求，参照 arch35 机制（§11.2）。
 - mask_mode ∈ {0, 3}；**cmp_ratio ∈ {1, 2}**（用户指定重点场景，见 §6.6）。
 - **q_head_num 仅测 32**（用户指定：所有 candidate 用例统一 g=32，不再覆盖 64；A1/A2 改造后 g=64 逻辑路径不变，由既有 910b 用例回归兜底）。
 - **topk 动态值**：topk ∈ [1, 2048] 任意值，含 topk = min(index_topk, actS2Size) 语义（等价性验证，无代码改动）。
@@ -387,7 +387,8 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 |---|---|
 | candidate_mode | 0 / 1 / 2 |
 | cmp_ratio | **1 / 2**（用户指定两类场景） |
-| layout_q × layout_k | BSND×PA（q 仅 BSND，用户指定本轮范围） |
+| layout_q × layout_k | BSND×PA（已实现）+ **TND×TND**（§11，cu_seqlens_q/k 变长拼接，q=TND/k=PA 组合不支持——PA 依赖 block_table 与 TND 前缀语义冲突） |
+| key 0 轴 stride | **紧凑（stride == 块大小，已实现）+ 非连续（stride > 块大小，§11，key 与 k_scale 均需）** |
 | q_head_num | **仅 32**（用户指定；全部 candidate 用例统一 g=32，A1 推导下 mBase=128，重点验分核对齐） |
 | topk（动态） | 2048 / **min(index_topk, actS2Size) 场景**（topk<2048，验证 -1 padding 与 min 等价性） |
 | 阶段 × mask_mode（按模型分支联动） | decode(S1=1)×mode0；prefill 首块(S1>1)×mode3（行级 pin）；~~mid-chunk prefill×mode0~~（**暂不测试，问题保留见 R5/§5.0 O3，问题解决后补测**） |
@@ -395,7 +396,7 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 | S2 对齐 | actS2Size%8=0 / ≠0（含 actS2Size=1） |
 | B | 1 / 4（变长 batch） |
 | topk_blocks | 2048 全量 + **pin 用例 64**（host 已放宽为 (0,2048] 内 64 的倍数；`numBlocks > topk_blocks` 时 pin 最新块必须入选，单/多 tile 各 1 用例） |
-| S2 大规模（生产规格） | **16K**（2048 块恰好装满 2048 槽，精确边界）/ **128K × B=2** / **1M**（131072 块，pin 硬性生效）；key pool **[7936,128,1,128]**（PA_BBND），block_table **[B,1055]**（首维=batch，置换非恒等映射；1M 场景 pool 放大 [8192,128,1,128]、表 [1,8192]，7936×128<1M 装不下） |
+| S2 大规模（生产规格） | **16K / 128K / 1M 直接作为 pytest 用例并入矩阵**（2026-09-07 用户要求，不再独立脚本）：16K（2048 块恰好装满 2048 槽，精确边界）、128K（B=1 与 B=2 变长）、1M（131072 块，pin（强制保留最新 token 所在块）硬性生效）；key pool **[7936,128,1,128]**、block_table **[B,1055]**（首维=batch，置换非恒等映射）；1M 场景 pool 放大 **[8192,128,1,128]**、表 [1,8192]（7936×128 < 1M 装不下）。**超大行数 CPU 全量 golden 不可行 → 抽样行官方规则比对 + 全行有效性检查**（见 §6.6），独立大 shape 脚本降级为设备侧深检工具（非门禁） |
 
 重点组合：mode1+尾块不对齐+causal、**mode1+prefill 首块（验证行级 pin：不同行 pin 不同块）**、mode2+causal、`numBlocks ≤ topkBlocks` 时 mode=2 与 mode=3 的等价性（mask 全选）、**全部用例统一 g=32（mBase=128 分核对齐，A1 推导的本命规格）**、**topk=min(2048, actS2Size) 与 topk=2048+滤-1 的等价性**、mode1+多核（B>1 触发行间切分，验证各核独立直出正确）、cmp_ratio=2 下块划分与 pin（actS2Size 为压缩后长度，cmp_residual_k 参与原始长度还原）。
 
@@ -453,7 +454,15 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 
 ---
 
-## 7. 风险与开放问题
+### 6.6 大 shape 用例的抽样比对机制（harness，2026-09-07）
+
+16K/128K/1M 用例并入 pytest 后，CPU 全量 golden（参考真值）不可行（1M 行 × 1M 位置 × 32 头 ≈ 数十 Tflop），采用：
+1. **抽样行官方规则比对**：每 batch 固定行 + 等分行 + 固定 seed 随机行（1M 约 16 行、16K/128K 约 32 行），逐行计算 golden（逐行 matmul：q 行向量 [G,D] × k 段 [S2,D]，秒级/行）并按 §6.2 两级规则比对；抽样覆盖 vl（valid length，行级有效长度）极小（首行）/中间/极大（末行）；
+2. **全行有效性检查**（numpy 向量化）：sparse_indices（稀疏索引输出）∈ [-1, S2)、candidate_topk_index（候选块索引输出）∈ [-1, numBlocks)、mode=2 输出第三元为空；
+3. **pin（强制保留最新 token 所在块）检查**：numBlocks > candidate_topk_blocks 的抽样行必须含最新块；
+4. **双跑确定性**：大 shape 用例二次运行抽样行逐元素一致。
+
+### 7. 风险与开放问题
 
 | # | 风险/问题 | 影响 | 缓解 |
 |---|---|---|---|
@@ -461,6 +470,10 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 | R2 | Sort32/MrgSort 降序假设不成立 | 整体语义反转 | 验证点 V1：实现前单测确认 API 排序方向 |
 | R3 | g=32 改动触碰 `mBaseSize/s1BaseSize` 推导，影响分核与循环边界（kernel 与 metadata 基准必须一致） | g=32 分核错乱/越界 | 对齐 v1 推导（§3.1）+ `cand_r1_mode1_g32` 用例 + g=64 全量回归（推导变更影响既有路径，mode=0 也需回归） |
 | R4 | source/consumer 的 block_size 不一致（跨算子约定） | 语义错乱 | 文档强约束 + torch 层断言（`quant_lightning_indexer.candidate` python 封装内校验，§4.3） |
+| **R6（2026-09-07 实测，未解）** | **mode=2 大 shape（S2≥128K prefill）candBuf 被中途污染**：tile0 排序后窗口值与输入候选不符（实测 w1525 位型漂移），致掩蔽窗口错误、topk 混入候选外 -inf 位置；pytest（S2≤20K）与 16K 不触发，128K 必现。已排除：加载（DataCopyPad 抽验一致）、排序、窗口 lo/hi、Brcb/Mins、score' 掩蔽、行末累加器（全部实测正确）；二分至主路径 SortAll/MergeSort 跳过后仍污染——凶手在 tile0 排序后至 tile1 之间的其余指令（pen/idxPen/GetKeyScale/Cast(isOutI32) 等），待专项定位 | mode=2 大 shape 暂列 known issue；生产启用 mode=2 + S2≥128K 前必须修复 |
+| R7（§11） | TND 下 candidateOutOffset 与 cuS1Idx 双重前缀（两者均含 cu_seqlens_q 前缀则行号翻倍） | 偏移结构与主输出 indiceOutOffset 完全同构（前缀在 offset、行号 batch 内），理论无双重；tnd_m1_decode 用例显式验证 GM 行对位 |
+| R8（§11） | keyStride0 改造影响现网紧凑场景（PA 现网假设 stride==块大小） | keyStride0==0 或 ==紧凑值时走原公式兜底，现网行为 bit 级不变；pa_gap_m3_regress 回归 |
+| R9（§11.6） | **output_idx_offset 在 arch22 为死参数**（入口收指针未绑定未消费，host 校验完整但合法值被静默忽略）；调用方传非零偏移时 sparse_indices 不含偏移 → 上层绝对位置还原错误 | A15 对齐 arch35 使能；与 candidate 的契约：offset 仅作用于 sparse_indices，candidate_topk_index 保持相对块号（source 输出取加 offset 前），避免 mode=2 掩蔽整行错位 |
 | **R5（标红，O3 未决）** | **mid-chunk prefill（start_pos≠0 且 S1>1）形态下模型不做行内因果 mask，与常规认知相反**；该调用形态是否存在未确认 | 若误当作 bug "修复"（擅自加行级 mask）将引入语义变更；测试碰 mode0+S1>1 数据可能误报精度问题 | **暂不测试该用例，问题保留**（§5.0 O3 标红段）；三不准：不准顺手加 mask / 不准以"常规认知"为 golden / 处理前必须先与模型侧确认调用形态 |
 
 已决策记录：
@@ -487,6 +500,11 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 | `tests/pytest/result_compare_method.py` | `check_result_candidate`（集合比较 + -1 槽核对） |
 | `tests/pytest/qliv2_test_utils.py` | case_name/row 列扩展（candidate 参数入 sidecar） |
 | `README.md`（两算子） | 参数表、约束（block_size 一致性、同 forward 有效期、910b 无 LD 说明） |
+| **A11** arch22 cube/vector：`KeyNd2NzForPA`/`GetKeyScale` 改用 `keyStride0`/`keyDequantScaleStride0`（对齐 arch35，tiling 字段已存在未消费；0 或紧凑值兜底原公式） | key 0 轴非连续 |
+| **A12** op_host tiling.cpp：删除 candidate 的 layout_q=BSND 限制，加 TND 输入校验（cu_seqlens_q 必传） | TND 放行 |
+| **A13** arch22 kernel：验证 TND 下 candidateTopkIndexIn/Out GM offset 与 CleanInvalidOutput 的 TND 输出分支（已有 outputLayout==TND 分支） | TND candidate |
+| **A14** torch_extension：py/csrc 的 TND 分支透传与输出 shape（ConstructOutputTensor 已有 TND 分支） | TND 封装 |
+| **A15** arch22 kernel：使能 output_idx_offset（入口 SetGlobalBuffer + 每行标量读 + 输出前 int32 向量 Adds，参照 arch35 vector:680/856 与 IndicesAddOffset）；candidate_topk_index 不加 offset（相对块号契约） | offset 使能 |
 
 **明确不做**：arch35 (950) 全部路径；LD/ProcessDecode 相关改动；metadata 算子代码；workspace 布局变更；TilingKey 变更。
 
@@ -504,7 +522,75 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 
 ## 10. 当前验证状态（2026-09-07）
 
-- pytest 15 用例（mode 1/2/3 × cmp_ratio 1/2 × g32/64 × decode/prefill/tail/sparse2048/pin64 单/多 tile）×3 连跑全过，零 aicore
+- pytest **43 用例 = 29 passed + 14 xfail(strict)**（2026-09-07 大 shape 并入后）：
+  - 22 基础用例（mode 1/2/3 × cmp_ratio 1/2 × g32/64 × decode/prefill/tail/sparse2048/pin64 单/多 tile/B=4 变长/S1 尾块/tiny/cand64×mode2）全过，零 aicore
+  - **大 shape 直接入矩阵全过**：big16k_m1 / big128k_m1 / big128k_m1_b2（B=2 变长）/ big1m_m1（131072 块 pin（强制保留最新 token 所在块）抽样验证）/ big1m_m3（回归）——§6.6 抽样行官方两级规则比对 + 全行有效性 + pin 检查，总时长 ~4 分钟
+  - 等价回归全过：pa_gap_m3_regress（紧凑场景现网行为不变，R8）、off_zero_regress（零偏移与不传一致）
+  - xfail(strict) 14 个（实施后 XPASS 自动报警）：tnd_*×7（A12 host 拒绝）、pa_gap_m1/m2/128k×3（A11 紧凑寻址读错）、off_m1/m2/tnd×3（A15 offset 忽略）、big128k_m2（R6 candBuf 污染，见 §7）
 - 大规模生产规格（`/opt/tjj/qli_cand_test/test_big_shape_m1.py`，设备侧 harness）：16K(b=1) / 128K(b=2) mode=1、128K(b=2) mode=2 随机半数候选、1M(b=1) mode=1 全部 IoU=1.000000；**1M 场景 pin 块 131071 确认入选**（131072 块中选 top-2048）
 - 大 shape 回归：1M mode=3（IoU=1.0 抽样行精确比对 + 双跑确定性）、1M cmp_ratio=2、qseq 256..2048 扫描全过
 - 提交序列：`aede3e62e`（功能实现）→ `a346acdcb`（五处正确性修复：pad 块 int32 向量算术填充 / MergeSortVecCopy 位精确回拷 / pin 纯向量化（全局块号比较）/ mode=2 CountGE 窗口边界 + CAST_RINT + isOutI32 区域重叠 / V_S fence）
+
+## 11. TND 与 key 0 轴非连续支持（2026-09-07 需求追加，待实施）
+
+### 11.1 需求
+1. **layout_q = TND**（q/k 均 TND）：candidate 三 mode 全支持。现网非 candidate 路径已有 TND 模板分支（`Q_LAYOUT_T`/`K_LAYOUT_T`，cu_seqlens_q/k 前缀定位），本轮打通 candidate 的 host 校验、GM offset 与输出布局。
+2. **key 0 轴非连续**（PA_BBND）：key 与 k_scale 的第 0 维物理 stride 可大于块逻辑大小（block_table 指向的物理块之间存在间隙，如池化重组后的非紧凑存储）。
+
+### 11.2 arch35 参照机制（已实现，直接移植）
+- **key 主体**（cube `KeyNd2NzForPA`）：`blkTable.GetValue(bIdx*maxBlockNumPerBatch + s2BlkId) * constInfo_.keyStride0 + s2BlkOffset*headDim`（arch35/quant_lightning_indexer_v2_service_cube_arch35.h:437）；
+- **k_scale**（vector `GetKeyScale`）：`blockId * constInfo_.keyDequantScaleStride0 + startBlockTableOffset`（arch35/..._service_vector_arch35.h:456）；
+- **host 侧**：tiling.cpp 从 acl tensor `keyStridesVec_[0]` / `keyDequantScaleStridesVec_[0]` 取真实 stride 经 `set_keyStride0`/`set_keyDequantScaleStride0` 下发（tiling.h 字段已存在）；
+- **arch22 现状差异**：`KeyNd2NzForPA` 硬编码 `blk * kCacheBlockSize * kHeadNum * headDim`（service_cube_arch22.h:317）、`GetKeyScale` 硬编码 `blockId * kCacheBlockSize_`（service_vector_arch22.h:157）——均假设紧凑存储；tiling 字段已下发但 **arch22 kernel 未消费**。
+
+### 11.3 适配点（A11–A14，见 §8 表）
+
+**TND 偏移结构（A13 核心）**：`candidateOutOffset = cu_seqlens_q(bIdx) × kHeadNum × candBlocks + n2Idx × candBlocks`（batch 级前缀，CalcRunInfo 已含 TND 分支），行偏移 `cuS1Idx（batch 内行号）× candBlocks`——与主输出 `indiceOutOffset` 完全同构；输出布局 `[T, N2, K]`（csrc ConstructOutputTensor 已有分支），无效行清理走既有 `outputLayout == TND` 分支（kernel_arch22.h:418）。
+
+### 11.4 测试用例设计（§6.3 矩阵新增行）
+
+**TND（q=k=TND，cu_seqlens 变长）**——pytest id：`tnd_m1_decode` / `tnd_m1_prefill` / `tnd_m2_rand` / `tnd_m3_regress` / `tnd_r2_m1` / `tnd_m1_pin64`：
+
+| 用例 | B | seqs_q | seqs_k | ratio | mask | mode | 要点 |
+|---|---|---|---|---|---|---|---|
+| tnd_m1_decode | 2 | [1,1] | [1024,2048] | 1 | 3 | 1 | 变长 TND decode；**验证 GM 行对位（R7）** |
+| tnd_m1_prefill | 2 | [8,4] | [1024,2048] | 1 | 3 | 1 | TND prefill 行级 pin；seqs_q 非对称 |
+| tnd_m2_rand | 1 | [1] | [4096] | 1 | 0 | 2 | TND 消费（候选输入 GM offset 走 TND 前缀） |
+| tnd_m3_regress | 2 | [4,4] | [1024,2048] | 1 | 3 | 3 | TND 现网回归 |
+| tnd_r2_m1 | 1 | [1] | [1024] | 2+[1] | 3 | 1 | TND + cmp_ratio=2 + residual |
+| tnd_m1_pin64 | 1 | [1] | [8192] | 1 | 0 | 1 | TND 多 tile + pin（candBlocks=64） |
+
+**key 0 轴非连续（PA_BBND，key/k_scale stride（步长）翻倍，块间间隙）**——pytest id：`pa_gap_m1_decode` / `pa_gap_m2` / `pa_gap_m3_regress` / `pa_gap_128k`：
+
+| 用例 | 要点 |
+|---|---|
+| pa_gap_m1_decode | `as_strided` 构造 stride=2×紧凑 的 key/k_scale，block_table 只指向偶数物理块；mode=1 |
+| pa_gap_m2 | 同上 mode=2（GetKeyScale 的 stride 路径同时覆盖） |
+| pa_gap_m3_regress | **紧凑场景回归（R8）**：现网行为 bit 级不变的等价性验证 |
+| pa_gap_128k | 大 shape 128K + 非连续 + 官方两级规则抽样比对 |
+
+**大 shape 交叠**（并入 pytest，§6.6 抽样机制）：`tnd_big16k_m1` / `tnd_big128k_m1`（TND 无 block_table，用 cu_seqlens 拼接总池）；`pa_gap_128k`（非连续 × 128K）；`off_tnd_m1`。
+
+**xfail（预期失败）标注**：A11/A12/A15 实施前，tnd_*（host 拒绝 TND）、pa_gap_m1/m2/128k（kernel 紧凑寻址读到 gap 段零值）、off_m1_decode/off_tnd（offset 被静默忽略）以 `pytest.mark.xfail(strict=True)` 入矩阵——实施通过后 XPASS 自动报警提醒摘标记；`pa_gap_m3_regress`（紧凑等价回归）与 `off_zero_regress`（零偏移等价回归）当前实现即应通过。
+
+### 11.6 output_idx_offset 使能（A15，2026-09-07 追加调查）
+
+**现状（不能正常使用）**：arch22 入口签名收了 `outputIdxOffset` 指针（kernel_arch22.h:446）但**从未绑定/消费**——合法输入被静默忽略，sparse_indices 永远输出 batch 内相对索引；host 校验却完整（int32 / TND 下 dim0==qTsize），形成"校验通过但无效果"的死参数。torch 层已透传。
+
+**语义（arch35 已实现，直接移植）**：每行一个 int32 偏移，输出拷 GM 前对 sparse_indices 逐元素 `+= offset`（`IndicesAddOffset`：int32 向量 Adds，64 对齐）；用于 TND 多请求聚合（各请求 KV cache 起始不同，kernel 内相对 → 输出绝对）。消费点：arch35 vector:681（`outputIdxOffsetGm.GetValue(outputIdxCoreOffset + rowIdx*kHeadNum)`，GM 标量读无 V_S 竞态）与 :856（非零才加，零偏移路径零开销）；`outputIdxCoreOffset` 与 indiceOutCoreOffset 同构（TND 前缀）。
+
+**与 candidate 的契约（设计决策）**：offset 仅作用于 sparse_indices；`candidate_topk_index`（source 输出/consumer 输入）一律为**加 offset 前的 batch 内相对块号**——否则 mode=2 掩蔽需同步减偏移，且跨层共享（shared_attn.candidates）时双方 offset 可能不同会导致掩蔽错位。跨层传递绝对块号的换算由 torch 封装层提供工具函数（与 §1.3 "expand 工具"同理）。
+
+**测试用例**：
+| 用例 | 要点 |
+|---|---|
+| off_m1_decode | BSND + output_idx_offset=[1000]，sparse_indices 每元素 +1000（官方比对：golden 行 + offset），candidate 输出不受影响（仍相对块号） |
+| off_tnd_m1 | TND + 每 batch 偏移（cu_seqlens_k 前缀作为 offset），输出绝对 KV 位置 |
+| off_zero_regress | offset=0 行为与不传 bit 级一致（零偏移路径零改动） |
+| off_m2 | mode=2 + offset：掩蔽用相对候选，输出 sparse_indices 仍加 offset（consumer 场景契约） |
+
+### 11.5 实施顺序
+1. **A11**（独立且对现网 PA 具有 bug 修复性质：生产池若非紧凑，现网寻址即错）→ pa_gap 用例三连；
+2. **A12/A13/A14**（TND）→ tnd 用例六连；
+3. **A15**（output_idx_offset 使能，独立于 TND 可先行）→ off 用例四连；
+4. 大 shape 交叠（TND 16K/128K、pa_gap 128K、off_tnd 大 shape）。
