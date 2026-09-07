@@ -1967,6 +1967,10 @@ void MoeInitRoutingV3TilingArch35::ComputeCountingSortMode()
         return;
     }
 
+    if (isInputTopkWeight_ == 1 && rowIdxType_ == ROW_IDX_GATHER) {
+        return;
+    }
+
     int64_t actualExpertNum = expertEnd_ - expertStart_;
     int64_t perCoreTokensEst = Ops::Base::CeilDiv(n_, aivCoreNum_);
     int64_t estUb = EstimateArch35CountingSortFullLoadUB(perCoreTokensEst);
