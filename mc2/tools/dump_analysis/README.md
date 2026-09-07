@@ -228,7 +228,7 @@ python3 parse_mc2_dump.py MatmulReduceScatterV2 /path/to/data-dump
 
 ### 输入文件和输出结果
 
-统一入口会识别以下文件名前缀，文件名中还必须包含对应算子名：
+统一入口会识别以下文件名前缀。除 `exception_info.*` 外，文件名需包含对应算子名；异常文件通过同 rank 目录、stream/task 后缀与算子文件关联：
 
 | 文件前缀 | 解析内容 |
 | :--- | :--- |
