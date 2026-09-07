@@ -1270,11 +1270,39 @@ if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
     else()
         set(ASCEND_PROJECT_DIR_SCRIPTS_PATH ${CMAKE_SOURCE_DIR}/cmake/scripts/custom)
     endif()
+    file(READ "${ASCEND_PROJECT_DIR_SCRIPTS_PATH}/install.sh" configured_install_script)
+    if(CANNBOTDSL_PROVIDER_ONLY)
+        # This branch has exactly one frozen operator and no traditional host
+        # targets. Keep the official compatibility/dlopen checks, but require
+        # the actual API library instead of a nonexistent traditional tiling DSO.
+        set(traditional_so_list [=[for so_name in "${opmaster_so_name}" "${opsproto_so_name}" "${opapi_so_name}"; do]=])
+        set(provider_so_list [=[for so_name in "${opapi_so_name}"; do]=])
+        set(traditional_required_so [=[if [ "${so_name}" = "${opmaster_so_name}" ]; then]=])
+        set(provider_required_so [=[if [ "${so_name}" = "${opapi_so_name}" ]; then]=])
+        string(FIND "${configured_install_script}" "${traditional_so_list}" so_list_offset)
+        string(FIND "${configured_install_script}" "${traditional_required_so}" required_so_offset)
+        if(so_list_offset LESS 0 OR required_so_offset LESS 0)
+            message(FATAL_ERROR
+                "Provider-only packaging requires the official installer shared-library validation template")
+        endif()
+        string(REPLACE "${traditional_so_list}" "${provider_so_list}"
+            configured_install_script "${configured_install_script}")
+        string(REPLACE "${traditional_required_so}" "${provider_required_so}"
+            configured_install_script "${configured_install_script}")
+    endif()
+    # Always refresh the same dependency so Make also restores the unmodified
+    # official script when this build directory switches back to normal/mixed.
+    set(configured_install_path "${CMAKE_CURRENT_BINARY_DIR}/configured-install.sh")
+    file(WRITE "${configured_install_path}" "${configured_install_script}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${ASCEND_PROJECT_DIR_SCRIPTS_PATH}/install.sh")
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/scripts/install.sh ${CMAKE_CURRENT_BINARY_DIR}/scripts/upgrade.sh
             COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/scripts
             COMMAND cp -r ${ASCEND_PROJECT_DIR_SCRIPTS_PATH}/* ${CMAKE_CURRENT_BINARY_DIR}/scripts/
+            COMMAND ${CMAKE_COMMAND} -E copy ${configured_install_path} ${CMAKE_CURRENT_BINARY_DIR}/scripts/install.sh
             COMMAND chmod +w ${CMAKE_CURRENT_BINARY_DIR}/scripts/*
             COMMAND sed -i "s/vendor_name=customize/vendor_name=${VENDOR_NAME}_transformer/g" ${CMAKE_CURRENT_BINARY_DIR}/scripts/*
+            DEPENDS ${ASCEND_PROJECT_DIR_SCRIPTS_PATH}/install.sh ${configured_install_path}
     )
 
     install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/scripts/
