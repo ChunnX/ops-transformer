@@ -618,8 +618,9 @@ __aicore__ inline void StoreNoQuantCombineFragment(uint32_t nLoc, uint32_t n, ui
 }
 
 // 非量化 Combine 的统一入口。AIV1 直接使用 GMM2 已构造的 scheduler，逐 tile 等待配对 AIC 并消费。
-// 每个 slot 保存一个 token 在当前 N tile 上的行片段；按 Dispatch 的“预取下一槽、发送上一槽”方式滚动，
-// 六槽环跨 tile 保持连续。UB 从 64 KiB 起步，避开 Dispatch 保留的低区状态。
+// 每个 slot 保存一个 token 在当前 N tile 上的行片段。启动阶段先填满可用槽位；稳态阶段发送
+// 最老槽位并在同一槽位补入新行；tile 尾部再发送环中剩余片段。六槽环跨 tile 保持连续，
+// UB 从 64 KiB 起步，避开 Dispatch 保留的低区状态。
 template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config>
 __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm, const Params &params,
                                          const GMMAddrInfo &gmmAddrInfo, int32_t &gmTileSequence, const Config &config,
@@ -656,18 +657,13 @@ __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
 
         if (lenTile != 0U) {
-            uint32_t pendingRowIdx = 0U;
-            uint32_t pendingSlot = issuedFragmentCount % NO_QUANT_TILE_COMBINE_BUFFER_COUNT;
-            if (issuedFragmentCount >= NO_QUANT_TILE_COMBINE_BUFFER_COUNT) {
-                FetchNoQuantCombineFragment<true, ElementC, MakeLayoutC>(l0cOutGm, mLoc, nLoc, actualN,
-                                                                         pendingSlot);
-            } else {
-                FetchNoQuantCombineFragment<false, ElementC, MakeLayoutC>(l0cOutGm, mLoc, nLoc, actualN,
-                                                                          pendingSlot);
-            }
-            ++issuedFragmentCount;
+            uint32_t tileSequenceStart = issuedFragmentCount;
+            uint32_t primeCount = lenTile < NO_QUANT_TILE_COMBINE_BUFFER_COUNT ?
+                                      lenTile :
+                                      NO_QUANT_TILE_COMBINE_BUFFER_COUNT;
 
-            for (uint32_t rowIdx = 1U; rowIdx < lenTile; ++rowIdx) {
+            // 启动：在发起首个远端写之前，先让最多六个行片段进入各自独立的 GM2UB 槽位。
+            for (uint32_t rowIdx = 0U; rowIdx < primeCount; ++rowIdx) {
                 uint32_t slot = issuedFragmentCount % NO_QUANT_TILE_COMBINE_BUFFER_COUNT;
                 if (issuedFragmentCount >= NO_QUANT_TILE_COMBINE_BUFFER_COUNT) {
                     FetchNoQuantCombineFragment<true, ElementC, MakeLayoutC>(
@@ -677,14 +673,25 @@ __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm
                         l0cOutGm, mLoc + rowIdx, nLoc, actualN, slot);
                 }
                 ++issuedFragmentCount;
-
-                StoreNoQuantCombineFragment<ElementC>(nLoc, config.n, actualN, metaInfoTensor, pendingRowIdx, params,
-                                                       gmRemoteBaseOffset, pendingSlot, gmRemoteD);
-                pendingRowIdx = rowIdx;
-                pendingSlot = slot;
             }
-            StoreNoQuantCombineFragment<ElementC>(nLoc, config.n, actualN, metaInfoTensor, pendingRowIdx, params,
-                                                   gmRemoteBaseOffset, pendingSlot, gmRemoteD);
+
+            // 稳态：先发送队首片段，再在刚释放的槽位中预取下一行。
+            for (uint32_t rowIdx = primeCount; rowIdx < lenTile; ++rowIdx) {
+                uint32_t pendingRowIdx = rowIdx - primeCount;
+                uint32_t slot = (tileSequenceStart + pendingRowIdx) % NO_QUANT_TILE_COMBINE_BUFFER_COUNT;
+                StoreNoQuantCombineFragment<ElementC>(nLoc, config.n, actualN, metaInfoTensor, pendingRowIdx, params,
+                                                       gmRemoteBaseOffset, slot, gmRemoteD);
+                FetchNoQuantCombineFragment<true, ElementC, MakeLayoutC>(
+                    l0cOutGm, mLoc + rowIdx, nLoc, actualN, slot);
+                ++issuedFragmentCount;
+            }
+
+            // 收尾：发送仍驻留在环中的最后 primeCount 个片段；完成事件在所有 tile 结束后统一消费。
+            for (uint32_t rowIdx = lenTile - primeCount; rowIdx < lenTile; ++rowIdx) {
+                uint32_t slot = (tileSequenceStart + rowIdx) % NO_QUANT_TILE_COMBINE_BUFFER_COUNT;
+                StoreNoQuantCombineFragment<ElementC>(nLoc, config.n, actualN, metaInfoTensor, rowIdx, params,
+                                                       gmRemoteBaseOffset, slot, gmRemoteD);
+            }
         }
         gmTileSequence = expectedReadySequence;
     }
