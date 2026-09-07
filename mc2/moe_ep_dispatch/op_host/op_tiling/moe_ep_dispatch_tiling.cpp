@@ -88,6 +88,16 @@ constexpr uint32_t NETWORK_HYBRID = 1U;
 
 constexpr uint32_t TOPK_AND_TOPK_WEIGHT_NUMBER = 2U;
 
+static uint64_t AlignUpWin(const uint64_t data)
+{
+    return (data + WIN_ADDR_ALIGN - 1) / WIN_ADDR_ALIGN * WIN_ADDR_ALIGN;
+}
+
+static uint64_t AlignUpUb(const uint64_t data)
+{
+    return (data + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+}
+
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchInfo &info)
 {
     OP_LOGD(nodeName, "epWorldSize is %u.", info.cfg.epWorldSize);
@@ -574,7 +584,7 @@ static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, cons
         ((hAlign32 + scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN + WIN_ADDR_ALIGN - 1) /
          WIN_ADDR_ALIGN) *
         WIN_ADDR_ALIGN;
-    info.metaSlotBytes = scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN;
+    info.metaSlotBytes = AlignUpWin(scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN);
     info.isTopkWeights = (context->GetOptionalInputShape(TOPK_WEIGHTS_INDEX) != nullptr) ? 1 : 0;
     OP_LOGD(nodeName, "perSlotBytes = %u (hidden=%u)", info.perSlotBytes, info.cfg.hidden);
 
@@ -704,22 +714,12 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     return ge::GRAPH_SUCCESS;
 }
 
-static uint64_t AlignUpWin(const uint64_t data)
-{
-    return (data + WIN_ADDR_ALIGN - 1) / WIN_ADDR_ALIGN * WIN_ADDR_ALIGN;
-}
-
 static void SetDispatchSlotLayout(MoeEpDispatchInfo &info)
 {
     // Scaleout slot只携带基础payload和Proxy重建路由所需的dst_slot_idx。
     uint64_t scaleoutSlotRawBytes =
         static_cast<uint64_t>(info.perSlotBytes) + static_cast<uint64_t>(info.cfg.topK) * sizeof(int32_t);
     info.window.scaleoutSlotAlignedBytes = static_cast<uint32_t>(AlignUpWin(scaleoutSlotRawBytes));
-}
-
-static uint64_t AlignUpUb(const uint64_t data)
-{
-    return (data + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
 }
 
 static void SetSendEntryLayout(MoeEpDispatchInfo &info)
