@@ -153,7 +153,7 @@ int LaunchOneProcess(Args &args)
         localToken = globalBS * (localExpertNum < k ? localExpertNum : k);
     }
 
-    uint64_t assistInfoForCombineOutSize = localToken * 128;
+    int64_t assistInfoForCombineOutSize = localToken * 128;
 
     // 定义 shape
     std::vector<int64_t> expandXShape{tpWorldSize * localToken, h};
