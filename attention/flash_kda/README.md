@@ -31,6 +31,11 @@ ops-transformer 工程负责。原顶层 `cannbotdsl_ops` 目录已经移除。
 原有传统图。普通 attention 扫描在未开启 Provider 功能时会跳过本目录，
 不会因缺少 frozen stage 报错，重复接入也有目标 guard。
 
+custom 安装器仍使用官方模板。严格 Provider-only 构建只把验证列表与必需库
+切为实际 `libcust_opapi.so`，保留 `dlopen`、架构与 glibc 检查；缺少 API 库
+仍会拒绝安装。正常/混合包的验证内容不改写，同一 Make 构建目录从 ON
+切回 OFF 也会恢复原模板，不需要空库或 `--force`。
+
 测试只维护一个 Python 文件。它内嵌的最小 C++ fixture 只负责张量搬运、
 调用生成的 ACLNN API 和回写结果，不包含第二份 golden、用例或精度阈值。
 CMake 通过 `--emit-aclnn-runner` 生成该 fixture；生成过程不导入 Torch/DSL。
@@ -101,6 +106,9 @@ bash "$COMMANDS/verify-transformer-flash-kda-run.sh" "$REPRO_ROOT/result.env"
 冻结，默认消费已验证 stage。主配置选择 `ASCEND_OP_NAME=flash_kda`、
 `ENABLE_CANNBOTDSL_PROVIDER_ACLNN=ON`、`CANNBOTDSL_PROVIDER_ONLY=ON`。
 这只验证 FlashKDA，不能代表全量 transformer 算子。
+`DEVICE=2 bash "$COMMANDS/verify-transformer-flash-kda-run.sh" "$REPRO_ROOT/result.env"`
+可选择空闲 NPU；可选第二参数 `--install-only` 只验证实际安装、移位布局和
+加载依赖，结果会明确标注没有进行新一轮数值运行。
 
 ## builtin 的实际适配
 
@@ -148,21 +156,39 @@ python attention/flash_kda/tests/test_flash_kda.py \
 0.0030694007873535156 / 0.0043270885944366455，未覆盖全部六条冻结 route。
 早期小父 OPP 产物只作为历史证据保留，本目录不再提供该打包入口。
 
-2026-09-07 整理后的正式 builtin 使用 ops 提交 `2499e5ac75b884b2af44aa24e650b011a56a5500`
-和 cmake-zyh 提交 `3e65fd76b88796d2cba0b748e2b3487fc102da88` 构建，NPU0
-移位安装后 8×2 全量精度通过；最大 output/state 误差仍分别为
-0.0030694007873535156 / 0.0043270885944366455。
+本轮单文件迁移后的正式 builtin 使用 ops 提交
+`8136435305507e7b8e4e0796e36178d84bfedf54`、cmake-zyh 提交
+`3e65fd76b88796d2cba0b748e2b3487fc102da88` 构建，NPU2 移位安装后
+8×2 全量精度通过；最大 output/state 绝对误差分别为
+0.0030694007873535156 / 0.0043270885944366455。运行时隐藏原 build 目录，
+`ldd` 核验实际加载安装树 API 与 framework run 的 opbase。
+
+custom 安装器修复提交为 `49357d7f1918ead0d416a6248a87631068626ee5`，
+它仅调整 custom 安装脚本生成，不改变 builtin 图、设备产物或数学；随后
+以干净源码重新构建 custom run，实际安装、移位和依赖检查通过。本轮
+没有重复 custom 数值；custom 数值沿用上述历史记录。
 
 | 本轮证据 | 绝对路径 |
 | --- | --- |
-| builtin 包与源码身份 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.JTJCiN/result.json` |
-| builtin 安装后完整精度与实际加载库 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.JTJCiN/installed-validation.tMgUQ9/result.json` |
-| 官方卸载与软链清理 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.JTJCiN/uninstall-probe.log` |
-| custom 正式 package 构建回归 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.9lcn8s/result.json` |
-| 单一测试的四项 native 负例 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.3DZJTH/single-test-negative/report.json` |
+| 单文件从 run SDK 重新冻结 | `/home/z00947297/run_toolkit/verification-20260907-ckuWoU/flash-kda-standard-freeze.log` |
+| feature OFF 实际 attention 发现 | `/home/z00947297/run_toolkit/verification-20260907-ckuWoU/flash-kda-standard-discovery/configure.log` |
+| builtin 包与源码身份 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.JuCBLd/result.json` |
+| builtin 安装后 8×2 精度、实际加载库、无空目标证明 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.JuCBLd/installed-validation.wRiAaN/result.json` |
+| custom 正式 package 身份 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.gAcy3G/result.json` |
+| custom 安装与依赖检查、缺 API 拒绝、无空目标证明 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.gAcy3G/installed-validation.pKUFFa/result.json` |
+| Make 同目录 Provider-only ON→OFF 恢复普通安装器 | `/home/z00947297/run_toolkit/verification-20260907-ckuWoU/flash-kda-standard-installer-mode-probe/result.json` |
+| 单一测试的四项 native 负例 | `/home/z00947297/run_toolkit/verification-20260907-ckuWoU/flash-kda-standard-negative/report.json` |
 
-builtin run SHA-256 为 `fa7cd502ec3143a4ece06e358017e17251e6417a672bada68e30d46199d29ab1`。
-当前源码重新冻结后 bundle identity 仍为
-`0f62297b7093158aaf374f922fd32ba8b44eb1019cd21c3527970eacd26d03af`，证明清理未改变
-冻结设备产物。本轮 custom 回归验证了打包构建，custom 数值沿用前轮证据，
-没有把 builtin 数值结果记成一次新的 custom 数值运行。
+builtin run SHA-256：
+`f05d7afea14b36f4222d0c77b735524cbca3a19033c7054e500d159468f865c5`。
+custom run SHA-256：
+`3c374ae63ca525fa172394a5646266e6f8eecb0c50e6a7c2afcbde4daba14a75`。
+
+本轮从单一源码重新冻结的 bundle identity 仍为
+`0f62297b7093158aaf374f922fd32ba8b44eb1019cd21c3527970eacd26d03af`；
+源码合并与路径迁移没有改变冻结设备产物。普通 feature OFF 做了配置探针，
+混合传统/Provider 接入本轮只做静态 CMake 审阅；未声称混合包数值通过。
+
+前轮 builtin 官方卸载、资源和相对链接清理记录仍保留在
+`/home/z00947297/run_toolkit/repro-transformer-flash-kda.JTJCiN/uninstall-probe.log`；
+本轮 builtin 未改变该 XML 布局机制。
