@@ -51,7 +51,7 @@ public:
         hMix3Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.workspace));
 
         InitUbBuffers();
-        SyncAll<false>();
+        SyncAll();
         if ASCEND_IS_AIV {
             vector_.coreIdx_ = GetBlockIdx() / vector_.kDoubleBufferCount;
             vector_.AIVPreLoad();
