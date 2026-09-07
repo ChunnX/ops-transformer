@@ -21,10 +21,15 @@ namespace l0op {
 OP_TYPE_REGISTER(FusedInferAttentionScore);
 
 namespace {
-const aclTensor *ConvertIntArrayToTensor(const aclIntArray *array, aclOpExecutor *executor)
+const aclTensor *ConvertIntArrayToTensor(const aclIntArray *array, aclOpExecutor *executor, bool isMaxWorkspace)
 {
     if (array == nullptr) {
         return nullptr;
+    }
+
+    if (isMaxWorkspace) {
+        return executor->AllocTensor(op::Shape({static_cast<int64_t>(array->Size())}), DataType::DT_INT64,
+                                     Format::FORMAT_ND);
     }
 
     auto tensor = executor->ConvertToTensor(array, DataType::DT_INT64);
@@ -88,7 +93,8 @@ std::tuple<const aclTensor *, const aclTensor *> FusedInferAttentionScore(
     int64_t outDtype,
     const aclTensor *attentionOut,
     const aclTensor *softmaxLse,
-    aclOpExecutor *executor)
+    aclOpExecutor *executor,
+    bool isMaxWorkspace)
 {
     L0_DFX(FusedInferAttentionScore, query, key, value, pseShiftOptional, attenMaskOptional,
            actualSeqLengthsOptional, actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional,
@@ -115,11 +121,14 @@ std::tuple<const aclTensor *, const aclTensor *> FusedInferAttentionScore(
         return {nullptr, nullptr};
     }
 
-    const aclTensor *actualSeqLengthsTensor = ConvertIntArrayToTensor(actualSeqLengthsOptional, executor);
-    const aclTensor *actualSeqLengthsKvTensor = ConvertIntArrayToTensor(actualSeqLengthsKvOptional, executor);
-    const aclTensor *actualSharedPrefixLenTensor = ConvertIntArrayToTensor(actualSharedPrefixLenOptional, executor);
-    const aclTensor *qStartIdxTensor = ConvertIntArrayToTensor(qStartIdxOptional, executor);
-    const aclTensor *kvStartIdxTensor = ConvertIntArrayToTensor(kvStartIdxOptional, executor);
+    const aclTensor *actualSeqLengthsTensor =
+        ConvertIntArrayToTensor(actualSeqLengthsOptional, executor, isMaxWorkspace);
+    const aclTensor *actualSeqLengthsKvTensor =
+        ConvertIntArrayToTensor(actualSeqLengthsKvOptional, executor, isMaxWorkspace);
+    const aclTensor *actualSharedPrefixLenTensor =
+        ConvertIntArrayToTensor(actualSharedPrefixLenOptional, executor, isMaxWorkspace);
+    const aclTensor *qStartIdxTensor = ConvertIntArrayToTensor(qStartIdxOptional, executor, isMaxWorkspace);
+    const aclTensor *kvStartIdxTensor = ConvertIntArrayToTensor(kvStartIdxOptional, executor, isMaxWorkspace);
     if ((actualSeqLengthsOptional != nullptr && actualSeqLengthsTensor == nullptr) ||
         (actualSeqLengthsKvOptional != nullptr && actualSeqLengthsKvTensor == nullptr) ||
         (actualSharedPrefixLenOptional != nullptr && actualSharedPrefixLenTensor == nullptr) ||
