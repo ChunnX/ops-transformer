@@ -809,43 +809,6 @@ ge::graphStatus MhcPreBaseTiling::Calculate3Bf16Tiling()
         return ge::GRAPH_FAILED;
     }
 
-    constexpr uint32_t c0Align = 16U;
-    constexpr uint32_t l0DoubleBufferCapacity = 16U * 1024U;
-    uint32_t baseN = static_cast<uint32_t>((packedFusionSize + c0Align - 1U) / c0Align * c0Align);
-    uint32_t baseK = l0DoubleBufferCapacity / baseN / c0Align * c0Align;
-    uint32_t baseM = l0DoubleBufferCapacity / baseK / c0Align * c0Align;
-    uint32_t stepK = 1U;
-    uint32_t depthA1 = 2U;
-    uint32_t depthB1 = 2U;
-    uint32_t dbL0C = 2U;
-    static const std::vector<uint64_t> tunedM = {16U, 32U, 64U, 128U, 256U, 512U, 1024U, 2048U, 3072U};
-    bool isTunedShape =
-        std::find(tunedM.begin(), tunedM.end(), matM_) != tunedM.end() && packedFusionSize == 72U && matK_ == 20480U;
-    if (isTunedShape) {
-        baseN = 80U;
-        uint32_t effectiveM = static_cast<uint32_t>(std::min<uint64_t>(matM_, chunkTSize_));
-        baseM = std::min(128U, (effectiveM + c0Align - 1U) / c0Align * c0Align);
-        uint32_t baseKByA = l0DoubleBufferCapacity / baseM / c0Align * c0Align;
-        uint32_t baseKByB = l0DoubleBufferCapacity / baseN / c0Align * c0Align;
-        baseK = std::min(baseKByA, baseKByB);
-        stepK = 4U;
-        depthA1 = 8U;
-        depthB1 = 8U;
-        dbL0C = 1U;
-    }
-    tilingData_.matmulTiling3Bf16.set_baseM(baseM);
-    tilingData_.matmulTiling3Bf16.set_baseN(baseN);
-    tilingData_.matmulTiling3Bf16.set_baseK(baseK);
-    tilingData_.matmulTiling3Bf16.set_dbL0C(dbL0C);
-    tilingData_.matmulTiling3Bf16.set_dbL0A(2U);
-    tilingData_.matmulTiling3Bf16.set_dbL0B(2U);
-    tilingData_.matmulTiling3Bf16.set_stepKa(stepK);
-    tilingData_.matmulTiling3Bf16.set_stepKb(stepK);
-    tilingData_.matmulTiling3Bf16.set_depthA1(depthA1);
-    tilingData_.matmulTiling3Bf16.set_depthB1(depthB1);
-    tilingData_.matmulTiling3Bf16.set_stepM(1U);
-    tilingData_.matmulTiling3Bf16.set_stepN(1U);
-
     size_t hMix3Workspace = static_cast<size_t>(2U) * blockDim_ * chunkTSize_ * packedFusionSize * sizeof(float);
     workspaceSize_ = hMix3Workspace + SYSTEM_WORKSPACE;
     return ge::GRAPH_SUCCESS;
