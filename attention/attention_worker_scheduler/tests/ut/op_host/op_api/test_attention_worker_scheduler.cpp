@@ -13,7 +13,6 @@
 #include <gmock/gmock.h>
 #include <iostream>
 
-#include "ut_stub.h"
 #include "opdev/make_op_executor.h"
 
 using namespace op;

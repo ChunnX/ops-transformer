@@ -21,7 +21,6 @@
 #include "op_api_ut_common/scalar_desc.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "opdev/platform.h"
-#include "ut_stub.h"
 
 using namespace std;
 using namespace op;
