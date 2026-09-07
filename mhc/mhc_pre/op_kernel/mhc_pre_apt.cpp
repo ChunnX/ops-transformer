@@ -62,10 +62,7 @@ __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADD
     } else if constexpr (TILING_MODE == MHC_PRE_SPLIT_3BF16) {
         InitParams initParams{x,     phi,     alpha, bias,  gamma, hin,   h_post,
                               h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
-        MhcPre3Bf16Matmul mm;
-        mm.SetSubBlockIdx(0);
-        mm.Init(&tilingData.matmulTiling3Bf16, &pipe);
-        MhcPre3Bf16<DTYPE_X, float32_t, RESI_MODE> op(mm);
+        MhcPre3Bf16<DTYPE_X, float32_t, RESI_MODE> op;
         op.Init(initParams);
         op.Process();
     }

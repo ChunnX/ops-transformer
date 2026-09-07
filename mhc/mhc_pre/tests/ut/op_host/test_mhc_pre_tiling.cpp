@@ -1958,30 +1958,7 @@ TEST_F(MhcPreTiling, Ut_Check_3Bf16PackedPhi_RoutesToExperimentalKernel)
 
     TilingInfo tilingInfo;
     ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
-    constexpr uint32_t sentinel = 0x5A5AA55AU;
-    auto readMatmulField = [&](auto setter) -> uint32_t {
-        optiling::MhcPreTilingData schema;
-        std::vector<uint8_t> schemaBuffer(schema.GetDataSize(), 0U);
-        setter(schema.matmulTiling3Bf16, sentinel);
-        schema.SaveToBuffer(schemaBuffer.data(), schemaBuffer.size());
-        for (size_t offset = 0; offset + sizeof(uint32_t) <= schemaBuffer.size(); ++offset) {
-            uint32_t marker = 0U;
-            std::memcpy(&marker, schemaBuffer.data() + offset, sizeof(marker));
-            if (marker == sentinel) {
-                EXPECT_LE(offset + sizeof(uint32_t), tilingInfo.tilingDataSize);
-                if (offset + sizeof(uint32_t) > tilingInfo.tilingDataSize) {
-                    return 0U;
-                }
-                uint32_t value = 0U;
-                std::memcpy(&value, tilingInfo.tilingData.get() + offset, sizeof(value));
-                return value;
-            }
-        }
-        ADD_FAILURE() << "3BF16 matmul tiling field was not serialized";
-        return 0U;
-    };
-    EXPECT_EQ(readMatmulField([](auto &mm, uint32_t value) { mm.set_baseM(value); }), 96U);
-    EXPECT_EQ(readMatmulField([](auto &mm, uint32_t value) { mm.set_baseN(value); }), 80U);
-    EXPECT_EQ(readMatmulField([](auto &mm, uint32_t value) { mm.set_stepKa(value); }), 4U);
-    EXPECT_EQ(readMatmulField([](auto &mm, uint32_t value) { mm.set_depthA1(value); }), 8U);
+    // Basic-API mode uses the same plain tiling schema as the other kernels.
+    optiling::MhcPreTilingData schema;
+    EXPECT_EQ(tilingInfo.tilingDataSize, schema.GetDataSize());
 }

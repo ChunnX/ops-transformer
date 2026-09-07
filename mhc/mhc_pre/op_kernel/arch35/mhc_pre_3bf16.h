@@ -17,29 +17,20 @@
 #define MHC_PRE_3BF16_H
 
 #include "mhc_pre_vector_compute.h"
+#include "mhc_pre_bf16_cube_compute.h"
 
 namespace MhcPre {
-
-using MhcPre3Bf16AType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
-using MhcPre3Bf16BType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
-using MhcPre3Bf16CType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, float32_t>;
-constexpr MatmulConfig MHC_PRE_3BF16_MM_CONFIG = GetMDLConfig(false, false, 0, false, false, false, true);
-using MhcPre3Bf16Matmul =
-    matmul::MatmulImpl<MhcPre3Bf16AType, MhcPre3Bf16BType, MhcPre3Bf16CType, MhcPre3Bf16CType, MHC_PRE_3BF16_MM_CONFIG>;
 
 constexpr uint32_t MHC_PRE_3BF16_PART_COUNT = 3U;
 constexpr float MHC_PRE_3BF16_MID_SCALE = 0.00390625F;
 constexpr float MHC_PRE_3BF16_LOW_SCALE = 0.0000152587890625F;
 constexpr uint16_t MHC_PRE_3BF16_MM_READY_FLAG = 3U;
+constexpr uint16_t MHC_PRE_3BF16_MM_CONSUMED_FLAG = 4U;
 constexpr uint32_t MHC_PRE_3BF16_QUEUE_BYTES = 20U * 1024U;
 
 template <class T, class P, int8_t RESI_MODE>
 class MhcPre3Bf16 {
 public:
-    __aicore__ inline explicit MhcPre3Bf16(MhcPre3Bf16Matmul &matmul)
-        : mm_(matmul)
-    {}
-
     __aicore__ inline void Init(InitParams initParams)
     {
         vector_.BindGlobalTensors(initParams);
@@ -52,7 +43,10 @@ public:
         hMix3Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.workspace));
 
         InitUbBuffers();
-        SyncAll();
+        if ASCEND_IS_AIC {
+            vector_.pipe_->InitBuffer(l1Buffer_, 512U * 1024U);
+            mm_.Init(MHC_PRE_IMPL_MODE_FP32);
+        }
         if ASCEND_IS_AIV {
             vector_.coreIdx_ = GetBlockIdx() / vector_.kDoubleBufferCount;
             vector_.AIVPreLoad();
@@ -66,21 +60,37 @@ public:
             vector_.InitBlockParams(block, blockCount);
             if ASCEND_IS_AIV {
                 ProcessRms(block, blockCount);
-            } else {
+            }
+            if ASCEND_IS_AIC {
+                if (matmulCount_ >= 2U) {
+                    CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(MHC_PRE_3BF16_MM_CONSUMED_FLAG);
+                    CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(
+                        MHC_PRE_3BF16_MM_CONSUMED_FLAG + MHC_PRE_SUBBLOCK_FLAG_OFFSET);
+                }
                 ProcessMatmul();
-                CrossCoreSetFlag<0x2, PIPE_FIX>(MHC_PRE_3BF16_MM_READY_FLAG);
+                CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(MHC_PRE_3BF16_MM_READY_FLAG);
+                CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(
+                    MHC_PRE_3BF16_MM_READY_FLAG + MHC_PRE_SUBBLOCK_FLAG_OFFSET);
             }
             if ASCEND_IS_AIV {
-                CrossCoreWaitFlag(MHC_PRE_3BF16_MM_READY_FLAG);
+                CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MHC_PRE_3BF16_MM_READY_FLAG);
                 ProcessPost();
+                // Acknowledge only slots that this core will actually reuse.
+                if (block + 2U * vector_.coreNum_ < blockCount) {
+                    CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MHC_PRE_3BF16_MM_CONSUMED_FLAG);
+                }
                 vector_.vec1Count_++;
-            } else {
+            }
+            if ASCEND_IS_AIC {
                 matmulCount_++;
             }
         }
         if ASCEND_IS_AIV {
             vector_.invRmsOutQueue_.FreeTensor(vector_.invRmsUb_);
             vector_.biasInQue_.FreeTensor(vector_.biasInUb_);
+        }
+        if ASCEND_IS_AIC {
+            mm_.End(MHC_PRE_IMPL_MODE_FP32);
         }
     }
 
@@ -144,12 +154,26 @@ private:
         uint64_t outputOffset = (matmulCount_ & 1U) * vector_.coreNum_ * vector_.chunkTSize_ * packedFusion +
                                 vector_.coreIdx_ * vector_.chunkTSize_ * packedFusion;
         uint64_t inputOffset = vector_.globalOffsetM_ * vector_.matrixInfo_.nD;
-        mm_.SetOrgShape(vector_.mnConfig_.curSingleCoreM, packedFusion, vector_.matrixInfo_.nD, vector_.matrixInfo_.nD);
-        mm_.SetSingleShape(vector_.mnConfig_.curSingleCoreM, packedFusion, vector_.matrixInfo_.nD);
-        mm_.SetTensorA(xGm_[inputOffset]);
-        mm_.SetTensorB(phiGm_[0], true);
-        mm_.IterateAll(hMix3Gm_[outputOffset], 0);
-        mm_.End();
+        constexpr uint32_t slotElements = 128U * 1024U / sizeof(bfloat16_t);
+        constexpr uint32_t kL1 = 256U;
+        uint32_t rows = vector_.mnConfig_.curSingleCoreM;
+        uint32_t alignedRows = BasicApiAlign(rows, 16U);
+        uint32_t alignedCols = BasicApiAlign(packedFusion, 16U);
+        uint32_t maxDim = alignedRows > alignedCols ? alignedRows : alignedCols;
+        uint32_t baseK = (32U * 1024U / sizeof(bfloat16_t) / maxDim / 16U) * 16U;
+        LocalTensor<bfloat16_t> l1 = l1Buffer_.Get<bfloat16_t>();
+        for (uint32_t offsetK = 0U; offsetK < vector_.matrixInfo_.nD; offsetK += kL1) {
+            uint32_t currentK = MhcPreMin(kL1, vector_.matrixInfo_.nD - offsetK);
+            uint32_t slot = mm_.GetBL1BufferId();
+            LocalTensor<bfloat16_t> aL1 = l1[slot * slotElements];
+            LocalTensor<bfloat16_t> bL1 = l1[(2U + slot) * slotElements];
+            // Waiting for the B slot also protects its paired A slot from overwrite.
+            mm_.CopyInB1Nd2Nz(vector_.matrixInfo_.nD, currentK, packedFusion, phiGm_[offsetK], bL1);
+            mm_.CopyInA1Nd2Nz(rows, currentK, vector_.matrixInfo_.nD, xGm_[inputOffset + offsetK], aL1);
+            mm_.Process(rows, packedFusion, rows, baseK, offsetK == 0U,
+                        offsetK + currentK == vector_.matrixInfo_.nD, aL1, bL1);
+        }
+        mm_.CopyOut(hMix3Gm_[outputOffset], packedFusion);
     }
 
     __aicore__ inline void Reconstruct(const LocalTensor<P> &dst, LocalTensor<P> &src, uint32_t rows)
@@ -214,7 +238,8 @@ private:
     }
 
     MhcPreVectorCompute<T, P, RESI_MODE> vector_;
-    MhcPre3Bf16Matmul &mm_;
+    MhcPreBf16CubeCompute mm_;
+    TBuf<TPosition::A1> l1Buffer_;
     GlobalTensor<bfloat16_t> xGm_;
     GlobalTensor<bfloat16_t> phiGm_;
     GlobalTensor<P> hMix3Gm_;

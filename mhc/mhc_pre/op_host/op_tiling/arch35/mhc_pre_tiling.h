@@ -30,7 +30,6 @@ enum class TilingMode : uint8_t {
 };
 
 BEGIN_TILING_DATA_DEF(MhcPreTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTiling3Bf16);
 TILING_DATA_FIELD_DEF(uint32_t, coreNum);
 TILING_DATA_FIELD_DEF(uint32_t, outFlag);
 TILING_DATA_FIELD_DEF(uint32_t, hasGamma);
@@ -166,7 +165,6 @@ private:
     TilingMode tilingMode_ = TilingMode::SPLIT_BS;
     uint32_t hasResi_ = 1;
     bool is3Bf16_ = false;
-    matmul_tiling::MultiCoreMatmulTiling mm3Bf16_;
 };
 
 } // namespace optiling
