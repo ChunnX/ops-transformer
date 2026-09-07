@@ -22,17 +22,14 @@ TEST(AlltoAllvGroupedMatMulV2KernelTest, BuildsExpertSequenceOneAtATime)
 {
     constexpr uint32_t rankSize = 2U;
     constexpr uint32_t expertPerRank = 4U;
-    const int64_t recvCounts[] = {
-        3, 0, 5, 1,
-        2, 4, 0, 6,
-    };
+    const int32_t recvPrefix[] = {3, 5, 5, 9, 14, 14, 15, 21};
     const std::array<uint64_t, expertPerRank> expectedBase = {0U, 5U, 9U, 14U};
     const std::array<uint32_t, expertPerRank> expectedCount = {5U, 4U, 5U, 7U};
 
     for (uint32_t expertIdx = 0U; expertIdx < expertPerRank; ++expertIdx) {
         AivComm::ExpertMeta expert = {};
         ASSERT_TRUE(AivMode::BuildExpertMetaForIndex(
-            recvCounts, rankSize, expertPerRank, expertIdx, 21U, expert));
+            recvPrefix, rankSize, expertPerRank, expertIdx, 21U, expert));
         EXPECT_EQ(expert.recvTokenBase, expectedBase[expertIdx]);
         EXPECT_EQ(expert.tokenCount, expectedCount[expertIdx]);
     }
@@ -42,11 +39,11 @@ TEST(AlltoAllvGroupedMatMulV2KernelTest, ClassifiesAutomaticExpertOverlapSafety)
 {
     constexpr uint32_t rankSize = 4U;
     constexpr uint32_t expertPerRank = 2U;
-    const int64_t smallBalanced[] = {2, 2, 2, 2, 2, 2, 2, 2};
-    const int64_t belowThreshold[] = {8, 8, 8, 8, 8, 8, 8, 7};
-    const int64_t thresholdBalanced[] = {8, 8, 8, 8, 8, 8, 8, 8};
-    const int64_t oneNonEmpty[] = {32, 0, 32, 0, 32, 0, 32, 0};
-    const int64_t invalid[] = {16, 16, 16, -1, 16, 16, 16, 16};
+    const int32_t smallBalanced[] = {2, 4, 6, 8, 10, 12, 14, 16};
+    const int32_t belowThreshold[] = {8, 16, 24, 32, 40, 48, 56, 63};
+    const int32_t thresholdBalanced[] = {8, 16, 24, 32, 40, 48, 56, 64};
+    const int32_t oneNonEmpty[] = {32, 64, 96, 128, 128, 128, 128, 128};
+    const int32_t invalid[] = {16, 32, 48, 47, 64, 80, 96, 112};
 
     AivMode::ExpertOverlapStats stats = {};
     ASSERT_TRUE(AivMode::BuildExpertOverlapStats(
@@ -72,14 +69,24 @@ TEST(AlltoAllvGroupedMatMulV2KernelTest, ClassifiesAutomaticExpertOverlapSafety)
         invalid, rankSize, expertPerRank, stats));
 }
 
+TEST(AlltoAllvGroupedMatMulV2KernelTest, EnablesPerExpertOverlapOutsideLegacyExpertDomain)
+{
+    constexpr uint32_t rankSize = 2U;
+    constexpr uint32_t expertPerRank = 129U;
+    std::array<int32_t, rankSize * expertPerRank> recvPrefix = {};
+    for (uint32_t index = 0U; index < recvPrefix.size(); ++index) {
+        recvPrefix[index] = static_cast<int32_t>(index + 1U);
+    }
+
+    EXPECT_TRUE(AivMode::ShouldUseAutomaticExpertOverlap(
+        recvPrefix.data(), rankSize, expertPerRank, 64U, 64U));
+}
+
 TEST(AlltoAllvGroupedMatMulV2KernelTest, PreservesExpertMajorSourceMinorOffsets)
 {
     constexpr uint32_t rankSize = 2U;
     constexpr uint32_t expertPerRank = 4U;
-    const int64_t recvCounts[] = {
-        3, 0, 5, 1,
-        2, 4, 0, 6,
-    };
+    const int32_t recvPrefix[] = {3, 5, 5, 9, 14, 14, 15, 21};
     const std::array<uint64_t, expertPerRank> expectedSourceOneOffset = {
         3U, 5U, 14U, 15U,
     };
@@ -87,7 +94,7 @@ TEST(AlltoAllvGroupedMatMulV2KernelTest, PreservesExpertMajorSourceMinorOffsets)
     for (uint32_t expertIdx = 0U; expertIdx < expertPerRank; ++expertIdx) {
         uint64_t tokenOffset = 0U;
         ASSERT_TRUE(AivMode::GetDestinationSourceTokenOffset(
-            recvCounts, rankSize, expertPerRank, expertIdx, 1U, 21U,
+            recvPrefix, rankSize, expertPerRank, expertIdx, 1U, 21U,
             tokenOffset));
         EXPECT_EQ(tokenOffset, expectedSourceOneOffset[expertIdx]);
     }

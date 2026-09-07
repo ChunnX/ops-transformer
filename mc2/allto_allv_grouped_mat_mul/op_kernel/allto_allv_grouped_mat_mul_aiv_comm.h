@@ -34,12 +34,21 @@ struct ExpertSourceMeta {
     uint32_t sourceRank = 0U;
 };
 
+struct WorkspaceLayout {
+    uint64_t payloadBytes = 0U;
+    uint64_t totalBytes = 0U;
+};
+
 struct A2avWindowLayout {
     uint64_t inputBytes = 0U;
+    uint64_t payloadBytes = 0U;
     uint64_t countsOffset = 0U;
+    uint64_t countBytes = 0U;
     uint64_t controlOffset = 0U;
+    uint64_t controlBytes = 0U;
     uint64_t readyOffset = 0U;
     uint64_t totalBytes = 0U;
+    uint64_t requiredBytes = 0U;
 };
 
 struct RuntimeControlLayout {
@@ -122,9 +131,9 @@ A2AVGMM_HOST_DEVICE bool BuildRuntimeControlLayout(uint32_t rankSize, uint32_t e
     layout = {};
     layout.epochOffset = kEpochOffset;
     layout.publishSlotsOffset = kPublishSlotsOffset;
-    rankSlotsBytes = rankSize * kFlagSlotBytes;
-    expertSlotsBytes = expertPerRank * kFlagSlotBytes;
-    if (!SafeAddU64(layout.publishSlotsOffset, rankSlotsBytes, layout.releaseSlotsOffset) ||
+    if (!SafeMulU64(rankSize, kFlagSlotBytes, rankSlotsBytes) ||
+        !SafeMulU64(expertPerRank, kFlagSlotBytes, expertSlotsBytes) ||
+        !SafeAddU64(layout.publishSlotsOffset, rankSlotsBytes, layout.releaseSlotsOffset) ||
         !SafeAddU64(layout.releaseSlotsOffset, rankSlotsBytes, layout.peerControlBytes)) {
         layout = {};
         return false;
@@ -185,66 +194,122 @@ A2AVGMM_HOST_DEVICE uint64_t ExpertReadyOffset(uint64_t readyBase, uint32_t expe
     return readyBase + static_cast<uint64_t>(expertIdx) * kControlFlagStride;
 }
 
-A2AVGMM_HOST_DEVICE bool BuildExpertMetadata(const int64_t *recvCounts, uint32_t rankSize,
+A2AVGMM_HOST_DEVICE bool BuildWorkspaceLayout(uint64_t tokenNum, uint64_t hiddenSize,
+                                              uint64_t dtypeBytes, WorkspaceLayout &layout)
+{
+    uint64_t elementNum = 0U;
+    uint64_t rawPayloadBytes = 0U;
+    uint64_t payloadBytes = 0U;
+    layout = {};
+    if (!SafeMulU64(tokenNum, hiddenSize, elementNum) ||
+        !SafeMulU64(elementNum, dtypeBytes, rawPayloadBytes) ||
+        !AlignUpU64(rawPayloadBytes, kWindowAlignment, payloadBytes)) {
+        return false;
+    }
+    layout.payloadBytes = payloadBytes;
+    layout.totalBytes = payloadBytes;
+    return true;
+}
+
+template <typename PrefixPtr>
+A2AVGMM_HOST_DEVICE bool PrefixRange(PrefixPtr inclusivePrefix, uint32_t countNum,
+                                     uint32_t index, uint32_t &begin, uint32_t &end)
+{
+    begin = 0U;
+    end = 0U;
+    if (inclusivePrefix == nullptr || countNum == 0U || index >= countNum) {
+        return false;
+    }
+
+    const int32_t current = inclusivePrefix[index];
+    const int32_t previous = index == 0U ? 0 : inclusivePrefix[index - 1U];
+    if (previous < 0 || current < previous) {
+        return false;
+    }
+    begin = static_cast<uint32_t>(previous);
+    end = static_cast<uint32_t>(current);
+    return true;
+}
+
+A2AVGMM_HOST_DEVICE bool BuildExpertMetadata(const int32_t *recvPrefix, uint32_t rankSize,
                                              uint32_t expertPerRank, uint64_t tokenCapacity,
                                              ExpertMeta *expertMeta, ExpertSourceMeta *sourceMeta)
 {
-    if (recvCounts == nullptr || expertMeta == nullptr || sourceMeta == nullptr || rankSize == 0U ||
+    if (recvPrefix == nullptr || expertMeta == nullptr || sourceMeta == nullptr || rankSize == 0U ||
         expertPerRank == 0U) {
         return false;
     }
 
-    uint64_t expertBase = 0U;
+    uint64_t countNum64 = 0U;
+    if (!SafeMulU64(rankSize, expertPerRank, countNum64) ||
+        countNum64 == 0U || countNum64 > 0xffffffffULL) {
+        return false;
+    }
+    const uint32_t countNum = static_cast<uint32_t>(countNum64);
+    uint32_t totalBegin = 0U;
+    uint32_t totalEnd = 0U;
+    if (!PrefixRange(recvPrefix, countNum, countNum - 1U, totalBegin, totalEnd) ||
+        static_cast<uint64_t>(totalEnd) != tokenCapacity) {
+        return false;
+    }
+
     for (uint32_t expertIdx = 0U; expertIdx < expertPerRank; ++expertIdx) {
-        uint64_t expertTokens = 0U;
-        for (uint32_t sourceRank = 0U; sourceRank < rankSize; ++sourceRank) {
-            const int64_t count = recvCounts[static_cast<uint64_t>(sourceRank) * expertPerRank + expertIdx];
-            if (count < 0 || static_cast<uint64_t>(count) > 0xffffffffULL) {
-                return false;
-            }
-
-            ExpertSourceMeta &source = sourceMeta[static_cast<uint64_t>(expertIdx) * rankSize + sourceRank];
-            source.dstTokenOffset = expertBase + expertTokens;
-            source.srcTokenOffset = 0U;
-            source.tokenCount = static_cast<uint32_t>(count);
-            source.sourceRank = sourceRank;
-            if (!SafeAddU64(expertTokens, static_cast<uint64_t>(count), expertTokens)) {
-                return false;
-            }
+        const uint32_t firstSourceIndex = expertIdx * rankSize;
+        const uint32_t lastSourceIndex = firstSourceIndex + rankSize - 1U;
+        uint32_t expertBase = 0U;
+        uint32_t firstSourceEnd = 0U;
+        uint32_t expertEndBegin = 0U;
+        uint32_t expertEnd = 0U;
+        if (!PrefixRange(recvPrefix, countNum, firstSourceIndex, expertBase, firstSourceEnd) ||
+            !PrefixRange(recvPrefix, countNum, lastSourceIndex, expertEndBegin, expertEnd)) {
+            return false;
         }
-
-        if (expertTokens > 0xffffffffULL || expertBase > tokenCapacity ||
-            expertTokens > tokenCapacity - expertBase) {
+        if (expertEnd < expertBase || static_cast<uint64_t>(expertEnd) > tokenCapacity ||
+            static_cast<uint64_t>(expertEnd - expertBase) > 0xffffffffULL) {
             return false;
         }
         expertMeta[expertIdx].recvTokenBase = expertBase;
-        expertMeta[expertIdx].tokenCount = static_cast<uint32_t>(expertTokens);
+        expertMeta[expertIdx].tokenCount = expertEnd - expertBase;
         expertMeta[expertIdx].reserved = 0U;
-        expertBase += expertTokens;
+
+        for (uint32_t sourceRank = 0U; sourceRank < rankSize; ++sourceRank) {
+            const uint32_t sourceIndex = firstSourceIndex + sourceRank;
+            uint32_t sourceBegin = 0U;
+            uint32_t sourceEnd = 0U;
+            if (!PrefixRange(recvPrefix, countNum, sourceIndex, sourceBegin, sourceEnd)) {
+                return false;
+            }
+            ExpertSourceMeta &source = sourceMeta[static_cast<uint64_t>(expertIdx) * rankSize + sourceRank];
+            source.dstTokenOffset = sourceBegin;
+            source.srcTokenOffset = 0U;
+            source.tokenCount = sourceEnd - sourceBegin;
+            source.sourceRank = sourceRank;
+        }
     }
-    return expertBase == tokenCapacity;
+    return true;
 }
 
-A2AVGMM_HOST_DEVICE bool GetPeerSourceTokenOffset(const int64_t *peerSendCounts, uint32_t rankSize,
+A2AVGMM_HOST_DEVICE bool GetPeerSourceTokenOffset(const int32_t *peerSendPrefix, uint32_t rankSize,
                                                   uint32_t expertPerRank, uint32_t dstRank,
                                                   uint32_t expertIdx, uint64_t &tokenOffset)
 {
-    if (peerSendCounts == nullptr || rankSize == 0U || expertPerRank == 0U || dstRank >= rankSize ||
+    if (peerSendPrefix == nullptr || rankSize == 0U || expertPerRank == 0U || dstRank >= rankSize ||
         expertIdx >= expertPerRank) {
         return false;
     }
 
-    const uint64_t target = static_cast<uint64_t>(dstRank) * expertPerRank + expertIdx;
-    if (peerSendCounts[target] < 0 || static_cast<uint64_t>(peerSendCounts[target]) > 0xffffffffULL) {
+    uint64_t countNum64 = 0U;
+    if (!SafeMulU64(rankSize, expertPerRank, countNum64) ||
+        countNum64 == 0U || countNum64 > 0xffffffffULL) {
         return false;
     }
-    tokenOffset = 0U;
-    for (uint64_t index = 0U; index < target; ++index) {
-        const int64_t count = peerSendCounts[index];
-        if (count < 0 || !SafeAddU64(tokenOffset, static_cast<uint64_t>(count), tokenOffset)) {
-            return false;
-        }
+    const uint32_t target = dstRank * expertPerRank + expertIdx;
+    uint32_t begin = 0U;
+    uint32_t end = 0U;
+    if (!PrefixRange(peerSendPrefix, static_cast<uint32_t>(countNum64), target, begin, end)) {
+        return false;
     }
+    tokenOffset = begin;
     return true;
 }
 
@@ -252,39 +317,50 @@ A2AVGMM_HOST_DEVICE bool BuildWindowLayout(uint64_t inputTokenNum, uint64_t hidd
                                            const RuntimeControlLayout &control, uint64_t windowBytes,
                                            A2avWindowLayout &layout)
 {
-    uint64_t inputElements = 0U;
-    uint64_t rawInputBytes = 0U;
     uint64_t rawCountBytes = 0U;
     uint64_t countAreaBytes = 0U;
     uint64_t requiredBytes = 0U;
     uint64_t payloadAndCounts = 0U;
     uint64_t controlBytes = 0U;
-    if (!SafeMulU64(inputTokenNum, hiddenSize, inputElements) ||
-        !SafeMulU64(inputElements, kInputElementBytes, rawInputBytes) ||
-        !AlignUpU64(rawInputBytes, kWindowAlignment, layout.inputBytes) ||
-        !SafeMulU64(countNum, sizeof(int64_t), rawCountBytes) ||
+    WorkspaceLayout workspace = {};
+    layout = {};
+    if (!BuildWorkspaceLayout(inputTokenNum, hiddenSize, kInputElementBytes, workspace) ||
+        !SafeMulU64(countNum, sizeof(int32_t), rawCountBytes) ||
         !AlignUpU64(rawCountBytes, kWindowAlignment, countAreaBytes) ||
         !AlignUpU64(control.peerControlBytes, kWindowAlignment, controlBytes) ||
-        !SafeAddU64(layout.inputBytes, countAreaBytes, payloadAndCounts) ||
+        !SafeAddU64(workspace.payloadBytes, countAreaBytes, payloadAndCounts) ||
         !SafeAddU64(payloadAndCounts, controlBytes, requiredBytes)) {
         return false;
     }
-    if (control.peerControlBytes == 0U || control.peerControlBytes > controlBytes ||
-        requiredBytes > windowBytes ||
-        controlBytes > windowBytes) {
+    if (control.peerControlBytes == 0U || control.peerControlBytes > controlBytes) {
         return false;
     }
 
+    layout.inputBytes = workspace.payloadBytes;
+    layout.payloadBytes = workspace.payloadBytes;
+    layout.countBytes = countAreaBytes;
+    layout.controlBytes = controlBytes;
+    layout.totalBytes = requiredBytes;
+    layout.requiredBytes = requiredBytes;
+    if (windowBytes == 0U) {
+        layout.readyOffset = control.firstExpertFlagOffset;
+        return true;
+    }
+    if (requiredBytes > windowBytes || controlBytes > windowBytes) {
+        layout = {};
+        return false;
+    }
     layout.controlOffset = AlignDownU64(windowBytes - controlBytes, kWindowAlignment);
     if (layout.controlOffset < countAreaBytes) {
+        layout = {};
         return false;
     }
     layout.countsOffset = layout.controlOffset - countAreaBytes;
-    if (layout.inputBytes > layout.countsOffset) {
+    if (layout.payloadBytes > layout.countsOffset) {
+        layout = {};
         return false;
     }
     layout.readyOffset = control.firstExpertFlagOffset;
-    layout.totalBytes = requiredBytes;
     return true;
 }
 
@@ -396,34 +472,59 @@ private:
 template <typename T>
 __aicore__ inline void CopyPeerGmToLocalGm(AscendC::GlobalTensor<T> dst, AscendC::GlobalTensor<T> src,
                                             uint64_t count, uint32_t ubMoveNum,
-                                            AscendC::TBuf<AscendC::TPosition::VECCALC> &buffer)
+                                            AscendC::TBuf<AscendC::TPosition::VECCALC> &buffer0,
+                                            AscendC::TBuf<AscendC::TPosition::VECCALC> &buffer1)
 {
     if (count == 0U || ubMoveNum == 0U) {
         return;
     }
 
-    AscendC::LocalTensor<T> local = buffer.template Get<T>();
+    // One tile cannot overlap another transfer. Avoid priming/draining a second event.
+    if (count <= ubMoveNum) {
+        AscendC::LocalTensor<T> local = buffer0.template Get<T>();
+        AscendC::DataCopyExtParams copyParams(1U, static_cast<uint32_t>(count) * sizeof(T), 0U, 0U, 0U);
+        AscendC::DataCopyPadExtParams<T> padParams;
+        AscendC::DataCopyPad(local, src, copyParams, padParams);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
+        AscendC::DataCopyPad(dst, local, copyParams);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        return;
+    }
+    AscendC::LocalTensor<T> local0 = buffer0.template Get<T>();
+    AscendC::LocalTensor<T> local1 = buffer1.template Get<T>();
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+    uint32_t pingPongId = 0U;
     for (uint64_t offset = 0U; offset < count; offset += ubMoveNum) {
         const uint32_t current =
             static_cast<uint32_t>((count - offset) > ubMoveNum ? ubMoveNum : (count - offset));
         const uint32_t copyBytes = current * sizeof(T);
+        const AscendC::TEventID eventId = pingPongId == 0U ? EVENT_ID0 : EVENT_ID1;
+        AscendC::LocalTensor<T> local = pingPongId == 0U ? local0 : local1;
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
         AscendC::DataCopyExtParams copyParams(1U, copyBytes, 0U, 0U, 0U);
         AscendC::DataCopyPadExtParams<T> padParams;
         AscendC::DataCopyPad(local, src[offset], copyParams, padParams);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
         AscendC::DataCopyPad(dst[offset], local, copyParams);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
+        pingPongId ^= 1U;
     }
+    // Drain both buffers before publishing ready or reusing these event IDs.
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
 }
 
 template <typename T>
 __aicore__ inline void CopyLocalGmToWindow(AscendC::GlobalTensor<T> dst, AscendC::GlobalTensor<T> src,
                                            uint64_t count, uint32_t ubMoveNum,
-                                           AscendC::TBuf<AscendC::TPosition::VECCALC> &buffer)
+                                           AscendC::TBuf<AscendC::TPosition::VECCALC> &buffer0,
+                                            AscendC::TBuf<AscendC::TPosition::VECCALC> &buffer1)
 {
-    CopyPeerGmToLocalGm(dst, src, count, ubMoveNum, buffer);
+    CopyPeerGmToLocalGm(dst, src, count, ubMoveNum, buffer0, buffer1);
 }
 
 __aicore__ inline __gm__ int32_t *GetFlagAddress(GM_ADDR window, uint64_t controlOffset, uint64_t flagOffset)

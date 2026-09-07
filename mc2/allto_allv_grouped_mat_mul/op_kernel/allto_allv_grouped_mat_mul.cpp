@@ -62,6 +62,8 @@ allto_allv_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCoun
         return;
     }
 
+    REGISTER_TILING_DEFAULT(AlltoAllvGmmKernelTilingData);
+
     if constexpr (TILINGKEY_COMM_MODE == TILINGKEY_TPL_AIV) {
         constexpr bool isBf16 = std::is_same_v<DTYPE_GMM_X, bfloat16_t> &&
                                 std::is_same_v<DTYPE_GMM_WEIGHT, bfloat16_t> &&
@@ -70,20 +72,18 @@ allto_allv_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCoun
                                 std::is_same_v<DTYPE_GMM_WEIGHT, half> &&
                                 std::is_same_v<DTYPE_GMM_Y, half>;
         if constexpr (isBf16 || isFp16) {
-            GET_TILING_DATA_WITH_STRUCT(
-                AlltoAllvGmmAivTilingData, aivTilingData, tilingGM);
+            const __gm__ AlltoAllvGmmAivTilingData *aivTilingData =
+                reinterpret_cast<const __gm__ AlltoAllvGmmAivTilingData *>(tilingGM);
             AlltoAllvGroupedMatMulAivMode::Run<
                 DTYPE_GMM_X,
                 TILINGKEY_GMM_WEIGHT_TRANSPOSE,
                 TILINGKEY_MM_WEIGHT_TRANSPOSE>(
                     gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM,
                     gmmyGM, mmyOptionalGM, permuteOutOptionalGM, userWorkspace,
-                    aivTilingData);
+                    *aivTilingData);
         }
     } else {
         TPipe pipe;
-        REGISTER_TILING_DEFAULT(AlltoAllvGmmTilingData);
-        GET_TILING_DATA(tilingData, tilingGM);
 
         using ComputeOpType =
             QuantGroupedMatmul<
@@ -98,7 +98,7 @@ allto_allv_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCoun
         A2avGmmScheduler<
             HcclA2avOp<DTYPE_GMM_X, true, TILINGKEY_COMM_MODE>, ComputeOpType,
             LocalComputeOpType, AlltoAllvGmmTilingData, GMMQuantTilingData,
-            TILING_TYPE>
+            MC2_TILING_TYPE>
             a2avGmmScheduler;
 
         GET_NESTED_TILING_DATA_MEMBER_ADDR(

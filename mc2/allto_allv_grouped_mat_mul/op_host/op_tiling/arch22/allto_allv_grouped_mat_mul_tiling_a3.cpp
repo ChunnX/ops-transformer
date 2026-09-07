@@ -14,6 +14,7 @@
  */
 
 #include "allto_allv_grouped_mat_mul_tiling_a3.h"
+#include "allto_allv_grouped_mat_mul_aiv_plan.h"
 #include "../../../op_kernel/allto_allv_grouped_mat_mul_aiv_comm.h"
 
 #include <algorithm>
@@ -30,20 +31,15 @@ const char *A_INNER_DEBUG = "AlltoAllvGroupedMatMul Tiling";
 constexpr size_t AIV_ATTR_COMM_MODE_INDEX = 7U;
 constexpr uint32_t AIV_SCHEDULE_MODE = 1U;
 constexpr uint32_t AIV_SYSTEM_WORKSPACE_SIZE = 16U * 1024U * 1024U;
-constexpr uint64_t AIV_WORKSPACE_ALIGN = 512U;
 constexpr uint32_t AIV_ALLTOALL_OP_TYPE = 8U;
 constexpr uint32_t AIV_MULTIPUT_OP_TYPE = 18U;
 constexpr uint32_t AIV_INPUT_BYTES = 2U;
-constexpr uint32_t UB_MOVE_CAPACITY = 16U * 1024U;
+constexpr int64_t AIV_MAX_TOKEN_NUM = 5000000;
+constexpr int64_t AIV_MAX_DIMENSION = 65535;
 
 bool IsShapePresentAiv(const gert::StorageShape *shape)
 {
     return shape != nullptr && shape->GetStorageShape().GetDimNum() > 0;
-}
-
-bool IsPositiveInt32(int64_t value)
-{
-    return value > 0 && value <= static_cast<int64_t>(std::numeric_limits<int32_t>::max());
 }
 
 bool IsSupportedAivRankSize(int64_t rankSize, bool is910C)
@@ -58,21 +54,16 @@ bool IsSupportedAivDType(ge::DataType dtype)
     return dtype == ge::DT_FLOAT16 || dtype == ge::DT_BF16;
 }
 
-uint64_t AlignWorkspace(uint64_t value)
-{
-    return (value + AIV_WORKSPACE_ALIGN - 1U) / AIV_WORKSPACE_ALIGN * AIV_WORKSPACE_ALIGN;
-}
-
 uint32_t ResolveExpertOverlapMode(
-    const int64_t *recvCounts, uint32_t rankSize, uint32_t expertPerRank,
+    const int32_t *recvPrefix, uint32_t rankSize, uint32_t expertPerRank,
     uint32_t k, uint32_t n)
 {
     const bool protocolSafe =
         AlltoAllvGroupedMatMulAivMode::IsExpertOverlapProtocolSafe(
-            recvCounts, rankSize, expertPerRank);
+            recvPrefix, rankSize, expertPerRank);
     const bool automatic = protocolSafe &&
         AlltoAllvGroupedMatMulAivMode::ShouldUseAutomaticExpertOverlap(
-            recvCounts, rankSize, expertPerRank, k, n);
+            recvPrefix, rankSize, expertPerRank, k, n);
     return automatic ? A2AVGMM_EXPERT_OVERLAP_ENABLED
                      : A2AVGMM_EXPERT_OVERLAP_DISABLED;
 }
@@ -92,11 +83,7 @@ void SetCocTiling(uint32_t m, uint32_t k, uint32_t n, uint64_t ubSize, AlltoAllv
         tiling.k0 = 32U;
         tiling.n0 = 64U;
     }
-    uint64_t moveCapacity = std::min<uint64_t>(UB_MOVE_CAPACITY, ubSize / (AIV_INPUT_BYTES * 2U));
-    tiling.ubMoveNum = static_cast<uint32_t>(moveCapacity / 16U * 16U);
-    if (tiling.ubMoveNum == 0U) {
-        tiling.ubMoveNum = 16U;
-    }
+    tiling.ubMoveNum = AlltoAllvGroupedMatMulAivMode::CopyMoveCapacity(ubSize);
     tiling.swizzlCount = 1U;
     tiling.swizzlDirect = 0U;
 }
@@ -113,6 +100,13 @@ bool IsAivMode(const gert::TilingContext *context)
 ge::graphStatus FillAivTiling(gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
+    auto *raw = context->GetRawTilingData();
+    OP_TILING_CHECK(raw == nullptr || raw->GetData() == nullptr ||
+                        raw->GetCapacity() < sizeof(AlltoAllvGmmAivTilingData),
+                    OP_LOGE(nodeName, "AIV tiling buffer actual=%zu required=%zu.",
+                            raw == nullptr ? static_cast<size_t>(0U) : raw->GetCapacity(),
+                            sizeof(AlltoAllvGmmAivTilingData)),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(context->SetScheduleMode(AIV_SCHEDULE_MODE) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Failed to set AIV schedule mode."), return ge::GRAPH_FAILED);
 
@@ -195,46 +189,67 @@ ge::graphStatus FillAivTiling(gert::TilingContext *context)
     const int64_t weightN = weightShape.GetDim(*transGmmWeight ? 1 : 2);
     const int64_t outputM = yShape.GetDim(0);
     const int64_t outputN = yShape.GetDim(1);
-    OP_TILING_CHECK(!IsPositiveInt32(inputM) || !IsPositiveInt32(inputK) ||
-                        !IsPositiveInt32(expertPerRank) || !IsPositiveInt32(weightK) ||
-                        !IsPositiveInt32(weightN) || !IsPositiveInt32(outputM),
-                    OP_LOGE(nodeName, "AIV GMM dimensions must be positive int32 values."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(inputM <= 0 || inputM > AIV_MAX_TOKEN_NUM ||
+                        outputM <= 0 || outputM > AIV_MAX_TOKEN_NUM,
+                    OP_LOGE(nodeName, "AIV BSK/A must be in [1, %lld], but BSK=%lld and A=%lld.",
+                            static_cast<long long>(AIV_MAX_TOKEN_NUM), static_cast<long long>(inputM),
+                            static_cast<long long>(outputM)),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(inputK <= 0 || inputK > AIV_MAX_DIMENSION ||
+                        weightK <= 0 || weightK > AIV_MAX_DIMENSION ||
+                        weightN <= 0 || weightN > AIV_MAX_DIMENSION ||
+                        outputN <= 0 || outputN > AIV_MAX_DIMENSION,
+                    OP_LOGE(nodeName, "AIV H1/N1 must be in [1, %lld], but H1=%lld/%lld and N1=%lld/%lld.",
+                            static_cast<long long>(AIV_MAX_DIMENSION), static_cast<long long>(inputK),
+                            static_cast<long long>(weightK), static_cast<long long>(weightN),
+                            static_cast<long long>(outputN)),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(inputK != weightK || outputN != weightN,
                     OP_LOGE(nodeName, "AIV GMM K/N dimensions are inconsistent."), return ge::GRAPH_FAILED);
 
+    OP_TILING_CHECK(expertPerRank <= 0 ||
+                        expertPerRank > static_cast<int64_t>(A2AVGMM_MAX_LOCAL_EXPERT_NUM),
+                    OP_LOGE(nodeName, "AIV local expert count must be in [1, %u], but got %lld.",
+                            A2AVGMM_MAX_LOCAL_EXPERT_NUM, static_cast<long long>(expertPerRank)),
+                    return ge::GRAPH_FAILED);
+    const uint32_t rankSizeU32 = static_cast<uint32_t>(rankSize);
+    const uint32_t expertPerRankU32 = static_cast<uint32_t>(expertPerRank);
+    uint32_t expectedCountNum = 0U;
+    OP_TILING_CHECK(!AlltoAllvGroupedMatMulAivPlan::IsValidCountShape(
+                        rankSizeU32, expertPerRankU32, expectedCountNum),
+                    OP_LOGE(nodeName, "AIV global expert count rankSize * expertPerRank must be <= %u, "
+                                      "but rankSize=%u and expertPerRank=%u.",
+                            A2AVGMM_MAX_COUNT_NUM, rankSizeU32, expertPerRankU32),
+                    return ge::GRAPH_FAILED);
     const uint64_t countNum = sendCountsVector->GetSize();
     OP_TILING_CHECK(countNum != recvCountsVector->GetSize() ||
-                        countNum != static_cast<uint64_t>(*epWorldSize) * static_cast<uint64_t>(expertPerRank) ||
+                        countNum != expectedCountNum ||
                         countNum > A2AVGMM_MAX_COUNT_NUM,
-                    OP_LOGE(nodeName, "AIV counts length must equal rankSize * expertPerRank and be <= %u.",
-                            A2AVGMM_MAX_COUNT_NUM),
+                    OP_LOGE(nodeName, "AIV counts length must equal rankSize * expertPerRank=%u and be <= %u, "
+                                      "but send=%lu and recv=%lu.",
+                            expectedCountNum, A2AVGMM_MAX_COUNT_NUM, countNum,
+                            recvCountsVector->GetSize()),
                     return ge::GRAPH_FAILED);
     const auto *sendCounts = static_cast<const int64_t *>(sendCountsVector->GetData());
     const auto *recvCounts = static_cast<const int64_t *>(recvCountsVector->GetData());
     OP_TILING_CHECK(sendCounts == nullptr || recvCounts == nullptr,
                     OP_LOGE(nodeName, "AIV counts data is null."), return ge::GRAPH_FAILED);
 
-    uint64_t sendSum = 0U;
-    uint64_t recvSum = 0U;
-    for (uint64_t i = 0U; i < countNum; ++i) {
-        OP_TILING_CHECK(sendCounts[i] < 0 || sendCounts[i] > inputM ||
-                            recvCounts[i] < 0 || recvCounts[i] > outputM,
-                        OP_LOGE(nodeName, "AIV counts[%lu] is out of range.", i), return ge::GRAPH_FAILED);
-        tilingData->sendCounts[i] = sendCounts[i];
-        tilingData->recvCounts[i] = recvCounts[i];
-        sendSum += static_cast<uint64_t>(sendCounts[i]);
-        recvSum += static_cast<uint64_t>(recvCounts[i]);
-    }
-    OP_TILING_CHECK(sendSum != static_cast<uint64_t>(inputM) || recvSum != static_cast<uint64_t>(outputM),
-                    OP_LOGE(nodeName, "AIV counts sums must match input/output token counts."),
+    OP_TILING_CHECK(!AlltoAllvGroupedMatMulAivPlan::BuildInclusivePrefixes(
+                        sendCounts, recvCounts, rankSizeU32, expertPerRankU32,
+                        static_cast<uint32_t>(inputM), static_cast<uint32_t>(outputM),
+                        tilingData->sendPrefix, tilingData->recvPrefix),
+                    OP_LOGE(nodeName, "AIV counts must be non-negative int64 values whose sums match BSK/A "
+                                      "and whose inclusive prefixes fit int32."),
                     return ge::GRAPH_FAILED);
 
-    uint64_t maxExpertM = 0U;
-    for (int64_t expert = 0; expert < expertPerRank; ++expert) {
-        uint64_t expertM = 0U;
-        for (int64_t rank = 0; rank < rankSize; ++rank) {
-            expertM += static_cast<uint64_t>(recvCounts[rank * expertPerRank + expert]);
-        }
+    uint32_t maxExpertM = 0U;
+    for (uint32_t expert = 0U; expert < expertPerRankU32; ++expert) {
+        const uint32_t expertEndIndex = expert * rankSizeU32 + rankSizeU32 - 1U;
+        const int32_t expertStartPrefix =
+            expert == 0U ? 0 : tilingData->recvPrefix[expertEndIndex - rankSizeU32];
+        const uint32_t expertM =
+            static_cast<uint32_t>(tilingData->recvPrefix[expertEndIndex] - expertStartPrefix);
         maxExpertM = std::max(maxExpertM, expertM);
     }
 
@@ -272,8 +287,10 @@ ge::graphStatus FillAivTiling(gert::TilingContext *context)
         const int64_t localMmK = mx.GetDim(1);
         const int64_t localWeightK = mw.GetDim(*transMmWeight ? 1 : 0);
         const int64_t localWeightN = mw.GetDim(*transMmWeight ? 0 : 1);
-        OP_TILING_CHECK(!IsPositiveInt32(localMmM) || !IsPositiveInt32(localMmK) ||
-                            !IsPositiveInt32(localWeightK) || !IsPositiveInt32(localWeightN) ||
+        OP_TILING_CHECK(localMmM <= 0 || localMmM > AIV_MAX_TOKEN_NUM ||
+                            localMmK <= 0 || localMmK > AIV_MAX_DIMENSION ||
+                            localWeightK <= 0 || localWeightK > AIV_MAX_DIMENSION ||
+                            localWeightN <= 0 || localWeightN > AIV_MAX_DIMENSION ||
                             localMmK != localWeightK || my.GetDim(0) != localMmM || my.GetDim(1) != localWeightN,
                         OP_LOGE(nodeName, "AIV shared MM dimensions are inconsistent."), return ge::GRAPH_FAILED);
         mmM = static_cast<uint32_t>(localMmM);
@@ -306,11 +323,11 @@ ge::graphStatus FillAivTiling(gert::TilingContext *context)
     context->SetBlockDim(blockDim);
 
     auto &gmmInfo = tilingData->gmmInfo;
-    gmmInfo.M = static_cast<uint32_t>(maxExpertM);
+    gmmInfo.M = maxExpertM;
     gmmInfo.K = static_cast<uint32_t>(inputK);
     gmmInfo.N = static_cast<uint32_t>(weightN);
-    gmmInfo.rankSize = static_cast<uint32_t>(rankSize);
-    gmmInfo.expertPerRank = static_cast<uint32_t>(expertPerRank);
+    gmmInfo.rankSize = rankSizeU32;
+    gmmInfo.expertPerRank = expertPerRankU32;
     gmmInfo.maxOutputSize = static_cast<uint32_t>(outputM);
     gmmInfo.isTransposeB = static_cast<uint32_t>(*transGmmWeight);
     gmmInfo.hasSharedExpert = static_cast<uint32_t>(hasMmX);
@@ -319,7 +336,7 @@ ge::graphStatus FillAivTiling(gert::TilingContext *context)
     gmmInfo.aicCoreNum = aicNum;
     gmmInfo.totalUbSize = static_cast<uint32_t>(ubSize);
     tilingData->expertOverlapMode = ResolveExpertOverlapMode(
-        recvCounts, gmmInfo.rankSize, gmmInfo.expertPerRank, gmmInfo.K,
+        tilingData->recvPrefix, gmmInfo.rankSize, gmmInfo.expertPerRank, gmmInfo.K,
         gmmInfo.N);
 
     if (hasMmX) {
@@ -337,27 +354,69 @@ ge::graphStatus FillAivTiling(gert::TilingContext *context)
     }
 
     SetCocTiling(gmmInfo.M, gmmInfo.K, gmmInfo.N, ubSize, tilingData->gmmCocTiling);
+    OP_TILING_CHECK(tilingData->gmmCocTiling.ubMoveNum == 0U,
+                    OP_LOGE(nodeName, "UB is too small for two AIV copy buffers and metadata."),
+                    return ge::GRAPH_FAILED);
     if (hasMmX) {
         SetCocTiling(mmM, mmK, mmN, ubSize, tilingData->mmCocTiling);
     }
     tilingData->countNum = static_cast<uint32_t>(countNum);
 
-    const uint64_t recvBytes =
-        AlignWorkspace(static_cast<uint64_t>(outputM) * static_cast<uint64_t>(inputK) * AIV_INPUT_BYTES);
-    const uint64_t countBytes = AlignWorkspace(countNum * sizeof(AlltoAllvGmmExpertSourceMeta));
-    const uint64_t metaBytes =
-        AlignWorkspace(static_cast<uint64_t>(expertPerRank) * sizeof(AlltoAllvGmmExpertMeta));
-    const uint64_t readyBytes = AlignWorkspace(AlltoAllvGroupedMatMulAiv::ExpertReadyBytes(static_cast<uint32_t>(expertPerRank)));
+    AlltoAllvGroupedMatMulAiv::WorkspaceLayout workspace = {};
+    OP_TILING_CHECK(!AlltoAllvGroupedMatMulAiv::BuildWorkspaceLayout(
+                        static_cast<uint64_t>(outputM), static_cast<uint64_t>(inputK), AIV_INPUT_BYTES, workspace),
+                    OP_LOGE(nodeName, "Failed to build AIV workspace layout for A=%lld and H1=%lld.",
+                            static_cast<long long>(outputM), static_cast<long long>(inputK)),
+                    return ge::GRAPH_FAILED);
     tilingData->recvTokenOffset = 0U;
-    tilingData->countTableOffset = recvBytes;
-    tilingData->expertMetaOffset = recvBytes + countBytes;
-    tilingData->expertReadyOffset = recvBytes + countBytes + metaBytes;
-    tilingData->userWorkspaceSize = recvBytes + countBytes + metaBytes + readyBytes;
+    tilingData->userWorkspaceSize = workspace.totalBytes;
 
     size_t *workspaceSizes = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaceSizes == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "workspace"),
                     return ge::GRAPH_FAILED);
-    workspaceSizes[0] = AIV_SYSTEM_WORKSPACE_SIZE + tilingData->userWorkspaceSize;
+    uint64_t totalWorkspaceBytes = 0U;
+    OP_TILING_CHECK(!AlltoAllvGroupedMatMulAiv::SafeAddU64(
+                        AIV_SYSTEM_WORKSPACE_SIZE, workspace.totalBytes, totalWorkspaceBytes) ||
+                        totalWorkspaceBytes > std::numeric_limits<size_t>::max(),
+                    OP_LOGE(nodeName, "AIV workspace size overflow."), return ge::GRAPH_FAILED);
+    workspaceSizes[0] = static_cast<size_t>(totalWorkspaceBytes);
+
+    AlltoAllvGroupedMatMulAiv::RuntimeControlLayout control = {};
+    OP_TILING_CHECK(!AlltoAllvGroupedMatMulAiv::BuildRuntimeControlLayout(
+                        gmmInfo.rankSize, gmmInfo.expertPerRank, control),
+                    OP_LOGE(nodeName, "Failed to build AIV runtime control layout."), return ge::GRAPH_FAILED);
+    AlltoAllvGroupedMatMulAiv::A2avWindowLayout window = {};
+    OP_TILING_CHECK(!AlltoAllvGroupedMatMulAiv::BuildWindowLayout(
+                        static_cast<uint64_t>(inputM), static_cast<uint64_t>(inputK), countNum, control, 0U, window),
+                    OP_LOGE(nodeName, "Failed to build AIV HCCL window layout."), return ge::GRAPH_FAILED);
+    uint64_t actualWindowBytes = 0U;
+    const bool windowQuerySucceeded =
+        mc2tiling::GetCclBufferSize(group, &actualWindowBytes, nodeName) == ge::GRAPH_SUCCESS;
+    if (!windowQuerySucceeded) {
+        actualWindowBytes = 0U;
+    }
+    tilingData->actualWindowBytes = actualWindowBytes;
+    tilingData->requiredWindowBytes = window.requiredBytes;
+    tilingData->payloadBytes = window.payloadBytes;
+    tilingData->countBytes = window.countBytes;
+    tilingData->controlBytes = window.controlBytes;
+    if (!windowQuerySucceeded) {
+        OP_LOGE(nodeName,
+                "AIV HCCL window actual=%lu required=%lu payload=%lu count=%lu control=%lu, "
+                "BSK=%lld H1=%lld dtypeBytes=2 globalExpertNum=%lu.",
+                actualWindowBytes, window.requiredBytes, window.payloadBytes,
+                window.countBytes, window.controlBytes, static_cast<long long>(inputM),
+                static_cast<long long>(inputK), countNum);
+    } else {
+        OP_TILING_CHECK(actualWindowBytes < window.requiredBytes,
+                        OP_LOGE(nodeName,
+                                "AIV HCCL window actual=%lu required=%lu payload=%lu count=%lu control=%lu, "
+                                "BSK=%lld H1=%lld dtypeBytes=2 globalExpertNum=%lu.",
+                                actualWindowBytes, window.requiredBytes, window.payloadBytes,
+                                window.countBytes, window.controlBytes, static_cast<long long>(inputM),
+                                static_cast<long long>(inputK), countNum),
+                        return ge::GRAPH_FAILED);
+    }
 
     const uint64_t tilingKey =
         GET_TPL_TILING_KEY(*transGmmWeight, hasMmX ? *transMmWeight : false, Mc2Comm::COMM_MODE_AIV);
@@ -377,6 +436,7 @@ ge::graphStatus FillAivTiling(gert::TilingContext *context)
             "AIV tiling: rank=%u, expert=%u, maxExpertM=%u, K=%u, N=%u, blockDim=%u, workspace=%lu, is910C=%u.",
             gmmInfo.rankSize, gmmInfo.expertPerRank, gmmInfo.M, gmmInfo.K, gmmInfo.N, blockDim,
             tilingData->userWorkspaceSize, tilingData->is910C);
+    raw->SetDataSize(sizeof(AlltoAllvGmmAivTilingData));
     return ge::GRAPH_SUCCESS;
 }
 } // namespace

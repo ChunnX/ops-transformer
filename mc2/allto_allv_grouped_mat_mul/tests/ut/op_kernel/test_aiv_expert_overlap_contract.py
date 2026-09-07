@@ -90,7 +90,10 @@ def test_peer_window_allocation_excludes_workspace_expert_ready_bytes() -> None:
     assert "layout.peerControlBytes" in runtime_layout
     assert "control.peerControlBytes" in host_layout
     assert "control.totalBytes" not in host_layout
-    assert "control.peerControlBytes" in device_layout
+    # Device and Host intentionally share the same layout helper.  Keeping
+    # the peer-window boundary in BuildWindowLayout prevents the two sides
+    # from drifting when the prefix table size changes.
+    assert "BuildWindowLayout(" in device_layout
     assert "control.totalBytes" not in device_layout
 
 
@@ -194,8 +197,13 @@ def test_expert_ready_uses_megamoe_counted_cross_core_protocol() -> None:
 
     assert "CrossCoreSetFlag<0x2, PIPE_MTE3>" in signal
     assert "CrossCoreWaitFlag<0x2>" in wait
-    assert "ReadySequenceForExpert" in signal
-    assert "ReadySequenceForExpert" in wait
+    assert "ExpertReadyFlagId" in signal
+    assert "ExpertReadyFlagId" in wait
+    aiv = _function_body(source, "__aicore__ inline void ProcessAiv(")
+    aic = _function_body(source, "__aicore__ inline void ProcessAic(")
+    for body, action in [(aiv, "SignalAicExpertReady"), (aic, "RunExpertGemm")]:
+        drain = body.index("NeedsExpertEventDrain(readySequence)")
+        assert body.index(action) < drain < body.index("SyncAll<false>", drain)
 
 
 def test_invocation_epoch_stays_in_the_hccl_peer_window() -> None:
@@ -207,3 +215,44 @@ def test_invocation_epoch_stays_in_the_hccl_peer_window() -> None:
     assert "context.Window(context.RankId())" in load_epoch
     assert "workspace" not in load_epoch
     assert "PublishInvocationEpoch" not in source
+
+
+def test_prefix_lookup_uses_only_adjacent_cumsum_entries() -> None:
+    mode_source = _source()
+    peer_lookup = _function_body(
+        mode_source, "__aicore__ inline bool GetPeerSourceTokenOffset("
+    )
+    comm_source = COMM_SOURCE.read_text(encoding="utf-8")
+    prefix_range = _function_body(
+        comm_source, "A2AVGMM_HOST_DEVICE bool PrefixRange("
+    )
+
+    assert "for (" not in peer_lookup
+    assert "peerPrefix.GetValue(target)" in peer_lookup
+    assert "peerPrefix.GetValue(target - 1U)" in peer_lookup
+    assert "for (" not in prefix_range
+    assert "inclusivePrefix[index]" in prefix_range
+    assert "inclusivePrefix[index - 1U]" in prefix_range
+
+
+def test_sparse_experts_skip_before_producer_and_consumer_notification():
+    source = _source()
+    for name, action in [("ProcessAiv", "SignalAicExpertReady"),
+                         ("ProcessAic", "WaitAicExpertReady")]:
+        body = _function_body(source, "__aicore__ inline void " + name + "(")
+        skip = body.index("expert.tokenCount == 0U")
+        assert skip < body.index("continue;", skip) < body.index(action)
+        assert action + "(readySequence)" in body
+        assert "NeedsExpertEventDrain(readySequence)" in body
+        assert body.index(action) < body.index("++readySequence")
+
+
+def test_oneshot_path_does_not_scan_expert_metadata_on_all_cores():
+    body = _function_body(_source(), "__aicore__ inline void ProcessAiv(")
+    one_shot = body[body.index("    } else {", body.index("const bool expertOverlap")):]
+    one_shot = one_shot[:one_shot.index("SignalAicRoutedDataReady();")]
+    assert "BuildExpertMetaForIndex" not in one_shot
+    assert "expert.tokenCount" not in one_shot
+    assert "CopyExpertFromSource<T>" in one_shot
+    assert "subBlockIdx == 0U && blockIdx < workerNum" in one_shot
+    assert one_shot.count("AscendC::SyncAll<true>();") == 1

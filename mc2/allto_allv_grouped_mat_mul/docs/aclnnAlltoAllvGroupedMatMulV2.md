@@ -141,7 +141,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
     <tr>
         <td>sendCountsTensorOptional(aclTensor*)</td>
         <td>输入</td>
-        <td>预留参数，当前版本仅支持传nullptr。</td>
+        <td>预留参数，当前版本仅支持传nullptr；任一count Tensor非nullptr时返回ACLNN_ERR_PARAM_INVALID。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -151,7 +151,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
     <tr>
         <td>recvCountsTensorOptional(aclTensor*)</td>
         <td>输入</td>
-        <td>预留参数，当前版本仅支持传nullptr。</td>
+        <td>预留参数，当前版本仅支持传nullptr；任一count Tensor非nullptr时返回ACLNN_ERR_PARAM_INVALID。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -212,7 +212,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
         <td>sendCounts(aclIntArray*)</td>
         <td>输入</td>
         <td>表示发送给其他卡的token数。</td>
-        <td>数据类型支持INT64，长度为e * epWorldSize，最大为256。输入类型需为list。</td>
+        <td>数据类型支持INT64，长度为e * epWorldSize。commMode为"aiv"时最大为1024，其他模式最大为256。输入类型需为list。</td>
         <td>aclIntArray*（元素类型INT64）</td>
         <td>-</td>
         <td>-</td>
@@ -222,7 +222,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
         <td>recvCounts(aclIntArray*)</td>
         <td>输入</td>
         <td>表示接收其他卡的token数。</td>
-        <td>数据类型支持INT64，长度为e * epWorldSize，最大为256。输入类型需为list。</td>
+        <td>数据类型支持INT64，长度为e * epWorldSize。commMode为"aiv"时最大为1024，其他模式最大为256。输入类型需为list。</td>
         <td>aclIntArray*（元素类型INT64）</td>
         <td>-</td>
         <td>-</td>
@@ -411,6 +411,14 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
   - K：表示选取TopK个专家，K的范围[2, 8]。
   - A：本卡收到的token数，是recvCounts参数累加之和。
   - ep通信域内所有卡的A参数的累加和等于所有卡上的BSK参数的累加和。
+
+- commMode为`"aiv"`时的附加约束与内存布局：
+  - Atlas A2的epWorldSize支持2、4、8；Atlas A3支持2、4、8、16、32、64、128。gmmX、gmmWeight、gmmY必须为相同的FLOAT16或BFLOAT16类型、ND格式，shape分别为2维、3维、2维。
+  - AIV模式下BSK/A取值范围为[1, 5000000]，H1/N1取值范围为[1, 65535]；本卡专家数e不超过512，`epWorldSize * e`不超过1024。
+  - sendCounts和recvCounts接口属性为INT64直接计数数组，布局为`[rank][localExpert]`。Host侧校验每项非负且不超过对应本卡输入/输出M，并校验sendCounts之和等于BSK、recvCounts之和等于A；通过校验后在tiling中发布INT32 inclusive-prefix，其中sendPrefix保持rank-major，recvPrefix转换为expert-major/source-minor。
+  - 设`Align512(x) = ceil(x / 512) * 512`。peer window需求为`Align512(BSK * H1 * 2) + Align512(epWorldSize * e * 4) + Align512(32 * (1 + 2 * epWorldSize))`字节，三项分别为payload、INT32 prefix counts和epoch/publish/release control；默认window为200MiB，实际window不得小于该需求。
+  - Device workspace需求为`16MiB + Align512(A * H1 * 2)`字节，依次为系统区和接收payload。
+  - 运行时在满足安全启发式时按专家执行通信/计算重叠，否则先完成完整路由数据通信再逐专家计算。当前保留实现没有grouped small-expert wave，也没有M维分块（M-chunk）。
 
 <!-- npu="A3" id10 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  : 单卡通信量在2MB以下可能存在性能劣化。

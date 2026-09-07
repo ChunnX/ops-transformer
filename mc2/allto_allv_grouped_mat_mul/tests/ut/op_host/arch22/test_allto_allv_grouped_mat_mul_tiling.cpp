@@ -9,6 +9,7 @@
  */
 
 #include "../../../../op_host/op_tiling/allto_allv_grouped_mat_mul_tiling.h"
+#include "../../../../op_host/op_tiling/arch22/allto_allv_grouped_mat_mul_aiv_plan.h"
 #include "../../../../op_kernel/allto_allv_grouped_mat_mul_aiv_comm.h"
 #include "../../../../op_kernel/allto_allv_grouped_mat_mul_aiv_mode.h"
 #include "../../../../op_kernel/allto_allv_grouped_mat_mul_catlass.h"
@@ -1372,7 +1373,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivBf16TilingContract)
             {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aiv")},
         },
-        &compileInfo, "Ascend910_93", 20, 196608, 8192);
+        &compileInfo, "Ascend910_93", 20, 196608, 16U * 1024U);
 
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
     Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValues(hcomTopologyMockValues);
@@ -1396,24 +1397,28 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivBf16TilingContract)
 
 namespace AlltoAllvGroupedMatMulUT {
 namespace {
+constexpr uint64_t AIV_TILING_DATA_SIZE = 16U * 1024U;
+
 bool ExecuteAivHostCase(ge::DataType dtype, int64_t rankSize, const std::vector<int64_t> &sendCounts,
                         const std::vector<int64_t> &recvCounts, bool transpose, bool withSharedMm,
                         bool withPermute, TilingInfo &tilingInfo,
                         const std::string &socVersion = "Ascend910_93", uint64_t coreNum = 20,
-                        int64_t routedTokens = 16)
+                        int64_t routedTokens = 16, int64_t hiddenSize = 256,
+                        int64_t outputSize = 128, int64_t localExpertNum = 2)
 {
     struct AlltoAllvGroupedMatMulCompileInfo {};
     AlltoAllvGroupedMatMulCompileInfo compileInfo;
-    const int64_t weightDim1 = transpose ? 128 : 256;
-    const int64_t weightDim2 = transpose ? 256 : 128;
+    const int64_t weightDim1 = transpose ? outputSize : hiddenSize;
+    const int64_t weightDim2 = transpose ? hiddenSize : outputSize;
 
-    auto mmX = CreateTensorShape({{4, 256}, {4, 256}}, dtype, ge::FORMAT_ND);
+    auto mmX = CreateTensorShape({{4, hiddenSize}, {4, hiddenSize}}, dtype, ge::FORMAT_ND);
     auto mmWeight = CreateTensorShape(
-        transpose ? gert::StorageShape{{64, 256}, {64, 256}} : gert::StorageShape{{256, 64}, {256, 64}},
+        transpose ? gert::StorageShape{{64, hiddenSize}, {64, hiddenSize}} :
+                    gert::StorageShape{{hiddenSize, 64}, {hiddenSize, 64}},
         dtype, ge::FORMAT_ND);
     auto mmY = CreateTensorShape({{4, 64}, {4, 64}}, dtype, ge::FORMAT_ND);
     auto permuteOut = CreateTensorShape(
-        {{routedTokens, 256}, {routedTokens, 256}}, dtype, ge::FORMAT_ND);
+        {{routedTokens, hiddenSize}, {routedTokens, hiddenSize}}, dtype, ge::FORMAT_ND);
     if (!withSharedMm) {
         mmX->shape_ = {};
         mmWeight->shape_ = {};
@@ -1426,15 +1431,16 @@ bool ExecuteAivHostCase(ge::DataType dtype, int64_t rankSize, const std::vector<
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
-            {{{routedTokens, 256}, {routedTokens, 256}}, dtype, ge::FORMAT_ND},
-            {{{2, weightDim1, weightDim2}, {2, weightDim1, weightDim2}}, dtype, ge::FORMAT_ND},
+            {{{routedTokens, hiddenSize}, {routedTokens, hiddenSize}}, dtype, ge::FORMAT_ND},
+            {{{localExpertNum, weightDim1, weightDim2}, {localExpertNum, weightDim1, weightDim2}},
+             dtype, ge::FORMAT_ND},
             {{}, ge::DT_INT32, ge::FORMAT_ND},
             {{}, ge::DT_INT32, ge::FORMAT_ND},
             *mmX,
             *mmWeight,
         },
         {
-            {{{routedTokens, 128}, {routedTokens, 128}}, dtype, ge::FORMAT_ND},
+            {{{routedTokens, outputSize}, {routedTokens, outputSize}}, dtype, ge::FORMAT_ND},
             *mmY,
             *permuteOut,
         },
@@ -1448,7 +1454,7 @@ bool ExecuteAivHostCase(ge::DataType dtype, int64_t rankSize, const std::vector<
             {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(withPermute)},
             {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aiv")},
         },
-        &compileInfo, socVersion, coreNum, 196608, 8192);
+        &compileInfo, socVersion, coreNum, 196608, AIV_TILING_DATA_SIZE);
 
     Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValues({{"rankNum", rankSize}});
     const bool success = ExecuteTiling(tilingContextPara, tilingInfo);
@@ -1597,19 +1603,173 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivRejectsCountSumMismatch)
     EXPECT_FALSE(
         ExecuteAivHostCase(ge::DT_BF16, 4, sendCounts, recvCounts, false, false, false, tilingInfo));
 }
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivRejectsDimensionConstraints)
+{
+    const std::vector<int64_t> counts(8, 2);
+    TilingInfo tilingInfo;
+
+    EXPECT_FALSE(ExecuteAivHostCase(ge::DT_BF16, 4, counts, counts, false, false, false,
+                                    tilingInfo, "Ascend910_93", 20, 5000001));
+    EXPECT_FALSE(ExecuteAivHostCase(ge::DT_BF16, 4, counts, counts, false, false, false,
+                                    tilingInfo, "Ascend910_93", 20, 16, 65536, 128));
+    EXPECT_FALSE(ExecuteAivHostCase(ge::DT_BF16, 4, counts, counts, false, false, false,
+                                    tilingInfo, "Ascend910_93", 20, 16, 256, 65536));
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivRejectsTooManyLocalExperts)
+{
+    std::vector<int64_t> counts(4U * 513U, 0);
+    for (uint32_t index = 0U; index < 16U; ++index) {
+        counts[index] = 1;
+    }
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteAivHostCase(ge::DT_BF16, 4, counts, counts, false, false, false,
+                                    tilingInfo, "Ascend910_93", 20, 16, 256, 128, 513));
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivRejectsCountEntryAboveTokenCapacity)
+{
+    std::vector<int64_t> sendCounts(8, 0);
+    const std::vector<int64_t> recvCounts(8, 2);
+    sendCounts[0] = 17;
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(
+        ExecuteAivHostCase(ge::DT_BF16, 4, sendCounts, recvCounts, false, false, false, tilingInfo));
+}
+} // namespace AlltoAllvGroupedMatMulUT
+
+namespace AlltoAllvGroupedMatMulUT {
+namespace AivPlan = AlltoAllvGroupedMatMulAivPlan;
+
+TEST(AlltoAllvGroupedMatMulAivPlanTest, BuildsRankMajorSendAndExpertMajorRecvPrefixes)
+{
+    const int64_t send[] = {2, 1, 3, 0};
+    const int64_t recv[] = {2, 1, 1, 2};
+    int32_t sendPrefix[A2AVGMM_MAX_COUNT_NUM] = {};
+    int32_t recvPrefix[A2AVGMM_MAX_COUNT_NUM] = {};
+
+    ASSERT_TRUE(AivPlan::BuildInclusivePrefixes(send, recv, 2U, 2U, 6U, 6U, sendPrefix, recvPrefix));
+    EXPECT_EQ(std::vector<int32_t>(sendPrefix, sendPrefix + 4), (std::vector<int32_t>{2, 3, 6, 6}));
+    EXPECT_EQ(std::vector<int32_t>(recvPrefix, recvPrefix + 4), (std::vector<int32_t>{2, 3, 4, 6}));
+}
+
+TEST(AlltoAllvGroupedMatMulAivPlanTest, RejectsInvalidPrefixInputs)
+{
+    const int64_t valid[] = {2, 1, 1, 2};
+    const int64_t negative[] = {-1, 1, 1, 2};
+    const int64_t wrongSum[] = {2, 1, 1, 1};
+    int32_t sendPrefix[A2AVGMM_MAX_COUNT_NUM] = {};
+    int32_t recvPrefix[A2AVGMM_MAX_COUNT_NUM] = {};
+
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(negative, valid, 2U, 2U, 6U, 6U, sendPrefix, recvPrefix));
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(wrongSum, valid, 2U, 2U, 6U, 6U, sendPrefix, recvPrefix));
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(nullptr, valid, 2U, 2U, 6U, 6U, sendPrefix, recvPrefix));
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(valid, nullptr, 2U, 2U, 6U, 6U, sendPrefix, recvPrefix));
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(valid, valid, 0U, 2U, 6U, 6U, sendPrefix, recvPrefix));
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(valid, valid, 2U, 0U, 6U, 6U, sendPrefix, recvPrefix));
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(valid, valid, 2U, 2U, 0U, 6U, sendPrefix, recvPrefix));
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(valid, valid, 2U, 2U, 6U, 0U, sendPrefix, recvPrefix));
+}
+
+TEST(AlltoAllvGroupedMatMulAivPlanTest, RejectsCountNumBeyondAbiLimit)
+{
+    std::vector<int64_t> counts1025(1025U, 0);
+    std::vector<int32_t> prefix1025(1025U, 0);
+    counts1025[0] = 1;
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(counts1025.data(), counts1025.data(), 5U, 205U,
+                                                 1U, 1U, prefix1025.data(), prefix1025.data()));
+}
+
+TEST(AlltoAllvGroupedMatMulAivPlanTest, PrefixOnlyTilingAbiFitsExpandedBuffer)
+{
+    AlltoAllvGmmAivTilingData tiling = {};
+    EXPECT_EQ(A2AVGMM_MAX_COUNT_NUM, 1024U);
+    EXPECT_EQ(sizeof(tiling.sendPrefix), 1024U * sizeof(int32_t));
+    EXPECT_EQ(sizeof(tiling.recvPrefix), 1024U * sizeof(int32_t));
+    EXPECT_EQ(sizeof(tiling.sendPrefix) + sizeof(tiling.recvPrefix), 8192U);
+    EXPECT_GT(sizeof(AlltoAllvGmmAivTilingData), 8192U);
+    EXPECT_LE(sizeof(AlltoAllvGmmAivTilingData), AIV_TILING_DATA_SIZE);
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivPublishesInt32PrefixesFor1024GlobalExperts)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    const std::vector<int64_t> counts(1024U, 1);
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllvGroupedMatMul",
+        {
+            {{{1024, 256}, {1024, 256}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{8, 256, 128}, {8, 256, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{}, ge::DT_INT32, ge::FORMAT_ND},
+            {{}, ge::DT_INT32, ge::FORMAT_ND},
+            {{}, ge::DT_BF16, ge::FORMAT_ND},
+            {{}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            {{{1024, 128}, {1024, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{}, ge::DT_BF16, ge::FORMAT_ND},
+            {{}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+            {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+            {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(counts)},
+            {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(counts)},
+            {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aiv")},
+        },
+        &compileInfo, "Ascend910_93", 20, 196608, AIV_TILING_DATA_SIZE);
+
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValues({{"rankNum", 128}});
+    TilingInfo tilingInfo;
+    const bool success = ExecuteTiling(tilingContextPara, tilingInfo);
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().Reset();
+
+    ASSERT_TRUE(success);
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(AlltoAllvGmmAivTilingData));
+    const auto *tiling = reinterpret_cast<const AlltoAllvGmmAivTilingData *>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tiling->countNum, 1024U);
+    EXPECT_EQ(tiling->gmmInfo.rankSize, 128U);
+    EXPECT_EQ(tiling->gmmInfo.expertPerRank, 8U);
+    EXPECT_EQ(tiling->sendPrefix[0], 1);
+    EXPECT_EQ(tiling->sendPrefix[1023], 1024);
+    EXPECT_EQ(tiling->recvPrefix[0], 1);
+    EXPECT_EQ(tiling->recvPrefix[1023], 1024);
+    EXPECT_EQ(tiling->countBytes, 4096U);
+}
 } // namespace AlltoAllvGroupedMatMulUT
 
 
 namespace AlltoAllvGroupedMatMulUT {
 namespace AivComm = AlltoAllvGroupedMatMulAiv;
 
+struct CountingPrefix {
+    const int32_t *values = nullptr;
+    uint32_t *readCount = nullptr;
+
+    bool operator==(std::nullptr_t) const
+    {
+        return values == nullptr;
+    }
+
+    int32_t operator[](uint32_t index) const
+    {
+        ++(*readCount);
+        return values[index];
+    }
+};
+
 TEST(AlltoAllvGroupedMatMulAivCommTest, BuildsExpertMajorSourceMinorMetadata)
 {
-    const int64_t recvCounts[] = {2, 1, 1, 2};
+    const int32_t recvPrefix[] = {2, 3, 4, 6};
     AivComm::ExpertMeta expertMeta[2] = {};
     AivComm::ExpertSourceMeta sourceMeta[4] = {};
 
-    ASSERT_TRUE(AivComm::BuildExpertMetadata(recvCounts, 2, 2, 6, expertMeta, sourceMeta));
+    ASSERT_TRUE(AivComm::BuildExpertMetadata(recvPrefix, 2, 2, 6, expertMeta, sourceMeta));
     EXPECT_EQ(expertMeta[0].recvTokenBase, 0U);
     EXPECT_EQ(expertMeta[0].tokenCount, 3U);
     EXPECT_EQ(expertMeta[1].recvTokenBase, 3U);
@@ -1627,11 +1787,11 @@ TEST(AlltoAllvGroupedMatMulAivCommTest, BuildsExpertMajorSourceMinorMetadata)
 
 TEST(AlltoAllvGroupedMatMulAivCommTest, SupportsZeroTokenExpert)
 {
-    const int64_t recvCounts[] = {2, 0, 1, 0};
+    const int32_t recvPrefix[] = {2, 3, 3, 3};
     AivComm::ExpertMeta expertMeta[2] = {};
     AivComm::ExpertSourceMeta sourceMeta[4] = {};
 
-    ASSERT_TRUE(AivComm::BuildExpertMetadata(recvCounts, 2, 2, 3, expertMeta, sourceMeta));
+    ASSERT_TRUE(AivComm::BuildExpertMetadata(recvPrefix, 2, 2, 3, expertMeta, sourceMeta));
     EXPECT_EQ(expertMeta[0].recvTokenBase, 0U);
     EXPECT_EQ(expertMeta[0].tokenCount, 3U);
     EXPECT_EQ(expertMeta[1].recvTokenBase, 3U);
@@ -1642,21 +1802,39 @@ TEST(AlltoAllvGroupedMatMulAivCommTest, SupportsZeroTokenExpert)
 
 TEST(AlltoAllvGroupedMatMulAivCommTest, ComputesPeerSourceOffsets)
 {
-    const int64_t peer0SendCounts[] = {2, 1, 3, 0};
-    const int64_t peer1SendCounts[] = {1, 2, 0, 4};
+    const int32_t peer0SendPrefix[] = {2, 3, 6, 6};
+    const int32_t peer1SendPrefix[] = {1, 3, 3, 7};
     uint64_t offset = 0;
 
-    ASSERT_TRUE(AivComm::GetPeerSourceTokenOffset(peer0SendCounts, 2, 2, 0, 0, offset));
+    ASSERT_TRUE(AivComm::GetPeerSourceTokenOffset(peer0SendPrefix, 2, 2, 0, 0, offset));
     EXPECT_EQ(offset, 0U);
-    ASSERT_TRUE(AivComm::GetPeerSourceTokenOffset(peer0SendCounts, 2, 2, 0, 1, offset));
+    ASSERT_TRUE(AivComm::GetPeerSourceTokenOffset(peer0SendPrefix, 2, 2, 0, 1, offset));
     EXPECT_EQ(offset, 2U);
-    ASSERT_TRUE(AivComm::GetPeerSourceTokenOffset(peer0SendCounts, 2, 2, 1, 0, offset));
+    ASSERT_TRUE(AivComm::GetPeerSourceTokenOffset(peer0SendPrefix, 2, 2, 1, 0, offset));
     EXPECT_EQ(offset, 3U);
-    ASSERT_TRUE(AivComm::GetPeerSourceTokenOffset(peer1SendCounts, 2, 2, 1, 1, offset));
+    ASSERT_TRUE(AivComm::GetPeerSourceTokenOffset(peer1SendPrefix, 2, 2, 1, 1, offset));
     EXPECT_EQ(offset, 3U);
 
-    const int64_t invalidPeerCounts[] = {-1, 2, 0, 4};
-    EXPECT_FALSE(AivComm::GetPeerSourceTokenOffset(invalidPeerCounts, 2, 2, 0, 0, offset));
+    const int32_t invalidPeerPrefix[] = {-1, 2, 2, 6};
+    EXPECT_FALSE(AivComm::GetPeerSourceTokenOffset(invalidPeerPrefix, 2, 2, 0, 0, offset));
+}
+
+TEST(AlltoAllvGroupedMatMulAivCommTest, ReadsInclusivePrefixRangeInConstantTime)
+{
+    std::vector<int32_t> prefix(A2AVGMM_MAX_COUNT_NUM);
+    for (uint32_t index = 0U; index < A2AVGMM_MAX_COUNT_NUM; ++index) {
+        prefix[index] = static_cast<int32_t>(index + 1U);
+    }
+    uint32_t readCount = 0U;
+    const CountingPrefix countingPrefix{prefix.data(), &readCount};
+    uint32_t begin = 0U;
+    uint32_t end = 0U;
+
+    ASSERT_TRUE(AivComm::PrefixRange(countingPrefix, A2AVGMM_MAX_COUNT_NUM,
+                                     A2AVGMM_MAX_COUNT_NUM - 1U, begin, end));
+    EXPECT_EQ(begin, A2AVGMM_MAX_COUNT_NUM - 1U);
+    EXPECT_EQ(end, A2AVGMM_MAX_COUNT_NUM);
+    EXPECT_LE(readCount, 2U);
 }
 
 TEST(AlltoAllvGroupedMatMulAivCommTest, ValidatesWindowAndReadyLayout)
@@ -1757,23 +1935,23 @@ namespace AivMode = AlltoAllvGroupedMatMulAivMode;
 
 TEST(AlltoAllvGroupedMatMulAivModeTest, BuildsExpertMetadataOneExpertAtATime)
 {
-    const int64_t recvCounts[] = {1, 2, 3, 4, 5, 6};
+    const int32_t recvPrefix[] = {1, 5, 7, 12, 15, 21};
     AivComm::ExpertMeta expert = {};
-    ASSERT_TRUE(AivMode::BuildExpertMetaForIndex(recvCounts, 2, 3, 1, 21, expert));
+    ASSERT_TRUE(AivMode::BuildExpertMetaForIndex(recvPrefix, 2, 3, 1, 21, expert));
     EXPECT_EQ(expert.recvTokenBase, 5U);
     EXPECT_EQ(expert.tokenCount, 7U);
 
     uint64_t sourceOffset = 0U;
-    ASSERT_TRUE(AivMode::GetDestinationSourceTokenOffset(recvCounts, 2, 3, 1, 1, 21, sourceOffset));
+    ASSERT_TRUE(AivMode::GetDestinationSourceTokenOffset(recvPrefix, 2, 3, 1, 1, 21, sourceOffset));
     EXPECT_EQ(sourceOffset, 7U);
 }
 
 TEST(AlltoAllvGroupedMatMulAivModeTest, RejectsInvalidExpertMetadata)
 {
-    const int64_t negativeCounts[] = {1, -1, 2, 3};
+    const int32_t invalidPrefix[] = {1, 3, 2, 5};
     AivComm::ExpertMeta expert = {};
-    EXPECT_FALSE(AivMode::BuildExpertMetaForIndex(negativeCounts, 2, 2, 1, 5, expert));
-    EXPECT_FALSE(AivMode::BuildExpertMetaForIndex(negativeCounts, 2, 2, 2, 5, expert));
+    EXPECT_FALSE(AivMode::BuildExpertMetaForIndex(invalidPrefix, 2, 2, 1, 5, expert));
+    EXPECT_FALSE(AivMode::BuildExpertMetaForIndex(invalidPrefix, 2, 2, 2, 5, expert));
 }
 
 TEST(AlltoAllvGroupedMatMulAivModeTest, MultipliesUint32WithoutDeviceRuntimeHelper)
@@ -1804,6 +1982,22 @@ TEST(AlltoAllvGroupedMatMulAivModeTest, AssignsOneSubblockZeroWorkerPerSourceRan
     EXPECT_TRUE(AivMode::IsSourceWorker(2, 2, 0, 4, 1));
     EXPECT_FALSE(AivMode::IsSourceWorker(2, 2, 1, 4, 1));
     EXPECT_FALSE(AivMode::IsSourceWorker(8, 2, 0, 4, 0));
+
+    uint32_t workerNum = 0U;
+    ASSERT_TRUE(AivMode::GetProducerWorkerCount(40U, 2U, workerNum));
+    EXPECT_EQ(workerNum, 20U);
+    // Twenty producer subblocks must cover all 128 ranks by striding 20.
+    std::array<uint32_t, 128> visits = {};
+    for (uint32_t worker = 0U; worker < workerNum; ++worker) {
+        for (uint32_t rank = worker; rank < visits.size(); rank += workerNum) {
+            ++visits[rank];
+        }
+    }
+    for (const uint32_t visitCount : visits) {
+        EXPECT_EQ(visitCount, 1U);
+    }
+    EXPECT_FALSE(AivMode::GetProducerWorkerCount(40U, 0U, workerNum));
+    EXPECT_FALSE(AivMode::GetProducerWorkerCount(41U, 2U, workerNum));
 }
 
 } // namespace AlltoAllvGroupedMatMulUT
