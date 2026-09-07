@@ -71,7 +71,7 @@
     hidden\_states_{t,h} = \sum_{i=0}^{N} probs_{t,i} \cdot v_{t,i,h}
     $$
 
-    加权融合使用**原始** $v$（非 RMS 后的 $k$）。Torch 接口当前仅返回 $hidden\_states$。
+    加权融合使用**原始** $v$（非 RMS 后的 $k$）。Torch 接口始终只返回 $hidden\_states$；输入 `requires_grad` 时由 autograd 保存 $inv\_rms$、$probs$ 供反向使用。
 
     其中：
 
@@ -112,7 +112,7 @@ cann_ops_transformer.block_attention_residuals(
 
 ## 返回值说明
 
-始终返回 `hidden_states`。反向算子未上库，不返回 `inv_norm` / `probs`。
+始终返回 `hidden_states`。输入带 `requires_grad` 时走 autograd，反向调用 `block_attention_residuals_backward`，不向调用方返回 `inv_norm` / `probs`。
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
@@ -120,7 +120,7 @@ cann_ops_transformer.block_attention_residuals(
 
 ## 约束说明
 
-- 当前反向算子未上库，Torch 接口仅支持正向调用。
+- Torch 接口始终只返回 `hidden_states`。任一输入 `requires_grad=True` 时走 autograd：前向以 `need_backward=True` 保存 `inv_norm` / `probs`，反向调用 `block_attention_residuals_backward`。
 - 该接口支持单算子模式调用，暂不支持 TorchAir 图模式调用。
 - 主路径 dtype 必须一致，支持 float16 / bfloat16 / float32。
 - shape 要求：`T >= 0`，`H >= 1`，`1 <= N <= 100`。`T == 0` 时返回对应 shape 的空输出。
@@ -165,7 +165,7 @@ cann_ops_transformer.block_attention_residuals(
     proj_weight = torch.tensor([0.5, 0.25, 0.25, 0.0], dtype=torch.bfloat16, device="npu")
     norm_weight = torch.ones(4, dtype=torch.bfloat16, device="npu")
 
-    # valid_block_num / norm_eps 为可选参数；省略时分别使用 N、1e-6。反向未上库，仅返回 hidden_states。
+    # valid_block_num / norm_eps 为可选参数；省略时分别使用 N、1e-6。始终只返回 hidden_states。
     hidden_states = cann_ops_transformer.block_attention_residuals(
         partial_block,
         block_res,
