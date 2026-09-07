@@ -63,12 +63,12 @@ private:
     ge::graphStatus SetPlatMemoryInfo();
     void SplitPolicy();
     void ComputeTilingData();
-    ge::graphStatus GenTilingKey();
+    void GenTilingKey();
     void CalcWorkspaceSize();
-    ge::graphStatus UpdateTilingKeyConfig();
+    void UpdateTilingKeyConfig();
     void UpdateTilingKeyLayout();
     void UpdateTilingKeyKvLayout();
-    ge::graphStatus UpdateTilingKeyInfo();
+    void UpdateTilingKeyInfo();
     void SetFATilingData();
     void InitImplParam();
     void PrintAllTilingData();
