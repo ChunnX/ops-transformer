@@ -72,6 +72,12 @@ constexpr uint32_t MAX_CMP_RATIO = 128;
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 const uint32_t CMP_MAX_AIC_CORE_NUM = 36;
 
+// TILING BLOCK SIZE
+constexpr uint32_t D_BASE_SIZE = 128; // D 方向分块基大小（UB/L1 物理行宽）
+constexpr uint32_t M_BASE_SIZE = 128; // M 方向分块基大小
+constexpr uint32_t DB_RATIO = 2;      // workspace 双缓冲倍数
+constexpr uint32_t COFF_MAX = 2;      // coff 上限
+
 static const std::string X_NAME = "query";
 static const std::string WKV_NAME = "wkv";
 static const std::string WGATE_NAME = "wgate";
