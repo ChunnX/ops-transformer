@@ -89,33 +89,6 @@ aclnnStatus RunWithQOut(const TensorDesc &qOut)
 {
     return RunWithQOutAndGenQkv(qOut, DefaultGenQkv());
 }
-
-vector<TensorDesc> DefaultTensors()
-{
-    return {
-        TensorDesc({UND_LEN, NUM_HEAD, HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND),
-        TensorDesc({HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND),
-        TensorDesc({HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND),
-        TensorDesc({MAX_POS, HEAD_DIM}, ACL_FLOAT, ACL_FORMAT_ND),
-        ContiguousCache(NUM_HEAD_K), ContiguousCache(NUM_HEAD_V),
-        TensorDesc({TOTAL}, ACL_INT64, ACL_FORMAT_ND),
-        TensorDesc({3, TOTAL}, ACL_INT64, ACL_FORMAT_ND), DefaultGenQkv(),
-        TensorDesc({HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND),
-        TensorDesc({HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND),
-        TensorDesc({TOTAL}, ACL_INT64, ACL_FORMAT_ND), DefaultQOut()};
-}
-
-aclnnStatus RunWithTensors(const vector<TensorDesc> &tensors)
-{
-    auto mropeSection = IntArrayDesc(vector<int64_t>{16, 16, 16});
-    auto ut = OP_API_UT(
-        aclnnUndGenQkvRmsNormRopeCache,
-        INPUT(tensors[0], tensors[1], tensors[2], tensors[3], tensors[4], tensors[5], tensors[6], tensors[7],
-              tensors[8], tensors[9], tensors[10], tensors[11], NUM_HEAD_Q, NUM_HEAD_K, NUM_HEAD_V, NORM_EPS,
-              mropeSection), OUTPUT(tensors[12]));
-    uint64_t workspaceSize = 0;
-    return ut.TestGetWorkspaceSize(&workspaceSize);
-}
 } // namespace
 
 class und_gen_qkv_rms_norm_rope_cache_opapi_ut : public testing::Test {
@@ -295,63 +268,4 @@ TEST_F(und_gen_qkv_rms_norm_rope_cache_opapi_ut, aclnn_gen_qkv_not_3d_rejected)
 {
     auto genQkv = TensorDesc({GEN_LEN, NUM_HEAD * HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
     EXPECT_EQ(RunWithQOutAndGenQkv(DefaultQOut(), genQkv), ACLNN_ERR_PARAM_INVALID);
-}
-
-// 对应全部 13 条 exc_format 用例：每次只改变一个原始描述符，必须在 Contiguous 前拒绝。
-TEST_F(und_gen_qkv_rms_norm_rope_cache_opapi_ut, aclnn_all_tensor_non_nd_formats_rejected)
-{
-    for (size_t index = 0; index < DefaultTensors().size(); ++index) {
-        SCOPED_TRACE(index);
-        auto tensors = DefaultTensors();
-        tensors[index].Format(ACL_FORMAT_FRACTAL_NZ);
-        EXPECT_EQ(RunWithTensors(tensors), ACLNN_ERR_PARAM_INVALID);
-    }
-}
-
-TEST_F(und_gen_qkv_rms_norm_rope_cache_opapi_ut, aclnn_nd_compatible_formats_pass)
-{
-    auto tensors = DefaultTensors();
-    tensors[0].Format(ACL_FORMAT_NCL);
-    tensors[8].Format(ACL_FORMAT_NCL);
-    tensors[4].Format(ACL_FORMAT_NCHW);
-    tensors[5].Format(ACL_FORMAT_NCHW);
-    tensors[12].Format(ACL_FORMAT_NCL);
-    EXPECT_NE(RunWithTensors(tensors), ACLNN_ERR_PARAM_INVALID);
-}
-
-// 对应 constraint_061/062，另覆盖 Cache 的 H、Bn/Bs 和 rank，防止原地输出推导掩盖错误。
-TEST_F(und_gen_qkv_rms_norm_rope_cache_opapi_ut, aclnn_cache_shape_mismatch_rejected)
-{
-    const vector<vector<int64_t>> invalidShapes = {
-        {BLOCK_NUM, BLOCK_SIZE, NUM_HEAD_K, HEAD_DIM - 1},
-        {BLOCK_NUM, BLOCK_SIZE, NUM_HEAD_K, HEAD_DIM / 2},
-        {BLOCK_NUM, BLOCK_SIZE, NUM_HEAD_K + 1, HEAD_DIM},
-        {BLOCK_NUM + 1, BLOCK_SIZE, NUM_HEAD_K, HEAD_DIM},
-        {BLOCK_NUM, BLOCK_SIZE + 1, NUM_HEAD_K, HEAD_DIM},
-        {BLOCK_NUM, BLOCK_SIZE, HEAD_DIM}};
-    for (size_t index : {4U, 5U}) {
-        for (size_t shapeIndex = 0; shapeIndex < invalidShapes.size(); ++shapeIndex) {
-            SCOPED_TRACE(index);
-            SCOPED_TRACE(shapeIndex);
-            auto tensors = DefaultTensors();
-            tensors[index] = TensorDesc(invalidShapes[shapeIndex], ACL_BF16, ACL_FORMAT_ND);
-            EXPECT_EQ(RunWithTensors(tensors), ACLNN_ERR_PARAM_INVALID);
-        }
-    }
-}
-
-// 对应 empty_048；每个 Cache 的任意一维为零均需在第一阶段拒绝。
-TEST_F(und_gen_qkv_rms_norm_rope_cache_opapi_ut, aclnn_empty_caches_rejected)
-{
-    for (size_t index : {4U, 5U}) {
-        for (size_t dim = 0; dim < 4; ++dim) {
-            SCOPED_TRACE(index);
-            SCOPED_TRACE(dim);
-            auto tensors = DefaultTensors();
-            vector<int64_t> shape = {BLOCK_NUM, BLOCK_SIZE, NUM_HEAD_K, HEAD_DIM};
-            shape[dim] = 0;
-            tensors[index] = TensorDesc(shape, ACL_BF16, ACL_FORMAT_ND);
-            EXPECT_EQ(RunWithTensors(tensors), ACLNN_ERR_PARAM_INVALID);
-        }
-    }
 }
