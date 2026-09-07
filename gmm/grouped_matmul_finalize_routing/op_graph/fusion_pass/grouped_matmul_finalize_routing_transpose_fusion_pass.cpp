@@ -121,9 +121,12 @@ bool IsUnknownDim(int64_t dim)
     return dim < 0;
 }
 
-bool IsSameOrBothUnknown(int64_t lhs, int64_t rhs)
+bool IsSameOrUnknown(int64_t lhs, int64_t rhs)
 {
-    return lhs == rhs || (IsUnknownDim(lhs) && IsUnknownDim(rhs));
+    // During dynamic graph construction GE may resolve only one side of a
+    // reshape descriptor.  A known mismatch is still rejected; an unknown
+    // side is accepted because the concrete shape is resolved at runtime.
+    return lhs == rhs || IsUnknownDim(lhs) || IsUnknownDim(rhs);
 }
 
 bool GetTransposePerm(const GNodePtr &transposeNode, std::vector<int64_t> &perm)
@@ -187,7 +190,7 @@ bool GetShapeDims(const GNodePtr &node, bool input, std::vector<int64_t> &dims)
 bool IsExpectedSwap(const std::vector<int64_t> &inputDims, const std::vector<int64_t> &outputDims, int64_t inputIndex,
                     bool requireUnitAxis)
 {
-    if (inputDims.size() != outputDims.size() || inputDims.size() < 3) {
+    if (inputDims.size() < 3) {
         return false;
     }
     std::size_t firstAxis = inputDims.size() - 2;
@@ -202,10 +205,19 @@ bool IsExpectedSwap(const std::vector<int64_t> &inputDims, const std::vector<int
     if (requireUnitAxis && inputDims[firstAxis] != 1 && inputDims[secondAxis] != 1) {
         return false;
     }
+    // A dynamic Reshape may not have an output shape descriptor yet.  The
+    // known unit axis and rank are sufficient to identify the view-generated
+    // transpose; ordinary Reshape inputs without that proof remain rejected.
+    if (outputDims.empty()) {
+        return requireUnitAxis;
+    }
+    if (inputDims.size() != outputDims.size()) {
+        return false;
+    }
     auto expectedDims = inputDims;
     std::swap(expectedDims[firstAxis], expectedDims[secondAxis]);
     for (std::size_t i = 0; i < expectedDims.size(); ++i) {
-        if (!IsSameOrBothUnknown(expectedDims[i], outputDims[i])) {
+        if (!IsSameOrUnknown(expectedDims[i], outputDims[i])) {
             return false;
         }
     }
