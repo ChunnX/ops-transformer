@@ -19,18 +19,14 @@ at::Tensor GenericBlockSparseAttentionMetadata(
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv, int64_t max_seqlen_q,
     int64_t max_seqlen_kv, int64_t num_heads_q, int64_t num_heads_kv, int64_t head_dim, at::IntArrayRef block_shape,
-    bool is_packed_gqa, c10::string_view layout_q, c10::string_view layout_kv, int64_t mask_mode, int64_t quant_mode,
+    bool is_packed_gqa, std::string layout_q, std::string layout_kv, int64_t mask_mode, int64_t quant_mode,
     int64_t softmax_precision, int64_t win_left, int64_t win_right, const at::Tensor &output)
 {
-    std::string layout_q_str(layout_q);
-    std::string layout_kv_str(layout_kv);
-    char *layout_q_ptr = const_cast<char *>(layout_q_str.c_str());
-    char *layout_kv_ptr = const_cast<char *>(layout_kv_str.c_str());
     const int64_t is_packed_gqa_flag = is_packed_gqa ? 1 : 0;
 
     ACLNN_CMD(aclnnGenericBlockSparseAttentionMetadata, sparse_block_idx, sparse_block_count, cu_seqlens_q,
               cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv, num_heads_q, num_heads_kv, head_dim,
-              block_shape, is_packed_gqa_flag, layout_q_ptr, layout_kv_ptr, mask_mode, quant_mode, softmax_precision,
+              block_shape, is_packed_gqa_flag, layout_q, layout_kv, mask_mode, quant_mode, softmax_precision,
               win_left, win_right, output);
     return output;
 }
@@ -43,7 +39,7 @@ std::tuple<at::Tensor, at::Tensor> GenericBlockSparseAttention(
     const c10::optional<at::Tensor> &p_quant_scale, const c10::optional<at::Tensor> &cu_seqlens_q,
     const c10::optional<at::Tensor> &cu_seqlens_kv, const c10::optional<at::Tensor> &seqused_q,
     const c10::optional<at::Tensor> &seqused_kv, const c10::optional<at::Tensor> &block_table, bool is_packed_gqa,
-    c10::string_view layout_q, c10::string_view layout_kv, double softmax_scale, int64_t mask_mode, int64_t quant_mode,
+    std::string layout_q, std::string layout_kv, double softmax_scale, int64_t mask_mode, int64_t quant_mode,
     double dst_type_max, int64_t softmax_precision, int64_t win_left, int64_t win_right, bool return_softmax_lse,
     c10::optional<at::ScalarType> attention_out_dtype)
 {
@@ -79,16 +75,11 @@ std::tuple<at::Tensor, at::Tensor> GenericBlockSparseAttention(
         softmax_lse = at::empty({0}, opts_f32);
     }
 
-    std::string layout_q_str(layout_q);
-    std::string layout_kv_str(layout_kv);
-    char *layout_q_ptr = const_cast<char *>(layout_q_str.c_str());
-    char *layout_kv_ptr = const_cast<char *>(layout_kv_str.c_str());
-
     const int64_t is_packed_gqa_flag = is_packed_gqa ? 1 : 0;
     const int64_t return_softmax_lse_flag = return_softmax_lse ? 1 : 0;
     ACLNN_CMD(aclnnGenericBlockSparseAttention, q, k, v, sparse_block_idx, sparse_block_count, metadata, attn_mask,
               q_dequant_scale, k_dequant_scale, v_dequant_scale, p_quant_scale, cu_seqlens_q, cu_seqlens_kv, seqused_q,
-              seqused_kv, block_table, block_shape_ref, is_packed_gqa_flag, layout_q_ptr, layout_kv_ptr, softmax_scale,
+              seqused_kv, block_table, block_shape_ref, is_packed_gqa_flag, layout_q, layout_kv, softmax_scale,
               mask_mode, quant_mode, dst_type_max, softmax_precision, win_left, win_right, return_softmax_lse_flag,
               attention_out, softmax_lse);
     return std::make_tuple(attention_out, softmax_lse);
