@@ -137,12 +137,6 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
         Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF, static_cast<uint32_t>(L1_TILE_N));
 
     ExpertTokenPosition dispatchPosition{};
-    // 非量化 Combine 路径的首 Wave 使用 Host 已分配的完整 Dispatch ring（通常为 6 槽）；后续与
-    // GMM1/Activation 重叠的 Dispatch 固定为单槽，降低对 AIC MTE2/FIX_PIPE 的干扰。
-    TokenDispatchConfig steadyDispatchConfig = tokenDispatchConfig_;
-    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        steadyDispatchConfig.bufferConfig.bufferCount = 1;
-    }
 
     // 启动阶段：GMM1 开始消费输入前，由 AIV1 先 Dispatch 第一个完整 Wave。
     if constexpr (g_coreType == AIV) {
@@ -197,7 +191,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                                                   nextExpertDispatchRange.begin.expertIdx,
                                                   nextExpertDispatchRange.begin.expertIdx);
                         DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-                            steadyDispatchConfig, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_,
+                            tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_,
                             params_, g_winRankAddr_, tokenDispatchScratch_, nextExpertDispatchRange);
                     }
                     // 有效 slice 完成 Dispatch，或仅跳过空专家后，提交本次规划的末尾位置。
