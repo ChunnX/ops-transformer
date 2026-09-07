@@ -27,10 +27,11 @@ at::Tensor FlashAttnMetadata(const c10::optional<at::Tensor> &cuSeqlensQ, const 
                              int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t batchSize,
                              int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t maskMode, int64_t winLeft,
                              int64_t winRight, std::string layoutQ, std::string layoutKv, std::string layoutOut,
-                             const at::Tensor &output)
+                             bool isGradEnabled, const at::Tensor &output)
 {
     ACLNN_CMD(aclnnFlashAttnMetadata, cuSeqlensQ, cuSeqlensKv, sequsedQ, sequsedKv, batchSize, maxSeqlenQ, maxSeqlenKv,
-              numHeadsQ, numHeadsKv, headDim, maskMode, winLeft, winRight, layoutQ, layoutKv, layoutOut, output);
+              numHeadsQ, numHeadsKv, headDim, maskMode, winLeft, winRight, layoutQ, layoutKv, layoutOut, isGradEnabled,
+              output);
     return output;
 }
 
