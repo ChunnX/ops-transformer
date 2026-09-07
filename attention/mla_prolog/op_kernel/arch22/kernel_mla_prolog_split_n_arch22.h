@@ -2116,7 +2116,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantAndRopeSplitNSyncMMQcQ
 template <typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantRopeSplitNDequantLoop(
     int64_t mmQnPreDequantOffset, int64_t mmQnPreDequantResOffset, uint32_t colQc, uint32_t colQr,
-    uint32_t colOffsetCube, uint32_t srcStride, uint32_t dstStride, uint32_t inputOffset, uint32_t outputOffset,
+    uint32_t colOffsetCube, uint32_t srcStride, uint32_t dstStride, uint32_t &inputOffset, uint32_t &outputOffset,
     uint32_t totalDequantLoops, bool needSparseSync, uint32_t &colOffsetVec, uint32_t &dequantLoopCount)
 {
     // DequantSplitN
@@ -2138,8 +2138,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantRopeSplitNDequantLoop(
 template <typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantRopeSplitNRopeLoop(
     int64_t ropeQrOffset, int64_t ropeQrResOffset, uint32_t colQc, uint32_t colQr, uint32_t colOffsetCube,
-    uint32_t ropeDstStride, uint32_t ropeCnt, int64_t ropeStride, uint32_t inputOffsetRope, uint32_t outputOffsetRope,
-    uint32_t deqScaleOffset, uint32_t deQuantScaleCqOffset, uint32_t &colOffsetRope)
+    uint32_t ropeDstStride, uint32_t ropeCnt, int64_t ropeStride, uint32_t &inputOffsetRope, uint32_t &outputOffsetRope,
+    uint32_t &deqScaleOffset, uint32_t deQuantScaleCqOffset, uint32_t &colOffsetRope)
 {
     uint32_t ropeCntDown = mmQcQrParam_.m / 2;
     // RopeQrSplitN
