@@ -536,8 +536,12 @@ public:
         Mutex::Unlock<PIPE_V>(QK_SCALE_MUTEX_ID);
 
         if (likely(!runInfo.isLastS2Loop)) {
+            // kScale 预写下一 s2 块的 buf：必须持 MTE2 侧 QK 锁——下一任务的 Lock<V>(QK) 才能等到
+            // 本次预写完成后再读（57c8e8623 删除 flush 时漏了 preload 的 MTE2 写序，多块 KV 竞态）
             LocalTensor<float> kScaleUbNextTensor = keyAntiqScaleBuf_[1 - kscaleOffset];
+            Mutex::Lock<PIPE_MTE2>(QK_SCALE_MUTEX_ID);
             CopyKeyScaleTile(kScaleUbNextTensor, runInfo, true);
+            Mutex::Unlock<PIPE_MTE2>(QK_SCALE_MUTEX_ID);
         }
 
         Mutex::Unlock<PIPE_V>(STAGE1_OUT_MUTEX_ID0 + static_cast<uint32_t>(stage1Offset));
