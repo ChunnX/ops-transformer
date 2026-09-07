@@ -95,8 +95,14 @@ protected:
         if (tiling != nullptr)
             AscendC::GmFree(tiling);
     }
-    static void SetUpTestCase() { std::cout << "MlaPrologKernel SetUp\n" << std::endl; }
-    static void TearDownTestCase() { std::cout << "MlaPrologKernel TearDown\n" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "MlaPrologKernel SetUp\n" << std::endl;
+    }
+    static void TearDownTestCase()
+    {
+        std::cout << "MlaPrologKernel TearDown\n" << std::endl;
+    }
 };
 
 // 非量化场景

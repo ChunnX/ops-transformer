@@ -13,11 +13,10 @@
 using namespace ge;
 
 namespace ops {
-static ge::graphStatus ValidateInputShapeDims(const gert::InferShapeContext *context,
-                                              const gert::Shape *tokenXShape, const gert::Shape *weightUkShape,
-                                              const gert::Shape *ropeSinShape, const gert::Shape *weightDqShape,
-                                              const gert::Shape *kvCacheShape, const gert::Shape *krCacheShape,
-                                              const bool &doRope)
+static ge::graphStatus ValidateInputShapeDims(const gert::InferShapeContext *context, const gert::Shape *tokenXShape,
+                                              const gert::Shape *weightUkShape, const gert::Shape *ropeSinShape,
+                                              const gert::Shape *weightDqShape, const gert::Shape *kvCacheShape,
+                                              const gert::Shape *krCacheShape, const bool &doRope)
 {
     OP_CHECK_IF(((tokenXShape->GetDimNum() != DIM_NUM_2) && (tokenXShape->GetDimNum() != DIM_NUM_3)),
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "tokenX",
@@ -76,8 +75,8 @@ ge::graphStatus GetMlaPrologV3ShapeDim(const gert::InferShapeContext *context, M
         }
     }
     const bool ropeSinEmpty = (ropeSinShape->GetShapeSize() == 0);
-    if (ValidateInputShapeDims(context, tokenXShape, weightUkShape, ropeSinShape, weightDqShape,
-                               kvCacheShape, krCacheShape, doRope) != ge::GRAPH_SUCCESS) {
+    if (ValidateInputShapeDims(context, tokenXShape, weightUkShape, ropeSinShape, weightDqShape, kvCacheShape,
+                               krCacheShape, doRope) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
