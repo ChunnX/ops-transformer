@@ -21,8 +21,9 @@ extern "C" {
 ACLNN_API aclnnStatus aclnnFFNToAttentionV2GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *sessionIds, const aclTensor *microBatchIds,
     const aclTensor *tokenIds, const aclTensor *expertOffsets, const aclTensor *actualTokenNum,
-    const aclTensor *attnRankTable, const char *group, int64_t worldSize, const aclIntArray *tokenInfoTableShape,
-    const aclIntArray *tokenDataShape, int64_t cclBufferSize, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor *attnRankTable, const aclTensor *perfData, const char *group, int64_t worldSize,
+    const aclIntArray *tokenInfoTableShape, const aclIntArray *tokenDataShape, int64_t cclBufferSize,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 
 ACLNN_API aclnnStatus aclnnFFNToAttentionV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                             aclrtStream stream);

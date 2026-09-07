@@ -51,6 +51,7 @@ constexpr uint32_t REMOTE_RELAY_INFO_SIZE = 32U;
 constexpr uint32_t REMOTE_RELAY_INFO_U64_COUNT = REMOTE_RELAY_INFO_SIZE / sizeof(uint64_t);
 constexpr uint32_t REMOTE_RELAY_CAPACITY = URMA_BATCH_WQE_CAPACITY;
 constexpr uint32_t REMOTE_RELAY_BUFFER_SIZE = REMOTE_RELAY_CAPACITY * REMOTE_RELAY_INFO_SIZE;
+constexpr uint32_t PERF_FIELD_NUM = 8U;
 static constexpr AscendC::UrmaWqeEntry REMOTE_DATA_WQE_CONFIG = {
     .odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_FIRST_FLAG_WQE_CONFIG = {
@@ -81,7 +82,8 @@ public:
     __aicore__ inline FFNToAttentionUrma(){};
     __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds,
                                 GM_ADDR tokenIds, GM_ADDR expertOffsets, GM_ADDR actualTokenNum, GM_ADDR attnRankTable,
-                                GM_ADDR workspaceGM, TPipe *pipe, const FFNToAttentionV2TilingData *tilingData);
+                                GM_ADDR perfData, GM_ADDR workspaceGM, TPipe *pipe,
+                                const FFNToAttentionV2TilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
@@ -99,6 +101,7 @@ private:
                                                  const RemoteRelayInfo &relayInfo, bool firstFlag);
     __aicore__ inline void StoreRemoteRelayInfo(uint32_t index, const RemoteRelayInfo &relayInfo);
     __aicore__ inline RemoteRelayInfo LoadRemoteRelayInfo(uint32_t index);
+    __aicore__ inline void WritePerfData(const uint64_t (&cycles)[PERF_FIELD_NUM]);
 
     TPipe *tpipe_{nullptr};
     Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
@@ -114,6 +117,7 @@ private:
     GlobalTensor<int32_t> expertOffsetsGMTensor_;
     GlobalTensor<int64_t> actualTokenNumGMTensor_;
     GlobalTensor<int32_t> attnRankTableGMTensor_;
+    GlobalTensor<int64_t> perfDataGMTensor_;
     LocalTensor<xType> xTmpTensor_;
     LocalTensor<int32_t> statusTensor_;
     LocalTensor<uint8_t> hcommTensor_;
@@ -144,12 +148,13 @@ private:
     uint64_t winTokenInfoTableSize_{0};
     uint64_t requiredWindowSize_{0};
     uint64_t urmaWorkspaceOffset_{0};
+    bool perfEnabled_{false};
 };
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(
     GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds, GM_ADDR tokenIds, GM_ADDR expertOffsets,
-    GM_ADDR actualTokenNum, GM_ADDR attnRankTable, GM_ADDR workspaceGM, TPipe *pipe,
+    GM_ADDR actualTokenNum, GM_ADDR attnRankTable, GM_ADDR perfData, GM_ADDR workspaceGM, TPipe *pipe,
     const FFNToAttentionV2TilingData *tilingData)
 {
     tpipe_ = pipe;
@@ -182,6 +187,10 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     actualTokenNumGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(actualTokenNum));
     if constexpr (isInputRankTable) {
         attnRankTableGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(attnRankTable));
+    }
+    perfEnabled_ = perfData != nullptr;
+    if (perfEnabled_) {
+        perfDataGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(perfData));
     }
 
     DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(actualTokenNumGMTensor_);
@@ -402,18 +411,39 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::A
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
+__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::WritePerfData(
+    const uint64_t (&cycles)[PERF_FIELD_NUM])
+{
+    if (!perfEnabled_) {
+        return;
+    }
+    const uint64_t base = static_cast<uint64_t>(aivId_) * PERF_FIELD_NUM;
+    for (uint32_t i = 0U; i < PERF_FIELD_NUM; ++i) {
+        perfDataGMTensor_.SetValue(base + i, static_cast<int64_t>(cycles[i]));
+    }
+    DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(perfDataGMTensor_[base]);
+}
+
+template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
+        uint64_t perfCycles[PERF_FIELD_NUM] = {0UL};
+        const uint64_t totalStart = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
+        const uint64_t initStart = totalStart;
         if (aivId_ == 0U) {
             HcommInit();
         }
         InitLocalFlag();
+        if (perfEnabled_) {
+            perfCycles[1] = static_cast<uint64_t>(GetSystemCycle()) - initStart;
+        }
 
         const uint64_t roundNum = Ceil(actualTokenNum_, static_cast<uint64_t>(aivNum_));
 
         DataCopyExtParams xCopyParams = {1U, static_cast<uint32_t>(hSize_), 0U, 0U, 0U};
         for (uint64_t round = 0; round < roundNum; ++round) {
+            const uint64_t stageStart = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
             const uint64_t yOffset = static_cast<uint64_t>(aivId_) + round * aivNum_;
             if (yOffset < actualTokenNum_) {
                 ReadTokenMetaDataStruct metaDataStruct;
@@ -442,12 +472,20 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     StageRemoteData(yOffset, xCopyParams);
                 }
             }
+            if (perfEnabled_) {
+                perfCycles[2] += static_cast<uint64_t>(GetSystemCycle()) - stageStart;
+            }
 
             // Every AIV stages at most one token. Core 0 must not read another
             // core's workspace slot until its MTE3 copy has completed.
+            const uint64_t stageSyncStart = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
             SyncAll<true>();
+            if (perfEnabled_) {
+                perfCycles[3] += static_cast<uint64_t>(GetSystemCycle()) - stageSyncStart;
+            }
 
             if (aivId_ == 0U) {
+                const uint64_t relayPlanStart = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
                 uint32_t relayCount = 0U;
                 for (uint32_t sourceAivId = 0U; sourceAivId < aivNum_; ++sourceAivId) {
                     const uint64_t sourceYOffset = static_cast<uint64_t>(sourceAivId) + round * aivNum_;
@@ -483,6 +521,9 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     StoreRemoteRelayInfo(relayCount, relayInfo);
                     ++relayCount;
                 }
+                if (perfEnabled_) {
+                    perfCycles[4] += static_cast<uint64_t>(GetSystemCycle()) - relayPlanStart;
+                }
 
                 for (uint32_t dstRank = 0U; dstRank < worldSize_; ++dstRank) {
                     if (dstRank == rankId_) {
@@ -501,6 +542,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                         continue;
                     }
 
+                    const uint64_t wqeStart = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
                     GM_ADDR remoteWindowAddr = GetWindowAddr(dstRank);
                     ascendc_assert(remoteWindowAddr != nullptr, "window address is null, dstRank=%u", dstRank);
                     HcommChannelHandle channel = GetUrmaCommHandle(dstRank);
@@ -534,14 +576,29 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     int32_t ret = hcomm_.BatchCommit(batchHandle);
                     ascendc_assert(ret == 0, "BatchCommit failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
                                    dstRank);
+                    if (perfEnabled_) {
+                        perfCycles[5] += static_cast<uint64_t>(GetSystemCycle()) - wqeStart;
+                    }
+                    const uint64_t drainStart = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
                     ret = hcomm_.Drain(batchHandle);
                     ascendc_assert(ret == 0, "batch drain failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
                                    dstRank);
+                    if (perfEnabled_) {
+                        perfCycles[6] += static_cast<uint64_t>(GetSystemCycle()) - drainStart;
+                    }
                 }
             }
 
             // Core 0 must drain all active channels before workers overwrite their per-core staging slots.
+            const uint64_t finalSyncStart = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
             SyncAll<true>();
+            if (perfEnabled_) {
+                perfCycles[7] += static_cast<uint64_t>(GetSystemCycle()) - finalSyncStart;
+            }
+        }
+        if (perfEnabled_) {
+            perfCycles[0] = static_cast<uint64_t>(GetSystemCycle()) - totalStart;
+            WritePerfData(perfCycles);
         }
     }
 }

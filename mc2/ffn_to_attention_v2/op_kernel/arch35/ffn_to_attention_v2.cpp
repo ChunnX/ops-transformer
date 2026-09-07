@@ -45,7 +45,8 @@ static_assert(sizeof(FFNToAttentionV2TilingData) == sizeof(FFNToAttentionTilingD
 template <bool RankTableMode, uint8_t ArchTag>
 __global__ __aicore__ void ffn_to_attention_v2(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds,
                                                GM_ADDR tokenIds, GM_ADDR expertOffsets, GM_ADDR actualTokenNum,
-                                               GM_ADDR attnRankTable, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+                                               GM_ADDR attnRankTable, GM_ADDR perfData, GM_ADDR workspaceGM,
+                                               GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(FFNToAttentionV2TilingData);
     TPipe pipe;
@@ -55,7 +56,7 @@ __global__ __aicore__ void ffn_to_attention_v2(GM_ADDR mc2Context, GM_ADDR x, GM
 
         FFNToAttentionUrma<DTYPE_X, RankTableMode> op;
         op.Init(mc2Context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable,
-                workspaceGM, &pipe, &tilingData);
+                perfData, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
 }

@@ -74,17 +74,20 @@ static aclnnStatus CheckParams(const aclTensor *context, const aclTensor *x, con
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnFFNToAttentionV2GetWorkspaceSize(
-    const aclTensor *context, const aclTensor *x, const aclTensor *sessionIds, const aclTensor *microBatchIds,
-    const aclTensor *tokenIds, const aclTensor *expertOffsets, const aclTensor *actualTokenNum,
-    const aclTensor *attnRankTable, const char *group, int64_t worldSize, const aclIntArray *tokenInfoTableShape,
-    const aclIntArray *tokenDataShape, int64_t cclBufferSize, uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus aclnnFFNToAttentionV2GetWorkspaceSize(const aclTensor *context, const aclTensor *x,
+                                                  const aclTensor *sessionIds, const aclTensor *microBatchIds,
+                                                  const aclTensor *tokenIds, const aclTensor *expertOffsets,
+                                                  const aclTensor *actualTokenNum, const aclTensor *attnRankTable,
+                                                  const aclTensor *perfData, const char *group, int64_t worldSize,
+                                                  const aclIntArray *tokenInfoTableShape,
+                                                  const aclIntArray *tokenDataShape, int64_t cclBufferSize,
+                                                  uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     auto retParam = CheckParams(context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, group,
                                 tokenDataShape, tokenDataShape);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = aclnnInnerFFNToAttentionV2GetWorkspaceSize(
-        context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable,
+        context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable, perfData,
         const_cast<char *>(group), worldSize, tokenInfoTableShape, tokenDataShape, cclBufferSize, workspaceSize,
         executor);
     return ret;

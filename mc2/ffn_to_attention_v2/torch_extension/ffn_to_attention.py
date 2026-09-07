@@ -7,6 +7,8 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+import csv
+import os
 from typing import Optional, List
 
 import torch
@@ -32,7 +34,7 @@ class _FFNToAttentionOpBuilder(OpBuilder):
             "Tensor micro_batch_ids, Tensor token_ids, Tensor expert_offsets, Tensor actual_token_num, "
             "str group, int world_size, "
             "int[] token_info_table_shape, int[] token_data_shape, int ccl_buffer_size, *, "
-            "Tensor? attn_rank_table=None) -> ()"
+            "Tensor? attn_rank_table=None, Tensor(a!)? perf_data=None) -> ()"
         )
 
     def register_meta(self):
@@ -51,6 +53,7 @@ class _FFNToAttentionOpBuilder(OpBuilder):
             token_data_shape,
             ccl_buffer_size,
             attn_rank_table=None,
+            perf_data=None,
         ):
             torch._check(
                 world_size > 0,
@@ -78,6 +81,15 @@ class _FFNToAttentionOpBuilder(OpBuilder):
                     f"but got {len(token_data_shape)}, {ops_error(ErrCode.VALUE)}."
                 ),
             )
+            if perf_data is not None:
+                torch._check(
+                    perf_data.dim() == 2 and perf_data.size(1) == 8,
+                    lambda: f"perf_data must have shape [aivNum, 8], {ops_error(ErrCode.VALUE)}.",
+                )
+                torch._check(
+                    perf_data.dtype == torch.int64,
+                    lambda: f"perf_data must have dtype int64, {ops_error(ErrCode.VALUE)}.",
+                )
 
 
 _ffn_to_attention_op_builder = _FFNToAttentionOpBuilder()
@@ -99,6 +111,7 @@ def _npu_ffn_to_attention(
     token_data_shape,
     ccl_buffer_size,
     attn_rank_table=None,
+    perf_data=None,
 ):
     _op_module = _ffn_to_attention_op_builder.load()
     _op_module.npu_ffn_to_attention(
@@ -110,6 +123,7 @@ def _npu_ffn_to_attention(
         expert_offsets,
         actual_token_num,
         attn_rank_table,
+        perf_data,
         group,
         world_size,
         token_info_table_shape,
@@ -155,9 +169,10 @@ class FFNToAttentionBuffer:
         self.token_info_table_shape = list(token_info_table_shape)
         self.token_data_shape = list(token_data_shape)
 
-        required_buffer_size = _calc_window_size(
-            token_info_table_shape, token_data_shape
-        )
+        with torch.profiler.record_function("ffn_to_attention::calc_window_size"):
+            required_buffer_size = _calc_window_size(
+                token_info_table_shape, token_data_shape
+            )
         self._ctx_manager = CommContextManager(
             self.group_name,
             self.ep_world_size,
@@ -170,7 +185,8 @@ class FFNToAttentionBuffer:
             opName="ffn_to_attention",
             customCclBufferSize=required_buffer_size,
         )
-        self.context = self._ctx_manager.create_context()
+        with torch.profiler.record_function("ffn_to_attention::create_context"):
+            self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
 
     def destroy(self):
@@ -234,6 +250,7 @@ def ffn_to_attention(
     actual_token_num: torch.Tensor,
     *,
     attn_rank_table: Optional[torch.Tensor] = None,
+    perf_data: Optional[torch.Tensor] = None,
 ) -> None:
     """Send token data from FFN workers to Attention workers via HCCL window.
 
@@ -252,22 +269,59 @@ def ffn_to_attention(
         actual_token_num (Tensor): Actual token count to send, shape (1,), dtype int64.
         attn_rank_table (Tensor, optional): Maps attention worker id to rank id,
             shape (attnRankNum,), dtype int32. If None, worker id == rank id.
+        perf_data (Tensor, optional): Per-AIV cycle counters, shape (aivNum, 8), dtype int64.
 
     Returns:
         None. Data is sent to peer ranks via the HCCL window; no host-visible output.
     """
-    torch.ops.cann_ops_transformer.npu_ffn_to_attention(
-        buffer.context,
-        x,
-        session_ids,
-        micro_batch_ids,
-        token_ids,
-        expert_offsets,
-        actual_token_num,
-        buffer.group_name,
-        buffer.ep_world_size,
-        buffer.token_info_table_shape,
-        buffer.token_data_shape,
-        buffer.ccl_buffer_size,
-        attn_rank_table=attn_rank_table,
-    )
+    with torch.profiler.record_function("ffn_to_attention::dispatch"):
+        torch.ops.cann_ops_transformer.npu_ffn_to_attention(
+            buffer.context,
+            x,
+            session_ids,
+            micro_batch_ids,
+            token_ids,
+            expert_offsets,
+            actual_token_num,
+            buffer.group_name,
+            buffer.ep_world_size,
+            buffer.token_info_table_shape,
+            buffer.token_data_shape,
+            buffer.ccl_buffer_size,
+            attn_rank_table=attn_rank_table,
+            perf_data=perf_data,
+        )
+
+
+def save_ffn_to_attention_perf_csv(
+    perf_data: torch.Tensor,
+    output_dir: str,
+    rank: Optional[int] = None,
+) -> str:
+    """Synchronize and save per-AIV kernel cycle counters as CSV."""
+    if perf_data.dtype != torch.int64 or perf_data.dim() != 2 or perf_data.size(1) != 8:
+        raise ValueError("perf_data must have shape [aivNum, 8] and dtype int64")
+
+    torch.npu.synchronize()
+    values = perf_data.cpu().tolist()
+    if rank is None:
+        rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
+
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"ffn_to_attention_perf_rank{rank}.csv")
+    fields = [
+        "total_cycles",
+        "init_cycles",
+        "metadata_stage_cycles",
+        "stage_sync_cycles",
+        "relay_plan_cycles",
+        "wqe_commit_cycles",
+        "drain_cycles",
+        "final_sync_cycles",
+    ]
+    with open(output_path, "w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(["rank", "aiv_id", *fields])
+        for aiv_id, cycles in enumerate(values):
+            writer.writerow([rank, aiv_id, *cycles])
+    return output_path
