@@ -9,7 +9,6 @@
 """FlashKDA device computation, independent of binary packaging and host caches."""
 _RAW_K_FORMAT = "bf16"
 import cannbotdsl
-import torch
 from cannbotdsl import dtypes
 from cannbotdsl.arch import get_block_idx, get_block_num, get_subblock_id
 from cannbotdsl.buffer import Buffer
@@ -82,42 +81,6 @@ SUPPORTED_HEAD_DIM = 128
 HALF_CHUNK_SIZE = CHUNK_SIZE // 2
 D_HALF = SUPPORTED_HEAD_DIM // 2
 MAX_GROUP_CHUNKS = 8
-LOW_DTYPE = torch.bfloat16
-
-
-def get_group_config(heads: int, seq_len: int) -> int:
-    """选 chunk group：最大 2 的幂 g 使 L2 足迹 heads*g ≤ 861，再夹到 [填满32核, chunks]。
-
-    heads 越大 g 越小（查表，断点 = 861//g）；BN 合轴后 heads = batch*heads。
-    """
-    chunks = seq_len // CHUNK_SIZE
-    if   heads <= 1:    g = 512
-    elif heads <= 3:    g = 256
-    elif heads <= 6:    g = 128
-    elif heads <= 13:   g = 64
-    elif heads <= 26:   g = 32
-    elif heads <= 53:   g = 16
-    elif heads <= 107:  g = 8
-    elif heads <= 215:  g = 4
-    elif heads <= 430:  g = 2
-    else:               g = 1
-    g = min(g, chunks)                       # 不超过总 chunks
-    while heads * g < 32 and g < chunks:     # 下界：填满 32 核
-        g *= 2
-    return max(1, g)
-
-
-def get_dv_base_config(bn: int, seq_len: int) -> int:
-    """Select the Dv columns owned by one core."""
-    if seq_len // CHUNK_SIZE < 1:
-        return SUPPORTED_HEAD_DIM
-    if bn <= 4:
-        return 16
-    if bn <= 8:
-        return 32
-    if bn <= 16:
-        return 64
-    return 128
 
 
 def _o_head_chunk_tile(gm_O, seq_idx, chunk_idx, head_dim, dv_base, dv_idx):
@@ -131,12 +94,6 @@ def _o_head_chunk_tile(gm_O, seq_idx, chunk_idx, head_dim, dv_base, dv_idx):
         (chunk_idx, dtypes.int64(0)),
     )
     return tile_view(full_chunk, (CHUNK_SIZE, dv_base), (dtypes.int64(0), dv_idx))
-
-
-
-
-def clear_execution_cache():
-    _EXECUTION_CACHE.clear()
 
 
 ELEM_BYTES = 4
@@ -1588,16 +1545,8 @@ def _run_stage2_body(
                     s2_vector.store_state_to_gm(state_rows)
 
 
-# mode=0 below is a whole-grid barrier.  The launch must fit in one resident
-# cube-core wave, otherwise resident blocks wait for blocks that cannot be
-# scheduled.  Keep 32 as the algorithmic cap and select the actual launch size
-# from the target device on the host.
-ALGORITHM_MAX_BLOCK_NUM = 32
-DEFAULT_BLOCK_NUM = ALGORITHM_MAX_BLOCK_NUM
-# Offline FlashKDA packages currently target Ascend950PR.  The mode=0
-# whole-grid barrier must launch no more than one resident cube-core wave.
-ASCEND950PR_PACKAGE_BLOCK_NUM = 28
-
+# mode=0 is a whole-grid barrier; the Entry supplies an explicit Target launch
+# that fits in one resident AIC wave.
 STAGE1_BOUNDARY_FLAG_ID = 0
 STAGE2_BOUNDARY_FLAG_ID = 1
 _STAGE_BOUNDARY_AIC_FLAG_OFFSET = 4

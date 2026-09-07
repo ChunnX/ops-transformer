@@ -186,6 +186,9 @@ function(gen_opapi_symbol)
     opapi_math
     dl
   )
+  if(TARGET flash_kda_frozen)
+    target_link_libraries(${OPAPI_NAME} PRIVATE flash_kda_frozen)
+  endif()
 endfunction()
 
 function(gen_built_in_opapi_symbol)
@@ -493,6 +496,8 @@ endfunction()
 function(gen_norm_symbol)
   if (ENABLE_OPS_HOST)
     gen_ophost_symbol()
+  endif()
+  if (ENABLE_OPS_HOST OR ENABLE_CANNBOTDSL_PROVIDER_ACLNN)
     gen_opapi_symbol()
     gen_built_in_opapi_symbol()
   endif()

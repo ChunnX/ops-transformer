@@ -1,192 +1,137 @@
-# FlashKDA V2 冻结二进制交付
+# FlashKDA 冻结二进制接入
 
-本目录按照当前 CANNBotDSL `package.operator` 和独立 `cannbot_framework`
-架构构建 FlashKDA。`attention/flash_kda/flash_kda.py` 声明 `@entry`、两个
-`@jit` Provider 和显式发布域；`kernels.py` 保存设备计算。Entry 分配的返回张量
-自动成为 output，其余活跃分配成为 workspace。常量初始化也是独立 Provider，
-由冻结 HostPlan 排序执行。
+本目录使用当前 CANNBotDSL `package.operator` 与独立 `cannbot_framework`。
+数学主体保留已有 `zyh-binary` 实现；接入层改成 `@entry` 描述分配与返回值、
+两个有序 `@jit` Provider 描述常量初始化和设备计算，再由框架生成冻结
+HostPlan、workspace 绑定、ACLNN 两阶段 API 和 External Task glue。
 
-交付流程为：`build_operator` → schema 2 `OperatorBundle` →
-`cannbot_framework.stage` → `cannbot_framework_add_frozen_bundle` →
-父 OPP 的 `libcust_opapi.so`。CMake 只消费已经生成的 stage，不导入算子 Python
-源码、不执行编译。ACLNN L0、两阶段 public API、External Task 与 workspace
-绑定全部由独立 framework 生成。
+## 源码职责
 
-## 当前发布契约
+```text
+cannbotdsl_ops/
+  CMakeLists.txt                         # 接入仓库标准 custom/builtin 主工程
+  provider_only_stub.cpp                 # 主工程空传统目标的占位
+  attention/flash_kda/
+    flash_kda.py                        # Entry、Provider、发布域、build_operator CLI
+    kernels.py                          # 设备数学与同步实现
+  tests/test_flash_kda.py                # 唯一用例矩阵、CPU golden、精度判据
+```
 
-| 参数 | 契约 |
+早期的 `package_flash_kda.py` 和 `install.sh` 用于独立小父 OPP 的打包探针，
+正式主工程 run 打通后已删除。`stage_flash_kda.py` 也已由 framework 自带
+`stage-bundle` CLI 替代。现在 CMake 必须从仓库根配置，安装与卸载均由标准
+ops-transformer 工程负责。
+
+测试只维护一个 Python 文件。它内嵌的最小 C++ fixture 只负责张量搬运、
+调用生成的 ACLNN API 和回写结果，不包含第二份 golden、用例或精度阈值。
+CMake 通过 `--emit-aclnn-runner` 生成该 fixture；生成过程不导入 Torch/DSL。
+原未跟踪的 `attention/flash_kda` 参考目录已逐文件 SHA-256 核验并归档到
+`/home/z00947297/run_toolkit/verification-20260907-ckuWoU/flash-kda-original-reference-jx4kgden`，
+不再参与源码测试发现。其旧测试指向原 `samples/flash_kda`，没有作为新接口验收。
+
+## 与旧接入的区别
+
+| 项目 | 旧接入 | 当前接入 |
+| --- | --- | --- |
+| 主机编排 | source stage、手工 workspace/cache/dispatch | Entry 捕获、schema 2 bundle、冻结 HostPlan |
+| ACLNN | 仓库内专用封装与 ABI 胶水 | 独立 framework 生成 public API、L0、External Task |
+| 二进制调用 | 与旧 source stage 接口绑定 | 加载已发布 Provider DSO，调用时不 JIT |
+| 调度策略 | 旧 host 动态 group/Dv 策略 | 8 chunk workspace 分组、Dv 分片 16，Target 显式核数 |
+| 交付 | 曾用小父 OPP 探针 | 标准主工程 custom run / builtin 组件 run |
+
+设备矩阵计算与递推主体保留；vector API 更新为当前 raw_reg 名称与关键字。
+显式 28 AIC 不是新增数学算法，旧离线包也使用该核数。全网格 barrier 要求
+所有 launch block 可同时驻留；本机发布 Target 为 `dav-3510`、28 AIC/56 AIV。
+
+当前发布域也有变化：旧版本曾发布 3/96 个等头数及更大 batch/长序列；当前
+选择如下有限 dtype/head 组合和有界动态 S，并增加 GQA 验收。它不是旧发布域
+的简单子集，当前结果不能作为旧生产 shape 的完整回归证明。
+
+| 参数 | 当前发布契约 |
 | --- | --- |
-| `q, k` | BF16，连续 BNSD，`[B, Nk, S, 128]` |
-| `v, g` | BF16，连续 BNSD，`[B, Nv, S, 128]` |
-| `beta` | BF16，连续 BNS，`[B, Nv, S]` |
-| `initial_state` | FP32，`[B, Nv, Dv=128, Dk=128]`，调用后不变 |
-| `a_log, dt_bias` | FP32，`[Nv]` / `[Nv, 128]` |
-| `B, S` | `1 <= B <= 2`；`64 <= S <= 1024`，S 为 64 的倍数 |
-| `(Nk, Nv)` | `(1,1)`、`(1,2)`、`(2,2)`，覆盖普通 attention 和 GQA |
-| `scale` | 有限浮点数，`[0,1]` |
-| `lower_bound` | 有限浮点数，`[-5,-1]` |
-| 输出 | `(output, final_state)`，分别与 `v`、`initial_state` 同 shape/dtype |
+| `q,k` / `v,g` | 连续 BNSD BF16；`[B,Nk,S,128]` / `[B,Nv,S,128]` |
+| `beta` | 连续 BNS BF16；`[B,Nv,S]` |
+| `initial_state` | FP32；`[B,Nv,Dv=128,Dk=128]`，调用后不变 |
+| `a_log,dt_bias` | FP32；`[Nv]` / `[Nv,128]` |
+| B / S | B=1..2；S=64..1024，S 为 64 的倍数 |
+| `(Nk,Nv)` | `(1,1)`、`(1,2)`、`(2,2)` |
+| `scale` / `lower_bound` | 有限值 `[0,1]` / `[-5,-1]` |
+| 返回 | `(output,final_state)`，shape/dtype 分别与 v/initial_state 一致 |
 
-S 是同一二进制的运行时维度，并未为测试形状逐项编译。workspace 按最多 8 个
-chunk 循环复用，S=1024 验证跨 group 的状态递推。当前仅发布上述 BNSD 域，
-没有声明 BSND/TND、可变长序列或零衰减域。
+没有声明 BSND/TND、可变长序列、零衰减或旧版的全部大 shape。额外
+`lower_bound=0` 探针有 22/16384 个 state 元素超出 `atol=rtol=5e-3`
+（最大绝对误差约 0.008646），因此未纳入发布域；失败记录保留。
 
-`lower_bound=0` 在额外探针中出现 FP32 state 误差：22/16384 个元素不满足
-`atol=rtol=5e-3`，最大绝对误差约 0.008646，因此该值没有进入当前二进制契约。
-相关失败记录与通过记录一并保留；验收不放宽精度阈值。
+## 冻结与主工程打包
 
-Target 必须显式提供可驻留的 AIC/AIV 数。CANNBOT-10124 的 NPU0 实测为
-28 AIC / 56 AIV；全网格 barrier 要求所有 block 同时驻留，构建时使用
-`--aic-count 28`。核数进入 Target 身份、Provider receiver 和 exchange workspace。
-发布阶段不查询当前设备，验收运行前检查部署设备核数足够。
-
-## 从框架 run 安装结果构建
-
-先 source 指定 CANN 环境，然后激活框架 run 安装根的 Python 和 CMake 路径。
-这里的 `FRAMEWORK_PREFIX` 必须是 run 安装结果；不需要安装 cannbotdsl wheel。
-
-```bash
-source /home/z00947297/WORK/ENV/set_env_9.2.sh
-export FRAMEWORK_PREFIX=/absolute/framework/run/install/root
-export PYTHONPATH="$FRAMEWORK_PREFIX/python/site-packages"
-export CMAKE_PREFIX_PATH="$FRAMEWORK_PREFIX"
-python -m cannbotdsl_ops.attention.flash_kda.flash_kda /absolute/fresh/bundle \
-  --npu-arch dav-3510 --aic-count 28
-python cannbotdsl_ops/stage_flash_kda.py \
-  --bundle /absolute/fresh/bundle --output /absolute/fresh/stage \
-  --parent-opp cannbotdsl_ops
-```
-
-作为独立小型父 OPP 构建：
-
-```bash
-cmake -S cannbotdsl_ops -B build-flash-kda -G Ninja \
-  -DFLASH_KDA_FROZEN_STAGE=/absolute/fresh/stage \
-  -DCMAKE_PREFIX_PATH="$FRAMEWORK_PREFIX" \
-  -DNNOPBASE_LIBRARY="$FRAMEWORK_PREFIX/x86_64-linux/lib64/libnnopbase.so" \
-  -DNNOPBASE_INCLUDE_DIR="$FRAMEWORK_PREFIX/x86_64-linux/include/aclnn"
-cmake --build build-flash-kda -j 6
-cmake --install build-flash-kda --prefix /absolute/fresh/payload
-python cannbotdsl_ops/package_flash_kda.py \
-  --payload /absolute/fresh/payload --output /absolute/flash-kda-v2.run \
-  --makeself /absolute/makeself/makeself.sh
-bash /absolute/flash-kda-v2.run --check
-bash /absolute/flash-kda-v2.run -- /absolute/fresh/install
-```
-
-仓库主工程可使用 `ENABLE_CANNBOTDSL_PROVIDER_ACLNN=ON`、
-`CANNBOTDSL_PROVIDER_ONLY=ON`、`ASCEND_OP_NAME=flash_kda` 和相同 stage。
-主工程已有 `nnopbase` target 时，应另外明确设置 `NNOPBASE_LIB_DIR` 与
-`NNOPBASE_OPDEV_INC_DIR` 指向该 run 的库和头文件。主工程保留传入的
-`CMAKE_PREFIX_PATH` 并追加 CANN 基础依赖根，因此可直接从该前缀发现
-`CANNBotFramework`。
-
-本机正式主工程 run 的可复现入口位于
-`/home/z00947297/run_toolkit/verification-20260907-ckuWoU/terminal-commands`：
-
-```bash
-COMMANDS=/home/z00947297/run_toolkit/verification-20260907-ckuWoU/terminal-commands
-export REPRO_ROOT=$(mktemp -d /home/z00947297/run_toolkit/flash-kda-main.XXXXXX)
-bash "$COMMANDS/build-transformer-flash-kda-run.sh"
-bash "$COMMANDS/verify-transformer-flash-kda-run.sh" "$REPRO_ROOT/result.env"
-```
-
-构建脚本默认消费已验证 stage；增加 `--rebuild-bundle` 可从当前算子源码调用
-run 安装的 `build_operator` 重新冻结并 stage。脚本以 `VENDOR_NAME=custom`、
-`ASCEND_OP_NAME=flash_kda`、两个 Provider 开关构建仓库根 CMake 的 `package`
-target，产物为 `output/cann-ops-transformer-custom_linux-x86_64.run`。
-该命令只打包 FlashKDA，不代表其他 transformer 算子完成验证。
-构建目录、日志、`result.env` 和带 SHA-256 的 `result.json` 均在独立
-`REPRO_ROOT` 下；显式 `CMAKE_INSTALL_PREFIX` 不再被覆盖到仓内 `build_out`，
-CPack 跟随所选 CMake generator，因此支持 Ninja。
-
-验证脚本使用匹配的 framework run 中 `libnnopbase.so` 完成安装器的 DSO
-检查，然后移动安装根并暂时隐藏构建目录，执行 6 个 case × 2 次 C++ ACLNN
-调用。正式安装布局为 `INSTALL_ROOT/vendors/custom_transformer`，包含
-`op_api/include/aclnn_FlashKda.h`、`op_api/lib/libcust_opapi.so` 和
-`op_impl/cannbotdsl/FlashKda` 完整冻结 bundle。运行前须将该 vendor 的
-`op_api/lib` 与匹配 framework run 的 `x86_64-linux/lib64` 依次置于
-`LD_LIBRARY_PATH` 前部；不需要安装 wheel。脚本记录实际加载库路径、完整
-安装文件 SHA-256 和全元素数值报告。CANN 的 makeself `--check` 会继续后续
-动作，因此脚本使用 `--check --noexec --extract=<独立目录>` 检查归档。
-
-生成的 public API 头文件为 `aclnn_FlashKda.h`；参数顺序以该头文件为准，
-当前为 8 个输入、2 个输出、`lower_bound`、`scale`、workspace/executor。
-调用方式为 `aclnnFlashKdaGetWorkspaceSize` / `aclnnFlashKda`。父仓拥有包布局
-和安装入口，framework 拥有生成的 ACLNN 与 External Task glue。
-
-## 完整数值验收
-
-```bash
-python cannbotdsl_ops/tests/validate_flash_kda_frozen.py \
-  --bundle /absolute/fresh/bundle --output /absolute/native-report --device 0
-python cannbotdsl_ops/tests/validate_flash_kda_frozen.py \
-  --aclnn-executable build-flash-kda/flash_kda_aclnn_validate \
-  --output /absolute/aclnn-report --device 0
-```
-
-验收用独立 CPU 逐 token 递推作为 golden，对完整 output 和 final_state 逐元素
-检查 `atol=rtol=5e-3`。测试包括 S=64/128/512/1024、非零初始状态、GQA、
-跨 group、多 batch、重复调用和标量边界。所有结果必须有限且 initial_state
-逐位不变。Python frozen 模式将 `JitFunction.compile` 替换为失败哨兵，确认
-调用阶段不会 JIT。C++ ACLNN runner 不导入 Python 或 cannbotdsl，并设置
-20 秒 kernel timeout。报告包含完整元素数量及绝对误差/RMS；无采样验收。
-
-安装后运行 ACLNN 时将安装树的 `packages/vendors/custom_transformer/op_api/lib`
-放在 `LD_LIBRARY_PATH` 最前。registry 依照自身库位置相对定位冻结 bundle，
-可在移动安装目录、移走构建目录后验证交付物独立性。
-
-## 2026-09-07 CANNBOT-10124 验证记录
-
-框架来自提交 `bc2a125375c4f1eafe68b61d571080c00ca26c29` 构建的 run，
-实际安装根为 `/home/z00947297/run_toolkit/verification-20260907-ckuWoU/run-installations/framework-run-bc2a1253/cann`。
-编译器、独立 framework 和 External Task opbase 均取自该安装环境。
-
-证据根目录：`/home/z00947297/run&toolkit/verification-20260907-ckuWoU`。
-
-| 证据 | 相对证据根目录的路径 |
-| --- | --- |
-| 最终冻结 bundle / ACLNN stage | `flash-kda-bundle-bc2a1253` / `flash-kda-stage-bc2a1253` |
-| 冻结 binary 全量数值 | `flash-kda-native-bc2a1253/report.json` |
-| 产品 run 安装后纯 C++ ACLNN 全量数值 | `flash-kda-aclnn-installed/report.json` |
-| 同 shape 非连续 stride 等负例 | `flash-kda-negative-same-shape/report.json` |
-| 安装库实际加载路径 | `flash-kda-aclnn-installed-ldd.log` |
-| 产品包 / 安装根 | `flash-kda-v2.run` / `flash-kda-installed` |
-| 零衰减域失败探针 | `flash-kda-native.log` |
-
-最终 bundle identity 为
-`0f62297b7093158aaf374f922fd32ba8b44eb1019cd21c3527970eacd26d03af`，
-包含 7 个 Provider DSO、6 条动态 route，每条 route 为两个有序 Provider。
-Native 和安装后 ACLNN 均通过 6 个 case × 2 次调用的完整数值比较，
-最大 output 绝对误差 0.003069401，最大 state 绝对误差 0.004327089。
-纯 C++ 验收时已移走原构建目录，`ldd` 确认 `libcust_opapi.so` 和
-`libnnopbase.so` 来自产品 run 的安装树，该安装树无 `.py` 或 `.whl` 文件。
-
-产品 run SHA-256：
-`618e1c89198c1280c46c2a5519aa4d0c26683debb79905cc4e54569da719ac9a`。
-
-随后通过仓库主工程 `package` target 完成正式 FlashKDA run：
-`/home/z00947297/run_toolkit/repro-transformer-flash-kda.dEHcjJ/output/cann-ops-transformer-custom_linux-x86_64.run`，
-SHA-256 为 `c81434ad4c8010e9d6a25c9655601b7628cad5791117f80639efcd36e532f980`。
-该输出根的 `result.json` 记录构建源码、CMake 补丁与包身份；
-`installed-validation.xvXwYe/result.json`、`accuracy/report.json` 和
-`installed-ldd.log` 记录 NPU0 上迁移安装后的 6 × 2 次纯 C++ ACLNN 通过。
-正式安装包含同一 7 个 Provider DSO 和完整 bundle；数值最大误差与上表一致，
-vendor 安装树无 `.py` 或 `.whl`。这里依赖匹配 framework run 安装的 opbase，
-`libcust_opapi.so` 来自本次正式 run 的迁移安装树。
-
-可以在仓根按以下命令复验已有安装产物：
+先 source CANN，再使用 framework run 安装目录；不安装 cannbotdsl wheel。
 
 ```bash
 source /home/z00947297/WORK/ENV/set_env_9.2.sh
 export FRAMEWORK_PREFIX=/home/z00947297/run_toolkit/verification-20260907-ckuWoU/run-installations/framework-run-bc2a1253/cann
 export PYTHONPATH="$FRAMEWORK_PREFIX/python/site-packages"
-VERIFY_DIR=/home/z00947297/run_toolkit/verification-20260907-ckuWoU
-python cannbotdsl_ops/tests/validate_flash_kda_frozen.py \
-  --bundle "$VERIFY_DIR/flash-kda-bundle-bc2a1253" \
-  --output /tmp/flash-kda-native-recheck --device 0
-export LD_LIBRARY_PATH="$VERIFY_DIR/flash-kda-installed/packages/vendors/custom_transformer/op_api/lib:$LD_LIBRARY_PATH"
-python cannbotdsl_ops/tests/validate_flash_kda_frozen.py \
-  --aclnn-executable "$VERIFY_DIR/flash-kda-aclnn-validate" \
-  --output /tmp/flash-kda-aclnn-recheck --device 0
+export CMAKE_PREFIX_PATH="$FRAMEWORK_PREFIX"
+cd /home/z00947297/run_toolkit/ops-transformer-zyh
+python -m cannbotdsl_ops.attention.flash_kda.flash_kda /absolute/fresh/bundle \
+  --npu-arch dav-3510 --aic-count 28
+python -m cannbot_framework.cli stage-bundle \
+  --bundle /absolute/fresh/bundle --operator FlashKda --vendor custom_transformer \
+  --parent-opp "$PWD" --output /absolute/fresh/stage
 ```
+
+本机统一终端脚本包含完整 CMake 参数并将产物、日志和 JSON 身份写到独立输出根：
+
+```bash
+COMMANDS=/home/z00947297/run_toolkit/verification-20260907-ckuWoU/terminal-commands
+export REPRO_ROOT=$(mktemp -d /home/z00947297/run_toolkit/flash-kda-builtin.XXXXXX)
+bash "$COMMANDS/build-transformer-flash-kda-run.sh" --builtin
+bash "$COMMANDS/verify-transformer-flash-kda-run.sh" "$REPRO_ROOT/result.env"
+```
+
+省略 `--builtin` 即构建 custom run；增加 `--rebuild-bundle` 可从当前源码重新
+冻结，默认消费已验证 stage。主配置选择 `ASCEND_OP_NAME=flash_kda`、
+`ENABLE_CANNBOTDSL_PROVIDER_ACLNN=ON`、`CANNBOTDSL_PROVIDER_ONLY=ON`。
+这只验证 FlashKDA，不能代表全量 transformer 算子。
+
+## builtin 的实际适配
+
+custom 使用 `vendors/custom_transformer/op_api/lib/libcust_opapi.so`；builtin
+使用正式 `x86_64-linux/lib64/libopapi_transformer.so`，头文件进入
+`x86_64-linux/include/aclnnop`，冻结资源进入
+`opp/built-in/op_impl/cannbotdsl/FlashKda`。Provider-only 关闭传统 host 生成后，
+仍显式创建并安装 builtin API target，链接同一 framework 生成的 OBJECT。
+
+builtin 仅重定位 stage 的父工程安装 metadata，bundle 和生成 C++ 不改写。
+当前 HostAPI 按 ACLNN 库目录的 `../../op_impl/cannbotdsl` 查找 Provider，
+所以官方 XML 清单用 `install_softlink` 登记
+`op_impl/cannbotdsl -> ../opp/built-in/op_impl/cannbotdsl`。实际资源仍在 builtin
+OPP；相对链接随官方安装/卸载清单维护。将来 framework 支持配置 builtin
+资源根后可去掉这条兼容链接，不需要改变算子数学。
+
+正式 builtin 包名中的 `9.1.0` 来自本仓 `version.cmake` 的组件版本，和运行
+环境 CANN 9.2 是两个独立版本。验收必须优先加载匹配 framework run 中支持
+External Task 的 `libnnopbase.so`，不能只使用 CANN 基础环境的旧 opbase。
+
+## 统一验收
+
+```bash
+python cannbotdsl_ops/tests/test_flash_kda.py \
+  --bundle /absolute/frozen/bundle --output /absolute/native-report --device 0
+python cannbotdsl_ops/tests/test_flash_kda.py \
+  --aclnn-executable /absolute/flash-kda-aclnn-validate \
+  --output /absolute/aclnn-report --device 0
+```
+
+同一测试用独立 CPU 逐 token 递推，对完整 output/state 逐元素检查
+`atol=rtol=5e-3`、finite、initial_state 不变与重复调用。8 个 case × 2 次覆盖
+三种 head 组合的短 S/长 S 六条冻结 route，加 gate=-5/scale=1、scale=0 边界；
+不表示穷举整个连续标量域或动态形状域。Native 模式另有四项拒绝测试，
+包括保持 shape 的非连续 stride，并将 `JitFunction.compile` 替换为失败哨兵。
+`--negative-only` 可只复验拒绝输入。C++ fixture 设置 20 秒 kernel timeout，
+每 case 外层 90 秒超时；安装验收检查迁移目录后实际加载库与 bundle 文件。
+
+前轮 custom 主工程精度记录保留在
+`/home/z00947297/run_toolkit/repro-transformer-flash-kda.dEHcjJ/installed-validation.xvXwYe`。
+那次为 6×2，通过的 output/state 最大绝对误差分别为
+0.0030694007873535156 / 0.0043270885944366455，未覆盖全部六条冻结 route。
+早期小父 OPP 产物只作为历史证据保留，本目录不再提供该打包入口。

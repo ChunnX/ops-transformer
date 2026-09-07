@@ -5,11 +5,20 @@
         <path value="$(TARGET_ENV)/include"/>
         <path value="$(TARGET_ENV)/include/aclnn_kernels"/>
         <path value="$(TARGET_ENV)/include/aclnnop"/>
+        <path value="op_impl"/>
     </dir_info>
     <file_info value="opapi_transformer_lib" copy_type="delivery" src_path=""
         dst_path="$(TARGET_ENV)/lib64/"
         install_path="$(TARGET_ENV)/lib64/">
         <file value="libopapi_transformer.so" install_mod="550"/>
+    </file_info>
+    <!-- The current HostAPI locates ../../op_impl/cannbotdsl from lib64.
+         Own this relative compatibility link in the official package RECORD;
+         the actual frozen resources remain in the standard builtin OPP tree. -->
+    <file_info value="frozen_provider" copy_type="delivery" src_path=""
+        dst_path="opp/built-in/op_impl" install_path="opp/built-in/op_impl" install_type="all">
+        <file value="cannbotdsl" entity="true" optional="true"
+            install_softlink="op_impl/cannbotdsl"/>
     </file_info>
     <file_info copy_type="delivery" src_path=""
         dst_path="$(TARGET_ENV)/include/"
