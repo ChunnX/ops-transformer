@@ -24,6 +24,28 @@ function(register_op_name op_name)
 endfunction()
 
 if(UT_TEST_ALL OR OP_HOST_UT)
+  set(OP_FRAMEWORK_MODULE_NAME
+      ${PKG_NAME}_op_framework_ut
+      CACHE STRING "op_framework ut module name" FORCE
+    )
+
+  function(add_framework_ut_modules OP_FRAMEWORK_MODULE_NAME)
+    if(TARGET ${OP_FRAMEWORK_MODULE_NAME}_cases)
+      return()
+    endif()
+    if(NOT TARGET ${OP_FRAMEWORK_MODULE_NAME}_cases_obj)
+      add_library(${OP_FRAMEWORK_MODULE_NAME}_cases_obj OBJECT ${UT_PATH}/empty.cpp)
+    endif()
+    target_include_directories(${OP_FRAMEWORK_MODULE_NAME}_cases_obj PRIVATE
+      ${ONNX_PLUGIN_COMMON_INCLUDE} ${JSON_INCLUDE_DIR} ${GTEST_INCLUDE}
+      ${ASCEND_DIR}/include ${ASCEND_DIR}/pkg_inc)
+    target_link_libraries(${OP_FRAMEWORK_MODULE_NAME}_cases_obj PRIVATE
+      $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17> json gtest graph register)
+    add_library(${OP_FRAMEWORK_MODULE_NAME}_cases STATIC)
+    target_link_libraries(${OP_FRAMEWORK_MODULE_NAME}_cases PRIVATE
+      ${OP_FRAMEWORK_MODULE_NAME}_cases_obj)
+  endfunction()
+
   set(OP_TILING_MODULE_NAME
       ${PKG_NAME}_op_tiling_ut
       CACHE STRING "op_tiling ut module name" FORCE
@@ -243,6 +265,24 @@ if(UT_TEST_ALL
     endif()
 
     get_filename_component(ARCH_NAME ${MODULE_DIR} NAME)
+    if("${ARCH_NAME}" STREQUAL "framework" AND
+       "${MODULE_UT_NAME}" STREQUAL "${OP_FRAMEWORK_MODULE_NAME}")
+      get_filename_component(UT_DIR ${MODULE_DIR} DIRECTORY)
+      get_filename_component(TESTS_DIR ${UT_DIR} DIRECTORY)
+      get_filename_component(OP_NAME_DIR ${TESTS_DIR} DIRECTORY)
+      get_filename_component(OP_NAME ${OP_NAME_DIR} NAME)
+      list(FIND ASCEND_OP_NAME ${OP_NAME} INDEX)
+      if(NOT "${ASCEND_OP_NAME}" STREQUAL "ALL" AND INDEX EQUAL -1)
+        return()
+      endif()
+      if(NOT TARGET ${MODULE_UT_NAME}_cases_obj)
+        add_library(${MODULE_UT_NAME}_cases_obj OBJECT)
+      endif()
+      file(GLOB OPFRAMEWORK_CASES_SRC ${MODULE_DIR}/test_*_onnx_plugin.cpp)
+      target_sources(${MODULE_UT_NAME}_cases_obj ${MODULE_MODE} ${OPFRAMEWORK_CASES_SRC})
+      return()
+    endif()
+
     if(${ARCH_NAME} STREQUAL "op_host")
       # tiling.cpp, infershape.cpp under op_host/
       if("${MODULE_UT_NAME}" STREQUAL "${OP_TILING_MODULE_NAME}")

@@ -12,35 +12,23 @@
  * \file npu_moe_gating_top_k_softmax_onnx_plugin.cpp
  * \brief
  */
-#include "onnx_common.h"
+#include "onnx_attribute_utils.h"
 
 namespace domi {
-using NodeProto = ge::onnx::NodeProto;
-
-static Status  ParseParamsMoeGatingTopKSoftmax(const Message* op_src, ge::Operator& op_dest) {
-  const NodeProto* node = dynamic_cast<const NodeProto*>(op_src);
-  if (node == nullptr) {
-    OP_LOGE("MoeGatingTopKSoftmax", "Dynamic cast op_src to NodeProto failed.");
-    return FAILED;
-  }
-
-  int k = -1;
-  for (auto& attr : node->attribute()) {
-    if (attr.name() == "k" && attr.type() == ge::onnx::AttributeProto::INT) {
-      k = attr.i();
+static Status ParseParamsMoeGatingTopKSoftmax(const ge::Operator& op_src, ge::Operator& op_dest)
+{
+    int k = -1;
+    if (ParseOnnxIntAttribute(op_src, "k", k) != SUCCESS || k == -1) {
+        return FAILED;
     }
-  }
-  if (k == -1) {
-    return FAILED;
-  }
-  op_dest.SetAttr("k", k);
-  return SUCCESS;
+    op_dest.SetAttr("k", k);
+    return SUCCESS;
 }
 
-// register npu_flash_attention_score op info to GE
+// register npu_moe_gating_top_k_softmax op info to GE
 REGISTER_CUSTOM_OP("MoeGatingTopKSoftmax")
   .FrameworkType(ONNX)
-  .OriginOpType({ge::AscendString("npu::1::NPUMoeGatingTopKSoftmax"), 
+  .OriginOpType({ge::AscendString("npu::1::NPUMoeGatingTopKSoftmax"),
                  ge::AscendString("ai.onnx::11::NPUMoeGatingTopKSoftmax"),
                  ge::AscendString("ai.onnx::12::NPUMoeGatingTopKSoftmax"),
                  ge::AscendString("ai.onnx::13::NPUMoeGatingTopKSoftmax"),
@@ -49,6 +37,6 @@ REGISTER_CUSTOM_OP("MoeGatingTopKSoftmax")
                  ge::AscendString("ai.onnx::16::NPUMoeGatingTopKSoftmax"),
                  ge::AscendString("ai.onnx::17::NPUMoeGatingTopKSoftmax"),
                  ge::AscendString("ai.onnx::18::NPUMoeGatingTopKSoftmax")})
-  .ParseParamsFn(ParseParamsMoeGatingTopKSoftmax)
+  .ParseParamsByOperatorFn(ParseParamsMoeGatingTopKSoftmax)
   .ImplyType(ImplyType::TVM);
 }  // namespace domi
