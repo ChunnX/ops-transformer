@@ -112,7 +112,7 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::DoOpTiling()
     Tiling4ExpertTokensCountCompute();
 
     isFullload_ = IsFullLoad();
-    ComputeCountingSortMode();
+    // ComputeCountingSortMode();
 
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
         Tiling4SrcToDstDropPadCompute();
@@ -1964,6 +1964,10 @@ void MoeInitRoutingV3TilingArch35::ComputeCountingSortMode()
     tilingDataPtr_->countingSortParamsOp.countingSortMode = COUNT_SORT_MODE_NONE;
 
     if (isFullload_ || !IsCountingSortApplicable()) {
+        return;
+    }
+
+    if (isInputTopkWeight_ == 1 && rowIdxType_ == ROW_IDX_GATHER) {
         return;
     }
 

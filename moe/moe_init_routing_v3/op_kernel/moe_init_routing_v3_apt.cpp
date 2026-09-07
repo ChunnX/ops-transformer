@@ -165,13 +165,13 @@
 /*
  * CountingSort 性能模板（计数排序）
  */
-#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_GATHER 10000010          // 模板1、非量化、GATHER
-#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_SCATTER 10001010         // 模板1、非量化、SCATTER
-#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_GATHER 10000020         // 模板2、非量化、GATHER
-#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_GATHER 10010020        // 模板2、静态量化、GATHER
-#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_SCATTER 10001020        // 模板2、非量化、SCATTER
-#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_SCATTER 10011020       // 模板2、静态量化、SCATTER
-#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_DROPPAD_GATHER 10000120 // 模板2、非量化、GATHER、dropPad
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_GATHER 10000010          // cs全载、非量化、GATHER
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_SCATTER 10001010         // cs全载、非量化、SCATTER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_GATHER 10000020         // cs非全载、非量化、GATHER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_GATHER 10010020        // cs非全载、静态量化、GATHER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_SCATTER 10001020        // cs非全载、非量化、SCATTER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_SCATTER 10011020       // cs非全载、静态量化、SCATTER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_DROPPAD_GATHER 10000120 // cs非全载、非量化、GATHER、dropPad
 
 #define EMPTY_TENSOR 3000000
 
@@ -299,8 +299,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                       IsSameType<DTYPE_X, float>::value || IsSameType<DTYPE_X, int8_t>::value) {
             TPipe csPipe;
             MoeV3CountingSortFullLoadUnquantized<DTYPE_X> csOp;
-            csOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale, userWS,
-                      t, &csPipe);
+            csOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale, nullptr,
+                      nullptr, userWS, t, &csPipe);
             csOp.Process();
             csPipe.Destroy();
         }
