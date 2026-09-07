@@ -593,14 +593,14 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     uint32_t numLocalExpertsAlign8 = (info.cfg.numLocalExperts + 7) / 8 * 8;
     uint64_t hitCountBytes = static_cast<uint64_t>(aivNum) * numLocalExpertsAlign8 * sizeof(int32_t);
     uint64_t hitCountBytesAlign512 = ((hitCountBytes + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
-    uint32_t epWorldSizeAlign8 = (info.cfg.epWorldSize + 7) / 8 * 8;
-    uint64_t rankHitCountBytes = static_cast<uint64_t>(aivNum) * epWorldSizeAlign8 * sizeof(int32_t);
-    uint64_t rankHitCountBytesAlign512 = ((rankHitCountBytes + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    uint32_t jointCountStride = ((info.cfg.numExperts + 7U) / 8U) * 8U;
+    uint64_t jointCountBytes = static_cast<uint64_t>(aivNum) * jointCountStride * sizeof(int32_t);
+    uint64_t jointCountBytesAlign512 = ((jointCountBytes + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
 
-    // The first matrix keeps per-core expert counts. The second matrix keeps per-core rank counts; every core reads
-    // it to build its own compact metadata write offsets in local UB.
-    info.rankHitCountOffset = hitCountBytesAlign512;
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + hitCountBytesAlign512 + rankHitCountBytesAlign512;
+    // Keep expert counts for unchanged recv_x placement. Joint counts replace the old per-core rank matrix;
+    // each core derives private metadata cursors ordered by rank, expert and contributing core.
+    info.rankExpertHitCountOffset = hitCountBytesAlign512;
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + hitCountBytesAlign512 + jointCountBytesAlign512;
 
     uint64_t tilingKey =
         GET_TPL_TILING_KEY(TILINGKEY_TPL_A5, cached ? 1U : 0U, hasTopkWeights ? 1U : 0U, info.isMxQuant ? 1U : 0U);
