@@ -1059,7 +1059,13 @@ __aicore__ inline void UpdateSharedExpertGmm1GlobalBuffer(const MoeStageCommonCo
                                                           sharedExpertIdx, expertIdx * n * k / weightElemsPerByte);
     gmmAddrInfo.bScaleGlobal = GetExpertWeightAddr<QuantScaleType>(
         weights.weightScales1, gmmConfig.isPerExpertWeightTensor, sharedExpertIdx, expertIdx * n * scaleK);
+    uint64_t sharedActivationFlagElementCount =
+        static_cast<uint64_t>(CalcSharedActivationFlagElementsPerExpert(static_cast<int64_t>(m)));
     gmmAddrInfo.activationToGmm2Flag = nullptr;
+    if (workspace.sharedActivationToGmm2Ptr != nullptr) {
+        gmmAddrInfo.activationToGmm2Flag = reinterpret_cast<__gm__ int32_t *>(workspace.sharedActivationToGmm2Ptr) +
+                                           expertIdx * sharedActivationFlagElementCount;
+    }
     gmmAddrInfo.metaInfoGlobal = nullptr;
     gmmAddrInfo.dispatchToGmm1Flag = nullptr;
     if constexpr (UseA8W4Gmm1) {

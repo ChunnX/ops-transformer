@@ -274,6 +274,7 @@ void PrintWorkspaceLayout(const struct WorkspaceLayout *layout, const char *node
     OP_LOGD(nodeName, "expertRevTokenNumsOffset:      %ld\n", layout->expertRevTokenNumsOffset);
     OP_LOGD(nodeName, "metaInfoOffset:                %ld\n", layout->metaInfoOffset);
     OP_LOGD(nodeName, "flagActivationToGmm2Offset:    %ld\n", layout->flagActivationToGmm2Offset);
+    OP_LOGD(nodeName, "sharedActivationToGmm2Offset:  %ld\n", layout->sharedActivationToGmm2Offset);
     OP_LOGD(nodeName, "flagDispatchToGmm1Offset:      %ld\n", layout->flagDispatchToGmm1Offset);
     OP_LOGD(nodeName, "flagSendCntCalToUpdParamsOffset: %ld\n", layout->flagSendCntCalToUpdParamsOffset);
     OP_LOGD(nodeName, "flagGmmToEpilogueOffset:       %ld\n", layout->flagGmmToEpilogueOffset);

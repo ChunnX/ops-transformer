@@ -494,10 +494,10 @@ __aicore__ inline void CombineWaveTokenRange(const MoeStageCommonConfig &common,
 }
 
 // 等待当前 GMM2 tile 对应的 SwiGLU 输入就绪。
-template <bool IsShared, typename Config>
+template <typename Config>
 __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t mLoc)
 {
-    if constexpr (IsShared) {
+    if (gmmAddrInfo.activationToGmm2Flag == nullptr) {
         return;
     }
     if constexpr (Config::IS_WAVE_FLAG_GRAINED) {
@@ -587,11 +587,11 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
         if constexpr (std::remove_reference_t<decltype(config)>::IS_WAVE_FLAG_GRAINED) {
             uint32_t waveIdx = mLoc / L1_TILE_M_256;
             if (waveIdx != lastWaveWaited) {
-                WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
+                WaitForGmm2InputReady(gmmAddrInfo, config, mLoc);
                 lastWaveWaited = waveIdx;
             }
         } else if (loopIdx == startLoopIdx) {
-            WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
+            WaitForGmm2InputReady(gmmAddrInfo, config, mLoc);
         }
 
         typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
@@ -687,11 +687,11 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
         if constexpr (Config::IS_WAVE_FLAG_GRAINED) {
             uint32_t waveIdx = mLoc / L1_TILE_M_256;
             if (waveIdx != lastWaveWaited) {
-                WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
+                WaitForGmm2InputReady(gmmAddrInfo, config, mLoc);
                 lastWaveWaited = waveIdx;
             }
         } else if (loopIdx == startLoopIdx) {
-            WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
+            WaitForGmm2InputReady(gmmAddrInfo, config, mLoc);
         }
 
         auto gmBlockA = gmA.Slice(Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.k));
@@ -1048,6 +1048,13 @@ __aicore__ inline void UpdateSharedExpertGmm2GlobalBuffer(const MoeStageCommonCo
     gmmAddrInfo.bScaleGlobal = GetExpertWeightAddr<QuantScaleType>(
         weights.weightScales2, gmmConfig.isPerExpertWeightTensor, sharedExpertIdx,
         static_cast<uint64_t>(sharedExpertIdx) * tokenHiddenDim * activationScaleWidth);
+    gmmAddrInfo.activationToGmm2Flag = nullptr;
+    if (workspace.sharedActivationToGmm2Ptr != nullptr) {
+        uint64_t sharedActivationFlagElementCount = static_cast<uint64_t>(
+            CalcSharedActivationFlagElementsPerExpert(static_cast<int64_t>(commonConfig.tokenNum)));
+        gmmAddrInfo.activationToGmm2Flag = reinterpret_cast<__gm__ int32_t *>(workspace.sharedActivationToGmm2Ptr) +
+                                           static_cast<uint64_t>(sharedExpertIdx) * sharedActivationFlagElementCount;
+    }
     gmmAddrInfo.sharedExpertGmm2TileCounter = nullptr;
     if (workspace.sharedExpertGmm2TileCounterPtr != nullptr) {
         uint32_t tokenGroupCount = Ops::Base::CeilDiv(commonConfig.tokenNum, Gmm1TileM);
