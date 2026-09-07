@@ -196,9 +196,7 @@ class Parser:
 
             # 递归到 module 时说明到达最后一层
             if 'module' in obj:
-                # Parse the module node itself instead of re-walking the YAML root.
-                # This keeps PR_UT classification linear in the number of modules.
-                return cls._parse_classify_item(current_key, obj)
+                return cls._parse_classify_item(current_key, desc)
 
             # 递归处理其他值
             for key, value in obj.items():

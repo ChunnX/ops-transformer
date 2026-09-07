@@ -441,6 +441,7 @@ attention:
     module: True
     src:
       - experimental/attention/fmm016_streaming_top_k_blocked_v2
+      - attention/fmm016_streaming_top_k_blocked_v2
     exclude:
       - experimental/attention/fmm016_streaming_top_k_blocked_v2/README.md
     ut_cov_exclude:
@@ -455,6 +456,7 @@ attention:
     module: True
     src:
       - experimental/attention/fmm016_streaming_top_k_blocked_v4
+      - attention/fmm016_streaming_top_k_blocked_v4
     exclude:
       - experimental/attention/fmm016_streaming_top_k_blocked_v4/README.md
     ut_cov_exclude:
