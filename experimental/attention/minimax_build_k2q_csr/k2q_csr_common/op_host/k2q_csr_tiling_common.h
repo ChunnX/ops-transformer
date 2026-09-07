@@ -1,4 +1,14 @@
 /**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/**
  * 五阶段算子共用 Host tiling 填充。
  */
 #ifndef K2Q_CSR_TILING_COMMON_H
@@ -210,8 +220,7 @@ inline int64_t CalcTileEdges(uint64_t ubSize, int64_t rowMapElems, int32_t useGa
     int64_t rowMapBytes = useGather ? ((rowMapElems * 4 + 31) / 32 * 32) : 0;
     int64_t tokenBytes = (T * 4 + 31) / 32 * 32;
     int64_t countsBytes = ((totalRows + 1) * 4 + 31) / 32 * 32;
-    int64_t avail =
-        static_cast<int64_t>(ubSize) - rowMapBytes - tokenBytes - countsBytes - UB_RESERVE_BYTES;
+    int64_t avail = static_cast<int64_t>(ubSize) - rowMapBytes - tokenBytes - countsBytes - UB_RESERVE_BYTES;
     if (avail <= 0) {
         return 256;
     }
@@ -320,8 +329,8 @@ inline ge::graphStatus FillTiling(gert::TilingContext *context, Stage stage)
 
     int64_t usedCores = UsedCoresForStage(stage, numGroups, aivNum, totalRows, H);
 
-    OP_CHECK_IF(GetWorkspaceSize(context, T, B, maxKv) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context, "GetWorkspaceSize error"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(GetWorkspaceSize(context, T, B, maxKv) != ge::GRAPH_SUCCESS, OP_LOGE(context, "GetWorkspaceSize error"),
+                return ge::GRAPH_FAILED);
 
     K2qCsrTilingData *tiling = context->GetTilingData<K2qCsrTilingData>();
     OP_CHECK_NULL_WITH_CONTEXT(context, tiling);

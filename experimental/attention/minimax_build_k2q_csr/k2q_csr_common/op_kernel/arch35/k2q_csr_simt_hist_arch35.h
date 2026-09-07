@@ -1,4 +1,14 @@
 /**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/**
  * SIMT Stage H（对齐 CUDA k2q_hist_kernel）。
  * 每核 = CTA，独占 q_per_cta；VF AtomicAdd → tile_counts；再 AtomicAddOut → row_counts。
  */
@@ -14,9 +24,11 @@ using namespace AscendC;
 
 namespace k2q_csr_simt {
 
-__simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void HistEdgesVf(
-    __gm__ int32_t *q2k, __gm__ int32_t *tokenBatch, __gm__ int32_t *rowMap, __gm__ int32_t *hist, int32_t hid,
-    int32_t N, int32_t topk, int32_t q0, int32_t qLen, int32_t maxKv, int32_t totalRows, int32_t B)
+__simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void HistEdgesVf(__gm__ int32_t *q2k, __gm__ int32_t *tokenBatch,
+                                                                        __gm__ int32_t *rowMap, __gm__ int32_t *hist,
+                                                                        int32_t hid, int32_t N, int32_t topk,
+                                                                        int32_t q0, int32_t qLen, int32_t maxKv,
+                                                                        int32_t totalRows, int32_t B)
 {
     const uint64_t numEdges = static_cast<uint64_t>(qLen) * static_cast<uint64_t>(topk);
     for (uint64_t e = static_cast<uint64_t>(Simt::GetThreadIdx()); e < numEdges;
@@ -102,8 +114,7 @@ private:
         K2qCsrCommon::CopyOutInt32(tileCountsGm_[histOff], tile, totalRows_);
         PipeBarrier<PIPE_ALL>();
 
-        __gm__ int32_t *histGm =
-            (__gm__ int32_t *)(tileCountsAddr_ + histOff * static_cast<int64_t>(sizeof(int32_t)));
+        __gm__ int32_t *histGm = (__gm__ int32_t *)(tileCountsAddr_ + histOff * static_cast<int64_t>(sizeof(int32_t)));
         Simt::VF_CALL<k2q_csr_simt::HistEdgesVf>(
             Simt::Dim3(k2q_csr_simt::THREAD_NUM), (__gm__ int32_t *)q2kAddr_, (__gm__ int32_t *)tokenBatchAddr_,
             (__gm__ int32_t *)rowMapAddr_, histGm, static_cast<int32_t>(hid), static_cast<int32_t>(N_),

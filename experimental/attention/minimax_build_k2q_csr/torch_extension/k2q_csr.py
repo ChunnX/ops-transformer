@@ -41,7 +41,10 @@ class K2qCsrOpBuilder(OpBuilder):
             use_simt=0,
             q_global_offset=0,
         ):
-            torch._check(q2k.dim() == 3, lambda: f"q2k must be 3-D [H, T, topk], got dim={q2k.dim()}")
+            torch._check(
+                q2k.dim() == 3,
+                lambda: f"q2k must be 3-D [H, T, topk], got dim={q2k.dim()}",
+            )
             num_heads = q2k.size(0)
             num_tokens = q2k.size(1)
             topk = q2k.size(2)
@@ -49,8 +52,12 @@ class K2qCsrOpBuilder(OpBuilder):
             if tr < 0:
                 tr = 0
             row_ptr = torch.empty(num_heads, tr + 1, dtype=torch.int32, device="meta")
-            q_ind = torch.empty(num_heads, num_tokens * topk, dtype=torch.int32, device="meta")
-            slot = torch.empty(num_heads, num_tokens * topk, dtype=torch.int32, device="meta")
+            q_ind = torch.empty(
+                num_heads, num_tokens * topk, dtype=torch.int32, device="meta"
+            )
+            slot = torch.empty(
+                num_heads, num_tokens * topk, dtype=torch.int32, device="meta"
+            )
             return row_ptr, q_ind, slot
 
 

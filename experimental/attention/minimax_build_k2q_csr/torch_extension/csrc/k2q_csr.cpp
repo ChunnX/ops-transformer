@@ -117,9 +117,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> k2q_csr(const at::Tensor &q2k, co
                                                        int64_t totalRows, int64_t maxKv, int64_t useSimt,
                                                        int64_t qGlobalOffset)
 {
-    TORCH_CHECK(torch_npu::utils::is_npu(q2k) && torch_npu::utils::is_npu(cuSeqlens) &&
-                    torch_npu::utils::is_npu(cuBlockLens),
-                "k2q_csr: q2k / cu_seqlens / cu_block_lens must be on NPU");
+    TORCH_CHECK(
+        torch_npu::utils::is_npu(q2k) && torch_npu::utils::is_npu(cuSeqlens) && torch_npu::utils::is_npu(cuBlockLens),
+        "k2q_csr: q2k / cu_seqlens / cu_block_lens must be on NPU");
     TORCH_CHECK(q2k.scalar_type() == at::kInt, "q2k must be int32");
     TORCH_CHECK(cuSeqlens.scalar_type() == at::kInt, "cu_seqlens must be int32");
     TORCH_CHECK(cuBlockLens.scalar_type() == at::kInt, "cu_block_lens must be int32");

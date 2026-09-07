@@ -1,4 +1,14 @@
 /**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/**
  * k2q_csr AscendC common helpers.
  */
 #ifndef K2Q_CSR_COMMON_H
@@ -34,8 +44,8 @@ __aicore__ inline void CopyInInt32NoBarrier(const AscendC::LocalTensor<int32_t> 
     AscendC::DataCopyPad(dst, src, params, pad);
 }
 
-__aicore__ inline void CopyInInt32(const AscendC::LocalTensor<int32_t> &dst,
-                                   const AscendC::GlobalTensor<int32_t> &src, int64_t nElems)
+__aicore__ inline void CopyInInt32(const AscendC::LocalTensor<int32_t> &dst, const AscendC::GlobalTensor<int32_t> &src,
+                                   int64_t nElems)
 {
     CopyInInt32NoBarrier(dst, src, nElems);
     if (nElems > 0) {
@@ -43,8 +53,8 @@ __aicore__ inline void CopyInInt32(const AscendC::LocalTensor<int32_t> &dst,
     }
 }
 
-__aicore__ inline void CopyOutInt32(const AscendC::GlobalTensor<int32_t> &dst,
-                                    const AscendC::LocalTensor<int32_t> &src, int64_t nElems)
+__aicore__ inline void CopyOutInt32(const AscendC::GlobalTensor<int32_t> &dst, const AscendC::LocalTensor<int32_t> &src,
+                                    int64_t nElems)
 {
     if (nElems <= 0) {
         return;
@@ -70,8 +80,8 @@ __aicore__ inline void AtomicAddOutInt32(const AscendC::GlobalTensor<int32_t> &d
 
 __aicore__ inline void FlushGmInt32(const AscendC::GlobalTensor<int32_t> &gm)
 {
-    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::ENTIRE_DATA_CACHE,
-                                      AscendC::DcciDst::CACHELINE_OUT>(gm);
+    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::ENTIRE_DATA_CACHE, AscendC::DcciDst::CACHELINE_OUT>(
+        gm);
 }
 
 /** 单点写 GM（MTE3），多核并发安全；避免 GlobalTensor.SetValue 写回丢失 */
