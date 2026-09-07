@@ -6,14 +6,15 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
-"""FlashKDA device computation, V2 Entry and explicit frozen publication."""
+import dataclasses
+import os
+from typing import NamedTuple, Optional, Tuple
 
-import torch
-import cannbotdsl as cb
+os.environ.setdefault("TORCH_DEVICE_BACKEND_AUTOLOAD", "0")
 
-# Device computation and cross-core synchronization.
 _RAW_K_FORMAT = "bf16"
 import cannbotdsl
+import torch
 from cannbotdsl import dtypes
 from cannbotdsl.arch import get_block_idx, get_block_num, get_subblock_id
 from cannbotdsl.buffer import Buffer
@@ -78,7 +79,7 @@ from cannbotdsl.tensor import (
     make_partition_tiler,
     mem_copy,
 )
-from cannbotdsl import ChannelKind, MemLoc, PIPE, Tensor
+from cannbotdsl import ChannelKind, MemLoc, PIPE, Tensor, permute
 from cannbotdsl.vf import vf
 
 CHUNK_SIZE = 64
@@ -86,6 +87,53 @@ SUPPORTED_HEAD_DIM = 128
 HALF_CHUNK_SIZE = CHUNK_SIZE // 2
 D_HALF = SUPPORTED_HEAD_DIM // 2
 MAX_GROUP_CHUNKS = 8
+LOW_DTYPE = torch.bfloat16
+HIGH_DTYPE = torch.float32
+_DYNAMIC_KERNEL_CACHE: dict[
+    tuple[int, int, int, str, int, int, bool, int], object
+] = {}
+
+
+def get_group_config(heads: int, seq_len: int) -> int:
+    """选 chunk group：最大 2 的幂 g 使 L2 足迹 heads*g ≤ 861，再夹到 [填满32核, chunks]。
+
+    heads 越大 g 越小（查表，断点 = 861//g）；BN 合轴后 heads = batch*heads。
+    """
+    chunks = seq_len // CHUNK_SIZE
+    if   heads <= 1:    g = 512
+    elif heads <= 3:    g = 256
+    elif heads <= 6:    g = 128
+    elif heads <= 13:   g = 64
+    elif heads <= 26:   g = 32
+    elif heads <= 53:   g = 16
+    elif heads <= 107:  g = 8
+    elif heads <= 215:  g = 4
+    elif heads <= 430:  g = 2
+    else:               g = 1
+    g = min(g, chunks)                       # 不超过总 chunks
+    while heads * g < 32 and g < chunks:     # 下界：填满 32 核
+        g *= 2
+    return max(1, g)
+
+
+def get_group_config_bn(bn: int) -> int:
+    """动态 S 版 group：按 bn(=heads) 选，**不依赖 seq_len**（末尾 group 由 group_count 运行时夹到实际
+    chunks，效果同 static 的 chunks 夹取）。传一个足够大的 seq 让 get_group_config 的 chunks 夹取不生效，
+    得到纯 heads-based g（L2 足迹 heads*g≤861 由其 heads 表保证）。这样 group 只随 bn 变、S 仍可复用。"""
+    return get_group_config(bn, 512 * CHUNK_SIZE)
+
+
+def get_dv_base_config(bn: int, seq_len: int) -> int:
+    """Select the Dv columns owned by one core."""
+    if seq_len // CHUNK_SIZE < 1:
+        return SUPPORTED_HEAD_DIM
+    if bn <= 4:
+        return 16
+    if bn <= 8:
+        return 32
+    if bn <= 16:
+        return 64
+    return 128
 
 
 def _o_head_chunk_tile(gm_O, seq_idx, chunk_idx, head_dim, dv_base, dv_idx):
@@ -99,6 +147,118 @@ def _o_head_chunk_tile(gm_O, seq_idx, chunk_idx, head_dim, dv_base, dv_idx):
         (chunk_idx, dtypes.int64(0)),
     )
     return tile_view(full_chunk, (CHUNK_SIZE, dv_base), (dtypes.int64(0), dv_idx))
+
+
+class _Stage1Constants(NamedTuple):
+    lower_mask_tiles: torch.Tensor
+    identity16: torch.Tensor
+
+
+_STAGE1_CONSTANTS_CACHE: dict[tuple[str, int | None, torch.dtype, torch.dtype], _Stage1Constants] = {}
+
+
+@dataclasses.dataclass
+class StageOneWorkspace:
+    Q_decayed: torch.Tensor
+    Mqk: torch.Tensor
+    K_restored: torch.Tensor
+    gamma_C: torch.Tensor
+    U_pre: torch.Tensor
+    W: torch.Tensor
+    identity16: torch.Tensor
+    lower_mask_tiles: torch.Tensor
+
+
+def _empty_like_device(
+    shape: tuple[int, ...],
+    *,
+    ref: torch.Tensor,
+    dtype: torch.dtype = torch.float32,
+) -> torch.Tensor:
+    return torch.empty(shape, dtype=dtype, device=ref.device)
+
+
+def allocate_qk_exchange_workspace(
+    *, active_block_num: int, ref: torch.Tensor,
+) -> torch.Tensor:
+    """Allocate one pair of fp32 Q/K half-exchange tiles per physical block."""
+    assert active_block_num > 0, "active_block_num must be positive"
+    return _empty_like_device(
+        (active_block_num, 2, CHUNK_SIZE, D_HALF), ref=ref, dtype=HIGH_DTYPE,
+    )
+
+
+def qk_exchange_slices(
+    workspace: torch.Tensor, *, block_idx: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return this block's Q-to-K and K-to-Q exchange directions."""
+    assert workspace.dtype == HIGH_DTYPE
+    assert workspace.dim() == 4 and tuple(workspace.shape[1:]) == (2, CHUNK_SIZE, D_HALF)
+    assert 0 <= block_idx < workspace.shape[0], "block_idx is outside the exchange workspace"
+    return workspace[block_idx, 0], workspace[block_idx, 1]
+
+
+def _resolved_device_key(ref: torch.Tensor) -> tuple[str, int | None]:
+    device = ref.device
+    device_type = getattr(device, "type", "cpu")
+    device_index = getattr(device, "index", None)
+    if device_type in {"npu", "privateuseone"} and device_index is None:
+        npu = getattr(torch, "npu", None)
+        current_device = getattr(npu, "current_device", None) if npu is not None else None
+        if current_device is not None:
+            device_index = int(current_device())
+    return device_type, device_index
+
+
+def _stage1_constants_for(
+    ref: torch.Tensor,
+    *,
+    mask_dtype: torch.dtype = HIGH_DTYPE,
+    identity_dtype: torch.dtype = torch.float16,
+) -> _Stage1Constants:
+    device_type, device_index = _resolved_device_key(ref)
+    key = (device_type, device_index, mask_dtype, identity_dtype)
+    cached = _STAGE1_CONSTANTS_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    mask_cols = CHUNK_SIZE // 4
+    strict_zero = torch.triu(torch.ones((CHUNK_SIZE, CHUNK_SIZE), dtype=torch.bool, device=ref.device), diagonal=0)
+    casual_zero = torch.triu(torch.ones((CHUNK_SIZE, CHUNK_SIZE), dtype=torch.bool, device=ref.device), diagonal=1)
+    strict_bytemask = strict_zero.contiguous().view(torch.float32)
+    casual_bytemask = casual_zero.contiguous().view(torch.float32)
+    lower_mask_tiles = torch.empty((CHUNK_SIZE, mask_cols * 2), dtype=torch.float32, device=ref.device)
+    lower_mask_tiles[:, :mask_cols] = strict_bytemask
+    lower_mask_tiles[:, mask_cols:] = casual_bytemask
+    constants = _Stage1Constants(
+        lower_mask_tiles=lower_mask_tiles.contiguous(),
+        identity16=torch.eye(16, dtype=identity_dtype, device=ref.device).contiguous(),
+    )
+    _STAGE1_CONSTANTS_CACHE[key] = constants
+    return constants
+
+
+def allocate_stage1_workspace(
+    batch: int,
+    heads: int,
+    eff_group: int,
+    dim: int,
+    *,
+    ref: torch.Tensor,
+) -> StageOneWorkspace:
+    # Scratch is reused for each chunk group rather than spanning the sequence.
+    bn_chunks = batch * heads * eff_group
+    constants = _stage1_constants_for(ref)
+    return StageOneWorkspace(
+        Q_decayed=_empty_like_device((bn_chunks * CHUNK_SIZE, dim), ref=ref, dtype=LOW_DTYPE),
+        Mqk=_empty_like_device((bn_chunks * CHUNK_SIZE, CHUNK_SIZE), ref=ref, dtype=LOW_DTYPE),
+        K_restored=_empty_like_device((bn_chunks * CHUNK_SIZE, dim), ref=ref, dtype=LOW_DTYPE),
+        gamma_C=_empty_like_device((bn_chunks * dim, 1), ref=ref, dtype=HIGH_DTYPE),
+        U_pre=_empty_like_device((bn_chunks * CHUNK_SIZE, dim), ref=ref, dtype=LOW_DTYPE),
+        W=_empty_like_device((bn_chunks * CHUNK_SIZE, dim), ref=ref, dtype=LOW_DTYPE),
+        identity16=constants.identity16,
+        lower_mask_tiles=constants.lower_mask_tiles,
+    )
 
 
 ELEM_BYTES = 4
@@ -135,7 +295,6 @@ class StageOneMatmul:
         self.raw_l0b_db = Channel(MemLoc.L0B, (CHUNK_SIZE, CHUNK_SIZE), dtypes.float16, depth=2)
         self.raw_l0c_main = Channel(MemLoc.L0C, (CHUNK_SIZE, CHUNK_SIZE), dtypes.float32, depth=1)
         self.raw_l0c_aux = Channel(MemLoc.L0C, (CHUNK_SIZE, CHUNK_SIZE), dtypes.float32, depth=1)
-        # 引擎
         self.gm2l1_identity16_diag = make_copy_engine(
             format_transform="nd2nz",
             dtype=dtypes.float16,
@@ -325,7 +484,6 @@ class StageOneMatmul:
             (src1_row_block, src1_col_block, dst1_block),
         ):
             src_offset = self._packed64_block_offset_elems(src_row_block, src_col_block)
-            # 3510 L0A 的 16x16 单块地址仍需补偿一个 full64 M span。
             dst_offset = (dst_block - (NEUMANN_DIAG_BLOCK_NUM - 1)) * NEUMANN_FRACTAL_ELEMS
             l0_tile = local_slice(l0a_slot, (NEUMANN_BLOCK_SIZE, NEUMANN_BLOCK_SIZE), offset=dst_offset * 2)
             cube_raw_l1_to_l0a(l0_tile, l1_matrix, l1_offset_elems=src_offset, m_start=0, k_start=0,
@@ -604,7 +762,6 @@ class StageOneMatmul:
         v_beta_l1,
         k_decayed_beta_l1,
     ):
-        # β·K 先产出，故先算 W；W 的 MMAD/store 与后续 β·V handoff 重叠。
         l0a_resident = self._load_resident_inv_to_l0a()
 
         l0b_beta = self._load_beta_to_l0b(k_decayed_beta_l1)
@@ -640,20 +797,31 @@ class StageOneVector:
         self.ub_gamma = Buffer(MemLoc.UB, (CHUNK_SIZE, D_HALF), dtypes.float32)
         self.ub_gamma_c = Channel(MemLoc.UB, (1, D_HALF), dtypes.float32, depth=2)
         self.ub_cs_snapshot = [Buffer(MemLoc.UB, (CHUNK_SIZE, D_HALF), dtypes.float32) for _ in range(2)]
-        self.ub_mqk = Channel(MemLoc.UB, (HALF_CHUNK_SIZE, CHUNK_SIZE), dtypes.float32, depth=2, kind=ChannelKind.CrossCore)
-        self.ub_bf16_nz = Channel(MemLoc.UB, (CHUNK_SIZE, D_HALF), dtypes.bfloat16, depth=2, data_format="nz", n1_pad=16)
+        self.ub_mqk = Channel(
+            MemLoc.UB, (HALF_CHUNK_SIZE, CHUNK_SIZE), dtypes.float32, depth=2, kind=ChannelKind.CrossCore
+        )
+        self.ub_bf16_nz = Channel(
+            MemLoc.UB, (CHUNK_SIZE, D_HALF), dtypes.bfloat16, depth=2,
+            data_format="nz", n1_pad=16,
+        )
         self.ub_cast_bf16 = Channel(MemLoc.UB, (CHUNK_SIZE, D_HALF), dtypes.bfloat16, depth=1, data_format="nd")
         self.ub_kkt_fp16 = Buffer(MemLoc.UB, (HALF_CHUNK_SIZE, CHUNK_SIZE), dtypes.float16)
         self.ub_mqk_bf16 = Channel(MemLoc.UB, (HALF_CHUNK_SIZE, CHUNK_SIZE), dtypes.bfloat16, depth=1, data_format="nd")
         self.ub_g_cumsum = Channel(MemLoc.UB, (CHUNK_SIZE, D_HALF), dtypes.float32, depth=1)
         self.ub_raw_k = [Buffer(MemLoc.UB, (CHUNK_SIZE, D_HALF), dtypes.bfloat16) for _ in range(2)]
-        self.ub_kkt = Channel(MemLoc.UB, (HALF_CHUNK_SIZE, CHUNK_SIZE), dtypes.float32, depth=1, kind=ChannelKind.CrossCore)
-        self.ub_kkt_nz = Channel(MemLoc.UB, (HALF_CHUNK_SIZE, CHUNK_SIZE), dtypes.float16, depth=1, data_format="nz", n1_pad=16)
+        self.ub_kkt = Channel(
+            MemLoc.UB, (HALF_CHUNK_SIZE, CHUNK_SIZE), dtypes.float32, depth=1, kind=ChannelKind.CrossCore
+        )
+        self.ub_kkt_nz = Channel(
+            MemLoc.UB, (HALF_CHUNK_SIZE, CHUNK_SIZE), dtypes.float16, depth=1,
+            data_format="nz", n1_pad=16,
+        )
         self.ub_per_d_nd = Channel(MemLoc.UB, (NEUMANN_BLOCK_SIZE, D_HALF), dtypes.bfloat16, depth=2)
-        self.ub_per_d_nz = Channel(MemLoc.UB, (NEUMANN_BLOCK_SIZE, D_HALF), dtypes.bfloat16, depth=2, data_format="nz", n1_pad=16)
-        # One FIFO carries target-scoped left K/Q and column-scoped right K.
-        # Its three original L1 slots let AIV prepare left Q while AIC consumes
-        # the first right K; Cube keeps left K/Q resident in distinct L0A roots.
+        self.ub_per_d_nz = Channel(
+            MemLoc.UB, (NEUMANN_BLOCK_SIZE, D_HALF), dtypes.bfloat16, depth=2,
+            data_format="nz", n1_pad=16,
+        )
+
         self.l1_per_d_operand = Channel(MemLoc.L1, (NEUMANN_BLOCK_SIZE, self.head_dim), dtypes.bfloat16, depth=3, kind=ChannelKind.CrossCore)
         self.l1_V_beta = Channel(MemLoc.L1, (CHUNK_SIZE, self.head_dim), dtypes.bfloat16, depth=1, kind=ChannelKind.CrossCore)
         self.l1_K_decayed_beta_for_W = Channel( MemLoc.L1, (CHUNK_SIZE, self.head_dim), dtypes.bfloat16,
@@ -726,25 +894,33 @@ class StageOneVector:
         k_chunk = tile_view(gm_K[batch_idx, qk_head_idx, None, None], (CHUNK_SIZE, SUPPORTED_HEAD_DIM), (chunk_idx, dtypes.int64(0)))
 
         if self.subblock_idx == dtypes.int64(0):
-            mem_copy(self.ub_q, q_chunk)
+            q_write = self.ub_q.acquire()
+            mem_copy(q_write, q_chunk)
+            self.ub_q.commit(q_write)
             vec_sync_notify(PIPE.MTE2, PIPE.V, MTE2_TO_V_EVENT_ID)
             vec_sync_wait(PIPE.MTE2, PIPE.V, MTE2_TO_V_EVENT_ID)
-            self.normalize_full_d_bf16(self.ub_q)
+            q_read = self.ub_q.wait()
+            self.normalize_full_d_bf16(q_read)
             with vf(outputs=[self.ub_q_bf16]):
-                mem_copy(self.ub_q_bf16, local_slice(self.ub_q, (CHUNK_SIZE, D_HALF), stride=(SUPPORTED_HEAD_DIM, 1), offset=0))
+                mem_copy(self.ub_q_bf16, local_slice(q_read, (CHUNK_SIZE, D_HALF), stride=(SUPPORTED_HEAD_DIM, 1), offset=0))
             with vf(outputs=[self.ub_qk_exchange]):
-                cast(self.ub_qk_exchange, local_slice(self.ub_q, (CHUNK_SIZE, D_HALF), stride=(SUPPORTED_HEAD_DIM, 1), offset=D_HALF * 2))
+                cast(self.ub_qk_exchange, local_slice(q_read, (CHUNK_SIZE, D_HALF), stride=(SUPPORTED_HEAD_DIM, 1), offset=D_HALF * 2))
+            self.ub_q.release(q_read)
             self.publish_normalized_qk_half(q_to_k, self.ub_qk_exchange)
         else:
-            mem_copy(self.ub_k, k_chunk)
+            k_write = self.ub_k.acquire()
+            mem_copy(k_write, k_chunk)
+            self.ub_k.commit(k_write)
             vec_sync_all()
             vec_sync_notify(PIPE.MTE2, PIPE.V, MTE2_TO_V_SUBBLOCK1_EVENT_ID)
             vec_sync_wait(PIPE.MTE2, PIPE.V, MTE2_TO_V_SUBBLOCK1_EVENT_ID)
-            self.normalize_full_d_bf16(self.ub_k)
+            k_read = self.ub_k.wait()
+            self.normalize_full_d_bf16(k_read)
             with vf(outputs=[self.ub_k_bf16]):
-                mem_copy(self.ub_k_bf16, local_slice(self.ub_k, (CHUNK_SIZE, D_HALF), stride=(SUPPORTED_HEAD_DIM, 1), offset=D_HALF * 2))
+                mem_copy(self.ub_k_bf16, local_slice(k_read, (CHUNK_SIZE, D_HALF), stride=(SUPPORTED_HEAD_DIM, 1), offset=D_HALF * 2))
             with vf(outputs=[self.ub_qk_exchange]):
-                cast(self.ub_qk_exchange, local_slice(self.ub_k, (CHUNK_SIZE, D_HALF), stride=(SUPPORTED_HEAD_DIM, 1), offset=0))
+                cast(self.ub_qk_exchange, local_slice(k_read, (CHUNK_SIZE, D_HALF), stride=(SUPPORTED_HEAD_DIM, 1), offset=0))
+            self.ub_k.release(k_read)
             self.publish_normalized_qk_half(k_to_q, self.ub_qk_exchange)
 
         return q_to_k, k_to_q
@@ -787,37 +963,62 @@ class StageOneVector:
         g_chunk = tile_view(gm_g[batch_idx, head_idx, None, None], (CHUNK_SIZE, D_HALF), (chunk_idx, self.subblock_idx))
         bias_half = tile_view(gm_dt_bias[head_idx, None], (D_HALF,), (self.subblock_idx,))
         alpha = tile_view(gm_A_log, (1,), (head_idx,))
-        mem_copy(self.ub_g_raw, g_chunk)
-        mem_copy(self.ub_dt_bias, bias_half)
-        mem_copy(self.ub_alpha, alpha)
+        g_write = self.ub_g_raw.acquire()
+        bias_write = self.ub_dt_bias.acquire()
+        alpha_write = self.ub_alpha.acquire()
+        mem_copy(g_write, g_chunk)
+        mem_copy(bias_write, bias_half)
+        mem_copy(alpha_write, alpha)
+        self.ub_g_raw.commit(g_write)
+        self.ub_dt_bias.commit(bias_write)
+        self.ub_alpha.commit(alpha_write)
         vec_sync_notify(PIPE.MTE2, PIPE.V, MTE2_TO_V_EVENT_ID)
         vec_sync_wait(PIPE.MTE2, PIPE.V, MTE2_TO_V_EVENT_ID)
+        g_read = self.ub_g_raw.wait()
+        bias_read = self.ub_dt_bias.wait()
+        alpha_read = self.ub_alpha.wait()
+        gate_write = self.ub_gate_activated.acquire()
         with vf(mode="raw"):
             lane_mask, _ = update_mask(D_HALF, elem_bits=32)
             bound = vdups(lower_bound, dtypes.float32, mask=lane_mask)
             one = vdups(1.0, dtypes.float32, mask=lane_mask)
-            alpha_exp = vexp(vload_broadcast(self.ub_alpha, 0), mask=lane_mask)
+            alpha_exp = vexp(vload_broadcast(alpha_read, 0), mask=lane_mask)
             neg_exp_a = vmuls(alpha_exp, -1.0, mask=lane_mask)
             for row in dsl_range(dtypes.int64(0), dtypes.int64(CHUNK_SIZE), dtypes.int64(1), unroll=4):
                 offset = row * dtypes.int64(D_HALF)
-                raw_g = vcast(vload_unpack(self.ub_g_raw, offset, unpack_mode=UnpackMode.B16_TO_B32), dtypes.float32, mask=lane_mask)
-                gate_logit = vmul(neg_exp_a, vadd(raw_g, vload(self.ub_dt_bias, 0), mask=lane_mask), mask=lane_mask)
+                raw_g = vcast(vload_unpack(g_read, offset, unpack_mode=UnpackMode.B16_TO_B32), dtypes.float32, mask=lane_mask)
+                gate_logit = vmul(neg_exp_a, vadd(raw_g, vload(bias_read, 0), mask=lane_mask), mask=lane_mask)
                 gate = vdiv(bound, vadd(one, vexp(gate_logit, mask=lane_mask), mask=lane_mask), mask=lane_mask)
-                vstore(self.ub_gate_activated, offset, gate, lane_mask)
+                vstore(gate_write, offset, gate, lane_mask)
             vmem_bar("vst_vld")
+        self.ub_g_raw.release(g_read)
+        self.ub_dt_bias.release(bias_read)
+        self.ub_alpha.release(alpha_read)
+        self.ub_gate_activated.commit(gate_write)
         vec_sync_all()
-        cumsum(self.ub_g_cumsum, self.ub_gate_activated, axis=0)
-        return self.ub_g_cumsum
+        gate_read = self.ub_gate_activated.wait()
+        g_cumsum_write = self.ub_g_cumsum.acquire()
+        cumsum(g_cumsum_write, gate_read, axis=0)
+        self.ub_gate_activated.release(gate_read)
+        self.ub_g_cumsum.commit(g_cumsum_write)
+        return self.ub_g_cumsum.wait()
+
+    def release_gate_cumsum(self, g_cumsum_read):
+        self.ub_g_cumsum.release(g_cumsum_read)
 
     @jit
     def activate_raw_beta(self, gm_beta, batch_idx, head_idx, chunk_idx):
         """Apply sigmoid to one raw BF16 beta-logit chunk."""
         beta_chunk = tile_view(gm_beta[batch_idx, head_idx, None, None], (CHUNK_SIZE, 1), (chunk_idx, dtypes.int64(0)))
-        mem_copy(self.ub_beta_raw, beta_chunk)
+        beta_write = self.ub_beta_raw.acquire()
+        mem_copy(beta_write, beta_chunk)
+        self.ub_beta_raw.commit(beta_write)
         vec_sync_notify(PIPE.MTE2, PIPE.V, MTE2_TO_V_EVENT_ID)
         vec_sync_wait(PIPE.MTE2, PIPE.V, MTE2_TO_V_EVENT_ID)
+        beta_read = self.ub_beta_raw.wait()
         with vf(outputs=[self.ub_beta]):
-            cast(self.ub_beta, local_slice(self.ub_beta_raw, (CHUNK_SIZE, 1), offset=0))
+            cast(self.ub_beta, beta_read)
+        self.ub_beta_raw.release(beta_read)
         with vf(mode="raw"):
             lane_mask, _ = update_mask(VL, elem_bits=32)
             one = vdups(1.0, dtypes.float32, mask=lane_mask)
@@ -853,7 +1054,9 @@ class StageOneVector:
         """Construct the two C3 operands from one full S by D-half vector tile."""
         raw_k_snapshot = self.ub_raw_k[buffer_parity]
         v_half = tile_view(gm_V[batch_idx, head_idx, None, None], (CHUNK_SIZE, D_HALF), (chunk_idx, self.subblock_idx))
-        self._copy_bf16_gm_half_tile_to_ub(v_half, self.ub_v_raw, cols=D_HALF)
+        v_write = self.ub_v_raw.acquire()
+        self._copy_bf16_gm_half_tile_to_ub(v_half, v_write, cols=D_HALF)
+        self.ub_v_raw.commit(v_write)
         vec_sync_notify(PIPE.MTE2, PIPE.V, MTE2_TO_V_V_STAGING_EVENT_ID)
 
         cast_write = self.ub_cast_bf16
@@ -875,14 +1078,16 @@ class StageOneVector:
         self._store_dhalf_nz_ub_to_full_l1(self.l1_K_decayed_beta_for_W, self.ub_bf16_nz)
 
         vec_sync_wait(PIPE.MTE2, PIPE.V, MTE2_TO_V_V_STAGING_EVENT_ID)
+        v_read = self.ub_v_raw.wait()
         cast_write = self.ub_cast_bf16
         with vf(mode="raw"):
             row_mask, _ = update_mask(VL, elem_bits=32)
             for row in dsl_range(dtypes.int64(0), dtypes.int64(CHUNK_SIZE), dtypes.int64(1), unroll=4):
                 offset = row * dtypes.int64(D_HALF)
                 beta = vload_broadcast(beta_slot, row)
-                v_value = vcast(vload_unpack(self.ub_v_raw, offset, unpack_mode=UnpackMode.B16_TO_B32), dtypes.float32, mask=row_mask)
+                v_value = vcast(vload_unpack(v_read, offset, unpack_mode=UnpackMode.B16_TO_B32), dtypes.float32, mask=row_mask)
                 vstore_pack(cast_write, offset, vcast(vmul(v_value, beta, mask=row_mask), dtypes.bfloat16, mask=row_mask), row_mask, pack_mode="b32_to_b16")
+        self.ub_v_raw.release(v_read)
         cast_read = self.ub_cast_bf16
         with vf(outputs=[self.ub_bf16_nz]):
             mem_copy(self.ub_bf16_nz, cast_read, engine=self.ub2l1)
@@ -952,8 +1157,6 @@ class StageOneVector:
         return self.ub_gamma_c
 
     def store_q_decayed_scratch(self, gm_Q_decayed_scratch, block_idx, q_decayed_slot):
-        # Q_decayed 的 bf16 已在 prepare_chunk 的 Q_decay vf 里 cast 好、留在 ub_cast_bf16(buf9)；
-        # 本方法紧跟 prepare_chunk、中间无人碰 buf9 → 直接把它搬到 GM，省一次 f32→bf16 cast。
         Q_decayed_slot_part = self.scratch_dhalf_tile(gm_Q_decayed_scratch, block_idx)
         mem_copy(Q_decayed_slot_part, q_decayed_slot)
 
@@ -1068,6 +1271,7 @@ def _run_stage1_body(
     gm_gamma,
     gm_U_pre,
     gm_w,
+    gm_lower_mask_tiles,
     gm_identity16,
     batch: int,          # 兼容位(不再使用；BN 合轴后 head 由 head_base/head_count 表达)
     head_count: int,
@@ -1079,13 +1283,11 @@ def _run_stage1_body(
     scale_value: float,
     lower_bound: float,
 ):
-    """Chunk Kimi Delta Attention Stage1。
+    """Flash Kimi Delta Attention Stage1
 
-    Stage1 对每个 chunk 计算 K_inv、K_decayed、Q_decayed 和 beta 加权的 KKT 下三角矩阵，
+    Stage1 对每个 chunk 计算Q/K L2Norm、gate/beta 激活、 K_inv、K_decayed、Q_decayed 和 beta 加权的 KKT 下三角矩阵，
     使用 Neumann 展开求解块内三角系统，生成 Mqk、U_pre、W、K_restored 和 gamma_C。
-
-    计算 [head_base, head_base+head_count) 这些(平铺后)head 一组 chunk 的 StageOne workspace。
-    输入保持原始 (B, N, S, D)；用 idx2crd 把平铺 head 反解回 (batch, head) 再 2D 索引（免 reshape）。"""
+    """
     subblock_idx = get_subblock_id()
     block_idx = get_block_idx()
     block_num = get_block_num()
@@ -1105,8 +1307,6 @@ def _run_stage1_body(
         task_end = total_tasks
 
     if block_idx < active_core_num:
-        # 严格/casual 下三角使用 raw update_mask 谓词（apply_beta / _store_masked_mqk）。
-        # matmul + vector 提到循环外(对齐 stage2)。identity 仍每 chunk 载(不变)。
         matmul = StageOneMatmul(head_dim=head_dim)
         vector = StageOneVector(head_dim=head_dim, scale_value=scale_value, subblock_idx=subblock_idx)
         task_delay_line = DelayLineGroup(2, "idx")
@@ -1206,6 +1406,7 @@ def _run_stage1_body(
             matmul.mm_per_d_kkt(3, 3)
             matmul.mm_per_d_mqk(3, 3)
 
+            vector.release_gate_cumsum(gate_cumsum_dhalf)
             vector.activate_raw_beta(gm_beta_brc, batch_index, value_head_index, chunk_index)
             matmul.finish_per_d_matrices(vector.ub_kkt, vector.ub_mqk)
 
@@ -1296,17 +1497,17 @@ class StageTwoMatmul:
         mem_copy(self.l0b_u, u_tile, transpose=True)
         matmul(self.l0c_o, self.l0a_mqk, self.l0b_u, init=False)
 
-    def store_u_delta(self, ub):
-        mem_copy(ub, local_slice(self.l0c_u, (CHUNK_SIZE, self.dv_base), offset=0), engine=self.fixpipe_u)
+    def store_u_delta(self, ub_ch):
+        mem_copy(ub_ch, local_slice(self.l0c_u, (CHUNK_SIZE, self.dv_base), offset=0), engine=self.fixpipe_u)
 
     def store_output(self, gm_tile):
         """读取包含 O_state + Mqk@U 的同一 L0C Channel 事务。"""
         mem_copy(gm_tile, local_slice(self.l0c_o, (CHUNK_SIZE, self.dv_base), offset=0))
 
-    def store_state_delta(self, ub):
+    def store_state_delta(self, ub_ch):
         shape = (self.dv_base, self.head_dim)
         split_n = make_partition_tiler(shape, shape, axis=1)
-        mem_copy(ub, local_slice(self.l0c_state, shape, offset=0), engine=self.fixpipe_state, partition=split_n)
+        mem_copy(ub_ch, local_slice(self.l0c_state, shape, offset=0), engine=self.fixpipe_state, partition=split_n)
 
 
 class StageTwoVector:
@@ -1318,12 +1519,18 @@ class StageTwoVector:
         self.ub_state_fp32 = Buffer(MemLoc.UB, (self.dv_base, self.half_dk), dtypes.float32)
         self.tmp_state_bf16 = Buffer(MemLoc.UB, (self.dv_base, self.half_dk), dtypes.bfloat16)
         self.tmp_u_bf16 = Buffer(MemLoc.UB, (u_row_block, dv_base), dtypes.bfloat16)
-        self.state_nd = Channel(MemLoc.UB, (self.dv_base, self.half_dk), dtypes.bfloat16, depth=1)
-        self.state_nz = Channel(MemLoc.UB, (self.dv_base, self.half_dk), dtypes.bfloat16, depth=1, data_format="nz", n1_pad=16)
-        self.u_nz = Channel(MemLoc.UB, (u_row_block, dv_base), dtypes.bfloat16, depth=1, data_format="nz", n1_pad=16)
-        self.state_in = Channel(MemLoc.UB, (self.dv_base, self.half_dk), dtypes.float32, depth=1)
-        self.state_out = Channel(MemLoc.UB, (self.dv_base, self.half_dk), dtypes.float32, depth=1)
-        self.u_in = Channel(MemLoc.UB, (u_row_block, dv_base), dtypes.bfloat16, depth=1)
+        self.state_nd_ch = Channel(MemLoc.UB, (self.dv_base, self.half_dk), dtypes.bfloat16, depth=1)
+        self.state_nz_ch = Channel(
+            MemLoc.UB, (self.dv_base, self.half_dk), dtypes.bfloat16, depth=1,
+            data_format="nz", n1_pad=16,
+        )
+        self.u_nz_ch = Channel(
+            MemLoc.UB, (u_row_block, dv_base), dtypes.bfloat16, depth=1,
+            data_format="nz", n1_pad=16,
+        )
+        self.state_in_ch = Channel(MemLoc.UB, (self.dv_base, self.half_dk), dtypes.float32, depth=1)
+        self.state_out_ch = Channel(MemLoc.UB, (self.dv_base, self.half_dk), dtypes.float32, depth=1)
+        self.u_in_ch = Channel(MemLoc.UB, (u_row_block, dv_base), dtypes.bfloat16, depth=1)
         self.ub2l1 = make_copy_engine(format_transform="nd2nz", dtype=dtypes.bfloat16, pad_value=0.0)
 
     def load_gamma_col(self, gamma_ub, gamma_col):
@@ -1333,22 +1540,22 @@ class StageTwoVector:
 
     def _produce_state_l1(self, state_l1, subblock_idx):
         ub_state = local_slice(self.ub_state_fp32, (self.dv_base, self.half_dk), offset=0)
-        nd_slot = self.state_nd
-        with vf(outputs=[self.state_nd]):
+        nd_slot = self.state_nd_ch
+        with vf(outputs=[self.state_nd_ch]):
             cast(nd_slot, ub_state)
-        nd_read = self.state_nd
-        nz_slot = self.state_nz
+        nd_read = self.state_nd_ch
+        nz_slot = self.state_nz_ch
         with vf():
             mem_copy(nz_slot, nd_read, engine=self.ub2l1)
-        nz_read = self.state_nz
+        nz_read = self.state_nz_ch
         slot = state_l1
         state_l1_rows = tile_view(slot, (self.dv_base, self.half_dk), (dtypes.int64(0), subblock_idx))
         mem_copy(state_l1_rows, nz_read)
 
     def load_initial_state_and_write_l1(self, current_state, state_l1, subblock_idx):
-        in_slot = self.state_in
+        in_slot = self.state_in_ch
         mem_copy(in_slot, current_state)
-        in_read = self.state_in
+        in_read = self.state_in_ch
         ub_state = local_slice(self.ub_state_fp32, (self.dv_base, self.half_dk), offset=0)
         with vf():
             mem_copy(ub_state, in_read)
@@ -1392,9 +1599,9 @@ class StageTwoVector:
         u_l1_rows = tile_view(u_l1, (self.u_row_block, self.dv_base), (subblock_idx, dtypes.int64(0)))
         tmp_u_bf16 = local_slice(self.tmp_u_bf16, (self.u_row_block, self.dv_base), offset=0)
 
-        u_in_slot = self.u_in
+        u_in_slot = self.u_in_ch
         mem_copy(u_in_slot, gm_u_rows)
-        u_in_read = self.u_in
+        u_in_read = self.u_in_ch
         with vf(outputs=[self.tmp_u_bf16]):
             mem_copy(tmp_u_bf16, u_in_read)
 
@@ -1415,19 +1622,19 @@ class StageTwoVector:
                 vstore_pack(tmp_u_bf16, base, u_bf16_pre, mask, pack_mode=PackMode.B32_TO_B16)
                 vstore_pack(tmp_u_bf16, base + VL, u_bf16_post, mask, pack_mode=PackMode.B32_TO_B16)
 
-        u_nz_slot = self.u_nz
+        u_nz_slot = self.u_nz_ch
         with vf():
             mem_copy(u_nz_slot, tmp_u_bf16, engine=self.ub2l1)
-        u_nz_read = self.u_nz
+        u_nz_read = self.u_nz_ch
         mem_copy(u_l1_rows, u_nz_read)
 
     def store_state_to_gm(self, gm_state_rows):
         """末态 ub_state_fp32 → GM（FP32）。累加在 V pipe、写 GM 在 MTE3，跨 pipe，经 Channel 交接。"""
         ub_state = local_slice(self.ub_state_fp32, (self.dv_base, self.half_dk), offset=0)
-        out_slot = self.state_out
+        out_slot = self.state_out_ch
         with vf():
             mem_copy(out_slot, ub_state)
-        out_read = self.state_out
+        out_read = self.state_out_ch
         mem_copy(gm_state_rows, out_read)
 
 
@@ -1452,7 +1659,12 @@ def _run_stage2_body(
     group_count: int,
     eff_group: int,
 ):
+    """Flash Kimi Delta Attention Stage2
 
+    Stage2 按 chunk 递推 rolling state。每个 chunk 先计算 O_state = Q_decayed @ state 和
+    U = U_pre - W @ state，再用 gamma_C 缩放旧 state，并累加 K_restored^T @ U 得到下一轮 state。
+    计算块内输出增量 Mqk @ U，并与生成的 O_state 相加，得到最终 O。
+    """
     block_idx = get_block_idx()
     block_num = get_block_num()
     subblock_idx = get_subblock_id()
@@ -1550,8 +1762,9 @@ def _run_stage2_body(
                     s2_vector.store_state_to_gm(state_rows)
 
 
-# mode=0 is a whole-grid barrier; the Entry supplies an explicit Target launch
-# that fits in one resident AIC wave.
+ALGORITHM_MAX_BLOCK_NUM = 32
+DEFAULT_BLOCK_NUM = ALGORITHM_MAX_BLOCK_NUM
+
 STAGE1_BOUNDARY_FLAG_ID = 0
 STAGE2_BOUNDARY_FLAG_ID = 1
 _STAGE_BOUNDARY_AIC_FLAG_OFFSET = 4
@@ -1621,14 +1834,15 @@ class flash_kda_kernel:
         gm_O: Tensor,
         gm_state_in: Tensor,
         gm_state_out: Tensor,
+        gm_lower_mask_tiles: Tensor,
         gm_identity16: Tensor,
         bn_total: int,
         seq_len: int,
+        block: int,
+        num_outer: int,
         scale_value: float,
         lower_bound: float,
     ):
-        block = bn_total
-        num_outer = dtypes.int64(1)
         chunks_total = seq_len // dtypes.int64(CHUNK_SIZE)
         GROUP = self.group
         eff_group = chunks_total
@@ -1660,6 +1874,7 @@ class flash_kda_kernel:
                     gm_gamma,
                     gm_U,
                     gm_w,
+                    gm_lower_mask_tiles,
                     gm_identity16,
                     bn_total,
                     head_count,
@@ -1700,113 +1915,485 @@ class flash_kda_kernel:
                     _stage_boundary_reset(STAGE2_BOUNDARY_FLAG_ID)
 
 
-# Frozen Entry, ordered Providers and publication domain.
-HEAD_DIM = 128
-GROUP_CHUNKS = 8
+class FlashKDA:
+    def __init__(
+        self,
+        head_dim: int = SUPPORTED_HEAD_DIM,
+        group: int = MAX_GROUP_CHUNKS,
+        layout_qkv: str = "BNSD",
+        dv_base: int = SUPPORTED_HEAD_DIM,
+        block_num: Optional[int] = None,
+    ):
+        self.head_dim = head_dim
+        self.group = int(group)
+        self.layout_qkv = layout_qkv
+        self.dv_base = int(dv_base)
+        self.block_num = _device_block_num() if block_num is None else int(block_num)
+        if not 1 <= self.block_num <= ALGORITHM_MAX_BLOCK_NUM:
+            raise ValueError(
+                "block_num must be in "
+                f"[1, {ALGORITHM_MAX_BLOCK_NUM}], got {self.block_num}"
+            )
+
+    @jit
+    def run(self, K: Tensor, V: Tensor, Q: Tensor, beta: Tensor, g: Tensor,
+            qk_exchange: Tensor, A_log: Tensor, dt_bias: Tensor,
+            kr: Tensor, gamma: Tensor, qd: Tensor, w: Tensor, mqk: Tensor,
+            u: Tensor, o: Tensor, st_in: Tensor, st_out: Tensor,
+            masks: Tensor, ident: Tensor,
+            bnt: int, s: int, blk: int, no: int, scale: float, lower_bound: float):
+        if const_expr(self.layout_qkv == "BSND"):
+            K = permute(K, (0, 2, 1, 3))
+            V = permute(V, (0, 2, 1, 3))
+            Q = permute(Q, (0, 2, 1, 3))
+            beta = permute(beta, (0, 2, 1, 3))
+            g = permute(g, (0, 2, 1, 3))
+            o = permute(o, (0, 2, 1, 3))
+        op = flash_kda_kernel(self.head_dim, self.group, self.dv_base)
+        op[self.block_num](K, V, Q, beta, g, qk_exchange, A_log, dt_bias, kr, gamma, qd, w, mqk, u, o, st_in, st_out, masks, ident, bnt, s, blk, no, scale, lower_bound)
+
+
+def _device_block_num(ref: Optional[torch.Tensor] = None) -> int:
+    """Return a grid-barrier-safe launch size for the selected NPU."""
+    if ref is not None and ref.device.type not in {"npu", "privateuseone"}:
+        return ALGORITHM_MAX_BLOCK_NUM
+
+    npu = getattr(torch, "npu", None)
+    if npu is None:
+        return ALGORITHM_MAX_BLOCK_NUM
+
+    device_index = ref.device.index if ref is not None else None
+    if device_index is None:
+        try:
+            device_index = npu.current_device()
+        except RuntimeError:
+            # Preserve CPU-only/offline tracing.  A targeted offline compile
+            # can still pass block_num explicitly.
+            return ALGORITHM_MAX_BLOCK_NUM
+
+    properties = npu.get_device_properties(device_index)
+    try:
+        cube_core_num = int(properties.cube_core_num)
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"NPU {device_index} does not expose a valid cube_core_num"
+        ) from exc
+    if cube_core_num <= 0:
+        raise RuntimeError(
+            f"NPU {device_index} reports invalid cube_core_num={cube_core_num}"
+        )
+    return min(cube_core_num, ALGORITHM_MAX_BLOCK_NUM)
+
+
+def _dynamic_sequence_tensor(dtype, batch, seq_len, heads, width, layout_qkv):
+    shape = (batch, heads, seq_len, width)
+    if layout_qkv == "BNSD":
+        return cannbotdsl.TensorSpec(shape, dtype)
+    batch_stride = seq_len * heads * width
+    head_stride = batch_stride if heads == 1 else width
+    return cannbotdsl.TensorSpec(
+        shape,
+        dtype,
+        stride=(batch_stride, head_stride, heads * width, 1),
+    )
+
+
+def _dynamic_workspace_tokens(
+    batch, seq_len, heads, group, scratch_uses_sequence
+):
+    if scratch_uses_sequence:
+        return batch * heads * seq_len
+    return batch * heads * group * CHUNK_SIZE
+
+
+def flash_kda(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    g: torch.Tensor,
+    beta: torch.Tensor,
+    scale: float,
+    initial_state: torch.Tensor,
+    A_log: torch.Tensor,
+    dt_bias: torch.Tensor,
+    lower_bound: float,
+    layout_qkv: str,
+    cu_seqlens: Optional[torch.Tensor] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """FlashKDA forward (Flash Kimi Delta Attention).
+        Args:
+            q (torch.Tensor): Query, bf16, shape ``[batch_size, seqlens, head_num, head_dim_qk]``.
+            k (torch.Tensor): Key, bf16, shape ``[batch_size, seqlens, head_num, head_dim_qk]``.
+            v (torch.Tensor): Value, bf16, shape ``[batch_size, seqlens, head_num_v, head_dim_v]``.
+            g (torch.Tensor): Raw gate input, bf16, shape ``[batch_size, seqlens, head_num_v, head_dim_qk]``.
+            beta (torch.Tensor): Raw beta logits, bf16, shape ``[batch_size, seqlens, head_num_v]``.
+            scale (float): Scaling factor.
+            initial_state (torch.Tensor, optional): Initial recurrent state, fp32, shape ``[batch_size, head_num_v, head_dim_v, head_dim_qk]``,
+            layout_qkv (str):  "BSND" "BNSD" "TND".
+            cu_seqlens (torch.Tensor, optional): Cumulative sequence lengths, int32, shape ``[batch_size+1]``.
+
+        Return:
+            out (torch.Tensor): Output, bf16, shape ``[batch_size, seqlens, head_num_v, head_dim_v]``.
+            final_state (torch.Tensor): Final recurrent state, same dtype/shape rules as ``initial_state``.
+        Notes:
+            * Currently requires ``Dk = Dv = 128``.
+            * All input tensors must be NPU, contiguous, and have the dtypes listed above.
+            * head_num_v <= 96
+            * head_num_v % head_num_qk == 0
+            * lower_bound is in [-5, 0]
+    """
+    assert layout_qkv in ("BNSD", "BSND"), f"layout_qkv must be BNSD or BSND, got {layout_qkv!r}"
+    assert cu_seqlens is None, "cu_seqlens is not supported"
+    assert q.dim() == 4, "q/k/v must be rank-4"
+    batch, dim = q.shape[0], q.shape[3]
+    seq_len = q.shape[1] if layout_qkv == "BSND" else q.shape[2]
+    n_v = v.shape[2] if layout_qkv == "BSND" else v.shape[1]
+    n_kv = q.shape[2] if layout_qkv == "BSND" else q.shape[1]
+    assert n_v % n_kv == 0, f"GQA requires Nv % Nk == 0, got Nv={n_v}, Nk={n_kv}"
+    if layout_qkv == "BSND":
+        qk_shape = (batch, seq_len, n_kv, dim)
+        v_shape = (batch, seq_len, n_v, dim)
+        beta_shape = (batch, seq_len, n_v)      # 对外 beta 只收 3 维 BSN
+    else:
+        qk_shape = (batch, n_kv, seq_len, dim)
+        v_shape = (batch, n_v, seq_len, dim)
+        beta_shape = (batch, n_v, seq_len)      # 对外 beta 只收 3 维 BNS
+    assert tuple(q.shape) == qk_shape and tuple(k.shape) == qk_shape, "q/k shape does not match layout"
+    assert tuple(v.shape) == v_shape, "v shape does not match layout"
+    assert tuple(g.shape) == v_shape, "g shape does not match layout"
+    # beta 对外接口是 3 维 BNS/BSN，校验也只按 3 维；末轴的 1 由内部补齐喂 kernel。
+    assert beta.dim() == 3 and tuple(beta.shape) == beta_shape, "beta must be 3-D BNS/BSN matching layout"
+    beta = beta.unsqueeze(-1)                    # 内部补 1 → BNS1/BSN1（kernel 期望 4 维）
+    assert tuple(initial_state.shape) == (batch, n_v, dim, dim), "initial_state must be (B, Nv, D, D)"
+    assert dim == SUPPORTED_HEAD_DIM, f"Flash KDA only supports D={SUPPORTED_HEAD_DIM}"
+    assert seq_len % CHUNK_SIZE == 0, f"S must be a multiple of {CHUNK_SIZE}"
+
+    assert q.dtype == LOW_DTYPE and k.dtype == LOW_DTYPE and v.dtype == LOW_DTYPE, "q/k/v must be bf16"
+    assert tuple(A_log.shape) == (n_v,), f"A_log must have shape ({n_v},)"
+    assert tuple(dt_bias.shape) == (n_v, dim), f"dt_bias must have shape ({n_v}, {dim})"
+    assert -5.0 <= float(lower_bound) <= 0.0, "lower_bound must be in [-5, 0]"
+    assert g.dtype == LOW_DTYPE, "g must be bf16"
+    assert beta.dtype == LOW_DTYPE, "beta must be bf16"
+    assert initial_state.dtype == torch.float32, "initial_state must be fp32"
+    assert A_log.dtype == HIGH_DTYPE, "A_log must be fp32"
+    assert dt_bias.dtype == HIGH_DTYPE, "dt_bias must be fp32"
+    tensors = (q, k, v, g, beta, initial_state, A_log, dt_bias)
+    assert all(t.device == q.device for t in tensors), "all inputs must be on the same device"
+    assert all(t.is_contiguous() for t in tensors), "all inputs must be contiguous"
+
+    scale_value = float(scale)
+    bn_total = batch * n_v
+    group = int(os.environ.get("KDA_GROUP") or get_group_config_bn(bn_total))
+    eff_group = min(seq_len // CHUNK_SIZE, group)
+    ws = allocate_stage1_workspace(batch, n_v, eff_group, dim, ref=q)
+    if layout_qkv == "BSND":
+        out_physical = torch.empty(batch, seq_len, n_v, dim, dtype=LOW_DTYPE, device=q.device)
+        out = out_physical.transpose(1, 2)
+        if n_v == 1:
+            fixed_stride = list(out.stride())
+            fixed_stride[1] = seq_len * n_v * dim
+            out = torch.as_strided(out, out.shape, tuple(fixed_stride))
+        q = q.transpose(1, 2)
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
+        g = g.transpose(1, 2)
+        beta = beta.transpose(1, 2)
+    else:
+        out = torch.empty(batch, n_v, seq_len, dim, dtype=LOW_DTYPE, device=q.device)
+        out_physical = out
+    final_state = torch.empty_like(initial_state)
+    # group / dv_base 均按实际 bn 分桶（dv_base：少头切 Dv；group：少头用大 group 减 barrier），
+    # 一并作为下面动态 kernel 缓存的 key；B/S 仍动态复用（末尾 group 由 group_count 运行时夹取）。
+    dv_base = int(os.environ.get("KDA_DV_BASE") or get_dv_base_config(bn_total, seq_len))
+
+    # min(S / CHUNK_SIZE, group) 不属于 Dim 表达式。按 min 的两个分支分别
+    # specialization，既保持 B/S 动态复用，也让 workspace 与输入关系精确可校验。
+    scratch_uses_sequence = seq_len // CHUNK_SIZE <= group
+    # block_num 决定 launch grid，必须入 key，防止跨设备误复用。
+    # FlashKDA 恒 layout_qkv="BNSD"：BSND 由 host 转置 + _dynamic_sequence_tensor 的 stride 表达，
+    # 不走 run 内的 const_expr swap；fake 张量按实际 layout_qkv 编码 stride。
+    block_num = _device_block_num(q)
+    qk_exchange = allocate_qk_exchange_workspace(active_block_num=block_num, ref=q)
+    _kernel_key = (
+        n_kv,
+        n_v,
+        dim,
+        layout_qkv,
+        dv_base,
+        group,
+        scratch_uses_sequence,
+        block_num,
+    )
+    fn = _DYNAMIC_KERNEL_CACHE.get(_kernel_key)
+    if fn is None:
+        sym_batch = cannbotdsl.Dim("B")
+        sym_seq = cannbotdsl.Dim("S", multiple_of=CHUNK_SIZE)
+        scratch_tokens = _dynamic_workspace_tokens(
+            sym_batch,
+            sym_seq,
+            n_v,
+            group,
+            scratch_uses_sequence,
+        )
+        gamma_rows = (scratch_tokens // CHUNK_SIZE) * dim
+        fake = cannbotdsl.TensorSpec
+        op = FlashKDA(
+            dim,
+            group=group,
+            layout_qkv="BNSD",
+            dv_base=dv_base,
+            block_num=block_num,
+        )
+        fn = op.run.compile(
+            _dynamic_sequence_tensor(dtypes.bfloat16, sym_batch, sym_seq, n_kv, dim, layout_qkv),
+            _dynamic_sequence_tensor(dtypes.bfloat16, sym_batch, sym_seq, n_v, dim, layout_qkv),
+            _dynamic_sequence_tensor(dtypes.bfloat16, sym_batch, sym_seq, n_kv, dim, layout_qkv),
+            _dynamic_sequence_tensor(dtypes.bfloat16, sym_batch, sym_seq, n_v, 1, layout_qkv),
+            _dynamic_sequence_tensor(dtypes.bfloat16, sym_batch, sym_seq, n_v, dim, layout_qkv),
+            fake((block_num, 2, CHUNK_SIZE, D_HALF), dtypes.float32),
+            fake((n_v,), dtypes.float32),
+            fake((n_v, dim), dtypes.float32),
+            fake((scratch_tokens, dim), dtypes.bfloat16),
+            fake((gamma_rows, 1), dtypes.float32),
+            fake((scratch_tokens, dim), dtypes.bfloat16),
+            fake((scratch_tokens, dim), dtypes.bfloat16),
+            fake((scratch_tokens, CHUNK_SIZE), dtypes.bfloat16),
+            fake((scratch_tokens, dim), dtypes.bfloat16),
+            _dynamic_sequence_tensor(dtypes.bfloat16, sym_batch, sym_seq, n_v, dim, layout_qkv),
+            fake((sym_batch, n_v, dim, dim), dtypes.float32),
+            fake((sym_batch, n_v, dim, dim), dtypes.float32),
+            fake((CHUNK_SIZE, CHUNK_SIZE // 2), dtypes.float32),
+            fake((16, 16), dtypes.float16),
+            dtypes.int64,
+            dtypes.int64,
+            dtypes.int64,
+            dtypes.int64,
+            dtypes.float32,
+            dtypes.float32,
+        )
+        _DYNAMIC_KERNEL_CACHE[_kernel_key] = fn
+    fn(
+        k, v, q, beta,
+        g, qk_exchange, A_log, dt_bias, ws.K_restored, ws.gamma_C,
+        ws.Q_decayed, ws.W, ws.Mqk,
+        ws.U_pre, out, initial_state,
+        final_state, ws.lower_mask_tiles,
+        ws.identity16, bn_total, seq_len, bn_total, 1, scale_value, float(lower_bound),
+    )
+    return out_physical, final_state
+
+
+# ---------------------------------------------------------------------------
+# Frozen binary adaptation. The complete original module above is unchanged.
+# ---------------------------------------------------------------------------
+import cannbotdsl as cb
+
+
+def _frozen_group_config_bn(bn):
+    """Equivalent to get_group_config_bn; no host while loop during capture."""
+    if bn <= 1:
+        return 512
+    if bn <= 3:
+        return 256
+    if bn <= 6:
+        return 128
+    if bn <= 13:
+        return 64
+    if bn <= 26:
+        return 32
+    if bn <= 53:
+        return 16
+    if bn <= 107:
+        return 8
+    if bn <= 215:
+        return 4
+    if bn <= 430:
+        return 2
+    return 1
 
 
 @cb.kernel
-def identity_kernel(identity):
+def _frozen_constants_kernel(masks, identity):
+    # Exact little-endian float32 bit patterns of four packed torch.bool bytes.
+    # 0x01000000, 0x01010000, 0x01010100 and 0x01010101 respectively.
+    for row in range(CHUNK_SIZE):
+        for word in range(CHUNK_SIZE // 4):
+            strict = dtypes.float32(0.0)
+            causal = dtypes.float32(0.0)
+            if word * 4 + 3 >= row:
+                strict = dtypes.float32(2.350988701644575e-38)
+            if word * 4 + 2 >= row:
+                strict = dtypes.float32(2.369355800876173e-38)
+            if word * 4 + 1 >= row:
+                strict = dtypes.float32(2.3694275473575467e-38)
+            if word * 4 >= row:
+                strict = dtypes.float32(2.3694278276172396e-38)
+            if word * 4 + 3 > row:
+                causal = dtypes.float32(2.350988701644575e-38)
+            if word * 4 + 2 > row:
+                causal = dtypes.float32(2.369355800876173e-38)
+            if word * 4 + 1 > row:
+                causal = dtypes.float32(2.3694275473575467e-38)
+            if word * 4 > row:
+                causal = dtypes.float32(2.3694278276172396e-38)
+            masks[row, word] = strict
+            masks[row, word + CHUNK_SIZE // 4] = causal
     for row in range(16):
         for col in range(16):
-            value = cb.dtypes.float32(0.0)
+            value = dtypes.float16(0.0)
             if row == col:
-                value = cb.dtypes.float32(1.0)
-            identity[row, col] = cb.dtypes.float16(value)
+                value = dtypes.float16(1.0)
+            identity[row, col] = value
 
 
 @cb.jit
-def initialize_constants(identity):
-    identity_kernel[1](identity)
+def _frozen_initialize_constants(masks, identity):
+    _frozen_constants_kernel[1](masks, identity)
 
 
-class FlashKDAProvider:
-    """Static device strategy; tensor metadata remains runtime Provider ABI."""
+class _FrozenFlashKDA:
+    """Pure static receiver; reuse the original JIT method without alteration."""
 
-    def __init__(self, blocks):
-        self.blocks = blocks
+    def __init__(self, head_dim, group, layout_qkv, dv_base, block_num):
+        self.head_dim = head_dim
+        self.group = group
+        self.layout_qkv = layout_qkv
+        self.dv_base = dv_base
+        self.block_num = block_num
 
-    @cb.jit
-    def run(self, k, v, q, beta, g, exchange, a_log, dt_bias,
-            restored_k, gamma, decayed_q, w, mqk, u, out,
-            initial_state, final_state, identity, scale, lower_bound):
-        flash_kda_kernel(HEAD_DIM, GROUP_CHUNKS, 16)[self.blocks](
-            k, v, q, beta, g, exchange, a_log, dt_bias,
-            restored_k, gamma, decayed_q, w, mqk, u, out,
-            initial_state, final_state, identity,
-            v.shape[0] * v.shape[1], v.shape[2], scale, lower_bound,
-        )
+    run = FlashKDA.run
 
 
 @cb.entry(name="FlashKda")
-def flash_kda(q, k, v, g, beta, initial_state, a_log, dt_bias,
-              scale, lower_bound):
-    """Contiguous BNSD, BF16 tensors, FP32 state, D128, full 64-token chunks.
+def flash_kda_entry(q, k, v, g, beta, scale, initial_state, A_log,
+                   dt_bias, lower_bound, is_bsnd,
+                   group_override=0, dv_base_override=0):
+    """Frozen adapter for the unchanged original flash_kda above.
 
-    beta is BNS and state is B,Nv,Dv,Dk. Returns (output, final_state).
-    Publication signatures are the authoritative supported input domains.
+    is_bsnd maps the original layout string to a supported ACLNN bool attribute.
+    The original cu_seqlens argument only permits None and needs no binary slot.
+    Overrides are explicit publication configuration; zero keeps original policy.
     """
-    batch = v.shape[0]
-    heads = v.shape[1]
-    sequence = v.shape[2]
-    blocks = cb.target_capabilities().aic_count
-    active_chunks = min(sequence // CHUNK_SIZE, GROUP_CHUNKS)
-    tokens = batch * heads * active_chunks * CHUNK_SIZE
-    out = torch.empty_like(v)
-    final_state = torch.empty_like(initial_state)
-    exchange = torch.empty((blocks, 2, CHUNK_SIZE, HEAD_DIM // 2), dtype=torch.float32, device=q.device)
-    restored_k = torch.empty((tokens, HEAD_DIM), dtype=torch.bfloat16, device=q.device)
-    gamma = torch.empty((batch * heads * active_chunks * HEAD_DIM, 1), dtype=torch.float32, device=q.device)
-    decayed_q = torch.empty((tokens, HEAD_DIM), dtype=torch.bfloat16, device=q.device)
-    w = torch.empty((tokens, HEAD_DIM), dtype=torch.bfloat16, device=q.device)
-    mqk = torch.empty((tokens, CHUNK_SIZE), dtype=torch.bfloat16, device=q.device)
-    u = torch.empty((tokens, HEAD_DIM), dtype=torch.bfloat16, device=q.device)
+    batch = q.shape[0]
+    dim = q.shape[3]
+    if is_bsnd:
+        sequence = q.shape[1]
+        heads = v.shape[2]
+        layout = "BSND"
+    else:
+        sequence = q.shape[2]
+        heads = v.shape[1]
+        layout = "BNSD"
+    bn = batch * heads
+    group = group_override
+    if group == 0:
+        group = _frozen_group_config_bn(bn)
+    dv_base = dv_base_override
+    if dv_base == 0:
+        dv_base = get_dv_base_config(bn, sequence)
+    blocks = min(cb.target_capabilities().aic_count, ALGORITHM_MAX_BLOCK_NUM)
+    effective_group = min(sequence // CHUNK_SIZE, group)
+    bn_chunks = bn * effective_group
+    q_decayed = torch.empty((bn_chunks * CHUNK_SIZE, dim), dtype=LOW_DTYPE, device=q.device)
+    mqk = torch.empty((bn_chunks * CHUNK_SIZE, CHUNK_SIZE), dtype=LOW_DTYPE, device=q.device)
+    k_restored = torch.empty((bn_chunks * CHUNK_SIZE, dim), dtype=LOW_DTYPE, device=q.device)
+    gamma = torch.empty((bn_chunks * dim, 1), dtype=HIGH_DTYPE, device=q.device)
+    u = torch.empty((bn_chunks * CHUNK_SIZE, dim), dtype=LOW_DTYPE, device=q.device)
+    w = torch.empty((bn_chunks * CHUNK_SIZE, dim), dtype=LOW_DTYPE, device=q.device)
+    masks = torch.empty((CHUNK_SIZE, CHUNK_SIZE // 2), dtype=HIGH_DTYPE, device=q.device)
     identity = torch.empty((16, 16), dtype=torch.float16, device=q.device)
-    initialize_constants(identity)
-    FlashKDAProvider(blocks).run(
-        k, v, q, beta.unsqueeze(-1), g, exchange, a_log, dt_bias,
-        restored_k, gamma, decayed_q, w, mqk, u, out,
-        initial_state, final_state, identity, scale, lower_bound,
+    exchange = torch.empty((blocks, 2, CHUNK_SIZE, D_HALF), dtype=HIGH_DTYPE, device=q.device)
+    out = torch.empty(v.shape, dtype=LOW_DTYPE, device=v.device)
+    final_state = torch.empty(initial_state.shape, dtype=HIGH_DTYPE, device=initial_state.device)
+    _frozen_initialize_constants(masks, identity)
+    _FrozenFlashKDA(dim, group, layout, dv_base, blocks).run(
+        k, v, q, beta.unsqueeze(-1), g, exchange, A_log, dt_bias,
+        k_restored, gamma, q_decayed, w, mqk, u, out,
+        initial_state, final_state, masks, identity,
+        bn, sequence, bn, 1, scale, lower_bound,
     )
     return out, final_state
 
 
-def signatures():
-    """Finite dtype/rank/heads variants and a dynamic, bounded sequence domain."""
-    batch = cb.Dim("B", min=1, max=2)
-    sequence = cb.Dim("S", min=64, max=1024, multiple_of=64)
-    f16 = cb.dtypes.bfloat16
-    f32 = cb.dtypes.float32
-    tensor = cb.TensorSpec
+def signatures(*, head_pairs, batch_min=1, batch_max=4,
+               sequence_min=64, sequence_max=65536,
+               group_override=0, dv_base_override=0):
+    """Explicit binary profile; these bounds do not restrict the original API."""
+    if batch_min < 1 or batch_max < batch_min:
+        raise ValueError("invalid batch profile")
+    if sequence_min < CHUNK_SIZE or sequence_max < sequence_min:
+        raise ValueError("invalid sequence profile")
+    if sequence_min % CHUNK_SIZE or sequence_max % CHUNK_SIZE:
+        raise ValueError("sequence profile bounds must be multiples of CHUNK_SIZE")
+    if group_override < 0:
+        raise ValueError("group override must be positive or zero for automatic policy")
+    if dv_base_override < 0:
+        raise ValueError("dv_base override must be positive or zero for automatic policy")
+    sequence = cb.Dim("S", min=sequence_min, max=sequence_max, multiple_of=CHUNK_SIZE)
     result = []
-    for key_heads, value_heads in ((1, 1), (1, 2), (2, 2)):
-        result.append({
-            "q": tensor((batch, key_heads, sequence, HEAD_DIM), f16),
-            "k": tensor((batch, key_heads, sequence, HEAD_DIM), f16),
-            "v": tensor((batch, value_heads, sequence, HEAD_DIM), f16),
-            "g": tensor((batch, value_heads, sequence, HEAD_DIM), f16),
-            "beta": tensor((batch, value_heads, sequence), f16),
-            "initial_state": tensor((batch, value_heads, HEAD_DIM, HEAD_DIM), f32),
-            "a_log": tensor((value_heads,), f32),
-            "dt_bias": tensor((value_heads, HEAD_DIM), f32),
-            "scale": cb.FloatRange(min=0.0, max=1.0),
-            "lower_bound": cb.FloatRange(min=-5.0, max=-1.0),
-        })
+    # Concrete B classes preserve the complete requested B range while avoiding
+    # repeated symbolic splits at each original group/Dv policy boundary.
+    for batch in range(batch_min, batch_max + 1):
+        for nk, nv in head_pairs:
+            if nk <= 0 or nv <= 0 or nv % nk:
+                raise ValueError("head profile requires positive Nk/Nv and Nv % Nk == 0")
+            for is_bsnd in (False, True):
+                qshape = (batch, sequence, nk, SUPPORTED_HEAD_DIM) if is_bsnd else (batch, nk, sequence, SUPPORTED_HEAD_DIM)
+                vshape = (batch, sequence, nv, SUPPORTED_HEAD_DIM) if is_bsnd else (batch, nv, sequence, SUPPORTED_HEAD_DIM)
+                bshape = (batch, sequence, nv) if is_bsnd else (batch, nv, sequence)
+                signature = {
+                    "q": cb.TensorSpec(qshape, dtypes.bfloat16),
+                    "k": cb.TensorSpec(qshape, dtypes.bfloat16),
+                    "v": cb.TensorSpec(vshape, dtypes.bfloat16),
+                    "g": cb.TensorSpec(vshape, dtypes.bfloat16),
+                    "beta": cb.TensorSpec(bshape, dtypes.bfloat16),
+                    "scale": dtypes.float32,
+                    "initial_state": cb.TensorSpec((batch, nv, SUPPORTED_HEAD_DIM, SUPPORTED_HEAD_DIM), dtypes.float32),
+                    "A_log": cb.TensorSpec((nv,), dtypes.float32),
+                    "dt_bias": cb.TensorSpec((nv, SUPPORTED_HEAD_DIM), dtypes.float32),
+                    "lower_bound": cb.FloatRange(min=-5.0, max=0.0),
+                    "is_bsnd": is_bsnd,
+                    "group_override": group_override,
+                    "dv_base_override": dv_base_override,
+                }
+                # A size-one axis has no address contribution: every nonnegative
+                # int64 stride is legal for an otherwise contiguous tensor.
+                # Independent symbols also admit mixed tensor construction paths.
+                for name, descriptor in tuple(signature.items()):
+                    if isinstance(descriptor, cb.TensorSpec):
+                        strides = tuple(
+                            cb.Dim(f"{name}_stride{axis}", min=0, max=(1 << 63) - 1)
+                            if type(extent) is int and extent == 1 else stride
+                            for axis, (extent, stride) in enumerate(zip(descriptor.shape, descriptor.stride))
+                        )
+                        signature[name] = cb.TensorSpec(descriptor.shape, descriptor.dtype, stride=strides)
+                result.append(signature)
     return tuple(result)
 
 
-def build(target):
-    if not 1 <= target.aic_count <= 28 or target.aiv_count < 2 * target.aic_count:
-        raise ValueError("FlashKDA requires explicit 1..28 resident AICs and two AIVs per AIC")
-    return cb.build_operator(flash_kda, signatures=signatures(), target=target)
+def build(target, **profile):
+    if target.aic_count < 1 or target.aiv_count < 2 * min(target.aic_count, ALGORITHM_MAX_BLOCK_NUM):
+        raise ValueError("FlashKDA requires explicit resident AICs and two AIVs per launched AIC")
+    return cb.build_operator(flash_kda_entry, signatures=signatures(**profile), target=target)
 
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description="Freeze the unchanged original FlashKDA with an explicit binary profile")
     parser.add_argument("output")
     parser.add_argument("--npu-arch", choices=("dav-3510",), required=True)
     parser.add_argument("--aic-count", type=int, required=True)
+    parser.add_argument("--head-pairs", required=True, help="Comma-separated Nk:Nv pairs, for example 1:1,1:2,3:3,96:96")
+    parser.add_argument("--batch-min", type=int, default=1)
+    parser.add_argument("--batch-max", type=int, default=4)
+    parser.add_argument("--sequence-min", type=int, default=64)
+    parser.add_argument("--sequence-max", type=int, default=65536)
+    parser.add_argument("--group", type=int, default=int(os.environ.get("KDA_GROUP") or 0))
+    parser.add_argument("--dv-base", type=int, default=int(os.environ.get("KDA_DV_BASE") or 0))
     args = parser.parse_args()
-    print(build(cb.Target(args.npu_arch, aic_count=args.aic_count,
-                          aiv_count=2 * args.aic_count)).save(args.output))
+    pairs = tuple(tuple(int(n) for n in pair.split(":")) for pair in args.head_pairs.split(","))
+    bundle = build(cb.Target(args.npu_arch, aic_count=args.aic_count, aiv_count=2 * args.aic_count),
+                   head_pairs=pairs, batch_min=args.batch_min, batch_max=args.batch_max,
+                   sequence_min=args.sequence_min, sequence_max=args.sequence_max,
+                   group_override=args.group, dv_base_override=args.dv_base)
+    print(bundle.save(args.output))

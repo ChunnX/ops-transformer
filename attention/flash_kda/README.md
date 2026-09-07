@@ -1,194 +1,128 @@
-# FlashKDA 冻结二进制接入
+# FlashKDA：保持原实现的冻结发布适配
 
-本目录使用当前 CANNBotDSL `package.operator` 与独立 `cannbot_framework`。
-算子定义已按仓库标准位置集中到单一 `attention/flash_kda/flash_kda.py`，
-文件按设备计算、Entry/Provider、发布域/CLI 顺序组织；框架不要求拆成两个文件。
-公开入口为文件后部的 `@cb.entry(name="FlashKda")` / `flash_kda()`（当前第 1741 行）；
-随后是 `signatures()` 和 `build(target)`。可以直接搜索这些名字定位主机编排与发布。
-数学主体保留已有 `zyh-binary` 实现；接入层改成 `@entry` 描述分配与返回值、
-两个有序 `@jit` Provider 描述常量初始化和设备计算，再由框架生成冻结
-HostPlan、workspace 绑定、ACLNN 两阶段 API 和 External Task glue。
+本目录以 `cannbot-arena/samples/flash_kda/flash_kda.py` 为原实现基线。
+基线 SHA-256 为 `6dc4c436098784b314962c37a94edeb4cd16dbe9e61dbb2d02a03e8e659b996e`。
+`flash_kda.py` 的前 2183 行完整保留该文件，新增适配只追加在文件末尾。
+原函数、类、常量、Channel 事务、同步、计算、布局与普通 Python JIT 调用路径均保留。
 
-## 源码职责
+## 原接口与发布接口
 
-```text
-attention/flash_kda/
-  CMakeLists.txt            # 接入标准 custom/builtin 工程
-  README.md
-  flash_kda.py              # 设备计算、唯一 Entry、Providers、发布域和 CLI
-  tests/test_flash_kda.py   # 唯一测试矩阵、CPU golden、精度判据
-```
+原 `flash_kda(q,k,v,g,beta,scale,initial_state,A_log,dt_bias,lower_bound,layout_qkv,cu_seqlens=None)`
+继续保留。支持 BNSD/BSND，返回布局跟随输入；`cu_seqlens` 原来就仅接受 None。
+原来的自动 group/Dv 选择和 `KDA_GROUP`/`KDA_DV_BASE` 行为保持。
 
-早期的 `package_flash_kda.py` 和 `install.sh` 用于独立小父 OPP 的打包探针，
-正式主工程 run 打通后已删除。`stage_flash_kda.py` 也已由 framework 自带
-`stage-bundle` CLI 替代。现在 CMake 必须从仓库根配置，安装与卸载均由标准
-ops-transformer 工程负责。原顶层 `cannbotdsl_ops` 目录已经移除。
+新增 `@entry(name="FlashKda")` 入口用于冻结发布，不替换原 Python 函数。
+当前 ACLNN 生成器不支持字符串属性，因此发布接口通过 `is_bsnd` 布尔属性表示
+布局（false=BNSD，true=BSND），不接收无实际功能的 `cu_seqlens`。
+这属于新增 C ABI 的映射，不能称为原 Python 签名完全不变的二进制 API。
 
-`provider_only_stub.cpp` 原来只用于让没有 OpDef/proto/tiling 源码的传统目标
-生成空库，并不是框架或算子必需文件。现在 Provider-only 路径直接以框架
-生成的真实 OBJECT 创建 API 库，跳过 `ops_aclnn`、`cust_proto`、`cust_opmaster`
-等传统目标，连同自动生成的空 API cpp 一并不再创建；正常/混合构建仍走
-原有传统图。普通 attention 扫描在未开启 Provider 功能时会跳过本目录，
-不会因缺少 frozen stage 报错，重复接入也有目标 guard。
+新增适配负责：
 
-custom 安装器仍使用官方模板。严格 Provider-only 构建只把验证列表与必需库
-切为实际 `libcust_opapi.so`，保留 `dlopen`、架构与 glibc 检查；缺少 API 库
-仍会拒绝安装。正常/混合包的验证内容不改写，同一 Make 构建目录从 ON
-切回 OFF 也会恢复原模板，不需要空库或 `--force`。
+- 用显式 Target 提供核数，替代冻结时查询当前设备；
+- 在冻结计划中分配输出与工作空间；
+- 用设备初始化 Provider 生成与原版等值的单位矩阵及 mask 常量；
+- 复用原 `FlashKDA.run`，不复制或重写设备计算；
+- 提供与原自动 group 分桶等价的可捕获表达，以及显式 group/Dv 覆盖配置；
+- 提供显式发布 profile 与 bundle 构建入口。
 
-测试只维护一个 Python 文件。它内嵌的最小 C++ fixture 只负责张量搬运、
-调用生成的 ACLNN API 和回写结果，不包含第二份 golden、用例或精度阈值。
-CMake 通过 `--emit-aclnn-runner` 生成该 fixture；生成过程不导入 Torch/DSL。
-原未跟踪的 `attention/flash_kda` 参考目录已逐文件 SHA-256 核验并归档到
-`/home/z00947297/run_toolkit/verification-20260907-ckuWoU/flash-kda-original-reference-jx4kgden`，
-不再参与源码测试发现。其旧测试指向原 `samples/flash_kda`，没有作为新接口验收。
+当前框架要求冻结 profile 的维度有界。profile 描述某个二进制包实际发布的范围，
+不是原算子的功能上限；改变 profile 应重新冻结，不可在运行时回退到 JIT。
+`lower_bound=0` 和 `scale>1` 不再作为人为裁剪范围的无效输入。
 
-## 与旧接入的区别
+## 构建接入
 
-| 项目 | 旧接入 | 当前接入 |
-| --- | --- | --- |
-| 主机编排 | source stage、手工 workspace/cache/dispatch | Entry 捕获、schema 2 bundle、冻结 HostPlan |
-| ACLNN | 仓库内专用封装与 ABI 胶水 | 独立 framework 生成 public API、L0、External Task |
-| 二进制调用 | 与旧 source stage 接口绑定 | 加载已发布 Provider DSO，调用时不 JIT |
-| 调度策略 | 旧 host 动态 group/Dv 策略 | 8 chunk workspace 分组、Dv 分片 16，Target 显式核数 |
-| 交付 | 曾用小父 OPP 探针 | 标准主工程 custom run / builtin 组件 run |
+目录只包含 `flash_kda.py`、本说明、`CMakeLists.txt` 及一份
+`tests/test_flash_kda.py`。没有独立 kernels.py、package_flash_kda.py 或占位 C++。
+CMake 从 ops-transformer 根目录接入 frozen stage，生成真实 API 库，使用官方
+custom/builtin run 打包流程。Provider-only 不生成传统空 proto/tiling 库。
 
-设备矩阵计算与递推主体保留；vector API 更新为当前 raw_reg 名称与关键字。
-显式 28 AIC 不是新增数学算法，旧离线包也使用该核数。全网格 barrier 要求
-所有 launch block 可同时驻留；本机发布 Target 为 `dav-3510`、28 AIC/56 AIV。
+验证必须使用框架 run 安装环境重新冻结当前源码。上一轮受限实现的 bundle、
+run 包和精度记录仅是历史记录，不能作为本次恢复原实现后的验收证据。
 
-当前发布域也有变化：旧版本曾发布 3/96 个等头数及更大 batch/长序列；当前
-选择如下有限 dtype/head 组合和有界动态 S，并增加 GQA 验收。它不是旧发布域
-的简单子集，当前结果不能作为旧生产 shape 的完整回归证明。
+## 验证原则
 
-| 参数 | 当前发布契约 |
-| --- | --- |
-| `q,k` / `v,g` | 连续 BNSD BF16；`[B,Nk,S,128]` / `[B,Nv,S,128]` |
-| `beta` | 连续 BNS BF16；`[B,Nv,S]` |
-| `initial_state` | FP32；`[B,Nv,Dv=128,Dk=128]`，调用后不变 |
-| `a_log,dt_bias` | FP32；`[Nv]` / `[Nv,128]` |
-| B / S | B=1..2；S=64..1024，S 为 64 的倍数 |
-| `(Nk,Nv)` | `(1,1)`、`(1,2)`、`(2,2)` |
-| `scale` / `lower_bound` | 有限值 `[0,1]` / `[-5,-1]` |
-| 返回 | `(output,final_state)`，shape/dtype 分别与 v/initial_state 一致 |
+验证首先检查原文件字节前缀、全部原 AST 及无原符号覆盖，然后对同一输入运行
+原入口与新增二进制入口，并独立对照 CPU recurrence，保留原精度阈值。
+原版自身不满足 CPU 阈值的情况应单独记录为原版复现，不得裁域或放宽阈值后
+声称精度全部通过。实现一致性与 CPU 数值精度是两个独立结果。
 
-没有声明 BSND/TND、可变长序列、零衰减或旧版的全部大 shape。额外
-`lower_bound=0` 探针有 22/16384 个 state 元素超出 `atol=rtol=5e-3`
-（最大绝对误差约 0.008646），因此未纳入发布域；失败记录保留。
+## 冻结命令
 
-## 冻结与主工程打包
-
-先 source CANN，再使用 framework run 安装目录；不安装 cannbotdsl wheel。
+在 CANNBOT-10124 上使用已安装的 framework run，无需安装 DSL wheel：
 
 ```bash
 source /home/z00947297/WORK/ENV/set_env_9.2.sh
-export FRAMEWORK_PREFIX=/home/z00947297/run_toolkit/verification-20260907-ckuWoU/run-installations/framework-run-bc2a1253/cann
+export FRAMEWORK_PREFIX=/home/z00947297/run_toolkit/verification-20260907-ckuWoU/flash-kda-preserve-original/framework-stride-run/dsl/run-install/cann
 export PYTHONPATH="$FRAMEWORK_PREFIX/python/site-packages"
 export CMAKE_PREFIX_PATH="$FRAMEWORK_PREFIX"
 cd /home/z00947297/run_toolkit/ops-transformer-zyh
 python attention/flash_kda/flash_kda.py /absolute/fresh/bundle \
-  --npu-arch dav-3510 --aic-count 28
+  --npu-arch dav-3510 --aic-count 28 \
+  --head-pairs 1:1,1:2,2:2,2:4,4:8,3:3,96:96 \
+  --batch-min 1 --batch-max 4 --sequence-min 64 --sequence-max 8192
 python -m cannbot_framework.cli stage-bundle \
   --bundle /absolute/fresh/bundle --operator FlashKda --vendor custom_transformer \
   --parent-opp "$PWD" --output /absolute/fresh/stage
 ```
 
-本机统一终端脚本包含完整 CMake 参数并将产物、日志和 JSON 身份写到独立输出根：
+该 profile 同时发布 BNSD 和 BSND。B 的每个合法整数分别形成显式签名，S 保持动态，
+以避免框架对复合 BN 条件产生冗余路由证明；没有通过采样推断未声明的输入域。
+可修改 `--head-pairs`、batch/sequence 范围重新构建其他 profile。
+`--group`、`--dv-base` 默认读取对应 KDA 环境覆盖值，0 表示原自动策略。
+二进制调用必须使用该包声明的覆盖属性值，不会在运行时隐式读取环境变量。
+
+## 单例 stride 的发布支持
+
+原 API 接受大小为 1 的维度具有任意非负 stride 的连续张量。发布签名为这些维度
+分别声明独立 stride 符号，保留标准构造、transpose 后 contiguous 及混合来源输入。
+非单例维仍要求连续布局；没有通过重新构造测试输入来避开原 API 合法的 stride。
+新增二进制接口按物理 shape 分配连续输出；大小为 1 的维度的输出 stride 可能
+规范化，但 shape、dtype、布局和有效元素地址关系保持，原 Python 接口仍完全不变。
+
+为此，framework 的通用 stage 生成器补充了仅出现在 stride 中的 Dim 绑定。
+该修复位于 cannbot-dsl 的 framework/python/cannbot_framework/bundle.py，保留范围、
+倍数与共享符号约束，无 FlashKDA 专用分支，相关 11 项回归通过。最终stage使用
+源码重新构建并安装的 e766e2d0 framework run；没有直接修改已安装的SDK。
+
+## 本轮原实现对照记录
+
+最终bundle identity：`a9c7180287364fac742a0267e2452879a2c178dc9285acbc46c8c56c35e92929`。
+主profile包含56个签名、86条路由和87个Provider；source与stage均有独立身份记录。
+
+新framework run环境下，NPU2的完整native矩阵为8个case各调用2次，全部output和
+final_state与原arena入口逐位相等，重复调用逐位相等、initial_state不变。
+覆盖BNSD/BSND、单例维混合stride、自动Dv16/32/64/128分桶、3/96头和8192序列。
+独立group4/Dv32小包的两布局对照也逐位相等，常量初始化8192/512字节逐位一致。
+
+CPU原精度阈值仍为atol=rtol=5e-3。主8case中5个通过；3个lower_bound=0用例
+原arena实现自身未通过该阈值，新入口输出与原版完全相同，报告明确标记
+`equivalent_with_baseline_accuracy_failure`。本轮没有修改数学实现、放宽阈值或
+排除这些输入，因此不能表述为“全部原精度用例通过”。
+
+验证报告位于CANNBOT-10124：
+`/home/z00947297/run_toolkit/verification-20260907-ckuWoU/flash-kda-preserve-original/`。
+其中`main-native-validation-v2/report.json`记录完整原实现对照，
+`framework-review-v2.json`记录原字节/AST、调度、常量与metadata证据。
+
+正式 builtin run 的移位安装 ACLNN 路径也完成相同8case×2调用：output/state
+与原arena全部逐位相等，重复调用逐位相等，输入状态不变。运行时隐藏原build目录，
+ldd确认API来自移位后的安装目录、opbase来自新framework run验证目录。
+CPU参考仍为5case通过、3case原版超差复现，未改变判据。
+报告：`main-aclnn-validation-v2-retry/report.json`；库来源：
+`main-aclnn-validation-v2-retry/runner-provenance.txt`。
+
+本轮正式包：
+
+- builtin：`/home/z00947297/run_toolkit/repro-flash-kda-preserved-builtin-v2/result.env`
+- custom：`/home/z00947297/run_toolkit/repro-flash-kda-preserved-custom-v2/result.env`
+
+两种包均完成构建、全新安装、移位及依赖/payload检查。custom本轮仅做安装与
+依赖验收，没有把builtin数值结果重复记为custom数值验收。
 
 ```bash
 COMMANDS=/home/z00947297/run_toolkit/verification-20260907-ckuWoU/terminal-commands
-export REPRO_ROOT=$(mktemp -d /home/z00947297/run_toolkit/flash-kda-builtin.XXXXXX)
-bash "$COMMANDS/build-transformer-flash-kda-run.sh" --builtin
-bash "$COMMANDS/verify-transformer-flash-kda-run.sh" "$REPRO_ROOT/result.env"
+DEVICE=2 bash "$COMMANDS/verify-transformer-flash-kda-run.sh" \
+  /home/z00947297/run_toolkit/repro-flash-kda-preserved-builtin-v2/result.env
+bash "$COMMANDS/verify-transformer-flash-kda-run.sh" \
+  /home/z00947297/run_toolkit/repro-flash-kda-preserved-custom-v2/result.env --install-only
 ```
-
-省略 `--builtin` 即构建 custom run；增加 `--rebuild-bundle` 可从当前源码重新
-冻结，默认消费已验证 stage。主配置选择 `ASCEND_OP_NAME=flash_kda`、
-`ENABLE_CANNBOTDSL_PROVIDER_ACLNN=ON`、`CANNBOTDSL_PROVIDER_ONLY=ON`。
-这只验证 FlashKDA，不能代表全量 transformer 算子。
-`DEVICE=2 bash "$COMMANDS/verify-transformer-flash-kda-run.sh" "$REPRO_ROOT/result.env"`
-可选择空闲 NPU；可选第二参数 `--install-only` 只验证实际安装、移位布局和
-加载依赖，结果会明确标注没有进行新一轮数值运行。
-
-## builtin 的实际适配
-
-custom 使用 `vendors/custom_transformer/op_api/lib/libcust_opapi.so`；builtin
-使用正式 `x86_64-linux/lib64/libopapi_transformer.so`，头文件进入
-`x86_64-linux/include/aclnnop`，冻结资源进入
-`opp/built-in/op_impl/cannbotdsl/FlashKda`。Provider-only 关闭传统 host 生成后，
-仍显式创建并安装 builtin API target，链接同一 framework 生成的 OBJECT。
-
-builtin 仅重定位 stage 的父工程安装 metadata，bundle 和生成 C++ 不改写。
-当前 HostAPI 按 ACLNN 库目录的 `../../op_impl/cannbotdsl` 查找 Provider，
-所以官方 XML 清单用 `install_softlink` 登记
-`op_impl/cannbotdsl -> ../opp/built-in/op_impl/cannbotdsl`。实际资源仍在 builtin
-OPP；相对链接随官方安装/卸载清单维护。将来 framework 支持配置 builtin
-资源根后可去掉这条兼容链接，不需要改变算子数学。
-当前包拥有整个 `opp/built-in/op_impl/cannbotdsl` 资源目录；尚未验证与其他
-共享该目录的 builtin Provider 组件共存。多组件集成前需按算子隔离文件清单
-所有权，避免一个组件卸载其他组件资源。
-
-正式 builtin 包名中的 `9.1.0` 来自本仓 `version.cmake` 的组件版本，和运行
-环境 CANN 9.2 是两个独立版本。验收必须优先加载匹配 framework run 中支持
-External Task 的 `libnnopbase.so`，不能只使用 CANN 基础环境的旧 opbase。
-
-## 统一验收
-
-```bash
-python attention/flash_kda/tests/test_flash_kda.py \
-  --bundle /absolute/frozen/bundle --output /absolute/native-report --device 0
-python attention/flash_kda/tests/test_flash_kda.py \
-  --aclnn-executable /absolute/flash-kda-aclnn-validate \
-  --output /absolute/aclnn-report --device 0
-```
-
-同一测试用独立 CPU 逐 token 递推，对完整 output/state 逐元素检查
-`atol=rtol=5e-3`、finite、initial_state 不变与重复调用。8 个 case × 2 次覆盖
-三种 head 组合的短 S/长 S 六条冻结 route，加 gate=-5/scale=1、scale=0 边界；
-不表示穷举整个连续标量域或动态形状域。Native 模式另有四项拒绝测试，
-包括保持 shape 的非连续 stride，并将 `JitFunction.compile` 替换为失败哨兵。
-`--negative-only` 可只复验拒绝输入。C++ fixture 设置 20 秒 kernel timeout，
-每 case 外层 90 秒超时；安装验收检查迁移目录后实际加载库与 bundle 文件。
-
-前轮 custom 主工程精度记录保留在
-`/home/z00947297/run_toolkit/repro-transformer-flash-kda.dEHcjJ/installed-validation.xvXwYe`。
-那次为 6×2，通过的 output/state 最大绝对误差分别为
-0.0030694007873535156 / 0.0043270885944366455，未覆盖全部六条冻结 route。
-早期小父 OPP 产物只作为历史证据保留，本目录不再提供该打包入口。
-
-本轮单文件迁移后的正式 builtin 使用 ops 提交
-`8136435305507e7b8e4e0796e36178d84bfedf54`、cmake-zyh 提交
-`3e65fd76b88796d2cba0b748e2b3487fc102da88` 构建，NPU2 移位安装后
-8×2 全量精度通过；最大 output/state 绝对误差分别为
-0.0030694007873535156 / 0.0043270885944366455。运行时隐藏原 build 目录，
-`ldd` 核验实际加载安装树 API 与 framework run 的 opbase。
-
-custom 安装器修复提交为 `49357d7f1918ead0d416a6248a87631068626ee5`，
-它仅调整 custom 安装脚本生成，不改变 builtin 图、设备产物或数学；随后
-以干净源码重新构建 custom run，实际安装、移位和依赖检查通过。本轮
-没有重复 custom 数值；custom 数值沿用上述历史记录。
-
-| 本轮证据 | 绝对路径 |
-| --- | --- |
-| 单文件从 run SDK 重新冻结 | `/home/z00947297/run_toolkit/verification-20260907-ckuWoU/flash-kda-standard-freeze.log` |
-| feature OFF 实际 attention 发现 | `/home/z00947297/run_toolkit/verification-20260907-ckuWoU/flash-kda-standard-discovery/configure.log` |
-| builtin 包与源码身份 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.JuCBLd/result.json` |
-| builtin 安装后 8×2 精度、实际加载库、无空目标证明 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.JuCBLd/installed-validation.wRiAaN/result.json` |
-| custom 正式 package 身份 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.gAcy3G/result.json` |
-| custom 安装与依赖检查、缺 API 拒绝、无空目标证明 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.gAcy3G/installed-validation.pKUFFa/result.json` |
-| Make 同目录 Provider-only ON→OFF 恢复普通安装器 | `/home/z00947297/run_toolkit/verification-20260907-ckuWoU/flash-kda-standard-installer-mode-probe/result.json` |
-| 单一测试的四项 native 负例 | `/home/z00947297/run_toolkit/verification-20260907-ckuWoU/flash-kda-standard-negative/report.json` |
-
-builtin run SHA-256：
-`f05d7afea14b36f4222d0c77b735524cbca3a19033c7054e500d159468f865c5`。
-custom run SHA-256：
-`3c374ae63ca525fa172394a5646266e6f8eecb0c50e6a7c2afcbde4daba14a75`。
-
-本轮从单一源码重新冻结的 bundle identity 仍为
-`0f62297b7093158aaf374f922fd32ba8b44eb1019cd21c3527970eacd26d03af`；
-源码合并与路径迁移没有改变冻结设备产物。普通 feature OFF 做了配置探针，
-混合传统/Provider 接入本轮只做静态 CMake 审阅；未声称混合包数值通过。
-
-前轮 builtin 官方卸载、资源和相对链接清理记录仍保留在
-`/home/z00947297/run_toolkit/repro-transformer-flash-kda.JTJCiN/uninstall-probe.log`；
-本轮 builtin 未改变该 XML 布局机制。
