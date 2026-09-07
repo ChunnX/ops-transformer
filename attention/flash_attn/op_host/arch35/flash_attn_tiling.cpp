@@ -58,7 +58,8 @@ ge::graphStatus FlashAttnTilingImpl::DoOpTiling()
     FillTiling();
     CalcScheduleMode();
     CalcWorkspaceSize();
-    GenTilingKey();
+    OP_CHECK_IF(GenTilingKey() != ge::GRAPH_SUCCESS, OP_LOGE(faInfo_->opName, "Gen tiling key fail."),
+                return ge::GRAPH_FAILED);
 
     if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
         (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) || (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
@@ -135,13 +136,13 @@ void FlashAttnTilingImpl::SplitPolicy()
     flashDecodeFlag_ = true;
 }
 
-void FlashAttnTilingImpl::UpdateTilingKeyConfig()
+ge::graphStatus FlashAttnTilingImpl::UpdateTilingKeyConfig()
 {
     // config:
     //   config=0: D=64,  sOuter=64,  sInner=128
     //   config=1: D=64,  sOuter=32,  sInner=256
-    //   config=2: D=128, sOuter=64,  sInner=128 (D=72 复用, kernel 内 pad 到 128)
-    //   config=3: D=128, sOuter=32,  sInner=256 (D=72 复用, kernel 内 pad 到 128)
+    //   config=2: D=128, sOuter=64, sInner=128 (D=72 复用, kernel 内 pad 到 128)
+    //   config=3: D=128, sOuter=32, sInner=256 (D=72 复用, kernel 内 pad 到 128)
     //   config=4: D=256, sOuter=64, sInner=128
     //   config=5: D=256, sOuter=32, sInner=256
     //   config=6: D=192(DV=128), sOuter=64, sInner=128
@@ -159,7 +160,9 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
                                                std::to_string(faInfo_->qkHeadDim).c_str(),
                                                "The (head_dim of Q/K, head_dim of V) combination can only be "
                                                "(64,64), (72,72), (128,128), (256,256) or (192,128)");
+        return ge::GRAPH_FAILED;
     }
+    return ge::GRAPH_SUCCESS;
 }
 
 void FlashAttnTilingImpl::UpdateTilingKeyLayout()
@@ -188,17 +191,20 @@ void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
     }
 }
 
-void FlashAttnTilingImpl::UpdateTilingKeyInfo()
+ge::graphStatus FlashAttnTilingImpl::UpdateTilingKeyInfo()
 {
     UpdateTilingKeyLayout();
-    UpdateTilingKeyConfig();
+    OP_CHECK_IF(UpdateTilingKeyConfig() != ge::GRAPH_SUCCESS,
+                OP_LOGE(faInfo_->opName, "Update tiling key config fail."), return ge::GRAPH_FAILED);
     UpdateTilingKeyKvLayout();
     tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) ? 0 : 1;
+    return ge::GRAPH_SUCCESS;
 }
 
-void FlashAttnTilingImpl::GenTilingKey()
+ge::graphStatus FlashAttnTilingImpl::GenTilingKey()
 {
-    UpdateTilingKeyInfo();
+    OP_CHECK_IF(UpdateTilingKeyInfo() != ge::GRAPH_SUCCESS, OP_LOGE(faInfo_->opName, "Update tiling key info fail."),
+                return ge::GRAPH_FAILED);
     tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType,
                                     tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.config);
     OP_LOGI(faInfo_->opName, "The tilingkey is %llu.", tilingKey_);
@@ -206,6 +212,7 @@ void FlashAttnTilingImpl::GenTilingKey()
             "The tilingkey param is inOutLayoutType: %llu, kvLayoutType: %llu, hasAttenMask: %llu, config: %llu.",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.hasAttenMask,
             tilingKeyInfo_.config);
+    return ge::GRAPH_SUCCESS;
 }
 
 void FlashAttnTilingImpl::CalcNumBlocks(uint32_t aicNum)
