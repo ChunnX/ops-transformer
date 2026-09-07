@@ -107,3 +107,4 @@ static_assert(GSAG_METADATA_HEADER_SIZE * sizeof(GSAG_METADATA_T) >= sizeof(deta
 } // namespace optiling
 
 #endif // GENERIC_SPARSE_ATTENTION_GRAD_METADATA_H
+
