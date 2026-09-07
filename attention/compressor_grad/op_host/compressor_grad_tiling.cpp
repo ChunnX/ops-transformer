@@ -347,28 +347,27 @@ ge::graphStatus CompressorGradTilingImpl::SetBaseInfo()
 
 ge::graphStatus CompressorGradTilingImpl::CalcWorkSpace()
 {
-    constexpr uint32_t MM1_RES_ELEM_SIZE = 4; // 4: fp32
-    constexpr uint32_t M_BASE_SIZE = 128;
+    constexpr uint32_t MM1_RES_ELEM_SIZE = 4; // 4: fp32（sizeof(float)）
 
     uint8_t coff = coff_;
     uint32_t cmpRatio = baseParams_.cmpRatio;
     uint32_t headDim = baseParams_.headDim;
     uint32_t hiddenSize = baseParams_.hiddenSize;
     uint32_t cubeCoreNum = aicNum_;
-    uint32_t groupSize = headDim / 128; // 与 kernel groupSize = headDim // D_BASE_SIZE 一致
+    uint32_t groupSize = headDim / D_BASE_SIZE; // 与 kernel groupSize = headDim // D_BASE_SIZE 一致
     uint32_t groupNum = cubeCoreNum / groupSize;
     uint32_t cmpSize = coff * cmpRatio * headDim;
     uint32_t totalHeadDim = coff * headDim;
-    uint32_t coffCoef = 2 / coff;
-    uint32_t dealScNum = 128 / cmpRatio;
+    uint32_t coffCoef = COFF_MAX / coff;
+    uint32_t dealScNum = D_BASE_SIZE / cmpRatio;
     uint32_t groupDealScNum = dealScNum * coffCoef;
     uint32_t groupRowStride = groupDealScNum * cmpRatio + (coff - 1) * cmpRatio; // 与 kernel 一致
-    uint32_t dbRatio = 2;
+    uint32_t dbRatio = DB_RATIO;
 
     // 与 kernel 的 workspace 指针链逐分区对齐（元素数，FP32）:
     //   ape / dWkv / dWgate 单缓冲；dX / x / dXCache 按 dbRatio=2 双缓冲
     uint64_t apeWorkSpaceSize = static_cast<uint64_t>(groupNum) * cmpSize * coffCoef;
-    uint64_t dXWorkSpaceSize = static_cast<uint64_t>(dbRatio) * cubeCoreNum * (M_BASE_SIZE * 2) * hiddenSize;
+    uint64_t dXWorkSpaceSize = static_cast<uint64_t>(dbRatio) * cubeCoreNum * (M_BASE_SIZE * COFF_MAX) * hiddenSize;
     uint64_t dWeightWorkSpaceSize = static_cast<uint64_t>(groupNum) * totalHeadDim * hiddenSize;
     // dWkv / dWGate 各占一份 dWeightWorkSpaceSize
     uint64_t xWorkSpaceSize = static_cast<uint64_t>(dbRatio) * groupNum * groupRowStride * hiddenSize * groupSize;
@@ -778,7 +777,7 @@ ge::graphStatus CompressorGradTilingImpl::CheckDimNumConsistency() const
 
 ge::graphStatus CompressorGradTilingImpl::CheckBlockDimConstrain() const
 {
-    uint32_t minBlockNum = baseParams_.headDim / 128; // 128 is the largest dBaseSize
+    uint32_t minBlockNum = baseParams_.headDim / D_BASE_SIZE; // D_BASE_SIZE is the largest dBaseSize
     OP_CHECK_IF(aicNum_ < minBlockNum,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "aicNum", std::to_string(aicNum_),
                                                       "should not be less than " + std::to_string(minBlockNum)),
@@ -915,28 +914,28 @@ ge::graphStatus CompressorGradTilingImpl::SetTilingData()
             std::min(baseParams_.tokenSize, baseParams_.tokenSize / baseParams_.cmpRatio + baseParams_.batchSize);
     }
     // ── 分核派生 ──
-    tilingData->group_size = baseParams_.headDim / 128;
+    tilingData->group_size = baseParams_.headDim / D_BASE_SIZE;
     tilingData->group_num = aicNum_ / tilingData->group_size;
-    tilingData->cube_m_base_size = 128 * (2 / coff);
+    tilingData->cube_m_base_size = M_BASE_SIZE * (COFF_MAX / coff);
     // coff=1 时每 group 每轮只布置 2*dealScNum 块（保证子槽 dealScNum*cmpRatio <= 128，不超 L1/L0 物理行）
-    tilingData->deal_sc_num = 128 / baseParams_.cmpRatio;
-    tilingData->group_deal_sc_num = tilingData->deal_sc_num * (2 / coff);
+    tilingData->deal_sc_num = D_BASE_SIZE / baseParams_.cmpRatio;
+    tilingData->group_deal_sc_num = tilingData->deal_sc_num * (COFF_MAX / coff);
     tilingData->total_sc_num_per_round = tilingData->group_num * tilingData->group_deal_sc_num;
     // xArrangeGm 每 group 实际行数 = 数据行(gs 块 × cr) + coff=2 时 1 个 cr 头部（紧凑布局）
     tilingData->group_row_stride =
         tilingData->group_deal_sc_num * baseParams_.cmpRatio + (coff - 1) * baseParams_.cmpRatio;
     tilingData->db_row_cnt = tilingData->group_num * tilingData->group_row_stride;
     // ── 编译期派生（TilingKey 折叠值，与 kernel 内联算术恒等）──
-    tilingData->coff_coef = 2 / coff;
-    tilingData->d_deal_size = 128 / coff;
-    tilingData->m_deal_size = 128 * coff;
+    tilingData->coff_coef = COFF_MAX / coff;
+    tilingData->d_deal_size = D_BASE_SIZE / coff;
+    tilingData->m_deal_size = M_BASE_SIZE * coff;
     // ── workspace 分区（FP32 元素数；ape/dW 单缓冲，dX/x/dXCache 双缓冲 dbRatio=2）──
     tilingData->dape_ws_size = tilingData->group_num * tilingData->cmp_size * tilingData->coff_coef;
-    tilingData->d_x_ws_size = 2 * tilingData->cube_core_num * 256 * baseParams_.hiddenSize;
+    tilingData->d_x_ws_size = DB_RATIO * tilingData->cube_core_num * (M_BASE_SIZE * COFF_MAX) * baseParams_.hiddenSize;
     tilingData->d_w_weight_ws_size = tilingData->group_num * tilingData->total_head_dim * baseParams_.hiddenSize;
-    tilingData->x_ws_size =
-        2 * tilingData->group_num * tilingData->group_row_stride * baseParams_.hiddenSize * tilingData->group_size;
-    tilingData->d_x_cache_ws_size = 2 * baseParams_.cmpRatio * baseParams_.hiddenSize;
+    tilingData->x_ws_size = DB_RATIO * tilingData->group_num * tilingData->group_row_stride * baseParams_.hiddenSize *
+                            tilingData->group_size;
+    tilingData->d_x_cache_ws_size = DB_RATIO * baseParams_.cmpRatio * baseParams_.hiddenSize;
     return ge::GRAPH_SUCCESS;
 }
 
