@@ -46,8 +46,13 @@ def _build_metadata(
 ):
     """Build metadata from graph inputs without importing sibling assets."""
     head_dim = int(q.shape[-1])
-    # v 的 head_dim (TND: (T,N,D) 取 index 2; 其余布局含 PA_NZ 的 D 均在 index 3)
-    head_dim_v = int(v.shape[2]) if layout_kv == "TND" else int(v.shape[3])
+    # v 的 head_dim: TND (T,N,D) 取 index 2; PA_NZ (Bn,N2,D/16,Bs,16) 取 dim2*dim4; 其余布局 D 在 index 3
+    if layout_kv == "TND":
+        head_dim_v = int(v.shape[2])
+    elif layout_kv == "PA_NZ":
+        head_dim_v = int(v.shape[2]) * int(v.shape[4])
+    else:
+        head_dim_v = int(v.shape[3])
     if layout_q in ("TND", "BNSD"):
         num_heads_q = int(q.shape[1])
     else:

@@ -145,9 +145,14 @@ def build_metadata_arguments(q, k, v, kwargs):
 
     q_shape = tuple(int(value) for value in q.shape)
     head_dim = int(q_shape[-1])
-    # v 的 head_dim (TND: (T,N,D) 取 index 2; 其余布局含 PA_NZ 的 D 均在 index 3)
+    # v 的 head_dim: TND (T,N,D) 取 index 2; PA_NZ (Bn,N2,D/16,Bs,16) 取 dim2*dim4; 其余布局 D 在 index 3
     v_shape = tuple(int(value) for value in v.shape)
-    head_dim_v = int(v_shape[2]) if layout_kv == "TND" else int(v_shape[3])
+    if layout_kv == "TND":
+        head_dim_v = int(v_shape[2])
+    elif layout_kv == "PA_NZ":
+        head_dim_v = int(v_shape[2]) * int(v_shape[4])
+    else:
+        head_dim_v = int(v_shape[3])
     # head derivation mirrors flash_attn_ttk_ops.build_flash_attn_metadata.
     if layout_q == "TND":
         num_heads_q = int(q_shape[1])
