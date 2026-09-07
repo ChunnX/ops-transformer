@@ -81,6 +81,35 @@ bash /absolute/flash-kda-v2.run -- /absolute/fresh/install
 `CMAKE_PREFIX_PATH` 并追加 CANN 基础依赖根，因此可直接从该前缀发现
 `CANNBotFramework`。
 
+本机正式主工程 run 的可复现入口位于
+`/home/z00947297/run_toolkit/verification-20260907-ckuWoU/terminal-commands`：
+
+```bash
+COMMANDS=/home/z00947297/run_toolkit/verification-20260907-ckuWoU/terminal-commands
+export REPRO_ROOT=$(mktemp -d /home/z00947297/run_toolkit/flash-kda-main.XXXXXX)
+bash "$COMMANDS/build-transformer-flash-kda-run.sh"
+bash "$COMMANDS/verify-transformer-flash-kda-run.sh" "$REPRO_ROOT/result.env"
+```
+
+构建脚本默认消费已验证 stage；增加 `--rebuild-bundle` 可从当前算子源码调用
+run 安装的 `build_operator` 重新冻结并 stage。脚本以 `VENDOR_NAME=custom`、
+`ASCEND_OP_NAME=flash_kda`、两个 Provider 开关构建仓库根 CMake 的 `package`
+target，产物为 `output/cann-ops-transformer-custom_linux-x86_64.run`。
+该命令只打包 FlashKDA，不代表其他 transformer 算子完成验证。
+构建目录、日志、`result.env` 和带 SHA-256 的 `result.json` 均在独立
+`REPRO_ROOT` 下；显式 `CMAKE_INSTALL_PREFIX` 不再被覆盖到仓内 `build_out`，
+CPack 跟随所选 CMake generator，因此支持 Ninja。
+
+验证脚本使用匹配的 framework run 中 `libnnopbase.so` 完成安装器的 DSO
+检查，然后移动安装根并暂时隐藏构建目录，执行 6 个 case × 2 次 C++ ACLNN
+调用。正式安装布局为 `INSTALL_ROOT/vendors/custom_transformer`，包含
+`op_api/include/aclnn_FlashKda.h`、`op_api/lib/libcust_opapi.so` 和
+`op_impl/cannbotdsl/FlashKda` 完整冻结 bundle。运行前须将该 vendor 的
+`op_api/lib` 与匹配 framework run 的 `x86_64-linux/lib64` 依次置于
+`LD_LIBRARY_PATH` 前部；不需要安装 wheel。脚本记录实际加载库路径、完整
+安装文件 SHA-256 和全元素数值报告。CANN 的 makeself `--check` 会继续后续
+动作，因此脚本使用 `--check --noexec --extract=<独立目录>` 检查归档。
+
 生成的 public API 头文件为 `aclnn_FlashKda.h`；参数顺序以该头文件为准，
 当前为 8 个输入、2 个输出、`lower_bound`、`scale`、workspace/executor。
 调用方式为 `aclnnFlashKdaGetWorkspaceSize` / `aclnnFlashKda`。父仓拥有包布局
@@ -136,13 +165,23 @@ Native 和安装后 ACLNN 均通过 6 个 case × 2 次调用的完整数值比�
 产品 run SHA-256：
 `618e1c89198c1280c46c2a5519aa4d0c26683debb79905cc4e54569da719ac9a`。
 
+随后通过仓库主工程 `package` target 完成正式 FlashKDA run：
+`/home/z00947297/run_toolkit/repro-transformer-flash-kda.dEHcjJ/output/cann-ops-transformer-custom_linux-x86_64.run`，
+SHA-256 为 `c81434ad4c8010e9d6a25c9655601b7628cad5791117f80639efcd36e532f980`。
+该输出根的 `result.json` 记录构建源码、CMake 补丁与包身份；
+`installed-validation.xvXwYe/result.json`、`accuracy/report.json` 和
+`installed-ldd.log` 记录 NPU0 上迁移安装后的 6 × 2 次纯 C++ ACLNN 通过。
+正式安装包含同一 7 个 Provider DSO 和完整 bundle；数值最大误差与上表一致，
+vendor 安装树无 `.py` 或 `.whl`。这里依赖匹配 framework run 安装的 opbase，
+`libcust_opapi.so` 来自本次正式 run 的迁移安装树。
+
 可以在仓根按以下命令复验已有安装产物：
 
 ```bash
 source /home/z00947297/WORK/ENV/set_env_9.2.sh
 export FRAMEWORK_PREFIX=/home/z00947297/run_toolkit/cannbot-arena/framework-run-bc2a1253/cann
 export PYTHONPATH="$FRAMEWORK_PREFIX/python/site-packages"
-VERIFY_DIR='/home/z00947297/run&toolkit/verification-20260907-ckuWoU'
+VERIFY_DIR=/home/z00947297/run_toolkit/verification-20260907-ckuWoU
 python cannbotdsl_ops/tests/validate_flash_kda_frozen.py \
   --bundle "$VERIFY_DIR/flash-kda-bundle-bc2a1253" \
   --output /tmp/flash-kda-native-recheck --device 0

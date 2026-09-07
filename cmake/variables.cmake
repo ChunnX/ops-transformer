@@ -107,8 +107,10 @@ execute_process(
   COMMAND touch ${ASCEND_AUTOGEN_PATH}/${CUSTOM_OPC_OPTIONS}
 )
 
-# pack path
-set(CMAKE_INSTALL_PREFIX ${CMAKE_SOURCE_DIR}/build_out)
+# Keep the historical package destination unless the caller selected one.
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+  set(CMAKE_INSTALL_PREFIX "${CMAKE_SOURCE_DIR}/build_out" CACHE PATH "Install path prefix" FORCE)
+endif()
 
 set(OPAPI_INCLUDE
   ${OPBASE_INC_DIRS}
