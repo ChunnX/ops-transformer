@@ -23,7 +23,7 @@
 
 ## 功能说明
 
-- 接口功能：aclnnGenericBlockSparseAttentionGrad是通用块稀疏注意力的反向计算算子。依据`sparseBlockIdx`/`sparseBlockCount`（稀疏块索引表）定义的索引，仅在被选中的KV块上计算和传播梯度，支持动态、可变长的分块稀疏模式。调用前须先通过`aclnnGenericBlockSparseAttentionGradMetadata`生成分核`metadata`。
+- 接口功能：aclnnGenericBlockSparseAttentionGrad是通用块稀疏注意力的反向计算算子。依据`sparseBlockIdx`/`sparseBlockCount`（稀疏块索引表）定义的索引，仅在被选中的KV块上计算和传播梯度，支持动态、可变长的分块稀疏模式。调用前须先通过`aclnnGenericBlockSparseAttentionGradMetadata`生成分核`metadataOptional`。
 - 计算公式：
 
 $$
@@ -64,7 +64,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradGetWorkspaceSize(
     const aclTensor *lse,
     const aclTensor *sparseBlockIdx,
     const aclTensor *sparseBlockCount,
-    const aclTensor *metadata,
+    const aclTensor *metadataOptional,
     const aclTensor *attenMaskOptional,
     const aclTensor *cuSeqLengthsQOptional,
     const aclTensor *cuSeqLengthsKvOptional,
@@ -239,12 +239,12 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                   <td>√</td>
               </tr>
               <tr>
-                  <td>metadata</td>
-                  <td>输入</td>
+                  <td>metadataOptional</td>
+                  <td>可选输入</td>
                   <td>由aclnnGenericBlockSparseAttentionGradMetadata生成的分核信息。</td>
                   <td>
                       <ul>
-                          <li>必须传入。</li>
+                          <li>必须传入。由aclnnGenericBlockSparseAttentionGradMetadata生成，每次调用须重新生成。</li>
                           <li>长度≥80+B×N1×J×4（int32元素个数）。</li>
                       </ul>
                   </td>
@@ -481,7 +481,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
         <tr>
           <td>ACLNN_ERR_PARAM_NULLPTR</td>
           <td>161001</td>
-          <td>必选参数或输出为空指针；layoutQ为"TND"时未提供cuSeqLengthsQOptional；layoutKv为"TND"时未提供cuSeqLengthsKvOptional。</td>
+          <td>必选参数或输出为空指针；metadataOptional未传入；layoutQ为"TND"时未提供cuSeqLengthsQOptional；layoutKv为"TND"时未提供cuSeqLengthsKvOptional。</td>
         </tr>
         <tr>
           <td class="merged-cell" rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
@@ -542,11 +542,11 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
 
 - 确定性计算：
   - aclnnGenericBlockSparseAttentionGrad默认为非确定性实现，暂不支持确定性实现，确定性计算配置后不会生效。
-- 须先调用[aclnnGenericBlockSparseAttentionGradMetadata](../../generic_block_sparse_attention_grad_metadata/docs/aclnnGenericBlockSparseAttentionGradMetadata.md)生成`metadata`，再调用本接口。
+- 须先调用[aclnnGenericBlockSparseAttentionGradMetadata](../../generic_block_sparse_attention_grad_metadata/docs/aclnnGenericBlockSparseAttentionGradMetadata.md)生成`metadataOptional`，再调用本接口。
 - 参数query、key、value、dout、out、dQuery、dKey、dValue的数据类型应保持一致，支持FLOAT16和BFLOAT16。
 - 参数lse的数据类型应为FLOAT32。
 - 参数sparseBlockIdx、sparseBlockCount、sequsedQOptional、sequsedKvOptional的数据类型应为INT32。
-- 参数cuSeqLengthsQOptional、cuSeqLengthsKvOptional的数据类型应为INT64；参数metadata的数据类型应为INT32。
+- 参数cuSeqLengthsQOptional、cuSeqLengthsKvOptional的数据类型应为INT64；参数metadataOptional的数据类型应为INT32。
 - layoutQ和layoutKv当前支持TND、BNSD、BSND，且必须保持一致。
 - 当layoutQ为TND时，需要传入cuSeqLengthsQOptional；当layoutKv为TND时，需要传入cuSeqLengthsKvOptional。
 - sequsedQOptional/sequsedKvOptional仅在TND时生效；BNSD/BSND须传nullptr，实际序列长度取自Q/K的S维。

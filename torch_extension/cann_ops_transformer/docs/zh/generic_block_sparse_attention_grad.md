@@ -44,7 +44,7 @@
 
   `generic_block_sparse_attention_grad`是基于`TorchNPU`的`cann_ops_transformer`扩展接口，用于调用`GenericBlockSparseAttentionGrad`算子完成通用块稀疏注意力的反向梯度计算。通过`sparse_block_idx`指定每个KV块选择的Q块/token索引，`sparse_block_count`指定每个KV块实际保留的Q数量，仅在被选中的稀疏块上计算并回传`dq`/`dk`/`dv`。
 
-  `generic_block_sparse_attention_grad_metadata`是`generic_block_sparse_attention_grad`的元数据生成接口，用于在主算子执行前生成`metadata`。`metadata`记录AICore任务切分与负载均衡结果，主算子可选择传入该`metadata`以优化调度。典型调用流程如下：
+  `generic_block_sparse_attention_grad_metadata`是`generic_block_sparse_attention_grad`的元数据生成接口，用于在主算子执行前生成`metadata`。`metadata`记录AICore任务切分与负载均衡结果，主算子须传入该`metadata`以优化调度。典型调用流程如下：
 
   1. 准备`q`、`k`、`v`、`dout`、`attn_out`、`softmax_lse`、`sparse_block_idx`、`sparse_block_count`、`cu_seqlens_q`、`cu_seqlens_kv`等输入。
   2. 调用`generic_block_sparse_attention_grad_metadata`生成`metadata`。
@@ -86,7 +86,7 @@
 
 ## 函数原型
 
-调用`generic_block_sparse_attention_grad`接口之前，建议先调用前置接口`generic_block_sparse_attention_grad_metadata`，完成负载均衡与分核信息的计算。
+调用`generic_block_sparse_attention_grad`接口之前，请先调用前置接口`generic_block_sparse_attention_grad_metadata`，完成负载均衡与分核信息的计算。
 
 ```python
 cann_ops_transformer.generic_block_sparse_attention_grad_metadata(
@@ -241,7 +241,7 @@ $$
 - 确定性计算：`generic_block_sparse_attention_grad`默认为非确定性实现，暂不支持确定性实现，确定性计算配置后不会生效。
 - 参数`cu_seqlens_q`、`cu_seqlens_kv`、`seqused_q`、`seqused_kv`、`sparse_block_idx`、`sparse_block_count`属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
 - `generic_block_sparse_attention_grad_metadata`和`generic_block_sparse_attention_grad`的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由客户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
-- 建议先成功调用`generic_block_sparse_attention_grad_metadata`生成`metadata`，再传入主算子；`metadata`为可选输入。
+- 先成功调用`generic_block_sparse_attention_grad_metadata`生成`metadata`，再传入主算子；
 - Torch扩展中`max_seqlen_q`/`max_seqlen_kv`可省略：扩展在调用底层前推断出`≥0`的值再传入host；显式传入时须`≥0`，且仍须满足`J=ceilDiv(max_seqlen_kv, block_y)`与`maxS1≥max_seqlen_q`。
 
 ### 特性参数组
