@@ -344,11 +344,11 @@ __aicore__ inline void CompressorBlockVector<COMP>::DataCopyWithOutputQue(const 
     }
     uint32_t singleCopyRowCount = BUFFER_SIZE_BYTE_32K / (copyColCount * sizeof(O));
     for (uint32_t rowCount = 0; rowCount < copyRowCount; rowCount += singleCopyRowCount) {
+        LocalTensor<O> outputUb = outputQue1.AllocTensor<O>();
+
         uint64_t srcOffset = rowCount * srcSingleRowCount;
         uint64_t dstOffset = rowCount * dstSingleRowCount;
         uint32_t curCopyRowCount = min(singleCopyRowCount, copyRowCount - rowCount);
-
-        LocalTensor<O> outputUb = outputQue1.AllocTensor<O>();
 
         DataCopyAlignUbToUb(outputUb, srcLocal[srcOffset], curCopyRowCount, copyColCount, srcSingleRowCount,
                             copyColCount);
@@ -375,11 +375,11 @@ __aicore__ inline void CompressorBlockVector<COMP>::DataCopyWithInputQue(const L
     }
     uint32_t singleCopyRowCount = BUFFER_SIZE_BYTE_32K / (copyColCount * sizeof(O));
     for (uint32_t rowCount = 0; rowCount < copyRowCount; rowCount += singleCopyRowCount) {
+        LocalTensor<O> inputUb = inputQue2.AllocTensor<O>();
+
         uint64_t srcOffset = rowCount * srcSingleRowCount;
         uint64_t dstOffset = rowCount * dstSingleRowCount;
         uint32_t curCopyRowCount = min(singleCopyRowCount, copyRowCount - rowCount);
-
-        LocalTensor<O> inputUb = inputQue2.AllocTensor<O>();
 
         DataCopyAlignGmToUb(inputUb, srcGm[srcOffset], curCopyRowCount, copyColCount, srcSingleRowCount, copyColCount);
 
