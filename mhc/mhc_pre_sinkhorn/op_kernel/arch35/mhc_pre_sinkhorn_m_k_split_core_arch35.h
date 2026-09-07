@@ -163,10 +163,6 @@ public:
                         if (curBlockIdx % 2 == 1) {
                             curRowFactor = tailRowFactor;
                         }
-                        if (curRowFactor == 0) {
-                            CrossCoreSetFlag<SYNC_MODE4, PIPE_MTE3>(SYNC_AIV_AIC_FLAG);
-                            continue;
-                        }
                         uint64_t cvLoopKSize = CeilDiv(kL1RealSize, tilingData->kUbSize);
                         uint64_t kReminderSize = kL1RealSize - (cvLoopKSize - 1) * tilingData->kUbSize;
                         float coeff = 1 / static_cast<float>(tilingData->hcMult * tilingData->d);
@@ -195,26 +191,30 @@ public:
                             WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(bufferIdx & 1));
 
                             if (curBlockIdx % 2 == 0) {
-                                DataCopyParams dataCopyXParams;
-                                dataCopyXParams.blockCount = CeilDiv(kRealSize, C0_SIZE);
-                                dataCopyXParams.blockLen = curRowFactor * C0_SIZE * sizeof(float) / BLOCK_SIZE;
-                                dataCopyXParams.srcStride = CeilAlign(curRowFactor, C0_SIZE) - curRowFactor;
-                                dataCopyXParams.dstStride = CeilAlign(mL1RealSize, 16) - curRowFactor;
-                                CopyToL1(xNd2NzLocal[nd2NzBufSize * (bufferIdx & 1)],
-                                         xL1_[(aL1BufferID_ * L1_BUF_OFFSET) +
-                                              cvLoopIdx * tilingData->kUbSize * mL1SizeAlign],
-                                         dataCopyXParams);
+                                if (curRowFactor > 0) {
+                                    DataCopyParams dataCopyXParams;
+                                    dataCopyXParams.blockCount = CeilDiv(kRealSize, C0_SIZE);
+                                    dataCopyXParams.blockLen = curRowFactor * C0_SIZE * sizeof(float) / BLOCK_SIZE;
+                                    dataCopyXParams.srcStride = CeilAlign(curRowFactor, C0_SIZE) - curRowFactor;
+                                    dataCopyXParams.dstStride = CeilAlign(mL1RealSize, 16) - curRowFactor;
+                                    CopyToL1(xNd2NzLocal[nd2NzBufSize * (bufferIdx & 1)],
+                                             xL1_[(aL1BufferID_ * L1_BUF_OFFSET) +
+                                                  cvLoopIdx * tilingData->kUbSize * mL1SizeAlign],
+                                             dataCopyXParams);
+                                }
                             } else {
-                                DataCopyParams dataCopyXParams;
-                                dataCopyXParams.blockCount = CeilDiv(kRealSize, C0_SIZE);
-                                dataCopyXParams.blockLen = curRowFactor * C0_SIZE * sizeof(float) / BLOCK_SIZE;
-                                dataCopyXParams.srcStride = CeilAlign(curRowFactor, C0_SIZE) - curRowFactor;
-                                dataCopyXParams.dstStride = CeilAlign(mL1RealSize, 16) - curRowFactor;
-                                CopyToL1(
-                                    xNd2NzLocal[nd2NzBufSize * (bufferIdx & 1)],
-                                    xL1_[(aL1BufferID_ * L1_BUF_OFFSET) + rowFactor * (BLOCK_SIZE / sizeof(float)) +
-                                         cvLoopIdx * tilingData->kUbSize * mL1SizeAlign],
-                                    dataCopyXParams);
+                                if (curRowFactor > 0) {
+                                    DataCopyParams dataCopyXParams;
+                                    dataCopyXParams.blockCount = CeilDiv(kRealSize, C0_SIZE);
+                                    dataCopyXParams.blockLen = curRowFactor * C0_SIZE * sizeof(float) / BLOCK_SIZE;
+                                    dataCopyXParams.srcStride = CeilAlign(curRowFactor, C0_SIZE) - curRowFactor;
+                                    dataCopyXParams.dstStride = CeilAlign(mL1RealSize, 16) - curRowFactor;
+                                    CopyToL1(
+                                        xNd2NzLocal[nd2NzBufSize * (bufferIdx & 1)],
+                                        xL1_[(aL1BufferID_ * L1_BUF_OFFSET) + rowFactor * (BLOCK_SIZE / sizeof(float)) +
+                                             cvLoopIdx * tilingData->kUbSize * mL1SizeAlign],
+                                        dataCopyXParams);
+                                }
                             }
                             SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(bufferIdx & 1));
                             bufferIdx++;
