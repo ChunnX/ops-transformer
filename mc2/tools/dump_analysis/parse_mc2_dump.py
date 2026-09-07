@@ -6,23 +6,20 @@
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-"""Unified MC2 exception-dump parser.
+"""Unified MC2 DFX dump parser.
 
 Only the operator name is required when this script is run in a dump directory.
 The script discovers and dispatches tiling_data, args_info, workspace segments,
-CCU xn/cke address tables, URMA context/peermem files, and exception_info
-files automatically. Every source dump is exported to an independent NumPy NPY
-file; no combined text report is generated.
+CCU xn/cke address tables, and URMA context/peermem files automatically.  Each
+source dump gets an independent readable text report; no combined report or
+NumPy output is generated.
 """
 
 import argparse
 import importlib
-import json
-import locale
 import os
 from pathlib import Path
 import re
-import shutil
 import struct
 import subprocess
 import sys
@@ -83,7 +80,6 @@ FILE_KINDS = (
     ("comm_context", re.compile(r"^comm_context_", re.IGNORECASE)),
     ("peermem", re.compile(r"^peermem_(?:window|seg\d+_type\d+)_", re.IGNORECASE)),
     ("workspace", re.compile(r"^workspace_seg\d+_type\d+_", re.IGNORECASE)),
-    ("exception", re.compile(r"^exception_info(?:\.|$)", re.IGNORECASE)),
 )
 
 KIND_ORDER = {
@@ -94,7 +90,6 @@ KIND_ORDER = {
     "comm_context": 4,
     "peermem": 5,
     "workspace": 6,
-    "exception": 7,
 }
 
 WORKSPACE_SEG_TYPE_NAMES = {
@@ -122,29 +117,7 @@ WORKSPACE_SEG_DESCRIPTIONS = {
     255: "对齐或预留空间",
 }
 
-WORKSPACE_PREVIEW_SIZE = 16
-
-# HCCL dataType in MMRS TilingData -> NumPy storage information.  BF16 and
-# FP8 have no portable NumPy arithmetic dtype, so their exact bit patterns are
-# retained in uint16/uint8 storage.  This is still more useful than treating a
-# BF16 matrix as a flat byte array because its logical matrix shape is kept.
-HCCL_WORKSPACE_DTYPES = {
-    0: ("int8", 1, "INT8", "typed"),
-    1: ("<i2", 2, "INT16", "typed"),
-    2: ("<i4", 4, "INT32", "typed"),
-    3: ("<i8", 8, "INT64", "typed"),
-    4: ("<f2", 2, "FP16", "typed"),
-    5: ("<f4", 4, "FP32", "typed"),
-    7: ("<f8", 8, "FP64", "typed"),
-    8: ("<u2", 2, "BF16", "raw_bits"),
-    10: ("uint8", 1, "UINT8", "typed"),
-    11: ("<u2", 2, "UINT16", "typed"),
-    12: ("<u4", 4, "UINT32", "typed"),
-    13: ("<u8", 8, "UINT64", "typed"),
-    14: ("uint8", 1, "FP8_E5M2", "raw_bits"),
-    15: ("uint8", 1, "FP8_E4M3FN", "raw_bits"),
-    16: ("<u2", 2, "BF16", "raw_bits"),
-}
+WORKSPACE_PREVIEW_SIZE = 64
 
 PEERMEM_SEG_TYPE_NAMES = {
     0: "DATA", 1: "SCALE", 2: "BIAS", 3: "FLAG", 255: "RESERVED",
@@ -167,19 +140,8 @@ def resolve_profile(operator_name):
 def classify_file(path):
     for kind, pattern in FILE_KINDS:
         if pattern.match(path.name):
-            if kind == "exception" and not is_raw_exception(path):
-                return None
             return kind
     return None
-
-
-def is_raw_exception(path):
-    """Return True only for the raw exception container, not msaicerr products."""
-    lowered = path.name.lower()
-    if not lowered.startswith("exception_info"):
-        return False
-    parsed_markers = (".input.", ".output.", ".workspace.", ".npy")
-    return not any(marker in lowered for marker in parsed_markers)
 
 
 def matches_operator(path, profile_key):
@@ -196,29 +158,10 @@ def discover_files(dump_dir, output_dir, profile_key):
         path for path in dump_dir.rglob("*")
         if path.is_file() and output_dir not in path.parents
     ]
-    profile = PROFILES[profile_key]
-    operator_files = [path for path in all_files if matches_operator(path, profile_key)]
-    operator_dirs = {path.parent for path in operator_files}
-    operator_invocations = {}
-    for path in operator_files:
-        invocation = operator_suffix(path, profile)
-        if invocation is not None:
-            operator_invocations.setdefault(path.parent, set()).add(invocation)
-    raw_exceptions = [path for path in all_files if is_raw_exception(path)]
-    # A raw exception filename does not contain the operator name. Associate it
-    # with the operator through sibling dump/.o/.json files in the same rank dir.
-    if not operator_dirs and raw_exceptions:
-        operator_dirs = {path.parent for path in raw_exceptions}
-
     files = []
     for path in all_files:
         kind = classify_file(path)
-        if kind == "exception" and path.parent in operator_dirs:
-            invocation = exception_suffix(path)
-            known_invocations = operator_invocations.get(path.parent, set())
-            if invocation is None or not known_invocations or invocation in known_invocations:
-                files.append((kind, path))
-        elif kind is not None and matches_operator(path, profile_key):
+        if kind is not None and matches_operator(path, profile_key):
             files.append((kind, path))
     return sorted(files, key=lambda item: (KIND_ORDER[item[0]], str(item[1]).lower()))
 
@@ -234,8 +177,15 @@ def read_preview(path, size=256):
 
 
 def emit_decimal_byte_preview(lines, data):
-    """Print one compact decimal preview when the segment dtype is unknown."""
-    emit(lines, f"rawBytePreview[0:{len(data)}]: {list(data)} | allZero={not any(data)}")
+    """Print an unambiguous decimal preview when the segment element type is unknown."""
+    emit(lines, "previewType: uint8 raw bytes")
+    emit(lines, f"previewRange: byte[0:{len(data)}]")
+    emit(lines, f"previewAllZero: {not any(data)}")
+    emit(lines, "decimalPreview (each value is one raw uint8 byte):")
+    for offset in range(0, len(data), 16):
+        row = data[offset:offset + 16]
+        values = " ".join(f"{value:3d}" for value in row)
+        emit(lines, f"  byte[{offset:04d}:{offset + len(row):04d}] : {values}")
 
 
 def segment_identity(path, prefix):
@@ -270,14 +220,30 @@ def infer_aic_core_num(profile, tiling_file):
             sys.path.pop(0)
 
 
-def stream_task_suffix(value):
-    """Normalize ``.streamId.taskId.timestamp`` to ``.streamId.taskId``."""
-    match = re.match(r"^\.(\d+)\.(\d+)(?:\.|$)", value)
-    return f".{match.group(1)}.{match.group(2)}" if match else None
+def infer_apace_parents(profile, tiling_files):
+    """alltoallmatmul: 返回 tiling 为 Apace CCU 格式的 rank 目录集合，用于 --apace 标签。"""
+    if profile["name"] != "AlltoAllMatmul":
+        return set()
+    sys.path.insert(0, str(SCRIPT_DIR))
+    try:
+        module = importlib.import_module(profile["module"])
+        parents = set()
+        for tiling_file in tiling_files:
+            try:
+                if module.detect_tiling_format(read_data(tiling_file)) == "apace":
+                    parents.add(tiling_file.parent)
+            except (OSError, struct.error, ValueError, KeyError):
+                continue
+        return parents
+    except ImportError:
+        return set()
+    finally:
+        if sys.path and sys.path[0] == str(SCRIPT_DIR):
+            sys.path.pop(0)
 
 
 def operator_suffix(path, profile):
-    """Return the stream/task identity shared by files from one invocation."""
+    """Return the invocation suffix shared by tiling/workspace files."""
     candidates = [profile["name"]]
     if profile["name"] == "MatmulReduceScatterV2":
         candidates.append("MatmulReduceScatter")
@@ -285,44 +251,8 @@ def operator_suffix(path, profile):
     for candidate in candidates:
         index = lowered.find(candidate.lower())
         if index >= 0:
-            suffix = lowered[index + len(candidate):]
-            return stream_task_suffix(suffix)
-    return None
-
-
-def exception_suffix(path):
-    """Return the stream/task identity embedded in ``exception_info.*``."""
-    lowered = path.name.lower()
-    suffix = lowered[len("exception_info"):]
-    return stream_task_suffix(suffix)
-
-
-def dump_timestamp(path):
-    """Return the numeric timestamp suffix used to pair files from one run."""
-    match = re.search(r"\.(\d{14,})$", path.name)
-    return int(match.group(1)) if match else None
-
-
-def nearest_tiling_result(path, profile, parsed_tilings):
-    """Find the parsed TilingData that is closest to one dump segment."""
-    invocation = operator_suffix(path, profile)
-    candidates = [
-        (tiling_path, parsed)
-        for tiling_path, parsed in parsed_tilings
-        if tiling_path.parent == path.parent
-        and (invocation is None or operator_suffix(tiling_path, profile) == invocation)
-    ]
-    if not candidates:
-        return None
-    timestamp = dump_timestamp(path)
-    if timestamp is None:
-        return candidates[0][1] if len(candidates) == 1 else None
-
-    def distance(item):
-        tiling_timestamp = dump_timestamp(item[0])
-        return abs(timestamp - tiling_timestamp) if tiling_timestamp is not None else sys.maxsize
-
-    return min(candidates, key=distance)[1]
+            return lowered[index + len(candidate):]
+    return lowered
 
 
 def build_core_index(profile, tiling_files):
@@ -333,9 +263,7 @@ def build_core_index(profile, tiling_files):
         core_num = infer_aic_core_num(profile, tiling_file)
         if core_num is None:
             continue
-        invocation = operator_suffix(tiling_file, profile)
-        if invocation is not None:
-            exact[(tiling_file.parent, invocation)] = core_num
+        exact[(tiling_file.parent, operator_suffix(tiling_file, profile))] = core_num
         per_parent.setdefault(tiling_file.parent, set()).add(core_num)
         values.add(core_num)
     return exact, per_parent, values
@@ -343,8 +271,7 @@ def build_core_index(profile, tiling_files):
 
 def core_num_for_file(path, profile, core_index):
     exact, per_parent, values = core_index
-    invocation = operator_suffix(path, profile)
-    core_num = exact.get((path.parent, invocation)) if invocation is not None else None
+    core_num = exact.get((path.parent, operator_suffix(path, profile)))
     if core_num is not None:
         return core_num
     parent_values = per_parent.get(path.parent, set())
@@ -355,153 +282,28 @@ def core_num_for_file(path, profile, core_index):
     return None
 
 
-def parse_address_table(input_path, output_path):
-    """Parse a little-endian uint64 XN/CKE table and save a (rows, 64) NPY."""
-    try:
-        import numpy as np
-    except ImportError as error:
-        raise RuntimeError("解析 XN/CKE 并导出 NPY 需要 NumPy，请先安装 numpy") from error
-
+def parse_address_table(input_path):
+    """Parse a little-endian uint64 XN/CKE table into readable text lines."""
     byte_size = input_path.stat().st_size
     row_size = 64 * 8
     if byte_size % row_size != 0:
         raise ValueError(f"文件大小 {byte_size} 不是完整 512 字节行的整数倍")
-    values = np.fromfile(input_path, dtype="<u8")
-    table = values.reshape((-1, 64))
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    np.save(output_path, table, allow_pickle=False)
-    return table.shape[0], table.size, int(np.count_nonzero(table))
+    data = read_data(input_path)
+    table = [struct.unpack_from("<64Q", data, offset) for offset in range(0, len(data), row_size)]
+    nonzero = sum(1 for row in table for value in row if value != 0)
+    lines = [
+        f"source: {input_path.name}",
+        "dtype: uint64 (little-endian)",
+        f"shape: ({len(table)}, 64)",
+        f"nonzero: {nonzero}",
+    ]
+    for index, row in enumerate(table):
+        cells = " ".join(f"0x{value:016x}" for value in row)
+        lines.append(f"row[{index:04d}] {cells}")
+    return len(table), len(table) * 64, nonzero, lines
 
 
-def require_numpy():
-    try:
-        import numpy as np
-    except ImportError as error:
-        raise RuntimeError("导出 NPY 需要 NumPy，请先安装 numpy") from error
-    return np
-
-
-def npy_output_path(output_dir, relative_path):
-    """Return the independent NPY path for one source dump."""
-    output_path = output_dir / relative_path.parent / f"{relative_path.name}.npy"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    return output_path
-
-
-def save_structured_npy(output_path, parsed):
-    """Save a JSON-like parser result as one object NPY."""
-    np = require_numpy()
-    np.save(output_path, parsed, allow_pickle=True)
-
-
-def save_raw_npy(input_path, output_path):
-    """Save an untyped data segment losslessly as a memory-mapped uint8 NPY."""
-    np = require_numpy()
-    if input_path.stat().st_size == 0:
-        raw = np.empty((0,), dtype=np.uint8)
-        np.save(output_path, raw, allow_pickle=False)
-        return raw.shape, raw.dtype
-    raw = np.memmap(input_path, dtype=np.uint8, mode="r")
-    try:
-        np.save(output_path, raw, allow_pickle=False)
-        return raw.shape, raw.dtype
-    finally:
-        del raw
-
-
-def mmrs_workspace_spec(seg_type, tiling_result, byte_size):
-    """Infer the safe storage dtype/shape of MMRS result/send/receive buffers."""
-    if seg_type not in (8, 9) or not isinstance(tiling_result, dict):
-        return None
-    param = tiling_result.get("param", {})
-    rank_m = param.get("rankM")
-    rank_n = param.get("rankN")
-    dtype_spec = HCCL_WORKSPACE_DTYPES.get(tiling_result.get("dataType"))
-    if dtype_spec is None or not isinstance(rank_m, int) or not isinstance(rank_n, int):
-        return None
-    storage_dtype, item_size, logical_dtype, interpretation = dtype_spec
-    if rank_m <= 0 or rank_n <= 0 or byte_size % item_size != 0:
-        return None
-    element_count = byte_size // item_size
-    logical_count = rank_m * rank_n
-    shape = (rank_m, rank_n) if logical_count == element_count else (element_count,)
-    return {
-        "storageDtype": storage_dtype,
-        "itemSize": item_size,
-        "logicalDtype": logical_dtype,
-        "interpretation": interpretation,
-        "shape": shape,
-        "expectedShape": (rank_m, rank_n),
-        "shapeMatched": logical_count == element_count,
-    }
-
-
-def save_typed_npy(input_path, output_path, storage_dtype, shape):
-    """Save one typed segment without loading the complete buffer into RAM."""
-    np = require_numpy()
-    dtype = np.dtype(storage_dtype)
-    source = np.memmap(input_path, dtype=dtype, mode="r", shape=shape)
-    try:
-        target = np.lib.format.open_memmap(output_path, mode="w+", dtype=dtype, shape=shape)
-        source_flat = source.reshape(-1)
-        target_flat = target.reshape(-1)
-        chunk_elements = max(1, (16 * 1024 * 1024) // dtype.itemsize)
-        for begin in range(0, source_flat.size, chunk_elements):
-            end = min(begin + chunk_elements, source_flat.size)
-            target_flat[begin:end] = source_flat[begin:end]
-        target.flush()
-        del target
-    finally:
-        del source
-    return str(dtype), shape
-
-
-def typed_value_preview(input_path, spec, count=8):
-    """Return a small numeric preview, decoding BF16 bits for readability."""
-    np = require_numpy()
-    values = np.fromfile(input_path, dtype=np.dtype(spec["storageDtype"]), count=count)
-    if spec["logicalDtype"] == "BF16":
-        values = (values.astype(np.uint32) << 16).view(np.float32)
-        label = "BF16 decoded as FP32"
-    elif spec["interpretation"] == "raw_bits":
-        label = f"{spec['logicalDtype']} raw bits"
-    else:
-        label = spec["logicalDtype"]
-    return label, values.tolist()
-
-
-def safe_path_component(value):
-    return re.sub(r"[^A-Za-z0-9._-]+", "_", value)
-
-
-def parse_exception_info(profile, source, relative_path, output_dir):
-    """Parse one raw exception container with the repository-owned decoder."""
-    invocation_dir = output_dir / "exception" / relative_path.parent / safe_path_component(source.name)
-    details = [f"NPY output: {invocation_dir}"]
-    try:
-        if invocation_dir.exists():
-            shutil.rmtree(invocation_dir)
-        invocation_dir.mkdir(parents=True, exist_ok=True)
-    except OSError as error:
-        details.append(f"ERROR: 无法准备异常解析目录: {error}")
-        return 1, details
-    sys.path.insert(0, str(SCRIPT_DIR))
-    try:
-        module = importlib.import_module("parse_mc2_exception_report")
-        _, _, parser_lines = module.export_exception_info(
-            source, invocation_dir, profile["name"]
-        )
-        details.extend(parser_lines)
-        return 0, details
-    except (ImportError, OSError, RuntimeError, ValueError, struct.error) as error:
-        details.append(f"ERROR: exception_info 解析失败: {type(error).__name__}: {error}")
-        return 1, details
-    finally:
-        if sys.path and sys.path[0] == str(SCRIPT_DIR):
-            sys.path.pop(0)
-
-
-def backend_command(profile, kind, path, aic_core_num):
+def backend_command(profile, kind, path, aic_core_num, use_apace=False):
     command = [sys.executable, str(SCRIPT_DIR / profile["backend"]), str(path)]
     if kind == "args":
         command.append("--args")
@@ -509,54 +311,29 @@ def backend_command(profile, kind, path, aic_core_num):
         command.append("--workspace")
         if aic_core_num is not None:
             command.extend(("--aic-core-num", str(aic_core_num)))
+        if use_apace:
+            command.append("--apace")
     elif kind == "comm_context":
         command.append("--comm-ctx")
     elif kind == "peermem":
         command.append("--peermem")
-    command.append("--json")
     return command
 
 
-def run_backend(profile, kind, path, aic_core_num):
+def run_backend(profile, kind, path, aic_core_num, use_apace=False):
     child_env = os.environ.copy()
     child_env["PYTHONIOENCODING"] = "utf-8"
     process = subprocess.run(
-        backend_command(profile, kind, path, aic_core_num),
+        backend_command(profile, kind, path, aic_core_num, use_apace),
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
         env=child_env,
         check=False,
     )
-    return process.returncode, decode_child_output(process.stdout), decode_child_output(process.stderr)
-
-
-def decode_child_output(data):
-    """Decode backend output on both UTF-8 Linux and locale-encoded Windows."""
-    if not data:
-        return ""
-    for encoding in ("utf-8", locale.getpreferredencoding(False)):
-        try:
-            return data.decode(encoding).rstrip()
-        except (UnicodeDecodeError, LookupError):
-            continue
-    return data.decode("utf-8", errors="replace").rstrip()
-
-
-def run_backend_human(profile, kind, path, aic_core_num):
-    """Run the backend's existing readable formatter for terminal display."""
-    command = backend_command(profile, kind, path, aic_core_num)
-    if command and command[-1] == "--json":
-        command.pop()
-    child_env = os.environ.copy()
-    child_env["PYTHONIOENCODING"] = "utf-8"
-    process = subprocess.run(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=child_env,
-        check=False,
-    )
-    return process.returncode, decode_child_output(process.stdout), decode_child_output(process.stderr)
+    return process.returncode, process.stdout.rstrip()
 
 
 def emit(lines, value=""):
@@ -564,56 +341,27 @@ def emit(lines, value=""):
     lines.append(value)
 
 
-def short_output_path(path, output_dir):
-    try:
-        return path.relative_to(output_dir)
-    except ValueError:
-        return path
+def text_output_path(output_dir, relative_path):
+    """Return the independent TXT path corresponding to one source dump."""
+    output_path = output_dir / relative_path.parent / f"{relative_path.name}.txt"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    return output_path
 
 
-def emit_runtime_summary(lines, parsed):
-    """Print the useful RuntimeInfo counters without expanding 128 raw slots."""
-    runtime_info = parsed.get("runtimeInfo", {}) if isinstance(parsed, dict) else {}
-    if not runtime_info:
-        return
-    slots = runtime_info.get("slots", [])
-    active = runtime_info.get("activeSlots", 0)
-    expected = runtime_info.get("expectedSlots", runtime_info.get("maxSlots", "?"))
-    expected_slots = slots[:expected] if isinstance(expected, int) else slots
-    valid_slots = [slot for slot in expected_slots if slot.get("magicValid")]
-    commit_total = runtime_info.get(
-        "commitTotal", sum(slot.get("commCommitCount", 0) for slot in valid_slots)
-    )
-    wait_total = runtime_info.get(
-        "waitTotal", sum(slot.get("commWaitCount", 0) for slot in valid_slots)
-    )
-    pending_slots = [
-        slot for slot in valid_slots
-        if slot.get("commCommitCount", 0) != slot.get("commWaitCount", 0)
+def save_text_result(output_path, profile, kind, relative_path, lines):
+    """Save one source file's readable parsing result."""
+    header = [
+        f"operator: {profile['name']}",
+        f"kind: {kind}",
+        f"source: {relative_path}",
+        "=" * 88,
     ]
-    pending_count = runtime_info.get("pendingCoreCount", len(pending_slots))
-    emit(
-        lines,
-        "RuntimeInfo: "
-        f"active={active}/{expected} | commit={commit_total} | "
-        f"wait={wait_total} | pendingCores={pending_count}",
-    )
-    if active == 0:
-        emit(lines, "WARNING: 没有有效 RuntimeInfo slot；请检查 Kernel 初始化、段起始地址和 Dump 时机")
-    elif pending_slots:
-        preview = ", ".join(
-            f"slot{slot.get('slotIdx', slot.get('coreId', '?'))}({slot.get('coreType', '未知')}:"
-            f"commit={slot.get('commCommitCount')},wait={slot.get('commWaitCount')})"
-            for slot in pending_slots[:16]
-        )
-        suffix = " ..." if len(pending_slots) > 16 else ""
-        emit(lines, f"unbalanced: {preview}{suffix}")
-    emit(lines, "perCoreDetail: NPY -> runtimeInfo.slots[*].commCommitCount/commWaitCount")
+    output_path.write_text("\n".join(header + lines) + "\n", encoding="utf-8")
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="按算子名自动解析 MC2 tiling/workspace/xn/cke/URMA/exception dump",
+        description="按算子名自动解析 MC2 tiling/workspace/xn/cke/URMA dump，并逐文件输出 TXT",
         epilog=(
             "在 dump 目录中只需执行: python3 parse_mc2_dump.py AlltoAllMatmul\n"
             "也可指定目录: python3 parse_mc2_dump.py AllGatherMatmulV3 /path/to/dump"
@@ -634,6 +382,8 @@ def main(argv=None):
         parser.error(f"dump 目录不存在: {dump_dir}")
     output_dir = dump_dir / "mc2_dump_analysis" / profile["name"]
     output_dir.mkdir(parents=True, exist_ok=True)
+    # Old versions wrote one combined report.  Remove it so users do not read
+    # stale results after switching to per-source TXT output.
     (output_dir / "analysis.txt").unlink(missing_ok=True)
 
     files = discover_files(dump_dir, output_dir, profile_key)
@@ -642,165 +392,84 @@ def main(argv=None):
 
     tiling_files = [path for kind, path in files if kind == "tiling"]
     core_index = build_core_index(profile, tiling_files)
+    apace_parents = infer_apace_parents(profile, tiling_files)
     core_values = sorted(core_index[2])
     core_summary = core_values[0] if len(core_values) == 1 else (core_values or "unknown")
-    kind_counts = {}
-    for kind, _ in files:
-        kind_counts[kind] = kind_counts.get(kind, 0) + 1
-    file_summary = ", ".join(f"{kind}={count}" for kind, count in kind_counts.items())
-    report_lines = []
-    emit(report_lines, "=" * 88)
-    emit(report_lines, f"MC2 dump analysis: {profile['name']} | path: {profile['path']}")
-    emit(report_lines, f"dump dir: {dump_dir}")
-    emit(report_lines, f"matched files: {len(files)} ({file_summary})")
-    emit(report_lines, f"inferred AIC cores: {core_summary} | NPY output: {output_dir}")
-    emit(report_lines, "=" * 88)
+    console_lines = []
+    emit(console_lines, "=" * 88)
+    emit(console_lines, f"MC2 dump analysis: {profile['name']} | path: {profile['path']}")
+    emit(console_lines, f"dump dir: {dump_dir}")
+    emit(console_lines, f"matched files: {len(files)} | inferred AIC cores: {core_summary}")
+    emit(console_lines, f"TXT output: {output_dir}")
+    emit(console_lines, "=" * 88)
 
     failures = 0
-    parsed_tilings = []
     for kind, path in files:
         relative_path = path.relative_to(dump_dir)
-        emit(report_lines)
-        emit(report_lines, f"[{kind}] {relative_path}")
-        emit(report_lines, "-" * 88)
+        output_path = text_output_path(output_dir, relative_path)
+        result_lines = []
+        emit(console_lines)
+        emit(console_lines, f"[{kind}] {relative_path}")
+        emit(console_lines, "-" * 88)
+
         if kind in ("xn", "cke"):
-            relative_parent = relative_path.parent
-            address_dir = output_dir / relative_parent
-            address_dir.mkdir(parents=True, exist_ok=True)
-            output_path = address_dir / f"{path.name}.npy"
             try:
-                rows, values, nonzero = parse_address_table(path, output_path)
-                message = (
-                    f"saved NPY: dtype=uint64 shape=({rows}, 64) values={values} "
-                    f"nonzero={nonzero} -> {short_output_path(output_path, output_dir)}"
+                rows, values, nonzero, result_lines = parse_address_table(path)
+                emit(
+                    console_lines,
+                    f"parsed: dtype=uint64 shape=({rows}, 64) values={values} nonzero={nonzero}",
                 )
-                emit(report_lines, message)
             except (OSError, RuntimeError, ValueError) as error:
                 failures += 1
-                emit(report_lines, f"ERROR: {error}")
+                result_lines.append(f"ERROR: {error}")
+                emit(console_lines, result_lines[-1])
+            save_text_result(output_path, profile, kind, relative_path, result_lines)
+            emit(console_lines, f"saved TXT: {output_path}")
             continue
 
-        if kind == "exception":
-            return_code, details = parse_exception_info(profile, path, relative_path, output_dir)
-            for line in details:
-                emit(report_lines, line)
-            if return_code != 0:
-                failures += 1
-            continue
-
-        # RuntimeInfo remains structurally parsed.  MMRS result/send/receive
-        # buffers use the output dtype and shape recorded in the paired tiling.
+        # Large data segments only need metadata and a short preview in their
+        # own report. RuntimeInfo remains structurally parsed by the backend.
         if kind == "workspace":
             identity = segment_identity(path, "workspace")
             if identity is not None and identity[1] != 12:
                 seg_index, seg_type = identity
-                output_path = npy_output_path(output_dir, relative_path)
-                try:
-                    emit(report_lines, f"segIdx: {seg_index}")
-                    emit(report_lines, f"segType: {seg_type} ({WORKSPACE_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
-                    emit(report_lines, f"dataMeaning: {WORKSPACE_SEG_DESCRIPTIONS.get(seg_type, '未知 Workspace 段')}")
-                    tiling_result = nearest_tiling_result(path, profile, parsed_tilings)
-                    spec = (
-                        mmrs_workspace_spec(seg_type, tiling_result, path.stat().st_size)
-                        if profile_key == "matmulreducescatterv2" else None
-                    )
-                    if spec is not None:
-                        dtype, shape = save_typed_npy(
-                            path, output_path, spec["storageDtype"], spec["shape"]
-                        )
-                        emit(
-                            report_lines,
-                            f"saved NPY: logicalDtype={spec['logicalDtype']} storageDtype={dtype} "
-                            f"shape={shape} interpretation={spec['interpretation']} -> "
-                            f"{short_output_path(output_path, output_dir)}",
-                        )
-                        if not spec["shapeMatched"]:
-                            emit(
-                                report_lines,
-                                f"WARNING: 文件大小与 TilingData shape={spec['expectedShape']} 不匹配，"
-                                "NPY 保留为一维数组",
-                            )
-                        preview_label, preview_values = typed_value_preview(path, spec)
-                        emit(report_lines, f"valuePreview[0:{len(preview_values)}] ({preview_label}): {preview_values}")
-                    else:
-                        shape, dtype = save_raw_npy(path, output_path)
-                        emit(
-                            report_lines,
-                            f"saved NPY: dtype={dtype} shape={shape} interpretation=raw_bytes -> "
-                            f"{short_output_path(output_path, output_dir)}",
-                        )
-                        emit_decimal_byte_preview(report_lines, read_preview(path, WORKSPACE_PREVIEW_SIZE))
-                except (OSError, RuntimeError, ValueError) as error:
-                    failures += 1
-                    emit(report_lines, f"ERROR: {error}")
+                emit(result_lines, f"segIdx: {seg_index}")
+                emit(result_lines, f"segType: {seg_type} ({WORKSPACE_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
+                emit(result_lines, f"dataMeaning: {WORKSPACE_SEG_DESCRIPTIONS.get(seg_type, '未知 Workspace 段')}")
+                emit(result_lines, f"fileSize: {path.stat().st_size} bytes")
+                emit_decimal_byte_preview(result_lines, read_preview(path, WORKSPACE_PREVIEW_SIZE))
+                emit(result_lines, "typedViewHint: 使用 parse_matrix.py 并指定 dtype/rows/cols 查看真实数值")
+                save_text_result(output_path, profile, kind, relative_path, result_lines)
+                emit(console_lines, f"saved TXT: {output_path}")
                 continue
 
         if kind == "peermem":
             identity = segment_identity(path, "peermem")
             if identity is not None:
                 seg_index, seg_type = identity
-                emit(report_lines, f"segIdx: {seg_index}")
-                emit(report_lines, f"segType: {seg_type} ({PEERMEM_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
-            output_path = npy_output_path(output_dir, relative_path)
-            try:
-                shape, dtype = save_raw_npy(path, output_path)
-                emit(
-                    report_lines,
-                    f"saved NPY: dtype={dtype} shape={shape} -> "
-                    f"{short_output_path(output_path, output_dir)}",
-                )
-            except (OSError, RuntimeError, ValueError) as error:
-                failures += 1
-                emit(report_lines, f"ERROR: {error}")
-            continue
+                emit(result_lines, f"segIdx: {seg_index}")
+                emit(result_lines, f"segType: {seg_type} ({PEERMEM_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
+                emit(result_lines, f"fileSize: {path.stat().st_size} bytes")
+                emit(result_lines, f"hexPreview(512B): {read_preview(path, 512).hex()}")
+                save_text_result(output_path, profile, kind, relative_path, result_lines)
+                emit(console_lines, f"saved TXT: {output_path}")
+                continue
 
         aic_core_num = core_num_for_file(path, profile, core_index) if kind == "workspace" else None
-        return_code, output, backend_log = run_backend(profile, kind, path, aic_core_num)
+        use_apace = kind == "workspace" and path.parent in apace_parents
+        return_code, output = run_backend(profile, kind, path, aic_core_num, use_apace)
+        if output:
+            for line in output.splitlines():
+                emit(result_lines, line)
         if return_code != 0:
             failures += 1
-            for text in (backend_log, output):
-                for line in text.splitlines():
-                    emit(report_lines, line)
-            emit(report_lines, f"ERROR: backend exited with code {return_code}")
-            continue
-        output_path = npy_output_path(output_dir, relative_path)
-        try:
-            parsed = json.loads(output)
-            save_structured_npy(output_path, parsed)
-            if kind == "tiling":
-                parsed_tilings.append((path, parsed))
-            if kind == "workspace":
-                identity = segment_identity(path, "workspace")
-                if identity is not None:
-                    seg_index, seg_type = identity
-                    emit(report_lines, f"segIdx: {seg_index}")
-                    emit(report_lines, f"segType: {seg_type} ({WORKSPACE_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
-                    emit(report_lines, f"dataMeaning: {WORKSPACE_SEG_DESCRIPTIONS.get(seg_type, '未知 Workspace 段')}")
-            emit(
-                report_lines,
-                f"saved NPY: object -> {short_output_path(output_path, output_dir)}",
-            )
-            if kind in ("tiling", "workspace"):
-                display_code, display_output, display_log = run_backend_human(
-                    profile, kind, path, aic_core_num
-                )
-                emit(report_lines, "parsedResult:")
-                for text in (display_log, display_output):
-                    for line in text.splitlines():
-                        emit(report_lines, line)
-                if display_code != 0:
-                    emit(report_lines, f"WARNING: 可读结果格式化失败，退出码 {display_code}")
-            if kind == "workspace":
-                emit_runtime_summary(report_lines, parsed)
-        except (json.JSONDecodeError, OSError, RuntimeError, ValueError) as error:
-            failures += 1
-            if backend_log:
-                emit(report_lines, backend_log)
-            emit(report_lines, f"ERROR: {error}")
+            emit(result_lines, f"ERROR: backend exited with code {return_code}")
+        save_text_result(output_path, profile, kind, relative_path, result_lines)
+        emit(console_lines, f"saved TXT: {output_path}")
 
     print()
     print(f"解析完成: {len(files) - failures}/{len(files)} 个文件成功")
-    print(f"每个输入文件的独立 NPY 位于: {output_dir}")
+    print(f"逐文件 TXT 位于: {output_dir}")
     return 1 if failures else 0
 
 
