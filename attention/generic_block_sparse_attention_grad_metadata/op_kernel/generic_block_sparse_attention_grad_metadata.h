@@ -53,6 +53,7 @@ constexpr uint32_t CORE_TASK_END_OFFSET = GRAD_METADATA_SIZE + AIC_CORE_MAX_NUM;
 
 constexpr uint32_t TASK_B = 0;
 constexpr uint32_t TASK_N2 = 1;
+
 constexpr uint32_t TASK_J = 2;
 constexpr uint32_t TASK_G = 3;
 
