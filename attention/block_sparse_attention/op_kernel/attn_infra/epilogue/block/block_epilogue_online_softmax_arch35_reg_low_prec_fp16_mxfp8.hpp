@@ -184,7 +184,7 @@ public:
             }
 
         } else {
-            // kvs padding 32 multi
+            // kvs padding 32 multi（温和 B：仍走原 kvs32 VF，不改有效 token 的 softmax）
             if (actKvsTile != tileInfo.kvsActBaseTileAlign32) {
                 if (sRowIsQs128) {
                     Mxfp8VF::Mm1ResPrePaddingAlignKvs32MultiCallVF<ElementInput>(
@@ -233,6 +233,9 @@ public:
                         static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign64));
                 }
             }
+            // kvs32 VF 只写前 align32 组；满拷前把未写尾组填 0（stride=512 避开 ping-pong 交错）
+            AscendC::PipeBarrier<PIPE_V>();
+            ZeroPUBUnwrittenKvsGroups(spBuffIdx, tileInfo.kvsActBaseTileAlign32, sRowIsQs128);
         }
         // }
 
@@ -279,9 +282,8 @@ public:
         uint32_t pUBTlaMSize = tla::get<0>(ubPTensorTla.shape());
         uint32_t pUBTlaNSize = tla::get<1>(ubPTensorTla.shape());
 
-        // MXFP8 QK 把 Q(M) pad 到 128 并走 qs128 VF（even/odd），P UB 始终是 128 宽。
-        // 必须用 align128 判断，不能照搬 mxfp4 的 align64：否则 qs63/64 + 短 kvs
-        // 会掉进 else 且不搬高半面，odd qs 丢失（~50% fulfill）。
+        // 温和 B：短 kvs 的未写 P 尾组已在 UB 填 0，可以继续满拷 16KB。
+        // qs pad 到 128 必须留在条件里，否则 odd 高半面不搬（~50% fulfill）。
         if (taskInfo.qsActBaseTileAlign128 == MXFP8::QS_BASE_SIZE ||
             tileInfo.kvsActBaseTileAlign32 == MXFP8::KVS_BASE_SIZE) {
             // qs128 或 qs64-pad-to-128：整基块/尾块都搬满 64 个 TLA 行（LoadP srcStride=8 只读前 kvs）。
@@ -374,6 +376,41 @@ public:
             // tla::get<1>(pl1TensorTlaTile.shape())); AscendC::printf("l1PTensorTla shape(M,N):(%d,%d)\n",
             // tla::get<0>(l1PTensorTla.shape()), tla::get<1>(l1PTensorTla.shape())); AscendC::printf("==== CopyPUBToPL1
             // ELSE debug end ====\n");
+        }
+    }
+
+    // kvs32 VF：4 行×64 e4m3 打 256B，StoreAlign 按 VL128 拆到两个地址。
+    // preg_vl128 写 dest；preg_vl128_not 按 lane 落到 dest+128。因此：
+    //   lo 槽 [pOff, pOff+256) = even 的 pOff + odd 的 pOff+128
+    //   hi 槽 [pOff+8192, pOff+8192+256)，不是 +8064（+8064 是 Store 的 dest，
+    //     vl128_not 才落到 +8192；Duplicate(+8064, 256B) 会写穿上一 TLA 行的 ping-pong 另一槽）。
+    // 64×512 行主序：+8192=row16 col0（本槽 256B）；+8064=row15 col384（另一槽）。
+    // qs[64:128) 同理用 +16384 / +24576，不用 +24448。
+    // j=0,2,4,6 的 pOff 已是 512B 行起点，Duplicate 256B 只填 col[0:256)，不碰另一槽。
+    __aicore__ inline void ZeroPUBUnwrittenKvsGroups(uint32_t spBuffIdx, uint32_t kvsAlign32, bool qs128Planes)
+    {
+        if (kvsAlign32 == 0 || kvsAlign32 >= MXFP8::KVS_BASE_SIZE) {
+            return;
+        }
+        constexpr uint32_t GROUP_STRIDE = 2048;
+        constexpr uint32_t SLOT = 256;
+        constexpr uint32_t ITER_PER_GROUP = 8;
+        constexpr uint32_t PSCALE_GROUP_CNT = 4;
+        constexpr uint32_t HI_PLANE = 8192;  // TLA 16-31，vl128_not 落点
+        constexpr uint32_t QS_HI_LO = 16384; // TLA 32-47
+        constexpr uint32_t QS_HI_HI = 24576; // TLA 48-63，vl128_not 落点
+        uint32_t firstGroup = kvsAlign32 / 32;
+        auto p = pUBTensor[spBuffIdx];
+        for (uint32_t i = firstGroup; i < PSCALE_GROUP_CNT; ++i) {
+            for (uint16_t j = 0; j < ITER_PER_GROUP; j += 2) {
+                uint32_t pOff = i * GROUP_STRIDE + static_cast<uint32_t>(j) * SLOT;
+                AscendC::Duplicate(p[pOff], static_cast<ElementDisguiseP>(0), SLOT);
+                AscendC::Duplicate(p[pOff + HI_PLANE], static_cast<ElementDisguiseP>(0), SLOT);
+                if (qs128Planes) {
+                    AscendC::Duplicate(p[pOff + QS_HI_LO], static_cast<ElementDisguiseP>(0), SLOT);
+                    AscendC::Duplicate(p[pOff + QS_HI_HI], static_cast<ElementDisguiseP>(0), SLOT);
+                }
+            }
         }
     }
 
