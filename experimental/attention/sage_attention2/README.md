@@ -96,13 +96,13 @@ SAGEATTN_TEST_STANDALONE=1 \
 
 ## 测试说明
 
-2026-09-07 清理后完整回归：**641 passed**（包含独立 C++ ACLNN 测试）。
+完整回归结果：**641 passed**（包含独立 C++ ACLNN 测试）。
 
-测试全部通过公开 ACLNN 路径运行，并对照独立 per-token CPU 算法、FP32 SDPA 或可解析的常数输入结果。覆盖 dtype/layout/stride/GQA/causal、smooth K/V、LSE、长序列、模板选择边界、重复调用、并发流和独立 C++ ACLNN 入口。分阶段及中间态诊断库已移出提交目录。
+测试全部通过公开 ACLNN 路径运行，并对照独立 per-token CPU 算法、FP32 SDPA 或可解析的常数输入结果。覆盖 dtype/layout/stride/GQA/causal、smooth K/V、LSE、长序列、模板选择边界、重复调用、并发流和独立 C++ ACLNN 入口。
 
 [原始任务用例](tests/data/task_cases_500.json) 包含 486 条功能/精度/参数用例及 14 条性能用例。执行时将原 per-thread/per-warp 正例映射为 per-token；`pv_accum_dtype` 按兼容参数处理。
 
-删除分阶段诊断接口后，PV 和 smooth V 用例改为 CPU 独立量化的端到端对照，使用下述统一标准，并保留重复调用逐位一致或独立 SDPA 误差检查。wide 的 LSE 对照包含 FP16 scale/score 舍入的量化参考。
+PV 和 smooth V 用例采用 CPU 独立量化的端到端对照，使用下述统一标准，并检查重复调用逐位一致性或独立 SDPA 误差。wide 的 LSE 对照包含 FP16 scale/score 舍入的量化参考。
 
 数值参考是本目录的 per-token CPU 算法及独立 FP32 SDPA。CPU 同算法检查采用 FP16 rtol/atol=2^-9、BF16=2^-6、至少 99% 匹配比例；最大绝对误差通常分别限于 0.1/1。SDPA 的 max/mean/RMSE 误差比例门限为 2/1.2/1.2。
 
@@ -112,58 +112,36 @@ SAGEATTN_TEST_STANDALONE=1 \
 
 ## 性能测试
 
-性能复测统一使用 `torch.npu.Event(enable_timing=True)`，通过公开 PyTorch 接口分别调用 SageAttention2 和 FIA。默认覆盖 P-01～P-10（4K～128K，以及 causal、GQA、BF16、batch=2），每个实现预热 20 次、采样 50 次，报告单次完整 API 调用的 Event 耗时中位数。先完成 Sage，再完成 FIA，两者串行执行。
+使用 msprof 统计独立 C++ ACLNN 入口的 kernel duration。SageAttention2 在单个融合 kernel 内完成 Stats、Quant 和 Core，计时包含三个阶段及其内部同步。每个实现预热 **2 次**、采样 **5 次**，报告耗时中位数；加速比为 FIA kernel 耗时除以 SageAttention2 kernel 耗时。
 
-加载 Sage OPP 后，按需加载待比较的 FIA vendor 环境；未指定自定义 FIA vendor 时使用当前 CANN 环境中的 FIA：
+测试环境为 Ascend 950PR、CANN 9.2.0-beta.1，FIA 使用同版本 CANN 构建的 `fia_latest_transformer` vendor。所有用例 Hq=32、D=128，smooth K 开启、smooth V 关闭。Sage 和 FIA 串行执行，每例各采集 7 个 task，丢弃前 2 个；`op_summary` 与 `task_time` 的耗时已交叉核对。
+
+| 用例 | 配置（Hq=32、D=128） | Sage kernel ms | FIA kernel ms | 加速比 |
+|---|---|---:|---:|---:|
+| P-01 | 4K, B=1, Hkv=32, FP16 | 0.665 | 0.990 | 1.489× |
+| P-02 | 8K, B=1, Hkv=32, FP16 | 2.271 | 3.816 | 1.680× |
+| P-03 | 8K, B=1, Hkv=32, FP16, causal | 1.392 | 1.829 | 1.314× |
+| P-04 | 8K, B=2, Hkv=32, FP16 | 4.643 | 7.429 | 1.600× |
+| P-05 | 4K, B=1, Hkv=8, FP16 | 0.557 | 0.936 | 1.682× |
+| P-06 | 4K, B=1, Hkv=32, BF16 | 0.723 | 0.874 | 1.208× |
+| P-07 | 16K, B=1, Hkv=32, FP16 | 8.791 | 20.492 | 2.331× |
+| P-08 | 32K, B=1, Hkv=32, FP16 | 41.960 | 115.728 | 2.758× |
+| P-09 | 64K, B=1, Hkv=32, FP16 | 165.252 | 462.953 | 2.801× |
+| P-10 | 128K, B=1, Hkv=32, FP16 | 661.177 | 1884.315 | 2.850× |
+
+在本目录加载 CANN、Sage OPP 和待比较的 FIA vendor 后，可按以下方式采集 P-01：
 
 ```bash
-source /usr/local/Ascend/cann/set_env.sh
-source build/opp/vendors/custom_transformer/bin/set_env.bash
-# 可选：source /path/to/fia_vendor/bin/set_env.bash
-export PYTHONPATH="$PWD/python${PYTHONPATH:+:$PYTHONPATH}"
+bash benchmarks/build_aclnn_benchmark.sh
 export ASCEND_RT_VISIBLE_DEVICES=0
-python benchmarks/run_validation_performance.py --output build/performance_event
+# 自定义 FIA vendor 需指定其 API 库路径：
+# export FIA_OPAPI_LIBRARY=/path/to/fia_vendor/op_api/lib/libcust_opapi.so
+mkdir -p build/performance_msprof/P-01
+SAGE_PROFILE_ONLY=1 msprof --output=build/performance_msprof/P-01 \
+    --application="$(pwd)/build/benchmarks/benchmark_aclnn 4096 1 32 0 0 2 5 $(pwd)/build/performance_msprof/P-01/application.json"
 ```
 
-`--cases P-01 P-07` 选择用例，`--warmup` / `--repeats` 调整次数，`--smooth-v` 开启 V smoothing。也可使用 `profile_performance.py --case P-01 --output build/p01.json` 单独复测一个用例。FIA 实现由运行前加载的 CANN/vendor 环境选择。
-
-输出包含逐例 `application.json`（全部 Event 样本、分位数、Sage/FIA 输出误差）、`run.log`，以及汇总 `summary.json` / `summary.csv`。Event 区间覆盖公开接口调用中的设备执行与可能的提交间隙，其耗时不能与此前 msprof 的纯 kernel duration 直接比较。`benchmark_aclnn.cpp` 保留为独立 ACLNN 调用示例和接口冒烟测试，不参与这套性能复测。
-
-2026-09-07 当前融合模板版本的 Event 复测结果如下。环境为 Ascend 950PR、CANN 9.2.0-beta.1、PyTorch 2.9.0 / torch_npu 2.9.0.post8，FIA 使用同版本 CANN 构建的 `fia_latest_transformer` vendor；smooth K 开启、smooth V 关闭。每例预热 20 次、采样 50 次，共 10 例、1000 个计时样本，均已核对样本数和中位数。
-
-| 用例 | 配置（Hq=32、D=128） | Sage ms | FIA ms | 加速比 |
-|---|---|---:|---:|---:|
-| P-01 | 4K, B=1, Hkv=32, FP16 | 0.726 | 0.969 | 1.335× |
-| P-02 | 8K, B=1, Hkv=32, FP16 | 2.561 | 5.332 | 2.082× |
-| P-03 | 8K, B=1, Hkv=32, FP16, causal | 1.536 | 2.071 | 1.349× |
-| P-04 | 8K, B=2, Hkv=32, FP16 | 5.989 | 10.751 | 1.795× |
-| P-05 | 4K, B=1, Hkv=8, FP16 | 0.623 | 0.960 | 1.541× |
-| P-06 | 4K, B=1, Hkv=32, BF16 | 0.741 | 0.920 | 1.242× |
-| P-07 | 16K, B=1, Hkv=32, FP16 | 11.056 | 27.770 | 2.512× |
-| P-08 | 32K, B=1, Hkv=32, FP16 | 42.033 | 115.727 | 2.753× |
-| P-09 | 64K, B=1, Hkv=32, FP16 | 169.331 | 485.041 | 2.864× |
-| P-10 | 128K, B=1, Hkv=32, FP16 | 716.676 | 2063.161 | 2.879× |
-
-P-01～P-07 中 P-02、P-04、P-07 达到 1.6×，其余 4 例未达到；长上下文加速比不替代逐例门禁。完整数值、相对 FIA 的输出误差和原始样本仅保留在本地，位于 `build/performance_event_20260907/P-*/application.json`。
-
-## 手工 msprof kernel 复测
-
-2026-09-07 使用独立 C++ ACLNN 入口补测相同的 P-01～P-10 配置，环境和 smoothing 设置同上。每个实现预热 **2 次**、采样 **5 次**，取 msprof kernel duration 中位数。逐例确认 Sage/FIA 各 7 个 task，丢弃前 2 个；`op_summary` 与 `task_time` 耗时一致，无额外计算或拷贝 task。此次手工采集不改变仓库性能脚本使用 Torch NPU Event 的方式。
-
-| 用例 | Sage kernel ms | FIA kernel ms | 加速比 |
-|---|---:|---:|---:|
-| P-01 | 0.665 | 0.990 | 1.489× |
-| P-02 | 2.271 | 3.816 | 1.680× |
-| P-03 | 1.392 | 1.829 | 1.314× |
-| P-04 | 4.643 | 7.429 | 1.600× |
-| P-05 | 0.557 | 0.936 | 1.682× |
-| P-06 | 0.723 | 0.874 | 1.208× |
-| P-07 | 8.791 | 20.492 | 2.331× |
-| P-08 | 41.960 | 115.728 | 2.758× |
-| P-09 | 165.252 | 462.953 | 2.801× |
-| P-10 | 661.177 | 1884.315 | 2.850× |
-
-msprof 原始 CSV、日志及包含输出误差的汇总仅保留在本地，位于 `build/performance_msprof_2x5_20260907/aclnn/P-*`。4K FP16 本次为 0.665 ms，与原 PR 的历史 ACLNN 记录约 0.665 ms 相当；这不是同时运行的严格 A/B。5 次短采样仍有波动，例如 P-08 Sage 为 34.581～42.838 ms，不能据此认定融合造成稳定退化，也不能将历史差异全部归因为测量误差。
+`benchmark_aclnn` 参数依次为 `SEQ BATCH KV_HEADS BF16 CAUSAL WARMUP REPEATS OUTPUT_JSON`。按表中配置调整参数即可采集其他用例。统计时分别按执行顺序提取 SageAttention2 和 FIA task，排除各自前 2 次预热后，对剩余 5 次 kernel duration 取中位数。
 
 ## 目录说明
 
@@ -173,4 +151,4 @@ msprof 原始 CSV、日志及包含输出误差的汇总仅保留在本地，位
 | `op_host`、`op_api` | 参数校验、注册、tiling 和两阶段 ACLNN |
 | `python` | PyTorch ACLNN 适配层和 CPU 参考 |
 | `tests` | 公开接口功能、精度和多流回归 |
-| `benchmarks` | Torch NPU Event 性能复测和独立 ACLNN 调用示例 |
+| `benchmarks` | 性能测试脚本和独立 ACLNN 调用示例 |
