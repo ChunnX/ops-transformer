@@ -126,10 +126,12 @@ public:
 
 private:
     __aicore__ inline void InitParams();
-    __aicore__ inline void CopyInClaGate(int64_t absRowStart, int64_t colOffset, int64_t calcRow, int64_t calcCol);
+    __aicore__ inline void CopyInClaGate(int64_t absRowStart, int64_t colOffset, int64_t calcRow, int64_t calcCol,
+                                          int64_t headsThisTile);
     __aicore__ inline void ComputeClaGateFullTile(__ubuf__ xDtype* globalAddr, __ubuf__ xDtype* localAddr,
                                                  __ubuf__ xDtype* globalGateAddr, __ubuf__ xDtype* localGateAddr,
-                                                 __ubuf__ xDtype* outputAddr, uint16_t calcRows);
+                                                 __ubuf__ xDtype* outputAddr, uint16_t calcRows,
+                                                 uint16_t headsThisTile);
     __aicore__ inline void PadZeroM(__ubuf__ xDtype* claGateOutAddr, uint32_t num);
     __aicore__ inline void ComputeScaleOcp(uint16_t dataLen, uint16_t blockCount, __ubuf__ xDtype* xAddr,
                                            __ubuf__ uint8_t* mxScale1Addr, __ubuf__ uint16_t* mxScale1ReciprocalAddr,
@@ -349,7 +351,9 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
         int64_t calcRow = (rowBlockIdx == dimMSplit - 1) ? dimMTail : ubRowCount_;
         int64_t calcCol = (colBlockIdx == tilingData_->dimNBlockNum - 1) ? ubRowLenTail_ : ubRowLen_;
 
-        CopyInClaGate(absRowStart, colOffset, calcRow, calcCol);
+        int64_t headStart = colOffset / headDim_;
+        int64_t headsThisTile = (headNum_ - headStart < headsPerRow_) ? (headNum_ - headStart) : headsPerRow_;
+        CopyInClaGate(absRowStart, colOffset, calcRow, calcCol, headsThisTile);
 
         LocalTensor<xDtype> input = actInQueue_.template DeQue<xDtype>();
         LocalTensor<xDtype> gateInput = gateInQueue_.template DeQue<xDtype>();
@@ -361,7 +365,7 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
         auto mergedAddr = (__ubuf__ xDtype*)merged.GetPhyAddr();
 
         ComputeClaGateFullTile(globalAddr, localAddr, globalGateAddr, localGateAddr, mergedAddr,
-                                static_cast<uint16_t>(calcRow));
+                                static_cast<uint16_t>(calcRow), static_cast<uint16_t>(headsThisTile));
 
         // For T % 64 != 0, zero-fill merged tail rows after the merge stage so
         // the following 64-row scale/quantization path reads zero-padded rows.
@@ -483,7 +487,8 @@ template <typename xDtype, typename y1Dtype, uint64_t mode, AscendC::RoundMode r
           uint64_t isGroupIdx>
 __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, roundMode, scaleAlg,
                                                      isGroupIdx>::CopyInClaGate(int64_t absRowStart, int64_t colOffset,
-                                                                               int64_t calcRow, int64_t calcCol)
+                                                                               int64_t calcRow, int64_t calcCol,
+                                                                               int64_t headsThisTile)
 {
     LocalTensor<xDtype> actInput = actInQueue_.template AllocTensor<xDtype>();
     LocalTensor<xDtype> gateInput = gateInQueue_.template AllocTensor<xDtype>();
@@ -499,16 +504,39 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
     DataCopyPad(actInput[inHalfSize_], localOutGm_[outOffset], outCopy, pad);
 
     // Per-head gate scalars, one contiguous array per head.
-    for (int64_t h = 0; h < headsPerRow_; ++h) {
-        DataCopyExtParams gateCopy = {static_cast<uint16_t>(calcRow),
-                                      static_cast<uint32_t>(sizeof(xDtype)),
-                                      static_cast<uint32_t>((headNum_ - 1) * sizeof(xDtype)), 0, 0};
+    for (int64_t h = 0; h < headsThisTile; ++h) {
         int64_t gateOffset = absRowStart * headNum_ + headStart + h;
-        DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(gateInput[h * ubRowCount_],
-                                                           globalGateGm_[gateOffset], gateCopy, pad);
-        DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(
-            gateInput[gateSideStride_ + h * ubRowCount_],
-            localGateGm_[gateOffset], gateCopy, pad);
+        if (headNum_ == 1) {
+            // With a single head, all rows' gate scalars are contiguous in GM.
+            DataCopyExtParams gateCopy = {1, static_cast<uint32_t>(calcRow * sizeof(xDtype)), 0, 0, 0};
+            DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(gateInput[h * ubRowCount_],
+                                                               globalGateGm_[gateOffset], gateCopy, pad);
+            DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(
+                gateInput[gateSideStride_ + h * ubRowCount_],
+                localGateGm_[gateOffset], gateCopy, pad);
+        } else if (calcCol < ubRowLen_) {
+            // Partial column tile (e.g. D=128 and odd N): the last tile may
+            // contain fewer heads than headsPerRow_. Copy row-by-row to avoid
+            // relying on multi-burst gather semantics for an unaligned head.
+            for (int64_t row = 0; row < calcRow; ++row) {
+                DataCopyExtParams gateCopy = {1, static_cast<uint32_t>(sizeof(xDtype)), 0, 0, 0};
+                int64_t srcOffset = gateOffset + row * headNum_;
+                DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(
+                    gateInput[h * ubRowCount_ + row], globalGateGm_[srcOffset], gateCopy, pad);
+                DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(
+                    gateInput[gateSideStride_ + h * ubRowCount_ + row],
+                    localGateGm_[srcOffset], gateCopy, pad);
+            }
+        } else {
+            DataCopyExtParams gateCopy = {static_cast<uint16_t>(calcRow),
+                                          static_cast<uint32_t>(sizeof(xDtype)),
+                                          static_cast<uint32_t>((headNum_ - 1) * sizeof(xDtype)), 0, 0};
+            DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(gateInput[h * ubRowCount_],
+                                                               globalGateGm_[gateOffset], gateCopy, pad);
+            DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(
+                gateInput[gateSideStride_ + h * ubRowCount_],
+                localGateGm_[gateOffset], gateCopy, pad);
+        }
     }
 
     // Do not wait here. The DeQue() in Process is the consumer-side sync point;
@@ -528,7 +556,8 @@ template <typename xDtype, typename y1Dtype, uint64_t mode, AscendC::RoundMode r
 __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, roundMode, scaleAlg,
                                                      isGroupIdx>::ComputeClaGateFullTile(
     __ubuf__ xDtype* globalAddr, __ubuf__ xDtype* localAddr, __ubuf__ xDtype* globalGateAddr,
-    __ubuf__ xDtype* localGateAddr, __ubuf__ xDtype* outputAddr, uint16_t calcRows)
+    __ubuf__ xDtype* localGateAddr, __ubuf__ xDtype* outputAddr, uint16_t calcRows,
+    uint16_t headsThisTile)
 {
     uint16_t vfsPerHead = static_cast<uint16_t>(headDim_ / VF_LEN_FP32);
     __VEC_SCOPE__ {
@@ -538,7 +567,7 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
         Reg::RegTensor<float> globalRegF, localRegF, outputRegF;
         Reg::RegTensor<xDtype> outputReg;
         Reg::MaskReg allMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-        const uint16_t heads = static_cast<uint16_t>(headsPerRow_);
+        const uint16_t heads = headsThisTile;
         // Sigmoid scratch stores FP32 values. Keep global/local regions separated.
         __ubuf__ uint8_t* sigmoidBytes = (__ubuf__ uint8_t*)sigmoidBroadcastBuf_.Get<float>().GetPhyAddr();
         __ubuf__ float* globalSigmoidUb = (__ubuf__ float*)sigmoidBytes;

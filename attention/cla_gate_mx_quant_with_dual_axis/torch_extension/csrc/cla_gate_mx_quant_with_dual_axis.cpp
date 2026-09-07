@@ -94,24 +94,20 @@ cla_gate_mx_quant_with_dual_axis(
     const int64_t t = global_out.size(0);
     const int64_t n = global_out.size(1);
     const int64_t d = global_out.size(2);
-    TORCH_CHECK(n % 2 == 0 && n >= 4 && n <= 128,
-                "N must be an even integer in [4,128], got ", n);
+    TORCH_CHECK(n >= 1 && n <= 128,
+                "N must be in [1,128], got ", n);
     TORCH_CHECK(d == 128 || d == 256,
                 "D must be 128 or 256, got ", d);
 
     const int64_t gate_dim = global_gate_logits.dim();
-    TORCH_CHECK(gate_dim == 2 || gate_dim == 3,
-                "global_gate_logits must be [T,N] or [T,N,1], but got ", gate_dim, "D");
+    TORCH_CHECK(gate_dim == 2,
+                "global_gate_logits must be [T,N], but got ", gate_dim, "D");
     TORCH_CHECK(local_gate_logits.dim() == gate_dim,
                 "local_gate_logits rank must match global_gate_logits rank");
     TORCH_CHECK(local_gate_logits.sizes() == global_gate_logits.sizes(),
                 "local_gate_logits shape must match global_gate_logits shape");
     TORCH_CHECK(global_gate_logits.size(0) == t && global_gate_logits.size(1) == n,
                 "gate logits must match [T,N]");
-    if (gate_dim == 3) {
-        TORCH_CHECK(global_gate_logits.size(2) == 1,
-                    "3D gate logits must be [T,N,1]");
-    }
 
     const auto input_dtype = global_out.scalar_type();
     TORCH_CHECK(input_dtype == at::kHalf || input_dtype == at::kBFloat16,

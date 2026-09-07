@@ -44,7 +44,7 @@ constexpr int64_t OUTPUT_COL_SCALE = 3;
 
 constexpr int64_t BLOCK_W = 256;
 constexpr int64_t BLOCK_H = 64;
-constexpr int64_t MIN_N = 4;
+constexpr int64_t MIN_N = 1;
 constexpr int64_t MAX_N = 128;
 
 const std::set<ge::DataType> INPUT_SUPPORT_DTYPE_SET = {ge::DT_FLOAT16, ge::DT_BF16};
@@ -70,19 +70,13 @@ RoundModeList GetRoundMode(const string& roundMode)
 bool IsValidTNDShape(const gert::Shape& shape)
 {
     return shape.GetDimNum() == 3 && shape.GetDim(0) > 0 && shape.GetDim(1) >= MIN_N &&
-           shape.GetDim(1) <= MAX_N && shape.GetDim(1) % 2 == 0 &&
+           shape.GetDim(1) <= MAX_N &&
            (shape.GetDim(2) == 128 || shape.GetDim(2) == 256);
 }
 
 bool IsValidGateShape(const gert::Shape& shape, int64_t t, int64_t n)
 {
-    if (shape.GetDimNum() == 2) {
-        return shape.GetDim(0) == t && shape.GetDim(1) == n;
-    }
-    if (shape.GetDimNum() == 3) {
-        return shape.GetDim(0) == t && shape.GetDim(1) == n && shape.GetDim(2) == 1;
-    }
-    return false;
+    return shape.GetDimNum() == 2 && shape.GetDim(0) == t && shape.GetDim(1) == n;
 }
 
 bool CheckShape(const gert::Shape& go, const gert::Shape& lo, const gert::Shape& gg, const gert::Shape& lg)
@@ -195,8 +189,8 @@ ge::graphStatus TilingForClaGateMxQuantWithDualAxis(gert::TilingContext* context
     const auto& lg = lgShapePtr->GetStorageShape();
     OP_CHECK_IF(!CheckShape(go, lo, gg, lg),
                 OP_LOGE(context->GetNodeName(),
-                        "Expected global_out/local_out [T,N,D], gate [T,N] or [T,N,1]; "
-                        "N in [4,128] even, D in {128,256}"),
+                        "Expected global_out/local_out [T,N,D], gate [T,N]; "
+                        "N in [1,128], D in {128,256}"),
                 return ge::GRAPH_FAILED);
 
     auto dtype = context->GetInputDesc(INPUT_GLOBAL_OUT)->GetDataType();

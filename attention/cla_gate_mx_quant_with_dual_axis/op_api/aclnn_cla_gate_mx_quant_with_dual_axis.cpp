@@ -31,7 +31,7 @@ extern "C" {
 #endif
 
 namespace {
-constexpr int64_t MIN_N = 4;
+constexpr int64_t MIN_N = 1;
 constexpr int64_t MAX_N = 128;
 constexpr int64_t ROW_BLOCK = 64;
 constexpr int64_t SCALE_LAST_DIM = 2;
@@ -94,10 +94,10 @@ static bool CheckShape(const aclTensor* globalOut, const aclTensor* localOut,
     auto ggShape = globalGateLogits->GetViewShape();
     auto lgShape = localGateLogits->GetViewShape();
     if (goShape.GetDimNum() != 3 || loShape.GetDimNum() != 3 ||
-        goShape.GetDim(1) < MIN_N || goShape.GetDim(1) > MAX_N || goShape.GetDim(1) % 2 != 0 ||
+        goShape.GetDim(1) < MIN_N || goShape.GetDim(1) > MAX_N ||
         (goShape.GetDim(2) != 128 && goShape.GetDim(2) != 256)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "global_out/local_out must be [T,N,D], N in [4,128] even, D in {128,256}.");
+                "global_out/local_out must be [T,N,D], N in [1,128], D in {128,256}.");
         return false;
     }
     if (loShape.GetDimNum() != goShape.GetDimNum()) {
@@ -111,17 +111,11 @@ static bool CheckShape(const aclTensor* globalOut, const aclTensor* localOut,
         }
     }
     auto gateValid = [&](const op::Shape& gate) {
-        if (gate.GetDimNum() == 2) {
-            return gate.GetDim(0) == goShape.GetDim(0) && gate.GetDim(1) == goShape.GetDim(1);
-        }
-        if (gate.GetDimNum() == 3) {
-            return gate.GetDim(0) == goShape.GetDim(0) && gate.GetDim(1) == goShape.GetDim(1) &&
-                   gate.GetDim(2) == 1;
-        }
-        return false;
+        return gate.GetDimNum() == 2 && gate.GetDim(0) == goShape.GetDim(0) &&
+               gate.GetDim(1) == goShape.GetDim(1);
     };
-    if (!gateValid(ggShape) || lgShape.GetDimNum() != ggShape.GetDimNum()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gate logits must be [T,N] or [T,N,1].");
+    if (!gateValid(ggShape) || !gateValid(lgShape)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gate logits must be [T,N].");
         return false;
     }
     for (size_t i = 0; i < ggShape.GetDimNum(); ++i) {

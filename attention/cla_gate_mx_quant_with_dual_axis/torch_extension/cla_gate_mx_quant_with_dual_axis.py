@@ -56,14 +56,13 @@ class ClaGateMxQuantWithDualAxisOpBuilder(OpBuilder):
                 lambda: f"local_out shape {tuple(local_out.shape)} must match global_out {tuple(global_out.shape)}",
             )
             t, n, d = global_out.shape
-            torch._check(n % 2 == 0, lambda: f"N must be even, got {n}")
-            torch._check(4 <= n <= 128, lambda: f"N must be in [4,128], got {n}")
+            torch._check(1 <= n <= 128, lambda: f"N must be in [1,128], got {n}")
             torch._check(d in (128, 256), lambda: f"D must be 128 or 256, got {d}")
 
             gate_dim = global_gate_logits.dim()
             torch._check(
-                gate_dim in (2, 3),
-                lambda: f"global_gate_logits must be 2D [T,N] or 3D [T,N,1], but got {gate_dim}D",
+                gate_dim == 2,
+                lambda: f"global_gate_logits must be 2D [T,N], but got {gate_dim}D",
             )
             torch._check(
                 local_gate_logits.dim() == gate_dim,
@@ -77,11 +76,6 @@ class ClaGateMxQuantWithDualAxisOpBuilder(OpBuilder):
                 global_gate_logits.shape[0] == t and global_gate_logits.shape[1] == n,
                 lambda: "gate logits shape must match [T,N]",
             )
-            if gate_dim == 3:
-                torch._check(
-                    global_gate_logits.shape[2] == 1,
-                    lambda: "3D gate logits must be [T,N,1]",
-                )
             torch._check(
                 dst_type in (35, 36, 40, 41),
                 lambda: f"torch extension supports dst_type 35/36(FP8) or 40/41(FP4), got {dst_type}",
