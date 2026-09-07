@@ -1,0 +1,32 @@
+- generic [active] [ref=f2e1]:
+  - generic [ref=f2e4]:
+    - generic [ref=f2e5]:
+      - generic [ref=f2e6]:
+        - generic [ref=f2e7]:
+          - img [ref=f2e8]
+          - generic [ref=f2e9]: 数字化协作平台
+        - generic [ref=f2e11]: 致力于打造开放易用、技术领先的AI算力新生态
+      - generic [ref=f2e12]:
+        - generic [ref=f2e13]: 欢迎使用
+        - generic [ref=f2e14]:
+          - img [ref=f2e15]
+          - generic [ref=f2e16]: 使用GitCode账号授权登录
+        - generic [ref=f2e17]:
+          - button "授权登录" [ref=f2e18] [cursor=pointer]:
+            - text: 
+            - generic [ref=f2e19]: 授权登录
+          - generic [ref=f2e20]:
+            - checkbox [ref=f2e23] [cursor=pointer]
+            - generic [ref=f2e25]: 我已阅读并同意CANN数字化协作平台
+            - generic [ref=f2e26]:
+              - link "隐私声明" [ref=f2e27] [cursor=pointer]:
+                - /url: javascript:void(0)
+              - link "使用条款" [ref=f2e28] [cursor=pointer]:
+                - /url: javascript:void(0)
+    - generic [ref=f2e29]:
+      - generic [ref=f2e30]: 友情链接昇腾社区 CANN GitCode组织
+      - generic [ref=f2e31]:
+        - text: 版权所有 © 2025-2026华为技术有限公司 保留一切权利 粤A2-20044005号
+        - img [ref=f2e32]
+        - text: 苏公网安备32011502013907号
+  - img

@@ -1,0 +1,343 @@
+- generic [active] [ref=f1e1]:
+  - heading "ops-transformer:基于 CANN 的 transformer 类大模型算子库项目" [level=1] [ref=f1e167]
+  - img "favicon" [ref=f1e2]
+  - generic [ref=f1e4]:
+    - generic [ref=f1e8]:
+      - generic [ref=f1e9]:
+        - img [ref=f1e11] [cursor=pointer]
+        - heading "CANN / ops-transformer" [level=2] [ref=f1e168]:
+          - link [ref=f1e169] [cursor=pointer]:
+            - /url: /cann
+          - generic [ref=f1e171]:
+            - generic [ref=f1e173]:
+              - link "CANN" [ref=f1e174] [cursor=pointer]:
+                - /url: /cann
+              - generic [ref=f1e175]: /
+            - generic [ref=f1e176]:
+              - link "ops-transformer" [ref=f1e177] [cursor=pointer]:
+                - /url: /cann/ops-transformer
+              - img [ref=f1e180] [cursor=pointer]
+      - generic [ref=f1e964]:
+        - img [ref=f1e967]
+        - generic:
+          - textbox
+      - generic [ref=f1e25]:
+        - button "登录" [ref=f1e26] [cursor=pointer]:
+          - text: 
+          - generic [ref=f1e27]: 登录
+        - button "注册" [ref=f1e28] [cursor=pointer]:
+          - text: 
+          - generic [ref=f1e29]: 注册
+    - generic [ref=f1e34]:
+      - generic [ref=f1e43]:
+        - generic [ref=f1e45]:
+          - generic [ref=f1e46]:
+            - link "代码" [ref=f1e181] [cursor=pointer]:
+              - /url: /cann/ops-transformer
+              - generic [ref=f1e183]:
+                - img [ref=f1e184]
+                - generic [ref=f1e186]: 代码
+            - link "Issues 236" [ref=f1e187] [cursor=pointer]:
+              - /url: /cann/ops-transformer/issues
+              - generic [ref=f1e49]:
+                - img [ref=f1e50]
+                - generic [ref=f1e52]: Issues
+                - generic [ref=f1e188]: "236"
+            - link "Pull Requests 389" [ref=f1e189] [cursor=pointer]:
+              - /url: /cann/ops-transformer/pulls
+              - generic [ref=f1e55]:
+                - img [ref=f1e56]
+                - generic [ref=f1e58]: Pull Requests
+                - generic [ref=f1e190]: "389"
+            - link "Actions" [ref=f1e191] [cursor=pointer]:
+              - /url: /cann/ops-transformer/actions
+              - generic [ref=f1e193]:
+                - img [ref=f1e194]
+                - generic [ref=f1e196]: Actions
+            - link "项目讨论" [ref=f1e59] [cursor=pointer]:
+              - /url: /cann/ops-transformer/discussions
+              - generic [ref=f1e61]:
+                - img [ref=f1e62]
+                - generic [ref=f1e64]: 项目讨论
+            - link "Wiki" [ref=f1e65] [cursor=pointer]:
+              - /url: /cann/ops-transformer/wiki
+              - generic [ref=f1e67]:
+                - img [ref=f1e68]
+                - generic [ref=f1e70]: Wiki
+            - link "分析" [ref=f1e71] [cursor=pointer]:
+              - /url: /cann/ops-transformer/analysis
+              - generic [ref=f1e73]:
+                - img [ref=f1e74]
+                - generic [ref=f1e76]: 分析
+          - img [ref=f1e199] [cursor=pointer]
+        - generic [ref=f1e79]:
+          - generic [ref=f1e80] [cursor=pointer]:
+            - generic [ref=f1e81]:
+              - img [ref=f1e83]
+              - generic [ref=f1e85]: Star
+              - generic [ref=f1e87]: "1137"
+            - img [ref=f1e88]
+          - generic [ref=f1e201] [cursor=pointer]:
+            - generic [ref=f1e202]:
+              - img [ref=f1e203]
+              - generic [ref=f1e205]: Fork
+            - generic [ref=f1e207]: "2746"
+      - generic [ref=f1e96]:
+        - generic [ref=f1e209]:
+          - button "PR-pipeline_ops-transformer" [ref=f1e210] [cursor=pointer]:
+            - text: 
+            - generic [ref=f1e212]:
+              - img [ref=f1e213]
+              - text: PR-pipeline_ops-transformer
+          - generic [ref=f1e215]:
+            - img [ref=f1e216]
+            - generic [ref=f1e218]: PR-pipeline_ops-transformer
+            - generic [ref=f1e219]: "#6321"
+        - generic [ref=f1e105]:
+          - list [ref=f1e220]:
+            - listitem [ref=f1e221]:
+              - link "概览" [ref=f1e222] [cursor=pointer]:
+                - /url: /cann/ops-transformer/actions/runs/c809c7a8b70e49c2964e392b02812a11
+                - img [ref=f1e223]
+                - generic [ref=f1e225]: 概览
+            - generic [ref=f1e227]:
+              - generic [ref=f1e228]: 所有 Jobs
+              - img [ref=f1e230] [cursor=pointer]
+            - list [ref=f1e233]:
+              - listitem [ref=f1e235] [cursor=pointer]:
+                - link "Test_image" [ref=f1e237]:
+                  - /url: /cann/ops-transformer/actions/runs/c809c7a8b70e49c2964e392b02812a11/job/0f8d1ee08f514de984dd6b058efe0d9d
+                  - img [ref=f1e238]
+                  - generic [ref=f1e240]: Test_image
+              - list [ref=f1e241]:
+                - generic [ref=f1e242] [cursor=pointer]:
+                  - img [ref=f1e244]
+                  - generic [ref=f1e246]: Test_PreBuild
+                  - img [ref=f1e247]
+              - list [ref=f1e250]:
+                - generic [ref=f1e251] [cursor=pointer]:
+                  - img [ref=f1e253]
+                  - generic [ref=f1e255]: Compile_x86
+                  - img [ref=f1e256]
+              - list [ref=f1e259]:
+                - generic [ref=f1e260] [cursor=pointer]:
+                  - img [ref=f1e262]
+                  - generic [ref=f1e264]: Compile_arm
+                  - img [ref=f1e265]
+              - list [ref=f1e268]:
+                - generic [ref=f1e269] [cursor=pointer]:
+                  - img [ref=f1e271]
+                  - generic [ref=f1e273]: Compile_experimental_x86
+                  - img [ref=f1e274]
+              - list [ref=f1e277]:
+                - generic [ref=f1e278] [cursor=pointer]:
+                  - img [ref=f1e280]
+                  - generic [ref=f1e282]: Compile_experimental_arm
+                  - img [ref=f1e283]
+              - list [ref=f1e286]:
+                - generic [ref=f1e287] [cursor=pointer]:
+                  - img [ref=f1e289]
+                  - generic [ref=f1e291]: Compile_pre
+                  - img [ref=f1e292]
+              - list [ref=f1e295]:
+                - generic [ref=f1e296] [cursor=pointer]:
+                  - img [ref=f1e298]
+                  - generic [ref=f1e300]: Compile_x86_ubuntu24
+                  - img [ref=f1e301]
+              - list [ref=f1e304]:
+                - generic [ref=f1e305] [cursor=pointer]:
+                  - img [ref=f1e307]
+                  - generic [ref=f1e309]: Compile_arm_ubuntu24
+                  - img [ref=f1e310]
+              - list [ref=f1e313]:
+                - generic [ref=f1e314] [cursor=pointer]:
+                  - img [ref=f1e316]
+                  - generic [ref=f1e318]: Compile_experimental_x86_ubuntu24
+                  - img [ref=f1e319]
+              - list [ref=f1e322]:
+                - generic [ref=f1e323] [cursor=pointer]:
+                  - img [ref=f1e325]
+                  - generic [ref=f1e327]: Compile_experimental_arm_ubuntu24
+                  - img [ref=f1e328]
+              - list [ref=f1e331]:
+                - generic [ref=f1e332] [cursor=pointer]:
+                  - img [ref=f1e334]
+                  - generic [ref=f1e336]: Compile_monitor_910b
+                  - img [ref=f1e337]
+              - list [ref=f1e340]:
+                - generic [ref=f1e341] [cursor=pointer]:
+                  - img [ref=f1e343]
+                  - generic [ref=f1e345]: Compile_monitor_910c
+                  - img [ref=f1e346]
+              - list [ref=f1e349]:
+                - generic [ref=f1e350] [cursor=pointer]:
+                  - img [ref=f1e352]
+                  - generic [ref=f1e354]: Compile_monitor_950
+                  - img [ref=f1e355]
+              - list [ref=f1e358]:
+                - generic [ref=f1e359] [cursor=pointer]:
+                  - img [ref=f1e361]
+                  - generic [ref=f1e363]: Compile_experimental_950_x86
+                  - img [ref=f1e364]
+              - list [ref=f1e367]:
+                - generic [ref=f1e368] [cursor=pointer]:
+                  - img [ref=f1e370]
+                  - generic [ref=f1e372]: Compile_experimental_950_arm
+                  - img [ref=f1e373]
+              - list [ref=f1e376]:
+                - generic [ref=f1e377] [cursor=pointer]:
+                  - img [ref=f1e379]
+                  - generic [ref=f1e381]: Compile_experimental_950_x86_ubuntu24
+                  - img [ref=f1e382]
+              - list [ref=f1e385]:
+                - generic [ref=f1e386] [cursor=pointer]:
+                  - img [ref=f1e388]
+                  - generic [ref=f1e390]: Compile_experimental_950_arm_ubuntu24
+                  - img [ref=f1e391]
+              - list [ref=f1e394]:
+                - generic [ref=f1e395] [cursor=pointer]:
+                  - img [ref=f1e397]
+                  - generic [ref=f1e399]: Compile_kirinx90
+                  - img [ref=f1e400]
+              - list [ref=f1e403]:
+                - generic [ref=f1e404] [cursor=pointer]:
+                  - img [ref=f1e406]
+                  - generic [ref=f1e408]: Compile_kirinx90_ubuntu24
+                  - img [ref=f1e409]
+              - list [ref=f1e412]:
+                - generic [ref=f1e413] [cursor=pointer]:
+                  - img [ref=f1e415]
+                  - generic [ref=f1e417]: Compile_kirin9030_ubuntu24
+                  - img [ref=f1e418]
+              - list [ref=f1e421]:
+                - generic [ref=f1e422] [cursor=pointer]:
+                  - img [ref=f1e424]
+                  - generic [ref=f1e426]: CodeCheck
+                  - img [ref=f1e427]
+                - generic [ref=f1e1070]:
+                  - listitem [ref=f1e970] [cursor=pointer]:
+                    - link "Antipoison" [ref=f1e972]:
+                      - /url: /cann/ops-transformer/actions/runs/c809c7a8b70e49c2964e392b02812a11/job/44e59b61eeec4a669edef48dc034a78a
+                      - img [ref=f1e973]
+                      - generic [ref=f1e975]: Antipoison
+                  - listitem [ref=f1e977] [cursor=pointer]:
+                    - link "CodeCheck_style" [ref=f1e979]:
+                      - /url: /cann/ops-transformer/actions/runs/c809c7a8b70e49c2964e392b02812a11/job/1ca901ebd9a345f6aec1c7cce78fda25
+                      - img [ref=f1e980]
+                      - generic [ref=f1e982]: CodeCheck_style
+                  - listitem [ref=f1e984] [cursor=pointer]:
+                    - link "SCA" [ref=f1e986]:
+                      - /url: /cann/ops-transformer/actions/runs/c809c7a8b70e49c2964e392b02812a11/job/1a7fa8bce6fb42d68a96932dd836b7c5
+                      - img [ref=f1e987]
+                      - generic [ref=f1e989]: SCA
+                  - listitem [ref=f1e991] [cursor=pointer]:
+                    - link "CodeCheck_check-pr" [ref=f1e993]:
+                      - /url: /cann/ops-transformer/actions/runs/c809c7a8b70e49c2964e392b02812a11/job/3ca3d77d25124b17b6f65d9c3e388082
+                      - img [ref=f1e994]
+                      - generic [ref=f1e996]: CodeCheck_check-pr
+                  - listitem [ref=f1e998] [cursor=pointer]:
+                    - link "CodeCheck" [ref=f1e1000]:
+                      - /url: /cann/ops-transformer/actions/runs/c809c7a8b70e49c2964e392b02812a11/job/cf94da4038274ec4a249f571d191ff02
+                      - img [ref=f1e1001]
+                      - generic [ref=f1e1003]: CodeCheck
+                  - listitem [ref=f1e1005] [cursor=pointer]:
+                    - link "CodeCheck_precommit" [ref=f1e1007]:
+                      - /url: /cann/ops-transformer/actions/runs/c809c7a8b70e49c2964e392b02812a11/job/0c49417fac56422ab37c46cd2d522b48
+                      - img [ref=f1e1008]
+                      - generic [ref=f1e1010]: CodeCheck_precommit
+              - list [ref=f1e430]:
+                - generic [ref=f1e431] [cursor=pointer]:
+                  - img [ref=f1e433]
+                  - generic [ref=f1e435]: CodeCheck_staticcheck_md_check
+                  - img [ref=f1e436]
+              - listitem [ref=f1e440] [cursor=pointer]:
+                - link "API_Check" [ref=f1e442]:
+                  - /url: /cann/ops-transformer/actions/runs/c809c7a8b70e49c2964e392b02812a11/job/02d73e4a7bd944159b40d35ddbde4096
+                  - img [ref=f1e443]
+                  - generic [ref=f1e445]: API_Check
+              - list [ref=f1e446]:
+                - generic [ref=f1e447] [cursor=pointer]:
+                  - img [ref=f1e449]
+                  - generic [ref=f1e451]: UT_ops-transformer
+                  - img [ref=f1e452]
+              - listitem [ref=f1e456] [cursor=pointer]:
+                - link "PreSmoke_A2" [ref=f1e458]:
+                  - /url: /cann/ops-transformer/actions/runs/c809c7a8b70e49c2964e392b02812a11/job/83d87dbb583a45d09a1f61630253f0e0
+                  - img [ref=f1e459]
+                  - generic [ref=f1e461]: PreSmoke_A2
+              - listitem [ref=f1e463] [cursor=pointer]:
+                - link "PreSmoke_harmony-infer-chs-transformer" [ref=f1e465]:
+                  - /url: /cann/ops-transformer/actions/runs/c809c7a8b70e49c2964e392b02812a11/job/e17690a529274800a23f9bc9e8f56493
+                  - img [ref=f1e466]
+                  - generic [ref=f1e468]: PreSmoke_harmony-infer-chs-transformer
+              - listitem [ref=f1e470] [cursor=pointer]:
+                - link "PreSmoke_harmony-infer-cpro-transformer" [ref=f1e472]:
+                  - /url: /cann/ops-transformer/actions/runs/c809c7a8b70e49c2964e392b02812a11/job/7bef1dc4a0964c33bc311991a12f3817
+                  - img [ref=f1e473]
+                  - generic [ref=f1e475]: PreSmoke_harmony-infer-cpro-transformer
+              - listitem [ref=f1e477] [cursor=pointer]:
+                - link "UT_report" [ref=f1e479]:
+                  - /url: /cann/ops-transformer/actions/runs/c809c7a8b70e49c2964e392b02812a11/job/1f545dce8fc145a0a6f6c008d6c50bc6
+                  - img [ref=f1e480]
+                  - generic [ref=f1e482]: UT_report
+              - list [ref=f1e483]:
+                - generic [ref=f1e484] [cursor=pointer]:
+                  - img [ref=f1e486]
+                  - generic [ref=f1e488]: Test_post
+                  - img [ref=f1e489]
+            - generic [ref=f1e493]: 运行详情
+            - listitem [ref=f1e494]:
+              - link "工作流文件" [ref=f1e495] [cursor=pointer]:
+                - /url: /cann/ops-transformer/actions/runs/c809c7a8b70e49c2964e392b02812a11/workflow
+                - img [ref=f1e496]
+                - generic [ref=f1e498]: 工作流文件
+          - generic [ref=f1e499]:
+            - generic [ref=f1e1011]:
+              - img [ref=f1e1012]
+              - generic [ref=f1e1014]: 步骤precommit执行失败，错误信息：点击任务查看详情
+            - generic [ref=f1e1015]:
+              - generic [ref=f1e1016]:
+                - generic [ref=f1e1017]:
+                  - generic [ref=f1e1018]: CodeCheck/CodeCheck_precommit
+                  - generic [ref=f1e1019]:
+                    - generic [ref=f1e1020]: 2026.09.08 17:13:58
+                    - generic [ref=f1e1021]: 失败
+                    - generic [ref=f1e1022]: 排队时长 22s | 运行时长 37s | 总耗时 59s
+                - button "登录后可查看日志" [ref=f1e1023] [cursor=pointer]:
+                  - text: 
+                  - generic [ref=f1e1024]: 登录后可查看日志
+              - generic [ref=f1e1025]:
+                - generic [ref=f1e1027]:
+                  - generic [ref=f1e1028]:
+                    - img [ref=f1e1029]
+                    - generic [ref=f1e1031]: 初始化步骤
+                  - generic [ref=f1e1032]: 1s
+                - generic [ref=f1e1034]:
+                  - generic [ref=f1e1035]:
+                    - img [ref=f1e1036]
+                    - generic [ref=f1e1038]: Checkout
+                  - generic [ref=f1e1039]: 7s
+                - generic [ref=f1e1041]:
+                  - generic [ref=f1e1042]:
+                    - img [ref=f1e1043]
+                    - generic [ref=f1e1045]: download
+                  - generic [ref=f1e1046]: 1s
+                - generic [ref=f1e1047]:
+                  - generic [ref=f1e1048]:
+                    - generic [ref=f1e1049]:
+                      - img [ref=f1e1050]
+                      - generic [ref=f1e1052]: precommit
+                    - generic [ref=f1e1053]: 25s
+                  - generic [ref=f1e1055]: 展开后加载日志
+                - generic [ref=f1e1057]:
+                  - generic [ref=f1e1058]:
+                    - img [ref=f1e1059]
+                    - generic [ref=f1e1061]: upload
+                  - generic [ref=f1e1062]: 2s
+                - generic [ref=f1e1064]:
+                  - generic [ref=f1e1065]:
+                    - img [ref=f1e1066]
+                    - generic [ref=f1e1068]: 后处理步骤
+                  - generic [ref=f1e1069]: "--"
+    - generic "展开" [ref=f1e959] [cursor=pointer]:
+      - img [ref=f1e960]

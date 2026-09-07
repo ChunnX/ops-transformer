@@ -1,0 +1,111 @@
+- generic [active] [ref=e1]:
+  - img "favicon" [ref=e2]
+  - generic [ref=e4]:
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - img [ref=e11] [cursor=pointer]
+        - heading "O CANN / ops-transformer" [level=2] [ref=e14]:
+          - link "O" [ref=e15] [cursor=pointer]:
+            - /url: /cann
+            - generic [ref=e17]: O
+          - generic [ref=e18]:
+            - generic [ref=e20]:
+              - link "CANN" [ref=e21] [cursor=pointer]:
+                - /url: /cann
+              - generic [ref=e22]: /
+            - link "ops-transformer" [ref=e24] [cursor=pointer]:
+              - /url: /cann/ops-transformer
+      - generic [ref=e28]:
+        - img [ref=e31]
+        - generic:
+          - textbox
+      - generic [ref=e33]:
+        - button "登录" [ref=e34] [cursor=pointer]:
+          - text: 
+          - generic [ref=e35]: 登录
+        - button "注册" [ref=e36] [cursor=pointer]:
+          - text: 
+          - generic [ref=e37]: 注册
+    - generic [ref=e38]:
+      - generic [ref=e47]:
+        - generic [ref=e50]:
+          - link "代码" [ref=e51] [cursor=pointer]:
+            - /url: /cann/ops-transformer
+            - generic [ref=e53]:
+              - img [ref=e54]
+              - generic [ref=e56]: 代码
+          - link "Issues" [ref=e57] [cursor=pointer]:
+            - /url: /cann/ops-transformer/issues
+            - generic [ref=e59]:
+              - img [ref=e60]
+              - generic [ref=e62]: Issues
+          - link "Pull Requests" [ref=e63] [cursor=pointer]:
+            - /url: /cann/ops-transformer/pulls
+            - generic [ref=e65]:
+              - img [ref=e66]
+              - generic [ref=e68]: Pull Requests
+          - link "Actions" [ref=e69] [cursor=pointer]:
+            - /url: /cann/ops-transformer/actions
+            - generic [ref=e71]:
+              - img [ref=e72]
+              - generic [ref=e74]: Actions
+          - link "项目讨论" [ref=e75] [cursor=pointer]:
+            - /url: /cann/ops-transformer/discussions
+            - generic [ref=e77]:
+              - img [ref=e78]
+              - generic [ref=e80]: 项目讨论
+          - link "Wiki" [ref=e81] [cursor=pointer]:
+            - /url: /cann/ops-transformer/wiki
+            - generic [ref=e83]:
+              - img [ref=e84]
+              - generic [ref=e86]: Wiki
+          - link "分析" [ref=e87] [cursor=pointer]:
+            - /url: /cann/ops-transformer/analysis
+            - generic [ref=e89]:
+              - img [ref=e90]
+              - generic [ref=e92]: 分析
+        - generic [ref=e96] [cursor=pointer]:
+          - generic [ref=e97]:
+            - img [ref=e99]
+            - generic [ref=e101]: Star
+            - generic [ref=e103]: "1135"
+          - img [ref=e104]
+      - generic [ref=e118]:
+        - tablist [ref=e120]:
+          - tab "讨论 0" [expanded] [ref=e122] [cursor=pointer]:
+            - generic [ref=e123]:
+              - img [ref=e124]
+              - generic [ref=e126]:
+                - generic [ref=e127]: 讨论
+                - generic [ref=e128]: "0"
+          - tab "提交 0" [ref=e130] [cursor=pointer]:
+            - generic [ref=e131]:
+              - img [ref=e132]
+              - generic [ref=e134]:
+                - generic [ref=e135]: 提交
+                - generic [ref=e136]: "0"
+          - tab "检查 0" [ref=e138] [cursor=pointer]:
+            - generic [ref=e139]:
+              - img [ref=e140]
+              - generic [ref=e142]:
+                - generic [ref=e143]: 检查
+                - generic [ref=e144]: "0"
+          - tab "文件改动 0" [ref=e146] [cursor=pointer]:
+            - generic [ref=e147]:
+              - img [ref=e148]
+              - generic [ref=e150]:
+                - generic [ref=e151]: 文件改动
+                - generic [ref=e152]: "0"
+        - generic [ref=e154]:
+          - generic [ref=e155] [cursor=pointer]: 克隆/下载
+          - generic [ref=e156] [cursor=pointer]:
+            - img [ref=e157]
+            - generic [ref=e159]: "0"
+    - generic:
+      - generic:
+        - generic [ref=e199] [cursor=pointer]: 邀请
+        - generic [ref=e202]:
+          - generic [ref=e205]:
+            - generic [ref=e206]: 客
+            - generic [ref=e207]: 服
+          - img [ref=e215]

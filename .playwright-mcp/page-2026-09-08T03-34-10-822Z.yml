@@ -1,0 +1,121 @@
+- generic [active] [ref=e1]:
+  - heading "ops-transformer:基于 CANN 的 transformer 类大模型算子库项目" [level=1] [ref=e2]
+  - img "favicon" [ref=e3]
+  - generic [ref=e5]:
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - img [ref=e12] [cursor=pointer]
+        - heading "CANN / ops-transformer" [level=2] [ref=e15]:
+          - link [ref=e16] [cursor=pointer]:
+            - /url: /cann
+          - generic [ref=e18]:
+            - generic [ref=e20]:
+              - link "CANN" [ref=e21] [cursor=pointer]:
+                - /url: /cann
+              - generic [ref=e22]: /
+            - generic [ref=e23]:
+              - link "ops-transformer" [ref=e24] [cursor=pointer]:
+                - /url: /cann/ops-transformer
+              - img [ref=e27] [cursor=pointer]
+      - generic [ref=e31]:
+        - img [ref=e34]
+        - generic:
+          - textbox
+      - generic [ref=e36]:
+        - button "登录" [ref=e37] [cursor=pointer]:
+          - text: 
+          - generic [ref=e38]: 登录
+        - button "注册" [ref=e39] [cursor=pointer]:
+          - text: 
+          - generic [ref=e40]: 注册
+    - generic [ref=e41]:
+      - generic [ref=e50]:
+        - generic [ref=e53]:
+          - link "代码" [ref=e54] [cursor=pointer]:
+            - /url: /cann/ops-transformer
+            - generic [ref=e56]:
+              - img [ref=e57]
+              - generic [ref=e59]: 代码
+          - link "Issues 233" [ref=e60] [cursor=pointer]:
+            - /url: /cann/ops-transformer/issues
+            - generic [ref=e62]:
+              - img [ref=e63]
+              - generic [ref=e65]: Issues
+              - generic [ref=e66]: "233"
+          - link "Pull Requests 394" [ref=e67] [cursor=pointer]:
+            - /url: /cann/ops-transformer/pulls
+            - generic [ref=e69]:
+              - img [ref=e70]
+              - generic [ref=e72]: Pull Requests
+              - generic [ref=e73]: "394"
+          - link "Actions" [ref=e74] [cursor=pointer]:
+            - /url: /cann/ops-transformer/actions
+            - generic [ref=e76]:
+              - img [ref=e77]
+              - generic [ref=e79]: Actions
+          - link "项目讨论" [ref=e80] [cursor=pointer]:
+            - /url: /cann/ops-transformer/discussions
+            - generic [ref=e82]:
+              - img [ref=e83]
+              - generic [ref=e85]: 项目讨论
+          - link "Wiki" [ref=e86] [cursor=pointer]:
+            - /url: /cann/ops-transformer/wiki
+            - generic [ref=e88]:
+              - img [ref=e89]
+              - generic [ref=e91]: Wiki
+          - link "分析" [ref=e92] [cursor=pointer]:
+            - /url: /cann/ops-transformer/analysis
+            - generic [ref=e94]:
+              - img [ref=e95]
+              - generic [ref=e97]: 分析
+        - generic [ref=e100]:
+          - generic [ref=e101] [cursor=pointer]:
+            - generic [ref=e102]:
+              - img [ref=e104]
+              - generic [ref=e106]: Star
+              - generic [ref=e108]: "1135"
+            - img [ref=e109]
+          - generic [ref=e111] [cursor=pointer]:
+            - generic [ref=e112]:
+              - img [ref=e113]
+              - generic [ref=e115]: Fork
+            - generic [ref=e117]: "2750"
+      - generic [ref=e130]:
+        - tablist [ref=e132]:
+          - tab "讨论 27" [expanded] [ref=e134] [cursor=pointer]:
+            - generic [ref=e135]:
+              - img [ref=e136]
+              - generic [ref=e138]:
+                - generic [ref=e139]: 讨论
+                - generic [ref=e140]: "27"
+          - tab "提交 1" [ref=e142] [cursor=pointer]:
+            - generic [ref=e143]:
+              - img [ref=e144]
+              - generic [ref=e146]:
+                - generic [ref=e147]: 提交
+                - generic [ref=e148]: "1"
+          - tab "检查 0" [ref=e150] [cursor=pointer]:
+            - generic [ref=e151]:
+              - img [ref=e152]
+              - generic [ref=e154]:
+                - generic [ref=e155]: 检查
+                - generic [ref=e156]: "0"
+          - tab "文件改动 32" [ref=e158] [cursor=pointer]:
+            - generic [ref=e159]:
+              - img [ref=e160]
+              - generic [ref=e162]:
+                - generic [ref=e163]: 文件改动
+                - generic [ref=e164]: "32"
+        - generic [ref=e166]:
+          - generic [ref=e167] [cursor=pointer]: 克隆/下载
+          - generic [ref=e168] [cursor=pointer]:
+            - img [ref=e169]
+            - generic [ref=e171]: "0"
+    - generic:
+      - generic:
+        - generic [ref=e211] [cursor=pointer]: 邀请
+        - generic [ref=e214]:
+          - generic [ref=e217]:
+            - generic [ref=e218]: 客
+            - generic [ref=e219]: 服
+          - img [ref=e227]

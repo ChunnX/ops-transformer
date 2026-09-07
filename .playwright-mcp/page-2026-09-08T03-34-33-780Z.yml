@@ -1,0 +1,126 @@
+- generic [active] [ref=f1e1]:
+  - heading "ops-transformer:基于 CANN 的 transformer 类大模型算子库项目" [level=1] [ref=f1e2]
+  - img "favicon" [ref=f1e3]
+  - generic [ref=f1e5]:
+    - generic [ref=f1e9]:
+      - generic [ref=f1e10]:
+        - img [ref=f1e12] [cursor=pointer]
+        - heading "CANN / ops-transformer" [level=2] [ref=f1e15]:
+          - link [ref=f1e16] [cursor=pointer]:
+            - /url: /cann
+          - generic [ref=f1e18]:
+            - generic [ref=f1e20]:
+              - link "CANN" [ref=f1e21] [cursor=pointer]:
+                - /url: /cann
+              - generic [ref=f1e22]: /
+            - generic [ref=f1e23]:
+              - link "ops-transformer" [ref=f1e24] [cursor=pointer]:
+                - /url: /cann/ops-transformer
+              - img [ref=f1e27] [cursor=pointer]
+      - generic [ref=f1e31]:
+        - img [ref=f1e34]
+        - generic:
+          - textbox
+      - generic [ref=f1e36]:
+        - button "登录" [ref=f1e37] [cursor=pointer]:
+          - text: 
+          - generic [ref=f1e38]: 登录
+        - button "注册" [ref=f1e39] [cursor=pointer]:
+          - text: 
+          - generic [ref=f1e40]: 注册
+    - generic [ref=f1e41]:
+      - generic [ref=f1e50]:
+        - generic [ref=f1e53]:
+          - link "代码" [ref=f1e54] [cursor=pointer]:
+            - /url: /cann/ops-transformer
+            - generic [ref=f1e56]:
+              - img [ref=f1e57]
+              - generic [ref=f1e59]: 代码
+          - link "Issues 233" [ref=f1e60] [cursor=pointer]:
+            - /url: /cann/ops-transformer/issues
+            - generic [ref=f1e62]:
+              - img [ref=f1e63]
+              - generic [ref=f1e65]: Issues
+              - generic [ref=f1e66]: "233"
+          - link "Pull Requests 394" [ref=f1e67] [cursor=pointer]:
+            - /url: /cann/ops-transformer/pulls
+            - generic [ref=f1e69]:
+              - img [ref=f1e70]
+              - generic [ref=f1e72]: Pull Requests
+              - generic [ref=f1e73]: "394"
+          - link "Actions" [ref=f1e74] [cursor=pointer]:
+            - /url: /cann/ops-transformer/actions
+            - generic [ref=f1e76]:
+              - img [ref=f1e77]
+              - generic [ref=f1e79]: Actions
+          - link "项目讨论" [ref=f1e80] [cursor=pointer]:
+            - /url: /cann/ops-transformer/discussions
+            - generic [ref=f1e82]:
+              - img [ref=f1e83]
+              - generic [ref=f1e85]: 项目讨论
+          - link "Wiki" [ref=f1e86] [cursor=pointer]:
+            - /url: /cann/ops-transformer/wiki
+            - generic [ref=f1e88]:
+              - img [ref=f1e89]
+              - generic [ref=f1e91]: Wiki
+          - link "分析" [ref=f1e92] [cursor=pointer]:
+            - /url: /cann/ops-transformer/analysis
+            - generic [ref=f1e94]:
+              - img [ref=f1e95]
+              - generic [ref=f1e97]: 分析
+        - generic [ref=f1e100]:
+          - generic [ref=f1e101] [cursor=pointer]:
+            - generic [ref=f1e102]:
+              - img [ref=f1e104]
+              - generic [ref=f1e106]: Star
+              - generic [ref=f1e108]: "1135"
+            - img [ref=f1e109]
+          - generic [ref=f1e111] [cursor=pointer]:
+            - generic [ref=f1e112]:
+              - img [ref=f1e113]
+              - generic [ref=f1e115]: Fork
+            - generic [ref=f1e117]: "2750"
+      - generic [ref=f1e123]:
+        - generic [ref=f1e125]:
+          - generic [ref=f1e126]: 流水线
+          - generic [ref=f1e128] [cursor=pointer]: 全部流水线
+        - generic [ref=f1e131]:
+          - generic [ref=f1e132]:
+            - generic [ref=f1e133]:
+              - generic [ref=f1e134]: 全部流水线
+              - generic [ref=f1e135]: 显示所有流水线的运行结果
+            - generic [ref=f1e139]:
+              - img [ref=f1e142]
+              - textbox "请输入流水线名称进行搜索" [ref=f1e144]
+          - generic [ref=f1e147]:
+            - generic [ref=f1e149] [cursor=pointer]:
+              - generic [ref=f1e150]: 全部
+              - generic [ref=f1e151]: "0"
+            - generic [ref=f1e153]:
+              - button "触发事件" [ref=f1e154] [cursor=pointer]:
+                - text: 
+                - generic [ref=f1e156]:
+                  - generic "触发事件" [ref=f1e157]
+                  - img [ref=f1e158]
+              - button "状态" [ref=f1e160] [cursor=pointer]:
+                - text: 
+                - generic [ref=f1e162]:
+                  - generic "状态" [ref=f1e163]
+                  - img [ref=f1e164]
+              - button "分支" [ref=f1e166] [cursor=pointer]:
+                - text: 
+                - generic [ref=f1e168]:
+                  - generic "分支" [ref=f1e169]
+                  - img [ref=f1e170]
+              - button "触发人" [ref=f1e172] [cursor=pointer]:
+                - text: 
+                - generic [ref=f1e174]:
+                  - generic "触发人" [ref=f1e175]
+                  - img [ref=f1e176]
+              - button "PR" [ref=f1e178] [cursor=pointer]:
+                - text: 
+                - generic [ref=f1e180]:
+                  - generic "PR" [ref=f1e181]
+                  - img [ref=f1e182]
+    - generic "展开" [ref=f1e192] [cursor=pointer]:
+      - img [ref=f1e193]
