@@ -26,8 +26,8 @@ at::Tensor GenericBlockSparseAttentionMetadata(
 
     ACLNN_CMD(aclnnGenericBlockSparseAttentionMetadata, sparse_block_idx, sparse_block_count, cu_seqlens_q,
               cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv, num_heads_q, num_heads_kv, head_dim,
-              block_shape, is_packed_gqa_flag, layout_q, layout_kv, mask_mode, quant_mode, softmax_precision,
-              win_left, win_right, output);
+              block_shape, is_packed_gqa_flag, layout_q, layout_kv, mask_mode, quant_mode, softmax_precision, win_left,
+              win_right, output);
     return output;
 }
 
