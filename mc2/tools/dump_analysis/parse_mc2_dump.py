@@ -18,6 +18,7 @@ file; no combined text report is generated.
 import argparse
 import importlib
 import json
+import locale
 import os
 from pathlib import Path
 import re
@@ -523,13 +524,22 @@ def run_backend(profile, kind, path, aic_core_num):
         backend_command(profile, kind, path, aic_core_num),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
         env=child_env,
         check=False,
     )
-    return process.returncode, process.stdout.rstrip(), process.stderr.rstrip()
+    return process.returncode, decode_child_output(process.stdout), decode_child_output(process.stderr)
+
+
+def decode_child_output(data):
+    """Decode backend output on both UTF-8 Linux and locale-encoded Windows."""
+    if not data:
+        return ""
+    for encoding in ("utf-8", locale.getpreferredencoding(False)):
+        try:
+            return data.decode(encoding).rstrip()
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return data.decode("utf-8", errors="replace").rstrip()
 
 
 def run_backend_human(profile, kind, path, aic_core_num):
@@ -543,13 +553,10 @@ def run_backend_human(profile, kind, path, aic_core_num):
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
         env=child_env,
         check=False,
     )
-    return process.returncode, process.stdout.rstrip(), process.stderr.rstrip()
+    return process.returncode, decode_child_output(process.stdout), decode_child_output(process.stderr)
 
 
 def emit(lines, value=""):

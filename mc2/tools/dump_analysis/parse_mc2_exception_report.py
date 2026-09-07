@@ -75,6 +75,16 @@ DATA_TYPE_NAMES = {
     39: "float4_e2m1", 40: "float4_e1m2",
 }
 
+SIDECAR_DTYPE_ALIASES = {
+    "dtfloat": "float32", "dtfloat16": "float16", "dtint8": "int8",
+    "dtuint8": "uint8", "dtint16": "int16", "dtuint16": "uint16",
+    "dtint32": "int32", "dtint64": "int64", "dtuint32": "uint32",
+    "dtuint64": "uint64", "dtbool": "bool", "dtdouble": "float64",
+    "dtbf16": "bfloat16", "dtfloat8e5m2": "float8_e5m2",
+    "dtfloat8e4m3fn": "float8_e4m3fn", "dtfloat8e8m0": "float8_e8m0",
+    "dtfloat4e2m1": "float4_e2m1",
+}
+
 FORMAT_NAMES = {
     0: "NCHW", 1: "NHWC", 2: "ND", 3: "NC1HWC0", 4: "FRACTAL_Z",
     29: "FRACTAL_NZ", 30: "NCDHW", 34: "CN", 35: "NC", 42: "NULL",
@@ -404,6 +414,8 @@ def dtype_spec(data_type, role, index, sidecar_dtypes):
     logical_dtype = DATA_TYPE_NAMES.get(data_type, f"dtype_{data_type}")
     if logical_dtype == "undefined":
         logical_dtype = sidecar_dtypes.get(role, {}).get(index, logical_dtype)
+    normalized = normalize_dtype(str(logical_dtype))
+    logical_dtype = SIDECAR_DTYPE_ALIASES.get(normalized, logical_dtype)
     normalized = normalize_dtype(str(logical_dtype))
     spec = DTYPE_SPECS.get(normalized)
     if spec is None:

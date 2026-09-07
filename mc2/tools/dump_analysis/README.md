@@ -238,7 +238,7 @@ python3 parse_mc2_dump.py MatmulReduceScatterV2 /path/to/data-dump
 | `xn_addr_info_`、`cke_addr_info_` | 按小端 `uint64` 解析地址，导出 shape 为 `(行数, 64)` 的 NPY |
 | `comm_context_` | AIV + URMA 的通信上下文 |
 | `peermem_window_`、`peermem_segN_typeM_` | URMA peermem 布局、段类型、大小和数据预览 |
-| `exception_info.*` | 调用 CANN `msaicerr.py` 解包，并将 input/output/workspace 张量导出为 NPY |
+| `exception_info.*` | 仓内 Python 直接解析 DumpData protobuf 头和 payload，按 input/output/buffer/workspace 分别导出 NPY |
 
 结果输出到 `<dump根目录>/mc2_dump_analysis/<标准算子名>/`，保留原 rank 子目录，并让每个输入文件分别生成同名 NPY，不再生成统一的 `analysis.txt`。Tiling、Args 和 `type12/RUNTIME_INFO` 为对象型 NPY；XN/CKE 为二维 `uint64`。MMRS 的 `type8/MM_RESULT` 和 `type9/RECV_BUF` 会从同次 TilingData 自动取得输出 dtype、`rankM`、`rankN` 并保存为二维 NPY；BF16 用 `uint16` 保留原始位模式。无法可靠确定类型的 Workspace/Peermem 仍按完整 `uint8` 保存。
 
@@ -246,38 +246,28 @@ python3 parse_mc2_dump.py MatmulReduceScatterV2 /path/to/data-dump
 
 ```text
 mc2_dump_analysis/<标准算子名>/exception/<exception_info文件名>/
-├── msaicerr/    # msaicerr.py 解包结果
-└── npy/         # input/output/workspace 的 NPY 和 manifest.json
+├── input.N.<dtype>.npy
+├── output.N.<dtype>.npy
+├── workspace.N.raw_bytes.npy
+└── exception_metadata.npy
 ```
 
-`*.o`、`*_host.o` 和算子 `*.json` 是 `msaicerr.py` 解包异常文件时使用的配套文件，不单独生成解析报告。NPY 的真实逻辑 shape 需要结合用例和 TilingData；当异常文件没有携带 dtype 时，脚本使用 `uint8` 无损保存原始位模式，并在 `manifest.json` 中标记为 `raw_bytes`，不会猜成 BF16/FP16。
+异常文件不再依赖 `*.o`、`*_host.o` 或 CANN 解析库。算子 `*.json` 仅在异常头中的 dtype 为 `undefined` 时用于补充 dtype。异常头的 shape 与 payload 元素数一致时，NPY 直接保留多维 shape；无法可靠确定 dtype 时使用 `uint8` 无损保存，并在 `exception_metadata.npy` 中标记为 `raw_bytes/raw_bits`。
 
-统一脚本已经内置 `msaicerr.py` 的 `-d` 分支调用逻辑，会直接调用 CANN 的 `DumpDataParser`，然后直接导出 NPY，不需要再手工执行两条 Python 命令。正常情况下只需：
+统一脚本内置纯 Python 的 DumpData protobuf wire decoder，不导入 `ms_interface`，也不调用 `msaicerr.py` 或 `libascend_dump_parser.so`。正常情况下只需：
 
 ```bash
 python3 parse_mc2_dump.py mmrs /path/to/data-dump
 ```
 
-脚本会按以下顺序查找 CANN 解析模块：当前 Python 环境、`--msaicerr` 参数、`MSAICERR_PATH`、`ASCEND_TOOLKIT_HOME`、`TOOL_PATH`、常用 CANN 安装路径。如果 CANN 没装在常用路径，可设置一次环境变量：
+如果只想解析一个原始异常文件，也可单独执行：
 
 ```bash
-export MSAICERR_PATH=/home/w00955510/Ascend0901/cann-9.2.0/tools/msaicerr/msaicerr.py
-python3 parse_mc2_dump.py mmrs /path/to/data-dump
-```
-
-也可以临时指定：
-
-```bash
-python3 parse_mc2_dump.py mmrs /path/to/data-dump \
-  --msaicerr /home/w00955510/Ascend0901/cann-9.2.0/tools/msaicerr/msaicerr.py
-```
-
-如果已经手工执行完 `msaicerr.py`，仍可单独做 NPY 导出：
-
-```bash
-python3 parse_mc2_exception_report.py <exception解析输出路径> \
+python3 parse_mc2_exception_report.py <exception_info文件> \
   --operator MatmulReduceScatterV2 --export-npy <npy输出路径>
 ```
+
+统一入口仍会在终端显示 TilingData 和 Workspace 后端脚本原有的可读解析结果；NPY 用于后续程序比较，不会替代终端结果。
 
 对象型 Tiling/Args/RuntimeInfo 使用 NumPy 查看：
 
@@ -364,8 +354,7 @@ URMA 算子的后端脚本还支持 `--comm-ctx` 和 `--peermem`。建议日常�
 ### 常见问题
 
 - 提示“没有找到受支持 dump 文件”：确认传入的是 `data-dump` 根目录，并确认文件名中包含正确的算子名。统一入口按文件名关联同一次算子 dump，不会把其他算子的同名前缀文件混进来。
-- 提示“未找到 CANN ms_interface”：先加载 CANN 环境；也可以使用 `--msaicerr` 指定脚本，或设置 `MSAICERR_PATH`。运行环境还必须配置 CANN 所需的 `ASCEND_OPP_PATH`。
-- 提示“未加载 libascend_dump_parser.so”：虽然找到了 `msaicerr.py`，但 CANN 动态库环境尚未生效。统一入口会尝试在新进程中自动加载同一 CANN 目录的 `set_env.sh` 后重试；若机器上无法定位该脚本，再手工执行 `source /usr/local/Ascend/cann/set_env.sh`（以实际路径为准）。异常解包仍无张量产出时会立即停止，不再追加“没有找到张量文件”的二次报错。
+- 提示“protobuf headerLength 无效”：异常文件不完整，或不是 DumpData 容器；检查文件前 8 字节和实际文件大小。该解析不依赖 CANN 环境变量。
 - RuntimeInfo 中核类型显示“未知”：一般是同次调用的 `tiling_data` 缺失、损坏，或文件名后缀无法关联；RuntimeInfo 字段仍会解析，但无法可靠区分 C 核和 V 核。
 - workspace 文件大小和 shape 不一致：先检查 WorkspaceLayout 中该段的 `size` 是否等于 dump 文件大小，再检查量化类型、对齐/padding 和通信 rank 维度。
 - `type12` 中所有预期 slot 的 magic 都无效：这不是 commit/wait 字段偏移问题，而是该 RuntimeInfo 段没有被 Kernel 初始化，或 Dump 的段起始地址/时机不正确。统一入口会给出明确警告；每核原始字段仍保存在 NPY 中，单文件后端脚本也可逐核打印并标记为 `NOT_WRITTEN`。如果 magic 出现在非 512B 对齐位置，还会提示可能的段起点错位。
