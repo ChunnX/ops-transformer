@@ -118,6 +118,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
         combineBufferConfig = InitWaveCombineBuffers<CombineQuantMode>(commonConfig_, waveCombineScratch_);
     }
     uint32_t combineRowSequence = 0U;
+    int32_t gmm2TileSequence = 0; // Global GMM2 ordinal; independent of GMM1's per-AIC sequence.
 
     ExpertLoopState gmm1State = CreateExpertLoopState(commonConfig_);
     ExpertLoopState gmm2State = CreateExpertLoopState(commonConfig_);
@@ -232,7 +233,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
                                       sliceTokenEndIndexInExpert >= expertTokenCount;
                 // W4 的 GMM2/Combine 调度集中在基类，派生模板只负责提供当前专家 slice。
                 RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx, sliceTokenStartIndexInExpert,
-                                        sliceTokenCount, combineBufferConfig, combineRowSequence, gmm1TileReadySequence,
+                                        sliceTokenCount, combineBufferConfig, combineRowSequence, gmm2TileSequence,
                                         isFinalCombine);
             }
         }

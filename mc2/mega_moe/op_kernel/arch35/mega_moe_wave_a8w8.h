@@ -711,6 +711,9 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                                                            runtimeState.startBlockIdx);
         }
         if (skipGmm2Problem) {
+            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                gmm2TileSequence += static_cast<int32_t>(problemMGroupCount * gmm2TilesPerMGroup_);
+            }
             gmm2Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
             gmm2Position.globalTokenIndex += waveRowCount;
             if (gmm2Position.tokenIndexInExpert >= expertRowCount) {
@@ -731,7 +734,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
             gmm2AddrInfo.gmmToEpilogueFlag =
                 reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagGmmToEpiloguePtr) +
-                static_cast<uint64_t>(gmmExecutionConfig_.blockJob.jobIndex) * INT_CACHELINE;
+                static_cast<uint64_t>(gmmExecutionConfig_.blockJob.jobIndex) * INT_CACHELINE +
+                NO_QUANT_COMBINE_READY_FLAG_OFFSET;
         }
         // GMM2 与 GMM1 使用相同保护：只有完整专家 problem 才允许进一步判断是否绕过 L2。
         bool isWholeExpert =

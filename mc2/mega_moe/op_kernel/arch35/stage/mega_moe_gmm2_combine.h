@@ -233,7 +233,9 @@ constexpr uint32_t WAVE_COMBINE_MIN_ROW_BUFFER_COUNT = 2U;
 constexpr uint32_t WAVE_COMBINE_STEADY_ROW_BUFFER_COUNT = 1U;
 constexpr uint32_t WAVE_COMBINE_MAX_ROW_BUFFER_COUNT = 6U;
 constexpr uint32_t WAVE_COMBINE_UB_BASE = 64U * 1024U;
-constexpr uint32_t NO_QUANT_TILE_COMBINE_BUFFER_COUNT = 6U;
+constexpr uint32_t NO_QUANT_TILE_COMBINE_BUFFER_COUNT = 4U;
+// GMM1 uses word 0. Keep GMM2's global tile sequence in a separate word of the same reset cache line.
+constexpr uint32_t NO_QUANT_COMBINE_READY_FLAG_OFFSET = 1U;
 // [64 KiB, 184 KiB) is dedicated to the Combine row ring and quant scratch.
 // The ready scan starts at 184 KiB, so adaptive row buffers must stay below it.
 constexpr uint32_t WAVE_COMBINE_UB_LIMIT = 184U * 1024U;
@@ -558,109 +560,134 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
         if constexpr (NotifyCombineTileReady && !IsShared) {
-            // GMM2 tile 与配对 AIV1 的 Combine tile 一对一通知。
+            // All AIV1 consumers use the same global tile ordinal, regardless of the producing AIC.
             AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
             AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-            AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++(*gmTileSequence));
+            AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag,
+                                       *gmTileSequence + static_cast<int32_t>(loopIdx) + 1);
+            AscendC::DataSyncBarrier<AscendC::MemDsbT::DDR>();
         } else if constexpr (IsLayered && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
         } else if constexpr (IsShared && !IsLayered) {
             NotifySharedExpertTileCompletion(mLoc, gmmAddrInfo.sharedExpertGmm2TileCounter);
         }
     }
+    if constexpr (NotifyCombineTileReady && !IsShared) {
+        *gmTileSequence += static_cast<int32_t>(tileNum);
+    }
 }
 
-// 从已整体搬入 UB 的 GMM2 tile 发送一行。六个事件槽只限制 MTE3 在途深度，不再触发行级 GM2UB。
+// A real UB stage holds one tile-row fragment. Only MTE2 waits when reusing a stage.
 template <bool IsBufferReuse, typename ElementC>
-__aicore__ inline void StoreNoQuantCombineTileRow(uint32_t nLoc, uint32_t n, uint32_t actualN,
-                                                  LocalTensor<int32_t> &metaInfoTensor,
-                                                  LocalTensor<ElementC> &tileUb, uint32_t rowIdx,
-                                                  const Params &params, uint64_t gmRemoteBaseOffset, uint32_t slot,
-                                                  GlobalTensor<ElementC> &gmRemoteD)
+__aicore__ inline void SendNoQuantCombineTileRow(uint32_t nLoc, uint32_t n, uint32_t actualN,
+                                               LocalTensor<int32_t> &metaInfoTensor, uint32_t localRowIdx,
+                                               LocalTensor<ElementC> &rowRingUb, uint32_t slot,
+                                               GlobalTensor<ElementC> &gmm2OutGm, uint64_t gmSrcOffset,
+                                               const Params &params, uint64_t gmRemoteBaseOffset,
+                                               GlobalTensor<ElementC> &gmRemoteD)
 {
     TEventID eventId = static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(slot));
-    if constexpr (IsBufferReuse) {
-        WaitFlag<HardEvent::MTE3_S>(eventId);
-    }
-    CombineImpl::CombineTokenRoute route = CombineImpl::LoadCombineTokenRoute(metaInfoTensor, rowIdx);
+    CombineImpl::CombineTokenRoute route = CombineImpl::LoadCombineTokenRoute(metaInfoTensor, localRowIdx);
     gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(
         GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
     uint64_t gmDstOffset = CombineImpl::GetCombineDstRowIndex(route, params) * n + nLoc;
-    DataCopyExtParams ub2GmParams{1U, static_cast<uint32_t>(actualN * sizeof(ElementC)), 0U, 0U, 0U};
-    DataCopyPad(gmRemoteD[gmDstOffset], tileUb[rowIdx * L1_TILE_N], ub2GmParams);
-    SetFlag<HardEvent::MTE3_S>(eventId);
+    LocalTensor<ElementC> rowUb = rowRingUb[slot * L1_TILE_N];
+    DataCopyExtParams copyParams{1U, static_cast<uint32_t>(actualN * sizeof(ElementC)), 0U, 0U, 0U};
+    DataCopyPadExtParams<ElementC> padParams{false, 0U, 0U, 0U};
+    if constexpr (IsBufferReuse) {
+        WaitFlag<HardEvent::MTE3_MTE2>(eventId);
+    }
+    DataCopyPad(rowUb, gmm2OutGm[gmSrcOffset], copyParams, padParams);
+    SetFlag<HardEvent::MTE2_MTE3>(eventId);
+    WaitFlag<HardEvent::MTE2_MTE3>(eventId);
+    DataCopyPad(gmRemoteD[gmDstOffset], rowUb, copyParams);
+    SetFlag<HardEvent::MTE3_MTE2>(eventId);
 }
 
-// 消费当前 tile 最后仍在途的 MTE3 完成事件，确保下一次整体 GM2UB 不会覆盖发送源。
+// Drain once per tile, not once per ring rotation. Consume every outstanding stage event before restarting.
 __aicore__ inline void DrainNoQuantCombineSendSlots(uint32_t issuedRowCount)
 {
+    if (issuedRowCount == 0U) {
+        return;
+    }
     uint32_t activeSlotCount = issuedRowCount < NO_QUANT_TILE_COMBINE_BUFFER_COUNT ?
                                    issuedRowCount :
                                    NO_QUANT_TILE_COMBINE_BUFFER_COUNT;
     for (uint32_t slot = 0U; slot < activeSlotCount; ++slot) {
-        WaitFlag<HardEvent::MTE3_S>(
+        WaitFlag<HardEvent::MTE3_MTE2>(
             static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(slot)));
     }
+    // Also wait for MTE2 to consume the stage events before the next tile reuses their IDs.
+    SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
+    DataSyncBarrier<MemDsbT::DDR>();
 }
 
-// 非量化 Combine 的统一入口。AIV1 直接使用 GMM2 已构造的 scheduler，逐 tile 等待配对 AIC 并消费。
-// 每个 tile 只执行一次整体 GM2UB；随后按行发送，前六行填满 MTE3 发送窗口，稳态按槽位完成事件滚动。
-// UB 从 64 KiB 起步，避开 Dispatch 保留的低区状态。
-template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config>
-__aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm, const Params &params,
+// All AIV1s visit the same tiles. Within each tile, core c owns rows c, c + blockNum, ... .
+// Metadata is gathered once into compact UB storage; four physical row stages pipeline the data copies.
+// Each core drains its tile before advancing, without a cross-core barrier or a per-row Scalar wait.
+template <typename ElementC, typename Scheduler, typename Config>
+__aicore__ inline void CombineTokenRange(Scheduler &scheduler, const Params &params,
                                          const GMMAddrInfo &gmmAddrInfo, int32_t &gmTileSequence, const Config &config,
                                          uint32_t startLoopIdx, uint32_t tileNum)
 {
     uint64_t gmRemoteBaseOffset =
         static_cast<uint64_t>(params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr);
     GlobalTensor<ElementC> gmRemoteD;
+    GlobalTensor<ElementC> gmm2OutGm;
+    gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(gmmAddrInfo.gmm2OutGlobal));
+    GlobalTensor<int32_t> metaInfoGm;
+    metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(gmmAddrInfo.metaInfoGlobal));
+    LocalTensor<ElementC> rowRingUb(TPosition::VECIN, WAVE_COMBINE_UB_BASE,
+                                   NO_QUANT_TILE_COMBINE_BUFFER_COUNT * L1_TILE_N);
+    constexpr uint32_t metaRowBytes = META_INFO_SIZE * sizeof(int32_t);
+    static_assert(metaRowBytes == ALIGN_32, "Strided metadata records must be 32-byte aligned");
+    static_assert(NO_QUANT_TILE_COMBINE_BUFFER_COUNT * L1_TILE_N * sizeof(ElementC) <=
+                  WAVE_COMBINE_UB_LIMIT - WAVE_COMBINE_UB_BASE, "Combine row stages exceed UB budget");
+    // startLoopIdx encodes the current rotating AIC assignment, including preceding GMM1 work.
+    uint32_t firstProducer = (config.blockIdx + config.blockNum - startLoopIdx) % config.blockNum;
+    __gm__ int32_t *readyFlags =
+        gmmAddrInfo.gmmToEpilogueFlag - static_cast<uint64_t>(config.blockIdx) * INT_CACHELINE;
 
-    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
+    for (uint32_t loopIdx = 0U; loopIdx < tileNum; ++loopIdx) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
-
-        int32_t expectedReadySequence = gmTileSequence + 1;
-        WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag, expectedReadySequence);
-
-        auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
-                                            Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-        constexpr uint32_t tileUbBase = WAVE_COMBINE_UB_BASE;
-        auto layoutTileUb = MakeLayoutC{}(config.tileM, L1_TILE_N);
-        auto tensorBlockUb = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(tileUbBase), layoutTileUb);
-        LocalTensor<ElementC> tileUb =
-            LocalTensor<ElementC>(TPosition::VECIN, tileUbBase, config.tileM * L1_TILE_N);
-        auto copyGM2UB = Te::MakeCopy(Te::CopyGM2UB{});
-        Te::Copy(copyGM2UB, tensorBlockUb, tensorBlockGm);
-
         uint32_t lenTile = static_cast<uint32_t>(Get<M_VALUE>(actualShape));
         uint32_t actualN = static_cast<uint32_t>(Get<N_VALUE>(actualShape));
-        GlobalTensor<int32_t> metaInfoGm;
-        LocalTensor<int32_t> metaInfoTensor =
-            LocalTensor<int32_t>(TPosition::VECCALC, META_INFO_TENSOR_ADDR, lenTile * META_INFO_SIZE);
-        metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-            gmmAddrInfo.metaInfoGlobal + static_cast<uint64_t>(mLoc) * META_INFO_SIZE * sizeof(int32_t)));
-        AscendC::DataCopy(metaInfoTensor, metaInfoGm, lenTile * META_INFO_SIZE);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
-
-        if (lenTile != 0U) {
-            uint32_t issuedRowCount = 0U;
-            for (uint32_t rowIdx = 0U; rowIdx < lenTile; ++rowIdx, ++issuedRowCount) {
-                uint32_t slot = issuedRowCount % NO_QUANT_TILE_COMBINE_BUFFER_COUNT;
-                if (issuedRowCount >= NO_QUANT_TILE_COMBINE_BUFFER_COUNT) {
-                    StoreNoQuantCombineTileRow<true, ElementC>(nLoc, config.n, actualN, metaInfoTensor, tileUb,
-                                                               rowIdx, params, gmRemoteBaseOffset, slot, gmRemoteD);
-                } else {
-                    StoreNoQuantCombineTileRow<false, ElementC>(nLoc, config.n, actualN, metaInfoTensor, tileUb,
-                                                                rowIdx, params, gmRemoteBaseOffset, slot, gmRemoteD);
-                }
-            }
-            DrainNoQuantCombineSendSlots(issuedRowCount);
+        uint32_t producer = (firstProducer + loopIdx) % config.blockNum;
+        int32_t expectedReadySequence = gmTileSequence + static_cast<int32_t>(loopIdx) + 1;
+        WaitUntilGmFlagAtLeast(readyFlags + static_cast<uint64_t>(producer) * INT_CACHELINE, expectedReadySequence);
+        if (config.blockIdx >= lenTile || actualN == 0U) {
+            continue;
         }
-        gmTileSequence = expectedReadySequence;
+        uint32_t ownedRows = 1U + (lenTile - 1U - config.blockIdx) / config.blockNum;
+        LocalTensor<int32_t> metaInfoTensor =
+            LocalTensor<int32_t>(TPosition::VECIN, META_INFO_TENSOR_ADDR, ownedRows * META_INFO_SIZE);
+        DataCopyExtParams metaParams{static_cast<uint16_t>(ownedRows), metaRowBytes,
+                                     (config.blockNum - 1U) * metaRowBytes, 0U, 0U};
+        DataCopyPadExtParams<int32_t> metaPadParams{false, 0U, 0U, 0};
+        DataCopyPad(metaInfoTensor, metaInfoGm[(static_cast<uint64_t>(mLoc) + config.blockIdx) * META_INFO_SIZE],
+                    metaParams, metaPadParams);
+        SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
+
+        for (uint32_t localRowIdx = 0U; localRowIdx < ownedRows; ++localRowIdx) {
+            uint32_t rowIdx = config.blockIdx + localRowIdx * config.blockNum;
+            uint32_t slot = localRowIdx % NO_QUANT_TILE_COMBINE_BUFFER_COUNT;
+            uint64_t gmSrcOffset = (static_cast<uint64_t>(mLoc) + rowIdx) * config.n + nLoc;
+            if (localRowIdx >= NO_QUANT_TILE_COMBINE_BUFFER_COUNT) {
+                SendNoQuantCombineTileRow<true, ElementC>(nLoc, config.n, actualN, metaInfoTensor, localRowIdx,
+                    rowRingUb, slot, gmm2OutGm, gmSrcOffset, params, gmRemoteBaseOffset, gmRemoteD);
+            } else {
+                SendNoQuantCombineTileRow<false, ElementC>(nLoc, config.n, actualN, metaInfoTensor, localRowIdx,
+                    rowRingUb, slot, gmm2OutGm, gmSrcOffset, params, gmRemoteBaseOffset, gmRemoteD);
+            }
+        }
+        DrainNoQuantCombineSendSlots(ownedRows);
     }
+    gmTileSequence += static_cast<int32_t>(tileNum);
 }
 
 // 执行 A8W4 GMM2 tile 循环。
@@ -705,17 +732,21 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
                                             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
         if constexpr (NotifyCombineTileReady && !IsShared) {
-            // AIV1 与本 AIC 重放同一 scheduler。FIX 写回完成后发布本核单调序号；
-            // W4 prologue 仍由 AIV0 独立推进，不参与该一对一完成链路。
+            // Publish this tile's global ordinal after FIX completion; every AIV1 may consume its rows.
             AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
             AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-            AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++(*gmTileSequence));
+            AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag,
+                                       *gmTileSequence + static_cast<int32_t>(loopIdx) + 1);
+            AscendC::DataSyncBarrier<AscendC::MemDsbT::DDR>();
         } else if constexpr (IsLayered && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(rowOffsetInExpert + mLoc, groupSyncSlotLayout,
                                                    gmmAddrInfo.gmm2CombineSyncCounter);
         } else if constexpr (IsShared) {
             NotifySharedExpertTileCompletion(mLoc, gmmAddrInfo.sharedExpertGmm2TileCounter);
         }
+    }
+    if constexpr (NotifyCombineTileReady && !IsShared) {
+        *gmTileSequence += static_cast<int32_t>(tileNum);
     }
 }
 
@@ -788,9 +819,8 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &
         }
     } else if constexpr (NotifyCombineTileReady) {
         if (GetSubBlockIdx() == 1U) {
-            using MakeLayoutC = typename KernelConfig::MakeLayoutC;
-            CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo,
-                                                     *gmTileSequence, config, startLoopIdx, tileNum);
+            CombineTokenRange<ElementC>(workSet.scheduler, *params, gmmAddrInfo, *gmTileSequence, config,
+                                       startLoopIdx, tileNum);
         }
     }
 }
@@ -846,9 +876,8 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
             BlockPrologue blockPrologue;
             Gmm2Aiv0PrologueA8W4(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
         } else if constexpr (NotifyCombineTileReady) {
-            using MakeLayoutC = typename KernelConfig::MakeLayoutC;
-            CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo,
-                                                     *gmTileSequence, config, startLoopIdx, tileNum);
+            CombineTokenRange<ElementC>(workSet.scheduler, *params, gmmAddrInfo, *gmTileSequence, config,
+                                       startLoopIdx, tileNum);
         }
     }
 }
@@ -914,7 +943,7 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
                                            allowWeightL2Bypass, rowOffsetInExpert, params, gmTileSequence);
 }
 
-// RunGmm2A8W4：AIV0执行W4→W8 prologue，AIC执行GMM2；可选由配对AIV1逐tile Combine。
+// RunGmm2A8W4：AIV0执行W4→W8 prologue，AIC执行GMM2；非量化时所有AIV1按行协作消费每个tile。
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false, bool IsShared = false,
           bool IsLayered = false, bool IsWaveFlagGrained = false, bool NotifyCombineTileReady = false>
@@ -941,7 +970,14 @@ __aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_
     uint32_t tileNum = scheduler.GetTileNum();
     uint32_t startLoopIdx =
         (config.blockIdx < startBlockIdx ? config.blockIdx + config.blockNum : config.blockIdx) - startBlockIdx;
-    if (startLoopIdx >= tileNum) {
+    bool skipEmptyProducer = true;
+    if constexpr (NotifyCombineTileReady && g_coreType == AscendC::AIV) {
+        skipEmptyProducer = GetSubBlockIdx() != 1U;
+    }
+    if (skipEmptyProducer && startLoopIdx >= tileNum) {
+        if constexpr (NotifyCombineTileReady && g_coreType == AscendC::AIC) {
+            *gmTileSequence += static_cast<int32_t>(tileNum);
+        }
         startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
         return;
     }
