@@ -145,7 +145,6 @@ __aicore__ inline void MoeV2GatherOut<T>::Init(GM_ADDR inputX, GM_ADDR expandedR
                                                TPipe *tPipe)
 {
     this->pipe = tPipe;
-    // this->blockIdx = GetBlockIdx();
     this->blockIdx = get_block_idx() + get_subblockid() * get_block_num();
     this->gatherOutTilingData = &(tilingData->gatherOutComputeParamsOp);
 
