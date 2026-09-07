@@ -140,8 +140,7 @@ private:
 
         // 每个 AIC 的就绪序列与前面的 flag 连续存放，使 ResetFlagList 能用同一次 MTE reset 清理；
         // 每个序列独占一个 64B cache line。
-        // W4 GMM1 activation uses word 0; non-quant GMM2/Combine uses word 1 for its global tile ordinal.
-        // ResetFlagList clears the entire cache line, including both sequence words.
+        // W4 GMM1 activation 始终使用该序号；非量化 GMM2/Combine 也复用它做 tile 一对一通知。
         bool isW4Mode = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
                         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
                         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ;
