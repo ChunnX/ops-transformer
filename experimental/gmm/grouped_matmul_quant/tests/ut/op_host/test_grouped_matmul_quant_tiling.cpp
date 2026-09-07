@@ -1,9 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*! \file test_grouped_matmul_quant_tiling.cpp
  *  \brief Unit tests for GroupedMatmulQuant tiling.
@@ -63,7 +66,7 @@ struct CaseShapes {
     std::vector<int64_t> y;
 };
 
-gert::StorageShape MakeStorageShape(const std::vector<int64_t>& dims)
+gert::StorageShape MakeStorageShape(const std::vector<int64_t> &dims)
 {
     gert::Shape shape;
     shape.SetDimNum(dims.size());
@@ -77,7 +80,7 @@ gert::StorageShape MakeStorageShape(const std::vector<int64_t>& dims)
     return storageShape;
 }
 
-CaseShapes MakeValidShapes(const CaseParam& param)
+CaseShapes MakeValidShapes(const CaseParam &param)
 {
     return {
         {param.m, param.k},
@@ -89,8 +92,8 @@ CaseShapes MakeValidShapes(const CaseParam& param)
     };
 }
 
-gert::TilingContextPara MakeContext(const CaseParam& param, const CaseShapes& shapes,
-                                    optiling::GroupedMatmulQuantCompileInfo* compileInfo)
+gert::TilingContextPara MakeContext(const CaseParam &param, const CaseShapes &shapes,
+                                    optiling::GroupedMatmulQuantCompileInfo *compileInfo)
 {
     std::vector<TensorDescription> inputs = {
         {MakeStorageShape(shapes.x), param.dtype, ge::FORMAT_ND},
@@ -116,7 +119,7 @@ gert::TilingContextPara MakeContext(const CaseParam& param, const CaseShapes& sh
                                    "Ascend910B", PLATFORM_CORE_NUM, PLATFORM_UB_SIZE);
 }
 
-bool RunTiling(const CaseParam& param, const CaseShapes& shapes, TilingInfo& tilingInfo)
+bool RunTiling(const CaseParam &param, const CaseShapes &shapes, TilingInfo &tilingInfo)
 {
     optiling::GroupedMatmulQuantCompileInfo compileInfo;
     auto context = MakeContext(param, shapes, &compileInfo);
@@ -124,7 +127,7 @@ bool RunTiling(const CaseParam& param, const CaseShapes& shapes, TilingInfo& til
 }
 
 template <typename T>
-T ReadTilingField(const uint8_t* buffer, size_t& offset)
+T ReadTilingField(const uint8_t *buffer, size_t &offset)
 {
     T value = 0;
     std::memcpy(&value, buffer + offset, sizeof(value));
@@ -132,7 +135,7 @@ T ReadTilingField(const uint8_t* buffer, size_t& offset)
     return value;
 }
 
-void DeserializeTilingData(const TilingInfo& info, optiling::GroupedMatmulQuantTilingData& data)
+void DeserializeTilingData(const TilingInfo &info, optiling::GroupedMatmulQuantTilingData &data)
 {
     size_t offset = 0;
 #define READ_TILING_FIELD(field) data.set_##field(ReadTilingField<uint32_t>(info.tilingData.get(), offset))
@@ -163,13 +166,12 @@ void DeserializeTilingData(const TilingInfo& info, optiling::GroupedMatmulQuantT
     READ_TILING_FIELD(castOutTailCoreNum);
 #undef READ_TILING_FIELD
     constexpr size_t TILING_DATA_ALIGNMENT = sizeof(uint64_t);
-    const size_t alignedSize =
-        (offset + TILING_DATA_ALIGNMENT - 1U) / TILING_DATA_ALIGNMENT * TILING_DATA_ALIGNMENT;
+    const size_t alignedSize = (offset + TILING_DATA_ALIGNMENT - 1U) / TILING_DATA_ALIGNMENT * TILING_DATA_ALIGNMENT;
     EXPECT_EQ(alignedSize, info.tilingDataSize)
         << "Tiling data schema changed or has unexpected trailing data; update the deserializer";
 }
 
-void ExpectValidCase(const CaseParam& param, uint32_t expectedSplitK)
+void ExpectValidCase(const CaseParam &param, uint32_t expectedSplitK)
 {
     TilingInfo info;
     ASSERT_TRUE(RunTiling(param, MakeValidShapes(param), info));
@@ -199,7 +201,7 @@ void ExpectValidCase(const CaseParam& param, uint32_t expectedSplitK)
     EXPECT_EQ(info.workspaceSizes[0], expectedWorkspace);
 }
 
-void ExpectInvalidCase(const CaseParam& param, const CaseShapes& shapes)
+void ExpectInvalidCase(const CaseParam &param, const CaseShapes &shapes)
 {
     TilingInfo info;
     EXPECT_FALSE(RunTiling(param, shapes, info));

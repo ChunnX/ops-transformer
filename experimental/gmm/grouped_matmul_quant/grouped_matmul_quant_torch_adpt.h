@@ -21,8 +21,8 @@ at::Tensor grouped_matmul_quant(const at::Tensor &x, const at::Tensor &quantized
     int64_t fracN = quantized_weight.size(2);
     int64_t n = fracN * FRACTAL_FLOAT16;
     at::Tensor output = at::empty({m, n}, x.options());
-    ACLNN_CMD(aclnnGroupedMatmulQuant, x, quantized_weight, weight_scale, weight_offset, group_list,
-              scale_group_size, output);
+    ACLNN_CMD(aclnnGroupedMatmulQuant, x, quantized_weight, weight_scale, weight_offset, group_list, scale_group_size,
+              output);
     return output;
 }
 

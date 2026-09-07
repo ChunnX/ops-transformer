@@ -1,7 +1,12 @@
+# -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 
 """Ascend 910B functional and precision tests for GroupedMatmulQuant."""
 
@@ -14,7 +19,12 @@ import numpy as np
 import pytest
 import torch
 
-from golden import check_mixed_tolerance, grouped_matmul_quant_golden, pack_int4_to_int32, round_to_bfloat16
+from golden import (
+    check_mixed_tolerance,
+    grouped_matmul_quant_golden,
+    pack_int4_to_int32,
+    round_to_bfloat16,
+)
 
 
 @dataclass(frozen=True)
@@ -31,11 +41,19 @@ class PrecisionCase:
 
 
 CASES = (
-    PrecisionCase("fp16_single_tail_split_k", 17, 64, 80, None, 32, torch.float16, 20260901, True),
-    PrecisionCase("bf16_zero_token_expert", 33, 128, 64, (0, 1, 33), 64, torch.bfloat16, 20260902),
-    PrecisionCase("fp16_imbalanced_groups", 257, 96, 48, (1, 2, 257), 32, torch.float16, 20260903),
+    PrecisionCase(
+        "fp16_single_tail_split_k", 17, 64, 80, None, 32, torch.float16, 20260901, True
+    ),
+    PrecisionCase(
+        "bf16_zero_token_expert", 33, 128, 64, (0, 1, 33), 64, torch.bfloat16, 20260902
+    ),
+    PrecisionCase(
+        "fp16_imbalanced_groups", 257, 96, 48, (1, 2, 257), 32, torch.float16, 20260903
+    ),
     # With 20 cube cores: (M/128) * (N/256) == 180, selecting non-Split-K.
-    PrecisionCase("fp16_non_split_k", 5760, 32, 1024, None, 32, torch.float16, 20260904),
+    PrecisionCase(
+        "fp16_non_split_k", 5760, 32, 1024, None, 32, torch.float16, 20260904
+    ),
 )
 
 
@@ -50,7 +68,9 @@ def _import_registration_modules() -> Dict[str, str]:
             continue
         try:
             module = importlib.import_module(module_name)
-            diagnostics[module_name] = f"loaded from {getattr(module, '__file__', '<unknown>')}"
+            diagnostics[module_name] = (
+                f"loaded from {getattr(module, '__file__', '<unknown>')}"
+            )
         except (ImportError, OSError, RuntimeError) as error:
             diagnostics[module_name] = f"{type(error).__name__}: {error}"
     return diagnostics
@@ -66,7 +86,11 @@ def _resolve_attr(path: str):
 def _resolve_operator():
     import_diagnostics = _import_registration_modules()
     configured = os.getenv("GROUPED_MATMUL_QUANT_OP")
-    candidates = [configured] if configured else ["ops.npu_ops_transformer_ext.grouped_matmul_quant"]
+    candidates = (
+        [configured]
+        if configured
+        else ["ops.npu_ops_transformer_ext.grouped_matmul_quant"]
+    )
     resolution_errors = {}
     for candidate in candidates:
         if not candidate:
@@ -75,9 +99,13 @@ def _resolve_operator():
             return _resolve_attr(candidate), candidate
         except (AttributeError, RuntimeError) as error:
             resolution_errors[candidate] = f"{type(error).__name__}: {error}"
-    import_details = "; ".join(
-        f"{module_name}: {detail}" for module_name, detail in import_diagnostics.items()
-    ) or "no registration module configured"
+    import_details = (
+        "; ".join(
+            f"{module_name}: {detail}"
+            for module_name, detail in import_diagnostics.items()
+        )
+        or "no registration module configured"
+    )
     resolution_details = "; ".join(
         f"{candidate}: {detail}" for candidate, detail in resolution_errors.items()
     )
@@ -100,7 +128,9 @@ def _make_inputs(case: PrecisionCase):
     rng = np.random.default_rng(case.seed)
     x = _rounded_input(rng.uniform(-1.0, 1.0, size=(case.m, case.k)), case.dtype)
     group_num = 1 if case.group_list is None else len(case.group_list)
-    logical_weight = rng.integers(-8, 8, size=(group_num, case.k, case.n), dtype=np.int8)
+    logical_weight = rng.integers(
+        -8, 8, size=(group_num, case.k, case.n), dtype=np.int8
+    )
     if case.int4_boundary_values:
         logical_weight.reshape(-1)[0::2] = -8
         logical_weight.reshape(-1)[1::2] = 7
@@ -109,7 +139,11 @@ def _make_inputs(case: PrecisionCase):
     scale_shape = (group_num, case.k // case.scale_group_size, case.n)
     scale = _rounded_input(rng.uniform(0.01, 0.10, size=scale_shape), case.dtype)
     offset = _rounded_input(rng.uniform(-1.0, 1.0, size=scale_shape), torch.float16)
-    group_list = None if case.group_list is None else torch.tensor(case.group_list, dtype=torch.int64)
+    group_list = (
+        None
+        if case.group_list is None
+        else torch.tensor(case.group_list, dtype=torch.int64)
+    )
     return x, packed, scale, offset, group_list
 
 
@@ -196,7 +230,9 @@ def test_grouped_matmul_quant_precision(case: PrecisionCase):
         pytest.skip("Ascend NPU is not available")
     op, op_path = _resolve_operator()
     x, packed, scale, offset, group_list = _make_inputs(case)
-    actual = _call_operator(op, x, packed, scale, offset, group_list, case.scale_group_size)
+    actual = _call_operator(
+        op, x, packed, scale, offset, group_list, case.scale_group_size
+    )
     assert tuple(actual.shape) == (case.m, case.n)
     assert actual.dtype == case.dtype
     assert actual.device.type == "npu"
