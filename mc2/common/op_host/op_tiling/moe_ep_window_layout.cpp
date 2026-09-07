@@ -44,8 +44,7 @@ ge::graphStatus ResolveMoeEpTopology(uint32_t epWorldSize, int64_t requestedNetw
 ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, MoeEpWindowLayout &layout)
 {
     std::memset(&layout, 0, sizeof(layout));
-    layout.dispatchNotifyCount = static_cast<uint32_t>(
-        (static_cast<uint64_t>(params.nmt) + MOE_EP_NOTIFY_TOKEN_LIMIT - 1UL) / MOE_EP_NOTIFY_TOKEN_LIMIT);
+    layout.dispatchNotifyCount = static_cast<uint32_t>(MOE_EP_DISPATCH_NOTIFY_COUNT);
 
     layout.metadataOffset = 0UL;
     layout.metadataSize = MOE_EP_DUMP_METADATA_BYTES;
@@ -63,7 +62,10 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
     layout.cntWinStateSize = countNotifySize + expertCountSize;
     layout.slotWinStateOffset = layout.cntWinStateOffset + layout.cntWinStateSize;
     layout.dispatchSlotStateSize = layout.dispatchNotifyCount * epWorldSize * MOE_EP_WIN_ALIGN;
-    layout.combineStateWinOffset = layout.slotWinStateOffset + layout.dispatchSlotStateSize;
+    // payload 发送状态位区：dispatch 各发送核对端 payload 到齐标志，位于 slot 状态区之后
+    layout.payloadWinStateOffset = layout.slotWinStateOffset + layout.dispatchSlotStateSize;
+    layout.payloadWinStateSize = MOE_EP_WIN_ALIGN;
+    layout.combineStateWinOffset = layout.payloadWinStateOffset + layout.payloadWinStateSize;
     layout.combineStateWinSize =
         nmt * topK * MOE_EP_WIN_ALIGN + epWorldSize * MOE_EP_COMBINE_CHANNEL_COUNT * MOE_EP_WIN_ALIGN;
 
@@ -89,7 +91,7 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
         layout.winDataOffset = dataBase;
         layout.combineDataWinOffset = layout.winDataOffset + layout.dispatchRecvDataSize;
         layout.payloadStashWinOffset = layout.combineDataWinOffset + layout.combineDataSize;
-        layout.payloadStashWinSize = layout.dispatchRecvDataSize;
+        layout.payloadStashWinSize = nmt * layout.dispatchReservedPerSlotBytes;
     }
     layout.requiredBytes = layout.payloadStashWinOffset + layout.payloadStashWinSize;
     return ge::GRAPH_SUCCESS;
