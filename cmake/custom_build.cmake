@@ -8,6 +8,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+if(CANNBOTDSL_PROVIDER_ONLY)
+  # Frozen Providers own real executable sources; no OpDef/proto/tiling targets.
+  file(REMOVE "${CMAKE_BINARY_DIR}/no_ops.flag")
+  add_subdirectory(attention/flash_kda)
+else()
 if (BUILD_OPEN_PROJECT)
     set(CMAKE_MODULE_PATH
         ${CMAKE_MODULE_PATH}
@@ -34,7 +39,6 @@ if (BUILD_OPEN_PROJECT)
         add_definitions(-DALOG_NOT_FOUND)
     endif()
 
-    if(NOT CANNBOTDSL_PROVIDER_ONLY)
         add_library(op_host_aclnn SHARED EXCLUDE_FROM_ALL)
         target_link_libraries(op_host_aclnn PRIVATE
                 ${_op_host_aclnn_link}
@@ -58,13 +62,7 @@ if (BUILD_OPEN_PROJECT)
         target_compile_options(op_host_aclnnExc PRIVATE
                 $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++1z>
         )
-    endif()
 
-    set(_cannbotdsl_provider_only_stub)
-    if(CANNBOTDSL_PROVIDER_ONLY)
-        set(_cannbotdsl_provider_only_stub
-                ${CMAKE_CURRENT_SOURCE_DIR}/cannbotdsl_ops/provider_only_stub.cpp)
-    endif()
 
     # op api
     add_library(cust_opapi SHARED)
@@ -113,7 +111,7 @@ if (BUILD_OPEN_PROJECT)
     endif()
 
     # op proto
-    add_library(cust_proto SHARED ${_cannbotdsl_provider_only_stub})
+    add_library(cust_proto SHARED)
     target_compile_options(cust_proto PRIVATE
             $<$<COMPILE_LANGUAGE:CXX>:-std=c++11>
             -fvisibility=hidden
@@ -153,7 +151,7 @@ if (BUILD_OPEN_PROJECT)
 
     # op tiling
     add_library(cust_opmaster SHARED
-        ${_cannbotdsl_provider_only_stub}
+
         $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
         $<$<TARGET_EXISTS:opbase_tiling_objs>:$<TARGET_OBJECTS:opbase_tiling_objs>>
     )
@@ -228,7 +226,6 @@ if (BUILD_OPEN_PROJECT)
         )
     endif()
 
-    if(NOT CANNBOTDSL_PROVIDER_ONLY)
         add_ops_tiling_keys(
                 OP_NAME "ALL"
                 TILING_KEYS ${TILING_KEY}
@@ -245,23 +242,12 @@ if (BUILD_OPEN_PROJECT)
                     OPTIONS ${OPS_COMPILE_OPTIONS}
             )
         endif()
-    endif()
 endif ()
 
 add_subdirectory(common)
 
 set(OP_LIST)
 set(OP_DIR_LIST)
-if(CANNBOTDSL_PROVIDER_ONLY)
-    set(base_aclnn_binary_dir ${ASCEND_AUTOGEN_DIR})
-    set(generate_aclnn_srcs)
-    set(generate_aclnn_inner_srcs)
-    set(generate_aclnn_headers)
-    set(generate_proto_dir ${base_aclnn_binary_dir})
-    set(generate_exclude_proto_srcs)
-    set(generate_proto_srcs)
-    set(generate_proto_headers)
-else()
 op_add_subdirectory(OP_LIST OP_DIR_LIST)
 
 if (BUILD_OPEN_PROJECT)
@@ -377,7 +363,7 @@ set_property(GLOBAL PROPERTY _OP_HOST_COMPILE_PHASE "DEPENDENCY")
 foreach (OP_DEPEND_DIR ${OP_DEPEND_DIR_LIST})
     get_filename_component(SUB_DIR ${OP_DEPEND_DIR} NAME)
     if ("${ASCEND_OP_NAME}" STREQUAL "all" OR "${ASCEND_OP_NAME}" STREQUAL "ALL")
-        if ( "${OP_DEPEND_DIR}" MATCHES ".*attention.*")
+        if("${OP_DEPEND_DIR}" MATCHES ".*attention.*")
             continue()
         endif()
     endif()
@@ -389,13 +375,13 @@ foreach (OP_DEPEND_DIR ${OP_DEPEND_DIR_LIST})
             add_subdirectory(${OP_DEPEND_DIR})
         endif()
     endif ()
-    if ( "${OP_DEPEND_DIR}" MATCHES ".*moe_inplace_index_add_with_sorted.*")
+    if("${OP_DEPEND_DIR}" MATCHES ".*moe_inplace_index_add_with_sorted.*")
        list(APPEND OP_DIR_LIST ${OPS_TRANSFORMER_DIR}/moe/3rd/moe_inplace_index_add_with_sorted)
     endif()
-    if ( "${OP_DEPEND_DIR}" MATCHES ".*moe_inplace_index_add.*")
+    if("${OP_DEPEND_DIR}" MATCHES ".*moe_inplace_index_add.*")
        list(APPEND OP_DIR_LIST ${OPS_TRANSFORMER_DIR}/moe/3rd/moe_inplace_index_add)
     endif()
-    if ( "${OP_DEPEND_DIR}" MATCHES ".*moe_masked_scatter.*")
+    if("${OP_DEPEND_DIR}" MATCHES ".*moe_masked_scatter.*")
        list(APPEND OP_DIR_LIST ${OPS_TRANSFORMER_DIR}/moe/3rd/moe_masked_scatter)
     endif()
 endforeach ()
@@ -480,7 +466,7 @@ if (base_aclnn_srcs)
             list(APPEND generate_proto_headers ${generate_proto_dir}/${_op_name}_proto.h)
         endif ()
     endforeach ()
-else ()
+else()
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/op_host_aclnn_stub.cpp
             COMMAND touch ${CMAKE_CURRENT_BINARY_DIR}/op_host_aclnn_stub.cpp
     )
@@ -509,7 +495,7 @@ if (base_aclnn_inner_srcs)
             list(APPEND generate_proto_headers ${generate_proto_dir}/inner/${_op_name}_proto.h)
         endif ()
     endforeach ()
-else ()
+else()
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/op_host_aclnn_inner_stub.cpp
             COMMAND touch ${CMAKE_CURRENT_BINARY_DIR}/op_host_aclnn_inner_stub.cpp
     )
@@ -539,12 +525,9 @@ else()
             ${CMAKE_CURRENT_BINARY_DIR}/op_host_aclnn_exc_stub.cpp
     )
 endif ()
-endif()
 
 # 零算子（所有请求算子均被 CANN 版本检查跳过）：打印被跳过算子，写标志文件供 build.sh 跳过打包
-if(CANNBOTDSL_PROVIDER_ONLY)
-    file(REMOVE "${CMAKE_BINARY_DIR}/no_ops.flag")
-elseif (NOT generate_aclnn_srcs AND NOT generate_aclnn_inner_srcs AND NOT generate_exclude_proto_srcs)
+if(NOT generate_aclnn_srcs AND NOT generate_aclnn_inner_srcs AND NOT generate_exclude_proto_srcs)
     get_property(_cann_skipped_ops GLOBAL PROPERTY CANN_VERSION_SKIPPED_OPS)
     if (_cann_skipped_ops)
         list(REMOVE_DUPLICATES _cann_skipped_ops)
@@ -560,11 +543,9 @@ else()
 endif()
 
 if (BUILD_OPEN_PROJECT)
-    if(CANNBOTDSL_PROVIDER_ONLY)
-        set(ops_aclnn_src ${_cannbotdsl_provider_only_stub})
-    elseif (generate_aclnn_srcs OR generate_aclnn_inner_srcs)
+    if(generate_aclnn_srcs OR generate_aclnn_inner_srcs)
         set(ops_aclnn_src ${generate_aclnn_srcs} ${generate_aclnn_inner_srcs})
-    else ()
+    else()
         set(ops_aclnn_src ${CMAKE_CURRENT_BINARY_DIR}/ops_aclnn_src_stub.cpp)
 
         add_custom_command(OUTPUT ${ops_aclnn_src}
@@ -572,11 +553,9 @@ if (BUILD_OPEN_PROJECT)
         )
     endif ()
 
-    if(NOT CANNBOTDSL_PROVIDER_ONLY)
         set_source_files_properties(${ops_aclnn_src}
                 PROPERTIES GENERATED TRUE
         )
-    endif()
     add_library(ops_aclnn STATIC
             ${ops_aclnn_src}
     )
@@ -590,9 +569,7 @@ if (BUILD_OPEN_PROJECT)
     target_link_libraries(ops_aclnn PRIVATE
             $<BUILD_INTERFACE:intf_pub>
     )
-    if(CANNBOTDSL_PROVIDER_ONLY)
-        # No traditional opbuild target belongs to the Provider-only graph.
-    elseif (ENABLE_STATIC)
+    if(ENABLE_STATIC)
         add_custom_target(opbuild_gen_aclnn_static
                 COMMAND python3 ${PROJECT_SOURCE_DIR}/scripts/util/modify_gen_aclnn.py ${CMAKE_BINARY_DIR}
                 DEPENDS opbuild_gen_default opbuild_gen_inner opbuild_gen_exc
@@ -602,7 +579,7 @@ if (BUILD_OPEN_PROJECT)
         add_dependencies(ops_aclnn opbuild_gen_default opbuild_gen_inner)
     endif()
 
-    if(NOT ENABLE_BUILT_IN AND NOT CANNBOTDSL_PROVIDER_ONLY)
+    if(NOT ENABLE_BUILT_IN)
         set(update_proto_srcs)
         foreach(OP_DIR ${OP_DIR_LIST})
             # copy updated proto cpps to autogen
@@ -668,7 +645,6 @@ if (BUILD_OPEN_PROJECT)
         set(generate_proto_srcs ${generate_proto_srcs_filtered})
     endif()
 
-    if(NOT CANNBOTDSL_PROVIDER_ONLY)
         set_source_files_properties(${generate_proto_srcs}
                 PROPERTIES GENERATED TRUE
         )
@@ -676,7 +652,6 @@ if (BUILD_OPEN_PROJECT)
                 ${generate_proto_srcs}
         )
         add_dependencies(cust_proto ops_transformer_proto_headers)
-    endif()
 
     if (NOT ENABLE_BUILT_IN)
         install(FILES ${generate_proto_headers}
@@ -684,11 +659,6 @@ if (BUILD_OPEN_PROJECT)
         )
     endif()
 
-    if(CANNBOTDSL_PROVIDER_ONLY)
-        redefine_file_macro(
-                TARGET_NAME cust_opapi cust_proto cust_opmaster ops_aclnn
-        )
-    else()
         redefine_file_macro(
                 TARGET_NAME
                 op_host_aclnn
@@ -699,7 +669,6 @@ if (BUILD_OPEN_PROJECT)
                 cust_opmaster
                 ops_aclnn
         )
-    endif()
 else()
     if (generate_aclnn_srcs OR generate_aclnn_inner_srcs)
         set_source_files_properties(${generate_aclnn_srcs} ${generate_aclnn_inner_srcs}
@@ -749,7 +718,9 @@ else()
 endif ()
 
 if (ENABLE_CANNBOTDSL_PROVIDER_ACLNN)
-    add_subdirectory(cannbotdsl_ops)
+    if(NOT TARGET flash_kda_frozen)
+      add_subdirectory(attention/flash_kda)
+    endif()
 endif ()
 
 target_sources(cust_opapi PRIVATE
@@ -839,9 +810,7 @@ target_include_directories(ops_transformer_proto_headers INTERFACE
         $<INSTALL_INTERFACE:include/ops_adv/proto>
 )
 
-if(CANNBOTDSL_PROVIDER_ONLY)
-    # Provider ACLNN has no traditional proto generator dependency.
-elseif ((NOT BUILD_OPEN_PROJECT) AND ("${PRODUCT_SIDE}" STREQUAL "device"))
+if((NOT BUILD_OPEN_PROJECT) AND ("${PRODUCT_SIDE}" STREQUAL "device"))
     ExternalProject_Add(extern_opbuild_gen_transformer
             SOURCE_DIR ${TOP_DIR}/cmake/superbuild
             CONFIGURE_COMMAND ${CMAKE_COMMAND}
@@ -887,7 +856,7 @@ if(ENABLE_ASAN)
 endif()
 message("LIBASAN_PATH = ${LIBASAN_PATH}")
 
-if (BUILD_OPEN_PROJECT AND NOT CANNBOTDSL_PROVIDER_ONLY)
+if(BUILD_OPEN_PROJECT)
     string(REPLACE ";" "\;" OPS_PRODUCT_NAME "${ASCEND_COMPUTE_UNIT}")
     if (generate_aclnn_srcs)
         add_custom_command(OUTPUT ${generate_aclnn_srcs} ${generate_aclnn_headers}
@@ -1019,7 +988,7 @@ if(generate_proto_srcs AND TARGET cust_proto AND NOT ENABLE_BUILT_IN AND NOT ENA
 endif()
 
 # ------------------------------------------------ generate adapt py ------------------------------------------------
-if (NOT ENABLE_AICPU_KERNEL AND NOT CANNBOTDSL_PROVIDER_ONLY)
+if(NOT ENABLE_AICPU_KERNEL)
     # Whitelist: *_depends paths (e.g. mc2/common) whose op_kernel is installed in one place below.
     # Skipped in the per-operator depends loop to avoid duplicate CMake install rules. Add new deps here
     # and add matching install(DIRECTORY ...) if they need the same dedup treatment.
@@ -1249,7 +1218,7 @@ if (ALL_COMMON_SRC_DIRS)
 endif()
 
 # ------------------------------------------------ generate compile cmd ------------------------------------------------
-if (BUILD_OPEN_PROJECT AND NOT CANNBOTDSL_PROVIDER_ONLY)
+if(BUILD_OPEN_PROJECT)
     add_custom_target(prepare_build ALL)
     add_custom_target(generate_compile_cmd ALL)
     add_custom_target(generate_ops_info ALL)
@@ -1266,12 +1235,12 @@ if (BUILD_OPEN_PROJECT AND NOT CANNBOTDSL_PROVIDER_ONLY)
             )
         endforeach ()
     endif()
-elseif(NOT ENABLE_AICPU_KERNEL AND NOT CANNBOTDSL_PROVIDER_ONLY)
+elseif(NOT ENABLE_AICPU_KERNEL)
     add_dependencies(tbe_ops_json_info generate_transformer_adapt_py)
 endif ()
 
 # ------------------------------------------------ opp kernel ------------------------------------------------
-if (ENABLE_OPS_KERNEL AND NOT CANNBOTDSL_PROVIDER_ONLY)
+if(ENABLE_OPS_KERNEL)
     add_custom_target(ops_transformer_kernel ALL)
     add_custom_target(ops_transformer_config ALL)
     add_dependencies(ops_transformer_kernel ops_transformer_config)
@@ -1287,6 +1256,8 @@ if (ENABLE_OPS_KERNEL AND NOT CANNBOTDSL_PROVIDER_ONLY)
         )
     endforeach ()
 endif ()
+
+endif()
 
 if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
     add_custom_target(modify_vendor ALL

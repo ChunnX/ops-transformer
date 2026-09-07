@@ -2,8 +2,11 @@
 # Licensed under the CANN Open Software License Agreement Version 2.0.
 cmake_minimum_required(VERSION 3.20)
 
-# The standard ops-transformer parent owns targets, package layout and installer.
-if(NOT TARGET cust_opapi OR NOT TARGET nnopbase)
+# Normal attention discovery must not require a frozen stage unless requested.
+if(NOT ENABLE_CANNBOTDSL_PROVIDER_ACLNN OR TARGET flash_kda_frozen)
+  return()
+endif()
+if(NOT TARGET nnopbase)
   message(FATAL_ERROR "Configure the ops-transformer repository root")
 endif()
 
@@ -30,10 +33,23 @@ endif()
 find_package(CANNBotFramework CONFIG REQUIRED)
 cannbot_framework_add_frozen_bundle(flash_kda_frozen DIRECTORY "${_flash_stage}")
 if(ENABLE_BUILT_IN)
-  # gen_norm_symbol() creates and installs this official target after this file.
   set(_flash_aclnn_library "${OPAPI_NAME}")
 else()
   set(_flash_aclnn_library cust_opapi)
+endif()
+if(CANNBOTDSL_PROVIDER_ONLY)
+  # A Provider-only package contains the generated API and executable Providers.
+  # No placeholder source or empty traditional operator library is needed.
+  add_library("${_flash_aclnn_library}" SHARED)
+  target_link_libraries("${_flash_aclnn_library}" PRIVATE
+    $<BUILD_INTERFACE:intf_pub> flash_kda_frozen nnopbase ${CMAKE_DL_LIBS})
+  if(ENABLE_BUILT_IN)
+    install(TARGETS "${_flash_aclnn_library}" LIBRARY DESTINATION "${ACLNN_LIB_INSTALL_DIR}")
+  else()
+    install(TARGETS "${_flash_aclnn_library}" LIBRARY
+      DESTINATION "packages/vendors/${VENDOR_NAME}_transformer/op_api/lib")
+  endif()
+elseif(NOT ENABLE_BUILT_IN)
   target_link_libraries(cust_opapi PRIVATE flash_kda_frozen)
 endif()
 

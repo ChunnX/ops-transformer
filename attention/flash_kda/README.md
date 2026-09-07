@@ -1,6 +1,10 @@
 # FlashKDA 冻结二进制接入
 
 本目录使用当前 CANNBotDSL `package.operator` 与独立 `cannbot_framework`。
+算子定义已按仓库标准位置集中到单一 `attention/flash_kda/flash_kda.py`，
+文件按设备计算、Entry/Provider、发布域/CLI 顺序组织；框架不要求拆成两个文件。
+公开入口为文件后部的 `@cb.entry(name="FlashKda")` / `flash_kda()`（当前第 1741 行）；
+随后是 `signatures()` 和 `build(target)`。可以直接搜索这些名字定位主机编排与发布。
 数学主体保留已有 `zyh-binary` 实现；接入层改成 `@entry` 描述分配与返回值、
 两个有序 `@jit` Provider 描述常量初始化和设备计算，再由框架生成冻结
 HostPlan、workspace 绑定、ACLNN 两阶段 API 和 External Task glue。
@@ -8,19 +12,24 @@ HostPlan、workspace 绑定、ACLNN 两阶段 API 和 External Task glue。
 ## 源码职责
 
 ```text
-cannbotdsl_ops/
-  CMakeLists.txt                         # 接入仓库标准 custom/builtin 主工程
-  provider_only_stub.cpp                 # 主工程空传统目标的占位
-  attention/flash_kda/
-    flash_kda.py                        # Entry、Provider、发布域、build_operator CLI
-    kernels.py                          # 设备数学与同步实现
-  tests/test_flash_kda.py                # 唯一用例矩阵、CPU golden、精度判据
+attention/flash_kda/
+  CMakeLists.txt            # 接入标准 custom/builtin 工程
+  README.md
+  flash_kda.py              # 设备计算、唯一 Entry、Providers、发布域和 CLI
+  tests/test_flash_kda.py   # 唯一测试矩阵、CPU golden、精度判据
 ```
 
 早期的 `package_flash_kda.py` 和 `install.sh` 用于独立小父 OPP 的打包探针，
 正式主工程 run 打通后已删除。`stage_flash_kda.py` 也已由 framework 自带
 `stage-bundle` CLI 替代。现在 CMake 必须从仓库根配置，安装与卸载均由标准
-ops-transformer 工程负责。
+ops-transformer 工程负责。原顶层 `cannbotdsl_ops` 目录已经移除。
+
+`provider_only_stub.cpp` 原来只用于让没有 OpDef/proto/tiling 源码的传统目标
+生成空库，并不是框架或算子必需文件。现在 Provider-only 路径直接以框架
+生成的真实 OBJECT 创建 API 库，跳过 `ops_aclnn`、`cust_proto`、`cust_opmaster`
+等传统目标，连同自动生成的空 API cpp 一并不再创建；正常/混合构建仍走
+原有传统图。普通 attention 扫描在未开启 Provider 功能时会跳过本目录，
+不会因缺少 frozen stage 报错，重复接入也有目标 guard。
 
 测试只维护一个 Python 文件。它内嵌的最小 C++ fixture 只负责张量搬运、
 调用生成的 ACLNN API 和回写结果，不包含第二份 golden、用例或精度阈值。
@@ -72,7 +81,7 @@ export FRAMEWORK_PREFIX=/home/z00947297/run_toolkit/verification-20260907-ckuWoU
 export PYTHONPATH="$FRAMEWORK_PREFIX/python/site-packages"
 export CMAKE_PREFIX_PATH="$FRAMEWORK_PREFIX"
 cd /home/z00947297/run_toolkit/ops-transformer-zyh
-python -m cannbotdsl_ops.attention.flash_kda.flash_kda /absolute/fresh/bundle \
+python attention/flash_kda/flash_kda.py /absolute/fresh/bundle \
   --npu-arch dav-3510 --aic-count 28
 python -m cannbot_framework.cli stage-bundle \
   --bundle /absolute/fresh/bundle --operator FlashKda --vendor custom_transformer \
@@ -118,9 +127,9 @@ External Task 的 `libnnopbase.so`，不能只使用 CANN 基础环境的旧 opb
 ## 统一验收
 
 ```bash
-python cannbotdsl_ops/tests/test_flash_kda.py \
+python attention/flash_kda/tests/test_flash_kda.py \
   --bundle /absolute/frozen/bundle --output /absolute/native-report --device 0
-python cannbotdsl_ops/tests/test_flash_kda.py \
+python attention/flash_kda/tests/test_flash_kda.py \
   --aclnn-executable /absolute/flash-kda-aclnn-validate \
   --output /absolute/aclnn-report --device 0
 ```
