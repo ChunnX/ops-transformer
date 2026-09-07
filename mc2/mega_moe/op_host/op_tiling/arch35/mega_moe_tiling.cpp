@@ -255,14 +255,6 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
             unpermuteTailChunkConfig.topKWeightsBufferBytes, unpermuteTailChunkConfig.topKWeightsConversionBufferBytes);
 }
 
-void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nodeName)
-{
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return);
-    OP_LOGD(nodeName, "========== MegaMoeTilingData ==========");
-    PrintMegaMoeCoreTilingData(tilingData, nodeName);
-    PrintMegaMoeBufferConfigs(tilingData, nodeName);
-}
-
 /*
  * 输出 workspace 各分区的偏移和总大小，供 host/device 布局核对使用。
  */
