@@ -25,7 +25,7 @@
 
 ## 功能说明
 
-- 接口功能：`BlockAttentionResidualsGrad` 是正向算子 `BlockAttentionResiduals`（注意力残差）的反向传播算子，该接口根据前向保存的invNorm、probs以及正向参数projWeight、normWeight，结合gradHiddenStates，计算partialBlock、blockRes、projWeight和normWeight的梯度。validBlockNum仅支持传入-1或N（blockRes.shape[1]），其他值报错。
+- 接口功能：`BlockAttentionResidualsGrad` 是正向算子 `BlockAttentionResiduals`（注意力残差）的反向传播算子，该接口根据前向保存的invNorm、probs以及正向参数projWeight、normWeight，结合gradHiddenStates，计算partialBlock、blockRes、projWeight和normWeight的梯度。validBlockNum仅支持传入-1，其他值报错。
 
 - 计算公式：
 
@@ -171,8 +171,8 @@ aclnnStatus aclnnBlockAttentionResidualsGrad(
           <tr>
               <td>validBlockNum（int64_t）</td>
               <td>属性</td>
-              <td>预留属性，当前不参与计算；仅支持传入-1或N。</td>
-              <td><li>预留属性，当前不参与计算；仅支持传入-1或N。</li></td>
+              <td>预留属性，当前不参与计算；仅支持传入-1。</td>
+              <td><li>预留属性，当前不参与计算；仅支持传入-1。</li></td>
               <td>INT64</td>
               <td>-</td>
               <td>标量</td>
@@ -350,12 +350,12 @@ aclnnStatus aclnnBlockAttentionResidualsGrad(
 
 - 确定性计算：aclnnBlockAttentionResidualsGrad默认确定性实现。
 - partialBlock、blockRes、projWeight、normWeight、gradHiddenStates及其对应输出的数据类型保持一致，支持FLOAT16、BFLOAT16、FLOAT32。
-- validBlockNum为INT64预留属性，默认值为-1，当前不参与计算；仅支持传入-1或N（blockRes.shape[1]），其他值返回参数错误。
+- validBlockNum为INT64预留属性，默认值为-1，当前不参与计算；仅支持传入-1，其他值返回参数错误。
 - partialBlock、blockRes、projWeight、normWeight、gradHiddenStates、invNorm和probs均只支持ND格式。
 - shape需满足：partialBlock为(T,H)，blockRes为(T,N,H)，projWeight为(1,H)，normWeight为(H)，gradHiddenStates为(T,H)，invNorm为(T,N+1)，probs为(T,N+1)，其中T、H为非负整数，N在[0,128]内，且各张量中的T、H以及invNorm和probs的N+1保持一致。
 - 输入张量支持非连续Tensor，接口内部统一转为Contiguous后计算。
 - probs应为前向softmax输出，invNorm应为前向逐行归一化系数，且invNorm和probs仅支持FLOAT32。当前实现完全以保存的probs和invNorm为准。
-- validBlockNum为预留属性，不参与实际计算；validBlockNum=-1与validBlockNum=N均表示使用全部N个block。
+- validBlockNum为预留属性，不参与实际计算；仅支持传入-1。
 - T=0或H=0时，aclnn层跳过主算子；非空的权重梯度输出清零，空输出保持对应输入shape。H=0时所有输出均为空，不安排清零任务；T=0且H>0的清零任务仍需调用第二阶段接口执行。
 - 仅N=0且T、H非零时不提前返回，仍计算partialBlock及权重梯度。
 
@@ -451,7 +451,7 @@ int main()
     std::vector<uint16_t> gradHiddenStatesData    (GetShapeSize(gradHiddenStatesShape),     0x3C00);
     std::vector<float> invNormData           (GetShapeSize(invNormShape),         1.0f);
     std::vector<float> probsData            (GetShapeSize(probsShape),          1.0f);
-    int64_t validBlockNum = -1; // 使用全部N个block
+    int64_t validBlockNum = -1; // 预留属性，仅支持传入-1
 
     aclTensor *partialBlock = nullptr, *blockRes = nullptr, *projWeight = nullptr, *normWeight = nullptr;
     aclTensor *gradHiddenStates = nullptr, *invNorm = nullptr, *probs = nullptr;

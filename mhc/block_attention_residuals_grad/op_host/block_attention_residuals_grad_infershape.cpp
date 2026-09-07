@@ -224,10 +224,9 @@ static ge::graphStatus CheckValidBlockNum(gert::InferShapeContext *context, int6
     const auto *validBlockNum = attrs->GetInt(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, validBlockNum);
     // Defer equality with N until the block dimension is known.
-    if (*validBlockNum < -1 ||
-        (*validBlockNum != -1 && blockNum != UNKNOWN_DIM && *validBlockNum != blockNum)) {
-        OP_LOGE(context->GetNodeName(), "valid_block_num must be -1 or N=%ld (when known), got %ld",
-                blockNum, *validBlockNum);
+    if (*validBlockNum < -1 || (*validBlockNum != -1 && blockNum != UNKNOWN_DIM && *validBlockNum != blockNum)) {
+        OP_LOGE(context->GetNodeName(), "valid_block_num must be -1 or N=%ld (when known), got %ld", blockNum,
+                *validBlockNum);
         return GRAPH_FAILED;
     }
     return GRAPH_SUCCESS;
@@ -263,8 +262,7 @@ static ge::graphStatus InferShapeBlockAttentionResidualsGrad(gert::InferShapeCon
     OP_CHECK_NULL_WITH_CONTEXT(context, gradProjWeightShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, gradNormWeightShape);
 
-    const int64_t blockNum =
-        blockResShape->GetDimNum() == RANK_3D ? blockResShape->GetDim(DIM_BLOCK) : UNKNOWN_DIM;
+    const int64_t blockNum = blockResShape->GetDimNum() == RANK_3D ? blockResShape->GetDim(DIM_BLOCK) : UNKNOWN_DIM;
     if (CheckValidBlockNum(context, blockNum) != GRAPH_SUCCESS) {
         return GRAPH_FAILED;
     }

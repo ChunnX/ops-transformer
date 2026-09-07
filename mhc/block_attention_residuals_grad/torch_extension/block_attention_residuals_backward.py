@@ -315,8 +315,14 @@ def _block_attention_residuals_backward_dispatch(
     valid_block_num: int = DEFAULT_VALID_BLOCK_NUM,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     _check_inputs(
-        partial_block, block_res, proj_weight, norm_weight,
-        grad_hidden_states, inv_norm, probs, valid_block_num,
+        partial_block,
+        block_res,
+        proj_weight,
+        norm_weight,
+        grad_hidden_states,
+        inv_norm,
+        probs,
+        valid_block_num,
     )
     op_module = block_attention_residuals_backward_op_builder.load()
     return op_module.block_attention_residuals_backward(
