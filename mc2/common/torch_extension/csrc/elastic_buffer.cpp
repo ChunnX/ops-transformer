@@ -917,8 +917,8 @@ public:
         return engramCommContext_.rankSize;
     }
 
-    static at::Tensor EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
-                                  int64_t numEntries, int64_t dtypeEnum, at::Tensor &fetchedSf, int64_t sfTableAddr);
+    static at::Tensor EngramFetch(const at::Tensor &context, const at::Tensor &indices, at::Tensor &fetched,
+                                  int64_t numEntries, at::Tensor &fetchedSf, int64_t sfTableAddr, int64_t storageDtype);
     using EngramFetchTrainOutput = std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
     static EngramFetchTrainOutput EngramFetchTrain(const at::Tensor &context, const at::Tensor &indices,
                                                    int64_t hiddenSize, int64_t numEntries, int64_t dtypeEnum,
@@ -1137,19 +1137,18 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage, const c10::optional<a
 }
 
 // EngramFetch - stateless static method for torch CustomOp registration (graph-mode compatible).
-at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
-                                      int64_t numEntries, int64_t dtypeEnum, at::Tensor &fetchedSf, int64_t sfTableAddr)
+at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tensor &indices, at::Tensor &fetched,
+                                      int64_t numEntries, at::Tensor &fetchedSf, int64_t sfTableAddr,
+                                      int64_t storageDtype)
 {
-    auto dtype = static_cast<at::ScalarType>(dtypeEnum);
-    int64_t numTokens = indices.size(0);
-    auto fetched = at::empty({numTokens, hiddenSize}, at::TensorOptions().dtype(dtype).device(indices.device()));
-    if (numTokens == 0) {
+    if (fetched.size(0) == 0) {
         return fetched;
     }
     aclTensor *nullTensor = nullptr;
     int64_t zero = 0;
     ACLNN_CMD(aclnnEngramFetch, context, indices, nullTensor, fetched, nullTensor, nullTensor, nullTensor, nullTensor,
-              nullTensor, fetchedSf, hiddenSize, numEntries, zero, zero, zero, sfTableAddr);
+              nullTensor, fetchedSf, static_cast<int32_t>(fetched.size(1)), numEntries, zero, zero, zero, sfTableAddr,
+              storageDtype);
     return fetched;
 }
 
@@ -1179,7 +1178,7 @@ ElasticBuffer::EngramFetchTrainOutput ElasticBuffer::EngramFetchTrain(
         int64_t zero = 0;
         ACLNN_CMD(aclnnEngramFetch, context, indices, localStorageAddr, fetched, perm, sendCounts, recvCounts,
                   recvLocalEntry, numRecv, nullTensor, hiddenSize, numEntries, numMaxTokensPerRank, commBufferSize,
-                  withGrad, zero);
+                  withGrad, zero, zero);
     }
     return std::make_tuple(fetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv);
 }
@@ -1561,11 +1560,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert(),
              pybind11::arg("sf") = pybind11::none())
         .def_static("engram_fetch",
-                    static_cast<at::Tensor (*)(const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t,
-                                               at::Tensor &, int64_t)>(&Mc2Api::ElasticBuffer::EngramFetch),
-                    pybind11::arg("context"), pybind11::arg("indices"), pybind11::arg("hidden_size"),
-                    pybind11::arg("num_entries"), pybind11::arg("dtype"), pybind11::arg("fetched_sf"),
-                    pybind11::arg("sf_table_addr"))
+                    static_cast<at::Tensor (*)(const at::Tensor &, const at::Tensor &, at::Tensor &, int64_t,
+                                               at::Tensor &, int64_t, int64_t)>(&Mc2Api::ElasticBuffer::EngramFetch),
+                    pybind11::arg("context"), pybind11::arg("indices"), pybind11::arg("fetched"),
+                    pybind11::arg("num_entries"), pybind11::arg("fetched_sf"), pybind11::arg("sf_table_addr"),
+                    pybind11::arg("storage_dtype"))
         .def_static("engram_fetch_train", &Mc2Api::ElasticBuffer::EngramFetchTrain, pybind11::arg("context"),
                     pybind11::arg("indices"), pybind11::arg("hidden_size"), pybind11::arg("num_entries"),
                     pybind11::arg("dtype"), pybind11::arg("local_storage_addr"),

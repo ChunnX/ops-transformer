@@ -32,5 +32,6 @@ struct EngramFetchTilingData {
     int64_t numSfPacks;
     int64_t sfElemSize;
     uint64_t sfTableAddr;
+    int64_t storageDtype;
 };
 #endif

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional, Tuple, Union
 
 import torch
+import torch_npu
 import torch.distributed as dist
 from torch.library import impl
 from torch import _check as _torch_check
@@ -23,13 +24,34 @@ _SF_PACK_BYTES = (
     4  # sizeof(sf_pack_t): FP32 scale or UE8M0x4 packed, both 4 bytes per element
 )
 
+_FLOAT8_E8M0_DTYPE = getattr(
+    torch_npu, "float8_e8m0fnu", getattr(torch, "float8_e8m0fnu", torch.uint8)
+)
+
 _ENGRAM_DTYPE_TO_INT = {
     torch.float16: 5,
     torch.float32: 6,
     torch.bfloat16: 15,
-    torch.float8_e4m3fn: 0,  # at::ScalarType::kByte (uint8), viewed as fp8_e4m3fn in Python
 }
 _ENGRAM_INT_TO_DTYPE = {v: k for k, v in _ENGRAM_DTYPE_TO_INT.items()}
+
+_ENGRAM_STORAGE_DTYPES = (
+    torch.bfloat16,
+    torch.float16,
+    torch.float32,
+    torch.float8_e4m3fn,
+    torch.float8_e5m2,
+    torch.uint8,
+)
+
+_HIFLOAT8_DTYPE_ENUM = getattr(torch_npu, "hifloat8", None)
+if _HIFLOAT8_DTYPE_ENUM is not None:
+    _ENGRAM_STORAGE_DTYPES = _ENGRAM_STORAGE_DTYPES + (_HIFLOAT8_DTYPE_ENUM,)
+
+_ENGRAM_SF_DTYPES = (
+    torch.float32,
+    _FLOAT8_E8M0_DTYPE,
+)
 
 
 @dataclass
@@ -69,9 +91,9 @@ class ElasticBufferOpBuilder(OpBuilder):
     def schema(self):
         """PyTorch operator signature."""
         return [
-            "engram_fetch(Tensor context, Tensor indices, int hidden_size, "
-            "int num_entries, int dtype, Tensor fetched_sf, "
-            "int sf_table_addr) -> Tensor",
+            "engram_fetch(Tensor context, Tensor indices, Tensor fetched, "
+            "int num_entries, Tensor fetched_sf, "
+            "int sf_table_addr, int storage_dtype) -> Tensor",
             "engram_fetch_train(Tensor context, Tensor indices, int hidden_size, "
             "int num_entries, int dtype, Tensor local_storage_addr, "
             "int num_max_tokens_per_rank, int comm_buffer_size, int rank_size) "
@@ -88,13 +110,15 @@ class ElasticBufferOpBuilder(OpBuilder):
 
         @impl(get_as_library(), "engram_fetch", "Meta")
         def engram_fetch_meta(
-            context, indices, hidden_size, num_entries, dtype, fetched_sf, sf_table_addr
+            context,
+            indices,
+            fetched,
+            num_entries,
+            fetched_sf,
+            sf_table_addr,
+            storage_dtype,
         ):
-            return torch.empty(
-                (indices.size(0), hidden_size),
-                dtype=_ENGRAM_INT_TO_DTYPE[dtype],
-                device="meta",
-            )
+            return fetched
 
         @impl(get_as_library(), "engram_fetch_train", "Meta")
         def engram_fetch_train_meta(*args):
@@ -189,11 +213,11 @@ _elastic_buffer_op_builder._ensure_initialized()
 
 @impl(get_as_library(), "engram_fetch", "PrivateUse1")
 def engram_fetch(
-    context, indices, hidden_size, num_entries, dtype, fetched_sf, sf_table_addr
+    context, indices, fetched, num_entries, fetched_sf, sf_table_addr, storage_dtype
 ):
     op_module = _elastic_buffer_op_builder.load()
     return op_module.ElasticBuffer.engram_fetch(
-        context, indices, hidden_size, num_entries, dtype, fetched_sf, sf_table_addr
+        context, indices, fetched, num_entries, fetched_sf, sf_table_addr, storage_dtype
     )
 
 
@@ -424,7 +448,8 @@ class ElasticBuffer:
         self._engram_context_tensor = None
         self._engram_hidden_size = None
         self._engram_num_entries = None
-        self._engram_dtype_int = None
+        self._engram_dtype = None
+        self._engram_storage_dtype = 0
         self._engram_fetch_in_progress = False
         self._local_storage_addr = None
         self._comm_buffer_size = 0
@@ -461,9 +486,8 @@ class ElasticBuffer:
             lambda: f"hidden must be 128-aligned, got {hidden}",
         )
         torch._check(
-            dtype
-            in (torch.bfloat16, torch.float16, torch.float32, torch.float8_e4m3fn),
-            lambda: f"dtype must be bfloat16/float16/float32/float8_e4m3fn, got {dtype}",
+            dtype in _ENGRAM_STORAGE_DTYPES,
+            lambda: f"dtype must be one of {_ENGRAM_STORAGE_DTYPES}, got: {dtype}",
         )
         _elastic_buffer_ops = _elastic_buffer_op_builder.load()
         return _elastic_buffer_ops.ElasticBuffer.get_engram_storage_size_hint(
@@ -596,16 +620,23 @@ class ElasticBuffer:
             )
 
     def engram_write(
-        self, storage: torch.Tensor, sf: Optional[torch.Tensor] = None
+        self,
+        storage: torch.Tensor,
+        sf: Optional[torch.Tensor] = None,
+        storage_dtype: Optional[int] = None,
     ) -> None:
         """
         Write data to the host pinned memory of ElasticBuffer.
 
         Arguments:
-            storage: the CPU tensor to write (must be 2D, contiguous, dtype=bf16/fp16/fp32/fp8_e4m3fn).
-            sf: optional scaling factor table for FP8 quantization (GPU tensor,
-                shape [num_entries, num_sf_packs]). When provided, engram_fetch
-                will return a fetched_sf tensor alongside fetched data.
+            storage: the CPU tensor to write (must be 2D, contiguous).
+                For standard dtypes (bf16/fp16/fp32/float8_e4m3fn/float8_e5m2),
+                the dtype is inferred from the tensor.
+                For hifloat8/float8_e8m0fnu, storage must be torch.uint8 and
+                storage_dtype must be set to the ACL dtype enum.
+            sf: optional scaling factor table for FP8 quantization (GPU tensor).
+            storage_dtype: optional int, ACL dtype enum for non-standard dtypes
+                (e.g. torch_npu.hifloat8=290). When None, inferred from storage.dtype.
 
         Returns:
             None
@@ -621,11 +652,16 @@ class ElasticBuffer:
             lambda: f"storage must be 2D, got dimensions: {storage.dim()}",
         )
         torch._check(storage.is_contiguous(), lambda: "storage must be contiguous")
-        torch._check(
-            storage.dtype
-            in (torch.bfloat16, torch.float16, torch.float32, torch.float8_e4m3fn),
-            lambda: f"storage dtype must be bfloat16/float16/float32/float8_e4m3fn, got: {storage.dtype}",
-        )
+        if storage_dtype is not None:
+            torch._check(
+                storage.dtype == torch.uint8,
+                lambda: f"storage must be torch.uint8 when storage_dtype is set, got: {storage.dtype}",
+            )
+        else:
+            torch._check(
+                storage.dtype in _ENGRAM_STORAGE_DTYPES,
+                lambda: f"storage dtype must be one of {_ENGRAM_STORAGE_DTYPES}, got: {storage.dtype}",
+            )
         torch._check(
             storage.size(1) > 0,
             lambda: f"storage second dimension must be positive, got: {storage.size(1)}",
@@ -654,14 +690,15 @@ class ElasticBuffer:
                 f"{storage.size(0) * self._ep_world_size}), sf must be the full replicated table",
             )
             torch._check(
-                sf.element_size() == _SF_PACK_BYTES,
-                lambda: f"sf element size must be {_SF_PACK_BYTES} bytes (sf_pack_t), got {sf.element_size()}",
+                sf.dtype in _ENGRAM_SF_DTYPES,
+                lambda: f"sf dtype must be one of {_ENGRAM_SF_DTYPES}, got: {sf.dtype}",
             )
         self._runtime.engram_write(storage, sf)
         self._engram_context_tensor = self._runtime.get_context_tensor()
         self._engram_hidden_size = storage.size(1)
         self._engram_num_entries = storage.size(0)
-        self._engram_dtype_int = _ENGRAM_DTYPE_TO_INT[storage.dtype]
+        self._engram_dtype = storage.dtype
+        self._engram_storage_dtype = storage_dtype if storage_dtype is not None else 0
         self._engram_sf = sf
         self._engram_sf_table_addr = sf.data_ptr() if sf is not None else 0
         self._local_storage_addr = self._runtime.get_local_storage_addr()
@@ -694,7 +731,7 @@ class ElasticBuffer:
                     indices,
                     self._engram_hidden_size,
                     self._engram_num_entries,
-                    self._engram_dtype_int,
+                    _ENGRAM_DTYPE_TO_INT.get(self._engram_dtype, 0),
                     self._local_storage_addr,
                     self._num_max_tokens_per_rank,
                     self._comm_buffer_size,
@@ -723,24 +760,28 @@ class ElasticBuffer:
                 device=indices.device,
             )
 
+        fetched = torch.empty(
+            (indices.size(0), self._engram_hidden_size),
+            dtype=self._engram_dtype,
+            device=indices.device,
+        )
+
         fetched = torch.ops.cann_ops_transformer.engram_fetch(
             context,
             indices,
-            self._engram_hidden_size,
+            fetched,
             self._engram_num_entries,
-            self._engram_dtype_int,
             fetched_sf
             if fetched_sf is not None
             else torch.empty(0, device=indices.device),
             self._engram_sf_table_addr,
+            self._engram_storage_dtype,
         )
 
         def _wait():
             result = torch.ops.cann_ops_transformer.engram_fetch_wait(context, fetched)
             self._engram_fetch_in_progress = False
             if sf is not None:
-                if self._engram_dtype_int == _ENGRAM_DTYPE_TO_INT[torch.float8_e4m3fn]:
-                    result = result.view(torch.float8_e4m3fn)
                 return result, fetched_sf
             return result
 
@@ -793,7 +834,7 @@ class ElasticBuffer:
             self._engram_context_tensor is not None,
             lambda: "engram_fetch_grad must be called after at least one engram_write",
         )
-        expected_dtype = _ENGRAM_INT_TO_DTYPE[self._engram_dtype_int]
+        expected_dtype = self._engram_dtype
         _torch_check(
             grad_fetched.dtype == expected_dtype,
             lambda: (
@@ -1130,7 +1171,8 @@ class ElasticBuffer:
         self._engram_context_tensor = None
         self._engram_hidden_size = None
         self._engram_num_entries = None
-        self._engram_dtype_int = None
+        self._engram_dtype = None
+        self._engram_storage_dtype = 0
         self._engram_fetch_in_progress = False
         self._local_storage_addr = None
         self._comm_buffer_size = 0

@@ -44,6 +44,7 @@ constexpr uint32_t ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX = 2U;
 constexpr uint32_t ATTR_COMM_BUFFER_SIZE_INDEX = 3U;
 constexpr uint32_t ATTR_WITH_GRAD_INDEX = 4U;
 constexpr uint32_t ATTR_SF_TABLE_ADDR_INDEX = 5U;
+constexpr uint32_t ATTR_STORAGE_DTYPE_INDEX = 6U;
 
 constexpr uint32_t DIM_ONE = 1U;
 constexpr uint32_t DIM_TWO = 2U;
@@ -64,8 +65,8 @@ static int64_t AlignTo(int64_t x, int64_t y)
     return CeilDiv(x, y) * y;
 }
 
-static const std::vector<ge::DataType> OUTPUT_DTYPE_LIST = {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_UINT8,
-                                                            ge::DT_FLOAT8_E4M3FN};
+static const std::vector<ge::DataType> OUTPUT_DTYPE_LIST = {ge::DT_BF16,          ge::DT_FLOAT16,     ge::DT_FLOAT,
+                                                            ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_HIFLOAT8};
 
 static bool IsContains(const std::vector<ge::DataType> &list, ge::DataType value)
 {
@@ -505,6 +506,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchTi
     tilingData.numSfPacks = 0;
     tilingData.sfElemSize = 0;
     tilingData.sfTableAddr = 0;
+    tilingData.storageDtype = 0;
 
     auto hiddenSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_HIDDEN_SIZE_INDEX);
     tilingData.hiddenDim = *hiddenSizePtr;
@@ -535,6 +537,11 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchTi
     auto sfTableAddrPtr = attrs->GetAttrPointer<int64_t>(ATTR_SF_TABLE_ADDR_INDEX);
     if (sfTableAddrPtr != nullptr) {
         tilingData.sfTableAddr = static_cast<uint64_t>(*sfTableAddrPtr);
+    }
+
+    auto storageDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_STORAGE_DTYPE_INDEX);
+    if (storageDtypePtr != nullptr) {
+        tilingData.storageDtype = *storageDtypePtr;
     }
 
     auto platformInfo = context->GetPlatformInfo();
