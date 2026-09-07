@@ -23,7 +23,7 @@ path; a future radius-generalized variant must change both the host contract
 and the tiling key.  Outputs are
 `selected_index [B,H,L,K]` (`int32`) and `selected_valid [B,H,L,K]`
 (`uint8`).  Invalid slots are zero-filled and marked false.  The host tiling
-rejects unsupported ranks, dtypes, dimensions, and `K > 16` before launching
+rejects unsupported ranks, data types, dimensions, and `K > 16` before launching
 the kernel.
 
 Build from the repository root with the normal CANN ops-transformer flow,
