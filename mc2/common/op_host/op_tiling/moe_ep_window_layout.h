@@ -20,7 +20,7 @@ namespace Mc2Tiling {
 
 constexpr uint64_t MOE_EP_UB_ALIGN = 32UL;
 constexpr uint64_t MOE_EP_WIN_ALIGN = 512UL;
-constexpr uint64_t MOE_EP_NOTIFY_TOKEN_LIMIT = 15000UL;
+constexpr uint64_t MOE_EP_NOTIFY_JETTY_COUNT = 8UL; // 预留slot状态槽位数 需>=JETTY_CNT(每对端channel数)
 constexpr uint64_t MOE_EP_COMBINE_CHANNEL_COUNT = 7UL;
 constexpr uint64_t MOE_EP_MAX_OUT_DTYPE_SIZE = 2UL;
 constexpr uint64_t MOE_EP_METADATA_DTYPE_SIZE = 4UL;
@@ -56,6 +56,8 @@ struct MoeEpWindowLayout {
     uint64_t cntWinStateSize;
     uint64_t slotWinStateOffset;
     uint64_t dispatchSlotStateSize;
+    uint64_t payloadStateWinOffset;
+    uint64_t payloadStateWinSize;
     uint64_t combineStateWinOffset;
     uint64_t combineStateWinSize;
 
@@ -71,6 +73,7 @@ struct MoeEpWindowLayout {
     uint64_t payloadStashWinSize;
 
     uint64_t dispatchReservedPerSlotBytes;
+    uint64_t dispatchMetaPerSlotBytes;
     uint64_t scaleoutReservedPerSlotBytes;
     uint64_t combineReservedPerSlotBytes;
     uint64_t requiredBytes;

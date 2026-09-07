@@ -45,6 +45,7 @@ struct MoeEpDispatchWindowLayout {
     uint32_t scaleoutSlotAlignedBytes; // scaleout 数据和转发元信息 slot 字节数
     uint64_t cntWinStateOffset;
     uint64_t slotWinStateOffset;
+    uint64_t payloadWinStateOffset;
     uint64_t winDataOffset;
     uint64_t scaleoutRecvDataOffset;
     uint64_t scaleoutRecvStatusOffset;
@@ -69,6 +70,7 @@ struct MoeEpDispatchInfo {
     uint64_t totalUbSize;
     uint32_t scalesBytes;
     uint32_t perSlotBytes;
+    uint32_t metaSlotBytes;
     uint32_t doCpuSync;
     uint32_t isCached;
     uint32_t isTopkWeights;
