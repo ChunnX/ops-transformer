@@ -171,8 +171,8 @@ AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, IsMxFp4, TransB
     scaleKGroups_ = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(k_), Blaze::Gemm::MXFP_DIVISOR_SIZE);
     scaleKLen_ = scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE);
     // FP4 (fp4x2) 1 字节装 2 个元素：每行字节数 = k/2；FP8 等 = k * sizeof(AType)（与 URMA impl 契约一致）
-    dataBytesPerMRow_ =
-        Blaze::Gemm::IsFp4<AType>() ? (static_cast<uint64_t>(k_) >> 1) : static_cast<uint64_t>(k_) * sizeof(AType);
+    // 以类模板参数 IsMxFp4 为唯一判断源（与 kForComm_ 一致），保证所有实例化场景 AType 与 IsMxFp4 配对
+    dataBytesPerMRow_ = IsMxFp4 ? (static_cast<uint64_t>(k_) >> 1) : static_cast<uint64_t>(k_) * sizeof(AType);
     scaleBytesPerMRow_ =
         scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE) * sizeof(AscendC::fp8_e8m0_t);
     cBytesPerM_ = static_cast<uint64_t>(n_) * sizeof(CType);
