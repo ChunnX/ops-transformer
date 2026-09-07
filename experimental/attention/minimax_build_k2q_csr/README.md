@@ -30,8 +30,6 @@ Meta → Hist → RowPrefix → TilePrefix → Scatter
   4. **TilePrefix**：生成各 tile 的绝对写偏移 `abs_base`。
   5. **Scatter**：按 CSR 写出 `q_ind`（query 下标）与 `slot`（topk 槽位）；未命中位为 `-1`。
 
-流水与 Tiling 细节见 [DESIGN.md](./DESIGN.md)。
-
 ## 参数说明
 
 | 参数名 | 输入/输出/属性 | 描述 | 数据类型 | 数据格式 |
@@ -121,5 +119,4 @@ minimax_build_k2q_csr/
     op_host/                     # def / infershape / tiling
     op_kernel/{op}.cpp           # ascend910b 入口
     op_kernel/{op}_apt.cpp       # ascend950 入口
-  DESIGN.md
-```
+  ```

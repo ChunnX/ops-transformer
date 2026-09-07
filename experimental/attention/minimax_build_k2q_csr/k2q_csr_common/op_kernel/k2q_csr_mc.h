@@ -1,4 +1,14 @@
 /**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/**
  * k2q_csr MC Hist / Scatter（A2 / A5 MC 共用，放在 op_kernel/ 上层）。
  *
  * 禁止 SIMT API。优化要点（相对初版 scalar）：
@@ -107,8 +117,8 @@ __aicore__ inline int32_t K2qCsrPipelineMc::MapRow(int32_t bi, int32_t val)
 }
 
 __aicore__ inline void K2qCsrPipelineMc::Init(GM_ADDR q2k, GM_ADDR cuQ, GM_ADDR rowMap, GM_ADDR tokenBatch,
-                                               GM_ADDR rowPtr, GM_ADDR qInd, GM_ADDR slot, GM_ADDR scratch,
-                                               const K2qCsrTilingData *tiling, TPipe *pipe)
+                                              GM_ADDR rowPtr, GM_ADDR qInd, GM_ADDR slot, GM_ADDR scratch,
+                                              const K2qCsrTilingData *tiling, TPipe *pipe)
 {
     (void)rowPtr;
     tiling_ = tiling;

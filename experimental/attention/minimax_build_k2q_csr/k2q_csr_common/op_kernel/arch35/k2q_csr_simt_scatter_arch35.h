@@ -1,4 +1,14 @@
 /**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/**
  * SIMT Stage S（对齐 CUDA k2q_scatter_kernel 的「分区 + 前缀预留」思路）。
  * 仅 ascend950 / use_simt=1（本文件位于 op_kernel/arch35/）。
  *
@@ -37,10 +47,9 @@ constexpr int32_t kWarpSize = 32;
  *   Phase1 写入 counts；Phase2 原地改为 exclusive base；Phase3 作 running cursor。
  */
 __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void ScatterEdgesVf(
-    __gm__ int32_t *q2k, __gm__ int32_t *tokenBatch, __gm__ int32_t *rowMap, __gm__ int32_t *cuQ,
-    __gm__ int32_t *qInd, __gm__ int32_t *slot, __gm__ int32_t *absBase, __ubuf__ int32_t *partBase, int32_t hid,
-    int32_t N, int32_t topk, int32_t q0, int32_t qLen, int32_t maxKv, int32_t totalRows, int32_t B,
-    int32_t numWarps, int32_t qGlobalOffset)
+    __gm__ int32_t *q2k, __gm__ int32_t *tokenBatch, __gm__ int32_t *rowMap, __gm__ int32_t *cuQ, __gm__ int32_t *qInd,
+    __gm__ int32_t *slot, __gm__ int32_t *absBase, __ubuf__ int32_t *partBase, int32_t hid, int32_t N, int32_t topk,
+    int32_t q0, int32_t qLen, int32_t maxKv, int32_t totalRows, int32_t B, int32_t numWarps, int32_t qGlobalOffset)
 {
     const int32_t tid = static_cast<int32_t>(Simt::GetThreadIdx());
     const int32_t nthreads = static_cast<int32_t>(Simt::GetThreadNum());
@@ -274,16 +283,14 @@ private:
 
         LocalTensor<int32_t> part = partBuf_.Get<int32_t>();
         const int64_t absOff = (g * H_ + hid) * totalRows_;
-        __gm__ int32_t *absBaseGm =
-            (__gm__ int32_t *)(absBaseAddr_ + absOff * static_cast<int64_t>(sizeof(int32_t)));
+        __gm__ int32_t *absBaseGm = (__gm__ int32_t *)(absBaseAddr_ + absOff * static_cast<int64_t>(sizeof(int32_t)));
         Simt::VF_CALL<k2q_csr_simt::ScatterEdgesVf>(
             Simt::Dim3(k2q_csr_simt::THREAD_NUM), (__gm__ int32_t *)q2kAddr_, (__gm__ int32_t *)tokenBatchAddr_,
             (__gm__ int32_t *)rowMapAddr_, (__gm__ int32_t *)cuQAddr_, (__gm__ int32_t *)qIndAddr_,
-            (__gm__ int32_t *)slotAddr_, absBaseGm, (__ubuf__ int32_t *)part.GetPhyAddr(),
-            static_cast<int32_t>(hid), static_cast<int32_t>(N_), static_cast<int32_t>(topk_),
-            static_cast<int32_t>(q0), static_cast<int32_t>(q1 - q0), static_cast<int32_t>(maxKv_),
-            static_cast<int32_t>(totalRows_), static_cast<int32_t>(B_), static_cast<int32_t>(numWarps_),
-            static_cast<int32_t>(qGlobalOffset_));
+            (__gm__ int32_t *)slotAddr_, absBaseGm, (__ubuf__ int32_t *)part.GetPhyAddr(), static_cast<int32_t>(hid),
+            static_cast<int32_t>(N_), static_cast<int32_t>(topk_), static_cast<int32_t>(q0),
+            static_cast<int32_t>(q1 - q0), static_cast<int32_t>(maxKv_), static_cast<int32_t>(totalRows_),
+            static_cast<int32_t>(B_), static_cast<int32_t>(numWarps_), static_cast<int32_t>(qGlobalOffset_));
         PipeBarrier<PIPE_ALL>();
     }
 
