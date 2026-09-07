@@ -1,0 +1,211 @@
+# engram_fetch 远程读"区间合并"优化方案
+
+## 1. 背景与问题
+
+### 1.1 现状
+
+engram_fetch 算子的远程 token 获取路径（RemoteFetchRank）当前逐 token 发起 URMA ReadNbi：
+
+```
+每个 token 一次 ReadNbi，每次传输 hiddenBytes（hiddenSize=128 bf16 时 256 字节）
+```
+
+### 1.2 性能瓶颈
+
+实测数据（BS=8192/卡，hiddenSize=128，8 卡，每卡 1024 token，56 核做远程读）：
+
+| 指标 | 值 |
+|------|-----|
+| 远程读 wait（Drain）耗时 | 79 us |
+| 每 WQE 固定开销 | ~617 ns |
+| 每 WQE 实际传输时间（256B） | ~0.85 ns |
+| 开销占比 | 99.9% |
+| URMA 有效带宽 | 22 GB/s（远低于链路上限） |
+
+每个 WQE 的硬件固定开销（地址解析、权限校验、包头、CQE 生成）约 617ns，
+而 256 字节的实际传输只有 0.85ns，绝大部分时间花在协议开销上。
+
+### 1.3 已验证排除的方向
+
+| 实验 | 结果 | 结论 |
+|------|------|------|
+| 去掉 fence（odr=0, fence=0） | Drain 报错 | 乱序 READ 与 CQE 轮询机制不兼容（或硬件限制），保留强序 |
+| 增大单次读长度（256B→2560B，WQE 数不变） | 耗时不变 | 瓶颈是 WQE 数量（CQE 轮询次数），不是单个 WQE 的数据量 |
+| 预拷贝 host→device GM（去 PCIe） | 本卡拷贝耗时不变 | per-DataCopy 固定开销主导；本卡路径被远端掩盖，非瓶颈 |
+
+**结论：唯一有效的方向是减少 WQE 数量——把多个 token 合并成一次通信。**
+
+## 2. 核心思路
+
+### 2.1 区间合并读取
+
+对 hiddenSize <= 512（hiddenBytes <= 1024）的场景，每个 token 的 embedding
+在远端 rank 的 buffer 中按 localEntryIdx 连续排布。相邻索引的 token，
+其源数据在远端是连续的。
+
+一次读 token 附近的一个区间（含自身共 11 条，即 10 条 read-ahead）：
+
+```
+原方案（3 个 token 需要 3 次 WQE）:
+  ReadNbi(fetchedGM_+dstA, remoteBase+idx*256, 256)   ← WQE1
+  ReadNbi(fetchedGM_+dstB, remoteBase+(idx+1)*256, 256) ← WQE2（源地址与 WQE1 连续）
+  ReadNbi(fetchedGM_+dstC, remoteBase+(idx+2)*256, 256) ← WQE3
+
+区间方案（合并为 1 次 WQE）:
+  ReadNbi(staging, remoteBase+idx*256, 11*256=2816)   ← 1 个 WQE 覆盖 11 条
+```
+
+WQE 数量从 N 降到约 N/11（视索引局部性），per-WQE 开销摊薄 11 倍。
+
+### 2.2 目的地址不连续问题
+
+合并的前提是**源地址连续**（localEntryIdx 排序后相邻），
+但**目的地址不连续**——每个 token 在 fetchedGM_ 中的位置由 globalTokenIdx
+（原始 indices 数组下标）决定，是乱序的。
+
+因此不能直读 fetchedGM_，需要引入 staging buffer：
+
+```
+Fetch kernel:
+  1. 对本核负责的 token 按 localEntryIdx 排序（插入排序，每核 ~128 条）
+  2. 顺序扫描，发起区间读：ReadNbi(staging, remoteBase+idx*256, 11*256)
+  3. 已被上一次区间覆盖的 token 跳过，不发起通信
+  4. 记录映射表 mapping: (stagingOffset, globalTokenIdx) 供 wait 使用
+
+Wait kernel:
+  1. Drain 等待所有 URMA 读完成（原有流程不变）
+  2. 遍历映射表，把每个 token 从 staging 拷到 fetchedGM_ 的正确位置
+     LocalCopySlice(fetchedGM_ + globalTokenIdx*256, staging+offset, 256)
+```
+
+### 2.3 数据流
+
+```
+远端 rank GM (embedding, 连续排布)
+    │
+    │ URMA ReadNbi (区间 11*hiddenBytes, WQE 数减少 11 倍)
+    ▼
+本地 staging buffer (GM workspace, 连续)
+    │
+    │ 本地 HBM→UB→HBM scatter (按映射表, ~32KB, 耗时可忽略)
+    ▼
+fetchedGM_ (输出 tensor, 按 globalTokenIdx 乱序落位)
+```
+
+## 3. 实现要点
+
+### 3.1 排序
+
+每核负责 ~128 条 token（BS=8192, 8 rank, 9 channel 时），插入排序即可，
+复用 ScatterByRank 之后已空闲的 rankIDsBuf_/positionsBuf_（UB），不新增内存。
+
+### 3.2 覆盖判断
+
+排序后顺序扫描，维护 lastReadStart / lastReadEnd：
+
+```
+若 localEntryIdx ∈ [lastReadStart, lastReadEnd] → 已覆盖，跳过通信，
+    映射直接记 lastReadStagingBase + (localEntryIdx - lastReadStart) * hiddenBytes
+否则发起区间读，更新 lastReadStart/End/StagingBase
+```
+
+### 3.3 越界保护（重要，曾导致 Drain 报错）
+
+区间读的源地址不能越过远端 rank buffer 末尾：
+
+```
+actualLen = min(11 * hiddenBytes, rankBufBytes - localEntryIdx * hiddenBytes)
+```
+
+否则 URMA 访问未注册地址，CQE 带错误状态，Drain 轮询时 assert。
+
+### 3.4 URMA config 必须保序
+
+URMA_DEFAULT_CFG（odr=5 强序 + fence=1 + cqe=1）。
+去 fence 的乱序 READ 实测导致 Drain 轮询失败，不要用。
+
+### 3.5 staging 与映射的传递
+
+fetch 和 wait 是两个独立 kernel launch，workspace 不共享，
+staging buffer 和映射表通过 EngramCommContext 传递地址（host 预分配持久 GM）：
+
+```
+struct EngramCommContext {
+    ...
+    uint64_t stagingBufferAddr;    // staging 基址
+    uint64_t mappingBufferAddr;    // 映射表基址
+    uint32_t stagingSizePerCore;   // 每核 staging 分区大小
+};
+```
+
+注意：host 侧（elastic_buffer.cpp）与 kernel 侧（engram_fetch_utils.h）
+各有一份 EngramCommContext 定义，字段必须严格同步。
+
+### 3.6 映射表跨核偏移必须一致
+
+fetch 和 wait 都按 `aivId * mappingPerCore` 定位本核映射分区，
+mappingPerCore 两边必须用同一公式：
+
+```
+mappingPerCore = ceil(numTokens / coreNum) * 2 * sizeof(uint32_t) + sizeof(uint32_t)
+```
+
+（曾因 fetch 用 indicesBatchSize、wait 用 numTokensPerCore 计算不一致踩坑。）
+
+映射表格式：
+
+```
+mappingGM[0]                    = 映射条目数 N
+mappingGM[1 + i*2]              = 第 i 条的 stagingOffset（字节）
+mappingGM[2 + i*2]              = 第 i 条的 globalTokenIdx
+```
+
+### 3.7 多 batch 隐患（待办）
+
+Process() 的 batch 循环中，RemoteFetchRank 的 stagingOffset/mapIdx 每个 batch
+都从 0 开始，多 batch 时会覆盖前一批的映射和 staging。当前 BS 下
+indicesBatchSize >= numTokens 单 batch 跑完，不触发；支持超大批次时需按
+batch 偏移 staging/映射。
+
+## 4. 涉及文件
+
+| 文件 | 改动 |
+|------|------|
+| mc2/engram_fetch/op_kernel/engram_fetch_utils.h | context 加 staging 3 字段、READ_AHEAD_TOKENS 常量 |
+| mc2/engram_fetch/op_kernel/arch35/engram_fetch_arch35.h | RemoteFetchRank 排序+区间读+写映射 |
+| mc2/engram_fetch_wait/op_kernel/arch35/engram_fetch_wait_arch35.h | Init 收 fetched/tiling，Process Drain+scatter |
+| mc2/engram_fetch_wait/op_kernel/arch35/engram_fetch_wait.cpp | 传 fetched 给 Init |
+| mc2/engram_fetch_wait/op_kernel/engram_fetch_wait_tiling_data.h | 加 hiddenBytes/numTokensPerCore |
+| mc2/engram_fetch_wait/op_host/op_tiling/arch35/engram_fetch_wait_tiling.cpp | 从 fetched shape 算 tiling |
+| torch_extension/.../csrc/elastic_buffer.cpp | host 侧 context 同步字段、分配 staging/mapping |
+
+## 5. 排错记录（重要教训）
+
+| 现象 | 根因 | 修复 |
+|------|------|------|
+| Drain assert | 8KB 栈数组溢出 kernel 小栈 | 改用 UB 复用（rankIDsBuf_/positionsBuf_） |
+| Drain assert | 区间读越过远端 buffer 末尾访问未注册地址 | clamp actualLen |
+| Drain assert | 去 fence 乱序 READ 与 CQE 轮询不兼容 | 恢复 URMA_DEFAULT_CFG 保序 |
+| 精度错误 | 本卡 LocalFetchTokens 处于实验注释状态，1/8 数据缺失 | 恢复调用 |
+| staging 地址为垃圾 | host/kernel 两侧 EngramCommContext 定义不同步 | 两侧字段严格对齐 + Init 断言非零 |
+| 映射读不到 | fetch/wait mappingPerCore 公式不一致 | 统一用 ceil(numTokens/coreNum) |
+
+## 6. 预期收益
+
+| 场景 | WQE 数 | Drain 耗时（估） |
+|------|--------|-----------------|
+| 当前（逐 token） | 128/核 | 79 us |
+| 区间合并（平均段长 11） | ~12/核 | ~7-10 us |
+| 区间合并（随机索引退化） | 接近 128/核 | 接近 79 us（无收益） |
+
+收益强依赖索引局部性：相邻 token 引用相邻 embedding 时收益最大；
+完全随机索引时区间覆盖低，退化为逐 token 读（不劣化，多一次 staging scatter，
+约 32KB HBM 拷贝，可忽略）。
+
+## 7. 后续方向
+
+1. 实测索引局部性分布，评估平均覆盖率和实际 WQE 缩减比
+2. READ_AHEAD_TOKENS 调参（当前 10）
+3. 若索引完全随机，考虑按 localEntryIdx 排序后"跨 token 拼接"非连续段
+   （需要 URMA 多 SGE 支持，当前 sgeNum=1 不支持）
+4. 解决多 batch 覆盖问题，支持超大批次

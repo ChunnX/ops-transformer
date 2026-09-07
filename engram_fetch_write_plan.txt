@@ -1,0 +1,423 @@
+================================================================================
+engram_fetch 改 URMA Write + 带目的地址直写 方案（B 方案）
+================================================================================
+
+一、背景与目标
+--------------------------------------------------------------------------------
+现状：engram_fetch_arch35.h 用 URMA Read 接口，逐 token 发 ReadNbi，每个
+remote 地址不连续。小 hiddenSize（512B~2KB）时，每笔 wire 事务只搬 hiddenBytes
+（靠 2560B 凑长 hack 放大），事务开销占比高，带宽打不满。
+
+目标：改成 write 模式，owner 侧把多个 token 聚合成大块、一次大 write 发出，
+让单笔 wire 事务达到几十 KB（接近线性带宽）。
+
+
+二、总体数据通路（B 方案：workspace 接收 + 本地散射）
+--------------------------------------------------------------------------------
+
+```
+requester(fetch):  发请求(id列表 + workspace基址 + count) ──────▶ owner
+                  发完退出（不确认、不判断）
+
+owner(fetch):     收请求 → 聚合/直写数据 → 大 write 到 requester workspace
+                  全部发完 → 末笔 WriteWithNotifyNbi 写 done 标志 → 退出
+
+requester(wait):  轮询本卡 win 的 notify 槽求和 == ΣrankCounts
+                  → 全到齐 → SIMT scatter workspace → fetched 正确位置
+```
+
+网络只走一次、每笔大包；两端各一跳本地 GM 拷贝（带宽远高于互连，可多核并行），
+占比可忽略。fetch 全程不判断对端事件；判断只在 wait。
+
+scatter 用 SIMT 实现（详见第五节 5.3）。
+
+
+三、WriteWithNotifyNbi 的作用（核心通知机制）
+--------------------------------------------------------------------------------
+WriteWithNotifyNbi：一个 WQE 干两件事，强序：
+  1. 先把数据 len 字节从 src 写到对端 dst
+  2. 再把一个 notifyVal(u64) 写到对端 notifyAddr
+
+因为同 WQE 强序，notify 一定排在数据之后落。对端轮询到 notifyVal = 收到通知
+= 这个 WQE 的数据已经全到了。
+
+为什么需要它：
+  - write 的完成 CQE 落在发送方（owner）的通道上，接收方 Drain 自己通道
+    看不到对端发来的数据完成。
+  - 所以接收方不能靠 Drain 判断，只能靠 owner 用 WriteWithNotify 在接收方
+    内存里留个「我发完了」的记号，接收方去轮询它。
+
+notify 语义（查 impl 实现确认）：
+  - WRITE_WITH_NOTIFY 是独立 opcode，不是 FAA（FAA 是 0xB，单独接口）。
+  - notify 是普通 store，不是原子加。
+  - 多个 owner 不能写同一个 notify 槽（会 race 覆盖）→ 每 (owner,requester)
+    对一个专属槽，接收方把各 owner 的槽求和比对。
+  - 同一个 owner 多批数据：前面各批用不带 notify 的 WriteNbi（unfenced，纯
+    数据），只有最后一笔用 WriteWithNotifyNbi(notifyVal=总count) 收尾——
+    既省 notify 开销，又保证全部数据落完才发这一个通知。
+  - 接收方读 notify 槽前要 DataCacheCleanAndInvalid（DCCI）刷 cache。
+
+参考实现：
+  - moe_ep_dispatch.h:528  — owner 发数据 + notify（notifyVal=count）
+  - moe_ep_dispatch.h:565  — requester 轮询 notify 区 + ReduceSum 求和
+  - engram_fetch_grad_arch35.h:261 — WaitAllStatusFlags 逐 src 轮询 + DCCI + 超时
+  - engram_fetch_train_arch35.h  ExchangeToken — slot 信用流控完整实现
+
+
+四、协议详细设计
+--------------------------------------------------------------------------------
+
+4.1 角色分工（fetch 不判断 / wait 做判断）
+
+  fetch(owner 服务侧)：
+    - 轮询自己 win 的请求区（干服务活，不是判断对端完成）
+    - 逐批 WriteNbi(数据→requester workspace, unfenced)，各 token 行不重叠，无序安全
+    - 服务完（自己 win 的 reqDone 置位 且 消费数==count）
+      → 末笔 WriteWithNotifyNbi(notifyAddr=requester控制win[本rank槽], notifyVal=总count,
+         DEFAULT强序+fence)
+    - 提交完就退，不 Drain、不轮询对端
+
+  fetch(requester 侧)：
+    - 发请求列表 + workspace 基址 + count 到 owner
+    - 退出，不判断
+
+  → fetch 全程不判断任何对端事件，只提交 WQE。
+    owner 退出前唯一等的是「自己 win 里的请求到齐」（属于完成本职服务）。
+
+  wait(requester)：
+    - expectedTotal = Σ rankCounts[r]   （本卡自己算，不用等谁告诉）
+    - while (sum != expectedTotal) {
+          for r in numRanks: DCCI(notifySlot[r]); sum += read(notifySlot[r])
+          TimeoutCheck()
+      }
+    - notify 全到 = 数据全落 workspace（data-before-notify 同 WQE 强序保证）
+      → 安全 scatter workspace → fetched（按本卡请求序查 gtok）
+
+4.2 顺序约定（零元数据回传）
+
+  - 聚合区按 requester 发出的请求顺序摆放（第 i 段 = 第 i 个请求的 token）
+  - requester 本地留着请求时的 gtok 序列
+  - scatter 时直接按序查表，不需要 owner 回传任何元数据
+  - 同 train kernel 的 rdispls/permOut 模式
+
+4.3 核分配模型（owner/server 侧，fetch kernel）
+
+  8 卡，每卡 64 核。按 src rank 均分 8 组，每组 8 核对应一个 rank：
+    组 0~6：服务 7 个远程 src rank（收 indice → 发 token data write 回对端）
+    组 7：  本地拷贝（storage → fetched，纯本地 GM→GM，不走 URMA）
+
+  每组 8 核内部角色（针对该组对应的 src rank）：
+    ┌─ 1 核 poller ──────────────────────────────────────┐
+    │ 轮询本组 src 打来的 indice batch 是否到齐            │
+    │ 到齐后 SyncAll(group)，8 核一起进 writer 阶段        │
+    └────────────────────────────────────────────────────┘
+                    ▼
+    ┌─ 8 核 writer（含原 poller）────────────────────────┐
+    │ 平分 1024 条 indice（每核 ~128 条）                  │
+    │ 逐条 WriteNbi(token data → requester workspace)     │
+    │ BatchCommit 提交                                    │
+    │ 全部发完 SyncAll(group)                              │
+    └────────────────────────────────────────────────────┘
+                    ▼
+    ┌─ 1 核收尾 ────────────────────────────────────────┐
+    │ WriteWithNotifyNbi → requester 信用槽               │
+    │ notifyVal = batchSeq（告诉 requester：buf 可复用）   │
+    │ 切换 active buffer，回 poller 等下一批               │
+    └────────────────────────────────────────────────────┘
+
+4.4 双缓冲 ping-pong 流水线（核心机制）
+
+  两个 buffer（bufA / bufB）交替使用，实现发送与接收重叠：
+
+  时间线：
+    t0: requester 写 batch0 → bufA
+    t1: owner poller 检测到 bufA 到齐 → 8 核发送 bufA 的 token data
+        同时 requester 写 batch1 → bufB（双缓冲重叠）
+    t2: owner 发完 bufA → 通知 requester「bufA 空了」→ 切到 bufB
+        requester 写 batch2 → bufA（复用）
+    t3: owner 发完 bufB → 通知 → 切到 bufA
+    ... 循环往复，构成 fetch 的全过程
+
+  buf 结构（每 buffer）：
+    - 1024 × 8B = 8KB 的 (lidx,gtok) entry 数组
+    - 1 个 writeFlag（requester 用 WriteWithNotify 置位 = batch 到齐）
+    - 1 个 freeFlag（owner 发完后置位 = buf 可复用，回传给 requester 做信用）
+
+  地址（owner workspace 内）：
+    bufA = ownerWorkspace + reqOffset + srcRank × 2 × (8KB + flagArea) + 0
+    bufB = ownerWorkspace + reqOffset + srcRank × 2 × (8KB + flagArea) + (8KB + flagArea)
+
+  ping-pong 状态机（每组内）：
+    state = WAIT_BUF
+    activeBuf = A
+    loop:
+      if state == WAIT_BUF:
+        poller 轮询 activeBuf.writeFlag == expectedSeq
+        到齐 → SyncAll(group) → state = SEND
+      if state == SEND:
+        8 核平分 1024 条 → 各自发 WriteNbi(token data)
+        SyncAll(group) → state = NOTIFY
+      if state == NOTIFY:
+        1 核 WriteWithNotifyNbi(requester 信用槽, notifyVal=seq)
+        activeBuf = (activeBuf == A) ? B : A
+        seq++
+        state = WAIT_BUF
+      if 所有 batch 发完 → 末笔 WriteWithNotify(dataDone 槽, notifyVal=总count) → 退出
+
+4.5 batch 参数
+
+  - BATCH_SIZE = 1024 条 indice / batch（用户指定）
+  - 理由：64 和 1024 耗时差不多（延迟主导），一次多发摊薄开销
+  - 每 buffer = 1024 × 8B = 8KB
+  - 双 buffer = 16KB / (src,dst) 对
+  - 8 组 × 16KB = 128KB 请求区（很小，workspace 无压力）
+  - 每核分摊：1024 / 8 = 128 条 token write / 核 / batch
+
+4.6 requester 侧发送（生产者）
+
+  requester 对每个 owner rank：
+    1. 把 indice 列表按 1024 条一批切分
+    2. 循环：
+       a. 等当前 buf 的 freeFlag（owner 发完上一批的通知）
+       b. WriteNbi 写 1024×8B indice 到 buf（可多笔 WQE，如 4KB/笔 × 2 笔）
+       c. WriteWithNotifyNbi(buf.writeFlag, notifyVal=batchSeq)
+          → 通知 owner poller「这批到齐了」
+       d. 切 buf（A→B→A...）
+    3. 全部发完 → 写 reqDone 标志
+
+  bootstrap（一次性，init 阶段）：
+    requester 把自己的 token 接收 workspace 基址告诉 owner
+    （一个 u64，写进 owner 的 bootstrap 区，或请求流首笔头部带）
+
+4.7 entry 格式
+
+  每 entry = 8B：
+    localEntryIdx  (u32)  — owner 侧 storage 里的 entry 索引
+    globalTokenIdx (u32)  — requester 侧 fetched 里的行号
+  owner 发 token：dst = requesterWs + gtok × h, src = storage + lidx × h, len = h
+
+
+五、workspace 与批量参数
+--------------------------------------------------------------------------------
+
+5.1 workspace 大小两种策略（待定）
+
+  方案 B1：一次性（推荐先做，简单）
+    - workspace = sumRecv × h（≈ fetched 大小）
+    - 收齐所有 owner 数据再 scatter
+    - 无需信用流控，全打完再 notify
+    - 多一块 fetched-size 的 GM
+
+  方案 B2：流式（省内存，复用 train slot 机制）
+    - workspace = NUM_SLOTS × slotSize（如 4×64KB）
+    - fetch_wait 边收边 scatter 边还信用
+    - 省 workspace，但要 slot 流控（train/grad 的 ReadLocalCounter/WriteRemoteCounter）
+    - 实现：wait 里交织「服务接力 + 收取散射 + 还信用」循环
+
+5.2 批量参数
+
+  - slot 大小 = min(64KB, win配额/numRanks/NUM_SLOTS)
+  - K = slot / hiddenBytes 个 token 一批
+  - 小 h（512B）时 K=128，单笔 64KB，wire 接近线性带宽
+  - NUM_SLOTS = 4（同 train）
+  - 聚合按核切分并行；scatter 用 SIMT 跨线程并行（见 5.3）
+
+5.3 SIMT scatter 实现（wait 阶段）
+
+  代码模板来源：engram_fetch_grad/op_kernel/arch35/engram_fetch_grad_sort.h
+  （反向梯度算子，独立 op）的 GatherGroupsSimt / GatherContigSimt
+  （__simt_vf__ + threadIdx.x + asc_vf_call 调用），仅借鉴 SIMT scatter 的
+  写法/调用模板，不参考其协议。
+
+  scatter 映射表 gtokTbl 的来源：
+    复用正向训练模式 engram_fetch_train_arch35.h 的 GatherAndSortPhase。
+    该阶段遍历 indices，按 owner rank 分组，记录每个请求的 globalTokenIdx
+    （= indices 数组下标 i = fetched 行号），按 owner 在 workspace 里的排列
+    顺序（owner0 的请求 [0,cnt0)、owner1 接着 [cnt0,cnt0+cnt1)…）拼成 gtokTbl，
+    写入 permOut。engram_fetch_train_arch35.h:1252-1264：
+        tokenIdxLocal.SetValue(i, origPos + indicesBatchStart);  // = globalTokenIdx
+        DataCopyPad(permOutGM_[gmWriteOffset], tokenIdxLocal, ...);  // 按发送序写入
+    permOut 即 gtokTbl，按 owner 分段连续，顺序与 owner 写 workspace 的顺序一一对应。
+
+  scatter 时：
+    dst = fetched + gtokTbl[i] × hiddenBytes   // gtokTbl[i] = permOut[i]
+    src = workspace + i × hiddenBytes
+  零额外通信：owner 按请求序写 workspace 第 i 段，requester 本地存着
+  gtokTbl[i]（自己发出去的请求序），scatter 时直接查表。
+
+  scatter 任务：
+    workspace（owner 按 requester 请求序连续摆放）→ fetched（按 gtok 散位置）
+    每个 token = hiddenBytes 的一段 GM→GM 拷贝。
+
+  SIMT scatter 函数：
+    __simt_vf__ LAUNCH_BOUND(SIMT_THREAD_NUM)
+    __aicore__ inline void ScatterTokensSimt(
+        uint32_t totalRecv,            // workspace 里的 token 总数
+        __gm__ uint8_t *wsBase,        // workspace 基址
+        __gm__ uint8_t *fetchedBase,   // fetched 基址
+        __gm__ const uint32_t *gtokTbl,// 本卡请求序→globalTokenIdx 映射表
+        uint64_t hiddenBytes)
+    {
+        for (uint32_t i = threadIdx.x; i < totalRecv; i += SIMT_THREAD_NUM) {
+            uint32_t gtok = gtokTbl[i];
+            __gm__ uint8_t *dst = fetchedBase + (uint64_t)gtok * hiddenBytes;
+            __gm__ uint8_t *src = wsBase + (uint64_t)i * hiddenBytes;
+            // 逐字节/逐元素拷贝；hiddenBytes 一般 512B~几KB
+            // 简单实现：逐 u32 拷；或调 SIMT 内存拷贝原语
+            for (uint32_t off = 0; off < hiddenBytes; off += sizeof(uint32_t)) {
+                *(__gm__ uint32_t*)(dst + off) = *(__gm__ uint32_t*)(src + off);
+            }
+        }
+    }
+
+  调用侧（wait kernel，SIMD 上下文）：
+    asc_vf_call<ScatterTokensSimt>(dim3(SIMT_THREAD_NUM),
+        totalRecv, wsBase, fetchedBase, gtokTbl, hiddenBytes);
+    SetFlag<V_MTE3>(); WaitFlag<V_MTE3_MTE2>();   // 等 SIMT 写完 GM
+
+  线程数：SIMT_THREAD_NUM = 1024（同 grad_sort）
+  并行度：1024 线程，每线程处理 ceil(totalRecv/1024) 个 token 的拷贝
+  优势：
+    - 每个 token 的 dst 地址独立计算，天然离散 scatter
+    - hiddenBytes 小时，1024 线程并行打满 MTE3 写带宽
+    - 不需要 UB 中转（GM→GM 直写），省 UB
+    - 无 in-place 覆盖问题（workspace 与 fetched 是独立 buffer）
+
+  映射表 gtokTbl：
+    - fetch 发请求时，把本卡请求按 owner 分组的 gtok 序列写入 workspace
+    - wait scatter 时直接读这个表
+    - 第 i 段 workspace = 第 i 个请求的 token，gtokTbl[i] = 该 token 的 globalTokenIdx
+    - 零额外元数据通信（requester 自己发请求时就建好表）
+    - gtokTbl 即正向训练模式 engram_fetch_train_arch35.h 的 permOut
+      （GatherAndSortPhase 写出，按发送序排列）
+
+
+六、多 SGE WQE 演进（未来 URMA 接口上线后）
+--------------------------------------------------------------------------------
+多 SGE write 语义：本地源可离散（一个 WQE 描述 K 个离散源段 gather list），
+远端只有一个地址（连续目的）。
+
+两阶段演进：
+
+  阶段1（现在，单 SGE）：
+    owner: 本地 gather 聚合（storage→owner 连续 GM workspace）→ 单笔大 write
+           → requester workspace
+    requester: 本地 scatter 一跳
+
+  阶段2（多 SGE 上线后）：
+    owner: gather 也省掉——SGL 直接列 K 个离散 storage 源 → 1 WQE
+           → requester workspace 连续区
+    requester: 不变
+
+  多 SGE 落地时只改 owner 发送循环（把「先 gather 再 write」换成「直接构造 SGL」），
+  协议、接收区、散射全不变。
+
+
+七、控制 win 布局（复用 train 布局常量）
+--------------------------------------------------------------------------------
+per rank 的注册 win（commBuffer[rank]）：
+
+  [控制头]
+    reqCnt[numRanks]          — 每 src rank 的请求 count
+    reqWriteCnt[numRanks]     — 请求 write 计数器（notify，slot 流控）
+    reqReadCnt[numRanks]      — 请求 read 计数器（owner→requester 信用回传）
+    reqDone[numRanks]         — requester 的「请求发完」标志（值=count）
+    dataDone[numRanks]        — owner 的「数据发完」notify 槽（requester wait 轮询）
+  [请求数据区]
+    reqData: numRanks × NUM_SLOTS × reqSlotSize
+
+布局常量复用 engram_fetch_utils.h（STATE_OFFSET=32, NUM_SLOTS=4, WIN_REGION_COUNT=8 等），
+两个算子（fetch / fetch_wait）共享。
+
+
+八、代码落点
+--------------------------------------------------------------------------------
+  engram_fetch_write_arch35.h（新建）
+    EngramFetchWriteArch35 类：
+    - 复用 train 的 CountAndScatterPhase / GatherAndSortPhase / ExchangeIndices
+    - 新增 DirectServeTokens（替代 train 的 ExchangeToken + ReorderAndSaveCtx）：
+      owner 侧聚合 + 大 write 到 requester workspace + 末笔 WriteWithNotify
+    - 服务循环即多 SGE 升级点（预留）
+
+  engram_fetch_tiling_key.h
+    + ENGRAM_FETCH_WRITE_MODE
+
+  engram_fetch.cpp
+    按模式三分发（DEFAULT=read / TRAIN / WRITE）
+
+  host tiling (fetch)
+    - 启发式：hiddenBytes ≤ 阈值(建议 4KB) 且 comm 区足够 → write，否则 read（保留回退）
+    - 推理模式开始校验/消费 comm_buffer_size
+    - workspace 增加：映射表(numTokens×u32) + 聚合暂存(1 slot)
+    - 模式一致性：fetch 把选中模式写 workspace 约定字，fetch_wait 读，防错配
+
+  engram_fetch_wait 全套 (kernel/host/api)
+    + write 模式分支：
+      - 轮询本卡 win 的 dataDone notify 槽（DCCI + 超时看门狗）
+      - 全到齐后 SIMT scatter workspace → fetched（ScatterTokensSimt，见 5.3）
+      - 保留 read 模式 Drain 分支
+      - 需 include simt_api/asc_simt.h
+
+
+九、前置依赖（需框架侧确认）
+--------------------------------------------------------------------------------
+1. workspace 可被远端 write
+   - 用户已确认：write 对端地址不需要是注册内存
+   - workspace 直接用框架已注册的 GM 池，或单独申请
+
+2. 控制 win（请求列表/count/done 标志/notify 槽/信用计数器）
+   - 复用 train 的 commBuffer[rank] + comm_buffer_size attr + 布局常量
+   - host tiling 校验大小
+
+3. fetch_wait 接口扩展
+   - 需要传入 fetched 输出 + 请求映射表（或 indices 重建）
+   - 需要传入 workspace 基址
+   - 需要模式标志（与 fetch 一致）
+
+
+十、死锁分析
+--------------------------------------------------------------------------------
+  fetch(owner 服务侧) 轮询自己 win 请求区 → 不阻塞远端
+  fetch(requester) 发请求受信用节流 → owner 同期在服务 → credit 流转
+  wait(requester) 只轮询本地 win + DCCI + Drain → 不阻塞远端
+
+  依赖链无环（同 train kernel 结构，已验证无死锁）。
+  保留 TimeoutCheck 超时看门狗（5s）防异常挂死。
+
+  零 count pair：requester 仍发 reqDone(=0)，owner 看到 count=0 直接发
+  dataDone(notifyVal=0)，wait 求和时 0 不影响。
+
+
+十一、验证计划
+--------------------------------------------------------------------------------
+1. UT：write vs read 输出逐 token 比对
+   - hiddenBytes ∈ {512B, 1K, 2K, 7K}
+   - 散乱 indices × 多 rank/numTokens 组合
+
+2. 带宽 A/B：小 hidden 散乱场景，目标接近大包线性带宽
+
+3. SIMT scatter 正确性 & 性能：
+   - scatter 后 fetched 每行数据与 read 模式逐一比对
+   - 大 totalRecv（万级 token）下 scatter 耗时占比 < 10%
+   - 1024 线程覆盖测试
+
+4. 压力测试：
+   - rank 间 fetch/fetch_wait 启动时间错位（验证不死锁）
+   - 零 count pair
+   - numTokens=0、单 rank、全 local
+
+5. 回归：大 hidden 走 read 模式，行为不变
+
+6. 多 SGE 接口落地后：A/B 对比单 SGE，验证 WQE 数下降、带宽进一步提升
+
+
+十二、待确认决策点
+--------------------------------------------------------------------------------
+[ ] workspace 大小策略：B1 一次性（简单、多内存）还是 B2 流式（省内存）？
+[ ] 控制 win：复用 train 的 commBuffer[rank] + comm_buffer_size 布局，还是单独申请？
+[ ] fetch_wait 接口扩展方式：新增 fetched + workspace + 模式标志输入？
+[ ] ping-pong buffer 放 owner workspace 还是 owner comm win？
+[ ] requester 侧发 indice 用几个核（8 核全上还是 1 核轮流）？
+[ ] 8 核 writer 共用同一 channel（mutex 串行）还是每核独立 channel？
+
+================================================================================

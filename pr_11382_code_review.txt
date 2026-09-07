@@ -1,0 +1,246 @@
+# 代码检视报告
+**项目名称**：ops-transformer PR #11382 engram推理修复sq队列溢出
+**检视模块**：
+  - mc2/engram_fetch/op_kernel/arch35/engram_fetch_arch35.h
+  - mc2/engram_fetch/op_kernel/engram_fetch_utils.h
+**检视人**：Turing Team
+**检视日期**：2026-09-07
+
+## 检视范围
+本次检视针对 PR #11382 的变更内容，涉及 engram_fetch 算子 arch35 Kernel 侧的 SQ 队列溢出修复。
+变更内容：URMA WQE 配置调整、新增 sqReadCount_ 成员变量追踪 SQ 深度、mid-stream Drain 机制、
+通道切换时 sqReadCount_ 重置、FlushPreparedReads 重构。
+
+## 检视依据
+  - C++ 安全编码规范（cpp-secure.md）
+  - C++ 通用编码规范（cpp-general.md）
+  - Ascend C 高性能编程规范（ascendc-perf.md）
+
+---
+
+## 检视概览
+| 统计项 | 数值 |
+| ---- | ---- |
+| 发现问题总数 | 3 个 |
+| 严重级（CRITICAL）问题 | 0 个 |
+| 中等级（MEDIUM）问题 | 1 个 |
+| 轻微级（LOW）问题 | 2 个 |
+| 误报数量 | 0 个 |
+
+**核心结论**：SQ 队列溢出修复逻辑整体正确，mid-stream Drain 机制和通道切换 sqReadCount_ 重置逻辑
+符合预期。存在 1 处中等级防御性编码缺失（FlushPreparedReads 移除了空调用保护），2 处轻微级存疑问题
+需评估。
+
+---
+
+## 问题详情及修改建议
+
+### 问题ID：ISSUE-001 | 严重级别：MEDIUM（中等）
+
+#### 假设检验过程
+**代码段**：FlushPreparedReads() 函数
+**假设**：H0: 该代码段是安全的
+
+| 证据序号 | 证据类型 | 规范ID | 证据描述 | 分值增量 | 累计自信值 |
+|---------|---------|--------|---------|---------|-----------|
+| 1 | 上下文防御缺失 | cpp-secure 1.2 | 移除了 `if (preparedReadCount_ == 0U) { return; }` 空调用保护，若未来新增调用点未做 guard，BatchCommit 将操作 stale handle，可能导致未定义行为 | +30% | 30% |
+| 2 | 函数调用链风险 | cpp-secure 1.2 | 同仓参考实现 moe_ep_combine.h:560 保留了此保护，且 FlushPreparedWrites 的 keepHandle 机制更完善，本 PR 反向移除保护属于防御性退化 | +25% | 55% |
+| 3 | 上下文防御缺失 | cpp-general 1.3 | 同时移除了 `activeBatchHandle_ = {}` 和 `activeBatchChannel_ = 0` 重置，FlushPreparedReads 后 activeBatchHandle_ 保留 stale 值 | +15% | 70% |
+
+**结论**：自信值 **70%** > 60%，**推翻原假设H0**，该代码段存在风险。
+
+---
+
+**关联规范条款**：cpp-secure 1.2（保证内存安全）、cpp-general 1.3（删除无效冗余代码）
+**代码路径**：mc2/engram_fetch/op_kernel/arch35/engram_fetch_arch35.h:358-363
+**问题类型**：防御性编码缺失 / stale handle 风险
+**问题描述**：
+FlushPreparedReads 移除了空调用保护 `if (preparedReadCount_ == 0U) { return; }`，同时移除了
+`activeBatchHandle_ = {}` 和 `activeBatchChannel_ = 0` 的重置逻辑。
+
+当前所有调用点的 guard 分析：
+1. PrepareRead:344 — `if (preparedReadCount_ == ENGRAM_BATCH_CAPACITY)` → count=128 > 0，安全
+2. RemoteFetchRank:406 — 在 `if (needDrain)` 块内，needDrain 要求 sqReadCount_+1 >= 32767，
+   至少执行过一次 PrepareRead，count >= 1，安全
+3. RemoteFetchRank:412 — `if (preparedReadCount_ > 0U)` 显式 guard，安全
+
+当前调用点均安全，但移除保护后：
+- 若未来新增调用点未做 guard，BatchCommit 将操作 stale/空 handle，行为未定义
+- activeBatchHandle_ 不再重置，FlushPreparedReads 后成员变量保留 stale 值
+- 同仓 moe_ep_combine.h:560 的 FlushPreparedWrites 保留了空调用保护，本 PR 与参考实现不一致
+
+#### 修改建议
+**修改前代码**：
+```cpp
+__aicore__ inline void EngramFetchArch35::FlushPreparedReads()
+{
+    int32_t ret = hcomm_.BatchCommit(activeBatchHandle_);
+    ascendc_assert(ret == 0, "BatchCommit failed, ret=%d", ret);
+    preparedReadCount_ = 0U;
+}
+```
+**修改后代码**：
+```cpp
+__aicore__ inline void EngramFetchArch35::FlushPreparedReads()
+{
+    if (preparedReadCount_ == 0U) {
+        return;
+    }
+    int32_t ret = hcomm_.BatchCommit(activeBatchHandle_);
+    ascendc_assert(ret == 0, "BatchCommit failed, ret=%d", ret);
+    preparedReadCount_ = 0U;
+}
+```
+**修改说明**：恢复空调用保护，与同仓 moe_ep_combine.h:560 参考实现保持一致。虽然当前调用点
+均有 guard，但该保护是防御性编码最佳实践，可防止未来修改引入 stale handle 操作风险。
+activeBatchHandle_ 不重置可接受（PrepareRead 在 count==0 时会重新 MakeBatchHandle 覆盖），
+但空调用保护建议保留。
+
+---
+
+### 问题ID：ISSUE-002 | 严重级别：LOW（轻微）
+
+#### 假设检验过程
+**代码段**：RemoteFetchRank() 中 ascendc_assert 用于 Drain 返回值校验
+**假设**：H0: 该代码段是安全的
+
+| 证据序号 | 证据类型 | 规范ID | 证据描述 | 分值增量 | 累计自信值 |
+|---------|---------|--------|---------|---------|-----------|
+| 1 | 规范违反 | cpp-general 12.1 | `ascendc_assert(drainRet == 0, ...)` 使用断言校验运行时可能发生的错误（Drain 失败），违反"断言不能用于运行期错误处理" | +40% | 40% |
+| 2 | 上下文防御缺失 | — | Drain 失败后无恢复路径，直接 assert 终止 | +15% | 55% |
+
+**证据有效性校验**：
+- 排除项：ascendc_assert 是 Kernel 侧标准错误处理机制（同文件 line 353、361 均使用此模式），
+  Kernel 侧无异常机制，ascendc_assert 是约定俗成的错误处理方式
+- 排除项：engram_fetch_grad_arch35.h:203-211 的 DrainChecked 使用重试机制，但本场景为
+  mid-stream Drain，重试意义有限
+
+**结论**：自信值 **55%** < 60%，**不推翻原假设H0**。但作为存疑问题列出供评估。
+
+---
+
+**关联规范条款**：cpp-general 12.1（断言不能用于运行期错误处理）
+**代码路径**：mc2/engram_fetch/op_kernel/arch35/engram_fetch_arch35.h:408
+**问题类型**：断言用于运行时错误处理（存疑）
+**问题描述**：
+```cpp
+int32_t drainRet = hcomm_.Drain(static_cast<AscendC::ChannelHandle>(channelHandle));
+ascendc_assert(drainRet == 0, "mid-stream Drain failed, ret=%d", drainRet);
+```
+使用 ascendc_assert 校验 Drain 返回值。规范 12.1 要求"断言不能用于校验程序在运行期间可能导致的
+错误"。但 Kernel 侧无异常机制，ascendc_assert 是全文件统一模式（line 353 ReadNbi、line 361
+BatchCommit 均如此），属于既有约定。此条为存疑问题，建议评估 Kernel 侧是否应有更完善的错误处理机制。
+
+**修改建议**：暂不修改。遵循既有 Kernel 侧 ascendc_assert 模式。如需改进应全文件统一处理，
+不在本 PR 范围内单独修改。
+
+---
+
+### 问题ID：ISSUE-003 | 严重级别：LOW（轻微）
+
+#### 假设检验过程
+**代码段**：RemoteFetchRank() 通道切换逻辑
+**假设**：H0: 该代码段是安全的
+
+| 证据序号 | 证据类型 | 规范ID | 证据描述 | 分值增量 | 累计自信值 |
+|---------|---------|--------|---------|---------|-----------|
+| 1 | 数据流追踪风险 | cpp-secure 1.2 | 通道切换时 `sqReadCount_ = 0` 但不 Drain 旧通道，若旧通道仍有在途 reads，跨批次回到该通道时 sqReadCount_ 不含在途计数 | +25% | 25% |
+| 2 | 上下文防御缺失 | — | 通道切换时不 FlushPreparedReads，依赖 RemoteFetchRank 末尾的 final flush 保证 preparedReadCount_ == 0 的隐式不变量 | +20% | 45% |
+
+**证据有效性校验**：
+- 排除项：RemoteFetchRank:412-414 末尾 `if (preparedReadCount_ > 0U) { FlushPreparedReads(); }`
+  保证函数返回时 preparedReadCount_ == 0，下次调用入口 PrepareRead 会在 count==0 时重新
+  MakeBatchHandle，不会复用旧通道 handle。排除"stale handle"风险。
+- 排除项：用户确认 Drain 语义为防止单通道 SQ 溢出，换对端不需要 Drain（不同通道的 SQ 独立计数）
+- 未排除项：跨批次（Process while 循环）回到同一通道时，sqReadCount_ 从 0 开始，不含上一批次
+  在途 reads。若硬件无背压且单批次 reads 数接近 32767，理论上可能累积溢出。但实际场景中
+  indicesBatchSize_ 远小于 32767，风险极低。
+
+**结论**：自信值 **45%** < 60%，**不推翻原假设H0**。作为存疑问题列出供评估。
+
+---
+
+**关联规范条款**：cpp-secure 1.2（保证内存安全）
+**代码路径**：mc2/engram_fetch/op_kernel/arch35/engram_fetch_arch35.h:386-389
+**问题类型**：跨批次 SQ 计数准确性（存疑）
+**问题描述**：
+```cpp
+if (activeChannelHandle_ != channelHandle) {
+    sqReadCount_ = 0;
+}
+activeChannelHandle_ = channelHandle;
+```
+Branch 2（totalBlocks < numRanks_，FetchByRank:430-437）中，一个核处理多个 rank，
+跨批次（Process while 循环）回到同一通道时，sqReadCount_ 被重置为 0（因为中间切到过其他通道），
+不包含上一批次该通道的在途 reads 计数。needDrain 判定可能延迟，理论上存在 SQ 溢出风险。
+
+实际风险评估：
+- 触发条件：totalBlocks < numRanks_ + numTokens >> indicesBatchSize_（多批次）+
+  单通道单批次 reads 数接近 32767
+- 实际场景中 indicesBatchSize_ 受 UB 容量限制，远小于 32767，风险极低
+- 用户确认换对端不需要 Drain，不同通道 SQ 独立
+
+**修改建议**：暂不修改。若未来场景变化（更大 indicesBatchSize 或更多 rank），
+可考虑在 RemoteFetchRank 末尾对当前通道做 Drain，确保跨批次安全。
+
+---
+
+## 已验证无问题的代码段
+
+### 1. URMA WQE 配置变更（line 49-63）
+odr/fence 值调整属于传输语义配置，无逻辑错误。constexpr 常量定义符合规范。
+
+### 2. 成员变量初始化（line 125-127）
+`activeChannelHandle_{0}`、`sqReadCount_{0}` 均在声明时初始化，符合 cpp-secure 3.1。
+
+### 3. PrepareRead SQ 计数递增（line 354-355）
+`++preparedReadCount_` 和 `++sqReadCount_` 不会溢出：
+- preparedReadCount_ 在 ENGRAM_BATCH_CAPACITY(128) 时触发 FlushPreparedReads 重置
+- sqReadCount_ 在 HCOMM_SQ_MAX_PENDING(32767) 时触发 Drain 重置
+
+### 4. needDrain 判定逻辑（line 399-410）
+`sqReadCount_ + 1U >= HCOMM_SQ_MAX_PENDING`：
+- isLast || needDrain 时使用 URMA_CQE_CFG（生成完成事件），正确
+- needDrain 后 FlushPreparedReads + Drain + sqReadCount_=0，正确
+- isLast 且 needDrain 同时为 true 时，Drain 后循环结束，final flush 因 count==0 跳过，正确
+
+### 5. HCOMM_SQ_MAX_PENDING 常量定义（engram_fetch_utils.h:46）
+`constexpr uint32_t HCOMM_SQ_MAX_PENDING = 32767U`，与 moe_ep_combine.h:78 一致，
+命名清晰，符合 cpp-general 4.2。
+
+### 6. static_cast<AscendC::ChannelHandle>(channelHandle)（line 407）
+channelHandle 为 uint64_t，ChannelHandle 可从 uint64_t 转换。
+同仓 moe_ep_combine.h:653 直接传 uint64_t，转换安全。
+
+---
+
+## 检视结论
+
+本次 PR #11382 "engram推理修复sq队列溢出" 变更经假设检验方法论检视，整体结论如下：
+
+### 修复逻辑正确性验证
+1. **sqReadCount_ 机制**：新增成员变量准确追踪单通道 SQ 深度，在 PrepareRead 中递增，
+   达到 HCOMM_SQ_MAX_PENDING(32767) 时触发 mid-stream Drain 并重置，机制正确。
+2. **通道切换处理**：activeChannelHandle_ != channelHandle 时 sqReadCount_ 重置为 0，
+   符合"不同通道 SQ 独立计数"的硬件语义，逻辑正确。
+3. **needDrain 判定**：`sqReadCount_ + 1U >= HCOMM_SQ_MAX_PENDING` 配合 isLast 条件，
+   确保达到阈值时使用 URMA_CQE_CFG 生成完成事件并 Drain，SQ 不会溢出。
+4. **URMA WQE 配置**：odr/fence 值调整为传输语义配置，无逻辑错误。
+
+### 发现的问题
+- **无严重级（CRITICAL）问题**：修复逻辑无功能错误，无 SQ 溢出风险。
+- **1 个中等级问题**（ISSUE-001）：FlushPreparedReads 移除了空调用保护，
+  当前调用点均安全但防御性退化，建议恢复 `if (preparedReadCount_ == 0U) { return; }`。
+- **2 个轻微级存疑问题**（ISSUE-002、ISSUE-003）：ascendc_assert 用于 Drain 返回值
+  （既有 Kernel 侧模式）、跨批次 SQ 计数准确性（实际风险极低），均建议暂不修改。
+
+### 总体判定
+**通过（建议修复 ISSUE-001）**。SQ 队列溢出修复目标达成，核心逻辑经检验正确。
+建议合入前恢复 FlushPreparedReads 空调用保护，与同仓 moe_ep_combine.h:560 保持一致。
+
+---
+
+## 报告生成时间
+2026-09-07
+## 报告状态
+已完成检视，待评估验证

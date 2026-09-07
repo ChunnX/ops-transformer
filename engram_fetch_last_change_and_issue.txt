@@ -1,0 +1,193 @@
+================================================================================
+上次修改记录与残留问题分析
+================================================================================
+
+## 一、上次修改了什么
+
+### 修改文件清单
+
+1. mc2/engram_fetch/op_kernel/engram_fetch_utils.h
+2. mc2/engram_fetch/op_kernel/arch35/engram_fetch_arch35.h
+
+engram_fetch_wait_arch35.h 未改动。
+
+---
+
+### 修改1：engram_fetch_utils.h:46 — 新增 SQ 深度上限常量
+
+新增：
+  constexpr uint32_t HCOMM_SQ_MAX_PENDING = 32767U;
+
+参照 moe_ep_combine.h 中同名常量，URMA 硬件 SQ（提交队列）深度上限为 32768，
+保留 1 条空位，超过此值后新提交的 WQE 会被静默丢弃或损坏。
+
+---
+
+### 修改2：engram_fetch_arch35.h:49-55 — URMA_UNORDERED_CFG 配置修改
+
+修改前：
+  constexpr AscendC::UrmaWqeEntry URMA_UNORDERED_CFG = {
+      .odr = 0,       // 无序
+      .fence = 0,     // 无 fence
+      .se = 0,
+      .cqe = 0,       // 不生成 CQE
+      .inlineEn = 0,
+  };
+
+修改后：
+  constexpr AscendC::UrmaWqeEntry URMA_UNORDERED_CFG = {
+      .odr = 5,       // 强序
+      .fence = 1,     // 加 fence
+      .se = 0,
+      .cqe = 0,       // 不生成 CQE
+      .inlineEn = 0,
+  };
+
+原因：
+  设计文档 engram_fetch_range_read_design.txt 记录：
+  "去掉 fence（odr=0, fence=0）| Drain 报错 | 乱序 READ 与 CQE 轮询机制不兼容"
+  "去 fence 乱序 READ 与 CQE 轮询不兼容 | 恢复 URMA_DEFAULT_CFG 保序"
+  改为 odr=5/fence=1 与 moe_ep_combine 的 DEFAULT_WQE_CONFIG 和训练模式
+  URMA_NO_CQE_CFG 保持一致。
+
+---
+
+### 修改3：engram_fetch_arch35.h:127 — 新增 sqReadCount_ 成员变量
+
+在 EngramFetchArch35 类 private 区域新增：
+  uint32_t sqReadCount_{0};
+
+用途：跟踪每通道已提交但未 drain 的 URMA read WQE 数量。
+
+---
+
+### 修改4：engram_fetch_arch35.h:359 — PrepareRead 中递增 sqReadCount_
+
+在 PrepareRead 函数末尾，++preparedReadCount_ 之后新增：
+  ++sqReadCount_;
+
+每次提交一条 ReadNbi WQE，sqReadCount_ 递增 1。
+
+---
+
+### 修改5：engram_fetch_arch35.h:395-416 — RemoteFetchRank 中增加 SQ 深度跟踪和中间 drain
+
+修改前：
+  RemoteFetchRank 中循环逐 token 提交 ReadNbi，
+  仅最后一条用 URMA_CQE_CFG（生成 CQE），
+  其余用 URMA_UNORDERED_CFG（不生成 CQE），
+  循环结束后 FlushPreparedReads（commit 不 drain），
+  所有 WQE 堆积在 SQ 中直到 engram_fetch_wait 才 drain。
+
+修改后：
+  1. 进入 RemoteFetchRank 时 sqReadCount_ = 0
+  2. 每次循环检查 sqReadCount_ + 1 >= HCOMM_SQ_MAX_PENDING
+  3. 若接近上限（needDrain=true）：
+     - 当前 WQE 改用 URMA_CQE_CFG（生成 CQE）
+     - FlushPreparedReads() 提交 batch
+     - hcomm_.Drain(channelHandle) 等待完成
+     - sqReadCount_ = 0 重置
+  4. 循环结束后仍调用 FlushPreparedReads()
+
+---
+
+## 二、修改意图
+
+解决 >1M 数据量下 URMA SQ 深度溢出导致的精度异常。
+核心思路：在 RemoteFetchRank 内部，当单通道 outstanding WQE 数接近
+32767 上限时，插入一次中间 Drain 排空 SQ，防止溢出。
+
+---
+
+## 三、为什么 >1M 数据仍偶尔出现精度异常
+
+### 根因：sqReadCount_ 跨 batch 未累积，SQ 深度跟踪不完整
+
+当前 sqReadCount_ 仅在单次 RemoteFetchRank 调用内跟踪，但实际数据流
+跨多个 batch 累积，导致 SQ 深度跟踪存在盲区。
+
+### 数据流分析
+
+Process() 函数（engram_fetch_arch35.h:290-311）：
+
+  while (indicesBatchStart < numTokens) {      // 外层 batch 循环
+      ...
+      FetchByRank(indicesBatchStart);            // 提交 URMA reads
+      indicesBatchStart += indicesBatchLen;
+  }
+
+FetchByRank 函数（engram_fetch_arch35.h:421-443）：
+
+  情况1（totalBlocks >= numRanks_）：
+    每个 core 负责一个 rank，每 batch 调用一次 RemoteFetchRank
+
+  情况2（totalBlocks < numRanks_）：
+    每个 core 负责多个 rank，每 batch 循环调用多次 RemoteFetchRank
+    for (ownerRank = startRank; ownerRank < numRanks_; ownerRank += totalBlocks) {
+        RemoteFetchRank(ownerRank, indicesBatchStart, 0, 1);
+    }
+
+### 问题1：sqReadCount_ 在 RemoteFetchRank 入口被重置
+
+engram_fetch_arch35.h:395：
+  sqReadCount_ = 0;
+
+每次进入 RemoteFetchRank 时 sqReadCount_ 清零。但前一个 batch 在同一通道
+上提交的 WQE 并未 drain（FlushPreparedReads 只 commit 不 drain），它们
+仍然占据 SQ 深度。新 batch 认为自己只有 0 条 outstanding，实际上 SQ 里
+已经堆积了前几 batch 的 WQE。
+
+### 问题2：Process() 外层循环跨 batch 累积
+
+以 1M tokens、8 ranks、每 rank ~125K tokens 为例：
+  - indicesBatchSize_ 受 UB 限制，典型值约 1000~5000 tokens
+  - Process() 外层 while 循环执行约 125K / 5000 = 25 轮
+  - 每轮 FetchByRank 提交的 WQE 只 flush（commit）不 drain
+  - SQ 深度跨 batch 累积
+
+虽然 RemoteFetchRank 内部有中间 drain，但 sqReadCount_ 重置导致
+它不知道前几 batch 遗留的 outstanding WQE。当多个 batch 的 WQE
+累积起来仍可能超过 SQ 深度。
+
+### 问题3：else 分支多 rank 循环，不同通道间 sqReadCount_ 串扰
+
+FetchByRank 的 else 分支中，一个 core 循环处理多个 rank：
+  for (ownerRank = startRank; ...) {
+      RemoteFetchRank(ownerRank, indicesBatchStart, 0, 1);
+  }
+
+每次调用 RemoteFetchRank 时 sqReadCount_ = 0 重置。
+虽然不同 rank 使用不同 channel（channelHandle 不同），但 sqReadCount_
+是单变量，不区分通道。如果前一个 rank 的 RemoteFetchRank 中间 drain
+失败或残留，后一个 rank 的 sqReadCount_ 从 0 开始，无法感知。
+
+### 量化分析
+
+| 场景                         | sqReadCount_ 跟踪范围     | 实际 SQ 累积来源          | 盲区           |
+|------------------------------|--------------------------|--------------------------|----------------|
+| 单次 RemoteFetchRank 内      | 正确跟踪                  | 当前调用内 WQE           | 无             |
+| Process() 跨 batch           | 每次重置为 0             | 前几 batch 遗留 WQE      | 有，跨 batch  |
+| else 分支跨 rank            | 每次重置为 0             | 不同通道，不互相累积      | 无（不同通道）|
+
+核心盲区：Process() 外层 while 循环中，多个 batch 对同一通道的 WQE 累积
+未被 sqReadCount_ 跟踪。
+
+---
+
+## 四、修复方向
+
+sqReadCount_ 不应在 RemoteFetchRank 入口重置为 0，而应：
+1. 在 Init 中初始化为 0
+2. 在 PrepareRead 中递增（已实现）
+3. 在中间 drain 后重置为 0（已实现）
+4. 在 RemoteFetchRank 入口不重置——让 sqReadCount_ 跨 batch 累积
+5. channel 切换时不重置 sqReadCount_（因为不同通道的 SQ 深度独立，
+   但当前只有一个 sqReadCount_ 变量，需要改为按通道跟踪）
+
+或者更简单的方案：
+- sqReadCount_ 不在 RemoteFetchRank 入口重置
+- 在 FlushPreparedReads 中也不重置 sqReadCount_
+- 仅在中间 drain 完成后重置 sqReadCount_ = 0
+- 这样 sqReadCount_ 会跨 batch、跨 RemoteFetchRank 调用正确累积
+
+================================================================================

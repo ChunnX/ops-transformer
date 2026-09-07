@@ -1,0 +1,196 @@
+================================================================================
+Engram Fetch FP8 量化支持 — 完整改动思路
+================================================================================
+
+## 一、目标
+
+在 ElasticBuffer 的 engram_write / engram_fetch 中支持 FP8 量化，
+对标 DeepEP 的 engram_write(storage, sf) / engram_fetch 返回 (fetched, fetched_sf)。
+
+### 支持的数据类型
+
+storage/fetched（数据表）:
+  - BF16, FP16, FP32（原有，非量化）
+  - FP8_E4M3FN, FP8_E5M2（标准 torch.dtype，直接创建 tensor）
+  - HIFLOAT8（非标准 dtype，用 torch.uint8 存储 + storage_dtype attr 传 ACL 枚举值 290）
+
+fetched_sf（SF 量化表）:
+  - FP32（float32，4字节/元素，和 DeepEP per_token_cast_to_fp8 返回的 scale 一致）
+  - E8M0（float8_e8m0fnu，1字节/元素，torch_npu.float8_e8m0fnu=293）
+
+### 不支持
+  - 不涉及 train 路径（量化只用于推理）
+  - 不涉及 engram_fetch_grad
+
+
+================================================================================
+二、数据流
+================================================================================
+
+engram_write(storage, sf, storage_dtype=None):
+  1. storage 是 CPU tensor，memcpy 到 host pinned buffer（不变）
+  2. sf 是 GPU tensor（device），存其 data_ptr() 和 dtype 引用
+  3. storage_dtype 非 None 时（HIF8/E8M0），存为 self._engram_storage_dtype
+  4. 不修改 EngramCommContext（sf_table_addr 走 attr，不走 context）
+
+engram_fetch(indices):
+  1. Python 层创建 fetched tensor（dtype 从 self._engram_dtype 取）
+     - 标准 dtype: torch.empty(..., dtype=torch.float8_e4m3fn)
+     - HIF8: torch.empty(..., dtype=torch.uint8) + storage_dtype attr
+  2. Python 层创建 fetched_sf tensor（dtype 从 sf.dtype 取，如 float32）
+  3. 调用 torch.ops.cann_ops_transformer.engram_fetch(...)
+     传参: context, indices, fetched, num_entries, fetched_sf, sf_table_addr, storage_dtype
+  4. kernel: RDMA fetch 数据 + GatherSfTable（本地 GM→GM copy）
+  5. _wait(): engram_fetch_wait → 返回 (fetched, fetched_sf) 或 fetched
+
+
+================================================================================
+三、SF 表设计
+================================================================================
+
+### SF 表存储位置
+  - SF 表是外部传入的 device tensor，每个 rank 持有全量副本（全局复制）
+  - 不走 RDMA，只做本地 gather（按 indices 从 sf_table 查表）
+  - sf_table_addr 作为 attr 传入（int64，sf.data_ptr()）
+  - 不放入 EngramCommContext（避免重建 context tensor）
+
+### SF gather 实现
+  - 集成在 FetchByRank 的 token 循环里（和 DeepEP 一致，同一个循环同时做 RDMA + SF gather）
+  - RemoteFetchRank: PrepareRead（RDMA）之后，if (hasSf) 做 SF 的 GM→UB→GM DataCopyPad
+  - LocalFetchTokens: LocalCopySlice 之后，if (hasSf) 做 SF 的 GM→UB→GM DataCopyPad
+  - 不需要独立的 GatherSfTable pass
+
+### DataCopyPad 用法
+  - GM→UB: DataCopyPad(local, global, DataCopyExtParams, DataCopyPadExtParams)
+  - UB→GM: DataCopyPad(global, local, DataCopyExtParams)
+  - padParams 用聚合初始化 {false, 0, 0, 0}
+
+### SF 表校验
+  - sf.dim() == 2
+  - sf.is_contiguous()
+  - sf.size(0) == storage.size(0) * world_size（全量复制）
+  - sf.dtype in _ENGRAM_SF_DTYPES (FP32, float8_e8m0fnu)
+
+
+================================================================================
+四、非标准 dtype 支持（HIFLOAT8 / E8M0）
+================================================================================
+
+### 问题
+  - torch.float8_e4m3fn, torch.float8_e5m2 是标准 torch.dtype，可直接 torch.empty 创建
+  - torch_npu.hifloat8 = 290（int，不是 torch.dtype）
+  - torch_npu.float8_e8m0fnu = 293（int，不是 torch.dtype）
+  - 无法用 torch.empty(..., dtype=290) 创建 tensor
+
+### 方案（参照 mla_prolog 和 kv_quant_sparse_flash_attention 的做法）
+  1. storage/fetched tensor 用 torch.uint8 存储底层内存
+  2. 通过 storage_dtype attr（int）传 ACL dtype 枚举值给 aclnn/tiling/kernel
+  3. op_def 声明 DT_HIFLOAT8（框架层面允许该 dtype）
+  4. Python 校验: storage_dtype is not None 时要求 storage.dtype == torch.uint8
+
+### 数据类型枚举值
+  - DT_HIFLOAT8 = 34（GE dtype）
+  - DT_FLOAT8_E5M2 = 35
+  - DT_FLOAT8_E4M3FN = 36
+  - DT_FLOAT8_E8M0 = 37
+  - torch_npu.hifloat8 = 290（ACL dtype）
+  - torch_npu.float8_e8m0fnu = 293（ACL dtype）
+
+
+================================================================================
+五、改动文件清单
+================================================================================
+
+### 1. engram_fetch_def.cpp（op_def）
+  - fetched output DataTypeList:
+    {DT_BF16, DT_FLOAT16, DT_FLOAT, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_HIFLOAT8}
+  - fetched_sf output（OPTIONAL）:
+    {DT_FLOAT, DT_FLOAT8_E8M0}
+  - 新增 attr: sf_table_addr（OPTIONAL Int）, storage_dtype（OPTIONAL Int）
+  - 删除冗余: DT_UINT8（不再用作 FP8 的 workaround）
+
+### 2. engram_fetch_wait_def.cpp
+  - fetched input/output DataType:
+    {DT_BF16, DT_FLOAT16, DT_FLOAT, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_HIFLOAT8}
+  - 删除 DT_UINT8
+
+### 3. engram_fetch_tiling_data.h
+  - 新增字段: numSfPacks, sfElemSize, sfTableAddr, storageDtype
+  - numSfPacks: 从 fetched_sf output shape.dim(1) 读
+  - sfElemSize: 从 fetched_sf output dtype GetSizeByDataType 读
+  - sfTableAddr: 从 sf_table_addr attr 读
+  - storageDtype: 从 storage_dtype attr 读
+
+### 4. engram_fetch_tiling.cpp
+  - ATTR_SF_TABLE_ADDR_INDEX = 5
+  - ATTR_STORAGE_DTYPE_INDEX = 6
+  - SetTilingData 里从 attr 读 sfTableAddr 和 storageDtype 填入 tiling
+  - 从 fetched_sf output 的 shape 和 dtype 读 numSfPacks 和 sfElemSize 填入 tiling
+  - OUTPUT_DTYPE_LIST 加 DT_FLOAT8_E5M2, DT_HIFLOAT8，删除 DT_UINT8
+
+### 5. aclnn_engram_fetch.cpp
+  - 新增参数: sfTableAddr（int64_t）, storageDtype（int64_t）
+  - 参数顺序: ..., withGrad, sfTableAddr, storageDtype
+
+### 6. engram_fetch_arch35.h（kernel）
+  - Init 新增: 从 tiling 读 sfTableAddr/sfElemSize/numSfPacks
+  - Init 新增: fetchedSfGM_ 从 GM_ADDR 参数读（不再从 tiling）
+  - 新增成员: sfTableGM_, fetchedSfGM_, numSfPacks_, sfElemSize_
+  - RemoteFetchRank token 循环: PrepareRead 之后加 SF gather（if hasSf）
+  - LocalFetchTokens token 循环: LocalCopySlice 之后加 SF gather（if hasSf）
+  - 删除独立的 GatherSfTable 函数
+  - 删除冗余 PipeBarrier<PIPE_V>（被后续 SyncFunc<V_S> 覆盖）
+  - GatherSfTable 用 DataCopyExtParams + DataCopyPadExtParams（GM→UB）
+    和 DataCopyExtParams（UB→GM），不用 DataCopyPadParams
+
+### 7. engram_fetch.cpp（kernel 入口）
+  - 新增 GM_ADDR fetchedSf 参数
+  - op.Init 加 fetchedSf 参数
+
+### 8. elastic_buffer.cpp（C++ Host 层）
+  - EngramCommContext: 不含任何 SF 字段（回到原始结构）
+  - EngramWrite: 签名加 sf 参数，存 sf tensor 引用给 Python
+  - EngramFetch: 签名改为接收外部创建的 fetched tensor（不再内部 at::empty）
+    参数: context, indices, fetched, numEntries, fetchedSf, sfTableAddr, storageDtype
+  - EngramFetchTrain: ACLNN_CMD 多传 zero（sfTableAddr=0, storageDtype=0）
+  - pybind11 绑定更新
+
+### 9. elastic_buffer.py（Python 层）
+  - 删除 _ENGRAM_DTYPE_TO_INT 中的量化 dtype 映射（train 不支持量化）
+  - _ENGRAM_STORAGE_DTYPES: 加 float8_e5m2, torch.uint8
+  - _ENGRAM_SF_DTYPES: (float32, float8_e8m0fnu)
+  - engram_write: 加 storage_dtype 参数，校验逻辑更新
+  - engram_fetch: Python 层创建 fetched tensor，传 storage_dtype
+  - schema/meta/PrivateUse1: 加 storage_dtype 参数
+  - _wait(): 返回 (fetched, fetched_sf) 或 fetched（向后兼容）
+
+### 10. engram_test.py（测试脚本）
+  - 新增 --use_fp8 参数
+  - dtype_map 加 fp8_e4m3fn, fp8_e5m2
+  - gen_storage_write_golden: FP8 路径生成 float32 SF 表
+  - gen_fetch_golden: FP8 用 view(uint8) + index_select
+  - gen_fetch_sf_golden: 用 sf_table[idx_tensor]
+  - compare_fetch_sf: 校验 fetched_sf 和 golden
+  - gen_balanced_indices: 用 np.random.randint 批量生成（优化耗时）
+  - EngramFetchGraphModel: 加 use_fp8 参数，返回 (fetched, fetched_sf)
+
+### 11. test.sh
+  - OPT_COLS 加 use_fp8
+  - read_data 输出 use_fp8 列
+  - while 循环解析 use_fp8
+
+
+================================================================================
+六、关键设计决策
+================================================================================
+
+1. SF 不走 RDMA: SF 表是全局复制的 device tensor，本地按 indices 查表 gather
+2. SF gather 在 FetchByRank 循环里做: 和 DeepEP 一致，同一个循环同时做 RDMA + SF gather
+3. sfTableAddr 走 attr: 不放入 EngramCommContext，避免重建 context tensor
+4. numSfPacks/sfElemSize 从 fetched_sf output 推导: 能从 tensor 拿的不放 context
+5. fetched tensor Python 层创建: 不用 C++ at::empty，避免 ScalarType 枚举问题
+6. HIF8/E8M0 用 uint8 存储 + attr: 参照 mla_prolog 的做法
+7. 向后兼容: sf=None 时返回 fetched，有 sf 时返回 (fetched, fetched_sf)
+8. 不改 train 路径: 量化只用于推理
+9. 不改 engram_fetch_grad: 不支持 FP8 反向
+10. 删除冗余 dtype: DT_UINT8 不再作为 FP8 workaround

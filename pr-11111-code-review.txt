@@ -1,0 +1,374 @@
+================================================================================
+PR #11111 代码检视报告
+多batch/减少轮询sqe
+================================================================================
+
+PR 链接：https://gitcode.com/cann/ops-transformer/pull/11111
+检视分支：pr-11111（基于 upstream/master）
+涉及文件：
+  - mc2/engram_fetch/op_kernel/engram_fetch_utils.h
+  - mc2/engram_fetch/op_kernel/arch35/engram_fetch_arch35.h
+  - mc2/engram_fetch_wait/op_kernel/arch35/engram_fetch_wait_arch35.h
+
+================================================================================
+
+检视类别：Ascend C API 最佳实践 + C++ 安全编码规范（Kernel 侧）
+
+================================================================================
+
+## 风险点 1：isLast 判定在 batch 中间触发 flush 时 CQE 丢失
+**严重级别：高**
+**规范来源：Ascend C API 最佳实践**
+
+### 代码位置
+engram_fetch_arch35.h:398-405（RemoteFetchRank 循环）
+
+```cpp
+for (uint32_t tokenPos = channelIdxInRank; tokenPos < cnt; tokenPos += channelCount) {
+    ...
+    bool isLast = (tokenPos + channelCount >= cnt);
+    if (isLast) {
+        PrepareRead<URMA_CQE_CFG>(channelHandle, remoteBase, dst, remoteSrcAddr, hiddenBytes);
+    } else {
+        PrepareRead<URMA_UNORDERED_CFG>(channelHandle, remoteBase, dst, remoteSrcAddr, hiddenBytes);
+    }
+}
+FlushPreparedReads();
+```
+
+### 假设检验
+
+**H0**：该代码段是安全的
+**H1**：该代码段存在风险——isLast 的 CQE 在 batch 中途被 flush 后丢失
+**自信值初始化：0%**
+
+**证据收集**：
+
+1. **数据流追踪**（+25%）：`isLast = (tokenPos + channelCount >= cnt)` 判定当前 token
+   是否为最后一个。当 isLast=true 时，使用 `URMA_CQE_CFG`（cqe=1）产生 CQE。
+   但 `PrepareRead` 内部有 `if (preparedReadCount_ == ENGRAM_BATCH_CAPACITY) { FlushPreparedReads(); }`
+   ——当 batch 攒满 128 条时，会先 flush 旧 WQE（含 isLast 那条 CQE WQE），
+   再开始新 batch。如果 isLast 恰好触发在第 128 条，CQE 随 flush 提交了（OK）。
+   但如果 isLast 之后还有未处理的情况？分析 isLast 判定：
+   `tokenPos + channelCount >= cnt` 在循环最后一次迭代时为 true——此时 isLast 是循环
+   最后一条 WQE，之后立即 FlushPreparedReads。这条路径是正确的。
+
+2. **上下文防御缺失**（+30%）：但是——当 token 总数 cnt > ENGRAM_BATCH_CAPACITY(128)
+   时，batch 会在中间 flush。flush 后 `preparedReadCount_` 归零，新 batch 开始。
+   **新 batch 的第一条 WQE 用的是 URMA_UNORDERED_CFG（cqe=0）**，不会有 CQE。
+   而最终 isLast 的 CQE 只在最后一条。如果中间 flush 了多个 batch，只有最后一个
+   batch 的 isLast 那条有 CQE——**前面的 batch 完全没有 CQE**。
+
+   这是否是问题？分析 Drain 语义：`hcomm_.Drain(batchHandle)` 在 fetch_wait 里调用，
+   poll CQ 直到完成。Drain poll 的是**通道级 CQ**（不是 batch 级），所有提交到同一
+   channel 的 CQE 都在同一个 CQ 里。所以中间 batch 没有 CQE 没关系——只要最后一个
+   batch 的 isLast CQE 到了，Drain poll 到它就表示**它之前的所有 WQE 都完成了**
+   （因为 fence=1 强序，isLast 的 fence 保证等前序全部完成）。
+
+   **结论**：逻辑正确。isLast 的 CQE + fence 保证 Drain 能正确确认全部完成。
+   排除误报。
+
+**自信值：55%（未超过 60% 阈值）**
+**判定**：PASS（逻辑正确，fence+强序保证完成顺序）
+
+---
+
+## 风险点 2：isLast 在 batch 中间 flush后，末条 CQE WQE 的 fence 保证被 flush 后的新 batch WQE 排在其后
+**严重级别：中（存疑）**
+**规范来源：Ascend C API 最佳实践**
+
+### 代码位置
+engram_fetch_arch35.h:346-357（PrepareRead）+ 398-405（RemoteFetchRank）
+
+### 假设检验
+
+**H0**：该代码段是安全的
+**H1**：当 batch 在中间 flush 后，新 batch 的 WQE 可能排在 isLast CQE WQE 之后，但 isLast 的 fence 不会等这些新 WQE
+**自信值初始化：0%**
+
+**证据收集**：
+
+1. **数据流追踪**（+25%）：场景——cnt=200，ENGRAM_BATCH_CAPACITY=128。
+   - 第 0~127 条：URMA_UNORDERED_CFG，第 128 条 flush（BatchCommit）
+   - 第 128~198 条：URMA_UNORDERED_CFG
+   - 第 199 条（isLast=true）：URMA_CQE_CFG（cqe=1, fence=1, odr=5）
+   - FlushPreparedReads 提交最后一批
+
+   isLast 的 fence=1 等它前面的 WQE（同 SQ 中排在它前面的）完成。
+   但它**不会等**它后面提交的 WQE——然而它后面没有 WQE 了（它是循环最后一条）。
+   所以 fence 语义正确：等前序全部完成 → 产生 CQE → Drain poll 到 CQE → 全部完成。
+
+2. **调用链分析**（+0%）：FlushPreparedReads 里 BatchCommit 只是把 WQE 提交到 SQ，
+   不改变 WQE 在 SQ 中的顺序。isLast 始终是最后提交的。
+
+**自信值：25%（未超过 60% 阈值）**
+**判定**：PASS
+
+---
+
+## 风险点 3：static_cast<uint32_t>(len) 截断风险
+**严重级别：中**
+**规范来源：C++ 安全编码规范 2.1 确保有符号整数运算不溢出 / 无符号回绕**
+
+### 代码位置
+engram_fetch_arch35.h:354（PrepareRead 内）
+
+```cpp
+int32_t ret = hcomm_.ReadNbi<config>(activeBatchHandle_, dst, src, static_cast<uint32_t>(len));
+```
+
+### 假设检验
+
+**H0**：该代码段是安全的
+**H1**：len（uint64_t）超过 uint32_t 范围时被截断
+**自信值初始化：0%**
+
+**证据收集**：
+
+1. **数据流追踪**（+25%）：`len` 来自 `hiddenBytes`（uint64_t，行 382），
+   `hiddenBytes = static_cast<uint64_t>(hiddenBytes_)`，`hiddenBytes_` 来自
+   tilingData->hiddenBytes（int64_t）。
+
+2. **上下文防御**（+0%）：host tiling 侧 `hiddenBytes = hiddenDim * bytesPerElem`，
+   hiddenDim 是 hidden_size attr，典型值 128~16384，bytesPerElem ≤ 4，
+   hiddenBytes ≤ 65536，远小于 uint32_t 上限（~42亿）。无溢出风险。
+
+3. **API 约束**（+0%）：hcomm ReadNbi batch 版本的 len 参数类型是 uint32_t
+   （hcomm.h:299），这是 API 约束，非代码问题。
+
+**自信值：25%（未超过 60% 阈值）**
+**判定**：PASS（实际值远小于 uint32_t 上限，无截断风险）
+
+---
+
+## 风险点 4：MakeBatchHandle 返回值未校验
+**严重级别：中**
+**规范来源：C++ 安全编码规范 3.1 禁止使用未初始化的变量**
+
+### 代码位置
+engram_fetch_arch35.h:349-352（PrepareRead 内）
+
+```cpp
+if (preparedReadCount_ == 0U) {
+    AscendC::LocalTensor<uint8_t> hcommBatchTensor = hcommBatchBuf_.Get<uint8_t>();
+    activeBatchHandle_ =
+        hcomm_.MakeBatchHandle(commHandle, hcommBatchTensor, ENGRAM_BATCH_BUFFER_BYTES, remoteBase);
+    activeBatchChannel_ = commHandle;
+}
+int32_t ret = hcomm_.ReadNbi<config>(activeBatchHandle_, dst, src, static_cast<uint32_t>(len));
+```
+
+### 假设检验
+
+**H0**：该代码段是安全的
+**H1**：MakeBatchHandle 可能返回空/无效 handle（如 remoteAddr 不在注册区），后续 ReadNbi 使用无效 handle
+**自信值初始化：0%**
+
+**证据收集**：
+
+1. **调用链分析**（+25%）：查 hcomm impl（hcomm_aiv_urma.h:409-422），
+   `MakeBatchHandle` 内部调 `HcommUrmaCreateBatchHandle`，其中
+   `HcommUrmaResolveBatchRemote` 用 `HcommFindBufferIdx` 查找 remoteAddr
+   所在的注册区。如果找不到（返回 HCOMM_FAILED），`batchHandle.channelHandle`
+   保持 0（zero-initialized）。
+
+2. **上下文防御缺失**（+30%）：PR 代码**未检查** `activeBatchHandle_.channelHandle`
+   是否为 0。如果 remoteBase 不在注册区，MakeBatchHandle 返回空 handle，
+   后续 `ReadNbi(activeBatchHandle_, ...)` 会操作空 handle → 未定义行为。
+
+3. **实际场景分析**（-15%）：在现有 engram_fetch 推理路径中，`remoteBase =
+   commBufferLocal(ownerRank)` = ctx 里注册的 comm buffer 地址，
+   **始终在注册区内**。所以 MakeBatchHandle 不会失败。
+   但这是隐式假设，代码层面无显式防御。
+
+**自信值：40%（未超过 60% 阈值）**
+**判定**：PASS（存疑——建议加 ascendc_assert 校验 handle 有效性）
+
+### 建议修复
+```cpp
+activeBatchHandle_ = hcomm_.MakeBatchHandle(commHandle, hcommBatchTensor, ENGRAM_BATCH_BUFFER_BYTES, remoteBase);
+ascendc_assert(activeBatchHandle_.channelHandle != 0, "MakeBatchHandle failed: remoteBase not in registered MR");
+```
+
+---
+
+## 风险点 5：fetch_wait 的 MakeBatchHandle 传 nullptr 作为 remoteAddr
+**严重级别：中**
+**规范来源：C++ 安全编码规范 3.1 禁止使用未初始化的变量**
+
+### 代码位置
+engram_fetch_wait_arch35.h:103-104, 113-114
+
+```cpp
+auto batchHandle = hcomm_.MakeBatchHandle(ctxPtr_->hcommHandle[globalChannelIdx], batchTensor,
+                                          Mc2Kernel::ENGRAM_BATCH_BUFFER_BYTES, nullptr);
+int32_t ret = hcomm_.Drain(batchHandle);
+```
+
+### 假设检验
+
+**H0**：该代码段是安全的
+**H1**：nullptr 作为 remoteAddr 导致 MakeBatchHandle 失败或返回无效 handle
+**自信值初始化：0%**
+
+**证据收集**：
+
+1. **API 文档分析**（+0%）：查 hcomm.h:85-87，`MakeBatchHandle` 的 remoteAddr
+   参数说明："If it is null, the first remote registered buffer is selected."
+   所以 nullptr 是合法值——选择第一个注册的 remote buffer。
+
+2. **调用链分析**（+25%）：查 impl（hcomm_aiv_urma.h:356-370），
+   `HcommUrmaResolveBatchRemote`：当 remoteAddr=nullptr 时，remoteIdx=0
+   （第一个注册 buffer），不调用 HcommFindBufferIdx。所以不会失败。
+
+3. **Drain 语义**（+0%）：Drain(batchHandle) 只 poll CQ，不需要 remoteAddr
+   的正确性——Drain 关注的是 CQE，不是 remote MR。所以 remoteAddr 选哪个
+   都不影响 Drain 正确性。
+
+**自信值：0%**
+**判定**：PASS（nullptr 是 API 文档明确支持的合法值）
+
+---
+
+## 风险点 6：MAX_CHANNELS_PER_RANK = 3 导致 else 分支未限制 channel
+**严重级别：低**
+**规范来源：C++ 通用编码规范**
+
+### 代码位置
+engram_fetch_arch35.h:424-430（FetchByRank else 分支）
+
+```cpp
+} else {
+    uint32_t startRank = (aivId_ < numRanks_) ? aivId_ : rankId_;
+    for (uint32_t ownerRank = startRank; ownerRank < numRanks_; ownerRank += totalBlocks) {
+        if (ownerRank == rankId_) {
+            LocalFetchTokens(indicesBatchStart, 0, 1);
+        } else {
+            RemoteFetchRank(ownerRank, indicesBatchStart, 0, 1);
+        }
+    }
+}
+```
+
+### 假设检验
+
+**H0**：该代码段是安全的
+**H1**：else 分支（totalBlocks < numRanks_）未使用 maxCh 限制，与 if 分支不一致
+**自信值初始化：0%**
+
+**证据收集**：
+
+1. **数据流分析**（+25%）：else 分支用 `channelIdxInRank=0, channelCount=1`
+   （只走 channel 0），不需要 maxCh 限制——因为它已经只用了 1 个 channel。
+
+2. **一致性分析**（+0%）：if 分支用 maxCh=3 限制 channel 数，else 分支用 1 个
+   channel。逻辑一致（else 是退化场景，不需要多 channel）。
+
+**自信值：25%（未超过 60% 阈值）**
+**判定**：PASS
+
+---
+
+## 风险点 7：URMA_UNORDERED_CFG 的 odr=0 无序 + fence=0 无 fence 的正确性
+**严重级别：中（存疑）**
+**规范来源：Ascend C API 最佳实践**
+
+### 代码位置
+engram_fetch_arch35.h:49-54
+
+```cpp
+constexpr AscendC::UrmaWqeEntry URMA_UNORDERED_CFG = {
+    .odr = 0,
+    .fence = 0,
+    .se = 0,
+    .cqe = 0,
+    .inlineEn = 0,
+};
+```
+
+### 假设检验
+
+**H0**：该代码段是安全的
+**H1**：odr=0 无序 + fence=0 无 fence 的 read WQE 可能导致数据竞争
+**自信值初始化：0%**
+
+**证据收集**：
+
+1. **数据流分析**（+25%）：各 read WQE 的 dst 地址 =
+   `fetchedGM_ + globalTokenIdx * hiddenBytes`，不同 token 的 globalTokenIdx
+   不同，**dst 地址互不重叠**。src 地址也不同（不同 localEntryIdx）。
+   所以无序执行不会导致数据竞争——写入不同地址的 WQE 无序安全。
+
+2. **与末条 CQE WQE 的关系**（+25%）：末条 URMA_CQE_CFG 有 odr=5（强序）+
+   fence=1。fence=1 意味着该 WQE 等同一 SQ 中前面所有 WQE 完成才执行。
+   所以末条 CQE 完成时，前面所有无序 read 都已完成 → Drain poll 到 CQE
+   即可确认全部完成。逻辑正确。
+
+3. **潜在风险**（+0%）：如果 SQ 中有无序 read **尚未被引擎调度执行**，
+   fence=1 的末条 WQE 会等它完成——但 fence 的语义是"等前序 WQE 完成"，
+   包括尚未调度的前序 WQE。所以正确。
+
+**自信值：50%（未超过 60% 阈值）**
+**判定**：PASS（存疑——建议上板验证 fence 语义在 odr=0 WQE 前序时的行为）
+
+---
+
+## 风险点 8：ENGRAM_BATCH_BUFFER_BYTES（8KB）UB 占用导致 indicesBatchSize 缩小
+**严重级别：低**
+**规范来源：Ascend C 高性能编程**
+
+### 代码位置
+engram_fetch_arch35.h:178
+
+```cpp
+uint64_t usedUb = HCOMM_INIT_SIZE + TILE_BYTES * RELAY_BUFFER_NUM + ENGRAM_BATCH_BUFFER_BYTES +
+                  countsBufSize + offsetsBufSize + commBufferBufSize + hcommHandleBufSize;
+```
+
+### 假设检验
+
+**H0**：该代码段是安全的
+**H1**：新增 8KB batch buffer 占用 UB，导致 availableUb 减少，indicesBatchSize 缩小，可能影响性能
+**自信值初始化：0%**
+
+**证据收集**：
+
+1. **数值分析**（+25%）：ENGRAM_BATCH_BUFFER_BYTES = 128 × 64 = 8192B = 8KB。
+   UB 典型大小 ~196KB（910B）。8KB 占比 ~4%，indicesBatchSize 最多缩小 4%。
+   对于几万 token 的场景，多一轮 batch 处理即可，性能影响可忽略。
+
+2. **usedUb 已正确更新**（+0%）：代码已在 usedUb 里加了 ENGRAM_BATCH_BUFFER_BYTES，
+   availableUb 计算正确。
+
+**自信值：25%（未超过 60% 阈值）**
+**判定**：PASS
+
+================================================================================
+
+## 检视总结
+
+| # | 风险点 | 严重级别 | 判定 | 说明 |
+|---|--------|---------|------|------|
+| 1 | isLast CQE 在 batch 中途 flush 后丢失 | 高 | PASS | fence+强序保证 Drain 正确 |
+| 2 | isLast fence 不等后续新 batch WQE | 中 | PASS | isLast 是循环最后一条，无后续 WQE |
+| 3 | static_cast<uint32_t>(len) 截断 | 中 | PASS | hiddenBytes 远小于 uint32_t 上限 |
+| 4 | MakeBatchHandle 返回值未校验 | 中 | PASS（存疑） | remoteBase 始终在注册区，建议加 assert |
+| 5 | fetch_wait MakeBatchHandle 传 nullptr | 中 | PASS | API 文档明确支持 nullptr |
+| 6 | else 分支未限制 channel | 低 | PASS | else 已只用 channel 0 |
+| 7 | odr=0 + fence=0 无序正确性 | 中 | PASS（存疑） | dst 不重叠，建议上板验证 |
+| 8 | 8KB batch buffer 占用 UB | 低 | PASS | 占比 4%，影响可忽略 |
+
+### 红线问题检查
+
+- [x] 无除法/求余操作（Kernel 侧，不适用红线 1~4）
+- [x] 无数组越界访问（tokenIdxInRank 访问受 rankStart+tokenPos < cnt 约束）
+- [x] 变量已初始化（activeBatchHandle_{} 零初始化，preparedReadCount_{0}）
+- [x] 资源使用释放匹配（PrepareRead 攒 WQE，FlushPreparedReads 提交并 reset，无泄漏）
+
+### 存疑项（建议关注）
+
+1. **风险点 4**：建议在 MakeBatchHandle 后加 `ascendc_assert(activeBatchHandle_.channelHandle != 0, ...)`
+   防御性校验，虽然当前场景不会触发。
+2. **风险点 7**：odr=0 + fence=0 的无序 read 在硬件层面的实际行为，建议上板性能/精度验证。
+
+================================================================================

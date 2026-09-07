@@ -1,0 +1,4 @@
+git push -f origin engram-ubg-1ch
+git fetch origin
+git reset --hard origin/engram-ubg-1ch
+git clean -fd
