@@ -515,7 +515,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
         RunSharedExpertGmm1ActivationStage<QuantOutType, Weight1Type, ActivationQuantOutType, QuantScaleOutType,
                                            ENABLE_A8W4, GMM1_TILE_M, IsGmm1Interleaved, ENABLE_A8W8>(
             commonConfig_, gmmExecutionConfig_, params_, sharedEpilogueOp_, gmmAddrInfo, problemShape, runtimeState,
-            sharedExpertIdx, &gmmTileSequence_);
+            sharedExpertIdx, &gmmTileSequence_, nullptr, ENABLE_A8W8);
     }
     EndSync<IsGmm1Interleaved>(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
 }

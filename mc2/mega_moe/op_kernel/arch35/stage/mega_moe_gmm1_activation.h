@@ -1110,29 +1110,26 @@ __aicore__ inline void UpdateSharedExpertGmm1GlobalBuffer(const MoeStageCommonCo
 }
 
 // 原型：MegaMoe::GroupMatmulWithActivationQuant<true>。执行一个共享专家的 GMM1/SwiGLU 阶段。
-// A8W8 共享专家使用 Wave 粒度同步标记，且整专家 problem 允许权重绕过 L2。
 template <typename QuantOutType, typename WeightType, typename ActivationOutType, typename QuantScaleType,
-          bool EnableA8W4, uint32_t Gmm1TileM, bool IsGmm1Interleaved = false, bool EnableA8W8 = false,
+          bool EnableA8W4, uint32_t Gmm1TileM, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false,
           typename BlockEpilogue>
-__aicore__ inline void RunSharedExpertGmm1ActivationStage(const MoeStageCommonConfig &commonConfig,
-                                                          const GmmExecutionConfig &gmmConfig, const Params &gmmParams,
-                                                          BlockEpilogue &epilogueOp, const GMMAddrInfo &gmmAddrInfo,
-                                                          const ProblemShape &problemShape,
-                                                          GmmRuntimeState &runtimeState, uint32_t sharedExpertIdx,
-                                                          int32_t *gmm1TileReadySequence = nullptr,
-                                                          void *persistentBlockMmadContext = nullptr)
+__aicore__ inline void RunSharedExpertGmm1ActivationStage(
+    const MoeStageCommonConfig &commonConfig, const GmmExecutionConfig &gmmConfig, const Params &gmmParams,
+    BlockEpilogue &epilogueOp, const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape,
+    GmmRuntimeState &runtimeState, uint32_t sharedExpertIdx, int32_t *gmm1TileReadySequence = nullptr,
+    void *persistentBlockMmadContext = nullptr, bool allowWeightL2Bypass = false)
 {
     uint32_t expertBeforeCnt = sharedExpertIdx * commonConfig.tokenNum;
     if constexpr (EnableA8W4) {
         RunGmm1A8W4<QuantOutType, WeightType, bfloat16_t, QuantScaleType, QuantScaleType, Gmm1TileM, L1_TILE_M_256,
-                    false, true, EnableA8W8>(epilogueOp, gmmParams, problemShape, gmmAddrInfo,
-                                             runtimeState.startBlockIdx, *gmm1TileReadySequence, gmmConfig.blockJob,
-                                             expertBeforeCnt, sharedExpertIdx);
+                    false, true, IsWaveFlagGrained>(epilogueOp, gmmParams, problemShape, gmmAddrInfo,
+                                                    runtimeState.startBlockIdx, *gmm1TileReadySequence,
+                                                    gmmConfig.blockJob, expertBeforeCnt, sharedExpertIdx);
     } else {
         RunGmm1GenericByWeightFormat<QuantOutType, ActivationOutType, QuantScaleType, Gmm1TileM, L1_TILE_M_256, false,
-                                     IsGmm1Interleaved, EnableA8W8, true>(
+                                     IsGmm1Interleaved, IsWaveFlagGrained, true>(
             gmmConfig, gmmParams, epilogueOp, gmmAddrInfo, problemShape, expertBeforeCnt, runtimeState, sharedExpertIdx,
-            persistentBlockMmadContext, EnableA8W8);
+            persistentBlockMmadContext, allowWeightL2Bypass);
     }
 }
 
