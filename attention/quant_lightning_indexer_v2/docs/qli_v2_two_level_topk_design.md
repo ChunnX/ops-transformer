@@ -367,11 +367,19 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 - **sidecar 强制字段**（`xxx.ref.json`，遵循全局 AGENTS 规则）：分支 `ds41` + commit `32d64c27f`、candidate 参数（mode/topk_blocks/block_size/mask_mode/cmp_ratio/layout）、随机种子、生成脚本路径、机器（910b 节点）、时间。
 - **使用前核验**：比对结果与预期矛盾时，第一嫌疑人是 golden 本身（先独立复算，再怀疑 kernel）。
 
-### 6.2 精度比对策略（tie 容差）
+### 6.2 精度比对策略（2026-09-07 起：对齐官方 result_compare_method 规则）
 
-- 块级 topk 并列值（blkScore 相等）时 NPU 与 PyTorch 的 tie-break 不保证一致 → `candidate_topk_index` 采用**集合比较**：`set(有效块号)` 相等 + `-1` 槽数一致即 PASS；
-- 构造 tie 密集用例（常值 score）单独验证 tie 不影响**集合**正确性；
-- mode=2 的 sparse_indices 沿用现有 `result_compare_method.py` 的比对与容差框架。
+`sparse_indices` 与 `candidate_topk_index` 统一采用与 `tests/pytest/result_compare_method.py::check_result` 相同的两级规则（harness `cmp_indices`，行粒度）：
+
+1. **多重集合门**：整行排序后完全相等（值、`-1`、重复均敏感，**顺序不敏感**——MrgSort 的 tie-break 与 PyTorch 稳定排序不保证一致，实测 r2_m1_prefill_m3 存在精确平分对（score 位型相同）的顺序交换，属合法差异）→ 该行 PASS；
+2. **边界容忍回退**（门未过时）：直接复用官方 `compare_topk_valid`——gold 有效前缀集合比较，差异元素按**边界值**（gold 前缀最后一个元素的分数）相对误差 ≤ thres(0.001) 容忍；
+3. **-1 槽数硬校验**（对官方规则的收紧，仅一处）：行级有效计数不一致 → 直接 FAIL。官方仅按 gold 的 valid_len 切片、会放过 npu 多填/少填 -1 槽的情况；candidate 的 -1 槽是硬契约（numBlocks < topk_blocks 时必须填 -1），故收紧。
+
+自检（selftest_cmp.py）覆盖五分支：同集不同序 PASS / 边界 0.1% 容忍 PASS / 大差异 FAIL / 重复 FAIL / -1 计数不匹配 FAIL。
+当前状态：15 用例全部行过多重集合门（boundary 0 触发），即输出达到"排序后完全一致"。
+
+- 构造 tie 密集用例（常值 score）单独验证 tie 不影响**多重集合**正确性；
+- 大 shape（16K/128K/1M）harness 为设备侧独立脚本，CPU 全量 golden 不可行，沿用抽样行集合比较 + 有效性/确定性检查（§10）。
 
 ### 6.3 测试矩阵（每格至少 1 用例，mode=3 抽样回归）
 
