@@ -56,11 +56,10 @@ TEST_F(AclnnFfnToAttentionV2Test, TestFfnToAttentionV2AttnRankTable)
     aclIntArray *tokenDataShape = aclCreateIntArray(tokenData.data(), tokenData.size());
     int64_t cclBufferSize = 1LL << 30;
 
-    auto ut =
-        OP_API_UT(aclnnFFNToAttentionV2,
-                  INPUT(context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable,
-                        nullptr, group, worldSize, tokenInfoTableShape, tokenDataShape, cclBufferSize),
-                  OUTPUT());
+    auto ut = OP_API_UT(aclnnFFNToAttentionV2,
+                        INPUT(context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum,
+                              attnRankTable, group, worldSize, tokenInfoTableShape, tokenDataShape, cclBufferSize),
+                        OUTPUT());
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -85,11 +84,10 @@ TEST_F(AclnnFfnToAttentionV2Test, TestFfnToAttentionV2NoAttnRankTable)
     aclIntArray *tokenDataShape = aclCreateIntArray(tokenData.data(), tokenData.size());
     int64_t cclBufferSize = 1LL << 30;
 
-    auto ut =
-        OP_API_UT(aclnnFFNToAttentionV2,
-                  INPUT(context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable,
-                        nullptr, group, worldSize, tokenInfoTableShape, tokenDataShape, cclBufferSize),
-                  OUTPUT());
+    auto ut = OP_API_UT(aclnnFFNToAttentionV2,
+                        INPUT(context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum,
+                              attnRankTable, group, worldSize, tokenInfoTableShape, tokenDataShape, cclBufferSize),
+                        OUTPUT());
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);

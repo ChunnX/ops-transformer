@@ -61,11 +61,6 @@ public:
             .DataTypeList({ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("perf_data")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT64})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
         this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("world_size").AttrType(REQUIRED).Int();
         this->Attr("token_info_table_shape").AttrType(REQUIRED).ListInt();
