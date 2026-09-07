@@ -173,6 +173,17 @@ def verify_source_preservation(original_path, operator_path):
     appended_names = set().union(*(_bound_names(node) for node in appended_nodes))
     collisions = sorted(original_names & appended_names)
     assert not collisions, f"adapter overwrites original top-level declarations: {collisions}"
+    stage1 = next(
+        node
+        for node in original_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_run_stage1_body"
+    )
+    loaded = [
+        node.id for node in ast.walk(stage1)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+    ]
+    assert loaded.count("gm_lower_mask_tiles") == 0
+    assert loaded.count("gm_identity16") > 0
     return {
         "passed": True,
         "original": str(original_path.resolve()),
@@ -183,6 +194,43 @@ def verify_source_preservation(original_path, operator_path):
         "appended_top_level_nodes": len(appended_nodes),
         "appended_names": sorted(appended_names),
         "overwritten_original_names": collisions,
+        "dead_mask_parameter": {
+            "gm_lower_mask_tiles_loads": 0,
+            "gm_identity16_loads": loaded.count("gm_identity16"),
+            "initialization_required": False,
+        },
+    }
+
+
+def verify_cli(operator_path):
+    def invoke(arguments):
+        return subprocess.run(
+            [sys.executable, str(operator_path.resolve()), *arguments],
+            text=True, capture_output=True, timeout=30,
+        )
+
+    help_result = invoke(["--help"])
+    assert help_result.returncode == 0, help_result.stderr
+    assert "--head-pairs" in help_result.stdout and "1:1" in help_result.stdout
+    valid = ["/tmp/invalid", "--npu-arch", "dav-3510", "--aic-count", "32",
+             "--head-pairs", "1:1"]
+    invalid_commands = {
+        "missing_required_arguments": [],
+        "malformed_head_pair": [*valid[:-1], "1:1,bad"],
+        "invalid_batch_profile": [*valid, "--batch-min", "0"],
+    }
+    rejected = []
+    for name, command in invalid_commands.items():
+        result = invoke(command)
+        combined = result.stdout + result.stderr
+        assert result.returncode == 2, (name, result.returncode, combined)
+        assert "error" in combined.lower(), (name, combined)
+        assert "traceback" not in combined.lower(), (name, combined)
+        rejected.append(name)
+    return {
+        "passed": True,
+        "help_has_profile_example": True,
+        "rejected": rejected,
     }
 
 
@@ -229,22 +277,29 @@ def run_original(operator, values, layout, group, dv_base):
 
 
 def validate_constants(operator, device):
-    reference_tensor = torch.empty((1,), dtype=torch.bfloat16, device=f"npu:{device}")
-    expected = operator._stage1_constants_for(reference_tensor)
-    masks = torch.empty_like(expected.lower_mask_tiles)
-    identity = torch.empty_like(expected.identity16)
-    operator._frozen_initialize_constants(masks, identity)
+    expected = torch.eye(16, dtype=torch.float16, device=f"npu:{device}")
+    identity = torch.empty_like(expected)
+    operator._frozen_initialize_identity(identity)
     torch.npu.synchronize(device)
-    masks_equal = bitwise_equal(masks.cpu(), expected.lower_mask_tiles.cpu())
-    identity_equal = bitwise_equal(identity.cpu(), expected.identity16.cpu())
-    assert masks_equal and identity_equal
+    identity_equal = bitwise_equal(identity.cpu(), expected.cpu())
+    assert identity_equal
     return {
         "passed": True,
-        "lower_mask_tiles_bitwise_equal": masks_equal,
         "identity16_bitwise_equal": identity_equal,
-        "lower_mask_bytes": masks.numel() * masks.element_size(),
         "identity_bytes": identity.numel() * identity.element_size(),
+        "mask_initialization": "omitted_dead_parameter",
     }
+
+
+def validate_adapter_helpers(operator):
+    mismatches = [
+        bn
+        for bn in range(1, 1025)
+        if operator._frozen_group_config_bn(bn) != operator.get_group_config_bn(bn)
+    ]
+    assert not mismatches, mismatches
+    return {"passed": True, "group_policy_equivalent": True,
+            "bn_range": [1, 1024], "values_checked": 1024}
 
 
 def entry_kwargs(values, layout, group, dv_base):
@@ -335,7 +390,11 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     source_report = verify_source_preservation(args.original_source, args.operator_source)
     if args.source_only:
-        report = {"status": "passed", "source_equivalence": source_report}
+        report = {
+            "status": "passed",
+            "source_equivalence": source_report,
+            "cli_interface": verify_cli(args.operator_source),
+        }
         (args.output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
         print("SOURCE_EQUIVALENCE_PASS", json.dumps(report), flush=True)
         return
@@ -357,6 +416,7 @@ def main():
         "execution": "frozen-bundle" if args.bundle else "aclnn",
         "source_equivalence": source_report,
         "constants_equivalence": validate_constants(operator, args.device),
+        "adapter_helpers": validate_adapter_helpers(operator),
         "group_override": args.group_override,
         "dv_base_override": args.dv_base_override,
         "cases": [],

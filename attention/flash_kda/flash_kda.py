@@ -2190,56 +2190,17 @@ import cannbotdsl as cb
 
 
 def _frozen_group_config_bn(bn):
-    """Equivalent to get_group_config_bn; no host while loop during capture."""
-    if bn <= 1:
-        return 512
-    if bn <= 3:
-        return 256
-    if bn <= 6:
-        return 128
-    if bn <= 13:
-        return 64
-    if bn <= 26:
-        return 32
-    if bn <= 53:
-        return 16
-    if bn <= 107:
-        return 8
-    if bn <= 215:
-        return 4
-    if bn <= 430:
-        return 2
+    """仅作捕获兼容：按原函数的 512 上限和 861 L2 规则选择，不改变调度。"""
+    for group in (512, 256, 128, 64, 32, 16, 8, 4, 2):
+        if bn <= 861 // group:
+            return group
     return 1
 
 
 @cb.kernel
-def _frozen_constants_kernel(masks, identity):
-    # Exact little-endian float32 bit patterns of four packed torch.bool bytes.
-    # 0x01000000, 0x01010000, 0x01010100 and 0x01010101 respectively.
-    for row in range(CHUNK_SIZE):
-        for word in range(CHUNK_SIZE // 4):
-            strict = dtypes.float32(0.0)
-            causal = dtypes.float32(0.0)
-            if word * 4 + 3 >= row:
-                strict = dtypes.float32(2.350988701644575e-38)
-            if word * 4 + 2 >= row:
-                strict = dtypes.float32(2.369355800876173e-38)
-            if word * 4 + 1 >= row:
-                strict = dtypes.float32(2.3694275473575467e-38)
-            if word * 4 >= row:
-                strict = dtypes.float32(2.3694278276172396e-38)
-            if word * 4 + 3 > row:
-                causal = dtypes.float32(2.350988701644575e-38)
-            if word * 4 + 2 > row:
-                causal = dtypes.float32(2.369355800876173e-38)
-            if word * 4 + 1 > row:
-                causal = dtypes.float32(2.3694275473575467e-38)
-            if word * 4 > row:
-                causal = dtypes.float32(2.3694278276172396e-38)
-            masks[row, word] = strict
-            masks[row, word + CHUNK_SIZE // 4] = causal
-    for row in range(16):
-        for col in range(16):
+def _frozen_identity_kernel(identity):
+    for row in range(NEUMANN_BLOCK_SIZE):
+        for col in range(NEUMANN_BLOCK_SIZE):
             value = dtypes.float16(0.0)
             if row == col:
                 value = dtypes.float16(1.0)
@@ -2247,8 +2208,8 @@ def _frozen_constants_kernel(masks, identity):
 
 
 @cb.jit
-def _frozen_initialize_constants(masks, identity):
-    _frozen_constants_kernel[1](masks, identity)
+def _frozen_initialize_identity(identity):
+    _frozen_identity_kernel[1](identity)
 
 
 class _FrozenFlashKDA:
@@ -2300,12 +2261,13 @@ def flash_kda_entry(q, k, v, g, beta, scale, initial_state, A_log,
     gamma = torch.empty((bn_chunks * dim, 1), dtype=HIGH_DTYPE, device=q.device)
     u = torch.empty((bn_chunks * CHUNK_SIZE, dim), dtype=LOW_DTYPE, device=q.device)
     w = torch.empty((bn_chunks * CHUNK_SIZE, dim), dtype=LOW_DTYPE, device=q.device)
+    # 原 run ABI 保留此参数；原 stage1 不读取 mask，因此无需初始化。
     masks = torch.empty((CHUNK_SIZE, CHUNK_SIZE // 2), dtype=HIGH_DTYPE, device=q.device)
-    identity = torch.empty((16, 16), dtype=torch.float16, device=q.device)
+    identity = torch.empty((NEUMANN_BLOCK_SIZE, NEUMANN_BLOCK_SIZE), dtype=torch.float16, device=q.device)
     exchange = torch.empty((blocks, 2, CHUNK_SIZE, D_HALF), dtype=HIGH_DTYPE, device=q.device)
     out = torch.empty(v.shape, dtype=LOW_DTYPE, device=v.device)
     final_state = torch.empty(initial_state.shape, dtype=HIGH_DTYPE, device=initial_state.device)
-    _frozen_initialize_constants(masks, identity)
+    _frozen_initialize_identity(identity)
     _FrozenFlashKDA(dim, group, layout, dv_base, blocks).run(
         k, v, q, beta.unsqueeze(-1), g, exchange, A_log, dt_bias,
         k_restored, gamma, q_decayed, w, mqk, u, out,
@@ -2316,27 +2278,31 @@ def flash_kda_entry(q, k, v, g, beta, scale, initial_state, A_log,
 
 
 def signatures(*, head_pairs, batch_min=1, batch_max=4,
-               sequence_min=64, sequence_max=65536,
+               sequence_min=64, sequence_max=8192,
                group_override=0, dv_base_override=0):
     """Explicit binary profile; these bounds do not restrict the original API."""
+    head_pairs = tuple(head_pairs)
+    if not head_pairs or any(not isinstance(pair, (tuple, list)) or len(pair) != 2
+                             or any(type(n) is not int for n in pair) for pair in head_pairs):
+        raise ValueError("head_pairs 须包含至少一组 (Nk, Nv) 整数对")
+    if any(nk <= 0 or nv <= 0 or nv % nk for nk, nv in head_pairs):
+        raise ValueError("头数须为正整数，且 Nv 必须是 Nk 的整数倍")
     if batch_min < 1 or batch_max < batch_min:
-        raise ValueError("invalid batch profile")
+        raise ValueError("B 范围须满足 1 ≤ batch-min ≤ batch-max")
     if sequence_min < CHUNK_SIZE or sequence_max < sequence_min:
-        raise ValueError("invalid sequence profile")
+        raise ValueError("S 范围须满足 64 ≤ sequence-min ≤ sequence-max")
     if sequence_min % CHUNK_SIZE or sequence_max % CHUNK_SIZE:
-        raise ValueError("sequence profile bounds must be multiples of CHUNK_SIZE")
+        raise ValueError("S 范围上下限都须是 64 的倍数")
     if group_override < 0:
-        raise ValueError("group override must be positive or zero for automatic policy")
+        raise ValueError("--group 须为正整数，或使用 0 保留原自动策略")
     if dv_base_override < 0:
-        raise ValueError("dv_base override must be positive or zero for automatic policy")
+        raise ValueError("--dv-base 须为正整数，或使用 0 保留原自动策略")
     sequence = cb.Dim("S", min=sequence_min, max=sequence_max, multiple_of=CHUNK_SIZE)
     result = []
     # Concrete B classes preserve the complete requested B range while avoiding
     # repeated symbolic splits at each original group/Dv policy boundary.
     for batch in range(batch_min, batch_max + 1):
         for nk, nv in head_pairs:
-            if nk <= 0 or nv <= 0 or nv % nk:
-                raise ValueError("head profile requires positive Nk/Nv and Nv % Nk == 0")
             for is_bsnd in (False, True):
                 qshape = (batch, sequence, nk, SUPPORTED_HEAD_DIM) if is_bsnd else (batch, nk, sequence, SUPPORTED_HEAD_DIM)
                 vshape = (batch, sequence, nv, SUPPORTED_HEAD_DIM) if is_bsnd else (batch, nv, sequence, SUPPORTED_HEAD_DIM)
@@ -2373,27 +2339,39 @@ def signatures(*, head_pairs, batch_min=1, batch_max=4,
 
 def build(target, **profile):
     if target.aic_count < 1 or target.aiv_count < 2 * min(target.aic_count, ALGORITHM_MAX_BLOCK_NUM):
-        raise ValueError("FlashKDA requires explicit resident AICs and two AIVs per launched AIC")
+        raise ValueError("请提供可同时驻留的 AIC 核数，且每个 AIC 至少对应两个 AIV")
     return cb.build_operator(flash_kda_entry, signatures=signatures(**profile), target=target)
 
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Freeze the unchanged original FlashKDA with an explicit binary profile")
-    parser.add_argument("output")
-    parser.add_argument("--npu-arch", choices=("dav-3510",), required=True)
-    parser.add_argument("--aic-count", type=int, required=True)
-    parser.add_argument("--head-pairs", required=True, help="Comma-separated Nk:Nv pairs, for example 1:1,1:2,3:3,96:96")
-    parser.add_argument("--batch-min", type=int, default=1)
-    parser.add_argument("--batch-max", type=int, default=4)
-    parser.add_argument("--sequence-min", type=int, default=64)
-    parser.add_argument("--sequence-max", type=int, default=65536)
-    parser.add_argument("--group", type=int, default=int(os.environ.get("KDA_GROUP") or 0))
-    parser.add_argument("--dv-base", type=int, default=int(os.environ.get("KDA_DV_BASE") or 0))
+    parser = argparse.ArgumentParser(
+        description="发布 FlashKDA 冻结二进制：原算子实现保留，同时支持 BNSD / BSND。",
+        epilog="示例：python flash_kda.py /tmp/flash-kda-bundle --aic-count 28 --head-pairs 1:1,1:2")
+    parser.add_argument("output", help="新建 bundle 输出目录")
+    common = parser.add_argument_group("发布参数")
+    common.add_argument("--npu-arch", choices=("dav-3510",), default="dav-3510", help="目标芯片架构（默认 dav-3510）")
+    common.add_argument("--aic-count", type=int, required=True, help="设备可同时驻留的 AIC 核数，须显式指定")
+    common.add_argument("--head-pairs", required=True, help="Nk:Nv 组合，用逗号分隔；例如 1:1,1:2,3:3,96:96")
+    common.add_argument("--batch-min", type=int, default=1, help="B 最小值（默认 1）")
+    common.add_argument("--batch-max", type=int, default=4, help="B 最大值（默认 4）")
+    common.add_argument("--sequence-min", type=int, default=64, help="S 最小值，须为 64 的倍数（默认 64）")
+    common.add_argument("--sequence-max", type=int, default=8192, help="S 最大值，须为 64 的倍数（默认 8192）")
+    advanced = parser.add_argument_group("高级：原分组策略覆盖")
+    advanced.add_argument("--group", type=int, default=os.environ.get("KDA_GROUP") or "0", help="0=自动；默认读取 KDA_GROUP，可显式覆盖")
+    advanced.add_argument("--dv-base", type=int, default=os.environ.get("KDA_DV_BASE") or "0", help="0=自动；默认读取 KDA_DV_BASE，可显式覆盖")
     args = parser.parse_args()
-    pairs = tuple(tuple(int(n) for n in pair.split(":")) for pair in args.head_pairs.split(","))
-    bundle = build(cb.Target(args.npu_arch, aic_count=args.aic_count, aiv_count=2 * args.aic_count),
-                   head_pairs=pairs, batch_min=args.batch_min, batch_max=args.batch_max,
-                   sequence_min=args.sequence_min, sequence_max=args.sequence_max,
-                   group_override=args.group, dv_base_override=args.dv_base)
-    print(bundle.save(args.output))
+    try:
+        pairs = tuple(tuple(int(n) for n in pair.split(":")) for pair in args.head_pairs.split(","))
+    except ValueError:
+        parser.error("--head-pairs 格式应为 Nk:Nv 整数对，多个组合用逗号分隔")
+    try:
+        if args.aic_count < 1:
+            raise ValueError("--aic-count 须为正整数")
+        target = cb.Target(args.npu_arch, aic_count=args.aic_count, aiv_count=2 * args.aic_count)
+        profile = signatures(head_pairs=pairs, batch_min=args.batch_min, batch_max=args.batch_max,
+                             sequence_min=args.sequence_min, sequence_max=args.sequence_max,
+                             group_override=args.group, dv_base_override=args.dv_base)
+    except ValueError as error:
+        parser.error(str(error))
+    print(cb.build_operator(flash_kda_entry, signatures=profile, target=target).save(args.output))
