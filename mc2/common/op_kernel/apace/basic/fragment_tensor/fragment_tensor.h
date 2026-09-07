@@ -173,10 +173,12 @@ public:
      * \brief Fragment组成信息（动态推导）
      */
     struct FragmentComposition {
-        uint64_t headSize;           // 头块大小
-        uint64_t bodySize;           // 中间块大小
-        uint64_t tailSize;           // 尾块大小
-        uint64_t startRelativeCoord; // 头块在Fragment内的起始相对坐标
+        // 跨 fragment 的区间由首（head）尾（tail）两个非完整块 + 若干完整 body 块组成
+        static constexpr uint32_t EDGE_FRAGMENT_CNT = 2U; // head + tail
+        uint64_t headSize;                                // 头块大小
+        uint64_t bodySize;                                // 中间块大小
+        uint64_t tailSize;                                // 尾块大小
+        uint64_t startRelativeCoord;                      // 头块在Fragment内的起始相对坐标
 
         uint32_t startFragmentIdx; // 起始Fragment索引
         uint32_t endFragmentIdx;   // 结束Fragment索引
@@ -215,7 +217,7 @@ public:
                 comp.totalFragmentCnt--;
             }
 
-            comp.bodyCnt = comp.totalFragmentCnt - 2;
+            comp.bodyCnt = comp.totalFragmentCnt - FragmentComposition::EDGE_FRAGMENT_CNT;
         }
 
         return comp;
