@@ -10,7 +10,7 @@
 
 /*!
  * \file gmmsq_quant_mx_vf.h
- * \brief SIMD-VF functions for GMM SwiGLU + MX Quantization.
+ * \brief SIMD-VF functions for GMM SiTU + MX Quantization.
  */
 
 #ifndef GMMSQ_QUANT_MX_VF_H
@@ -44,11 +44,11 @@ static constexpr AscendC::Reg::CastTrait CAST_FP32_TO_BF16 = {
     AscendC::RoundMode::CAST_RINT};
 
 /*!
- * \brief Computes SwiGLU activation using vector instructions.
+ * \brief Computes SiTU activation using vector instructions.
  *
- * \param[in] firstSrc          Swish branch input in UB.
- * \param[in] secondSrc         Gate branch input in UB.
- * \param[in] gluResAddr        Output UB address for SwiGLU result.
+ * \param[in] firstSrc          Gate branch input in UB.
+ * \param[in] secondSrc         Up branch input in UB.
+ * \param[in] situResAddr       Output UB address for SiTU result.
  * \param[in] mSize             M dimension size.
  * \param[in] nSize             N dimension size.
  * \param[in] nSrcUbAligned     Aligned N stride for source UB.
@@ -70,46 +70,46 @@ __simd_vf__ inline void GmmSituVf(__ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTy
     for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) {
         uint32_t elementNum = nSize;
         for (uint16_t vfBlockIdx = 0; vfBlockIdx < oneRowRepeatTimes; vfBlockIdx++) {
-            AscendC::MicroAPI::MaskReg mask = AscendC::MicroAPI::UpdateMask<DataTypeIn>(elementNum);
-            AscendC::MicroAPI::RegTensor<bfloat16_t> situBf16;
-            AscendC::MicroAPI::RegTensor<float> gateInput, upInput;
-            AscendC::MicroAPI::RegTensor<float> tmp, gateBranch, upBranch, situOutput;
+            AscendC::Reg::MaskReg mask = AscendC::Reg::UpdateMask<DataTypeIn>(elementNum);
+            AscendC::Reg::RegTensor<bfloat16_t> situBf16;
+            AscendC::Reg::RegTensor<float> gateInput, upInput;
+            AscendC::Reg::RegTensor<float> tmp, gateBranch, upBranch, situOutput;
 
             uint32_t l0cOutOffset = mIdx * nSrcUbAligned + vfBlockIdx * sizePerRepeat;
 
-            AscendC::MicroAPI::LoadAlign(gateInput, firstSrc + l0cOutOffset);
-            AscendC::MicroAPI::Muls(gateInput, gateInput, mulFactor, mask);
+            AscendC::Reg::LoadAlign(gateInput, firstSrc + l0cOutOffset);
+            AscendC::Reg::Muls(gateInput, gateInput, mulFactor, mask);
 
-            AscendC::MicroAPI::Muls(tmp, gateInput, -(scalarTwo / situBeta), mask);
-            AscendC::MicroAPI::Exp(tmp, tmp, mask);
-            AscendC::MicroAPI::Adds(tmp, tmp, scalarOne, mask);
-            AscendC::MicroAPI::Duplicate(gateBranch, situBeta, mask);
-            AscendC::MicroAPI::Div<float, &DIV_MODE>(gateBranch, gateBranch, tmp, mask);
-            AscendC::MicroAPI::Muls(gateBranch, gateBranch, scalarTwo, mask);
-            AscendC::MicroAPI::Adds(gateBranch, gateBranch, -situBeta, mask);
+            AscendC::Reg::Muls(tmp, gateInput, -(scalarTwo / situBeta), mask);
+            AscendC::Reg::Exp(tmp, tmp, mask);
+            AscendC::Reg::Adds(tmp, tmp, scalarOne, mask);
+            AscendC::Reg::Duplicate(gateBranch, situBeta, mask);
+            AscendC::Reg::Div<float, &DIV_MODE>(gateBranch, gateBranch, tmp, mask);
+            AscendC::Reg::Muls(gateBranch, gateBranch, scalarTwo, mask);
+            AscendC::Reg::Adds(gateBranch, gateBranch, -situBeta, mask);
 
-            AscendC::MicroAPI::Muls(tmp, gateInput, -scalarOne, mask);
-            AscendC::MicroAPI::Exp(tmp, tmp, mask);
-            AscendC::MicroAPI::Adds(tmp, tmp, scalarOne, mask);
-            AscendC::MicroAPI::Div<float, &DIV_MODE>(gateBranch, gateBranch, tmp, mask);
+            AscendC::Reg::Muls(tmp, gateInput, -scalarOne, mask);
+            AscendC::Reg::Exp(tmp, tmp, mask);
+            AscendC::Reg::Adds(tmp, tmp, scalarOne, mask);
+            AscendC::Reg::Div<float, &DIV_MODE>(gateBranch, gateBranch, tmp, mask);
 
-            AscendC::MicroAPI::LoadAlign(upInput, secondSrc + l0cOutOffset);
-            AscendC::MicroAPI::Muls(upInput, upInput, mulFactor, mask);
+            AscendC::Reg::LoadAlign(upInput, secondSrc + l0cOutOffset);
+            AscendC::Reg::Muls(upInput, upInput, mulFactor, mask);
 
-            AscendC::MicroAPI::Muls(tmp, upInput, -(scalarTwo / situAlpha), mask);
-            AscendC::MicroAPI::Exp(tmp, tmp, mask);
-            AscendC::MicroAPI::Adds(tmp, tmp, scalarOne, mask);
-            AscendC::MicroAPI::Duplicate(upBranch, situAlpha, mask);
-            AscendC::MicroAPI::Div<float, &DIV_MODE>(upBranch, upBranch, tmp, mask);
-            AscendC::MicroAPI::Muls(upBranch, upBranch, scalarTwo, mask);
-            AscendC::MicroAPI::Adds(upBranch, upBranch, -situAlpha, mask);
+            AscendC::Reg::Muls(tmp, upInput, -(scalarTwo / situAlpha), mask);
+            AscendC::Reg::Exp(tmp, tmp, mask);
+            AscendC::Reg::Adds(tmp, tmp, scalarOne, mask);
+            AscendC::Reg::Duplicate(upBranch, situAlpha, mask);
+            AscendC::Reg::Div<float, &DIV_MODE>(upBranch, upBranch, tmp, mask);
+            AscendC::Reg::Muls(upBranch, upBranch, scalarTwo, mask);
+            AscendC::Reg::Adds(upBranch, upBranch, -situAlpha, mask);
 
-            AscendC::MicroAPI::Mul(situOutput, gateBranch, upBranch, mask);
-            AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(situBf16, situOutput, mask);
+            AscendC::Reg::Mul(situOutput, gateBranch, upBranch, mask);
+            AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(situBf16, situOutput, mask);
 
             uint32_t dstUbOffset = mIdx * nDstUbAligned + vfBlockIdx * sizePerRepeat;
-            AscendC::MicroAPI::StoreAlign<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
-                situResAddr + dstUbOffset, situBf16, mask);
+            AscendC::Reg::StoreAlign<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(situResAddr + dstUbOffset,
+                                                                                         situBf16, mask);
         }
     }
 }
