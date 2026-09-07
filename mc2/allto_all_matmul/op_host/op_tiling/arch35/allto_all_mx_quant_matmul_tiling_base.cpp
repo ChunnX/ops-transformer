@@ -822,7 +822,20 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
         }
         OP_LOGD(opName_, "Final hcomm tiling data size=%zu and context capacity size=%zu.",
                 sizeof(Apace::hcommAllToAllMatmulTilingData), context_->GetRawTilingData()->GetCapacity());
-        context_->GetRawTilingData()->SetDataSize(sizeof(Apace::hcommAllToAllMatmulTilingData));
+        const size_t registeredMaxTilingSize = sizeof(AlltoAllQuantMatmulTilingData);
+        if (tilingBufCap >= registeredMaxTilingSize && registeredMaxTilingSize > sizeof(hcommTilingData_)) {
+            errno_t zeroRet = memset_s(reinterpret_cast<uint8_t *>(outTilingData) + sizeof(hcommTilingData_),
+                                       tilingBufCap - sizeof(hcommTilingData_), 0,
+                                       registeredMaxTilingSize - sizeof(hcommTilingData_));
+            if (zeroRet != EOK) {
+                OP_LOGE(opName_, "AlltoAllMxQuantMatmul postTiling: memset_s hcomm tiling padding failed, ret=%d.",
+                        zeroRet);
+                return ge::GRAPH_FAILED;
+            }
+            context_->GetRawTilingData()->SetDataSize(registeredMaxTilingSize);
+        } else {
+            context_->GetRawTilingData()->SetDataSize(sizeof(Apace::hcommAllToAllMatmulTilingData));
+        }
     } else {
         // arch35 主线路径: 输出 AlltoAllQuantMatmulTilingData
         SetTilingInfo(localTilingData_.alltoAllQuantMatmulTilingInfo);
