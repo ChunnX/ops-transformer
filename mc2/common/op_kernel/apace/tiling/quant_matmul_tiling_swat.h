@@ -199,9 +199,8 @@ private:
         uint64_t baseScaleBSize =
             Align(CeilDiv(runInfo_.baseK, MX_GROUP_SIZE), TILING_MXFP_MULTI_BASE_SIZE) * runInfo_.baseN;
         // Bias occupies DB_SIZE ping-pong L1 buffers next to the scale windows.
-        runInfo_.biasL1Size = hasBias_ ?
-                                  DB_SIZE * Align(runInfo_.baseN, CUBE_BLOCK) * mm::GetBiasDataSize<biasDtype>() :
-                                  0UL;
+        runInfo_.biasL1Size =
+            hasBias_ ? DB_SIZE * Align(runInfo_.baseN, CUBE_BLOCK) * mm::GetBiasDataSize<biasDtype>() : 0UL;
         uint64_t availL1Size = platformInfo_.l1Size - runInfo_.biasL1Size;
         uint64_t baseL1Size = baseASize + baseBSize + baseScaleASize + baseScaleBSize;
         uint64_t depthInit = GetDepthA1B1(runInfo_, availL1Size, baseL1Size, 1UL);
@@ -499,8 +498,8 @@ private:
         // `scaleInit` is the balanced reuse factor both sides can afford
         // without favoring either A or B. Any leftover space is then assigned
         // to the side that can still benefit from deeper scale reuse.
-        uint64_t leftL1Size = platformInfo.l1Size - runInfo.biasL1Size -
-                              (runInfo.depthA1 * baseASize + runInfo.depthB1 * baseBSize);
+        uint64_t leftL1Size =
+            platformInfo.l1Size - runInfo.biasL1Size - (runInfo.depthA1 * baseASize + runInfo.depthB1 * baseBSize);
         uint64_t scaleInit = leftL1Size / (runInfo.depthA1 * baseScaleASize + runInfo.depthB1 * baseScaleBSize);
         if (runInfo.scaleFactorA <= scaleInit && runInfo.scaleFactorB > scaleInit) {
             leftL1Size -= runInfo.scaleFactorA * runInfo.depthA1 * baseScaleASize;
