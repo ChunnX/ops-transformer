@@ -565,7 +565,6 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
             AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
             AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag,
                                        *gmTileSequence + static_cast<int32_t>(loopIdx) + 1);
-            AscendC::DataSyncBarrier<AscendC::MemDsbT::DDR>();
         } else if constexpr (IsLayered && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
         } else if constexpr (IsShared && !IsLayered) {
@@ -620,7 +619,6 @@ __aicore__ inline void DrainNoQuantCombineSendSlots(uint32_t issuedRowCount)
     // Also wait for MTE2 to consume the stage events before the next tile reuses their IDs.
     SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
     WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
-    DataSyncBarrier<MemDsbT::DDR>();
 }
 
 // All AIV1s visit the same tiles. Within each tile, core c owns rows c, c + blockNum, ... .
@@ -737,7 +735,6 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
             AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
             AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag,
                                        *gmTileSequence + static_cast<int32_t>(loopIdx) + 1);
-            AscendC::DataSyncBarrier<AscendC::MemDsbT::DDR>();
         } else if constexpr (IsLayered && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(rowOffsetInExpert + mLoc, groupSyncSlotLayout,
                                                    gmmAddrInfo.gmm2CombineSyncCounter);
