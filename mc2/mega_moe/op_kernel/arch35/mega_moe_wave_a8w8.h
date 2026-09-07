@@ -46,34 +46,6 @@ namespace MegaMoeImpl {
 
 using namespace AscendC;
 
-// 检查目标 route 是否被纳入当前 GMM2 expert problem；仅由一个 AIV1 扫描，避免重复 dump。
-__aicore__ inline void DumpGmm2ProblemProbe(const MoeStageCommonConfig &common, const Params &params,
-                                            const BlockJobContext &blockJob, const GMMAddrInfo &gmmAddrInfo,
-                                            uint32_t problemRowCount)
-{
-    if constexpr (g_coreType == AIC) {
-        return;
-    }
-    if (GetSubBlockIdx() != 1U || blockJob.jobIndex != 0U || common.tokenNum != 10072U ||
-        common.tokenHiddenDim != 3072U) {
-        return;
-    }
-    __gm__ int32_t *metaInfo = reinterpret_cast<__gm__ int32_t *>(gmmAddrInfo.metaInfoGlobal);
-    for (uint32_t rowIdx = 0U; rowIdx < problemRowCount; ++rowIdx) {
-        __gm__ int32_t *rowMeta = metaInfo + static_cast<uint64_t>(rowIdx) * META_INFO_SIZE;
-        uint32_t sourceRankId = static_cast<uint32_t>(AscendC::ReadGmByPassDCache(rowMeta + RANK_ID));
-        uint32_t sourceTokenIndex = static_cast<uint32_t>(AscendC::ReadGmByPassDCache(rowMeta + TOKEN_ID));
-        uint32_t sourceTopkIndex = static_cast<uint32_t>(AscendC::ReadGmByPassDCache(rowMeta + TOPK_INDEX));
-        if (sourceRankId == 1U && sourceTokenIndex == 9942U && sourceTopkIndex >= 5U && sourceTopkIndex <= 9U) {
-            GlobalTensor<int32_t> metaInfoTensor;
-            metaInfoTensor.SetGlobalBuffer(rowMeta);
-            PipeBarrier<PIPE_ALL>();
-            // desc 12000 + topkIdx: route is covered by the GMM2 problem passed to the scheduler.
-            AscendC::DumpTensor(metaInfoTensor, 12000U + sourceTopkIndex, META_INFO_SIZE);
-        }
-    }
-}
-
 #define TemplateMegaMoeA8W8WaveTypeClass \
     typename XType, typename OutputType, typename TopkWeightsType, typename MoeWeightType, int32_t MoeQuantMode, \
         typename SharedWeightType, int32_t SharedQuantMode, int32_t MoeWeight1Format, int32_t MoeWeight2Format, \
@@ -823,7 +795,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                                         typename MoeQuantConfig::QuantScaleType>(
             gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmm2AddrInfo,
             gmm2ExpertState, gmm2Position.tokenIndexInExpert);
-        DumpGmm2ProblemProbe(commonConfig_, params_, gmmExecutionConfig_.blockJob, gmm2AddrInfo, waveRowCount);
         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
             gmm2AddrInfo.gmmToEpilogueFlag =
                 reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagGmmToEpiloguePtr) +

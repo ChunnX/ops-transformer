@@ -35,23 +35,6 @@ struct TokenUnpermuteScratch {
     LocalTensor<bfloat16_t> topKWeightsBf16Tensor;
 };
 
-constexpr int32_t PRECISION_PROBE_TOKEN_INDEX = 9942;
-constexpr int32_t PRECISION_PROBE_FIRST_EXPERT_INDEX = 5;
-constexpr int32_t PRECISION_PROBE_LAST_EXPERT_INDEX = 9;
-constexpr uint32_t PRECISION_PROBE_DUMP_START_COLUMN = 2080U;
-constexpr uint32_t PRECISION_PROBE_ELEMENT_COUNT = 16U;
-
-template <typename Tensor>
-__aicore__ inline void DumpPrecisionProbe(const MoeStageCommonConfig &common, int32_t tokenIdx, const Tensor &tensor,
-                                          uint32_t desc)
-{
-    if (common.rankId == 1U && common.tokenNum == 10072U && common.tokenHiddenDim == 3072U &&
-        tokenIdx == PRECISION_PROBE_TOKEN_INDEX) {
-        PipeBarrier<PIPE_ALL>();
-        AscendC::DumpTensor(tensor[PRECISION_PROBE_DUMP_START_COLUMN], desc, PRECISION_PROBE_ELEMENT_COUNT);
-    }
-}
-
 // 加载并转换一批 top-k 权重。
 template <typename TopkWeightsType>
 __aicore__ inline void LoadTokenUnpermuteWeights(const MoeStageCommonConfig &common, const Params &params,
@@ -125,15 +108,6 @@ __aicore__ inline void AccumulateMoeExpertsForToken(const TokenUnpermuteConfig &
         LocalTensor<float> dataInFp32 =
             scratch.dataResFp32Tensor[(inputBufferIdx + 1) * bufferConfig.fp32SlotElementCount];
         uint64_t expertInputIndex = static_cast<uint64_t>(tokenIdx) * common.topK + expertIdx;
-        bool isProbeExpert =
-            expertIdx >= PRECISION_PROBE_FIRST_EXPERT_INDEX && expertIdx <= PRECISION_PROBE_LAST_EXPERT_INDEX;
-        if constexpr (CombineMode == COMBINE_NO_QUANT) {
-            if (isProbeExpert) {
-                GlobalTensor<bfloat16_t> expertInput = expandedX[expertInputIndex * common.tokenHiddenDim];
-                // desc 4000 + expertIdx: routed expert input in the Combine receive buffer.
-                DumpPrecisionProbe(common, tokenIdx, expertInput, 4000U + static_cast<uint32_t>(expertIdx));
-            }
-        }
         LoadMoeExpertInput<CombineMode>(context, common, scratch, expandedX, expertInputIndex, event, dataInBf16,
                                         dataInFp32);
         SetFlag<HardEvent::S_V>(event);

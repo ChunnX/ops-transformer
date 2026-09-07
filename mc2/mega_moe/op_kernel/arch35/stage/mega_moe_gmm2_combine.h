@@ -47,13 +47,6 @@ struct CombineTokenRoute {
     uint32_t topkIdx;
 };
 
-constexpr uint32_t COMBINE_PROBE_DST_RANK_ID = 1U;
-constexpr uint32_t COMBINE_PROBE_TOKEN_INDEX = 9942U;
-constexpr uint32_t COMBINE_PROBE_FIRST_TOPK_INDEX = 5U;
-constexpr uint32_t COMBINE_PROBE_LAST_TOPK_INDEX = 9U;
-constexpr uint32_t COMBINE_PROBE_DUMP_START_COLUMN = 2080U;
-constexpr uint32_t COMBINE_PROBE_ELEMENT_COUNT = 16U;
-
 __aicore__ inline CombineTokenRoute LoadCombineTokenRoute(const LocalTensor<int32_t> &metaInfoTensor,
                                                           uint32_t recordIdx)
 {
@@ -61,13 +54,6 @@ __aicore__ inline CombineTokenRoute LoadCombineTokenRoute(const LocalTensor<int3
     return {static_cast<uint32_t>(metaInfoTensor.GetValue(recordBase + RANK_ID)),
             static_cast<uint32_t>(metaInfoTensor.GetValue(recordBase + TOKEN_ID)),
             static_cast<uint32_t>(metaInfoTensor.GetValue(recordBase + TOPK_INDEX))};
-}
-
-__aicore__ inline bool IsCombineProbeRoute(uint32_t tokenHiddenDim, const CombineTokenRoute &route)
-{
-    return tokenHiddenDim == 3072U && route.dstRankId == COMBINE_PROBE_DST_RANK_ID &&
-           route.tokenIdx == COMBINE_PROBE_TOKEN_INDEX && route.topkIdx >= COMBINE_PROBE_FIRST_TOPK_INDEX &&
-           route.topkIdx <= COMBINE_PROBE_LAST_TOPK_INDEX;
 }
 
 // 目标卡 combine 接收区按 (token, topk) 展开的紧凑行号。
@@ -92,20 +78,6 @@ __aicore__ inline void CombineTokens(uint32_t nLoc, uint32_t n, LocalTensor<int3
     ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
     for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
         CombineTokenRoute route = LoadCombineTokenRoute(metaInfoTensor, static_cast<uint32_t>(tileIdx));
-        uint32_t tileColumnCount = static_cast<uint32_t>(Get<N_VALUE>(actualBlockShape));
-        bool containsProbeColumns =
-            nLoc <= COMBINE_PROBE_DUMP_START_COLUMN &&
-            COMBINE_PROBE_DUMP_START_COLUMN + COMBINE_PROBE_ELEMENT_COUNT <= nLoc + tileColumnCount;
-        if (containsProbeColumns && IsCombineProbeRoute(n, route)) {
-            PipeBarrier<PIPE_ALL>();
-            // desc 6000 + topkIdx: metadata used by this direct Combine write.
-            AscendC::DumpTensor(metaInfoTensor[static_cast<uint32_t>(tileIdx) * META_INFO_SIZE], 6000U + route.topkIdx,
-                                META_INFO_SIZE);
-            // desc 7000 + topkIdx: GMM2 epilogue output immediately before the remote GM write.
-            uint32_t probeColumnOffset = COMBINE_PROBE_DUMP_START_COLUMN - nLoc;
-            AscendC::DumpTensor(l0cOutUbGMM2[static_cast<uint32_t>(tileIdx) * ubTileN + probeColumnOffset],
-                                7000U + route.topkIdx, COMBINE_PROBE_ELEMENT_COUNT);
-        }
         gmRemoteD.SetGlobalBuffer(
             reinterpret_cast<__gm__ ElementMMadOut2 *>(GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
         uint64_t gmDstOffset = GetCombineDstRowIndex(route, params) * n + nLoc;

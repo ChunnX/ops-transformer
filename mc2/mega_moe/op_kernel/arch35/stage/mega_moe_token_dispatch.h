@@ -51,11 +51,6 @@ struct ExpertDispatchCoreRange {
     uint32_t localExpertRowEnd;
 };
 
-constexpr uint32_t DISPATCH_PROBE_SOURCE_RANK_ID = 1U;
-constexpr uint32_t DISPATCH_PROBE_TOKEN_INDEX = 9942U;
-constexpr uint32_t DISPATCH_PROBE_FIRST_TOPK_INDEX = 5U;
-constexpr uint32_t DISPATCH_PROBE_LAST_TOPK_INDEX = 9U;
-
 // 由 tiling/peermem/quant 配置装配 Token Dispatch 阶段配置（普通与 wave 编排模板共用）。
 __aicore__ inline TokenDispatchConfig CreateTokenDispatchConfig(const Params &params,
                                                                 const QuantProcessConfig &quantProcessConfig)
@@ -142,17 +137,6 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(const TokenDispatchConfig &
     DataCopyPad(scaleRevGlobalTensor[copyIdx * scratch.revScaleElemCnt], scaleBuffer,
                 {1, static_cast<uint16_t>(scratch.revScaleElemCnt * sizeof(QuantScaleType)), 0U, 0U, 0U});
     WaitFlag<AscendC::HardEvent::S_MTE3>(eventId);
-    LocalTensor<int32_t> metaInfo = scratch.metaInfoTensor[bufferIdx * INT32_PER_256B];
-    uint32_t sourceRankId = static_cast<uint32_t>(metaInfo.GetValue(RANK_ID));
-    uint32_t sourceTokenIndex = static_cast<uint32_t>(metaInfo.GetValue(TOKEN_ID));
-    uint32_t sourceTopkIndex = static_cast<uint32_t>(metaInfo.GetValue(TOPK_INDEX));
-    if (params.tilingData->bs == 10072U && params.tilingData->h == 3072U &&
-        sourceRankId == DISPATCH_PROBE_SOURCE_RANK_ID && sourceTokenIndex == DISPATCH_PROBE_TOKEN_INDEX &&
-        sourceTopkIndex >= DISPATCH_PROBE_FIRST_TOPK_INDEX && sourceTopkIndex <= DISPATCH_PROBE_LAST_TOPK_INDEX) {
-        PipeBarrier<PIPE_ALL>();
-        // desc 10000 + topkIdx: metadata received by the expert-compute rank before GMM1 consumes the row.
-        AscendC::DumpTensor(metaInfo, 10000U + sourceTopkIndex, META_INFO_SIZE);
-    }
     DataCopy(metaInfoGlobalTensor[copyIdx * INT32_PER_256B], scratch.metaInfoTensor[bufferIdx * INT32_PER_256B],
              INT32_PER_256B);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
