@@ -99,43 +99,10 @@ __aicore__ inline uint64_t Factorial(uint64_t n)
     return r;
 }
 
-enum class ABLastDimBrcOp : uint8_t {
-    MUL,
-    SUB,
-    DIV
-};
-
-template <ABLastDimBrcOp op, typename T>
-__aicore__ inline void ApplyABLastDimBrcOp(const LocalTensor<T> &output, const LocalTensor<T> &input0,
-                                           const LocalTensor<T> &input1, const int32_t count)
-{
-    if constexpr (op == ABLastDimBrcOp::MUL) {
-        Mul(output, input0, input1, count);
-    } else if constexpr (op == ABLastDimBrcOp::SUB) {
-        Sub(output, input0, input1, count);
-    } else {
-        Div(output, input0, input1, count);
-    }
-}
-
-template <ABLastDimBrcOp op, typename T>
-__aicore__ inline void ApplyABLastDimBrcOp(const LocalTensor<T> &output, const LocalTensor<T> &input0,
-                                           const LocalTensor<T> &input1, const int32_t repeatSize,
-                                           const int32_t repeatTimes, const BinaryRepeatParams &instrParams)
-{
-    if constexpr (op == ABLastDimBrcOp::MUL) {
-        Mul(output, input0, input1, repeatSize, repeatTimes, instrParams);
-    } else if constexpr (op == ABLastDimBrcOp::SUB) {
-        Sub(output, input0, input1, repeatSize, repeatTimes, instrParams);
-    } else {
-        Div(output, input0, input1, repeatSize, repeatTimes, instrParams);
-    }
-}
-
-template <typename T, ABLastDimBrcOp op, bool needBrc = true>
-__aicore__ inline void ABLastDimBrcInline(const LocalTensor<T> &output, const LocalTensor<T> &input0,
-                                          const LocalTensor<T> &input1, const LocalTensor<T> &tmpBuffer,
-                                          const int32_t curRowNum, const int32_t curColNum)
+template <typename T, bool needBrc = true>
+__aicore__ inline void MulABLastDimBrcInline(const LocalTensor<T> &output, const LocalTensor<T> &input0,
+                                             const LocalTensor<T> &input1, const LocalTensor<T> &tmpBuffer,
+                                             const int32_t curRowNum, const int32_t curColNum)
 {
     if constexpr (needBrc) {
         uint32_t repeatTimes = CeilDiv(curRowNum, ONE_REPEAT_BLOCK_NUMS);
@@ -146,7 +113,7 @@ __aicore__ inline void ABLastDimBrcInline(const LocalTensor<T> &output, const Lo
     uint32_t elemInOneRepeat = REPEAT_SIZE / sizeof(T);
     uint32_t curColNumAlign = RoundUp<T>(curColNum);
     if (curColNum <= elemInOneBlock) {
-        ApplyABLastDimBrcOp<op>(output, input0, tmpBuffer, curRowNum * curColNumAlign);
+        Mul(output, input0, tmpBuffer, curRowNum * curColNumAlign);
     } else {
         int32_t numRepeatPerLine = curColNum / elemInOneRepeat;
         int32_t numRemainPerLine = curColNum % elemInOneRepeat;
@@ -163,9 +130,8 @@ __aicore__ inline void ABLastDimBrcInline(const LocalTensor<T> &output, const Lo
                 instrParams.src0RepStride = DEFAULT_REPEAT_STRIDE;
                 instrParams.src1RepStride = 0;
                 for (uint32_t i = 0; i < curRowNum; i++) {
-                    ApplyABLastDimBrcOp<op>(output[i * curColNumAlign], input0[i * curColNumAlign],
-                                            tmpBuffer[i * elemInOneBlock], elemInOneRepeat, numRepeatPerLine,
-                                            instrParams);
+                    Mul(output[i * curColNumAlign], input0[i * curColNumAlign], tmpBuffer[i * elemInOneBlock],
+                        elemInOneRepeat, numRepeatPerLine, instrParams);
                 }
             } else {
                 // 在Row方向开Repeat
@@ -176,8 +142,8 @@ __aicore__ inline void ABLastDimBrcInline(const LocalTensor<T> &output, const Lo
                 instrParams.src0RepStride = dstRepStridePerLine;
                 instrParams.src1RepStride = 1;
                 for (uint32_t i = 0; i < numRepeatPerLine; i++) {
-                    ApplyABLastDimBrcOp<op>(output[i * elemInOneRepeat], input0[i * elemInOneRepeat], tmpBuffer,
-                                            elemInOneRepeat, curRowNum, instrParams);
+                    Mul(output[i * elemInOneRepeat], input0[i * elemInOneRepeat], tmpBuffer, elemInOneRepeat, curRowNum,
+                        instrParams);
                 }
             }
         }
@@ -191,9 +157,9 @@ __aicore__ inline void ABLastDimBrcInline(const LocalTensor<T> &output, const Lo
                 instrParams.src0RepStride = 0;
                 instrParams.src1RepStride = 0;
                 for (uint32_t i = 0; i < curRowNum; i++) {
-                    ApplyABLastDimBrcOp<op>(output[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
-                                            input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
-                                            tmpBuffer[i * elemInOneBlock], numRemainPerLine, 1, instrParams);
+                    Mul(output[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
+                        input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign], tmpBuffer[i * elemInOneBlock],
+                        numRemainPerLine, 1, instrParams);
                 }
             } else {
                 instrParams.dstBlkStride = 1;
@@ -202,38 +168,14 @@ __aicore__ inline void ABLastDimBrcInline(const LocalTensor<T> &output, const Lo
                 instrParams.dstRepStride = dstRepStridePerLine;
                 instrParams.src0RepStride = dstRepStridePerLine;
                 instrParams.src1RepStride = 0;
-                ApplyABLastDimBrcOp<op>(output[numRepeatPerLine * elemInOneRepeat],
-                                        input0[numRepeatPerLine * elemInOneRepeat], tmpBuffer, numRemainPerLine,
-                                        curRowNum, instrParams);
+                Mul(output[numRepeatPerLine * elemInOneRepeat], input0[numRepeatPerLine * elemInOneRepeat], tmpBuffer,
+                    numRemainPerLine, curRowNum, instrParams);
             }
         }
     }
     PipeBarrier<PIPE_V>();
 }
 
-template <typename T, bool needBrc = true>
-__aicore__ inline void MulABLastDimBrcInline(const LocalTensor<T> &output, const LocalTensor<T> &input0,
-                                             const LocalTensor<T> &input1, const LocalTensor<T> &tmpBuffer,
-                                             const int32_t curRowNum, const int32_t curColNum)
-{
-    ABLastDimBrcInline<T, ABLastDimBrcOp::MUL, needBrc>(output, input0, input1, tmpBuffer, curRowNum, curColNum);
-}
-
-template <typename T, bool needBrc = true>
-__aicore__ inline void SubABLastDimBrcInline(const LocalTensor<T> &output, const LocalTensor<T> &input0,
-                                             const LocalTensor<T> &input1, const LocalTensor<T> &tmpBuffer,
-                                             const int32_t curRowNum, const int32_t curColNum)
-{
-    ABLastDimBrcInline<T, ABLastDimBrcOp::SUB, needBrc>(output, input0, input1, tmpBuffer, curRowNum, curColNum);
-}
-
-template <typename T, bool needBrc = true>
-__aicore__ inline void DivABLastDimBrcInline(const LocalTensor<T> &output, const LocalTensor<T> &input0,
-                                             const LocalTensor<T> &input1, const LocalTensor<T> &tmpBuffer,
-                                             const int32_t curRowNum, const int32_t curColNum)
-{
-    ABLastDimBrcInline<T, ABLastDimBrcOp::DIV, needBrc>(output, input0, input1, tmpBuffer, curRowNum, curColNum);
-}
 
 template <typename T, bool needBrc = true>
 __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, const LocalTensor<T> &input0,
@@ -295,14 +237,170 @@ __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, cons
             instrParams.src1RepStride = 0;
             for (uint32_t i = 0; i < curRowNum; i++) {
                 Mul(output[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
-                    input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
-                    tmpBuffer[(i / numN * elemInOneBlock + i % numN) * elemInOneBlock], numRemainPerLine, 1,
+                    input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign], 
+                    tmpBuffer[(i / numN * elemInOneBlock + i % numN) * elemInOneBlock], numRemainPerLine, 1, 
                     instrParams);
             }
         }
     }
     PipeBarrier<PIPE_V>();
 }
+
+template <typename T, bool needBrc = true>
+__aicore__ inline void SubABLastDimBrcInline(const LocalTensor<T> &output, const LocalTensor<T> &input0,
+                                             const LocalTensor<T> &input1, const LocalTensor<T> &tmpBuffer,
+                                             const int32_t curRowNum, const int32_t curColNum)
+{
+    if constexpr (needBrc) {
+        uint32_t repeatTimes = CeilDiv(curRowNum, ONE_REPEAT_BLOCK_NUMS);
+        Brcb(tmpBuffer, input1, repeatTimes, {DEFAULT_BLOCK_STRIDE, DEFAULT_REPEAT_STRIDE});
+    }
+    PipeBarrier<PIPE_V>();
+    uint32_t elemInOneBlock = BLOCK_SIZE / sizeof(T);
+    uint32_t elemInOneRepeat = REPEAT_SIZE / sizeof(T);
+    uint32_t curColNumAlign = RoundUp<T>(curColNum);
+    if (curColNum <= elemInOneBlock) {
+        Sub(output, input0, tmpBuffer, curRowNum * curColNumAlign);
+    } else {
+        int32_t numRepeatPerLine = curColNum / elemInOneRepeat;
+        int32_t numRemainPerLine = curColNum % elemInOneRepeat;
+        int32_t dstRepStridePerLine = CeilDiv(curColNum, elemInOneBlock);
+        BinaryRepeatParams instrParams;
+
+        if (numRepeatPerLine > 0) {
+            if (dstRepStridePerLine > MAX_REPEAT_STRIDE || curRowNum < numRepeatPerLine) {
+                // 在Col方向开Repeat, 并且Repeat小于255
+                instrParams.dstBlkStride = 1;
+                instrParams.src0BlkStride = 1;
+                instrParams.src1BlkStride = 0;
+                instrParams.dstRepStride = DEFAULT_REPEAT_STRIDE;
+                instrParams.src0RepStride = DEFAULT_REPEAT_STRIDE;
+                instrParams.src1RepStride = 0;
+                for (uint32_t i = 0; i < curRowNum; i++) {
+                    Sub(output[i * curColNumAlign], input0[i * curColNumAlign], tmpBuffer[i * elemInOneBlock],
+                        elemInOneRepeat, numRepeatPerLine, instrParams);
+                }
+            } else {
+                // 在Row方向开Repeat
+                instrParams.dstBlkStride = 1;
+                instrParams.src0BlkStride = 1;
+                instrParams.src1BlkStride = 0;
+                instrParams.dstRepStride = dstRepStridePerLine;
+                instrParams.src0RepStride = dstRepStridePerLine;
+                instrParams.src1RepStride = 1;
+                for (uint32_t i = 0; i < numRepeatPerLine; i++) {
+                    Sub(output[i * elemInOneRepeat], input0[i * elemInOneRepeat], tmpBuffer, elemInOneRepeat, curRowNum,
+                        instrParams);
+                }
+            }
+        }
+
+        if (numRemainPerLine > 0) {
+            if (dstRepStridePerLine > MAX_REPEAT_STRIDE) {
+                instrParams.dstBlkStride = 1;
+                instrParams.src0BlkStride = 1;
+                instrParams.src1BlkStride = 0;
+                instrParams.dstRepStride = 0;
+                instrParams.src0RepStride = 0;
+                instrParams.src1RepStride = 0;
+                for (uint32_t i = 0; i < curRowNum; i++) {
+                    Sub(output[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
+                        input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign], tmpBuffer[i * elemInOneBlock],
+                        numRemainPerLine, 1, instrParams);
+                }
+            } else {
+                instrParams.dstBlkStride = 1;
+                instrParams.src0BlkStride = 1;
+                instrParams.src1BlkStride = 0;
+                instrParams.dstRepStride = dstRepStridePerLine;
+                instrParams.src0RepStride = dstRepStridePerLine;
+                instrParams.src1RepStride = 0;
+                Sub(output[numRepeatPerLine * elemInOneRepeat], input0[numRepeatPerLine * elemInOneRepeat], tmpBuffer,
+                    numRemainPerLine, curRowNum, instrParams);
+            }
+        }
+    }
+    PipeBarrier<PIPE_V>();
+}
+
+
+template <typename T, bool needBrc = true>
+__aicore__ inline void DivABLastDimBrcInline(const LocalTensor<T> &output, const LocalTensor<T> &input0,
+                                             const LocalTensor<T> &input1, const LocalTensor<T> &tmpBuffer,
+                                             const int32_t curRowNum, const int32_t curColNum)
+{
+    if constexpr (needBrc) {
+        uint32_t repeatTimes = CeilDiv(curRowNum, ONE_REPEAT_BLOCK_NUMS);
+        Brcb(tmpBuffer, input1, repeatTimes, {DEFAULT_BLOCK_STRIDE, DEFAULT_REPEAT_STRIDE});
+    }
+    PipeBarrier<PIPE_V>();
+    uint32_t elemInOneBlock = BLOCK_SIZE / sizeof(T);
+    uint32_t elemInOneRepeat = REPEAT_SIZE / sizeof(T);
+    uint32_t curColNumAlign = RoundUp<T>(curColNum);
+    if (curColNum <= elemInOneBlock) {
+        Div(output, input0, tmpBuffer, curRowNum * curColNumAlign);
+    } else {
+        int32_t numRepeatPerLine = curColNum / elemInOneRepeat;
+        int32_t numRemainPerLine = curColNum % elemInOneRepeat;
+        int32_t dstRepStridePerLine = CeilDiv(curColNum, elemInOneBlock);
+        BinaryRepeatParams instrParams;
+
+        if (numRepeatPerLine > 0) {
+            if (dstRepStridePerLine > MAX_REPEAT_STRIDE || curRowNum < numRepeatPerLine) {
+                // 在Col方向开Repeat, 并且Repeat小于255
+                instrParams.dstBlkStride = 1;
+                instrParams.src0BlkStride = 1;
+                instrParams.src1BlkStride = 0;
+                instrParams.dstRepStride = DEFAULT_REPEAT_STRIDE;
+                instrParams.src0RepStride = DEFAULT_REPEAT_STRIDE;
+                instrParams.src1RepStride = 0;
+                for (uint32_t i = 0; i < curRowNum; i++) {
+                    Div(output[i * curColNumAlign], input0[i * curColNumAlign], tmpBuffer[i * elemInOneBlock],
+                        elemInOneRepeat, numRepeatPerLine, instrParams);
+                }
+            } else {
+                // 在Row方向开Repeat
+                instrParams.dstBlkStride = 1;
+                instrParams.src0BlkStride = 1;
+                instrParams.src1BlkStride = 0;
+                instrParams.dstRepStride = dstRepStridePerLine;
+                instrParams.src0RepStride = dstRepStridePerLine;
+                instrParams.src1RepStride = 1;
+                for (uint32_t i = 0; i < numRepeatPerLine; i++) {
+                    Div(output[i * elemInOneRepeat], input0[i * elemInOneRepeat], tmpBuffer, elemInOneRepeat, curRowNum,
+                        instrParams);
+                }
+            }
+        }
+
+        if (numRemainPerLine > 0) {
+            if (dstRepStridePerLine > MAX_REPEAT_STRIDE) {
+                instrParams.dstBlkStride = 1;
+                instrParams.src0BlkStride = 1;
+                instrParams.src1BlkStride = 0;
+                instrParams.dstRepStride = 0;
+                instrParams.src0RepStride = 0;
+                instrParams.src1RepStride = 0;
+                for (uint32_t i = 0; i < curRowNum; i++) {
+                    Div(output[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
+                        input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign], tmpBuffer[i * elemInOneBlock],
+                        numRemainPerLine, 1, instrParams);
+                }
+            } else {
+                instrParams.dstBlkStride = 1;
+                instrParams.src0BlkStride = 1;
+                instrParams.src1BlkStride = 0;
+                instrParams.dstRepStride = dstRepStridePerLine;
+                instrParams.src0RepStride = dstRepStridePerLine;
+                instrParams.src1RepStride = 0;
+                Div(output[numRepeatPerLine * elemInOneRepeat], input0[numRepeatPerLine * elemInOneRepeat], tmpBuffer,
+                    numRemainPerLine, curRowNum, instrParams);
+            }
+        }
+    }
+    PipeBarrier<PIPE_V>();
+}
+
 
 template <typename T>
 __aicore__ inline void AddBAFirstDimBrcInline(const LocalTensor<T> &output, const LocalTensor<T> &input0,
@@ -616,6 +714,32 @@ __aicore__ inline void CopyIn(const GlobalTensor<T> &inputGm, const LocalTensor<
     DataCopyPad(inputTensor, inputGm, dataCoptExtParams, dataCopyPadExtParams);
 }
 
+// DataCopyExtParams uses 32-bit byte strides on A2.  Keep the original
+// strided DataCopy fast path whenever its gap is representable; otherwise
+// copy rows independently from 64-bit GM addresses.  This makes the large
+// shape path correct without penalising ordinary shapes.
+template <typename T>
+__aicore__ inline void CopyInRows64(const GlobalTensor<T> &inputGm, const LocalTensor<T> &inputTensor,
+                                    const uint64_t gmBaseOffset, const uint64_t gmRowStride,
+                                    const uint32_t rowCount, const uint32_t copyLen,
+                                    const uint32_t ubRowStride)
+{
+    constexpr uint64_t kMaxDataCopyByteStride = 0xFFFFFFFFULL;
+    constexpr uint64_t kMaxDataCopyBurstCount = 0xFFFFULL;
+    const bool hasValidGap = gmRowStride >= copyLen;
+    const uint64_t srcGap = hasValidGap ? gmRowStride - copyLen : 0;
+    if (hasValidGap && rowCount <= kMaxDataCopyBurstCount && ubRowStride == copyLen &&
+        srcGap <= kMaxDataCopyByteStride / sizeof(T)) {
+        CopyIn(inputGm[gmBaseOffset], inputTensor, static_cast<uint16_t>(rowCount), copyLen,
+               static_cast<uint32_t>(srcGap));
+        return;
+    }
+    for (uint32_t row = 0; row < rowCount; ++row) {
+        CopyIn(inputGm[gmBaseOffset + static_cast<uint64_t>(row) * gmRowStride],
+               inputTensor[static_cast<uint32_t>(static_cast<uint64_t>(row) * ubRowStride)], 1, copyLen);
+    }
+}
+
 // (bs, hc_mult, hc_mult) --> (bs, hc_mult, hc_mult_align)
 template <typename T>
 __aicore__ inline void CopyInWithOuterFor(const GlobalTensor<T> &inputGm, const LocalTensor<T> &inputTensor,
@@ -661,6 +785,28 @@ __aicore__ inline void CopyOut(const LocalTensor<T> &outputTensor, const GlobalT
     dataCopyParams.srcStride = 0;
     dataCopyParams.dstStride = dstStride * sizeof(T);
     DataCopyPad(outputGm, outputTensor, dataCopyParams);
+}
+
+template <typename T>
+__aicore__ inline void CopyOutRows64(const LocalTensor<T> &outputTensor, const GlobalTensor<T> &outputGm,
+                                     const uint32_t rowCount, const uint32_t copyLen,
+                                     const uint64_t gmBaseOffset, const uint64_t gmRowStride,
+                                     const uint32_t ubRowStride)
+{
+    constexpr uint64_t kMaxDataCopyByteStride = 0xFFFFFFFFULL;
+    constexpr uint64_t kMaxDataCopyBurstCount = 0xFFFFULL;
+    const bool hasValidGap = gmRowStride >= copyLen;
+    const uint64_t dstGap = hasValidGap ? gmRowStride - copyLen : 0;
+    if (hasValidGap && rowCount <= kMaxDataCopyBurstCount && ubRowStride == copyLen &&
+        dstGap <= kMaxDataCopyByteStride / sizeof(T)) {
+        CopyOut(outputTensor, outputGm[gmBaseOffset], static_cast<uint16_t>(rowCount), copyLen,
+                static_cast<uint32_t>(dstGap));
+        return;
+    }
+    for (uint32_t row = 0; row < rowCount; ++row) {
+        CopyOut(outputTensor[static_cast<uint32_t>(static_cast<uint64_t>(row) * ubRowStride)],
+                outputGm[gmBaseOffset + static_cast<uint64_t>(row) * gmRowStride], 1, copyLen);
+    }
 }
 
 __aicore__ inline void VToMTE3Sync()

@@ -116,14 +116,15 @@ public:
 
         // 循环处理 BS（每轮最多 32 个）
         // ASCEND_IS_AIC 直接根据总BS数，计算当前处理的BS数
-        int32_t totalTasksAligned_ = AlignUp(bs, stage1VecCoreNum * stage1BsFactor);
+        const int64_t taskAlign = stage1VecCoreNum * stage1BsFactor;
+        const int64_t totalTasksAligned_ = AlignUp(bs, taskAlign);
 
         // Cube Core 流程
         if ASCEND_IS_AIC {
-            for (int32_t taskOffset = blockIdx * 2 * stage1BsFactor; taskOffset < totalTasksAligned_;
+            for (int64_t taskOffset = blockIdx * 2 * stage1BsFactor; taskOffset < totalTasksAligned_;
                  taskOffset += tilingData->stage1CubeCoreNum * 2 * stage1BsFactor) {
-                int32_t tileTaskCount =
-                    min(static_cast<int32_t>(2 * stage1BsFactor), static_cast<int32_t>(bs - taskOffset));
+                int32_t tileTaskCount = static_cast<int32_t>(
+                    min(static_cast<int64_t>(2 * stage1BsFactor), bs - taskOffset));
                 // 等待 Vector Core 完成 Cast
                 CrossCoreWaitFlag(SYNC_AIV_TO_AIC_FLAG);
                 // 执行矩阵乘
@@ -137,10 +138,10 @@ public:
 
         if ASCEND_IS_AIV {
             int64_t ncSize = hcMult * d;
-            for (int32_t taskOffset = blockIdx * stage1BsFactor; taskOffset < totalTasksAligned_;
+            for (int64_t taskOffset = blockIdx * stage1BsFactor; taskOffset < totalTasksAligned_;
                  taskOffset += stage1VecCoreNum * stage1BsFactor) {
                 CrossCoreWaitFlag(SYNC_AIC_TO_AIV_FLAG);
-                int32_t curBs = min(static_cast<int32_t>(stage1BsFactor), static_cast<int32_t>(bs - taskOffset));
+                int32_t curBs = static_cast<int32_t>(min(static_cast<int64_t>(stage1BsFactor), bs - taskOffset));
                 if (curBs > 0) {
                     int64_t curBsOffset = taskOffset;
                     // 初始化 sum 为 0
@@ -151,14 +152,22 @@ public:
 
                     // 分段 ReduceSum
                     for (int64_t ncIdx = 0; ncIdx < stage1NcLoop; ncIdx++) {
-                        int64_t curNcSize =
-                            (ncIdx == stage1NcLoop - 1) ? tilingData->stage1TailNcFactor : stage1NcFactor;
+                        int64_t curNcSize = (ncIdx == stage1NcLoop - 1) ? tilingData->stage1TailNcFactor :
+                                                                                      stage1NcFactor;
                         int64_t ncOffset = ncIdx * stage1NcFactor;
                         int64_t curNcSizeAlign = AlignUp(static_cast<uint64_t>(curNcSize), ELEMENTS_SIZE_PER_BLOCK);
 
                         // 1. CopyIn X (BF16)
                         LocalTensor<T> xLocal = xQue.AllocTensor<T>();
-                        CopyIn(xGm[curBsOffset * ncSize + ncOffset], xLocal, curBs, curNcSize, ncSize - curNcSize);
+                        if (curNcSizeAlign == curNcSize && ncSize >= curNcSize &&
+                            ncSize - curNcSize <= 0xFFFFFFFFULL / sizeof(T)) {
+                            CopyIn(xGm[curBsOffset * ncSize + ncOffset], xLocal, static_cast<uint16_t>(curBs),
+                                   static_cast<uint32_t>(curNcSize), static_cast<uint32_t>(ncSize - curNcSize));
+                        } else {
+                            CopyInRows64(xGm, xLocal, curBsOffset * ncSize + ncOffset, ncSize,
+                                         static_cast<uint32_t>(curBs), static_cast<uint32_t>(curNcSize),
+                                         static_cast<uint32_t>(curNcSizeAlign));
+                        }
                         xQue.EnQue(xLocal);
 
                         // 2. Cast X (BF16) → X_cast (FP32)
@@ -201,8 +210,17 @@ public:
                         xCastQue.EnQue(xCastLocal);
                         xCastLocal = xCastQue.DeQue<float>();
                         int64_t xCastoffset =
-                            blockIdx * stage1BsFactor * ncSize + ping4vec * stage1VecCoreNum * stage1BsFactor * ncSize;
-                        CopyOut(xCastLocal, xCastWsGm[xCastoffset + ncOffset], curBs, curNcSize, ncSize - curNcSize);
+                            blockIdx64 * stage1BsFactor * ncSize +
+                            static_cast<int64_t>(ping4vec) * stage1VecCoreNum * stage1BsFactor * ncSize;
+                        if (curNcSizeAlign == curNcSize && ncSize >= curNcSize &&
+                            ncSize - curNcSize <= 0xFFFFFFFFULL / sizeof(float)) {
+                            CopyOut(xCastLocal, xCastWsGm[xCastoffset + ncOffset], static_cast<uint16_t>(curBs),
+                                    static_cast<uint32_t>(curNcSize), static_cast<uint32_t>(ncSize - curNcSize));
+                        } else {
+                            CopyOutRows64(xCastLocal, xCastWsGm, static_cast<uint32_t>(curBs),
+                                          static_cast<uint32_t>(curNcSize), xCastoffset + ncOffset, ncSize,
+                                          static_cast<uint32_t>(curNcSizeAlign));
+                        }
                         xCastQue.FreeTensor(xCastLocal);
                     }
                     // 4.3 Compute inv_rms
@@ -443,9 +461,23 @@ public:
                 mxies01Local = mixesQue01.AllocTensor<float>();
 
                 mixBaseOffset = stage2BlockIdx * curRowOfFormerBlock * hcMix + rowOuterIdx * curStage2RowFactor * hcMix;
-                CopyInWithOuterFor(hcBeforeNormGm[mixBaseOffset], mxies01Local, 1, curRowFactor, hcMult, bs, hcMix);
-                CopyInWithOuterFor(hcBeforeNormGm[mixBaseOffset + hcMult], mxies01Local[curRowFactor * hcMultAlign], 1,
-                                   curRowFactor, hcMult, bs, hcMix);
+                if (hcMix >= hcMult && hcMix - hcMult <= 0xFFFFFFFFULL / sizeof(float) &&
+                    curRowFactor > 0 && hcMult > 0 && curRowFactor <= 0xFFFF / hcMult) {
+                    CopyInWithOuterFor(hcBeforeNormGm[mixBaseOffset], mxies01Local, 1,
+                                       static_cast<uint16_t>(curRowFactor), static_cast<uint32_t>(hcMult),
+                                       static_cast<uint32_t>(bs), static_cast<uint32_t>(hcMix));
+                    CopyInWithOuterFor(hcBeforeNormGm[mixBaseOffset + hcMult],
+                                       mxies01Local[curRowFactor * hcMultAlign], 1,
+                                       static_cast<uint16_t>(curRowFactor), static_cast<uint32_t>(hcMult),
+                                       static_cast<uint32_t>(bs), static_cast<uint32_t>(hcMix));
+                } else {
+                    CopyInRows64(hcBeforeNormGm, mxies01Local, mixBaseOffset, hcMix,
+                                 static_cast<uint32_t>(curRowFactor), static_cast<uint32_t>(hcMult),
+                                 static_cast<uint32_t>(hcMultAlign));
+                    CopyInRows64(hcBeforeNormGm, mxies01Local[curRowFactor * hcMultAlign], mixBaseOffset + hcMult,
+                                 hcMix, static_cast<uint32_t>(curRowFactor), static_cast<uint32_t>(hcMult),
+                                 static_cast<uint32_t>(hcMultAlign));
+                }
                 // // wk:[2, kcorenum, bs, n^2 +2n]
                 // // mx0[2,kcorenum, curRowfator, n]
                 mixesQue01.EnQue(mxies01Local);
@@ -466,8 +498,17 @@ public:
                 for (int64_t dLoopIdx = 0; dLoopIdx < dLoop; dLoopIdx++) {
                     int64_t curDFactor = (dLoopIdx == dLoop - 1) ? tilingData->tailDFactor : dFactor;
                     xLocal = xQue.template AllocTensor<T>();
-                    CopyIn(xGm[xGmBlockBaseOffsetPart2 + xGmBsBaseOffsetPart2 + dLoopIdx * dFactor], xLocal,
-                           curRowFactor * hcMult, curDFactor, d - curDFactor);
+                    if (d >= curDFactor && d - curDFactor <= 0xFFFFFFFFULL / sizeof(T) &&
+                        curRowFactor > 0 && hcMult > 0 && curRowFactor <= 0xFFFF / hcMult) {
+                        CopyIn(xGm[xGmBlockBaseOffsetPart2 + xGmBsBaseOffsetPart2 + dLoopIdx * dFactor], xLocal,
+                               static_cast<uint16_t>(curRowFactor * hcMult), static_cast<uint32_t>(curDFactor),
+                               static_cast<uint32_t>(d - curDFactor));
+                    } else {
+                        CopyInRows64(xGm, xLocal,
+                                     xGmBlockBaseOffsetPart2 + xGmBsBaseOffsetPart2 + dLoopIdx * dFactor, d,
+                                     static_cast<uint32_t>(curRowFactor * hcMult), static_cast<uint32_t>(curDFactor),
+                                     static_cast<uint32_t>(RoundUp<T>(static_cast<int32_t>(curDFactor))));
+                    }
                     xQue.template EnQue(xLocal);
                     xLocal = xQue.template DeQue<T>();
                     yLocal = yQue.template AllocTensor<T>();
@@ -478,10 +519,18 @@ public:
                     yQue.template EnQue(yLocal);
                     yLocal = yQue.template DeQue<T>();
 
-                    CopyOut(yLocal,
-                            yGm[stage2BlockIdx * curRowOfFormerBlock * d + rowOuterIdx * curStage2RowFactor * d +
-                                dLoopIdx * dFactor],
-                            curRowFactor, curDFactor, d - curDFactor);
+                    const uint64_t yBaseOffset =
+                        static_cast<uint64_t>(stage2BlockIdx) * curRowOfFormerBlock * d +
+                        static_cast<uint64_t>(rowOuterIdx) * curStage2RowFactor * d + dLoopIdx * dFactor;
+                    if (d >= curDFactor && d - curDFactor <= 0xFFFFFFFFULL / sizeof(T) &&
+                        curRowFactor > 0 && hcMult > 0 && curRowFactor <= 0xFFFF / hcMult) {
+                        CopyOut(yLocal, yGm[yBaseOffset], static_cast<uint16_t>(curRowFactor),
+                                static_cast<uint32_t>(curDFactor), static_cast<uint32_t>(d - curDFactor));
+                    } else {
+                        CopyOutRows64(yLocal, yGm, static_cast<uint32_t>(curRowFactor),
+                                      static_cast<uint32_t>(curDFactor), yBaseOffset, d,
+                                      static_cast<uint32_t>(RoundUp<T>(static_cast<int32_t>(curDFactor))));
+                    }
                     yQue.template FreeTensor(yLocal);
                 }
                 // post

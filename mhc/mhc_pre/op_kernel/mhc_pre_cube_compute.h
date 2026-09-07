@@ -40,7 +40,7 @@ public:
     __aicore__ inline void Init(const GlobalTensor<float> &xGm, const GlobalTensor<float> &phiGm,
                                 const GlobalTensor<float> &workspaceGlobalAB, int64_t bs, int64_t n, int64_t c,
                                 int64_t vecCoreNum);
-    __aicore__ inline void ProcessMatmulXPhi(const int32_t taskOffset, const int32_t mm1M);
+    __aicore__ inline void ProcessMatmulXPhi(const int64_t taskOffset, const int32_t mm1M);
 
 public:
     GlobalTensor<float> xGm_;
@@ -88,18 +88,21 @@ __aicore__ inline void MHC_PRE_CUBE_COMPUTE_TEMPLATE_CLASS::Init(const GlobalTen
 }
 
 MHC_PRE_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_CUBE_COMPUTE_TEMPLATE_CLASS::ProcessMatmulXPhi(const int32_t taskOffset,
-                                                                              const int32_t mm1M)
+__aicore__ inline void MHC_PRE_CUBE_COMPUTE_TEMPLATE_CLASS::ProcessMatmulXPhi(const int64_t taskOffset, const int32_t mm1M)
 {
     if (mm1M <= 0)
         return;
-    uint64_t xxoffset = blockIdx_ * curBs_ * 2 * mm1K_ + ping4Cub * vecCoreNum_ * curBs_ * mm1K_;
-    mm1_.SetTensorA(xGm_[blockIdx_ * curBs_ * 2 * mm1K_ + ping4Cub * vecCoreNum_ * curBs_ * mm1K_]);
+    const uint64_t xOffset = static_cast<uint64_t>(blockIdx_) * static_cast<uint64_t>(curBs_) * 2ULL *
+                             static_cast<uint64_t>(mm1K_) +
+                             static_cast<uint64_t>(ping4Cub) * vecCoreNum_ * static_cast<uint64_t>(curBs_) *
+                                 static_cast<uint64_t>(mm1K_);
+    mm1_.SetTensorA(xGm_[xOffset]);
     mm1_.SetTensorB(phiGm_, true);
     // mm1_.SetHF32(true, 1);
     mm1_.SetOrgShape(mm1M, mm1N_, mm1K_);
     mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
-    mm1_.template IterateAll<false>(workspaceGlobalAB_[taskOffset * mm1N_]);
+    const uint64_t workspaceOffset = static_cast<uint64_t>(taskOffset) * static_cast<uint64_t>(mm1N_);
+    mm1_.template IterateAll<false>(workspaceGlobalAB_[workspaceOffset]);
     mm1_.End();
     ping4Cub = 1 - ping4Cub;
 }

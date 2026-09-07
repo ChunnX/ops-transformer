@@ -14,6 +14,7 @@
  */
 
 #include <sstream>
+#include <limits>
 #include "mhc_pre_membase_tiling.h"
 #include "op_host/tiling_templates_registry.h"
 #include "op_host/tiling_util.h"
@@ -24,8 +25,8 @@ namespace {
 constexpr uint64_t WORKSPACE_SIZE = 32;
 int64_t CeilDiv(int64_t x, int64_t y)
 {
-    if (y != 0) {
-        return (x + y - 1) / y;
+    if (y > 0 && x >= 0) {
+        return x / y + ((x % y) != 0 ? 1 : 0);
     }
     return x;
 }
@@ -38,17 +39,13 @@ int64_t DownAlign(int64_t x, int64_t y)
 }
 int64_t RoundUp(int64_t x, int64_t y)
 {
-    return CeilDiv(x, y) * y;
-}
-int64_t Factorial(int64_t n)
-{
-    int64_t r = 1;
-    for (int64_t i = 2; i <= n; ++i) {
-        r *= i;
+    if (x <= 0 || y <= 0 || x % y == 0) {
+        return x;
     }
-    return r;
+    return x > std::numeric_limits<int64_t>::max() - (y - x % y)
+               ? std::numeric_limits<int64_t>::max()
+               : x + (y - x % y);
 }
-
 constexpr int64_t BLOCK_SIZE = 32;
 constexpr int64_t REPEAT_SIZE = 256;
 constexpr int64_t UB_RESEVED_SIZE = 8192;
@@ -63,6 +60,94 @@ constexpr int64_t HC_EPS_ATTR_IDX = 2;
 constexpr int64_t BS_SPLIT_THRESHOLD = 128;
 constexpr int64_t MAX_BS_PER_LOOP = 32;
 constexpr int64_t MAX_REDUCE_SIZE = 256;
+
+bool CheckedMulNonNegative(int64_t lhs, int64_t rhs, int64_t &result)
+{
+    if (lhs < 0 || rhs < 0 || (rhs != 0 && lhs > std::numeric_limits<int64_t>::max() / rhs)) {
+        return false;
+    }
+    result = lhs * rhs;
+    return true;
+}
+
+bool CheckedAddNonNegative(int64_t lhs, int64_t rhs, int64_t &result)
+{
+    if (lhs < 0 || rhs < 0 || lhs > std::numeric_limits<int64_t>::max() - rhs) {
+        return false;
+    }
+    result = lhs + rhs;
+    return true;
+}
+
+bool CheckedAddWorkspace(uint64_t &workspaceSize, int64_t increment)
+{
+    if (increment < 0 || static_cast<uint64_t>(increment) >
+        std::numeric_limits<uint64_t>::max() - workspaceSize) {
+        return false;
+    }
+    workspaceSize += static_cast<uint64_t>(increment);
+    return true;
+}
+
+bool CheckedFactorial(int64_t n, int64_t &result)
+{
+    if (n < 0) {
+        return false;
+    }
+    result = 1;
+    for (int64_t i = 2; i <= n; ++i) {
+        if (result > std::numeric_limits<int64_t>::max() / i) {
+            return false;
+        }
+        result *= i;
+    }
+    return true;
+}
+
+ge::graphStatus CheckA2ShapeRange(const gert::TilingContext *context, const int64_t bs, const int64_t n,
+                                  const int64_t d, const int64_t ncSize, const uint64_t aivCoreNum,
+                                  const uint64_t elementBytes)
+{
+    constexpr uint64_t kUint16Max = std::numeric_limits<uint16_t>::max();
+    constexpr int64_t kInt64Max = std::numeric_limits<int64_t>::max();
+
+    if (bs <= 0 || n <= 0 || d <= 0 || ncSize <= 0 || elementBytes == 0) {
+        OP_LOGE(context->GetNodeName(), "MhcPre shape values must be positive");
+        return ge::GRAPH_FAILED;
+    }
+    if (aivCoreNum == 0 || aivCoreNum > static_cast<uint64_t>(kInt64Max / MAX_BS_PER_LOOP)) {
+        OP_LOGE(context->GetNodeName(), "MhcPre AIV core count is outside the A2 int64 range: %lu", aivCoreNum);
+        return ge::GRAPH_FAILED;
+    }
+
+    // Stage-1 task offsets are carried as int64_t in the kernel.
+    const uint64_t taskAlign = aivCoreNum * static_cast<uint64_t>(MAX_BS_PER_LOOP);
+    if (taskAlign == 0 || bs > kInt64Max - static_cast<int64_t>(taskAlign - 1)) {
+        OP_LOGE(context->GetNodeName(),
+                "MhcPre bs=%ld cannot be aligned by the A2 int64 task loop (alignment=%lu)", bs, taskAlign);
+        return ge::GRAPH_FAILED;
+    }
+
+    // n is still used as a DataCopy burst count in the residual path.  D and
+    // n*d are addressed as 64-bit GM dimensions and split into UB-sized tiles.
+    if (n > static_cast<int64_t>(kUint16Max) || d > kInt64Max - 31 || ncSize > kInt64Max - 255) {
+        OP_LOGE(context->GetNodeName(),
+                "MhcPre dimensions exceed the A2 addressable range: n=%ld d=%ld n*d=%ld", n, d, ncSize);
+        return ge::GRAPH_FAILED;
+    }
+    int64_t xElementCount = 0;
+    int64_t xByteSize = 0;
+    if (elementBytes > static_cast<uint64_t>(kInt64Max) ||
+        !CheckedMulNonNegative(bs, ncSize, xElementCount) ||
+        !CheckedMulNonNegative(xElementCount, static_cast<int64_t>(elementBytes), xByteSize) ||
+        d > kInt64Max - 31 || ncSize > kInt64Max - 255) {
+        OP_LOGE(context->GetNodeName(),
+                "MhcPre x address range exceeds A2 int64: bs=%ld n*d=%ld d=%ld elementBytes=%lu",
+                bs, ncSize, d, elementBytes);
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
 } // namespace
 
 int8_t CheckOptionalParamsExisting(const gert::StorageShape *checkShape)
@@ -115,22 +200,58 @@ ge::graphStatus MhcPreTiling::GetShapeAttrsInfoInner(int8_t &gammaExist)
     auto xShape = context_->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShape);
     size_t xDimNum = xShape->GetStorageShape().GetDimNum();
+    int64_t batch = 0;
+    int64_t seq = 0;
     if (xDimNum == 3) {
         bs_ = xShape->GetStorageShape().GetDim(0);
         hcMult_ = xShape->GetStorageShape().GetDim(1);
         d_ = xShape->GetStorageShape().GetDim(2);
     } else if (xDimNum == 4) {
-        int64_t b = xShape->GetStorageShape().GetDim(0);
-        int64_t s = xShape->GetStorageShape().GetDim(1);
-        bs_ = b * s;
+        batch = xShape->GetStorageShape().GetDim(0);
+        seq = xShape->GetStorageShape().GetDim(1);
+        if (!CheckedMulNonNegative(batch, seq, bs_)) {
+            OP_LOGE(context_->GetNodeName(), "MhcPre b*s overflows int64: b=%ld s=%ld", batch, seq);
+            return ge::GRAPH_FAILED;
+        }
         hcMult_ = xShape->GetStorageShape().GetDim(2);
         d_ = xShape->GetStorageShape().GetDim(3);
     }
 
-    nn_fac = Factorial(hcMult_) + 2 * hcMult_;
-    nn_pow = hcMult_ * hcMult_ + 2 * hcMult_;
+    // The A2 kernel passes n through uint16/int32 vector and DataCopy fields.
+    // Reject oversized n before calculating n*n or n! below.
+    if (hcMult_ <= 0 || hcMult_ > static_cast<int64_t>(std::numeric_limits<uint16_t>::max())) {
+        OP_LOGE(context_->GetNodeName(), "MhcPre n=%ld is outside the A2 kernel range", hcMult_);
+        return ge::GRAPH_FAILED;
+    }
+
+    int64_t ncSize = 0;
+    int64_t twoN = 0;
+    int64_t nSquare = 0;
+    int64_t nFactorial = 0;
+    if (!CheckedMulNonNegative(hcMult_, d_, ncSize) ||
+        !CheckedMulNonNegative(hcMult_, static_cast<int64_t>(2), twoN) ||
+        !CheckedMulNonNegative(hcMult_, hcMult_, nSquare) ||
+        !CheckedFactorial(hcMult_, nFactorial) ||
+        !CheckedAddNonNegative(nFactorial, twoN, nn_fac) ||
+        !CheckedAddNonNegative(nSquare, twoN, nn_pow)) {
+        OP_LOGE(context_->GetNodeName(), "MhcPre shape-derived size overflows int64: n=%ld d=%ld", hcMult_, d_);
+        return ge::GRAPH_FAILED;
+    }
+
+    auto xDesc = context_->GetInputDesc(0);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, xDesc);
+    const int64_t xElementBytes = static_cast<int64_t>(ge::GetSizeByDataType(xDesc->GetDataType()));
+    if (xElementBytes <= 0) {
+        OP_LOGE(context_->GetNodeName(), "MhcPre x data type has invalid element size: %ld", xElementBytes);
+        return ge::GRAPH_FAILED;
+    }
+    const uint64_t elementBytes = static_cast<uint64_t>(xElementBytes);
+    if (CheckA2ShapeRange(context_, bs_, hcMult_, d_, ncSize, aivCoreNum_, elementBytes) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     auto shapeAlpha = context_->GetInputShape(2);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, shapeAlpha);
     int64_t scaleFirstDim = shapeAlpha->GetStorageShape().GetDim(0);
     OP_CHECK_IF(scaleFirstDim != 2 && scaleFirstDim != 3,
                 OP_LOGE(context_->GetNodeName(), "alpha size should be 2 or 3, but is %ld", scaleFirstDim),
@@ -138,11 +259,13 @@ ge::graphStatus MhcPreTiling::GetShapeAttrsInfoInner(int8_t &gammaExist)
     hasResi = (scaleFirstDim == 3);
 
     auto shapePhi = context_->GetInputShape(1);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, shapePhi);
     hcMix_ = shapePhi->GetStorageShape().GetDim(0);
 
     auto shapeBias = context_->GetInputShape(3);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, shapeBias);
     int64_t biasFirstDim = shapeBias->GetStorageShape().GetDim(0);
-    int64_t expectedBias = hasResi ? hcMix_ : 2 * hcMult_;
+    int64_t expectedBias = hasResi ? hcMix_ : twoN;
 
     //
     if (hasResi) {
@@ -157,16 +280,29 @@ ge::graphStatus MhcPreTiling::GetShapeAttrsInfoInner(int8_t &gammaExist)
         }
     } else {
         OP_CHECK_IF(
-            hcMix_ != 2 * hcMult_,
-            OP_LOGE(context_->GetNodeName(), "Phi dim 0 should be equal with %ld, but is %ld", 2 * hcMult_, hcMix_),
+            hcMix_ != twoN,
+            OP_LOGE(context_->GetNodeName(), "Phi dim 0 should be equal with %ld, but is %ld", twoN, hcMix_),
             return ge::GRAPH_FAILED);
         isFac = false;
     }
 
-    OP_CHECK_IF(shapePhi->GetStorageShape().GetDim(1) != d_ * hcMult_,
+    OP_CHECK_IF(shapePhi->GetStorageShape().GetDim(1) != ncSize,
                 OP_LOGE(context_->GetNodeName(), "Phi dim 1 should be equal with d_ * hcMult_  %ld, but is %ld",
-                        d_ * hcMult_, shapePhi->GetStorageShape().GetDim(1)),
+                        ncSize, shapePhi->GetStorageShape().GetDim(1)),
                 return ge::GRAPH_FAILED);
+    int64_t hMixElementCount = 0;
+    int64_t hResElementCount = 0;
+    int64_t hMixByteSize = 0;
+    int64_t hResByteSize = 0;
+    if (!CheckedMulNonNegative(bs_, hcMix_, hMixElementCount) ||
+        !CheckedMulNonNegative(bs_, nSquare, hResElementCount) ||
+        !CheckedMulNonNegative(hMixElementCount, static_cast<int64_t>(sizeof(float)), hMixByteSize) ||
+        !CheckedMulNonNegative(hResElementCount, static_cast<int64_t>(sizeof(float)), hResByteSize)) {
+        OP_LOGE(context_->GetNodeName(),
+                "MhcPre output address range exceeds int64: bs=%ld hcMix=%ld n*n=%ld",
+                bs_, hcMix_, nSquare);
+        return ge::GRAPH_FAILED;
+    }
     OP_CHECK_IF(
         biasFirstDim != expectedBias,
         OP_LOGE(context_->GetNodeName(), "Bias dim 0 should be equal with %ld, but is %ld", expectedBias, biasFirstDim),
@@ -232,9 +368,15 @@ ge::graphStatus MhcPreTiling::CalcMKSplitCoreMembasePart2Tiling()
                              base0Size + base1Size + base2Size + rowBrcb0Size + hcBrcb1Size + reduceBufSize +
                              maskPatternSize;
         int64_t ubRemain = ubSize_ - usedUbSize;
+        if (ubRemain <= 0) {
+            OP_LOGE(context_->GetNodeName(), "MhcPre fixed UB buffers leave no room for D tiles: used=%ld ub=%lu",
+                    usedUbSize, ubSize_);
+            return ge::GRAPH_FAILED;
+        }
         dFactor_ = d_;
         int64_t base = 2;
-        while (1) {
+        bool foundDFactor = false;
+        while (base <= d_) {
             dFactor_ = CeilDiv(d_, base);
             xSize = rowOnceLoop * hcMult_ * RoundUp(dFactor_, 16) * 2 * DOUBLE_BUFFER;
             ySize = rowOnceLoop * RoundUp(dFactor_, 16) * 2 * DOUBLE_BUFFER;
@@ -242,9 +384,14 @@ ge::graphStatus MhcPreTiling::CalcMKSplitCoreMembasePart2Tiling()
             yCastSize = rowOnceLoop * RoundUp(dFactor_, 8) * sizeof(float);
             int64_t targetSize = xSize + ySize + xCastSize + yCastSize;
             if (targetSize <= ubRemain) {
+                foundDFactor = true;
                 break;
             }
             base++;
+        }
+        if (!foundDFactor || dFactor_ <= 0 || dFactor_ > d_) {
+            OP_LOGE(context_->GetNodeName(), "MhcPre cannot find a valid D tile: d=%ld ubRemain=%ld", d_, ubRemain);
+            return ge::GRAPH_FAILED;
         }
         if (dFactor_ > 32) {
             dFactor_ = DownAlign(dFactor_, 32);
@@ -346,13 +493,17 @@ ge::graphStatus MhcPreTiling::CalcOpTiling()
     if (CalcBsSplit() == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
-    uint64_t kSize = hcMult_ * d_;
+    int64_t kSize = 0;
+    if (!CheckedMulNonNegative(hcMult_, d_, kSize)) {
+        OP_LOGE(context_->GetNodeName(), "MhcPre K dimension overflows int64: n=%ld d=%ld", hcMult_, d_);
+        return ge::GRAPH_FAILED;
+    }
     // 切K计算stage1
     uint64_t mDimNum = std::min(aicCoreNum_, static_cast<uint64_t>(CeilDiv(bs_, M_L1_MAX_SIZE)));
     uint64_t singleCoreM = RoundUp(CeilDiv(bs_, mDimNum), AscendC::BLOCK_CUBE);
 
     uint64_t kDimNum = aicCoreNum_ / mDimNum;
-    uint64_t splitKSize = RoundUp(CeilDiv(kSize, kDimNum), K_MULIT_CORE_SPLIT_BASE_SIZE);
+    int64_t splitKSize = RoundUp(CeilDiv(kSize, static_cast<int64_t>(kDimNum)), K_MULIT_CORE_SPLIT_BASE_SIZE);
 
     tilingData_.set_cubeBlockDimK(CeilDiv(kSize, splitKSize));
     tilingData_.set_mL1Size(std::min(M_L1_MAX_SIZE, singleCoreM));
@@ -457,7 +608,11 @@ ge::graphStatus MhcPreTiling::CalcStage1Tiling()
     tilingData_.set_stage1BsFactor(bsFactor);
 
     // 4. 计算 ReduceSum 切分（每次最多 256 个元素）
-    int64_t ncSize = hcMult_ * d_;
+    int64_t ncSize = 0;
+    if (!CheckedMulNonNegative(hcMult_, d_, ncSize)) {
+        OP_LOGE(context_->GetNodeName(), "MhcPre stage1 K dimension overflows int64: n=%ld d=%ld", hcMult_, d_);
+        return ge::GRAPH_FAILED;
+    }
     int64_t ncLoop = CeilDiv(ncSize, MAX_REDUCE_SIZE);
     int64_t ncFactor = MAX_REDUCE_SIZE;
     int64_t tailNcFactor = ncSize % MAX_REDUCE_SIZE;
@@ -498,22 +653,46 @@ ge::graphStatus MhcPreTiling::CalcStage1Tiling()
 
     // 5. 计算 Workspace 大小
     // X_cast: cubeCoreNum * maxBsPerCore * n * c * sizeof(float)
-    int64_t xCastWsSize = bsFactor * vecCoreNum * 2 * ncSize * sizeof(float);
-    workspaceSize_ += xCastWsSize;
+    int64_t xCastWsSize = 0;
+    if (!CheckedMulNonNegative(bsFactor, vecCoreNum, xCastWsSize) ||
+        !CheckedMulNonNegative(xCastWsSize, 2, xCastWsSize) ||
+        !CheckedMulNonNegative(xCastWsSize, ncSize, xCastWsSize) ||
+        !CheckedMulNonNegative(xCastWsSize, sizeof(float), xCastWsSize)) {
+        OP_LOGE(context_->GetNodeName(), "MhcPre stage1 workspace size overflows int64");
+        return ge::GRAPH_FAILED;
+    }
+    if (!CheckedAddWorkspace(workspaceSize_, xCastWsSize)) {
+        OP_LOGE(context_->GetNodeName(), "MhcPre accumulated stage1 workspace exceeds uint64");
+        return ge::GRAPH_FAILED;
+    }
     tilingData_.set_stage1XCastWsSize(xCastWsSize);
 
     // 6. 计算额外的 workspace 大小（needGrad=false 时使用）
     if (!needGrad_) {
         // invRms: bs * sizeof(float)
-        int64_t invRmsWsSize = bs_ * sizeof(float);
+        int64_t invRmsWsSize = 0;
+        if (!CheckedMulNonNegative(bs_, sizeof(float), invRmsWsSize)) {
+            OP_LOGE(context_->GetNodeName(), "MhcPre invRms workspace size overflows int64");
+            return ge::GRAPH_FAILED;
+        }
         // hcBeforeNorm: bs * hcMix * sizeof(float)
         int64_t hcMix = isFac ? nn_fac : nn_pow;
         if (!hasResi) {
             hcMix = 2 * hcMult_;
         }
-        int64_t hcBeforeNormWsSize = bs_ * hcMix * sizeof(float);
+        int64_t hcBeforeNormWsSize = 0;
+        int64_t hcBeforeNormElements = 0;
+        if (!CheckedMulNonNegative(bs_, hcMix, hcBeforeNormElements) ||
+            !CheckedMulNonNegative(hcBeforeNormElements, sizeof(float), hcBeforeNormWsSize)) {
+            OP_LOGE(context_->GetNodeName(), "MhcPre hMix workspace size overflows int64");
+            return ge::GRAPH_FAILED;
+        }
 
-        workspaceSize_ += invRmsWsSize + hcBeforeNormWsSize;
+        if (!CheckedAddWorkspace(workspaceSize_, invRmsWsSize) ||
+            !CheckedAddWorkspace(workspaceSize_, hcBeforeNormWsSize)) {
+            OP_LOGE(context_->GetNodeName(), "MhcPre accumulated output workspace exceeds uint64");
+            return ge::GRAPH_FAILED;
+        }
     }
 
     int64_t kBlockNum = 1;
@@ -524,7 +703,11 @@ ge::graphStatus MhcPreTiling::CalcStage1Tiling()
 
 ge::graphStatus MhcPreTiling::GetWorkspaceSize()
 {
-    workspaceSize_ += 16 * 1024 * 1024 + 128 * 1024 * 1024;
+    constexpr int64_t kSystemWorkspaceSize = 16 * 1024 * 1024 + 128 * 1024 * 1024;
+    if (!CheckedAddWorkspace(workspaceSize_, kSystemWorkspaceSize)) {
+        OP_LOGE(context_->GetNodeName(), "MhcPre system workspace exceeds uint64");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -540,6 +723,10 @@ ge::graphStatus MhcPreTiling::PostTiling()
     }
     context_->SetTilingKey(tilingKey);
     context_->SetBlockDim(aicCoreNum_);
+    if (workspaceSize_ > std::numeric_limits<size_t>::max()) {
+        OP_LOGE(context_->GetNodeName(), "MhcPre workspace exceeds size_t: %lu", workspaceSize_);
+        return ge::GRAPH_FAILED;
+    }
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = workspaceSize_;
 
