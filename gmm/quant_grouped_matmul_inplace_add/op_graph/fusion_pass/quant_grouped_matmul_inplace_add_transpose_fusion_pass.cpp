@@ -123,7 +123,20 @@ bool GetTransposePerm(const ge::GNodePtr &node, std::vector<int64_t> &perm)
     return count != 0U;
 }
 
-bool IsStaticEquivalentReshape(const ge::GNodePtr &node, const std::vector<int64_t> &perm)
+bool IsUnknownDim(int64_t dim)
+{
+    return dim < 0;
+}
+
+bool IsSameOrUnknown(int64_t expected, int64_t actual)
+{
+    // Dynamic GE descriptors may leave either side unresolved.  A known
+    // dimension mismatch must still reject the candidate; an unknown side is
+    // accepted because the concrete reshape shape is resolved at runtime.
+    return expected == actual || IsUnknownDim(expected) || IsUnknownDim(actual);
+}
+
+bool IsEquivalentReshape(const ge::GNodePtr &node, const std::vector<int64_t> &perm)
 {
     if (!IsType(node, kReshapeType)) {
         return false;
@@ -134,11 +147,25 @@ bool IsStaticEquivalentReshape(const ge::GNodePtr &node, const std::vector<int64
         node->GetOutputDesc(0, outputDesc) != ge::GRAPH_SUCCESS) {
         return false;
     }
-    auto inputDims = inputDesc.GetShape().GetDims();
+    const auto inputDims = inputDesc.GetShape().GetDims();
     const auto outputDims = outputDesc.GetShape().GetDims();
-    if (inputDims.size() != perm.size() || outputDims.size() != perm.size() ||
-        std::any_of(inputDims.begin(), inputDims.end(), [](int64_t dim) { return dim < 0; }) ||
-        std::any_of(outputDims.begin(), outputDims.end(), [](int64_t dim) { return dim < 0; })) {
+    if (inputDims.size() != perm.size()) {
+        return false;
+    }
+    // Only a reshape with a statically known unit axis can be proven to be a
+    // transpose-equivalent view.  This keeps ordinary dynamic reshapes out of
+    // the fusion path while allowing the unit-axis case after view_optimize.
+    if (inputDims.size() < 2U || (inputDims[0] != 1 && inputDims[1] != 1)) {
+        return false;
+    }
+    // In a dynamic graph GE can expose an empty output shape before shape
+    // inference.  The input unit axis and the expected rank are sufficient to
+    // identify the transpose-generated view; the output shape is resolved by
+    // the runtime graph later.
+    if (outputDims.empty()) {
+        return true;
+    }
+    if (outputDims.size() != perm.size()) {
         return false;
     }
     std::vector<int64_t> expected(inputDims.size());
@@ -148,8 +175,12 @@ bool IsStaticEquivalentReshape(const ge::GNodePtr &node, const std::vector<int64
         }
         expected[i] = inputDims[static_cast<std::size_t>(perm[i])];
     }
-    const bool hasUnitTransposeAxis = inputDims[0] == 1 || inputDims[1] == 1;
-    return hasUnitTransposeAxis && expected == outputDims;
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        if (!IsSameOrUnknown(expected[i], outputDims[i])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool CheckPattern(const InputPattern &pattern, const std::vector<int64_t> &expectedPerm)
@@ -161,7 +192,7 @@ bool CheckPattern(const InputPattern &pattern, const std::vector<int64_t> &expec
         return false;
     }
     if (IsType(pattern.transposeLike, kReshapeType)) {
-        return IsStaticEquivalentReshape(pattern.transposeLike, expectedPerm);
+        return IsEquivalentReshape(pattern.transposeLike, expectedPerm);
     }
     std::vector<int64_t> actualPerm;
     return GetTransposePerm(pattern.transposeLike, actualPerm) && actualPerm == expectedPerm;
