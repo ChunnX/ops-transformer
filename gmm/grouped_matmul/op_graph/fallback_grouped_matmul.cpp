@@ -417,8 +417,11 @@ static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext *host_api_ctx)
                     "GetGmmAttrs failed, status = " + std::to_string(static_cast<unsigned int>(attrRet))),
                 return attrRet);
 
-    std::vector<const gert::Tensor *> geTensorVectorY;
-    PrepareOutputTensorVector(host_api_ctx, geTensorVectorY, INDEX_GMM_OUTPUT_Y, numGeWeight, *splitItemGe);
+    static const auto aclCreateTensorList = GET_OP_API_FUNC(aclCreateTensorList);
+    OP_CHECK_IF(aclCreateTensorList == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul aclnnfallback", "aclCreateTensorList",
+                                                         "Failed to load opapi func aclCreateTensorList"),
+                return GRAPH_FAILED);
 
     std::vector<const aclTensor *> aclTensorVectorX;
     PrepareAclTensorVector(host_api_ctx, aclTensorVectorX, INDEX_GMM_INPUT_X, *attrs.isXTransposed, false);
