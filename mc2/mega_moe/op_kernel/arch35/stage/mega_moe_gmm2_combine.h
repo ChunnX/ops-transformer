@@ -1083,14 +1083,15 @@ __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const 
             static_cast<uint32_t>(Get<M_VALUE>(problemShape)), 0U, params, gmTileSequence);
     } else {
         RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType,
-                       IsWeightNz, false, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained,
-                       NotifyCombineTileReady>(problemShape, gmmAddrInfo, startBlockIdx, gmmConfig.blockJob,
-                                               persistentBlockMmadContext, allowWeightL2Bypass, rowOffsetInExpert,
-                                               params, gmTileSequence);
+                       IsWeightNz, false, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved,
+                       IsWaveFlagGrained, NotifyCombineTileReady>(
+            problemShape, gmmAddrInfo, startBlockIdx, gmmConfig.blockJob, persistentBlockMmadContext,
+            allowWeightL2Bypass, rowOffsetInExpert, params, gmTileSequence);
     }
 }
 
-// 共享专家始终以完整 expert problem 执行；A8W8 同时使用 Wave 粒度标记并允许权重绕过 L2。
+// 共享专家始终以完整 expert problem 执行；A8W8 按 Wave 粒度等待 GMM1 Activation 并允许权重绕过 L2，
+// 其他模式沿用整 expert 粒度的就绪标记。共享路径不参与 MoE TopK weight prefetch。
 template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, typename WeightType,
           typename QuantScaleType, AxWMode QuantMode, bool IsWeightNz, uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
           bool IsGmm1Interleaved, bool EnableA8W8>
@@ -1098,8 +1099,8 @@ __aicore__ inline void RunSharedExpertGmm2Stage(const GmmExecutionConfig &gmmCon
                                                 const ProblemShape &problemShape, uint32_t &startBlockIdx)
 {
     RunGmm2ByMode<CombineMode, GenericElementA, A8W4ElementA, WeightType, QuantScaleType, QuantMode, IsWeightNz,
-                  Gmm1TileM, EnableA8W8 && TopkWeightsPrefetch, true, IsGmm1Interleaved, EnableA8W8>(
-        gmmConfig, gmmAddrInfo, problemShape, startBlockIdx, nullptr, EnableA8W8);
+                  Gmm1TileM, false, true, IsGmm1Interleaved, EnableA8W8>(gmmConfig, gmmAddrInfo, problemShape,
+                                                                         startBlockIdx, nullptr, EnableA8W8);
 }
 
 constexpr uint32_t WAVE_GMM2_READY_SCAN_UB_ADDR = WAVE_COMBINE_UB_LIMIT;

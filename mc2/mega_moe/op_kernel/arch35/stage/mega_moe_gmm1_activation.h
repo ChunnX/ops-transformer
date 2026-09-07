@@ -956,6 +956,31 @@ __aicore__ inline void RunGmm1A8W4(BlockEpilogueActivationMxQuant<ElementA, Elem
                                                                   expertBeforeCnt, expertIdx);
 }
 
+// 执行一个共享专家的 GMM1、SwiGLU 与量化阶段。
+template <typename QuantOutType, typename WeightType, typename ActivationOutType, typename QuantScaleType,
+          AxWMode QuantMode, bool IsWeightNz, uint32_t Gmm1TileM, bool IsGmm1Interleaved = false,
+          bool IsWaveFlagGrained = false, typename BlockEpilogue>
+__aicore__ inline void RunSharedExpertGmm1ActivationStage(
+    const MoeStageCommonConfig &commonConfig, const GmmExecutionConfig &gmmConfig, const Params &gmmParams,
+    BlockEpilogue &epilogueOp, const GMMAddrInfo &gmmAddrInfo, const ProblemShape &problemShape,
+    GmmRuntimeState &runtimeState, uint32_t sharedExpertIdx, int32_t &gmm1TileReadySequence,
+    void *persistentBlockMmadContext = nullptr, bool allowWeightL2Bypass = false)
+{
+    uint32_t expertBeforeCnt = sharedExpertIdx * commonConfig.tokenNum;
+    if constexpr (QuantMode == AxWMode::A8W4) {
+        RunGmm1A8W4<QuantOutType, WeightType, bfloat16_t, QuantScaleType, QuantScaleType, Gmm1TileM, L1_TILE_M_256,
+                    false, true, IsWaveFlagGrained>(
+            epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmm1TileReadySequence,
+            gmmConfig.blockJob, expertBeforeCnt, sharedExpertIdx, gmmConfig.inputLayout);
+    } else {
+        RunGmm1Generic<QuantOutType, ActivationOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType,
+                       IsWeightNz, Gmm1TileM, L1_TILE_M_256, false, true, IsGmm1Interleaved, IsWaveFlagGrained>(
+            epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
+            gmmConfig.blockJob, expertBeforeCnt, sharedExpertIdx, runtimeState.pingpongIdx, persistentBlockMmadContext,
+            allowWeightL2Bypass, gmmConfig.inputLayout);
+    }
+}
+
 template <typename ActivationType, typename WeightType, typename ActivationOutType, typename QuantScaleType,
           uint32_t ActivationElementsPerByte, bool UseA8W4Gmm1, bool TopkWeightsPrefetch, typename BlockEpilogue>
 __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
