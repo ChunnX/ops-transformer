@@ -52,3 +52,6 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+
+attention/sparse_flash_mla/tests/
+result/

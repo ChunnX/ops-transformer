@@ -10,19 +10,64 @@ import utils
 from batch import sparse_flash_mla_process
 
 
+BASE_SEQUENCE_CONFIGS = [
+    (min(7, ori_len), ori_len, num_heads_q, cmp_topk)
+    for ori_len in (2, 3, 1022, 1023, 1024, 1025, 1026, 1027)
+    for num_heads_q in (1, 32, 128)
+    for cmp_topk in (512, 1024)
+]
+
+# Keep long-sequence coverage affordable by isolating S1/S2 from the N1 sweep.
+EXTENDED_SEQUENCE_SHAPES = (
+    (1, 16),
+    (8, 32),
+    (16, 16),
+    (16, 64),
+    (31, 127),
+    (32, 128),
+    (64, 256),
+    (127, 511),
+    (128, 128),
+    (128, 512),
+    (255, 1023),
+    (256, 1024),
+    (512, 512),
+    (511, 2047),
+    (512, 2048),
+    (1024, 1024),
+    (1023, 4095),
+    (1024, 4096),
+    (1024, 8191),
+    (1024, 8192),
+    (1024, 8193),
+)
+EXTENDED_SEQUENCE_CONFIGS = [
+    (q_len, ori_len, 1, cmp_topk)
+    for q_len, ori_len in EXTENDED_SEQUENCE_SHAPES
+    for cmp_topk in (512, 1024)
+]
+RATIO2_SEQUENCE_CONFIGS = BASE_SEQUENCE_CONFIGS + EXTENDED_SEQUENCE_CONFIGS
+
+
 @pytest.mark.parametrize("layout", ["BSND", "TND", "PA_BBND"])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("ori_len", [2, 3, 1022, 1023, 1024, 1025, 1026, 1027])
-def test_ratio2(layout, dtype, ori_len):
+@pytest.mark.parametrize(
+    "q_len,ori_len,num_heads_q,cmp_topk", RATIO2_SEQUENCE_CONFIGS
+)
+def test_ratio2(layout, dtype, q_len, ori_len, num_heads_q, cmp_topk):
+    # 288 base cases + 252 extended S1/S2 cases = 540 A2/A3 cases.
     # Odd lengths exercise residual=1. 511/512/513 compressed tokens exercise
     # the arch22 S2 boundary.
     mode = "CSA"
     batch = 2
-    q_len = min(7, ori_len)
     cmp_len = ori_len // 2
     q_layout = "BSND" if layout == "BSND" else "TND"
     params = {
-        "testcase_name": f"ratio2_{mode}_{layout}_{ori_len}",
+        "testcase_name": (
+            f"ratio2_{mode}_{layout}_{str(dtype).split('.')[-1]}_"
+            f"s1{q_len}_s2{ori_len}_"
+            f"n{num_heads_q}_k{cmp_topk}"
+        ),
         "template_mode": mode,
         "layout_q": q_layout,
         "layout_kv": layout,
@@ -35,10 +80,10 @@ def test_ratio2(layout, dtype, ori_len):
         "T1": batch * q_len,
         "T2": batch * ori_len,
         "T3": batch * cmp_len,
-        "N1": 32,
+        "N1": num_heads_q,
         "N2": 1,
         "D": 512,
-        "K": 1024,
+        "K": cmp_topk,
         "cmp_ratio": 2,
         "seqused_ori_kv": [ori_len] * batch,
         "seqused_cmp_kv": [cmp_len] * batch,
