@@ -517,8 +517,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessCandBlockTopk(const QLIV2Comm
     int32_t blockSize = static_cast<int32_t>(constInfo_.candidateBlockSize);
     int32_t blockNum = blkLen / blockSize;                         // 含尾块 (pad -inf 后按对齐长度计)
     int32_t realBlockNum = (cuS2Len + blockSize - 1) / blockSize; // 含有效位置的块数
-    // 所有向量 count 按 64 对齐 (非对齐 count 的向量指令在本架构触发 aicore 异常)
-    int32_t blockNumPad = (blockNum < 64) ? 64 : blockNum;
+    // 所有向量 count 按 64 对齐 (非对齐 count 的向量指令在本架构触发 aicore 异常);
+    // 且块数必须过 AlignS2 (32*(4^n)*m, m<=3): SortAll 的 MrgSort 循环按 mrgGroups/4 缩减,
+    // 非 4 幂组数 (如 192 块=6 组) 会整组丢失 (实测 s2=1536 丢块 128..191 段)
+    int32_t blockNumPad = (blockNum < 64) ? 64 : AlignS2(blockNum);
     int32_t tileBlockBase = info.s2Idx * s2BaseSize_ / blockSize;
     LocalTensor<float> tmp = tmpBuf_.Get<float>();
     // 块内归约: vcgmax 每 32B 块 (8 fp32) 出 1 个 max, 紧凑输出 [blockNum]
@@ -567,6 +569,35 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessCandBlockTopk(const QLIV2Comm
         Sub(blkIdx[off], idxScr[off], tI[off], 64);
     }
     PipeBarrier<PIPE_V>();
+    // pad 块 score 归一为 -inf 位型: 覆盖 [realBlockNum, blockNumPad), 含 stale 区 [blockNum, blockNumPad)
+    // (尾 tile cuS2Len 非整块时 BlockReduceMax 只写 [0, blockNum), 其后是脏数据 —
+    //  脏 score 的 (-inf,-1) 不同构对会挤进 topk 挤掉真实块, 实测 128K 场景 -1 槽超标)
+    // score' = score + (score - NINF_bits)*(-isPad), isPad 于 pad 位为 1; 全 int32 向量
+    if (blockNumPad > realBlockNum) {
+        LocalTensor<int32_t> pRaw = tmp[15360].template ReinterpretCast<int32_t>(); // -isPad
+        LocalTensor<int32_t> pNeg = tmp[15616].template ReinterpretCast<int32_t>(); // (score-NINF)*(-isPad)
+        LocalTensor<int32_t> scoreI = blkScore.template ReinterpretCast<int32_t>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Duplicate(pRaw[off], -1, 64);
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Mul(pRaw[off], pRaw[off], offI[off], 64); // -isPad
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Adds(pNeg[off], scoreI[off], 8388608, 64); // score - NINF_bits (NINF=0xFF800000=-8388608)
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Mul(pNeg[off], pNeg[off], pRaw[off], 64);
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Add(scoreI[off], scoreI[off], pNeg[off], 64); // pad 块 -> -inf 位型
+        }
+        PipeBarrier<PIPE_V>();
+    }
     // pin 最新 token 所在块 (+inf 位型注入该块 score): 纯 int32 向量实现, 在 isPad 链之后
     // (复用其 scratch; 标量 SetValue 写不受 PipeBarrier<PIPE_V> fence, 与 SortAll 多轮读存在竞态, 已弃用)。
     // flag = -1 于 pin 位, 0 于其余: score' = score + (score - PINF_bits) * flag,
@@ -832,7 +863,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
                 PipeBarrier<PIPE_V>();
             }
             // mode=1 (is_candidate_source): 块化 amax + pin + 块级排序归并 (S5a/S6a)
-            if (constInfo_.candidateMode == CANDIDATE_MODE_SOURCE) { // BISECT_R2: 恢复 Process, 仍跳过 CopyOut
+            if (constInfo_.candidateMode == CANDIDATE_MODE_SOURCE) {
                 ProcessCandBlockTopk(info, cuS1Idx, cuS2Len, cuS2LenVecAlign, cuRealAcSeq, innerS1Idx);
             }
             LocalTensor<float> tmpSortBuf = sortBuff[2 * cuS2LenVecAlign];
