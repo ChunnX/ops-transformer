@@ -1069,9 +1069,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm1(const R
                     }
                     FixpipeCToGM<OutFormat>(
                         mmResGm, this->cL0BufId,
-                        (OutFormat == CubeFormat::NZ) ?
-                            m.sizeAct :
-                            info.actualSingleProcessSInnerSizeAlign,
+                        (OutFormat == CubeFormat::NZ) ? m.sizeAct : info.actualSingleProcessSInnerSizeAlign,
                         mL1.start + mL0.start, mL0.sizeAct, nL1.start + nL0.start,
                         (OutFormat == CubeFormat::NZ) ? nL0.AlignedSize() : nL0.sizeAct);
                     SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + this->cL0BufId);
