@@ -222,7 +222,7 @@ int main() {
   int64_t sparseMode = 3;
   bool deterministic = false;
 
-  char layOut[5] = {'T', 'N', 'D', 0};
+  char layout[5] = {'T', 'N', 'D', 0};
 
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   uint64_t workspaceSize = 0;
@@ -231,7 +231,7 @@ int main() {
   // 调用aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize第一段接口
   ret = aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize(
             q, k, qIndex, kIndex, weight, softmaxMax, softmaxSum, softmaxMaxIndex, softmaxSumIndex, qRope, kRope,
-            acSeqQLen, acSeqKvLen, scaleValue, layOut, sparseMode, preTokens, nextTokens, dQIndex, dKIndex, dWeight, loss,
+            acSeqQLen, acSeqKvLen, scaleValue, layout, sparseMode, preTokens, nextTokens, dQIndex, dKIndex, dWeight, loss,
             &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize failed. ERROR: %d\n", ret);
             return ret);
