@@ -492,6 +492,16 @@ __aicore__ inline uint32_t CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTenso
         if (unlikely(keyOffset0 < 0 && keyOffset1 < 0)) {
             return dealRow;
         }
+        if constexpr (IS_BATCH_CONSISTENCY) {
+            // Preserve logical token order when a paired copy would swap physical addresses.
+            if (keyOffset1 >= 0 && keyOffset1 < keyOffset0) {
+                CopyInSingleKv(kvInUb, startRow, keyOffset0, constInfo);
+                CopyInSingleKv(kvInUb, startRow + 1, keyOffset1, constInfo);
+                dealRow += 2;
+                startRow += 2;
+                continue;
+            }
+        }
         int64_t combineBytes = constInfo.dSizeVInput * sizeof(KV_T);
         int64_t keySrcStride =
             (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) : (keyOffset1 - keyOffset0)) * sizeof(KV_T) -
