@@ -300,8 +300,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
         Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_, axisH_);
         xInQue_.FreeTensor(xIn);
         if constexpr (HasTopkWeight == 1) {
-            GM_ADDR weightAddr = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) +
-                                 (tokenIndex * topK_ + topkId) * WIN_ADDR_ALIGN;
+            GM_ADDR weightAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + slotOffset + hAlignSize_;
             GlobalTensor<float> srcWeightTensor;
             srcWeightTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(weightAddr));
             LocalTensor<float> weightLocal = weightQue_.AllocTensor<float>();
