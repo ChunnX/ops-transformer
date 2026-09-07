@@ -80,7 +80,7 @@ jobs:
           AC_DIS_IMAGE: swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu24.04_x86:lv6_v1.1131
           #image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ inputs.image_version }}
           #lv6_v2.1003
-          AC_MODE: dis
+          #AC_MODE: dis
     if: "${{ default() }}"
     runs-on:
       - self-hosted
