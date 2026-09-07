@@ -11,14 +11,15 @@
 Only the operator name is required when this script is run in a dump directory.
 The script discovers and dispatches tiling_data, args_info, workspace segments,
 CCU xn/cke address tables, URMA context/peermem files, and exception_info
-files automatically. Structured address and exception tensor data is exported
-as NumPy NPY files.
+files automatically. Every source dump is exported to an independent NumPy NPY
+file; no combined text report is generated.
 """
 
 import argparse
 from contextlib import redirect_stderr, redirect_stdout
 import importlib
 import io
+import json
 import os
 from pathlib import Path
 import re
@@ -302,6 +303,42 @@ def parse_address_table(input_path, output_path):
     return table.shape[0], table.size, int(np.count_nonzero(table))
 
 
+def require_numpy():
+    try:
+        import numpy as np
+    except ImportError as error:
+        raise RuntimeError("导出 NPY 需要 NumPy，请先安装 numpy") from error
+    return np
+
+
+def npy_output_path(output_dir, relative_path):
+    """Return the independent NPY path for one source dump."""
+    output_path = output_dir / relative_path.parent / f"{relative_path.name}.npy"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    return output_path
+
+
+def save_structured_npy(output_path, parsed):
+    """Save a JSON-like parser result as one object NPY."""
+    np = require_numpy()
+    np.save(output_path, parsed, allow_pickle=True)
+
+
+def save_raw_npy(input_path, output_path):
+    """Save an untyped data segment losslessly as a memory-mapped uint8 NPY."""
+    np = require_numpy()
+    if input_path.stat().st_size == 0:
+        raw = np.empty((0,), dtype=np.uint8)
+        np.save(output_path, raw, allow_pickle=False)
+        return raw.shape, raw.dtype
+    raw = np.memmap(input_path, dtype=np.uint8, mode="r")
+    try:
+        np.save(output_path, raw, allow_pickle=False)
+        return raw.shape, raw.dtype
+    finally:
+        del raw
+
+
 def find_msaicerr(explicit_path=None):
     candidates = []
     if explicit_path:
@@ -455,6 +492,7 @@ def backend_command(profile, kind, path, aic_core_num):
         command.append("--comm-ctx")
     elif kind == "peermem":
         command.append("--peermem")
+    command.append("--json")
     return command
 
 
@@ -464,14 +502,14 @@ def run_backend(profile, kind, path, aic_core_num):
     process = subprocess.run(
         backend_command(profile, kind, path, aic_core_num),
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
         errors="replace",
         env=child_env,
         check=False,
     )
-    return process.returncode, process.stdout.rstrip()
+    return process.returncode, process.stdout.rstrip(), process.stderr.rstrip()
 
 
 def emit(lines, value=""):
@@ -506,6 +544,7 @@ def main(argv=None):
         parser.error(f"dump 目录不存在: {dump_dir}")
     output_dir = dump_dir / "mc2_dump_analysis" / profile["name"]
     output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "analysis.txt").unlink(missing_ok=True)
 
     files = discover_files(dump_dir, output_dir, profile_key)
     if not files:
@@ -558,18 +597,22 @@ def main(argv=None):
                 failures += 1
             continue
 
-        # Large data segments only need metadata and a short preview in the unified report.
-        # RuntimeInfo remains structurally parsed by the operator backend.
+        # RuntimeInfo remains structurally parsed; other data segments are saved as raw uint8.
         if kind == "workspace":
             identity = segment_identity(path, "workspace")
             if identity is not None and identity[1] != 12:
                 seg_index, seg_type = identity
-                emit(report_lines, f"segIdx: {seg_index}")
-                emit(report_lines, f"segType: {seg_type} ({WORKSPACE_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
-                emit(report_lines, f"dataMeaning: {WORKSPACE_SEG_DESCRIPTIONS.get(seg_type, '未知 Workspace 段')}")
-                emit(report_lines, f"fileSize: {path.stat().st_size} bytes")
-                emit_decimal_byte_preview(report_lines, read_preview(path, WORKSPACE_PREVIEW_SIZE))
-                emit(report_lines, "typedViewHint: 使用 parse_matrix.py 并指定 dtype/rows/cols 查看真实数值")
+                output_path = npy_output_path(output_dir, relative_path)
+                try:
+                    shape, dtype = save_raw_npy(path, output_path)
+                    emit(report_lines, f"segIdx: {seg_index}")
+                    emit(report_lines, f"segType: {seg_type} ({WORKSPACE_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
+                    emit(report_lines, f"dataMeaning: {WORKSPACE_SEG_DESCRIPTIONS.get(seg_type, '未知 Workspace 段')}")
+                    emit(report_lines, f"saved NPY: dtype={dtype} shape={shape} -> {output_path}")
+                    emit_decimal_byte_preview(report_lines, read_preview(path, WORKSPACE_PREVIEW_SIZE))
+                except (OSError, RuntimeError, ValueError) as error:
+                    failures += 1
+                    emit(report_lines, f"ERROR: {error}")
                 continue
 
         if kind == "peermem":
@@ -578,24 +621,38 @@ def main(argv=None):
                 seg_index, seg_type = identity
                 emit(report_lines, f"segIdx: {seg_index}")
                 emit(report_lines, f"segType: {seg_type} ({PEERMEM_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
-            emit(report_lines, f"fileSize: {path.stat().st_size} bytes")
-            emit(report_lines, f"hexPreview(512B): {read_preview(path, 512).hex()}")
+            output_path = npy_output_path(output_dir, relative_path)
+            try:
+                shape, dtype = save_raw_npy(path, output_path)
+                emit(report_lines, f"saved NPY: dtype={dtype} shape={shape} -> {output_path}")
+            except (OSError, RuntimeError, ValueError) as error:
+                failures += 1
+                emit(report_lines, f"ERROR: {error}")
             continue
 
         aic_core_num = core_num_for_file(path, profile, core_index) if kind == "workspace" else None
-        return_code, output = run_backend(profile, kind, path, aic_core_num)
-        if output:
-            for line in output.splitlines():
-                emit(report_lines, line)
+        return_code, output, backend_log = run_backend(profile, kind, path, aic_core_num)
         if return_code != 0:
             failures += 1
+            for text in (backend_log, output):
+                for line in text.splitlines():
+                    emit(report_lines, line)
             emit(report_lines, f"ERROR: backend exited with code {return_code}")
+            continue
+        output_path = npy_output_path(output_dir, relative_path)
+        try:
+            parsed = json.loads(output)
+            save_structured_npy(output_path, parsed)
+            emit(report_lines, f"saved NPY: object -> {output_path}")
+        except (json.JSONDecodeError, OSError, RuntimeError, ValueError) as error:
+            failures += 1
+            if backend_log:
+                emit(report_lines, backend_log)
+            emit(report_lines, f"ERROR: {error}")
 
-    report_path = output_dir / "analysis.txt"
-    report_path.write_text("\n".join(report_lines) + "\n", encoding="utf-8")
     print()
     print(f"解析完成: {len(files) - failures}/{len(files)} 个文件成功")
-    print(f"汇总报告: {report_path}")
+    print(f"每个输入文件的独立 NPY 位于: {output_dir}")
     return 1 if failures else 0
 
 

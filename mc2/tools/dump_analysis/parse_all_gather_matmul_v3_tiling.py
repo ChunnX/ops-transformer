@@ -305,7 +305,7 @@ def parse_runtime_info_segment(data: bytes, aic_core_num=None) -> dict:
     """解析 workspace_segN_type12_*.bin（RuntimeInfo 段，64KB = 128 * 512B）。
 
     aic_core_num: tiling data 中的 mmTile.usedCoreNum，用于区分 C/V 核。
-                  AIC coreId 范围 0 ~ aicCoreNum-1; AIV coreId 范围 aicCoreNum ~ 3*aicCoreNum-1
+                  AIC coreId 范围 0 ~ aicCoreNum-1; AIV coreId 范围 aicCoreNum ~ 2*aicCoreNum-1
                   (MIX_AIC_1_1 模式下 AIV slotIdx = aicCoreNum + GetBlockIdx())。
                   为 None 时 coreType 标记为 "未知"。
     """
