@@ -45,8 +45,8 @@ public:
         vector_.InitMNConfig();
         vector_.InitHMixBuffer(initParams);
         vector_.InitPipeAndCoreIdx(initParams.tPipeIn);
-        xGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.x));
-        phiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.phi));
+        xGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.x));
+        phiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.phi));
         hMix3Gm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.workspace));
 
         InitUbBuffers();
@@ -239,8 +239,8 @@ private:
 
     MhcPreVectorCompute<T, P, RESI_MODE> vector_;
     MhcPre3Bf16Matmul &mm_;
-    GlobalTensor<T> xGm_;
-    GlobalTensor<T> phiGm_;
+    GlobalTensor<bfloat16_t> xGm_;
+    GlobalTensor<bfloat16_t> phiGm_;
     GlobalTensor<P> hMix3Gm_;
     uint32_t matmulCount_ = 0U;
 };
