@@ -9,10 +9,19 @@
  */
 
 #include <torch/extension.h>
-
 #include "aclnn_common.h"
 
 namespace op_api {
+
+// Keep values in sync with Python QuantMode / aclnn quantType.
+enum QuantMode : int64_t {
+    NO_QUANT = 0,
+    FP8_E4M3_STATIC_PER_GROUP = 1,
+    FP8_E4M3_DYNAMIC_MX = 2,
+    FP4_E2M1_DYNAMIC_OCP = 3,
+    FP4_E2M1_DYNAMIC_CX = 4,
+    FP8_E4M3_STATIC_CAST_P = 5,
+};
 
 at::Tensor GenericBlockSparseAttentionMetadata(
     const at::Tensor &sparse_block_idx, const at::Tensor &sparse_block_count,
@@ -48,14 +57,14 @@ std::tuple<at::Tensor, at::Tensor> GenericBlockSparseAttention(
 
     // Resolve output dtype: an explicit value passes through unchanged.
     // A missing value (None) only falls back to the input dtype for
-    // non-FP8; FP8 path requires it explicitly (same idea as BSA quant_mode).
+    // quant_mode=NO_QUANT; quantized paths require it explicitly.
     at::ScalarType out_dtype;
     if (attention_out_dtype.has_value()) {
         out_dtype = *attention_out_dtype;
-    } else if (q.scalar_type() != at::kFloat8_e4m3fn) {
+    } else if (quant_mode == NO_QUANT) {
         out_dtype = q.scalar_type();
     } else {
-        TORCH_CHECK(false, "attention_out_dtype must be specified when q dtype is float8_e4m3fn");
+        TORCH_CHECK(false, "attention_out_dtype must be specified when quant_mode != NO_QUANT");
     }
 
     at::Tensor attention_out = at::empty(q.sizes(), q.options().dtype(out_dtype));
