@@ -77,8 +77,8 @@ python3 parse_mc2_dump.py --help
 - `cke_addr_info_*`：CKE 地址信息。
 - `comm_context_*`：URMA 通信上下文。
 - `peermem_window_*`、`peermem_seg_*`：URMA Peer Memory 信息。
-- `exception_info.*`：原始异常 Dump；自动调用 `msaicerr.py` 后导出 NPY。
-- 算子 `.o`、`_host.o`、`.json`：作为 `msaicerr.py` 解包时的配套文件使用。
+- `exception_info.*`：原始异常 Dump；由仓内 Python 代码直接解析 protobuf 头和各数据区，不调用 `msaicerr.py`。
+- 算子 `.json`：仅在异常头中的 dtype 为 `undefined` 时作为 dtype 补充信息；`.o`、`_host.o` 不需要参与数据解包。
 
 ### 输出目录
 
@@ -94,53 +94,43 @@ python3 parse_mc2_dump.py --help
 - Tiling、Args 和 `type12/RUNTIME_INFO` 为对象型 NPY；XN/CKE 为二维 `uint64`。
 - MMRS `type8/MM_RESULT`、`type9/RECV_BUF` 根据同次 TilingData 自动保存输出 dtype 和 `(rankM, rankN)`；BF16 以 `uint16` 原始位模式存储。
 - 无法可靠确定 dtype/shape 的其他 Workspace/Peermem 仍完整保存为 `uint8`。
-- `exception/<exception_info文件名>/msaicerr`：CANN 异常解包中间结果。
-- `exception/<exception_info文件名>/npy`：异常 input/output/workspace 的独立 NPY。
+- `exception/<exception_info文件名>/input.N.<dtype>.npy`：每个异常输入独立保存。
+- `exception/<exception_info文件名>/output.N.<dtype>.npy`：每个异常输出独立保存。
+- `exception/<exception_info文件名>/workspace.N.raw_bytes.npy`：每个异常 Workspace 独立保存。
+- `exception/<exception_info文件名>/exception_metadata.npy`：异常头、地址、shape、dtype 和分段偏移等元数据。
 
 ## 4. 解析 exception_info 并导出 NPY
 
-统一入口已将两步整合到一次执行中：
+统一入口直接使用仓内解析器完成：
 
 ```text
 exception_info.*
-    -> 内部调用 CANN DumpDataParser（即 msaicerr.py 的 -d 核心逻辑）
-    -> 内部调用 NPY 导出逻辑
+    -> 读取 8B protobuf headerLength
+    -> 解析 DumpData protobuf 头
+    -> 按 input/output/buffer/workspace 的 size 切分连续 payload
+    -> 每段单独导出 NPY
 ```
 
-因此正常使用不需要再单独执行 `msaicerr.py` 或异常报告脚本：
+不需要 CANN Python 环境、`ms_interface`、`libascend_dump_parser.so` 或 `msaicerr.py`：
 
 ```bash
 python3 parse_mc2_dump.py mmrs /path/to/dump
 ```
 
-如果当前 Python 环境无法直接导入 CANN 的 `ms_interface`，且 `msaicerr.py` 不在默认位置，再设置环境变量：
+也可以只解析单个原始异常文件：
 
 ```bash
-export MSAICERR_PATH=/home/w00955510/Ascend0901/cann-9.2.0/tools/msaicerr/msaicerr.py
-python3 parse_mc2_dump.py mmrs /path/to/dump
-```
-
-也可在单次命令中指定：
-
-```bash
-python3 parse_mc2_dump.py mmrs /path/to/dump \
-  --msaicerr /home/w00955510/Ascend0901/cann-9.2.0/tools/msaicerr/msaicerr.py
-```
-
-若 `msaicerr.py` 已经执行完，可只转换它输出的异常张量：
-
-```bash
-python3 parse_mc2_exception_report.py /path/to/exception_report \
+python3 parse_mc2_exception_report.py /path/to/exception_info.61.154.xxx \
   --operator MatmulReduceScatterV2 \
   --export-npy /path/to/npy_output
 ```
 
-生成的 `manifest.json` 会标注每个数组的 `role`、`index`、源文件、dtype、shape 和解释方式：
+生成的 `exception_metadata.npy` 会标注每个数组的 `role`、`index`、payload 偏移、地址、dtype、shape 和解释方式：
 
 - 文件名携带已支持 dtype：按该 dtype 保存。
 - BF16/FP8 等 NumPy 无法稳定直接表示的格式：用 `uint16`/`uint8` 保存原始位模式，标记 `raw_bits`。
 - dtype 为 `undefined` 或未携带 dtype：用 `uint8` 无损保存，标记 `raw_bytes`。
-- 自动导出的 shape 是文件的一维存储 shape；真实逻辑 shape 仍需结合算子输入和 TilingData reshape。
+- 异常头中的 shape 与实际元素个数一致时，NPY 直接保存该多维 shape；不一致时按一维无损保存并在元数据中同时保留逻辑 shape。
 
 对象型结果使用 `allow_pickle=True` 查看：
 
@@ -343,16 +333,9 @@ python3 parse_mc2_dump.py mmrs /path/to/dump
 - 算子名或别名是否正确。
 - Dump 配置是否开启了 TilingData、Args 或 Workspace 分段导出。
 
-### 找到 `msaicerr.py`，但提示 `libascend_dump_parser.so` 无法加载
+### exception_info 提示 protobuf headerLength 无效
 
-这表示 Python 脚本路径正确，但 CANN 动态库环境没有加载。统一入口会先尝试自动 `source` 与 `msaicerr.py` 同一安装目录的 `set_env.sh`，并在新进程中重试。只有无法自动定位环境脚本时，才需要手工执行：
-
-```bash
-source /usr/local/Ascend/cann/set_env.sh   # 以机器上的实际路径为准
-python3 parse_mc2_dump.py mmrs /path/to/dump
-```
-
-统一入口会检查 `msaicerr` 是否真正生成了 input/output/workspace 张量；如果没有产出，会直接提示环境问题并停止该 exception 的 NPY 导出，不再继续产生第二个“没有找到张量文件”的报错。
+说明该文件不完整，或并非本工具支持的 `DumpData` 异常容器。先核对文件是否传输完整，并检查文件开头 8 字节记录的 headerLength 是否小于 `文件大小 - 8`。该错误与 CANN 环境变量无关。
 
 ### `workspace_seg2_type12` 为什么不是矩阵结果？
 
