@@ -24,13 +24,14 @@ const int64_t MAX_DIM_SIZE = 8;
 
 at::Tensor FlashAttnMetadata(const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensKv,
                              const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedKv,
-                             int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t batchSize,
-                             int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t maskMode, int64_t winLeft,
-                             int64_t winRight, std::string layoutQ, std::string layoutKv, std::string layoutOut,
-                             const at::Tensor &output)
+                             int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t headDimV,
+                             int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t maskMode,
+                             int64_t winLeft, int64_t winRight, std::string layoutQ, std::string layoutKv,
+                             std::string layoutOut, const at::Tensor &output)
 {
     ACLNN_CMD(aclnnFlashAttnMetadata, cuSeqlensQ, cuSeqlensKv, sequsedQ, sequsedKv, batchSize, maxSeqlenQ, maxSeqlenKv,
-              numHeadsQ, numHeadsKv, headDim, maskMode, winLeft, winRight, layoutQ, layoutKv, layoutOut, output);
+              numHeadsQ, numHeadsKv, headDim, headDimV, maskMode, winLeft, winRight, layoutQ, layoutKv, layoutOut,
+              output);
     return output;
 }
 
@@ -65,6 +66,16 @@ std::tuple<at::Tensor, at::Tensor> FlashAttn(
         sSize = q.size(2);
         dSize = q.size(3);
     }
+    // attention_out 的 D 维取 v 的 head_dim（支持 qk != v）
+    // PA_NZ 布局 v 为 (blocks, N2, D/16, block_size, 16)，D = dim2*dim4；TND 为 (T,N,D)
+    int64_t dSizeV = dSize;
+    if (v.dim() == DIM_THREE) {
+        dSizeV = v.size(DIM_TWO);
+    } else if (layoutKv == "PA_NZ") {
+        dSizeV = v.size(DIM_TWO) * v.size(v.dim() - 1);
+    } else {
+        dSizeV = v.size(v.dim() - 1);
+    }
     if (returnSoftmaxLse) {
         if (q.dim() == DIM_THREE) {
             softmaxOutSize = {nSize, tSize};
@@ -77,11 +88,11 @@ std::tuple<at::Tensor, at::Tensor> FlashAttn(
     at::Tensor softmaxLse = at::empty(softmaxOutSize, q.options().dtype(at::kFloat));
 
     if (layoutOut == "TND") {
-        attentionOutSize = {tSize, nSize, dSize};
+        attentionOutSize = {tSize, nSize, dSizeV};
     } else if (layoutOut == "BNSD") {
-        attentionOutSize = {bSize, nSize, sSize, dSize};
+        attentionOutSize = {bSize, nSize, sSize, dSizeV};
     } else {
-        attentionOutSize = {bSize, sSize, nSize, dSize};
+        attentionOutSize = {bSize, sSize, nSize, dSizeV};
     }
     at::Tensor attentionOutput = at::empty(attentionOutSize, q.options().dtype(q.dtype()));
 

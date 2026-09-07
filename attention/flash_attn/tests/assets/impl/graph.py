@@ -28,6 +28,7 @@ def _resolve_max_seqlen(explicit):
 def _build_metadata(
     q,
     k,
+    v,
     *,
     cu_seqlens_q=None,
     cu_seqlens_kv=None,
@@ -45,6 +46,13 @@ def _build_metadata(
 ):
     """Build metadata from graph inputs without importing sibling assets."""
     head_dim = int(q.shape[-1])
+    # v 的 head_dim: TND (T,N,D) 取 index 2; PA_NZ (Bn,N2,D/16,Bs,16) 取 dim2*dim4; 其余布局 D 在 index 3
+    if layout_kv == "TND":
+        head_dim_v = int(v.shape[2])
+    elif layout_kv == "PA_NZ":
+        head_dim_v = int(v.shape[2]) * int(v.shape[4])
+    else:
+        head_dim_v = int(v.shape[3])
     if layout_q in ("TND", "BNSD"):
         num_heads_q = int(q.shape[1])
     else:
@@ -61,6 +69,7 @@ def _build_metadata(
         num_heads_q,
         num_heads_kv,
         head_dim,
+        head_dim_v=head_dim_v,
         cu_seqlens_q=cu_seqlens_q,
         cu_seqlens_kv=cu_seqlens_kv,
         seqused_q=seqused_q,
@@ -131,6 +140,7 @@ class FlashAttnAclGraph(torch.nn.Module):
         metadata = _build_metadata(
             q,
             k,
+            v,
             cu_seqlens_q=cu_seqlens_q,
             cu_seqlens_kv=cu_seqlens_kv,
             seqused_q=seqused_q,

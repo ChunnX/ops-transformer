@@ -237,22 +237,27 @@ ge::graphStatus CommonChecker::CheckAxis(const FaTilingInfo &faInfo)
                                                       "S of key/value must be greater than 0"),
                 return ge::GRAPH_FAILED);
 
-    const std::vector<int64_t> supportedHeadDims = {64, 72, 128, 256};
+    const std::vector<int64_t> supportedHeadDims = {64, 72, 128, 192, 256};
     OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(faInfo.qkHeadDim, supportedHeadDims),
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
                     faInfo.opName, "axis D of query and key", std::to_string(faInfo.qkHeadDim).c_str(),
-                    "The value of axis D of query and key can only be 64/72/128/256"),
+                    "The value of axis D of query and key can only be 64/72/128/192/256"),
                 return ge::GRAPH_FAILED);
+    const std::vector<int64_t> supportedVHeadDims = {64, 72, 128, 256};
     OP_CHECK_IF(
-        ge::GRAPH_SUCCESS != CheckValueSupport(faInfo.vHeadDim, supportedHeadDims),
+        ge::GRAPH_SUCCESS != CheckValueSupport(faInfo.vHeadDim, supportedVHeadDims),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "axis D of value", std::to_string(faInfo.vHeadDim).c_str(),
                                               "The value of axis D of value can only be 64/72/128/256"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(faInfo.qkHeadDim != faInfo.vHeadDim,
+    // 组合白名单：qk==v（受上方白名单约束，等价于 (64,64)/(72,72)/(128,128)/(256,256)）或 (192,128)（MLA qk!=v）
+    const bool isSupportedDimComb =
+        (faInfo.qkHeadDim == faInfo.vHeadDim) || (faInfo.qkHeadDim == 192 && faInfo.vHeadDim == 128);
+    OP_CHECK_IF(!isSupportedDimComb,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     faInfo.opName, "axis D of query/key and value",
                     (std::to_string(faInfo.qkHeadDim) + " and " + std::to_string(faInfo.vHeadDim)).c_str(),
-                    "The value of axis D of query/key must be equal to the value of axis D of value"),
+                    "The (head_dim of query/key, head_dim of value) combination is not supported, supported: "
+                    "(64,64), (72,72), (128,128), (256,256), (192,128)"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
