@@ -468,6 +468,21 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckAndSetSendRecvCountsAttr()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckTopK(uint64_t topK)
+{
+    // Only A3 AIV extends top-k. AICPU and other SoCs retain the common limits.
+    if (!isA3_ || !IsCapable()) {
+        return QuantGroupedMatmulAllToAllvTilingCommon::CheckTopK(topK);
+    }
+    constexpr uint64_t maxAivTopK = 16UL;
+    OP_TILING_CHECK(
+        topK < MIN_K_VALUE || topK > maxAivTopK,
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "K", std::to_string(topK),
+                                  "[" + std::to_string(MIN_K_VALUE) + ", " + std::to_string(maxAivTopK) + "]"),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckLocalParams()
 {
     MC2_CHECK_LOG_RET(opName_,

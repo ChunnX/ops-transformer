@@ -41,6 +41,7 @@ protected:
     ge::graphStatus CheckParamsAttrEpAndSetLocalParams() override;
     ge::graphStatus CheckAndSetSendRecvCountsAttr() override;
     ge::graphStatus CheckLocalParams() override;
+    ge::graphStatus CheckTopK(uint64_t topK) override;
     ge::graphStatus GetPlatformInfo() override;
     ge::graphStatus PostTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
