@@ -175,14 +175,14 @@ private:
                                                           int64_t ropeQrOffset, int64_t ropeQrResOffset);
     __aicore__ inline void DequantRopeSplitNDequantLoop(int64_t mmQnPreDequantOffset, int64_t mmQnPreDequantResOffset,
                                                         uint32_t colQc, uint32_t colQr, uint32_t colOffsetCube,
-                                                        uint32_t srcStride, uint32_t dstStride, uint32_t inputOffset,
-                                                        uint32_t outputOffset, uint32_t totalDequantLoops,
+                                                        uint32_t srcStride, uint32_t dstStride, uint32_t &inputOffset,
+                                                        uint32_t &outputOffset, uint32_t totalDequantLoops,
                                                         bool needSparseSync, uint32_t &colOffsetVec,
                                                         uint32_t &dequantLoopCount);
     __aicore__ inline void DequantRopeSplitNRopeLoop(int64_t ropeQrOffset, int64_t ropeQrResOffset, uint32_t colQc,
                                                      uint32_t colQr, uint32_t colOffsetCube, uint32_t ropeDstStride,
-                                                     uint32_t ropeCnt, int64_t ropeStride, uint32_t inputOffsetRope,
-                                                     uint32_t outputOffsetRope, uint32_t deqScaleOffset,
+                                                     uint32_t ropeCnt, int64_t ropeStride, uint32_t &inputOffsetRope,
+                                                     uint32_t &outputOffsetRope, uint32_t &deqScaleOffset,
                                                      uint32_t deQuantScaleCqOffset, uint32_t &colOffsetRope);
     __aicore__ inline void DynamicQuantQnAndMulQrSyncMMQn(int64_t batchOffset, int64_t curStepBatchSize,
                                                           int64_t numHeadOffset, int64_t mmQnLoops);
