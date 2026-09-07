@@ -107,6 +107,9 @@ builtin 仅重定位 stage 的父工程安装 metadata，bundle 和生成 C++ �
 `op_impl/cannbotdsl -> ../opp/built-in/op_impl/cannbotdsl`。实际资源仍在 builtin
 OPP；相对链接随官方安装/卸载清单维护。将来 framework 支持配置 builtin
 资源根后可去掉这条兼容链接，不需要改变算子数学。
+当前包拥有整个 `opp/built-in/op_impl/cannbotdsl` 资源目录；尚未验证与其他
+共享该目录的 builtin Provider 组件共存。多组件集成前需按算子隔离文件清单
+所有权，避免一个组件卸载其他组件资源。
 
 正式 builtin 包名中的 `9.1.0` 来自本仓 `version.cmake` 的组件版本，和运行
 环境 CANN 9.2 是两个独立版本。验收必须优先加载匹配 framework run 中支持
@@ -135,3 +138,22 @@ python cannbotdsl_ops/tests/test_flash_kda.py \
 那次为 6×2，通过的 output/state 最大绝对误差分别为
 0.0030694007873535156 / 0.0043270885944366455，未覆盖全部六条冻结 route。
 早期小父 OPP 产物只作为历史证据保留，本目录不再提供该打包入口。
+
+2026-09-07 整理后的正式 builtin 使用 ops 提交 `2499e5ac75b884b2af44aa24e650b011a56a5500`
+和 cmake-zyh 提交 `3e65fd76b88796d2cba0b748e2b3487fc102da88` 构建，NPU0
+移位安装后 8×2 全量精度通过；最大 output/state 误差仍分别为
+0.0030694007873535156 / 0.0043270885944366455。
+
+| 本轮证据 | 绝对路径 |
+| --- | --- |
+| builtin 包与源码身份 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.JTJCiN/result.json` |
+| builtin 安装后完整精度与实际加载库 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.JTJCiN/installed-validation.tMgUQ9/result.json` |
+| 官方卸载与软链清理 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.JTJCiN/uninstall-probe.log` |
+| custom 正式 package 构建回归 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.9lcn8s/result.json` |
+| 单一测试的四项 native 负例 | `/home/z00947297/run_toolkit/repro-transformer-flash-kda.3DZJTH/single-test-negative/report.json` |
+
+builtin run SHA-256 为 `fa7cd502ec3143a4ece06e358017e17251e6417a672bada68e30d46199d29ab1`。
+当前源码重新冻结后 bundle identity 仍为
+`0f62297b7093158aaf374f922fd32ba8b44eb1019cd21c3527970eacd26d03af`，证明清理未改变
+冻结设备产物。本轮 custom 回归验证了打包构建，custom 数值沿用前轮证据，
+没有把 builtin 数值结果记成一次新的 custom 数值运行。
