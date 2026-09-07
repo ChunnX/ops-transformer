@@ -22,68 +22,112 @@ namespace FaVectorApi {
 static constexpr Reg::CastTrait castTraitFp16_32_update = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
                                                            Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 constexpr uint16_t REDUCE_SIZE = 1;
-template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre,
-          bool isMlaFullQuant>
-__simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float *dstUb, __ubuf__ float *curUb, __ubuf__ float *preUb,
-                                           __ubuf__ float *expMaxUb, __ubuf__ float *rowMaxUb, const uint16_t m,
-                                           const uint16_t d, const float deScaleV, const float deScaleVPre)
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre, bool isMlaFullQuant>
+__simd_vf__ inline void FlashUpdateBasicVF64(__ubuf__ float * dstUb, __ubuf__ float * curUb, __ubuf__ float * preUb,
+    __ubuf__ float * expMaxUb, __ubuf__ float * rowMaxUb, const uint16_t m, const uint16_t d,
+    const float deScaleV, const float deScaleVPre)
+{
+    RegTensor<float> vreg_exp_max;
+    RegTensor<float> vreg_input_pre;
+    RegTensor<float> vreg_input_cur;
+
+    MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
+
+    // dstTensor = preTensor * expMaxTensor + curTensor, dLoops=1, 展开 j 循环
+    for (uint16_t i = 0; i < m; ++i) {
+        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);
+
+        LoadAlign(vreg_input_pre, preUb + i * d);
+        LoadAlign(vreg_input_cur, curUb + i * d);
+        FusedMulDstAdd(vreg_input_pre, vreg_exp_max, vreg_input_cur, preg_all);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+            (__ubuf__ T *&)dstUb + i * d, vreg_input_pre, preg_all);
+    }
+}
+
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre, bool isMlaFullQuant>
+__simd_vf__ inline void FlashUpdateBasicVF128(__ubuf__ float * dstUb, __ubuf__ float * curUb, __ubuf__ float * preUb,
+    __ubuf__ float * expMaxUb, __ubuf__ float * rowMaxUb, const uint16_t m, const uint16_t d,
+    const float deScaleV, const float deScaleVPre)
+{
+    constexpr uint16_t floatRepSize = 64;
+    RegTensor<float> vreg_exp_max;
+    RegTensor<float> vreg_input_pre;
+    RegTensor<float> vreg_input_cur;
+    RegTensor<float> vreg_input_pre_unroll;
+    RegTensor<float> vreg_input_cur_unroll;
+
+    MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
+
+    // dstTensor = preTensor * expMaxTensor + curTensor, dLoops=2, 展开 j 循环
+    for (uint16_t i = 0; i < m; ++i) {
+        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);
+        LoadAlign(vreg_input_pre, preUb + i * d);
+        LoadAlign(vreg_input_pre_unroll, preUb + i * d + floatRepSize);
+        LoadAlign(vreg_input_cur, curUb + i * d);
+        LoadAlign(vreg_input_cur_unroll, curUb + i * d + floatRepSize);
+
+        FusedMulDstAdd(vreg_input_pre, vreg_exp_max, vreg_input_cur, preg_all);
+        FusedMulDstAdd(vreg_input_pre_unroll, vreg_exp_max, vreg_input_cur_unroll, preg_all);
+
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+            (__ubuf__ T *&)dstUb + i * d, vreg_input_pre, preg_all);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+            (__ubuf__ T *&)dstUb + i * d + floatRepSize, vreg_input_pre_unroll, preg_all);
+    }
+}
+
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre, bool isMlaFullQuant>
+__simd_vf__ inline void FlashUpdateBasicVF256(__ubuf__ float * dstUb, __ubuf__ float * curUb, __ubuf__ float * preUb,
+    __ubuf__ float * expMaxUb, __ubuf__ float * rowMaxUb, const uint16_t m, const uint16_t d,
+    const float deScaleV, const float deScaleVPre)
 {
     constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t dLoops = srcD / floatRepSize;
     RegTensor<float> vreg_exp_max;
-    RegTensor<float> vreg_row_max;
     RegTensor<float> vreg_input_pre;
     RegTensor<float> vreg_input_cur;
-    RegTensor<float> vreg_mul;
-    RegTensor<float> vreg_add;
 
     MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
 
-    // dstTensor = preTensor * expMaxTensor + curTensor
+    // dstTensor = preTensor * expMaxTensor + curTensor, dLoops=4, 保留 2 层 for 循环
     for (uint16_t i = 0; i < m; ++i) {
-        LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize); // [m,8]
-        if constexpr (isMlaFullQuant) {
-            LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_row_max, rowMaxUb + i * reduceSize);
-        }
+        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);
 
         for (uint16_t j = 0; j < dLoops; ++j) {
             LoadAlign(vreg_input_pre, preUb + i * d + j * floatRepSize);
             LoadAlign(vreg_input_cur, curUb + i * d + j * floatRepSize);
-            if constexpr (isMlaFullQuant) {
-                Mul(vreg_input_cur, vreg_input_cur, vreg_row_max, preg_all);
-            }
-            Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
-            if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                          IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value) {
-                Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
-                if constexpr (isUpdatePre) {
-                    Muls(vreg_mul, vreg_mul, deScaleVPre, preg_all);
-                }
-            }
-            Add(vreg_add, vreg_mul, vreg_input_cur, preg_all);
-            StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_add,
-                                                         preg_all);
+            FusedMulDstAdd(vreg_input_pre, vreg_exp_max, vreg_input_cur, preg_all);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                (__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_input_pre, preg_all);
         }
     }
 }
+
 /* **************************************************************************************************
  * FlashUpdate, fp32
  * ************************************************************************************************* */
-template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre,
-          bool isMlaFullQuant>
-__aicore__ inline void FlashUpdateBasic(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
-                                        const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
-                                        const LocalTensor<T> &rowMaxTensor, const uint16_t m, const uint16_t d,
-                                        const float deScaleV, const float deScaleVPre)
+template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre, bool isMlaFullQuant>
+__aicore__ inline void FlashUpdateBasic(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor,
+    const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& rowMaxTensor,
+    const uint16_t m, const uint16_t d, const float deScaleV, const float deScaleVPre)
 {
-    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
-    __ubuf__ float *curUb = (__ubuf__ T *)curTensor.GetPhyAddr();
-    __ubuf__ float *preUb = (__ubuf__ T *)preTensor.GetPhyAddr();
-    __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
-    __ubuf__ float *rowMaxUb = (__ubuf__ T *)rowMaxTensor.GetPhyAddr();
+    __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
+    __ubuf__ float * curUb = (__ubuf__ T*)curTensor.GetPhyAddr();
+    __ubuf__ float * preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
+    __ubuf__ float * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
+    __ubuf__ float * rowMaxUb = (__ubuf__ T*)rowMaxTensor.GetPhyAddr();
 
-    FlashUpdateBasicVF<T, INPUT_T, OUTPUT_T, srcD, reduceSize, isUpdatePre, isMlaFullQuant>(
-        dstUb, curUb, preUb, expMaxUb, rowMaxUb, m, d, deScaleV, deScaleVPre);
+    if constexpr (srcD == 64) {
+        FlashUpdateBasicVF64<T, INPUT_T, OUTPUT_T, srcD, reduceSize, isUpdatePre, isMlaFullQuant>(
+            dstUb, curUb, preUb, expMaxUb, rowMaxUb, m, d, deScaleV, deScaleVPre);
+    } else if constexpr (srcD == 128) {
+        FlashUpdateBasicVF128<T, INPUT_T, OUTPUT_T, srcD, reduceSize, isUpdatePre, isMlaFullQuant>(
+            dstUb, curUb, preUb, expMaxUb, rowMaxUb, m, d, deScaleV, deScaleVPre);
+    } else {
+        FlashUpdateBasicVF256<T, INPUT_T, OUTPUT_T, srcD, reduceSize, isUpdatePre, isMlaFullQuant>(
+            dstUb, curUb, preUb, expMaxUb, rowMaxUb, m, d, deScaleV, deScaleVPre);
+    }
 }
 
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t reduceSize, bool isUpdatePre>

@@ -3177,6 +3177,36 @@ __aicore__ inline void BroadcastMaxSum(const LocalTensor<T> &outTensor, const Lo
     BroadCastMaxSumVF<T>(out_ub, ori_ub, loopM);
 }
 
+template <typename T, uint16_t elementCount>
+__simd_vf__ inline void ResetSoftmaxBufferVF(__ubuf__ T *sum_ub, __ubuf__ T *max_ub, const T sumValue,
+                                              const T minValue)
+{
+    RegTensor<T> vreg_sum;
+    RegTensor<T> vreg_max;
+    MaskReg preg_all = CreateMask<T, MaskPattern::ALL>();
+
+    Duplicate(vreg_sum, sumValue);
+    Duplicate(vreg_max, minValue);
+
+    // 一个寄存器可存 64 个 float 元素，按 64 元素为一组循环写出
+    constexpr uint16_t elemPerReg = 64U;
+    constexpr uint16_t loopCount = elementCount / elemPerReg;
+    for (uint16_t i = 0; i < loopCount; ++i) {
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(sum_ub + i * elemPerReg, vreg_sum, preg_all);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(max_ub + i * elemPerReg, vreg_max, preg_all);
+    }
+}
+
+template <typename T, uint32_t elementCount>
+__aicore__ inline void ResetSoftmaxBuffer(const LocalTensor<T>& sumTensor, const LocalTensor<T>& maxTensor,
+                                          const T sumValue, const T minValue)
+{
+    __ubuf__ T *sum_ub = (__ubuf__ T*)sumTensor.GetPhyAddr();
+    __ubuf__ T *max_ub = (__ubuf__ T*)maxTensor.GetPhyAddr();
+    ResetSoftmaxBufferVF<T, static_cast<uint16_t>(elementCount)>(sum_ub, max_ub, sumValue, minValue);
+}
+
+
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false>
 __simd_vf__ inline void ProcessVec1DnNoUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
                                                     __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
