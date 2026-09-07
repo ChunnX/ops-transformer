@@ -55,6 +55,7 @@ private:
     using MegaMoeBase::countWorkspace_;
     using MegaMoeBase::epilogueOp_;
     using MegaMoeBase::gmmExecutionConfig_;
+    using MegaMoeBase::gmmTileSequence_;
     using MegaMoeBase::mGroupsPerWave_;
     using MegaMoeBase::moeWeightTensorListAddrs_;
     using MegaMoeBase::params_;
@@ -120,7 +121,6 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
         combineBufferConfig = InitWaveCombineBuffers<CombineQuantMode>(commonConfig_, waveCombineScratch_);
     }
     uint32_t combineRowSequence = 0U;
-    int32_t pairwiseTileSequence = 0;
 
     ExpertLoopState gmm1State = CreateExpertLoopState(commonConfig_);
     ExpertLoopState gmm2State = CreateExpertLoopState(commonConfig_);
@@ -238,7 +238,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                                       sliceTokenEndIndexInExpert >= expertTokenCount;
                 // W4 的 GMM2/Combine 调度集中在基类，派生模板只负责提供当前专家 slice。
                 RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx_, sliceTokenStartIndexInExpert,
-                                        sliceTokenCount, combineBufferConfig, combineRowSequence, pairwiseTileSequence,
+                                        sliceTokenCount, combineBufferConfig, combineRowSequence, gmmTileSequence_,
                                         isFinalCombine);
             }
         }
