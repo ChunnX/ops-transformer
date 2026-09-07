@@ -169,7 +169,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
 
-    // GMM1、GMM2 与后续共享专家 GMM2 沿用同一分核游标，按 tile 顺序持续滚动。
+    // MoE GMM1 与 GMM2 沿用同一分核游标，按 tile 顺序持续滚动。
 
     const uint32_t gmm1TilesPerMGroup =
         Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF, static_cast<uint32_t>(L1_TILE_N));

@@ -128,7 +128,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     GMMAddrInfo gmm2AddrInfo{};
 
     // 同一 Block 内绑定的 1C2V 各自持有分核游标，按相同调用顺序推进并始终保持一致；
-    // GMM1、GMM2 与后续共享专家 GMM2 均沿用该游标持续滚动。
+    // MoE GMM1 与 GMM2 沿用该游标持续滚动。
     int32_t vecSetSyncCom = 0;
     uint16_t gmm1PingPongIdx = 0U;
     GmmRuntimeState gmm1RuntimeState{startBlockIdx_, vecSetSyncCom, gmm1PingPongIdx};
