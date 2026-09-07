@@ -64,12 +64,8 @@ set(ARCH_DIRECTORY_LIST arch20 arch22 arch22 arch35 arch38 arch22 arch22)
 set(BISHENG_FLAGS "" CACHE STRING "bisheng compiler flags")
 set(ENABLE_AICPU_KERNEL FALSE CACHE BOOL "Enable AICPU Kernel")
 set(PACKAGE_TYPE "run" CACHE STRING "package type: run/rpm/deb/all")
-set(CANNBOTDSL_SOURCE_DIR "" CACHE PATH
-    "CANNBotDSL source tree providing package CMake integration")
-set(CANNBOTDSL_RUNTIME_ROOT "" CACHE PATH
-    "Built CANNBotDSL Python runtime root containing cannbotdsl/package/cli.py")
-set(CANNBOTDSL_PROVIDER_OPBASE_LIBRARY "" CACHE FILEPATH
-    "Provider ABI v1 libnnopbase.so used to validate and link the mixed package")
+# Frozen operators consume the installed CANNBotFramework package and
+# FLASH_KDA_FROZEN_STAGE; operator Python is compiled before configuring here.
 set_property(CACHE PACKAGE_TYPE PROPERTY STRINGS run rpm deb all)
 
 if(CANNBOTDSL_PROVIDER_ONLY)

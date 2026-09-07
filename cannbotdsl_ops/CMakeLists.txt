@@ -1,189 +1,49 @@
-if(NOT CANNBOTDSL_SOURCE_DIR)
-  get_filename_component(_cannbotdsl_sibling
-    "${CMAKE_SOURCE_DIR}/../cannbot-dsl" ABSOLUTE)
-  if(EXISTS "${_cannbotdsl_sibling}/cmake/CANNBotDSLOperatorPackage.cmake")
-    set(CANNBOTDSL_SOURCE_DIR "${_cannbotdsl_sibling}")
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# Licensed under the CANN Open Software License Agreement Version 2.0.
+cmake_minimum_required(VERSION 3.20)
+
+# This directory is also a small standalone parent OPP for binary acceptance.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  project(FlashKdaFrozenOperator LANGUAGES CXX)
+endif()
+
+set(FLASH_KDA_FROZEN_STAGE "" CACHE PATH "Verified cannbot_framework FlashKda stage")
+set(CANNBotDSL_NPU_ARCH "dav-3510" CACHE STRING "Architecture of the frozen bundle")
+set(NNOPBASE_LIBRARY "" CACHE FILEPATH "External Task opbase shared library")
+set(NNOPBASE_INCLUDE_DIR "" CACHE PATH "Directory containing opdev/external_op_task.h")
+
+if(NOT EXISTS "${FLASH_KDA_FROZEN_STAGE}/stage.json")
+  message(FATAL_ERROR "FLASH_KDA_FROZEN_STAGE must contain a verified frozen stage")
+endif()
+if(NOT TARGET nnopbase)
+  if(NOT EXISTS "${NNOPBASE_LIBRARY}" OR
+     NOT EXISTS "${NNOPBASE_INCLUDE_DIR}/opdev/external_op_task.h")
+    message(FATAL_ERROR "Supply External Task NNOPBASE_LIBRARY and NNOPBASE_INCLUDE_DIR")
   endif()
-endif()
-if(NOT EXISTS "${CANNBOTDSL_SOURCE_DIR}/cmake/CANNBotDSLOperatorPackage.cmake")
-  message(FATAL_ERROR
-    "ENABLE_CANNBOTDSL_PROVIDER_ACLNN requires CANNBOTDSL_SOURCE_DIR")
-endif()
-if(NOT CANNBOTDSL_RUNTIME_ROOT)
-  set(CANNBOTDSL_RUNTIME_ROOT
-    "${CANNBOTDSL_SOURCE_DIR}/build/python_packages")
-endif()
-if(NOT EXISTS "${CANNBOTDSL_RUNTIME_ROOT}/cannbotdsl/package/cli.py")
-  message(FATAL_ERROR
-    "CANNBOTDSL_RUNTIME_ROOT must contain cannbotdsl/package/cli.py: "
-    "${CANNBOTDSL_RUNTIME_ROOT}")
-endif()
-if(NOT "${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
-  message(FATAL_ERROR
-    "FlashKDA Provider package currently requires ASCEND_COMPUTE_UNIT=ascend950")
+  add_library(nnopbase SHARED IMPORTED)
+  set_target_properties(nnopbase PROPERTIES
+    IMPORTED_LOCATION "${NNOPBASE_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${NNOPBASE_INCLUDE_DIR};$ENV{ASCEND_HOME_PATH}/include;$ENV{ASCEND_HOME_PATH}/include/aclnn;$ENV{ASCEND_HOME_PATH}/include/experiment")
 endif()
 
-include("${CANNBOTDSL_SOURCE_DIR}/cmake/CANNBotDSLOperatorPackage.cmake")
-
-set(_cannbotdsl_delivery_dir "${CMAKE_BINARY_DIR}/cannbotdsl_flash_kda_delivery")
-set(_cannbotdsl_stage_dir "${_cannbotdsl_delivery_dir}/component")
-set(_cannbotdsl_registry_dir "${_cannbotdsl_delivery_dir}/generated")
-cannbotdsl_add_acl_operator(
-  TARGET cannbotdsl_provider_aclnn_registry
-  SOURCE "${CMAKE_CURRENT_LIST_DIR}/attention/flash_kda/flash_kda.py"
-  ENTRY "FlashKda"
-  OPERATOR "ops-transformer::attention/flash_kda"
-  PACKAGE_NAME "ops-transformer-flash-kda"
-  VERSION "0.1.0"
-  VENDOR "ops-transformer"
-  TARGET_SOC "ascend950pr"
-  NPU_ARCH "dav-3510"
-  ARTIFACT "provider_dso_v1"
-  OUTPUT_DIR "${_cannbotdsl_delivery_dir}"
-  RUNTIME_ROOT "${CANNBOTDSL_RUNTIME_ROOT}"
-  INSTALL_DESTINATION
-    "packages/vendors/${VENDOR_NAME}_transformer/op_impl/cannbotdsl"
-  LIBRARY_INSTALL_DESTINATION
-    "packages/vendors/${VENDOR_NAME}_transformer/op_api/lib")
-
-set(CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR "" CACHE PATH
-  "opbase source tree containing opdev/provider_kernel.h")
-if(NOT CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR AND
-   EXISTS "${CMAKE_SOURCE_DIR}/../opbase/include/nnopbase/opdev/provider_kernel.h")
-  get_filename_component(CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR
-    "${CMAKE_SOURCE_DIR}/../opbase" ABSOLUTE)
+find_package(CANNBotFramework CONFIG REQUIRED)
+cannbot_framework_add_frozen_bundle(flash_kda_frozen DIRECTORY "${FLASH_KDA_FROZEN_STAGE}")
+if(NOT TARGET cust_opapi)
+  add_library(cust_opapi SHARED)
+  set_target_properties(cust_opapi PROPERTIES INSTALL_RPATH "$ORIGIN")
+  install(TARGETS cust_opapi LIBRARY DESTINATION packages/vendors/custom_transformer/op_api/lib)
+  install(FILES "${NNOPBASE_LIBRARY}" DESTINATION packages/vendors/custom_transformer/op_api/lib)
+  install(PROGRAMS "${CMAKE_CURRENT_LIST_DIR}/install.sh" DESTINATION .)
 endif()
-if(NOT EXISTS
-   "${CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR}/include/nnopbase/opdev/provider_kernel.h")
-  message(FATAL_ERROR
-    "Provider ACLNN requires an opbase tree with opdev/provider_kernel.h")
-endif()
+target_link_libraries(cust_opapi PRIVATE flash_kda_frozen)
 
-if(NOT CANNBOTDSL_PROVIDER_OPBASE_LIBRARY)
-  set(_cannbotdsl_installed_nnopbase
-    "${ASCEND_CANN_PACKAGE_PATH}/lib64/libnnopbase.so")
-  if(EXISTS "${_cannbotdsl_installed_nnopbase}")
-    set(CANNBOTDSL_PROVIDER_OPBASE_LIBRARY
-      "${_cannbotdsl_installed_nnopbase}")
-  endif()
-endif()
-if(NOT EXISTS "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}")
-  message(FATAL_ERROR
-    "Provider ACLNN requires CANNBOTDSL_PROVIDER_OPBASE_LIBRARY to name "
-    "a Provider ABI v1 libnnopbase.so")
-endif()
-get_filename_component(CANNBOTDSL_PROVIDER_OPBASE_LIBRARY
-  "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}" REALPATH)
-
-set(_cannbotdsl_abi_probe
-  "${CMAKE_BINARY_DIR}/cannbotdsl_provider_abi_probe.cpp")
-file(WRITE "${_cannbotdsl_abi_probe}"
-  "namespace op { void RequireProviderAclnnRuntimeAbiV1(); }\n"
-  "int main() { op::RequireProviderAclnnRuntimeAbiV1(); return 0; }\n")
-try_compile(_cannbotdsl_has_provider_abi_v1
-  "${CMAKE_BINARY_DIR}/cannbotdsl_provider_abi_probe"
-  SOURCES "${_cannbotdsl_abi_probe}"
-  LINK_LIBRARIES "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}"
-  OUTPUT_VARIABLE _cannbotdsl_abi_probe_log)
-if(NOT _cannbotdsl_has_provider_abi_v1)
-  message(FATAL_ERROR
-    "libnnopbase.so does not provide Provider ACLNN runtime ABI v1: "
-    "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}\n"
-    "${_cannbotdsl_abi_probe_log}")
-endif()
-message(STATUS "Validated Provider ACLNN runtime ABI v1: "
-  "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}")
-
-if(NOT TARGET ${OPHOST_NAME}_opapi_obj)
-  add_opapi_modules()
-endif()
-set_source_files_properties(
-  "${CANNBOTDSL_PROVIDER_ACLNN_REGISTRY_SOURCE}"
-  "${CANNBOTDSL_PROVIDER_ACLNN_ADAPTER_SOURCE}"
-  TARGET_DIRECTORY ${OPHOST_NAME}_opapi_obj
-  PROPERTIES GENERATED TRUE)
-target_sources(${OPHOST_NAME}_opapi_obj PRIVATE
-  "${CANNBOTDSL_PROVIDER_ACLNN_REGISTRY_SOURCE}"
-  "${CANNBOTDSL_PROVIDER_ACLNN_ADAPTER_SOURCE}"
-  "${CMAKE_CURRENT_LIST_DIR}/custom_flash_kda.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/flash_kda_l0.cpp")
-add_dependencies(${OPHOST_NAME}_opapi_obj
-  cannbotdsl_provider_aclnn_registry)
-target_include_directories(${OPHOST_NAME}_opapi_obj BEFORE PRIVATE
-  "${CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR}/include/nnopbase"
-  "${_cannbotdsl_registry_dir}"
-  "${CMAKE_CURRENT_LIST_DIR}")
-target_link_libraries(cust_opapi PRIVATE
-  "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}")
-
-install(FILES
-  "${CMAKE_CURRENT_LIST_DIR}/aclnn_custom_flash_kda.h"
-  "${CMAKE_CURRENT_LIST_DIR}/aclnn_flash_kda.h"
-  DESTINATION "${ACLNN_INC_INSTALL_DIR}")
-
-option(CANNBOTDSL_BUILD_FLASH_KDA_ACLNN_SMOKE
-  "Build the FlashKDA ACLNN device smoke executable" OFF)
-if(CANNBOTDSL_BUILD_FLASH_KDA_ACLNN_SMOKE)
-  find_library(_cannbotdsl_ascendcl_library ascendcl
-    PATHS
-      "${ASCEND_CANN_PACKAGE_PATH}/lib64"
-      "${ASCEND_CANN_PACKAGE_PATH}/${CMAKE_SYSTEM_PROCESSOR}-linux/lib64"
-    NO_DEFAULT_PATH REQUIRED)
-  add_executable(cannbotdsl_flash_kda_aclnn_smoke
-    "${CMAKE_CURRENT_LIST_DIR}/tests/flash_kda_aclnn_smoke.cpp")
-  add_dependencies(cannbotdsl_flash_kda_aclnn_smoke cust_opapi)
-  target_compile_features(cannbotdsl_flash_kda_aclnn_smoke PRIVATE cxx_std_17)
-  target_include_directories(cannbotdsl_flash_kda_aclnn_smoke PRIVATE
-    "${CMAKE_CURRENT_LIST_DIR}"
-    "${_cannbotdsl_registry_dir}"
-    "${CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR}/include/aclnnop"
-    "${ASCEND_CANN_PACKAGE_PATH}/include"
-    "${ASCEND_CANN_PACKAGE_PATH}/${CMAKE_SYSTEM_PROCESSOR}-linux/include")
-  target_link_libraries(cannbotdsl_flash_kda_aclnn_smoke PRIVATE
-    cust_opapi
-    opapi_math
-    "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}"
-    "${_cannbotdsl_ascendcl_library}")
-
-  set(CANNBOTDSL_FLASH_KDA_ACCEPTANCE_RUN "" CACHE FILEPATH
-    "Final mixed .run package consumed by the FlashKDA device acceptance target")
-  set(CANNBOTDSL_FLASH_KDA_ACCEPTANCE_REPORT
-    "${CMAKE_BINARY_DIR}/flash_kda_acceptance.json" CACHE FILEPATH
-    "Machine-readable FlashKDA device acceptance report")
-  if(CANNBOTDSL_FLASH_KDA_ACCEPTANCE_RUN)
-    if(NOT IS_ABSOLUTE "${CANNBOTDSL_FLASH_KDA_ACCEPTANCE_RUN}" OR
-       NOT IS_ABSOLUTE "${CANNBOTDSL_FLASH_KDA_ACCEPTANCE_REPORT}")
-      message(FATAL_ERROR
-        "FlashKDA acceptance .run and report paths must be absolute")
-    endif()
-    find_package(Python3 REQUIRED COMPONENTS Interpreter)
-    if(CANNBOTDSL_PROVIDER_ONLY)
-      set(_cannbotdsl_package_mode provider-only)
-      set(_cannbotdsl_expected_traditional_kernel_count 0)
-      set(_cannbotdsl_acceptance_description
-        "Running final FlashKDA Provider-only device acceptance")
-    else()
-      set(_cannbotdsl_package_mode mixed)
-      set(_cannbotdsl_expected_traditional_kernel_count 8)
-      set(_cannbotdsl_acceptance_description
-        "Running final FlashKDA mixed-package device acceptance")
-    endif()
-    add_custom_target(cannbotdsl_flash_kda_acceptance
-      COMMAND "${Python3_EXECUTABLE}"
-        "${CMAKE_CURRENT_LIST_DIR}/tests/run_flash_kda_acceptance.py"
-        --run "${CANNBOTDSL_FLASH_KDA_ACCEPTANCE_RUN}"
-        --package-mode ${_cannbotdsl_package_mode}
-        --smoke "$<TARGET_FILE:cannbotdsl_flash_kda_aclnn_smoke>"
-        --opbase-library "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}"
-        --cannbotdsl-source "${CANNBOTDSL_SOURCE_DIR}"
-        --runtime-root "${CANNBOTDSL_RUNTIME_ROOT}"
-        --library-dir "$<TARGET_FILE_DIR:opapi_math>"
-        --report "${CANNBOTDSL_FLASH_KDA_ACCEPTANCE_REPORT}"
-        --expected-traditional-kernel-count
-          ${_cannbotdsl_expected_traditional_kernel_count}
-      DEPENDS cannbotdsl_flash_kda_aclnn_smoke
-      COMMENT "${_cannbotdsl_acceptance_description}"
-      USES_TERMINAL
-      VERBATIM)
-  endif()
+option(FLASH_KDA_BUILD_ACLNN_VALIDATOR "Build the frozen ACLNN binary validator" ON)
+if(FLASH_KDA_BUILD_ACLNN_VALIDATOR)
+  add_executable(flash_kda_aclnn_validate tests/flash_kda_frozen_validate.cpp)
+  target_compile_features(flash_kda_aclnn_validate PRIVATE cxx_std_17)
+  target_include_directories(flash_kda_aclnn_validate PRIVATE
+    "${FLASH_KDA_FROZEN_STAGE}/generated"
+    "$ENV{ASCEND_HOME_PATH}/include")
+  find_library(FLASH_KDA_ASCENDCL ascendcl PATHS "$ENV{ASCEND_HOME_PATH}/lib64" REQUIRED NO_DEFAULT_PATH)
+  target_link_libraries(flash_kda_aclnn_validate PRIVATE cust_opapi nnopbase "${FLASH_KDA_ASCENDCL}")
 endif()
