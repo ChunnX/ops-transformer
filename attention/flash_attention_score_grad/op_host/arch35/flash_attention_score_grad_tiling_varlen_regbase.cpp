@@ -158,6 +158,279 @@ inline int64_t CalTNDLineRounds(int64_t k, int64_t virtM, int64_t virtN, int64_t
                                                (CeilDivideBy(virtN * copies, k) * virtM);
 }
 
+/* ==========================================================================
+ * Optimal-round schedulers -- host mirror of deter.h.
+ *
+ * These MUST stay bit-identical to the device copies in
+ * op_kernel/arch35/deter.h, because the kernel re-derives the per-run mode
+ * from (k, m, n, p, q, copies) instead of reading it out of tiling data.
+ * If you change one side, change the other.
+ * ========================================================================== */
+
+constexpr uint8_t TND_MODE_BLOCKED = 0;
+constexpr uint8_t TND_MODE_COPYFLAT = 1;
+constexpr uint8_t TND_MODE_GROUPTRI = 2;
+constexpr uint8_t TND_MODE_TORUS = 3;
+constexpr uint8_t TND_MODE_TORUS_T = 4;
+
+inline int64_t TriSum(int64_t a)
+{
+    return a > 0 ? a * (a + 1) / NUM_TWO : 0;
+}
+
+inline int64_t BandRowLo(int64_t x, int64_t p)
+{
+    const int64_t v = x - p + 1;
+    return v > 1 ? v : 1;
+}
+
+inline int64_t BandRowHi(int64_t x, int64_t n, int64_t q)
+{
+    const int64_t v = x + q - 1;
+    return v < n ? v : n;
+}
+
+inline int64_t BandLastRow(int64_t m, int64_t n, int64_t p, int64_t q)
+{
+    const int64_t lim = n + p - 1;
+    return m < lim ? m : lim;
+}
+
+inline int64_t BandRowPrefix(int64_t m, int64_t n, int64_t p, int64_t q, int64_t x)
+{
+    const int64_t last = BandLastRow(m, n, p, q);
+    if (x > last) {
+        x = last;
+    }
+    if (x < 1) {
+        return 0;
+    }
+    int64_t b = n - q + 1;
+    if (b < 0) {
+        b = 0;
+    }
+    const int64_t t1 = x < b ? x : b;
+    const int64_t sumHi = TriSum(t1) + (q - 1) * t1 + n * (x - t1);
+    const int64_t t2 = x < p ? x : p;
+    const int64_t sumLo = t2 + ((x - t2) > 0 ? (TriSum(x - p + 1) - 1) : 0);
+    return sumHi - sumLo + x;
+}
+
+inline int64_t BandArea(int64_t m, int64_t n, int64_t p, int64_t q)
+{
+    if (m < 1 || n < 1 || p < 1 || q < 1) {
+        return 0;
+    }
+    return BandRowPrefix(m, n, p, q, BandLastRow(m, n, p, q));
+}
+
+inline int64_t BandRowLen(int64_t m, int64_t n, int64_t p, int64_t q, int64_t x)
+{
+    if (x < 1 || x > m) {
+        return 0;
+    }
+    const int64_t v = BandRowHi(x, n, q) - BandRowLo(x, p) + 1;
+    return v > 0 ? v : 0;
+}
+
+inline int64_t BandColLen(int64_t m, int64_t n, int64_t p, int64_t q, int64_t y)
+{
+    if (y < 1 || y > n) {
+        return 0;
+    }
+    int64_t lo = y - q + 1;
+    lo = lo > 1 ? lo : 1;
+    int64_t hi = y + p - 1;
+    hi = hi < m ? hi : m;
+    const int64_t v = hi - lo + 1;
+    return v > 0 ? v : 0;
+}
+
+inline int64_t BandDelta(int64_t m, int64_t n, int64_t p, int64_t q)
+{
+    if (m < 1 || n < 1) {
+        return 0;
+    }
+    const int64_t xs[6] = {1, p, n - q + 1, m, BandLastRow(m, n, p, q), (m + 1) / NUM_TWO};
+    const int64_t ys[5] = {1, q, m - p + 1, n, (n + 1) / NUM_TWO};
+    int64_t best = 0;
+    for (int64_t i = 0; i < 6; ++i) {
+        const int64_t v = BandRowLen(m, n, p, q, xs[i]);
+        if (v > best) {
+            best = v;
+        }
+    }
+    for (int64_t i = 0; i < 5; ++i) {
+        const int64_t v = BandColLen(m, n, p, q, ys[i]);
+        if (v > best) {
+            best = v;
+        }
+    }
+    return best;
+}
+
+inline int64_t CalTNDCopyFlatRounds(int64_t k, int64_t m, int64_t n, int64_t p, int64_t q, int64_t copies)
+{
+    if (k < 1 || copies < k) {
+        return 0;
+    }
+    const int64_t area = BandArea(m, n, p, q);
+    if (area <= 0) {
+        return 0;
+    }
+    return CeilDivideBy(area * copies, k);
+}
+
+inline void CalTNDGroupTriPlan(int64_t k, int64_t m, int64_t n, int64_t copies, int64_t &kp, int64_t &g,
+                               int64_t &roundsPerGroup, int64_t &rounds)
+{
+    kp = 0;
+    g = 0;
+    roundsPerGroup = 0;
+    rounds = 0;
+    if (k < 1 || m < 1 || n < 1 || copies < 1) {
+        return;
+    }
+    g = copies < k ? copies : k;
+    kp = k / g;
+    if (kp < 1) {
+        kp = 1;
+    }
+    roundsPerGroup = CalTNDSingleCausalRounds(kp, m, n);
+    if (roundsPerGroup <= 0) {
+        g = 0;
+        kp = 0;
+        return;
+    }
+    rounds = CeilDivideBy(copies, g) * roundsPerGroup;
+}
+
+inline bool CalTNDTorusSafe(int64_t k, int64_t vm, int64_t vn, int64_t copies)
+{
+    if (vm <= 0 || vn <= 0 || copies <= 1 || k < 1) {
+        return false;
+    }
+    const int64_t l = vn * copies;
+    if (k > l) {
+        return false;
+    }
+    if ((k < vn ? k : vn) > vm) {
+        return false;
+    }
+    return k <= l - vn;
+}
+
+inline int64_t CalTNDTorusRounds(int64_t k, int64_t vm, int64_t vn, int64_t copies)
+{
+    if (vm <= 0 || vn <= 0 || copies <= 0 || k < 1) {
+        return 0;
+    }
+    return CeilDivideBy(vm * vn * copies, k);
+}
+
+inline bool TNDBlockedSafe(int64_t k, int64_t vm, int64_t vn)
+{
+    if (vm <= 0 || vn <= 0) {
+        return false;
+    }
+    return vm >= (k < vn ? k : vn);
+}
+
+inline void CalTNDRunPlan(int64_t k, int64_t m, int64_t n, int64_t p, int64_t q, int64_t copies, bool allowGroupTri,
+                          int64_t vm, int64_t vn, int64_t pairs, int64_t soloRounds, uint8_t &mode, int64_t &rounds,
+                          uint8_t &blockedOrient)
+{
+    mode = TND_MODE_BLOCKED;
+    rounds = 0;
+    blockedOrient = TND_LINE_COL_MAJOR;
+
+    if (pairs > 0) {
+        const bool colSafe = TNDBlockedSafe(k, vm, vn);
+        const bool rowSafe = TNDBlockedSafe(k, vn, vm);
+        const int64_t rCol = colSafe ? CalTNDLineRounds(k, vm, vn, pairs, TND_LINE_COL_MAJOR) : 0;
+        const int64_t rRow = rowSafe ? CalTNDLineRounds(k, vm, vn, pairs, TND_LINE_ROW_MAJOR) : 0;
+        if (rCol > 0 && (rRow <= 0 || rCol <= rRow)) {
+            blockedOrient = TND_LINE_COL_MAJOR;
+            rounds = rCol + soloRounds;
+        } else if (rRow > 0) {
+            blockedOrient = TND_LINE_ROW_MAJOR;
+            rounds = rRow + soloRounds;
+        }
+    }
+
+    const int64_t rCopyFlat = CalTNDCopyFlatRounds(k, m, n, p, q, copies);
+    if (rCopyFlat > 0 && (rounds == 0 || rCopyFlat < rounds)) {
+        mode = TND_MODE_COPYFLAT;
+        rounds = rCopyFlat;
+    }
+
+    if (allowGroupTri) {
+        int64_t kp = 0;
+        int64_t g = 0;
+        int64_t rpg = 0;
+        int64_t rGroup = 0;
+        CalTNDGroupTriPlan(k, m, n, copies, kp, g, rpg, rGroup);
+        if (rGroup > 0 && (rounds == 0 || rGroup < rounds)) {
+            mode = TND_MODE_GROUPTRI;
+            rounds = rGroup;
+        }
+    }
+
+    if (pairs > 0) {
+        const int64_t rTorus = CalTNDTorusRounds(k, vm, vn, pairs) + soloRounds;
+        if (rTorus > 0 && CalTNDTorusSafe(k, vm, vn, pairs) && (rounds == 0 || rTorus < rounds)) {
+            mode = TND_MODE_TORUS;
+            rounds = rTorus;
+        }
+        if (rTorus > 0 && CalTNDTorusSafe(k, vn, vm, pairs) && (rounds == 0 || rTorus < rounds)) {
+            mode = TND_MODE_TORUS_T;
+            rounds = rTorus;
+        }
+    }
+}
+
+// rounds for one same-shape causal run, matching CalTNDCausalLineRunIndex
+inline int64_t CalTNDCausalRunRounds(int64_t k, int64_t m, int64_t n, int64_t copies, bool leftUp)
+{
+    int64_t virtM = 0;
+    int64_t virtN = 0;
+    if (leftUp) {
+        GetTNDLeftUpVirt(m, n, virtM, virtN);
+    } else {
+        GetTNDRightDownVirt(m, n, virtM, virtN);
+    }
+    const int64_t pairs = copies / NUM_TWO;
+    int64_t soloRounds = 0;
+    if (copies % NUM_TWO == 1) {
+        if (leftUp) {
+            soloRounds = CalTNDSingleCausalRounds(k, m, n);
+        } else {
+            soloRounds = CalTNDLineRounds(k, m, n, 1, PickTNDLineOrientation(k, m, n, 1));
+        }
+    }
+    const int64_t bandP = m;
+    int64_t bandQ = leftUp ? 1 : (n - m + 1);
+    if (bandQ < 1) {
+        bandQ = 1;
+    }
+    uint8_t mode = TND_MODE_BLOCKED;
+    uint8_t orient = TND_LINE_COL_MAJOR;
+    int64_t rounds = 0;
+    CalTNDRunPlan(k, m, n, bandP, bandQ, copies, leftUp || (m == n), virtM, virtN, pairs, soloRounds, mode, rounds,
+                  orient);
+    return rounds;
+}
+
+// rounds for one same-shape dense run, matching CalTNDDenseLineIndex
+inline int64_t CalTNDDenseRunRounds(int64_t k, int64_t m, int64_t n, int64_t copies)
+{
+    uint8_t mode = TND_MODE_BLOCKED;
+    uint8_t orient = TND_LINE_COL_MAJOR;
+    int64_t rounds = 0;
+    CalTNDRunPlan(k, m, n, m, n, copies, false, m, n, copies, 0, mode, rounds, orient);
+    return rounds;
+}
+
 struct TNDRunShape {
     int64_t m = 1;
     int64_t n = 1;
@@ -335,49 +608,21 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
         TNDRunShape shape;
         const int64_t groupSize = CountTNDSameShapeRun(p, i, leftUp, isBand, shape);
         const int64_t total = n1 * groupSize;
-        const int64_t runPairs = total / NUM_TWO;
-        const bool runHasSingle = (total % NUM_TWO == 1);
         if (TNDRunEmpty(shape, isBand)) {
             i += groupSize;
             continue;
         }
         if (isDense) {
-            if (TNDRunIsTiny(shape.m, shape.n)) {
-                return false;
-            }
-            const uint8_t orientation = PickTNDLineOrientation(k, shape.m, shape.n, total);
-            if (CalTNDLineRounds(k, shape.m, shape.n, total, orientation) <= 0) {
-                return false;
-            }
-            if (!TNDRunIsLineEligible(k, shape.m, shape.n, total)) {
+            // No shape gate any more: CalTNDRunPlan always has a safe candidate
+            // (COPYFLAT / GROUPTRI / TORUS / BLOCKED), so the old all-or-nothing
+            // rejection -- which pushed ~40% of shapes back to legacy -- is gone.
+            // The only thing we still refuse is a run we cannot schedule at all.
+            if (CalTNDDenseRunRounds(k, shape.m, shape.n, total) <= 0) {
                 return false;
             }
             hasSubstantial = true;
         } else if (!isBand) {
-            int64_t virtM = 0;
-            int64_t virtN = 0;
-            if (leftUp) {
-                GetTNDLeftUpVirt(shape.m, shape.n, virtM, virtN);
-            } else {
-                GetTNDRightDownVirt(shape.m, shape.n, virtM, virtN);
-            }
-            if (TNDRunIsTiny(virtM, virtN)) {
-                return false;
-            }
-            const uint8_t pairOrientation = PickTNDLineOrientation(k, virtM, virtN, runPairs);
-            if (runPairs > 0 && CalTNDLineRounds(k, virtM, virtN, runPairs, pairOrientation) <= 0) {
-                return false;
-            }
-            if (!leftUp && runHasSingle) {
-                const uint8_t singleOrientation = PickTNDLineOrientation(k, shape.m, shape.n, 1);
-                if (CalTNDLineRounds(k, shape.m, shape.n, 1, singleOrientation) <= 0) {
-                    return false;
-                }
-                if (!TNDRunIsLineEligible(k, shape.m, shape.n, 1)) {
-                    return false;
-                }
-            }
-            if (!TNDRunIsLineEligible(k, virtM, virtN, runPairs)) {
+            if (CalTNDCausalRunRounds(k, shape.m, shape.n, total, leftUp) <= 0) {
                 return false;
             }
             hasSubstantial = true;
@@ -439,33 +684,12 @@ inline TNDLineDeterPack BuildTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
         TNDRunShape shape;
         const int64_t groupSize = CountTNDSameShapeRun(p, i, leftUp, isBand, shape);
         const int64_t total = n1 * groupSize;
-        const int64_t runPairs = total / NUM_TWO;
-        const bool runHasSingle = (total % NUM_TWO == 1);
         int64_t runSolo = 0;
         if (!TNDRunEmpty(shape, isBand)) {
             if (isDense) {
-                const uint8_t orientation = PickTNDLineOrientation(k, shape.m, shape.n, total);
-                runSolo = CalTNDLineRounds(k, shape.m, shape.n, total, orientation);
+                runSolo = CalTNDDenseRunRounds(k, shape.m, shape.n, total);
             } else if (!isBand) {
-                int64_t virtM = 0;
-                int64_t virtN = 0;
-                if (leftUp) {
-                    GetTNDLeftUpVirt(shape.m, shape.n, virtM, virtN);
-                } else {
-                    GetTNDRightDownVirt(shape.m, shape.n, virtM, virtN);
-                }
-                const uint8_t pairOrientation = PickTNDLineOrientation(k, virtM, virtN, runPairs);
-                const int64_t pairRounds = CalTNDLineRounds(k, virtM, virtN, runPairs, pairOrientation);
-                int64_t singleRounds = 0;
-                if (runHasSingle) {
-                    if (leftUp) {
-                        singleRounds = CalTNDSingleCausalRounds(k, shape.m, shape.n);
-                    } else {
-                        const uint8_t singleOrientation = PickTNDLineOrientation(k, shape.m, shape.n, 1);
-                        singleRounds = CalTNDLineRounds(k, shape.m, shape.n, 1, singleOrientation);
-                    }
-                }
-                runSolo = pairRounds + singleRounds;
+                runSolo = CalTNDCausalRunRounds(k, shape.m, shape.n, total, leftUp);
             } else if (shape.kind == 43) {
                 const uint8_t orientation = PickTNDLineOrientation(k, shape.m, shape.n, total);
                 runSolo = CalTNDLineRounds(k, shape.m, shape.n, total, orientation);
@@ -554,12 +778,18 @@ protected:
         CalcleTNDDenseDeterParam();
         CalcleTNDCausalDeterParam();
         CalcleTNDBandDeterParam();
-        if (preferLine && linePack.rLine > 0) {
+        // Only switch when the new schedule is strictly cheaper than whatever
+        // the legacy path produced, so this can never be a regression.
+        const int64_t legacyRound = fBaseParams.deterMaxRound;
+        const bool lineWins =
+            preferLine && linePack.rLine > 0 && (legacyRound <= 0 || linePack.rLine < legacyRound);
+        if (lineWins) {
             ApplyTNDLineDeterParam(fBaseParams, linePack);
         }
-        OP_LOGD("CalcleTNDDeterParam", "TND deterMaxRound is %ld, tndLineDeter=%u, preferLine=%d, rLine=%ld.",
+        OP_LOGD("CalcleTNDDeterParam",
+                "TND deterMaxRound is %ld, tndLineDeter=%u, preferLine=%d, rLine=%ld, legacyRound=%ld.",
                 fBaseParams.deterMaxRound, static_cast<uint32_t>(fBaseParams.tndLineDeter),
-                static_cast<int>(preferLine), linePack.rLine);
+                static_cast<int>(preferLine), linePack.rLine, legacyRound);
     }
 
     void CalcTNDSwizzleParam() override
