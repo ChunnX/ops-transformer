@@ -303,7 +303,6 @@ __aicore__ inline void MoeV2ExpertTokenOut::Init(GM_ADDR expertTokensCountOrCums
     int64_t blockNum = GetBlockNum() * 2;
     this->pipe = tPipe;
     this->blockIdx = get_block_idx() + get_subblockid() * get_block_num();
-    // this->blockIdx = GetBlockIdx();
 
     this->coreNum = tilingData->coreNum;
     this->totalLength = tilingData->n * tilingData->k;

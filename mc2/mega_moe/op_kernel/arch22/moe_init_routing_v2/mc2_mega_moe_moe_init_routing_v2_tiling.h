@@ -273,12 +273,12 @@ void MoeInitRoutingV2TilingBase::ShowTilingData()
 }
 
 bool MoeInitRoutingV2TilingBase::GetShapeAttrsInfo(int64_t m, int64_t cols, int64_t topK, int64_t expertCapacity,
-                                                   int64_t expertNum, int64_t activateNum, int64_t dropPadMode,
+                                                   int64_t expertNum, int64_t activeNum, int64_t dropPadMode,
                                                    int64_t expertTokensCountOrCumsumFlag,
                                                    bool expertTokensBeforeCapacityFlag, int64_t inuptXDtypeSize,
                                                    int64_t quantMode, int64_t scaleDim0)
 {
-    this->activateNum = activateNum;
+    this->activateNum = activeNum;
     this->expertCapacity = expertCapacity;
     this->expertNum = expertNum;
     this->dropPadMode = dropPadMode;
@@ -338,7 +338,7 @@ void MoeInitRoutingV2TilingBase::Tiling4VBSMultiCoreCompute(MoeV2VBSComputeTilin
 {
     // Tiling4VBSMultiCoreCompute
     int64_t needCoreNum = CeilDiv(totalLength, sortLoopMaxElement);
-    needCoreNum = static_cast<int64_t>(std::pow(4, CeilLog4(needCoreNum)));
+    needCoreNum = static_cast<int64_t>(std::pow(NUM_FOUR, CeilLog4(needCoreNum)));
     needCoreNum = std::min(needCoreNum, aivNum);
     if (needCoreNum > 0) {
         int64_t perCoreElements = totalLength / needCoreNum;

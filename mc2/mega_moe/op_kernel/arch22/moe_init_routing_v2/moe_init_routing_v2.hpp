@@ -52,7 +52,6 @@ __aicore__ inline void moe_init_routing_v2(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR
         return;
     }
 
-    // GET_TILING_DATA(tilingData, tiling);
     if (workspace == nullptr) {
         return;
     }
@@ -61,14 +60,12 @@ __aicore__ inline void moe_init_routing_v2(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR
     if (userWS == nullptr) {
         return;
     }
-    // auto t = tilingData;
     if (tilingKey == 20000) {
         TPipe sortPipe;
         MoeV2FullLoad<DTYPE_X> op;
         op.Init(x, expertIdx, expandedX, expandedRowIdx, expertTokensCountOrCumsum, userWS, tilingData, &sortPipe);
         op.Process();
         sortPipe.Destroy();
-        // trap();
         return;
     }
 
