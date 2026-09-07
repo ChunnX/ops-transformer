@@ -1,3 +1,15 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """FFA (FusedFloydAttention) TestSpec 入口
 
 支持两种模式:
@@ -41,10 +53,19 @@ customize_inputs = _inputs_mod.customize_inputs
 compare = _compare_mod.compare
 
 
-def _golden(query, key1, value1, key2, value2, attenMaskOptional,
-            scaleValue,
-            softmaxMaxOut, softmaxSumOut, attentionOutOut,
-            **kwargs):
+def _golden(
+    query,
+    key1,
+    value1,
+    key2,
+    value2,
+    attenMaskOptional,
+    scaleValue,
+    softmaxMaxOut,
+    softmaxSumOut,
+    attentionOutOut,
+    **kwargs,
+):
     """CPU golden — 与 ATK floyd_attn_forward 等价
 
     参数签名与 aclnnFusedFloydAttentionGetWorkspaceSize 一致
@@ -72,8 +93,11 @@ def _golden(query, key1, value1, key2, value2, attenMaskOptional,
     else:
         scaleValue = float(scaleValue)
 
-    testcase_name = kwargs.get('testcase_name', '')
-    print(f"[GOLDEN-FFA] testcase_name={testcase_name}, scaleValue={scaleValue}", flush=True)
+    testcase_name = kwargs.get("testcase_name", "")
+    print(
+        f"[GOLDEN-FFA] testcase_name={testcase_name}, scaleValue={scaleValue}",
+        flush=True,
+    )
 
     # 三方对比模式:
     #   golden = floyd_attn_forward(fp32输入) → fp32输出 (高精度参考)
@@ -84,7 +108,11 @@ def _golden(query, key1, value1, key2, value2, attenMaskOptional,
     #   NPU输出 = 原dtype
     # 将输入转为fp32产生高精度golden (与ATK cpu_benchmark一致)
     orig_dtype = query.dtype if isinstance(query, torch.Tensor) else torch.float16
-    golden_dtype = torch.float32 if orig_dtype in (torch.float16, torch.bfloat16) else torch.float64
+    golden_dtype = (
+        torch.float32
+        if orig_dtype in (torch.float16, torch.bfloat16)
+        else torch.float64
+    )
     query_hp = query.to(golden_dtype) if isinstance(query, torch.Tensor) else query
     key1_hp = key1.to(golden_dtype) if isinstance(key1, torch.Tensor) else key1
     value1_hp = value1.to(golden_dtype) if isinstance(value1, torch.Tensor) else value1
@@ -105,8 +133,17 @@ def _golden(query, key1, value1, key2, value2, attenMaskOptional,
     return [softmax_max_out, softmax_sum_out, attention_out]
 
 
-def _golden_e2e(query_ik, key_ij, value_ij, key_jk, value_jk,
-                *, atten_mask=None, scale_value=1., **kwargs):
+def _golden_e2e(
+    query_ik,
+    key_ij,
+    value_ij,
+    key_jk,
+    value_jk,
+    *,
+    atten_mask=None,
+    scale_value=1.0,
+    **kwargs,
+):
     """CPU golden for E2E — 与 torch_npu.npu_fused_floyd_attention 签名一致
 
     参数签名与 torch_npu.npu_fused_floyd_attention 一致:
@@ -137,12 +174,19 @@ def _golden_e2e(query_ik, key_ij, value_ij, key_jk, value_jk,
     else:
         scale_value = float(scale_value)
 
-    testcase_name = kwargs.get('testcase_name', '')
-    print(f"[GOLDEN-FFA-E2E] testcase_name={testcase_name}, scale_value={scale_value}", flush=True)
+    testcase_name = kwargs.get("testcase_name", "")
+    print(
+        f"[GOLDEN-FFA-E2E] testcase_name={testcase_name}, scale_value={scale_value}",
+        flush=True,
+    )
 
     # 将输入转为fp32产生高精度golden (与ATK cpu_benchmark一致)
     orig_dtype = query.dtype if isinstance(query, torch.Tensor) else torch.float16
-    golden_dtype = torch.float32 if orig_dtype in (torch.float16, torch.bfloat16) else torch.float64
+    golden_dtype = (
+        torch.float32
+        if orig_dtype in (torch.float16, torch.bfloat16)
+        else torch.float64
+    )
     query_hp = query.to(golden_dtype) if isinstance(query, torch.Tensor) else query
     key1_hp = key1.to(golden_dtype) if isinstance(key1, torch.Tensor) else key1
     value1_hp = value1.to(golden_dtype) if isinstance(value1, torch.Tensor) else value1

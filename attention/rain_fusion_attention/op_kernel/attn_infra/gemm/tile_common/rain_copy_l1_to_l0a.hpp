@@ -150,14 +150,11 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<Element, layout::zN, AscendC::TPositi
     static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
     static constexpr uint32_t ELE_NUM_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(Element);
 
-    __aicore__ inline
-    CopyL1ToL0A() {};
+    __aicore__ inline CopyL1ToL0A(){};
 
-    __aicore__ inline
-    void operator()(
-        AscendC::LocalTensor<Element> const &dstTensor,
-        AscendC::LocalTensor<Element> const &srcTensor,
-        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
+    __aicore__ inline void operator()(AscendC::LocalTensor<Element> const &dstTensor,
+                                      AscendC::LocalTensor<Element> const &srcTensor, LayoutDst const &layoutDst,
+                                      LayoutSrc const &layoutSrc)
     {
         AscendC::LoadData2DParams loadDataParams;
 

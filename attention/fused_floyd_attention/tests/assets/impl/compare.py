@@ -1,3 +1,15 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """FFA (FusedFloydAttention) 自定义 compare 逻辑
 
 纯 Python 白盒实现 ATK cv_fused_double_benchmark 精度判定，不依赖任何 .so 文件。
@@ -28,26 +40,53 @@ import torch
 # 详细ratio打印开关 — 通过环境变量 TTK_VERBOSE_RATIO=1 开启
 # ============================================================
 
-_VERBOSE_RATIO = os.environ.get('TTK_VERBOSE_RATIO', '0') == '1'
+_VERBOSE_RATIO = os.environ.get("TTK_VERBOSE_RATIO", "0") == "1"
 
 
 def _print_ratio_table(result):
     """打印四个 ratio 指标的表格，含计算方式和阈值"""
-    detail = result['detail']
-    ratios = result['compare']
-    print(f"[COMPARE] ┌─────────────────┬──────────────┬──────────────┬───────┐", flush=True)
-    print(f"[COMPARE] │ 指标            │ Actual误差   │ Benchmark误差│ ratio │", flush=True)
-    print(f"[COMPARE] ├─────────────────┼──────────────┼──────────────┼───────┤", flush=True)
-    print(f"[COMPARE] │ max_re_ratio    │ {detail['Actual_最大相对误差']:.8f} │ "
-          f"{detail['Benchmark_最大相对误差']:.8f} │ {ratios['最大相对误差比例']:.4f} │", flush=True)
-    print(f"[COMPARE] │ avg_re_ratio    │ {detail['Actual_平均相对误差']:.8f} │ "
-          f"{detail['Benchmark_平均相对误差']:.8f} │ {ratios['平均相对误差比例']:.4f} │", flush=True)
-    print(f"[COMPARE] │ rmse_ratio      │ {detail['Actual_均方根误差']:.8f} │ "
-          f"{detail['Benchmark_均方根误差']:.8f} │ {ratios['均方根误差比例']:.4f} │", flush=True)
-    print(f"[COMPARE] │ num_count_ratio │ {detail['Actual_小值域数错数量']:<12} │ "
-          f"{detail['Benchmark_小值域数错数量']:<12} │ {ratios['小值域数错误差比例']:.4f} │", flush=True)
-    print(f"[COMPARE] └─────────────────┴──────────────┴──────────────┴───────┘", flush=True)
-    print(f"[COMPARE] 阈值: max_re_ratio<=10, avg_re_ratio<=2, rmse_ratio<=2, num_count_ratio<=2", flush=True)
+    detail = result["detail"]
+    ratios = result["compare"]
+    print(
+        "[COMPARE] ┌─────────────────┬──────────────┬──────────────┬───────┐",
+        flush=True,
+    )
+    print(
+        "[COMPARE] │ 指标            │ Actual误差   │ Benchmark误差│ ratio │",
+        flush=True,
+    )
+    print(
+        "[COMPARE] ├─────────────────┼──────────────┼──────────────┼───────┤",
+        flush=True,
+    )
+    print(
+        f"[COMPARE] │ max_re_ratio    │ {detail['Actual_最大相对误差']:.8f} │ "
+        f"{detail['Benchmark_最大相对误差']:.8f} │ {ratios['最大相对误差比例']:.4f} │",
+        flush=True,
+    )
+    print(
+        f"[COMPARE] │ avg_re_ratio    │ {detail['Actual_平均相对误差']:.8f} │ "
+        f"{detail['Benchmark_平均相对误差']:.8f} │ {ratios['平均相对误差比例']:.4f} │",
+        flush=True,
+    )
+    print(
+        f"[COMPARE] │ rmse_ratio      │ {detail['Actual_均方根误差']:.8f} │ "
+        f"{detail['Benchmark_均方根误差']:.8f} │ {ratios['均方根误差比例']:.4f} │",
+        flush=True,
+    )
+    print(
+        f"[COMPARE] │ num_count_ratio │ {detail['Actual_小值域数错数量']:<12} │ "
+        f"{detail['Benchmark_小值域数错数量']:<12} │ {ratios['小值域数错误差比例']:.4f} │",
+        flush=True,
+    )
+    print(
+        "[COMPARE] └─────────────────┴──────────────┴──────────────┴───────┘",
+        flush=True,
+    )
+    print(
+        "[COMPARE] 阈值: max_re_ratio<=10, avg_re_ratio<=2, rmse_ratio<=2, num_count_ratio<=2",
+        flush=True,
+    )
 
 
 # ============================================================
@@ -57,12 +96,14 @@ def _print_ratio_table(result):
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _PARENT_DIR = os.path.dirname(_THIS_DIR)
 
+
 def _load_golden_module():
     path = os.path.join(_THIS_DIR, "golden.py")
     spec = importlib.util.spec_from_file_location("_ffa_golden_for_compare", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
 
 _golden_mod = _load_golden_module()
 floyd_attn_forward_fp16 = _golden_mod.floyd_attn_forward_fp16
@@ -73,27 +114,27 @@ floyd_attn_forward_fp16 = _golden_mod.floyd_attn_forward_fp16
 # ============================================================
 
 _ERROR_THDS = {
-    torch.float16:   2 ** -11,   # 0.00048828125
-    torch.bfloat16:  2 ** -8,    # 0.00390625
-    torch.float32:   2 ** -14,   # 0.00006103515625
+    torch.float16: 2**-11,  # 0.00048828125
+    torch.bfloat16: 2**-8,  # 0.00390625
+    torch.float32: 2**-14,  # 0.00006103515625
 }
 
 _THRESHOLDS = {
-    torch.float16:   2 ** -16,   # 1.52587890625e-05
-    torch.bfloat16:  2 ** -16,   # 1.52587890625e-05
-    torch.float32:   2 ** -30,   # 9.313225746154785e-10
+    torch.float16: 2**-16,  # 1.52587890625e-05
+    torch.bfloat16: 2**-16,  # 1.52587890625e-05
+    torch.float32: 2**-30,  # 9.313225746154785e-10
 }
 
 _EB_THDS = {
-    torch.float16:   2 ** -10,   # 0.0009765625
-    torch.bfloat16:  2 ** -7,    # 0.0078125
-    torch.float32:   2 ** -14,   # 0.00006103515625
+    torch.float16: 2**-10,  # 0.0009765625
+    torch.bfloat16: 2**-7,  # 0.0078125
+    torch.float32: 2**-14,  # 0.00006103515625
 }
 
-_MAX_RE_RATIO            = 10
-_AVG_RE_RATIO            = 2
+_MAX_RE_RATIO = 10
+_AVG_RE_RATIO = 2
 _ROOT_MEAN_SQUARED_RATIO = 2
-_NUMBER_COUNT_RADIO      = 2
+_NUMBER_COUNT_RADIO = 2
 
 # compute_relative_error 中的 eps — 反射 .so 验证为 1e-7
 _REL_EPS = 1e-7
@@ -105,36 +146,38 @@ _INF_NAN_FAIL_EARLY_STOP_LIMIT = 1000
 
 # ATK INF_NAN_PASS_COMBINATIONS — 28种通过组合 (golden_state, benchmark_state, npu_state)
 # 来源: atk.tasks.post_process.utils (运行时导出)
-INF_NAN_PASS_COMBINATIONS = frozenset({
-    ("nan", "negative_inf", "nan"),
-    ("normal", "positive_inf", "normal"),
-    ("positive_inf", "normal", "positive_inf"),
-    ("negative_inf", "negative_inf", "negative_inf"),
-    ("normal", "nan", "normal"),
-    ("nan", "negative_inf", "negative_inf"),
-    ("normal", "negative_inf", "negative_inf"),
-    ("nan", "normal", "nan"),
-    ("positive_inf", "positive_inf", "positive_inf"),
-    ("negative_inf", "normal", "negative_inf"),
-    ("nan", "positive_inf", "nan"),
-    ("positive_inf", "nan", "nan"),
-    ("negative_inf", "positive_inf", "positive_inf"),
-    ("nan", "positive_inf", "positive_inf"),
-    ("positive_inf", "nan", "positive_inf"),
-    ("normal", "nan", "nan"),
-    ("negative_inf", "positive_inf", "negative_inf"),
-    ("normal", "positive_inf", "positive_inf"),
-    ("positive_inf", "normal", "normal"),
-    ("negative_inf", "nan", "nan"),
-    ("normal", "negative_inf", "normal"),
-    ("normal", "normal", "normal"),
-    ("negative_inf", "nan", "negative_inf"),
-    ("negative_inf", "normal", "normal"),
-    ("nan", "nan", "nan"),
-    ("nan", "normal", "normal"),
-    ("positive_inf", "negative_inf", "positive_inf"),
-    ("positive_inf", "negative_inf", "negative_inf"),
-})
+INF_NAN_PASS_COMBINATIONS = frozenset(
+    {
+        ("nan", "negative_inf", "nan"),
+        ("normal", "positive_inf", "normal"),
+        ("positive_inf", "normal", "positive_inf"),
+        ("negative_inf", "negative_inf", "negative_inf"),
+        ("normal", "nan", "normal"),
+        ("nan", "negative_inf", "negative_inf"),
+        ("normal", "negative_inf", "negative_inf"),
+        ("nan", "normal", "nan"),
+        ("positive_inf", "positive_inf", "positive_inf"),
+        ("negative_inf", "normal", "negative_inf"),
+        ("nan", "positive_inf", "nan"),
+        ("positive_inf", "nan", "nan"),
+        ("negative_inf", "positive_inf", "positive_inf"),
+        ("nan", "positive_inf", "positive_inf"),
+        ("positive_inf", "nan", "positive_inf"),
+        ("normal", "nan", "nan"),
+        ("negative_inf", "positive_inf", "negative_inf"),
+        ("normal", "positive_inf", "positive_inf"),
+        ("positive_inf", "normal", "normal"),
+        ("negative_inf", "nan", "nan"),
+        ("normal", "negative_inf", "normal"),
+        ("normal", "normal", "normal"),
+        ("negative_inf", "nan", "negative_inf"),
+        ("negative_inf", "normal", "normal"),
+        ("nan", "nan", "nan"),
+        ("nan", "normal", "normal"),
+        ("positive_inf", "negative_inf", "positive_inf"),
+        ("positive_inf", "negative_inf", "negative_inf"),
+    }
+)
 
 
 def _get_thd(dtype):
@@ -149,6 +192,7 @@ def _get_thd(dtype):
 # 2. compute_inf_nan_result: 逐元素分类状态, 用 INF_NAN_PASS_COMBINATIONS 判定
 # 3. filter_tensors_by_union_special_mask: 过滤掉含 inf/nan 的元素
 # ============================================================
+
 
 def _check_invalid_value(tensor):
     """检测 tensor 是否含有 inf 或 nan — 复现 atk check_invalid_value"""
@@ -181,9 +225,11 @@ def _compute_inf_nan_result(local_output, remote_output, golden):
         (passed, error_info)
     """
     if local_output.shape != remote_output.shape or local_output.shape != golden.shape:
-        return False, (f"inf/nan check failed: shape mismatch "
-                       f"local={tuple(local_output.shape)}, remote={tuple(remote_output.shape)}, "
-                       f"golden={tuple(golden.shape)}")
+        return False, (
+            f"inf/nan check failed: shape mismatch "
+            f"local={tuple(local_output.shape)}, remote={tuple(remote_output.shape)}, "
+            f"golden={tuple(golden.shape)}"
+        )
 
     local_flat = local_output.reshape(-1)
     remote_flat = remote_output.reshape(-1)
@@ -204,11 +250,15 @@ def _compute_inf_nan_result(local_output, remote_output, golden):
     _state_to_id = {name: idx for idx, name in enumerate(_INF_NAN_STATE_NAMES)}
     pass_lookup = torch.zeros(64, dtype=torch.bool)
     for g_name, b_name, n_name in INF_NAN_PASS_COMBINATIONS:
-        pass_lookup[_state_to_id[g_name] * 16 + _state_to_id[b_name] * 4 + _state_to_id[n_name]] = True
+        pass_lookup[
+            _state_to_id[g_name] * 16 + _state_to_id[b_name] * 4 + _state_to_id[n_name]
+        ] = True
 
-    state_code = (golden_states[special_indices].to(torch.int64) * 16
-                  + remote_states[special_indices].to(torch.int64) * 4
-                  + local_states[special_indices].to(torch.int64))
+    state_code = (
+        golden_states[special_indices].to(torch.int64) * 16
+        + remote_states[special_indices].to(torch.int64) * 4
+        + local_states[special_indices].to(torch.int64)
+    )
     pass_mask = pass_lookup[state_code]
     failed_index = special_indices[~pass_mask]
     n_failed = int(failed_index.numel())
@@ -218,11 +268,16 @@ def _compute_inf_nan_result(local_output, remote_output, golden):
     failed_positions = []
     if n_failed > 0:
         for idx in failed_index[:_INF_NAN_FAIL_PREVIEW_LIMIT].tolist():
-            failed_positions.append((idx, (
-                _INF_NAN_STATE_NAMES[golden_states[idx].item()],
-                _INF_NAN_STATE_NAMES[remote_states[idx].item()],
-                _INF_NAN_STATE_NAMES[local_states[idx].item()],
-            )))
+            failed_positions.append(
+                (
+                    idx,
+                    (
+                        _INF_NAN_STATE_NAMES[golden_states[idx].item()],
+                        _INF_NAN_STATE_NAMES[remote_states[idx].item()],
+                        _INF_NAN_STATE_NAMES[local_states[idx].item()],
+                    ),
+                )
+            )
 
     if failed_positions:
         preview = ", ".join(
@@ -231,7 +286,10 @@ def _compute_inf_nan_result(local_output, remote_output, golden):
         )
         if failed_count > _INF_NAN_FAIL_PREVIEW_LIMIT:
             preview += ", ..."
-        return False, f"inf/nan check failed: {failed_count} position(s) failed: {preview}"
+        return (
+            False,
+            f"inf/nan check failed: {failed_count} position(s) failed: {preview}",
+        )
 
     return True, "inf/nan check passed (all special-value combinations in pass list)"
 
@@ -267,6 +325,7 @@ def _filter_tensors_by_union_special_mask(local_output, remote_output, golden):
 # 底层计算函数 — 复现 atk.tasks.post_process.utils 中的 .so 函数
 # ============================================================
 
+
 def _compute_relative_error(actual, golden):
     """相对误差: |actual - golden| / max(|golden|, 1e-7)"""
     diff = torch.abs(actual - golden)
@@ -277,7 +336,7 @@ def _compute_relative_error(actual, golden):
 def _compute_root_mean_squared_error(actual, golden):
     """均方根误差: sqrt(mean((actual - golden)^2))"""
     diff = actual - golden
-    return torch.sqrt(torch.mean(diff ** 2)).item()
+    return torch.sqrt(torch.mean(diff**2)).item()
 
 
 def _compute_error_balance(actual, golden):
@@ -290,6 +349,7 @@ def _compute_error_balance(actual, golden):
 # ============================================================
 # 核心计算 — 复现 cv_fused_double_benchmark_compare.py compute_with_golden
 # ============================================================
+
 
 def _compute_with_golden(actual, golden, orig_dtype=None):
     """计算 actual vs golden 的各项误差指标
@@ -327,7 +387,9 @@ def _compute_with_golden(actual, golden, orig_dtype=None):
         rel_err = _compute_relative_error(actual_big, golden_big)
         max_relative_error = torch.max(rel_err).item()
         avg_relative_error = torch.mean(rel_err).item()
-        root_mean_squared_error = _compute_root_mean_squared_error(actual_big, golden_big)
+        root_mean_squared_error = _compute_root_mean_squared_error(
+            actual_big, golden_big
+        )
         error_balance = _compute_error_balance(actual_big, golden_big)
 
     # Step 5: 小值域计算 (源码: get_result_small_domain)
@@ -341,11 +403,11 @@ def _compute_with_golden(actual, golden, orig_dtype=None):
         number_count_error = int(torch.sum(diff_small > threshold).item())
 
     return {
-        'max_relative_error': max_relative_error,
-        'avg_relative_error': avg_relative_error,
-        'root_mean_squared_error': root_mean_squared_error,
-        'error_balance': error_balance,
-        'number_count_error': number_count_error,
+        "max_relative_error": max_relative_error,
+        "avg_relative_error": avg_relative_error,
+        "root_mean_squared_error": root_mean_squared_error,
+        "error_balance": error_balance,
+        "number_count_error": number_count_error,
     }
 
 
@@ -378,7 +440,9 @@ def _compute_with_golden_flat(actual_flat, golden_flat, orig_dtype=None):
         rel_err = _compute_relative_error(actual_big, golden_big)
         max_relative_error = torch.max(rel_err).item()
         avg_relative_error = torch.mean(rel_err).item()
-        root_mean_squared_error = _compute_root_mean_squared_error(actual_big, golden_big)
+        root_mean_squared_error = _compute_root_mean_squared_error(
+            actual_big, golden_big
+        )
         error_balance = _compute_error_balance(actual_big, golden_big)
 
     # 小值域计算
@@ -392,17 +456,18 @@ def _compute_with_golden_flat(actual_flat, golden_flat, orig_dtype=None):
         number_count_error = int(torch.sum(diff_small > threshold).item())
 
     return {
-        'max_relative_error': max_relative_error,
-        'avg_relative_error': avg_relative_error,
-        'root_mean_squared_error': root_mean_squared_error,
-        'error_balance': error_balance,
-        'number_count_error': number_count_error,
+        "max_relative_error": max_relative_error,
+        "avg_relative_error": avg_relative_error,
+        "root_mean_squared_error": root_mean_squared_error,
+        "error_balance": error_balance,
+        "number_count_error": number_count_error,
     }
 
 
 # ============================================================
 # 双标杆裁决 — 复现 do_summary + get_result_msg
 # ============================================================
+
 
 def _do_summary_and_judge(actual_stats, benchmark_stats, error_thd):
     """
@@ -411,32 +476,50 @@ def _do_summary_and_judge(actual_stats, benchmark_stats, error_thd):
       max_re_ratio <= 10, avg_re_ratio <= 2, rmse_ratio <= 2, number_count_ratio <= 2
     EBResult (error_balance) 用 warn_value, 不参与 Pass/Fail 裁决
     """
-    max_re_ratio = actual_stats['max_relative_error'] / max(benchmark_stats['max_relative_error'], error_thd)
-    avg_re_ratio = actual_stats['avg_relative_error'] / max(benchmark_stats['avg_relative_error'], error_thd)
-    rmse_ratio = actual_stats['root_mean_squared_error'] / max(benchmark_stats['root_mean_squared_error'], error_thd)
+    max_re_ratio = actual_stats["max_relative_error"] / max(
+        benchmark_stats["max_relative_error"], error_thd
+    )
+    avg_re_ratio = actual_stats["avg_relative_error"] / max(
+        benchmark_stats["avg_relative_error"], error_thd
+    )
+    rmse_ratio = actual_stats["root_mean_squared_error"] / max(
+        benchmark_stats["root_mean_squared_error"], error_thd
+    )
 
     # number_count_ratio: actual数量 / max(benchmark数量, 1)
-    bm_count = max(benchmark_stats['number_count_error'], 1)
-    number_count_ratio = actual_stats['number_count_error'] / bm_count
+    bm_count = max(benchmark_stats["number_count_error"], 1)
+    number_count_ratio = actual_stats["number_count_error"] / bm_count
 
     errors = []
     if max_re_ratio > _MAX_RE_RATIO:
-        errors.append(f"ERROR: 最大相对误差比例({max_re_ratio})超过阈值({_MAX_RE_RATIO})，\n")
+        errors.append(
+            f"ERROR: 最大相对误差比例({max_re_ratio})超过阈值({_MAX_RE_RATIO})，\n"
+        )
     if avg_re_ratio > _AVG_RE_RATIO:
-        errors.append(f"ERROR: 平均相对误差比例({avg_re_ratio})超过阈值({_AVG_RE_RATIO})，\n")
+        errors.append(
+            f"ERROR: 平均相对误差比例({avg_re_ratio})超过阈值({_AVG_RE_RATIO})，\n"
+        )
     if rmse_ratio > _ROOT_MEAN_SQUARED_RATIO:
-        errors.append(f"ERROR: 均方根误差比例({rmse_ratio})超过阈值({_ROOT_MEAN_SQUARED_RATIO})，\n")
+        errors.append(
+            f"ERROR: 均方根误差比例({rmse_ratio})超过阈值({_ROOT_MEAN_SQUARED_RATIO})，\n"
+        )
     if number_count_ratio > _NUMBER_COUNT_RADIO:
-        errors.append(f"ERROR: 小值域数错误差比例({number_count_ratio})超过阈值({_NUMBER_COUNT_RADIO})，\n")
+        errors.append(
+            f"ERROR: 小值域数错误差比例({number_count_ratio})超过阈值({_NUMBER_COUNT_RADIO})，\n"
+        )
 
     passed = len(errors) == 0
-    msg = ''.join(errors)
-    return passed, msg, {
-        '最大相对误差比例': max_re_ratio,
-        '平均相对误差比例': avg_re_ratio,
-        '均方根误差比例': rmse_ratio,
-        '小值域数错误差比例': number_count_ratio,
-    }
+    msg = "".join(errors)
+    return (
+        passed,
+        msg,
+        {
+            "最大相对误差比例": max_re_ratio,
+            "平均相对误差比例": avg_re_ratio,
+            "均方根误差比例": rmse_ratio,
+            "小值域数错误差比例": number_count_ratio,
+        },
+    )
 
 
 # ============================================================
@@ -447,10 +530,12 @@ def _do_summary_and_judge(actual_stats, benchmark_stats, error_thd):
 # 子进程算完 torch.save 后 os._exit, 内存随进程立即归还 OS;
 # 父进程只 load 结果文件, 避免 forward 峰值内存叠加在 compare 进程常驻内存上
 # (case 8016: 输入~35GB, 进程内重算曾把 compare 进程推到 ~400GB 触发看护杀进程)
-_BENCHMARK_SUBPROCESS_THRESHOLD_BYTES = 2 * 1024 ** 3  # 2GB
+_BENCHMARK_SUBPROCESS_THRESHOLD_BYTES = 2 * 1024**3  # 2GB
 
 
-def _compute_benchmark_output_in_subprocess(query, key1, key2, value1, value2, atten_mask, scale_value):
+def _compute_benchmark_output_in_subprocess(
+    query, key1, key2, value1, value2, atten_mask, scale_value
+):
     """在独立子进程内重算 benchmark, 算完存盘退出; 父进程只读结果文件
 
     实现方式 (同 ATK "阶段独立进程 + 磁盘传数据" 架构):
@@ -469,21 +554,36 @@ def _compute_benchmark_output_in_subprocess(query, key1, key2, value1, value2, a
     input_path = os.path.join(tmp_dir, "inputs.pt")
     output_path = os.path.join(tmp_dir, "benchmark_out.pt")
     try:
-        torch.save({
-            'query': query, 'key1': key1, 'value1': value1,
-            'key2': key2, 'value2': value2,
-            'atten_mask': atten_mask, 'scale_value': scale_value,
-        }, input_path)
+        torch.save(
+            {
+                "query": query,
+                "key1": key1,
+                "value1": value1,
+                "key2": key2,
+                "value2": value2,
+                "atten_mask": atten_mask,
+                "scale_value": scale_value,
+            },
+            input_path,
+        )
 
         proc = subprocess.run(
-            [sys.executable, os.path.abspath(__file__),
-             '--benchmark-worker', input_path, output_path],
-            capture_output=True, text=True)
+            [
+                sys.executable,
+                os.path.abspath(__file__),
+                "--benchmark-worker",
+                input_path,
+                output_path,
+            ],
+            capture_output=True,
+            text=True,
+        )
 
         if proc.returncode != 0 or not os.path.exists(output_path):
             raise RuntimeError(
                 f"benchmark 子进程重算失败 (exitcode={proc.returncode}):\n"
-                f"{proc.stderr[-4000:]}")
+                f"{proc.stderr[-4000:]}"
+            )
 
         return torch.load(output_path)
     finally:
@@ -503,7 +603,7 @@ def _compute_benchmark_output(compare_context, golden):
     Returns:
         benchmark_output: 原dtype的标杆输出tensor
     """
-    if compare_context is None or not hasattr(compare_context, 'input_tensors'):
+    if compare_context is None or not hasattr(compare_context, "input_tensors"):
         # 回退: 用 golden.to(orig_dtype) 模拟
         orig_dtype = golden.dtype if golden.dtype != torch.float32 else torch.float16
         return golden.to(orig_dtype)
@@ -520,7 +620,7 @@ def _compute_benchmark_output(compare_context, golden):
 
     # 获取 scale_value (兼容 ACLNN 的 scaleValue 和 E2E 的 scale_value)
     attributes = compare_context.attributes if compare_context.attributes else {}
-    scale_value = attributes.get('scale_value', attributes.get('scaleValue', 1.0))
+    scale_value = attributes.get("scale_value", attributes.get("scaleValue", 1.0))
     if isinstance(scale_value, (list, tuple)):
         scale_value = float(scale_value[0]) if len(scale_value) > 0 else 1.0
     else:
@@ -543,10 +643,14 @@ def _compute_benchmark_output(compare_context, golden):
         if isinstance(t, torch.Tensor)
     )
     if total_input_bytes > _BENCHMARK_SUBPROCESS_THRESHOLD_BYTES:
-        print(f"[COMPARE] benchmark recompute in subprocess "
-              f"(inputs {total_input_bytes / 1024**3:.2f} GB > 2 GB)", flush=True)
+        print(
+            f"[COMPARE] benchmark recompute in subprocess "
+            f"(inputs {total_input_bytes / 1024**3:.2f} GB > 2 GB)",
+            flush=True,
+        )
         return _compute_benchmark_output_in_subprocess(
-            query, key1, key2, value1, value2, atten_mask, scale_value)
+            query, key1, key2, value1, value2, atten_mask, scale_value
+        )
 
     # 用原dtype完整重新计算
     _, _, benchmark_out = floyd_attn_forward_fp16(
@@ -559,6 +663,7 @@ def _compute_benchmark_output(compare_context, golden):
 # ============================================================
 # 公开接口
 # ============================================================
+
 
 def _atk_precision_check_three_way(actual, golden, benchmark_output):
     """三方对比精度判定 — ATK cv_fused_double_benchmark
@@ -582,37 +687,44 @@ def _atk_precision_check_three_way(actual, golden, benchmark_output):
     # === Step 1: inf/nan 预检 — 复现 ATK compute_accuracy_result 入口 ===
     # ATK: if check_invalid_value(bm_data) or check_invalid_value(local_output):
     #          result, error_info = compute_inf_nan_result(local_output, remote_output, bm_data)
-    has_invalid = _check_invalid_value(golden) or _check_invalid_value(actual) or _check_invalid_value(benchmark_output)
+    has_invalid = (
+        _check_invalid_value(golden)
+        or _check_invalid_value(actual)
+        or _check_invalid_value(benchmark_output)
+    )
 
     if has_invalid:
         inf_nan_passed, inf_nan_error_info = _compute_inf_nan_result(
             actual.detach().cpu().to(golden.dtype),
             benchmark_output.detach().cpu().to(golden.dtype),
-            golden.detach().cpu()
+            golden.detach().cpu(),
         )
-        print(f"[COMPARE] inf/nan check: {'PASS' if inf_nan_passed else 'FAIL'} - {inf_nan_error_info}", flush=True)
+        print(
+            f"[COMPARE] inf/nan check: {'PASS' if inf_nan_passed else 'FAIL'} - {inf_nan_error_info}",
+            flush=True,
+        )
         if not inf_nan_passed:
             # inf/nan 预检不通过, 直接 FAIL, 不进入 ratio 计算
             return {
-                'pass': False,
-                'msg': inf_nan_error_info,
-                'detail': {
-                    'Actual_最大相对误差': float('nan'),
-                    'Actual_平均相对误差': float('nan'),
-                    'Actual_均方根误差': float('nan'),
-                    'Actual_误差均衡性': float('nan'),
-                    'Actual_小值域数错数量': -1,
-                    'Benchmark_最大相对误差': float('nan'),
-                    'Benchmark_平均相对误差': float('nan'),
-                    'Benchmark_均方根误差': float('nan'),
-                    'Benchmark_误差均衡性': float('nan'),
-                    'Benchmark_小值域数错数量': -1,
+                "pass": False,
+                "msg": inf_nan_error_info,
+                "detail": {
+                    "Actual_最大相对误差": float("nan"),
+                    "Actual_平均相对误差": float("nan"),
+                    "Actual_均方根误差": float("nan"),
+                    "Actual_误差均衡性": float("nan"),
+                    "Actual_小值域数错数量": -1,
+                    "Benchmark_最大相对误差": float("nan"),
+                    "Benchmark_平均相对误差": float("nan"),
+                    "Benchmark_均方根误差": float("nan"),
+                    "Benchmark_误差均衡性": float("nan"),
+                    "Benchmark_小值域数错数量": -1,
                 },
-                'compare': {
-                    '最大相对误差比例': float('nan'),
-                    '平均相对误差比例': float('nan'),
-                    '均方根误差比例': float('nan'),
-                    '小值域数错误差比例': float('nan'),
+                "compare": {
+                    "最大相对误差比例": float("nan"),
+                    "平均相对误差比例": float("nan"),
+                    "均方根误差比例": float("nan"),
+                    "小值域数错误差比例": float("nan"),
                 },
             }
 
@@ -624,70 +736,85 @@ def _atk_precision_check_three_way(actual, golden, benchmark_output):
     benchmark_cpu = benchmark_output.detach().cpu().to(golden.dtype)
     golden_cpu = golden.detach().cpu()
 
-    filtered_actual, filtered_benchmark, filtered_golden, valid_count = _filter_tensors_by_union_special_mask(
-        actual_cpu, benchmark_cpu, golden_cpu
+    filtered_actual, filtered_benchmark, filtered_golden, valid_count = (
+        _filter_tensors_by_union_special_mask(actual_cpu, benchmark_cpu, golden_cpu)
     )
 
     if has_invalid and valid_count == 0:
         # ATK: all elements were filtered out by the special-value mask → Pass
-        print(f"[COMPARE] all elements filtered out by special-value mask, valid_count=0 → PASS", flush=True)
+        print(
+            "[COMPARE] all elements filtered out by special-value mask, valid_count=0 → PASS",
+            flush=True,
+        )
         return {
-            'pass': True,
-            'msg': 'inf/nan check passed, all elements were special values',
-            'detail': {
-                'Actual_最大相对误差': 0,
-                'Actual_平均相对误差': 0,
-                'Actual_均方根误差': 0,
-                'Actual_误差均衡性': 0,
-                'Actual_小值域数错数量': 0,
-                'Benchmark_最大相对误差': 0,
-                'Benchmark_平均相对误差': 0,
-                'Benchmark_均方根误差': 0,
-                'Benchmark_误差均衡性': 0,
-                'Benchmark_小值域数错数量': 0,
+            "pass": True,
+            "msg": "inf/nan check passed, all elements were special values",
+            "detail": {
+                "Actual_最大相对误差": 0,
+                "Actual_平均相对误差": 0,
+                "Actual_均方根误差": 0,
+                "Actual_误差均衡性": 0,
+                "Actual_小值域数错数量": 0,
+                "Benchmark_最大相对误差": 0,
+                "Benchmark_平均相对误差": 0,
+                "Benchmark_均方根误差": 0,
+                "Benchmark_误差均衡性": 0,
+                "Benchmark_小值域数错数量": 0,
             },
-            'compare': {
-                '最大相对误差比例': 0,
-                '平均相对误差比例': 0,
-                '均方根误差比例': 0,
-                '小值域数错误差比例': 0,
+            "compare": {
+                "最大相对误差比例": 0,
+                "平均相对误差比例": 0,
+                "均方根误差比例": 0,
+                "小值域数错误差比例": 0,
             },
         }
 
     # === Step 3: ratio 计算 — 在过滤后的元素上计算 ===
     if has_invalid:
-        print(f"[COMPARE] filtered out special values, computing ratio on {valid_count} valid elements", flush=True)
-        actual_stats = _compute_with_golden_flat(filtered_actual, filtered_golden, orig_dtype=orig_dtype)
-        benchmark_stats = _compute_with_golden_flat(filtered_benchmark, filtered_golden, orig_dtype=orig_dtype)
+        print(
+            f"[COMPARE] filtered out special values, computing ratio on {valid_count} valid elements",
+            flush=True,
+        )
+        actual_stats = _compute_with_golden_flat(
+            filtered_actual, filtered_golden, orig_dtype=orig_dtype
+        )
+        benchmark_stats = _compute_with_golden_flat(
+            filtered_benchmark, filtered_golden, orig_dtype=orig_dtype
+        )
     else:
         actual_stats = _compute_with_golden(actual, golden, orig_dtype=orig_dtype)
-        benchmark_stats = _compute_with_golden(benchmark_output, golden, orig_dtype=orig_dtype)
+        benchmark_stats = _compute_with_golden(
+            benchmark_output, golden, orig_dtype=orig_dtype
+        )
 
     # 双标杆裁决
-    passed, msg, ratios = _do_summary_and_judge(actual_stats, benchmark_stats, error_thd)
+    passed, msg, ratios = _do_summary_and_judge(
+        actual_stats, benchmark_stats, error_thd
+    )
 
     return {
-        'pass': passed,
-        'msg': msg,
-        'detail': {
-            'Actual_最大相对误差': actual_stats['max_relative_error'],
-            'Actual_平均相对误差': actual_stats['avg_relative_error'],
-            'Actual_均方根误差': actual_stats['root_mean_squared_error'],
-            'Actual_误差均衡性': actual_stats['error_balance'],
-            'Actual_小值域数错数量': actual_stats['number_count_error'],
-            'Benchmark_最大相对误差': benchmark_stats['max_relative_error'],
-            'Benchmark_平均相对误差': benchmark_stats['avg_relative_error'],
-            'Benchmark_均方根误差': benchmark_stats['root_mean_squared_error'],
-            'Benchmark_误差均衡性': benchmark_stats['error_balance'],
-            'Benchmark_小值域数错数量': benchmark_stats['number_count_error'],
+        "pass": passed,
+        "msg": msg,
+        "detail": {
+            "Actual_最大相对误差": actual_stats["max_relative_error"],
+            "Actual_平均相对误差": actual_stats["avg_relative_error"],
+            "Actual_均方根误差": actual_stats["root_mean_squared_error"],
+            "Actual_误差均衡性": actual_stats["error_balance"],
+            "Actual_小值域数错数量": actual_stats["number_count_error"],
+            "Benchmark_最大相对误差": benchmark_stats["max_relative_error"],
+            "Benchmark_平均相对误差": benchmark_stats["avg_relative_error"],
+            "Benchmark_均方根误差": benchmark_stats["root_mean_squared_error"],
+            "Benchmark_误差均衡性": benchmark_stats["error_balance"],
+            "Benchmark_小值域数错数量": benchmark_stats["number_count_error"],
         },
-        'compare': ratios,
+        "compare": ratios,
     }
 
 
 # ============================================================
 # compare 入口
 # ============================================================
+
 
 def compare(*outputs, compare_context=None, **kwargs):
     """精度比较 — 纯 Python 白盒 cv_fused_double_benchmark 三方对比
@@ -737,15 +864,18 @@ def compare(*outputs, compare_context=None, **kwargs):
         if not isinstance(benchmark_output, torch.Tensor):
             benchmark_output = torch.from_numpy(benchmark_output)
 
-        print(f"[COMPARE] output[{i}] actual dtype={output.dtype}, golden dtype={golden.dtype}, "
-              f"benchmark dtype={benchmark_output.dtype}", flush=True)
+        print(
+            f"[COMPARE] output[{i}] actual dtype={output.dtype}, golden dtype={golden.dtype}, "
+            f"benchmark dtype={benchmark_output.dtype}",
+            flush=True,
+        )
 
         result = _atk_precision_check_three_way(
             output.detach().cpu().to(output.dtype),
             golden.detach().cpu(),
-            benchmark_output.detach().cpu().to(benchmark_output.dtype)
+            benchmark_output.detach().cpu().to(benchmark_output.dtype),
         )
-        pass_i = result['pass']
+        pass_i = result["pass"]
 
         if not pass_i:
             print(f"[COMPARE] output[{i}] FAIL: {result['msg'].strip()}", flush=True)
@@ -757,11 +887,13 @@ def compare(*outputs, compare_context=None, **kwargs):
         if _VERBOSE_RATIO:
             _print_ratio_table(result)
 
-        results.append({
-            "pass": pass_i,
-            "precision": 100.0 if pass_i else 0.0,
-            "error_info": None if pass_i else "precision mismatch",
-        })
+        results.append(
+            {
+                "pass": pass_i,
+                "precision": 100.0 if pass_i else 0.0,
+                "error_info": None if pass_i else "precision mismatch",
+            }
+        )
 
     return results
 
@@ -769,13 +901,22 @@ def compare(*outputs, compare_context=None, **kwargs):
 # ============================================================
 # 独立 benchmark worker 模式 — 供 _compute_benchmark_output_in_subprocess 调用
 # ============================================================
-if __name__ == '__main__' and len(sys.argv) >= 4 and sys.argv[1] == '--benchmark-worker':
+if (
+    __name__ == "__main__"
+    and len(sys.argv) >= 4
+    and sys.argv[1] == "--benchmark-worker"
+):
     # 用法: python3 compare.py --benchmark-worker <inputs.pt> <benchmark_out.pt>
     # 独立进程重算 benchmark: load 输入 → 原dtype完整重算 → save 输出 → 退出
     _input_path, _output_path = sys.argv[2], sys.argv[3]
     _data = torch.load(_input_path)
     _, _, _benchmark_out = floyd_attn_forward_fp16(
-        _data['query'], _data['key1'], _data['key2'],
-        _data['value1'], _data['value2'], _data['atten_mask'],
-        _data['scale_value'])
+        _data["query"],
+        _data["key1"],
+        _data["key2"],
+        _data["value1"],
+        _data["value2"],
+        _data["atten_mask"],
+        _data["scale_value"],
+    )
     torch.save(_benchmark_out, _output_path)

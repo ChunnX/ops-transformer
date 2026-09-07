@@ -1,3 +1,15 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """FFAG (FusedFloydAttentionGrad) 定制输入修正
 
 与 ATK init_by_input_data 等价:
@@ -32,7 +44,8 @@ floyd_attn_forward = _golden_mod.floyd_attn_forward
 def _parse_case_id(testcase_name):
     """从 testcase_name 尾部解析 case_id"""
     import re
-    m = re.search(r'(\d+)\s*$', testcase_name or '')
+
+    m = re.search(r"(\d+)\s*$", testcase_name or "")
     return int(m.group(1)) if m else 0
 
 
@@ -42,22 +55,22 @@ _ND_SENTINEL_RANGE = (-100, 100)
 # 开启方式: export FFAG_ATK_INPUT_REPLAY=1
 # 开启后若该 case 的 ATK dump 输入存在, 优先加载, 覆盖种子生成逻辑
 # 用途: 归因对拍（详见 TTK_test/problem/ttk_input_bug/ffag_case_10_same_input_replay.md）
-_ATK_DUMP_DIR = '/home/j00946653/ATK2TTK/temp/atk_ffag_nd_inputs'
+_ATK_DUMP_DIR = "/home/j00946653/ATK2TTK/temp/atk_ffag_nd_inputs"
 
 
 def _replay_enabled():
     """ATK 输入回放开关, 默认关闭"""
-    return os.environ.get('FFAG_ATK_INPUT_REPLAY', '0') == '1'
+    return os.environ.get("FFAG_ATK_INPUT_REPLAY", "0") == "1"
 
 
 def _load_atk_dump(case_id, name):
     """加载 ATK 落盘输入, 不存在或开关关闭时返回 None"""
     if not _replay_enabled():
         return None
-    path = os.path.join(_ATK_DUMP_DIR, f'case_{case_id}_{name}.pt')
+    path = os.path.join(_ATK_DUMP_DIR, f"case_{case_id}_{name}.pt")
     if not os.path.exists(path):
         return None
-    data = torch.load(path, map_location='cpu', weights_only=False)
+    data = torch.load(path, map_location="cpu", weights_only=False)
     if isinstance(data, tuple):
         data = data[0]
     return data
@@ -67,7 +80,11 @@ def _is_nd_sentinel(rv):
     """检测 input_data_ranges 中的 (-100, 100) 哨兵范围"""
     if rv is None or not isinstance(rv, (tuple, list)):
         return False
-    return len(rv) == 2 and rv[0] == _ND_SENTINEL_RANGE[0] and rv[1] == _ND_SENTINEL_RANGE[1]
+    return (
+        len(rv) == 2
+        and rv[0] == _ND_SENTINEL_RANGE[0]
+        and rv[1] == _ND_SENTINEL_RANGE[1]
+    )
 
 
 _nd_rng_seeded = {}
@@ -93,23 +110,37 @@ def _gen_nd_tensor(case_id, shape, dtype, mean_range, std_range, tensor_idx=0):
     return data
 
 
-_ND_TENSOR_NAMES = ['query', 'key1', 'value1', 'key2', 'value2']
+_ND_TENSOR_NAMES = ["query", "key1", "value1", "key2", "value2"]
 
 
 def _safe_to_tensor(arr):
     """numpy array -> torch tensor (bfloat16 安全转换)"""
     if arr is None:
         return None
-    if arr.dtype.name == 'bfloat16':
+    if arr.dtype.name == "bfloat16":
         return torch.from_numpy(arr.astype(np.float32)).to(torch.bfloat16)
     return torch.from_numpy(arr)
 
 
-def customize_inputs(query, key1, value1, key2, value2, dy,
-                     attenMaskOptional, softmaxMaxOptional, softmaxSumOptional,
-                     attentionInOptional, scaleValue,
-                     dqOut, dk1Out, dv1Out, dk2Out, dv2Out,
-                     **kwargs):
+def customize_inputs(
+    query,
+    key1,
+    value1,
+    key2,
+    value2,
+    dy,
+    attenMaskOptional,
+    softmaxMaxOptional,
+    softmaxSumOptional,
+    attentionInOptional,
+    scaleValue,
+    dqOut,
+    dk1Out,
+    dv1Out,
+    dk2Out,
+    dv2Out,
+    **kwargs,
+):
     """入参预处理 — 先运行 forward 生成 softmax_max/softmax_sum/atten_in
 
     参数签名与 aclnnFusedFloydAttentionGradGetWorkspaceSize 一致。
@@ -122,7 +153,7 @@ def customize_inputs(query, key1, value1, key2, value2, dy,
     **kwargs: testcase_name, tensor_dtypes, tensor_formats, scalar_dtypes,
               input_ranges, use_torch, short_soc_version
     """
-    testcase_name = kwargs.get('testcase_name', '')
+    testcase_name = kwargs.get("testcase_name", "")
     case_id = _parse_case_id(testcase_name)
 
     # 处理 scaleValue (可能为范围值列表)
@@ -161,11 +192,11 @@ def customize_inputs(query, key1, value1, key2, value2, dy,
 
     # nd 分布输入修正: 从 _ctx 获取 input_data_ranges，检测哨兵范围并重新生成正态分布数据
     _caller = _inspect.currentframe().f_back
-    _self_obj = _caller.f_locals.get('self') if _caller is not None else None
-    _ctx_obj = getattr(_self_obj, '_ctx', None) if _self_obj is not None else None
+    _self_obj = _caller.f_locals.get("self") if _caller is not None else None
+    _ctx_obj = getattr(_self_obj, "_ctx", None) if _self_obj is not None else None
     if _ctx_obj is not None:
-        input_ranges = getattr(_ctx_obj, 'flat_input_data_ranges', None)
-        flat_shapes = getattr(_ctx_obj, 'flat_tensor_view_shapes', None)
+        input_ranges = getattr(_ctx_obj, "flat_input_data_ranges", None)
+        flat_shapes = getattr(_ctx_obj, "flat_tensor_view_shapes", None)
         if input_ranges is not None and flat_shapes is not None:
             nd_tensors = [query, key1, value1, key2, value2]
             replayed = False
@@ -180,30 +211,46 @@ def customize_inputs(query, key1, value1, key2, value2, dy,
                 if dumped is not None:
                     tensor.copy_(dumped.to(dtype=tensor.dtype))
                     replayed = True
-                    print(f"[ND-REPLAY-FFAG] case_id={case_id}, tensor_idx={idx} "
-                          f"({_ND_TENSOR_NAMES[idx]}), loaded from ATK dump, dtype={tensor.dtype}", flush=True)
+                    print(
+                        f"[ND-REPLAY-FFAG] case_id={case_id}, tensor_idx={idx} "
+                        f"({_ND_TENSOR_NAMES[idx]}), loaded from ATK dump, dtype={tensor.dtype}",
+                        flush=True,
+                    )
                     continue
                 mean_range = (-100.0, 100.0)
                 std_range = (1.0, 25.0)
-                shape = flat_shapes[idx] if idx < len(flat_shapes) else list(tensor.shape)
+                shape = (
+                    flat_shapes[idx] if idx < len(flat_shapes) else list(tensor.shape)
+                )
                 orig_dtype = tensor.dtype
-                new_data = _gen_nd_tensor(case_id, shape, orig_dtype, mean_range, std_range, tensor_idx=idx)
+                new_data = _gen_nd_tensor(
+                    case_id, shape, orig_dtype, mean_range, std_range, tensor_idx=idx
+                )
                 tensor.copy_(new_data)
-                print(f"[ND-GEN-FFAG] case_id={case_id}, tensor_idx={idx} "
-                      f"({_ND_TENSOR_NAMES[idx]}), shape={shape}, dtype={orig_dtype}", flush=True)
+                print(
+                    f"[ND-GEN-FFAG] case_id={case_id}, tensor_idx={idx} "
+                    f"({_ND_TENSOR_NAMES[idx]}), shape={shape}, dtype={orig_dtype}",
+                    flush=True,
+                )
             if replayed:
                 # dy 与 atten_mask 一并回放, 保证与 ATK 完全同输入
                 # (ATK atten_mask range=1 → 全1; TTK CSV (0,0) → 全0, 必须回放)
                 if isinstance(dy, torch.Tensor):
-                    dumped = _load_atk_dump(case_id, 'dy')
+                    dumped = _load_atk_dump(case_id, "dy")
                     if dumped is not None:
                         dy.copy_(dumped.to(dtype=dy.dtype))
-                        print(f"[ND-REPLAY-FFAG] case_id={case_id}, dy loaded from ATK dump", flush=True)
+                        print(
+                            f"[ND-REPLAY-FFAG] case_id={case_id}, dy loaded from ATK dump",
+                            flush=True,
+                        )
                 if atten_mask is not None and isinstance(atten_mask, torch.Tensor):
-                    dumped = _load_atk_dump(case_id, 'atten_mask')
+                    dumped = _load_atk_dump(case_id, "atten_mask")
                     if dumped is not None:
                         atten_mask.copy_(dumped.to(dtype=atten_mask.dtype))
-                        print(f"[ND-REPLAY-FFAG] case_id={case_id}, atten_mask loaded from ATK dump", flush=True)
+                        print(
+                            f"[ND-REPLAY-FFAG] case_id={case_id}, atten_mask loaded from ATK dump",
+                            flush=True,
+                        )
             # dy 端点混入修正: TTK 框架的 _mix_expect_data 会向 dy 强制注入 ~25% 的
             # 区间端点值 (-2, 2)，而 ATK 使用 np.random.uniform(low, high, shape) 不混入端点。
             # 对 ND 用例（含哨兵范围），重新生成 dy 以消除端点混入，对齐 ATK 行为。
@@ -211,39 +258,64 @@ def customize_inputs(query, key1, value1, key2, value2, dy,
                 dy_idx = 5  # dy 在 input_ranges 中的位置
                 if dy_idx < len(input_ranges):
                     dy_rv = input_ranges[dy_idx]
-                    if isinstance(dy_rv, (tuple, list)) and len(dy_rv) == 2 and dy_rv[0] != dy_rv[1]:
-                        dy_shape = flat_shapes[dy_idx] if dy_idx < len(flat_shapes) else list(dy.shape)
+                    if (
+                        isinstance(dy_rv, (tuple, list))
+                        and len(dy_rv) == 2
+                        and dy_rv[0] != dy_rv[1]
+                    ):
+                        dy_shape = (
+                            flat_shapes[dy_idx]
+                            if dy_idx < len(flat_shapes)
+                            else list(dy.shape)
+                        )
                         dy_dtype = dy.dtype
                         # 使用独立 RNG 避免与 ND tensor 种子冲突
                         _dy_rng = np.random.RandomState(case_id * 100 + 99)
                         dy_low = float(dy_rv[0])
                         dy_high = float(dy_rv[1])
                         dy_data = _dy_rng.uniform(dy_low, dy_high, dy_shape).astype(
-                            np.float16 if dy_dtype == torch.float16 else
-                            np.float32 if dy_dtype == torch.float32 else
-                            np.float64)
+                            np.float16
+                            if dy_dtype == torch.float16
+                            else np.float32
+                            if dy_dtype == torch.float32
+                            else np.float64
+                        )
                         dy.copy_(torch.from_numpy(dy_data).to(dtype=dy_dtype))
-                        print(f"[DY-FIX-FFAG] case_id={case_id}, regenerated dy without endpoint mixing, "
-                              f"range=({dy_low},{dy_high}), dtype={dy_dtype}", flush=True)
+                        print(
+                            f"[DY-FIX-FFAG] case_id={case_id}, regenerated dy without endpoint mixing, "
+                            f"range=({dy_low},{dy_high}), dtype={dy_dtype}",
+                            flush=True,
+                        )
 
     # 输入 dump（用于 ATK vs TTK 逐元素对比验证）
-    _DUMP_DIR = '/home/j00946653/ATK2TTK/temp/ttk_ffag_nd_inputs_dump'
-    if os.environ.get('FFAG_INPUT_DUMP', '0') == '1':
+    _DUMP_DIR = "/home/j00946653/ATK2TTK/temp/ttk_ffag_nd_inputs_dump"
+    if os.environ.get("FFAG_INPUT_DUMP", "0") == "1":
         os.makedirs(_DUMP_DIR, exist_ok=True)
         _dump_tensors = {
-            'query': query, 'key1': key1, 'value1': value1,
-            'key2': key2, 'value2': value2, 'dy': dy,
+            "query": query,
+            "key1": key1,
+            "value1": value1,
+            "key2": key2,
+            "value2": value2,
+            "dy": dy,
         }
         if atten_mask is not None:
-            _dump_tensors['atten_mask'] = atten_mask
+            _dump_tensors["atten_mask"] = atten_mask
         for _name, _tensor in _dump_tensors.items():
             if _tensor is not None:
-                torch.save(_tensor.cpu(), os.path.join(_DUMP_DIR, f'case_{case_id}_{_name}.pt'))
-        print(f"[INPUT-DUMP-FFAG] case_id={case_id}, dumped {len(_dump_tensors)} tensors to {_DUMP_DIR}", flush=True)
+                torch.save(
+                    _tensor.cpu(), os.path.join(_DUMP_DIR, f"case_{case_id}_{_name}.pt")
+                )
+        print(
+            f"[INPUT-DUMP-FFAG] case_id={case_id}, dumped {len(_dump_tensors)} tensors to {_DUMP_DIR}",
+            flush=True,
+        )
 
     # 保存原始 dtype
     origin_q_dtype = query.dtype
-    origin_x_max_dtype = softmaxMaxOptional.dtype if softmaxMaxOptional is not None else torch.float32
+    origin_x_max_dtype = (
+        softmaxMaxOptional.dtype if softmaxMaxOptional is not None else torch.float32
+    )
 
     # 用 float64 计算 forward (与 ATK 一致)
     golden_dtype = torch.float64
@@ -269,20 +341,41 @@ def customize_inputs(query, key1, value1, key2, value2, dy,
 
     # in-place 覆写输入 tensor: softmaxMax, softmaxSum, attentionIn
     if softmaxMaxOptional is not None and x_max.shape == softmaxMaxOptional.shape:
-        softmaxMaxOptional.copy_(x_max.to(softmaxMaxOptional.dtype).to(softmaxMaxOptional.device))
+        softmaxMaxOptional.copy_(
+            x_max.to(softmaxMaxOptional.dtype).to(softmaxMaxOptional.device)
+        )
     if softmaxSumOptional is not None and x_sum.shape == softmaxSumOptional.shape:
-        softmaxSumOptional.copy_(x_sum.to(softmaxSumOptional.dtype).to(softmaxSumOptional.device))
+        softmaxSumOptional.copy_(
+            x_sum.to(softmaxSumOptional.dtype).to(softmaxSumOptional.device)
+        )
     if attentionInOptional is not None and atten_in.shape == attentionInOptional.shape:
-        attentionInOptional.copy_(atten_in.to(attentionInOptional.dtype).to(attentionInOptional.device))
+        attentionInOptional.copy_(
+            atten_in.to(attentionInOptional.dtype).to(attentionInOptional.device)
+        )
 
     print(f"[CUSTOMIZE-FFAG] case_id={case_id}, scaleValue={scaleValue}", flush=True)
-    print(f"[CUSTOMIZE-FFAG] Forward done: x_max.shape={tuple(x_max.shape)}, "
-          f"atten_in.shape={tuple(atten_in.shape)}", flush=True)
+    print(
+        f"[CUSTOMIZE-FFAG] Forward done: x_max.shape={tuple(x_max.shape)}, "
+        f"atten_in.shape={tuple(atten_in.shape)}",
+        flush=True,
+    )
 
 
-def customize_inputs_e2e(grad_output, query_ik, key_ij, value_ij, key_jk, value_jk,
-                         attention_out, softmax_max, softmax_sum,
-                         *, atten_mask=None, scale_value=1., **kwargs):
+def customize_inputs_e2e(
+    grad_output,
+    query_ik,
+    key_ij,
+    value_ij,
+    key_jk,
+    value_jk,
+    attention_out,
+    softmax_max,
+    softmax_sum,
+    *,
+    atten_mask=None,
+    scale_value=1.0,
+    **kwargs,
+):
     """E2E 定制输入修正 — 与 torch_npu.npu_fused_floyd_attention_backward 签名一致
 
     参数顺序与 torch_npu API 一致 (grad_output 在第一位)。
@@ -290,7 +383,7 @@ def customize_inputs_e2e(grad_output, query_ik, key_ij, value_ij, key_jk, value_
       1. 用 query/key/value/atten_mask/scale 运行 forward
       2. 将 forward 输出的 atten_in/softmax_max/softmax_sum in-place 覆写
     """
-    testcase_name = kwargs.get('testcase_name', '')
+    testcase_name = kwargs.get("testcase_name", "")
     case_id = _parse_case_id(testcase_name)
 
     # 处理 scale_value (可能为范围值列表)
@@ -330,11 +423,11 @@ def customize_inputs_e2e(grad_output, query_ik, key_ij, value_ij, key_jk, value_
 
     # nd 分布输入修正: 从 _ctx 获取 input_data_ranges，检测哨兵范围并重新生成正态分布数据
     _caller = _inspect.currentframe().f_back
-    _self_obj = _caller.f_locals.get('self') if _caller is not None else None
-    _ctx_obj = getattr(_self_obj, '_ctx', None) if _self_obj is not None else None
+    _self_obj = _caller.f_locals.get("self") if _caller is not None else None
+    _ctx_obj = getattr(_self_obj, "_ctx", None) if _self_obj is not None else None
     if _ctx_obj is not None:
-        input_ranges = getattr(_ctx_obj, 'flat_input_data_ranges', None)
-        flat_shapes = getattr(_ctx_obj, 'flat_tensor_view_shapes', None)
+        input_ranges = getattr(_ctx_obj, "flat_input_data_ranges", None)
+        flat_shapes = getattr(_ctx_obj, "flat_tensor_view_shapes", None)
         if input_ranges is not None and flat_shapes is not None:
             nd_tensors = [query, key1, value1, key2, value2]
             for idx, tensor in enumerate(nd_tensors):
@@ -345,31 +438,52 @@ def customize_inputs_e2e(grad_output, query_ik, key_ij, value_ij, key_jk, value_
                     continue
                 mean_range = (-100.0, 100.0)
                 std_range = (1.0, 25.0)
-                shape = flat_shapes[idx] if idx < len(flat_shapes) else list(tensor.shape)
+                shape = (
+                    flat_shapes[idx] if idx < len(flat_shapes) else list(tensor.shape)
+                )
                 orig_dtype = tensor.dtype
-                new_data = _gen_nd_tensor(case_id, shape, orig_dtype, mean_range, std_range, tensor_idx=idx)
+                new_data = _gen_nd_tensor(
+                    case_id, shape, orig_dtype, mean_range, std_range, tensor_idx=idx
+                )
                 tensor.copy_(new_data)
-                print(f"[ND-GEN-FFAG-E2E] case_id={case_id}, tensor_idx={idx} "
-                      f"({_ND_TENSOR_NAMES[idx]}), shape={shape}, dtype={orig_dtype}", flush=True)
+                print(
+                    f"[ND-GEN-FFAG-E2E] case_id={case_id}, tensor_idx={idx} "
+                    f"({_ND_TENSOR_NAMES[idx]}), shape={shape}, dtype={orig_dtype}",
+                    flush=True,
+                )
             # dy 端点混入修正: TTK 框架的 _mix_expect_data 会向 dy 强制注入 ~25% 的
             # 区间端点值，而 ATK 使用 np.random.uniform(low, high, shape) 不混入端点。
             if isinstance(grad_output, torch.Tensor):
                 dy_idx = 5  # grad_output(dy) 在 input_ranges 中的位置
                 if dy_idx < len(input_ranges):
                     dy_rv = input_ranges[dy_idx]
-                    if isinstance(dy_rv, (tuple, list)) and len(dy_rv) == 2 and dy_rv[0] != dy_rv[1]:
-                        dy_shape = flat_shapes[dy_idx] if dy_idx < len(flat_shapes) else list(grad_output.shape)
+                    if (
+                        isinstance(dy_rv, (tuple, list))
+                        and len(dy_rv) == 2
+                        and dy_rv[0] != dy_rv[1]
+                    ):
+                        dy_shape = (
+                            flat_shapes[dy_idx]
+                            if dy_idx < len(flat_shapes)
+                            else list(grad_output.shape)
+                        )
                         dy_dtype = grad_output.dtype
                         _dy_rng = np.random.RandomState(case_id * 100 + 99)
                         dy_low = float(dy_rv[0])
                         dy_high = float(dy_rv[1])
                         dy_data = _dy_rng.uniform(dy_low, dy_high, dy_shape).astype(
-                            np.float16 if dy_dtype == torch.float16 else
-                            np.float32 if dy_dtype == torch.float32 else
-                            np.float64)
+                            np.float16
+                            if dy_dtype == torch.float16
+                            else np.float32
+                            if dy_dtype == torch.float32
+                            else np.float64
+                        )
                         grad_output.copy_(torch.from_numpy(dy_data).to(dtype=dy_dtype))
-                        print(f"[DY-FIX-FFAG-E2E] case_id={case_id}, regenerated dy without endpoint mixing, "
-                              f"range=({dy_low},{dy_high}), dtype={dy_dtype}", flush=True)
+                        print(
+                            f"[DY-FIX-FFAG-E2E] case_id={case_id}, regenerated dy without endpoint mixing, "
+                            f"range=({dy_low},{dy_high}), dtype={dy_dtype}",
+                            flush=True,
+                        )
 
     # 保存原始 dtype
     origin_q_dtype = query.dtype
@@ -405,6 +519,11 @@ def customize_inputs_e2e(grad_output, query_ik, key_ij, value_ij, key_jk, value_
     if attention_out is not None and atten_in.shape == attention_out.shape:
         attention_out.copy_(atten_in.to(attention_out.dtype).to(attention_out.device))
 
-    print(f"[CUSTOMIZE-FFAG-E2E] case_id={case_id}, scale_value={scale_value}", flush=True)
-    print(f"[CUSTOMIZE-FFAG-E2E] Forward done: x_max.shape={tuple(x_max.shape)}, "
-          f"atten_in.shape={tuple(atten_in.shape)}", flush=True)
+    print(
+        f"[CUSTOMIZE-FFAG-E2E] case_id={case_id}, scale_value={scale_value}", flush=True
+    )
+    print(
+        f"[CUSTOMIZE-FFAG-E2E] Forward done: x_max.shape={tuple(x_max.shape)}, "
+        f"atten_in.shape={tuple(atten_in.shape)}",
+        flush=True,
+    )

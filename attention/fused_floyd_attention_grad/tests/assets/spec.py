@@ -1,3 +1,15 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """FFAG (FusedFloydAttentionGrad) TestSpec 入口
 
 ACLNN 模式 TestSpec，从 impl/ 加载各模块。
@@ -36,10 +48,25 @@ customize_inputs = _inputs_mod.customize_inputs
 compare = _compare_mod.compare
 
 
-def _golden(query, key1, value1, key2, value2, dy,
-            attenMaskOptional, softmaxMaxOptional, softmaxSumOptional, attentionInOptional,
-            scaleValue, dqOut, dk1Out, dv1Out, dk2Out, dv2Out,
-            **kwargs):
+def _golden(
+    query,
+    key1,
+    value1,
+    key2,
+    value2,
+    dy,
+    attenMaskOptional,
+    softmaxMaxOptional,
+    softmaxSumOptional,
+    attentionInOptional,
+    scaleValue,
+    dqOut,
+    dk1Out,
+    dv1Out,
+    dk2Out,
+    dv2Out,
+    **kwargs,
+):
     """CPU golden — 高精度参考, 与 ATK cpu_benchmark 等价
 
     参数签名与 aclnnFusedFloydAttentionGradGetWorkspaceSize 一致
@@ -70,8 +97,11 @@ def _golden(query, key1, value1, key2, value2, dy,
     else:
         scaleValue = float(scaleValue)
 
-    testcase_name = kwargs.get('testcase_name', '')
-    print(f"[GOLDEN-FFAG] testcase_name={testcase_name}, scaleValue={scaleValue}", flush=True)
+    testcase_name = kwargs.get("testcase_name", "")
+    print(
+        f"[GOLDEN-FFAG] testcase_name={testcase_name}, scaleValue={scaleValue}",
+        flush=True,
+    )
 
     # 将输入提升到 fp64 (与 ATK init_by_input_data 一致)
     # 然后完整计算 forward+backward, 得到高精度 golden
@@ -91,7 +121,9 @@ def _golden(query, key1, value1, key2, value2, dy,
 
     # ATK 把 forward 中间结果转回原 dtype (init_by_input_data 中的关键步骤)
     origin_q_dtype = query.dtype if isinstance(query, torch.Tensor) else torch.float16
-    origin_x_max_dtype = softmaxMaxOptional.dtype if softmaxMaxOptional is not None else torch.float32
+    origin_x_max_dtype = (
+        softmaxMaxOptional.dtype if softmaxMaxOptional is not None else torch.float32
+    )
     atten_in_final = atten_in_hp.to(origin_q_dtype)
     x_max_final = x_max_hp.to(origin_x_max_dtype)
     x_sum_final = x_sum_hp.to(origin_x_max_dtype)
@@ -99,12 +131,26 @@ def _golden(query, key1, value1, key2, value2, dy,
     # ATK __call__ 中: Q/K1/...保持 fp64, grad 保持原 dtype, atten_in/x_max/x_sum 用转换后的
     # floyd_attn_backward 内部: dtype=fp64, golden_dtype=fp32, einsum 用 Q.to(fp64)
     dQ, dK1, dV1, dK2, dV2 = floyd_attn_backward(
-        query_hp, key1_hp, key2_hp, value1_hp, value2_hp, grad,
-        atten_mask, x_max_final, x_sum_final, atten_in_final, scaleValue
+        query_hp,
+        key1_hp,
+        key2_hp,
+        value1_hp,
+        value2_hp,
+        grad,
+        atten_mask,
+        x_max_final,
+        x_sum_final,
+        atten_in_final,
+        scaleValue,
     )
 
-    return [dQ.contiguous(), dK1.contiguous(), dV1.contiguous(),
-            dK2.contiguous(), dV2.contiguous()]
+    return [
+        dQ.contiguous(),
+        dK1.contiguous(),
+        dV1.contiguous(),
+        dK2.contiguous(),
+        dV2.contiguous(),
+    ]
 
 
 class FusedFloydAttentionGradTestSpec:
@@ -133,9 +179,21 @@ class FusedFloydAttentionGradTestSpec:
     }
 
 
-def _golden_e2e(grad_output, query_ik, key_ij, value_ij, key_jk, value_jk,
-                attention_out, softmax_max, softmax_sum,
-                *, atten_mask=None, scale_value=1., **kwargs):
+def _golden_e2e(
+    grad_output,
+    query_ik,
+    key_ij,
+    value_ij,
+    key_jk,
+    value_jk,
+    attention_out,
+    softmax_max,
+    softmax_sum,
+    *,
+    atten_mask=None,
+    scale_value=1.0,
+    **kwargs,
+):
     """CPU golden — E2E 模式, 与 torch_npu.npu_fused_floyd_attention_backward 签名一致
 
     参数顺序与 torch_npu API 一致 (grad_output 在第一位)。
@@ -149,7 +207,11 @@ def _golden_e2e(grad_output, query_ik, key_ij, value_ij, key_jk, value_jk,
     value1 = value_ij.detach().cpu() if isinstance(value_ij, torch.Tensor) else value_ij
     key2 = key_jk.detach().cpu() if isinstance(key_jk, torch.Tensor) else key_jk
     value2 = value_jk.detach().cpu() if isinstance(value_jk, torch.Tensor) else value_jk
-    grad = grad_output.detach().cpu() if isinstance(grad_output, torch.Tensor) else grad_output
+    grad = (
+        grad_output.detach().cpu()
+        if isinstance(grad_output, torch.Tensor)
+        else grad_output
+    )
     mask = atten_mask
     if mask is not None and isinstance(mask, torch.Tensor):
         mask = mask.detach().cpu()
@@ -160,8 +222,11 @@ def _golden_e2e(grad_output, query_ik, key_ij, value_ij, key_jk, value_jk,
     else:
         scale_value = float(scale_value)
 
-    testcase_name = kwargs.get('testcase_name', '')
-    print(f"[GOLDEN-FFAG-E2E] testcase_name={testcase_name}, scale_value={scale_value}", flush=True)
+    testcase_name = kwargs.get("testcase_name", "")
+    print(
+        f"[GOLDEN-FFAG-E2E] testcase_name={testcase_name}, scale_value={scale_value}",
+        flush=True,
+    )
 
     # 用 fp64 计算 forward+backward (与 ACLNN golden 逻辑一致)
     golden_dtype = torch.float64
@@ -184,12 +249,26 @@ def _golden_e2e(grad_output, query_ik, key_ij, value_ij, key_jk, value_jk,
     x_sum_final = x_sum_hp.to(origin_x_max_dtype)
 
     dQ, dK1, dV1, dK2, dV2 = floyd_attn_backward(
-        query_hp, key1_hp, key2_hp, value1_hp, value2_hp, grad,
-        mask, x_max_final, x_sum_final, atten_in_final, scale_value
+        query_hp,
+        key1_hp,
+        key2_hp,
+        value1_hp,
+        value2_hp,
+        grad,
+        mask,
+        x_max_final,
+        x_sum_final,
+        atten_in_final,
+        scale_value,
     )
 
-    return [dQ.contiguous(), dK1.contiguous(), dV1.contiguous(),
-            dK2.contiguous(), dV2.contiguous()]
+    return [
+        dQ.contiguous(),
+        dK1.contiguous(),
+        dV1.contiguous(),
+        dK2.contiguous(),
+        dV2.contiguous(),
+    ]
 
 
 class FusedFloydAttentionGradE2ESpec:
