@@ -312,61 +312,63 @@ struct GmmExecuteAttrs {
 
 static graphStatus GetGmmAttrs(const OpExecuteContext *host_api_ctx, GmmExecuteAttrs &out)
 {
-  auto attrs = host_api_ctx->GetAttrs();
-  OP_CHECK_IF(attrs == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul aclnnfallback", "attrs", "GetAttrs returned nullptr"),
+    auto attrs = host_api_ctx->GetAttrs();
+    OP_CHECK_IF(
+        attrs == nullptr,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul aclnnfallback", "attrs", "GetAttrs returned nullptr"),
+        return GRAPH_FAILED);
+    out.splitItemGe = attrs->GetAttrPointer<int64_t>(INDEX_GMM_ATTR_SPLIT_ITEM);
+    OP_CHECK_IF(out.splitItemGe == nullptr, OP_LOGE_WITH_INVALID_INPUT("GroupedMatmul aclnnfallback", "split_item"),
                 return GRAPH_FAILED);
-  out.splitItemGe = attrs->GetAttrPointer<int64_t>(INDEX_GMM_ATTR_SPLIT_ITEM);
-  OP_CHECK_IF(out.splitItemGe == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT("GroupedMatmul aclnnfallback", "split_item"), return GRAPH_FAILED);
-  out.isWeightTransposedPtr = attrs->GetAttrPointer<bool>(INDEX_GMM_ATTR_TRANSPOSE_WEIGHT);
-  OP_CHECK_IF(out.isWeightTransposedPtr == nullptr,
-              OP_LOGE_WITH_INVALID_INPUT("GroupedMatmul aclnnfallback", "transpose_weight"), return GRAPH_FAILED);
-  out.isXTransposed = attrs->GetAttrPointer<bool>(INDEX_GMM_ATTR_TRANSPOSE_X);
-  OP_CHECK_IF(out.isXTransposed == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT("GroupedMatmul aclnnfallback", "transpose_x"), return GRAPH_FAILED);
-  out.groupTypeGe = attrs->GetAttrPointer<int64_t>(INDEX_GMM_ATTR_GROUP_TYPE);
-  OP_CHECK_IF(out.groupTypeGe == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT("GroupedMatmul aclnnfallback", "group_type"), return GRAPH_FAILED);
-  out.groupListTypeGe = attrs->GetAttrPointer<int64_t>(INDEX_GMM_ATTR_GROUP_LIST_TYPE);
-  OP_CHECK_IF(out.groupListTypeGe == nullptr,
+    out.isWeightTransposedPtr = attrs->GetAttrPointer<bool>(INDEX_GMM_ATTR_TRANSPOSE_WEIGHT);
+    OP_CHECK_IF(out.isWeightTransposedPtr == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT("GroupedMatmul aclnnfallback", "transpose_weight"), return GRAPH_FAILED);
+    out.isXTransposed = attrs->GetAttrPointer<bool>(INDEX_GMM_ATTR_TRANSPOSE_X);
+    OP_CHECK_IF(out.isXTransposed == nullptr, OP_LOGE_WITH_INVALID_INPUT("GroupedMatmul aclnnfallback", "transpose_x"),
+                return GRAPH_FAILED);
+    out.groupTypeGe = attrs->GetAttrPointer<int64_t>(INDEX_GMM_ATTR_GROUP_TYPE);
+    OP_CHECK_IF(out.groupTypeGe == nullptr, OP_LOGE_WITH_INVALID_INPUT("GroupedMatmul aclnnfallback", "group_type"),
+                return GRAPH_FAILED);
+    out.groupListTypeGe = attrs->GetAttrPointer<int64_t>(INDEX_GMM_ATTR_GROUP_LIST_TYPE);
+    OP_CHECK_IF(out.groupListTypeGe == nullptr,
                 OP_LOGE_WITH_INVALID_INPUT("GroupedMatmul aclnnfallback", "group_list_type"), return GRAPH_FAILED);
-  out.actTypeGe = attrs->GetAttrPointer<int64_t>(INDEX_GMM_ATTR_ACT_TYPE);
-  OP_CHECK_IF(out.actTypeGe == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT("GroupedMatmul aclnnfallback", "act_type"), return GRAPH_FAILED);
-  out.tuningConfigGe = attrs->GetListInt(INDEX_GMM_ATTR_TUNING_CONFIG);
-  OP_CHECK_IF(out.tuningConfigGe == nullptr,
+    out.actTypeGe = attrs->GetAttrPointer<int64_t>(INDEX_GMM_ATTR_ACT_TYPE);
+    OP_CHECK_IF(out.actTypeGe == nullptr, OP_LOGE_WITH_INVALID_INPUT("GroupedMatmul aclnnfallback", "act_type"),
+                return GRAPH_FAILED);
+    out.tuningConfigGe = attrs->GetListInt(INDEX_GMM_ATTR_TUNING_CONFIG);
+    OP_CHECK_IF(out.tuningConfigGe == nullptr,
                 OP_LOGE_WITH_INVALID_INPUT("GroupedMatmul aclnnfallback", "tuning_config"), return GRAPH_FAILED);
-  return GRAPH_SUCCESS;
+    return GRAPH_SUCCESS;
 }
 
 static graphStatus PreparePerTokenScaleList(const OpExecuteContext *host_api_ctx,
                                             std::vector<const aclTensor *> &perTokenScaleVec, bool isXTransposed,
                                             bool isPerTile)
 {
-  auto perTokenScaleTensor = host_api_ctx->GetOptionalInputTensor(INDEX_GMM_INPUT_PER_TOKEN_SCALE);
-  auto perTokenScale = ConvertType(perTokenScaleTensor);
-  if (perTokenScale == nullptr) {
-    std::vector<int64_t> shape{0};
-    static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
-    OP_CHECK_IF(aclCreateTensor == nullptr,
+    auto perTokenScaleTensor = host_api_ctx->GetOptionalInputTensor(INDEX_GMM_INPUT_PER_TOKEN_SCALE);
+    auto perTokenScale = ConvertType(perTokenScaleTensor);
+    if (perTokenScale == nullptr) {
+        std::vector<int64_t> shape{0};
+        static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
+        OP_CHECK_IF(aclCreateTensor == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul aclnnfallback", "aclCreateTensor",
                                                              "Failed to load opapi func aclCreateTensor"),
                     return GRAPH_FAILED);
-    perTokenScale = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(),
-                                    0, aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(), nullptr);
-    OP_CHECK_IF(perTokenScale == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul aclnnfallback", "perTokenScale",
-                                                         "aclCreateTensor failed to create the perTokenScale placeholder"),
-                return GRAPH_FAILED);
-  }
-  if (perTokenScaleTensor != nullptr && (perTokenScaleTensor->GetDataType() == ge::DataType::DT_FLOAT8_E8M0 ||
-                                         isPerTile)) {
-    PrepareAclTensorVector(host_api_ctx, perTokenScaleVec, INDEX_GMM_INPUT_PER_TOKEN_SCALE, isXTransposed, false);
-  } else {
-    perTokenScaleVec.push_back(perTokenScale);
-  }
-  return GRAPH_SUCCESS;
+        perTokenScale = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(), 0,
+                                        aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(), nullptr);
+        OP_CHECK_IF(
+            perTokenScale == nullptr,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul aclnnfallback", "perTokenScale",
+                                                     "aclCreateTensor failed to create the perTokenScale placeholder"),
+            return GRAPH_FAILED);
+    }
+    if (perTokenScaleTensor != nullptr &&
+        (perTokenScaleTensor->GetDataType() == ge::DataType::DT_FLOAT8_E8M0 || isPerTile)) {
+        PrepareAclTensorVector(host_api_ctx, perTokenScaleVec, INDEX_GMM_INPUT_PER_TOKEN_SCALE, isXTransposed, false);
+    } else {
+        perTokenScaleVec.push_back(perTokenScale);
+    }
+    return GRAPH_SUCCESS;
 }
 
 static graphStatus ExecuteGmmApi(OpExecuteContext *host_api_ctx, aclTensorList *aclTensorListX,
@@ -380,24 +382,24 @@ static graphStatus ExecuteGmmApi(OpExecuteContext *host_api_ctx, aclTensorList *
                                  int64_t splitItem, int64_t groupType, int64_t groupListType, int64_t actType,
                                  std::vector<int64_t> &tuningConfig, std::vector<const gert::Tensor *> &geTensorVectorY)
 {
-  (void)host_api_ctx;
-  aclTensorList* activationInputOptional = nullptr;
-  aclTensorList* activationQuantScaleOptional = nullptr;
-  aclTensorList* activationQuantOffsetOptional = nullptr;
-  aclTensorList* actFeatureOutOptional = nullptr;
-  aclTensorList* dynQuantScaleOutOptional = nullptr;
-  auto api_ret_gmm = EXEC_OPAPI_CMD(aclnnGroupedMatmulV5, aclTensorListX, aclTensorListWeight, geTensorVectorBias,
-                                aclTensorListScale, geTensorVectorOffset, geTensorVectorAntiquantScale,
-                                geTensorVectorAntiquantOffset, aclTensorListPerTokenScale, groupListTensor,
-                                activationInputOptional, activationQuantScaleOptional, activationQuantOffsetOptional,
-                                splitItem, groupType, groupListType, actType, tuningConfig,
-                                geTensorVectorY, actFeatureOutOptional, dynQuantScaleOutOptional);
-  OP_CHECK_IF(api_ret_gmm != GRAPH_SUCCESS,
-              OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul aclnnfallback", "input",
-                                                       "aclnnGroupedMatmulV5 execution failed, status = " +
-                                                           std::to_string(static_cast<unsigned int>(api_ret_gmm))),
-              return GRAPH_FAILED);
-  return GRAPH_SUCCESS;
+    (void)host_api_ctx;
+    aclTensorList *activationInputOptional = nullptr;
+    aclTensorList *activationQuantScaleOptional = nullptr;
+    aclTensorList *activationQuantOffsetOptional = nullptr;
+    aclTensorList *actFeatureOutOptional = nullptr;
+    aclTensorList *dynQuantScaleOutOptional = nullptr;
+    auto api_ret_gmm = EXEC_OPAPI_CMD(aclnnGroupedMatmulV5, aclTensorListX, aclTensorListWeight, geTensorVectorBias,
+                                      aclTensorListScale, geTensorVectorOffset, geTensorVectorAntiquantScale,
+                                      geTensorVectorAntiquantOffset, aclTensorListPerTokenScale, groupListTensor,
+                                      activationInputOptional, activationQuantScaleOptional,
+                                      activationQuantOffsetOptional, splitItem, groupType, groupListType, actType,
+                                      tuningConfig, geTensorVectorY, actFeatureOutOptional, dynQuantScaleOutOptional);
+    OP_CHECK_IF(api_ret_gmm != GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul aclnnfallback", "input",
+                                                         "aclnnGroupedMatmulV5 execution failed, status = " +
+                                                             std::to_string(static_cast<unsigned int>(api_ret_gmm))),
+                return GRAPH_FAILED);
+    return GRAPH_SUCCESS;
 }
 
 static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext *host_api_ctx)
@@ -409,7 +411,10 @@ static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext *host_api_ctx)
 
     GmmExecuteAttrs attrs{};
     auto attrRet = GetGmmAttrs(host_api_ctx, attrs);
-    OP_CHECK_IF(attrRet != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "GetGmmAttrs failed, ret: %u", attrRet),
+    OP_CHECK_IF(attrRet != GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                    "GroupedMatmul aclnnfallback", "input",
+                    "GetGmmAttrs failed, status = " + std::to_string(static_cast<unsigned int>(attrRet))),
                 return attrRet);
 
     std::vector<const gert::Tensor *> geTensorVectorY;
@@ -453,7 +458,10 @@ static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext *host_api_ctx)
 
     std::vector<const aclTensor *> geTensorVectorPerTokenScale;
     auto ptsRet = PreparePerTokenScaleList(host_api_ctx, geTensorVectorPerTokenScale, *attrs.isXTransposed, isPerTile);
-    OP_CHECK_IF(ptsRet != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "PreparePerTokenScaleList failed, ret: %u", ptsRet),
+    OP_CHECK_IF(ptsRet != GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                    "GroupedMatmul aclnnfallback", "input",
+                    "PreparePerTokenScaleList failed, status = " + std::to_string(static_cast<unsigned int>(ptsRet))),
                 return ptsRet);
     auto aclTensorListPerTokenScale =
         aclCreateTensorList(geTensorVectorPerTokenScale.data(), geTensorVectorPerTokenScale.size());
