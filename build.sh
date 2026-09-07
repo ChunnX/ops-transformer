@@ -1210,6 +1210,12 @@ while [[ $# -gt 0 ]]; do
         ;;
     --PR_UT)
         PR_CHANGED_FILES="$2"
+        # PR_UT is also used for experimental operators. Enable their CMake
+        # subtree from the changed-file list because the shared CI ut.sh
+        # invokes this entry point without a separate --experimental flag.
+        if grep -q "^experimental/" "$PR_CHANGED_FILES"; then
+            ENABLE_EXPERIMENTAL=TRUE
+        fi
         ENABLE_TEST=TRUE
         PR_UT_FLAG=TRUE
         TEST_MC2=$(python3 "$CURRENT_DIR"/cmake/scripts/parse_changed_files.py -c "$CURRENT_DIR"/tests/test_config.yaml -f "$PR_CHANGED_FILES" get_related_ut_mc2)
