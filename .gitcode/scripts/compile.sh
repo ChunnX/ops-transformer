@@ -114,8 +114,8 @@ else
 fi
 if [ "${task_name}" == "Pre_Compile" ]; then
     # LOG_DO bash build.sh --PR_PKG ./pr_filelist.txt -j32 --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH}
-    echo "bash build.sh --pkg --ops=fused_infer_attention_score --soc=ascend950 -j"${JOB_NUM}""
-    LOG_DO bash build.sh --pkg --ops=fused_infer_attention_score --soc=ascend950 -j"${JOB_NUM}"
+    echo "bash build.sh --pkg --ops=matmul_reduce_scatter_v2 --soc=ascend950 -j"${JOB_NUM}""
+    LOG_DO bash build.sh --pkg --ops=matmul_reduce_scatter_v2 --soc=ascend950 -j"${JOB_NUM}"
     ls -al "${WORKSPACE}"/third_party
     ret=$?
     if [ $ret -eq 200 ]; then
