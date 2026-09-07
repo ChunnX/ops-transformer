@@ -301,8 +301,21 @@ public:
         epilogueDequantAndSwigluOp_.UpdateNextProblem(resProblemShape);
         UpdateGlobalBuffer(params);
         CoordClass coord(m, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+        // Diagnostic switch: compare enabled/disabled with identical inputs and tiling.
+        constexpr bool enableMRotationFor448 = true;
+        const bool rotateMTiles = enableMRotationFor448 &&
+            AscendC::Std::is_same_v<AType, int8_t> && AscendC::Std::is_same_v<BType, int8_t> &&
+            !transA && !transB && params.gmmParams.groupNum == 64 &&
+            m == 448 && n == 4096 && k == 6144 &&
+            params.gmmParams.baseM == 128 && params.gmmParams.baseN == 256 &&
+            params.gmmParams.baseK == 128;
         BlockCoord tileIdx;
         while (bs.GetTileIdx(tileIdx)) {
+            if (rotateMTiles) {
+                // Apply the same mapping on AIC and AIV before computing shapes and offsets.
+                // Keep N unchanged to preserve the B tile shared by the four M tiles.
+                Get<INDEX_M_TILEIDX>(tileIdx) = (Get<INDEX_M_TILEIDX>(tileIdx) + (groupIdx & 3U)) & 3L;
+            }
             BlockShape singleShape = bs.GetBlockShape(tileIdx);
             // isMx = true
             blockOffset_ = coord.template GetQuantIOOffset<GroupedMatmul::QuantMode::PERTOKEN_MODE>(
