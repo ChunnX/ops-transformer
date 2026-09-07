@@ -67,7 +67,9 @@ if _TORCHAIR_AVAILABLE:
         result = x.new_empty(x.size())
         return result
 
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer._compressor_forward.default)
+    @register_fx_node_ge_converter(
+        torch.ops.cann_ops_transformer._compressor_forward.default
+    )
     def convert_compressor(
         x: Tensor,
         wkv: Tensor,
