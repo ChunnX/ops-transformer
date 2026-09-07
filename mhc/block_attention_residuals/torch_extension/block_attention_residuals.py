@@ -139,6 +139,70 @@ def _check_inputs(
     )
 
 
+class BlockAttentionResidualsFunction(torch.autograd.Function):
+    """Autograd wrapper: forward -> block_attention_residuals, backward -> block_attention_residuals_backward"""
+
+    @staticmethod
+    def forward(
+        ctx,
+        partial_block,
+        block_res,
+        proj_weight,
+        norm_weight,
+        valid_block_num,
+        norm_eps,
+    ):
+        op_module = block_attention_residuals_op_builder.load()
+        hidden, inv_norm, probs = op_module.block_attention_residuals(
+            partial_block,
+            block_res,
+            proj_weight,
+            norm_weight,
+            valid_block_num,
+            norm_eps,
+            True,
+        )
+        ctx.save_for_backward(
+            partial_block, block_res, proj_weight, norm_weight, inv_norm, probs
+        )
+        ctx.valid_block_num = valid_block_num
+        return hidden
+
+    @staticmethod
+    def backward(ctx, grad_hidden_states):
+        partial_block, block_res, proj_weight, norm_weight, inv_norm, probs = (
+            ctx.saved_tensors
+        )
+        from ..block_attention_residuals_grad import block_attention_residuals_backward
+
+        grad_hidden_states = grad_hidden_states.contiguous()
+        proj_for_grad = (
+            proj_weight.unsqueeze(0) if proj_weight.dim() == 1 else proj_weight
+        )
+        grad_partial_block, grad_block_res, grad_proj_weight, grad_norm_weight = (
+            block_attention_residuals_backward(
+                partial_block,
+                block_res,
+                proj_for_grad,
+                norm_weight,
+                grad_hidden_states,
+                inv_norm,
+                probs,
+                valid_block_num=ctx.valid_block_num,
+            )
+        )
+        if proj_weight.dim() == 1:
+            grad_proj_weight = grad_proj_weight.reshape(proj_weight.shape)
+        return (
+            grad_partial_block,
+            grad_block_res,
+            grad_proj_weight,
+            grad_norm_weight,
+            None,
+            None,
+        )
+
+
 class BlockAttentionResidualsOpBuilder(OpBuilder):
     def __init__(self):
         super(BlockAttentionResidualsOpBuilder, self).__init__(
@@ -228,16 +292,29 @@ def block_attention_residuals(
     valid_block_num=None,
     norm_eps=DEFAULT_NORM_EPS,
 ):
-    """Attention Residual 加权融合前向，封装 aclnnBlockAttentionResiduals。
+    """自动反向传播接口，正向始终只返回 hidden_states。
 
-    正向始终只返回 hidden_states。反向算子未上库，仅走 need_backward=False，
-    不保存 inv_norm / probs。
+    - 若任一输入设置了 requires_grad=True，走 autograd 路径，自动保存 inv_norm / probs 用于 backward。
+    - 若无输入需梯度，走普通路径，中间变量不保存（节省内存）。
+    - backward 通过 tensor.grad 自动获取梯度，内部调用 block_attention_residuals_backward。
     """
     valid_block_num = _resolve_valid_block_num(block_res, valid_block_num)
     _check_inputs(
         partial_block, block_res, proj_weight, norm_weight, valid_block_num, norm_eps
     )
-    # 普通路径：need_backward=False，不保存中间变量，只返回主输出
+    needs_grad = any(
+        tensor.requires_grad
+        for tensor in (partial_block, block_res, proj_weight, norm_weight)
+    )
+    if needs_grad:
+        return BlockAttentionResidualsFunction.apply(
+            partial_block,
+            block_res,
+            proj_weight,
+            norm_weight,
+            valid_block_num,
+            norm_eps,
+        )
     op_module = block_attention_residuals_op_builder.load()
     hidden, _, _ = op_module.block_attention_residuals(
         partial_block,
