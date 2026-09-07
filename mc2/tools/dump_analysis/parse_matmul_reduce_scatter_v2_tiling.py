@@ -56,10 +56,9 @@ ARGS_INDEX_NAMES = [
 ]
 
 POS_TAG_MAP_MRSV2 = {
-    0: "COMM_BEFORE",         # AlltoAll/ReduceScatter 提交或 Wait 前
-    1: "MATMUL_BEFORE",       # C 核 Matmul 前
-    2: "REDUCE_BEFORE",       # V 核 ReduceSum 前
-    3: "FINALIZE_BEFORE",     # HCCL Finalize 前
+    0: "COMM_BEFORE",                    # AlltoAll 提交或 Wait 前
+    2: "COMP_CUBE_MATMUL_BEFORE",        # C 核 Matmul 前
+    3: "COMP_VEC_REDUCE_BEFORE",         # V 核 ReduceSum 前
 }
 
 RUNTIME_PHASE_MAP = {

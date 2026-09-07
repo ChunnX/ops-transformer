@@ -240,13 +240,7 @@ python3 parse_mc2_dump.py MatmulReduceScatterV2 /path/to/data-dump
 | `peermem_window_`、`peermem_segN_typeM_` | URMA peermem 布局、段类型、大小和数据预览 |
 | `exception_info.*` | 调用 CANN `msaicerr.py` 解包，并将 input/output/workspace 张量导出为 NPY |
 
-结果会同时打印到终端，并写入：
-
-```text
-<dump根目录>/mc2_dump_analysis/<标准算子名>/analysis.txt
-```
-
-XN/CKE 地址表会在同一结果目录下生成与原 dump 文件同名的 `.npy` 文件，数组 dtype 为 `uint64`，shape 为 `(行数, 64)`。解析进程返回码为 `0` 表示所有匹配文件解析成功，非 `0` 表示至少一个文件解析失败。
+结果输出到 `<dump根目录>/mc2_dump_analysis/<标准算子名>/`，保留原 rank 子目录，并让每个输入文件分别生成同名 NPY，不再生成统一的 `analysis.txt`。Tiling、Args 和 `type12/RUNTIME_INFO` 为对象型 NPY；普通 Workspace/Peermem 为完整 `uint8`；XN/CKE 为二维 `uint64`。
 
 原始异常文件会输出到：
 
@@ -285,13 +279,19 @@ python3 parse_mc2_exception_report.py <exception解析输出路径> \
   --operator MatmulReduceScatterV2 --export-npy <npy输出路径>
 ```
 
-查看 NPY 内容：
+对象型 Tiling/Args/RuntimeInfo 使用 NumPy 查看：
 
 ```bash
-python3 -c "import numpy as np; a=np.load('xxx.npy'); print(a.shape, a.dtype); print(a[:10])"
+python3 -c "import numpy as np; d=np.load('tiling_data_xxx.npy', allow_pickle=True).item(); print(d)"
 ```
 
-`segN` 中的 `N` 只是该次 tiling 中的段序号，不能单独代表数据语义；应以文件名中的 `typeM` 和 `analysis.txt` 里的 WorkspaceLayout 为准。当前 workspace 类型定义如下：
+XN/CKE 查看前两行、前八列：
+
+```bash
+python3 -c "import numpy as np; a=np.load('xn_addr_info_xxx.npy'); print(a[:2, :8])"
+```
+
+`segN` 中的 `N` 只是该次 tiling 中的段序号，不能单独代表数据语义；应以文件名中的 `typeM` 和独立 TilingData NPY 里的 `workspaceLayout` 为准。当前 workspace 类型定义如下：
 
 | type | 含义 | type | 含义 |
 | :---: | :--- | :---: | :--- |
@@ -304,7 +304,7 @@ python3 -c "import numpy as np; a=np.load('xxx.npy'); print(a.shape, a.dtype); p
 | 12 | RUNTIME_INFO | 13 | MM_WORKSPACE |
 | 255 | RESERVED |  |  |
 
-其中 `type12` 是每核通信运行状态，不是矩阵结果；它会逐核显示 magic 有效性、执行位置、通信阶段、commit、wait 和 pending 数。其他 Workspace 段由统一入口输出段含义，以及带字节偏移的 `uint8` 十进制预览；若要按真实数据类型和矩阵形状查看，使用下面的 `parse_matrix.py`。
+其中 `type12` 是每核通信运行状态，不是矩阵结果；它会把每核 magic 有效性、执行位置、通信阶段、commit、wait 和 pending 数保存进对象型 NPY。其他 Workspace 段完整保存为 `uint8` NPY；若要按真实数据类型和矩阵形状查看，继续对原始 dump 使用下面的 `parse_matrix.py`。
 
 `type13/MM_WORKSPACE` 是 Matmul helper 使用的内部临时区，不是 Matmul 结果。它没有固定元素类型或逻辑 shape，因此统一入口只按原始 `uint8` 字节显示；MMRS 的 Matmul 结果应查看 `type8/MM_RESULT`。
 
@@ -359,7 +359,7 @@ python3 parse_matmul_reduce_scatter_v2_tiling.py workspace_seg2_type12_xxx \
   --workspace --aic-core-num N
 ```
 
-URMA 算子的后端脚本还支持 `--comm-ctx` 和 `--peermem`。建议日常优先使用统一入口，因为它会从同一次调用的 tiling 自动推导 AIC 核数，并把所有相关文件汇总到一份报告中。
+URMA 算子的后端脚本还支持 `--comm-ctx` 和 `--peermem`。建议日常优先使用统一入口，因为它会从同一次调用的 tiling 自动推导 AIC 核数，并让每个输入文件单独生成一个易于比较的 NPY。
 
 ### 常见问题
 

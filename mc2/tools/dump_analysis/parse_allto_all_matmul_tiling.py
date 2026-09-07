@@ -160,11 +160,29 @@ RUNTIME_PHASE_MAP = {
 # 值与各 kernel 文件内 constexpr 一一对应，新增类别时同步更新此处
 #
 # 来源: arch35/allto_all_mx_quant_matmul_pipeline.h
-POS_TAG_MAP_ALLTO_ALL = {
+# RuntimeInfo 的数值编号由具体 Kernel 实现解释。主线 CCU 和
+# usingApaceImpl_ CCU 共用此解析脚本，但 1~3 的语义并不相同。
+POS_TAG_MAP_ALLTO_ALL_MAINLINE = {
     0: "COMM_BEFORE",
     1: "SCALE_COMM_BEFORE",
     2: "COMP_CUBE_MATMUL_BEFORE",
     3: "COMP_VEC_PERMUTE_BEFORE",
+}
+
+POS_TAG_MAP_ALLTO_ALL_APACE = {
+    0: "COMM_BEFORE",
+    1: "COMP_LOCAL_BEFORE",
+    2: "COMP_REMOTE_BEFORE",
+    3: "FINALIZE_BEFORE",
+}
+
+POS_TAG_MAP_ALLTO_ALL = {
+    value: (
+        mainline_name
+        if mainline_name == POS_TAG_MAP_ALLTO_ALL_APACE.get(value)
+        else f"MAINLINE_{mainline_name} / APACE_{POS_TAG_MAP_ALLTO_ALL_APACE[value]}"
+    )
+    for value, mainline_name in POS_TAG_MAP_ALLTO_ALL_MAINLINE.items()
 }
 
 
@@ -522,6 +540,12 @@ def parse_runtime_info_per_core(data: bytes, offset: int) -> dict:
         "execTurn": exec_turn,
         "execPosition": exec_position,
         "execPositionName": POS_TAG_MAP_ALLTO_ALL.get(exec_position, f"UNKNOWN({exec_position})"),
+        "execPositionMainlineName": POS_TAG_MAP_ALLTO_ALL_MAINLINE.get(
+            exec_position, f"UNKNOWN({exec_position})"
+        ),
+        "execPositionApaceName": POS_TAG_MAP_ALLTO_ALL_APACE.get(
+            exec_position, f"UNKNOWN({exec_position})"
+        ),
         "commPhase": comm_phase,
         "commPhaseName": RUNTIME_PHASE_MAP.get(comm_phase, f"UNKNOWN({comm_phase})"),
         "commCommitCount": commit_count,
