@@ -1009,8 +1009,6 @@ class ElasticBuffer:
     def _check_engram_fetch_grad(
         self, grad_fetched: torch.Tensor, fetch_ctx: EngramFetchCtx
     ) -> None:
-        """图模式友好校验: 普通 if/raise 静态检查, Dynamo 可追踪为 guard (学习 engram_fetch,
-        避免 torch._check 的 lambda 消息触发 'Missing as_proxy() for NestedUserFunctionVariable')"""
         if not self._with_grad:
             raise RuntimeError(
                 "engram_fetch_grad requires ElasticBuffer to be initialized with with_grad=True"
