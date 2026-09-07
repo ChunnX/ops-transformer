@@ -34,19 +34,82 @@ using namespace Mc2Kernel;
 using namespace Mc2Tiling;
 using namespace AscendC;
 
+template <typename MoeType, uint8_t QuantMode, bool ScaleMode>
+__aicore__ inline void RunIndependentDispatch(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales,
+                                              GM_ADDR xActiveMask, GM_ADDR expertScales, GM_ADDR elasticInfo,
+                                              GM_ADDR performanceInfo, GM_ADDR sharedExpertInput, GM_ADDR expandXOut,
+                                              GM_ADDR dynamicScalesOut, GM_ADDR assistInfoOut, GM_ADDR expandScalesOut,
+                                              GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, GM_ADDR workspaceGM,
+                                              TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData)
+{
+    MoeDistributeDispatchV2A5FullMesh<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, MoeType, QuantMode, ScaleMode, true> op;
+    op.InitSharedInput(sharedExpertInput);
+    op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo, expandXOut,
+            dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut, epSendCountsOut, workspaceGM, pipe,
+            tilingData);
+    op.Process();
+}
+
 template <uint8_t QuantMode, bool ScaleMode, uint8_t FullMesh, uint8_t CommMode, uint8_t ArchTag>
 __global__ __aicore__ void moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales,
                                                       GM_ADDR xActiveMask, GM_ADDR expertScales, GM_ADDR elasticInfo,
-                                                      GM_ADDR performanceInfo, GM_ADDR expandXOut,
-                                                      GM_ADDR dynamicScalesOut, GM_ADDR assistInfoOut,
-                                                      GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut,
-                                                      GM_ADDR tpSendCountsOut, GM_ADDR expandScalesOut,
-                                                      GM_ADDR workspaceGM, GM_ADDR tilingGM)
+                                                      GM_ADDR performanceInfo, GM_ADDR sharedExpertInput,
+                                                      GM_ADDR expandXOut, GM_ADDR dynamicScalesOut,
+                                                      GM_ADDR assistInfoOut, GM_ADDR expertTokenNumsOut,
+                                                      GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut,
+                                                      GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchV2TilingData, tilingData, tilingGM);
     TPipe pipe;
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
+#if (ORIG_DTYPE_X == DT_BF16 || ORIG_DTYPE_X == DT_FLOAT16)
+    if (tilingData.moeDistributeDispatchV2Info.reserved1) {
+        if constexpr (QuantMode == Mc2Kernel::UNQUANT) {
+            RunIndependentDispatch<DTYPE_X, Mc2Kernel::UNQUANT, false>(
+                mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
+                sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
+                epSendCountsOut, workspaceGM, &pipe, &tilingData);
+        } else {
+            switch (tilingData.moeDistributeDispatchV2Info.moeExpertDtype) {
+                case DT_INT8:
+                    if constexpr (QuantMode == 1U || QuantMode == 2U) {
+                        RunIndependentDispatch<int8_t, QuantMode, ScaleMode>(
+                            mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
+                            sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut,
+                            expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                    }
+                    break;
+                case DT_HIFLOAT8:
+                    if constexpr (QuantMode == 1U) {
+                        RunIndependentDispatch<hifloat8_t, QuantMode, ScaleMode>(
+                            mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
+                            sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut,
+                            expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                    }
+                    break;
+                case DT_FLOAT8_E4M3FN:
+                    RunIndependentDispatch<fp8_e4m3fn_t, QuantMode, ScaleMode>(
+                        mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
+                        sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut,
+                        expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                    break;
+                case DT_FLOAT8_E5M2:
+                    if constexpr (QuantMode == 2U || QuantMode == 3U) {
+                        RunIndependentDispatch<fp8_e5m2_t, QuantMode, ScaleMode>(
+                            mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
+                            sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut,
+                            expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                    }
+                    break;
+                default:
+                    break; // Host validation rejects unsupported communication types.
+            }
+        }
+        AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
+        return;
+    }
+#endif
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         if constexpr (CommMode == TILINGKEY_TPL_MTE) {

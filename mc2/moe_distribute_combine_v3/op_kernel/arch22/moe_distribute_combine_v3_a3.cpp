@@ -44,7 +44,7 @@ __global__ __aicore__ void moe_distribute_combine_v3(GM_ADDR mc2Context, GM_ADDR
                                                      GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX,
                                                      GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2,
                                                      GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR XOut,
-                                                     GM_ADDR workspaceGM, GM_ADDR tilingGM)
+                                                     GM_ADDR sharedExpertOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeDistributeCombineV2TilingData);
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);

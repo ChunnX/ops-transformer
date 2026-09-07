@@ -45,6 +45,78 @@ using namespace ge;
 using namespace Mc2Tiling;
 
 namespace optiling {
+static ge::graphStatus CheckIndependentSharedCombine(gert::TilingContext *context, CombineV2Config &config)
+{
+    if (!config.enableIndependentSharedExpert) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_TILING_CHECK(mc2tiling::GetNpuArch(context) != NpuArch::DAV_3510,
+                    OP_LOGE(context->GetNodeName(), "Independent shared experts are only supported on A5."),
+                    return ge::GRAPH_FAILED);
+    const auto attrs = context->GetAttrs();
+    const auto tp = attrs->GetAttrPointer<int64_t>(4U);
+    const auto tpRank = attrs->GetAttrPointer<int64_t>(5U);
+    const auto shard = attrs->GetAttrPointer<int64_t>(6U);
+    const auto shared = attrs->GetAttrPointer<int64_t>(7U);
+    const auto sharedRanks = attrs->GetAttrPointer<int64_t>(8U);
+    const auto ep = attrs->GetAttrPointer<int64_t>(0U);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, tp);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, tpRank);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, shard);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, shared);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, sharedRanks);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, ep);
+    const char *name = context->GetNodeName();
+    OP_TILING_CHECK(*tp != 1 || *tpRank != 0 || *shard != 0 || *shared <= 0 || *sharedRanks <= 0 ||
+                        *sharedRanks >= *ep || *sharedRanks % *shared != 0,
+                    OP_LOGE(name, "Independent shared experts require TP=1, shard=0 and a valid shared rank group."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context->GetOptionalInputDesc(config.elasticInfoIndex) != nullptr,
+                    OP_LOGE(name, "Independent shared experts do not support elastic_info."), return ge::GRAPH_FAILED);
+    const auto input = context->GetInputShape(config.expandXIndex);
+    const auto inputDesc = context->GetInputDesc(config.expandXIndex);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, input);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, inputDesc);
+    OP_TILING_CHECK(input->GetStorageShape().GetDimNum() != 2U, OP_LOGE(name, "Token input must be a matrix."),
+                    return ge::GRAPH_FAILED);
+    auto dtype = inputDesc->GetDataType();
+    OP_TILING_CHECK(dtype != ge::DT_BF16 && dtype != ge::DT_FLOAT16,
+                    OP_LOGE(name, "Independent shared tokens must be BF16 or FP16."), return ge::GRAPH_FAILED);
+    int64_t h = input->GetStorageShape().GetDim(1U);
+    if (config.isIndependentSharedRank) {
+        OP_TILING_CHECK(h % 2 != 0, OP_LOGE(name, "Shared H must equal 2*latent H."), return ge::GRAPH_FAILED);
+        h /= 2;
+    }
+    const auto commQuant = attrs->GetAttrPointer<int64_t>(config.attrCommQuantModeIndex);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, commQuant);
+    OP_TILING_CHECK(*commQuant != 0 && *commQuant != 2 && *commQuant != 4,
+                    OP_LOGE(name, "Independent shared combine supports communication quantization 0, 2, 4."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context->GetOptionalInputDesc(config.sharedExpertXIndex) != nullptr,
+                    OP_LOGE(name, "shared_expert_x must be absent for independent shared experts."),
+                    return ge::GRAPH_FAILED);
+    const auto output = context->GetOutputShape(1U);
+    const auto outputDesc = context->GetOutputDesc(1U);
+    const auto moeOutputDesc = context->GetOutputDesc(0U);
+    const auto ids = context->GetInputShape(config.expertIdsIndex);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, output);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, outputDesc);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, moeOutputDesc);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, ids);
+    OP_TILING_CHECK(ids->GetStorageShape().GetDimNum() != 2U, OP_LOGE(name, "expert_ids must be a matrix."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(output->GetStorageShape().GetDimNum() != 2U ||
+                        output->GetStorageShape().GetDim(0U) != ids->GetStorageShape().GetDim(0U) ||
+                        output->GetStorageShape().GetDim(1U) != h * 2 ||
+                        outputDesc->GetDataType() != moeOutputDesc->GetDataType() ||
+                        outputDesc->GetStorageFormat() != ge::FORMAT_ND,
+                    OP_LOGE(name, "shared_expert_out must have shape [BS, 2*H] and the x output dtype."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(h < 1024 || h > 4096, OP_LOGE(name, "Independent shared experts require 1024 <= latent H <= 4096."),
+                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MoeDistributeCombineV3TilingFuncBase::MoeDistributeCombineV3TilingFunc(gert::TilingContext *context)
 {
     CombineV2Config config;
@@ -86,7 +158,21 @@ ge::graphStatus MoeDistributeCombineV3TilingFuncBase::MoeDistributeCombineV3Tili
     config.attrConstExpertNumIndex = 16; // 根据combineV2算子原型标志位设置attrConstExpertNum索引
     config.hasAddRmsNorm = false;
     config.isMc2Context = true;
+    {
+        const auto attrs = context->GetAttrs();
+        OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
+        const auto enabled = attrs->GetAttrPointer<bool>(17U);
+        config.enableIndependentSharedExpert = enabled != nullptr && *enabled;
+        const auto rank = attrs->GetAttrPointer<int64_t>(1U);
+        const auto sharedRanks = attrs->GetAttrPointer<int64_t>(8U);
+        OPS_CHECK_NULL_WITH_CONTEXT(context, rank);
+        OPS_CHECK_NULL_WITH_CONTEXT(context, sharedRanks);
+        config.isIndependentSharedRank = config.enableIndependentSharedExpert && *rank < *sharedRanks;
+    }
 
+    OP_TILING_CHECK(CheckIndependentSharedCombine(context, config) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context->GetNodeName(), "Independent shared expert validation failed."),
+                    return ge::GRAPH_FAILED);
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "Enter MoeDistributeDispatchV3 tiling");
     ge::graphStatus ret = MoeDistributeCombineV2TilingFuncNew(context, config);

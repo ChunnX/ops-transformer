@@ -16,6 +16,7 @@
 #ifndef MOE_DISTRIBUTE_CHECK_WIN_SIZE
 #define MOE_DISTRIBUTE_CHECK_WIN_SIZE
 
+#include <algorithm>
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "mc2_log_compat.h"
 
@@ -48,6 +49,11 @@ struct CheckWinSizeData {
     bool isSetFullMeshV2;
     bool isLayered;
     bool isMc2Context;
+    bool enableIndependentSharedExpert = false;
+    bool checkDispatch = false;
+    uint32_t sharedExpertRankNum = 0U;
+    uint32_t dispatchQuantMode = 0U;
+    ge::DataType dispatchDtype = ge::DT_UNDEFINED;
 };
 
 inline ge::graphStatus CheckActualWinSize(const gert::TilingContext *context, const char *nodeName,
@@ -133,9 +139,62 @@ inline ge::graphStatus CheckActualWinSize(const gert::TilingContext *context, co
     return ge::GRAPH_SUCCESS;
 }
 
+inline uint64_t LatentAlign(uint64_t bytes, uint64_t alignment)
+{
+    return (bytes + alignment - 1UL) / alignment * alignment;
+}
+
+inline uint64_t LatentDispatchTokenBytes(uint64_t h, uint32_t quantMode, ge::DataType dtype)
+{
+    bool fp4 = dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_FLOAT4_E1M2;
+    uint64_t bytes = quantMode == 0U ? h * MAX_OUT_DTYPE_SIZE : (fp4 ? (h + 1UL) / 2UL : h);
+    bytes = LatentAlign(bytes, UB_ALIGN);
+    if (quantMode == 2U) {
+        bytes += sizeof(float);
+    } else if (quantMode == 3U) {
+        bytes = LatentAlign(h, 128UL) + (h + 127UL) / 128UL * sizeof(float);
+    } else if (quantMode == 4U || quantMode == 5U) {
+        bytes = LatentAlign(h, 256UL) + LatentAlign((h + 31UL) / 32UL, 2UL);
+    }
+    return (LatentAlign(bytes, UB_ALIGN) + UB_ALIGN + FULL_MESH_DATA_ALIGN - 1UL) / FULL_MESH_DATA_ALIGN *
+           WIN_ADDR_ALIGN;
+}
+
+inline ge::graphStatus CheckLatentWinSize(const gert::TilingContext *context, const char *nodeName,
+                                          CheckWinSizeData &data)
+{
+    const auto size = context->GetAttrs()->GetAttrPointer<int64_t>(3U);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, size);
+    uint64_t reserved = MB_SIZE + data.epWorldSize * EP_RANK_OFFSET_STEP;
+    OP_TILING_CHECK(*size < 0 || static_cast<uint64_t>(*size) <= reserved,
+                    OP_LOGE(nodeName, "ccl_buffer_size is too small for the state area."), return ge::GRAPH_FAILED);
+    uint64_t maxBs = data.globalBs / data.epWorldSize;
+    uint64_t moeCombine =
+        (data.h * MAX_OUT_DTYPE_SIZE + FULL_MESH_DATA_ALIGN - 1UL) / FULL_MESH_DATA_ALIGN * WIN_ADDR_ALIGN;
+    uint64_t sharedCombine =
+        (data.h * 2UL * MAX_OUT_DTYPE_SIZE + FULL_MESH_DATA_ALIGN - 1UL) / FULL_MESH_DATA_ALIGN * WIN_ADDR_ALIGN;
+    uint64_t combineBytes = maxBs * (data.k * moeCombine + data.sharedExpertNum * sharedCombine);
+    uint64_t dispatchBytes = 0UL;
+    if (data.checkDispatch) {
+        uint64_t localExperts = data.moeExpertNum / (data.epWorldSize - data.sharedExpertRankNum);
+        uint64_t moeBytes = maxBs * data.epWorldSize * localExperts *
+                            LatentDispatchTokenBytes(data.h, data.dispatchQuantMode, data.dispatchDtype);
+        uint64_t sharedBytes = maxBs * data.epWorldSize * LatentDispatchTokenBytes(data.h * 2UL, 0U, ge::DT_BF16);
+        dispatchBytes = std::max(moeBytes, sharedBytes);
+    }
+    data.totalWinSizeEp = static_cast<uint64_t>(*size) - reserved;
+    OP_TILING_CHECK(combineBytes + dispatchBytes > data.totalWinSizeEp / DOUBLE_DATA_BUFFER,
+                    OP_LOGE(nodeName, "ccl_buffer_size cannot hold independent shared expert data."),
+                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 inline ge::graphStatus CheckWinSize(const gert::TilingContext *context, const char *nodeName,
                                     CheckWinSizeData &winSizeData)
 {
+    if (winSizeData.enableIndependentSharedExpert) {
+        return CheckLatentWinSize(context, nodeName, winSizeData);
+    }
     auto attrs = context->GetAttrs();
     uint64_t hcclBufferSizeEp = 0;
     uint64_t maxWindowSizeEp = 0;

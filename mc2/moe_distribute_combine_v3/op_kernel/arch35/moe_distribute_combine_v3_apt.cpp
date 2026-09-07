@@ -42,13 +42,22 @@ __global__ __aicore__ void moe_distribute_combine_v3(GM_ADDR mc2Context, GM_ADDR
                                                      GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX,
                                                      GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2,
                                                      GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR XOut,
-                                                     GM_ADDR workspaceGM, GM_ADDR tilingGM)
+                                                     GM_ADDR sharedExpertOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeDistributeCombineV2TilingData);
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
     TPipe pipe;
 #if (ORIG_DTYPE_EXPAND_X == DT_BF16 || ORIG_DTYPE_EXPAND_X == DT_FLOAT16)
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
+        if (tilingData.moeDistributeCombineV2Info.reserved1) {
+            MoeDistributeCombineV2A5Mte<DTYPE_EXPAND_X, DTYPE_X, int32_t, QuantMode, false, true> op;
+            op.InitSharedOutput(sharedExpertOut);
+            op.Init(mc2Context, expandX, expertIds, assistInfoForCombine, epSendCount, nullptr, nullptr, scales,
+                    xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV,
+                    performanceInfo, nullptr, nullptr, XOut, workspaceGM, &pipe, &tilingData);
+            op.Process();
+            return;
+        }
         MoeDistributeCombineV2A5Mte<DTYPE_EXPAND_X, DTYPE_X, int32_t, QuantMode, false> op;
         op.Init(mc2Context, expandX, expertIds, assistInfoForCombine, epSendCount, nullptr, nullptr, scales,
                 xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV,
