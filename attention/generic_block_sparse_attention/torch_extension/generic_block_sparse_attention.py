@@ -100,17 +100,17 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             "Tensor? seqused_q=None, "
             "Tensor? seqused_kv=None, "
             "Tensor? block_table=None, "
-            "bool? is_packed_gqa=True, "
-            'str? layout_q="TND", '
-            'str? layout_kv="PA_BBND", '
-            "float? softmax_scale=0.0, "
-            "int? mask_mode=1, "
-            "int? quant_mode=0, "
-            "float? dst_type_max=0.0, "
-            "int? softmax_precision=1, "
-            "int? win_left=-1, "
-            "int? win_right=-1, "
-            "bool? return_softmax_lse=False, "
+            "bool is_packed_gqa=True, "
+            'str layout_q="TND", '
+            'str layout_kv="PA_BBND", '
+            "float softmax_scale=0.0, "
+            "int mask_mode=1, "
+            "int quant_mode=0, "
+            "float dst_type_max=0.0, "
+            "int softmax_precision=1, "
+            "int win_left=-1, "
+            "int win_right=-1, "
+            "bool return_softmax_lse=False, "
             "ScalarType? attention_out_dtype=None"
             ") -> (Tensor, Tensor)",
         ]
@@ -176,10 +176,9 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             attention_out_dtype: Optional[torch.dtype] = None,
         ):
             # 与 C++ 实现保持一致：quant_mode != NO_QUANT 时 attention_out_dtype 必填
-            qm = QuantMode.NO_QUANT if quant_mode is None else int(quant_mode)
             if attention_out_dtype is not None:
                 out_dtype = attention_out_dtype
-            elif qm == QuantMode.NO_QUANT:
+            elif quant_mode == QuantMode.NO_QUANT:
                 out_dtype = q.dtype
             else:
                 raise ValueError(
@@ -188,11 +187,13 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
 
             attn = q.new_empty(q.shape, dtype=out_dtype)
             if return_softmax_lse:
-                if q.dim() == 3:
+                # 与 C++ GenericBlockSparseAttention LSE 分配一致
+                if layout_q == "TND":
                     lse_shape = (q.size(0), q.size(1), 1)
                 elif layout_q == "BNSD":
                     lse_shape = (q.size(0), q.size(1), q.size(2), 1)
                 else:
+                    # BSND
                     lse_shape = (q.size(0), q.size(2), q.size(1), 1)
                 lse = q.new_empty(lse_shape, dtype=torch.float32)
             else:
@@ -355,15 +356,6 @@ def generic_block_sparse_attention(
 ):
     mask_mode = _resolve_mask_mode(mask_mode)
     quant_mode = _resolve_quant_mode(quant_mode)
-    is_packed_gqa = True if is_packed_gqa is None else is_packed_gqa
-    layout_q = "TND" if layout_q is None else layout_q
-    layout_kv = "PA_BBND" if layout_kv is None else layout_kv
-    softmax_scale = 0.0 if softmax_scale is None else softmax_scale
-    dst_type_max = 0.0 if dst_type_max is None else dst_type_max
-    softmax_precision = 1 if softmax_precision is None else softmax_precision
-    win_left = -1 if win_left is None else win_left
-    win_right = -1 if win_right is None else win_right
-    return_softmax_lse = False if return_softmax_lse is None else return_softmax_lse
 
     op_module = generic_block_sparse_attention_op_builder.load()
     return op_module.generic_block_sparse_attention(
