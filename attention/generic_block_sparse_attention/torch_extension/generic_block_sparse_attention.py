@@ -76,47 +76,43 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
 
     def schema(self):
         return [
-            (
-                "generic_block_sparse_attention_metadata("
-                "Tensor sparse_block_idx, Tensor sparse_block_count, "
-                "int num_heads_q, int num_heads_kv, int head_dim, "
-                "int[] block_shape, *, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, "
-                "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
-                "int? max_seqlen_q=-1, int? max_seqlen_kv=-1, bool is_packed_gqa=True, "
-                'str layout_q="TND", str layout_kv="PA_BBND", '
-                "int mask_mode=1, int quant_mode=0, int softmax_precision=1, "
-                "int win_left=-1, int win_right=-1) -> Tensor"
-            ),
-            (
-                "generic_block_sparse_attention("
-                "Tensor q, Tensor k, Tensor v, "
-                "Tensor sparse_block_idx, Tensor sparse_block_count, "
-                "int[] block_shape, *, "
-                "Tensor? metadata=None, "
-                "Tensor? attn_mask=None, "
-                "Tensor? q_dequant_scale=None, "
-                "Tensor? k_dequant_scale=None, "
-                "Tensor? v_dequant_scale=None, "
-                "Tensor? p_quant_scale=None, "
-                "Tensor? cu_seqlens_q=None, "
-                "Tensor? cu_seqlens_kv=None, "
-                "Tensor? seqused_q=None, "
-                "Tensor? seqused_kv=None, "
-                "Tensor? block_table=None, "
-                "bool is_packed_gqa=True, "
-                'str layout_q="TND", '
-                'str layout_kv="PA_BBND", '
-                "float softmax_scale=0.0, "
-                "int mask_mode=1, "
-                "int quant_mode=0, "
-                "float dst_type_max=0.0, "
-                "int softmax_precision=1, "
-                "int win_left=-1, "
-                "int win_right=-1, "
-                "bool return_softmax_lse=False, "
-                "ScalarType? attention_out_dtype=None"
-                ") -> (Tensor, Tensor)"
-            ),
+            "generic_block_sparse_attention_metadata("
+            "Tensor sparse_block_idx, Tensor sparse_block_count, "
+            "int num_heads_q, int num_heads_kv, int head_dim, "
+            "int[] block_shape, *, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, "
+            "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
+            "int? max_seqlen_q=-1, int? max_seqlen_kv=-1, bool is_packed_gqa=True, "
+            'str layout_q="TND", str layout_kv="PA_BBND", '
+            "int mask_mode=1, int quant_mode=0, int softmax_precision=1, "
+            "int win_left=-1, int win_right=-1) -> Tensor",
+            "generic_block_sparse_attention("
+            "Tensor q, Tensor k, Tensor v, "
+            "Tensor sparse_block_idx, Tensor sparse_block_count, "
+            "int[] block_shape, *, "
+            "Tensor? metadata=None, "
+            "Tensor? attn_mask=None, "
+            "Tensor? q_dequant_scale=None, "
+            "Tensor? k_dequant_scale=None, "
+            "Tensor? v_dequant_scale=None, "
+            "Tensor? p_quant_scale=None, "
+            "Tensor? cu_seqlens_q=None, "
+            "Tensor? cu_seqlens_kv=None, "
+            "Tensor? seqused_q=None, "
+            "Tensor? seqused_kv=None, "
+            "Tensor? block_table=None, "
+            "bool is_packed_gqa=True, "
+            'str layout_q="TND", '
+            'str layout_kv="PA_BBND", '
+            "float softmax_scale=0.0, "
+            "int mask_mode=1, "
+            "int quant_mode=0, "
+            "float dst_type_max=0.0, "
+            "int softmax_precision=1, "
+            "int win_left=-1, "
+            "int win_right=-1, "
+            "bool return_softmax_lse=False, "
+            "ScalarType? attention_out_dtype=None"
+            ") -> (Tensor, Tensor)",
         ]
 
     def register_meta(self):
