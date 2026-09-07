@@ -75,8 +75,11 @@ TEST_F(grouped_matmul_swiglu_quant_test, test_case_A8W8_tilingkey_0)
 
     AscendC::GmFree(x);
     AscendC::GmFree(weight);
+    AscendC::GmFree(weightScale);
+    AscendC::GmFree(xScale);
     AscendC::GmFree(groupedList);
     AscendC::GmFree(y);
+    AscendC::GmFree(yScale);
     AscendC::GmFree(workspace);
     AscendC::GmFree(tiling);
 }
@@ -126,8 +129,11 @@ TEST_F(grouped_matmul_swiglu_quant_test, test_case_A8W8_tilingkey_1)
 
     AscendC::GmFree(x);
     AscendC::GmFree(weight);
+    AscendC::GmFree(weightScale);
+    AscendC::GmFree(xScale);
     AscendC::GmFree(groupedList);
     AscendC::GmFree(y);
+    AscendC::GmFree(yScale);
     AscendC::GmFree(workspace);
     AscendC::GmFree(tiling);
 }
