@@ -22,6 +22,11 @@
 #include "mhc_post_backward_tiling_data_arch35.h"
 
 namespace MhcPostBackward {
+
+// SIMD VF 整改：原为类内 constexpr static 成员，提升为命名空间级 constexpr，
+// 使 __simd_vf__ 显式函数（文件级 static 函数）可访问
+constexpr AscendC::Reg::CastTrait castB32ToB16 = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT,
+                                                  AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 using namespace AscendC;
 
 // Constants for memory alignment and buffer configuration
@@ -58,9 +63,6 @@ private:
 
 private:
     TPipe *pipe_;
-    constexpr static AscendC::Reg::CastTrait castB32ToB16 = {
-        AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT, AscendC::Reg::MaskMergeMode::ZEROING,
-        AscendC::RoundMode::CAST_RINT};
     // Input queues
     TQue<QuePosition::VECIN, QUEUE_DEPTH> gradOutTileQueue_;
     TQue<QuePosition::VECIN, QUEUE_DEPTH> hOutTileQueue_;
@@ -461,6 +463,32 @@ __aicore__ inline float MhcPostBackwardKernel<T, IS_HRES>::HierarchicalReduceSum
 
     return workLocal.GetValue(0);
 }
+__simd_vf__ void ComputeGradHOutTile_simd_vf_1(uint32_t actualTileD, uint16_t repeatTimes, uint16_t ntimes,
+                                               __ubuf__ float *gradOutTileAddr, uint32_t vfLen,
+                                               __ubuf__ float *hPostLocalAddr, __ubuf__ T *gradHOutTileAddr)
+{
+    uint32_t gradOutDealNum = static_cast<uint32_t>(actualTileD);
+    AscendC::Reg::RegTensor<float> gradOutF32Reg;
+    AscendC::Reg::RegTensor<float> hPostLocalReg;
+    AscendC::Reg::RegTensor<float> gradHOutTileReg;
+    AscendC::Reg::RegTensor<float> mulResReg;
+    AscendC::Reg::RegTensor<T> gradHOutTileB16Reg;
+    AscendC::Reg::MaskReg pMask;
+    AscendC::Reg::MaskReg pregMain = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+    for (uint16_t k = 0; k < repeatTimes; k++) {
+        pMask = AscendC::Reg::UpdateMask<float>(gradOutDealNum);
+        AscendC::Reg::Duplicate(gradHOutTileReg, 0.0f);
+        for (uint16_t i = 0; i < ntimes; i++) {
+            AscendC::Reg::LoadAlign(gradOutF32Reg, gradOutTileAddr + i * actualTileD + k * vfLen);
+            AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(hPostLocalReg, hPostLocalAddr + i);
+            AscendC::Reg::Mul(mulResReg, gradOutF32Reg, hPostLocalReg, pMask);
+            AscendC::Reg::Add(gradHOutTileReg, mulResReg, gradHOutTileReg, pMask);
+        }
+        AscendC::Reg::Cast<T, float, castB32ToB16>(gradHOutTileB16Reg, gradHOutTileReg, pMask);
+        AscendC::Reg::StoreAlign<T, AscendC::Reg::StoreDist::DIST_PACK_B32>(gradHOutTileAddr + k * vfLen,
+                                                                            gradHOutTileB16Reg, pMask);
+    }
+}
 
 template <typename T, bool IS_HRES>
 __aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::ComputeGradHOutTile(LocalTensor<float> gradOutF32UB,
@@ -475,28 +503,36 @@ __aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::ComputeGradHOutTile(Lo
     auto gradOutTileAddr = (__ubuf__ float *)gradOutF32UB.GetPhyAddr();
     auto hPostLocalAddr = (__ubuf__ float *)hPostLocalUB.GetPhyAddr();
     auto gradHOutTileAddr = (__ubuf__ T *)gradHOutTileUB.GetPhyAddr();
-    __VEC_SCOPE__
-    {
-        uint32_t gradOutDealNum = static_cast<uint32_t>(actualTileD);
-        AscendC::Reg::RegTensor<float> gradOutF32Reg;
-        AscendC::Reg::RegTensor<float> hPostLocalReg;
-        AscendC::Reg::RegTensor<float> gradHOutTileReg;
-        AscendC::Reg::RegTensor<float> mulResReg;
-        AscendC::Reg::RegTensor<T> gradHOutTileB16Reg;
-        AscendC::Reg::MaskReg pMask;
-        AscendC::Reg::MaskReg pregMain = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+    ComputeGradHOutTile_simd_vf_1(actualTileD, repeatTimes, ntimes, gradOutTileAddr, vfLen, hPostLocalAddr,
+                                  gradHOutTileAddr);
+}
+__simd_vf__ void ComputeGradXTile_simd_vf_2(uint32_t vfLen, uint16_t ntimes, uint16_t repeatTimes, uint32_t actualTileD,
+                                            __ubuf__ float *gradOutTileAddr, __ubuf__ float *hResLocalAddr, uint32_t n_,
+                                            __ubuf__ T *gradXTileAddr)
+{
+    uint32_t curDealNum = vfLen;
+    AscendC::Reg::RegTensor<float> gradOutF32Reg;
+    AscendC::Reg::RegTensor<float> hResLocalReg;
+    AscendC::Reg::RegTensor<float> gradXTileReg;
+    AscendC::Reg::RegTensor<float> mulResReg;
+    AscendC::Reg::RegTensor<T> gradXTileB16Reg;
+    AscendC::Reg::MaskReg pMask;
+    AscendC::Reg::MaskReg pregMain = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+    for (uint16_t i = 0; i < ntimes; i++) {
         for (uint16_t k = 0; k < repeatTimes; k++) {
-            pMask = AscendC::Reg::UpdateMask<float>(gradOutDealNum);
-            AscendC::Reg::Duplicate(gradHOutTileReg, 0.0f);
-            for (uint16_t i = 0; i < ntimes; i++) {
-                AscendC::Reg::LoadAlign(gradOutF32Reg, gradOutTileAddr + i * actualTileD + k * vfLen);
-                AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(hPostLocalReg, hPostLocalAddr + i);
-                AscendC::Reg::Mul(mulResReg, gradOutF32Reg, hPostLocalReg, pMask);
-                AscendC::Reg::Add(gradHOutTileReg, mulResReg, gradHOutTileReg, pMask);
+            curDealNum = (k == repeatTimes - 1) ? (actualTileD % vfLen == 0 ? vfLen : actualTileD % vfLen) : vfLen;
+            pMask = AscendC::Reg::UpdateMask<float>(curDealNum);
+            AscendC::Reg::Duplicate(gradXTileReg, 0.0f, pregMain);
+            for (uint16_t j = 0; j < ntimes; j++) {
+                AscendC::Reg::LoadAlign(gradOutF32Reg, gradOutTileAddr + j * actualTileD + k * vfLen);
+                AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(hResLocalReg,
+                                                                                     hResLocalAddr + i * n_ + j);
+                AscendC::Reg::Mul(mulResReg, gradOutF32Reg, hResLocalReg, pMask);
+                AscendC::Reg::Add(gradXTileReg, mulResReg, gradXTileReg, pMask);
             }
-            AscendC::Reg::Cast<T, float, castB32ToB16>(gradHOutTileB16Reg, gradHOutTileReg, pMask);
-            AscendC::Reg::StoreAlign<T, AscendC::Reg::StoreDist::DIST_PACK_B32>(gradHOutTileAddr + k * vfLen,
-                                                                                gradHOutTileB16Reg, pMask);
+            AscendC::Reg::Cast<T, float, castB32ToB16>(gradXTileB16Reg, gradXTileReg, pMask);
+            AscendC::Reg::StoreAlign<T, AscendC::Reg::StoreDist::DIST_PACK_B32>(
+                gradXTileAddr + i * actualTileD + k * vfLen, gradXTileB16Reg, pMask);
         }
     }
 }
@@ -515,34 +551,8 @@ __aicore__ inline void MhcPostBackwardKernel<T, IS_HRES>::ComputeGradXTile(Local
     auto hResLocalAddr = (__ubuf__ float *)hResLocalUB.GetPhyAddr();
     auto gradXTileAddr = (__ubuf__ T *)gradXTileUB.GetPhyAddr();
 
-    __VEC_SCOPE__
-    {
-        uint32_t curDealNum = vfLen;
-        AscendC::Reg::RegTensor<float> gradOutF32Reg;
-        AscendC::Reg::RegTensor<float> hResLocalReg;
-        AscendC::Reg::RegTensor<float> gradXTileReg;
-        AscendC::Reg::RegTensor<float> mulResReg;
-        AscendC::Reg::RegTensor<T> gradXTileB16Reg;
-        AscendC::Reg::MaskReg pMask;
-        AscendC::Reg::MaskReg pregMain = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
-        for (uint16_t i = 0; i < ntimes; i++) {
-            for (uint16_t k = 0; k < repeatTimes; k++) {
-                curDealNum = (k == repeatTimes - 1) ? (actualTileD % vfLen == 0 ? vfLen : actualTileD % vfLen) : vfLen;
-                pMask = AscendC::Reg::UpdateMask<float>(curDealNum);
-                AscendC::Reg::Duplicate(gradXTileReg, 0.0f, pregMain);
-                for (uint16_t j = 0; j < ntimes; j++) {
-                    AscendC::Reg::LoadAlign(gradOutF32Reg, gradOutTileAddr + j * actualTileD + k * vfLen);
-                    AscendC::Reg::LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(hResLocalReg,
-                                                                                         hResLocalAddr + i * n_ + j);
-                    AscendC::Reg::Mul(mulResReg, gradOutF32Reg, hResLocalReg, pMask);
-                    AscendC::Reg::Add(gradXTileReg, mulResReg, gradXTileReg, pMask);
-                }
-                AscendC::Reg::Cast<T, float, castB32ToB16>(gradXTileB16Reg, gradXTileReg, pMask);
-                AscendC::Reg::StoreAlign<T, AscendC::Reg::StoreDist::DIST_PACK_B32>(
-                    gradXTileAddr + i * actualTileD + k * vfLen, gradXTileB16Reg, pMask);
-            }
-        }
-    }
+    ComputeGradXTile_simd_vf_2(vfLen, ntimes, repeatTimes, actualTileD, gradOutTileAddr, hResLocalAddr, n_,
+                               gradXTileAddr);
 }
 
 template <typename T, bool IS_HRES>

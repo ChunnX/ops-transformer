@@ -145,6 +145,52 @@ __aicore__ inline void MhcSinkhornBackwardSimd::Init(GM_ADDR gradY, GM_ADDR norm
     pipe_.InitBuffer(inputSumQue_, DOUBLE_BUFFER, sumBufSize * sizeof(float));
     pipe_.InitBuffer(outputQue_, DOUBLE_BUFFER, tilingData_.normCorePerLoopTSize * nSize_ * nSize_ * sizeof(float));
 }
+__simd_vf__ void CalcRowBackward_simd_vf_1(__ubuf__ uint32_t *maskAddr, __ubuf__ int32_t *indexAddr,
+                                           __ubuf__ int32_t *broadcastAddr, uint16_t repeatTimes, uint32_t repeatSize,
+                                           uint32_t perloopSize, int64_t nAlignSize_, int64_t nSize_,
+                                           __ubuf__ float *gradYAddr, __ubuf__ float *normAddr, __ubuf__ float *sumAddr,
+                                           uint32_t perloopSizePad)
+{
+    Reg::MaskReg maskReg = Reg::CreateMask<uint32_t>();
+    Reg::MaskReg allMask = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
+    Reg::LoadAlign(maskReg, maskAddr); // VL
+
+    Reg::RegTensor<float> gradYReg;
+    Reg::RegTensor<float> normReg;
+    Reg::RegTensor<float> sumReg;
+    Reg::RegTensor<float> dotProdReg;
+    Reg::RegTensor<float> sumGradYReg;
+    Reg::RegTensor<float> sumBrcbReg;
+    Reg::RegTensor<int32_t> indexReg;
+    Reg::RegTensor<int32_t> broadcastReg;
+
+    Reg::LoadAlign(indexReg, indexAddr);         // VL
+    Reg::LoadAlign(broadcastReg, broadcastAddr); // VL
+    for (uint16_t j = 0; j < repeatTimes; j++) {
+        uint32_t perT = min(repeatSize, perloopSize - (repeatSize * j));
+        uint32_t dataLen = perT * static_cast<uint32_t>(nAlignSize_);
+        Reg::MaskReg CalcMaskReg = Reg::UpdateMask<uint32_t>(dataLen); // dataLen
+        Reg::And(CalcMaskReg, CalcMaskReg, maskReg, allMask);
+        Reg::MaskReg dataCopyMaskReg = Reg::UpdateMask<uint32_t>(perT);
+        for (uint16_t k = 0; k < static_cast<uint16_t>(nSize_); k++) {
+            // 根据索引位置将输入gradYAddr对应元素搬入gradYReg
+            Reg::DataCopyGather(gradYReg, gradYAddr + j * repeatSize * nSize_ * nSize_ + k * nSize_,
+                                (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
+            Reg::DataCopy(normReg, normAddr + k * perloopSize * nAlignSize_ + j * repeatSize * nAlignSize_);
+            Reg::DataCopy<float, Reg::LoadDist::DIST_E2B_B32>(sumReg, sumAddr + k * perloopSizePad + j * repeatSize);
+
+            Reg::Mul(dotProdReg, gradYReg, normReg, CalcMaskReg);
+            Reg::ReduceSumWithDataBlock(sumGradYReg, dotProdReg, CalcMaskReg);
+            Reg::Gather(sumBrcbReg, sumGradYReg, (Reg::RegTensor<uint32_t> &)(broadcastReg));
+            Reg::Sub(dotProdReg, gradYReg, sumBrcbReg, CalcMaskReg);
+            Reg::Div(dotProdReg, dotProdReg, sumReg, CalcMaskReg);
+
+            Reg::DataCopyScatter(gradYAddr + j * repeatSize * nSize_ * nSize_ + k * nSize_, dotProdReg,
+                                 (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
+        }
+    }
+    Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
+}
 
 __aicore__ inline void MhcSinkhornBackwardSimd::CalcRowBackward(
     __local_mem__ float *gradYAddr, __local_mem__ float *normAddr, __local_mem__ float *sumAddr,
@@ -155,49 +201,53 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcRowBackward(
     __local_mem__ int32_t *indexAddr = (__local_mem__ int32_t *)indexLocal.GetPhyAddr();
     LocalTensor<int32_t> broadcastLocal = broadcastBuffer_.Get<int32_t>();
     __local_mem__ int32_t *broadcastAddr = (__local_mem__ int32_t *)broadcastLocal.GetPhyAddr();
-    __VEC_SCOPE__
-    {
-        Reg::MaskReg maskReg = Reg::CreateMask<uint32_t>();
-        Reg::MaskReg allMask = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
-        Reg::LoadAlign(maskReg, maskAddr); // VL
+    CalcRowBackward_simd_vf_1(maskAddr, indexAddr, broadcastAddr, repeatTimes, repeatSize, perloopSize, nAlignSize_,
+                              nSize_, gradYAddr, normAddr, sumAddr, perloopSizePad);
+}
+__simd_vf__ void CalcColBackward_simd_vf_2(__ubuf__ uint32_t *maskAddr, __ubuf__ int32_t *indexAddr,
+                                           uint16_t repeatTimes, uint32_t repeatSize, uint32_t perloopSize,
+                                           int64_t nAlignSize_, __ubuf__ float *sumAddr, uint32_t n,
+                                           __ubuf__ float *gradYAddr, int64_t nSize_, __ubuf__ float *normAddr)
+{
+    Reg::MaskReg maskReg = Reg::CreateMask<uint32_t>();
+    Reg::MaskReg allMask = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
+    Reg::LoadAlign(maskReg, maskAddr); // VL
 
-        Reg::RegTensor<float> gradYReg;
-        Reg::RegTensor<float> normReg;
-        Reg::RegTensor<float> sumReg;
-        Reg::RegTensor<float> dotProdReg;
-        Reg::RegTensor<float> sumGradYReg;
-        Reg::RegTensor<float> sumBrcbReg;
-        Reg::RegTensor<int32_t> indexReg;
-        Reg::RegTensor<int32_t> broadcastReg;
+    Reg::RegTensor<float> gradYReg;
+    Reg::RegTensor<float> gradInputReg;
+    Reg::RegTensor<float> normReg;
+    Reg::RegTensor<float> sumReg;
+    Reg::RegTensor<float> mulResultReg;
+    Reg::RegTensor<float> sumColReg;
+    Reg::RegTensor<int32_t> indexReg;
 
-        Reg::LoadAlign(indexReg, indexAddr);         // VL
-        Reg::LoadAlign(broadcastReg, broadcastAddr); // VL
-        for (uint16_t j = 0; j < repeatTimes; j++) {
-            uint32_t perT = min(repeatSize, perloopSize - (repeatSize * j));
-            uint32_t dataLen = perT * static_cast<uint32_t>(nAlignSize_);
-            Reg::MaskReg CalcMaskReg = Reg::UpdateMask<uint32_t>(dataLen); // dataLen
-            Reg::And(CalcMaskReg, CalcMaskReg, maskReg, allMask);
-            Reg::MaskReg dataCopyMaskReg = Reg::UpdateMask<uint32_t>(perT);
-            for (uint16_t k = 0; k < static_cast<uint16_t>(nSize_); k++) {
-                // 根据索引位置将输入gradYAddr对应元素搬入gradYReg
-                Reg::DataCopyGather(gradYReg, gradYAddr + j * repeatSize * nSize_ * nSize_ + k * nSize_,
-                                    (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
-                Reg::DataCopy(normReg, normAddr + k * perloopSize * nAlignSize_ + j * repeatSize * nAlignSize_);
-                Reg::DataCopy<float, Reg::LoadDist::DIST_E2B_B32>(sumReg,
-                                                                  sumAddr + k * perloopSizePad + j * repeatSize);
+    Reg::LoadAlign(indexReg, indexAddr); // VL
 
-                Reg::Mul(dotProdReg, gradYReg, normReg, CalcMaskReg);
-                Reg::ReduceSumWithDataBlock(sumGradYReg, dotProdReg, CalcMaskReg);
-                Reg::Gather(sumBrcbReg, sumGradYReg, (Reg::RegTensor<uint32_t> &)(broadcastReg));
-                Reg::Sub(dotProdReg, gradYReg, sumBrcbReg, CalcMaskReg);
-                Reg::Div(dotProdReg, dotProdReg, sumReg, CalcMaskReg);
+    for (uint16_t j = 0; j < repeatTimes; j++) {
+        uint32_t perT = min(repeatSize, perloopSize - (repeatSize * j));
+        uint32_t dataLen = perT * static_cast<uint32_t>(nAlignSize_);
 
-                Reg::DataCopyScatter(gradYAddr + j * repeatSize * nSize_ * nSize_ + k * nSize_, dotProdReg,
-                                     (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
-            }
+        Reg::MaskReg CalcMaskReg = Reg::UpdateMask<uint32_t>(dataLen); // dataLen
+        Reg::And(CalcMaskReg, CalcMaskReg, maskReg, allMask);
+        Reg::Duplicate(sumColReg, static_cast<float>(0));
+        Reg::DataCopy(sumReg, sumAddr + j * repeatSize * nAlignSize_);
+        for (uint16_t i = 0; i < static_cast<uint16_t>(n); i++) {
+            Reg::DataCopyGather(gradYReg, gradYAddr + j * repeatSize * nSize_ * nSize_ + i * n,
+                                (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
+            Reg::DataCopy(normReg, normAddr + j * repeatSize * nAlignSize_ + i * nAlignSize_ * perloopSize);
+            Reg::Mul(mulResultReg, gradYReg, normReg, CalcMaskReg);
+            Reg::Add(sumColReg, sumColReg, mulResultReg, CalcMaskReg);
         }
-        Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
+        for (uint16_t i = 0; i < static_cast<uint16_t>(n); i++) {
+            Reg::DataCopyGather(gradYReg, gradYAddr + j * repeatSize * nSize_ * nSize_ + i * n,
+                                (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
+            Reg::Sub(gradInputReg, gradYReg, sumColReg, CalcMaskReg);
+            Reg::Div(gradInputReg, gradInputReg, sumReg, CalcMaskReg);
+            Reg::DataCopyScatter(gradYAddr + j * repeatSize * nSize_ * nSize_ + i * n, gradInputReg,
+                                 (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
+        }
     }
+    Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 }
 
 __aicore__ inline void MhcSinkhornBackwardSimd::CalcColBackward(
@@ -207,48 +257,58 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcColBackward(
 {
     LocalTensor<int32_t> indexLocal = indexBuffer_.Get<int32_t>();
     __local_mem__ int32_t *indexAddr = (__local_mem__ int32_t *)indexLocal.GetPhyAddr();
-    __VEC_SCOPE__
-    {
-        Reg::MaskReg maskReg = Reg::CreateMask<uint32_t>();
-        Reg::MaskReg allMask = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
-        Reg::LoadAlign(maskReg, maskAddr); // VL
+    CalcColBackward_simd_vf_2(maskAddr, indexAddr, repeatTimes, repeatSize, perloopSize, nAlignSize_, sumAddr, n,
+                              gradYAddr, nSize_, normAddr);
+}
+__simd_vf__ void CalcSoftmaxBackward_simd_vf_3(__ubuf__ uint32_t *maskAddr, __ubuf__ int32_t *indexAddr,
+                                               __ubuf__ int32_t *broadcastAddr, int64_t nSize_, uint16_t repeatTimes,
+                                               uint32_t repeatSize, uint32_t perloopSize, int64_t nAlignSize_,
+                                               __ubuf__ float *gradYAddr, __ubuf__ float *normAddr,
+                                               __ubuf__ float *gradInputAddr)
+{
+    Reg::MaskReg maskReg = Reg::CreateMask<uint32_t>();
+    Reg::MaskReg allMask = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
+    Reg::LoadAlign(maskReg, maskAddr); // VL
 
-        Reg::RegTensor<float> gradYReg;
-        Reg::RegTensor<float> gradInputReg;
-        Reg::RegTensor<float> normReg;
-        Reg::RegTensor<float> sumReg;
-        Reg::RegTensor<float> mulResultReg;
-        Reg::RegTensor<float> sumColReg;
-        Reg::RegTensor<int32_t> indexReg;
+    Reg::RegTensor<float> gradYReg;
+    Reg::RegTensor<float> normReg;
+    Reg::RegTensor<float> mulResultReg;
+    Reg::RegTensor<float> dotProdReg;
+    Reg::RegTensor<float> dotProdBrcbReg;
+    Reg::RegTensor<float> gradInputReg;
+    Reg::RegTensor<int32_t> broadcastReg;
 
-        Reg::LoadAlign(indexReg, indexAddr); // VL
+    Reg::RegTensor<int32_t> indexReg;
 
+    Reg::LoadAlign(indexReg, indexAddr);         // VL
+    Reg::LoadAlign(broadcastReg, broadcastAddr); // VL
+
+    for (uint16_t k = 0; k < static_cast<uint16_t>(nSize_); k++) {
         for (uint16_t j = 0; j < repeatTimes; j++) {
             uint32_t perT = min(repeatSize, perloopSize - (repeatSize * j));
             uint32_t dataLen = perT * static_cast<uint32_t>(nAlignSize_);
 
             Reg::MaskReg CalcMaskReg = Reg::UpdateMask<uint32_t>(dataLen); // dataLen
             Reg::And(CalcMaskReg, CalcMaskReg, maskReg, allMask);
-            Reg::Duplicate(sumColReg, static_cast<float>(0));
-            Reg::DataCopy(sumReg, sumAddr + j * repeatSize * nAlignSize_);
-            for (uint16_t i = 0; i < static_cast<uint16_t>(n); i++) {
-                Reg::DataCopyGather(gradYReg, gradYAddr + j * repeatSize * nSize_ * nSize_ + i * n,
-                                    (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
-                Reg::DataCopy(normReg, normAddr + j * repeatSize * nAlignSize_ + i * nAlignSize_ * perloopSize);
-                Reg::Mul(mulResultReg, gradYReg, normReg, CalcMaskReg);
-                Reg::Add(sumColReg, sumColReg, mulResultReg, CalcMaskReg);
-            }
-            for (uint16_t i = 0; i < static_cast<uint16_t>(n); i++) {
-                Reg::DataCopyGather(gradYReg, gradYAddr + j * repeatSize * nSize_ * nSize_ + i * n,
-                                    (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
-                Reg::Sub(gradInputReg, gradYReg, sumColReg, CalcMaskReg);
-                Reg::Div(gradInputReg, gradInputReg, sumReg, CalcMaskReg);
-                Reg::DataCopyScatter(gradYAddr + j * repeatSize * nSize_ * nSize_ + i * n, gradInputReg,
-                                     (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
-            }
+            Reg::MaskReg dataCopyMaskReg = Reg::UpdateMask<uint32_t>(perT);
+
+            // 按照indeReg中存储索引的顺序将数据搬到gradYReg,此时gradYReg [n, t, align_n]
+            Reg::DataCopyGather(gradYReg, gradYAddr + j * repeatSize * nSize_ * nSize_ + k * nSize_,
+                                (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
+
+            Reg::DataCopy(normReg, normAddr + k * perloopSize * nAlignSize_ + j * repeatSize * nAlignSize_);
+
+            Reg::Mul(mulResultReg, gradYReg, normReg, CalcMaskReg);
+            Reg::ReduceSumWithDataBlock(dotProdReg, mulResultReg, CalcMaskReg);
+            Reg::Gather(dotProdBrcbReg, dotProdReg, (Reg::RegTensor<uint32_t> &)(broadcastReg));
+            Reg::Sub(gradInputReg, gradYReg, dotProdBrcbReg, CalcMaskReg);
+            Reg::Mul(gradInputReg, gradInputReg, normReg, CalcMaskReg);
+
+            Reg::DataCopyScatter(gradInputAddr + +j * repeatSize * nSize_ * nSize_ + k * nSize_, gradInputReg,
+                                 (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
         }
-        Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
     }
+    Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 }
 
 __aicore__ inline void MhcSinkhornBackwardSimd::CalcSoftmaxBackward(
@@ -260,52 +320,8 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcSoftmaxBackward(
     __local_mem__ int32_t *indexAddr = (__local_mem__ int32_t *)indexLocal.GetPhyAddr();
     LocalTensor<int32_t> broadcastLocal = broadcastBuffer_.Get<int32_t>();
     __local_mem__ int32_t *broadcastAddr = (__local_mem__ int32_t *)broadcastLocal.GetPhyAddr();
-    __VEC_SCOPE__
-    {
-        Reg::MaskReg maskReg = Reg::CreateMask<uint32_t>();
-        Reg::MaskReg allMask = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
-        Reg::LoadAlign(maskReg, maskAddr); // VL
-
-        Reg::RegTensor<float> gradYReg;
-        Reg::RegTensor<float> normReg;
-        Reg::RegTensor<float> mulResultReg;
-        Reg::RegTensor<float> dotProdReg;
-        Reg::RegTensor<float> dotProdBrcbReg;
-        Reg::RegTensor<float> gradInputReg;
-        Reg::RegTensor<int32_t> broadcastReg;
-
-        Reg::RegTensor<int32_t> indexReg;
-
-        Reg::LoadAlign(indexReg, indexAddr);         // VL
-        Reg::LoadAlign(broadcastReg, broadcastAddr); // VL
-
-        for (uint16_t k = 0; k < static_cast<uint16_t>(nSize_); k++) {
-            for (uint16_t j = 0; j < repeatTimes; j++) {
-                uint32_t perT = min(repeatSize, perloopSize - (repeatSize * j));
-                uint32_t dataLen = perT * static_cast<uint32_t>(nAlignSize_);
-
-                Reg::MaskReg CalcMaskReg = Reg::UpdateMask<uint32_t>(dataLen); // dataLen
-                Reg::And(CalcMaskReg, CalcMaskReg, maskReg, allMask);
-                Reg::MaskReg dataCopyMaskReg = Reg::UpdateMask<uint32_t>(perT);
-
-                // 按照indeReg中存储索引的顺序将数据搬到gradYReg,此时gradYReg [n, t, align_n]
-                Reg::DataCopyGather(gradYReg, gradYAddr + j * repeatSize * nSize_ * nSize_ + k * nSize_,
-                                    (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
-
-                Reg::DataCopy(normReg, normAddr + k * perloopSize * nAlignSize_ + j * repeatSize * nAlignSize_);
-
-                Reg::Mul(mulResultReg, gradYReg, normReg, CalcMaskReg);
-                Reg::ReduceSumWithDataBlock(dotProdReg, mulResultReg, CalcMaskReg);
-                Reg::Gather(dotProdBrcbReg, dotProdReg, (Reg::RegTensor<uint32_t> &)(broadcastReg));
-                Reg::Sub(gradInputReg, gradYReg, dotProdBrcbReg, CalcMaskReg);
-                Reg::Mul(gradInputReg, gradInputReg, normReg, CalcMaskReg);
-
-                Reg::DataCopyScatter(gradInputAddr + +j * repeatSize * nSize_ * nSize_ + k * nSize_, gradInputReg,
-                                     (Reg::RegTensor<uint32_t> &)(indexReg), CalcMaskReg);
-            }
-        }
-        Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
-    }
+    CalcSoftmaxBackward_simd_vf_3(maskAddr, indexAddr, broadcastAddr, nSize_, repeatTimes, repeatSize, perloopSize,
+                                  nAlignSize_, gradYAddr, normAddr, gradInputAddr);
 }
 
 __aicore__ inline void MhcSinkhornBackwardSimd::CopyInNormAndSumPad(const uint64_t normOffset,
@@ -472,6 +488,43 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CalcSoftmax(uint32_t repeatSize,
     inputGradYQue_.FreeTensor<float>(gradYLocal);
     inputNormQue_.FreeTensor<float>(normLocal);
 }
+__simd_vf__ void CreateGatherIndex_simd_vf_4(__ubuf__ uint32_t *maskAddr, uint32_t n, __ubuf__ int32_t *indexAddr,
+                                             __ubuf__ int32_t *broadcastAddr)
+{
+    Reg::MaskReg maskReg = Reg::CreateMask<uint32_t>();
+    Reg::MaskReg allMask = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
+    Reg::LoadAlign(maskReg, maskAddr); // VL
+
+    Reg::RegTensor<int32_t> indexReg;
+    Reg::RegTensor<int32_t> orderReg;
+    Reg::RegTensor<int32_t> duplicateReg1;
+    Reg::RegTensor<int32_t> duplicateReg2;
+    Reg::RegTensor<int32_t> tmpReg1;
+    Reg::RegTensor<int32_t> tmpReg2;
+    Reg::RegTensor<int32_t> tmpReg3;
+
+    Reg::RegTensor<int32_t> duplicateBrcbReg;
+    Reg::RegTensor<int32_t> orderBrcbReg;
+    Reg::RegTensor<int32_t> tmpBrcbReg;
+
+    // indexReg：使用DataCopyGather生成索引
+    Reg::Duplicate(duplicateReg1, static_cast<int32_t>(INDEX_BLOCK_LEN)); // [8,8,8,...,8]
+    Reg::Duplicate(duplicateReg2, static_cast<int32_t>(n * n));           // 填充n*n
+    Reg::Arange(orderReg, static_cast<int32_t>(0));                       // [0,1,2,...,63]
+    Reg::Div(tmpReg1, orderReg, duplicateReg1, maskReg);                  // [0,0,...,0,1,1,...,1,...,7,7,...,7]
+    Reg::Mul(tmpReg2, tmpReg1, duplicateReg1, maskReg);                   // [0,0,...,0,8,8,...,8,...,63,63,...,63]
+    Reg::Sub(tmpReg2, orderReg, tmpReg2, maskReg);                        // [0,1,2,...,7,0,1,2,...,7,...,0,1,2,...,7]
+    Reg::Mul(tmpReg3, tmpReg1, duplicateReg2, maskReg); // [0,0,...,0,16,16,...,16,...,112,112,...,112]
+    Reg::Add(indexReg, tmpReg2, tmpReg3, maskReg);      // [0,1,2,...,7,16,17,18,...,23,...,112,113,114,...,119]
+    Reg::DataCopy<int32_t, Reg::StoreDist::DIST_NORM>(indexAddr, indexReg, allMask);
+
+    Reg::Duplicate(duplicateBrcbReg, static_cast<int32_t>(INDEX_BLOCK_LEN));
+    Reg::Arange(orderBrcbReg, static_cast<int32_t>(0));
+    Reg::Div(tmpBrcbReg, orderBrcbReg, duplicateBrcbReg, allMask);
+    Reg::DataCopy<int32_t, Reg::StoreDist::DIST_NORM>(broadcastAddr, tmpBrcbReg, allMask);
+
+    Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
+}
 
 __aicore__ inline void MhcSinkhornBackwardSimd::CreateGatherIndex(uint32_t n)
 {
@@ -482,42 +535,7 @@ __aicore__ inline void MhcSinkhornBackwardSimd::CreateGatherIndex(uint32_t n)
     __local_mem__ int32_t *broadcastAddr = (__local_mem__ int32_t *)broadcastLocal.GetPhyAddr();
     __local_mem__ uint32_t *maskAddr = (__local_mem__ uint32_t *)maskLocal.GetPhyAddr();
 
-    __VEC_SCOPE__
-    {
-        Reg::MaskReg maskReg = Reg::CreateMask<uint32_t>();
-        Reg::MaskReg allMask = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
-        Reg::LoadAlign(maskReg, maskAddr); // VL
-
-        Reg::RegTensor<int32_t> indexReg;
-        Reg::RegTensor<int32_t> orderReg;
-        Reg::RegTensor<int32_t> duplicateReg1;
-        Reg::RegTensor<int32_t> duplicateReg2;
-        Reg::RegTensor<int32_t> tmpReg1;
-        Reg::RegTensor<int32_t> tmpReg2;
-        Reg::RegTensor<int32_t> tmpReg3;
-
-        Reg::RegTensor<int32_t> duplicateBrcbReg;
-        Reg::RegTensor<int32_t> orderBrcbReg;
-        Reg::RegTensor<int32_t> tmpBrcbReg;
-
-        // indexReg：使用DataCopyGather生成索引
-        Reg::Duplicate(duplicateReg1, static_cast<int32_t>(INDEX_BLOCK_LEN)); // [8,8,8,...,8]
-        Reg::Duplicate(duplicateReg2, static_cast<int32_t>(n * n));           // 填充n*n
-        Reg::Arange(orderReg, static_cast<int32_t>(0));                       // [0,1,2,...,63]
-        Reg::Div(tmpReg1, orderReg, duplicateReg1, maskReg);                  // [0,0,...,0,1,1,...,1,...,7,7,...,7]
-        Reg::Mul(tmpReg2, tmpReg1, duplicateReg1, maskReg);                   // [0,0,...,0,8,8,...,8,...,63,63,...,63]
-        Reg::Sub(tmpReg2, orderReg, tmpReg2, maskReg);      // [0,1,2,...,7,0,1,2,...,7,...,0,1,2,...,7]
-        Reg::Mul(tmpReg3, tmpReg1, duplicateReg2, maskReg); // [0,0,...,0,16,16,...,16,...,112,112,...,112]
-        Reg::Add(indexReg, tmpReg2, tmpReg3, maskReg);      // [0,1,2,...,7,16,17,18,...,23,...,112,113,114,...,119]
-        Reg::DataCopy<int32_t, Reg::StoreDist::DIST_NORM>(indexAddr, indexReg, allMask);
-
-        Reg::Duplicate(duplicateBrcbReg, static_cast<int32_t>(INDEX_BLOCK_LEN));
-        Reg::Arange(orderBrcbReg, static_cast<int32_t>(0));
-        Reg::Div(tmpBrcbReg, orderBrcbReg, duplicateBrcbReg, allMask);
-        Reg::DataCopy<int32_t, Reg::StoreDist::DIST_NORM>(broadcastAddr, tmpBrcbReg, allMask);
-
-        Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
-    }
+    CreateGatherIndex_simd_vf_4(maskAddr, n, indexAddr, broadcastAddr);
 }
 
 __aicore__ inline void MhcSinkhornBackwardSimd::Process()
