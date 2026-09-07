@@ -54,7 +54,7 @@ protected:
     __aicore__ inline void CopyTopkWeightGroup(const int64_t rows, const int64_t localRows, const int64_t srcOffset,
                                                const int64_t rankId, const int64_t expertStart,
                                                const int64_t expertCount);
-    __aicore__ inline bool IsRegularTopkWeight(const int64_t rankId, int64_t &segmentRows, int64_t &dstOffset);
+    __aicore__ inline void CopyTopkWeightH1Fallback(const int64_t rankId, const int64_t srcOffset);
     __aicore__ inline void CopyTopkWeightRegular(const int64_t rows, const int64_t segmentRows, const int64_t srcOffset,
                                                  const int64_t dstOffset, const int64_t blockCount,
                                                  const int64_t dstStride);
@@ -172,26 +172,51 @@ __aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::Proce
         const int64_t topkWeightUbSize = tilingData_->ubFactor / sizeof(float);
         const int64_t topkBlockElements = BLOCK_SIZE / sizeof(float);
         const int64_t rankSrcOffset = tokensSrc_;
-        int64_t regularSegmentRows = 0;
-        int64_t regularDstOffset = 0;
-        // H=1 的规则 rank-expert 网格可将 destination 的多个 expert 段合并为 blockCount。
-        const bool useRegularTopk =
-            tokenSize_ == 1 && IsRegularTopkWeight(currRankId, regularSegmentRows, regularDstOffset);
-        if (useRegularTopk) {
+        if (tokenSize_ == 1 && tilingData_->expertNum <= TOPK_GROUP_EXPERTS) {
+            // H=1 使用主 Queue。offset 在 token 主循环中直接收集，同时检查实际 destination
+            // start 是否等距，避免额外的全矩阵 count 扫描和隐含 stride 推导。
+            int64_t regularSegmentRows = 0;
+            int64_t regularDstOffset = 0;
+            int64_t regularDstStep = 0;
+            int64_t previousDstOffset = 0;
+            bool useRegularTopk = tilingData_->expertNum > 0;
             for (int64_t expertIdx = 0; expertIdx < tilingData_->expertNum; expertIdx++) {
                 int64_t currTokenNum = srcRankTokenGm_(expertIdx + currRankId * tilingData_->expertNum);
                 for (int64_t rankIdx = 0; rankIdx < currRankId; rankIdx++) {
                     tokensDst_ += srcRankTokenGm_(rankIdx * tilingData_->expertNum + expertIdx);
+                }
+                const int64_t currDstOffset = tokensDst_;
+                topkOffsets.SetValue(expertIdx, currDstOffset);
+                if (expertIdx == 0) {
+                    regularSegmentRows = currTokenNum;
+                    regularDstOffset = currDstOffset;
+                    useRegularTopk = regularSegmentRows > 0 && regularSegmentRows % topkBlockElements == 0;
+                } else {
+                    const int64_t currDstStep = currDstOffset - previousDstOffset;
+                    if (expertIdx == 1) {
+                        regularDstStep = currDstStep;
+                    }
+                    useRegularTopk =
+                        useRegularTopk && currTokenNum == regularSegmentRows && currDstStep == regularDstStep;
                 }
                 ProcessTokenScale(currTokenNum);
                 tokensSrc_ += currTokenNum;
                 for (int64_t rankIdx = currRankId; rankIdx < tilingData_->rankNum; rankIdx++) {
                     tokensDst_ += srcRankTokenGm_(rankIdx * tilingData_->expertNum + expertIdx);
                 }
+                previousDstOffset = currDstOffset;
             }
-            CopyTopkWeightRegular(tilingData_->expertNum * regularSegmentRows, regularSegmentRows, rankSrcOffset,
-                                  regularDstOffset, tilingData_->expertNum,
-                                  (tilingData_->rankNum - 1) * regularSegmentRows);
+            if (tilingData_->expertNum == 1) {
+                regularDstStep = regularSegmentRows;
+            }
+            useRegularTopk = useRegularTopk && (tilingData_->expertNum == 1 || regularDstStep >= regularSegmentRows) &&
+                             regularSegmentRows * tilingData_->expertNum <= topkWeightUbSize;
+            if (useRegularTopk) {
+                CopyTopkWeightRegular(tilingData_->expertNum * regularSegmentRows, regularSegmentRows, rankSrcOffset,
+                                      regularDstOffset, tilingData_->expertNum, regularDstStep - regularSegmentRows);
+            } else {
+                CopyTopkWeightH1Fallback(currRankId, rankSrcOffset);
+            }
             continue;
         }
         int64_t groupExpertStart = 0;
@@ -525,37 +550,52 @@ __aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::CopyT
 }
 
 template <typename T, typename TIndex, typename TScale, bool hasScales>
-__aicore__ inline bool MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::IsRegularTopkWeight(const int64_t rankId,
-                                                                                               int64_t &segmentRows,
-                                                                                               int64_t &dstOffset)
+__aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::CopyTopkWeightH1Fallback(
+    const int64_t rankId, const int64_t srcOffset)
 {
-    if (tilingData_->expertNum <= 0 || tilingData_->rankNum <= 0) {
-        return false;
-    }
-    segmentRows = srcRankTokenGm_(rankId * tilingData_->expertNum);
-    const int64_t topkBlockElements = BLOCK_SIZE / sizeof(float);
+    LocalTensor<int64_t> topkOffsets = topkOffsetBuf_.Get<int64_t>();
     const int64_t topkWeightUbSize = tilingData_->ubFactor / sizeof(float);
-    if (segmentRows <= 0 || segmentRows % topkBlockElements != 0 ||
-        segmentRows * tilingData_->expertNum > topkWeightUbSize) {
-        return false;
-    }
+    const int64_t topkBlockElements = BLOCK_SIZE / sizeof(float);
+    int64_t groupExpertStart = 0;
+    int64_t groupExpertCount = 0;
+    int64_t groupRows = 0;
+    int64_t groupLocalRows = 0;
+    int64_t groupSrcOffset = srcOffset;
+    int64_t currSrcOffset = srcOffset;
     for (int64_t expertIdx = 0; expertIdx < tilingData_->expertNum; expertIdx++) {
-        if (srcRankTokenGm_(rankId * tilingData_->expertNum + expertIdx) != segmentRows) {
-            return false;
+        const int64_t currTokenNum = srcRankTokenGm_(rankId * tilingData_->expertNum + expertIdx);
+        const int64_t currLocalRows = Ops::Base::CeilAlign(currTokenNum, topkBlockElements);
+        if (groupExpertCount > 0 &&
+            (groupExpertCount == TOPK_GROUP_EXPERTS || groupLocalRows + currLocalRows > topkWeightUbSize)) {
+            CopyTopkWeightGroup(groupRows, groupLocalRows, groupSrcOffset, rankId, groupExpertStart, groupExpertCount);
+            groupExpertStart = expertIdx;
+            groupExpertCount = 0;
+            groupRows = 0;
+            groupLocalRows = 0;
+            groupSrcOffset = currSrcOffset;
         }
-        int64_t expertTotal = 0;
-        for (int64_t rankIdx = 0; rankIdx < tilingData_->rankNum; rankIdx++) {
-            expertTotal += srcRankTokenGm_(rankIdx * tilingData_->expertNum + expertIdx);
+        if (currLocalRows > topkWeightUbSize) {
+            if (groupExpertCount > 0) {
+                CopyTopkWeightGroup(groupRows, groupLocalRows, groupSrcOffset, rankId, groupExpertStart,
+                                    groupExpertCount);
+                groupExpertStart = expertIdx;
+                groupExpertCount = 0;
+                groupRows = 0;
+                groupLocalRows = 0;
+                groupSrcOffset = currSrcOffset;
+            }
+            CopyTopkWeightLarge(currTokenNum, currSrcOffset, topkOffsets.GetValue(expertIdx));
+            groupExpertStart = expertIdx + 1;
+            groupSrcOffset = currSrcOffset + currTokenNum;
+        } else {
+            topkOffsets.SetValue(groupExpertCount, topkOffsets.GetValue(expertIdx));
+            groupExpertCount++;
+            groupRows += currTokenNum;
+            groupLocalRows += currLocalRows;
         }
-        if (expertTotal != segmentRows * tilingData_->rankNum) {
-            return false;
-        }
+        currSrcOffset += currTokenNum;
     }
-    dstOffset = 0;
-    for (int64_t rankIdx = 0; rankIdx < rankId; rankIdx++) {
-        dstOffset += srcRankTokenGm_(rankIdx * tilingData_->expertNum);
-    }
-    return true;
+    CopyTopkWeightGroup(groupRows, groupLocalRows, groupSrcOffset, rankId, groupExpertStart, groupExpertCount);
 }
 
 template <typename T, typename TIndex, typename TScale, bool hasScales>
