@@ -21,5 +21,7 @@ def test_sdpa_substitution(monkeypatch, dtype):
     q, k, v = [torch.randn(1, 4, 256, 64, dtype=dtype, device="npu") for _ in range(3)]
     expected = sageattn(q, k, v, is_causal=True)
     monkeypatch.setattr(torch.nn.functional, "scaled_dot_product_attention", sageattn)
-    output = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=0.0, is_causal=True)
+    output = torch.nn.functional.scaled_dot_product_attention(
+        q, k, v, attn_mask=None, dropout_p=0.0, is_causal=True
+    )
     torch.testing.assert_close(output.cpu(), expected.cpu(), atol=0, rtol=0)

@@ -60,7 +60,11 @@ def stage(row):
 
 
 def task_key(row, summary=True):
-    return (row["Device_id"], row["Stream ID" if summary else "stream_id"], row["Task ID" if summary else "task_id"])
+    return (
+        row["Device_id"],
+        row["Stream ID" if summary else "stream_id"],
+        row["Task ID" if summary else "task_id"],
+    )
 
 
 def single_file(directory, pattern):
@@ -85,7 +89,10 @@ def parse_case(directory):
         all_ops = list(csv.DictReader(stream))
     with task_file.open() as stream:
         all_tasks = list(csv.DictReader(stream))
-    ops = sorted((r for r in all_ops if stage(r)), key=lambda r: nanoseconds(r["Task Start Time(us)"]))
+    ops = sorted(
+        (r for r in all_ops if stage(r)),
+        key=lambda r: nanoseconds(r["Task Start Time(us)"]),
+    )
     counts = Counter(stage(r) for r in ops)
     if any(counts[name] != (total if name in stages else 0) for name in STAGES):
         raise ValueError(f"Missing/extra Sage stage calls in {directory}: {counts}")
@@ -102,13 +109,21 @@ def parse_case(directory):
             raise ValueError(f"Invalid/mismatched device duration: {row}")
 
     first = nanoseconds(ops[0]["Task Start Time(us)"])
-    last = max(nanoseconds(r["Task Start Time(us)"]) + nanoseconds(r["Task Duration(us)"]) for r in ops)
-    unknown_ops = [r for r in all_ops if not stage(r) and first <= nanoseconds(r["Task Start Time(us)"]) < last]
+    last = max(
+        nanoseconds(r["Task Start Time(us)"]) + nanoseconds(r["Task Duration(us)"])
+        for r in ops
+    )
+    unknown_ops = [
+        r
+        for r in all_ops
+        if not stage(r) and first <= nanoseconds(r["Task Start Time(us)"]) < last
+    ]
     known_keys = {task_key(r) for r in ops}
     extra_tasks = [
         r
         for r in all_tasks
-        if task_key(r, False) not in known_keys and first <= nanoseconds(r["task_start(us)"]) < last
+        if task_key(r, False) not in known_keys
+        and first <= nanoseconds(r["task_start(us)"]) < last
     ]
     # torch.npu.synchronize itself records runtime events, even though the
     # application does not time events. Retain these in the audit, not the
@@ -116,7 +131,9 @@ def parse_case(directory):
     sync_tasks = [r for r in extra_tasks if r["kernel_type"] == "DAVID_EVENT_RECORD"]
     unknown_tasks = [r for r in extra_tasks if r["kernel_type"] != "DAVID_EVENT_RECORD"]
     if unknown_ops or unknown_tasks:
-        raise ValueError(f"Unattributed work in {directory}: ops={unknown_ops}, tasks={unknown_tasks}")
+        raise ValueError(
+            f"Unattributed work in {directory}: ops={unknown_ops}, tasks={unknown_tasks}"
+        )
 
     calls = {"sage": [], "fia": []}
     cursor = 0
@@ -150,7 +167,8 @@ def parse_case(directory):
                 "span_us": span / 1000,
                 "internal_gap_us": (span - summed) / 1000,
                 "stages_us": {
-                    name: sum(d for r, d in zip(rows, durations) if stage(r) == name) / 1000
+                    name: sum(d for r, d in zip(rows, durations) if stage(r) == name)
+                    / 1000
                     for name in dict.fromkeys(expected)
                 },
                 "tasks": [
@@ -184,7 +202,10 @@ def parse_case(directory):
             "measured_calls_per_operator": repeats,
             "unattributed_compute_or_copy_tasks": 0,
             "runtime_sync_event_tasks_excluded": len(sync_tasks),
-            "runtime_sync_event_duration_us": sum(nanoseconds(r["task_time(us)"]) for r in sync_tasks) / 1000,
+            "runtime_sync_event_duration_us": sum(
+                nanoseconds(r["task_time(us)"]) for r in sync_tasks
+            )
+            / 1000,
             "task_time_crosscheck": "passed",
         },
         "samples": calls,
@@ -194,20 +215,28 @@ def parse_case(directory):
 
 
 def summarize_calls(result):
-    calls = {operator: [s for s in samples if not s["warmup"]] for operator, samples in result["samples"].items()}
+    calls = {
+        operator: [s for s in samples if not s["warmup"]]
+        for operator, samples in result["samples"].items()
+    }
     for operator, measured in calls.items():
         result[operator] = {
-            key: distribution([r[key] for r in measured]) for key in ("task_sum_us", "span_us", "internal_gap_us")
+            key: distribution([r[key] for r in measured])
+            for key in ("task_sum_us", "span_us", "internal_gap_us")
         }
         names = result["operator_stages"] if operator == "sage" else ("FIA",)
-        result[operator]["stages_us"] = {name: distribution([r["stages_us"][name] for r in measured]) for name in names}
+        result[operator]["stages_us"] = {
+            name: distribution([r["stages_us"][name] for r in measured])
+            for name in names
+        }
     sage = result["sage"]["task_sum_us"]["median"]
     fia = result["fia"]["task_sum_us"]["median"]
     result.update(
         sage_us=sage,
         fia_us=fia,
         speedup=fia / sage,
-        span_speedup=result["fia"]["span_us"]["median"] / result["sage"]["span_us"]["median"],
+        span_speedup=result["fia"]["span_us"]["median"]
+        / result["sage"]["span_us"]["median"],
         target_sage_us=fia / 1.6,
         required_reduction_us=max(0, sage - fia / 1.6),
         required_reduction_pct=max(0, 1 - fia / sage / 1.6) * 100,
@@ -224,10 +253,14 @@ def main():
     for interface in ("pt", "aclnn"):
         cases = []
         for directory in sorted(
-            p for p in (root / interface).glob("*") if p.is_dir() and p.name.startswith(("P-", "X-"))
+            p
+            for p in (root / interface).glob("*")
+            if p.is_dir() and p.name.startswith(("P-", "X-"))
         ):
             result = parse_case(directory)
-            (directory / "analysis.json").write_text(json.dumps(result, indent=2) + "\n")
+            (directory / "analysis.json").write_text(
+                json.dumps(result, indent=2) + "\n"
+            )
             # Samples remain in each analysis.json; keep the aggregate compact.
             cases.append({k: v for k, v in result.items() if k != "samples"})
             print(
@@ -236,15 +269,24 @@ def main():
                 f"need_reduce={result['required_reduction_pct']:.2f}%"
             )
         if cases:
-            required = [r for r in cases if r["case"] in {f"P-{i:02}" for i in range(1, 8)}]
+            required = [
+                r for r in cases if r["case"] in {f"P-{i:02}" for i in range(1, 8)}
+            ]
             results[interface] = {
-                "complete": all(f"P-{i:02}" in {r["case"] for r in cases} for i in range(1, 8)),
+                "complete": all(
+                    f"P-{i:02}" in {r["case"] for r in cases} for i in range(1, 8)
+                ),
                 "cases": cases,
-                "geometric_mean_speedup": math.exp(statistics.mean(math.log(r["speedup"]) for r in required))
+                "geometric_mean_speedup": math.exp(
+                    statistics.mean(math.log(r["speedup"]) for r in required)
+                )
                 if required
                 else None,
-                "all_cases_pass": len(required) == 7 and all(r["performance_gate_pass"] for r in required),
-                "extended_geometric_mean_speedup": math.exp(statistics.mean(math.log(r["speedup"]) for r in cases)),
+                "all_cases_pass": len(required) == 7
+                and all(r["performance_gate_pass"] for r in required),
+                "extended_geometric_mean_speedup": math.exp(
+                    statistics.mean(math.log(r["speedup"]) for r in cases)
+                ),
             }
     (root / "summary.json").write_text(
         json.dumps(

@@ -42,17 +42,24 @@ def fia_provenance(expected_library=None):
             name = f"aclnnFusedInferAttentionScoreV{version}{suffix}"
             address = resolve(name.encode())
             info = DlInfo()
-            if not address or not dladdr(address, ctypes.byref(info)) or not info.filename:
+            if (
+                not address
+                or not dladdr(address, ctypes.byref(info))
+                or not info.filename
+            ):
                 raise RuntimeError(f"Cannot identify the library providing {name}")
             path = Path(info.filename.decode()).resolve()
             if expected_library is not None and path != expected_library.resolve():
-                raise RuntimeError(f"{name} resolves to {path}; expected {expected_library.resolve()}")
+                raise RuntimeError(
+                    f"{name} resolves to {path}; expected {expected_library.resolve()}"
+                )
             providers[name] = str(path)
     return {
         "scope": "API libraries only; device kernel paths need separate runtime-log verification",
         "api_providers": providers,
         "library_sha256": {
-            path: hashlib.sha256(Path(path).read_bytes()).hexdigest() for path in sorted(set(providers.values()))
+            path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
+            for path in sorted(set(providers.values()))
         },
         "custom_opp_path": os.environ.get("ASCEND_CUSTOM_OPP_PATH", ""),
     }

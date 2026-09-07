@@ -37,7 +37,9 @@ def quantize(q, k, v, *, smooth_k=True, smooth_v=False, v_max=448.0):
 
 def prepare_scales(qs, ks, sm_scale):
     """Fixed FP16 factors; no statistics across tokens or heads."""
-    factor = (torch.as_tensor(sm_scale, dtype=qs.dtype, device=qs.device).abs() * 2048).sqrt()
+    factor = (
+        torch.as_tensor(sm_scale, dtype=qs.dtype, device=qs.device).abs() * 2048
+    ).sqrt()
     qfactor = -factor if sm_scale < 0 else factor
     return (qs * qfactor).half(), (ks * factor).half()
 
@@ -71,7 +73,11 @@ def attention(
     if is_causal and sq != sk:
         raise ValueError("causal requires Sq == Sk")
     scale = 1 / math.sqrt(d) if sm_scale is None else float(sm_scale)
-    packed = quantize(q, k, v, smooth_k=smooth_k, smooth_v=smooth_v, v_max=v_max) if quantized is None else quantized
+    packed = (
+        quantize(q, k, v, smooth_k=smooth_k, smooth_v=smooth_v, v_max=v_max)
+        if quantized is None
+        else quantized
+    )
     q8, k8, v8, qs, ks, mean, vs = packed[:7]
     vmean = packed[7] if smooth_v else None
     if score_mode not in ("fp16", "fp32"):
@@ -91,7 +97,9 @@ def attention(
             limit = min(sk, ((start // 128) + 1) * 128) if is_causal else sk
             for j in range(0, limit, block_k):
                 je = min(j + block_k, sk)
-                scores = q8[:, h, start:end].float() @ k8[:, kh, j:je].float().transpose(-2, -1)
+                scores = q8[:, h, start:end].float() @ k8[
+                    :, kh, j:je
+                ].float().transpose(-2, -1)
                 if score_mode == "fp16":
                     qh = qhalf[:, h, start:end, None]
                     khs = khalf[:, kh, None, j:je]
@@ -126,9 +134,13 @@ def attention(
             if smooth_v:
                 result += vmean[:, kh, None, :]
             output[:, h, start:end] = result.to(q.dtype)
-            lse[:, h, start:end] = (m + den.log() - (math.log(448) if score_mode == "fp16" else 0)).squeeze(-1)
+            lse[:, h, start:end] = (
+                m + den.log() - (math.log(448) if score_mode == "fp16" else 0)
+            ).squeeze(-1)
             if smooth_k:
-                lse[:, h, start:end] += (q[:, h, start:end].float() * mean[:, kh, None, :]).sum(-1) * scale
+                lse[:, h, start:end] += (
+                    q[:, h, start:end].float() * mean[:, kh, None, :]
+                ).sum(-1) * scale
     if tensor_layout == "NHD":
         output = output.transpose(1, 2)
     return (output, lse) if return_lse else output

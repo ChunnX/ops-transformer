@@ -24,9 +24,15 @@ def main():
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--fia-opapi", type=Path, required=True)
     p.add_argument("--fia-source-commit", required=True)
-    p.add_argument("--cases", nargs="+", default=[c[0] for c in ALL_CASES if c[0].startswith("P-")])
-    p.add_argument("--interfaces", nargs="+", choices=["pt", "aclnn"], default=["pt", "aclnn"])
-    p.add_argument("--modes", nargs="+", choices=["msprof", "event"], default=["msprof", "event"])
+    p.add_argument(
+        "--cases", nargs="+", default=[c[0] for c in ALL_CASES if c[0].startswith("P-")]
+    )
+    p.add_argument(
+        "--interfaces", nargs="+", choices=["pt", "aclnn"], default=["pt", "aclnn"]
+    )
+    p.add_argument(
+        "--modes", nargs="+", choices=["msprof", "event"], default=["msprof", "event"]
+    )
     p.add_argument("--warmup", type=int, default=20)
     p.add_argument("--repeats", type=int, default=50)
     p.add_argument("--smooth-v", action="store_true")
@@ -54,7 +60,9 @@ def main():
                 directory.mkdir(parents=True, exist_ok=True)
                 output = directory / "application.json"
                 if output.exists():
-                    raise FileExistsError(f"Refusing to overwrite collected evidence: {output}")
+                    raise FileExistsError(
+                        f"Refusing to overwrite collected evidence: {output}"
+                    )
                 if interface == "pt":
                     command = [
                         "/bin/bash",
@@ -104,15 +112,35 @@ def main():
                     run_env["SAGE_BENCH_DIM"] = "64" if name == "X-04" else "128"
                 if mode == "msprof":
                     run_env["SAGE_PROFILE_ONLY"] = "1"
-                    command = ["msprof", f"--output={directory}", "--application=" + shlex.join(command)]
-                print(f"Collecting {mode}/{interface}/{name}, Sage then FIA", flush=True)
+                    command = [
+                        "msprof",
+                        f"--output={directory}",
+                        "--application=" + shlex.join(command),
+                    ]
+                print(
+                    f"Collecting {mode}/{interface}/{name}, Sage then FIA", flush=True
+                )
                 with (directory / "run.log").open("w") as log:
-                    subprocess.run(command, env=run_env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=900)
+                    subprocess.run(
+                        command,
+                        env=run_env,
+                        stdout=log,
+                        stderr=subprocess.STDOUT,
+                        check=True,
+                        timeout=900,
+                    )
                 result = json.loads(output.read_text())
                 result.update(case=name, fia_source_commit=a.fia_source_commit)
                 output.write_text(json.dumps(result, indent=2) + "\n")
     if "msprof" in a.modes:
-        subprocess.run([sys.executable, str(root / "tools/summarize_msprof.py"), str(a.output / "msprof")], check=True)
+        subprocess.run(
+            [
+                sys.executable,
+                str(root / "tools/summarize_msprof.py"),
+                str(a.output / "msprof"),
+            ],
+            check=True,
+        )
 
 
 if __name__ == "__main__":

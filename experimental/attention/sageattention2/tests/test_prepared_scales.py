@@ -86,9 +86,17 @@ def test_prepared_scales(dtype, b, hq, hk, sq, sk, d, scale, smooth):
     assert fn(torch.npu.current_stream().npu_stream, C.byref(p), ptrs, 3) == 0
     qs, ks, actual_q, actual_k = [t.cpu() for t in (qs, ks, qh, kh)]
     # Use device-produced raw scales to isolate packing from quantization.
-    expected_q, expected_k = reference.prepare_scales(qs[:, :, :sq], ks[:, :, :sk], p.smScale)
-    for actual, expected in [(actual_q[:, :, :sq], expected_q), (actual_k[:, :, :sk], expected_k)]:
-        delta = actual.contiguous().view(torch.int16).int() - expected.contiguous().view(torch.int16).int()
+    expected_q, expected_k = reference.prepare_scales(
+        qs[:, :, :sq], ks[:, :, :sk], p.smScale
+    )
+    for actual, expected in [
+        (actual_q[:, :, :sq], expected_q),
+        (actual_k[:, :, :sk], expected_k),
+    ]:
+        delta = (
+            actual.contiguous().view(torch.int16).int()
+            - expected.contiguous().view(torch.int16).int()
+        )
         assert delta.abs().max() <= 1
     assert torch.isfinite(actual_q).all() and torch.isfinite(actual_k).all()
     assert (actual_q[:, :, sq:] == 0).all() and (actual_k[:, :, sk:] == 0).all()

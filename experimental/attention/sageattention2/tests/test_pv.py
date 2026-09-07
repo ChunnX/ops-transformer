@@ -34,7 +34,10 @@ def test_pv_fixpipe_rounding_and_both_aivs(extreme):
     fn = _library().sage_pv_fp32_debug_launch
     fn.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
     fn.restype = None
-    fn(torch.npu.current_stream().npu_stream, (ctypes.c_void_p * 3)(*[t.data_ptr() for t in tensors]))
+    fn(
+        torch.npu.current_stream().npu_stream,
+        (ctypes.c_void_p * 3)(*[t.data_ptr() for t in tensors]),
+    )
     torch.npu.synchronize()
     exact = p.double() @ v.double()
     assert exact.abs().max() > torch.finfo(torch.float16).max
@@ -64,6 +67,8 @@ def test_pv_slot_wraparound(seq):
         m,
         vs,
     )
-    expected, expected_lse = reference.attention(q.cpu(), k.cpu(), v.cpu(), quantized=packed, return_lse=True)
+    expected, expected_lse = reference.attention(
+        q.cpu(), k.cpu(), v.cpu(), quantized=packed, return_lse=True
+    )
     torch.testing.assert_close(out.cpu(), expected, atol=0.002, rtol=0.002)
     torch.testing.assert_close(lse.cpu(), expected_lse, atol=0.0002, rtol=0.0002)

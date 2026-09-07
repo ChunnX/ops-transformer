@@ -16,7 +16,10 @@ from sageattention2 import _run, reference
 
 
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("d,seq,smooth", [(64, 1024, True), (128, 1025, True), (128, 4096, True), (64, 4096, False)])
+@pytest.mark.parametrize(
+    "d,seq,smooth",
+    [(64, 1024, True), (128, 1025, True), (128, 4096, True), (64, 4096, False)],
+)
 def test_partitioned_stats_and_quantization(dtype, d, seq, smooth):
     torch.manual_seed(811)
     q = torch.randn(1, 4, seq, d, dtype=dtype)
@@ -29,7 +32,10 @@ def test_partitioned_stats_and_quantization(dtype, d, seq, smooth):
     v[..., 1] = -1.25
     # 4096 rows give every AIV multiple Q/K tasks, including Q->K slot reuse.
     # 1025 also exercises uneven Stats partitions and the row-quant fallback.
-    actual = [x.cpu() for x in _run(q.npu(), k.npu(), v.npu(), smooth_k=smooth, quant_only=True)]
+    actual = [
+        x.cpu()
+        for x in _run(q.npu(), k.npu(), v.npu(), smooth_k=smooth, quant_only=True)
+    ]
     golden = reference.quantize(q, k, v, smooth_k=smooth)
     q8, k8, v8, qs, ks, mean, vscale = actual
     for value, expected in (
@@ -39,7 +45,10 @@ def test_partitioned_stats_and_quantization(dtype, d, seq, smooth):
         (vscale, golden[6]),
     ):
         torch.testing.assert_close(value, expected, atol=1e-6, rtol=1e-5)
-    for value, expected in ((q8[..., :seq, :], golden[0]), (k8[..., :seq, :], golden[1])):
+    for value, expected in (
+        (q8[..., :seq, :], golden[0]),
+        (k8[..., :seq, :], golden[1]),
+    ):
         torch.testing.assert_close(value, expected, atol=1, rtol=0)
     bits = v8[..., :seq, :].to(torch.int16)
     expected_bits = golden[2].view(torch.uint8).to(torch.int16)

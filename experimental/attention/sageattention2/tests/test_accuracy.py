@@ -26,9 +26,16 @@ def test_output_without_lse(dtype, causal, seq):
     with_lse, _ = sageattn(q, k, v, is_causal=causal, return_lse=True)
     torch.testing.assert_close(out.cpu(), with_lse.cpu(), atol=0, rtol=0)
     qc, kc, vc = [t.cpu().float() for t in (q, k, v)]
-    truth = torch.nn.functional.scaled_dot_product_attention(qc, kc, vc, is_causal=causal, enable_gqa=True)
+    truth = torch.nn.functional.scaled_dot_product_attention(
+        qc, kc, vc, is_causal=causal, enable_gqa=True
+    )
     expected = reference.attention(
-        q.cpu(), k.cpu(), v.cpu(), is_causal=causal, pv_storage="fp32", score_mode="fp32"
+        q.cpu(),
+        k.cpu(),
+        v.cpu(),
+        is_causal=causal,
+        pv_storage="fp32",
+        score_mode="fp32",
     ).float()
     error = (out.cpu().float() - truth).abs()
     ref_error = (expected - truth).abs()

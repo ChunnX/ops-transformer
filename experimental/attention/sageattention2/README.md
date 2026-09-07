@@ -59,7 +59,7 @@ ACLNN 声明见 [aclnn_sage_attention2.h](op_api/aclnn_sage_attention2.h)。先�
 
 ## 编译与安装
 
-已验证环境：CANN Toolkit/950 ops **9.2.0-beta.1**、PyTorch **2.9.0**、torch_npu **2.9.0.post8**，CATLASS commit `337cc89254d46f5d6041d117aca64edf7197027a`。Python 依赖见 [requirements-dev.txt](requirements-dev.txt)。
+已验证环境：CANN Toolkit/950 ops **9.2.0-beta.1**、PyTorch **2.9.0**、torch_npu **2.9.0.post8**，CATLASS commit `337cc89254d46f5d6041d117aca64edf7197027a`。构建和测试依赖见 [requirements.txt](requirements.txt)。
 
 本目录由 ops-transformer 顶层工程构建。`sage_attention2_stats`、`sage_attention2_quant`、`sage_attention2_core` 三个同级目录提供内部算子的注册入口，构建 `sageattention2` 时会一并编译。
 
@@ -85,16 +85,13 @@ bash build_native.sh
 bash benchmarks/build_aclnn_benchmark.sh
 SAGEATTN_TEST_ACLNN=1 SAGEATTN_TEST_STANDALONE=1 \
     python -m pytest -q tests -o junit_family=xunit1 --junitxml=build/pytest-results.xml
-python tools/run_clang_tidy.py
-ruff check .
-ruff format --check .
 ```
 
 `SAGEATTN_BACKEND=native` 可切换到 native 执行路径，`SAGEATTN_LIBRARY` 可指定该测试库。修改 kernel 后须重新完整构建、安装，再执行 NPU 测试。
 
 ## 测试说明
 
-清理后的分支已完成 native/OPP 完整构建安装，回归 **675 项通过**（673 项常规通过、2 项下述最大误差例外），clang-tidy 与 Python 检查通过。
+已完成 native/OPP 完整构建安装，回归 **675 项通过**（673 项常规通过、2 项下述最大误差例外）。代码格式和静态检查遵循仓库根目录的 pre-commit 配置。
 
 测试覆盖 Q/K/V 量化、QK/PV 传输、softmax 中间态、槽位复用、长序列、dtype/layout/stride/GQA/causal、smooth K/V、LSE、公开接口和两阶段 ACLNN。
 
@@ -142,4 +139,4 @@ FIA 来源为 ops-transformer commit `32d64c27fc4055f1a4fa702ca6d94ef2b1343c96`�
 | `op_host`、`op_api` | 参数校验、注册、tiling 和两阶段 ACLNN |
 | `python` | PyTorch 适配层、native 测试桥接和 CPU 参考 |
 | `native`、`tests` | 原语测试入口及功能/精度回归 |
-| `benchmarks`、`tools` | 双接口计时、CSV 审计和 clang-tidy |
+| `benchmarks`、`tools` | 双接口计时和 CSV 审计 |

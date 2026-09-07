@@ -27,9 +27,14 @@ def test_attention_score_above_fp16_range(dtype, causal):
     packed = reference.quantize(q, k, v, smooth_k=False)
     raw = packed[0][0, 0].float() @ packed[1][0, 0].float().T
     assert (raw * packed[4][0, 0]).abs().max() > torch.finfo(torch.float16).max
-    output, lse = sageattn(q.npu(), k.npu(), v.npu(), smooth_k=False, is_causal=causal, return_lse=True)
+    output, lse = sageattn(
+        q.npu(), k.npu(), v.npu(), smooth_k=False, is_causal=causal, return_lse=True
+    )
     assert torch.isfinite(output).all() and torch.isfinite(lse).all()
-    native_quant = [x.cpu() for x in _run(q.npu(), k.npu(), v.npu(), smooth_k=False, quant_only=True)]
+    native_quant = [
+        x.cpu()
+        for x in _run(q.npu(), k.npu(), v.npu(), smooth_k=False, quant_only=True)
+    ]
     q8, k8, v8, qs, ks, mean, vs = native_quant
     quantized = (
         q8[:, :, :32, :128],

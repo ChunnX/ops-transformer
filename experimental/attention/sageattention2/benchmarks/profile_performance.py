@@ -24,12 +24,18 @@ from sageattention2 import sageattn
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--case", choices=[case[0] for case in ALL_CASES], required=True)
+    parser.add_argument(
+        "--case", choices=[case[0] for case in ALL_CASES], required=True
+    )
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--repeats", type=int, default=30)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--fia-opapi", type=Path, help="Require FIA to resolve to this library")
-    parser.add_argument("--fia-source-commit", help="Source commit of the explicitly selected FIA build")
+    parser.add_argument(
+        "--fia-opapi", type=Path, help="Require FIA to resolve to this library"
+    )
+    parser.add_argument(
+        "--fia-source-commit", help="Source commit of the explicitly selected FIA build"
+    )
     parser.add_argument("--timing", choices=["msprof", "event"], default="msprof")
     parser.add_argument("--seq", type=int, help="Override context length")
     parser.add_argument("--smooth-v", action="store_true")
@@ -39,7 +45,9 @@ def main():
     if args.fia_source_commit and not args.fia_opapi:
         parser.error("--fia-source-commit requires --fia-opapi")
     provenance = fia_provenance(args.fia_opapi)
-    _, seq, hk, batch, dtype_name, causal = next(c for c in ALL_CASES if c[0] == args.case)
+    _, seq, hk, batch, dtype_name, causal = next(
+        c for c in ALL_CASES if c[0] == args.case
+    )
     heads = 16 if args.case == "X-02" else 32
     dim = 64 if args.case == "X-04" else 128
     seq = args.seq if args.seq is not None else seq
@@ -51,7 +59,11 @@ def main():
     q = torch.randn(batch, heads, seq, dim, device="npu", dtype=dtype)
     k = torch.randn(batch, hk, seq, dim, device="npu", dtype=dtype)
     v = torch.randn_like(k)
-    mask = torch.ones(2048, 2048, dtype=torch.bool, device="npu").triu(1) if causal else None
+    mask = (
+        torch.ones(2048, 2048, dtype=torch.bool, device="npu").triu(1)
+        if causal
+        else None
+    )
 
     def run_sage():
         return sageattn(q, k, v, is_causal=causal, smooth_v=args.smooth_v)
@@ -112,7 +124,9 @@ def main():
         "fia_source_commit": args.fia_source_commit,
         "profile_only": args.timing == "msprof",
         "operator_stages": ["Stats", "Quant", "Core"],
-        "timing": "external msprof CSV" if args.timing == "msprof" else "direct torch.npu.Event per call",
+        "timing": "external msprof CSV"
+        if args.timing == "msprof"
+        else "direct torch.npu.Event per call",
         "order": "sage-first",
         "v_max": 448.0,
         "pv_accumulation": "fp32",
@@ -133,7 +147,9 @@ def main():
     }
     if event_samples:
         report["event"] = event_samples
-        report["event_speedup"] = event_samples["fia"]["median_us"] / event_samples["sage"]["median_us"]
+        report["event_speedup"] = (
+            event_samples["fia"]["median_us"] / event_samples["sage"]["median_us"]
+        )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))

@@ -23,9 +23,13 @@ import torch_npu  # noqa: F401 -- registers the NPU backend
 
 from sageattention2 import reference, sageattn_qk_int8_pv_fp8_asc
 
-CASES = json.loads((Path(__file__).parent / "data/task_cases_500.json").read_text())["cases"]
+CASES = json.loads((Path(__file__).parent / "data/task_cases_500.json").read_text())[
+    "cases"
+]
 FUNCTIONAL = [c for c in CASES if c["suite"] != "perf"]
-MAX_ABS_WAIVERS = json.loads((Path(__file__).parent / "data/accuracy_waivers.json").read_text())
+MAX_ABS_WAIVERS = json.loads(
+    (Path(__file__).parent / "data/accuracy_waivers.json").read_text()
+)
 
 
 @pytest.mark.parametrize("case", FUNCTIONAL, ids=lambda c: c["id"])
@@ -66,8 +70,13 @@ def test_task_document_matrix(case, record_property):
     actual = actual.cpu()
     assert actual.shape == q.shape and actual.dtype == dtype
     assert torch.isfinite(actual).all()
-    gold_options = {key: options[key] for key in ("is_causal", "sm_scale", "smooth_k", "smooth_v", "return_lse")}
-    qc, kc, vc = (q, k, v) if layout != "NHD" else tuple(t.transpose(1, 2) for t in (q, k, v))
+    gold_options = {
+        key: options[key]
+        for key in ("is_causal", "sm_scale", "smooth_k", "smooth_v", "return_lse")
+    }
+    qc, kc, vc = (
+        (q, k, v) if layout != "NHD" else tuple(t.transpose(1, 2) for t in (q, k, v))
+    )
     golden = reference.attention(qc, kc, vc, **gold_options)
     golden, gold_lse = golden if lse is not None else (golden, None)
     if layout == "NHD":
@@ -84,8 +93,12 @@ def test_task_document_matrix(case, record_property):
     record_property("strict_max_abs_passed", str(max_abs <= limit).lower())
     waiver = MAX_ABS_WAIVERS.get(case["id"])
     if waiver is not None:
-        case_hash = hashlib.sha256(json.dumps(case, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-        assert case_hash == waiver["case_sha256"], "Changed case requires review of its accuracy waiver"
+        case_hash = hashlib.sha256(
+            json.dumps(case, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        assert case_hash == waiver["case_sha256"], (
+            "Changed case requires review of its accuracy waiver"
+        )
         assert limit == waiver["original_max_abs_limit"]
         record_property("max_abs_waiver_applied", str(max_abs > limit).lower())
         record_property("max_abs_waiver_reason", waiver["reason"])
@@ -98,10 +111,17 @@ def test_task_document_matrix(case, record_property):
         torch.testing.assert_close(lse.cpu(), gold_lse, atol=0.002, rtol=0.001)
     if case["suite"] == "accuracy":
         truth = torch.nn.functional.scaled_dot_product_attention(
-            qc.float(), kc.float(), vc.float(), is_causal=case["is_causal"], scale=case["sm_scale"], enable_gqa=True
+            qc.float(),
+            kc.float(),
+            vc.float(),
+            is_causal=case["is_causal"],
+            scale=case["sm_scale"],
+            enable_gqa=True,
         )
         base_options = dict(gold_options, return_lse=False)
-        baseline = reference.attention(qc, kc, vc, score_mode="fp32", **base_options).float()
+        baseline = reference.attention(
+            qc, kc, vc, score_mode="fp32", **base_options
+        ).float()
         measured = actual if layout != "NHD" else actual.transpose(1, 2)
         err = (measured.float() - truth).abs()
         ref = (baseline - truth).abs()

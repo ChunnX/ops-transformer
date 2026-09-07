@@ -20,7 +20,12 @@ def test_scale_prefetch_long_kv_and_heads(sk):
     b, hq, hk, sq, d = 2, 8, 2, 640, 64
     # Constant query rows let an independent one-row CPU reference cover all
     # 80 query tiles, including multiple tasks on each physical core.
-    q = (torch.arange(1, b * hq + 1).reshape(b, hq, 1, 1) * 0.0078125).expand(b, hq, sq, d).half().contiguous()
+    q = (
+        (torch.arange(1, b * hq + 1).reshape(b, hq, 1, 1) * 0.0078125)
+        .expand(b, hq, sq, d)
+        .half()
+        .contiguous()
+    )
     k = torch.randn(b, hk, sk, d, dtype=torch.float16)
     v = torch.randn_like(k) * 0.1
     for start in range(0, sk, 256):
@@ -41,6 +46,10 @@ def test_scale_prefetch_long_kv_and_heads(sk):
         m,
         vs,
     )
-    expected, expected_lse = reference.attention(q[:, :, :1], k, v, quantized=packed, return_lse=True)
+    expected, expected_lse = reference.attention(
+        q[:, :, :1], k, v, quantized=packed, return_lse=True
+    )
     torch.testing.assert_close(out.cpu(), expected.expand_as(q), atol=0.002, rtol=0.002)
-    torch.testing.assert_close(lse.cpu(), expected_lse.expand(b, hq, sq), atol=0.0002, rtol=0.0002)
+    torch.testing.assert_close(
+        lse.cpu(), expected_lse.expand(b, hq, sq), atol=0.0002, rtol=0.0002
+    )

@@ -25,11 +25,18 @@ def test_fixed_deq_both_aivs(extreme):
         q.fill_(127)
         k[:128].fill_(127)
         k[128:].fill_(-127)
-    tensors = [q.npu(), k.npu(), torch.empty((128, 256), device="npu", dtype=torch.float16)]
+    tensors = [
+        q.npu(),
+        k.npu(),
+        torch.empty((128, 256), device="npu", dtype=torch.float16),
+    ]
     fn = _library().sage_qk_half_debug_launch
     fn.argtypes = [C.c_void_p, C.POINTER(C.c_void_p)]
     fn.restype = None
-    fn(torch.npu.current_stream().npu_stream, (C.c_void_p * 3)(*[t.data_ptr() for t in tensors]))
+    fn(
+        torch.npu.current_stream().npu_stream,
+        (C.c_void_p * 3)(*[t.data_ptr() for t in tensors]),
+    )
     expected = ((q.double() @ k.double().T) / 2048).half()
     torch.testing.assert_close(tensors[-1].cpu(), expected, atol=0, rtol=0)
     assert expected.abs().max() <= 1024
@@ -48,7 +55,9 @@ def test_fixed_deq_both_aivs(extreme):
         (256, 0, 64, False, 0.0, 1.0),
     ],
 )
-def test_half_softmax_channel_order_and_states(sk, qstart, sq, causal, scale, imbalance):
+def test_half_softmax_channel_order_and_states(
+    sk, qstart, sq, causal, scale, imbalance
+):
     torch.manual_seed(157)
     blocks = (sk + 255) // 256
     raw = (torch.randint(-20000, 20000, (blocks, 64, 256)).float() / 2048).half()
@@ -72,7 +81,9 @@ def test_half_softmax_channel_order_and_states(sk, qstart, sq, causal, scale, im
         scale,
     )
     values, state, probs = [t.cpu() for t in (values, state, probs)]
-    probs = probs.reshape(blocks, 8, 64, 32).permute(0, 2, 1, 3).reshape(blocks, 64, 256)
+    probs = (
+        probs.reshape(blocks, 8, 64, 32).permute(0, 2, 1, 3).reshape(blocks, 64, 256)
+    )
     m = torch.full((64,), -65504.0)
     den = torch.zeros(64)
     for b in range(blocks):
@@ -81,7 +92,9 @@ def test_half_softmax_channel_order_and_states(sk, qstart, sq, causal, scale, im
         common = qm.sqrt() * km.sqrt() * math.sqrt(2048 * abs(scale))
         qh = (qs * (common / qm) * (-1 if scale < 0 else 1)).half()
         kh = (ks[b] * (common / km)).half()
-        x = (raw[b].float() * (qh[:, None].float() * kh[None, :].float()).half().float()).half()
+        x = (
+            raw[b].float() * (qh[:, None].float() * kh[None, :].float()).half().float()
+        ).half()
         rows = torch.arange(qstart, qstart + 64)[:, None]
         cols = torch.arange(b * 256, (b + 1) * 256)[None, :]
         valid = (rows < sq) & (cols < sk)
@@ -96,4 +109,6 @@ def test_half_softmax_channel_order_and_states(sk, qstart, sq, causal, scale, im
         torch.testing.assert_close(values[b], x, atol=0, rtol=0)
         for idx, expected in enumerate((m, den, alpha)):
             torch.testing.assert_close(state[b, idx], expected, atol=3e-5, rtol=3e-6)
-        torch.testing.assert_close(probs[b], p.to(torch.float8_e4m3fn).view(torch.uint8), atol=0, rtol=0)
+        torch.testing.assert_close(
+            probs[b], p.to(torch.float8_e4m3fn).view(torch.uint8), atol=0, rtol=0
+        )

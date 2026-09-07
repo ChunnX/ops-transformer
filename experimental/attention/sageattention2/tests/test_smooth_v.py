@@ -38,7 +38,9 @@ def test_smooth_v_attention(dtype, smooth_k, sq, sk, dim, causal):
     options = dict(smooth_k=smooth_k, smooth_v=True, is_causal=causal, return_lse=True)
     actual, lse = _run(q.npu(), k.npu(), v.npu(), **options)
     # Isolate attention from device-versus-CPU preprocessing rounding.
-    quant = _run(q.npu(), k.npu(), v.npu(), smooth_k=smooth_k, smooth_v=True, quant_only=True)
+    quant = _run(
+        q.npu(), k.npu(), v.npu(), smooth_k=smooth_k, smooth_v=True, quant_only=True
+    )
     q8, k8, v8, qs, ks, mean, vs, vm = [x.cpu() for x in quant]
     packed = (
         q8[..., :sq, :dim],
@@ -50,9 +52,15 @@ def test_smooth_v_attention(dtype, smooth_k, sq, sk, dim, causal):
         vs[..., :dim],
         vm[..., :dim],
     )
-    block_k = 512 if dim == 128 and sq % 128 == 0 and sk % 512 == 0 and sk >= 4096 else 256
-    golden, golden_lse = reference.attention(q, k, v, quantized=packed, block_k=block_k, **options)
-    torch.testing.assert_close(actual.cpu(), golden, atol=0.004 if dtype == torch.float16 else 0.03, rtol=0.002)
+    block_k = (
+        512 if dim == 128 and sq % 128 == 0 and sk % 512 == 0 and sk >= 4096 else 256
+    )
+    golden, golden_lse = reference.attention(
+        q, k, v, quantized=packed, block_k=block_k, **options
+    )
+    torch.testing.assert_close(
+        actual.cpu(), golden, atol=0.004 if dtype == torch.float16 else 0.03, rtol=0.002
+    )
     torch.testing.assert_close(lse.cpu(), golden_lse, atol=0.002, rtol=0.001)
     truth = torch.nn.functional.scaled_dot_product_attention(
         q.float(), k.float(), v.float(), is_causal=causal, enable_gqa=True
@@ -81,7 +89,9 @@ def test_smooth_v_constant_channels(dtype, seq, dim):
     torch.testing.assert_close(out.cpu(), expected.cpu(), atol=0, rtol=0)
     quant = _run(q, k, v, smooth_v=True, quant_only=True)
     assert torch.count_nonzero(quant[2].cpu()) == 0
-    torch.testing.assert_close(quant[-1][..., :dim].cpu(), v[:, :, 0].cpu().float(), atol=0, rtol=0)
+    torch.testing.assert_close(
+        quant[-1][..., :dim].cpu(), v[:, :, 0].cpu().float(), atol=0, rtol=0
+    )
     assert torch.count_nonzero(quant[-1][..., dim:].cpu()) == 0
 
 

@@ -18,7 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.skipif(
-    os.environ.get("SAGEATTN_TEST_STANDALONE") != "1", reason="enable standalone C benchmark regression explicitly"
+    os.environ.get("SAGEATTN_TEST_STANDALONE") != "1",
+    reason="enable standalone C benchmark regression explicitly",
 )
 @pytest.mark.parametrize("bf16,causal,hk", [(0, 0, 32), (1, 1, 8)])
 def test_standalone_aclnn(tmp_path, bf16, causal, hk):
@@ -26,7 +27,17 @@ def test_standalone_aclnn(tmp_path, bf16, causal, hk):
     assert binary.is_file(), "run benchmarks/build_aclnn_benchmark.sh first"
     output = tmp_path / "result.json"
     subprocess.run(
-        [str(binary), "128", "1", str(hk), str(bf16), str(causal), "2", "3", str(output)],
+        [
+            str(binary),
+            "128",
+            "1",
+            str(hk),
+            str(bf16),
+            str(causal),
+            "2",
+            "3",
+            str(output),
+        ],
         check=True,
         timeout=180,
         capture_output=True,

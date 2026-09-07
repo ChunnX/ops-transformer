@@ -46,10 +46,19 @@ class _Params(ctypes.Structure):
 @functools.lru_cache(None)
 def _library():
     path = os.environ.get(
-        "SAGEATTN_LIBRARY", str(Path(__file__).resolve().parents[2] / "build/native/libsageattention2_native.so")
+        "SAGEATTN_LIBRARY",
+        str(
+            Path(__file__).resolve().parents[2]
+            / "build/native/libsageattention2_native.so"
+        ),
     )
     lib = ctypes.CDLL(path)
-    lib.sage_launch.argtypes = [ctypes.c_void_p, ctypes.POINTER(_Params), ctypes.POINTER(ctypes.c_void_p), ctypes.c_int]
+    lib.sage_launch.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(_Params),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.c_int,
+    ]
     lib.sage_launch.restype = ctypes.c_int
     return lib
 
@@ -67,7 +76,9 @@ def _validate(q, k, v, layout, causal, gran, kwargs):
         raise TypeError(f"unsupported arguments: {sorted(kwargs)}")
     if any(t.ndim != 4 for t in (q, k, v)):
         raise ValueError("q/k/v must have rank 4")
-    if q.dtype not in (torch.float16, torch.bfloat16) or any(t.dtype != q.dtype for t in (k, v)):
+    if q.dtype not in (torch.float16, torch.bfloat16) or any(
+        t.dtype != q.dtype for t in (k, v)
+    ):
         raise ValueError("q/k/v must share FP16 or BF16 dtype")
     if any(t.device != q.device for t in (k, v)):
         raise ValueError("q/k/v must share a device")
@@ -77,7 +88,9 @@ def _validate(q, k, v, layout, causal, gran, kwargs):
         raise ValueError("empty dimensions are unsupported")
     if any(any(n >= 2**32 - 64 for n in t.shape) for t in (q, k, v)):
         raise ValueError("dimensions exceed the kernel uint32 range")
-    qc, kc, vc = (q, k, v) if layout == "HND" else tuple(t.transpose(1, 2) for t in (q, k, v))
+    qc, kc, vc = (
+        (q, k, v) if layout == "HND" else tuple(t.transpose(1, 2) for t in (q, k, v))
+    )
     b, h, s, d = qc.shape
     if not 0 < d <= 128:
         raise ValueError("head_dim must be in [1,128]")
@@ -113,7 +126,9 @@ def _run(
 ):
     qc, kc, vc = _validate(q, k, v, tensor_layout, is_causal, qk_quant_gran, kwargs)
     if q.device.type != "npu":
-        raise ValueError("Ascend implementation requires NPU tensors; use reference explicitly for CPU")
+        raise ValueError(
+            "Ascend implementation requires NPU tensors; use reference explicitly for CPU"
+        )
     import torch_npu  # noqa: F401
 
     scale = q.shape[-1] ** -0.5 if sm_scale is None else float(sm_scale)
@@ -166,7 +181,9 @@ def _run(
         launch = _library().sage_launch
         if _force_wide:
             if dp != 128 or sq % 128 or sk % 512 or sk < 1024:
-                raise ValueError("wide512 requires D>64, Sq divisible by 128, Sk divisible by 512 and >=1024")
+                raise ValueError(
+                    "wide512 requires D>64, Sq divisible by 128, Sk divisible by 512 and >=1024"
+                )
             launch = _library().sage_launch_wide
             launch.argtypes = _library().sage_launch.argtypes
             launch.restype = ctypes.c_int
@@ -176,7 +193,11 @@ def _run(
         for t in tensors:
             t.record_stream(stream)
     if quant_only:
-        return (q8, k8, v8, qs, ks, m[0], vs, m[1]) if smooth_v else (q8, k8, v8, qs, ks, m, vs)
+        return (
+            (q8, k8, v8, qs, ks, m[0], vs, m[1])
+            if smooth_v
+            else (q8, k8, v8, qs, ks, m, vs)
+        )
     if tensor_layout == "NHD":
         out = out.transpose(1, 2)
     return (out, lse) if return_lse else out
@@ -219,7 +240,23 @@ def sageattn_qk_int8_pv_fp8_asc(
     )
 
 
-def sageattn(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, return_lse=False, **kwargs):
+def sageattn(
+    q,
+    k,
+    v,
+    tensor_layout="HND",
+    is_causal=False,
+    sm_scale=None,
+    return_lse=False,
+    **kwargs,
+):
     return sageattn_qk_int8_pv_fp8_asc(
-        q, k, v, tensor_layout=tensor_layout, is_causal=is_causal, sm_scale=sm_scale, return_lse=return_lse, **kwargs
+        q,
+        k,
+        v,
+        tensor_layout=tensor_layout,
+        is_causal=is_causal,
+        sm_scale=sm_scale,
+        return_lse=return_lse,
+        **kwargs,
     )

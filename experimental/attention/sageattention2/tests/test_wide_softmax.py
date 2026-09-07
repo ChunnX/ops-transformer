@@ -27,7 +27,9 @@ def test_wide_uniform_normalization(dtype, sk, causal):
     q = torch.zeros(1, 2, sq, 128, dtype=dtype, device="npu")
     k = torch.zeros(1, 1, sk, 128, dtype=dtype, device="npu")
     v = torch.ones_like(k)
-    out, lse = _run(q, k, v, smooth_k=False, is_causal=causal, return_lse=True, _force_wide=True)
+    out, lse = _run(
+        q, k, v, smooth_k=False, is_causal=causal, return_lse=True, _force_wide=True
+    )
     torch.testing.assert_close(out.cpu(), torch.ones_like(out.cpu()), atol=0, rtol=0)
     if causal:
         expected_lse = torch.arange(1, sq + 1).float().log().expand(1, 2, sq)
@@ -47,8 +49,18 @@ def test_wide_unequal_halves(dominant_half):
             start = group * 512 + part * 256
             k[:, :, start : start + 256, 0] = (group + 1) * (part == dominant_half)
             v[:, :, start : start + 256] = 1 if part == 0 else -1
-    expected = torch.nn.functional.scaled_dot_product_attention(q.float(), k.float(), v.float(), scale=1.0)
-    out, lse = _run(q.npu(), k.npu(), v.npu(), smooth_k=False, sm_scale=1.0, return_lse=True, _force_wide=True)
+    expected = torch.nn.functional.scaled_dot_product_attention(
+        q.float(), k.float(), v.float(), scale=1.0
+    )
+    out, lse = _run(
+        q.npu(),
+        k.npu(),
+        v.npu(),
+        smooth_k=False,
+        sm_scale=1.0,
+        return_lse=True,
+        _force_wide=True,
+    )
     # FP8 P rounding is expected; this detects a lost half or separate maxima.
     torch.testing.assert_close(out.cpu().float(), expected, atol=0.004, rtol=0)
     expected_lse = torch.logsumexp(q.float() @ k.float().transpose(-1, -2), dim=-1)
@@ -63,11 +75,17 @@ def test_wide_fp32_accuracy(dtype, seq, causal):
     q = torch.randn(1, 4, seq, 128, dtype=dtype)
     k = torch.randn(1, 2, seq, 128, dtype=dtype)
     v = torch.randn_like(k)
-    out = _run(q.npu(), k.npu(), v.npu(), is_causal=causal, _force_wide=True).cpu().float()
+    out = (
+        _run(q.npu(), k.npu(), v.npu(), is_causal=causal, _force_wide=True)
+        .cpu()
+        .float()
+    )
     truth = torch.nn.functional.scaled_dot_product_attention(
         q.float(), k.float(), v.float(), is_causal=causal, enable_gqa=True
     )
-    expected = reference.attention(q, k, v, is_causal=causal, pv_storage="fp32", score_mode="fp32").float()
+    expected = reference.attention(
+        q, k, v, is_causal=causal, pv_storage="fp32", score_mode="fp32"
+    ).float()
     error = (out - truth).abs()
     ref_error = (expected - truth).abs()
     # Same independent accuracy limits as the default kernel's regression suite.
@@ -76,7 +94,9 @@ def test_wide_fp32_accuracy(dtype, seq, causal):
     assert error.square().mean().sqrt() <= 1.2 * ref_error.square().mean().sqrt() + 1e-6
 
 
-@pytest.mark.skipif(os.environ.get("SAGEATTN_TEST_ACLNN") != "1", reason="requires installed custom OPP")
+@pytest.mark.skipif(
+    os.environ.get("SAGEATTN_TEST_ACLNN") != "1", reason="requires installed custom OPP"
+)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("sk", [4096, 8192])
 @pytest.mark.parametrize("causal", [False, True])
@@ -115,7 +135,9 @@ def test_wide_preprocessing_layout_accuracy(dtype, dim, layout, causal):
     truth = torch.nn.functional.scaled_dot_product_attention(
         q.float(), k.float(), v.float(), is_causal=causal, enable_gqa=True
     )
-    expected = reference.attention(q, k, v, is_causal=causal, pv_storage="fp32", score_mode="fp32").float()
+    expected = reference.attention(
+        q, k, v, is_causal=causal, pv_storage="fp32", score_mode="fp32"
+    ).float()
     error, ref_error = (out - truth).abs(), (expected - truth).abs()
     assert error.max() <= 2 * ref_error.max() + 1e-6
     assert error.mean() <= 1.2 * ref_error.mean() + 1e-6
@@ -134,7 +156,10 @@ def test_wide_preprocessing_layout_accuracy(dtype, dim, layout, causal):
         public_error = (public - truth).abs()
         assert public_error.max() <= 2 * ref_error.max() + 1e-6
         assert public_error.mean() <= 1.2 * ref_error.mean() + 1e-6
-        assert public_error.square().mean().sqrt() <= 1.2 * ref_error.square().mean().sqrt() + 1e-6
+        assert (
+            public_error.square().mean().sqrt()
+            <= 1.2 * ref_error.square().mean().sqrt() + 1e-6
+        )
         contiguous = _run(q.npu(), k.npu(), v.npu(), is_causal=causal).cpu().float()
         torch.testing.assert_close(public, contiguous, atol=0, rtol=0)
 

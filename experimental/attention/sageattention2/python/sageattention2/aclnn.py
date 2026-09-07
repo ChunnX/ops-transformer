@@ -32,7 +32,10 @@ def _libs():
     base.aclCreateTensor.restype = C.c_void_p
     base.aclDestroyTensor.argtypes = [C.c_void_p]
     base.aclDestroyTensor.restype = C.c_int
-    default = Path(__file__).resolve().parents[2] / "build/opp/vendors/custom_transformer/op_api/lib/libcust_opapi.so"
+    default = (
+        Path(__file__).resolve().parents[2]
+        / "build/opp/vendors/custom_transformer/op_api/lib/libcust_opapi.so"
+    )
     lib = C.CDLL(os.environ.get("SAGEATTN_ACLNN_LIBRARY", str(default)))
     lib.aclnnSageAttention2GetWorkspaceSize.argtypes = [C.c_void_p] * 3 + [
         C.c_char_p,
@@ -83,10 +86,17 @@ def run(
     with torch.npu.device(q.device):
         # The ACL bridge describes ND storage explicitly.
         q, k, v = [
-            torch_npu.npu_format_cast(t, 2) if torch_npu.get_npu_format(t) not in (0, 2) else t for t in (q, k, v)
+            torch_npu.npu_format_cast(t, 2)
+            if torch_npu.get_npu_format(t) not in (0, 2)
+            else t
+            for t in (q, k, v)
         ]
         out = torch.empty(q.shape, device=q.device, dtype=q.dtype)
-        lse = torch.empty(qc.shape[:3], device=q.device, dtype=torch.float32) if return_lse else None
+        lse = (
+            torch.empty(qc.shape[:3], device=q.device, dtype=torch.float32)
+            if return_lse
+            else None
+        )
         handles = []
 
         def desc(t):
@@ -138,10 +148,14 @@ def run(
                 C.byref(executor),
             )
             if code:
-                raise RuntimeError(f"aclnnSageAttention2GetWorkspaceSize failed: {code}")
+                raise RuntimeError(
+                    f"aclnnSageAttention2GetWorkspaceSize failed: {code}"
+                )
             workspace = torch.empty(size.value, device=q.device, dtype=torch.uint8)
             stream = torch.npu.current_stream(q.device)
-            code = lib.aclnnSageAttention2(workspace.data_ptr(), size.value, executor, stream.npu_stream)
+            code = lib.aclnnSageAttention2(
+                workspace.data_ptr(), size.value, executor, stream.npu_stream
+            )
             if code:
                 raise RuntimeError(f"aclnnSageAttention2 failed: {code}")
             for t in (q, k, v, out, lse, workspace):

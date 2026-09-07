@@ -23,7 +23,14 @@ def assert_quantized_close(actual, expected):
 
 
 @pytest.mark.parametrize(
-    "d,seq,smooth", [(64, 16, False), (48, 17, True), (128, 65, True), (128, 256, True), (64, 80, True)]
+    "d,seq,smooth",
+    [
+        (64, 16, False),
+        (48, 17, True),
+        (128, 65, True),
+        (128, 256, True),
+        (64, 80, True),
+    ],
 )
 def test_quant(d, seq, smooth):
     torch.manual_seed(123)
@@ -46,7 +53,8 @@ def test_quant(d, seq, smooth):
 
 
 @pytest.mark.parametrize(
-    "sq,sk,d,causal,smooth", [(16, 64, 64, False, False), (17, 65, 48, False, True), (65, 65, 128, True, True)]
+    "sq,sk,d,causal,smooth",
+    [(16, 64, 64, False, False), (17, 65, 48, False, True), (65, 65, 128, True, True)],
 )
 def test_attention(sq, sk, d, causal, smooth):
     torch.manual_seed(12)
@@ -63,7 +71,9 @@ def test_attention(sq, sk, d, causal, smooth):
 
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("layout", ["HND", "NHD"])
-@pytest.mark.parametrize("d,sq,sk,scale", [(1, 1, 1, 0.0), (64, 33, 97, -0.125), (96, 129, 131, None)])
+@pytest.mark.parametrize(
+    "d,sq,sk,scale", [(1, 1, 1, 0.0), (64, 33, 97, -0.125), (96, 129, 131, None)]
+)
 def test_layout_dtype_tail(dtype, layout, d, sq, sk, scale):
     torch.manual_seed(17)
     # Slicing exercises noncontiguous outer dimensions with a contiguous D.
@@ -72,7 +82,9 @@ def test_layout_dtype_tail(dtype, layout, d, sq, sk, scale):
     v = torch.randn_like(k)
     if layout == "NHD":
         q, k, v = [t.transpose(1, 2) for t in (q, k, v)]
-    opts = dict(tensor_layout=layout, sm_scale=scale, return_lse=True, pv_accum_dtype="fp32")
+    opts = dict(
+        tensor_layout=layout, sm_scale=scale, return_lse=True, pv_accum_dtype="fp32"
+    )
 
     # Slice on NPU so the test really passes tensors with storage gaps.
     def device_strided(t):
@@ -85,11 +97,18 @@ def test_layout_dtype_tail(dtype, layout, d, sq, sk, scale):
     device_inputs = [device_strided(t) for t in (q, k, v)]
     actual, al = sageattn_qk_int8_pv_fp8_asc(*device_inputs, **opts)
     torch.npu.synchronize()
-    expected, el = reference.attention(q, k, v, tensor_layout=layout, sm_scale=scale, return_lse=True, v_max=448.0)
+    expected, el = reference.attention(
+        q, k, v, tensor_layout=layout, sm_scale=scale, return_lse=True, v_max=448.0
+    )
     assert_quantized_close(actual.cpu(), expected)
     # Quantization can shift LSE too. Isolate the attention kernel below.
     torch.testing.assert_close(al.cpu(), el, atol=0.01, rtol=0.002)
-    packed = [t.cpu() for t in _run(*device_inputs, tensor_layout=layout, quant_only=True, pv_accum_dtype="fp32")]
+    packed = [
+        t.cpu()
+        for t in _run(
+            *device_inputs, tensor_layout=layout, quant_only=True, pv_accum_dtype="fp32"
+        )
+    ]
     quantized = (
         packed[0][:, :, :sq, :d],
         packed[1][:, :, :sk, :d],
@@ -100,15 +119,28 @@ def test_layout_dtype_tail(dtype, layout, d, sq, sk, scale):
         packed[6][..., :d],
     )
     same, same_lse = reference.attention(
-        q, k, v, tensor_layout=layout, sm_scale=scale, return_lse=True, quantized=quantized
+        q,
+        k,
+        v,
+        tensor_layout=layout,
+        sm_scale=scale,
+        return_lse=True,
+        quantized=quantized,
     )
-    torch.testing.assert_close(actual.cpu(), same, atol=0.002, rtol=0.01 if dtype == torch.bfloat16 else 0.002)
+    torch.testing.assert_close(
+        actual.cpu(), same, atol=0.002, rtol=0.01 if dtype == torch.bfloat16 else 0.002
+    )
     torch.testing.assert_close(al.cpu(), same_lse, atol=5e-5, rtol=2e-5)
 
 
 @pytest.mark.parametrize(
     "bad",
-    [{"qk_quant_gran": "per_thread"}, {"qk_quant_gran": "per_warp"}, {"dropout_p": 0.1}, {"attn_mask": torch.ones(1)}],
+    [
+        {"qk_quant_gran": "per_thread"},
+        {"qk_quant_gran": "per_warp"},
+        {"dropout_p": 0.1},
+        {"attn_mask": torch.ones(1)},
+    ],
 )
 def test_reject_unsupported(bad):
     q = torch.zeros(1, 1, 4, 64, dtype=torch.float16)
@@ -126,21 +158,35 @@ def test_zero_and_repeated_stream():
         k.record_stream(stream)
         v.record_stream(stream)
         stream.wait_stream(torch.npu.default_stream())
-        outputs = [sageattn_qk_int8_pv_fp8_asc(q, k, v, return_lse=True) for _ in range(3)]
+        outputs = [
+            sageattn_qk_int8_pv_fp8_asc(q, k, v, return_lse=True) for _ in range(3)
+        ]
     stream.synchronize()
     for out, lse in outputs:
-        torch.testing.assert_close(out.cpu(), torch.ones_like(out.cpu()), atol=0.003, rtol=0.003)
-        torch.testing.assert_close(lse.cpu(), torch.full_like(lse.cpu(), __import__("math").log(65)), atol=5e-4, rtol=0)
+        torch.testing.assert_close(
+            out.cpu(), torch.ones_like(out.cpu()), atol=0.003, rtol=0.003
+        )
+        torch.testing.assert_close(
+            lse.cpu(),
+            torch.full_like(lse.cpu(), __import__("math").log(65)),
+            atol=5e-4,
+            rtol=0,
+        )
 
 
-@pytest.mark.parametrize("sq,sk,d,causal", [(513, 513, 128, True), (129, 769, 64, False), (1024, 1024, 128, True)])
+@pytest.mark.parametrize(
+    "sq,sk,d,causal",
+    [(513, 513, 128, True), (129, 769, 64, False), (1024, 1024, 128, True)],
+)
 def test_streaming_blocks(sq, sk, d, causal):
     torch.manual_seed(12)
     q = torch.randn(1, 2, sq, d, dtype=torch.float16)
     k = torch.randn(1, 1, sk, d, dtype=torch.float16)
     v = torch.randn_like(k)
     device_inputs = [t.npu() for t in (q, k, v)]
-    out, lse = sageattn_qk_int8_pv_fp8_asc(*device_inputs, is_causal=causal, return_lse=True)
+    out, lse = sageattn_qk_int8_pv_fp8_asc(
+        *device_inputs, is_causal=causal, return_lse=True
+    )
     expected = reference.attention(q, k, v, is_causal=causal)
     assert_quantized_close(out.cpu(), expected)
     packed = [t.cpu() for t in _run(*device_inputs, quant_only=True)]
@@ -153,6 +199,8 @@ def test_streaming_blocks(sq, sk, d, causal):
         packed[5][..., :d],
         packed[6][..., :d],
     )
-    same, same_lse = reference.attention(q, k, v, is_causal=causal, return_lse=True, quantized=quantized)
+    same, same_lse = reference.attention(
+        q, k, v, is_causal=causal, return_lse=True, quantized=quantized
+    )
     torch.testing.assert_close(out.cpu(), same, atol=0.002, rtol=0.002)
     torch.testing.assert_close(lse.cpu(), same_lse, atol=5e-5, rtol=2e-5)
