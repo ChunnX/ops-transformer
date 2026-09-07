@@ -23,8 +23,7 @@
 // ----------------------------------------------SafeStrideCopy--------------------------------
 template <typename OUT_T>
 __aicore__ inline void SafeStrideCopy(GlobalTensor<OUT_T> gmTensor, const LocalTensor<OUT_T> ubTensor,
-                                      uint32_t blockCount, uint32_t blockLen, uint32_t srcStride,
-                                      uint64_t dstStride)
+                                      uint32_t blockCount, uint32_t blockLen, uint32_t srcStride, uint64_t dstStride)
 {
     DataCopyExtParams dataCopyParams;
     // B*S过大时，跳写参数dataCopyParams.dstStride(uint32_t)计算结果将溢出，使用for循环拷贝代替
@@ -88,11 +87,10 @@ public:
         uint64_t ubOffset = 0;
         uint32_t blockCount = headS1;
         uint32_t blockLen = gmCoord.dDealSize * sizeof(OUT_T);
-        uint32_t srcStride =
-            (srcTensor.colCount - gmCoord.dDealSize) / (AttentionCommon::BYTE_BLOCK / sizeof(OUT_T));
+        uint32_t srcStride = (srcTensor.colCount - gmCoord.dDealSize) / (AttentionCommon::BYTE_BLOCK / sizeof(OUT_T));
         uint64_t dstStride = (offsetCalculator.GetStrideS1() - gmCoord.dDealSize) * sizeof(OUT_T); // 单位为Byte
-        SafeStrideCopy<OUT_T>(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
-                              srcStride, dstStride);
+        SafeStrideCopy<OUT_T>(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen, srcStride,
+                              dstStride);
 
         if (gIdxEnd - gIdxStart >= 1) {
             // 处理中间块
@@ -131,8 +129,7 @@ public:
 
         uint64_t attenOutGmbaseOffset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, 0, s1IdxStart, 0);
         uint32_t blockLen = gmCoord.dDealSize * sizeof(OUT_T);
-        uint32_t srcStride =
-            (srcTensor.colCount - gmCoord.dDealSize) / (AttentionCommon::BYTE_BLOCK / sizeof(OUT_T));
+        uint32_t srcStride = (srcTensor.colCount - gmCoord.dDealSize) / (AttentionCommon::BYTE_BLOCK / sizeof(OUT_T));
         uint64_t dstStride = (offsetCalculator.GetStrideG() - gmCoord.dDealSize) * sizeof(OUT_T); // 单位为Byte
 
         uint32_t headSize = 0;
@@ -145,8 +142,8 @@ public:
         uint64_t ubOffset = 0;
         uint32_t blockCount = headSize;
 
-        SafeStrideCopy<OUT_T>(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
-                              srcStride, dstStride);
+        SafeStrideCopy<OUT_T>(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen, srcStride,
+                              dstStride);
 
         if (s1IdxEnd - s1IdxStart >= 1) {
             // 处理中间块
@@ -157,8 +154,7 @@ public:
                     uint32_t blockCountTmp = s1IdxEnd - s1IdxStart - 1;
                     uint32_t blockLenTmp = gmCoord.dDealSize * sizeof(OUT_T) * offsetCalculator.GetDimG();
                     uint32_t srcStrideTmp = 0;
-                    uint64_t dstStrideTmp =
-                        offsetCalculator.GetStrideS1() * sizeof(OUT_T) - blockLenTmp; // 单位为Byte
+                    uint64_t dstStrideTmp = offsetCalculator.GetStrideS1() * sizeof(OUT_T) - blockLenTmp; // 单位为Byte
 
                     // blockCount = offsetCalculator.GetDimG() * (s1IdxEnd - s1IdxStart -1);
                     SafeStrideCopy<OUT_T>(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCountTmp,
@@ -193,12 +189,10 @@ public:
                                       GmCoordS1Only &gmCoord)
     {
         auto &offsetCalculator = dstTensor.offsetCalculator;
-        uint64_t gmOffset =
-            offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.gIdx, gmCoord.s1Idx, 0);
+        uint64_t gmOffset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.gIdx, gmCoord.s1Idx, 0);
         uint32_t blockCount = gmCoord.s1DealSize;
         uint32_t blockLen = gmCoord.dDealSize * sizeof(OUT_T);
-        uint32_t srcStride =
-            (srcTensor.colCount - gmCoord.dDealSize) / (AttentionCommon::BYTE_BLOCK / sizeof(OUT_T));
+        uint32_t srcStride = (srcTensor.colCount - gmCoord.dDealSize) / (AttentionCommon::BYTE_BLOCK / sizeof(OUT_T));
         uint64_t dstStride = (offsetCalculator.GetStrideS1() - gmCoord.dDealSize) * sizeof(OUT_T); // 单位为Byte
         SafeStrideCopy<OUT_T>(dstTensor.gmTensor[gmOffset], srcTensor.tensor[0], blockCount, blockLen, srcStride,
                               dstStride);

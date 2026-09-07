@@ -440,11 +440,11 @@ public:
         FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
         GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
-                        .n2Idx = runInfo.realN2Idx,
-                        .gS1Idx = runInfo.gS1Idx,
-                        .dIdx = dOffset,
-                        .gS1DealSize = runInfo.actMSize,
-                        .dDealSize = nopeDealSize};
+                                .n2Idx = runInfo.realN2Idx,
+                                .gS1Idx = runInfo.gS1Idx,
+                                .dIdx = dOffset,
+                                .gS1DealSize = runInfo.actMSize,
+                                .dDealSize = nopeDealSize};
         copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
 
         if constexpr (HAS_ROPE) {
@@ -456,11 +456,11 @@ public:
                                                       .rowCount = dstStrideRope};
 
             GmCoordGs1Merge gmCoord = {.bIdx = runInfo.bIdx,
-                               .n2Idx = runInfo.realN2Idx,
-                               .gS1Idx = runInfo.gS1Idx,
-                               .dIdx = 0,
-                               .gS1DealSize = runInfo.actMSize,
-                               .dDealSize = ropeDealSize};
+                                       .n2Idx = runInfo.realN2Idx,
+                                       .gS1Idx = runInfo.gS1Idx,
+                                       .dIdx = 0,
+                                       .gS1DealSize = runInfo.actMSize,
+                                       .dDealSize = ropeDealSize};
             copyQueryRopeGmToL1(l1Tensor, queryRopeGm, gmCoord);
         }
     }
@@ -478,11 +478,11 @@ public:
         FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
         GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
-                        .n2Idx = runInfo.realN2Idx,
-                        .gS1Idx = runInfo.gS1Idx,
-                        .dIdx = dOffset,
-                        .gS1DealSize = runInfo.actMSize,
-                        .dDealSize = dRealSize};
+                                .n2Idx = runInfo.realN2Idx,
+                                .gS1Idx = runInfo.gS1Idx,
+                                .dIdx = dOffset,
+                                .gS1DealSize = runInfo.actMSize,
+                                .dDealSize = dRealSize};
         copyQueryScaleGmToL1(l1Tensor, queryScaleGm, gmCoord);
     }
 

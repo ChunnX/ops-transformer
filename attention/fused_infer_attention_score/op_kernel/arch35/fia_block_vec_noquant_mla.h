@@ -577,11 +577,11 @@ public:
                                                 uint32_t vecMIdx, uint32_t dealRowCount)
     {
         GmCoordGs1Merge gmCoord{.bIdx = info.bIdx,
-                        .n2Idx = info.n2Idx,
-                        .gS1Idx = (info.gS1Idx + info.vecMbaseIdx + vecMIdx),
-                        .dIdx = 0,
-                        .gS1DealSize = dealRowCount,
-                        .dDealSize = (uint32_t)constInfo.dSizeV};
+                                .n2Idx = info.n2Idx,
+                                .gS1Idx = (info.gS1Idx + info.vecMbaseIdx + vecMIdx),
+                                .dIdx = 0,
+                                .gS1DealSize = dealRowCount,
+                                .dDealSize = (uint32_t)constInfo.dSizeV};
         FaUbTensor<OUTPUT_T, false> ubTensor{
             .tensor = attenOutUb, .rowCount = dealRowCount, .colCount = (uint32_t)(dVTemplateAlign64)};
         // [MTE3] CopyAttentionOut: 按 outputLayout 分支(B 本用例 BNSD)走 CopyAttenOutUbToGm 执行 MTE3(UB->GM) 写回

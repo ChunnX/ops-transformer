@@ -199,7 +199,8 @@ private:
                     dataCopyPadParams);
     }
 
-    __aicore__ inline void ProcessS1G(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor, GmCoordGs1Merge &gmCoord)
+    __aicore__ inline void ProcessS1G(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor,
+                                      GmCoordGs1Merge &gmCoord)
     {
         OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
         uint64_t gSize = offsetCalculator.GetDimG();
@@ -224,7 +225,8 @@ private:
 template <typename T, GmFormat GM_FORMAT>
 class CopyQueryGmToUb {
 public:
-    __aicore__ inline void operator()(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor, GmCoordGs1Merge &gmCoord)
+    __aicore__ inline void operator()(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor,
+                                      GmCoordGs1Merge &gmCoord)
     {
         if constexpr ((GM_FORMAT == GmFormat::BSNGD) || (GM_FORMAT == GmFormat::TNGD)) {
             ProcessS1G(dstTensor, srcTensor, gmCoord);
@@ -241,7 +243,8 @@ public:
     }
 
 private:
-    __aicore__ inline void ProcessGS1(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor, GmCoordGs1Merge &gmCoord)
+    __aicore__ inline void ProcessGS1(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor,
+                                      GmCoordGs1Merge &gmCoord)
     {
         OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
         uint64_t s1Size = 0;
@@ -307,7 +310,8 @@ private:
                                   offsetCalculator.GetStrideS1(), dstTensor.colCount);
     }
 
-    __aicore__ inline void ProcessS1G(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor, GmCoordGs1Merge &gmCoord)
+    __aicore__ inline void ProcessS1G(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor,
+                                      GmCoordGs1Merge &gmCoord)
     {
         OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
         uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();

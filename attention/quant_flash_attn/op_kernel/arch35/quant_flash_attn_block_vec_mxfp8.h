@@ -94,10 +94,8 @@ public:
     static constexpr MaskFormat MASK_LAYOUT = MaskFormat::SG;
 
     static constexpr bool USE_DN = useDn;
-    static constexpr UbFormat OUT_UB_FORMAT =
-        USE_DN ? UbFormat::S1_ONLY : GetOutUbFormat<layout>();
-    using OutGmCoord =
-        std::conditional_t<USE_DN, GmCoordS1Only, GmCoordGs1Merge>;
+    static constexpr UbFormat OUT_UB_FORMAT = USE_DN ? UbFormat::S1_ONLY : GetOutUbFormat<layout>();
+    using OutGmCoord = std::conditional_t<USE_DN, GmCoordS1Only, GmCoordGs1Merge>;
 
     static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value &&
                                        !IsSameType<OUTPUT_T, float>::value;

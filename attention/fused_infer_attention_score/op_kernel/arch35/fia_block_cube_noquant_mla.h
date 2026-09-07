@@ -218,11 +218,11 @@ public:
             FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
             GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
-                            .n2Idx = runInfo.n2Idx,
-                            .gS1Idx = runInfo.gS1Idx,
-                            .dIdx = 0,
-                            .gS1DealSize = runInfo.actMSize,
-                            .dDealSize = (uint32_t)constInfo.dSize};
+                                    .n2Idx = runInfo.n2Idx,
+                                    .gS1Idx = runInfo.gS1Idx,
+                                    .dIdx = 0,
+                                    .gS1DealSize = runInfo.actMSize,
+                                    .dDealSize = (uint32_t)constInfo.dSize};
             copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
         }
 
@@ -231,11 +231,11 @@ public:
             FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor[queryRopeL1Offset], .rowCount = dstStride};
 
             GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
-                            .n2Idx = runInfo.n2Idx,
-                            .gS1Idx = runInfo.gS1Idx,
-                            .dIdx = 0,
-                            .gS1DealSize = runInfo.actMSize,
-                            .dDealSize = (uint32_t)constInfo.dSizeRope};
+                                    .n2Idx = runInfo.n2Idx,
+                                    .gS1Idx = runInfo.gS1Idx,
+                                    .dIdx = 0,
+                                    .gS1DealSize = runInfo.actMSize,
+                                    .dDealSize = (uint32_t)constInfo.dSizeRope};
             copyQueryGmToL1(l1Tensor, queryRopeGm, gmCoord);
         }
     }

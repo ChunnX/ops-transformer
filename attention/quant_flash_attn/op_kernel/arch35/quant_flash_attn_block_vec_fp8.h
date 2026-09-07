@@ -65,10 +65,8 @@ public:
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
 
     static constexpr bool USE_DN = useDn;
-    static constexpr UbFormat OUT_UB_FORMAT =
-        USE_DN ? UbFormat::S1_ONLY : GetOutUbFormat<layout>();
-    using OutGmCoord =
-        std::conditional_t<USE_DN, GmCoordS1Only, GmCoordGs1Merge>;
+    static constexpr UbFormat OUT_UB_FORMAT = USE_DN ? UbFormat::S1_ONLY : GetOutUbFormat<layout>();
+    using OutGmCoord = std::conditional_t<USE_DN, GmCoordS1Only, GmCoordGs1Merge>;
     static constexpr bool IS_PER_TOEKN_HEAD = true;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
 
