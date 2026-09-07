@@ -73,6 +73,7 @@ static constexpr uint32_t HIT_ENTRY_SIZE = 2U;
 static constexpr uint32_t CACHED_META_TILE = 8192U;
 static constexpr uint32_t ALIGNED_LEN_256 = 256U;
 static constexpr uint32_t SLOTS_TILE = 128U;
+static constexpr uint32_t JETTY_CNT = 2U; // 打桩 通信使用jetty个数  取1-8 与moe_ep_dispatch.h保持一致
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 class MoeEpDispatchEpilogue {
@@ -176,7 +177,6 @@ private:
     uint32_t epWorldSize_{0};
     uint32_t numMaxTokensPerRank_{0};
     uint32_t perSlotBytes_{0};
-    uint32_t dispatchNotifyCount_{1};
     uint32_t totalNotifyCnt_{0};
     uint64_t winDataOffset_{0};
     uint64_t slotWinStateOffset_{0};
@@ -217,7 +217,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     epWorldSize_ = tilingData->cfg.epWorldSize;
     numMaxTokensPerRank_ = tilingData->cfg.numMaxTokensPerRank;
     perSlotBytes_ = tilingData->cfg.perSlotBytes;
-    dispatchNotifyCount_ = tilingData->dispatchNotifyCount;
     winDataOffset_ = tilingData->winDataOffset;
     slotWinStateOffset_ = tilingData->slotWinStateOffset;
 
@@ -244,7 +243,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
     axisKAlign_ = Ceil(axisK_, ELEM_ALIGN) * ELEM_ALIGN;
     metaBytes_ = (META_TOPK_SECTION * axisKAlign_) * (uint32_t)sizeof(int32_t) + UB_ALIGN;
-    totalNotifyCnt_ = epWorldSize_ * dispatchNotifyCount_;
+    totalNotifyCnt_ = epWorldSize_ * JETTY_CNT;
     uint32_t ubExpertPfxBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t expertReduceTmpBytes =
         ReduceSumWorkNeedSize(static_cast<int32_t>(numLocalExperts_), sizeof(int64_t)) * sizeof(int64_t);
