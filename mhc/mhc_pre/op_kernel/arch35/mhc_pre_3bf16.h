@@ -30,6 +30,7 @@ using MhcPre3Bf16Matmul =
 constexpr uint32_t MHC_PRE_3BF16_PART_COUNT = 3U;
 constexpr float MHC_PRE_3BF16_MID_SCALE = 0.00390625F;
 constexpr float MHC_PRE_3BF16_LOW_SCALE = 0.0000152587890625F;
+constexpr uint16_t MHC_PRE_3BF16_MM_READY_FLAG = 3U;
 
 template <class T, class P, int8_t RESI_MODE>
 class MhcPre3Bf16 {
@@ -62,24 +63,15 @@ public:
         uint32_t blockCount = Ceil(vector_.totalLength_, vector_.chunkTSize_);
         for (uint64_t block = vector_.coreIdx_; block < blockCount; block += vector_.coreNum_) {
             vector_.InitBlockParams(block, blockCount);
-            ConfigureRowPartition();
             if ASCEND_IS_AIV {
                 ProcessRms(block, blockCount);
             } else {
-                if (matmulCount_ >= vector_.kDoubleBufferCount) {
-                    CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(MHC_PRE_3BF16_CONSUMED_FLAG);
-                    CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(MHC_PRE_3BF16_CONSUMED_FLAG +
-                                                                              MHC_PRE_SUBBLOCK_FLAG_OFFSET);
-                }
                 ProcessMatmul();
-                CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(MHC_PRE_MM_READY_FLAG);
-                CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_FIX>(MHC_PRE_MM_READY_FLAG +
-                                                                         MHC_PRE_SUBBLOCK_FLAG_OFFSET);
+                CrossCoreSetFlag<0x2, PIPE_FIX>(MHC_PRE_3BF16_MM_READY_FLAG);
             }
             if ASCEND_IS_AIV {
-                CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MHC_PRE_MM_READY_FLAG);
+                CrossCoreWaitFlag(MHC_PRE_3BF16_MM_READY_FLAG);
                 ProcessPost();
-                CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MHC_PRE_3BF16_CONSUMED_FLAG);
                 vector_.vec1Count_++;
             } else {
                 matmulCount_++;
@@ -110,23 +102,6 @@ private:
         vector_.pipe_->InitBuffer(vector_.tmpBuff_, 2U * segmentBytes);
         vector_.hPreBuff_ = vector_.tmpBuff_.template GetWithOffset<P>(vector_.V1_BASE_T * vector_.N_, 0U);
         vector_.hPostBuff_ = vector_.tmpBuff_.template GetWithOffset<P>(vector_.V1_BASE_T * vector_.N_, segmentBytes);
-    }
-
-    __aicore__ inline void ConfigureRowPartition()
-    {
-        if ASCEND_IS_NOT_AIV {
-            return;
-        }
-        uint64_t firstRows = (vector_.curSingleT_ + 1U) / 2U;
-        if (vector_.subBlockIdx_ == 0U) {
-            vector_.vectorOffset_.singleCoreM = firstRows;
-            vector_.vectorOffset_.offsetMStart = 0U;
-            vector_.vectorOffset_.offsetMEnd = firstRows;
-        } else {
-            vector_.vectorOffset_.singleCoreM = vector_.curSingleT_ - firstRows;
-            vector_.vectorOffset_.offsetMStart = firstRows;
-            vector_.vectorOffset_.offsetMEnd = vector_.curSingleT_;
-        }
     }
 
     __aicore__ inline void ProcessRms(uint32_t block, uint32_t blockCount)
