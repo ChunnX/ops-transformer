@@ -102,6 +102,7 @@ protected:
     template <bool IS_SINGLE, bool NEED_BARRIER = true>
     __aicore__ inline void Dequant(const LocalTensor<T> &dstLocal, const LocalTensor<T> &srcLocal,
                                    const LocalTensor<float> &descale, uint32_t row, uint32_t col, uint32_t actualCol);
+    __aicore__ inline void LoadDescale();
     // ================================状态管理====================================
     template <bool IS_SCORE>
     __aicore__ inline void DuplicateFirstBlock(const LocalTensor<T> &dstLocal, uint32_t duplicateRowCount,
@@ -296,6 +297,21 @@ __aicore__ inline LoopInfo QuantCompressorBlockVector<COMP>::GetLoopInfo(const V
 }
 
 template <typename COMP>
+__aicore__ inline void QuantCompressorBlockVector<COMP>::LoadDescale()
+{
+    LocalTensor<T> wDescale = this->inputQue3.template AllocTensor<T>();
+    DataCopy(wDescale, this->wKvDescaleGm_, this->coff_ * this->constInfo_.headDim);
+    DataCopy(wDescale[BUFFER_SIZE_BYTE_8K / sizeof(T)], this->wGateDescaleGm_, this->coff_ * this->constInfo_.headDim);
+    this->inputQue3.template EnQue(wDescale);
+    this->inputQue3.template DeQue<T>();
+    DataCopy(this->xWKvDescaleUb, wDescale, this->coff_ * this->constInfo_.headDim);
+    DataCopy(this->xWGateDescaleUb, wDescale[BUFFER_SIZE_BYTE_8K / sizeof(T)], this->coff_ * this->constInfo_.headDim);
+    this->inputQue3.template FreeTensor(wDescale);
+    MulsVF(this->xWKvDescaleUb, this->xWKvDescaleUb, this->xDescale_, this->coff_, this->constInfo_.headDim);
+    MulsVF(this->xWGateDescaleUb, this->xWGateDescaleUb, this->xDescale_, this->coff_, this->constInfo_.headDim);
+}
+
+template <typename COMP>
 template <typename DST_T, typename SRC_T, typename O>
 __aicore__ inline void QuantCompressorBlockVector<COMP>::DataCopyAlign(const DST_T &dst, const SRC_T &src,
                                                                        uint32_t copyRowCount, uint32_t copyColCount,
@@ -384,7 +400,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::DataCopyWithInputQue(
     uint32_t singleCopyRowCount = BUFFER_SIZE_BYTE_32K / (copyColCount * sizeof(O));
     for (uint32_t rowCount = 0; rowCount < copyRowCount; rowCount += singleCopyRowCount) {
         LocalTensor<O> inputUb = inputQue2.AllocTensor<O>();
-        
+
         uint64_t srcOffset = rowCount * srcSingleRowCount;
         uint64_t dstOffset = rowCount * dstSingleRowCount;
         uint32_t curCopyRowCount = min(singleCopyRowCount, copyRowCount - rowCount);
