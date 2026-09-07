@@ -23,7 +23,9 @@ namespace MhcPre {
 using MhcPre3Bf16AType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
 using MhcPre3Bf16BType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
 using MhcPre3Bf16CType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, float32_t>;
-using MhcPre3Bf16Matmul = matmul::MatmulImpl<MhcPre3Bf16AType, MhcPre3Bf16BType, MhcPre3Bf16CType>;
+constexpr MatmulConfig MHC_PRE_3BF16_MM_CONFIG = GetMDLConfig(false, false, 0, false, false, false, true);
+using MhcPre3Bf16Matmul =
+    matmul::MatmulImpl<MhcPre3Bf16AType, MhcPre3Bf16BType, MhcPre3Bf16CType, MhcPre3Bf16CType, MHC_PRE_3BF16_MM_CONFIG>;
 
 constexpr uint32_t MHC_PRE_3BF16_PART_COUNT = 3U;
 constexpr float MHC_PRE_3BF16_MID_SCALE = 0.00390625F;
