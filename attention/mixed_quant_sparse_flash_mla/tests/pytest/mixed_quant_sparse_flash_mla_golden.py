@@ -260,9 +260,7 @@ class GeneralizedSFAQuant:
         """Follow the NPU S2 split and fixed FD reduction order."""
         ori_s2_size = 0 if ori_k_fp32 is None else ori_k_fp32.shape[0]
         cmp_s2_size = 0 if cmp_k_fp32 is None else cmp_k_fp32.shape[0]
-        reduce_size = self._get_batch_consistency_reduce_size(
-            ori_s2_size, cmp_s2_size
-        )
+        reduce_size = self._get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size)
 
         # Metadata splits ORI and CMP independently, so a reduction block never
         # crosses the boundary between the two KV regions.
@@ -502,9 +500,9 @@ class GeneralizedSFAQuant:
                             cmp_k_for_reduce,
                             cur_sinks,
                         )
-                        attn_out[
-                            i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :
-                        ] = acc_o.to(dtype=q_bnsd.dtype)
+                        attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o.to(
+                            dtype=q_bnsd.dtype
+                        )
                         if return_softmax_lse:
                             softmax_lse[i_B, i_N2, i_S1, :] = final_lse
                         continue
