@@ -310,7 +310,7 @@ cann_ops_transformer.flash_attn(
                 <li>KV_N > 0</li>
                 <li>Q_S > 0</li>
                 <li>KV_S > 0</li>
-                <li>D支持64、128、256</li>
+                <li>D支持64、72、128、256</li>
                 <li>q与k/v的D维度必须相等</li>
                 <li>Q_N % KV_N == 0且Q_N / KV_N > 0</li>
             </ul>
@@ -328,6 +328,7 @@ cann_ops_transformer.flash_attn(
                 <li>PA_BNBD -> (num_blocks, KV_N, block_size, D)</li>
                 <li>PA_NZ -> (num_blocks, KV_N, D//16, block_size, 16)</li>
                 <li>1024 >= block_size >= 16，block_size % 16 == 0</li>
+                <li>layout_kv为PA_NZ时，D必须为16的倍数</li>
                 <li>非连续Tensor约束：
                     <ul>
                         <li>BNSD/BSND/TND：k/v必须连续，传入非连续Tensor会报错</li>
