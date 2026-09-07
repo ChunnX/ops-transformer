@@ -12,6 +12,7 @@
  * \file matmul_reduce_scatter_v2.cpp
  * \brief
  */
+// mc2 operator kernel entry
 
 #include "../matmul_reduce_scatter_v2_tiling_key.h"
 #include "lib/matmul_intf.h"
