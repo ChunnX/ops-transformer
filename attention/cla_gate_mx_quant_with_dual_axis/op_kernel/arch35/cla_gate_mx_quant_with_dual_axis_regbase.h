@@ -32,6 +32,7 @@
 #include "cla_gate_mx_quant_with_dual_axis_tilingdata.h"
 
 namespace ClaGateMxQuantWithDualAxis {
+
 using namespace AscendC;
 
 constexpr int64_t DB_BUFFER = 2;
@@ -372,9 +373,6 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
         if (calcRow < ubRowCount_) {
             int64_t zeroRows = ubRowCount_ - calcRow;
             PadZeroM(mergedAddr + calcRow * ubRowLen_, zeroRows * ubRowLen_);
-            __VEC_SCOPE__ {
-                AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
-            }
         }
 
         actInQueue_.template FreeTensor(input);
@@ -445,7 +443,6 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
             }
         }
 
-
         mxScaleQueue1_.template EnQue(scale1);
         outQueue1_.template EnQue(y1);
         mxScaleQueue2_.template EnQue(scale2);
@@ -497,11 +494,19 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
     int64_t rowStride = dimN_;
     int64_t headStart = colOffset / headDim_;
 
+    // DataCopyPad strides: srcStride is in bytes for GM, dstStride is in 32B UB
+    // blocks. The UB tile always stores rows at ubRowLen_ (256) elements, so a
+    // partial-width tile must leave a destination gap after every copied row.
+    uint32_t dstStride = 0;
+    if (calcCol < ubRowLen_) {
+        dstStride = static_cast<uint32_t>((ubRowLen_ - calcCol) / oneBlockCountB16_);
+    }
     DataCopyExtParams outCopy = {static_cast<uint16_t>(calcRow),
                                  static_cast<uint32_t>(calcCol * sizeof(xDtype)),
-                                 static_cast<uint32_t>((rowStride - calcCol) * sizeof(xDtype)), 0, 0};
+                                 static_cast<uint32_t>((rowStride - calcCol) * sizeof(xDtype)), dstStride, 0};
     DataCopyPad(actInput, globalOutGm_[outOffset], outCopy, pad);
     DataCopyPad(actInput[inHalfSize_], localOutGm_[outOffset], outCopy, pad);
+
 
     // Per-head gate scalars, one contiguous array per head.
     for (int64_t h = 0; h < headsThisTile; ++h) {
@@ -514,20 +519,9 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
             DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(
                 gateInput[gateSideStride_ + h * ubRowCount_],
                 localGateGm_[gateOffset], gateCopy, pad);
-        } else if (calcCol < ubRowLen_) {
-            // Partial column tile (e.g. D=128 and odd N): the last tile may
-            // contain fewer heads than headsPerRow_. Copy row-by-row to avoid
-            // relying on multi-burst gather semantics for an unaligned head.
-            for (int64_t row = 0; row < calcRow; ++row) {
-                DataCopyExtParams gateCopy = {1, static_cast<uint32_t>(sizeof(xDtype)), 0, 0, 0};
-                int64_t srcOffset = gateOffset + row * headNum_;
-                DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(
-                    gateInput[h * ubRowCount_ + row], globalGateGm_[srcOffset], gateCopy, pad);
-                DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(
-                    gateInput[gateSideStride_ + h * ubRowCount_ + row],
-                    localGateGm_[srcOffset], gateCopy, pad);
-            }
         } else {
+            // Same strided copy works for both full and partial column tiles:
+            // each burst fetches the same head's gate value from calcRow rows.
             DataCopyExtParams gateCopy = {static_cast<uint16_t>(calcRow),
                                           static_cast<uint32_t>(sizeof(xDtype)),
                                           static_cast<uint32_t>((headNum_ - 1) * sizeof(xDtype)), 0, 0};

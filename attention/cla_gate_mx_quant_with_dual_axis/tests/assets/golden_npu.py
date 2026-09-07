@@ -78,6 +78,45 @@ def _torch_uint8_bytes(tensor):
     return tensor.cpu().view(torch.uint8).numpy().tobytes()
 
 
+def _get_device_id():
+    """Select the NPU device that can actually be opened in this process.
+
+    TTK may run the golden on a device other than 0 (for example device 6).
+    torch.npu.current_device() can still report 0 before a context is bound, so
+    try current, ASCEND_RT_VISIBLE_DEVICES, and then all visible NPUs.
+    """
+    candidates = []
+    try:
+        current = torch.npu.current_device()
+        if current is not None and int(current) >= 0:
+            candidates.append(int(current))
+    except Exception:
+        pass
+
+    visible = os.environ.get("ASCEND_RT_VISIBLE_DEVICES", "").strip()
+    if visible:
+        for item in visible.split(","):
+            item = item.strip()
+            if item.isdigit():
+                candidates.append(int(item))
+
+    try:
+        device_count = torch.npu.device_count()
+    except Exception:
+        device_count = 0
+    for dev_id in range(max(device_count, 8)):
+        if dev_id not in candidates:
+            candidates.append(dev_id)
+
+    for dev_id in candidates:
+        try:
+            torch.npu.set_device(dev_id)
+            return dev_id
+        except Exception:
+            continue
+    return 0
+
+
 def _unpack_packed_fp4(tensor, dst_type):
     """Unpack a torch_npu packed uint8 FP4 tensor to en_dtypes logical shape."""
     from ttk.utilities import unpack_4bits
@@ -100,8 +139,8 @@ def cla_gate_quant_dual_npu_tensors(global_out, local_out, global_gate_logits, l
     if dst_type not in (35, 36, 40, 41):
         raise ValueError("NPU small-op golden path only supports dst_type=35/36/40/41, got %s" % dst_type)
 
-    device = "npu:0"
-    torch.npu.set_device(device)
+    device_id = _get_device_id()
+    device = f"npu:{device_id}"
 
     go = _to_npu(global_out, device)
     lo = _to_npu(local_out, device)
