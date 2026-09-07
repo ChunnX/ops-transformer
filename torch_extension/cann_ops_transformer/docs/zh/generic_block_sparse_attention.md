@@ -224,6 +224,10 @@ cann_ops_transformer.generic_block_sparse_attention(
 ## 约束说明
 
 - 参数cu_seqlens_q、cu_seqlens_kv、seqused_q、seqused_kv、sparse_block_idx、sparse_block_count及block_table属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
+- SeqLens与layout的对应关系：
+  - **TND**：传入`cu_seqlens_*`表示各batch packed存储长度（可含padding）；可选再传`seqused_*`表示实际有效长度，用于截断padding（`seqused ≤ cu差分`）。
+  - **非TND**（含`PA_BBND`）：只传入`seqused_*`表示各batch序列长度，不传入`cu_seqlens_*`。
+  - 当前正规路径为`layout_q=TND` + `layout_kv=PA_BBND`，因此Q侧传`cu_seqlens_q`（及可选`seqused_q`），KV侧只传`seqused_kv`。
 - generic_block_sparse_attention_metadata和generic_block_sparse_attention的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由客户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
 
 ### 特性参数组
@@ -279,8 +283,8 @@ cann_ops_transformer.generic_block_sparse_attention(
 |    KV_N    |    输入k/v tensor的头数，对应k/v shape中的N    |
 |     Q_T     |          输入q tensor所有batch序列长度的累加和          |
 |    KV_T    |          输入k/v所有batch序列长度的累加和          |
-|     Q_S     |      各batch的query序列长度，TND下一般由cu_seqlens_q差分得到      |
-|    KV_S    |  各batch的key/value序列长度，TND/PA下一般由cu_seqlens_kv差分得到  |
+|     Q_S     | 各batch的query存储序列长度；TND下由`cu_seqlens_q`差分得到；有效长度在传入`seqused_q`时为其值，否则等于Q_S |
+|    KV_S    | 各batch的key/value序列长度；TND下由`cu_seqlens_kv`差分得到；非TND（含PA）下等于`seqused_kv` |
 |     D     |          输入q/k/v tensor隐藏层最小的单元尺寸headdim         |
 |  topK  | sparse_block_idx最后一维，表示每个Q块最多选择的KV块数 |
 | totalQBlocks | TND下各batch按Q_S分块后的Q块总数，即$\sum_i \mathrm{ceilDiv}(Q\_S_i, blockShapeX)$；为`sparse_block_idx`/`sparse_block_count`的第二维 |
@@ -630,19 +634,18 @@ mask_mode参数解释见「mask_mode 枚举」。
     <tbody>
         <tr>
             <td>seqused_q</td>
-            <td rowspan="2">
+            <td>
                 <ul>
                     <li>tensor_type支持int32</li>
                     <li>tensor_shape为(B,)</li>
                     <li>仅支持非负整数</li>
                     <li>seqused_q中的值需小于等于对应batch的Q_S</li>
-                    <li>seqused_kv中的值需小于等于对应batch的KV_S</li>
                 </ul>
             </td>
-            <td rowspan="2">
+            <td>
                 <ul>
                     <li>可选参数</li>
-                    <li>不传入时，各batch有效长度分别等于对应Q_S / KV_S</li>
+                    <li>用于TND下截断padding；不传入时，各batch有效长度等于对应Q_S</li>
                 </ul>
             </td>
             <td rowspan="4">无</td>
@@ -650,6 +653,20 @@ mask_mode参数解释见「mask_mode 枚举」。
         </tr>
         <tr>
             <td>seqused_kv</td>
+            <td>
+                <ul>
+                    <li>tensor_type支持int32</li>
+                    <li>tensor_shape为(B,)</li>
+                    <li>仅支持非负整数</li>
+                    <li>layout_kv为TND时，值需小于等于对应batch由cu_seqlens_kv差分得到的存储长度</li>
+                </ul>
+            </td>
+            <td>
+                <ul>
+                    <li>当layout_kv为非TND（含PA_BBND）时，必须传入，此时KV_S=seqused_kv</li>
+                    <li>当layout_kv为TND时可选，用于截断padding；不传入时有效长度等于对应KV_S</li>
+                </ul>
+            </td>
         </tr>
         <tr>
             <td>cu_seqlens_q</td>
@@ -666,7 +683,8 @@ mask_mode参数解释见「mask_mode 枚举」。
             <td rowspan="2">
                 <ul>
                     <li>当layout_q为TND时，cu_seqlens_q必须传入</li>
-                    <li>当layout_kv为PA_BBND时，cu_seqlens_kv必须传入</li>
+                    <li>当layout_kv为TND时，cu_seqlens_kv必须传入</li>
+                    <li>当layout_kv为非TND（含PA_BBND）时，不支持传入cu_seqlens_kv</li>
                 </ul>
             </td>
         </tr>
@@ -730,7 +748,7 @@ mask_mode参数解释见「mask_mode 枚举」。
             <td>
                 <ul>
                     <li>当前layout_kv="PA_BBND"时，block_table必须传入</li>
-                    <li>当前layout_kv="PA_BBND"时，seqused_kv为可选；不传入时有效长度等于对应batch的KV_S</li>
+                    <li>当前layout_kv="PA_BBND"时，seqused_kv必须传入，且不传入cu_seqlens_kv</li>
                 </ul>
             </td>
         </tr>
@@ -887,7 +905,7 @@ quant_mode参数解释见「quant_mode 枚举」。
     )
     sparse_block_count = torch.full((KV_N, total_q_blocks), top_k, dtype=torch.int32, device="npu")
     cu_seqlens_q = torch.tensor([0, Q_S], dtype=torch.int64, device="npu")
-    cu_seqlens_kv = torch.tensor([0, KV_S], dtype=torch.int64, device="npu")
+    seqused_kv = torch.tensor([KV_S], dtype=torch.int32, device="npu")
     block_table = torch.arange(num_blocks, dtype=torch.int32, device="npu").view(1, -1)
     block_shape = [block_x, block_y]
 
@@ -899,7 +917,7 @@ quant_mode参数解释见「quant_mode 枚举」。
         D,
         block_shape,
         cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_kv=cu_seqlens_kv,
+        seqused_kv=seqused_kv,
         max_seqlen_q=Q_S,
         max_seqlen_kv=KV_S,
         is_packed_gqa=True,
@@ -919,7 +937,7 @@ quant_mode参数解释见「quant_mode 枚举」。
         block_shape,
         metadata=metadata,
         cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_kv=cu_seqlens_kv,
+        seqused_kv=seqused_kv,
         block_table=block_table,
         is_packed_gqa=True,
         layout_q="TND",

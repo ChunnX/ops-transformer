@@ -12,7 +12,6 @@ from enum import IntEnum
 from typing import List, Optional, Union
 
 import torch
-import torch_npu  # noqa: F401
 from torch.library import impl
 
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
@@ -272,6 +271,9 @@ def generic_block_sparse_attention_metadata(
     )
 
 
+_generic_block_sparse_attention_metadata = generic_block_sparse_attention_metadata
+
+
 @torch.library.register_kernel("cann_ops_transformer::" + GBSA_METADATA_OP_NAME, None)
 def generic_block_sparse_attention_metadata_fallback(
     sparse_block_idx,
@@ -296,7 +298,7 @@ def generic_block_sparse_attention_metadata_fallback(
     win_left=-1,
     win_right=-1,
 ):
-    return generic_block_sparse_attention_metadata(
+    return _generic_block_sparse_attention_metadata(
         sparse_block_idx,
         sparse_block_count,
         num_heads_q,
@@ -318,9 +320,6 @@ def generic_block_sparse_attention_metadata_fallback(
         win_left=win_left,
         win_right=win_right,
     )
-
-
-torch.compiler.allow_in_graph(generic_block_sparse_attention_metadata)
 
 
 @impl(get_as_library(), generic_block_sparse_attention_op_builder.name, "PrivateUse1")
@@ -407,10 +406,3 @@ generic_block_sparse_attention.MaskMode = MaskMode
 generic_block_sparse_attention.QuantMode = QuantMode
 generic_block_sparse_attention_metadata.MaskMode = MaskMode
 generic_block_sparse_attention_metadata.QuantMode = QuantMode
-
-if not hasattr(torch_npu, "npu_generic_block_sparse_attention_metadata"):
-    torch_npu.npu_generic_block_sparse_attention_metadata = (
-        generic_block_sparse_attention_metadata
-    )
-
-torch.compiler.allow_in_graph(generic_block_sparse_attention)
