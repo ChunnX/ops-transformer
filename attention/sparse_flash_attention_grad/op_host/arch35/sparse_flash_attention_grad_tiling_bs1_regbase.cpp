@@ -29,6 +29,7 @@ constexpr int64_t GM_ALIGN = 512;
 constexpr uint32_t PING_PONG_BUFFER = 2;
 constexpr uint32_t D_SIZE = 512;
 constexpr uint32_t DROPE_SIZE = 64;
+constexpr int64_t MAX_SCATTER_WS_ROWS = 8192;
 
 ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetShapeAttrsInfo()
 {
@@ -149,8 +150,21 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetWorkspaceSize()
     selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * 3;
     // selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
 
-    int64_t mm4WorkspaceLen = tmpData.selected_block_count * tmpData.d * B32;
-    int64_t mm5WorkspaceLen = tmpData.selected_block_count * tmpData.d1 * B32;
+    int64_t scatterWsRows = std::max<int64_t>(
+        std::min<int64_t>(tmpData.selected_block_count, CeilCommon(tmpData.s2, tmpData.selected_block_size)) *
+            tmpData.selected_block_size,
+        tmpData.selected_block_count);
+    OP_CHECK_IF(scatterWsRows > MAX_SCATTER_WS_ROWS,
+                OP_LOGE(context_,
+                        "SparseFlashAttentionGrad scatter workspace needs %ld rows (selected_block_count=%u, "
+                        "sparse_block_size=%u, s2=%ld), exceeding the limit %ld.",
+                        scatterWsRows, tmpData.selected_block_count, tmpData.selected_block_size, tmpData.s2,
+                        MAX_SCATTER_WS_ROWS),
+                return ge::GRAPH_FAILED);
+    baseParams_->set_scatterWsRows(scatterWsRows);
+
+    int64_t mm4WorkspaceLen = scatterWsRows * tmpData.d * B32;
+    int64_t mm5WorkspaceLen = scatterWsRows * tmpData.d1 * B32;
     mm4WorkspaceLen = AlignData(mm4WorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
     mm5WorkspaceLen = AlignData(mm5WorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
 
@@ -438,11 +452,13 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
                 selected_block_count);
         return ge::GRAPH_FAILED;
     }
-    auto selected_block_size =
-        *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::SELECTED_BLOCK_SIZE));
-    if (selected_block_size != 1) {
+    int64_t selected_block_size = static_cast<int64_t>(
+        *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::SELECTED_BLOCK_SIZE)));
+    std::set<int64_t> blockSizeSupportList = {1, 8, 16, 32, 64};
+    if (!blockSizeSupportList.count(selected_block_size)) {
         OP_LOGE(context_,
-                "SparseFlashAttentionGrad only support sparse_block_size [1] now, but got sparse_block_size=%ld.",
+                "SparseFlashAttentionGrad only support sparse_block_size [1, 8, 16, 32, 64] now, but got "
+                "sparse_block_size=%ld.",
                 selected_block_size);
         return ge::GRAPH_FAILED;
     }
@@ -617,6 +633,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     baseParams_->set_d(dimDq + tmpData.ropeDim);
     baseParams_->set_d1(dimDq);
     baseParams_->set_selectedBlockCount(selected_block_count);
+    baseParams_->set_selectedBlockSize(selected_block_size);
     baseParams_->set_layout(tmpData.layout);
     baseParams_->set_sparseMode(sparse_mode);
     baseParams_->set_scaleValue(
@@ -627,8 +644,8 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     tmpData.dataTypeSize = B32;
     tmpData.queryType =
         static_cast<uint32_t>(context_->GetInputDesc(static_cast<size_t>(InputIndex::QUERY))->GetDataType());
-    tmpData.selected_block_count = selected_block_count;
-    tmpData.selected_block_size = selected_block_size;
+    tmpData.selected_block_count = static_cast<uint32_t>(selected_block_count);
+    tmpData.selected_block_size = static_cast<uint32_t>(selected_block_size);
 
     auto ret = CheckDtypeValid(context_);
     if (ret != ge::GRAPH_SUCCESS) {
