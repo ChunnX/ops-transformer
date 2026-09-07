@@ -147,7 +147,7 @@ private:
         mm_.SetSingleShape(vector_.mnConfig_.curSingleCoreM, packedFusion, vector_.matrixInfo_.nD);
         mm_.SetTensorA(xGm_[inputOffset]);
         mm_.SetTensorB(phiGm_, true);
-        mm_.template IterateAll<false>(hMix3Gm_[outputOffset]);
+        mm_.IterateAll(hMix3Gm_[outputOffset], 0);
         mm_.End();
     }
 
