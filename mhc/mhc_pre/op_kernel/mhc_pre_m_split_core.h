@@ -210,7 +210,7 @@ public:
                         xCastQue.EnQue(xCastLocal);
                         xCastLocal = xCastQue.DeQue<float>();
                         int64_t xCastoffset =
-                            blockIdx64 * stage1BsFactor * ncSize +
+                            blockIdx * stage1BsFactor * ncSize +
                             static_cast<int64_t>(ping4vec) * stage1VecCoreNum * stage1BsFactor * ncSize;
                         if (curNcSizeAlign == curNcSize && ncSize >= curNcSize &&
                             ncSize - curNcSize <= 0xFFFFFFFFULL / sizeof(float)) {
