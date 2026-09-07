@@ -139,6 +139,7 @@ private:
     uint32_t mGroupsPerWave_ = 1U;
     uint16_t gmm1PingPongIdx_ = 0;
     uint32_t startBlockIdx_ = 0;
+    // 同一 per-job GMM-to-Epilogue ready flag 的序号，在共享 GMM1 与 MoE GMM2 之间连续递增。
     int32_t gmTileSequence_ = 0;
     uint32_t blockNum_ = GetBlockNum();
     uint32_t blockAivNum_ = GetBlockNum() * 2;
@@ -917,7 +918,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     ExpertLoopState combineExpertState = CreateExpertLoopState(commonConfig_);
     ExpertLoopState allCoreCombineExpertState = CreateExpertLoopState(commonConfig_);
     int32_t vecSetSyncCom = 0;
-    int32_t gmm2TileSequence = 0;
     GmmRuntimeState gmm1RuntimeState{startBlockIdx_, vecSetSyncCom, gmm1PingPongIdx_};
 
     ExpertTokenPosition waveBeginPosition{};
@@ -991,7 +991,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             if (hasPendingGmm2Wave) {
                 GmmRuntimeState gmm2RuntimeState{startBlockIdx_, vecSetSyncCom, gmm2PingPongIdx_};
                 ProcessGmm2Wave(gmm2Position, gmm2PendingWaveEnd, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState,
-                                gmm2TileSequence, allCoreCombineExpertIndex, allCoreCombineExpertState);
+                                gmTileSequence_, allCoreCombineExpertIndex, allCoreCombineExpertState);
                 UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
                 if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
                     uint32_t combineEndExpertIndex = gmm2PendingWaveEnd.expertIdx;
@@ -1006,7 +1006,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         } else {
             GmmRuntimeState gmm2RuntimeState{startBlockIdx_, vecSetSyncCom, gmm2PingPongIdx_};
             ProcessGmm2Wave(gmm2Position, waveEndPosition, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState,
-                            gmm2TileSequence, allCoreCombineExpertIndex, allCoreCombineExpertState);
+                            gmTileSequence_, allCoreCombineExpertIndex, allCoreCombineExpertState);
             UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
             if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
                 uint32_t combineEndExpertIndex = waveEndPosition.expertIdx;
@@ -1031,7 +1031,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     if (hasPendingGmm2Wave) {
         GmmRuntimeState gmm2TailRuntimeState{startBlockIdx_, vecSetSyncCom, gmm2PingPongIdx_};
         ProcessGmm2Wave(gmm2Position, gmm2PendingWaveEnd, gmm2ExpertState, gmm2AddrInfo, gmm2TailRuntimeState,
-                        gmm2TileSequence, allCoreCombineExpertIndex, allCoreCombineExpertState);
+                        gmTileSequence_, allCoreCombineExpertIndex, allCoreCombineExpertState);
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
         if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
             ProcessCombineExperts(combineBeginExpertIndex, gmm2PendingWaveEnd.expertIdx, combineExpertState,

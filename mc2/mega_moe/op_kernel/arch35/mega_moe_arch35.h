@@ -128,6 +128,7 @@ protected:
     uint32_t blockAivNum_ = GetBlockNum() * 2;
     uint32_t blockIdx_ = GetBlockIdx() / GetTaskRation();
     uint32_t aivCoreIdx_ = GetBlockIdx();
+    // 同一 per-job GMM-to-Epilogue ready flag 的序号，在共享 GMM1 与 MoE GMM2 之间连续递增。
     int32_t gmTileSequence_ = 0;
     uint16_t gmm2PingPongIdx_ = 0;
     // 主线 shared-expert 特性成员
