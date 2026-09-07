@@ -34,7 +34,7 @@
 
   稀疏块大小为 $blockShapeX×blockShapeY$，其中blockShapeX表示Q方向的稀疏粒度，blockShapeY表示KV方向的稀疏粒度。两个方向的粒度相互独立，可以配置为不同值。
 
-  blockShapeX和blockShapeY均必须大于等于16，且为16的整数倍。除原有的128粒度外，还支持16、32、48、64、80、96、112等小于128的粒度。例如，[32, 64]表示Q方向每32个token划分一个块，KV方向每64个token划分一个块。
+  Ascend 950PR/Ascend 950DT支持blockShapeX和blockShapeY取值范围均为[16, 512]，且为16的整数倍，支持blockShapeX和blockShapeY不等长。
 
   BlockSparseMask在逻辑块粒度上定义稀疏pattern，每个mask元素控制一个 $blockShapeX×blockShapeY$ 的连续块是否参与计算。
   已知正向计算公式为：
@@ -225,7 +225,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <td>softmaxLse（aclTensor*）</td>
     <td>输入</td>
     <td>Softmax计算的log-sum-exp中间结果。用于反向计算梯度的对数和指数逆推。</td>
-    <td>不支持空Tensor。<br>支持的shape为：<ul><li>TND: [totalQTokens, headNum, 1]。</li><li>BNSD: [batch, headNum, maxQSeqLength, 1]。</li><li>BNS1: [batch, maxQSeqLength, headNum, 1]。</li></ul></td>
+    <td>不支持空Tensor。<br>支持的shape为：<ul><li>TND: [totalQTokens, headNum, 1]。</li><li>BNSD/BSND: 均为BNS1排布[batch, headNum, maxQSeqLength, 1]。</li></ul></td>
     <td>FLOAT</td>
     <td>ND</td>
     <td>3-4</td>
@@ -235,7 +235,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <td>blockSparseMaskOptional（aclTensor*）</td>
     <td>输入</td>
     <td>块状稀疏掩码，表示实际的稀疏pattern。决定哪些block实际参与注意力计算。</td>
-    <td>不支持空Tensor。<br>可选输入（当前版本为必选）：<ul><li>shape为[batch, headNum, ceilDiv(maxQSeqLength, blockShapeX), ceilDiv(maxKvSeqLength, blockShapeY)]。其中第3维按Q方向粒度blockShapeX独立计算，第4维按KV方向粒度blockShapeY独立计算，两者可以不相等。</li><li>表示按block划分后哪些block需要参与计算（为1），哪些block不参与计算（为0）。</li><li>当序列长度不能被对应方向的blockShape整除时，最后一个逻辑块覆盖该方向剩余的有效token。</li><li>如传入nullptr，则视为不开启块稀疏计算，即所有token之间的注意力分数都会被计算。</li></ul></td>
+    <td>不支持空Tensor，当前版本为必选输入。<br><ul><li>shape为[batch, headNum, ceilDiv(maxQSeqLength, blockShapeX), ceilDiv(maxKvSeqLength, blockShapeY)]。其中第3维按Q方向粒度blockShapeX独立计算，第4维按KV方向粒度blockShapeY独立计算，两者可以不相等。</li><li>表示按block划分后哪些block需要参与计算（为1），哪些block不参与计算（为0）。</li><li>当序列长度不能被对应方向的blockShape整除时，最后一个逻辑块覆盖该方向剩余的有效token。</li></ul></td>
     <td>BOOL</td>
     <td>ND</td>
     <td>4</td>
@@ -255,23 +255,23 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <td rowspan="3">blockShapeOptional（aclIntArray*）</td>
     <td rowspan="3">输入</td>
     <td rowspan="3">稀疏块形状数组。指定每个稀疏块的二维尺寸（行数和列数）。</td>
-    <td> <ul><li>当配置了blockSparseMaskOptional时：如配置此输入，算子会从中获取稀疏块尺寸；如不配置此输入，算子将默认稀疏块尺寸为[128,128]。</li></ul></td>
+    <td><ul><li>当前版本为必选输入，算子从中获取稀疏块尺寸。</li></ul></td>
     <td rowspan="3">INT64</td>
     <td rowspan="3">-</td>
     <td rowspan="3">1</td>
     <td rowspan="3">-</td>
     </tr>
     <tr>
-    <td><ul><li>当未配置blockSparseMaskOptional时：无论此项如何配置，算子均将忽略。</li></ul></td>
+    <td><ul><li>必须与blockSparseMaskOptional同时配置。</li></ul></td>
     </tr>
     <tr>
-    <td>当配置此输入时的元素要求：<ul><li>必须包含至少两个元素[blockShapeX, blockShapeY]。</li><li>blockShapeX：Q方向稀疏块大小，必须大于等于16且为16的整数倍。</li><li>blockShapeY：KV方向稀疏块大小，必须大于等于16且为16的整数倍。</li><li>支持16、32、48、64、80、96、112等小于128的粒度。</li><li>blockShapeX与blockShapeY相互独立，无须相等，支持如[16, 32]、[48, 80]、[96, 112]等非对称配置。</li></ul></td>
+    <td>元素要求：<ul><li>必须且只能包含两个元素[blockShapeX, blockShapeY]。</li><li>blockShapeX、blockShapeY取值范围均为[16, 512]，且必须为16的整数倍。</li><li>二者相互独立，无须相等，支持如[16, 32]、[48, 80]、[96, 112]等非对称配置。</li></ul></td>
     </tr>
     <tr>
     <td>actualSeqLengthsOptional（aclIntArray*）</td>
     <td>输入</td>
-    <td>query的实际序列长度数组。<br>用于描述变长序列场景下（即含有 Padding 填充数据的场景），每个 Batch 中实际有效的 query token 数量。</td>
-    <td> 变长序列场景（当 qInputLayout 为 "TND" 时）：该项输入必须配置。因为 TND 格式为一维连续排布，算子需要依赖该数组来准确切分界定各个序列的真实边界。</td>
+    <td>query的累计实际序列长度数组，用于描述TND中各Batch的边界。</td>
+    <td>qInputLayout为"TND"时必须配置。数组长度等于batch，元素必须非递减，最后一个元素必须等于totalQTokens；相邻元素之差表示对应Batch的实际Q序列长度。</td>
     <td>INT64</td>
     <td>-</td>
     <td>1</td>
@@ -280,8 +280,8 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <tr>
     <td>actualSeqLengthsKvOptional（aclIntArray*）</td>
     <td>输入</td>
-    <td>key/value的实际序列长度数组。<br>用于描述变长序列场景下（即含有 Padding 填充数据的场景），每个 Batch 中实际有效的 key/value token 数量。</td>
-    <td> 变长序列场景（当 kvInputLayout 为 "TND" 时）：该项输入必须配置。因为 TND 格式为一维连续排布，算子需要依赖该数组来准确切分界定各个序列的真实边界。</td>
+    <td>key/value的累计实际序列长度数组，用于描述TND中各Batch的边界。</td>
+    <td>kvInputLayout为"TND"时必须配置。数组长度必须与actualSeqLengthsOptional一致，元素必须非递减，最后一个元素必须等于totalKvTokens；相邻元素之差表示对应Batch的实际KV序列长度。</td>
     <td>INT64</td>
     <td>-</td>
     <td>1</td>
@@ -449,7 +449,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
       <td>qInputLayout或kvInputLayout输入不合法，参数有效性校验失败。</td>
     </tr>
     <tr>
-      <td>blockShapeOptional少于两个元素，或blockShapeX、blockShapeY小于16，或不是16的整数倍。</td>
+      <td>输入shape、layout、head配置、累计序列长度或blockSparseMask shape不满足约束；或blockShapeOptional不是两个元素、取值超出[16, 512]、不是16的整数倍。</td>
     </tr>
   </tbody></table>
 
@@ -499,10 +499,16 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 ## 约束说明
 
 * 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
-* actualSeqLengthsOptional在qInputLayout为“TND”时必选；actualSeqLengthsKvOptional在kvInputLayout为“TND”时必选。
-* softmaxLse的layout需要与query的layout保持一致。如果query的layout为"BSND"时，softmaxLse的layout应传入"BNS1"。
-* HeadDim必须等于128。
-* blockShapeOptional中的blockShapeX和blockShapeY分别表示Q方向和KV方向的稀疏粒度。两者均必须大于等于16且为16的整数倍，可以配置为不同值；BlockSparseMask的Q块数和KV块数应分别按照对应方向的稀疏粒度计算。
+* qInputLayout与kvInputLayout必须相同，仅支持"TND"、"BNSD"、"BSND"；Atlas A2/A3训练产品不支持"BSND"。
+* query、dout、attentionOut、dq的shape必须完全一致；key、value、dk、dv的shape必须完全一致。query/key/value的数据类型和HeadDim必须一致，HeadDim固定为128。
+* shape范围：B取值范围为[1, 20000]；TND下totalQTokens和totalKvTokens分别为[1, 512]；BNSD/BSND下B×maxQSeqLength和B×maxKvSeqLength分别为[1, 512]。
+* query的head数N1取值范围为[1, 256]；key/value的head数N2必须大于0，并满足N1 % N2 == 0；numKeyValueHeads必须等于N2。Q序列长度和KV序列长度可以不同，但key与value的序列长度必须相同。
+* TND下softmaxLse必须为[totalQTokens, N1, 1]；BNSD/BSND下均使用BNS1排布[batch, N1, maxQSeqLength, 1]。
+* blockSparseMaskOptional当前必选，shape必须为[batch, N1, ceilDiv(maxQSeqLength, blockShapeX), ceilDiv(maxKvSeqLength, blockShapeY)]。TND的maxQSeqLength/maxKvSeqLength取各Batch实际长度的最大值。
+* blockShapeOptional当前必选且只能包含两个元素。blockShapeX和blockShapeY取值范围均为[16, 512]且为16的整数倍，可以配置为不同值。
+* scaleValue必须为有限数，maskType仅支持0，preTokens和nextTokens仅支持2147483647。
+* TND下actualSeqLengthsOptional与actualSeqLengthsKvOptional均为必选，长度相同且取值范围为[1, 20000]。二者均采用累计长度、必须非递减，末值分别等于Q/KV的T维；相邻元素相等表示该Batch的实际序列长度为0。
+
 * 根据算子支持的输入 Layout，query 张量 Shape 中对应的 head 维度大小记为 N1，key 和 value 张量 Shape 中对应的 head 维度大小记为 N2。必须满足N1 % N2 == 0。
   - <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>：当前只支持MHA，即N1等于N2。
 
@@ -510,14 +516,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
   - <term>Ascend 950PR/Ascend 950DT</term>：支持MQA、MHA、GQA场景。
   <!-- end id9 -->
 
-* actualSeqLengthsOptional与actualSeqLengthsKvOptional相关约束：
-
-  - <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>：当 qInputLayout或kvInputLayout 为 "BNSD" 时，如配置该项，算子会按指定的有效长度处理，忽略 Padding 部分的数据，提升性能；如不配置（传nullptr），算子将默认把 query shape 中的 S 维度作为有效长度进行全量处理。
-
-  <!-- npu="950" id10 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：当qInputLayout或kvInputLayout 为非"TND"时，会忽略这两个入参。
-
-  <!-- end id10 -->
+* qInputLayout/kvInputLayout为非"TND"时，actualSeqLengthsOptional和actualSeqLengthsKvOptional会被忽略。
 
 * 不支持确定性计算场景。
 

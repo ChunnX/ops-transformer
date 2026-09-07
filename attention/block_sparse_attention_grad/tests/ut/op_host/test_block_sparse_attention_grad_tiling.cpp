@@ -28,12 +28,13 @@ protected:
 
 namespace {
 void RunArch35BnsdTilingCase(int64_t s, int64_t s_kv, int64_t blockX, int64_t blockY,
-                             ge::graphStatus expectedResult)
+                             ge::graphStatus expectedResult, int64_t n = 4, int64_t n_kv = 2,
+                             int64_t d = 128)
 {
     optiling::BlockSparseAttentionGradCompileInfo compileInfo;
     compileInfo.socVersion = platform_ascendc::SocVersion::ASCEND950;
 
-    int64_t b = 1, n = 4, n_kv = 2, d = 128;
+    int64_t b = 1;
     int64_t ceilQ = (s + blockX - 1) / blockX;
     int64_t ceilKv = (s_kv + blockY - 1) / blockY;
 
@@ -50,7 +51,7 @@ void RunArch35BnsdTilingCase(int64_t s, int64_t s_kv, int64_t blockX, int64_t bl
             {{{b, n_kv, s_kv, d}, {b, n_kv, s_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{b, n_kv, s_kv, d}, {b, n_kv, s_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{b, n, s, d}, {b, n, s, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{b, n, s}, {b, n, s}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{b, n, s, 1}, {b, n, s, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{b, n, ceilQ, ceilKv}, {b, n, ceilQ, ceilKv}}, ge::DT_UINT8, ge::FORMAT_ND},
             {{{1}, {1}}, ge::DT_UINT8, ge::FORMAT_ND},
             
@@ -98,10 +99,30 @@ TEST_F(BlockSparseAttentionGradTilingTest, tiling_arch35_block16_with_sequence_t
 
 TEST_F(BlockSparseAttentionGradTilingTest, tiling_arch35_asymmetric_block16x32)
 {
-    RunArch35BnsdTilingCase(70, 70, 16, 32, ge::GRAPH_SUCCESS);
+    RunArch35BnsdTilingCase(70, 97, 16, 32, ge::GRAPH_SUCCESS);
 }
 
 TEST_F(BlockSparseAttentionGradTilingTest, tiling_arch35_rejects_non_multiple_of_16)
 {
     RunArch35BnsdTilingCase(96, 96, 24, 16, ge::GRAPH_FAILED);
+}
+
+TEST_F(BlockSparseAttentionGradTilingTest, tiling_arch35_accepts_256_query_heads)
+{
+    RunArch35BnsdTilingCase(32, 32, 16, 16, ge::GRAPH_SUCCESS, 256, 2);
+}
+
+TEST_F(BlockSparseAttentionGradTilingTest, tiling_arch35_rejects_more_than_256_query_heads)
+{
+    RunArch35BnsdTilingCase(32, 32, 16, 16, ge::GRAPH_FAILED, 257, 1);
+}
+
+TEST_F(BlockSparseAttentionGradTilingTest, tiling_arch35_rejects_non_128_head_dim)
+{
+    RunArch35BnsdTilingCase(32, 32, 16, 16, ge::GRAPH_FAILED, 4, 2, 64);
+}
+
+TEST_F(BlockSparseAttentionGradTilingTest, tiling_arch35_rejects_more_than_1m_tokens)
+{
+    RunArch35BnsdTilingCase(1024 * 1024 + 1, 32, 16, 16, ge::GRAPH_FAILED);
 }
