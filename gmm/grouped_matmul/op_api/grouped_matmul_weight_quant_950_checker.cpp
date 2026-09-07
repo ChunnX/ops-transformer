@@ -1237,6 +1237,11 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupListAndSplitI
     if (IsS8S4PseudoQuant()) {
         CHECK_RET(CheckS8S4GroupListType() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     }
+    CHECK_COND(gmmParams_.groupListType != GROUP_LIST_SPARSE_M || IsMxA8W4NZ(), ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], groupListType [%ld] is only supported for MX A8W4 in weight quant mode, "
+               "but x dtype is [%s] and weight dtype is [%s].",
+               GetAclnnName(), gmmParams_.groupListType, op::ToString(xDtype_).GetString(),
+               op::ToString(weightDtype_).GetString());
     return ACLNN_SUCCESS;
 }
 
