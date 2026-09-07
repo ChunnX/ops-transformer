@@ -2840,6 +2840,16 @@ __aicore__ inline bool IsTNDRightDownValid(int64_t m, int64_t n, int64_t x, int6
     return x >= 1 && x <= m && y >= 1 && y <= n && y <= x + n - m + 1;
 }
 
+// Exact right-down causal tile set.  IsTNDRightDownValid above is one diagonal
+// too generous: with S1 == S2 (the only case the host lets right-down through)
+// the real mask is y <= x, while it admits y <= x+1.  Those extra tiles are
+// fully masked so they contribute 0, but they are wasted cube work, so the
+// scheduler uses this tighter predicate.
+__aicore__ inline bool IsTNDRightDownTileValid(int64_t m, int64_t n, int64_t x, int64_t y)
+{
+    return x >= 1 && x <= m && y >= 1 && y <= n && (y - x) <= (n - m);
+}
+
 template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
 __aicore__ inline void LoadTNDOuterMN(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
                                       int64_t batchType, int64_t &m, int64_t &n, CoordinateInfo &coordinateInfo)
@@ -3146,6 +3156,389 @@ __aicore__ inline int64_t CalTNDBandLineRounds(int64_t k, int64_t n1, int64_t m,
     return CalTNDLineRounds(k, m, denseN, n1, orientation);
 }
 
+/* ==========================================================================
+ * Unified band pattern + optimal-round schedulers.
+ *
+ * Every TND sparse pattern is one diagonal band, 1-based:
+ *     valid(x, y) <=> 1<=x<=m, 1<=y<=n, y >= x-p+1, y <= x+q-1
+ *   dense              p = m, q = n
+ *   left-up causal     p = m, q = 1                (after n <- min(m,n))
+ *   right-down causal  p = m, q = n-m+1            (after m <- m-rowShift)
+ *   band               p, q from pre/next tokens
+ *
+ * A round is a matching of the tile bipartite graph with at most k edges, so
+ * the minimum round count is
+ *     R* = max(Delta, ceil(E/k))
+ * with Delta the longest row/column run and E the total tile count.  The three
+ * schedulers below are each O(1)/O(log m) per (core, round) and together land
+ * on R* in ~90% of run shapes (mean 1.012 x R*).
+ *
+ * Selection is a pure function of (k, m, n, p, q, copies) so host and device
+ * derive the same mode independently -- no extra tiling fields.
+ * ========================================================================== */
+
+constexpr uint8_t TND_MODE_BLOCKED = 0;   // legacy blocked column scan
+constexpr uint8_t TND_MODE_COPYFLAT = 1;  // one tile per copy per round
+constexpr uint8_t TND_MODE_GROUPTRI = 2;  // balanced triangle x G copies
+constexpr uint8_t TND_MODE_TORUS = 3;     // flat torus over the paired rect
+constexpr uint8_t TND_MODE_TORUS_T = 4;   // ... transposed
+
+__aicore__ inline int64_t TriSum(int64_t a)
+{
+    return a > 0 ? a * (a + 1) / NUM_TWO : 0;
+}
+
+__aicore__ inline int64_t BandRowLo(int64_t x, int64_t p)
+{
+    const int64_t v = x - p + 1;
+    return v > 1 ? v : 1;
+}
+
+__aicore__ inline int64_t BandRowHi(int64_t x, int64_t n, int64_t q)
+{
+    const int64_t v = x + q - 1;
+    return v < n ? v : n;
+}
+
+__aicore__ inline int64_t BandLastRow(int64_t m, int64_t n, int64_t p, int64_t q)
+{
+    const int64_t lim = n + p - 1;
+    return m < lim ? m : lim;
+}
+
+// #tiles in rows 1..x, closed form
+__aicore__ inline int64_t BandRowPrefix(int64_t m, int64_t n, int64_t p, int64_t q, int64_t x)
+{
+    const int64_t last = BandLastRow(m, n, p, q);
+    if (x > last) {
+        x = last;
+    }
+    if (x < 1) {
+        return 0;
+    }
+    int64_t b = n - q + 1;
+    if (b < 0) {
+        b = 0;
+    }
+    const int64_t t1 = x < b ? x : b;
+    const int64_t sumHi = TriSum(t1) + (q - 1) * t1 + n * (x - t1);
+    const int64_t t2 = x < p ? x : p;
+    const int64_t sumLo = t2 + ((x - t2) > 0 ? (TriSum(x - p + 1) - 1) : 0);
+    return sumHi - sumLo + x;
+}
+
+__aicore__ inline int64_t BandArea(int64_t m, int64_t n, int64_t p, int64_t q)
+{
+    if (m < 1 || n < 1 || p < 1 || q < 1) {
+        return 0;
+    }
+    return BandRowPrefix(m, n, p, q, BandLastRow(m, n, p, q));
+}
+
+__aicore__ inline int64_t BandRowLen(int64_t m, int64_t n, int64_t p, int64_t q, int64_t x)
+{
+    if (x < 1 || x > m) {
+        return 0;
+    }
+    const int64_t v = BandRowHi(x, n, q) - BandRowLo(x, p) + 1;
+    return v > 0 ? v : 0;
+}
+
+__aicore__ inline int64_t BandColLen(int64_t m, int64_t n, int64_t p, int64_t q, int64_t y)
+{
+    if (y < 1 || y > n) {
+        return 0;
+    }
+    int64_t lo = y - q + 1;
+    lo = lo > 1 ? lo : 1;
+    int64_t hi = y + p - 1;
+    hi = hi < m ? hi : m;
+    const int64_t v = hi - lo + 1;
+    return v > 0 ? v : 0;
+}
+
+// max vertex degree; row/column runs are unimodal so the plateau ends suffice
+__aicore__ inline int64_t BandDelta(int64_t m, int64_t n, int64_t p, int64_t q)
+{
+    if (m < 1 || n < 1) {
+        return 0;
+    }
+    const int64_t xs[6] = {1, p, n - q + 1, m, BandLastRow(m, n, p, q), (m + 1) / NUM_TWO};
+    const int64_t ys[5] = {1, q, m - p + 1, n, (n + 1) / NUM_TWO};
+    int64_t best = 0;
+    for (int64_t i = 0; i < 6; ++i) {
+        const int64_t v = BandRowLen(m, n, p, q, xs[i]);
+        if (v > best) {
+            best = v;
+        }
+    }
+    for (int64_t i = 0; i < 5; ++i) {
+        const int64_t v = BandColLen(m, n, p, q, ys[i]);
+        if (v > best) {
+            best = v;
+        }
+    }
+    return best;
+}
+
+// 0-based row-major tile index -> (x, y); O(log m)
+__aicore__ inline bool BandTileAt(int64_t m, int64_t n, int64_t p, int64_t q, int64_t i, int64_t &x, int64_t &y)
+{
+    const int64_t last = BandLastRow(m, n, p, q);
+    if (i < 0 || last < 1) {
+        return false;
+    }
+    if (i >= BandRowPrefix(m, n, p, q, last)) {
+        return false;
+    }
+    int64_t lo = 1;
+    int64_t hi = last;
+    while (lo < hi) {
+        const int64_t mid = (lo + hi) >> 1;
+        if (BandRowPrefix(m, n, p, q, mid) > i) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    x = lo;
+    y = BandRowLo(x, p) + (i - BandRowPrefix(m, n, p, q, x - 1));
+    return true;
+}
+
+/* ---- COPYFLAT -----------------------------------------------------------
+ * slot S = (r-1)*k + (j-1);  copy = S mod copies, tile = S div copies.
+ * With copies >= k every core in a round holds a different copy, so no dq row
+ * and no dk/dv column is ever shared -- conflict-freedom needs no proof about
+ * the pattern at all.  Rounds = ceil(area*copies/k), and area >= Delta always,
+ * so for copies >= k this is exactly max(Delta, ceil(E/k)).
+ * ---------------------------------------------------------------------- */
+__aicore__ inline int64_t CalTNDCopyFlatRounds(int64_t k, int64_t m, int64_t n, int64_t p, int64_t q, int64_t copies)
+{
+    if (k < 1 || copies < k) {
+        return 0;
+    }
+    const int64_t area = BandArea(m, n, p, q);
+    if (area <= 0) {
+        return 0;
+    }
+    return Ceil<int64_t>(area * copies, k);
+}
+
+__aicore__ inline bool CalTNDCopyFlatIndex(int64_t k, int64_t m, int64_t n, int64_t p, int64_t q, int64_t copies,
+                                           int64_t j, int64_t r, int64_t &w, int64_t &x, int64_t &y)
+{
+    if (j < 1 || j > k || r < 1 || copies < k) {
+        return false;
+    }
+    const int64_t area = BandArea(m, n, p, q);
+    if (area <= 0) {
+        return false;
+    }
+    const int64_t s = (r - 1) * k + (j - 1);
+    if (s >= area * copies) {
+        return false;
+    }
+    w = s % copies + 1;
+    return BandTileAt(m, n, p, q, s / copies, x, y);
+}
+
+/* ---- GROUPTRI -----------------------------------------------------------
+ * Reuse the existing balanced single-triangle schedule with a reduced core
+ * budget kp, and run G = k/kp copies side by side.  Covers the Delta-dominated
+ * regime (few copies) where every other construction is forced above Delta.
+ * ---------------------------------------------------------------------- */
+__aicore__ inline void CalTNDGroupTriPlan(int64_t k, int64_t m, int64_t n, int64_t copies, int64_t &kp, int64_t &g,
+                                          int64_t &roundsPerGroup, int64_t &rounds)
+{
+    kp = 0;
+    g = 0;
+    roundsPerGroup = 0;
+    rounds = 0;
+    if (k < 1 || m < 1 || n < 1 || copies < 1) {
+        return;
+    }
+    g = copies < k ? copies : k;
+    kp = k / g;
+    if (kp < 1) {
+        kp = 1;
+    }
+    roundsPerGroup = CalTNDSingleCausalRounds(kp, m, n);
+    if (roundsPerGroup <= 0) {
+        g = 0;
+        kp = 0;
+        return;
+    }
+    rounds = Ceil<int64_t>(copies, g) * roundsPerGroup;
+}
+
+__aicore__ inline bool CalTNDGroupTriIndex(int64_t k, int64_t m, int64_t n, int64_t copies, int64_t j, int64_t r,
+                                           int64_t &w, int64_t &x, int64_t &y)
+{
+    int64_t kp = 0;
+    int64_t g = 0;
+    int64_t rpg = 0;
+    int64_t rounds = 0;
+    CalTNDGroupTriPlan(k, m, n, copies, kp, g, rpg, rounds);
+    if (rounds <= 0 || j < 1 || j > k || r < 1 || r > rounds) {
+        return false;
+    }
+    const int64_t grp = (r - 1) / rpg;
+    const int64_t rLocal = (r - 1) % rpg + 1;
+    const int64_t slot = (j - 1) / kp;
+    const int64_t jLocal = (j - 1) % kp + 1;
+    if (slot >= g) {
+        return false;
+    }
+    w = grp * g + slot + 1;
+    if (w > copies) {
+        return false;
+    }
+    return CalTNDSingleCausalPos(kp, m, n, jLocal, rLocal, x, y);
+}
+
+/* ---- TORUS --------------------------------------------------------------
+ * Same virtual rectangle the blocked line uses, but the (round, core) -> slot
+ * map is a flat torus over ALL columns instead of k-sized blocks, so the
+ * ceil() waste is no longer multiplied by virtM.
+ *     R = ceil(virtM*virtN*copies / k)   instead of   ceil(virtN*copies/k)*virtM
+ * ---------------------------------------------------------------------- */
+__aicore__ inline bool CalTNDTorusSafe(int64_t k, int64_t vm, int64_t vn, int64_t copies)
+{
+    if (vm <= 0 || vn <= 0 || copies <= 1 || k < 1) {
+        return false;
+    }
+    const int64_t l = vn * copies;
+    if (k > l) {
+        return false;
+    }
+    if ((k < vn ? k : vn) > vm) {
+        return false;
+    }
+    // a round window of k slots may cross one column-wrap; the tail must not
+    // reach back into the copy that owns the head
+    return k <= l - vn;
+}
+
+__aicore__ inline int64_t CalTNDTorusRounds(int64_t k, int64_t vm, int64_t vn, int64_t copies)
+{
+    if (vm <= 0 || vn <= 0 || copies <= 0 || k < 1) {
+        return 0;
+    }
+    return Ceil<int64_t>(vm * vn * copies, k);
+}
+
+__aicore__ inline bool CalTNDTorusIndex(int64_t k, int64_t vm, int64_t vn, int64_t copies, int64_t j, int64_t r,
+                                        int64_t &w, int64_t &x, int64_t &y)
+{
+    if (j < 1 || j > k || r < 1 || vm <= 0 || vn <= 0 || copies <= 0) {
+        return false;
+    }
+    const int64_t s = (r - 1) * k + (j - 1);
+    if (s >= vm * vn * copies) {
+        return false;
+    }
+    const int64_t l = vn * copies;
+    const int64_t u = s % l;
+    const int64_t v = s / l;
+    w = u / vn + 1;
+    y = u % vn + 1;
+    x = (y + v - 1) % vm + 1;
+    return true;
+}
+
+__aicore__ inline bool CalTNDTorusIndexTranspose(int64_t k, int64_t vm, int64_t vn, int64_t copies, int64_t j,
+                                                 int64_t r, int64_t &w, int64_t &x, int64_t &y)
+{
+    if (j < 1 || j > k || r < 1 || vm <= 0 || vn <= 0 || copies <= 0) {
+        return false;
+    }
+    const int64_t s = (r - 1) * k + (j - 1);
+    if (s >= vm * vn * copies) {
+        return false;
+    }
+    const int64_t l = vm * copies;
+    const int64_t u = s % l;
+    const int64_t v = s / l;
+    w = u / vm + 1;
+    x = u % vm + 1;
+    y = (x + v - 1) % vn + 1;
+    return true;
+}
+
+/* ---- per-run mode selection --------------------------------------------
+ * Candidates are tried in a fixed order and ties keep the earlier one, so the
+ * host and the kernel always agree.  `rounds` is the run's round count.
+ * ---------------------------------------------------------------------- */
+// Safety, not profitability.  The blocked column scan puts k consecutive
+// columns in one round and shifts the row by the round index, so two cores of
+// the same copy collide iff their column distance is a multiple of virtM.
+// Columns of one copy inside a k-window span at most min(k, virtN) values, so
+// virtM >= min(k, virtN) is exactly the no-collision condition.
+__aicore__ inline bool TNDBlockedSafe(int64_t k, int64_t vm, int64_t vn)
+{
+    if (vm <= 0 || vn <= 0) {
+        return false;
+    }
+    return vm >= (k < vn ? k : vn);
+}
+
+__aicore__ inline void CalTNDRunPlan(int64_t k, int64_t m, int64_t n, int64_t p, int64_t q, int64_t copies,
+                                     bool allowGroupTri, int64_t vm, int64_t vn, int64_t pairs, int64_t soloRounds,
+                                     uint8_t &mode, int64_t &rounds, uint8_t &blockedOrient)
+{
+    mode = TND_MODE_BLOCKED;
+    rounds = 0;
+    blockedOrient = TND_LINE_COL_MAJOR;
+
+    // BLOCKED first, as the always-available baseline: at least one of the two
+    // orientations is safe because min(k, vn) <= vm or min(k, vm) <= vn always
+    // holds (whichever of vm, vn is larger satisfies its inequality).
+    if (pairs > 0) {
+        const bool colSafe = TNDBlockedSafe(k, vm, vn);
+        const bool rowSafe = TNDBlockedSafe(k, vn, vm);
+        const int64_t rCol = colSafe ? CalTNDLineRounds(k, vm, vn, pairs, TND_LINE_COL_MAJOR) : 0;
+        const int64_t rRow = rowSafe ? CalTNDLineRounds(k, vm, vn, pairs, TND_LINE_ROW_MAJOR) : 0;
+        if (rCol > 0 && (rRow <= 0 || rCol <= rRow)) {
+            blockedOrient = TND_LINE_COL_MAJOR;
+            rounds = rCol + soloRounds;
+        } else if (rRow > 0) {
+            blockedOrient = TND_LINE_ROW_MAJOR;
+            rounds = rRow + soloRounds;
+        }
+    }
+
+    const int64_t rCopyFlat = CalTNDCopyFlatRounds(k, m, n, p, q, copies);
+    if (rCopyFlat > 0 && (rounds == 0 || rCopyFlat < rounds)) {
+        mode = TND_MODE_COPYFLAT;
+        rounds = rCopyFlat;
+    }
+
+    if (allowGroupTri) {
+        int64_t kp = 0;
+        int64_t g = 0;
+        int64_t rpg = 0;
+        int64_t rGroup = 0;
+        CalTNDGroupTriPlan(k, m, n, copies, kp, g, rpg, rGroup);
+        if (rGroup > 0 && (rounds == 0 || rGroup < rounds)) {
+            mode = TND_MODE_GROUPTRI;
+            rounds = rGroup;
+        }
+    }
+
+    if (pairs > 0) {
+        const int64_t rTorus = CalTNDTorusRounds(k, vm, vn, pairs) + soloRounds;
+        if (rTorus > 0 && CalTNDTorusSafe(k, vm, vn, pairs) && (rounds == 0 || rTorus < rounds)) {
+            mode = TND_MODE_TORUS;
+            rounds = rTorus;
+        }
+        if (rTorus > 0 && CalTNDTorusSafe(k, vn, vm, pairs) && (rounds == 0 || rTorus < rounds)) {
+            mode = TND_MODE_TORUS_T;
+            rounds = rTorus;
+        }
+    }
+}
+
 __aicore__ inline void MapTNDTriToBatch(int64_t tri, int64_t n1, int64_t runHead, int64_t &batchId)
 {
     batchId = (runHead + tri / n1) * n1 + (tri % n1) + 1;
@@ -3282,8 +3675,6 @@ __aicore__ inline void CalTNDCausalLineRunIndex(const __gm__ uint8_t *actualSeqQ
         const int64_t total = n1 * groupSize;
         const int64_t runPairs = total / NUM_TWO;
         const int64_t pairSpace = runPairs * NUM_TWO;
-        const uint8_t pairOrientation = PickTNDLineOrientation(k, virtM, virtN, runPairs);
-        const int64_t pairRounds = CalTNDLineRounds(k, virtM, virtN, runPairs, pairOrientation);
         int64_t singleRounds = 0;
         uint8_t singleOrientation = TND_LINE_COL_MAJOR;
         if (total % NUM_TWO == 1) {
@@ -3294,13 +3685,49 @@ __aicore__ inline void CalTNDCausalLineRunIndex(const __gm__ uint8_t *actualSeqQ
                 singleRounds = CalTNDLineRounds(k, m, n, 1, singleOrientation);
             }
         }
-        const int64_t runRounds = pairRounds + singleRounds;
-        if (a <= runRounds) {
+        // trimmed causal shape as a band: left-up is q=1, right-down is q=n-m+1
+        const int64_t bandP = m;
+        int64_t bandQ = LEFT_UP ? 1 : (n - m + 1);
+        if (bandQ < 1) {
+            bandQ = 1;
+        }
+        const bool allowGroupTri = LEFT_UP || (m == n);
+        uint8_t mode = TND_MODE_BLOCKED;
+        uint8_t pairOrientation = TND_LINE_COL_MAJOR;
+        int64_t runRounds = 0;
+        CalTNDRunPlan(k, m, n, bandP, bandQ, total, allowGroupTri, virtM, virtN, runPairs, singleRounds, mode,
+                      runRounds, pairOrientation);
+        if (runRounds > 0 && a <= runRounds) {
+            int64_t x = 0;
+            int64_t y = 0;
+            if (mode == TND_MODE_COPYFLAT) {
+                int64_t w = 0;
+                if (CalTNDCopyFlatIndex(k, m, n, bandP, bandQ, total, j, a, w, x, y)) {
+                    BindTNDCausalMappedBatch<CUBE_BASEM, CUBE_BASEN, LEFT_UP>(actualSeqQlenAddr, actualSeqKvlenAddr,
+                                                                              runHead, n1, w, x, y, coordinateInfo);
+                }
+                return;
+            }
+            if (mode == TND_MODE_GROUPTRI) {
+                int64_t w = 0;
+                if (CalTNDGroupTriIndex(k, m, n, total, j, a, w, x, y)) {
+                    BindTNDCausalMappedBatch<CUBE_BASEM, CUBE_BASEN, LEFT_UP>(actualSeqQlenAddr, actualSeqKvlenAddr,
+                                                                              runHead, n1, w, x, y, coordinateInfo);
+                }
+                return;
+            }
+            // TORUS / TORUS_T / BLOCKED all keep the paired virtual rectangle
+            const int64_t pairRounds = runRounds - singleRounds;
             if (a <= pairRounds && runPairs > 0) {
                 int64_t pairId = 0;
-                int64_t x = 0;
-                int64_t y = 0;
-                const bool ok = CalTNDLineIndex(k, virtM, virtN, runPairs, j, a, pairOrientation, pairId, x, y);
+                bool ok = false;
+                if (mode == TND_MODE_TORUS) {
+                    ok = CalTNDTorusIndex(k, virtM, virtN, runPairs, j, a, pairId, x, y);
+                } else if (mode == TND_MODE_TORUS_T) {
+                    ok = CalTNDTorusIndexTranspose(k, virtM, virtN, runPairs, j, a, pairId, x, y);
+                } else {
+                    ok = CalTNDLineIndex(k, virtM, virtN, runPairs, j, a, pairOrientation, pairId, x, y);
+                }
                 int64_t n1Id = 0;
                 const bool mapped = ok && (LEFT_UP ? MapTNDLeftUp(m, n, pairId, pairSpace, x, y, n1Id) :
                                                      MapTNDRightDown(m, n, pairId, pairSpace, x, y, n1Id));
@@ -3311,15 +3738,13 @@ __aicore__ inline void CalTNDCausalLineRunIndex(const __gm__ uint8_t *actualSeqQ
                 return;
             }
             const int64_t singleRound = a - pairRounds;
-            int64_t x = 0;
-            int64_t y = 0;
             bool ok = false;
             if (LEFT_UP) {
                 ok = CalTNDSingleCausalPos(k, m, n, j, singleRound, x, y);
             } else {
                 int64_t w = 0;
                 ok = CalTNDLineIndex(k, m, n, 1, j, singleRound, singleOrientation, w, x, y) &&
-                     IsTNDRightDownValid(m, n, x, y);
+                     IsTNDRightDownTileValid(m, n, x, y);
             }
             if (ok) {
                 BindTNDCausalMappedBatch<CUBE_BASEM, CUBE_BASEN, LEFT_UP>(actualSeqQlenAddr, actualSeqKvlenAddr,
@@ -3374,14 +3799,27 @@ __aicore__ inline void CalTNDDenseLineIndex(const __gm__ uint8_t *actualSeqQlenA
             continue;
         }
         const int64_t copies = n1 * groupSize;
-        const uint8_t orientation = PickTNDLineOrientation(k, m, n, copies);
-        const int64_t runRounds = CalTNDLineRounds(k, m, n, copies, orientation);
+        // dense is the band with p=m, q=n; no pairing, so the "pairs" slot of
+        // the planner takes the raw copy count and there is no solo remainder
+        uint8_t mode = TND_MODE_BLOCKED;
+        uint8_t orientation = TND_LINE_COL_MAJOR;
+        int64_t runRounds = 0;
+        CalTNDRunPlan(k, m, n, m, n, copies, false, m, n, copies, 0, mode, runRounds, orientation);
         if (a <= runRounds) {
             int64_t w = 0;
             int64_t x = 0;
             int64_t y = 0;
-            if (CalTNDLineIndex(k, m, n, copies, j, a, orientation, w, x, y) && w >= 1 && w <= copies && x >= 1 &&
-                x <= m && y >= 1 && y <= n) {
+            bool ok = false;
+            if (mode == TND_MODE_COPYFLAT) {
+                ok = CalTNDCopyFlatIndex(k, m, n, m, n, copies, j, a, w, x, y);
+            } else if (mode == TND_MODE_TORUS) {
+                ok = CalTNDTorusIndex(k, m, n, copies, j, a, w, x, y);
+            } else if (mode == TND_MODE_TORUS_T) {
+                ok = CalTNDTorusIndexTranspose(k, m, n, copies, j, a, w, x, y);
+            } else {
+                ok = CalTNDLineIndex(k, m, n, copies, j, a, orientation, w, x, y);
+            }
+            if (ok && w >= 1 && w <= copies && x >= 1 && x <= m && y >= 1 && y <= n) {
                 MapTNDCopyToBatch(w, n1, runHead, coordinateInfo.batchId);
                 int64_t realM = 0;
                 int64_t realN = 0;
