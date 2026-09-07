@@ -105,12 +105,9 @@ class QuantSparseFlashMlaBatchRandomContext:
             kwargs.get(name)
             for name in ("batch_axis", "batch_slice_info", "batch_seed")
         )
-        if all(field is None for field in fields):
-            return None
         if any(field is None for field in fields):
-            raise ValueError(
-                "batch_axis, batch_slice_info and batch_seed must be set together"
-            )
+            # Level-3 deterministic execution does not imply a batch relation.
+            return None
         layout_q = kwargs.get("layout_q", "BSND")
         layout_kv = kwargs.get("layout_kv", "BSND")
         if layout_q not in ("BSND", "TND"):
