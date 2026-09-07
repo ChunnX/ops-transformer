@@ -21,7 +21,7 @@
 namespace MC2KernelTemplate {
 
 constexpr uint32_t GMMA2AV_MTE_MAX_COUNT_NUM = 1024U;
-constexpr uint32_t GMMA2AV_MTE_MAX_RANK_SIZE = 768U;
+constexpr uint32_t GMMA2AV_MTE_MAX_RANK_SIZE = 128U;
 
 // Zero closes only at the final expert, including any trailing empty experts.
 constexpr uint32_t GMMA2AV_MTE_SINGLE_CHUNK = 0U;

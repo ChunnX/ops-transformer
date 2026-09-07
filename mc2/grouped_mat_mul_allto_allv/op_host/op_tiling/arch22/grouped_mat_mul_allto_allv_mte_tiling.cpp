@@ -42,9 +42,9 @@ const std::string A3_MTE_HCCL_ALG_CONFIG = "AlltoAll=level0:fullmesh;level1:pair
 const std::string A2_MTE_HCCL_ALG_CONFIG = "MultiPut=level0:fullmesh";
 }
 
-const std::vector<uint32_t> GroupedMatmulAllToAllvMteTiling::GMM_X_DTYPE_LIST = {ge::DT_BF16};
-const std::vector<uint32_t> GroupedMatmulAllToAllvMteTiling::GMM_WEIGHT_DTYPE_LIST = {ge::DT_BF16};
-const std::vector<uint32_t> GroupedMatmulAllToAllvMteTiling::GMM_Y_DTYPE_LIST = {ge::DT_BF16};
+const std::vector<uint32_t> GroupedMatmulAllToAllvMteTiling::GMM_X_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
+const std::vector<uint32_t> GroupedMatmulAllToAllvMteTiling::GMM_WEIGHT_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
+const std::vector<uint32_t> GroupedMatmulAllToAllvMteTiling::GMM_Y_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
 const std::set<int64_t> GroupedMatmulAllToAllvMteTiling::A5_SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
 const std::set<int64_t> GroupedMatmulAllToAllvMteTiling::A2_SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64, 128};
 const std::set<int64_t> GroupedMatmulAllToAllvMteTiling::A3_SUPPORT_RANK_SIZE{
@@ -151,7 +151,7 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckAndSetLocalParamsGmm()
     localParams_.gmmXDtype = gmmXDesc->GetDataType();
     OP_TILING_CHECK(!IsContains(GMM_X_DTYPE_LIST, localParams_.gmmXDtype),
                     OP_LOGE_FOR_INVALID_DTYPE(opName_, "gmmX", Ops::Base::ToString(localParams_.gmmXDtype).c_str(),
-                                              "DT_BF16"),
+                                              "DT_FLOAT16 or DT_BF16"),
                     return ge::GRAPH_FAILED);
 
     const gert::StorageShape *gmmWeightStorageShape = context_->GetInputShape(GMM_WEIGHT_INDEX);
@@ -164,7 +164,7 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckAndSetLocalParamsGmm()
     OP_TILING_CHECK(!IsContains(GMM_WEIGHT_DTYPE_LIST, localParams_.gmmWeightDtype),
                     OP_LOGE_FOR_INVALID_DTYPE(opName_, "gmmWeight",
                                               Ops::Base::ToString(localParams_.gmmWeightDtype).c_str(),
-                                              "DT_BF16"),
+                                              "DT_FLOAT16 or DT_BF16"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(localParams_.gmmXDtype != localParams_.gmmWeightDtype,
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "gmmX",
@@ -177,7 +177,7 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckAndSetLocalParamsGmm()
     localParams_.yDtype = yDesc->GetDataType();
     OP_TILING_CHECK(!IsContains(GMM_Y_DTYPE_LIST, localParams_.yDtype),
                     OP_LOGE_FOR_INVALID_DTYPE(opName_, "y", Ops::Base::ToString(localParams_.yDtype).c_str(),
-                                              "DT_BF16"),
+                                              "DT_FLOAT16 or DT_BF16"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(localParams_.gmmXDtype != localParams_.yDtype,
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "gmmX",
@@ -222,12 +222,12 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckAndSetLocalParamsMm()
     localParams_.mmWeightDtype = mmWeightDesc->GetDataType();
     OP_TILING_CHECK(!IsContains(GMM_X_DTYPE_LIST, localParams_.mmXDtype),
                     OP_LOGE_FOR_INVALID_DTYPE(opName_, "mmX", Ops::Base::ToString(localParams_.mmXDtype).c_str(),
-                                              "DT_BF16"),
+                                              "DT_FLOAT16 or DT_BF16"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!IsContains(GMM_WEIGHT_DTYPE_LIST, localParams_.mmWeightDtype),
                     OP_LOGE_FOR_INVALID_DTYPE(opName_, "mmWeight",
                                               Ops::Base::ToString(localParams_.mmWeightDtype).c_str(),
-                                              "DT_BF16"),
+                                              "DT_FLOAT16 or DT_BF16"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(localParams_.gmmXDtype != localParams_.mmXDtype,
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "mmX",
@@ -244,7 +244,7 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckAndSetLocalParamsMm()
     localParams_.mmYDtype = mmYDesc->GetDataType();
     OP_TILING_CHECK(!IsContains(GMM_Y_DTYPE_LIST, localParams_.mmYDtype),
                     OP_LOGE_FOR_INVALID_DTYPE(opName_, "mmY", Ops::Base::ToString(localParams_.mmYDtype).c_str(),
-                                              "DT_BF16"),
+                                              "DT_FLOAT16 or DT_BF16"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(localParams_.mmXDtype != localParams_.mmYDtype,
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "mmY",
