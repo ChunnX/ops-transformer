@@ -16,9 +16,6 @@ from torch.library import impl
 
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
-GSAG_METADATA_SIZE = (
-    16464  # legacy fallback; actual size is dynamic via calc_gsag_metadata_size
-)
 GSAG_TASK_LIST_OFFSET = 80  # 8 + 2 * 36
 GSAG_TASK_ENTRY_SIZE = 4
 GSAG_METADATA_OP_NAME = "generic_block_sparse_attention_grad_metadata"

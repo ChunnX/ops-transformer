@@ -78,7 +78,6 @@ aclnnStatus Validate(const aclTensor *query, const aclTensor *key, const aclTens
     CHECK_RET(TensorOk(query) && TensorOk(key) && TensorOk(value) && TensorOk(dout) && TensorOk(out) && TensorOk(lse),
               ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(TensorOk(sparseBlockIdx) && TensorOk(sparseBlockCount), ACLNN_ERR_PARAM_NULLPTR);
-    // metadata is OPTIONAL in IR, but must be provided at runtime (same as forward GBSA).
     CHECK_RET(TensorOk(metadataOptional), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(TensorOk(dQuery) && TensorOk(dKey) && TensorOk(dValue), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(layoutQ != nullptr && layoutKv != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -87,7 +86,6 @@ aclnnStatus Validate(const aclTensor *query, const aclTensor *key, const aclTens
     CHECK_RET(maskType == GSAG_SUPPORTED_MASK_TYPE, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(softmaxPrecision == GSAG_SUPPORTED_SOFTMAX_PRECISION, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(winLeft == -1 && winRight == -1, ACLNN_ERR_PARAM_INVALID);
-    // atten_mask is not supported yet; must be nullptr (causal uses maskType only).
     CHECK_RET(attenMaskOptional == nullptr, ACLNN_ERR_PARAM_INVALID);
     if (blockShape != nullptr) {
         CHECK_RET(blockShape->Size() >= 2, ACLNN_ERR_PARAM_INVALID);
