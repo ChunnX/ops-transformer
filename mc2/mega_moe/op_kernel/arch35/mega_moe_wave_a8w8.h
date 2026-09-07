@@ -912,7 +912,9 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     ExpertLoopState combineExpertState = CreateExpertLoopState(commonConfig_);
     ExpertLoopState allCoreCombineExpertState = CreateExpertLoopState(commonConfig_);
     int32_t vecSetSyncCom = 0;
-    int32_t gmm2TileSequence = 0;
+    // Shared A8W4 GMM1 and MoE GMM2 reuse the same per-job ready flag. Continue from the sequence published by
+    // shared GMM1 so GMM2 Combine cannot mistake an earlier stage's flag value for a newly completed GMM2 tile.
+    int32_t gmm2TileSequence = gmTileSequence_;
     GmmRuntimeState gmm1RuntimeState{startBlockIdx_, vecSetSyncCom, gmm1PingPongIdx_};
 
     ExpertTokenPosition waveBeginPosition{};
