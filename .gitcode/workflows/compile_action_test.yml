@@ -68,6 +68,7 @@ jobs:
             unset NB_CACHE
             unset NB_RDECO_TOOL_PATH
             unset NB_RDECO_ENABLE
+            export BOOSTER=NextCache
             env|grep NB
             env|grep XCACHE
             export JOB_NUM=64
