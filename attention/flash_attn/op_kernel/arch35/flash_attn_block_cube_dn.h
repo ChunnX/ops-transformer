@@ -343,7 +343,7 @@ public:
         }
     }
     __aicore__ inline void FixpipeMm1DnSplitM(const LocalTensor<MM_T> &dstTensor, const LocalTensor<MM_T> &l0C,
-                                               uint32_t mSize, RunInfoX &runInfo)
+                                               uint32_t mSize, RunInfo &runInfo)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = runInfo.actMSize;

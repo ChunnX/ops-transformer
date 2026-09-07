@@ -87,7 +87,7 @@ public:
     LocalTensor<uint8_t> ubMmResBuffers_;
     uint32_t mmResBufId_ = 0;
 
-    static constexpr uint32_t UB_MASK_BUFCNT = 2;
+    static constexpr uint32_t UB_MASK_BUFCNT = 1;
     static constexpr uint32_t UB_MASK_BUF_BYTES = mBaseSize / CV_RATIO * s2BaseSize * sizeof(uint8_t);
     LocalTensor<uint8_t> ubMaskBuffers_;
 
@@ -132,6 +132,8 @@ public:
     GlobalTensor<float> softmaxFDSumGm_;
     GlobalTensor<float> softmaxFDMaxGm_;
 
+    static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
+    uint32_t negativeIntScalar_ = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
     T negativeFloatScalar_;
 
     // ==================== Functions ======================
@@ -178,7 +180,7 @@ public:
         struct UbLayout {
             uint8_t ubMmResBuffers[UB_MM_RES_BUFCNT][UB_MM_RES_BUF_BYTES]; // CV通信BUF
             uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES];         // 输入BUF: MASK拷入
-            uint8_t vec2Res[UB_MM2_RES_BUF_BYTES];                          // 输出BUF: attn_out拷出
+            uint8_t vec2Res[UB_VEC2_RES_BUF_BYTES];                          // 输出BUF: attn_out拷出
             uint8_t vec1ResBuffers[UB_VEC1_RES_BUFCNT]
                                   [UB_VEC1_RES_BUF_BYTES];                           // softmax结果拷至L1
             uint8_t softmaxSumBuf_[UB_SOFTMAX_SUM_BUFCNT][UB_SOFTMAX_SUM_BUF_BYTES]; // sum常驻BUF
@@ -584,7 +586,7 @@ public:
         }
     }
     __aicore__ inline void AttenMaskCopyInDn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx,
-        uint32_t mDealSize, bool &isSkipMask, RunInfoX &runInfo)
+        uint32_t mDealSize, bool &isSkipMask, RunInfo &runInfo)
     {
         uint32_t s2RealSize = runInfo.actSingleLoopS2Size;
         MaskInfo maskInfo;

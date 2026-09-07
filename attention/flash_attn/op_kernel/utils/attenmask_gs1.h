@@ -16,6 +16,8 @@
 #ifndef ATTENMASK_GS1_H
 #define ATTENMASK_GS1_H
 
+using namespace AscendC::Reg;
+
 enum MaskFormat {
     GS,
     SG,
