@@ -244,7 +244,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                   <td>由aclnnGenericBlockSparseAttentionGradMetadata生成的分核信息。</td>
                   <td>
                       <ul>
-                          <li>必须传入。由aclnnGenericBlockSparseAttentionGradMetadata生成，每次调用须重新生成。</li>
+                          <li>必须传入。</li>
                           <li>长度≥80+B×N1×J×4（int32元素个数）。</li>
                       </ul>
                   </td>

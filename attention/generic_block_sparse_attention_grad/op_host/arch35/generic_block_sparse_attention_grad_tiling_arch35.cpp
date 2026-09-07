@@ -94,7 +94,6 @@ protected:
         const gert::StorageShape *valueShape = context_->GetInputShape(2);
         const gert::StorageShape *idxShape = context_->GetInputShape(6);
         const gert::StorageShape *cntShape = context_->GetInputShape(7);
-        // metadata is OPTIONAL in OpDef — must use GetOptionalInputShape (GetInputShape always nullptr).
         const gert::StorageShape *metaShape = context_->GetOptionalInputShape(8);
 
         const auto *attrs = context_->GetAttrs();
@@ -110,8 +109,6 @@ protected:
 
         dataType_ = qInputDesc->GetDataType();
 
-        // Attrs: block_shape, is_packed_gqa, layout_q, layout_kv, scale_value,
-        //        mask_type, softmax_precision, win_left, win_right
         const auto *blockShapeList = attrs->GetListInt(0);
         isPackedGQA_ = static_cast<int32_t>(*attrs->GetAttrPointer<int64_t>(1));
         qLayout_ = attrs->GetAttrPointer<char>(2);
