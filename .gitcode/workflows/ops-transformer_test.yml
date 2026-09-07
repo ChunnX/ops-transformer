@@ -25,7 +25,7 @@ stages:
     name: compile
     jobs:
       JOB_Pre_Compile_dis:
-        name: Compile_pre
+        name: JOB_Pre_Compile_dis
         uses: .gitcode/workflows/compile_action_test.yml
         with:
           task_name: 'Pre_Compile'
@@ -33,7 +33,7 @@ stages:
           arch: 'x64'
           spec: 'xlarge'
       JOB_Pre_Compile_nodis:
-        name: Compile_pre
+        name: JOB_Pre_Compile_nodis
         uses: .gitcode/workflows/compile_action_test_without.yml
         with:
           task_name: 'Pre_Compile'
