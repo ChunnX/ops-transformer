@@ -65,14 +65,14 @@
     <tr>
         <td>sendCountsTensorOptional</td>
         <td>输入</td>
-        <td>预留参数，当前版本仅支持传nullptr。</td>
+        <td>预留参数，当前版本仅支持传nullptr；任一参数非nullptr时返回ACLNN_ERR_PARAM_INVALID。</td>
         <td>-</td>
         <td>-</td>
     </tr>
     <tr>
         <td>recvCountsTensorOptional</td>
         <td>输入</td>
-        <td>预留参数，当前版本仅支持传nullptr。</td>
+        <td>预留参数，当前版本仅支持传nullptr；任一参数非nullptr时返回ACLNN_ERR_PARAM_INVALID。</td>
         <td>-</td>
         <td>-</td>
     </tr>
@@ -175,13 +175,22 @@
   - BSK：本卡发送的token数，是sendCounts参数累加之和，取值范围(0, 52428800)。
   - H1：表示路由专家hidden size隐藏层大小，取值范围(0, 65536)。
   - H2：表示共享专家hidden size隐藏层大小，取值范围(0, 12288]。
-  - e：表示单卡上专家个数，e<=32，e * epWorldSize最大支持256。
+  - e：表示单卡上专家个数。除下述AIV附加约束外，e<=32，e * epWorldSize最大支持256。
   - N1：表示路由专家的head_num，取值范围(0, 65536)。
   - N2：表示共享专家的head_num，取值范围(0, 65536)。
   - BS：batch sequence size。
   - K：表示选取TopK个专家，K的范围[2, 8]。
   - A：本卡收到的token数，是recvCounts参数累加之和。
   - ep通信域内所有卡的A参数的累加和等于所有卡上的BSK参数的累加和。
+
+- AIV模式的当前保留实现：
+  - Atlas A2的epWorldSize支持2、4、8；Atlas A3支持2、4、8、16、32、64、128。gmmX、gmmWeight、gmmY必须为相同的FLOAT16或BFLOAT16类型且为ND格式。
+  - AIV模式下BSK/A取值范围为[1, 5000000]，H1/N1取值范围为[1, 65535]；本卡专家数e不超过512，`epWorldSize * e`不超过1024。
+  - sendCounts和recvCounts接口属性仍为INT64直接计数数组，布局为`[rank][localExpert]`。Host侧校验每项非负且不超过对应本卡输入/输出M，并校验sendCounts之和等于BSK、recvCounts之和等于A；通过校验后在tiling中发布INT32 inclusive-prefix，其中sendPrefix保持rank-major，recvPrefix转换为expert-major/source-minor。
+  - 设`Align512(x) = ceil(x / 512) * 512`。peer window需求为`Align512(BSK * H1 * 2) + Align512(epWorldSize * e * 4) + Align512(32 * (1 + 2 * epWorldSize))`字节，三项分别为payload、INT32 prefix counts和epoch/publish/release control；默认window为200MiB，实际window不得小于该值。
+  - Device workspace需求为`16MiB + Align512(A * H1 * 2)`字节，依次对应系统区和接收payload。
+  - 本卡专家数`129<=e<=512`时采用专家级通信/计算流水，包括稀疏、小工作量和单个非空专家场景；`e<=128`保留原有工作量启发式。专家流水模式下，空专家在AIV/AIC两侧一致跳过搬运、同步、通知和GEMM；一次性通知模式仅由生产者核查询source counts并跳过零长度搬运，不做额外全核专家元数据扫描。通知序号仅按非空专家递增，使用9个flag、每个最多15次，每135次实际通知由AIV/AIC共同排空后循环复用；共享专家通知使用独立flag。
+  - 本地输入到peer window、peer输入到本地接收区均使用两个UB Buffer交替搬运，默认每份32KiB；按平台UB容量预留元数据并校验两份Buffer容量。单块搬运仅使用Buffer 0及一组读写完成事件；多块搬运继续交替使用两个Buffer，复用前等待写出完成，发布专家ready前排空两份Buffer。当前实现没有grouped small-expert wave，也没有M维分块（M-chunk）。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  : 单卡通信量在2MB以下可能存在性能劣化。
 
