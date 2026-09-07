@@ -30,13 +30,9 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(grouped_mat_mul_allto_allv_depends mc2/common mc2/3rd mc2/allto_allv_grouped_mat_mul mc2/quant_grouped_mat_mul_allto_allv mc2/allto_allv_quant_grouped_mat_mul PARENT_SCOPE)
     set(grouped_mat_mul_allto_allv_a3_depends mc2/common mc2/3rd mc2/allto_allv_grouped_mat_mul mc2/quant_grouped_mat_mul_allto_allv mc2/allto_allv_quant_grouped_mat_mul PARENT_SCOPE)
 
-    if(NOT ENABLE_AICPU_KERNEL)
-        # The shared installer nests include/ once more. Install its contents
-        # at the search path used by the generated CATLASS compile wrapper.
-        install(DIRECTORY "${CATLASS_DIR}/include/"
-                DESTINATION "${IMPL_INSTALL_DIR}/ascendc/common/catlass/include"
-        )
-    endif()
+    # CATLASS 引用方式对齐 PR 10404：kernel 头文件使用原始名称（catlass/...），
+    # include 路径由共享的 ascendc_impl_build.py wrapper 与 custom_build.cmake 的
+    # 共享 catlass install 提供，算子侧无需额外 install。
 
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
     # -mllvm -cce-aicore-dcci-before-kernel-end=false：禁用在kernel函数结束前插入DCCI指令

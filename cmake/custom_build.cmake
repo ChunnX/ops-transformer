@@ -1043,7 +1043,12 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${OPS_ADV_DIR}/gmm/common/cgmct
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
-    install(DIRECTORY ${CATLASS_DIR}/include
+    # Trailing slash installs the *contents* of include/ (catlass/, tla/), matching the
+    # build-tree layout (func.cmake copy_directory) and the wrapper's -I search path
+    # (ascendc_impl_build.py: .../ascendc/common/catlass/include). Without it the source
+    # dir name "include" is appended, producing catlass/include/include/... which the
+    # generated wrappers cannot find at runtime compile.
+    install(DIRECTORY ${CATLASS_DIR}/include/
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/catlass/include
     )
     install(DIRECTORY ${BLAZE}
