@@ -52,14 +52,15 @@ def cla_gate_small_op_np(global_out, local_out, global_gate_logits, local_gate_l
     lo = _numpy_to_torch(local_out)
     gg = _numpy_to_torch(global_gate_logits)
     lg = _numpy_to_torch(local_gate_logits)
+    orig_dtype = go.dtype
     if gg.dim() == go.dim():
         # [T,N,1] (or legacy [S,B,N,1]) -> squeeze the singleton head/feature dim.
         gg = gg.squeeze(-1)
         lg = lg.squeeze(-1)
 
-    global_scale = torch.sigmoid(gg).unsqueeze(-1)
-    local_scale = torch.sigmoid(lg).unsqueeze(-1)
-    merged = go * global_scale + lo * local_scale
+    global_scale = torch.sigmoid(gg.to(torch.float32)).unsqueeze(-1)
+    local_scale = torch.sigmoid(lg.to(torch.float32)).unsqueeze(-1)
+    merged = (go.to(torch.float32) * global_scale + lo.to(torch.float32) * local_scale).to(orig_dtype)
     if merged.dim() == 3:
         # Current TND layout: [T, N, D] -> [T, N*D]
         merged = merged.reshape(merged.shape[0], merged.shape[1] * merged.shape[2])

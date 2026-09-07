@@ -34,9 +34,13 @@ def _float8_e4m3fn():
 
 def _small_op(global_out, local_out, global_gate_logits, local_gate_logits, scale_alg):
     """Unfused NPU small-op reference; this is the only golden used here."""
-    global_scale = torch.sigmoid(global_gate_logits).unsqueeze(-1)
-    local_scale = torch.sigmoid(local_gate_logits).unsqueeze(-1)
-    merged = global_out * global_scale + local_out * local_scale
+    orig_dtype = global_out.dtype
+    global_scale = torch.sigmoid(global_gate_logits.to(torch.float32)).unsqueeze(-1)
+    local_scale = torch.sigmoid(local_gate_logits.to(torch.float32)).unsqueeze(-1)
+    merged = (
+        global_out.to(torch.float32) * global_scale
+        + local_out.to(torch.float32) * local_scale
+    ).to(orig_dtype)
     merged = merged.reshape(merged.shape[0], -1)
     return torch_npu.npu_dynamic_mx_quant_with_dual_axis(
         merged,

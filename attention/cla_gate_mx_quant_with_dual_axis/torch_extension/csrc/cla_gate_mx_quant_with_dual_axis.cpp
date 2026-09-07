@@ -17,6 +17,8 @@ namespace {
 constexpr int64_t SPLIT_BLOCK_SIZE = 64;
 constexpr int64_t DST_TYPE_FP8_E5M2 = 35;
 constexpr int64_t DST_TYPE_FP8_E4M3FN = 36;
+constexpr int64_t DST_TYPE_FP4_E2M1 = 40;
+constexpr int64_t DST_TYPE_FP4_E1M2 = 41;
 
 static aclDataType GetAclDataTypeFromDstType(int64_t dst_type)
 {
@@ -25,8 +27,12 @@ static aclDataType GetAclDataTypeFromDstType(int64_t dst_type)
             return ACL_FLOAT8_E5M2;
         case DST_TYPE_FP8_E4M3FN:
             return ACL_FLOAT8_E4M3FN;
+        case DST_TYPE_FP4_E2M1:
+            return ACL_FLOAT4_E2M1;
+        case DST_TYPE_FP4_E1M2:
+            return ACL_FLOAT4_E1M2;
         default:
-            TORCH_CHECK(false, "dst_type should be 35(float8_e5m2) or 36(float8_e4m3fn), but got ", dst_type);
+            TORCH_CHECK(false, "dst_type should be 35/36(FP8) or 40/41(FP4), but got ", dst_type);
     }
 }
 
@@ -37,9 +43,18 @@ static at::ScalarType GetScalarTypeFromDstType(int64_t dst_type)
             return at::ScalarType::Float8_e5m2;
         case DST_TYPE_FP8_E4M3FN:
             return at::ScalarType::Float8_e4m3fn;
+        case DST_TYPE_FP4_E2M1:
+        case DST_TYPE_FP4_E1M2:
+            // Torch exposes packed FP4 as uint8 (2 values/byte).
+            return at::kByte;
         default:
-            TORCH_CHECK(false, "dst_type should be 35(float8_e5m2) or 36(float8_e4m3fn), but got ", dst_type);
+            TORCH_CHECK(false, "dst_type should be 35/36(FP8) or 40/41(FP4), but got ", dst_type);
     }
+}
+
+static bool IsFp4DstType(int64_t dst_type)
+{
+    return dst_type == DST_TYPE_FP4_E2M1 || dst_type == DST_TYPE_FP4_E1M2;
 }
 
 void CheckNpuTensor(const at::Tensor& tensor, const char* name)
@@ -111,13 +126,20 @@ cla_gate_mx_quant_with_dual_axis(
     TORCH_CHECK(round_mode == "rint" || round_mode == "round" || round_mode == "floor",
                 "round_mode must be rint/round/floor, got ", round_mode);
     TORCH_CHECK(scale_alg == 0 || scale_alg == 1, "scale_alg must be 0 or 1, but got ", scale_alg);
-    TORCH_CHECK(round_mode == "rint", "torch extension currently only supports FP8 round_mode=rint");
+    if (IsFp4DstType(dst_type)) {
+        TORCH_CHECK(scale_alg == 0, "FP4 only supports scale_alg=0");
+    } else {
+        TORCH_CHECK(dst_type == DST_TYPE_FP8_E4M3FN || dst_type == DST_TYPE_FP8_E5M2,
+                    "dst_type must be 35/36(FP8) or 40/41(FP4), but got ", dst_type);
+        TORCH_CHECK(round_mode == "rint", "FP8 only supports round_mode=rint");
+    }
     aclDataType data_acl_type = GetAclDataTypeFromDstType(dst_type);
     at::ScalarType data_scalar_type = GetScalarTypeFromDstType(dst_type);
 
     const int64_t k = n * d;
-    at::Tensor row_data = at::empty({t, k}, global_out.options().dtype(data_scalar_type));
-    at::Tensor col_data = at::empty({t, k}, global_out.options().dtype(data_scalar_type));
+    const int64_t data_cols = IsFp4DstType(dst_type) ? k / 2 : k;
+    at::Tensor row_data = at::empty({t, data_cols}, global_out.options().dtype(data_scalar_type));
+    at::Tensor col_data = at::empty({t, data_cols}, global_out.options().dtype(data_scalar_type));
     at::Tensor row_scale = at::empty({t, (k + SPLIT_BLOCK_SIZE - 1) / SPLIT_BLOCK_SIZE, 2},
                                      global_out.options().dtype(at::kByte));
     at::Tensor col_scale = at::empty({(t + SPLIT_BLOCK_SIZE - 1) / SPLIT_BLOCK_SIZE, k, 2},

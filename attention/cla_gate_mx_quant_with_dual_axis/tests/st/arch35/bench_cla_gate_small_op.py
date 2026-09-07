@@ -42,9 +42,14 @@ FLOAT8_E4M3FN = _get_float8_e4m3fn()
 
 
 def cla_gate(global_out, local_out, global_logits, local_logits):
-    global_scale = torch.sigmoid(global_logits).unsqueeze(-1)
-    local_scale = torch.sigmoid(local_logits).unsqueeze(-1)
-    return global_out * global_scale + local_out * local_scale
+    orig_dtype = global_out.dtype
+    global_scale = torch.sigmoid(global_logits.to(torch.float32)).unsqueeze(-1)
+    local_scale = torch.sigmoid(local_logits.to(torch.float32)).unsqueeze(-1)
+    merged = (
+        global_out.to(torch.float32) * global_scale
+        + local_out.to(torch.float32) * local_scale
+    )
+    return merged.to(orig_dtype)
 
 
 def cla_gate_quant_dual(global_out, local_out, global_logits, local_logits):

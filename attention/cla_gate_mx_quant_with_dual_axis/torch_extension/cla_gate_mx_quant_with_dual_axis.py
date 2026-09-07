@@ -83,26 +83,39 @@ class ClaGateMxQuantWithDualAxisOpBuilder(OpBuilder):
                     lambda: "3D gate logits must be [T,N,1]",
                 )
             torch._check(
-                round_mode == "rint",
-                lambda: f"torch extension currently only supports round_mode=rint for FP8, got {round_mode}",
+                dst_type in (35, 36, 40, 41),
+                lambda: f"torch extension supports dst_type 35/36(FP8) or 40/41(FP4), got {dst_type}",
+            )
+            torch._check(
+                round_mode in ("rint", "round", "floor"),
+                lambda: f"round_mode must be rint/round/floor, got {round_mode}",
             )
             torch._check(
                 scale_alg in (0, 1),
                 lambda: f"scale_alg must be 0 or 1, but got {scale_alg}",
             )
-            torch._check(
-                dst_type in (35, 36),
-                lambda: f"torch extension currently only supports dst_type 35/36(FP8), got {dst_type}",
-            )
-
-            if dst_type == 35:
-                data_dtype = torch.float8_e5m2
+            if dst_type in (40, 41):
+                torch._check(
+                    scale_alg == 0,
+                    lambda: "FP4 only supports scale_alg=0",
+                )
             else:
-                data_dtype = torch.float8_e4m3fn
+                torch._check(
+                    round_mode == "rint",
+                    lambda: f"FP8 only supports round_mode=rint, got {round_mode}",
+                )
 
             k = n * d
-            row_data = torch.empty([t, k], dtype=data_dtype, device="meta")
-            col_data = torch.empty([t, k], dtype=data_dtype, device="meta")
+            if dst_type in (40, 41):
+                # torch has no native FP4 dtype; expose packed uint8 (2 values/byte).
+                data_dtype = torch.uint8
+                data_cols = k // 2
+            else:
+                data_dtype = torch.float8_e5m2 if dst_type == 35 else torch.float8_e4m3fn
+                data_cols = k
+
+            row_data = torch.empty([t, data_cols], dtype=data_dtype, device="meta")
+            col_data = torch.empty([t, data_cols], dtype=data_dtype, device="meta")
             row_scale = torch.empty([t, (k + 63) // 64, 2], dtype=torch.uint8, device="meta")
             col_scale = torch.empty([(t + 63) // 64, k, 2], dtype=torch.uint8, device="meta")
 

@@ -303,8 +303,8 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
     pipe_->InitBuffer(actInQueue_, DB_BUFFER, actFrameBytes);
     pipe_->InitBuffer(gateInQueue_, DB_BUFFER, gateFrameBytes);
     pipe_->InitBuffer(claGateBuf_, inBufferSize);
-    // Sigmoid scratch: one gateSideStride_-element region per global/local side.
-    pipe_->InitBuffer(sigmoidBroadcastBuf_, DIGIT_TWO * gateSideStride_ * sizeof(xDtype));
+    // Sigmoid scratch: one gateSideStride_-element FP32 region per global/local side.
+    pipe_->InitBuffer(sigmoidBroadcastBuf_, DIGIT_TWO * gateSideStride_ * sizeof(float));
     pipe_->InitBuffer(outQueue1_, DB_BUFFER, inHalfSize_);
     pipe_->InitBuffer(outQueue2_, DB_BUFFER, inHalfSize_);
     pipe_->InitBuffer(mxScaleQueue1_, DB_BUFFER, mxScale1BufferSize);
@@ -535,14 +535,14 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
         Reg::RegTensor<xDtype> globalReg, localReg, gateReg;
         Reg::RegTensor<float> gateF, tmpF, oneF;
         Reg::RegTensor<float> globalSigmoidF, localSigmoidF;
-        Reg::RegTensor<xDtype> globalSigmoidBf16, localSigmoidBf16;
+        Reg::RegTensor<float> globalRegF, localRegF, outputRegF;
         Reg::RegTensor<xDtype> outputReg;
         Reg::MaskReg allMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
         const uint16_t heads = static_cast<uint16_t>(headsPerRow_);
-        // Sigmoid scratch stores bf16/fp16 values. Keep global/local regions separated.
+        // Sigmoid scratch stores FP32 values. Keep global/local regions separated.
         __ubuf__ uint8_t* sigmoidBytes = (__ubuf__ uint8_t*)sigmoidBroadcastBuf_.Get<float>().GetPhyAddr();
-        __ubuf__ xDtype* globalSigmoidUb = (__ubuf__ xDtype*)sigmoidBytes;
-        __ubuf__ xDtype* localSigmoidUb = (__ubuf__ xDtype*)(sigmoidBytes + gateSideStride_ * sizeof(xDtype));
+        __ubuf__ float* globalSigmoidUb = (__ubuf__ float*)sigmoidBytes;
+        __ubuf__ float* localSigmoidUb = (__ubuf__ float*)(sigmoidBytes + gateSideStride_ * sizeof(float));
 
         // Phase 1: vectorized sigmoid for each head's 64 per-row gate values.
         for (uint16_t head = 0; head < heads; ++head) {
@@ -553,9 +553,7 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
             Reg::Adds(tmpF, tmpF, 1.0f, allMask);
             Reg::Duplicate(oneF, 1.0f, allMask);
             Reg::Div(globalSigmoidF, oneF, tmpF, allMask);
-            Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(globalSigmoidBf16, globalSigmoidF, allMask);
-            Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(globalSigmoidUb + head * ubRowCount_,
-                                                                   globalSigmoidBf16, allMask);
+            Reg::StoreAlign<float>(globalSigmoidUb + head * ubRowCount_, globalSigmoidF, allMask);
         }
 
         for (uint16_t head = 0; head < heads; ++head) {
@@ -566,20 +564,18 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
             Reg::Adds(tmpF, tmpF, 1.0f, allMask);
             Reg::Duplicate(oneF, 1.0f, allMask);
             Reg::Div(localSigmoidF, oneF, tmpF, allMask);
-            Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(localSigmoidBf16, localSigmoidF, allMask);
-            Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(localSigmoidUb + head * ubRowCount_,
-                                                                   localSigmoidBf16, allMask);
+            Reg::StoreAlign<float>(localSigmoidUb + head * ubRowCount_, localSigmoidF, allMask);
         }
 
-        // Phase 2: broadcast each per-row/per-head sigmoid over its D-sized span.
+        // Phase 2: broadcast each per-row/per-head FP32 sigmoid over its D-sized span.
         AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
         Reg::AddrReg offset;
         for (uint16_t row = 0; row < calcRows; ++row) {
             for (uint16_t head = 0; head < heads; ++head) {
-                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(
-                    globalSigmoidBf16, globalSigmoidUb + head * ubRowCount_ + row);
-                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(
-                    localSigmoidBf16, localSigmoidUb + head * ubRowCount_ + row);
+                Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(
+                    globalSigmoidF, globalSigmoidUb + head * ubRowCount_ + row);
+                Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(
+                    localSigmoidF, localSigmoidUb + head * ubRowCount_ + row);
 
                 for (uint16_t vf = 0; vf < vfsPerHead; ++vf) {
                     offset = Reg::CreateAddrReg<xDtype>(
@@ -589,9 +585,12 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
                     Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(globalReg, globalAddr, offset);
                     Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(localReg, localAddr, offset);
 
-                    Reg::Mul(globalReg, globalReg, globalSigmoidBf16, allMask);
-                    Reg::Mul(localReg, localReg, localSigmoidBf16, allMask);
-                    Reg::Add(outputReg, globalReg, localReg, allMask);
+                    Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(globalRegF, globalReg, allMask);
+                    Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(localRegF, localReg, allMask);
+                    Reg::Mul(globalRegF, globalRegF, globalSigmoidF, allMask);
+                    Reg::Mul(localRegF, localRegF, localSigmoidF, allMask);
+                    Reg::Add(outputRegF, globalRegF, localRegF, allMask);
+                    Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(outputReg, outputRegF, allMask);
                     Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(outputAddr, outputReg, offset, allMask);
                 }
             }

@@ -12,7 +12,8 @@
 try:
     import torch
     from torchair.ge import attr
-    from torchair.ge._ge_graph import Tensor, TensorSpec
+    from torchair.ge._ge_graph import Tensor, TensorSpec, DataType
+    from torchair._ge_concrete_graph import ge_apis as ge
     from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
     from torchair._ge_concrete_graph.fx2ge_converter import (
         register_fx_node_ge_converter,
@@ -24,6 +25,20 @@ except ImportError:
 
 
 if _TORCHAIR_AVAILABLE:
+
+    def _pack_fp4_to_uint8(tensor: Tensor) -> Tensor:
+        """Pack a logical FP4 GE tensor [..., K] into uint8 [..., K/2]."""
+        bit_shape = [1] * (tensor.rank - 1) + [2]
+        div_x2 = ge.Cast(ge.Const(bit_shape), dst_type=DataType.DT_INT32)
+        logical_shape = ge.Shape(tensor)
+        packed_shape = ge.Div(logical_shape, div_x2)
+        pair_shape = ge.ConcatV2(
+            [packed_shape, ge.Cast(ge.Const([2]), dst_type=DataType.DT_INT32)],
+            concat_dim=0,
+            N=2,
+        )
+        packed = ge.Bitcast(ge.Reshape(tensor, pair_shape), type=DataType.DT_UINT8)
+        return ge.Reshape(packed, packed_shape)
 
     @register_fx_node_ge_converter(
         torch.ops.cann_ops_transformer.cla_gate_mx_quant_with_dual_axis.default
@@ -39,7 +54,7 @@ if _TORCHAIR_AVAILABLE:
         dst_type: int = 36,
         meta_outputs: TensorSpec = None,
     ):
-        return ge_op(
+        row_data, row_scale, col_data, col_scale = ge_op(
             op_type="ClaGateMxQuantWithDualAxis",
             inputs={
                 "global_out": global_out,
@@ -71,6 +86,12 @@ if _TORCHAIR_AVAILABLE:
             .output("col_data", "DT_FLOAT4_E2M1, DT_FLOAT4_E1M2, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2")
             .output("col_scale", "DT_FLOAT8_E8M0"),
         )
+
+        if dst_type in (40, 41):
+            row_data = _pack_fp4_to_uint8(row_data)
+            col_data = _pack_fp4_to_uint8(col_data)
+
+        return row_data, row_scale, col_data, col_scale
 
 else:
 
