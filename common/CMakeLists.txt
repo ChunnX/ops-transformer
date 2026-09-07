@@ -131,6 +131,7 @@ else()
       $<BUILD_INTERFACE:intf_pub_cxx17>
       tiling_api
     )
+
     add_subdirectory(include/op_graph)
 endif()
 
