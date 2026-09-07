@@ -178,7 +178,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(BufferManage
     SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId); // {0, 1, 2}, 用于l1Q
     SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + 1);
     SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + 2); // 2：同上
-    SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId); // {3, 4, 5}, 用于l1K
+    SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId);     // {3, 4, 5}, 用于l1K
     SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 1);
     SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 2); // 2：同上
 }
@@ -194,7 +194,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::FreeEvent()
     WaitFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId); // {0, 1, 2}, 用于l1Q
     WaitFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + 1);
     WaitFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + 2); // 2：同上
-    WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId); // {3, 4, 5}, 用于l1K
+    WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId);     // {3, 4, 5}, 用于l1K
     WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 1);
     WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 2); // 2：同上
 }
