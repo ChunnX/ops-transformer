@@ -13,6 +13,7 @@
 
 import importlib.util
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -21,6 +22,63 @@ import torch
 
 OPERATOR = "lightning_indexer_v2"
 METADATA_INDEX = 10
+
+_NPU_MODE_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def cpu_test_metadata_enabled():
+    """Whether metadata should come from the cpu_test binary (simulation mode).
+
+    Mirrors the pytest IS_NPU_NOW flag via environment so the assets never
+    depend on pytest state:
+    - IS_NPU_NOW unset or truthy: run the on-board metadata op (TTK default)
+    - IS_NPU_NOW=0/false/off/no: generate metadata via the cpu_test binary
+      (pytest simulation mode), then copy onto the NPU placeholder.
+    """
+    value = os.getenv("IS_NPU_NOW")
+    if value is None:
+        return False
+    return str(value).strip().lower() not in _NPU_MODE_TRUTHY
+
+
+def load_pytest_golden():
+    """Load the pytest golden module (shared module name across the assets)."""
+    name = "li_v2_pytest_golden"
+    if name in sys.modules:
+        return sys.modules[name]
+    pytest_dir = Path(__file__).resolve().parents[2] / "pytest"
+    path = pytest_dir / "lightning_indexer_v2_golden.py"
+    inserted = str(pytest_dir) not in sys.path
+    if inserted:
+        sys.path.insert(0, str(pytest_dir))
+    try:
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot create import spec for {path}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+        return module
+    except Exception as exc:
+        sys.modules.pop(name, None)
+        raise RuntimeError(
+            "Failed to load LightningIndexer V2 pytest Golden module; "
+            f"module={path.resolve()}; original error: {type(exc).__name__}: {exc}"
+        ) from exc
+    finally:
+        if inserted:
+            sys.path.remove(str(pytest_dir))
+
+
+def generate_metadata_from_cpu_test(arguments):
+    """Generate metadata on CPU via the pytest cpu_test binary bridge.
+
+    `arguments` matches the canonical metadata_input dict produced by the
+    pytest input stage (build_liv2_metadata_input) and the metadata sidecar.
+    Requires SOC_VERSION / AIC_CORE_NUM / AIV_CORE_NUM to match the target
+    device, and cmake plus a C++ toolchain for the auto-build fallback.
+    """
+    return load_pytest_golden().generate_metadata_from_cpu(arguments)
 
 
 def load_metadata_protocol():
@@ -228,7 +286,14 @@ def run(
         )
         source = "main API fallback (sidecar unavailable)"
     logging.info("[%s] build LI_V2 metadata from %s", testcase_name, source)
-    generated = run_metadata(arguments, metadata)
+    if cpu_test_metadata_enabled():
+        logging.info(
+            "[%s] IS_NPU_NOW disables on-board metadata; using cpu_test binary",
+            testcase_name,
+        )
+        generated = generate_metadata_from_cpu_test(arguments)
+    else:
+        generated = run_metadata(arguments, metadata)
     if tuple(metadata.shape) != tuple(generated.shape):
         raise ValueError(
             "LI_V2 metadata shape mismatch: "
@@ -241,3 +306,53 @@ def run(
     if rewritten is not None:
         logging.info("[%s] rewrote LI_V2 metadata input: %s", testcase_name, rewritten)
     return None
+
+
+def run_aclnn(
+    q,
+    k,
+    w,
+    cu_seqlens_q,
+    cu_seqlens_k,
+    seqused_q,
+    seqused_k,
+    cmp_residual_k,
+    block_table,
+    output_idx_offset,
+    metadata,
+    topk,
+    max_seqlen_q,
+    layout_q,
+    layout_k,
+    mask_mode,
+    cmp_ratio,
+    return_value,
+    sparse_indices_out,
+    sparse_values_out,
+    **kwargs,
+):
+    """Map the ACLNN C signature to the canonical preprocessing adapter.
+
+    Signature mirrors generate_aclnn_li_v2_inputs so TTK can call
+    npu_preprocess with the same convention as customize_inputs.
+    """
+    del block_table, output_idx_offset, return_value
+    del sparse_indices_out, sparse_values_out
+    return run(
+        q,
+        k,
+        w,
+        topk,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_k=cu_seqlens_k,
+        seqused_q=seqused_q,
+        seqused_k=seqused_k,
+        cmp_residual_k=cmp_residual_k,
+        metadata=metadata,
+        max_seqlen_q=max_seqlen_q,
+        layout_q=layout_q,
+        layout_k=layout_k,
+        mask_mode=mask_mode,
+        cmp_ratio=cmp_ratio,
+        **kwargs,
+    )

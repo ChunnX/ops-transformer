@@ -126,3 +126,29 @@ cmp_residual_k = [0, 0]
 1. **Input Parameters**：所有属性值 + 5 个 tensor 的值及来源标注
 2. **AIC (LI) Metadata**：每个 AIC 核的 BN2/M/S2 起止范围（FA 分核切分）
 3. **AIV (LD) Metadata**：每个 AIV 核的 FD 归约任务分配（存在跨核行时输出）
+
+## TTK 集成（npu_preprocess 仿真模式）
+
+TTK 资产（`tests/assets/impl/npu_preprocess.py`）默认调用真正的 NPU metadata
+算子生成 metadata；设置环境变量 `IS_NPU_NOW=0` 可切换为本 cpu_test 二进制
+生成（与 pytest 仿真模式 `IS_NPU_NOW=False` 语义一致）：
+
+```bash
+export IS_NPU_NOW=0            # 0=cpu_test 仿真生成 metadata；不设或 1=NPU metadata 算子
+export SOC_VERSION=Ascend950   # 芯片版本，须与上板芯片一致（默认 Ascend950）
+export AIC_CORE_NUM=64         # 实际分核数，须与上板芯片一致（默认 64）
+export AIV_CORE_NUM=64         # 实际分核数，须与上板芯片一致（默认 64）
+```
+
+说明：
+
+- 直接 API（`torch.ops.cann_ops_transformer.lightning_indexer`）与 aclnn C API
+  （`aclnnLightningIndexerV2`）两种用例规格（`LightningIndexerV2Spec` /
+  `AclnnLightningIndexerV2Spec`）均已接入，均经
+  `lightning_indexer_v2_golden.generate_metadata_from_cpu` 桥接。
+- 运行环境需有 cmake 与 C++ 编译器（二进制缺失时自动编译），或预先执行
+  `cmake -S . -B build && cmake --build build`。
+- metadata 由二进制生成后仍会回写 TTK manual-data 零占位（sidecar 协议不变），
+  回放场景不受运行模式影响。
+- `AIC_CORE_NUM`/`AIV_CORE_NUM` 与上板芯片不一致时，分核计划与真实硬件不匹配，
+  主算子负载均衡行为会失真，务必正确设置。

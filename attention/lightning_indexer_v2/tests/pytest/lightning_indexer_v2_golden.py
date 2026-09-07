@@ -20,7 +20,7 @@ except ImportError:
 import pytest
 import random
 import numpy as np
-torch.serialization.add_safe_globals([np.ndarray, np._core.multiarray._reconstruct, np.core.multiarray.scalar, np.dtype, np.dtypes.Int32Dtype])
+torch.serialization.add_safe_globals([np.ndarray, np._core.multiarray._reconstruct, np.core.multiarray.scalar, np.dtype, np.dtypes.Int32DType])
 import math
 import ctypes
 import copy
@@ -33,9 +33,29 @@ from liv2_parameter_normalization import normalize_liv2_params
 
 try:
     import npu_ops_transformer
+    from npu_ops_transformer.ops import (
+        npu_lightning_indexer,
+        npu_lightning_indexer_metadata,
+    )
 except ImportError:
+    # 允许在未部署自定义算子包（或包内缺少 metadata 算子）的环境加载本模块，
+    # 供 TTK 资产复用 CPU golden / cpu_test 桥接；真正调用 NPU 算子时
+    # 由 _require_npu_op 给出明确报错。
     npu_ops_transformer = None
-from npu_ops_transformer.ops import npu_lightning_indexer, npu_lightning_indexer_metadata
+    npu_lightning_indexer = None
+    npu_lightning_indexer_metadata = None
+
+
+def _require_npu_op(name):
+    """Fetch an NPU op wrapper, failing with an actionable message if absent."""
+    impl = globals().get(name)
+    if impl is None:
+        raise RuntimeError(
+            f"npu_ops_transformer is unavailable, cannot call '{name}'. "
+            "Install the custom ops package, or run in cpu_test simulation "
+            "mode (IS_NPU_NOW=False) where the metadata op is not needed."
+        )
+    return impl
 
 # False: 仿真模式，用 cpu_test 二进制生成 metadata，再将数据搬到 NPU 调 LI 算子
 # True:  上板模式，调用真正的 NPU metadata 算子
@@ -993,6 +1013,99 @@ def _load_metadata_from_cpu(batch_size, cu_seqlens_q, cu_seqlens_k,
             os.unlink(meta_out_path)
 
 
+def _metadata_input_int_list(value):
+    """Normalize a metadata_input vector (None/tensor/list) to int list or None."""
+    if value is None:
+        return None
+    if torch.is_tensor(value):
+        return [int(x) for x in value.detach().cpu().reshape(-1).tolist()]
+    return [int(x) for x in value]
+
+
+def _metadata_input_lengths(values, prefix, fallback, batch_size):
+    """Derive per-batch lengths the same way the metadata kernel does.
+
+    与真实 metadata 算子行为对齐（aicpu GetQSeqLens/GetKSeqLens）：
+    seqused 传了直接用；否则从 cu_seqlens 差分推导；都没有则每 batch
+    取 max_seqlen。
+    """
+    lengths = _metadata_input_int_list(values)
+    if lengths:
+        return lengths
+    prefix_values = _metadata_input_int_list(prefix)
+    if prefix_values and len(prefix_values) > 1:
+        return [
+            prefix_values[i + 1] - prefix_values[i]
+            for i in range(len(prefix_values) - 1)
+        ]
+    return [int(fallback)] * int(batch_size)
+
+
+def generate_metadata_from_cpu(metadata_input):
+    """Public bridge: generate metadata via the cpu_test binary.
+
+    供 TTK npu_preprocess 仿真模式复用（pytest 侧 single/batch 已各自接入）。
+    `metadata_input` 是与 build_liv2_metadata_input / TTK sidecar 同构的
+    canonical metadata 参数字典。返回 CPU int32 tensor，
+    shape = [LI_V2_METADATA_TOTAL_SIZE]。
+
+    环境变量（沿用 cpu_test 二进制约定）：
+    - SOC_VERSION   芯片版本，默认 Ascend950
+    - AIC_CORE_NUM / AIV_CORE_NUM  实际分核数，默认 64/64，须与上板芯片一致
+    """
+    batch_size = int(metadata_input["batch_size"])
+    cu_q = metadata_input.get("cu_seqlens_q")
+    cu_k = metadata_input.get("cu_seqlens_k")
+    seq_q = metadata_input.get("seqused_q")
+    seq_k = metadata_input.get("seqused_k")
+    residual = metadata_input.get("cmp_residual_k")
+    mask_mode = int(metadata_input["mask_mode"])
+    cmp_ratio = int(metadata_input["cmp_ratio"])
+    layout_q = str(metadata_input["layout_q"])
+    layout_k = str(metadata_input["layout_k"])
+
+    lengths_q = _metadata_input_lengths(
+        seq_q, cu_q, metadata_input.get("max_seqlen_q"), batch_size
+    )
+    lengths_k = _metadata_input_lengths(
+        seq_k, cu_k, metadata_input.get("max_seqlen_k"), batch_size
+    )
+
+    # cpu_test 二进制不接受 -1：仅在算子侧合法（有 seqused/cu 可推导）的场景
+    # 可能出现 -1，此时按实际各 batch 长度取 max 防御性推导
+    max_seqlen_q = int(metadata_input.get("max_seqlen_q") or 0)
+    if max_seqlen_q <= 0:
+        max_seqlen_q = max(lengths_q) if lengths_q else 0
+    max_seqlen_k = int(metadata_input.get("max_seqlen_k") or 0)
+    if max_seqlen_k <= 0:
+        max_seqlen_k = max(lengths_k) if lengths_k else 0
+
+    # cmp_ratio==1 或 mask_mode==0 时残差无意义，与 pytest 单流程一致强制清零
+    if cmp_ratio == 1 or mask_mode == 0:
+        residual_list = None
+    else:
+        residual_list = _metadata_input_int_list(residual)
+
+    return _load_metadata_from_cpu(
+        batch_size=batch_size,
+        cu_seqlens_q=_metadata_input_int_list(cu_q),
+        cu_seqlens_k=_metadata_input_int_list(cu_k),
+        seqused_q_list=lengths_q,
+        seqused_k_list=lengths_k,
+        cmp_residual_k_list=residual_list,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+        q_head_num=int(metadata_input["num_heads_q"]),
+        k_head_num=int(metadata_input["num_heads_k"]),
+        head_dim=int(metadata_input["head_dim"]),
+        topk=int(metadata_input["topk"]),
+        layout_query=layout_q,
+        layout_key=layout_k,
+        sparse_mode=mask_mode,
+        cmp_ratio=cmp_ratio,
+    )
+
+
 def liv2_output_single(
     params,
     is_batch=False,
@@ -1514,7 +1627,8 @@ def liv2_output_single(
 
         if is_npu_now:
             # 上板模式：调用真正的 NPU metadata 算子
-            metadata = npu_lightning_indexer_metadata(
+            metadata_op = _require_npu_op("npu_lightning_indexer_metadata")
+            metadata = metadata_op(
                 num_heads_q=q_head_num,
                 num_heads_k=k_head_num,
                 head_dim=head_dim,
@@ -1537,7 +1651,8 @@ def liv2_output_single(
             # 仿真模式：metadata 在 CPU 上生成，搬到 NPU
             metadata = log(metadata, "metadata")
 
-        npu_result, npu_topk_value = npu_lightning_indexer(
+        li_op = _require_npu_op("npu_lightning_indexer")
+        npu_result, npu_topk_value = li_op(
             query,
             key,
             weights,
@@ -1560,8 +1675,8 @@ def liv2_output_single(
         torch.npu.synchronize()
         npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
         npu_result = npu_result.cpu()
-        npu_result, _ torch.sort(npu_result)
-        cpu_result, _ torch.sort(cpu_result)
+        # 注意：不要在这里对索引做预排序。check_result 内部会自行做排序集合比较，
+        # 第二步 compare_topk_valid / isclose 依赖原始位置顺序逐位配对。
         return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value
 
 
