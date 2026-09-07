@@ -27,8 +27,8 @@ extern "C" {
  * 数据格式支持ND，通信后结果作为GroupedMatMul计算的左矩阵
  * @param [in] gmmWeight: 计算输入，Tensor，数据类型支持float16, bfloat16，类型需与x保持一致，仅支持三维,
  * 数据格式支持ND，GroupedMatMul计算的右矩阵
- * @param [in] sendCountsTensorOptional: 可选入参，计算输入，Tensor，数据类型支持int32, int64，数据格式支持ND
- * @param [in] recvCountsTensorOptional: 可选入参，计算输入，Tensor，数据类型支持int32, int64，数据格式支持ND
+ * @param [in] sendCountsTensorOptional: 必须为 nullptr；发送数据量仅通过 aclIntArray 类型的 sendCounts 参数提供。
+ * @param [in] recvCountsTensorOptional: 必须为 nullptr；接收数据量仅通过 aclIntArray 类型的 recvCounts 参数提供。
  * @param [in] mmXOptional: 可选入参，计算输入，并行进行的共享专家matmul计算中的左矩阵。
  * @param [in] mmWeightOptional: 可选入参，计算输入，并行进行的共享专家matmul计算中的右矩阵。
  * @param [in] group: 计算输入，str。ep通信域名称，专家并行的通信域
@@ -71,7 +71,7 @@ ACLNN_API aclnnStatus aclnnAlltoAllvGroupedMatMulGetWorkspaceSize(
 /**
  * @brief aclnnAlltoAllvGroupedMatMul的第二段接口，用于执行计算。
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
- * @param [in] workspace_size: 在npu
+ * @param [in] workspaceSize: 在npu
  * device侧申请的workspace大小，由第一段接口aclnnAlltoAllvGroupedMatMulGetWorkspaceSize获取。
  * @param [in] executor: op执行器，包含了算子计算流程。
  * @param [in] stream: acl stream流。
