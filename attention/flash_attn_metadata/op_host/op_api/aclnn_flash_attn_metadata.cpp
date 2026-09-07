@@ -42,20 +42,19 @@ ACLNN_API aclnnStatus aclnnFlashAttnMetadataGetWorkspaceSize(
     const char *layoutQ, const char *layoutKv, const char *layoutOut, const aclTensor *metaData,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    L2_DFX_PHASE_1(
-        aclnnFlashAttnMetadata,
-        DFX_IN(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional, batchSize, maxSeqlenQ,
-               maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, headDimV, maskMode, winLeft, winRight, layoutQ, layoutKv,
-               layoutOut),
-        DFX_OUT(metaData));
+    L2_DFX_PHASE_1(aclnnFlashAttnMetadata,
+                   DFX_IN(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional, batchSize,
+                          maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, headDimV, maskMode, winLeft,
+                          winRight, layoutQ, layoutKv, layoutOut),
+                   DFX_OUT(metaData));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     auto ret = FlashAttnMetadataCheck::ParamsCheck(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional,
                                                    sequsedKvOptional, batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ,
-                                                    numHeadsKv, headDim, headDimV, maskMode, winLeft, winRight,
-                                                    layoutQ, layoutKv, layoutOut, metaData);
+                                                   numHeadsKv, headDim, headDimV, maskMode, winLeft, winRight, layoutQ,
+                                                   layoutKv, layoutOut, metaData);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
