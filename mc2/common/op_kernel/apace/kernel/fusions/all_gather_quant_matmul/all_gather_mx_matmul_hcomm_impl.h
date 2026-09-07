@@ -169,7 +169,9 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
 
     scaleKGroups_ = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(k_), Blaze::Gemm::MXFP_DIVISOR_SIZE);
     scaleKLen_ = scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE);
-    dataBytesPerMRow_ = static_cast<uint64_t>(k_) * sizeof(AType);
+    // FP4 (fp4x2) 1 字节装 2 个元素：每行字节数 = k/2；FP8 等 = k * sizeof(AType)（与 URMA impl 契约一致）
+    dataBytesPerMRow_ =
+        Blaze::Gemm::IsFp4<AType>() ? (static_cast<uint64_t>(k_) >> 1) : static_cast<uint64_t>(k_) * sizeof(AType);
     scaleBytesPerMRow_ =
         scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE) * sizeof(AscendC::fp8_e8m0_t);
     cBytesPerM_ = static_cast<uint64_t>(n_) * sizeof(CType);
@@ -229,7 +231,7 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
                                                   static_cast<uint64_t>(m_) * scaleKLen_, static_cast<uint8_t>(1));
 
     // Data Head: 批量提交所有 head tile（repeat=tileCnt）；纯尾块路径（tileCnt=0）跳过
-    // count/stride 用 kForComm_（FP4 时 CeilDiv(K,2) 减半），地址偏移用 k_*sizeof(AType)（FP4 打包后字节数）
+    // count/stride 用 kForComm_（FP4 = K/2 打包字节），地址偏移用 dataBytesPerMRow_（数值与 kForComm_ 一致）
     if (tileCnt_ > 0) {
         commState_.dataHeadHandle_ = commState_.hccl_.template AllGather<true>(
             aGM_, gatherDataAddr_, static_cast<uint64_t>(tileM_) * kForComm_,
@@ -240,7 +242,7 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
     // Data Tail: 批量提交所有 tail tile（repeat=tailCnt）
     if (tailCnt_ > 0) {
         commState_.dataTailHandle_ = commState_.hccl_.template AllGather<true>(
-            aGM_ + headRows_ * k_ * sizeof(AType), gatherDataAddr_ + headRows_ * k_ * sizeof(AType),
+            aGM_ + headRows_ * dataBytesPerMRow_, gatherDataAddr_ + headRows_ * dataBytesPerMRow_,
             static_cast<uint64_t>(tailM_) * kForComm_, static_cast<AscendC::HcclDataType>(dataDataType_),
             static_cast<uint64_t>(m_) * kForComm_, static_cast<uint8_t>(tailCnt_));
     }
