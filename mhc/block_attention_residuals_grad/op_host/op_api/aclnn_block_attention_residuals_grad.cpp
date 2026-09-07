@@ -20,10 +20,12 @@
 #include "opdev/tensor_view_utils.h"
 
 #include "aclnn_kernels/contiguous.h"
+#include "aclnn_kernels/reshape.h"
 #include "level0/zero_op.h"
 
 #include <initializer_list>
 #include <string>
+#include <vector>
 
 using namespace op;
 
@@ -263,6 +265,30 @@ aclnnStatus CheckValidBlockNum(const aclTensor *blockRes, int64_t validBlockNum)
     return ACLNN_SUCCESS;
 }
 
+const aclTensor *CreateZeroLikeOutput(const aclTensor *grad, const aclTensor *reshapeRef,
+                                      UniqueExecutor &uniqueExecutor)
+{
+    const auto *zero = l0op::ZerosLike(grad, uniqueExecutor.get());
+    if (zero == nullptr) {
+        return nullptr;
+    }
+    if (reshapeRef == nullptr) {
+        return zero;
+    }
+
+    const auto &shape = reshapeRef->GetViewShape();
+    const size_t dimNum = shape.GetDimNum();
+    std::vector<int64_t> dims(dimNum);
+    for (size_t i = 0; i < dimNum; ++i) {
+        dims[i] = shape.GetDim(i);
+    }
+    auto *shapeArray = uniqueExecutor->AllocIntArray(dims.data(), dimNum);
+    if (shapeArray == nullptr) {
+        return nullptr;
+    }
+    return l0op::Reshape(zero, shapeArray, uniqueExecutor.get());
+}
+
 aclnnStatus HandleEmptyTensor(const aclTensor *partialBlock, const aclTensor *blockRes, const aclTensor *projWeight,
                               const aclTensor *normWeight, const aclTensor *gradHiddenStates, const aclTensor *invNorm,
                               const aclTensor *probs, const aclTensor *gradPartialBlock, const aclTensor *gradBlockRes,
@@ -287,7 +313,11 @@ aclnnStatus HandleEmptyTensor(const aclTensor *partialBlock, const aclTensor *bl
         if (grad->IsEmpty()) {
             continue;
         }
-        const auto *zero = l0op::ZerosLike(grad, uniqueExecutor.get());
+
+        // ZerosLike may drop the leading singleton dimension of [1, H].
+        // Restore gradProjWeight's view shape before copying the zero result.
+        const aclTensor *zero = CreateZeroLikeOutput(grad, grad == gradProjWeight ? gradProjWeight : nullptr,
+                                                      uniqueExecutor);
         CHECK_RET(zero != nullptr, ACLNN_ERR_INNER_NULLPTR);
         const auto *output = l0op::ViewCopy(zero, grad, uniqueExecutor.get());
         CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
