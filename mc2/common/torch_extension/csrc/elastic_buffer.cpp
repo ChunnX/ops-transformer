@@ -447,7 +447,15 @@ public:
         CheckContextTag(contextTag);
 
         HostBufferGuard guard;
-        CreateContext(resources, contextTag, numCpuBytes, guard, externalHostPtr, externalBytes);
+        try {
+            CreateContext(resources, contextTag, numCpuBytes, guard, externalHostPtr, externalBytes);
+        } catch (...) {
+            if (externalHostPtr != nullptr && resources.externalRegistered) {
+                (void)aclrtHostUnregister(externalHostPtr);
+                resources.externalRegistered = false;
+            }
+            throw;
+        }
         resources.contextTensor = CreateCommContextTensor(resources.context);
         guard.Release();
         return resources;
@@ -1239,6 +1247,7 @@ private:
     bool engramContextInitialized_ = false;
     bool engramStorageExternal_ = false;
     bool engramExternalRegisteredByUs_ = false;
+    int64_t engramExternalBytes_ = 0; // 外部 storage 首次注册的字节数（重复写入一致性校验基准）
 
     at::Tensor moeContextTensor_;
     int64_t moeCclBufferSize_ = 0; // MoE 通信 buffer 大小（首次调用时按算子参数计算并内部申请注册）
@@ -1300,8 +1309,9 @@ void ElasticBuffer::EnsureEngramContext(void *externalHostPtr, int64_t externalB
     commStream_ = c10_npu::getNPUStreamFromPool().stream(false);
     TORCH_CHECK(commStream_ != nullptr, "Failed to get NPU stream from pool for comm stream");
     EngramContextBuilder builder;
+    // 训练不使用内部存储区（storage 由调用方提供），忽略 num_cpu_bytes，
     EngramContextResources resources =
-        builder.Build(groupName_, engramNumCpuBytes_, withGrad_, externalHostPtr, externalBytes);
+        builder.Build(groupName_, withGrad_ ? 0 : engramNumCpuBytes_, withGrad_, externalHostPtr, externalBytes);
     engramHcclComm_ = resources.hcclComm;
     engramMemHandle_ = resources.memHandle;
     engramHostBufPtr_ = resources.hostBufPtr;
@@ -1311,6 +1321,7 @@ void ElasticBuffer::EnsureEngramContext(void *externalHostPtr, int64_t externalB
     commBufferSize_ = resources.commBufferSize;
     engramStorageExternal_ = (externalHostPtr != nullptr);
     engramExternalRegisteredByUs_ = resources.externalRegistered;
+    engramExternalBytes_ = externalBytes;
     int64_t addrValue = reinterpret_cast<int64_t>(engramDeviceBufPtr_);
     auto hostAddrTensor = at::full({1}, addrValue, at::TensorOptions().dtype(at::kLong));
     localStorageAddrTensor_ = hostAddrTensor.to(c10::DeviceType::PrivateUse1);
@@ -1356,6 +1367,8 @@ int64_t ElasticBuffer::ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerSe
 // EngramWrite - write data with automatic barrier.
 // with_grad=true (training): map caller-owned storage memory directly as the engram storage
 //             (zero-copy, no data copy). The storage host memory must be mappable to the
+//             device (pinned memory required), and must stay alive with a stable address
+//             for the lifetime of this buffer.
 void ElasticBuffer::EngramWrite(const at::Tensor &storage)
 {
     TORCH_CHECK(!destroyed_, "engram_write cannot be called after destroy, "
@@ -1369,7 +1382,14 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
             TORCH_CHECK(engramHostBufPtr_ == storage.data_ptr(),
                         "engram_write: engram storage is already initialized from a different address, expected "
                         "ptr=",
-                        engramHostBufPtr_, ", got ptr=", storage.data_ptr());
+                        engramHostBufPtr_, ", got ptr=", storage.data_ptr(),
+                        "; note: in with_grad mode the first engram API call initializes the context, an earlier "
+                        "engram_barrier without storage would initialize it with no storage");
+            // 远端按首次注册窗口大小读取，尺寸变化会导致越界读取
+            TORCH_CHECK(engramExternalBytes_ == static_cast<int64_t>(storage.nbytes()),
+                        "engram_write: storage size changed after the engram storage was registered from this "
+                        "address, registered ",
+                        engramExternalBytes_, " bytes, got ", storage.nbytes(), " bytes");
         } else {
             externalHostPtr = storage.data_ptr();
             externalBytes = static_cast<int64_t>(storage.nbytes());
@@ -1596,6 +1616,7 @@ void ElasticBuffer::Destroy()
         engramDeviceBufPtr_ = nullptr;
         engramStorageExternal_ = false;
         engramExternalRegisteredByUs_ = false;
+        engramExternalBytes_ = 0;
     }
     engramContextInitialized_ = false;
     moeContextInitialized_ = false;
