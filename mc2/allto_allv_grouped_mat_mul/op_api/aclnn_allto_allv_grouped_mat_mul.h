@@ -27,8 +27,8 @@ extern "C" {
  * 数据格式支持ND，通信后结果作为GroupedMatMul计算的左矩阵
  * @param [in] gmmWeight: 计算输入，Tensor，数据类型支持float16, bfloat16，类型需与x保持一致，仅支持三维,
  * 数据格式支持ND，GroupedMatMul计算的右矩阵
- * @param [in] sendCountsTensorOptional: 可选入参，计算输入，Tensor，数据类型支持int32, int64，数据格式支持ND
- * @param [in] recvCountsTensorOptional: 可选入参，计算输入，Tensor，数据类型支持int32, int64，数据格式支持ND
+ * @param [in] sendCountsTensorOptional: must be nullptr; counts are supplied only by sendCounts aclIntArray
+ * @param [in] recvCountsTensorOptional: must be nullptr; counts are supplied only by recvCounts aclIntArray
  * @param [in] mmXOptional: 可选入参，计算输入，并行进行的共享专家matmul计算中的左矩阵。
  * @param [in] mmWeightOptional: 可选入参，计算输入，并行进行的共享专家matmul计算中的右矩阵。
  * @param [in] group: 计算输入，str。ep通信域名称，专家并行的通信域

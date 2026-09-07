@@ -47,6 +47,11 @@
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
+  <!-- npu="A3" id7a -->
+  - <term>Atlas A3系列产品</term>：支持`ai_cpu`和`aiv`。
+
+  <!-- end id7a -->
+
   <!-- npu="950" id7 -->
   - <term>Ascend 950DT</term>：支持`ai_cpu`和`ccu`。
 
@@ -185,7 +190,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
     <td>commMode(char*)</td>
     <td>输入</td>
     <td>指定当前通信类型。</td>
-    <td>支持输入"ai_cpu"和"ccu"。</td>
+    <td><term>Atlas A3系列产品</term>支持"ai_cpu"和"aiv"；<term>Ascend 950DT</term>支持"ai_cpu"和"ccu"。</td>
     <td>STRING</td>
     <td>-</td>
     <td>-</td>
@@ -195,7 +200,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
     <td>epWorldSize（int64_t）</td>
     <td>输入</td>
     <td>ep通信域size。</td>
-    <td><ul><li><term>Atlas A3系列产品</term>支持8、16、32、64、128。</li><li><term>Ascend 950DT</term>支持2、4、8、16、32、64。</li></ul></td>
+    <td><ul><li><term>Atlas A3系列产品</term>初版支持2、4、8、16、32、64、128。</li><li><term>Ascend 950DT</term>支持2、4、8、16、32、64。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -362,7 +367,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
 - 通信引擎约束：
 
   <!-- npu="A3" id8 -->
-  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：支持AI_CPU通信。
+  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：支持AI_CPU通信和AIV内存语义通信。AIV模式要求CCL window大小不小于`BSK * N1 * sizeof(dtype) + epWorldSize * e * sizeof(int32_t) + 16MB`。16MB固定尾部区包含同步标记和本卡sendCounts暂存；计数/CumSum矩阵位于输出区与固定尾部区之间。同一通信域内不支持并发调用。
   <!-- end id8 -->
   <!-- npu="950" id9 -->
   - Ascend 950DT：支持 CCU 通信和 AI_CPU 通信，CCU 仅支持单机 UB 域内互联，AI_CPU 可支持跨机 UB 域内互联。
