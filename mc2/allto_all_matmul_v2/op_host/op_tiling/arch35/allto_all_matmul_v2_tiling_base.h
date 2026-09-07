@@ -658,7 +658,8 @@ protected:
         auto x1Dtype = x1DescTiling->GetDataType();
         bool hasBias = context_->GetOptionalInputShape(IDX_INPUT_BIAS) != nullptr;
         if (x1Dtype == ge::DT_FLOAT4_E2M1) {
-            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1, mm::BiasDataType::DT_FLOAT>
+            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1,
+                                  mm::BiasDataType::DT_FLOAT>
                 tilingEngine;
             tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
             tilingEngine.EnableBaseMHalving(true);
