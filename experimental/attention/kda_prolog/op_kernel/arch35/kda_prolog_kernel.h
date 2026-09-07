@@ -24,6 +24,7 @@
 #include "kda_prolog_qmm_qkv.h"
 #include "kda_prolog_sigmoid.h"
 #include "../kda_prolog_tiling_data.h"
+#include "../kda_prolog_workspace.h"
 
 namespace KdaProlog {
 
@@ -48,9 +49,13 @@ public:
           workspace_(workspace),
           tiling_(tiling)
     {
+        const auto &base = tiling_->baseParams;
+        __gm__ uint8_t *quantX = workspace_ + KdaPrologWorkspace::OffsetQuantX();
+        __gm__ uint8_t *scaleX = workspace_ + KdaPrologWorkspace::OffsetScaleX(base.tSize, base.hiddenSize);
+
         mmBgg_.Init(x_, weightBeta_, weightGate_, weightG_, beta_, gate_, g_, workspace_, tiling_);
-        mxQuant_.Init(x_, workspace_, tiling_);
-        qmmQkv_.Init(weightQkv_, scaleQkv_, qkv_, workspace_, tiling_);
+        mxQuant_.Init(x_, quantX, scaleX, tiling_);
+        qmmQkv_.Init(quantX, weightQkv_, scaleX, scaleQkv_, qkv_, tiling_);
         sigmoid_.Init(beta_, gate_, g_, tiling_);
     }
 

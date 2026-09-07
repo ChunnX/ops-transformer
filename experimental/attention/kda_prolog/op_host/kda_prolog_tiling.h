@@ -16,6 +16,7 @@
 #ifndef KDA_PROLOG_TILING_H
 #define KDA_PROLOG_TILING_H
 
+#include <cstdint>
 #include "err/ops_err.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "platform/platform_info.h"
@@ -86,13 +87,16 @@ public:
     ge::DataType inputXType = ge::DT_BF16;
     ge::DataType inputWeightQkvType = ge::DT_FLOAT8_E4M3FN;
     ge::DataType outputQkvType = ge::DT_BF16;
+    uint32_t aicNum = 0;
+    uint64_t l1Size = 0;
+    uint64_t l0cSize = 0;
 };
 
 class KdaPrologInfoParser {
 public:
-    explicit KdaPrologInfoParser(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit KdaPrologInfoParser(gert::TilingContext *context)
+        : context_(context)
+    {}
     ~KdaPrologInfoParser() = default;
 
     ge::graphStatus GetOpName();
@@ -123,14 +127,15 @@ private:
 
 class KdaPrologTiling {
 public:
-    explicit KdaPrologTiling(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit KdaPrologTiling(gert::TilingContext *context)
+        : context_(context)
+    {}
     ge::graphStatus DoTiling(const KdaPrologTilingInfo *tilingInfo);
 
 private:
     ge::graphStatus FillBaseParams(const KdaPrologTilingInfo &tilingInfo);
     ge::graphStatus CalcModuleTilings(const KdaPrologTilingInfo &tilingInfo);
+    ge::graphStatus FillWorkspace(const KdaPrologTilingInfo &tilingInfo);
     ge::graphStatus SetTilingKey(const KdaPrologTilingInfo &tilingInfo);
     ge::graphStatus WriteTilingResult(const KdaPrologTilingInfo &tilingInfo);
 
