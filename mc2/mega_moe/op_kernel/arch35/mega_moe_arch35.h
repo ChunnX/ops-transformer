@@ -527,10 +527,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
     Get<M_VALUE>(problemShape) = commonConfig_.tokenNum;
     Get<N_VALUE>(problemShape) = commonConfig_.gmm1OutputDim;
     Get<K_VALUE>(problemShape) = commonConfig_.tokenHiddenDim;
-    // A8W8 原流程在共享 GMM2 延续 MoE 分核；W4 的 FP4 prologue 原流程以 0 为独立起点。
-    // 这里只统一 stage 实现，不改变两类路径各自的调度语义。
-    uint32_t w4SharedGmm2StartBlockIdx = 0U;
-    uint32_t &sharedGmm2StartBlockIdx = ENABLE_A8W8 ? startBlockIdx_ : w4SharedGmm2StartBlockIdx;
+    // 临时诊断：只打印逻辑 job 0，核对 AIC/AIV0/AIV1 在共享 GMM2 入口看到的滚动分核游标。
+    if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
+        if (gmmExecutionConfig_.blockJob.jobIndex == 0U) {
+            if constexpr (g_coreType == AIC) {
+                AscendC::printf("[MegaMoeCursor] rank=%u role=AIC block=%u job=%u/%u cursor=%u\n", rankId_,
+                                GetBlockIdx(), gmmExecutionConfig_.blockJob.jobIndex,
+                                gmmExecutionConfig_.blockJob.totalJobs, startBlockIdx_);
+            } else {
+                AscendC::printf("[MegaMoeCursor] rank=%u role=AIV%u block=%u job=%u/%u cursor=%u\n", rankId_,
+                                GetSubBlockIdx(), GetBlockIdx(), gmmExecutionConfig_.blockJob.jobIndex,
+                                gmmExecutionConfig_.blockJob.totalJobs, startBlockIdx_);
+            }
+        }
+    }
     GMMAddrInfo gmmAddrInfo{};
     for (uint32_t sharedExpertIdx = 0U; sharedExpertIdx < sharedExpertNum_; ++sharedExpertIdx) {
         UpdateSharedExpertGmm2GlobalBuffer<ActivationQuantOutType, Weight1Type, QuantScaleOutType, GMM1_TILE_M>(
@@ -538,7 +548,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
             sharedExpertIdx);
         RunSharedExpertGmm2Stage<COMBINE_NO_QUANT, QuantOutType, ActivationQuantOutType, Weight1Type, QuantScaleOutType,
                                  ENABLE_A8W4, ENABLE_A4W4, GMM1_TILE_M, TopkWeightsPrefetch, IsGmm1Interleaved,
-                                 ENABLE_A8W8>(gmmExecutionConfig_, gmmAddrInfo, problemShape, sharedGmm2StartBlockIdx);
+                                 ENABLE_A8W8>(gmmExecutionConfig_, gmmAddrInfo, problemShape, startBlockIdx_);
     }
 }
 
