@@ -11,17 +11,17 @@
 import torch
 from torch.library import impl
 
-from cann_ops_nn.op_builder import OpBuilder, get_as_library
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 
 class ClaGateMxQuantWithDualAxisOpBuilder(OpBuilder):
     """ClaGateMxQuantWithDualAxis 四输入 Torch Extension 构建器。"""
 
     def __init__(self):
-        super().__init__("cla_gate_mx_quant_with_dual_axis")
+        super().__init__("cla_gate_mx_quant_with_dual_axis", category="attention")
 
     def sources(self) -> list:
-        return [self.resolve_source("cla_gate_mx_quant_with_dual_axis.cpp")]
+        return ["csrc/attention/cla_gate_mx_quant_with_dual_axis.cpp"]
 
     def schema(self) -> str:
         return (
@@ -31,6 +31,7 @@ class ClaGateMxQuantWithDualAxisOpBuilder(OpBuilder):
             "Tensor global_gate_logits, "
             "Tensor local_gate_logits, "
             "*, "
+            "str round_mode='rint', "
             "int scale_alg=1, "
             "int dst_type=36"
             ") -> (Tensor, Tensor, Tensor, Tensor)"
@@ -44,20 +45,25 @@ class ClaGateMxQuantWithDualAxisOpBuilder(OpBuilder):
             global_gate_logits: torch.Tensor,
             local_gate_logits: torch.Tensor,
             *,
+            round_mode: str = "rint",
             scale_alg: int = 1,
             dst_type: int = 36,
         ):
-            torch._check(global_out.dim() == 4, lambda: f"global_out must be 4D, but got {global_out.dim()}D")
-            torch._check(local_out.dim() == 4, lambda: f"local_out must be 4D, but got {local_out.dim()}D")
+            torch._check(global_out.dim() == 3, lambda: f"global_out must be 3D [T,N,D], but got {global_out.dim()}D")
+            torch._check(local_out.dim() == 3, lambda: f"local_out must be 3D [T,N,D], but got {local_out.dim()}D")
             torch._check(
                 local_out.shape == global_out.shape,
                 lambda: f"local_out shape {tuple(local_out.shape)} must match global_out {tuple(global_out.shape)}",
             )
+            t, n, d = global_out.shape
+            torch._check(n % 2 == 0, lambda: f"N must be even, got {n}")
+            torch._check(4 <= n <= 128, lambda: f"N must be in [4,128], got {n}")
+            torch._check(d in (128, 256), lambda: f"D must be 128 or 256, got {d}")
 
             gate_dim = global_gate_logits.dim()
             torch._check(
-                gate_dim in (3, 4),
-                lambda: f"global_gate_logits must be 3D or 4D, but got {gate_dim}D",
+                gate_dim in (2, 3),
+                lambda: f"global_gate_logits must be 2D [T,N] or 3D [T,N,1], but got {gate_dim}D",
             )
             torch._check(
                 local_gate_logits.dim() == gate_dim,
@@ -68,12 +74,25 @@ class ClaGateMxQuantWithDualAxisOpBuilder(OpBuilder):
                 lambda: "local_gate_logits shape must match global_gate_logits",
             )
             torch._check(
+                global_gate_logits.shape[0] == t and global_gate_logits.shape[1] == n,
+                lambda: "gate logits shape must match [T,N]",
+            )
+            if gate_dim == 3:
+                torch._check(
+                    global_gate_logits.shape[2] == 1,
+                    lambda: "3D gate logits must be [T,N,1]",
+                )
+            torch._check(
+                round_mode == "rint",
+                lambda: f"torch extension currently only supports round_mode=rint for FP8, got {round_mode}",
+            )
+            torch._check(
                 scale_alg in (0, 1),
                 lambda: f"scale_alg must be 0 or 1, but got {scale_alg}",
             )
             torch._check(
                 dst_type in (35, 36),
-                lambda: f"dst_type must be 35(float8_e5m2) or 36(float8_e4m3fn), but got {dst_type}",
+                lambda: f"torch extension currently only supports dst_type 35/36(FP8), got {dst_type}",
             )
 
             if dst_type == 35:
@@ -81,16 +100,14 @@ class ClaGateMxQuantWithDualAxisOpBuilder(OpBuilder):
             else:
                 data_dtype = torch.float8_e4m3fn
 
-            s, b, n, d = global_out.shape
-            m = s * b
             k = n * d
-
-            row_data = torch.empty([m, k], dtype=data_dtype, device="meta")
-            col_data = torch.empty([m, k], dtype=data_dtype, device="meta")
-            row_scale = torch.empty([m, k // 64, 2], dtype=torch.uint8, device="meta")
-            col_scale = torch.empty([m // 64, k, 2], dtype=torch.uint8, device="meta")
+            row_data = torch.empty([t, k], dtype=data_dtype, device="meta")
+            col_data = torch.empty([t, k], dtype=data_dtype, device="meta")
+            row_scale = torch.empty([t, (k + 63) // 64, 2], dtype=torch.uint8, device="meta")
+            col_scale = torch.empty([(t + 63) // 64, k, 2], dtype=torch.uint8, device="meta")
 
             return row_data, row_scale, col_data, col_scale
+
 
 
 cla_gate_mx_quant_with_dual_axis_builder = ClaGateMxQuantWithDualAxisOpBuilder()
@@ -108,6 +125,7 @@ def cla_gate_mx_quant_with_dual_axis(
     global_gate_logits: torch.Tensor,
     local_gate_logits: torch.Tensor,
     *,
+    round_mode: str = "rint",
     scale_alg: int = 1,
     dst_type: int = 36,
 ):
@@ -118,6 +136,7 @@ def cla_gate_mx_quant_with_dual_axis(
         local_out,
         global_gate_logits,
         local_gate_logits,
+        round_mode,
         scale_alg,
         dst_type,
     )

@@ -1,0 +1,2827 @@
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/op_api/aclnn_cla_gate_mx_quant_with_dual_axis.cpp b/attention/cla_gate_mx_quant_with_dual_axis/op_api/aclnn_cla_gate_mx_quant_with_dual_axis.cpp
+index 5bd944245..8fa8bbe05 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/op_api/aclnn_cla_gate_mx_quant_with_dual_axis.cpp
++++ b/attention/cla_gate_mx_quant_with_dual_axis/op_api/aclnn_cla_gate_mx_quant_with_dual_axis.cpp
+@@ -9,6 +9,7 @@
+  */
+ 
+ #include <cstdint>
++#include <cstring>
+ #include "aclnn_cla_gate_mx_quant_with_dual_axis.h"
+ #include "cla_gate_mx_quant_with_dual_axis.h"
+ #include "aclnn/aclnn_base.h"
+@@ -20,6 +21,7 @@
+ #include "opdev/op_executor.h"
+ #include "opdev/make_op_executor.h"
+ #include "opdev/op_log.h"
++#include "opdev/shape_utils.h"
+ #include "opdev/tensor_view_utils.h"
+ 
+ using namespace op;
+@@ -29,14 +31,16 @@ extern "C" {
+ #endif
+ 
+ namespace {
+-constexpr int64_t EXPECTED_S = 256;
+-constexpr int64_t EXPECTED_B = 4;
+-constexpr int64_t EXPECTED_N = 96;
+-constexpr int64_t EXPECTED_D = 256;
+-constexpr int64_t NUM_TWO = 2;
+-constexpr int64_t SPLIT_BLOCK_SIZE = 64;
++constexpr int64_t MIN_N = 4;
++constexpr int64_t MAX_N = 128;
++constexpr int64_t ROW_BLOCK = 64;
++constexpr int64_t SCALE_LAST_DIM = 2;
+ constexpr int64_t SCALE_ALG_OCP = 0;
+ constexpr int64_t SCALE_ALG_CUBLAS = 1;
++constexpr int64_t FP8_E4M3FN = 36;
++constexpr int64_t FP8_E5M2 = 35;
++constexpr int64_t FP4_E2M1 = 40;
++constexpr int64_t FP4_E1M2 = 41;
+ 
+ static bool CheckNotNull(const aclTensor* globalOut, const aclTensor* localOut,
+                          const aclTensor* globalGateLogits, const aclTensor* localGateLogits,
+@@ -54,6 +58,17 @@ static bool CheckNotNull(const aclTensor* globalOut, const aclTensor* localOut,
+     return true;
+ }
+ 
++static bool IsRoundModeValid(const char* mode)
++{
++    return mode == nullptr || std::strcmp(mode, "rint") == 0 || std::strcmp(mode, "round") == 0 ||
++           std::strcmp(mode, "floor") == 0;
++}
++
++static bool IsDstTypeValid(int64_t dstType)
++{
++    return dstType == FP8_E5M2 || dstType == FP8_E4M3FN || dstType == FP4_E2M1 || dstType == FP4_E1M2;
++}
++
+ static bool CheckDtypeValid(const aclTensor* globalOut, const aclTensor* localOut,
+                             const aclTensor* globalGateLogits, const aclTensor* localGateLogits,
+                             int64_t dstType)
+@@ -63,9 +78,9 @@ static bool CheckDtypeValid(const aclTensor* globalOut, const aclTensor* localOu
+     OP_CHECK_DTYPE_NOT_SAME(localOut, globalOut, return false);
+     OP_CHECK_DTYPE_NOT_SAME(globalGateLogits, globalOut, return false);
+     OP_CHECK_DTYPE_NOT_SAME(localGateLogits, globalOut, return false);
+-    if (dstType != static_cast<int64_t>(op::DataType::DT_FLOAT8_E4M3FN) &&
+-        dstType != static_cast<int64_t>(op::DataType::DT_FLOAT8_E5M2)) {
+-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "dst_type must be float8_e4m3fn or float8_e5m2.");
++    if (!IsDstTypeValid(dstType)) {
++        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
++                "dst_type must be 35(float8_e5m2), 36(float8_e4m3fn), 40(float4_e2m1) or 41(float4_e1m2).");
+         return false;
+     }
+     return true;
+@@ -78,10 +93,11 @@ static bool CheckShape(const aclTensor* globalOut, const aclTensor* localOut,
+     auto loShape = localOut->GetViewShape();
+     auto ggShape = globalGateLogits->GetViewShape();
+     auto lgShape = localGateLogits->GetViewShape();
+-    if (goShape.GetDimNum() != 4 || loShape.GetDimNum() != 4 ||
+-        goShape.GetDim(0) != EXPECTED_S || goShape.GetDim(1) != EXPECTED_B ||
+-        goShape.GetDim(2) != EXPECTED_N || goShape.GetDim(3) != EXPECTED_D) {
+-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "global_out must be [256,4,96,256].");
++    if (goShape.GetDimNum() != 3 || loShape.GetDimNum() != 3 ||
++        goShape.GetDim(1) < MIN_N || goShape.GetDim(1) > MAX_N || goShape.GetDim(1) % 2 != 0 ||
++        (goShape.GetDim(2) != 128 && goShape.GetDim(2) != 256)) {
++        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
++                "global_out/local_out must be [T,N,D], N in [4,128] even, D in {128,256}.");
+         return false;
+     }
+     if (loShape.GetDimNum() != goShape.GetDimNum()) {
+@@ -94,12 +110,18 @@ static bool CheckShape(const aclTensor* globalOut, const aclTensor* localOut,
+             return false;
+         }
+     }
+-    if (ggShape.GetDimNum() != 3 && ggShape.GetDimNum() != 4) {
+-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "global_gate_logits must be [256,4,96] or [256,4,96,1].");
++    auto gateValid = [&](const op::Shape& gate) {
++        if (gate.GetDimNum() == 2) {
++            return gate.GetDim(0) == goShape.GetDim(0) && gate.GetDim(1) == goShape.GetDim(1);
++        }
++        if (gate.GetDimNum() == 3) {
++            return gate.GetDim(0) == goShape.GetDim(0) && gate.GetDim(1) == goShape.GetDim(1) &&
++                   gate.GetDim(2) == 1;
++        }
+         return false;
+-    }
+-    if (lgShape.GetDimNum() != ggShape.GetDimNum()) {
+-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "local_gate_logits rank must match global_gate_logits.");
++    };
++    if (!gateValid(ggShape) || lgShape.GetDimNum() != ggShape.GetDimNum()) {
++        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gate logits must be [T,N] or [T,N,1].");
+         return false;
+     }
+     for (size_t i = 0; i < ggShape.GetDimNum(); ++i) {
+@@ -111,9 +133,34 @@ static bool CheckShape(const aclTensor* globalOut, const aclTensor* localOut,
+     return true;
+ }
+ 
++static bool CheckOutputShape(const aclTensor* rowData, const aclTensor* rowScale,
++                             const aclTensor* colData, const aclTensor* colScale, int64_t t, int64_t k)
++{
++    auto rdShape = rowData->GetViewShape();
++    auto rsShape = rowScale->GetViewShape();
++    auto cdShape = colData->GetViewShape();
++    auto csShape = colScale->GetViewShape();
++    if (rdShape.GetDimNum() != 2 || cdShape.GetDimNum() != 2 || rdShape.GetDim(0) != t ||
++        rdShape.GetDim(1) != k || cdShape.GetDim(0) != t || cdShape.GetDim(1) != k) {
++        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "row_data/col_data must be [T,N*D].");
++        return false;
++    }
++    if (rsShape.GetDimNum() != 3 || csShape.GetDimNum() != 3 ||
++        rsShape.GetDim(0) != t || rsShape.GetDim(1) != (k + ROW_BLOCK - 1) / ROW_BLOCK ||
++        rsShape.GetDim(2) != SCALE_LAST_DIM ||
++        csShape.GetDim(0) != (t + ROW_BLOCK - 1) / ROW_BLOCK || csShape.GetDim(1) != k ||
++        csShape.GetDim(2) != SCALE_LAST_DIM) {
++        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
++                "row_scale/col_scale physical shape mismatch, expected "
++                "[T,ceil(N*D/64),2] and [ceil(T/64),N*D,2].");
++        return false;
++    }
++    return true;
++}
++
+ static aclnnStatus CheckParams(const aclTensor* globalOut, const aclTensor* localOut,
+                                const aclTensor* globalGateLogits, const aclTensor* localGateLogits,
+-                               int64_t scaleAlg, int64_t dstType,
++                               const char* roundMode, int64_t scaleAlg, int64_t dstType,
+                                const aclTensor* rowData, const aclTensor* rowScale,
+                                const aclTensor* colData, const aclTensor* colScale)
+ {
+@@ -123,10 +170,21 @@ static aclnnStatus CheckParams(const aclTensor* globalOut, const aclTensor* loca
+     CHECK_RET(CheckDtypeValid(globalOut, localOut, globalGateLogits, localGateLogits, dstType),
+               ACLNN_ERR_PARAM_INVALID);
+     CHECK_RET(CheckShape(globalOut, localOut, globalGateLogits, localGateLogits), ACLNN_ERR_PARAM_INVALID);
+-    if (scaleAlg != SCALE_ALG_OCP && scaleAlg != SCALE_ALG_CUBLAS) {
+-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "scale_alg must be 0 or 1.");
++    CHECK_RET(IsRoundModeValid(roundMode), ACLNN_ERR_PARAM_INVALID);
++    CHECK_RET(scaleAlg == SCALE_ALG_OCP || scaleAlg == SCALE_ALG_CUBLAS, ACLNN_ERR_PARAM_INVALID);
++    if ((dstType == FP4_E2M1 || dstType == FP4_E1M2) && scaleAlg != SCALE_ALG_OCP) {
++        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FP4 only supports scale_alg=0.");
+         return ACLNN_ERR_PARAM_INVALID;
+     }
++    if ((dstType == FP8_E4M3FN || dstType == FP8_E5M2) && roundMode != nullptr &&
++        std::strcmp(roundMode, "rint") != 0) {
++        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FP8 only supports round_mode=rint.");
++        return ACLNN_ERR_PARAM_INVALID;
++    }
++    auto goShape = globalOut->GetViewShape();
++    int64_t t = goShape.GetDim(0);
++    int64_t k = goShape.GetDim(1) * goShape.GetDim(2);
++    CHECK_RET(CheckOutputShape(rowData, rowScale, colData, colScale, t, k), ACLNN_ERR_PARAM_INVALID);
+     return ACLNN_SUCCESS;
+ }
+ } // namespace
+@@ -134,19 +192,19 @@ static aclnnStatus CheckParams(const aclTensor* globalOut, const aclTensor* loca
+ aclnnStatus aclnnClaGateMxQuantWithDualAxisGetWorkspaceSize(
+     const aclTensor* globalOut, const aclTensor* localOut,
+     const aclTensor* globalGateLogits, const aclTensor* localGateLogits,
+-    int64_t scaleAlg, int64_t dstType,
++    const char* roundModeOptional, int64_t scaleAlg, int64_t dstType,
+     aclTensor* rowData, aclTensor* rowScale,
+     aclTensor* colData, aclTensor* colScale,
+     uint64_t* workspaceSize, aclOpExecutor** executor)
+ {
+     L2_DFX_PHASE_1(aclnnClaGateMxQuantWithDualAxis,
+-                   DFX_IN(globalOut, localOut, globalGateLogits, localGateLogits, scaleAlg, dstType),
++                   DFX_IN(globalOut, localOut, globalGateLogits, localGateLogits, roundModeOptional, scaleAlg, dstType),
+                    DFX_OUT(rowData, rowScale, colData, colScale));
+ 
+     auto uniqueExecutor = CREATE_EXECUTOR();
+     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+     auto ret = CheckParams(globalOut, localOut, globalGateLogits, localGateLogits,
+-                           scaleAlg, dstType, rowData, rowScale, colData, colScale);
++                           roundModeOptional, scaleAlg, dstType, rowData, rowScale, colData, colScale);
+     CHECK_RET(ret == ACLNN_SUCCESS, ret);
+ 
+     auto globalOutContiguous = l0op::Contiguous(globalOut, uniqueExecutor.get());
+@@ -160,7 +218,7 @@ aclnnStatus aclnnClaGateMxQuantWithDualAxisGetWorkspaceSize(
+ 
+     auto result = l0op::ClaGateMxQuantWithDualAxis(
+         globalOutContiguous, localOutContiguous, globalGateContiguous, localGateContiguous,
+-        scaleAlg, dstType, uniqueExecutor.get());
++        roundModeOptional, scaleAlg, dstType, uniqueExecutor.get());
+     const aclTensor* rowDataOut = std::get<0>(result);
+     const aclTensor* rowScaleOut = std::get<1>(result);
+     const aclTensor* colDataOut = std::get<2>(result);
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/op_api/aclnn_cla_gate_mx_quant_with_dual_axis.h b/attention/cla_gate_mx_quant_with_dual_axis/op_api/aclnn_cla_gate_mx_quant_with_dual_axis.h
+index 85498576c..48e3ddf93 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/op_api/aclnn_cla_gate_mx_quant_with_dual_axis.h
++++ b/attention/cla_gate_mx_quant_with_dual_axis/op_api/aclnn_cla_gate_mx_quant_with_dual_axis.h
+@@ -25,6 +25,7 @@ ACLNN_API aclnnStatus aclnnClaGateMxQuantWithDualAxisGetWorkspaceSize(
+     const aclTensor* localOut,
+     const aclTensor* globalGateLogits,
+     const aclTensor* localGateLogits,
++    const char* roundModeOptional,
+     int64_t scaleAlg,
+     int64_t dstType,
+     aclTensor* rowData,
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/op_api/cla_gate_mx_quant_with_dual_axis.cpp b/attention/cla_gate_mx_quant_with_dual_axis/op_api/cla_gate_mx_quant_with_dual_axis.cpp
+index 211e4955d..cc017d4e3 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/op_api/cla_gate_mx_quant_with_dual_axis.cpp
++++ b/attention/cla_gate_mx_quant_with_dual_axis/op_api/cla_gate_mx_quant_with_dual_axis.cpp
+@@ -21,34 +21,30 @@ namespace l0op {
+ OP_TYPE_REGISTER(ClaGateMxQuantWithDualAxis);
+ 
+ namespace {
+-constexpr int64_t EXPECTED_S = 256;
+-constexpr int64_t EXPECTED_B = 4;
+-constexpr int64_t EXPECTED_N = 96;
+-constexpr int64_t EXPECTED_D = 256;
+-constexpr int64_t SPLIT_BLOCK_SIZE = 64;
++constexpr int64_t ROW_BLOCK = 64;
+ 
+-op::Shape MakeRowDataShape()
++op::Shape MakeRowDataShape(const op::Shape& xShape)
+ {
+     op::Shape shape;
+-    shape.AppendDim(EXPECTED_S * EXPECTED_B);
+-    shape.AppendDim(EXPECTED_N * EXPECTED_D);
++    shape.AppendDim(xShape.GetDim(0));
++    shape.AppendDim(xShape.GetDim(1) * xShape.GetDim(2));
+     return shape;
+ }
+ 
+-op::Shape MakeRowScaleShape()
++op::Shape MakeRowScaleShape(const op::Shape& xShape)
+ {
+     op::Shape shape;
+-    shape.AppendDim(EXPECTED_S * EXPECTED_B);
+-    shape.AppendDim((EXPECTED_N * EXPECTED_D) / SPLIT_BLOCK_SIZE);
++    shape.AppendDim(xShape.GetDim(0));
++    shape.AppendDim((xShape.GetDim(1) * xShape.GetDim(2) + ROW_BLOCK - 1) / ROW_BLOCK);
+     shape.AppendDim(2);
+     return shape;
+ }
+ 
+-op::Shape MakeColScaleShape()
++op::Shape MakeColScaleShape(const op::Shape& xShape)
+ {
+     op::Shape shape;
+-    shape.AppendDim((EXPECTED_S * EXPECTED_B) / SPLIT_BLOCK_SIZE);
+-    shape.AppendDim(EXPECTED_N * EXPECTED_D);
++    shape.AppendDim((xShape.GetDim(0) + ROW_BLOCK - 1) / ROW_BLOCK);
++    shape.AppendDim(xShape.GetDim(1) * xShape.GetDim(2));
+     shape.AppendDim(2);
+     return shape;
+ }
+@@ -56,14 +52,17 @@ op::Shape MakeColScaleShape()
+ 
+ std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*> ClaGateMxQuantWithDualAxis(
+     const aclTensor* globalOut, const aclTensor* localOut, const aclTensor* globalGateLogits,
+-    const aclTensor* localGateLogits, int64_t scaleAlg, int64_t dstType, aclOpExecutor* executor)
++    const aclTensor* localGateLogits, const char* roundModeOptional, int64_t scaleAlg, int64_t dstType,
++    aclOpExecutor* executor)
+ {
+-    L0_DFX(ClaGateMxQuantWithDualAxis, globalOut, localOut, globalGateLogits, localGateLogits, scaleAlg, dstType);
++    L0_DFX(ClaGateMxQuantWithDualAxis, globalOut, localOut, globalGateLogits, localGateLogits,
++           roundModeOptional, scaleAlg, dstType);
+ 
+-    auto rowDataShape = MakeRowDataShape();
++    auto xShape = globalOut->GetViewShape();
++    auto rowDataShape = MakeRowDataShape(xShape);
+     auto colDataShape = rowDataShape;
+-    auto rowScaleShape = MakeRowScaleShape();
+-    auto colScaleShape = MakeColScaleShape();
++    auto rowScaleShape = MakeRowScaleShape(xShape);
++    auto colScaleShape = MakeColScaleShape(xShape);
+ 
+     auto rowData = executor->AllocTensor(rowDataShape, op::DataType(dstType));
+     auto rowScale = executor->AllocTensor(rowScaleShape, op::DataType::DT_FLOAT8_E8M0);
+@@ -74,11 +73,13 @@ std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*> ClaGateMxQuantWithDua
+         return std::make_tuple(nullptr, nullptr, nullptr, nullptr);
+     }
+ 
+-    // OP_ATTR 顺序与 op_host ClaGateMxQuantWithDualAxis 的 attr 声明顺序保持一致。
++    // OP_ATTR order must match op_def attr declaration:
++    // dst_type(0), scale_alg(1), round_mode(2)
++    const char* roundMode = (roundModeOptional != nullptr) ? roundModeOptional : "rint";
+     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(ClaGateMxQuantWithDualAxis,
+                                            OP_INPUT(globalOut, localOut, globalGateLogits, localGateLogits),
+                                            OP_OUTPUT(rowData, rowScale, colData, colScale),
+-                                           OP_ATTR(scaleAlg, dstType));
++                                           OP_ATTR(dstType, scaleAlg, roundMode));
+     if (ret != ACLNN_SUCCESS) {
+         OP_LOGE(ACLNN_ERR_INNER, "ClaGateMxQuantWithDualAxis launch kernel failed.");
+         return std::make_tuple(nullptr, nullptr, nullptr, nullptr);
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/op_api/cla_gate_mx_quant_with_dual_axis.h b/attention/cla_gate_mx_quant_with_dual_axis/op_api/cla_gate_mx_quant_with_dual_axis.h
+index a07a8a8ab..7931562df 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/op_api/cla_gate_mx_quant_with_dual_axis.h
++++ b/attention/cla_gate_mx_quant_with_dual_axis/op_api/cla_gate_mx_quant_with_dual_axis.h
+@@ -17,7 +17,8 @@ namespace l0op {
+ 
+ std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*> ClaGateMxQuantWithDualAxis(
+     const aclTensor* globalOut, const aclTensor* localOut, const aclTensor* globalGateLogits,
+-    const aclTensor* localGateLogits, int64_t scaleAlg, int64_t dstType, aclOpExecutor* executor);
++    const aclTensor* localGateLogits, const char* roundModeOptional, int64_t scaleAlg, int64_t dstType,
++    aclOpExecutor* executor);
+ 
+ } // namespace l0op
+ 
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/op_host/arch35/cla_gate_mx_quant_with_dual_axis_tiling_arch35.cpp b/attention/cla_gate_mx_quant_with_dual_axis/op_host/arch35/cla_gate_mx_quant_with_dual_axis_tiling_arch35.cpp
+index eab59d10a..0d16968ea 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/op_host/arch35/cla_gate_mx_quant_with_dual_axis_tiling_arch35.cpp
++++ b/attention/cla_gate_mx_quant_with_dual_axis/op_host/arch35/cla_gate_mx_quant_with_dual_axis_tiling_arch35.cpp
+@@ -27,6 +27,12 @@ using namespace ClaGateMxQuantWithDualAxisOp;
+ 
+ namespace optiling {
+ namespace {
++// Attr order must match op_def:
++// dst_type(0), scale_alg(1), round_mode(2)
++constexpr int64_t INDEX_ATTR_DST_TYPE = 0;
++constexpr int64_t INDEX_ATTR_SCALE_ALG = 1;
++constexpr int64_t INDEX_ATTR_ROUND_MODE = 2;
++
+ constexpr int64_t INPUT_GLOBAL_OUT = 0;
+ constexpr int64_t INPUT_LOCAL_OUT = 1;
+ constexpr int64_t INPUT_GLOBAL_GATE = 2;
+@@ -35,92 +41,240 @@ constexpr int64_t OUTPUT_ROW_DATA = 0;
+ constexpr int64_t OUTPUT_ROW_SCALE = 1;
+ constexpr int64_t OUTPUT_COL_DATA = 2;
+ constexpr int64_t OUTPUT_COL_SCALE = 3;
+-constexpr int64_t EXPECTED_S = 256;
+-constexpr int64_t EXPECTED_B = 4;
+-constexpr int64_t EXPECTED_N = 96;
+-constexpr int64_t EXPECTED_D = 256;
+-constexpr int64_t DIM_M = EXPECTED_S * EXPECTED_B;
+-constexpr int64_t DIM_K = EXPECTED_N * EXPECTED_D;
++
+ constexpr int64_t BLOCK_W = 256;
+ constexpr int64_t BLOCK_H = 64;
+-constexpr int64_t ATTR_SCALE_ALG = 0;
+-constexpr int64_t ATTR_DST_TYPE = 1;
++constexpr int64_t MIN_N = 4;
++constexpr int64_t MAX_N = 128;
++
++const std::set<ge::DataType> INPUT_SUPPORT_DTYPE_SET = {ge::DT_FLOAT16, ge::DT_BF16};
++const std::set<ge::DataType> Y_SUPPORT_DTYPE_SET = {ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2,
++                                                    ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2};
++const std::set<ge::DataType> Y_SUPPORT_DTYPE_FP4_SET = {ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2};
++const std::set<ge::DataType> Y_SUPPORT_DTYPE_FP8_SET = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2};
++
++RoundModeList GetRoundMode(const string& roundMode)
++{
++    if (roundMode == "rint") {
++        return RoundModeList::MODE_RINT;
++    }
++    if (roundMode == "round") {
++        return RoundModeList::MODE_ROUND;
++    }
++    if (roundMode == "floor") {
++        return RoundModeList::MODE_FLOOR;
++    }
++    return RoundModeList::MODE_UNDEFINED;
++}
++
++bool IsValidTNDShape(const gert::Shape& shape)
++{
++    return shape.GetDimNum() == 3 && shape.GetDim(0) > 0 && shape.GetDim(1) >= MIN_N &&
++           shape.GetDim(1) <= MAX_N && shape.GetDim(1) % 2 == 0 &&
++           (shape.GetDim(2) == 128 || shape.GetDim(2) == 256);
++}
++
++bool IsValidGateShape(const gert::Shape& shape, int64_t t, int64_t n)
++{
++    if (shape.GetDimNum() == 2) {
++        return shape.GetDim(0) == t && shape.GetDim(1) == n;
++    }
++    if (shape.GetDimNum() == 3) {
++        return shape.GetDim(0) == t && shape.GetDim(1) == n && shape.GetDim(2) == 1;
++    }
++    return false;
++}
++
++bool CheckShape(const gert::Shape& go, const gert::Shape& lo, const gert::Shape& gg, const gert::Shape& lg)
++{
++    return IsValidTNDShape(go) && lo == go && IsValidGateShape(gg, go.GetDim(0), go.GetDim(1)) &&
++           lg == gg;
++}
++
++ge::graphStatus CheckOutputShapes(const gert::Shape& go, const gert::Shape& rowData, const gert::Shape& rowScale,
++                                  const gert::Shape& colData, const gert::Shape& colScale)
++{
++    int64_t t = go.GetDim(0);
++    int64_t k = go.GetDim(1) * go.GetDim(2);
++    if (rowData.GetDimNum() != 2 || colData.GetDimNum() != 2 || rowData != colData ||
++        rowData.GetDim(0) != t || rowData.GetDim(1) != k) {
++        return ge::GRAPH_FAILED;
++    }
++    if (rowScale.GetDimNum() != 3 || rowScale.GetDim(0) != t ||
++        rowScale.GetDim(1) != Ops::Base::CeilDiv(k, BLOCK_H) || rowScale.GetDim(2) != 2) {
++        return ge::GRAPH_FAILED;
++    }
++    if (colScale.GetDimNum() != 3 || colScale.GetDim(0) != Ops::Base::CeilDiv(t, BLOCK_H) ||
++        colScale.GetDim(1) != k || colScale.GetDim(2) != 2) {
++        return ge::GRAPH_FAILED;
++    }
++    return ge::GRAPH_SUCCESS;
++}
++
++ge::graphStatus GetPlatformInfo(gert::TilingContext* context, ClaGateMxQuantWithDualAxisTilingParam& params)
++{
++    auto platformInfo = context->GetPlatformInfo();
++    OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
++    auto platform = platform_ascendc::PlatformAscendC(platformInfo);
++    params.totalCoreNum = platform.GetCoreNumAiv();
++    OP_CHECK_IF(params.totalCoreNum <= 0, OP_LOGE(context->GetNodeName(), "Failed to get core num."),
++                return ge::GRAPH_FAILED);
++    uint64_t ubSize = 0;
++    platform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
++    params.ubSize = static_cast<int64_t>(ubSize);
++    params.workspaceSize = platform.GetLibApiWorkSpaceSize();
++    return ge::GRAPH_SUCCESS;
++}
+ 
+-bool IsShape(const gert::Shape& shape, std::initializer_list<int64_t> expected)
++ge::graphStatus GetAndCheckAttrs(gert::TilingContext* context, ClaGateMxQuantWithDualAxisTilingParam& params,
++                                 int64_t& tilingKeyMode, int64_t& tilingKeyRound)
+ {
+-    if (shape.GetDimNum() != expected.size()) return false;
+-    size_t i = 0;
+-    for (int64_t dim : expected) {
+-        if (shape.GetDim(i++) != dim) return false;
++    auto attrs = context->GetAttrs();
++    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
++
++    auto roundModePtr = attrs->GetAttrPointer<char>(INDEX_ATTR_ROUND_MODE);
++    OP_CHECK_NULL_WITH_CONTEXT(context, roundModePtr);
++    string roundModeStr = roundModePtr;
++    RoundModeList roundMode = GetRoundMode(roundModeStr);
++    OP_CHECK_IF(roundMode == RoundModeList::MODE_UNDEFINED,
++                OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "round_mode", roundModeStr.c_str(),
++                                          "rint, floor or round"),
++                return ge::GRAPH_FAILED);
++
++    auto scaleAlgPtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_SCALE_ALG);
++    OP_CHECK_NULL_WITH_CONTEXT(context, scaleAlgPtr);
++    auto dstTypePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_DST_TYPE);
++    OP_CHECK_NULL_WITH_CONTEXT(context, dstTypePtr);
++    params.roundMode = static_cast<int64_t>(roundMode);
++    params.scaleAlg = *scaleAlgPtr;
++    params.dstType = *dstTypePtr;
++
++    OP_CHECK_IF(params.scaleAlg != 0 && params.scaleAlg != 1,
++                OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale_alg",
++                                          std::to_string(params.scaleAlg).c_str(), "0 or 1"),
++                return ge::GRAPH_FAILED);
++    OP_CHECK_IF(Y_SUPPORT_DTYPE_SET.count(params.yDtype) == 0 || static_cast<int64_t>(params.yDtype) != params.dstType,
++                OP_LOGE(context->GetNodeName(), "dst_type and output data type mismatch."),
++                return ge::GRAPH_FAILED);
++    // FP8 only rint
++    OP_CHECK_IF(Y_SUPPORT_DTYPE_FP8_SET.count(params.yDtype) != 0 && roundMode != RoundModeList::MODE_RINT,
++                OP_LOGE(context->GetNodeName(), "When output is FP8, round_mode only supports rint."),
++                return ge::GRAPH_FAILED);
++    // FP4 only scale_alg=0
++    OP_CHECK_IF(Y_SUPPORT_DTYPE_FP4_SET.count(params.yDtype) != 0 && params.scaleAlg != 0,
++                OP_LOGE(context->GetNodeName(), "When output is FP4, scale_alg must be 0."),
++                return ge::GRAPH_FAILED);
++
++    if (roundMode == RoundModeList::MODE_RINT) {
++        tilingKeyRound = TPL_RINT;
++    } else if (roundMode == RoundModeList::MODE_ROUND) {
++        tilingKeyRound = TPL_ROUND;
++    } else {
++        tilingKeyRound = TPL_FLOOR;
+     }
+-    return true;
++    tilingKeyMode = TPL_MODE_BLOCK;
++    return ge::GRAPH_SUCCESS;
+ }
+ } // namespace
+ 
+ ge::graphStatus TilingForClaGateMxQuantWithDualAxis(gert::TilingContext* context)
+ {
+     OP_CHECK_NULL_WITH_CONTEXT(context, context);
+-    auto globalOut = context->GetInputShape(INPUT_GLOBAL_OUT);
+-    auto localOut = context->GetInputShape(INPUT_LOCAL_OUT);
+-    auto globalGate = context->GetInputShape(INPUT_GLOBAL_GATE);
+-    auto localGate = context->GetInputShape(INPUT_LOCAL_GATE);
+-    OP_CHECK_NULL_WITH_CONTEXT(context, globalOut);
+-    OP_CHECK_NULL_WITH_CONTEXT(context, localOut);
+-    OP_CHECK_NULL_WITH_CONTEXT(context, globalGate);
+-    OP_CHECK_NULL_WITH_CONTEXT(context, localGate);
+-    const auto& go = globalOut->GetStorageShape();
+-    const auto& lo = localOut->GetStorageShape();
+-    const auto& gg = globalGate->GetStorageShape();
+-    const auto& lg = localGate->GetStorageShape();
+-    OP_CHECK_IF(!IsShape(go, {EXPECTED_S, EXPECTED_B, EXPECTED_N, EXPECTED_D}) || lo != go,
+-                OP_LOGE(context->GetNodeName(), "global_out/local_out must both be [256,4,96,256]"),
+-                return ge::GRAPH_FAILED);
+-    OP_CHECK_IF(!(IsShape(gg, {EXPECTED_S, EXPECTED_B, EXPECTED_N}) ||
+-                  IsShape(gg, {EXPECTED_S, EXPECTED_B, EXPECTED_N, 1})) || lg != gg,
+-                OP_LOGE(context->GetNodeName(), "gate logits must both be [256,4,96] or [256,4,96,1]"),
++
++    auto goShapePtr = context->GetInputShape(INPUT_GLOBAL_OUT);
++    auto loShapePtr = context->GetInputShape(INPUT_LOCAL_OUT);
++    auto ggShapePtr = context->GetInputShape(INPUT_GLOBAL_GATE);
++    auto lgShapePtr = context->GetInputShape(INPUT_LOCAL_GATE);
++    OP_CHECK_NULL_WITH_CONTEXT(context, goShapePtr);
++    OP_CHECK_NULL_WITH_CONTEXT(context, loShapePtr);
++    OP_CHECK_NULL_WITH_CONTEXT(context, ggShapePtr);
++    OP_CHECK_NULL_WITH_CONTEXT(context, lgShapePtr);
++    const auto& go = goShapePtr->GetStorageShape();
++    const auto& lo = loShapePtr->GetStorageShape();
++    const auto& gg = ggShapePtr->GetStorageShape();
++    const auto& lg = lgShapePtr->GetStorageShape();
++    OP_CHECK_IF(!CheckShape(go, lo, gg, lg),
++                OP_LOGE(context->GetNodeName(),
++                        "Expected global_out/local_out [T,N,D], gate [T,N] or [T,N,1]; "
++                        "N in [4,128] even, D in {128,256}"),
+                 return ge::GRAPH_FAILED);
+ 
+-    ge::DataType dtype = context->GetInputDesc(INPUT_GLOBAL_OUT)->GetDataType();
+-    OP_CHECK_IF((dtype != ge::DT_FLOAT16 && dtype != ge::DT_BF16) ||
++    auto dtype = context->GetInputDesc(INPUT_GLOBAL_OUT)->GetDataType();
++    OP_CHECK_IF(INPUT_SUPPORT_DTYPE_SET.count(dtype) == 0 ||
+                     context->GetInputDesc(INPUT_LOCAL_OUT)->GetDataType() != dtype ||
+                     context->GetInputDesc(INPUT_GLOBAL_GATE)->GetDataType() != dtype ||
+                     context->GetInputDesc(INPUT_LOCAL_GATE)->GetDataType() != dtype,
+                 OP_LOGE(context->GetNodeName(), "all four inputs must have the same float16 or bfloat16 dtype"),
+                 return ge::GRAPH_FAILED);
+-    auto attrs = context->GetAttrs();
+-    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+-    auto dstType = attrs->GetAttrPointer<int64_t>(ATTR_DST_TYPE);
+-    auto scaleAlg = attrs->GetAttrPointer<int64_t>(ATTR_SCALE_ALG);
+-    OP_CHECK_NULL_WITH_CONTEXT(context, dstType);
+-    OP_CHECK_NULL_WITH_CONTEXT(context, scaleAlg);
+-    OP_CHECK_IF(*dstType != 36 || (*scaleAlg != 0 && *scaleAlg != 1),
+-                OP_LOGE(context->GetNodeName(), "only dst_type=36 and scale_alg=0/1 are supported"),
++
++    auto rowDataDesc = context->GetOutputDesc(OUTPUT_ROW_DATA);
++    auto rowScaleDesc = context->GetOutputDesc(OUTPUT_ROW_SCALE);
++    auto colDataDesc = context->GetOutputDesc(OUTPUT_COL_DATA);
++    auto colScaleDesc = context->GetOutputDesc(OUTPUT_COL_SCALE);
++    OP_CHECK_NULL_WITH_CONTEXT(context, rowDataDesc);
++    OP_CHECK_NULL_WITH_CONTEXT(context, rowScaleDesc);
++    OP_CHECK_NULL_WITH_CONTEXT(context, colDataDesc);
++    OP_CHECK_NULL_WITH_CONTEXT(context, colScaleDesc);
++    OP_CHECK_IF(Y_SUPPORT_DTYPE_SET.count(rowDataDesc->GetDataType()) == 0 ||
++                    colDataDesc->GetDataType() != rowDataDesc->GetDataType() ||
++                    rowScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0 ||
++                    colScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0,
++                OP_LOGE(context->GetNodeName(), "Invalid output dtype."),
+                 return ge::GRAPH_FAILED);
+ 
+-    auto platformInfo = context->GetPlatformInfo();
+-    OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
+-    auto platform = platform_ascendc::PlatformAscendC(platformInfo);
+-    int64_t coreNum = platform.GetCoreNumAiv();
+-    int64_t totalBlocks = (DIM_M / BLOCK_H) * (DIM_K / BLOCK_W);
+-    int64_t usedCoreNum = std::min(coreNum, totalBlocks);
+-    context->SetBlockDim(usedCoreNum);
+-    context->SetTilingKey(GET_TPL_TILING_KEY(TPL_MODE_BLOCK, TPL_RINT, *scaleAlg, TPL_NO_GROUP_INDEX));
++    auto rowDataShape = context->GetOutputShape(OUTPUT_ROW_DATA)->GetStorageShape();
++    auto rowScaleShape = context->GetOutputShape(OUTPUT_ROW_SCALE)->GetStorageShape();
++    auto colDataShape = context->GetOutputShape(OUTPUT_COL_DATA)->GetStorageShape();
++    auto colScaleShape = context->GetOutputShape(OUTPUT_COL_SCALE)->GetStorageShape();
++    OP_CHECK_IF(CheckOutputShapes(go, rowDataShape, rowScaleShape, colDataShape, colScaleShape) != ge::GRAPH_SUCCESS,
++                OP_LOGE(context->GetNodeName(), "Invalid output shapes."),
++                return ge::GRAPH_FAILED);
++
++    ClaGateMxQuantWithDualAxisTilingParam params;
++    params.yDtype = rowDataDesc->GetDataType();
++    params.dimM = go.GetDim(0);
++    params.dimHeadNum = go.GetDim(1);
++    params.dimHeadSize = go.GetDim(2);
++    params.dimN = params.dimHeadNum * params.dimHeadSize;
++    params.blockW = BLOCK_W;
++    params.splitBlockH = BLOCK_H;
++
++    int64_t keyMode = TPL_MODE_BLOCK;
++    int64_t keyRound = TPL_RINT;
++    OP_CHECK_IF(GetPlatformInfo(context, params) != ge::GRAPH_SUCCESS,
++                OP_LOGE(context->GetNodeName(), "GetPlatformInfo failed."),
++                return ge::GRAPH_FAILED);
++    OP_CHECK_IF(GetAndCheckAttrs(context, params, keyMode, keyRound) != ge::GRAPH_SUCCESS,
++                OP_LOGE(context->GetNodeName(), "GetAndCheckAttrs failed."),
++                return ge::GRAPH_FAILED);
++
++    params.dimNBlockNum = Ops::Base::CeilDiv(params.dimN, params.blockW);
++    params.dimNTail = params.dimN % params.blockW == 0 ? params.blockW : params.dimN % params.blockW;
++    int64_t dimMSplit = Ops::Base::CeilDiv(params.dimM, params.splitBlockH);
++    int64_t totalBlocks = dimMSplit * params.dimNBlockNum;
++    params.usedCoreNum = std::min(params.totalCoreNum, totalBlocks);
++    context->SetBlockDim(params.usedCoreNum);
++    context->SetTilingKey(GET_TPL_TILING_KEY(keyMode, keyRound, params.scaleAlg, TPL_NO_GROUP_INDEX));
+ 
+     auto data = context->GetTilingData<ClaGateMxQuantWithDualAxisTilingData>();
+     OP_CHECK_NULL_WITH_CONTEXT(context, data);
+     *data = {};
+-    data->usedCoreNum = usedCoreNum;
+-    data->dstType = *dstType;
+-    data->dimM = DIM_M;
+-    data->dimN = DIM_K;
++    data->usedCoreNum = params.usedCoreNum;
++    data->dstType = params.dstType;
++    data->activateLeft = 1;
++    data->dimM = params.dimM;
++    data->dimN = params.dimN;
+     data->numGroups = 1;
+-    data->blockW = BLOCK_W;
+-    data->splitBlockH = BLOCK_H;
+-    data->dimNBlockNum = DIM_K / BLOCK_W;
+-    data->dimNTail = BLOCK_W;
++    data->blockW = params.blockW;
++    data->splitBlockH = params.splitBlockH;
++    data->dimNBlockNum = params.dimNBlockNum;
++    data->dimNTail = params.dimNTail;
++    data->headNum = params.dimHeadNum;
++    data->headDim = params.dimHeadSize;
++
+     size_t* workspaces = context->GetWorkspaceSizes(1);
+     OP_CHECK_NULL_WITH_CONTEXT(context, workspaces);
+-    workspaces[0] = platform.GetLibApiWorkSpaceSize();
++    workspaces[0] = params.workspaceSize;
+     return ge::GRAPH_SUCCESS;
+ }
+ 
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/op_host/arch35/cla_gate_mx_quant_with_dual_axis_tiling_arch35.h b/attention/cla_gate_mx_quant_with_dual_axis/op_host/arch35/cla_gate_mx_quant_with_dual_axis_tiling_arch35.h
+index 8db585248..9ff1694d4 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/op_host/arch35/cla_gate_mx_quant_with_dual_axis_tiling_arch35.h
++++ b/attention/cla_gate_mx_quant_with_dual_axis/op_host/arch35/cla_gate_mx_quant_with_dual_axis_tiling_arch35.h
+@@ -37,23 +37,24 @@ struct ClaGateMxQuantWithDualAxisCompileInfo {
+ };
+ 
+ struct ClaGateMxQuantWithDualAxisTilingParam {
+-    int64_t totalCoreNum{0}; // 平台总核数（仅 tiling 侧使用）
+-    int64_t usedCoreNum{0};  // 传给 kernel 的核数
++    int64_t totalCoreNum{0};
++    int64_t usedCoreNum{0};
+     int64_t ubSize{0};
+     int64_t roundMode{0};
+     int64_t dstType{0};
+     int64_t scaleAlg{0};
+-    int64_t isGroupIdx{0};
+     int64_t activateLeft{1};
+-    int64_t blockW{0};
+-    int64_t splitBlockH{0};
++    int64_t blockW{256};
++    int64_t splitBlockH{64};
+     int64_t dimM{1};
+     int64_t dimN{1};
+-    int64_t numGroups{0};
++    int64_t dimHeadNum{1};
++    int64_t dimHeadSize{1};
++    int64_t numGroups{1};
+     int64_t dimNBlockNum{0};
+     int64_t dimNTail{0};
+     int64_t workspaceSize{0};
+-    int64_t dtypeSize{2}; // 输入是fp16/bf16
++    int64_t dtypeSize{2};
+     ge::DataType yDtype{ge::DT_UNDEFINED};
+ };
+ 
+@@ -70,37 +71,6 @@ enum class RoundModeList {
+ ge::graphStatus TilingForClaGateMxQuantWithDualAxis(gert::TilingContext* context);
+ ge::graphStatus TilingPrepareForClaGateMxQuantWithDualAxis(gert::TilingParseContext* context);
+ 
+-class ClaGateMxQuantWithDualAxisTiling {
+-public:
+-    explicit ClaGateMxQuantWithDualAxisTiling(gert::TilingContext* context) : context_(context) {}
+-    ~ClaGateMxQuantWithDualAxisTiling() {}
+-    ge::graphStatus DoTiling();
+-
+-private:
+-    ge::graphStatus GetAttr();
+-    ge::graphStatus CheckDtype();
+-    ge::graphStatus CheckShape();
+-    ge::graphStatus CheckScaleShape(const gert::Shape& mxScale1Shape, const gert::Shape& mxScale2Shape,
+-                                    const gert::Shape& xShape);
+-    ge::graphStatus CheckYShape(const gert::Shape& xShape, const gert::Shape& y1Shape, const gert::Shape& y2Shape);
+-    ge::graphStatus GetPlatformInfo();
+-    ge::graphStatus ComputeTilingParams();
+-    ge::graphStatus SetTilingData();
+-
+-    void SetTilingKeyAndCore();
+-    void PrintTilingData();
+-
+-    RoundModeList GetRoundMode(const std::string& roundMode);
+-
+-private:
+-    uint64_t roundMode_ = 0;
+-    uint64_t scaleAlg_ = 0;
+-    uint64_t mode_ = 0;
+-    uint64_t isGroupIdx_ = 0;
+-    gert::TilingContext* context_ = nullptr;
+-    ClaGateMxQuantWithDualAxisTilingData* tilingData_ = nullptr;
+-    ClaGateMxQuantWithDualAxisTilingParam tilingParams_;
+-};
+-
+ } // namespace optiling
++
+ #endif // AIR_CXX_RUNTIME_V2_OP_IMPL_CLA_GATE_MX_QUANT_WITH_DUAL_AXIS_H
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/op_host/cla_gate_mx_quant_with_dual_axis_def.cpp b/attention/cla_gate_mx_quant_with_dual_axis/op_host/cla_gate_mx_quant_with_dual_axis_def.cpp
+index df166b9a8..47736aee6 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/op_host/cla_gate_mx_quant_with_dual_axis_def.cpp
++++ b/attention/cla_gate_mx_quant_with_dual_axis/op_host/cla_gate_mx_quant_with_dual_axis_def.cpp
+@@ -7,26 +7,38 @@
+ #include "register/op_def_registry.h"
+ 
+ namespace ops {
+-constexpr int32_t DEFAULT_DST_TYPE = 36;
++constexpr int32_t DEFAULT_DST_TYPE = 36; // FLOAT8_E4M3FN
+ constexpr int32_t DEFAULT_SCALE_ALG = 1;
++
++// 8 dtype branches: fp16->e2m1, bf16->e2m1, fp16->e1m2, bf16->e1m2,
++//                   fp16->e4m3fn, bf16->e4m3fn, fp16->e5m2, bf16->e5m2
+ class ClaGateMxQuantWithDualAxis : public OpDef {
+ public:
+     explicit ClaGateMxQuantWithDualAxis(const char* name) : OpDef(name)
+     {
+-        const std::initializer_list<ge::DataType> inputTypes = {ge::DT_FLOAT16, ge::DT_BF16};
+-        const std::initializer_list<ge::Format> formats = {ge::FORMAT_ND, ge::FORMAT_ND};
++        const std::initializer_list<ge::DataType> inputTypes = {
++            ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16,
++            ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16};
++        const std::initializer_list<ge::Format> formats = {
++            ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
++            ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND};
+         this->Input("global_out").ParamType(REQUIRED).DataType(inputTypes).Format(formats).AutoContiguous();
+         this->Input("local_out").ParamType(REQUIRED).DataType(inputTypes).Format(formats).AutoContiguous();
+         this->Input("global_gate_logits").ParamType(REQUIRED).DataType(inputTypes).Format(formats).AutoContiguous();
+         this->Input("local_gate_logits").ParamType(REQUIRED).DataType(inputTypes).Format(formats).AutoContiguous();
+-        const std::initializer_list<ge::DataType> dataTypes = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN};
+-        const std::initializer_list<ge::DataType> scaleTypes = {ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0};
++        const std::initializer_list<ge::DataType> dataTypes = {
++            ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2, ge::DT_FLOAT4_E1M2,
++            ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2};
++        const std::initializer_list<ge::DataType> scaleTypes = {
++            ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
++            ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0};
+         this->Output("row_data").ParamType(REQUIRED).DataType(dataTypes).Format(formats);
+         this->Output("row_scale").ParamType(REQUIRED).DataType(scaleTypes).Format(formats);
+         this->Output("col_data").ParamType(REQUIRED).DataType(dataTypes).Format(formats);
+         this->Output("col_scale").ParamType(REQUIRED).DataType(scaleTypes).Format(formats);
+-        this->Attr("scale_alg").AttrType(OPTIONAL).Int(DEFAULT_SCALE_ALG);
+         this->Attr("dst_type").AttrType(OPTIONAL).Int(DEFAULT_DST_TYPE);
++        this->Attr("scale_alg").AttrType(OPTIONAL).Int(DEFAULT_SCALE_ALG);
++        this->Attr("round_mode").AttrType(OPTIONAL).String("rint");
+         OpAICoreConfig config;
+         config.DynamicCompileStaticFlag(true).DynamicRankSupportFlag(true).DynamicShapeSupportFlag(true)
+             .ExtendCfgInfo("opFile.value", "cla_gate_mx_quant_with_dual_axis_apt");
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/op_host/cla_gate_mx_quant_with_dual_axis_infershape.cpp b/attention/cla_gate_mx_quant_with_dual_axis/op_host/cla_gate_mx_quant_with_dual_axis_infershape.cpp
+index b04097c25..bb889dcbb 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/op_host/cla_gate_mx_quant_with_dual_axis_infershape.cpp
++++ b/attention/cla_gate_mx_quant_with_dual_axis/op_host/cla_gate_mx_quant_with_dual_axis_infershape.cpp
+@@ -2,33 +2,63 @@
+ #include "err/ops_err.h"
+ #include "log/log.h"
+ #include "register/op_impl_registry.h"
++#include "util/math_util.h"
++
+ namespace ops {
+-constexpr int64_t CLA_M = 256 * 4;             // S * B
+-constexpr int64_t CLA_K = 96 * 256;          // N * D
++constexpr int64_t ROW_BLOCK = 64;
++constexpr int64_t SCALE_LAST_DIM = 2;
++constexpr int64_t INDEX_ATTR_DST_TYPE = 0;
++
+ ge::graphStatus InferShapeForClaGateMxQuantWithDualAxis(gert::InferShapeContext* context)
+ {
++    const gert::Shape* xShape = context->GetInputShape(0);
+     gert::Shape* rowData = context->GetOutputShape(0);
+     gert::Shape* rowScale = context->GetOutputShape(1);
+     gert::Shape* colData = context->GetOutputShape(2);
+     gert::Shape* colScale = context->GetOutputShape(3);
++    OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
+     OP_CHECK_NULL_WITH_CONTEXT(context, rowData);
+     OP_CHECK_NULL_WITH_CONTEXT(context, rowScale);
+     OP_CHECK_NULL_WITH_CONTEXT(context, colData);
+     OP_CHECK_NULL_WITH_CONTEXT(context, colScale);
+-    *rowData = gert::Shape({CLA_M, CLA_K});
+-    *colData = gert::Shape({CLA_M, CLA_K});
+-    *rowScale = gert::Shape({CLA_M, CLA_K / 64, 2});
+-    *colScale = gert::Shape({CLA_M / 64, CLA_K, 2});
++    if (xShape->GetDimNum() != 3) {
++        OP_LOGE(context->GetNodeName(), "global_out must be 3D [T,N,D].");
++        return ge::GRAPH_FAILED;
++    }
++    int64_t t = xShape->GetDim(0);
++    int64_t n = xShape->GetDim(1);
++    int64_t d = xShape->GetDim(2);
++    if (t <= 0 || n <= 0 || d <= 0) {
++        OP_LOGE(context->GetNodeName(), "global_out shape must be positive.");
++        return ge::GRAPH_FAILED;
++    }
++    int64_t k = n * d;
++    *rowData = gert::Shape({t, k});
++    *colData = gert::Shape({t, k});
++    *rowScale = gert::Shape({t, Ops::Base::CeilDiv(k, ROW_BLOCK), SCALE_LAST_DIM});
++    *colScale = gert::Shape({Ops::Base::CeilDiv(t, ROW_BLOCK), k, SCALE_LAST_DIM});
+     return ge::GRAPH_SUCCESS;
+ }
++
+ ge::graphStatus InferDataTypeForClaGateMxQuantWithDualAxis(gert::InferDataTypeContext* context)
+ {
+-    context->SetOutputDataType(0, ge::DT_FLOAT8_E4M3FN);
++    auto attrs = context->GetAttrs();
++    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
++    const int32_t* dstType = attrs->GetAttrPointer<int32_t>(INDEX_ATTR_DST_TYPE);
++    OP_CHECK_NULL_WITH_CONTEXT(context, dstType);
++    ge::DataType outDtype = static_cast<ge::DataType>(*dstType);
++    if (outDtype != ge::DT_FLOAT4_E2M1 && outDtype != ge::DT_FLOAT4_E1M2 &&
++        outDtype != ge::DT_FLOAT8_E4M3FN && outDtype != ge::DT_FLOAT8_E5M2) {
++        OP_LOGE(context->GetNodeName(), "dst_type must be one of float4_e2m1/e1m2/float8_e4m3fn/e5m2.");
++        return ge::GRAPH_FAILED;
++    }
++    context->SetOutputDataType(0, outDtype);
+     context->SetOutputDataType(1, ge::DT_FLOAT8_E8M0);
+-    context->SetOutputDataType(2, ge::DT_FLOAT8_E4M3FN);
++    context->SetOutputDataType(2, outDtype);
+     context->SetOutputDataType(3, ge::DT_FLOAT8_E8M0);
+     return ge::GRAPH_SUCCESS;
+ }
++
+ IMPL_OP_INFERSHAPE(ClaGateMxQuantWithDualAxis)
+     .InferShape(InferShapeForClaGateMxQuantWithDualAxis)
+     .InferDataType(InferDataTypeForClaGateMxQuantWithDualAxis);
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/op_host/config/ascend950/cla_gate_mx_quant_with_dual_axis_binary.json b/attention/cla_gate_mx_quant_with_dual_axis/op_host/config/ascend950/cla_gate_mx_quant_with_dual_axis_binary.json
+index debd72dbc..8b85e9b9b 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/op_host/config/ascend950/cla_gate_mx_quant_with_dual_axis_binary.json
++++ b/attention/cla_gate_mx_quant_with_dual_axis/op_host/config/ascend950/cla_gate_mx_quant_with_dual_axis_binary.json
+@@ -2,7 +2,567 @@
+   "op_type": "ClaGateMxQuantWithDualAxis",
+   "op_list": [
+     {
+-      "bin_filename": "ClaGateMxQuantWithDualAxis_1a27dbfbb98bcb1be8bfc57b3f249e03",
++      "bin_filename": "ClaGateMxQuantWithDualAxis_float16toe2m1",
++      "inputs": [
++        {
++          "name": "global_out",
++          "index": 0,
++          "dtype": "float16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "local_out",
++          "index": 1,
++          "dtype": "float16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "global_gate_logits",
++          "index": 2,
++          "dtype": "float16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "local_gate_logits",
++          "index": 3,
++          "dtype": "float16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        }
++      ],
++      "outputs": [
++        {
++          "name": "row_data",
++          "index": 0,
++          "dtype": "float4_e2m1",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "row_scale",
++          "index": 1,
++          "dtype": "float8_e8m0",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "col_data",
++          "index": 2,
++          "dtype": "float4_e2m1",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "col_scale",
++          "index": 3,
++          "dtype": "float8_e8m0",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        }
++      ],
++      "attrs": [
++        {
++          "name": "dst_type",
++          "dtype": "int",
++          "value": 0
++        },
++        {
++          "name": "scale_alg",
++          "dtype": "int",
++          "value": 0
++        },
++        {
++          "name": "round_mode",
++          "dtype": "string",
++          "value": ""
++        }
++      ]
++    },
++    {
++      "bin_filename": "ClaGateMxQuantWithDualAxis_bfloat16toe2m1",
++      "inputs": [
++        {
++          "name": "global_out",
++          "index": 0,
++          "dtype": "bfloat16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "local_out",
++          "index": 1,
++          "dtype": "bfloat16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "global_gate_logits",
++          "index": 2,
++          "dtype": "bfloat16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "local_gate_logits",
++          "index": 3,
++          "dtype": "bfloat16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        }
++      ],
++      "outputs": [
++        {
++          "name": "row_data",
++          "index": 0,
++          "dtype": "float4_e2m1",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "row_scale",
++          "index": 1,
++          "dtype": "float8_e8m0",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "col_data",
++          "index": 2,
++          "dtype": "float4_e2m1",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "col_scale",
++          "index": 3,
++          "dtype": "float8_e8m0",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        }
++      ],
++      "attrs": [
++        {
++          "name": "dst_type",
++          "dtype": "int",
++          "value": 0
++        },
++        {
++          "name": "scale_alg",
++          "dtype": "int",
++          "value": 0
++        },
++        {
++          "name": "round_mode",
++          "dtype": "string",
++          "value": ""
++        }
++      ]
++    },
++    {
++      "bin_filename": "ClaGateMxQuantWithDualAxis_float16toe1m2",
++      "inputs": [
++        {
++          "name": "global_out",
++          "index": 0,
++          "dtype": "float16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "local_out",
++          "index": 1,
++          "dtype": "float16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "global_gate_logits",
++          "index": 2,
++          "dtype": "float16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "local_gate_logits",
++          "index": 3,
++          "dtype": "float16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        }
++      ],
++      "outputs": [
++        {
++          "name": "row_data",
++          "index": 0,
++          "dtype": "float4_e1m2",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "row_scale",
++          "index": 1,
++          "dtype": "float8_e8m0",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "col_data",
++          "index": 2,
++          "dtype": "float4_e1m2",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "col_scale",
++          "index": 3,
++          "dtype": "float8_e8m0",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        }
++      ],
++      "attrs": [
++        {
++          "name": "dst_type",
++          "dtype": "int",
++          "value": 0
++        },
++        {
++          "name": "scale_alg",
++          "dtype": "int",
++          "value": 0
++        },
++        {
++          "name": "round_mode",
++          "dtype": "string",
++          "value": ""
++        }
++      ]
++    },
++    {
++      "bin_filename": "ClaGateMxQuantWithDualAxis_bfloat16toe1m2",
++      "inputs": [
++        {
++          "name": "global_out",
++          "index": 0,
++          "dtype": "bfloat16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "local_out",
++          "index": 1,
++          "dtype": "bfloat16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "global_gate_logits",
++          "index": 2,
++          "dtype": "bfloat16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "local_gate_logits",
++          "index": 3,
++          "dtype": "bfloat16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        }
++      ],
++      "outputs": [
++        {
++          "name": "row_data",
++          "index": 0,
++          "dtype": "float4_e1m2",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "row_scale",
++          "index": 1,
++          "dtype": "float8_e8m0",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "col_data",
++          "index": 2,
++          "dtype": "float4_e1m2",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "col_scale",
++          "index": 3,
++          "dtype": "float8_e8m0",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        }
++      ],
++      "attrs": [
++        {
++          "name": "dst_type",
++          "dtype": "int",
++          "value": 0
++        },
++        {
++          "name": "scale_alg",
++          "dtype": "int",
++          "value": 0
++        },
++        {
++          "name": "round_mode",
++          "dtype": "string",
++          "value": ""
++        }
++      ]
++    },
++    {
++      "bin_filename": "ClaGateMxQuantWithDualAxis_float16toe4m3",
++      "inputs": [
++        {
++          "name": "global_out",
++          "index": 0,
++          "dtype": "float16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "local_out",
++          "index": 1,
++          "dtype": "float16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "global_gate_logits",
++          "index": 2,
++          "dtype": "float16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "local_gate_logits",
++          "index": 3,
++          "dtype": "float16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        }
++      ],
++      "outputs": [
++        {
++          "name": "row_data",
++          "index": 0,
++          "dtype": "float8_e4m3fn",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "row_scale",
++          "index": 1,
++          "dtype": "float8_e8m0",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "col_data",
++          "index": 2,
++          "dtype": "float8_e4m3fn",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "col_scale",
++          "index": 3,
++          "dtype": "float8_e8m0",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        }
++      ],
++      "attrs": [
++        {
++          "name": "dst_type",
++          "dtype": "int",
++          "value": 0
++        },
++        {
++          "name": "scale_alg",
++          "dtype": "int",
++          "value": 0
++        },
++        {
++          "name": "round_mode",
++          "dtype": "string",
++          "value": ""
++        }
++      ]
++    },
++    {
++      "bin_filename": "ClaGateMxQuantWithDualAxis_bfloat16toe4m3",
+       "inputs": [
+         {
+           "name": "global_out",
+@@ -97,19 +657,24 @@
+       ],
+       "attrs": [
+         {
+-          "name": "scale_alg",
++          "name": "dst_type",
+           "dtype": "int",
+           "value": 0
+         },
+         {
+-          "name": "dst_type",
++          "name": "scale_alg",
+           "dtype": "int",
+           "value": 0
++        },
++        {
++          "name": "round_mode",
++          "dtype": "string",
++          "value": ""
+         }
+       ]
+     },
+     {
+-      "bin_filename": "ClaGateMxQuantWithDualAxis_9618d98448cc883682a347cd788037b7",
++      "bin_filename": "ClaGateMxQuantWithDualAxis_float16toe5m2",
+       "inputs": [
+         {
+           "name": "global_out",
+@@ -160,7 +725,7 @@
+         {
+           "name": "row_data",
+           "index": 0,
+-          "dtype": "float8_e4m3fn",
++          "dtype": "float8_e5m2",
+           "format": "ND",
+           "paramType": "required",
+           "shape": [
+@@ -182,7 +747,7 @@
+         {
+           "name": "col_data",
+           "index": 2,
+-          "dtype": "float8_e4m3fn",
++          "dtype": "float8_e5m2",
+           "format": "ND",
+           "paramType": "required",
+           "shape": [
+@@ -203,15 +768,132 @@
+         }
+       ],
+       "attrs": [
++        {
++          "name": "dst_type",
++          "dtype": "int",
++          "value": 0
++        },
+         {
+           "name": "scale_alg",
+           "dtype": "int",
+           "value": 0
+         },
++        {
++          "name": "round_mode",
++          "dtype": "string",
++          "value": ""
++        }
++      ]
++    },
++    {
++      "bin_filename": "ClaGateMxQuantWithDualAxis_bfloat16toe5m2",
++      "inputs": [
++        {
++          "name": "global_out",
++          "index": 0,
++          "dtype": "bfloat16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "local_out",
++          "index": 1,
++          "dtype": "bfloat16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "global_gate_logits",
++          "index": 2,
++          "dtype": "bfloat16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "local_gate_logits",
++          "index": 3,
++          "dtype": "bfloat16",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        }
++      ],
++      "outputs": [
++        {
++          "name": "row_data",
++          "index": 0,
++          "dtype": "float8_e5m2",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "row_scale",
++          "index": 1,
++          "dtype": "float8_e8m0",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "col_data",
++          "index": 2,
++          "dtype": "float8_e5m2",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        },
++        {
++          "name": "col_scale",
++          "index": 3,
++          "dtype": "float8_e8m0",
++          "format": "ND",
++          "paramType": "required",
++          "shape": [
++            -2
++          ],
++          "format_match_mode": "FormatAgnostic"
++        }
++      ],
++      "attrs": [
+         {
+           "name": "dst_type",
+           "dtype": "int",
+           "value": 0
++        },
++        {
++          "name": "scale_alg",
++          "dtype": "int",
++          "value": 0
++        },
++        {
++          "name": "round_mode",
++          "dtype": "string",
++          "value": ""
+         }
+       ]
+     }
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/op_kernel/arch35/cla_gate_mx_quant_with_dual_axis_regbase.h b/attention/cla_gate_mx_quant_with_dual_axis/op_kernel/arch35/cla_gate_mx_quant_with_dual_axis_regbase.h
+index 4be82839a..7b713ee3f 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/op_kernel/arch35/cla_gate_mx_quant_with_dual_axis_regbase.h
++++ b/attention/cla_gate_mx_quant_with_dual_axis/op_kernel/arch35/cla_gate_mx_quant_with_dual_axis_regbase.h
+@@ -74,7 +74,6 @@ constexpr uint32_t VF_LEN_B16 = platform::GetVRegSize() / sizeof(half);
+ constexpr int64_t BLOCK_SIZE = 32;
+ constexpr int64_t DOUBLE_BLOCK_SIZE = 64;
+ constexpr int64_t ONCE_ROW_LEN = 256;
+-constexpr int64_t CLA_HEAD_NUM = 96;
+ constexpr int64_t UB_BLOCK_SIZE = platform::GetUbBlockSize();
+ constexpr uint32_t SCALE1_RECIPROCAL_ROW_ELEMS = UB_BLOCK_SIZE / sizeof(uint16_t);
+ // DAV_3510 BrcbCommonImpl advances a DIST_E2B_B16 source by this many elements.
+@@ -213,6 +212,10 @@ private:
+     uint16_t dtypeYMaxExp_ = 0;
+     int64_t inHalfSize_ = 0; // per-half buffer size in elements (splitBlockH * blockW)
+     int64_t dimN_ = 0;
++    int64_t headNum_ = 0;
++    int64_t headDim_ = 0;
++    int64_t headsPerRow_ = 0;    // blockW / headDim, 1 or 2
++    int64_t gateSideStride_ = 0; // headsPerRow * ubRowCount_
+ 
+     int64_t oneBlockCountB16_ = UB_BLOCK_SIZE / sizeof(xDtype);
+     int64_t oneBlockCountB8_ = UB_BLOCK_SIZE / sizeof(uint8_t);
+@@ -230,8 +233,12 @@ ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, roundMode, scaleAlg, isGro
+     ubRowLen_ = ONCE_ROW_LEN; // 固定256
+     ubRowLenTail_ = tilingData_->dimNTail;
+     ubRowCount_ = DOUBLE_BLOCK_SIZE; // 固定64
+-    
++
+     dimN_ = tilingData_->dimN;
++    headNum_ = tilingData_->headNum;
++    headDim_ = tilingData_->headDim;
++    headsPerRow_ = ubRowLen_ / headDim_;
++    gateSideStride_ = headsPerRow_ * ubRowCount_;
+ 
+     // Set dtype-specific constants for MX quantization
+     if constexpr (IsSameType<y1Dtype, fp8_e4m3fn_t>::value) {
+@@ -290,14 +297,14 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
+ 
+     // Allocate queues with double buffering (DB_BUFFER=2).
+     // actInQueue_ holds the two 64x256 activation halves (global/local).
+-    // gateInQueue_ holds the two compact per-row gate vectors (global/local).
++    // gateInQueue_ holds per-head gate scalars for global/local sides.
+     int64_t actFrameBytes = inBufferSize * DIGIT_TWO;
+-    int64_t gateFrameBytes = DIGIT_TWO * ubRowCount_ * static_cast<int64_t>(sizeof(xDtype));
++    int64_t gateFrameBytes = DIGIT_TWO * gateSideStride_ * static_cast<int64_t>(sizeof(xDtype));
+     pipe_->InitBuffer(actInQueue_, DB_BUFFER, actFrameBytes);
+     pipe_->InitBuffer(gateInQueue_, DB_BUFFER, gateFrameBytes);
+     pipe_->InitBuffer(claGateBuf_, inBufferSize);
+-    // Sigmoid scratch: one 64-element region per global/local side.
+-    pipe_->InitBuffer(sigmoidBroadcastBuf_, DIGIT_TWO * DOUBLE_BLOCK_SIZE * sizeof(xDtype));
++    // Sigmoid scratch: one gateSideStride_-element region per global/local side.
++    pipe_->InitBuffer(sigmoidBroadcastBuf_, DIGIT_TWO * gateSideStride_ * sizeof(xDtype));
+     pipe_->InitBuffer(outQueue1_, DB_BUFFER, inHalfSize_);
+     pipe_->InitBuffer(outQueue2_, DB_BUFFER, inHalfSize_);
+     pipe_->InitBuffer(mxScaleQueue1_, DB_BUFFER, mxScale1BufferSize);
+@@ -319,48 +326,54 @@ template <typename xDtype, typename y1Dtype, uint64_t mode, AscendC::RoundMode r
+ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, roundMode, scaleAlg, isGroupIdx>::Process()
+ {
+     dimNeg1ScaleNum_ = ops::CeilDiv(dimN_, DOUBLE_BLOCK_SIZE) * DIGIT_TWO;
+-    int64_t rowBlocks = ops::CeilDiv(tilingData_->dimM, ubRowCount_);
+-    int64_t totalBlocks = rowBlocks * tilingData_->dimNBlockNum;
+-    int64_t coreCount = tilingData_->usedCoreNum;
+-    int64_t loops = totalBlocks / coreCount + (blockIdx_ < totalBlocks % coreCount ? 1 : 0);
+-    int64_t firstBlock = blockIdx_ * (totalBlocks / coreCount) +
+-                         (blockIdx_ < totalBlocks % coreCount ? blockIdx_ : totalBlocks % coreCount);
+-
+-    // Prologue: issue the first MTE2 transfer before entering the compute loop.
+-    if (loops > 0) {
+-        int64_t firstRowBlockIdx = firstBlock / tilingData_->dimNBlockNum;
+-        int64_t firstColBlockIdx = firstBlock % tilingData_->dimNBlockNum;
+-        int64_t firstAbsRowStart = firstRowBlockIdx * ubRowCount_;
+-        int64_t firstColOffset = firstColBlockIdx * ubRowLen_;
+-        CopyInClaGate(firstAbsRowStart, firstColOffset, ubRowCount_, ubRowLen_);
++    int64_t dimM = tilingData_->dimM;
++    int64_t dimMSplit = ops::CeilDiv(dimM, ubRowCount_);
++    int64_t dimMTail = dimM % ubRowCount_ == 0 ? ubRowCount_ : dimM % ubRowCount_;
++    int64_t totalBlocks = dimMSplit * tilingData_->dimNBlockNum;
++    int64_t totalCoreNum = tilingData_->usedCoreNum;
++    if (blockIdx_ >= totalCoreNum || totalBlocks == 0) {
++        return;
+     }
+ 
++    int64_t blockPerCore = totalBlocks / totalCoreNum;
++    int64_t tailCore = totalBlocks % totalCoreNum;
++    int64_t loops = blockPerCore + (blockIdx_ < tailCore ? 1 : 0);
++    int64_t firstBlock = blockIdx_ * blockPerCore + (blockIdx_ < tailCore ? blockIdx_ : tailCore);
++
+     for (int64_t i = 0; i < loops; ++i) {
+         int64_t block = firstBlock + i;
+         int64_t rowBlockIdx = block / tilingData_->dimNBlockNum;
+         int64_t colBlockIdx = block % tilingData_->dimNBlockNum;
+         int64_t absRowStart = rowBlockIdx * ubRowCount_;
+         int64_t colOffset = colBlockIdx * ubRowLen_;
++        int64_t calcRow = (rowBlockIdx == dimMSplit - 1) ? dimMTail : ubRowCount_;
++        int64_t calcCol = (colBlockIdx == tilingData_->dimNBlockNum - 1) ? ubRowLenTail_ : ubRowLen_;
++
++        CopyInClaGate(absRowStart, colOffset, calcRow, calcCol);
+ 
+-        // Consume the double-buffered input. DeQue waits only when the
+-        // corresponding MTE2 transfer has not completed yet.
+         LocalTensor<xDtype> input = actInQueue_.template DeQue<xDtype>();
+         LocalTensor<xDtype> gateInput = gateInQueue_.template DeQue<xDtype>();
+         LocalTensor<xDtype> merged = claGateBuf_.template Get<xDtype>();
+         auto globalAddr = (__ubuf__ xDtype*)input.GetPhyAddr();
+         auto localAddr = (__ubuf__ xDtype*)input[inHalfSize_].GetPhyAddr();
+         auto globalGateAddr = (__ubuf__ xDtype*)gateInput.GetPhyAddr();
+-        auto localGateAddr = (__ubuf__ xDtype*)gateInput[ubRowCount_].GetPhyAddr();
++        auto localGateAddr = (__ubuf__ xDtype*)gateInput[gateSideStride_].GetPhyAddr();
+         auto mergedAddr = (__ubuf__ xDtype*)merged.GetPhyAddr();
+ 
+-        // Prefetch the next block while the current block is still being computed.
+-        if (i + 1 < loops) {
+-            int64_t nextBlock = firstBlock + i + 1;
+-            int64_t nextRowBlockIdx = nextBlock / tilingData_->dimNBlockNum;
+-            int64_t nextColBlockIdx = nextBlock % tilingData_->dimNBlockNum;
+-            int64_t nextAbsRowStart = nextRowBlockIdx * ubRowCount_;
+-            int64_t nextColOffset = nextColBlockIdx * ubRowLen_;
+-            CopyInClaGate(nextAbsRowStart, nextColOffset, ubRowCount_, ubRowLen_);
++        // For T % 64 != 0, zero-fill the rest of the tile after DeQue (MTE2 has
++        // completed), so the full 64-row path is safe and padded rows contribute 0.
++        if (calcRow < ubRowCount_) {
++            int64_t zeroRows = ubRowCount_ - calcRow;
++            auto gateBase = (__ubuf__ xDtype*)gateInput.GetPhyAddr();
++            PadZeroM(globalAddr + calcRow * ubRowLen_, zeroRows * ubRowLen_);
++            PadZeroM(localAddr + calcRow * ubRowLen_, zeroRows * ubRowLen_);
++            for (int64_t h = 0; h < headsPerRow_; ++h) {
++                PadZeroM(gateBase + h * ubRowCount_ + calcRow, zeroRows);
++                PadZeroM(gateBase + gateSideStride_ + h * ubRowCount_ + calcRow, zeroRows);
++            }
++            __VEC_SCOPE__ {
++                AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
++            }
+         }
+ 
+         ComputeClaGateFullTile(globalAddr, localAddr, globalGateAddr, localGateAddr, mergedAddr);
+@@ -368,6 +381,9 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
+         actInQueue_.template FreeTensor(input);
+         gateInQueue_.template FreeTensor(gateInput);
+ 
++        int64_t calcRowAlgin = ops::CeilDiv(calcRow, ubRowCount_) * ubRowCount_;
++        int64_t calcColAlgin = ops::CeilDiv(calcCol, DOUBLE_BLOCK_SIZE) * DOUBLE_BLOCK_SIZE;
++
+         LocalTensor<uint8_t> scale1 = mxScaleQueue1_.template AllocTensor<uint8_t>();
+         LocalTensor<uint8_t> scale2 = mxScaleQueue2_.template AllocTensor<uint8_t>();
+         LocalTensor<uint8_t> y1 = outQueue1_.template AllocTensor<uint8_t>();
+@@ -381,31 +397,52 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
+         auto scale1RecipAddr = (__ubuf__ uint16_t*)scale1Recip.GetPhyAddr();
+         auto scale2RecipAddr = (__ubuf__ uint16_t*)scale2Recip.GetPhyAddr();
+ 
++        int64_t calcBlockLoop = calcRowAlgin / BLOCK_SIZE;
+         if constexpr (scaleAlg == TPL_SCALE_ALG_1) {
+-            ComputeScaleCuBLAS(ONCE_ROW_LEN, DOUBLE_BLOCK_SIZE, mergedAddr, y1Addr, scale1Addr,
+-                               scale1RecipAddr, scale2Addr, scale2RecipAddr);
+-        } else {
+-            for (int64_t part = 0; part < DIGIT_TWO; ++part) {
+-                int64_t dataOffset = part * BLOCK_SIZE * ubRowLen_;
+-                int64_t scale1Offset = part * BLOCK_SIZE * ops::CeilAlign(ubRowLen_ / BLOCK_SIZE, oneBlockCountB8_);
+-                int64_t scale2Offset = part * ubRowLen_;
+-                int64_t recip1Offset = part * BLOCK_SIZE * ops::CeilAlign(ubRowLen_ / BLOCK_SIZE, oneBlockCountB16_);
+-                int64_t recip2Offset = part * ubRowLen_;
+-                ComputeScaleOcp(ONCE_ROW_LEN, BLOCK_SIZE, mergedAddr + dataOffset, scale1Addr + scale1Offset,
++            ComputeScaleCuBLAS(static_cast<uint16_t>(ubRowLen_), static_cast<uint16_t>(calcRowAlgin), mergedAddr,
++                               y1Addr, scale1Addr, scale1RecipAddr, scale2Addr, scale2RecipAddr);
++        }
++
++        for (int64_t blk = 0; blk < calcBlockLoop; blk++) {
++            int64_t dataOffset = blk * BLOCK_SIZE * ubRowLen_;
++            int64_t scale1Offset = blk * BLOCK_SIZE * ops::CeilAlign(ubRowLen_ / BLOCK_SIZE, oneBlockCountB8_);
++            int64_t scale2Offset = blk * ubRowLen_;
++            int64_t recip1Offset = blk * BLOCK_SIZE * ops::CeilAlign(ubRowLen_ / BLOCK_SIZE, oneBlockCountB16_);
++            int64_t recip2Offset = blk * ubRowLen_;
++
++            if constexpr (scaleAlg == TPL_SCALE_ALG_0) {
++                ComputeScaleOcp(static_cast<uint16_t>(ubRowLen_), static_cast<uint16_t>(BLOCK_SIZE),
++                                mergedAddr + dataOffset, scale1Addr + scale1Offset,
+                                 scale1RecipAddr + recip1Offset, scale2Addr + scale2Offset,
+                                 scale2RecipAddr + recip2Offset);
+-                ComputeY1ToFP8(ONCE_ROW_LEN, BLOCK_SIZE, mergedAddr + dataOffset,
+-                               scale1RecipAddr + recip1Offset, y1Addr + dataOffset);
+-                ComputeY2ToFP8(ONCE_ROW_LEN, BLOCK_SIZE, mergedAddr + dataOffset,
+-                               scale2RecipAddr + recip2Offset, y2Addr + dataOffset);
+             }
+-            ComputeInterleave(scale2Addr, scale2Addr, scale2Addr + ubRowLen_);
++
++            int64_t yDataOffset = dataOffset;
++            if constexpr (IsSameType<y1Dtype, fp4x2_e2m1_t>::value || IsSameType<y1Dtype, fp4x2_e1m2_t>::value) {
++                yDataOffset = dataOffset / DIGIT_TWO;
++                ComputeY1ToFP4(static_cast<uint16_t>(ubRowLen_), static_cast<uint16_t>(BLOCK_SIZE),
++                               mergedAddr + dataOffset, scale1RecipAddr + recip1Offset, y1Addr + yDataOffset);
++                ComputeY2ToFP4(static_cast<uint16_t>(ubRowLen_), static_cast<uint16_t>(BLOCK_SIZE),
++                               mergedAddr + dataOffset, scale2RecipAddr + recip2Offset, y2Addr + yDataOffset);
++                ComputeY2ToFP4(static_cast<uint16_t>(ubRowLen_), static_cast<uint16_t>(BLOCK_SIZE),
++                               mergedAddr + dataOffset + VF_LEN_B16, scale2RecipAddr + recip2Offset + VF_LEN_B16,
++                               y2Addr + yDataOffset + VF_LEN_B16 / DIGIT_TWO);
++            } else {
++                if constexpr (scaleAlg == TPL_SCALE_ALG_0) {
++                    ComputeY1ToFP8(static_cast<uint16_t>(ubRowLen_), static_cast<uint16_t>(BLOCK_SIZE),
++                                   mergedAddr + dataOffset, scale1RecipAddr + recip1Offset, y1Addr + yDataOffset);
++                }
++                ComputeY2ToFP8(static_cast<uint16_t>(ubRowLen_), static_cast<uint16_t>(BLOCK_SIZE),
++                               mergedAddr + dataOffset, scale2RecipAddr + recip2Offset, y2Addr + yDataOffset);
++            }
+         }
+-        if constexpr (scaleAlg == TPL_SCALE_ALG_1) {
+-            for (int64_t part = 0; part < DIGIT_TWO; ++part) {
+-                int64_t dataOffset = part * BLOCK_SIZE * ubRowLen_;
+-                ComputeY2ToFP8(ONCE_ROW_LEN, BLOCK_SIZE, mergedAddr + dataOffset,
+-                               scale2RecipAddr + part * ubRowLen_, y2Addr + dataOffset);
++
++        if constexpr (scaleAlg == TPL_SCALE_ALG_0) {
++            for (int64_t blk = 1; blk < calcBlockLoop; blk += 2) {
++                auto src0Addr = (__ubuf__ uint8_t*)scale2[(blk - 1) * ubRowLen_].GetPhyAddr();
++                auto src1Addr = (__ubuf__ uint8_t*)scale2[blk * ubRowLen_].GetPhyAddr();
++                auto dstAddr = (__ubuf__ uint8_t*)scale2[(blk - 1) * ubRowLen_].GetPhyAddr();
++                ComputeInterleave(dstAddr, src0Addr, src1Addr);
+             }
+         }
+ 
+@@ -413,12 +450,12 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
+         outQueue1_.template EnQue(y1);
+         mxScaleQueue2_.template EnQue(scale2);
+         outQueue2_.template EnQue(y2);
++
+         int64_t yOffset = absRowStart * dimN_ + colOffset;
+         int64_t scale1Offset = absRowStart * dimNeg1ScaleNum_ + colOffset / BLOCK_SIZE;
+         int64_t scale2Offset = rowBlockIdx * DIGIT_TWO * dimN_ + colOffset * DIGIT_TWO;
+ 
+-        CopyOut(yOffset, scale1Offset, scale2Offset, DOUBLE_BLOCK_SIZE, DOUBLE_BLOCK_SIZE,
+-                ONCE_ROW_LEN, ONCE_ROW_LEN);
++        CopyOut(yOffset, scale1Offset, scale2Offset, calcRow, calcRowAlgin, calcCol, calcColAlgin);
+     }
+ }
+ template <typename xDtype, typename y1Dtype, uint64_t mode, AscendC::RoundMode roundMode, uint64_t scaleAlg,
+@@ -438,9 +475,14 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
+         Reg::StoreAlign<uint8_t, Reg::StoreDist::DIST_INTLV_B8>(dstAddr, src0Reg, src1Reg, maskB8);
+     }
+ }
+-// Load two attention tiles and the two compact gate vectors (one scalar per row).
+-// For the supported D=256, each column tile is exactly one head, so only that
+-// head's 64 gate values are copied into UB.
++// Load global/local attention tiles and the per-head gate scalars covered by
++// this 256-wide tile. D can be 256 (one head per tile) or 128 (two heads per
++// tile). The UB gate layout is:
++//   [0, gateSideStride_)             global gate values
++//   [gateSideStride_, 2*stride)      local gate values
++// Within each side, head h is stored at [h*64, (h+1)*64).
++// For tail row blocks, the source tile rows beyond calcRow are zero-filled so
++// the full 64-row path can still be used safely.
+ template <typename xDtype, typename y1Dtype, uint64_t mode, AscendC::RoundMode roundMode, uint64_t scaleAlg,
+           uint64_t isGroupIdx>
+ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, roundMode, scaleAlg,
+@@ -449,25 +491,30 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
+ {
+     LocalTensor<xDtype> actInput = actInQueue_.template AllocTensor<xDtype>();
+     LocalTensor<xDtype> gateInput = gateInQueue_.template AllocTensor<xDtype>();
+-    DataCopyExtParams outCopy = {static_cast<uint16_t>(calcRow),
+-                                 static_cast<uint32_t>(calcCol * sizeof(xDtype)),
+-                                 static_cast<uint32_t>((dimN_ - calcCol) * sizeof(xDtype)), 0, 0};
+     DataCopyPadExtParams<xDtype> pad = {false, 0, 0, 0};
+     int64_t outOffset = absRowStart * dimN_ + colOffset;
+-    // Copy only the current head's gate column. Each row contributes one
+-    // bf16/fp16 scalar, so the UB layout is a compact 64-element array.
+-    int64_t headIdx = colOffset / ONCE_ROW_LEN;
+-    DataCopyExtParams gateCopy = {static_cast<uint16_t>(calcRow),
+-                                  static_cast<uint32_t>(sizeof(xDtype)),
+-                                  static_cast<uint32_t>((CLA_HEAD_NUM - 1) * sizeof(xDtype)),
+-                                  0, 0};
+-    int64_t gateOffset = absRowStart * CLA_HEAD_NUM + headIdx;
++    int64_t rowStride = dimN_;
++    int64_t headStart = colOffset / headDim_;
++
++    DataCopyExtParams outCopy = {static_cast<uint16_t>(calcRow),
++                                 static_cast<uint32_t>(calcCol * sizeof(xDtype)),
++                                 static_cast<uint32_t>((rowStride - calcCol) * sizeof(xDtype)), 0, 0};
+     DataCopyPad(actInput, globalOutGm_[outOffset], outCopy, pad);
+     DataCopyPad(actInput[inHalfSize_], localOutGm_[outOffset], outCopy, pad);
+-    DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(gateInput, globalGateGm_[gateOffset],
+-                                                       gateCopy, pad);
+-    DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(
+-        gateInput[ubRowCount_], localGateGm_[gateOffset], gateCopy, pad);
++
++    // Per-head gate scalars, one contiguous array per head.
++    for (int64_t h = 0; h < headsPerRow_; ++h) {
++        DataCopyExtParams gateCopy = {static_cast<uint16_t>(calcRow),
++                                      static_cast<uint32_t>(sizeof(xDtype)),
++                                      static_cast<uint32_t>((headNum_ - 1) * sizeof(xDtype)), 0, 0};
++        int64_t gateOffset = absRowStart * headNum_ + headStart + h;
++        DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(gateInput[h * ubRowCount_],
++                                                           globalGateGm_[gateOffset], gateCopy, pad);
++        DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(
++            gateInput[gateSideStride_ + h * ubRowCount_],
++            localGateGm_[gateOffset], gateCopy, pad);
++    }
++
+     // Do not wait here. The DeQue() in Process is the consumer-side sync point;
+     // with depth=DB_BUFFER, the next MTE2 can overlap the current vector compute.
+     actInQueue_.template EnQue(actInput);
+@@ -487,8 +534,8 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
+     __ubuf__ xDtype* globalAddr, __ubuf__ xDtype* localAddr, __ubuf__ xDtype* globalGateAddr,
+     __ubuf__ xDtype* localGateAddr, __ubuf__ xDtype* outputAddr)
+ {
+-            constexpr uint16_t fullTileRows = static_cast<uint16_t>(DOUBLE_BLOCK_SIZE);
+-    constexpr uint16_t vfsPerRow = static_cast<uint16_t>(ONCE_ROW_LEN / VF_LEN_FP32);
++    constexpr uint16_t fullTileRows = static_cast<uint16_t>(DOUBLE_BLOCK_SIZE);
++    uint16_t vfsPerHead = static_cast<uint16_t>(headDim_ / VF_LEN_FP32);
+     __VEC_SCOPE__ {
+         Reg::RegTensor<xDtype> globalReg, localReg, gateReg;
+         Reg::RegTensor<float> gateF, tmpF, oneF;
+@@ -496,55 +543,63 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
+         Reg::RegTensor<xDtype> globalSigmoidBf16, localSigmoidBf16;
+         Reg::RegTensor<xDtype> outputReg;
+         Reg::MaskReg allMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
++        const uint16_t heads = static_cast<uint16_t>(headsPerRow_);
+         // Sigmoid scratch stores bf16/fp16 values. Keep global/local regions separated.
+         __ubuf__ uint8_t* sigmoidBytes = (__ubuf__ uint8_t*)sigmoidBroadcastBuf_.Get<float>().GetPhyAddr();
+         __ubuf__ xDtype* globalSigmoidUb = (__ubuf__ xDtype*)sigmoidBytes;
+-        __ubuf__ xDtype* localSigmoidUb =
+-            (__ubuf__ xDtype*)(sigmoidBytes + fullTileRows * sizeof(xDtype));
+-
+-        // Phase 1: vectorized sigmoid over the 64 per-row gate values.
+-        Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(gateReg, globalGateAddr);
+-        Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, gateReg, allMask);
+-        Reg::Muls(tmpF, gateF, -1.0f, allMask);
+-        Reg::Exp(tmpF, tmpF, allMask);
+-        Reg::Adds(tmpF, tmpF, 1.0f, allMask);
+-        Reg::Duplicate(oneF, 1.0f, allMask);
+-        Reg::Div(globalSigmoidF, oneF, tmpF, allMask);
+-        Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(globalSigmoidBf16, globalSigmoidF, allMask);
+-        Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(globalSigmoidUb, globalSigmoidBf16, allMask);
+-
+-        Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(gateReg, localGateAddr);
+-        Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, gateReg, allMask);
+-        Reg::Muls(tmpF, gateF, -1.0f, allMask);
+-        Reg::Exp(tmpF, tmpF, allMask);
+-        Reg::Adds(tmpF, tmpF, 1.0f, allMask);
+-        Reg::Duplicate(oneF, 1.0f, allMask);
+-        Reg::Div(localSigmoidF, oneF, tmpF, allMask);
+-        Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(localSigmoidBf16, localSigmoidF, allMask);
+-        Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(localSigmoidUb, localSigmoidBf16, allMask);
+-
+-        // Phase 2: broadcast one precomputed sigmoid per row and accumulate attention.
+-        // Phase 1 stored sigmoid to UB scratch; make the store visible before VEC loads.
++        __ubuf__ xDtype* localSigmoidUb = (__ubuf__ xDtype*)(sigmoidBytes + gateSideStride_ * sizeof(xDtype));
++
++        // Phase 1: vectorized sigmoid for each head's 64 per-row gate values.
++        for (uint16_t head = 0; head < heads; ++head) {
++            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(gateReg, globalGateAddr + head * ubRowCount_);
++            Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, gateReg, allMask);
++            Reg::Muls(tmpF, gateF, -1.0f, allMask);
++            Reg::Exp(tmpF, tmpF, allMask);
++            Reg::Adds(tmpF, tmpF, 1.0f, allMask);
++            Reg::Duplicate(oneF, 1.0f, allMask);
++            Reg::Div(globalSigmoidF, oneF, tmpF, allMask);
++            Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(globalSigmoidBf16, globalSigmoidF, allMask);
++            Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(globalSigmoidUb + head * ubRowCount_,
++                                                                   globalSigmoidBf16, allMask);
++        }
++
++        for (uint16_t head = 0; head < heads; ++head) {
++            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(gateReg, localGateAddr + head * ubRowCount_);
++            Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, gateReg, allMask);
++            Reg::Muls(tmpF, gateF, -1.0f, allMask);
++            Reg::Exp(tmpF, tmpF, allMask);
++            Reg::Adds(tmpF, tmpF, 1.0f, allMask);
++            Reg::Duplicate(oneF, 1.0f, allMask);
++            Reg::Div(localSigmoidF, oneF, tmpF, allMask);
++            Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(localSigmoidBf16, localSigmoidF, allMask);
++            Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(localSigmoidUb + head * ubRowCount_,
++                                                                   localSigmoidBf16, allMask);
++        }
++
++        // Phase 2: broadcast each per-row/per-head sigmoid over its D-sized span.
+         AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
+         Reg::AddrReg offset;
+         for (uint16_t row = 0; row < fullTileRows; ++row) {
+-            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(
+-                globalSigmoidBf16, globalSigmoidUb + row);
+-            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(
+-                localSigmoidBf16, localSigmoidUb + row);
+-
+-            for (uint16_t vf = 0; vf < vfsPerRow; ++vf) {
+-                offset = Reg::CreateAddrReg<xDtype>(row, ONCE_ROW_LEN, vf, VF_LEN_FP32);
+-                // Native xDtype multiply-add: use half/bf16 arithmetic directly,
+-                // avoiding the FP32 casts in the inner SwiGLU accumulation loop.
+-                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(globalReg, globalAddr, offset);
+-                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(localReg, localAddr, offset);
+-
+-                Reg::Mul(globalReg, globalReg, globalSigmoidBf16, allMask);
+-                Reg::Mul(localReg, localReg, localSigmoidBf16, allMask);
+-                Reg::Add(outputReg, globalReg, localReg, allMask);
+-
+-                Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(outputAddr, outputReg, offset, allMask);
++            for (uint16_t head = 0; head < heads; ++head) {
++                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(
++                    globalSigmoidBf16, globalSigmoidUb + head * ubRowCount_ + row);
++                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(
++                    localSigmoidBf16, localSigmoidUb + head * ubRowCount_ + row);
++
++                for (uint16_t vf = 0; vf < vfsPerHead; ++vf) {
++                    uint16_t globalVf = static_cast<uint16_t>(head * vfsPerHead + vf);
++                    offset = Reg::CreateAddrReg<xDtype>(row, ONCE_ROW_LEN, globalVf, VF_LEN_FP32);
++                    Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(globalReg, globalAddr, offset);
++                    Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(localReg, localAddr, offset);
++
++                    Reg::Mul(globalReg, globalReg, globalSigmoidBf16, allMask);
++                    Reg::Mul(localReg, localReg, localSigmoidBf16, allMask);
++                    Reg::Add(outputReg, globalReg, localReg, allMask);
++
++                    AscendC::Reg::AddrReg storeOffset = AscendC::Reg::CreateAddrReg<xDtype>(
++                        row, ONCE_ROW_LEN, globalVf, VF_LEN_FP32);
++                    Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(outputAddr, outputReg, storeOffset, allMask);
++                }
+             }
+         }
+     }
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/op_kernel/arch35/cla_gate_mx_quant_with_dual_axis_tilingdata.h b/attention/cla_gate_mx_quant_with_dual_axis/op_kernel/arch35/cla_gate_mx_quant_with_dual_axis_tilingdata.h
+index 8be47077c..206062a7e 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/op_kernel/arch35/cla_gate_mx_quant_with_dual_axis_tilingdata.h
++++ b/attention/cla_gate_mx_quant_with_dual_axis/op_kernel/arch35/cla_gate_mx_quant_with_dual_axis_tilingdata.h
+@@ -19,14 +19,16 @@
+ struct ClaGateMxQuantWithDualAxisTilingData {
+     int64_t usedCoreNum;  // 实际使用核数（kernel 侧视为 totalCoreNum）
+     int64_t dstType;      // 输出量化类型
+-    int64_t activateLeft; // 1=左激活, 0=右激活
+-    int64_t dimM;         // 总行数
+-    int64_t dimN;         // N（SwiGLU 输出列数 = x 列数 / 2）
+-    int64_t numGroups;    // group 数量
++    int64_t activateLeft; // 保留字段，当前固定 1
++    int64_t dimM;         // 总行数 T
++    int64_t dimN;         // 量化列数 K = N * D
++    int64_t numGroups;    // 保留字段，当前固定 1
+     int64_t blockW;       // 列方向基本块宽度=256
+     int64_t splitBlockH;  // 行方向基本块高度=64
+-    int64_t dimNBlockNum; // N 方向切分基本块数 = ceil(N/blockW)
+-    int64_t dimNTail;     // N 方向尾块列数
++    int64_t dimNBlockNum; // K 方向切分基本块数 = ceil(K/blockW)
++    int64_t dimNTail;     // K 方向尾块列数
++    int64_t headNum;      // head 数量 N
++    int64_t headDim;      // 每个 head 的 D（128 或 256）
+ };
+ 
+ #endif // OPS_NN_CLA_GATE_MX_QUANT_WITH_DUAL_AXIS_TILINGDATA_H
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/op_kernel/cla_gate_mx_quant_with_dual_axis_apt.cpp b/attention/cla_gate_mx_quant_with_dual_axis/op_kernel/cla_gate_mx_quant_with_dual_axis_apt.cpp
+index fa7792bd4..a70a40445 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/op_kernel/cla_gate_mx_quant_with_dual_axis_apt.cpp
++++ b/attention/cla_gate_mx_quant_with_dual_axis/op_kernel/cla_gate_mx_quant_with_dual_axis_apt.cpp
+@@ -21,6 +21,29 @@
+ using namespace ClaGateMxQuantWithDualAxis;
+ using namespace ClaGateMxQuantWithDualAxisOp;
+ 
++namespace {
++template <uint64_t roundMode>
++struct RoundModeMapper {
++    static constexpr AscendC::RoundMode value = []() {
++        // FP8 only supports rint; FP4 can use rint/floor/round.
++        if constexpr (IsSameType<DTYPE_ROW_DATA, fp8_e4m3fn_t>::value ||
++                      IsSameType<DTYPE_ROW_DATA, fp8_e5m2_t>::value) {
++            return AscendC::RoundMode::CAST_RINT;
++        } else {
++            if constexpr (roundMode == TPL_RINT) {
++                return AscendC::RoundMode::CAST_RINT;
++            } else if constexpr (roundMode == TPL_FLOOR) {
++                return AscendC::RoundMode::CAST_FLOOR;
++            } else if constexpr (roundMode == TPL_ROUND) {
++                return AscendC::RoundMode::CAST_ROUND;
++            } else {
++                return AscendC::RoundMode::CAST_RINT;
++            }
++        }
++    }();
++};
++} // namespace
++
+ template <uint64_t mode, uint64_t roundMode, uint64_t scaleAlg, uint64_t isGroupIdx>
+ __global__ __aicore__ void cla_gate_mx_quant_with_dual_axis(
+     GM_ADDR global_out, GM_ADDR local_out, GM_ADDR global_gate_logits, GM_ADDR local_gate_logits,
+@@ -34,7 +57,8 @@ __global__ __aicore__ void cla_gate_mx_quant_with_dual_axis(
+     REGISTER_TILING_DEFAULT(ClaGateMxQuantWithDualAxisTilingData);
+     GET_TILING_DATA_WITH_STRUCT(ClaGateMxQuantWithDualAxisTilingData, tilingData, tiling);
+     TPipe pipe;
+-    ClaGateMxQuantWithDualAxisBase<DTYPE_GLOBAL_OUT, DTYPE_ROW_DATA, mode, AscendC::RoundMode::CAST_RINT,
++    constexpr AscendC::RoundMode ascendcRoundMode = RoundModeMapper<roundMode>::value;
++    ClaGateMxQuantWithDualAxisBase<DTYPE_GLOBAL_OUT, DTYPE_ROW_DATA, mode, ascendcRoundMode,
+                                   scaleAlg, isGroupIdx> op(&tilingData, &pipe);
+     op.Init(global_out, local_out, global_gate_logits, local_gate_logits,
+             row_data, row_scale, col_data, col_scale);
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/tests/assets/golden.py b/attention/cla_gate_mx_quant_with_dual_axis/tests/assets/golden.py
+index 004b17438..a11e03261 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/tests/assets/golden.py
++++ b/attention/cla_gate_mx_quant_with_dual_axis/tests/assets/golden.py
+@@ -366,29 +366,34 @@ def cla_gate_np(global_out, local_out, global_gate_logits, local_gate_logits):
+     local_f32 = local_out.astype(np.float32)
+     global_gate_f32 = global_gate_logits.astype(np.float32)
+     local_gate_f32 = local_gate_logits.astype(np.float32)
+-    if global_gate_f32.ndim == 4:
++    if global_gate_f32.ndim == global_f32.ndim:
+         global_gate_f32 = np.squeeze(global_gate_f32, axis=-1)
+         local_gate_f32 = np.squeeze(local_gate_f32, axis=-1)
+     global_scale = _sigmoid_np(global_gate_f32)
+     local_scale = _sigmoid_np(local_gate_f32)
+-    # Keep the same broadcast semantics as:
+-    #   global_out * torch.sigmoid(global_logits).unsqueeze(-1)
+-    #   + local_out * torch.sigmoid(local_logits).unsqueeze(-1)
++    # TND: [T,N,D] and gate [T,N] -> broadcast over D.
+     merged = global_f32 * global_scale[..., None] + local_f32 * local_scale[..., None]
+     return merged.astype(calc_dtype)
+ 
+ 
+-def cla_gate_quant_dual_np(global_out, local_out, global_gate_logits, local_gate_logits, *, scale_alg=1):
++def cla_gate_quant_dual_np(global_out, local_out, global_gate_logits, local_gate_logits, *,
++                           scale_alg=1, round_mode="rint", dst_type=36):
+     merged = cla_gate_np(global_out, local_out, global_gate_logits, local_gate_logits)
+-    # Fused operator layout: [S, B, N, D] -> [S*B, N*D].
+-    merged = merged.reshape(merged.shape[0] * merged.shape[1], merged.shape[2] * merged.shape[3])
++    # Fused operator layout: [T,N,D] -> [T, N*D].
++    merged = merged.reshape(merged.shape[0], merged.shape[1] * merged.shape[2])
++    mx_ele_dtype = {
++        35: "float8_e5m2",
++        36: "float8_e4m3fn",
++        40: "float4_e2m1",
++        41: "float4_e1m2",
++    }[dst_type]
+     row_scale, row_data = _mx_quantize(
+-        merged, mx_ele_dtype="float8_e4m3fn", axis=-1,
+-        block_size=32, round_mode="rint", scale_alg=scale_alg,
++        merged, mx_ele_dtype=mx_ele_dtype, axis=-1,
++        block_size=32, round_mode=round_mode, scale_alg=scale_alg,
+     )
+     col_scale, col_data = _mx_quantize(
+-        merged, mx_ele_dtype="float8_e4m3fn", axis=-2,
+-        block_size=32, round_mode="rint", scale_alg=scale_alg,
++        merged, mx_ele_dtype=mx_ele_dtype, axis=-2,
++        block_size=32, round_mode=round_mode, scale_alg=scale_alg,
+     )
+     return row_data, row_scale, col_data, col_scale
+ 
+@@ -401,20 +406,22 @@ def cla_gate_mx_quant_with_dual_axis_golden(
+     *,
+     dst_type=36,
+     scale_alg=1,
++    round_mode="rint",
+     **kwargs,
+ ):
+-    """Golden for the fixed [256, 4, 96, 256] CLA gate forward operator.
++    """Golden for the TND CLA gate forward operator.
+ 
+-    Follows the small-op merge formula (sigmoid -> broadcast mul -> add), then
+-    reshapes to the fused-operator quant layout [S*B, N*D] before dual-axis
+-    MXFP8 quantization (E4M3FN, scale_alg).
++    Follows the merge formula (sigmoid -> broadcast mul -> add), then reshapes
++    to the fused-operator quant layout [T,N*D] before dual-axis MX quantization.
+     """
+-    if dst_type != 36:
+-        raise ValueError("cla_gate_mx_quant_with_dual_axis only supports dst_type=36")
++    if dst_type not in (35, 36, 40, 41):
++        raise ValueError("unsupported dst_type: %s" % dst_type)
+     return cla_gate_quant_dual_np(
+         global_out,
+         local_out,
+         global_gate_logits,
+         local_gate_logits,
+         scale_alg=scale_alg,
++        round_mode=round_mode,
++        dst_type=dst_type,
+     )
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/tests/assets/golden_npu.py b/attention/cla_gate_mx_quant_with_dual_axis/tests/assets/golden_npu.py
+index 759bf3830..771963af7 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/tests/assets/golden_npu.py
++++ b/attention/cla_gate_mx_quant_with_dual_axis/tests/assets/golden_npu.py
+@@ -48,7 +48,12 @@ def _torch_uint8_bytes(tensor):
+     return tensor.cpu().view(torch.uint8).numpy().tobytes()
+ 
+ 
+-def cla_gate_quant_dual_npu(global_out, local_out, global_gate_logits, local_gate_logits, *, scale_alg=1):
++def cla_gate_quant_dual_npu_tensors(global_out, local_out, global_gate_logits, local_gate_logits, *, scale_alg=1):
++    """Run the NPU small-op reference and return raw torch tensors.
++
++    This avoids importing ml_dtypes in environments where ml_dtypes was built
++    against NumPy 1.x but the active runtime is NumPy 2.x.
++    """
+     device = "npu:0"
+     torch.npu.set_device(device)
+ 
+@@ -56,20 +61,33 @@ def cla_gate_quant_dual_npu(global_out, local_out, global_gate_logits, local_gat
+     lo = _to_npu(local_out, device)
+     gg = _to_npu(global_gate_logits, device)
+     lg = _to_npu(local_gate_logits, device)
+-    if gg.dim() == 4:
++    if gg.dim() == go.dim():
+         gg = gg.squeeze(-1)
+         lg = lg.squeeze(-1)
+ 
+     global_scale = torch.sigmoid(gg).unsqueeze(-1)
+     local_scale = torch.sigmoid(lg).unsqueeze(-1)
+     merged = go * global_scale + lo * local_scale
+-    merged = merged.reshape(merged.shape[0] * merged.shape[1], merged.shape[2] * merged.shape[3])
++    if merged.dim() == 3:
++        # TND layout: [T, N, D] -> [T, N*D]
++        merged = merged.reshape(merged.shape[0], merged.shape[1] * merged.shape[2])
++    elif merged.dim() == 4:
++        # Legacy SBND layout: [S, B, N, D] -> [S*B, N*D]
++        merged = merged.reshape(merged.shape[0] * merged.shape[1], merged.shape[2] * merged.shape[3])
++    else:
++        raise ValueError("cla_gate_mx_quant_with_dual_axis expects 3D [T,N,D] or 4D [S,B,N,D]")
+ 
+     row_data, row_scale, col_data, col_scale = torch_npu.npu_dynamic_mx_quant_with_dual_axis(
+         merged, dst_type=_float8_dtype(), scale_alg=scale_alg
+     )
+     torch.npu.synchronize()
++    return row_data, row_scale, col_data, col_scale
++
+ 
++def cla_gate_quant_dual_npu(global_out, local_out, global_gate_logits, local_gate_logits, *, scale_alg=1):
++    row_data, row_scale, col_data, col_scale = cla_gate_quant_dual_npu_tensors(
++        global_out, local_out, global_gate_logits, local_gate_logits, scale_alg=scale_alg
++    )
+     row_data_np = np.frombuffer(_torch_uint8_bytes(row_data), dtype=_e4m3_numpy_dtype()).reshape(
+         row_data.shape
+     )
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/tests/assets/golden_small_op.py b/attention/cla_gate_mx_quant_with_dual_axis/tests/assets/golden_small_op.py
+index 606230735..4400544c9 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/tests/assets/golden_small_op.py
++++ b/attention/cla_gate_mx_quant_with_dual_axis/tests/assets/golden_small_op.py
+@@ -1,15 +1,11 @@
+ #!/usr/bin/env python3
+ # -*- coding: UTF-8 -*-
+-"""Torch small-op concatenated golden for cla_gate_mx_quant_with_dual_axis.
++"""Torch small-op golden for cla_gate_mx_quant_with_dual_axis (NPUSim).
+ 
+-This golden mirrors the small-op benchmark path:
++This plugin mirrors the small-op reference on CPU:
+     torch.sigmoid(gate_logits).unsqueeze(-1) -> broadcast mul -> add
+-    -> reshape [S*B, N*D]
+-    -> dual-axis MXFP8 quant (E4M3FN).
+-
+-The quantization part reuses the CPU implementation from golden.py; only the
+-merge stage is expressed with torch operations, matching the small-op script
+-more closely than the pure numpy golden.
++    -> reshape [T, N*D] (current TND API; legacy SBND is also supported)
++    -> dual-axis MX quantization using the NumPy implementation in golden.py.
+ """
+ 
+ import importlib.util
+@@ -56,14 +52,22 @@ def cla_gate_small_op_np(global_out, local_out, global_gate_logits, local_gate_l
+     lo = _numpy_to_torch(local_out)
+     gg = _numpy_to_torch(global_gate_logits)
+     lg = _numpy_to_torch(local_gate_logits)
+-    if gg.dim() == 4:
++    if gg.dim() == go.dim():
++        # [T,N,1] (or legacy [S,B,N,1]) -> squeeze the singleton head/feature dim.
+         gg = gg.squeeze(-1)
+         lg = lg.squeeze(-1)
+ 
+     global_scale = torch.sigmoid(gg).unsqueeze(-1)
+     local_scale = torch.sigmoid(lg).unsqueeze(-1)
+     merged = go * global_scale + lo * local_scale
+-    merged = merged.reshape(merged.shape[0] * merged.shape[1], merged.shape[2] * merged.shape[3])
++    if merged.dim() == 3:
++        # Current TND layout: [T, N, D] -> [T, N*D]
++        merged = merged.reshape(merged.shape[0], merged.shape[1] * merged.shape[2])
++    elif merged.dim() == 4:
++        # Legacy SBND layout: [S, B, N, D] -> [S*B, N*D]
++        merged = merged.reshape(merged.shape[0] * merged.shape[1], merged.shape[2] * merged.shape[3])
++    else:
++        raise ValueError("cla_gate_mx_quant_with_dual_axis expects 3D [T,N,D] or 4D [S,B,N,D]")
+     return _torch_to_numpy(merged, calc_dtype)
+ 
+ 
+@@ -75,29 +79,36 @@ def cla_gate_mx_quant_with_dual_axis_small_op_golden(
+     *,
+     dst_type=36,
+     scale_alg=1,
++    round_mode="rint",
+     **kwargs,
+ ):
+-    """Small-op concatenated golden for the fixed CLA gate forward shape."""
+-    if dst_type != 36:
+-        raise ValueError("cla_gate_mx_quant_with_dual_axis only supports dst_type=36")
++    """Small-op concatenated golden for the TND CLA gate forward operator."""
++    mx_ele_dtype = {
++        35: "float8_e5m2",
++        36: "float8_e4m3fn",
++        40: "float4_e2m1",
++        41: "float4_e1m2",
++    }.get(dst_type)
++    if mx_ele_dtype is None:
++        raise ValueError("unsupported dst_type: %s" % dst_type)
+ 
+     merged = cla_gate_small_op_np(
+         global_out, local_out, global_gate_logits, local_gate_logits
+     )
+     row_scale, row_data = _CPU._mx_quantize(
+         merged,
+-        mx_ele_dtype="float8_e4m3fn",
++        mx_ele_dtype=mx_ele_dtype,
+         axis=-1,
+         block_size=32,
+-        round_mode="rint",
++        round_mode=round_mode,
+         scale_alg=scale_alg,
+     )
+     col_scale, col_data = _CPU._mx_quantize(
+         merged,
+-        mx_ele_dtype="float8_e4m3fn",
++        mx_ele_dtype=mx_ele_dtype,
+         axis=-2,
+         block_size=32,
+-        round_mode="rint",
++        round_mode=round_mode,
+         scale_alg=scale_alg,
+     )
+     return row_data, row_scale, col_data, col_scale
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/bench_cla_gate_small_op.py b/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/bench_cla_gate_small_op.py
+index fd56bd4db..b080e170e 100755
+--- a/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/bench_cla_gate_small_op.py
++++ b/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/bench_cla_gate_small_op.py
+@@ -9,7 +9,7 @@ It runs the exact unfused reference path:
+     merged       = global_out * global_gate + local_out * local_gate
+     row_data, row_scale, col_data, col_scale =
+         torch_npu.npu_dynamic_mx_quant_with_dual_axis(
+-            merged.reshape(merged.shape[0] * merged.shape[1], merged.shape[2] * merged.shape[3]),
++            merged.reshape(merged.shape[0], merged.shape[1] * merged.shape[2]),
+             dst_type=torch.float8_e4m3fn, scale_alg=1)
+ 
+ Use this to compare against the fused npu_cla_gate_mx_quant_with_dual_axis
+@@ -49,7 +49,7 @@ def cla_gate(global_out, local_out, global_logits, local_logits):
+ 
+ def cla_gate_quant_dual(global_out, local_out, global_logits, local_logits):
+     merged = cla_gate(global_out, local_out, global_logits, local_logits)
+-    merged = merged.reshape(merged.shape[0] * merged.shape[1], merged.shape[2] * merged.shape[3])
++    merged = merged.reshape(merged.shape[0], merged.shape[1] * merged.shape[2])
+     return torch_npu.npu_dynamic_mx_quant_with_dual_axis(
+         merged, dst_type=FLOAT8_E4M3FN, scale_alg=1
+     )
+@@ -63,7 +63,7 @@ def create_inputs(shape, dtype, device, seed):
+         return (torch.rand(size, generator=generator, dtype=torch.float32) *
+                 (high - low) + low).to(dtype).to(device)
+ 
+-    gate_shape = shape[:3]
++    gate_shape = shape[:2]
+     g_out = rand_tensor(shape, -2.0, 2.0)
+     l_out = rand_tensor(shape, -2.0, 2.0)
+     # Gate logits are the sigmoid inputs; this range exercises both tails.
+@@ -87,8 +87,8 @@ def main():
+     torch.npu.set_device(args.device)
+     dtype = torch.bfloat16 if args.dtype == "bf16" else torch.float16
+ 
+-    # shape is fixed by the CLA gate operator requirement.
+-    shape = (256, 4, 96, 256)
++    # TND shape used by the CLA gate operator.
++    shape = (64, 96, 256)
+ 
+     global_out, local_out, global_logits, local_logits = create_inputs(
+         shape, dtype, device_name, args.seed
+@@ -127,7 +127,7 @@ def main():
+     print("=" * 78)
+     print(f"device           : {device_name}")
+     print(f"input dtype      : {args.dtype}")
+-    print(f"input shape      : {shape}  (global_out / local_out)")
++    print(f"input shape      : {shape}  (global_out / local_out TND)")
+     print(f"gate shape       : {shape[:3]}  (global/local gate logits)")
+     print(f"row/col data     : {tuple(row_data.shape)}")
+     print(f"row_scale        : {tuple(row_scale.shape)}")
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/cla_gate_result.csv b/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/cla_gate_result.csv
+index 09d482789..d6d817a67 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/cla_gate_result.csv
++++ b/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/cla_gate_result.csv
+@@ -1,9 +1,2 @@
+ testcase_name,op_name,dyn_tiling_time_us,bin_tiling_time_us,dyn_kernel_name,cst_kernel_name,bin_kernel_name,dyn_block_dim,cst_block_dim,bin_block_dim,dyn_perf_us,cst_perf_us,bin_perf_us,dyn_compile_s,cst_compile_s,bin_compile_s,perf_status,dyn_precision,cst_precision,bin_precision,precision_status,dyn_oob_result,cst_oob_result,bin_oob_result,memory_oob_status,dyn_tiling_key,dyn_tiling_data,bin_tiling_key,bin_tiling_data,dyn_workspaces,cst_workspaces,bin_workspaces,data_input_size_b,data_output_size_b,soc,xpu_metrics,precision_metrics,network_name,input_dtypes,input_ori_shapes,output_ori_shapes,input_ori_formats,output_ori_formats,attributes,attributes1,attributes2,attributes3,attributes4,attributes5,attributes6,attributes7,attributes8,attributes9,input_shapes,output_dtypes,output_shapes,input_formats,output_formats,input_data_ranges,precision_tolerances,absolute_precision,output_inplace_indexes,output_shape_unknown_indexes,is_enabled,remark,soc_series,priority,dump_file_prefix,manual_input_binaries,manual_golden_binaries
+-ClaGateMxQuantWithDualAxis_bf16_ocp_random,cla_gate_mx_quant_with_dual_axis,"(6, 6, 5)",BIN_OFF,dyn_op_ClaGateMxQuantWithDualAxis_bf16_ocp_random,CST_OFF,BIN_OFF,64,CST_OFF,BIN_OFF,127.633,CST_OFF,BIN_OFF,4.072690486907959,CST_OFF,BIN_OFF,PASS,"100.0%,100%,100.0%,100%",CST_OFF,BIN_OFF,PASS,"OK,OK,OK,OK,OK",UNKNOWN,UNKNOWN,PASS,1 (0x0000000000000001),"(64, 0, 36, 0, 0, 0, 1024, 0, 24576, 0, 1, 0, 256, 0, 64, 0, 96, 0, 256, 0)",BIN_OFF (BIN_OFF),"('BIN_OFF', False)","(16777216,)",,,101056512,51904512,Ascend950DT_9582,{},"{'dyn': {0: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 1: {'standard': 'binary_equal', 'pass': True}, 2: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 3: {'standard': 'binary_equal', 'pass': True}}, 'cst': {}, 'bin': {}}",PanguV3,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","{'dst_type': 36, 'scale_alg': 0}",{},{},{},{},{},{},{},{},{},"((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","((-1, 1), (-1, 1), (-4, 4, 0), (-4, 4, 0))","((0, 0), (0, 0), (0, 0), (0, 0))","(0, 0, 0, 0)",(),(),True,use -d=false; OCP scale algorithm branch,"('Ascend950',)",2,,(),()
+-ClaGateMxQuantWithDualAxis_fp16_cublas_random,cla_gate_mx_quant_with_dual_axis,"(5, 5, 5)",BIN_OFF,dyn_op_ClaGateMxQuantWithDualAxis_fp16_cublas_random,CST_OFF,BIN_OFF,64,CST_OFF,BIN_OFF,130.233,CST_OFF,BIN_OFF,4.098872661590576,CST_OFF,BIN_OFF,PASS,"100.0%,100%,100.0%,100%",CST_OFF,BIN_OFF,PASS,"OK,OK,OK,OK,OK",UNKNOWN,UNKNOWN,PASS,33 (0x0000000000000021),"(64, 0, 36, 0, 0, 0, 1024, 0, 24576, 0, 1, 0, 256, 0, 64, 0, 96, 0, 256, 0)",BIN_OFF (BIN_OFF),"('BIN_OFF', False)","(16777216,)",,,101056512,51904512,Ascend950DT_9582,{},"{'dyn': {0: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 1: {'standard': 'binary_equal', 'pass': True}, 2: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 3: {'standard': 'binary_equal', 'pass': True}}, 'cst': {}, 'bin': {}}",PanguV3,"('float16', 'float16', 'float16', 'float16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","{'dst_type': 36, 'scale_alg': 1}",{},{},{},{},{},{},{},{},{},"((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","((-2, 2), (-2, 2), (-8, 8, 0), (-8, 8, 0))","((0, 0), (0, 0), (0, 0), (0, 0))","(0, 0, 0, 0)",(),(),True,use -d=false; float16 dtype branch,"('Ascend950',)",1,,(),()
+-ClaGateMxQuantWithDualAxis_bf16_attn_one_gate_random,cla_gate_mx_quant_with_dual_axis,"(10, 5, 6)",BIN_OFF,dyn_op_ClaGateMxQuantWithDualAxis_bf16_gate_zero_nonzero_attn,CST_OFF,BIN_OFF,64,CST_OFF,BIN_OFF,65.874,CST_OFF,BIN_OFF,4.06134295463562,CST_OFF,BIN_OFF,PASS,"100.0%,100%,100.0%,100%",CST_OFF,BIN_OFF,PASS,"OK,OK,OK,OK,OK",UNKNOWN,UNKNOWN,PASS,33 (0x0000000000000021),"(64, 0, 36, 0, 0, 0, 1024, 0, 24576, 0, 1, 0, 256, 0, 64, 0, 96, 0, 256, 0)",BIN_OFF (BIN_OFF),"('BIN_OFF', False)","(16777216,)",,,101056512,51904512,Ascend950DT_9582,{},"{'dyn': {0: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 1: {'standard': 'binary_equal', 'pass': True}, 2: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 3: {'standard': 'binary_equal', 'pass': True}}, 'cst': {}, 'bin': {}}",PanguV3,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","{'dst_type': 36, 'scale_alg': 1}",{},{},{},{},{},{},{},{},{},"((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","((1, 1), (1, 1), (-4, 4, 0), (-4, 4, 0))","((0, 0), (0, 0), (0, 0), (0, 0))","(0, 0, 0, 0)",(),(),True,"diagnostic: attention=1, random gates -> merged=sigmoid(global_gate)+sigmoid(local_gate), directly exposes per-head gate mapping","('Ascend950',)",7,,(),()
+-ClaGateMxQuantWithDualAxis_bf16_gate_one_nonzero_attn,cla_gate_mx_quant_with_dual_axis,"(9, 5, 4)",BIN_OFF,dyn_op_ClaGateMxQuantWithDualAxis_bf16_gate_zero_nonzero_attn,CST_OFF,BIN_OFF,64,CST_OFF,BIN_OFF,125.354,CST_OFF,BIN_OFF,4.06134295463562,CST_OFF,BIN_OFF,PASS,"100.0%,100%,100.0%,100%",CST_OFF,BIN_OFF,PASS,"OK,OK,OK,OK,OK",UNKNOWN,UNKNOWN,PASS,33 (0x0000000000000021),"(64, 0, 36, 0, 0, 0, 1024, 0, 24576, 0, 1, 0, 256, 0, 64, 0, 96, 0, 256, 0)",BIN_OFF (BIN_OFF),"('BIN_OFF', False)","(16777216,)",,,101056512,51904512,Ascend950DT_9582,{},"{'dyn': {0: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 1: {'standard': 'binary_equal', 'pass': True}, 2: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 3: {'standard': 'binary_equal', 'pass': True}}, 'cst': {}, 'bin': {}}",PanguV3,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","{'dst_type': 36, 'scale_alg': 1}",{},{},{},{},{},{},{},{},{},"((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","((-2, 2), (-2, 2), (1, 1), (1, 1))","((0, 0), (0, 0), (0, 0), (0, 0))","(0, 0, 0, 0)",(),(),True,"diagnostic: gate=1 (sigmoid=0.731), nonzero attention -> tests nonzero sigmoid value with gate address irrelevant","('Ascend950',)",6,,(),()
+-ClaGateMxQuantWithDualAxis_bf16_gate_zero_nonzero_attn,cla_gate_mx_quant_with_dual_axis,"(6, 5, 5)",BIN_OFF,dyn_op_ClaGateMxQuantWithDualAxis_bf16_gate_zero_nonzero_attn,CST_OFF,BIN_OFF,64,CST_OFF,BIN_OFF,125.793,CST_OFF,BIN_OFF,4.06134295463562,CST_OFF,BIN_OFF,PASS,"100.0%,100%,100.0%,100%",CST_OFF,BIN_OFF,PASS,"OK,OK,OK,OK,OK",UNKNOWN,UNKNOWN,PASS,33 (0x0000000000000021),"(64, 0, 36, 0, 0, 0, 1024, 0, 24576, 0, 1, 0, 256, 0, 64, 0, 96, 0, 256, 0)",BIN_OFF (BIN_OFF),"('BIN_OFF', False)","(16777216,)",,,101056512,51904512,Ascend950DT_9582,{},"{'dyn': {0: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 1: {'standard': 'binary_equal', 'pass': True}, 2: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 3: {'standard': 'binary_equal', 'pass': True}}, 'cst': {}, 'bin': {}}",PanguV3,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","{'dst_type': 36, 'scale_alg': 1}",{},{},{},{},{},{},{},{},{},"((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","((-2, 2), (-2, 2), (0, 0), (0, 0))","((0, 0), (0, 0), (0, 0), (0, 0))","(0, 0, 0, 0)",(),(),True,"diagnostic: gate=0 (sigmoid=0.5), nonzero attention -> merged=0.5*(global_out+local_out); isolates gate path","('Ascend950',)",5,,(),()
+-ClaGateMxQuantWithDualAxis_bf16_zero_attention,cla_gate_mx_quant_with_dual_axis,"(9, 4, 5)",BIN_OFF,dyn_op_ClaGateMxQuantWithDualAxis_bf16_gate_zero_nonzero_attn,CST_OFF,BIN_OFF,64,CST_OFF,BIN_OFF,126.089,CST_OFF,BIN_OFF,4.06134295463562,CST_OFF,BIN_OFF,PASS,"100.0%,100%,100.0%,100%",CST_OFF,BIN_OFF,PASS,"OK,OK,OK,OK,OK",UNKNOWN,UNKNOWN,PASS,33 (0x0000000000000021),"(64, 0, 36, 0, 0, 0, 1024, 0, 24576, 0, 1, 0, 256, 0, 64, 0, 96, 0, 256, 0)",BIN_OFF (BIN_OFF),"('BIN_OFF', False)","(16777216,)",,,101056512,51904512,Ascend950DT_9582,{},"{'dyn': {0: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 1: {'standard': 'binary_equal', 'pass': True}, 2: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 3: {'standard': 'binary_equal', 'pass': True}}, 'cst': {}, 'bin': {}}",PanguV3,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","{'dst_type': 36, 'scale_alg': 1}",{},{},{},{},{},{},{},{},{},"((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","((0, 0), (0, 0), (-2, 2, 0), (-2, 2, 0))","((0, 0), (0, 0), (0, 0), (0, 0))","(0, 0, 0, 0)",(),(),True,use -d=false; all-zero MX blocks,"('Ascend950',)",3,,(),()
+-ClaGateMxQuantWithDualAxis_bf16_gate_saturation,cla_gate_mx_quant_with_dual_axis,"(4, 6, 4)",BIN_OFF,dyn_op_ClaGateMxQuantWithDualAxis_bf16_gate_zero_nonzero_attn,CST_OFF,BIN_OFF,64,CST_OFF,BIN_OFF,124.247,CST_OFF,BIN_OFF,4.06134295463562,CST_OFF,BIN_OFF,PASS,"100.0%,100%,100.0%,100%",CST_OFF,BIN_OFF,PASS,"OK,OK,OK,OK,OK",UNKNOWN,UNKNOWN,PASS,33 (0x0000000000000021),"(64, 0, 36, 0, 0, 0, 1024, 0, 24576, 0, 1, 0, 256, 0, 64, 0, 96, 0, 256, 0)",BIN_OFF (BIN_OFF),"('BIN_OFF', False)","(16777216,)",,,101056512,51904512,Ascend950DT_9582,{},"{'dyn': {0: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 1: {'standard': 'binary_equal', 'pass': True}, 2: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 3: {'standard': 'binary_equal', 'pass': True}}, 'cst': {}, 'bin': {}}",PanguV3,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","{'dst_type': 36, 'scale_alg': 1}",{},{},{},{},{},{},{},{},{},"((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","((-2, 2), (-2, 2), (-20, 20, -20, 20), (-20, 20, -20, 20))","((0, 0), (0, 0), (0, 0), (0, 0))","(0, 0, 0, 0)",(),(),True,use -d=false; sigmoid saturation and zero logits,"('Ascend950',)",4,,(),()
+-ClaGateMxQuantWithDualAxis_bf16_cublas_random,cla_gate_mx_quant_with_dual_axis,"(5, 5, 5)",BIN_OFF,dyn_op_ClaGateMxQuantWithDualAxis_bf16_gate_zero_nonzero_attn,CST_OFF,BIN_OFF,64,CST_OFF,BIN_OFF,66.775,CST_OFF,BIN_OFF,4.06134295463562,CST_OFF,BIN_OFF,PASS,"100.0%,100%,100.0%,100%",CST_OFF,BIN_OFF,PASS,"OK,OK,OK,OK,OK",UNKNOWN,UNKNOWN,PASS,33 (0x0000000000000021),"(64, 0, 36, 0, 0, 0, 1024, 0, 24576, 0, 1, 0, 256, 0, 64, 0, 96, 0, 256, 0)",BIN_OFF (BIN_OFF),"('BIN_OFF', False)","(16777216,)",,,101056512,51904512,Ascend950DT_9582,{},"{'dyn': {0: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 1: {'standard': 'binary_equal', 'pass': True}, 2: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 3: {'standard': 'binary_equal', 'pass': True}}, 'cst': {}, 'bin': {}}",PanguV3,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","{'dst_type': 36, 'scale_alg': 1}",{},{},{},{},{},{},{},{},{},"((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","((-2, 2), (-2, 2), (-8, 8, 0), (-8, 8, 0))","((0, 0), (0, 0), (0, 0), (0, 0))","(0, 0, 0, 0)",(),(),True,use -d=false; primary supported shape and scale_alg=1,"('Ascend950',)",0,,(),()
++ClaGateMxQuantWithDualAxis_bf16_cublas_random,cla_gate_mx_quant_with_dual_axis,"(8, 5, 5)",BIN_OFF,dyn_op_ClaGateMxQuantWithDualAxis_bf16_cublas_random,CST_OFF,BIN_OFF,64,CST_OFF,BIN_OFF,111.302,CST_OFF,BIN_OFF,4.199589014053345,CST_OFF,BIN_OFF,PASS,"8.5423747698466%,88.96598815917969%,7.3569099108378095%,38.685353597005204%",CST_OFF,BIN_OFF,FAIL,"OK,OK,OK,OK,OK",UNKNOWN,UNKNOWN,PASS,33 (0x0000000000000021),"(np.int32(64), np.int32(0), np.int32(36), np.int32(0), np.int32(1), np.int32(0), np.int32(1024), np.int32(0), np.int32(24576), np.int32(0), np.int32(1), np.int32(0), np.int32(256), np.int32(0), np.int32(64), np.int32(0), np.int32(96), np.int32(0), np.int32(256), np.int32(0), np.int32(96), np.int32(0), np.int32(256), np.int32(0))",BIN_OFF (BIN_OFF),"('BIN_OFF', False)","(16777216,)",,,101056512,51904512,Ascend950DT_9582,{},"{'dyn': {0: {'standard': 'requant', 'precision': '8.5423747698466%', 'pass': False, 'reason': 'exceeded ptol'}, 1: {'standard': 'binary_equal', 'pass': False, 'reason': 'bitwise mismatch'}, 2: {'standard': 'requant', 'precision': '7.3569099108378095%', 'pass': False, 'reason': 'exceeded ptol'}, 3: {'standard': 'binary_equal', 'pass': False, 'reason': 'bitwise mismatch'}}, 'cst': {}, 'bin': {}}",PanguV3,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","{'dst_type': 36, 'scale_alg': 1}",{},{},{},{},{},{},{},{},{},"((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","((-2, 2), (-2, 2), (-8, 8, 0), (-8, 8, 0))","((0, 0), (0, 0), (0, 0), (0, 0))","(0, 0, 0, 0)",(),(),True,dynamic TND; primary supported shape and scale_alg=1,"('Ascend950',)",0,,(),()
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/cla_gate_sim_result.csv b/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/cla_gate_sim_result.csv
+index 0b70cf911..e0f47a479 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/cla_gate_sim_result.csv
++++ b/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/cla_gate_sim_result.csv
+@@ -1,2 +1,2 @@
+-testcase_name,op_name,dyn_tiling_time_us,bin_tiling_time_us,dyn_kernel_name,cst_kernel_name,bin_kernel_name,dyn_block_dim,cst_block_dim,bin_block_dim,dyn_perf_us,cst_perf_us,bin_perf_us,dyn_compile_s,cst_compile_s,bin_compile_s,perf_status,dyn_precision,cst_precision,bin_precision,precision_status,dyn_oob_result,cst_oob_result,bin_oob_result,memory_oob_status,dyn_tiling_key,dyn_tiling_data,bin_tiling_key,bin_tiling_data,dyn_workspaces,cst_workspaces,bin_workspaces,data_input_size_b,data_output_size_b,soc,xpu_metrics,precision_metrics,network_name,input_dtypes,input_ori_shapes,output_ori_shapes,input_ori_formats,output_ori_formats,attributes,attributes1,attributes2,attributes3,attributes4,attributes5,attributes6,attributes7,attributes8,attributes9,input_shapes,output_dtypes,output_shapes,input_formats,output_formats,input_data_ranges,precision_tolerances,absolute_precision,output_inplace_indexes,output_shape_unknown_indexes,is_enabled,remark,soc_series,priority,dump_file_prefix,manual_input_binaries,manual_golden_binaries
+-ClaGateMxQuantWithDualAxis_fp16_cublas_random,cla_gate_mx_quant_with_dual_axis,"(5, 5, 6)",BIN_OFF,dyn_op_ClaGateMxQuantWithDualAxis_fp16_cublas_random,CST_OFF,BIN_OFF,64,SUPPRESSED,SUPPRESSED,UNKNOWN,SUPPRESSED,SUPPRESSED,4.020816087722778,CST_OFF,BIN_OFF,PASS,"100.0%,100%,100.0%,100%",SUPPRESSED,SUPPRESSED,PASS,"OK,OK,OK,OK,OK",UNKNOWN,UNKNOWN,PASS,33 (0x0000000000000021),"(64, 0, 36, 0, 0, 0, 1024, 0, 24576, 0, 1, 0, 256, 0, 64, 0, 96, 0, 256, 0)",BIN_OFF (BIN_OFF),"('BIN_OFF', False)","(16777216,)",,,101056512,51904512,Ascend950PR_9589,{},"{'dyn': {0: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 1: {'standard': 'binary_equal', 'pass': True}, 2: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 3: {'standard': 'binary_equal', 'pass': True}}, 'cst': {}, 'bin': {}}",PanguV3,"('float16', 'float16', 'float16', 'float16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","{'dst_type': 36, 'scale_alg': 1}",{},{},{},{},{},{},{},{},{},"((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","((-2, 2), (-2, 2), (-8, 8, 0), (-8, 8, 0))","((0, 0), (0, 0), (0, 0), (0, 0))","(0, 0, 0, 0)",(),(),True,use -d=false; float16 dtype branch,"('Ascend950',)",1,,(),()
++testcase_name,op_name,dyn_tiling_time_us,bin_tiling_time_us,dyn_kernel_name,cst_kernel_name,bin_kernel_name,dyn_block_dim,cst_block_dim,bin_block_dim,dyn_perf_us,cst_perf_us,bin_perf_us,dyn_compile_s,cst_compile_s,bin_compile_s,perf_status,dyn_precision,cst_precision,bin_precision,precision_status,dyn_oob_result,cst_oob_result,bin_oob_result,memory_oob_status,dyn_tiling_key,dyn_tiling_data,bin_tiling_key,bin_tiling_data,dyn_workspaces,cst_workspaces,bin_workspaces,data_input_size_b,data_output_size_b,soc,xpu_metrics,precision_metrics,network_name,input_dtypes,input_ori_shapes,output_ori_shapes,input_ori_formats,output_ori_formats,attributes,attributes1,attributes2,attributes3,attributes4,attributes5,attributes6,attributes7,attributes8,attributes9,input_shapes,output_dtypes,output_shapes,input_formats,output_formats,input_data_ranges,precision_tolerances,absolute_precision,output_inplace_indexes,output_shape_unknown_indexes,is_enabled,remark,soc_series,priority,dump_file_prefix,manual_input_binaries,manual_golden_binaries
++ClaGateMxQuantWithDualAxis_fp16_cublas_random,cla_gate_mx_quant_with_dual_axis,"(5, 4, 3)",BIN_OFF,dyn_op_ClaGateMxQuantWithDualAxis_fp16_cublas_random,CST_OFF,BIN_OFF,64,SUPPRESSED,SUPPRESSED,UNKNOWN,SUPPRESSED,SUPPRESSED,4.1581196784973145,CST_OFF,BIN_OFF,PASS,"100.0%,100%,100.0%,100%",SUPPRESSED,SUPPRESSED,PASS,"OK,OK,OK,OK,OK",UNKNOWN,UNKNOWN,PASS,33 (0x0000000000000021),"(64, 0, 36, 0, 0, 0, 1024, 0, 24576, 0, 1, 0, 256, 0, 64, 0, 96, 0, 256, 0)",BIN_OFF (BIN_OFF),"('BIN_OFF', False)","(16777216,)",,,101056512,51904512,Ascend950PR_9589,{},"{'dyn': {0: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 1: {'standard': 'binary_equal', 'pass': True}, 2: {'standard': 'requant', 'precision': '100.0%', 'pass': True}, 3: {'standard': 'binary_equal', 'pass': True}}, 'cst': {}, 'bin': {}}",PanguV3,"('float16', 'float16', 'float16', 'float16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","{'dst_type': 36, 'scale_alg': 1}",{},{},{},{},{},{},{},{},{},"((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND', 'ND', 'ND', 'ND')","('ND', 'ND', 'ND', 'ND')","((-2, 2), (-2, 2), (-8, 8, 0), (-8, 8, 0))","((0, 0), (0, 0), (0, 0), (0, 0))","(0, 0, 0, 0)",(),(),True,use -d=false; float16 dtype branch,"('Ascend950',)",1,,(),()
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/run_ttk_kernel.sh b/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/run_ttk_kernel.sh
+index 284cf7f9c..d6bccdb08 100755
+--- a/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/run_ttk_kernel.sh
++++ b/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/run_ttk_kernel.sh
+@@ -5,10 +5,16 @@
+ # Set TTK_TESTCASE=<case_name> to run a single case.
+ set -euo pipefail
+ 
+-OPS_NN_ROOT=/home/g00940185/work/ops-nn
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++OP_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
++
++
+ TTK_ROOT=/home/g00940185/ops-test-kit
+-CASE_FILE="$OPS_NN_ROOT/quant/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/ttk_kernel_cla_gate_mx_quant_with_dual_axis.csv"
+-RESULT_FILE="$OPS_NN_ROOT/quant/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/cla_gate_result.csv"
++
++
++CASE_FILE="$OP_DIR/tests/st/arch35/ttk_kernel_cla_gate_mx_quant_with_dual_axis.csv"
++RESULT_FILE="$OP_DIR/tests/st/arch35/cla_gate_result.csv"
+ 
+ export PYTHONPATH="$TTK_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+ cd "$TTK_ROOT"
+@@ -22,7 +28,7 @@ python3 -m ttk kernel \
+     -i "$CASE_FILE" \
+     "${TESTCASE_ARGS[@]}" \
+     -o "$RESULT_FILE" \
+-    --plugin "${TTK_GOLDEN_PLUGIN:-$OPS_NN_ROOT/quant/cla_gate_mx_quant_with_dual_axis/tests/assets/golden_npu.py}" \
+-    --warmup=false \
++    --plugin "${TTK_GOLDEN_PLUGIN:-$OP_DIR/tests/assets/golden_npu.py}" \
++    --run=10 \
+     -d=true \
+     "$@"
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/run_ttk_kernel_sim.sh b/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/run_ttk_kernel_sim.sh
+index 8db14b533..c23d1b213 100755
+--- a/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/run_ttk_kernel_sim.sh
++++ b/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/run_ttk_kernel_sim.sh
+@@ -1,20 +1,27 @@
+ #!/usr/bin/env bash
+-# TTK NPUSim simulation for the fixed CLA gate forward case.
++# TTK NPUSim simulation for the CLA gate forward TND case.
+ #
+ # Usage:
+ #   source /home/g00940185/work/CANN9.2.0/cann-9.2.0/set_env.sh
+-#   bash quant/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/run_ttk_kernel_sim.sh
++#   bash attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/run_ttk_kernel_sim.sh
+ #
+-# By default only the second case (fp16 + scale_alg=1) is executed.
++# By default only the fp16 + scale_alg=1 case is executed.
+ # Override with: TTK_TESTCASE=ClaGateMxQuantWithDualAxis_bf16_cublas_random
+ # Additional TTK args can still be appended after the script name.
+ set -euo pipefail
+ 
+ TESTCASE="${TTK_TESTCASE:-ClaGateMxQuantWithDualAxis_fp16_cublas_random}"
+ 
+-OPS_NN_ROOT=/home/g00940185/work/ops-nn
+-TTK_ROOT=/home/g00940185/ops-test-kit
+-CASE_DIR="$OPS_NN_ROOT/quant/cla_gate_mx_quant_with_dual_axis/tests/st/arch35"
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++OP_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
++
++# TTK source root; can be overridden with TTK_ROOT=/path/to/ops-test-kit.
++TTK_ROOT="${TTK_ROOT:-/tmp/ttk_root}"
++if [ ! -d "$TTK_ROOT" ]; then
++    TTK_ROOT=/home/g00940185/ops-test-kit
++fi
++
++CASE_DIR="$OP_DIR/tests/st/arch35"
+ CASE_FILE="$CASE_DIR/ttk_kernel_cla_gate_mx_quant_with_dual_axis.csv"
+ RESULT_FILE="$CASE_DIR/cla_gate_sim_result.csv"
+ SIM_OUTPUT_DIR="$CASE_DIR/sim_output"
+@@ -36,7 +43,7 @@ python3 -m ttk kernel \
+     -i "$CASE_FILE" \
+     -t "$TESTCASE" \
+     -o "$RESULT_FILE" \
+-    --plugin "${TTK_GOLDEN_PLUGIN:-$OPS_NN_ROOT/quant/cla_gate_mx_quant_with_dual_axis/tests/assets/golden_small_op.py}" \
++    --plugin "${TTK_GOLDEN_PLUGIN:-$OP_DIR/tests/assets/golden_small_op.py}" \
+     --sim-soc Ascend950 \
+     --sim-cores 0 \
+     --sim-output "$SIM_OUTPUT_DIR" \
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/test.py b/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/test.py
+index e69de29bb..5ba8e2f45 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/test.py
++++ b/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/test.py
+@@ -0,0 +1,29 @@
++import torch
++import torch_npu
++import cann_ops_transformer
++
++device = "npu:0"
++dtype = torch.bfloat16
++
++t, n, d = 64, 96, 256
++global_out = torch.randn(t, n, d, dtype=dtype, device=device)
++local_out = torch.randn(t, n, d, dtype=dtype, device=device)
++global_gate_logits = torch.randn(t, n, dtype=dtype, device=device)
++local_gate_logits = torch.randn(t, n, dtype=dtype, device=device)
++
++row_data, row_scale, col_data, col_scale = (
++    cann_ops_transformer.cla_gate_mx_quant_with_dual_axis(
++        global_out,
++        local_out,
++        global_gate_logits,
++        local_gate_logits,
++        round_mode="rint",
++        scale_alg=1,
++        dst_type=36,
++    )
++)
++
++print(row_data.shape)
++print(row_scale.shape)
++print(col_data.shape)
++print(col_scale.shape)
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/ttk_kernel_cla_gate_mx_quant_with_dual_axis.csv b/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/ttk_kernel_cla_gate_mx_quant_with_dual_axis.csv
+index 775ace4ea..eafd022f5 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/ttk_kernel_cla_gate_mx_quant_with_dual_axis.csv
++++ b/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/ttk_kernel_cla_gate_mx_quant_with_dual_axis.csv
+@@ -1,9 +1,12 @@
+ testcase_name,network_name,op_name,input_dtypes,input_ori_shapes,output_ori_shapes,input_ori_formats,output_ori_formats,attributes,input_shapes,output_dtypes,output_shapes,input_formats,output_formats,input_data_ranges,precision_tolerances,absolute_precision,output_inplace_indexes,output_shape_unknown_indexes,is_enabled,remark,soc_series,priority,dump_file_prefix,manual_input_binaries,manual_golden_binaries
+-ClaGateMxQuantWithDualAxis_bf16_cublas_random,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((-2, 2), (-2, 2), (-8, 8, 0), (-8, 8, 0))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,use -d=false; primary supported shape and scale_alg=1,"('Ascend950',)",0,,,
+-ClaGateMxQuantWithDualAxis_fp16_cublas_random,PanguV3,cla_gate_mx_quant_with_dual_axis,"('float16', 'float16', 'float16', 'float16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((-2, 2), (-2, 2), (-8, 8, 0), (-8, 8, 0))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,use -d=false; float16 dtype branch,"('Ascend950',)",1,,,
+-ClaGateMxQuantWithDualAxis_bf16_ocp_random,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 0}","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((-1, 1), (-1, 1), (-4, 4, 0), (-4, 4, 0))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,use -d=false; OCP scale algorithm branch,"('Ascend950',)",2,,,
+-ClaGateMxQuantWithDualAxis_bf16_zero_attention,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((0, 0), (0, 0), (-2, 2, 0), (-2, 2, 0))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,use -d=false; all-zero MX blocks,"('Ascend950',)",3,,,
+-ClaGateMxQuantWithDualAxis_bf16_gate_saturation,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((-2, 2), (-2, 2), (-20, 20, -20, 20), (-20, 20, -20, 20))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,use -d=false; sigmoid saturation and zero logits,"('Ascend950',)",4,,,
+-ClaGateMxQuantWithDualAxis_bf16_gate_zero_nonzero_attn,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((-2, 2), (-2, 2), (0, 0), (0, 0))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,"diagnostic: gate=0 (sigmoid=0.5), nonzero attention -> merged=0.5*(global_out+local_out); isolates gate path","('Ascend950',)",5,,,
+-ClaGateMxQuantWithDualAxis_bf16_gate_one_nonzero_attn,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((-2, 2), (-2, 2), (1, 1), (1, 1))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,"diagnostic: gate=1 (sigmoid=0.731), nonzero attention -> tests nonzero sigmoid value with gate address irrelevant","('Ascend950',)",6,,,
+-ClaGateMxQuantWithDualAxis_bf16_attn_one_gate_random,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((1, 1), (1, 1), (-4, 4, 0), (-4, 4, 0))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,"diagnostic: attention=1, random gates -> merged=sigmoid(global_gate)+sigmoid(local_gate), directly exposes per-head gate mapping","('Ascend950',)",7,,,
++ClaGateMxQuantWithDualAxis_bf16_cublas_random,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((-2, 2), (-2, 2), (-8, 8, 0), (-8, 8, 0))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,dynamic TND; primary supported shape and scale_alg=1,"('Ascend950',)",0,,,
++ClaGateMxQuantWithDualAxis_fp16_cublas_random,PanguV3,cla_gate_mx_quant_with_dual_axis,"('float16', 'float16', 'float16', 'float16')","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((-2, 2), (-2, 2), (-8, 8, 0), (-8, 8, 0))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,dynamic TND; float16 dtype branch,"('Ascend950',)",1,,,
++ClaGateMxQuantWithDualAxis_bf16_ocp_random,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 0}","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((-1, 1), (-1, 1), (-4, 4, 0), (-4, 4, 0))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,dynamic TND; OCP scale algorithm branch,"('Ascend950',)",2,,,
++ClaGateMxQuantWithDualAxis_bf16_zero_attention,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((0, 0), (0, 0), (-2, 2, 0), (-2, 2, 0))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,dynamic TND; all-zero MX blocks,"('Ascend950',)",3,,,
++ClaGateMxQuantWithDualAxis_bf16_gate_saturation,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((-2, 2), (-2, 2), (-20, 20, -20, 20), (-20, 20, -20, 20))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,dynamic TND; sigmoid saturation and zero logits,"('Ascend950',)",4,,,
++ClaGateMxQuantWithDualAxis_bf16_gate_zero_nonzero_attn,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((-2, 2), (-2, 2), (0, 0), (0, 0))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,"diagnostic: gate=0 (sigmoid=0.5), nonzero attention -> merged=0.5*(global_out+local_out); isolates gate path","('Ascend950',)",5,,,
++ClaGateMxQuantWithDualAxis_bf16_gate_one_nonzero_attn,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((-2, 2), (-2, 2), (1, 1), (1, 1))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,"diagnostic: gate=1 (sigmoid=0.731), nonzero attention -> tests nonzero sigmoid value with gate address irrelevant","('Ascend950',)",6,,,
++ClaGateMxQuantWithDualAxis_bf16_attn_one_gate_random,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((1, 1), (1, 1), (-4, 4, 0), (-4, 4, 0))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,"diagnostic: attention=1, random gates -> merged=sigmoid(global_gate)+sigmoid(local_gate), directly exposes per-head gate mapping","('Ascend950',)",7,,,
++ClaGateMxQuantWithDualAxis_bf16_tnd_gate3d_random,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((128, 32, 256), (128, 32, 256), (128, 32, 1), (128, 32, 1))","((128, 8192), (128, 128, 2), (128, 8192), (2, 8192, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((128, 32, 256), (128, 32, 256), (128, 32, 1), (128, 32, 1))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((128, 8192), (128, 128, 2), (128, 8192), (2, 8192, 2))","('ND',)","('ND',)","((-2, 2), (-2, 2), (-8, 8), (-8, 8))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,"TND current API; gate logits [T,N,1] trailing singleton branch","('Ascend950',)",8,,(),()
++ClaGateMxQuantWithDualAxis_fp16_tail_ocp_d128,PanguV3,cla_gate_mx_quant_with_dual_axis,"('float16', 'float16', 'float16', 'float16')","((65, 4, 128), (65, 4, 128), (65, 4), (65, 4))","((65, 512), (65, 8, 2), (65, 512), (2, 512, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 0}","((65, 4, 128), (65, 4, 128), (65, 4), (65, 4))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((65, 512), (65, 8, 2), (65, 512), (2, 512, 2))","('ND',)","('ND',)","((-2, 2), (-2, 2), (-4, 4), (-4, 4))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,"TND tail T=65 exercises col_scale [ceil(T/64),K,2] and D=128 OCP","('Ascend950',)",9,,(),()
++ClaGateMxQuantWithDualAxis_bf16_small_d128_cublas,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((64, 8, 128), (64, 8, 128), (64, 8), (64, 8))","((64, 1024), (64, 16, 2), (64, 1024), (1, 1024, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((64, 8, 128), (64, 8, 128), (64, 8), (64, 8))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((64, 1024), (64, 16, 2), (64, 1024), (1, 1024, 2))","('ND',)","('ND',)","((-1, 1), (-1, 1), (-4, 4, 0), (-4, 4, 0))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,TND small D=128 cuBLAS branch,"('Ascend950',)",10,,(),()
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/ttk_kernel_cla_gate_smoke.csv b/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/ttk_kernel_cla_gate_smoke.csv
+index 72c39925f..a0b03cb06 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/ttk_kernel_cla_gate_smoke.csv
++++ b/attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/ttk_kernel_cla_gate_smoke.csv
+@@ -1,2 +1,2 @@
+-testcase_name,network_name,op_name,input_dtypes,input_ori_shapes,output_ori_shapes,input_ori_formats,output_ori_formats,attributes,input_shapes,output_dtypes,output_shapes,input_formats,output_formats,input_data_ranges,precision_tolerances,absolute_precision,output_inplace_indexes,output_shape_unknown_indexes,is_enabled,remark,soc_series,priority,dump_file_prefix,manual_input_binaries,manual_golden_binaries
+-ClaGateMxQuantWithDualAxis_bf16_smoke,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((256, 4, 96, 256), (256, 4, 96, 256), (256, 4, 96), (256, 4, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((1, 1), (2, 2), (0, 0), (0, 0))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,deterministic nonzero smoke: merged=1.5; row/col quantization must both match,"('Ascend950',)",0,,,
++testcase_name,network_name,op_name,input_dtypes,input_ori_shapes,output_ori_shapes,input_ori_formats,output_ori_formats,attributes,input_shapes,output_dtypes,output_shapes,input_formats,output_formats,input_data_ranges,precision_tolerances,absolute_precision,output_inplace_indexes,output_shape_unknown_indexes,is_enabled,remark,soc_series,priority,dump_file_prefix,manual_input_binaries,manual_golden_binaries
++ClaGateMxQuantWithDualAxis_bf16_smoke,PanguV3,cla_gate_mx_quant_with_dual_axis,"('bfloat16', 'bfloat16', 'bfloat16', 'bfloat16')","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","{'dst_type': 36, 'scale_alg': 1}","((1024, 96, 256), (1024, 96, 256), (1024, 96), (1024, 96))","('float8_e4m3fn', 'float8_e8m0', 'float8_e4m3fn', 'float8_e8m0')","((1024, 24576), (1024, 384, 2), (1024, 24576), (16, 24576, 2))","('ND',)","('ND',)","((1, 1), (2, 2), (0, 0), (0, 0))","((0, 0), (0, 0), (0, 0), (0, 0))",0,(),(),True,deterministic nonzero TND smoke: merged=1.5; row/col quantization must both match,"('Ascend950',)",0,,,
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/torch_extension/cla_gate_mx_quant_with_dual_axis.py b/attention/cla_gate_mx_quant_with_dual_axis/torch_extension/cla_gate_mx_quant_with_dual_axis.py
+index ef6bde61b..96a807321 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/torch_extension/cla_gate_mx_quant_with_dual_axis.py
++++ b/attention/cla_gate_mx_quant_with_dual_axis/torch_extension/cla_gate_mx_quant_with_dual_axis.py
+@@ -11,17 +11,17 @@
+ import torch
+ from torch.library import impl
+ 
+-from cann_ops_nn.op_builder import OpBuilder, get_as_library
++from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+ 
+ 
+ class ClaGateMxQuantWithDualAxisOpBuilder(OpBuilder):
+     """ClaGateMxQuantWithDualAxis 四输入 Torch Extension 构建器。"""
+ 
+     def __init__(self):
+-        super().__init__("cla_gate_mx_quant_with_dual_axis")
++        super().__init__("cla_gate_mx_quant_with_dual_axis", category="attention")
+ 
+     def sources(self) -> list:
+-        return [self.resolve_source("cla_gate_mx_quant_with_dual_axis.cpp")]
++        return ["csrc/attention/cla_gate_mx_quant_with_dual_axis.cpp"]
+ 
+     def schema(self) -> str:
+         return (
+@@ -31,6 +31,7 @@ class ClaGateMxQuantWithDualAxisOpBuilder(OpBuilder):
+             "Tensor global_gate_logits, "
+             "Tensor local_gate_logits, "
+             "*, "
++            "str round_mode='rint', "
+             "int scale_alg=1, "
+             "int dst_type=36"
+             ") -> (Tensor, Tensor, Tensor, Tensor)"
+@@ -44,20 +45,25 @@ class ClaGateMxQuantWithDualAxisOpBuilder(OpBuilder):
+             global_gate_logits: torch.Tensor,
+             local_gate_logits: torch.Tensor,
+             *,
++            round_mode: str = "rint",
+             scale_alg: int = 1,
+             dst_type: int = 36,
+         ):
+-            torch._check(global_out.dim() == 4, lambda: f"global_out must be 4D, but got {global_out.dim()}D")
+-            torch._check(local_out.dim() == 4, lambda: f"local_out must be 4D, but got {local_out.dim()}D")
++            torch._check(global_out.dim() == 3, lambda: f"global_out must be 3D [T,N,D], but got {global_out.dim()}D")
++            torch._check(local_out.dim() == 3, lambda: f"local_out must be 3D [T,N,D], but got {local_out.dim()}D")
+             torch._check(
+                 local_out.shape == global_out.shape,
+                 lambda: f"local_out shape {tuple(local_out.shape)} must match global_out {tuple(global_out.shape)}",
+             )
++            t, n, d = global_out.shape
++            torch._check(n % 2 == 0, lambda: f"N must be even, got {n}")
++            torch._check(4 <= n <= 128, lambda: f"N must be in [4,128], got {n}")
++            torch._check(d in (128, 256), lambda: f"D must be 128 or 256, got {d}")
+ 
+             gate_dim = global_gate_logits.dim()
+             torch._check(
+-                gate_dim in (3, 4),
+-                lambda: f"global_gate_logits must be 3D or 4D, but got {gate_dim}D",
++                gate_dim in (2, 3),
++                lambda: f"global_gate_logits must be 2D [T,N] or 3D [T,N,1], but got {gate_dim}D",
+             )
+             torch._check(
+                 local_gate_logits.dim() == gate_dim,
+@@ -67,13 +73,26 @@ class ClaGateMxQuantWithDualAxisOpBuilder(OpBuilder):
+                 local_gate_logits.shape == global_gate_logits.shape,
+                 lambda: "local_gate_logits shape must match global_gate_logits",
+             )
++            torch._check(
++                global_gate_logits.shape[0] == t and global_gate_logits.shape[1] == n,
++                lambda: "gate logits shape must match [T,N]",
++            )
++            if gate_dim == 3:
++                torch._check(
++                    global_gate_logits.shape[2] == 1,
++                    lambda: "3D gate logits must be [T,N,1]",
++                )
++            torch._check(
++                round_mode == "rint",
++                lambda: f"torch extension currently only supports round_mode=rint for FP8, got {round_mode}",
++            )
+             torch._check(
+                 scale_alg in (0, 1),
+                 lambda: f"scale_alg must be 0 or 1, but got {scale_alg}",
+             )
+             torch._check(
+                 dst_type in (35, 36),
+-                lambda: f"dst_type must be 35(float8_e5m2) or 36(float8_e4m3fn), but got {dst_type}",
++                lambda: f"torch extension currently only supports dst_type 35/36(FP8), got {dst_type}",
+             )
+ 
+             if dst_type == 35:
+@@ -81,18 +100,16 @@ class ClaGateMxQuantWithDualAxisOpBuilder(OpBuilder):
+             else:
+                 data_dtype = torch.float8_e4m3fn
+ 
+-            s, b, n, d = global_out.shape
+-            m = s * b
+             k = n * d
+-
+-            row_data = torch.empty([m, k], dtype=data_dtype, device="meta")
+-            col_data = torch.empty([m, k], dtype=data_dtype, device="meta")
+-            row_scale = torch.empty([m, k // 64, 2], dtype=torch.uint8, device="meta")
+-            col_scale = torch.empty([m // 64, k, 2], dtype=torch.uint8, device="meta")
++            row_data = torch.empty([t, k], dtype=data_dtype, device="meta")
++            col_data = torch.empty([t, k], dtype=data_dtype, device="meta")
++            row_scale = torch.empty([t, (k + 63) // 64, 2], dtype=torch.uint8, device="meta")
++            col_scale = torch.empty([(t + 63) // 64, k, 2], dtype=torch.uint8, device="meta")
+ 
+             return row_data, row_scale, col_data, col_scale
+ 
+ 
++
+ cla_gate_mx_quant_with_dual_axis_builder = ClaGateMxQuantWithDualAxisOpBuilder()
+ cla_gate_mx_quant_with_dual_axis_builder._ensure_initialized()
+ 
+@@ -108,6 +125,7 @@ def cla_gate_mx_quant_with_dual_axis(
+     global_gate_logits: torch.Tensor,
+     local_gate_logits: torch.Tensor,
+     *,
++    round_mode: str = "rint",
+     scale_alg: int = 1,
+     dst_type: int = 36,
+ ):
+@@ -118,6 +136,7 @@ def cla_gate_mx_quant_with_dual_axis(
+         local_out,
+         global_gate_logits,
+         local_gate_logits,
++        round_mode,
+         scale_alg,
+         dst_type,
+     )
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/torch_extension/csrc/cla_gate_mx_quant_with_dual_axis.cpp b/attention/cla_gate_mx_quant_with_dual_axis/torch_extension/csrc/cla_gate_mx_quant_with_dual_axis.cpp
+index dea6c4ee7..426a9a025 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/torch_extension/csrc/cla_gate_mx_quant_with_dual_axis.cpp
++++ b/attention/cla_gate_mx_quant_with_dual_axis/torch_extension/csrc/cla_gate_mx_quant_with_dual_axis.cpp
+@@ -9,16 +9,11 @@
+  */
+ 
+ #include <torch/extension.h>
+-#include "aclnnop/aclnn_cla_gate_mx_quant_with_dual_axis.h"
++#include <string>
+ #include "aclnn_common.h"
+ 
+-namespace cann_ops_nn {
+-namespace quant {
++namespace op_api {
+ namespace {
+-constexpr int64_t EXPECTED_S = 256;
+-constexpr int64_t EXPECTED_B = 4;
+-constexpr int64_t EXPECTED_N = 96;
+-constexpr int64_t EXPECTED_D = 256;
+ constexpr int64_t SPLIT_BLOCK_SIZE = 64;
+ constexpr int64_t DST_TYPE_FP8_E5M2 = 35;
+ constexpr int64_t DST_TYPE_FP8_E4M3FN = 36;
+@@ -60,6 +55,7 @@ cla_gate_mx_quant_with_dual_axis(
+     const at::Tensor& local_out,
+     const at::Tensor& global_gate_logits,
+     const at::Tensor& local_gate_logits,
++    const std::string& round_mode,
+     int64_t scale_alg,
+     int64_t dst_type)
+ {
+@@ -75,21 +71,32 @@ cla_gate_mx_quant_with_dual_axis(
+     TORCH_CHECK(global_out.device() == local_gate_logits.device(),
+                 "global_out and local_gate_logits must be on the same device");
+ 
+-    TORCH_CHECK(global_out.dim() == 4, "global_out must be 4D, but got ", global_out.dim(), "D");
+-    TORCH_CHECK(local_out.dim() == 4, "local_out must be 4D, but got ", local_out.dim(), "D");
+-    TORCH_CHECK(global_out.size(0) == EXPECTED_S && global_out.size(1) == EXPECTED_B &&
+-                    global_out.size(2) == EXPECTED_N && global_out.size(3) == EXPECTED_D,
+-                "global_out must be [256, 4, 96, 256]");
++    TORCH_CHECK(global_out.dim() == 3, "global_out must be 3D [T,N,D], but got ", global_out.dim(), "D");
++    TORCH_CHECK(local_out.dim() == 3, "local_out must be 3D [T,N,D], but got ", local_out.dim(), "D");
+     TORCH_CHECK(local_out.sizes() == global_out.sizes(),
+                 "local_out shape must match global_out shape");
+ 
++    const int64_t t = global_out.size(0);
++    const int64_t n = global_out.size(1);
++    const int64_t d = global_out.size(2);
++    TORCH_CHECK(n % 2 == 0 && n >= 4 && n <= 128,
++                "N must be an even integer in [4,128], got ", n);
++    TORCH_CHECK(d == 128 || d == 256,
++                "D must be 128 or 256, got ", d);
++
+     const int64_t gate_dim = global_gate_logits.dim();
+-    TORCH_CHECK(gate_dim == 3 || gate_dim == 4,
+-                "global_gate_logits must be 3D or 4D, but got ", gate_dim, "D");
++    TORCH_CHECK(gate_dim == 2 || gate_dim == 3,
++                "global_gate_logits must be [T,N] or [T,N,1], but got ", gate_dim, "D");
+     TORCH_CHECK(local_gate_logits.dim() == gate_dim,
+                 "local_gate_logits rank must match global_gate_logits rank");
+     TORCH_CHECK(local_gate_logits.sizes() == global_gate_logits.sizes(),
+                 "local_gate_logits shape must match global_gate_logits shape");
++    TORCH_CHECK(global_gate_logits.size(0) == t && global_gate_logits.size(1) == n,
++                "gate logits must match [T,N]");
++    if (gate_dim == 3) {
++        TORCH_CHECK(global_gate_logits.size(2) == 1,
++                    "3D gate logits must be [T,N,1]");
++    }
+ 
+     const auto input_dtype = global_out.scalar_type();
+     TORCH_CHECK(input_dtype == at::kHalf || input_dtype == at::kBFloat16,
+@@ -101,39 +108,41 @@ cla_gate_mx_quant_with_dual_axis(
+     TORCH_CHECK(local_gate_logits.scalar_type() == input_dtype,
+                 "local_gate_logits dtype must match global_out dtype");
+ 
++    TORCH_CHECK(round_mode == "rint" || round_mode == "round" || round_mode == "floor",
++                "round_mode must be rint/round/floor, got ", round_mode);
+     TORCH_CHECK(scale_alg == 0 || scale_alg == 1, "scale_alg must be 0 or 1, but got ", scale_alg);
++    TORCH_CHECK(round_mode == "rint", "torch extension currently only supports FP8 round_mode=rint");
+     aclDataType data_acl_type = GetAclDataTypeFromDstType(dst_type);
+     at::ScalarType data_scalar_type = GetScalarTypeFromDstType(dst_type);
+ 
+-    const int64_t m = EXPECTED_S * EXPECTED_B;
+-    const int64_t k = EXPECTED_N * EXPECTED_D;
+-
+-    at::Tensor row_data = at::empty({m, k}, global_out.options().dtype(data_scalar_type));
+-    at::Tensor col_data = at::empty({m, k}, global_out.options().dtype(data_scalar_type));
+-    at::Tensor row_scale = at::empty({m, k / SPLIT_BLOCK_SIZE, 2}, global_out.options().dtype(at::kByte));
+-    at::Tensor col_scale = at::empty({m / SPLIT_BLOCK_SIZE, k, 2}, global_out.options().dtype(at::kByte));
++    const int64_t k = n * d;
++    at::Tensor row_data = at::empty({t, k}, global_out.options().dtype(data_scalar_type));
++    at::Tensor col_data = at::empty({t, k}, global_out.options().dtype(data_scalar_type));
++    at::Tensor row_scale = at::empty({t, (k + SPLIT_BLOCK_SIZE - 1) / SPLIT_BLOCK_SIZE, 2},
++                                     global_out.options().dtype(at::kByte));
++    at::Tensor col_scale = at::empty({(t + SPLIT_BLOCK_SIZE - 1) / SPLIT_BLOCK_SIZE, k, 2},
++                                     global_out.options().dtype(at::kByte));
+ 
+     TensorWrapper row_data_wrapper = {row_data, data_acl_type};
+     TensorWrapper col_data_wrapper = {col_data, data_acl_type};
+     TensorWrapper row_scale_wrapper = {row_scale, ACL_FLOAT8_E8M0};
+     TensorWrapper col_scale_wrapper = {col_scale, ACL_FLOAT8_E8M0};
+ 
+-    // 四输入版本 aclnn 封装。若实际 aclnn 头文件参数顺序不同，以头文件为准。
++    // ACLNN_CMD 的 ConvertTypes 要求字符串指针作为非 const 左值传入。
++    char *round_mode_ptr = const_cast<char *>(round_mode.c_str());
+     ACLNN_CMD(aclnnClaGateMxQuantWithDualAxis,
+               global_out, local_out, global_gate_logits, local_gate_logits,
+-              scale_alg, dst_type,
++              round_mode_ptr, scale_alg, dst_type,
+               row_data_wrapper, row_scale_wrapper, col_data_wrapper, col_scale_wrapper);
+ 
+     return std::make_tuple(std::move(row_data), std::move(row_scale),
+                            std::move(col_data), std::move(col_scale));
+ }
+ 
+-} // namespace quant
+-} // namespace cann_ops_nn
+-
+ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+ {
+     m.def("cla_gate_mx_quant_with_dual_axis",
+-          &cann_ops_nn::quant::cla_gate_mx_quant_with_dual_axis,
++          &cla_gate_mx_quant_with_dual_axis,
+           "ClaGateMxQuantWithDualAxis operator on NPU");
+ }
++} // namespace op_api
+diff --git a/attention/cla_gate_mx_quant_with_dual_axis/torch_extension/graph_convert_cla_gate_mx_quant_with_dual_axis.py b/attention/cla_gate_mx_quant_with_dual_axis/torch_extension/graph_convert_cla_gate_mx_quant_with_dual_axis.py
+index edc5e8000..32446da9e 100644
+--- a/attention/cla_gate_mx_quant_with_dual_axis/torch_extension/graph_convert_cla_gate_mx_quant_with_dual_axis.py
++++ b/attention/cla_gate_mx_quant_with_dual_axis/torch_extension/graph_convert_cla_gate_mx_quant_with_dual_axis.py
+@@ -26,7 +26,7 @@ except ImportError:
+ if _TORCHAIR_AVAILABLE:
+ 
+     @register_fx_node_ge_converter(
+-        torch.ops.cann_ops_nn.cla_gate_mx_quant_with_dual_axis.default
++        torch.ops.cann_ops_transformer.cla_gate_mx_quant_with_dual_axis.default
+     )
+     def convert_cla_gate_mx_quant_with_dual_axis(
+         global_out: Tensor,
+@@ -34,6 +34,7 @@ if _TORCHAIR_AVAILABLE:
+         global_gate_logits: Tensor,
+         local_gate_logits: Tensor,
+         *,
++        round_mode: str = "rint",
+         scale_alg: int = 1,
+         dst_type: int = 36,
+         meta_outputs: TensorSpec = None,
+@@ -47,6 +48,7 @@ if _TORCHAIR_AVAILABLE:
+                 "local_gate_logits": local_gate_logits,
+             },
+             attrs={
++                "round_mode": attr.String(round_mode),
+                 "scale_alg": attr.Int(scale_alg),
+                 "dst_type": attr.Int(dst_type),
+             },
+@@ -61,11 +63,12 @@ if _TORCHAIR_AVAILABLE:
+             .input("local_out", "DT_FLOAT16, DT_BF16")
+             .input("global_gate_logits", "DT_FLOAT16, DT_BF16")
+             .input("local_gate_logits", "DT_FLOAT16, DT_BF16")
++            .attr("round_mode", attr.String("rint"))
+             .attr("scale_alg", attr.Int(1))
+             .attr("dst_type", attr.Int(36))
+-            .output("row_data", "DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2")
++            .output("row_data", "DT_FLOAT4_E2M1, DT_FLOAT4_E1M2, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2")
+             .output("row_scale", "DT_FLOAT8_E8M0")
+-            .output("col_data", "DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2")
++            .output("col_data", "DT_FLOAT4_E2M1, DT_FLOAT4_E1M2, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2")
+             .output("col_scale", "DT_FLOAT8_E8M0"),
+         )
+ 

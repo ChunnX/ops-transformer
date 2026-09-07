@@ -26,7 +26,7 @@ except ImportError:
 if _TORCHAIR_AVAILABLE:
 
     @register_fx_node_ge_converter(
-        torch.ops.cann_ops_nn.cla_gate_mx_quant_with_dual_axis.default
+        torch.ops.cann_ops_transformer.cla_gate_mx_quant_with_dual_axis.default
     )
     def convert_cla_gate_mx_quant_with_dual_axis(
         global_out: Tensor,
@@ -34,6 +34,7 @@ if _TORCHAIR_AVAILABLE:
         global_gate_logits: Tensor,
         local_gate_logits: Tensor,
         *,
+        round_mode: str = "rint",
         scale_alg: int = 1,
         dst_type: int = 36,
         meta_outputs: TensorSpec = None,
@@ -47,6 +48,7 @@ if _TORCHAIR_AVAILABLE:
                 "local_gate_logits": local_gate_logits,
             },
             attrs={
+                "round_mode": attr.String(round_mode),
                 "scale_alg": attr.Int(scale_alg),
                 "dst_type": attr.Int(dst_type),
             },
@@ -61,11 +63,12 @@ if _TORCHAIR_AVAILABLE:
             .input("local_out", "DT_FLOAT16, DT_BF16")
             .input("global_gate_logits", "DT_FLOAT16, DT_BF16")
             .input("local_gate_logits", "DT_FLOAT16, DT_BF16")
+            .attr("round_mode", attr.String("rint"))
             .attr("scale_alg", attr.Int(1))
             .attr("dst_type", attr.Int(36))
-            .output("row_data", "DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2")
+            .output("row_data", "DT_FLOAT4_E2M1, DT_FLOAT4_E1M2, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2")
             .output("row_scale", "DT_FLOAT8_E8M0")
-            .output("col_data", "DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2")
+            .output("col_data", "DT_FLOAT4_E2M1, DT_FLOAT4_E1M2, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2")
             .output("col_scale", "DT_FLOAT8_E8M0"),
         )
 

@@ -9,7 +9,7 @@ It runs the exact unfused reference path:
     merged       = global_out * global_gate + local_out * local_gate
     row_data, row_scale, col_data, col_scale =
         torch_npu.npu_dynamic_mx_quant_with_dual_axis(
-            merged.reshape(merged.shape[0] * merged.shape[1], merged.shape[2] * merged.shape[3]),
+            merged.reshape(merged.shape[0], merged.shape[1] * merged.shape[2]),
             dst_type=torch.float8_e4m3fn, scale_alg=1)
 
 Use this to compare against the fused npu_cla_gate_mx_quant_with_dual_axis
@@ -49,7 +49,7 @@ def cla_gate(global_out, local_out, global_logits, local_logits):
 
 def cla_gate_quant_dual(global_out, local_out, global_logits, local_logits):
     merged = cla_gate(global_out, local_out, global_logits, local_logits)
-    merged = merged.reshape(merged.shape[0] * merged.shape[1], merged.shape[2] * merged.shape[3])
+    merged = merged.reshape(merged.shape[0], merged.shape[1] * merged.shape[2])
     return torch_npu.npu_dynamic_mx_quant_with_dual_axis(
         merged, dst_type=FLOAT8_E4M3FN, scale_alg=1
     )
@@ -63,7 +63,7 @@ def create_inputs(shape, dtype, device, seed):
         return (torch.rand(size, generator=generator, dtype=torch.float32) *
                 (high - low) + low).to(dtype).to(device)
 
-    gate_shape = shape[:3]
+    gate_shape = shape[:2]
     g_out = rand_tensor(shape, -2.0, 2.0)
     l_out = rand_tensor(shape, -2.0, 2.0)
     # Gate logits are the sigmoid inputs; this range exercises both tails.
@@ -87,8 +87,8 @@ def main():
     torch.npu.set_device(args.device)
     dtype = torch.bfloat16 if args.dtype == "bf16" else torch.float16
 
-    # shape is fixed by the CLA gate operator requirement.
-    shape = (256, 4, 96, 256)
+    # TND shape used by the CLA gate operator.
+    shape = (64, 96, 256)
 
     global_out, local_out, global_logits, local_logits = create_inputs(
         shape, dtype, device_name, args.seed
@@ -127,7 +127,7 @@ def main():
     print("=" * 78)
     print(f"device           : {device_name}")
     print(f"input dtype      : {args.dtype}")
-    print(f"input shape      : {shape}  (global_out / local_out)")
+    print(f"input shape      : {shape}  (global_out / local_out TND)")
     print(f"gate shape       : {shape[:3]}  (global/local gate logits)")
     print(f"row/col data     : {tuple(row_data.shape)}")
     print(f"row_scale        : {tuple(row_scale.shape)}")

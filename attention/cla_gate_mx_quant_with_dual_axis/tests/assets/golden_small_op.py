@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
-"""Torch small-op concatenated golden for cla_gate_mx_quant_with_dual_axis.
+"""Torch small-op golden for cla_gate_mx_quant_with_dual_axis (NPUSim).
 
-This golden mirrors the small-op benchmark path:
+This plugin mirrors the small-op reference on CPU:
     torch.sigmoid(gate_logits).unsqueeze(-1) -> broadcast mul -> add
-    -> reshape [S*B, N*D]
-    -> dual-axis MXFP8 quant (E4M3FN).
-
-The quantization part reuses the CPU implementation from golden.py; only the
-merge stage is expressed with torch operations, matching the small-op script
-more closely than the pure numpy golden.
+    -> reshape [T, N*D] (current TND API; legacy SBND is also supported)
+    -> dual-axis MX quantization using the NumPy implementation in golden.py.
 """
 
 import importlib.util
@@ -56,14 +52,22 @@ def cla_gate_small_op_np(global_out, local_out, global_gate_logits, local_gate_l
     lo = _numpy_to_torch(local_out)
     gg = _numpy_to_torch(global_gate_logits)
     lg = _numpy_to_torch(local_gate_logits)
-    if gg.dim() == 4:
+    if gg.dim() == go.dim():
+        # [T,N,1] (or legacy [S,B,N,1]) -> squeeze the singleton head/feature dim.
         gg = gg.squeeze(-1)
         lg = lg.squeeze(-1)
 
     global_scale = torch.sigmoid(gg).unsqueeze(-1)
     local_scale = torch.sigmoid(lg).unsqueeze(-1)
     merged = go * global_scale + lo * local_scale
-    merged = merged.reshape(merged.shape[0] * merged.shape[1], merged.shape[2] * merged.shape[3])
+    if merged.dim() == 3:
+        # Current TND layout: [T, N, D] -> [T, N*D]
+        merged = merged.reshape(merged.shape[0], merged.shape[1] * merged.shape[2])
+    elif merged.dim() == 4:
+        # Legacy SBND layout: [S, B, N, D] -> [S*B, N*D]
+        merged = merged.reshape(merged.shape[0] * merged.shape[1], merged.shape[2] * merged.shape[3])
+    else:
+        raise ValueError("cla_gate_mx_quant_with_dual_axis expects 3D [T,N,D] or 4D [S,B,N,D]")
     return _torch_to_numpy(merged, calc_dtype)
 
 
@@ -75,29 +79,36 @@ def cla_gate_mx_quant_with_dual_axis_small_op_golden(
     *,
     dst_type=36,
     scale_alg=1,
+    round_mode="rint",
     **kwargs,
 ):
-    """Small-op concatenated golden for the fixed CLA gate forward shape."""
-    if dst_type != 36:
-        raise ValueError("cla_gate_mx_quant_with_dual_axis only supports dst_type=36")
+    """Small-op concatenated golden for the TND CLA gate forward operator."""
+    mx_ele_dtype = {
+        35: "float8_e5m2",
+        36: "float8_e4m3fn",
+        40: "float4_e2m1",
+        41: "float4_e1m2",
+    }.get(dst_type)
+    if mx_ele_dtype is None:
+        raise ValueError("unsupported dst_type: %s" % dst_type)
 
     merged = cla_gate_small_op_np(
         global_out, local_out, global_gate_logits, local_gate_logits
     )
     row_scale, row_data = _CPU._mx_quantize(
         merged,
-        mx_ele_dtype="float8_e4m3fn",
+        mx_ele_dtype=mx_ele_dtype,
         axis=-1,
         block_size=32,
-        round_mode="rint",
+        round_mode=round_mode,
         scale_alg=scale_alg,
     )
     col_scale, col_data = _CPU._mx_quantize(
         merged,
-        mx_ele_dtype="float8_e4m3fn",
+        mx_ele_dtype=mx_ele_dtype,
         axis=-2,
         block_size=32,
-        round_mode="rint",
+        round_mode=round_mode,
         scale_alg=scale_alg,
     )
     return row_data, row_scale, col_data, col_scale

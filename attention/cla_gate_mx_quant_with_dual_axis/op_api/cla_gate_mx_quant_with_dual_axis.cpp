@@ -21,34 +21,30 @@ namespace l0op {
 OP_TYPE_REGISTER(ClaGateMxQuantWithDualAxis);
 
 namespace {
-constexpr int64_t EXPECTED_S = 256;
-constexpr int64_t EXPECTED_B = 4;
-constexpr int64_t EXPECTED_N = 96;
-constexpr int64_t EXPECTED_D = 256;
-constexpr int64_t SPLIT_BLOCK_SIZE = 64;
+constexpr int64_t ROW_BLOCK = 64;
 
-op::Shape MakeRowDataShape()
+op::Shape MakeRowDataShape(const op::Shape& xShape)
 {
     op::Shape shape;
-    shape.AppendDim(EXPECTED_S * EXPECTED_B);
-    shape.AppendDim(EXPECTED_N * EXPECTED_D);
+    shape.AppendDim(xShape.GetDim(0));
+    shape.AppendDim(xShape.GetDim(1) * xShape.GetDim(2));
     return shape;
 }
 
-op::Shape MakeRowScaleShape()
+op::Shape MakeRowScaleShape(const op::Shape& xShape)
 {
     op::Shape shape;
-    shape.AppendDim(EXPECTED_S * EXPECTED_B);
-    shape.AppendDim((EXPECTED_N * EXPECTED_D) / SPLIT_BLOCK_SIZE);
+    shape.AppendDim(xShape.GetDim(0));
+    shape.AppendDim((xShape.GetDim(1) * xShape.GetDim(2) + ROW_BLOCK - 1) / ROW_BLOCK);
     shape.AppendDim(2);
     return shape;
 }
 
-op::Shape MakeColScaleShape()
+op::Shape MakeColScaleShape(const op::Shape& xShape)
 {
     op::Shape shape;
-    shape.AppendDim((EXPECTED_S * EXPECTED_B) / SPLIT_BLOCK_SIZE);
-    shape.AppendDim(EXPECTED_N * EXPECTED_D);
+    shape.AppendDim((xShape.GetDim(0) + ROW_BLOCK - 1) / ROW_BLOCK);
+    shape.AppendDim(xShape.GetDim(1) * xShape.GetDim(2));
     shape.AppendDim(2);
     return shape;
 }
@@ -56,14 +52,17 @@ op::Shape MakeColScaleShape()
 
 std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*> ClaGateMxQuantWithDualAxis(
     const aclTensor* globalOut, const aclTensor* localOut, const aclTensor* globalGateLogits,
-    const aclTensor* localGateLogits, int64_t scaleAlg, int64_t dstType, aclOpExecutor* executor)
+    const aclTensor* localGateLogits, const char* roundModeOptional, int64_t scaleAlg, int64_t dstType,
+    aclOpExecutor* executor)
 {
-    L0_DFX(ClaGateMxQuantWithDualAxis, globalOut, localOut, globalGateLogits, localGateLogits, scaleAlg, dstType);
+    L0_DFX(ClaGateMxQuantWithDualAxis, globalOut, localOut, globalGateLogits, localGateLogits,
+           roundModeOptional, scaleAlg, dstType);
 
-    auto rowDataShape = MakeRowDataShape();
+    auto xShape = globalOut->GetViewShape();
+    auto rowDataShape = MakeRowDataShape(xShape);
     auto colDataShape = rowDataShape;
-    auto rowScaleShape = MakeRowScaleShape();
-    auto colScaleShape = MakeColScaleShape();
+    auto rowScaleShape = MakeRowScaleShape(xShape);
+    auto colScaleShape = MakeColScaleShape(xShape);
 
     auto rowData = executor->AllocTensor(rowDataShape, op::DataType(dstType));
     auto rowScale = executor->AllocTensor(rowScaleShape, op::DataType::DT_FLOAT8_E8M0);
@@ -74,11 +73,13 @@ std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*> ClaGateMxQuantWithDua
         return std::make_tuple(nullptr, nullptr, nullptr, nullptr);
     }
 
-    // OP_ATTR 顺序与 op_host ClaGateMxQuantWithDualAxis 的 attr 声明顺序保持一致。
+    // OP_ATTR order must match op_def attr declaration:
+    // dst_type(0), scale_alg(1), round_mode(2)
+    const char* roundMode = (roundModeOptional != nullptr) ? roundModeOptional : "rint";
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(ClaGateMxQuantWithDualAxis,
                                            OP_INPUT(globalOut, localOut, globalGateLogits, localGateLogits),
                                            OP_OUTPUT(rowData, rowScale, colData, colScale),
-                                           OP_ATTR(scaleAlg, dstType));
+                                           OP_ATTR(dstType, scaleAlg, roundMode));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "ClaGateMxQuantWithDualAxis launch kernel failed.");
         return std::make_tuple(nullptr, nullptr, nullptr, nullptr);

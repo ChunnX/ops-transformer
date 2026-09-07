@@ -25,6 +25,7 @@ ACLNN_API aclnnStatus aclnnClaGateMxQuantWithDualAxisGetWorkspaceSize(
     const aclTensor* localOut,
     const aclTensor* globalGateLogits,
     const aclTensor* localGateLogits,
+    const char* roundModeOptional,
     int64_t scaleAlg,
     int64_t dstType,
     aclTensor* rowData,

@@ -9,6 +9,7 @@
  */
 
 #include <cstdint>
+#include <cstring>
 #include "aclnn_cla_gate_mx_quant_with_dual_axis.h"
 #include "cla_gate_mx_quant_with_dual_axis.h"
 #include "aclnn/aclnn_base.h"
@@ -20,6 +21,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_log.h"
+#include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
 
 using namespace op;
@@ -29,14 +31,16 @@ extern "C" {
 #endif
 
 namespace {
-constexpr int64_t EXPECTED_S = 256;
-constexpr int64_t EXPECTED_B = 4;
-constexpr int64_t EXPECTED_N = 96;
-constexpr int64_t EXPECTED_D = 256;
-constexpr int64_t NUM_TWO = 2;
-constexpr int64_t SPLIT_BLOCK_SIZE = 64;
+constexpr int64_t MIN_N = 4;
+constexpr int64_t MAX_N = 128;
+constexpr int64_t ROW_BLOCK = 64;
+constexpr int64_t SCALE_LAST_DIM = 2;
 constexpr int64_t SCALE_ALG_OCP = 0;
 constexpr int64_t SCALE_ALG_CUBLAS = 1;
+constexpr int64_t FP8_E4M3FN = 36;
+constexpr int64_t FP8_E5M2 = 35;
+constexpr int64_t FP4_E2M1 = 40;
+constexpr int64_t FP4_E1M2 = 41;
 
 static bool CheckNotNull(const aclTensor* globalOut, const aclTensor* localOut,
                          const aclTensor* globalGateLogits, const aclTensor* localGateLogits,
@@ -54,6 +58,17 @@ static bool CheckNotNull(const aclTensor* globalOut, const aclTensor* localOut,
     return true;
 }
 
+static bool IsRoundModeValid(const char* mode)
+{
+    return mode == nullptr || std::strcmp(mode, "rint") == 0 || std::strcmp(mode, "round") == 0 ||
+           std::strcmp(mode, "floor") == 0;
+}
+
+static bool IsDstTypeValid(int64_t dstType)
+{
+    return dstType == FP8_E5M2 || dstType == FP8_E4M3FN || dstType == FP4_E2M1 || dstType == FP4_E1M2;
+}
+
 static bool CheckDtypeValid(const aclTensor* globalOut, const aclTensor* localOut,
                             const aclTensor* globalGateLogits, const aclTensor* localGateLogits,
                             int64_t dstType)
@@ -63,9 +78,9 @@ static bool CheckDtypeValid(const aclTensor* globalOut, const aclTensor* localOu
     OP_CHECK_DTYPE_NOT_SAME(localOut, globalOut, return false);
     OP_CHECK_DTYPE_NOT_SAME(globalGateLogits, globalOut, return false);
     OP_CHECK_DTYPE_NOT_SAME(localGateLogits, globalOut, return false);
-    if (dstType != static_cast<int64_t>(op::DataType::DT_FLOAT8_E4M3FN) &&
-        dstType != static_cast<int64_t>(op::DataType::DT_FLOAT8_E5M2)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "dst_type must be float8_e4m3fn or float8_e5m2.");
+    if (!IsDstTypeValid(dstType)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "dst_type must be 35(float8_e5m2), 36(float8_e4m3fn), 40(float4_e2m1) or 41(float4_e1m2).");
         return false;
     }
     return true;
@@ -78,10 +93,11 @@ static bool CheckShape(const aclTensor* globalOut, const aclTensor* localOut,
     auto loShape = localOut->GetViewShape();
     auto ggShape = globalGateLogits->GetViewShape();
     auto lgShape = localGateLogits->GetViewShape();
-    if (goShape.GetDimNum() != 4 || loShape.GetDimNum() != 4 ||
-        goShape.GetDim(0) != EXPECTED_S || goShape.GetDim(1) != EXPECTED_B ||
-        goShape.GetDim(2) != EXPECTED_N || goShape.GetDim(3) != EXPECTED_D) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "global_out must be [256,4,96,256].");
+    if (goShape.GetDimNum() != 3 || loShape.GetDimNum() != 3 ||
+        goShape.GetDim(1) < MIN_N || goShape.GetDim(1) > MAX_N || goShape.GetDim(1) % 2 != 0 ||
+        (goShape.GetDim(2) != 128 && goShape.GetDim(2) != 256)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "global_out/local_out must be [T,N,D], N in [4,128] even, D in {128,256}.");
         return false;
     }
     if (loShape.GetDimNum() != goShape.GetDimNum()) {
@@ -94,12 +110,18 @@ static bool CheckShape(const aclTensor* globalOut, const aclTensor* localOut,
             return false;
         }
     }
-    if (ggShape.GetDimNum() != 3 && ggShape.GetDimNum() != 4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "global_gate_logits must be [256,4,96] or [256,4,96,1].");
+    auto gateValid = [&](const op::Shape& gate) {
+        if (gate.GetDimNum() == 2) {
+            return gate.GetDim(0) == goShape.GetDim(0) && gate.GetDim(1) == goShape.GetDim(1);
+        }
+        if (gate.GetDimNum() == 3) {
+            return gate.GetDim(0) == goShape.GetDim(0) && gate.GetDim(1) == goShape.GetDim(1) &&
+                   gate.GetDim(2) == 1;
+        }
         return false;
-    }
-    if (lgShape.GetDimNum() != ggShape.GetDimNum()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "local_gate_logits rank must match global_gate_logits.");
+    };
+    if (!gateValid(ggShape) || lgShape.GetDimNum() != ggShape.GetDimNum()) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gate logits must be [T,N] or [T,N,1].");
         return false;
     }
     for (size_t i = 0; i < ggShape.GetDimNum(); ++i) {
@@ -111,9 +133,34 @@ static bool CheckShape(const aclTensor* globalOut, const aclTensor* localOut,
     return true;
 }
 
+static bool CheckOutputShape(const aclTensor* rowData, const aclTensor* rowScale,
+                             const aclTensor* colData, const aclTensor* colScale, int64_t t, int64_t k)
+{
+    auto rdShape = rowData->GetViewShape();
+    auto rsShape = rowScale->GetViewShape();
+    auto cdShape = colData->GetViewShape();
+    auto csShape = colScale->GetViewShape();
+    if (rdShape.GetDimNum() != 2 || cdShape.GetDimNum() != 2 || rdShape.GetDim(0) != t ||
+        rdShape.GetDim(1) != k || cdShape.GetDim(0) != t || cdShape.GetDim(1) != k) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "row_data/col_data must be [T,N*D].");
+        return false;
+    }
+    if (rsShape.GetDimNum() != 3 || csShape.GetDimNum() != 3 ||
+        rsShape.GetDim(0) != t || rsShape.GetDim(1) != (k + ROW_BLOCK - 1) / ROW_BLOCK ||
+        rsShape.GetDim(2) != SCALE_LAST_DIM ||
+        csShape.GetDim(0) != (t + ROW_BLOCK - 1) / ROW_BLOCK || csShape.GetDim(1) != k ||
+        csShape.GetDim(2) != SCALE_LAST_DIM) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "row_scale/col_scale physical shape mismatch, expected "
+                "[T,ceil(N*D/64),2] and [ceil(T/64),N*D,2].");
+        return false;
+    }
+    return true;
+}
+
 static aclnnStatus CheckParams(const aclTensor* globalOut, const aclTensor* localOut,
                                const aclTensor* globalGateLogits, const aclTensor* localGateLogits,
-                               int64_t scaleAlg, int64_t dstType,
+                               const char* roundMode, int64_t scaleAlg, int64_t dstType,
                                const aclTensor* rowData, const aclTensor* rowScale,
                                const aclTensor* colData, const aclTensor* colScale)
 {
@@ -123,10 +170,21 @@ static aclnnStatus CheckParams(const aclTensor* globalOut, const aclTensor* loca
     CHECK_RET(CheckDtypeValid(globalOut, localOut, globalGateLogits, localGateLogits, dstType),
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckShape(globalOut, localOut, globalGateLogits, localGateLogits), ACLNN_ERR_PARAM_INVALID);
-    if (scaleAlg != SCALE_ALG_OCP && scaleAlg != SCALE_ALG_CUBLAS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "scale_alg must be 0 or 1.");
+    CHECK_RET(IsRoundModeValid(roundMode), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(scaleAlg == SCALE_ALG_OCP || scaleAlg == SCALE_ALG_CUBLAS, ACLNN_ERR_PARAM_INVALID);
+    if ((dstType == FP4_E2M1 || dstType == FP4_E1M2) && scaleAlg != SCALE_ALG_OCP) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FP4 only supports scale_alg=0.");
         return ACLNN_ERR_PARAM_INVALID;
     }
+    if ((dstType == FP8_E4M3FN || dstType == FP8_E5M2) && roundMode != nullptr &&
+        std::strcmp(roundMode, "rint") != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FP8 only supports round_mode=rint.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    auto goShape = globalOut->GetViewShape();
+    int64_t t = goShape.GetDim(0);
+    int64_t k = goShape.GetDim(1) * goShape.GetDim(2);
+    CHECK_RET(CheckOutputShape(rowData, rowScale, colData, colScale, t, k), ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 } // namespace
@@ -134,19 +192,19 @@ static aclnnStatus CheckParams(const aclTensor* globalOut, const aclTensor* loca
 aclnnStatus aclnnClaGateMxQuantWithDualAxisGetWorkspaceSize(
     const aclTensor* globalOut, const aclTensor* localOut,
     const aclTensor* globalGateLogits, const aclTensor* localGateLogits,
-    int64_t scaleAlg, int64_t dstType,
+    const char* roundModeOptional, int64_t scaleAlg, int64_t dstType,
     aclTensor* rowData, aclTensor* rowScale,
     aclTensor* colData, aclTensor* colScale,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(aclnnClaGateMxQuantWithDualAxis,
-                   DFX_IN(globalOut, localOut, globalGateLogits, localGateLogits, scaleAlg, dstType),
+                   DFX_IN(globalOut, localOut, globalGateLogits, localGateLogits, roundModeOptional, scaleAlg, dstType),
                    DFX_OUT(rowData, rowScale, colData, colScale));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     auto ret = CheckParams(globalOut, localOut, globalGateLogits, localGateLogits,
-                           scaleAlg, dstType, rowData, rowScale, colData, colScale);
+                           roundModeOptional, scaleAlg, dstType, rowData, rowScale, colData, colScale);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     auto globalOutContiguous = l0op::Contiguous(globalOut, uniqueExecutor.get());
@@ -160,7 +218,7 @@ aclnnStatus aclnnClaGateMxQuantWithDualAxisGetWorkspaceSize(
 
     auto result = l0op::ClaGateMxQuantWithDualAxis(
         globalOutContiguous, localOutContiguous, globalGateContiguous, localGateContiguous,
-        scaleAlg, dstType, uniqueExecutor.get());
+        roundModeOptional, scaleAlg, dstType, uniqueExecutor.get());
     const aclTensor* rowDataOut = std::get<0>(result);
     const aclTensor* rowScaleOut = std::get<1>(result);
     const aclTensor* colDataOut = std::get<2>(result);

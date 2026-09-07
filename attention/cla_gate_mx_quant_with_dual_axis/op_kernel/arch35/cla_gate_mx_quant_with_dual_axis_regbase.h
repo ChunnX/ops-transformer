@@ -74,7 +74,6 @@ constexpr uint32_t VF_LEN_B16 = platform::GetVRegSize() / sizeof(half);
 constexpr int64_t BLOCK_SIZE = 32;
 constexpr int64_t DOUBLE_BLOCK_SIZE = 64;
 constexpr int64_t ONCE_ROW_LEN = 256;
-constexpr int64_t CLA_HEAD_NUM = 96;
 constexpr int64_t UB_BLOCK_SIZE = platform::GetUbBlockSize();
 constexpr uint32_t SCALE1_RECIPROCAL_ROW_ELEMS = UB_BLOCK_SIZE / sizeof(uint16_t);
 // DAV_3510 BrcbCommonImpl advances a DIST_E2B_B16 source by this many elements.
@@ -130,7 +129,7 @@ private:
     __aicore__ inline void CopyInClaGate(int64_t absRowStart, int64_t colOffset, int64_t calcRow, int64_t calcCol);
     __aicore__ inline void ComputeClaGateFullTile(__ubuf__ xDtype* globalAddr, __ubuf__ xDtype* localAddr,
                                                  __ubuf__ xDtype* globalGateAddr, __ubuf__ xDtype* localGateAddr,
-                                                 __ubuf__ xDtype* outputAddr);
+                                                 __ubuf__ xDtype* outputAddr, uint16_t calcRows);
     __aicore__ inline void PadZeroM(__ubuf__ xDtype* claGateOutAddr, uint32_t num);
     __aicore__ inline void ComputeScaleOcp(uint16_t dataLen, uint16_t blockCount, __ubuf__ xDtype* xAddr,
                                            __ubuf__ uint8_t* mxScale1Addr, __ubuf__ uint16_t* mxScale1ReciprocalAddr,
@@ -213,6 +212,10 @@ private:
     uint16_t dtypeYMaxExp_ = 0;
     int64_t inHalfSize_ = 0; // per-half buffer size in elements (splitBlockH * blockW)
     int64_t dimN_ = 0;
+    int64_t headNum_ = 0;
+    int64_t headDim_ = 0;
+    int64_t headsPerRow_ = 0;    // blockW / headDim, 1 or 2
+    int64_t gateSideStride_ = 0; // headsPerRow * ubRowCount_
 
     int64_t oneBlockCountB16_ = UB_BLOCK_SIZE / sizeof(xDtype);
     int64_t oneBlockCountB8_ = UB_BLOCK_SIZE / sizeof(uint8_t);
@@ -230,8 +233,12 @@ ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, roundMode, scaleAlg, isGro
     ubRowLen_ = ONCE_ROW_LEN; // 固定256
     ubRowLenTail_ = tilingData_->dimNTail;
     ubRowCount_ = DOUBLE_BLOCK_SIZE; // 固定64
-    
+
     dimN_ = tilingData_->dimN;
+    headNum_ = tilingData_->headNum;
+    headDim_ = tilingData_->headDim;
+    headsPerRow_ = ubRowLen_ / headDim_;
+    gateSideStride_ = headsPerRow_ * ubRowCount_;
 
     // Set dtype-specific constants for MX quantization
     if constexpr (IsSameType<y1Dtype, fp8_e4m3fn_t>::value) {
@@ -290,14 +297,14 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
 
     // Allocate queues with double buffering (DB_BUFFER=2).
     // actInQueue_ holds the two 64x256 activation halves (global/local).
-    // gateInQueue_ holds the two compact per-row gate vectors (global/local).
+    // gateInQueue_ holds per-head gate scalars for global/local sides.
     int64_t actFrameBytes = inBufferSize * DIGIT_TWO;
-    int64_t gateFrameBytes = DIGIT_TWO * ubRowCount_ * static_cast<int64_t>(sizeof(xDtype));
+    int64_t gateFrameBytes = DIGIT_TWO * gateSideStride_ * static_cast<int64_t>(sizeof(xDtype));
     pipe_->InitBuffer(actInQueue_, DB_BUFFER, actFrameBytes);
     pipe_->InitBuffer(gateInQueue_, DB_BUFFER, gateFrameBytes);
     pipe_->InitBuffer(claGateBuf_, inBufferSize);
-    // Sigmoid scratch: one 64-element region per global/local side.
-    pipe_->InitBuffer(sigmoidBroadcastBuf_, DIGIT_TWO * DOUBLE_BLOCK_SIZE * sizeof(xDtype));
+    // Sigmoid scratch: one gateSideStride_-element region per global/local side.
+    pipe_->InitBuffer(sigmoidBroadcastBuf_, DIGIT_TWO * gateSideStride_ * sizeof(xDtype));
     pipe_->InitBuffer(outQueue1_, DB_BUFFER, inHalfSize_);
     pipe_->InitBuffer(outQueue2_, DB_BUFFER, inHalfSize_);
     pipe_->InitBuffer(mxScaleQueue1_, DB_BUFFER, mxScale1BufferSize);
@@ -319,21 +326,19 @@ template <typename xDtype, typename y1Dtype, uint64_t mode, AscendC::RoundMode r
 __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, roundMode, scaleAlg, isGroupIdx>::Process()
 {
     dimNeg1ScaleNum_ = ops::CeilDiv(dimN_, DOUBLE_BLOCK_SIZE) * DIGIT_TWO;
-    int64_t rowBlocks = ops::CeilDiv(tilingData_->dimM, ubRowCount_);
-    int64_t totalBlocks = rowBlocks * tilingData_->dimNBlockNum;
-    int64_t coreCount = tilingData_->usedCoreNum;
-    int64_t loops = totalBlocks / coreCount + (blockIdx_ < totalBlocks % coreCount ? 1 : 0);
-    int64_t firstBlock = blockIdx_ * (totalBlocks / coreCount) +
-                         (blockIdx_ < totalBlocks % coreCount ? blockIdx_ : totalBlocks % coreCount);
-
-    // Prologue: issue the first MTE2 transfer before entering the compute loop.
-    if (loops > 0) {
-        int64_t firstRowBlockIdx = firstBlock / tilingData_->dimNBlockNum;
-        int64_t firstColBlockIdx = firstBlock % tilingData_->dimNBlockNum;
-        int64_t firstAbsRowStart = firstRowBlockIdx * ubRowCount_;
-        int64_t firstColOffset = firstColBlockIdx * ubRowLen_;
-        CopyInClaGate(firstAbsRowStart, firstColOffset, ubRowCount_, ubRowLen_);
+    int64_t dimM = tilingData_->dimM;
+    int64_t dimMSplit = ops::CeilDiv(dimM, ubRowCount_);
+    int64_t dimMTail = dimM % ubRowCount_ == 0 ? ubRowCount_ : dimM % ubRowCount_;
+    int64_t totalBlocks = dimMSplit * tilingData_->dimNBlockNum;
+    int64_t totalCoreNum = tilingData_->usedCoreNum;
+    if (blockIdx_ >= totalCoreNum || totalBlocks == 0) {
+        return;
     }
+
+    int64_t blockPerCore = totalBlocks / totalCoreNum;
+    int64_t tailCore = totalBlocks % totalCoreNum;
+    int64_t loops = blockPerCore + (blockIdx_ < tailCore ? 1 : 0);
+    int64_t firstBlock = blockIdx_ * blockPerCore + (blockIdx_ < tailCore ? blockIdx_ : tailCore);
 
     for (int64_t i = 0; i < loops; ++i) {
         int64_t block = firstBlock + i;
@@ -341,32 +346,38 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
         int64_t colBlockIdx = block % tilingData_->dimNBlockNum;
         int64_t absRowStart = rowBlockIdx * ubRowCount_;
         int64_t colOffset = colBlockIdx * ubRowLen_;
+        int64_t calcRow = (rowBlockIdx == dimMSplit - 1) ? dimMTail : ubRowCount_;
+        int64_t calcCol = (colBlockIdx == tilingData_->dimNBlockNum - 1) ? ubRowLenTail_ : ubRowLen_;
 
-        // Consume the double-buffered input. DeQue waits only when the
-        // corresponding MTE2 transfer has not completed yet.
+        CopyInClaGate(absRowStart, colOffset, calcRow, calcCol);
+
         LocalTensor<xDtype> input = actInQueue_.template DeQue<xDtype>();
         LocalTensor<xDtype> gateInput = gateInQueue_.template DeQue<xDtype>();
         LocalTensor<xDtype> merged = claGateBuf_.template Get<xDtype>();
         auto globalAddr = (__ubuf__ xDtype*)input.GetPhyAddr();
         auto localAddr = (__ubuf__ xDtype*)input[inHalfSize_].GetPhyAddr();
         auto globalGateAddr = (__ubuf__ xDtype*)gateInput.GetPhyAddr();
-        auto localGateAddr = (__ubuf__ xDtype*)gateInput[ubRowCount_].GetPhyAddr();
+        auto localGateAddr = (__ubuf__ xDtype*)gateInput[gateSideStride_].GetPhyAddr();
         auto mergedAddr = (__ubuf__ xDtype*)merged.GetPhyAddr();
 
-        // Prefetch the next block while the current block is still being computed.
-        if (i + 1 < loops) {
-            int64_t nextBlock = firstBlock + i + 1;
-            int64_t nextRowBlockIdx = nextBlock / tilingData_->dimNBlockNum;
-            int64_t nextColBlockIdx = nextBlock % tilingData_->dimNBlockNum;
-            int64_t nextAbsRowStart = nextRowBlockIdx * ubRowCount_;
-            int64_t nextColOffset = nextColBlockIdx * ubRowLen_;
-            CopyInClaGate(nextAbsRowStart, nextColOffset, ubRowCount_, ubRowLen_);
-        }
+        ComputeClaGateFullTile(globalAddr, localAddr, globalGateAddr, localGateAddr, mergedAddr,
+                                static_cast<uint16_t>(calcRow));
 
-        ComputeClaGateFullTile(globalAddr, localAddr, globalGateAddr, localGateAddr, mergedAddr);
+        // For T % 64 != 0, zero-fill merged tail rows after the merge stage so
+        // the following 64-row scale/quantization path reads zero-padded rows.
+        if (calcRow < ubRowCount_) {
+            int64_t zeroRows = ubRowCount_ - calcRow;
+            PadZeroM(mergedAddr + calcRow * ubRowLen_, zeroRows * ubRowLen_);
+            __VEC_SCOPE__ {
+                AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
+            }
+        }
 
         actInQueue_.template FreeTensor(input);
         gateInQueue_.template FreeTensor(gateInput);
+
+        int64_t calcRowAlgin = ops::CeilDiv(calcRow, ubRowCount_) * ubRowCount_;
+        int64_t calcColAlgin = ops::CeilDiv(calcCol, DOUBLE_BLOCK_SIZE) * DOUBLE_BLOCK_SIZE;
 
         LocalTensor<uint8_t> scale1 = mxScaleQueue1_.template AllocTensor<uint8_t>();
         LocalTensor<uint8_t> scale2 = mxScaleQueue2_.template AllocTensor<uint8_t>();
@@ -381,44 +392,66 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
         auto scale1RecipAddr = (__ubuf__ uint16_t*)scale1Recip.GetPhyAddr();
         auto scale2RecipAddr = (__ubuf__ uint16_t*)scale2Recip.GetPhyAddr();
 
+        int64_t calcBlockLoop = calcRowAlgin / BLOCK_SIZE;
         if constexpr (scaleAlg == TPL_SCALE_ALG_1) {
-            ComputeScaleCuBLAS(ONCE_ROW_LEN, DOUBLE_BLOCK_SIZE, mergedAddr, y1Addr, scale1Addr,
-                               scale1RecipAddr, scale2Addr, scale2RecipAddr);
-        } else {
-            for (int64_t part = 0; part < DIGIT_TWO; ++part) {
-                int64_t dataOffset = part * BLOCK_SIZE * ubRowLen_;
-                int64_t scale1Offset = part * BLOCK_SIZE * ops::CeilAlign(ubRowLen_ / BLOCK_SIZE, oneBlockCountB8_);
-                int64_t scale2Offset = part * ubRowLen_;
-                int64_t recip1Offset = part * BLOCK_SIZE * ops::CeilAlign(ubRowLen_ / BLOCK_SIZE, oneBlockCountB16_);
-                int64_t recip2Offset = part * ubRowLen_;
-                ComputeScaleOcp(ONCE_ROW_LEN, BLOCK_SIZE, mergedAddr + dataOffset, scale1Addr + scale1Offset,
+            ComputeScaleCuBLAS(static_cast<uint16_t>(ubRowLen_), static_cast<uint16_t>(calcRowAlgin), mergedAddr,
+                               y1Addr, scale1Addr, scale1RecipAddr, scale2Addr, scale2RecipAddr);
+        }
+
+        for (int64_t blk = 0; blk < calcBlockLoop; blk++) {
+            int64_t dataOffset = blk * BLOCK_SIZE * ubRowLen_;
+            int64_t scale1Offset = blk * BLOCK_SIZE * ops::CeilAlign(ubRowLen_ / BLOCK_SIZE, oneBlockCountB8_);
+            int64_t scale2Offset = blk * ubRowLen_;
+            int64_t recip1Offset = blk * BLOCK_SIZE * ops::CeilAlign(ubRowLen_ / BLOCK_SIZE, oneBlockCountB16_);
+            int64_t recip2Offset = blk * ubRowLen_;
+
+            if constexpr (scaleAlg == TPL_SCALE_ALG_0) {
+                ComputeScaleOcp(static_cast<uint16_t>(ubRowLen_), static_cast<uint16_t>(BLOCK_SIZE),
+                                mergedAddr + dataOffset, scale1Addr + scale1Offset,
                                 scale1RecipAddr + recip1Offset, scale2Addr + scale2Offset,
                                 scale2RecipAddr + recip2Offset);
-                ComputeY1ToFP8(ONCE_ROW_LEN, BLOCK_SIZE, mergedAddr + dataOffset,
-                               scale1RecipAddr + recip1Offset, y1Addr + dataOffset);
-                ComputeY2ToFP8(ONCE_ROW_LEN, BLOCK_SIZE, mergedAddr + dataOffset,
-                               scale2RecipAddr + recip2Offset, y2Addr + dataOffset);
             }
-            ComputeInterleave(scale2Addr, scale2Addr, scale2Addr + ubRowLen_);
-        }
-        if constexpr (scaleAlg == TPL_SCALE_ALG_1) {
-            for (int64_t part = 0; part < DIGIT_TWO; ++part) {
-                int64_t dataOffset = part * BLOCK_SIZE * ubRowLen_;
-                ComputeY2ToFP8(ONCE_ROW_LEN, BLOCK_SIZE, mergedAddr + dataOffset,
-                               scale2RecipAddr + part * ubRowLen_, y2Addr + dataOffset);
+
+            int64_t yDataOffset = dataOffset;
+            if constexpr (IsSameType<y1Dtype, fp4x2_e2m1_t>::value || IsSameType<y1Dtype, fp4x2_e1m2_t>::value) {
+                yDataOffset = dataOffset / DIGIT_TWO;
+                ComputeY1ToFP4(static_cast<uint16_t>(ubRowLen_), static_cast<uint16_t>(BLOCK_SIZE),
+                               mergedAddr + dataOffset, scale1RecipAddr + recip1Offset, y1Addr + yDataOffset);
+                ComputeY2ToFP4(static_cast<uint16_t>(ubRowLen_), static_cast<uint16_t>(BLOCK_SIZE),
+                               mergedAddr + dataOffset, scale2RecipAddr + recip2Offset, y2Addr + yDataOffset);
+                ComputeY2ToFP4(static_cast<uint16_t>(ubRowLen_), static_cast<uint16_t>(BLOCK_SIZE),
+                               mergedAddr + dataOffset + VF_LEN_B16, scale2RecipAddr + recip2Offset + VF_LEN_B16,
+                               y2Addr + yDataOffset + VF_LEN_B16 / DIGIT_TWO);
+            } else {
+                if constexpr (scaleAlg == TPL_SCALE_ALG_0) {
+                    ComputeY1ToFP8(static_cast<uint16_t>(ubRowLen_), static_cast<uint16_t>(BLOCK_SIZE),
+                                   mergedAddr + dataOffset, scale1RecipAddr + recip1Offset, y1Addr + yDataOffset);
+                }
+                ComputeY2ToFP8(static_cast<uint16_t>(ubRowLen_), static_cast<uint16_t>(BLOCK_SIZE),
+                               mergedAddr + dataOffset, scale2RecipAddr + recip2Offset, y2Addr + yDataOffset);
             }
         }
+
+        if constexpr (scaleAlg == TPL_SCALE_ALG_0) {
+            for (int64_t blk = 1; blk < calcBlockLoop; blk += 2) {
+                auto src0Addr = (__ubuf__ uint8_t*)scale2[(blk - 1) * ubRowLen_].GetPhyAddr();
+                auto src1Addr = (__ubuf__ uint8_t*)scale2[blk * ubRowLen_].GetPhyAddr();
+                auto dstAddr = (__ubuf__ uint8_t*)scale2[(blk - 1) * ubRowLen_].GetPhyAddr();
+                ComputeInterleave(dstAddr, src0Addr, src1Addr);
+            }
+        }
+
 
         mxScaleQueue1_.template EnQue(scale1);
         outQueue1_.template EnQue(y1);
         mxScaleQueue2_.template EnQue(scale2);
         outQueue2_.template EnQue(y2);
+
         int64_t yOffset = absRowStart * dimN_ + colOffset;
         int64_t scale1Offset = absRowStart * dimNeg1ScaleNum_ + colOffset / BLOCK_SIZE;
         int64_t scale2Offset = rowBlockIdx * DIGIT_TWO * dimN_ + colOffset * DIGIT_TWO;
 
-        CopyOut(yOffset, scale1Offset, scale2Offset, DOUBLE_BLOCK_SIZE, DOUBLE_BLOCK_SIZE,
-                ONCE_ROW_LEN, ONCE_ROW_LEN);
+        CopyOut(yOffset, scale1Offset, scale2Offset, calcRow, calcRowAlgin, calcCol, calcColAlgin);
     }
 }
 template <typename xDtype, typename y1Dtype, uint64_t mode, AscendC::RoundMode roundMode, uint64_t scaleAlg,
@@ -438,9 +471,14 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
         Reg::StoreAlign<uint8_t, Reg::StoreDist::DIST_INTLV_B8>(dstAddr, src0Reg, src1Reg, maskB8);
     }
 }
-// Load two attention tiles and the two compact gate vectors (one scalar per row).
-// For the supported D=256, each column tile is exactly one head, so only that
-// head's 64 gate values are copied into UB.
+// Load global/local attention tiles and the per-head gate scalars covered by
+// this 256-wide tile. D can be 256 (one head per tile) or 128 (two heads per
+// tile). The UB gate layout is:
+//   [0, gateSideStride_)             global gate values
+//   [gateSideStride_, 2*stride)      local gate values
+// Within each side, head h is stored at [h*64, (h+1)*64).
+// For tail row blocks, the source tile rows beyond calcRow are zero-filled so
+// the full 64-row path can still be used safely.
 template <typename xDtype, typename y1Dtype, uint64_t mode, AscendC::RoundMode roundMode, uint64_t scaleAlg,
           uint64_t isGroupIdx>
 __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, roundMode, scaleAlg,
@@ -449,25 +487,30 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
 {
     LocalTensor<xDtype> actInput = actInQueue_.template AllocTensor<xDtype>();
     LocalTensor<xDtype> gateInput = gateInQueue_.template AllocTensor<xDtype>();
-    DataCopyExtParams outCopy = {static_cast<uint16_t>(calcRow),
-                                 static_cast<uint32_t>(calcCol * sizeof(xDtype)),
-                                 static_cast<uint32_t>((dimN_ - calcCol) * sizeof(xDtype)), 0, 0};
     DataCopyPadExtParams<xDtype> pad = {false, 0, 0, 0};
     int64_t outOffset = absRowStart * dimN_ + colOffset;
-    // Copy only the current head's gate column. Each row contributes one
-    // bf16/fp16 scalar, so the UB layout is a compact 64-element array.
-    int64_t headIdx = colOffset / ONCE_ROW_LEN;
-    DataCopyExtParams gateCopy = {static_cast<uint16_t>(calcRow),
-                                  static_cast<uint32_t>(sizeof(xDtype)),
-                                  static_cast<uint32_t>((CLA_HEAD_NUM - 1) * sizeof(xDtype)),
-                                  0, 0};
-    int64_t gateOffset = absRowStart * CLA_HEAD_NUM + headIdx;
+    int64_t rowStride = dimN_;
+    int64_t headStart = colOffset / headDim_;
+
+    DataCopyExtParams outCopy = {static_cast<uint16_t>(calcRow),
+                                 static_cast<uint32_t>(calcCol * sizeof(xDtype)),
+                                 static_cast<uint32_t>((rowStride - calcCol) * sizeof(xDtype)), 0, 0};
     DataCopyPad(actInput, globalOutGm_[outOffset], outCopy, pad);
     DataCopyPad(actInput[inHalfSize_], localOutGm_[outOffset], outCopy, pad);
-    DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(gateInput, globalGateGm_[gateOffset],
-                                                       gateCopy, pad);
-    DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(
-        gateInput[ubRowCount_], localGateGm_[gateOffset], gateCopy, pad);
+
+    // Per-head gate scalars, one contiguous array per head.
+    for (int64_t h = 0; h < headsPerRow_; ++h) {
+        DataCopyExtParams gateCopy = {static_cast<uint16_t>(calcRow),
+                                      static_cast<uint32_t>(sizeof(xDtype)),
+                                      static_cast<uint32_t>((headNum_ - 1) * sizeof(xDtype)), 0, 0};
+        int64_t gateOffset = absRowStart * headNum_ + headStart + h;
+        DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(gateInput[h * ubRowCount_],
+                                                           globalGateGm_[gateOffset], gateCopy, pad);
+        DataCopyPad<xDtype, AscendC::PaddingMode::Compact>(
+            gateInput[gateSideStride_ + h * ubRowCount_],
+            localGateGm_[gateOffset], gateCopy, pad);
+    }
+
     // Do not wait here. The DeQue() in Process is the consumer-side sync point;
     // with depth=DB_BUFFER, the next MTE2 can overlap the current vector compute.
     actInQueue_.template EnQue(actInput);
@@ -485,10 +528,9 @@ template <typename xDtype, typename y1Dtype, uint64_t mode, AscendC::RoundMode r
 __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, roundMode, scaleAlg,
                                                      isGroupIdx>::ComputeClaGateFullTile(
     __ubuf__ xDtype* globalAddr, __ubuf__ xDtype* localAddr, __ubuf__ xDtype* globalGateAddr,
-    __ubuf__ xDtype* localGateAddr, __ubuf__ xDtype* outputAddr)
+    __ubuf__ xDtype* localGateAddr, __ubuf__ xDtype* outputAddr, uint16_t calcRows)
 {
-            constexpr uint16_t fullTileRows = static_cast<uint16_t>(DOUBLE_BLOCK_SIZE);
-    constexpr uint16_t vfsPerRow = static_cast<uint16_t>(ONCE_ROW_LEN / VF_LEN_FP32);
+    uint16_t vfsPerHead = static_cast<uint16_t>(headDim_ / VF_LEN_FP32);
     __VEC_SCOPE__ {
         Reg::RegTensor<xDtype> globalReg, localReg, gateReg;
         Reg::RegTensor<float> gateF, tmpF, oneF;
@@ -496,55 +538,62 @@ __aicore__ inline void ClaGateMxQuantWithDualAxisBase<xDtype, y1Dtype, mode, rou
         Reg::RegTensor<xDtype> globalSigmoidBf16, localSigmoidBf16;
         Reg::RegTensor<xDtype> outputReg;
         Reg::MaskReg allMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
+        const uint16_t heads = static_cast<uint16_t>(headsPerRow_);
         // Sigmoid scratch stores bf16/fp16 values. Keep global/local regions separated.
         __ubuf__ uint8_t* sigmoidBytes = (__ubuf__ uint8_t*)sigmoidBroadcastBuf_.Get<float>().GetPhyAddr();
         __ubuf__ xDtype* globalSigmoidUb = (__ubuf__ xDtype*)sigmoidBytes;
-        __ubuf__ xDtype* localSigmoidUb =
-            (__ubuf__ xDtype*)(sigmoidBytes + fullTileRows * sizeof(xDtype));
+        __ubuf__ xDtype* localSigmoidUb = (__ubuf__ xDtype*)(sigmoidBytes + gateSideStride_ * sizeof(xDtype));
 
-        // Phase 1: vectorized sigmoid over the 64 per-row gate values.
-        Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(gateReg, globalGateAddr);
-        Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, gateReg, allMask);
-        Reg::Muls(tmpF, gateF, -1.0f, allMask);
-        Reg::Exp(tmpF, tmpF, allMask);
-        Reg::Adds(tmpF, tmpF, 1.0f, allMask);
-        Reg::Duplicate(oneF, 1.0f, allMask);
-        Reg::Div(globalSigmoidF, oneF, tmpF, allMask);
-        Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(globalSigmoidBf16, globalSigmoidF, allMask);
-        Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(globalSigmoidUb, globalSigmoidBf16, allMask);
+        // Phase 1: vectorized sigmoid for each head's 64 per-row gate values.
+        for (uint16_t head = 0; head < heads; ++head) {
+            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(gateReg, globalGateAddr + head * ubRowCount_);
+            Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, gateReg, allMask);
+            Reg::Muls(tmpF, gateF, -1.0f, allMask);
+            Reg::Exp(tmpF, tmpF, allMask);
+            Reg::Adds(tmpF, tmpF, 1.0f, allMask);
+            Reg::Duplicate(oneF, 1.0f, allMask);
+            Reg::Div(globalSigmoidF, oneF, tmpF, allMask);
+            Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(globalSigmoidBf16, globalSigmoidF, allMask);
+            Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(globalSigmoidUb + head * ubRowCount_,
+                                                                   globalSigmoidBf16, allMask);
+        }
 
-        Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(gateReg, localGateAddr);
-        Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, gateReg, allMask);
-        Reg::Muls(tmpF, gateF, -1.0f, allMask);
-        Reg::Exp(tmpF, tmpF, allMask);
-        Reg::Adds(tmpF, tmpF, 1.0f, allMask);
-        Reg::Duplicate(oneF, 1.0f, allMask);
-        Reg::Div(localSigmoidF, oneF, tmpF, allMask);
-        Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(localSigmoidBf16, localSigmoidF, allMask);
-        Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(localSigmoidUb, localSigmoidBf16, allMask);
+        for (uint16_t head = 0; head < heads; ++head) {
+            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(gateReg, localGateAddr + head * ubRowCount_);
+            Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, gateReg, allMask);
+            Reg::Muls(tmpF, gateF, -1.0f, allMask);
+            Reg::Exp(tmpF, tmpF, allMask);
+            Reg::Adds(tmpF, tmpF, 1.0f, allMask);
+            Reg::Duplicate(oneF, 1.0f, allMask);
+            Reg::Div(localSigmoidF, oneF, tmpF, allMask);
+            Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(localSigmoidBf16, localSigmoidF, allMask);
+            Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(localSigmoidUb + head * ubRowCount_,
+                                                                   localSigmoidBf16, allMask);
+        }
 
-        // Phase 2: broadcast one precomputed sigmoid per row and accumulate attention.
-        // Phase 1 stored sigmoid to UB scratch; make the store visible before VEC loads.
+        // Phase 2: broadcast each per-row/per-head sigmoid over its D-sized span.
         AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
         Reg::AddrReg offset;
-        for (uint16_t row = 0; row < fullTileRows; ++row) {
-            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(
-                globalSigmoidBf16, globalSigmoidUb + row);
-            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(
-                localSigmoidBf16, localSigmoidUb + row);
+        for (uint16_t row = 0; row < calcRows; ++row) {
+            for (uint16_t head = 0; head < heads; ++head) {
+                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(
+                    globalSigmoidBf16, globalSigmoidUb + head * ubRowCount_ + row);
+                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(
+                    localSigmoidBf16, localSigmoidUb + head * ubRowCount_ + row);
 
-            for (uint16_t vf = 0; vf < vfsPerRow; ++vf) {
-                offset = Reg::CreateAddrReg<xDtype>(row, ONCE_ROW_LEN, vf, VF_LEN_FP32);
-                // Native xDtype multiply-add: use half/bf16 arithmetic directly,
-                // avoiding the FP32 casts in the inner SwiGLU accumulation loop.
-                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(globalReg, globalAddr, offset);
-                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(localReg, localAddr, offset);
+                for (uint16_t vf = 0; vf < vfsPerHead; ++vf) {
+                    offset = Reg::CreateAddrReg<xDtype>(
+                        row, ONCE_ROW_LEN,
+                        head, headDim_,
+                        vf, VF_LEN_FP32);
+                    Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(globalReg, globalAddr, offset);
+                    Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(localReg, localAddr, offset);
 
-                Reg::Mul(globalReg, globalReg, globalSigmoidBf16, allMask);
-                Reg::Mul(localReg, localReg, localSigmoidBf16, allMask);
-                Reg::Add(outputReg, globalReg, localReg, allMask);
-
-                Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(outputAddr, outputReg, offset, allMask);
+                    Reg::Mul(globalReg, globalReg, globalSigmoidBf16, allMask);
+                    Reg::Mul(localReg, localReg, localSigmoidBf16, allMask);
+                    Reg::Add(outputReg, globalReg, localReg, allMask);
+                    Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(outputAddr, outputReg, offset, allMask);
+                }
             }
         }
     }

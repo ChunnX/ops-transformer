@@ -1,20 +1,27 @@
 #!/usr/bin/env bash
-# TTK NPUSim simulation for the fixed CLA gate forward case.
+# TTK NPUSim simulation for the CLA gate forward TND case.
 #
 # Usage:
 #   source /home/g00940185/work/CANN9.2.0/cann-9.2.0/set_env.sh
-#   bash quant/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/run_ttk_kernel_sim.sh
+#   bash attention/cla_gate_mx_quant_with_dual_axis/tests/st/arch35/run_ttk_kernel_sim.sh
 #
-# By default only the second case (fp16 + scale_alg=1) is executed.
+# By default only the fp16 + scale_alg=1 case is executed.
 # Override with: TTK_TESTCASE=ClaGateMxQuantWithDualAxis_bf16_cublas_random
 # Additional TTK args can still be appended after the script name.
 set -euo pipefail
 
 TESTCASE="${TTK_TESTCASE:-ClaGateMxQuantWithDualAxis_fp16_cublas_random}"
 
-OPS_NN_ROOT=/home/g00940185/work/ops-nn
-TTK_ROOT=/home/g00940185/ops-test-kit
-CASE_DIR="$OPS_NN_ROOT/quant/cla_gate_mx_quant_with_dual_axis/tests/st/arch35"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OP_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+
+# TTK source root; can be overridden with TTK_ROOT=/path/to/ops-test-kit.
+TTK_ROOT="${TTK_ROOT:-/tmp/ttk_root}"
+if [ ! -d "$TTK_ROOT" ]; then
+    TTK_ROOT=/home/g00940185/ops-test-kit
+fi
+
+CASE_DIR="$OP_DIR/tests/st/arch35"
 CASE_FILE="$CASE_DIR/ttk_kernel_cla_gate_mx_quant_with_dual_axis.csv"
 RESULT_FILE="$CASE_DIR/cla_gate_sim_result.csv"
 SIM_OUTPUT_DIR="$CASE_DIR/sim_output"
@@ -36,7 +43,7 @@ python3 -m ttk kernel \
     -i "$CASE_FILE" \
     -t "$TESTCASE" \
     -o "$RESULT_FILE" \
-    --plugin "${TTK_GOLDEN_PLUGIN:-$OPS_NN_ROOT/quant/cla_gate_mx_quant_with_dual_axis/tests/assets/golden_small_op.py}" \
+    --plugin "${TTK_GOLDEN_PLUGIN:-$OP_DIR/tests/assets/golden_small_op.py}" \
     --sim-soc Ascend950 \
     --sim-cores 0 \
     --sim-output "$SIM_OUTPUT_DIR" \

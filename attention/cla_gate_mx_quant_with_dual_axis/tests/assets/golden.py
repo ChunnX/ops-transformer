@@ -366,29 +366,34 @@ def cla_gate_np(global_out, local_out, global_gate_logits, local_gate_logits):
     local_f32 = local_out.astype(np.float32)
     global_gate_f32 = global_gate_logits.astype(np.float32)
     local_gate_f32 = local_gate_logits.astype(np.float32)
-    if global_gate_f32.ndim == 4:
+    if global_gate_f32.ndim == global_f32.ndim:
         global_gate_f32 = np.squeeze(global_gate_f32, axis=-1)
         local_gate_f32 = np.squeeze(local_gate_f32, axis=-1)
     global_scale = _sigmoid_np(global_gate_f32)
     local_scale = _sigmoid_np(local_gate_f32)
-    # Keep the same broadcast semantics as:
-    #   global_out * torch.sigmoid(global_logits).unsqueeze(-1)
-    #   + local_out * torch.sigmoid(local_logits).unsqueeze(-1)
+    # TND: [T,N,D] and gate [T,N] -> broadcast over D.
     merged = global_f32 * global_scale[..., None] + local_f32 * local_scale[..., None]
     return merged.astype(calc_dtype)
 
 
-def cla_gate_quant_dual_np(global_out, local_out, global_gate_logits, local_gate_logits, *, scale_alg=1):
+def cla_gate_quant_dual_np(global_out, local_out, global_gate_logits, local_gate_logits, *,
+                           scale_alg=1, round_mode="rint", dst_type=36):
     merged = cla_gate_np(global_out, local_out, global_gate_logits, local_gate_logits)
-    # Fused operator layout: [S, B, N, D] -> [S*B, N*D].
-    merged = merged.reshape(merged.shape[0] * merged.shape[1], merged.shape[2] * merged.shape[3])
+    # Fused operator layout: [T,N,D] -> [T, N*D].
+    merged = merged.reshape(merged.shape[0], merged.shape[1] * merged.shape[2])
+    mx_ele_dtype = {
+        35: "float8_e5m2",
+        36: "float8_e4m3fn",
+        40: "float4_e2m1",
+        41: "float4_e1m2",
+    }[dst_type]
     row_scale, row_data = _mx_quantize(
-        merged, mx_ele_dtype="float8_e4m3fn", axis=-1,
-        block_size=32, round_mode="rint", scale_alg=scale_alg,
+        merged, mx_ele_dtype=mx_ele_dtype, axis=-1,
+        block_size=32, round_mode=round_mode, scale_alg=scale_alg,
     )
     col_scale, col_data = _mx_quantize(
-        merged, mx_ele_dtype="float8_e4m3fn", axis=-2,
-        block_size=32, round_mode="rint", scale_alg=scale_alg,
+        merged, mx_ele_dtype=mx_ele_dtype, axis=-2,
+        block_size=32, round_mode=round_mode, scale_alg=scale_alg,
     )
     return row_data, row_scale, col_data, col_scale
 
@@ -401,20 +406,22 @@ def cla_gate_mx_quant_with_dual_axis_golden(
     *,
     dst_type=36,
     scale_alg=1,
+    round_mode="rint",
     **kwargs,
 ):
-    """Golden for the fixed [256, 4, 96, 256] CLA gate forward operator.
+    """Golden for the TND CLA gate forward operator.
 
-    Follows the small-op merge formula (sigmoid -> broadcast mul -> add), then
-    reshapes to the fused-operator quant layout [S*B, N*D] before dual-axis
-    MXFP8 quantization (E4M3FN, scale_alg).
+    Follows the merge formula (sigmoid -> broadcast mul -> add), then reshapes
+    to the fused-operator quant layout [T,N*D] before dual-axis MX quantization.
     """
-    if dst_type != 36:
-        raise ValueError("cla_gate_mx_quant_with_dual_axis only supports dst_type=36")
+    if dst_type not in (35, 36, 40, 41):
+        raise ValueError("unsupported dst_type: %s" % dst_type)
     return cla_gate_quant_dual_np(
         global_out,
         local_out,
         global_gate_logits,
         local_gate_logits,
         scale_alg=scale_alg,
+        round_mode=round_mode,
+        dst_type=dst_type,
     )

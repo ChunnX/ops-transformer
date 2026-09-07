@@ -21,6 +21,29 @@
 using namespace ClaGateMxQuantWithDualAxis;
 using namespace ClaGateMxQuantWithDualAxisOp;
 
+namespace {
+template <uint64_t roundMode>
+struct RoundModeMapper {
+    static constexpr AscendC::RoundMode value = []() {
+        // FP8 only supports rint; FP4 can use rint/floor/round.
+        if constexpr (IsSameType<DTYPE_ROW_DATA, fp8_e4m3fn_t>::value ||
+                      IsSameType<DTYPE_ROW_DATA, fp8_e5m2_t>::value) {
+            return AscendC::RoundMode::CAST_RINT;
+        } else {
+            if constexpr (roundMode == TPL_RINT) {
+                return AscendC::RoundMode::CAST_RINT;
+            } else if constexpr (roundMode == TPL_FLOOR) {
+                return AscendC::RoundMode::CAST_FLOOR;
+            } else if constexpr (roundMode == TPL_ROUND) {
+                return AscendC::RoundMode::CAST_ROUND;
+            } else {
+                return AscendC::RoundMode::CAST_RINT;
+            }
+        }
+    }();
+};
+} // namespace
+
 template <uint64_t mode, uint64_t roundMode, uint64_t scaleAlg, uint64_t isGroupIdx>
 __global__ __aicore__ void cla_gate_mx_quant_with_dual_axis(
     GM_ADDR global_out, GM_ADDR local_out, GM_ADDR global_gate_logits, GM_ADDR local_gate_logits,
@@ -34,7 +57,8 @@ __global__ __aicore__ void cla_gate_mx_quant_with_dual_axis(
     REGISTER_TILING_DEFAULT(ClaGateMxQuantWithDualAxisTilingData);
     GET_TILING_DATA_WITH_STRUCT(ClaGateMxQuantWithDualAxisTilingData, tilingData, tiling);
     TPipe pipe;
-    ClaGateMxQuantWithDualAxisBase<DTYPE_GLOBAL_OUT, DTYPE_ROW_DATA, mode, AscendC::RoundMode::CAST_RINT,
+    constexpr AscendC::RoundMode ascendcRoundMode = RoundModeMapper<roundMode>::value;
+    ClaGateMxQuantWithDualAxisBase<DTYPE_GLOBAL_OUT, DTYPE_ROW_DATA, mode, ascendcRoundMode,
                                   scaleAlg, isGroupIdx> op(&tilingData, &pipe);
     op.Init(global_out, local_out, global_gate_logits, local_gate_logits,
             row_data, row_scale, col_data, col_scale);
