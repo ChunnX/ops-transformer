@@ -111,7 +111,7 @@ $$
     <td class="tg-0pky">metadata</td>
     <td class="tg-0pky">输入</td>
     <td class="tg-0pky">由GenericBlockSparseAttentionGradMetadata生成的分核信息。</td>
-    <td class="tg-0pky">INT64</td>
+    <td class="tg-0pky">INT32</td>
     <td class="tg-0pky">ND</td>
   </tr>
   <tr>
@@ -194,7 +194,7 @@ $$
   <tr>
     <td class="tg-0pky">softmaxPrecision</td>
     <td class="tg-0pky">属性</td>
-    <td class="tg-0pky">Softmax精度级别，取值0或1，当前实现传0。</td>
+    <td class="tg-0pky">Softmax精度级别，当前仅支持0。</td>
     <td class="tg-0pky">INT64</td>
     <td class="tg-0pky">-</td>
   </tr>
@@ -254,3 +254,4 @@ $$
 | 调用方式  | 样例代码                                                                | 说明                                                                                          |
 | ----------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | aclnn接口 | [test_aclnn_generic_block_sparse_attention_grad](./examples/test_aclnn_generic_block_sparse_attention_grad.cpp) | 通过[aclnnGenericBlockSparseAttentionGrad](./docs/aclnnGenericBlockSparseAttentionGrad.md)接口方式调用GenericBlockSparseAttentionGrad算子。 |
+| pytest调用 | [test_generic_block_sparse_attention_grad](./tests/pytest/test_generic_block_sparse_attention_grad.py) | 通过torch extension接口进行功能和精度验证。 |
