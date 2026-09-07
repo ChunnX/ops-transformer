@@ -45,10 +45,12 @@
 #include "../common/moe_distribute_base.h"
 #include "../common/mc2_kernel_utils.h"
 #include "../common/moe_ep_exception_dump_writer.h"
+#include "../common/moe_ep_profiler.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
+#include "../../common/op_kernel/moe_ep_profiler.h"
 #endif
 
 #include "moe_ep_combine_base.h"
@@ -87,6 +89,17 @@ static constexpr struct UrmaWqeEntry DEFAULT_CQE_WQE_CONFIG = {.odr = 5, .fence 
 // Keep the final flag ordered after payload writes without requesting an unconsumed CQE on every invocation.
 // CQE-enabled payload checkpoints and Drain remain in the SQ high-watermark path.
 static constexpr struct UrmaWqeEntry CHANNEL_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
+enum class MoeEpCombineProfileStage : uint32_t {
+    KERNEL = 0,
+    ADDRESS_TABLE = 1, // Reserved for flow's historical raw files; the direct path does not emit this stage.
+    DATA_WQE = 2,
+    FLAG_COMMIT = 3,
+    FLAG_SOURCE_INIT = 4,
+    LOCAL_METADATA_COPY = 5,
+    LOCAL_BARRIER = 6,
+    CORE_ASSIGNMENT = 7,
+};
+
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
 public:
@@ -137,6 +150,7 @@ private:
     const MoeEpCombineInfo *tilingData_{nullptr};
     __gm__ Mc2Aclnn::MoeCommContext *mc2Context_{nullptr};
     MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
+    MOE_EP_PROFILE_DECLARE();
 
     uint32_t rankId_{0};
     uint32_t epWorldSize_{0};
@@ -221,6 +235,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
 
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     rankId_ = mc2Context_->epRankId;
+    MOE_EP_PROFILE_INIT(mc2Context_, MoeEpProfileOp::COMBINE, aivNum_);
     constexpr size_t metadataOffset =
         offsetof(MoeEpCombineTilingData, moeEpCombineInfo) + offsetof(MoeEpCombineInfo, dumpMetadata);
     MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
@@ -588,8 +603,15 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
         return;
     }
 
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::MTE3,
+                                             MoeEpCombineProfileStage::FLAG_SOURCE_INIT, MoeEpProfileBoundary::BEGIN));
     InitFlagSource();
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::MTE3,
+                                             MoeEpCombineProfileStage::FLAG_SOURCE_INIT, MoeEpProfileBoundary::END));
 
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::MTE3,
+                                             MoeEpCombineProfileStage::LOCAL_METADATA_COPY,
+                                             MoeEpProfileBoundary::BEGIN));
     uint64_t localBegin = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(rankId_));
     uint64_t localEnd = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(rankId_ + 1U));
     uint64_t localCoreBegin = 0U;
@@ -600,10 +622,19 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
         SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
 
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::MTE3,
+                                             MoeEpCombineProfileStage::LOCAL_METADATA_COPY, MoeEpProfileBoundary::END));
+
     // All AIVs must reach this barrier, including empty local ranges and actualA_ == 0.
     // It also publishes AIV0's completed constant-source initialization before any remote flag is submitted.
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::WAIT,
+                                             MoeEpCombineProfileStage::LOCAL_BARRIER, MoeEpProfileBoundary::BEGIN));
     SyncAll<true>();
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::WAIT,
+                                             MoeEpCombineProfileStage::LOCAL_BARRIER, MoeEpProfileBoundary::END));
 
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpCombineProfileStage::CORE_ASSIGNMENT, MoeEpProfileBoundary::BEGIN));
     uint32_t activeAivNum = aivNum_;
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0U;
@@ -620,6 +651,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
         GetCoreAssignment(activeAivNum, targetRank, coreIndexInGroup, groupSize);
     }
     bool sendsTokens = actualA_ != 0U && aivId_ < activeAivNum;
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpCombineProfileStage::CORE_ASSIGNMENT, MoeEpProfileBoundary::END));
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::URMA,
+                                             MoeEpCombineProfileStage::DATA_WQE, MoeEpProfileBoundary::BEGIN));
     if (sendsTokens) {
         if (splitRankTokens) {
             // Local payload was copied before SyncAll, just as upstream excludes it from address tables.
@@ -643,8 +678,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
         }
     }
 
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::URMA,
+                                             MoeEpCombineProfileStage::DATA_WQE, MoeEpProfileBoundary::END));
+
     // Match upstream: publish flags after this AIV's payload phase, even for empty rank/channel slices.
     // In the low-AIV branch the same strided rank list is visited again, using channel 0 only.
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::URMA,
+                                             MoeEpCombineProfileStage::FLAG_COMMIT, MoeEpProfileBoundary::BEGIN));
     bool publishesChannelFlag = aivId_ < activeAivNum && (!splitRankTokens || coreIndexInGroup < combineChannelCount_);
     if (publishesChannelFlag) {
         if (splitRankTokens) {
@@ -661,12 +701,19 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     }
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::URMA,
+                                             MoeEpCombineProfileStage::FLAG_COMMIT, MoeEpProfileBoundary::END));
 }
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
 {
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpCombineProfileStage::KERNEL, MoeEpProfileBoundary::BEGIN));
     SendPhaseDirectFromMetadata();
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpCombineProfileStage::KERNEL, MoeEpProfileBoundary::END));
+    MOE_EP_PROFILE_FLUSH();
 }
 
 #endif
