@@ -433,10 +433,11 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
         uint32_t candBlocks = (opParamInfo_.candidateTopkBlocks != nullptr) ?
                                   static_cast<uint32_t>(*opParamInfo_.candidateTopkBlocks) :
                                   CANDIDATE_TOPK_BLOCKS_FIX;
-        OP_CHECK_IF(candBlocks != CANDIDATE_TOPK_BLOCKS_FIX,
+        // 放宽为 (0, 2048] 内 64 的倍数: 累加器/抽取/拷出逻辑均按 64 对齐设计
+        OP_CHECK_IF(candBlocks == 0 || candBlocks > CANDIDATE_TOPK_BLOCKS_FIX || (candBlocks % 64) != 0,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "candidate_topk_blocks",
                                                           std::to_string(candBlocks),
-                                                          "Candidate_topk_blocks only supports 2048 currently"),
+                                                          "Candidate_topk_blocks must be a multiple of 64 in (0, 2048]"),
                     return ge::GRAPH_FAILED);
         uint32_t candBlkSize = (opParamInfo_.candidateBlockSize != nullptr) ?
                                    static_cast<uint32_t>(*opParamInfo_.candidateBlockSize) :

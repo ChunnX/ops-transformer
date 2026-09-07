@@ -466,6 +466,9 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::BuildCandidateMask(const QLIV2Common
         LocalTensor<float> candSortTmp = tmp[4096];
         QLIV2ServiceVec::SortAll(candPairs, candSortTmp, candBlocks);
         PipeBarrier<PIPE_V>();
+        // V->S 围栏: 排序结果对后续标量 GetValue (CountGE 二分) 可见
+        // (PipeBarrier<PIPE_V> 不足以保证标量读到 V 写数据; 参照 CANN topk_v200 的 SetFlag/WaitFlag<V_S> 模式)
+        SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
     }
     // 候选与 tile 块号 [tileBlockBase, tileBlockBase+tileBlkNum) 的最小距离, 0 即命中
     LocalTensor<float> candPairs = candBuf_.Get<float>();
@@ -480,7 +483,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::BuildCandidateMask(const QLIV2Common
     PipeBarrier<PIPE_V>();
     Duplicate(acc.ReinterpretCast<int32_t>(), QLIV2ServiceVec::POS_INF_F32, tileBlkNum);
     PipeBarrier<PIPE_V>();
-    for (int32_t j = lo; j < hi; j++) {
+    // 降序排序下: 值 >= base+tileBlkNum 占 [0, hi), 落在 tile 内的候选占 [hi, lo), < base (含 -1 pad) 占 [lo, ...)
+    for (int32_t j = hi; j < lo; j++) {
         float v = candPairs.GetValue(2 * j);
         Adds(diff, blkIdxF, -v, tileBlkNum);
         PipeBarrier<PIPE_V>();
@@ -494,9 +498,11 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::BuildCandidateMask(const QLIV2Common
     VecMinsScalar(posDist, posDist, 1.0f, s2BaseSize_);
     PipeBarrier<PIPE_V>();
     candIsOut_ = posDist;
-    // isOut 的 int32 形式 (供索引置 -1)
-    LocalTensor<int32_t> isOutI32 = tmp[4864].template ReinterpretCast<int32_t>();
-    Cast(isOutI32, posDist, RoundMode::CAST_NONE, s2BaseSize_);
+    // isOut 的 int32 形式 (供索引置 -1)。
+    // 注意: f32->s32 仅 RINT/FLOOR/CEIL/ROUND/TRUNC 合法 (CAST_NONE 为 assert no-op);
+    // 且必须放在 [14336,16384), 避开 ProcessVec1 中 pen/idxPen 使用的 [4096,6144)
+    LocalTensor<int32_t> isOutI32 = tmp[14336].template ReinterpretCast<int32_t>();
+    Cast(isOutI32, posDist, RoundMode::CAST_RINT, s2BaseSize_);
     PipeBarrier<PIPE_V>();
     candIsOutI32_ = isOutI32;
 }
@@ -520,24 +526,103 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessCandBlockTopk(const QLIV2Comm
     int32_t brmRepeat = (blkLen / 64) > 0 ? (blkLen / 64) : 1;
     BlockReduceMax(blkScore, tmp[0], brmRepeat, 64, 1, 1, 8);
     PipeBarrier<PIPE_V>();
-    // pin 最新 token 所在块 — 标量写 (向量 Duplicate count=1 非 64 对齐会触发 aicore 异常;
-    // 标量写前后用 PipeBarrier<PIPE_V> 与 V 管道向量指令排空, 避免竞态)
     int32_t lastBlk = (cuRealAcSeq - 1) / blockSize;
     int32_t pinLocal = lastBlk - tileBlockBase;
-    if (pinLocal >= 0 && pinLocal < realBlockNum) {
-        PipeBarrier<PIPE_V>();
-        blkScore.template ReinterpretCast<int32_t>().SetValue(pinLocal, QLIV2ServiceVec::POS_INF_F32);
-        PipeBarrier<PIPE_V>();
-    }
     // 块级 [scores | idx] 对: idx = tileBlockBase + j; j >= realBlockNum 的 pad 块置 -1
-    // (v220 上 s32<->f32 Cast 为位拷贝垃圾 (CAST_RINT 则非法), 禁止用 fp32 算术链构造 idx;
-    //  pad 块改用标量 SetValue 填 -1, 标量写前后 PipeBarrier<PIPE_V> 与向量指令排空)
-    LocalTensor<int32_t> blkIdx = tmp[6144 + blockNumPad].template ReinterpretCast<int32_t>();
-    ArithProgression<int32_t>(blkIdx, static_cast<int32_t>(tileBlockBase), 1, blockNumPad);
+    // (禁止标量 SetValue: 标量写不受 PipeBarrier<PIPE_V> 围栏, 与后续 V 管道读存在确定性竞态
+    //  (实测 innerS1Idx=1 行的填充被 SortAll 抢跑覆盖); 禁止 s32->f32 Cast (v220 无此组合)。
+    //  改为纯 int32 向量算术: idx' = idx - (idx+1)*isPad, isPad = clamp(idx - thr, 0, 1),
+    //  thr = base + realBlockNum - 1; 所有指令 count=blockNumPad (64 对齐), 按 64 分块避免 mask 寄存器限制。
+    //  scratch 用 mode=1 独占区 [14336,15360) (mode=2 的 isOutI32 也用 14336, 两模式互斥),
+    //  避开主路径 tmpSortBuf [4096,12288), 消除跨迭代残留读的隐患)
+    LocalTensor<int32_t> idxScr = tmp[14336].template ReinterpretCast<int32_t>();      // 等差源
+    LocalTensor<int32_t> thrI = tmp[14592].template ReinterpretCast<int32_t>();        // 阈值
+    LocalTensor<int32_t> offI = tmp[14848].template ReinterpretCast<int32_t>();        // idx-thr -> isPad
+    LocalTensor<int32_t> tI = tmp[15104].template ReinterpretCast<int32_t>();          // (idx+1)*isPad
+    LocalTensor<int32_t> blkIdx = tmp[6144 + blockNumPad].template ReinterpretCast<int32_t>(); // 最终 idx
+    ArithProgression<int32_t>(idxScr, static_cast<int32_t>(tileBlockBase), 1, blockNumPad);
+    Duplicate(thrI, tileBlockBase + realBlockNum - 1, blockNumPad);
     PipeBarrier<PIPE_V>();
-    if (blockNumPad > realBlockNum) {
-        for (int32_t j = realBlockNum; j < blockNumPad; j++) {
-            blkIdx.SetValue(j, -1);
+    for (int32_t off = 0; off < blockNumPad; off += 64) {
+        Sub(offI[off], idxScr[off], thrI[off], 64);
+    }
+    PipeBarrier<PIPE_V>();
+    for (int32_t off = 0; off < blockNumPad; off += 64) {
+        Maxs(offI[off], offI[off], 0, 64);
+    }
+    PipeBarrier<PIPE_V>();
+    for (int32_t off = 0; off < blockNumPad; off += 64) {
+        Mins(offI[off], offI[off], 1, 64);
+    }
+    PipeBarrier<PIPE_V>();
+    for (int32_t off = 0; off < blockNumPad; off += 64) {
+        Adds(tI[off], idxScr[off], 1, 64);
+    }
+    PipeBarrier<PIPE_V>();
+    for (int32_t off = 0; off < blockNumPad; off += 64) {
+        Mul(tI[off], tI[off], offI[off], 64);
+    }
+    PipeBarrier<PIPE_V>();
+    for (int32_t off = 0; off < blockNumPad; off += 64) {
+        Sub(blkIdx[off], idxScr[off], tI[off], 64);
+    }
+    PipeBarrier<PIPE_V>();
+    // pin 最新 token 所在块 (+inf 位型注入该块 score): 纯 int32 向量实现, 在 isPad 链之后
+    // (复用其 scratch; 标量 SetValue 写不受 PipeBarrier<PIPE_V> fence, 与 SortAll 多轮读存在竞态, 已弃用)。
+    // flag = -1 于 pin 位, 0 于其余: score' = score + (score - PINF_bits) * flag,
+    // pin 位得 PINF_bits (0x7F800000 = +inf), 其余不变 (flag=0 使 pad 位 -inf 的中间溢出无害)。
+    if (pinLocal >= 0 && pinLocal < realBlockNum) {
+        LocalTensor<int32_t> pRaw = tmp[15360].template ReinterpretCast<int32_t>(); // [15360,15616)
+        LocalTensor<int32_t> pNeg = tmp[15616].template ReinterpretCast<int32_t>(); // [15616,15872)
+        LocalTensor<int32_t> pA = thrI;   // 复用 isPad 链已释放 scratch
+        LocalTensor<int32_t> pB = offI;
+        LocalTensor<int32_t> pFlag = tI;
+        LocalTensor<int32_t> scoreI = blkScore.template ReinterpretCast<int32_t>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            // idxScr 为全局块号, pin 也必须用全局 id (tileBlockBase + pinLocal) 比较
+            Adds(pRaw[off], idxScr[off], -(tileBlockBase + pinLocal), 64); // 0 于 pin 块
+        }
+        PipeBarrier<PIPE_V>();
+        Duplicate(pNeg, 0, blockNumPad);
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Sub(pNeg[off], pNeg[off], pRaw[off], 64); // -(idx-pinLocal)
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Maxs(pA[off], pRaw[off], 0, 64);
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Mins(pA[off], pA[off], 1, 64); // 1 若 idx > pin
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Maxs(pB[off], pNeg[off], 0, 64);
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Mins(pB[off], pB[off], 1, 64); // 1 若 idx < pin
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Add(pFlag[off], pA[off], pB[off], 64); // isNotPin (0/1, 互斥)
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Adds(pFlag[off], pFlag[off], -1, 64); // -1 于 pin, 0 其余
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Adds(pRaw[off], scoreI[off], -2139095040, 64); // score - 0x7F800000 (复用 pRaw)
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Mul(pRaw[off], pRaw[off], pFlag[off], 64); // (score-PINF)*flag
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Add(scoreI[off], scoreI[off], pRaw[off], 64); // pin -> +inf 位型
         }
         PipeBarrier<PIPE_V>();
     }
@@ -548,8 +633,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessCandBlockTopk(const QLIV2Comm
     LocalTensor<float> blkSortTmp = tmp[11776]; // 与 blkPairs 不重叠 (MrgSort src/tmp 禁止重叠)
     QLIV2ServiceVec::SortAll(blkPairs, blkSortTmp, blockNumPad);
     PipeBarrier<PIPE_V>();
-    QLIV2ServiceVec::MergeSort(globalBlockTopkUb_[innerS1Idx * BASE_TOPK_VALUE_IDX_SIZE],
-                               constInfo_.candidateTopkBlocks, blkPairs, blockNumPad, blkSortTmp);
+    // 候选专用合并: 纯 V 回拷 (MergeSort 尾部 UB->UB DataCopy 不受 PipeBarrier<PIPE_V> fence,
+    // 多 tile 下一次 MrgSort 读 acc 存在调度敏感竞态, 实测 tile1 读到 stale 数据)
+    QLIV2ServiceVec::MergeSortVecCopy(globalBlockTopkUb_[innerS1Idx * BASE_TOPK_VALUE_IDX_SIZE],
+                                      constInfo_.candidateTopkBlocks, blkPairs, blockNumPad, blkSortTmp);
     PipeBarrier<PIPE_V>();
 }
 
@@ -745,7 +832,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
                 PipeBarrier<PIPE_V>();
             }
             // mode=1 (is_candidate_source): 块化 amax + pin + 块级排序归并 (S5a/S6a)
-            if (constInfo_.candidateMode == CANDIDATE_MODE_SOURCE) {
+            if (constInfo_.candidateMode == CANDIDATE_MODE_SOURCE) { // BISECT_R2: 恢复 Process, 仍跳过 CopyOut
                 ProcessCandBlockTopk(info, cuS1Idx, cuS2Len, cuS2LenVecAlign, cuRealAcSeq, innerS1Idx);
             }
             LocalTensor<float> tmpSortBuf = sortBuff[2 * cuS2LenVecAlign];

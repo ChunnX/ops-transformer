@@ -183,6 +183,39 @@ __aicore__ inline void ExtractIndex(const LocalTensor<uint32_t> &idxULocal, cons
     AscendC::PipeBarrier<PIPE_V>();
 }
 
+/**
+  候选路径专用合并: 与 MergeSort 语义相同, 但回拷 mrgDst 用纯向量 Adds (64 分块)。
+  MergeSort 尾部的 UB->UB DataCopy 若走 MTE 管道, 其后的 PipeBarrier<PIPE_V> 不构成 fence,
+  跨 tile/跨行对累加器的下一次 MrgSort 读存在调度敏感竞态 (实测多 tile 场景 tile1 读到 tile0 stale
+  数据, 累加器出现 -inf 位型+8k 垃圾且 tile1 块整段缺失)。纯 V 回拷全程受 PipeBarrier 约束。
+ */
+__aicore__ inline void MergeSortVecCopy(const LocalTensor<float> &mrgDst, int32_t mrgDstNum,
+                                        LocalTensor<float> &mrgSrc, int32_t mrgSrcNum, LocalTensor<float> &tmpTensor)
+{
+    AscendC::MrgSort4Info params;
+    params.elementLengths[0] = mrgSrcNum;
+    params.elementLengths[1] = mrgDstNum;
+    params.ifExhaustedSuspension = false;
+    params.validBit = 0b0011;
+    params.repeatTimes = 1;
+
+    AscendC::MrgSortSrcList<float> srcList;
+    srcList.src1 = mrgSrc;
+    srcList.src2 = mrgDst;
+
+    AscendC::MrgSort<float>(tmpTensor, srcList, params);
+    AscendC::PipeBarrier<PIPE_V>();
+    // 回拷必须位精确: -1 (0xFFFFFFFF) 作为 float 是负符号 NaN, vadd 会规范化为 0x7FFFFFFF;
+    // 用 int32 视图 Adds(+0) 保证 bit-exact 且全程 V 管道 (受 PipeBarrier fence)
+    int32_t copyNum = mrgDstNum * VALUE_AND_INDEX_NUM;
+    LocalTensor<int32_t> dstI = mrgDst.template ReinterpretCast<int32_t>();
+    LocalTensor<int32_t> srcI = tmpTensor.template ReinterpretCast<int32_t>();
+    for (int32_t off = 0; off < copyNum; off += 64) {
+        AscendC::Adds(dstI[off], srcI[off], 0, 64);
+    }
+    AscendC::PipeBarrier<PIPE_V>();
+}
+
 template <HardEvent event>
 __aicore__ inline void SetWaitFlag(HardEvent evt)
 {
