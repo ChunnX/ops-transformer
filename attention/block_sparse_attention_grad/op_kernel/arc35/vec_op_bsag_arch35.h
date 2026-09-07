@@ -52,6 +52,19 @@ private:
     GM_ADDR act_seq_q_len;
     GlobalTensor<float> lse_gm_;
     GlobalTensor<float> sftg_workspace_;
+    GlobalTensor<float> det_dq_gm_;
+    GlobalTensor<float> det_dk_gm_;
+    GlobalTensor<float> det_dv_gm_;
+    GlobalTensor<int64_t> deter_offset_gm_;
+    GM_ADDR det_dq_base_{nullptr};
+    GM_ADDR det_dk_base_{nullptr};
+    GM_ADDR det_dv_base_{nullptr};
+    uint32_t cube_core_num_{0};
+    uint32_t cube_core_idx_{0};
+    uint64_t det_dq_tile_elems_{0};
+    uint64_t det_dkv_tile_elems_{0};
+    uint32_t q_stride_{0};
+    uint32_t kv_stride_{0};
     LocalTensor<float> lse_tensor_;
     LocalTensor<float> lse_tensor_ping_;
     LocalTensor<float> lse_tensor_pong_;
@@ -60,6 +73,9 @@ private:
     LocalTensor<float> sftg_front_tensor_pong_;
     LocalTensor<INPUT_TYPE> softmax_res_nz_tensor_;
     LocalTensor<INPUT_TYPE> sftg_res_nz_tensor_;
+    LocalTensor<int64_t> deter_offset_tensor_;
+    LocalTensor<float> det_acc_ub_;
+    LocalTensor<float> det_src_ub_;
 
     LocalTensor<float> vec_in_ping_;
     LocalTensor<float> vec_in_pong_;
@@ -83,6 +99,19 @@ private:
     static constexpr uint32_t BLOCK_INPUT = BLOCK_SIZE / sizeof(INPUT_TYPE);
     constexpr static uint32_t PRE_TILE_LEN = 60 * 1024;  // pre一次处理元素的个数
     constexpr static uint32_t POST_TILE_LEN = 20 * 1024; // POST一次处理元素的个数
+    constexpr static int64_t OUTINDEX = -1;
+    constexpr static uint32_t INT64_BLOCK_NUM = 32 / sizeof(int64_t);
+    constexpr static uint32_t DET_OFFSET_NUM = 4;
+    constexpr static uint32_t MAX_CUBE_CORES = 64;
+
+    struct DeterAddrGroup {
+        uint32_t group_num{0};
+        uint32_t group_begin[MAX_CUBE_CORES];
+        uint32_t group_size[MAX_CUBE_CORES];
+        int64_t group_off[MAX_CUBE_CORES];
+        int64_t group_len[MAX_CUBE_CORES];
+        uint32_t core_list[MAX_CUBE_CORES];
+    };
     // runtInfo
     int32_t s1_process_;
     int32_t s1_process_align_;
@@ -124,10 +153,49 @@ public:
         v_core_idx_ = GetBlockIdx();
         v_sub_core_idx_ = GetSubBlockIdx();
 
+        if constexpr (INPUT_LAYOUT == BSND) {
+            q_stride_ = q_head_num_ * head_dim_;
+            kv_stride_ = kv_head_num_ * head_dim_;
+        } else if constexpr (INPUT_LAYOUT == BNSD) {
+            q_stride_ = head_dim_;
+            kv_stride_ = head_dim_;
+        } else {
+            q_stride_ = q_head_num_ * head_dim_;
+            kv_stride_ = kv_head_num_ * head_dim_;
+        }
+
         // gm_tensor
         lse_gm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
         sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset));
-        // local_tensor
+        if constexpr (DETERMINISTIC_ENABLE) {
+            det_dq_tile_elems_ = static_cast<uint64_t>(base_m) * head_dim_;
+            det_dkv_tile_elems_ = static_cast<uint64_t>(base_n) * head_dim_;
+            cube_core_num_ = static_cast<uint32_t>(tilingData->cubeCoreNum);
+            cube_core_idx_ = v_core_idx_ / 2;
+            det_dq_base_ = workspace + tilingData->detDqWorkspaceOffset;
+            det_dk_base_ = workspace + tilingData->detDkWorkspaceOffset;
+            det_dv_base_ = workspace + tilingData->detDvWorkspaceOffset;
+            det_dq_gm_.SetGlobalBuffer(
+                (__gm__ float *)(det_dq_base_ + cube_core_idx_ * det_dq_tile_elems_ * sizeof(float)));
+            det_dk_gm_.SetGlobalBuffer(
+                (__gm__ float *)(det_dk_base_ + cube_core_idx_ * det_dkv_tile_elems_ * sizeof(float)));
+            det_dv_gm_.SetGlobalBuffer(
+                (__gm__ float *)(det_dv_base_ + cube_core_idx_ * det_dkv_tile_elems_ * sizeof(float)));
+            deter_offset_gm_.SetGlobalBuffer((__gm__ int64_t *)(workspace + tilingData->detOffsetWorkspaceOffset));
+        }
+        /*
+         * UB 布局（主循环常驻，从 Process 传入的 ub_offset 接着排）
+         * 总预算 UB_SIZE = 247KB。Process 已占用：
+         *   mm1/mm2 pingpong: 4 * vec_base_m * vec_base_n * sizeof(float)
+         *   例 baseM=N=128: 4 * 64 * 128 * 4 = 128KB
+         * 本 Init 继续占用：
+         *   softmax_res_nz / sftg_res_nz: 2 * vec_base_m * vec_base_n * sizeof(INPUT_TYPE)
+         *   lse ping/pong + sftg_front ping/pong: 4 * vec_base_m * BLOCK_FP32 * sizeof(float)
+         *   deter_offset: cube_core_num * DET_OFFSET_NUM * sizeof(int64_t)
+         *   det_acc / det_src: 2 * CeilDiv(max(baseM,baseN), v_core_num) * head_dim * sizeof(float)
+         * 例 fp16 + cubeCoreNum=5: VecOp 常驻 ≈ 40KB + 13.2KB，主循环合计 ≈ 181KB，剩余 ≈ 66KB。
+         * Pre / SftgFront / Post 从 offset 0 覆盖整块 UB，与主循环错开。
+         */
         softmax_res_nz_tensor_ = ub_buffer.GetWithOffset<INPUT_TYPE>(vec_base_m * vec_base_n, ub_offset);
         ub_offset += vec_base_m * vec_base_n * sizeof(INPUT_TYPE);
         sftg_res_nz_tensor_ = ub_buffer.GetWithOffset<INPUT_TYPE>(vec_base_m * vec_base_n, ub_offset);
@@ -140,18 +208,18 @@ public:
         ub_offset += vec_base_m * BLOCK_FP32 * sizeof(float);
         sftg_front_tensor_pong_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
         ub_offset += vec_base_m * BLOCK_FP32 * sizeof(float);
-    }
-
-    __aicore__ inline void SetFlag()
-    {
-        SET_FLAG(V, MTE2, event_ping_);
-        SET_FLAG(V, MTE2, event_pong_);
-    }
-
-    __aicore__ inline void WaitFlag()
-    {
-        WAIT_FLAG(V, MTE2, event_ping_);
-        WAIT_FLAG(V, MTE2, event_pong_);
+        if constexpr (DETERMINISTIC_ENABLE) {
+            uint32_t offset_elems = cube_core_num_ * DET_OFFSET_NUM;
+            deter_offset_tensor_ = ub_buffer.GetWithOffset<int64_t>(offset_elems, ub_offset);
+            ub_offset += offset_elems * sizeof(int64_t);
+            uint32_t max_axis = base_m > base_n ? base_m : base_n;
+            uint32_t max_my_rows = CeilDiv<uint32_t>(max_axis, v_core_num_);
+            uint32_t ub_tile = max_my_rows * static_cast<uint32_t>(head_dim_);
+            det_acc_ub_ = ub_buffer.GetWithOffset<float>(ub_tile, ub_offset);
+            ub_offset += ub_tile * sizeof(float);
+            det_src_ub_ = ub_buffer.GetWithOffset<float>(ub_tile, ub_offset);
+            ub_offset += ub_tile * sizeof(float);
+        }
     }
 
     __aicore__ inline void SendVecPre(const GlobalTensor<float> &dq_workspace, const GlobalTensor<float> &dk_workspace,
@@ -170,6 +238,40 @@ public:
         ComputeEvenCoreInfo(info, tilingData->dkSize, PRE_TILE_LEN);
         ComputeVecPre(dk_workspace, vec_in_ping_, info);
         ComputeVecPre(dv_workspace, vec_in_ping_, info);
+    }
+
+    __aicore__ inline void WriteInvalidOffsetToGM(uint32_t pingpong_idx)
+    {
+        WriteOffsetToGM(pingpong_idx, OUTINDEX, OUTINDEX, 0, 0, 0);
+    }
+
+    /*
+     * 从 GM 一次读齐所有 cube 核 offset，按输出地址归类后统一累加写回。
+     * dq 按 s1 切分：每个 vector 核处理同一段 s1_idx；dk/dv 按 s2 切分：每个 vector 核处理同一段 s2_idx。
+     */
+    __aicore__ inline void SendVecDeterPost(const GlobalTensor<float> &dq_workspace,
+                                            const GlobalTensor<float> &dk_workspace,
+                                            const GlobalTensor<float> &dv_workspace, uint32_t pingpong_idx)
+    {
+        SET_FLAG(MTE3, MTE2, EVENT_ID0);
+        WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+        uint32_t offset_elems = cube_core_num_ * DET_OFFSET_NUM;
+        DataCopy(deter_offset_tensor_, deter_offset_gm_[pingpong_idx * offset_elems], offset_elems);
+        SET_FLAG(MTE2, S, EVENT_ID0);
+        WAIT_FLAG(MTE2, S, EVENT_ID0);
+
+        int64_t q_off[MAX_CUBE_CORES];
+        int64_t s1_len[MAX_CUBE_CORES];
+        int64_t k_off[MAX_CUBE_CORES];
+        int64_t s2_len[MAX_CUBE_CORES];
+        CollectDeterCoreInfo(q_off, s1_len, k_off, s2_len);
+
+        DeterAtomicAddOneOutput(dq_workspace, det_dq_base_, det_dq_tile_elems_, q_off, s1_len, q_stride_, pingpong_idx,
+                                static_cast<uint32_t>(base_m));
+        DeterAtomicAddOneOutput(dk_workspace, det_dk_base_, det_dkv_tile_elems_, k_off, s2_len, kv_stride_, pingpong_idx,
+                                static_cast<uint32_t>(base_n));
+        DeterAtomicAddOneOutput(dv_workspace, det_dv_base_, det_dkv_tile_elems_, k_off, s2_len, kv_stride_, pingpong_idx,
+                                static_cast<uint32_t>(base_n));
     }
 
     __aicore__ inline void SendVecSftgFront(const GlobalTensor<INPUT_TYPE> &dy_gm,
@@ -276,6 +378,10 @@ public:
             SET_FLAG(MTE2, V, EVENT_ID0);
             WAIT_FLAG(MTE2, V, EVENT_ID0);
         }
+        if constexpr (DETERMINISTIC_ENABLE) {
+            WriteOffsetToGM(pingpong_idx, runTimeInfo.queryGmOffset, runTimeInfo.keyGmOffset,
+                            runTimeInfo.s1Len, runTimeInfo.s2Len, runTimeInfo.is_singlekv_last);
+        }
     }
 
     __aicore__ inline void SendVecSoftmax(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
@@ -372,6 +478,139 @@ public:
     }
 
 private:
+
+    __aicore__ inline void WriteOffsetToGM(uint32_t pingpong_idx, int64_t queryGmOffset, int64_t keyGmOffset,
+                                           int64_t s1Len, int64_t s2Len, int64_t is_singlekv_last)
+    {
+        if constexpr (!DETERMINISTIC_ENABLE) {
+            return;
+        }
+        if(v_sub_core_idx_ != 0) {
+            return;
+        }
+        int64_t gm_offset = pingpong_idx * cube_core_num_ * DET_OFFSET_NUM + cube_core_idx_ * DET_OFFSET_NUM;
+        deter_offset_tensor_.SetValue(0, queryGmOffset);
+        deter_offset_tensor_.SetValue(1, s1Len);
+        if (is_singlekv_last) {
+            deter_offset_tensor_.SetValue(2, keyGmOffset);
+            deter_offset_tensor_.SetValue(3, s2Len);
+        } else {
+            deter_offset_tensor_.SetValue(2, OUTINDEX);
+            deter_offset_tensor_.SetValue(3, 0);
+        }
+
+        SET_FLAG(S, MTE3, EVENT_ID0);
+        WAIT_FLAG(S, MTE3, EVENT_ID0);
+        DataCopy(deter_offset_gm_[gm_offset], deter_offset_tensor_, DET_OFFSET_NUM);
+        SET_FLAG(MTE3, MTE2, EVENT_ID0);
+        WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+    }
+
+    __aicore__ inline void GetVecAxisSlice(uint32_t total_rows, uint32_t &my_start, uint32_t &my_len)
+    {
+        uint32_t rows_per_core = CeilDiv<uint32_t>(total_rows, v_core_num_);
+        my_start = v_core_idx_ * rows_per_core;
+        if (my_start >= total_rows) {
+            my_len = 0;
+            return;
+        }
+        uint32_t remain = total_rows - my_start;
+        my_len = remain < rows_per_core ? remain : rows_per_core;
+    }
+
+    __aicore__ inline void CollectDeterCoreInfo(int64_t *q_off, int64_t *s1_len, int64_t *k_off, int64_t *s2_len)
+    {
+        for (uint32_t c = 0; c < cube_core_num_; c++) {
+            uint32_t base = c * DET_OFFSET_NUM;
+            q_off[c] = deter_offset_tensor_.GetValue(base);
+            s1_len[c] = deter_offset_tensor_.GetValue(base + 1);
+            k_off[c] = deter_offset_tensor_.GetValue(base + 2);
+            s2_len[c] = deter_offset_tensor_.GetValue(base + 3);
+        }
+    }
+
+    __aicore__ inline void GroupSameAddr(const int64_t *gm_off, const int64_t *row_len, DeterAddrGroup &group)
+    {
+        uint8_t used[MAX_CUBE_CORES] = {0};
+        group.group_num = 0;
+        uint32_t list_pos = 0;
+        for (uint32_t c0 = 0; c0 < cube_core_num_; c0++) {
+            if (used[c0] || gm_off[c0] == OUTINDEX) {
+                continue;
+            }
+            uint32_t g = group.group_num;
+            group.group_begin[g] = list_pos;
+            group.group_off[g] = gm_off[c0];
+            group.group_len[g] = row_len[c0];
+            uint32_t cnt = 0;
+            for (uint32_t c = c0; c < cube_core_num_; c++) {
+                if (gm_off[c] != gm_off[c0]) {
+                    continue;
+                }
+                used[c] = 1;
+                group.core_list[list_pos++] = c;
+                cnt++;
+                if (row_len[c] > group.group_len[g]) {
+                    group.group_len[g] = row_len[c];
+                }
+            }
+            group.group_size[g] = cnt;
+            group.group_num++;
+        }
+    }
+
+    /*
+     * 每个 vector 核处理同一段 axis 下标（dq 切 s1=baseM，dkv 切 s2=baseN）。
+     * 按 cube 核号顺序把 det tile AtomicAdd 到 workspace，避免同地址 UB 分组写回丢尾块。
+     */
+    __aicore__ inline void DeterAtomicAddOneOutput(const GlobalTensor<float> &out_ws, GM_ADDR det_base,
+                                                   uint64_t tile_elems, const int64_t *gm_off, const int64_t *row_len,
+                                                   uint32_t out_stride, uint32_t pingpong_idx, uint32_t full_axis)
+    {
+        uint32_t my_start = 0;
+        uint32_t my_len = 0;
+        GetVecAxisSlice(full_axis, my_start, my_len);
+        if (my_len == 0) {
+            return;
+        }
+
+        for (uint32_t c = 0; c < cube_core_num_; c++) {
+            if (gm_off[c] == OUTINDEX) {
+                continue;
+            }
+            if (my_start >= static_cast<uint32_t>(row_len[c])) {
+                continue;
+            }
+            uint32_t valid_rows = my_len;
+            uint32_t remain = static_cast<uint32_t>(row_len[c]) - my_start;
+            if (valid_rows > remain) {
+                valid_rows = remain;
+            }
+
+            GlobalTensor<float> det_c;
+            uint64_t slot =
+                (static_cast<uint64_t>(pingpong_idx) * cube_core_num_ + static_cast<uint64_t>(c)) * tile_elems;
+            det_c.SetGlobalBuffer((__gm__ float *)(det_base + slot * sizeof(float)));
+            DataCopy(det_src_ub_, det_c[static_cast<int64_t>(my_start) * head_dim_], valid_rows * head_dim_);
+            SET_FLAG(MTE2, V, EVENT_ID0);
+            WAIT_FLAG(MTE2, V, EVENT_ID0);
+            SET_FLAG(V, MTE3, EVENT_ID0);
+            WAIT_FLAG(V, MTE3, EVENT_ID0);
+
+            int64_t out_offset = gm_off[c] + static_cast<int64_t>(my_start) * out_stride;
+            DataCopyExtParams copy_out;
+            copy_out.blockCount = static_cast<uint16_t>(valid_rows);
+            copy_out.blockLen = static_cast<uint32_t>(head_dim_ * sizeof(float));
+            copy_out.srcStride = 0;
+            copy_out.dstStride = static_cast<uint32_t>((out_stride - head_dim_) * sizeof(float));
+            AscendC::SetAtomicAdd<float>();
+            DataCopyPad(out_ws[out_offset], det_src_ub_, copy_out);
+            AscendC::SetAtomicNone();
+            SET_FLAG(MTE3, MTE2, EVENT_ID0);
+            WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+        }
+    }
+
     __aicore__ inline void ComputeVecPre(const GlobalTensor<float> &dst_tensor, const LocalTensor<float> &src_tensor,
                                          const EvenCoreInfo &info)
     {

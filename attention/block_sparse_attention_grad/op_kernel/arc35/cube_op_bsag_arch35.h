@@ -31,6 +31,16 @@ private:
     int32_t event_ping_pong_flag{0};
     uint32_t q_stride_;
     uint32_t kv_stride_;
+    GM_ADDR det_dq_base_{nullptr};
+    GM_ADDR det_dk_base_{nullptr};
+    GM_ADDR det_dv_base_{nullptr};
+    uint64_t det_dq_tile_elems_{0};
+    uint64_t det_dkv_tile_elems_{0};
+    uint32_t cube_core_num_{0};
+    uint32_t cube_idx_{0};
+    GlobalTensor<float> det_dq_gm_;
+    GlobalTensor<float> det_dk_gm_;
+    GlobalTensor<float> det_dv_gm_;
     // l1_tensor
     LocalTensor<INPUT_TYPE> query_l1_tensor_ping_;
     LocalTensor<INPUT_TYPE> query_l1_tensor_pong_;
@@ -60,7 +70,7 @@ private:
 public:
     __aicore__ inline CubeOp(){};
     __aicore__ inline void Init(const TILING_CLASS *tilingData, TPipe *tPipe, TBuf<TPosition::A1> &l1_buffer,
-                                uint32_t l1_offset)
+                                uint32_t l1_offset, GM_ADDR workspace)
     {
         this->batch_num_ = tilingData->batchNum;
         this->q_seq_len_ = tilingData->qSeqLen;
@@ -82,7 +92,15 @@ public:
             q_stride_ = q_head_num_ * head_dim_;
             kv_stride_ = kv_head_num_ * head_dim_;
         }
-
+        if constexpr (DETERMINISTIC_ENABLE) {
+            det_dq_tile_elems_ = static_cast<uint64_t>(tilingData->baseM) * tilingData->headDim;
+            det_dkv_tile_elems_ = static_cast<uint64_t>(tilingData->baseN) * tilingData->headDim;
+            cube_core_num_ = static_cast<uint32_t>(tilingData->cubeCoreNum);
+            cube_idx_ = static_cast<uint32_t>(GetBlockIdx());
+            det_dq_base_ = workspace + tilingData->detDqWorkspaceOffset;
+            det_dk_base_ = workspace + tilingData->detDkWorkspaceOffset;
+            det_dv_base_ = workspace + tilingData->detDvWorkspaceOffset;
+        }
         TBuf<TPosition::A2> l0_a_buffer_;
         TBuf<TPosition::B2> l0_b_buffer_;
         TBuf<TPosition::CO1> l0_c_buffer_;
@@ -119,18 +137,6 @@ public:
         l0_c_tensor_pong_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 64 * 1024);
         l0_c_dk_tensor_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 128 * 1024);
         l0_c_dv_tensor_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 192 * 1024);
-        SET_FLAG(M, MTE1, event_ping_);
-        SET_FLAG(M, MTE1, event_pong_);
-        SET_FLAG(FIX, M, event_ping_);
-        SET_FLAG(FIX, M, event_pong_);
-    }
-
-    __aicore__ inline void Destroy()
-    {
-        WAIT_FLAG(M, MTE1, event_ping_);
-        WAIT_FLAG(M, MTE1, event_pong_);
-        WAIT_FLAG(FIX, M, event_ping_);
-        WAIT_FLAG(FIX, M, event_pong_);
     }
 
     __aicore__ inline void SendMatmulQK(const GlobalTensor<INPUT_TYPE> &queryGm, const GlobalTensor<INPUT_TYPE> &keyGm,
@@ -165,7 +171,12 @@ public:
         LocalTensor<INPUT_TYPE> l1_b_tensor =
             runTimeInfo.kv_ping_pong_idx == 0 ? key_l1_tensor_ping_ : key_l1_tensor_pong_;
 
-        ComputeMMDQ(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.queryGmOffset], runTimeInfo);
+        if constexpr (DETERMINISTIC_ENABLE) {
+            BindDetGm(det_dq_gm_, det_dq_base_, det_dq_tile_elems_, ping_pong_idx);
+            ComputeMMDQ(ds_l1_tensor, l1_b_tensor, det_dq_gm_, runTimeInfo);
+        } else {
+            ComputeMMDQ(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.queryGmOffset], runTimeInfo);
+        }
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
@@ -173,7 +184,12 @@ public:
                                         const RunTimeInfo &runTimeInfo, const uint32_t ping_pong_idx)
     {
         LocalTensor<INPUT_TYPE> l1_b_tensor = ping_pong_idx == 0 ? query_l1_tensor_ping_ : query_l1_tensor_pong_;
-        ComputeMMDKV<DK>(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
+        if constexpr (DETERMINISTIC_ENABLE) {
+            BindDetGm(det_dk_gm_, det_dk_base_, det_dkv_tile_elems_, ping_pong_idx);
+            ComputeMMDKV<DK>(ds_l1_tensor, l1_b_tensor, det_dk_gm_, runTimeInfo);
+        } else {
+            ComputeMMDKV<DK>(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
+        }
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
@@ -181,11 +197,23 @@ public:
                                         const RunTimeInfo &runTimeInfo, const uint32_t ping_pong_idx)
     {
         LocalTensor<INPUT_TYPE> l1_b_tensor = ping_pong_idx == 0 ? dy_l1_tensor_ping_ : dy_l1_tensor_pong_;
-        ComputeMMDKV<DV>(p_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
+        if constexpr (DETERMINISTIC_ENABLE) {
+            BindDetGm(det_dv_gm_, det_dv_base_, det_dkv_tile_elems_, ping_pong_idx);
+            ComputeMMDKV<DV>(p_l1_tensor, l1_b_tensor, det_dv_gm_, runTimeInfo);
+        } else {
+            ComputeMMDKV<DV>(p_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
+        }
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
 private:
+    __aicore__ inline void BindDetGm(GlobalTensor<float> &det_gm, GM_ADDR det_base, uint64_t tile_elems,
+                                     uint32_t ping_pong_idx)
+    {
+        uint64_t slot = (static_cast<uint64_t>(ping_pong_idx) * cube_core_num_ + cube_idx_) * tile_elems;
+        det_gm.SetGlobalBuffer((__gm__ float *)(det_base + slot * sizeof(float)));
+    }
+
     __aicore__ inline void ComputeMM12(const GlobalTensor<INPUT_TYPE> &leftGm, const GlobalTensor<INPUT_TYPE> &rightGm,
                                        const LocalTensor<INPUT_TYPE> &l1_a_tensor,
                                        const LocalTensor<INPUT_TYPE> &l1_b_tensor, const LocalTensor<float> &outUb,
@@ -277,9 +305,14 @@ private:
             fixpipeParamsV220.mSize = nProcess;
             fixpipeParamsV220.nSize = head_dim_;
             fixpipeParamsV220.srcStride = nProcessAlign;
-            fixpipeParamsV220.dstStride = kv_stride_;
             fixpipeParamsV220.unitFlag = 3;
-            MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
+            if constexpr (DETERMINISTIC_ENABLE) {
+                fixpipeParamsV220.dstStride = head_dim_;
+                MM345CopyOut<false>(outGm, l0_c_tensor, fixpipeParamsV220);
+            } else {
+                fixpipeParamsV220.dstStride = kv_stride_;
+                MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
+            }
         }
         SET_FLAG(FIX, M, evnet_id);
     }
@@ -318,9 +351,14 @@ private:
         fixpipeParamsV220.mSize = mProcess;
         fixpipeParamsV220.nSize = head_dim_;
         fixpipeParamsV220.srcStride = mProcessAlign;
-        fixpipeParamsV220.dstStride = q_stride_;
         fixpipeParamsV220.unitFlag = 3;
-        MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
+        if constexpr (DETERMINISTIC_ENABLE) {
+            fixpipeParamsV220.dstStride = head_dim_;
+            MM345CopyOut<false>(outGm, l0_c_tensor, fixpipeParamsV220);
+        } else {
+            fixpipeParamsV220.dstStride = q_stride_;
+            MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
+        }
         SET_FLAG(FIX, M, evnet_id);
     }
 

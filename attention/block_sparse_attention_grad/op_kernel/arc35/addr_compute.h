@@ -101,6 +101,22 @@ public:
         this->s1_base_size_ = s1_base_size;
     }
 
+    __aicore__ inline uint32_t CountValidBase(const ConstInfo &const_info, __gm__ uint8_t *block_sparse_mask,
+                                              const int32_t b_idx, const int32_t n1_idx, const int32_t s2_idx,
+                                              const int32_t s1_idx, const int32_t s1_len)
+    {
+        int32_t base_s1_start_idx;
+        int32_t base_s1_len;
+        this->Reset(const_info, block_sparse_mask, b_idx, n1_idx, s1_idx, s2_idx, s1_len, base_s1_start_idx,
+                    base_s1_len);
+        uint32_t count = 1;
+        while (!this->is_finish_) {
+            this->Update(const_info, block_sparse_mask, b_idx, n1_idx, s2_idx, base_s1_start_idx, base_s1_len);
+            count++;
+        }
+        return count;
+    }
+
 private:
     __aicore__ inline void Update(const ConstInfo &const_info, __gm__ uint8_t *block_sparse_mask, const int32_t b_idx,
                                   const int32_t n1_idx, const int32_t s2Idx, int32_t &base_s1_start_idx,
@@ -148,12 +164,11 @@ private:
 
 template <typename BSA_TYPE>
 class AddrComputeModule {
+protected:
     using INPUT_TYPE = typename BSA_TYPE::input_type;
     static constexpr uint32_t INPUT_LAYOUT = BSA_TYPE::input_layout;
     using TILING_CLASS = typename BSA_TYPE::tiling_class;
     static constexpr bool DETERMINISTIC_ENABLE = BSA_TYPE::deterministic_enable;
-
-private:
     GM_ADDR actualQseqlen_;
     GM_ADDR actualKvseqlen_;
     GM_ADDR blockSparseMask_;
@@ -274,7 +289,7 @@ public:
         }
     }
 
-private:
+protected:
     __aicore__ inline bool IsValidSingleBlock(int32_t &vaild_s1_idx, int32_t &vaild_s1_len)
     {
         /*
@@ -359,6 +374,7 @@ private:
         return true;
     }
 
+private:
     __aicore__ inline void RunTimeInfoRecord(RunTimeInfo &runTimeInfo, int32_t vaild_s1_idx, int32_t vaild_s2_idx,
                                              int32_t vaild_s1_len, int32_t vaild_s2_len)
     {
@@ -404,6 +420,53 @@ private:
         single_block_.RecordRunTimeInfo(runTimeInfo);
         kv_ping_pong_idx_ = 1 - kv_ping_pong_idx_;
         current_cube_idx_++;
+    }
+};
+
+
+template <typename BSA_TYPE>
+class AddrComputeMaxTaskModule : public AddrComputeModule<BSA_TYPE> {
+public:
+    __aicore__ inline uint32_t PrecomputeMaxTaskNum()
+    {
+        constexpr int32_t MAX_CUBE_CORES = 64;
+        uint32_t counts[MAX_CUBE_CORES];
+        int32_t core_num = this->cube_core_num_ < MAX_CUBE_CORES ? this->cube_core_num_ : MAX_CUBE_CORES;
+        for (int32_t i = 0; i < core_num; i++) {
+            counts[i] = 0;
+        }
+
+        int32_t assign_idx = 0;
+        while (true) {
+            if (this->InitStartIdx()) {
+                break;
+            }
+            int32_t valid_s1_idx;
+            int32_t valid_s1_len;
+            if (this->IsValidSingleBlock(valid_s1_idx, valid_s1_len)) {
+                uint32_t n_base = CountValidBaseInSingle(valid_s1_idx, valid_s1_len);
+                int32_t core = assign_idx % this->cube_core_num_;
+                if (core < MAX_CUBE_CORES) {
+                    counts[core] += n_base;
+                }
+                assign_idx++;
+            }
+        }
+
+        uint32_t max_task_num = 0;
+        for (int32_t i = 0; i < core_num; i++) {
+            if (counts[i] > max_task_num) {
+                max_task_num = counts[i];
+            }
+        }
+        return max_task_num;
+    }
+
+private:
+    __aicore__ inline uint32_t CountValidBaseInSingle(int32_t valid_s1_idx, int32_t valid_s1_len)
+    {
+        return this->single_block_.CountValidBase(this->const_info_, this->blockSparseMask_, this->bIdx_, this->n1Idx_,
+                                                  this->s2Idx_, valid_s1_idx, valid_s1_len);
     }
 };
 } // namespace BSA_ARC35

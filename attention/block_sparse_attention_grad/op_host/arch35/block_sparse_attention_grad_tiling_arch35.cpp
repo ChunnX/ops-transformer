@@ -243,10 +243,11 @@ protected:
     ge::graphStatus DoOpTiling() override
     {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
-        auto cubeCoreNum_ = ascendcPlatform.GetCoreNumAic();
+        // cubeCoreNum_ = ascendcPlatform.GetCoreNumAic();
+        cubeCoreNum_ = 5;
 
         baseM_ = blockShapeX_ <= 128 ? blockShapeX_ : 128;
-        uint32_t baseN = blockShapeY_ <= 128 ? blockShapeY_ : 128;
+        baseN_ = blockShapeY_ <= 128 ? blockShapeY_ : 128;
         uint32_t singleM = AlignTo(2048, baseM_);
         // Keep all Q tiles for the current KV block/head on one cube core when
         // possible so DK/DV can accumulate in L0 and K/V stays cached in L1.
@@ -255,7 +256,7 @@ protected:
         tilingData_.set_BlockY(blockShapeY_);
         tilingData_.set_cubeCoreNum(cubeCoreNum_);
         tilingData_.set_baseM(baseM_);
-        tilingData_.set_baseN(baseN);
+        tilingData_.set_baseN(baseN_);
         tilingData_.set_singleM(singleM);
         tilingData_.set_deterministic(deterministic_ ? 1 : 0);
         context_->SetBlockDim(cubeCoreNum_);
@@ -307,15 +308,23 @@ protected:
         usr_workspace_offset += dk_size * sizeof(float);
         tilingData_.set_dvWorkspaceOffset(usr_workspace_offset);
         usr_workspace_offset += dv_size * sizeof(float);
-
-        // 确定性计算时，Host 侧额外申请一片连续内存，用于各 Cube 核保存 mm345 的局部累加结果。
-        // temp_size = cube_core_num * base_block_size * head_dim * sizeof(float)
-        uint64_t det_size = 0;
         if (deterministic_) {
-            det_size = static_cast<uint64_t>(cubeCoreNum_) * baseM_ * head_dim_ * sizeof(float);
+            constexpr uint32_t DB_NUM = 2;
+            uint64_t det_dq_size =
+                static_cast<uint64_t>(cubeCoreNum_) * DB_NUM * baseM_ * head_dim_ * sizeof(float);
+            uint64_t det_dkv_size =
+                static_cast<uint64_t>(cubeCoreNum_) * DB_NUM * baseN_ * head_dim_ * sizeof(float);
+            uint64_t det_offset_size =
+                static_cast<uint64_t>(cubeCoreNum_) * 32 * DB_NUM;
+            tilingData_.set_detOffsetWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += det_offset_size;
+            tilingData_.set_detDqWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += det_dq_size;
+            tilingData_.set_detDkWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += det_dkv_size;
+            tilingData_.set_detDvWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += det_dkv_size;
         }
-        tilingData_.set_detWorkspaceOffset(usr_workspace_offset);
-        usr_workspace_offset += det_size;
 
         context_->GetWorkspaceSizes(1)[0] = sys_workspace_size + usr_workspace_offset;
         return ge::GRAPH_SUCCESS;
@@ -384,6 +393,7 @@ private:
     bool deterministic_ = false;
     uint32_t cubeCoreNum_ = 0;
     uint32_t baseM_ = 0;
+    uint32_t baseN_ = 0;
 };
 
 

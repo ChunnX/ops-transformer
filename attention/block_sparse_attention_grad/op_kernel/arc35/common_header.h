@@ -29,6 +29,7 @@ static constexpr uint32_t FLAG_C2_V2 = 1;     // cube(dyV) -> vec(softmaxGrad)
 static constexpr uint32_t FLAG_V1_C3 = 2;     // vec(softmax) -> cube(dv)
 static constexpr uint32_t FLAG_V2_C45 = 3;    // vec(softmaxGrad) -> cube(dq\dk)
 static constexpr uint32_t FLAG_CUBE_POST = 4; // vec(softmaxGrad) -> cube(dq\dk)
+static constexpr uint32_t FLAG_DETER_FLAG[2] = {5, 6}; // cube(mm345 det) <-> vec(add deter)
 
 struct ConstInfo {
     int32_t q_head_num{0};
