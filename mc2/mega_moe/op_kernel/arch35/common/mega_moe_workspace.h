@@ -44,6 +44,11 @@ HOST_DEVICE bool IsA4W4GmmMode(uint8_t gmmMode)
     return gmmMode == GMM_MODE_A4W4_ND || gmmMode == GMM_MODE_A4W4_NZ;
 }
 
+HOST_DEVICE int64_t CalcSharedActivationFlagElementsPerExpert(int64_t tokenNum)
+{
+    return Ops::Base::CeilDiv(tokenNum, static_cast<int64_t>(L1_TILE_M_256)) * static_cast<int64_t>(INT_CACHELINE);
+}
+
 // 仅描述各 workspace 分区相对基址的字节偏移，不持有或构造任何地址。
 struct WorkspaceLayout {
     int64_t dispatchRevDataOffset{INVALID_WORKSPACE_OFFSET};
