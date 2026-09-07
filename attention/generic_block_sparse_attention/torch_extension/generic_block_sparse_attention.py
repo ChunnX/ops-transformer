@@ -19,7 +19,7 @@ GBSA_METADATA_OP_NAME = "generic_block_sparse_attention_metadata"
 
 
 class MaskMode(IntEnum):
-    """mask_mode 枚举：对外 str/int/IntEnum 映射为算子侧 int。取值与 aclnn maskType 一致。"""
+    """mask_mode 取值，与 aclnn maskType 一致。可直接当 int 传入。"""
 
     NO_MASK = 0
     CAUSAL = 1
@@ -27,7 +27,7 @@ class MaskMode(IntEnum):
 
 
 class QuantMode(IntEnum):
-    """quant_mode 枚举：对外 str/int/IntEnum 映射为算子侧 int。取值与 aclnn quantType 一致。"""
+    """quant_mode 取值，与 aclnn quantType 一致。可直接当 int 传入。"""
 
     NO_QUANT = 0
     FP8_E4M3_STATIC_PER_GROUP = 1
@@ -35,36 +35,6 @@ class QuantMode(IntEnum):
     FP4_E2M1_DYNAMIC_OCP = 3
     FP4_E2M1_DYNAMIC_CX = 4
     FP8_E4M3_STATIC_CAST_P = 5
-
-
-def _resolve_mask_mode(mask_mode: Union[str, int, "MaskMode", None]) -> int:
-    """对外 str/int/IntEnum/None mask_mode 统一为传给算子侧的 int；None 视为默认 CAUSAL。"""
-    if mask_mode is None:
-        return int(MaskMode.CAUSAL)
-    if isinstance(mask_mode, str):
-        try:
-            return int(MaskMode[mask_mode.strip().upper()])
-        except KeyError as exc:
-            valid = ", ".join(m.name.lower() for m in MaskMode)
-            raise ValueError(
-                f"mask_mode should be one of [{valid}], but got {mask_mode!r}"
-            ) from exc
-    return int(MaskMode(mask_mode))
-
-
-def _resolve_quant_mode(quant_mode: Union[str, int, "QuantMode", None]) -> int:
-    """对外 str/int/IntEnum/None quant_mode 统一为传给算子侧的 int；None 视为默认 NO_QUANT。"""
-    if quant_mode is None:
-        return int(QuantMode.NO_QUANT)
-    if isinstance(quant_mode, str):
-        try:
-            return int(QuantMode[quant_mode.strip().upper()])
-        except KeyError as exc:
-            valid = ", ".join(m.name.lower() for m in QuantMode)
-            raise ValueError(
-                f"quant_mode should be one of [{valid}], but got {quant_mode!r}"
-            ) from exc
-    return int(QuantMode(quant_mode))
 
 
 class GenericBlockSparseAttentionOpBuilder(OpBuilder):
@@ -134,8 +104,8 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             is_packed_gqa: Optional[bool] = True,
             layout_q: Optional[str] = "TND",
             layout_kv: Optional[str] = "PA_BBND",
-            mask_mode: Optional[int] = 1,
-            quant_mode: Optional[int] = 0,
+            mask_mode: Optional[Union[MaskMode, int]] = MaskMode.CAUSAL,
+            quant_mode: Optional[Union[QuantMode, int]] = QuantMode.NO_QUANT,
             softmax_precision: Optional[int] = 1,
             win_left: Optional[int] = -1,
             win_right: Optional[int] = -1,
@@ -166,8 +136,8 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             layout_q: Optional[str] = "TND",
             layout_kv: Optional[str] = "PA_BBND",
             softmax_scale: Optional[float] = 0.0,
-            mask_mode: Optional[int] = 1,
-            quant_mode: Optional[int] = 0,
+            mask_mode: Optional[Union[MaskMode, int]] = MaskMode.CAUSAL,
+            quant_mode: Optional[Union[QuantMode, int]] = QuantMode.NO_QUANT,
             dst_type_max: Optional[float] = 0.0,
             softmax_precision: Optional[int] = 1,
             win_left: Optional[int] = -1,
@@ -229,13 +199,13 @@ def generic_block_sparse_attention_metadata(
     win_left: Optional[int] = -1,
     win_right: Optional[int] = -1,
 ):
-    mask_mode = _resolve_mask_mode(mask_mode)
-    quant_mode = _resolve_quant_mode(quant_mode)
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
     is_packed_gqa = True if is_packed_gqa is None else is_packed_gqa
     layout_q = "TND" if layout_q is None else layout_q
     layout_kv = "PA_BBND" if layout_kv is None else layout_kv
+    mask_mode = int(MaskMode.CAUSAL) if mask_mode is None else int(mask_mode)
+    quant_mode = int(QuantMode.NO_QUANT) if quant_mode is None else int(quant_mode)
     softmax_precision = 1 if softmax_precision is None else softmax_precision
     win_left = -1 if win_left is None else win_left
     win_right = -1 if win_right is None else win_right
@@ -354,9 +324,6 @@ def generic_block_sparse_attention(
     return_softmax_lse: Optional[bool] = False,
     attention_out_dtype: Optional[torch.dtype] = None,
 ):
-    mask_mode = _resolve_mask_mode(mask_mode)
-    quant_mode = _resolve_quant_mode(quant_mode)
-
     op_module = generic_block_sparse_attention_op_builder.load()
     return op_module.generic_block_sparse_attention(
         q,
