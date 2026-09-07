@@ -36,7 +36,7 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
         this->Output("num_recv_out").ParamType(OPTIONAL).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
-        this->Output("fetched_sf").ParamType(OPTIONAL).DataTypeList({ge::DT_UINT8, ge::DT_INT32}).FormatList({ge::FORMAT_ND});
+        this->Output("fetched_sf").ParamType(OPTIONAL).DataTypeList({ge::DT_UINT8, ge::DT_INT32, ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
         this->Attr("hidden_size").AttrType(REQUIRED).Int();
         this->Attr("num_entries_per_rank").AttrType(REQUIRED).Int();
         this->Attr("num_max_tokens_per_rank").AttrType(OPTIONAL).Int();

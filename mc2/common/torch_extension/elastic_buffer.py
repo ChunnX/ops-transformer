@@ -19,7 +19,9 @@ from torch import _check as _torch_check
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 
-_SF_PACK_BYTES = 4  # sizeof(sf_pack_t): 4 UE8M0 scales packed into 4 bytes
+_SF_PACK_BYTES = (
+    4  # sizeof(sf_pack_t): FP32 scale or UE8M0x4 packed, both 4 bytes per element
+)
 
 _ENGRAM_DTYPE_TO_INT = {
     torch.float16: 5,
