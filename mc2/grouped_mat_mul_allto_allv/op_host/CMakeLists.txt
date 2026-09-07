@@ -30,6 +30,14 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(grouped_mat_mul_allto_allv_depends mc2/common mc2/3rd mc2/allto_allv_grouped_mat_mul mc2/quant_grouped_mat_mul_allto_allv mc2/allto_allv_quant_grouped_mat_mul PARENT_SCOPE)
     set(grouped_mat_mul_allto_allv_a3_depends mc2/common mc2/3rd mc2/allto_allv_grouped_mat_mul mc2/quant_grouped_mat_mul_allto_allv mc2/allto_allv_quant_grouped_mat_mul PARENT_SCOPE)
 
+    if(NOT ENABLE_AICPU_KERNEL)
+        # The shared installer nests include/ once more. Install its contents
+        # at the search path used by the generated CATLASS compile wrapper.
+        install(DIRECTORY "${CATLASS_DIR}/include/"
+                DESTINATION "${IMPL_INSTALL_DIR}/ascendc/common/catlass/include"
+        )
+    endif()
+
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
     # -mllvm -cce-aicore-dcci-before-kernel-end=false：禁用在kernel函数结束前插入DCCI指令
     # -DAICORE_EXCEPTION_RESTART：启用AI Core在发生异常时的自动重启机制
@@ -45,13 +53,13 @@ if (BUILD_OPEN_PROJECT)  # custom
             OP_NAME GroupedMatMulAlltoAllv
             OPTIONS --cce-auto-sync=off
                     -DAICORE_EXCEPTION_RESTART
-                    -I${CMAKE_SOURCE_DIR}/3rdparty/catlass/include
+                    -DCATLASS_ARCH=2201
         )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910b")
         add_ops_compile_options(
             OP_NAME GroupedMatMulAlltoAllv
             OPTIONS --cce-auto-sync=off
-                    -I${CMAKE_SOURCE_DIR}/3rdparty/catlass/include
+                    -DCATLASS_ARCH=2201
         )
     endif()
 else() # 回黄host
