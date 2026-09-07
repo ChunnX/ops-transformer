@@ -37,7 +37,6 @@ public:
     int64_t totalSize;
     int64_t selectedBlockCount;
     int64_t selectedBlockSize;
-    // scatter 中间结果 mm4/mm5 每核每 parity 的行数，host 与 kernel 必须用同一个值编址
     int64_t scatterWsRows;
     int64_t usedCoreNum;
     int64_t formerCoreNum;

@@ -50,8 +50,11 @@ const std::string kAscend950SocInfo = "{\n"
 // 模板 128/128/512 在声明 [128]/[128]/[512,576] 中均位于 index 0 → G/S2/D 编码 0。
 // kvMerge=true 置 bit34，BF16 置 bit0。最终 key = (1 << 34) + 1 = 17179869185。
 constexpr uint64_t kKeyBsndBf16KvMerge = 17179869185UL;
+// Deterministic 在 ASCENDC_TPL_ARGS_DECL 中紧邻 KvMerge 之前声明，故占 bit33。
+constexpr uint64_t kKeyBsndBf16KvMergeDeter = kKeyBsndBf16KvMerge | (1UL << 33);
 
-gert::TilingContextPara MakeKvMergePara(CompileInfo &compileInfo, int64_t sparseBlockSize, int64_t s2)
+gert::TilingContextPara MakeKvMergePara(CompileInfo &compileInfo, int64_t sparseBlockSize, int64_t s2,
+                                        int32_t deterministicInfo = 0)
 {
     return gert::TilingContextPara(
         "SparseFlashAttentionGrad",
@@ -78,8 +81,8 @@ gert::TilingContextPara MakeKvMergePara(CompileInfo &compileInfo, int64_t sparse
          {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
          {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
          {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-         {"deterministic", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo, "Ascend950", kAscend950SocInfo, 4096);
+         {"deterministic", Ops::Transformer::AnyValue::CreateFrom<bool>(deterministicInfo != 0)}},
+        &compileInfo, "Ascend950", kAscend950SocInfo, 4096, deterministicInfo);
 }
 } // namespace
 
@@ -169,10 +172,28 @@ TEST_F(SparseFlashAttentionGradArch35Tiling, sparse_block_size_not_in_support_li
     }
 }
 
+// 确定性计算每核常驻一整份 selected 区：S2=128 时只需 min(1024, ceil(128/64)) * 64 = 128 行。
+TEST_F(SparseFlashAttentionGradArch35Tiling, deterministic_sparse_block_size_support_list)
+{
+    CompileInfo compileInfo;
+    for (int64_t sparseBlockSize : {1, 8, 16, 32, 64}) {
+        auto para = MakeKvMergePara(compileInfo, sparseBlockSize, 128, 1);
+        ExecuteTestCase(para, ge::GRAPH_SUCCESS, kKeyBsndBf16KvMergeDeter);
+    }
+}
 
-TEST_F(SparseFlashAttentionGradArch35Tiling, scatter_workspace_rows_exceed_should_fail)
+// S2=16384、blockSize=64 时确定性计算需要 min(1024, 256) * 64 = 16384 行，超过 8192 行上限。
+// 非确定性不受影响：每核恒为 singleN 行。
+TEST_F(SparseFlashAttentionGradArch35Tiling, deterministic_scatter_workspace_rows_exceed_should_fail)
+{
+    CompileInfo compileInfo;
+    auto para = MakeKvMergePara(compileInfo, 64, 16384, 1);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(SparseFlashAttentionGradArch35Tiling, non_deterministic_large_s2_block_size_64)
 {
     CompileInfo compileInfo;
     auto para = MakeKvMergePara(compileInfo, 64, 16384);
-    ExecuteTestCase(para, ge::GRAPH_FAILED);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, kKeyBsndBf16KvMerge);
 }

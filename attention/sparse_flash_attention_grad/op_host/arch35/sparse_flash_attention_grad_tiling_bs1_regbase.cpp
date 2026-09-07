@@ -150,10 +150,11 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetWorkspaceSize()
     selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * 3;
     // selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
 
-    int64_t scatterWsRows = std::max<int64_t>(
-        std::min<int64_t>(tmpData.selected_block_count, CeilCommon(tmpData.s2, tmpData.selected_block_size)) *
-            tmpData.selected_block_size,
-        tmpData.selected_block_count);
+    int64_t scatterWsRows =
+        tmpData.deterministic ?
+            std::min<int64_t>(tmpData.selected_block_count, CeilCommon(tmpData.s2, tmpData.selected_block_size)) *
+                tmpData.selected_block_size :
+            static_cast<int64_t>(tmpData.singleN);
     OP_CHECK_IF(scatterWsRows > MAX_SCATTER_WS_ROWS,
                 OP_LOGE(context_,
                         "SparseFlashAttentionGrad scatter workspace needs %ld rows (selected_block_count=%u, "
