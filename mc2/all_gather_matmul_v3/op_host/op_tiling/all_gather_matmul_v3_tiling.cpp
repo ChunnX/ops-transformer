@@ -731,8 +731,6 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
 
     // mm tiling via SWAT engine：按 x1 实际 dtype 分发。 fp8 统一用 e4m3 实例化，fp4统一用 e2m1 实例化
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    // bias 驻留 L1 的预算须计入 SWAT tiling；hasBias 与 kernel 侧 isBias 同源（optional bias 输入存在性），
-    // bias dtype 与 kernel 侧 BiasType 一致（V3 校验限定 DT_FLOAT）
     bool hasBias = context->GetOptionalInputShape(IDX_INPUT_BIAS) != nullptr;
     if (context->GetInputDesc(IDX_INPUT_X1)->GetDataType() == ge::DT_FLOAT4_E2M1) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1, mm::BiasDataType::DT_FLOAT>
@@ -768,7 +766,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
                                tilingData->mmTile.usedCoreNum;
     tilingData->mmTile.usedCoreNum = usedCoreNum;
 
-    // bias: 非空时设 isBias=1（与上方 SWAT SetBiasInfo 同源）
+    // bias: 非空时设 isBias=1
     tilingData->isBias = hasBias ? 1 : 0;
 
     // 独占全核，设置以后会让所有核空闲以后才启动，有多核同步指令需要设置避免出现网络挂死
