@@ -333,12 +333,13 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestT
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     workSpaces[0] = SYSTEM_NEED_WORKSPACE;
     if (tilingData->mode != 3) {
-        workSpaces[0] += static_cast<size_t>(WORKSPACE_ELEMENT_OFFSET * aivNum * aivNum);
-    }
-
-    if (IsSharedJetty(context) && tilingData->mode != 3) {
-        uint64_t countStride = (static_cast<uint64_t>(tilingData->worldSize) + 7) / 8 * 8;
-        workSpaces[0] += static_cast<uint64_t>(tilingData->sharedJettyNum) * countStride * sizeof(uint32_t);
+        if (IsSharedJetty(context)) {
+            // Each shared-Jetty core records one world-size row of destination token counts.
+            uint64_t countStride = (static_cast<uint64_t>(tilingData->worldSize) + 7) / 8 * 8;
+            workSpaces[0] += static_cast<uint64_t>(tilingData->sharedJettyNum) * countStride * sizeof(uint32_t);
+        } else {
+            workSpaces[0] += static_cast<size_t>(WORKSPACE_ELEMENT_OFFSET * aivNum * aivNum);
+        }
     }
     return ge::GRAPH_SUCCESS;
 }

@@ -141,8 +141,8 @@ private:
     uint32_t startStatusIndex_{0};    // 起始状态索引
     uint32_t totalUbSize_{0};         // 总UB大小
     uint64_t totalWinSizeEp_{0};      // 总窗口大小
-    // The integration package uses this URMA batch API for both UBC_CTP and UB_RTP channels.
-    Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
+    // The integration package uses this URMA batch API for both UB_CTP and UB_RTP channels.
+    Hcomm<COMM_PROTOCOL_UB_CTP> hcomm_;
     using HcommBatchHandle = AscendC::BatchHandle<AscendC::MultiChannelHandle>;
     TBuf<> batchBuf_;
     LocalTensor<uint8_t> batchTensor_;
@@ -188,6 +188,10 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
     axisH_ = tilingData->dataSize; // hidden size
     aivNum_ = tilingData->aivNum;
     sharedJettyNum_ = tilingData->sharedJettyNum;
+    ASCENDC_ASSERT(context_->sharedJettyNum == sharedJettyNum_, {
+        KERNEL_LOG(KERNEL_ERROR, "shared Jetty count mismatch, context=%u, tiling=%u", context_->sharedJettyNum,
+                   sharedJettyNum_);
+    });
     epRankId_ = context_->epRankId;
     hOutSize_ = axisH_ * sizeof(XType);
     batchBufferBytes_ = tilingData->batchBufferBytes;

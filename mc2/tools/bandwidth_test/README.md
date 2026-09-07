@@ -59,7 +59,8 @@ is_single_test = False    # True: 单配置测试; False: 多配置批量测试
 
 ### 核心配置
 
-`graph_type`、`mode`、`comm_alg`、`batch_tokens`、`shared_jetty` 和 `shared_jetty_num`
+`graph_type`、`mode`、`comm_alg`、`batch_tokens`、`shared_jetty`、`shared_jetty_num` 和
+`shared_jetty_comm_level`
 位于 `ModelConfig`，核数配置位于 `ParallelConfig`。
 
 ```python
@@ -67,6 +68,7 @@ graph_type = 3           # 0: 单算子模式; 3: aclgraph模式
 comm_alg = "urma"        # mte 或 urma
 shared_jetty = False     # True: URMA 共享 jetty；MTE 不支持
 shared_jetty_num = 1     # 共享 jetty 及发送核数量；tiling 校验不超过所选 AIV 核数且最多 56
+shared_jetty_comm_level = 0  # 仅共享模式生效：0=域内UB_CTP/域间UB_RTP，1=全UB_CTP，2=全UB_RTP
 mode = 3                # URMA直接Win打流；精度测试改为0或None
 batch_tokens = 0         # URMA: 0 自动最大批量（最高 2048）；正数超限由 tiling 报最大值
 is_full_core = True      # True: 使用全部核心; False: 使用部分核心
@@ -76,8 +78,11 @@ aiv_num = None          # 算子 AIV 核数，None 使用自动值，也可单�
 
 `batch_tokens` 表示每张目标卡每次 BatchCommit 的 token 数，只有最后一批允许不足。
 BS 不受单批容量限制，tiling 的最大提交数也不按 BS 截断；MTE 使用 `batch_tokens=0`。
+`shared_jetty_comm_level=0` 沿用拓扑自动选择；1 和 2 分别要求所有远端能够在同一层通过
+UB_CTP 或 UB_RTP 建立共享 Jetty。该配置不作为算子属性下发，只用于共享 context 建链。
 调用方必须保证通信参数有效，并自行确认选定批量小于所有使用的 SQ 和 CQ 深度（包括 0/最大值模式）。
-kernel 不做参数校验、打印或自动缩小批量；UB 预算与完成流控说明见 [Torch 扩展说明](torch_extension/README.md)。
+kernel 不重复校验参数范围或自动缩小批量；共享路径只断言 context 与 tiling 的 Jetty 数量一致。
+UB 预算与完成流控说明见 [Torch 扩展说明](torch_extension/README.md)。
 
 ### 性能采集配置
 

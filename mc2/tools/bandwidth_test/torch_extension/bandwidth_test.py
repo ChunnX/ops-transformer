@@ -111,13 +111,14 @@ class BandwidthTestBuffer:
 
     All group ranks must construct this object on their current Ascend950 NPU,
     outside torch.compile. MTE requires one UB memory domain; URMA requires
-    UBC_CTP links in the ordinary context. The independent shared jetty builder
-    supports UBC_CTP and cross-supernode UB_RTP (UBG) with the integration package.
+    UB_CTP links in the ordinary context. The independent shared jetty builder
+    supports UB_CTP and cross-supernode UB_RTP (UBG) with the integration package.
     Set HCCL_BUFFSIZE before group creation and retain this object and the group
     until all operations and graph replays have completed.
     """
 
-    def __init__(self, group, comm_alg="", shared_jetty=False, shared_jetty_num=1):
+    def __init__(self, group, comm_alg="", shared_jetty=False, shared_jetty_num=1,
+                 shared_jetty_comm_level=0):
         if comm_alg not in ("", "mte", "urma"):
             raise ValueError("comm_alg must be mte or urma")
         self.comm_alg = comm_alg or "mte"
@@ -125,8 +126,11 @@ class BandwidthTestBuffer:
             raise ValueError("shared_jetty requires comm_alg=urma")
         if not 1 <= shared_jetty_num <= 56:
             raise ValueError("shared_jetty_num must be in [1, 56]")
+        if shared_jetty and shared_jetty_comm_level not in (0, 1, 2):
+            raise ValueError("shared_jetty_comm_level must be 0, 1 or 2")
         self.shared_jetty = shared_jetty
         self.shared_jetty_num = shared_jetty_num
+        self.shared_jetty_comm_level = shared_jetty_comm_level
         self.group = group
         self.world_size = torch.distributed.get_world_size(group)
         if not 0 < self.world_size <= 1024:
@@ -147,7 +151,7 @@ class BandwidthTestBuffer:
         if self.shared_jetty:
             from .shared_jetty_context import SharedJettyContextManager
             self._ctx_manager = SharedJettyContextManager(
-                group, self.group_name, self.world_size, shared_jetty_num,
+                group, self.group_name, self.world_size, shared_jetty_num, shared_jetty_comm_level,
                 2 * buffer_mb * 1024 * 1024, sequence)
             self.context = self._ctx_manager.create_context()
             self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size

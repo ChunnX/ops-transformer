@@ -27,7 +27,7 @@ using namespace BandwidthTestImpl;
 using namespace BandwidthTestTiling;
 using namespace AscendC;
 
-template <uint8_t ArchTag, uint8_t CommMode, uint8_t SharedJetty>
+template <uint8_t ArchTag, uint8_t CommMode, bool SharedJetty>
 __global__ __aicore__ void bandwidth_test(GM_ADDR context, GM_ADDR x, GM_ADDR dstRankId, GM_ADDR y, GM_ADDR receiveCnt,
                                           GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
@@ -39,7 +39,7 @@ __global__ __aicore__ void bandwidth_test(GM_ADDR context, GM_ADDR x, GM_ADDR ds
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(BandwidthTestTilingData, tilingData, tilingGM);
         if constexpr (CommMode == TILINGKEY_TPL_URMA) {
-            if constexpr (SharedJetty == 1) {
+            if constexpr (SharedJetty) {
                 BandwidthTestUrmaSharedJetty<DTYPE_X, DTYPE_Y> op;
                 op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
                 op.Process();

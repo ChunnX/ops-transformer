@@ -68,10 +68,11 @@ class ModelConfig:
     comm_alg: str = "urma"  # 通信算法：mte 或 urma；URMA 默认按目标卡分核，共享 jetty 按 BS 分核
     shared_jetty: bool = False  # 共享 jetty：仅 comm_alg=urma 时生效
     shared_jetty_num: int = 1  # 共享 jetty 数量，也是 BS 分核数；1..min(aiv_num, 56)
+    shared_jetty_comm_level: int = 0  # 共享 jetty 建链：0=域内UB_CTP/域间UB_RTP，1=全UB_CTP，2=全UB_RTP
     mode: Optional[int] = 3  # 默认URMA直接Win打流；None 沿用精度0/带宽1，精度测试需设为0或None
     # 带宽测试由调用方保证通信参数正确：有效 channel、rank ID、Win 容量及各 rank 配置一致。
     # 必须保证实际 batch_tokens 小于每条使用的 SQ 和 CQ 深度；0 选 tiling 最大值（最高 2048）。
-    # kernel 不做参数校验、打印或自动缩小批量；误配会使测试结果无效。
+    # kernel 不额外校验 batch_tokens 范围或自动缩小批量；误配会使测试结果无效。
     batch_tokens: int = 0  # 0 自动；正数由 tiling 按 UB 和 2048 上限校验，BS 不受单批上限限制
     static_kernel_path: str = "./static_kernel"  # aclgraph 静态内核构建目录，相对启动目录
 

@@ -32,20 +32,24 @@ _builder = SharedJettyContextOpBuilder()
 
 
 class SharedJettyContextManager:
-    def __init__(self, group, group_name, world_size, shared_jetty_num, buffer_size, sequence):
+    def __init__(self, group, group_name, world_size, shared_jetty_num, shared_jetty_comm_level,
+                 buffer_size, sequence):
         self.group = group
         self.ccl_buffer_size = buffer_size
         # The communicator owns the Win, registration and multi-channel handles.
         # Keeping the ProcessGroup alive also protects them during graph replay.
-        tag = f"bandwidth_test_shared_jetty_{sequence}"
+        tag = f"bandwidth_test_shared_jetty_{sequence}_level_{shared_jetty_comm_level}"
         self._manager = _builder.load().SharedJettyContextManager(
-            group_name, world_size, shared_jetty_num, buffer_size, tag)
-        local = (shared_jetty_num, buffer_size, sequence, self._manager.local_buffer_address)
+            group_name, world_size, shared_jetty_num, shared_jetty_comm_level, buffer_size, tag)
+        local = (shared_jetty_num, shared_jetty_comm_level, buffer_size, sequence,
+                 self._manager.local_buffer_address)
         gathered = [None] * world_size
         torch.distributed.all_gather_object(gathered, local, group=group)
-        if any(item[:3] != local[:3] for item in gathered):
-            raise ValueError("shared jetty count, buffer size and creation order must match across ranks")
-        self._remote_buffers = [item[3] for item in gathered]
+        if any(item[:4] != local[:4] for item in gathered):
+            raise ValueError(
+                "shared jetty count, communication level, buffer size and creation order must match across ranks"
+            )
+        self._remote_buffers = [item[4] for item in gathered]
 
     def create_context(self):
         return self._manager.create_context(self._remote_buffers)

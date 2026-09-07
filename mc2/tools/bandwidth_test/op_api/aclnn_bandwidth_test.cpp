@@ -92,8 +92,8 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *dstRankId, c
 
 aclnnStatus aclnnBandwidthTestGetWorkspaceSize(const aclTensor *x, const aclTensor *dstRankId, char *group,
                                                int64_t worldSize, int64_t maxBs, int64_t mode, char *commAlg,
-                                               int64_t aivNum, aclTensor *y, aclTensor *receiveCnt,
-                                               uint64_t *workspaceSize, aclOpExecutor **executor)
+                                               int64_t aivNum, bool sharedJetty, int64_t sharedJettyNum, aclTensor *y,
+                                               aclTensor *receiveCnt, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize start");
     auto ret_param = CheckParams(x, dstRankId, group, worldSize, maxBs, mode, y, receiveCnt);
@@ -112,7 +112,8 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(const aclTensor *x, const aclTens
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     aclnnRet =
         aclnnInnerBandwidthTestGetWorkspaceSize(mc2Context, x, dstRankId, group, worldSize, maxBs, mode, hcclBuffSize,
-                                                commAlg, aivNum, 0, false, 1, y, receiveCnt, workspaceSize, executor);
+                                                commAlg, aivNum, 0, sharedJetty, sharedJettyNum, y, receiveCnt,
+                                                workspaceSize, executor);
 #endif
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize end");
     return aclnnRet;

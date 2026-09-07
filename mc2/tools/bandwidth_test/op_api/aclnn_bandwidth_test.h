@@ -29,6 +29,10 @@ extern "C" {
  * @param [in] worldSize: 计算输入，int。通信域size。
  * @param [in] maxBs: 计算输入，int。最大batch size大小。
  * @param [in] mode: 计算输入，int。模式，0表示精度模式，1表示纯发模式。
+ * @param [in] commAlg: 计算输入，str。通信方式；本公开包装接口只创建mte context。
+ * @param [in] aivNum: 计算输入，int。使用的AIV核数，-1表示使用平台核数。
+ * @param [in] sharedJetty: 计算输入，bool。是否启用共享Jetty；URMA执行需使用Torch接口创建的独立context。
+ * @param [in] sharedJettyNum: 计算输入，int。共享Jetty数量。
  * @param [out] y: 计算输出，Tensor，必选输出，数据类型float16, bfloat16,
  * float32，仅支持2维，数据格式支持ND。输出的token数据。
  * @param [out] receiveCnt:
@@ -40,8 +44,9 @@ extern "C" {
  */
 ACLNN_API aclnnStatus aclnnBandwidthTestGetWorkspaceSize(const aclTensor *x, const aclTensor *dstRankId, char *group,
                                                          int64_t worldSize, int64_t maxBs, int64_t mode, char *commAlg,
-                                                         int64_t aivNum, aclTensor *y, aclTensor *receiveCnt,
-                                                         uint64_t *workspaceSize, aclOpExecutor **executor);
+                                                         int64_t aivNum, bool sharedJetty, int64_t sharedJettyNum,
+                                                         aclTensor *y, aclTensor *receiveCnt, uint64_t *workspaceSize,
+                                                         aclOpExecutor **executor);
 
 /**
  * @brief aclnnBandwidthTest的第二段接口，用于执行计算。

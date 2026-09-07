@@ -3,13 +3,16 @@
 ## URMA 共享 jetty
 
 在 `config.py` 中设置 `shared_jetty=True`、`shared_jetty_num=N`，保留 `comm_alg="urma"`。
+`shared_jetty_comm_level` 只用于共享 context 建链：0 表示 UB 域内使用 UB_CTP、域间使用
+UB_RTP（UBG）；1 表示全部远端使用 UB_CTP；2 表示全部远端使用 UB_RTP。
 `N` 为实际建立的共享队列数量，也是按 BS 分片的发送核数。tiling 仍沿用原有 `aiv_num`
 规则选择并启动全部 AIV（设备当前最多 72 个）；只允许 `1 <= N <= min(所选 AIV 数, 56)`。
 `aiv_num=-1` 时使用设备 AIV 数。该数量关系在 tiling 中校验。
 关闭共享 jetty 时沿用现有 MTE / 普通 URMA 路径。MTE 开启此开关会报参数错误。
 
 ```python
-sym_buffer = BandwidthTestBuffer(group, comm_alg="urma", shared_jetty=True, shared_jetty_num=8)
+sym_buffer = BandwidthTestBuffer(
+    group, comm_alg="urma", shared_jetty=True, shared_jetty_num=8, shared_jetty_comm_level=0)
 y, receive_cnt = bandwidth_test(
     sym_buffer, x, dstrank_id, sym_buffer.world_size, x.size(0),
     mode=0, comm_alg="urma", shared_jetty=True, shared_jetty_num=8, batch_tokens=128)
@@ -18,19 +21,22 @@ y, receive_cnt = bandwidth_test(
 依赖 [asc-comm 0eff184](https://gitcode.com/cann/asc-comm/commit/0eff184c367e6d67263745e57abc485237d34019)
 提供的公开 `MakeMultiChannelHandle` / `GetHandleRef` 接口及对应 HCCL 共享队列支持。
 Host 使用 `torch_extension/shared_jetty_context.py` 和同目录 `csrc` 中的独立实现，
-逐对端查询实际网络层，优先选择域内 `UBC_CTP`（即 `UB_CTP`），否则选择跨超 `UB_RTP`（UBG）。
-两者均按 URMA 建链，保留各对端实际的 `channelProtocol`。UBG 共享 jetty 使用用户提供的
-支持该能力的联调包；不按公开仓库旧版文档拦截，也不将 UBG 归类为 MTE。
+按 `shared_jetty_comm_level` 选择协议和网络层。自动模式先按原 context 方式确定连续 UB_CTP
+域，用它划分域内、域外 peer，再联合寻找本地 endpoint 相同的 UB_CTP 层和 UB_RTP 层。
+全 UB_CTP/全 UB_RTP 模式则要求
+一个 layer 覆盖所有远端并支持对应协议。两者均按 URMA 建链，保留各对端实际的
+`channelProtocol`。UB_RTP（UBG）共享 jetty 使用用户提供的
+支持该能力的联调包；不按公开仓库旧版文档拦截，也不将 UB_RTP 归类为 MTE。
 每个共享 jetty 使用独立 tag，包含按 rank 排序、跳过本卡的所有对端 descriptor；
 context 保留共享 jetty 的环境和兼容性检查：仅支持 Ascend950，
-从各对端候选链中选择共同的本地 endpoint，无交集时明确报错。这是本算子参考官方示例
-采用的共享队列选择约束；不会因为链路协议是 `UB_RTP` 而拒绝它。
+所选 layer 内各 peer 的首个匹配协议 link 必须使用共同的本地 endpoint，否则明确报错。
+不会因为链路协议是 `UB_RTP` 而拒绝它。
 共享队列 API 不可用或 HCCL 建链失败时，同样在 context 创建阶段报错，报告 jetty 编号及返回码。
 底层 C++ context 不查询设备核数，也不承担共享 jetty 数量上限校验；数量限制由 tiling 统一处理。
 不会隐式创建额外 jetty 或回退普通 channel；单 rank 无远端，跳过建链。
 
 Win 通过 HCCL engine context 分配、清零并注册；构造阶段通过组内 collective 交换 Win 地址，
-同时核对共享 jetty 数、窗口大小和构造顺序。句柄、注册和 Win 均由 communicator 管理，
+同时核对共享 jetty 数、通信层级选择、窗口大小和构造顺序。句柄、注册和 Win 均由 communicator 管理，
 Python owner 保留 ProcessGroup。多配置和图重放应复用 owner；所有 kernel 完成后销毁通信组
 才释放这些资源。构造中途失败的 HCCL 资源同样保留到通信组销毁，不能重试同一个失败 owner。
 
@@ -55,7 +61,7 @@ tiling key 先选择通信算法，再在 URMA 下选择 `SHARED_JETTY`；kernel
 
 当前交付基于静态分析；仍需在支持上述接口的 CANN 上编译，并验证多 rank 的
 mode 0 精度、mode 1/3 重复调用、图重放、非整除 BS、空区间、56 jetty，以及联调包的
-跨超 UBG 和混合 CTP/UBG 拓扑。这里的静态检查不代表目标包编译或实机通信已验证。
+跨超 UB_RTP 和混合 UB_CTP/UB_RTP 拓扑。这里的静态检查不代表目标包编译或实机通信已验证。
 
 ## 安装和原有调用方式
 
@@ -121,11 +127,12 @@ Eager 路径经 `aclnnInnerBandwidthTest` 显式传递 Torch 创建的 context�
 `comm_alg=""`（MTE）、`aiv_num=-1`（平台默认核数）、`batch_tokens=0`（自动批量）、
 `shared_jetty=False`、`shared_jetty_num=1`；
 Python 始终将这些值显式传给 C++/ACLNN。新增属性改变了生成的 inner ACLNN 签名，
-更新后需同步重装算子包和 Torch 扩展；公开 MTE ACLNN 包装接口保持原签名，
-内部为新增参数传入 `batch_tokens=0, shared_jetty=false, shared_jetty_num=1`。
+更新后需同步重装算子包和 Torch 扩展；公开 ACLNN 第一段接口也声明并透传
+`sharedJetty` / `sharedJettyNum`，`batch_tokens` 仍使用自动批量值 0。该包装层仍只创建 MTE context，
+URMA 共享 jetty 继续由 Torch 接口传入独立 context。
 
 Ascend950 支持 MTE（同一 UB 内存域，`comm_alg="mte"` 或空字符串）和
-URMA（`comm_alg="urma"`，由已有 Torch context manager 建立 UBC_CTP channel）。
+URMA（`comm_alg="urma"`，由已有 Torch context manager 建立 UB_CTP channel）。
 URMA 要求安装支持 `MakeBatchHandle`、`BatchCommit`、`Drain(batchHandle)` 和
 `Lock/Unlock` 的 Hcomm 版本。创建和调用必须选择相同算法：
 
@@ -206,7 +213,8 @@ WQE 行为完全由 SDK 默认值决定，算子不覆盖 `odr`、`fence` 或 `c
 所有数据和状态通知完成后，`TPipe::Reset` 将发送阶段 UB 复用于等待和接收阶段。
 这是带宽测试：调用方必须保证 channel、目标 rank、Win 容量和各 rank 配置正确，
 并保证 tiling 选出的 `batch_tokens` 小于每条使用的 SQ 和 CQ 深度；使用 0/最大值时也须自行确认。
-本算子 kernel 直接使用 tiling 的有效批量，不额外做参数校验、打印、Trap 或自动缩小批量；SDK 内部检查沿用原实现。
+本算子 kernel 直接使用 tiling 的有效批量，不额外校验批量范围或自动缩小批量；共享路径只断言
+context 与 tiling 的 Jetty 数量一致，通信接口报错时仍按上文说明 Trap。SDK 内部检查沿用原实现。
 kernel 只通过公开 Hcomm 接口提交、完成和锁定通信，不读取 channel entity、队列深度、游标或 batch handle 内部字段。
 当前 Batch 接口未提供队列余量查询，也未承诺自动处理多批在途的溢出；因此每批提交后调用 Drain，再复用下一批。
 多批数据的计时包含这些完成等待，不能假定更小的 batch 会降低耗时。
@@ -245,5 +253,6 @@ flag 的先后关系依赖当前 SDK 默认的 `fence=1`，算子不显式传配
 需在装有 CANN、PyTorch、torch_npu 和兼容 TorchAir 的 Ascend950 多 rank 环境
 分别验证 eager 精度、图捕获及重复重放。本地静态检查不能替代上述验证。
 两份接收实现均包含状态 buffer 字节数、DataCopy 块长及 UB 记账修正；host 按实际缓冲区检查可用 UB。
-URMA kernel 不检查通信参数及 Hcomm 失败返回值；调用方负责保证上述通信前置条件。
+普通 URMA kernel 沿用原有通信返回值处理；共享路径在 WriteNbi、BatchCommit 或 Drain 失败时 Trap。
+调用方仍负责保证上述通信前置条件。
 这些修改仍需在目标 SDK 下验证编译和多卡可见性。

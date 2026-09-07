@@ -78,6 +78,8 @@ if mode not in (0, 1, 3):
 if CONFIG.model.shared_jetty:
     if CONFIG.model.comm_alg != "urma" or not 1 <= CONFIG.model.shared_jetty_num <= 56:
         raise ValueError("shared_jetty requires urma and shared_jetty_num in [1, 56]")
+    if CONFIG.model.shared_jetty_comm_level not in (0, 1, 2):
+        raise ValueError("shared_jetty_comm_level must be 0, 1 or 2")
     if aiv_num != -1 and CONFIG.model.shared_jetty_num > aiv_num:
         raise ValueError("shared_jetty_num must not exceed aiv_num")
 if mode == 3 and CONFIG.model.comm_alg != "urma":
@@ -119,7 +121,10 @@ def print_setting():
     logger.info(f"{mode=}")
     logger.info(f"{CONFIG.model.comm_alg=}")
     logger.info(f"{CONFIG.model.batch_tokens=}")
-    logger.info(f"{CONFIG.model.shared_jetty=}, {CONFIG.model.shared_jetty_num=}")
+    logger.info(
+        f"{CONFIG.model.shared_jetty=}, {CONFIG.model.shared_jetty_num=}, "
+        f"{CONFIG.model.shared_jetty_comm_level=}"
+    )
     logger.info(f"{CONFIG.model.graph_type=}")
     logger.info(f"{aiv_num=}")
     logger.info(f"{CONFIG.run.is_precision_test=}")
@@ -405,7 +410,8 @@ def init_hccl_comm(rank, world_size_local):
 
     return BandwidthTestBuffer(comm_group, comm_alg=CONFIG.model.comm_alg,
                                shared_jetty=CONFIG.model.shared_jetty,
-                               shared_jetty_num=CONFIG.model.shared_jetty_num), comm_group
+                               shared_jetty_num=CONFIG.model.shared_jetty_num,
+                               shared_jetty_comm_level=CONFIG.model.shared_jetty_comm_level), comm_group
 
 
 # endregion

@@ -4,7 +4,8 @@ URMA batch 带宽测试使用 [Torch 接口](../torch_extension/README.md) 和 T
 本页公开 ACLNN 包装接口不创建 URMA context；传入 `commAlg="urma"` 会报参数错误。
 新增 `mode=3` 的 URMA Win 直接打流模式也通过上述 Torch 接口调用；本页公开接口仍只支持 mode 0/1。
 URMA 共享 jetty 使用 Torch 的 `shared_jetty` / `shared_jetty_num` 参数及独立 context，
-详见 [共享 jetty 说明](../torch_extension/README.md#urma-共享-jetty)。公开 MTE ACLNN 签名保持不变。
+详见 [共享 jetty 说明](../torch_extension/README.md#urma-共享-jetty)。公开 ACLNN 第一段接口同步声明并透传
+`sharedJetty` / `sharedJettyNum`，但该包装层仍只创建 MTE context；URMA 共享 jetty 必须走 Torch 接口。
 
 ## 产品支持情况
 
@@ -51,6 +52,8 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     int64_t          mode,
     const char*      commAlg,
     int64_t          aivNum,
+    bool             sharedJetty,
+    int64_t          sharedJettyNum,
     aclTensor*       y,
     aclTensor*       receiveCnt,
     uint64_t*        workspaceSize,
@@ -167,6 +170,26 @@ aclnnStatus aclnnBandwidthTest(
     <td>输入</td>
     <td>AIV核数量。</td>
     <td>可选参数，默认为-1（自动获取）。</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>sharedJetty</td>
+    <td>输入</td>
+    <td>是否启用共享Jetty。</td>
+    <td>仅在commAlg为urma时生效。</td>
+    <td>BOOL</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>sharedJettyNum</td>
+    <td>输入</td>
+    <td>共享Jetty数量。</td>
+    <td>取值范围由tiling校验：不超过56且不大于所选AIV核数。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
