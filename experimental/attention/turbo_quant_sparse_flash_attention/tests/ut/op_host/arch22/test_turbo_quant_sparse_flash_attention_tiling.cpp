@@ -9,6 +9,8 @@
  */
 
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <tuple>
 #include "tiling_case_executor.h"
 #include "tiling_context_faker.h"
 
@@ -22,7 +24,7 @@ int32_t g_actualSeqQuery[] = {1};
 int32_t g_actualSeqKv[] = {512};
 
 // query [T=1, N1=8, D=576]；KV 为 PA_BSND [blockNum=4, blockSize=128, N2=1, 386]，
-// slot 386B = 256B 打包 nibble + 128B bfloat16 rope + 2B float16 归一化系数。
+// slot 386B = 256B packed nibbles + 128B rope in query dtype + 2B float16 scale.
 std::vector<TensorDesc> BaseInputs()
 {
     return {{{{1, 8, 576}, {1, 8, 576}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -77,9 +79,15 @@ std::vector<OpAttr> AttrsWith(const std::string &name, const AnyValue &value)
 
 class TurboQuantSparseFlashAttentionTiling : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "TurboQuantSparseFlashAttentionTiling SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "TurboQuantSparseFlashAttentionTiling SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "TurboQuantSparseFlashAttentionTiling TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "TurboQuantSparseFlashAttentionTiling TearDown" << std::endl;
+    }
 };
 
 struct TurboQuantSparseFlashAttentionCompileInfo {};
@@ -94,7 +102,7 @@ TEST_F(TurboQuantSparseFlashAttentionTiling, TurboQuantSparseFlashAttention_910b
     // 期望值由本用例实跑采集，用于锁定 tiling 结果不被后续改动无声改变。
     int64_t expectTilingKey = 1158;
     std::string expectTilingData = "2199023255553 1 128 4294967300 4410436851802832897 4294967304 3 1 "
-                                   "256 386 274877907456 3 3 128 0 0 40532396646334464 262144 64 "
+                                   "256 386 274877907456 3 3 128 0 0 49408 40532396646334464 262144 64 "
                                    "39582418608128 2199023255560 ";
     std::vector<size_t> expectWorkspaces = {184090624};
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
@@ -160,7 +168,7 @@ TEST_F(TurboQuantSparseFlashAttentionTiling, TurboQuantSparseFlashAttention_910b
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-// KV 仅支持 PA_BSND：非 PA_BSND 的 KV 要求与 query 同 layout，而 query 已限定为 TND。
+// Non-paged KV layouts remain unsupported.
 TEST_F(TurboQuantSparseFlashAttentionTiling, TurboQuantSparseFlashAttention_910b_layout_kv_bsnd)
 {
     TurboQuantSparseFlashAttentionCompileInfo compileInfo;
@@ -181,7 +189,6 @@ TEST_F(TurboQuantSparseFlashAttentionTiling, TurboQuantSparseFlashAttention_910b
 
 // ---------------- 负向：dtype 与 shape ----------------
 
-// 算子仅声明支持 BFLOAT16，FP16 已从支持列表移除。
 TEST_F(TurboQuantSparseFlashAttentionTiling, TurboQuantSparseFlashAttention_910b_query_fp16)
 {
     TurboQuantSparseFlashAttentionCompileInfo compileInfo;
@@ -189,6 +196,43 @@ TEST_F(TurboQuantSparseFlashAttentionTiling, TurboQuantSparseFlashAttention_910b
     inputs[0].dtype_ = ge::DT_FLOAT16;
     auto outputs = BaseOutputs();
     outputs[0].dtype_ = ge::DT_FLOAT16;
+    gert::TilingContextPara para("TurboQuantSparseFlashAttention", inputs, outputs, BaseAttrs(), &compileInfo,
+                                 "Ascend910B", 64, 262144, 16384);
+    int64_t expectTilingKey = 1158;
+    std::string expectTilingData = "2199023255553 1 128 4294967300 4410436851802832897 4294967304 3 1 "
+                                   "256 386 274877907456 3 3 128 0 0 49408 40532396646334464 262144 64 "
+                                   "39582418608128 2199023255560 ";
+    std::vector<size_t> expectWorkspaces = {184090624};
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+TEST_F(TurboQuantSparseFlashAttentionTiling, TurboQuantSparseFlashAttention_910b_query_output_dtype_mismatch)
+{
+    TurboQuantSparseFlashAttentionCompileInfo compileInfo;
+    auto inputs = BaseInputs();
+    inputs[0].dtype_ = ge::DT_FLOAT16;
+    gert::TilingContextPara para("TurboQuantSparseFlashAttention", inputs, BaseOutputs(), BaseAttrs(), &compileInfo,
+                                 "Ascend910B", 64, 262144, 16384);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(TurboQuantSparseFlashAttentionTiling, TurboQuantSparseFlashAttention_910b_output_query_dtype_mismatch)
+{
+    TurboQuantSparseFlashAttentionCompileInfo compileInfo;
+    auto outputs = BaseOutputs();
+    outputs[0].dtype_ = ge::DT_FLOAT16;
+    gert::TilingContextPara para("TurboQuantSparseFlashAttention", BaseInputs(), outputs, BaseAttrs(), &compileInfo,
+                                 "Ascend910B", 64, 262144, 16384);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(TurboQuantSparseFlashAttentionTiling, TurboQuantSparseFlashAttention_910b_query_fp32)
+{
+    TurboQuantSparseFlashAttentionCompileInfo compileInfo;
+    auto inputs = BaseInputs();
+    inputs[0].dtype_ = ge::DT_FLOAT;
+    auto outputs = BaseOutputs();
+    outputs[0].dtype_ = ge::DT_FLOAT;
     gert::TilingContextPara para("TurboQuantSparseFlashAttention", inputs, outputs, BaseAttrs(), &compileInfo,
                                  "Ascend910B", 64, 262144, 16384);
     ExecuteTestCase(para, ge::GRAPH_FAILED);
@@ -251,3 +295,220 @@ TEST_F(TurboQuantSparseFlashAttentionTiling, TurboQuantSparseFlashAttention_910b
                                  "Ascend910B", 64, 262144, 16384);
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
+
+class TurboQuantSparseFlashAttentionBnbdTiling
+    : public testing::TestWithParam<std::tuple<ge::DataType, int64_t, int64_t>> {};
+
+TEST_P(TurboQuantSparseFlashAttentionBnbdTiling, MatchesBsndTiling)
+{
+    const auto [dtype, blockSize, queryHeads] = GetParam();
+    TurboQuantSparseFlashAttentionCompileInfo compileInfo;
+    auto inputs = BaseInputs();
+    auto outputs = BaseOutputs();
+    inputs[0].dtype_ = outputs[0].dtype_ = dtype;
+    inputs[0].shape_ = {{1, queryHeads, 576}, {1, queryHeads, 576}};
+    outputs[0].shape_ = {{1, queryHeads, 512}, {1, queryHeads, 512}};
+    inputs[1].shape_ = inputs[2].shape_ = {{4, blockSize, 1, 386}, {4, blockSize, 1, 386}};
+    int32_t seqKv[] = {static_cast<int32_t>(4 * blockSize)};
+    inputs[8] = {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, seqKv};
+    gert::TilingContextPara bsnd("TurboQuantSparseFlashAttention", inputs, outputs, BaseAttrs(), &compileInfo,
+                                 "Ascend910B", 64, 262144, 16384);
+    TilingInfo bsndInfo;
+    ASSERT_TRUE(ExecuteTiling(bsnd, bsndInfo));
+    inputs[1].shape_ = inputs[2].shape_ = {{4, 1, blockSize, 386}, {4, 1, blockSize, 386}};
+    gert::TilingContextPara bnbd("TurboQuantSparseFlashAttention", inputs, outputs,
+                                 AttrsWith("layout_kv", AnyValue::CreateFrom<std::string>("PA_BNBD")), &compileInfo,
+                                 "Ascend910B", 64, 262144, 16384);
+    TilingInfo bnbdInfo;
+    ASSERT_TRUE(ExecuteTiling(bnbd, bnbdInfo));
+    if (queryHeads <= 64) {
+        EXPECT_EQ(bsndInfo.tilingKey, 1158);
+    }
+    EXPECT_EQ(bnbdInfo.tilingKey, bsndInfo.tilingKey);
+    EXPECT_EQ(bnbdInfo.workspaceSizes, bsndInfo.workspaceSizes);
+    EXPECT_EQ(bnbdInfo.blockNum, bsndInfo.blockNum);
+    ASSERT_EQ(bnbdInfo.tilingDataSize, bsndInfo.tilingDataSize);
+    EXPECT_TRUE(std::equal(bnbdInfo.tilingData.get(), bnbdInfo.tilingData.get() + bnbdInfo.tilingDataSize,
+                           bsndInfo.tilingData.get()));
+}
+
+INSTANTIATE_TEST_SUITE_P(LayoutDtypeBlockSize, TurboQuantSparseFlashAttentionBnbdTiling,
+                         testing::Combine(testing::Values(ge::DT_FLOAT16, ge::DT_BF16), testing::Values(16, 128, 1024),
+                                          testing::Values(8, 64, 128)));
+
+class TurboQuantSparseFlashAttentionBnbdInvalid : public testing::TestWithParam<std::vector<int64_t>> {};
+
+TEST_P(TurboQuantSparseFlashAttentionBnbdInvalid, RejectsInvalidKeyShape)
+{
+    TurboQuantSparseFlashAttentionCompileInfo compileInfo;
+    auto inputs = BaseInputs();
+    const auto &shape = GetParam();
+    gert::Shape keyShape;
+    keyShape.SetDimNum(shape.size());
+    for (size_t i = 0; i < shape.size(); ++i) {
+        keyShape.SetDim(i, shape[i]);
+    }
+    inputs[1].shape_.MutableOriginShape() = keyShape;
+    inputs[1].shape_.MutableStorageShape() = keyShape;
+    inputs[2].shape_ = inputs[1].shape_;
+    gert::TilingContextPara para("TurboQuantSparseFlashAttention", inputs, BaseOutputs(),
+                                 AttrsWith("layout_kv", AnyValue::CreateFrom<std::string>("PA_BNBD")), &compileInfo,
+                                 "Ascend910B", 64, 262144, 16384);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+INSTANTIATE_TEST_SUITE_P(LayoutAxesAndBounds, TurboQuantSparseFlashAttentionBnbdInvalid,
+                         testing::Values(std::vector<int64_t>{4, 128, 1, 386}, std::vector<int64_t>{4, 2, 128, 386},
+                                         std::vector<int64_t>{4, 0, 128, 386}, std::vector<int64_t>{4, 1, 0, 386},
+                                         std::vector<int64_t>{4, 1, 8, 386}, std::vector<int64_t>{4, 1, 1040, 386},
+                                         std::vector<int64_t>{4, 1, 128, 385}, std::vector<int64_t>{4, 128, 386}));
+
+class TurboQuantSparseFlashAttentionEmptyTiling
+    : public testing::TestWithParam<std::tuple<ge::DataType, bool, bool, int64_t>> {};
+
+TEST_P(TurboQuantSparseFlashAttentionEmptyTiling, EmptyQueryHasNoWorkspace)
+{
+    const auto [dtype, bnbd, returnLse, heads] = GetParam();
+    TurboQuantSparseFlashAttentionCompileInfo compileInfo;
+    auto inputs = BaseInputs();
+    auto outputs = BaseOutputs();
+    inputs[0].dtype_ = outputs[0].dtype_ = dtype;
+    inputs[0].shape_ = {{0, heads, 576}, {0, heads, 576}};
+    inputs[3].shape_ = {{0, 1, 256}, {0, 1, 256}};
+    outputs[0].shape_ = {{0, heads, 512}, {0, heads, 512}};
+    outputs[1].shape_ = outputs[2].shape_ =
+        returnLse ? gert::StorageShape({1, 0, heads}, {1, 0, heads}) : gert::StorageShape({0}, {0});
+    int32_t seqZero[] = {0};
+    inputs[7] = inputs[8] = {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, seqZero};
+    if (bnbd) {
+        inputs[1].shape_ = inputs[2].shape_ = {{4, 1, 128, 386}, {4, 1, 128, 386}};
+    }
+    auto attrs = AttrsWith("layout_kv", AnyValue::CreateFrom<std::string>(bnbd ? "PA_BNBD" : "PA_BSND"));
+    attrs.back().attr_ = AnyValue::CreateFrom<bool>(returnLse);
+    gert::TilingContextPara para("TurboQuantSparseFlashAttention", inputs, outputs, attrs, &compileInfo, "Ascend910B",
+                                 64, 262144, 16384);
+    TilingInfo info;
+    ASSERT_TRUE(ExecuteTiling(para, info));
+    ASSERT_EQ(info.workspaceSizes.size(), 1);
+    EXPECT_EQ(info.workspaceSizes[0], 0);
+    EXPECT_EQ(info.blockNum, 1);
+    EXPECT_GT(info.tilingDataSize, 0);
+
+    // Empty output must still reject invalid non-token dimensions.
+    inputs[0].shape_ = {{0, 0, 576}, {0, 0, 576}};
+    gert::TilingContextPara invalid("TurboQuantSparseFlashAttention", inputs, outputs, attrs, &compileInfo,
+                                    "Ascend910B", 64, 262144, 16384);
+    ExecuteTestCase(invalid, ge::GRAPH_FAILED);
+}
+
+INSTANTIATE_TEST_SUITE_P(DtypeLayoutLseHeads, TurboQuantSparseFlashAttentionEmptyTiling,
+                         testing::Combine(testing::Values(ge::DT_FLOAT16, ge::DT_BF16), testing::Bool(),
+                                          testing::Bool(), testing::Values(1, 128)));
+
+TEST_F(TurboQuantSparseFlashAttentionTiling, MixedZeroSequenceLengths)
+{
+    TurboQuantSparseFlashAttentionCompileInfo compileInfo;
+    auto inputs = BaseInputs();
+    auto outputs = BaseOutputs();
+    int32_t seqQuery[] = {0, 2, 2, 3, 3};
+    int32_t seqKv[] = {17, 0, 29, 32, 0};
+    inputs[0].shape_ = {{3, 8, 576}, {3, 8, 576}};
+    inputs[3].shape_ = {{3, 1, 256}, {3, 1, 256}};
+    inputs[6].shape_ = {{5, 4}, {5, 4}};
+    inputs[7] = {{{5}, {5}}, ge::DT_INT32, ge::FORMAT_ND, true, seqQuery};
+    inputs[8] = {{{5}, {5}}, ge::DT_INT32, ge::FORMAT_ND, true, seqKv};
+    outputs[0].shape_ = {{3, 8, 512}, {3, 8, 512}};
+    gert::TilingContextPara para("TurboQuantSparseFlashAttention", inputs, outputs, BaseAttrs(), &compileInfo,
+                                 "Ascend910B", 64, 262144, 16384);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 1158);
+}
+
+namespace {
+void SetCacheStride(TensorDesc &tensor, const std::vector<int64_t> &strides)
+{
+    tensor.hasStride_ = true;
+    tensor.stride_ = gert::Stride();
+    tensor.stride_.SetDimNum(strides.size());
+    for (size_t axis = 0; axis < strides.size(); ++axis) {
+        tensor.stride_.SetStride(axis, strides[axis]);
+    }
+}
+} // namespace
+
+class TurboQuantSparseFlashAttentionStride : public testing::TestWithParam<std::tuple<ge::DataType, bool, int64_t>> {};
+
+TEST_P(TurboQuantSparseFlashAttentionStride, PreservesByteStrideWithoutTruncation)
+{
+    const auto [dtype, bnbd, stride0] = GetParam();
+    TurboQuantSparseFlashAttentionCompileInfo compileInfo;
+    auto inputs = BaseInputs();
+    auto outputs = BaseOutputs();
+    inputs[0].dtype_ = outputs[0].dtype_ = dtype;
+    if (bnbd) {
+        inputs[1].shape_ = inputs[2].shape_ = {{4, 1, 128, 386}, {4, 1, 128, 386}};
+    }
+    auto strides = bnbd ? std::vector<int64_t>{stride0, 7, 386, 1} : std::vector<int64_t>{stride0, 386, 7, 1};
+    SetCacheStride(inputs[1], strides);
+    strides[0] += 256;
+    SetCacheStride(inputs[2], strides);
+    auto attrs = AttrsWith("layout_kv", AnyValue::CreateFrom<std::string>(bnbd ? "PA_BNBD" : "PA_BSND"));
+    gert::TilingContextPara para("TurboQuantSparseFlashAttention", inputs, outputs, attrs, &compileInfo, "Ascend910B",
+                                 64, 262144, 16384);
+    std::string expected = "2199023255553 1 128 4294967300 4410436851802832897 4294967304 3 1 "
+                           "256 386 274877907456 3 3 128 0 0 " +
+                           std::to_string(stride0) + " 40532396646334464 262144 64 39582418608128 2199023255560 ";
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 1158, expected, {184090624});
+}
+
+INSTANTIATE_TEST_SUITE_P(DtypeLayoutStride, TurboQuantSparseFlashAttentionStride,
+                         testing::Combine(testing::Values(ge::DT_FLOAT16, ge::DT_BF16), testing::Bool(),
+                                          testing::Values(int64_t{49408}, int64_t{98816}, int64_t{49664},
+                                                          int64_t{1} << 33, INT64_MAX / 4)));
+
+class TurboQuantSparseFlashAttentionInvalidStride
+    : public testing::TestWithParam<std::tuple<ge::DataType, bool, int, int>> {};
+
+TEST_P(TurboQuantSparseFlashAttentionInvalidStride, RejectsUnsupportedCacheView)
+{
+    const auto [dtype, bnbd, inputIndex, invalidKind] = GetParam();
+    TurboQuantSparseFlashAttentionCompileInfo compileInfo;
+    auto inputs = BaseInputs();
+    auto outputs = BaseOutputs();
+    inputs[0].dtype_ = outputs[0].dtype_ = dtype;
+    if (bnbd) {
+        inputs[1].shape_ = inputs[2].shape_ = {{4, 1, 128, 386}, {4, 1, 128, 386}};
+    }
+    auto strides = bnbd ? std::vector<int64_t>{98816, 49408, 386, 1} : std::vector<int64_t>{98816, 386, 386, 1};
+    switch (invalidKind) {
+        case 0:
+            strides[bnbd ? 2 : 1] = 387;
+            break;
+        case 1:
+            strides[3] = 2;
+            break;
+        case 2:
+            strides[0] = 49407;
+            break;
+        case 3:
+            strides[0] = 0;
+            break;
+        case 4:
+            strides[0] = -1;
+            break;
+        case 5:
+            strides[0] = INT64_MAX;
+            break;
+        case 6:
+            strides.pop_back();
+            break;
+    }
+    SetCacheStride(inputs[inputIndex], strides);
+    auto attrs = AttrsWith("layout_kv", AnyValue::CreateFrom<std::string>(bnbd ? "PA_BNBD" : "PA_BSND"));
+    gert::TilingContextPara para("TurboQuantSparseFlashAttention", inputs, outputs, attrs, &compileInfo, "Ascend910B",
+                                 64, 262144, 16384);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+INSTANTIATE_TEST_SUITE_P(DtypeLayoutInputViolation, TurboQuantSparseFlashAttentionInvalidStride,
+                         testing::Combine(testing::Values(ge::DT_FLOAT16, ge::DT_BF16), testing::Bool(),
+                                          testing::Values(1, 2), testing::Range(0, 7)));

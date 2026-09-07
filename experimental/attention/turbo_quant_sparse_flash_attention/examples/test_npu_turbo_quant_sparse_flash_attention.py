@@ -73,17 +73,18 @@ CENT = np.array(
 # 规范表格：FLOAT16 -> rtol=atol=2^-9，匹配率 0.99，绝对误差上限 1e-1 或 32*ULP。
 # 输出为 BFLOAT16 时尾数位更少（8 bit vs 11 bit），沿用 FLOAT16 阈值属于偏严的取法。
 TOL = {
+    torch.float16: dict(rtol=2**-9, atol=2**-9, ratio=0.99, max_abs=1e-1),
     torch.bfloat16: dict(rtol=2**-9, atol=2**-9, ratio=0.99, max_abs=1e-1),
 }
 
 
-def pack_slot(nope_f32, rope_f32):
-    """按算子的存储格式打出 KV slot: [256B nibble | 128B rope(bf16) | 2B fp16 scale]。
+def pack_slot(nope_f32, rope_f32, q_dtype):
+    """按算子的存储格式打出 KV slot: [256B nibble | 128B rope(q dtype) | 2B fp16 scale]。
 
     rope 按契约存放 rope / s_t：kernel 把 s_t 作用在整列 score 上（含 rope 项），
     乘回 s_t 后才还原真实 rope 贡献。
 
-    同时返回 golden 需要的 yhat、fp16 scale 与**实际存入**的 rope（已预除且按 bf16
+    同时返回 golden 需要的 yhat、fp16 scale 与**实际存入**的 rope（已预除且按 q dtype
     舍入），避免两侧各算一遍量化或舍入引入不一致。
     """
     ntok = nope_f32.shape[0]
@@ -102,18 +103,34 @@ def pack_slot(nope_f32, rope_f32):
     packed = (nib[:, 0::2] | (nib[:, 1::2] << 4)).astype(np.uint8)  # 低位 = 偶数维
     # 契约：存入 rope / s_t
     rope_store = (rope_f32 / scale.astype(np.float32)[:, None]).astype(np.float32)
-    rope_t = torch.from_numpy(rope_store).to(torch.bfloat16).contiguous()
-    rope_b16 = rope_t.view(torch.uint8).numpy()
+    rope_t = torch.from_numpy(rope_store).to(q_dtype).contiguous()
+    rope_bytes = rope_t.view(torch.uint8).numpy()
     rope_eff = rope_t.float().numpy().astype(np.float64)  # golden 用实际存入值
+    yhat_eff = torch.from_numpy(yhat).to(q_dtype).float().numpy().astype(np.float64)
 
     slot = np.zeros((ntok, DN // 2 + DR * 2 + 2), dtype=np.uint8)
     slot[:, : DN // 2] = packed
-    slot[:, DN // 2 : DN // 2 + DR * 2] = rope_b16.reshape(ntok, DR * 2)
+    slot[:, DN // 2 : DN // 2 + DR * 2] = rope_bytes.reshape(ntok, DR * 2)
     slot[:, -2:] = scale.view(np.uint8).reshape(ntok, 2)
-    return slot, yhat.astype(np.float64), scale, rope_eff
+    return slot, yhat_eff, scale, rope_eff
 
 
-def build_case(bsz, s2, topk, seed, q_dtype, dist, sigma=None, rope_amp=None, q_len=1):
+def build_case(
+    bsz,
+    s2,
+    topk,
+    seed,
+    q_dtype,
+    dist,
+    sigma=None,
+    rope_amp=None,
+    q_len=1,
+    block_size=BLOCK,
+    layout_kv="PA_BSND",
+    shuffle_blocks=False,
+    query_heads=NHEAD,
+    sparse_mode=3,
+):
     """构造一条用例。
 
     s2 为每个 batch 的**有效** KV 长度，允许非 block 对齐——此时按 ceil 分配 block，
@@ -128,11 +145,13 @@ def build_case(bsz, s2, topk, seed, q_dtype, dist, sigma=None, rope_amp=None, q_
     # q_len 为标量或长度 bsz 的序列；> 1 时进入 causal 路径（sparse_mode=3 下
     # 每个 query 只可见前缀 KV），此前所有用例都是每 batch 单 query 的 decode 形状。
     q_list = [int(q_len)] * bsz if np.isscalar(q_len) else [int(v) for v in q_len]
-    assert len(q_list) == bsz and all(0 < q <= s for q, s in zip(q_list, s2_list))
+    assert len(q_list) == bsz and all(
+        q >= 0 and s >= 0 and (s == 0 or q <= s) for q, s in zip(q_list, s2_list)
+    )
     t_total = sum(q_list)
-    blk_per_b = (max(s2_list) + BLOCK - 1) // BLOCK
+    blk_per_b = max(1, (max(s2_list) + block_size - 1) // block_size)
     nblk = bsz * blk_per_b
-    ntok = nblk * BLOCK
+    ntok = nblk * block_size
 
     # sigma 决定归一化系数 s_t 的量级（nope 按 sqrt(DN) 归一后，||nope|| ≈ sigma）；
     # rope_amp 决定 rope 项在 score 中的占比。两者都需远离退化点才能检出 s_t 语义错误。
@@ -140,16 +159,28 @@ def build_case(bsz, s2, topk, seed, q_dtype, dist, sigma=None, rope_amp=None, q_
         amp = 0.02 if rope_amp is None else rope_amp
         nope = (rng.uniform(-5.0, 5.0, (ntok, DN)) / np.sqrt(DN)).astype(np.float32)
         rope = (rng.uniform(-5.0, 5.0, (ntok, DR)) * amp).astype(np.float32)
-        qraw = (rng.uniform(-5.0, 5.0, (t_total, NHEAD, D)) * 0.02).astype(np.float32)
+        qraw = (rng.uniform(-5.0, 5.0, (t_total, query_heads, D)) * 0.02).astype(
+            np.float32
+        )
     else:
         sig = float(rng.uniform(0.1, 2.0)) if sigma is None else sigma
         amp = 0.1 if rope_amp is None else rope_amp
         nope = (rng.normal(0.0, sig, (ntok, DN)) / np.sqrt(DN)).astype(np.float32)
         rope = (rng.normal(0.0, sig, (ntok, DR)) * amp).astype(np.float32)
-        qraw = (rng.normal(0.0, sig, (t_total, NHEAD, D)) * 0.1).astype(np.float32)
+        qraw = (rng.normal(0.0, sig, (t_total, query_heads, D)) * 0.1).astype(
+            np.float32
+        )
 
-    slot, yhat, scale, rope_eff = pack_slot(nope, rope)
-    kv = torch.from_numpy(slot.view(np.int8)).reshape(nblk, BLOCK, 1, -1).npu()
+    slot, yhat, scale, rope_eff = pack_slot(nope, rope, q_dtype)
+    block_order = rng.permutation(nblk) if shuffle_blocks else np.arange(nblk)
+    physical_slots = np.empty_like(slot).reshape(nblk, block_size, -1)
+    physical_slots[block_order] = slot.reshape(nblk, block_size, -1)
+    kv_shape = (
+        (nblk, 1, block_size, 386)
+        if layout_kv == "PA_BNBD"
+        else (nblk, block_size, 1, 386)
+    )
+    kv = torch.from_numpy(physical_slots.view(np.int8)).reshape(kv_shape).npu()
 
     # sparse_indices: 每个 query 从本 batch 的有效 KV 里选。topk 超过实际 KV 长度时，
     # 尾部以 -1 填充（生产语义：topk 缓冲宽度固定而 KV 长度可变）。
@@ -163,21 +194,25 @@ def build_case(bsz, s2, topk, seed, q_dtype, dist, sigma=None, rope_amp=None, q_
     t = 0
     for b in range(bsz):
         for r in range(q_list[b]):
-            limit = s2_list[b] - q_list[b] + r + 1  # 该 query 的因果可见 KV 长度
+            limit = (
+                max(0, s2_list[b] - q_list[b] + r + 1)
+                if sparse_mode == 3
+                else s2_list[b]
+            )
             nv = min(topk, limit)
             idx[t, :nv] = rng.choice(limit, size=nv, replace=False).astype(np.int32)
             nvalid.append(nv)
             t += 1
-    si = torch.from_numpy(idx).reshape(t_total, 1, -1).npu()
+    si = torch.from_numpy(idx).reshape(t_total, 1, topk).npu()
 
     q = torch.from_numpy(qraw).to(q_dtype).npu()
-    bt = torch.arange(nblk, dtype=torch.int32).reshape(bsz, -1).npu()
+    bt = torch.from_numpy(block_order.astype(np.int32)).reshape(bsz, -1).npu()
     # TND 布局下 actual_seq_lengths 是【累积和】，不是每 batch 的长度
     asq = torch.tensor(np.cumsum(q_list), dtype=torch.int32).npu()
     # actual_seq_lengths_query 为 TND，kernel 按相邻差分还原每 batch 长度，故传累加和；
     # actual_seq_lengths_kv 走 PA_BSND 分支，kernel 直接取 [bIdx]，故传每 batch 实际长度。
     ask = torch.tensor(s2_list, dtype=torch.int32).npu()
-    ks = torch.ones(nblk, BLOCK, 1, DN // TILE, dtype=torch.float32).npu()
+    ks = torch.ones(nblk, block_size, 1, DN // TILE, dtype=torch.float32).npu()
 
     return dict(
         q=q,
@@ -192,6 +227,8 @@ def build_case(bsz, s2, topk, seed, q_dtype, dist, sigma=None, rope_amp=None, q_
         q_list=q_list,
         t_total=t_total,
         blk_per_b=blk_per_b,
+        block_size=block_size,
+        layout_kv=layout_kv,
         yhat=yhat,
         scale=scale,
         rope_eff=rope_eff,
@@ -201,15 +238,33 @@ def build_case(bsz, s2, topk, seed, q_dtype, dist, sigma=None, rope_amp=None, q_
     )
 
 
+def build_codebook_case(q_dtype):
+    """Build a one-token case whose packed bytes cover all 256 byte values."""
+    slot = np.zeros((BLOCK, DN // 2 + DR * 2 + 2), dtype=np.uint8)
+    slot[0, : DN // 2] = np.arange(256, dtype=np.uint8)
+    slot[0, -2:] = np.asarray([1.0], dtype=np.float16).view(np.uint8)
+    kv = torch.from_numpy(slot.view(np.int8)).reshape(1, BLOCK, 1, -1).npu()
+    return dict(
+        q=torch.zeros(1, NHEAD, D, dtype=q_dtype).npu(),
+        kv=kv,
+        si=torch.zeros(1, 1, 1, dtype=torch.int32).npu(),
+        bt=torch.zeros(1, 1, dtype=torch.int32).npu(),
+        asq=torch.ones(1, dtype=torch.int32).npu(),
+        ask=torch.ones(1, dtype=torch.int32).npu(),
+        ks=torch.ones(1, BLOCK, 1, DN // TILE, dtype=torch.float32).npu(),
+        scale_value=1.0 / (DN**0.5),
+    )
+
+
 def golden(c):
     """float64 CPU 标杆，复刻算子语义。
 
     s_t 作用在**整列 score** 上（含 rope 项），与 kernel 的按列缩放一致；
-    rope 取 KV slot 中**实际存入**的值（已预除 s_t 并按 bf16 舍入）。
+    rope 取 KV slot 中**实际存入**的值（已预除 s_t 并按 query dtype 舍入）。
 
     q 必须按算子实际收到的 dtype 做舍入：fp16 有 11 位尾数、bf16 只有 8 位，
     若一律用 bf16 建模，fp16 用例会拿一份更粗的 q 去比对，差异被误算成算子误差。
-    rope 则固定按 bf16 —— 那是 KV slot 的存储格式，与 query dtype 无关。
+    rope 与 query 使用相同 dtype；KV 的 INT8 外层 tensor 只承载其原始字节。
     """
     s_t = c["scale"].astype(np.float64)
     Yhat = c["yhat"]  # 未乘 s_t 的码本重建值
@@ -219,15 +274,18 @@ def golden(c):
 
     # 按**全局 query 下标**遍历：每个 query 有自己的 sparse_indices 与可见长度，
     # 所属 batch 决定 KV 的 block 偏移。
-    out = np.empty((c["t_total"], NHEAD, DN), dtype=np.float64)
+    out = np.empty((c["t_total"], q.shape[1], DN), dtype=np.float64)
     t = 0
     for b in range(len(c["q_list"])):
         for _ in range(c["q_list"][b]):
+            if c["nvalid"][t] == 0:
+                out[t] = 0
+                t += 1
+                continue
             # 局部索引 -> 全局 token 下标；-1 填充位不参与计算
-            sel = (
-                c["idx"][t][: c["nvalid"][t]].astype(np.int64)
-                + b * c["blk_per_b"] * BLOCK
-            )
+            sel = c["idx"][t][: c["nvalid"][t]].astype(np.int64) + b * c[
+                "blk_per_b"
+            ] * c.get("block_size", BLOCK)
             yh, kr, sb = Yhat[sel], Kr[sel], s_t[sel]
             kn = yh * sb[:, None]  # 反量化后的 latent，V 侧直接用它
             # s_t 按列作用在整条 score 上，rope 项因存放时已预除而被还原
@@ -258,10 +316,7 @@ def check(actual, expect, dtype):
 
 
 class TestTurboQuantSparseFlashAttention(TestCase):
-    """覆盖：2^n 与 2^n-1 两类尺寸、均匀与正态两种分布。
-
-    算子仅声明支持 BFLOAT16（FLOAT16 已从支持列表移除），故不再覆盖 fp16。
-    """
+    """覆盖 FP16/BF16、2^n 与 2^n-1 尺寸、均匀与正态分布。"""
 
     CASES = [
         # (bsz, s2, topk, dist)；s2 取 2^n 与 2^n-1 两类，后者非 block 对齐
@@ -277,14 +332,14 @@ class TestTurboQuantSparseFlashAttention(TestCase):
     ]
 
     @staticmethod
-    def _call(c, with_scale=True):
+    def _call(c, with_scale=True, return_all=False):
         """with_scale=False 时不传两个 dequant scale 可选输入。"""
         scale = (
             {"key_dequant_scale": c["ks"], "value_dequant_scale": c["ks"]}
             if with_scale
             else {}
         )
-        out, _, _ = torch.ops.custom.npu_turbo_quant_sparse_flash_attention(
+        outputs = torch.ops.custom.npu_turbo_quant_sparse_flash_attention(
             c["q"],
             c["kv"],
             c["kv"],
@@ -298,7 +353,7 @@ class TestTurboQuantSparseFlashAttention(TestCase):
             value_quant_mode=3,
             sparse_block_size=1,
             layout_query="TND",
-            layout_kv="PA_BSND",
+            layout_kv=c.get("layout_kv", "PA_BSND"),
             sparse_mode=3,
             pre_tokens=INT64_MAX,
             next_tokens=INT64_MAX,
@@ -306,13 +361,23 @@ class TestTurboQuantSparseFlashAttention(TestCase):
             quant_scale_repo_mode=1,
             tile_size=TILE,
             rope_head_dim=DR,
-            return_softmax_lse=False,
+            return_softmax_lse=c.get("return_softmax_lse", False),
         )
         torch.npu.synchronize()
-        return out
+        return outputs if return_all else outputs[0]
 
     def _run_one(
-        self, bsz, s2, topk, dist, dtype, seed, sigma=None, rope_amp=None, q_len=1
+        self,
+        bsz,
+        s2,
+        topk,
+        dist,
+        dtype,
+        seed,
+        sigma=None,
+        rope_amp=None,
+        q_len=1,
+        zero_q_nope=False,
     ):
         c = build_case(
             bsz,
@@ -325,6 +390,9 @@ class TestTurboQuantSparseFlashAttention(TestCase):
             rope_amp=rope_amp,
             q_len=q_len,
         )
+        if zero_q_nope:
+            c["qraw"][..., :DN] = 0
+            c["q"] = torch.from_numpy(c["qraw"]).to(dtype).npu()
         out = self._call(c)
         actual = out.float().cpu().numpy().reshape(c["t_total"], NHEAD, DN)
         ok, desc = check(actual, golden(c), dtype)
@@ -343,6 +411,122 @@ class TestTurboQuantSparseFlashAttention(TestCase):
         for i, (bsz, s2, topk, dist) in enumerate(self.CASES):
             with self.subTest(case=i):
                 self._run_one(bsz, s2, topk, dist, torch.bfloat16, seed=1000 + i)
+
+    def test_paged_layout_equivalence(self):
+        for dtype in (torch.float16, torch.bfloat16):
+            for block_size in (16, 128, 1024):
+                for lse in (False, True):
+                    with self.subTest(dtype=dtype, block_size=block_size, lse=lse):
+                        results = []
+                        for layout in ("PA_BSND", "PA_BNBD"):
+                            c = build_case(
+                                2,
+                                [block_size + 3, 2 * block_size - 1],
+                                35,
+                                9100,
+                                dtype,
+                                "normal",
+                                q_len=[2, 3],
+                                block_size=block_size,
+                                layout_kv=layout,
+                                shuffle_blocks=True,
+                            )
+                            c["return_softmax_lse"] = lse
+                            self.assertTrue(c["kv"].is_contiguous())
+                            outputs = tuple(
+                                t.cpu() for t in self._call(c, return_all=True)
+                            )
+                            ok, desc = check(
+                                outputs[0].float().numpy(), golden(c), dtype
+                            )
+                            self.assertTrue(ok, f"{layout}: {desc}")
+                            expected_stats = (1, 5, NHEAD) if lse else (0,)
+                            self.assertEqual(tuple(outputs[1].shape), expected_stats)
+                            self.assertEqual(tuple(outputs[2].shape), expected_stats)
+                            results.append(outputs)
+                        for bsnd, bnbd in zip(*results):
+                            self.assertTrue(torch.equal(bsnd, bnbd))
+                        print(
+                            f"  [PASS] layouts bit-exact: {dtype} block={block_size} lse={lse}",
+                            flush=True,
+                        )
+
+    def test_bnbd_split_query_heads(self):
+        for dtype in (torch.float16, torch.bfloat16):
+            results = []
+            for layout in ("PA_BSND", "PA_BNBD"):
+                with self.subTest(dtype=dtype, layout=layout):
+                    c = build_case(
+                        2,
+                        [129, 257],
+                        35,
+                        9300,
+                        dtype,
+                        "normal",
+                        q_len=[2, 3],
+                        layout_kv=layout,
+                        shuffle_blocks=True,
+                    )
+                    c["qraw"] = np.tile(c["qraw"], (1, 16, 1))
+                    c["q"] = torch.from_numpy(c["qraw"]).to(dtype).npu()
+                    c["return_softmax_lse"] = True
+                    outputs = tuple(t.cpu() for t in self._call(c, return_all=True))
+                    ok, desc = check(outputs[0].float().numpy(), golden(c), dtype)
+                    self.assertTrue(ok, desc)
+                    self.assertEqual(tuple(outputs[1].shape), (1, 5, 128))
+                    results.append(outputs)
+            for bsnd, bnbd in zip(*results):
+                self.assertTrue(torch.equal(bsnd, bnbd))
+
+    def test_slot_rope_uses_query_dtype(self):
+        nope = np.linspace(-0.1, 0.1, DN, dtype=np.float32).reshape(1, DN)
+        rope = np.linspace(-0.3, 0.3, DR, dtype=np.float32).reshape(1, DR)
+        rope_regions = {}
+        for dtype in (torch.float16, torch.bfloat16):
+            slot, _, scale, rope_eff = pack_slot(nope, rope, dtype)
+            expected_rope = torch.from_numpy(
+                rope / scale.astype(np.float32)[:, None]
+            ).to(dtype)
+            expected_bytes = expected_rope.contiguous().view(torch.uint8).numpy()
+            self.assertEqual(slot.shape, (1, 386))
+            self.assertTrue(
+                np.array_equal(slot[:, DN // 2 : DN // 2 + DR * 2], expected_bytes)
+            )
+            self.assertTrue(
+                np.array_equal(slot[:, -2:], scale.view(np.uint8).reshape(1, 2))
+            )
+            self.assertTrue(np.array_equal(rope_eff, expected_rope.float().numpy()))
+            rope_regions[dtype] = expected_bytes
+        self.assertFalse(
+            np.array_equal(rope_regions[torch.float16], rope_regions[torch.bfloat16])
+        )
+
+    def test_precision_fp16(self):
+        for i, (bsz, s2, topk, dist) in enumerate(self.CASES):
+            with self.subTest(case=i):
+                self._run_one(bsz, s2, topk, dist, torch.float16, seed=2000 + i)
+
+    def test_dequant_chunk_boundaries(self):
+        for dtype, topks in ((torch.bfloat16, (32, 35)), (torch.float16, (8, 11))):
+            for i, topk in enumerate(topks):
+                with self.subTest(dtype=dtype, topk=topk):
+                    self._run_one(1, 64, topk, "normal", dtype, seed=2500 + i)
+
+    def test_all_packed_bytes_decode_low_nibble_first(self):
+        packed = np.arange(256, dtype=np.uint8)
+        codebook_indices = np.empty(DN, dtype=np.uint8)
+        codebook_indices[0::2] = packed & 0x0F
+        codebook_indices[1::2] = packed >> 4
+        for dtype in (torch.float16, torch.bfloat16):
+            with self.subTest(dtype=dtype):
+                c = build_codebook_case(dtype)
+                actual = self._call(c).cpu()
+                expected_row = torch.from_numpy(CENT[codebook_indices]).to(dtype)
+                expected = expected_row.reshape(1, 1, DN).expand(1, NHEAD, DN)
+                self.assertTrue(
+                    torch.equal(actual, expected),
+                    "%s full byte-LUT output is not bit-exact" % dtype,
+                )
 
     def test_topk_exceeds_actual_kv(self):
         """topk 缓冲宽度 >= 实际 KV 长度的场景，sparse_indices 尾部为 -1 填充。
@@ -393,22 +577,25 @@ class TestTurboQuantSparseFlashAttention(TestCase):
     def test_rope_scale_contract(self):
         """rope 主导且 s_t 远离 1：检出 s_t 未作用于 rope 项一类的语义错误。
 
-        kernel 把 s_t 作用在整列 score 上，故 rope 按 rope / s_t 存放。若该契约被
+        q_nope 显式置零，softmax 选权只由 q_rope 与 k_rope 决定。kernel 把 s_t
+        作用在整列 score 上，故 rope 按 rope / s_t 存放。若该契约被
         破坏，误差为 (s_t - 1)·q_rope·rope；rope 幅值小或 s_t ≈ 1 时不可见，因此
         必须显式取 sigma 远离 1（s_t ≈ sigma）且 rope 幅值显著的组合。
         """
-        for i, (sigma, amp) in enumerate([(2.0, 5.0), (2.0, 0.5), (0.1, 5.0)]):
-            with self.subTest(case=i):
-                self._run_one(
-                    4,
-                    512,
-                    256,
-                    "normal",
-                    torch.bfloat16,
-                    seed=5000 + i,
-                    sigma=sigma,
-                    rope_amp=amp,
-                )
+        for dtype in (torch.bfloat16, torch.float16):
+            for i, (sigma, amp) in enumerate([(2.0, 5.0), (2.0, 0.5), (0.1, 5.0)]):
+                with self.subTest(dtype=dtype, case=i):
+                    self._run_one(
+                        4,
+                        512,
+                        256,
+                        "normal",
+                        dtype,
+                        seed=5000 + i,
+                        sigma=sigma,
+                        rope_amp=amp,
+                        zero_q_nope=True,
+                    )
 
     def test_dequant_scale_not_consumed(self):
         """quant_scale_repo_mode=1（COMBINE）下反量化系数存放于 KV slot 内。

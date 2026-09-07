@@ -21,51 +21,68 @@ public:
     explicit TurboQuantSparseFlashAttention(const char *name)
         : OpDef(name)
     {
-        this->Input("query").ParamType(REQUIRED).DataType({ge::DT_BF16}).Format({ge::FORMAT_ND}).AutoContiguous();
-        this->Input("key").ParamType(REQUIRED).DataType({ge::DT_INT8}).Format({ge::FORMAT_ND}).AutoContiguous();
+        this->Input("query")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("key")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_INT8, ge::DT_INT8})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .IgnoreContiguous();
         // MLA 场景下 K 与 V 为同一份 latent，本算子不单独读取 value；
         // 保留该输入是为与 c8 稀疏注意力路径的接口保持一致，调用方传入与 key
         // 相同的张量即可。host 侧校验其 dtype 与 shape 必须与 key 一致。
-        this->Input("value").ParamType(REQUIRED).Follow("key").AutoContiguous();
+        this->Input("value").ParamType(REQUIRED).Follow("key").IgnoreContiguous();
         this->Input("sparse_indices")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         // quant_scale_repo_mode 仅支持 1（COMBINE）：反量化系数与 Nope / Rope 合并存放
         // 在每个 KV slot 的尾部 2 字节内，由 kernel 就地读取。下列两个可选输入在该模式下
         // 不被消费，保留是为与 c8 稀疏注意力路径的接口保持一致，调用方可不传。
         this->Input("key_dequant_scale")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("value_dequant_scale")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        // 下列三个输入在当前唯一支持的 TND + PA_BSND 路径下均为必需，故声明为 REQUIRED：
+        // TND query with either paged KV layout requires these three inputs:
         // 缺 actual_seq_lengths_query 无法切分 TND 的变长 query，缺 block_table 或
         // actual_seq_lengths_kv 无法定位 PageAttention 的 KV。
         this->Input("block_table")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("actual_seq_lengths_query")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("actual_seq_lengths_kv")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Output("attention_out").ParamType(REQUIRED).DataType({ge::DT_BF16}).Format({ge::FORMAT_ND});
-        this->Output("softmax_max").ParamType(REQUIRED).DataType({ge::DT_FLOAT}).Format({ge::FORMAT_ND});
-        this->Output("softmax_sum").ParamType(REQUIRED).DataType({ge::DT_FLOAT}).Format({ge::FORMAT_ND});
+        this->Output("attention_out")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("softmax_max")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("softmax_sum")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Attr("scale_value").AttrType(REQUIRED).Float(1.0);
         // 下列默认值须与 host 侧 tiling 校验的唯一合法取值保持一致，否则绕过
         // PyTorch 封装、直接按声明默认值调用 aclnn 接口时会被 tiling 拒绝。
@@ -73,7 +90,7 @@ public:
         this->Attr("value_quant_mode").AttrType(REQUIRED).Int(3); // 3: TQ4 码本量化
         this->Attr("sparse_block_size").AttrType(OPTIONAL).Int(1);
         this->Attr("layout_query").AttrType(OPTIONAL).String("TND");  // 当前仅支持 TND
-        this->Attr("layout_kv").AttrType(OPTIONAL).String("PA_BSND"); // 当前仅支持 PA_BSND
+        this->Attr("layout_kv").AttrType(OPTIONAL).String("PA_BSND"); // PA_BSND or PA_BNBD
         this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3);          // 3:默认值，只计算下三角
         this->Attr("pre_tokens").AttrType(OPTIONAL).Int(INT64_MAX);
         this->Attr("next_tokens").AttrType(OPTIONAL).Int(INT64_MAX);
