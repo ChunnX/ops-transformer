@@ -230,11 +230,14 @@ public:
 
         CommProtocol protocol;
         if (commAlg == "urma") {
-            protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
+            protocol = CommProtocol::COMM_PROTOCOL_UB_CTP;
         } else {
             protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
         }
+
+        protocol = CommProtocol::COMM_PROTOCOL_UB_CTP;
         GetCommProtocol(hcclHandle, protocol);
+        topoType_ = TopoType::CROSS_SUPER_NODE;
         rankNumPerServer_ = rankNumPerUbDomain_;
         ResolveCustomCclBufferSize(worldSize, customCclBufferSizeResolver);
 
