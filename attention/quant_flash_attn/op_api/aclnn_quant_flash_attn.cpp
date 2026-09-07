@@ -72,8 +72,8 @@ void QuantFlashAttnProcessSinks(const aclTensor *&sinksOptional)
     }
 }
 
-aclnnStatus CheckTensorContiguous(const aclTensor *k, const aclTensor *v, const aclTensor *kDescale,
-                                  const aclTensor *vDescale)
+aclnnStatus QuantFlashAttnCheckTensorContiguous(const aclTensor *k, const aclTensor *v, const aclTensor *kDescale,
+                                                const aclTensor *vDescale)
 {
     if ((k != nullptr && !IsContiguous(k)) || (v != nullptr && !IsContiguous(v))) {
         return ACLNN_ERR_INNER;
@@ -107,7 +107,7 @@ aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
 
     QuantFlashAttnProcessSoftmaxLse(returnSoftmaxLse, softmaxLseOptional, tempTensor, placeHolder);
 
-    aclnnStatus ret = CheckTensorContiguous(k, v, kDescale, vDescale);
+    aclnnStatus ret = QuantFlashAttnCheckTensorContiguous(k, v, kDescale, vDescale);
     if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER, "When tensor is not contiguous, opbase package version check failed");
         return ret;
