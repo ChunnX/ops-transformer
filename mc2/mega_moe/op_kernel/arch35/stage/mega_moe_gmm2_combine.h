@@ -233,7 +233,8 @@ constexpr uint32_t WAVE_COMBINE_MIN_ROW_BUFFER_COUNT = 2U;
 constexpr uint32_t WAVE_COMBINE_STEADY_ROW_BUFFER_COUNT = 1U;
 constexpr uint32_t WAVE_COMBINE_MAX_ROW_BUFFER_COUNT = 6U;
 constexpr uint32_t WAVE_COMBINE_UB_BASE = 64U * 1024U;
-constexpr uint32_t NO_QUANT_TILE_COMBINE_BUFFER_COUNT = 4U;
+// Event pairs rotate independently of the full-tile UB row addresses.
+constexpr uint32_t NO_QUANT_COMBINE_EVENT_COUNT = 4U;
 // [64 KiB, 184 KiB) is dedicated to the Combine row ring and quant scratch.
 // The ready scan starts at 184 KiB, so adaptive row buffers must stay below it.
 constexpr uint32_t WAVE_COMBINE_UB_LIMIT = 184U * 1024U;
@@ -570,54 +571,48 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
     }
 }
 
-// A real UB stage holds one tile-row fragment. Only MTE2 waits when reusing a stage.
-template <bool IsBufferReuse, typename ElementC>
+// Each row has its own UB storage for the lifetime of the tile.
+template <typename ElementC>
 __aicore__ inline void SendNoQuantCombineTileRow(uint32_t nLoc, uint32_t n, uint32_t actualN,
                                                LocalTensor<int32_t> &metaInfoTensor, uint32_t localRowIdx,
-                                               LocalTensor<ElementC> &rowRingUb, uint32_t slot,
+                                               LocalTensor<ElementC> &tileUb, uint32_t rowCount,
                                                GlobalTensor<ElementC> &gmm2OutGm, uint64_t gmSrcOffset,
                                                const Params &params, uint64_t gmRemoteBaseOffset,
                                                GlobalTensor<ElementC> &gmRemoteD)
 {
-    TEventID eventId = static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(slot));
+    TEventID eventId = static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) +
+                                            localRowIdx % NO_QUANT_COMBINE_EVENT_COUNT);
     CombineImpl::CombineTokenRoute route = CombineImpl::LoadCombineTokenRoute(metaInfoTensor, localRowIdx);
     gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(
         GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
     uint64_t gmDstOffset = CombineImpl::GetCombineDstRowIndex(route, params) * n + nLoc;
-    LocalTensor<ElementC> rowUb = rowRingUb[slot * L1_TILE_N];
+    LocalTensor<ElementC> rowUb = tileUb[localRowIdx * L1_TILE_N];
     DataCopyExtParams copyParams{1U, static_cast<uint32_t>(actualN * sizeof(ElementC)), 0U, 0U, 0U};
     DataCopyPadExtParams<ElementC> padParams{false, 0U, 0U, 0U};
-    if constexpr (IsBufferReuse) {
+    DataCopyPad(rowUb, gmm2OutGm[gmSrcOffset], copyParams, padParams);
+    // Reuse a ready event only after MTE3 consumed its previous generation. The
+    // acknowledgement precedes that row's send; UB rows themselves are never reused.
+    if (localRowIdx >= NO_QUANT_COMBINE_EVENT_COUNT) {
         WaitFlag<HardEvent::MTE3_MTE2>(eventId);
     }
-    DataCopyPad(rowUb, gmm2OutGm[gmSrcOffset], copyParams, padParams);
     SetFlag<HardEvent::MTE2_MTE3>(eventId);
     WaitFlag<HardEvent::MTE2_MTE3>(eventId);
+    if (localRowIdx + NO_QUANT_COMBINE_EVENT_COUNT < rowCount) {
+        SetFlag<HardEvent::MTE3_MTE2>(eventId);
+    }
     DataCopyPad(gmRemoteD[gmDstOffset], rowUb, copyParams);
-    SetFlag<HardEvent::MTE3_MTE2>(eventId);
 }
 
-// Drain once per tile, not once per ring rotation. Consume every outstanding stage event before restarting.
-__aicore__ inline void DrainNoQuantCombineSendSlots(uint32_t issuedRowCount)
+// All rows remain intact in UB until the tile's final send completes.
+__aicore__ inline void DrainNoQuantCombineTile()
 {
-    if (issuedRowCount == 0U) {
-        return;
-    }
-    uint32_t activeSlotCount = issuedRowCount < NO_QUANT_TILE_COMBINE_BUFFER_COUNT ?
-                                   issuedRowCount :
-                                   NO_QUANT_TILE_COMBINE_BUFFER_COUNT;
-    for (uint32_t slot = 0U; slot < activeSlotCount; ++slot) {
-        WaitFlag<HardEvent::MTE3_MTE2>(
-            static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(slot)));
-    }
-    // Also wait for MTE2 to consume the stage events before the next tile reuses their IDs.
-    SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
+    SetFlag<HardEvent::MTE3_S>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE3_S>(EVENT_ID0);
 }
 
 // Each AIV1 replays its paired AIC's tile assignment and sends all rows of each owned tile.
-// Load the tile's metadata once, then overlap row GM2UB and UB2GM through four physical UB stages.
-// Drain at the tile boundary; stage reuse does not wait on Scalar and no DDR DSB is added.
+// Load metadata once, then issue paired row GM2UB/UB2GM into distinct rows of a full-tile UB buffer.
+// There is no stage ring or per-row Scalar wait; drain only at the tile boundary, without DDR DSB.
 template <typename ElementC, typename Scheduler, typename Config>
 __aicore__ inline void CombineTokenRange(Scheduler &scheduler, const Params &params,
                                          const GMMAddrInfo &gmmAddrInfo, int32_t &gmTileSequence, const Config &config,
@@ -630,10 +625,12 @@ __aicore__ inline void CombineTokenRange(Scheduler &scheduler, const Params &par
     gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(gmmAddrInfo.gmm2OutGlobal));
     GlobalTensor<int32_t> metaInfoGm;
     metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(gmmAddrInfo.metaInfoGlobal));
-    LocalTensor<ElementC> rowRingUb(TPosition::VECIN, WAVE_COMBINE_UB_BASE,
-                                   NO_QUANT_TILE_COMBINE_BUFFER_COUNT * L1_TILE_N);
-    static_assert(NO_QUANT_TILE_COMBINE_BUFFER_COUNT * L1_TILE_N * sizeof(ElementC) <=
-                  WAVE_COMBINE_UB_LIMIT - WAVE_COMBINE_UB_BASE, "Combine row stages exceed UB budget");
+    // This paired path does not use the wave-ready scan at 184 KiB. A BF16 256x256
+    // tile occupies [64, 192) KiB, below metadata at 200 KiB, as in the baseline.
+    static_assert(L1_TILE_M_256 * L1_TILE_N * sizeof(ElementC) <=
+                  META_INFO_TENSOR_ADDR - WAVE_COMBINE_UB_BASE, "Combine tile overlaps metadata");
+    LocalTensor<ElementC> tileUb(TPosition::VECIN, WAVE_COMBINE_UB_BASE,
+                                L1_TILE_M_256 * L1_TILE_N);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -654,17 +651,11 @@ __aicore__ inline void CombineTokenRange(Scheduler &scheduler, const Params &par
         WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
 
         for (uint32_t rowIdx = 0U; rowIdx < lenTile; ++rowIdx) {
-            uint32_t slot = rowIdx % NO_QUANT_TILE_COMBINE_BUFFER_COUNT;
             uint64_t gmSrcOffset = (static_cast<uint64_t>(mLoc) + rowIdx) * config.n + nLoc;
-            if (rowIdx >= NO_QUANT_TILE_COMBINE_BUFFER_COUNT) {
-                SendNoQuantCombineTileRow<true, ElementC>(nLoc, config.n, actualN, metaInfoTensor, rowIdx,
-                    rowRingUb, slot, gmm2OutGm, gmSrcOffset, params, gmRemoteBaseOffset, gmRemoteD);
-            } else {
-                SendNoQuantCombineTileRow<false, ElementC>(nLoc, config.n, actualN, metaInfoTensor, rowIdx,
-                    rowRingUb, slot, gmm2OutGm, gmSrcOffset, params, gmRemoteBaseOffset, gmRemoteD);
-            }
+            SendNoQuantCombineTileRow<ElementC>(nLoc, config.n, actualN, metaInfoTensor, rowIdx,
+                tileUb, lenTile, gmm2OutGm, gmSrcOffset, params, gmRemoteBaseOffset, gmRemoteD);
         }
-        DrainNoQuantCombineSendSlots(lenTile);
+        DrainNoQuantCombineTile();
     }
 }
 
