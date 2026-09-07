@@ -279,7 +279,7 @@ static inline bool IsNdCompatibleFormat(ge::Format format)
 
 ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckFormatValid()
 {
-    // format 不会被 InferShape 改写，aclnn 单算子与图模式两条通路在这里统一拦
+    // 检查实际下发格式；aclnn L2 另在 Contiguous 转换前检查调用方原始格式。
     for (const auto &spec : INPUT_DTYPE_SPECS) {
         auto desc = spec.optional ? context_->GetOptionalInputDesc(spec.index) : context_->GetInputDesc(spec.index);
         if (desc == nullptr) {

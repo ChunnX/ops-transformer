@@ -13,6 +13,7 @@
  * \brief
  */
 
+#include <initializer_list>
 #include "aclnn_und_gen_qkv_rms_norm_rope_cache.h"
 #include "und_gen_qkv_rms_norm_rope_cache.h"
 #include "aclnn_kernels/contiguous.h"
@@ -40,6 +41,7 @@ constexpr size_t DIM_ZERO = 0;
 constexpr size_t DIM_ONE = 1;
 constexpr size_t DIM_TWO = 2;
 constexpr size_t DIM_NUM_THREE = 3;
+constexpr size_t DIM_NUM_FOUR = 4;
 
 static inline bool CheckNotNull(const aclTensor *undQkv, const aclTensor *undWeightsQ, const aclTensor *undWeightsK,
                                 const aclTensor *cosSinCache, aclTensor *kCacheRef, aclTensor *vCacheRef,
@@ -75,13 +77,50 @@ static inline bool IsNdCompatibleFormat(op::Format format)
     return format == op::Format::FORMAT_ND || format == op::Format::FORMAT_NCL || format == op::Format::FORMAT_NCHW;
 }
 
-// q 由 l0 内部分配后 ViewCopy 写回，tiling 看到的是内部张量的 shape/format，
-// 调用方 q 的这两项只有这里能查（ViewCopy 在 src 为 ND 时会跳过 format 比对）。
-static inline bool CheckQOutFormat(const aclTensor *qOut)
+struct TensorParam {
+    const aclTensor *tensor;
+    const char *name;
+};
+
+// Contiguous 可能转换输入格式；q 由 l0 内部分配，tiling 也看不到调用方的 q format。
+// 必须在转换和推导前检查原始描述符，保留 torch 使用的 NCL/NCHW 等价布局。
+static inline bool CheckFormats(std::initializer_list<TensorParam> tensors)
 {
-    if (!IsNdCompatibleFormat(qOut->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qOut only supports ND format, got %s.",
-                op::ToString(qOut->GetStorageFormat()).GetString());
+    for (const auto &param : tensors) {
+        if (param.tensor == nullptr) {
+            continue; // 必选输入已经检查空指针，可选输入允许透传 nullptr。
+        }
+        if (!IsNdCompatibleFormat(param.tensor->GetStorageFormat()) ||
+            !IsNdCompatibleFormat(param.tensor->GetViewFormat())) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s only supports ND-compatible format, got storage=%s, view=%s.",
+                    param.name, op::ToString(param.tensor->GetStorageFormat()).GetString(),
+                    op::ToString(param.tensor->GetViewFormat()).GetString());
+            return false;
+        }
+    }
+    return true;
+}
+
+// Cache 同时作为 INFER_SHAPE 的输入和输出；在任何描述符改写、空输出优化前校验。
+// CheckQOutShape 已确认 undQkv 为 3D，因此可读取其 headDim。
+static inline bool CheckCacheShapes(const aclTensor *kCacheRef, const aclTensor *vCacheRef,
+                                   const aclTensor *undQkv, int64_t numHeadsK, int64_t numHeadsV)
+{
+    const auto &kShape = kCacheRef->GetViewShape();
+    const auto &vShape = vCacheRef->GetViewShape();
+    if (kShape.GetDimNum() != DIM_NUM_FOUR || vShape.GetDimNum() != DIM_NUM_FOUR ||
+        kCacheRef->IsEmpty() || vCacheRef->IsEmpty()) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kCacheRef/vCacheRef must be non-empty 4D tensors.");
+        return false;
+    }
+    const int64_t headDim = undQkv->GetViewShape().GetDim(DIM_TWO);
+    if (kShape.GetDim(DIM_ZERO) != vShape.GetDim(DIM_ZERO) ||
+        kShape.GetDim(DIM_ONE) != vShape.GetDim(DIM_ONE) ||
+        kShape.GetDim(DIM_TWO) != numHeadsK || vShape.GetDim(DIM_TWO) != numHeadsV ||
+        kShape.GetDim(DIM_NUM_THREE) != headDim || vShape.GetDim(DIM_NUM_THREE) != headDim) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "kCacheRef/vCacheRef must share Bn/Bs, with Hk=%ld, Hv=%ld and D=%ld; got k=%s, v=%s.",
+                numHeadsK, numHeadsV, headDim, op::ToString(kShape).GetString(), op::ToString(vShape).GetString());
         return false;
     }
     return true;
@@ -151,18 +190,24 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
                           numHeadsK, numHeadsV, normEps, mropeSection),
                    DFX_OUT(qOut, kCacheRef, vCacheRef));
 
-    // 参数检查：L2 只查 tiling 看不到的东西——KV Cache 的 view stride，以及调用方 q
-    // （它不进 tiling，见 l0 内部分配）。其余 dtype/shape/属性取值统一在 tiling 侧，
-    // aclnn 单算子路径与图模式都会走，避免两处重复实现导致漂移。
+    // L2 检查转换前的原始 format、Cache 描述符及调用方 q；tiling 保留完整校验供图模式使用。
     auto notNull = und_gen_qkv_rms_norm_rope_cache::CheckNotNull(undQkv, undWeightsQ, undWeightsK, cosSinCache,
                                                                  kCacheRef, vCacheRef, slotMapping, positions, qOut);
     CHECK_RET(notNull, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckGenPaired(genQkvOptional, genWeightsQOptional, genWeightsKOptional),
               ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckCacheContiguous(kCacheRef, vCacheRef), ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckQOutFormat(qOut), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckFormats(
+                  {{undQkv, "undQkv"}, {undWeightsQ, "undWeightsQ"}, {undWeightsK, "undWeightsK"},
+                   {cosSinCache, "cosSinCache"}, {kCacheRef, "kCacheRef"}, {vCacheRef, "vCacheRef"},
+                   {slotMapping, "slotMapping"}, {positions, "positions"}, {genQkvOptional, "genQkvOptional"},
+                   {genWeightsQOptional, "genWeightsQOptional"}, {genWeightsKOptional, "genWeightsKOptional"},
+                   {catIndicesOptional, "catIndicesOptional"}, {qOut, "qOut"}}),
+              ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckQOutDtype(qOut, undQkv), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckQOutShape(qOut, undQkv, genQkvOptional, numHeadsQ),
+              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckCacheShapes(kCacheRef, vCacheRef, undQkv, numHeadsK, numHeadsV),
               ACLNN_ERR_PARAM_INVALID);
 
     // 创建OpExecutor
