@@ -59,7 +59,7 @@ GRAPH_PATH = 0
 DEVICE_ID = 0
 
 B = 1
-N_q = 10
+N_q = 1
 N_kv = 1
 
 # MLA dims: D_nope + D_rope = qkHeadDim
