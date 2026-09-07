@@ -158,20 +158,37 @@ extern "C" __global__ __aicore__ void moe_init_routing_quant_v2(
         gatherPipe.Destroy();
     }
 
-    // TODO(#debug): 临时调试通道，定位后删除。将二进制指纹与 kernel 侧输出地址写入 cumsum 输出前 5 个元素
+    // TODO(#debug): 临时调试通道，定位后删除。将二进制指纹与 kernel 侧输出地址写入 cumsum 输出前 8 个元素
     if ((TILING_KEY_IS(11000) || TILING_KEY_IS(11010)) && t->expertTokensCountOrCumsumFlag != EXERPT_TOKENS_NONE &&
         GetBlockIdx() == 0) {
-        GlobalTensor<int32_t> dbgGm;
-        dbgGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensCountOrCumsum);
-        MoeInitRoutingQuantV2::SetWaitFlag<AscendC::HardEvent::MTE3_S>(AscendC::HardEvent::MTE3_S);
+        TPipe dbgPipe;
+        TBuf<AscendC::TPosition::VECCALC> dbgBuf;
+        TBuf<AscendC::TPosition::VECCALC> probeBuf;
+        dbgPipe.InitBuffer(dbgBuf, BLOCK_BYTES + BLOCK_BYTES);
+        dbgPipe.InitBuffer(probeBuf, BLOCK_BYTES + BLOCK_BYTES);
+        LocalTensor<int32_t> dbgLocal = dbgBuf.Get<int32_t>();
+        LocalTensor<float> probeLocal = probeBuf.Get<float>();
         uint64_t scaleAddr = reinterpret_cast<uint64_t>(dynamicQuantScale);
         uint64_t xAddr = reinterpret_cast<uint64_t>(expandedX);
-        dbgGm.SetValue(0, 0x20260906);
-        dbgGm.SetValue(1, static_cast<int32_t>(scaleAddr & 0xFFFFFFFF));
-        dbgGm.SetValue(2, static_cast<int32_t>(scaleAddr >> 32));
-        dbgGm.SetValue(3, static_cast<int32_t>(xAddr & 0xFFFFFFFF));
-        dbgGm.SetValue(4, static_cast<int32_t>(xAddr >> 32));
-        AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-            AscendC::DcciDst::CACHELINE_OUT>(dbgGm);
+        dbgLocal.SetValue(0, 0x20260906);
+        dbgLocal.SetValue(1, static_cast<int32_t>(scaleAddr & 0xFFFFFFFF));
+        dbgLocal.SetValue(2, static_cast<int32_t>(scaleAddr >> 32));
+        dbgLocal.SetValue(3, static_cast<int32_t>(xAddr & 0xFFFFFFFF));
+        dbgLocal.SetValue(4, static_cast<int32_t>(xAddr >> 32));
+        dbgLocal.SetValue(5, 0);
+        dbgLocal.SetValue(6, 0);
+        dbgLocal.SetValue(7, 0);
+        for (int32_t p = 0; p < 8; p++) {
+            probeLocal.SetValue(p, 20260907.0f);
+        }
+        MoeInitRoutingQuantV2::SetWaitFlag<AscendC::HardEvent::S_MTE3>(AscendC::HardEvent::S_MTE3);
+        GlobalTensor<int32_t> dbgGm;
+        dbgGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensCountOrCumsum);
+        DataCopyPad(dbgGm, dbgLocal, {1, static_cast<uint32_t>(BLOCK_BYTES + BLOCK_BYTES), 0, 0, 0});
+        GlobalTensor<float> probeGm;
+        probeGm.SetGlobalBuffer((__gm__ float *)dynamicQuantScale);
+        DataCopyPad(probeGm, probeLocal, {1, static_cast<uint32_t>(BLOCK_BYTES + BLOCK_BYTES), 0, 0, 0});
+        MoeInitRoutingQuantV2::SetWaitFlag<AscendC::HardEvent::MTE3_S>(AscendC::HardEvent::MTE3_S);
+        dbgPipe.Destroy();
     }
 }
