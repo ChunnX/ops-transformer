@@ -237,15 +237,51 @@ def block_attention_residuals(
     _check_inputs(
         partial_block, block_res, proj_weight, norm_weight, valid_block_num, norm_eps
     )
-    # 普通路径：need_backward=False，不保存中间变量，只返回主输出
-    op_module = block_attention_residuals_op_builder.load()
-    hidden, _, _ = op_module.block_attention_residuals(
-        partial_block,
-        block_res,
-        proj_weight,
-        norm_weight,
-        valid_block_num,
-        norm_eps,
-        False,
+    needs_backward = torch.is_grad_enabled() and any(
+        tensor.requires_grad for tensor in (partial_block, block_res, proj_weight, norm_weight)
+    )
+    if needs_backward:
+        return _BlockAttentionResidualsFunction.apply(
+            partial_block, block_res, proj_weight, norm_weight, valid_block_num, norm_eps
+        )
+    hidden, _, _ = _run_block_attention_residuals(
+        partial_block, block_res, proj_weight, norm_weight, valid_block_num, norm_eps, False
     )
     return hidden
+
+
+def _run_block_attention_residuals(
+    partial_block, block_res, proj_weight, norm_weight, valid_block_num, norm_eps, need_backward
+):
+    op_module = block_attention_residuals_op_builder.load()
+    hidden, inv_norm, probs = op_module.block_attention_residuals(
+        partial_block, block_res, proj_weight, norm_weight,
+        valid_block_num, norm_eps, need_backward,
+    )
+    return hidden, inv_norm, probs
+
+
+class _BlockAttentionResidualsFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, partial_block, block_res, proj_weight, norm_weight, valid_block_num, norm_eps):
+        hidden, inv_norm, probs = _run_block_attention_residuals(
+            partial_block, block_res, proj_weight, norm_weight, valid_block_num, norm_eps, True
+        )
+        ctx.save_for_backward(partial_block, block_res, proj_weight, norm_weight, inv_norm, probs)
+        ctx.valid_block_num = valid_block_num
+        return hidden
+
+    @staticmethod
+    def backward(ctx, grad_hidden_states):
+        from cann_ops_transformer import block_attention_residuals_backward
+
+        partial_block, block_res, proj_weight, norm_weight, inv_norm, probs = ctx.saved_tensors
+        return (
+            *block_attention_residuals_backward(
+                partial_block, block_res, proj_weight, norm_weight,
+                grad_hidden_states, inv_norm, probs,
+                valid_block_num=ctx.valid_block_num,
+            ),
+            None,
+            None,
+        )
