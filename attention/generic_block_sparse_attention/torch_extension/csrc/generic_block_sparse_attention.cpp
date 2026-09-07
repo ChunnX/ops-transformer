@@ -13,9 +13,6 @@
 #include "aclnn_common.h"
 
 namespace op_api {
-namespace {
-constexpr int64_t METADATA_SIZE = 1024;
-}
 
 at::Tensor GenericBlockSparseAttentionMetadata(
     const at::Tensor &sparse_block_idx, const at::Tensor &sparse_block_count,
@@ -23,13 +20,8 @@ at::Tensor GenericBlockSparseAttentionMetadata(
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv, int64_t max_seqlen_q,
     int64_t max_seqlen_kv, int64_t num_heads_q, int64_t num_heads_kv, int64_t head_dim, at::IntArrayRef block_shape,
     bool is_packed_gqa, c10::string_view layout_q, c10::string_view layout_kv, int64_t mask_mode, int64_t quant_mode,
-    int64_t softmax_precision, int64_t win_left, int64_t win_right)
+    int64_t softmax_precision, int64_t win_left, int64_t win_right, const at::Tensor &output)
 {
-    at::Tensor metadata{nullptr};
-    {
-        const c10::OptionalDeviceGuard deviceGuard(sparse_block_idx.device());
-        metadata = at::empty({METADATA_SIZE}, sparse_block_idx.options().dtype(at::kInt));
-    }
     std::string layout_q_str(layout_q);
     std::string layout_kv_str(layout_kv);
     char *layout_q_ptr = const_cast<char *>(layout_q_str.c_str());
@@ -39,8 +31,8 @@ at::Tensor GenericBlockSparseAttentionMetadata(
     ACLNN_CMD(aclnnGenericBlockSparseAttentionMetadata, sparse_block_idx, sparse_block_count, cu_seqlens_q,
               cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv, num_heads_q, num_heads_kv, head_dim,
               block_shape, is_packed_gqa_flag, layout_q_ptr, layout_kv_ptr, mask_mode, quant_mode, softmax_precision,
-              win_left, win_right, metadata);
-    return metadata;
+              win_left, win_right, output);
+    return output;
 }
 
 std::tuple<at::Tensor, at::Tensor> GenericBlockSparseAttention(

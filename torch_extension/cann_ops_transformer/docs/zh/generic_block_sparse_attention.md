@@ -666,9 +666,7 @@ mask_mode参数解释见「mask_mode 枚举」。
             <td rowspan="2">
                 <ul>
                     <li>当layout_q为TND时，cu_seqlens_q必须传入</li>
-                    <li>当layout_q不为TND时，cu_seqlens_q不支持传入</li>
                     <li>当layout_kv为PA_BBND时，cu_seqlens_kv必须传入</li>
-                    <li>当layout_kv不为PA_BBND时，cu_seqlens_kv不支持传入</li>
                 </ul>
             </td>
         </tr>

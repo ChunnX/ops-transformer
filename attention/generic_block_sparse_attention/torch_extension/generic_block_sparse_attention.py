@@ -242,6 +242,11 @@ def generic_block_sparse_attention_metadata(
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
     op_module = generic_block_sparse_attention_op_builder.load()
+    output = torch.empty(
+        (GBSA_METADATA_SIZE,),
+        dtype=torch.int32,
+        device=sparse_block_idx.device,
+    )
     return op_module.generic_block_sparse_attention_metadata(
         sparse_block_idx,
         sparse_block_count,
@@ -263,6 +268,7 @@ def generic_block_sparse_attention_metadata(
         softmax_precision,
         win_left,
         win_right,
+        output,
     )
 
 
