@@ -51,10 +51,6 @@ constexpr uint32_t REMOTE_RELAY_INFO_SIZE = 32U;
 constexpr uint32_t REMOTE_RELAY_INFO_U64_COUNT = REMOTE_RELAY_INFO_SIZE / sizeof(uint64_t);
 constexpr uint32_t REMOTE_RELAY_CAPACITY = URMA_BATCH_WQE_CAPACITY;
 constexpr uint32_t REMOTE_RELAY_BUFFER_SIZE = REMOTE_RELAY_CAPACITY * REMOTE_RELAY_INFO_SIZE;
-constexpr uint32_t REMOTE_RELAY_STATE_READY = 0U;
-constexpr uint32_t REMOTE_RELAY_STATE_SUBMITTED = 1U;
-constexpr uint32_t REMOTE_RELAY_STATE_RANK_HEAD = 2U;
-
 static constexpr AscendC::UrmaWqeEntry REMOTE_DATA_WQE_CONFIG = {
     .odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_FIRST_FLAG_WQE_CONFIG = {
@@ -75,8 +71,6 @@ struct alignas(REMOTE_RELAY_INFO_SIZE) RemoteRelayInfo {
     uint64_t remoteFlagOffset;
     uint32_t sourceAivId;
     uint32_t dstRank;
-    uint32_t state;
-    uint32_t reserved;
 };
 
 static_assert(sizeof(RemoteRelayInfo) == REMOTE_RELAY_INFO_SIZE, "RemoteRelayInfo must occupy 32 bytes");
@@ -105,7 +99,6 @@ private:
                                                  const RemoteRelayInfo &relayInfo, bool firstFlag);
     __aicore__ inline void StoreRemoteRelayInfo(uint32_t index, const RemoteRelayInfo &relayInfo);
     __aicore__ inline RemoteRelayInfo LoadRemoteRelayInfo(uint32_t index);
-    __aicore__ inline void SetRemoteRelayState(uint32_t index, uint32_t state);
 
     TPipe *tpipe_{nullptr};
     Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
@@ -357,12 +350,9 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     const uint32_t base = index * REMOTE_RELAY_INFO_U64_COUNT;
     const uint64_t sourceAndRank =
         static_cast<uint64_t>(relayInfo.sourceAivId) | (static_cast<uint64_t>(relayInfo.dstRank) << 32U);
-    const uint64_t stateAndReserved =
-        static_cast<uint64_t>(relayInfo.state) | (static_cast<uint64_t>(relayInfo.reserved) << 32U);
     remoteRelayInfoTensor_.SetValue(base, relayInfo.remoteDataOffset);
     remoteRelayInfoTensor_.SetValue(base + 1U, relayInfo.remoteFlagOffset);
     remoteRelayInfoTensor_.SetValue(base + 2U, sourceAndRank);
-    remoteRelayInfoTensor_.SetValue(base + 3U, stateAndReserved);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -373,26 +363,12 @@ __aicore__ inline RemoteRelayInfo FFNToAttentionUrma<TemplateFFNToAttentionUrmaT
                    REMOTE_RELAY_CAPACITY);
     const uint32_t base = index * REMOTE_RELAY_INFO_U64_COUNT;
     const uint64_t sourceAndRank = remoteRelayInfoTensor_.GetValue(base + 2U);
-    const uint64_t stateAndReserved = remoteRelayInfoTensor_.GetValue(base + 3U);
     RemoteRelayInfo relayInfo;
     relayInfo.remoteDataOffset = remoteRelayInfoTensor_.GetValue(base);
     relayInfo.remoteFlagOffset = remoteRelayInfoTensor_.GetValue(base + 1U);
     relayInfo.sourceAivId = static_cast<uint32_t>(sourceAndRank);
     relayInfo.dstRank = static_cast<uint32_t>(sourceAndRank >> 32U);
-    relayInfo.state = static_cast<uint32_t>(stateAndReserved);
-    relayInfo.reserved = static_cast<uint32_t>(stateAndReserved >> 32U);
     return relayInfo;
-}
-
-template <TemplateFFNToAttentionUrmaTypeClass>
-__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::SetRemoteRelayState(uint32_t index,
-                                                                                                   uint32_t state)
-{
-    ascendc_assert(index < REMOTE_RELAY_CAPACITY, "remote relay index out of range, index=%u, capacity=%u", index,
-                   REMOTE_RELAY_CAPACITY);
-    const uint32_t stateOffset = index * REMOTE_RELAY_INFO_U64_COUNT + 3U;
-    const uint64_t stateAndReserved = remoteRelayInfoTensor_.GetValue(stateOffset);
-    remoteRelayInfoTensor_.SetValue(stateOffset, (stateAndReserved & 0xFFFFFFFF00000000ULL) | state);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -502,99 +478,50 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                                        sizeof(int32_t) <= winTokenInfoTableSize_ - remoteFlagOffset,
                                    "token flag address exceeds info table, flagOffset=%lu, infoSize=%lu",
                                    remoteFlagOffset, winTokenInfoTableSize_);
-                    RemoteRelayInfo relayInfo{remoteDataOffset,
-                                              remoteFlagOffset,
-                                              sourceAivId,
-                                              metaDataStruct.curAttenWorkRank,
-                                              REMOTE_RELAY_STATE_READY,
-                                              0U};
+                    RemoteRelayInfo relayInfo{remoteDataOffset, remoteFlagOffset, sourceAivId,
+                                              metaDataStruct.curAttenWorkRank};
                     StoreRemoteRelayInfo(relayCount, relayInfo);
                     ++relayCount;
                 }
 
-                HcommChannelHandle sharedChannel = 0U;
-                if (relayCount > 0U) {
-                    RemoteRelayInfo firstRelayInfo = LoadRemoteRelayInfo(0U);
-                    sharedChannel = GetUrmaCommHandle(firstRelayInfo.dstRank);
-                }
+                for (uint32_t dstRank = 0U; dstRank < worldSize_; ++dstRank) {
+                    if (dstRank == rankId_) {
+                        continue;
+                    }
 
-                // Phase 1: submit data batches for every destination rank before publishing any flag.
-                uint32_t submittedCount = 0U;
-                while (submittedCount < relayCount) {
-                    uint32_t rankHeadIndex = relayCount;
-                    RemoteRelayInfo rankHeadInfo{};
+                    bool hasTokens = false;
                     for (uint32_t index = 0U; index < relayCount; ++index) {
                         RemoteRelayInfo relayInfo = LoadRemoteRelayInfo(index);
-                        if (relayInfo.state == REMOTE_RELAY_STATE_READY) {
-                            rankHeadIndex = index;
-                            rankHeadInfo = relayInfo;
+                        if (relayInfo.dstRank == dstRank) {
+                            hasTokens = true;
                             break;
                         }
                     }
-                    ascendc_assert(rankHeadIndex < relayCount,
-                                   "failed to find an unsubmitted relay, submittedCount=%u, relayCount=%u",
-                                   submittedCount, relayCount);
+                    if (!hasTokens) {
+                        continue;
+                    }
 
-                    const uint32_t dstRank = rankHeadInfo.dstRank;
                     GM_ADDR remoteWindowAddr = GetWindowAddr(dstRank);
                     ascendc_assert(remoteWindowAddr != nullptr, "window address is null, dstRank=%u", dstRank);
                     HcommChannelHandle channel = GetUrmaCommHandle(dstRank);
-                    ascendc_assert(channel == sharedChannel, "all remote ranks must use the shared Hcomm channel");
                     HcommBatchHandle batchHandle =
                         hcomm_.MakeBatchHandle(channel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, remoteWindowAddr);
 
                     uint32_t rankTokenCount = 0U;
                     for (uint32_t index = 0U; index < relayCount; ++index) {
                         RemoteRelayInfo relayInfo = LoadRemoteRelayInfo(index);
-                        if (relayInfo.state != REMOTE_RELAY_STATE_READY || relayInfo.dstRank != dstRank) {
+                        if (relayInfo.dstRank != dstRank) {
                             continue;
                         }
                         AppendRemoteDataWrite(batchHandle, remoteWindowAddr, relayInfo);
                         ++rankTokenCount;
                     }
                     ascendc_assert(rankTokenCount > 0U, "empty remote batch, dstRank=%u", dstRank);
-                    int32_t ret = hcomm_.BatchCommit(batchHandle);
-                    ascendc_assert(ret == 0, "BatchCommit data failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
-                                   dstRank);
-                    ret = hcomm_.Drain<PIPE_MTE3>(batchHandle);
-                    ascendc_assert(ret == 0, "per-rank data drain failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
-                                   dstRank);
-
-                    for (uint32_t index = 0U; index < relayCount; ++index) {
-                        RemoteRelayInfo relayInfo = LoadRemoteRelayInfo(index);
-                        if (relayInfo.state != REMOTE_RELAY_STATE_READY || relayInfo.dstRank != dstRank) {
-                            continue;
-                        }
-                        SetRemoteRelayState(index, index == rankHeadIndex ? REMOTE_RELAY_STATE_RANK_HEAD :
-                                                                            REMOTE_RELAY_STATE_SUBMITTED);
-                    }
-                    submittedCount += rankTokenCount;
-                }
-
-                // if (relayCount > 0U) {
-                //     HcommBatchHandle drainHandle =
-                //         hcomm_.MakeBatchHandle(sharedChannel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, nullptr);
-                //     int32_t ret = hcomm_.Drain(drainHandle);
-                //     ascendc_assert(ret == 0, "data BatchDrain failed, ret=%d, rankId=%u, round=%lu", ret, rankId_,
-                //                    round);
-                // }
-
-                // Phase 2: data is now remotely visible on every rank. Submit all flag batches.
-                for (uint32_t rankHeadIndex = 0U; rankHeadIndex < relayCount; ++rankHeadIndex) {
-                    RemoteRelayInfo rankHeadInfo = LoadRemoteRelayInfo(rankHeadIndex);
-                    if (rankHeadInfo.state != REMOTE_RELAY_STATE_RANK_HEAD) {
-                        continue;
-                    }
-                    const uint32_t dstRank = rankHeadInfo.dstRank;
-                    GM_ADDR remoteWindowAddr = GetWindowAddr(dstRank);
-                    ascendc_assert(remoteWindowAddr != nullptr, "window address is null, dstRank=%u", dstRank);
-                    HcommChannelHandle channel = GetUrmaCommHandle(dstRank);
-                    ascendc_assert(channel == sharedChannel, "all remote ranks must use the shared Hcomm channel");
-                    HcommBatchHandle batchHandle =
-                        hcomm_.MakeBatchHandle(channel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, remoteWindowAddr);
+                    ascendc_assert(rankTokenCount <= URMA_BATCH_WQE_CAPACITY / 2U,
+                                   "remote batch exceeds WQE capacity, tokenCount=%u, capacity=%u", rankTokenCount,
+                                   URMA_BATCH_WQE_CAPACITY);
 
                     bool firstFlag = true;
-                    uint32_t rankTokenCount = 0U;
                     for (uint32_t index = 0U; index < relayCount; ++index) {
                         RemoteRelayInfo relayInfo = LoadRemoteRelayInfo(index);
                         if (relayInfo.dstRank != dstRank) {
@@ -602,24 +529,15 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                         }
                         AppendRemoteFlagWrite(batchHandle, remoteWindowAddr, relayInfo, firstFlag);
                         firstFlag = false;
-                        ++rankTokenCount;
                     }
-                    ascendc_assert(rankTokenCount > 0U, "empty remote flag batch, dstRank=%u", dstRank);
+
                     int32_t ret = hcomm_.BatchCommit(batchHandle);
-                    ascendc_assert(ret == 0, "BatchCommit flag failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
+                    ascendc_assert(ret == 0, "BatchCommit failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
                                    dstRank);
-                    ret = hcomm_.Drain<PIPE_MTE3>(batchHandle);
-                    ascendc_assert(ret == 0, "per-rank flag drain failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
+                    ret = hcomm_.Drain(batchHandle);
+                    ascendc_assert(ret == 0, "batch drain failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
                                    dstRank);
                 }
-
-                // if (relayCount > 0U) {
-                //     HcommBatchHandle drainHandle =
-                //         hcomm_.MakeBatchHandle(sharedChannel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, nullptr);
-                //     int32_t ret = hcomm_.Drain(drainHandle);
-                //     ascendc_assert(ret == 0, "flag BatchDrain failed, ret=%d, rankId=%u, round=%lu", ret, rankId_,
-                //                    round);
-                // }
             }
 
             // Core 0 must drain all active channels before workers overwrite their per-core staging slots.
