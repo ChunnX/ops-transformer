@@ -101,11 +101,11 @@ protected:
                                                    uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
                                                    uint32_t sliceTokenCount,
                                                    WaveCombineBufferConfig &combineBufferConfig,
-                                                   uint32_t &combineRowSequence, int32_t &gmmTileSequence,
+                                                   uint32_t &combineRowSequence, int32_t &pairwiseTileSequence,
                                                    bool isFinalCombine);
     template <bool WaitForTokenCountReady>
     __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx);
-    __aicore__ inline void ProcessSharedExpertGmm1();
+    __aicore__ inline void ProcessSharedExpertGmm1(int32_t &gmm1TileReadySequence);
     __aicore__ inline void ProcessSharedExpertGmm2();
     template <typename Derived>
     __aicore__ inline void ProcessWave(Derived &derived);
@@ -138,8 +138,6 @@ protected:
     uint32_t blockIdx_ = GetBlockIdx() / GetTaskRation();
     uint32_t aivCoreIdx_ = GetBlockIdx();
     uint16_t gmm1PingPongIdx_ = 0;
-    // 同一 AIC/AIV 对复用 gmmToEpilogueFlag；序号在单次 launch 的相关 GMM 阶段间保持单调递增。
-    int32_t gmmTileSequence_ = 0;
     // MoE GMM1/GMM2 共用分核游标；A8W8 的共享专家 GMM2 继续沿用该游标。
     uint32_t startBlockIdx_ = 0;
     // 主线 shared-expert 特性成员
@@ -241,7 +239,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     sharedExpertNum_ = tilingData->sharedExpertNum;
     mGroupsPerWave_ = tilingData->mGroupsPerWave;
     gmm1PingPongIdx_ = 0;
-    gmmTileSequence_ = 0;
     startBlockIdx_ = 0;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
     rankId_ = mc2Context_->epRankId;
@@ -482,7 +479,7 @@ MegaMoe<TemplateMegaMoeTypeFunc>::InitTokenUnpermuteBuffers()
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1()
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1(int32_t &gmm1TileReadySequence)
 {
     if (gmmExecutionConfig_.blockJob.totalJobs == 0U ||
         gmmExecutionConfig_.blockJob.jobIndex >= gmmExecutionConfig_.blockJob.totalJobs) {
@@ -515,7 +512,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
         RunSharedExpertGmm1ActivationStage<QuantOutType, Weight1Type, ActivationQuantOutType, QuantScaleOutType,
                                            ENABLE_A8W4, GMM1_TILE_M, IsGmm1Interleaved, ENABLE_A8W8>(
             commonConfig_, gmmExecutionConfig_, params_, sharedEpilogueOp_, gmmAddrInfo, problemShape, runtimeState,
-            sharedExpertIdx, &gmmTileSequence_);
+            sharedExpertIdx, &gmm1TileReadySequence);
     }
     EndSync<IsGmm1Interleaved>(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
 }
@@ -548,7 +545,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert(
     ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
     uint32_t sliceTokenCount, WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence,
-    int32_t &gmmTileSequence, bool isFinalCombine)
+    int32_t &pairwiseTileSequence, bool isFinalCombine)
 {
     uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     uint32_t gmm2NTileCount = Ops::Base::CeilDiv(commonConfig_.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
@@ -567,7 +564,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
         Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
         int32_t *gmm2TileSequence = nullptr;
         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-            gmm2TileSequence = &gmmTileSequence;
+            gmm2TileSequence = &pairwiseTileSequence;
         }
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
                     TopkWeightsPrefetch, false, false, true, CombineQuantMode == COMBINE_NO_QUANT>(
@@ -671,14 +668,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
     CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
 
+    int32_t gmm1TileReadySequence = 0;
     if (sharedExpertNum_ > 0U) {
         // 阶段 2：可选的共享专家 GMM1 及 Activation。
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM1);
-        ProcessSharedExpertGmm1();
+        ProcessSharedExpertGmm1(gmm1TileReadySequence);
     }
 
     // 阶段 3：由派生类编排 MoE 专家的 Dispatch、GMM1/Activation 和 GMM2/Combine。
-    derived.ProcessMoeExpertStages();
+    if constexpr (ENABLE_A8W4) {
+        derived.ProcessMoeExpertStages(gmm1TileReadySequence);
+    } else {
+        derived.ProcessMoeExpertStages();
+    }
     if constexpr (g_coreType == AIV) {
         ExportCompactExpertTokenCounts(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
         PipeBarrier<PIPE_ALL>();
