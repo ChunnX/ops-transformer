@@ -478,6 +478,7 @@ public:
         // MLA TND: S1G layout, s1Idx = gS1Idx / realGSize
         info.s1Idx = info.gS1Idx / constInfo_.realGSize;
         info.s2Idx = s2Cur * s2BaseSize;
+        info.s2LocalIdx = (s2Cur - curS2Start_) * s2BaseSize;
         info.actS1Size = actSeqLensQ_;
         info.actS2Size = actSeqLensKv_;
 

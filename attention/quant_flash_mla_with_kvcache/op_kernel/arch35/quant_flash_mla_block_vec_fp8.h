@@ -102,6 +102,8 @@ public:
     GlobalTensor<float> deScaleQGm_;
     GlobalTensor<float> deScaleKGm_;
     GlobalTensor<float> deScaleVGm_;
+    FaGmTensor<float, Q_SCALE_FORMAT, int32_t, true> queryScaleGm_;
+    CopyQueryScaleGmToUb<float, Q_SCALE_FORMAT> copyQueryScaleGmToUb_;
     flashdecodeGmType accumOutGm_;
     flashdecodeGmType softmaxFDSumGm_;
     flashdecodeGmType softmaxFDMaxGm_;
@@ -164,6 +166,8 @@ public:
         // MLA全量化dequantScale: Q per-token-head, KV per-tensor
         if (dequantScaleQuery != nullptr) {
             deScaleQGm_.SetGlobalBuffer((__gm__ float *)dequantScaleQuery);
+            InitQScaleBuffer(constInfo_.bSize, constInfo_.realN2Size, constInfo_.realGSize, constInfo_.s1Size, 1,
+                             queryScaleGm_, dequantScaleQuery);
         }
         if (dequantScaleKey != nullptr) {
             deScaleKGm_.SetGlobalBuffer((__gm__ float *)dequantScaleKey);
@@ -182,22 +186,34 @@ public:
         }
     }
 
-    // MLA q_descale: [T, N1] row-major(per-token-head), int32 cu_seq解析batch的TBase
-    // combined gS1索引(s1Idx*gSize+gIdx)与[T, N1]行主序偏移一一对应, 拷贝连续actVecMSize个元素
+    __aicore__ inline void InitQScaleBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
+                                            uint32_t headDim, FaGmTensor<float, Q_SCALE_FORMAT, int32_t, true> &qScaleGmTensor,
+                                            __gm__ uint8_t *gm)
+    {
+        qScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ float *)gm);
+        if constexpr (GmLayoutParams<Q_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_ANTIQ_TN) {
+            qScaleGmTensor.offsetCalculator.Init(n2Size, gSize, *qSeqParserPtr_);
+        }
+    }
+
+    // MLA q_descale: 复用common层 CopyQueryScaleGmToUb
     __aicore__ inline void CopyQueryScaleSlice(const LocalTensor<float> &dstTensor, uint32_t dOffset,
                                                uint32_t dRealSize, RunInfoX &runInfo)
     {
-        (void)dOffset;
-        (void)dRealSize;
-        uint64_t baseOffset = qSeqParserPtr_->GetTBase(runInfo.bIdx) * constInfo_.realGSize + runInfo.gS1Idx +
-                               runInfo.vecMbaseIdx;
-        DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = 1;
-        dataCopyParams.blockLen = static_cast<uint16_t>(runInfo.actVecMSize) * sizeof(float);
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = 0;
-        DataCopyPadExtParams<float> dataCopyPadParams;
-        DataCopyPad(dstTensor, deScaleQGm_[baseOffset], dataCopyParams, dataCopyPadParams);
+        FaUbTensor<float> ubTensor{
+            .tensor = dstTensor,
+            .rowCount = runInfo.actVecMSize,
+            .colCount = dRealSize,
+        };
+
+        GmCoord gmCoord{
+            .bIdx = runInfo.bIdx,
+            .n2Idx = runInfo.realN2Idx,
+            .gS1Idx = runInfo.gS1Idx + runInfo.vecMbaseIdx,
+            .dIdx = dOffset,
+            .gS1DealSize = runInfo.actVecMSize,
+        };
+        copyQueryScaleGmToUb_(ubTensor, queryScaleGm_, gmCoord);
     }
 
     __aicore__ inline void CopyQueryScaleTile(const LocalTensor<float> &dstTensor, RunInfoX &runInfo)
