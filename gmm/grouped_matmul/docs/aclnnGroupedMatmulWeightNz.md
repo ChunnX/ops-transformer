@@ -607,7 +607,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     - groupListType：支持取值0、1、2。
       - 当groupListType为0时，groupListOptional必须为非负单调非递减数列；
       - 当groupListType为1时，groupListOptional必须为非负数列。
-      - 仅全量化且groupType为0场景下支持groupListType为2，此时要求groupListOptional中数值为非负数列，shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]，其中groupSize为分组轴上每组大小，此时groupedSize为零的组置于groupList末尾，非零组被前置，详见groupListOptional配置示例。
+      - 仅全量化或伪量化a8w4，且groupType为0场景下支持groupListType为2，此时要求groupListOptional中数值为非负数列，shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]，其中groupSize为分组轴上每组大小，此时groupedSize为零的组置于groupList末尾，非零组被前置，详见groupListOptional配置示例。
     - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
     - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型，取值范围为0-5。
       - 在伪量化和非量化场景下，actType仅支持0。
