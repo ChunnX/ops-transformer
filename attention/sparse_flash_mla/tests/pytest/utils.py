@@ -325,7 +325,7 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
             "return_softmax_lse": params.get("return_softmax_lse", [False]),
             "ori_topk_length": params.get("ori_topk_length", [None]),
             "cmp_topk_length": params.get("cmp_topk_length", [None]),
-            "batch_consistency": params.get("batch_consistency", ["False"]),
+            "batch_consistency": params.get("batch_consistency", [False]),
             "batch_consistency_seed": params.get("batch_consistency_seed", [None]),
             "batch_consistency_order": params.get("batch_consistency_order", [None]),
             "batch_consistency_batch_split": params.get(
@@ -342,6 +342,12 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
             ),
         }
         param_names = list(param_values.keys())
+        if is_save_pt:
+            # Excel rows are already individual cases. Unwrap only defaults for
+            # absent columns; explicitly supplied list-valued cells stay intact.
+            for name, value in param_values.items():
+                if name not in params and isinstance(value, list) and len(value) == 1:
+                    param_values[name] = value[0]
         for key, value in param_values.items():
             if isinstance(value, str) and value in str_map_dict:
                 param_values[key] = str_map_dict[value]
