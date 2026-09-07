@@ -39,6 +39,13 @@ constexpr uint32_t BNSD_DIM_S = 2;
 constexpr uint32_t BNSD_DIM_D = 3;
 constexpr uint32_t BNSD_DIM_NUM = 4;
 
+constexpr uint64_t TILING_KEY_100 = 100;
+constexpr uint64_t TILING_KEY_101 = 101;
+constexpr uint64_t TILING_KEY_102 = 102;
+constexpr uint64_t TILING_KEY_110 = 110;
+constexpr uint64_t TILING_KEY_111 = 111;
+constexpr uint64_t TILING_KEY_112 = 112;
+
 enum class InputId : uint32_t {
     Query = 0,
     Key = 1,
@@ -102,27 +109,6 @@ static inline uint32_t CeilDiv(uint32_t n1, uint32_t n2)
         return 0;
     }
     return (n2 != 0) ? ((n1 + n2 - 1) / n2) : n1;
-}
-
-[[maybe_unused]] static inline uint32_t GetBasicBlocks(uint32_t seqLen, uint32_t sparseBlockSize)
-{
-    if (sparseBlockSize == 0) {
-        return 0;
-    }
-    const uint32_t blocksPerSparse = CeilDiv(sparseBlockSize, BASIC_BLOCK_SIZE);
-    const uint32_t fullSparseBlocks = seqLen / sparseBlockSize;
-    const uint32_t tail = seqLen % sparseBlockSize;
-    return fullSparseBlocks * blocksPerSparse + CeilDiv(tail, BASIC_BLOCK_SIZE);
-}
-
-[[maybe_unused]] static inline uint64_t DecodeBasicBlockStart(uint32_t basicBlockIdx, uint32_t sparseBlockSize)
-{
-    const uint32_t blocksPerSparse = CeilDiv(sparseBlockSize, BASIC_BLOCK_SIZE);
-    if (blocksPerSparse == 0) {
-        return 0;
-    }
-    return static_cast<uint64_t>(basicBlockIdx / blocksPerSparse) * sparseBlockSize +
-           static_cast<uint64_t>(basicBlockIdx % blocksPerSparse) * BASIC_BLOCK_SIZE;
 }
 
 // 可选 aclTensor 的 shape-only presence 归一化：op_api 对「未传入」的可选输入会分配空的
@@ -199,6 +185,7 @@ private:
     uint32_t blockDim_ = 0;
     uint32_t aivNum_ = 0;
     uint32_t aicNum_ = 0;
+    uint32_t aiVCRatio = 2;
     uint64_t ubSize_ = 0;
     uint64_t postUbBaseSize_ = 0;
     uint64_t workSpaceSize_ = 0;
@@ -223,6 +210,7 @@ ge::graphStatus GBSAGTiling::GetNpuInfo(gert::TilingContext *context)
     aivNum_ = ascendcPlatform.GetCoreNumAiv();
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize_);
     libapiSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
+    aiVCRatio = aivNum_ / aicNum_;
     OP_LOGI(context->GetNodeName(), "[GBSAG-meta] GetNpuInfo: aicNum_=%u aivNum_=%u ubSize_=%lu libapiSize_=%lu",
             aicNum_, aivNum_, ubSize_, libapiSize_);
     return ge::GRAPH_SUCCESS;
@@ -625,7 +613,7 @@ ge::graphStatus GBSAGTiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_dVOutSize(dVOutSize_);
     tilingData_->set_gradSize(gradSize_);
     tilingData_->set_scaleValue(scaleValue_);
-    tilingData_->set_usedVecCoreNum(blockDim_ * 2);
+    tilingData_->set_usedVecCoreNum(blockDim_ * aiVCRatio);
     tilingData_->set_dqSize(dqSize_);
     tilingData_->set_dkvSize(dkvSize_);
     tilingData_->set_postUbBaseSize(postUbBaseSize_);
@@ -638,9 +626,13 @@ uint64_t GBSAGTiling::GenerateTilingKey() const
 {
     uint64_t tilingKey = 0;
     if (dataType_ == ge::DT_FLOAT16) {
-        tilingKey = layout_ == GsagInputLayout::TND ? 100 : (layout_ == GsagInputLayout::BNSD ? 101 : 102);
+        tilingKey = layout_ == GsagInputLayout::TND ?
+                        TILING_KEY_100 :
+                        (layout_ == GsagInputLayout::BNSD ? TILING_KEY_101 : TILING_KEY_102);
     } else if (dataType_ == ge::DT_BF16) {
-        tilingKey = layout_ == GsagInputLayout::TND ? 110 : (layout_ == GsagInputLayout::BNSD ? 111 : 112);
+        tilingKey = layout_ == GsagInputLayout::TND ?
+                        TILING_KEY_110 :
+                        (layout_ == GsagInputLayout::BNSD ? TILING_KEY_111 : TILING_KEY_112);
     }
     return tilingKey;
 }
