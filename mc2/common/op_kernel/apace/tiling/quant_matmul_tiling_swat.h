@@ -402,7 +402,7 @@ private:
     }
 
     uint64_t CalcAlignedSplit(uint64_t growTileCount, uint64_t fixedTileCount, uint64_t tileCountMax,
-                              uint64_t alignTailSize)
+                              uint64_t alignTailSize) const
     {
         // 探索窗口为当前 tile 数 +1/+2 两档：调用方已保证 +1 可行（核数不超限），
         // +2 是在不超核数上限与 tileCountMax 前提下的进一步对齐尝试。
@@ -469,10 +469,10 @@ private:
             runInfo.stepKb = CeilDiv(args.k, runInfo.baseK);
         }
 
-        if (runInfo.stepKa > runInfo.stepKb) {
+        if (runInfo.stepKb != 0UL && runInfo.stepKa > runInfo.stepKb) {
             runInfo.stepKa = runInfo.stepKa / runInfo.stepKb * runInfo.stepKb;
         }
-        if (runInfo.stepKb > runInfo.stepKa) {
+        if (runInfo.stepKa != 0UL && runInfo.stepKb > runInfo.stepKa) {
             runInfo.stepKb = runInfo.stepKb / runInfo.stepKa * runInfo.stepKa;
         }
 
