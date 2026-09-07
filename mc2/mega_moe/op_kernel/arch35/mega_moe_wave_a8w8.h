@@ -579,7 +579,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         RunGmm2ByMode<COMBINE_NO_QUANT, typename SharedQuantConfig::QuantOutType,
                       typename SharedQuantConfig::ActivationQuantOutType, SharedWeightType,
                       typename SharedQuantConfig::QuantScaleType, SharedQuantConfig::AXW_MODE,
-                      SharedWeight2Format != FORMAT_ND, GMM1_TILE_M, TopkWeightsPrefetch, true, GMM1_INTERLEAVED, true>(
+                      SharedWeight2Format != FORMAT_ND, GMM1_TILE_M, false, true, GMM1_INTERLEAVED, true>(
             gmmExecutionConfig_, gmmAddrInfo, problemShape, runtimeState, nullptr, true);
     }
 }
