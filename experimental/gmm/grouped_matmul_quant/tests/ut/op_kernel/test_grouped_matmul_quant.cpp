@@ -1,9 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*! \file test_grouped_matmul_quant.cpp
  *  \brief CPU-kernel smoke tests for GroupedMatmulQuant.
@@ -25,8 +28,8 @@
 using namespace AscendC;
 
 extern "C" __global__ __aicore__ void grouped_matmul_quant(GM_ADDR x, GM_ADDR quantizedWeight, GM_ADDR weightScale,
-                                                            GM_ADDR weightOffset, GM_ADDR groupList, GM_ADDR y,
-                                                            GM_ADDR workspace, GM_ADDR tiling);
+                                                           GM_ADDR weightOffset, GM_ADDR groupList, GM_ADDR y,
+                                                           GM_ADDR workspace, GM_ADDR tiling);
 
 class GroupedMatmulQuantKernelTest : public testing::Test {
 protected:
@@ -54,7 +57,7 @@ constexpr uint32_t L0C_SIZE = 131072U;
 constexpr uint32_t BUFFER_NUM = 8U;
 
 template <typename T>
-void FillTensor(T* data, size_t count, float value)
+void FillTensor(T *data, size_t count, float value)
 {
     for (size_t i = 0; i < count; ++i) {
         data[i] = static_cast<T>(value);
@@ -62,14 +65,14 @@ void FillTensor(T* data, size_t count, float value)
 }
 
 template <>
-void FillTensor<bfloat16_t>(bfloat16_t* data, size_t count, float value)
+void FillTensor<bfloat16_t>(bfloat16_t *data, size_t count, float value)
 {
     for (size_t i = 0; i < count; ++i) {
         data[i] = AscendC::ToBfloat16(value);
     }
 }
 
-void FillTiling(GroupedMatmulQuantTilingData& data, uint32_t dtype, uint32_t m, uint32_t k, uint32_t n,
+void FillTiling(GroupedMatmulQuantTilingData &data, uint32_t dtype, uint32_t m, uint32_t k, uint32_t n,
                 uint32_t groupNum, uint32_t scaleGroupSize, bool noGroup, bool splitK)
 {
     std::memset(&data, 0, sizeof(data));
@@ -110,7 +113,7 @@ void FillTiling(GroupedMatmulQuantTilingData& data, uint32_t dtype, uint32_t m, 
 }
 
 template <typename T>
-void RunKernelSmoke(uint32_t dtype, uint32_t m, uint32_t k, uint32_t n, const std::vector<int64_t>& groupList,
+void RunKernelSmoke(uint32_t dtype, uint32_t m, uint32_t k, uint32_t n, const std::vector<int64_t> &groupList,
                     uint32_t scaleGroupSize, bool splitK, float offsetValue)
 {
     const uint32_t groupNum = groupList.empty() ? 1U : static_cast<uint32_t>(groupList.size());
@@ -119,18 +122,18 @@ void RunKernelSmoke(uint32_t dtype, uint32_t m, uint32_t k, uint32_t n, const st
     const size_t packedWeightCount = static_cast<size_t>(groupNum) * k * n / 8U;
     const size_t scaleCount = static_cast<size_t>(groupNum) * (k / scaleGroupSize) * n;
     const size_t yCount = static_cast<size_t>(m) * n;
-    const size_t workspaceBytes = static_cast<size_t>(L0A_SIZE) * BUFFER_NUM +
-                                  (splitK ? yCount * sizeof(float) : 0U) + 1024U;
+    const size_t workspaceBytes =
+        static_cast<size_t>(L0A_SIZE) * BUFFER_NUM + (splitK ? yCount * sizeof(float) : 0U) + 1024U;
 
-    auto* x = reinterpret_cast<T*>(AscendC::GmAlloc(xCount * sizeof(T)));
-    auto* weight = reinterpret_cast<int32_t*>(AscendC::GmAlloc(packedWeightCount * sizeof(int32_t)));
-    auto* scale = reinterpret_cast<T*>(AscendC::GmAlloc(scaleCount * sizeof(T)));
-    auto* offset = reinterpret_cast<half*>(AscendC::GmAlloc(scaleCount * sizeof(half)));
-    auto* groups = reinterpret_cast<int64_t*>(AscendC::GmAlloc(groupNum * sizeof(int64_t)));
-    auto* y = reinterpret_cast<T*>(AscendC::GmAlloc(yCount * sizeof(T)));
-    auto* workspace = reinterpret_cast<uint8_t*>(AscendC::GmAlloc(workspaceBytes));
-    auto* tiling = reinterpret_cast<GroupedMatmulQuantTilingData*>(
-        AscendC::GmAlloc(sizeof(GroupedMatmulQuantTilingData)));
+    auto *x = reinterpret_cast<T *>(AscendC::GmAlloc(xCount * sizeof(T)));
+    auto *weight = reinterpret_cast<int32_t *>(AscendC::GmAlloc(packedWeightCount * sizeof(int32_t)));
+    auto *scale = reinterpret_cast<T *>(AscendC::GmAlloc(scaleCount * sizeof(T)));
+    auto *offset = reinterpret_cast<half *>(AscendC::GmAlloc(scaleCount * sizeof(half)));
+    auto *groups = reinterpret_cast<int64_t *>(AscendC::GmAlloc(groupNum * sizeof(int64_t)));
+    auto *y = reinterpret_cast<T *>(AscendC::GmAlloc(yCount * sizeof(T)));
+    auto *workspace = reinterpret_cast<uint8_t *>(AscendC::GmAlloc(workspaceBytes));
+    auto *tiling =
+        reinterpret_cast<GroupedMatmulQuantTilingData *>(AscendC::GmAlloc(sizeof(GroupedMatmulQuantTilingData)));
 
     ASSERT_NE(x, nullptr);
     ASSERT_NE(weight, nullptr);
@@ -154,10 +157,10 @@ void RunKernelSmoke(uint32_t dtype, uint32_t m, uint32_t k, uint32_t n, const st
 
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     ICPU_SET_TILING_KEY(10000001UL);
-    ICPU_RUN_KF(grouped_matmul_quant, 1, reinterpret_cast<uint8_t*>(x), reinterpret_cast<uint8_t*>(weight),
-                reinterpret_cast<uint8_t*>(scale), reinterpret_cast<uint8_t*>(offset),
-                noGroup ? nullptr : reinterpret_cast<uint8_t*>(groups), reinterpret_cast<uint8_t*>(y), workspace,
-                reinterpret_cast<uint8_t*>(tiling));
+    ICPU_RUN_KF(grouped_matmul_quant, 1, reinterpret_cast<uint8_t *>(x), reinterpret_cast<uint8_t *>(weight),
+                reinterpret_cast<uint8_t *>(scale), reinterpret_cast<uint8_t *>(offset),
+                noGroup ? nullptr : reinterpret_cast<uint8_t *>(groups), reinterpret_cast<uint8_t *>(y), workspace,
+                reinterpret_cast<uint8_t *>(tiling));
 
     AscendC::GmFree(x);
     AscendC::GmFree(weight);
