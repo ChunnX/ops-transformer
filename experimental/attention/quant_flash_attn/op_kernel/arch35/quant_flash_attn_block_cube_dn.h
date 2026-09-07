@@ -262,7 +262,7 @@ private:
     // 每个 buffer 分配独立的 mutexId，静态分配 0-27 内连续 ID，配合 bufId 偏移使用
     // Q buffer (L1) : mte2 (producer) <> mte1 (consumer)
     static constexpr uint32_t Q_MUTEX_ID_BASE = 0;
- 
+
     // KV buffer (L1) : mte2 (producer) <> mte1 (consumer)
     static constexpr uint32_t K_MUTEX_ID_BASE = 1;
     uint32_t kBufId = 0;
@@ -337,7 +337,7 @@ public:
 
         addrL1Start += L1_Q_DESCALE_SIZE * L1_Q_BUFCNT;
         kL1Tensor = LocalTensor<DATA_T>(TPosition::A1, addrL1Start, L1_KV_SIZE * L1_KV_BUFCNT); // 16K * 4 = 64K
-        
+
         addrL1Start += L1_KV_SIZE * L1_KV_BUFCNT;
         vL1Tensor = LocalTensor<DATA_T>(TPosition::A1, addrL1Start, L1_KV_SIZE * L1_KV_BUFCNT); // 16K * 4 = 64K
 
@@ -417,17 +417,11 @@ public:
             Mutex::Unlock<PIPE_MTE2>(K_MUTEX_ID_BASE + kBufId);
             Mutex::Lock<PIPE_MTE1>(K_MUTEX_ID_BASE + kBufId);
         }
-        
+
         {
             uint32_t loopCnt = CeilDiv((uint32_t)info.actSingleLoopS2Size, (uint32_t)QK_L0_S2_SPLIT_SIZE);
             uint32_t actS2Size = QK_L0_S2_SPLIT_SIZE;
             uint32_t actS2SizeAlign = QK_L0_S2_SPLIT_SIZE;
-            // fixpipe 延后一拍发射: 本轮 fixpipe 只挂 pending, 插到下一轮 LoadKToL0 之后发射,
-            // 用真实工作掩盖 MTE1->M 与 M->FIX 两处裸露的跨流水往返延迟(每 subloop 约92 cycle)
-            bool fixPending = false;
-            uint32_t pendL0cBufId = 0;
-            uint32_t pendSubLoop = 0;
-            uint32_t pendS2Size = 0;
             for (uint32_t loop = 0; loop < loopCnt; ++loop) {
                 if (loop + 1 == loopCnt) {
                     actS2Size = info.actSingleLoopS2Size - loop * QK_L0_S2_SPLIT_SIZE;
@@ -439,31 +433,16 @@ public:
                     Mutex::Lock<PIPE_MTE1>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
                     LoadKToL0(info, loop, actS2SizeAlign); // 128 * 128, Q 已常驻 L0B
                     Mutex::Unlock<PIPE_MTE1>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
-                    // 上一轮 pending 的 fixpipe 在此发射: Lock<FIX> 的等待被刚发出的 LoadK 覆盖
-                    if (fixPending) {
-                        Mutex::Lock<PIPE_FIX>(QK_L0C_MUTEX_ID_BASE + pendL0cBufId);
-                        FixpipeMm1(info, pendSubLoop, pendS2Size, pendL0cBufId); // 128 * 256
-                        Mutex::Unlock<PIPE_FIX>(QK_L0C_MUTEX_ID_BASE + pendL0cBufId);
-                        fixPending = false;
-                    }
                     Mutex::Lock<PIPE_M>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
                     MatmulQK(info, actS2Size); // 128 * 128 * 128
                     Mutex::Unlock<PIPE_M>(QK_L0AB_MUTEX_ID_BASE + qkL0abBufId);
                     qkL0abBufId = (qkL0abBufId + 1) % 2;
                 }
                 Mutex::Unlock<PIPE_M>(QK_L0C_MUTEX_ID_BASE + qkL0cBufId);
-                pendL0cBufId = qkL0cBufId;
-                pendSubLoop = loop;
-                pendS2Size = actS2Size;
-                fixPending = true;
+                Mutex::Lock<PIPE_FIX>(QK_L0C_MUTEX_ID_BASE + qkL0cBufId);
+                FixpipeMm1(info, loop, actS2Size); // 128 * 256
+                Mutex::Unlock<PIPE_FIX>(QK_L0C_MUTEX_ID_BASE + qkL0cBufId);
                 qkL0cBufId = (qkL0cBufId + 1) % 2;
-            }
-            // 返回前必须 flush: ExecuteTask 随后会用 CROSS_CORE_SYNC_V1_C1 通知 AIV mm1 结果已落 UB,
-            // pending 的 fixpipe 不能带出本次调用, 否则向量核会读到未写完的 UB
-            if (fixPending) {
-                Mutex::Lock<PIPE_FIX>(QK_L0C_MUTEX_ID_BASE + pendL0cBufId);
-                FixpipeMm1(info, pendSubLoop, pendS2Size, pendL0cBufId); // 128 * 256
-                Mutex::Unlock<PIPE_FIX>(QK_L0C_MUTEX_ID_BASE + pendL0cBufId);
             }
         }
 
@@ -510,7 +489,7 @@ public:
             CopyVGmToL1(info);
             CopyVScaleGmToL1(info);
         }
-        
+
         Mutex::Unlock<PIPE_MTE2>(V_MUTEX_ID_BASE + vBufId);
         if (info.isLastS2Loop) {
             InitL0MXBufferForReduceSum();
@@ -540,7 +519,7 @@ public:
         if (info.pairKVCopyS2Size <= s2BaseSize) {
             vBufId = (vBufId + 1) % L1_KV_BUFCNT;
         }
-        
+
     }
 
     __aicore__ inline void CopyGMaxL1ToUb(const RunInfo &runInfo)
@@ -835,7 +814,7 @@ private:
              qkL0BTensor[qkL0BOffset].ReinterpretCast<QUANT_T>(), mmadParams);
     }
 
-    __aicore__ inline void FixpipeMm1(const RunInfo &info, uint32_t subLoop, uint32_t actS2Size, uint32_t l0cBufId)
+    __aicore__ inline void FixpipeMm1(const RunInfo &info, uint32_t subLoop, uint32_t actS2Size)
     {
         FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixpipeParams;
         // L0C上的bmm1结果矩阵N方向的size大小, 使能NZ2ND, nSize*sizeof(T) 必须是32B的倍数
@@ -857,8 +836,7 @@ private:
         fixpipeParams.params.srcNdStride = (actS2Size + 1) >> 1 << 1;
         fixpipeParams.params.dstNdStride = 512 / sizeof(half);
 
-        // 注意: 槽号由参数传入, 不能用成员 qkL0cBufId —— fixpipe 延后一拍发射时成员已轮转到下一槽
-        uint32_t qkL0COffset = l0cBufId * (QK_L0C_SIZE / sizeof(COMPUTE_T));
+        uint32_t qkL0COffset = qkL0cBufId * (QK_L0C_SIZE / sizeof(COMPUTE_T));
         uint32_t ubOffset = subLoop * QK_L0_S2_SPLIT_SIZE * fixpipeParams.dstStride;
         Fixpipe<half, COMPUTE_T, CFG_ROW_MAJOR_UB>(mm1ResUB[info.loop / 2 % 2 * 128 + ubOffset],
                                                    qkL0CTensor[qkL0COffset], fixpipeParams);
