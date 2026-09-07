@@ -1926,3 +1926,39 @@ TEST_F(MhcPreTiling, Ut_Check_CoreRatio_2to1_Fail)
 {
     CheckCoreRatioFailure(64, 32);
 }
+
+TEST_F(MhcPreTiling, Ut_Check_3Bf16PackedPhi_RoutesToExperimentalKernel)
+{
+    constexpr uint32_t totalLength = 3072U;
+    constexpr uint32_t n = 4U;
+    constexpr uint32_t d = 5120U;
+    constexpr uint32_t fusionSize = n * n + 2U * n;
+    constexpr uint32_t packedPhiRows = 3U * fusionSize;
+    constexpr uint32_t nD = n * d;
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {{{{1U, totalLength, n, d}, {1U, totalLength, n, d}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{packedPhiRows, nD}, {packedPhiRows, nD}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{3U}, {3U}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{1U, totalLength, d}, {1U, totalLength, d}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{1U, totalLength, n}, {1U, totalLength, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1U, totalLength, n, n}, {1U, totalLength, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1U, totalLength}, {1U, totalLength}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1U, totalLength, fusionSize}, {1U, totalLength, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{1U, totalLength, n}, {1U, totalLength, n}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(0.000001f)},
+         {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(0.000001f)}},
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 3, "", {}, 0, TilingData2Str<int32_t>);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    // Basic-API mode uses the same plain tiling schema as the other kernels.
+    optiling::MhcPreTilingData schema;
+    EXPECT_EQ(tilingInfo.tilingDataSize, schema.GetDataSize());
+}

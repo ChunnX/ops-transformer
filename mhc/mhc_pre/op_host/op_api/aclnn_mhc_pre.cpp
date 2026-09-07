@@ -394,10 +394,11 @@ static void GetXShapeInfo(const MhcParamsBase &params, int64_t &n, int64_t &d, i
     nD = n * d;
 }
 
-static bool CheckParamShapes(const MhcParamsBase &params, int64_t n, int64_t d, int64_t nD, int64_t expectedParamRows)
+static bool CheckParamShapes(const MhcParamsBase &params, int64_t n, int64_t d, int64_t nD, int64_t expectedPhiRows,
+                             int64_t expectedBiasRows)
 {
-    if (!ValidateNDParams(n, d) || !CheckTensorShape(params.phi, {expectedParamRows, nD}, "phi") ||
-        !CheckTensorShape(params.bias, {expectedParamRows}, "bias")) {
+    if (!ValidateNDParams(n, d) || !CheckTensorShape(params.phi, {expectedPhiRows, nD}, "phi") ||
+        !CheckTensorShape(params.bias, {expectedBiasRows}, "bias")) {
         return false;
     }
     return params.gammaOptional == nullptr || CheckTensorShape(params.gammaOptional, {n, d}, "gammaOptional");
@@ -575,7 +576,14 @@ static bool CheckInputOutShape(const MhcParamsBase &params)
     GetXShapeInfo(params, n, d, nD);
     const int64_t alphaSize = params.alpha->GetViewShape().GetDim(DIM_IDX_0);
     const int64_t expectedParamRows = alphaSize == ALPHA_DIM_SIZE_2 ? 2 * n : n * n + 2 * n;
-    if (!CheckParamShapes(params, n, d, nD, expectedParamRows)) {
+    bool is3Bf16 = params.phi->GetDataType() == DataType::DT_BF16;
+    if (is3Bf16 && (alphaSize != ALPHA_DIM_SIZE_3 || params.gammaOptional != nullptr)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "packed 3BF16 inputs", "unsupported",
+                                              "requires alpha shape [3] and gamma=nullptr");
+        return false;
+    }
+    int64_t expectedPhiRows = is3Bf16 ? 3 * expectedParamRows : expectedParamRows;
+    if (!CheckParamShapes(params, n, d, nD, expectedPhiRows, expectedParamRows)) {
         return false;
     }
     if (params.x->GetViewShape().GetDimNum() == DIM_NUM_4) {
@@ -722,7 +730,19 @@ static bool CheckInputDtype(const MhcParamsBase &params)
         OP_LOGE_FOR_INVALID_DTYPE(ACLNN_OP_NAME, "x", op::ToString(xDtype).GetString(), "BFLOAT16 or FLOAT16");
         return false;
     }
-    if (!CheckTensorDtype(params.phi, "phi", DataType::DT_FLOAT)) {
+    auto phiDtype = params.phi->GetDataType();
+    if (phiDtype != DataType::DT_FLOAT && phiDtype != DataType::DT_BF16) {
+        OP_LOGE_FOR_INVALID_DTYPE(ACLNN_OP_NAME, "phi", op::ToString(phiDtype).GetString(), "FLOAT or packed BFLOAT16");
+        return false;
+    }
+    if (phiDtype == DataType::DT_BF16 && op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+        OP_LOGE_FOR_INVALID_DTYPE(ACLNN_OP_NAME, "phi", op::ToString(phiDtype).GetString(),
+                                  "packed BFLOAT16 on DAV_3510 only");
+        return false;
+    }
+    if (phiDtype == DataType::DT_BF16 && xDtype != DataType::DT_BF16) {
+        OP_LOGE_FOR_INVALID_DTYPE(ACLNN_OP_NAME, "x", op::ToString(xDtype).GetString(),
+                                  "BFLOAT16 when phi is packed BFLOAT16");
         return false;
     }
     if (!CheckTensorDtype(params.alpha, "alpha", DataType::DT_FLOAT)) {

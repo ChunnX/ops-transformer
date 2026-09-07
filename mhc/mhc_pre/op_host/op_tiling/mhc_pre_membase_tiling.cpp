@@ -365,6 +365,12 @@ ge::graphStatus MhcPreTiling::CalcOpTiling()
 
 ge::graphStatus MhcPreTiling::DoOpTiling()
 {
+    auto phiDesc = context_->GetInputDesc(1);
+    OP_CHECK_IF(phiDesc == nullptr, OP_LOGE(context_->GetNodeName(), "phi descriptor is null"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(phiDesc->GetDataType() != ge::DT_FLOAT,
+                OP_LOGE(context_->GetNodeName(), "packed BF16 phi is supported on Ascend 950 only"),
+                return ge::GRAPH_FAILED);
     if (GetPlatformInfo() == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }

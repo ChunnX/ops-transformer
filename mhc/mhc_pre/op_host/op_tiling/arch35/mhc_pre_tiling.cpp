@@ -14,8 +14,10 @@
  */
 
 #include "mhc_pre_tiling.h"
+#include <algorithm>
 #include <initializer_list>
 #include <string>
+#include <vector>
 #include "op_host/tiling_templates_registry.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
@@ -170,6 +172,15 @@ ge::graphStatus MhcPreBaseTiling::GetInputShape()
 
     auto gammaTensor = context_->GetDynamicInputTensor(GAMMA_INDEX, 0);
     hasGamma_ = (gammaTensor == nullptr) ? 0 : 1;
+    OP_CHECK_IF(
+        is3Bf16_ && !hasResi_,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "alpha", Ops::Base::ToString(alphaShape).c_str(),
+                                              "packed 3BF16 requires alpha shape [3]"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(is3Bf16_ && hasGamma_ == HAS_GAMMA_TRUE,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "gamma", "present",
+                                                      "packed 3BF16 does not support gamma"),
+                return ge::GRAPH_FAILED);
 
     auto xDims = xTensor->GetStorageShape().GetDimNum();
     if (xDims == BSND_DIM_NUM) {
@@ -263,10 +274,16 @@ ge::graphStatus MhcPreBaseTiling::CheckDataType()
         return ge::GRAPH_FAILED);
 
     auto phiDtype = context_->GetInputDesc(PHI_INDEX)->GetDataType();
-    OP_CHECK_IF(phiDtype != ge::DT_FLOAT,
+    OP_CHECK_IF(phiDtype != ge::DT_FLOAT && phiDtype != ge::DT_BF16,
                 OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "phi",
-                                          ge::TypeUtils::DataTypeToSerialString(phiDtype).c_str(), "DT_FLOAT"),
+                                          ge::TypeUtils::DataTypeToSerialString(phiDtype).c_str(),
+                                          "DT_FLOAT or packed DT_BF16"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        phiDtype == ge::DT_BF16 && xDtype != ge::DT_BF16,
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "x", ge::TypeUtils::DataTypeToSerialString(xDtype).c_str(),
+                                  "DT_BF16 when phi is packed DT_BF16"),
+        return ge::GRAPH_FAILED);
 
     auto alphaDtype = context_->GetInputDesc(ALPHA_INDEX)->GetDataType();
     OP_CHECK_IF(alphaDtype != ge::DT_FLOAT,
@@ -504,10 +521,11 @@ ge::graphStatus MhcPreBaseTiling::ValidateAndSetTilingParams(const gert::Tensor 
     }
 
     uint64_t phiFirstDim = phiTensor->GetStorageShape().GetDim(0);
-    OP_CHECK_IF(phiFirstDim != matN_,
+    uint64_t expectedPhiRows = is3Bf16_ ? 3U * matN_ : matN_;
+    OP_CHECK_IF(phiFirstDim != expectedPhiRows,
                 OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "phi",
                                           Ops::Base::ToString(phiTensor->GetStorageShape()).c_str(),
-                                          ShapeToString({matN_, matK_}).c_str()),
+                                          ShapeToString({expectedPhiRows, matK_}).c_str()),
                 return ge::GRAPH_FAILED);
 
     auto biasTensor = context_->GetDynamicInputTensor(BIAS_INDEX, 0);
@@ -522,7 +540,7 @@ ge::graphStatus MhcPreBaseTiling::ValidateAndSetTilingParams(const gert::Tensor 
     if (phiSecondDim != matK_) {
         OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "phi",
                                   Ops::Base::ToString(phiTensor->GetStorageShape()).c_str(),
-                                  ShapeToString({matN_, matK_}).c_str());
+                                  ShapeToString({expectedPhiRows, matK_}).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -765,6 +783,24 @@ ge::graphStatus MhcPreBaseTiling::CalculateMkTiling()
     return CheckUbBufferSize();
 }
 
+ge::graphStatus MhcPreBaseTiling::Calculate3Bf16Tiling()
+{
+    usedCoreNum_ = blockDim_;
+    scaleMean_ = 1.0f / static_cast<float>(matK_);
+    chunkTSize_ = (((totalLength_ + blockDim_ - 1U) / blockDim_) + CHUNK_T_CALC_FACTOR - 1U) / CHUNK_T_CALC_FACTOR *
+                  CHUNK_T_CALC_FACTOR;
+    chunkTSize_ = std::min(chunkTSize_, CHUNK_T_MAX);
+    v1ChunkDSize_ = V1_CHUNK_D_SIZE;
+
+    constexpr uint64_t packedPartCount = 3U;
+    uint64_t packedFusionSize = packedPartCount * matN_;
+    // The basic-API kernel owns L1/L0 tiling; no Matmul library tiling is needed.
+
+    size_t hMix3Workspace = static_cast<size_t>(2U) * blockDim_ * chunkTSize_ * packedFusionSize * sizeof(float);
+    workspaceSize_ = hMix3Workspace + SYSTEM_WORKSPACE;
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MhcPreBaseTiling::CalculateNdTiling()
 {
     usedCoreNum_ = blockDim_;
@@ -812,7 +848,9 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
 {
     // Batch-consistency level 3 requires the BS accumulation order. Other modes prefer M-K when the shape is
     // supported, then fall back to the ND/BS threshold policy.
-    if (context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL) {
+    if (is3Bf16_) {
+        tilingMode_ = TilingMode::SPLIT_3BF16;
+    } else if (context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL) {
         tilingMode_ = TilingMode::SPLIT_BS;
     } else if (CanUseMk()) {
         tilingMode_ = TilingMode::SPLIT_M_K;
@@ -827,6 +865,8 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
             return CalculateNdTiling();
         case TilingMode::SPLIT_M_K:
             return CalculateMkTiling();
+        case TilingMode::SPLIT_3BF16:
+            return Calculate3Bf16Tiling();
         default:
             return ge::GRAPH_FAILED;
     }
@@ -878,10 +918,22 @@ ge::graphStatus MhcPreBaseTiling::DoOpTiling()
                                               "input descriptor must not be nullptr");
         return ge::GRAPH_FAILED;
     }
+    auto inputPhiDesc = context_->GetInputDesc(PHI_INDEX);
+    if (inputPhiDesc == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "phi descriptor", "nullptr",
+                                              "input descriptor must not be nullptr");
+        return ge::GRAPH_FAILED;
+    }
+    is3Bf16_ = inputPhiDesc->GetDataType() == ge::DT_BF16;
 
     if (ParseInputAndAttr() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    OP_CHECK_IF(is3Bf16_ && implMode_ != IMPL_MODE_FP32,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "op_impl_mode",
+                                                      std::to_string(implMode_).c_str(),
+                                                      "packed 3BF16 only supports FP32 accumulation mode"),
+                return ge::GRAPH_FAILED);
 
     if (TilingProcess() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;

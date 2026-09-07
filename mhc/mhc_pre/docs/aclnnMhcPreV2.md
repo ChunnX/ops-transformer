@@ -133,10 +133,10 @@ aclnnStatus aclnnMhcPreV2(
       <td>phi</td>
       <td>输入</td>
       <td>mHC的参数矩阵，对应公式中的phi。</td>
-      <td>不能为空Tensor。</td>
-      <td>FLOAT32</td>
+      <td>不能为空Tensor；Ascend 950的3BF16实验按高、中、低三段打包。</td>
+      <td>FLOAT32；3BF16实验为BFLOAT16</td>
       <td>ND</td>
-      <td>[n^2+2n, nD]或[2n, nD]</td>
+      <td>[n^2+2n, nD]、[2n, nD]；3BF16实验为[3(n^2+2n), nD]</td>
       <td>√</td>
   </tr>
   <tr>
@@ -382,6 +382,7 @@ aclnnStatus aclnnMhcPreV2(
   - n目前支持4、6、8。
   - D支持1~16384范围以内，需满足D为16对齐。
   - 当alpha=[3]时，支持hRes输出，必须满足以下条件：输入phi=[n^2+2n, nD],bias=[n^2+2n]，输出hMixOptional=[B,S,n^2+2n] 或 [T,n^2+2n]；当alpha=[2]时，hRes输出为0，必须满足以下条件：输入phi=[2n, nD],bias=[2n]，输出hMixOptional=[B,S,2n] 或 [T,2n]。
+  - Ascend 950的3BF16穿刺实验要求x和phi均为BFLOAT16，phi=[3(n^2+2n), nD]并依次存放高、中、低三段；内部按high+2^-8 mid+2^-16 low重构。仅支持alpha=[3]、bias=[n^2+2n]、gammaOptional=nullptr和opImplMode=0，hMixOptional保持紧凑shape。
   - 可选输出 invRmsOptional、hMixOptional、hPreOptional 为互存关系，需同时输出或全部不输出，不支持仅返回其中部分，输出条件：invRmsOptional!=nullptr && hMixOptional!=nullptr && hPreOptional!=nullptr。
 
 ## 调用示例

@@ -31,6 +31,8 @@ template <class T, class P, int8_t RESI_MODE>
 class MhcPreMKPart2;
 template <class T, class P, int8_t RESI_MODE>
 class MhcPreSplitND;
+template <class T, class P, int8_t RESI_MODE>
+class MhcPre3Bf16;
 
 // Vector cast and division traits shared by all templates.
 constexpr Reg::CastTrait MHC_PRE_CAST_FP32_TO_B16 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
@@ -848,6 +850,8 @@ private:
     friend class MhcPreMKPart2;
     template <class U, class V, int8_t MODE>
     friend class MhcPreSplitND;
+    template <class U, class V, int8_t MODE>
+    friend class MhcPre3Bf16;
     MNConfig mnConfig_;
     uint32_t coreNum_;
     uint64_t totalLength_;
