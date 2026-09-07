@@ -23,7 +23,10 @@ MC2_INIT_TILING_SIZE = 64
 MC2_CC_TILING_SIZE = 512
 RCS_TILING_SIZE = 128  # 16*u32(64) + 3*u64(24) + 9*u32(36) + 4(pad to align 8) = 128
 MRSV2_TILING_DATA_SIZE = 1408     # 64+512+128+4+4+4+2*236+4(pad)+8+208
-QUANT_MRSV2_TILING_DATA_SIZE = 1656  # 64+512+128+4+4+4+2*360+4(pad)+8+208
+# 量化: Mc2QuantBatchMatmulV3TilingDataParams=364B (DataParams 32*4 + TCubeTiling 200 + L2cache 24 + SlidingWin 12)
+# 按 20260906 mmrsv2 dump 实测校准: tilingKey@1448, wsLayout@1456, opParaSize=1672
+# (比当前源码结构体计算值 1664 多 8 字节尾部, 段表解析只用到 1456..1664)
+QUANT_MRSV2_TILING_DATA_SIZE = 1672  # 64+512+128+4+4+4+2*364+4(pad)+8+8+208
 TILING_DUMP_SIZE = 2048
 
 WORKSPACE_SEG_INFO_SIZE = 24
@@ -39,7 +42,8 @@ WORKSPACE_PREVIEW_SIZE = 64
 OFFSET_RCS_TILING = MC2_INIT_TILING_SIZE + MC2_CC_TILING_SIZE  # 576
 OFFSET_QUANT_MODE = OFFSET_RCS_TILING + RCS_TILING_SIZE + 4 + 4  # 712
 OFFSET_WS_LAYOUT_NON_QUANT = MRSV2_TILING_DATA_SIZE - WORKSPACE_LAYOUT_INFO_SIZE  # 1200
-OFFSET_WS_LAYOUT_QUANT = QUANT_MRSV2_TILING_DATA_SIZE - WORKSPACE_LAYOUT_INFO_SIZE  # 1448
+# 量化结构体末尾比段表多 8 字节(实测 opParaSize=1672, 段表止于 1664)，因此段表起始需显式减 8
+OFFSET_WS_LAYOUT_QUANT = QUANT_MRSV2_TILING_DATA_SIZE - WORKSPACE_LAYOUT_INFO_SIZE - 8  # 1456
 
 ARGS_INDEX_NAMES = [
     "hccl_context",   # [0] runtime 注入的隐藏 CCU context
@@ -55,10 +59,13 @@ ARGS_INDEX_NAMES = [
     "tilingGM",       # [10]
 ]
 
+# 与 op_kernel/arch35/quant_bmm_a2a_vec_reduce_fp8_hif8.h / quant_bmm_reduce_scatter_fp8_hif8.h
+# 中定义的 POS_* 常量保持一致
 POS_TAG_MAP_MRSV2 = {
-    0: "COMM_BEFORE",                    # AlltoAll 提交或 Wait 前
-    2: "COMP_CUBE_MATMUL_BEFORE",        # C 核 Matmul 前
-    3: "COMP_VEC_REDUCE_BEFORE",         # V 核 ReduceSum 前
+    0: "COMM_BEFORE",              # AlltoAll/ReduceScatter 提交或 hccl.Wait 前
+    1: "SCALE_COMM_BEFORE",        # scale 通信前（当前 kernel 未使用）
+    2: "COMP_CUBE_MATMUL_BEFORE",  # C 核 Matmul 前
+    3: "COMP_VEC_REDUCE_BEFORE",   # V 核 ReduceSum 前
 }
 
 RUNTIME_PHASE_MAP = {
@@ -184,6 +191,19 @@ def parse_workspace_layout_info(data, offset):
     for i in range(min(seg_count, MAX_WORKSPACE_SEGMENTS)):
         segments.append(parse_workspace_seg_info(data, offset + 16 + i * WORKSPACE_SEG_INFO_SIZE))
     return {"totalSize": total_size, "segCount": seg_count, "segments": segments}
+
+
+def workspace_layout_is_valid(layout):
+    """段表合理性校验: 偏移漂移时 segCount/totalSize 会解出垃圾值"""
+    if not isinstance(layout, dict) or "error" in layout:
+        return False
+    seg_count = layout.get("segCount", 0)
+    total_size = layout.get("totalSize", 0)
+    if not 1 <= seg_count <= MAX_WORKSPACE_SEGMENTS:
+        return False
+    if total_size <= 0:
+        return False
+    return all(seg["offset"] + seg["size"] <= total_size for seg in layout["segments"])
 
 
 def parse_runtime_info_per_core(data, offset):
@@ -425,6 +445,10 @@ def main():
         is_quant = detect_quant_mode(data)
         ws_offset = OFFSET_WS_LAYOUT_QUANT if is_quant else OFFSET_WS_LAYOUT_NON_QUANT
         ws_layout = parse_workspace_layout_info(data, ws_offset)
+        if not workspace_layout_is_valid(ws_layout):
+            logging.warning("WorkspaceLayoutInfo 偏移 %d 解析结果异常 (segCount=%s, totalSize=%s)，"
+                            "疑似结构体偏移漂移", ws_offset, ws_layout.get("segCount"),
+                            ws_layout.get("totalSize"))
         if args.json:
             print(json.dumps(ws_layout, indent=2, ensure_ascii=False, default=str))
         else:
@@ -439,8 +463,13 @@ def main():
     ws_offset = OFFSET_WS_LAYOUT_QUANT if is_quant else OFFSET_WS_LAYOUT_NON_QUANT
     if len(data) >= ws_offset + WORKSPACE_LAYOUT_INFO_SIZE:
         ws_layout = parse_workspace_layout_info(data, ws_offset)
-        if "error" not in ws_layout and ws_layout.get("segCount", 0) > 0:
+        if workspace_layout_is_valid(ws_layout):
             result["workspaceLayout"] = ws_layout
+        elif "error" not in ws_layout and (ws_layout.get("segCount", 0) > 0 or
+                                           ws_layout.get("totalSize", 0) > 0):
+            logging.warning("WorkspaceLayoutInfo 偏移 %d 解析结果异常 (segCount=%s, totalSize=%s)，"
+                            "疑似结构体偏移漂移", ws_offset, ws_layout.get("segCount"),
+                            ws_layout.get("totalSize"))
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
     else:

@@ -36,10 +36,10 @@ MC2_CC_TILING_SIZE = 512
 ALLTO_ALL_MATMUL_TILING_INFO_SIZE = 104  # 12*u32(48) + 7*u64(56) = 104
 TCUBE_TILING_SIZE = 200
 MC2_MM_V3_TILING_DATA_SIZE = 236  # TCubeTiling(200) + 9*uint32(36)
-MC2_QUANT_BMM_TILING_PARAMS_SIZE = 360  # params(128) + TCubeTiling(200) + L2cache(24) + slidingWindow(8)
+MC2_QUANT_BMM_TILING_PARAMS_SIZE = 364  # params(128) + TCubeTiling(200) + L2cache(24) + slidingWindow(12)
 
 ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE = 1152  # 64+512+104+236+236
-ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE = 1400  # 64+512+104+360+360
+ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE = 1408  # 64+512+104+364+364
 ALLTO_ALL_MATMUL_TILING_DATA_SIZE = ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE + 208  # 1360
 ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE = ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE + 208  # 1608
 APACE_ALLTO_ALL_MATMUL_TILING_DATA_SIZE = 896  # 64+512+40+64+4+4+208
@@ -160,29 +160,21 @@ RUNTIME_PHASE_MAP = {
 # 值与各 kernel 文件内 constexpr 一一对应，新增类别时同步更新此处
 #
 # 来源: arch35/allto_all_mx_quant_matmul_pipeline.h
-# RuntimeInfo 的数值编号由具体 Kernel 实现解释。主线 CCU 和
-# usingApaceImpl_ CCU 共用此解析脚本，但 1~3 的语义并不相同。
-POS_TAG_MAP_ALLTO_ALL_MAINLINE = {
+POS_TAG_MAP_ALLTO_ALL = {
     0: "COMM_BEFORE",
     1: "SCALE_COMM_BEFORE",
     2: "COMP_CUBE_MATMUL_BEFORE",
     3: "COMP_VEC_PERMUTE_BEFORE",
 }
 
+# Apace 路径 (usingApaceImpl_) 的 position 枚举与主线不同:
+# 见 common/op_kernel/apace/kernel/fusions/all_to_all_quant_matmul/
+#     all_to_all_mx_quant_matmul_hcomm_impl.h 中的 POS_* 常量
 POS_TAG_MAP_ALLTO_ALL_APACE = {
-    0: "COMM_BEFORE",
-    1: "COMP_LOCAL_BEFORE",
-    2: "COMP_REMOTE_BEFORE",
-    3: "FINALIZE_BEFORE",
-}
-
-POS_TAG_MAP_ALLTO_ALL = {
-    value: (
-        mainline_name
-        if mainline_name == POS_TAG_MAP_ALLTO_ALL_APACE.get(value)
-        else f"MAINLINE_{mainline_name} / APACE_{POS_TAG_MAP_ALLTO_ALL_APACE[value]}"
-    )
-    for value, mainline_name in POS_TAG_MAP_ALLTO_ALL_MAINLINE.items()
+    0: "COMM_BEFORE",         # 通信下发前
+    1: "COMP_LOCAL_BEFORE",   # local 块 matmul 前
+    2: "COMP_REMOTE_BEFORE",  # 远端(通信结果) matmul 前
+    3: "FINALIZE_BEFORE",     # hccl Finalize 前
 }
 
 
@@ -340,15 +332,15 @@ def parse_mc2_l2cache_tile_params(data: bytes, offset: int) -> dict:
 
 
 def parse_mc2_sliding_window_params(data: bytes, offset: int) -> dict:
-    """解析 Mc2SlidingWindowParams（8B = 2 × uint32）。"""
-    if offset + 8 > len(data):
+    """解析 Mc2SlidingWindowParams（12B = 3 × uint32: mTailTile, nTailTile, alignNTailSplit）。"""
+    if offset + 12 > len(data):
         return {"error": "data too short for Mc2SlidingWindowParams"}
-    m_tail_tile, n_tail_tile = struct.unpack_from("<2I", data, offset)
-    return {"mTailTile": m_tail_tile, "nTailTile": n_tail_tile}
+    m_tail_tile, n_tail_tile, align_n_tail_split = struct.unpack_from("<3I", data, offset)
+    return {"mTailTile": m_tail_tile, "nTailTile": n_tail_tile, "alignNTailSplit": align_n_tail_split}
 
 
 def parse_mc2_quant_bmm_tiling_data_params(data: bytes, offset: int) -> dict:
-    """解析 Mc2QuantBatchMatmulV3TilingDataParams（360B）。"""
+    """解析 Mc2QuantBatchMatmulV3TilingDataParams（364B）。"""
     if offset + MC2_QUANT_BMM_TILING_PARAMS_SIZE > len(data):
         return {"error": "data too short for Mc2QuantBatchMatmulV3TilingDataParams"}
     params = parse_mc2_quant_bmm_data_params(data, offset)
@@ -370,7 +362,7 @@ def parse_non_quant_tiling_data(data: bytes) -> dict:
 
 
 def parse_quant_tiling_data(data: bytes) -> dict:
-    """解析量化 AlltoAllQuantMatmulTilingData（完整结构 1608B）。"""
+    """解析量化 AlltoAllQuantMatmulTilingData（完整结构 1616B）。"""
     return {
         "mc2InitTiling": parse_mc2_init_tiling_inner(data, OFFSET_MC2_INIT_TILING),
         "mc2CcTiling": parse_mc2_cc_tiling_inner(data, OFFSET_MC2_CC_TILING),
@@ -527,7 +519,8 @@ def parse_workspace_layout_info(data: bytes, offset: int) -> dict:
     }
 
 
-def parse_runtime_info_per_core(data: bytes, offset: int) -> dict:
+def parse_runtime_info_per_core(data: bytes, offset: int,
+                                pos_tag_map=POS_TAG_MAP_ALLTO_ALL) -> dict:
     """解析单个 RuntimeInfoPerCore（512B）。"""
     if offset + RUNTIME_INFO_PER_CORE_SIZE > len(data):
         return {"error": "data too short for RuntimeInfoPerCore"}
@@ -539,13 +532,7 @@ def parse_runtime_info_per_core(data: bytes, offset: int) -> dict:
         "coreId": core_id,
         "execTurn": exec_turn,
         "execPosition": exec_position,
-        "execPositionName": POS_TAG_MAP_ALLTO_ALL.get(exec_position, f"UNKNOWN({exec_position})"),
-        "execPositionMainlineName": POS_TAG_MAP_ALLTO_ALL_MAINLINE.get(
-            exec_position, f"UNKNOWN({exec_position})"
-        ),
-        "execPositionApaceName": POS_TAG_MAP_ALLTO_ALL_APACE.get(
-            exec_position, f"UNKNOWN({exec_position})"
-        ),
+        "execPositionName": pos_tag_map.get(exec_position, f"UNKNOWN({exec_position})"),
         "commPhase": comm_phase,
         "commPhaseName": RUNTIME_PHASE_MAP.get(comm_phase, f"UNKNOWN({comm_phase})"),
         "commCommitCount": commit_count,
@@ -553,7 +540,8 @@ def parse_runtime_info_per_core(data: bytes, offset: int) -> dict:
     }
 
 
-def parse_runtime_info_segment(data: bytes, aic_core_num=None) -> dict:
+def parse_runtime_info_segment(data: bytes, aic_core_num=None,
+                               pos_tag_map=POS_TAG_MAP_ALLTO_ALL) -> dict:
     """解析 workspace_segN_type12_*.bin（RuntimeInfo 段，64KB = 128 × 512B）。
 
     aic_core_num: tiling data 中的 aicCoreNum，用于区分 C/V 核。
@@ -566,7 +554,7 @@ def parse_runtime_info_segment(data: bytes, aic_core_num=None) -> dict:
     active_count = 0
     for i in range(max_slots):
         offset = i * RUNTIME_INFO_PER_CORE_SIZE
-        slot = parse_runtime_info_per_core(data, offset)
+        slot = parse_runtime_info_per_core(data, offset, pos_tag_map)
         slot["slotIdx"] = i
         if slot.get("magicValid", False):
             active_count += 1
@@ -597,7 +585,8 @@ def detect_workspace_seg_from_filename(filename: str) -> tuple:
     return None
 
 
-def parse_workspace_segment_file(data: bytes, seg_type: int, aic_core_num=None) -> dict:
+def parse_workspace_segment_file(data: bytes, seg_type: int, aic_core_num=None,
+                                 pos_tag_map=POS_TAG_MAP_ALLTO_ALL) -> dict:
     """解析 workspace_seg*_type*_*.bin 文件，根据段类型选择解析方式。"""
     type_name = WS_SEG_TYPE_MAP.get(seg_type, f"UNKNOWN({seg_type})")
     result = {
@@ -606,7 +595,7 @@ def parse_workspace_segment_file(data: bytes, seg_type: int, aic_core_num=None) 
         "fileSize": len(data),
     }
     if seg_type == 12:  # WS_SEG_RUNTIME_INFO
-        rt_info = parse_runtime_info_segment(data, aic_core_num)
+        rt_info = parse_runtime_info_segment(data, aic_core_num, pos_tag_map)
         result["runtimeInfo"] = rt_info
     else:
         # 非 RuntimeInfo 段：做基础 hex 统计
@@ -854,6 +843,9 @@ def main():
                         help="AIC 核数，用于 workspace 段解析时区分 C/V 核。"
                              " 从 tiling_data 解析结果的 aicCoreNum 字段获取。"
                              " 未提供时 C/V 核分类不可靠（显示为'未知'）。")
+    parser.add_argument("--apace", action="store_true",
+                        help="workspace 段解析时使用 Apace 路径(usingApaceImpl_)的 position 枚举标签"
+                             "(1=COMP_LOCAL_BEFORE, 2=COMP_REMOTE_BEFORE, 3=FINALIZE_BEFORE)")
     parser.add_argument("--json", action="store_true", help="以 JSON 格式输出")
     parser.add_argument("--verify", metavar="REF_FILE",
                         help="对比 host 参考文件（由 MC2_TILING_DUMP_REF_PATH 环境变量生成）")
@@ -881,7 +873,10 @@ def main():
                      seg_idx, seg_type, WS_SEG_TYPE_MAP.get(seg_type, "UNKNOWN"))
         if args.aic_core_num is not None:
             logging.info("使用 --aic-core-num=%d 区分 C/V 核", args.aic_core_num)
-        result = parse_workspace_segment_file(data, seg_type, args.aic_core_num)
+        pos_tag_map = POS_TAG_MAP_ALLTO_ALL_APACE if args.apace else POS_TAG_MAP_ALLTO_ALL
+        if args.apace:
+            logging.info("使用 Apace 路径 position 枚举标签")
+        result = parse_workspace_segment_file(data, seg_type, args.aic_core_num, pos_tag_map)
         result["segIdx"] = seg_idx
         if args.json:
             print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
