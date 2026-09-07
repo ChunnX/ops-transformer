@@ -128,9 +128,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> block_attention_resid
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("block_attention_residuals_backward", &block_attention_residuals_backward,
-          "block_attention_residuals_backward", py::arg("partial_block"), py::arg("block_res"),
-          py::arg("proj_weight"), py::arg("norm_weight"), py::arg("grad_hidden_states"),
-          py::arg("inv_norm"), py::arg("probs"), py::arg("valid_block_num") = -1);
+          "block_attention_residuals_backward", py::arg("partial_block"), py::arg("block_res"), py::arg("proj_weight"),
+          py::arg("norm_weight"), py::arg("grad_hidden_states"), py::arg("inv_norm"), py::arg("probs"),
+          py::arg("valid_block_num") = -1);
 }
 
 } // namespace op_api

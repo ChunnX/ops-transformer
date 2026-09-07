@@ -263,12 +263,12 @@ aclnnStatus CheckValidBlockNum(const aclTensor *blockRes, int64_t validBlockNum)
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus HandleEmptyTensor(
-    const aclTensor *partialBlock, const aclTensor *blockRes, const aclTensor *projWeight,
-    const aclTensor *normWeight, const aclTensor *gradHiddenStates, const aclTensor *invNorm,
-    const aclTensor *probs, const aclTensor *gradPartialBlock, const aclTensor *gradBlockRes,
-    const aclTensor *gradProjWeight, const aclTensor *gradNormWeight,
-    UniqueExecutor &uniqueExecutor, uint64_t *workspaceSize, aclOpExecutor **executor, bool &handled)
+aclnnStatus HandleEmptyTensor(const aclTensor *partialBlock, const aclTensor *blockRes, const aclTensor *projWeight,
+                              const aclTensor *normWeight, const aclTensor *gradHiddenStates, const aclTensor *invNorm,
+                              const aclTensor *probs, const aclTensor *gradPartialBlock, const aclTensor *gradBlockRes,
+                              const aclTensor *gradProjWeight, const aclTensor *gradNormWeight,
+                              UniqueExecutor &uniqueExecutor, uint64_t *workspaceSize, aclOpExecutor **executor,
+                              bool &handled)
 {
     handled = false;
     const bool hasEmptyInput = partialBlock->IsEmpty() || blockRes->IsEmpty() || projWeight->IsEmpty() ||
@@ -301,9 +301,8 @@ aclnnStatus HandleEmptyTensor(
 aclnnStatus CheckParams(const aclTensor *partialBlock, const aclTensor *blockRes, const aclTensor *projWeight,
                         const aclTensor *normWeight, const aclTensor *gradHiddenStates, const aclTensor *invNorm,
                         const aclTensor *probs, int64_t validBlockNum, const aclTensor *gradPartialBlock,
-                        const aclTensor *gradBlockRes,
-                        const aclTensor *gradProjWeight, const aclTensor *gradNormWeight, uint64_t *workspaceSize,
-                        aclOpExecutor **executor)
+                        const aclTensor *gradBlockRes, const aclTensor *gradProjWeight, const aclTensor *gradNormWeight,
+                        uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     if (CheckNotNull(partialBlock, blockRes, projWeight, normWeight, gradHiddenStates, invNorm, probs, gradPartialBlock,
                      gradBlockRes, gradProjWeight, gradNormWeight, workspaceSize, executor) != ACLNN_SUCCESS) {
@@ -324,8 +323,8 @@ aclnnStatus CheckParams(const aclTensor *partialBlock, const aclTensor *blockRes
         ACLNN_SUCCESS) {
         return ACLNN_ERR_PARAM_INVALID;
     }
-    return CheckOutputShapes(
-        gradPartialBlock, gradBlockRes, gradProjWeight, gradNormWeight, partialBlock, blockRes, projWeight, normWeight);
+    return CheckOutputShapes(gradPartialBlock, gradBlockRes, gradProjWeight, gradNormWeight, partialBlock, blockRes,
+                             projWeight, normWeight);
 }
 } // namespace
 
@@ -353,9 +352,8 @@ aclnnStatus aclnnBlockAttentionResidualsGradGetWorkspaceSize(
 
     bool emptyHandled = false;
     const aclnnStatus emptyRet = HandleEmptyTensor(
-        partialBlock, blockRes, projWeight, normWeight, gradHiddenStates, invNorm, probs,
-        gradPartialBlock, gradBlockRes, gradProjWeight, gradNormWeight,
-        uniqueExecutor, workspaceSize, executor, emptyHandled);
+        partialBlock, blockRes, projWeight, normWeight, gradHiddenStates, invNorm, probs, gradPartialBlock,
+        gradBlockRes, gradProjWeight, gradNormWeight, uniqueExecutor, workspaceSize, executor, emptyHandled);
     CHECK_RET(emptyRet == ACLNN_SUCCESS, emptyRet);
     if (emptyHandled) {
         return ACLNN_SUCCESS;
