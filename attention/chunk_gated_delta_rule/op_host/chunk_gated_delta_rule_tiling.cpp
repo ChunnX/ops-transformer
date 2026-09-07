@@ -255,8 +255,10 @@ uint64_t ChunkGatedDeltaRuleTiling::GetTilingKey() const
 ge::graphStatus ChunkGatedDeltaRuleTiling::GetWorkspaceSize()
 {
     workspaceSize_ = SYS_WORKSPACE_SIZE;
-    workspaceSize_ += tilingData_.interWorkspaceSz;
-    workspaceSize_ += tilingData_.stageWorkspaceSz;
+    if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
+        workspaceSize_ += tilingData_.interWorkspaceSz;
+        workspaceSize_ += tilingData_.stageWorkspaceSz;
+    }
     return ge::GRAPH_SUCCESS;
 };
 
