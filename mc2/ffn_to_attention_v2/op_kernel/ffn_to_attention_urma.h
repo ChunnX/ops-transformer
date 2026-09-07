@@ -48,9 +48,6 @@ constexpr uint32_t URMA_WQE_SIZE = 64U;
 constexpr uint32_t URMA_BATCH_WQE_CAPACITY = 256U;
 constexpr uint32_t URMA_BATCH_BUFFER_SIZE = URMA_BATCH_WQE_CAPACITY * URMA_WQE_SIZE;
 constexpr uint32_t REMOTE_RELAY_INFO_SIZE = 32U;
-constexpr uint32_t REMOTE_RELAY_INFO_U64_COUNT = REMOTE_RELAY_INFO_SIZE / sizeof(uint64_t);
-constexpr uint32_t REMOTE_RELAY_CAPACITY = URMA_BATCH_WQE_CAPACITY;
-constexpr uint32_t REMOTE_RELAY_BUFFER_SIZE = REMOTE_RELAY_CAPACITY * REMOTE_RELAY_INFO_SIZE;
 constexpr uint32_t PERF_FIELD_NUM = 12U;
 constexpr uint32_t PERF_STORAGE_FIELD_NUM = 16U;
 static constexpr AscendC::UrmaWqeEntry REMOTE_DATA_WQE_CONFIG = {
@@ -71,7 +68,7 @@ using HcommBatchHandle = AscendC::BatchHandle<HcommChannelHandle>;
 struct alignas(REMOTE_RELAY_INFO_SIZE) RemoteRelayInfo {
     uint64_t remoteDataOffset;
     uint64_t remoteFlagOffset;
-    uint32_t sourceAivId;
+    uint64_t sourceTokenIndex;
     uint32_t dstRank;
 };
 
@@ -100,8 +97,7 @@ private:
                                                  const RemoteRelayInfo &relayInfo);
     __aicore__ inline void AppendRemoteFlagWrite(HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr,
                                                  const RemoteRelayInfo &relayInfo, bool firstFlag);
-    __aicore__ inline void StoreRemoteRelayInfo(uint32_t index, const RemoteRelayInfo &relayInfo);
-    __aicore__ inline RemoteRelayInfo LoadRemoteRelayInfo(uint32_t index);
+    __aicore__ inline void CommitBatch(HcommBatchHandle &batchHandle, uint64_t &commitCycles);
     __aicore__ inline void WritePerfData(const uint64_t (&cycles)[PERF_FIELD_NUM]);
 
     TPipe *tpipe_{nullptr};
@@ -123,12 +119,10 @@ private:
     LocalTensor<int32_t> statusTensor_;
     LocalTensor<uint8_t> hcommTensor_;
     LocalTensor<uint8_t> hcommBatchTensor_;
-    LocalTensor<uint64_t> remoteRelayInfoTensor_;
 
     TBuf<> statusBuf_;
     TBuf<> hcommBuf_;
     TBuf<TPosition::VECOUT> hcommBatchBuf_;
-    TBuf<> remoteRelayInfoBuf_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_;
 
     uint32_t aivId_{0};
@@ -176,8 +170,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     ascendc_assert(workspaceGM != nullptr, "workspace address must not be null");
 
     ascendc_assert(aivNum_ > 0U, "aivNum must be greater than zero");
-    ascendc_assert(aivNum_ <= REMOTE_RELAY_CAPACITY, "aivNum exceeds remote relay capacity, aivNum=%u, capacity=%u",
-                   aivNum_, REMOTE_RELAY_CAPACITY);
     ascendc_assert(axisH_ <= axisHS_, "H must be <= HS, H=%u, HS=%u", axisH_, axisHS_);
 
     xGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(x));
@@ -203,8 +195,8 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
                    "actualTokenNum exceeds x dim0, actualTokenNum=%lu, maxTokenNum=%lu", actualTokenNum_, maxTokenNum_);
     hSize_ = static_cast<uint64_t>(axisH_) * sizeof(xType);
     dataWorkspaceStride_ = Ceil(hSize_, static_cast<uint64_t>(URMA_FLAG_SLOT_SIZE)) * URMA_FLAG_SLOT_SIZE;
-    localDataAddr_ = workspaceGM + urmaWorkspaceOffset_ + static_cast<uint64_t>(aivId_) * dataWorkspaceStride_;
-    localFlagAddr_ = workspaceGM + urmaWorkspaceOffset_ + static_cast<uint64_t>(aivNum_) * dataWorkspaceStride_ +
+    localDataAddr_ = workspaceGM + urmaWorkspaceOffset_;
+    localFlagAddr_ = workspaceGM + urmaWorkspaceOffset_ + maxTokenNum_ * dataWorkspaceStride_ +
                      static_cast<uint64_t>(aivId_) * URMA_FLAG_SLOT_SIZE;
 
     tpipe_->InitBuffer(xQueue_, URMA_BUFFER_NUM, hSize_);
@@ -230,8 +222,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::H
     hcommBatchTensor_ = hcommBatchBuf_.Get<uint8_t>();
     Duplicate<uint8_t>(hcommBatchTensor_, 0U, URMA_BATCH_BUFFER_SIZE);
 
-    tpipe_->InitBuffer(remoteRelayInfoBuf_, REMOTE_RELAY_BUFFER_SIZE);
-    remoteRelayInfoTensor_ = remoteRelayInfoBuf_.Get<uint64_t>();
     SyncFunc<HardEvent::V_S>();
 }
 
@@ -345,40 +335,11 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     xTmpTensor_ = xQueue_.DeQue<xType>();
 
     GlobalTensor<xType> localDataGMTensor;
-    localDataGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(localDataAddr_));
+    localDataGMTensor.SetGlobalBuffer(
+        reinterpret_cast<__gm__ xType *>(localDataAddr_ + yOffset * dataWorkspaceStride_));
     DataCopyPad(localDataGMTensor, xTmpTensor_, xCopyParams);
     xQueue_.FreeTensor<xType>(xTmpTensor_);
     SyncFunc<HardEvent::MTE3_S>();
-}
-
-template <TemplateFFNToAttentionUrmaTypeClass>
-__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::StoreRemoteRelayInfo(
-    uint32_t index, const RemoteRelayInfo &relayInfo)
-{
-    ascendc_assert(index < REMOTE_RELAY_CAPACITY, "remote relay index out of range, index=%u, capacity=%u", index,
-                   REMOTE_RELAY_CAPACITY);
-    const uint32_t base = index * REMOTE_RELAY_INFO_U64_COUNT;
-    const uint64_t sourceAndRank =
-        static_cast<uint64_t>(relayInfo.sourceAivId) | (static_cast<uint64_t>(relayInfo.dstRank) << 32U);
-    remoteRelayInfoTensor_.SetValue(base, relayInfo.remoteDataOffset);
-    remoteRelayInfoTensor_.SetValue(base + 1U, relayInfo.remoteFlagOffset);
-    remoteRelayInfoTensor_.SetValue(base + 2U, sourceAndRank);
-}
-
-template <TemplateFFNToAttentionUrmaTypeClass>
-__aicore__ inline RemoteRelayInfo FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::LoadRemoteRelayInfo(
-    uint32_t index)
-{
-    ascendc_assert(index < REMOTE_RELAY_CAPACITY, "remote relay index out of range, index=%u, capacity=%u", index,
-                   REMOTE_RELAY_CAPACITY);
-    const uint32_t base = index * REMOTE_RELAY_INFO_U64_COUNT;
-    const uint64_t sourceAndRank = remoteRelayInfoTensor_.GetValue(base + 2U);
-    RemoteRelayInfo relayInfo;
-    relayInfo.remoteDataOffset = remoteRelayInfoTensor_.GetValue(base);
-    relayInfo.remoteFlagOffset = remoteRelayInfoTensor_.GetValue(base + 1U);
-    relayInfo.sourceAivId = static_cast<uint32_t>(sourceAndRank);
-    relayInfo.dstRank = static_cast<uint32_t>(sourceAndRank >> 32U);
-    return relayInfo;
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -386,13 +347,14 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::A
     HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr, const RemoteRelayInfo &relayInfo)
 {
     ascendc_assert(aivId_ == 0U, "only AIV0 may append remote WQEs, aivId=%u", aivId_);
-    ascendc_assert(relayInfo.sourceAivId < aivNum_, "sourceAivId out of range, sourceAivId=%u, aivNum=%u",
-                   relayInfo.sourceAivId, aivNum_);
-    GM_ADDR sourceDataAddr = localDataAddr_ + static_cast<uint64_t>(relayInfo.sourceAivId) * dataWorkspaceStride_;
+    ascendc_assert(relayInfo.sourceTokenIndex < actualTokenNum_,
+                   "source token index out of range, tokenIndex=%lu, actualTokenNum=%lu", relayInfo.sourceTokenIndex,
+                   actualTokenNum_);
+    GM_ADDR sourceDataAddr = localDataAddr_ + relayInfo.sourceTokenIndex * dataWorkspaceStride_;
     int32_t ret = hcomm_.WriteNbi<REMOTE_DATA_WQE_CONFIG>(batchHandle, remoteWindowAddr + relayInfo.remoteDataOffset,
                                                           sourceDataAddr, static_cast<uint32_t>(hSize_));
-    ascendc_assert(ret == 0, "batch data WriteNbi failed, ret=%d, rankId=%u, dstRank=%u, sourceAivId=%u", ret, rankId_,
-                   relayInfo.dstRank, relayInfo.sourceAivId);
+    ascendc_assert(ret == 0, "batch data WriteNbi failed, ret=%d, rankId=%u, dstRank=%u, tokenIndex=%lu", ret, rankId_,
+                   relayInfo.dstRank, relayInfo.sourceTokenIndex);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -407,8 +369,22 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::A
         ret = hcomm_.WriteNbi<REMOTE_FLAG_WQE_CONFIG>(batchHandle, remoteWindowAddr + relayInfo.remoteFlagOffset,
                                                       localFlagAddr_, static_cast<uint32_t>(sizeof(int32_t)));
     }
-    ascendc_assert(ret == 0, "batch flag WriteNbi failed, ret=%d, rankId=%u, dstRank=%u, sourceAivId=%u", ret, rankId_,
-                   relayInfo.dstRank, relayInfo.sourceAivId);
+    ascendc_assert(ret == 0, "batch flag WriteNbi failed, ret=%d, rankId=%u, dstRank=%u, tokenIndex=%lu", ret, rankId_,
+                   relayInfo.dstRank, relayInfo.sourceTokenIndex);
+}
+
+template <TemplateFFNToAttentionUrmaTypeClass>
+__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::CommitBatch(
+    HcommBatchHandle &batchHandle, uint64_t &commitCycles)
+{
+    // prof11 BatchCommit
+    const uint64_t prof11Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
+    int32_t ret = hcomm_.BatchCommit(batchHandle);
+    ascendc_assert(ret == 0, "BatchCommit failed, ret=%d, rankId=%u", ret, rankId_);
+    if (perfEnabled_) {
+        commitCycles += static_cast<uint64_t>(GetSystemCycle()) - prof11Start;
+    }
+    // prof11 BatchCommit
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -438,21 +414,20 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
         InitLocalFlag();
 
         const uint64_t roundNum = Ceil(actualTokenNum_, static_cast<uint64_t>(aivNum_));
-
         DataCopyExtParams xCopyParams = {1U, static_cast<uint32_t>(hSize_), 0U, 0U, 0U};
         for (uint64_t round = 0; round < roundNum; ++round) {
             const uint64_t yOffset = static_cast<uint64_t>(aivId_) + round * aivNum_;
             if (yOffset < actualTokenNum_) {
                 ReadTokenMetaDataStruct metaDataStruct;
-                // prof1
+                // prof1 ReadTokenMetaData
                 const uint64_t prof1Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
                 ReadTokenMetaData(metaDataStruct, yOffset);
                 if (perfEnabled_) {
                     perfCycles[0] += static_cast<uint64_t>(GetSystemCycle()) - prof1Start;
                 }
-                // prof1
+                // prof1 ReadTokenMetaData
                 if (metaDataStruct.curAttenWorkRank == rankId_) {
-                    // prof2
+                    // prof2 LocalAddressAndOffset
                     const uint64_t prof2Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
                     GM_ADDR curRankWinAddr = GetWindowAddr(metaDataStruct.curAttenWorkRank);
                     ascendc_assert(curRankWinAddr != nullptr, "window address is null, dstRank=%u",
@@ -474,62 +449,78 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     if (perfEnabled_) {
                         perfCycles[1] += static_cast<uint64_t>(GetSystemCycle()) - prof2Start;
                     }
-                    // prof2
-                    // prof3
+                    // prof2 LocalAddressAndOffset
+                    // prof3 SendToLocal
                     const uint64_t prof3Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
                     SendToLocal(curRankWinAddr + remoteDataOffset, curRankWinAddr + remoteFlagOffset, yOffset,
                                 xCopyParams);
                     if (perfEnabled_) {
                         perfCycles[2] += static_cast<uint64_t>(GetSystemCycle()) - prof3Start;
                     }
-                    // prof3
+                    // prof3 SendToLocal
                 } else {
-                    // prof4
+                    // prof4 StageRemoteData
                     const uint64_t prof4Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
                     StageRemoteData(yOffset, xCopyParams);
                     if (perfEnabled_) {
                         perfCycles[3] += static_cast<uint64_t>(GetSystemCycle()) - prof4Start;
                     }
-                    // prof4
+                    // prof4 StageRemoteData
                 }
             }
+        }
 
-            // Every AIV stages at most one token. Core 0 must not read another
-            // core's workspace slot until its MTE3 copy has completed.
-            SyncAll<true>();
+        // All remote tokens have unique staging slots. AIV0 may consume them after every AIV finishes staging.
+        SyncAll<true>();
+        if (aivId_ == 0U) {
+            for (uint32_t dstRank = 0U; dstRank < worldSize_; ++dstRank) {
+                if (dstRank == rankId_) {
+                    continue;
+                }
 
-            if (aivId_ == 0U) {
-                uint32_t relayCount = 0U;
-                for (uint32_t sourceAivId = 0U; sourceAivId < aivNum_; ++sourceAivId) {
-                    const uint64_t sourceYOffset = static_cast<uint64_t>(sourceAivId) + round * aivNum_;
-                    if (sourceYOffset >= actualTokenNum_) {
-                        break;
-                    }
-                    // prof5
-                    const uint64_t prof5Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
+                // prof5 CountRemoteTokens
+                const uint64_t prof5Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
+                uint64_t rankTokenCount = 0UL;
+                for (uint64_t yOffset = 0UL; yOffset < actualTokenNum_; ++yOffset) {
                     ReadTokenMetaDataStruct metaDataStruct;
-                    ReadTokenMetaData(metaDataStruct, sourceYOffset);
-                    if (metaDataStruct.curAttenWorkRank == rankId_) {
-                        if (perfEnabled_) {
-                            perfCycles[4] += static_cast<uint64_t>(GetSystemCycle()) - prof5Start;
-                        }
+                    ReadTokenMetaData(metaDataStruct, yOffset);
+                    if (metaDataStruct.curAttenWorkRank == dstRank) {
+                        ++rankTokenCount;
+                    }
+                }
+                if (perfEnabled_) {
+                    perfCycles[4] += static_cast<uint64_t>(GetSystemCycle()) - prof5Start;
+                }
+                // prof5 CountRemoteTokens
+                if (rankTokenCount == 0U) {
+                    continue;
+                }
+                // prof6 MakeBatchHandle
+                const uint64_t prof6Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
+                GM_ADDR remoteWindowAddr = GetWindowAddr(dstRank);
+                ascendc_assert(remoteWindowAddr != nullptr, "window address is null, dstRank=%u", dstRank);
+                HcommChannelHandle channel = GetUrmaCommHandle(dstRank);
+                HcommBatchHandle batchHandle =
+                    hcomm_.MakeBatchHandle(channel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, remoteWindowAddr);
+                if (perfEnabled_) {
+                    perfCycles[5] += static_cast<uint64_t>(GetSystemCycle()) - prof6Start;
+                }
+                // prof6 MakeBatchHandle
+
+                uint32_t preparedWqeCount = 0U;
+                for (uint64_t yOffset = 0UL; yOffset < actualTokenNum_; ++yOffset) {
+                    ReadTokenMetaDataStruct metaDataStruct;
+                    ReadTokenMetaData(metaDataStruct, yOffset);
+                    if (metaDataStruct.curAttenWorkRank != dstRank) {
                         continue;
                     }
-                    if (perfEnabled_) {
-                        perfCycles[4] += static_cast<uint64_t>(GetSystemCycle()) - prof5Start;
-                    }
-                    // prof5
-                    // prof6
-                    const uint64_t prof6Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
-                    GM_ADDR curRankWinAddr = GetWindowAddr(metaDataStruct.curAttenWorkRank);
-                    ascendc_assert(curRankWinAddr != nullptr, "window address is null, dstRank=%u",
-                                   metaDataStruct.curAttenWorkRank);
+                    // prof7 BuildRemoteDataInfo
+                    const uint64_t prof7Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
                     const uint64_t tokenSlot = (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * axisBS_ +
                                                 metaDataStruct.curTokenBatchOffset) *
                                                    expertNumPerToken_ +
                                                metaDataStruct.curTokenTopkOffset;
-                    const uint64_t tokenDataOffset = tokenSlot * axisHS_ * sizeof(xType);
-                    const uint64_t remoteDataOffset = winTokenInfoTableSize_ + tokenDataOffset;
+                    const uint64_t remoteDataOffset = winTokenInfoTableSize_ + tokenSlot * axisHS_ * sizeof(xType);
                     const uint64_t remoteFlagOffset = tokenSlot * sizeof(int32_t);
                     ascendc_assert(
                         remoteDataOffset <= requiredWindowSize_ && hSize_ <= requiredWindowSize_ - remoteDataOffset,
@@ -539,110 +530,75 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                                        sizeof(int32_t) <= winTokenInfoTableSize_ - remoteFlagOffset,
                                    "token flag address exceeds info table, flagOffset=%lu, infoSize=%lu",
                                    remoteFlagOffset, winTokenInfoTableSize_);
-                    RemoteRelayInfo relayInfo{remoteDataOffset, remoteFlagOffset, sourceAivId,
-                                              metaDataStruct.curAttenWorkRank};
-                    if (perfEnabled_) {
-                        perfCycles[5] += static_cast<uint64_t>(GetSystemCycle()) - prof6Start;
-                    }
-                    // prof6
-                    // prof7
-                    const uint64_t prof7Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
-                    StoreRemoteRelayInfo(relayCount, relayInfo);
+                    RemoteRelayInfo relayInfo{remoteDataOffset, remoteFlagOffset, yOffset, dstRank};
                     if (perfEnabled_) {
                         perfCycles[6] += static_cast<uint64_t>(GetSystemCycle()) - prof7Start;
                     }
-                    // prof7
-                    ++relayCount;
-                }
-
-                for (uint32_t dstRank = 0U; dstRank < worldSize_; ++dstRank) {
-                    if (dstRank == rankId_) {
-                        continue;
-                    }
-                    // prof8
+                    // prof7 BuildRemoteDataInfo
+                    // prof8 AppendRemoteDataWrite
                     const uint64_t prof8Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
-                    bool hasTokens = false;
-                    for (uint32_t index = 0U; index < relayCount; ++index) {
-                        RemoteRelayInfo relayInfo = LoadRemoteRelayInfo(index);
-                        if (relayInfo.dstRank == dstRank) {
-                            hasTokens = true;
-                            break;
-                        }
-                    }
-                    if (!hasTokens) {
-                        if (perfEnabled_) {
-                            perfCycles[7] += static_cast<uint64_t>(GetSystemCycle()) - prof8Start;
-                        }
-                        continue;
-                    }
+                    AppendRemoteDataWrite(batchHandle, remoteWindowAddr, relayInfo);
                     if (perfEnabled_) {
                         perfCycles[7] += static_cast<uint64_t>(GetSystemCycle()) - prof8Start;
                     }
-                    // prof8
-                    // prof9
+                    // prof8 AppendRemoteDataWrite
+                    ++preparedWqeCount;
+                    if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
+                        CommitBatch(batchHandle, perfCycles[10]);
+                        preparedWqeCount = 0U;
+                    }
+                }
+
+                bool firstFlag = true;
+                for (uint64_t yOffset = 0UL; yOffset < actualTokenNum_; ++yOffset) {
+                    ReadTokenMetaDataStruct metaDataStruct;
+                    ReadTokenMetaData(metaDataStruct, yOffset);
+                    if (metaDataStruct.curAttenWorkRank != dstRank) {
+                        continue;
+                    }
+                    // prof9 BuildRemoteFlagInfo
                     const uint64_t prof9Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
-                    GM_ADDR remoteWindowAddr = GetWindowAddr(dstRank);
-                    ascendc_assert(remoteWindowAddr != nullptr, "window address is null, dstRank=%u", dstRank);
-                    HcommChannelHandle channel = GetUrmaCommHandle(dstRank);
-                    HcommBatchHandle batchHandle =
-                        hcomm_.MakeBatchHandle(channel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, remoteWindowAddr);
-                    uint32_t rankTokenCount = 0U;
+                    const uint64_t tokenSlot = (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * axisBS_ +
+                                                metaDataStruct.curTokenBatchOffset) *
+                                                   expertNumPerToken_ +
+                                               metaDataStruct.curTokenTopkOffset;
+                    RemoteRelayInfo relayInfo{winTokenInfoTableSize_ + tokenSlot * axisHS_ * sizeof(xType),
+                                              tokenSlot * sizeof(int32_t), yOffset, dstRank};
                     if (perfEnabled_) {
                         perfCycles[8] += static_cast<uint64_t>(GetSystemCycle()) - prof9Start;
                     }
-                    // prof9
-                    // prof10
+                    // prof9 BuildRemoteFlagInfo
+                    // prof10 AppendRemoteFlagWrite
                     const uint64_t prof10Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
-                    for (uint32_t index = 0U; index < relayCount; ++index) {
-                        RemoteRelayInfo relayInfo = LoadRemoteRelayInfo(index);
-                        if (relayInfo.dstRank != dstRank) {
-                            continue;
-                        }
-                        AppendRemoteDataWrite(batchHandle, remoteWindowAddr, relayInfo);
-                        ++rankTokenCount;
-                    }
+                    AppendRemoteFlagWrite(batchHandle, remoteWindowAddr, relayInfo, firstFlag);
+                    firstFlag = false;
                     if (perfEnabled_) {
                         perfCycles[9] += static_cast<uint64_t>(GetSystemCycle()) - prof10Start;
                     }
-                    // prof10
-                    ascendc_assert(rankTokenCount > 0U, "empty remote batch, dstRank=%u", dstRank);
-                    ascendc_assert(rankTokenCount <= URMA_BATCH_WQE_CAPACITY / 2U,
-                                   "remote batch exceeds WQE capacity, tokenCount=%u, capacity=%u", rankTokenCount,
-                                   URMA_BATCH_WQE_CAPACITY);
-
-                    bool firstFlag = true;
-                    // prof11
-                    const uint64_t prof11Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
-                    for (uint32_t index = 0U; index < relayCount; ++index) {
-                        RemoteRelayInfo relayInfo = LoadRemoteRelayInfo(index);
-                        if (relayInfo.dstRank != dstRank) {
-                            continue;
-                        }
-                        AppendRemoteFlagWrite(batchHandle, remoteWindowAddr, relayInfo, firstFlag);
-                        firstFlag = false;
+                    // prof10 AppendRemoteFlagWrite
+                    ++preparedWqeCount;
+                    if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
+                        CommitBatch(batchHandle, perfCycles[10]);
+                        preparedWqeCount = 0U;
                     }
-                    if (perfEnabled_) {
-                        perfCycles[10] += static_cast<uint64_t>(GetSystemCycle()) - prof11Start;
-                    }
-                    // prof11
-                    // prof12
-                    const uint64_t prof12Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
-                    int32_t ret = hcomm_.BatchCommit(batchHandle);
-                    ascendc_assert(ret == 0, "BatchCommit failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
-                                   dstRank);
-                    ret = hcomm_.Drain(batchHandle);
-                    ascendc_assert(ret == 0, "batch drain failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_,
-                                   dstRank);
-                    if (perfEnabled_) {
-                        perfCycles[11] += static_cast<uint64_t>(GetSystemCycle()) - prof12Start;
-                    }
-                    // prof12
                 }
-            }
 
-            // Core 0 must drain all active channels before workers overwrite their per-core staging slots.
-            SyncAll<true>();
+                if (preparedWqeCount != 0U) {
+                    CommitBatch(batchHandle, perfCycles[10]);
+                }
+                // prof12 Drain
+                const uint64_t prof12Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
+                int32_t ret = hcomm_.Drain(batchHandle);
+                ascendc_assert(ret == 0, "batch drain failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_, dstRank);
+                if (perfEnabled_) {
+                    perfCycles[11] += static_cast<uint64_t>(GetSystemCycle()) - prof12Start;
+                }
+                // prof12 Drain
+            }
         }
+
+        // Keep all AIVs alive until AIV0 has drained every destination channel.
+        SyncAll<true>();
         if (perfEnabled_) {
             WritePerfData(perfCycles);
         }

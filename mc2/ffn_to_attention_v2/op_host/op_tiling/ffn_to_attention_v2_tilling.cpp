@@ -86,12 +86,16 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     const gert::StorageShape *xShape = context->GetInputShape(config.xIndex);
     OP_TILING_CHECK(xShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "xShape"),
                     return ge::GRAPH_FAILED);
-    tilingData->ffnToAttentionV2Info.maxTokenNum = static_cast<uint64_t>(xShape->GetStorageShape().GetDim(0));
+    const int64_t maxTokenNumDim = xShape->GetStorageShape().GetDim(0);
+    OP_TILING_CHECK(maxTokenNumDim < 0, OP_LOGE(context->GetNodeName(), "x dim0 must be non-negative"),
+                    return ge::GRAPH_FAILED);
+    tilingData->ffnToAttentionV2Info.maxTokenNum = static_cast<uint64_t>(maxTokenNumDim);
 
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "workSpaces"),
                     return ge::GRAPH_FAILED);
     const size_t aivNum = static_cast<size_t>(tilingData->ffnToAttentionV2Info.aivNum);
+    const size_t maxTokenNum = static_cast<size_t>(tilingData->ffnToAttentionV2Info.maxTokenNum);
     const size_t axisH = static_cast<size_t>(tilingData->ffnToAttentionV2Info.H);
     OP_TILING_CHECK(aivNum == 0U, OP_LOGE(context->GetNodeName(), "aivNum must be greater than zero"),
                     return ge::GRAPH_FAILED);
@@ -106,9 +110,9 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     const size_t tokenBytes = axisH * URMA_X_TYPE_SIZE;
     const size_t dataWorkspaceStride =
         (tokenBytes + URMA_WORKSPACE_ALIGN - 1U) / URMA_WORKSPACE_ALIGN * URMA_WORKSPACE_ALIGN;
-    OP_TILING_CHECK(dataWorkspaceStride > std::numeric_limits<size_t>::max() / aivNum,
+    OP_TILING_CHECK(maxTokenNum != 0U && dataWorkspaceStride > std::numeric_limits<size_t>::max() / maxTokenNum,
                     OP_LOGE(context->GetNodeName(), "URMA data workspace size overflow"), return ge::GRAPH_FAILED);
-    const size_t dataWorkspaceSize = aivNum * dataWorkspaceStride;
+    const size_t dataWorkspaceSize = maxTokenNum * dataWorkspaceStride;
     const size_t flagWorkspaceSize = aivNum * URMA_FLAG_SLOT_SIZE;
     OP_TILING_CHECK(dataWorkspaceSize > std::numeric_limits<size_t>::max() - flagWorkspaceSize,
                     OP_LOGE(context->GetNodeName(), "URMA workspace size overflow"), return ge::GRAPH_FAILED);

@@ -324,14 +324,14 @@ def save_ffn_to_attention_perf_csv(
         "prof2_LocalAddressAndOffset_cycles",
         "prof3_SendToLocal_cycles",
         "prof4_StageRemoteData_cycles",
-        "prof5_RemoteReadTokenMetaData_cycles",
-        "prof6_RemoteAddressAndRelayInfo_cycles",
-        "prof7_StoreRemoteRelayInfo_cycles",
-        "prof8_FindDestinationTokens_cycles",
-        "prof9_MakeBatchHandle_cycles",
-        "prof10_AppendRemoteDataWrite_cycles",
-        "prof11_AppendRemoteFlagWrite_cycles",
-        "prof12_BatchCommitAndDrain_cycles",
+        "prof5_CountRemoteTokens_cycles",
+        "prof6_MakeBatchHandle_cycles",
+        "prof7_BuildRemoteDataInfo_cycles",
+        "prof8_AppendRemoteDataWrite_cycles",
+        "prof9_BuildRemoteFlagInfo_cycles",
+        "prof10_AppendRemoteFlagWrite_cycles",
+        "prof11_BatchCommit_cycles",
+        "prof12_Drain_cycles",
     ]
     with open(output_path, "w", newline="", encoding="utf-8") as csv_file:
         writer = csv.writer(csv_file)
