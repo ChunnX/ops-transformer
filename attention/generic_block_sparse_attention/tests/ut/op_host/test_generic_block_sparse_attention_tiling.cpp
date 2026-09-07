@@ -100,7 +100,7 @@ std::vector<gert::TilingContextPara::OpAttr> MakeAttrs(int64_t maskType, int64_t
                                                        int64_t returnLse, float dstTypeMax = 0.0f, int64_t winLeft = -1,
                                                        int64_t winRight = -1, int64_t isPackedGqa = 1,
                                                        const std::string &layoutQ = "TND",
-                                                       const std::string &layoutKv = "PAGED_BBND",
+                                                       const std::string &layoutKv = "PA_BBND",
                                                        const std::vector<int64_t> &blockShape = kBlockShape,
                                                        float scaleValue = kScale)
 {
@@ -224,10 +224,10 @@ TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_block_shape_x)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
     std::vector<int64_t> badBlockShape = {128, 128};
-    gert::TilingContextPara tilingContextPara(
-        "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16), MakeOutputs(ge::DT_FLOAT16, false),
-        MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, 1, "TND", "PAGED_BBND", badBlockShape), &compileInfo, "Ascend910B", 40,
-        196608);
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16),
+                                              MakeOutputs(ge::DT_FLOAT16, false),
+                                              MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, 1, "TND", "PA_BBND", badBlockShape),
+                                              &compileInfo, "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
@@ -302,13 +302,13 @@ TEST_F(generic_block_sparse_attention_tiling_ut, scale_value_zero_defaults_to_rs
     GenericBlockSparseAttentionCompileInfo compileInfo;
     gert::TilingContextPara tilingContextPara(
         "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16), MakeOutputs(ge::DT_FLOAT16, false),
-        MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, 1, "TND", "PAGED_BBND", kBlockShape, 0.0f), &compileInfo, "Ascend910B", 40,
+        MakeAttrs(1, 0, 0, 0, 0.0f, -1, -1, 1, "TND", "PA_BBND", kBlockShape, 0.0f), &compileInfo, "Ascend910B", 40,
         196608);
     TilingInfo tilingInfo;
     ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
     EXPECT_EQ(tilingInfo.tilingKey, static_cast<int64_t>(kFp16Tiling910B));
     ASSERT_NE(tilingInfo.tilingData, nullptr);
-    // scaleValue is the 11th field (10 uint32 ahead) in the POD tiling layout.
+    // scaleValue follows the 10 uint32 fields in the POD tiling layout.
     constexpr size_t kScaleValueOffset = 10U * sizeof(uint32_t);
     ASSERT_GT(tilingInfo.tilingDataSize, kScaleValueOffset + sizeof(float));
     float scaleValue = 0.0f;

@@ -78,38 +78,6 @@ public:
 
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value;
 
-    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_)
-    {
-        // Allocate UB space
-        constexpr uint32_t LS_UB_TENSOR_OFFSET = 0;
-        constexpr uint32_t LP_UB_TENSOR_OFFSET = 2 * UB_UINT8_BLOCK_SIZE;
-
-        constexpr uint32_t LM_UB_TENSOR_OFFSET = 7 * UB_UINT8_BLOCK_SIZE;
-        constexpr uint32_t GM_UB_TENSOR_OFFSET = LM_UB_TENSOR_OFFSET + 64 * sizeof(float);
-        constexpr uint32_t DM_UB_TENSOR_OFFSET = GM_UB_TENSOR_OFFSET + 64 * sizeof(float);
-        constexpr uint32_t LL_UB_TENSOR_OFFSET = DM_UB_TENSOR_OFFSET + 3 * 64 * sizeof(float);
-        constexpr uint32_t GL_UB_TENSOR_OFFSET = LL_UB_TENSOR_OFFSET + 64 * sizeof(float);
-
-        subBlockIdx_ = AscendC::GetSubBlockIdx();
-
-        scaleValue = static_cast<ElementInput>(scaleValue_);
-
-        for (uint32_t i = 0; i < UB_S_P_BUF_STAGES; i++) {
-            lsUbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementInput>(
-                LS_UB_TENSOR_OFFSET + MAX_UB_S_ELEM_NUM * sizeof(ElementInput) * i);
-            lpUbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOutput>(
-                LP_UB_TENSOR_OFFSET + MAX_UB_S_ELEM_NUM * sizeof(ElementOutput) * i);
-        }
-        for (uint32_t i = 0; i < UB_DM_BUF_MAX_STAGES; i++) {
-            dmUbTensor[i] = resource.ubBuf.template GetBufferByByte<float>(DM_UB_TENSOR_OFFSET +
-                                                                           DM_UB_GLOBAL_ELEM_NUM * sizeof(float) * i);
-        }
-        gmUbTensor = resource.ubBuf.template GetBufferByByte<float>(GM_UB_TENSOR_OFFSET);
-        glUbTensor = resource.ubBuf.template GetBufferByByte<float>(GL_UB_TENSOR_OFFSET);
-        lmUbTensor = resource.ubBuf.template GetBufferByByte<ElementInput>(LM_UB_TENSOR_OFFSET);
-        llUbTensor = resource.ubBuf.template GetBufferByByte<ElementInput>(LL_UB_TENSOR_OFFSET);
-    }
-
     __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_,
                                     UBufTileHelper &uBufTileHelper)
     {
@@ -284,7 +252,7 @@ private:
                                                                               uint32_t nPadding, ElementInput dScale,
                                                                               uint16_t S2BaseSize)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
         RegTensor<ElementInput> minVreg;
         RegTensor<ElementInput> srcVreg;
         RegTensor<ElementInput> maxTmpVreg;
@@ -312,7 +280,7 @@ private:
                                                                               uint32_t nPadding, ElementInput dScale,
                                                                               uint16_t S2BaseSize)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
         RegTensor<ElementInput> minVreg;
         RegTensor<ElementInput> srcVreg0;
         RegTensor<ElementInput> srcVreg1;
@@ -341,7 +309,7 @@ private:
     __simd_vf__ inline void UpdateMax(__ubuf__ ElementInput *nowMaxUb, __ubuf__ float *lastMaxUb, uint16_t mLoops,
                                       uint32_t tailM)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
         constexpr static CastTrait castTraitZero = {
             RegLayout::ZERO,
             SatMode::SAT,
@@ -413,7 +381,7 @@ private:
         __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb, __ubuf__ ElementInput *nowMaxUb,
         __ubuf__ ElementInput *expSumUb, uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
         RegTensor<ElementInput> expVreg;
         RegTensor<ElementInput> expSumVreg;
         RegTensor<ElementInput> maxVreg;
@@ -441,7 +409,7 @@ private:
         __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb, __ubuf__ ElementInput *nowMaxUb,
         __ubuf__ ElementInput *expSumUb, uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
         RegTensor<ElementInput> expVreg0;
         RegTensor<ElementInput> expVreg1;
         RegTensor<ElementInput> expSumVreg;
@@ -491,7 +459,7 @@ private:
         __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb, __ubuf__ ElementInput *nowMaxUb,
         __ubuf__ ElementInput *expSumUb, uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
 
         RegTensor<ElementInput> expVreg;
         RegTensor<ElementInput> expSumVreg;
@@ -575,7 +543,7 @@ private:
         __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb, __ubuf__ ElementInput *nowMaxUb,
         __ubuf__ ElementInput *expSumUb, uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
 
         RegTensor<ElementInput> expVreg0;
         RegTensor<ElementInput> expVreg1;
@@ -684,7 +652,7 @@ private:
                                                 __ubuf__ ElementInput *expSumUb, __ubuf__ ElementInput *nowMaxUb,
                                                 uint16_t mLoops, uint32_t tailM)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
 
         constexpr static CastTrait castTrait = {
             RegLayout::ZERO,
@@ -731,7 +699,7 @@ private:
                                                   __ubuf__ float *maxUb, __ubuf__ ElementInput *expSumUb,
                                                   __ubuf__ ElementInput *nowMaxUb, uint16_t mLoops, uint32_t tailM)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
 
         constexpr static CastTrait castTrait = {
             RegLayout::ZERO,

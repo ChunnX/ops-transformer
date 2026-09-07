@@ -76,40 +76,6 @@ public:
 
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value;
 
-    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_)
-    {
-        // Allocate UB space
-        constexpr uint32_t LS_UB_TENSOR_OFFSET = 0;
-        constexpr uint32_t LP_UB_TENSOR_OFFSET = 2 * UB_UINT8_BLOCK_SIZE;
-
-        constexpr uint32_t LM_UB_TENSOR_OFFSET = 7 * UB_UINT8_BLOCK_SIZE;
-        constexpr uint32_t GM_UB_TENSOR_OFFSET = LM_UB_TENSOR_OFFSET + 64 * sizeof(float);
-        constexpr uint32_t DM_UB_TENSOR_OFFSET = GM_UB_TENSOR_OFFSET + 64 * sizeof(float);
-        constexpr uint32_t LL_UB_TENSOR_OFFSET = DM_UB_TENSOR_OFFSET + 3 * 64 * sizeof(float);
-        constexpr uint32_t GL_UB_TENSOR_OFFSET = LL_UB_TENSOR_OFFSET + 64 * sizeof(float);
-
-        subBlockIdx_ = AscendC::GetSubBlockIdx();
-        scaleValue = AscendC::ToBfloat16(scaleValue_);
-        MIN_VALUE = AscendC::ToBfloat16(-3.389531390315715675e+38);
-
-        for (uint32_t i = 0; i < UB_S_P_BUF_STAGES; i++) {
-            lsUbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementInput>(
-                LS_UB_TENSOR_OFFSET + MAX_UB_S_ELEM_NUM * sizeof(ElementInput) * i);
-            lpUbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOutput>(
-                LP_UB_TENSOR_OFFSET + MAX_UB_S_ELEM_NUM * sizeof(ElementOutput) * i);
-        }
-        for (uint32_t i = 0; i < UB_DM_BUF_MAX_STAGES; i++) {
-            dmUbTensor[i] = resource.ubBuf.template GetBufferByByte<float>(DM_UB_TENSOR_OFFSET +
-                                                                           DM_UB_GLOBAL_ELEM_NUM * sizeof(float) * i);
-        }
-        gmUbTensor = resource.ubBuf.template GetBufferByByte<float>(GM_UB_TENSOR_OFFSET);
-        glUbTensor = resource.ubBuf.template GetBufferByByte<float>(GL_UB_TENSOR_OFFSET);
-        lmUbTensor = resource.ubBuf.template GetBufferByByte<ElementInput>(LM_UB_TENSOR_OFFSET);
-        llUbTensor = resource.ubBuf.template GetBufferByByte<ElementInput>(LL_UB_TENSOR_OFFSET);
-        lmUbFloatTensor = resource.ubBuf.template GetBufferByByte<float>(LM_UB_TENSOR_OFFSET);
-        llUbFloatTensor = resource.ubBuf.template GetBufferByByte<float>(LL_UB_TENSOR_OFFSET);
-    }
-
     __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_,
                                     UBufTileHelper &uBufTileHelper)
     {
@@ -310,7 +276,7 @@ private:
                                                                                   ElementInput dScale,
                                                                                   uint16_t S2BaseSize)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
 
         constexpr static CastTrait castTraitZero = {
             RegLayout::ZERO,
@@ -327,7 +293,6 @@ private:
 
         RegTensor<ElementInput> minVreg;
         RegTensor<ElementInput> srcVreg;
-        // RegTensor<ElementInput> maxSrcVreg;
         RegTensor<ElementInput> maxTmpVreg;
         RegTensor<ElementInput> scaleVreg;
         RegTensor<float> maxFloatVreg0;
@@ -366,7 +331,7 @@ private:
                                                                                   ElementInput dScale,
                                                                                   uint16_t S2BaseSize)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
         constexpr static CastTrait castTraitZero = {
             RegLayout::ZERO,
             SatMode::UNKNOWN,
@@ -383,7 +348,6 @@ private:
         RegTensor<ElementInput> minVreg;
         RegTensor<ElementInput> srcVreg0;
         RegTensor<ElementInput> srcVreg1;
-        // RegTensor<ElementInput> maxSrcVreg;
         RegTensor<ElementInput> maxTmpVreg;
         RegTensor<ElementInput> scaleVreg;
         RegTensor<float> maxFloatVreg0;
@@ -424,7 +388,7 @@ private:
     __simd_vf__ inline void CastMax(__ubuf__ ElementS *nowMaxUb, __ubuf__ float *nowMaxFloatUb, uint16_t mLoops,
                                     uint32_t tailM)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
         constexpr static CastTrait castTraitZero = {
             RegLayout::ZERO,
             SatMode::UNKNOWN,
@@ -455,7 +419,7 @@ private:
     __simd_vf__ inline void UpdateMax(__ubuf__ float *nowMaxUb, __ubuf__ float *lastMaxUb, uint16_t mLoops,
                                       uint32_t tailM)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
 
         RegTensor<float> nowMaxVreg;
         RegTensor<float> lastMaxFloatVreg;
@@ -491,7 +455,7 @@ private:
         __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb, __ubuf__ float *nowMaxUb, __ubuf__ float *expSumUb,
         uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize, uint32_t tailNOdd, uint32_t tailNEven)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
         constexpr static CastTrait castTraitZero = {
             RegLayout::ZERO,
             SatMode::UNKNOWN,
@@ -565,7 +529,7 @@ private:
         __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb, __ubuf__ float *nowMaxUb, __ubuf__ float *expSumUb,
         uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize, uint32_t tailNOdd, uint32_t tailNEven)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
         constexpr static CastTrait castTraitZero = {
             RegLayout::ZERO,
             SatMode::UNKNOWN,
@@ -673,7 +637,7 @@ private:
         __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb, __ubuf__ float *nowMaxUb, __ubuf__ float *expSumUb,
         uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize, uint32_t tailNOdd, uint32_t tailNEven)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
         constexpr static CastTrait castTraitZeroUNKNOWN = {
             RegLayout::ZERO,
             SatMode::UNKNOWN,
@@ -761,7 +725,7 @@ private:
         __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb, __ubuf__ float *nowMaxUb, __ubuf__ float *expSumUb,
         uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize, uint32_t tailNOdd, uint32_t tailNEven)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
         constexpr static CastTrait castTraitZeroUNKNOWN = {
             RegLayout::ZERO,
             SatMode::UNKNOWN,
@@ -877,7 +841,7 @@ private:
                                                   __ubuf__ float *maxUb, __ubuf__ float *expSumUb,
                                                   __ubuf__ float *nowMaxUb, uint16_t mLoops, uint32_t tailM)
     {
-        using namespace AscendC::MicroAPI;
+        using namespace AscendC::Reg;
 
         RegTensor<float> nowMaxFloatVreg;
         RegTensor<float> lastMaxVreg;

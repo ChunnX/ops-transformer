@@ -228,6 +228,26 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/generic_block_sparse_attention_grad/README.md">generic_block_sparse_attention_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>通用块稀疏注意力反向算子，依据rsvdBlockIdx/rsvdBlockCount在被选中的Q块上计算并传播梯度。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/generic_block_sparse_attention_grad_metadata/README.md">generic_block_sparse_attention_grad_metadata</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI CPU</td>
+    <td>generic_block_sparse_attention_grad算子的前置算子，用于计算generic_block_sparse_attention_grad的负载均衡。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/incre_flash_attention/README.md">incre_flash_attention</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -275,6 +295,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>在Sparse Flash Attention的基础上支持了[Per-Token-Head-Tile-128量化]输入。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/kv_quant_sparse_flash_attention_v2/README.md">kv_quant_sparse_flash_attention_v2</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>在Kv Quant Sparse Flash Attention的基础上支持了sinks特性以及支持输出softmax_max和softmax_sum。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -1555,6 +1585,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>mhc_pre_sinkhorn算子的反向传播，基于一系列计算得到MHC架构中hidden层的梯度。</td>
+  </tr>
+  <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/block_attention_residuals_grad/README.md">block_attention_residuals_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>BlockAttentionResiduals的反向算子，根据前向保存的inv_norm、probs和上游梯度grad_hidden_states，计算partial_block、block_res、proj_weight、norm_weight的梯度。</td>
   </tr>
   <tr>
     <td>mamba</td>
