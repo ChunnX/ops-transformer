@@ -76,7 +76,7 @@ elif self.uses_candidates:        # consumer 层：候选块外 score 置 -inf �
 | 输出 | `candidate_topk_index` | 可选输出 | INT32, 同上 | `candidate_mode=1` 时输出；无序，槽位语义：块号或 -1 |
 | 输出 | `sparse_indices`（即 topk_index） | 既有输出 | 不变 | mode=1: 全量 score 的 topk；mode=2: **从 candidate_topk_index 展开的 ≤16384 个候选位置中再挑 topk 个**；mode=3: 现网行为 |
 | 属性 | `candidate_mode` | 可选属性 | INT, 默认 **3** | **1**=source（is_candidate_source，输出候选块索引 + 照常输出 topk_index）；**2**=consumer（use_candidate，输入候选块索引，在候选内选 topk）；**3**=关闭（现网行为，默认值保证既有调用零影响） |
-| 属性 | `candidate_topk_blocks` | 可选属性 | INT, 默认 2048 | **当前仅支持 2048**（属性保留、host 校验限定 2048，未来扩展只放宽校验不改接口；受 BASE_TOPK=2048 的 sort/merge 结构约束，910b）|
+| 属性 | `candidate_topk_blocks` | 可选属性 | INT, 默认 2048 | **(0, 2048] 内 64 的倍数**（2026-09-07 放宽，原为仅 2048；上限受 BASE_TOPK=2048 的 sort/merge 结构约束；`numBlocks > topk_blocks` 时 pin 最新块必须入选，见 §9/P2）|
 | 属性 | `candidate_block_size` | 可选属性 | INT, 默认 8 | 范围 [1, 64] 且为 2 的幂（向量 reduce 实现约束）；**source 与 consumer 必须一致** |
 
 **设计决策 — 输出索引而非 bool（用户决策"不再输出 bool，直接输出 topk index"）**：
@@ -218,7 +218,7 @@ dtype/精度约束：score 全程 fp32（现有路径不变）；块化 amax 与
 - 块级 topk 与位置级 topk 在**同一 Vec1 调用**内、同一 (bN2, gS1, s2) 任务块上执行，共享现有 metadata 分核（QLI_V2_* AIC 段）。
 - 负载增量：Vec1 每 tile 增加 `O(tileLen/8)` 的块化 + 块级 sort/merge（≈位置级 sort 开销的 1/8）→ 仅放大每块耗时，**不改变任务块数量与划分粒度** → metadata 的分核算法、输出布局、协议（1024 int32, AIC 36×8 + AIV 72×8）均不变，QLD_V2 段在 910b 本就全 0。
 
-### 3.3 UB Buffer 规划（AIV，910b UB 256KB）
+### 3.3 UB Buffer 规划（AIV，910b UB **实测 192KB**）
 
 采用 §3.1 的 v1 对齐方案后，s1BaseSize 恒为 4（g∈{32,64} 通用），UB 不随 gSize 变化：
 
@@ -228,16 +228,16 @@ dtype/精度约束：score 全程 fp32（现有路径不变）；块化 amax 与
 | buffer | 元素数 | 字节 | 生命周期 | 复用 |
 |---|---|---|---|---|
 | globalBlockTopkUb_ | CeilDiv(s1BaseSize,2) × topkBlocks × 2 (fp32 pair) | 32KB | 整个 gS1 基本块 | 新增 TBuf，重置点与 globalTopkUb_ 同步 |
-| 块化临时（blkScore+blkIdx+对齐 pad） | 2×s2BaseSize/8 | 2KB | 单 tile | 复用 tmpBuf 头部 |
+| 块化临时（实装布局，均在 tmpBuf 64KB 内） | blkScore@tmp[6144] / blkIdx@tmp[6144+blockNumPad] / isPad+pin 链@tmp[14336–15872] / blkSortTmp@tmp[11776] | ≤5KB | 单 tile | 复用 tmpBuf；**blkSortTmp 需容纳 mrgDst+mrgSrc ≤4608 floats，11776+4608=16384 恰为 64KB 末尾（曾置 12288 越界 2KB 触发 aicore）** |
 
-合计 ~178KB < 256KB ✓（编译期从 PlatformInfo ubSize 校验，**禁止**硬编码 256KB 常量）。
+合计 176KB < 192KB ✓（**实测 UB 为 192KB，非 256KB**；编译期从 PlatformInfo ubSize 校验，**禁止**硬编码常量）。
 
-**mode=2 增量**（均复用 tmpBuf）：
-| buffer | 元素数 | 字节 | 复用 |
+**mode=2 增量**（实装）：
+| buffer | 元素数 | 字节 | 说明 |
 |---|---|---|---|
-| candListUb | topkBlocks (int32) | 8KB | 复用 tmpBuf |
-| blkMaskUb | tileBlkNum (fp32/bool) + 位置展开 tileLen | 10KB | 复用 tmpBuf |
-| compare 批缓冲 | tileBlkNum × 32 | 32KB | 复用 tmpBuf |
+| candBuf_（TBuf） | topkBlocks × 2 (fp32 pair) | 16KB | 排序后的候选 [values|idx] 对 |
+| candConstBuf_（TBuf） | topkBlocks (fp32) | 8KB | -1e30 常量（候选外罚分） |
+| 掩码临时（复用 tmpBuf） | candInt@12288 / candSortTmp@4096 / blkIdxF·acc·diff@4352–4864 / posDist@12288 / isOutI32@14336 | ~20KB | **isOutI32 必须避开 [4096,6144)**（该区被 ProcessVec1 的 pen/idxPen 复用，曾重叠致掩码失效） |
 
 **输出清理检查清单（mode=1 填 -1 的路径，BSND 范围内共 2 条）**：
 1. `DealActSeqLenIsZero`（actS1Size=0 或 actS2Size=0，BSND 分支）
@@ -386,7 +386,8 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 | numBlocks vs topkBlocks | <, =, > |
 | S2 对齐 | actS2Size%8=0 / ≠0（含 actS2Size=1） |
 | B | 1 / 4（变长 batch） |
-| topk_blocks | 固定 2048（O2 已定，非默认值用例删除） |
+| topk_blocks | 2048 全量 + **pin 用例 64**（host 已放宽为 (0,2048] 内 64 的倍数；`numBlocks > topk_blocks` 时 pin 最新块必须入选，单/多 tile 各 1 用例） |
+| S2 大规模（生产规格） | **16K**（2048 块恰好装满 2048 槽，精确边界）/ **128K × B=2** / **1M**（131072 块，pin 硬性生效）；key pool **[7936,128,1,128]**（PA_BBND），block_table **[B,1055]**（首维=batch，置换非恒等映射；1M 场景 pool 放大 [8192,128,1,128]、表 [1,8192]，7936×128<1M 装不下） |
 
 重点组合：mode1+尾块不对齐+causal、**mode1+prefill 首块（验证行级 pin：不同行 pin 不同块）**、mode2+causal、`numBlocks ≤ topkBlocks` 时 mode=2 与 mode=3 的等价性（mask 全选）、**全部用例统一 g=32（mBase=128 分核对齐，A1 推导的本命规格）**、**topk=min(2048, actS2Size) 与 topk=2048+滤-1 的等价性**、mode1+多核（B>1 触发行间切分，验证各核独立直出正确）、cmp_ratio=2 下块划分与 pin（actS2Size 为压缩后长度，cmp_residual_k 参与原始长度还原）。
 
@@ -457,6 +458,7 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 已决策记录：
 - ~~O1~~ **已定**：torch 接口采用方案 b——新增 overload `quant_lightning_indexer.candidate(...) -> (Tensor, Tensor, Tensor)`，旧 schema 二元组不动（§4.3）。
 - ~~O2~~ **已定**：`candidate_topk_blocks` 当前仅支持 2048；属性保留、host 校验限定 2048，未来扩展只放宽校验不改接口；非默认值测试用例已删除。
+  - **2026-09-07 更新**：已放宽为 (0, 2048] 内 64 的倍数（commit a346acdcb，pin 语义验证需要 topk_blocks=64）；BASE_TOPK=2048 上限不变。
 
 ## 8. 实施拆解（文件级）
 
@@ -479,3 +481,22 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 | `README.md`（两算子） | 参数表、约束（block_size 一致性、同 forward 有效期、910b 无 LD 说明） |
 
 **明确不做**：arch35 (950) 全部路径；LD/ProcessDecode 相关改动；metadata 算子代码；workspace 布局变更；TilingKey 变更。
+
+## 9. 实现期实测平台约束（2026-09-07 调试结论，v220 / 910b）
+
+实现与调试期间实证的平台铁律，均已在代码注释中标注，后续维护必须遵守：
+
+| # | 约束 | 违反表现 | 正确做法 |
+|---|---|---|---|
+| P1 | 向量指令 count 必须 64 对齐 | `Duplicate(count=1)`（pin 单元素写）触发 aicore 异常 507015 | 少量元素写入用标量 `SetValue`（须配 P2）或并入 64 对齐向量链 |
+| P2 | 标量 UB 写/读与 V 管道互不被 `PipeBarrier<PIPE_V>` fence | pad 块 -1 填充被 SortAll 抢跑覆盖；排序后 `GetValue` 二分读到 stale 数据（mode=2 IoU=0） | 标量读 V 写结果前 `SetFlag/WaitFlag<HardEvent::V_S>`（参照 CANN topk_v200 实现）；标量写后对称 S_V；或彻底纯向量化 |
+| P3 | UB→UB `DataCopy`（走 MTE 管道）不被 `PipeBarrier<PIPE_V>` 等待 | 跨 tile MergeSort 回拷累加器后，下一 tile 的 MrgSort 读到 stale（tile1 块整段缺失 + -inf 位型+8k 垃圾×4） | 回拷改 int32 视图 `Adds(+0)` 分块（`MergeSortVecCopy`）；**float 域 Adds 会把 0xFFFFFFFF（-1 的负符号 NaN 位型）规范化为 0x7FFFFFFF**，必须 int32 |
+| P4 | v220 Cast：s32→f32 `CAST_NONE` 合法（vconv_s322f32）；**f32→s32 `CAST_NONE` 为 assert no-op**（仅 RINT/FLOOR/CEIL/ROUND/TRUNC 有指令） | fp32 算术链构造的 idx 经 Cast 后保持浮点位型垃圾（score 位型泄漏进索引字段） | 索引构造全程 int32 域（`ArithProgression` + Sub/Maxs/Mins/Mul 链）；确需 f32→s32 时用 `CAST_RINT` |
+| P5 | kernel `.o` 编译自 `build/binary/ascend910b/src/` 源码副本（cmake configure 时拷贝，make 不刷新），受 `gen/*.done` 门闩控制；且该路径下 `compile_stop.flag` 会阻塞失败后的重试 | 连续三轮"修复无效"实为旧二进制（AGENTS.md 教训复现，部署 .h 源码是新的、编译产物是旧的，标记检查被假象通过） | build_install.sh 流水：rsync 源码副本 → 删 `.done` 门闩 → make → **校验 .o mtime 为本次** → 安装 → `cmp` 部署 .o 与构建 .o 一致 |
+
+## 10. 当前验证状态（2026-09-07）
+
+- pytest 15 用例（mode 1/2/3 × cmp_ratio 1/2 × g32/64 × decode/prefill/tail/sparse2048/pin64 单/多 tile）×3 连跑全过，零 aicore
+- 大规模生产规格（`/opt/tjj/qli_cand_test/test_big_shape_m1.py`，设备侧 harness）：16K(b=1) / 128K(b=2) mode=1、128K(b=2) mode=2 随机半数候选、1M(b=1) mode=1 全部 IoU=1.000000；**1M 场景 pin 块 131071 确认入选**（131072 块中选 top-2048）
+- 大 shape 回归：1M mode=3（IoU=1.0 抽样行精确比对 + 双跑确定性）、1M cmp_ratio=2、qseq 256..2048 扫描全过
+- 提交序列：`aede3e62e`（功能实现）→ `a346acdcb`（五处正确性修复：pad 块 int32 向量算术填充 / MergeSortVecCopy 位精确回拷 / pin 纯向量化（全局块号比较）/ mode=2 CountGE 窗口边界 + CAST_RINT + isOutI32 区域重叠 / V_S fence）
