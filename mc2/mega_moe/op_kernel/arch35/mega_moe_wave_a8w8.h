@@ -52,7 +52,6 @@ private:
     using QuantOutType = typename MegaMoeBase::QuantOutType;
     using ActivationType = typename MegaMoeBase::ActivationType;
     using QuantScaleOutType = typename MegaMoeBase::QuantScaleOutType;
-    using MoeQuantConfig = typename MegaMoeBase::MoeQuantConfig;
 
     static constexpr uint32_t GMM1_TILE_M = MegaMoeBase::GMM1_TILE_M;
     static constexpr uint32_t EPILOGUE_TILE_M = MegaMoeBase::EPILOGUE_TILE_M;
