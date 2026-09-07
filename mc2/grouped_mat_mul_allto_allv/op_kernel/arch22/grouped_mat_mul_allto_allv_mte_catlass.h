@@ -237,7 +237,7 @@ private:
             if constexpr (CompleteEachExpert) {
                 // Drain the FIX pipe only at chunk boundaries, right before
                 // the paired AIV is notified, so experts inside a chunk keep
-                // the uninterrupted CATLASS pipelining that the bulk path has.
+                // uninterrupted CATLASS pipelining inside each chunk.
                 if (onExpertComplete(expertIdx)) {
                     DrainExpertOutput(blockMmad);
                     onExpertComplete.NotifyChunkReady();
@@ -246,8 +246,8 @@ private:
         }
 
         if constexpr (!CompleteEachExpert) {
-            // Preserve the BULK API: all experts share one uninterrupted
-            // CATLASS loop. Restore its original final-drain semantics; the
+            // The optional shared MM has no expert-ready callback; preserve
+            // its final-drain semantics. The
             // synchronous ping-pong policy is drained by BlockMmad's
             // destructor, while an asynchronous policy needs this flush.
             if constexpr (BlockMmad::DispatchPolicy::ASYNC) {

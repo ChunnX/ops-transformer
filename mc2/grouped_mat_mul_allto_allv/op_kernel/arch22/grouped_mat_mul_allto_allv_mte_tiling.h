@@ -23,14 +23,9 @@ namespace MC2KernelTemplate {
 constexpr uint32_t GMMA2AV_MTE_MAX_COUNT_NUM = 1024U;
 constexpr uint32_t GMMA2AV_MTE_MAX_RANK_SIZE = 768U;
 
-enum class ExpertPipelineMode : uint32_t {
-    BULK = 0U,
-    EXPERT_OVERLAP = 1U,
-};
-
-// Default expert-chunk granularity (received rows) for the expert-overlap
-// pipeline: 8 L1 M-tiles worth of rows per synchronization stage.
-constexpr uint32_t GMMA2AV_MTE_DEFAULT_EXPERT_CHUNK_ROWS = 1024U;
+// Zero closes only at the final expert, including any trailing empty experts.
+constexpr uint32_t GMMA2AV_MTE_SINGLE_CHUNK = 0U;
+constexpr uint32_t GMMA2AV_MTE_DENSE_EXPERT_CHUNK_ROWS = 1536U;
 
 // The AIV-driven MTE path only consumes the fields below. Keep this definition
 // local instead of inheriting TaskTilingInfo from the legacy implementation.
@@ -73,13 +68,12 @@ struct GroupedMatMulAlltoAllvMteTilingData {
     // Ascend 910_93 and Ascend 910B expose different HCCL window-context
     // layouts for the AIV-driven MTE path.
     uint32_t isA3;
-    // This reuses the former reserved word so the serialized MTE tiling-data
-    // size and all following member offsets remain unchanged.
-    uint32_t expertPipelineMode;
+    // Preserve the serialized size and following member offsets.
+    uint32_t reserved;
     // Expert-overlap pipeline granularity: consecutive experts are batched
-    // into one synchronization stage until their cumulative received rows
-    // reach this threshold (boundary snapped to an expert end). 1 restores
-    // the legacy per-expert pipeline.
+    // into one synchronization stage until their cumulative local GMM rows
+    // reach this threshold (boundary snapped to an expert end). Zero selects
+    // one chunk ending at the final expert. Host tiling derives this from counts.
     uint32_t expertChunkRows;
     GmmA2avCoCTiling cocTiling;
 };
@@ -129,14 +123,14 @@ constexpr int32_t MAX_SYNC_EPOCH = 0x7ffffffe;
 // depend on the current rank size or expert count, so persistent HCCL windows
 // can safely be reused by cases with different shapes.
 constexpr uint64_t EPOCH_BASE = 0UL;
-constexpr uint64_t BULK_READY_BASE = EPOCH_BASE + SYNC_SLOT_BYTES;
-constexpr uint64_t EXPERT_READY_BASE = BULK_READY_BASE + static_cast<uint64_t>(MAX_RANK_SIZE) * SYNC_SLOT_BYTES;
+constexpr uint64_t COUNT_READY_BASE = EPOCH_BASE + SYNC_SLOT_BYTES;
+constexpr uint64_t EXPERT_READY_BASE = COUNT_READY_BASE + static_cast<uint64_t>(MAX_RANK_SIZE) * SYNC_SLOT_BYTES;
 constexpr uint64_t COMPLETION_BASE = EXPERT_READY_BASE + static_cast<uint64_t>(MAX_COUNT_NUM) * SYNC_SLOT_BYTES;
 constexpr uint64_t ACK_BASE = COMPLETION_BASE + static_cast<uint64_t>(MAX_RANK_SIZE) * SYNC_SLOT_BYTES;
 constexpr uint64_t FIXED_SYNC_BYTES = ACK_BASE + static_cast<uint64_t>(MAX_RANK_SIZE) * SYNC_SLOT_BYTES;
 
 static_assert(SYNC_SLOT_BYTES == 64UL, "Every synchronization slot must occupy one cache line");
-static_assert(BULK_READY_BASE % SYNC_SLOT_BYTES == 0UL, "Bulk-ready region must be slot aligned");
+static_assert(COUNT_READY_BASE % SYNC_SLOT_BYTES == 0UL, "Count-ready region must be slot aligned");
 static_assert(EXPERT_READY_BASE % SYNC_SLOT_BYTES == 0UL, "Expert-ready region must be slot aligned");
 static_assert(COMPLETION_BASE % SYNC_SLOT_BYTES == 0UL, "Completion region must be slot aligned");
 static_assert(ACK_BASE % SYNC_SLOT_BYTES == 0UL, "Acknowledgement region must be slot aligned");

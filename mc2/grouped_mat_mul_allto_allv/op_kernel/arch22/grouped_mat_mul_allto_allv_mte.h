@@ -114,21 +114,6 @@ public:
         pipe->InitBuffer(ubBuffer_, GmmA2avMteDetail::USED_UB_BYTES);
     }
 
-    __aicore__ inline void LaunchCommData(uint32_t startExpertIdx, uint32_t expertNum)
-    {
-        if ASCEND_IS_AIC {
-            return;
-        }
-        BeginInvocation();
-        PublishLocalCountTable();
-        PublishLocalPayload();
-
-        // Bulk-ready protects both the complete payload and the count table.
-        // Its fixed slot region is deliberately independent of runtime W/E.
-        PublishAndWaitRankPhase(Gmma2avMteTiling::BULK_READY_BASE);
-        PullPeerPayloadBulk(startExpertIdx, expertNum);
-    }
-
     __aicore__ inline void BeginExpertPipeline()
     {
         if ASCEND_IS_AIC {
@@ -136,11 +121,12 @@ public:
         }
         BeginInvocation();
 
-        // Counts do not depend on any GMM output, so publish them while AIC is
-        // computing expert 0. ExpertReady(..., 0) supplies their remote
-        // release/acquire handshake before a receiver loads the table.
+        // Counts do not depend on GMM output. Publish/acquire them while AIC
+        // computes the first chunk. This rank phase protects the count table
+        // independently of masked per-expert payload-ready flags. A local compute chunk can have no incoming
+        // rows, so masked expert-ready waits cannot protect the count table.
         PublishLocalCountTable();
-        LocalAivSync();
+        PublishAndWaitRankPhase(Gmma2avMteTiling::COUNT_READY_BASE);
         BuildDestinationOffsets();
         LocalAivSync();
         localExpertBaseRows_ = 0UL;
@@ -208,18 +194,16 @@ public:
             BuildPeerSourceOffsets();
             LocalAivSync();
         }
-        if (subBlockIdx_ != 0U || rankWorkerCount_ == 0U) {
-            return;
-        }
         const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo_->e);
         AscendC::LocalTensor<uint32_t> destinationOffsets = GetDestinationOffsetTensor();
         AscendC::LocalTensor<uint32_t> sourceOffsets = GetSourceOffsetTensor();
-        for (uint32_t srcRank = logicalCoreIdx_; srcRank < rankSize_; srcRank += rankWorkerCount_) {
-            // For a fixed source, both the send buffer and the receive buffer
-            // lay a rank's experts out as consecutive prefix ranges, so a
-            // chunk's experts form one contiguous row range per source. Only
-            // a degenerate (negative) count breaks contiguity; fall back to
-            // the per-expert pull for that source.
+        for (uint32_t srcRank = logicalCoreIdx_;
+             subBlockIdx_ == 0U && rankWorkerCount_ != 0U && srcRank < rankSize_;
+             srcRank += rankWorkerCount_) {
+            // Source rows are expert-major/destination-major, whereas output
+            // rows are source-major/expert-major. Other destinations can
+            // leave gaps between this destination's expert slices. Merge
+            // only when both sets of offsets prove the range contiguous.
             const uint64_t baseIndex = static_cast<uint64_t>(srcRank) * expertNum;
             const uint32_t firstSourceOffset = sourceOffsets.GetValue(baseIndex + startExpertIdx);
             const uint32_t firstDestinationOffset = destinationOffsets.GetValue(baseIndex + startExpertIdx);
@@ -229,7 +213,13 @@ public:
                 firstDestinationOffset != GmmA2avMteDetail::INVALID_TOKEN_OFFSET;
             for (uint32_t expertIdx = startExpertIdx; chunkContiguous && expertIdx < endExpertIdx; ++expertIdx) {
                 const int32_t recvCount = taskTilingInfo_->recvCnt[baseIndex + expertIdx];
-                if (recvCount < 0) {
+                if (recvCount < 0 ||
+                    sourceOffsets.GetValue(baseIndex + expertIdx) == GmmA2avMteDetail::INVALID_TOKEN_OFFSET ||
+                    destinationOffsets.GetValue(baseIndex + expertIdx) == GmmA2avMteDetail::INVALID_TOKEN_OFFSET ||
+                    static_cast<uint64_t>(sourceOffsets.GetValue(baseIndex + expertIdx)) !=
+                        static_cast<uint64_t>(firstSourceOffset) + chunkRows ||
+                    static_cast<uint64_t>(destinationOffsets.GetValue(baseIndex + expertIdx)) !=
+                        static_cast<uint64_t>(firstDestinationOffset) + chunkRows) {
                     chunkContiguous = false;
                     break;
                 }
@@ -237,8 +227,8 @@ public:
             }
             if (chunkContiguous) {
                 if (chunkRows > 0UL) {
-                    CopyGmToGm(recvBuffer_ + static_cast<uint64_t>(firstDestinationOffset) * taskTilingInfo_->N1,
-                               GetOutputData(srcRank) + static_cast<uint64_t>(firstSourceOffset) * taskTilingInfo_->N1,
+                    CopyGmToGm(GetOutputData(srcRank) + static_cast<uint64_t>(firstSourceOffset) * taskTilingInfo_->N1,
+                               recvBuffer_ + static_cast<uint64_t>(firstDestinationOffset) * taskTilingInfo_->N1,
                                chunkRows * taskTilingInfo_->N1);
                 }
                 continue;
@@ -247,6 +237,8 @@ public:
                 PullPeerExpertFromSource(srcRank, expertIdx);
             }
         }
+        // Non-copying subblocks must join the same barrier before any AIV
+        // advances to the next chunk or the invocation-completion protocol.
         LocalAivSync();
     }
 
@@ -339,30 +331,6 @@ private:
             local.SetValue(index, 0);
         }
         StoreInt32Row(GetCountTable(rank_), local, alignedCountNum);
-    }
-
-    __aicore__ inline void PublishLocalPayload()
-    {
-        if (subBlockIdx_ != 0U || rankWorkerCount_ == 0U) {
-            return;
-        }
-        uint64_t totalRows = 0UL;
-        const uint32_t countNum = rankSize_ * static_cast<uint32_t>(taskTilingInfo_->e);
-        for (uint32_t index = 0U; index < countNum; ++index) {
-            const int32_t count = taskTilingInfo_->sendCnt[index];
-            if (count > 0) {
-                totalRows += static_cast<uint64_t>(count);
-            }
-        }
-        const uint64_t rowsPerWorker = (totalRows + rankWorkerCount_ - 1UL) / rankWorkerCount_;
-        const uint64_t rowStart = static_cast<uint64_t>(logicalCoreIdx_) * rowsPerWorker;
-        if (rowStart < totalRows) {
-            const uint64_t rowCount = totalRows - rowStart > rowsPerWorker ?
-                rowsPerWorker : totalRows - rowStart;
-            CopyGmToGm(sendBuffer_ + rowStart * taskTilingInfo_->N1,
-                       GetOutputData(rank_) + rowStart * taskTilingInfo_->N1,
-                       rowCount * taskTilingInfo_->N1);
-        }
     }
 
     __aicore__ inline void PublishLocalChunk(uint32_t startExpertIdx, uint32_t endExpertIdx)
@@ -509,109 +477,6 @@ private:
         CopyGmToGm(GetOutputData(srcRank) + static_cast<uint64_t>(sourceOffset) * taskTilingInfo_->N1,
                    recvBuffer_ + static_cast<uint64_t>(destinationOffset) * taskTilingInfo_->N1,
                    static_cast<uint64_t>(recvCount) * taskTilingInfo_->N1);
-    }
-
-    __aicore__ inline void PullPeerPayloadBulk(uint32_t startExpertIdx, uint32_t expertNum)
-    {
-        if (subBlockIdx_ != 0U || rankWorkerCount_ == 0U) {
-            return;
-        }
-        const uint32_t localExpertNum = static_cast<uint32_t>(taskTilingInfo_->e);
-        const uint32_t remainingExpertNum =
-            startExpertIdx < localExpertNum ? localExpertNum - startExpertIdx : 0U;
-        const uint32_t endExpertIdx =
-            startExpertIdx + (expertNum > remainingExpertNum ? remainingExpertNum : expertNum);
-        const uint32_t countNum = rankSize_ * localExpertNum;
-        AscendC::LocalTensor<int32_t> peerCounts = GetControlTensor();
-        for (uint32_t srcRank = logicalCoreIdx_; srcRank < rankSize_; srcRank += rankWorkerCount_) {
-            if (srcRank == rank_) {
-                for (uint32_t index = 0U; index < countNum; ++index) {
-                    peerCounts.SetValue(index, taskTilingInfo_->sendCnt[index]);
-                }
-            } else {
-                LoadInt32Row(GetCountTable(srcRank), peerCounts, countNum);
-            }
-
-            uint64_t destinationTokenOffset = 0UL;
-            bool destinationLayoutValid = true;
-            for (uint32_t priorSource = 0U; priorSource < srcRank; ++priorSource) {
-                for (uint32_t expert = 0U; expert < localExpertNum; ++expert) {
-                    const int32_t count = taskTilingInfo_->recvCnt[
-                        static_cast<uint64_t>(priorSource) * localExpertNum + expert];
-                    uint64_t updated = 0UL;
-                    if (count < 0 || !SafeAdd(destinationTokenOffset, static_cast<uint64_t>(count), updated)) {
-                        destinationLayoutValid = false;
-                    } else {
-                        destinationTokenOffset = updated;
-                    }
-                }
-            }
-
-            uint64_t expertSourceBase = 0UL;
-            bool sourceLayoutValid = true;
-            for (uint32_t expert = 0U; expert < localExpertNum; ++expert) {
-                uint64_t sourceOffsetInExpert = 0UL;
-                uint64_t expertTotal = 0UL;
-                bool expertLayoutValid = sourceLayoutValid && destinationLayoutValid;
-                for (uint32_t dstRank = 0U; dstRank < rankSize_; ++dstRank) {
-                    const int32_t count = peerCounts.GetValue(
-                        static_cast<uint64_t>(dstRank) * localExpertNum + expert);
-                    uint64_t updated = 0UL;
-                    if (count < 0) {
-                        expertLayoutValid = false;
-                        continue;
-                    }
-                    if (dstRank < rank_ &&
-                        !SafeAdd(sourceOffsetInExpert, static_cast<uint64_t>(count), updated)) {
-                        expertLayoutValid = false;
-                    } else if (dstRank < rank_) {
-                        sourceOffsetInExpert = updated;
-                    }
-                    if (!SafeAdd(expertTotal, static_cast<uint64_t>(count), updated)) {
-                        expertLayoutValid = false;
-                    } else {
-                        expertTotal = updated;
-                    }
-                }
-
-                const uint64_t countIndex = static_cast<uint64_t>(rank_) * localExpertNum + expert;
-                const int32_t peerSendCount = peerCounts.GetValue(countIndex);
-                const int32_t localRecvCount = taskTilingInfo_->recvCnt[
-                    static_cast<uint64_t>(srcRank) * localExpertNum + expert];
-                uint64_t sourceOffset = 0UL;
-                uint64_t sourceEndRows = 0UL;
-                uint64_t sourceEndElements = 0UL;
-                uint64_t destinationEndRows = 0UL;
-                bool copyValid = expertLayoutValid && peerSendCount >= 0 && localRecvCount >= 0 &&
-                                 peerSendCount == localRecvCount &&
-                                 SafeAdd(expertSourceBase, sourceOffsetInExpert, sourceOffset) &&
-                                 SafeAdd(sourceOffset, static_cast<uint64_t>(peerSendCount), sourceEndRows) &&
-                                 SafeMulU32(sourceEndRows, static_cast<uint64_t>(taskTilingInfo_->N1),
-                                            sourceEndElements) &&
-                                 sourceEndElements <=
-                                     (winSize_ - Gmma2avMteTiling::CONTROL_REGION_BYTES) / sizeof(T) &&
-                                 SafeAdd(destinationTokenOffset, static_cast<uint64_t>(localRecvCount),
-                                         destinationEndRows) &&
-                                 destinationEndRows <= taskTilingInfo_->BSK;
-                if (expert >= startExpertIdx && expert < endExpertIdx && peerSendCount > 0 && copyValid) {
-                    // Preserve the published BULK baseline: self-rank data is
-                    // read directly from the GMM workspace, while remote data
-                    // is pulled from the peer HCCL window.
-                    __gm__ T *source = srcRank == rank_ ? sendBuffer_ : GetOutputData(srcRank);
-                    CopyGmToGm(source + sourceOffset * taskTilingInfo_->N1,
-                               recvBuffer_ + destinationTokenOffset * taskTilingInfo_->N1,
-                               static_cast<uint64_t>(peerSendCount) * taskTilingInfo_->N1);
-                }
-
-                if (!expertLayoutValid || !SafeAdd(expertSourceBase, expertTotal, expertSourceBase)) {
-                    sourceLayoutValid = false;
-                }
-                if (localRecvCount < 0 ||
-                    !SafeAdd(destinationTokenOffset, static_cast<uint64_t>(localRecvCount), destinationTokenOffset)) {
-                    destinationLayoutValid = false;
-                }
-            }
-        }
     }
 
     __aicore__ inline AscendC::LocalTensor<int32_t> GetControlTensor()
@@ -1022,14 +887,14 @@ private:
         // Returns true when this expert closes a chunk; the caller then drains
         // its FIX pipe and invokes NotifyChunkReady(). Boundary arithmetic
         // mirrors the AIV-side GetExpertChunkEnd exactly (same
-        // positive-rows-only recvCnt prefix), and the final expert always
+        // positive-rows-only sendCnt prefix), and the final expert always
         // closes the last chunk, so the number of notifications equals the
         // number of AIV waits.
         __aicore__ inline bool operator()(uint32_t expertIdx)
         {
-            chunkRows_ += GetExpertRecvRows(taskTilingInfo_, expertIdx);
+            chunkRows_ += GetExpertComputeRows(taskTilingInfo_, expertIdx);
             const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo_->e);
-            if (chunkRows_ < expertChunkRows_ && expertIdx + 1U != expertNum) {
+            if ((expertChunkRows_ == 0U || chunkRows_ < expertChunkRows_) && expertIdx + 1U != expertNum) {
                 return false;
             }
             chunkRows_ = 0UL;
@@ -1054,20 +919,13 @@ private:
 public:
     static __aicore__ inline void ProcessAic(ComputationOpType &computeOp, SharedComputationOpType &sharedComputeOp,
                                              const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo,
-                                             uint32_t expertPipelineMode, uint32_t expertChunkRows)
+                                             uint32_t expertChunkRows)
     {
         if ASCEND_IS_AIC {
             const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo->e);
-            if (expertPipelineMode == static_cast<uint32_t>(ExpertPipelineMode::EXPERT_OVERLAP)) {
-                ExpertReadyFlag readyFlag(EXPERT_READY_FLAG_IDX, EXPERT_REVERSE_FLAG_IDX);
-                AicExpertChunkReadyCallback callback(readyFlag, taskTilingInfo, expertChunkRows);
-                computeOp.ProcessExperts(0U, expertNum, callback);
-            } else {
-                computeOp.Process(0U, expertNum);
-                AscendC::CrossCoreSetFlag<0x0, PIPE_FIX>(AIC_ALL_READY_FLAG_IDX);
-                AscendC::CrossCoreWaitFlag(AIC_ALL_READY_FLAG_IDX);
-                AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(EXPERT_READY_FLAG_IDX);
-            }
+            ExpertReadyFlag readyFlag(EXPERT_READY_FLAG_IDX, EXPERT_REVERSE_FLAG_IDX);
+            AicExpertChunkReadyCallback callback(readyFlag, taskTilingInfo, expertChunkRows);
+            computeOp.ProcessExperts(0U, expertNum, callback);
 
             if constexpr (IsNeedMM) {
                 sharedComputeOp.Process(0U, 1U);
@@ -1078,52 +936,49 @@ public:
 
     static __aicore__ inline void ProcessAiv(CommOpType &commOp,
                                              const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo,
-                                             uint32_t expertPipelineMode, uint32_t expertChunkRows)
+                                             uint32_t expertChunkRows)
     {
         if ASCEND_IS_AIV {
             const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo->e);
-            if (expertPipelineMode == static_cast<uint32_t>(ExpertPipelineMode::EXPERT_OVERLAP)) {
-                ExpertReadyFlag readyFlag(EXPERT_READY_FLAG_IDX, EXPERT_REVERSE_FLAG_IDX);
-                commOp.BeginExpertPipeline();
-                uint32_t expertIdx = 0U;
-                while (expertIdx < expertNum) {
-                    // Consecutive experts are batched into one synchronization
-                    // stage until their cumulative received rows reach the
-                    // tiling-provided threshold. Chunk boundaries derive from
-                    // the shared tiling recvCnt prefix, so every AIV of this
-                    // rank computes the same interval; different ranks may
-                    // disagree because each uses its own received-row counts,
-                    // which is safe because ExpertReady flags stay
-                    // expert-granular and per-rank chunks are monotone in
-                    // expert order.
-                    const uint32_t chunkEnd = GetExpertChunkEnd(taskTilingInfo, expertIdx, expertChunkRows);
-                    // The AIC notifies only at chunk boundaries, so a single
-                    // C2V wait (plus its reverse-credit release) covers every
-                    // expert in [expertIdx, chunkEnd).
-                    Catlass::Arch::CrossCoreWaitFlagWithReverse<0x2, PIPE_MTE3>(readyFlag);
-                    commOp.StageChunkPayload(expertIdx, chunkEnd);
-                    commOp.PublishChunkReady(expertIdx, chunkEnd);
-                    commOp.WaitChunkReady(expertIdx, chunkEnd);
-                    commOp.PullExpertChunk(expertIdx, chunkEnd);
-                    expertIdx = chunkEnd;
-                }
-            } else {
-                AscendC::CrossCoreWaitFlag(EXPERT_READY_FLAG_IDX);
-                commOp.LaunchCommData(0U, expertNum);
+            ExpertReadyFlag readyFlag(EXPERT_READY_FLAG_IDX, EXPERT_REVERSE_FLAG_IDX);
+            commOp.BeginExpertPipeline();
+            uint32_t expertIdx = 0U;
+            while (expertIdx < expertNum) {
+                // Consecutive experts are batched into one synchronization
+                // stage until their cumulative local GMM rows reach the
+                // tiling-provided threshold. Use sendCnt, as the AIC does
+                // for each expert's M dimension. recvCnt instead describes
+                // the output routing and can concentrate all rows on one
+                // expert, delaying publication of unrelated local work.
+                // Different ranks may still disagree, which is safe
+                // because ExpertReady flags stay
+                // expert-granular and per-rank chunks are monotone in
+                // expert order.
+                const uint32_t chunkEnd = GetExpertChunkEnd(taskTilingInfo, expertIdx, expertChunkRows);
+                // The AIC notifies only at chunk boundaries, so a single
+                // C2V wait (plus its reverse-credit release) covers every
+                // expert in [expertIdx, chunkEnd).
+                Catlass::Arch::CrossCoreWaitFlagWithReverse<0x2, PIPE_MTE3>(readyFlag);
+                commOp.StageChunkPayload(expertIdx, chunkEnd);
+                commOp.PublishChunkReady(expertIdx, chunkEnd);
+                commOp.WaitChunkReady(expertIdx, chunkEnd);
+                commOp.PullExpertChunk(expertIdx, chunkEnd);
+                expertIdx = chunkEnd;
             }
+
             commOp.End();
         }
     }
 
 private:
-    static __aicore__ inline uint64_t GetExpertRecvRows(
+    static __aicore__ inline uint64_t GetExpertComputeRows(
         const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo, uint32_t expertIdx)
     {
         const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo->e);
         const uint32_t rankSize = static_cast<uint32_t>(taskTilingInfo->epWorldSize);
         uint64_t rows = 0UL;
-        for (uint32_t srcRank = 0U; srcRank < rankSize; ++srcRank) {
-            const int32_t count = taskTilingInfo->recvCnt[static_cast<uint64_t>(srcRank) * expertNum + expertIdx];
+        for (uint32_t dstRank = 0U; dstRank < rankSize; ++dstRank) {
+            const int32_t count = taskTilingInfo->sendCnt[static_cast<uint64_t>(dstRank) * expertNum + expertIdx];
             if (count > 0) {
                 rows += static_cast<uint64_t>(count);
             }
@@ -1138,11 +993,12 @@ private:
         const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo->e);
         uint64_t chunkRows = 0UL;
         for (uint32_t expertIdx = startExpertIdx; expertIdx < expertNum; ++expertIdx) {
-            chunkRows += GetExpertRecvRows(taskTilingInfo, expertIdx);
+            chunkRows += GetExpertComputeRows(taskTilingInfo, expertIdx);
+            // Zero selects one chunk including trailing empty experts.
             // A chunk always contains at least one expert; a threshold of 1
             // restores the legacy per-expert pipeline (modulo grouping runs
-            // of experts with no received rows, which carry no data).
-            if (chunkRows >= expertChunkRows) {
+            // of experts with no local GMM rows, which carry no data).
+            if (expertChunkRows != 0U && chunkRows >= expertChunkRows) {
                 return expertIdx + 1U;
             }
         }

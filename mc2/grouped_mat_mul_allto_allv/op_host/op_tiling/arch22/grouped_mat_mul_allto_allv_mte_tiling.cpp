@@ -22,7 +22,6 @@
 #include "register/op_def_registry.h"
 #include "register/tilingdata_base.h"
 #include "graph/utils/type_utils.h"
-#include <cstdlib>
 #include <cstring>
 
 using namespace Mc2Log;
@@ -38,11 +37,6 @@ namespace {
 constexpr uint8_t COMM_MODE_AIV = 2U;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8U;
 constexpr uint32_t OP_TYPE_MULTI_PUT = 18U;
-constexpr const char *EXPERT_PIPELINE_MODE_ENV = "GMMA2AV_EXPERT_PIPELINE_MODE";
-constexpr const char *EXPERT_PIPELINE_MODE_AUTO = "auto";
-constexpr const char *EXPERT_PIPELINE_MODE_BULK = "bulk";
-constexpr const char *EXPERT_PIPELINE_MODE_OVERLAP = "overlap";
-constexpr const char *EXPERT_CHUNK_ROWS_ENV = "GMMA2AV_EXPERT_CHUNK_ROWS";
 constexpr uint64_t A2_EXPERT_OVERLAP_MAX_RANK_SIZE = 8UL;
 const std::string A3_MTE_HCCL_ALG_CONFIG = "AlltoAll=level0:fullmesh;level1:pairwise";
 const std::string A2_MTE_HCCL_ALG_CONFIG = "MultiPut=level0:fullmesh";
@@ -509,7 +503,6 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::PostTiling()
     context_->SetBlockDim(localParams_.aicCoreNum);
 
     MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData outData{};
-    outData.expertPipelineMode = static_cast<uint32_t>(MC2KernelTemplate::ExpertPipelineMode::BULK);
     auto &taskTiling = outData.taskTilingInfo;
     taskTiling.BSK = localParams_.BsK;
     taskTiling.BS = localParams_.Bs;
@@ -588,7 +581,7 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::PostTiling()
                             outData.commBufferSize, MC2KernelTemplate::Gmma2avMteTiling::SYNC_SLOT_BYTES),
                     return ge::GRAPH_FAILED);
 
-    MC2_CHECK_LOG_RET(opName_, SetExpertPipelineMode(outData.expertPipelineMode));
+    MC2_CHECK_LOG_RET(opName_, CheckExpertPipeline());
     MC2_CHECK_LOG_RET(opName_, SetExpertChunkRows(outData.expertChunkRows));
 
     outData.cumsumWorkspaceOffset = mc2tiling::AlignUp(
@@ -617,28 +610,8 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvMteTiling::SetExpertPipelineMode(uint32_t &expertPipelineMode) const
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckExpertPipeline() const
 {
-    expertPipelineMode = static_cast<uint32_t>(MC2KernelTemplate::ExpertPipelineMode::BULK);
-    const char *requestedMode = std::getenv(EXPERT_PIPELINE_MODE_ENV);
-    if (requestedMode == nullptr || std::strcmp(requestedMode, EXPERT_PIPELINE_MODE_AUTO) == 0 ||
-        std::strcmp(requestedMode, EXPERT_PIPELINE_MODE_BULK) == 0) {
-        OP_LOGD(opName_, "MTE expert pipeline mode=bulk, layoutVersion=%u, W=%lu, E=%lu.",
-                MC2KernelTemplate::Gmma2avMteTiling::FIXED_SYNC_LAYOUT_VERSION, localParams_.epWorldSize,
-                localParams_.ep);
-        return ge::GRAPH_SUCCESS;
-    }
-
-    OP_TILING_CHECK(
-        std::strcmp(requestedMode, EXPERT_PIPELINE_MODE_OVERLAP) != 0,
-        OP_LOGE(opName_, "%s must be one of auto, bulk or overlap, got '%s'.", EXPERT_PIPELINE_MODE_ENV, requestedMode),
-        return ge::GRAPH_FAILED);
-    if (localParams_.ep < 2UL) {
-        OP_LOGI(opName_,
-                "Expert-overlap mode requires at least two experts, got E=%lu; fall back to bulk pipeline mode.",
-                localParams_.ep);
-        return ge::GRAPH_SUCCESS;
-    }
     OP_TILING_CHECK(!isA3_ && localParams_.epWorldSize > A2_EXPERT_OVERLAP_MAX_RANK_SIZE,
                     OP_LOGE(opName_, "Expert-overlap mode on Ascend 910B only supports W=2, 4 or 8, got W=%lu.",
                             localParams_.epWorldSize),
@@ -657,28 +630,41 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::SetExpertPipelineMode(uint32_t 
                     OP_LOGE(opName_, "Expert-overlap fixed sync layout does not fit its reserved CCL region."),
                     return ge::GRAPH_FAILED);
 
-    expertPipelineMode = static_cast<uint32_t>(MC2KernelTemplate::ExpertPipelineMode::EXPERT_OVERLAP);
-    OP_LOGD(opName_, "MTE expert pipeline mode=overlap, layoutVersion=%u, W=%lu, E=%lu.",
-            MC2KernelTemplate::Gmma2avMteTiling::FIXED_SYNC_LAYOUT_VERSION, localParams_.epWorldSize, localParams_.ep);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus GroupedMatmulAllToAllvMteTiling::SetExpertChunkRows(uint32_t &expertChunkRows) const
 {
-    expertChunkRows = MC2KernelTemplate::GMMA2AV_MTE_DEFAULT_EXPERT_CHUNK_ROWS;
-    const char *requestedRows = std::getenv(EXPERT_CHUNK_ROWS_ENV);
-    if (requestedRows == nullptr || requestedRows[0] == '\0') {
+    using namespace MC2KernelTemplate;
+    expertChunkRows = GMMA2AV_MTE_SINGLE_CHUNK;
+    if (!isA3_ || localParams_.ep < 2UL || localParams_.A <= GMMA2AV_MTE_DENSE_EXPERT_CHUNK_ROWS) {
         return ge::GRAPH_SUCCESS;
     }
 
-    char *parseEnd = nullptr;
-    const long parsedRows = std::strtol(requestedRows, &parseEnd, 10);
-    OP_TILING_CHECK(parseEnd == requestedRows || *parseEnd != '\0' || parsedRows <= 0L || parsedRows > 0x7fffffffL,
-                    OP_LOGE(opName_, "%s must be a positive 31-bit integer, got '%s'.", EXPERT_CHUNK_ROWS_ENV,
-                            requestedRows),
-                    return ge::GRAPH_FAILED);
-    expertChunkRows = static_cast<uint32_t>(parsedRows);
-    OP_LOGD(opName_, "MTE expert pipeline chunk rows=%u.", expertChunkRows);
+    // Weight each expert's destination fanout by its local GMM rows. Counts
+    // already reside in host tiling attributes; no environment or collective
+    // is needed. Sparse fanout uses one chunk to avoid repeated pipeline drains.
+    uint64_t weightedPeerRows = 0UL;
+    for (uint64_t expert = 0UL; expert < localParams_.ep; ++expert) {
+        uint64_t rows = 0UL;
+        uint64_t peers = 0UL;
+        for (uint64_t rank = 0UL; rank < localParams_.epWorldSize; ++rank) {
+            const int32_t count = sendCounts_[rank * localParams_.ep + expert];
+            if (count > 0) {
+                rows += static_cast<uint64_t>(count);
+                ++peers;
+            }
+        }
+        weightedPeerRows += rows * peers;
+    }
+    // A3 baseline heuristic: use 1536 rows when the weighted fanout exceeds
+    // half the communication domain. Rank-local chunk boundaries may differ;
+    // the kernel exchanges persistent expert-granular readiness, not chunk IDs.
+    if (weightedPeerRows * 2UL > localParams_.A * localParams_.epWorldSize) {
+        expertChunkRows = GMMA2AV_MTE_DENSE_EXPERT_CHUNK_ROWS;
+    }
+    OP_LOGD(opName_, "MTE overlap chunk rows=%u (0=single), weighted peer rows=%lu, A=%lu, W=%lu.",
+            expertChunkRows, weightedPeerRows, localParams_.A, localParams_.epWorldSize);
     return ge::GRAPH_SUCCESS;
 }
 
