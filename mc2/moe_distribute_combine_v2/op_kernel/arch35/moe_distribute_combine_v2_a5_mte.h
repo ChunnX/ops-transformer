@@ -333,7 +333,7 @@ private:
     LocalTensor<float> mulBufLocal_;
     LocalTensor<float> sumFloatBufLocal_;
 
-    MoeDistributeCombineQuant<A5MteCombineTypeFunc> quantInst_;
+    MoeDistributeCombineQuant<ExpandXType, XType, ExpandIdxType, QuantMode, HasAddRmsNorm> quantInst_;
     MoeDistributeElastic elasticInst_;
 };
 
