@@ -245,10 +245,10 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                   <td>
                       <ul>
                           <li>必须传入。</li>
-                          <li>长度≥80+B×N1×J×4（int64元素个数）。</li>
+                          <li>长度≥80+B×N1×J×4（int32元素个数）。</li>
                       </ul>
                   </td>
-                  <td>INT64</td>
+                  <td>INT32</td>
                   <td>ND</td>
                   <td>(x,)</td>
                   <td>√</td>
@@ -375,10 +375,8 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                   <td>Softmax计算采取的精度级别。</td>
                   <td>
                       <ul>
-                          <li>仅支持0或1。</li>
+                          <li>当前仅支持0。</li>
                           <li>0：online softmax和rescale均使用fp32。</li>
-                          <li>1：online softmax使用fp16/bf16，rescale使用fp32，可能发生数值溢出。</li>
-                          <li>当前实现传0。</li>
                       </ul>
                   </td>
                   <td>INT64</td>
@@ -548,12 +546,12 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
 - 参数query、key、value、dout、out、dQuery、dKey、dValue的数据类型应保持一致，支持FLOAT16和BFLOAT16。
 - 参数lse的数据类型应为FLOAT32。
 - 参数sparseBlockIdx、sparseBlockCount、sequsedQOptional、sequsedKvOptional的数据类型应为INT32。
-- 参数cuSeqLengthsQOptional、cuSeqLengthsKvOptional、metadata的数据类型应为INT64。
+- 参数cuSeqLengthsQOptional、cuSeqLengthsKvOptional的数据类型应为INT64；参数metadata的数据类型应为INT32。
 - layoutQ和layoutKv当前支持TND、BNSD、BSND，且必须保持一致。
 - 当layoutQ为TND时，需要传入cuSeqLengthsQOptional；当layoutKv为TND时，需要传入cuSeqLengthsKvOptional。
 - sequsedQOptional/sequsedKvOptional仅在TND时生效；BNSD/BSND须传nullptr，实际序列长度取自Q/K的S维。
 - HeadDim固定为128；N1/N2取值范围[1, 128]，且N1 > N2，N1 % N2 == 0。
-- blockShape：blockShapeX仅支持1；blockShapeY须≥128且为64的倍数（Cube按baseN=128对每个稀疏块做S2切分）；isPackedGQA当前仅支持1；maskType当前仅支持1。
+- blockShape：blockShapeX仅支持1；blockShapeY须≥128且为64的倍数（Cube按baseN=128对每个稀疏块做S2切分）；isPackedGQA当前仅支持1；maskType当前仅支持1；softmaxPrecision当前仅支持0。
 - winLeft和winRight不使能时必须为-1；attenMaskOptional当前应传nullptr。
 - Softmax LSE的head/seq轴语义须与query布局一致。
 - `sparseBlockIdx`第4维maxS1应≥`sparseBlockCount`中所有元素的最大值。
@@ -664,7 +662,7 @@ int main()
     std::vector<float> lseHost(GetShapeSize(lseShape), 5.0f);
     std::vector<int32_t> idxHost(GetShapeSize(idxShape), -1);
     std::vector<int32_t> cntHost(GetShapeSize(cntShape), 0);
-    std::vector<int64_t> metaHost(metaSize, 0);
+    std::vector<int32_t> metaHost(metaSize, 0);
     std::vector<uint16_t> dqHost(GetShapeSize(qShape), 0);
     std::vector<uint16_t> dkHost(GetShapeSize(kvShape), 0);
     std::vector<uint16_t> dvHost(GetShapeSize(kvShape), 0);
@@ -701,7 +699,7 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(cntHost, cntShape, &cntAddr, aclDataType::ACL_INT32, &cnt);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(metaHost, metaShape, &metaAddr, aclDataType::ACL_INT64, &metadata);
+    ret = CreateAclTensor(metaHost, metaShape, &metaAddr, aclDataType::ACL_INT32, &metadata);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(dqHost, qShape, &dqAddr, aclDataType::ACL_FLOAT16, &dq);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
