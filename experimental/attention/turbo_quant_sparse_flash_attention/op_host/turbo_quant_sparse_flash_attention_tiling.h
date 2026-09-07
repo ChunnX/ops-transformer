@@ -28,7 +28,7 @@ namespace optiling {
 constexpr uint32_t TQ4_Q_HEAD_DIM = 576U; // 512 latent + 64 rope
 constexpr uint32_t TQ4_NOPE_HEAD_DIM = 512U;
 constexpr uint32_t TQ4_ROPE_HEAD_DIM = 64U;
-// KV slot 布局：256B 打包 nibble + 128B bfloat16 rope + 2B float16 归一化系数。
+// KV slot: 256B packed nibbles + 128B rope in query dtype + 2B float16 scale.
 // 由头维派生而非写死 386，避免布局协议在多处重复维护。
 constexpr uint32_t TQ4_KV_SLOT_BYTES = TQ4_NOPE_HEAD_DIM / 2U + TQ4_ROPE_HEAD_DIM * 2U + 2U; // = 386
 // kernel 未消费 tile_size 属性，slot 布局按 128 写死
@@ -67,14 +67,15 @@ constexpr size_t DIM_NUM_FOUR = 4;
 // 常量
 constexpr uint32_t MAX_BLOCK_SIZE = 1024;
 constexpr uint32_t NUM_BYTES_FLOAT16 = 2;
-constexpr uint32_t NUM_BYTES_BF16 = 2;
+constexpr uint32_t NUM_BYTES_16BIT = 2;
 constexpr uint32_t BYTE_BLOCK = 32;
 
 // ------------------公共定义--------------------------
 enum class TQSFALayout : uint32_t {
     BSND = 0,
     TND = 1,
-    PA_BSND = 2
+    PA_BSND = 2,
+    PA_BNBD = 3
 };
 
 struct TQSFATilingShapeCompareParam {
@@ -182,6 +183,7 @@ TILING_DATA_FIELD_DEF(int64_t, tileSize)
 TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsNull)
 TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsKVNull)
 TILING_DATA_FIELD_DEF(uint32_t, returnSoftmaxLse)
+TILING_DATA_FIELD_DEF(int64_t, keyStride0)
 END_TILING_DATA_DEF
 
 REGISTER_TILING_DATA_CLASS(TurboQuantSparseFlashAttentionBaseParamsMlaOp, TurboQuantSparseFlashAttentionBaseParamsMla)
@@ -259,6 +261,7 @@ struct TQSFATilingInfo {
     int64_t sparseBlockCount = 0;
 
     int64_t blockSize = 0;
+    int64_t keyStride0 = 0;
     uint32_t blockTypeSize = 0;
     uint32_t maxBlockNumPerBatch = 0;
     uint32_t totalBlockNum = 0;
@@ -538,6 +541,7 @@ public:
     ge::graphStatus GetSparseBlockCount();
     ge::graphStatus GetActualseqInfo();
     ge::graphStatus GetShapeAndSizeInfo();
+    ge::graphStatus GetCacheStrides();
     void GenerateInfo(TQSFATilingInfo &qsfaInfo);
     void FillTilingInfoAttrsAndLayouts(TQSFATilingInfo &qsfaInfo);
     ge::graphStatus Parse(TQSFATilingInfo &qsfaInfo);
@@ -570,6 +574,7 @@ public:
 
     uint32_t maxBlockNumPerBatch_ = 0;
     uint32_t blockSize_ = 0;
+    int64_t keyStride0_ = 0;
 
     ge::DataType inputQType_ = ge::DT_FLOAT16;
     ge::DataType inputKvType_ = ge::DT_FLOAT16;

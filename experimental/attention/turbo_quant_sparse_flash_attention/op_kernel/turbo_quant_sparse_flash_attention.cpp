@@ -20,9 +20,14 @@
 using namespace AscendC;
 #define QSFA_OP_IMPL(templateClass, tilingdataClass, ...) \
     do { \
-        templateClass<QSFAType<__VA_ARGS__>> op; \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling); \
         const tilingdataClass *__restrict tiling_data = &tiling_data_in; \
+        if (tiling_data->baseParams.qSeqSize == 0) { \
+            return; \
+        } \
+        TPipe tPipe; \
+        __gm__ uint8_t *user = GetUserWorkspace(workspace); \
+        templateClass<QSFAType<__VA_ARGS__>> op; \
         op.Init(query, key, value, sparseIndices, keyScale, valueScale, blocktable, actualSeqLengthsQuery, \
                 actualSeqLengthsKV, attentionOut, softmaxMax, softmaxSum, user, tiling_data, tiling, &tPipe); \
         op.Process(); \
@@ -37,10 +42,15 @@ __global__ __aicore__ void turbo_quant_sparse_flash_attention(
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
-    TPipe tPipe;
-    __gm__ uint8_t *user = GetUserWorkspace(workspace);
-    // 算子仅声明支持 BFLOAT16，FP16 分支不会被实例化，故不保留。
-    QSFA_OP_IMPL(TurboQuantSparseFlashAttentionMla, TurboQuantSparseFlashAttentionTilingDataMla, bfloat16_t, int8_t,
-                 bfloat16_t, FLASH_DECODE, static_cast<QSFA_LAYOUT>(LAYOUT_T), static_cast<QSFA_LAYOUT>(KV_LAYOUT_T),
-                 TEMPLATE_MODE);
+    if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 &&
+                  ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) {
+        QSFA_OP_IMPL(TurboQuantSparseFlashAttentionMla, TurboQuantSparseFlashAttentionTilingDataMla, half, int8_t, half,
+                     FLASH_DECODE, static_cast<QSFA_LAYOUT>(LAYOUT_T), static_cast<QSFA_LAYOUT>(KV_LAYOUT_T),
+                     TEMPLATE_MODE);
+    } else if constexpr (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_INT8 &&
+                         ORIG_DTYPE_ATTENTION_OUT == DT_BF16) {
+        QSFA_OP_IMPL(TurboQuantSparseFlashAttentionMla, TurboQuantSparseFlashAttentionTilingDataMla, bfloat16_t, int8_t,
+                     bfloat16_t, FLASH_DECODE, static_cast<QSFA_LAYOUT>(LAYOUT_T),
+                     static_cast<QSFA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE);
+    }
 }

@@ -42,7 +42,7 @@ ASCENDC_TPL_ARGS_DECL(TurboQuantSparseFlashAttention, ASCENDC_TPL_BOOL_DECL(FLAS
                       ASCENDC_TPL_BOOL_DECL(IS_SPLIT_G, 0, 1), );
 
 // 支持的模板参数组合。用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法
-// query 仅支持 TND、KV 仅支持 PA_BSND，故只有下面一组模板参数可达；
+// Host normalizes PA_BNBD to PA_BSND after validating N=1; both use the same kernel key.
 // 其余组合（PAGE_ATTENTION=0、BSND query、TND KV）已随支持范围收窄一并移除。
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_BOOL_SEL(FLASH_DECODE, 0), ASCENDC_TPL_BOOL_SEL(PAGE_ATTENTION, 1),
                                      ASCENDC_TPL_UINT_SEL(LAYOUT_T, ASCENDC_TPL_UI_LIST, QSFA_LAYOUT_TND),
