@@ -139,7 +139,7 @@ python cannbotdsl_ops/tests/validate_flash_kda_frozen.py \
 ## 2026-09-07 CANNBOT-10124 验证记录
 
 框架来自提交 `bc2a125375c4f1eafe68b61d571080c00ca26c29` 构建的 run，
-实际安装根为 `/home/z00947297/run_toolkit/cannbot-arena/framework-run-bc2a1253/cann`。
+实际安装根为 `/home/z00947297/run_toolkit/verification-20260907-ckuWoU/run-installations/framework-run-bc2a1253/cann`。
 编译器、独立 framework 和 External Task opbase 均取自该安装环境。
 
 证据根目录：`/home/z00947297/run&toolkit/verification-20260907-ckuWoU`。
@@ -179,7 +179,7 @@ vendor 安装树无 `.py` 或 `.whl`。这里依赖匹配 framework run 安装�
 
 ```bash
 source /home/z00947297/WORK/ENV/set_env_9.2.sh
-export FRAMEWORK_PREFIX=/home/z00947297/run_toolkit/cannbot-arena/framework-run-bc2a1253/cann
+export FRAMEWORK_PREFIX=/home/z00947297/run_toolkit/verification-20260907-ckuWoU/run-installations/framework-run-bc2a1253/cann
 export PYTHONPATH="$FRAMEWORK_PREFIX/python/site-packages"
 VERIFY_DIR=/home/z00947297/run_toolkit/verification-20260907-ckuWoU
 python cannbotdsl_ops/tests/validate_flash_kda_frozen.py \
