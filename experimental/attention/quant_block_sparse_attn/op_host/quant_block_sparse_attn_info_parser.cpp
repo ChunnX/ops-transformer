@@ -269,9 +269,9 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseOptionalInputs(QuantBlockSp
         return ge::GRAPH_FAILED;
     }
     if (blockTableB != tilingInfo.bSize) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "block_table first dim", std::to_string(blockTableB),
-                                              "block_table first dim must equal the first dim " +
-                                                  std::to_string(tilingInfo.bSize) + " of query/sparse_indices");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            kOpName, "block_table first dim(B)", std::to_string(blockTableB),
+            "block_table first dim(B) must equal batch size (B) = " + std::to_string(tilingInfo.bSize));
         return ge::GRAPH_FAILED;
     }
     const uint64_t kvSeqUpperBound = static_cast<uint64_t>(tilingInfo.maxBlockNumPerBatch) * tilingInfo.kvBlockSizeVal;
