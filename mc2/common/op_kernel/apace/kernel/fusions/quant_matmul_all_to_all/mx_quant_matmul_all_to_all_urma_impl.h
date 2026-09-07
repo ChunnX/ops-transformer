@@ -22,6 +22,7 @@
 #include "basic_api/kernel_basic_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "matmul_all_to_all_tiling_data.h"
+#include "adv_api/hcomm/hcomm.h"
 
 #include "../../matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel_tpn.h"
 #include "../../../core/aiv_comm/collective_comm_api.h"
@@ -229,7 +230,8 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Se
     GM_ADDR biasAddr = nullptr;
     // B/scaleB/bias 按 rank 分段存储，由batchRankOffset 定位到偏移基地址
     // （非local 场景恒为 0：由 kernel 内 realRank 逐 batch 推进；local 场景为 rankId）
-    if (baseParams_.biasGm != nullptr) {
+    const bool biasEnabled = baseParams_.biasGm != nullptr;
+    if (biasEnabled) {
         biasAddr =
             baseParams_.biasGm + static_cast<uint64_t>(batchRankOffset) * baseParams_.axisNPerRank * sizeof(BiasType);
     }
@@ -255,8 +257,7 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Se
                                    mmTile.baseM,
                                    mmTile.baseN,
                                    mmTile.baseK,
-                                   baseParams_.biasGm != nullptr ? QBMMTiling::BIAS_ENABLED :
-                                                                   QBMMTiling::BIAS_DISABLED,
+                                   biasEnabled ? QBMMTiling::BIAS_ENABLED : QBMMTiling::BIAS_DISABLED,
                                    mmTile.dbL0c,
                                    LocalDelay && !isLocal};
     // skipSelfBatch 仅在"Local块后置计算 且 非local块"时为 true：

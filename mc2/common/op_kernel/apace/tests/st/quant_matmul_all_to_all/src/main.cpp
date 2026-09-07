@@ -504,8 +504,7 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
         return -1;
     }
     if (args.isBias != 0) {
-        if (aclrtMemcpy(deviceBias, sizeBias, hostBias.data(), sizeBias, ACL_MEMCPY_HOST_TO_DEVICE) !=
-            ACL_ERROR_NONE) {
+        if (aclrtMemcpy(deviceBias, sizeBias, hostBias.data(), sizeBias, ACL_MEMCPY_HOST_TO_DEVICE) != ACL_ERROR_NONE) {
             ERROR_LOG("rank %d aclrtMemcpy deviceBias failed", rankId);
             releaseAll();
             return -1;

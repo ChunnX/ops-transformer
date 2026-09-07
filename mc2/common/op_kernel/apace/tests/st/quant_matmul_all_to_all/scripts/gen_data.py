@@ -419,7 +419,9 @@ def gen_golden_data_matmul_all_to_all(m, k, n, rank_num, quant_type, is_fp16, is
     allto_all_outputs_out = [out.to(out_dtype) for out in allto_all_outputs]
     for out in allto_all_outputs_out:
         if not torch.isfinite(out).all():
-            print(f"Error: golden output contains non-finite values (inf/nan) after cast to {out_dtype}")
+            print(
+                f"Error: golden output contains non-finite values (inf/nan) after cast to {out_dtype}"
+            )
             sys.exit(1)
 
     base_dir = os.getcwd()
