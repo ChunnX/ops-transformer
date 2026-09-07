@@ -22,6 +22,8 @@ namespace QLIV2ServiceVec {
 using namespace AscendC;
 
 constexpr int32_t NEG_INF = 0xFF800000;
+constexpr int32_t POS_INF_F32 = 0x7F800000;  // +inf (fp32 bits)
+constexpr int32_t NEG_HUGE_F32 = 0xF14A3E31; // -1e30 (fp32 bits)
 constexpr int32_t INVALID_INDEX = -1;
 constexpr uint8_t VEC_REPEAT_MAX = 255;
 constexpr uint8_t B32_VEC_ELM_NUM = 64;

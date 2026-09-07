@@ -38,8 +38,17 @@ class QuantLightningIndexerOpBuilder(OpBuilder):
             "Tensor key_dequant_scale, int topk, int quant_mode, *, Tensor? cu_seqlens_q=None, "
             "Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, Tensor? seqused_k=None, Tensor? "
             "cmp_residual_k = None, Tensor? block_table=None, Tensor? output_idx_offset=None, Tensor? metadata=None, "
-            'int max_seqlen_q=-1, str layout_q="BSND", str layout_k="BSND", int mask_mode=0, '
+            "int max_seqlen_q=-1, str layout_q=\"BSND\", str layout_k=\"BSND\", int mask_mode=0, "
             "int cmp_ratio=1, int return_value=0) -> (Tensor, Tensor)",
+            # O1 方案b: candidate 两级TopK 新入口 (三元组), 旧 schema 保持不变
+            "quant_lightning_indexer_candidate(Tensor query, Tensor key, Tensor weights, "
+            "Tensor query_dequant_scale, Tensor key_dequant_scale, int topk, int quant_mode, *, "
+            "Tensor? candidate_topk_index=None, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, "
+            "Tensor? seqused_q=None, Tensor? seqused_k=None, Tensor? cmp_residual_k=None, "
+            "Tensor? block_table=None, Tensor? output_idx_offset=None, Tensor? metadata=None, "
+            "int max_seqlen_q=-1, str layout_q=\"BSND\", str layout_k=\"BSND\", int mask_mode=0, "
+            "int cmp_ratio=1, int candidate_mode=3, int candidate_topk_blocks=2048, "
+            "int candidate_block_size=8) -> (Tensor, Tensor, Tensor)",
         ]
 
     def register_meta(self):
@@ -127,6 +136,65 @@ class QuantLightningIndexerOpBuilder(OpBuilder):
                     [0], dtype=torch.bfloat16, device="meta"
                 )
             return (sparse_indices_out, sparse_values_out)
+
+        @torch.library.register_fake("cann_ops_transformer::quant_lightning_indexer_candidate")
+        def quant_lightning_indexer_candidate_meta(
+            query,
+            key,
+            weights,
+            query_dequant_scale,
+            key_dequant_scale,
+            topk,
+            quant_mode,
+            *,
+            candidate_topk_index=None,
+            cu_seqlens_q=None,
+            cu_seqlens_k=None,
+            seqused_q=None,
+            seqused_k=None,
+            cmp_residual_k=None,
+            block_table=None,
+            output_idx_offset=None,
+            metadata=None,
+            max_seqlen_q=-1,
+            layout_q="BSND",
+            layout_k="BSND",
+            mask_mode=0,
+            cmp_ratio=1,
+            candidate_mode=3,
+            candidate_topk_blocks=2048,
+            candidate_block_size=8,
+        ):
+            key_head_num = key.shape[1] if layout_k == "TND" else key.shape[2]
+            if layout_q == "BSND":
+                sparse_indices_out = torch.empty(
+                    [query.shape[0], query.shape[1], key_head_num, topk],
+                    dtype=torch.int32,
+                    device="meta",
+                )
+            else:
+                sparse_indices_out = torch.empty(
+                    [query.shape[0], key_head_num, topk],
+                    dtype=torch.int32,
+                    device="meta",
+                )
+            sparse_values_out = torch.empty([0], dtype=torch.bfloat16, device="meta")
+            if candidate_mode == 1:
+                if layout_q == "BSND":
+                    cand_out = torch.empty(
+                        [query.shape[0], query.shape[1], key_head_num, candidate_topk_blocks],
+                        dtype=torch.int32,
+                        device="meta",
+                    )
+                else:
+                    cand_out = torch.empty(
+                        [query.shape[0], key_head_num, candidate_topk_blocks],
+                        dtype=torch.int32,
+                        device="meta",
+                    )
+            else:
+                cand_out = torch.empty([0], dtype=torch.int32, device="meta")
+            return (sparse_indices_out, sparse_values_out, cand_out)
 
 
 # Instantiate the builder
@@ -232,6 +300,67 @@ def quant_lightning_indexer_metadata_fallback(
 
 
 torch.compiler.allow_in_graph(quant_lightning_indexer_metadata)
+
+
+@impl(get_as_library(), "quant_lightning_indexer_candidate", "PrivateUse1")
+def quant_lightning_indexer_candidate(
+    query,
+    key,
+    weights,
+    query_dequant_scale,
+    key_dequant_scale,
+    topk,
+    quant_mode,
+    *,
+    candidate_topk_index=None,
+    cu_seqlens_q=None,
+    cu_seqlens_k=None,
+    seqused_q=None,
+    seqused_k=None,
+    cmp_residual_k=None,
+    block_table=None,
+    output_idx_offset=None,
+    metadata=None,
+    max_seqlen_q=-1,
+    layout_q="BSND",
+    layout_k="BSND",
+    mask_mode=0,
+    cmp_ratio=1,
+    candidate_mode=3,
+    candidate_topk_blocks=2048,
+    candidate_block_size=8,
+):
+    """两级TopK candidate 入口: mode=1(source)/2(consumer)/3(关闭)"""
+    op_module = quant_lightning_indexer_op_builder.load()
+    return op_module.quant_lightning_indexer_candidate(
+        query,
+        key,
+        weights,
+        query_dequant_scale,
+        key_dequant_scale,
+        topk,
+        quant_mode,
+        candidate_topk_index,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        seqused_q,
+        seqused_k,
+        cmp_residual_k,
+        block_table,
+        output_idx_offset,
+        metadata,
+        max_seqlen_q,
+        layout_q,
+        layout_k,
+        mask_mode,
+        cmp_ratio,
+        candidate_mode,
+        candidate_topk_blocks,
+        candidate_block_size,
+    )
+
+
+torch.compiler.allow_in_graph(quant_lightning_indexer_candidate)
 
 
 @impl(get_as_library(), quant_lightning_indexer_op_builder.name, "PrivateUse1")

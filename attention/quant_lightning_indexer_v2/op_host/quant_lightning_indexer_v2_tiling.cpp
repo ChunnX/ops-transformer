@@ -232,6 +232,8 @@ void QLIV2InfoParser::GetOptionalInputParaInfo()
     opParamInfo_.outputIdxOffset.desc = context_->GetOptionalInputDesc(OUTPUT_IDX_OFFSET_INDEX);
     opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
     opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
+    opParamInfo_.candidateTopkIndex.tensor = context_->GetOptionalInputTensor(CANDIDATE_TOPK_INDEX_INPUT_INDEX);
+    opParamInfo_.candidateTopkIndex.desc = context_->GetOptionalInputDesc(CANDIDATE_TOPK_INDEX_INPUT_INDEX);
 }
 
 void QLIV2InfoParser::GetInputParaInfo()
@@ -273,6 +275,9 @@ ge::graphStatus QLIV2InfoParser::GetAttrParaInfo()
     opParamInfo_.sparseMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<int32_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.returnValue = attrs->GetAttrPointer<int32_t>(ATTR_RETURN_VALUE_INDEX);
+    opParamInfo_.candidateMode = attrs->GetAttrPointer<int32_t>(ATTR_CANDIDATE_MODE_INDEX);
+    opParamInfo_.candidateTopkBlocks = attrs->GetAttrPointer<int32_t>(ATTR_CANDIDATE_TOPK_BLOCKS_INDEX);
+    opParamInfo_.candidateBlockSize = attrs->GetAttrPointer<int32_t>(ATTR_CANDIDATE_BLOCK_SIZE_INDEX);
     auto keyStrides = context_->GetDynamicInputStride(KEY_INDEX, 0);
     auto keyDequantScaleStrides = context_->GetDynamicInputStride(KEY_DEQUANT_SCALE_INDEX, 0);
     if (keyStrides != nullptr && keyStrides->GetDimNum() > 0) {
@@ -405,6 +410,51 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "max_seqlen_q", std::to_string(*opParamInfo_.maxSeqlenQ).c_str(),
                                               "Max_seqlen_q must >= -1"),
         return ge::GRAPH_FAILED);
+
+    // -------------------candidate (two-level topk) 校验-------------------
+    uint32_t candidateMode = (opParamInfo_.candidateMode != nullptr) ?
+                                 static_cast<uint32_t>(*opParamInfo_.candidateMode) : CANDIDATE_MODE_OFF;
+    OP_CHECK_IF((candidateMode != CANDIDATE_MODE_SOURCE) && (candidateMode != CANDIDATE_MODE_CONSUMER) &&
+                    (candidateMode != CANDIDATE_MODE_OFF),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "candidate_mode",
+                                                      std::to_string(candidateMode),
+                                                      "Candidate_mode only supports 1(source), 2(consumer) or 3(off)"),
+                return ge::GRAPH_FAILED);
+    if (candidateMode != CANDIDATE_MODE_OFF) {
+        // candidate 功能当前仅在 arch22 (910b/910_93) 实现
+        OP_CHECK_IF(npuArch_ == NpuArch::DAV_3510,
+                    OP_LOGE(opName_, "candidate_mode only supported on ascend910b/ascend910_93."),
+                    return ge::GRAPH_FAILED);
+        // layout_q 仅 BSND
+        OP_CHECK_IF(std::string(opParamInfo_.layOutQuery) != "BSND",
+                    OP_LOGE(opName_, "candidate_mode only supports layout_q=BSND, but got %s.",
+                            layout_query.c_str()),
+                    return ge::GRAPH_FAILED);
+        uint32_t candBlocks = (opParamInfo_.candidateTopkBlocks != nullptr) ?
+                                  static_cast<uint32_t>(*opParamInfo_.candidateTopkBlocks) :
+                                  CANDIDATE_TOPK_BLOCKS_FIX;
+        OP_CHECK_IF(candBlocks != CANDIDATE_TOPK_BLOCKS_FIX,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "candidate_topk_blocks",
+                                                          std::to_string(candBlocks),
+                                                          "Candidate_topk_blocks only supports 2048 currently"),
+                    return ge::GRAPH_FAILED);
+        uint32_t candBlkSize = (opParamInfo_.candidateBlockSize != nullptr) ?
+                                   static_cast<uint32_t>(*opParamInfo_.candidateBlockSize) :
+                                   CANDIDATE_BLOCK_SIZE_DEFAULT;
+        // 当前仅支持 8: BlockReduceMax 以 32B 块 (8 fp32) 为归约粒度
+        OP_CHECK_IF(candBlkSize != CANDIDATE_BLOCK_SIZE_DEFAULT,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "candidate_block_size",
+                                                          std::to_string(candBlkSize),
+                                                          "Candidate_block_size only supports 8 currently"),
+                    return ge::GRAPH_FAILED);
+        if (candidateMode == CANDIDATE_MODE_CONSUMER) {
+            OP_CHECK_IF(opParamInfo_.candidateTopkIndex.tensor == nullptr,
+                        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "candidate_topk_index",
+                                                                 "candidate_topk_index input is required when "
+                                                                 "candidate_mode=2(consumer)"),
+                        return ge::GRAPH_FAILED);
+        }
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -855,8 +905,9 @@ ge::graphStatus QLIV2InfoParser::GetGSize()
                         "The value of (the head num of q divided by the head num of k) must <= 64"),
                     return ge::GRAPH_FAILED);
     } else {
-        OP_CHECK_IF(gSize_ != G_SIZE_LIMIT,
-                    OP_LOGE(opName_, "N1 is %u, N2 is %u, N1 divided by N2 must equal 64.", n1Size_, n2Size_),
+        // 910b/910_93: 支持 gSize=64/32 (32 参照 v1 quant_lightning_indexer, mBaseSize=4*gSize 推导)
+        OP_CHECK_IF((gSize_ != G_SIZE_LIMIT) && (gSize_ != G_SIZE_LIMIT_32_950),
+                    OP_LOGE(opName_, "N1 is %u, N2 is %u, N1 divided by N2 must equal 64 or 32.", n1Size_, n2Size_),
                     return ge::GRAPH_FAILED);
     }
 
@@ -1494,6 +1545,14 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
     QLIV2Info.cmpRatio = *opParamInfo_.cmpRatio;
     QLIV2Info.returnValue = *opParamInfo_.returnValue;
     QLIV2Info.maxSeqlenQ = (opParamInfo_.maxSeqlenQ != nullptr) ? *opParamInfo_.maxSeqlenQ : -1;
+    QLIV2Info.candidateMode = (opParamInfo_.candidateMode != nullptr) ?
+                                  static_cast<uint32_t>(*opParamInfo_.candidateMode) : CANDIDATE_MODE_OFF;
+    QLIV2Info.candidateTopkBlocks = (opParamInfo_.candidateTopkBlocks != nullptr) ?
+                                        static_cast<uint32_t>(*opParamInfo_.candidateTopkBlocks) :
+                                        CANDIDATE_TOPK_BLOCKS_FIX;
+    QLIV2Info.candidateBlockSize = (opParamInfo_.candidateBlockSize != nullptr) ?
+                                       static_cast<uint32_t>(*opParamInfo_.candidateBlockSize) :
+                                       CANDIDATE_BLOCK_SIZE_DEFAULT;
 
     QLIV2Info.keyStridesVec = keyStridesVec_;
     QLIV2Info.keyDequantScaleStridesVec = keyDequantScaleStridesVec_;
@@ -1605,6 +1664,20 @@ ge::graphStatus QuantLightningIndexerV2Tiling::DoTiling(QLIV2TilingInfo *tilingI
     workSpaces[0] = workspaceSize;
 
     // -------------set tilingdata-----------------
+    // candidate (two-level topk) 输入校验: mode=2 时 candidate_topk_index 必须为 [B, S1, N2, candBlocks] int32
+    if (tilingInfo->candidateMode == CANDIDATE_MODE_CONSUMER) {
+        OP_CHECK_IF(tilingInfo->opParamInfo.candidateTopkIndex.desc == nullptr ||
+                        tilingInfo->opParamInfo.candidateTopkIndex.desc->GetDataType() != ge::DT_INT32,
+                    OP_LOGE("QuantLightningIndexerV2", "candidate_topk_index dtype only supports int32."),
+                    return ge::GRAPH_FAILED);
+        int64_t expectSize = static_cast<int64_t>(tilingInfo->bSize) * tilingInfo->s1Size * tilingInfo->n2Size *
+                             tilingInfo->candidateTopkBlocks;
+        int64_t actualSize = tilingInfo->opParamInfo.candidateTopkIndex.tensor->GetShapeSize();
+        OP_CHECK_IF(actualSize != expectSize,
+                    OP_LOGE("QuantLightningIndexerV2",
+                            "candidate_topk_index shape size must be %ld, but got %ld.", expectSize, actualSize),
+                    return ge::GRAPH_FAILED);
+    }
     tilingData_.set_bSize(tilingInfo->bSize);
     tilingData_.set_s2Size(tilingInfo->s2Size);
     tilingData_.set_s1Size(tilingInfo->s1Size);
@@ -1620,6 +1693,10 @@ ge::graphStatus QuantLightningIndexerV2Tiling::DoTiling(QLIV2TilingInfo *tilingI
     tilingData_.set_keyDequantScaleStride0(tilingInfo->keyDequantScaleStride0);
     tilingData_.set_quantMode(*tilingInfo->opParamInfo.quantMode);
     tilingData_.set_usedCoreNum(blockDim);
+    // ---- candidate (two-level topk) ----
+    tilingData_.set_candidateMode(tilingInfo->candidateMode);
+    tilingData_.set_candidateTopkBlocks(tilingInfo->candidateTopkBlocks);
+    tilingData_.set_candidateBlockSize(tilingInfo->candidateBlockSize);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
 

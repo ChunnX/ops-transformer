@@ -198,10 +198,69 @@ std::tuple<at::Tensor, at::Tensor> QuantLightningIndexer(
 
     return std::tuple<at::Tensor, at::Tensor>(sparseIndicesOut, sparseValuesOut);
 }
+
+// 两级TopK candidate 接口 (O1 方案b: 新增入口, 旧接口不变)
+// candidate_mode: 1=source 输出 candidate_topk_index; 2=consumer 输入候选块; 3=关闭
+std::tuple<at::Tensor, at::Tensor, at::Tensor> QuantLightningIndexerCandidate(
+    const at::Tensor &query, const at::Tensor &key, const at::Tensor &weights, const at::Tensor &queryDequantScale,
+    const at::Tensor &keyDequantScale, int64_t topk, int64_t quantMode,
+    const c10::optional<at::Tensor> &candidateTopkIndexIn, const c10::optional<at::Tensor> &cuSeqlensQ,
+    const c10::optional<at::Tensor> &cuSeqlensK, const c10::optional<at::Tensor> &sequsedQ,
+    const c10::optional<at::Tensor> &sequsedK, const c10::optional<at::Tensor> &cmpResidualK,
+    const c10::optional<at::Tensor> &blockTable, const c10::optional<at::Tensor> &outputIdxOffset,
+    const c10::optional<at::Tensor> &metadata, int64_t maxSeqlenQ, c10::string_view layoutQ,
+    c10::string_view layoutK, int64_t maskMode, int64_t cmpRatio, int64_t candidateMode,
+    int64_t candidateTopkBlocks, int64_t candidateBlockSize)
+{
+    TORCH_CHECK(query.numel() > 0, "Tensor query is empty.")
+    TORCH_CHECK(key.numel() > 0, "Tensor key is empty.")
+
+    std::string queryLayoutStr = std::string(layoutQ);
+    std::string keyLayoutStr = std::string(layoutK);
+
+    std::tuple<at::Tensor, at::Tensor> quantLightningIndexerOutput =
+        ConstructQuantLightningIndexerOutputTensor(query, key, topk, queryLayoutStr, keyLayoutStr, 0);
+    at::Tensor sparseIndicesOut = std::get<0>(quantLightningIndexerOutput);
+    at::Tensor sparseValuesOut = std::get<1>(quantLightningIndexerOutput);
+
+    int64_t keyHeadNum = (keyLayoutStr == "TND") ? key.size(DIM_1) : key.size(DIM_2);
+    at::Tensor candidateTopkIndexOut;
+    if (candidateMode == 1) {
+        at::SmallVector<int64_t, SIZE> candSize;
+        if (queryLayoutStr == "BSND") {
+            candSize = {query.size(DIM_0), query.size(DIM_1), keyHeadNum, candidateTopkBlocks};
+        } else {
+            candSize = {query.size(DIM_0), keyHeadNum, candidateTopkBlocks};
+        }
+        candidateTopkIndexOut = at::empty(candSize, query.options().dtype(at::kInt));
+    } else {
+        candidateTopkIndexOut = at::empty({0}, query.options().dtype(at::kInt));
+    }
+
+    char *queryLayoutPtr = const_cast<char *>(queryLayoutStr.c_str());
+    char *keyLayoutPtr = const_cast<char *>(keyLayoutStr.c_str());
+    int64_t returnValue = 0;
+
+    auto queryWrapper = MakeWrapper(query);
+    auto keyWrapper = MakeWrapper(key);
+    auto queryScaleWrapper = MakeWrapper(queryDequantScale);
+    auto keyScaleWrapper = MakeWrapper(keyDequantScale);
+    FixQLIV2AclDtypes(quantMode, queryWrapper, keyWrapper, queryScaleWrapper, keyScaleWrapper);
+
+    ACLNN_CMD(aclnnQuantLightningIndexerV2, queryWrapper, keyWrapper, weights, queryScaleWrapper, keyScaleWrapper,
+              cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK, blockTable, outputIdxOffset,
+              metadata, candidateTopkIndexIn, topk, quantMode, maxSeqlenQ, queryLayoutPtr, keyLayoutPtr, maskMode,
+              cmpRatio, returnValue, candidateMode, candidateTopkBlocks, candidateBlockSize, sparseIndicesOut,
+              sparseValuesOut, candidateTopkIndexOut);
+
+    return std::tuple<at::Tensor, at::Tensor, at::Tensor>(sparseIndicesOut, sparseValuesOut, candidateTopkIndexOut);
+}
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("quant_lightning_indexer_metadata", &QuantLightningIndexerMetadata, "quant_lightning_indexer_metadata");
     m.def("quant_lightning_indexer", &QuantLightningIndexer, "quant_lightning_indexer");
+    m.def("quant_lightning_indexer_candidate", &QuantLightningIndexerCandidate,
+          "quant_lightning_indexer_candidate");
 }
 } // namespace op_api
