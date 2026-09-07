@@ -74,6 +74,8 @@ private:
     using Base::enableMTailAlign_;
     using Base::enableAdjustBasicBlock_;
 
+    static constexpr uint64_t ALIGN_SPLIT_MAX_INCREMENT = 2UL;
+
     bool enableBaseMHalving_{false};
     uint64_t maxBaseM_{0};
     bool hasBias_{false};
@@ -404,9 +406,6 @@ private:
     uint64_t CalcAlignedSplit(uint64_t growTileCount, uint64_t fixedTileCount, uint64_t tileCountMax,
                               uint64_t alignTailSize) const
     {
-        // 探索窗口为当前 tile 数 +1/+2 两档：调用方已保证 +1 可行（核数不超限），
-        // +2 是在不超核数上限与 tileCountMax 前提下的进一步对齐尝试。
-        constexpr uint64_t ALIGN_SPLIT_MAX_INCREMENT = 2UL;
         for (uint64_t increment = 1; increment <= ALIGN_SPLIT_MAX_INCREMENT; ++increment) {
             uint64_t nextTileCount = growTileCount + increment;
             if (nextTileCount > tileCountMax) {
