@@ -63,6 +63,7 @@ ge::graphStatus GetMlaPrologV3ShapeDim(const gert::InferShapeContext *context, M
     OP_CHECK_NULL_WITH_CONTEXT(context, kvCacheShape);
     auto krCacheShape = context->GetRequiredInputShape(KR_CACHE_INDEX_V3); // (B, Nkv, Skv, Dr)
     OP_CHECK_NULL_WITH_CONTEXT(context, krCacheShape);
+
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     // RoPE 开关由 do_rope attr 控制（aclnnV3 默认 true，aclnnV4 透传用户开关），缺省视为开启

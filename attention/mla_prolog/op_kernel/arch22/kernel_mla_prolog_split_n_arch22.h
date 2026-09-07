@@ -386,7 +386,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ScaleInit(
         quantScaleCkvGm_.SetGlobalBuffer((__gm__ float *)quantScaleCkv);
         quantScaleCkrGm_.SetGlobalBuffer((__gm__ float *)quantScaleCkr);
     }
-
     if constexpr (isPertile) {
         kNopeClipAlphaGm_.SetGlobalBuffer((__gm__ float *)kNopeClipAlpha);
     }
