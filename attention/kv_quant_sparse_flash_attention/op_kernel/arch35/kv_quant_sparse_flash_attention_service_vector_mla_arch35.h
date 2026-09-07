@@ -309,7 +309,6 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t QSFAVectorService<TEMPLATE_A
 
     keyOffset0 = GetkeyOffset(token0Idx, runInfo, constInfo);
     keyOffset1 = GetkeyOffset(token1Idx, runInfo, constInfo);
-
     if (unlikely(keyOffset0 < 0 && keyOffset1 < 0)) {
         return 0;
     }
