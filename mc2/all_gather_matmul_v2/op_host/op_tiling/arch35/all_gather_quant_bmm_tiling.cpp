@@ -605,7 +605,7 @@ uint64_t AllGatherQuantBmmTiling::GetTilingKey() const
     }
 
     // Non-A5 platform must use AICPU mode
-    if (npuArch_ != NpuArch::DAV_3510) {
+    if (npuArch_ != Ops::Base::DAV_3510) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
     }
     const uint64_t tilingKey =
@@ -1049,7 +1049,7 @@ AllGatherQuantBmmHelper::AllGatherQuantBmmHelper(AllGatherQuantBmmTiling &allGat
       isLocal_(isLocal)
 {}
 // 注册Tiling类
-REGISTER_TILING_TEMPLATE_WITH_ARCH(AllGatherMatmulV2, AllGatherQuantBmmTiling, static_cast<int32_t>(NpuArch::DAV_3510),
+REGISTER_TILING_TEMPLATE_WITH_ARCH(AllGatherMatmulV2, AllGatherQuantBmmTiling, static_cast<int32_t>(Ops::Base::DAV_3510),
                                    1);
 } // namespace optiling
 
