@@ -1,0 +1,316 @@
+diff --git a/moe_train_test.py b/moe_train_test.py
+--- a/moe_train_test.py
++++ b/moe_train_test.py
+@@ -1,10 +1,13 @@
+ from __future__ import annotations
+
+ import csv
++import json
+ import os
+ import shutil
+ import socket
++import subprocess
++import sys
+ import time
+ import math
+ import traceback
+ from contextlib import nullcontext
+@@ -103,9 +106,9 @@ from cann_ops_transformer.ops import ElasticBuffer, EPHandle
+
+ # region 执行哪些测试
+
+-is_dispatch = 1
++is_dispatch = 0
+ is_combine = 0
+-is_continue = 0
++is_continue = 1
+
+ # endregion
+
+@@ -123,11 +126,18 @@ compare_print_detail_max_elements = 16
+
+ # region 性能检测相关
+
+-is_performance = 0
++is_performance = 1
+ loop = 105
+ repeat = 1
+ warmup = 5
+ performance_tail_count = 50
++is_cycle_profiler = bool(int(os.environ.get("MOE_EP_CYCLE_PROFILER", "1")))
++is_msprof_child = os.environ.get("MOE_EP_MSPROF_CHILD") == "1"
++is_clean_performance_loop = is_cycle_profiler or is_msprof_child
++cycle_profiler_slots_per_core = int(os.environ.get("MOE_EP_CYCLE_SLOTS_PER_CORE", "4096"))
++cycle_profiler_run_id = os.environ.setdefault(
++    "MOE_EP_PROFILE_RUN_ID", time.strftime("%Y%m%d_%H%M%S") + f"_{os.getpid()}"
++)
+
+ # endregion
+
+@@ -230,5 +240,13 @@ dispatch_profiling_path = SCRIPT_DIR / "Profiling_Result_train_dispatch"
+ combine_profiling_path = SCRIPT_DIR / "Profiling_Result_train_combine"
+ continue_profiling_path = SCRIPT_DIR / "Profiling_Result_train_continue"
++cycle_profiler_output_root = Path(
++    os.environ.get("MOE_EP_PROFILE_OUTPUT_ROOT", str(SCRIPT_DIR / "moe_ep_profile_runs"))
++)
++cycle_profiler_run_dir = cycle_profiler_output_root / cycle_profiler_run_id
++ops_transformer_root = Path(
++    os.environ.get("OPS_TRANSFORMER_ROOT", str(SCRIPT_DIR.parent / "ops-transformer"))
++)
++profiler_tool_root = ops_transformer_root / "mc2" / "tools" / "moe_ep_profiler"
+
+ dispatch_op_types = ["MoeEpDispatch", "MoeEpDispatchEpilogue"]
+ dispatch_total_op_type = "MoeEpDispatchTotal"
+@@ -237,6 +310,66 @@ combine_total_op_type = "MoeEpCombineTotal"
+ continue_op_types = dispatch_op_types + combine_op_types
+ profiling_file_time_window_seconds = 30
+
++
++def enable_cycle_profiler(buffer: Any) -> None:
++    if is_cycle_profiler:
++        buffer.enable_cycle_profiler(cycle_profiler_slots_per_core)
++
++
++def dump_cycle_profiler(buffer: Any, rank: int) -> None:
++    if is_cycle_profiler:
++        paths = buffer.dump_cycle_profiler(cycle_profiler_run_dir, rank=rank)
++        print(f"[cycle-profiler] rank={rank} raw={paths}")
++
++
++def maybe_relaunch_under_msprof() -> Optional[int]:
++    if os.environ.get("MOE_EP_RUN_MSPROF") != "1" or is_msprof_child:
++        return None
++    runner = profiler_tool_root / "run_msprof.py"
++    if not runner.is_file():
++        raise FileNotFoundError(f"msprof runner not found: {runner}; set OPS_TRANSFORMER_ROOT")
++    command = [
++        sys.executable,
++        str(runner),
++        "--output-root",
++        str(cycle_profiler_output_root / "msprof"),
++        "--warm-up",
++        str(int(os.environ.get("MOE_EP_MSPROF_WARM_UP", "0"))),
++        "--launch-count",
++        str(int(os.environ.get("MOE_EP_MSPROF_LAUNCH_COUNT", "1"))),
++        "--",
++        sys.executable,
++        str(Path(__file__).resolve()),
++    ]
++    return subprocess.run(command, check=False).returncode
++
++
++def analyze_cycle_profiler() -> None:
++    if not is_cycle_profiler:
++        return
++    manifest = {
++        "run_id": cycle_profiler_run_id,
++        "loop": loop,
++        "warmup": warmup,
++        "performance_tail_count": performance_tail_count,
++        "world_size": world_size,
++        "server_num": server_num,
++        "rank_per_dev": rank_per_dev,
++        "slots_per_core": cycle_profiler_slots_per_core,
++        "cross_rank_time_semantics": "relative-per-rank; GetSystemCycle epochs are not assumed equal",
++    }
++    cycle_profiler_run_dir.mkdir(parents=True, exist_ok=True)
++    (cycle_profiler_run_dir / "run_manifest.json").write_text(
++        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
++    )
++    analyzer = profiler_tool_root / "analyze_cycle.py"
++    if not analyzer.is_file():
++        raise FileNotFoundError(f"cycle analyzer not found: {analyzer}; set OPS_TRANSFORMER_ROOT")
++    if server_num > 1:
++        print("[cycle-profiler] 多机 raw 已写出；请汇总同一 run_id 的所有 rank 后手工运行 analyze_cycle.py。")
++        return
++    subprocess.run([sys.executable, str(analyzer), str(cycle_profiler_run_dir), "--frequency-mhz", "1000"], check=True)
++
+
+ def write_row_to_csv(csv_name: str, row_content: list) -> None:
+     csv_dir = REPO_ROOT / "csv_result"
+@@ -376,5 +500,9 @@ def check_setting() -> None:
+     if dispatch_with_handle and dispatch_do_cpu_sync_value():
+         print("[WARNING] cached dispatch 会强制 do_cpu_sync=False")
++    if is_cycle_profiler and not is_performance:
++        err("cycle profiler 要求 is_performance=True")
++    if is_cycle_profiler and cycle_profiler_slots_per_core <= 0:
++        err("MOE_EP_CYCLE_SLOTS_PER_CORE 必须大于 0")
+     if is_performance:
+         if repeat <= 0:
+             err("repeat 必须大于 0")
+@@ -396,7 +524,8 @@ def print_setting() -> None:
+     print(f"is_dispatch={is_dispatch}, is_combine={is_combine}, is_continue={is_continue}")
+     print(
+         f"is_performance={is_performance}, loop={loop}, repeat={repeat}, "
+-        f"warmup={warmup}, performance_tail_count={performance_tail_count}"
++        f"warmup={warmup}, performance_tail_count={performance_tail_count}, "
++        f"is_cycle_profiler={is_cycle_profiler}, is_msprof_child={is_msprof_child}"
+     )
+     print(f"is_full_core={is_full_core}, core_num={core_num}, aic_core_num={aic_core_num}, aiv_core_num={aiv_core_num}")
+     print(
+@@ -1108,6 +1237,7 @@ def run_dispatch_npu(
+         set_device(rank)
+         ep_group = init_hccl_comm(rank)
+         buffer = _create_buffer(ep_group)
++        enable_cycle_profiler(buffer)
+
+         x_npu = _feature_to_npu(x)
+         topk_idx_npu = topk_idx.npu()
+@@ -1140,7 +1270,10 @@ def run_dispatch_npu(
+                 do_cpu_sync=dispatch_do_cpu_sync_value(),
+             )
+
+-        if not is_performance:
++        if is_clean_performance_loop:
++            for _ in range(loop):
++                recv_x, recv_topk_idx, recv_topk_weights, handle = _run_once()
++        elif not is_performance:
+             recv_x, recv_topk_idx, recv_topk_weights, handle = _run_once()
+         else:
+             perf_exp_tensor = create_performance_exp_tensor()
+@@ -1152,6 +1285,7 @@ def run_dispatch_npu(
+                     prof.step()
+
+         torch_npu.npu.synchronize()
++        dump_cycle_profiler(buffer, rank)
+         dist.destroy_process_group()
+         queue.put([
+             rank,
+@@ -1181,6 +1315,7 @@ def run_combine_npu(
+         set_device(rank)
+         ep_group = init_hccl_comm(rank)
+         buffer = _create_buffer(ep_group)
++        enable_cycle_profiler(buffer)
+
+         combine_x_npu = _feature_to_npu(combine_x)
+         ep_handle = _golden_handle_to_ep_handle(handle)
+@@ -1191,7 +1326,10 @@ def run_combine_npu(
+         def _run_once():
+             return buffer.combine(combine_x_npu, handle=ep_handle, topk_weights=topk_weights_npu)
+
+-        if not is_performance:
++        if is_clean_performance_loop:
++            for _ in range(loop):
++                combined_x, combined_topk_weights = _run_once()
++        elif not is_performance:
+             combined_x, combined_topk_weights = _run_once()
+         else:
+             combined_x, combined_topk_weights = _run_once()
+@@ -1207,6 +1345,7 @@ def run_combine_npu(
+                     prof.step()
+
+         torch_npu.npu.synchronize()
++        dump_cycle_profiler(buffer, rank)
+         dist.destroy_process_group()
+         queue.put([
+             rank,
+@@ -1238,6 +1377,7 @@ def run_continue_npu(
+         set_device(rank)
+         ep_group = init_hccl_comm(rank)
+         buffer = _create_buffer(ep_group)
++        enable_cycle_profiler(buffer)
+
+         x_npu = _feature_to_npu(x)
+         topk_idx_npu = topk_idx.npu()
+@@ -1293,7 +1433,10 @@ def run_continue_npu(
+             )
+             return recv_x, recv_scales, recv_topk_idx, recv_topk_weights, handle, combine_x, combine_topk, combined_x, combined_topk_weights
+
+-        if not is_performance:
++        if is_clean_performance_loop:
++            for _ in range(loop):
++                recv_x, recv_scales, recv_topk_idx, recv_topk_weights, handle, combine_x, combine_topk, combined_x, combined_topk_weights = _run_once()
++        elif not is_performance:
+             recv_x, recv_scales, recv_topk_idx, recv_topk_weights, handle, combine_x, combine_topk, combined_x, combined_topk_weights = _run_once()
+         else:
+             perf_exp_tensor = create_performance_exp_tensor()
+@@ -1305,6 +1448,7 @@ def run_continue_npu(
+                     prof.step()
+
+         torch_npu.npu.synchronize()
++        dump_cycle_profiler(buffer, rank)
+         dist.destroy_process_group()
+         queue.put([
+             rank,
+@@ -1448,7 +1592,7 @@ def _run_dispatch_test(case_data: Dict[str, Any]) -> Dict[str, bool]:
+     )
+     compare_case_data = _dispatch_compare_case_data(case_data, rank_outputs)
+     result = compare_dispatch_outputs(rank_outputs, compare_case_data, "dispatch")
+-    if is_performance:
++    if is_performance and not is_clean_performance_loop:
+         print_performance_result("dispatch", dispatch_profiling_path, dispatch_op_types)
+     return result
+
+@@ -1464,7 +1608,7 @@ def _run_combine_test(case_data: Dict[str, Any]) -> Dict[str, bool]:
+         combine_topk_weights=combine_topk_weights,
+     )
+     result = compare_combine_outputs(rank_outputs, case_data["combine_goldens"], "combine")
+-    if is_performance:
++    if is_performance and not is_clean_performance_loop:
+         print_performance_result("combine", combine_profiling_path, combine_op_types)
+     return result
+
+@@ -1500,11 +1644,14 @@ def _run_continue_test(case_data: Dict[str, Any]) -> Dict[str, bool]:
+     result.update(compare_combine_outputs(rank_outputs, continue_combine_golden, "continue.combine"))
+
+-    if is_performance:
++    if is_performance and not is_clean_performance_loop:
+         print_performance_result("continue", continue_profiling_path, continue_op_types)
+     return result
+
+
+ if __name__ == "__main__":
++    msprof_returncode = maybe_relaunch_under_msprof()
++    if msprof_returncode is not None:
++        raise SystemExit(msprof_returncode)
+     print_setting()
+     if is_check_setting:
+         check_setting()
+@@ -1527,6 +1675,8 @@ if __name__ == "__main__":
+     if is_continue:
+         result_continue = _run_continue_test(case_data)
+
++    analyze_cycle_profiler()
++
+     if result_dispatch is not None:
+         print_summary("dispatch", result_dispatch)
+         save_accuracy_result("dispatch", result_dispatch)
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -60,5 +60,35 @@ python moe_train_test.py
+ `is_reuse_golden` 控制是否读取已有 golden cache，`is_force_generate_golden` 控制是否强制重新生成，`is_save_golden` 控制重新生成后是否写入 golden cache，默认不保存。
+
+ 性能模式设置 `is_performance = 1`。脚本会在运行前清理本目录下 `Profiling_Result_train_*`，运行后解析最新 `op_summary*`，按参考脚本方式对每个最新 rank 文件内每类算子取后 `performance_tail_count=50` 条样本统计并输出性能 CSV。Dispatch 分别输出 `MoeEpDispatch`、`MoeEpDispatchEpilogue` 和两者逐轮相加的 `MoeEpDispatchTotal`。Combine 分别输出 `MoeEpCombine`、`MoeEpCombineEpilogue` 和两者逐轮相加的 `MoeEpCombineTotal`。
++
++## MoeEp cycle profiler
++
++先在 `ops-transformer` 使用 `bash build.sh --pkg --moe-ep-profiler --module=mc2 --soc=ascend950 -j16` 构建，然后应用配套补丁后的脚本可直接运行：
++
++```bash
++OPS_TRANSFORMER_ROOT=/path/to/ops-transformer MOE_EP_CYCLE_PROFILER=1 python moe_train_test.py
++```
++
++默认只跑 continue 链路，循环 105 轮、warmup 5 轮、统计最后 50 轮。cycle 模式循环内不启动
++torch profiler，不执行 `prof.step()`、逐轮 NPU synchronize、第 2 轮的大 `torch.exp` 或额外
++collective；仅在末尾同步一次，然后每个 rank dump 四个持久 device ring。输出位于
++`moe_ep_profile_runs/<run_id>/`，含原始 `.profbin`、CSV、Chrome Trace 和 SVG。不同 rank 的
++`GetSystemCycle` 不保证同一 epoch，图中只使用各 rank 相对时间。
++
++多机必须为所有主机设置同一 `MOE_EP_PROFILE_RUN_ID` 和可汇总的
++`MOE_EP_PROFILE_OUTPUT_ROOT`。脚本会先保留各 rank raw；汇总全部 raw 后手工运行：
++
++```bash
++python /path/to/ops-transformer/mc2/tools/moe_ep_profiler/analyze_cycle.py /path/to/run --frequency-mhz 1000
++```
++
++独立采集真实硬件 MTE2/MTE3/Vector/Scalar 指标，可由同一入口自动重启到 msprof：
++
++```bash
++OPS_TRANSFORMER_ROOT=/path/to/ops-transformer MOE_EP_RUN_MSPROF=1 python moe_train_test.py
++```
++
++msprof 子进程自动关闭 cycle marker，保留 8 个原始 CSV 与 `visualize_data.bin` 并生成流水
++利用率报告。可用 `MOE_EP_MSPROF_WARM_UP`、`MOE_EP_MSPROF_LAUNCH_COUNT` 调整采集窗口。
+
+ 控核场景设置 `is_full_core = False` 并调整 `core_num`。脚本会派生 `aic_core_num = core_num`、`aiv_core_num = 2 * core_num`，在 NPU 子进程运行算子前对当前 device 调用 `torch.npu.set_device_limit(...)` 进行进程级限核。

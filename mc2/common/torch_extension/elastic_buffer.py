@@ -9,7 +9,8 @@
 # -----------------------------------------------------------------------------------------------------------
 import os
 from dataclasses import dataclass
-from typing import Callable, Optional, Tuple, Union
+from pathlib import Path
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -19,12 +20,18 @@ from torch import _check as _torch_check
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 
+# setup.py replaces this literal in profiling wheels. Keeping the switch in the
+# wheel makes the lazy JIT extension use the same ABI as the packaged kernels.
+_MOE_EP_PROFILING_BUILD = False
+
+
 _ENGRAM_DTYPE_TO_INT = {
     torch.float16: 5,
     torch.float32: 6,
     torch.bfloat16: 15,
 }
 _ENGRAM_INT_TO_DTYPE = {v: k for k, v in _ENGRAM_DTYPE_TO_INT.items()}
+_MOE_EP_METADATA_FIELDS = 5
 
 
 @dataclass
@@ -174,6 +181,13 @@ class ElasticBufferOpBuilder(OpBuilder):
             os.path.join(self._package_path, "common"),
         ]
 
+    def cxx_args(self):
+        """Keep the lazy JIT extension ABI aligned with the profiling wheel."""
+        args = super().cxx_args()
+        if _MOE_EP_PROFILING_BUILD:
+            args.append("-DENABLE_MOE_EP_PROFILING=1")
+        return args
+
 
 _elastic_buffer_op_builder = ElasticBufferOpBuilder()
 _elastic_buffer_op_builder._ensure_initialized()
@@ -272,6 +286,7 @@ def _get_moe_ep_window_layout(
     combine_state_size = (
         num_max_tokens_per_rank * topk * win_addr_align
         + world_size * combine_channel_count * win_addr_align
+        + win_addr_align  # Persistent constant source for asynchronous combine completion flags.
     )
     state_buffer_size = (
         dump_metadata_bytes
@@ -390,6 +405,7 @@ def _get_moe_ep_window_bytes(
 class EPHandle:
     dst_buffer_slot_idx: torch.Tensor
     recv_src_metadata: torch.Tensor
+    recv_rank_offsets: torch.Tensor
     num_recv_tokens_per_rank: torch.Tensor
     num_recv_tokens_per_expert: torch.Tensor
     num_experts: int
@@ -415,11 +431,12 @@ class _DispatchArgs:
     cached_route_dst_scaleout: Optional[torch.Tensor]
     cached_route_scaleout_slot: Optional[torch.Tensor]
     cached_recv_src_metadata: Optional[torch.Tensor]
+    cached_recv_rank_offsets: Optional[torch.Tensor]
     num_experts: int
     num_max_tokens_per_rank: int
     expert_alignment: int
     do_cpu_sync: bool
-    cached_recv_tokens: Optional[int]
+    cached_output_capacity: Optional[int]
 
 
 class ElasticBuffer:
@@ -951,16 +968,17 @@ class ElasticBuffer:
         )
 
         actual_a = self._get_dispatch_recv_count(args)
-        recv_x, recv_src_meta, recv_topk_weights, recv_scales = (
+        recv_x, recv_src_meta, recv_topk_weights, recv_scales, recv_rank_offsets = (
             self._allocate_dispatch_outputs(args, actual_a, topk_weights)
         )
 
-        recv_x, recv_src_meta, recv_topk_weights, recv_scales = (
+        recv_x, recv_src_meta, recv_topk_weights, recv_scales, recv_rank_offsets = (
             self._runtime.moe_ep_dispatch_epilogue(
                 dst_slot,
                 num_recv_per_rank,
                 num_recv_per_expert,
                 args.cached_recv_src_metadata,
+                args.cached_recv_rank_offsets,
                 self._ep_world_size,
                 self._rank_id,
                 args.num_experts,
@@ -970,6 +988,7 @@ class ElasticBuffer:
                 recv_src_meta,
                 recv_topk_weights,
                 recv_scales,
+                recv_rank_offsets,
             )
         )
 
@@ -978,6 +997,7 @@ class ElasticBuffer:
             args,
             dst_slot,
             recv_src_meta,
+            recv_rank_offsets,
             num_recv_per_rank,
             num_recv_per_expert,
             route_count,
@@ -1039,6 +1059,7 @@ class ElasticBuffer:
             x,
             handle.topk_idx,
             handle.recv_src_metadata,
+            handle.recv_rank_offsets,
             handle.num_recv_tokens_per_expert,
             topk_weights,
             self._ep_world_size,
@@ -1060,6 +1081,60 @@ class ElasticBuffer:
             combined_topk_weights,
         )
         return combined_x, combined_topk_weights
+
+    def enable_cycle_profiler(self, slots_per_core: int = 4096) -> None:
+        """Enable the profiling-build-only MoE EP device cycle recorder.
+
+        This must be called before the first dispatch/combine operation on this
+        buffer. The four device rings are initialized once and persist across
+        all subsequent launches. An enabled buffer requires exclusive ownership
+        of its MoE communication group; use another group for a second buffer.
+        """
+        if self._runtime is None:
+            raise RuntimeError("cycle profiler cannot be enabled after destroy")
+        enable = getattr(self._runtime, "enable_moe_ep_profiler", None)
+        if enable is None:
+            raise RuntimeError(
+                "MoE EP cycle profiler is unavailable; rebuild the operator package and "
+                "torch extension with ENABLE_MOE_EP_PROFILING"
+            )
+        enable(slots_per_core)
+
+    def dump_cycle_profiler(
+        self, output_dir: Union[str, Path], rank: Optional[int] = None
+    ) -> List[str]:
+        """Copy the four persistent rings to raw files after the caller syncs NPU.
+
+        Each file already contains its 64-byte self-describing device header.
+        No cycle-to-time conversion is performed here.
+        """
+        if self._runtime is None:
+            raise RuntimeError("cycle profiler cannot be dumped after destroy")
+        get_buffers = getattr(self._runtime, "get_moe_ep_profiler_buffers", None)
+        if get_buffers is None:
+            raise RuntimeError(
+                "MoE EP cycle profiler is unavailable; rebuild the operator package and "
+                "torch extension with ENABLE_MOE_EP_PROFILING"
+            )
+        rank_id = self._rank_id if rank is None else rank
+        rank_dir = Path(output_dir) / "raw" / f"rank_{rank_id:03d}"
+        rank_dir.mkdir(parents=True, exist_ok=True)
+        op_names = (
+            "moe_ep_dispatch",
+            "moe_ep_dispatch_epilogue",
+            "moe_ep_combine",
+            "moe_ep_combine_epilogue",
+        )
+        output_paths = []
+        for op_name, device_buffer in zip(op_names, get_buffers()):
+            output_path = rank_dir / f"{op_name}.profbin"
+            temporary_path = output_path.with_suffix(output_path.suffix + ".tmp")
+            raw = device_buffer.detach().cpu().contiguous().numpy().tobytes()
+            with open(temporary_path, "wb") as output_file:
+                output_file.write(raw)
+            os.replace(temporary_path, output_path)
+            output_paths.append(str(output_path))
+        return output_paths
 
     def destroy(self) -> None:
         """
@@ -1143,6 +1218,58 @@ class ElasticBuffer:
                 ((do_cpu_sync is None) or (do_cpu_sync is False)),
                 lambda: ("do_cpu_sync is not supported when cached."),
             )
+            torch._check(
+                handle.recv_src_metadata.dtype == torch.int32,
+                lambda: (
+                    "handle.recv_src_metadata dtype must be torch.int32, "
+                    f"but got {handle.recv_src_metadata.dtype}."
+                ),
+            )
+            torch._check(
+                handle.recv_src_metadata.dim() == 2
+                and handle.recv_src_metadata.shape[1] == _MOE_EP_METADATA_FIELDS,
+                lambda: (
+                    "handle.recv_src_metadata must have shape [A_alloc, "
+                    f"{_MOE_EP_METADATA_FIELDS}], but got {tuple(handle.recv_src_metadata.shape)}."
+                ),
+            )
+            torch._check(
+                handle.recv_src_metadata.device == x.device,
+                lambda: (
+                    "handle.recv_src_metadata and x must be on the same device, "
+                    f"but got {handle.recv_src_metadata.device} and {x.device}."
+                ),
+            )
+            torch._check(
+                handle.recv_rank_offsets.dtype == torch.int32,
+                lambda: (
+                    "handle.recv_rank_offsets dtype must be torch.int32, "
+                    f"but got {handle.recv_rank_offsets.dtype}."
+                ),
+            )
+            torch._check(
+                handle.recv_rank_offsets.dim() == 1
+                and handle.recv_rank_offsets.shape[0] == self._ep_world_size + 1,
+                lambda: (
+                    "handle.recv_rank_offsets must have shape [ep_world_size + 1]="
+                    f"[{self._ep_world_size + 1}], but got "
+                    f"{tuple(handle.recv_rank_offsets.shape)}."
+                ),
+            )
+            torch._check(
+                handle.recv_rank_offsets.device == x.device,
+                lambda: (
+                    "handle.recv_rank_offsets and x must be on the same device, "
+                    f"but got {handle.recv_rank_offsets.device} and {x.device}."
+                ),
+            )
+            torch._check(
+                x.shape[0] == handle.topk_idx.shape[0],
+                lambda: (
+                    "cached x token count must equal handle.topk_idx token count, "
+                    f"but got {x.shape[0]} and {handle.topk_idx.shape[0]}."
+                ),
+            )
             return _DispatchArgs(
                 x,
                 scales,
@@ -1152,6 +1279,7 @@ class ElasticBuffer:
                 handle.route_dst_scaleout,
                 handle.route_scaleout_slot,
                 handle.recv_src_metadata,
+                handle.recv_rank_offsets,
                 handle.num_experts,
                 handle.num_max_tokens_per_rank,
                 handle.expert_alignment,
@@ -1170,6 +1298,7 @@ class ElasticBuffer:
             x,
             scales,
             topk_idx,
+            None,
             None,
             None,
             None,
@@ -1194,8 +1323,8 @@ class ElasticBuffer:
         return self._host_pinned_counter.device_ptr()
 
     def _get_dispatch_recv_count(self, args: _DispatchArgs) -> int:
-        if args.cached_recv_tokens is not None:
-            return args.cached_recv_tokens
+        if args.cached_output_capacity is not None:
+            return args.cached_output_capacity
         if args.do_cpu_sync:
             return self._host_pinned_counter.spin_wait()
         return (
@@ -1211,7 +1340,12 @@ class ElasticBuffer:
             (actual_a, self._hidden), dtype=args.x.dtype, device=args.x.device
         )
         recv_src_meta = torch.empty(
-            (actual_a, 4), dtype=torch.int32, device=args.x.device
+            (actual_a, _MOE_EP_METADATA_FIELDS),
+            dtype=torch.int32,
+            device=args.x.device,
+        )
+        recv_rank_offsets = torch.empty(
+            (self._ep_world_size + 1,), dtype=torch.int32, device=args.x.device
         )
         recv_topk_weights = (
             None
@@ -1227,13 +1361,14 @@ class ElasticBuffer:
                 device=args.x.device,
             )
         )
-        return recv_x, recv_src_meta, recv_topk_weights, recv_scales
+        return recv_x, recv_src_meta, recv_topk_weights, recv_scales, recv_rank_offsets
 
     def _make_dispatch_handle(
         self,
         args: _DispatchArgs,
         dst_slot: torch.Tensor,
         recv_src_meta: torch.Tensor,
+        recv_rank_offsets: torch.Tensor,
         num_recv_per_rank: torch.Tensor,
         num_recv_per_expert: torch.Tensor,
         route_count: torch.Tensor,
@@ -1242,12 +1377,13 @@ class ElasticBuffer:
     ) -> EPHandle:
         topk_idx = (
             args.topk_idx
-            if args.cached_recv_tokens is not None
+            if args.cached_output_capacity is not None
             else args.topk_idx.clone()
         )
         return EPHandle(
             dst_buffer_slot_idx=dst_slot,
             recv_src_metadata=recv_src_meta,
+            recv_rank_offsets=recv_rank_offsets,
             num_recv_tokens_per_rank=num_recv_per_rank,
             num_recv_tokens_per_expert=num_recv_per_expert,
             num_experts=args.num_experts,

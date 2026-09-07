@@ -26,6 +26,9 @@ if (BUILD_OPEN_PROJECT)
         OP_NAME MoeEpDispatch
         OPTIONS --cce-auto-sync=off
     )
+    if(ENABLE_MOE_EP_PROFILING)
+        add_ops_compile_options(OP_NAME MoeEpDispatch OPTIONS -DENABLE_MOE_EP_PROFILING=1)
+    endif()
 
 else()
     add_mc2_modules_sources(OPTYPE moe_ep_dispatch ACLNNTYPE aclnn_inner)
