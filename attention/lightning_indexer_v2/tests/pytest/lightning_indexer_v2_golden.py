@@ -20,6 +20,7 @@ except ImportError:
 import pytest
 import random
 import numpy as np
+torch.serialization.add_safe_globals([np.ndarray, np._core.multiarray._reconstruct, np.core.multiarray.scalar, np.dtype, np.dtypes.Int32Dtype])
 import math
 import ctypes
 import copy
