@@ -316,8 +316,8 @@ aclnnStatus HandleEmptyTensor(const aclTensor *partialBlock, const aclTensor *bl
 
         // ZerosLike may drop the leading singleton dimension of [1, H].
         // Restore gradProjWeight's view shape before copying the zero result.
-        const aclTensor *zero = CreateZeroLikeOutput(grad, grad == gradProjWeight ? gradProjWeight : nullptr,
-                                                      uniqueExecutor);
+        const aclTensor *zero =
+            CreateZeroLikeOutput(grad, grad == gradProjWeight ? gradProjWeight : nullptr, uniqueExecutor);
         CHECK_RET(zero != nullptr, ACLNN_ERR_INNER_NULLPTR);
         const auto *output = l0op::ViewCopy(zero, grad, uniqueExecutor.get());
         CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
