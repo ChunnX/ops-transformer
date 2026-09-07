@@ -901,8 +901,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::RunGmm1Wi
                                                               startBlockIdx_, gmTileSequence, state.expertBeforeCnt,
                                                               expertIdx);
     } else {
-        const uint8_t gmmMode = IsShared ? params_.tilingData->sharedGmmMode : params_.tilingData->moeGmmMode;
-        if (gmmMode == GMM_MODE_A8W8_NZ || gmmMode == GMM_MODE_A4W4_NZ) {
+        if (params_.tilingData->moeGmmMode == GMM_MODE_A8W8_NZ || params_.tilingData->moeGmmMode == GMM_MODE_A4W4_NZ) {
             RunGmm1Generic<QuantOutType, ActivationQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                            QuantScaleOutType, true, GMM1_TILE_M, epilogueTileM, prefetchWeights, IsShared,
                            GMM1_INTERLEAVED>(epilogue, params_, state.problemShape, gmmAddrInfo, startBlockIdx_,
