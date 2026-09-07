@@ -1066,6 +1066,14 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     if (sharedExpertNum_ > 0) {
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM1);
         ProcessSharedExpertGmm1();
+        if constexpr (g_coreType == AIV) {
+            bool hasSharedMte3Producer = GetSubBlockIdx() == 0U || SharedQuantConfig::AXW_MODE == AxWMode::A8W4;
+            if (hasSharedMte3Producer) {
+                // AIV0 的 shared generic Activation 或 A8W4 Prologue，以及 AIV1 的 shared A8W4 Activation
+                // 都可能仍有 MTE3 在读取 UB。后续 MoE 阶段通过 MTE2 复用 UB 前显式等待其完成。
+                SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
+            }
+        }
     }
 
     // Dispatch、GMM1、SwiGLU、GMM2 与 Combine 使用同一 wave 边界滚动推进。

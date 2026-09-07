@@ -38,6 +38,11 @@ HOST_DEVICE bool IsA4W4GmmMode(uint8_t gmmMode)
     return gmmMode == GMM_MODE_A4W4_ND || gmmMode == GMM_MODE_A4W4_NZ;
 }
 
+HOST_DEVICE int64_t CalcSharedActivationFlagElementsPerExpert(int64_t tokenNum)
+{
+    return Ops::Base::CeilDiv(tokenNum, static_cast<int64_t>(L1_TILE_M_256)) * static_cast<int64_t>(INT_CACHELINE);
+}
+
 // 仅描述各 workspace 分区相对基址的字节偏移，不持有或构造任何地址。
 struct WorkspaceLayout {
     int64_t dispatchRevDataOffset{INVALID_WORKSPACE_OFFSET};
@@ -48,6 +53,7 @@ struct WorkspaceLayout {
     int64_t expertRevTokenNumsOffset{INVALID_WORKSPACE_OFFSET};
     int64_t metaInfoOffset{INVALID_WORKSPACE_OFFSET};
     int64_t flagActivationToGmm2Offset{INVALID_WORKSPACE_OFFSET};
+    int64_t sharedActivationToGmm2Offset{INVALID_WORKSPACE_OFFSET};
     int64_t flagDispatchToGmm1Offset{INVALID_WORKSPACE_OFFSET};
     int64_t flagSendCntCalToUpdParamsOffset{INVALID_WORKSPACE_OFFSET};
     int64_t flagGmmToEpilogueOffset{INVALID_WORKSPACE_OFFSET};
@@ -138,7 +144,7 @@ private:
         metaInfoOffset = workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
 
-        // 以下三组 flag 仅由 MoE 专家使用；共享专家路径不使用这些 flag。
+        // MoE 与共享专家的 Activation->GMM2 flag 分区独立，允许共享 GMM1 与 MoE 流水并发推进。
         const bool useMteWaveCombine = tilingData->topoType == TOPO_TYPE_MTE;
         int64_t maxWavesPerExpert =
             Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(L1_TILE_M_256));
@@ -153,6 +159,13 @@ private:
         int64_t flagRegionBeginOffset = workspaceSize;
         flagActivationToGmm2Offset = workspaceSize;
         workspaceSize += SIZE_INT_32 * moeExpertCount * activationFlagSlotsPerExpert;
+        if (tilingData->sharedExpertNum > 0 && tilingData->topoType == TOPO_TYPE_MTE) {
+            sharedActivationToGmm2Offset = workspaceSize;
+            int64_t sharedFlagElementsPerExpert =
+                CalcSharedActivationFlagElementsPerExpert(static_cast<int64_t>(tilingData->bs));
+            workspaceSize +=
+                SIZE_INT_32 * sharedFlagElementsPerExpert * static_cast<int64_t>(tilingData->sharedExpertNum);
+        }
         flagDispatchToGmm1Offset = workspaceSize;
         workspaceSize += SIZE_INT_32 * moeExpertCount * waveFlagSlotsPerExpert;
 
@@ -317,6 +330,7 @@ struct WorkspaceInfo {
     GM_ADDR expertRevTokenNumsPtr{nullptr};
     GM_ADDR metaInfoPtr{nullptr};
     GM_ADDR flagActivationToGmm2Ptr{nullptr};
+    GM_ADDR sharedActivationToGmm2Ptr{nullptr};
     GM_ADDR flagDispatchToGmm1Ptr{nullptr};
     GM_ADDR flagSendCntCalToUpdParamsPtr{nullptr};
     GM_ADDR flagGmmToEpiloguePtr{nullptr};
@@ -363,6 +377,7 @@ public:
         expertRevTokenNumsPtr = ResolveWorkspaceAddress(base, layout.expertRevTokenNumsOffset);
         metaInfoPtr = ResolveWorkspaceAddress(base, layout.metaInfoOffset);
         flagActivationToGmm2Ptr = ResolveWorkspaceAddress(base, layout.flagActivationToGmm2Offset);
+        sharedActivationToGmm2Ptr = ResolveWorkspaceAddress(base, layout.sharedActivationToGmm2Offset);
         flagDispatchToGmm1Ptr = ResolveWorkspaceAddress(base, layout.flagDispatchToGmm1Offset);
         flagSendCntCalToUpdParamsPtr = ResolveWorkspaceAddress(base, layout.flagSendCntCalToUpdParamsOffset);
         flagGmmToEpiloguePtr = ResolveWorkspaceAddress(base, layout.flagGmmToEpilogueOffset);
