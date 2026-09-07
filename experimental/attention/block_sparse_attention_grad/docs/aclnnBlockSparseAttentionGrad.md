@@ -6,15 +6,15 @@
 |:----------------------------|:-----------:|
 
 |<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品</term>|      √     |
-|<term>Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品</term>|      √     |
-|<term>Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas A3 训练系列产品</term>|      ×     |
+|<term>Atlas A3 推理系列产品</term>|      ×     |
+|<term>Atlas A2 训练系列产品</term>|      ×     |
+|<term>Atlas A2 推理系列产品</term>|      ×     |
 |<term> Atlas 200I/500 A2 推理产品</term>                                         |    ×    |
 |<term> Atlas 推理系列产品</term>                                                 |    ×    |
 |<term> Atlas 训练系列产品</term>                                                 |    ×    |
 
-> <term>Ascend 950PR/Ascend 950DT</term> 使用 arch35 实现，<term>Atlas A2/A3 系列</term> 使用 arch22 实现。
+> 仅 <term>Ascend 950PR/Ascend 950DT</term> 支持，使用 arch35 实现。
 
 ## 功能说明
 
