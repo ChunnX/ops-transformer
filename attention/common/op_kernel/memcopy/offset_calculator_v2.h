@@ -39,6 +39,9 @@ enum class FormatCategory {
     GM_K_SCALE_PA_NZ = 14,
     GM_ANTIQ_NT = 15,
     GM_ANTIQ_TN = 16,
+    GM_ANTIQ_BnNDBs = 17,
+    GM_ANTIQ_BNDS = 18,
+    GM_V_SCALE_PA_NZ = 19,
 };
 
 template <GmFormat FORMAT>
@@ -385,6 +388,11 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_BNSD, ACTLEN_T> {
     {
         actualSeqLensKVParser = parser;
         gmLayout.MakeLayout(b, n2, s2, d);
+    }
+
+    __aicore__ inline void Init(const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T>& parser)
+    {
+        actualSeqLensKVParser = parser;
     }
 
     __aicore__ inline uint64_t GetOffset(uint32_t bIdx, uint32_t n2Idx, uint32_t s2Idx, uint32_t dIdx)
