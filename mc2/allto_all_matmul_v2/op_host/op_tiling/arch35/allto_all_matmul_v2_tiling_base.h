@@ -624,12 +624,9 @@ protected:
             constexpr uint64_t HCCL_BUFFER_RESERVED_BYTES = 2UL * 1024UL * 1024UL;
             uint64_t needBytes = commDataBytes + HCCL_BUFFER_RESERVED_BYTES;
             if (hccBufPtr != nullptr && static_cast<uint64_t>(*hccBufPtr) < needBytes) {
-                OP_LOGE_WITHOUT_REPORT(opName,
-                                       "[hcclBufferSize] hcclBufferSize(%ld) is less than "
-                                       "worldSize(%lu) * m_per_rank(%lu) * (Ka(%lu) * %lu bits + "
-                                       "scale(%lu * %lu * 8 bits)) / 8 + reserved(%lu) = %lu bytes",
-                                       static_cast<long>(*hccBufPtr), worldSize_, m_, kPerRank, x1Bits, scaleKGroups,
-                                       SCALE_LAST_DIM, HCCL_BUFFER_RESERVED_BYTES, needBytes);
+                OP_LOGE_WITH_INVALID_ATTR(
+                    opName, "hccl_buffer_size", std::to_string(*hccBufPtr).c_str(),
+                    "no less than worldSize * mPerRank * (Ka * dataTypeBits + scaleBytes) / 8 + 2MB reserved bytes");
                 return ge::GRAPH_FAILED;
             }
         }
@@ -656,9 +653,6 @@ protected:
             return ge::GRAPH_FAILED;
         }
         auto x1Dtype = x1DescTiling->GetDataType();
-        // bias 与 A/B/scale 同样驻留 L1（kernel 侧 l1BufferBiasOffset_ 布局），tiling 预算须同步计入；
-        // hasBias 与 kernel 侧 isBias_ 同源（optional bias 输入的存在性），bias dtype 与 kernel 侧
-        // BiasType 实例化一致（当前为 float），经类模板第三参数显式声明
         bool hasBias = context_->GetOptionalInputDesc(IDX_INPUT_BIAS) != nullptr;
         if (x1Dtype == ge::DT_FLOAT4_E2M1) {
             QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1,
