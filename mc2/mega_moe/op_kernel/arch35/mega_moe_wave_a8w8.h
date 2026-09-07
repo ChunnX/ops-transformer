@@ -1115,11 +1115,11 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,
                                      sendMaskScratch_);
     ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
-    if (sharedExpertNum_ == 0U) {
-        if constexpr (g_coreType == AIV) {
-            PipeBarrier<PIPE_ALL>();
-        }
+
+    if constexpr (g_coreType == AIV) {
+        PipeBarrier<PIPE_ALL>();
     }
+
     SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算
 
     ProcessGmmPipeline();
