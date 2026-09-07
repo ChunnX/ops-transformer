@@ -18,16 +18,31 @@
 #include "moe_v3_common.h"
 #include "kernel_operator.h"
 #include "op_kernel/load_store_utils.h"
+#include "simt_api/asc_simt.h"
 
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
+
+// ===== topkWeight 重排输出（SIMT GM->GM，scatter dropless 全载专用，独立 Phase D）=====
+__simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void CsFullLoadTopkWeightGatherSimt(
+    int64_t elements, int64_t dstBase, int64_t totalLength, __ubuf__ int32_t *dstToSrcMap, __gm__ float *topkWeight,
+    __gm__ volatile float *expandedTopkWeight)
+{
+    for (int64_t i = static_cast<int64_t>(threadIdx.x); i < elements; i += static_cast<int64_t>(blockDim.x)) {
+        int32_t srcIndex = dstToSrcMap[i];
+        if (srcIndex >= 0 && srcIndex < totalLength) {
+            expandedTopkWeight[dstBase + i] = topkWeight[srcIndex];
+        }
+    }
+}
 
 template <typename T>
 class MoeV3CountingSortFullLoadUnquantized {
 public:
     __aicore__ inline MoeV3CountingSortFullLoadUnquantized(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
-                                GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale, GM_ADDR workspace,
+                                GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale, GM_ADDR topkWeight,
+                                GM_ADDR expandedTopkWeight, GM_ADDR workspace,
                                 const MoeInitRoutingV3Arch35TilingData *tiling, TPipe *pipe);
     __aicore__ inline void Process();
 
@@ -56,6 +71,7 @@ private:
     __aicore__ inline void LoadScale();
     __aicore__ inline void GatherAndWrite();
     __aicore__ inline void GatherOneRow(int64_t newPos, int64_t tokenRow, int64_t origFlatIdx);
+    __aicore__ inline void TopkWeightPhase();
 
     static constexpr int64_t DST_REP_STRIDE = 8;
     static constexpr int64_t MASK_STRIDE = 64;
@@ -72,6 +88,8 @@ private:
     GlobalTensor<T> expandedXGm_;
     GlobalTensor<float> scaleGm_;
     GlobalTensor<float> expandedScaleGm_;
+    GlobalTensor<float> topkWeightGm_;
+    GlobalTensor<float> expandedTopkWeightGm_;
 
     int64_t quantMode_;
 
@@ -86,6 +104,7 @@ private:
     int64_t expertNum_;
     int64_t rowIdxType_;
     int64_t isInputScale_;
+    int64_t isInputTopkWeight_{0};
     int64_t filterNeedCoreNum_;
     int64_t coreNum_;
     int64_t expertTokensNumFlag_;
@@ -141,12 +160,10 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale,
-                                                                     GM_ADDR expandedX, GM_ADDR expandedRowIdx,
-                                                                     GM_ADDR expertTokensCountOrCumsum,
-                                                                     GM_ADDR expandedScale, GM_ADDR workspace,
-                                                                     const MoeInitRoutingV3Arch35TilingData *tiling,
-                                                                     TPipe *pipe)
+__aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::Init(
+    GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
+    GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale, GM_ADDR topkWeight, GM_ADDR expandedTopkWeight,
+    GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tiling, TPipe *pipe)
 {
     InitCommon(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, workspace, tiling, pipe);
 
@@ -155,6 +172,10 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::Init(GM_ADDR x, 
     if (isInputScale_) {
         scaleGm_.SetGlobalBuffer((__gm__ float *)scale);
         expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale);
+    }
+    if (isInputTopkWeight_) {
+        topkWeightGm_.SetGlobalBuffer((__gm__ float *)topkWeight, totalLength_);
+        expandedTopkWeightGm_.SetGlobalBuffer((__gm__ float *)expandedTopkWeight, totalLength_);
     }
 
     // GATHER 预填 rowIdx=-1；dropPad 还需整块清零 expandedX（空槽零填充）
@@ -261,8 +282,13 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::GatherAndWrite()
 template <typename T>
 __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::Process()
 {
+    const bool needTopkPhase = (isInputTopkWeight_ == 1) && (rowIdxType_ == SCATTER);
+
     if (blockIdx_ >= filterNeedCoreNum_) {
-        SyncAll();
+        SyncAll(); // 等 Phase A：各核计数写回 GM 完成
+        if (needTopkPhase) {
+            SyncAll(); // 等 Phase C：scatter 的 expandedRowIdx全部写完
+        }
         return;
     }
 
@@ -284,6 +310,12 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::Process()
     // Phase C: 等待 x 加载 + 数据搬运
     WaitXLoadCommon();
     GatherAndWrite();
+
+    // Phase D: topk 重排输出
+    if (needTopkPhase) {
+        SyncAll(); // 等全部核的 expandedRowIdx 写 GM 完成，随后 MTE2 读回本核连续 dst
+        TopkWeightPhase();
+    }
 }
 
 template <typename T>
@@ -304,6 +336,7 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::InitCommon(
     expertNum_ = tiling->expertNum;
     rowIdxType_ = tiling->rowIdxType;
     isInputScale_ = tiling->isInputScale;
+    isInputTopkWeight_ = tiling->isInputTopkWeight;
     filterNeedCoreNum_ = tiling->countingSortParamsOp.filterNeedCoreNum;
     coreNum_ = tiling->coreNum;
     expertTokensNumFlag_ = tiling->expertTokensNumFlag;
@@ -710,7 +743,8 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::BucketByExpert()
 }
 
 // 聚合搬出主循环：外层 expertOffset，内层按 k 切批，每批一次 DataCopyPad 写连续 GM 段。
-// expandedX 行聚合；rowIdx/scale 在同一批循环内逐行穿插（合并原 WriteBypassForRowIdxScale）。
+// expandedX 行聚合；rowIdx/scale 在批循环内逐行穿插；topk 输出在 Phase D 独立阶段读回 expandedRowIdx(dst->src map)
+// 统一展开写。
 template <typename T>
 __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::GatherAndWriteByExpert(
     LocalTensor<T> &xLocal, LocalTensor<float> &scaleLocal, GlobalTensor<T> &expandedXGmRef,
@@ -790,6 +824,42 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::GatherAndWriteBy
             slotStart += batchRows;
             remaining -= batchRows;
         }
+    }
+}
+
+// ===== Phase D: topk 重排输出=====
+template <typename T>
+__aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::TopkWeightPhase()
+{
+    if (!isInputTopkWeight_ || rowIdxType_ != SCATTER || outputRows_ <= 0) {
+        return;
+    }
+    int64_t perCoreRows = Ceil(outputRows_, filterNeedCoreNum_);
+    int64_t dstStart = blockIdx_ * perCoreRows;
+    int64_t dstEnd = Min(dstStart + perCoreRows, outputRows_);
+    if (dstStart >= dstEnd) {
+        return;
+    }
+
+    // map 缓冲复用 gatheredIdx 区（Phase A 过滤独占、之后空闲），容量 entriesAligned_ >= 单 chunk
+    LocalTensor<int32_t> mapLocal = buf_.Get<int32_t>()[gatheredIdxLocalOffset_ / sizeof(int32_t)];
+    DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
+
+    // 跨核新写 GM 读前一致性：SyncAll 后 DCCI 基址单行 + MTE2 读（同 ComputeGlobalOffset 模式）
+    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(expandedRowIdxGm_);
+
+    for (int64_t dst = dstStart; dst < dstEnd;) {
+        int64_t cnt = Min(entriesAligned_, dstEnd - dst);
+        DataCopyExtParams loadParams{static_cast<uint16_t>(1), static_cast<uint32_t>(cnt * sizeof(int32_t)), 0, 0, 0};
+        DataCopyPad(mapLocal, expandedRowIdxGm_[dst], loadParams, padParams);
+        SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S); // MTE2 -> scalar：map 就绪
+        SetWaitFlag<HardEvent::S_V>(HardEvent::S_V);       // scalar -> VF：SIMT 读 map 前排空
+        uint32_t threadNum = static_cast<uint32_t>(Min(cnt, static_cast<int64_t>(SIMT_THREAD_NUM)));
+        asc_vf_call<CsFullLoadTopkWeightGatherSimt>(
+            dim3{threadNum, 1, 1}, cnt, dst, totalLength_, (__ubuf__ int32_t *)mapLocal.GetPhyAddr(),
+            (__gm__ float *)topkWeightGm_.GetPhyAddr(), (__gm__ volatile float *)expandedTopkWeightGm_.GetPhyAddr());
+        SetWaitFlag<HardEvent::V_MTE2>(HardEvent::V_MTE2); // SIMT 读完 map UB 后，下一 chunk MTE2 才能覆写
+        dst += cnt;
     }
 }
 
