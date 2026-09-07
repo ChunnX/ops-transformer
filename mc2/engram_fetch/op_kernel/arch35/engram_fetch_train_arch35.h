@@ -270,7 +270,6 @@ private:
     TBuf<> creditBuf_;
 
     int64_t cachedTotalRecv_{-1};
-    bool vecAddrSafe_{false};
 
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
     using HcommBatchHandle = AscendC::BatchHandle<AscendC::ChannelHandle>;
@@ -405,8 +404,6 @@ __aicore__ inline void EngramFetchTrainArch35::InitMembers(GM_ADDR commContext, 
         groupSize_ = channelsPerRank_;
     }
     totalSlots_ = groupSize_;
-    vecAddrSafe_ = static_cast<int64_t>(numEntriesPerRank_) > 0 &&
-                   static_cast<int64_t>(numEntriesPerRank_) * hiddenBytes_ <= INT32_MAX;
 }
 
 __aicore__ inline void EngramFetchTrainArch35::InitWinLayout()
