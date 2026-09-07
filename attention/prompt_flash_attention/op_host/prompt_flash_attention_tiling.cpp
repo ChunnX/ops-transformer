@@ -6993,6 +6993,8 @@ ge::graphStatus PromptFlashAttentionTiling::AdjustCVTiling(uint64_t hDivN, uint6
                 return ge::GRAPH_FAILED;
             }
             minFactor = (rectangleQueue.front());
+        } else {
+            return ge::GRAPH_FAILED;
         }
     }
     sOuterFactor = minFactor;
