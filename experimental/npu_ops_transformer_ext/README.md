@@ -61,6 +61,7 @@ NpuOpsTransformerExt是一个轻量级，高性能的算子开发工程模板，
    # 指定路径安装
    # source ${install-path}/ascend-toolkit/set_env.sh
     ```
+
 3. **安装torch与TorchNPU包**
 
    根据实际环境，下载对应torch包并安装: `torch-${torch_version}+cpu-${python_version}-linux_${arch}.whl`下载链接为:[官网地址](http://download.pytorch.org/whl/torch)
