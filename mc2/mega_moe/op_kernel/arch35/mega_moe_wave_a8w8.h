@@ -52,7 +52,6 @@ private:
     using QuantOutType = typename MegaMoeBase::QuantOutType;
     using ActivationType = typename MegaMoeBase::ActivationType;
     using QuantScaleOutType = typename MegaMoeBase::QuantScaleOutType;
-    using MoeQuantConfig = typename MegaMoeBase::MoeQuantConfig;
 
     static constexpr uint32_t GMM1_TILE_M = MegaMoeBase::GMM1_TILE_M;
     static constexpr uint32_t EPILOGUE_TILE_M = MegaMoeBase::EPILOGUE_TILE_M;
@@ -336,12 +335,11 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
             tileSequence = &gmmTileSequence;
         }
-        RunGmm2ByMode<COMBINE_NO_QUANT, QuantOutType, ActivationType, MoeWeightType, QuantScaleOutType,
-                      MoeQuantConfig::AXW_MODE, MoeWeight2Format != FORMAT_ND, GMM1_TILE_M, TopkWeightsPrefetch, false,
-                      IsGmm1Interleaved, true,
-                      CombineQuantMode == COMBINE_NO_QUANT>(gmmExecutionConfig_, gmm2AddrInfo, gmm2WaveProblemShape,
-                                                            startBlockIdx, nullptr, isWholeExpert,
-                                                            gmm2Position.tokenIndexInExpert, &params_, tileSequence);
+        RunGmm2Generic<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
+                       MoeWeight2Format != FORMAT_ND, false, GMM1_TILE_M, TopkWeightsPrefetch, false, IsGmm1Interleaved,
+                       true, CombineQuantMode == COMBINE_NO_QUANT>(
+            gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, nullptr, isWholeExpert,
+            gmm2Position.tokenIndexInExpert, &params_, tileSequence);
 
         gmm2Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
         gmm2Position.globalTokenIndex += waveRowCount;
