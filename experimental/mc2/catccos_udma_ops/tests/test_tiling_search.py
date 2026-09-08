@@ -158,8 +158,8 @@ def test_dry_run_generates_both_operator_plans_without_torch_import(tmp_path, mo
     monkeypatch.setattr(search_tiling, "run_isolated", lambda *args: pytest.fail("dry run launched a worker"))
     assert search_tiling.main() == 0
     plan = json.loads((output / "search_manifest.json").read_text(encoding="utf-8"))
-    assert len(plan["cases"]) == 4
-    assert len(plan["plan"]) == 8
+    assert len(plan["cases"]) == 8
+    assert len(plan["plan"]) == 16
     assert {case["operator"] for case in plan["cases"]} == {
         "all_to_allv_grouped_mat_mul", "grouped_mat_mul_all_to_allv",
     }
