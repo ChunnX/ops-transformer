@@ -23,7 +23,6 @@
 #include "../../../moe_distribute_dispatch_setup/op_kernel/moe_distribute_dispatch_setup_base.h"
 #include "../../../moe_distribute_dispatch_setup/op_kernel/moe_distribute_dispatch_setup_common.h"
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 #include "../../../common/op_kernel/mc2_moe_context.h"
 
 namespace Mc2Kernel {

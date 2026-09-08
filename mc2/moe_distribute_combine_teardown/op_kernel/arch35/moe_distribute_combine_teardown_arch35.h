@@ -22,7 +22,6 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_combine_teardown_tiling_data.h"
 #include "../../../moe_distribute_combine_setup/op_kernel/moe_distribute_combine_setup_base.h"
-#endif
 #include "../../../common/op_kernel/mc2_moe_context.h"
 
 namespace MoeDistributeCombineTeardownImpl {
@@ -262,7 +261,6 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
     // GatherMask 每轮只写前 sendRankNum_ 个元素，Sum 却读满对齐后的整块。
     // 先清零，保证 sumOfFlag 只反映真实收到的 flag，不受 UB 残留影响。
     Duplicate<float>(gatherMaskOutTensor, 0.0f, waitStatusElemNum_);
-    PipeBarrier<PIPE_V>();
 
     // 计算当前核期望target值
     gatherTmpTensor.SetValue(0, 1);
