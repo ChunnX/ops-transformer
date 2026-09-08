@@ -1,5 +1,5 @@
 # mc2/common 头文件影响范围映射表 - A2 (ascend910b)
-# 生成: 2026-09-08  基线commit: d84ffcd69 (clean)
+# 生成: 2026-09-08  基线commit: 5e095beee (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(common/开头), 与PR修改文件列表中mc2/后的段落一致
 #
@@ -88,9 +88,6 @@ common/op_host/op_tiling/formulaic_tiling_datatype.h:
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
-common/op_host/op_tiling/hccl_formulaic_tiling.cpp:
-  ops:
-    - all_gather_matmul_v2
 common/op_host/op_tiling/hccl_formulaic_tiling.h:
   ops:
     - all_gather_matmul
@@ -100,9 +97,6 @@ common/op_host/op_tiling/hccl_formulaic_tiling.h:
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter_v2
-common/op_host/op_tiling/hccl_performance.cpp:
-  ops:
-    - all_gather_matmul_v2
 common/op_host/op_tiling/hccl_performance.h:
   ops:
     - all_gather_matmul
@@ -136,9 +130,6 @@ common/op_host/op_tiling/matmul_formulaic_tiling.h:
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
-common/op_host/op_tiling/matmul_performance.cpp:
-  ops:
-    - all_gather_matmul_v2
 common/op_host/op_tiling/matmul_performance.h:
   ops:
     - all_gather_matmul

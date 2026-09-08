@@ -30,17 +30,17 @@ EXCLUDE_OPS = ('common', '3rd', 'tools')
 if not os.path.isdir(MC2):
     sys.exit(f'错误: 不是 ops-transformer 仓(找不到 {MC2})')
 
-# ---------- 1. 索引 mc2 下所有源文件(cpp等仅作include扫描源, 不进映射) ----------
+# ---------- 1. 索引: 建模对象=common/3rd头文件; include扫描源=mc2全部C/C++源文件 ----------
 SCAN_EXT = ('.h', '.hpp', '.cuh', '.cpp', '.cc', '.c')
-idx = {}
+scan_files = {}
 for dp, _, fs in os.walk(MC2):
     top = os.path.relpath(dp, MC2).split('/')[0]
     if top == 'tools':
         continue
     for f in fs:
         if f.endswith(SCAN_EXT):
-            idx[os.path.relpath(os.path.join(dp, f), MC2)] = os.path.join(dp, f)
-
+            scan_files[os.path.relpath(os.path.join(dp, f), MC2)] = os.path.join(dp, f)
+idx = {r: p for r, p in scan_files.items() if r.endswith(('.h', '.hpp', '.cuh'))}
 targets = {r for r in idx if r.startswith(('common/', '3rd/'))}   # 影响源: common/3rd 头文件
 by_base = {}
 for r in targets:
@@ -51,8 +51,8 @@ dup_groups = {k: v for k, v in by_base.items() if len(v) > 1}
 by_base = {}
 for r in targets:
     by_base.setdefault(os.path.basename(r), []).append(r)
-referers = {r: set() for r in targets}   # 头 -> 直接引用者(任何mc2源文件)
-for rel, path in idx.items():
+referers = {r: set() for r in targets}   # 头 -> 直接引用者(任何mc2源文件, 含cpp)
+for rel, path in scan_files.items():
     for m in INC_RE.finditer(open(path, errors='ignore').read()):
         for t in by_base.get(os.path.basename(m.group(1)), ()):
             if t != rel:
