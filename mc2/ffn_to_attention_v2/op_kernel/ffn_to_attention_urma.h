@@ -47,6 +47,7 @@ constexpr int32_t URMA_FLAG_VALUE = 1;
 constexpr uint32_t URMA_WQE_SIZE = 64U;
 constexpr uint32_t URMA_BATCH_WQE_CAPACITY = 256U;
 constexpr uint32_t URMA_BATCH_BUFFER_SIZE = URMA_BATCH_WQE_CAPACITY * URMA_WQE_SIZE;
+constexpr uint64_t URMA_WQE_MAX_DATA_SIZE = static_cast<uint64_t>(0xFFFFFFFFU);
 constexpr uint32_t METADATA_CHUNK_TOKEN_NUM = 256U;
 constexpr uint32_t METADATA_FIELD_NUM = 4U;
 constexpr uint32_t METADATA_CHUNK_BUFFER_SIZE = METADATA_CHUNK_TOKEN_NUM * METADATA_FIELD_NUM * sizeof(int32_t);
@@ -213,6 +214,10 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     ascendc_assert(actualTokenNum_ <= maxTokenNum_,
                    "actualTokenNum exceeds x dim0, actualTokenNum=%lu, maxTokenNum=%lu", actualTokenNum_, maxTokenNum_);
     hSize_ = static_cast<uint64_t>(axisH_) * sizeof(xType);
+    ascendc_assert(hSize_ > 0U && hSize_ <= URMA_WQE_MAX_DATA_SIZE,
+                   "hSize exceeds URMA WQE data size limit, hSize=%lu, limit=%lu", hSize_, URMA_WQE_MAX_DATA_SIZE);
+    ascendc_assert(hSize_ % URMA_FLAG_SLOT_SIZE == 0U, "direct URMA source requires 32B-aligned token size, hSize=%lu",
+                   hSize_);
     dataWorkspaceStride_ = Ceil(hSize_, static_cast<uint64_t>(URMA_FLAG_SLOT_SIZE)) * URMA_FLAG_SLOT_SIZE;
     const uint64_t rankRelayListWorkspaceSize = static_cast<uint64_t>(worldSize_) * 2U * sizeof(uint64_t);
     ascendc_assert(rankRelayListWorkspaceSize <= URMA_RESERVED_WORKSPACE_SIZE,
@@ -398,6 +403,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::A
     ascendc_assert(relayInfo.sourceTokenIndex < actualTokenNum_,
                    "source token index out of range, tokenIndex=%lu, actualTokenNum=%lu", relayInfo.sourceTokenIndex,
                    actualTokenNum_);
+
     GM_ADDR sourceDataAddr = inputDataAddr_ + relayInfo.sourceTokenIndex * hSize_;
     int32_t ret = hcomm_.WriteNbi<REMOTE_DATA_WQE_CONFIG>(batchHandle, remoteWindowAddr + relayInfo.remoteDataOffset,
                                                           sourceDataAddr, static_cast<uint32_t>(hSize_));
@@ -466,7 +472,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
         if (tokenStart != 0UL) {
             SyncFunc<HardEvent::S_MTE2>();
         }
-        DataCopyExtParams metadataCopyParams = {1U, tokenNum * sizeof(int32_t), 0U, 0U, 0U};
+        DataCopyExtParams metadataCopyParams = {1U, static_cast<uint32_t>(tokenNum * sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPadExtParams<int32_t> metadataPadParams = {false, 0U, 0U, 0U};
         DataCopyPad(metadataTensor_, sessionIdsGMTensor_[tokenStart], metadataCopyParams, metadataPadParams);
         DataCopyPad(metadataTensor_[METADATA_CHUNK_TOKEN_NUM], microBatchIdsGMTensor_[tokenStart], metadataCopyParams,
@@ -604,7 +610,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
             }
         }
 
-        // Keep all AIVs alive until AIV0 starts issuing remote writes from the input GM.
+        // AIV0 starts remote writes only after every AIV completes its local path.
         SyncAll<true>();
         if (aivId_ == 0U) {
             // prof5 BuildRemoteRelayLists
