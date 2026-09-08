@@ -94,9 +94,9 @@ private:
     static constexpr uint32_t AIC_L0A_BUFFER_NUM = 2U;
     static constexpr uint32_t AIC_L0C_BUFFER_NUM = 2U;
     static constexpr uint32_t AIC_M_L0_TILE = 128U;
-    static constexpr uint32_t AIC_L0A_BUFFER_ELEMENTS = 64U * QKV_K_SCALE_KIB / sizeof(bfloat16_t);
-    static constexpr uint32_t AIC_L0B_BUFFER_ELEMENTS = 64U * QKV_K_SCALE_KIB / sizeof(bfloat16_t);
-    static constexpr uint32_t AIC_L0C_BUFFER_ELEMENTS = 256U * QKV_K_SCALE_KIB / sizeof(float);
+    static constexpr uint32_t AIC_L0A_BUFFER_ELEMENTS = ASC_L0A_SIZE / sizeof(bfloat16_t);
+    static constexpr uint32_t AIC_L0B_BUFFER_ELEMENTS = ASC_L0B_SIZE / sizeof(bfloat16_t);
+    static constexpr uint32_t AIC_L0C_BUFFER_ELEMENTS = ASC_L0C_SIZE / sizeof(float);
     static constexpr uint32_t AIC_L0A_ONE_BUFFER_ELEMENTS = AIC_L0A_BUFFER_ELEMENTS / AIC_L0A_BUFFER_NUM;
     static constexpr uint32_t AIC_L0C_ONE_BUFFER_ELEMENTS = AIC_L0C_BUFFER_ELEMENTS / AIC_L0C_BUFFER_NUM;
     static constexpr uint8_t AIC_UNIT_FLAG_CHECK_ONLY = 0b10;
