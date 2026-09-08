@@ -486,6 +486,11 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
+    // mask为row-major布局[r][c](r=S1行,c=S2列,行距ubN), 谓词按列gather生成
+    RegTensor<int16_t> vreg_mask_idx;
+    RegTensor<int16_t> vreg_mask_idx_c0, vreg_mask_idx_c1, vreg_mask_idx_c2, vreg_mask_idx_c3;
+    RegTensor<uint16_t> vreg_mask_val0, vreg_mask_val1, vreg_mask_val2, vreg_mask_val3;
+
     __ubuf__ T2 *x_exp_1;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                   IsSameType<T2, hifloat8_t>::value) {
@@ -501,6 +506,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     __ubuf__ uint32_t *mask_ub1 = maskUb + 16;
     __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
     __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
+    __ubuf__ uint8_t *mask_ub = (__ubuf__ uint8_t *)maskUb;
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -516,8 +522,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     mem_bar(VST_VLD);
 
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
-                   IsSameType<T2, hifloat8_t>::value || IsSameType<T2, bfloat16_t>::value ||
-                   IsSameType<T2, half>::value) &&
+                   IsSameType<T2, hifloat8_t>::value) &&
                   hasAtten) {
         if (needAtten) {
             for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
@@ -533,6 +538,54 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
                 Select(src1, src1, vreg_min, preg_compare1);
                 Select(src2, src2, vreg_min, preg_compare2);
                 Select(src3, src3, vreg_min, preg_compare3);
+                StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
+                StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
+                StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);
+                StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, src3, preg_108);
+                Max(max0, max0, src0, preg_108);
+                Max(max1, max1, src1, preg_108);
+                Max(max2, max2, src2, preg_108);
+                Max(max3, max3, src3, preg_108);
+            }
+        } else {
+            for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+                LoadAlign(src0, src_ub0 + iter_m * m * 4);
+                LoadAlign(src1, src_ub1 + iter_m * m * 4);
+                LoadAlign(src2, src_ub2 + iter_m * m * 4);
+                LoadAlign(src3, src_ub3 + iter_m * m * 4);
+                Max(max0, max0, src0, preg_108);
+                Max(max1, max1, src1, preg_108);
+                Max(max2, max2, src2, preg_108);
+                Max(max3, max3, src3, preg_108);
+            }
+        }
+    } else if constexpr ((IsSameType<T2, bfloat16_t>::value || IsSameType<T2, half>::value) && hasAtten) {
+        if (needAtten) {
+            // mask为row-major布局[r][c]: lane r的谓词 = mask[r * ubN + c] != 0
+            // Gather(b8->b16)的索引单位为2字节, mask行距为ubN字节, 故索引步进为ubN/2
+            Arange(vreg_mask_idx, static_cast<int16_t>(0));
+            Muls(vreg_mask_idx, vreg_mask_idx, static_cast<int16_t>(ubN >> 1), preg_108);
+            for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+                LoadAlign(src0, src_ub0 + iter_m * m * 4);
+                LoadAlign(src1, src_ub1 + iter_m * m * 4);
+                LoadAlign(src2, src_ub2 + iter_m * m * 4);
+                LoadAlign(src3, src_ub3 + iter_m * m * 4);
+                Adds(vreg_mask_idx_c0, vreg_mask_idx, static_cast<int16_t>(iter_m * 4), preg_108);
+                Adds(vreg_mask_idx_c1, vreg_mask_idx_c0, static_cast<int16_t>(1), preg_108);
+                Adds(vreg_mask_idx_c2, vreg_mask_idx_c0, static_cast<int16_t>(2), preg_108);
+                Adds(vreg_mask_idx_c3, vreg_mask_idx_c0, static_cast<int16_t>(3), preg_108);
+                Gather(vreg_mask_val0, mask_ub, (RegTensor<uint16_t> &)vreg_mask_idx_c0, preg_135);
+                Gather(vreg_mask_val1, mask_ub, (RegTensor<uint16_t> &)vreg_mask_idx_c1, preg_135);
+                Gather(vreg_mask_val2, mask_ub, (RegTensor<uint16_t> &)vreg_mask_idx_c2, preg_135);
+                Gather(vreg_mask_val3, mask_ub, (RegTensor<uint16_t> &)vreg_mask_idx_c3, preg_135);
+                CompareScalar<uint16_t, CMPMODE::NE>(preg_compare0, vreg_mask_val0, static_cast<uint16_t>(0), preg_108);
+                CompareScalar<uint16_t, CMPMODE::NE>(preg_compare1, vreg_mask_val1, static_cast<uint16_t>(0), preg_108);
+                CompareScalar<uint16_t, CMPMODE::NE>(preg_compare2, vreg_mask_val2, static_cast<uint16_t>(0), preg_108);
+                CompareScalar<uint16_t, CMPMODE::NE>(preg_compare3, vreg_mask_val3, static_cast<uint16_t>(0), preg_108);
+                Select(src0, vreg_min, src0, preg_compare0);
+                Select(src1, vreg_min, src1, preg_compare1);
+                Select(src2, vreg_min, src2, preg_compare2);
+                Select(src3, vreg_min, src3, preg_compare3);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, src0, preg_108);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, src1, preg_108);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, src2, preg_108);

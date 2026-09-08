@@ -376,9 +376,7 @@ public:
         const uint32_t maskBufId = runInfo.loop % UB_MASK_BUFCNT;
         if constexpr (HAS_MASK) {
             attenMaskUb = ubMaskBuffers_[maskBufId * UB_MASK_BUF_BYTES];
-            Mutex::Lock<PIPE_MTE2>(UB_MASK_BUFCNT + maskBufId);
-            AttenMaskCopyInDn(attenMaskUb, 0, runInfo.actVecMSize, isSkipMask, runInfo);
-            Mutex::Unlock<PIPE_MTE2>(UB_MASK_BUFCNT + maskBufId);
+            AttenMaskCopyInDn(attenMaskUb, 0, runInfo.actVecMSize, isSkipMask, runInfo, UB_MASK_BUFCNT + maskBufId);
         }
 
         LocalTensor<T> sumUb =
@@ -579,6 +577,7 @@ public:
 
                 attenOut.SetAddr(ubVec2Res_.address_);
                 Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
+                RowInvalidDn(ubVec2Res_, runInfo, dSizeAligned64);
                 Cast(attenOut, ubVec2Res_, RoundMode::CAST_ROUND, mDealSize * dSizeAligned64);
                 Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
 
@@ -588,17 +587,109 @@ public:
             }
         }
     }
-    __aicore__ inline void AttenMaskCopyInDn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
-                                             bool &isSkipMask, RunInfo &runInfo)
+    __aicore__ inline bool CalcBlockNeedRowInvalidDn(RunInfo &runInfo, int64_t s1FirstValidToken,
+                                                     int64_t s1LastValidToken)
     {
-        uint32_t s2RealSize = runInfo.actSingleLoopS2Size;
+        int32_t vecMStartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
+        int32_t vecMEndIdx = vecMStartIdx + runInfo.actVecMSize - 1;
+        int32_t s1StartTdx, s1EndTdx;
+        bool ret = false;
+        if constexpr (LAYOUT_T == FA_LAYOUT::BSND || LAYOUT_T == FA_LAYOUT::TND) {
+            // S1G layout
+            s1StartTdx = vecMStartIdx / constInfo_.gSize;
+            s1EndTdx = vecMEndIdx / constInfo_.gSize;
+            ret = (s1StartTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
+        } else {
+            // GS1 layout
+            s1StartTdx = vecMStartIdx % runInfo.actS1Size;
+            s1EndTdx = vecMEndIdx % runInfo.actS1Size;
+            int32_t gStartIdx = vecMStartIdx / runInfo.actS1Size;
+            int32_t gEndIdx = vecMEndIdx / runInfo.actS1Size;
+            if (gStartIdx == gEndIdx) {
+                // 只跨1个G
+                ret = (s1StartTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
+            } else {
+                // 跨多个G: 后续G的s1均从0开始, 存在左无效行(s1FirstValidToken>0)必命中;
+                // 中间G的s1均到actS1Size-1结束, 存在右无效行(s1LastValidToken<actS1Size-1)必命中
+                ret = (s1FirstValidToken > 0) || (s1LastValidToken < static_cast<int64_t>(runInfo.actS1Size) - 1);
+            }
+        }
+        return ret;
+    }
+
+    __simd_vf__ inline void RowInvalidDnUpdateVF(__ubuf__ T *finalUb, __ubuf__ float *maxUb, const uint16_t m,
+                                                 const uint16_t d, int64_t dSize, const float invalidThreshold)
+    {
+        constexpr uint16_t floatRepSize = 64; // 64: 一个寄存器可以存储64个float类型数据
+        const uint16_t dLoops = d / floatRepSize;
+
+        constexpr uint32_t tmpZero = 0x00000000;
+        const T zeroValue = *((T *)&tmpZero);
+        RegTensor<float> vregInvalidThreshold;
+        RegTensor<T> vregZeroValue;
+        RegTensor<float> vregMax;
+        RegTensor<T> vregFinal;
+        RegTensor<T> vregFinalNew;
+
+        MaskReg pregAll = CreateMask<T, MaskPattern::ALL>();
+        MaskReg pregCompare;
+
+        Duplicate<float, float>(vregInvalidThreshold, invalidThreshold);
+        Duplicate<T, T>(vregZeroValue, zeroValue);
+        for (uint16_t i = 0; i < m; ++i) {
+            LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(vregMax, maxUb + i);
+            Compare<float, CMPMODE::EQ>(pregCompare, vregMax, vregInvalidThreshold, pregAll);
+            for (uint16_t j = 0; j < dLoops; ++j) {
+                LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregFinal, finalUb + i * dSize + j * floatRepSize);
+                Select<T>(vregFinalNew, vregZeroValue, vregFinal, pregCompare);
+                StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(finalUb + i * dSize + j * floatRepSize, vregFinalNew,
+                                                             pregAll);
+            }
+        }
+    }
+
+    __aicore__ inline void RowInvalidDn(LocalTensor<T> &ubVec2Res, RunInfo &runInfo, int64_t dSizeAligned64)
+    {
+        if constexpr (HAS_MASK) {
+            int64_t s1FirstValidToken =
+                AttentionCommon::Min(AttentionCommon::Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
+            int64_t s1LastValidToken = AttentionCommon::Min(
+                AttentionCommon::Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
+            s1LastValidToken = AttentionCommon::Max(s1LastValidToken - 1, 0);
+            bool hasValidRow = (s1FirstValidToken > 0) || (s1LastValidToken < runInfo.actS1Size);
+            bool batchNeedRowInvalid = ((constInfo_.sparseMode != SparseMode::LEFT_UP_CAUSAL) && hasValidRow);
+            if (!batchNeedRowInvalid) {
+                return;
+            }
+
+            bool blockNeedRowInvalid = CalcBlockNeedRowInvalidDn(runInfo, s1FirstValidToken, s1LastValidToken);
+            if (!blockNeedRowInvalid) {
+                return;
+            }
+
+            // DN的softmax max = minValue * scale, 全屏蔽行保持该值
+            constexpr uint32_t minBits = NEGATIVE_MIN_VALUE_FP32;
+            float minValue = *((float *)&minBits);
+            float invalidThreshold = minValue * static_cast<float>(constInfo_.scaleValue);
+            LocalTensor<float> maxTensor =
+                softmaxMaxBuf_[(runInfo.mloop % UB_SOFTMAX_MAX_BUFCNT) * (UB_SOFTMAX_MAX_BUF_BYTES / sizeof(T))];
+            __ubuf__ T *finalUb = (__ubuf__ T *)ubVec2Res.GetPhyAddr();
+            __ubuf__ float *maxUb = (__ubuf__ float *)maxTensor.GetPhyAddr();
+            RowInvalidDnUpdateVF(finalUb, maxUb, static_cast<uint16_t>(runInfo.actVecMSize),
+                                 static_cast<uint16_t>(constInfo_.dSizeV), dSizeAligned64, invalidThreshold);
+        }
+    }
+
+    __aicore__ inline void AttenMaskCopyInDn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
+                                             bool &isSkipMask, RunInfo &runInfo, uint32_t mte2ToVId)
+    {
         MaskInfo maskInfo;
         maskInfo.gs1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
-        maskInfo.gs1dealNum = mBaseSize;
+        maskInfo.gs1dealNum = mDealSize;
         maskInfo.s1Size = runInfo.actS1Size;
         maskInfo.gSize = constInfo_.gSize;
         maskInfo.s2StartIdx = runInfo.s2Idx;
-        maskInfo.s2dealNum = s2RealSize;
+        maskInfo.s2dealNum = runInfo.actSingleLoopS2Size;
         maskInfo.s2Size = runInfo.actS2Size;
         maskInfo.nBaseSize = s2BaseSize;
         maskInfo.preToken = constInfo_.preTokens;
@@ -607,17 +698,19 @@ public:
         maskInfo.batchIdx = (constInfo_.attenMaskBatch == 1) ? 0 : runInfo.bIdx;
         maskInfo.attenMaskBatchStride = constInfo_.attenMaskS1Size * constInfo_.attenMaskS2Size;
         maskInfo.attenMaskS1Stride = constInfo_.attenMaskS2Size;
-        maskInfo.attenMaskDstStride = 0U;
+        maskInfo.attenMaskDstStride = (s2BaseSize - AttentionCommon::Align(maskInfo.s2dealNum, 32U)) / 32;
         maskInfo.maskValue = negativeIntScalar_;
-        maskInfo.s1LeftPaddingSize = runInfo.qPaddingBeginOffset;
-        maskInfo.s2LeftPaddingSize = runInfo.kvPaddingBeginOffset;
+        maskInfo.s1LeftPaddingSize = 0;
+        maskInfo.s2LeftPaddingSize = 0;
         maskInfo.maskFormat = MASK_LAYOUT;
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
-        isSkipMask = IsSkipAttentionmask(maskInfo);
-        if (!isSkipMask) {
-            AttentionmaskCopyInDn<uint8_t, true, s2BaseSize>(attenMaskUb, attenMaskGmInt_, maskInfo);
+        isSkipMask = IsSkipAttentionmask(maskInfo) && IsSkipAttentionmaskForPre(maskInfo);
+        if (isSkipMask) {
+            return; // 本块mask全有效, 调用方以hasAtten=false跳过mask计算
         }
+        AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUb, attenMaskGmInt_, maskInfo, false,
+                                                                    mte2ToVId);
     }
 };
 

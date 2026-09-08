@@ -60,6 +60,13 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t gSize, int64_t max
     sOuterFactor = SOUTER_64;
     sInnerFactor = SINNER_128;
 
+    // BAND模式DN kernel暂不支持mask的pre部分合并(sOuter=32时config为1/3/5, 走ND模板)
+    if (maskMode == 4) {
+        sOuterFactor = SOUTER_32;
+        sInnerFactor = SINNER_256;
+        return;
+    }
+
     bool checkQueryAndValueS = maxSeqQ <= SOUTER_64 && maxSeqKv > SINNER_128;
 
     if (vHeadDim <= DSIZE_128) {
