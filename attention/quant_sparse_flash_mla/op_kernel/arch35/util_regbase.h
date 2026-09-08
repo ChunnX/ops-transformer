@@ -143,18 +143,12 @@ struct RunInfo {
     int64_t dSize;       /* query d 512 */ \
     int64_t dSizeV;      /* key d 512 */ \
     int64_t dSizeVInput; /* key inpue d 512 */ \
-    int64_t sparseMode = 3; \
     int64_t gSize; /* g轴的大小 */ \
     int64_t n2Size; \
     int64_t s1Size; /* s1总大小 */ \
     int64_t s2Size; /* s2总大小 */ \
     int64_t cmpS2Size; \
     /* 轴的乘积 */ \
-    int64_t s1D; \
-    int64_t gS1D; \
-    int64_t n2GS1D; \
-    int64_t s2D; \
-    int64_t n2S2D; \
     int64_t s1Dv; \
     int64_t gS1Dv; \
     int64_t n2GS1Dv; \
@@ -162,40 +156,12 @@ struct RunInfo {
     int64_t n2S2Dv; \
     int64_t s1S2; \
     int64_t gS1; \
-    int64_t gD; \
-    int64_t n2D; \
-    int64_t bN2D; \
     int64_t gDv; \
     int64_t n2Dv; \
-    int64_t bN2Dv; \
     int64_t n2G; \
-    int64_t n2GD; \
-    int64_t bN2GD; \
     int64_t n2GDv; \
-    int64_t bN2GDv; \
-    int64_t gS2; \
-    int64_t s1Dr; \
-    int64_t gS1Dr; \
-    int64_t n2GS1Dr; \
-    int64_t s2Dr; \
-    int64_t n2S2Dr; \
-    int64_t gDr; \
-    int64_t n2Dr; \
-    int64_t bN2Dr; \
-    int64_t n2GDr; \
-    int64_t bN2GDr; \
-    int32_t s2BaseN2D; \
-    int32_t s1BaseN2GD; \
-    int64_t s2BaseBN2D; \
-    int64_t s1BaseBN2GD; \
-    int32_t s1BaseD; \
-    int32_t s2BaseD; \
     int64_t s2BaseN2Dv; \
-    int64_t s2BaseBN2Dv; \
     int64_t s1BaseN2GDv; \
-    int64_t s1BaseBN2GDv; \
-    int32_t s1BaseDv; \
-    int32_t s2BaseDv; \
     /* matmul跳读参数 */ \
     int64_t mm1Ka; \
     /* dq 或者attentionOut的Stride */ \
@@ -207,7 +173,6 @@ struct RunInfo {
 
 #define INFER_CONST_INFO \
     /* 推理 */ \
-    bool isActualLenDimsNull; /* 判断是否有actualseq */ \
     bool isSoftmaxLseEnable; \
     uint32_t oriSparseBlockCount; \
     uint32_t cmpSparseBlockCount; \
@@ -217,7 +182,6 @@ struct RunInfo {
     /* service mm1 mm2 pageAttention */ \
     uint32_t oriBlockSize; \
     uint32_t cmpBlockSize; \
-    uint32_t paLayoutType; \
     uint32_t oriMaxBlockNumPerBatch; \
     uint32_t cmpMaxBlockNumPerBatch; \
     int32_t oriWinLeft; \

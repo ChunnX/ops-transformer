@@ -162,30 +162,18 @@ struct RunInfo<true> { // HIGH_PERF: 无topk len且无lse场景, 剔除topk/lse�
     uint32_t needInit; \
     uint32_t s1BaseSize; \
     uint32_t s2BaseSize; \
-    int32_t s2BaseN2D; \
-    int32_t s1BaseN2GD; \
-    int32_t s1BaseD; \
-    int32_t s2BaseD; \
-    int32_t s1BaseDv; \
-    int32_t s2BaseDv; \
     int64_t dSize;       /* query d 512 */ \
     int64_t dSizeV;      /* key d 512 */ \
     int64_t dSizeVInput; /* key input Dsize 608 = rope + nope + scale + pad */ \
     int64_t dSizeNope;   /* key nope d 448 */ \
     int64_t dSizeRope;   /* key rope d 64 */ \
     int64_t tileSize;    /* 64 */ \
-    int64_t sparseMode = 3; \
     int64_t gSize; /* g轴的大小 */ \
     int64_t n2Size; \
     int64_t s1Size; /* s1总大小 */ \
     int64_t s2Size; /* s2总大小 */ \
     int64_t cmpS2Size; \
     /* 轴的乘积 */ \
-    int64_t s1D; \
-    int64_t gS1D; \
-    int64_t n2GS1D; \
-    int64_t s2D; \
-    int64_t n2S2D; \
     int64_t s1Dv; \
     int64_t gS1Dv; \
     int64_t n2GS1Dv; \
@@ -193,34 +181,12 @@ struct RunInfo<true> { // HIGH_PERF: 无topk len且无lse场景, 剔除topk/lse�
     int64_t n2S2Dv; \
     int64_t s1S2; \
     int64_t gS1; \
-    int64_t gD; \
-    int64_t n2D; \
-    int64_t bN2D; \
     int64_t gDv; \
     int64_t n2Dv; \
-    int64_t bN2Dv; \
     int64_t n2G; \
-    int64_t n2GD; \
-    int64_t bN2GD; \
     int64_t n2GDv; \
-    int64_t bN2GDv; \
-    int64_t gS2; \
-    int64_t s1Dr; \
-    int64_t gS1Dr; \
-    int64_t n2GS1Dr; \
-    int64_t s2Dr; \
-    int64_t n2S2Dr; \
-    int64_t gDr; \
-    int64_t n2Dr; \
-    int64_t bN2Dr; \
-    int64_t n2GDr; \
-    int64_t bN2GDr; \
-    int64_t s2BaseBN2D; \
-    int64_t s1BaseBN2GD; \
     int64_t s2BaseN2Dv; \
-    int64_t s2BaseBN2Dv; \
     int64_t s1BaseN2GDv; \
-    int64_t s1BaseBN2GDv; \
     /* matmul跳读参数 */ \
     int64_t mm1Ka; \
     /* dq 或者attentionOut的Stride */ \
