@@ -33,16 +33,15 @@ EXCLUDE_OPS = ('common', '3rd', 'tools')
 if not os.path.isdir(MC2):
     sys.exit(f'错误: 不是 ops-transformer 仓(找不到 {MC2})')
 
-# ---------- 1. 索引 mc2 下所有源文件(.py 仅torch_extension纳入) ----------
+# ---------- 1. 索引 mc2 下所有源文件 ----------
 idx = {}
 for dp, _, fs in os.walk(MC2):
     top = os.path.relpath(dp, MC2).split('/')[0]
     if top == 'tools':
         continue
     for f in fs:
-        rel = os.path.relpath(os.path.join(dp, f), MC2)
-        if f.endswith(SRC_EXT) or (f.endswith('.py') and rel.startswith('common/torch_extension/')):
-            idx[rel] = os.path.join(dp, f)
+        if f.endswith(SRC_EXT):
+            idx[os.path.relpath(os.path.join(dp, f), MC2)] = os.path.join(dp, f)
 
 targets = {r for r in idx if r.startswith(('common/', '3rd/'))}
 by_base = {}
@@ -106,42 +105,20 @@ for op in sorted(os.listdir(MC2)):
     socs[op] = s
 ALL_OPS = set(socs)
 
-# torch_extension: PyTorch侧MoE/Engram通信封装, smoke级触发(不触发NPU算子全量回归)
-TORCH_EXT_PREFIX = 'common/torch_extension/'
-TORCH_EXT_SEED = {op for op in (
-    'engram_fetch', 'engram_fetch_grad', 'engram_fetch_wait',
-    'moe_ep_dispatch', 'moe_ep_dispatch_epilogue',
-    'moe_ep_combine', 'moe_ep_combine_epilogue',
-    'moe_distribute_dispatch', 'moe_distribute_dispatch_v2',
-    'moe_distribute_combine', 'moe_distribute_combine_v2',
-) if op in socs}
-TORCH_EXT_NOTE = ('torch扩展资产(PyTorch侧MoE/Engram通信封装, 含moe_distribute/'
-                  'moe_ep/engram三族绑定), smoke级触发, 不触发NPU算子全量回归; '
-                  'engram_barrier/engram_write为C++运行时内部实现(无对应算子)')
-
 cpp_seed, cpp_note = {}, {}
 for c in sorted(compiled):
-    if c.startswith(TORCH_EXT_PREFIX):
-        cpp_seed[c] = set(TORCH_EXT_SEED)
-        cpp_note[c] = TORCH_EXT_NOTE
-for c in sorted(compiled):
-    if c in cpp_seed:
-        continue
     h = c.rsplit('.', 1)[0] + '.h'
     if h in targets:
         cpp_seed[c] = imp_pure[h]
         cpp_note[c] = f'编译级引用, 影响面按同名头{h}接口反推'
     else:
         cpp_seed[c] = set(ALL_OPS)
-        cpp_note[c] = '编译级引用, 无同名头无法接口反推, 保守全算子, 待人工确认'
+        cpp_note[c] = '编译级引用, 无同名头, 按全算子处理'
 
-# 3.3 头文件最终影响面: cpp作为使用方以其seed贡献回去; torch_extension的.py以种子固定
-py_seed = {r: set(TORCH_EXT_SEED) for r in targets
-           if r.startswith(TORCH_EXT_PREFIX) and r.endswith('.py')}
-impact = fixpoint(seeds={**cpp_seed, **py_seed})
+# 3.3 头文件最终影响面: cpp作为使用方以其seed贡献回去
+impact = fixpoint(seeds=cpp_seed)
 for c in compiled:
     impact[c] = cpp_seed[c]
-impact.update(py_seed)
 
 # ---------- 4. 零引用.cpp继承同名头(编译级模型下不再需要, 保留兜底) ----------
 # ---------- 5. git信息 ----------
@@ -179,8 +156,8 @@ for grp in ('common', '3rd'):
             '# 判定规则:',
             '#   - mc2内所有#include按裸文件名匹配, 重名文件取并集(note:字段标注), 宁多勿漏',
             f'#   - 算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 {chip_cn}({soc}) 的交集',
-            '#   - 未建模文件类型: common/3rd下除.h/.cpp/.py外的文件(json/ini/sh/csv/txt等)',
-            '#     一律按全量算子回归处理(见impact_map/README.md)',
+            '#   - 未建模文件类型: common/3rd下除.h/.cpp外的所有文件(.py/json/ini/sh等)',
+            '#     改动一律按全量算子回归处理(见impact_map/README.md)',
             '',
         ]
         n_map = n_empty = 0
@@ -202,8 +179,6 @@ for grp in ('common', '3rd'):
                 notes.append(f'同名文件{len(dup_groups[os.path.basename(r)])}份, 映射取并集')
             if r in cpp_note:
                 notes.append(cpp_note[r])
-            elif r in py_seed:
-                notes.append(TORCH_EXT_NOTE)
             if notes:
                 lines.append('  note: ' + '; '.join(notes))
         grp_out = os.path.join(OUTDIR, grp)
@@ -213,8 +188,7 @@ for grp in ('common', '3rd'):
         summary.append((f'{grp}/{chip_cn}', n_map, n_empty, out))
     # unref
     unref = sorted(r for r in grp_files
-                   if not impact[r] and r not in compiled
-                   and not r.startswith(TORCH_EXT_PREFIX))
+                   if not impact[r] and r not in compiled)
     lines = [
         f'# mc2/{grp} 零引用文件清单 (与芯片无关, 全芯片共用)',
         f'# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})',
