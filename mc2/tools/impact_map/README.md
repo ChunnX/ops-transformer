@@ -54,7 +54,11 @@ python3 mc2/tools/gen_common_impact_yaml.py /path/to/another_checkout [输出目
    （yaml 中以 `note: 影响面按同名头<路径>接口反推` 标注，供人工核验）。
    - 无同名头的 .cpp：接口不明，保守回退全算子并标注待人工确认
    - 同名头无任何算子引用的 .cpp：疑似死代码，`ops: []` + note 标注
-5. **零引用文件**：既无 include 引用、也非编译单元的文件单独记录在
+5. **其他文件类型一律全量**：common/3rd 下除 .h/.cpp/.py 外的所有文件类型
+   （json/ini/sh/csv/txt 等，如 config/ 下的 runtime_kb 调优配置）未逐文件建模，
+   **改动一律按全量算子回归处理**。芯片维度可参考其所在路径（如
+   `config/ascend950/` 仅涉及 A5）。
+6. **零引用文件**：既无 include 引用、也非编译单元的文件单独记录在
    `unref.yaml`（改动当前不影响 mc2 算子编译，但需人工确认是否有仓外引用或
    引用关系尚未建立）。
 5. **芯片过滤**：算子集合按 `*_def.cpp` 的 `AICore().AddConfig()` 注册与
