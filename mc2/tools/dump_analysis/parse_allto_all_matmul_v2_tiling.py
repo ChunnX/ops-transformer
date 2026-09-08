@@ -142,6 +142,23 @@ def print_result(title, result):
     common.print_kv(title, result)
 
 
+def find_parse_error(value):
+    """Return the first structured parser error from a nested result."""
+    if isinstance(value, dict):
+        if "error" in value:
+            return str(value["error"])
+        for child in value.values():
+            error = find_parse_error(child)
+            if error is not None:
+                return error
+    elif isinstance(value, list):
+        for child in value:
+            error = find_parse_error(child)
+            if error is not None:
+                return error
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(description="AlltoAllMatmulV2 (AIV + URMA) dump 解析脚本")
     parser.add_argument("bin_file")
@@ -195,8 +212,17 @@ def main():
         result = parse_tiling_data(data)
         title += " tiling_data"
 
+    parse_error = find_parse_error(result)
+    if parse_error is not None:
+        logging.error("解析失败: %s", parse_error)
+        return 1
+
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
+    elif args.workspace and result.get("segmentType") == 12:
+        common.print_section(title)
+        common.print_kv("segment", {key: value for key, value in result.items() if key != "runtimeInfo"})
+        common.print_runtime_info_segment(result["runtimeInfo"])
     else:
         print_result(title, result)
     return 0

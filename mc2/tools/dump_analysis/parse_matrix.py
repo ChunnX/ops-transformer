@@ -31,6 +31,7 @@ import struct
 import argparse
 import logging
 import math
+import mmap
 
 logging.basicConfig(level=logging.NOTSET, format="[%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
 
@@ -270,13 +271,18 @@ def main():
 
     if args.rows <= 0 or args.cols <= 0:
         parser.error("--rows 和 --cols 必须为正整数")
+    if args.head < 0 or args.tail < 0:
+        parser.error("--head 和 --tail 不能为负数")
 
     if not os.path.isfile(args.bin_file):
         logging.error("文件不存在: %s", args.bin_file)
         sys.exit(1)
 
+    file_size = os.path.getsize(args.bin_file)
+    if file_size == 0:
+        parser.error("输入文件为空，无法解析矩阵数据")
     with open(args.bin_file, "rb") as f:
-        data = f.read()
+        data = mmap.mmap(f.fileno(), length=0, access=mmap.ACCESS_READ)
     logging.info("读取文件: %s (%d bytes)", args.bin_file, len(data))
 
     dtype = args.dtype
@@ -289,6 +295,9 @@ def main():
     if file_elems < total_elems:
         logging.warning("文件元素数 %d < 矩阵元素数 %d, 只解析文件中存在的数据", file_elems, total_elems)
         total_elems = file_elems
+    elif file_elems > total_elems:
+        logging.warning("文件元素数 %d > 矩阵元素数 %d，尾部数据或 padding 不参与本次解析",
+                        file_elems, total_elems)
 
     # 确定要显示的列
     col_start = 0
@@ -310,7 +319,7 @@ def main():
     if args.col:
         display_cols = sorted(set(c for c in args.col if 0 <= c < args.cols))
     elif args.col_range:
-        display_cols = list(range(args.col_range[0], min(args.col_range[1], args.cols)))
+        display_cols = list(range(col_start, col_end))
     elif args.row or args.row_range:
         # 指定了行但没指定列时，显示全部列
         display_cols = list(range(args.cols))
@@ -347,6 +356,7 @@ def main():
             "data": selected,
         }
         print(json.dumps(output, indent=2, ensure_ascii=False, default=str))
+        data.close()
         return
 
     # 人类可读输出
@@ -432,6 +442,7 @@ def main():
             print(f"  非零元素数: {len(non_zero)} / {len(selected_values)}")
     else:
         print("  全部为零")
+    data.close()
 
 
 if __name__ == "__main__":

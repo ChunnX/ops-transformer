@@ -241,7 +241,7 @@ python3 parse_mc2_dump.py MatmulReduceScatterV2 /path/to/data-dump
 
 `tiling_data_*`、`args_info_*` 和 `workspace_segN_typeM_*` 是已开启 MC2 DFX Dump 后的核心文件。XN/CKE 只在 CCU 通路出现；`comm_context_*` 和 `peermem_*` 只在 URMA 通路出现。`exception_info.*`、算子 `.json`、`.o` 和 `*_host.o` 不参与统一解析。
 
-结果输出到 `<dump根目录>/mc2_dump_analysis/<标准算子名>/`。每个源文件分别生成一个同名 `.txt`，并保留原 rank 子目录；不生成 NPY，也不生成合并的 `analysis.txt`。TilingData、ArgsInfo、RuntimeInfo 等后端脚本在终端显示的字段级结果会原样写入对应 TXT。
+结果输出到 `<dump根目录>/mc2_dump_analysis/<标准算子名>/`。每个源文件分别生成一个同名 `.txt`，并保留原 rank 子目录；不生成 NPY，也不生成合并的 `analysis.txt`。TilingData、ArgsInfo、RuntimeInfo 等后端脚本在终端显示的字段级结果会原样写入对应 TXT。若同一 rank 目录包含多次调用，RuntimeInfo TXT 中的 `associatedTiling` 会标明实际配对的 TilingData。
 
 `segN` 中的 `N` 只是该次 Tiling 中的段序号，不能单独代表数据语义；应以文件名中的 `typeM` 和 TilingData TXT 中的 `workspaceLayout` 为准。当前 Workspace 类型定义如下：
 

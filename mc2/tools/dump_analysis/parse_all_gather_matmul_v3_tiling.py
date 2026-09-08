@@ -305,8 +305,7 @@ def parse_runtime_info_segment(data: bytes, aic_core_num=None) -> dict:
     """解析 workspace_segN_type12_*.bin（RuntimeInfo 段，64KB = 128 * 512B）。
 
     aic_core_num: tiling data 中的 mmTile.usedCoreNum，用于区分 C/V 核。
-                  AIC coreId 范围 0 ~ aicCoreNum-1; AIV coreId 范围 aicCoreNum ~ 3*aicCoreNum-1
-                  (MIX_AIC_1_1 模式下 AIV slotIdx = aicCoreNum + GetBlockIdx())。
+                  MIX_AIC_1_1 模式下预期 slot 数为 2*aicCoreNum：前半为 C 核，后半为 V 核。
                   为 None 时 coreType 标记为 "未知"。
     """
     max_slots = len(data) // RUNTIME_INFO_PER_CORE_SIZE
@@ -535,19 +534,40 @@ def print_runtime_info_segment(rt_info: dict):
     else:
         logging.info("  %-30s: %d (coreId < %d 为 C核, 否则为 V核)",
                      "aicCoreNum", rt_info["aicCoreNum"], rt_info["aicCoreNum"])
+    expected_slots = rt_info["maxSlots"] if rt_info.get("aicCoreNum") is None else min(
+        rt_info["maxSlots"], rt_info["aicCoreNum"] * 2
+    )
+    expected = rt_info["slots"][:expected_slots]
+    valid_expected = sum(slot.get("magicValid", False) for slot in expected)
+    logging.info("  %-30s: %d", "expectedSlots", expected_slots)
+    logging.info("  %-30s: %d / %d", "validExpectedSlots", valid_expected, expected_slots)
+    if valid_expected == 0:
+        logging.warning("  预期 slot 均未发现 magic 0x%08X；下表仍显示原始 commit/wait 字节。",
+                        RUNTIME_INFO_MAGIC)
     logging.info("")
-    logging.info("  --- 仅显示 magicNum 校验通过的 slot (0x%08X) ---", RUNTIME_INFO_MAGIC)
-    active_slots = [s for s in rt_info["slots"] if s.get("magicValid", False)]
-    if not active_slots:
-        logging.warning("  无有效 slot，可能 runtime info 未被写入（异常发生在 Init 之前）。")
-    else:
-        for slot in active_slots:
-            core_type = slot.get("coreType", "未知")
-            logging.info("  Core %-4d (%s):  turn=%d, pos=%d (%s), phase=%s, commit=%d, wait=%d",
-                         slot["coreId"], core_type,
-                         slot["execTurn"], slot["execPosition"], slot["execPositionName"],
-                         slot["commPhaseName"],
-                         slot["commCommitCount"], slot["commWaitCount"])
+    logging.info("  %-5s %-4s %-5s %-10s %-5s %-22s %-14s %-6s %-6s %-7s %s",
+                 "slot", "核型", "valid", "storedCore", "turn", "position", "phase",
+                 "commit", "wait", "pending", "state")
+    for slot in expected:
+        is_valid = slot.get("magicValid", False)
+        slot_index = slot["slotIdx"]
+        if rt_info.get("aicCoreNum") is None:
+            core_type = "未知"
+        else:
+            core_type = "C核" if slot_index < rt_info["aicCoreNum"] else "V核"
+        commit_count = slot["commCommitCount"]
+        wait_count = slot["commWaitCount"]
+        pending = max(commit_count - wait_count, 0)
+        state = ("NOT_WRITTEN" if not is_valid else
+                 "COUNT_ERROR" if wait_count > commit_count else
+                 "PENDING" if commit_count > wait_count else "BALANCED")
+        position = f"{slot['execPosition']}/{slot['execPositionName']}" if is_valid else "-"
+        logging.info("  %-5d %-4s %-5s %-10s %-5s %-22s %-14s %-6d %-6d %-7d %s",
+                     slot_index, core_type, "yes" if is_valid else "no",
+                     str(slot["coreId"]) if is_valid else "-",
+                     str(slot["execTurn"]) if is_valid else "-", position,
+                     slot["commPhaseName"] if is_valid else "-",
+                     commit_count, wait_count, pending, state)
 
 
 def print_workspace_segment(result: dict):
@@ -781,7 +801,7 @@ def main():
             print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
         else:
             print_urma_comm_context(result)
-        return
+        return 1 if "error" in result else 0
 
     # --- peermem_window 解析 ---
     if args.peermem:
@@ -861,4 +881,4 @@ def main():
         print_tiling_data(result)
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
