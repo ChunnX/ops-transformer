@@ -314,8 +314,9 @@ collect_ifa() {
     rm -rf "$outdir"
     mkdir -p "$outdir"
     # IFA 采集走独立脚本: msprof + test.py (HEAD_TIMING_* 环境变量控制发射数/打点)
-    # 频率与根脚本标定一致, 避免明细 CSV 的 us 换算错位
+    # 频率与根脚本标定一致; test.py 选卡读 NPU_DEVICE (不同于 scan_replay 的 DEVICE_ID), 透传保持同卡
     HEAD_TIMING_SYSCNT_MHZ="$SYS_CNT_FREQ_MHZ" \
+    NPU_DEVICE="${DEVICE_ID:-0}" \
         bash tests/incre_flash_attention/run_head_overhead.sh "$outdir" \
         > "$outdir.stdout.log" 2> "$outdir.stderr.log" || true
     grep -aE "T2-T0_total_head:|Summary written" "$outdir.stdout.log" | head -3

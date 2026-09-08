@@ -2,20 +2,9 @@
 
 ## 概述
 
-本指南说明如何在 Ascend 950PR 环境上复测 add 和 grouped_matmul 两个算子的 kernel launch 头开销数据（1核 + 满核两组）。
+本指南说明如何在 Ascend 950PR 环境上复测 add、grouped_matmul、incre_flash_attention 三个算子的 kernel launch 头开销数据，并给出打点前后（T0 之前 entry 段 / T2 之后 epilogue 段）的反汇编阶段分析。
 
-提供两种测量方法：
-
-| 方法 | 原理 | 精度 | 适用场景 |
-|------|------|------|---------|
-| **A: Early Return + msprof** | 在计算主流程前插入 `return;`，用 msprof Task Duration 测量 | ~0.1us | 快速基线测量 |
-| **B: GetSystemCycle 打点** | kernel 内 `GetSystemCycle()` 读取 SYS_CNT 寄存器，精确到周期级 | ~1 cycle | 需要细粒度分解（InitBuffer vs Tiling vs Dispatch） |
-
-### 方法 A: Early Return + msprof
-
-**原理**：在 kernel 计算主流程前插入 `return;`（early return），让 kernel 只跑初始化部分（tiling 解析 / buffer 初始化），跳过实际计算。用 msprof 采集的 Task Duration 即为"头开销"。
-
-> **注意**：return 必须放在**函数作用域**（for/tail 块之外）。如果 return 在 for 循环体内，当 tileNum=0 时 return 是死代码，控制流会落到 tail 块执行实际计算，导致测量结果包含 DMA+计算开销而非纯头开销。详见 [tail-return 验证测试](#方法-b-getsystemcycle-打点)。
+测量方法：**GetSystemCycle 打点**——kernel 内 `GetSystemCycle()` 读取 SYS_CNT 寄存器，周期级精度（~1 cycle），支持头开销的细粒度分解（调度 / 硬件头 / 软件头 / kernel 主体 / 硬件尾）。
 
 ## 环境要求
 
@@ -33,7 +22,7 @@
 
 ```bash
 # 1. Clone 仓库（token 已内嵌）
-git clone -b head-overhead-a5 https://oauth2:NpWjsPrRrAxRsyv5sYqKhCMi@gitcode.com/liulinxiang/ops-transformer.git
+git clone -b head-overhead-clean https://oauth2:NpWjsPrRrAxRsyv5sYqKhCMi@gitcode.com/liulinxiang/ops-transformer.git
 cd ops-transformer/examples/fast_kernel_launch_example
 
 # 2. Source CANN 环境
@@ -44,101 +33,126 @@ bash run_head_overhead.sh
 ```
 
 脚本会自动完成：
-1. 检查 CANN 环境 + NPU 设备 + torch_npu
-2. 通过 sed 修改源码核数，分别构建 1核 和 满核 两个 wheel
-3. 用 msprof 采集 add / grouped_matmul 各 1核+满核 共四组数据（101 次循环/组）
-4. 汇总输出结果表 + `summary.csv`
+1. 检查 CANN 环境 + NPU 设备 + torch_npu，平台自动检测（A5/A3/A2）
+2. sed 改核数构建满核 wheel（IFA 及其 meta 算子在 ascend950 纳入构建）
+3. 采集 add / grouped_matmul（NPUGraph capture + replay 多拍）；ascend950 上追加采集 incre_flash_attention（250 次发射 + 打点回读）
+4. 汇总输出结果表 + `summary_{soc}.csv`（三算子 min/mean/max 长表）
+
+可选环境变量：`RUN_ADD` / `RUN_GMM`（默认 1）、`SKIP_BUILD=1`（跳过构建）、`REPLAY_SHOTS`（多拍次数，默认 5）、`ADD_CORES` / `GMM_CORES`（真核数实验）。
 
 采集结果默认保存在 `head_overhead_results/` 目录下。
 
-## 手动步骤（如需逐步执行）
+## 打点方法：GetSystemCycle
 
-### Step 1: Clone 仓库并切换分支
+**原理**：在 kernel 内部关键位置调用 `AscendC::GetSystemCycle()` 读取 SYS_CNT 硬件寄存器（A5 实测 1000MHz，1 cycle = 1ns），获取周期级时间戳。结果写入持久 GM buffer（跨 launch 复用，capture/replay 兼容），host 侧读取后计算各阶段耗时。
 
-```bash
-git clone -b head-overhead-a5 https://oauth2:NpWjsPrRrAxRsyv5sYqKhCMi@gitcode.com/liulinxiang/ops-transformer.git
-cd ops-transformer
+**时间轴与打点位置**：
+
+```
+STARS dispatch → kick(核启动) → T0(kernel入口) → T1(prologue后) → [计算主体] → T2(kernel末) → DCCI → END → pmu_end
 ```
 
-### Step 2: Source CANN 环境
+| 打点 | add / grouped_matmul | incre_flash_attention |
+|------|---------------------|----------------------|
+| T0 | kernel 入口第一行 | AIV 入口（`headStartCycle`） |
+| T1 | TPipe Init 完成后、首个 MTE2 搬运前 | 首个 MTE2 搬运前（`beforeFirstMte2Cycle`） |
+| T2 | kernel 末尾（MTE3/FIX 排空同步后） | AIV 侧 `op.Process()` 返回后（timing slot 7） |
+
+**输出指标口径**（每指标 min=最快核 / mean=核平均 / max=最慢核）：
+
+| 指标 | 含义 |
+|------|------|
+| 调度+硬件头 T0-stars | STARS dispatch → kernel 入口（含 ICache/参数预取/栈帧/参数装载） |
+| 软件头 T1-T0 | TPipe/tiling 初始化 |
+| 头开销 T1-stars | 前两项之和 |
+| kernel主体 T2-T1 | 实际计算 |
+| kernel末指令 T2-stars | dispatch → kernel 末打点 |
+| 硬件尾 pmu_end-T2 | 写回 GM + SyncAll + DCCI + END（ffts PMU 权威时间戳） |
+| 全链路 pmu_end-stars | dispatch → 最慢核结束（与 TaskDur 同语义闭环校验） |
+
+add/gmm 采用 NPUGraph capture + replay 多拍（默认 5 拍），各拍独立计算全部指标后取 median，滤除单拍快照的 icache 冷热 / 核启动错峰干扰；IFA 采用 250 次发射（50 热身 + 200 稳态），56 AIV 核逐 block 回读打点。
+
+## 参考数据（打点口径，Ascend950PR, CANN 9.1.0, SYS_CNT=1000MHz）
+
+| 指标 (mean/max us) | add (Vector, 56核) | grouped_matmul (Cube, 28核) | incre_flash_attention (MIX, 28+56核) |
+|------|-----------|-----------|-----------|
+| 调度+硬件头 T0-stars | 0.16 / 0.17 | 0.79 / 1.07 | 1.84 / 4.25 |
+| 软件头 T1-T0 | 0.28 / 0.36 | 0.68 / 1.06 | 1.15 / 3.97 |
+| **头开销 T1-stars** | **0.44 / 0.51** | **1.47 / 1.68** | **3.00 / 4.98** |
+| kernel主体 T2-T1 | 7.10 / 7.18 | 0.48 / 1.28 | 0.27（AIV 视角） |
+| kernel末指令 T2-stars | 7.55 / 7.69 | 1.97 / 2.97 | 3.27 / 5.19 |
+| 硬件尾 pmu_end-T2 | 0.34~1.12 | 0.53~0.76 | 0.64 |
+| TaskDur 稳态 mean | 8.96 | 3.83 | 4.61 |
+
+注：IFA 的 T2 只打 AIV 侧，AIC Cube 计算拖尾约 0.9us 计入 TaskDur 而非 T2，解读 IFA 数据时注意是 AIV 视角。
+
+## 打点前后的反汇编阶段分析
+
+### 操作步骤
 
 ```bash
-source <CANN安装路径>/set_env.sh
-# 例如:
-# source /home/developer/Ascend/cann-9.1.0-beta.3/set_env.sh
+# 1. 提取 device 二进制 (host .o 的 .aicore_binary section, 本身为 elf64-hiipu ELF)
+objcopy --dump-section .aicore_binary=add_kernel.bin \
+  build/csrc/add/ascend950/CMakeFiles/add_obj.dir/add.cpp.o
+
+# 2. 反汇编 (需支持 hiipu64 的 llvm-objdump, A5 反汇编工具包)
+llvm-objdump -d add_kernel.bin > add_full_aicore.txt
+
+# 3. 定位打点: 搜索 SYS_CNT 读取 (T0/T1/T2 即 MOV Xn, SYS_CNT)
+grep -n 'SYS_CNT' add_full_aicore.txt
 ```
 
-### Step 3: 进入工程目录并安装依赖
+Mapping Symbols：`$x`=MainScalar / `$k`=SIMD / `$t`=SIMT；MIX 混合核有 `_mix_aic` 与 `_mix_aiv` 两套函数。注意正常发布二进制是 strip 过的（mapping symbols 丢失会反汇编失败），调试需用未 strip 的构建产物。工程内已归档三算子反汇编产物：`disasm/` 目录。
 
-```bash
-cd examples/fast_kernel_launch_example
-pip install -r requirements.txt
+### T0 之前的 entry 段（打点前）
+
+三算子 entry 段结构一致：
+
+```
+① PARA_BASE 装载      MOV X0, PARA_BASE + MOVK        (2 条)
+② 参数预取            DC_PRELOADI [X0], #offset        (N 条, 64B 粒度, 编译器自动插入)
+③ 栈帧设置            X29 = SYS_VA_BASE + 0xFE000 + COREID×stride (~14 条, 每核独立栈)
+④ 参数装载            LD_IO/LDP 从 PARA_BASE 读参数     (M 条, 含 SYS 总线往返等待)
+⑤ T0 打点             MOV Xn, SYS_CNT
 ```
 
-### Step 4: 修改核数 + 构建 Wheel
+**实测分段对账**：
 
-通过 sed 将核数写死为 1（1核）或实际核数（满核），分别构建：
+| 阶段 (mean us) | add (56核) | gmm (28核) | IFA (28AIC+56AIV) |
+|------|-----------|-----------|-----------|
+| T0-stars 调度+硬件头 | 0.16 | 0.79 | 1.86 |
+| entry 指令数 | 30 | 82 | AIC 37 / AIV 55 |
+| 参数预取量 | 48B (×1) | 2KB (×33) | 1.25KB (×20, 每核) |
 
-```bash
-# ---- 1核版本 ----
-sed -i 's/int64_t numBlocks = std::min(coreNum, (totalLength + MIN_ELEMS_PER_CORE - 1) \/ MIN_ELEMS_PER_CORE);/int64_t numBlocks = 1;/' csrc/add/ascend950/add.cpp
-sed -i 's/uint32_t blockDim = tilingData.gmmBaseParams.get_coreNum();/uint32_t blockDim = 1; tilingData.gmmBaseParams.coreNum = 1;/' csrc/grouped_matmul/ascend950/grouped_matmul.cpp
+> **kick 拆分仅 A5 有效**（A5 上 kick=ffts pmu_start，可拆为 stars→kick 调度 ~0.13-0.19us + kick→T0 硬件头：add 0.03 / gmm 0.65 / IFA 1.66us）。A3 的 ffts f[19] 非 kick 时刻（实测恒为 dispatch+20cyc），无拆分意义——故上表只列合并口径 T0-stars（两平台通用），A3 汇总输出也不拆 kick 段，`seg1_pairs_*.csv` 仅 A5 有效。
 
-export NPU_SOC_VERSION=ascend950
-python3 setup.py clean
-python3 -m build --wheel --no-isolation
-python3 -m pip install dist/*.whl --force-reinstall --no-deps
+- **add/gmm**：指令级估算与实测吻合。gmm 慢 0.63us 根因 = 参数区体积（48B vs 2KB）：预取数据量 + 装载指令数双重放大
+- **IFA**：指令数与参数量均小于 gmm，但 kick→T0 是其 2.5 倍，~1.4us 缺口归因：**230KB 大二进制 ICache 冷启动**（8 组模板实例化只用 1 组）+ **MIX 1:2 派发错峰**（max/mean≈2.4 倍佐证）+ 84 核重复预取同一参数区的总线竞争
 
-# ---- 满核版本（恢复源码后重新 sed + 构建）----
-# 恢复源码: git checkout -- csrc/add/ascend950/add.cpp csrc/grouped_matmul/ascend950/grouped_matmul.cpp
-# sed 改为实际核数（Vector=56, Cube=28），重复上述构建步骤
+### T2 之后的 epilogue 段（打点后）
+
+```
+T2 打点
+【尾1: T2 写回 GM】   LD_IO cycleBuf地址 + ST_IO 写 T2        (~0.13-0.18us)
+【尾2: SyncAll】      is_sync_all 分支; add/IFA: BAR.ALL 硬件栅栏
+                       gmm: 软件自旋轮询 + BAR.F + BAR.ALL      (~0.02-0.15us)
+【尾3: DCCI+END】     MOVI X15,#0; DCCI X15,#1; END            (~0.40-0.50us)
 ```
 
-### Step 5: 用 msprof 采集头开销数据
+实测硬件尾（pmu_end-T2）与逐段估算合计吻合，**DCCI 占硬件尾 60~80%**。
 
-```bash
-# add（msprof 直接包裹）
-msprof --output=/tmp/msprof_add_1core python3 tests/add/test_add.py
-msprof --output=/tmp/msprof_add_full python3 tests/add/test_add.py
+**DCCI 实验方法**（测量 kernel 末自动 DCache 全刷的代价）：
 
-# grouped_matmul（用 msprof op 子命令，CANN 9.1.0 的 msprof 无法采集 Cube 核 op_summary）
-msprof op --output=/tmp/msprof_gmm_1core \
-  --application="python3 tests/grouped_matmul/test_groupedmatmul.py" \
-  --launch-count=101 --warm-up=0 --replay-mode=application
-msprof op --output=/tmp/msprof_gmm_full \
-  --application="python3 tests/grouped_matmul/test_groupedmatmul.py" \
-  --launch-count=101 --warm-up=0 --replay-mode=application
+```cmake
+# csrc/add/ascend950/CMakeLists.txt: 关闭 kernel 末自动 DCCI 插入
+# 注意: add_sources 宏只收单参数需拼接; 该选项为 LLVM 后端隐藏选项, 必须 -mllvm 传递
+add_sources("--npu-arch=dav-3510 -mllvm -cce-aicore-dcci-before-kernel-end=false")
 ```
 
-### Step 6: 查看采集结果
-
-```bash
-# add: op_summary CSV
-find /tmp/msprof_add_1core -name "op_summary_*.csv"
-find /tmp/msprof_add_full -name "op_summary_*.csv"
-
-# grouped_matmul: OpBasicInfo CSV
-find /tmp/msprof_gmm_1core -name "OpBasicInfo_*.csv"
-find /tmp/msprof_gmm_full -name "OpBasicInfo_*.csv"
-```
-
-关键指标：`Task Duration(us)` = 头开销（含 kernel 启动 + 初始化）。跳过前 2 次（冷启动），取稳态数据。
-
-## 参考数据（Ascend950PR, dav-3510, CANN 9.1.0-beta.3）
-
-> 设备：28 Cube 核 / 56 Vector 核
-
-| 算子 | 类型 | 核数 | 冷启动(us) | 稳态 mean(us) | 稳态 median(us) | 稳态 min(us) | 稳态 max(us) | n |
-|------|------|------|-----------|--------------|----------------|-------------|-------------|---|
-| **add** | Vector | 1核 | 5.747 | 2.722 | 2.027 | 1.636 | 4.866 | 99 |
-| **add** | Vector | 56核(满) | 8.291 | 4.255 | 4.068 | 3.376 | 6.252 | 99 |
-| **grouped_matmul** | Cube | 1核 | 4.230 | 1.840 | 1.822 | 1.746 | 2.235 | 99 |
-| **grouped_matmul** | Cube | 28核(满) | 4.646 | 2.923 | 2.908 | 2.649 | 3.293 | 99 |
-
-**关键发现**：
-- add：1核→满核，头开销从 2.7us 涨到 4.3us（+59%），多核同步开销显著
-- gmm：1核→满核，头开销从 1.8us 涨到 2.9us（+59%），同样有多核同步开销
-- gmm 1核头开销（1.84us）比 add 1核（2.72us）更低，因为 Cube 核初始化路径更短
+验证与结果：
+1. 反汇编确认：kernel 实例化的 `DCCI X15,#1` 全部消失，epilogue 变为直接 `END`
+2. TaskDur A/B（604 稳态样本）：**关闭后 8.49us vs 基线 8.88~9.03us → DCCI ≈ 0.4-0.5us**
+3. 副作用：打点数据（cycleBuf）读不回——证明标量写停在 DCache 脏行，**可见性依赖 DCCI**；需要打点时应在源码对 cycleBuf 调 `DataCacheCleanAndInvalid<T, CacheLine>(GlobalTensor)` 单行刷（A5/3510 支持）代替全量刷
 
 ## 目录结构
 
@@ -147,72 +161,18 @@ examples/fast_kernel_launch_example/
 ├── csrc/                          # 算子源码
 │   ├── add/ascend950/             # add 算子 (dav-3510)
 │   ├── grouped_matmul/ascend950/  # grouped_matmul 算子 (dav-3510)
-│   └── incre_flash_attention/     # IFA 算子（编译时自动排除）
-├── tests/                         # 测试脚本 (101次循环, 无精度校验)
-│   ├── add/test_add.py            # 基础功能测试
-│   ├── add/cycle_test.py          # GetSystemCycle 精确打点测试
-│   ├── add/compile_kernel.py      # 独立 .o 编译与体积分析
-│   ├── add/test_tail_return.py    # tail-return 死代码验证
-│   └── grouped_matmul/test_groupedmatmul.py
-├── run_head_overhead.sh           # 一键测试脚本
+│   ├── incre_flash_attention/ascend950/       # IFA 算子 (MIX 1:2)
+│   └── incre_flash_attention_meta/ascend950/  # IFA metadata (AICPU)
+├── tests/                         # 测试脚本
+│   ├── add/                       # test_add / cycle_test / compile_kernel / test_tail_return
+│   ├── grouped_matmul/test_groupedmatmul.py
+│   └── incre_flash_attention/     # test.py + run_head_overhead.sh + analyze_head_overhead.py
+├── disasm/                        # 三算子 device 反汇编产物 (含 add 关 DCCI 对照版)
+├── scan_replay.py                 # NPUGraph capture/replay + 逐 block 打点 dump
+├── parse_stars_log.py             # STARS dispatch 事件解析
+├── run_head_overhead.sh           # 一键测试脚本 (构建+三算子采集+汇总)
 ├── HEAD_OVERHEAD_GUIDE.md         # 本文档
 ├── CMakeLists.txt
 ├── setup.py
 └── build_and_test.sh              # 原始构建+测试脚本
 ```
-
-### 方法 B: GetSystemCycle 打点
-
-**原理**：在 kernel 内部关键位置调用 `AscendC::GetSystemCycle()` 读取 SYS_CNT 硬件寄存器，获取精确的周期级时间戳。结果写入 GM buffer，host 侧读取后计算各阶段耗时。
-
-**打点位置**：
-- `t0`：InitBuffer(×3) + SetGlobalBuffer(×3) 完成后
-- `t1`：tiling 计算完成后（= prologue 结束）
-- `t_end`：kernel 结束时
-
-**使用方法**：
-
-```bash
-# 1. 将 cycle 版本复制为正式 add.cpp
-cp csrc/add/ascend950/add_cycle.cpp csrc/add/ascend950/add.cpp
-
-# 2. 运行测试
-python3 tests/add/cycle_test.py
-```
-
-**输出示例**（A5/dav-3510, 1000×1000 fp16, 56 blocks）：
-```
-Run   InitBuf    Tiling   Prologue     Total
-0       455         9       464      1813
-1       441         9       450      1782
-...
-
-=== Frequency Calibration ===
-Block0 mean total: 1800 cycles
-msprof aiv_time: 2.984 us -> freq = 604 MHz  (实际约 283 MHz)
-
-=== HEAD OVERHEAD (freq=283 MHz) ===
-InitBuffer(×3)+SetGlobalBuffer(×3): 455 cyc = 1608 ns
-Tiling calculation:                  9 cyc =    32 ns
-Prologue total (per block):        464 cyc = 1.639 us
-Wall-clock (kernel):              1800 cyc = 6.361 us
-Dispatch+exit:                    1336 cyc = 4.721 us
-```
-
-**交叉验证**：
-- GetSystemCycle wall-clock 与 msprof Task Duration 误差 < 0.5%
-- prologue 周期数 / SYS_CNT 频率 ≈ msprof 注释版 aiv_time
-- SYS_CNT 频率 ≈ 283 MHz（A5 系统调度时钟，非 AIV 计算时钟）
-
-**tail-return 验证**：
-
-```bash
-# 验证 for 体内的 return 是否为死代码
-python3 tests/add/test_tail_return.py
-```
-
-该测试对比两种场景：
-- T1: for+return(死代码)+tail 完整执行 → ~2.93us (56 blocks)
-- T2: for+return(死代码)+tail 内 return → ~1.40us (56 blocks)
-
-差异 ~1.5us 即为 tail 块 CopyIn+Add+CopyOut 的实际开销，证明 for 体内的 return 是死代码（tileNum=0）。
