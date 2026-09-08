@@ -60,7 +60,7 @@ static constexpr AscendC::UrmaWqeEntry REMOTE_FIRST_FLAG_WQE_CONFIG = {
 static constexpr AscendC::UrmaWqeEntry REMOTE_FLAG_WQE_CONFIG = {
     .odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_LAST_FLAG_WQE_CONFIG = {
-    .odr = 6, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
+    .odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 
 #define TemplateFFNToAttentionUrmaTypeClass typename xType, bool isInputRankTable
 #define TemplateFFNToAttentionUrmaTypeFunc xType, isInputRankTable
