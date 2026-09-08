@@ -360,6 +360,13 @@ ge::graphStatus PermuteWithEpGradTilingCompute(gert::TilingContext *context, con
     SetTilingData(context, param);
     DebugPrint(context, param);
 
+    // 框架要求必须无条件分配系统 workspace(库内部原子操作等使用), 否则运行时 kernel 启动缺参会触发 VEC_ERROR
+    const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    size_t *workSpaces = context->GetWorkspaceSizes(1);
+    OP_CHECK_NULL_WITH_CONTEXT(context, workSpaces);
+    workSpaces[0] = ascendcPlatform.GetLibApiWorkSpaceSize();
+    OP_LOGD(context->GetNodeName(), "system workspace size is %zu", workSpaces[0]);
+
     return context->SetTilingKey(param.core.tilingKey);
 }
 
