@@ -21,6 +21,7 @@ import math
 # 1 切S2
 
 RUN_MODE = 1
+RANDOM_SEED = 42
 
 DATA_RANGE_LEFT = -10
 DATA_RANGE_RIGHT = 10
@@ -2198,6 +2199,10 @@ def gen_data(params, generate_golden=True):
     runNpu: 生成完毕后执行npu计算
     return test_data
     """
+    # Reset every RNG per case so generation is independent of case order.
+    random.seed(RANDOM_SEED)
+    np.random.seed(RANDOM_SEED)
+    torch.manual_seed(RANDOM_SEED)
 
     Testcase_Name = params["Testcase_Name"]
     layout_q = params["layout_q"]
