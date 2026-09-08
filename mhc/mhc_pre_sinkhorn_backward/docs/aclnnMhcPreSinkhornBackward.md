@@ -92,13 +92,15 @@
 
             $$
             \begin{aligned}
-            \mathbf{s} &= \mathbf{hPre} - \mathbf{hcEps} \\
+            \mathbf{s} &= \mathbf{hPre} - \mathbf{hcEps} = \text{Sigmoid}(\mathbf{alphaPre} \cdot \mathbf{hPre1} + \mathbf{biasPre}) \\
             \mathbf{HPre2Grad} &= \mathbf{HPreGrad} \odot \mathbf{s} \odot (1 - \mathbf{s}) \\
             \mathbf{HPre1Grad} &= \mathbf{HPre2Grad} \cdot \mathbf{alphaPre} \\
             \mathbf{alphaPreGrad} &= \sum_{b,s,n}^{B,S,N} \left(\mathbf{HPre2Grad} \cdot \mathbf{hPre1}\right) \\
             \mathbf{biasPreGrad} &= \sum_{b,s}^{B,S} \mathbf{HPre2Grad} \quad ([N])
             \end{aligned}
             $$
+
+            其中 $\mathbf{hcEps}$ 为正向 Sigmoid 输出后叠加的常数项，$\mathbf{s}$ 即 Sigmoid 输出本身；Sigmoid 反向梯度计算中不引入 $\mathbf{hcEps}$ 修正项。
 
         - **Sigmoid门控反向（H_post）**：
 
