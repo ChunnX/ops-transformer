@@ -15,6 +15,10 @@
 #   OUTPUT_DIR       采集数据输出目录 (默认: ./head_overhead_results)
 #   RUN_ADD          是否跑 add (默认: 1)
 #   RUN_GMM          是否跑 grouped_matmul (默认: 1)
+#   RUN_IFA          是否跑 incre_flash_attention (默认: 1, 仅 ascend950;
+#                    采集走 tests/incre_flash_attention/run_head_overhead.sh,
+#                    250 次发射 + 打点回读, 口径: T0-stars=schedule_hardware,
+#                    T1-T0=software_init, T1-stars=t2_from_stars, 无 T2/硬件尾)
 #   REPLAY_SHOTS     replay 多拍次数 (默认: 5, 传给 scan_replay.py; 各拍独立计算指标取 median)
 #   ADD_CORES        add 实际 launch 核数 (默认: 平台满核; 真核数实验用,
 #                    blockLength = totalLength/numBlocks 随核数自适应, 配合 ADD_TOTAL 控制每核 tile 数)
@@ -38,6 +42,7 @@ OUTPUT_DIR="${OUTPUT_DIR:-$(pwd)/head_overhead_results}"
 LAUNCH_COUNT=101
 RUN_ADD="${RUN_ADD:-1}"
 RUN_GMM="${RUN_GMM:-1}"
+RUN_IFA="${RUN_IFA:-1}"
 
 # 自动检测平台: npu-smi info 输出的芯片名映射到 SOC_VERSION
 if [ -z "$SOC_VERSION" ]; then
@@ -155,16 +160,27 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# IFA 头开销测试需把 incre_flash_attention (及其 meta 算子) 纳入构建:
+#   ascend950: IFA 代码迁移自 ifa-head-overhead-test 分支, CANN 9.0 实测编译通过
+#   其他平台/关闭 IFA 时: 保持排除 (旧 CANN 有 aclprofTensor 编译问题)
+BUILD_IFA=0
+if [ "$RUN_IFA" = "1" ] && [ "$SOC_VERSION" = "ascend950" ]; then
+    BUILD_IFA=1
+fi
+
 # 排除 incre_flash_attention (IFA 在部分 CANN 版本有 aclprofTensor 编译问题)
 IFA_CMAKE="csrc/incre_flash_attention/${SRC_SUFFIX}/CMakeLists.txt"
-if [ -f "$IFA_CMAKE" ]; then
+if [ "$BUILD_IFA" != "1" ] && [ -f "$IFA_CMAKE" ]; then
     mv "$IFA_CMAKE" "${IFA_CMAKE}.bak"
     echo "[SETUP] 已临时排除 incre_flash_attention"
 fi
 
 # 排除 CANN 8.5 不兼容算子 (TPipe::DestroyWithoutPipeAll 不存在, 会拖垮整 wheel 构建;
-# 与头开销测试无关, 仅在源码存在时排除)
-INCOMPAT_OPS="moe_distribute_combine_v2 moe_distribute_dispatch_v2 incre_flash_attention_meta update_context"
+# 与头开销测试无关, 仅在源码存在时排除); IFA 纳入构建时其 meta 算子一并放开
+INCOMPAT_OPS="moe_distribute_combine_v2 moe_distribute_dispatch_v2 update_context"
+if [ "$BUILD_IFA" != "1" ]; then
+    INCOMPAT_OPS="$INCOMPAT_OPS incre_flash_attention_meta"
+fi
 for _op in $INCOMPAT_OPS; do
     _c="csrc/${_op}/${SRC_SUFFIX}/CMakeLists.txt"
     if [ -f "$_c" ]; then
@@ -293,6 +309,19 @@ collect_gmm() {
     grep -aE "valid blocks|T1-T0:|WARN" "$outdir.stdout.log" | head -3
 }
 
+collect_ifa() {
+    local label=$1 outdir=$2
+    echo "[COLLECT] 采集 incre_flash_attention ($label, 250 次发射 + 打点回读)..."
+    rm -rf "$outdir"
+    mkdir -p "$outdir"
+    # IFA 采集走独立脚本: msprof + test.py (HEAD_TIMING_* 环境变量控制发射数/打点)
+    # 频率与根脚本标定一致, 避免明细 CSV 的 us 换算错位
+    HEAD_TIMING_SYSCNT_MHZ="$SYS_CNT_FREQ_MHZ" \
+        bash tests/incre_flash_attention/run_head_overhead.sh "$outdir" \
+        > "$outdir.stdout.log" 2> "$outdir.stderr.log" || true
+    grep -aE "T2-T0_total_head:|Summary written" "$outdir.stdout.log" | head -3
+}
+
 # ============================================================
 # 满核: 构建 + 采集
 # add 用 Vector 核数, gmm 用 Cube 核数
@@ -309,6 +338,11 @@ if [ "$RUN_ADD" = "1" ]; then
 fi
 if [ "$RUN_GMM" = "1" ]; then
     collect_gmm "满核" "$OUTPUT_DIR/gmm_full"
+    echo ""
+fi
+if [ "$RUN_IFA" = "1" ] && [ "$SOC_VERSION" = "ascend950" ] \
+    && [ -f "tests/incre_flash_attention/run_head_overhead.sh" ]; then
+    collect_ifa "满核" "$OUTPUT_DIR/ifa_full"
     echo ""
 fi
 
@@ -739,6 +773,60 @@ def analyze_gmm(prof_dir, label):
     result = {'label': label, 'mean': statistics.mean(steady)}
     return result, three_metrics(prof_dir, 'gemm', freq_gmm)
 
+def analyze_ifa(prof_dir, label):
+    """IFA: 打点回读明细 CSV (run_*/ifa_head_overhead.csv), launch_index>=50 为稳态
+    口径对齐根脚本: schedule_hardware=stars→kernel入口(T0-stars) / software_init=软件头(T1-T0)
+    / t2_from_stars=stars→头开销结束(T1-stars 语义); IFA 无 kernel 末打点, T2/硬件尾=N/A"""
+    runs = sorted(glob.glob(os.path.join(prof_dir, 'run_*', 'ifa_head_overhead.csv')))
+    if not runs:
+        print(f"  {label}: [未找到 ifa_head_overhead.csv]")
+        return None, None
+    with open(runs[-1]) as f:
+        rows = [r for r in csv.DictReader(f)
+                if r.get('phase') == 'replay' and int(r.get('launch_index', 0)) >= 50]
+    if not rows:
+        print(f"  {label}: [ifa 明细无稳态数据]")
+        return None, None
+
+    def stats3(col):
+        vs = [float(r[col]) for r in rows if r.get(col)]
+        if not vs:
+            return None, None, None
+        return min(vs), statistics.mean(vs), max(vs)
+
+    t0 = stats3('schedule_hardware_us')      # 调度+硬件头 (T0-stars)
+    t1t0 = stats3('software_init_us')        # 软件头 (T1-T0)
+    t1s = stats3('t2_from_stars_us')         # 头开销 (stars→头开销结束)
+    if t0[0] is None:
+        print(f"  {label}: [ifa 明细缺少口径列]")
+        return None, None
+    m = {
+        'shots': 1, 'n': len(rows), 'n_t1': len(rows), 'n_t2': 0,
+        't0_stars_min': t0[0], 't0_stars_mean': t0[1], 't0_stars': t0[2],
+        't0_stars_max_blk': t0[2],
+        't1_t0_min': t1t0[0], 't1_t0_mean': t1t0[1], 't1_t0_max': t1t0[2],
+        't1_stars_min': t1s[0], 't1_stars_mean': t1s[1], 't1_stars': t1s[2],
+        't1_stars_max_blk': t1s[2],
+        't2_stars': None, 't2_stars_min': None, 't2_stars_mean': None,
+        't2_stars_max_blk': None, 't1_stars_per_shot': None,
+    }
+    # TaskDur: op_summary 中 Op Name 含 incre_flash_attention, 跳过前 2 次冷启动
+    csvs = sorted(glob.glob(os.path.join(prof_dir, 'run_*', 'PROF_*', '**',
+                                         'op_summary_*.csv'), recursive=True))
+    taskdur = None
+    if csvs:
+        with open(csvs[-1]) as f:
+            kr = [r for r in csv.DictReader(f)
+                  if 'incre_flash_attention' in r.get('Op Name', '')]
+            durs = [float(r['Task Duration(us)'].strip().rstrip('\t')) for r in kr[2:]]
+            if durs:
+                taskdur = statistics.mean(durs)
+    if taskdur is None:
+        print(f"  {label}: [op_summary 无 IFA TaskDur]")
+        return None, None
+    result = {'label': label, 'mean': taskdur}
+    return result, m
+
 def fmt(v):
     return f"{v:.2f}" if v is not None else "N/A"
 
@@ -841,6 +929,13 @@ if os.path.isdir(os.path.join(output_dir, 'gmm_full')):
         dump_intermediates(prof, 'gmm', freq_gmm)
         print_fn('grouped_matmul', 'Cube', gmm_cores, r, m, fm)
         results.append(('grouped_matmul', 'Cube', gmm_cores, r, m, fm))
+if os.path.isdir(os.path.join(output_dir, 'ifa_full')):
+    prof = os.path.join(output_dir, 'ifa_full')
+    r, m = analyze_ifa(prof, 'ifa 满核')
+    if r:
+        # IFA 无 ffts PMU 解析, 硬件尾/全链路 N/A; 打点明细已在 run_*/ 留档
+        print_fn('incre_flash_attention', 'Vector', add_cores, r, m, None)
+        results.append(('incre_flash_attention', 'Vector', add_cores, r, m, None))
 
 # 生成汇总表 (长表: 每算子 min/mean/max 各一行)
 summary_path = os.path.join(output_dir, f'summary_{soc_version}.csv')
