@@ -20,17 +20,17 @@ public:
         this->Input("query")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1,
-                       ge::DT_FLOAT4_E2M1})
+                       ge::DT_FLOAT4_E2M1, ge::DT_HIFLOAT8, ge::DT_HIFLOAT8})
             .FormatList({ge::FORMAT_ND});
         this->Input("key")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1,
-                       ge::DT_FLOAT4_E2M1})
+                       ge::DT_FLOAT4_E2M1, ge::DT_HIFLOAT8, ge::DT_HIFLOAT8})
             .FormatList({ge::FORMAT_ND});
         this->Input("value")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1,
-                       ge::DT_FLOAT4_E2M1})
+                       ge::DT_FLOAT4_E2M1, ge::DT_HIFLOAT8, ge::DT_HIFLOAT8})
             .FormatList({ge::FORMAT_ND});
         this->Input("blockSparseMask").ParamType(OPTIONAL).DataTypeList({ge::DT_INT8}).FormatList({ge::FORMAT_ND});
         this->Input("attenMask").ParamType(OPTIONAL).DataTypeList({ge::DT_INT8}).FormatList({ge::FORMAT_ND});
@@ -53,7 +53,8 @@ public:
         this->Input("pQuantScaleOptional").ParamType(OPTIONAL).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
         this->Output("attentionOut")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16})
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16,
+                       ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
         this->Output("softmaxLse").ParamType(OPTIONAL).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
 
