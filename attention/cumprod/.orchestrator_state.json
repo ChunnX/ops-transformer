@@ -1,0 +1,27 @@
+{
+  "operator_name": "cumprod",
+  "current_stage": 5,
+  "stage_status": {
+    "1": "completed",
+    "2": "completed",
+    "3": "completed",
+    "4": "completed",
+    "5": "in_progress",
+    "6": "pending",
+    "7": "pending"
+  },
+  "stage_retry_count": {
+    "1": 0,
+    "2": 0,
+    "3": 0,
+    "4": 0,
+    "5": 0,
+    "6": 0
+  },
+  "perf_iteration": {
+    "count": 0,
+    "last_improvement": 0.0,
+    "consecutive_no_improvement": 0
+  },
+  "last_updated": "2026-08-29T17:45:00Z"
+}

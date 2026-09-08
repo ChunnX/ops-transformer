@@ -1,0 +1,9 @@
+testcase_name,api_name,tensor_view_shapes,scalar_dtypes,tensor_dtypes,attributes,output_tensor_indexes,precision_tolerances,absolute_precision,input_data_ranges
+aclnnCumprod_f32_1d,aclnnCumprod,"((1000,), (1000,))","('int64',)","('float32', 'float32')","{'dim': 0, 'dtype': -1}","(1,)","((0.0001, 0.0001),)",1e-08,"((0.98, 1.02), (0.98, 1.02))"
+aclnnCumprod_f32_lastaxis,aclnnCumprod,"((256, 365), (256, 365))","('int64',)","('float32', 'float32')","{'dim': 1, 'dtype': -1}","(1,)","((0.0001, 0.0001),)",1e-08,"((0.99, 1.01), (0.99, 1.01))"
+aclnnCumprod_bf16_midaxis,aclnnCumprod,"((32, 1000, 64), (32, 1000, 64))","('int64',)","('bfloat16', 'bfloat16')","{'dim': 1, 'dtype': -1}","(1,)","((0.004, 0.004),)",1e-08,"((0.99, 1.01), (0.99, 1.01))"
+aclnnCumprod_f16_longchain,aclnnCumprod,"((4096,), (4096,))","('int64',)","('float16', 'float16')","{'dim': 0, 'dtype': -1}","(1,)","((0.002, 0.002),)",1e-08,"((0.998, 1.002), (0.998, 1.002))"
+aclnnCumprod_f32_small_strided,aclnnCumprod,"((2, 3, 4), (2, 3, 4))","('int64',)","('float32', 'float32')","{'dim': 1, 'dtype': -1}","(1,)","((0.0001, 0.0001),)",1e-08,"((-1.5, 1.5), (-1.5, 1.5))"
+aclnnCumprod_f32_negdim,aclnnCumprod,"((5, 7), (5, 7))","('int64',)","('float32', 'float32')","{'dim': -1, 'dtype': -1}","(1,)","((0.0001, 0.0001),)",1e-08,"((-1.5, 1.5), (-1.5, 1.5))"
+aclnnCumprod_f32_longext,aclnnCumprod,"((8, 65536), (8, 65536))","('int64',)","('float32', 'float32')","{'dim': 1, 'dtype': -1}","(1,)","((0.0001, 0.0001),)",1e-08,"((0.9995, 1.0005), (0.9995, 1.0005))"
+aclnnCumprod_bf16_dim0,aclnnCumprod,"((3, 100), (3, 100))","('int64',)","('bfloat16', 'bfloat16')","{'dim': 0, 'dtype': -1}","(1,)","((0.004, 0.004),)",1e-08,"((0.9, 1.1), (0.9, 1.1))"
