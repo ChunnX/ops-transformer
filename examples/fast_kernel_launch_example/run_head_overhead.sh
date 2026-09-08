@@ -15,7 +15,7 @@
 #   OUTPUT_DIR       采集数据输出目录 (默认: ./head_overhead_results)
 #   RUN_ADD          是否跑 add (默认: 1)
 #   RUN_GMM          是否跑 grouped_matmul (默认: 1)
-#   RUN_IFA          是否跑 incre_flash_attention (默认: 1, 仅 ascend950;
+#                    (ascend950 上追加跑 incre_flash_attention, 无开关;
 #                    采集走 tests/incre_flash_attention/run_head_overhead.sh,
 #                    250 次发射 + 打点回读, 口径: T0-stars=schedule_hardware,
 #                    T1-T0=software_init, T1-stars=t2_from_stars, 无 T2/硬件尾)
@@ -42,7 +42,6 @@ OUTPUT_DIR="${OUTPUT_DIR:-$(pwd)/head_overhead_results}"
 LAUNCH_COUNT=101
 RUN_ADD="${RUN_ADD:-1}"
 RUN_GMM="${RUN_GMM:-1}"
-RUN_IFA="${RUN_IFA:-1}"
 
 # 自动检测平台: npu-smi info 输出的芯片名映射到 SOC_VERSION
 if [ -z "$SOC_VERSION" ]; then
@@ -162,9 +161,9 @@ trap cleanup EXIT
 
 # IFA 头开销测试需把 incre_flash_attention (及其 meta 算子) 纳入构建:
 #   ascend950: IFA 代码迁移自 ifa-head-overhead-test 分支, CANN 9.0 实测编译通过
-#   其他平台/关闭 IFA 时: 保持排除 (旧 CANN 有 aclprofTensor 编译问题)
+#   其他平台: 保持排除 (旧 CANN 有 aclprofTensor 编译问题)
 BUILD_IFA=0
-if [ "$RUN_IFA" = "1" ] && [ "$SOC_VERSION" = "ascend950" ]; then
+if [ "$SOC_VERSION" = "ascend950" ]; then
     BUILD_IFA=1
 fi
 
@@ -340,7 +339,8 @@ if [ "$RUN_GMM" = "1" ]; then
     collect_gmm "满核" "$OUTPUT_DIR/gmm_full"
     echo ""
 fi
-if [ "$RUN_IFA" = "1" ] && [ "$SOC_VERSION" = "ascend950" ] \
+# ascend950: 追加采集 incre_flash_attention (与 add/gmm 同一轮, 无开关)
+if [ "$SOC_VERSION" = "ascend950" ] \
     && [ -f "tests/incre_flash_attention/run_head_overhead.sh" ]; then
     collect_ifa "满核" "$OUTPUT_DIR/ifa_full"
     echo ""
