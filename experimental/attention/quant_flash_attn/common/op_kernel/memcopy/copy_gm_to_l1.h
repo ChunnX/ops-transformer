@@ -280,6 +280,38 @@ struct GmKvCoord {
     uint32_t dDealSize;
 };
 
+// GM offset 增量缓存: 同一张 GM 张量上, GetOffset(b,n2,s2,d) 关于 s2 是仿射函数
+// (offset = base + s2 * strideS2), 同一 (b,n2) 内 s2 单调递增时, 用一次乘加代替
+// 每次 4 乘 3 加的完整重算, 削减 cube scalar 地址计算负载
+struct GmS2OffsetCache {
+    const void *srcKey = nullptr;
+    uint32_t bIdx = 0;
+    uint32_t n2Idx = 0;
+    uint32_t s2Idx = 0;
+    uint64_t offset = 0;
+};
+
+template <typename GmTensorType>
+__aicore__ inline uint64_t GetKvGmOffsetIncremental(GmS2OffsetCache &cache, GmTensorType &srcTensor,
+                                                    GmKvCoord &gmCoord)
+{
+    auto &offsetCalculator = srcTensor.offsetCalculator;
+    uint64_t offset = 0;
+    if (cache.srcKey == &srcTensor && cache.bIdx == gmCoord.bIdx && cache.n2Idx == gmCoord.n2Idx &&
+        gmCoord.dIdx == 0 && gmCoord.s2Idx >= cache.s2Idx) {
+        // 同一张GM张量且(b,n2)不变, s2单调前进: 增量计算
+        offset = cache.offset + static_cast<uint64_t>(gmCoord.s2Idx - cache.s2Idx) * offsetCalculator.GetStrideS2();
+    } else {
+        offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.s2Idx, gmCoord.dIdx);
+    }
+    cache.srcKey = &srcTensor;
+    cache.bIdx = gmCoord.bIdx;
+    cache.n2Idx = gmCoord.n2Idx;
+    cache.s2Idx = gmCoord.s2Idx;
+    cache.offset = offset;
+    return offset;
+}
+
 template <typename KV_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format::NZ>
 class CopyKvGmToL1 {
 public:
