@@ -136,7 +136,6 @@ __aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingDat
     constInfo.kSeqSize = tilingData->maxKb;
     constInfo.headDim = tilingData->headDim;
     constInfo.sparseCount = tilingData->maxKb;
-    constInfo.causal = tilingData->causal;
     constInfo.stemBlockSize = tilingData->stemBlockSize;
     constInfo.stemStride = tilingData->stemStride;
     constInfo.initialBlocks = tilingData->initialBlocks;
@@ -151,7 +150,6 @@ __aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingDat
     constInfo.kBlockNumRateLarge = tilingData->kBlockNumRateLarge;
     constInfo.kBlockNumBiasLarge = tilingData->kBlockNumBiasLarge;
     constInfo.outputLayout = Q_LAYOUT_T; // 输出和输入形状一致
-    constInfo.attenMaskFlag = tilingData->causal != 0U;
 }
 
 template <typename SIT>
@@ -242,7 +240,8 @@ __aicore__ inline uint32_t SIPreload<SIT>::CalcS2ValidSize(uint32_t gS1Idx, uint
     if (actS2Size == 0U) {
         return 0U;
     }
-    if (!constInfo.attenMaskFlag) {
+    // causal 作为模板参数（SIT::causalFlag）编译期固化，非 causal 直接返回全部 S2 块数。
+    if constexpr (!SIT::causalFlag) {
         validS2SizeWithWindow = actS2Size;
     } else {
         if (actS1Size == 0U || constInfo.gSize == 0U) {

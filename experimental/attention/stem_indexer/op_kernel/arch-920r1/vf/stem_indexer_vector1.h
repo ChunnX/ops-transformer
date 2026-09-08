@@ -253,6 +253,8 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint16_t *outBuf, _
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[6], vBiasBuf + S2_CHUNK_ELEMS + 128);
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regvBias[7], vBiasBuf + S2_CHUNK_ELEMS + 192);
 
+    // 每个矢量寄存器容纳 64 个 float 元素（64 * 32bit = 256bit，即一个寄存器的宽度），
+    // 同一行内相邻寄存器的数据在 UB 中按 64 元素步进连续存放。
     for (uint16_t i = 0; i < (uint16_t)(gS1BasePerVecSize_); ++i) {
         MicroAPI::LoadAlign<float>(regQK[0], qkBuf + s2BaseSize * i);
         MicroAPI::LoadAlign<float>(regQK[1], qkBuf + s2BaseSize * i + 64);

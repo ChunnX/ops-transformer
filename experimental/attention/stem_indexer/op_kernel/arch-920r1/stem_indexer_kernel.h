@@ -60,12 +60,12 @@ public:
 protected:
     TPipe *pipe = nullptr;
 
-    // offset
-    uint64_t queryCoreOffset = 0ULL;
-    uint64_t keyCoreOffset = 0ULL;
-    uint64_t vbiasCoreOffset = 0ULL;
-    uint64_t indiceOutCoreOffset = 0ULL;
-    uint64_t indiceLenCoreOffset = 0ULL;
+    // ================================GM地址偏移区=====================================
+    int64_t queryCoreOffset = 0LL;
+    int64_t keyCoreOffset = 0LL;
+    int64_t vbiasCoreOffset = 0LL;
+    int64_t indiceOutCoreOffset = 0LL;
+    int64_t indiceLenCoreOffset = 0LL;
     uint32_t cachedBIdx = UINT32_MAX;
     uint32_t cachedActS1Size = 0U;
     uint32_t cachedActS2Size = 0U;
@@ -90,7 +90,7 @@ protected:
     uint32_t tmpBlockIdx = 0U;
     uint32_t aiCoreIdx = 0U;
     uint32_t usedCoreNum = 0U;
-    uint32_t sectionNum_ = 0U;
+    uint32_t sectionNum = 0U;
 
     SICommon::ConstInfo constInfo{};
     SICommon::TempLoopInfo tempLoopInfo{};
@@ -103,6 +103,8 @@ protected:
     __aicore__ inline bool NeedCleanOutput();
     // ================================分核逻辑==========================================
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx);
+    // 计算 causal 掩码下指定 gS1 基本块可见的 S2 基本块数量：先用 CalcS2ValidSize 求出可见 token 数
+    // （含 KV-Q 前缀偏移与 window 裁剪），再按 s2BaseSize 向上取整；非 causal 时返回全部 S2 基本块数。
     __aicore__ inline uint32_t GetS2BaseBlockNumOnMask(uint32_t gS1Idx, uint32_t actS1Size, uint32_t actS2Size);
     __aicore__ inline uint32_t CalcS2ValidSize(uint32_t gS1Idx, uint32_t actS1Size, uint32_t actS2Size);
     // ================================Process 函数=====================================
@@ -133,7 +135,6 @@ __aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingDat
     constInfo.kSeqSize = tilingData->maxKb;
     constInfo.headDim = tilingData->headDim;
     constInfo.sparseCount = tilingData->maxKb;
-    constInfo.causal = tilingData->causal;
     constInfo.stemBlockSize = tilingData->stemBlockSize;
     constInfo.stemStride = tilingData->stemStride;
     constInfo.initialBlocks = tilingData->initialBlocks;
@@ -148,7 +149,6 @@ __aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingDat
     constInfo.kBlockNumRateLarge = tilingData->kBlockNumRateLarge;
     constInfo.kBlockNumBiasLarge = tilingData->kBlockNumBiasLarge;
     constInfo.outputLayout = Q_LAYOUT_T; // 输出和输入形状一致
-    constInfo.attenMaskFlag = tilingData->causal != 0U;
 }
 
 template <typename SIT>
@@ -239,7 +239,8 @@ __aicore__ inline uint32_t SIPreload<SIT>::CalcS2ValidSize(uint32_t gS1Idx, uint
     if (actS2Size == 0U) {
         return 0U;
     }
-    if (!constInfo.attenMaskFlag) {
+    // causal 作为模板参数（SIT::causalFlag）编译期固化，非 causal 直接返回全部 S2 块数。
+    if constexpr (!SIT::causalFlag) {
         validS2SizeWithWindow = actS2Size;
     } else {
         if (actS1Size == 0U || constInfo.gSize == 0U) {
@@ -334,12 +335,12 @@ SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_t *kflat, __gm__ uint8_
     InitActualSeqLen(qSeqLens, kvSeqLens);
     numPromptTokensGm.SetGlobalBuffer((__gm__ int32_t *)numPromptTokens, constInfo.batchSize);
 
-    sectionNum_ = ((__gm__ uint32_t *)metadata)[0];
-    if (sectionNum_ == 0U) {
+    sectionNum = ((__gm__ uint32_t *)metadata)[0];
+    if (sectionNum == 0U) {
         isUsedCoreEqZero = true;
     }
     faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(metadata + SLI_METADATA_HEADER_OFFSET),
-                                 AIC_CORE_NUM * SLI_PER_CORE_STRIDE * sectionNum_);
+                                 AIC_CORE_NUM * SLI_PER_CORE_STRIDE * sectionNum);
 
     if ASCEND_IS_AIV {
         needCleanOutput = NeedCleanOutput();
@@ -425,16 +426,25 @@ __aicore__ inline void SIPreload<SIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
     uint32_t gS1SplitNum = (tempLoopInfo.actS1Size * constInfo.gSize + constInfo.mBaseSize - 1) / constInfo.mBaseSize;
     tempLoopInfo.gS1LoopEnd = (bN2LoopIdx == splitCoreInfo.bN2End) ? splitCoreInfo.gS1End : gS1SplitNum - 1;
 
-    queryCoreOffset = tempLoopInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.headDim +
-                      tempLoopInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize * constInfo.headDim;
-    keyCoreOffset = tempLoopInfo.bIdx * constInfo.kvHeadNum * constInfo.kSeqSize * constInfo.headDim +
-                    tempLoopInfo.n2Idx * constInfo.kSeqSize * constInfo.headDim;
-    vbiasCoreOffset = tempLoopInfo.bIdx * constInfo.kvHeadNum * constInfo.kSeqSize +
-                      tempLoopInfo.n2Idx * constInfo.kSeqSize;
-    indiceOutCoreOffset = tempLoopInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.kSeqSize +
-                          tempLoopInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize * constInfo.kSeqSize;
-    indiceLenCoreOffset = tempLoopInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize +
-                          tempLoopInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
+    queryCoreOffset = static_cast<int64_t>(tempLoopInfo.bIdx) * static_cast<int64_t>(constInfo.qHeadNum) *
+                          static_cast<int64_t>(constInfo.qSeqSize) * static_cast<int64_t>(constInfo.headDim) +
+                      static_cast<int64_t>(tempLoopInfo.n2Idx) * static_cast<int64_t>(constInfo.gSize) *
+                          static_cast<int64_t>(constInfo.qSeqSize) * static_cast<int64_t>(constInfo.headDim);
+    keyCoreOffset = static_cast<int64_t>(tempLoopInfo.bIdx) * static_cast<int64_t>(constInfo.kvHeadNum) *
+                        static_cast<int64_t>(constInfo.kSeqSize) * static_cast<int64_t>(constInfo.headDim) +
+                    static_cast<int64_t>(tempLoopInfo.n2Idx) * static_cast<int64_t>(constInfo.kSeqSize) *
+                        static_cast<int64_t>(constInfo.headDim);
+    vbiasCoreOffset = static_cast<int64_t>(tempLoopInfo.bIdx) * static_cast<int64_t>(constInfo.kvHeadNum) *
+                          static_cast<int64_t>(constInfo.kSeqSize) +
+                      static_cast<int64_t>(tempLoopInfo.n2Idx) * static_cast<int64_t>(constInfo.kSeqSize);
+    indiceOutCoreOffset = static_cast<int64_t>(tempLoopInfo.bIdx) * static_cast<int64_t>(constInfo.qHeadNum) *
+                              static_cast<int64_t>(constInfo.qSeqSize) * static_cast<int64_t>(constInfo.kSeqSize) +
+                          static_cast<int64_t>(tempLoopInfo.n2Idx) * static_cast<int64_t>(constInfo.gSize) *
+                              static_cast<int64_t>(constInfo.qSeqSize) * static_cast<int64_t>(constInfo.kSeqSize);
+    indiceLenCoreOffset = static_cast<int64_t>(tempLoopInfo.bIdx) * static_cast<int64_t>(constInfo.qHeadNum) *
+                              static_cast<int64_t>(constInfo.qSeqSize) +
+                          static_cast<int64_t>(tempLoopInfo.n2Idx) * static_cast<int64_t>(constInfo.gSize) *
+                              static_cast<int64_t>(constInfo.qSeqSize);
 }
 
 template <typename SIT>
@@ -486,7 +496,7 @@ __aicore__ inline void SIPreload<SIT>::Process()
         matmulService.AllocEventID();
     }
 
-    for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
+    for (uint32_t sectionIdx = 0; sectionIdx < sectionNum; sectionIdx++) {
         GetFASectionInfo(sectionIdx);
         if (!splitCoreInfo.isCoreEnable) {
             continue;

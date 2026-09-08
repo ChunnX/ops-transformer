@@ -782,19 +782,6 @@ __simd_vf__ void FindRealIndexVFImpl(__ubuf__ uint32_t *outputIdxBuf, __ubuf__ u
                             hisIdxBuf + rowIdx3 * hisIdxStride, topK3, loopIndex, vfLoop);
 }
 
-__simd_vf__ void IndicesAddOffsetVF(__ubuf__ uint32_t *indicesOutBuf, uint32_t outputIdxOffset, uint32_t vfLoop)
-{
-    Reg::MaskReg pregB32 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
-
-    Reg::RegTensor<uint32_t> outIndices;
-
-    for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
-        Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_NORM>(outIndices, indicesOutBuf + i * VF_B32_ELEMS);
-        Reg::Adds(outIndices, outIndices, outputIdxOffset, pregB32);
-        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(indicesOutBuf + i * VF_B32_ELEMS, outIndices, pregB32);
-    }
-}
-
 /**
  * @brief SITopKVF 对loopM行输入数据各自进行topk算法，输出idx_tmp
  * @param tmpIdxLocal Temp阶段输出的TopKIndex;如果s2SeqLen < 8K作为最终输出 loopM * (Align(maxTopK,64) * 4B)
@@ -908,12 +895,5 @@ __aicore__ inline void SiTopKGatherVF(const LocalTensor<uint32_t> &outputIdxLoca
                         rowIdx1, rowIdx2, rowIdx3, topK0, topK1, topK2, topK3, loopBasicIdx, topkLoopNum32);
 }
 
-__aicore__ inline void IndicesAddOffset(const LocalTensor<uint32_t> &indicesOutLocal, uint32_t outputIdxOffset,
-                                        uint32_t topK)
-{
-    __ubuf__ uint32_t *indicesOutBuf = (__ubuf__ uint32_t *)indicesOutLocal.GetPhyAddr();
-    uint16_t topkLoopNum32 = (topK + VF_B32_ELEMS - 1U) / VF_B32_ELEMS;
-    IndicesAddOffsetVF(indicesOutBuf, outputIdxOffset, topkLoopNum32);
-}
 } // namespace SITopkb32gather
 #endif

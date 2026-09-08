@@ -469,7 +469,7 @@ __aicore__ inline void SIVector<SIT>::RunTopKBatchRows(const SICommon::RunInfo &
         uint32_t mInnerIdx = SICommon::GetLane(rowIdx4, rowIdx);
         uint32_t globalS1Idx = static_cast<uint32_t>(curAivGS1Idx + mInnerIdx) % info.actS1Size;
         uint32_t curS1RealS2Len = info.actS2Size;
-        if (constInfo_.attenMaskFlag) {
+        if constexpr (SIT::causalFlag) {
             int32_t curS1RealS2LenTmp = static_cast<int32_t>(info.actS2Size) - static_cast<int32_t>(info.actS1Size) +
                                         static_cast<int32_t>(globalS1Idx) + 1;
             curS1RealS2Len = static_cast<uint32_t>(curS1RealS2LenTmp > 0 ? curS1RealS2LenTmp : 0);
@@ -530,7 +530,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(const SICommon::RunInfo &info,
         uint32_t nowCurAivGS1Idx = curAivGS1Idx + s1Idx;
         uint32_t globalS1Idx = nowCurAivGS1Idx % info.actS1Size;
         uint32_t curS1RealS2Len = info.actS2Size;
-        if (constInfo_.attenMaskFlag) {
+        if constexpr (SIT::causalFlag) {
             int32_t curS1RealS2LenTmp = static_cast<int32_t>(info.actS2Size) - static_cast<int32_t>(info.actS1Size) +
                                         static_cast<int32_t>(globalS1Idx) + 1;
             curS1RealS2Len = static_cast<uint32_t>(curS1RealS2LenTmp > 0 ? curS1RealS2LenTmp : 0);
@@ -539,7 +539,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(const SICommon::RunInfo &info,
         uint32_t dynamicTopkCount = CalcDynamicTopkCount(globalS1Idx, kbOffset, numPromptK);
         uint32_t topkSelectNum = Min(dynamicTopkCount, MAX_TOPK_COUNT);
         uint32_t totalOutput = initialBlocks_ + topkSelectNum + windowSize_;
-        if ((constInfo_.attenMaskFlag && (curS1RealS2Len <= initialBlocks_ + windowSize_)) ||
+        if ((SIT::causalFlag && (curS1RealS2Len <= initialBlocks_ + windowSize_)) ||
             (curS1RealS2Len <= totalOutput)) {
             if (isLastS2InnerLoop) {
                 const uint32_t packedOutputLen = MAX_TOPK_COUNT + initialBlocks_ + windowSize_;
@@ -656,7 +656,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
                 indiceOutOffset + (static_cast<int64_t>(globalGIdx) * static_cast<int64_t>(constInfo_.qSeqSize) +
                                    static_cast<int64_t>(globalS1Idx)) *
                                       static_cast<int64_t>(constInfo_.kSeqSize);
-            if (constInfo_.attenMaskFlag) {
+            if constexpr (SIT::causalFlag) {
                 int32_t curS1RealS2LenTmp = static_cast<int32_t>(actS2Size) - static_cast<int32_t>(actS1Size) +
                                             static_cast<int32_t>(globalS1Idx) + 1;
                 curS1RealS2Len = static_cast<uint32_t>(curS1RealS2LenTmp > 0 ? curS1RealS2LenTmp : 0);

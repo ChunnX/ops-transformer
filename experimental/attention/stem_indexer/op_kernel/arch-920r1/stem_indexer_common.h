@@ -26,21 +26,10 @@ enum class SI_LAYOUT : uint32_t {
 };
 // Cube 与 Vector 之间的同步模式。
 constexpr uint32_t SI_SYNC_MODE4 = 4U;
-// arch-920r1 (A6)：1C:1V，MM1 结果采用双 buffer ping-pong。
+// arch-920r1：1C:1V，MM1 结果采用双 buffer ping-pong。
 constexpr uint32_t MM1_RES_BUFFER_NUM = 2U;
 constexpr uint32_t CROSS_VC_EVENT = 0U;
 constexpr uint32_t CROSS_CV_EVENT = 2U;
-// Buffer 大小（字节）。
-constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32U;
-constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64U;
-constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256U;
-constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512U;
-constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024U;
-constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048U;
-constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096U;
-constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192U;
-constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384U;
-constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768U;
 // TopK 流式处理每轮的 trunk 长度为 512（与 S2 基本块 512 对齐）。
 constexpr uint32_t TOPK_TRUNK_LEN = 512U;
 // Invalid index.
@@ -168,7 +157,6 @@ struct ConstInfo {
     uint64_t kSeqSize = 0ULL;    // kv最大S长度
     uint64_t qSeqSize = 1ULL;    // q最大S长度
     uint32_t usedCoreNum = 0U;
-    uint32_t causal = 1U;
     uint32_t stemBlockSize = 128U;
     uint32_t stemStride = 16U;
     uint32_t initialBlocks = 4U;

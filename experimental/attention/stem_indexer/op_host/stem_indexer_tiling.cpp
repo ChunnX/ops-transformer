@@ -57,14 +57,18 @@ ge::graphStatus StemIndexerInfoParser::GetNpuInfo()
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(aicNum == 0 || aivNum == 0,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "coreNum", "0", "num of core obtained is 0."),
+                return ge::GRAPH_FAILED);
 
     socVersion_ = ascendcPlatform.GetSocVersion();
     if (socVersion_ != platform_ascendc::SocVersion::ASCEND950 &&
         ascendcPlatform.GetCurNpuArch() != NpuArch::DAV_9201 &&
         ascendcPlatform.GetCurNpuArch() != NpuArch::DAV_9202) {
-        OP_LOGE(opName_, "SOC Version[%d], NpuArch[%d] is not supported.", static_cast<int32_t>(socVersion_),
-                static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()));
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "socVersion", std::to_string(static_cast<int32_t>(socVersion_)),
+            "SOC Version or NpuArch is not supported, NpuArch is "
+                + std::to_string(static_cast<int32_t>(ascendcPlatform.GetCurNpuArch())) + ".");
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr, OP_LOGE(opName_, "workspace size is nullptr."),
@@ -201,10 +205,10 @@ ge::graphStatus StemIndexerInfoParser::CheckRequiredInOutExistence() const
                 OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor kv_seq_lens"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.numPromptTokens.tensor != nullptr && opParamInfo_.numPromptTokens.desc == nullptr,
                 OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor num_prompt_tokens"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.metadata.tensor == nullptr, OP_LOGE(opName_, "metadata is required but is null!"),
+    OP_CHECK_IF(opParamInfo_.metadata.tensor == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "metadata"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.metadata.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "metadata", "metadata desc cannot be empty"),
+                OP_LOGE(opName_, "metadata desc cannot be empty"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.sparseIndicesOut.shape == nullptr,
                 OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor sparse_indices"), return ge::GRAPH_FAILED);
@@ -596,7 +600,7 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
 
 ge::graphStatus TilingForStemIndexer(gert::TilingContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("StemIndexer", "Tiling context is null."),
+    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("StemIndexer", "Tiling context is nullptr."),
                 return ge::GRAPH_FAILED);
     StemIndexerTilingInfo stemInfo;
     StemIndexerInfoParser stemInfoParser(context);
