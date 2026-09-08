@@ -6,26 +6,26 @@ Dispatch 仍等待完整 count 表，远端 24-bit count + 8-bit epoch 布局和
 
 ## 修改前后对比
 
-原实现中，每个 AIV 完成自身量化后生成并发送 index/count，接着清零 workspace、
+修改前，每个 AIV 完成自身量化后生成并发送 index/count，接着清零 workspace、
 整理共享输入。所有核经过本卡 `SyncAll<false>()` 后，AIV 还要完成入口跨卡握手及
 其末尾的 `SyncAll<true>()`，才能进入共享激活或 Dispatch。AIC 不执行跨卡握手，
 但其共享 GMM1 与 AIV 激活存在 UB/ping-pong 交接，仍会受到 AIV 跨卡等待的影响。
 
-第一版移除了入口跨卡握手，通过量化后的 `MTE3_S` 和逐 AIV GM 计数轮询保护 count。
-本次进一步把通知改为硬件事件，并去掉 count 发送内部的标量完成等待。
+修改后，量化完成通过硬件事件通知，count 发布在 MTE3 流水上等待本卡量化就绪。
+接收端通过 count epoch 确认远端输入可读，入口跨卡握手被删除；count 发送异步返回。
 
-| 项目 | 原实现 | 本次实现 |
+| 项目 | 修改前 | 修改后 |
 |---|---|---|
 | 量化依赖 | 入口本卡/跨卡同步收口 | 量化后发 mode 0 MTE3 事件，index 后、count 前在 MTE3 等待 |
-| 量化发布端 | 无独立通知 | 无 `MTE3_S`；硬件在量化写回完成后上报 |
+| 量化发布端 | 无独立通知 | 硬件在量化写回完成后上报，无需标量完成等待 |
 | count 发布端 | 非对齐段重排并等待，函数末尾等待 MTE3 | 每项 count 使用独立 32B UB 槽，Normal 二维搬运异步返回 |
 | 入口跨卡握手 | AIV 参与，末尾另有 AIV 全核同步 | 删除 |
 | 共享计算入口 | 配对 AIV 可能阻塞在跨卡握手 | 原有本卡 `SyncAll<false>()` 后推进 |
 | 接收 count | 逐槽验证 epoch，整表就绪后 VF cumsum | 不变；epoch 同时证明源数据可读 |
 | 本卡同步、出口跨卡同步 | 存在 | 保留 |
 
-与第一版相比，不再用 GM 槽表示量化 ready，也不逐核轮询。原逐 AIV 计数槽只用于
-跨轮次 epoch 记账，入口和出口各推进一次，兼容原 count 和出口协议。
+量化就绪由硬件事件传递。原逐 AIV 计数槽用于跨轮次 epoch 记账，入口和出口各推进
+一次，兼容原 count 和出口协议。
 
 ## 发送与消费顺序
 
@@ -129,7 +129,7 @@ UB/GM 哨兵。DMA 在队列执行时才读 UB，检查源未被提前覆盖；A
 CANN 9.2 beta2、Ascend950PR_9599 下 A8W8/W4 两组共 36 个 MTE tiling key 编译通过，
 包含 combine 量化和 topk weights prefetch 变体。内核编译使用验证专用 Hcomm shim
 屏蔽当前 SDK 缺失的无关 URMA API；URMA 和真实多卡运行不在本次验证范围内。
-提交检查随后仅调整格式和注释。
+提交检查通过。
 
 设备验收仍需覆盖共享专家开关、A8W8/A8W4/A4W4、空专家、小 bs、连续调用及多卡精度。
 性能对比需同时查看算子耗时、量化后的标量停顿和 route buffer 配置变化。
