@@ -2,7 +2,8 @@
 
 MTE 路径删除共享专家前的入口跨卡握手，以量化硬件通知和 count epoch 传递输入依赖。
 共享入口的 `SyncAll<false>()` 拆成输入就绪和 UB 释放两条硬件依赖；
-保留 AIV 本核 `PipeBarrier<PIPE_ALL>()` 及出口跨卡同步，不增加 GM ready 状态。
+输入阶段的本核 UB 交接使用 `V_MTE3`、`MTE3_V`、`MTE3_MTE2`，不执行入口 `PIPE_ALL`；
+MoE 尾部 AIV 汇合及出口跨卡同步保留，不增加 GM ready 状态。
 公共入口位于 `mega_moe_arch35.h`，各 MTE Wave 派生类共用。
 Dispatch 通过整表 MTE2 搬运和 VF 批量 epoch 校验等待完整 count 表；失败后退避 500 cycle 重试。
 远端 24-bit count + 8-bit epoch 布局和 VF cumsum 不变。
@@ -46,13 +47,14 @@ count 到达就启动对应专家的 Dispatch；共享计算则不再受入口�
 | 本卡 MoE 量化完成 | 全体 AIV mode 0 flag 8；发送核在 MTE3 等待 | index 后发布带 epoch 的 count |
 | 分段清零、共享输入写回完成 | AIV mode 4 通知配对 AIC；AIC 再经 mode 0 汇合本卡输入 | AIC 继续下发共享输入加载和计算 |
 | 全体输入 epoch 已记账 | AIC 汇合后用 mode 4 回通知各 AIV | 接收 AIV 可安全读取本轮 epoch |
-| 路由/count 源 UB 已用完 | AIV 本核 PIPE_ALL 后用 mode 4 通知；配对 AIC 仅在 FIX 等待 | AIC 可以向配对 AIV 的 UB 写结果 |
+| 路由/count 源 UB 已用完 | 本核 V_MTE3 汇入发送尾部，AIV 从 MTE3 发 mode 4 通知；配对 AIC 在 FIX 等待 | AIC 可以向配对 AIV 的 UB 写结果 |
+| 本核新阶段复用输入 UB | 本核 MTE3_V、MTE3_MTE2 | 新 V 运算及 MTE2 搬入可覆盖旧 UB |
 
 因此，移除的是共享入口统一等待整个准备阶段的 `SyncAll<false>()`，改为更细粒度的
 硬件流水同步；本卡输入仍需汇合，必要的等待并未消失。AIC 的输入等待仍在 PIPE_S，
 但不再把所有 AIV 的路由完成纳入该入口条件；UB 复用等待放在 PIPE_FIX，使输入加载
-和 MMAD 可以按各自依赖提前推进。每个 AIV 的本核 PIPE_ALL、MoE 末尾 AIV 同步和
-出口同步继续保留。
+和 MMAD 可以按各自依赖提前推进。入口本核 PIPE_ALL 由定向流水事件替代，
+MoE 末尾 AIV 同步和出口同步继续保留；后两者位于 MoE 专家处理之后。
 
 跨卡的 epoch Flag 是 count 的高 8 位数据；本卡的 mode 0/mode 4 Flag 是硬件事件
 计数器。两者不是同一类状态，也没有为本卡同步新增 GM ready 轮询槽。
@@ -79,7 +81,7 @@ AIC 汇合本卡输入后可以继续下发共享计算，FIX 单独等待配对
 | 共享输入准备 | 量化写通信 GM，再由 GM→UB→共享 GM 拆分 | 量化 UB 直接写通信和共享 GM，保留独立 data/scale 地址 |
 | 共享计算入口 | 等待本卡全部路由、清零、共享输入；配对 AIV 还可能阻塞在跨卡握手 | 输入/清零硬件汇合后下发，FIX 等待配对 AIV 释放 UB |
 | 接收 count | 整表搬入 UB 后逐槽标量验证 epoch，缺项标量重读 | 整表 MTE2 搬运、VF 校验；失败后退避 500 cycle 重搬，整表就绪后 VF cumsum |
-| 入口本卡同步 | `SyncAll<false>()` 汇合整个输入阶段 | mode 4 配对通知 + mode 0 AIC 汇合；AIV 保留本核 PIPE_ALL |
+| 入口本卡同步 | `SyncAll<false>()` 汇合整个输入阶段 | mode 4 配对通知 + mode 0 AIC 输入汇合；本核 UB 复用使用定向流水事件 |
 | 出口跨卡同步 | 存在 | 保留 |
 
 量化就绪由硬件事件传递。原逐 AIV 计数槽用于跨轮次 epoch 记账，入口和出口各推进
@@ -100,8 +102,9 @@ AIC 汇合本卡输入后可以继续下发共享计算，FIX 单独等待配对
   → PIPE_MTE3 barrier
   → 给 count 添加 epoch，S_MTE3 保护标量写入的 UB 数据
   → 异步发布 count
-  → 本核 PIPE_ALL：确认 route/count 源 UB 可复用
-  → Set<4, MTE3>(10)：释放本核输入阶段 UB
+  → 本核 V_MTE3：将旧 V 访问（含空任务初始化）汇入 MTE3 尾部
+  → Set<4, MTE3>(10)：旧 UB 访问完成后通知配对 AIC 的 FIX
+  → 本核 MTE3_V、MTE3_MTE2：新 V/MTE2 等待旧 MTE3 读完源 UB
   → Wait<4, S>(9)：接收本卡输入已汇合的回通知
   → 共享激活及 MoE 阶段
 
@@ -113,7 +116,7 @@ Wait<4, S>(8)、Wait<4, S>(24)：等待配对两个 AIV 的输入/清零
   → 下发共享 GMM1：MTE2/MTE1/MMAD 可按自身依赖推进，FIX 输出受上述等待保护
 
 接收 AIV1：
-本核 PIPE_ALL 及输入硬件回通知完成
+输入硬件回通知到达，本核 MTE3_MTE2 约束接下来的搬入
   → 读取本轮 epoch
   → 立即 MTE2 搬入整表，MTE2_V 后由 VF 校验有效槽的 epoch 并去 tag
   → V_S 后标量只读取一个整表未就绪标志
@@ -136,6 +139,47 @@ count 的 MTE3 前等待。清零与共享输入写回均放在该等待之前�
 协议依赖上述操作在设备上保证 index/量化写回先于 count 可见；CPU 模型不能证明
 NPU 互连可见性，仍需多卡设备验证。
 
+## 阶段归属与本核 / 跨核依赖核对
+
+`ProcessInputPreparationStage()` 在 `mega_moe_arch35.h` 内集中编排 AIC/AIV 两条路径，
+包括输入通知、路由/count 发送、输入汇合及最终 UB 交接。`ProcessWave()` 调用该 stage
+后直接进入共享 GMM1 或 MoE 专家，不再在 stage 外补入口同步。
+量化完成发布归属 `mega_moe_token_quant.h`，量化等待与 count 发布归属
+`mega_moe_send_mask.h`；epoch 地址/位域工具归属现有 `mega_moe_utils.h`，常量集中在
+`mega_moe_constants.h`，不额外建立独立的 sync helper 文件。
+
+下表中的“本核”严格指同一 AIV，“跨核”指本卡不同 AIC/AIV，“跨卡”指不同 rank：
+
+| 范围 | 接口 | 生产者 → 消费者 | 保证 |
+|---|---|---|---|
+| 本核 | SetFlag/WaitFlag V_MTE3，event 3 | 同一 AIV 的旧 V → MTE3 | 空任务的 UB 初始化也须结束后才释放 UB |
+| 本核 | SetFlag/WaitFlag MTE3_V，event 3 | 同一 AIV 的旧 MTE3 → 新 V | count 源读完后才允许新 V 覆盖 |
+| 本核 | SetFlag/WaitFlag MTE3_MTE2，event 3 | 同一 AIV 的旧 MTE3 → 新 MTE2 | count 源读完后才允许新搬入覆盖 |
+| 跨核 | CrossCore mode 0 flag 8 | 全体 AIV 的 MTE3 → 各发送 AIV 的 MTE3 | 本卡全部 MoE token/scale 已写回 |
+| 跨核 | CrossCore mode 4 flag 8、24 + mode 0 flag 9 | AIV MTE3 → 配对 AIC S → 全体 AIC | 全部清零/共享输入已完成 |
+| 跨核 | CrossCore mode 4 flag 9、25 | AIC S → 配对 AIV S | 接收端读取 epoch 前，本卡输入已汇合 |
+| 跨核 | CrossCore mode 4 flag 10、26 | AIV MTE3 → 配对 AIC FIX | AIC 写入前，两个 AIV 的旧 UB 访问都已完成 |
+| 跨卡 | count 高 8 位 epoch | 源 rank 的输入/count 发布 → 接收 rank 的 VF 校验 | 本轮远端输入依赖已满足 |
+
+本核 event ID 按 HardEvent 的流水方向配对，与 CrossCore 的 mode/flag ID 不在同一
+事件空间；数值相同不代表同一个通知。本核 event 3 在输入交接处各方向 Set/Wait
+各一次。路由 ring 可能使用 MTE3_V event 3，其消费已排在交接的 V_MTE3 之前；不能
+跳过 ring 的完成等待。跨核事件继续避开 GMM/prologue 和 SyncAll 使用的 ID。
+
+入口不增加 MTE3_S：新阶段的指针/形状计算可继续下发，V 和 MTE2 只在实际访问
+旧 UB 前等待。后续标量 UB 读写须位于对应 MTE2_S 或 V_S 之后；现有 count VF 结果
+读取、Dispatch 元信息写入均经过该数据依赖。若未来增加 stage 返回后立即执行的
+标量 SetValue，必须重新核对其地址和完成边界，不能将异步 stage 返回视为 UB 已空闲。
+
+依赖环核对：量化通知在路由等待前发出；route ring 完成事件在尾部 V_MTE3 前发出；
+AIC 的输入汇合及回通知在 FIX 的 UB 等待前发出。不同 CrossCore flag 的通知可以
+先后乱序到达，各条链都按对应事件等待，不依赖不同 flag 的到达顺序。
+
+`ProcessMoeExpertStages()` 之后的 `SyncAll<true>()` 仍用于 MoE 尾部跨 AIV 汇合，
+约束 Combine 输出及下一次 epoch 更新。SDK 的该调用自带本核 PIPE_ALL，无需在它
+前面重复调用 PipeBarrier。出口跨卡握手及 Unpermute 的数据依赖也继续保留，不能仅用
+某一核的本核流水事件替代这些跨核/跨卡边界。
+
 ## 共享输入与 AIC 入口
 
 `QuantizeLocalTokens` 使用原有双缓冲：BF16 输入只加载、量化一次，输出直接写通信 GM
@@ -153,7 +197,8 @@ BF16 UB 分别量化并按各自完成边界通知；本修改不新增混合量
 这样无需新增 GM 软同步槽，也不需要一个 AIV 串行清零整个 workspace。
 
 共享 GMM 首次 Fixpipe 可直接写配对 AIV 的 UB，而此时 AIV 可能仍在同一地址生成路由。
-因此输入就绪不能等同于 UB 可写：保留每个 AIV 的 PIPE_ALL，再发布独立的 UB 释放事件。
+因此输入就绪不能等同于 UB 可写：本核 V_MTE3 接住旧 V 访问，再从 MTE3 尾部
+发布独立的跨核 UB 释放事件，同时用本核 MTE3_V/MTE3_MTE2 保护自身后续覆盖。
 AIC 在 FIX 上等待这两个事件，不能把该等待前移到 AIC 全局汇合之前，否则可能阻塞
 汇合事件并形成依赖环。无共享专家、空 token、无专家任务或无计算 tile 的核也必须
 完整发出并消费这些事件，不能让分支遗留计数器。
@@ -205,14 +250,17 @@ Host 自适应 route buffer 预算同步扣除这部分占用，因此部分 sha
 ring 深度可能变化，需要一起评估性能。
 
 Count 源 UB 是输入阶段尾部的独立区域，不与 workspace 清零源或共享输入双缓冲重叠。
-所有 tagged count 在搬运下发前写好，返回后直到入口 `PIPE_ALL` 都不再改写。该同步
-完成之后 AIV 才能发布 mode 4 UB 释放事件；AIC 的 FIX 等待该事件后才可覆盖配对 UB。
+所有 tagged count 在搬运下发前写好；MTE3 读完之前，后续 V/MTE2 均受本核事件
+约束，不能覆盖这段 UB。跨核 mode 4 UB 释放通知也在 MTE3 完成边界上触发，
+AIC 的 FIX 必须消费对应两个 AIV 的通知后才可写结果。本核事件与跨核事件各自保护
+不同的消费者，不能相互代替。
 
 ## 硬件事件与 epoch 生命周期
 
 量化硬件事件使用 mode 0、flag ID 8。避开本地 SDK `SyncAll` 使用的 11--14；
 GMM 的 mode 4 事件使用独立计数器空间。所有 AIV 每轮恰好 Set/Wait 各一次，
-入口 `PIPE_ALL` 保证等待已执行，不能让无专家任务的核积累未消费事件。
+输入交接事件排在该 MTE3 等待之后，后续 UB 访问必须经过交接依赖，不能让无专家
+任务的核积累未消费事件。
 不依赖不同 flag ID 的 Set 执行先后关系。
 
 新增输入硬件事件如下；mode 0 与 mode 4 使用独立计数器空间：
@@ -255,6 +303,12 @@ AIV 同步保证所有接收者读完后，才可能在出口更新 slot 0。现
 
 本地验证（2026-09-08）：CPU 模型检查已通过，覆盖 count 发送、整表 VF 轮询、
 输入硬件事件配对及共享输入布局；验证脚本不随本 PR 入库。
+另将生产 `ProcessInputPreparationStage()` 函数体提取到本地 CPU 队列模型中，验证
+1,536 组入口交接，覆盖 1/2/8/24 个配对 block、慢量化、延迟 count DMA、空任务的
+延迟 UB 初始化、两种跨核通知投递顺序及事件复用。模型确认 AIC 可计算、AIV 标量
+可继续下发时，AIC FIX 和本核 V/MTE2 仍不能提前覆盖旧 UB；所有事件最终均被消费。
+分别移除 V_MTE3、MTE3_V、MTE3_MTE2 或 AIV1→AIC FIX 等待的四个故障对照均被检测到。
+模型模拟了量化/路由子阶段的数据依赖，不等同于执行真实量化或设备指令。
 这些检查不替代真实 NPU 内存顺序、精度或性能验证。Host tiling 翻译单元编译通过。
 CANN 9.2 beta2、Ascend950PR_9599 下 A8W8/W4 两组共 36 个 MTE tiling key 编译通过，
 包含 combine 量化和 topk weights prefetch 变体。内核编译使用验证专用 Hcomm shim

@@ -123,6 +123,57 @@ __aicore__ inline void GatherAndSendExpertCompactRouteBatch(const MoeStageCommon
     }
 }
 
+// 所有 AIV 都消费一次事件，不能在无专家任务时跳过。950 仅阻塞 MTE3，标量仍可下发。
+// 有 route 的核把等待放在 index 之后、count 之前；无 route 的核在返回前配对等待。
+__aicore__ inline void WaitForMteQuantReady()
+{
+    if constexpr (g_coreType == AscendC::AIV) {
+        AscendC::CrossCoreWaitFlag<0, PIPE_MTE3>(MTE_QUANT_READY_FLAG);
+    }
+}
+
+// 每项 count 在 UB 中独占一个 data block，允许跨 rank 段直接使用 Normal 二维搬运。
+// 输入阶段末尾用 MTE3_V/MTE3_MTE2 保护后续 UB 复用；不需要 MTE3_S 或临时重排。
+__aicore__ inline void PublishMteExpertCounts(GM_ADDR *winRankAddr, uint64_t countWinOffset, uint32_t sourceRank,
+                                              uint32_t worldSize, uint32_t expertsPerRank, uint32_t ownedExpertBegin,
+                                              uint32_t ownedExpertNum, int32_t inputSequence,
+                                              const AscendC::LocalTensor<int32_t> &counts)
+{
+    if constexpr (g_coreType == AscendC::AIC) {
+        return;
+    }
+    if (ownedExpertNum == 0U) {
+        return;
+    }
+    uint32_t epoch = GetMteCountEpoch(inputSequence);
+    for (uint32_t idx = 0; idx < ownedExpertNum; ++idx) {
+        uint32_t offset = idx * MTE_COUNT_UB_STRIDE;
+        uint32_t word = (epoch << 24U) | static_cast<uint32_t>(counts.GetValue(offset));
+        counts.SetValue(offset, static_cast<int32_t>(word));
+    }
+    AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(SYNC_EVENT_ID3);
+    AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(SYNC_EVENT_ID3);
+    for (uint32_t ownedOffset = 0; ownedOffset < ownedExpertNum;) {
+        uint32_t globalExpert = ownedExpertBegin + ownedOffset;
+        uint32_t dstRank = globalExpert / expertsPerRank;
+        uint32_t localExpert = globalExpert % expertsPerRank;
+        uint32_t count = ownedExpertNum - ownedOffset;
+        if (count > expertsPerRank - localExpert) {
+            count = expertsPerRank - localExpert;
+        }
+        uint64_t offset =
+            countWinOffset + (static_cast<uint64_t>(localExpert) * worldSize + sourceRank) * sizeof(int32_t);
+        AscendC::GlobalTensor<int32_t> dst;
+        dst.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(winRankAddr[dstRank] + offset));
+        AscendC::DataCopyExtParams copy{static_cast<uint16_t>(count), sizeof(int32_t), 0,
+                                        static_cast<int64_t>(worldSize - 1U) * static_cast<int64_t>(sizeof(int32_t)),
+                                        0U};
+        AscendC::DataCopyPad<int32_t, AscendC::PaddingMode::Normal>(dst, counts[ownedOffset * MTE_COUNT_UB_STRIDE],
+                                                                    copy);
+        ownedOffset += count;
+    }
+}
+
 // 三条 MTE Wave 路径的唯一 route 入口。专家 ownership 仍使用连续 quotient/remainder 分配，
 // 因而 count 表可继续按目标 rank 合并成二维 strided copy。
 __aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job, const MoeStageCommonConfig &common,

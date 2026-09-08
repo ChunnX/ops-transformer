@@ -21,7 +21,6 @@
 #include "kernel_operator.h"
 #include "op_kernel/math_util.h"
 #include "mega_moe_constants.h"
-#include "mega_moe_input_sync.h"
 #include "mega_moe_types.h"
 
 namespace MegaMoeImpl {
@@ -32,6 +31,17 @@ constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
 constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
 constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
 constexpr uint32_t UINT64_BYTE_OFFSET_SHIFT = 3U;
+
+__aicore__ inline __gm__ int32_t *GetMteSyncCountAddress(GM_ADDR rankSyncBase, uint32_t aivIndex)
+{
+    return reinterpret_cast<__gm__ int32_t *>(rankSyncBase + MTE_SYNC_COUNT_OFFSET +
+                                              static_cast<uint64_t>(aivIndex) * MTE_SYNC_COUNT_STRIDE);
+}
+
+__aicore__ inline uint32_t GetMteCountEpoch(int32_t inputSequence)
+{
+    return (static_cast<uint32_t>(inputSequence) & 0x7FU) | 0x80U;
+}
 
 struct WorkRange {
     uint32_t start = 0;

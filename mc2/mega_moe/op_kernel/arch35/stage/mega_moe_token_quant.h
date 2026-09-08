@@ -19,6 +19,20 @@ namespace MegaMoeImpl {
 
 using namespace AscendC;
 
+// 所有 AIV（含空任务）在量化写回下发后调用。GM 计数只记账 epoch，不再表示数据就绪；
+// 硬件在前序 MTE3 完成后上报 ready，发布端不插入 MTE3_S。出口仍推进一次计数。
+__aicore__ inline int32_t PublishMteQuantReady(GM_ADDR rankSyncBase, uint32_t aivIndex)
+{
+    if constexpr (g_coreType == AscendC::AIV) {
+        __gm__ int32_t *sequenceAddr = GetMteSyncCountAddress(rankSyncBase, aivIndex);
+        uint32_t nextSequence = static_cast<uint32_t>(AscendC::ReadGmByPassDCache(sequenceAddr)) + 1U;
+        AscendC::WriteGmByPassDCache(sequenceAddr, static_cast<int32_t>(nextSequence));
+        AscendC::CrossCoreSetFlag<0, PIPE_MTE3>(MTE_QUANT_READY_FLAG);
+        return static_cast<int32_t>(nextSequence);
+    }
+    return 0;
+}
+
 struct QuantProcessConfig {
     uint32_t quantTokenAlignBytes;
     uint32_t quantScaleAlignBytes;
