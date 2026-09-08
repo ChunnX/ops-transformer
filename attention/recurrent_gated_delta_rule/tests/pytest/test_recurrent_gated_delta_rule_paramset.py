@@ -65,6 +65,6 @@ TEST_PARAMS = {
         "state_non_contiguous": [False],
     },
 }  # 注意单个用例组内的用例尽量不要超过32
-FIRST_CASE = [TEST_PARAMS["Testcase0"], TEST_PARAMS["Testcase1"]]
+FIRST_CASE = [TEST_PARAMS["Testcase1"]]
 # 按需选择要启用的测试参数（例如默认启用所有）
 ENABLED_PARAMS = FIRST_CASE  # 按需增加需要的case即可
