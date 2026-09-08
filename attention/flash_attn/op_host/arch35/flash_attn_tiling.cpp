@@ -138,7 +138,7 @@ void FlashAttnTilingImpl::SplitPolicy()
 void FlashAttnTilingImpl::UpdateTilingKeyConfig()
 {
     if (faInfo_->qkHeadDim == faInfo_->vHeadDim) {
-        // 等长 (qkHeadDim == vHeadDim) 按 D 值映射:
+        // 等长 (QK D == V DV) 按 D 值映射 (QK 与 V 同为该值):
         //   config=0: D=64,  sOuter=64,  sInner=128
         //   config=1: D=64,  sOuter=32,  sInner=256
         //   config=2: D=128, sOuter=64,  sInner=128 (D=72 复用, kernel 内 pad 到 128)
