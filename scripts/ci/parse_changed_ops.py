@@ -75,10 +75,9 @@ def _should_return_default(domain, operator_name, path_parts, is_experimental):
     if operator_name in BlackList:
         return True
 
-    # 按当前构建目录查找算子，正式目录不依赖同名 experimental 副本。
-    prefix = "experimental/" if is_experimental == "TRUE" else ""
-    op_path = f"{prefix}{domain}/{operator_name}"
-    if operator_name == "common" or not os.path.exists(op_path):
+    # 检查是否是 common 或 experimental 路径不存在
+    exp_path = f"experimental/{domain}/{operator_name}"
+    if operator_name == "common" or not os.path.exists(exp_path):
         return True
 
     # 实验分支额外检查 op_host 目录

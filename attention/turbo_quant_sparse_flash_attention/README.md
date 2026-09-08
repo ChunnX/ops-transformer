@@ -108,7 +108,6 @@ bash build.sh --ops=turbo_quant_sparse_flash_attention --ophost_test -j8
 python3 -m pip install --no-deps attention/turbo_quant_sparse_flash_attention/torch_ops_extension
 # 指定空闲物理设备；pytest 在进程内使用逻辑设备 0
 ASCEND_RT_VISIBLE_DEVICES=0 python3 -m pytest attention/turbo_quant_sparse_flash_attention/tests/pytest -q
-python3 scripts/ci/test_parse_changed_ops.py
 ```
 
 `tests/pytest` 覆盖两种 query dtype、两种 KV 布局、不同 query head 数、空序列、页间 padding、首轴 stride、storage offset、可选参数、非法元数据，以及图回放时更新输入的场景。
