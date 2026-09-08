@@ -58,7 +58,7 @@ __aicore__ inline void WaitForMteQuantReady()
 }
 
 // 每项 count 在 UB 中独占一个 data block，允许跨 rank 段直接使用 Normal 二维搬运。
-// 源 UB 在入口 PipeBarrier<PIPE_ALL>/SyncAll<false> 之前不再改写；不需要 MTE3_S 或临时重排。
+// 源 UB 在入口 PipeBarrier<PIPE_ALL> 之前不再改写；不需要 MTE3_S 或临时重排。
 __aicore__ inline void PublishMteExpertCounts(GM_ADDR *winRankAddr, uint64_t countWinOffset, uint32_t sourceRank,
                                               uint32_t worldSize, uint32_t expertsPerRank, uint32_t ownedExpertBegin,
                                               uint32_t ownedExpertNum, int32_t inputSequence,

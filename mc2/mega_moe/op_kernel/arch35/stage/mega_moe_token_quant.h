@@ -13,6 +13,7 @@
 
 #include "../common/mega_moe_mxfp8_utils.h"
 #include "../common/mega_moe_utils.h"
+#include "mega_moe_shared_expert_input.h"
 
 namespace MegaMoeImpl {
 
@@ -92,20 +93,24 @@ __aicore__ inline void LoadTopkWeightsToUb(const Params &params, const QuantProc
 }
 
 // 原型：MegaMoe::QuantProcessInRank。量化一个逻辑 AIV 任务负责的本卡 token。
-template <int32_t QuantMode, typename QuantOutType, typename ActivationType, typename TopkWeightsType,
-          bool TopkWeightsPrefetch>
-__aicore__ inline void QuantizeLocalTokens(const AivJobContext &job, const MoeStageCommonConfig &common,
-                                           const Params &params, const QuantProcessConfig &config,
-                                           QuantProcessScratch<ActivationType> &scratch)
+template <int32_t QuantMode, typename QuantOutType, typename ActivationType, typename QuantScaleOutType,
+          typename TopkWeightsType, bool TopkWeightsPrefetch>
+__aicore__ inline int32_t QuantizeLocalTokens(const AivJobContext &job, const MoeStageCommonConfig &common,
+                                              const Params &params, const QuantProcessConfig &config,
+                                              QuantProcessScratch<ActivationType> &scratch)
 {
     if constexpr (g_coreType == AIC) {
-        return;
+        return 0;
     }
     WorkRange tokenRange = TilingByJobContext(common.tokenNum, job.jobIndex, job.totalJobs, 1U);
     if (tokenRange.count == 0U) {
-        return;
+        return PublishMteQuantReady(params.peermemInfo.rankSyncInWorldPtr, job.jobIndex);
     }
+    int32_t inputSequence = 0;
     uint32_t hiddenDim = common.tokenHiddenDim;
+    constexpr uint32_t A_ELEMS_PER_BYTE = PackedElementTraits<QuantOutType>::ELEMENTS_PER_BYTE;
+    uint32_t sharedScaleElements =
+        Ops::Base::CeilDiv(hiddenDim, static_cast<uint32_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
     GlobalTensor<bfloat16_t> srcGlobalTensor;
     GlobalTensor<uint8_t> dstGlobalTensor;
     srcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(params.aGmAddr) +
@@ -156,10 +161,22 @@ __aicore__ inline void QuantizeLocalTokens(const AivJobContext &job, const MoeSt
         auto xOutBytesTensor = xOutTensor.template ReinterpretCast<uint8_t>();
         DataCopyPad(dstGlobalTensor[static_cast<uint64_t>(index) * config.quantTokenScaleAlignBytes], xOutBytesTensor,
                     xCopyOutParams);
+        if (index + 1U == tokenRange.count) {
+            // MoE 事件紧跟最后一条通信记录，不把后面的共享写回纳入 count 的逻辑依赖。
+            inputSequence = PublishMteQuantReady(params.peermemInfo.rankSyncInWorldPtr, job.jobIndex);
+        }
+        if (common.sharedExpertNum > 0U) {
+            StoreSharedExpertInputToken<ActivationType, QuantScaleOutType>(
+                params.workspaceInfo.sharedExpertInputDataPtr, params.workspaceInfo.sharedExpertInputScalePtr,
+                tokenRange.start + index, hiddenDim / A_ELEMS_PER_BYTE, sharedScaleElements,
+                config.quantTokenAlignBytes, xOutTensor);
+        }
+        // 所有目标都下发后才允许双缓冲复用，不能在通信写完后提前覆盖共享写回源。
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+    return inputSequence;
 }
 
 } // namespace MegaMoeImpl
