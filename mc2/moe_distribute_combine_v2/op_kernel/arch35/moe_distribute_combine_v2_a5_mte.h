@@ -530,7 +530,8 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitAt
     blockCntPerToken_ = Ceil(commDataBytes_, SPLIT_BLOCK_DATA_SIZE);
     hAlignWinSize_ = blockCntPerToken_ * SPLIT_BLOCK_SIZE;
     if constexpr (IndependentShared) {
-        moeCombineBytes_ = Ceil(axisH_ * sizeof(ExpandXType), SPLIT_BLOCK_DATA_SIZE) * SPLIT_BLOCK_SIZE;
+        // Pack MoE slots by actual communication bytes; the outer window reservation stays unchanged.
+        moeCombineBytes_ = hAlignWinSize_;
         sharedCombineBytes_ = Ceil(axisH_ * 2U * sizeof(ExpandXType), SPLIT_BLOCK_DATA_SIZE) * SPLIT_BLOCK_SIZE;
         tokenBytes_ = axisK_ * moeCombineBytes_ + sharedExpertNum_ * sharedCombineBytes_;
     }
@@ -1040,18 +1041,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ClearP
     }
 
     LocalTensor<float> flagTensor = packedClearFlagBuf_.Get<float>();
-    if constexpr (IndependentShared && QuantMode != UNQUANT) {
-        const DataCopyExtParams params{static_cast<uint16_t>(blockCntPerToken_), SPLIT_BLOCK_FLAG_SIZE, 0U,
-                                       SPLIT_BLOCK_DATA_SIZE, 0U};
-        for (uint32_t slot = 0U; slot < axisK_; ++slot) {
-            GlobalTensor<float> flags;
-            flags.SetGlobalBuffer(
-                (__gm__ float *)(epWindowGM_ + GetTokenOffset(tokenIndex, slot) + SPLIT_BLOCK_DATA_SIZE));
-            DataCopyPad(flags, flagTensor, params);
-        }
-        return;
-    }
-    // Unquantized MoE slots are contiguous; shared slots are cleared separately.
+    // MoE slots are contiguous in every quantization mode; independent shared slots are cleared separately.
     const uint32_t clearSlotCount = IndependentShared ? axisK_ : flagRcvCount_;
     uint32_t clearBlockCount = clearSlotCount * blockCntPerToken_;
     const DataCopyExtParams clearFlagParams{static_cast<uint16_t>(clearBlockCount), SPLIT_BLOCK_FLAG_SIZE, 0U,
@@ -1097,18 +1087,7 @@ __aicore__ inline uint32_t MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Wa
                                                                                            uint32_t tokenLocalIdx)
 {
     GM_ADDR wAddr = (__gm__ uint8_t *)(epWindowGM_) + GetTokenOffset(tokenIndex, slotIdx);
-    uint32_t arriveSlotCount = 0U;
-    if constexpr (IndependentShared && QuantMode != UNQUANT) {
-        // Quantized MoE slots have an unwritten tail in their fixed reservation.
-        for (; arriveSlotCount < slotCount; ++arriveSlotCount) {
-            GM_ADDR slot = epWindowGM_ + GetTokenOffset(tokenIndex, slotIdx + arriveSlotCount);
-            if (CheckPackedTokenArrive(slot, 1U) == 0U) {
-                break;
-            }
-        }
-    } else {
-        arriveSlotCount = CheckPackedTokenArrive(wAddr, slotCount);
-    }
+    uint32_t arriveSlotCount = CheckPackedTokenArrive(wAddr, slotCount);
     if (arriveSlotCount == 0U) {
         return 0U;
     }
