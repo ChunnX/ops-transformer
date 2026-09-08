@@ -119,6 +119,21 @@ class QuantFlashAttnSpec:
     }
 
 
+class QuantFlashAttnMetadataSpec:
+    """quant_flash_attn_metadata 生成器的 TestSpec。
+
+    与 flash_attn 资产的 FlashAttnMetadataSpec 一致: 只提供 customized inputs
+    (把 cu_seqlens/seqused 描述向量回填进 metadata API 输入), 无独立测试套件。
+    """
+
+    customize_inputs = load_impl_module(
+        "metadata_inputs"
+    ).generate_quant_flash_attn_metadata_inputs
+
+
 __spec__ = {
     "torch.ops.cann_ops_transformer.quant_flash_attn": "QuantFlashAttnSpec",
+    "torch.ops.cann_ops_transformer.quant_flash_attn_metadata": (
+        "QuantFlashAttnMetadataSpec"
+    ),
 }
