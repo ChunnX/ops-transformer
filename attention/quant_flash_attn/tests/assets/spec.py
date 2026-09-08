@@ -13,14 +13,15 @@
 import importlib.util
 from pathlib import Path
 
-try: 
-    from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn 
-except ImportError as e: 
-    logging.warning("Failed to import cann_ops_transformer.ops: %s", e) 
+try:
+    from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn
+except ImportError as e:
+    logging.warning("Failed to import cann_ops_transformer.ops: %s", e)
 
 ASSET_IMPL_DIR = Path(__file__).with_name("impl")
 
 _impl_cache = {}
+
 
 def load_impl_module(stem):
     """懒加载 impl 模块。

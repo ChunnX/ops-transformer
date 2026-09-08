@@ -110,7 +110,9 @@ def _max_seqlen(kwargs, name):
     return -1
 
 
-def build_metadata_arguments(q, k, v, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, kwargs):
+def build_metadata_arguments(
+    q, k, v, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, kwargs
+):
     """Derive ``quant_flash_attn_metadata`` arguments from the main invocation."""
     layout_q = str(get_attribute(kwargs, "layout_q", "BSND"))
     layout_q_descale = str(get_attribute(kwargs, "layout_q_descale", layout_q))
@@ -151,11 +153,13 @@ def build_metadata_arguments(q, k, v, cu_seqlens_q, cu_seqlens_kv, seqused_q, se
     # 空 (0,) 张量归一成 None, 否则 torch_extension 重算 batch_size 时会把
     # size(0)=0 误当 batch (参考 flash_attn 资产的 _resolve_tensor)。
     cu_q = _resolve_tensor(cu_seqlens_q, kwargs, "cu_seqlens_q") if is_tnd_q else None
-    cu_kv = _resolve_tensor(cu_seqlens_kv, kwargs, "cu_seqlens_kv") if is_tnd_kv else None
+    cu_kv = (
+        _resolve_tensor(cu_seqlens_kv, kwargs, "cu_seqlens_kv") if is_tnd_kv else None
+    )
     seq_q = _resolve_tensor(seqused_q, kwargs, "seqused_q")
     seq_kv = _resolve_tensor(seqused_kv, kwargs, "seqused_kv")
-    batch_size = None if is_tnd_q else _derive_batch_size(
-        q_shape, layout_q, cu_q, seq_q, kwargs
+    batch_size = (
+        None if is_tnd_q else _derive_batch_size(q_shape, layout_q, cu_q, seq_q, kwargs)
     )
 
     return {
@@ -268,7 +272,9 @@ def run(
     hook_kwargs.setdefault("layout_kv", layout_kv)
     hook_kwargs.setdefault("layout_out", layout_out)
     testcase_name = hook_kwargs.get("testcase_name")
-    logging.info("[%s] build QuantFlashAttn metadata (quant_mode=%s)", testcase_name, quant_mode)
+    logging.info(
+        "[%s] build QuantFlashAttn metadata (quant_mode=%s)", testcase_name, quant_mode
+    )
 
     arguments = build_metadata_arguments(
         q,

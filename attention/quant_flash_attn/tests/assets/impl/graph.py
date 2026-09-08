@@ -112,7 +112,9 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         **kwargs,
     ):
         super().__init__()
-        torch_npu_mod, mxfp8_golden_mod, fp8_golden_mod, hif8_golden_mod = _load_npu_modules()
+        torch_npu_mod, mxfp8_golden_mod, fp8_golden_mod, hif8_golden_mod = (
+            _load_npu_modules()
+        )
         torch_npu_mod.npu.set_device(int(kwargs.get("device_id", 0)))
 
         # ---- 0. 从 op-schema 入参推导配置 (graph 路径拿不到额外 attr) ----
@@ -133,8 +135,12 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
         q_shape = tuple(int(value) for value in q.shape)
         k_shape = tuple(int(value) for value in k.shape)
         D = int(kwargs.get("D") or q_shape[-1])
-        N_q = int(kwargs.get("N_q") or (q_shape[2] if layout_q == "BSND" else q_shape[1]))
-        N_kv = int(kwargs.get("N_kv") or (k_shape[2] if layout_kv == "PA_BBND" else k_shape[1]))
+        N_q = int(
+            kwargs.get("N_q") or (q_shape[2] if layout_q == "BSND" else q_shape[1])
+        )
+        N_kv = int(
+            kwargs.get("N_kv") or (k_shape[2] if layout_kv == "PA_BBND" else k_shape[1])
+        )
         head_dim_v = kwargs.get("head_dim_v")
         enable_pa = bool(kwargs.get("enable_pa")) or layout_kv.startswith("PA_")
         kv_cache_layout = kwargs.get("kv_cache_layout") or layout_kv
