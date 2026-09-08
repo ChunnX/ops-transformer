@@ -364,4 +364,4 @@
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| low_latency_combine接口 | [deepep.py](../../torch_extension/cann_ops_transformer/ops/deep_ep.py) | 通过[low_latency_combine](../../torch_extension/cann_ops_transformer/docs/zh/low_latency_combine.md)接口方式调用moe_distribute_combine_v3算子。 |
+| low_latency_combine接口 | [deepep.py](../../torch_extension/cann_ops_transformer/ops/deep_ep.py) | 通过[low_latency_combine](../../mc2/common/docs/torchapi_low_latency_combine.md)接口方式调用moe_distribute_combine_v3算子。 |
