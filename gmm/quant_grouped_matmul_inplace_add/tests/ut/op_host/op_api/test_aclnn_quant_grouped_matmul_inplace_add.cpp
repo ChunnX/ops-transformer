@@ -63,31 +63,29 @@ struct QGmmInplaceAddOpApiCase {
         uint64_t workspaceSize = 0;
         aclnnStatus ret = ACLNN_SUCCESS;
         if (runMode == kRunModeScale2Null) {
-            auto ut = OP_API_UT(aclnnQuantGroupedMatmulInplaceAdd,
-                                INPUT(x1Desc, x2Desc, scale1Desc, nullptr, groupListDesc, yDesc, groupListType,
-                                      groupSize),
-                                OUTPUT());
+            auto ut = OP_API_UT(
+                aclnnQuantGroupedMatmulInplaceAdd,
+                INPUT(x1Desc, x2Desc, scale1Desc, nullptr, groupListDesc, yDesc, groupListType, groupSize), OUTPUT());
             aclOpExecutor *executor = nullptr;
             ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
         } else if (runMode == kRunModeGroupListNull) {
             auto ut = OP_API_UT(aclnnQuantGroupedMatmulInplaceAdd,
-                                INPUT(x1Desc, x2Desc, scale1Desc, scale2Desc, nullptr, yDesc, groupListType,
-                                      groupSize),
+                                INPUT(x1Desc, x2Desc, scale1Desc, scale2Desc, nullptr, yDesc, groupListType, groupSize),
                                 OUTPUT());
             aclOpExecutor *executor = nullptr;
             ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
         } else if (runMode == kRunModeYNull) {
-            auto ut = OP_API_UT(aclnnQuantGroupedMatmulInplaceAdd,
-                                INPUT(x1Desc, x2Desc, scale1Desc, scale2Desc, groupListDesc, nullptr, groupListType,
-                                      groupSize),
-                                OUTPUT());
+            auto ut = OP_API_UT(
+                aclnnQuantGroupedMatmulInplaceAdd,
+                INPUT(x1Desc, x2Desc, scale1Desc, scale2Desc, groupListDesc, nullptr, groupListType, groupSize),
+                OUTPUT());
             aclOpExecutor *executor = nullptr;
             ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
         } else {
-            auto ut = OP_API_UT(aclnnQuantGroupedMatmulInplaceAdd,
-                                INPUT(x1Desc, x2Desc, scale1Desc, scale2Desc, groupListDesc, yDesc, groupListType,
-                                      groupSize),
-                                OUTPUT());
+            auto ut =
+                OP_API_UT(aclnnQuantGroupedMatmulInplaceAdd,
+                          INPUT(x1Desc, x2Desc, scale1Desc, scale2Desc, groupListDesc, yDesc, groupListType, groupSize),
+                          OUTPUT());
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         }
         if (checkRet) {
@@ -193,13 +191,11 @@ TEST_P(qgmm_inplace_add_opapi_csv_test, run_case)
     GetParam().Run();
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    qgmm_inplace_add_opapi_csv,
-    qgmm_inplace_add_opapi_csv_test,
-    testing::ValuesIn(LoadCases(ops::ut::ResolveCsvPath(
-        "test_aclnn_quant_grouped_matmul_inplace_add.csv",
-        "gmm/quant_grouped_matmul_inplace_add/tests/ut/op_host/op_api", __FILE__))),
-    BuildCaseName);
+INSTANTIATE_TEST_SUITE_P(qgmm_inplace_add_opapi_csv, qgmm_inplace_add_opapi_csv_test,
+                         testing::ValuesIn(LoadCases(ops::ut::ResolveCsvPath(
+                             "test_aclnn_quant_grouped_matmul_inplace_add.csv",
+                             "gmm/quant_grouped_matmul_inplace_add/tests/ut/op_host/op_api", __FILE__))),
+                         BuildCaseName);
 
 TEST(qgmm_inplace_add_opapi_direct_test, phase2_null_executor_path)
 {
