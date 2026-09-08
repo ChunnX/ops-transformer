@@ -421,8 +421,7 @@ static ge::graphStatus CheckActivationParamsAttr(const gert::TypedContinuousVect
             OP_TILING_CHECK(
                 !IsValidSituScale(info.activationParams2),
                 OP_LOGE_WITH_INVALID_ATTR(K_OP_NAME, "activation_params[1]",
-                                          std::to_string(info.activationParams2).c_str(),
-                                          "finite and greater than 0"),
+                                          std::to_string(info.activationParams2).c_str(), "finite and greater than 0"),
                 return GRAPH_FAILED);
         }
     }
