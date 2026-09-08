@@ -1876,7 +1876,7 @@ static ge::graphStatus CheckWeightScalesTensorDim(const gert::TilingContext *con
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckInputShape(const gert::StorageShape *storageShape, const char *inputName,
+static ge::graphStatus CheckTensorDimNum(const gert::StorageShape *storageShape, const char *inputName,
                                        const char *nodeName, int64_t expectedDim)
 {
     OP_TILING_CHECK(storageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, inputName), return ge::GRAPH_FAILED);
@@ -1923,23 +1923,21 @@ static ge::graphStatus CheckBasicInputTensorDim(const gert::TilingContext *conte
                                                 const char *nodeName)
 {
     const gert::StorageShape *contextStorageShape = context->GetInputShape(config.contextIndex);
-    if (CheckInputShape(contextStorageShape, "context", nodeName, ONE_DIM) != ge::GRAPH_SUCCESS) {
+    if (CheckTensorDimNum(contextStorageShape, "context", nodeName, ONE_DIM) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     int64_t contextDim0 = contextStorageShape->GetStorageShape().GetDim(0);
     OP_LOGD(nodeName, "context dim0 = %ld", contextDim0);
 
     const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
-    if (CheckInputShape(xStorageShape, "x", nodeName, TWO_DIMS) != ge::GRAPH_SUCCESS) {
+    if (CheckTensorDimNum(xStorageShape, "x", nodeName, TWO_DIMS) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
-    OP_LOGD(nodeName, "x dim0 = %ld", xDim0);
-    OP_LOGD(nodeName, "x dim1 = %ld", xDim1);
 
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
-    if (CheckInputShape(topkIdsStorageShape, "topkIds", nodeName, TWO_DIMS) != ge::GRAPH_SUCCESS) {
+    if (CheckTensorDimNum(topkIdsStorageShape, "topkIds", nodeName, TWO_DIMS) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     const int64_t topkIdsDim0 = topkIdsStorageShape->GetStorageShape().GetDim(0);
@@ -1948,7 +1946,7 @@ static ge::graphStatus CheckBasicInputTensorDim(const gert::TilingContext *conte
     OP_LOGD(nodeName, "topkIds dim1 = %ld", topkIdsDim1);
 
     const gert::StorageShape *topkWeightsStorageShape = context->GetInputShape(config.topkWeightsIndex);
-    if (CheckInputShape(topkWeightsStorageShape, "topkWeights", nodeName, TWO_DIMS) != ge::GRAPH_SUCCESS) {
+    if (CheckTensorDimNum(topkWeightsStorageShape, "topkWeights", nodeName, TWO_DIMS) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     const int64_t topkWeightsDim0 = topkWeightsStorageShape->GetStorageShape().GetDim(0);
