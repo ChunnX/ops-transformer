@@ -91,7 +91,7 @@ void PrintAllToAllUsage(const std::string &programName)
     std::cerr << "  tileSize: M rows per tile (default: m / tileCnt)" << std::endl;
     std::cerr << "  tailSize: M rows per tail tile, 0=no tail (default: 0)" << std::endl;
     std::cerr << "  isLocalDelayed: defer self batch to end (0/1, default: 1)" << std::endl;
-    std::cerr << "Example: " << programName << " 2048 3584 4096 4 1 0 0 4 0 352 1" << std::endl;
+    std::cerr << "Example: " << programName << " 2048 3584 4096 4 1 0 0 4 512 0 1" << std::endl;
 }
 
 void ParseArgs(int argc, char *argv[], AllToAllArgs &args)
