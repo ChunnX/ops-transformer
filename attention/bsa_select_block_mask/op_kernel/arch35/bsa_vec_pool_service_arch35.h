@@ -7,8 +7,9 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+
 /*!
- * \file bsa_vec_pool_service_arch35.h
+ * \file bsa_vec_pool_service.h
  * \brief
  */
 #ifndef BSA_VEC_POOL_SERVICE_ARCH35_H
@@ -97,9 +98,8 @@ private:
 };
 
 template <typename BSAT>
-__aicore__ inline void
-BSAVecPoolService<BSAT>::InitParams(const BSAConstInfo &constInfo,
-                                    const optiling::BSASelectBlockMaskTilingData *__restrict tilingData)
+__aicore__ inline void BSAVecPoolService<BSAT>::InitParams(
+    const BSAConstInfo &constInfo, const optiling::BSASelectBlockMaskTilingData *__restrict tilingData)
 {
     this->constInfo = constInfo;
     this->tilingData = tilingData;
@@ -156,11 +156,12 @@ __aicore__ inline void BSAVecPoolService<BSAT>::InitBuffers(TBuf<> *uBuf_)
 }
 
 template <typename BSAT>
-__aicore__ inline void
-BSAVecPoolService<BSAT>::InitGM(GlobalTensor<OUT_T> &qCmpGm, GlobalTensor<OUT_T> &kCmpGm, GlobalTensor<IN_T> &queryGm,
-                                GlobalTensor<IN_T> &keyGm, GlobalTensor<int64_t> &actualBlockLenQGm,
-                                GlobalTensor<int64_t> &actualBlockLenKVGm, GlobalTensor<int64_t> &actualSeqLensQGm,
-                                GlobalTensor<int64_t> &actualSeqLensKVGm)
+__aicore__ inline void BSAVecPoolService<BSAT>::InitGM(GlobalTensor<OUT_T> &qCmpGm, GlobalTensor<OUT_T> &kCmpGm,
+                                                       GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
+                                                       GlobalTensor<int64_t> &actualBlockLenQGm,
+                                                       GlobalTensor<int64_t> &actualBlockLenKVGm,
+                                                       GlobalTensor<int64_t> &actualSeqLensQGm,
+                                                       GlobalTensor<int64_t> &actualSeqLensKVGm)
 {
     this->qCmpWrkTensor = qCmpGm;
     this->kCmpWrkTensor = kCmpGm;
@@ -320,12 +321,13 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingSingleBlockImpl(GlobalTen
                                                                        bool isTnd, uint32_t timeStrideElems)
 {
     uint32_t dSize = constInfo.dSize;
+    uint32_t maxLen = BSAConstInfo::BUFFER_SIZE_BYTE_60K / BUFFER / sizeof(IN_T) / dSize;
     // 等上个步骤结束，防止内存踩踏
     AscendC::PipeBarrier<PIPE_ALL>();
     if (actualLen == 0) {
         PoolingLen0Impl(srcGm, dstGm, srcOffset, dstOffset);
         return;
-    } else if (actualLen <= 128) {
+    } else if (actualLen <= maxLen) {
         PoolingLen256Impl(srcGm, dstGm, srcOffset, dstOffset, actualLen, isTnd, timeStrideElems);
         return;
     } else {
@@ -368,9 +370,10 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLen0Impl(GlobalTensor<IN_
 }
 
 template <typename BSAT>
-__aicore__ inline void
-BSAVecPoolService<BSAT>::PoolingLen256Impl(GlobalTensor<IN_T> &srcGm, GlobalTensor<OUT_T> &dstGm, uint64_t srcOffset,
-                                           uint64_t dstOffset, uint32_t actualLen, bool isTnd, uint32_t timeStrideElems)
+__aicore__ inline void BSAVecPoolService<BSAT>::PoolingLen256Impl(GlobalTensor<IN_T> &srcGm, GlobalTensor<OUT_T> &dstGm,
+                                                                  uint64_t srcOffset, uint64_t dstOffset,
+                                                                  uint32_t actualLen, bool isTnd,
+                                                                  uint32_t timeStrideElems)
 {
     uint32_t dSize = constInfo.dSize;
 
@@ -378,6 +381,8 @@ BSAVecPoolService<BSAT>::PoolingLen256Impl(GlobalTensor<IN_T> &srcGm, GlobalTens
 
     SetFlag<HardEvent::MTE3_MTE2>(eventPing);
     WaitFlag<HardEvent::MTE3_MTE2>(eventPing);
+    SetFlag<HardEvent::MTE3_MTE2>(eventPong);
+    WaitFlag<HardEvent::MTE3_MTE2>(eventPong);
 
     // Step 1: DataCopyPad GM→UB，搬入 actualLen × D 个 IN_T 元素到 poolInputUb[bufferId]
     DataCopyExtParams copyInParams;
@@ -435,13 +440,14 @@ BSAVecPoolService<BSAT>::PoolingLen256Impl(GlobalTensor<IN_T> &srcGm, GlobalTens
 }
 
 template <typename BSAT>
-__aicore__ inline void
-BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<IN_T> &srcGm, GlobalTensor<OUT_T> &dstGm, uint64_t srcOffset,
-                                           uint64_t dstOffset, uint32_t actualLen, bool isTnd, uint32_t timeStrideElems)
+__aicore__ inline void BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<IN_T> &srcGm, GlobalTensor<OUT_T> &dstGm,
+                                                                  uint64_t srcOffset, uint64_t dstOffset,
+                                                                  uint32_t actualLen, bool isTnd,
+                                                                  uint32_t timeStrideElems)
 {
     uint32_t dSize = constInfo.dSize;
     uint32_t numHeads = constInfo.numHeads;
-    uint32_t maxLen = BSAConstInfo::BUFFER_SIZE_BYTE_60K / BUFFER / sizeof(IN_T) / 128;
+    uint32_t maxLen = BSAConstInfo::BUFFER_SIZE_BYTE_60K / BUFFER / sizeof(IN_T) / dSize;
     uint32_t loops = (actualLen + maxLen - 1) / maxLen;
     uint32_t tailLen = actualLen % maxLen == 0 ? maxLen : actualLen % maxLen;
 

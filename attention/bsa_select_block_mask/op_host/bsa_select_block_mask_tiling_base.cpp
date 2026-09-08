@@ -7,6 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+
 /*!
  * \file bsa_select_block_mask_tiling_base.cpp
  * \brief
@@ -330,11 +331,19 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
 {
     uint64_t qCmpSize = static_cast<uint64_t>(xBlocks) * dSize * (sizeof(float) / 2);
     uint64_t kCmpSize = static_cast<uint64_t>(yBlocks) * dSize * (sizeof(float) / 2);
-    uint64_t attnScoreFp16Size = static_cast<uint64_t>(xBlocks) * yBlocks * (sizeof(float) / 2);
+    // post 模式下 post pool 融合进 softmax 二趟：attnScore 中转显存不再分配
+    uint64_t attnScoreFp16Size = usePostBlockShape ? 0 : static_cast<uint64_t>(xBlocks) * yBlocks * (sizeof(float) / 2);
 
     uint64_t pooledScoreSize = usePostBlockShape ? static_cast<uint64_t>(batchSize) * numHeads * postXBlocks *
                                                        postYBlocks * (sizeof(float) / 2) :
                                                    0;
+
+    // 跨 chunk 行组部分和（仅 qChunkSize 不整除 postXBlock 时需要：post 行组跨 qChunk 边界）
+    // 槽位：每 AIV 2 个（chunk 奇偶各一），行宽为最大粗粒度网格列数 postYBlocks
+    uint64_t postStagingSize = 0;
+    if (usePostBlockShape && Q_CHUNK_SIZE % postBlockShapeX != 0) {
+        postStagingSize = static_cast<uint64_t>(aivNum) * 2 * postYBlocks * sizeof(float);
+    }
 
     uint64_t scoreFp32Size = Q_CHUNK_SIZE * aicNum * yBlocks * sizeof(float);
 
@@ -352,7 +361,7 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
     uint64_t pooledScoreOffset = 0;
     if (usePostBlockShape) {
         pooledScoreOffset = attnScoreFp16Size;
-        totalWorkspaceSize += pooledScoreSize;
+        totalWorkspaceSize += pooledScoreSize + postStagingSize;
     }
 
     outputParams_->set_qCmpSize(qCmpSize);
@@ -362,6 +371,8 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
     outputParams_->set_topkWorkspaceSize(topkWorkspaceSize);
     outputParams_->set_pooledScoreSize(pooledScoreSize);
     outputParams_->set_pooledScoreOffset(pooledScoreOffset);
+    outputParams_->set_postStagingSize(postStagingSize);
+    outputParams_->set_postStagingOffset(pooledScoreOffset + pooledScoreSize);
     outputParams_->set_totalWorkspaceSize(totalWorkspaceSize);
 }
 

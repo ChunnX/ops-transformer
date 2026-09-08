@@ -7,9 +7,14 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+
 /*!
  * \file bsa_vec_sm_service_arch35.h
- * \brief
+ * \brief Online Softmax 服务（融合 post pool）
+ *        aiv0/aiv1 行切分由 BSAVecPostPoolService::GetChunkRowSlices 统一给出：
+ *        非 post 模式为经典对半切分；post 模式按 postXBlock 组对齐（跨 chunk 片元归 aiv0），
+ *        两趟 softmax 与 post pool 折叠共用同一行切分，满足 online softmax 一致性要求。
+ *        二趟在归一化 FP32 tile 上直接调 post pool 折叠（post 模式不再写 attnScore GM）。
  */
 #ifndef BSA_VEC_SM_SERVICE_ARCH35_H
 #define BSA_VEC_SM_SERVICE_ARCH35_H
@@ -19,14 +24,20 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "bsa_select_block_mask_common_arch35.h"
 #include "bsa_select_block_mask_tiling_data_arch35.h"
+#include "bsa_vec_post_pool_service_arch35.h"
 #include "bsa_vec_sm_vf.h"
+
+// 行切片数组容量：单元数上限 + 超大单元拆分余量
+static constexpr uint32_t BSA_SM_SLICES_MAX_ARCH35 = BSA_POST_POOL_UNITS_MAX + 2;
 
 template <typename BSAT>
 class BSAVecSmService {
 public:
     using T = float;                    //< 中间计算类型 (float, FP32)
     using IN_T = typename BSAT::inputT; //< 输入数据类型 (FP16/BF16)
-    using OUT_T = half;                 //< 输出数据类型 (INT8)
+    using OUT_T = half;                 //< softmax 输出数据类型 (FP16)
+
+    using PostRowSlice = typename BSAVecPostPoolService<BSAT>::PostRowSlice;
 
     static constexpr BSALayout LAYOUT_Q = BSAT::layoutQ;   // BNSD or TND
     static constexpr BSALayout LAYOUT_KV = BSAT::layoutKV; // BNSD or TND
@@ -36,14 +47,16 @@ public:
                                       const optiling::BSASelectBlockMaskTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers(TBuf<> *uBuf_);
 
-    __aicore__ inline void InitGM(GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<OUT_T> &attnScoreFp16Gm);
+    __aicore__ inline void InitGM(GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<OUT_T> &attnScoreFp16Gm,
+                                  GlobalTensor<OUT_T> &pooledScoreGm, GlobalTensor<T> &postStagingGm);
 
     __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
-                                                       uint32_t kChunkSize, uint32_t validYBlocks);
+                                                       uint32_t kChunkSize, uint32_t validXBlocks,
+                                                       uint32_t validYBlocks);
 
     __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
                                                     uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx,
-                                                    uint32_t validYBlocks);
+                                                    uint32_t validXBlocks, uint32_t validYBlocks);
 
 private:
     BSAConstInfo constInfo;
@@ -52,18 +65,21 @@ private:
     static constexpr int32_t BUFFER = 1;
     uint32_t vecSubBlockIdx = 0; // vector核在aic的序号： 0 or 1
 
+    // ---- post pool 融合服务（post 模式下二趟直接折叠）----
+    BSAVecPostPoolService<BSAT> postPoolOP;
+
     // ---- GM 全局张量引用 ----
-    GlobalTensor<OUT_T> attnScoreFp16GmTensor; //< 注意力分数 [xBlocks * yBlocks] (FP32→FP16)
+    GlobalTensor<OUT_T> attnScoreFp16GmTensor; //< 注意力分数 [xBlocks * yBlocks] (FP32→FP16)，非 post 模式写出
     GlobalTensor<T> scoreFp32GmTensor;         //< Softmax 临时缓冲 (FP32)
-    TBuf<> uBuf_;                              //< 统一 UB 缓冲区 (192KB)
+    TBuf<> *uBufPtr = nullptr;                 //< 统一 UB 缓冲句柄（post 服务在其后 carve）
 
     LocalTensor<uint8_t> reduceSharedTemp; // reduce相关 高阶接口的临时存储空间，暂定24k
     LocalTensor<T> tmpMax;                 //< Softmax Max (FP32) * 8 (即FLOAT_DATA_BLOCK_NUM)
     LocalTensor<T> tmpSum;                 //< Softmax Sum (FP32) * 8 (即FLOAT_DATA_BLOCK_NUM)
-    LocalTensor<T> globalMax;              //< Softmax old Max (FP32) 在一轮k里会驻守 <= 64
-    LocalTensor<T> globalSum;              //< Softmax old Sum (FP32) 在一轮k里会驻守 <= 64
-    LocalTensor<T> globalMaxBroc;          //< Softmax Max (FP32) 在一轮k里会驻守 <= 64
-    LocalTensor<T> globalSumBroc;          //< Softmax Max (FP32) 在一轮k里会驻守 <= 64
+    LocalTensor<T> globalMax;              //< Softmax old Max (FP32) 在一轮k里会驻守 <= 128
+    LocalTensor<T> globalSum;              //< Softmax old Sum (FP32) 在一轮k里会驻守 <= 128
+    LocalTensor<T> globalMaxBroc;          //< Softmax Max (FP32) 在一轮k里会驻守 <= 128
+    LocalTensor<T> globalSumBroc;          //< Softmax Sum (FP32) 在一轮k里会驻守 <= 128
     LocalTensor<T> diffMax;
 
     LocalTensor<T> scoreUb;         // out shape [x, y] < [64, 128 * 5]
@@ -80,25 +96,13 @@ __aicore__ inline void BSAVecSmService<BSAT>::InitParams(
     this->constInfo = constInfo;
     this->tilingData = tilingData;
     vecSubBlockIdx = constInfo.subBlockIdx; // 0 or 1
+    postPoolOP.InitParams(constInfo, tilingData);
 }
 
 template <typename BSAT>
 __aicore__ inline void BSAVecSmService<BSAT>::InitBuffers(TBuf<> *uBuf_)
 {
-    // ub 划分
-    // 根据UB计算，最多可以5次cube，一次vector计算， 即score ub 占用64 * 128 * 5 * 4 = 160k
-    // 1个cube计算128 * 128， 计算5次
-    // 一个vector 计算64 * 128 * 5
-    // max 64 * 4 = 0.25k
-    // sum 64 * 4 = 0.25k
-    // dif (max - global_max) 64 * 4 = 0.25k
-    // score 64 * 128 * 4 * 5 = 160 k // 1 个cube核计算量均分给俩个vectore核
-    // global Max 64 * 4 = 0.25k
-    // global L 64 * 4 = 0.25kk
-    // max_broc 64 * 8 * 4 = 2k
-    // sum_broc 64 * 8 * 4 = 2k
-    // shareTempReduce 24k
-
+    // ub 划分（softmax 相位约 162.5KB，post 相位约 11KB，合计 < 192KB）
     uint32_t ubOffset = 0;
     uint32_t chunkSize = Q_CHUNK_SIZE;
 
@@ -106,21 +110,17 @@ __aicore__ inline void BSAVecSmService<BSAT>::InitBuffers(TBuf<> *uBuf_)
     ubOffset += chunkSize * sizeof(T);
     ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
 
-#if !BSA_ENABLE_SOFTMAX_FIRST_PASS_VF
     globalMaxBroc = uBuf_->GetWithOffset<T>(chunkSize * FLOAT_DATA_BLOCK_NUM, ubOffset);
     ubOffset += chunkSize * FLOAT_DATA_BLOCK_NUM * sizeof(T);
     ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
-#endif
 
     globalSum = uBuf_->GetWithOffset<T>(chunkSize, ubOffset);
     ubOffset += chunkSize * sizeof(T);
     ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
 
-#if !BSA_ENABLE_SOFTMAX_SECOND_PASS_VF
     globalSumBroc = uBuf_->GetWithOffset<T>(chunkSize * FLOAT_DATA_BLOCK_NUM, ubOffset);
     ubOffset += chunkSize * FLOAT_DATA_BLOCK_NUM * sizeof(T);
     ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
-#endif
 
     tmpMax = uBuf_->GetWithOffset<T>(chunkSize, ubOffset);
     ubOffset += chunkSize * sizeof(T);
@@ -145,113 +145,40 @@ __aicore__ inline void BSAVecSmService<BSAT>::InitBuffers(TBuf<> *uBuf_)
     reduceSharedTemp = uBuf_->GetWithOffset<uint8_t>(sharedReduceEles, ubOffset);
     ubOffset += sharedReduceEles * sizeof(uint8_t);
     ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
+
+    uBufPtr = uBuf_;
+    if (constInfo.usePostBlockShape) {
+        // post 相位缓冲紧随 softmax 之后 carve，reduce 临时空间两相位复用
+        postPoolOP.InitBuffers(uBuf_, ubOffset, reduceSharedTemp);
+    }
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAVecSmService<BSAT>::InitGM(GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<OUT_T> &attnScoreFp16Gm)
+__aicore__ inline void BSAVecSmService<BSAT>::InitGM(GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<OUT_T> &attnScoreFp16Gm,
+                                                     GlobalTensor<OUT_T> &pooledScoreGm, GlobalTensor<T> &postStagingGm)
 {
     this->attnScoreFp16GmTensor = attnScoreFp16Gm;
     this->scoreFp32GmTensor = ScoreFp32Gm;
-}
-
-__aicore__ inline void SubBroadcast(LocalTensor<float> const &ubOut, LocalTensor<float> const &ubIn0,
-                                    LocalTensor<float> const &ubIn1, uint64_t row, uint64_t col)
-{
-    // 默认 col 安装32字节对齐
-    // 分核逻辑的关系，矩阵shape不会超过[128, 128 * 5], 若启动俩个vector，shape不会超过[64, 128 * 5]
-    // 所以，一次sub， 最大可计算[255, 64], 迭代次数为行数, 一次迭代计算元素大小最多为64
-    // 所以，对列按照64切分，循环sub计算
-    uint32_t countEachRepeat = 256 / sizeof(float);                   // 每次迭代计算的元素 64
-    uint32_t colLoop = (col + countEachRepeat - 1) / countEachRepeat; // 上取整
-    uint32_t remain = col % countEachRepeat;
-    uint64_t mask = countEachRepeat; // 参与计算的元素个数
-    uint8_t repeatTimes = row;
-    AscendC::BinaryRepeatParams repeatParams;
-    repeatParams.dstBlkStride = 1;
-    repeatParams.src0BlkStride = 1;
-    repeatParams.src1BlkStride = 0;
-    repeatParams.dstRepStride = col / FLOAT_DATA_BLOCK_NUM;
-    repeatParams.src0RepStride = col / FLOAT_DATA_BLOCK_NUM;
-    repeatParams.src1RepStride = 1;
-
-    for (uint32_t i = 0; i < colLoop; i++) {
-        if (i == colLoop - 1 && remain != 0) {
-            mask = remain;
-        }
-        AscendC::Sub(ubOut[i * countEachRepeat], ubIn0[i * countEachRepeat], ubIn1[0], mask, repeatTimes, repeatParams);
+    if (constInfo.usePostBlockShape) {
+        postPoolOP.InitGM(pooledScoreGm, postStagingGm);
     }
-    AscendC::PipeBarrier<PIPE_V>();
-}
-
-__aicore__ inline void DivBroadcast(LocalTensor<float> const &ubOut, LocalTensor<float> const &ubIn0,
-                                    LocalTensor<float> const &ubIn1, uint64_t row, uint64_t col)
-{
-    // 默认 col 安装32字节对齐
-    // 分核逻辑的关系，矩阵shape不会超过[128, 128 * 5], 若启动俩个vector，shape不会超过[64, 128 * 5]
-    // 所以，一次div， 最大可计算[255, 64], 迭代次数为行数, 一次迭代计算元素大小最多为64
-    // 所以，对列按照64切分，循环div计算
-    uint32_t countEachRepeat = 256 / sizeof(float);                   // 每次迭代计算的元素 64
-    uint32_t colLoop = (col + countEachRepeat - 1) / countEachRepeat; // 上取整
-    uint32_t remain = col % countEachRepeat;
-    uint64_t mask = countEachRepeat; // 参与计算的元素个数
-    uint8_t repeatTimes = row;
-    AscendC::BinaryRepeatParams repeatParams;
-    repeatParams.dstBlkStride = 1;
-    repeatParams.src0BlkStride = 1;
-    repeatParams.src1BlkStride = 0;
-    repeatParams.dstRepStride = col / FLOAT_DATA_BLOCK_NUM;
-    repeatParams.src0RepStride = col / FLOAT_DATA_BLOCK_NUM;
-    repeatParams.src1RepStride = 1;
-
-    for (uint32_t i = 0; i < colLoop; i++) {
-        if (i == colLoop - 1 && remain != 0) {
-            mask = remain;
-        }
-        AscendC::Div(ubOut[i * countEachRepeat], ubIn0[i * countEachRepeat], ubIn1[0], mask, repeatTimes, repeatParams);
-    }
-    AscendC::PipeBarrier<PIPE_V>();
 }
 
 /**
  * @brief Online Softmax 第一遍——对一个 K-Chunk 的 Score 块完成局部 softmax 的 m/l 累积
- * @details 采用 Online Softmax 算法（两遍法），避免全尺寸 score 矩阵的物化。
- *          第一遍对 score 矩阵的一个子块 [qChunkStart:qChunkStart+qChunkSize, kChunkStart:kChunkStart+kChunkSize]
- *          逐行更新 m（逐行最大值）和 l（exp 和）：
- *          - 从 softmaxTmpGm（FP32）读入 score_partial 子块
- *          - m_new = max(m, row_max(score_partial))
- *          - l_new = l × exp(m - m_new) + row_sum(exp(score_partial - m_new))
- *          - 将原始 score_partial 写回 softmaxTmpGm（用于第二遍归一化）
- *          - m = m_new, l = l_new
- *          最终 mFinal 和 lFinal 通过引用返回，跨所有 K-Chunk 累积。
- * @tparam BSAT 算子模板类型
- * @param qChunkStart Q 维度 chunk 起始偏移
- * @param qChunkSize Q 维度 chunk 大小（block 数）
- * @param kChunkStart K 维度 chunk 起始偏移
- * @param kChunkSize K 维度 chunk 大小（block 数）
- * @param[out] mFinal 跨所有 K-Chunk 累积后的逐行最大值（FP32）
- * @param[out] lFinal 跨所有 K-Chunk 累积后的逐行 exp 和（FP32）
+ * @details 按 GetChunkRowSlices 给出的行切片逐片处理（切分与二趟/post pool 完全一致）：
+ *          - 从 softmaxTmpGm（FP32）逐切片读入 score_partial 子块
+ *          - m_new = max(m, row_max(score_partial))；l_new = l × exp(m - m_new) + row_sum(exp(·- m_new))
+ *          - m = m_new, l = l_new 跨所有 K-Chunk 累积，供二趟归一化
  */
 template <typename BSAT>
 __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize,
                                                                           uint32_t kChunkStart, uint32_t kChunkSize,
-                                                                          uint32_t validYBlocks)
+                                                                          uint32_t validXBlocks, uint32_t validYBlocks)
 {
-    // 更新max
-    // M = ReduceMax(score_partial)
-    // m_new = max(old_m, M) # 复用old_m
-    // 获取vector 实际执行计算的start row 和 excute row
-    // FIX: remove duplicate type specifier on actualQExcuteRow
-    uint32_t actualQRowStart = 0, actualQExcuteRow = 0;
-    if (vecSubBlockIdx == 0) {
-        actualQExcuteRow = qChunkSize / 2 + qChunkSize % 2;
-        actualQRowStart = constInfo.aicIdx * Q_CHUNK_SIZE;
-    } else {
-        actualQRowStart = constInfo.aicIdx * Q_CHUNK_SIZE + qChunkSize / 2 + qChunkSize % 2;
-        actualQExcuteRow = qChunkSize / 2;
-    }
-
-    // qChunkSize 为 1 的场景
-    if (actualQExcuteRow == 0) {
+    PostRowSlice slices[BSA_SM_SLICES_MAX_ARCH35];
+    uint32_t sliceNum = postPoolOP.GetChunkRowSlices(qChunkStart, qChunkSize, validXBlocks, slices);
+    if (sliceNum == 0) {
         return;
     }
 
@@ -261,112 +188,112 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
     SetFlag<HardEvent::MTE3_MTE2>(eventSft);
     WaitFlag<HardEvent::MTE3_MTE2>(eventSft);
 
-    SetFlag<HardEvent::V_MTE2>(eventSft);
-    WaitFlag<HardEvent::V_MTE2>(eventSft);
+    // 分块连续布局：当前 kTile 基址（元素）
+    uint64_t tileBase = BSAScratchTileOffset(constInfo.aicIdx, kChunkStart, constInfo.yBlocks);
 
-    // score 矩阵workspace存储还需再想想
-    DataCopyPad(scoreUb, scoreFp32GmTensor[actualQRowStart * constInfo.yBlocks + kChunkStart],
-                {static_cast<uint16_t>(actualQExcuteRow), static_cast<uint32_t>(kChunkSize * sizeof(float)),
-                 static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(float)), 0, 0},
-                {true, 0, static_cast<uint8_t>(kChunkSizeAlign - kChunkSize), SOFTMAX_NEG_INF});
+    for (uint32_t s = 0; s < sliceNum; s++) {
+        const PostRowSlice &sl = slices[s];
 
-    SetFlag<HardEvent::MTE2_V>(eventSft);
-    WaitFlag<HardEvent::MTE2_V>(eventSft);
+        SetFlag<HardEvent::V_MTE2>(eventSft);
+        WaitFlag<HardEvent::V_MTE2>(eventSft);
 
-    Muls(scoreUb, scoreUb, (float)(constInfo.scaleValue), actualQExcuteRow * kChunkSizeAlign);
-    AscendC::PipeBarrier<PIPE_V>();
+        DataCopyPad(scoreUb, scoreFp32GmTensor[tileBase + sl.chunkRowStart * K_TILE_COLS],
+                    {static_cast<uint16_t>(sl.rowCount), static_cast<uint32_t>(kChunkSize * sizeof(float)),
+                     static_cast<uint32_t>((K_TILE_COLS - kChunkSize) * sizeof(float)), 0, 0},
+                    {true, 0, static_cast<uint8_t>(kChunkSizeAlign - kChunkSize), SOFTMAX_NEG_INF});
 
-    // 更新new max
-    uint32_t maxShape[] = {actualQExcuteRow, kChunkSizeAlign};
-    bool isSrcInnerPad = true;
+        SetFlag<HardEvent::MTE2_V>(eventSft);
+        WaitFlag<HardEvent::MTE2_V>(eventSft);
 
-    AscendC::ReduceMax<T, AscendC::Pattern::Reduce::AR, false>(tmpMax, scoreUb, reduceSharedTemp, maxShape,
-                                                               isSrcInnerPad);
-    AscendC::PipeBarrier<PIPE_V>();
-
-    // 更新global sum = global_sum * exp(global_max - newMax)  + exp(score - newMax).sum(dim=-1)
-
-    // step 1: 求t3 = global_sum * exp(global_max - newMax)
-    // 即：newMax = max(global_max, newMax)
-    // t1 = global_max - newMax
-    // t2 = torch.exp(t1)
-    // t3 = global_sum * t2
-
-    if (kChunkStart != 0) {
-        AscendC::Max(tmpMax, tmpMax, globalMax, actualQExcuteRow);
-    } else {
-        // 第一次k循环不用max
-        AscendC::Duplicate(globalMax, float(SOFTMAX_NEG_INF), actualQExcuteRow);
+        Muls(scoreUb, scoreUb, (float)(constInfo.scaleValue), sl.rowCount * kChunkSizeAlign);
         AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Duplicate(globalSum, float(0.0f), actualQExcuteRow);
+
+        // 更new max：M = ReduceMax(score_partial)，m_new = max(old_m, M)
+        uint32_t maxShape[] = {sl.rowCount, kChunkSizeAlign};
+        bool isSrcInnerPad = true;
+
+        AscendC::ReduceMax<T, AscendC::Pattern::Reduce::AR, false>(tmpMax[sl.localRowStart], scoreUb, reduceSharedTemp,
+                                                                   maxShape, isSrcInnerPad);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        if (kChunkStart != 0) {
+            AscendC::Max(tmpMax[sl.localRowStart], tmpMax[sl.localRowStart], globalMax[sl.localRowStart], sl.rowCount);
+        } else {
+            // 第一次k循环初始化
+            AscendC::Duplicate(globalMax[sl.localRowStart], float(SOFTMAX_NEG_INF), sl.rowCount);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Duplicate(globalSum[sl.localRowStart], float(0.0f), sl.rowCount);
+        }
+        AscendC::PipeBarrier<PIPE_V>();
+
+        // step 1: t3 = global_sum * exp(global_max - newMax)
+        AscendC::Sub(diffMax[sl.localRowStart], globalMax[sl.localRowStart], tmpMax[sl.localRowStart], sl.rowCount);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        AscendC::Exp(diffMax[sl.localRowStart], diffMax[sl.localRowStart], sl.rowCount);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        AscendC::Mul(globalSum[sl.localRowStart], globalSum[sl.localRowStart], diffMax[sl.localRowStart], sl.rowCount);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        // step 2: global_sum += exp(score - newMax).sum(dim=-1)
+        uint32_t brocRepeat = BSACeilDiv(sl.rowCount, static_cast<uint32_t>(BROC_BASE_NUM));
+        Brcb(globalMaxBroc[sl.localRowStart * FLOAT_DATA_BLOCK_NUM], tmpMax[sl.localRowStart], brocRepeat, {1, 8});
+        AscendC::PipeBarrier<PIPE_V>();
+
+        BSASubRowBroadcast(scoreUb, scoreUb, globalMaxBroc[sl.localRowStart * FLOAT_DATA_BLOCK_NUM], sl.rowCount,
+                           kChunkSizeAlign);
+
+        AscendC::Exp(scoreUb, scoreUb, sl.rowCount * kChunkSizeAlign);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        uint32_t sumShape[] = {sl.rowCount, kChunkSizeAlign};
+        if (kChunkSizeAlign <= FLOAT_REPEAT_NUM) {
+            // Set the mask in the instruction instead of relying on the high-level reuse implementation's mask state.
+            AscendC::WholeReduceSum<T, true>(tmpSum[sl.localRowStart], scoreUb, static_cast<int32_t>(kChunkSizeAlign),
+                                             static_cast<int32_t>(sl.rowCount), 1, 1,
+                                             static_cast<int32_t>(kChunkSizeAlign / FLOAT_DATA_BLOCK_NUM));
+        } else {
+            AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(tmpSum[sl.localRowStart], scoreUb,
+                                                                      reduceSharedTemp, sumShape, isSrcInnerPad);
+        }
+        AscendC::PipeBarrier<PIPE_V>();
+
+        AscendC::Add(globalSum[sl.localRowStart], tmpSum[sl.localRowStart], globalSum[sl.localRowStart], sl.rowCount);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        // 更新globalMax
+        AscendC::Max(globalMax[sl.localRowStart], tmpMax[sl.localRowStart], globalMax[sl.localRowStart], sl.rowCount);
     }
-    AscendC::PipeBarrier<PIPE_V>();
 
-    AscendC::Sub(diffMax, globalMax, tmpMax, actualQExcuteRow);
-    AscendC::PipeBarrier<PIPE_V>();
-
-    AscendC::Exp(diffMax, diffMax, actualQExcuteRow);
-    AscendC::PipeBarrier<PIPE_V>();
-
-    AscendC::Mul(globalSum, globalSum, diffMax, actualQExcuteRow);
-    AscendC::PipeBarrier<PIPE_V>();
-
-    // step 2: 求t3 = global_sum * exp(score - newMax)
-    // 即 t4 = score - tmpMax.unsqueeze(1)
-    // t5 = torch.exp(t4)
-    // t6 = t5.sum(dim=1)
-    // global_sum = t3 + t6
-    uint8_t repeatimes = BSACeilDiv(actualQExcuteRow, BROC_BASE_NUM);
-#if !BSA_ENABLE_SOFTMAX_FIRST_PASS_VF
-    Brcb(globalMaxBroc, tmpMax, repeatimes, {1, 8});
-    AscendC::PipeBarrier<PIPE_V>();
-
-    SubBroadcast(scoreUb, scoreUb, globalMaxBroc, actualQExcuteRow, kChunkSizeAlign);
-
-    AscendC::Exp(scoreUb, scoreUb, actualQExcuteRow * kChunkSizeAlign);
-    AscendC::PipeBarrier<PIPE_V>();
-#else
-    BSASelectBlockMaskVF::DoSoftmaxFirstPassExpFp32VfWrapper(scoreUb, tmpMax, actualQExcuteRow, kChunkSizeAlign);
-#endif
-
-    uint32_t sumShape[] = {actualQExcuteRow, kChunkSizeAlign};
-    AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(tmpSum, scoreUb, reduceSharedTemp, sumShape,
-                                                              isSrcInnerPad);
-    AscendC::PipeBarrier<PIPE_V>();
-
-    AscendC::Add(globalSum, tmpSum, globalSum, actualQExcuteRow);
-    AscendC::PipeBarrier<PIPE_V>();
-
-    // 最后一次k循环第二轮循环存储sumbroc
-#if !BSA_ENABLE_SOFTMAX_SECOND_PASS_VF
+    // 最后一次k循环存储sumbroc（供二趟归一化），覆盖本 AIV 全部行
     if (kChunkStart + kChunkSize >= validYBlocks) {
-        Brcb(globalSumBroc, globalSum, repeatimes, {1, 8});
+        uint32_t rowsTotal = slices[sliceNum - 1].localRowStart + slices[sliceNum - 1].rowCount;
+        uint32_t brocRepeat = BSACeilDiv(rowsTotal, static_cast<uint32_t>(BROC_BASE_NUM));
+        Brcb(globalSumBroc, globalSum, brocRepeat, {1, 8});
         AscendC::PipeBarrier<PIPE_V>();
     }
-#endif
-
-    // 更新globalMax
-    AscendC::Max(globalMax, tmpMax, globalMax, actualQExcuteRow);
 }
 
+/**
+ * @brief Softmax 第二遍：逐切片读入 score、归一化；post 模式直接在 UB tile 上做 post pool 折叠，
+ *        非 post 模式 Cast FP16 后写出 attnScore GM
+ */
 template <typename BSAT>
 __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize,
                                                                        uint32_t kChunkStart, uint32_t kChunkSize,
                                                                        uint32_t batchIdx, uint32_t headIdx,
-                                                                       uint32_t validYBlocks)
+                                                                       uint32_t validXBlocks, uint32_t validYBlocks)
 {
-    uint32_t actualQRowStart = 0, actualQExcuteRow = 0;
-    if (vecSubBlockIdx == 0) {
-        actualQExcuteRow = qChunkSize / 2 + qChunkSize % 2;
-        actualQRowStart = constInfo.aicIdx * Q_CHUNK_SIZE;
-    } else {
-        actualQRowStart = constInfo.aicIdx * Q_CHUNK_SIZE + qChunkSize / 2 + qChunkSize % 2;
-        actualQExcuteRow = qChunkSize / 2;
+    PostRowSlice slices[BSA_SM_SLICES_MAX_ARCH35];
+    uint32_t sliceNum = postPoolOP.GetChunkRowSlices(qChunkStart, qChunkSize, validXBlocks, slices);
+    if (sliceNum == 0) {
+        return;
     }
 
-    // qChunkSize 为 1 的场景
-    if (actualQExcuteRow == 0) {
-        return;
+    bool isLastKTile = (kChunkStart + kChunkSize >= validYBlocks);
+    if (constInfo.usePostBlockShape && kChunkStart == 0) {
+        postPoolOP.BeginChunk(batchIdx, headIdx, qChunkStart, qChunkSize, validXBlocks, validYBlocks);
     }
 
     // 32字节对齐 (FP32)
@@ -378,60 +305,67 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(uint32_t 
     SetFlag<HardEvent::MTE3_MTE2>(eventSft);
     WaitFlag<HardEvent::MTE3_MTE2>(eventSft);
 
-    SetFlag<HardEvent::V_MTE2>(eventSft);
-    WaitFlag<HardEvent::V_MTE2>(eventSft);
+    // 分块连续布局：当前 kTile 基址（元素）
+    uint64_t tileBase = BSAScratchTileOffset(constInfo.aicIdx, kChunkStart, constInfo.yBlocks);
 
-    if (kChunkSizeAlign32 * sizeof(IN_T) % VEC_ALIGN_SIZE == 0) {
-        // CAST TO FP16时候保持32字节对齐
-        DataCopyPad(scoreUb, scoreFp32GmTensor[actualQRowStart * constInfo.yBlocks + kChunkStart],
-                    {static_cast<uint16_t>(actualQExcuteRow), static_cast<uint32_t>(kChunkSize * sizeof(float)),
-                     static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(float)), 0, 0},
-                    {true, 0, static_cast<uint8_t>(kChunkSizeAlign32 - kChunkSize), SOFTMAX_NEG_INF});
-    } else {
-        // CAST TO FP16时候未保持32字节对齐，需要加一个1个fp32的block
-        DataCopyPad(scoreUb, scoreFp32GmTensor[actualQRowStart * constInfo.yBlocks + kChunkStart],
-                    {static_cast<uint16_t>(actualQExcuteRow), static_cast<uint32_t>(kChunkSize * sizeof(float)),
-                     static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(float)), 1, 0},
-                    {true, 0, static_cast<uint8_t>(kChunkSizeAlign32 - kChunkSize), SOFTMAX_NEG_INF});
+    for (uint32_t s = 0; s < sliceNum; s++) {
+        const PostRowSlice &sl = slices[s];
+
+        SetFlag<HardEvent::V_MTE2>(eventSft);
+        WaitFlag<HardEvent::V_MTE2>(eventSft);
+
+        if (kChunkSizeAlign32 * sizeof(IN_T) % VEC_ALIGN_SIZE == 0) {
+            // CAST TO FP16时候保持32字节对齐
+            DataCopyPad(scoreUb, scoreFp32GmTensor[tileBase + sl.chunkRowStart * K_TILE_COLS],
+                        {static_cast<uint16_t>(sl.rowCount), static_cast<uint32_t>(kChunkSize * sizeof(float)),
+                         static_cast<uint32_t>((K_TILE_COLS - kChunkSize) * sizeof(float)), 0, 0},
+                        {true, 0, static_cast<uint8_t>(kChunkSizeAlign32 - kChunkSize), SOFTMAX_NEG_INF});
+        } else {
+            // CAST TO FP16时候未保持32字节对齐，需要加一个1个fp32的block
+            DataCopyPad(scoreUb, scoreFp32GmTensor[tileBase + sl.chunkRowStart * K_TILE_COLS],
+                        {static_cast<uint16_t>(sl.rowCount), static_cast<uint32_t>(kChunkSize * sizeof(float)),
+                         static_cast<uint32_t>((K_TILE_COLS - kChunkSize) * sizeof(float)), 1, 0},
+                        {true, 0, static_cast<uint8_t>(kChunkSizeAlign32 - kChunkSize), SOFTMAX_NEG_INF});
+        }
+
+        SetFlag<HardEvent::MTE2_V>(eventSft);
+        WaitFlag<HardEvent::MTE2_V>(eventSft);
+
+        Muls(scoreUb, scoreUb, (float)(constInfo.scaleValue), sl.rowCount * kChunkSizeAlign);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        BSASubRowBroadcast(scoreUb, scoreUb, globalMaxBroc[sl.localRowStart * FLOAT_DATA_BLOCK_NUM], sl.rowCount,
+                           kChunkSizeAlign);
+
+        AscendC::Exp(scoreUb, scoreUb, sl.rowCount * kChunkSizeAlign);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        BSADivRowBroadcast(scoreUb, scoreUb, globalSumBroc[sl.localRowStart * FLOAT_DATA_BLOCK_NUM], sl.rowCount,
+                           kChunkSizeAlign);
+
+        if (constInfo.usePostBlockShape) {
+            // 融合路径：归一化 FP32 tile 直接折叠为 pooledScore
+            postPoolOP.FoldNormalizedSlice(scoreUb, sl, kChunkStart, kChunkSize, kChunkSizeAlign, isLastKTile);
+        } else {
+            AscendC::Cast(scoreFp16Ub, scoreUb, AscendC::RoundMode::CAST_ROUND, sl.rowCount * kChunkSizeAlign);
+            AscendC::PipeBarrier<PIPE_V>();
+
+            SetFlag<HardEvent::V_MTE3>(eventSft);
+            WaitFlag<HardEvent::V_MTE3>(eventSft);
+
+            uint32_t sftOutQRow = qChunkStart + sl.chunkRowStart;
+            uint64_t attnScoreOffset = static_cast<uint64_t>(sftOutQRow) * validYBlocks + kChunkStart;
+            GlobalTensor<OUT_T> attnScoreChunkGm;
+            attnScoreChunkGm.SetGlobalBuffer((__gm__ OUT_T *)(attnScoreFp16GmTensor.GetPhyAddr() + attnScoreOffset));
+            DataCopyPad(attnScoreChunkGm[0], scoreFp16Ub,
+                        {static_cast<uint16_t>(sl.rowCount), static_cast<uint32_t>(kChunkSize * sizeof(OUT_T)), 0,
+                         static_cast<uint32_t>((validYBlocks - kChunkSize) * sizeof(OUT_T)), 0});
+        }
     }
 
-    SetFlag<HardEvent::MTE2_V>(eventSft);
-    WaitFlag<HardEvent::MTE2_V>(eventSft);
-
-#if BSA_ENABLE_SOFTMAX_SECOND_PASS_VF
-    BSASelectBlockMaskVF::DoSoftmaxSecondPassFp32VfWrapper(
-        scoreUb, globalMax, globalSum, static_cast<float>(constInfo.scaleValue), actualQExcuteRow, kChunkSizeAlign16);
-#else
-    Muls(scoreUb, scoreUb, (float)(constInfo.scaleValue), actualQExcuteRow * kChunkSizeAlign);
-    AscendC::PipeBarrier<PIPE_V>();
-
-    SubBroadcast(scoreUb, scoreUb, globalMaxBroc, actualQExcuteRow, kChunkSizeAlign16);
-
-    AscendC::Exp(scoreUb, scoreUb, actualQExcuteRow * kChunkSizeAlign16);
-    AscendC::PipeBarrier<PIPE_V>();
-
-    DivBroadcast(scoreUb, scoreUb, globalSumBroc, actualQExcuteRow, kChunkSizeAlign16);
-#endif
-
-    AscendC::Cast(scoreFp16Ub, scoreUb, AscendC::RoundMode::CAST_ROUND, actualQExcuteRow * kChunkSizeAlign16);
-    AscendC::PipeBarrier<PIPE_V>();
-
-    SetFlag<HardEvent::V_MTE3>(eventSft);
-    WaitFlag<HardEvent::V_MTE3>(eventSft);
-
-    uint32_t sftOutQRowOffset = 0;
-    if (vecSubBlockIdx == 0) {
-        sftOutQRowOffset = qChunkStart;
-    } else {
-        sftOutQRowOffset = qChunkStart + qChunkSize / 2 + qChunkSize % 2;
+    if (constInfo.usePostBlockShape) {
+        postPoolOP.FlushTile();
     }
-
-    uint64_t attnScoreOffset = static_cast<uint64_t>(sftOutQRowOffset) * validYBlocks + kChunkStart;
-    GlobalTensor<OUT_T> attnScoreChunkGm;
-    attnScoreChunkGm.SetGlobalBuffer((__gm__ OUT_T *)(attnScoreFp16GmTensor.GetPhyAddr() + attnScoreOffset));
-    DataCopyPad(attnScoreChunkGm[0], scoreFp16Ub,
-                {static_cast<uint16_t>(actualQExcuteRow), static_cast<uint32_t>(kChunkSize * sizeof(OUT_T)), 0,
-                 static_cast<uint32_t>((validYBlocks - kChunkSize) * sizeof(OUT_T)), 0});
 }
 
 #endif // BSA_VEC_SM_SERVICE_ARCH35_H

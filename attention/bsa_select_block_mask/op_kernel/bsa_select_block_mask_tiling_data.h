@@ -7,6 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+
 /*!
  * \file bsa_select_block_mask_tiling_data.h
  * \brief
@@ -391,6 +392,8 @@ public:
     uint64_t totalWorkspaceSize;
     uint64_t pooledScoreSize;
     uint64_t pooledScoreOffset;
+    uint64_t postStagingSize;
+    uint64_t postStagingOffset;
 
     uint64_t get_qCmpSize() const
     {
@@ -455,6 +458,22 @@ public:
     void set_pooledScoreOffset(uint64_t v)
     {
         this->pooledScoreOffset = v;
+    }
+    uint64_t get_postStagingSize() const
+    {
+        return postStagingSize;
+    }
+    void set_postStagingSize(uint64_t v)
+    {
+        this->postStagingSize = v;
+    }
+    uint64_t get_postStagingOffset() const
+    {
+        return postStagingOffset;
+    }
+    void set_postStagingOffset(uint64_t v)
+    {
+        this->postStagingOffset = v;
     }
 };
 
