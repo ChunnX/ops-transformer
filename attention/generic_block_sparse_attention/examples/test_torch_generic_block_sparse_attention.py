@@ -17,6 +17,7 @@ import math
 import os
 import sys
 from math import ceil
+from typing import Optional
 
 import torch
 import torch_npu
@@ -33,7 +34,7 @@ except ImportError as e:
     ) from e
 
 
-def _must_be_installed(label: str, path: str | None) -> str:
+def _must_be_installed(label: str, path: Optional[str]) -> str:
     if not path:
         raise SystemExit(f"FAIL: {label} has no __file__ (not a real installed module)")
     norm = os.path.normpath(os.path.realpath(path)).replace("\\", "/")
