@@ -26,6 +26,11 @@ msprof python3 -m pytest -rA -s test_mixed_quant_sparse_flash_mla_single.py \
     2>&1 | tee res.log || test_status=$?
 
 # NPU执行失败时仍尝试生成性能报告，同时保留测试失败退出码。
-python3 process_perf_data.py --test_result_path="$MQSMLA_RESULT_SAVE_PATH" \
-    --is_compare True --delete_perf_file True
+report_args=(--test_result_path="$MQSMLA_RESULT_SAVE_PATH" --delete_perf_file True)
+if [ -f perf_golden.xlsx ]; then
+    report_args+=(--is_compare True)
+else
+    echo "perf_golden.xlsx不存在，仅生成性能报告，不进行基线对比。"
+fi
+python3 process_perf_data.py "${report_args[@]}"
 exit "$test_status"

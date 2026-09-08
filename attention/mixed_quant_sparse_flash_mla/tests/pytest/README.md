@@ -80,9 +80,10 @@ bash test_run.sh batch_exec_graph --mode 0 --pt-dir mqsmla_testcase
 
 #### 单用例性能测试
 
-配置 `mixed_quant_sparse_flash_mla_paramset.py` 中的 `ENABLED_PARAMS`，并在本目录准备
-与当前用例顺序一致的性能基线 `perf_golden.xlsx`（包含 `metadata_duration` 和
-`qsmla_duration` 列，单位为微秒）。在已配置 CANN、`msprof` 和 Python 测试依赖的环境中执行：
+配置 `mixed_quant_sparse_flash_mla_paramset.py` 中的 `ENABLED_PARAMS`。
+如需性能基线对比，可在本目录准备与当前用例顺序一致的 `perf_golden.xlsx`
+（包含 `metadata_duration` 和 `qsmla_duration` 列，单位为微秒）；没有该文件时仅生成性能报告。
+在已配置 CANN、`msprof` 和 Python 测试依赖的环境中执行：
 
 ``` bash
 bash perf_run.sh
@@ -95,6 +96,13 @@ metadata / attention 算子。默认输出 `res.log`、`result.xlsx` 和 `result
 可通过 `MQSMLA_RESULT_SAVE_PATH` 修改结果路径，相对路径以本脚本所在目录为准。
 结果表每次运行前清空，性能报告成功保存后删除本次处理的 `PROF*` 目录。
 处理程序读取首个匹配的 `PROF*` 目录，运行前请将历史 profiling 目录移出本目录。
+
+如果已采集性能，仅因缺少基线文件导致报告生成失败，可保留现有 `PROF*` 目录并直接执行，
+无需重新运行 NPU：
+
+``` bash
+python3 process_perf_data.py --test_result_path=result.xlsx
+```
 
 #### 批量测试
 
