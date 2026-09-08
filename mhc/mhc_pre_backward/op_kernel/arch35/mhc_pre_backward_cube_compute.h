@@ -58,11 +58,11 @@ public:
 
     __aicore__ inline void Process(const GlobalTensor<float> &a, const GlobalTensor<float> &b,
                                    const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
-                                   uint32_t bGmStride)
+                                   uint32_t bGmStride, bool enableB1Reuse)
     {
         // MhcPreBackward的fusionSize最大为80，最多占两个K_L1分块。
         // C0的所有M tile共享同一块phi，先装入两个B-L1槽，避免每128行重复GM到L1搬运。
-        bool reuseB1 = k <= BASIC_CUBE_BUFFER_NUM * BASIC_CUBE_K_L1;
+        bool reuseB1 = enableB1Reuse && k <= BASIC_CUBE_BUFFER_NUM * BASIC_CUBE_K_L1;
         if (reuseB1) {
             PreloadB1(b, n, k, bGmStride);
         }

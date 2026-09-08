@@ -1030,8 +1030,12 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffIdx);
     if (!useHighMatmul_) {
+        // FP32的512～1024行合并C1路径会连续预执行两个C0，保持原B-L1事件生命周期以避免同步冲突。
+        bool enableB1Reuse = tiling_->implMode == MHC_PRE_BACKWARD_IMPL_MODE_HF32 ||
+                             totalLength_ <= SINGLE_M || totalLength_ > 2U * SINGLE_M;
         c0Basic_.Process(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], phiGm_[offsetND],
-                         workSpaceGm_[writeOffset], currentBSBlock, currentNDBlock, fusionSize_, nD_);
+                         workSpaceGm_[writeOffset], currentBSBlock, currentNDBlock, fusionSize_, nD_,
+                         enableB1Reuse);
         return;
     }
 
