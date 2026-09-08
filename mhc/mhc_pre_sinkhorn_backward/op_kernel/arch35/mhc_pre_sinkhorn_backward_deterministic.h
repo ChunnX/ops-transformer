@@ -237,7 +237,6 @@ private:
     int64_t bsLoopDataLen_ = 0;
     int64_t cLoopDataLen_ = 0;
     int64_t skIterCount_ = 0;
-    float eps_ = 0;
     int64_t k_ = 0;
     int64_t blockIdx_ = 0;
     int64_t mm1K_ = 0;
@@ -299,7 +298,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
     cLoopDataLen_ = tilingData->cLoopDataLen;
     bsLoopDataLen_ = tilingData->bsLoopDataLen;
     skIterCount_ = tilingData->skIterCount;
-    eps_ = tilingData->eps;
     k_ = n_ * n_ + 2 * n_;
     usedAivNum_ = tilingData->usedAivNum;
     blockIdx_ = GetBlockIdx();
@@ -692,11 +690,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     if (num == SIGMOID_GRAD_PRE) {
         gradHLocal = gradHPreBuf_.Get<U>();
         gradHAddr = (__ubuf__ U *)gradHLocal.GetPhyAddr();
-        SigmoidGrad<U, true>(gradHAddr, zPreAddr, gradZAddr, bsLen, colLen, V_REG_SIZE, eps_);
+        SigmoidGrad<U, true>(gradHAddr, zPreAddr, gradZAddr, bsLen, colLen, V_REG_SIZE);
     } else {
         gradHLocal = hPreAndGradHPostQue_.DeQue<U>();
         gradHAddr = (__ubuf__ U *)gradHLocal.GetPhyAddr();
-        SigmoidGrad<U, false>(gradHAddr, zPreAddr, gradZAddr, bsLen, colLen, V_REG_SIZE, eps_);
+        SigmoidGrad<U, false>(gradHAddr, zPreAddr, gradZAddr, bsLen, colLen, V_REG_SIZE);
         hPreAndGradHPostQue_.FreeTensor(gradHLocal);
     }
 }

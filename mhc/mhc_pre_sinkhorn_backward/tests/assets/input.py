@@ -15,10 +15,9 @@ __input__ = {
 }
 
 
-def _sigmoid_grad(z, dy, is_pre=False, hc_eps=1e-6):
+def _sigmoid_grad(z, dy):
     y = torch.sigmoid(z)
-    sigma = y - hc_eps if is_pre else y
-    return dy * sigma * (1 - sigma)
+    return dy * y * (1 - y)
 
 
 def _rms_norm_grad(x, inv_rms, grad_inv_rms):
@@ -98,7 +97,7 @@ def mhc_pre_sinkhorn_backward_input(
     z_post = nf[..., n : 2 * n] * alpha[1] + bias[n : 2 * n]
     z_res = nf[..., 2 * n :] * alpha[2] + bias[2 * n :]
 
-    h_pre_val = torch.sigmoid(z_pre + hc_eps_val)
+    h_pre_val = torch.sigmoid(z_pre) + hc_eps_val
     h_post = 2 * torch.sigmoid(z_post)
 
     comb = z_res.reshape(*z_res.shape[:-1], n, n)
@@ -159,8 +158,8 @@ def mhc_pre_sinkhorn_backward_input(
     zpost4 = nf4[..., n4 : 2 * n4] * alpha[1] + bias[n4 : 2 * n4]
     zres4 = (nf4[..., 2 * n4 :] * alpha[2] + bias[2 * n4 :]).reshape(B4, S4, n4, n4)
 
-    gzp4 = _sigmoid_grad(zp4, g_hpre, is_pre=True, hc_eps=hc_eps_val)
-    gzpost4 = 2 * _sigmoid_grad(zpost4, gp4, is_pre=False, hc_eps=hc_eps_val)
+    gzp4 = _sigmoid_grad(zp4, g_hpre)
+    gzpost4 = 2 * _sigmoid_grad(zpost4, gp4)
     # ghres4可能为(B,S,N*N)或(B,S,N,N), 统一reshape为(B,S,N,N)供_sinkhorn_grad处理
     ghres4_4d = ghres4.reshape(B4, S4, n4, n4) if ghres4.dim() == 3 else ghres4
     skg4 = _sinkhorn_grad(ghres4_4d, suma, norm4)
