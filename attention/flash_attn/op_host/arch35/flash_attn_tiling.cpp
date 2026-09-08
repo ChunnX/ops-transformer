@@ -155,6 +155,7 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
     } else {
         // 不等长 (qkHeadDim != vHeadDim) 按 (QK D, V DV) 组合映射:
         if (faInfo_->qkHeadDim == 192 && faInfo_->vHeadDim == 128) {
+            // QK D=192 且 V DV=128 (MLA 非吸收形态) 进入此分支:
             //   config=6: sOuter=64, sInner=128
             //   config=7: sOuter=32, sInner=256
             tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 6 : 7;
