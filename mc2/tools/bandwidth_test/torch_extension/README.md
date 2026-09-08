@@ -52,7 +52,8 @@ owner 持有的 Win。C++ 内部不查询或切换 NPU，调用方须保持正�
 共享 Channel 逐项销毁接口，因此 Python wrapper 会先销毁已污染的 ProcessGroup，再释放 Win，并将原异常继续抛出；
 调用方必须重建通信组。若 ProcessGroup 销毁本身也失败，则为避免释放仍被 HCCL 引用的地址，Win 会被有意保留到
 进程退出，并在异常中明确报告。Host hcomm 当前支持 UB_RTP shared channel；但
-公开 asc-comm 的 `MakeBatchHandle` 实现按 UB_CTP 协议实例化，UB_RTP device batch 路径必须用目标联调包验证。
+Host 建联使用 hcomm 的 `COMM_PROTOCOL_UB_CTP`；CANN 9.2 的 Device `adv_api/hcomm` 只提供兼容名
+`COMM_PROTOCOL_UBC_CTP`，因此两个 kernel 的 `Hcomm<>` 必须使用该 SDK 枚举。UB_RTP device batch 路径仍须用目标联调包验证。
 
 tiling key 先选择通信算法，再在 URMA 下选择 `SHARED_JETTY`；kernel 独立文件为
 `op_kernel/bandwidth_test_urma_shared_jetty.h`，保留 mode 0/1/3：

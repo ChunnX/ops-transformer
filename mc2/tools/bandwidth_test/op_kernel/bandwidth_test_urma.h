@@ -131,7 +131,7 @@ private:
     uint32_t startStatusIndex_{0};    // 起始状态索引
     uint32_t totalUbSize_{0};         // 总UB大小
     uint64_t totalWinSizeEp_{0};      // 总窗口大小
-    Hcomm<COMM_PROTOCOL_UB_CTP> hcomm_;
+    Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
     using HcommBatchHandle = AscendC::BatchHandle<AscendC::ChannelHandle>;
     TBuf<> batchBuf_;
     LocalTensor<uint8_t> batchTensor_;
