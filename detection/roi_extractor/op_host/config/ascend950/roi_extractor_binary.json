@@ -1,0 +1,355 @@
+{
+  "op_type": "RoiExtractor",
+  "op_list": [
+    {
+      "bin_filename": "RoiExtractor_e04adc03062fd6f5b9859479183e1fd9",
+      "inputs": [
+        {
+          "name": "features_0",
+          "index": 0,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "features_1",
+          "index": 1,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "features_2",
+          "index": 2,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "features_3",
+          "index": 3,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "features_4",
+          "index": 4,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "features_5",
+          "index": 5,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "features_6",
+          "index": 6,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "features_7",
+          "index": 7,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "rois",
+          "index": 8,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "index",
+          "index": 9,
+          "dtype": "int32",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "y",
+          "index": 0,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        }
+      ],
+      "attrs": [
+        {
+          "name": "finest_scale",
+          "dtype": "int",
+          "value": 56
+        },
+        {
+          "name": "roi_scale_factor",
+          "dtype": "float",
+          "value": 0.0
+        },
+        {
+          "name": "spatial_scale",
+          "dtype": "list_float",
+          "value": [
+            0.25,
+            0.125,
+            0.0625,
+            0.03125
+          ]
+        },
+        {
+          "name": "pooled_height",
+          "dtype": "int",
+          "value": 7
+        },
+        {
+          "name": "pooled_width",
+          "dtype": "int",
+          "value": 7
+        },
+        {
+          "name": "sample_num",
+          "dtype": "int",
+          "value": 0
+        },
+        {
+          "name": "pool_mode",
+          "dtype": "str",
+          "value": "avg"
+        },
+        {
+          "name": "aligned",
+          "dtype": "bool",
+          "value": true
+        }
+      ]
+    },
+    {
+      "bin_filename": "RoiExtractor_ebb9967bdbeec204b5d127d9a83fecff",
+      "inputs": [
+        {
+          "name": "features_0",
+          "index": 0,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "features_1",
+          "index": 1,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "features_2",
+          "index": 2,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "features_3",
+          "index": 3,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "features_4",
+          "index": 4,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "features_5",
+          "index": 5,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "features_6",
+          "index": 6,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "features_7",
+          "index": 7,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "rois",
+          "index": 8,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        },
+        {
+          "name": "index",
+          "index": 9,
+          "dtype": "int32",
+          "format": "ND",
+          "paramType": "optional",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "y",
+          "index": 0,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        }
+      ],
+      "attrs": [
+        {
+          "name": "finest_scale",
+          "dtype": "int",
+          "value": 56
+        },
+        {
+          "name": "roi_scale_factor",
+          "dtype": "float",
+          "value": 0.0
+        },
+        {
+          "name": "spatial_scale",
+          "dtype": "list_float",
+          "value": [
+            0.25,
+            0.125,
+            0.0625,
+            0.03125
+          ]
+        },
+        {
+          "name": "pooled_height",
+          "dtype": "int",
+          "value": 7
+        },
+        {
+          "name": "pooled_width",
+          "dtype": "int",
+          "value": 7
+        },
+        {
+          "name": "sample_num",
+          "dtype": "int",
+          "value": 0
+        },
+        {
+          "name": "pool_mode",
+          "dtype": "str",
+          "value": "avg"
+        },
+        {
+          "name": "aligned",
+          "dtype": "bool",
+          "value": true
+        }
+      ]
+    }
+  ]
+}
