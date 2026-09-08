@@ -1,16 +1,17 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # Licensed under the CANN Open Software License Agreement Version 2.0.
 """Torch dispatcher entry for the packaged FlashKDA metadata AICPU executable."""
-from pathlib import Path
 import torch
 from torch.library import impl
+from cannbotdsl.aicpu.toolchain import register_aicpu_resources
 from cann_ops_transformer.op_builder import get_as_library
 from .op_kernel.flash_kda_metadata import (
     flash_kda_metadata as _flash_kda_metadata,
-    load_native,
+    flash_kda_metadata_kernel,
     metadata_capacity_upper_bound,
 )
 
+register_aicpu_resources(__package__, flash_kda_metadata_kernel, "_native/flash_kda_metadata.so")
 _library = get_as_library()
 _library.define(
     "flash_kda_metadata(Tensor q, Tensor v, Tensor initial_state, "
@@ -20,7 +21,6 @@ _library.define(
 
 @impl(_library, "flash_kda_metadata", "PrivateUse1")
 def _npu(q, v, initial_state, layout_qkv, cu_seqlens=None):
-    load_native(Path(__file__).parent / "_native")
     return _flash_kda_metadata(q, v, initial_state, layout_qkv, cu_seqlens)
 
 

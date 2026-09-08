@@ -18,7 +18,7 @@ os.environ.setdefault("TORCH_DEVICE_BACKEND_AUTOLOAD", "0")
 
 import torch
 from cannbotdsl.aicpu import GmIn, GmOut, I32, I64, U32, aicpu_kernel, current_raw_stream
-from cannbotdsl.aicpu.toolchain import CompiledAicpuKernel, compile_aicpu_kernel
+from cannbotdsl.aicpu.toolchain import compile_aicpu_kernel
 
 
 MAGIC = 0x4B444132
@@ -916,18 +916,3 @@ __all__ = [
     "metadata_capacity_upper_bound",
     "round_record_words",
 ]
-
-
-def load_native(directory):
-    """Bind the packaged AICPU executable to the unchanged metadata entry."""
-    from pathlib import Path
-
-    global _AICPU_COMPILED
-    with _AICPU_LOCK:
-        if _AICPU_COMPILED is None:
-            binary = Path(directory) / "flash_kda_metadata.so"
-            if not binary.is_file():
-                raise FileNotFoundError(f"FlashKDA metadata binary is missing: {binary}; rebuild torch_extension")
-            _AICPU_COMPILED = CompiledAicpuKernel(str(binary), flash_kda_metadata_kernel.spec,
-                                               name=flash_kda_metadata_kernel.fn.__name__,
-                                               launch_mode="interface")

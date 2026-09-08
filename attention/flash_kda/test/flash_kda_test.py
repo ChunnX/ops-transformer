@@ -29,7 +29,7 @@ def native(tmp_path_factory):
         patch.setenv("CANNBOTDSL_NATIVE_BINARY_REPORT", str(report))
         patch.setattr(passes, "_run_cannir_passes", forbid_compile)
         patch.setattr(AscendCCompiler, "compile_ascendc_to_so", forbid_compile)
-        patch.setattr(metadata, "compile_aicpu_kernel", forbid_compile)
+        patch.setattr(metadata.flash_kda_metadata_kernel, "generate_sources", forbid_compile)
         torch.npu.set_device(int(os.environ.get("KDA_NPU_DEVICE", "0")))
         yield package, metadata
         counts = json.loads(report.read_text())["counts"]
