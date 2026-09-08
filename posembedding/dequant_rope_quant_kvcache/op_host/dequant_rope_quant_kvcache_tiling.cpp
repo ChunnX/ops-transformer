@@ -204,6 +204,32 @@ ge::graphStatus checkDRQKDim(const gert::StorageShape *inShape, const std::vecto
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus checkOptionalDRQKDim(const uint64_t index, gert::TilingContext *context,
+                                     const std::vector<int64_t> &realShape, const ge::char_t *nodeName_,
+                                     const std::string &logName)
+{
+    const gert::StorageShape *inputShape = context->GetOptionalInputShape(index);
+    if (inputShape == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    return checkDRQKDim(inputShape, realShape, nodeName_, logName);
+}
+
+ge::graphStatus checkQuantParamShape(const gert::StorageShape *inputShape, const int64_t kvHeadNum,
+                                     const int64_t hiddenSize, const ge::char_t *nodeName_,
+                                     const std::string &logName)
+{
+    const auto &shape = inputShape->GetStorageShape();
+    const int64_t flattenedSize = kvHeadNum * hiddenSize;
+    const bool isFlattened = shape.GetDimNum() == 1 && shape.GetDim(0) == flattenedSize;
+    const bool isMatrix = shape.GetDimNum() == 2 && shape.GetDim(0) == kvHeadNum && shape.GetDim(1) == hiddenSize;
+    OP_CHECK_IF(!isFlattened && !isMatrix,
+                OP_LOGE(nodeName_, "%s's shape should be [%ld] or [%ld, %ld], but got %s.", logName.c_str(),
+                        flattenedSize, kvHeadNum, hiddenSize, Shape2String(shape).c_str()),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 bool CheckPaCacheMode(const gert::RuntimeAttrs *attrs)
 {
     const char *tmpmode = attrs->GetStr(CACHE_MODE_IDX);
@@ -252,9 +278,13 @@ ge::graphStatus getDRQKShapeInfo(gert::TilingContext *context, TilingInfoDRQK &t
     tilingInfoDRQK.ifKVout = *attrs->GetAttrPointer<bool>(IFKV_INDEX) == true ? 1 : 0;
 
     auto quantKOffsetDesc = context->GetOptionalInputDesc(QUANT_K_OFFSET_INPUT_INDEX);
-    tilingInfoDRQK.hasQuantOffset = (quantKOffsetDesc == nullptr) ? 0 : 1;
     auto quantVOffsetDesc = context->GetOptionalInputDesc(QUANT_V_OFFSET_INPUT_INDEX);
-    tilingInfoDRQK.hasQuantOffset = (quantVOffsetDesc == nullptr) ? 0 : tilingInfoDRQK.hasQuantOffset;
+    const bool hasQuantKOffset = quantKOffsetDesc != nullptr;
+    const bool hasQuantVOffset = quantVOffsetDesc != nullptr;
+    OP_CHECK_IF(hasQuantKOffset != hasQuantVOffset,
+                OP_LOGE(nodeName, "offsetKOptional and offsetVOptional must both be provided or both be null."),
+                return ge::GRAPH_FAILED);
+    tilingInfoDRQK.hasQuantOffset = hasQuantKOffset ? 1 : 0;
     for (uint64_t indexOpt = QUANT_K_OFFSET_INPUT_INDEX; indexOpt < BIAS_INPUT_INDEX; indexOpt++) {
         if (checkOptDtype(indexOpt, context, nodeName) == ge::GRAPH_FAILED) {
             return ge::GRAPH_FAILED;
@@ -313,7 +343,6 @@ ge::graphStatus getDRQKShapeInfo(gert::TilingContext *context, TilingInfoDRQK &t
     tilingInfoDRQK.cacheSeqlen = cacheShape->GetStorageShape().GetDim(1);
     tilingInfoDRQK.kvHeadNum = cacheShape->GetStorageShape().GetDim(KVCACHE_HEAD_DIM_INDEX);
     tilingInfoDRQK.hiddenSize = cacheShape->GetStorageShape().GetDim(KVCACHE_HIDDEN_DIM_INDEX);
-    int64_t quantShapeSize = tilingInfoDRQK.kvHeadNum * tilingInfoDRQK.hiddenSize;
     OP_CHECK_IF(
         cacheShape->GetStorageShape().GetDim(KVCACHE_HEAD_DIM_INDEX) * tilingInfoDRQK.hiddenSize != kHiddensize,
         OP_LOGE(context->GetNodeName(), "cacheK's headdim * hiddenSize should same with [%ld] but got [%ld].",
@@ -360,13 +389,12 @@ ge::graphStatus getDRQKShapeInfo(gert::TilingContext *context, TilingInfoDRQK &t
                         Shape2String(cacheShape->GetStorageShape()).c_str(),
                         Shape2String(vCacheShape->GetStorageShape()).c_str()),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF((kScaleShape->GetStorageShape().GetShapeSize() != quantShapeSize ||
-                 vScaleShape->GetStorageShape().GetShapeSize() != quantShapeSize),
-                OP_LOGE(context->GetNodeName(),
-                        "kScaleShape shape size:%ld or vScaleShape shape size:%ld should be equal with :%ld",
-                        kScaleShape->GetStorageShape().GetShapeSize(), vScaleShape->GetStorageShape().GetShapeSize(),
-                        quantShapeSize),
-                return ge::GRAPH_FAILED);
+    if ((checkQuantParamShape(kScaleShape, tilingInfoDRQK.kvHeadNum, tilingInfoDRQK.hiddenSize, nodeName,
+                              "input scaleK") == ge::GRAPH_FAILED) ||
+        (checkQuantParamShape(vScaleShape, tilingInfoDRQK.kvHeadNum, tilingInfoDRQK.hiddenSize, nodeName,
+                              "input scaleV") == ge::GRAPH_FAILED)) {
+        return ge::GRAPH_FAILED;
+    }
     if (!tilingInfoDRQK.isPA) {
         OP_CHECK_IF(vCacheShape->GetStorageShape().GetDim(0) < xShape->GetStorageShape().GetDim(0),
                     OP_LOGE(context->GetNodeName(), "vcache's dim[0]:%ld should not be less than input x's dim[0]:%ld",
@@ -377,6 +405,19 @@ ge::graphStatus getDRQKShapeInfo(gert::TilingContext *context, TilingInfoDRQK &t
     auto xDesc = context->GetInputDesc(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
     tilingInfoDRQK.isDequant = xDesc->GetDataType() == ge::DT_INT32;
+    if (tilingInfoDRQK.isDequant) {
+        const std::string activationScaleLogName =
+            "input activationScaleOptional for " + std::to_string(xShapeDimNum) + "D x";
+        if ((checkOptionalDRQKDim(WEIGHT_SCALES_INPUT_INDEX, context, {qkvHiddensize}, nodeName,
+                                  "input weightScaleOptional") == ge::GRAPH_FAILED) ||
+            (checkOptionalDRQKDim(ACTIVATION_INPUT_INDEX, context,
+                                  {tilingInfoDRQK.batch * tilingInfoDRQK.seqlen}, nodeName,
+                                  activationScaleLogName) == ge::GRAPH_FAILED) ||
+            (checkOptionalDRQKDim(BIAS_INPUT_INDEX, context, {qkvHiddensize}, nodeName, "input biasOptional") ==
+             ge::GRAPH_FAILED)) {
+            return ge::GRAPH_FAILED;
+        }
+    }
 
     auto indiceDesc = context->GetInputDesc(INDICES_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, indiceDesc);
@@ -393,13 +434,12 @@ ge::graphStatus getDRQKShapeInfo(gert::TilingContext *context, TilingInfoDRQK &t
     if (tilingInfoDRQK.hasQuantOffset == 1) {
         const gert::StorageShape *kOffsetShape = context->GetOptionalInputShape(QUANT_K_OFFSET_INPUT_INDEX);
         const gert::StorageShape *vOffsetShape = context->GetOptionalInputShape(QUANT_V_OFFSET_INPUT_INDEX);
-        OP_CHECK_IF((kOffsetShape->GetStorageShape().GetShapeSize() != quantShapeSize ||
-                     vOffsetShape->GetStorageShape().GetShapeSize() != quantShapeSize),
-                    OP_LOGE(context->GetNodeName(),
-                            "kOffsetShape shape size:%ld or vOffsetShape shape size:%ld should be equal with :%ld",
-                            kOffsetShape->GetStorageShape().GetShapeSize(),
-                            vOffsetShape->GetStorageShape().GetShapeSize(), quantShapeSize),
-                    return ge::GRAPH_FAILED);
+        if ((checkQuantParamShape(kOffsetShape, tilingInfoDRQK.kvHeadNum, tilingInfoDRQK.hiddenSize, nodeName,
+                                  "input offsetKOptional") == ge::GRAPH_FAILED) ||
+            (checkQuantParamShape(vOffsetShape, tilingInfoDRQK.kvHeadNum, tilingInfoDRQK.hiddenSize, nodeName,
+                                  "input offsetVOptional") == ge::GRAPH_FAILED)) {
+            return ge::GRAPH_FAILED;
+        }
         tilingInfoDRQK.scalesBtyeSize = ge::GetSizeByDataType(scaleDesc->GetDataType());
     }
     auto wsDesc = context->GetOptionalInputDesc(WEIGHT_SCALES_INPUT_INDEX);

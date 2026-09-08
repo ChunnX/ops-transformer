@@ -99,29 +99,29 @@ int main() {
   std::vector<int64_t> kcacheShape = {shapeB, shapeH, 1, shapeD};
   std::vector<int64_t> vcacheShape = {shapeB, shapeH, 1, shapeD};
   std::vector<int64_t> indicesShape = {shapeB};
-  std::vector<int64_t> kscaleShape = {shapeD};
-  std::vector<int64_t> vscaleShape = {shapeD};
-  std::vector<int64_t> koffsetShape = {shapeD};
-  std::vector<int64_t> voffsetShape = {shapeD};
+  std::vector<int64_t> kscaleShape = {shapeNkv, shapeD};
+  std::vector<int64_t> vscaleShape = {shapeNkv, shapeD};
+  std::vector<int64_t> koffsetShape = {shapeNkv, shapeD};
+  std::vector<int64_t> voffsetShape = {shapeNkv, shapeD};
 
   std::vector<int64_t> weightShape = {shapeH};
-  std::vector<int64_t> activationShape = {shapeB};
+  std::vector<int64_t> activationShape = {shapeB * shapeS};
   std::vector<int64_t> biasShape = {shapeH};
 
-  std::vector<int16_t> inputHostData(shapeB * shapeS * shapeH, 1);
+  std::vector<int32_t> inputHostData(shapeB * shapeS * shapeH, 1);
   std::vector<int16_t> cosHostData(shapeB * shapeS * shapeD, 1);
   std::vector<int16_t> sinHostData(shapeB * shapeS * shapeD, 1);
   std::vector<int8_t> kcacheHostData(shapeB * shapeH * shapeD, 6);
   std::vector<int8_t> vcacheHostData(shapeB * shapeH * shapeD, 6);
   std::vector<int32_t> indicesHostData(shapeB, 0);
-  std::vector<int32_t> kscaleHostData(shapeD, 2);
-  std::vector<int32_t> vscaleHostData(shapeD, 2);
-  std::vector<int32_t> koffsetHostData(shapeD, 2);
-  std::vector<int32_t> voffsetHostData(shapeD, 2);
+  std::vector<float> kscaleHostData(shapeNkv * shapeD, 2);
+  std::vector<float> vscaleHostData(shapeNkv * shapeD, 2);
+  std::vector<float> koffsetHostData(shapeNkv * shapeD, 2);
+  std::vector<float> voffsetHostData(shapeNkv * shapeD, 2);
 
-  std::vector<int32_t> weightHostData(shapeH, 2);
-  std::vector<int32_t> activationHostData(shapeB, 2);
-  std::vector<int32_t> biasHostData(shapeH, 2);
+  std::vector<float> weightHostData(shapeH, 2);
+  std::vector<float> activationHostData(shapeB * shapeS, 2);
+  std::vector<float> biasHostData(shapeH, 2);
 
   void* inputDeviceAddr = nullptr;
   void* cosDeviceAddr = nullptr;
@@ -203,6 +203,9 @@ int main() {
 
   std::vector<int64_t> splitData = {shapeNq * shapeD, shapeNkv * shapeD, shapeNkv * shapeD};
   aclIntArray *sizeSplits = aclCreateIntArray(splitData.data(), splitData.size());
+  char quantMode[] = "static";
+  char layout[] = "BSND";
+  char cacheMode[] = "contiguous";
 
   // 3. 调用CANN算子库API，需要修改为具体的API
   uint64_t workspaceSize = 0;
@@ -210,8 +213,8 @@ int main() {
 
   // 调用aclnnDequantRopeQuantKvcache第一段接口
   ret = aclnnDequantRopeQuantKvcacheGetWorkspaceSize(input, cos, sin, kcache, vcache, indices, kscale, vscale, koffset,
-                                                     voffset, weight, activation, bias,sizeSplits, "static", "BSND", true,
-                                                     "contiguous", q, k, v, &workspaceSize, &executor);
+                                                     voffset, weight, activation, bias, sizeSplits, quantMode, layout,
+                                                     true, cacheMode, q, k, v, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnDequantRopeQuantKvcacheGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
   // 根据第一段接口计算出的workspaceSize申请device内存
@@ -233,13 +236,42 @@ int main() {
   PrintOutResult(kcacheShape, &kcacheDeviceAddr);
   PrintOutResult(vcacheShape, &vcacheDeviceAddr);
 
-  // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
+  // 6. 释放aclTensor和aclIntArray，需要根据具体API的接口定义修改
   aclDestroyTensor(input);
+  aclDestroyTensor(cos);
+  aclDestroyTensor(sin);
+  aclDestroyTensor(kcache);
+  aclDestroyTensor(vcache);
+  aclDestroyTensor(indices);
+  aclDestroyTensor(kscale);
+  aclDestroyTensor(vscale);
+  aclDestroyTensor(koffset);
+  aclDestroyTensor(voffset);
+  aclDestroyTensor(weight);
+  aclDestroyTensor(activation);
+  aclDestroyTensor(bias);
   aclDestroyTensor(q);
+  aclDestroyTensor(k);
+  aclDestroyTensor(v);
+  aclDestroyIntArray(sizeSplits);
 
   // 7. 释放device 资源
   aclrtFree(inputDeviceAddr);
+  aclrtFree(cosDeviceAddr);
+  aclrtFree(sinDeviceAddr);
+  aclrtFree(kcacheDeviceAddr);
+  aclrtFree(vcacheDeviceAddr);
+  aclrtFree(indicesDeviceAddr);
+  aclrtFree(kscaleDeviceAddr);
+  aclrtFree(vscaleDeviceAddr);
+  aclrtFree(koffsetDeviceAddr);
+  aclrtFree(voffsetDeviceAddr);
+  aclrtFree(weightDeviceAddr);
+  aclrtFree(activationDeviceAddr);
+  aclrtFree(biasDeviceAddr);
   aclrtFree(qDeviceAddr);
+  aclrtFree(kDeviceAddr);
+  aclrtFree(vDeviceAddr);
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
   }

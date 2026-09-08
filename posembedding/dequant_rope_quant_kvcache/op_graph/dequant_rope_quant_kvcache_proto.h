@@ -31,20 +31,21 @@ namespace ge {
 * The type support int8, format support ND.
 * @li v_cache: A Tensor with shape (C_1, C_2, Nkv, D) indicates vcache for in-place updates.
 * The type support int8, format support ND.
-* @li indices: A Tensor with shape (B) when cache_mode is contiguous with shape (B * S) when cache_mode is page.
+* @li indices: A Tensor with shape (B). When cache_mode is page and x is 3D, its shape is (B * S).
 * The type support int32, format support ND.
-* @li scale_k: A Tensor with shape (Nkv, D). The type support float32, format support ND.
-* @li scale_v: A Tensor with shape (Nkv, D). The type support float32, format support ND.
-* @li offset_k: A Tensor with shape (Nkv, D). An optional input parameter. The type support float32.
+* @li scale_k: A Tensor with shape (Nkv * D) or (Nkv, D). The type support float32, format support ND.
+* @li scale_v: A Tensor with shape (Nkv * D) or (Nkv, D). The type support float32, format support ND.
+* @li offset_k: A Tensor with shape (Nkv * D) or (Nkv, D). An optional input parameter. The type support float32.
 * format support ND.
-* @li offset_v: A Tensor with shape (Nkv, D). An optional input parameter. The type support float32.
+* @li offset_v: A Tensor with shape (Nkv * D) or (Nkv, D). An optional input parameter. The type support float32.
 * format support ND.
-* @li weight_scale: A Tensor with shape (D) indicates the weight scale factor of the dequantization parameter.
-* An optional input parameter. The type support float32.
+* offset_k and offset_v must both be provided or both be null.
+* @li weight_scale: A Tensor with shape (H) indicates the weight scale factor of the dequantization parameter.
+* It is required when x is int32 and has no effect otherwise. The type support float32.
 * @li activation_scale: A Tensor with shape (B * S) or (B) indicates the activation scale factor of the dequantization
 parameter.
 * An optional input parameter. The type support float32.
-* @li bias: A Tensor with shape (D). An optional input parameter. The type support float32, bf16, float16, int32.
+* @li bias: A Tensor with shape (H). An optional input parameter. The type support float32, bf16, float16, int32.
 
 * @par Attributes:
 * @li size_splits: A list of int. Specifies the size of spliting qkv.
