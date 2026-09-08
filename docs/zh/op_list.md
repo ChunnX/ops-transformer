@@ -34,7 +34,7 @@
     <td>✓（自动生成）</td>
     <td>✗</td>
     <td>AI Core</td>
-    <td>面向 DSA 推理场景，对 TQ4 分页 KV cache 执行融合反量化与稀疏 Attention 计算，支持 FP16/BF16、PA_BSND/PA_BNBD、空序列及首轴非连续 cache。</td>
+    <td>面向DSA推理场景，对TQ4分页KV cache执行融合反量化与稀疏Attention计算，支持FP16/BF16、PA_BSND/PA_BNBD、空序列及首轴非连续cache。</td>
   </tr>
   <tr>
     <td>attention</td>

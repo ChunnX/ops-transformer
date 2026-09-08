@@ -1,19 +1,18 @@
-# TurboQuantSparseFlashAttention compatibility interface
+# TurboQuantSparseFlashAttention兼容接口
 
-The standard interface is `cann_ops_transformer.turbo_quant_sparse_flash_attention`.
-This optional Python package forwards the old `custom_ops` entry points to that implementation.
+标准接口为`cann_ops_transformer.turbo_quant_sparse_flash_attention`。
+本可选Python包将旧`custom_ops`入口转发至标准接口。
 
-## Build and install
+## 构建与安装
 
-First install the operator package and the standard wheel as described in the
-[installation guide](../docs/install.md), then run from the repository root:
+先按[《构建与安装》](../docs/install.md)安装算子包和标准wheel，再在仓库根目录执行：
 
 ```bash
 cd attention/turbo_quant_sparse_flash_attention/torch_ops_extension
 bash build_and_install.sh
 ```
 
-## Use
+## 调用说明
 
 ```python
 import torch
@@ -22,7 +21,8 @@ import custom_ops  # noqa: F401
 result = torch.ops.custom.npu_turbo_quant_sparse_flash_attention(...)
 ```
 
-Importing `custom_ops` also mounts the operation as `torch_npu.npu_turbo_quant_sparse_flash_attention`.
+以上片段展示旧入口名称，完整参数及可运行样例见[《PyTorch接口》](../../../torch_extension/cann_ops_transformer/docs/zh/turbo_quant_sparse_flash_attention.md)。
 
-Restart the Python process after upgrading from the old native extension. Do not load both versions
-into the same process. New applications should use the standard interface directly.
+导入`custom_ops`后，也可通过`torch_npu.npu_turbo_quant_sparse_flash_attention`访问该接口。
+
+从旧原生扩展升级后，应重启Python进程，避免在同一进程加载两个版本。新应用建议直接使用标准接口。

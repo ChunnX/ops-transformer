@@ -1,16 +1,33 @@
 # aclnnTurboQuantSparseFlashAttention
 
-## 支持的产品
+## 产品支持情况
 
-Atlas A2 训练/推理系列、Atlas A3 训练/推理系列。支持前向推理。
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
-面向 DeepSeek Sparse Attention（DSA）推理场景，对 TQ4 量化存储的分页 KV cache 执行融合反量化与稀疏 Attention 计算。输入 query 包含 512 维 latent 与 64 维 rope，输出为 512 维 latent。K/V 共享 latent；rope 仅参与 QK 计算。量化存储、布局、数值约束见[算子说明](../README.md)。
+面向DeepSeek Sparse Attention（DSA）推理场景，对TQ4量化存储的分页KV cache执行融合反量化与稀疏Attention计算。输入query包含512维latent与64维rope，输出为512维latent。K/V共享latent；rope仅参与QK计算。量化字节结构、scale定义及latent坐标域约定见[《算子说明》](../README.md#功能说明)。
 
-接口按两阶段调用：第一阶段校验输入元数据、创建执行器并计算 workspace 大小，第二阶段向调用方提供的流异步下发任务。
+接口按两阶段调用：先调用aclnnTurboQuantSparseFlashAttentionGetWorkspaceSize获取workspace大小和执行器，再调用aclnnTurboQuantSparseFlashAttention向指定流异步下发计算。
 
-## 接口原型
+## 函数原型
 
 头文件：`aclnnop/aclnn_turbo_quant_sparse_flash_attention.h`。
 
@@ -52,51 +69,88 @@ aclnnStatus aclnnTurboQuantSparseFlashAttention(
     aclrtStream stream);
 ```
 
-## 参数说明
+## aclnnTurboQuantSparseFlashAttentionGetWorkspaceSize
 
-所有 tensor 均采用 `ACL_FORMAT_ND`。除两个可选 scale 外，tensor 指针不可为空。张量数据需在与 `stream` 相同的设备上，输出空间由调用方分配。
+### 参数说明
 
-| 参数 | 类型、shape 与约束 |
-| --- | --- |
-| query | FLOAT16/BFLOAT16，`[T, N, 576]`；`N` 为 `[1,128]` 内 2 的幂 |
-| key、value | INT8；PA_BSND 为 `[Bn, Bs, 1, 386]`，PA_BNBD 为 `[Bn, 1, Bs, 386]`；value 请传入与 key 相同的张量 |
-| sparseIndices | INT32，`[T, 1, K]`；值为 batch 内局部稀疏块索引，有效前缀之后用 `-1` 填充 |
-| keyDequantScaleOptional、valueDequantScaleOptional | 可为 `nullptr`；传入时为 FLOAT32。当前 COMBINE 模式不读取其数值 |
-| blockTable | INT32，`[B, maxBlocks]`；每个有效值为 cache 的物理页号 |
-| actualSeqLengthsQuery | INT32，`[B]`，各 batch query 长度的累加和，非负单调不减，末项等于 `T` |
-| actualSeqLengthsKv | INT32，`[B]`，每个 batch 的实际 KV 长度，非负且不超过对应表行容量 |
-| scaleValue | QK 分数缩放系数，常取 `1/sqrt(512)` |
-| keyQuantMode、valueQuantMode | 均为 `3` |
-| sparseBlockSize | `1,2,4,8,16` 之一，必须整除 `Bs` |
-| layoutQueryOptional | 传入 `"TND"` |
-| layoutKvOptional | 传入 `"PA_BSND"` 或 `"PA_BNBD"`，与输入轴顺序一致；无 PA_BNSD/BNBD 别名 |
-| sparseMode | `0` 无因果 mask，`3` 右下对齐因果 mask |
-| preTokens、nextTokens | 均为 `INT64_MAX` |
-| attentionMode、quantScaleRepoMode | 分别为 `2`、`1` |
-| tileSize、ropeHeadDim | 分别为 `128`、`64` |
-| returnSoftmaxLse | 是否返回两个 softmax 中间结果，并非直接返回 log-sum-exp |
-| attentionOutOut | `[T, N, 512]`，与 query 同型 |
-| softmaxMaxOut、softmaxSumOut | FLOAT32；请求时为 `[1,T,N]`，否则为 `[0]`，仍需传入 tensor 描述 |
-| workspaceSize（第一阶段输出） | 第二阶段所需设备内存字节数 |
-| executor（第一阶段输出） | 第二阶段使用的执行器，不可跨输入复用 |
-| workspace、workspaceSize（第二阶段） | 按第一阶段结果分配，大小为 0 时 workspace 可为 `nullptr` |
-| stream | 由调用方管理的有效 ACL 流 |
+所有Tensor均采用ACL_FORMAT_ND。张量数据位于同一设备，输出空间由调用方分配。B表示batch数，T表示所有batch的query token总数，N表示query head数，Bn表示物理页数，Bs表示每页token数，K表示每个query的稀疏块索引槽位数，maxBlocks表示每个batch的页表容量。
 
-`B`、`Bn` 和 `maxBlocks` 必须大于 0，`Bs` 是 `[16,1024]` 内 16 的倍数。KV slot 为 256 字节 nibble、128 字节与 query 同型的 `rope/scale`、2 字节 FLOAT16 scale；低 nibble 对应偶数维。
+| 参数名 | 输入/输出 | 描述 | 使用说明 | 数据类型 | 数据格式 | 维度(shape) | 非连续Tensor |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| query（const aclTensor*） | 输入 | 包含latent和rope的查询张量。 | 不可为空指针；支持T = 0的空Tensor；N为[1,128]内2的幂。 | FLOAT16、BFLOAT16 | ND | [T,N,576] | √ |
+| key（const aclTensor*） | 输入 | 打包的分页KV cache。 | 不可为空指针或空Tensor；仅支持首轴非连续，详见约束说明。 | INT8 | ND | PA_BSND：[Bn,Bs,1,386]；PA_BNBD：[Bn,1,Bs,386] | √ |
+| value（const aclTensor*） | 输入 | 与key共享latent的值张量。 | 传入与key相同的张量。 | 与key一致 | ND | 与key一致 | √ |
+| sparseIndices（const aclTensor*） | 输入 | batch内局部稀疏块索引。 | 不可为空指针；T = 0时支持空Tensor；有效前缀后以-1填充。 | INT32 | ND | [T,1,K] | √ |
+| keyDequantScaleOptional（const aclTensor*） | 可选输入 | key的独立反量化系数。 | 可传nullptr或空Tensor；当前COMBINE模式不读取其数值。 | FLOAT | ND | 不限制 | √ |
+| valueDequantScaleOptional（const aclTensor*） | 可选输入 | value的独立反量化系数。 | 可传nullptr或空Tensor；当前COMBINE模式不读取其数值。 | FLOAT | ND | 不限制 | √ |
+| blockTable（const aclTensor*） | 输入 | KV cache物理页映射表。 | 不可为空指针或空Tensor；页号必须有效。 | INT32 | ND | [B,maxBlocks] | √ |
+| actualSeqLengthsQuery（const aclTensor*） | 输入 | 各batch的query长度累加和。 | 不可为空指针或空Tensor；非负、单调不减，末项等于T。 | INT32 | ND | [B] | √ |
+| actualSeqLengthsKv（const aclTensor*） | 输入 | 各batch的有效KV长度。 | 不可为空指针或空Tensor；允许值为0；每项不超过对应页表行的容量。 | INT32 | ND | [B] | √ |
+| scaleValue（double） | 输入 | QK分数的缩放系数。 | 通常按模型设置，如1/sqrt(512)。 | - | - | - | - |
+| keyQuantMode（int64_t） | 输入 | key的量化模式。 | 仅支持3（TQ4）。 | - | - | - | - |
+| valueQuantMode（int64_t） | 输入 | value的量化模式。 | 仅支持3（TQ4）。 | - | - | - | - |
+| sparseBlockSize（int64_t） | 输入 | 每个稀疏索引对应的token数。 | 仅支持1、2、4、8、16，必须整除Bs。 | - | - | - | - |
+| layoutQueryOptional（char*） | 输入 | query的逻辑布局。 | 传入TND；可传nullptr使用默认值TND。 | - | - | - | - |
+| layoutKvOptional（char*） | 输入 | key和value的逻辑布局。 | 传入PA_BSND或PA_BNBD；可传nullptr使用默认值PA_BSND。 | - | - | - | - |
+| sparseMode（int64_t） | 输入 | 稀疏注意力的mask模式。 | 0表示无因果mask，3表示右下对齐因果mask。 | - | - | - | - |
+| preTokens（int64_t） | 输入 | 历史token窗口属性。 | 仅支持INT64_MAX。 | - | - | - | - |
+| nextTokens（int64_t） | 输入 | 未来token窗口属性。 | 仅支持INT64_MAX。 | - | - | - | - |
+| attentionMode（int64_t） | 输入 | Attention计算模式。 | 仅支持2（MLA-absorb）；本接口适用于DSA推理。 | - | - | - | - |
+| quantScaleRepoMode（int64_t） | 输入 | 反量化系数存储模式。 | 仅支持1（COMBINE），scale位于KV slot尾部。 | - | - | - | - |
+| tileSize（int64_t） | 输入 | 量化粒度属性。 | 仅支持128。 | - | - | - | - |
+| ropeHeadDim（int64_t） | 输入 | rope分量维度。 | 仅支持64。 | - | - | - | - |
+| returnSoftmaxLse（bool） | 输入 | 是否输出softmax_max和softmax_sum。 | true返回两个统计量，false返回两个空Tensor；不直接返回log-sum-exp。 | - | - | - | - |
+| attentionOutOut（const aclTensor*） | 输出 | Attention计算结果。 | 不可为空指针；支持T = 0的空Tensor。 | 与query一致 | ND | [T,N,512] | × |
+| softmaxMaxOut（const aclTensor*） | 输出 | softmax逐行最大值。 | 不可为空指针；returnSoftmaxLse为false时传入空Tensor描述。 | FLOAT | ND | true时[1,T,N]，false时[0] | × |
+| softmaxSumOut（const aclTensor*） | 输出 | softmax逐行指数和。 | 不可为空指针；returnSoftmaxLse为false时传入空Tensor描述。 | FLOAT | ND | true时[1,T,N]，false时[0] | × |
+| workspaceSize（uint64_t*） | 输出 | 第二阶段所需设备内存字节数。 | 不可为空指针。 | - | - | - | - |
+| executor（aclOpExecutor**） | 输出 | 第二阶段使用的执行器。 | 不可为空指针；不可跨输入复用。 | - | - | - | - |
 
-cache 支持第 0 轴非连续与合法 storage offset，页内必须连续，多页 stride 至少为 `Bs*386` 字节。创建 `aclTensor` 时传入真实 strides、offset、底层 storage 地址和 storage shape；不要把 view 数据地址与非零 offset 重复相加。调用方保证底层存储覆盖访问范围，输出不与输入重叠。
+### 返回值
 
-某个 batch 的 query 长度为 0 时不产生输出行；KV 长度为 0 时该 batch 输出为 0，softmax max 为 `-2e38`、sum 为 0。整体 `T=0` 返回空输出，元数据和物理 cache 仍须满足接口约束。非空 KV 但索引全为 `-1` 时，sum 不保证为 0，详见算子说明。
+aclnnStatus：返回状态码，具体参见[《aclnn返回码》](../../../docs/zh/context/aclnn_return_code.md)。
 
-接口不校验长度、索引及页表中的设备数值，调用方须保证其合法性。输入、输出和 workspace 必须存活到流上任务完成，读取输出前需正确同步。
+第一阶段进行元数据校验，常见异常如下。设备上的索引和长度数值不属于此表的校验范围。
 
-## 返回值
+| 返回值 | 错误码 | 描述 |
+| --- | --- | --- |
+| ACLNN_ERR_PARAM_NULLPTR | 161001 | 必选Tensor参数传入空指针，例如query为nullptr。 |
+| ACLNN_ERR_PARAM_INVALID | 161002 | 输入或输出dtype组合不在支持范围内，例如query为FLOAT。 |
+| ACLNN_ERR_INNER_TILING_ERROR | 561002 | 输入元数据或属性不满足tiling约束，例如sparseBlockSize为3或layoutKvOptional为BNBD。 |
 
-`ACLNN_SUCCESS` 表示当前阶段成功；其他值表示参数、执行环境或算子执行错误，具体原因见 ACLNN 错误日志。两阶段返回码均需检查；第二阶段返回成功只表示任务成功下发，异步错误还可能在流同步时报告。
+## aclnnTurboQuantSparseFlashAttention
+
+### 参数说明
+
+| 参数名 | 输入/输出 | 描述 |
+| --- | --- | --- |
+| workspace | 输入 | Device侧workspace地址，按第一阶段结果分配；workspaceSize为0时可传nullptr。 |
+| workspaceSize | 输入 | Device侧workspace字节数，使用第一阶段返回值。 |
+| executor | 输入 | 第一阶段创建的执行器。 |
+| stream | 输入 | 张量所在设备上由调用方管理的有效ACL流。 |
+
+### 返回值
+
+aclnnStatus：返回状态码，具体参见[《aclnn返回码》](../../../docs/zh/context/aclnn_return_code.md)。
+
+两阶段返回码均需检查。第二阶段返回ACLNN_SUCCESS表示任务成功下发，异步错误还可能在流同步时报告。
+
+## 约束说明
+
+- 该接口仅支持推理前向。
+- 确定性说明：aclnnTurboQuantSparseFlashAttention默认确定性实现。
+- B、Bn和maxBlocks必须大于0；Bs为[16,1024]内16的倍数。KV head数固定为1，slot宽度固定为386字节。实际KV长度为0不代表支持空的物理KV cache。
+- cache仅支持第0轴非连续，页内连续；多页时stride(0)至少为Bs × 386字节，不支持重叠页、负stride或页内非连续。单元素轴不约束stride。地址跨度不得超过INT64_MAX，调用方保证底层存储覆盖访问范围。
+- 创建带偏移的aclTensor时传入真实strides、offset、底层storage地址及storage shape；不能将view数据地址与非零offset重复相加。三个输出Tensor必须连续且不与输入重叠；调用方应按此要求分配，接口不保证拦截非连续输出。
+- sparseIndices中的索引i表示本batch中从i × sparseBlockSize开始的稀疏块，并非物理页号。有效索引必须位于每行前缀，无效后缀填-1；最后一个块可以只包含部分有效token。
+- 调用方保证长度数组、索引和页表数值合法：query累计长度单调不减且末项等于T，KV长度非负且不超过对应页表容量，物理页号落在cache范围内。接口不读取这些设备数值做合法性检查。
+- 某batch的query长度为0时不产生输出行；KV长度为0时该batch的attention输出为0，请求统计量时max为-2e38、sum为0。整体T = 0返回空输出，其余元数据仍须符合约束。
+- KV长度非零但稀疏索引全为-1时，attention输出为0，max为-2e38，sum不保证为0。不能仅用sum判断行有效性。
+- 输入、输出和workspace必须存活到流上任务完成，读取输出前需同步。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。本例使用 BF16 query、PA_BSND cache，包含 1 个 query token、8 个 query head 和 1 个有效 KV token。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。本例使用BF16 query、PA_BSND cache，包含1个query token、8个query head和1个有效KV token。
 
 ```cpp
 /**
