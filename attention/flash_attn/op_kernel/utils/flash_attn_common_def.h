@@ -224,6 +224,7 @@ struct RunInfo {
     uint64_t actS2Size = 1;   // 当前处理head的S2轴实际大小
     uint32_t actMSize = 0;    // GS1方向上的长度
     uint32_t actMSizeAlign32; // GS1 方向上长度对齐
+    uint32_t actMSizeAlign64; // GS1 方向上长度对齐64
     uint32_t actVecMSize;     // VEC 视角, 基本块GS1方向长度
     uint32_t vecMbaseIdx;     // VEC 对应的M 轴起始位置,V0 为0， V1 为 V0的actVecMSize
 
