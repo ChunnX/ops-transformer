@@ -208,9 +208,9 @@ ge::graphStatus StemIndexerInfoParser::CheckRequiredInOutExistence() const
     OP_CHECK_IF(opParamInfo_.metadata.tensor == nullptr,
                 OP_LOGE(opName_, "metadata is required but is null!"),
                 return ge::GRAPH_FAILED);
-    // OP_CHECK_IF(opParamInfo_.metadata.desc == nullptr,
-    //             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "metadata", "metadata desc cannot be empty"),
-    //             return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.metadata.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "metadata", "metadata desc cannot be empty"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.sparseIndicesOut.shape == nullptr,
                 OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor sparse_indices"),
                 return ge::GRAPH_FAILED);
@@ -455,14 +455,14 @@ ge::graphStatus StemIndexerInfoParser::ValidateInputShapesMatch()
     }
     uint64_t metadataCapacity =
         CalcStemIndexerMetadataCapacity(bSize_, kvHeadNum_, metadataAicCoreNum, metadataAivCoreNum);
-    // OP_CHECK_IF(metadataShape.GetDim(DIM_IDX_ZERO) < static_cast<int64_t>(metadataCapacity),
-    //             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-    //                 opName_, "metadata", Ops::Base::ToString(metadataShape).c_str(),
-    //                 ("The first dimension of input metadata should be at least " + std::to_string(metadataCapacity) +
-    //                  " when batch is " + std::to_string(bSize_) + " and kv_heads is " +
-    //                  std::to_string(kvHeadNum_))
-    //                     .c_str()),
-    //             return ge::GRAPH_FAILED);
+    OP_CHECK_IF(metadataShape.GetDim(DIM_IDX_ZERO) < static_cast<int64_t>(metadataCapacity),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    opName_, "metadata", Ops::Base::ToString(metadataShape).c_str(),
+                    ("The first dimension of input metadata should be at least " + std::to_string(metadataCapacity) +
+                     " when batch is " + std::to_string(bSize_) + " and kv_heads is " +
+                     std::to_string(kvHeadNum_))
+                        .c_str()),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         sparseIndicesShape.GetDim(DIM_IDX_ZERO) != bSize_ || sparseIndicesShape.GetDim(DIM_IDX_ONE) != qHeadNum_ ||
             sparseIndicesShape.GetDim(DIM_IDX_TWO) != maxQb_ || sparseIndicesShape.GetDim(DIM_IDX_THREE) != maxKb_,
