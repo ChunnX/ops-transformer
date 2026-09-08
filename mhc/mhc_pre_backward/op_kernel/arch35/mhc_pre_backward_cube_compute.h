@@ -101,20 +101,6 @@ private:
         LocalTensor<float> currentC = cL0_[cSlot * BASIC_CUBE_L0C_SLOT_ELEMS];
         WaitFlag<HardEvent::FIX_M>(cSlot);
 
-        // C1的K维通常包含多个L1分块。先预取首块，后续在当前块执行MTE1/MMAD时，
-        // 将下一块GM数据搬入另一个L1槽，隐藏串行GM到L1搬运时间。
-        bool pipelineC1L1 = transA && !reuseB1 && k > BASIC_CUBE_K_L1;
-        if (pipelineC1L1) {
-            uint32_t firstSlot = l1LoopCount_ & 1U;
-            LocalTensor<float> firstA1 = aL1_[firstSlot * BASIC_CUBE_L1_SLOT_ELEMS];
-            LocalTensor<float> firstB1 = bL1_[firstSlot * BASIC_CUBE_L1_SLOT_ELEMS];
-            uint32_t firstKL1 = k < BASIC_CUBE_K_L1 ? k : BASIC_CUBE_K_L1;
-            WaitFlag<HardEvent::MTE1_MTE2>(firstSlot);
-            CopyInA1Trans(firstA1, a, m, firstKL1, aGmStride);
-            CopyInB1(firstB1, b, n, firstKL1, bGmStride);
-            SetFlag<HardEvent::MTE2_MTE1>(firstSlot);
-        }
-
         for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += BASIC_CUBE_K_L1) {
             uint32_t remainKL1 = k - offsetKL1;
             uint32_t currentKL1 = remainKL1 < BASIC_CUBE_K_L1 ? remainKL1 : BASIC_CUBE_K_L1;
@@ -123,33 +109,17 @@ private:
             LocalTensor<float> currentA1 = aL1_[l1Slot * BASIC_CUBE_L1_SLOT_ELEMS];
             LocalTensor<float> currentB1 = bL1_[l1Slot * BASIC_CUBE_L1_SLOT_ELEMS];
 
-            if (pipelineC1L1) {
-                WaitFlag<HardEvent::MTE2_MTE1>(l1Slot);
-                uint32_t nextOffsetKL1 = offsetKL1 + BASIC_CUBE_K_L1;
-                if (nextOffsetKL1 < k) {
-                    uint32_t nextKL1 = k - nextOffsetKL1;
-                    nextKL1 = nextKL1 < BASIC_CUBE_K_L1 ? nextKL1 : BASIC_CUBE_K_L1;
-                    uint32_t nextSlot = (l1LoopCount_ + 1U) & 1U;
-                    LocalTensor<float> nextA1 = aL1_[nextSlot * BASIC_CUBE_L1_SLOT_ELEMS];
-                    LocalTensor<float> nextB1 = bL1_[nextSlot * BASIC_CUBE_L1_SLOT_ELEMS];
-                    WaitFlag<HardEvent::MTE1_MTE2>(nextSlot);
-                    CopyInA1Trans(nextA1, a[nextOffsetKL1 * aGmStride], m, nextKL1, aGmStride);
-                    CopyInB1(nextB1, b[nextOffsetKL1 * bGmStride], n, nextKL1, bGmStride);
-                    SetFlag<HardEvent::MTE2_MTE1>(nextSlot);
-                }
+            WaitFlag<HardEvent::MTE1_MTE2>(l1Slot);
+            if (transA) {
+                CopyInA1Trans(currentA1, a[offsetKL1 * aGmStride], m, currentKL1, aGmStride);
             } else {
-                WaitFlag<HardEvent::MTE1_MTE2>(l1Slot);
-                if (transA) {
-                    CopyInA1Trans(currentA1, a[offsetKL1 * aGmStride], m, currentKL1, aGmStride);
-                } else {
-                    CopyInA1(currentA1, a[offsetKL1], m, currentKL1, aGmStride);
-                }
-                if (!reuseB1) {
-                    CopyInB1(currentB1, b[offsetKL1 * bGmStride], n, currentKL1, bGmStride);
-                }
-                SetFlag<HardEvent::MTE2_MTE1>(l1Slot);
-                WaitFlag<HardEvent::MTE2_MTE1>(l1Slot);
+                CopyInA1(currentA1, a[offsetKL1], m, currentKL1, aGmStride);
             }
+            if (!reuseB1) {
+                CopyInB1(currentB1, b[offsetKL1 * bGmStride], n, currentKL1, bGmStride);
+            }
+            SetFlag<HardEvent::MTE2_MTE1>(l1Slot);
+            WaitFlag<HardEvent::MTE2_MTE1>(l1Slot);
 
             for (uint32_t offsetKL0 = 0; offsetKL0 < currentKL1; offsetKL0 += BASIC_CUBE_K_L0) {
                 uint32_t remainKL0 = currentKL1 - offsetKL0;
