@@ -118,7 +118,6 @@ WORKSPACE_SEG_DESCRIPTIONS = {
 }
 
 WORKSPACE_PREVIEW_SIZE = 64
-RUNTIME_INFO_CORE_MAX = 128
 
 PEERMEM_SEG_TYPE_NAMES = {
     0: "DATA", 1: "SCALE", 2: "BIAS", 3: "FLAG", 255: "RESERVED",
@@ -154,12 +153,16 @@ def matches_operator(path, profile_key):
     return profile_key in normalized_name
 
 
-def discover_files(dump_dir, profile_key):
-    analysis_root = dump_dir / "mc2_dump_analysis"
-    all_files = [
-        path for path in dump_dir.rglob("*")
-        if path.is_file() and analysis_root not in path.parents
-    ]
+def discover_files(dump_dir, output_dir, profile_key):
+    all_files = []
+    for path in dump_dir.rglob("*"):
+        if not path.is_file() or output_dir in path.parents:
+            continue
+        # Skip analysis outputs from any previous run, even one rooted at a
+        # different dump_dir, so stale TXT reports are never re-parsed as dumps.
+        if any(parent.name == output_dir.name for parent in path.parents):
+            continue
+        all_files.append(path)
     files = []
     for path in all_files:
         kind = classify_file(path)
@@ -195,50 +198,56 @@ def segment_identity(path, prefix):
     return (int(match.group(1)), int(match.group(2))) if match else None
 
 
-def inspect_tiling(profile, tiling_file):
-    """Return validated core count and path metadata from one TilingData file."""
+def infer_aic_core_num(profile, tiling_file):
     sys.path.insert(0, str(SCRIPT_DIR))
     try:
         module = importlib.import_module(profile["module"])
         data = read_data(tiling_file)
         name = profile["name"]
         if name == "AllGatherMatmulV3":
-            core_num = module.parse_tiling_data(data).get("mmTile", {}).get("usedCoreNum")
-            is_apace = False
-        elif name == "AlltoAllMatmulV2":
-            core_num = module.parse_tiling_data(data).get("tileQbmmTilingData", {}).get("usedCoreNum")
-            is_apace = False
-        elif name == "AlltoAllMatmul":
+            return module.parse_tiling_data(data).get("mmTile", {}).get("usedCoreNum")
+        if name == "AlltoAllMatmulV2":
+            return module.parse_tiling_data(data).get("tileQbmmTilingData", {}).get("usedCoreNum")
+        if name == "AlltoAllMatmul":
             tiling_format = module.detect_tiling_format(data)
             if tiling_format == "apace":
                 result = module.parse_apace_tiling_data(data)
-                core_num = result.get("tileQbmmTilingData", {}).get("usedCoreNum")
-                is_apace = True
-            else:
-                info = module.parse_allto_all_matmul_tiling_info(data, module.OFFSET_TILING_INFO)
-                core_num = info.get("aicCoreNum")
-                is_apace = False
+                return result.get("tileQbmmTilingData", {}).get("usedCoreNum")
+            info = module.parse_allto_all_matmul_tiling_info(data, module.OFFSET_TILING_INFO)
+            return info.get("aicCoreNum")
+        if name == "AllGatherMatmulV2":
+            layout = module.compute_layout()
         else:
-            is_quant = module.detect_quant_mode(data)
-            parser = module.parse_quant_tiling_data if is_quant else module.parse_non_quant_tiling_data
-            core_num = parser(data).get("param", {}).get("aicCoreNum")
-            is_apace = False
-        if not isinstance(core_num, int) or not 0 < core_num <= RUNTIME_INFO_CORE_MAX:
-            core_num = None
-        return {"coreNum": core_num, "isApace": is_apace}
-    except (AttributeError, ImportError, IndexError, OSError, struct.error, KeyError, TypeError, ValueError):
-        return {"coreNum": None, "isApace": False}
+            layout = module.compute_mrs_v2_layout()
+        is_quant = module.detect_quant_mode(data, layout)
+        return module.parse_tiling_data(data, layout, is_quant).get("param", {}).get("aicCoreNum")
+    except Exception:
+        return None
     finally:
         if sys.path and sys.path[0] == str(SCRIPT_DIR):
             sys.path.pop(0)
 
 
-def dump_sequence(path):
-    """Extract the trailing dump sequence/timestamp, before an optional extension."""
-    # Numeric dot-separated suffixes are part of the dump identity, not file
-    # extensions (for example ``.61.154.20260903070045141``).
-    match = re.search(r"(\d+)(?:\.[A-Za-z][A-Za-z0-9_-]*)?$", path.name)
-    return int(match.group(1)) if match else None
+def infer_apace_parents(profile, tiling_files):
+    """alltoallmatmul: 返回 tiling 为 Apace CCU 格式的 rank 目录集合，用于 --apace 标签。"""
+    if profile["name"] != "AlltoAllMatmul":
+        return set()
+    sys.path.insert(0, str(SCRIPT_DIR))
+    try:
+        module = importlib.import_module(profile["module"])
+        parents = set()
+        for tiling_file in tiling_files:
+            try:
+                if module.detect_tiling_format(read_data(tiling_file)) == "apace":
+                    parents.add(tiling_file.parent)
+            except (OSError, struct.error, ValueError, KeyError):
+                continue
+        return parents
+    except ImportError:
+        return set()
+    finally:
+        if sys.path and sys.path[0] == str(SCRIPT_DIR):
+            sys.path.pop(0)
 
 
 def operator_suffix(path, profile):
@@ -254,63 +263,30 @@ def operator_suffix(path, profile):
     return lowered
 
 
-def build_tiling_index(profile, tiling_files):
-    """Index each TilingData independently; a rank directory can contain many calls."""
-    records = []
-    by_parent = {}
-    core_values = set()
+def build_core_index(profile, tiling_files):
+    exact = {}
+    per_parent = {}
+    values = set()
     for tiling_file in tiling_files:
-        metadata = inspect_tiling(profile, tiling_file)
-        try:
-            mtime_ns = tiling_file.stat().st_mtime_ns
-        except OSError:
-            mtime_ns = None
-        record = {
-            "path": tiling_file,
-            "suffix": operator_suffix(tiling_file, profile),
-            "sequence": dump_sequence(tiling_file),
-            "mtimeNs": mtime_ns,
-            **metadata,
-        }
-        records.append(record)
-        by_parent.setdefault(tiling_file.parent, []).append(record)
-        if metadata["coreNum"] is not None:
-            core_values.add(metadata["coreNum"])
-    return {"records": records, "byParent": by_parent, "coreValues": core_values}
+        core_num = infer_aic_core_num(profile, tiling_file)
+        if core_num is None:
+            continue
+        exact[(tiling_file.parent, operator_suffix(tiling_file, profile))] = core_num
+        per_parent.setdefault(tiling_file.parent, set()).add(core_num)
+        values.add(core_num)
+    return exact, per_parent, values
 
 
-def tiling_for_file(path, profile, tiling_index):
-    """Associate a dump file with the nearest TilingData from the same rank directory."""
-    candidates = tiling_index["byParent"].get(path.parent, [])
-    if not candidates:
-        return tiling_index["records"][0] if len(tiling_index["records"]) == 1 else None
-
-    suffix = operator_suffix(path, profile)
-    exact = [record for record in candidates if record["suffix"] == suffix]
-    if exact:
-        return exact[0]
-    if len(candidates) == 1:
-        return candidates[0]
-
-    sequence = dump_sequence(path)
-    with_sequence = [record for record in candidates if sequence is not None and record["sequence"] is not None]
-    if with_sequence:
-        return min(
-            with_sequence,
-            key=lambda record: (
-                abs(record["sequence"] - sequence),
-                0 if record["sequence"] <= sequence else 1,
-                -record["sequence"],
-            ),
-        )
-
-    try:
-        mtime_ns = path.stat().st_mtime_ns
-    except OSError:
-        mtime_ns = None
-    with_mtime = [record for record in candidates if mtime_ns is not None and record["mtimeNs"] is not None]
-    if with_mtime:
-        return min(with_mtime, key=lambda record: abs(record["mtimeNs"] - mtime_ns))
+def core_num_for_file(path, profile, core_index):
+    exact, per_parent, values = core_index
+    core_num = exact.get((path.parent, operator_suffix(path, profile)))
+    if core_num is not None:
+        return core_num
+    parent_values = per_parent.get(path.parent, set())
+    if len(parent_values) == 1:
+        return next(iter(parent_values))
+    if len(values) == 1:
+        return next(iter(values))
     return None
 
 
@@ -370,28 +346,7 @@ def run_backend(profile, kind, path, aic_core_num, use_apace=False):
 
 def emit(lines, value=""):
     print(value)
-    if lines is not None:
-        lines.append(value)
-
-
-def expected_file_warnings(profile, files):
-    """Return non-fatal warnings for DFX file categories expected on this path."""
-    present = {kind for kind, _ in files}
-    expected = {"tiling", "args", "workspace"}
-    if "URMA" in profile["path"]:
-        expected.update(("comm_context", "peermem"))
-    else:
-        expected.update(("xn", "cke"))
-    display_names = {
-        "tiling": "tiling_data_*",
-        "args": "args_info_*",
-        "workspace": "workspace_segN_typeM_*",
-        "xn": "xn_addr_info_*",
-        "cke": "cke_addr_info_*",
-        "comm_context": "comm_context_*",
-        "peermem": "peermem_window_*/peermem_segN_typeM_*",
-    }
-    return [f"缺少预期文件: {display_names[kind]}" for kind in sorted(expected - present)]
+    lines.append(value)
 
 
 def text_output_path(output_dir, relative_path):
@@ -439,45 +394,45 @@ def main(argv=None):
     # stale results after switching to per-source TXT output.
     (output_dir / "analysis.txt").unlink(missing_ok=True)
 
-    files = discover_files(dump_dir, profile_key)
+    files = discover_files(dump_dir, output_dir, profile_key)
     if not files:
         parser.error(f"在 {dump_dir} 中没有找到 {profile['name']} 的受支持 dump 文件")
 
     tiling_files = [path for kind, path in files if kind == "tiling"]
-    tiling_index = build_tiling_index(profile, tiling_files)
-    core_values = sorted(tiling_index["coreValues"])
+    core_index = build_core_index(profile, tiling_files)
+    apace_parents = infer_apace_parents(profile, tiling_files)
+    core_values = sorted(core_index[2])
     core_summary = core_values[0] if len(core_values) == 1 else (core_values or "unknown")
-    emit(None, "=" * 88)
-    emit(None, f"MC2 dump analysis: {profile['name']} | path: {profile['path']}")
-    emit(None, f"dump dir: {dump_dir}")
-    emit(None, f"matched files: {len(files)} | inferred AIC cores: {core_summary}")
-    emit(None, f"TXT output: {output_dir}")
-    for warning in expected_file_warnings(profile, files):
-        emit(None, f"[WARNING] {warning}")
-    emit(None, "=" * 88)
+    console_lines = []
+    emit(console_lines, "=" * 88)
+    emit(console_lines, f"MC2 dump analysis: {profile['name']} | path: {profile['path']}")
+    emit(console_lines, f"dump dir: {dump_dir}")
+    emit(console_lines, f"matched files: {len(files)} | inferred AIC cores: {core_summary}")
+    emit(console_lines, f"TXT output: {output_dir}")
+    emit(console_lines, "=" * 88)
 
     failures = 0
     for kind, path in files:
         relative_path = path.relative_to(dump_dir)
         output_path = text_output_path(output_dir, relative_path)
         result_lines = []
-        emit(None)
-        emit(None, f"[{kind}] {relative_path}")
-        emit(None, "-" * 88)
+        emit(console_lines)
+        emit(console_lines, f"[{kind}] {relative_path}")
+        emit(console_lines, "-" * 88)
 
         if kind in ("xn", "cke"):
             try:
                 rows, values, nonzero, result_lines = parse_address_table(path)
                 emit(
-                    None,
+                    console_lines,
                     f"parsed: dtype=uint64 shape=({rows}, 64) values={values} nonzero={nonzero}",
                 )
             except (OSError, RuntimeError, ValueError) as error:
                 failures += 1
                 result_lines.append(f"ERROR: {error}")
-                emit(None, result_lines[-1])
+                emit(console_lines, result_lines[-1])
             save_text_result(output_path, profile, kind, relative_path, result_lines)
-            emit(None, f"saved TXT: {output_path}")
+            emit(console_lines, f"saved TXT: {output_path}")
             continue
 
         # Large data segments only need metadata and a short preview in their
@@ -485,69 +440,40 @@ def main(argv=None):
         if kind == "workspace":
             identity = segment_identity(path, "workspace")
             if identity is not None and identity[1] != 12:
-                try:
-                    seg_index, seg_type = identity
-                    emit(result_lines, f"segIdx: {seg_index}")
-                    emit(result_lines, f"segType: {seg_type} ({WORKSPACE_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
-                    emit(result_lines, f"dataMeaning: {WORKSPACE_SEG_DESCRIPTIONS.get(seg_type, '未知 Workspace 段')}")
-                    emit(result_lines, f"fileSize: {path.stat().st_size} bytes")
-                    emit_decimal_byte_preview(result_lines, read_preview(path, WORKSPACE_PREVIEW_SIZE))
-                    emit(result_lines, "typedViewHint: 使用 parse_matrix.py 并指定 dtype/rows/cols 查看真实数值")
-                except OSError as error:
-                    failures += 1
-                    emit(result_lines, f"ERROR: {error}")
+                seg_index, seg_type = identity
+                emit(result_lines, f"segIdx: {seg_index}")
+                emit(result_lines, f"segType: {seg_type} ({WORKSPACE_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
+                emit(result_lines, f"dataMeaning: {WORKSPACE_SEG_DESCRIPTIONS.get(seg_type, '未知 Workspace 段')}")
+                emit(result_lines, f"fileSize: {path.stat().st_size} bytes")
+                emit_decimal_byte_preview(result_lines, read_preview(path, WORKSPACE_PREVIEW_SIZE))
+                emit(result_lines, "typedViewHint: 使用 parse_matrix.py 并指定 dtype/rows/cols 查看真实数值")
                 save_text_result(output_path, profile, kind, relative_path, result_lines)
-                emit(None, f"saved TXT: {output_path}")
+                emit(console_lines, f"saved TXT: {output_path}")
                 continue
 
         if kind == "peermem":
             identity = segment_identity(path, "peermem")
             if identity is not None:
-                try:
-                    seg_index, seg_type = identity
-                    emit(result_lines, f"segIdx: {seg_index}")
-                    emit(result_lines, f"segType: {seg_type} ({PEERMEM_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
-                    emit(result_lines, f"fileSize: {path.stat().st_size} bytes")
-                    emit_decimal_byte_preview(result_lines, read_preview(path, WORKSPACE_PREVIEW_SIZE))
-                except OSError as error:
-                    failures += 1
-                    emit(result_lines, f"ERROR: {error}")
+                seg_index, seg_type = identity
+                emit(result_lines, f"segIdx: {seg_index}")
+                emit(result_lines, f"segType: {seg_type} ({PEERMEM_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
+                emit(result_lines, f"fileSize: {path.stat().st_size} bytes")
+                emit(result_lines, f"hexPreview(512B): {read_preview(path, 512).hex()}")
                 save_text_result(output_path, profile, kind, relative_path, result_lines)
-                emit(None, f"saved TXT: {output_path}")
+                emit(console_lines, f"saved TXT: {output_path}")
                 continue
 
-        tiling_record = tiling_for_file(path, profile, tiling_index) if kind == "workspace" else None
-        aic_core_num = tiling_record["coreNum"] if tiling_record is not None else None
-        use_apace = bool(tiling_record and tiling_record["isApace"])
-        if kind == "workspace":
-            matched_tiling = (
-                tiling_record["path"].relative_to(dump_dir) if tiling_record is not None else "NOT_FOUND"
-            )
-            path_mode = profile["path"]
-            if profile["name"] == "AlltoAllMatmul":
-                path_mode = "Apace CCU" if use_apace else "mainline CCU"
-            result_lines.extend((
-                f"associatedTiling: {matched_tiling}",
-                f"inferredAicCoreNum: {aic_core_num if aic_core_num is not None else 'UNKNOWN'}",
-                f"pathMode: {path_mode}",
-                "-" * 88,
-            ))
-        try:
-            return_code, output = run_backend(profile, kind, path, aic_core_num, use_apace)
-        except OSError as error:
-            return_code, output = 1, f"ERROR: 无法启动后端解析脚本: {error}"
+        aic_core_num = core_num_for_file(path, profile, core_index) if kind == "workspace" else None
+        use_apace = kind == "workspace" and path.parent in apace_parents
+        return_code, output = run_backend(profile, kind, path, aic_core_num, use_apace)
         if output:
             for line in output.splitlines():
                 emit(result_lines, line)
-        backend_reported_error = any(line.lstrip().startswith("[ERROR]") for line in result_lines)
-        if return_code != 0 or backend_reported_error:
+        if return_code != 0:
             failures += 1
-            if return_code != 0:
-                emit(result_lines, f"ERROR: backend exited with code {return_code}")
-        elif not output:
-            emit(result_lines, "WARNING: 后端解析脚本没有输出内容")
+            emit(result_lines, f"ERROR: backend exited with code {return_code}")
         save_text_result(output_path, profile, kind, relative_path, result_lines)
-        emit(None, f"saved TXT: {output_path}")
+        emit(console_lines, f"saved TXT: {output_path}")
 
     print()
     print(f"解析完成: {len(files) - failures}/{len(files)} 个文件成功")

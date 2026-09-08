@@ -28,21 +28,28 @@ import json
 import argparse
 import logging
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from tiling_layout import LayoutError, compute_allto_all_layout
+
 logging.basicConfig(level=logging.NOTSET, format="[%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
 
-# ====== 结构体大小常量（与 arch35 C++ 定义保持一致）======
+# ====== 固定结构体大小常量（DFX 自有, 不随 CANN 版本漂移）======
 MC2_INIT_TILING_SIZE = 64
 MC2_CC_TILING_SIZE = 512
 ALLTO_ALL_MATMUL_TILING_INFO_SIZE = 104  # 12*u32(48) + 7*u64(56) = 104
-TCUBE_TILING_SIZE = 200
-MC2_MM_V3_TILING_DATA_SIZE = 236  # TCubeTiling(200) + 9*uint32(36)
-MC2_QUANT_BMM_TILING_PARAMS_SIZE = 364  # params(128) + TCubeTiling(200) + L2cache(24) + slidingWindow(12)
 
-ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE = 1152  # 64+512+104+236+236
-ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE = 1408  # 64+512+104+364+364
-ALLTO_ALL_MATMUL_TILING_DATA_SIZE = ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE + 208  # 1360
-ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE = ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE + 208  # 1616
-APACE_ALLTO_ALL_MATMUL_TILING_DATA_SIZE = 896  # 64+512+40+64+4+4+208
+# ====== 以下常量依赖 TCubeTiling (随 CANN 版本漂移), 由 tiling_layout 实时计算 ======
+_LAYOUT = compute_allto_all_layout()
+
+TCUBE_TILING_SIZE = _LAYOUT["tcubeTilingSize"]
+MC2_MM_V3_TILING_DATA_SIZE = _LAYOUT["nonQuant"]["blockSize"]     # TCubeTiling + 9*u32
+MC2_QUANT_BMM_TILING_PARAMS_SIZE = _LAYOUT["quant"]["blockSize"]  # 128 + TCubeTiling + 24 + 12
+
+ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE = _LAYOUT["nonQuant"]["wsLayoutOffset"]    # 1152
+ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE = _LAYOUT["quant"]["wsLayoutOffset"]  # 1408
+ALLTO_ALL_MATMUL_TILING_DATA_SIZE = _LAYOUT["nonQuant"]["size"]   # 1360
+ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE = _LAYOUT["quant"]["size"]  # 1616
+APACE_ALLTO_ALL_MATMUL_TILING_DATA_SIZE = _LAYOUT["apace"]["size"]  # 896 (无 TCubeTiling, 固定)
 TILING_DUMP_SIZE = 2048  # dump 固定大小
 
 # ====== Workspace 结构体大小常量（与 mc2_tiling_struct.h 保持一致）======
@@ -57,11 +64,51 @@ RUNTIME_INFO_MAGIC = 0x5A5A5A5A
 # WorkspaceLayoutInfo 在 TilingData 中的偏移（追加在结构体末尾）
 OFFSET_WS_LAYOUT_NON_QUANT = ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE  # 1152
 OFFSET_WS_LAYOUT_QUANT = ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE  # 1408
-OFFSET_APACE_COMM_TILING = MC2_INIT_TILING_SIZE + MC2_CC_TILING_SIZE  # 576
-OFFSET_APACE_QUANT_MATMUL = OFFSET_APACE_COMM_TILING + 40  # 616
-OFFSET_APACE_LOCAL_MATMUL = OFFSET_APACE_QUANT_MATMUL + 64  # 680
-OFFSET_APACE_QUANT_MODE = OFFSET_APACE_LOCAL_MATMUL + 4  # 684
-OFFSET_WS_LAYOUT_APACE = OFFSET_APACE_QUANT_MODE + 4  # 688
+OFFSET_APACE_COMM_TILING = _LAYOUT["apace"]["commOffset"]          # 576
+OFFSET_APACE_QUANT_MATMUL = _LAYOUT["apace"]["quantMatmulOffset"]  # 616
+OFFSET_APACE_LOCAL_MATMUL = _LAYOUT["apace"]["localMatmulOffset"]  # 680
+OFFSET_APACE_QUANT_MODE = _LAYOUT["apace"]["quantModeOffset"]      # 684
+OFFSET_WS_LAYOUT_APACE = _LAYOUT["apace"]["wsLayoutOffset"]        # 688
+
+
+def init_layout(cann=None):
+    """按指定 CANN 环境重新计算布局常量并打印布局摘要。
+
+    模块加载时已按当前 set_env.sh 环境计算过一次; --cann 指定其他环境时调用本函数。"""
+    global _LAYOUT
+    try:
+        layout = compute_allto_all_layout(cann=cann)
+    except LayoutError as e:
+        logging.error("布局计算失败: %s", e)
+        sys.exit(1)
+    _LAYOUT = layout
+    g = globals()
+    g["TCUBE_TILING_SIZE"] = layout["tcubeTilingSize"]
+    g["MC2_MM_V3_TILING_DATA_SIZE"] = layout["nonQuant"]["blockSize"]
+    g["MC2_QUANT_BMM_TILING_PARAMS_SIZE"] = layout["quant"]["blockSize"]
+    g["ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE"] = layout["nonQuant"]["wsLayoutOffset"]
+    g["ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE"] = layout["quant"]["wsLayoutOffset"]
+    g["ALLTO_ALL_MATMUL_TILING_DATA_SIZE"] = layout["nonQuant"]["size"]
+    g["ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE"] = layout["quant"]["size"]
+    g["APACE_ALLTO_ALL_MATMUL_TILING_DATA_SIZE"] = layout["apace"]["size"]
+    g["OFFSET_WS_LAYOUT_NON_QUANT"] = layout["nonQuant"]["wsLayoutOffset"]
+    g["OFFSET_WS_LAYOUT_QUANT"] = layout["quant"]["wsLayoutOffset"]
+    g["OFFSET_WS_LAYOUT_APACE"] = layout["apace"]["wsLayoutOffset"]
+    g["OFFSET_APACE_COMM_TILING"] = layout["apace"]["commOffset"]
+    g["OFFSET_APACE_QUANT_MATMUL"] = layout["apace"]["quantMatmulOffset"]
+    g["OFFSET_APACE_LOCAL_MATMUL"] = layout["apace"]["localMatmulOffset"]
+    g["OFFSET_APACE_QUANT_MODE"] = layout["apace"]["quantModeOffset"]
+    g["OFFSET_TILE_MM_TILING"] = layout["offsets"]["tilingInfo"] + ALLTO_ALL_MATMUL_TILING_INFO_SIZE
+    g["OFFSET_TAIL_MM_TILING_NON_QUANT"] = g["OFFSET_TILE_MM_TILING"] + layout["nonQuant"]["blockSize"]
+    g["OFFSET_TAIL_QUANT_MM_TILING"] = g["OFFSET_TILE_MM_TILING"] + layout["quant"]["blockSize"]
+    for h in layout["headers"]:
+        logging.info("布局头文件: %s", h)
+    for key, name in (("nonQuant", "AlltoAllMatmulTilingData"),
+                      ("quant", "AlltoAllQuantMatmulTilingData"),
+                      ("apace", "Apace hcommAllToAllMatmulTilingData")):
+        b = layout[key]
+        logging.info("布局计算: %s: %dB, workspaceLayout@%d", name, b["size"], b["wsLayoutOffset"])
+    return layout
 
 # 量化模式枚举（x1QuantMode / x2QuantMode，与 op_proto.h 保持一致）
 # x1QuantMode: 0=非量化, 7=动态pertoken量化(KC), 6=MX量化
@@ -84,7 +131,7 @@ OFFSET_TILING_INFO = MC2_INIT_TILING_SIZE + MC2_CC_TILING_SIZE  # 576
 OFFSET_TILE_MM_TILING = OFFSET_TILING_INFO + ALLTO_ALL_MATMUL_TILING_INFO_SIZE  # 680
 OFFSET_TAIL_MM_TILING_NON_QUANT = OFFSET_TILE_MM_TILING + MC2_MM_V3_TILING_DATA_SIZE  # 916
 OFFSET_TILE_QUANT_MM_TILING = OFFSET_TILE_MM_TILING  # 680
-OFFSET_TAIL_QUANT_MM_TILING = OFFSET_TILE_MM_TILING + MC2_QUANT_BMM_TILING_PARAMS_SIZE  # 1044
+OFFSET_TAIL_QUANT_MM_TILING = OFFSET_TILE_MM_TILING + MC2_QUANT_BMM_TILING_PARAMS_SIZE  # 1040
 
 # args_info_*.bin 中 kernel 参数索引
 ARGS_INDEX_NAMES = [
@@ -289,11 +336,17 @@ MC2_MM_V3_EXT_FIELDS = [
 
 
 def parse_tcube_tiling(data: bytes, offset: int) -> dict:
-    """解析 TCubeTiling（200B = 50 × int32）。"""
+    """解析 TCubeTiling（大小 TCUBE_TILING_SIZE 随 CANN 版本由 tiling_layout 计算）。
+
+    已知字段名覆盖当前 50 个 (200B); CANN 版本变化导致字段更多时,
+    超出部分以 reservedFieldN 占位, 少于时仅解析已知字段。"""
     if offset + TCUBE_TILING_SIZE > len(data):
         return {"error": "data too short for TCubeTiling"}
-    values = struct.unpack_from(f"<{len(TCUBE_TILING_FIELDS)}i", data, offset)
-    return dict(zip(TCUBE_TILING_FIELDS, list(values)))
+    count = TCUBE_TILING_SIZE // 4
+    values = struct.unpack_from(f"<{count}i", data, offset)
+    names = TCUBE_TILING_FIELDS[:count] + [f"reservedField{i}"
+                                           for i in range(len(TCUBE_TILING_FIELDS), count)]
+    return dict(zip(names, list(values)))
 
 
 def parse_mc2_mm_v3_tiling_data(data: bytes, offset: int) -> dict:
@@ -345,8 +398,8 @@ def parse_mc2_quant_bmm_tiling_data_params(data: bytes, offset: int) -> dict:
         return {"error": "data too short for Mc2QuantBatchMatmulV3TilingDataParams"}
     params = parse_mc2_quant_bmm_data_params(data, offset)
     tcube = parse_tcube_tiling(data, offset + 128)
-    l2cache = parse_mc2_l2cache_tile_params(data, offset + 328)
-    sliding = parse_mc2_sliding_window_params(data, offset + 352)
+    l2cache = parse_mc2_l2cache_tile_params(data, offset + 128 + TCUBE_TILING_SIZE)
+    sliding = parse_mc2_sliding_window_params(data, offset + 128 + TCUBE_TILING_SIZE + 24)
     return {"params": params, "matmulTiling": tcube, "tileL2cacheTiling": l2cache, "adaptiveSlidingWin": sliding}
 
 
@@ -441,7 +494,10 @@ def is_valid_workspace_layout(layout: dict) -> bool:
 
 
 def detect_tiling_format(data: bytes) -> str:
-    """自动区分主线非量化、主线量化和 usingApaceImpl_ CCU tiling。"""
+    """自动区分主线非量化、主线量化和 usingApaceImpl_ CCU tiling。
+
+    apace 按 quantMode==6 + wsLayout 校验识别; 量化/非量化优先信
+    x1/x2QuantMode, 对应分支 wsLayout 校验不过时自动尝试另一分支。"""
     apace_layout = parse_workspace_layout_info(data, OFFSET_WS_LAYOUT_APACE)
     apace_quant_mode = (
         struct.unpack_from("<I", data, OFFSET_APACE_QUANT_MODE)[0]
@@ -449,7 +505,18 @@ def detect_tiling_format(data: bytes) -> str:
     )
     if apace_quant_mode == 6 and is_valid_workspace_layout(apace_layout):
         return "apace"
-    return "quant" if detect_quant_mode(data) else "non_quant"
+    is_quant = detect_quant_mode(data)
+    for q in (is_quant, not is_quant):
+        ws_off = OFFSET_WS_LAYOUT_QUANT if q else OFFSET_WS_LAYOUT_NON_QUANT
+        if ws_off + WORKSPACE_LAYOUT_INFO_SIZE > len(data):
+            continue
+        if is_valid_workspace_layout(parse_workspace_layout_info(data, ws_off)):
+            if q != is_quant:
+                logging.warning("x1/x2QuantMode 与 WorkspaceLayoutInfo 合法性校验不符, "
+                                "已自动切换至%s分支解析 (workspaceLayout 偏移已随之切换)",
+                                "量化" if q else "非量化")
+            return "quant" if q else "non_quant"
+    return "quant" if is_quant else "non_quant"
 
 
 def detect_quant_mode(data: bytes) -> bool:
@@ -541,13 +608,12 @@ def parse_runtime_info_per_core(data: bytes, offset: int,
 
 
 def parse_runtime_info_segment(data: bytes, aic_core_num=None,
-                               pos_tag_map=POS_TAG_MAP_ALLTO_ALL,
-                               aiv_per_aic=2) -> dict:
+                               pos_tag_map=POS_TAG_MAP_ALLTO_ALL) -> dict:
     """解析 workspace_segN_type12_*.bin（RuntimeInfo 段，64KB = 128 × 512B）。
 
     aic_core_num: tiling data 中的 aicCoreNum，用于区分 C/V 核。
-                  主线路径为 MIX_AIC_1_2，AIV 数量为 2*aicCoreNum；
-                  Apace 路径为 AIC_ONLY，没有 AIV slot。
+                  AIC coreId 范围 0 ~ aicCoreNum-1; AIV coreId 范围 aicCoreNum ~ 3*aicCoreNum-1
+                  (MIX_AIC_1_2 模式下 AIV slotIdx = aicCoreNum + GetBlockIdx())。
                   为 None 时 coreType 标记为 "未知"，需通过 --aic-core-num 传入。
     """
     max_slots = len(data) // RUNTIME_INFO_PER_CORE_SIZE
@@ -572,9 +638,6 @@ def parse_runtime_info_segment(data: bytes, aic_core_num=None,
         "maxSlots": max_slots,
         "activeSlots": active_count,
         "aicCoreNum": aic_core_num,
-        "aivPerAic": aiv_per_aic,
-        "expectedSlots": (max_slots if aic_core_num is None else
-                          min(max_slots, aic_core_num * (1 + aiv_per_aic))),
         "slots": slots,
     }
 
@@ -590,8 +653,7 @@ def detect_workspace_seg_from_filename(filename: str) -> tuple:
 
 
 def parse_workspace_segment_file(data: bytes, seg_type: int, aic_core_num=None,
-                                 pos_tag_map=POS_TAG_MAP_ALLTO_ALL,
-                                 aiv_per_aic=2) -> dict:
+                                 pos_tag_map=POS_TAG_MAP_ALLTO_ALL) -> dict:
     """解析 workspace_seg*_type*_*.bin 文件，根据段类型选择解析方式。"""
     type_name = WS_SEG_TYPE_MAP.get(seg_type, f"UNKNOWN({seg_type})")
     result = {
@@ -600,7 +662,7 @@ def parse_workspace_segment_file(data: bytes, seg_type: int, aic_core_num=None,
         "fileSize": len(data),
     }
     if seg_type == 12:  # WS_SEG_RUNTIME_INFO
-        rt_info = parse_runtime_info_segment(data, aic_core_num, pos_tag_map, aiv_per_aic)
+        rt_info = parse_runtime_info_segment(data, aic_core_num, pos_tag_map)
         result["runtimeInfo"] = rt_info
     else:
         # 非 RuntimeInfo 段：做基础 hex 统计
@@ -696,38 +758,19 @@ def print_runtime_info_segment(rt_info: dict):
     else:
         logging.info("  %-30s: %d (coreId < %d 为 C核, 否则为 V核)",
                      "aicCoreNum", rt_info["aicCoreNum"], rt_info["aicCoreNum"])
-    expected_slots = rt_info["expectedSlots"]
-    expected = rt_info["slots"][:expected_slots]
-    valid_expected = sum(slot.get("magicValid", False) for slot in expected)
-    logging.info("  %-30s: %d", "expectedSlots", expected_slots)
-    logging.info("  %-30s: %d / %d", "validExpectedSlots", valid_expected, expected_slots)
-    if valid_expected == 0:
-        logging.warning("  预期 slot 均未发现 magic 0x%08X；下表仍显示原始 commit/wait 字节。",
-                        RUNTIME_INFO_MAGIC)
     logging.info("")
-    logging.info("  %-5s %-4s %-5s %-10s %-5s %-22s %-14s %-6s %-6s %-7s %s",
-                 "slot", "核型", "valid", "storedCore", "turn", "position", "phase",
-                 "commit", "wait", "pending", "state")
-    for slot in expected:
-        is_valid = slot.get("magicValid", False)
-        slot_index = slot["slotIdx"]
-        if rt_info.get("aicCoreNum") is None:
-            core_type = "未知"
-        else:
-            core_type = "C核" if slot_index < rt_info["aicCoreNum"] else "V核"
-        commit_count = slot["commCommitCount"]
-        wait_count = slot["commWaitCount"]
-        pending = max(commit_count - wait_count, 0)
-        state = ("NOT_WRITTEN" if not is_valid else
-                 "COUNT_ERROR" if wait_count > commit_count else
-                 "PENDING" if commit_count > wait_count else "BALANCED")
-        position = f"{slot['execPosition']}/{slot['execPositionName']}" if is_valid else "-"
-        logging.info("  %-5d %-4s %-5s %-10s %-5s %-22s %-14s %-6d %-6d %-7d %s",
-                     slot_index, core_type, "yes" if is_valid else "no",
-                     str(slot["coreId"]) if is_valid else "-",
-                     str(slot["execTurn"]) if is_valid else "-", position,
-                     slot["commPhaseName"] if is_valid else "-",
-                     commit_count, wait_count, pending, state)
+    logging.info("  --- 仅显示 magicNum 校验通过的 slot (0x%08X) ---", RUNTIME_INFO_MAGIC)
+    active_slots = [s for s in rt_info["slots"] if s.get("magicValid", False)]
+    if not active_slots:
+        logging.warning("  无有效 slot，可能 runtime info 未被写入（异常发生在 Init 之前）。")
+    else:
+        for slot in active_slots:
+            core_type = slot.get("coreType", "未知")
+            logging.info("  Core %-4d (%s):  turn=%d, pos=%d (%s), phase=%s, commit=%d, wait=%d",
+                         slot["coreId"], core_type,
+                         slot["execTurn"], slot["execPosition"], slot["execPositionName"],
+                         slot["commPhaseName"],
+                         slot["commCommitCount"], slot["commWaitCount"])
 
 
 def print_workspace_segment(result: dict):
@@ -867,6 +910,9 @@ def main():
                         help="AIC 核数，用于 workspace 段解析时区分 C/V 核。"
                              " 从 tiling_data 解析结果的 aicCoreNum 字段获取。"
                              " 未提供时 C/V 核分类不可靠（显示为'未知'）。")
+    parser.add_argument("--cann", default=None, metavar="DIR",
+                        help="CANN 根目录 (默认按 set_env.sh 环境变量 ASCEND_HOME_PATH 等定位;"
+                             " 无 CANN 环境时告警并用默认 TCubeTiling=200)")
     parser.add_argument("--apace", action="store_true",
                         help="workspace 段解析时使用 Apace 路径(usingApaceImpl_)的 position 枚举标签"
                              "(1=COMP_LOCAL_BEFORE, 2=COMP_REMOTE_BEFORE, 3=FINALIZE_BEFORE)")
@@ -878,6 +924,10 @@ def main():
     if not os.path.isfile(args.bin_file):
         logging.error("文件不存在: %s", args.bin_file)
         sys.exit(1)
+
+    # --cann 指定其他 CANN 环境时重新计算布局常量 (默认已在模块加载时按当前环境计算)
+    if args.cann is not None:
+        init_layout(args.cann)
 
     with open(args.bin_file, "rb") as f:
         data = f.read()
@@ -900,8 +950,7 @@ def main():
         pos_tag_map = POS_TAG_MAP_ALLTO_ALL_APACE if args.apace else POS_TAG_MAP_ALLTO_ALL
         if args.apace:
             logging.info("使用 Apace 路径 position 枚举标签")
-        aiv_per_aic = 0 if args.apace else 2
-        result = parse_workspace_segment_file(data, seg_type, args.aic_core_num, pos_tag_map, aiv_per_aic)
+        result = parse_workspace_segment_file(data, seg_type, args.aic_core_num, pos_tag_map)
         result["segIdx"] = seg_idx
         if args.json:
             print(json.dumps(result, indent=2, ensure_ascii=False, default=str))

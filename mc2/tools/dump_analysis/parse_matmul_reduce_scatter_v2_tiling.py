@@ -2,11 +2,16 @@
 """
 MatmulReduceScatterV2 TilingData / Workspace / RuntimeInfo dump 解析脚本
 
+结构体布局采用混合模式 (tiling_layout.py): TCubeTiling 等随 CANN 版本漂移的
+尺寸从 set_env.sh 对应环境的 kernel_tiling.h 实时解析; DFX 自有结构使用内置
+常量表。无 CANN 环境时告警并用默认尺寸继续。
+
 用法:
   python parse_matmul_reduce_scatter_v2_tiling.py tiling_data_*.bin
   python parse_matmul_reduce_scatter_v2_tiling.py args_info_*.bin --args
   python parse_matmul_reduce_scatter_v2_tiling.py tiling_data_*.bin --ws-layout
   python parse_matmul_reduce_scatter_v2_tiling.py workspace_seg*_type12_*.bin --workspace --aic-core-num N
+  python parse_matmul_reduce_scatter_v2_tiling.py tiling_data_*.bin --cann /path/to/cann
   python parse_matmul_reduce_scatter_v2_tiling.py tiling_data_*.bin --json
 """
 
@@ -17,31 +22,19 @@ import os
 import struct
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from tiling_layout import LayoutError, compute_mrs_v2_layout
+
 logging.basicConfig(level=logging.NOTSET, format="[%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
 
-MC2_INIT_TILING_SIZE = 64
-MC2_CC_TILING_SIZE = 512
-RCS_TILING_SIZE = 128  # 16*u32(64) + 3*u64(24) + 9*u32(36) + 4(pad to align 8) = 128
-MRSV2_TILING_DATA_SIZE = 1408     # 64+512+128+4+4+4+2*236+4(pad)+8+208
-# 量化: Mc2QuantBatchMatmulV3TilingDataParams=364B
-# (DataParams 32*4 + TCubeTiling 200 + L2cache 24 + SlidingWin 12)
-QUANT_MRSV2_TILING_DATA_SIZE = 1664  # 64+512+128+4+4+4+2*364+4(pad)+8+208
 TILING_DUMP_SIZE = 2048
-
-WORKSPACE_SEG_INFO_SIZE = 24
-MAX_WORKSPACE_SEGMENTS = 8
-WORKSPACE_LAYOUT_INFO_SIZE = 16 + MAX_WORKSPACE_SEGMENTS * WORKSPACE_SEG_INFO_SIZE
-RUNTIME_INFO_PER_CORE_SIZE = 512
-RUNTIME_INFO_CORE_MAX = 128
-RUNTIME_INFO_TOTAL_SIZE = RUNTIME_INFO_CORE_MAX * RUNTIME_INFO_PER_CORE_SIZE
 RUNTIME_INFO_MAGIC = 0x5A5A5A5A
 MMRS_AIV_PER_AIC = 2
 WORKSPACE_PREVIEW_SIZE = 64
 
-OFFSET_RCS_TILING = MC2_INIT_TILING_SIZE + MC2_CC_TILING_SIZE  # 576
-OFFSET_QUANT_MODE = OFFSET_RCS_TILING + RCS_TILING_SIZE + 4 + 4  # 712
-OFFSET_WS_LAYOUT_NON_QUANT = MRSV2_TILING_DATA_SIZE - WORKSPACE_LAYOUT_INFO_SIZE  # 1200
-OFFSET_WS_LAYOUT_QUANT = QUANT_MRSV2_TILING_DATA_SIZE - WORKSPACE_LAYOUT_INFO_SIZE  # 1456
+# RCSTiling 输出字段 (布局偏移由 tiling_layout 计算)
+RCS_FIELDS_SHOWN = ["rankDim", "rankID", "tileCnt", "tailM", "tailCnt", "rankM",
+                    "rankN", "rankK", "aicCoreNum", "gatherLen"]
 
 ARGS_INDEX_NAMES = [
     "hccl_context",   # [0] runtime 注入的隐藏 CCU context
@@ -100,6 +93,26 @@ WS_SEG_DESCRIPTION_MAP = {
 }
 
 
+def get_layout(args):
+    """实时计算布局 (无 CANN 环境时 tiling_layout 内部告警并使用默认尺寸)。"""
+    try:
+        layout = compute_mrs_v2_layout(cann=args.cann)
+    except LayoutError as e:
+        logging.error("布局计算失败: %s", e)
+        sys.exit(1)
+    for h in layout["headers"]:
+        logging.info("布局头文件: %s", h)
+    for key, name in (("nonQuant", "MatmulReduceScatterV2TilingData"),
+                      ("quant", "QuantBatchMatmulV3ReduceScatterTilingData")):
+        b = layout[key]
+        logging.info("布局计算: %s: %dB, tilingKey@%d, wsLayout@%d%s",
+                     name, b["opParaSize"] if "opParaSize" in b else b["size"],
+                     b["tilingKeyOffset"], b["wsLayoutOffset"],
+                     " (opParaSize=%d, 段表止于 %d)" % (b["opParaSize"], b["size"])
+                     if "opParaSize" in b else "")
+    return layout
+
+
 def safe_str(raw: bytes) -> str:
     idx = raw.find(b"\x00")
     if idx >= 0:
@@ -110,12 +123,12 @@ def safe_str(raw: bytes) -> str:
         return raw.decode("latin-1", errors="replace")
 
 
-def parse_mc2_init_tiling(data, offset):
-    return {"size": MC2_INIT_TILING_SIZE} if offset + MC2_INIT_TILING_SIZE <= len(data) else {"error": "too short"}
+def parse_mc2_init_tiling(data, offset, size):
+    return {"size": size} if offset + size <= len(data) else {"error": "too short"}
 
 
 def parse_mc2_cc_tiling(data, offset):
-    if offset + MC2_CC_TILING_SIZE > len(data):
+    if offset + 512 > len(data):
         return {"error": "too short"}
     skip_local, skip_buffer, step_size, version = struct.unpack_from("<4B", data, offset)
     comm_engine = struct.unpack_from("<B", data, offset + 13)[0]
@@ -129,75 +142,63 @@ def parse_mc2_cc_tiling(data, offset):
     }
 
 
-def parse_rcs_tiling(data, offset):
-    if offset + RCS_TILING_SIZE > len(data):
+def parse_rcs_tiling(data, offset, layout):
+    rcs = layout["rcs"]
+    if offset + rcs["size"] > len(data):
         return {"error": "too short"}
-    u32_head = struct.unpack_from("<16I", data, offset)
-    u64_mid = struct.unpack_from("<3Q", data, offset + 64)
-    u32_tail = struct.unpack_from("<9I", data, offset + 88)
-    return {
-        "rankDim": u32_head[0], "rankID": u32_head[1], "tileCnt": u32_head[4],
-        "tailM": u32_head[5], "tailCnt": u32_head[6], "rankM": u32_head[9],
-        "rankN": u32_head[10], "rankK": u32_head[11], "aicCoreNum": u32_tail[1],
-        "gatherLen": u64_mid[2],
-    }
+    out = {}
+    for name in RCS_FIELDS_SHOWN:
+        off, size = rcs["offsets"][name]
+        out[name] = struct.unpack_from("<Q" if size == 8 else "<I", data, offset + off)[0]
+    return out
 
 
-def detect_quant_mode(data):
-    if len(data) < OFFSET_QUANT_MODE + 4:
+def detect_quant_mode(data, layout):
+    off = layout["offsets"]["quantMode"]
+    if len(data) < off + 4:
         return False
-    return struct.unpack_from("<I", data, OFFSET_QUANT_MODE)[0] != 0
+    return struct.unpack_from("<I", data, off)[0] != 0
 
 
-def parse_non_quant_tiling_data(data):
+def parse_tiling_data(data, layout, is_quant):
+    o = layout["offsets"]
+    b = layout["quant" if is_quant else "nonQuant"]
     return {
-        "mc2InitTiling": parse_mc2_init_tiling(data, 0),
-        "mc2CcTiling": parse_mc2_cc_tiling(data, MC2_INIT_TILING_SIZE),
-        "param": parse_rcs_tiling(data, OFFSET_RCS_TILING),
-        "dataType": struct.unpack_from("<I", data, OFFSET_RCS_TILING + RCS_TILING_SIZE)[0],
-        "debugMode": struct.unpack_from("<I", data, OFFSET_RCS_TILING + RCS_TILING_SIZE + 4)[0],
-        "quantMode": struct.unpack_from("<I", data, OFFSET_QUANT_MODE)[0],
-        "tilingKey": struct.unpack_from("<Q", data, OFFSET_WS_LAYOUT_NON_QUANT - 8)[0],
-    }
-
-
-def parse_quant_tiling_data(data):
-    return {
-        "mc2InitTiling": parse_mc2_init_tiling(data, 0),
-        "mc2CcTiling": parse_mc2_cc_tiling(data, MC2_INIT_TILING_SIZE),
-        "param": parse_rcs_tiling(data, OFFSET_RCS_TILING),
-        "dataType": struct.unpack_from("<I", data, OFFSET_RCS_TILING + RCS_TILING_SIZE)[0],
-        "debugMode": struct.unpack_from("<I", data, OFFSET_RCS_TILING + RCS_TILING_SIZE + 4)[0],
-        "quantMode": struct.unpack_from("<I", data, OFFSET_QUANT_MODE)[0],
-        "tilingKey": struct.unpack_from("<Q", data, OFFSET_WS_LAYOUT_QUANT - 8)[0],
+        "mc2InitTiling": parse_mc2_init_tiling(data, o["mc2InitTiling"], o["mc2CcTiling"]),
+        "mc2CcTiling": parse_mc2_cc_tiling(data, o["mc2CcTiling"]),
+        "param": parse_rcs_tiling(data, o["param"], layout),
+        "dataType": struct.unpack_from("<I", data, o["dataType"])[0],
+        "debugMode": struct.unpack_from("<I", data, o["debugMode"])[0],
+        "quantMode": struct.unpack_from("<I", data, o["quantMode"])[0],
+        "tilingKey": struct.unpack_from("<Q", data, b["tilingKeyOffset"])[0],
     }
 
 
 def parse_workspace_seg_info(data, offset):
-    if offset + WORKSPACE_SEG_INFO_SIZE > len(data):
+    if offset + 24 > len(data):
         return {"error": "too short"}
     seg_offset, seg_size, seg_type = struct.unpack_from("<QQB", data, offset)
     return {"offset": seg_offset, "size": seg_size, "type": seg_type,
             "typeName": WS_SEG_TYPE_MAP.get(seg_type, f"UNKNOWN({seg_type})")}
 
 
-def parse_workspace_layout_info(data, offset):
-    if offset + WORKSPACE_LAYOUT_INFO_SIZE > len(data):
+def parse_workspace_layout_info(data, offset, ws):
+    if offset + ws["layoutInfoSize"] > len(data):
         return {"error": "too short"}
     total_size, seg_count, _ = struct.unpack_from("<Q2I", data, offset)
     segments = []
-    for i in range(min(seg_count, MAX_WORKSPACE_SEGMENTS)):
-        segments.append(parse_workspace_seg_info(data, offset + 16 + i * WORKSPACE_SEG_INFO_SIZE))
+    for i in range(min(seg_count, ws["maxSegments"])):
+        segments.append(parse_workspace_seg_info(data, offset + 16 + i * ws["segInfoSize"]))
     return {"totalSize": total_size, "segCount": seg_count, "segments": segments}
 
 
-def workspace_layout_is_valid(layout):
+def workspace_layout_is_valid(layout, ws):
     """段表合理性校验: 偏移漂移时 segCount/totalSize 会解出垃圾值"""
     if not isinstance(layout, dict) or "error" in layout:
         return False
     seg_count = layout.get("segCount", 0)
     total_size = layout.get("totalSize", 0)
-    if not 1 <= seg_count <= MAX_WORKSPACE_SEGMENTS:
+    if not 1 <= seg_count <= ws["maxSegments"]:
         return False
     if total_size <= 0:
         return False
@@ -205,7 +206,7 @@ def workspace_layout_is_valid(layout):
 
 
 def parse_runtime_info_per_core(data, offset):
-    if offset + RUNTIME_INFO_PER_CORE_SIZE > len(data):
+    if offset + 512 > len(data):
         return {"error": "too short"}
     magic_num, core_id = struct.unpack_from("<IH", data, offset)
     exec_turn, exec_position, comm_phase, commit_count, wait_count = struct.unpack_from("<5B", data, offset + 6)
@@ -218,12 +219,12 @@ def parse_runtime_info_per_core(data, offset):
     }
 
 
-def parse_runtime_info_segment(data, aic_core_num=None):
-    max_slots = len(data) // RUNTIME_INFO_PER_CORE_SIZE
+def parse_runtime_info_segment(data, aic_core_num=None, per_core_size=512):
+    max_slots = len(data) // per_core_size
     slots = []
     active_count = 0
     for i in range(max_slots):
-        slot = parse_runtime_info_per_core(data, i * RUNTIME_INFO_PER_CORE_SIZE)
+        slot = parse_runtime_info_per_core(data, i * per_core_size)
         slot["slotIdx"] = i
         if aic_core_num is None:
             slot["coreType"] = "未知"
@@ -264,7 +265,7 @@ def parse_runtime_info_segment(data, aic_core_num=None):
             break
         magic_offsets.append(found)
         search_from = found + 1
-    unaligned_magic_offsets = [offset for offset in magic_offsets if offset % RUNTIME_INFO_PER_CORE_SIZE != 0]
+    unaligned_magic_offsets = [offset for offset in magic_offsets if offset % per_core_size != 0]
 
     expected = slots[:expected_slots]
     valid_expected = [slot for slot in expected if slot.get("magicValid", False)]
@@ -277,13 +278,13 @@ def parse_runtime_info_segment(data, aic_core_num=None):
             "unalignedMagicOffsets": unaligned_magic_offsets[:16], "slots": slots}
 
 
-def parse_workspace_segment_file(data, seg_type, aic_core_num=None):
+def parse_workspace_segment_file(data, seg_type, aic_core_num=None, per_core_size=512):
     result = {"segmentType": seg_type,
               "segmentTypeName": WS_SEG_TYPE_MAP.get(seg_type, f"UNKNOWN({seg_type})"),
               "segmentDescription": WS_SEG_DESCRIPTION_MAP.get(seg_type, "未知 Workspace 段"),
               "fileSize": len(data)}
     if seg_type == 12:
-        result["runtimeInfo"] = parse_runtime_info_segment(data, aic_core_num)
+        result["runtimeInfo"] = parse_runtime_info_segment(data, aic_core_num, per_core_size)
     else:
         preview = data[:WORKSPACE_PREVIEW_SIZE]
         result["previewType"] = "uint8 raw bytes"
@@ -324,12 +325,13 @@ def print_kv(title, d, indent=0):
             logging.info("%s  %-30s: %s", prefix, k, v)
 
 
-def print_tiling_data(result, is_quant):
-    print_section("Mc2InitTiling (HCCL Init, 64B)")
+def print_tiling_data(result, is_quant, layout):
+    o = layout["offsets"]
+    print_section("Mc2InitTiling (HCCL Init, %dB)" % o["mc2CcTiling"])
     print_kv("mc2InitTiling", result["mc2InitTiling"])
     print_section("Mc2CcTiling (HCCL CC, 512B)")
     print_kv("mc2CcTiling", result["mc2CcTiling"])
-    print_section(f"RCSTiling ({RCS_TILING_SIZE}B)  [{'QUANT' if is_quant else 'NON-QUANT'}]")
+    print_section(f"RCSTiling ({layout['rcs']['size']}B)  [{'QUANT' if is_quant else 'NON-QUANT'}]")
     print_kv("param", result["param"])
     print_section("Extra Fields")
     print_kv("extra", {"dataType": result["dataType"], "debugMode": result["debugMode"],
@@ -396,6 +398,30 @@ def print_workspace_segment(result):
         logging.info("  如需按 BF16/FP16/FP8 等真实类型查看矩阵，请使用 parse_matrix.py 并指定 dtype/rows/cols。")
 
 
+def select_branch(data, layout):
+    """选择量化/非量化分支: 优先信 quantMode, 其分支 wsLayout 校验不过则尝试另一分支。
+
+    返回 (is_quant, ws_layout 或 None)"""
+    is_quant = detect_quant_mode(data, layout)
+    ws = layout["workspace"]
+    for q in (is_quant, not is_quant):
+        b = layout["quant" if q else "nonQuant"]
+        off = b["wsLayoutOffset"]
+        if off + ws["layoutInfoSize"] > len(data):
+            continue
+        ws_layout = parse_workspace_layout_info(data, off, ws)
+        if workspace_layout_is_valid(ws_layout, ws):
+            if q != is_quant:
+                logging.warning("quantMode=%s 与 WorkspaceLayoutInfo 合法性校验不符, "
+                                "已自动切换至%s分支解析 (tilingKey/workspaceLayout 偏移已随之切换)",
+                                struct.unpack_from("<I", data, layout["offsets"]["quantMode"])[0],
+                                "量化" if q else "非量化")
+            return q, ws_layout
+    logging.warning("量化/非量化两个分支的 WorkspaceLayoutInfo 均未通过合法性校验, "
+                    "workspace 段布局不可信 (dump 可能来自其他版本环境, 可用 --cann 指定对应 CANN)")
+    return is_quant, None
+
+
 def main():
     parser = argparse.ArgumentParser(description="MatmulReduceScatterV2 dump 解析脚本")
     parser.add_argument("bin_file", help="bin 文件路径")
@@ -403,6 +429,8 @@ def main():
     parser.add_argument("--ws-layout", action="store_true")
     parser.add_argument("--workspace", action="store_true")
     parser.add_argument("--aic-core-num", type=int, metavar="N", default=None)
+    parser.add_argument("--cann", default=None, metavar="DIR",
+                        help="CANN 根目录 (默认按 set_env.sh 环境变量 ASCEND_HOME_PATH 等定位)")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
@@ -415,12 +443,15 @@ def main():
     logging.info("读取文件: %s (%d bytes)", args.bin_file, len(data))
 
     if args.workspace:
+        layout = get_layout(args)
         seg_info = detect_workspace_seg_from_filename(args.bin_file)
         if seg_info is None:
             logging.error("文件名不匹配 workspace_seg{idx}_type{type}_* 模式")
             sys.exit(1)
         seg_idx, seg_type = seg_info
-        result = parse_workspace_segment_file(data, seg_type, args.aic_core_num)
+        result = parse_workspace_segment_file(
+            data, seg_type, args.aic_core_num,
+            layout["workspace"]["runtimeInfoPerCoreSize"])
         result["segIdx"] = seg_idx
         if args.json:
             print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
@@ -439,14 +470,13 @@ def main():
                     logging.info("  %-30s: %s", k, v)
         return
 
+    layout = get_layout(args)
+
     if args.ws_layout:
-        is_quant = detect_quant_mode(data)
-        ws_offset = OFFSET_WS_LAYOUT_QUANT if is_quant else OFFSET_WS_LAYOUT_NON_QUANT
-        ws_layout = parse_workspace_layout_info(data, ws_offset)
-        if not workspace_layout_is_valid(ws_layout):
-            logging.warning("WorkspaceLayoutInfo 偏移 %d 解析结果异常 (segCount=%s, totalSize=%s)，"
-                            "疑似结构体偏移漂移", ws_offset, ws_layout.get("segCount"),
-                            ws_layout.get("totalSize"))
+        is_quant, ws_layout = select_branch(data, layout)
+        if ws_layout is None:
+            logging.error("解析失败: WorkspaceLayoutInfo 未通过合法性校验")
+            sys.exit(1)
         if args.json:
             print(json.dumps(ws_layout, indent=2, ensure_ascii=False, default=str))
         else:
@@ -454,24 +484,16 @@ def main():
             print_kv("layout", ws_layout)
         return
 
-    is_quant = detect_quant_mode(data)
+    is_quant, ws_layout = select_branch(data, layout)
     logging.info("解析模式: %s (quantMode=%d)", "量化" if is_quant else "非量化",
-                 struct.unpack_from("<I", data, OFFSET_QUANT_MODE)[0])
-    result = parse_quant_tiling_data(data) if is_quant else parse_non_quant_tiling_data(data)
-    ws_offset = OFFSET_WS_LAYOUT_QUANT if is_quant else OFFSET_WS_LAYOUT_NON_QUANT
-    if len(data) >= ws_offset + WORKSPACE_LAYOUT_INFO_SIZE:
-        ws_layout = parse_workspace_layout_info(data, ws_offset)
-        if workspace_layout_is_valid(ws_layout):
-            result["workspaceLayout"] = ws_layout
-        elif "error" not in ws_layout and (ws_layout.get("segCount", 0) > 0 or
-                                           ws_layout.get("totalSize", 0) > 0):
-            logging.warning("WorkspaceLayoutInfo 偏移 %d 解析结果异常 (segCount=%s, totalSize=%s)，"
-                            "疑似结构体偏移漂移", ws_offset, ws_layout.get("segCount"),
-                            ws_layout.get("totalSize"))
+                 struct.unpack_from("<I", data, layout["offsets"]["quantMode"])[0])
+    result = parse_tiling_data(data, layout, is_quant)
+    if ws_layout is not None:
+        result["workspaceLayout"] = ws_layout
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
     else:
-        print_tiling_data(result, is_quant)
+        print_tiling_data(result, is_quant, layout)
         if "workspaceLayout" in result:
             print_section("WorkspaceLayoutInfo")
             print_kv("layout", result["workspaceLayout"])
