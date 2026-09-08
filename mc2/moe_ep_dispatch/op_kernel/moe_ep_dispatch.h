@@ -868,29 +868,26 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetSrcToken
     uint32_t calCnt, uint32_t calCntAlign, uint32_t &sendLocalCnt, LocalTensor<int32_t> &cntLocalTensor)
 {
     uint64_t rsvdCnt = 0;
-    LocalTensor<int32_t> internalIndexTensor = topkIdsBuf_.Get<int32_t>();
+    LocalTensor<int16_t> internalIndexTensor = topkIdsBuf_.GetWithOffset<int16_t>(calCntAlign, 0);
+    LocalTensor<int16_t> scatterTensor = topkIdsBuf_.GetWithOffset<int16_t>(calCntAlign, calCntAlign * sizeof(int16_t));
+    LocalTensor<int32_t> dstSlotIdxTensor = topkIdsBuf_.Get<int32_t>();
     LocalTensor<int32_t> tempLocalTensor = dstExpBuf_.Get<int32_t>();
-    LocalTensor<uint32_t> gatherMaskTensor = maskBuf_.Get<uint32_t>();
+    LocalTensor<uint16_t> gatherMaskTensor = maskBuf_.Get<uint16_t>();
     LocalTensor<uint8_t> compareMaskTensor = maskBuf_.Get<uint8_t>();
     DataCopyParams srcTokenCopyParams = {1U, 0U, 0U, 0U};
 
-    // 生成全局元素索引：从 startId*K 开始的 calCnt 个连续值，Div K 后得到真实 tokenId，每个重复K次。
-    CreateVecIndex(internalIndexTensor, static_cast<int32_t>(topkOffset), calCnt);
-    SyncFunc<AscendC::HardEvent::MTE3_V>();
-    Duplicate<int32_t>(tempLocalTensor, static_cast<int32_t>(axisK_), calCnt);
-    Div(internalIndexTensor, internalIndexTensor, tempLocalTensor, calCnt);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-    SyncFunc<AscendC::HardEvent::S_V>();    // 需要等待上一轮本端命中判断结束
     for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {
         // 调整处理顺序，先处理其他对端卡，本端卡最后处理，后续处理token可复用
         uint32_t dstRankId = rankId >= epRankId_ ? (rankId + 1) : rankId;
         dstRankId = (rankId == epWorldSize_ - 1) ? epRankId_ : dstRankId;
+        CreateVecIndex(internalIndexTensor, static_cast<int16_t>(0), calCnt);   // 生成元素索引
         CompareScalar(compareMaskTensor, dstRankIdTensor_, static_cast<int16_t>(dstRankId),
                       AscendC::CMPMODE::EQ, calCntAlign);
         if (rankId > 0) {
             SyncFunc<AscendC::HardEvent::MTE3_V>();
         }
-        GatherMask(tempLocalTensor, internalIndexTensor, gatherMaskTensor, true, calCnt, {1, 1, 0, 0},
+        SyncFunc<AscendC::HardEvent::S_V>();    // 需要等待上一轮本端命中判断结束
+        GatherMask(internalIndexTensor, internalIndexTensor, gatherMaskTensor, true, calCnt, {1, 1, 0, 0},
                    rsvdCnt);
         if (dstRankId == epRankId_) {
             sendLocalCnt = static_cast<uint32_t>(rsvdCnt);
@@ -898,15 +895,42 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetSrcToken
         if (rsvdCnt == 0) {
             continue;
         }
+
         SyncFunc<AscendC::HardEvent::V_S>();
         int32_t curSlot = cntLocalTensor.GetValue(dstRankId);
+        int32_t curCnt = static_cast<int32_t>(rsvdCnt);
+        if constexpr (!IsCached) {
+            // slot 加 epWorldSize_ 偏移：散射值 >= epWorldSize_，避免与后续卡匹配错误
+            CreateVecIndex(scatterTensor, static_cast<int16_t>(curSlot + epWorldSize_), curCnt);
+            Cast(tempLocalTensor, internalIndexTensor, RoundMode::CAST_NONE, curCnt);
+            Muls(tempLocalTensor, tempLocalTensor, static_cast<int32_t>(sizeof(int16_t)), curCnt);
+            Scatter(dstRankIdTensor_, scatterTensor, tempLocalTensor.template ReinterpretCast<uint32_t>(),
+                    static_cast<uint32_t>(0), curCnt);
+        }
+        Duplicate<int16_t>(scatterTensor, static_cast<int16_t>(axisK_), curCnt);
+        Div(internalIndexTensor, internalIndexTensor, scatterTensor, curCnt);
+        Cast(tempLocalTensor, internalIndexTensor, RoundMode::CAST_NONE, curCnt);
+        Adds(tempLocalTensor, tempLocalTensor, static_cast<int32_t>(topkOffset / axisK_), curCnt);
         uint32_t dstIndex = dstRankId * tokenCntAlign_ + curSlot;
-        srcTokenCopyParams.blockLen = static_cast<uint32_t>(rsvdCnt) * sizeof(int32_t);
+        srcTokenCopyParams.blockLen = static_cast<uint32_t>(curCnt * sizeof(int32_t));
         SyncFunc<AscendC::HardEvent::V_MTE3>();
         DataCopyPad(srcTokenIdxGMTensor_[dstIndex], tempLocalTensor, srcTokenCopyParams);
-        cntLocalTensor.SetValue(dstRankId, curSlot + static_cast<uint32_t>(rsvdCnt));
+        cntLocalTensor.SetValue(dstRankId, curSlot + curCnt);
         rsvdCnt = 0;
     }
+    if constexpr (!IsCached) {
+        // 去偏移，有效位还原为 slot，未散射位(重复/无效)保持 -1
+        CompareScalar(compareMaskTensor, dstRankIdTensor_, static_cast<int16_t>(0), AscendC::CMPMODE::GE,
+                      calCntAlign);
+        Subs(dstRankIdTensor_, dstRankIdTensor_, static_cast<int16_t>(epWorldSize_), calCntAlign);
+        Select(dstRankIdTensor_, compareMaskTensor, dstRankIdTensor_, static_cast<int16_t>(-1),
+               AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, calCntAlign);
+        Cast(dstSlotIdxTensor, dstRankIdTensor_, RoundMode::CAST_NONE, calCnt);
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        DataCopyExtParams dstSlotCopyParams = {1U, static_cast<uint32_t>(calCnt * sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyPad(dstSlotIdxGMTensor_[topkOffset], dstSlotIdxTensor, dstSlotCopyParams);
+    }
+    SyncFunc<AscendC::HardEvent::MTE3_V>(); // 下一轮等待这一轮做完
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -1013,6 +1037,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
         uint32_t calCntAlign = Ceil(calCnt, strideAlign) * strideAlign;
         DataCopyExtParams dstRankCopyParams = {1U, static_cast<uint32_t>(calCnt * sizeof(int16_t)), 0U, 0U, 0U};
         DataCopyPad(dstRankIdTensor_, dstRankGMTensor_[topkOffset], dstRankCopyParams, dstRankCopyPadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
         SetSrcTokenIdxAndDstSlot(topkOffset, calCnt, calCntAlign, sendLocalCnt, cntLocalTensor);
         SyncFunc<AscendC::HardEvent::V_S>();
         LocalCopyPhase(curLocalSlot, sendLocalCnt); // 本端命中段独立拷 x
