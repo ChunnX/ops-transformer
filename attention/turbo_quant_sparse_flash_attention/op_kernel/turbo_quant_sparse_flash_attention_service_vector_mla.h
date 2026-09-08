@@ -107,6 +107,7 @@ public:
                                                        LocalTensor<T> &softmaxSumUb, LocalTensor<T> &softmaxMaxUb);
     // 有效 KV 长度为 0 时补齐 LSE 输出（该场景不会进入 CopyFALseToGm）
     __aicore__ inline void InitLseForZeroSeqLen(uint32_t bIdx, uint32_t s1Idx, uint32_t n2Idx);
+    __aicore__ inline void InitAttentionForZeroSeqLen(uint64_t offset);
     __aicore__ inline void CopyFALseToGm(const RunInfo &info, const MSplitInfo &mSplitInfo,
                                          LocalTensor<T> &softmaxSumUb, LocalTensor<T> &softmaxMaxUb);
     // ================================Vecotr2==========================================
@@ -267,6 +268,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::InitBuffers(TPipe *pipe)
     kvMergUb_ = inputBuff1.Get<KV_T>();
 
     v0ValidSizeUb_ = v0ValidSizeBuff.Get<int32_t>();
+    // validSize 按 128 个元素搬运，除当前环形槽外的元素也须初始化。
+    Duplicate(v0ValidSizeUb_, static_cast<int32_t>(0), 128);
 
     // [TQ4] one-time setup: centSigned codebook (gather index = int4b signed nibble + 8). Done ONCE.
     // [TQ4] 索引表一次性初始化：每 32B 取头 2B
@@ -451,6 +454,24 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ComputeLogSumExpAndCopyToGm(con
         matmul::InitOutput<T>(lseSumFdGm[qsfaOffset], qsfaSize, ConstInfo::FLOAT_ZERO);
         matmul::InitOutput<T>(lseMaxFdGm[qsfaOffset], qsfaSize, SOFTMAX_MIN_NUM);
     }
+}
+
+template <typename QSFAT>
+__aicore__ inline void QSFAVectorService<QSFAT>::InitAttentionForZeroSeqLen(uint64_t offset)
+{
+    constexpr uint32_t chunkSize = ConstInfo::BUFFER_SIZE_BYTE_4K / sizeof(OUT_T);
+    const uint32_t total = constInfo.gSize * constInfo.headDim;
+    LocalTensor<OUT_T> zeroUb = outputBuff2.Get<OUT_T>();
+    WaitFlag<HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
+    Duplicate(zeroUb, static_cast<OUT_T>(0), chunkSize);
+    SetFlag<HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
+    WaitFlag<HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
+    for (uint32_t begin = 0; begin < total; begin += chunkSize) {
+        const uint32_t count = total - begin < chunkSize ? total - begin : chunkSize;
+        DataCopyExtParams params{1, count * static_cast<uint32_t>(sizeof(OUT_T)), 0, 0, 0};
+        DataCopyPad(attentionOutGm[offset + begin], zeroUb, params);
+    }
+    SetFlag<HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
 }
 
 template <typename QSFAT>
@@ -778,7 +799,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec1SingleBuf(const RunI
         if (constInfo.keyQuantMode == QUANT_MODE::TQ4) {
             DataCopyExtParams qsfaScaleInParams;
             qsfaScaleInParams.blockCount = 1;
-            qsfaScaleInParams.blockLen = TQ4_SCALE_SLOT_STRIDE * sizeof(uint16_t);
+            qsfaScaleInParams.blockLen = info.actualSingleProcessSInnerSize * sizeof(uint16_t);
             qsfaScaleInParams.srcStride = 0;
             qsfaScaleInParams.dstStride = 0;
             DataCopyPadExtParams<uint16_t> qsfaScalePad{false, 0, 0, 0};
@@ -1173,6 +1194,21 @@ __aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &runInfo)
     int64_t qsfaS2GmLimit = GetSubBlockIdx() == 0 ? CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize : s2ProcessSize;
     if (qsfaS2GmLimit > s2ProcessSize) {
         qsfaS2GmLimit = s2ProcessSize;
+    }
+    // 无效 sparse 索引对应的 latent 会补零，其 scale 也必须有定义。
+    // 两个 AIV 只初始化各自负责的区间；随后有效行覆盖为实际 scale。
+    if (qsfaS2GmStartOffset < qsfaS2GmLimit) {
+        WaitFlag<HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
+        LocalTensor<half> scaleInit = tmpBuff2.Get<half>();
+        const uint32_t count = qsfaS2GmLimit - qsfaS2GmStartOffset;
+        Duplicate(scaleInit, static_cast<half>(1.0), QSFAAlign(count, 16U));
+        SetFlag<HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
+        WaitFlag<HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
+        DataCopyExtParams params{1, count * static_cast<uint32_t>(sizeof(uint16_t)), 0, 0, 0};
+        DataCopyPad(tq4ScaleGm_[TQ4_SCALE_HALF_BASE + runInfo.loop % MERGE_CACHE_GM_BUF_NUM * TQ4_SCALE_SLOT_STRIDE +
+                                qsfaS2GmStartOffset],
+                    scaleInit.template ReinterpretCast<uint16_t>(), params);
+        SetFlag<HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
     }
     for (int64_t s2GmOffsetArray = qsfaS2GmStartOffset; s2GmOffsetArray < qsfaS2GmLimit;
          s2GmOffsetArray += 2 * constInfo.sparseBlockSize) {

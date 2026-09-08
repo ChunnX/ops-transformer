@@ -19,7 +19,7 @@ import numpy as np
 import torch
 import torch_npu  # noqa: F401
 
-import custom_ops  # noqa: F401  register npu_turbo_quant_sparse_flash_attention
+import cann_ops_transformer  # noqa: F401  register the standard operator
 
 try:
     from torch_npu.testing.testcase import TestCase, run_tests
@@ -69,7 +69,7 @@ class TestTurboQuantSparseFlashAttentionInvalid(TestCase):
             return_softmax_lse=False,
         )
         kw.update(over)
-        out = torch.ops.custom.npu_turbo_quant_sparse_flash_attention(
+        out = torch.ops.cann_ops_transformer.turbo_quant_sparse_flash_attention(
             c["q"] if q is None else q,
             c["kv"] if k is None else k,
             c["kv"] if v is None else v,
@@ -259,8 +259,7 @@ class TestTurboQuantSparseFlashAttentionInvalid(TestCase):
         self.assertEqual(meta, real)
         print("  [PASS] Meta 输出 shape 与 runtime 一致: %s" % meta, flush=True)
 
-        # Meta 负责 shape 推导，只校验能否算出合法 shape；参数是否被算子支持由 host
-        # tiling 判定。故分两类断言，不把 host 的取值约束在 Meta 里再复制一份。
+        # 标准绑定在 Meta 中拒绝运行时不支持的元数据，避免先得到不可执行的图。
         # layout 与 rank 在 Meta 层即应拒绝，避免图推导先得到看似合法的 shape。
         with FakeTensorMode(allow_non_fake_inputs=True):
             for tag, over in [
@@ -279,15 +278,14 @@ class TestTurboQuantSparseFlashAttentionInvalid(TestCase):
                         self._call_on(c, rope_head_dim=rhd)
                     print("  [PASS] Meta 拒绝 rope_head_dim=%d" % rhd, flush=True)
 
-        # 取值合法但算子不支持（仅支持 64）：Meta 能算出 shape，runtime 必须明确拒绝，
-        # 不能静默返回与 Meta 不同的结果。
+        # 能算出正数尾维但不受支持的 rope_head_dim，也应在 Meta 和 runtime 中一致拒绝。
         with FakeTensorMode(allow_non_fake_inputs=True):
-            meta_shape = list(self._call_on(c, rope_head_dim=100)[0].shape)
-        self.assertEqual(meta_shape[2], c["q"].shape[2] - 100)
+            with self.assertRaises(RuntimeError):
+                self._call_on(c, rope_head_dim=100)
         with self.assertRaises(RuntimeError):
             self._call_on(c, rope_head_dim=100)
         print(
-            "  [PASS] rope_head_dim=100: Meta 得 %s，runtime 拒绝" % meta_shape,
+            "  [PASS] rope_head_dim=100: Meta 与 runtime 均拒绝",
             flush=True,
         )
 

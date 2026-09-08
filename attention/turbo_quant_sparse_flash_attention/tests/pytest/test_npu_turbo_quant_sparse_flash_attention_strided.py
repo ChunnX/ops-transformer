@@ -39,7 +39,7 @@ def strided_cache(cache, gap_bytes, storage_offset=0):
 
 
 def call_sfa(case, sparse_block_size=1, return_lse=True, value=None):
-    return torch.ops.custom.npu_turbo_quant_sparse_flash_attention(
+    return torch.ops.cann_ops_transformer.turbo_quant_sparse_flash_attention(
         case["q"],
         case["kv"],
         case["kv"] if value is None else value,

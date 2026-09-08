@@ -26,7 +26,7 @@ import unittest
 import numpy as np
 import torch
 import torch_npu
-import custom_ops  # noqa: F401  register npu_turbo_quant_sparse_flash_attention
+import cann_ops_transformer  # noqa: F401  register the standard operator
 
 # 优先用仓内惯例的 torch_npu TestCase；该模块依赖 expecttest，缺失时退回标准 unittest，
 # 使用例在未装测试依赖的环境下同样可跑。
@@ -35,9 +35,6 @@ try:
 except ImportError:
     TestCase = unittest.TestCase
     run_tests = unittest.main
-
-DEVICE_ID = 0
-torch_npu.npu.set_device(DEVICE_ID)
 
 DN = 512  # latent(nope) 维度
 DR = 64  # rope 维度
@@ -339,7 +336,7 @@ class TestTurboQuantSparseFlashAttention(TestCase):
             if with_scale
             else {}
         )
-        outputs = torch.ops.custom.npu_turbo_quant_sparse_flash_attention(
+        outputs = torch.ops.cann_ops_transformer.turbo_quant_sparse_flash_attention(
             c["q"],
             c["kv"],
             c["kv"],

@@ -28,6 +28,16 @@
 <tbody>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/turbo_quant_sparse_flash_attention/README.md">turbo_quant_sparse_flash_attention</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓（自动生成）</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>对 TQ4 分页 KV cache 执行融合反量化和 MLA 稀疏 Attention，支持 FP16/BF16、PA_BSND/PA_BNBD、空序列及首轴非连续 cache。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/attention_update/README.md">attention_update</a></td>
     <td>✓</td>
     <td>✓</td>

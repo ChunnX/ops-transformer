@@ -1,4 +1,3 @@
-#!/bin/bash
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
@@ -7,10 +6,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
-set -e
+from .turbo_quant_sparse_flash_attention import turbo_quant_sparse_flash_attention
 
-BASE_DIR="${BASH_SOURCE[0]%/*}"
-cd "${BASE_DIR}"
-rm -rf build dist ./*.egg-info
-python3 setup.py build bdist_wheel
-pip3 install dist/*.whl --force-reinstall
+__all__ = ["turbo_quant_sparse_flash_attention"]

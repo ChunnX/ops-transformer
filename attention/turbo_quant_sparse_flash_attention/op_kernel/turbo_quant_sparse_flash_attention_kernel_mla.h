@@ -259,19 +259,22 @@ template <typename QSFAT>
 __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::InitAllZeroOutput(uint32_t bIdx, uint32_t s1Idx,
                                                                                    uint32_t n2Idx)
 {
+    // 两个 AIV 属于同一逻辑任务；整行输出和 LSE 只由一个 AIV 写入。
+    if (GetSubBlockIdx() != 0) {
+        return;
+    }
     if (constInfo.outputLayout == QSFA_LAYOUT::TND) {
         uint32_t tBase = bIdx == 0 ? 0 : actualSeqLengthsQGm.GetValue(bIdx - 1);
-        uint32_t s1Count = tempLoopInfo.actS1Size;
 
         uint64_t attenOutOffset = (tBase + s1Idx) * kvHeadNum * constInfo.gSize * constInfo.headDim +
                                   n2Idx * constInfo.gSize * constInfo.headDim;
-        matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], constInfo.gSize * constInfo.headDim, 0);
+        vectorService.InitAttentionForZeroSeqLen(attenOutOffset);
         vectorService.InitLseForZeroSeqLen(bIdx, s1Idx, n2Idx);
     } else if (constInfo.outputLayout == QSFA_LAYOUT::BSND) {
         uint64_t attenOutOffset = bIdx * constInfo.qSeqSize * kvHeadNum * constInfo.gSize * constInfo.headDim +
                                   s1Idx * kvHeadNum * constInfo.gSize * constInfo.headDim +
                                   n2Idx * constInfo.gSize * constInfo.headDim;
-        matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], constInfo.gSize * constInfo.headDim, 0);
+        vectorService.InitAttentionForZeroSeqLen(attenOutOffset);
         vectorService.InitLseForZeroSeqLen(bIdx, s1Idx, n2Idx);
     }
 }

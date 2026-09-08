@@ -24,7 +24,7 @@ from test_npu_turbo_quant_sparse_flash_attention import (
 
 
 def call_sfa(case, return_lse, sparse_mode):
-    return torch.ops.custom.npu_turbo_quant_sparse_flash_attention(
+    return torch.ops.cann_ops_transformer.turbo_quant_sparse_flash_attention(
         case["q"],
         case["kv"],
         case["kv"],

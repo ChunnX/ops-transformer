@@ -49,6 +49,15 @@ __aicore__ inline void DataCopyGmNDToL1(LocalTensor<T> &l1Tensor, GlobalTensor<T
                                         uint32_t col,       // D
                                         uint32_t colStride) // D or N*D
 {
+    if (rowAct != rowAlign || col % 16 != 0) {
+        // ND->NZ 不会初始化 N 方向的补齐行，后续 LoadData 会按整块读取。
+        LocalTensor<int16_t> initTensor = l1Tensor.template ReinterpretCast<int16_t>();
+        InitConstValueParams<int16_t> params;
+        params.repeatTimes = rowAlign * QSFAAlign(col, 16U) / 256;
+        params.initValue = 0;
+        InitConstValue(initTensor, params);
+        PipeBarrier<PIPE_MTE2>();
+    }
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
     nd2nzPara.nValue = rowAct; // nd矩阵的行数
@@ -172,7 +181,10 @@ private:
     LocalTensor<Q_T> l1KVTensor;
 
     // L0AB m <> mte1 EventID
-    __aicore__ inline uint32_t Mte1MmABEventId(uint32_t idx) { return (L0AB_EVENT0 + idx); }
+    __aicore__ inline uint32_t Mte1MmABEventId(uint32_t idx)
+    {
+        return (L0AB_EVENT0 + idx);
+    }
 
     __aicore__ inline uint32_t GetQPL1RealIdx(uint32_t mIdx, uint32_t k1Idx)
     {
@@ -291,16 +303,7 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::CopyGmToL1(LocalTensor<K_ROPE_T
                                                             GlobalTensor<K_ROPE_T> &gmSrcTensor, uint32_t srcN,
                                                             uint32_t srcD, uint32_t srcDstride)
 {
-    Nd2NzParams nd2nzPara;
-    nd2nzPara.ndNum = 1;
-    nd2nzPara.dValue = srcD;
-    nd2nzPara.nValue = srcN; // 行数
-    nd2nzPara.srcDValue = srcDstride;
-    nd2nzPara.dstNzC0Stride = (srcN + 15) / 16 * 16; // 对齐到16 单位block
-    nd2nzPara.dstNzNStride = 1;
-    nd2nzPara.dstNzMatrixStride = 0;
-    nd2nzPara.srcNdMatrixStride = 0;
-    DataCopy(l1Tensor, gmSrcTensor, nd2nzPara);
+    DataCopyGmNDToL1(l1Tensor, gmSrcTensor, srcN, QSFAAlign(srcN, 16U), srcD, srcDstride);
 }
 
 template <typename QSFAT>

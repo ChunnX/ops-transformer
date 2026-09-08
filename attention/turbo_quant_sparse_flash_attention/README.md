@@ -19,7 +19,7 @@
     O = \text{softmax}(Q@\tilde{K}^T \cdot \text{scale\_value})@\tilde{V}
     $$
 
-    其中 $\tilde{K}=\tilde{V}$ 为由 `sparse_indices` 选中、并经 4bit 码本反量化还原得到的 KV latent。MLA 场景下 K 与 V 共用同一份 latent。
+    其中 $Q=[Q_{latent},Q_{rope}]$，$\tilde{K}=[\tilde{K}_{latent},K_{rope}]$，$\tilde{V}=\tilde{K}_{latent}$。稀疏索引选择参与计算的 KV；K 与 V 共用 latent，rope 只参与 QK 计算。
 
 - 量化方案：latent 每个 token 先做 L2 归一化，各元素按 16 个码本中心量化为 4bit，两个 nibble 打包为 1 字节；每 token 附加 1 个 `float16` 的归一化系数 $s_t$；rope 分量以与 query 相同的 `float16` 或 `bfloat16` dtype 存放 $rope / s_t$，即**预先除以 $s_t$**（原因见下方约束说明）。
 
@@ -43,8 +43,8 @@
 |layout_query|可选属性|query 的数据排布格式，当前仅支持 TND，默认值 TND|STRING|-|
 |layout_kv|可选属性|KV 的数据排布格式，支持 PA_BSND 和 PA_BNBD（PageAttention），默认值 PA_BSND|STRING|-|
 |sparse_mode|可选属性|mask 模式，默认值 3，表示以右顶点为划分的下三角场景|INT32|-|
-|pre_tokens|可选属性|query 对过去 token 的计算数量，默认值 INT64_MAX|INT32|-|
-|next_tokens|可选属性|query 对未来 token 的计算数量，默认值 INT64_MAX|INT32|-|
+|pre_tokens|可选属性|query 对过去 token 的计算数量，默认值 INT64_MAX|INT64|-|
+|next_tokens|可选属性|query 对未来 token 的计算数量，默认值 INT64_MAX|INT64|-|
 |attention_mode|可选属性|Attention 计算模式，当前仅支持 2（MLA-absorb），默认值 2|INT32|-|
 |quant_scale_repo_mode|可选属性|量化系数的存放模式。当前仅支持 1（COMBINE），即反量化系数与 Nope、Rope 合并存放于同一个 KV slot 内，默认值 1|INT32|-|
 |tile_size|可选属性|量化粒度，默认值 128|INT32|-|
@@ -67,7 +67,7 @@
 -   query 的最后一维包含 rope 分量，attention_out 的最后一维为 query 最后一维减去 `rope_head_dim`，即 $D_{out} = D_{query} - rope\_head\_dim$。
 -   quant_scale_repo_mode 仅支持 1（COMBINE）：反量化系数与 Nope、Rope 合并存放于同一个 KV slot 的尾部 2 字节，由 kernel 就地读取；key_dequant_scale 与 value_dequant_scale 两个可选输入在该模式下不被消费。
 -   MLA 场景下 key 与 value 指向同一份 latent，"对 K 按行缩放"与"对 score/P 按列缩放"在数学上等价。kernel 采用后者，即把 $s_t$ 作用在**整列 score** 上（softmax 前与 softmax 后各一次）。
--   由于该列同时包含 nope 与 rope 两部分的贡献，**调用方必须按 $rope / s_t$ 存放 rope 分量**，kernel 乘回 $s_t$ 后才还原出真实的 rope 贡献。若按原始 rope 存放，误差为 ($s_t$ - 1) × q_rope · rope：在 rope 幅值小或 $s_t$ 接近 1 时该误差不可见，故 examples 中以 rope 主导且 $s_t$ 远离 1 的用例专门覆盖。
+-   由于该列同时包含 nope 与 rope 两部分的贡献，**调用方必须按 $rope / s_t$ 存放 rope 分量**，kernel 乘回 $s_t$ 后才还原出真实的 rope 贡献。若按原始 rope 存放，误差为 ($s_t$ - 1) × q_rope · rope：在 rope 幅值小或 $s_t$ 接近 1 时该误差不可见，故 `tests/pytest` 中以 rope 主导且 $s_t$ 远离 1 的用例专门覆盖。
 -   `actual_seq_lengths_query` 与 `actual_seq_lengths_kv` 的语义**不对称**，两者不可互换：前者为 TND query 的**累加和**（kernel 按相邻元素差分还原每 batch 长度，故末元素必须等于 query 的 T）；后者在两种 PA 布局下均为**每 batch 的实际 KV 长度**而非累加和，kernel 直接按 batch 下标取值。
 -   下列数值约束由调用方保证：两个长度数组均非负；`actual_seq_lengths_query` 单调不减；每个 batch 的 KV 长度不超过其 `block_table` 行所能覆盖的容量（`block_table.dim1 × block_size`）；`block_table` 中的 block id 落在 KV cache 的block 数范围内；`sparse_indices` 为 **batch 内局部**的 KV 位置，超出有效长度的位置以 `-1` 填充。
     这些取值在推理场景下均为 device 张量，tiling 阶段无法读取，因此 host 侧只校验其数据类型与元素个数，数值本身不做校验——传入越界值会导致错误的地址计算，请调用方自行保证。
@@ -80,8 +80,43 @@
 -   参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、N（Head Num）表示多头数、D（Head Dim）表示 hidden 层最小的单元尺寸、T 表示所有 Batch 输入样本序列长度的累加和。
 -   S1 表示 query shape 中的 S，N1 表示 num_query_heads，T1 表示 query shape 中的 T。
 
+## 接口与验证
+
+- [ACLNN 两阶段接口及 C++ 示例](docs/aclnnTurboQuantSparseFlashAttention.md)。接口从算子定义生成并随标准包发布，无需单独手写 L0 实现。
+- [标准 PyTorch 接口](../../torch_extension/cann_ops_transformer/docs/zh/turbo_quant_sparse_flash_attention.md)：`cann_ops_transformer.turbo_quant_sparse_flash_attention`。
+- [旧 Python 入口兼容层](torch_ops_extension/README.md)：保留 `torch.ops.custom.npu_turbo_quant_sparse_flash_attention` 和 `torch_npu.npu_turbo_quant_sparse_flash_attention`。
+- 推理前向接口；提供 Meta/FakeTensor 注册和 ACL graph 测试，不提供 GE Converter 或反向实现。ACL graph 捕获前需完成首次调用及 JIT 编译。
+
+在仓库根目录构建（A2 使用 `ascend910b`，A3 使用 `ascend910_93`）：
+
+```bash
+source /usr/local/Ascend/cann/set_env.sh
+bash build.sh --pkg --ops=turbo_quant_sparse_flash_attention --soc=ascend910b --vendor_name=custom -j8
+bash build_out/cann-ops-transformer-custom_linux-aarch64.run --install-path=/your/operator/install
+source /your/operator/install/vendors/custom_transformer/bin/set_env.bash
+python3 -m pip install build
+bash build.sh --torch_extension
+python3 -m pip install --force-reinstall --no-deps build_out/cann_ops_transformer-*.whl
+```
+
+使用虚拟环境时，确认 `cann_ops_transformer.__file__` 指向新 wheel；CANN 的 `set_env.sh` 可能通过 `PYTHONPATH` 优先加载环境自带的同名包。必要时把虚拟环境的 `site-packages` 加到 `PYTHONPATH` 首位。过程产物和安装路径由调用方选择，不应覆盖其他任务的环境。
+
+```bash
+# Host tiling/infer-shape UT
+bash build.sh --ops=turbo_quant_sparse_flash_attention --ophost_test -j8
+# 可选兼容包用于验证旧接口转发
+python3 -m pip install --no-deps attention/turbo_quant_sparse_flash_attention/torch_ops_extension
+# 指定空闲物理设备；pytest 在进程内使用逻辑设备 0
+ASCEND_RT_VISIBLE_DEVICES=0 python3 -m pytest attention/turbo_quant_sparse_flash_attention/tests/pytest -q
+python3 scripts/ci/test_parse_changed_ops.py
+```
+
+`tests/pytest` 覆盖两种 query dtype、两种 KV 布局、不同 query head 数、空序列、页间 padding、首轴 stride、storage offset、可选参数、非法元数据，以及图回放时更新输入的场景。
+
+`tests/assets/spec.py` 提供 TestSpec 入口，`tq_sfa_reference.py` 从实际打包 cache 字节独立解码，使用 CPU float64 计算 golden。输入生成器原地填充张量以保留 cache 的 stride 和 storage offset。`test_turbo_quant_sparse_flash_attention_assets.py` 可直接验证这些资产，覆盖稀疏块大小 1/2/4/8/16、页大小 16/1024、8K/32K KV，并通过故意扰动输出确认比较器能检出错误。直接运行这些 pytest 不等同于通过完整 TTK 流程。
+
 ## 精度说明
 -   本算子为 4bit 量化算子，其输出与全精度 Attention 之间存在量化本身引入的固有偏差，不属于算子实现缺陷。因此精度对标的标杆取**与算子采用相同量化方案的高精度 CPU 实现**（量化与反量化过程按 float64 计算），以剥离量化误差、只考察算子实现误差。
--   判定沿用 [experimental 精度标准](https://gitcode.com/cann/opbase/blob/master/docs/zh/ops_precision_standard/experimental_standard.md) 的双条件：
+-   当前回归用例保留原有数值判据：FP16/BF16 均取 `atol=rtol=2^-9`、匹配率至少 `0.99`、最大绝对误差不超过 `0.1`。该判据用于与历史结果比较，不能替代发布版本指定的精度准入评审。测试保留 float64 golden，并分别检查：
     -   匹配率：满足 $|actual - golden| \le atol + rtol \times |golden|$ 的元素占比 $\ge 0.99$；
     -   最大绝对误差不超过对应数据类型的硬上限。
