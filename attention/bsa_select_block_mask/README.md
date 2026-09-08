@@ -146,7 +146,7 @@
 ## 约束说明
 
 - actual_seq_lengths在q_input_layout为"TND"时必选；actual_seq_lengths_kv在kv_input_layout为"TND"时必选。
-- 根据算子支持的输入Layout，query张量Shape中对应的head维度大小记为N1，key张量Shape中对应的head维度大小记为N2。必须满足N1 = N2（仅支持MHA）。
+- query张量Shape中head维度大小记为N1，key张量Shape中head维度大小记为N2。必须满足N1 = N2（仅支持MHA）。
 - headDim = 128。
 - block_shape中的blockShapeX和blockShapeY必须为8的倍数。
 - query和key压缩后，query和key对应的Xblocks和Yblocks需满足Xblocks * Yblocks > 1；post_block_shape非null时，BNSD场景进一步要求postXBlocks * postYBlocks > 1（粗粒度网格坍缩为1×1时无TopK选择语义，host侧拒绝；TND变长场景允许）。
@@ -154,7 +154,6 @@
 - block_sparse_mask_out数据类型为INT8（二值：0或1）。
 - post_block_shape为可选输入，传入nullptr时禁用二次pooling（向后兼容）；传入`[postBlockShapeX, postBlockShapeY]`时启用，postBlockShapeX/postBlockShapeY为8的倍数，表示block分组数。
 - actual_block_len_query / actual_block_len_key若非null，每个元素取值范围[0, blockShapeX] / [0, blockShapeY]；为null时完整压缩。
-- 不涉及确定性计算。
 
 ## 调用说明
 
