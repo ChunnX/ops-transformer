@@ -355,9 +355,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFl
     if (dstRank == rankId_) {
         GlobalTensor<uint64_t> localFlag;
         localFlag.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagAddr));
-        LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
-        DataCopy(localFlag, flagTensor, UB_ALIGN / sizeof(uint64_t));
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
+        localFlag.SetValue(0, 1U);
         DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localFlag);
         return;
     }
@@ -368,17 +366,17 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFl
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::InitFlagSource()
 {
+    if (aivId_ != 0U) {
+        return;
+    }
     LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
     Duplicate<uint64_t>(flagTensor, 1U, WIN_ADDR_ALIGN / sizeof(uint64_t));
     SyncFunc<AscendC::HardEvent::V_MTE3>();
-    // All AIVs retain their UB flag value for the local MTE path, but only AIV0 writes the shared GM source.
     // Reinitialize to the same constant for standalone combine as well; no receive/clear path touches this slot.
-    if (aivId_ == 0U) {
-        GlobalTensor<uint64_t> flagSource;
-        flagSource.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagSourceWinAddr_));
-        DataCopy(flagSource, flagTensor, WIN_ADDR_ALIGN / sizeof(uint64_t));
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
-    }
+    GlobalTensor<uint64_t> flagSource;
+    flagSource.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagSourceWinAddr_));
+    DataCopy(flagSource, flagTensor, WIN_ADDR_ALIGN / sizeof(uint64_t));
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -586,22 +584,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
         return;
     }
 
-    InitFlagSource();
-
-    uint64_t localBegin = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(rankId_));
-    uint64_t localEnd = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(rankId_ + 1U));
-    uint64_t localCoreBegin = 0U;
-    uint64_t localCoreEnd = 0U;
-    SplitRange(localBegin, localEnd, aivNum_, aivId_, localCoreBegin, localCoreEnd);
-    bool didLocalWrite = ProcessLocalMetadataRange(localCoreBegin, localCoreEnd);
-    if (didLocalWrite) {
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
-    }
-
-    // All AIVs must reach this barrier, including empty local ranges and actualA_ == 0.
-    // It also publishes AIV0's completed constant-source initialization before any remote flag is submitted.
-    SyncAll<true>();
-
     uint32_t activeAivNum = aivNum_;
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0U;
@@ -640,6 +622,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
             }
         }
     }
+
+    InitFlagSource();
+    // Publish AIV0's shared constant-source initialization before any remote flag is submitted.
+    SyncAll<true>();
 
     // Match upstream: publish flags after this AIV's payload phase, even for empty rank/channel slices.
     // In the low-AIV branch the same strided rank list is visited again, using channel 0 only.
