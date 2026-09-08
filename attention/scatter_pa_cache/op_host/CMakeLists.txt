@@ -36,7 +36,6 @@ if (BUILD_OPEN_PROJECT)
     endif()
 endif()
 
-
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_op_to_compiled_list()
     add_modules_sources(OPTYPE scatter_pa_cache ACLNNTYPE aclnn)
