@@ -36,9 +36,9 @@ logger = logging.getLogger(__name__)
 # FP8 量化 (per-token-head Q/K, per-head V, descale=FP32)
 # ==============================================================================
 FP8_DTYPE = torch.float8_e4m3fn
-K_SCALE_ROWS = 4 
-EPSILON = 1e-20 
-Q_BLOCK_SIZE = 128 
+K_SCALE_ROWS = 4
+EPSILON = 1e-20
+Q_BLOCK_SIZE = 128
 KV_BLOCK_SIZE = 256
 NUM_BLOCKS = 0
 

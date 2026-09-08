@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 # ==============================================================================
 HIF8_MAX = 32768.0
 ENABLE_ROPE = False
-FP8_DTYPE = torch.float8_e4m3fn 
+FP8_DTYPE = torch.float8_e4m3fn
 HIF8_DTYPE = torch.uint8
 
 
@@ -153,8 +153,6 @@ def fill_tnd_padding(tensor_tnd, seq_lens, cu_seqlens, fill_value=float("inf")):
         if cu_diff > act_s:
             tensor_tnd[offset + act_s : offset + cu_diff] = fill_value
     return tensor_tnd
-
-
 
 
 # ==============================================================================
