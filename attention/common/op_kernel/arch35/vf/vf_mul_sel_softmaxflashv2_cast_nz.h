@@ -62,9 +62,9 @@ enum OriginNRange {
 template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128,
           OriginNRange oriNRange = GT_64_AND_LTE_128, bool hasAtten = 0,
           PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
-          bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false>
+          bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false, typename VselrBufT = TBuf<>>
 __aicore__ inline void ProcessVec1NoUpdate(
-    const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf, const LocalTensor<T> &expSumTensor,
+    const LocalTensor<T2> &dstTensor, VselrBufT *vselrIndexesBuf, const LocalTensor<T> &expSumTensor,
     const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
     const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
@@ -242,9 +242,9 @@ __aicore__ inline void UpdateExpSumAndExpMax(const LocalTensor<T> &expSumTensor,
 template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128,
           OriginNRange oriNRange = GT_64_AND_LTE_128, bool hasAtten = 0,
           PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
-          bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false>
+          bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false, typename VselrBufT = TBuf<>>
 __aicore__ inline void ProcessVec1Update(
-    const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf, const LocalTensor<T> &expSumTensor,
+    const LocalTensor<T2> &dstTensor, VselrBufT *vselrIndexesBuf, const LocalTensor<T> &expSumTensor,
     const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
     const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
@@ -350,9 +350,9 @@ __aicore__ inline void ProcessVec1Update(
 template <typename T, typename T2, typename pseShiftType, bool isUpdate = false, uint32_t s1BaseSize = 128,
           uint32_t s2BaseSize = 128, OriginNRange oriNRange = GT_64_AND_LTE_128, bool hasAtten = 0,
           PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
-          bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false>
+          bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false, typename VselrBufT = TBuf<>>
 __aicore__ inline void ProcessVec1Vf(
-    const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf, const LocalTensor<T> &expSumTensor,
+    const LocalTensor<T2> &dstTensor, VselrBufT *vselrIndexesBuf, const LocalTensor<T> &expSumTensor,
     const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
     const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
@@ -390,9 +390,9 @@ __aicore__ inline void ProcessVec1Vf(
 template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128,
           OriginNRange oriNRange = GT_64_AND_LTE_128, bool hasAtten = 0,
           PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
-          bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false>
+          bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false, typename VselrBufT = TBuf<>>
 __aicore__ inline void ProcessVec1NoUpdateMxfp8(
-    const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf, const LocalTensor<T> &expSumTensor,
+    const LocalTensor<T2> &dstTensor, VselrBufT *vselrIndexesBuf, const LocalTensor<T> &expSumTensor,
     const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
     const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
@@ -457,9 +457,9 @@ __aicore__ inline void ProcessVec1NoUpdateMxfp8(
 template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128,
           OriginNRange oriNRange = GT_64_AND_LTE_128, bool hasAtten = 0,
           PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
-          bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false>
+          bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false, typename VselrBufT = TBuf<>>
 __aicore__ inline void ProcessVec1UpdateMxfp8(
-    const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf, const LocalTensor<T> &expSumTensor,
+    const LocalTensor<T2> &dstTensor, VselrBufT *vselrIndexesBuf, const LocalTensor<T> &expSumTensor,
     const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
     const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
@@ -529,9 +529,9 @@ __aicore__ inline void ProcessVec1UpdateMxfp8(
 template <typename T, typename T2, typename pseShiftType, bool isUpdate = false, uint32_t s1BaseSize = 128,
           uint32_t s2BaseSize = 128, OriginNRange oriNRange = GT_64_AND_LTE_128, bool hasAtten = 0,
           PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
-          bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false>
+          bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false, typename VselrBufT = TBuf<>>
 __aicore__ inline void ProcessVec1VfMxfp8(
-    const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf, const LocalTensor<T> &expSumTensor,
+    const LocalTensor<T2> &dstTensor, VselrBufT *vselrIndexesBuf, const LocalTensor<T> &expSumTensor,
     const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
     const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,

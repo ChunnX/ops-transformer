@@ -17,11 +17,15 @@
 #define QUANT_FLASH_ATTN_KERNEL_FULLQUANT_FP8_H_
 
 #include "quant_flash_attn_common_def.h"
-#include "../../../common/op_kernel/vector_common.h"
 #include "quant_flash_attn_block_cube_fp8.h"
 #include "quant_flash_attn_block_vec_fp8.h"
-#include "memory_copy_arch35_quant_flash_attn.h"
 #include "quant_flash_attn_block_vec_flashdecode.h"
+#include "memory_copy_arch35_quant_flash_attn.h"
+#if __has_include("../../../common/op_kernel/vector_common.h")
+#include "../../../common/op_kernel/vector_common.h"
+#else
+#include "../../common/op_kernel/vector_common.h"
+#endif
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -30,6 +34,7 @@
 #endif
 
 #include "quant_flash_attn_tiling_data.h"
+#include "quant_flash_attn_type.h"
 
 using namespace AscendC;
 using namespace optiling;
@@ -37,43 +42,37 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 
 namespace BaseApi {
-template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
+
+template <typename FA_T, typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
 class QuantFlashAttnKernelFp8 {
 public:
-    static constexpr uint32_t mBaseSize = CubeBlockType::mBaseSize;
-    static constexpr uint32_t s2BaseSize = CubeBlockType::s2BaseSize;
-    static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
-    static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
+    using INPUT_T = typename FA_T::inputType;
+    using T = float;
+    using OUT_T = typename FA_T::outputType;
+    static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
+    static constexpr uint32_t s2BaseSize = (uint32_t)FA_T::s2BaseSize;
+    static constexpr uint32_t dBaseSize = (uint32_t)FA_T::dBaseSize;
+    static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
+    // fp8 原分派为 TND||NTD→cuParser（与 mxfp8 仅 TND 不同），tool 侧 INCLUDE_NTD=true
+    using QSeqLensToolType = QFASeqLensTool<FA_T::qLayout, false, true, int32_t, GetQActSeqMode<FA_T::qLayout>()>;
+    using KvSeqLensToolType = QFASeqLensTool<FA_T::kvLayout, FA_T::pageAttention, true, int32_t,
+                                             GetKvActSeqMode<FA_T::kvLayout, FA_T::pageAttention>()>;
 
-    static constexpr bool USE_DN = CubeBlockType::USE_DN;
-    static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
-    static constexpr bool FLASH_DECODE = VecFaBlockType::FLASH_DECODE;
+    static constexpr bool USE_DN = FA_T::useDn;
+    static constexpr bool HAS_MASK = FA_T::hasMask;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+    // task ring buffer 至少需要 PRELOAD_N+1(=3) 个slot；为了用位掩码(loop & MASK)代替取模(loop % SIZE)，
+    // 将容量向上取整到最近的2的幂(=4)。代价仅为多1个RunInfo slot，换取消除内层循环的取模scalar bound。
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
 
-    static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
-    static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT;
-    static constexpr LayOutTypeEnum LAYOUT_KV = CubeBlockType::LAYOUT;
-    static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT_Q>();
-    static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_KV, PAGE_ATTENTION>();
+    static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
+    static constexpr bool FLASH_DECODE = FA_T::isFd;
+    static constexpr LayOutTypeEnum LAYOUT_Q = FA_T::qLayout;
+    static constexpr LayOutTypeEnum LAYOUT_KV = FA_T::kvLayout;
+    using ConstInfoX = ConstInfo_t;
 
-    using INPUT_T = typename CubeBlockType::Q_T;
-    using T = typename CubeBlockType::MM_T;
-    using OUT_T = typename VecFaBlockType::OUT_T;
-    using ConstInfoX = typename CubeBlockType::ConstInfoX;
-
-    // CV buffers
-    BufferManager<BufferType::UB> ubBufferManager_;
-    BufferManager<BufferType::L1> l1BufferManager_;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers_;
-    BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers_;
-    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers_;
-
-    GlobalTensor<int32_t> cuSeqLensGmQ_;
-    GlobalTensor<int32_t> cuSeqLensGmKv_;
-    GlobalTensor<int32_t> seqUsedGmQ_;
-    GlobalTensor<int32_t> seqUsedGmKv_;
     GlobalTensor<uint32_t> faMetaDataGm_;
     GlobalTensor<uint32_t> fdMetaDataGm_;
     GlobalTensor<float> softmaxLseGm_;
@@ -82,13 +81,10 @@ public:
 
     ConstInfoX constInfo_;
 
-    const __gm__ QuantFlashAttnTilingData *__restrict tilingData_;
-    TPipe *pipe_ = nullptr;
+    __tiling_data_ptr__ QuantFlashAttnTilingData *tilingData_;
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
     VecFdBlockType vecFdBlock_;
-
-    uint32_t createdTaskCount_ = 0U;
 
     // schduler params
     uint64_t actSeqLensKv_ = 0;
@@ -117,21 +113,13 @@ public:
     // fd metadata
     FDparamsX fdParams_;
 
-    typename std::conditional<(LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD),
-                              ActualSeqLensParser<Q_MODE, int32_t, true>, ActualSeqLensParser<Q_MODE, int32_t>>::type
-        qCuSeqLensParser_;
-
-    typename std::conditional<
-        (!PAGE_ATTENTION && (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND || LAYOUT_KV == LayOutTypeEnum::LAYOUT_NTD)),
-        ActualSeqLensParser<KV_MODE, int32_t, true>, ActualSeqLensParser<KV_MODE, int32_t>>::type kvCuSeqLensParser_;
-
-    ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> qSeqUsedParser_;
-    ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> kvSeqUsedParser_;
+    QSeqLensToolType qSeqLensTool_;
+    KvSeqLensToolType kvSeqLensTool_;
 
     // ==============================fuction=======================================================
     __aicore__ inline QuantFlashAttnKernelFp8()
-        : cubeBlock_(constInfo_),
-          vecFaBlock_(constInfo_),
+        : cubeBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_),
+          vecFaBlock_(constInfo_, qSeqLensTool_),
           vecFdBlock_(constInfo_){};
 
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
@@ -140,10 +128,8 @@ public:
                                 __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue,
                                 __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                                 __gm__ uint8_t *workspace, __gm__ uint8_t *metadata, __gm__ uint8_t *sequsedQ,
-                                __gm__ uint8_t *sequsedKv, const __gm__ QuantFlashAttnTilingData *__restrict tiling,
-                                TPipe *tPipe)
+                                __gm__ uint8_t *sequsedKv, __tiling_data_ptr__ QuantFlashAttnTilingData *tiling)
     {
-        this->pipe_ = tPipe;
         this->tilingData_ = tiling;
 
         sectionNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_SECTION_NUM_INDEX];
@@ -152,30 +138,29 @@ public:
 
         faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + METADATA_HEADER_OFFSET),
                                       sectionNum_ * metadataAicNum_ * METADATA_STRIDE);
-
         InitConstInfo();
 
         keyPtr_ = key;
         valuePtr_ = value;
 
-        cuSeqLensGmQ_.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ, constInfo_.cuSeqLensQSize + 1);
-        seqUsedGmKv_.SetGlobalBuffer((__gm__ int32_t *)sequsedKv, constInfo_.seqUsedKvSize);
 
-        InitQCuSeqLensParser(cuSeqLensQ, sequsedQ);
-        InitKvCuSeqLensParser(cuSeqLensKv, sequsedKv);
-
-        InitMMResBuf(workspace);
+        qSeqLensTool_.Init(cuSeqLensQ, constInfo_.cuSeqLensQSize, sequsedQ, constInfo_.seqUsedQSize, constInfo_.s1Size);
+        kvSeqLensTool_.Init(cuSeqLensKv, constInfo_.cuSeqLensKVSize, sequsedKv, constInfo_.seqUsedKvSize,
+                            constInfo_.s2Size);
 
         if ASCEND_IS_AIV {
-            vecFaBlock_.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, pScale, blockTable, dequantScaleQuery,
-                                     dequantScaleKey, dequantScaleValue, softmaxLse, attentionOut, workspace,
-                                     qCuSeqLensParser_);
+            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
+                vecFaBlock_.InitVecBlock(cuSeqLensQ, cuSeqLensKv, pScale, blockTable, dequantScaleQuery,
+                                         dequantScaleKey, dequantScaleValue, softmaxLse, attentionOut, workspace);
+            } else {
+                vecFaBlock_.InitVecBlock(sequsedQ, sequsedKv, pScale, blockTable, dequantScaleQuery, dequantScaleKey,
+                                         dequantScaleValue, softmaxLse, attentionOut, workspace);
+            }
             vecFaBlock_.ClearOutput();
         }
 
         if ASCEND_IS_AIC {
-            cubeBlock_.InitCubeBlock(tPipe, &l1BufferManager_, query, key, value, blockTable, qCuSeqLensParser_,
-                                     kvSeqUsedParser_);
+            cubeBlock_.InitCubeBlock(query, key, value, blockTable);
         }
         if constexpr (FLASH_DECODE) {
             if ASCEND_IS_AIV {
@@ -185,29 +170,18 @@ public:
                     sectionNum_ * metadataAivNum_ * METADATA_STRIDE);
                 vecFdBlock_.InitParams();
                 vecFdBlock_.InitGlobalTensor(this->vecFaBlock_.softmaxFDMaxGm_, this->vecFaBlock_.softmaxFDSumGm_,
-                                             this->vecFaBlock_.accumOutGm_, this->vecFaBlock_.attentionOutGm_,
-                                             this->actualSeqLengthsGmQ_, this->actualSeqLengthsGm, keyPtr_, nullptr,
-                                             nullptr);
+                                             this->vecFaBlock_.accumOutGm_, this->vecFaBlock_.attentionOutGm_, keyPtr_);
                 if (constInfo_.isSoftmaxLseEnable) {
                     softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
                     vecFdBlock_.InitSoftmaxLseGm(softmaxLseGm_);
                 }
+                if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
+                    vecFdBlock_.SetCuSeqLensParsers(qSeqLensTool_.cuSeqLensParser, kvSeqLensTool_.cuSeqLensParser);
+                } else {
+                    vecFdBlock_.SetCuSeqLensParsers(qSeqLensTool_.seqUsedParser, kvSeqLensTool_.seqUsedParser);
+                }
             }
         }
-    }
-
-    __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)
-    {
-        uint32_t mm1OutDtype = sizeof(T);
-
-        uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
-        constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
-        constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
-        l1BufferManager_.Init(pipe_, 524288); // 512 * 1024
-        l1PBuffers_.Init(l1BufferManager_, mm2LeftSize);
-        ubBufferManager_.Init(pipe_, mm1ResultSize * 2 + mm2ResultSize);
-        bmm2Buffers_.Init(ubBufferManager_, mm2ResultSize);
-        bmm1Buffers_.Init(ubBufferManager_, mm1ResultSize);
     }
 
     __aicore__ inline void InitConstInfo()
@@ -282,27 +256,6 @@ public:
         constInfo_.dBasicBlock = Align64Func((uint16_t)constInfo_.dSizeV);
     }
 
-    __aicore__ inline void InitQCuSeqLensParser(__gm__ uint8_t *cuSeqLensQPtr, __gm__ uint8_t *sequsedQPtr)
-    {
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
-            qCuSeqLensParser_.Init(cuSeqLensQPtr, constInfo_.cuSeqLensQSize + 1, sequsedQPtr, constInfo_.seqUsedQSize);
-        } else {
-            qSeqUsedParser_.Init(seqUsedGmQ_, constInfo_.seqUsedQSize, constInfo_.s1Size);
-        }
-    }
-
-    __aicore__ inline void InitKvCuSeqLensParser(__gm__ uint8_t *cuSeqLensKvPtr, __gm__ uint8_t *sequsedKvPtr)
-    {
-        if constexpr (!PAGE_ATTENTION && LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
-            kvCuSeqLensParser_.Init(cuSeqLensKvPtr, constInfo_.cuSeqLensKVSize + 1, sequsedKvPtr,
-                                    constInfo_.seqUsedKvSize);
-        } else if constexpr (PAGE_ATTENTION && LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
-            kvCuSeqLensParser_.Init(sequsedKvPtr, constInfo_.seqUsedKvSize, constInfo_.s2Size);
-        } else {
-            kvSeqUsedParser_.Init(seqUsedGmKv_, constInfo_.seqUsedKvSize, constInfo_.s2Size);
-        }
-    }
-
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
         return METADATA_STRIDE * metadataAicNum_ * sectionIdx + METADATA_STRIDE * coreIdx + metaIdx;
@@ -311,24 +264,6 @@ public:
     __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
         return METADATA_STRIDE * metadataAivNum_ * sectionIdx + METADATA_STRIDE * coreIdx + metaIdx;
-    }
-
-    __aicore__ inline void CrossCoreBufferInit()
-    {
-        if ASCEND_IS_AIV {
-            bmm2Buffers_.Get().SetCrossCore();
-            bmm1Buffers_.Get().SetCrossCore();
-            bmm1Buffers_.Get().SetCrossCore();
-        }
-    }
-
-    __aicore__ inline void CrossCoreBufferUnInit()
-    {
-        if ASCEND_IS_AIC {
-            bmm1Buffers_.Get().WaitCrossCore();
-            bmm1Buffers_.Get().WaitCrossCore();
-            bmm2Buffers_.Get().WaitCrossCore();
-        }
     }
 
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
@@ -340,7 +275,7 @@ public:
         GetFASectionInfo(sectionIdx);
         RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
 
-        createdTaskCount_ = 0;
+        uint32_t createdTaskCount = 0;
         uint32_t executedTaskCount = 0;
         mloop_ = 0;
         headS2Split_ = false;
@@ -359,8 +294,8 @@ public:
             if (shouldDispatchTask) {
                 TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
                 if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
-                    CreateTask(createdTaskCount_, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
-                    createdTaskCount_++;
+                    CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
+                    createdTaskCount++;
                     validTaskCount++;
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                 } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
@@ -398,17 +333,8 @@ public:
         uint32_t bIdx = bN2Cur / constInfo_.realN2Size;
         if (isFirstTask || prevBIdx_ != bIdx) {
             prevBIdx_ = bIdx;
-            if constexpr (!PAGE_ATTENTION &&
-                          (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND || LAYOUT_KV == LayOutTypeEnum::LAYOUT_NTD)) {
-                actSeqLensKv_ = kvCuSeqLensParser_.GetActualSeqLength(bIdx);
-            } else {
-                actSeqLensKv_ = kvSeqUsedParser_.GetActualSeqLength(bIdx);
-            }
-            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
-                actSeqLensQ_ = qCuSeqLensParser_.GetActualSeqLength(bIdx);
-            } else {
-                actSeqLensQ_ = qSeqUsedParser_.GetActualSeqLength(bIdx);
-            }
+            actSeqLensKv_ = kvSeqLensTool_.GetActualSeqLength(bIdx);
+            actSeqLensQ_ = qSeqLensTool_.GetActualSeqLength(bIdx);
         }
         uint64_t s2LoopTimes = (actSeqLensKv_ + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ_ * constInfo_.realGSize;
@@ -444,24 +370,23 @@ public:
         return TASK_DEAL_MODE::CREATE_TASK;
     }
 
-    __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ_, int64_t actSeqLensKv_, int64_t &preTokenLeftUp,
+    __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &preTokenLeftUp,
                                                  int64_t &nextTokenLeftUp)
     {
         preTokenLeftUp = constInfo_.preTokens;
         nextTokenLeftUp = constInfo_.nextTokens;
-        fa_base_vector::GetSafeActToken(actSeqLensQ_, actSeqLensKv_, preTokenLeftUp, nextTokenLeftUp,
+        fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp,
                                         constInfo_.sparseMode);
 
         if (constInfo_.sparseMode == fa_base_vector::BAND) {
-            preTokenLeftUp = static_cast<int64_t>(actSeqLensQ_) - static_cast<int64_t>(actSeqLensKv_) + preTokenLeftUp;
+            preTokenLeftUp = static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + preTokenLeftUp;
         }
 
         if (constInfo_.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL ||
             constInfo_.sparseMode == fa_base_vector::TREE) {
-            nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv_) - static_cast<int64_t>(actSeqLensQ_);
+            nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
         } else if (constInfo_.sparseMode == fa_base_vector::BAND) {
-            nextTokenLeftUp =
-                static_cast<int64_t>(actSeqLensKv_) - static_cast<int64_t>(actSeqLensQ_) + nextTokenLeftUp;
+            nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
         }
     }
 
@@ -539,8 +464,8 @@ public:
 
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
-        RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
+        RunInfoX &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK];                  // 本轮任务
+        RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
                 ComputeMm1(runInfo0);
@@ -563,28 +488,28 @@ public:
 
     __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
     {
-        cubeBlock_.IterateBmm1(this->bmm1Buffers_.Get(), runInfo);
+        cubeBlock_.IterateBmm1(runInfo);
     }
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {
-        cubeBlock_.IterateBmm2(this->bmm2Buffers_.Get(), this->l1PBuffers_, runInfo);
+        cubeBlock_.IterateBmm2(runInfo);
     }
 
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
     {
-        vecFaBlock_.ProcessVec1(this->l1PBuffers_.Get(), this->bmm1Buffers_.Get(), runInfo);
+        vecFaBlock_.ProcessVec1(runInfo);
     }
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
     {
-        this->vecFaBlock_.ProcessVec2(this->bmm2Buffers_.Get(), runInfo);
+        this->vecFaBlock_.ProcessVec2(runInfo);
     }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
+        RunInfoX &runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
         CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
     }
@@ -680,18 +605,18 @@ public:
         gS1Cur = 0;
         bN2Cur++;
     }
+
     __aicore__ inline void FlashDecode(uint32_t sectionIdx)
     {
         GetFDSectionInfo(sectionIdx);
         if (!fdParams_.fdCoreEnable) {
             return;
         }
-        vecFdBlock_.InitBuffers(this->pipe_);
+        vecFdBlock_.InitBuffers();
         AscendC::ICachePreLoad(2);
-        vecFdBlock_.AllocEventID();
         SyncAll();
         vecFdBlock_.FlashDecode(fdParams_);
-        vecFdBlock_.FreeEventID();
+        SyncAll();
     }
 
     __aicore__ inline void GetFDSectionInfo(uint32_t sectionIdx)
@@ -727,15 +652,14 @@ public:
 
     __aicore__ inline void Process()
     {
-        if (constInfo_.aicIdx < constInfo_.coreNum) {
-            CrossCoreBufferInit();
-            if ASCEND_IS_AIV {
-                vecFaBlock_.InitBuffers();
-                vecFaBlock_.AllocEventID();
-            } else {
-                cubeBlock_.InitBuffers();
-                cubeBlock_.AllocEventID();
-            }
+        if ASCEND_IS_AIV {
+            vecFaBlock_.InitBuffers();
+            vecFaBlock_.InitCrossCoreSync();
+            vecFaBlock_.AllocEventID();
+        } else {
+            cubeBlock_.InitBuffers();
+            cubeBlock_.InitCrossCoreSync();
+            cubeBlock_.AllocEventID();
         }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
             if (constInfo_.aicIdx < constInfo_.coreNum) {
@@ -748,13 +672,12 @@ public:
             }
         }
 
-        if (constInfo_.aicIdx < constInfo_.coreNum) {
-            if ASCEND_IS_AIV {
-                vecFaBlock_.FreeEventID();
-            } else {
-                cubeBlock_.FreeEventID();
-            }
-            CrossCoreBufferUnInit();
+        if ASCEND_IS_AIV {
+            vecFaBlock_.FreeEventID();
+            vecFaBlock_.UnInitCrossCoreSync();
+        } else {
+            cubeBlock_.FreeEventID();
+            cubeBlock_.UnInitCrossCoreSync();
         }
     }
 }; // QuantFlashAttnKernelFp8
