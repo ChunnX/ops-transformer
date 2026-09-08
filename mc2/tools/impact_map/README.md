@@ -1,16 +1,14 @@
-# mc2 common/3rd 影响范围映射表（impact_map）
+# mc2 common/3rd 头文件影响范围映射表（impact_map）
 
 ## 1. 背景与用途
 
 mc2 算子的公共代码集中在 `mc2/common` 与 `mc2/3rd`，改动这些目录时无法用算子目录级
 依赖（CMake `*_depends`）评估影响面。本目录提供**文件级**的反向影响映射：
 
-> 输入：PR 修改的 common/3rd 文件路径
-> 输出：需要回归测试的 mc2 算子清单（按芯片 A2/A3/A5 区分）
+> 输入：PR 修改的 common/3rd 文件路径 + 目标芯片
+> 输出：需要回归测试的 mc2 算子清单
 
-配套外部脚本（仓外维护）：
-`pr_files.sh`（按 PR 号拉取修改文件列表）+ `pr_impact.py`（算子目录改动 +
-本映射表查表 + CMake depends 反向闭包 = 最终测试清单）。
+**本表只保存头文件（.h/.hpp/.cuh）条目**，其余文件类型由消费脚本按第 4 节规则处理。
 
 ## 2. 目录结构
 
@@ -18,10 +16,10 @@ mc2 算子的公共代码集中在 `mc2/common` 与 `mc2/3rd`，改动这些目�
 mc2/tools/
 ├── gen_common_impact_yaml.py    # 生成器（本表唯一来源，重新生成会覆盖yaml）
 └── impact_map/
-    ├── common/                  # mc2/common 文件的映射
+    ├── common/                  # mc2/common 头文件的映射
     │   ├── A2.yaml / A3.yaml / A5.yaml
-    │   └── unref.yaml           # 零引用文件清单
-    └── 3rd/                     # mc2/3rd 文件的映射
+    │   └── unref.yaml           # 零引用头文件清单
+    └── 3rd/                     # mc2/3rd 头文件的映射
         ├── A2.yaml / A3.yaml / A5.yaml
         └── unref.yaml
 ```
@@ -38,47 +36,53 @@ python3 mc2/tools/gen_common_impact_yaml.py
 python3 mc2/tools/gen_common_impact_yaml.py /path/to/another_checkout [输出目录]
 ```
 
-纯本地扫描（无需联网），依赖 python3；可选 pyyaml 用于下游查表脚本。
+纯本地扫描（无需联网）。
 
-## 4. 判定规则
+## 4. 消费规则（完整覆盖）
 
-1. **裸文件名匹配**：扫描 mc2 内全部 `#include "..."`，取最后一段文件名与
-   common/3rd 文件名匹配（文件挪目录不影响解析）。
-2. **重名取并集**：仓内存在少量同名头文件（yaml 中以 `note:` 标注），映射取
-   并集，方向为"宁多勿漏"。
+消费脚本输入修改文件列表 + 芯片，逐文件判定：
+
+| 文件 | 判定 |
+|---|---|
+| 路径含 `/tests/` | 全量 |
+| 非 .h/.cpp 的一切（.py/.json/.ini/.sh/.csv/.txt/.md 等） | 全量 |
+| .cpp，同目录无同名 .h | 全量 |
+| .cpp，同目录同名 .h 在 unref.yaml | 疑似死代码，不触发 |
+| .cpp，同目录同名 .h 在本表 | 取同名 .h 条目的 ops |
+| .h，在 unref.yaml | 零引用，人工确认 |
+| .h，在本表 | 取条目 ops（`ops: []` = 该芯片无算子，不用测） |
+
+**最后一步（消费侧负责）**：以上得到的算子集还需**叠加 CMake `*_depends`
+反向闭包**（如 yaml 传递出 `moe_distribute_dispatch_v2`，则依赖它的
+`moe_distribute_combine_v2` 等一并纳入），再去重后作为最终测试清单。
+
+## 5. 判定规则（生成器侧）
+
+1. **裸文件名匹配**：扫描 mc2 内全部 `#include "..."`，取最后一段文件名匹配
+   （文件挪目录不影响解析）。
+2. **重名取并集**：同名头文件以 `note:` 标注，映射取并集，宁多勿漏。
 3. **间接 include 传递闭包**：算子 → common 头A → 3rd 头B 的链路中，改动 B
-   同样算入算子影响（递归直至引用者落到算子目录为止，带环保护与结果缓存）。
-4. **编译级引用（接口反推）**：common/3rd 的非测试 .cpp 由 CMake `file(GLOB)`/
-   `add_modules_sources(DIR)` 按目录整包编译进全局目标，无需被 include。其影响面
-   **按同名头接口反推**：改实现只影响调用该接口的算子，即同名 .h 的引用算子集
-   （yaml 中以 `note: 影响面按同名头<路径>接口反推` 标注，供人工核验）。
-   - 无同名头的 .cpp：接口不明，保守回退全算子并标注待人工确认
-   - 同名头无任何算子引用的 .cpp：疑似死代码，`ops: []` + note 标注
-5. **其余文件一律全量**：common/3rd 下除 .h/.cpp 外的所有文件类型（.py、
-   json、ini、sh、csv、txt 等，如 config/ 下的 runtime_kb 调优配置）不做建模，
-   **改动一律按全量算子回归处理**。芯片维度可参考其所在路径（如
-   `config/ascend950/` 仅涉及 A5）。
-6. **零引用文件**：既无 include 引用、也非编译单元的文件单独记录在
-   `unref.yaml`（改动当前不影响 mc2 算子编译，但需人工确认是否有仓外引用或
-   引用关系尚未建立）。
-5. **芯片过滤**：算子集合按 `*_def.cpp` 的 `AICore().AddConfig()` 注册与
+   同样算入算子影响（不动点迭代，天然处理环）。
+4. **芯片过滤**：算子集合按 `*_def.cpp` 的 `AICore().AddConfig()` 注册与
    当前芯片取交集。
+5. **cpp 不入表**：.cpp 的接口影响等价于其同名 .h（接口反推原则），消费侧按
+   第 4 节规则处理，yaml 不保存 .cpp 条目。
 
-## 5. yaml 格式
+## 6. yaml 格式
 
 ```yaml
 common/op_kernel/mc2_tiling_struct.h:
   ops:
-    - all_gather_matmul        # 改动该文件需测试的算子，显式全列表
+    - all_gather_matmul        # 改动该头需测试的算子，显式全列表
     - ...
   note: 同名文件2份, 映射取并集  # 仅重名文件有此字段
-3rd/xxx/orphan_impl.cpp:
-  ops: []                      # include不可见（孤立实现文件），需人工评估
+common/op_host/op_tiling/xxx.h:
+  ops: []                      # 有引用但引用算子不支持该芯片
 ```
 
-## 6. 维护约定
+## 7. 维护约定
 
-- common/3rd 下**新增文件、新增/删除 include 关系**后，重新运行生成器刷新 yaml。
+- common/3rd 下**头文件新增/删除、include 关系变化**后，重新运行生成器刷新 yaml。
 - 本目录不参与编译构建（无 CMakeLists.txt，tools 的构建遍历自动跳过）。
 - 映射表由生成器产出，请勿手工编辑（重新生成会覆盖）；如需长期例外，请调整
   生成器规则后在 PR 中说明。

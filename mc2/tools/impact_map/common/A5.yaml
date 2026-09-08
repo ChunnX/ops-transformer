@@ -1,35 +1,16 @@
-# mc2/common 文件影响范围映射表 - A5 (ascend950)
-# 生成: 2026-09-08  基线commit: 7693755b7 (clean)
+# mc2/common 头文件影响范围映射表 - A5 (ascend950)
+# 生成: 2026-09-08  基线commit: e7f2272c5 (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(common/开头), 与pr_files.sh输出中mc2/后的段落一致
 #
-# 影响面模型:
-#   头文件: 被include才生效, 影响面=直接+间接include它的算子(传递闭包)
-#   .cpp:   CMake按目录整包编译(编译级引用), 影响面按同名头接口反推
-#           (即改实现只影响调用该接口的算子), 无同名头保守全量并标注待人工确认
-#
-# 条目语义:
-#   1) ops 列出算子 = 改动该文件需在本芯片测试这些算子
-#   2) ops: []      = 头文件无任何算子引用, 或.cpp同名头无算子引用(疑似死代码, 看note)
-#   3) unref.yaml   = 无include且非编译单元的零引用文件(单独成表), 改动需人工确认
-#
-# 判定规则:
-#   - mc2内所有#include按裸文件名匹配, 重名文件取并集(note:字段标注), 宁多勿漏
-#   - 算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 A5(ascend950) 的交集
-#   - 未建模文件类型: common/3rd下除.h/.cpp外的所有文件(.py/json/ini/sh等)
-#     改动一律按全量算子回归处理(见impact_map/README.md)
+# 本表仅保存头文件(.h/.hpp/.cuh)条目, 影响面=直接+间接include它的算子(传递闭包)。
+# 其他文件类型由消费脚本按以下规则处理(与本表配合):
+#   .cpp: 同目录同名.h存在 -> 查本表同名头条目; 同名.h在unref.yaml -> 疑似死代码不触发;
+#         同目录无同名.h -> 全量
+#   其余一切(.py/json/ini/sh/csv/txt/md等)及tests/路径下文件: 一律全量
+#   算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 A5(ascend950) 的交集
+#   注意: 本表结果为文件直接传递的算子, 消费侧还需叠加CMake depends反向闭包
 
-common/op_api/mc2_aclnn_util.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - all_gather_matmul_v3
-    - allto_all_matmul
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-  note: 编译级引用, 影响面按同名头common/op_api/mc2_aclnn_util.h接口反推
 common/op_api/mc2_aclnn_util.h:
   ops:
     - all_gather_matmul
@@ -40,45 +21,14 @@ common/op_api/mc2_aclnn_util.h:
     - matmul_allto_all
     - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
-common/op_api/mc2_context.cpp:
-  ops:
-    - distribute_barrier
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch_v2
-  note: 编译级引用, 影响面按同名头common/op_api/mc2_context.h接口反推
 common/op_api/mc2_context.h:
   ops:
     - distribute_barrier
     - moe_distribute_combine_v2
     - moe_distribute_dispatch_v2
-common/op_graph/matmul_all_reduce_gen_task_ops_utils.cpp:
-  ops:
-    - matmul_all_reduce
-  note: 编译级引用, 影响面按同名头common/op_graph/matmul_all_reduce_gen_task_ops_utils.h接口反推
 common/op_graph/matmul_all_reduce_gen_task_ops_utils.h:
   ops:
     - matmul_all_reduce
-common/op_graph/mc2_gen_task_ops_utils.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - distribute_barrier
-    - grouped_mat_mul_allto_allv
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - moe_distribute_combine
-    - moe_distribute_combine_add_rms_norm
-    - moe_distribute_combine_setup
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-    - quant_grouped_mat_mul_allto_allv
-  note: 编译级引用, 影响面按同名头common/op_graph/mc2_gen_task_ops_utils.h接口反推
 common/op_graph/mc2_gen_task_ops_utils.h:
   ops:
     - all_gather_matmul
@@ -99,20 +49,6 @@ common/op_graph/mc2_gen_task_ops_utils.h:
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
     - quant_grouped_mat_mul_allto_allv
-common/op_graph/mc2_gen_task_ops_utils_arch35.cpp:
-  ops:
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - grouped_mat_mul_allto_allv
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter_v2
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch_v2
-    - quant_grouped_mat_mul_allto_allv
-  note: 编译级引用, 影响面按同名头common/op_graph/mc2_gen_task_ops_utils_arch35.h接口反推
 common/op_graph/mc2_gen_task_ops_utils_arch35.h:
   ops:
     - all_gather_matmul_v2
@@ -126,62 +62,6 @@ common/op_graph/mc2_gen_task_ops_utils_arch35.h:
     - moe_distribute_combine_v2
     - moe_distribute_dispatch_v2
     - quant_grouped_mat_mul_allto_allv
-common/op_graph/mc2_gen_task_ops_utils_arch35_stub.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - all_gather_matmul_v3
-    - allto_all_matmul
-    - allto_all_matmul_v2
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - attention_to_ffn_v2
-    - distribute_barrier
-    - distribute_barrier_extend
-    - engram_fetch
-    - engram_fetch_grad
-    - engram_fetch_wait
-    - ffn_to_attention_v2
-    - grouped_mat_mul_allto_allv
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_add_rms_norm
-    - moe_distribute_combine_setup
-    - moe_distribute_combine_teardown
-    - moe_distribute_combine_v2
-    - moe_distribute_combine_v3
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_setup
-    - moe_distribute_dispatch_teardown
-    - moe_distribute_dispatch_v2
-    - moe_distribute_dispatch_v3
-    - moe_ep_combine
-    - moe_ep_combine_epilogue
-    - moe_ep_dispatch
-    - moe_ep_dispatch_epilogue
-    - moe_update_expert
-    - quant_all_reduce
-    - quant_grouped_mat_mul_allto_allv
-    - quant_reduce_scatter
-  note: 编译级引用, 无同名头, 按全算子处理
-common/op_graph/mc2_moe_gen_task_ops_utils.cpp:
-  ops:
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - distribute_barrier
-    - grouped_mat_mul_allto_allv
-    - moe_distribute_combine
-    - moe_distribute_combine_add_rms_norm
-    - moe_distribute_combine_setup
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-    - quant_grouped_mat_mul_allto_allv
-  note: 编译级引用, 影响面按同名头common/op_graph/mc2_moe_gen_task_ops_utils.h接口反推
 common/op_graph/mc2_moe_gen_task_ops_utils.h:
   ops:
     - allto_allv_grouped_mat_mul
@@ -195,19 +75,6 @@ common/op_graph/mc2_moe_gen_task_ops_utils.h:
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
     - quant_grouped_mat_mul_allto_allv
-common/op_host/mc2_common_infershape.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - all_gather_matmul_v3
-    - allto_all_matmul
-    - allto_all_matmul_v2
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - quant_all_reduce
-    - quant_reduce_scatter
-  note: 编译级引用, 影响面按同名头common/op_host/mc2_common_infershape.h接口反推
 common/op_host/mc2_common_infershape.h:
   ops:
     - all_gather_matmul
@@ -256,18 +123,6 @@ common/op_host/op_tiling/formulaic_tiling_datatype.h:
     - moe_ep_dispatch_epilogue
     - quant_grouped_mat_mul_allto_allv
     - quant_reduce_scatter
-common/op_host/op_tiling/hccl_formulaic_tiling.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter_v2
-    - quant_grouped_mat_mul_allto_allv
-  note: 编译级引用, 影响面按同名头common/op_host/op_tiling/hccl_formulaic_tiling.h接口反推
 common/op_host/op_tiling/hccl_formulaic_tiling.h:
   ops:
     - all_gather_matmul
@@ -279,18 +134,6 @@ common/op_host/op_tiling/hccl_formulaic_tiling.h:
     - matmul_allto_all
     - matmul_reduce_scatter_v2
     - quant_grouped_mat_mul_allto_allv
-common/op_host/op_tiling/hccl_performance.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter_v2
-    - quant_grouped_mat_mul_allto_allv
-  note: 编译级引用, 影响面按同名头common/op_host/op_tiling/hccl_performance.h接口反推
 common/op_host/op_tiling/hccl_performance.h:
   ops:
     - all_gather_matmul
@@ -302,14 +145,6 @@ common/op_host/op_tiling/hccl_performance.h:
     - matmul_allto_all
     - matmul_reduce_scatter_v2
     - quant_grouped_mat_mul_allto_allv
-common/op_host/op_tiling/hccl_performance_arch35.cpp:
-  ops:
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter_v2
-  note: 编译级引用, 影响面按同名头common/op_host/op_tiling/hccl_performance_arch35.h接口反推
 common/op_host/op_tiling/hccl_performance_arch35.h:
   ops:
     - all_gather_matmul_v2
@@ -317,43 +152,6 @@ common/op_host/op_tiling/hccl_performance_arch35.h:
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter_v2
-common/op_host/op_tiling/matmul_formulaic_tiling.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - all_gather_matmul_v3
-    - allto_all_matmul
-    - allto_all_matmul_v2
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - attention_to_ffn_v2
-    - distribute_barrier
-    - distribute_barrier_extend
-    - ffn_to_attention_v2
-    - grouped_mat_mul_allto_allv
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_add_rms_norm
-    - moe_distribute_combine_setup
-    - moe_distribute_combine_teardown
-    - moe_distribute_combine_v2
-    - moe_distribute_combine_v3
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_setup
-    - moe_distribute_dispatch_teardown
-    - moe_distribute_dispatch_v2
-    - moe_distribute_dispatch_v3
-    - moe_ep_combine
-    - moe_ep_combine_epilogue
-    - moe_ep_dispatch
-    - moe_ep_dispatch_epilogue
-    - quant_grouped_mat_mul_allto_allv
-    - quant_reduce_scatter
-  note: 编译级引用, 影响面按同名头common/op_host/op_tiling/matmul_formulaic_tiling.h接口反推
 common/op_host/op_tiling/matmul_formulaic_tiling.h:
   ops:
     - all_gather_matmul
@@ -390,18 +188,6 @@ common/op_host/op_tiling/matmul_formulaic_tiling.h:
     - moe_ep_dispatch_epilogue
     - quant_grouped_mat_mul_allto_allv
     - quant_reduce_scatter
-common/op_host/op_tiling/matmul_performance.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter_v2
-    - quant_grouped_mat_mul_allto_allv
-  note: 编译级引用, 影响面按同名头common/op_host/op_tiling/matmul_performance.h接口反推
 common/op_host/op_tiling/matmul_performance.h:
   ops:
     - all_gather_matmul
@@ -423,14 +209,6 @@ common/op_host/op_tiling/matmul_performance_arch35.h:
 common/op_host/op_tiling/mc2_calc_num_blocks.h:
   ops:
     - allto_allv_grouped_mat_mul
-common/op_host/op_tiling/mc2_fit_based_balance_tiling.cpp:
-  ops:
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter_v2
-  note: 编译级引用, 影响面按同名头common/op_host/op_tiling/mc2_fit_based_balance_tiling.h接口反推
 common/op_host/op_tiling/mc2_fit_based_balance_tiling.h:
   ops:
     - all_gather_matmul_v2
@@ -438,15 +216,6 @@ common/op_host/op_tiling/mc2_fit_based_balance_tiling.h:
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter_v2
-common/op_host/op_tiling/mc2_matmul_tiling_cfg.cpp:
-  ops:
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter_v2
-    - quant_grouped_mat_mul_allto_allv
-  note: 编译级引用, 影响面按同名头common/op_host/op_tiling/mc2_matmul_tiling_cfg.h接口反推
 common/op_host/op_tiling/mc2_matmul_tiling_cfg.h:
   ops:
     - all_gather_matmul_v2
@@ -503,43 +272,6 @@ common/op_host/op_tiling/mc2_tiling_struct.h:
     - quant_grouped_mat_mul_allto_allv
     - quant_reduce_scatter
   note: 同名文件2份, 映射取并集
-common/op_host/op_tiling/mc2_tiling_utils.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - all_gather_matmul_v3
-    - allto_all_matmul
-    - allto_all_matmul_v2
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - attention_to_ffn_v2
-    - distribute_barrier
-    - distribute_barrier_extend
-    - ffn_to_attention_v2
-    - grouped_mat_mul_allto_allv
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_add_rms_norm
-    - moe_distribute_combine_setup
-    - moe_distribute_combine_teardown
-    - moe_distribute_combine_v2
-    - moe_distribute_combine_v3
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_setup
-    - moe_distribute_dispatch_teardown
-    - moe_distribute_dispatch_v2
-    - moe_distribute_dispatch_v3
-    - moe_ep_combine
-    - moe_ep_combine_epilogue
-    - moe_ep_dispatch
-    - moe_ep_dispatch_epilogue
-    - quant_grouped_mat_mul_allto_allv
-    - quant_reduce_scatter
-  note: 编译级引用, 影响面按同名头common/op_host/op_tiling/mc2_tiling_utils.h接口反推
 common/op_host/op_tiling/mc2_tiling_utils.h:
   ops:
     - all_gather_matmul
@@ -576,30 +308,12 @@ common/op_host/op_tiling/mc2_tiling_utils.h:
     - moe_ep_dispatch_epilogue
     - quant_grouped_mat_mul_allto_allv
     - quant_reduce_scatter
-common/op_host/op_tiling/moe_ep_window_layout.cpp:
-  ops:
-    - moe_ep_combine
-    - moe_ep_combine_epilogue
-    - moe_ep_dispatch
-    - moe_ep_dispatch_epilogue
-  note: 编译级引用, 影响面按同名头common/op_host/op_tiling/moe_ep_window_layout.h接口反推
 common/op_host/op_tiling/moe_ep_window_layout.h:
   ops:
     - moe_ep_combine
     - moe_ep_combine_epilogue
     - moe_ep_dispatch
     - moe_ep_dispatch_epilogue
-common/op_host/op_tiling/moe_tiling_base.cpp:
-  ops:
-    - moe_distribute_combine
-    - moe_distribute_combine_setup
-    - moe_distribute_combine_teardown
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_setup
-    - moe_distribute_dispatch_teardown
-    - moe_distribute_dispatch_v2
-  note: 编译级引用, 影响面按同名头common/op_host/op_tiling/moe_tiling_base.h接口反推
 common/op_host/op_tiling/moe_tiling_base.h:
   ops:
     - moe_distribute_combine
@@ -610,18 +324,6 @@ common/op_host/op_tiling/moe_tiling_base.h:
     - moe_distribute_dispatch_setup
     - moe_distribute_dispatch_teardown
     - moe_distribute_dispatch_v2
-common/op_host/op_tiling/new_mc2_matmul_tiling_cfg.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头common/op_host/op_tiling/new_mc2_matmul_tiling_cfg.h接口反推
-common/op_host/op_tiling/new_mc2_tiling_utils.cpp:
-  ops:
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter_v2
-    - quant_grouped_mat_mul_allto_allv
-  note: 编译级引用, 影响面按同名头common/op_host/op_tiling/new_mc2_tiling_utils.h接口反推
 common/op_host/op_tiling/new_mc2_tiling_utils.h:
   ops:
     - all_gather_matmul_v2
@@ -630,9 +332,6 @@ common/op_host/op_tiling/new_mc2_tiling_utils.h:
     - matmul_allto_all
     - matmul_reduce_scatter_v2
     - quant_grouped_mat_mul_allto_allv
-common/op_host/op_tiling/one_calc_two_comm_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头common/op_host/op_tiling/one_calc_two_comm_tiling.h接口反推
 common/op_host/op_tiling/one_calc_two_comm_tiling.h:
   ops: []
 common/op_host/op_tiling/tiling_key.h:
@@ -1032,132 +731,6 @@ common/op_kernel/reduce_sum_utils.h:
   ops:
     - matmul_all_reduce
     - matmul_reduce_scatter_v2
-common/torch_extension/csrc/comm_channel_builder_manager.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - all_gather_matmul_v3
-    - allto_all_matmul
-    - allto_all_matmul_v2
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - attention_to_ffn_v2
-    - distribute_barrier
-    - distribute_barrier_extend
-    - engram_fetch
-    - engram_fetch_grad
-    - engram_fetch_wait
-    - ffn_to_attention_v2
-    - grouped_mat_mul_allto_allv
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_add_rms_norm
-    - moe_distribute_combine_setup
-    - moe_distribute_combine_teardown
-    - moe_distribute_combine_v2
-    - moe_distribute_combine_v3
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_setup
-    - moe_distribute_dispatch_teardown
-    - moe_distribute_dispatch_v2
-    - moe_distribute_dispatch_v3
-    - moe_ep_combine
-    - moe_ep_combine_epilogue
-    - moe_ep_dispatch
-    - moe_ep_dispatch_epilogue
-    - moe_update_expert
-    - quant_all_reduce
-    - quant_grouped_mat_mul_allto_allv
-    - quant_reduce_scatter
-  note: 编译级引用, 无同名头, 按全算子处理
-common/torch_extension/csrc/comm_context.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - all_gather_matmul_v3
-    - allto_all_matmul
-    - allto_all_matmul_v2
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - attention_to_ffn_v2
-    - distribute_barrier
-    - distribute_barrier_extend
-    - engram_fetch
-    - engram_fetch_grad
-    - engram_fetch_wait
-    - ffn_to_attention_v2
-    - grouped_mat_mul_allto_allv
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_add_rms_norm
-    - moe_distribute_combine_setup
-    - moe_distribute_combine_teardown
-    - moe_distribute_combine_v2
-    - moe_distribute_combine_v3
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_setup
-    - moe_distribute_dispatch_teardown
-    - moe_distribute_dispatch_v2
-    - moe_distribute_dispatch_v3
-    - moe_ep_combine
-    - moe_ep_combine_epilogue
-    - moe_ep_dispatch
-    - moe_ep_dispatch_epilogue
-    - moe_update_expert
-    - quant_all_reduce
-    - quant_grouped_mat_mul_allto_allv
-    - quant_reduce_scatter
-  note: 编译级引用, 无同名头, 按全算子处理
-common/torch_extension/csrc/elastic_buffer.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - all_gather_matmul_v3
-    - allto_all_matmul
-    - allto_all_matmul_v2
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - attention_to_ffn_v2
-    - distribute_barrier
-    - distribute_barrier_extend
-    - engram_fetch
-    - engram_fetch_grad
-    - engram_fetch_wait
-    - ffn_to_attention_v2
-    - grouped_mat_mul_allto_allv
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_add_rms_norm
-    - moe_distribute_combine_setup
-    - moe_distribute_combine_teardown
-    - moe_distribute_combine_v2
-    - moe_distribute_combine_v3
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_setup
-    - moe_distribute_dispatch_teardown
-    - moe_distribute_dispatch_v2
-    - moe_distribute_dispatch_v3
-    - moe_ep_combine
-    - moe_ep_combine_epilogue
-    - moe_ep_dispatch
-    - moe_ep_dispatch_epilogue
-    - moe_update_expert
-    - quant_all_reduce
-    - quant_grouped_mat_mul_allto_allv
-    - quant_reduce_scatter
-  note: 编译级引用, 无同名头, 按全算子处理
 common/utils/aclnn_util.h:
   ops:
     - all_gather_matmul
@@ -1187,10 +760,6 @@ common/utils/aclnn_util.h:
     - quant_all_reduce
     - quant_grouped_mat_mul_allto_allv
     - quant_reduce_scatter
-common/utils/context_transfer.cpp:
-  ops:
-    - matmul_all_reduce
-  note: 编译级引用, 影响面按同名头common/utils/context_transfer.h接口反推
 common/utils/context_transfer.h:
   ops:
     - matmul_all_reduce
@@ -1288,44 +857,6 @@ common/utils/mc2_exception_dump.h:
     - moe_ep_dispatch
     - moe_ep_dispatch_epilogue
   note: 同名文件2份, 映射取并集
-common/utils/mc2_hcom_topo_info.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - all_gather_matmul_v3
-    - allto_all_matmul
-    - allto_all_matmul_v2
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - attention_to_ffn_v2
-    - distribute_barrier
-    - distribute_barrier_extend
-    - ffn_to_attention_v2
-    - grouped_mat_mul_allto_allv
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_add_rms_norm
-    - moe_distribute_combine_setup
-    - moe_distribute_combine_teardown
-    - moe_distribute_combine_v2
-    - moe_distribute_combine_v3
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_setup
-    - moe_distribute_dispatch_teardown
-    - moe_distribute_dispatch_v2
-    - moe_distribute_dispatch_v3
-    - moe_ep_combine
-    - moe_ep_combine_epilogue
-    - moe_ep_dispatch
-    - moe_ep_dispatch_epilogue
-    - quant_all_reduce
-    - quant_grouped_mat_mul_allto_allv
-    - quant_reduce_scatter
-  note: 编译级引用, 影响面按同名头common/utils/mc2_hcom_topo_info.h接口反推
 common/utils/mc2_hcom_topo_info.h:
   ops:
     - all_gather_matmul
@@ -1363,48 +894,6 @@ common/utils/mc2_hcom_topo_info.h:
     - quant_all_reduce
     - quant_grouped_mat_mul_allto_allv
     - quant_reduce_scatter
-common/utils/mc2_log.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - all_gather_matmul_v3
-    - allto_all_matmul
-    - allto_all_matmul_v2
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - attention_to_ffn_v2
-    - distribute_barrier
-    - distribute_barrier_extend
-    - engram_fetch
-    - engram_fetch_grad
-    - engram_fetch_wait
-    - ffn_to_attention_v2
-    - grouped_mat_mul_allto_allv
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_add_rms_norm
-    - moe_distribute_combine_setup
-    - moe_distribute_combine_teardown
-    - moe_distribute_combine_v2
-    - moe_distribute_combine_v3
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_setup
-    - moe_distribute_dispatch_teardown
-    - moe_distribute_dispatch_v2
-    - moe_distribute_dispatch_v3
-    - moe_ep_combine
-    - moe_ep_combine_epilogue
-    - moe_ep_dispatch
-    - moe_ep_dispatch_epilogue
-    - moe_update_expert
-    - quant_all_reduce
-    - quant_grouped_mat_mul_allto_allv
-    - quant_reduce_scatter
-  note: 编译级引用, 影响面按同名头common/utils/mc2_log.h接口反推
 common/utils/mc2_log.h:
   ops:
     - all_gather_matmul
@@ -1487,31 +976,10 @@ common/utils/mc2_log_compat.h:
     - quant_all_reduce
     - quant_grouped_mat_mul_allto_allv
     - quant_reduce_scatter
-common/utils/mc2_moe_utils.cpp:
-  ops:
-    - grouped_mat_mul_allto_allv
-    - quant_grouped_mat_mul_allto_allv
-  note: 编译级引用, 影响面按同名头common/utils/mc2_moe_utils.h接口反推
 common/utils/mc2_moe_utils.h:
   ops:
     - grouped_mat_mul_allto_allv
     - quant_grouped_mat_mul_allto_allv
-common/utils/mc2_platform_info.cpp:
-  ops:
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - grouped_mat_mul_allto_allv
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter_v2
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-    - quant_grouped_mat_mul_allto_allv
-  note: 编译级引用, 影响面按同名头common/utils/mc2_platform_info.h接口反推
 common/utils/mc2_platform_info.h:
   ops:
     - all_gather_matmul_v2

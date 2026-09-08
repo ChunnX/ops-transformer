@@ -1,110 +1,21 @@
-# mc2/3rd 文件影响范围映射表 - A2 (ascend910b)
-# 生成: 2026-09-08  基线commit: 7693755b7 (clean)
+# mc2/3rd 头文件影响范围映射表 - A2 (ascend910b)
+# 生成: 2026-09-08  基线commit: e7f2272c5 (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(3rd/开头), 与pr_files.sh输出中mc2/后的段落一致
 #
-# 影响面模型:
-#   头文件: 被include才生效, 影响面=直接+间接include它的算子(传递闭包)
-#   .cpp:   CMake按目录整包编译(编译级引用), 影响面按同名头接口反推
-#           (即改实现只影响调用该接口的算子), 无同名头保守全量并标注待人工确认
-#
-# 条目语义:
-#   1) ops 列出算子 = 改动该文件需在本芯片测试这些算子
-#   2) ops: []      = 头文件无任何算子引用, 或.cpp同名头无算子引用(疑似死代码, 看note)
-#   3) unref.yaml   = 无include且非编译单元的零引用文件(单独成表), 改动需人工确认
-#
-# 判定规则:
-#   - mc2内所有#include按裸文件名匹配, 重名文件取并集(note:字段标注), 宁多勿漏
-#   - 算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 A2(ascend910b) 的交集
-#   - 未建模文件类型: common/3rd下除.h/.cpp外的所有文件(.py/json/ini/sh等)
-#     改动一律按全量算子回归处理(见impact_map/README.md)
+# 本表仅保存头文件(.h/.hpp/.cuh)条目, 影响面=直接+间接include它的算子(传递闭包)。
+# 其他文件类型由消费脚本按以下规则处理(与本表配合):
+#   .cpp: 同目录同名.h存在 -> 查本表同名头条目; 同名.h在unref.yaml -> 疑似死代码不触发;
+#         同目录无同名.h -> 全量
+#   其余一切(.py/json/ini/sh/csv/txt/md等)及tests/路径下文件: 一律全量
+#   算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 A2(ascend910b) 的交集
+#   注意: 本表结果为文件直接传递的算子, 消费侧还需叠加CMake depends反向闭包
 
 3rd/add_rms_norm/op_host/add_rms_norm_tiling.h:
   ops:
     - matmul_all_reduce_add_rms_norm
-3rd/batch_mat_mul_v3/op_host/batch_mat_mul_v3_def.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - grouped_mat_mul_all_reduce
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-  note: 编译级引用, 无同名头, 按全算子处理
-3rd/batch_mat_mul_v3/op_host/batch_mat_mul_v3_infershape.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - grouped_mat_mul_all_reduce
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-  note: 编译级引用, 无同名头, 按全算子处理
-3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_al1_full_load_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_al1_full_load_tiling.h接口反推
-3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_basic_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_basic_tiling.h接口反推
-3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_bl1_full_load_basic_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_bl1_full_load_basic_tiling.h接口反推
-3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_bl1_full_load_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_bl1_full_load_tiling.h接口反推
-3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_tiling.h接口反推
-3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_iterbatch_basicapi_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_iterbatch_basicapi_tiling.h接口反推
-3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_iterbatch_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_iterbatch_tiling.h接口反推
-3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_tiling_advanced.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_tiling_advanced.h接口反推
-3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_base_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_base_tiling.h接口反推
 3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_base_tiling.h:
   ops: []
-3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_tiling.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - grouped_mat_mul_all_reduce
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-  note: 编译级引用, 影响面按同名头3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_tiling.h接口反推
 3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_tiling.h:
   ops:
     - all_gather_matmul
@@ -151,9 +62,6 @@
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
-3rd/common/op_host/matmul_common_infershape.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/common/op_host/matmul_common_infershape.h接口反推
 3rd/common/op_host/mc2_3rd_math_util.h:
   ops:
     - all_gather_matmul
@@ -169,27 +77,6 @@
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
-3rd/common/op_host/op_api/cube_util.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/common/op_host/op_api/cube_util.h接口反推
-3rd/common/op_host/op_api/matmul_util.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - grouped_mat_mul_all_reduce
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-  note: 编译级引用, 无同名头, 按全算子处理
 3rd/common/op_host/op_api/mc2_3rd_matmul_util.h:
   ops:
     - all_gather_matmul
@@ -201,15 +88,6 @@
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
-3rd/common/op_host/op_tiling/debug_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/common/op_host/op_tiling/debug_tiling.h接口反推
-3rd/common/op_host/op_tiling/hash.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/common/op_host/op_tiling/hash.h接口反推
-3rd/common/op_host/op_tiling/lock.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/common/op_host/op_tiling/lock.h接口反推
 3rd/grouped_matmul/op_kernel/grouped_matmul_tiling_data_apt.h:
   ops: []
 3rd/grouped_matmul/op_kernel/mc2_3rd_gqmm_cube_on_the_fly.h:
@@ -220,51 +98,12 @@
   ops: []
 3rd/grouped_matmul/op_kernel/mc2_3rd_quant_utils.h:
   ops: []
-3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h接口反推
 3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h:
   ops: []
 3rd/grouped_matmul/op_tiling/mc2_grouped_matmul_host_util.h:
   ops: []
 3rd/grouped_matmul/op_tiling/mc2_grouped_matmul_tiling.h:
   ops: []
-3rd/mat_mul_v3/op_host/mat_mul_v3_def.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - grouped_mat_mul_all_reduce
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-  note: 编译级引用, 无同名头, 按全算子处理
-3rd/mat_mul_v3/op_host/mat_mul_v3_infershape.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - grouped_mat_mul_all_reduce
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-  note: 编译级引用, 无同名头, 按全算子处理
 3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_base_tiling.h:
   ops:
     - all_gather_matmul
@@ -302,15 +141,6 @@
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter_v2
-3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_asw_basic_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_asw_basic_tiling.h接口反推
-3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_asw_full_load_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_asw_full_load_tiling.h接口反推
-3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_asw_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_asw_tiling.h接口反推
 3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_base_tiling_advanced.h:
   ops:
     - all_gather_matmul
@@ -326,9 +156,6 @@
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
-3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_basic_streamk_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_basic_streamk_tiling.h接口反推
 3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_common_advanced.h:
   ops:
     - all_gather_matmul
@@ -359,12 +186,6 @@
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
-3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_stream_k_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_stream_k_tiling.h接口反推
-3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_advanced.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_advanced.h接口反推
 3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_data.h:
   ops:
     - all_gather_matmul
@@ -380,22 +201,6 @@
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
-3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_helper.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - grouped_mat_mul_all_reduce
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-  note: 编译级引用, 影响面按同名头3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_helper.h接口反推
 3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_helper.h:
   ops:
     - all_gather_matmul
@@ -432,14 +237,6 @@
     - allto_all_matmul
     - matmul_all_reduce
     - matmul_allto_all
-3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.cpp:
-  ops:
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter_v2
-  note: 编译级引用, 影响面按同名头3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h接口反推
 3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h:
   ops:
     - all_gather_matmul_v2
@@ -469,27 +266,6 @@
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
-3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_l2_cache.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_l2_cache.h接口反推
-3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - grouped_mat_mul_all_reduce
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-  note: 编译级引用, 影响面按同名头3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h接口反推
 3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h:
   ops:
     - all_gather_matmul
@@ -630,9 +406,6 @@
   ops:
     - allto_all_matmul
     - matmul_allto_all
-3rd/ops_legacy/op_tiling/legacy_common_manager.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/ops_legacy/op_tiling/legacy_common_manager.h接口反推
 3rd/ops_legacy/op_tiling/op_cache_def_tiling.h:
   ops:
     - all_gather_matmul_v2
@@ -640,14 +413,6 @@
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter_v2
-3rd/ops_legacy/op_tiling/op_cache_tiling.cpp:
-  ops:
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter_v2
-  note: 编译级引用, 影响面按同名头3rd/ops_legacy/op_tiling/op_cache_tiling.h接口反推
 3rd/ops_legacy/op_tiling/op_cache_tiling.h:
   ops:
     - all_gather_matmul_v2
@@ -662,32 +427,6 @@
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter_v2
-3rd/ops_legacy/op_tiling/runtime_kb_api.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - grouped_mat_mul_all_reduce
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-  note: 编译级引用, 无同名头, 按全算子处理
-3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.cpp:
-  ops:
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter_v2
-  note: 编译级引用, 影响面按同名头3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h接口反推
 3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h:
   ops:
     - all_gather_matmul_v2
@@ -695,12 +434,6 @@
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter_v2
-3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/quant_batch_matmul_v3_checker.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/quant_batch_matmul_v3_checker.h接口反推
-3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_basic_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_basic_tiling.h接口反推
 3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_compile_info.h:
   ops:
     - all_gather_matmul_v2
@@ -708,25 +441,11 @@
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter_v2
-3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling.cpp:
-  ops:
-    - all_gather_matmul_v2
-    - matmul_all_reduce
-    - matmul_reduce_scatter_v2
-  note: 编译级引用, 影响面按同名头3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling.h接口反推
 3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling.h:
   ops:
     - all_gather_matmul_v2
     - matmul_all_reduce
     - matmul_reduce_scatter_v2
-3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling_base.cpp:
-  ops:
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter_v2
-  note: 编译级引用, 影响面按同名头3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling_base.h接口反推
 3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling_base.h:
   ops:
     - all_gather_matmul_v2
@@ -734,9 +453,6 @@
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter_v2
-3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling_cache.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling_cache.h接口反推
 3rd/quant_batch_matmul_v3/op_kernel/arch35/mm_extension_interface/qbmm_copy_cube_out.h:
   ops:
     - allto_all_matmul
@@ -1201,113 +917,36 @@
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_status.hpp:
   ops:
     - matmul_allto_all
-3rd/weight_quant_batch_matmul_v2/op_host/op_api/weight_quant_batch_matmul_v2.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/weight_quant_batch_matmul_v2/op_host/op_api/weight_quant_batch_matmul_v2.h接口反推
-3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_adaptive_sliding_window_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_adaptive_sliding_window_tiling.h接口反推
-3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_adaptive_split_tiling.cpp:
-  ops:
-    - matmul_all_reduce
-  note: 编译级引用, 影响面按同名头3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_adaptive_split_tiling.h接口反推
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_adaptive_split_tiling.h:
   ops:
     - matmul_all_reduce
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_basic_block_table.h:
   ops:
     - matmul_all_reduce
-3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_basic_block_tiling.cpp:
-  ops:
-    - matmul_all_reduce
-  note: 编译级引用, 影响面按同名头3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_basic_block_tiling.h接口反推
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_basic_block_tiling.h:
   ops:
     - matmul_all_reduce
-3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_reg_base_tiling.cpp:
-  ops:
-    - matmul_all_reduce
-  note: 编译级引用, 影响面按同名头3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_reg_base_tiling.h接口反推
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_reg_base_tiling.h:
   ops:
     - matmul_all_reduce
-3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_checker_for_mmads8s4.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_checker_for_mmads8s4.h接口反推
-3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_compute_matmul_tiling.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_compute_matmul_tiling.h接口反推
-3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.cpp:
-  ops:
-    - all_gather_matmul_v2
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-  note: 编译级引用, 影响面按同名头3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.h接口反推
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.h:
   ops:
     - all_gather_matmul_v2
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
-3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom.cpp:
-  ops:
-    - matmul_all_reduce
-  note: 编译级引用, 影响面按同名头3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom.h接口反推
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom.h:
   ops:
     - matmul_all_reduce
-3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom_nz_splitk.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom_nz_splitk.h接口反推
-3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_fixpipe.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_fixpipe.h接口反推
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_key.h:
   ops:
     - all_gather_matmul_v2
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
-3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd.h接口反推
-3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd_group.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd_group.h接口反推
-3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_registry.cpp:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - grouped_mat_mul_all_reduce
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-  note: 编译级引用, 无同名头, 按全算子处理
-3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_splitk.cpp:
-  ops: []
-  note: 编译级引用, 影响面按同名头3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_splitk.h接口反推
-3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_tool.cpp:
-  ops:
-    - all_gather_matmul_v2
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-  note: 编译级引用, 影响面按同名头3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_tool.h接口反推
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_tool.h:
   ops:
     - all_gather_matmul_v2
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
-3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_weight_nz_tiling.cpp:
-  ops:
-    - matmul_all_reduce
-  note: 编译级引用, 影响面按同名头3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_weight_nz_tiling.h接口反推
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_weight_nz_tiling.h:
   ops:
     - matmul_all_reduce
