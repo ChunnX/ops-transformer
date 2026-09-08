@@ -24,3 +24,6 @@ Torch 扩展加载不到该 `.so` 会报错，不回退到即时编译。
 
 不单独设置 test 目录；metadata 的联动与 Meta 检查集中在
 `../flash_kda/test/flash_kda_test.py`。
+
+两个算子的 custom/builtin run 构建、安装及联动测试命令见相邻
+[FlashKDA 说明](../flash_kda/README.md)。metadata 的 AICPU 二进制随同一个 run 直接安装。

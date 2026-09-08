@@ -360,7 +360,9 @@ add_init_py() {
       chmod u+w -R "${built_in_impl_path}" 2>/dev/null
     fi
   fi
-  touch ${built_in_impl_path}/__init__.py
+  if [ -d "${built_in_impl_path}" ]; then
+    touch "${built_in_impl_path}/__init__.py"
+  fi
 
   [ -d ${built_in_impl_path}/dynamic ] && touch ${built_in_impl_path}/dynamic/__init__.py
 
