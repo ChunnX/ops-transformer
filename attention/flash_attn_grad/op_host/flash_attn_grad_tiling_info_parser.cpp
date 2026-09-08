@@ -12,6 +12,7 @@
 
 #include <string>
 
+#include "flash_attn_grad_tiling.h" // FlashAttnGradCompileInfo：platform 缺失时的回退来源
 #include "log/log.h"
 #include "op_host/tiling_util.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -154,23 +155,39 @@ ge::graphStatus ParseShapes(gert::TilingContext *context, FagParsedInfo &info)
 ge::graphStatus ParsePlatform(gert::TilingContext *context, FagParsedInfo &info)
 {
     const auto platformInfo = context->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context->GetNodeName(), "GetPlatformInfo is nullptr."),
-                return ge::GRAPH_PARAM_INVALID);
+    if (platformInfo == nullptr) {
+        // 图模式下 Tiling 阶段可能拿不到 platform，回退到 TilingParse 缓存的那份。
+        // 两路都空才是真失败。
+        auto compileInfo = reinterpret_cast<const FlashAttnGradCompileInfo *>(context->GetCompileInfo());
+        OP_CHECK_IF(compileInfo == nullptr,
+                    OP_LOGE(context->GetNodeName(), "both platform info and compile info are nullptr."),
+                    return ge::GRAPH_PARAM_INVALID);
+        info.aivNum = compileInfo->aivNum;
+        info.aicNum = compileInfo->aicNum;
+        info.libapiWorkspaceSize = static_cast<size_t>(compileInfo->libapiWorkspaceSize);
+        info.l2CacheSize = compileInfo->l2CacheSize;
+        OP_CHECK_IF(info.aicNum == 0 || info.aivNum == 0,
+                    OP_LOGE(context->GetNodeName(),
+                            "num of core from compile info is 0, aicNum=%u, aivNum=%u.", info.aicNum, info.aivNum),
+                    return ge::GRAPH_PARAM_INVALID);
+        OP_CHECK_IF(context->GetWorkspaceSizes(1) == nullptr,
+                    OP_LOGE(context->GetNodeName(), "workSpaceSize got from ge is nullptr."),
+                    return ge::GRAPH_PARAM_INVALID);
+        return ge::GRAPH_SUCCESS;
+    }
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     info.aivNum = ascendcPlatform.GetCoreNumAiv();
     info.aicNum = ascendcPlatform.GetCoreNumAic();
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, info.l2CacheSize);
     OP_CHECK_IF(info.aicNum == 0 || info.aivNum == 0,
                 OP_LOGE(context->GetNodeName(), "num of core obtained is 0, aicNum=%u, aivNum=%u.", info.aicNum,
                         info.aivNum),
                 return ge::GRAPH_PARAM_INVALID);
     info.libapiWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
 
-    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
-        OP_LOGE(context->GetNodeName(), "SOC Version is not support.");
-        return ge::GRAPH_PARAM_INVALID;
-    }
-
+    // SOC 是否支持不在这里判：那是"哪个模板类能接"的问题，已下沉到
+    // FlashAttnGradTilingRegbase::IsCapable()（D1 / §5.4）。
     OP_CHECK_IF(context->GetWorkspaceSizes(1) == nullptr,
                 OP_LOGE(context->GetNodeName(), "workSpaceSize got from ge is nullptr."),
                 return ge::GRAPH_PARAM_INVALID);

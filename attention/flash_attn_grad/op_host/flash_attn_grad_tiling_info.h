@@ -86,6 +86,9 @@ struct FagParsedInfo {
     uint32_t aicNum = 0;
     uint32_t aivNum = 0;
     size_t libapiWorkspaceSize = 0;
+    // swizzle 判据的分母。各 ascend950 变体从 16MB(950PR_950z) 到 128MB(9599)
+    // 不等，必须来自平台而非硬编码；取不到时为 0，此时 swizzle 一律不开。
+    uint64_t l2CacheSize = 0;
 
     // 布局
     std::string layoutQ = "BSND";

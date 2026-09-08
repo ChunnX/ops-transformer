@@ -20,7 +20,6 @@ namespace {
 // 实际使用的口径一致，否则 liveHeads 估的就不是 metadata 真正的分核形态。
 constexpr int64_t CUBE_BASE_M = 128;
 constexpr int64_t CUBE_BASE_N = 128;
-constexpr int64_t L2_CACHE_BYTES = 128L * 1024 * 1024;
 constexpr int64_t FP16_BYTES = 2;
 constexpr int64_t FP32_BYTES = 4;
 
@@ -31,7 +30,8 @@ void DecideSwizzle(const FagParsedInfo &info, const FagKernelPlan &kernel, FagSc
 {
     // 决定块到核的映射方式。线性切分会让同时在跑的核散落在很多 head 上：
     // S=8192 D=128、36 核时，核 0 在 head 0 而核 35 已经在 head 31，于是 36 个核
-    // 同时为 32 个 head 拉 K/V，工作集冲过 L2(128MB)。msprof 显示 cube 与 vector
+    // 同时为 32 个 head 拉 K/V，工作集冲过 L2（标定机型 9599 上是 128MB，实际值
+    // 取自平台，见 info.l2CacheSize）。msprof 显示 cube 与 vector
     // 两侧 mte2_ratio 都是 0.72，而 mac 反而从 0.938 掉到 0.733 —— 说明瓶颈已经
     // 变成 HBM 带宽而非算力。swizzle 改为按整列 s2 跨核发放，把同时在跑的核锁在
     // 同一个 head 内。
@@ -56,6 +56,13 @@ void DecideSwizzle(const FagParsedInfo &info, const FagKernelPlan &kernel, FagSc
     }
     if (schedule.usedCube != info.aicNum) {
         trace.swizzleReject = "partial-chip";
+        return;
+    }
+    // 判据整个建立在"工作集是否超 L2"上，L2 未知就没有判据可言。部分型号
+    // （如 KirinX90）平台上报 l2_size=0，此时保守不开：swizzle 只是性能选择，
+    // 不开一定正确，而拿 0 当分母会让阈值退化成 0、变成恒开。
+    if (info.l2CacheSize == 0) {
+        trace.swizzleReject = "unknown-l2";
         return;
     }
 
@@ -121,8 +128,12 @@ void DecideSwizzle(const FagParsedInfo &info, const FagKernelPlan &kernel, FagSc
         return;
     }
     // 1.25x 用整数表达，避免浮点：5*L2/4。
+    // 阈值的两个倍数（1.25x / 2x）是在 128MB L2 的 Ascend950PR_9599 上标定的；
+    // L2 更小的型号（950PR_950z 16MB、950DT_950x 32MB、957d 96MB、多个 112MB）
+    // 按同样的倍数缩放，倍数本身尚未在那些型号上复标。
+    const int64_t l2Bytes = static_cast<int64_t>(info.l2CacheSize);
     const bool s1Heavy = (s1Outer >= 2 * s2Outer);
-    const int64_t threshold = s1Heavy ? (5 * L2_CACHE_BYTES / 4) : (2 * L2_CACHE_BYTES);
+    const int64_t threshold = s1Heavy ? (5 * l2Bytes / 4) : (2 * l2Bytes);
     if (liveBytes <= threshold) {
         trace.swizzleReject = "working-set-fits";
         return;

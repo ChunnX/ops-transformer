@@ -318,6 +318,22 @@ REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttnGrad, FlashAttnGradTilingPadded,
 
 无论选哪个基类，**不要混用**两套骨架。
 
+#### 落地记录
+
+新增 `op_host/flash_attn_grad_tiling_base.h` 的 `FagTilingBase`（自持，不 include 正向那份），三步骨架 `InitTilingInfo` / `IsCapable` / `DoOpTiling` 由 `DoTiling(const FagParsedInfo &)` 驱动，返回值语义与 `FiaTilingBase` 一致（`GRAPH_PARAM_INVALID` = 本类不接、试下一个）。写回封装了 `SetNumBlocks` / `SetTilingKey` / `SetWorkspaceSize` / `SetScheduleMode` 四个，子类不再直接碰 context。
+
+唯一的具体类是 `flash_attn_grad_tiling_regbase.{h,cpp}` 的 `FlashAttnGradTilingRegbase`，`IsCapable()` 只判 SOC 是否 regbase（这条检查从 `ParsePlatform` 下沉过来，因此非 regbase 芯片的报错时机从"解析平台时"变成"参数校验之后"），`DoOpTiling()` 负责 `BuildTilingPlan` 加写回。入口 `flash_attn_grad_tiling.cpp` 因此收到 83 行。
+
+对 `FiaTilingBase` 做了三处裁剪，都是 FAGrad 的实际需要：
+
+1. `DoTiling` 收 `const FagParsedInfo &`，不是空基类 `TilingInfo *`——解析结果是本算子自己的 POD，没必要为对齐空基类再做向下转型；
+2. 不封装 `SetTilingData(TilingDef&)`。FAGrad 写的是 pypto codegen 出的结构体，不是 `TILING_DATA_FIELD_DEF` 那套 `TilingDef`。而那个结构体只在带 force-include 的 `*_tiling*.cpp` 里可见（`cmake/obj_func.cmake` 用 `set_source_files_properties` 按文件列表 scope，只覆盖父级 glob 到的 `*_tiling*.cpp`），所以写 tilingdata 留在子类的 `WriteTilingData`；
+3. 去掉 `GetShapeDebugStr` / `GetTilingContextDebugStr` 等调试串拼接——决策追溯走 `FagRouteTrace` 加一行 `OP_LOGI` 就够。
+
+**没有引入注册表。** §5.4 建议的 `REGISTER_TILING_TEMPLATE_WITH_ARCH` 在只有一个模板类时是纯开销，还会让入口更绕。现在入口直接构造 `FlashAttnGradTilingRegbase` 并调 `DoTiling`；等 TND 拆出第二个类时，改成"按优先级依次 `DoTiling`、遇 `GRAPH_PARAM_INVALID` 试下一个"是机械改动，`DoTiling` 的返回值语义已经为此留好了。
+
+类名取 `Regbase` 而不是 §5.4 举例的 `Padded` / `Varlen`：今天 BSND/BNSD/TND 都由这一个类接（TND 只影响 tilingkey bit2 与分核口径，不换 C++ 类），叫 `Padded` 会误导。
+
 **注意注册表只覆盖 layout 这一根轴。** 这里的 `IsCapable` 路由决定"哪个 C++ 模板类接管"（padded / varlen），粒度是 layout。而性能相关的路由——BN2 / BN2 MultiBlk / GS1S2、swizzle 开关、D 分档——最终落在 **tilingkey 取值**上，由同一个 pypto 入口内部分派，不对应 C++ 类。这部分才是会随实测反复变动的地方，其组织方式见 §5.13，不要试图用注册优先级去表达。
 
 ### 5.5 TilingKey 单点生成
@@ -387,12 +403,42 @@ REGISTER_TILING_DATA_CLASS(FlashAttnGrad, FlashAttnGradTilingDataTmp)
 
 ### 5.8 平台信息应走 CompileInfo，L2 不应硬编码
 
+> **已落地。** 实际改动见本节末的「落地记录」。
+
 两处问题：
 
 - `TilingParseForFlashAttnGrad` 是空实现，`FlashAttnGradCompileInfo::ParamCheck` 直接 `return GRAPH_SUCCESS`。每次 tiling 都重新 `GetPlatformInfo()` 取核数。arch35 的 `TilingPrepareForFlashAttentionScoreGrad` 会把 `aivNum/aicNum/ubSize/l1Size/l0aSize/l0bSize/l0cSize/l2CacheSize/npuArch` 全部缓存进 CompileInfo。
 - `DecideSwizzle` 里 `constexpr int64_t L2_CACHE_BYTES = 128L * 1024 * 1024;` **硬编码**了 L2 容量，而 arch35 用的是 `fBaseParams.l2CacheSize`（来自平台）。一旦跑在 L2 容量不同的型号上，swizzle 判据会整体失准。
 
 建议：填齐 `FlashAttnGradCompileInfo`（复用 `CompileInfoCommon` 的字段集），`FagTilingInfo` 增加 `l2CacheSize`（以及后续可能用到的 `ubSize/l0cSize`），`DecideSwizzle` 改用该值。注意 `TilingParse` 在图模式下可能拿不到 platform（arch35 对 `platformInfoPtr == nullptr` 有回退到 CompileInfo 的分支），迁移时保留同样的双路。
+
+#### 落地记录
+
+**这件事的严重性比原来写的更高。** ascend950 各变体的 L2 容量实测跨了 8 倍：
+
+| l2_size | 型号 |
+| --- | --- |
+| 16 MB | `Ascend950PR_950z` |
+| 32 MB | `Ascend950DT_950x`、`950y` |
+| 96 MB | `Ascend950PR_957d` |
+| 112 MB | `957b`、`957bx`、`957c`、`958b`、`9573`、`9574`、`9577`、`9578`、`9583`、`9584`、`9587`、`9588` |
+| 128 MB | `9599`（当前编译目标）、`9579`、`9589`、`9571/9572/9575/9576`、`9581/9582/9585/9586`、`9591/9592/9595/9596`、`95A1/95A2` |
+
+数据取自 `$CANN/x86_64-linux/data/platform_config/Ascend950*.ini`。硬编码的 128MB 只对 `9599` 是对的，在 16MB 的型号上阈值会高出 8 倍，swizzle 几乎永不开启。
+
+改动：
+
+- `FlashAttnGradCompileInfo` 填了 `aivNum / aicNum / l2CacheSize / libapiWorkspaceSize`，`TilingParseForFlashAttnGrad` 在编译期取一次缓存进去；
+- `ParsePlatform` 改成双路：优先 `GetPlatformInfo()`，为空时回退 `GetCompileInfo()`，两路都空才失败（原来 platform 为空直接失败）；
+- `FagParsedInfo` 增加 `l2CacheSize`，`DecideSwizzle` 用它替掉常量；
+- **新增一条 `unknown-l2` 拒绝理由**：部分型号（如 `KirinX90`、`Kirin9030`）平台上报 `l2_size=0`，拿 0 当分母会让阈值退化成 0、swizzle 变成恒开。L2 未知时保守不开——swizzle 只是性能选择，不开一定正确。
+- 决策日志那行加了 `aicNum` 与 `l2CacheSize`，判据对不上时第一件事就是核对这个数。
+
+**py 侧镜像同步改了**，否则就制造出 §5.13 警告过的那类静默分叉：`decide_swizzle()` 新增 `l2_cache_bytes` 参数（缺省仍是 9599 的 128MB），`l2_cache_bytes == 0` 时返回 0 与 host 对齐，模块级 `L2_CACHE_BYTES` 注释清楚它只是 JIT 缺省值、换型号必须显式传。docstring 里指向 `tiling.cpp` `FlashAttnGradTilingFunc()` 的旧路径也一并修正为 `flash_attn_grad_tiling_swizzle.cpp` 的 `DecideSwizzle()`。
+
+**还有第三份拷贝没治**：测试工程 `FAG_PTO_TEST/test_flash_attn_grad-binary-msprof.py` 里也有一份 `L2_CACHE_BYTES = 128 * 1024 * 1024`（用于 `_predict_tiling` 对账）。它在另一个仓，换型号跑测试时同样要改，否则报告里预测的 tilingKey 与 host 实际派发的不是同一个。
+
+阈值的两个倍数（1.25x / 2x）仍是在 128MB 的 `9599` 上标定的，只是按 L2 等比缩放，倍数本身未在其他型号复标——这一点写在了代码注释里。
 
 ### 5.9 空 tensor / 零长序列
 
