@@ -182,6 +182,9 @@ for grp in ('common', '3rd'):
     ]
     for ext in NON_HDR_EXT:
         lines.append(f'    - "{ext}"')
+    lines.append('  cpp_no_same_header:')
+    for r in cpp_no_same[grp]:
+        lines.append(f'      - {r}')
     lines.append('  headers_used_by_all_operators:')
     for h in used_g:
         lines.append(f'      - {h}')
