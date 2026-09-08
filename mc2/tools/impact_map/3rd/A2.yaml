@@ -1,5 +1,5 @@
 # mc2/3rd 头文件影响范围映射表 - A2 (ascend910b)
-# 生成: 2026-09-08  基线commit: 39e00aeaa (clean)
+# 生成: 2026-09-08  基线commit: 65153e452 (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(3rd/开头), 与pr_files.sh输出中mc2/后的段落一致
 #
@@ -21,6 +21,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -39,6 +40,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -57,6 +59,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -75,6 +78,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -93,6 +97,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -123,6 +128,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -141,6 +147,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -159,6 +166,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -177,6 +185,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -195,6 +204,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -213,6 +223,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -231,6 +242,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -279,6 +291,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -297,6 +310,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -315,6 +329,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -333,6 +348,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter
@@ -349,6 +365,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -367,6 +384,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -385,6 +403,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -403,6 +422,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter
@@ -419,6 +439,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter
@@ -435,6 +456,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter
@@ -451,6 +473,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -469,6 +492,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -487,6 +511,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -505,6 +530,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -523,6 +549,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -541,6 +568,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -559,6 +587,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -577,6 +606,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -595,6 +625,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -634,6 +665,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -687,6 +719,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -705,6 +738,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -723,6 +757,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -741,6 +776,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -759,6 +795,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -777,6 +814,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -795,6 +833,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -813,6 +852,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -831,6 +871,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -849,6 +890,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -867,6 +909,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -885,6 +928,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter
@@ -901,6 +945,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -919,6 +964,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -937,6 +983,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -955,6 +1002,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -1064,6 +1112,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -1499,6 +1548,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -1517,6 +1567,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -1535,6 +1586,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -1553,6 +1605,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -1571,6 +1624,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -1589,6 +1643,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -1607,6 +1662,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -1625,6 +1681,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -1643,6 +1700,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -1661,6 +1719,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -1679,6 +1738,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -1697,6 +1757,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -1715,6 +1776,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -1790,6 +1852,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -1808,6 +1871,7 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
