@@ -10,17 +10,18 @@
 from typing import Optional
 import torch
 from torch.library import impl
-from cann_ops_transformer.op_builder.builder import OpBuilder
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 
 class PoolKeyIndexerOpBuilder(OpBuilder):
     def __init__(self):
-        super(PoolKeyIndexerOpBuilder, self).__init__("pool_key_indexer")
+        super(PoolKeyIndexerOpBuilder, self).__init__(
+            "pool_key_indexer", category="attention"
+        )
 
     def sources(self):
         """Path to C++ source code."""
-        return ["ops/csrc/pool_key_indexer.cpp"]
+        return ["csrc/attention/pool_key_indexer.cpp"]
 
     def schema(self) -> str:
         """PyTorch operator signature.
@@ -44,7 +45,7 @@ class PoolKeyIndexerOpBuilder(OpBuilder):
         Essential for Autograd and FakeTensor support.
         """
 
-        @impl(AS_LIBRARY, self.name, "Meta")
+        @impl(get_as_library(), self.name, "Meta")
         def pool_key_indexer_meta(
             query,
             pool_key,
@@ -84,9 +85,10 @@ class PoolKeyIndexerOpBuilder(OpBuilder):
 
 # Instantiate the builder (this registers schema + meta)
 pool_key_indexer_op_builder = PoolKeyIndexerOpBuilder()
+pool_key_indexer_op_builder._ensure_initialized()
 
 
-@impl(AS_LIBRARY, pool_key_indexer_op_builder.name, "PrivateUse1")
+@impl(get_as_library(), pool_key_indexer_op_builder.name, "PrivateUse1")
 def pool_key_indexer(
     query,
     pool_key,
