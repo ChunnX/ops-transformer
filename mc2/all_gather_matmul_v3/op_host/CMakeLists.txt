@@ -37,6 +37,28 @@ if (BUILD_OPEN_PROJECT)
                     -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
                     -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel/apace/tests/st/.third_party/ops-tensor/include
         )
+        if (EXISTS ${ASCEND_CANN_PACKAGE_PATH}/asc/include/adv_api/hcomm/dfx/hcomm_channel_dump.h)
+            set(HCOMM_DFX_SHIM_OBJ ${CMAKE_CURRENT_BINARY_DIR}/hcomm_dfx_shim_dav_c310.o)
+            add_custom_command(
+                OUTPUT ${HCOMM_DFX_SHIM_OBJ}
+                COMMAND ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/ccec_compiler/bin/bisheng
+                        --asc-aicore-lang --cce-aicore-arch=dav-c310 -std=c++17 -fPIC
+                        -I${ASCEND_CANN_PACKAGE_PATH}/asc/include
+                        -I${ASCEND_CANN_PACKAGE_PATH}/include
+                        -I${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include
+                        -c ${CMAKE_CURRENT_SOURCE_DIR}/op_tiling/hcomm_dfx_shim.asc
+                        -o ${HCOMM_DFX_SHIM_OBJ}
+                DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/op_tiling/hcomm_dfx_shim.asc
+                COMMENT "Compiling hcomm dfx shim with bisheng (dav-c310)"
+            )
+            add_custom_target(all_gather_matmul_v3_hcomm_dfx_shim DEPENDS ${HCOMM_DFX_SHIM_OBJ})
+            add_dependencies(cust_opmaster all_gather_matmul_v3_hcomm_dfx_shim)
+            target_link_libraries(cust_opmaster PRIVATE
+                ${HCOMM_DFX_SHIM_OBJ}
+                ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/lib64/libascendc_runtime.a
+            )
+            target_compile_definitions(${OPHOST_NAME}_tiling_obj PRIVATE MC2_HCOMM_DFX_SHIM=1)
+        endif()
     endif()
     target_include_directories(op_host_aclnnInner PRIVATE
         ${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
