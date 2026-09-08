@@ -225,7 +225,7 @@ def compressor_output_single(data_case):
                 S_max = start_pos[i] + cu_seqlens[i + 1] - cu_seqlens[i]
     else:
         cu_seqlens = None
-        S_max = max(start_pos) + Seq_len
+        S_max = (max(start_pos) if len(start_pos) > 0 else 0) + Seq_len
     # ======================== set input params finish ========================
     if bs_combine_flag:
         # cu_seqlens = [0, 1] # (batch_size+1,), None时表示非BSh，否则为Th
