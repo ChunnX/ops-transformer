@@ -1,15 +1,13 @@
 # mc2/common 头文件影响范围映射表 - A2 (ascend910b)
-# 生成: 2026-09-08  基线commit: 65153e452 (clean)
+# 生成: 2026-09-08  基线commit: 099edc663 (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
-# 键路径: 相对mc2目录(common/开头), 与pr_files.sh输出中mc2/后的段落一致
+# 键路径: 相对mc2目录(common/开头), 与PR修改文件列表中mc2/后的段落一致
 #
-# 本表仅保存头文件(.h/.hpp/.cuh)条目, 影响面=直接+间接include它的算子(传递闭包)。
-# 其他文件类型由消费脚本按以下规则处理(与本表配合):
-#   .cpp: 同目录同名.h存在 -> 查本表同名头条目; 同名.h在zero_reference.yaml -> 疑似死代码不触发;
-#         同目录无同名.h -> 全量
-#   其余一切(.py/json/ini/sh/csv/txt/md等): 一律全量
-#   算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 A2(ascend910b) 的交集
-#   注意: 本表结果为文件直接传递的算子, 消费侧还需叠加CMake depends反向闭包
+# 影响面: 被include才生效, ops = 直接+间接include该头的算子(传递闭包, 显式全列表)
+# ops: [] = 该头有引用, 但引用算子均未在A2注册, 本芯片无需测试
+# 不在本表中的头 = 无明确include到算子关系(冗余/仅测试引用), 改动按全量回归处理
+# 算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 A2(ascend910b) 的交集
+# 重名头文件映射取并集(note:字段标注), 宁多勿漏
 
 common/op_api/mc2_aclnn_util.h:
   ops:
@@ -35,7 +33,6 @@ common/op_graph/mc2_gen_task_ops_utils.h:
     - all_gather_matmul_v2
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
     - grouped_mat_mul_allto_allv
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -43,29 +40,20 @@ common/op_graph/mc2_gen_task_ops_utils.h:
     - matmul_allto_all
     - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
-    - mega_moe
     - moe_distribute_combine
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
 common/op_graph/mc2_gen_task_ops_utils_arch35.h:
   ops:
-    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
     - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
     - matmul_allto_all
-    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
     - moe_distribute_combine_v2
-    - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
 common/op_graph/mc2_moe_gen_task_ops_utils.h:
   ops:
@@ -100,6 +88,9 @@ common/op_host/op_tiling/formulaic_tiling_datatype.h:
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
+common/op_host/op_tiling/hccl_formulaic_tiling.cpp:
+  ops:
+    - all_gather_matmul_v2
 common/op_host/op_tiling/hccl_formulaic_tiling.h:
   ops:
     - all_gather_matmul
@@ -109,6 +100,9 @@ common/op_host/op_tiling/hccl_formulaic_tiling.h:
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter_v2
+common/op_host/op_tiling/hccl_performance.cpp:
+  ops:
+    - all_gather_matmul_v2
 common/op_host/op_tiling/hccl_performance.h:
   ops:
     - all_gather_matmul
@@ -142,6 +136,9 @@ common/op_host/op_tiling/matmul_formulaic_tiling.h:
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
+common/op_host/op_tiling/matmul_performance.cpp:
+  ops:
+    - all_gather_matmul_v2
 common/op_host/op_tiling/matmul_performance.h:
   ops:
     - all_gather_matmul
@@ -243,9 +240,7 @@ common/op_host/op_tiling/tiling_key.h:
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
     - matmul_allto_all
     - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
@@ -255,751 +250,66 @@ common/op_host/op_tiling/tiling_key.h:
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
 common/op_kernel/apace/basic/fragment_tensor/fragment_tensor.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
+  ops: []
 common/op_kernel/apace/basic/fragment_tensor/fragment_tensor_api.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-common/op_kernel/apace/block/epilogue/block_epilogue_all_to_all.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
+  ops: []
 common/op_kernel/apace/block/mmad/qmm_mx_block_mmad_fragment.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-common/op_kernel/apace/block/mmad/qmm_mx_block_mmad_tile_k_wait_flag.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
+  ops: []
 common/op_kernel/apace/core/aiv_comm/all_gather/all_gather_udma_put.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
+  ops: []
 common/op_kernel/apace/core/aiv_comm/all_to_all/all_to_all_udma_get.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
+  ops: []
 common/op_kernel/apace/core/aiv_comm/all_to_all/all_to_all_udma_put.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
+  ops: []
 common/op_kernel/apace/core/aiv_comm/barrier/barrier_ubmem.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
+  ops: []
 common/op_kernel/apace/core/aiv_comm/collective_comm_api.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
+  ops: []
 common/op_kernel/apace/core/aiv_comm/collective_comm_base.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
+  ops: []
 common/op_kernel/apace/core/aiv_comm/collective_comm_context.h:
   ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
     - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
 common/op_kernel/apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_impl.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
+  ops: []
 common/op_kernel/apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_tiling_data.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-common/op_kernel/apace/kernel/fusions/all_gather_quant_matmul/all_gather_quant_matmul_ubmem_impl.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
+  ops: []
 common/op_kernel/apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h:
   ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
     - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
 common/op_kernel/apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_mx_quant_matmul_hcomm_impl.h:
   ops:
     - allto_all_matmul
 common/op_kernel/apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_mx_quant_matmul_urma_impl.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-common/op_kernel/apace/kernel/fusions/quant_matmul_all_to_all/matmul_all_to_all_tiling_data.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-common/op_kernel/apace/kernel/fusions/quant_matmul_all_to_all/mx_quant_matmul_all_to_all_urma_impl.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-common/op_kernel/apace/kernel/fusions/quant_matmul_reduce_scatter/quant_matmul_reduce_scatter_impl.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
+  ops: []
 common/op_kernel/apace/kernel/matmul/quant_batch_matmul/all_gather_qbmm_mx_kernel.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
+  ops: []
 common/op_kernel/apace/kernel/matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel.h:
   ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
     - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-common/op_kernel/apace/kernel/matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel_tpn.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-common/op_kernel/apace/kernel/matmul/quant_batch_matmul/kernel_qbmm_mx_mix.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-common/op_kernel/apace/tests/st/all_gather_quant_matmul/ubmem/src/apace_agm_kernel_launcher.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-common/op_kernel/apace/tests/st/all_to_all_quant_matmul/src/apace_a2a_kernel_launcher.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-common/op_kernel/apace/tests/st/quant_matmul_all_to_all/src/kernel_launcher.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-common/op_kernel/apace/tests/st/quant_matmul_reduce_scatter/ubmem/src/apace_qmrs_kernel_launcher.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-common/op_kernel/apace/tests/st/utils/apace_st_utils.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-common/op_kernel/apace/tests/st/utils/root_info_exchanger.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
 common/op_kernel/apace/tiling/comm_tiling_base.h:
   ops: []
 common/op_kernel/apace/tiling/comm_tiling_data.h:
   ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
     - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
 common/op_kernel/apace/tiling/quant_matmul_tiling_base.h:
   ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
     - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
 common/op_kernel/apace/tiling/quant_matmul_tiling_common.h:
   ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
     - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
 common/op_kernel/apace/tiling/quant_matmul_tiling_data.h:
   ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
     - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
 common/op_kernel/apace/tiling/quant_matmul_tiling_swat.h:
   ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
     - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
 common/op_kernel/apace/utils/apace_common_utils.h:
   ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
     - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
 common/op_kernel/apace/utils/apace_constant.h:
   ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
     - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-common/op_kernel/apace/utils/comm_channel_builder.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
-common/op_kernel/apace/utils/comm_resource_builder.h:
-  ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - allto_all_matmul
-    - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
-    - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
-    - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
-    - moe_distribute_combine
-    - moe_distribute_combine_v2
-    - moe_distribute_dispatch
-    - moe_distribute_dispatch_v2
 common/op_kernel/attention_ffn_context.h:
   ops: []
 common/op_kernel/gm_ub_gm_copy.h:
@@ -1314,19 +624,13 @@ common/utils/mc2_moe_utils.h:
     - grouped_mat_mul_allto_allv
 common/utils/mc2_platform_info.h:
   ops:
-    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
-    - grouped_mat_mul_all_reduce
     - grouped_mat_mul_allto_allv
-    - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
-    - matmul_all_reduce_add_rms_norm
     - matmul_allto_all
-    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
-    - mega_moe
     - moe_distribute_combine
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
