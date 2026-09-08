@@ -85,4 +85,4 @@
 
 | 调用方式 | 样例代码 | 说明 |
 |----------|----------|------|
-| aclnn接口 | [test_aclnn_pool_key_indexer](./examples/test_aclnn_pool_key_indexer.cpp) | 通过[aclnnPoolKeyIndexer](./docs/aclnnKpoolIndexer.md)接口方式调用算子 |
+| aclnn接口 | [test_aclnn_pool_key_indexer](./examples/test_aclnn_pool_key_indexer.cpp) | 通过[aclnnPoolKeyIndexer](./docs/aclnnPoolKeyIndexer.md)接口方式调用算子 |
