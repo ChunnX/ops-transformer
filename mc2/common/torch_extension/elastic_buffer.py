@@ -291,7 +291,11 @@ def _get_moe_ep_window_layout(
     scaleup_receive_buffer_bytes = (
         world_size * num_max_tokens_per_rank * dispatch_per_slot_bytes
     )
-    dispatch_stash_buffer_bytes = num_max_tokens_per_rank * dispatch_per_slot_bytes
+    # stash 仅存元数据（scales+topk+topkWeights），scales 信息按 AlignUb(hidden) 做上界预留
+    dispatch_stash_per_slot_bytes = _inline_align(
+        _inline_align(hidden, ub_align) + metadata_bytes * 2 + ub_align, win_addr_align
+    )
+    dispatch_stash_buffer_bytes = num_max_tokens_per_rank * dispatch_stash_per_slot_bytes
     return _MoeEpWindowLayout(
         state_buffer_bytes=state_buffer_size,
         dispatch_slot_bytes=dispatch_per_slot_bytes,

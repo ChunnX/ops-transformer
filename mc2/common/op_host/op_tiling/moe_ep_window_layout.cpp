@@ -73,6 +73,7 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
     const uint64_t hiddenAlign = AlignMoeEpUb(params.hidden * MOE_EP_MAX_OUT_DTYPE_SIZE);
     const uint64_t topKAlign = AlignMoeEpUb(topK * MOE_EP_METADATA_DTYPE_SIZE);
     layout.dispatchReservedPerSlotBytes = AlignMoeEpWin(hiddenAlign + 2UL * topKAlign + MOE_EP_UB_ALIGN);
+    layout.dispatchMetaPerSlotBytes = AlignMoeEpWin(AlignMoeEpUb(params.hidden) + 2UL * topKAlign + MOE_EP_UB_ALIGN);
     layout.scaleoutReservedPerSlotBytes = AlignMoeEpWin(layout.dispatchReservedPerSlotBytes + topK * sizeof(int32_t));
     layout.combineReservedPerSlotBytes = AlignMoeEpWin(hiddenAlign + MOE_EP_UB_ALIGN);
     layout.dispatchRecvDataSize = epWorldSize * nmt * layout.dispatchReservedPerSlotBytes;
@@ -91,7 +92,7 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
         layout.winDataOffset = dataBase;
         layout.combineDataWinOffset = layout.winDataOffset + layout.dispatchRecvDataSize;
         layout.payloadStashWinOffset = layout.combineDataWinOffset + layout.combineDataSize;
-        layout.payloadStashWinSize = nmt * layout.dispatchReservedPerSlotBytes;
+        layout.payloadStashWinSize = nmt * layout.dispatchMetaPerSlotBytes;
     }
     layout.requiredBytes = layout.payloadStashWinOffset + layout.payloadStashWinSize;
     return ge::GRAPH_SUCCESS;

@@ -572,10 +572,14 @@ static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, cons
     uint32_t scalesSizeAlign32 = isXFp8 ? ((info.scalesBytes + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN : 0;
     info.perSlotBytes =
         ((hAlign32 + scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN + WIN_ADDR_ALIGN - 1) /
-         WIN_ADDR_ALIGN) *
-        WIN_ADDR_ALIGN;
+         WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    // stash 的元数据 slot：scales + topk + topkWeights + pad（不含 hidden）。
+    // 与共享布局 dispatchMetaPerSlotBytes 严格同构（窗口预留=步长基准），
+    // 且 ≤ perSlotBytes - hAlign32（远端槽 meta 区容量），WQE2 整槽搬运贴合不越界
+    info.metaSlotBytes = scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN;
     info.isTopkWeights = (context->GetOptionalInputShape(TOPK_WEIGHTS_INDEX) != nullptr) ? 1 : 0;
-    OP_LOGD(nodeName, "perSlotBytes = %u (hidden=%u)", info.perSlotBytes, info.cfg.hidden);
+    OP_LOGD(nodeName, "perSlotBytes = %u(hidden=%u), metaSlotBytes = %u", info.perSlotBytes, info.cfg.hidden,
+            info.metaSlotBytes);
 
     return ge::GRAPH_SUCCESS;
 }

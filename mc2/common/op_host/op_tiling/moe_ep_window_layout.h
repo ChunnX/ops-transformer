@@ -76,6 +76,7 @@ struct MoeEpWindowLayout {
     uint64_t payloadStashWinSize;
 
     uint64_t dispatchReservedPerSlotBytes;
+    uint64_t dispatchMetaPerSlotBytes; // dispatch stash 的纯元数据（无 hidden）
     uint64_t scaleoutReservedPerSlotBytes;
     uint64_t combineReservedPerSlotBytes;
     uint64_t requiredBytes;

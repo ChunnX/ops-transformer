@@ -73,6 +73,7 @@ struct MoeEpDispatchInfo {
     uint64_t totalUbSize;
     uint32_t scalesBytes;
     uint32_t perSlotBytes;
+    uint32_t metaSlotBytes; // stash 元数据 slot 字节数（scales+topk+weights+pad，无 hidden）
     uint32_t doCpuSync;
     uint32_t isCached;
     uint32_t isTopkWeights;
