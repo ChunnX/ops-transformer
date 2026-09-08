@@ -751,6 +751,7 @@ protected:
     {
         context_->GetRawTilingData()->SetDataSize(context_->GetRawTilingData()->GetCapacity());
         context_->SetBlockDim(usedCoreNum_);
+        
         return ge::GRAPH_SUCCESS;
     }
 
