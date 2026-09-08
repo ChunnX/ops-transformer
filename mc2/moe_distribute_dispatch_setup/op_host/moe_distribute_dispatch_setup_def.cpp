@@ -66,7 +66,7 @@ public:
         this->Attr("global_bs").AttrType(OPTIONAL).Int(0);
         this->Attr("comm_type").AttrType(OPTIONAL).Int(0);
         this->Attr("comm_alg").AttrType(OPTIONAL).String("");
-        this->Attr("y_dtype").AttrType(OPTIONAL).Int(28);
+        this->Attr("y_dtype").AttrType(OPTIONAL).Int(ge::DT_UNDEFINED);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)

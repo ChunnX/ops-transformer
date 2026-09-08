@@ -155,17 +155,5 @@ ge::graphStatus MoeDistributeCombineSetupTilingA5::CheckTensorShapeSize(int64_t 
     return ge::GRAPH_SUCCESS;
 }
 
-void MoeDistributeCombineSetupTilingA5::SetHcommCfg()
-{
-    // OP_LOGD(nodeName_, "MoeDistributeCombineSetup groupEp = %s", groupEp_.c_str());
-    // uint32_t opType = OP_TYPE_ALL_TO_ALL;
-    // std::string algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
-    // uint8_t aivEngineValue = mc2tiling::AIV_ENGINE;
-
-    // AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp_, opType, algConfigStr);
-    // mc2CcTilingConfig.SetCommEngine(aivEngineValue); // AIV_UB-MEM or AIV_URMA
-    // mc2CcTilingConfig.GetTiling(tilingData_->mc2InitTiling);
-    // mc2CcTilingConfig.GetTiling(tilingData_->mc2CcTiling);
-    // reinterpret_cast<Mc2CcTilingInner *>(&tilingData_->mc2CcTiling)->protocol = 1; // 0: UB-MEM, 1: URMA
-}
+void MoeDistributeCombineSetupTilingA5::SetHcommCfg() {}
 } // namespace MC2Tiling

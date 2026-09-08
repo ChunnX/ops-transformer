@@ -26,6 +26,8 @@ namespace MoeDistributeCombineTeardownUT {
 const std::string OP_NAME = "MoeDistributeCombineTeardown";
 constexpr int64_t CONTEXT_DIM0 = 2052;
 constexpr int64_t DEFAULT_CCL_BUFFER_SIZE = 12000;
+constexpr uint64_t CORE_NUM = 20;
+constexpr uint64_t UB_SIZE = 192 * 1024;
 
 // SetHCCL_BUFFSIZE
 struct HcclBuffSizeSetter {
@@ -4085,7 +4087,7 @@ static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeCombine
          {"comm_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.commTypeAttr)},
          {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.commAlgAttr)}});
     return gert::TilingContextPara(OP_NAME, inputTensorDesc_, outputTensorDesc_, attrs_, &compileInfo, param.socVersion,
-                                   20, 196608);
+                                   CORE_NUM, UB_SIZE);
 }
 
 static void ThreadFunction(const MoeDistributeCombineTeardownTestParam *testCases, size_t caseNum, size_t threadIdx,

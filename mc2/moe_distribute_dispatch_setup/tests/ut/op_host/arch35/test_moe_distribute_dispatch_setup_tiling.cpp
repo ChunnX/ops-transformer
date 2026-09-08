@@ -27,6 +27,8 @@ namespace MoeDistributeDispatchSetupUT {
 static const std::string OP_NAME = "MoeDistributeDispatchSetup";
 constexpr int64_t CONTEXT_DIM0 = 2052;
 constexpr int64_t DEFAULT_CCL_BUFFER_SIZE = 12000;
+constexpr uint64_t CORE_NUM = 20;
+constexpr uint64_t UB_SIZE = 192 * 1024;
 
 struct MoeDistributeDispatchSetupTestParam {
     std::string caseName;
@@ -2106,7 +2108,7 @@ static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeDispatc
     attrs_.push_back({"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.commAlg)});
 
     return gert::TilingContextPara(OP_NAME, inputTensorDesc_, outputTensorDesc_, attrs_, &compileInfo, param.socVersion,
-                                   20, 196608);
+                                   CORE_NUM, UB_SIZE);
 }
 
 TEST_P(MoeDistributeDispatchSetupArch35TilingTest, GeneralCases)
