@@ -237,8 +237,7 @@ ge::graphStatus CommonChecker::CheckAxis(const FaTilingInfo &faInfo)
                                                       "S of key/value must be greater than 0"),
                 return ge::GRAPH_FAILED);
 
-    // (QK head_dim, V head_dim) 组合白名单——单一事实源, 与 tiling config 一一对应:
-    //   (64,64)/(128,128)/(256,256) -> config 0-5, (72,72) -> 复用 config 2/3, (192,128) -> config 6/7
+    // 支持的 (QK head_dim, V head_dim) 组合
     static const std::vector<pair<int64_t, int64_t>> supportedDimCombos = {
         {64, 64}, {72, 72}, {128, 128}, {256, 256}, {192, 128}};
     const auto dimCombIt = std::find(supportedDimCombos.begin(), supportedDimCombos.end(),
