@@ -44,6 +44,8 @@ constexpr uint32_t STATIC_QUANT = 1;
 constexpr uint32_t PERTOKEN_DYNAMIC_QUANT = 2;
 constexpr uint32_t PERGROUP_DYNAMIC_QUANT = 3;
 constexpr uint32_t MX_QUANT = 4;
+// 性能优化分界：bs<=16 走原路径 LocalWindowCopy，bs>16 走流水 LocalWindowCopyPipeline
+constexpr uint32_t BS_PERF_THRESHOLD = 16U;
 
 #define TemplateMC2TypeClass \
     typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist, bool IsShareExpertRank
@@ -676,7 +678,8 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Proce
         WaitDispatch();
         FlipDataState();
         SyncAll<true>();
-        if (axisBS_ > 16U) {
+        // 按 bs 分界选择拷贝路径，避免小 bs 走流水带来额外开销
+        if (axisBS_ > BS_PERF_THRESHOLD) {
             LocalWindowCopyPipeline();
         } else {
             LocalWindowCopy();

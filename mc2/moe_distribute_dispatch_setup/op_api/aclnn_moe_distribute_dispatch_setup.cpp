@@ -97,7 +97,7 @@ aclnnStatus aclnnMoeDistributeDispatchSetupGetWorkspaceSize(
                     moeExpertNum, quantMode, globalBs, commType, commAlg, yOut, expandIdxOut, commCmdInfoOut);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
-    uint64_t yDtype = 28;
+    uint64_t yDtype = static_cast<uint64_t>(op::DataType::DT_UNDEFINED);
     aclnnStatus retStatus;
     uint64_t hcclBuffSize = 0;
     aclTensor *mc2Context = nullptr;
