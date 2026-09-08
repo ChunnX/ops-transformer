@@ -1,7 +1,12 @@
-# mc2/3rd 零引用文件清单
-# 生成: 2026-09-08  仓commit: 1fe74acf0 (clean)
-# 以下文件当前无任何mc2源文件include, 改动不影响mc2算子编译;
-# 但若PR修改了下列文件, 仍需人工确认: 是否被仓外引用/引用关系尚未建立
+# mc2/3rd 零引用文件清单 (与芯片无关, 全芯片共用)
+# 生成: 2026-09-08  基线commit: 0cea24f78 (clean)
+#
+# 语义: 下列文件当前无任何mc2源文件include(含间接), 改动不影响mc2算子编译;
+#       注意与芯片映射表中 ops: [] 的区别:
+#         ops: []  = 有引用, 但引用它的算子不支持该芯片 (精确的空, 无需测试)
+#         本表     = 完全没有引用, 属异常状态, 修改前需人工确认:
+#                    - 是否被仓外代码/构建脚本引用
+#                    - 是否include关系尚未建立(如新增文件)
 
 3rd/batch_mat_mul_v3/op_host/batch_mat_mul_v3_def.cpp:
 3rd/batch_mat_mul_v3/op_host/batch_mat_mul_v3_infershape.cpp:

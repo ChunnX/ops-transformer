@@ -1,9 +1,17 @@
 # mc2/common 文件影响范围映射表 - A2 (ascend910b)
-# 生成: 2026-09-08  仓commit: 1fe74acf0 (clean)
-# 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成)
-# 判定规则: mc2内所有#include按裸文件名匹配(重名取并集, 宁多勿漏); 已含common/3rd内部传递闭包;
-#           ops: []=include不可见(孤立实现文件), 需人工评估
+# 生成: 2026-09-08  基线commit: 0cea24f78 (clean)
+# 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(common/开头), 与pr_files.sh输出中mc2/后的段落一致
+#
+# 条目三态语义:
+#   1) ops 列出算子 = 该文件被这些算子(直接或间接)include, 改动它需在本芯片测试这些算子
+#   2) ops: []      = 该文件有引用, 但引用它的算子均未在A2注册, 本芯片无需测试
+#   3) unref.yaml   = 完全无mc2源文件include的零引用文件(单独成表), 改动需人工确认
+#
+# 判定规则:
+#   - mc2内所有#include按裸文件名匹配, 重名文件取并集(note:字段标注), 宁多勿漏
+#   - 间接include沿common/3rd内部引用链传递闭包, 爬到算子目录为止
+#   - 算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 A2(ascend910b) 的交集
 
 common/op_api/mc2_aclnn_util.cpp:
   ops:
