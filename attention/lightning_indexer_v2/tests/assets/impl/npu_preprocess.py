@@ -13,7 +13,6 @@
 
 import importlib.util
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -23,22 +22,9 @@ import torch
 OPERATOR = "lightning_indexer_v2"
 METADATA_INDEX = 10
 
-_NPU_MODE_TRUTHY = {"1", "true", "yes", "on"}
-
-
-def cpu_test_metadata_enabled():
-    """Whether metadata should come from the cpu_test binary (simulation mode).
-
-    Mirrors the pytest IS_NPU_NOW flag via environment so the assets never
-    depend on pytest state:
-    - IS_NPU_NOW unset or truthy: run the on-board metadata op (TTK default)
-    - IS_NPU_NOW=0/false/off/no: generate metadata via the cpu_test binary
-      (pytest simulation mode), then copy onto the NPU placeholder.
-    """
-    value = os.getenv("IS_NPU_NOW")
-    if value is None:
-        return False
-    return str(value).strip().lower() not in _NPU_MODE_TRUTHY
+# False: 仿真模式，用 cpu_test 二进制生成 metadata，再搬到 NPU 占位（与 pytest golden 一致）
+# True:  上板模式，调用真正的 NPU metadata 算子
+IS_NPU_NOW = False
 
 
 def load_pytest_golden():
@@ -211,7 +197,7 @@ def move_to_device(value, target):
 
 
 def run_metadata(arguments, metadata):
-    return torch.ops.cann_ops_transformer.lightning_indexer_metadata(
+    return torch.ops.npu_ops_transformer.npu_lightning_indexer_metadata(
         int(arguments["num_heads_q"]),
         int(arguments["num_heads_k"]),
         int(arguments["head_dim"]),
@@ -286,9 +272,9 @@ def run(
         )
         source = "main API fallback (sidecar unavailable)"
     logging.info("[%s] build LI_V2 metadata from %s", testcase_name, source)
-    if cpu_test_metadata_enabled():
+    if not IS_NPU_NOW:
         logging.info(
-            "[%s] IS_NPU_NOW disables on-board metadata; using cpu_test binary",
+            "[%s] simulation mode: generate metadata via the cpu_test binary",
             testcase_name,
         )
         generated = generate_metadata_from_cpu_test(arguments)

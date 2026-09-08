@@ -127,14 +127,19 @@ cmp_residual_k = [0, 0]
 2. **AIC (LI) Metadata**：每个 AIC 核的 BN2/M/S2 起止范围（FA 分核切分）
 3. **AIV (LD) Metadata**：每个 AIV 核的 FD 归约任务分配（存在跨核行时输出）
 
-## TTK 集成（npu_preprocess 仿真模式）
+## TTK 集成（npu_preprocess 运行模式）
 
-TTK 资产（`tests/assets/impl/npu_preprocess.py`）默认调用真正的 NPU metadata
-算子生成 metadata；设置环境变量 `IS_NPU_NOW=0` 可切换为本 cpu_test 二进制
-生成（与 pytest 仿真模式 `IS_NPU_NOW=False` 语义一致）：
+TTK 资产（`tests/assets/impl/npu_preprocess.py`）通过模块级常量 `IS_NPU_NOW`
+选择 metadata 生成方式，与 pytest golden 的同名开关语义、默认值保持一致：
+
+```python
+# tests/assets/impl/npu_preprocess.py
+IS_NPU_NOW = False   # False(默认): cpu_test 仿真生成本二进制 metadata；True: 调用 NPU metadata 算子
+```
+
+cpu_test 仿真模式（默认）的运行环境要求：
 
 ```bash
-export IS_NPU_NOW=0            # 0=cpu_test 仿真生成 metadata；不设或 1=NPU metadata 算子
 export SOC_VERSION=Ascend950   # 芯片版本，须与上板芯片一致（默认 Ascend950）
 export AIC_CORE_NUM=64         # 实际分核数，须与上板芯片一致（默认 64）
 export AIV_CORE_NUM=64         # 实际分核数，须与上板芯片一致（默认 64）

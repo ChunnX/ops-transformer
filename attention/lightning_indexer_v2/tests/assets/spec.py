@@ -87,8 +87,8 @@ class LightningIndexerMetadataSpec:
 
 
 __spec__ = {
-    "torch.ops.cann_ops_transformer.lightning_indexer": "LightningIndexerV2Spec",
-    "torch.ops.cann_ops_transformer.lightning_indexer_metadata": (
+    "torch.ops.npu_ops_transformer.npu_lightning_indexer": "LightningIndexerV2Spec",
+    "torch.ops.npu_ops_transformer.npu_lightning_indexer_metadata": (
         "LightningIndexerMetadataSpec"
     ),
     "aclnnLightningIndexerV2": "AclnnLightningIndexerV2Spec",
