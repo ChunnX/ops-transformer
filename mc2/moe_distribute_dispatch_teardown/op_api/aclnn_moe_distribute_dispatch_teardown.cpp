@@ -104,8 +104,8 @@ aclnnStatus aclnnMoeDistributeDispatchTeardownGetWorkspaceSize(
     uint64_t hcclBuffSize = 0;
     aclTensor *mc2Context = nullptr;
     const char *opName = "moe_distribute_a2av_setup_teardown";
-    retStatus = Mc2Aclnn::Mc2Context::GetMc2ContextTensorUbCTP(groupEp, opName, hcclBuffSize, mc2Context,
-                                                               CommProtocol::COMM_PROTOCOL_UBC_CTP);
+    retStatus = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context,
+                                                          CommProtocol::COMM_PROTOCOL_UBC_CTP);
     CHECK_RET(retStatus == ACLNN_SUCCESS, retStatus);
     retStatus = aclnnInnerMoeDistributeDispatchTeardownGetWorkspaceSize(
         mc2Context, x, y, expertIds, commCmdInfo, epWorldSize, epRankId, moeExpertNum, hcclBuffSize, expertShardType,

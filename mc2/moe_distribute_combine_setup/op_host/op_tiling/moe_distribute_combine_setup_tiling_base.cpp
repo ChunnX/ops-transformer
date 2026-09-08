@@ -782,11 +782,6 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::SetWorkspace()
     return ge::GRAPH_SUCCESS;
 }
 
-// void MoeDistributeCombineSetupTilingBase::SetHcommCfg()
-// {
-//     return;
-// }
-
 ge::graphStatus MoeDistributeCombineSetupTilingBase::MoeDistributeCombineSetupTilingFuncImpl()
 {
     OP_LOGD(nodeName_, "MoeDistributeCombineSetupTilingFunc start");
