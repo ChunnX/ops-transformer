@@ -391,7 +391,9 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 | key 0 轴 stride | **紧凑（stride == 块大小，已实现）+ 非连续（stride > 块大小，§11，key 与 k_scale 均需）** |
 | q_head_num | **仅 32**（用户指定；全部 candidate 用例统一 g=32，A1 推导下 mBase=128，重点验分核对齐） |
 | topk（动态） | 2048 / **min(index_topk, actS2Size) 场景**（topk<2048，验证 -1 padding 与 min 等价性） |
-| 阶段 × mask_mode（按模型分支联动） | decode(S1=1)×mode0；prefill 首块(S1>1)×mode3（行级 pin）；~~mid-chunk prefill×mode0~~（**暂不测试，问题保留见 R5/§5.0 O3，问题解决后补测**） |
+| 阶段 × mask_mode（按模型分支联动） | decode(S1=1)×mode0；prefill 首块(S1>1)×mode3（行级 pin）；~~mid-chunk prefill×mode0~~（**暂不测试，问题保留见 R5/§5.0 O3，问题解决后补测**）；**mask0 × 大 shape 全遍历**（2026-09-08 补：{16K,128K,1M}×{BSND,TND}×{m1,m2}×{r1,r2}=24 用例；注意 host 契约 mask_mode=0 时 cmp_residual_k 必须不传，ratio=2 的 act_k=2×s2 无 residual 仍为非整除场景） |
+| 大 shape × candidate_mode | m1 全遍历 12（§6.6）+ **m2 补齐**（16K/128K-TND/128K-r2/1M 共 5，含 R6 修复后转正的 big128k_m2） |
+| 大 shape × key 非连续 | **{16K,128K,1M}×{m1,m2} 全 6 用例**（stride0=2×紧凑， 生产 pool 翻倍 [15872,128,1,128]） |
 | numBlocks vs topkBlocks | <, =, > |
 | S2 对齐 | actS2Size%8=0 / ≠0（含 actS2Size=1） |
 | B | 1 / 4（变长 batch） |
@@ -522,7 +524,7 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 
 ## 10. 当前验证状态（2026-09-07）
 
-- pytest **47 用例全绿零 xfail**（2026-09-08 R6 修复后，含大 shape 全遍历 12 用例）：
+- pytest **80 用例全绿**（2026-09-08 矩阵补齐后：24 基础 + 12 m1 大遍历 + 5 m2 大补 + 6 pa_gap 大 + 24 mask0 大遍历 + 其余 TND/offset/门禁；总时长 ~31 分钟）：
   - 22 基础用例（mode 1/2/3 × cmp_ratio 1/2 × g32/64 × decode/prefill/tail/sparse2048/pin64 单/多 tile/B=4 变长/S1 尾块/tiny/cand64×mode2）全过，零 aicore
   - **大 shape 直接入矩阵全过**：big16k_m1 / big128k_m1 / big128k_m1_b2（B=2 变长）/ big1m_m1（131072 块 pin（强制保留最新 token 所在块）抽样验证）/ big1m_m3（回归）——§6.6 抽样行官方两级规则比对 + 全行有效性 + pin 检查，总时长 ~4 分钟
   - 等价回归全过：pa_gap_m3_regress（紧凑场景现网行为不变，R8）、off_zero_regress（零偏移与不传一致）
