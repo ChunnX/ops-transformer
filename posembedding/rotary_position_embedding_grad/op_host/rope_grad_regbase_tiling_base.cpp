@@ -443,7 +443,7 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckRotaryModeShapeRelation(const i
             std::string shapeMsg = ToString(dyShape);
             std::string reasonMsg =
                 "The D axis of input dy should be divisible by " + std::to_string(HALF_INTERLEAVE_MODE_COEF) +
-                " when the attr mode is half, interleave or deepseek_interleave, "
+                " when the attribute mode is half, interleave or interleave-half, "
                 "where D refers to the last dim";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "dy",
                                                   shapeMsg.c_str(), reasonMsg.c_str());
