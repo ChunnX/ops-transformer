@@ -202,7 +202,7 @@ public:
             uint32_t pos = first + i;
             Duplicate(red_, denom_.GetValue(i), 8);
             Ln(red_, red_, 8);
-            float value = float(maxima_.GetValue(i)) + Scalar(red_) - 6.10479323f;
+            float value = float(maxima_.GetValue(i)) + Scalar(red_);
             if (params_.smoothK) {
                 ReadRow(qi_, qg_, Offset(params_.qs, b, h, pos), params_.d, params_.dp);
                 Cast(x_, qi_, RoundMode::CAST_NONE, params_.dp);

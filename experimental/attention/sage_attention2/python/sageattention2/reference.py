@@ -86,6 +86,7 @@ def attention(
     if score_mode == "fp16":
         block_q = 64
         qhalf, khalf = prepare_scales(qs, ks, scale)
+        log_scale = torch.tensor(math.log(448), dtype=torch.float16, device=q.device)
     output = torch.empty_like(q)
     lse = torch.empty((b, hq, sq), dtype=torch.float32, device=q.device)
     for h in range(hq):
@@ -115,16 +116,19 @@ def attention(
                     )
                     scores.masked_fill_(mask, -torch.inf)
                 if score_mode == "fp16":
-                    nm = torch.maximum(m.half(), scores.amax(-1, keepdim=True)).float()
+                    # FP16 shifted maxima are the online normalization state.
+                    block_max = (scores.amax(-1, keepdim=True) - log_scale).half()
+                    nm = torch.maximum(m.half(), block_max).float()
                     scores = scores.float()
                 else:
                     nm = torch.maximum(m, scores.amax(-1, keepdim=True) - 6.10450458)
                 alpha = (m - nm).exp()
                 prob = (scores - nm).exp()
-                if score_mode == "fp16":
-                    prob *= 448.0
                 den = den * alpha + prob.sum(-1, keepdim=True)
-                partial = prob.to(torch.float8_e4m3fn).float() @ v8[:, kh, j:je].float()
+                # Device FP8 Cast saturates; torch's E4M3 conversion alone can
+                # produce NaN when a rounded FP16 max makes P exceed its range.
+                p8 = prob.clamp(max=448.0).to(torch.float8_e4m3fn).float()
+                partial = p8 @ v8[:, kh, j:je].float()
                 if pv_storage == "bf16":
                     partial = partial.to(torch.bfloat16).float()
                 elif pv_storage != "fp32":
@@ -135,9 +139,7 @@ def attention(
             if smooth_v:
                 result += vmean[:, kh, None, :]
             output[:, h, start:end] = result.to(q.dtype)
-            lse[:, h, start:end] = (
-                m + den.log() - (math.log(448) if score_mode == "fp16" else 0)
-            ).squeeze(-1)
+            lse[:, h, start:end] = (m + den.log()).squeeze(-1)
             if smooth_k:
                 lse[:, h, start:end] += (
                     q[:, h, start:end].float() * mean[:, kh, None, :]

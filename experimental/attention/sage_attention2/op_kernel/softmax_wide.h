@@ -106,6 +106,8 @@ __simd_callee__ inline void SoftmaxWideMaxCore(__ubuf__ half *scores, __ubuf__ h
     RegTensor<float> ratio;
     LoadAlign<half, LoadDist::DIST_UNPACK_B16>(oldMax, maxima);
     LoadAlign<half, LoadDist::DIST_UNPACK_B16>(newMax, (__ubuf__ half *)alpha);
+    // Keep the FP16 shifted maximum consistent across probabilities, alpha and LSE.
+    Adds(newMax, newMax, half(-6.104793232414985f), h);
     Max(newMax, newMax, oldMax, h);
     ExpSub<float, half, RegLayout::ZERO>(ratio, oldMax, newMax, h);
     StoreAlign<half, StoreDist::DIST_PACK_B32>(maxima, newMax, f);
@@ -148,10 +150,6 @@ __simd_callee__ inline void SoftmaxWideProbCore(__ubuf__ half *scores, __ubuf__ 
                 ExpSub<float, half, RegLayout::ONE>(p1, x0, m, h);
                 ExpSub<float, half, RegLayout::ZERO>(p2, x1, m, h);
                 ExpSub<float, half, RegLayout::ONE>(p3, x1, m, h);
-                Muls(p0, p0, 448.0f, f);
-                Muls(p1, p1, 448.0f, f);
-                Muls(p2, p2, 448.0f, f);
-                Muls(p3, p3, 448.0f, f);
                 Add(pair0, p0, p1, f);
                 Add(pair1, p2, p3, f);
                 Add(pair0, pair0, pair1, f);
@@ -177,10 +175,6 @@ __simd_callee__ inline void SoftmaxWideProbCore(__ubuf__ half *scores, __ubuf__ 
                 ExpSub<float, half, RegLayout::ONE>(p1, x0, m, h);
                 ExpSub<float, half, RegLayout::ZERO>(p2, x1, m, h);
                 ExpSub<float, half, RegLayout::ONE>(p3, x1, m, h);
-                Muls(p0, p0, 448.0f, f);
-                Muls(p1, p1, 448.0f, f);
-                Muls(p2, p2, 448.0f, f);
-                Muls(p3, p3, 448.0f, f);
                 Add(pair0, p0, p1, f);
                 Add(pair1, p2, p3, f);
                 Add(pair0, pair0, pair1, f);

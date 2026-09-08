@@ -120,6 +120,8 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ float *ks,
     LoadAlign<half, LoadDist::DIST_UNPACK_B16>(oldMax, maxima);
     LoadAlign<half, LoadDist::DIST_UNPACK_B16>(newMax, (__ubuf__ half *)alpha);
     LoadAlign(oldDen, denom);
+    // Keep the FP16 shifted maximum consistent across probabilities, alpha and LSE.
+    Adds(newMax, newMax, half(-6.104793232414985f), h);
     Max(newMax, newMax, oldMax, h);
     ExpSub<float, half, RegLayout::ZERO>(ratio, oldMax, newMax, h);
     StoreAlign<half, StoreDist::DIST_PACK_B32>(maxima, newMax, f);
@@ -146,10 +148,6 @@ __simd_vf__ inline void SoftmaxHalfVF(__ubuf__ half *scores, __ubuf__ float *ks,
         ExpSub<float, half, RegLayout::ZERO>(p1, x1, m, h);
         ExpSub<float, half, RegLayout::ZERO>(p2, x2, m, h);
         ExpSub<float, half, RegLayout::ZERO>(p3, x3, m, h);
-        Muls(p0, p0, 448.0f, f);
-        Muls(p1, p1, 448.0f, f);
-        Muls(p2, p2, 448.0f, f);
-        Muls(p3, p3, 448.0f, f);
         Add(rowSum, p0, p1, f);
         Add(rowSum, rowSum, p2, f);
         Add(rowSum, rowSum, p3, f);
