@@ -135,11 +135,19 @@ for grp in ("common", "3rd"):
     for chip_cn, soc in CHIP_MAP.items():
         lines = [
             f"# mc2/{grp} 文件影响范围映射表 - {chip_cn} ({soc})",
-            f"# 生成: {datetime.date.today()}  仓commit: {commit} ({branch})",
-            "# 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成)",
-            "# 判定规则: mc2内所有#include按裸文件名匹配(重名取并集, 宁多勿漏); 已含common/3rd内部传递闭包;",
-            "#           ops: []=include不可见(孤立实现文件), 需人工评估",
+            f"# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})",
+            "# 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)",
             f"# 键路径: 相对mc2目录({grp}/开头), 与pr_files.sh输出中mc2/后的段落一致",
+            "#",
+            "# 条目三态语义:",
+            "#   1) ops 列出算子 = 该文件被这些算子(直接或间接)include, 改动它需在本芯片测试这些算子",
+            f"#   2) ops: []      = 该文件有引用, 但引用它的算子均未在{chip_cn}注册, 本芯片无需测试",
+            "#   3) unref.yaml   = 完全无mc2源文件include的零引用文件(单独成表), 改动需人工确认",
+            "#",
+            "# 判定规则:",
+            "#   - mc2内所有#include按裸文件名匹配, 重名文件取并集(note:字段标注), 宁多勿漏",
+            "#   - 间接include沿common/3rd内部引用链传递闭包, 爬到算子目录为止",
+            f"#   - 算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 {chip_cn}({soc}) 的交集",
             "",
         ]
         n_map = n_empty = 0
@@ -171,10 +179,15 @@ for grp in ("common", "3rd"):
     grp_files = {r for r in targets if r.startswith(grp + "/")}
     unref = sorted(r for r in grp_files if not impact[r])
     lines = [
-        f"# mc2/{grp} 零引用文件清单",
-        f"# 生成: {datetime.date.today()}  仓commit: {commit} ({branch})",
-        "# 以下文件当前无任何mc2源文件include, 改动不影响mc2算子编译;",
-        "# 但若PR修改了下列文件, 仍需人工确认: 是否被仓外引用/引用关系尚未建立",
+        f"# mc2/{grp} 零引用文件清单 (与芯片无关, 全芯片共用)",
+        f"# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})",
+        "#",
+        "# 语义: 下列文件当前无任何mc2源文件include(含间接), 改动不影响mc2算子编译;",
+        "#       注意与芯片映射表中 ops: [] 的区别:",
+        "#         ops: []  = 有引用, 但引用它的算子不支持该芯片 (精确的空, 无需测试)",
+        "#         本表     = 完全没有引用, 属异常状态, 修改前需人工确认:",
+        "#                    - 是否被仓外代码/构建脚本引用",
+        "#                    - 是否include关系尚未建立(如新增文件)",
         "",
     ]
     for r in unref:
