@@ -340,6 +340,10 @@ class SparseFlashMlaInputAdapter:
         case_params = pytest_utils.generate_case_with_default_param(
             param_combinations[0]
         )
+        # Select the batch reference without enabling pytest's own relation generation.
+        case_params["batch_consistency"] = params.get(
+            "batch_consistency", batch_random is not None
+        )
         for name in legacy_empty_actual_length_slots:
             case_params[name] = None
         if batch_random is None:

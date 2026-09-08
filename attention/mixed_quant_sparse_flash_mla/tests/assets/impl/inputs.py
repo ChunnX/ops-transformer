@@ -326,6 +326,10 @@ class MixedQuantSparseFlashMlaInputAdapter:
             "golden", "mixed_quant_sparse_flash_mla_golden.py"
         )
         filled = pytest_utils.fill_none_params(params)
+        # Select the batch reference without enabling pytest's own relation generation.
+        filled["batch_consistency"] = params.get(
+            "batch_consistency", batch_random is not None
+        )
         for name in ("q_datarange", "ori_kv_datarange", "cmp_kv_datarange"):
             if params.get(name) is not None:
                 filled[name] = params[name]
