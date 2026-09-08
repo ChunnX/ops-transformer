@@ -34,9 +34,7 @@ constexpr uint32_t MHC_PRE_BACKWARD_IMPL_MODE_HF32 = 1U;
 template <class T, class P>
 class MhcPreBackwardKernel {
 public:
-    __aicore__ inline MhcPreBackwardKernel(MT_C0 &matmul0, MT_C1 &matmul1) : mm0(matmul0), mm1(matmul1)
-    {
-    }
+    __aicore__ inline MhcPreBackwardKernel() = default;
     // 入口函数
     __aicore__ inline void Init(InitParams initParams);
     __aicore__ inline void Process();
@@ -131,8 +129,6 @@ public:
 
 private:
     MhcPreBackwardC0Basic c0Basic_;
-    MT_C0 &mm0;
-    MT_C1 &mm1;
     uint32_t coreNum_;
     uint64_t totalLength_;
     uint64_t vecDealBSPeCore_;
@@ -296,9 +292,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + gradHResBufLen_;
     if ASCEND_IS_AIC {
         pipe_ = initParams.tPipeIn;
-        if (tiling_->implMode == MHC_PRE_BACKWARD_IMPL_MODE_HF32) {
-            c0Basic_.Init(pipe_);
-        }
+        c0Basic_.Init(pipe_);
     }
     if ASCEND_IS_AIV {
         pipe_ = initParams.tPipeIn;
@@ -1005,9 +999,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
             buffId++;
         }
     }
-    if (enableHf32) {
-        c0Basic_.End();
-    }
+    c0Basic_.End();
 
     if ASCEND_IS_AIC {
         if (enableHf32) {
@@ -1024,22 +1016,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
 {
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffIdx);
-    if (tiling_->implMode == MHC_PRE_BACKWARD_IMPL_MODE_HF32) {
-        c0Basic_.Process(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], phiGm_[offsetND],
-                         workSpaceGm_[writeOffset], currentBSBlock, currentNDBlock, fusionSize_, nD_);
-        return;
-    }
-
-    mm0.SetOrgShape(totalLength_, nD_, fusionSize_);
-    mm0.SetSingleShape(currentBSBlock, currentNDBlock, fusionSize_);
-    mm0.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)]);
-    mm0.SetTensorB(phiGm_[offsetND], false);
-    while (mm0.Iterate()) {
-        mm0.GetTensorC(workSpaceGm_[writeOffset], 0, true);
-        AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(CROSS_CORE_WAIT_FLAG_C0);
-        writeOffset += MATMUL_WRITE_OFFSET_M * MATMUL_WRITE_OFFSET_N;
-    }
-    mm0.End();
+    c0Basic_.Process(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], phiGm_[offsetND],
+                     workSpaceGm_[writeOffset], currentBSBlock, currentNDBlock, fusionSize_, nD_);
 }
 
 template <class T, class P>
@@ -1052,19 +1030,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffIdx);
     bool enAtomic = (offsetBS != 0);
-    if (tiling_->implMode == MHC_PRE_BACKWARD_IMPL_MODE_HF32) {
-        c0Basic_.ProcessC1(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], workSpaceGm_[offsetXs],
-                           gradPhiGm_[offsetND], fusionSize_, currentNDBlock, currentBSBlock, fusionSize_,
-                           ND_BLOCK_SIZE, nD_, enAtomic);
-        return;
-    }
-
-    mm1.SetOrgShape(fusionSize_, currentNDBlock, totalLength_, currentBSBlock, nD_);
-    mm1.SetSingleShape(fusionSize_, currentNDBlock, currentBSBlock);
-    mm1.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], true);
-    mm1.SetTensorB(workSpaceGm_[offsetXs], false);
-    mm1.IterateAll(gradPhiGm_[offsetND], enAtomic);
-    mm1.End();
+    c0Basic_.ProcessC1(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], workSpaceGm_[offsetXs],
+                       gradPhiGm_[offsetND], fusionSize_, currentNDBlock, currentBSBlock, fusionSize_,
+                       ND_BLOCK_SIZE, nD_, enAtomic);
 }
 
 template <class T, class P>
