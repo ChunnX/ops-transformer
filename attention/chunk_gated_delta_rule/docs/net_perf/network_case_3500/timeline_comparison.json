@@ -1,0 +1,123 @@
+{
+  "baseline": {
+    "trace": "/home/s00940320/improved_cgdr/attention/chunk_gated_delta_rule/tests/pytest/output/rdv_perf_20260908/network_case_3500/baseline_timeline/prof/OPPROF_20260908095106_TNNWAKCRFPIXTKOM/trace.json",
+    "trace_sha256": "cefe3c785bf980b655d8ab6390f8326eed1e73b0e26f866e69f231cb926bc259",
+    "original_event_count": 79850,
+    "duration_event_count": 79850,
+    "sampled_pids": [
+      "core0.cubecore",
+      "core0.veccore0",
+      "core0.veccore1",
+      "core1.cubecore",
+      "core1.veccore0",
+      "core1.veccore1",
+      "core2.cubecore",
+      "core2.veccore0",
+      "core2.veccore1",
+      "core3.cubecore",
+      "core3.veccore0",
+      "core3.veccore1",
+      "core4.cubecore",
+      "core4.veccore0",
+      "core4.veccore1",
+      "core5.cubecore",
+      "core5.veccore0",
+      "core5.veccore1"
+    ],
+    "plotted_core_group": 0,
+    "plotted_tracks": [
+      "AIC Scalar",
+      "AIC Cube",
+      "AIC MTE1",
+      "AIC MTE2",
+      "AIC Fixpipe",
+      "AIV0 Scalar",
+      "AIV0 Vector",
+      "AIV0 MTE2",
+      "AIV0 MTE3",
+      "AIV1 Scalar",
+      "AIV1 Vector",
+      "AIV1 MTE2",
+      "AIV1 MTE3"
+    ],
+    "trace_first_us": 0.06303030252456665,
+    "trace_last_us": 1430.8642782568932,
+    "op_basic_duration_us": 878.438965,
+    "current_freq_mhz": 1650,
+    "rated_freq_mhz": 1650
+  },
+  "optimized": {
+    "trace": "/home/s00940320/improved_cgdr/attention/chunk_gated_delta_rule/tests/pytest/output/rdv_perf_20260908/network_case_3500/optimized_timeline/prof/OPPROF_20260908073502_LACBZXXAHUTEEOKG/trace.json",
+    "trace_sha256": "73436ea41e7075592bb403e4a2316aba1b9aa6c597ec488211508d546929b1d9",
+    "original_event_count": 13194,
+    "duration_event_count": 13194,
+    "sampled_pids": [
+      "core0.cubecore",
+      "core0.veccore0",
+      "core0.veccore1",
+      "core1.cubecore",
+      "core1.veccore0",
+      "core1.veccore1",
+      "core2.cubecore",
+      "core2.veccore0",
+      "core2.veccore1",
+      "core3.cubecore",
+      "core3.veccore0",
+      "core3.veccore1",
+      "core4.cubecore",
+      "core4.veccore0",
+      "core4.veccore1",
+      "core5.cubecore",
+      "core5.veccore0",
+      "core5.veccore1"
+    ],
+    "plotted_core_group": 0,
+    "plotted_tracks": [
+      "AIC Scalar",
+      "AIC Cube",
+      "AIC MTE1",
+      "AIC MTE2",
+      "AIC Fixpipe",
+      "AIV0 Scalar",
+      "AIV0 Vector",
+      "AIV0 MTE2",
+      "AIV0 MTE3",
+      "AIV1 Scalar",
+      "AIV1 Vector",
+      "AIV1 MTE2",
+      "AIV1 MTE3"
+    ],
+    "trace_first_us": 0.012121211737394333,
+    "trace_last_us": 140.03272353857756,
+    "op_basic_duration_us": 153.320999,
+    "current_freq_mhz": 1650,
+    "rated_freq_mhz": 1650
+  },
+  "plot_notes": {
+    "timestamp_unit": "us",
+    "timestamps_rescaled": false,
+    "original_optimized_png_windows_us": [
+      [
+        0,
+        20
+      ],
+      [
+        50,
+        65
+      ]
+    ],
+    "original_optimized_png_track_count": 8,
+    "full_comparison_axes": "independent native trace scales",
+    "zoom_comparison_windows_us": [
+      [
+        0,
+        20
+      ],
+      [
+        50,
+        65
+      ]
+    ],
+    "interpretation": "Trace interval extent is not operator task duration; do not infer speedup from these extents."
+  }
+}

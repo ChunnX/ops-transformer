@@ -1,0 +1,18 @@
+{
+  "baseline": {
+    "binary_sha256": "dd7eb2fc140a9d9a7b15250b0d3f208baa9ccaa65540e8d36dfda8290fe6d3ba",
+    "binary_matches_expected": true,
+    "input_hashes_equal": true,
+    "tool_and_pytest_exit": 0,
+    "capture_reused": false
+  },
+  "optimized": {
+    "binary_sha256": "ff88b552dc9cd8bbacbd622d017bfba7ff8d58ba98cd54d931cb4c84fce8aba4",
+    "binary_matches_expected": true,
+    "input_hashes_equal": true,
+    "tool_and_pytest_exit": 0,
+    "capture_reused": true
+  },
+  "baseline_default_vendor_restored": true,
+  "original_optimized_fragment_png_unchanged": true
+}

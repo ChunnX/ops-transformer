@@ -1,0 +1,61 @@
+--- a/attention/chunk_gated_delta_rule/op_kernel/arch35/vf/chunk_gated_delta_rule_stage1_vf.h
++++ b/attention/chunk_gated_delta_rule/op_kernel/arch35/vf/chunk_gated_delta_rule_stage1_vf.h
+@@ -106,6 +106,14 @@
+     Exp<float, MaskMergeMode::ZEROING>(resultReg, gCumReg, validMask);
+     StoreAlign<float, StoreDist::DIST_NORM>(gCumAddr, gCumReg, validMask);
+     StoreAlign<float, StoreDist::DIST_NORM>(gCumExpAddr, resultReg, validMask);
++
++    // 在保留的第二段 64 个 FP32 中一次生成 kg 的门控系数，避免随后按行重复执行 Exp。
++    // 从同一前缀和寄存器读取 G[63]，仍按 FP32 Sub -> Exp 的顺序计算 exp(G[63]-G[i])。
++    Duplicate(reinterpret_cast<RegTensor<uint32_t> &>(gatherIndexReg), static_cast<uint32_t>(chunkSize - 1));
++    Gather<float, uint32_t>(shiftedReg, gCumReg, reinterpret_cast<RegTensor<uint32_t> &>(gatherIndexReg));
++    Sub<float, MaskMergeMode::ZEROING>(resultReg, shiftedReg, gCumReg, validMask);
++    Exp<float, MaskMergeMode::ZEROING>(resultReg, resultReg, validMask);
++    StoreAlign<float, StoreDist::DIST_NORM>(gCumExpAddr + 64, resultReg, validMask);
+ }
+ 
+ /*
+@@ -137,21 +145,17 @@
+     RegTensor<float> vReg;
+     RegTensor<float> betaReg;
+     RegTensor<float> gExpReg;
+-    RegTensor<float> decayReg;
+     RegTensor<float> tmpReg;
+     RegTensor<float> rawKcdReg;
+-    MaskReg fullMask = CreateMask<float, MaskPattern::ALL>();
+     uint32_t packedCount = elementsPerRepeat;
+     MaskReg packedMask = UpdateMask<uint16_t>(packedCount);
+ 
+-    DataCopy<float, LoadDist::DIST_BRC_B32>(decayReg, gCumAddr + 63);
+     const uint16_t repeats = static_cast<uint16_t>((dim + elementsPerRepeat - 1) / elementsPerRepeat);
+     for (uint16_t row = 0; row < rowCount; ++row) {
+         DataCopy<float, LoadDist::DIST_BRC_B32>(betaReg, betaAddr + row);
+         DataCopy<float, LoadDist::DIST_BRC_B32>(gExpReg, gCumExpAddr + rowStart + row);
+-        DataCopy<float, LoadDist::DIST_BRC_B32>(tmpReg, gCumAddr + rowStart + row);
+-        Sub(tmpReg, decayReg, tmpReg, fullMask);
+-        Exp<float, MaskMergeMode::ZEROING>(tmpReg, tmpReg, fullMask);
++        // 每个系数先以 64 行向量预计算，再广播到该 token 的所有特征；后续乘法和 BF16 转换保持原顺序。
++        DataCopy<float, LoadDist::DIST_BRC_B32>(tmpReg, gCumExpAddr + 64 + rowStart + row);
+ 
+         for (uint16_t repeat = 0; repeat < repeats; ++repeat) {
+             const uint32_t offset = static_cast<uint32_t>(row) * dim + repeat * elementsPerRepeat;
+--- a/attention/chunk_gated_delta_rule/op_kernel/arch35/chunk_gated_delta_rule_fused_exact_arch35.h
++++ b/attention/chunk_gated_delta_rule/op_kernel/arch35/chunk_gated_delta_rule_fused_exact_arch35.h
+@@ -171,6 +171,8 @@
+     static constexpr uint32_t UB_GCUM1_OFFSET = 137 * 1024;
+     static constexpr uint32_t UB_GEXP_OFFSET = 138 * 1024;
+     static constexpr uint32_t UB_BETA_FP32_OFFSET = 139 * 1024;
++    // exp(G) 和 exp(G_last-G) 各用 64 个 FP32，共 512B，复用现有 1KiB 槽且不改变任何后续地址。
++    static_assert(2 * CHUNK * sizeof(float) <= UB_BETA_FP32_OFFSET - UB_GEXP_OFFSET);
+     static constexpr uint32_t UB_GATHER_OFFSET = 140 * 1024;
+     static constexpr uint32_t UB_PREFIX_DIRECT0_OFFSET = 160 * 1024;
+     static constexpr uint32_t UB_INVERSE_PUB0_OFFSET = 168 * 1024;
+@@ -1182,7 +1184,7 @@
+             }
+         } else {
+             Duplicate(gCum, 0.0f, CHUNK);
+-            Duplicate(gExp, 1.0f, CHUNK);
++            Duplicate(gExp, 1.0f, 2 * CHUNK);
+         }
+         if (localValidRows < HALF_CHUNK) {
+             Duplicate(betaBf16, static_cast<bfloat16_t>(0), HALF_CHUNK);

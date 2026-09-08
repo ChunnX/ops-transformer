@@ -1,0 +1,9 @@
+{
+  "commit": "6f599eb3aa317ac1f737def7b1eaaf51c1551d15",
+  "vendor": "/home/s00940320/improved_cgdr/attention/chunk_gated_delta_rule/tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/opp/vendors/cgdr_stream_update_transformer",
+  "kernel_sha256": {
+    "op_impl/ai_core/tbe/kernel/ascend950/chunk_gated_delta_rule_apt/ChunkGatedDeltaRule_85019fc586a8ef14675ed7018c900c4f.o": "3a5b724e22783ae81d7026c47c06af822ae9471d4f613bbf618b3de0f7abe65b",
+    "op_impl/ai_core/tbe/kernel/ascend950/chunk_gated_delta_rule_apt/ChunkGatedDeltaRule_b8eaf39689b840ee88390d15b17183a4.o": "ff88b552dc9cd8bbacbd622d017bfba7ff8d58ba98cd54d931cb4c84fce8aba4"
+  },
+  "current_headers_match_installed": true
+}

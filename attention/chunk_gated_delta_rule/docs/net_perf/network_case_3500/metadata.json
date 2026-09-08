@@ -1,0 +1,53 @@
+{
+  "date_utc": "2026-09-08",
+  "raw_root": "/home/s00940320/improved_cgdr/attention/chunk_gated_delta_rule/tests/pytest/output/rdv_perf_20260908/network_case_3500",
+  "baseline": "CANN9.2.0 built-in",
+  "optimized_commit": "6f599eb3aa317ac1f737def7b1eaaf51c1551d15",
+  "source_code_modified": false,
+  "case": {
+    "B": 1,
+    "T": 3500,
+    "Nk": 16,
+    "Nv": 32,
+    "Dk": 128,
+    "Dv": 128,
+    "gate": true,
+    "state_dtype": "bfloat16"
+  },
+  "timing": {
+    "warmup": 20,
+    "measured": 100,
+    "metric": "msprof CGDR Task Duration(us)"
+  },
+  "probe": {
+    "order": "A-B-B-A",
+    "warmup_per_round": 20,
+    "measured_per_round": 100,
+    "merged": false
+  },
+  "files_sha256": {
+    "probe_summary.json": "6734bb54241201af378645f7bcd434a1fc26db14a980101d40e1320717df3880",
+    "loaded_kernel_audit.json": "05c63e315b9751d288cbf2aef4a325fbfea82e776c7c1a430196c61b86adf800",
+    "README.md": "cf97c159c362b7366c2c136455fcf278de47691514379fec7554f6d3bea44d8e",
+    "msopprof_review.json": "355f607f5747a37e6cfeb3921814dea34e99e08cae40aff60192020ea115dc8c",
+    "gate_exp_candidate.patch": "411dc71db6acca6e312263ccfdcaf12b1388984b5cfc64482fbe7befb559a982",
+    "version_audit.json": "e21a6d853a7b91c23213a70bfdb81d55394af3f2aeb22101f199e52647ba7768",
+    "msopprof_review.md": "30bfd27e5d2eb2ffffccbf966c27ebd3a786544e776b262dbce817a32cd14875",
+    "timing_samples.csv": "4da19fc39b0296b0b775ac6df45cbd2c4a149ea415aba8f14c3f2691062836cc",
+    "core_metrics.csv": "b1c00ccaf95d5bd90c6e8595149e5c76a87ab2361c8f7431d30423229ad9679c",
+    "static_analysis.md": "fb18f372018893f3c017f4b0fa45bb94adcc4a4643ed276c8dff801b4d64f757",
+    "timing_summary.json": "7443eceebc72a549473cbbf4d0583f947b505b280457b2dfa415188bbfbd926d",
+    "timeline_validation.json": "780ea0e746d1a33dbb9ed5a58fdb7229f01b56f87aeb4de78dcd9e8eb6b0a1b0",
+    "timeline_comparison.json": "ebee0147f1bb2740d2ef4b671fbe083e75eb5f5ff21d550b62317d5cf2b68eec",
+    "comparison.csv": "a158ca4c8a1765b3cff18769cff2d9efd2b8232b4ad6217d6926587f77be1e98",
+    "figures/pipeline_timeline.png": "88e49c7fcb55d7f371924224a60665d2c64f55a5901536b9584781cecab4983d",
+    "figures/pipeline_timeline_baseline.pdf": "d590067915f3fbe98320def1e0e59959cc8ce4aba77530895c114e6974fd311e",
+    "figures/pipeline_timeline_comparison_zoom.png": "c229624e8334190bfc2dab346c1ed789dbcbeeffae7bf4ecf14c5c5520b4dade",
+    "figures/pipeline_timeline_comparison_full.png": "5fa94f7271e71d733ed778330c1c8598a88d33bb85fe7179d6b6dc698c8e2e10",
+    "figures/latency.png": "99f0f6f7c3463f2d014de4ff37914a93310fa4c423996c3f146d4250295d1b2c",
+    "figures/pipeline_timeline.pdf": "746fbf5e8f72a369b504ba3d240c55978e6cc4c8b60e85d6097f078293a82495",
+    "figures/pipeline_timeline_comparison_full.pdf": "9c6e2b2ed1accf8f82c35969f475b9e45c2ea4faf544fadcabc95b9bd704cf7e",
+    "figures/pipeline_timeline_baseline.png": "707c5d6582be1d6ea6649e8a645691b7f3502191a0d00cd412256329045bfc1e",
+    "figures/pipeline_timeline_comparison_zoom.pdf": "b659a8f5a9eed4707496726459ec99240933b401307efa1262fa8689e694f64a"
+  }
+}
