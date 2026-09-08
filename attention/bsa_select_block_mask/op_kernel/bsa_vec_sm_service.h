@@ -81,6 +81,12 @@ private:
     __aicore__ inline void NzToNdCopyIn(LocalTensor<T> &dstUb, uint64_t tileBase, uint32_t rowStart, uint32_t rowCount,
                                         uint32_t validCols, uint32_t ubRowWidth);
 
+    // 行归约三级级联（BlockReduce 8→1：512→64→8→1），对照 PFA Rowsum<float,SPEC_TILE_512> 参数模式
+    __aicore__ inline void RowMaxCascade(LocalTensor<T> &dstRow, LocalTensor<T> &srcTile, uint32_t rows,
+                                         uint32_t rowStride, LocalTensor<uint8_t> &tmp);
+    __aicore__ inline void RowSumCascade(LocalTensor<T> &dstRow, LocalTensor<T> &srcTile, uint32_t rows,
+                                         uint32_t rowStride, LocalTensor<uint8_t> &tmp);
+
     // ---- post pool 融合服务（post 模式下二趟直接折叠）----
     BSAVecPostPoolService<BSAT> postPoolOP;
 
@@ -207,6 +213,49 @@ __aicore__ inline void BSAVecSmService<BSAT>::NzToNdCopyIn(LocalTensor<T> &dstUb
     }
 }
 
+
+/**
+ * @brief 行方向归约三级级联（BlockReduce 8→1）：[rows × 512] → [rows × 1]
+ * @details 对照 prompt_flash_attention Rowsum<float,SPEC_TILE_512>：
+ *          L1: [rows×512] 组内 8→1 → [rows×64]；L2: → [rows×8]；L3: → [rows×1]
+ *          tmp 布局（float 元素）：[0, rows*64) L1 结果，[rows*64, rows*72) L2 结果（≤24KB reduceSharedTemp）
+ */
+template <typename BSAT>
+__aicore__ inline void BSAVecSmService<BSAT>::RowMaxCascade(LocalTensor<T> &dstRow, LocalTensor<T> &srcTile,
+                                                            uint32_t rows, uint32_t rowStride,
+                                                            LocalTensor<uint8_t> &tmpBytes)
+{
+    // BlockReduce(vcgmax) 硬件语义：每 repeat 64 元素 → 8 个组内(8:1)结果
+    //（对照 PFA FLOAT_VECTOR_SIZE=64 的 Rowsum 级联系数），三级 512→64→8→1
+    constexpr uint32_t VEC = 64;                                        // PFA FLOAT_VECTOR_SIZE
+    constexpr uint32_t REDUCE_WIDTH = K_TILE_COLS;                      // 512
+    LocalTensor<T> tmp = tmpBytes.ReinterpretCast<T>();
+    const uint32_t l1Elems = rows * (REDUCE_WIDTH / FLOAT_DATA_BLOCK_NUM); // rows×64（L1 输出元素数）
+    AscendC::BlockReduceMax<float, false>(tmp, srcTile, rows * rowStride / VEC, 0, 1, 1, 8);
+    AscendC::PipeBarrier<PIPE_V>();
+    AscendC::BlockReduceMax<float, false>(tmp[l1Elems], tmp, l1Elems / VEC, 0, 1, 1, 8);
+    AscendC::PipeBarrier<PIPE_V>();
+    AscendC::BlockReduceMax<float, false>(dstRow, tmp[l1Elems], rows * FLOAT_DATA_BLOCK_NUM / VEC, 0, 1, 1, 8);
+    AscendC::PipeBarrier<PIPE_V>();
+}
+
+template <typename BSAT>
+__aicore__ inline void BSAVecSmService<BSAT>::RowSumCascade(LocalTensor<T> &dstRow, LocalTensor<T> &srcTile,
+                                                            uint32_t rows, uint32_t rowStride,
+                                                            LocalTensor<uint8_t> &tmpBytes)
+{
+    constexpr uint32_t VEC = 64;
+    constexpr uint32_t REDUCE_WIDTH = K_TILE_COLS; // 512
+    LocalTensor<T> tmp = tmpBytes.ReinterpretCast<T>();
+    const uint32_t l1Elems = rows * (REDUCE_WIDTH / FLOAT_DATA_BLOCK_NUM); // rows×64
+    AscendC::BlockReduceSum<float, false>(tmp, srcTile, rows * rowStride / VEC, 0, 1, 1, 8);
+    AscendC::PipeBarrier<PIPE_V>();
+    AscendC::BlockReduceSum<float, false>(tmp[l1Elems], tmp, l1Elems / VEC, 0, 1, 1, 8);
+    AscendC::PipeBarrier<PIPE_V>();
+    AscendC::BlockReduceSum<float, false>(dstRow, tmp[l1Elems], rows * FLOAT_DATA_BLOCK_NUM / VEC, 0, 1, 1, 8);
+    AscendC::PipeBarrier<PIPE_V>();
+}
+
 /**
  * @brief Online Softmax 第一遍——对一个 K-Chunk 的 Score 块完成局部 softmax 的 m/l 累积
  * @details 按 GetChunkRowSlices 给出的行切片逐片处理（切分与二趟/post pool 完全一致）：
@@ -280,13 +329,18 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
             Muls(tile, tile, (float)(constInfo.scaleValue), sl.rowCount * kChunkSizeAlign);
             AscendC::PipeBarrier<PIPE_V>();
 
-            // 更new max：M = ReduceMax(score_partial)，m_new = max(old_m, M)
+            // 行归约：全 tile(512) 走 BlockReduce 三级级联（快），尾 tile 走 AR 原路径
             uint32_t maxShape[] = {sl.rowCount, kChunkSizeAlign};
             bool isSrcInnerPad = true;
 
-            AscendC::ReduceMax<T, AscendC::Pattern::Reduce::AR, false>(tmpMax[sl.localRowStart], tile, reduceSharedTemp,
-                                                                       maxShape, isSrcInnerPad);
-            AscendC::PipeBarrier<PIPE_V>();
+            if (kChunkSizeAlign == K_TILE_COLS) {
+                LocalTensor<T> dstMax = tmpMax[sl.localRowStart];
+                RowMaxCascade(dstMax, tile, sl.rowCount, kChunkSizeAlign, reduceSharedTemp);
+            } else {
+                AscendC::ReduceMax<T, AscendC::Pattern::Reduce::AR, false>(tmpMax[sl.localRowStart], tile,
+                                                                           reduceSharedTemp, maxShape, isSrcInnerPad);
+                AscendC::PipeBarrier<PIPE_V>();
+            }
 
             if (kChunkStart != 0) {
                 AscendC::Max(tmpMax[sl.localRowStart], tmpMax[sl.localRowStart], globalMax[sl.localRowStart],
@@ -321,18 +375,23 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
             AscendC::Exp(tile, tile, sl.rowCount * kChunkSizeAlign);
             AscendC::PipeBarrier<PIPE_V>();
 
-            uint32_t sumShape[] = {sl.rowCount, kChunkSizeAlign};
-            if (kChunkSizeAlign <= FLOAT_REPEAT_NUM) {
-                // Set the mask in the instruction instead of relying on the high-level reuse implementation's mask
-                // state.
-                AscendC::WholeReduceSum<T, true>(tmpSum[sl.localRowStart], tile, static_cast<int32_t>(kChunkSizeAlign),
-                                                 static_cast<int32_t>(sl.rowCount), 1, 1,
-                                                 static_cast<int32_t>(kChunkSizeAlign / FLOAT_DATA_BLOCK_NUM));
+            if (kChunkSizeAlign == K_TILE_COLS) {
+                LocalTensor<T> dstSum = tmpSum[sl.localRowStart];
+                RowSumCascade(dstSum, tile, sl.rowCount, kChunkSizeAlign, reduceSharedTemp);
             } else {
-                AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(tmpSum[sl.localRowStart], tile,
-                                                                          reduceSharedTemp, sumShape, isSrcInnerPad);
+                uint32_t sumShape[] = {sl.rowCount, kChunkSizeAlign};
+                if (kChunkSizeAlign <= FLOAT_REPEAT_NUM) {
+                    AscendC::WholeReduceSum<T, true>(tmpSum[sl.localRowStart], tile,
+                                                     static_cast<int32_t>(kChunkSizeAlign),
+                                                     static_cast<int32_t>(sl.rowCount), 1, 1,
+                                                     static_cast<int32_t>(kChunkSizeAlign / FLOAT_DATA_BLOCK_NUM));
+                } else {
+                    AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(tmpSum[sl.localRowStart], tile,
+                                                                              reduceSharedTemp, sumShape,
+                                                                              isSrcInnerPad);
+                }
+                AscendC::PipeBarrier<PIPE_V>();
             }
-            AscendC::PipeBarrier<PIPE_V>();
 
             AscendC::Add(globalSum[sl.localRowStart], tmpSum[sl.localRowStart], globalSum[sl.localRowStart],
                          sl.rowCount);
