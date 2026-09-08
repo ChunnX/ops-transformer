@@ -23,7 +23,6 @@
 #include "graph/types.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "mc2_exception_dump.h"
-#include "mc2_hcomm_dfx_dump.h"
 #include "apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
 
 using namespace ge;
