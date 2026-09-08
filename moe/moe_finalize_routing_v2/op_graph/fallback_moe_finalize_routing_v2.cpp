@@ -136,10 +136,9 @@ static graphStatus MoeFinalizeRoutingV2HostExecuteFunc(OpExecuteContext* host_ap
     OP_LOGE("aclnnfallback", "output is null"), return GRAPH_FAILED);
 
   // execute opapi
-  auto api_ret = CANN_OPS_OPB_SYN_EXEC_ACLNN(host_api_ctx, aclnnMoeFinalizeRoutingV4, expanded_permuted_rows,
-                                             expanded_src_to_dst_row, skip1, skip2_optional, bias, scales,
-                                             expert_for_source_row, x, alpha1, alpha2, v, *mode, zeroExpertRange,
-                                             copyExpertRange, constantExpertRange, *k, output);
+  auto api_ret = EXEC_OPAPI_CMD(aclnnMoeFinalizeRoutingV4, expanded_permuted_rows, expanded_src_to_dst_row, skip1,
+                                skip2_optional, bias, scales, expert_for_source_row, x, alpha1, alpha2, v, *mode,
+                                zeroExpertRange, copyExpertRange, constantExpertRange, *k, output);
   OP_CHECK_IF(api_ret != GRAPH_SUCCESS,
       OP_LOGE(host_api_ctx->GetNodeName(), "api_ret faild:%u", api_ret), return GRAPH_FAILED);
 

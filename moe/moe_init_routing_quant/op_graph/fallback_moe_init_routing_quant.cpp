@@ -60,9 +60,8 @@ static graphStatus MoeInitRoutingQuantExecuteFunc(OpExecuteContext* host_api_ctx
   const float* scale = attrs->GetAttrPointer<float>(1);
   const float* offset = attrs->GetAttrPointer<float>(2);
   // execute opapi
-  auto api_ret = CANN_OPS_OPB_SYN_EXEC_ACLNN(host_api_ctx, aclnnMoeInitRoutingQuant, x_ge, row_idx_ge, expert_idx_ge,
-                                             active_num, scale, offset, expanded_x_ge, expanded_row_idx_ge,
-                                             expanded_expert_idx_ge);
+  auto api_ret = EXEC_OPAPI_CMD(aclnnMoeInitRoutingQuant, x_ge, row_idx_ge, expert_idx_ge, active_num, scale, offset,
+                                expanded_x_ge, expanded_row_idx_ge, expanded_expert_idx_ge);
   OP_CHECK_IF(api_ret != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "api_ret faild:%u", api_ret), return GRAPH_FAILED);
 
   return GRAPH_SUCCESS;

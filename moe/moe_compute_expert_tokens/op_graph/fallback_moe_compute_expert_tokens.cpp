@@ -47,8 +47,7 @@ static graphStatus MoeComputeHostExecuteFunc(OpExecuteContext* host_api_ctx) {
     OP_LOGE("aclnnfallback", "output is null"), return GRAPH_FAILED);
 
   // execute opapi
-  auto api_ret = CANN_OPS_OPB_SYN_EXEC_ACLNN(host_api_ctx, aclnnMoeComputeExpertTokens, sortedExperts, *num_experts,
-                                             output);
+  auto api_ret = EXEC_OPAPI_CMD(aclnnMoeComputeExpertTokens, sortedExperts, *num_experts, output);
   OP_CHECK_IF(api_ret != GRAPH_SUCCESS,
     OP_LOGE("aclnnfallback", "api_ret faild:%u", api_ret), return GRAPH_FAILED);
 
