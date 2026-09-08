@@ -723,6 +723,7 @@ SmlaCase Make910bCase()
     c.soc = "Ascend910B";
     c.coreNum = 40;
     c.ubSize = 196608;
+    c.cmpRatio = 0;
     c.oriMaskMode = 4;
     return c;
 }
@@ -744,13 +745,22 @@ TEST_F(SparseFlashMlaTilingArch35, test_tiling_a2a3_compressed_ratio_support)
             }
             SCOPED_TRACE(soc);
             SCOPED_TRACE(sparse);
-            c.cmpRatio = 2;
-            RunSmlaTilingCase(c, sparse ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED);
-            c.cmpRatio = sparse ? 4 : 128;
-            RunSmlaTilingCase(c, ge::GRAPH_SUCCESS);
-            for (int64_t ratio : {0, 1, 3, 8, 129}) {
-                c.cmpRatio = ratio;
-                RunSmlaTilingCase(c, ge::GRAPH_FAILED);
+            if (sparse) {
+                for (int64_t ratio : {1, 2, 4}) {
+                    c.cmpRatio = ratio;
+                    RunSmlaTilingCase(c, ge::GRAPH_SUCCESS);
+                }
+                for (int64_t ratio : {0, 3, 8, 128, 129}) {
+                    c.cmpRatio = ratio;
+                    RunSmlaTilingCase(c, ge::GRAPH_FAILED);
+                }
+            } else {
+                c.cmpRatio = 128;
+                RunSmlaTilingCase(c, ge::GRAPH_SUCCESS);
+                for (int64_t ratio : {0, 1, 2, 3, 4, 8, 129}) {
+                    c.cmpRatio = ratio;
+                    RunSmlaTilingCase(c, ge::GRAPH_FAILED);
+                }
             }
             c.cmpRatio = sparse ? 2 : 128;
             c.cmpResidualKvShape = {};
@@ -758,9 +768,23 @@ TEST_F(SparseFlashMlaTilingArch35, test_tiling_a2a3_compressed_ratio_support)
         }
         SmlaCase swa = Make910bCase();
         swa.soc = soc;
-        swa.cmpRatio = 2;
+        swa.cmpRatio = 0;
+        RunSmlaTilingCase(swa, ge::GRAPH_SUCCESS);
+        swa.cmpRatio = 1;
         RunSmlaTilingCase(swa, ge::GRAPH_FAILED);
     }
+}
+
+TEST_F(SparseFlashMlaTilingArch35, test_tiling_a2a3_csa_ratio1_does_not_require_residual)
+{
+    SmlaCase c = Make910bCase();
+    c.cmpKvShape = {32, 128, 1, 512};
+    c.cmpSparseIndicesShape = {512, 1, 512};
+    c.cmpBlockTableShape = {4, 8};
+    c.sequsedCmpKvShape = {4};
+    c.cmpRatio = 1;
+    c.cmpMaskMode = 3;
+    RunSmlaTilingCase(c, ge::GRAPH_SUCCESS);
 }
 
 // 910B HCA: cmp_ratio must be 128.
@@ -910,8 +934,8 @@ TEST_F(SparseFlashMlaTilingArch35, test_tiling_910b_block_table_dim0_failed)
     RunSmlaTilingCase(c, ge::GRAPH_FAILED);
 }
 
-// 910B SWA without cmp_kv: cmp_ratio must be 1
-TEST_F(SparseFlashMlaTilingArch35, test_tiling_910b_swa_cmp_ratio_not_1_failed)
+// 910B SWA without cmp_kv: cmp_ratio must be 0
+TEST_F(SparseFlashMlaTilingArch35, test_tiling_910b_swa_cmp_ratio_not_0_failed)
 {
     SmlaCase c = Make910bCase();
     c.cmpRatio = 4;

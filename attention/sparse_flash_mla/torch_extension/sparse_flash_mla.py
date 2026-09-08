@@ -48,7 +48,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
             "Tensor? cmp_residual_kv=None, "
             "Tensor? ori_topk_length=None, Tensor? cmp_topk_length=None, "
             "Tensor? sinks=None, Tensor? metadata=None, "
-            "float softmax_scale=1.0, int cmp_ratio=1, "
+            "float softmax_scale=1.0, int cmp_ratio=0, "
             "int ori_mask_mode=0, int cmp_mask_mode=0, "
             "int ori_win_left=-1, int ori_win_right=-1, "
             'str layout_q="BSND", str layout_kv="BSND", '
@@ -114,7 +114,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
             sinks=None,
             metadata=None,
             softmax_scale=1.0,
-            cmp_ratio=1,
+            cmp_ratio=0,
             ori_mask_mode=0,
             cmp_mask_mode=0,
             ori_win_left=-1,
@@ -205,7 +205,7 @@ def sparse_flash_mla_metadata(
     max_seqlen_cmp_kv = 0 if max_seqlen_cmp_kv is None else max_seqlen_cmp_kv
     ori_topk = 0 if ori_topk is None else ori_topk
     cmp_topk = 0 if cmp_topk is None else cmp_topk
-    cmp_ratio = 1 if cmp_ratio is None else cmp_ratio
+    cmp_ratio = 0 if cmp_ratio is None else cmp_ratio
     ori_mask_mode = 0 if ori_mask_mode is None else ori_mask_mode
     cmp_mask_mode = 0 if cmp_mask_mode is None else cmp_mask_mode
     ori_win_left = -1 if ori_win_left is None else ori_win_left
@@ -333,7 +333,7 @@ def sparse_flash_mla(
     sinks=None,
     metadata=None,
     softmax_scale=1.0,
-    cmp_ratio=1,
+    cmp_ratio=0,
     ori_mask_mode=0,
     cmp_mask_mode=0,
     ori_win_left=-1,

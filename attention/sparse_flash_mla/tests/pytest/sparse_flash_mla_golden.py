@@ -1479,7 +1479,9 @@ def resolve_compressed_actual_lengths(
     """Resolve compressed actual lengths exactly as SMLA input generation does."""
     if seqused_ori_kv is None or cmp_ratio is None:
         return seqused_cmp_kv, cmp_residual_kv
-    if cmp_ratio < 1:
+    if cmp_ratio == 0:
+        return seqused_cmp_kv, cmp_residual_kv
+    if cmp_ratio < 0:
         raise ValueError(f"cmp_ratio should be in range [1, 128], but got {cmp_ratio}")
     if seqused_cmp_kv is None:
         if torch.is_tensor(seqused_ori_kv):
@@ -1683,7 +1685,7 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
         template_run_mode = template_mode
         template_idx = mapping[template_mode]
         if template_mode == "SWA":
-            cmp_ratio = None
+            cmp_ratio = 0
             K1 = None
             K = None
         elif template_mode == "HCA":
@@ -1694,7 +1696,7 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
             cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
             K = int(K) if K is not None else None
         elif template_mode == "ORI_SPARSE":
-            cmp_ratio = 1
+            cmp_ratio = 0
             K1 = int(K1) if K1 is not None else None
             K = None
         elif template_mode == "ORI_CMP_SPARSE":
@@ -1704,9 +1706,10 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
     else:
         # TODO 删除这部分逻辑 替换所有template_idx
         if K is None or K == ["None"]:
-            if cmp_ratio is None:
+            if cmp_ratio is None or int(cmp_ratio) == 0:
                 template_idx = 0  # SWA
                 template_run_mode = "SWA"
+                cmp_ratio = 0
             else:
                 template_idx = 1  # HCA
                 template_run_mode = "HCA"

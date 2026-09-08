@@ -30,7 +30,7 @@
 
 | 层次 | 文件 / 符号 | 本次处理 |
 | --- | --- | --- |
-| 主算子 Host | [sparse_flash_mla_tiling.cpp](../op_host/sparse_flash_mla_tiling.cpp)，`CheckSingleParaCmpRatio` | 仅 CSA 增加 2；保持 HCA=128、SWA=1，更新 CSA 报错 |
+| 主算子 Host | [sparse_flash_mla_tiling.cpp](../op_host/sparse_flash_mla_tiling.cpp)，`CheckSingleParaCmpRatio` | CSA 支持 1/2/4；保持 HCA=128，SWA 改为 0，更新报错 |
 | Metadata Host | [metadata_check.h](../../sparse_flash_mla_metadata/op_host/sparse_flash_mla_metadata_check.h)，`IsCmpRatioSupportSmla` | 与主算子允许集合一致，更新错误信息 |
 | Metadata AICPU | [metadata_aicpu.cpp](../../sparse_flash_mla_metadata/op_kernel_aicpu/sparse_flash_mla_metadata_aicpu.cpp) | 保留已有运行时乘除公式、residual 范围校验及 block/cost 逻辑 |
 | CSA Kernel | [csa_kernel.h](../op_kernel/arch22/sparse_flash_mla_csa_kernel.h) | 已通过 cmpRatio 计算长度和 cmpS2IdLimit，无需新增 ratio 模板 |
