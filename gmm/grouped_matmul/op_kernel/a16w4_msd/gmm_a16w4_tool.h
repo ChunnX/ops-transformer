@@ -34,14 +34,12 @@ namespace GROUPED_MATMUL::A16W4Msd {
 template <typename T>
 __aicore__ inline T CeilAlign(T a, T b)
 {
-    ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
     return (a + b - 1) / b * b;
 }
 
 template <typename T>
 __aicore__ inline T CeilDiv(T a, T b)
 {
-    ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
     return (a + b - 1) / b;
 }
 

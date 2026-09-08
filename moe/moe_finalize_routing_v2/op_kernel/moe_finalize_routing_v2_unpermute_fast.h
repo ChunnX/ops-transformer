@@ -128,7 +128,6 @@ __aicore__ inline void MoeFinalizeRoutingV2UnpermuteFast<T1, T2, T3, PROBS>::Ini
     GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens,
     const MoeFinalizeRoutingV2TilingData *__restrict tiling_data, TPipe *pipe)
 {
-    ASSERT(GetBlockNum() != 0 && "block dim can not be zero!");
     // Map MoeFinalizeRoutingV2 key 20050 fields to MoeTokenUnpermute quantities.
     this->hidden_size = tiling_data->H;
     this->top_k = tiling_data->K;

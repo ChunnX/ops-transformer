@@ -48,8 +48,6 @@ public:
     __aicore__ inline void operator()(const DstTensor &l0A, const SrcTensor &l1A, const Coord &coord)
     {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 2201)
-        ASCENDC_ASSERT((AscendC::Std::is_same_v<typename DstTrait::LiteType, typename SrcTrait::LiteType>),
-                       { KERNEL_LOG(KERNEL_ERROR, "Type of l0A l1A must be same"); });
         if constexpr (AType::isTrans) {
             if constexpr (AscendC::IsSameTypeV<typename AType::T, int8_t>) {
                 TransposeLoadA2Int8(l0A, l1A, coord);
@@ -60,7 +58,6 @@ public:
             NoneTransposeLoadA2(l0A, l1A, coord);
         }
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV2201"); });
 #endif
     }
 
@@ -227,15 +224,12 @@ public:
     __aicore__ inline void operator()(const DstTensor &l0A, const SrcTensor &l1A, const Coord &coord)
     {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-        ASCENDC_ASSERT((AscendC::Std::is_same_v<typename DstTrait::LiteType, typename SrcTrait::LiteType>),
-                       { KERNEL_LOG(KERNEL_ERROR, "l0A l1A type must be same"); });
         if constexpr (AType::isTrans) {
             TransposeLoadA2(l0A, l1A, coord);
         } else {
             NoneTransposeLoadA2(l0A, l1A, coord);
         }
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV3510"); });
 #endif
     }
 

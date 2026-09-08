@@ -119,8 +119,6 @@ __aicore__ inline void InvokeGmmS8S4TensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR
         kernel(params);
     }
 #if defined(BLAZE_S8S4_DEBUG)
-    KERNEL_LOG(KERNEL_ERROR, "[S8S4][local kernel destroyed] block=%u ratio=%u", AscendC::GetBlockIdx(),
-               AscendC::GetTaskRation());
 #endif
 }
 

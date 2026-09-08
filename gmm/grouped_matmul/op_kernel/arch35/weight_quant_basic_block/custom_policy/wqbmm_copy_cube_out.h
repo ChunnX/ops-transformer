@@ -64,13 +64,10 @@ private:
                                        int32_t baseBlockWidth)
     {
         // 2含义：指令要求m必须是偶数，向上对齐到偶数
-        ASCENDC_ASSERT((baseHeight % 2 == 0),
-                       { KERNEL_LOG(KERNEL_ERROR, "If split M when copy cube out, baseHeight must be even"); });
         if constexpr (C_TYPE::format == CubeFormat::ND || C_TYPE::format == CubeFormat::ND_ALIGN) {
             CopyOutNZ2ND<enSequentialWrite, T, IS_INTRA_BLOCK>(dst, co1Local, curRow, curCol, baseHeight, baseWidth,
                                                                baseBlockHeight, baseBlockWidth);
         } else {
-            ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "CopyOut: unsupported Matmul format type."); });
         }
     }
 

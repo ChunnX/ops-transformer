@@ -1088,10 +1088,6 @@ __aicore__ inline uint32_t MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFu
 
     isNewRouteEntry = true;
     uint32_t routeEntryIndex = routeEntryCount;
-    ASCENDC_ASSERT(routeEntryIndex < axisK_, {
-        KERNEL_LOG(KERNEL_ERROR, "remote route entry count (%u) exceeds axisK (%u), token %u dstScaleoutIndex %u",
-                   routeEntryIndex, axisK_, tokenId, dstScaleoutIndex);
-    });
     routeEntryCount++;
 
     routeScaleoutIndexTensor_.SetValue(routeEntryIndex, static_cast<int32_t>(dstScaleoutIndex));

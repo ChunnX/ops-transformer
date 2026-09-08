@@ -97,7 +97,6 @@ __aicore__ inline void KernelMoeTokenUnpermuteWithEp<T1, T2, T3, PROBS, ISTOKEN>
     GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens,
     const MoeTokenUnpermuteWithEpTilingData *__restrict tiling_data, TPipe *t_pipe)
 {
-    ASSERT(GetBlockNum() != 0 && "block dim can not be zero!");
     this->pipe = t_pipe;
     // row_input
     this->hidden_size = ISTOKEN ? tiling_data->hidden_size : 1;

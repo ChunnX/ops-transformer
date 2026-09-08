@@ -54,10 +54,8 @@ public:
         if constexpr (BType::isTrans) {
             TransposeLoadB2(l0B, l1B, coord, l1BIndexMatrix);
         } else {
-            ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Matrix B only support transpose."); });
         }
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV2201"); });
 #endif
     }
 

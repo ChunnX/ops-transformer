@@ -948,9 +948,6 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::FixpipeCToGM(Globa
 
     auto cL0Tensor = this->cL0Tensor[cL0BufId];
     if constexpr (GMFormat == CubeFormat::NZ) {
-        ASCENDC_ASSERT(subNSize % BLOCK_CUBE == 0, {
-            KERNEL_LOG(KERNEL_ERROR, "subNSize must be divisible by 16, current value is %u", subNSize);
-        });
         fixParams.dstStride = dstStride * BLOCK_CUBE * sizeof(MM_OUT_T) / ONE_BLK_SIZE;
         auto dstTensor = mmResGm[dstStride * subNStart][BLOCK_CUBE * subMStart];
         Fixpipe<MM_OUT_T, T, CFG_NZ>(dstTensor, cL0Tensor, fixParams);

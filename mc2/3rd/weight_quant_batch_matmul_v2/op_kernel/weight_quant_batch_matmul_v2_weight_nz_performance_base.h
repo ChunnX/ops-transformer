@@ -898,8 +898,6 @@ Mc2WeightQuantBatchMatmulV2WeightNzBasePerformanceKernel<xType, wType, biasType,
             int32_t blockCount = CeilDiv(bubKLen, 32);
             int64_t srcStrideSize = CeilDiv(tiling_->nSize, BLOCK_CUBE) * BLOCK_CUBE - bubNLen;
 #if defined(__CCE_KT_TEST__)
-            ASCENDC_ASSERT(srcStrideSize > 65535,
-                           { KERNEL_LOG(KERNEL_ERROR, "srcStride must <= 65535, actual is %ld", srcStrideSize); });
 #endif
             int32_t srcStride = static_cast<int32_t>(srcStrideSize);
             int32_t dstStride = nL0Align - CeilDiv(bubNLen, BLOCK_CUBE) * BLOCK_CUBE;

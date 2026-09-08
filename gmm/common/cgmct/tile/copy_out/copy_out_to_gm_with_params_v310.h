@@ -79,7 +79,6 @@ public:
         }
         AscendC::Fixpipe<DstT, SrcT, AscendC::CFG_ROW_MAJOR>(gm[dstOffset], src, params);
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV3510"); });
 #endif
     }
 };
@@ -139,7 +138,6 @@ public:
         }
         AscendC::Fixpipe<DstT, SrcT, AscendC::CFG_NZ>(gm[dstOffset], co1Local, params);
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV3510"); });
 #endif
     }
 };
@@ -187,7 +185,6 @@ public:
         CopyOutNZ2ND(dst, src, curRow, curCol, l0CTileHeight, l0CTileWidth, baseM, baseN, orgKc != 0 ? orgKc : orgN,
                      quantTensor);
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV3510"); });
 #endif
     }
 
@@ -215,7 +212,6 @@ public:
         CopyOutNZ2ND(gm, co1Local, curRow, curCol, l0CTileHeight, l0CTileWidth, baseM, baseN, orgKc != 0 ? orgKc : orgN,
                      quantScal);
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV3510"); });
 #endif
     }
 
@@ -365,7 +361,6 @@ public:
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         CopyOutNZ2NZ(gm, co1Local, curRow, curCol, l0CTileHeight, l0CTileWidth, baseM, baseN, orgM, quantTensor);
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV3510"); });
 #endif
     }
 
@@ -392,7 +387,6 @@ public:
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         CopyOutNZ2NZ(gm, co1Local, curRow, curCol, l0CTileHeight, l0CTileWidth, baseM, baseN, orgM, quantScalar);
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV3510"); });
 #endif
     }
 

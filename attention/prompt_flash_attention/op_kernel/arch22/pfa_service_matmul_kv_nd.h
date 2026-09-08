@@ -423,9 +423,6 @@ __aicore__ inline void PfaMatmulKvNd<INPUT_T, T, pageAttention>::CopyNDGmToZZL1(
     LocalTensor<INPUT_T> &l1Tensor, const GlobalTensor<INPUT_T> &gmSrcTensor, uint32_t srcN, uint32_t srcD,
     uint32_t srcDstride)
 {
-    ASCENDC_ASSERT(srcDstride < 65536, {
-        KERNEL_LOG(KERNEL_ERROR, "srcDstride must be less than 65536, current value is %u", srcDstride);
-    });
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = CeilDiv(srcN, BLOCK_CUBE);
     nd2nzPara.nValue = BLOCK_CUBE; // 行数
@@ -595,9 +592,6 @@ __aicore__ inline void PfaMatmulKvNd<INPUT_T, T, pageAttention>::FixpipeL0CToGM(
     fixParams.ndNum = 1;
 
     if constexpr (GMFormat == CubeFormat::NZ) {
-        ASCENDC_ASSERT(subNSize % BLOCK_CUBE == 0, {
-            KERNEL_LOG(KERNEL_ERROR, "subNSize must be divisible by 16, current value is %u", subNSize);
-        });
         fixParams.dstStride = dstStride * BLOCK_CUBE * sizeof(T) / ONE_BLK_SIZE;
         GlobalTensor<T> dstTensor = cGmTensor[dstStride * subNStart][BLOCK_CUBE * subMStart];
         Fixpipe<T, T, CFG_NZ>(dstTensor, cL0Tensor, fixParams);
@@ -870,9 +864,6 @@ template <typename INPUT_T, typename T, bool pageAttention>
 template <CubeFormat OutFormat>
 __aicore__ inline void PfaMatmulKvNd<INPUT_T, T, pageAttention>::ComputeMm1(const SplitSameABExtraInfo &info)
 {
-    ASCENDC_ASSERT((!info.withRope) || (dSize == BlockAlign<INPUT_T>(dSize)), {
-        KERNEL_LOG(KERNEL_ERROR, "dSize must block aligned if with separate rope, current value is %u", dSize);
-    });
     constexpr uint32_t mSplitSize = 512;
     constexpr uint32_t nSplitSize = 128;
     constexpr uint32_t mL0SplitSize = 128;

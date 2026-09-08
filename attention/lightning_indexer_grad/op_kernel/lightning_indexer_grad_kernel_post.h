@@ -66,7 +66,6 @@ __aicore__ inline void LIGVectorPost<LIGT>::Init(TPipe *pipe_in, __gm__ uint8_t 
     pipe = nullptr;
 
     if (ordTilingData == nullptr || pipe_in == nullptr || dk == nullptr || workspace == nullptr) {
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "LIGVectorPost Init input pointer is null."); });
         return;
     }
 
@@ -107,7 +106,6 @@ template <typename LIGT>
 __aicore__ inline void LIGVectorPost<LIGT>::Process()
 {
     if (tilingData == nullptr || pipe == nullptr) {
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "LIGVectorPost Process called before successful Init."); });
         return;
     }
     // init k

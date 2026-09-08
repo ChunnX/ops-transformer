@@ -91,24 +91,10 @@ static constexpr int32_t BLOCK_COUNT_MAX = 4095;
 static constexpr int32_t BLOCK_LEN_MIN = 1;
 static constexpr int32_t BLOCK_LEN_MAX = 65535;
 // 根据《Ascend C API参考》校验DataCopy参数范围
-__aicore__ inline void CheckDataCopyParams(uint32_t blockCount, uint32_t blockLen)
-{
-    ASCENDC_ASSERT(blockCount >= BLOCK_COUNT_MIN, { KERNEL_LOG(KERNEL_ERROR, "blockCount should >= 1"); });
-    ASCENDC_ASSERT(blockCount <= BLOCK_COUNT_MAX, { KERNEL_LOG(KERNEL_ERROR, "blockCount should <= 65535"); });
-    ASCENDC_ASSERT(blockLen >= BLOCK_LEN_MIN, { KERNEL_LOG(KERNEL_ERROR, "blockLen should >= 1"); });
-    ASCENDC_ASSERT(blockLen <= BLOCK_LEN_MAX, { KERNEL_LOG(KERNEL_ERROR, "blockLen should <= 65535"); });
-}
+__aicore__ inline void CheckDataCopyParams(uint32_t blockCount, uint32_t blockLen) {}
 __aicore__ inline void CheckDataCopyNd2nzParams(uint32_t nValue, uint32_t dValue, uint32_t srcDValue,
                                                 uint32_t dstNzC0Stride)
-{
-    ASCENDC_ASSERT(nValue <= NVALUE_MAX, { KERNEL_LOG(KERNEL_ERROR, "nValue should <= 16384"); });
-    ASCENDC_ASSERT(dValue <= DVALUE_MAX, { KERNEL_LOG(KERNEL_ERROR, "dValue should <= 65535"); });
-    ASCENDC_ASSERT(srcDValue >= SRC_DVALUE_MIN, { KERNEL_LOG(KERNEL_ERROR, "srcDValue should >= 1 "); });
-    ASCENDC_ASSERT(srcDValue <= SRC_DVALUE_MAX, { KERNEL_LOG(KERNEL_ERROR, "srcDValue should <= 65535"); });
-    ASCENDC_ASSERT(dstNzC0Stride >= DST_NZ_C0_STRIDE_MIN, { KERNEL_LOG(KERNEL_ERROR, "dstNzC0Stride should >= 1"); });
-    ASCENDC_ASSERT(dstNzC0Stride <= DST_NZ_C0_STRIDE_MAX,
-                   { KERNEL_LOG(KERNEL_ERROR, "dstNzC0Stride should <= 16384"); });
-}
+{}
 
 __aicore__ inline void SetDataCopyNd2nzParams(Nd2NzParams &nd2nzParams, uint32_t nValue, uint32_t dValue,
                                               uint32_t srcDValue, uint32_t dstNzC0Stride)

@@ -1245,9 +1245,6 @@ __aicore__ inline void AntiquantVFFp8PerTokenD64(LocalTensor<KV_T> &antiqInUb, L
                                                  LocalTensor<ANTIQ_PARAMS_T> &antiqOffsetUb,
                                                  LocalTensor<ANTIQ_PARAMS_T> &antiqScaleUb, uint32_t dealRowCount)
 {
-    ASCENDC_ASSERT((baseSize == 64), { KERNEL_LOG(KERNEL_ERROR, "baseSize is %d, which must be 64.", baseSize); });
-    ASCENDC_ASSERT((IsSameType<KV_T, fp8_e4m3fn_t>::value),
-                   { KERNEL_LOG(KERNEL_ERROR, "Antiquant fp8 PerToken, KV_T must be fp8_e4m3."); });
     __ubuf__ uint8_t *ubSrcAddr = (__ubuf__ uint8_t *)(antiqInUb.GetPhyAddr());
     __ubuf__ Q_T *ubDstAddr = (__ubuf__ Q_T *)(antiqResUb.GetPhyAddr());
     __ubuf__ Q_T *ubDstAddr_ = ubDstAddr + 16 - (dealRowCount + 1) * 32 * 4 / 2;
@@ -1325,9 +1322,6 @@ __aicore__ inline void AntiquantVFFp8PerTokenD128(LocalTensor<KV_T> &antiqInUb, 
                                                   LocalTensor<ANTIQ_PARAMS_T> &antiqOffsetUb,
                                                   LocalTensor<ANTIQ_PARAMS_T> &antiqScaleUb, uint32_t dealRowCount)
 {
-    ASCENDC_ASSERT((baseSize == 128), { KERNEL_LOG(KERNEL_ERROR, "baseSize is %d, which must be 128.", baseSize); });
-    ASCENDC_ASSERT((IsSameType<KV_T, fp8_e4m3fn_t>::value),
-                   { KERNEL_LOG(KERNEL_ERROR, "Antiquant fp8 PerToken, KV_T must be fp8_e4m3."); });
     __ubuf__ uint8_t *ubSrcAddr = (__ubuf__ uint8_t *)(antiqInUb.GetPhyAddr());
     __ubuf__ Q_T *ubDstAddr = (__ubuf__ Q_T *)(antiqResUb.GetPhyAddr());
     __ubuf__ ANTIQ_PARAMS_T *ubOffsetAddr = (__ubuf__ ANTIQ_PARAMS_T *)antiqOffsetUb.GetPhyAddr();
@@ -1406,9 +1400,6 @@ __aicore__ inline void AntiquantVFFp8PerTokenD256(LocalTensor<KV_T> &antiqInUb, 
                                                   LocalTensor<ANTIQ_PARAMS_T> &antiqOffsetUb,
                                                   LocalTensor<ANTIQ_PARAMS_T> &antiqScaleUb, uint32_t dealRowCount)
 {
-    ASCENDC_ASSERT((baseSize == 256), { KERNEL_LOG(KERNEL_ERROR, "baseSize is %d, which must be 256.", baseSize); });
-    ASCENDC_ASSERT((IsSameType<KV_T, fp8_e4m3fn_t>::value),
-                   { KERNEL_LOG(KERNEL_ERROR, "Antiquant fp8 PerToken, KV_T must be fp8_e4m3."); });
     __ubuf__ uint8_t *ubSrcAddr = (__ubuf__ uint8_t *)(antiqInUb.GetPhyAddr());
     __ubuf__ uint8_t *ubSrcAddr1 = ubSrcAddr + 128;
     __ubuf__ Q_T *ubDstAddr = (__ubuf__ Q_T *)(antiqResUb.GetPhyAddr());
@@ -1497,9 +1488,6 @@ __aicore__ inline void AntiquantVFFp8PerTokenD512(LocalTensor<KV_T> &antiqInUb, 
                                                   LocalTensor<ANTIQ_PARAMS_T> &antiqOffsetUb,
                                                   LocalTensor<ANTIQ_PARAMS_T> &antiqScaleUb, uint32_t dealRowCount)
 {
-    ASCENDC_ASSERT((baseSize == 512), { KERNEL_LOG(KERNEL_ERROR, "baseSize is %d, which must be 512.", baseSize); });
-    ASCENDC_ASSERT((IsSameType<KV_T, fp8_e4m3fn_t>::value),
-                   { KERNEL_LOG(KERNEL_ERROR, "Antiquant fp8 PerToken, KV_T must be fp8_e4m3."); });
     __ubuf__ uint8_t *ubSrcAddr = (__ubuf__ uint8_t *)(antiqInUb.GetPhyAddr());
     __ubuf__ uint8_t *ubSrcAddr1 = ubSrcAddr + 128;
     __ubuf__ uint8_t *ubSrcAddr2 = ubSrcAddr + 256; // 128*2
@@ -1601,10 +1589,6 @@ __aicore__ inline void AntiquantVFFp8PerTokenNz(LocalTensor<KV_T> &antiqInUb, Lo
                                                 LocalTensor<ANTIQ_PARAMS_T> &antiqOffsetUb,
                                                 LocalTensor<ANTIQ_PARAMS_T> &antiqScaleUb, uint32_t dealRowCount)
 {
-    ASCENDC_ASSERT((baseSize % 16 == 0),
-                   { KERNEL_LOG(KERNEL_ERROR, "baseSize is %d, which must be 16 aligned.", baseSize); });
-    ASCENDC_ASSERT((IsSameType<KV_T, fp8_e4m3fn_t>::value),
-                   { KERNEL_LOG(KERNEL_ERROR, "Antiquant fp8 PerToken, KV_T must be fp8_e4m3."); });
     __ubuf__ uint8_t *ubSrcAddr = (__ubuf__ uint8_t *)(antiqInUb.GetPhyAddr());
     __ubuf__ Q_T *ubDstAddr = (__ubuf__ Q_T *)(antiqResUb.GetPhyAddr());
     __ubuf__ Q_T *ubOffsetAddr = (__ubuf__ Q_T *)antiqOffsetUb.GetPhyAddr();

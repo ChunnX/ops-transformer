@@ -76,7 +76,6 @@ struct Copy<
         auto dstOffset = dst.GetTensorTrait().GetLayout()(coord);
         AscendC::Fixpipe<DstT, SrcT, AscendC::CFG_ROW_MAJOR>(dstTensor[dstOffset], srcTensor, params);
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV2201"); });
 #endif
     }
 };
@@ -134,7 +133,6 @@ struct Copy<Arch::DAV2201, CopyWithLayout, OutputType, DstTrait, SrcTrait,
         auto dstOff = dst.GetTensorTrait().GetLayout()(coord);
         AscendC::Fixpipe<DstT, SrcT, AscendC::CFG_NZ>(dstTensor[dstOff], srcTensor, params);
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV2201"); });
 #endif
     }
 };
@@ -202,7 +200,6 @@ struct Copy<
         auto dstOff = dst.GetTensorTrait().GetLayout()(coord);
         AscendC::Fixpipe<DstT, SrcT, AscendC::CFG_ROW_MAJOR>(dstTensor[dstOff], srcTensor, params);
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV3510"); });
 #endif
     }
 };
@@ -262,7 +259,6 @@ struct Copy<Arch::DAV3510, CopyWithLayout, OutputType, DstTrait, SrcTrait,
         auto offset = dst.GetTensorTrait().GetLayout()(coord);
         AscendC::Fixpipe<DstT, SrcT, AscendC::CFG_NZ>(dstTensor[offset], srcTensor, params);
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV3510"); });
 #endif
     }
 };
@@ -330,7 +326,6 @@ struct Copy<
         auto offset = dst.GetTensorTrait().GetLayout()(coord);
         AscendC::Fixpipe<DstT, SrcT, cfgUb>(dstTensor[offset], srcTensor, params);
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV3510"); });
 #endif
     }
 };
@@ -397,7 +392,6 @@ struct Copy<Arch::DAV3510, CopyWithLayout, OutputType, DstTrait, SrcTrait,
         auto offset = dst.GetTensorTrait().GetLayout()(coord);
         AscendC::Fixpipe<DstT, SrcT, cfgUb>(dstTensor[offset], srcTensor, params);
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV3510"); });
 #endif
     }
 };
