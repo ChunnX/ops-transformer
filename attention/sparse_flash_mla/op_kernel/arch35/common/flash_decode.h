@@ -444,7 +444,7 @@ __aicore__ inline void ReducePairwiseWithLse(const S2SplitFdStagingLayout &layou
             SetFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
             WaitFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
             if (softmaxLseOffset + startRow == TARGET_LSE_LINEAR_OFFSET) {
-                DumpTensor(blockMaxUb, 6, 1);
+                DumpTensor(blockMaxUb, 6, static_cast<uint32_t>(dealRowCount));
             }
             DataCopyPad(softmaxLseGm[softmaxLseOffset + startRow], blockMaxUb, lseParams);
             SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);

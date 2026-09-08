@@ -901,9 +901,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutVec1Lse(LocalTensor<fl
     WaitFlag<HardEvent::MTE3_V>(INNERCORE_LSE_MTE3_V);
     if (runInfo.softmaxLseOffset <= AttentionCommon::TARGET_LSE_LINEAR_OFFSET &&
         AttentionCommon::TARGET_LSE_LINEAR_OFFSET < runInfo.softmaxLseOffset + runInfo.halfMRealSize) {
-        uint32_t row = static_cast<uint32_t>(AttentionCommon::TARGET_LSE_LINEAR_OFFSET - runInfo.softmaxLseOffset);
-        DumpTensor(sumUb[row], 4, 1);
-        DumpTensor(maxUb[row], 5, 1);
+        DumpTensor(sumUb, 4, static_cast<uint32_t>(runInfo.halfMRealSize));
+        DumpTensor(maxUb, 5, static_cast<uint32_t>(runInfo.halfMRealSize));
     }
     ComputeLse<float>(outLse, sumUb, maxUb, runInfo.halfMRealSize);
     SetFlag<HardEvent::V_MTE3>(INNERCORE_LSE_V_MTE3);
@@ -952,9 +951,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(StaticBuffer<Q_T>
     // UPDATE writes its temporary statistics first; dump only after the merge above.
     if (runInfo.halfMRealSize > 0 && runInfo.softmaxLseOffset <= AttentionCommon::TARGET_LSE_LINEAR_OFFSET &&
         AttentionCommon::TARGET_LSE_LINEAR_OFFSET < runInfo.softmaxLseOffset + runInfo.halfMRealSize) {
-        uint32_t row = static_cast<uint32_t>(AttentionCommon::TARGET_LSE_LINEAR_OFFSET - runInfo.softmaxLseOffset);
-        DumpTensor(sumUb[row], 2, 1);
-        DumpTensor(maxUb[row], 3, 1);
+        DumpTensor(sumUb, 2, static_cast<uint32_t>(runInfo.halfMRealSize));
+        DumpTensor(maxUb, 3, static_cast<uint32_t>(runInfo.halfMRealSize));
     }
     if constexpr (IS_BATCH_CONSISTENCY) {
         StageBatchConsistencyVec1Lse(maxUb, sumUb, runInfo, constInfo);
