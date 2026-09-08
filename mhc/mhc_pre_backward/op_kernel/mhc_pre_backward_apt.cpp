@@ -39,7 +39,15 @@ __global__ __aicore__ void mhc_pre_backward(GM_ADDR x, GM_ADDR phi, GM_ADDR alph
             x,          phi,      alpha, gradHIn,   gradHPost, gradHRes, invRms,  hMix,
             hPre,      hPost,   gamma, gradXPostOptional, gradX, gradPhi, gradAlpha, gradBias,
             gradGamma, user,     &pipe, &tilingData};
-        MhcPreBackwardKernel<DTYPE_X, float32_t> op;
+        MT_C0 mm0;
+        MT_C1 mm1;
+        bool useHighMatmul = tilingData.implMode != MHC_PRE_BACKWARD_IMPL_MODE_HF32 &&
+                             tilingData.totalLength > MHC_PRE_BACKWARD_FP32_HIGH_MATMUL_THRESHOLD;
+        if (useHighMatmul) {
+            mm0.Init(&tilingData.matmulTilingC0, &pipe);
+            mm1.Init(&tilingData.matmulTilingC1, &pipe);
+        }
+        MhcPreBackwardKernel<DTYPE_X, float32_t> op(mm0, mm1);
         op.Init(initParams);
         op.Process();
     }
