@@ -4,30 +4,40 @@
 from __future__ import annotations
 
 import argparse
+import copy
+import csv
 import json
 import math
 import os
 import signal
 import subprocess
 import sys
+import time
 import uuid
 from pathlib import Path
 
 try:
     from .case_schema import case_digest, load_case_manifest, select_cases
-    from .common import timestamp, write_csv, write_json as _write_json
+    from .common import timestamp, write_json as _write_json
     from .tiling_space import candidate_id, candidates_for_case, default_tiling
-    from .tiling_worker import request_digest, score_rank_samples, validate_rank_hardware
+    from .tiling_protocol import (
+        EXECUTION_MODE, SEARCH_MODE, batch_path, candidate_request, request_digest,
+        validate_batch_payload,
+    )
+    from .tiling_worker import score_rank_samples, validate_rank_hardware
 except ImportError:
     from case_schema import case_digest, load_case_manifest, select_cases
-    from common import timestamp, write_csv, write_json as _write_json
+    from common import timestamp, write_json as _write_json
     from tiling_space import candidate_id, candidates_for_case, default_tiling
-    from tiling_worker import request_digest, score_rank_samples, validate_rank_hardware
+    from tiling_protocol import (
+        EXECUTION_MODE, SEARCH_MODE, batch_path, candidate_request, request_digest,
+        validate_batch_payload,
+    )
+    from tiling_worker import score_rank_samples, validate_rank_hardware
 
 
 HERE = Path(__file__).resolve().parent
 METRIC = "median_of_batch_max_rank_npu_event_us_per_call"
-SEARCH_MODE = "performance_only"
 
 
 def write_json(path, payload):
@@ -45,6 +55,13 @@ def _positive_int(value):
     return number
 
 
+def _nonnegative_int(value):
+    number = int(value)
+    if number < 0:
+        raise argparse.ArgumentTypeError("value must be a nonnegative integer")
+    return number
+
+
 def launch_command(args, world_size, request_path, output_dir, trial_index):
     if world_size % args.nnodes:
         raise ValueError("case world_size must be divisible by nnodes")
@@ -59,7 +76,7 @@ def launch_command(args, world_size, request_path, output_dir, trial_index):
     master_port = args.master_port + 2 * trial_index
     udma_port = args.udma_master_port + 2 * trial_index
     if not (1 <= master_port <= 65535 and 1 <= udma_port <= 65535):
-        raise ValueError("trial ports exceed [1, 65535]; lower base ports or candidate count")
+        raise ValueError("session ports exceed [1, 65535]; lower base ports or restart this search with --resume")
     if master_port == udma_port:
         raise ValueError("torchrun and SHMEM bootstrap ports must differ")
     command = [
@@ -82,6 +99,46 @@ def launch_command(args, world_size, request_path, output_dir, trial_index):
     return command, environment
 
 
+def _stop_process_tree(process, log):
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            stdout=log, stderr=subprocess.STDOUT, timeout=10,
+        )
+    else:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        # Descendants can outlive torchrun after SIGTERM. Kill the group before
+        # another session may reuse the NPUs or bootstrap ports.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    process.wait(timeout=10)
+
+
+def _read_worker_result(output_dir, returncode):
+    result_path = Path(output_dir) / "result.json"
+    if result_path.is_file():
+        try:
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            return {"status": "launch_failed", "errors": ["invalid worker result: {}".format(error)]}
+        if not isinstance(result, dict):
+            return {"status": "launch_failed", "errors": ["worker result must be a JSON object"]}
+        if returncode and result.get("status") in ("passed", "measured", "probed", "completed"):
+            result.update(status="launch_failed", errors=["worker teardown failed: exit {}".format(returncode)])
+        result["returncode"] = returncode
+        return result
+    return {"status": "launch_failed", "returncode": returncode, "errors": ["worker produced no result"]}
+
+
 def run_isolated(command, environment, output_dir, timeout):
     """Kill the whole local worker process tree on timeout before continuing."""
     output_dir = Path(output_dir)
@@ -100,43 +157,85 @@ def run_isolated(command, environment, output_dir, timeout):
         try:
             returncode = process.wait(timeout=timeout)
         except (subprocess.TimeoutExpired, KeyboardInterrupt) as error:
-            if os.name == "nt":
-                subprocess.run(
-                    ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                    stdout=log, stderr=subprocess.STDOUT, timeout=10,
-                )
-            else:
-                try:
-                    os.killpg(process.pid, signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    pass
-                # Descendants may outlive the torchrun parent after SIGTERM.
-                # Always signal its process group once more before reusing NPUs.
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-            process.wait(timeout=10)
+            _stop_process_tree(process, log)
             if isinstance(error, KeyboardInterrupt):
                 raise
             return {"status": "timeout", "errors": ["candidate exceeded {} seconds".format(timeout)]}
-    result_path = output_dir / "result.json"
-    if result_path.is_file():
+    return _read_worker_result(output_dir, returncode)
+
+
+def run_persistent(command, environment, output_dir, timeout, request, on_batch):
+    """Keep ranks alive; enforce timeout between actual progress milestones.
+
+    Atomic batch files are both streaming results and crash checkpoints. The
+    parent only reads each batch once, including the last one before an exit.
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    options = {"start_new_session": True} if os.name != "nt" else {
+        "creationflags": subprocess.CREATE_NEW_PROCESS_GROUP,
+    }
+    digest = request_digest(request)
+    next_batch = 0
+    sequence = -1
+    progress_stamp = None
+    last_progress = time.monotonic()
+    progress_path = output_dir / "progress.json"
+    with (output_dir / "launch.log").open("w", encoding="utf-8") as log:
         try:
-            result = json.loads(result_path.read_text(encoding="utf-8"))
+            process = subprocess.Popen(
+                command, cwd=str(output_dir), env=environment,
+                stdout=log, stderr=subprocess.STDOUT, **options,
+            )
+        except OSError as error:
+            return {"status": "launch_failed", "errors": [str(error)]}
+        try:
+            while True:
+                while batch_path(output_dir, next_batch).is_file():
+                    payload = json.loads(batch_path(output_dir, next_batch).read_text(encoding="utf-8"))
+                    on_batch(payload)
+                    next_batch += 1
+                    last_progress = time.monotonic()
+                if progress_path.is_file():
+                    stamp = progress_path.stat().st_mtime_ns
+                    if stamp != progress_stamp:
+                        progress = json.loads(progress_path.read_text(encoding="utf-8"))
+                        if (
+                            not isinstance(progress, dict)
+                            or progress.get("request_digest") != digest
+                            or progress.get("execution_mode") != EXECUTION_MODE
+                            or type(progress.get("sequence")) is not int
+                        ):
+                            raise ValueError("worker progress does not match the current session")
+                        if progress["sequence"] > sequence:
+                            sequence = progress["sequence"]
+                            last_progress = time.monotonic()
+                        progress_stamp = stamp
+                returncode = process.poll()
+                if returncode is not None:
+                    # The worker can commit a batch between our last file check
+                    # and poll(). Drain those files before reporting its exit.
+                    while batch_path(output_dir, next_batch).is_file():
+                        on_batch(json.loads(batch_path(output_dir, next_batch).read_text(encoding="utf-8")))
+                        next_batch += 1
+                    return _read_worker_result(output_dir, returncode)
+                if time.monotonic() - last_progress > timeout:
+                    _stop_process_tree(process, log)
+                    return {"status": "timeout", "errors": [
+                        "session made no progress for {} seconds after {} batches".format(timeout, next_batch),
+                    ]}
+                time.sleep(0.2)
+        except KeyboardInterrupt:
+            _stop_process_tree(process, log)
+            raise
         except (OSError, ValueError) as error:
-            return {"status": "launch_failed", "errors": ["invalid worker result: {}".format(error)]}
-        if not isinstance(result, dict):
-            return {"status": "launch_failed", "errors": ["worker result must be a JSON object"]}
-        if returncode and result.get("status") in ("passed", "measured", "probed"):
-            result.update(status="launch_failed", errors=["worker teardown failed: exit {}".format(returncode)])
-        result["returncode"] = returncode
-        return result
-    return {"status": "launch_failed", "returncode": returncode, "errors": ["worker produced no result"]}
+            _stop_process_tree(process, log)
+            return {"status": "rejected", "errors": [str(error)]}
+        except BaseException:
+            # Keep an unexpected callback/programming error from orphaning rank
+            # processes even when it cannot be treated as a failed candidate.
+            _stop_process_tree(process, log)
+            raise
 
 
 def _require_rank_coverage(items, world_size, label):
@@ -159,6 +258,11 @@ def validate_worker_result(result, request):
         return
     if result.get("request_digest") != request_digest(request):
         raise ValueError("worker result has a missing or mismatched request digest")
+    if request.get("execution_mode") is not None and (
+        request["execution_mode"] != EXECUTION_MODE
+        or result.get("execution_mode") != EXECUTION_MODE
+    ):
+        raise ValueError("worker result does not match the persistent execution protocol")
     expected_status = "probed" if request["mode"] == "probe" else "measured"
     if result["status"] != expected_status:
         raise ValueError("worker result does not match the requested execution mode")
@@ -246,32 +350,150 @@ def build_best_results(cases, results, environment):
             candidate_id=best["candidate_id"], metric=METRIC,
             case_digest=case_digest(case), tested_candidates=len(tested),
             measured_candidates=len(eligible), passed=True, valid=True,
-            search_mode=SEARCH_MODE, accuracy_checked=False,
+            search_mode=SEARCH_MODE, execution_mode=EXECUTION_MODE, accuracy_checked=False,
         )
         if baseline:
             entry["default_latency_us"] = baseline["latency_us"]
             entry["speedup_vs_default"] = baseline["latency_us"] / best["latency_us"]
         best_cases.append(entry)
     return {
-        "schema_version": 1, "search_mode": SEARCH_MODE, "accuracy_checked": False,
+        "schema_version": 1, "search_mode": SEARCH_MODE, "execution_mode": EXECUTION_MODE,
+        "accuracy_checked": False,
         "environment": environment, "cases": best_cases,
     }
 
 
-def _report(output_root, cases, results, environment):
-    best = build_best_results(cases, results, environment)
-    write_json(output_root / "best_tilings.json", best)
-    write_json(output_root / "summary.json", {
-        "schema_version": 1,
-        "passed": len(best["cases"]) == len(cases),
-        "search_mode": SEARCH_MODE, "accuracy_checked": False,
-        "metric": METRIC, "environment": environment, "results": results,
-    })
-    write_csv(output_root / "summary.csv", results, [
+class IncrementalReport:
+    """Append compact results and update winners without scanning the history."""
+
+    FIELDS = [
         "case_id", "candidate_id", "is_default", "status", "accuracy_checked",
-        "search_mode", "latency_us", "log_path",
-    ])
-    return best
+        "search_mode", "execution_mode", "latency_us", "log_path",
+    ]
+
+    def __init__(self, output_root, cases, environment):
+        self.output_root = Path(output_root)
+        self.cases = cases
+        self.environment = environment
+        self.results = []
+        self.keys = set()
+        self.state = {
+            case["id"]: {"tested": 0, "measured": 0, "best": None, "baseline": None}
+            for case in cases
+        }
+        # Batch checkpoints are authoritative. Rebuilding these two derived
+        # streams on resume is a single linear pass and repairs a truncated tail.
+        self.jsonl = (self.output_root / "results.jsonl").open("w", encoding="utf-8")
+        self.csv_file = (self.output_root / "summary.csv").open("w", newline="", encoding="utf-8")
+        self.csv = csv.DictWriter(self.csv_file, fieldnames=self.FIELDS, extrasaction="ignore")
+        self.csv.writeheader()
+
+    def record(self, result):
+        key = (result["case_id"], result["candidate_id"])
+        if key in self.keys:
+            return False
+        compact = {key: value for key, value in result.items() if key != "environment"}
+        self.keys.add(key)
+        self.results.append(compact)
+        self.jsonl.write(json.dumps(compact, separators=(",", ":")) + "\n")
+        self.csv.writerow(compact)
+        state = self.state[result["case_id"]]
+        state["tested"] += 1
+        if result["status"] == "measured":
+            state["measured"] += 1
+            if state["best"] is None or (
+                result["latency_us"], result["candidate_id"]
+            ) < (state["best"]["latency_us"], state["best"]["candidate_id"]):
+                state["best"] = compact
+            if result.get("is_default"):
+                state["baseline"] = compact
+        return True
+
+    def best(self):
+        # At most two records per case, independent of completed candidate count.
+        finalists = []
+        for state in self.state.values():
+            if state["best"]:
+                finalists.append(state["best"])
+            if state["baseline"] and state["baseline"] is not state["best"]:
+                finalists.append(state["baseline"])
+        best = build_best_results(self.cases, finalists, self.environment)
+        for entry in best["cases"]:
+            state = self.state[entry["case_id"]]
+            entry["tested_candidates"] = state["tested"]
+            entry["measured_candidates"] = state["measured"]
+        return best
+
+    def flush_best(self):
+        self.jsonl.flush()
+        self.csv_file.flush()
+        best = self.best()
+        write_json(self.output_root / "best_tilings.json", best)
+        write_json(self.output_root / "search_progress.json", {
+            "schema_version": 1, "execution_mode": EXECUTION_MODE,
+            "search_mode": SEARCH_MODE, "accuracy_checked": False,
+            "completed_candidates": len(self.results),
+            "cases": {key: {
+                "tested_candidates": value["tested"], "measured_candidates": value["measured"],
+                "best_latency_us": value["best"]["latency_us"] if value["best"] else None,
+            } for key, value in self.state.items()},
+        })
+        return best
+
+    def finalize(self):
+        try:
+            best = self.flush_best()
+            write_json(self.output_root / "summary.json", {
+                "schema_version": 1, "passed": len(best["cases"]) == len(self.cases),
+                "search_mode": SEARCH_MODE, "execution_mode": EXECUTION_MODE,
+                "accuracy_checked": False, "metric": METRIC,
+                "environment": self.environment, "results": self.results,
+            })
+            return best
+        finally:
+            self.jsonl.close()
+            self.csv_file.close()
+
+
+def _session_request(case, candidates, manifest, plan_digest):
+    return {
+        "schema_version": 1, "mode": "session", "search_mode": SEARCH_MODE,
+        "execution_mode": EXECUTION_MODE, "run_id": manifest["run_id"],
+        "world_size": case["world_size"], "case": case, "candidates": candidates,
+        "plan_digest": plan_digest, "topology_label": manifest["settings"]["topology_label"],
+        "batch_size": manifest["settings"]["batch_size"],
+        "environment": manifest["environment"]["world_sizes"][str(case["world_size"])],
+    }
+
+
+def _validated_batch(payload, request, index, session_digest, environment_digest, log_path):
+    records = validate_batch_payload(
+        payload, request, index, session_digest=session_digest, environment_digest=environment_digest,
+    )
+    verified = []
+    size = request["batch_size"]
+    for record, item in zip(records, request["candidates"][index * size:(index + 1) * size]):
+        if record.get("status") != "measured":
+            raise ValueError("a committed batch must contain only complete measurements")
+        full_result = dict(record, environment=request["environment"])
+        validate_worker_result(full_result, candidate_request(request, item))
+        verified.append(dict(record, log_path=str(log_path)))
+    return verified
+
+
+def _validate_session_result(result, request):
+    if result.get("status") != "completed":
+        return
+    if (
+        result.get("request_digest") != request_digest(request)
+        or result.get("execution_mode") != EXECUTION_MODE
+        or result.get("search_mode") != SEARCH_MODE
+        or result.get("accuracy_checked") is not False
+        or result.get("environment") != request["environment"]
+        or type(result.get("completed_candidates")) is not int
+        or result["completed_candidates"] != len(request["candidates"])
+    ):
+        raise ValueError("worker completion does not match its complete session request")
 
 
 def _parse_args():
@@ -281,14 +503,26 @@ def _parse_args():
     parser.add_argument("--include-tag", action="append", default=[])
     parser.add_argument("--space", help="JSON search space (defaults to the supported compiled variants)")
     parser.add_argument("--strategy", choices=("random", "exhaustive", "grid"), default="random")
-    parser.add_argument("--max-candidates", type=_positive_int, default=64)
+    parser.add_argument("--max-candidates", type=_nonnegative_int, default=64,
+                        help="candidate budget per case; 0 searches every feasible candidate")
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--aic-cores", type=_positive_int, help="dry-run core count; on hardware must match the queried physical count")
     parser.add_argument("--output-dir")
     parser.add_argument("--dry-run", action="store_true", help="write candidate plan without importing torch or launching NPUs")
     parser.add_argument("--resume", action="store_true", help="resume an identical single-node plan after re-probing hardware")
     parser.add_argument("--retry-failed", action="store_true", help="retry failed candidates with --resume")
-    parser.add_argument("--timeout", type=_positive_int, default=600, help="seconds per full probe/candidate process tree")
+    parser.add_argument("--timeout", type=_positive_int, default=600,
+                        help="seconds without session progress, or per isolated probe/recovery attempt")
+    parser.add_argument("--batch-size", type=_positive_int, default=64,
+                        help="candidates queued before synchronization and durable checkpointing")
+    parser.add_argument("--warmup", type=_nonnegative_int, default=10,
+                        help="warmup calls once per case session")
+    parser.add_argument("--align-iterations", type=_nonnegative_int, default=3,
+                        help="untimed alignment calls per measured repeat")
+    parser.add_argument("--iterations", type=_positive_int, default=3,
+                        help="timed calls per repeat (overrides case performance settings)")
+    parser.add_argument("--repeats", type=_positive_int, default=3,
+                        help="repeat samples per candidate (overrides case performance settings)")
     parser.add_argument("--topology-label", default="", help="customer topology/configuration identifier recorded with results")
     parser.add_argument("--nnodes", type=_positive_int, default=1)
     parser.add_argument("--node-rank", type=int, default=0)
@@ -313,6 +547,170 @@ def _parse_args():
     return args
 
 
+def _replay_checkpoints(output_root, cases, plan, manifest, plan_digest, report, retry_failed):
+    """Read each immutable checkpoint once and reject incompatible evidence."""
+    by_case = {case["id"]: {} for case in cases}
+    for item in plan:
+        by_case[item["case_id"]][item["candidate_id"]] = item
+    for case in cases:
+        allowed = by_case[case["id"]]
+        for session_root in sorted((output_root / case["id"] / "sessions").glob("session_*")):
+            request_path = session_root / "request.json"
+            if not request_path.is_file():
+                continue
+            session = json.loads(request_path.read_text(encoding="utf-8"))
+            members = session.get("candidates")
+            if not isinstance(members, list) or not members:
+                raise ValueError("cached session has no candidate list: {}".format(request_path))
+            seen = set()
+            for item in members:
+                if (
+                    not isinstance(item, dict) or item.get("candidate_id") not in allowed
+                    or item != allowed[item["candidate_id"]] or item["candidate_id"] in seen
+                ):
+                    raise ValueError("cached session contains an invalid candidate: {}".format(request_path))
+                seen.add(item["candidate_id"])
+            expected = _session_request(case, members, manifest, plan_digest)
+            if session != expected:
+                raise ValueError("cached session does not match the current plan: {}".format(request_path))
+            digest = request_digest(session)
+            environment_digest = request_digest(session["environment"])
+            batch_files = sorted(session_root.glob("batch_*.json"))
+            for index, path in enumerate(batch_files):
+                if path != batch_path(session_root, index):
+                    raise ValueError("cached session has noncontiguous checkpoints: {}".format(session_root))
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                records = _validated_batch(
+                    payload, session, index, digest, environment_digest, session_root / "launch.log",
+                )
+                for record in records:
+                    report.record(record)
+        # Isolated recovery attempts keep their own atomic report. Failed
+        # records can be retried explicitly; completed batch results always win.
+        base = _session_request(case, [], manifest, plan_digest)
+        for item in allowed.values():
+            path = output_root / case["id"] / "isolated" / item["candidate_id"] / "report.json"
+            if not path.is_file():
+                continue
+            cached = json.loads(path.read_text(encoding="utf-8"))
+            request = candidate_request(base, item)
+            if (
+                not isinstance(cached, dict)
+                or cached.get("request_digest") != request_digest(request)
+                or any(cached.get(key) != value for key, value in item.items())
+            ):
+                raise ValueError("cached candidate does not match the current request: {}".format(path))
+            validate_worker_result(dict(cached, environment=base["environment"]), request)
+            if cached.get("status") == "measured" or not retry_failed:
+                report.record(cached)
+    report.flush_best()
+
+
+def _run_case_sessions(args, output_root, case, candidates, manifest, plan_digest, report, trial_index):
+    pending = [item for item in candidates if (item["case_id"], item["candidate_id"]) not in report.keys]
+    sessions_root = output_root / case["id"] / "sessions"
+    session_number = 0
+    while pending:
+        while (sessions_root / "session_{:06d}".format(session_number)).exists():
+            session_number += 1
+        session_root = sessions_root / "session_{:06d}".format(session_number)
+        request = _session_request(case, pending, manifest, plan_digest)
+        request_path = session_root / "request.json"
+        write_json(request_path, request)
+        command, process_environment = launch_command(
+            args, case["world_size"], request_path, session_root, trial_index,
+        )
+        trial_index += 1
+        digest = request_digest(request)
+        environment_digest = request_digest(request["environment"])
+        completed_batches = 0
+        print("{}: {} remaining candidates; persistent session {} (batch size {})".format(
+            case["id"], len(pending), session_number, args.batch_size,
+        ), flush=True)
+
+        def on_batch(payload):
+            nonlocal completed_batches
+            verified = _validated_batch(
+                payload, request, completed_batches, digest, environment_digest, session_root / "launch.log",
+            )
+            for record in verified:
+                report.record(record)
+            completed_batches += 1
+            report.flush_best()
+            state = report.state[case["id"]]
+            print("[{}/{}] {} batch {} measured; best {:.3f} us".format(
+                state["tested"], len(candidates), case["id"], completed_batches,
+                state["best"]["latency_us"],
+            ), flush=True)
+
+        result = run_persistent(
+            command, process_environment, session_root, args.timeout, request, on_batch,
+        )
+        try:
+            # A last complete checkpoint can arrive just before timeout cleanup.
+            while batch_path(session_root, completed_batches).is_file():
+                on_batch(json.loads(batch_path(session_root, completed_batches).read_text(encoding="utf-8")))
+            _validate_session_result(result, request)
+            if result.get("status") == "completed" and completed_batches != math.ceil(len(pending) / args.batch_size):
+                raise ValueError("worker completed without committing every candidate batch")
+        except (OSError, ValueError) as error:
+            result = {"status": "rejected", "errors": [str(error)]}
+        write_json(session_root / "report.json", result)
+        uncompleted = pending[completed_batches * args.batch_size:]
+        if result.get("status") == "completed":
+            pending = []
+            continue
+        print("Session {}: {}; committed batches retained. Log: {}".format(
+            session_number, result.get("status"), session_root / "launch.log",
+        ), flush=True)
+        if (
+            result.get("status") == "rejected"
+            and result.get("failure_phase") == "preflight"
+            and result.get("request_digest") == digest
+        ):
+            raise RuntimeError("session preflight failed; inspect {}".format(session_root / "launch.log"))
+        if args.nnodes > 1:
+            raise RuntimeError("multi-node session failed; saved checkpoints retained; stop all nodes before retrying")
+        if not uncompleted:
+            # A teardown failure after all checkpoints must remain visible even
+            # though its already measured candidates are safely recoverable.
+            raise RuntimeError("session teardown failed after all measurements; inspect {}".format(session_root / "launch.log"))
+        # A bad tiling must not repeatedly kill the same large batch. Isolate
+        # only the first incomplete batch; normal candidates stay in one session.
+        failed_batch = uncompleted[:args.batch_size]
+        for item in failed_batch:
+            candidate_root = output_root / case["id"] / "isolated" / item["candidate_id"]
+            isolated_request = candidate_request(request, item)
+            isolated_path = candidate_root / "request.json"
+            write_json(isolated_path, isolated_request)
+            (candidate_root / "result.json").unlink(missing_ok=True)
+            command, process_environment = launch_command(
+                args, case["world_size"], isolated_path, candidate_root, trial_index,
+            )
+            trial_index += 1
+            measured = run_isolated(command, process_environment, candidate_root, args.timeout)
+            try:
+                validate_worker_result(measured, isolated_request)
+            except ValueError as error:
+                measured = {"status": "rejected", "errors": [str(error)]}
+            measured.update(
+                item, request_digest=request_digest(isolated_request),
+                execution_mode=EXECUTION_MODE, search_mode=SEARCH_MODE, accuracy_checked=False,
+                log_path=str(candidate_root / "launch.log"),
+            )
+            measured.pop("environment", None)
+            write_json(candidate_root / "report.json", measured)
+            report.record(measured)
+            report.flush_best()
+            print("Recovery {} {}: {}{}".format(
+                case["id"], item["candidate_id"], measured["status"],
+                " {:.3f} us".format(measured["latency_us"]) if measured["status"] == "measured" else "",
+            ), flush=True)
+        pending = uncompleted[args.batch_size:]
+        session_number += 1
+    return trial_index
+
+
 def main():
     args = _parse_args()
     manifests = args.cases or [
@@ -322,9 +720,15 @@ def main():
     all_cases = [case for path in manifests for case in load_case_manifest(path)]
     if len({case["id"] for case in all_cases}) != len(all_cases):
         raise ValueError("case IDs must be unique across manifests")
-    cases = select_cases(
+    cases = copy.deepcopy(select_cases(
         all_cases, mode="performance", case_ids=args.case_id, include_tags=args.include_tag,
-    )
+    ))
+    sampling = {
+        "warmup": args.warmup, "align_iterations": args.align_iterations,
+        "iterations": args.iterations, "repeats": args.repeats,
+    }
+    for case in cases:
+        case["performance"].update(sampling)
     space = json.loads(Path(args.space).read_text(encoding="utf-8")) if args.space else None
     output_root = Path(args.output_dir or (
         HERE.parent / "validation_results" / timestamp() / "tiling"
@@ -342,7 +746,8 @@ def main():
         previous = json.loads(manifest_path.read_text(encoding="utf-8"))
     run_id = args.run_id or (previous["run_id"] if previous else uuid.uuid4().hex)
     settings = {
-        "search_mode": SEARCH_MODE,
+        "search_mode": SEARCH_MODE, "execution_mode": EXECUTION_MODE,
+        "sampling": sampling, "batch_size": args.batch_size,
         "space": space, "strategy": args.strategy, "max_candidates": args.max_candidates,
         "seed": args.seed, "aic_cores": args.aic_cores, "nnodes": args.nnodes,
         "nproc_per_node": args.nproc_per_node, "master_addr": args.master_addr,
@@ -357,7 +762,7 @@ def main():
         probe_root = output_root / "probe_world_{}".format(world_size)
         request = {
             "schema_version": 1, "mode": "probe", "world_size": world_size,
-            "search_mode": SEARCH_MODE,
+            "search_mode": SEARCH_MODE, "execution_mode": EXECUTION_MODE,
             "run_id": run_id, "selection_digest": selection_digest,
             "topology_label": args.topology_label,
         }
@@ -393,25 +798,25 @@ def main():
             for item in rank_environments
         ) if rank_environments else 256 * 1024
         candidates = candidates_for_case(
-            case, space, strategy=args.strategy, max_candidates=args.max_candidates,
+            case, space, strategy=args.strategy, max_candidates=args.max_candidates or None,
             seed=args.seed, aic_cores=cores, ub_bytes=ub_bytes,
         )
         if not candidates:
             raise ValueError("no feasible tiling candidates for {}".format(case["id"]))
+        # Normal runs consume ports per case session, not per candidate. Full
+        # grids therefore have no candidate-count-derived TCP port limit.
+        launch_command(args, case["world_size"], "request.json", "output", trial_index)
+        trial_index += 1
         baseline = default_tiling(case)
         for tiling in candidates:
             plan.append({
                 "case_id": case["id"], "candidate_id": candidate_id(tiling),
                 "tiling": tiling, "is_default": tiling == baseline,
-                "trial_index": trial_index,
             })
-            # Reject port exhaustion while planning, before executing kernels.
-            launch_command(args, case["world_size"], "request.json", "output", trial_index)
-            trial_index += 1
     environment = {"topology_label": args.topology_label, "world_sizes": environments}
     manifest = {
         "schema_version": 1, "run_id": run_id, "cases": cases,
-        "search_mode": SEARCH_MODE,
+        "search_mode": SEARCH_MODE, "execution_mode": EXECUTION_MODE,
         "settings": settings, "environment": environment, "plan": plan,
     }
     if previous:
@@ -419,54 +824,25 @@ def main():
     else:
         write_json(manifest_path, manifest)
     if args.dry_run:
-        print("Wrote {} candidate trials to {}".format(len(plan), manifest_path), flush=True)
+        print("Wrote {} candidates across {} persistent case sessions to {}".format(
+            len(plan), len(cases), manifest_path,
+        ), flush=True)
         return 0
     plan_digest = request_digest(manifest)
-    by_id = {case["id"]: case for case in cases}
-    results = []
-    for index, item in enumerate(plan):
-        case = by_id[item["case_id"]]
-        candidate_root = output_root / item["case_id"] / item["candidate_id"]
-        report_path = candidate_root / "report.json"
-        request = {
-            "schema_version": 1, "mode": "candidate", "run_id": run_id,
-            "search_mode": SEARCH_MODE,
-            "world_size": case["world_size"], "case": case, "tiling": item["tiling"],
-            "plan_digest": plan_digest, "topology_label": args.topology_label,
-            "environment": environments[str(case["world_size"])],
-        }
-        if args.resume and report_path.is_file():
-            cached = json.loads(report_path.read_text(encoding="utf-8"))
-            if cached.get("request_digest") != request_digest(request):
-                raise ValueError("cached candidate does not match current request: {}".format(report_path))
-            validate_worker_result(cached, request)
-            if cached.get("status") == "measured" or not args.retry_failed:
-                results.append(cached)
-                _report(output_root, cases, results, environment)
-                continue
-        request_path = candidate_root / "request.json"
-        write_json(request_path, request)
-        (candidate_root / "result.json").unlink(missing_ok=True)
-        command, process_environment = launch_command(
-            args, case["world_size"], request_path, candidate_root, item["trial_index"],
-        )
-        print("[{}/{}] {} {}{}".format(
-            index + 1, len(plan), item["case_id"], item["candidate_id"],
-            " (default)" if item["is_default"] else "",
-        ), flush=True)
-        result = run_isolated(command, process_environment, candidate_root, args.timeout)
-        try:
-            validate_worker_result(result, request)
-        except ValueError as error:
-            result = {"status": "rejected", "errors": [str(error)]}
-        result.update(item, request_digest=request_digest(request), log_path=str(candidate_root / "launch.log"))
-        write_json(report_path, result)
-        results.append(result)
-        best = _report(output_root, cases, results, environment)
-        print("  {}{}".format(
-            result["status"], " {:.3f} us".format(result["latency_us"]) if result.get("status") == "measured" else "",
-        ), flush=True)
-    best = _report(output_root, cases, results, environment)
+    grouped = {case["id"]: [] for case in cases}
+    for item in plan:
+        grouped[item["case_id"]].append(item)
+    report = IncrementalReport(output_root, cases, environment)
+    try:
+        if args.resume:
+            _replay_checkpoints(output_root, cases, plan, manifest, plan_digest, report, args.retry_failed)
+        trial_index = len(world_sizes)
+        for case in cases:
+            trial_index = _run_case_sessions(
+                args, output_root, case, grouped[case["id"]], manifest, plan_digest, report, trial_index,
+            )
+    finally:
+        best = report.finalize()
     print("Best measured tilings: {}".format(output_root / "best_tilings.json"), flush=True)
     return 0 if len(best["cases"]) == len(cases) else 1
 

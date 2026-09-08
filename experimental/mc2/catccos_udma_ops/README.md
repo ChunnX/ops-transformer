@@ -384,7 +384,7 @@ bash scripts/search_tiling.sh --dry-run --aic-cores 32 \
 
 Run the search on the customer's machines with their actual rank placement and
 network configuration. The default manifests cover both operators with small
-two-rank cases. The following selects one of the bundled eight-rank model cases:
+two-rank cases and eight-rank model cases. The following selects one bundled model case:
 
 ```bash
 bash scripts/search_tiling.sh \
@@ -397,8 +397,10 @@ bash scripts/search_tiling.sh \
 
 The installed equivalent is `ops-transformer-udma-search-tiling`, or
 `python3 -m validation.search_tiling`. `--cases` is repeatable. Copy and edit a
-manifest for the customer's M/K/N, expert count, world size, export mode, input
-distribution, warmup and repeat counts. The current validation generator
+manifest for the customer's M/K/N, expert count, world size, export mode and input
+distribution. Search sampling is controlled separately by the CLI options
+below; the manifest's performance sampling remains for `run_performance.sh`.
+The current validation generator
 supports **balanced BF16 routes, TP=1 and at most eight ranks**. Its measured
 winner is specific to that workload; it does not characterize an unbalanced
 production route. Search runs in **performance-only mode**: it does not build
@@ -411,10 +413,28 @@ space. Unspecified dimensions keep their defaults. `mmad` selects an existing
 `[M0, N0, K0]` instance; changing runtime parameters does not rebuild a kernel.
 `--strategy random` samples without replacement using `--seed`;
 `--strategy exhaustive` visits the grid in order. `--max-candidates` is a
-per-case cap **including the valid built-in fallback**; raise it to cover a
-larger grid. The tool reports the best **successfully measured** configuration,
+per-case cap **including the valid built-in fallback**; its default is 64.
+Use `--strategy exhaustive --max-candidates 0` to visit the complete legal
+default space without a candidate cap. The tool reports the best **successfully measured** configuration,
 not a guarantee beyond the tested space. Hardware-equivalent candidates are
 deduplicated before applying the budget.
+
+To search the complete default space for all four model cases on one eight-NPU
+host, run the following from this subproject directory. The cases execute in
+sequence and each reuses its own inputs and runtime:
+
+```bash
+bash scripts/search_tiling.sh \
+  --cases validation/cases/alltoallv_grouped_mat_mul.yaml \
+  --cases validation/cases/grouped_mat_mul_all_to_allv.yaml \
+  --case-id a2av_gmm_model_case_1 \
+  --case-id a2av_gmm_model_case_2 \
+  --case-id gmm_a2av_model_case_1 \
+  --case-id gmm_a2av_model_case_2 \
+  --strategy exhaustive --max-candidates 0 \
+  --nnodes 1 --nproc-per-node 8 --batch-size 64 \
+  --timeout 1200 --output-dir /tmp/udma_tiling_full
+```
 
 | Operator | Search dimensions |
 |---|---|
@@ -432,30 +452,61 @@ The launcher probes actual AI-core count and UB capacity before generating
 candidates. Both Python and native code check compiled instances, staging,
 worker pools, UB and the 400 MiB symmetric workspace. All ranks must run the
 same operator build and have the same AI-core count; the inverse operator's
-communication geometry depends on that count. Each candidate starts in a
-fresh `torchrun` process group, checks the complete plan across ranks, then
-warms up and times reusable-output calls. Successful measurement requires
-complete, finite timing samples from every rank. Failed or timed-out candidates
-are recorded and the search continues in fresh processes.
+communication geometry depends on that count. Each case normally starts one
+persistent `torchrun` process group. Gloo, SHMEM, the input, weight, route,
+output and communication workspace are reused while changing tilings. All
+ranks check the same session plan before launching any candidate. Successful
+measurement requires complete, finite timing samples from every rank.
 
-Timing uses NPU events around batches of preallocated-output calls. For each
-batch it takes the **maximum per-call time across ranks**, then reports the
-median across batches. Host rendezvous and input creation are outside the
+The default sampling uses `--warmup 10` once per session, then
+`--align-iterations 3 --iterations 3 --repeats 3` for each candidate: 18
+operator calls per candidate after the shared warmup. Increase the measured
+iterations or repeats when closer candidates need more stable measurements.
+Up to `--batch-size 64` candidates are submitted before waiting for the
+device and gathering rank timing samples. Host alignment occurs before each
+candidate batch; primer calls precede each measured repeat to reduce rank
+start skew. The timeout is a no-progress limit for startup, a candidate batch,
+or teardown, so `--timeout 1200` allows a search to run longer than 1200 seconds
+as long as it keeps committing batches.
+
+Preflight rejection, including a changed software or hardware environment,
+stops immediately. On a single node, an execution failure preserves committed batches and retries the
+first uncommitted batch in fresh processes one candidate at a time, then
+continues the remaining candidates in a new persistent session. This isolates
+bad candidates without paying process startup for every successful candidate.
+A multi-node session failure stops the search on the participating nodes;
+automatic recovery and resume are currently single-node only.
+
+Timing uses NPU events around each candidate's repeated preallocated-output calls.
+For each measured repeat it takes the **maximum per-call time across ranks**,
+then reports the median across repeats for that candidate. Host rendezvous and input creation are outside the
 timed interval. This is a stream/batch measurement and is
 different from the kernel-only `msprof` metric in `run_performance.sh`; do not
 compare their absolute values as the same metric.
 The built-in fallback is measured through the same explicit-tiling API as
 other candidates when reporting `speedup_vs_default`.
 
-The output directory contains `search_manifest.json`, per-candidate logs,
-rank timing samples, `summary.csv`, `summary.json`, and
-`best_tilings.json`. Hardware/software versions, device/rank placement, build
+The output directory contains `search_manifest.json`, session logs and
+immutable `batch_*.json` checkpoints under each case's session directories.
+Each checkpoint includes the completed candidates' rank timing samples.
+`results.jsonl` and `summary.csv` are appended as candidates finish;
+`best_tilings.json` and a compact progress file are refreshed after each
+batch. The full `summary.json` is written when the search ends, avoiding
+rewriting all historical results for each candidate.
+Session results include `phase_timings_s` for preparing inputs and warming up;
+batch checkpoints include each rank's enqueue and device-wait times. These
+separate one-time setup and host overhead from the per-candidate NPU latency.
+Hardware/software versions, device/rank placement, build
 hashes and `--topology-label` are recorded. Set that label to identify cabling,
 network settings or topology changes that device APIs cannot discover.
 Single-node searches can resume with the same arguments plus `--resume`;
 `--retry-failed` retries previously failed candidates. Resume re-probes the
-machines and rejects a changed workload, environment, search mode or search plan.
-Results record `search_mode="performance_only"` and `accuracy_checked=false`.
+machines and validates the immutable checkpoints before skipping completed
+candidates. It rejects a changed workload, environment, sampling, execution
+mode or search plan. Old per-candidate search output cannot be resumed with
+the persistent search implementation; choose a new output directory.
+Results record `search_mode="performance_only"`,
+`execution_mode="persistent_batches_v1"` and `accuracy_checked=false`.
 The `passed`/`valid` fields in `best_tilings.json` mean measurement succeeded;
 they do not claim numerical correctness. The existing accuracy scripts remain
 available independently of search when output validation is needed.
@@ -475,7 +526,8 @@ bash scripts/search_tiling.sh \
 
 Replace the address with the first host's reachable IPv4 address. Keep all
 other search arguments identical. Torchrun and SHMEM use separate ports that
-advance per trial. Results are aggregated through Gloo and written under each
+advance per probe/session, so the number of tiling candidates does not exhaust
+the port range. Results are aggregated through Gloo and written under each
 host's `node_0`/`node_1` directory; a shared filesystem is not required.
 Multi-node resume is currently unsupported.
 If changing the base ports, `--master-port` and `--udma-master-port` must have
