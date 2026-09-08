@@ -72,6 +72,17 @@ public:
     constexpr static uint64_t RDMA_TOKEN_ARRIVED_FLAG = 123ULL;
     constexpr static uint64_t RDMA_TOKEN_END_FLAG = 321ULL;
 
+    // 阶段性能打点：枚举值即该阶段[开始,结束]时间对(us)在本核打点区域内的下标，未执行的阶段保持0
+    constexpr static uint32_t STAGE_GM2IPC = 0;       // GM2IPC，所有核
+    constexpr static uint32_t STAGE_WAITIPC = 1;      // WaitIPC，所有核
+    constexpr static uint32_t STAGE_SUM2WINDOW = 2;   // SumToWindow，仅coreIdx_ < IPC_REDUCE_USED_CORE_NUM的核
+    constexpr static uint32_t STAGE_ALLTOALL = 3;     // AlltoAllServerDispatch，仅stepCoreNum之后的serverNum_个核
+    constexpr static uint32_t STAGE_PRELOAD = 4;      // Preload，所有核
+    constexpr static uint32_t STAGE_WAITDISPATCH = 5; // WaitDispatch，所有核
+    constexpr static uint32_t STAGE_SUM2SERVER = 6;   // SumToServer，仅前8个核
+    constexpr static uint32_t STAGE_NUM = 7;
+    constexpr static uint32_t STAGE_PROFILE_UB_SIZE = 128U; // STAGE_NUM * 2 * sizeof(int64_t)向上32B对齐
+
     template <typename T>
     inline __aicore__ T RoundUp(const T val, const T align)
     {
@@ -185,6 +196,8 @@ private:
 
     MoeDistributeA2Base::MoeDistributeA2CombineAddrInfo addrInfo_;
     Mc2A2Kernel::MoeDistributeA2ADump aDump_;
+    Mc2StageProfiler stageProfiler_; // 阶段性能打点
+    GlobalTensor<int32_t> stageProfileOutGMTensor_; // assistInfoForCombine，layered未使用，整体作为各核打点区域
 };
 
 template <TemplateMC2TypeA2layeredClass>
@@ -336,6 +349,8 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
 
     expandXGlobal_.SetGlobalBuffer((__gm__ ExpandXType *)expandX);
     sendCountGlobal_.SetGlobalBuffer((__gm__ int32_t *)sendCount);
+    // assistInfoForCombine，bs*topk之后为各核阶段打点区域
+    stageProfileOutGMTensor_.SetGlobalBuffer((__gm__ int32_t *)expandIdx);
     expandScalesGlobal_.SetGlobalBuffer((__gm__ float *)scales);
     expandOutGlobal_.SetGlobalBuffer((__gm__ ExpandXType *)XOut);
     readStateGlobal_.SetGlobalBuffer((__gm__ uint64_t *)(addrInfo_.GetLocalSendBuffFlagAddr()));
@@ -403,6 +418,10 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
         Std::max(RoundUp(Mc2A2Kernel::H_POS + 1U, B32_PER_BLOCK), B32_PER_BLOCK * 2U) * sizeof(uint32_t);
     tpipe_->InitBuffer(aDumpBuf_, aDumpSize);
     leftBufSize -= aDumpSize;
+
+    // 阶段打点UB buffer，需在总tBuf之前申请并扣除空间
+    stageProfiler_.Init(tpipe_, STAGE_NUM);
+    leftBufSize -= STAGE_PROFILE_UB_SIZE;
 
     // 总tBuf
     tpipe_->InitBuffer(tBuf, leftBufSize);
@@ -1074,23 +1093,39 @@ template <TemplateMC2TypeA2layeredClass>
 __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFunc>::Process()
 {
     if ASCEND_IS_AIV {
+        stageProfiler_.BeginStage();
         GM2IPC();
+        stageProfiler_.EndStage(STAGE_GM2IPC);
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_GM2IPC);
+        stageProfiler_.BeginStage();
         WaitIPC();
+        stageProfiler_.EndStage(STAGE_WAITIPC);
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_WAITIPC);
         stepCoreNum = IPC_REDUCE_USED_CORE_NUM;
         if (coreIdx_ < stepCoreNum) {
+            stageProfiler_.BeginStage();
             SumToWindow();
+            stageProfiler_.EndStage(STAGE_SUM2WINDOW);
         } else if (coreIdx_ < (stepCoreNum + serverNum_)) {
+            stageProfiler_.BeginStage();
             AlltoAllServerDispatch();
+            stageProfiler_.EndStage(STAGE_ALLTOALL);
         }
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_INTER_SEND);
         SyncAll<true>();
+        stageProfiler_.BeginStage();
         Preload();
+        stageProfiler_.EndStage(STAGE_PRELOAD);
+        stageProfiler_.BeginStage();
         WaitDispatch();
+        stageProfiler_.EndStage(STAGE_WAITDISPATCH);
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_INTER_RECV);
+        stageProfiler_.BeginStage();
         SumToServer();
+        stageProfiler_.EndStage(STAGE_SUM2SERVER);
         CopyPerformanceInfo();
+        // 各核的阶段打点一次搬运到assistInfoForCombine中本核(coreIdx_)自己的区域
+        stageProfiler_.CopyOut(stageProfileOutGMTensor_, coreIdx_);
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_END);
         hccl_.Finalize();
     }

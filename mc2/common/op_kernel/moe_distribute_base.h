@@ -454,6 +454,53 @@ __aicore__ inline void RecordRankCommDuration(AscendC::LocalTensor<int32_t> perf
         duration); // 使用int32_t是因为atomicAdd不支持int64_t类型，这里只赋值到int64_t的低32位。
 }
 
+// 阶段性能打点工具：多核场景下不同核可能执行不同的阶段，各核在UB中记录本核各阶段的
+// 开始/结束时间（GetSystemCycle()除以TIME_CYCLE换算成us，int64类型），结束时通过一次
+// DataCopyPad写入GM assistInfo中本核自己的偏移区域（coreIdx * stageNum * 2个int64，
+// 按阶段顺序依次为[开始时间us, 结束时间us]）。
+class Mc2StageProfiler {
+public:
+    __aicore__ inline void Init(AscendC::TPipe *pipe, uint32_t stageNum)
+    {
+        stageNum_ = stageNum;
+        pipe->InitBuffer(profileBuf_, (stageNum_ * 2 * sizeof(int64_t) + 31U) / 32U * 32U);
+        profileLt_ = profileBuf_.Get<int64_t>();
+        for (uint32_t i = 0; i < stageNum_ * 2; i++) {
+            profileLt_.SetValue(i, 0); // 本核未执行的阶段保持0
+        }
+    }
+
+    __aicore__ inline void BeginStage()
+    {
+        startCycle_ = AscendC::GetSystemCycle();
+    }
+
+    // 各核的阶段在代码中依次执行，BeginStage/EndStage成对使用即可
+    __aicore__ inline void EndStage(uint32_t stageId)
+    {
+        int64_t endCycle = AscendC::GetSystemCycle();
+        profileLt_.SetValue(stageId * 2, startCycle_ / TIME_CYCLE); // 阶段开始时间(us)
+        profileLt_.SetValue(stageId * 2 + 1, endCycle / TIME_CYCLE); // 阶段结束时间(us)
+    }
+
+    // 本核在GM assistInfo中的偏移 = coreIdx * stageNum * 4(int32个数)
+    __aicore__ inline void CopyOut(AscendC::GlobalTensor<int32_t> dstGt, uint32_t coreIdx)
+    {
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0); // 等待UB中的打点值全部写入完成
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        AscendC::DataCopyExtParams copyParams{1, static_cast<uint32_t>(stageNum_ * 2 * sizeof(int64_t)), 0, 0, 0};
+        AscendC::DataCopyPad(dstGt[coreIdx * stageNum_ * 4], profileLt_.template ReinterpretCast<int32_t>(),
+                             copyParams);
+        AscendC::PipeBarrier<PIPE_ALL>();
+    }
+
+private:
+    AscendC::TBuf<> profileBuf_;
+    AscendC::LocalTensor<int64_t> profileLt_;
+    int64_t startCycle_{0};
+    uint32_t stageNum_{0};
+};
+
 namespace Mc2Kernel {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) // A5 implmentation
 using HcclOpParam = HcclCombinOpParam;
