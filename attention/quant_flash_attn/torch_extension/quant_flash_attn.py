@@ -490,7 +490,14 @@ def quant_flash_attn(
         v.dim() == kv_expected,
         lambda: f"v with layout {layout_kv} expects {kv_expected} dims, but got {v.dim()} dims",
     )
-
+    # 异常拦截: 输入 q/k/v 的任一维度为 0 时报错, 避免空 shape 进入算子侧
+    for name, tensor in (("q", q), ("k", k), ("v", v)):
+        torch._check(
+            all(s > 0 for s in tensor.shape),
+            lambda name=name, tensor=tensor: (
+                f"The shape of {name} must not contain 0, but got {tuple(tensor.shape)}"
+            ),
+        )
     # QFA 不支持 k/v/kscale/vscale 的 stride 中含 0
     for name, tensor in (
         ("k", k),
