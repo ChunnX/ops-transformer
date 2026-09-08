@@ -1,5 +1,5 @@
 # mc2/common 头文件影响范围映射表 - A5 (ascend950)
-# 生成: 2026-09-08  基线commit: 39e00aeaa (clean)
+# 生成: 2026-09-08  基线commit: 65153e452 (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(common/开头), 与pr_files.sh输出中mc2/后的段落一致
 #
@@ -2223,6 +2223,7 @@ common/op_kernel/moe_distribute_base.h:
     - distribute_barrier
     - distribute_barrier_extend
     - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
     - matmul_reduce_scatter_v2
     - mega_moe
     - moe_distribute_combine
@@ -2240,6 +2241,7 @@ common/op_kernel/moe_distribute_comm_ctx.h:
     - distribute_barrier
     - distribute_barrier_extend
     - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
     - matmul_reduce_scatter_v2
     - mega_moe
     - moe_distribute_combine
