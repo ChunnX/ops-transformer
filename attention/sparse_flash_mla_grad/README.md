@@ -143,42 +143,42 @@
     <tr>
         <td>cuSeqlensQOptional</td>
         <td>输入</td>
-        <td>每个Batch中，Query的有效token数。</td>
+        <td>每个Batch中，Query的物理槽位长度（前缀和）。传入sequsedQOptional时，实际参与运算的长度由sequsedQOptional给出。</td>
         <td>INT32</td>
         <td>ND</td>
     </tr>
     <tr>
         <td>cuSeqlensOriKvOptional</td>
         <td>输入</td>
-        <td>每个Batch中，oriKvOptional的有效token数。</td>
+        <td>每个Batch中，oriKvOptional的物理槽位长度（前缀和）。传入sequsedOriKvOptional时，实际参与运算的长度由sequsedOriKvOptional给出。</td>
         <td>INT32</td>
         <td>ND</td>
     </tr>
     <tr>
         <td>cuSeqlensCmpKvOptional</td>
         <td>输入</td>
-        <td>每个Batch中，cmpKvOptional的有效token数。</td>
+        <td>每个Batch中，cmpKvOptional的物理槽位长度（前缀和）。传入sequsedCmpKvOptional时，实际参与运算的长度由sequsedCmpKvOptional给出。</td>
         <td>INT32</td>
         <td>ND</td>
     </tr>
     <tr>
         <td>sequsedQOptional</td>
         <td>输入</td>
-        <td>表示不同batch中query实际参与运算的token数。</td>
+        <td>每个batch的query槽位内实际参与运算的token数（EOD有效长度）。可选，shape为[B]，0基。</td>
         <td>INT32</td>
         <td>ND</td>
     </tr>
     <tr>
         <td>sequsedOriKvOptional</td>
         <td>输入</td>
-        <td>表示不同batch中oriKvOptional实际参与运算的token数。</td>
+        <td>每个batch的oriKvOptional槽位内实际参与运算的token数（EOD有效长度）。可选，shape为[B]，0基。</td>
         <td>INT32</td>
         <td>ND</td>
     </tr>
     <tr>
         <td>sequsedCmpKvOptional</td>
         <td>输入</td>
-        <td>表示不同batch中cmpKvOptional实际参与运算的token数。</td>
+        <td>每个batch的cmpKvOptional槽位内实际参与运算的token数（EOD有效长度）。可选，shape为[B]，0基。</td>
         <td>INT32</td>
         <td>ND</td>
     </tr>
@@ -318,7 +318,8 @@
     </tbody>
 </table>
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持sequsedQOptional、sequsedOriKvOptional、sequsedCmpKvOptional、oriTopkLengthOptional、cmpTopkLengthOptional、metadataOptional字段。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持sequsedQOptional、sequsedOriKvOptional、sequsedCmpKvOptional。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：暂不支持oriTopkLengthOptional、cmpTopkLengthOptional；metadataOptional不生效。
 
 ## 约束说明
 
@@ -328,6 +329,7 @@
   - N1：支持1~128。
   - N2：仅支持1。
   - D：仅支持512。
+- seqused / EOD：推荐TND。三个seqused*各自可选；有效token在槽位前部，尾部padding不参与计算且对应输出写0。取值由调用方保证：0 &lt;= seqused[i] &lt;= 对应cuSeqlens差分。
 
 ## 调用示例
 

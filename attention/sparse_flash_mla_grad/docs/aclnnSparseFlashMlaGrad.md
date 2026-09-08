@@ -272,12 +272,13 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <tr>
             <td>cuSeqlensQOptional（aclTensor*）</td>
             <td>输入</td>
-            <td>每个Batch中，Query的有效token数。</td>
+            <td>每个Batch中，Query的物理槽位长度（前缀和）。</td>
             <td>
             <ul>
                 <li>可选项：当layout为TND，该变量存在。</li>
                 <li>长度与B+1保持一致。</li>
                 <li>累加和与T1保持一致。</li>
+                <li>槽位长度 = cuSeqlensQ[i+1] - cuSeqlensQ[i]。传入sequsedQOptional时，实际参与运算的长度由sequsedQOptional给出。</li>
             </ul>
             </td>
             <td>INT32</td>
@@ -288,12 +289,13 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <tr>
             <td>cuSeqlensOriKvOptional（aclTensor*）</td>
             <td>输入</td>
-            <td>每个Batch中，oriKvOptional的有效token数。</td>
+            <td>每个Batch中，oriKvOptional的物理槽位长度（前缀和）。</td>
             <td>
             <ul>
                 <li>可选项：当layout为TND，该变量存在。</li>
                 <li>长度与B+1保持一致。</li>
                 <li>累加和与T2保持一致。</li>
+                <li>槽位长度 = cuSeqlensOriKv[i+1] - cuSeqlensOriKv[i]。传入sequsedOriKvOptional时，实际参与运算的长度由sequsedOriKvOptional给出。</li>
             </ul>
             </td>
             <td>INT32</td>
@@ -304,12 +306,13 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <tr>
             <td>cuSeqlensCmpKvOptional（aclTensor*）</td>
             <td>输入</td>
-            <td>每个Batch中，cmpKvOptional的有效token数。</td>
+            <td>每个Batch中，cmpKvOptional的物理槽位长度（前缀和）。</td>
             <td>
             <ul>
                 <li>可选项：当layout为TND，该变量存在。</li>
                 <li>长度与B+1保持一致。</li>
                 <li>累加和与T3保持一致。</li>
+                <li>槽位长度 = cuSeqlensCmpKv[i+1] - cuSeqlensCmpKv[i]。传入sequsedCmpKvOptional时，实际参与运算的长度由sequsedCmpKvOptional给出。</li>
             </ul>
             </td>
             <td>INT32</td>
@@ -320,9 +323,14 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <tr>
             <td>sequsedQOptional（aclTensor*）</td>
             <td>输入</td>
-            <td>表示不同batch中query实际参与运算的token数。</td>
+            <td>每个batch的query槽位内实际参与运算的token数（EOD有效长度）。</td>
             <td>
-            长度为B。
+            <ul>
+                <li>可选项，与sequsedOriKvOptional、sequsedCmpKvOptional互不捆绑；未传入时按cuSeqlensQOptional差分（物理槽位）计算。</li>
+                <li>TND场景使用；shape为(B,)，INT32，0基（不含前导0，索引方式与cmpResidualKvOptional一致）。</li>
+                <li>取值范围：0 &lt;= sequsedQ[i] &lt;= cuSeqlensQ[i+1]-cuSeqlensQ[i]。有效token位于槽位前部，尾部[sequsedQ[i], 槽位长度)为padding，不参与计算。</li>
+                <li>取值与shape由调用方保证，host tiling不校验。</li>
+            </ul>
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -333,9 +341,14 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <tr>
             <td>sequsedOriKvOptional（aclTensor*）</td>
             <td>输入</td>
-            <td>表示不同batch中oriKvOptional实际参与运算的token数。</td>
+            <td>每个batch的oriKvOptional槽位内实际参与运算的token数（EOD有效长度）。</td>
             <td>
-            长度为B。
+            <ul>
+                <li>可选项；未传入时按cuSeqlensOriKvOptional差分计算。</li>
+                <li>TND场景使用；shape为(B,)，INT32，0基。</li>
+                <li>取值范围：0 &lt;= sequsedOriKv[i] &lt;= cuSeqlensOriKv[i+1]-cuSeqlensOriKv[i]。有效token位于槽位前部，尾部为padding。</li>
+                <li>取值与shape由调用方保证，host tiling不校验。</li>
+            </ul>
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -346,9 +359,15 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <tr>
             <td>sequsedCmpKvOptional（aclTensor*）</td>
             <td>输入</td>
-            <td>表示不同batch中cmpKvOptional实际参与运算的token数。</td>
+            <td>每个batch的cmpKvOptional槽位内实际参与运算的token数（EOD有效长度）。</td>
             <td>
-            长度为B。
+            <ul>
+                <li>可选项；未传入时按cuSeqlensCmpKvOptional差分计算。CFA/SCFA场景使用。</li>
+                <li>TND场景使用；shape为(B,)，INT32，0基。</li>
+                <li>取值范围：0 &lt;= sequsedCmpKv[i] &lt;= cuSeqlensCmpKv[i+1]-cuSeqlensCmpKv[i]。有效token位于槽位前部，尾部为padding。</li>
+                <li>CFA/SCFA下，sequsedCmpKv[i] * cmpRatio + cmpResidualKv[i] 应与sequsedOriKv[i]对齐。</li>
+                <li>取值与shape由调用方保证，host tiling不校验。</li>
+            </ul>
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -531,7 +550,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输出</td>
             <td>表示query的梯度。</td>
             <td>
-            与输入query的Shape维度保持一致
+            与输入query的Shape维度保持一致。传入sequsedQOptional时，槽位尾部padding行输出为0。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -544,7 +563,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输出</td>
             <td>表示oriKvOptional的梯度。</td>
             <td>
-            与输入oriKvOptional的Shape维度保持一致
+            与输入oriKvOptional的Shape维度保持一致。传入sequsedOriKvOptional时，槽位尾部padding行输出为0。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -557,7 +576,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输出</td>
             <td>表示cmpKvOptional的梯度。</td>
             <td>
-            与输入cmpKvOptional的Shape维度保持一致。
+            与输入cmpKvOptional的Shape维度保持一致。传入sequsedCmpKvOptional时，槽位尾部padding行输出为0。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -608,7 +627,8 @@ aclnnStatus aclnnSparseFlashMlaGrad(
     </table>
 
     <!-- npu="A3,910b" id7 -->
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持sequsedQOptional、sequsedOriKvOptional、sequsedCmpKvOptional、oriTopkLengthOptional、cmpTopkLengthOptional、metadataOptional字段。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持sequsedQOptional、sequsedOriKvOptional、sequsedCmpKvOptional。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：暂不支持oriTopkLengthOptional、cmpTopkLengthOptional；metadataOptional不生效。
 
     <!-- end id7 -->
 
@@ -710,6 +730,11 @@ aclnnStatus aclnnSparseFlashMlaGrad(
 - 公共约束
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
+    - seqused / EOD：
+        - 推荐在TND layout下使用。SWA、CFA、SCFA均消费seqused*；不传seqused*时行为与未传入前一致。
+        - sequsedQOptional、sequsedOriKvOptional、sequsedCmpKvOptional各自可选，未传入的那一路按对应cuSeqlens*物理槽位计算。
+        - 有效数据位于槽位前部，尾部[seqused, 槽位长度)为padding，不参与计算；对应输出padding行写0。
+        - 取值范围与shape由调用方保证：0 &lt;= seqused[i] &lt;= 对应cuSeqlens差分；CFA/SCFA下sequsedCmpKv[i] * cmpRatio + cmpResidualKv[i]应与sequsedOriKv[i]对齐。
 
 - Mask
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
