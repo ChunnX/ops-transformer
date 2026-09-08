@@ -46,6 +46,7 @@
 #include "static_buffer.h"
 
 namespace AttentionCommon {
+static constexpr int64_t TARGET_LSE_LINEAR_OFFSET = 74 * 8 + 6;
 
 constexpr int64_t FD_MAX_S2_SPLIT_NUM = 2U;
 constexpr int64_t FD_INCREMENTAL_MERGE_INPUT_NUM = 2U;
@@ -442,6 +443,9 @@ __aicore__ inline void ReducePairwiseWithLse(const S2SplitFdStagingLayout &layou
             lseParams.dstStride = 0;
             SetFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
             WaitFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
+            if (softmaxLseOffset + startRow == TARGET_LSE_LINEAR_OFFSET) {
+                DumpTensor(blockMaxUb, 6, 1);
+            }
             DataCopyPad(softmaxLseGm[softmaxLseOffset + startRow], blockMaxUb, lseParams);
             SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
         }

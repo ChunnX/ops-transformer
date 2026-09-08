@@ -746,6 +746,15 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ComputeVec1Softmax(LocalTenso
                                                                       LocalTensor<T> &apiTmpBuffer, RunInfo &runInfo,
                                                                       ConstInfo &constInfo)
 {
+    // DumpTensor(tensor, desc, elementCount). MM1 is row-major with stride 128.
+    if (runInfo.halfMRealSize > 0 &&
+        runInfo.s2RealSize > 0) {
+        for (uint32_t row = 0; row < runInfo.halfMRealSize; ++row) {
+            if (runInfo.softmaxLseOffset + row == AttentionCommon::TARGET_LSE_LINEAR_OFFSET) {
+                DumpTensor(mmRes[row * s2BaseSize], 1, static_cast<uint32_t>(runInfo.s2RealSize));
+            }
+        }
+    }
     if (likely(runInfo.s2RealSize == 128 && runInfo.s2RealSizeUpdate == 128)) {
         ProcessVec1Vf<T, Q_T, UPDATE, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
             stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf, runInfo.halfMRealSize,
@@ -890,6 +899,12 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutVec1Lse(LocalTensor<fl
     dataCopyParams.srcStride = 0;
     dataCopyParams.dstStride = 0;
     WaitFlag<HardEvent::MTE3_V>(INNERCORE_LSE_MTE3_V);
+    if (runInfo.softmaxLseOffset <= AttentionCommon::TARGET_LSE_LINEAR_OFFSET &&
+        AttentionCommon::TARGET_LSE_LINEAR_OFFSET < runInfo.softmaxLseOffset + runInfo.halfMRealSize) {
+        uint32_t row = static_cast<uint32_t>(AttentionCommon::TARGET_LSE_LINEAR_OFFSET - runInfo.softmaxLseOffset);
+        DumpTensor(sumUb[row], 4, 1);
+        DumpTensor(maxUb[row], 5, 1);
+    }
     ComputeLse<float>(outLse, sumUb, maxUb, runInfo.halfMRealSize);
     SetFlag<HardEvent::V_MTE3>(INNERCORE_LSE_V_MTE3);
     WaitFlag<HardEvent::V_MTE3>(INNERCORE_LSE_V_MTE3);
@@ -933,6 +948,13 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(StaticBuffer<Q_T>
     CopyVec1ResultToL1(outputBuf, stage1CastTensor, runInfo, constInfo);
     if (!isFirstSoftmaxBase || isSinks) {
         SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
+    }
+    // UPDATE writes its temporary statistics first; dump only after the merge above.
+    if (runInfo.halfMRealSize > 0 && runInfo.softmaxLseOffset <= AttentionCommon::TARGET_LSE_LINEAR_OFFSET &&
+        AttentionCommon::TARGET_LSE_LINEAR_OFFSET < runInfo.softmaxLseOffset + runInfo.halfMRealSize) {
+        uint32_t row = static_cast<uint32_t>(AttentionCommon::TARGET_LSE_LINEAR_OFFSET - runInfo.softmaxLseOffset);
+        DumpTensor(sumUb[row], 2, 1);
+        DumpTensor(maxUb[row], 3, 1);
     }
     if constexpr (IS_BATCH_CONSISTENCY) {
         StageBatchConsistencyVec1Lse(maxUb, sumUb, runInfo, constInfo);
