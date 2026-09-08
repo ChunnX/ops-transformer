@@ -217,7 +217,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const Basi
     if (kbL1Offset % MX_SCALE_K_L1_SIZE != 0) {
         return;
     }
-    uint64_t nHalfSize = param.nL1Size / 2; // SwiGLU splits N into swish/gate halves
+    uint64_t nHalfSize = param.nL1Size / 2; // SiTU splits N into gate/up halves.
     uint64_t kSizeAligned = CeilAlign(param.kSize, K_ALIGNMENT64);
     uint64_t scaleKGmSize = kSizeAligned / MX_GROUPSIZE;
     uint64_t scaleKL1RealSize = (kbL1Offset + MX_SCALE_K_L1_SIZE) > param.kSize ?
@@ -234,22 +234,11 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const Basi
     auto f16ScaleALocal = xScaleAL1_[(scaleBufIdx_ & 1) * xScaleAL1DbOffset_].template ReinterpretCast<half>();
     DataCopy(f16ScaleALocal, f16ScaleAGlobal, scaleAdn2NzParams);
 
-    // Copy weightScale part1
-    uint64_t swishNOffset = param.nOffset * scaleKGmSize;
-    uint64_t gateNOffset = (param.nOffset + param.nSize / 2) * scaleKGmSize;
+    // Copy gate-side weightScale.
+    uint64_t gateNOffset = param.nOffset * scaleKGmSize;
+    uint64_t upNOffset = (param.nOffset + param.nSize / 2) * scaleKGmSize;
     uint64_t kScaleOffset = kbL1Offset / MX_GROUPSIZE;
 
-    Dn2NzParams scaleBdn2NzParamsSwish;
-    ConfigScaleDn2NzParams(nHalfSize, scaleKGmSize, scaleKL1RealSize, scaleBdn2NzParamsSwish);
-    int64_t scaleBGmOffsetSwish = swishNOffset + kScaleOffset;
-    GlobalTensor<half> f16ScaleBSwishGlobal;
-    f16ScaleBSwishGlobal.SetGlobalBuffer((__gm__ half *)weightScaleGlobal_[scaleBGmOffsetSwish].GetPhyAddr(),
-                                         (nHalfSize * scaleKL1RealSize) >> 1);
-    auto f16ScaleBSwishLocal =
-        weightScaleBL1_[(scaleBufIdx_ & 1) * weightScaleBL1DbOffset_].template ReinterpretCast<half>();
-    DataCopy(f16ScaleBSwishLocal, f16ScaleBSwishGlobal, scaleBdn2NzParamsSwish);
-
-    // Copy weightScale part2
     Dn2NzParams scaleBdn2NzParamsGate;
     ConfigScaleDn2NzParams(nHalfSize, scaleKGmSize, scaleKL1RealSize, scaleBdn2NzParamsGate);
     int64_t scaleBGmOffsetGate = gateNOffset + kScaleOffset;
@@ -257,9 +246,20 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const Basi
     f16ScaleBGateGlobal.SetGlobalBuffer((__gm__ half *)weightScaleGlobal_[scaleBGmOffsetGate].GetPhyAddr(),
                                         (nHalfSize * scaleKL1RealSize) >> 1);
     auto f16ScaleBGateLocal =
+        weightScaleBL1_[(scaleBufIdx_ & 1) * weightScaleBL1DbOffset_].template ReinterpretCast<half>();
+    DataCopy(f16ScaleBGateLocal, f16ScaleBGateGlobal, scaleBdn2NzParamsGate);
+
+    // Copy up-side weightScale.
+    Dn2NzParams scaleBdn2NzParamsUp;
+    ConfigScaleDn2NzParams(nHalfSize, scaleKGmSize, scaleKL1RealSize, scaleBdn2NzParamsUp);
+    int64_t scaleBGmOffsetUp = upNOffset + kScaleOffset;
+    GlobalTensor<half> f16ScaleBUpGlobal;
+    f16ScaleBUpGlobal.SetGlobalBuffer((__gm__ half *)weightScaleGlobal_[scaleBGmOffsetUp].GetPhyAddr(),
+                                      (nHalfSize * scaleKL1RealSize) >> 1);
+    auto f16ScaleBUpLocal =
         weightScaleBL1_[(scaleBufIdx_ & 1) * weightScaleBL1DbOffset_ + (nHalfSize * scaleKL1RealSize)]
             .template ReinterpretCast<half>();
-    DataCopy(f16ScaleBGateLocal, f16ScaleBGateGlobal, scaleBdn2NzParamsGate);
+    DataCopy(f16ScaleBUpLocal, f16ScaleBUpGlobal, scaleBdn2NzParamsUp);
 }
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM

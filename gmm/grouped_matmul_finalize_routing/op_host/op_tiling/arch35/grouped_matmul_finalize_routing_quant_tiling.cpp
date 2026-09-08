@@ -144,7 +144,15 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
                 return false);
 
     OP_CHECK_IF(!CheckDtype(), OP_LOGE(context_->GetNodeName(), "Required input check failed."), return false);
-    return CheckOptionalInputsForRouting();
+    OP_CHECK_IF(!CheckOptionalInputsForRouting(), OP_LOGE(context_->GetNodeName(), "Optional input check failed."),
+                return false);
+    const bool bf16MxTensorApiTarget = inputParams_.cDtype == ge::DT_BF16 && IsMicroScaling() &&
+                                       inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ && rowIndexType_ == 1;
+    OP_CHECK_IF(bf16MxTensorApiTarget && inputParams_.hasBias,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "bias", "not empty",
+                                                      "bias is not supported in BF16 MX TensorAPI path"),
+                return false);
+    return true;
 }
 
 bool GroupedMatmulFinalizeRoutingQuantTiling::LoadInputDescsForRouting()
