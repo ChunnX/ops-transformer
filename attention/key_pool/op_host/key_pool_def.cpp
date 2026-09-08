@@ -73,7 +73,7 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND});
-        this->Attr("cmp_ratio").AttrType(REQUIRED).Int(CMP_RATIO_VALUE);
+        this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(CMP_RATIO_VALUE);
         this->Attr("norm_eps").AttrType(OPTIONAL).Float(1e-6);
         this->Attr("rotary_mode").AttrType(OPTIONAL).Int(ROTARY_MODE_VALUE);
         this->Attr("state_cache_stride_dim0").AttrType(OPTIONAL).Int(STATE_CACHE_STRIDE_DIM0);
