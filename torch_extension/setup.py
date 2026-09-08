@@ -12,6 +12,9 @@ import os
 import shutil
 import glob
 import logging
+import ast
+import importlib
+import sys
 from setuptools import setup, find_packages
 from setuptools import Command
 from setuptools.command.build_py import build_py as _build_py
@@ -98,6 +101,7 @@ for _subdir in ("csrc", "common"):
 _op_category_inits = {}
 _op_py_files = []
 _op_cpp_files = []
+_op_native_builds = []
 
 
 def _collect_op(op_cat, op_dir, te_dir):
@@ -107,6 +111,22 @@ def _collect_op(op_cat, op_dir, te_dir):
         if f.endswith(".py"):
             f_src = os.path.join(te_dir, f)
             _op_py_files.append((os.path.join("ops", op_cat, op_dir, f), f_src))
+
+    # Python kernels opt in through build_native(output, target), beside the entry.
+    kernel_dir = os.path.join(os.path.dirname(te_dir), "op_kernel")
+    kernel_file = os.path.join(kernel_dir, op_dir + ".py")
+    if os.path.isfile(kernel_file):
+        with open(kernel_file) as stream:
+            declarations = ast.parse(stream.read()).body
+        if any(isinstance(node, ast.FunctionDef) and node.name == "build_native"
+               for node in declarations):
+            module = os.path.relpath(kernel_file, OPS_TRANSFORMER_ROOT)[:-3].replace(os.sep, ".")
+            destination = os.path.join("ops", op_cat, op_dir)
+            _op_native_builds.append((module, destination))
+            for filename in sorted(os.listdir(kernel_dir)):
+                if filename.endswith(".py"):
+                    _op_py_files.append((os.path.join(destination, "op_kernel", filename),
+                                         os.path.join(kernel_dir, filename)))
 
     csrc_dir = os.path.join(te_dir, "csrc")
     if os.path.isdir(csrc_dir):
@@ -243,6 +263,15 @@ class BuildPyWithOps(_build_py):
             dst = os.path.join(build_pkg, rel_path)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copy2(src_abs, dst)
+        if _op_native_builds:
+            sys.path.insert(0, OPS_TRANSFORMER_ROOT)
+            try:
+                target = os.environ.get("CANNBOTDSL_NPU_ARCH", "dav-3510")
+                for module, destination in _op_native_builds:
+                    importlib.import_module(module).build_native(
+                        os.path.join(build_pkg, destination, "_native"), target)
+            finally:
+                sys.path.remove(OPS_TRANSFORMER_ROOT)
         common_src_dir = os.path.join(_src_path, "common")
         if os.path.isdir(common_src_dir):
             for root_dir, _, filenames in os.walk(common_src_dir):
@@ -289,6 +318,11 @@ def _clean_build_artifacts():
 if _bdist_wheel is not None:
 
     class BdistWheelWithClean(_bdist_wheel):
+        def finalize_options(self):
+            super().finalize_options()
+            if _op_native_builds:
+                self.root_is_pure = False
+
         def run(self):
             _clean_build_artifacts()
             super().run()
