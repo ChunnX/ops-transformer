@@ -2,7 +2,7 @@
 
 ## 执行方式
 
-先按[构建与安装](../docs/install.md)准备算子包和标准PyTorch包，再在仓库根目录执行：
+先按[《源码构建》](../../../docs/zh/install/compile.md)准备算子包，并按[《PyTorch扩展构建与安装》](../../../torch_extension/README.md#build--installation)准备标准PyTorch包，再在仓库根目录执行：
 
 ```bash
 # Host tiling/infer-shape UT

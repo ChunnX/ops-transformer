@@ -86,7 +86,6 @@
 - [ACLNN两阶段接口及C++ 示例](docs/aclnnTurboQuantSparseFlashAttention.md)。
 - [标准PyTorch接口](../../torch_extension/cann_ops_transformer/docs/zh/turbo_quant_sparse_flash_attention.md)：`cann_ops_transformer.turbo_quant_sparse_flash_attention`。
 - [旧Python入口兼容说明](torch_ops_extension/README.md)。
-- [构建与安装](docs/install.md)。
 - [测试说明](tests/README.md)。
 
 接口支持推理前向，具体框架调用方式和约束见PyTorch接口文档。

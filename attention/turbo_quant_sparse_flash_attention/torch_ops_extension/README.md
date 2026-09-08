@@ -5,7 +5,7 @@
 
 ## 构建与安装
 
-先按[《构建与安装》](../docs/install.md)安装算子包和标准wheel，再在仓库根目录执行：
+先按[《源码构建》](../../../docs/zh/install/compile.md)安装算子包，并按[《PyTorch扩展构建与安装》](../../../torch_extension/README.md#build--installation)安装标准wheel，再在仓库根目录执行：
 
 ```bash
 cd attention/turbo_quant_sparse_flash_attention/torch_ops_extension
