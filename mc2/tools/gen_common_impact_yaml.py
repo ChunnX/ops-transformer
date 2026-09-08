@@ -145,33 +145,36 @@ for grp in ('common', '3rd'):
         open(out, 'w').write('\n'.join(lines) + '\n')
         summary.append((f'{grp}/{chip_cn}', n_map, n_empty, out))
 
-# file_lists.yaml: 修改文件匹配清单(输入文件按此归类)
-lines = [
-    '# mc2 修改文件匹配清单',
-    f'# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})',
-    '# 用途: 输入修改的文件路径, 按以下列表匹配判定测试范围:',
-    '#   1) full_regression.non_header_extensions: 非头文件(按扩展名匹配) -> 全量',
-    '#   2) full_regression.headers_no_operator_relation: 无明确include到算子关系的头 -> 全量',
-    '#   3) mapped_headers: 有明确include到算子关系的头 -> 查对应芯片yaml取ops',
-    '#   未出现在任何列表中的文件 -> 保守按全量处理',
-    '#   最终算子集需叠加CMake depends反向闭包后去重',
-    '',
-    'full_regression:',
-    '  non_header_extensions:',
-]
-for ext in ('.cpp', '.cc', '.c', '.py', '.json', '.ini', '.sh', '.csv', '.txt', '.md'):
-    lines.append(f'    - "{ext}"')
-lines.append('  headers_no_operator_relation:')
-for g in ('common', '3rd'):
-    lines.append(f'    {g}:')
-    for r in [x for x in grp_files_map[g] if not impact[x]]:
-        lines.append(f'      - {r}')
-for g in ('common', '3rd'):
-    mapped = sorted(r for r in grp_files_map[g] if impact[r])
-    lines.append(f'mapped_headers_{g}:')
-    for r in mapped: lines.append(f'  - {r}')
-open(os.path.join(OUTDIR, 'file_lists.yaml'), 'w').write('\n'.join(lines) + '\n')
-print(f'输出 {os.path.join(OUTDIR, "file_lists.yaml")}')
+# file_lists.yaml: 修改文件匹配清单(按grp分放)
+for grp in ('common', '3rd'):
+    grp_files = sorted(r for r in targets if r.startswith(grp + '/'))
+    mapped_g = [r for r in grp_files if impact[r]]
+    unrel_g = [r for r in grp_files if not impact[r]]
+    lines = [
+        f'# mc2/{grp} 修改文件匹配清单',
+        f'# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})',
+        '# 用途: 输入修改的文件路径, 按以下列表匹配判定测试范围:',
+        '#   1) full_regression.non_header_extensions: 非头文件(按扩展名匹配) -> 全量',
+        '#   2) full_regression.headers_no_operator_relation: 无明确include到算子关系的头 -> 全量',
+        f'#   3) mapped_headers: 有明确include到算子关系的头 -> 查本目录{{A2,A3,A5}}.yaml取ops',
+        '#   未出现在任何列表中的文件 -> 保守按全量处理',
+        '#   最终算子集需叠加CMake depends反向闭包后去重',
+        '',
+        'full_regression:',
+        '  non_header_extensions:',
+    ]
+    for ext in ('.cpp', '.cc', '.c', '.py', '.json', '.ini', '.sh', '.csv', '.txt', '.md'):
+        lines.append(f'    - "{ext}"')
+    lines.append('  headers_no_operator_relation:')
+    for r in unrel_g:
+        lines.append(f'    - {r}')
+    lines.append('mapped_headers:')
+    for r in mapped_g:
+        lines.append(f'  - {r}')
+    os.makedirs(os.path.join(OUTDIR, grp), exist_ok=True)
+    open(os.path.join(OUTDIR, grp, 'file_lists.yaml'), 'w').write('\n'.join(lines) + '\n')
+    print(f'输出 {os.path.join(OUTDIR, grp, "file_lists.yaml")}: '
+          f'mapped {len(mapped_g)} / 无关系全量 {len(unrel_g)}')
 
 # full_regression.yaml: 全量回归算子清单
 lines = [
