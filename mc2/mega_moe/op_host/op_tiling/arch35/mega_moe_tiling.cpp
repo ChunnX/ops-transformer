@@ -420,10 +420,12 @@ static ge::graphStatus CheckSwiGluOaiActivationParams(const float *activationPar
 }
 
 /*
- * situglu 的 beta 必填：它要进分母，取 0 或非有限值算出来就是 NaN。
- * linear_beta 选填，给了就切到 LINEAR 子模式。
- * 注意个数校验必须排在取值之前：一个参数都不传时 activationParams 是空指针，
- * 先取 activationParams[0] 会直接段错误，而不是干净地报错返回。
+ * situglu 的 beta 必填，且仅支持大于 0 的有限值。
+ * linear_beta 选填，指定后使用 LINEAR
+ * 子模式，同样仅支持大于 0 的有限值。
+ *
+ * 必须先检查参数个数，再读取参数；没有参数时 activationParams 是空指针。
+
  */
 static ge::graphStatus CheckSituGluActivationParams(const float *activationParams, size_t paramCount,
                                                     const char *nodeName)
@@ -433,15 +435,15 @@ static ge::graphStatus CheckSituGluActivationParams(const float *activationParam
                                               "should be 1 or 2 for situglu"),
                     return ge::GRAPH_FAILED);
     const float beta = activationParams[0];
-    OP_TILING_CHECK(!std::isfinite(beta) || beta == 0.0f,
+    OP_TILING_CHECK(!std::isfinite(beta) || beta <= 0.0f,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "situglu_beta", std::to_string(beta).c_str(),
-                                              "should be finite and non-zero"),
+                                              "should be finite and greater than 0"),
                     return ge::GRAPH_FAILED);
     if (paramCount == 2U) {
         const float linearBeta = activationParams[1];
-        OP_TILING_CHECK(!std::isfinite(linearBeta) || linearBeta == 0.0f,
+        OP_TILING_CHECK(!std::isfinite(linearBeta) || linearBeta <= 0.0f,
                         OP_LOGE_FOR_INVALID_VALUE(nodeName, "situglu_linear_beta", std::to_string(linearBeta).c_str(),
-                                                  "should be finite and non-zero"),
+                                                  "should be finite and greater than 0"),
                         return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
