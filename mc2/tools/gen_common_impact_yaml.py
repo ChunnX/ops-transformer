@@ -84,7 +84,19 @@ def ops_of(rel, stack=()):
     return out
 
 
-impact = {r: ops_of(r) for r in targets}
+# ---------- 3.5 编译级引用识别 ----------
+# common/3rd 的实现文件(.cpp等)由 CMake file(GLOB)/add_modules_sources(DIR) 按目录
+# 整包编译进全局目标(ophost/tiling/opapi等), 无需被include, 对全部mc2算子生效;
+# 测试目录(tests)除外
+def is_test(p):
+    return any(s in ("tests", "test") for s in p.split("/"))
+
+
+compiled = {
+    r
+    for r in targets
+    if r.endswith((".cpp", ".cc", ".c")) and not is_test(r)
+}
 
 # ---------- 4. 算子芯片注册(来自 *_def.cpp) ----------
 socs = {}
@@ -99,6 +111,12 @@ for op in sorted(os.listdir(MC2)):
                     SOC_RE.findall(open(os.path.join(dp, f), errors="ignore").read())
                 )
     socs[op] = s
+
+ALL_OPS = set(socs)
+for f in compiled:
+    memo[f] = set(ALL_OPS)  # 编译级引用: 影响全部算子(种子, 闭包会继续向上传播)
+
+impact = {r: ops_of(r) for r in targets}
 
 # ---------- 5. 零引用实现文件继承同名头 ----------
 inh = 0
@@ -147,6 +165,8 @@ for grp in ("common", "3rd"):
             "# 判定规则:",
             "#   - mc2内所有#include按裸文件名匹配, 重名文件取并集(note:字段标注), 宁多勿漏",
             "#   - 间接include沿common/3rd内部引用链传递闭包, 爬到算子目录为止",
+            "#   - common/3rd的非测试.cpp由CMake按目录整包编译(编译级引用, note:字段标注),",
+            "#     改动影响全部算子, ops同样显式列出",
             f"#   - 算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 {chip_cn}({soc}) 的交集",
             "",
         ]
@@ -164,10 +184,15 @@ for grp in ("common", "3rd"):
             else:
                 lines.append("  ops: []")
                 n_empty += 1
-            if os.path.basename(r) in dup_groups:
-                lines.append(
-                    f"  note: 同名文件{len(dup_groups[os.path.basename(r)])}份, 映射取并集"
-                )
+            if os.path.basename(r) in dup_groups or r in compiled:
+                notes = []
+                if os.path.basename(r) in dup_groups:
+                    notes.append(
+                        f"同名文件{len(dup_groups[os.path.basename(r)])}份, 映射取并集"
+                    )
+                if r in compiled:
+                    notes.append("编译级引用(CMake按目录整包编译, 无需include)")
+                lines.append("  note: " + "; ".join(notes))
         grp_out = os.path.join(OUTDIR, grp)
         os.makedirs(grp_out, exist_ok=True)
         out = os.path.join(grp_out, f"{chip_cn}.yaml")

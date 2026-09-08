@@ -1,5 +1,5 @@
 # mc2/common 零引用文件清单 (与芯片无关, 全芯片共用)
-# 生成: 2026-09-08  基线commit: 0cea24f78 (clean)
+# 生成: 2026-09-08  基线commit: ad9a14143 (clean)
 #
 # 语义: 下列文件当前无任何mc2源文件include(含间接), 改动不影响mc2算子编译;
 #       注意与芯片映射表中 ops: [] 的区别:
@@ -8,9 +8,6 @@
 #                    - 是否被仓外代码/构建脚本引用
 #                    - 是否include关系尚未建立(如新增文件)
 
-common/op_graph/mc2_gen_task_ops_utils_arch35_stub.cpp:
-common/op_host/op_tiling/new_mc2_matmul_tiling_cfg.cpp:
-common/op_host/op_tiling/new_mc2_matmul_tiling_cfg.h:
 common/op_kernel/all_gather_matmul_tiling.h:
 common/op_kernel/apace/block/epilogue/block_epilogue_all_to_all.h:
 common/op_kernel/apace/block/mmad/qmm_mx_block_mmad_tile_k_wait_flag.h:
@@ -26,11 +23,7 @@ common/op_kernel/apace/tests/st/quant_matmul_reduce_scatter/ubmem/src/apace_qmrs
 common/op_kernel/apace/tests/st/quant_matmul_reduce_scatter/ubmem/src/main.cpp:
 common/op_kernel/apace/tests/st/utils/apace_st_utils.h:
 common/op_kernel/apace/tests/st/utils/root_info_exchanger.h:
-common/op_kernel/apace/utils/comm_channel_builder.h:
 common/op_kernel/apace/utils/comm_resource_builder.h:
 common/op_kernel/qbmm_perblock_api_utils_noncontiguous.h:
 common/op_kernel/reduce_sum.h:
-common/torch_extension/csrc/comm_channel_builder_manager.cpp:
-common/torch_extension/csrc/comm_context.cpp:
-common/torch_extension/csrc/elastic_buffer.cpp:
 common/utils/mc2_math_util.h:
