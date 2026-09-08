@@ -44,28 +44,23 @@ using kda_prolog::ATTR_TRANS_WEIGHT_GATE_INDEX;
 using kda_prolog::ATTR_TRANS_WEIGHT_G_INDEX;
 
 struct TilingRequiredParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
-};
-
-struct TilingOptionalParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::Tensor *tensor;
+    const gert::CompileTimeTensorDesc *desc = nullptr;
+    const gert::StorageShape *shape = nullptr;
 };
 
 struct KdaPrologCompileInfo {};
 
 struct KdaPrologParaInfo {
-    TilingRequiredParaInfo x = {nullptr, nullptr};
-    TilingRequiredParaInfo weightQkv = {nullptr, nullptr};
-    TilingRequiredParaInfo weightBeta = {nullptr, nullptr};
-    TilingRequiredParaInfo weightGate = {nullptr, nullptr};
-    TilingRequiredParaInfo weightG = {nullptr, nullptr};
-    TilingRequiredParaInfo scaleQkv = {nullptr, nullptr};
-    TilingRequiredParaInfo qkvOut = {nullptr, nullptr};
-    TilingRequiredParaInfo betaOut = {nullptr, nullptr};
-    TilingRequiredParaInfo gateOut = {nullptr, nullptr};
-    TilingRequiredParaInfo gOut = {nullptr, nullptr};
+    TilingRequiredParaInfo x;
+    TilingRequiredParaInfo weightQkv;
+    TilingRequiredParaInfo weightBeta;
+    TilingRequiredParaInfo weightGate;
+    TilingRequiredParaInfo weightG;
+    TilingRequiredParaInfo scaleQkv;
+    const gert::CompileTimeTensorDesc *qkvOutDesc = nullptr;
+    const gert::CompileTimeTensorDesc *betaOutDesc = nullptr;
+    const gert::CompileTimeTensorDesc *gateOutDesc = nullptr;
+    const gert::CompileTimeTensorDesc *gOutDesc = nullptr;
 
     const bool *transWeightQkv = nullptr;
     const bool *transWeightBeta = nullptr;
@@ -77,16 +72,11 @@ class KdaPrologTilingInfo {
 public:
     const char *opName = nullptr;
     fe::PlatFormInfos *platformInfo = nullptr;
-    KdaPrologParaInfo opParamInfo;
-    platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND950;
     KdaPrologBaseParams baseParams; // 与 tiling_data.baseParams 对齐；核数运行时经 platform 获取
     bool transWeightQkv = true;
     bool transWeightBeta = true;
     bool transWeightGate = true;
     bool transWeightG = true;
-    ge::DataType inputXType = ge::DT_BF16;
-    ge::DataType inputWeightQkvType = ge::DT_FLOAT8_E4M3FN;
-    ge::DataType outputQkvType = ge::DT_BF16;
     uint32_t aicNum = 0;
     uint64_t l1Size = 0;
     uint64_t l0cSize = 0;
@@ -105,7 +95,6 @@ public:
     void GetOutputParaInfo();
     ge::graphStatus GetAndCheckAttrParaInfo();
     ge::graphStatus CheckRequiredInOutExistence() const;
-    ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus GetAndCheckInOutDataType();
     ge::graphStatus CheckShapeDim();
     ge::graphStatus GetBaseShapeInfo();
@@ -118,11 +107,10 @@ private:
     const char *opName_ = nullptr;
     fe::PlatFormInfos *platformInfo_ = nullptr;
     KdaPrologParaInfo opParamInfo_;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND950;
     KdaPrologBaseParams baseParams_;
-    ge::DataType inputXType_ = ge::DT_BF16;
-    ge::DataType inputWeightQkvType_ = ge::DT_FLOAT8_E4M3FN;
-    ge::DataType outputQkvType_ = ge::DT_BF16;
+    uint32_t aicNum_ = 0;
+    uint64_t l1Size_ = 0;
+    uint64_t l0cSize_ = 0;
 };
 
 class KdaPrologTiling {
@@ -135,14 +123,13 @@ public:
 private:
     ge::graphStatus FillBaseParams(const KdaPrologTilingInfo &tilingInfo);
     ge::graphStatus CalcModuleTilings(const KdaPrologTilingInfo &tilingInfo);
-    ge::graphStatus FillWorkspace(const KdaPrologTilingInfo &tilingInfo);
+    ge::graphStatus CalcWorkspaceSize(const KdaPrologTilingInfo &tilingInfo);
     ge::graphStatus SetTilingKey(const KdaPrologTilingInfo &tilingInfo);
     ge::graphStatus WriteTilingResult(const KdaPrologTilingInfo &tilingInfo);
 
     gert::TilingContext *context_ = nullptr;
     KdaPrologTilingData tilingData_;
     uint64_t workspaceSize_ = 0;
-    uint32_t blockDim_ = 0;
 };
 } // namespace optiling
 
