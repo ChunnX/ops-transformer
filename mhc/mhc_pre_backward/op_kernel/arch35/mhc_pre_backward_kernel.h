@@ -278,8 +278,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
     coreNum_ = tiling_->coreNum;
     // BS维全链路保留64位，避免大shape在核内截断后漏算或地址回绕。
     totalLength_ = tiling_->totalLength;
-    // 本轮消融实验统一使用高阶Matmul API，分流条件由上一独立提交保留。
-    useHighMatmul_ = true;
+    // 1024行及以下保留基础Cube，兼容FP32短序列合并C1的精度修复；更长FP32恢复高阶Matmul性能。
+    useHighMatmul_ = tiling_->implMode != MHC_PRE_BACKWARD_IMPL_MODE_HF32 &&
+                     totalLength_ > MHC_PRE_BACKWARD_FP32_HIGH_MATMUL_THRESHOLD;
     hcEps_ = tiling_->hcEps;
     vecCoreNum_ = tiling_->vecCoreNum;
     scaleMean_ = (nD_ > 0) ? (1.0f / nD_) : 0.0f;
