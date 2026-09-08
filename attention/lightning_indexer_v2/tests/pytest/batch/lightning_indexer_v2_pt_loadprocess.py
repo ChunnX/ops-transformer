@@ -23,7 +23,7 @@ from cann_ops_transformer.ops import lightning_indexer, lightning_indexer_metada
 
 def test_liv2_process(filepath, device_id=0):
     # 加载测试数据
-    test_data = torch.load(filepath, map_location="cpu")
+    test_data = torch.load(filepath, map_location="cpu", weights_only=False)
 
     params = test_data['params']
     cpu_result = test_data['cpu_result']
@@ -41,10 +41,10 @@ def test_liv2_process(filepath, device_id=0):
     head_dim = int(params[7])
     block_size = int(params[8])
     block_num = int(params[9])
-    if params[10] == 'FP16':
+    if params[10] == 'FP16' or params[10] == torch.float16:
         if 'blockFusion' in test_data and test_data['blockFusion'] is not None:
             blockFusion = test_data['blockFusion'].to(dtype=torch.float16).npu()
-    elif params[10] == 'BF16':
+    elif params[10] == 'BF16' or params[10] == torch.bfloat16:
         if 'blockFusion' in test_data and test_data['blockFusion'] is not None:
             blockFusion = test_data['blockFusion'].to(dtype=torch.bfloat16).npu()
     topk = params[19]
@@ -134,7 +134,7 @@ def test_liv2_process_graph(filepath, device_id=0):
     与 eager 模式共用相同的 .pt 数据，仅算子调用路径不同（compile vs eager）。
     """
     import lightning_indexer_v2_acl_graph
-    test_data = torch.load(filepath, map_location="cpu")
+    test_data = torch.load(filepath, map_location="cpu", weights_only=False)
     params = test_data['params']
     output_idx_offset = test_data.get('output_idx_offset', None)
 

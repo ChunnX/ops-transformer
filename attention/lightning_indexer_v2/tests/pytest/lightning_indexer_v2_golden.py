@@ -898,7 +898,7 @@ def liv2_output_single(
     ) = params
 
     if is_batch:
-        if qk_dtype == "FP16":
+        if qk_dtype == "FP16" or qk_dtype == torch.float16:
             qk_dtype = torch.float16
         else:
             qk_dtype = torch.bfloat16
