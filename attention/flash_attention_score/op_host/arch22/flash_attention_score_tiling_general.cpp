@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@
  */
 
 #include <numeric>
+#include <vector>
+#include <algorithm>
 #include <alog_pub.h>
 #include <register/tilingdata_base.h>
 #include <tiling/tiling_api.h>
@@ -62,7 +64,8 @@ static constexpr size_t WORK_SPACE_RESERVE_SIZE = 16 * 1024 * 1024;
 static const int64_t ATTEN_MASK_S1_REV_INDEX = 2L;
 static const int64_t ATTEN_MASK_COMPRESS_LIMIT = 2048L;
 static const int64_t ATTEN_MASK_COMPRESS_PREFIX_LIMIT = 3072L;
-static const int64_t MAX_VAR_LEN_SEQ_LEN = 20000L;
+static const int64_t DEFAULT_VAR_LEN_SEQ_LEN =
+    20000L; // 仅在tiling下沉(无法获取真实actual_seq_length)场景作为兜底长度使用
 static const int64_t S2_REUSE_SIZE_512 = 512L;
 static const int64_t S2_REUSE_SIZE_1024 = 1024L;
 static const int64_t S1_REUSE_SIZE_3840 = 3840L;
@@ -158,7 +161,12 @@ enum AttenMaskShapeType : uint8_t {
     ATTEN_1_1_1_T_T = 99,
 };
 
-enum PseShapeType : uint8_t { PSE_B_N2_G_S1_S2 = 0, PSE_B_N2_G_1_S2 = 1, PSE_B_N2_G_SLOPE, PSE_1_N2_G_SLOPE };
+enum PseShapeType : uint8_t {
+    PSE_B_N2_G_S1_S2 = 0,
+    PSE_B_N2_G_1_S2 = 1,
+    PSE_B_N2_G_SLOPE,
+    PSE_1_N2_G_SLOPE
+};
 
 enum SparseMode : uint8_t {
     NO_MASK = 0,
@@ -182,7 +190,11 @@ enum AttenMaskCompressMode : uint8_t {
     BAND_LEFT_UP_CAUSAL_MODE
 };
 
-enum ImplMode : uint8_t { AA_HIGH_PRECISION = 0, AA_HIGH_PERFORMANCE = 1, AA_INVALID_LINE_HIGH_PRECISION = 2 };
+enum ImplMode : uint8_t {
+    AA_HIGH_PRECISION = 0,
+    AA_HIGH_PERFORMANCE = 1,
+    AA_INVALID_LINE_HIGH_PRECISION = 2
+};
 
 enum PseType : uint8_t {
     PSE_OUTER_MUL_ADD_TYPE = 0,
@@ -225,7 +237,10 @@ struct MatmulConstParams {
     DTemplateType dType;
 };
 
-enum MatmulPolicyType : uint8_t { MATMUL_POLICY_NORMAL = 0, MATMUL_POLICY_UNSPLITK = 1 };
+enum MatmulPolicyType : uint8_t {
+    MATMUL_POLICY_NORMAL = 0,
+    MATMUL_POLICY_UNSPLITK = 1
+};
 
 template <typename T>
 static T AlignUp(T num1, T num2)
@@ -278,7 +293,15 @@ static T CalcTailSize(T num1, T num2)
 
 class TilingKey {
 public:
-    TilingKey() : splitS1(0), splitS2(0), splitD(0), dtype(0), layoutType(0), sparseType(0), reserved(0) {}
+    TilingKey()
+        : splitS1(0),
+          splitS2(0),
+          splitD(0),
+          dtype(0),
+          layoutType(0),
+          sparseType(0),
+          reserved(0)
+    {}
 
     void Reset()
     {
@@ -326,7 +349,11 @@ public:
 
 class FlashAttentionScoreTilingBase : public TilingBaseClass {
 public:
-    explicit FlashAttentionScoreTilingBase(gert::TilingContext *context) : TilingBaseClass(context) { Reset(); }
+    explicit FlashAttentionScoreTilingBase(gert::TilingContext *context)
+        : TilingBaseClass(context)
+    {
+        Reset();
+    }
     ~FlashAttentionScoreTilingBase() override = default;
 
     void Reset(gert::TilingContext *context) override
@@ -365,8 +392,10 @@ protected:
 
     void Reset();
 
-    void GetActualSeqLenData(int64_t inputIdx, std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &res, int64_t &actualLen,
-                             int64_t &actualBatch, int64_t &endLen) const;
+    void GetActualSeqLenData(int64_t inputIdx, std::vector<int64_t> &res, int64_t &actualLen, int64_t &actualBatch,
+                             int64_t &endLen) const;
+
+    int64_t GetActualSeqLenBufferSize() const;
 
     virtual int64_t GetNRatio();
 
@@ -401,10 +430,10 @@ protected:
     virtual bool AnalyzeDtype();
     bool AnalyzeAttrs();
     bool AnalyzeLayout();
-    bool CouldConvertTND2BSH(std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &resQ,
-                             std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &resKV, const uint32_t &firstValidIndex,
-                             const uint32_t &lastValidIndex, const int64_t &actualQBatch, const int64_t &actualKVBatch,
-                             int64_t &s1Max, int64_t &s2Max, int64_t &t1Size, int64_t &t2Size) const;
+    bool CouldConvertTND2BSH(const std::vector<int64_t> &resQ, const std::vector<int64_t> &resKV,
+                             const uint32_t &firstValidIndex, const uint32_t &lastValidIndex,
+                             const int64_t &actualQBatch, const int64_t &actualKVBatch, int64_t &s1Max, int64_t &s2Max,
+                             int64_t &t1Size, int64_t &t2Size) const;
 
     bool Analyze3DimLayout(const gert::Shape &queryShape, const gert::Shape *queryRopeShape,
                            const gert::Shape &keyShape, const gert::Shape &valueShape, size_t layoutLen);
@@ -506,8 +535,8 @@ protected:
     int64_t accumS2;
     int64_t bandIndex;
     int64_t realT1Size;
-    std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> actualSeqLenData;
-    std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> actualSeqLenKvData;
+    std::vector<int64_t> actualSeqLenData;
+    std::vector<int64_t> actualSeqLenKvData;
     float keepProb;
     float scaleValue;
     uint8_t attenMaskCompressMode;
@@ -1027,6 +1056,10 @@ void FlashAttentionScoreTilingBase::Reset()
     maxValidS2Len = 0LL;
     batchBasic = 1LL;
 
+    // 释放上一次tiling申请的动态内存, 避免复用context时残留脏数据
+    std::vector<int64_t>().swap(actualSeqLenData);
+    std::vector<int64_t>().swap(actualSeqLenKvData);
+
     opName = nullptr;
     inputLayout = nullptr;
 
@@ -1163,8 +1196,8 @@ bool FlashAttentionScoreTilingBase::AnalyzeLayout()
     return true;
 }
 
-bool FlashAttentionScoreTilingBase::CouldConvertTND2BSH(std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &resQ,
-                                                        std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &resKV,
+bool FlashAttentionScoreTilingBase::CouldConvertTND2BSH(const std::vector<int64_t> &resQ,
+                                                        const std::vector<int64_t> &resKV,
                                                         const uint32_t &firstValidIndex, const uint32_t &lastValidIndex,
                                                         const int64_t &actualQBatch, const int64_t &actualKVBatch,
                                                         int64_t &s1Max, int64_t &s2Max, int64_t &t1Size,
@@ -1190,7 +1223,7 @@ bool FlashAttentionScoreTilingBase::CouldConvertTND2BSH(std::array<int64_t, MAX_
     if (s1Max * actualQBatch != t1Size || s2Max * actualKVBatch != t2Size) {
         return false;
     }
-    for (uint32_t i = firstValidIndex; i <= lastValidIndex; i++) {
+    for (uint32_t i = firstValidIndex; i <= lastValidIndex && i < resQ.size() && i < resKV.size(); i++) {
         if (resQ[i] == 0 && resKV[i] == 0) {
             continue;
         }
@@ -1201,8 +1234,33 @@ bool FlashAttentionScoreTilingBase::CouldConvertTND2BSH(std::array<int64_t, MAX_
     return true;
 }
 
-void FlashAttentionScoreTilingBase::GetActualSeqLenData(int64_t inputIdx, std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &res,
-                                                        int64_t &actualLen, int64_t &actualBatch, int64_t &endLen) const
+int64_t FlashAttentionScoreTilingBase::GetActualSeqLenBufferSize() const
+{
+    if (isMaxWorkspace) {
+        // tiling下沉场景, 使用默认长度兜底
+        return DEFAULT_VAR_LEN_SEQ_LEN;
+    }
+
+    int64_t bufferSize = 0;
+    const int64_t seqLenInputIdx[] = {static_cast<int64_t>(ACTUAL_SEQ_LENGTH_INPUT_INDEX),
+                                      static_cast<int64_t>(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX)};
+    for (int64_t idx : seqLenInputIdx) {
+        auto seqLenTensor = context_->GetOptionalInputTensor(idx);
+        if (seqLenTensor == nullptr) {
+            continue;
+        }
+        auto &seqLenShape = seqLenTensor->GetShape().GetStorageShape();
+        if (seqLenShape.GetDimNum() != 1) {
+            continue;
+        }
+        bufferSize = std::max(bufferSize, seqLenShape.GetDim(0));
+    }
+    // 保证buffer非空, 避免后续max_element/min_element等操作访问空容器
+    return std::max(bufferSize, 1L);
+}
+
+void FlashAttentionScoreTilingBase::GetActualSeqLenData(int64_t inputIdx, std::vector<int64_t> &res, int64_t &actualLen,
+                                                        int64_t &actualBatch, int64_t &endLen) const
 {
     auto actualSeqLenTensor = context_->GetOptionalInputTensor(inputIdx);
     if (actualSeqLenTensor == nullptr) {
@@ -1220,6 +1278,10 @@ void FlashAttentionScoreTilingBase::GetActualSeqLenData(int64_t inputIdx, std::a
     if (value == nullptr) {
         OP_LOGW(context_, "[%s]actualSeqLenTensor data is null pointer", templateName);
         return;
+    }
+    /* 防御性扩容, 保证不会越界写入 */
+    if (static_cast<int64_t>(res.size()) < actualSeqLenShape.GetDim(0)) {
+        res.resize(static_cast<size_t>(actualSeqLenShape.GetDim(0)), isMaxWorkspace ? 1LL : 0LL);
     }
     res[0] = value[0];
     if (value[0] != 0) {
@@ -1282,13 +1344,12 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
             int64_t endQLen = -1;
             int64_t endKvLen = -1;
             realT1Size = t1Size;
-            if (isMaxWorkspace) {
-                std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 1);
-                std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 1);
-            } else {
-                std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 0);
-                std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0);
-            }
+            /* 按实际输入shape动态申请seqLen buffer */
+            int64_t seqLenBufferSize = GetActualSeqLenBufferSize();
+            int64_t seqLenInitValue = isMaxWorkspace ? 1LL : 0LL;
+            actualSeqLenData.assign(static_cast<size_t>(seqLenBufferSize), seqLenInitValue);
+            actualSeqLenKvData.assign(static_cast<size_t>(seqLenBufferSize), seqLenInitValue);
+            OP_LOGD(context_, "[%s]actual seq len buffer size: %ld.", templateName, seqLenBufferSize);
             GetActualSeqLenData(ACTUAL_SEQ_LENGTH_INPUT_INDEX, actualSeqLenData, actualSeqQLen, actualQBatch, endQLen);
             GetActualSeqLenData(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX, actualSeqLenKvData, actualSeqKVLen, actualKVBatch,
                                 endKvLen);
@@ -2597,7 +2658,8 @@ ge::graphStatus FlashAttentionScoreTilingBase::GetWorkspaceSize()
 
 class FlashAttentionScoreTilingS1Bn2gs1 : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionScoreTilingS1Bn2gs1(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
+    explicit FlashAttentionScoreTilingS1Bn2gs1(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
     {
         expectTemplate.splitS1 = 1;
         expectTemplate.splitD = 1;
@@ -2931,7 +2993,8 @@ protected:
 
 class FlashAttentionScoreTilingB : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionScoreTilingB(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
+    explicit FlashAttentionScoreTilingB(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
     {
         templateName = "FlashAttentionScoreB";
     }
@@ -3202,7 +3265,8 @@ protected:
 
 class FlashAttentionScoreTilingS1s2Bn2gs1 : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionScoreTilingS1s2Bn2gs1(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
+    explicit FlashAttentionScoreTilingS1s2Bn2gs1(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
     {
         expectTemplate.splitS1 = 1U;
         expectTemplate.splitS2 = 1U;
@@ -3800,7 +3864,8 @@ protected:
 
 class FlashAttentionVarLenScoreTiling : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionVarLenScoreTiling(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
+    explicit FlashAttentionVarLenScoreTiling(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
     {
         expectTemplate.splitS1 = 1U;
         expectTemplate.splitS2 = 1U;
@@ -4568,7 +4633,9 @@ protected:
 
 class FlashAttentionScoreTilingDropMask : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionScoreTilingDropMask(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context) {}
+    explicit FlashAttentionScoreTilingDropMask(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
+    {}
     ~FlashAttentionScoreTilingDropMask() override = default;
 
 protected:
