@@ -54,7 +54,7 @@ __aicore__ inline void StatsAccumulateVF(__ubuf__ float *rows, __ubuf__ float *s
 template <class T>
 __aicore__ void SplitStats(GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR scale, GM_ADDR partials, SageParams p)
 {
-    Catlass::Arch::Resource<Arch> r;
+    FixedResource r;
     GlobalTensor<T> kg, vg;
     kg.SetGlobalBuffer((__gm__ T *)k);
     vg.SetGlobalBuffer((__gm__ T *)v);
@@ -130,7 +130,7 @@ __aicore__ void Stats(GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR scale, SagePar
         SplitStats<T>(k, v, mean, scale, partials, p);
         return;
     }
-    Catlass::Arch::Resource<Arch> r;
+    FixedResource r;
     GlobalTensor<T> kg, vg;
     kg.SetGlobalBuffer((__gm__ T *)k);
     vg.SetGlobalBuffer((__gm__ T *)v);

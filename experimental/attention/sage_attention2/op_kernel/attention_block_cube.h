@@ -16,7 +16,7 @@
 namespace Sage {
 template <class T, class BLayout, bool LocalA = false, uint32_t BOffset = B_L1, bool Emit = true,
           bool Initialize = true>
-__aicore__ inline __attribute__((always_inline)) void Gemm(Catlass::Arch::Resource<Arch> &r, GM_ADDR a, GM_ADDR b,
+__aicore__ inline __attribute__((always_inline)) void Gemm(FixedResource &r, GM_ADDR a, GM_ADDR b,
                                                            uint32_t k, uint32_t n, uint32_t ubOffset,
                                                            uint32_t parity = 0, bool loadA = true)
 {

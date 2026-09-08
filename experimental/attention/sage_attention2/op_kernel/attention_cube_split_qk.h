@@ -15,7 +15,7 @@ namespace Sage {
 // following half MMAD uses the other slot; PV retains its existing partition.
 constexpr uint32_t QK_SECOND_FIX_EVENT = 6;
 template <uint32_t BOffset>
-__aicore__ inline __attribute__((always_inline)) void GemmQkSplit(Catlass::Arch::Resource<Arch> &r, GM_ADDR a,
+__aicore__ inline __attribute__((always_inline)) void GemmQkSplit(FixedResource &r, GM_ADDR a,
                                                                   GM_ADDR b, uint32_t ubOffset, bool loadA)
 {
     using namespace Catlass;

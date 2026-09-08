@@ -118,7 +118,7 @@ public:
     }
 
 private:
-    Catlass::Arch::Resource<Arch> resource_;
+    FixedResource resource_;
     AttentionBlockVec<T, DP> vector_;
     SageParams params_;
     GM_ADDR q8_;

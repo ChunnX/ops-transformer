@@ -143,7 +143,7 @@ template <class T, bool PERMUTE_V = false, bool RAW_SCALES = false>
 __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR vscale, GM_ADDR q8, GM_ADDR k8,
                            GM_ADDR v8, GM_ADDR qs, GM_ADDR ks, SageParams p, GM_ADDR rawQs, GM_ADDR rawKs)
 {
-    Catlass::Arch::Resource<Arch> r;
+    FixedResource r;
     GlobalTensor<T> qg, kg, vg;
     qg.SetGlobalBuffer((__gm__ T *)q);
     kg.SetGlobalBuffer((__gm__ T *)k);
@@ -280,7 +280,7 @@ __aicore__ void Quant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR vsc
         QuantBatch<T, PERMUTE_V, RAW_SCALES>(q, k, v, mean, vscale, q8, k8, v8, qs, ks, p, rawQs, rawKs);
         return;
     }
-    Catlass::Arch::Resource<Arch> r;
+    FixedResource r;
     GlobalTensor<T> qg, kg, vg;
     qg.SetGlobalBuffer((__gm__ T *)q);
     kg.SetGlobalBuffer((__gm__ T *)k);

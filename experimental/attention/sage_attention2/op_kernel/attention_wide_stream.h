@@ -54,7 +54,7 @@ __aicore__ inline __attribute__((always_inline)) uint64_t WideScaleAhead(const S
 }
 template <class T, bool CAUSAL>
 __aicore__ inline __attribute__((always_inline)) void ProcessWideStreamStep(
-    Catlass::Arch::Resource<Arch> &r, AttentionBlockVecWide<T, 128> &vector, WideFragmentInfo *pending,
+    FixedResource &r, AttentionBlockVecWide<T, 128> &vector, WideFragmentInfo *pending,
     uint64_t fragment, bool hasQk, GM_ADDR q8, GM_ADDR k8, GM_ADDR v8, const SageParams &p, uint64_t totalTasks)
 {
     constexpr uint32_t DP = 128, WIDE_B_L1 = P_L1 + 4 * M * N;
@@ -112,7 +112,7 @@ __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADD
                                                                           GM_ADDR vs, GM_ADDR out, GM_ADDR lse,
                                                                           SageParams p)
 {
-    Catlass::Arch::Resource<Arch> r;
+    FixedResource r;
     AttentionBlockVecWide<T, 128> vector;
     vector.Init(r, q, qs, ks, mean, vs, out, lse, p);
     uint32_t core = GetBlockIdx();

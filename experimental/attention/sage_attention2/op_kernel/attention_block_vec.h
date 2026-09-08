@@ -38,7 +38,7 @@ struct DefaultVectorLayout {
 template <class T, uint32_t DP, class Layout = DefaultVectorLayout>
 class AttentionBlockVec {
 public:
-    __aicore__ inline __attribute__((always_inline)) void Init(Catlass::Arch::Resource<Arch> &resource, GM_ADDR q,
+    __aicore__ inline __attribute__((always_inline)) void Init(FixedResource &resource, GM_ADDR q,
                                                                GM_ADDR qs, GM_ADDR ks, GM_ADDR mean, GM_ADDR vs,
                                                                GM_ADDR out, GM_ADDR lse, SageParams params)
     {
@@ -239,7 +239,7 @@ protected:
     static constexpr uint32_t SUM_UB = Layout::SUM_UB;
     static constexpr uint32_t PV_UB = Layout::PV_UB;
     static constexpr uint32_t PV_SLOT_BYTES = Layout::PV_SLOT_BYTES;
-    Catlass::Arch::Resource<Arch> *resource_;
+    FixedResource *resource_;
     SageParams params_;
     uint32_t subBlockIdx_;
     GlobalTensor<half> qsg_, ksg_;

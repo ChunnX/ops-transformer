@@ -15,6 +15,25 @@
 using namespace AscendC;
 namespace Sage {
 using Arch = Catlass::Arch::Ascend950;
+// Buffers and events are statically assigned by this kernel. Avoid TPipe
+// bookkeeping and its runtime event switch (jump tables during DBI replay).
+template <TPosition POSITION, uint32_t BYTES>
+struct FixedBuffer {
+    template <class T = half>
+    __aicore__ inline LocalTensor<T> GetBufferByByte(uint32_t offset) const
+    {
+        return LocalTensor<T>(POSITION, offset, (BYTES - offset) / sizeof(T));
+    }
+};
+struct FixedResource {
+    FixedBuffer<TPosition::A1, Arch::L1_SIZE> l1Buf;
+    FixedBuffer<TPosition::A2, Arch::L0A_SIZE> l0ABuf;
+    FixedBuffer<TPosition::B2, Arch::L0B_SIZE> l0BBuf;
+    FixedBuffer<TPosition::CO1, Arch::L0C_SIZE> l0CBuf;
+    FixedBuffer<TPosition::VECCALC, Arch::UB_SIZE> ubBuf;
+    __aicore__ inline FixedResource() { PipeBarrier<PIPE_ALL>(); }
+    __aicore__ inline ~FixedResource() { PipeBarrier<PIPE_ALL>(); }
+};
 template <HardEvent E>
 __aicore__ inline void Sync()
 {

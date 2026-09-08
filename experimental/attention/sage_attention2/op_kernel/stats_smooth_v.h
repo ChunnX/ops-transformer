@@ -83,7 +83,7 @@ __simd_vf__ inline void FinalizeSmoothStatsVF(__ubuf__ float *partials, __ubuf__
 template <class T>
 __aicore__ void SmoothValueStats(GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADDR scale, GM_ADDR partials, SageParams p)
 {
-    Catlass::Arch::Resource<Arch> r;
+    FixedResource r;
     GlobalTensor<T> kg, vg;
     GlobalTensor<float> work, mg, sg;
     kg.SetGlobalBuffer((__gm__ T *)k);
