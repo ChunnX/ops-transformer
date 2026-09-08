@@ -1004,6 +1004,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
         uint32_t topkOffset = tokenId * axisK_;
         uint32_t addrIndex = (tokenId - startTokenId_) % addrCopyCnt;
         metaLocalTensor_ = metaSlotQueue_.DeQue<int32_t>();
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
         metaLocalTensor_.SetValue(metaOffset, epRankId_);
         metaLocalTensor_.SetValue(metaOffset + 1, tokenId);
         topkIdxTensor_ = metaLocalTensor_[topkCopyAlign_];
