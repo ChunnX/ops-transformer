@@ -18,32 +18,41 @@ y, receive_cnt = bandwidth_test(
     mode=0, comm_alg="urma", shared_jetty=True, shared_jetty_num=8, batch_tokens=128)
 ```
 
-依赖 [asc-comm 0eff184](https://gitcode.com/cann/asc-comm/commit/0eff184c367e6d67263745e57abc485237d34019)
-提供的公开 `MakeMultiChannelHandle` / `GetHandleRef` 接口及对应 HCCL 共享队列支持。
-Host 使用 `torch_extension/shared_jetty_context.py` 和同目录 `csrc` 中的独立实现，
-按 `shared_jetty_comm_level` 选择协议和网络层。自动模式先按原 context 方式确定连续 UB_CTP
-域，用它划分域内、域外 peer，再联合寻找本地 endpoint 相同的 UB_CTP 层和 UB_RTP 层。
-全 UB_CTP/全 UB_RTP 模式则要求
-一个 layer 覆盖所有远端并支持对应协议。两者均按 URMA 建链，保留各对端实际的
-`channelProtocol`。UB_RTP（UBG）共享 jetty 使用用户提供的
-支持该能力的联调包；不按公开仓库旧版文档拦截，也不将 UB_RTP 归类为 MTE。
-每个共享 jetty 使用独立 tag，包含按 rank 排序、跳过本卡的所有对端 descriptor；
-context 不再硬编码校验 SoC 型号；仍会检查所选 layer、协议和 endpoint 是否能够建立共享 Jetty，
-所选 layer 内各 peer 的首个匹配协议 link 必须使用共同的本地 endpoint，否则明确报错。
-不会因为链路协议是 `UB_RTP` 而拒绝它。
-共享队列 API 不可用或 HCCL 建链失败时，同样在 context 创建阶段报错，报告 jetty 编号及返回码。
-底层 C++ context 不查询设备核数，但会先校验共享 jetty 数量位于 `[1, 56]`；tiling 再校验其不超过实际选中的 AIV 数。
-不会隐式创建额外 jetty 或回退普通 channel；单 rank 无远端，跳过建链。
+Host 控制面建联使用 [hcomm 的 HCCL shared-channel 接口](https://gitcode.com/cann/hcomm/blob/7c391e58a83fbd64a999f3892498596e009034b3/include/hccl/hccl_channel.h)。已有 `HcclComm` 时，每个逻辑 Jetty
+按以下顺序构造：`HcclChannelConfigCreate → SetInt(IS_SHARED_QUEUE) → SetStr(SHARED_QUEUE_TAG)
+→ HcclChannelAcquireWithConfig → HcclChannelConfigDestroy`。这条 HCCL 接口内部完成底层
+`HcommChannelCreateWithConfig`、READY 等待及 device ChannelEntity 填充。该独立 context 使用的控制面符号
+统一从 `libhcomm.so` 动态加载，不要求 Torch extension 直接链接该库，也不修改公共 context 的 loader。
 
-shared Jetty context 参照公共 `HcclChannelContextBuilder` 构造：`HcclEngineCtxCreate` 只申请
-`sizeof(SharedJettyContext)` 的设备 context，Jetty 句柄填充完成后通过 `HcclEngineCtxCopy` 更新。
-业务 Win 由 Torch context manager 通过 `aclrtMalloc` 独立申请、清零并注册；构造阶段通过组内 collective
-交换 Win 地址，同时核对共享 jetty 数、通信层级选择、窗口大小和构造顺序。注册和句柄由
-communicator 管理，Win 则由 manager 持有，释放前先同步设备。Python owner 保留 ProcessGroup，并应在所有 kernel
-和图重放完成前保持存活；测试流程先销毁 ProcessGroup，再释放 owner，与共享 jetty 示例的析构顺序一致。
-与公共 `CommContextManager` 一样，C++ 内部不查询或切换 NPU，调用方须在创建和释放 owner 时保持所属设备为当前设备。
-Win 初始化或注册失败会立即回滚已申请内存；本地资源准备或 context 构造一旦失败，
-该 owner 均不可重试，需重建通信组。
+Host 使用 `torch_extension/shared_jetty_context.py` 和同目录 `csrc` 中的独立实现，按
+`shared_jetty_comm_level` 选择协议和网络层。自动模式先按原 `HcclChannelContextBuilder` 的拓扑方式确定连续
+UB_CTP 域，用它划分域内、域外 peer，再联合寻找本地 endpoint 完全相同的 UB_CTP 层和 UB_RTP 层。
+全 UB_CTP/全 UB_RTP 模式要求一个 layer 覆盖所有远端并支持对应协议。一个 Jetty 的所有 peer descriptor
+使用同一个 queue tag；不同 Jetty 使用不同 tag，因而得到相互独立的底层队列。本实现按 rank 排列 descriptor
+并跳过本卡，标准接口按 descriptor 对应位置回填普通 `ChannelHandle`。Host 用第一组标准 Channel 查询远端 Win；随后仅为适配 asc-comm 的
+shared-Jetty device batch ABI，为每个 Jetty 生成一个 `MultiChannelHandle`。当前 asc-comm 没有公开的
+from-Channels 构造接口，所以公开 `MakeMultiChannelHandle` helper 会以相同 tag 再次 acquire；hcomm
+shared-channel pool 复用前一步的 Channel/Jetty，不创建第二套物理 Jetty。最终 context 只保存
+`MultiChannelHandle[jetty]`，不把普通 Channel 矩阵暴露给 kernel，也不读取 `ChannelEntity` 私有字段。
+有效句柄区按最多 56 个 Jetty 定义，尾部为保留区，以维持原有 4100 个 `int32` 的 context tensor 形状。
+HCCL shared queue 要求 V2 communicator、AIV engine、UB_CTP/UB_RTP 协议及相同的 local endpoint；不满足时
+在 context 创建阶段明确报错，不隐式回退普通 channel。同一通信域的所有 rank 必须使用相同的 Jetty 数量、
+通信层级、窗口大小和构造顺序；这是标准建链接口的调用前提。单 rank 无远端时跳过 Channel 建联。
+
+业务 Win 由 manager 通过 `aclrtMalloc` 独立申请、清零，再由 `HcclCommMemReg` 注册；每个 descriptor 携带其
+mem handle。Channel 建立后，Host 对每个 peer 调用 `HcclChannelGetRemoteMems` 并按 Win tag 精确匹配远端地址，
+因此不再通过 Python collective 交换裸地址，也不再执行 `std::copy(remoteBuffers, ...)`。参照公共
+`HcclChannelContextBuilder`，`HcclEngineCtxCreate/Copy` 仅保存算子自己的 `SharedJettyContext` blob；它既不申请
+业务 Win，也不负责 Channel 建联。context 内的句柄表与远端 Win 表随后直接复制到 Torch NPU tensor。
+
+Channel 和共享 Jetty 由 communicator 管理，Win 由 manager 持有。Python owner 保留 ProcessGroup，并应在所有
+kernel 和图重放完成前保持存活；销毁时必须先停止使用并同步，且应先销毁 ProcessGroup/communicator，再释放
+owner 持有的 Win。C++ 内部不查询或切换 NPU，调用方须保持正确的 current device。Win 初始化或注册失败会回滚
+尚未交给 communicator 的内存；注册成功后若后续步骤失败，公开 HCCL API 没有可依赖的 AIV Win 反注册/
+共享 Channel 逐项销毁接口，因此 Python wrapper 会先销毁已污染的 ProcessGroup，再释放 Win，并将原异常继续抛出；
+调用方必须重建通信组。若 ProcessGroup 销毁本身也失败，则为避免释放仍被 HCCL 引用的地址，Win 会被有意保留到
+进程退出，并在异常中明确报告。Host hcomm 当前支持 UB_RTP shared channel；但
+公开 asc-comm 的 `MakeBatchHandle` 实现仍只静态保证 UBC_CTP，UB_RTP device batch 路径必须用目标联调包验证。
 
 tiling key 先选择通信算法，再在 URMA 下选择 `SHARED_JETTY`；kernel 独立文件为
 `op_kernel/bandwidth_test_urma_shared_jetty.h`，保留 mode 0/1/3：
@@ -54,8 +63,9 @@ tiling key 先选择通信算法，再在 URMA 下选择 `SHARED_JETTY`；kernel
   接收和输出排列。
 - mode 3：将每个对端的 `floor(BS/world_size)` 个完整 token 分给 N 核；每核遍历全部远端。
   总流量口径不变，各 `(源 rank, 核)` 使用独立 epoch flag，空区间仍通知完成。
-- 每个发送核只操作自己的共享 jetty。数据、count、ready 和 epoch 的远端写都使用
-  `GetHandleRef → WriteNbi(batch) → BatchCommit(outer batch) → Drain(outer batch)`。
+- 每个发送核只操作自己的共享 jetty，并在切换 peer 前完成上一批 Drain；同一 Jetty 上的 Channel 不并发使用。
+  数据、count、ready 和 epoch 的远端写都使用
+  `MakeBatchHandle(MultiChannelHandle) → GetHandleRef(peerIndex) → WriteNbi(batch) → BatchCommit → Drain`。
   `batch_tokens` 是每核向一个目标卡提交的 payload token 数，尾批可以不足；
   统计表根据实际 BS 分核后的路由计算最大数据批量，状态通知不计入 payload。
   `WriteNbi`、`BatchCommit`、`Drain` 返回错误时触发 `Trap()`，中止 kernel，避免继续发布成功标志。
@@ -138,8 +148,8 @@ URMA 共享 jetty 继续由 Torch 接口传入独立 context。
 
 Ascend950 支持 MTE（同一 UB 内存域，`comm_alg="mte"` 或空字符串）和
 URMA（`comm_alg="urma"`，由已有 Torch context manager 建立 UB_CTP channel）。
-URMA 要求安装支持 `MakeBatchHandle`、`BatchCommit`、`Drain(batchHandle)` 和
-`Lock/Unlock` 的 Hcomm 版本。创建和调用必须选择相同算法：
+URMA 要求安装支持 `MakeBatchHandle`、`BatchCommit` 和 `Drain(batchHandle)` 的 Hcomm 版本；
+普通 URMA 路径还要求 `Lock/Unlock`。创建和调用必须选择相同算法：
 
 ```python
 sym_buffer = BandwidthTestBuffer(group, comm_alg="urma")
@@ -220,19 +230,22 @@ WQE 行为完全由 SDK 默认值决定，算子不覆盖 `odr`、`fence` 或 `c
 并保证 tiling 选出的 `batch_tokens` 小于每条使用的 SQ 和 CQ 深度；使用 0/最大值时也须自行确认。
 本算子 kernel 直接使用 tiling 的有效批量，不额外校验批量范围或自动缩小批量；共享路径只断言
 context 与 tiling 的 Jetty 数量一致，通信接口报错时仍按上文说明 Trap。SDK 内部检查沿用原实现。
-kernel 只通过公开 Hcomm 接口提交、完成和锁定通信，不读取 channel entity、队列深度、游标或 batch handle 内部字段。
+kernel 只通过公开 Hcomm 接口提交和完成通信；普通 URMA 路径还通过公开 `Lock/Unlock` 串行化通道使用。
+两条路径都不读取 channel entity、队列深度、游标或 batch handle 内部字段。
 当前 Batch 接口未提供队列余量查询，也未承诺自动处理多批在途的溢出；因此每批提交后调用 Drain，再复用下一批。
 多批数据的计时包含这些完成等待，不能假定更小的 batch 会降低耗时。
-已核对 [Hcomm 公共接口](https://gitcode.com/cann/asc-comm/blob/master/include/aicore/hcomm/hcomm.h)，asc-comm 提交为
-`1529377b9e908d78ba5ba5d579edf1669fb99b01`，部署时须使用兼容版本。
+已核对 [Hcomm 公共接口](https://gitcode.com/cann/asc-comm/blob/1e575b02fb8bb3cf3e8f1e8f617972eac0d2a66e/include/aicore/hcomm/hcomm.h)，asc-comm 提交为
+`1e575b02fb8bb3cf3e8f1e8f617972eac0d2a66e`，部署时须使用兼容版本。
 该 SDK 的 `PollBatchCq` 在目标 CQ 游标等于 0 时直接返回，即使还有未完成请求。
 长期打流中，32 位 `cqHead` 恰好在 Drain 边界回绕为 0 时可能漏等完成；
 部署 SDK 应修复为仅在没有待回收 CQE 时跳过轮询，不能仅判断目标游标为 0。
 本算子不为此增加 BS 上限、设备侧补丁或强序设置；目标 SDK 未修复前，不能保证触及该边界时的完成语义。
-数据阶段的通道锁覆盖 batch handle 创建至最终 Drain，避免共享 SQ 的其他核并发更新游标。
-`SetStatus` 复用缓存的通道句柄，重新持锁并创建该阶段的 batch handle；
+普通 URMA 数据阶段的通道锁覆盖 batch handle 创建至最终 Drain，避免其他核并发更新共享 SQ 游标。
+普通 URMA 的 `SetStatus` 复用缓存的通道句柄，重新持锁并创建该阶段的 batch handle；
 计数和 ready flag 均经 batch 接口提交并分别等待完成，保证先计数后就绪。
-阶段间重新绑定避免复用已解锁、可能被共享 SQ 的其他核推进过的游标；不会在 token 或 commit 循环里重新获取 handle。
+普通 URMA 在阶段间重新绑定，避免复用已解锁、可能被其他核推进过共享 SQ 游标的 handle；
+不会在 token 或 commit 循环里重新获取 handle。共享 Jetty 路径则按上文所述由每个发送核独占一个 Jetty，
+在切换 peer 前完成 Drain，不调用 `Lock/Unlock`。
 `mode=1` 与现有 MTE 一致，包含发送、状态通知和等待，仅省略接收区到输出的搬运。
 `mode=0` 在相同流程后调用与 MTE 一致的 `LocalWindowCopy`，按源卡和原 token 顺序拼接有效输出。
 同一 context 的调用与图重放应串行下发，避免并发覆盖通信窗口。

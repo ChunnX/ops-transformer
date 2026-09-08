@@ -145,17 +145,18 @@ class BandwidthTestBuffer:
         if not 0 < buffer_mb <= 65535:
             raise ValueError("HCCL_BUFFSIZE must be in [1, 65535] MiB")
         # The shared manager cannot reconstruct cached custom-buffer contexts.
-        # Use a fresh collective tag for each owner, including after its release.
+        # Use a fresh HCCL resource tag for each owner, including after its release.
         sequence = _CONTEXT_SEQUENCE.get(self.group_name, 0)
         _CONTEXT_SEQUENCE[self.group_name] = sequence + 1
         if self.shared_jetty:
             from .shared_jetty_context import SharedJettyContextManager
+            # Load the operator before registering any communicator-owned shared resources.
+            _bandwidth_test_op_builder.load()
             self._ctx_manager = SharedJettyContextManager(
                 group, self.group_name, self.world_size, shared_jetty_num, shared_jetty_comm_level,
                 2 * buffer_mb * 1024 * 1024, sequence)
             self.context = self._ctx_manager.create_context()
             self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
-            _bandwidth_test_op_builder.load()
             return
         self._ctx_manager = CommContextManager(
             self.group_name, self.world_size, backend={"Ascend950": "channel"},
