@@ -51,6 +51,8 @@ class MoeDistributeCombineSetup {
     constexpr static uint64_t STATE_SIZE_PER_CORE = 512U;
     constexpr static uint32_t STATE_COUNT_THRESHOLD = 512U; // moeExpertNumPerRank*epWorldSize状态数阈值
     constexpr static uint64_t COMM_CMD_INFO_BYTES = 64U;    // commCmdInfoOut 每个 (a+rank) 条目 16 * int32
+    // 性能优化分界：bs<=16 本卡数据量小，拆半会把一次拷贝拆成两块；bs>16 才走双 buffer
+    constexpr static uint32_t BS_PERF_THRESHOLD = 16U;
 
 public:
     __aicore__ inline MoeDistributeCombineSetup(){};
@@ -230,8 +232,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::BuffInit(
     const uint64_t leftover = totalUbSize - reservedUbSize;
     const uint64_t halfAlign = (leftover / 2U) / UB_ALIGN * UB_ALIGN;
     tpipe_->Reset();
-    // bs8/bs16 本卡数据量小，拆半会把一次拷贝拆成两块；bs256 才走双 buffer
-    if (moeDistributeCombineSetupInfo_->bs > 16U && halfAlign > 0U) {
+    if (moeDistributeCombineSetupInfo_->bs > BS_PERF_THRESHOLD && halfAlign > 0U) {
         remain_ub_space = halfAlign;
         localCopyQueueNum_ = 2U;
         if (!tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize)) ||
@@ -255,7 +256,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::AssistInf
 
     DataCopyExtParams epSendCntParams;
     if (isShardExpert_) {
-        // 对于共享专家来说assistInfoForCombine输入维度为epWordSize个
+        // 对于共享专家来说assistInfoForCombine输入维度为epWorldSize个
         epSendCntParams = {1U, moeDistributeCombineSetupInfo_->epWorldSize * static_cast<uint32_t>(sizeof(uint32_t)),
                            0U, 0U, 0U};
     } else {
@@ -317,9 +318,6 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         // 无论token是否为0，都独立下发状态，避免WriteWithNotify在length=0时丢notify
         hcomm_.WriteNbi<false>(channelId, dstStatusAddr, statusFlagGM_, UB_ALIGN);
         hcomm_.Commit(channelId);
-        // 回收本核负责的 channel CQ，避免同通信域多轮复用时 SQ/CQ 堆积导致后续卡死
-        // 开启时会造成性能下降
-        // hcomm_.Drain(channelId);
     }
 
     middleRank = epRankId_ < endRankId_ ? epRankId_ : endRankId_;
@@ -353,9 +351,6 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         // 无论token是否为0，都独立下发状态，避免WriteWithNotify在length=0时丢notify
         hcomm_.WriteNbi<false>(channelId, dstStatusAddr, statusFlagGM_, UB_ALIGN);
         hcomm_.Commit(channelId);
-        // 回收本核负责的 channel CQ，避免同通信域多轮复用时 SQ/CQ 堆积导致后续卡死
-        // 开启时会造成性能下降
-        // hcomm_.Drain(channelId);
     }
 
     if (unlikely(epRankId_ >= startRankId_ && epRankId_ < endRankId_)) {
