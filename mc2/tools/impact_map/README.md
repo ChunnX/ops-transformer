@@ -44,8 +44,7 @@ python3 mc2/tools/gen_common_impact_yaml.py /path/to/another_checkout [输出目
 
 | 文件 | 判定 |
 |---|---|
-| 路径含 `/tests/` | 全量 |
-| 非 .h/.cpp 的一切（.py/.json/.ini/.sh/.csv/.txt/.md 等） | 全量 |
+| 非 .h/.cpp 的一切（.py/.json/.ini/.sh/.csv/.txt/.md 等，不限路径） | 全量 |
 | .cpp，同目录无同名 .h | 全量 |
 | .cpp，同目录同名 .h 在 unref.yaml | 疑似死代码，不触发 |
 | .cpp，同目录同名 .h 在本表 | 取同名 .h 条目的 ops |
