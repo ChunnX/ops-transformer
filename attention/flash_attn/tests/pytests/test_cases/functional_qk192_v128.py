@@ -293,5 +293,48 @@ TestCases = {
         "mask_mode": [3],
         "return_softmax_lse": [1],
     },
+    # ---- 等长对照基线: 与 192/128 用例同形状模板 (BNSD, 1024x1024, causal, fp16, LSE on) ----
+    "Prefill_Unquant_FP16_FP16_L0_1_8_1_1024_1024_64_64_BNSD_EQBASE_000024": {
+        "layout_q": ["BNSD"], "layout_kv": ["BNSD"], "layout_out": ["BNSD"],
+        "Dtype": ["fp16"], "q_range": [(-10, 10)], "k_range": [(-10, 10)], "v_range": [(-10, 10)],
+        "B": [1], "N1": [8], "N2": [1], "S1": [1024], "S2": [1024],
+        "D": [64], "DV": [64],
+        "scale": [0.125],
+        "mask_mode": [3],
+        "return_softmax_lse": [1],
+    },
+
+    # ---- 等长对照基线: 与 192/128 用例同形状模板 (BNSD, 1024x1024, causal, fp16, LSE on) ----
+    "Prefill_Unquant_FP16_FP16_L0_1_8_1_1024_1024_72_72_BNSD_EQBASE_000025": {
+        "layout_q": ["BNSD"], "layout_kv": ["BNSD"], "layout_out": ["BNSD"],
+        "Dtype": ["fp16"], "q_range": [(-10, 10)], "k_range": [(-10, 10)], "v_range": [(-10, 10)],
+        "B": [1], "N1": [8], "N2": [1], "S1": [1024], "S2": [1024],
+        "D": [72], "DV": [72],
+        "scale": [0.11785113019775793],
+        "mask_mode": [3],
+        "return_softmax_lse": [1],
+    },
+
+    # ---- 等长对照基线: 与 192/128 用例同形状模板 (BNSD, 1024x1024, causal, fp16, LSE on) ----
+    "Prefill_Unquant_FP16_FP16_L0_1_8_1_1024_1024_128_128_BNSD_EQBASE_000026": {
+        "layout_q": ["BNSD"], "layout_kv": ["BNSD"], "layout_out": ["BNSD"],
+        "Dtype": ["fp16"], "q_range": [(-10, 10)], "k_range": [(-10, 10)], "v_range": [(-10, 10)],
+        "B": [1], "N1": [8], "N2": [1], "S1": [1024], "S2": [1024],
+        "D": [128], "DV": [128],
+        "scale": [0.0883883476483184],
+        "mask_mode": [3],
+        "return_softmax_lse": [1],
+    },
+
+    # ---- 等长对照基线: 与 192/128 用例同形状模板 (BNSD, 1024x1024, causal, fp16, LSE on) ----
+    "Prefill_Unquant_FP16_FP16_L0_1_8_1_1024_1024_256_256_BNSD_EQBASE_000027": {
+        "layout_q": ["BNSD"], "layout_kv": ["BNSD"], "layout_out": ["BNSD"],
+        "Dtype": ["fp16"], "q_range": [(-10, 10)], "k_range": [(-10, 10)], "v_range": [(-10, 10)],
+        "B": [1], "N1": [8], "N2": [1], "S1": [1024], "S2": [1024],
+        "D": [256], "DV": [256],
+        "scale": [0.0625],
+        "mask_mode": [3],
+        "return_softmax_lse": [1],
+    },
 }
 # fmt: on
