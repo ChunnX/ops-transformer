@@ -438,7 +438,7 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     /*
      * 到达校验：count 槽高 8 位为发送侧的输入 epoch。发送前已确认源卡量化就绪、
      * index 写完，因此逐槽检查直接承担远端输入依赖，不依赖入口全卡握手。
-     * 本卡 SyncAll<false> 已收口所有 AIV 的量化发布；出口 AIV 同步在本函数之后，
+     * 本卡 SyncAll<false> 已完成所有 AIV 的输入 epoch 记账及量化等待；出口 AIV 同步在本函数之后，
      * 所以此时 slot 0 稳定为本轮输入计数。未匹配的槽重读至到达，再掩出低 24 位。
      */
     __gm__ int32_t *launchCountSlot0 = GetMteSyncCountAddress(params.peermemInfo.rankSyncInWorldPtr, 0U);

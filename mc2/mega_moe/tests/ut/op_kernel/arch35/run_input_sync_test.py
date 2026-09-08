@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # Licensed under CANN Open Software License Agreement Version 2.0.
-"""Compile the actual input-sync helpers against a CPU scalar/pipeline mock."""
+"""Compile input notification and count DMA helpers against a CPU pipeline model."""
 
 from pathlib import Path
 import shutil

@@ -45,11 +45,12 @@ struct SendMaskScratch {
     LocalTensor<int32_t> topkIndexTensor;
     // Contiguous runtime-sized ring. Slot i starts at i * bufferConfig.bufferBytes.
     LocalTensor<uint8_t> routeRingTensor;
+    // 每项占 MTE_COUNT_UB_STRIDE 个 int32；输入同步前保持 tagged count 源稳定。
     LocalTensor<int32_t> sendCntAccTensor;
 };
 
 // MTE Wave：把当前 route batch 中命中某专家的全局 topkIndex 压紧后直接写入对端槽。
-// 每个 slot 只保存 index；raw count 在所有 ring 写完成后由 PublishExpertCounts 独立发布。
+// 每个 slot 只保存 index；raw count 在所有 ring 写完成后由 PublishMteExpertCounts 独立发布。
 __aicore__ inline void GatherAndSendExpertCompactRouteBatch(const MoeStageCommonConfig &common, GM_ADDR *winRankAddr,
                                                             const SendMaskConfig &config, SendMaskScratch &scratch,
                                                             GlobalTensor<int32_t> &topkIdsGm,
@@ -99,13 +100,13 @@ __aicore__ inline void GatherAndSendExpertCompactRouteBatch(const MoeStageCommon
         }
         SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
 
-        int32_t previousCount = scratch.sendCntAccTensor.GetValue(ownedIdx);
+        int32_t previousCount = scratch.sendCntAccTensor.GetValue(ownedIdx * MTE_COUNT_UB_STRIDE);
         int32_t remainingCapacity = static_cast<int32_t>(common.tokenNum) - previousCount;
         int32_t copiedCount = static_cast<int32_t>(batchMatchedRouteCount);
         if (copiedCount > remainingCapacity) {
             copiedCount = remainingCapacity > 0 ? remainingCapacity : 0;
         }
-        scratch.sendCntAccTensor.SetValue(ownedIdx, previousCount + copiedCount);
+        scratch.sendCntAccTensor.SetValue(ownedIdx * MTE_COUNT_UB_STRIDE, previousCount + copiedCount);
         SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
 
         if (copiedCount > 0) {
@@ -122,77 +123,19 @@ __aicore__ inline void GatherAndSendExpertCompactRouteBatch(const MoeStageCommon
     }
 }
 
-// 将本核连续专家区间的 raw count 发布到各目标 rank 的 [localExpert][sourceRank] 表。
-__aicore__ inline void PublishExpertCounts(const MoeStageCommonConfig &common, GM_ADDR *winRankAddr,
-                                           const SendMaskConfig &config, const SendMaskScratch &scratch,
-                                           int32_t ownedExpertBegin, int32_t ownedExpertNum, int32_t arrivalEpoch)
-{
-    if (ownedExpertNum <= 0) {
-        return;
-    }
-    /*
-     * 到达标记内嵌：调用方已等待本卡量化就绪，并收口本核所有 index 写入。
-     * count 自身兼任该源卡/专家的输入 ready，不再发送独立的入口跨卡同步信号。
-     * 高 8 位写 launch epoch(值域[0x80,0xFF]恒非零,
-     * 避开窗口零初值)，低 24 位为真实 count(上限 maxOutputSize 远小于 2^24)。
-     * 接收端逐槽校验 epoch 后取低 24 位(见 token_dispatch.h PrepareMoeExpertTokenCountTable)。
-     */
-    for (int32_t ownedIdx = 0; ownedIdx < ownedExpertNum; ++ownedIdx) {
-        int32_t rawCount = scratch.sendCntAccTensor.GetValue(ownedIdx);
-        uint32_t taggedCount = (static_cast<uint32_t>(arrivalEpoch) << 24U) | static_cast<uint32_t>(rawCount);
-        scratch.sendCntAccTensor.SetValue(ownedIdx, static_cast<int32_t>(taggedCount));
-    }
-
-    int32_t sourceRank = static_cast<int32_t>(common.rankId);
-    int32_t expertPerRank = static_cast<int32_t>(common.moeExpertPerRank);
-    int32_t worldSize = static_cast<int32_t>(common.worldSize);
-    int32_t ownedOffset = 0;
-    GlobalTensor<int32_t> dstCountGm;
-
-    SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
-    while (ownedOffset < ownedExpertNum) {
-        int32_t globalExpertId = ownedExpertBegin + ownedOffset;
-        int32_t dstRank = globalExpertId / expertPerRank;
-        int32_t localExpertBegin = globalExpertId % expertPerRank;
-        int32_t remainingInRank = expertPerRank - localExpertBegin;
-        int32_t segmentExpertCount = ownedExpertNum - ownedOffset;
-        segmentExpertCount = segmentExpertCount < remainingInRank ? segmentExpertCount : remainingInRank;
-
-        uint64_t dstOffset = config.expertCountWinOffset +
-                             static_cast<uint64_t>(localExpertBegin * worldSize + sourceRank) * sizeof(int32_t);
-        dstCountGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(winRankAddr[dstRank] + dstOffset));
-        DataCopyExtParams countCopyParams{
-            static_cast<uint16_t>(segmentExpertCount), static_cast<uint32_t>(sizeof(int32_t)), 0,
-            static_cast<int64_t>(worldSize - 1) * static_cast<int64_t>(sizeof(int32_t)), 0U};
-
-        if (ownedOffset % static_cast<int32_t>(INT32_PER_256B) == 0) {
-            DataCopyPad<int32_t, PaddingMode::Compact>(dstCountGm, scratch.sendCntAccTensor[ownedOffset],
-                                                       countCopyParams);
-        } else {
-            // compact route 已发送完成，复用 topkIndexTensor 将非对齐 count 段重排到对齐起点。
-            for (int32_t expertIdx = 0; expertIdx < segmentExpertCount; ++expertIdx) {
-                scratch.topkIndexTensor.SetValue(expertIdx, scratch.sendCntAccTensor.GetValue(ownedOffset + expertIdx));
-            }
-            SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
-            DataCopyPad<int32_t, PaddingMode::Compact>(dstCountGm, scratch.topkIndexTensor, countCopyParams);
-            SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID3>();
-        }
-        ownedOffset += segmentExpertCount;
-    }
-    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID3>();
-}
-
 // 三条 MTE Wave 路径的唯一 route 入口。专家 ownership 仍使用连续 quotient/remainder 分配，
 // 因而 count 表可继续按目标 rank 合并成二维 strided copy。
 __aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job, const MoeStageCommonConfig &common,
                                                         const Params &params, GM_ADDR *winRankAddr,
-                                                        const SendMaskConfig &config, SendMaskScratch &scratch)
+                                                        const SendMaskConfig &config, SendMaskScratch &scratch,
+                                                        int32_t inputSequence)
 {
     if constexpr (g_coreType == AIC) {
         return;
     }
     const MegaMoeSendMaskBufferConfig &bufferConfig = config.bufferConfig;
     if (job.totalJobs == 0U || job.jobIndex >= job.totalJobs) {
+        WaitForMteQuantReady();
         return;
     }
 
@@ -205,13 +148,14 @@ __aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job
     int32_t ownedExpertBegin =
         jobIndex * expertsPerJob + (jobIndex < jobCountWithExtraExpert ? jobIndex : jobCountWithExtraExpert);
     if (ownedExpertNum <= 0) {
+        WaitForMteQuantReady();
         return;
     }
 
     GlobalTensor<int32_t> topkIdsGm;
     topkIdsGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.expertIdxGmAddr));
     GlobalTensor<int32_t> dstRouteIndexGm;
-    Duplicate<int32_t>(scratch.sendCntAccTensor, 0, ownedExpertNum);
+    Duplicate<int32_t>(scratch.sendCntAccTensor, 0, ownedExpertNum * MTE_COUNT_UB_STRIDE);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
 
     for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.bufferCount; ++bufferIdx) {
@@ -224,15 +168,12 @@ __aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job
     for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.bufferCount; ++bufferIdx) {
         WaitFlag<AscendC::HardEvent::MTE3_V>(static_cast<TEventID>(bufferIdx));
     }
-    // PublishMteQuantReady 已在量化后推进本核的输入计数。index 的生产者按专家分核，
-    // 量化按 token 分核，故 count 发布必须等所有本卡量化生产者，不能只等本核。
-    int32_t inputSequence =
-        ReadGmByPassDCache(GetMteSyncCountAddress(params.peermemInfo.rankSyncInWorldPtr, job.jobIndex));
-    WaitForMteQuantReady(params.peermemInfo.rankSyncInWorldPtr, job.jobIndex, job.totalJobs, inputSequence);
-    // index 与 count 走同一发送核的 MTE3；显式分隔两批写入，count 继续与后续清零重叠。
+    // 等待仅进入 MTE3 队列；所有 index 下发在前，count 发布在后。
+    WaitForMteQuantReady();
     PipeBarrier<PIPE_MTE3>();
-    int32_t arrivalEpoch = static_cast<int32_t>(GetMteCountEpoch(inputSequence));
-    PublishExpertCounts(common, winRankAddr, config, scratch, ownedExpertBegin, ownedExpertNum, arrivalEpoch);
+    PublishMteExpertCounts(winRankAddr, config.expertCountWinOffset, common.rankId, common.worldSize,
+                           common.moeExpertPerRank, ownedExpertBegin, ownedExpertNum, inputSequence,
+                           scratch.sendCntAccTensor);
 }
 
 } // namespace MegaMoeImpl

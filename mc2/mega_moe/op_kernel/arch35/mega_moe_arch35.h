@@ -396,8 +396,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     uint32_t xOutTensorSize = quantProcessConfig_.quantTokenScaleAlignBytes;
     uint32_t xInAlignSize = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
     uint32_t expertPerCoreMax = Ops::Base::CeilDiv(worldSize_ * moeExpertPerRank_, blockAivNum_);
-    uint32_t sendCntAccSize =
-        Ops::Base::CeilAlign(static_cast<int64_t>(expertPerCoreMax * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
+    uint32_t sendCntAccSize = expertPerCoreMax * MTE_COUNT_UB_STRIDE * sizeof(int32_t);
 
     // 必须与 host SetAdaptiveBufferConfigs 的 quotient/remainder 分核保持一致。compact route 按连续专家段
     // 分核，因此前 remainder 个 core 多处理一个 expert。
@@ -620,9 +619,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
     SendAndQuantBuffInit();
     QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
         aivJob_, commonConfig_, params_, quantProcessConfig_, quantScratch_);
-    PublishMteQuantReady(params_.peermemInfo.rankSyncInWorldPtr, aivJob_.jobIndex);
-    GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,
-                                     sendMaskScratch_);
+    int32_t inputSequence = PublishMteQuantReady(params_.peermemInfo.rankSyncInWorldPtr, aivJob_.jobIndex);
+    GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_, sendMaskScratch_,
+                                     inputSequence);
     ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
     if (sharedExpertNum_ > 0) {
         // 可选：为共享专家拆分连续布局的输入数据与 scale。
@@ -652,7 +651,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
 
     // 无入口跨卡握手：发送端在本卡量化就绪且 index 写完后发布带 epoch 的 count，
     // Dispatch 的逐槽校验承担远端输入依赖。共享 GMM1/激活只依赖上述本卡同步。
-    // 本卡同步还收口所有 quant-ready 读者，防止出口推进同一计数槽时覆盖慢读者的目标值。
+    // 本卡同步保证 count 的异步搬运结束、UB 可复用，且各 AIV 的输入 epoch 已完成记账。
 
     if (sharedExpertNum_ > 0U) {
         // 阶段 2：可选的共享专家 GMM1 及 Activation。

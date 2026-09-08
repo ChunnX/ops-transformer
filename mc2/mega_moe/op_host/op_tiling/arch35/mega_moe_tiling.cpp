@@ -1326,11 +1326,14 @@ static void SetTopkValidIndexBufferConfigs(MegaMoeTilingData *tilingData, uint32
             ops::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
     }
     uint32_t quantInputBufferBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_128)) * sizeof(uint16_t);
-    // sendCntAccTensor_ 按本卡 MoE 专家数分配，与 kernel 地址布局一致。
+    // MTE 与 kernel 一致：每个 owned expert 的 count 占独立 32B UB 槽，支持异步搬出。
     uint32_t maxExpertCountPerCore =
         ops::CeilDiv(tilingData->epWorldSize * tilingData->moeExpertPerRank, tilingData->blockAivNum);
-    uint32_t sendCountAccumulatorBytes = static_cast<uint32_t>(ops::CeilAlign(
-        static_cast<uint64_t>(maxExpertCountPerCore) * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32)));
+    uint32_t sendCountAccumulatorBytes =
+        tilingData->topoType == TOPO_TYPE_MTE ?
+            maxExpertCountPerCore * MTE_COUNT_UB_STRIDE * sizeof(int32_t) :
+            static_cast<uint32_t>(ops::CeilAlign(static_cast<uint64_t>(maxExpertCountPerCore) * sizeof(int32_t),
+                                                 static_cast<uint64_t>(ALIGN_32)));
     // mxTempTensor_ 占 2KB，xOutTensor_ 和 xInTensor_ 各使用双 buffer。
     uint32_t sendMaskFixedBufferBytes = resetTensorBytes + 2U * 1024U + 2U * quantOutputBufferBytes +
                                         2U * quantInputBufferBytes + sendCountAccumulatorBytes;

@@ -1,45 +1,47 @@
 # MTE 输入 count 就绪协议
 
-共享专家 GMM1/激活只依赖本卡输入。MTE 路径删除其前面的入口跨卡握手，保留本卡
-`SyncAll<false>()` 和出口 `CrossRankSyncInWorldSize`。Dispatch 仍校验完整 count 表，
-count 布局、24-bit count + 8-bit epoch 编码及 VF cumsum 不变。
+MTE 路径删除共享专家前的入口跨卡握手，以量化硬件通知和 count epoch 传递输入依赖。
+保留共享入口的 `PipeBarrier<PIPE_ALL>()`、`SyncAll<false>()` 及出口跨卡同步。
+Dispatch 仍等待完整 count 表，远端 24-bit count + 8-bit epoch 布局和 VF cumsum 不变。
 
 ## 修改前后对比
 
-修改前，每个 AIV 完成自身量化后就生成并发送 index/count，接着清零 workspace、
-整理共享输入。所有核经过本卡 `SyncAll<false>()` 后，AIV 还需要完成入口跨卡握手及
+原实现中，每个 AIV 完成自身量化后生成并发送 index/count，接着清零 workspace、
+整理共享输入。所有核经过本卡 `SyncAll<false>()` 后，AIV 还要完成入口跨卡握手及
 其末尾的 `SyncAll<true>()`，才能进入共享激活或 Dispatch。AIC 不执行跨卡握手，
-但其共享 GMM1 与 AIV 激活存在 UB/ping-pong 交接，因此仍会受到 AIV 跨卡等待的影响。
+但其共享 GMM1 与 AIV 激活存在 UB/ping-pong 交接，仍会受到 AIV 跨卡等待的影响。
 
-修改后，在本核量化写回后发布本地 ready，保持 index 提前发送；只在发布 count 前
-等待所有本卡量化生产者，随后照常清零和整理共享输入。本卡同步通过后直接进入共享
-计算，远端依赖由原有 count epoch 校验承担。
+第一版移除了入口跨卡握手，通过量化后的 `MTE3_S` 和逐 AIV GM 计数轮询保护 count。
+本次进一步把通知改为硬件事件，并去掉 count 发送内部的标量完成等待。
 
-| 项目 | 修改前 | 修改后 |
+| 项目 | 原实现 | 本次实现 |
 |---|---|---|
-| 本卡量化依赖 | 入口本卡/跨卡同步共同收口 | 发 count 前等待所有本卡量化 ready |
-| index/count 发送 | 位于 workspace 清零、共享输入整理之前 | 仍位于这两项工作之前 |
+| 量化依赖 | 入口本卡/跨卡同步收口 | 量化后发 mode 0 MTE3 事件，index 后、count 前在 MTE3 等待 |
+| 量化发布端 | 无独立通知 | 无 `MTE3_S`；硬件在量化写回完成后上报 |
+| count 发布端 | 非对齐段重排并等待，函数末尾等待 MTE3 | 每项 count 使用独立 32B UB 槽，Normal 二维搬运异步返回 |
 | 入口跨卡握手 | AIV 参与，末尾另有 AIV 全核同步 | 删除 |
-| 共享计算入口 | 配对 AIV 可能阻塞在跨卡握手 | 本卡 `SyncAll<false>()` 后即可推进 |
-| 接收 count | 逐槽验证 epoch，整表就绪后 VF cumsum | 保持原方式，epoch 同时承担输入就绪通知 |
-| ready 状态 | 原逐 AIV 同步计数 | 复用同一独占 64B 槽，不新增跨卡消息 |
-| 本卡同步、出口跨卡同步 | 保留 | 保留 |
+| 共享计算入口 | 配对 AIV 可能阻塞在跨卡握手 | 原有本卡 `SyncAll<false>()` 后推进 |
+| 接收 count | 逐槽验证 epoch，整表就绪后 VF cumsum | 不变；epoch 同时证明源数据可读 |
+| 本卡同步、出口跨卡同步 | 存在 | 保留 |
 
-预期收益来自移除入口跨卡等待、让共享计算提前推进；新增的本地轮询有成本。
-尚无多卡性能数据，不将编译或 CPU 协议测试结果视为性能提升证据。
+与第一版相比，不再用 GM 槽表示量化 ready，也不逐核轮询。原逐 AIV 计数槽只用于
+跨轮次 epoch 记账，入口和出口各推进一次，兼容原 count 和出口协议。
 
 ## 发送与消费顺序
 
 ```text
-每个 AIV：
-量化自己的 token（允许空任务）
-  → MTE3_S 完成等待
-  → 发布本核完整输入计数（量化 ready）
+每个 AIV（包括空 token / 无专家任务）：
+量化自己的 token，下发 token/scale 写回
+  → 标量推进本核输入 epoch，保留返回值
+  → CrossCoreSetFlag<0, PIPE_MTE3>(8)
   → 生成、发送自己负责的 compact index
-  → 等待所有本卡 AIV 的量化 ready
-  → 收口 index MTE3 写入，发送 epoch | count
+  → 收口 route ring 的完成事件
+  → CrossCoreWaitFlag<0, PIPE_MTE3>(8)
+  → PIPE_MTE3 barrier
+  → 给 count 添加 epoch，S_MTE3 保护标量写入的 UB 数据
+  → 异步发布 count
   → workspace 清零、共享输入整理
-  → 本卡 SyncAll<false>
+  → 原有 PIPE_ALL + SyncAll<false>（完成搬运，允许后续 UB 复用）
   → 共享 GMM1/激活及 MoE 阶段
 
 接收 AIV1：
@@ -49,71 +51,91 @@ count 布局、24-bit count + 8-bit epoch 编码及 VF cumsum 不变。
   → Dispatch 拉取源卡 token/scale
 ```
 
-量化按 token 分工，而路由按专家分工。发送某个专家 count 的核必须等其他量化核，
-不能只检查自身。等待放在 index 发送之后、count 发布之前，使快核仍可提前处理 index。
-count 继续先于 workspace 清零发送。没有专家发送任务的 AIV 直接继续本地准备，
-但必须在此前发布量化 ready；没有 token 的 AIV 也必须发布。
+量化按 token 分工，路由按专家分工。某专家可以引用其他 AIV 量化的 token，故 count
+发布必须等待全体量化生产者。硬件 mode 0 汇合本卡所有 AIV 的 MTE3 完成通知。
+无专家任务的核在返回路由函数前也必须消费一次事件；AIC 不发、不等该事件。
 
-发送端已有 route ring 的 `MTE3_V` 完成等待，并在 count 发布前显式加入
-`PipeBarrier<PIPE_MTE3>()`。协议依赖这些完成/顺序操作对 peer window 的写入语义；
-CPU 模型测试不证明硬件互连的可见性，仍需设备多卡验证。
+在 Ascend 950 上，Wait 的 `PIPE_MTE3` 参数生效：等待进入 MTE3 队列，不要求标量
+同步等完再下发 count。Set 位于 index 之前，因此慢核仍可生成 index，快核只在发布
+count 的 MTE3 前等待。后续同一 MTE3 队列中的清零等搬运仍受该等待影响；这不保证
+所有后续流水都完全独立，现有 route ring、共享输入搬运依赖也保留。
 
-## 状态地址与同址复用
+发送端已有 route ring 的 `MTE3_V` 完成等待，并在 count 前保留 `PIPE_MTE3` barrier。
+协议依赖上述操作在设备上保证 index/量化写回先于 count 可见；CPU 模型不能证明
+NPU 互连可见性，仍需多卡设备验证。
 
-不新增、清零或通过 MTE 搬运 ready 数组，复用原入口握手的逐 AIV 同步计数槽：
+## count 的 UB 布局和生命周期
+
+```text
+发送端 UB： [count0:4B][padding:28B][count1:4B][padding:28B] ...
+远端 GM：  [localExpert][sourceRank]，每项仍为 4B tagged count
+```
+
+`MTE_COUNT_UB_STRIDE=8` 同时用于 host 预算、kernel 分配和索引。Normal 模式下每个
+block 的 UB 步长为 32B；每个 block 仅发送 4B，GM 的额外步长为 `(worldSize-1)*4B`。
+任意专家分段的 UB 起点都对齐，不再复用 `topkIndexTensor` 重排 count，段间和函数末尾
+均无需 `MTE3_S`。每个目的 rank 仍合并为一次二维搬运，不新增跨卡状态消息。
+
+发送端 count 固定占用从 `align32(maxOwnedExperts*4)` 改为 `maxOwnedExperts*32` 字节。
+Host 自适应 route buffer 预算同步扣除这部分占用，因此部分 shape 的 route batch 或
+ring 深度可能变化，需要一起评估性能。
+
+Count 源 UB 是输入阶段尾部的独立区域，不与 workspace 清零源或共享输入双缓冲重叠。
+所有 tagged count 在搬运下发前写好，返回后直到入口 `PIPE_ALL` 都不再改写。该同步
+完成之后后续阶段才重用 UB。未来若移除共享入口同步，必须重新建立这个完成边界。
+
+## 硬件事件与 epoch 生命周期
+
+量化硬件事件使用 mode 0、flag ID 8。避开本地 SDK `SyncAll` 使用的 11--14；
+GMM 的 mode 4 事件使用独立计数器空间。所有 AIV 每轮恰好 Set/Wait 各一次，
+入口 `PIPE_ALL` 保证等待已执行，不能让无专家任务的核积累未消费事件。
+不依赖不同 flag ID 的 Set 执行先后关系。
+
+原逐 AIV 计数槽保持：
 
 ```text
 rankSyncBase + 48 KiB + aivIndex * 64B
 ```
 
-每槽第一个 int32 保存完整轮次计数，其余字节不写。该区域与前部 rank 信号区、
-60 KiB 之后的通信数据区、workspace 清零区分离。每个槽仅由所属 AIV 使用标量
-`WriteGmByPassDCache` 更新；其他 AIV 使用 `ReadGmByPassDCache` 读取并退避，
-不使用 AtomicAdd，也不混用 MTE 清零和标量发布。
+仅所属 AIV 标量读写，不清零、不使用 DMA 写入。若上次出口计数为 `s`：
 
-沿用原通信窗口的初始化及调用约定：首次使用时同步计数有效初始化，所有参与 rank
-按相同顺序调用，窗口布局与活动 AIV 集合保持兼容。
-
-若上次出口计数为 `s`：
-
-| 时刻 | 槽值 | 条件 |
+| 时刻 | 槽值 | 含义 |
 |---|---|---|
-| 本轮量化尚未完成 | `s` | 不满足本轮 ready |
-| 本轮量化写回完成 | `s + 1` | 本核发布量化 ready |
-| 发布 count 前 | 所有量化槽等于 `s + 1` | 所有源 token 可读 |
-| 出口同步 | `s + 2` | 保留原出口推进 |
+| 本轮入口记账之前 | s | 上轮出口序列 |
+| 量化写回下发后 | s + 1 | 本轮 epoch 已分配；不代表量化已经完成 |
+| 硬件量化等待完成后 | s + 1 | 此时才允许 MTE3 发布 count |
+| 出口同步 | s + 2 | 本轮出口序列 |
 
-本地等待比较完整 32-bit 计数；仅跨卡 count 使用 `(sequence & 0x7f) | 0x80`。
-计数递增通过无符号加法实现，避免有符号溢出。每轮仍推进两次，保持原 count epoch
-和出口握手序列。不得在 kernel 入口把槽清零，否则会覆盖提前发布的新值。
+发送函数直接使用发布函数返回的完整序列；count epoch 为 `(sequence & 0x7f) | 0x80`。
+递增使用无符号加法，保持符号边界及 uint32 回绕行为。
 
-同址复用的两个保护边界：
-
-1. 输入 `SyncAll<false>` 在所有 count 发送者完成 ready 读取之后。任意 AIV 都不可能
-   越过它推进出口计数，而另一个本卡发送者还在等输入计数。
-2. 接收端读取 slot 0 的 epoch 发生在输入同步之后、MoE 阶段末尾的 AIV 同步之前，
-   这期间 slot 0 不会被出口更新。当前完整 count 校验和保留的出口握手还约束了
-   各 rank 跨轮次的进度；未来若拆掉整表等待或出口同步，必须重新审查窗口复用。
+保留的输入同步确保所有本核 epoch 记账完成。接收端在其后读取 slot 0；MoE 阶段末尾
+AIV 同步保证所有接收者读完后，才可能在出口更新 slot 0。现有整表等待和出口握手继续
+约束各 rank 的跨轮次进度。首次窗口初始化、rank 调用顺序和活动核集合约定沿用原协议。
 
 ## 验证
-
-从仓库根目录运行：
 
 ```bash
 python3 mc2/mega_moe/tests/ut/op_kernel/arch35/run_input_sync_test.py
 ```
 
-测试直接编译生产 `mega_moe_input_sync.h`，仅用 CPU mock 替代 Ascend 标量访问、
-MTE3_S 完成等待和时钟。覆盖慢量化生产者、空 token/无 route 任务、零 count、
-两 rank 并发、1560 轮重复调用、8-bit epoch 回绕、计数跨符号边界及 32-bit 回绕。
-地址哨兵和单写者检查覆盖槽偏移、越界写及 ready 早于量化写回；AIC 构建验证不访问状态。
-测试启用 UBSan，并设置进程超时捕获等待不退出。
+测试直接编译生产通知、等待和 count 发布函数，以确定性 CPU MTE3 队列代替设备流水。
+覆盖 3120 轮调用、延迟量化、空 token/无专家任务、index 先推进、异步 count 返回、
+跨目的 rank 的非对齐专家分段、零/最大 count、epoch/符号/uint32 回绕、单写者及
+UB/GM 哨兵。DMA 在队列执行时才读 UB，检查源未被提前覆盖；AIC 测试禁止状态与事件访问。
+这验证协议和地址计算，不代表真实 NPU 性能或硬件内存顺序。
 
-本地验证（2026-09-08）：上述 AIV/AIC 协议测试通过。CANN 9.2 beta 编译器以
-Ascend950PR_9599 为目标编译通过 A8W8 的 6 个 MTE tiling key，以及 W4 的 18 个
-MTE tiling key，覆盖 combine 量化选项和 topk weights prefetch。编译覆盖本次五个
-内核头文件的修改，提交检查随后仅调整格式。编译使用仅用于验证的 Hcomm 版本屏蔽 shim，避免当前 SDK
-缺少上游 URMA API 导致无关编译失败；URMA 未在此次编译验证范围内。
+本地验证（2026-09-08）：上述 CPU 协议测试通过；host tiling 翻译单元编译通过。
+CANN 9.2 beta2、Ascend950PR_9599 下 A8W8/W4 两组共 36 个 MTE tiling key 编译通过，
+包含 combine 量化和 topk weights prefetch 变体。内核编译使用验证专用 Hcomm shim
+屏蔽当前 SDK 缺失的无关 URMA API；URMA 和真实多卡运行不在本次验证范围内。
+提交检查随后仅调整格式和注释。
 
-设备验收仍需多卡、共享专家开启/关闭、A8W8/A8W4/A4W4、空专家、小 bs 空任务核、
-跨 epoch 回绕的连续调用，并与基线比较精度、首个共享 GMM1/激活时间和算子总耗时。
+设备验收仍需覆盖共享专家开关、A8W8/A8W4/A4W4、空专家、小 bs、连续调用及多卡精度。
+性能对比需同时查看算子耗时、量化后的标量停顿和 route buffer 配置变化。
+
+## 接口依据（CANN 9.2 beta2）
+
+- [CrossCoreSetFlag](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/920beta2/API/ascendcopapi/docs/zh/api/SIMD-API/basic_api/sync_control/inter_core_sync/CrossCoreSetFlag_ISASI.md)
+- [CrossCoreWaitFlag](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/920beta2/API/ascendcopapi/docs/zh/api/SIMD-API/basic_api/sync_control/inter_core_sync/CrossCoreWaitFlag_ISASI.md)
+- [SyncAll](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/920beta2/API/ascendcopapi/docs/zh/api/SIMD-API/basic_api/sync_control/inter_core_sync/SyncAll.md)
