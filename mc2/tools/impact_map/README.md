@@ -9,6 +9,8 @@ mc2 算子的公共代码集中在 `mc2/common` 与 `mc2/3rd`，改动这些目�
 > 输出：需要回归测试的 mc2 算子清单
 
 **本表只保存头文件（.h/.hpp/.cuh）条目**，其余文件类型由消费脚本按第 4 节规则处理。
+cpp 的同名头约定为 `.h`（实测仓内 86 个非测试 cpp：75 个有同名 .h，11 个无同名头，
+不存在只有 .hpp 的 case）。
 
 ## 2. 目录结构
 
@@ -44,7 +46,7 @@ python3 mc2/tools/gen_common_impact_yaml.py /path/to/another_checkout [输出目
 
 | 文件 | 判定 |
 |---|---|
-| 非 .h/.cpp 的一切（.py/.json/.ini/.sh/.csv/.txt/.md 等，不限路径） | 全量 |
+| 非 .h/.hpp/.cuh/.cpp 的一切（.py/.json/.ini/.sh/.csv/.txt/.md 等，不限路径） | 全量 |
 | .cpp，同目录无同名 .h | 全量 |
 | .cpp，同目录同名 .h 在 unref.yaml | 疑似死代码，不触发 |
 | .cpp，同目录同名 .h 在本表 | 取同名 .h 条目的 ops |
