@@ -23,6 +23,8 @@
 - <term>Atlas 训练系列产品</term>：不支持
 <!-- end id6 -->
 
+Ascend 950PR/Ascend 950DT（arch35）支持`tokenDtype=0～5`；Atlas A2/A3支持`tokenDtype=0～2`。新增低精度类型仅在arch35上支持。
+
 ## 功能说明
 
 - 接口功能：Attention与FFN分离部署场景下，FFN worker侧的token重排算子。Attention将token按专家路由发送到对应FFN worker的预分配数据区，本接口从该数据区中扫描调度信息，按专家维度聚合并重排token，产出各专家对应的连续token数据块。需要设置`syncFlag`时，请使用[aclnnFfnWorkerBatchingV2](aclnnFfnWorkerBatchingV2.md)。
@@ -122,7 +124,7 @@ aclnnStatus aclnnFfnWorkerBatching(
       <td>不支持空tensor。</td>
       <td>INT8</td>
       <td>ND</td>
-      <td>1维，shape固定为(1024)</td>
+      <td>1维，调度上下文结构体占1024字节；若测试中内嵌辅助数据，Tensor长度须包含完整打包数据</td>
       <td>×</td>
     </tr>
     <tr>
@@ -228,7 +230,7 @@ aclnnStatus aclnnFfnWorkerBatching(
     <tr>
       <td>expertOffsets</td>
       <td>输出</td>
-      <td>每个输出token在其所属专家分组内的偏移。</td>
+      <td>每个输出token在原始topK加共享专家选择中的位置索引。</td>
       <td>-</td>
       <td>INT32</td>
       <td>ND</td>
@@ -368,6 +370,23 @@ aclnnStatus aclnnFfnWorkerBatching(
 
 - 确定性计算：
   - aclnnFfnWorkerBatching默认确定性实现。
+
+## arch35低精度类型映射与验证
+
+| tokenDtype | y数据类型 | 每行token字节数 | dynamicScale数据类型 | dynamicScale形状 |
+| --- | --- | --- | --- | --- |
+| 0 | FLOAT16 | 2H | FLOAT32（无有效数据） | (Y) |
+| 1 | BFLOAT16 | 2H | FLOAT32（无有效数据） | (Y) |
+| 2 | INT8 | H | FLOAT32 | (Y) |
+| 3 | FLOAT8_E5M2 | H | FLOAT8_E8M0 | (Y, ceil(H/32)) |
+| 4 | FLOAT8_E4M3FN | H | FLOAT8_E8M0 | (Y, ceil(H/32)) |
+| 5 | FLOAT4_E2M1 | H/2，H为偶数 | FLOAT8_E8M0 | (Y, ceil(H/32)) |
+
+例如H=66时，FP8每行包含66字节token和3字节scale，FP4每行包含33字节token和3字节scale；dynamicScale的shape均为(Y,3)，行尾可另加padding。
+
+- [需求设计文档](arch35_low_precision_design.md)：存储协议、UB规划及分块搬运设计。
+- [验证报告与复现命令](arch35_low_precision_validation.md)：Host UT 32/32、Kernel ST 68/68、ACLNN ST 67/67通过。
+- [逐用例结果](arch35_low_precision_results.csv)与[arch35 ACLNN用例](../tests/st/arch35/test_aclnn_ffn_worker_batching_arch35.csv)。
 
 ## 调用示例
 

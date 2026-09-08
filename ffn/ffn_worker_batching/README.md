@@ -11,6 +11,8 @@
 |<term>Atlas 推理系列产品</term>| × |
 |<term>Atlas 训练系列产品</term>| × |
 
+Ascend 950PR/Ascend 950DT（arch35）支持 `token_dtype=0～5`；Atlas A2/A3 支持 `token_dtype=0～2`。新增的三种低精度类型仅在 arch35 上支持。
+
 ## 功能说明
 
 - 算子功能：`FFNWorkerBatching`在Attention与FFN分离部署场景下，完成FFN worker上的token重排操作。Attention将token按专家路由发送到对应FFN worker的预分配数据区，FFNWorkerBatching从该数据区中扫描调度信息，按专家维度聚合并重排token，产出各专家对应的连续token数据块。
@@ -44,7 +46,7 @@
     <tr>
       <td>schedule_context</td>
       <td>输入</td>
-      <td>调度上下文数据结构，内含CommonArea、ControlArea、AttentionArea、FfnArea。算子从FfnArea中读取token_info_buf和token_data_buf获取待重排的token数据与描述信息，并获取layer_id、session_id、micro_batch_id、expert_ids等路由信息。为一维Tensor，shape为 [1024]（固定1024字节结构体），不支持空Tensor。</td>
+      <td>调度上下文数据结构，内含CommonArea、ControlArea、AttentionArea、FfnArea。算子从FfnArea中读取token_info_buf和token_data_buf获取待重排的token数据与描述信息，并获取layer_id、session_id、micro_batch_id、expert_ids等路由信息。为一维INT8 Tensor，调度上下文结构体占1024字节，不支持空Tensor。若测试中在结构体后内嵌辅助数据，输入Tensor的长度须包含完整打包数据。</td>
       <td>INT8</td>
       <td>ND</td>
     </tr>
@@ -58,7 +60,7 @@
     <tr>
       <td>max_out_shape</td>
       <td>属性</td>
-      <td>输出shape上限，格式为 {A, BS, topK+1, H}。用于推导y输出的shape上限Y = A × BS × (topK+1)，以及H值。长度必须为4。其中A（Attention worker数量）≤ 1024；第3维topK+1（topK加共享专家数）≤ 64；BS（micro batch size）> 0 且无硬上限（受内存限制）；H（hidden size）> 0，支持泛化。</td>
+      <td>输出shape上限，格式为 {A, BS, topK+1, H}。用于推导y输出的shape上限Y = A × BS × (topK+1)，以及H值。长度必须为4。其中A（Attention worker数量）≤ 1024；第3维topK+1（topK加共享专家数）≤ 64；BS（micro batch size）> 0 且无硬上限（受内存限制）；H（hidden size）> 0，支持泛化。arch35上token_dtype=5时，H须为偶数。</td>
       <td>LIST_INT</td>
       <td>-</td>
     </tr>
@@ -128,7 +130,7 @@
     <tr>
       <td>expert_offsets</td>
       <td>输出</td>
-      <td>每个输出token在其所属专家分组内的偏移，shape为 [Y]。</td>
+      <td>每个输出token在原始topK加共享专家选择中的位置索引，shape为 [Y]。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -169,6 +171,12 @@
 | 图模式调用 | [test_geir_ffn_worker_batching.cpp](examples/test_geir_ffn_worker_batching.cpp) | 通过[算子IR](op_graph/ffn_worker_batching_proto.h)构图方式调用FfnWorkerBatching算子。 |
 | aclnn接口 | [test_aclnn_ffn_worker_batching.cpp](examples/test_aclnn_ffn_worker_batching.cpp) | 通过[aclnnFfnWorkerBatching](docs/aclnnFfnWorkerBatching.md)接口方式调用FfnWorkerBatching算子。 |
 
+## arch35低精度设计与验证
+
+- [需求设计文档](docs/arch35_low_precision_design.md)：类型映射、token/scale存储布局、FP4约束及UB分块设计。
+- [验证报告与复现命令](docs/arch35_low_precision_validation.md)：Host UT 32/32、Kernel ST 68/68、ACLNN ST 67/67通过。
+- [逐用例结果](docs/arch35_low_precision_results.csv)、[Kernel用例](tests/st/arch35/test_ffn_worker_batching_arch35.csv)、[ACLNN用例](tests/st/arch35/test_aclnn_ffn_worker_batching_arch35.csv)。
+
 ## 调度上下文数据结构
 
 ```cpp
@@ -179,7 +187,7 @@ struct ScheduleContext {
     uint32_t micro_batch_size;      // batch_size / micro_batch_num
     uint32_t selected_expert_num;   // topK个数 + 1（含共享专家）
     uint32_t expert_num;            // 每层专家个数
-    uint32_t attn_to_ffn_token_size;// 每个token在FFN window数据区占用大小，对齐到512
+    uint32_t attn_to_ffn_token_size;// FFN window中每行token的字节步长，含scale及行尾padding
     uint32_t ffn_to_attn_token_size;// 每个token在Attention window数据区占用大小，对齐到512
     int32_t  schedule_mode;         // 0:只调度FFN, 1:只调度Attention, 2:同时调度
     int8_t   reserve0[96];          // padding to 128 bytes
