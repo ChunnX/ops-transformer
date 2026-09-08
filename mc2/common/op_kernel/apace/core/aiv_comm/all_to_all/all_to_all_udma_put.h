@@ -45,8 +45,10 @@ private:
         if (targetRankId == this->udmaCtx_->rankId) {
             return;
         }
-        GM_ADDR srcAddr =
-            this->localAddr_ + targetRankId * this->chunkBytes_ + this->currentTileIdx_ * this->tileMaxByteSize_;
+        // 源侧轮内偏移使用累计的实际轮字节数(tileByteOffset_), 与输入数据的连续布局一致。
+        // 此前按 currentTileIdx_ * tileMaxByteSize_ 固定步进, 仅在尾轮不超过头轮
+        // (tileMax == 头轮字节)时与连续布局等价, 无法支持尾轮大于头轮的合并切分。
+        GM_ADDR srcAddr = this->localAddr_ + targetRankId * this->chunkBytes_ + this->tileByteOffset_;
 
         GM_ADDR dstAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_) +
                           this->udmaCtx_->rankId * this->chunkBytes_ + this->tileByteOffset_;
