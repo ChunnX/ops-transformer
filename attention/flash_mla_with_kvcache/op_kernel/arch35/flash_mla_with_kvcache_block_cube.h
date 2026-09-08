@@ -96,7 +96,7 @@ public:
     // L0C（CO1）：2×128K = 256K 静态（表 2 注 3）
     static constexpr uint32_t L0C_BUFCNT = 2U;
     static constexpr uint32_t L0C_BUF_BYTES = 128U * 1024U;
-    // L0A：前两个 16K 槽缓存 Q 的前两个 K 分块；后两个 16K 槽供其余 Q/P 双缓冲。
+    // L0A：前两个 16K 槽缓存 Q 的首个 112 和末尾 128 宽 K 分块；后两个 16K 槽供其余 Q/P 双缓冲。
     // L0B：2×32K 双缓冲，独立游标跨 mm1/mm2 轮转。
     static constexpr uint32_t BUFFER_SIZE_BYTE_64K = 65536;
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
@@ -410,10 +410,11 @@ public:
 #pragma unroll
         for (uint32_t k = 0; k < kLoops; k++) {
             uint32_t tileK = (k == (kLoops - 1)) ? 128 : 112;
-            const bool cachedQuery = k < Q_L0A_CACHE_COUNT;
+            const bool cachedQuery = (k == 0) || (k == kLoops - 1);
+            const uint32_t qCacheSlot = (k == 0) ? 0U : 1U;
             const bool loadL0A = !cachedQuery || loadQueryCache;
-            const uint32_t l0aMutexId = cachedQuery ? Q_L0A_CACHE_ID0 + k : L0A_BUFFER_ID0 + l0aBufId_;
-            const uint32_t l0aSlot = cachedQuery ? k : Q_L0A_CACHE_COUNT + l0aBufId_;
+            const uint32_t l0aMutexId = cachedQuery ? Q_L0A_CACHE_ID0 + qCacheSlot : L0A_BUFFER_ID0 + l0aBufId_;
+            const uint32_t l0aSlot = cachedQuery ? qCacheSlot : Q_L0A_CACHE_COUNT + l0aBufId_;
             const uint32_t l0bMutexId = L0B_BUFFER_ID0 + l0bBufId_;
             LocalTensor<Q_T> l0aTensor =
                 l0ABuffers_[l0aSlot * L0A_SLOT_BYTES].template ReinterpretCast<Q_T>();
