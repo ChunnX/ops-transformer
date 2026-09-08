@@ -553,15 +553,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunSharedExpertGmm2(con
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
                     false, true, false, true>(problemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob,
                                               static_cast<uint32_t>(Get<M_VALUE>(problemShape)), 0U);
-    } else if (gmmExecutionConfig_.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
-               gmmExecutionConfig_.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
-        RunGmm2Generic<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                       true, false, GMM1_TILE_M, false, true, IsGmm1Interleaved, true>(
-            problemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, nullptr, ENABLE_A8W8);
     } else {
-        RunGmm2Generic<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                       false, false, GMM1_TILE_M, false, true, IsGmm1Interleaved, true>(
-            problemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, nullptr, ENABLE_A8W8);
+        RunGmm2GenericByWeightFormat<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
+                                     QuantScaleOutType, false, GMM1_TILE_M, false, true, IsGmm1Interleaved, true>(
+            gmmExecutionConfig_, problemShape, gmmAddrInfo, startBlockIdx, nullptr, ENABLE_A8W8);
     }
 }
 

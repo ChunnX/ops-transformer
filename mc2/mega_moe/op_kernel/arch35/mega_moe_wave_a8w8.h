@@ -329,20 +329,11 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
             tileSequence = &gmmTileSequence;
         }
-        if (gmmExecutionConfig_.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
-            gmmExecutionConfig_.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
-            RunGmm2Generic<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
-                           QuantScaleOutType, true, false, GMM1_TILE_M, TopkWeightsPrefetch, false, IsGmm1Interleaved,
-                           true, CombineQuantMode == COMBINE_NO_QUANT>(
-                gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, nullptr, isWholeExpert,
-                gmm2Position.tokenIndexInExpert, &params_, tileSequence);
-        } else {
-            RunGmm2Generic<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
-                           QuantScaleOutType, false, false, GMM1_TILE_M, TopkWeightsPrefetch, false, IsGmm1Interleaved,
-                           true, CombineQuantMode == COMBINE_NO_QUANT>(
-                gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, nullptr, isWholeExpert,
-                gmm2Position.tokenIndexInExpert, &params_, tileSequence);
-        }
+        RunGmm2GenericByWeightFormat<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
+                                     QuantScaleOutType, false, GMM1_TILE_M, TopkWeightsPrefetch, false,
+                                     IsGmm1Interleaved, true, CombineQuantMode == COMBINE_NO_QUANT>(
+            gmmExecutionConfig_, gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx, nullptr, isWholeExpert,
+            gmm2Position.tokenIndexInExpert, &params_, tileSequence);
 
         gmm2Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
         gmm2Position.globalTokenIndex += waveRowCount;
