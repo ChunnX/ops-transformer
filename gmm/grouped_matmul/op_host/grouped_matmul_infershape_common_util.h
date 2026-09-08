@@ -49,7 +49,8 @@ constexpr int64_t GMM_SPLIT_K = 2L;
 constexpr int64_t GMM_OUT_DTYPE_INT32 = 2L;
 
 constexpr int64_t GMM_MAX_GROUP_LIST_SIZE_ARRAY = 128L;
-constexpr int64_t GMM_MAX_GROUP_LIST_SIZE_TENSOR = 25600L;
+constexpr int64_t GMM_MAX_GROUP_LIST_SIZE_TENSOR = 1024L;
+constexpr int64_t GMM_MAX_GROUP_LIST_SIZE_TENSOR_LARGE = 25600L;
 constexpr int64_t GMM_MAX_INNER_AXIS = 65535L;
 constexpr int64_t GMM_N_K_ALIGN_VALUE_WEIGHT_QUANT = 32L;
 constexpr int64_t GMM_N_K_ALIGN_VALUE_WEIGHT_QUANT_4BIT = 64L;
@@ -114,8 +115,8 @@ const std::initializer_list<ge::DataType> BIAS_DTYPE_SUPPORT_LIST = {ge::DataTyp
 class GroupedMatmulCommonUtil {
 public:
     GMMAttrs attrsInfo;
-    GroupedMatmulCommonUtil() {};
-    ~GroupedMatmulCommonUtil() {};
+    GroupedMatmulCommonUtil(){};
+    ~GroupedMatmulCommonUtil(){};
 
 private:
 };

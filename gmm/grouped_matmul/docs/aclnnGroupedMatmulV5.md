@@ -336,7 +336,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 | groupType | x | weight | y | splitItem | groupListOptional | 转置 | 其余场景限制 |
 |:---:|:---:|:---:|:---:|:---:|:---|:---|:---|
 | -1 | 多 | 多 | 多 | 0/1 | 必须传空 | x不转置；weight可转置（统一） | 1）非量化x，out中tensor需为2维，shape分别为（$m_i$, $k_i$）和（$m_i$, $n_i$）；伪量化场景x中tensor要求维度一致，支持2-6维，y中tensor维度和x保持一致；weight中tensor需为2维，shape为（$n_i$, $k_i$）或（$k_i$, $n_i$）；bias中tensor需为1维，shape为（$n_i$）<br>2）仅支持非量化和伪量化<br>3）仅支持ND进ND出 |
-| 0 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；非量化且groupListType为0/1时最大25600组，其他场景最大1024组 | x不转置；weight可转置 | 1）weight中tensor需为3维，shape为（$g$, $N$, $K$）或（$g$, $K$, $N$）；x，out中tensor需为2维，shape分别为（$M$, $K$）和（$M$, $N$）；bias中tensor需为2维，shape为（$g$, $N$）<br>2）仅支持ND进ND出 |
+| 0 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；Ascend910B/Ascend910_93平台非量化且groupListType为0/1时最大25600组，其他产品及场景最大1024组 | x不转置；weight可转置 | 1）weight中tensor需为3维，shape为（$g$, $N$, $K$）或（$g$, $K$, $N$）；x，out中tensor需为2维，shape分别为（$M$, $K$）和（$M$, $N$）；bias中tensor需为2维，shape为（$g$, $N$）<br>2）仅支持ND进ND出 |
 | 0 | 单 | 多 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；最大 128 组 | x不转置；weight可转置（统一） | 1）x，out中tensor需为2维，shape分别为（$M$, $K$）和（$M$, $N$）；weight中tensor需为2维，shape为（$N$, $K$）或（$K$, $N$）；bias中tensor需为1维，shape为（$N$）<br>2）weight中每个tensor的N轴必须相等<br>3）仅支持非量化<br>4）仅支持ND进ND出 |
 | 0 | 多 | 多 | 单 | 2 | 可选,若传则需满足：groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；最大 128 组 | x不转置；weight可转置（统一） | 1）x，out中tensor需为2维，shape分别为（$M$, $K$）和（$M$, $N$）；weight中tensor需为2维，shape为（$N$, $K$）或（$K$, $N$）；bias中tensor需为1维，shape为（$N$）<br>2）weight中每个tensor的N轴必须相等<br>3）仅支持非量化<br>4）仅支持ND进ND出 |
 | 2 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；最大 1024 组 | x必须转置；weight不转置 | 1）x，weight中tensor需为2维，shape分别为（$K$, $M$）和（$K$, $N$）；out中tensor需为3维，shape为（$g$, $M$, $N$）<br>2）仅支持非量化和量化<br>3）不支持bias<br>4）仅支持ND进ND出 |
@@ -645,7 +645,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 | groupType | x | weight | y | splitItem | groupListOptional | 转置 | 其余场景限制 |
 |:---:|:---:|:---:|:---:|:---:|:---|:---|:---|
 | -1 | 多 | 多 | 多 | 0/1 | 必须传空 | x不转置；weight可转置（统一） | x中tensor要求维度一致，支持2维，weight中tensor需为2维，y中tensor维度和x保持一致 |
-| 0 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；非量化且groupListType为0/1时最大25600组，其他场景最大1024组 | x不转置；weight可转置（A8W4/A4W4 不可） | weight中tensor需为3维，x，y中tensor需为2维 |
+| 0 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；Ascend910B/Ascend910_93平台非量化且groupListType为0/1时最大25600组，其他产品及场景最大1024组 | x不转置；weight可转置（A8W4/A4W4 不可） | weight中tensor需为3维，x，y中tensor需为2维 |
 | 0 | 单 | 多 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；最大 128 组 | x不转置；weight可转置（统一） | 1）x，weight，y中tensor需为2维；<br>2）weight中每个tensor的N轴必须相等 |
 | 0 | 多 | 多 | 单 | 2/3 | 可选；若传则 groupListType=0 差值 = x 第一维、groupListType=1 数值 = x 第一维、groupListType=2 第二列 = x 第一维；最大 128 组 | x不转置；weight可转置（统一） | 1）x，weight，y中tensor需为2维；<br>2）weight中每个tensor的N轴必须相等 |
 | 2 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第二维；groupListType=1 总和 ≤ x 第二维；groupListType=2 第二列总和 ≤ x 第二维；最大 1024 组 | x必须转置；weight不转置 | 1）x，weight中tensor需为2维，y中tensor需为3维；<br>2）bias必须传空 |
