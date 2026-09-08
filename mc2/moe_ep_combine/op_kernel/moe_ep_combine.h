@@ -310,9 +310,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFl
     if (dstRank == rankId_) {
         GlobalTensor<uint64_t> localFlag;
         localFlag.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagAddr));
-        LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
-        DataCopy(localFlag, flagTensor, UB_ALIGN / sizeof(uint64_t));
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
+        localFlag.SetValue(0, 1U);
         DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localFlag);
         return;
     }
@@ -323,17 +321,17 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFl
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::InitFlagSource()
 {
+    if (aivId_ != 0U) {
+        return;
+    }
     LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
     Duplicate<uint64_t>(flagTensor, 1U, WIN_ADDR_ALIGN / sizeof(uint64_t));
     SyncFunc<AscendC::HardEvent::V_MTE3>();
-    // All AIVs retain their UB flag value for the local MTE path, but only AIV0 writes the shared GM source.
     // Reinitialize to the same constant for standalone combine as well; no receive/clear path touches this slot.
-    if (aivId_ == 0U) {
-        GlobalTensor<uint64_t> flagSource;
-        flagSource.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagSourceWinAddr_));
-        DataCopy(flagSource, flagTensor, WIN_ADDR_ALIGN / sizeof(uint64_t));
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
-    }
+    GlobalTensor<uint64_t> flagSource;
+    flagSource.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagSourceWinAddr_));
+    DataCopy(flagSource, flagTensor, WIN_ADDR_ALIGN / sizeof(uint64_t));
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 template <TemplateMoeEpCombineTypeClass>
