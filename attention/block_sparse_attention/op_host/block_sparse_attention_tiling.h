@@ -103,6 +103,8 @@ TILING_DATA_FIELD_DEF(uint64_t, workSpaceSize);
 // V3 新增:量化参数
 TILING_DATA_FIELD_DEF(float, log2Cx);
 TILING_DATA_FIELD_DEF(float, log2CxCeil);
+// HIF8: pQuantScale 为空时由 host 下发 ln(16)；非空时 device 从 Tensor 计算并忽略该字段。
+TILING_DATA_FIELD_DEF(float, defaultLnPScale);
 
 TILING_DATA_FIELD_DEF_STRUCT(BsaMask2IdxTiling, BsaMask2IdxTileInfo);
 TILING_DATA_FIELD_DEF_STRUCT(BsaBaseTiling, BsaBaseTileInfo);
@@ -229,6 +231,7 @@ private:
     float dstTypeMax_ = 0.0f; // 中间计算用,不下发 tiling
     float log2Cx_ = 0.0f;
     float log2CxCeil_ = 0.0f;
+    float defaultLnPScale_ = 0.0f;
 
     uint32_t totalQBlocks_ = 0;
     uint32_t maxKvBlockNum_ = 0;

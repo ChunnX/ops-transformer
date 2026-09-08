@@ -20,6 +20,7 @@
 #include "arch35/block_sparse_attention_kernel_arch35_regular.h"
 #include "arch35/block_sparse_attention_kernel_arch35_full_quant.h"
 #include "arch35/block_sparse_attention_kernel_arch35_mxfp4_full_quant.h"
+#include "arch35/block_sparse_attention_kernel_arch35_hif8_full_quant.h"
 #endif
 
 using namespace NpuArch;
@@ -462,5 +463,96 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
                                           tiling};
     BsaMXFP4FullQuantKernelArch35 bsaMXFP4FullQuantKernelArch35;
     bsaMXFP4FullQuantKernelArch35(params);
+}
+
+template <class InDtype, class SMDtype, class REDtype, class Otype, Format qFormat, Format kvFormat,
+          Epilogue::LseMode lseMode, Epilogue::LseFormat lseFormat,
+          Gemm::Tile::CopyL0CToUBMode mm1L0C2UBMode, bool transposedMm1>
+__global__ __aicore__ void BsaInferInterfaceHIF8FullQuant(
+    GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR blockSparseMask, GM_ADDR attenMask, GM_ADDR blockTable,
+    GM_ADDR actualSeqLengths, GM_ADDR actualSeqLengthsKv, GM_ADDR qDequantScale, GM_ADDR kDequantScale,
+    GM_ADDR vDequantScale, GM_ADDR pQuantScale, GM_ADDR attentionOut, GM_ADDR workspace, GM_ADDR lse, GM_ADDR tiling)
+{
+    static_assert(transposedMm1, "HIF8 full quantization supports only the DN K * Q^T MM1 path");
+
+    using ArchTag = Arch::AtlasA5;
+    using ElementSparseMask = uint8_t;
+    using ElementSparseIdx = int32_t;
+    using ElementSparseCount = int32_t;
+    using ElementQ = InDtype;    // hifloat8_t
+    using ElementK = InDtype;    // hifloat8_t
+    using ElementV = InDtype;    // hifloat8_t
+    using ElementS = SMDtype;    // float
+    using ElementP = InDtype;    // hifloat8_t
+    using ElementOTmp = REDtype; // float
+    using ElementO = Otype;      // half / bfloat16_t
+
+    using LayoutQ = layout::RowMajor;
+    using LayoutK = layout::ColumnMajor;
+    using LayoutS = layout::RowMajor;
+    using LayoutPDummy = layout::zN;
+    using LayoutV = layout::RowMajor;
+    using LayoutO = layout::RowMajor;
+    using LayoutOTmp = layout::RowMajor;
+
+    using DispatchPolicyMask2Idx = Epilogue::EpilogueBsaMask2Idx;
+    using EpilogueMask2Idx =
+        Epilogue::Block::BlockEpilogue<DispatchPolicyMask2Idx, ElementSparseMask, ElementSparseIdx, ElementSparseCount>;
+
+    // MM1: HIF8 K * Q^T, FP32 score output, per-tensor dq * dk * attentionScale in Fixpipe.
+    using L1TileShapeQK = Shape<Int<256>, Int<128>, Int<128>>;
+    using L0TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
+    using DispatchPolicyQK = Gemm::MmadAtlasA5BsaQKHIF8;
+    using TileCopyQK =
+        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS, LayoutS, void,
+                                          Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false,
+                                          Gemm::Tile::ScaleGranularity::PER_TENSOR>;
+    using BlockMmadQK = Gemm::Block::BlockMmadTla<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK,
+                                                  ElementS, void, TileCopyQK>;
+
+    // FP32 DN online softmax followed by the runtime pQuantScale and HIF8 P cast.
+    using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsaHIF8;
+    using PType = Gemm::GemmType<ElementP, LayoutPDummy>;
+    using SType = Gemm::GemmType<ElementS, LayoutS>;
+    using EpilogueOnlineSoftmax = Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType>;
+
+    // MM2: HIF8 P * V, FP32 output, per-tensor dv in Fixpipe and split output for two AIVs.
+    using L1TileShapePV = Shape<Int<128>, Int<128>, Int<256>>;
+    using L0TileShapePV = Shape<Int<128>, Int<128>, Int<128>>;
+    using DispatchPolicyPV = Gemm::MmadAtlasA5BsaPVHIF8;
+    using TileCopyPV =
+        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutPDummy, ElementV, LayoutV, ElementOTmp, LayoutOTmp,
+                                          void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false,
+                                          Gemm::Tile::ScaleGranularity::PER_TENSOR>;
+    using BlockMmadPV = Gemm::Block::BlockMmadTla<DispatchPolicyPV, L1TileShapePV, L0TileShapePV, ElementP, ElementV,
+                                                  ElementOTmp, void, TileCopyPV>;
+
+    // FP32 online accumulation/final normalization.  The HIF8 specialization owns the -ln(pQuantScale) LSE fixup.
+    using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA5BsaRescaleOHIF8<lseMode, lseFormat>;
+    using TileCopyRescaleO = Epilogue::Tile::TileCopyRescaleO<ArchTag, ElementO, LayoutO, LayoutOTmp>;
+    using EpilogueRescaleO = Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, ElementO, ElementOTmp, ElementS,
+                                                            ElementV, TileCopyRescaleO, Arch::PositionL0C>;
+
+    using BsaHif8Kernel =
+        BsaHif8FullQuantKernelArch35<EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV,
+                                     EpilogueRescaleO, qFormat, kvFormat, transposedMm1, false>;
+    BsaHif8FullQuantKernelParamsArch35 params{query,
+                                              key,
+                                              value,
+                                              blockSparseMask,
+                                              attenMask,
+                                              blockTable,
+                                              actualSeqLengths,
+                                              actualSeqLengthsKv,
+                                              qDequantScale,
+                                              kDequantScale,
+                                              vDequantScale,
+                                              pQuantScale,
+                                              attentionOut,
+                                              workspace,
+                                              lse,
+                                              tiling};
+    BsaHif8Kernel kernel;
+    kernel(params);
 }
 #endif
