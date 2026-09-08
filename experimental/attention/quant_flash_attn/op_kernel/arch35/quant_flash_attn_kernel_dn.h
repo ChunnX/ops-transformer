@@ -39,7 +39,6 @@ public:
     using SCALE_T = typename QFAT::scaleType;
     using OUT_T = typename QFAT::outputType;
     using SEQLEN_T = uint32_t;
-    static constexpr bool SOFTMAX_DN = true;
     static constexpr bool PAGE_ATTENTION = QFAT::pageAttention;
     static constexpr bool HAS_MASK = QFAT::hasMask;
     static constexpr QFA_LAYOUT LAYOUT_Q = QFAT::qLayout;
@@ -83,9 +82,7 @@ public:
     uint32_t gS1OEnd_ = 0;
     uint32_t s2OStart_ = 0;
     uint32_t s2OEnd_ = 0;
-    uint32_t coreFirstTmpOutWsPos_ = 0;
     uint32_t s2FirstStartVecCore = 0;
-    uint32_t tileLoopIdx = 1;
     uint32_t tileMaxIdx = 3;
     uint32_t updateScaleNum = 3;
     // fd metadata
@@ -99,10 +96,7 @@ public:
     uint32_t prevBIdx = 0;
     uint32_t prevBN2Idx = 0;
     uint32_t prevGS1Idx = 0;
-    uint32_t mloop = 0;
     uint32_t pscaleNum = 0;
-    bool headS2Split = false;
-    bool tailS2Split = false;
 
     SeqLensTool<LAYOUT_Q, SEQLEN_T> qSeqLensTool;
     SeqLensTool<LAYOUT_KV, SEQLEN_T> kvSeqLensTool;
@@ -226,9 +220,6 @@ public:
         uint32_t createdTaskCount = 0;
         uint32_t executedTaskCount = 0;
         uint32_t validTaskCount = 0;
-        mloop = 0;
-        headS2Split = false;
-        tailS2Split = false;
 
         uint32_t bN2Cur = bN2Start_;
         uint32_t gS1Cur = gS1OStart_;
@@ -287,12 +278,10 @@ public:
         curS2End = (static_cast<uint32_t>(actSeqLensKv) + s2BaseSize - 1) / s2BaseSize;
 
         if ((bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
-            headS2Split = s2OStart_ != 0U;
             curS2Start = s2OStart_;
         }
 
         if ((bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
-            tailS2Split = s2OEnd_ != 0U;
             curS2End = s2OEnd_;
         }
     }
@@ -334,9 +323,6 @@ public:
 
         if (s2Cur < curS2Start || s2Cur >= curS2End) {
             return TASK_DEAL_MODE::SKIP_REMAINING_S2;
-        }
-        if (s2Cur == curS2Start) {
-            mloop++;
         }
 
         return TASK_DEAL_MODE::CREATE_TASK;
@@ -448,32 +434,22 @@ public:
     __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfo &info)
     {
         info.loop = loop;
-        info.mloop = mloop;
         info.bIdx = bN2Cur / constInfo.n2Size;
         info.n2Idx = bN2Cur % constInfo.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
-        if constexpr (LAYOUT_Q == QFA_LAYOUT::BSND || LAYOUT_Q == QFA_LAYOUT::TND) {
-            // S1G layout
-            info.s1Idx = info.gS1Idx / constInfo.gSize;
-        } else {
-            // GS1 layout
-            info.s1Idx = info.gS1Idx % actSeqLensQ;
-        }
         info.s2Idx = s2Cur * s2BaseSize;
         info.curS2LoopIdx = s2Cur - curS2Start;
-        info.actS1Size = actSeqLensQ;
-        info.actS2Size = actSeqLensKv;
 
         info.actMSize = mBaseSize;
-        uint64_t gS1Size = info.actS1Size * constInfo.gSize;
+        uint64_t gS1Size = (uint64_t)actSeqLensQ * constInfo.gSize;
         if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
             uint64_t tailM = (gS1Size > gS1Cur * mBaseSize) ? (gS1Size - gS1Cur * mBaseSize) : mBaseSize;
             info.actMSize = (tailM < mBaseSize) ? static_cast<uint32_t>(tailM) : mBaseSize;
         }
         info.actSingleLoopS2Size = s2BaseSize;
-        if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
+        if (((s2Cur + 1) * s2BaseSize) > actSeqLensKv) {
             info.actSingleLoopS2Size =
-                (info.actS2Size > s2Cur * s2BaseSize) ? (info.actS2Size - s2Cur * s2BaseSize) : 0;
+                (actSeqLensKv > (uint64_t)s2Cur * s2BaseSize) ? (actSeqLensKv - (uint64_t)s2Cur * s2BaseSize) : 0;
         }
         info.actSingleLoopS2SizeAlign =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)AttentionCommon::BYTE_BLOCK);      // 统一对齐到32
@@ -484,13 +460,11 @@ public:
         info.prefetched = (((s2Cur - curS2Start) & 1) == 1);
         info.pairKVCopyS2Size = info.actSingleLoopS2Size;
         if (!info.prefetched && (s2Cur + 1) < curS2End) {
-            uint64_t nextSize = info.actS2Size - (uint64_t)(s2Cur + 1) * s2BaseSize;
+            uint64_t nextSize = actSeqLensKv - (uint64_t)(s2Cur + 1) * s2BaseSize;
             info.pairKVCopyS2Size = s2BaseSize + static_cast<uint32_t>(nextSize > s2BaseSize ? s2BaseSize : nextSize);
         }
 
         info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
-        info.isS2SplitCore = false;
-        info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
         info.isUpdatePScale = (info.isLastS2Loop || ((info.curS2LoopIdx + 1) % TILE_N == 0));
         info.isC2Sync = (info.curS2LoopIdx % TILE_N == 0);
@@ -499,7 +473,6 @@ public:
         }
         info.s2FirstStartVecCore = s2FirstStartVecCore;
         if (info.isFirstS2Loop || info.isC2Sync) {
-            tileLoopIdx = (tileLoopIdx + 1) % 2;
             tileMaxIdx = (tileMaxIdx + 1) % 4;
             pscaleNum = (pscaleNum + 1) % 20;
         }
@@ -507,37 +480,11 @@ public:
             updateScaleNum = (updateScaleNum + 1) % 4;
         }
         info.updateScaleNum = updateScaleNum;
-        info.tileBuffIdx = tileLoopIdx;
         info.tileMaxIdx = tileMaxIdx;
         info.isS2FirstTilePerCore = (info.curS2LoopIdx % TILE_N / 2 == 0);
         info.pscaleNum = pscaleNum / 10;
 
-        if constexpr (SOFTMAX_DN) {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actMSizeAlign128 = (info.actMSize + 127) >> 7 << 7;
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
-        } else {
-            info.actVecMSize = (info.actMSize + 1) >> 1;
-        }
-        info.vecMbaseIdx = 0;
-        if (constInfo.subBlockIdx == 1) {
-            info.vecMbaseIdx = info.actVecMSize;
-            info.actVecMSize = info.actMSize - info.actVecMSize;
-        }
-
-        if (bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_) {
-            // 所有任务属于同一个S1G
-            info.isS2SplitCore = true;
-        } else {
-            if (headS2Split && (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
-                // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
-                info.isS2SplitCore = true;
-            } else if (tailS2Split && (bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
-                // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
-                info.isS2SplitCore = true;
-                info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
-            }
-        }
+        info.actMSizeAlign128 = (info.actMSize + 127) >> 7 << 7;
     }
 
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
@@ -577,8 +524,6 @@ public:
         bN2End_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
         gS1OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
         s2OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
-        coreFirstTmpOutWsPos_ = faMetaDataGm.GetValue(
-            GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
     }
 
     __aicore__ inline void Process()
