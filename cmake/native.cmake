@@ -2,9 +2,8 @@
 # Licensed under the CANN Open Software License Agreement Version 2.0.
 
 # Python operators opt in through the same build_native hook used by Torch wheels.
-set(NATIVE_ONLY FALSE CACHE INTERNAL "Only Python Native operators selected" FORCE)
+set(NATIVE_ONLY FALSE)
 set(NATIVE_OPS)
-set(NATIVE_SOURCES)
 if(NOT BUILD_OPEN_PROJECT OR ENABLE_TEST)
   return()
 endif()
@@ -26,8 +25,6 @@ foreach(_entry IN LISTS _native_entries)
   file(STRINGS "${_entry}" _hook REGEX "^def build_native\\(")
   if(_hook)
     list(APPEND NATIVE_OPS "${_op}")
-    file(GLOB _sources CONFIGURE_DEPENDS "${_kernel_dir}/*.py" "${_op_dir}/torch_extension/*.py")
-    list(APPEND NATIVE_SOURCES ${_sources})
   endif()
 endforeach()
 if(NOT NATIVE_OPS)
@@ -38,7 +35,7 @@ endif()
 set(_remaining_ops ${_requested_ops})
 list(REMOVE_ITEM _remaining_ops ${NATIVE_OPS})
 if(NOT _remaining_ops)
-  set(NATIVE_ONLY TRUE CACHE INTERNAL "Only Python Native operators selected" FORCE)
+  set(NATIVE_ONLY TRUE)
 endif()
 if(NOT ASCEND_COMPUTE_UNIT STREQUAL "ascend950" OR
    (DEFINED ENABLE_OPS_KERNEL AND NOT ENABLE_OPS_KERNEL))
@@ -64,7 +61,6 @@ add_custom_target(ops_transformer_native ALL
     "TORCH_EXTENSION_VENDOR=${_native_vendor}" CANNBOTDSL_NPU_ARCH=dav-3510
     "${Python3_EXECUTABLE}" setup.py build_py --build-lib "${_native_stage}/python"
   WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/torch_extension"
-  DEPENDS ${NATIVE_SOURCES} "${CMAKE_CURRENT_SOURCE_DIR}/torch_extension/setup.py"
   VERBATIM)
 install(DIRECTORY "${_native_stage}/python/" DESTINATION "${_native_install}/python"
   COMPONENT ops-transformer PATTERN "__pycache__" EXCLUDE PATTERN "*.pyc" EXCLUDE)

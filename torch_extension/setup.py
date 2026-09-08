@@ -202,6 +202,7 @@ class Clean(Command):
 
 class BuildPyWithOps(_build_py):
     def run(self):
+        _clean_build_artifacts()
         super().run()
         build_pkg = os.path.join(self.build_lib, PACKAGE_NAME)
         if _selected_ops is not None:

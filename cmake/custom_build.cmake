@@ -520,7 +520,7 @@ else()
 endif ()
 
 # 零算子（所有请求算子均被 CANN 版本检查跳过）：打印被跳过算子，写标志文件供 build.sh 跳过打包
-if (NOT generate_aclnn_srcs AND NOT generate_aclnn_inner_srcs AND NOT generate_exclude_proto_srcs AND NOT NATIVE_OPS)
+if (NOT generate_aclnn_srcs AND NOT generate_aclnn_inner_srcs AND NOT generate_exclude_proto_srcs)
     get_property(_cann_skipped_ops GLOBAL PROPERTY CANN_VERSION_SKIPPED_OPS)
     if (_cann_skipped_ops)
         list(REMOVE_DUPLICATES _cann_skipped_ops)

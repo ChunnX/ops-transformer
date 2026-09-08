@@ -9,51 +9,76 @@
 # -----------------------------------------------------------------------------------------------------------
 #### CPACK to package run #####
 
-# mc2_matmul KB install
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/runtimeKB.cmake)
-
 function(pack_custom)
-  # download makeself package
-  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/third_party/makeself-fetch.cmake)
-  message(STATUS "System processor: ${CMAKE_SYSTEM_PROCESSOR}")
-  if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
-      message(STATUS "Detected architecture: x86_64")
-      set(ARCH x86_64)
-  elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|arm")
-      message(STATUS "Detected architecture: ARM64")
-      set(ARCH aarch64)
-  else ()
-      message(WARNING "Unknown architecture: ${CMAKE_SYSTEM_PROCESSOR}")
-  endif ()
-  set(PACK_CUSTOM_NAME "cann-ops-transformer-${VENDOR_NAME}-linux-${ARCH}")
-  npu_op_package(${PACK_CUSTOM_NAME}
-    TYPE RUN
-    CONFIG
-      ENABLE_SOURCE_PACKAGE True
-      ENABLE_BINARY_PACKAGE True
-      INSTALL_PATH ${CMAKE_INSTALL_PREFIX}/
-      ENABLE_DEFAULT_PACKAGE_NAME_RULE False
-  )
+    add_cann_third_party(makeself-fetch)
+    add_custom_target(modify_vendor ALL
+            DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/scripts/install.sh ${CMAKE_CURRENT_BINARY_DIR}/scripts/upgrade.sh
+    )
 
-  npu_op_package_add(${PACK_CUSTOM_NAME}
-    LIBRARY
-      cust_opapi
-  )
-  if (TARGET cust_proto)
-    npu_op_package_add(${PACK_CUSTOM_NAME}
-        LIBRARY
-        cust_proto
+    # modify VENDOR_NAME in install.sh and upgrade.sh
+    if (EXISTS ${ASCEND_PROJECT_DIR}/fwk_modules/scripts AND NOT NATIVE_ONLY)
+        set(ASCEND_PROJECT_DIR_SCRIPTS_PATH ${ASCEND_PROJECT_DIR}/fwk_modules/scripts)
+    else()
+        set(ASCEND_PROJECT_DIR_SCRIPTS_PATH ${CMAKE_SOURCE_DIR}/cmake/scripts/custom)
+    endif()
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/scripts/install.sh ${CMAKE_CURRENT_BINARY_DIR}/scripts/upgrade.sh
+            COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/scripts
+            COMMAND cp -r ${ASCEND_PROJECT_DIR_SCRIPTS_PATH}/* ${CMAKE_CURRENT_BINARY_DIR}/scripts/
+            COMMAND chmod +w ${CMAKE_CURRENT_BINARY_DIR}/scripts/*
+            COMMAND sed -i "s/vendor_name=customize/vendor_name=${VENDOR_NAME}_transformer/g" ${CMAKE_CURRENT_BINARY_DIR}/scripts/*
     )
-  endif()
-  if (TARGET cust_opmaster)
-    npu_op_package_add(${PACK_CUSTOM_NAME}
-        LIBRARY
-        cust_opmaster
+
+    install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/scripts/
+            DESTINATION . FILE_PERMISSIONS OWNER_EXECUTE OWNER_READ GROUP_READ
     )
-  endif()
+
+    # gen version.info
+    set(version_info_dir  ${CMAKE_CURRENT_BINARY_DIR})
+    set(version_info_file ${version_info_dir}/version.info)
+    add_custom_target(gen_version_info ALL
+            DEPENDS ${version_info_file}
+    )
+
+    add_custom_command(OUTPUT ${version_info_file}
+            COMMAND bash ${ASCENDC_CMAKE_UTIL_DIR}/gen_version_info.sh ${ASCEND_CANN_PACKAGE_PATH} ${version_info_dir}
+    )
+
+    install(FILES ${version_info_file}
+            DESTINATION packages/vendors/${VENDOR_NAME}_transformer/
+    )
+
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
+        message(STATUS "Detected architecture: x86_64")
+        set(ARCH x86_64)
+    elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|arm")
+        message(STATUS "Detected architecture: ARM64")
+        set(ARCH aarch64)
+    else ()
+        message(WARNING "Unknown architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+    endif ()
+
+    # CPack config
+    set(CPACK_PACKAGE_NAME ${CMAKE_PROJECT_NAME})
+    set(CPACK_PACKAGE_VERSION ${CMAKE_PROJECT_VERSION})
+    set(CPACK_PACKAGE_DESCRIPTION "CPack ops project")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "CPack ops project")
+    set(CPACK_PACKAGE_DIRECTORY ${CMAKE_BINARY_DIR})
+    set(CPACK_PACKAGE_FILE_NAME "cann-ops-transformer-${VENDOR_NAME}_linux-${ARCH}.run")
+    set(CPACK_GENERATOR External)
+    set(CPACK_CMAKE_GENERATOR "Unix Makefiles")
+    set(CPACK_EXTERNAL_ENABLE_STAGING TRUE)
+
+    if (ENABLE_BUILD_PKG)
+        set(CPACK_MAKESELF_PATH ${OPS_TRANSFORMER_DIR}/third_party/makeself)
+        set(CPACK_EXTERNAL_PACKAGE_SCRIPT ${ASCEND_PROJECT_DIR}/fwk_modules/makeself.cmake)
+    endif()
+    set(CPACK_EXTERNAL_BUILT_PACKAGES ${CPACK_PACKAGE_DIRECTORY}/_CPack_Packages/Linux/External/${CPACK_PACKAGE_FILE_NAME}/${CPACK_PACKAGE_FILE_NAME})
+    include(CPack)
 endfunction()
 
 function(pack_built_in)
+  # mc2_matmul KB install
+  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/runtimeKB.cmake)
   #### built-in package ####
   message(STATUS "System processor: ${CMAKE_SYSTEM_PROCESSOR}")
   if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
