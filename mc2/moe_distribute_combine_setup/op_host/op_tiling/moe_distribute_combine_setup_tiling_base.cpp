@@ -811,7 +811,6 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::MoeDistributeCombineSetupTi
     }
 
     SetTilingKey();
-    // SetHcommCfg();
     PrintTilingDataInfo();
     OP_LOGD(nodeName_, "MoeDistributeCombineSetupTilingFunc success");
     return ge::GRAPH_SUCCESS;
