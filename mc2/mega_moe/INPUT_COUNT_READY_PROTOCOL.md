@@ -2,7 +2,8 @@
 
 MTE 路径删除共享专家前的入口跨卡握手，以量化硬件通知和 count epoch 传递输入依赖。
 保留共享入口的 `PipeBarrier<PIPE_ALL>()`、`SyncAll<false>()` 及出口跨卡同步。
-Dispatch 仍等待完整 count 表，远端 24-bit count + 8-bit epoch 布局和 VF cumsum 不变。
+Dispatch 通过整表 MTE2 搬运和 VF 批量 epoch 校验等待完整 count 表；失败后退避 500 cycle 重试。
+远端 24-bit count + 8-bit epoch 布局和 VF cumsum 不变。
 
 ## 修改前后对比
 
@@ -21,7 +22,7 @@ Dispatch 仍等待完整 count 表，远端 24-bit count + 8-bit epoch 布局和
 | count 发布端 | 非对齐段重排并等待，函数末尾等待 MTE3 | 每项 count 使用独立 32B UB 槽，Normal 二维搬运异步返回 |
 | 入口跨卡握手 | AIV 参与，末尾另有 AIV 全核同步 | 删除 |
 | 共享计算入口 | 配对 AIV 可能阻塞在跨卡握手 | 原有本卡 `SyncAll<false>()` 后推进 |
-| 接收 count | 逐槽验证 epoch，整表就绪后 VF cumsum | 不变；epoch 同时证明源数据可读 |
+| 接收 count | 整表搬入 UB 后逐槽标量验证 epoch，缺项标量重读 | 整表 MTE2 搬运、VF 校验；失败后退避 500 cycle 重搬，整表就绪后 VF cumsum |
 | 本卡同步、出口跨卡同步 | 存在 | 保留 |
 
 量化就绪由硬件事件传递。原逐 AIV 计数槽用于跨轮次 epoch 记账，入口和出口各推进
@@ -47,7 +48,10 @@ Dispatch 仍等待完整 count 表，远端 24-bit count + 8-bit epoch 布局和
 接收 AIV1：
 本卡 SyncAll<false>
   → 读取本轮 epoch
-  → 逐槽确认 count epoch，计算 prefix
+  → 立即 MTE2 搬入整表，MTE2_V 后由 VF 校验有效槽的 epoch 并去 tag
+  → V_S 后标量只读取一个整表未就绪标志
+      → 未就绪：退避 500 cycle，V_MTE2 保护 UB 复用后重搬整表
+      → 已就绪：直接使用本次快照计算 prefix
   → Dispatch 拉取源卡 token/scale
 ```
 
@@ -63,6 +67,24 @@ count 的 MTE3 前等待。后续同一 MTE3 队列中的清零等搬运仍受�
 发送端已有 route ring 的 `MTE3_V` 完成等待，并在 count 前保留 `PIPE_MTE3` barrier。
 协议依赖上述操作在设备上保证 index/量化写回先于 count 可见；CPU 模型不能证明
 NPU 互连可见性，仍需多卡设备验证。
+
+## 接收端整表轮询
+
+每个物理 block 的 AIV1 准备自己的完整 count 表。表项数为
+`worldSize * moeExpertPerRank = moeExpertNum`，当前 arch35 最多 2048 项，即 8 KiB；
+固定总专家数时，表大小不随卡数增长。每次重试都重新搬入全部有效项。
+
+`CheckMteCountEpochsVF` 逐向量比较高 8 位 epoch，将所有有效 lane 的不匹配结果累积并
+归约成一个标量，同时在该 UB 快照中保留低 24 位 count。尾部无效 lane 不参与比较和
+写回；即使 count 为零，也必须匹配本轮 epoch。只有整表匹配后才允许计算 cumsum。
+
+整表未就绪标志临时复用 `expertTokenNumsOutTensor` 的首项，与 count 区不重叠，不增加
+UB 预算。`MTE2_V` 保护 VF 读取，`V_S` 保护标量读取归约结果，`V_MTE2` 保护下一轮
+搬运覆盖 count UB。成功后沿用原 `S_V`，再由 cumsum VF 覆盖专家计数输出区。
+
+首次读取不退避；失败后按现有 `GetSystemCycle()` 计数口径等待 500 cycle，再下发下一次
+整表搬运。该常量仅用于 MTE 输入 count，其他 GM 状态轮询仍沿用原间隔。重复搬运以
+减少标量逐项处理为目的，实际带宽占用和检测延迟需要设备 profiling 验证。
 
 ## count 的 UB 布局和生命周期
 
@@ -117,6 +139,7 @@ AIV 同步保证所有接收者读完后，才可能在出口更新 slot 0。现
 
 ```bash
 python3 mc2/mega_moe/tests/ut/op_kernel/arch35/run_input_sync_test.py
+python3 mc2/mega_moe/tests/ut/op_kernel/arch35/run_count_ready_test.py
 ```
 
 测试直接编译生产通知、等待和 count 发布函数，以确定性 CPU MTE3 队列代替设备流水。
@@ -124,6 +147,11 @@ python3 mc2/mega_moe/tests/ut/op_kernel/arch35/run_input_sync_test.py
 跨目的 rank 的非对齐专家分段、零/最大 count、epoch/符号/uint32 回绕、单写者及
 UB/GM 哨兵。DMA 在队列执行时才读 UB，检查源未被提前覆盖；AIC 测试禁止状态与事件访问。
 这验证协议和地址计算，不代表真实 NPU 性能或硬件内存顺序。
+
+接收测试直接编译生产 VF 和整表轮询函数，以 CPU 寄存器及延迟执行的 MTE2/V 模型验证
+10,240 个快照、2,560 个轮询用例：覆盖 1～2048 项的全部长度、尾部掩码、任意位置
+单槽未就绪、全部 128 个 epoch、零/最大 count、分批到达、立即成功和失败退避，
+并检查每轮仅一次标量结果读取、UB/GM 哨兵、事件配对及 AIC 无访问。启用 UBSan。
 
 本地验证（2026-09-08）：上述 CPU 协议测试通过；host tiling 翻译单元编译通过。
 CANN 9.2 beta2、Ascend950PR_9599 下 A8W8/W4 两组共 36 个 MTE tiling key 编译通过，

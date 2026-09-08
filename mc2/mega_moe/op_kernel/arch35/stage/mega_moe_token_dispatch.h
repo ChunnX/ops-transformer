@@ -11,6 +11,7 @@
 #ifndef MEGA_MOE_TOKEN_DISPATCH_H
 #define MEGA_MOE_TOKEN_DISPATCH_H
 
+#include "../common/mega_moe_count_ready.h"
 #include "../common/mega_moe_utils.h"
 #include "mega_moe_token_quant.h"
 
@@ -431,29 +432,17 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     uint32_t rawCountElementCount = common.worldSize * common.moeExpertPerRank;
     GlobalTensor<int32_t> expertCountGlobal;
     expertCountGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr));
-    DataCopyPad(scratch.cumsumInfoTensor, expertCountGlobal,
-                {1U, rawCountElementCount * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U}, {true, 0U, 0U, 0U});
-    SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
-
     /*
      * 到达校验：count 槽高 8 位为发送侧的输入 epoch。发送前已确认源卡量化就绪、
-     * index 写完，因此逐槽检查直接承担远端输入依赖，不依赖入口全卡握手。
+     * index 写完，因此整表 epoch 校验直接承担远端输入依赖，不依赖入口全卡握手。
      * 本卡 SyncAll<false> 已完成所有 AIV 的输入 epoch 记账及量化等待；出口 AIV 同步在本函数之后，
-     * 所以此时 slot 0 稳定为本轮输入计数。未匹配的槽重读至到达，再掩出低 24 位。
+     * 所以此时 slot 0 稳定为本轮输入计数。VF 检查全部有效槽，失败后退避并重搬整表。
      */
     __gm__ int32_t *launchCountSlot0 = GetMteSyncCountAddress(params.peermemInfo.rankSyncInWorldPtr, 0U);
     uint32_t expectEpoch = GetMteCountEpoch(ReadGmByPassDCache(launchCountSlot0));
-    __gm__ int32_t *rawCountGm = reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr);
-    for (uint32_t slotIdx = 0U; slotIdx < rawCountElementCount; ++slotIdx) {
-        int32_t slotValue = scratch.cumsumInfoTensor.GetValue(slotIdx);
-        while ((static_cast<uint32_t>(slotValue) >> 24U) != expectEpoch) {
-            int64_t startCycle = AscendC::GetSystemCycle();
-            while (AscendC::GetSystemCycle() - startCycle < GM_FLAG_POLL_BACKOFF_CYCLES) {
-            }
-            slotValue = AscendC::ReadGmByPassDCache(rawCountGm + slotIdx);
-        }
-        scratch.cumsumInfoTensor.SetValue(slotIdx, slotValue & 0x00FFFFFF);
-    }
+    // expertTokenNumsOutTensor 此时尚无输出，首项暂存 VF 的整表未就绪标志，不增加 UB 预算。
+    WaitForMteCountTable(expertCountGlobal, scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor,
+                         rawCountElementCount, expectEpoch);
     SyncFuncStatic<AscendC::HardEvent::S_V, SYNC_EVENT_ID2>();
 
     ComputeExpertCountTables(scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor, common.moeExpertPerRank,
