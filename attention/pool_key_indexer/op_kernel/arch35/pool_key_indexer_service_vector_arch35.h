@@ -224,6 +224,11 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitBuffers(TPipe *pipe
     pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(float));
     resMm1UB_ = resMm1Buf_.Get<float>();
 
+    // weightBuf_: 行距 Align(gSize,16)。
+    // 注意: MulWeightQScaleSIMD(量化 mode=0)的 LoadAlign<W_T, DIST_UNPACK_B16>
+    // 每行固定读 64 个 W_T 元素; gSizeAlign16 < 64 时, 最后一个 pingpong 区
+    // 末行的读取越出缓冲末端 (64 - gSizeAlign16) 个元素, 触发 VEC UB 越界
+    // (aicore 507015, 实测 gSize=24/行距 32 时量化+0池 batch 崩溃)。
     pipe->InitBuffer(weightBuf_,
                      2 * CeilDiv(s1BaseSize_, 2) * PkiCommon::Align((uint64_t)gSize_, (uint64_t)16) * sizeof(W_T));
     weightUB_ = weightBuf_.Get<W_T>();
@@ -413,20 +418,45 @@ template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::CleanInvalidOutput(int64_t invalidS1Offset)
 {
     // init -1 and copy to output
-    uint64_t dealSize = (poolSize_ > 1) ? outputLen_ : constInfo_.sparseCount;
-    GlobalTensor<int32_t> indexOutput = indiceOutGm[invalidS1Offset];
-    AscendC::InitGlobalMemory(indexOutput, dealSize, constInfo_.INVALID_IDX);
+    // 与 ProcessVec1 无效行路径(validS2Len<=0)同构: Duplicate 铺 UB → V_MTE3
+    // 硬同步 → DataCopyPad 出 GM → MTE3_V 回执。三点缺一不可:
+    // 1) DataCopyPad: indices 行距 outputLen(=sparseCount*ps+ps-1) 非 32B 对齐,
+    //    普通 DataCopy 的 MTE3 源/目的对齐校验失败(aivec 81 地址越界);
+    // 2) 入口 WaitFlag<MTE3_V>: 等上一个 MTE3(TopK/Vec1/上次 clean)读完 staging
+    //    (expandOutLocal_/indicesOutLocal_/valueOutLocal_ 复用)再覆写;
+    // 3) 行尾 SetFlag<MTE3_V>: 维持事件链, 否则后续 ProcessVec1/FreeEventID 的
+    //    WaitFlag<MTE3_V> 挂死。InitGlobalMemory 在 arch35 AIV 上以内部向量
+    //    staging 直写 GM, dealSize 大时越界(aivec 341), 故弃用。
+    AscendC::DataCopyParams copyOutParams;
+    copyOutParams.blockCount = 1;
+    copyOutParams.blockLen = (poolSize_ > 1 ? outputLen_ : topkCount_) * sizeof(uint32_t);
+    copyOutParams.srcStride = 0;
+    copyOutParams.dstStride = 0;
+
+    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+    if (poolSize_ > 1) {
+        Duplicate(expandOutLocal_, constInfo_.INVALID_IDX, PkiCommon::Align(outputLen_, (uint32_t)8));
+        SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+        WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+        AscendC::DataCopyPad(indiceOutGm[invalidS1Offset], expandOutLocal_, copyOutParams);
+    } else {
+        Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>(), constInfo_.INVALID_IDX, topkCount_);
+        SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+        WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+        AscendC::DataCopyPad(indiceOutGm[invalidS1Offset], indicesOutLocal_.ReinterpretCast<int32_t>(),
+                             copyOutParams);
+    }
+    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     if (returnValue) {
-        SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-        Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>(), constInfo_.INVALID_VAL, constInfo_.sparseCount);
+        Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>(), constInfo_.INVALID_VAL, topkCount_);
 
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
 
         AscendC::DataCopyParams copyOutValueParams;
         copyOutValueParams.blockCount = 1;
-        copyOutValueParams.blockLen = constInfo_.sparseCount * sizeof(float);
+        copyOutValueParams.blockLen = topkCount_ * sizeof(float);
         copyOutValueParams.srcStride = 0;
         copyOutValueParams.dstStride = 0;
         // invalidS1Offset 是 indices 行偏移(行宽 outputLen_/sparseCount);
@@ -434,6 +464,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::CleanInvalidOutput(int6
         uint64_t idxStride = (poolSize_ > 1) ? outputLen_ : constInfo_.sparseCount;
         uint64_t valueOffset = (static_cast<uint64_t>(invalidS1Offset) / idxStride) * constInfo_.sparseCount;
         AscendC::DataCopyPad(valueOutGm[valueOffset], valueOutLocal_, copyOutValueParams);
+        SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     }
 }
 
