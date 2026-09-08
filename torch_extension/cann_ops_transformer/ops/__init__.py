@@ -109,6 +109,7 @@ except NameError:
 import sys as _sys
 
 _legacy_map = {
+    "attention_to_ffn": "mc2.attention_to_ffn_v2",
     "causal_conv1d_fn": "mamba.causal_conv1d",
     "causal_conv1d_update": "mamba.causal_conv1d",
     "comm_context": "mc2.common",
@@ -118,6 +119,7 @@ _legacy_map = {
     "dense_lightning_indexer_softmax_lse": "attention.dense_lightning_indexer_softmax_lse_v2",
     "elastic_buffer": "mc2.common",
     "flash_attn": "attention.flash_attn",
+    "generic_block_sparse_attention": "attention.generic_block_sparse_attention",
     "ffn_to_attention": "mc2.ffn_to_attention_v2",
     "grouped_matmul_activation_quant": "gmm.grouped_matmul_activation_quant",
     "indexer_quant_cache": "attention.indexer_quant_cache",
@@ -148,12 +150,14 @@ _legacy_map = {
     "sparse_flash_mla_grad": "attention.sparse_flash_mla_grad",
     "sparse_flash_mla_softmax_l1_norm": "attention.sparse_flash_mla_softmax_l1_norm",
     "sparse_lightning_indexer_kl_loss_grad": "attention.sparse_lightning_indexer_kl_loss_grad",
+    "generic_block_sparse_attention_grad": "attention.generic_block_sparse_attention_grad",
     "stem_oam_prep_paged_kv": "attention.stem_oam_prep_paged_kv",
     "stem_oam_prep_varlen_q": "attention.stem_oam_prep_varlen_q",
     "und_gen_qkv_rms_norm_rope_cache": "posembedding.und_gen_qkv_rms_norm_rope_cache",
     "fused_causal_conv1d": "attention.fused_causal_conv1d",
     "fused_causal_conv1d_": "attention.inplace_fused_causal_conv1d",
     "block_sparse_attention": "attention.block_sparse_attention",
+    "block_attention_residuals": "mhc.block_attention_residuals",
     "apply_rotary_pos_emb": "posembedding.apply_rotary_pos_emb",
     "apply_rotary_pos_emb_grad": "posembedding.apply_rotary_pos_emb_grad",
 }

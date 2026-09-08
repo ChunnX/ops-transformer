@@ -30,6 +30,7 @@ using namespace AscendC;
 constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
 constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
 constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
+constexpr uint32_t UINT64_BYTE_OFFSET_SHIFT = 3U;
 
 struct WorkRange {
     uint32_t start = 0;
@@ -90,7 +91,8 @@ __simd_callee__ inline void InclusivePrefixSumInt32(__ubuf__ int32_t *values, ui
  * 并作差。相比先调用通用前缀和、再启动第二个 VF，融合实现省去一次 asc_vf_call 和外部流水同步。
  */
 __simd_vf__ inline void ComputeExpertCountTablesVF(__ubuf__ int32_t *count, __ubuf__ int32_t *expertCounts,
-                                                   uint32_t elementCount, uint32_t expertCount, uint32_t worldSize)
+                                                   uint32_t elementCount, uint32_t expertCount, uint32_t worldSize,
+                                                   uint32_t maxOutputSize)
 {
     InclusivePrefixSumInt32(count, elementCount);
 
@@ -102,14 +104,17 @@ __simd_vf__ inline void ComputeExpertCountTablesVF(__ubuf__ int32_t *count, __ub
     AscendC::Reg::RegTensor<int32_t> previousEndPrefixReg;
     AscendC::Reg::RegTensor<int32_t> expertCountReg;
     AscendC::Reg::RegTensor<int32_t> previousVectorEndReg;
+    AscendC::Reg::RegTensor<int32_t> maxOutputSizeReg;
     AscendC::Reg::RegTensor<int32_t> laneIndexReg;
     AscendC::Reg::RegTensor<int32_t> gatherIndexReg;
     AscendC::Reg::RegTensor<int32_t> previousLaneIndexReg;
     AscendC::Reg::MaskReg fullMask = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::ALL>();
     AscendC::Reg::MaskReg firstLaneMask = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::VL1>();
 
+    int32_t maxOutputSizeInt32 = static_cast<int32_t>(maxOutputSize);
     AscendC::Reg::Arange(laneIndexReg, 0);
     AscendC::Reg::Duplicate(previousVectorEndReg, 0, fullMask);
+    AscendC::Reg::Duplicate(maxOutputSizeReg, maxOutputSizeInt32, fullMask);
     for (uint32_t expertOffset = 0U; expertOffset < expertCount; expertOffset += ELEMENTS_PER_VECTOR) {
         uint32_t validCount = expertCount - expertOffset;
         validCount = validCount < ELEMENTS_PER_VECTOR ? validCount : ELEMENTS_PER_VECTOR;
@@ -127,7 +132,14 @@ __simd_vf__ inline void ComputeExpertCountTablesVF(__ubuf__ int32_t *count, __ub
         AscendC::Reg::Gather(previousEndPrefixReg, expertEndPrefixReg,
                              reinterpret_cast<AscendC::Reg::RegTensor<uint32_t> &>(previousLaneIndexReg));
         AscendC::Reg::Select(previousEndPrefixReg, previousVectorEndReg, previousEndPrefixReg, firstLaneMask);
-        AscendC::Reg::Sub(expertCountReg, expertEndPrefixReg, previousEndPrefixReg, activeMask);
+        AscendC::Reg::MaskReg overflowMask;
+        AscendC::Reg::Compares<int32_t, AscendC::CMPMODE::GE>(overflowMask, expertEndPrefixReg, maxOutputSizeInt32,
+                                                              activeMask);
+        AscendC::Reg::Select(expertCountReg, maxOutputSizeReg, expertEndPrefixReg, overflowMask);
+        AscendC::Reg::Compares<int32_t, AscendC::CMPMODE::GE>(overflowMask, previousEndPrefixReg, maxOutputSizeInt32,
+                                                              activeMask);
+        AscendC::Reg::Select(previousEndPrefixReg, maxOutputSizeReg, previousEndPrefixReg, overflowMask);
+        AscendC::Reg::Sub(expertCountReg, expertCountReg, previousEndPrefixReg, activeMask);
         AscendC::Reg::StoreAlign(expertCounts + expertOffset, expertCountReg, activeMask);
 
         AscendC::Reg::Duplicate(previousLaneIndexReg, static_cast<int32_t>(validCount - 1U), fullMask);
@@ -138,11 +150,12 @@ __simd_vf__ inline void ComputeExpertCountTablesVF(__ubuf__ int32_t *count, __ub
 
 __aicore__ inline void ComputeExpertCountTables(LocalTensor<int32_t> countTensor,
                                                 LocalTensor<int32_t> expertCountTensor, uint32_t expertCount,
-                                                uint32_t worldSize)
+                                                uint32_t worldSize, uint32_t maxOutputSize)
 {
     __ubuf__ int32_t *count = reinterpret_cast<__ubuf__ int32_t *>(countTensor.GetPhyAddr());
     __ubuf__ int32_t *expertCounts = reinterpret_cast<__ubuf__ int32_t *>(expertCountTensor.GetPhyAddr());
-    asc_vf_call<ComputeExpertCountTablesVF>(count, expertCounts, expertCount * worldSize, expertCount, worldSize);
+    asc_vf_call<ComputeExpertCountTablesVF>(count, expertCounts, expertCount * worldSize, expertCount, worldSize,
+                                            maxOutputSize);
 }
 
 __aicore__ inline WorkRange TilingByJobContext(uint32_t totalLen, uint32_t jobIndex, uint32_t totalJobs,
@@ -181,30 +194,6 @@ __aicore__ inline void GetGroupSyncSlotRange(uint32_t groupIndex, const GroupSyn
     uint32_t precedingExtraSlotCount =
         groupIndex < slotLayout.extraSlotGroupCount ? groupIndex : slotLayout.extraSlotGroupCount;
     firstSyncSlot = groupIndex * slotLayout.baseSlotCountPerGroup + precedingExtraSlotCount;
-}
-
-__aicore__ inline void ComputeCombineGroupsForCore(uint32_t logicalCoreId, uint32_t groupCount,
-                                                   uint32_t logicalCoreCount, uint32_t &firstGroupIndex,
-                                                   uint32_t &groupStride, uint32_t &coreIndexWithinGroup,
-                                                   uint32_t &coresAssignedToGroup)
-{
-    uint32_t totalSyncSlotCount = groupCount > logicalCoreCount ? groupCount : logicalCoreCount;
-    uint32_t baseSlotCountPerGroup = totalSyncSlotCount / groupCount;
-    uint32_t extraSlotGroupCount = totalSyncSlotCount % groupCount;
-    uint32_t slotBoundaryAfterExtraSlotGroups = extraSlotGroupCount * (baseSlotCountPerGroup + 1U);
-
-    if (logicalCoreId < slotBoundaryAfterExtraSlotGroups) {
-        coresAssignedToGroup = baseSlotCountPerGroup + 1U;
-        firstGroupIndex = logicalCoreId / coresAssignedToGroup;
-        coreIndexWithinGroup = logicalCoreId % coresAssignedToGroup;
-    } else {
-        uint32_t slotOffsetAfterExtraSlotGroups = logicalCoreId - slotBoundaryAfterExtraSlotGroups;
-        coresAssignedToGroup = baseSlotCountPerGroup;
-        firstGroupIndex = extraSlotGroupCount + slotOffsetAfterExtraSlotGroups / coresAssignedToGroup;
-        coreIndexWithinGroup = slotOffsetAfterExtraSlotGroups % coresAssignedToGroup;
-    }
-
-    groupStride = groupCount < logicalCoreCount ? groupCount : logicalCoreCount;
 }
 
 /*
@@ -259,6 +248,18 @@ __aicore__ inline WorkRange GetBalancedTokenRange(uint32_t totalTokens, uint32_t
     uint32_t remainder = totalTokens % workerCount;
     uint32_t extraBefore = workerIdx < remainder ? workerIdx : remainder;
     return {workerIdx * base + extraBefore, base + static_cast<uint32_t>(workerIdx < remainder)};
+}
+
+// 以全局 row 前缀轮转“多一个 token”的首 owner；Dispatch/Combine 共用这一公式。
+__aicore__ inline WorkRange GetRotatedBalancedTokenRange(uint32_t totalTokens, uint32_t workerIdx, uint32_t workerCount,
+                                                         uint64_t globalRowPrefix)
+{
+    if (workerCount == 0U || workerIdx >= workerCount) {
+        return {};
+    }
+    uint32_t firstOwner = static_cast<uint32_t>(globalRowPrefix % workerCount);
+    uint32_t logicalWorkerIdx = workerIdx >= firstOwner ? workerIdx - firstOwner : workerIdx + workerCount - firstOwner;
+    return GetBalancedTokenRange(totalTokens, logicalWorkerIdx, workerCount);
 }
 
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
@@ -322,21 +323,6 @@ __aicore__ inline void EndSync(int32_t vecSetSyncCom, uint16_t pingpongIdx = 0)
     }
 }
 
-__aicore__ inline void EndGMM2Sync(int32_t &vecSetSyncCom, uint16_t gmm2PingPongIdx)
-{
-    if constexpr (g_coreType == AIV) {
-        return;
-    }
-    if (vecSetSyncCom <= 0) {
-        return;
-    } else if (vecSetSyncCom == 1) {
-        WaitForVector();
-    } else {
-        WaitForVector(gmm2PingPongIdx);
-        WaitForVector(1U - gmm2PingPongIdx);
-    }
-}
-
 __aicore__ inline void TilingByCore(int32_t totalLen, int32_t &coreLen, int32_t &coreOffset, int32_t align = ALIGN_32)
 {
     int32_t coreIdx = GetBlockIdx();
@@ -392,7 +378,7 @@ __aicore__ inline GM_ADDR GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
 {
     __gm__ uint64_t *dataAddr = reinterpret_cast<__gm__ uint64_t *>(tensorPtr);
     uint64_t tensorPtrOffset = *dataAddr;
-    __gm__ uint64_t *retPtr = dataAddr + (tensorPtrOffset >> 3);
+    __gm__ uint64_t *retPtr = dataAddr + (tensorPtrOffset >> UINT64_BYTE_OFFSET_SHIFT);
     return reinterpret_cast<GM_ADDR>(*(retPtr + index));
 }
 
@@ -449,6 +435,7 @@ __aicore__ inline uint32_t AdvanceExpertTokenPositionInWave(uint32_t expertToken
         expertRemainingTokenCount < waveRemainingTokenCapacity ? expertRemainingTokenCount : waveRemainingTokenCapacity;
     waveMGroupCount += Ops::Base::CeilDiv(sliceTokenCount, TileM);
     position.tokenIndexInExpert += sliceTokenCount;
+    position.globalTokenIndex += sliceTokenCount;
     if (position.tokenIndexInExpert >= expertTokenCount) {
         ++position.expertIdx;
         position.tokenIndexInExpert = 0U;
@@ -488,6 +475,37 @@ __aicore__ inline uint32_t GetExpertTokenCountFromWorkspace(GM_ADDR expertTokenC
     __gm__ int32_t *expertTokenCountAddr =
         reinterpret_cast<__gm__ int32_t *>(expertTokenCountWorkspace) + countSlotIndex;
     return static_cast<uint32_t>(AscendC::ReadGmByPassDCache(expertTokenCountAddr));
+}
+
+/*
+ * 在当前 WAVE 的剩余容量内规划下一个非空专家 slice。
+ * 单次调用最多返回一个非空专家范围；空专家会被跳过。函数只更新当前 WAVE 的 M-group 计数，
+ * 不修改调用方持有的 Dispatch 位置；调用方在 Dispatch 完成后使用返回范围的 end 提交进度。
+ */
+template <uint32_t TileM>
+__aicore__ inline ExpertTokenRange PlanNextExpertTokenRangeInWave(GM_ADDR expertTokenCountWorkspace,
+                                                                  const BlockWorkspaceContext &countWorkspace,
+                                                                  uint32_t expertCount, uint32_t waveMGroupTarget,
+                                                                  uint32_t &waveMGroupCount,
+                                                                  const ExpertTokenPosition &position)
+{
+    ExpertTokenPosition plannedPosition = position;
+    while (plannedPosition.expertIdx < expertCount && waveMGroupCount < waveMGroupTarget) {
+        uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(expertTokenCountWorkspace, countWorkspace,
+                                                                     expertCount, plannedPosition.expertIdx);
+        // 空专家或已完成专家不占用 WAVE 容量，继续寻找下一个非空专家。
+        if (expertTokenCount == 0U || plannedPosition.tokenIndexInExpert >= expertTokenCount) {
+            ++plannedPosition.expertIdx;
+            plannedPosition.tokenIndexInExpert = 0U;
+            continue;
+        }
+
+        ExpertTokenRange range{plannedPosition, plannedPosition};
+        AdvanceExpertTokenPositionInWave<TileM>(expertTokenCount, waveMGroupTarget, waveMGroupCount, plannedPosition);
+        range.end = plannedPosition;
+        return range;
+    }
+    return {plannedPosition, plannedPosition};
 }
 
 // 轮询 GM 中的 int32 flag 直至等于期望值，并在两次读取之间加入短暂退避。

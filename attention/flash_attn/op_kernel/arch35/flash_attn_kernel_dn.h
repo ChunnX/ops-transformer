@@ -75,6 +75,8 @@ public:
     GlobalTensor<uint32_t> fdMetaDataGm_;
     // metadata
     uint32_t sectionNum_;
+    uint32_t metadata_aic_num_;
+    uint32_t metadata_aiv_num_;
     // fa metadata
     uint32_t bN2Start_;
     uint32_t bN2End_;
@@ -97,6 +99,7 @@ public:
     uint32_t mloop_ = 0;
     bool headS2Split_ = false;
     bool tailS2Split_ = false;
+    uint32_t s2FirstToken_ = 0;
 
     // ==============================fuction=======================================================
     __aicore__ inline FlashAttentionNoQuantGqaKernelDn()
@@ -115,12 +118,15 @@ public:
 
         InitConstInfo();
 
-        sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
-        constInfo_.enableFlashDecode = static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[1]);
+        sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[METADATA_HEADER_SECTION_NUM_INDEX];
+        metadata_aic_num_ = ((__gm__ uint32_t *)fiaMetaData)[METADATA_HEADER_AIC_NUM_INDEX];
+        metadata_aiv_num_ = ((__gm__ uint32_t *)fiaMetaData)[METADATA_HEADER_AIV_NUM_INDEX];
+        constInfo_.enableFlashDecode =
+            static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[METADATA_HEADER_HAS_FD_INDEX]);
         constInfo_.learnableSinkFlag = (learnableSink != nullptr);
 
-        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
-                                      FA_AIC_CORE_NUM * 16U * sectionNum_);
+        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + METADATA_HEADER_OFFSET),
+                                      sectionNum_ * metadata_aic_num_ * METADATA_STRIDE);
 
         qSeqLensTool_.Init(cuSeqLensQ, constInfo_.cuSeqLensQSize, seqUsedQ, constInfo_.seqUsedQSize, constInfo_.s1Size);
         kvSeqLensTool_.Init(cuSeqLensKv, constInfo_.cuSeqLensKVSize, seqUsedKv, constInfo_.seqUsedKvSize,
@@ -134,9 +140,9 @@ public:
             vecFaBlock_.ClearOutput();
             if (constInfo_.enableFlashDecode) {
                 fdMetaDataGm_.SetGlobalBuffer(
-                    (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
-                                        FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
-                    FA_AIV_CORE_NUM * 16U * sectionNum_);
+                    (__gm__ uint32_t *)(fiaMetaData + METADATA_HEADER_OFFSET +
+                                        sectionNum_ * metadata_aic_num_ * METADATA_STRIDE * sizeof(uint32_t)),
+                    sectionNum_ * metadata_aiv_num_ * METADATA_STRIDE);
                 vecFdBlock_.InitBlock(learnableSink, softmaxLse, attentionOut);
                 vecFdBlock_.InitGlobalTensor(vecFaBlock_.softmaxFDMaxGm_, vecFaBlock_.softmaxFDSumGm_,
                                              vecFaBlock_.accumOutGm_);
@@ -203,11 +209,11 @@ public:
     {
         // AICPU metadata format: 16 fields per AIC core, 0-indexed (no leading CORE_ENABLE).
         // Kernel field constants ( FLASH_ATTN_BN2_START_INDEX=1, etc.) are 1-based, so subtract 1.
-        return FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionIdx + 16U * coreIdx + metaIdx;
+        return METADATA_STRIDE * metadata_aic_num_ * sectionIdx + METADATA_STRIDE * coreIdx + metaIdx;
     }
     __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
-        return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx;
+        return METADATA_STRIDE * metadata_aiv_num_ * sectionIdx + METADATA_STRIDE * coreIdx + metaIdx;
     }
 
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
@@ -341,6 +347,7 @@ public:
 
     __aicore__ inline void CalcCurS2StartEndNoSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
+        s2FirstToken_ = 0;
         curS2Start_ = 0U;
         curS2End_ = (static_cast<uint32_t>(actSeqLensKv_) + s2BaseSize - 1) / s2BaseSize;
 
@@ -357,6 +364,7 @@ public:
 
     __aicore__ inline void CalcCurS2StartEndWithSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
+        s2FirstToken_ = 0;
         // 1. Calc preTokenLeftUp, nextTokenLeftUp
         int64_t preTokenLeftUp = 0;
         int64_t nextTokenLeftUp = 0;
@@ -395,11 +403,13 @@ public:
         if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv_) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
             curS2Start_ = 0U;
             curS2End_ = 0U;
+            s2FirstToken_ = s2FirstToken;
             return;
         }
         // get valid range
         s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKv_ - 1));
         s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv_ - 1));
+        s2FirstToken_ = s2FirstToken;
 
         s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / s2BaseSize;
         s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / s2BaseSize + 1U;
@@ -475,15 +485,18 @@ public:
     {
         info.loop = loop;
         info.mloop = mloop_;
+        info.isFirstFdBlock = (s2Cur == (s2FirstToken_ / s2BaseSize));
         info.bIdx = bN2Cur / constInfo_.n2Size;
         info.n2Idx = bN2Cur % constInfo_.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
         if constexpr (LAYOUT_T == FA_LAYOUT::BSND || LAYOUT_T == FA_LAYOUT::TND) {
             // S1G layout
             info.s1Idx = info.gS1Idx / constInfo_.gSize;
+            info.gIdx = info.gS1Idx % constInfo_.gSize;
         } else {
             // GS1 layout
             info.s1Idx = info.gS1Idx % actSeqLensQ_;
+            info.gIdx = info.gS1Idx / actSeqLensQ_;
         }
         info.s2Idx = s2Cur * s2BaseSize;
         info.actS1Size = actSeqLensQ_;

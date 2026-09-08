@@ -16,13 +16,7 @@
 #define FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
 
 #include "../utils/attenmask_gs1.h"
-
-#if __has_include("../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h")
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
-#else
-#include "../../common/arch35/vf/vf_flash_decode_arch35.h"
-#endif
-
 #include "memory_copy_arch35.h"
 
 namespace FlashAttnKernel {
@@ -286,9 +280,9 @@ protected:
 
         LocalTensor<T> sinkExpBuf;
         LocalTensor<T> maxLseUb = fdLseUbBuf_;
-        bool learnableSinkFlag = false;
-        ComputeScaleValue_VF_FD(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount,
-                                actualCombineLoopSize, constInfo_.isSoftmaxLseEnable, learnableSinkFlag);
+        ComputeScaleValue_VF_FD<T, T, SinkInjectStage::AT_FA_PROLOGUE>(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb,
+                                                                       lseMaxUb, dealRowCount, actualCombineLoopSize,
+                                                                       constInfo_.isSoftmaxLseEnable, false);
     }
 
     __aicore__ inline void Bmm2DataCopyOutTrans(LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow,

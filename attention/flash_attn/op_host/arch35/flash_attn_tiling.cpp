@@ -140,20 +140,20 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
     // config:
     //   config=0: D=64,  sOuter=64,  sInner=128
     //   config=1: D=64,  sOuter=32,  sInner=256
-    //   config=2: D=128, sOuter=64,  sInner=128
-    //   config=3: D=128, sOuter=32,  sInner=256
+    //   config=2: D=128, sOuter=64,  sInner=128 (D=72 复用, kernel 内 pad 到 128)
+    //   config=3: D=128, sOuter=32,  sInner=256 (D=72 复用, kernel 内 pad 到 128)
     //   config=4: D=256, sOuter=64, sInner=128
     //   config=5: D=256, sOuter=32, sInner=256
     if (faInfo_->qkHeadDim == 64) {
         tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1;
-    } else if (faInfo_->qkHeadDim == 128) {
+    } else if (faInfo_->qkHeadDim == 72 || faInfo_->qkHeadDim == 128) {
         tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 2 : 3;
     } else if (faInfo_->qkHeadDim == 256) {
         tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 4 : 5;
     } else {
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo_->opName, "qkHeadDim(Head num of Q/K)",
                                                std::to_string(faInfo_->qkHeadDim).c_str(),
-                                               "The value of qkHeadDim(Head num of Q/K) can only be 64/128/256");
+                                               "The value of qkHeadDim(Head num of Q/K) can only be 64/72/128/256");
     }
 }
 
@@ -391,7 +391,6 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     FlashAttnPageAttentionParams &flashAttnPageAttentionParams = baseTiling.flashAttnPageAttentionParams;
     FlashAttnWorkspaceParams &flashAttnWorkspaceParams = baseTiling.flashAttnWorkspaceParams;
     FlashAttnS1OuterSplitCoreParams &flashAttnS1OuterSplitCoreParams = baseTiling.flashAttnS1OuterSplitCoreParams;
-    FlashAttnMetaData &flashAttnMetaData = tilingData_.flashAttnMetaData;
 
     OP_LOGD(faInfo_->opName, "bSize:%d", flashAttnBaseParams.bSize);
     OP_LOGD(faInfo_->opName, "t1Size:%d", flashAttnBaseParams.t1Size);
@@ -427,22 +426,6 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(faInfo_->opName, "logSumExpSize:%d", flashAttnWorkspaceParams.logSumExpSize);
 
     OP_LOGD(faInfo_->opName, "totalSize:%d", flashAttnS1OuterSplitCoreParams.totalSize);
-
-    for (int aicIdx = 0; aicIdx < FA_AIC_CORE_NUM; ++aicIdx) {
-        OP_LOGD(faInfo_->opName, "FAMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
-                aicIdx, flashAttnMetaData.FAMetadata[aicIdx][0], flashAttnMetaData.FAMetadata[aicIdx][1],
-                flashAttnMetaData.FAMetadata[aicIdx][2], flashAttnMetaData.FAMetadata[aicIdx][3],
-                flashAttnMetaData.FAMetadata[aicIdx][4], flashAttnMetaData.FAMetadata[aicIdx][5],
-                flashAttnMetaData.FAMetadata[aicIdx][6], flashAttnMetaData.FAMetadata[aicIdx][7]);
-    }
-
-    for (int aivIdx = 0; aivIdx < FA_AIV_CORE_NUM; ++aivIdx) {
-        OP_LOGD(faInfo_->opName, "FDMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
-                aivIdx, flashAttnMetaData.FDMetadata[aivIdx][0], flashAttnMetaData.FDMetadata[aivIdx][1],
-                flashAttnMetaData.FDMetadata[aivIdx][2], flashAttnMetaData.FDMetadata[aivIdx][3],
-                flashAttnMetaData.FDMetadata[aivIdx][4], flashAttnMetaData.FDMetadata[aivIdx][5],
-                flashAttnMetaData.FDMetadata[aivIdx][6], flashAttnMetaData.FDMetadata[aivIdx][7]);
-    }
 
     int64_t cap = context_->GetRawTilingData()->GetCapacity();
     OP_LOGD(faInfo_->opName, "Tiling Data context_ GetCapacity: %lu.", cap);

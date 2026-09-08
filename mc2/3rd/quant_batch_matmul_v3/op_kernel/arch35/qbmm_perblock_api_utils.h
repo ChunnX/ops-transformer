@@ -263,10 +263,9 @@ __aicore__ inline void MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::ProcessAicSi
 }
 
 MATMUL_PERBLOCK_CLASS_TEM_PARAMS
-__aicore__ inline void
-MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::AicBaseMadProcess(LocalTensor<aType> &aL1, LocalTensor<bType> &bL1,
-                                                               uint64_t &kInner, uint64_t kAL1Offset, bool isTailAL1,
-                                                               uint64_t kBL1Offset, bool isTailBL1)
+__aicore__ inline void MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::AicBaseMadProcess(
+    LocalTensor<aType> &aL1, LocalTensor<bType> &bL1, uint64_t &kInner, uint64_t kAL1Offset, bool isTailAL1,
+    uint64_t kBL1Offset, bool isTailBL1)
 {
     for (uint64_t kb = kInner; kb < DequantBmm::Min(kInner + minStepK_, static_cast<uint64_t>(matmulTiling_->Ka));
          kb += matmulTiling_->baseK) {
@@ -307,25 +306,25 @@ __aicore__ inline void MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::AivPerTensor
         for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) {
             uint32_t elementNum = nSize;
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < nLoopCnt; vfBlockIdx++) {
-                AscendC::MicroAPI::MaskReg maskN = AscendC::MicroAPI::UpdateMask<l0cDtype>(elementNum);
-                AscendC::MicroAPI::RegTensor<l0cDtype> l0cOutReg;
-                AscendC::MicroAPI::RegTensor<l0cDtype> addReg;
-                AscendC::MicroAPI::RegTensor<l0cDtype> ResReg, mulScaleOutReg;
+                AscendC::Reg::MaskReg maskN = AscendC::Reg::UpdateMask<l0cDtype>(elementNum);
+                AscendC::Reg::RegTensor<l0cDtype> l0cOutReg;
+                AscendC::Reg::RegTensor<l0cDtype> addReg;
+                AscendC::Reg::RegTensor<l0cDtype> ResReg, mulScaleOutReg;
                 // copy input from ub to register, addr of ub should align to 32B
                 uint32_t l0cOutOffset = mIdx * nSrcUbAligned + vfBlockIdx * eleNumPerVf;
-                AscendC::MicroAPI::DataCopy(l0cOutReg, l0cOut + l0cOutOffset);
+                AscendC::Reg::DataCopy(l0cOutReg, l0cOut + l0cOutOffset);
                 // l0c_out * scale
-                AscendC::MicroAPI::Muls(mulScaleOutReg, l0cOutReg, scaleScalar, maskN);
+                AscendC::Reg::Muls(mulScaleOutReg, l0cOutReg, scaleScalar, maskN);
                 uint32_t dstUbOffset = l0cOutOffset;
                 if constexpr (isFirstKLoop) {
-                    AscendC::MicroAPI::DataCopy<l0cDtype, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(
-                        dst + dstUbOffset, mulScaleOutReg, maskN);
+                    AscendC::Reg::DataCopy<l0cDtype, AscendC::Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset,
+                                                                                             mulScaleOutReg, maskN);
                 } else {
-                    AscendC::MicroAPI::DataCopy(addReg, dst + l0cOutOffset);
-                    AscendC::MicroAPI::Add(ResReg, mulScaleOutReg, addReg, maskN);
+                    AscendC::Reg::DataCopy(addReg, dst + l0cOutOffset);
+                    AscendC::Reg::Add(ResReg, mulScaleOutReg, addReg, maskN);
                     // copy out from register to ub
-                    AscendC::MicroAPI::DataCopy<l0cDtype, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(
-                        dst + dstUbOffset, ResReg, maskN);
+                    AscendC::Reg::DataCopy<l0cDtype, AscendC::Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset, ResReg,
+                                                                                             maskN);
                 }
             }
         }
@@ -334,10 +333,11 @@ __aicore__ inline void MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::AivPerTensor
 
 MATMUL_PERBLOCK_CLASS_TEM_PARAMS
 template <bool isFirstKLoop>
-__aicore__ inline void
-MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::AivPerTensor(__ubuf__ l0cDtype *dst, __ubuf__ l0cDtype *l0cOut,
-                                                          __ubuf__ ptScaleType *muledScale, uint16_t mSize,
-                                                          uint16_t nSize, uint32_t nSrcUbAligned)
+__aicore__ inline void MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::AivPerTensor(__ubuf__ l0cDtype *dst,
+                                                                                 __ubuf__ l0cDtype *l0cOut,
+                                                                                 __ubuf__ ptScaleType *muledScale,
+                                                                                 uint16_t mSize, uint16_t nSize,
+                                                                                 uint32_t nSrcUbAligned)
 {
     uint32_t eleNumPerVf = GetVectorRegSize() / sizeof(l0cDtype);
     uint16_t nLoopCnt = (nSize + eleNumPerVf - 1) / eleNumPerVf;
@@ -345,29 +345,28 @@ MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::AivPerTensor(__ubuf__ l0cDtype *dst
     {
         for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) {
             uint32_t elementNum = nSize;
-            AscendC::MicroAPI::RegTensor<ptScaleType> muledScaleReg;
-            AscendC::MicroAPI::DataCopy<ptScaleType, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(muledScaleReg,
-                                                                                                muledScale + mIdx);
+            AscendC::Reg::RegTensor<ptScaleType> muledScaleReg;
+            AscendC::Reg::DataCopy<ptScaleType, AscendC::Reg::LoadDist::DIST_BRC_B32>(muledScaleReg, muledScale + mIdx);
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < nLoopCnt; vfBlockIdx++) {
-                AscendC::MicroAPI::MaskReg maskN = AscendC::MicroAPI::UpdateMask<l0cDtype>(elementNum);
-                AscendC::MicroAPI::RegTensor<l0cDtype> l0cOutReg;
-                AscendC::MicroAPI::RegTensor<l0cDtype> addReg;
-                AscendC::MicroAPI::RegTensor<l0cDtype> ResReg, mulScaleOutReg;
+                AscendC::Reg::MaskReg maskN = AscendC::Reg::UpdateMask<l0cDtype>(elementNum);
+                AscendC::Reg::RegTensor<l0cDtype> l0cOutReg;
+                AscendC::Reg::RegTensor<l0cDtype> addReg;
+                AscendC::Reg::RegTensor<l0cDtype> ResReg, mulScaleOutReg;
                 // copy input from ub to register, addr of ub should align to 32B
                 uint32_t l0cOutOffset = mIdx * nSrcUbAligned + vfBlockIdx * eleNumPerVf;
-                AscendC::MicroAPI::DataCopy(l0cOutReg, l0cOut + l0cOutOffset);
+                AscendC::Reg::DataCopy(l0cOutReg, l0cOut + l0cOutOffset);
                 // l0c_out * scale
-                AscendC::MicroAPI::Mul(mulScaleOutReg, l0cOutReg, muledScaleReg, maskN);
+                AscendC::Reg::Mul(mulScaleOutReg, l0cOutReg, muledScaleReg, maskN);
                 uint32_t dstUbOffset = l0cOutOffset;
                 if constexpr (isFirstKLoop) {
-                    AscendC::MicroAPI::DataCopy<l0cDtype, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(
-                        dst + dstUbOffset, mulScaleOutReg, maskN);
+                    AscendC::Reg::DataCopy<l0cDtype, AscendC::Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset,
+                                                                                             mulScaleOutReg, maskN);
                 } else {
-                    AscendC::MicroAPI::DataCopy(addReg, dst + l0cOutOffset);
-                    AscendC::MicroAPI::Add(ResReg, mulScaleOutReg, addReg, maskN);
+                    AscendC::Reg::DataCopy(addReg, dst + l0cOutOffset);
+                    AscendC::Reg::Add(ResReg, mulScaleOutReg, addReg, maskN);
                     // copy out from register to ub
-                    AscendC::MicroAPI::DataCopy<l0cDtype, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(
-                        dst + dstUbOffset, ResReg, maskN);
+                    AscendC::Reg::DataCopy<l0cDtype, AscendC::Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset, ResReg,
+                                                                                             maskN);
                 }
             }
         }
@@ -525,9 +524,8 @@ __aicore__ inline void MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::ProcessKBloc
 }
 
 MATMUL_PERBLOCK_CLASS_TEM_PARAMS
-__aicore__ inline void
-MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::PerformTensorOps(LocalTensor<l0cDtype> &mmAddUb,
-                                                              LocalTensor<scaleType> &mmMuledScaleUb, uint64_t kb)
+__aicore__ inline void MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::PerformTensorOps(
+    LocalTensor<l0cDtype> &mmAddUb, LocalTensor<scaleType> &mmMuledScaleUb, uint64_t kb)
 {
     uint64_t mmMuledScaleUbAddr = reinterpret_cast<uint64_t>(mmMuledScaleUb.GetPhyAddr());
     AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG + crossPingPongID_);
@@ -560,9 +558,8 @@ __aicore__ inline void MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::UpdatePingPo
 }
 
 MATMUL_PERBLOCK_CLASS_TEM_PARAMS
-__aicore__ inline void
-MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::UpdatePertokenScale(LocalTensor<ptScaleType> &mmPertokenScaleUb,
-                                                                 uint64_t scaleX1GmOffset, uint64_t kb)
+__aicore__ inline void MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::UpdatePertokenScale(
+    LocalTensor<ptScaleType> &mmPertokenScaleUb, uint64_t scaleX1GmOffset, uint64_t kb)
 {
     if constexpr (aTrans) {
         paramsMain_.loopInfo.loopSize[1] =

@@ -16,7 +16,7 @@
 
 #include "opdev/data_type_utils.h"
 #include "opdev/op_log.h"
-#include "../generic_block_sparse_attention_metadata.h"
+#include "../generic_block_sparse_attention_metadata_tiling.h"
 
 namespace {
 constexpr int64_t GBSA_METADATA_DIM_NUM = 1;
@@ -25,6 +25,9 @@ constexpr int64_t GBSA_TND_SPARSE_BLOCK_IDX_DIM_NUM = 3;
 constexpr int64_t GBSA_TND_SPARSE_BLOCK_COUNT_DIM_NUM = 2;
 constexpr int64_t GBSA_BATCHED_SPARSE_BLOCK_IDX_DIM_NUM = 4;
 constexpr int64_t GBSA_BATCHED_SPARSE_BLOCK_COUNT_DIM_NUM = 3;
+constexpr int64_t GBSA_TND_BLOCK_CAPACITY_DIM_INDEX = 2;
+constexpr int64_t GBSA_BATCHED_Q_BLOCK_DIM_INDEX = 2;
+constexpr int64_t GBSA_BATCHED_BLOCK_CAPACITY_DIM_INDEX = 3;
 
 constexpr int64_t GBSA_CURRENT_HEAD_DIM = 128;
 constexpr int64_t GBSA_CURRENT_MAX_GROUP_SIZE = 128;
@@ -38,6 +41,7 @@ constexpr int64_t GBSA_SOFTMAX_PRECISION_HIGH = 0;
 constexpr int64_t GBSA_SOFTMAX_PRECISION_MIXED = 1;
 constexpr int64_t GBSA_CURRENT_MASK_TYPE = 1;
 constexpr int64_t GBSA_CURRENT_WINDOW_SIZE = -1;
+constexpr int64_t GBSA_DEFAULT_MAX_SEQ_LEN = -1;
 
 bool GbsaTensorValid(const aclTensor *tensor)
 {
@@ -155,14 +159,14 @@ aclnnStatus CheckGbsaBlockAttrs(int64_t blockShapeX, int64_t blockShapeY, int64_
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckGbsaScalarAttrs(int64_t maxQSeqLen, int64_t maxKvSeqLen, int64_t numQHeads, int64_t numKvHeads,
-                                 int64_t headDim, int64_t blockShapeX, int64_t blockShapeY, int64_t isPackedGQA)
+aclnnStatus CheckGbsaScalarAttrs(int64_t numQHeads, int64_t numKvHeads, int64_t headDim, int64_t blockShapeX,
+                                 int64_t blockShapeY, int64_t isPackedGQA)
 {
     const struct {
         int64_t value;
         const char *name;
-    } positiveAttrs[] = {{maxQSeqLen, "maxQSeqLen"}, {maxKvSeqLen, "maxKvSeqLen"}, {numQHeads, "numQHeads"},
-                         {numKvHeads, "numKvHeads"}, {headDim, "headDim"},         {blockShapeY, "blockShapeY"}};
+    } positiveAttrs[] = {
+        {numQHeads, "numQHeads"}, {numKvHeads, "numKvHeads"}, {headDim, "headDim"}, {blockShapeY, "blockShapeY"}};
     for (const auto &attr : positiveAttrs) {
         const aclnnStatus status = CheckGbsaPositiveScalarAttr(attr.value, attr.name);
         if (status != ACLNN_SUCCESS) {
@@ -181,14 +185,33 @@ aclnnStatus CheckGbsaScalarAttrs(int64_t maxQSeqLen, int64_t maxKvSeqLen, int64_
     return CheckGbsaBlockAttrs(blockShapeX, blockShapeY, isPackedGQA);
 }
 
+aclnnStatus CheckGbsaMaxSeqLenAttr(int64_t maxSeqLen, const char *attrName)
+{
+    if (maxSeqLen < GBSA_DEFAULT_MAX_SEQ_LEN) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s must be -1 or greater than or equal to 0, but got %lld.", attrName,
+                maxSeqLen);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus CheckGbsaMaxSeqLenAttrs(int64_t maxQSeqLen, int64_t maxKvSeqLen)
+{
+    aclnnStatus status = CheckGbsaMaxSeqLenAttr(maxQSeqLen, "maxQSeqLen");
+    if (status != ACLNN_SUCCESS) {
+        return status;
+    }
+    return CheckGbsaMaxSeqLenAttr(maxKvSeqLen, "maxKvSeqLen");
+}
+
 aclnnStatus CheckGbsaLayouts(const char *qInputLayout, const char *kvInputLayout)
 {
     if (!GbsaIsLayout(qInputLayout, "TND")) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qInputLayout currently only supports TND.");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (!GbsaIsLayout(kvInputLayout, "PAGED_BBND")) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kvInputLayout currently only supports PAGED_BBND.");
+    if (!GbsaIsLayout(kvInputLayout, "PA_BBND")) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kvInputLayout currently only supports PA_BBND.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -249,7 +272,7 @@ aclnnStatus CheckGbsaSparseTensorShapes(const aclTensor *sparseBlockIdx, const a
         if (sparseBlockIdx->GetViewShape().GetDim(0) != sparseHeads ||
             sparseBlockCount->GetViewShape().GetDim(0) != sparseHeads ||
             sparseBlockIdx->GetViewShape().GetDim(1) != sparseBlockCount->GetViewShape().GetDim(1) ||
-            sparseBlockIdx->GetViewShape().GetDim(2) <= 0) {
+            sparseBlockIdx->GetViewShape().GetDim(GBSA_TND_BLOCK_CAPACITY_DIM_INDEX) <= 0) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "TND sparse block tensor shapes do not match attrs.");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -265,8 +288,9 @@ aclnnStatus CheckGbsaSparseTensorShapes(const aclTensor *sparseBlockIdx, const a
     if (sparseBlockIdx->GetViewShape().GetDim(0) != batch || sparseBlockCount->GetViewShape().GetDim(0) != batch ||
         sparseBlockIdx->GetViewShape().GetDim(1) != sparseHeads ||
         sparseBlockCount->GetViewShape().GetDim(1) != sparseHeads ||
-        sparseBlockIdx->GetViewShape().GetDim(2) != qBlocks || sparseBlockCount->GetViewShape().GetDim(2) != qBlocks ||
-        sparseBlockIdx->GetViewShape().GetDim(3) <= 0) {
+        sparseBlockIdx->GetViewShape().GetDim(GBSA_BATCHED_Q_BLOCK_DIM_INDEX) != qBlocks ||
+        sparseBlockCount->GetViewShape().GetDim(GBSA_BATCHED_Q_BLOCK_DIM_INDEX) != qBlocks ||
+        sparseBlockIdx->GetViewShape().GetDim(GBSA_BATCHED_BLOCK_CAPACITY_DIM_INDEX) <= 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BSND/BNSD sparse block tensor shapes do not match attrs.");
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -283,11 +307,23 @@ aclnnStatus CheckGbsaSeqLengthInputs(const aclTensor *cuSeqLengthsOptional, cons
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cuSeqLengths is required for TND query.");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    const bool kvSeqLengthsRequired = GbsaIsLayout(kvInputLayout, "TND") || GbsaIsLayout(kvInputLayout, "PAGED_BBND") ||
-                                      GbsaIsLayout(kvInputLayout, "PAGED_BNBD");
-    if (kvSeqLengthsRequired && !GbsaTensorValid(cuSeqLengthsKvOptional)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cuSeqLengthsKv is required for TND or paged KV.");
-        return ACLNN_ERR_PARAM_INVALID;
+    const bool isPaKv = GbsaIsLayout(kvInputLayout, "PA_BBND") || GbsaIsLayout(kvInputLayout, "PA_BNBD");
+    if (GbsaIsLayout(kvInputLayout, "TND")) {
+        if (!GbsaTensorValid(cuSeqLengthsKvOptional)) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cuSeqLengthsKv is required for TND KV.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    } else if (isPaKv) {
+        // FA-style PA: sequsedKv required; cuSeqLengthsKv only for TND.
+        if (!GbsaTensorValid(seqUsedKvOptional)) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "seqUsedKv is required for paged KV.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (GbsaTensorValid(cuSeqLengthsKvOptional)) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "cuSeqLengthsKv must be empty when layoutKv is PA, only supported in TND layout.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
     aclnnStatus status =
         CheckGbsaOptionalSeqLength(cuSeqLengthsOptional, batch, ACL_INT64, batch + 1, "INT64", "cuSeqLengths");
@@ -384,12 +420,15 @@ aclnnStatus CheckGbsaMetadataParams(const aclTensor *sparseBlockIdx, const aclTe
     if (status != ACLNN_SUCCESS) {
         return status;
     }
-    status = CheckGbsaScalarAttrs(maxQSeqLen, maxKvSeqLen, numQHeads, numKvHeads, headDim, blockShapeX, blockShapeY,
-                                  isPackedGQA);
+    status = CheckGbsaLayouts(qInputLayout, kvInputLayout);
     if (status != ACLNN_SUCCESS) {
         return status;
     }
-    status = CheckGbsaLayouts(qInputLayout, kvInputLayout);
+    status = CheckGbsaMaxSeqLenAttrs(maxQSeqLen, maxKvSeqLen);
+    if (status != ACLNN_SUCCESS) {
+        return status;
+    }
+    status = CheckGbsaScalarAttrs(numQHeads, numKvHeads, headDim, blockShapeX, blockShapeY, isPackedGQA);
     if (status != ACLNN_SUCCESS) {
         return status;
     }

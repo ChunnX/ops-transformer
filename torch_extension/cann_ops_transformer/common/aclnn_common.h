@@ -16,6 +16,10 @@
 #ifndef CANN_OPS_TRANSFORMER_ACLNN_COMMON_H
 #define CANN_OPS_TRANSFORMER_ACLNN_COMMON_H
 
+// 必须先于任何 torch_npu 头文件引入 acl 基础头文件：torch_npu 自带 third_party/acl 版本较旧，
+// 缺少 ACL_FLOAT8_E5M2/ACL_FLOAT4_E2M1 等新 dtype 常量。若在其之后 include，旧头文件已设置
+// 同名 include guard（INC_EXTERNAL_ACL_ACL_BASE_H_），新版 CANN 头文件会被跳过导致编译失败。
+#include <acl/acl_base.h>
 #include <torch_npu/csrc/framework/utils/OpAdapter.h>
 #include <dlfcn.h>
 #include <vector>
@@ -277,11 +281,20 @@ inline aclDataType GetAclDataType(int64_t t)
     return ConvertToAclDataType(static_cast<at::ScalarType>(t));
 }
 
-inline const char *GetOpApiLibName(void) { return "libopapi.so"; }
+inline const char *GetOpApiLibName(void)
+{
+    return "libopapi.so";
+}
 
-inline const char *GetTransformerOpApiLibName(void) { return "libopapi_transformer.so"; }
+inline const char *GetTransformerOpApiLibName(void)
+{
+    return "libopapi_transformer.so";
+}
 
-inline const char *GetCustOpApiLibName(void) { return "libcust_opapi.so"; }
+inline const char *GetCustOpApiLibName(void)
+{
+    return "libcust_opapi.so";
+}
 
 inline void *GetOpApiFuncAddrInLib(void *handler, const char *libName, const char *apiName)
 {
@@ -670,9 +683,15 @@ inline aclScalar *ConvertType(const c10::optional<at::Scalar> &opt_scalar)
     return nullptr;
 }
 
-inline aclDataType ConvertType(const at::ScalarType scalarType) { return ConvertToAclDataType(scalarType); }
+inline aclDataType ConvertType(const at::ScalarType scalarType)
+{
+    return ConvertToAclDataType(scalarType);
+}
 
-inline const char *ConvertType(const string &str) { return str.c_str(); }
+inline const char *ConvertType(const string &str)
+{
+    return str.c_str();
+}
 
 aclTensor *ConvertType(const TensorWrapper &tensor_r)
 {
@@ -932,6 +951,15 @@ struct is_at_tensor_list : std::false_type {};
 template <>
 struct is_at_tensor_list<at::TensorList> : std::true_type {};
 
+template <typename T>
+struct is_tensor_wrapper : std::false_type {};
+
+template <>
+struct is_tensor_wrapper<TensorWrapper> : std::true_type {};
+
+template <>
+struct is_tensor_wrapper<StorageShapeTensor> : std::true_type {};
+
 /**
  * find first at::Tensor
  */
@@ -947,6 +975,9 @@ template <std::size_t I = 0, typename... Ts>
         return;
     } else if constexpr (is_at_tensor_list<typename std::tuple_element<I, std::tuple<Ts...>>::type>::value) {
         res = std::get<I>(t)[0];
+        return;
+    } else if constexpr (is_tensor_wrapper<typename std::tuple_element<I, std::tuple<Ts...>>::type>::value) {
+        res = std::get<I>(t).tensor_;
         return;
     }
     return GetFirstTensor<I + 1, Ts...>(t, res);
