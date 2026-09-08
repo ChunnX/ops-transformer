@@ -138,32 +138,26 @@ for grp in ('common', '3rd'):
     grp_files = {r for r in targets if r.startswith(grp + '/')}
     for chip_cn, soc in CHIP_MAP.items():
         lines = [
-            f'# mc2/{grp} 文件影响范围映射表 - {chip_cn} ({soc})',
+            f'# mc2/{grp} 头文件影响范围映射表 - {chip_cn} ({soc})',
             f'# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})',
             '# 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)',
             f'# 键路径: 相对mc2目录({grp}/开头), 与pr_files.sh输出中mc2/后的段落一致',
             '#',
-            '# 影响面模型:',
-            '#   头文件: 被include才生效, 影响面=直接+间接include它的算子(传递闭包)',
-            '#   .cpp:   CMake按目录整包编译(编译级引用), 影响面按同名头接口反推',
-            '#           (即改实现只影响调用该接口的算子), 无同名头保守全量并标注待人工确认',
-            '#',
-            '# 条目语义:',
-            '#   1) ops 列出算子 = 改动该文件需在本芯片测试这些算子',
-            f'#   2) ops: []      = 头文件无任何算子引用, 或.cpp同名头无算子引用(疑似死代码, 看note)',
-            '#   3) unref.yaml   = 无include且非编译单元的零引用文件(单独成表), 改动需人工确认',
-            '#',
-            '# 判定规则:',
-            '#   - mc2内所有#include按裸文件名匹配, 重名文件取并集(note:字段标注), 宁多勿漏',
-            f'#   - 算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 {chip_cn}({soc}) 的交集',
-            '#   - 未建模文件类型: common/3rd下除.h/.cpp外的所有文件(.py/json/ini/sh等)',
-            '#     改动一律按全量算子回归处理(见impact_map/README.md)',
+            '# 本表仅保存头文件(.h/.hpp/.cuh)条目, 影响面=直接+间接include它的算子(传递闭包)。',
+            '# 其他文件类型由消费脚本按以下规则处理(与本表配合):',
+            '#   .cpp: 同目录同名.h存在 -> 查本表同名头条目; 同名.h在unref.yaml -> 疑似死代码不触发;',
+            '#         同目录无同名.h -> 全量',
+            '#   其余一切(.py/json/ini/sh/csv/txt/md等)及tests/路径下文件: 一律全量',
+            f'#   算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 {chip_cn}({soc}) 的交集',
+            '#   注意: 本表结果为文件直接传递的算子, 消费侧还需叠加CMake depends反向闭包',
             '',
         ]
         n_map = n_empty = 0
         for r in sorted(grp_files):
+            if not r.endswith(('.h', '.hpp', '.cuh')) or is_test(r):
+                continue
             ops = {o for o in impact[r] if soc in socs.get(o, set())}
-            if not impact[r] and r not in compiled:
+            if not impact[r]:
                 continue
             lines.append(f'{r}:')
             if ops:
@@ -174,27 +168,24 @@ for grp in ('common', '3rd'):
             else:
                 lines.append('  ops: []')
                 n_empty += 1
-            notes = []
             if os.path.basename(r) in dup_groups:
-                notes.append(f'同名文件{len(dup_groups[os.path.basename(r)])}份, 映射取并集')
-            if r in cpp_note:
-                notes.append(cpp_note[r])
-            if notes:
-                lines.append('  note: ' + '; '.join(notes))
+                lines.append(
+                    f'  note: 同名文件{len(dup_groups[os.path.basename(r)])}份, 映射取并集'
+                )
         grp_out = os.path.join(OUTDIR, grp)
         os.makedirs(grp_out, exist_ok=True)
         out = os.path.join(grp_out, f'{chip_cn}.yaml')
         open(out, 'w').write('\n'.join(lines) + '\n')
         summary.append((f'{grp}/{chip_cn}', n_map, n_empty, out))
     # unref
-    unref = sorted(r for r in grp_files
-                   if not impact[r] and r not in compiled)
+    unref = sorted(r for r in grp_files if r.endswith(('.h', '.hpp', '.cuh'))
+                   and not is_test(r) and not impact[r])
     lines = [
         f'# mc2/{grp} 零引用文件清单 (与芯片无关, 全芯片共用)',
         f'# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})',
         '#',
-        '# 语义: 下列文件无任何算子可达的引用(未被include, 或仅被无算子影响面的死代码引用),',
-        '#       且非编译单元(.cpp已按编译级引用单独建模), 改动不影响mc2算子编译;',
+        '# 语义: 下列头文件无任何算子可达的引用(无人直接/间接include),',
+        '#       改动不影响mc2算子编译; .cpp的判定见映射表头部规则(同名.h在unref=死代码);',
         '#       注意与芯片映射表中 ops: [] 的区别:',
         '#         ops: []  = 头文件无算子引用 / .cpp同名头无算子引用(疑似死代码, 看note)',
         '#         本表     = 完全没有引用, 修改前需人工确认:',
@@ -211,7 +202,7 @@ for grp in ('common', '3rd'):
 print(f'仓: {REPO}  commit: {commit} ({branch})')
 print(
     f'common/3rd 源文件: {len(targets)}, 重名组: {len(dup_groups)}, '
-    f'编译级.cpp: {len(compiled)} (无同名头回退全量: {sum(1 for c in compiled if "待人工确认" in cpp_note[c])})'
+    f'编译级.cpp: {len(compiled)} (yaml不保存, 消费侧按同名头规则处理)'
 )
 top = sorted(targets, key=lambda r: -len(impact[r]))[:5]
 print(
@@ -219,4 +210,7 @@ print(
     + '; '.join(f'{os.path.basename(r)}({len(impact[r])})' for r in top)
 )
 for c, m, e, out in summary:
-    print(f'输出 {out}: 有映射 {m} / 空 {e}')
+    print(f'输出 {out}: 头文件条目 {m} / 该芯片无算子 {e}')
+n_cpp = len(compiled)
+n_noh = sum(1 for c in compiled if c.rsplit(".", 1)[0] + ".h" not in targets)
+print(f'编译级.cpp {n_cpp} 个不在yaml中(消费规则): 有同名头 {n_cpp - n_noh} / 无同名头走全量 {n_noh}')
