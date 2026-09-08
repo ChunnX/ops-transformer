@@ -62,7 +62,7 @@ END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(FlashAttnGrad, FlashAttnGradTilingDataTmp)
 
 // 编译期缓存的平台信息。图模式下 Tiling 阶段可能拿不到 PlatformInfo，那时只能
-// 从这里回退取值，所以 ParsePlatform 是双路的（见 flash_attn_grad_tiling_info_parser.cpp）。
+// 从这里回退取值，所以 ParsePlatform 是双路的（见 info/flash_attn_grad_tiling_info_parser.cpp）。
 // 只放当前真正用到的字段：核数与 L2。L2 是 swizzle 判据的分母，各 ascend950 变体
 // 从 16MB 到 128MB 不等，不能硬编码。
 struct FlashAttnGradCompileInfo {

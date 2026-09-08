@@ -15,10 +15,10 @@
 
 #include "flash_attn_grad_tiling.h"
 
-#include "flash_attn_grad_tiling_check.h"
-#include "flash_attn_grad_tiling_info.h"
-#include "flash_attn_grad_tiling_info_parser.h"
-#include "flash_attn_grad_tiling_regbase.h"
+#include "base/flash_attn_grad_tiling_regbase.h"
+#include "checkers/flash_attn_grad_tiling_check.h"
+#include "info/flash_attn_grad_tiling_info.h"
+#include "info/flash_attn_grad_tiling_info_parser.h"
 #include "log/log.h"
 #include "tiling/platform/platform_ascendc.h"
 

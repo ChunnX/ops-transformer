@@ -689,7 +689,7 @@ def decide_swizzle(b, n, s1, s2, d, core_num, dtype_bytes=2, g_size=1,
     """**host 判据的 Python 镜像**，仅供 JIT 脚本使用。
 
     生产路径上这个判据由 host 承担，权威实现是
-    `op_host/flash_attn_grad_tiling_swizzle.cpp` 的 `DecideSwizzle()`，
+    `op_host/plan/flash_attn_grad_tiling_swizzle.cpp` 的 `DecideSwizzle()`，
     全部标定依据（29 个实测点）也记在那里。本函数只是把那段整数运算逐行
     照抄成 Python，让 JIT 脚本(test/prof/bench)能自己拼出 tilingkey ——
     JIT 不走 host，拿不到 host 算好的值。

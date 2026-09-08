@@ -12,7 +12,7 @@
 
 #include <string>
 
-#include "flash_attn_grad_tiling.h" // FlashAttnGradCompileInfo：platform 缺失时的回退来源
+#include "../flash_attn_grad_tiling.h" // FlashAttnGradCompileInfo：platform 缺失时的回退来源
 #include "log/log.h"
 #include "op_host/tiling_util.h"
 #include "tiling/platform/platform_ascendc.h"

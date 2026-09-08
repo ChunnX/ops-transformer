@@ -13,8 +13,8 @@
 #include <cmath>
 #include <cstddef>
 
-#include "flash_attn_grad_tiling_info_parser.h" // IsEmptyShape：只用于日志
-#include "flash_attn_grad_tiling_plan.h"
+#include "../info/flash_attn_grad_tiling_info_parser.h" // IsEmptyShape：只用于日志
+#include "../plan/flash_attn_grad_tiling_plan.h"
 #include "op_host/tiling_util.h"
 
 namespace optiling {
@@ -24,7 +24,7 @@ namespace {
 //   1. op_kernel/flash_attn_grad.py 的 FlashAttnGradTilingData dataclass 是权威，
 //      codegen 按它的声明顺序生成 FlashAttnGradTilingData_tiling.h（本文件强制包含），
 //      也就是下面真正写入的那份内存布局；
-//   2. op_host/flash_attn_grad_tiling.h 的 FlashAttnGradTilingDataTmp 是手写的，
+//   2. op_host/flash_attn_grad_tiling.h（入口旁）的 FlashAttnGradTilingDataTmp 是手写的，
 //      只为 REGISTER_TILING_DATA_CLASS 让框架知道该分配多大。
 // 两份漂移不会有任何编译或运行报错，只会让 kernel 读到整体错位的字段。下面把
 // 布局钉死：改了 py 侧字段就会在这里断编译，逼着同步改 Tmp 和这些数字。

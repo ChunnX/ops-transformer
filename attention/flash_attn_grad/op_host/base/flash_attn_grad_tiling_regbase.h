@@ -19,7 +19,7 @@
  *
  * 能力边界只有一条：SOC 必须是 regbase。其余"接不接"的判断在两个地方 ——
  * 参数合法性在 op_host/checkers/，模板/swizzle/D 分档这类性能路由在
- * flash_attn_grad_tiling_route.cpp 的候选表里（§5.13），都不在这里。
+ * plan/flash_attn_grad_tiling_route.cpp 的候选表里（§5.13），都不在这里。
  */
 
 #ifndef FLASH_ATTN_GRAD_TILING_REGBASE_H_

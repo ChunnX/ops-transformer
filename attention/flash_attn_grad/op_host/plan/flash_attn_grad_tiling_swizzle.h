@@ -20,7 +20,7 @@
 #ifndef FLASH_ATTN_GRAD_TILING_SWIZZLE_H_
 #define FLASH_ATTN_GRAD_TILING_SWIZZLE_H_
 
-#include "flash_attn_grad_tiling_info.h"
+#include "../info/flash_attn_grad_tiling_info.h"
 
 namespace optiling {
 

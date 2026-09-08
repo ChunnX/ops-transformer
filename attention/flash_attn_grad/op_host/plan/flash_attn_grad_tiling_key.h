@@ -21,7 +21,7 @@
 
 #include <cstdint>
 
-#include "flash_attn_grad_tiling_info.h"
+#include "../info/flash_attn_grad_tiling_info.h"
 
 namespace optiling {
 

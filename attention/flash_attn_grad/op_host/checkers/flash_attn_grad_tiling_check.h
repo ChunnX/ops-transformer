@@ -8,16 +8,21 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "flash_attn_grad_tiling_check.h"
+#ifndef FLASH_ATTN_GRAD_CHECK_H_
+#define FLASH_ATTN_GRAD_CHECK_H_
 
-#include "checkers/fag_checker.h"
+#include "exe_graph/runtime/tiling_context.h"
 
 namespace optiling {
 
-ge::graphStatus FlashAttnGradCheck::CheckParams(gert::TilingContext *context)
-{
-    FagChecker checker;
-    return checker.Process(context);
-}
+// 校验层门面。具体校验按关注点拆在 op_host/checkers/ 下，顺序由
+// checkers/fag_checker.cpp 的 RegisterCheckers 显式表达；输入/属性索引常量统一
+// 定义在 info/flash_attn_grad_tiling_info.h。
+class FlashAttnGradCheck {
+public:
+    static ge::graphStatus CheckParams(gert::TilingContext *context);
+};
 
 } // namespace optiling
+
+#endif // FLASH_ATTN_GRAD_CHECK_H_

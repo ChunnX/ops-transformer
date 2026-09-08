@@ -184,28 +184,34 @@ attention/flash_attn_grad/
 ├── op_host/
 │   ├── flash_attn_grad_tiling.cpp            # L0 薄入口 + IMPL_OP_OPTILING + TilingParse
 │   ├── flash_attn_grad_tiling.h              # CompileInfo；TilingData 契约转发（见 §5.7）
-│   ├── flash_attn_grad_tiling_info.h         # L1 索引常量 + FagTilingInfo
-│   ├── flash_attn_grad_tiling_info_parser.*  # L2
-│   ├── flash_attn_grad_tiling_base.h         # L5 自持的 FagTilingBase（复制 FiaTilingBase 形态，见 D1）
+│   ├── flash_attn_grad_def.cpp
+│   ├── flash_attn_grad_infershape.cpp
+│   ├── info/                                 # L1/L2
+│   │   ├── flash_attn_grad_tiling_info.h
+│   │   └── flash_attn_grad_tiling_info_parser.*
 │   ├── checkers/                             # L3（形态参照正向，代码自持，见 D3）
+│   │   ├── flash_attn_grad_tiling_check.*    #    门面 CheckParams
 │   │   ├── fag_checker.*                     #    组合器
-│   │   ├── layout_checker.*                  #    layout_q/kv/out 一致性、维数
-│   │   ├── shape_checker.*                   #    B/S/N/D 一致性、D ≤ 192、Dv ≤ D
-│   │   ├── mask_checker.*                    #    mask_mode × attn_mask × win_left/right
-│   │   ├── seq_len_checker.*                 #    cu_seqlens / seqused / max_seqlen
-│   │   └── dtype_checker.*                   #    q/k/v/dout/attn_out/dq/dk/dv 同 dtype、lse fp32
-│   ├── flash_attn_grad_split_policy.h        # L4 与 AICPU 共享的分核公式（现 block_outer.h）
-│   ├── flash_attn_grad_tiling_split.*        # L4 SelectSplitAxis + ApplyLaunch
-│   ├── flash_attn_grad_tiling_swizzle.*      # L4 DecideSwizzle
-│   ├── flash_attn_grad_tiling_dbucket.*      # L4 D/Dv 分档（从 GenTilingKey 里抽出来）
-│   ├── flash_attn_grad_tiling_workspace.*    # L4 workspace 分区（与 kernel make_ptr 对齐）
-│   ├── flash_attn_grad_tiling_padded.*       # L5 非 TND 模板
-│   └── flash_attn_grad_tiling_varlen.*       # L5 TND / seqused 模板（待新增）
+│   │   ├── fag_feature_checker.*             #    D2
+│   │   ├── fag_input_checker.*               #    必选输入 / dtype
+│   │   ├── fag_attr_checker.*                 #    属性 / mask / layout
+│   │   └── fag_shape_checker.*               #    B/S/N/D、cu_seqlens
+│   ├── plan/                                 # L4
+│   │   ├── flash_attn_grad_tiling_plan.*     #    编排 route → schedule → swizzle → ws → key
+│   │   ├── flash_attn_grad_tiling_route.*    #    能力/偏好表 + D5
+│   │   ├── flash_attn_grad_tiling_schedule.* #    SetBlockDim / usedCube
+│   │   ├── flash_attn_grad_block_outer.h    #    与 AICPU 共享的分核公式
+│   │   ├── flash_attn_grad_tiling_swizzle.*  #    DecideSwizzle
+│   │   ├── flash_attn_grad_tiling_workspace.* #    dq/dk/dv fp32 分段
+│   │   └── flash_attn_grad_tiling_key.*      #    EncodeTilingKey（含 D 分档）
+│   └── base/                                 # L5
+│       ├── flash_attn_grad_tiling_base.h     #    自持 FagTilingBase（D1）
+│       └── flash_attn_grad_tiling_regbase.*  #    目前唯一模板类
 ├── op_kernel/flash_attn_grad.py              # TilingData / TilingKey 的唯一真源
 └── tests/ut/op_host/                         # 待新增，见 §6
 ```
 
-`op_host/CMakeLists.txt` 现在通过 `add_tiling_modules()` 收集，新增 `*_tiling*.cpp` 无需改构建脚本；`checkers/` 子目录需要确认是否被 glob 覆盖，否则显式列出（正向 `flash_attn/op_host/CMakeLists.txt` 是可参考的先例）。
+`add_modules_sources()` 的 tiling glob 只认 `op_host/*_tiling*.cpp`（入口 `flash_attn_grad_tiling.cpp`）。`info/`、`plan/`、`base/`、`checkers/` 由 `op_host/CMakeLists.txt` 显式 `GLOB` + `target_sources` 收进编译，并对这些源文件 force-include pypto 生成头（`base/regbase.cpp` 写 `FlashAttnGradTilingData`，漏掉会直接编不过）。将来 TND 独立实现放到 `base/` 即可。
 
 ---
 
@@ -272,7 +278,7 @@ auto maxSeqlenQPtr = attrs->GetAttrPointer<int64_t>(4);
 | `fag_shape_checker.*` | `FagShapeChecker` | 维度数、B/S/N/D 一致、softmax_lse、cu_seqlens |
 | `fag_checker.*` | `FagChecker` | 组合器，注册顺序即校验顺序 |
 
-`flash_attn_grad_tiling_check.{h,cpp}` 收成门面（22 行），只把 `CheckParams` 转发给 `FagChecker::Process`，所以 `flash_attn_grad_tiling.cpp` 不受影响。子目录靠 `op_host/CMakeLists.txt` 里 `file(GLOB_RECURSE ... checkers/*checker*.cpp)` + `target_sources` 收进编译 —— 父级的 tiling glob 只认 `*_tiling*.cpp`，不显式收会静默漏编。写法与正向 `flash_attn/op_host/CMakeLists.txt` 一致。
+`checkers/flash_attn_grad_tiling_check.{h,cpp}` 收成门面（22 行），只把 `CheckParams` 转发给 `FagChecker::Process`，所以 `flash_attn_grad_tiling.cpp` 不受影响。子目录源文件靠 `op_host/CMakeLists.txt` 显式 `GLOB` + `target_sources` 收进编译 —— 父级的 tiling glob 只认 `op_host/*_tiling*.cpp`，不显式收会静默漏编。
 
 **两处对设计的偏离，都是有意的：**
 
@@ -320,14 +326,14 @@ REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttnGrad, FlashAttnGradTilingPadded,
 
 #### 落地记录
 
-新增 `op_host/flash_attn_grad_tiling_base.h` 的 `FagTilingBase`（自持，不 include 正向那份），三步骨架 `InitTilingInfo` / `IsCapable` / `DoOpTiling` 由 `DoTiling(const FagParsedInfo &)` 驱动，返回值语义与 `FiaTilingBase` 一致（`GRAPH_PARAM_INVALID` = 本类不接、试下一个）。写回封装了 `SetNumBlocks` / `SetTilingKey` / `SetWorkspaceSize` / `SetScheduleMode` 四个，子类不再直接碰 context。
+新增 `op_host/base/flash_attn_grad_tiling_base.h` 的 `FagTilingBase`（自持，不 include 正向那份），三步骨架 `InitTilingInfo` / `IsCapable` / `DoOpTiling` 由 `DoTiling(const FagParsedInfo &)` 驱动，返回值语义与 `FiaTilingBase` 一致（`GRAPH_PARAM_INVALID` = 本类不接、试下一个）。写回封装了 `SetNumBlocks` / `SetTilingKey` / `SetWorkspaceSize` / `SetScheduleMode` 四个，子类不再直接碰 context。
 
-唯一的具体类是 `flash_attn_grad_tiling_regbase.{h,cpp}` 的 `FlashAttnGradTilingRegbase`，`IsCapable()` 只判 SOC 是否 regbase（这条检查从 `ParsePlatform` 下沉过来，因此非 regbase 芯片的报错时机从"解析平台时"变成"参数校验之后"），`DoOpTiling()` 负责 `BuildTilingPlan` 加写回。入口 `flash_attn_grad_tiling.cpp` 因此收到 83 行。
+唯一的具体类是 `base/flash_attn_grad_tiling_regbase.{h,cpp}` 的 `FlashAttnGradTilingRegbase`，`IsCapable()` 只判 SOC 是否 regbase（这条检查从 `ParsePlatform` 下沉过来，因此非 regbase 芯片的报错时机从"解析平台时"变成"参数校验之后"），`DoOpTiling()` 负责 `BuildTilingPlan` 加写回。入口 `flash_attn_grad_tiling.cpp` 因此收到 83 行。
 
 对 `FiaTilingBase` 做了三处裁剪，都是 FAGrad 的实际需要：
 
 1. `DoTiling` 收 `const FagParsedInfo &`，不是空基类 `TilingInfo *`——解析结果是本算子自己的 POD，没必要为对齐空基类再做向下转型；
-2. 不封装 `SetTilingData(TilingDef&)`。FAGrad 写的是 pypto codegen 出的结构体，不是 `TILING_DATA_FIELD_DEF` 那套 `TilingDef`。而那个结构体只在带 force-include 的 `*_tiling*.cpp` 里可见（`cmake/obj_func.cmake` 用 `set_source_files_properties` 按文件列表 scope，只覆盖父级 glob 到的 `*_tiling*.cpp`），所以写 tilingdata 留在子类的 `WriteTilingData`；
+2. 不封装 `SetTilingData(TilingDef&)`。FAGrad 写的是 pypto codegen 出的结构体，不是 `TILING_DATA_FIELD_DEF` 那套 `TilingDef`。而那个结构体只在带 force-include 的 tiling 源文件里可见：`cmake/obj_func.cmake` 覆盖父级 glob 的 `op_host/*_tiling*.cpp`（入口），`op_host/CMakeLists.txt` 再覆盖 `info/`、`plan/`、`base/`、`checkers/` 的 cpp（`base/regbase.cpp` 写 tilingdata，漏掉会直接编不过）；
 3. 去掉 `GetShapeDebugStr` / `GetTilingContextDebugStr` 等调试串拼接——决策追溯走 `FagRouteTrace` 加一行 `OP_LOGI` 就够。
 
 **没有引入注册表。** §5.4 建议的 `REGISTER_TILING_TEMPLATE_WITH_ARCH` 在只有一个模板类时是纯开销，还会让入口更绕。现在入口直接构造 `FlashAttnGradTilingRegbase` 并调 `DoTiling`；等 TND 拆出第二个类时，改成"按优先级依次 `DoTiling`、遇 `GRAPH_PARAM_INVALID` 试下一个"是机械改动，`DoTiling` 的返回值语义已经为此留好了。
@@ -434,7 +440,7 @@ REGISTER_TILING_DATA_CLASS(FlashAttnGrad, FlashAttnGradTilingDataTmp)
 - **新增一条 `unknown-l2` 拒绝理由**：部分型号（如 `KirinX90`、`Kirin9030`）平台上报 `l2_size=0`，拿 0 当分母会让阈值退化成 0、swizzle 变成恒开。L2 未知时保守不开——swizzle 只是性能选择，不开一定正确。
 - 决策日志那行加了 `aicNum` 与 `l2CacheSize`，判据对不上时第一件事就是核对这个数。
 
-**py 侧镜像同步改了**，否则就制造出 §5.13 警告过的那类静默分叉：`decide_swizzle()` 新增 `l2_cache_bytes` 参数（缺省仍是 9599 的 128MB），`l2_cache_bytes == 0` 时返回 0 与 host 对齐，模块级 `L2_CACHE_BYTES` 注释清楚它只是 JIT 缺省值、换型号必须显式传。docstring 里指向 `tiling.cpp` `FlashAttnGradTilingFunc()` 的旧路径也一并修正为 `flash_attn_grad_tiling_swizzle.cpp` 的 `DecideSwizzle()`。
+**py 侧镜像同步改了**，否则就制造出 §5.13 警告过的那类静默分叉：`decide_swizzle()` 新增 `l2_cache_bytes` 参数（缺省仍是 9599 的 128MB），`l2_cache_bytes == 0` 时返回 0 与 host 对齐，模块级 `L2_CACHE_BYTES` 注释清楚它只是 JIT 缺省值、换型号必须显式传。docstring 里指向 `tiling.cpp` `FlashAttnGradTilingFunc()` 的旧路径也一并修正为 `plan/flash_attn_grad_tiling_swizzle.cpp` 的 `DecideSwizzle()`。
 
 **还有第三份拷贝没治**：测试工程 `FAG_PTO_TEST/test_flash_attn_grad-binary-msprof.py` 里也有一份 `L2_CACHE_BYTES = 128 * 1024 * 1024`（用于 `_predict_tiling` 对账）。它在另一个仓，换型号跑测试时同样要改，否则报告里预测的 tilingKey 与 host 实际派发的不是同一个。
 
@@ -640,7 +646,7 @@ A/B/C 三条是**不变量**（违反即为 bug）；D 是**回归基线**（不
 
 ### B. host 的核数与 AICPU 的 `blockOuter` 同源
 
-host `flash_attn_grad_block_outer.h` 里的 `FagS1S2Outer` / `FagDenseBlockOuter` / `FagUsedCubeCores` 是 AICPU `InitFagBaseDims` / `DoFagDenseSplit` / `DoFagBn2DenseSplit` 的**手工镜像**，注释里已经写明"must match"。同时 host 采取了保守策略：
+host `op_host/plan/flash_attn_grad_block_outer.h` 里的 `FagS1S2Outer` / `FagDenseBlockOuter` / `FagUsedCubeCores` 是 AICPU `InitFagBaseDims` / `DoFagDenseSplit` / `DoFagBn2DenseSplit` 的**手工镜像**，注释里已经写明"must match"。同时 host 采取了保守策略：
 
 ```cpp
 useActualCores = (layout != 1) && (maskMode == 0) && !hasSeqused;   // 仅 dense 非 TND 才精确算

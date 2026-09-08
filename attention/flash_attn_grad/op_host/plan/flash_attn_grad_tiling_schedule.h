@@ -21,7 +21,7 @@
 #define FLASH_ATTN_GRAD_TILING_SCHEDULE_H_
 
 #include "exe_graph/runtime/tiling_context.h"
-#include "flash_attn_grad_tiling_info.h"
+#include "../info/flash_attn_grad_tiling_info.h"
 
 namespace optiling {
 
