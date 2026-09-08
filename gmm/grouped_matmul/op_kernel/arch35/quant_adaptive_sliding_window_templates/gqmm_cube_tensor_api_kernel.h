@@ -90,16 +90,23 @@ __aicore__ inline void GmmCubeTensorApiKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR
     mmadParams.bGmAddr = weight;
     mmadParams.cGmAddr = y;
     mmadParams.biasGmAddr = bias;
-    mmadParams.scaleAGmAddr = perTokenScale;
-    mmadParams.scaleBGmAddr =
-        reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<ScaleGmType>(0, scale));
+    if constexpr (AscendC::IsSameType<CType, int32_t>::value) {
+        // INT8×INT8 + INT32 输出：L0C 直接写回 y，不需要 scale，
+        // host 允许 scale 为空，不能把 scale 当 ListTensorDesc 解引用。
+        mmadParams.scaleAGmAddr = nullptr;
+        mmadParams.scaleBGmAddr = nullptr;
+    } else {
+        mmadParams.scaleAGmAddr = perTokenScale;
+        mmadParams.scaleBGmAddr =
+            reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<ScaleGmType>(0, scale));
+    }
 
     Params params{};
     params.problemShape = ProblemShape{gmmParams.m, gmmParams.n, gmmParams.k, 0};
     params.mmadParams = mmadParams;
     params.epilogueParams = {};
     params.groupListGmAddr = groupList;
-    params.gmmArrayGmAddr = reinterpret_cast<GM_ADDR>(gmmArrayAddr_);
+    params.gmmArrayGmAddr = gmmArrayAddr_;
     params.gmmParams = gmmParams;
 
     CubeKernel gmm;
