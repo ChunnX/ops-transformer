@@ -34,6 +34,8 @@ constexpr uint64_t TENSOR_API_NOT_TRANS_B_M_PER_GROUP_LOWER_LIMIT = 512UL;
 constexpr uint64_t TENSOR_API_B_NOTRANS_M_LOWER_LIMIT = 512UL;
 constexpr uint64_t TENSOR_API_LARGE_M_BASE_M = GmmConstant::BASIC_BLOCK_SIZE_256;
 constexpr uint64_t TENSOR_API_LARGE_N_BASE_N = GmmConstant::BASIC_BLOCK_SIZE_128;
+constexpr uint64_t TENSOR_API_K_ALIGN = GmmConstant::BASIC_BLOCK_SIZE_128;
+constexpr uint64_t TENSOR_API_TAIL_MAX_STEP_K = 4UL;
 constexpr uint64_t MX_SCALE_K_ALIGN = 64UL;
 constexpr int64_t MX_QUANT_MODE = 2L;
 constexpr uint64_t AIC_AIV_CORE_RATIO = 2UL;
@@ -292,6 +294,8 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsCapable()
     const bool checkBNoTransMLimlit =
         inputParams_.transB ? true : inputParams_.mSize > TENSOR_API_B_NOTRANS_M_LOWER_LIMIT;
     const bool checkKSize = inputParams_.kSize > 64;
+    // MX scales are defined for 64 K elements. The Tensor API kernel can process
+    // a final 64-element K tile when the tiling uses baseK=64 for an unaligned K.
     const bool checkKSizeAlign = inputParams_.kSize % MX_SCALE_K_ALIGN == 0;
     const bool capable = dtypeSupported && quantDtypeSupported && formatSupported && checkMSizeGroupNumRatio &&
                          checkNSizeAlign && coreSupported && checkTensorApiShapes && checkTensorApiScaleShapes &&
@@ -326,9 +330,20 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::DoOpTiling()
 
 ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::DoLibApiTiling()
 {
+    const bool hasKTail = inputParams_.kSize % TENSOR_API_K_ALIGN != 0;
     GroupedQmmTiling::CalBasicBlock();
+    if (hasKTail) {
+        basicTiling_.baseK = MX_SCALE_K_ALIGN;
+    }
     OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
+    if (hasKTail) {
+        // Keep each L1 K strip bounded for the Tensor API tail path. The MX
+        // kernel consumes the final 64-element strip safely only when the
+        // regular K strips do not exceed four base-K tiles.
+        basicTiling_.stepKa = std::min<uint64_t>(basicTiling_.stepKa, TENSOR_API_TAIL_MAX_STEP_K);
+        basicTiling_.stepKb = std::min<uint64_t>(basicTiling_.stepKb, TENSOR_API_TAIL_MAX_STEP_K);
+    }
     if (inputParams_.mSize >= GmmConstant::BASIC_BLOCK_SIZE_256) {
         basicTiling_.baseM = TENSOR_API_LARGE_M_BASE_M;
     }
@@ -346,10 +361,14 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::DoLibApiTiling()
     mmTiling.baseK = static_cast<uint32_t>(basicTiling_.baseK);
     mmTiling.kAL1 = static_cast<uint32_t>(basicTiling_.stepKa * basicTiling_.baseK);
     mmTiling.kBL1 = static_cast<uint32_t>(basicTiling_.stepKb * basicTiling_.baseK);
-    const uint64_t scaleKL1 = std::min(
-        std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa, basicTiling_.scaleFactorB * basicTiling_.stepKb) *
-            basicTiling_.baseK,
-        inputParams_.kSize);
+    const uint64_t scaleKL1 = hasKTail
+                                  ? std::min(basicTiling_.stepKa * basicTiling_.baseK,
+                                             basicTiling_.stepKb * basicTiling_.baseK)
+                                  : std::min(
+                                        std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa,
+                                                 basicTiling_.scaleFactorB * basicTiling_.stepKb) *
+                                            basicTiling_.baseK,
+                                        inputParams_.kSize);
     mmTiling.scaleKAL1 = static_cast<uint32_t>(scaleKL1);
     mmTiling.scaleKBL1 = static_cast<uint32_t>(scaleKL1);
     mmTiling.dbL0C = static_cast<uint8_t>(basicTiling_.dbL0c);
