@@ -176,22 +176,6 @@ for grp in ('common', '3rd'):
     print(f'输出 {os.path.join(OUTDIR, grp, "file_lists.yaml")}: '
           f'mapped {len(mapped_g)} / 无关系全量 {len(unrel_g)}')
 
-# full_regression.yaml: 全量回归算子清单
-lines = [
-    '# mc2 全量回归算子清单',
-    f'# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})',
-    '# 触发全量回归的情况:',
-    '#   1) 改动 mc2/common|3rd 下任何 .cpp 及其他非头文件(.py/.json/.ini/.sh等)',
-    '#   2) 改动的头文件不在芯片映射表中(无明确include到算子关系, 含冗余/仅测试引用头)',
-    '# 按芯片取对应列表执行全量算子回归, 再叠加CMake depends反向闭包去重',
-    '',
-]
-for chip_cn, soc in CHIP_MAP.items():
-    lines.append(f'{chip_cn}:')
-    for op in sorted(o for o in socs if soc in socs[o]):
-        lines.append(f'  - {op}')
-open(os.path.join(OUTDIR, 'full_regression.yaml'), 'w').write('\n'.join(lines) + '\n')
-
 # ---------- 7. 摘要 ----------
 print(f'仓: {REPO}  commit: {commit} ({branch})')
 print(f'common/3rd 头文件: {len(targets)}, 重名组: {len(dup_groups)}')
@@ -199,4 +183,3 @@ top = sorted(targets, key=lambda r: -len(impact[r]))[:5]
 print('引用算子数 Top5: ' + '; '.join(f'{os.path.basename(r)}({len(impact[r])})' for r in top))
 for c, m, e, out in summary:
     print(f'输出 {out}: 有映射 {m} / 该芯片无算子 {e}')
-print(f'输出 {os.path.join(OUTDIR, "full_regression.yaml")}')
