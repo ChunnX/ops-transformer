@@ -49,10 +49,19 @@ public:
     static constexpr uint32_t S2_SPLIT = 256U;
     static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
     static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
+    // Full D=256 C1 K and C2 V tiles each occupy 64 KiB in L0.
+    using L0ABuffers = std::conditional_t<D_BASE == 256U,
+        BuffersPolicySingleBuffer<BufferType::L0A>, BuffersPolicyDB<BufferType::L0A>>;
+    using L0BBuffers = std::conditional_t<D_BASE == 256U,
+        BuffersPolicySingleBuffer<BufferType::L0B>, BuffersPolicyDB<BufferType::L0B>>;
+    using KBuffers = std::conditional_t<D_BASE == 256U,
+        BuffersPolicySingleBuffer<BufferType::L1>, BuffersPolicy4buff<BufferType::L1>>;
+    static constexpr uint32_t L0_AB_SLOT_BYTES = D_BASE == 256U ? 64U * 1024U : 32U * 1024U;
     static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
                   "MX cube currently only supports TND query and PA_BNBD KV");
-    static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
-                  "MX cube currently only supports S1=128, S2=512, D=128 and DV=128");
+    static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == DV_BASE &&
+                  (D_BASE == 64U || D_BASE == 128U || D_BASE == 256U),
+                  "MX cube requires S1=128, S2=512 and D=DV in {64,128,256}");
     // 每 32 个 fp8 数据元素对应一个 e8m0 scale。
     static constexpr uint32_t MX_SCALE_GROUP = 32U;
     // V scale 为 [blockNum,N,blockSize/64,DV,2]。
@@ -90,17 +99,27 @@ public:
             constexpr uint32_t valueScaleSize =
                 (S2_SPLIT / MX_TOKEN_GROUP) * DV_BASE * MX_SCALE_LAST_DIM * sizeof(SCALE_T);
 
-            // Q 双 buffer；K 四 buffer；V 双 buffer。
+            constexpr uint32_t pSize = M_BASE * S2_BASE * (sizeof(INPUT_T) * MX_SCALE_GROUP +
+                sizeof(SCALE_T)) / MX_SCALE_GROUP;
+            constexpr uint32_t totalL1Size = 3U * pSize + 2U * (qSize + qScaleSize) +
+                (D_BASE == 256U ? 1U : 4U) * (kvSize + kvScaleSize) +
+                2U * (kvSize + valueScaleSize);
+            static_assert(totalL1Size <= 512U * 1024U, "MX buffers exceed L1 capacity");
+            static_assert(S2_SPLIT * D_BASE * sizeof(INPUT_T) <= L0_AB_SLOT_BYTES &&
+                          S2_SPLIT * DV_BASE * sizeof(INPUT_T) <= L0_AB_SLOT_BYTES,
+                          "MX full matmul operands exceed L0 slots");
+            // Q/V use two buffers. D=256 reuses one K slot after MTE1 releases it.
             l1QBuffers_.Init(*l1BufferManager_, qSize + qScaleSize);
             l1KVBuffers_.Init(*l1BufferManager_, kvSize + kvScaleSize);
             l1VBuffers_.Init(*l1BufferManager_, kvSize + valueScaleSize);
 
-            // L0A/L0B 双 buffer；L0C 双 buffer。C1 最大输出为 [256,128] fp32，需要 128KB。
+            // D=256 uses one full-capacity L0A/L0B slot; retain paired Q reuse.
+            // L0C stays double-buffered: both C1 and C2 fit in 128 KiB.
             l0aBufferManager_.Init(tPipe_, 64U * 1024U);
             l0bBufferManager_.Init(tPipe_, 64U * 1024U);
             l0cBufferManager_.Init(tPipe_, 256U * 1024U);
-            mmL0ABuffers_.Init(l0aBufferManager_, 32U * 1024U);
-            mmL0BBuffers_.Init(l0bBufferManager_, 32U * 1024U);
+            mmL0ABuffers_.Init(l0aBufferManager_, L0_AB_SLOT_BYTES);
+            mmL0BBuffers_.Init(l0bBufferManager_, L0_AB_SLOT_BYTES);
             mmL0CBuffers_.Init(l0cBufferManager_, 128U * 1024U);
         }
     }
@@ -170,7 +189,7 @@ public:
                                           isFirstKLoop);    // isOutKFisrt：标记当前是外层 K 循环首块。
             // P 转置，V 保持 KN。
             MxMatmulFull<INPUT_T, INPUT_T, MM_T, M_BASE, DV_BASE, baseK, ABLayout::MK, ABLayout::KN,
-                         BuffersPolicyDB<BufferType::L0A>, BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T,
+                         L0ABuffers, L0BBuffers, SCALE_T, SCALE_T,
                          mx_fp8_e4m3_t, mx_fp8_e4m3_t>(pBuf.GetTensor<INPUT_T>()[kIdx * l1BaseKOffset], vTensor,
                                                        mmL0ABuffers_, mmL0BBuffers_, mm2ResL0C.GetTensor<MM_T>(), param,
                                                        pScaleTensor[kIdx * l1ScaleOffset], vScaleTensor);
@@ -245,14 +264,14 @@ private:
                                       true);            // isRightTranspose：Q 按 [D,M] 转置视图加载。
         if constexpr (LOAD_Q_TO_L0B && RELEASE_Q_L0B) {
             MxMatmulFull<INPUT_T, INPUT_T, MM_T, S2_SPLIT, M_BASE, D_BASE, ABLayout::MK, ABLayout::KN,
-                         BuffersPolicyDB<BufferType::L0A>, BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T,
+                         L0ABuffers, L0BBuffers, SCALE_T, SCALE_T,
                          mx_fp8_e4m3_t, mx_fp8_e4m3_t>(kTensor, qBuf.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_,
                                                        mm1ResL0C.GetTensor<MM_T>(), param, kScaleTensor,
                                                        qBuf.GetTensor<SCALE_T>(qScaleOffset));
         } else {
             MxMatmulFullReuseB<LOAD_Q_TO_L0B, RELEASE_Q_L0B, INPUT_T, INPUT_T, MM_T, S2_SPLIT, M_BASE, D_BASE,
-                               ABLayout::MK, ABLayout::KN, BuffersPolicyDB<BufferType::L0A>,
-                               BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
+                               ABLayout::MK, ABLayout::KN, L0ABuffers,
+                               L0BBuffers, SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
                 kTensor, qBuf.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_, mm1ResL0C.GetTensor<MM_T>(), param,
                 kScaleTensor, qBuf.GetTensor<SCALE_T>(qScaleOffset));
         }
@@ -525,10 +544,10 @@ private:
     BufferManager<BufferType::L0B> l0bBufferManager_;
     BufferManager<BufferType::L0C> l0cBufferManager_;
     BuffersPolicyDB<BufferType::L1> l1QBuffers_;
-    BuffersPolicy4buff<BufferType::L1> l1KVBuffers_;
+    KBuffers l1KVBuffers_;
     BuffersPolicyDB<BufferType::L1> l1VBuffers_;
-    BuffersPolicyDB<BufferType::L0A> mmL0ABuffers_;
-    BuffersPolicyDB<BufferType::L0B> mmL0BBuffers_;
+    L0ABuffers mmL0ABuffers_;
+    L0BBuffers mmL0BBuffers_;
     BuffersPolicyDB<BufferType::L0C> mmL0CBuffers_;
 };
 } // namespace BaseApi

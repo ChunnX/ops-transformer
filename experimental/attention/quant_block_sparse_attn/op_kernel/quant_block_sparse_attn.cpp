@@ -94,10 +94,15 @@ __global__ __aicore__ void quant_block_sparse_attn(
     constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
     if constexpr (QUANT_MODE == MXFullQuantMode) {
         // MX 当前支持 TND + PA BNBD，S2 logical tile 为 512。
-        static_assert(Config == Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
-                      "MXFullQuantMode must use S1=128, S2=512, D=128, DV=128 config");
+        static_assert(Config == Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 ||
+                      Config == Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 ||
+                      Config == Config_S1Aligned128_S2Aligned512_DAligned256_DVAligned256,
+                      "MXFullQuantMode requires D=DV in {64,128,256}");
+        constexpr DTemplateType mxD = Config == Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 ?
+            DTemplateType::Aligned64 : (Config == Config_S1Aligned128_S2Aligned512_DAligned256_DVAligned256 ?
+            DTemplateType::Aligned256 : DTemplateType::Aligned128);
         QBSA_MX_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
-                       S2TemplateType::Aligned512, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
+                       S2TemplateType::Aligned512, mxD, mxD, HAS_ATTENTION,
                        RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
     } else {
         static_assert(Config == Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128,

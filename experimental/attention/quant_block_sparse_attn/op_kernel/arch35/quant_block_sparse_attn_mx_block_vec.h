@@ -57,12 +57,13 @@ public:
     static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
     static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
                   "MX vector currently only supports TND query and PA_BNBD KV");
-    static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
-                  "MX vector currently only supports S1=128, S2=512, D=128 and DV=128");
+    static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == DV_BASE &&
+                  (D_BASE == 64U || D_BASE == 128U || D_BASE == 256U),
+                  "MX vector requires S1=128, S2=512 and D=DV in {64,128,256}");
     // V2 比 V1 延迟三个 task，四槽状态避免 V1 覆盖尚未被 V2 消费的 softmax 状态。
     static constexpr uint32_t SOFTMAX_BUFFER_NUM = 4U;
     static constexpr uint32_t MX_SCALE_GROUP = 32U;
-    static constexpr uint32_t dTemplateAlign64 = 128U;
+    static constexpr uint32_t dTemplateAlign64 = DV_BASE;
     static constexpr uint32_t DN_VSELR_INDEX_SIZE = 256U;
     static constexpr uint32_t DN_VSELR_GROUP_NUM = 4U;
     static constexpr uint32_t DN_VSELR_GROUP_SIZE = DN_VSELR_INDEX_SIZE / DN_VSELR_GROUP_NUM;
@@ -74,6 +75,16 @@ public:
     static constexpr uint32_t STAGE1_OUT_UB_SIZE = VEC_M_BASE * STAGE1_CAST_ROW_STRIDE * sizeof(INPUT_T);
     static constexpr uint32_t PSCALE_SUB_LOOP_UB_SIZE = VEC_M_BASE * S2_SPLIT / MX_SCALE_GROUP * sizeof(SCALE_T);
     static constexpr uint32_t SOFTMAX_STATE_UB_SIZE = VEC_M_BASE * sizeof(float);
+    // Include the cross-core C1/C2 allocation made by the kernel. All sizes
+    // are multiples of 32 bytes, including optional mask and LSE queues.
+    static constexpr uint32_t TOTAL_UB_BYTES =
+        (D_BASE == 256U ? 1U : 2U) * VEC_M_BASE * S2_SPLIT * sizeof(MM_T) +
+        2U * VEC_M_BASE * DV_BASE * sizeof(MM_T) +
+        2U * STAGE1_OUT_UB_SIZE + PSCALE_SUB_LOOP_UB_SIZE +
+        (3U * SOFTMAX_BUFFER_NUM + 3U) * SOFTMAX_STATE_UB_SIZE +
+        (HAS_LSE ? VEC_M_BASE * sizeof(float) * 8U : 0U) +
+        (HAS_ATTEN ? ATTEN_MASK_UB_SIZE : 0U) + (USE_DN ? DN_VSELR_INDEX_SIZE : 0U);
+    static_assert(TOTAL_UB_BYTES <= 248U * 1024U, "MX buffers exceed the 248 KiB UB budget");
     static constexpr float MX_EMPTY_LSE_VALUE = -3e+99; // 与 CUDA 空 softmax 行的 LSE=-Inf 语义一致。
 
     __aicore__ inline void Init(TPipe *pipe, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse,
@@ -187,12 +198,19 @@ public:
             const uint64_t tokenOffset = static_cast<uint64_t>(queryTokenBase) + s1Idx + vecMbaseIdx;
             const uint64_t outOffset = (tokenOffset * constInfo.realN2Size + n1Idx) * constInfo.dSizeV;
             // 空行是冷路径，复用 V1 queue 作为临时零块，避免常驻占用 16 KiB UB。
-            LocalTensor<OUTPUT_T> emptyOut = stage1OutQue_[0].template AllocTensor<OUTPUT_T>();
-            Duplicate<OUTPUT_T>(emptyOut, 0.0F, actVecMSize * constInfo.dSizeV);
-            stage1OutQue_[0].template EnQue(emptyOut);
-            emptyOut = stage1OutQue_[0].template DeQue<OUTPUT_T>();
-            DataCopyPad(attentionOutGm_[outOffset], emptyOut, outCopyParams);
-            stage1OutQue_[0].template FreeTensor(emptyOut);
+            constexpr uint32_t emptyRowsPerCopy = STAGE1_OUT_UB_SIZE / (DV_BASE * sizeof(OUTPUT_T));
+            for (uint32_t row = 0U; row < actVecMSize; row += emptyRowsPerCopy) {
+                const uint32_t rows = actVecMSize - row < emptyRowsPerCopy ?
+                    actVecMSize - row : emptyRowsPerCopy;
+                LocalTensor<OUTPUT_T> emptyOut = stage1OutQue_[0].template AllocTensor<OUTPUT_T>();
+                Duplicate<OUTPUT_T>(emptyOut, 0.0F, rows * DV_BASE);
+                stage1OutQue_[0].template EnQue(emptyOut);
+                emptyOut = stage1OutQue_[0].template DeQue<OUTPUT_T>();
+                outCopyParams.blockCount = rows;
+                DataCopyPad(attentionOutGm_[outOffset + static_cast<uint64_t>(row) *
+                    constInfo.realN2Size * DV_BASE], emptyOut, outCopyParams);
+                stage1OutQue_[0].template FreeTensor(emptyOut);
+            }
 
             if constexpr (HAS_LSE) {
                 DataCopyExtParams lseCopyParams;
