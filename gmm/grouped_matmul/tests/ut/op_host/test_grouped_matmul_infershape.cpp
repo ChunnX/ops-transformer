@@ -421,7 +421,9 @@ const vector<GroupedMatmulInfershapeCase> &GetGroupedMatmulInfershapeCsvCases()
     static const vector<GroupedMatmulInfershapeCase> cases = [] {
         vector<GroupedMatmulInfershapeCase> merged = LoadCases("Ascend950");
         vector<GroupedMatmulInfershapeCase> ascend910b = LoadCases("Ascend910B");
+        vector<GroupedMatmulInfershapeCase> ascend91093 = LoadCases("Ascend910_93");
         merged.insert(merged.end(), ascend910b.begin(), ascend910b.end());
+        merged.insert(merged.end(), ascend91093.begin(), ascend91093.end());
         return merged;
     }();
     return cases;

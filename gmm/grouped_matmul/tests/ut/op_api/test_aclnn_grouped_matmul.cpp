@@ -69,6 +69,7 @@ void SetupPlatformForCase(const string &socVersion)
     static const map<string, op::SocVersion> socMap = {
         {"Ascend310P", op::SocVersion::ASCEND310P},
         {"Ascend910B", op::SocVersion::ASCEND910B},
+        {"Ascend910_93", op::SocVersion::ASCEND910_93},
         {"Ascend950", op::SocVersion::ASCEND950},
     };
     auto it = socMap.find(socVersion);

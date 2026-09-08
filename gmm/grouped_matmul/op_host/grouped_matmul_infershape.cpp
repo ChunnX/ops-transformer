@@ -455,12 +455,38 @@ static ge::graphStatus CheckNonQuant(gert::InferShapeContext *context)
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus GetGroupSize(const gert::InferShapeContext *context, GMMParamsInfo &paramsInfo)
+static size_t GetMaxGroupNum(const gert::InferShapeContext *context, const GMMAttrs &gmmAttrs,
+                             const GMMParamsInfo &paramsInfo, const std::string &socVersion)
+{
+    if (paramsInfo.numX != 1UL || paramsInfo.numWeight != 1UL || paramsInfo.numY != 1UL ||
+        gmmAttrs.groupType != GMM_SPLIT_M) {
+        return GMM_MAX_GROUP_LIST_SIZE_TENSOR;
+    }
+    auto x0Desc = context->GetDynamicInputDesc(GMM_INDEX_IN_X, 0);
+    auto w0Desc = context->GetDynamicInputDesc(GMM_INDEX_IN_WEIGHT, 0);
+    auto w0Shape = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0);
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    if (x0Desc == nullptr || w0Desc == nullptr || w0Shape == nullptr || attrs == nullptr ||
+        w0Shape->GetDimNum() != GMM_SPLIT_M_SINGLE_WEIGHT_DIM) {
+        return GMM_MAX_GROUP_LIST_SIZE_TENSOR;
+    }
+    const int64_t *groupListType = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_GROUP_LIST_TYPE);
+    if (groupListType == nullptr || (*groupListType != 0L && *groupListType != 1L)) {
+        return GMM_MAX_GROUP_LIST_SIZE_TENSOR;
+    }
+    const DataType xDtype = x0Desc->GetDataType();
+    const DataType weightDtype = w0Desc->GetDataType();
+    const bool isNonQuant = xDtype == weightDtype && (xDtype == DataType::DT_BF16 || xDtype == DataType::DT_FLOAT16 ||
+                                                      xDtype == DataType::DT_FLOAT);
+    const bool isSupportedSoc = socVersion == "Ascend910B" || socVersion == "Ascend910_93";
+    return isNonQuant && isSupportedSoc ? GMM_MAX_GROUP_LIST_SIZE_TENSOR_LARGE : GMM_MAX_GROUP_LIST_SIZE_TENSOR;
+}
+
+static ge::graphStatus GetGroupSize(const gert::InferShapeContext *context, const GMMAttrs &gmmAttrs,
+                                    GMMParamsInfo &paramsInfo, const std::string &socVersion)
 {
     size_t groupNum = 1;
-    // Tensor group lists allow up to 25600 entries in infer shape; individual
-    // quantization tiling paths keep their own stricter limits.
-    size_t maxGroupNum = GMM_MAX_GROUP_LIST_SIZE_TENSOR;
+    const size_t maxGroupNum = GetMaxGroupNum(context, gmmAttrs, paramsInfo, socVersion);
     if (paramsInfo.numX > 1UL) {
         groupNum = paramsInfo.numX;
     } else if (paramsInfo.numWeight > 1UL) {
@@ -1196,7 +1222,8 @@ static ge::graphStatus CheckShapeDiffLengthTensorList(gert::InferShapeContext *c
 }
 
 static ge::graphStatus CheckGroupListCommonTensor(const gert::InferShapeContext *context,
-                                                  const bool isRequiredGroupList, const int64_t groupNum)
+                                                  const bool isRequiredGroupList, const int64_t groupNum,
+                                                  const int64_t maxGroupListSize = GMM_MAX_GROUP_LIST_SIZE_TENSOR)
 {
     auto groupTensorOptionalShape = context->GetOptionalInputShape(GMM_INDEX_IN_GROUP_LIST);
     bool isNull = groupTensorOptionalShape == nullptr;
@@ -1207,10 +1234,10 @@ static ge::graphStatus CheckGroupListCommonTensor(const gert::InferShapeContext 
         return GRAPH_SUCCESS;
     }
     int64_t groupListSize = groupTensorOptionalShape->GetDim(0);
-    OP_CHECK_IF(groupListSize > GMM_MAX_GROUP_LIST_SIZE_TENSOR,
+    OP_CHECK_IF(groupListSize > maxGroupListSize,
                 OP_LOGE(context->GetNodeName(),
                         "When groupList type is tensor, size of groupList %ld should be less than or equal to %ld.",
-                        groupListSize, GMM_MAX_GROUP_LIST_SIZE_TENSOR),
+                        groupListSize, maxGroupListSize),
                 return GRAPH_FAILED);
     OP_CHECK_IF(!((groupListSize == groupNum && groupNum > 1) || groupNum == 1),
                 OP_LOGE(context->GetNodeName(),
@@ -1257,9 +1284,13 @@ static ge::graphStatus SplitMSingleXSingleWeightSingleY(gert::InferShapeContext 
                 OP_LOGE(context->GetNodeName(), "weight's N axis size should be even when it is int4 dtype."),
                 return GRAPH_FAILED);
     // check groupList
-    OP_CHECK_IF(CheckGroupListCommonTensor(
-                    context, true, context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0)->GetDim(0)) != GRAPH_SUCCESS,
-                OP_LOGE(context->GetNodeName(), "Invalid groupList."), return GRAPH_FAILED);
+    const int64_t maxGroupListSize = paramsInfo.groupNum > static_cast<size_t>(GMM_MAX_GROUP_LIST_SIZE_TENSOR) ?
+                                         GMM_MAX_GROUP_LIST_SIZE_TENSOR_LARGE :
+                                         GMM_MAX_GROUP_LIST_SIZE_TENSOR;
+    OP_CHECK_IF(
+        CheckGroupListCommonTensor(context, true, context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0)->GetDim(0),
+                                   maxGroupListSize) != GRAPH_SUCCESS,
+        OP_LOGE(context->GetNodeName(), "Invalid groupList."), return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 
@@ -1649,7 +1680,9 @@ static ge::graphStatus InferShape4GroupedMatmul(gert::InferShapeContext *context
     size_t numY = context->GetComputeNodeOutputNum();
     if (GetNumOfInputs(context, numX, numWeight, lenGroupList) == GRAPH_SUCCESS) { // check input shape value inside
         GMMParamsInfo paramsInfo{numX, numWeight, numY, lenGroupList, 0, 0, 0, 0, 0, PlatformID::UNKNOWN};
-        OP_CHECK_IF(GetGroupSize(context, paramsInfo) != GRAPH_SUCCESS,
+        const std::string &socVersion =
+            optionalInfo.soc_version.empty() ? platformInfo.str_info.short_soc_version : optionalInfo.soc_version;
+        OP_CHECK_IF(GetGroupSize(context, gmmAttrs, paramsInfo, socVersion) != GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "check groupNum failed"), return GRAPH_FAILED);
         OP_CHECK_IF(CheckFunctionParamsForShape(context, gmmAttrs, paramsInfo) != GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "CheckFunctionParamsForShape failed."), return GRAPH_FAILED);

@@ -66,7 +66,8 @@ static constexpr int64_t Y_SEPARATED = 1L;   // x split
 static constexpr int64_t X_SEPARATED = 2L;   // y split
 static constexpr int64_t NO_SEPARATED = 3L;  // x,y split
 static constexpr int64_t MAX_GROUP_LIST_SIZE_ARRAY = 128L;
-static constexpr int64_t MAX_GROUP_LIST_SIZE_TENSOR = 25600L;
+static constexpr int64_t MAX_GROUP_LIST_SIZE_TENSOR = 1024L;
+static constexpr int64_t MAX_GROUP_LIST_SIZE_TENSOR_LARGE = 25600L;
 static constexpr int64_t MAX_INNER_AXIS = 65535L;
 
 static constexpr size_t SEPARATED_WEIGHT_DIM = 2UL;
@@ -202,6 +203,27 @@ bool IsQuant(const DataType &xDtype, const DataType &weightDtype)
 bool IsWeightQuant(const DataType &xDtype, const DataType &weightDtype)
 {
     return ge::GetSizeByDataType(xDtype) != ge::GetSizeByDataType(weightDtype);
+}
+
+int64_t GetMaxGroupListSizeTensor(const gmm::GroupedMatmulParams &gmmParams)
+{
+    if (gmmParams.x == nullptr || gmmParams.weight == nullptr || gmmParams.y == nullptr || gmmParams.x->Size() != 1 ||
+        gmmParams.weight->Size() != 1 || gmmParams.y->Size() != 1 || (*gmmParams.weight)[0] == nullptr) {
+        return MAX_GROUP_LIST_SIZE_TENSOR;
+    }
+    const DataType weightDtype = (*gmmParams.weight)[0]->GetDataType();
+    const bool isNonQuant = gmmParams.xDtype == weightDtype &&
+                            (gmmParams.xDtype == DataType::DT_BF16 || gmmParams.xDtype == DataType::DT_FLOAT16 ||
+                             gmmParams.xDtype == DataType::DT_FLOAT);
+    const SocVersion socVersion = GetCurrentPlatformInfo().GetSocVersion();
+    const bool isSupportedSoc = socVersion == SocVersion::ASCEND910B || socVersion == SocVersion::ASCEND910_93;
+    const bool isSupportedGroupListType =
+        gmmParams.groupListType == GROUP_LIST_CUMSUM || gmmParams.groupListType == GROUP_LIST_COUNT;
+    const bool isSingleTensorSplitM =
+        gmmParams.groupType == gmm::SPLIT_M && (*gmmParams.weight)[0]->GetViewShape().GetDimNum() == DIMS_THREE_FOR_GMM;
+    return isNonQuant && isSupportedSoc && isSupportedGroupListType && isSingleTensorSplitM ?
+               MAX_GROUP_LIST_SIZE_TENSOR_LARGE :
+               MAX_GROUP_LIST_SIZE_TENSOR;
 }
 
 bool IsS8S4PseudoQuantDataFlow(const gmm::GroupedMatmulParams &gmmParams)
@@ -572,9 +594,10 @@ static aclnnStatus CheckGroupListCommonTensor(const gmm::GroupedMatmulParams &gm
                        "When groupList type is 2, the 2nd dim of groupList should be 2, but now is %ld.",
                        gmmParams.groupTensorOptional->GetViewShape().GetDim(1));
         }
-        CHECK_COND(groupListSize <= MAX_GROUP_LIST_SIZE_TENSOR, ACLNN_ERR_PARAM_INVALID,
+        const int64_t maxGroupListSize = GetMaxGroupListSizeTensor(gmmParams);
+        CHECK_COND(groupListSize <= maxGroupListSize, ACLNN_ERR_PARAM_INVALID,
                    "When groupList type is tensor, size of groupList %ld should be less than or equal to %ld.",
-                   groupListSize, MAX_GROUP_LIST_SIZE_TENSOR);
+                   groupListSize, maxGroupListSize);
         CHECK_COND(
             (groupListSize == static_cast<int64_t>(groupNum) && groupNum > 1) || groupNum == 1, ACLNN_ERR_PARAM_INVALID,
             "When groupList is not null, size of groupList(tensor) %ld should be equal to %s %lu with groupType %ld.",
