@@ -114,9 +114,12 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Init
                             Ops::Base::CeilAlign(tilingData_->ubFactor, static_cast<int64_t>(BLOCK_SIZE / sizeof(T))));
     this->pipe_->InitBuffer(idxOutQue_, DOUBLE_BUFFER,
                             Ops::Base::CeilAlign(INDEX_UB_SIZE * sizeof(TIndex), BLOCK_SIZE / sizeof(TIndex)));
-    if (tilingData_->hasTopkWeight == HAS_TOPK_WEIGHT) {
+    if (tilingData_->hasTopkWeight == HAS_TOPK_WEIGHT && tokenSize_ > 1) {
         this->pipe_->InitBuffer(topkWeightQue_, DOUBLE_BUFFER,
                                 Ops::Base::CeilAlign(INDEX_UB_SIZE * sizeof(float), BLOCK_SIZE / sizeof(float)));
+    }
+    if (tilingData_->hasTopkWeight == HAS_TOPK_WEIGHT &&
+        !(tokenSize_ == 1 && tilingData_->expertNum <= TOPK_GROUP_EXPERTS)) {
         this->pipe_->InitBuffer(topkOffsetBuf_, TOPK_GROUP_EXPERTS * sizeof(int64_t));
     }
 }
@@ -204,7 +207,11 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Proc
             continue;
         }
 
-        LocalTensor<int64_t> topkOffsets = topkOffsetBuf_.Get<int64_t>();
+        const bool useDirectH1Offsets = tokenSize_ == 1 && expertNum_ <= TOPK_GROUP_EXPERTS;
+        LocalTensor<int64_t> topkOffsets;
+        if (!useDirectH1Offsets) {
+            topkOffsets = topkOffsetBuf_.Get<int64_t>();
+        }
         const int64_t topkWeightUbSize = tilingData_->ubFactor / sizeof(float);
         const int64_t topkBlockElements = BLOCK_SIZE / sizeof(float);
         int64_t groupExpertStart = eIdxStart;
@@ -238,7 +245,9 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Proc
             } else if (currLocalRows > topkWeightUbSize) {
                 CopyTopkWeightLarge(currTokenNum, tokensSrc_, tokensDst_);
             } else {
-                topkOffsets.SetValue(groupExpertCount, tokensDst_);
+                if (!useDirectH1Offsets) {
+                    topkOffsets.SetValue(groupExpertCount, tokensDst_);
+                }
                 groupExpertCount++;
                 groupRows += currTokenNum;
                 groupLocalRows += currLocalRows;
@@ -447,7 +456,11 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Copy
     if (rows == 0) {
         return;
     }
-    LocalTensor<int64_t> topkOffsets = topkOffsetBuf_.Get<int64_t>();
+    const bool useDirectH1Offsets = tokenSize_ == 1 && expertNum_ <= TOPK_GROUP_EXPERTS;
+    LocalTensor<int64_t> topkOffsets;
+    if (!useDirectH1Offsets) {
+        topkOffsets = topkOffsetBuf_.Get<int64_t>();
+    }
     LocalTensor<float> topkLocal = queBind_.AllocTensor<float>();
     const int64_t topkBlockElements = BLOCK_SIZE / sizeof(float);
     if (rows == localRows) {
@@ -471,13 +484,35 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Copy
     queBind_.EnQue(topkLocal);
     topkLocal = queBind_.DeQue<float>();
     int64_t localOffset = 0;
+    int64_t expertDstBase = 0;
+    if (useDirectH1Offsets) {
+        for (int64_t expertBefore = 0; expertBefore < expertStart; expertBefore++) {
+            for (int64_t rankBefore = 0; rankBefore < rankNum_; rankBefore++) {
+                expertDstBase += srcRankTokenGm_.GetValue(rankBefore * expertNum_ + expertBefore);
+            }
+        }
+    }
     for (int64_t expertOffset = 0; expertOffset < expertCount; expertOffset++) {
         int64_t currRows = srcRankTokenGm_.GetValue((rankId * expertNum_) + expertStart + expertOffset);
         if (currRows > 0) {
             DataCopyExtParams copyParams(1, currRows * sizeof(float), 0, 0, 0);
-            DataCopyPad(dstTopkWeightGm_[topkOffsets.GetValue(expertOffset)], topkLocal[localOffset], copyParams);
+            int64_t dstOffset = 0;
+            if (useDirectH1Offsets) {
+                dstOffset = expertDstBase;
+                for (int64_t rankBefore = 0; rankBefore < rankId; rankBefore++) {
+                    dstOffset += srcRankTokenGm_.GetValue(rankBefore * expertNum_ + expertStart + expertOffset);
+                }
+            } else {
+                dstOffset = topkOffsets.GetValue(expertOffset);
+            }
+            DataCopyPad(dstTopkWeightGm_[dstOffset], topkLocal[localOffset], copyParams);
         }
         localOffset += Ops::Base::CeilAlign(currRows, topkBlockElements);
+        if (useDirectH1Offsets) {
+            for (int64_t rankBefore = 0; rankBefore < rankNum_; rankBefore++) {
+                expertDstBase += srcRankTokenGm_.GetValue(rankBefore * expertNum_ + expertStart + expertOffset);
+            }
+        }
     }
     queBind_.FreeTensor(topkLocal);
 }

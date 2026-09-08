@@ -24,6 +24,7 @@ constexpr int64_t NUM_TWO = 2;
 constexpr int64_t BYTE_LENGTH_FOUR = 4;
 constexpr int64_t TOPK_OFFSET_UB_SIZE = 256 * sizeof(int64_t);
 constexpr int64_t TOPK_COPY_UB_SIZE = 256 * 2 * sizeof(float);
+constexpr int64_t TOPK_GROUP_EXPERTS = 256;
 constexpr uint64_t MOE_RE_ROUTING_R_WITHOUT_SCALE = 210000;
 constexpr uint64_t MOE_RE_ROUTING_R_WITH_SCALE_FLOAT = 210100;
 /* Note: MOE_RE_ROUTING_R_WITH_SCALE_FLOAT8_E8M0 key is shared by multiple quantization types:
@@ -54,7 +55,17 @@ ge::graphStatus MoeReRoutingRTiling::SplitUb()
     // 切分ub
     int64_t reserveUbSize = INDEX_UB_SIZE * DOUBLE_BUFFER * ge::GetSizeByDataType(expertDtype_);
     if (hasTopkWeight_) {
-        reserveUbSize += TOPK_OFFSET_UB_SIZE + TOPK_COPY_UB_SIZE;
+        const bool isFp4 = tokenDtype_ == ge::DT_FLOAT4_E2M1 || tokenDtype_ == ge::DT_FLOAT4_E1M2;
+        const int64_t effectiveTokenSize = isFp4 ? Ops::Base::CeilDiv(tokenSize_, NUM_TWO) : tokenSize_;
+        // H=1 with a small expert count uses the main queue and computes offsets
+        // directly; neither auxiliary topk buffer is needed on this path.
+        const bool useH1DirectPath = effectiveTokenSize == 1 && expertNum_ <= TOPK_GROUP_EXPERTS;
+        if (effectiveTokenSize > 1) {
+            reserveUbSize += TOPK_COPY_UB_SIZE;
+        }
+        if (!useH1DirectPath) {
+            reserveUbSize += TOPK_OFFSET_UB_SIZE;
+        }
     }
     int64_t canUseUbSize = (ubSize_ - reserveUbSize) / DOUBLE_BUFFER;
     ubFactor_ = Ops::Base::CeilAlign(canUseUbSize, static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_)));
