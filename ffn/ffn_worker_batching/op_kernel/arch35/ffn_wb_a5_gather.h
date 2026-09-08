@@ -58,7 +58,11 @@ public:
         BsKPaddingCount = contextInfo_->BsKPaddingCount;
         int64_t useCore = contextInfo_->coreNum - usedCoreNum;
 
-        tokenDtypeSize_ = (contextInfo_->tokenDtype == NUM_TWO) ? sizeof(int8_t) : sizeof(half); // attr 2: int8
+        // 搬运单位统一为字节；FP4 的两个逻辑元素共用一个字节。
+        tokenRowBytes_ = contextInfo_->tokenDtype <= 1 ? contextInfo_->H * sizeof(half) :
+                         (contextInfo_->tokenDtype == 5 ? contextInfo_->H / NUM_TWO : contextInfo_->H);
+
+        scaleRowBytes_ = contextInfo_->tokenDtype >= 3 ? CeilDiv(contextInfo_->H, BLOCK_BYTES) : 0;
 
         sessionNumBlockAlign_ = Align(contextInfo_->A, sizeof(int32_t));
         int64_t validGatherIdxLength = contextInfo_->validGatherIdxLength;
@@ -73,9 +77,9 @@ public:
 
         int64_t maxTokenSize = ubAvailable / BUFFER_NUM;
         maxBlockSize_ = maxTokenSize - (contextInfo_->tokenDtype == TOKEN_KIND_TWO ? BLOCK_BYTES : 0);
-        maxBlockSize_ = (maxBlockSize_ / BLOCK_BYTES * BLOCK_BYTES) / tokenDtypeSize_;
-        hBlocks_ = (contextInfo_->H + maxBlockSize_ - 1) / maxBlockSize_;
-        lastHBlockSize_ = contextInfo_->H - (hBlocks_ - 1) * maxBlockSize_;
+        maxBlockSize_ = maxBlockSize_ / BLOCK_BYTES * BLOCK_BYTES;
+        hBlocks_ = (tokenRowBytes_ + maxBlockSize_ - 1) / maxBlockSize_;
+        lastHBlockSize_ = tokenRowBytes_ - (hBlocks_ - 1) * maxBlockSize_;
 
         int64_t blockIdx = GetBlockIdx();
         int64_t perCoreRows = CeilDiv(validGatherIdxLength, useCore);
@@ -89,7 +93,7 @@ public:
             lastLoopRows_ = perCoreRows - (CeilDiv(perCoreRows, PER_LOOP_ROWS) - 1) * PER_LOOP_ROWS;
             rowLoops_ = (perCoreRows + PER_LOOP_ROWS - 1) / PER_LOOP_ROWS;
         }
-        uint64_t SplitY = perCoreRows * contextInfo_->H * tokenDtypeSize_;
+        uint64_t SplitY = perCoreRows * tokenRowBytes_;
 
         GM_ADDR tokenDataBufAddr = reinterpret_cast<GM_ADDR>(contextInfo_->bufferPtr.tokenDataBuf);
         GM_ADDR sessionIdsBufAddr = reinterpret_cast<GM_ADDR>(contextInfo_->bufferPtr.sessionIdsBuf);
@@ -114,6 +118,11 @@ public:
             dynamicScaleOutGm_.SetGlobalBuffer((__gm__ float *)dynamic_scale + blockIdx * perCoreRows);
         }
 
+        if (scaleRowBytes_ > 0) {
+            mxScaleOutGm_.SetGlobalBuffer((__gm__ int8_t *)dynamic_scale +
+                                          blockIdx * perCoreRows * scaleRowBytes_);
+        }
+
         InitBuffers(pipe);
     }
 
@@ -121,7 +130,7 @@ public:
     __aicore__ inline void InitBuffers(TPipe *pipe)
     {
         int64_t blockBufferSize =
-            maxBlockSize_ * tokenDtypeSize_ + (contextInfo_->tokenDtype == TOKEN_KIND_TWO ? BLOCK_BYTES : 0);
+            maxBlockSize_ + (contextInfo_->tokenDtype == TOKEN_KIND_TWO ? BLOCK_BYTES : 0);
         pipe->InitBuffer(inQueueX_, BUFFER_NUM, blockBufferSize);
 
         // PER_LOOP_ROWS 为长度 包含 额外5 + 1个输出;
@@ -231,18 +240,21 @@ public:
             outAllLocal.SetValue(PER_LOOP_ROWS * VAR_TOKEN_IDX + indicesIndex, bsIndices);
             outAllLocal.SetValue(PER_LOOP_ROWS * VAR_EXPERT_OFFSETS_IDX + indicesIndex, kIndices);
 
+            const int64_t rowOffset = sessionIndices * strideSession + microbatchIndices * strideMicroBatch +
+                                      bsIndices * strideBs + kIndices * strideK;
             for (int64_t hBlock = 0; hBlock < hBlocks_; hBlock++) {
                 int64_t hStart = hBlock * maxBlockSize_;
                 int64_t hSize = (hBlock == hBlocks_ - 1) ? lastHBlockSize_ : maxBlockSize_;
-                int64_t globalXOffset = sessionIndices * strideSession + microbatchIndices * strideMicroBatch +
-                                        bsIndices * strideBs + kIndices * strideK + hStart;
+                int64_t globalXOffset = rowOffset + hStart;
 
                 bool isLastBlock = (hBlock == hBlocks_ - 1);
                 CopyXIn(globalXOffset, hSize, indicesIndex, outAllLocal[PER_LOOP_ROWS * VAR_NUM], isLastBlock);
                 int64_t outputOffset =
-                    (indicesIndex + currentOuterStart) * contextInfo_->H * tokenDtypeSize_ + hStart * tokenDtypeSize_;
+                    (indicesIndex + currentOuterStart) * tokenRowBytes_ + hStart;
                 CopyXOut(outputOffset, hSize);
             }
+            CopyMxScale(rowOffset + tokenRowBytes_,
+                        (indicesIndex + currentOuterStart) * scaleRowBytes_);
         }
     }
 
@@ -367,7 +379,7 @@ private:
                                    const LocalTensor<int32_t> &dynamicScaleLocal, bool isLastBlock)
     {
         LocalTensor<int8_t> xLocal = inQueueX_.AllocTensor<int8_t>();
-        uint32_t copySize = curLoopCols * tokenDtypeSize_;
+        uint32_t copySize = curLoopCols;
         DataCopyExtParams copyParams0{1, copySize, 0, 0, 0};
         DataCopyPadExtParams<int8_t> padParams0{false, 0, 0, 0};
         DataCopyPad(xLocal, tokenDataBufGm_[xSrcOffset], copyParams0, padParams0);
@@ -382,11 +394,28 @@ private:
         inQueueX_.EnQue(xLocal);
     }
 
+    // E8M0 按字节搬运，复用 token 队列；超 UB 的 scale 行同样分块。
+    __aicore__ inline void CopyMxScale(int64_t srcOffset, int64_t dstOffset)
+    {
+        for (int64_t offset = 0; offset < scaleRowBytes_; offset += maxBlockSize_) {
+            const int64_t remaining = scaleRowBytes_ - offset;
+            const uint32_t count = static_cast<uint32_t>(remaining < maxBlockSize_ ? remaining : maxBlockSize_);
+            LocalTensor<int8_t> local = inQueueX_.AllocTensor<int8_t>();
+            DataCopyExtParams params{1, count, 0, 0, 0};
+            DataCopyPadExtParams<int8_t> padding{false, 0, 0, 0};
+            DataCopyPad(local, tokenDataBufGm_[srcOffset + offset], params, padding);
+            inQueueX_.EnQue(local);
+            local = inQueueX_.DeQue<int8_t>();
+            DataCopyPad(mxScaleOutGm_[dstOffset + offset], local, params);
+            inQueueX_.FreeTensor(local);
+        }
+    }
+
     __aicore__ inline void CopyXOut(int64_t xDstOffset, int64_t curLoopCols)
     {
         LocalTensor<int8_t> xLocal = inQueueX_.DeQue<int8_t>();
 
-        DataCopyExtParams copyParams2{1, static_cast<uint32_t>(curLoopCols * tokenDtypeSize_), 0, 0, 0};
+        DataCopyExtParams copyParams2{1, static_cast<uint32_t>(curLoopCols), 0, 0, 0};
         DataCopyPad(yOutGm_[xDstOffset], xLocal, copyParams2);
 
         inQueueX_.FreeTensor(xLocal);
@@ -422,6 +451,7 @@ private:
     GlobalTensor<int32_t> tokenIdsOutGm_;
     GlobalTensor<int32_t> expertOffsetsOutGm_;
     GlobalTensor<float> dynamicScaleOutGm_;
+    GlobalTensor<int8_t> mxScaleOutGm_;
 
     LocalTensor<int32_t> sessionIdsLocal_;
     LocalTensor<int32_t> microBatchIdsLocal_;
@@ -431,7 +461,8 @@ private:
     int64_t needCoreNum_ = 0;
     int64_t lastLoopRows_ = 0;
     int64_t rowLoops_ = 0;
-    int64_t tokenDtypeSize_ = 0;
+    int64_t tokenRowBytes_ = 0;
+    int64_t scaleRowBytes_ = 0;
     int64_t sessionNumBlockAlign_ = 0;
 
     int64_t maxBlockSize_ = 0;
