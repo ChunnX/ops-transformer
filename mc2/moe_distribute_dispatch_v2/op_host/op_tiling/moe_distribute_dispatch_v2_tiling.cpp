@@ -2140,6 +2140,11 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3Ti
     tilingData->moeDistributeDispatchV2Info.reserved1 = config.enableIndependentSharedExpert;
     tilingData->moeDistributeDispatchV2Info.moeExpertDtype = static_cast<uint32_t>(config.moeExpertDtype);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
+    context->SetTilingKey(tilingKey);
+
+    OP_TILING_CHECK(CheckAndSetPlatformInfo(context, tilingData, isLayered, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "Tiling set platformInfo Failed"), return ge::GRAPH_FAILED);
+
     if (config.isMc2Context) {
         const auto &info = tilingData->moeDistributeDispatchV2Info;
         const char *role = info.epRankId < info.sharedExpertRankNum ? "shared" : "moe";
@@ -2155,11 +2160,6 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3Ti
                 static_cast<unsigned long long>(tilingKey), static_cast<unsigned long long>(info.totalUbSize),
                 static_cast<unsigned long long>(info.totalWinSizeEp));
     }
-    context->SetTilingKey(tilingKey);
-
-    OP_TILING_CHECK(CheckAndSetPlatformInfo(context, tilingData, isLayered, nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "Tiling set platformInfo Failed"), return ge::GRAPH_FAILED);
-
     // A5 CumSum 最小 tmp 大小
     if (tilingData->moeDistributeDispatchV2Info.expertTokenNumsType != 0) {
         tilingData->moeDistributeDispatchV2Info.cumsumTmpMinSize = 0;

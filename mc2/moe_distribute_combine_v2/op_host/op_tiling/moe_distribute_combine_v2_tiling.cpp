@@ -2159,6 +2159,12 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3Tili
     tilingData->moeDistributeCombineV2Info.reserved1 = config.enableIndependentSharedExpert;
     uint64_t tilingKey = CalTilingKey(commQuantMode, isLayered);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
+    context->SetTilingKey(tilingKey);
+
+    OP_TILING_CHECK(CheckAndSetPlatformInfo(context, tilingData, isLayered, nodeName, config) != ge::GRAPH_SUCCESS,
+                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "Tiling set platformInfo Failed"),
+                    return ge::GRAPH_FAILED);
+
     if (config.isMc2Context) {
         const auto &info = tilingData->moeDistributeCombineV2Info;
         const char *role = info.epRankId < info.sharedExpertRankNum ? "shared" : "moe";
@@ -2171,12 +2177,6 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3Tili
                 static_cast<unsigned long long>(tilingKey), static_cast<unsigned long long>(info.totalUbSize),
                 static_cast<unsigned long long>(info.totalWinSizeEp));
     }
-    context->SetTilingKey(tilingKey);
-
-    OP_TILING_CHECK(CheckAndSetPlatformInfo(context, tilingData, isLayered, nodeName, config) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "Tiling set platformInfo Failed"),
-                    return ge::GRAPH_FAILED);
-
     PrintTilingDataInfo(nodeName, *tilingData);
 
     return ge::GRAPH_SUCCESS;
