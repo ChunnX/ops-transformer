@@ -347,17 +347,17 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
     if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
 #if IS_BLAZE
         if constexpr (GmmCubeBiasSupported<DTYPE_X, DTYPE_BIAS>) {
-        if constexpr (wFormat == CubeFormat::NZ) {
-            GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
-                                   AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn,
-                                   AscendC::Te::NDExtLayoutPtn>(x, weight, bias, scale, groupList, perTokenScale, y,
-                                                                user1, tiling);
-        } else {
-            GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
-                                   AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn,
-                                   AscendC::Te::NDExtLayoutPtn>(x, weight, bias, scale, groupList, perTokenScale, y,
-                                                                user1, tiling);
-        }
+            if constexpr (wFormat == CubeFormat::NZ) {
+                GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
+                                    AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn,
+                                    AscendC::Te::NDExtLayoutPtn>(x, weight, bias, scale, groupList, perTokenScale, y,
+                                                                    user1, tiling);
+            } else {
+                GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
+                                    AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn,
+                                    AscendC::Te::NDExtLayoutPtn>(x, weight, bias, scale, groupList, perTokenScale, y,
+                                                                    user1, tiling);
+            }
         } else {
             GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
             GMM_QUANT_IMPL_CLASS(false, false, GmmASWKernel);
@@ -370,17 +370,17 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                          KERNEL_TYPE == GMM_DEQUANT_FIXP) {
 #if IS_BLAZE
         if constexpr (GmmCubeBiasSupported<DTYPE_X, DTYPE_BIAS>) {
-        if constexpr (wFormat == CubeFormat::NZ) {
-            GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
-                                   AscendC::Te::NDExtLayoutPtn, AscendC::Te::ZNLayoutPtn,
-                                   AscendC::Te::NDExtLayoutPtn>(x, weight, bias, scale, groupList, perTokenScale, y,
-                                                                user1, tiling);
-        } else {
-            GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
-                                   AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn,
-                                   AscendC::Te::NDExtLayoutPtn>(x, weight, bias, scale, groupList, perTokenScale, y,
-                                                                user1, tiling);
-        }
+            if constexpr (wFormat == CubeFormat::NZ) {
+                GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
+                                    AscendC::Te::NDExtLayoutPtn, AscendC::Te::ZNLayoutPtn,
+                                    AscendC::Te::NDExtLayoutPtn>(x, weight, bias, scale, groupList, perTokenScale, y,
+                                                                    user1, tiling);
+            } else {
+                GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
+                                    AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn,
+                                    AscendC::Te::NDExtLayoutPtn>(x, weight, bias, scale, groupList, perTokenScale, y,
+                                                                    user1, tiling);
+            }
         } else {
             GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
             GMM_QUANT_IMPL_CLASS(false, true, GmmASWKernel);
