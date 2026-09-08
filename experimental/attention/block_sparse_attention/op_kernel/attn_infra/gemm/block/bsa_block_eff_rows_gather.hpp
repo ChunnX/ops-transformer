@@ -27,6 +27,8 @@ struct EffRowsCtx {
     bool enabled = false;
     uint32_t *curBlockIdx = nullptr;
     uint32_t *curBlockCopied = nullptr;
+    bool gather = true; // Per-head gathers across blocks; per-tile copies one block segment.
+    int64_t srcOffset = 0;
 };
 
 // effRows 模式的搬运：按 effectiveY 逐 block 搬移填充目标 tile
@@ -37,9 +39,27 @@ template <bool Transposed, class TensorB, class TensorL1B, class CopyFn>
 __aicore__ inline uint32_t EffRowsGatherCopy(TensorB &gBTensor, TensorL1B &l1BTensorTla,
                                              AscendC::GlobalTensor<int32_t> gSparseBlockIdx, const EffRowsCtx &ctx,
                                              uint32_t yBlockNumRsvd, uint32_t kvSeqlen, uint32_t blockShapeY,
-                                             uint32_t embed, uint32_t targetLen, CopyFn copyFn)
+                                             uint32_t embed, uint32_t targetLen, CopyFn copyFn,
+                                             uint32_t tileInnerOffset = 0)
 {
-    if (!ctx.enabled || ctx.curBlockIdx == nullptr || ctx.curBlockCopied == nullptr) {
+    if (!ctx.enabled) {
+        return 0;
+    }
+    if (!ctx.gather) {
+        // K can load several L1 slices of the same tile. Include the slice offset.
+        int64_t start = ctx.srcOffset + tileInnerOffset;
+        if constexpr (Transposed) {
+            auto dst = tla::GetTile(l1BTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(embed, targetLen));
+            auto src = tla::GetTile(gBTensor, tla::MakeCoord(0, start), tla::MakeShape(embed, targetLen));
+            copyFn(dst, src);
+        } else {
+            auto dst = tla::GetTile(l1BTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(targetLen, embed));
+            auto src = tla::GetTile(gBTensor, tla::MakeCoord(start, 0), tla::MakeShape(targetLen, embed));
+            copyFn(dst, src);
+        }
+        return targetLen;
+    }
+    if (ctx.curBlockIdx == nullptr || ctx.curBlockCopied == nullptr) {
         return 0;
     }
     uint32_t dealtLenAccum = 0;

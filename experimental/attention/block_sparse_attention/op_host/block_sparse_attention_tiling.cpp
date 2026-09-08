@@ -768,11 +768,12 @@ ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
         OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) is only supported on chip 950.");
         return ge::GRAPH_FAILED;
     }
-    // effRows 仅在 FP8 + per-head kv scale([B, kvHeads] 两维) 分支接入。
+    // FP8 supports block-local tiles (mode 1) and per-head gathering (mode 20).
     bool kvScalePerHead = IsKvScalePerHeadShape(bsaContext);
-    if (dataType_ != ge::DT_FLOAT8_E4M3FN || !kvScalePerHead) {
+    if (dataType_ != ge::DT_FLOAT8_E4M3FN || (quantMode_ != FP8_QUANT && quantMode_ != FP8_PERHEAD_QUANT) ||
+        (quantMode_ == FP8_PERHEAD_QUANT && !kvScalePerHead)) {
         OP_LOGE(bsaContext->GetNodeName(),
-                "attenMask (blockEffRows) is only supported for fp8 full-quant with per-head kv scale (quantMode=20, "
+                "attenMask (blockEffRows) requires FP8 per-tile (quantMode=1) or per-head (quantMode=20, "
                 "k/v scale 2D), but got dtype=%s, blockShapeY=%u, perHeadKvScale=%d.",
                 DataTypeToString(dataType_).c_str(), blockShapeY_, static_cast<int>(kvScalePerHead));
         return ge::GRAPH_FAILED;
@@ -880,6 +881,10 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
             return ge::GRAPH_FAILED;
         }
         if (dequantScaleDimNum == DIM_NUM_2) {
+            if (quantMode_ != FP8_PERHEAD_QUANT) {
+                OP_LOGE(bsaContext->GetNodeName(), "2D per-head scales require quantMode=20.");
+                return ge::GRAPH_FAILED;
+            }
             if (parameterIndex == Q_DEQUANT_SCALE_INDEX) {
                 OP_LOGE(
                     bsaContext->GetNodeName(),
@@ -1434,7 +1439,7 @@ void BSATiling::CalcMatmulPhaseL1TileInfo950()
         pL1BufNum_ = TRIO_BUF;
     }
     if (quantMode_ == FP8_QUANT || quantMode_ == FP8_PERHEAD_QUANT) {
-        // quantMode=1、20（effRows） 均为 fp8 全量化 + 512 kv tile, L1 tile 配置必须一致
+        // Both FP8 modes use the full-quant L1 configuration for the selected kv tile size.
         B8FullQuantKVPL1TileInfo950(qBaseTileAligned128, embeddingSizeAligned128, kvBaseTileAligned128);
     }
 }
