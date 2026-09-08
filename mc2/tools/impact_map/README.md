@@ -20,10 +20,10 @@ mc2/tools/
 └── impact_map/
     ├── common/                  # mc2/common 头文件的映射
     │   ├── A2.yaml / A3.yaml / A5.yaml
-    │   └── unref.yaml           # 零引用头文件清单
+    │   └── zero_reference.yaml           # 零引用头文件清单
     └── 3rd/                     # mc2/3rd 头文件的映射
         ├── A2.yaml / A3.yaml / A5.yaml
-        └── unref.yaml
+        └── zero_reference.yaml
 ```
 
 芯片对应关系：A2=ascend910b，A3=ascend910_93，A5=ascend950。
@@ -48,9 +48,9 @@ python3 mc2/tools/gen_common_impact_yaml.py /path/to/another_checkout [输出目
 |---|---|
 | 非 .h/.hpp/.cuh/.cpp 的一切（.py/.json/.ini/.sh/.csv/.txt/.md 等，不限路径） | 全量 |
 | .cpp 且同目录无同名 .h | 全量 |
-| .cpp 且同目录同名 .h 在 unref.yaml | 不触发（备注：疑似死代码，建议人工复核） |
+| .cpp 且同目录同名 .h 在 zero_reference.yaml | 不触发（备注：疑似死代码，建议人工复核） |
 | .cpp 且同目录同名 .h 在本表 | 测试同名 .h 条目列出的算子 |
-| .h 在 unref.yaml | 人工确认（备注：该头当前无任何引用） |
+| .h 在 zero_reference.yaml | 人工确认（备注：该头当前无任何引用） |
 | .h 在本表 | 测试条目 ops 列出的算子；`ops: []` 表示该芯片无引用算子，不用测 |
 
 **最后一步（消费侧负责）**：以上得到的算子集还需**叠加 CMake `*_depends`
