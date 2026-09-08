@@ -127,16 +127,18 @@ function(pack_built_in)
       DESTINATION share/info/ops_transformer/script
   )
 
-  # 打包 cann_ops_transformer whl 文件
-  set(WHL_SOURCE_DIR "${CMAKE_SOURCE_DIR}/torch_extension/dist")
-  file(GLOB WHL_FILES "${WHL_SOURCE_DIR}/cann_ops_transformer-*.whl")
-  if(WHL_FILES)
-      install(FILES ${WHL_FILES}
-          DESTINATION ${WHL_INSTALL_DIR}/es_packages/whl
-      )
-      message(STATUS "Including whl package: ${WHL_FILES}")
-  else()
-      message(WARNING "Whl package not found in ${WHL_SOURCE_DIR}")
+  if(NOT NATIVE_ONLY)
+    # 打包 cann_ops_transformer whl 文件
+    set(WHL_SOURCE_DIR "${CMAKE_SOURCE_DIR}/torch_extension/dist")
+    file(GLOB WHL_FILES "${WHL_SOURCE_DIR}/cann_ops_transformer-*.whl")
+    if(WHL_FILES)
+        install(FILES ${WHL_FILES}
+            DESTINATION ${WHL_INSTALL_DIR}/es_packages/whl
+        )
+        message(STATUS "Including whl package: ${WHL_FILES}")
+    else()
+        message(WARNING "Whl package not found in ${WHL_SOURCE_DIR}")
+    endif()
   endif()
 
   string(FIND "${ASCEND_COMPUTE_UNIT}" ";" SEMICOLON_INDEX)
