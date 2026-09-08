@@ -64,7 +64,9 @@ static constexpr uint32_t RECV_META_FIELDS = 5U;
 static constexpr uint32_t META_TOKEN_IDX_OFFSET = 1U;
 static constexpr uint32_t META_TOPK_IDX_OFFSET = 2U;
 static constexpr uint32_t META_RECV_X_IDX_OFFSET = 4U;
-static constexpr uint32_t META_CHUNK_TOKEN_MAX = 256U;
+static constexpr uint32_t META_CHUNK_TOKEN_MAX = 128U;
+static constexpr uint32_t LOCAL_INDEX_STAGE_STRIDE = UB_ALIGN / sizeof(int32_t);
+static constexpr uint32_t LOCAL_INDEX_STAGE_COUNT = 128U;
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
 class MoeEpCombineEpilogue {
@@ -86,9 +88,7 @@ private:
     __aicore__ inline void MaskCheck();
     __aicore__ inline bool WaitDispatch(uint32_t completionChannelCount);
     __aicore__ inline void ClearCompletionFlags();
-    __aicore__ inline void SendLocalToken(uint32_t recvXIdx, GM_ADDR dstAddr);
-    __aicore__ inline void SendLocalWeight(uint32_t recvXIdx, GM_ADDR dstAddr);
-    __aicore__ inline void ProcessLocalData();
+    __aicore__ inline void BuildLocalIndexMap();
     __aicore__ inline void ProcessTopKToken(uint32_t tokenIndex);
     __aicore__ inline void RecvPhaseReduce();
     __aicore__ inline GM_ADDR GetUrmaWinAddrByRankId(uint32_t rankId, uint64_t offset)
@@ -134,6 +134,7 @@ private:
     GlobalTensor<int32_t> recvSrcMetadataGm_;
     GlobalTensor<int32_t> recvRankOffsetsGm_;
     GlobalTensor<float> topkWeightsGm_;
+    GlobalTensor<int32_t> localRecvXIndexGm_;
     GlobalTensor<XType> combinedXGm_;
     GlobalTensor<int32_t> topkIdxGm_;
     GlobalTensor<float> combinedTopkWeightsGm_;
@@ -153,7 +154,9 @@ private:
     TBuf<> waitSumBuf_;
     TBuf<> rankOffsetsBuf_;
     TBuf<> metadataBuf_;
+    TBuf<> localIndexBuf_;
     LocalTensor<int32_t> rankOffsetsTensor_;
+    LocalTensor<int32_t> localIndexTensor_;
 
     TBuf<> compareBuf_;
     TBuf<> rowTmpFloatBuf_;
@@ -195,6 +198,10 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     xGm_.SetGlobalBuffer((__gm__ XType *)x);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t *)recvSrcMetadata);
     recvRankOffsetsGm_.SetGlobalBuffer((__gm__ int32_t *)recvRankOffsets);
+    GM_ADDR userWorkspace = GetUserWorkspace(workspace);
+    localRecvXIndexGm_.SetGlobalBuffer(
+        reinterpret_cast<__gm__ int32_t *>(userWorkspace + tilingData_->localIndexWorkspaceOffset),
+        static_cast<uint64_t>(numTokens_) * topK_);
     if constexpr (HasTopkWeight == 1) {
         topkWeightsGm_.SetGlobalBuffer((__gm__ float *)topkWeights);
     }
@@ -283,6 +290,8 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     uint32_t metadataChunkBytes =
         Ceil(static_cast<uint64_t>(metadataChunkTokens_) * RECV_META_FIELDS * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(metadataBuf_, metadataChunkBytes);
+    tpipe_->InitBuffer(localIndexBuf_, LOCAL_INDEX_STAGE_COUNT * UB_ALIGN);
+    localIndexTensor_ = localIndexBuf_.Get<int32_t>();
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
@@ -378,42 +387,25 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
-__aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::SendLocalToken(uint32_t recvXIdx,
-                                                                                                  GM_ADDR dstAddr)
+__aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::BuildLocalIndexMap()
 {
-    GlobalTensor<XType> outToken;
-    outToken.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(dstAddr));
-    DataCopyPadParams padParams{false, 0U, 0U, 0U};
-    DataCopyParams copyParams{1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
-    LocalTensor<XType> tokenTensor = xInQue_.AllocTensor<XType>();
-    DataCopyPad(tokenTensor, xGm_[static_cast<uint64_t>(recvXIdx) * axisH_], copyParams, padParams);
-    xInQue_.EnQue(tokenTensor);
-    tokenTensor = xInQue_.DeQue<XType>();
-    DataCopyPad(outToken, tokenTensor, copyParams);
-    xInQue_.FreeTensor<XType>(tokenTensor);
-}
-
-template <TemplateMoeEpCombineEpilogueTypeClass>
-__aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::SendLocalWeight(uint32_t recvXIdx,
-                                                                                                   GM_ADDR dstAddr)
-{
-    if constexpr (HasTopkWeight == 1) {
-        GlobalTensor<float> outWeight;
-        outWeight.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(dstAddr));
-        DataCopyParams copyParams{1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
-        DataCopyPadParams padParams{false, 0U, 0U, 0U};
-        LocalTensor<float> weightTensor = weightQue_.AllocTensor<float>();
-        DataCopyPad(weightTensor, topkWeightsGm_[recvXIdx], copyParams, padParams);
-        weightQue_.EnQue(weightTensor);
-        weightTensor = weightQue_.DeQue<float>();
-        DataCopyPad(outWeight, weightTensor, copyParams);
-        weightQue_.FreeTensor<float>(weightTensor);
+    uint32_t slotStart = 0U;
+    uint32_t slotEnd = 0U;
+    uint32_t slotCount = 0U;
+    SplitToCore(numTokens_ * topK_, aivNum_, slotStart, slotEnd, slotCount);
+    Duplicate<int32_t>(localIndexTensor_, 0, LOCAL_INDEX_STAGE_COUNT * LOCAL_INDEX_STAGE_STRIDE);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    for (uint32_t clearStart = slotStart; clearStart < slotEnd; clearStart += LOCAL_INDEX_STAGE_COUNT) {
+        uint32_t clearCount = slotEnd - clearStart < LOCAL_INDEX_STAGE_COUNT ?
+                                  slotEnd - clearStart :
+                                  LOCAL_INDEX_STAGE_COUNT;
+        DataCopyExtParams clearParams{1U, clearCount * sizeof(int32_t), 0U, 0U, 0U};
+        DataCopyPad(localRecvXIndexGm_[clearStart], localIndexTensor_, clearParams);
     }
-}
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    // Clearing is partitioned by destination slot, while metadata is partitioned by source row.
+    SyncAll<true>();
 
-template <TemplateMoeEpCombineEpilogueTypeClass>
-__aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::ProcessLocalData()
-{
     uint64_t localBegin = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(rankId_));
     uint64_t localEnd = static_cast<uint32_t>(rankOffsetsTensor_.GetValue(rankId_ + 1U));
     localBegin = localBegin < actualA_ ? localBegin : actualA_;
@@ -435,8 +427,6 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
     LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
     DataCopyPadExtParams<int32_t> metadataPadParams{false, 0U, 0U, 0U};
-    GM_ADDR localDataBase = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_);
-    GM_ADDR localStateBase = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_);
     for (uint64_t chunkStart = rangeBegin; chunkStart < rangeEnd; chunkStart += metadataChunkTokens_) {
         uint64_t chunkEnd = chunkStart + metadataChunkTokens_ < rangeEnd ? chunkStart + metadataChunkTokens_ : rangeEnd;
         uint32_t chunkCount = static_cast<uint32_t>(chunkEnd - chunkStart);
@@ -448,16 +438,21 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
             int32_t srcTokenIdx = metadataLocal.GetValue(metaOffset + META_TOKEN_IDX_OFFSET);
             int32_t srcTopKIdx = metadataLocal.GetValue(metaOffset + META_TOPK_IDX_OFFSET);
             int32_t recvXIdx = metadataLocal.GetValue(metaOffset + META_RECV_X_IDX_OFFSET);
+            localIndexTensor_.SetValue(i * LOCAL_INDEX_STAGE_STRIDE, recvXIdx + 1);
+        }
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        DataCopyExtParams indexCopyParams{1U, static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
+        for (uint32_t i = 0U; i < chunkCount; ++i) {
+            uint32_t metaOffset = i * RECV_META_FIELDS;
+            int32_t srcTokenIdx = metadataLocal.GetValue(metaOffset + META_TOKEN_IDX_OFFSET);
+            int32_t srcTopKIdx = metadataLocal.GetValue(metaOffset + META_TOPK_IDX_OFFSET);
             uint64_t dstSlot =
                 static_cast<uint64_t>(static_cast<uint32_t>(srcTokenIdx)) * topK_ + static_cast<uint32_t>(srcTopKIdx);
-            SendLocalToken(static_cast<uint32_t>(recvXIdx), localDataBase + dstSlot * tilingData_->cfg.perSlotBytes);
-            if constexpr (HasTopkWeight == 1) {
-                SendLocalWeight(static_cast<uint32_t>(recvXIdx), localStateBase + dstSlot * WIN_ADDR_ALIGN);
-            }
+            DataCopyPad(localRecvXIndexGm_[dstSlot], localIndexTensor_[i * LOCAL_INDEX_STAGE_STRIDE], indexCopyParams);
         }
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
         SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
@@ -467,15 +462,28 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(hAlignSize_), 0U, 0U};
     DataCopyParams weightCopyParams = {1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
+    DataCopyExtParams indexCopyParams{1U, static_cast<uint32_t>(topK_ * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> indexPadParams{false, 0U, 0U, 0U};
+    DataCopyPad(localIndexTensor_, localRecvXIndexGm_[static_cast<uint64_t>(tokenIndex) * topK_], indexCopyParams,
+                indexPadParams);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
     for (uint32_t topkId = 0U; topkId < topK_; topkId++) {
-        uint64_t slotOffset = (static_cast<uint64_t>(tokenIndex) * topK_ + topkId) * tilingData_->cfg.perSlotBytes;
-        GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + slotOffset;
-        GlobalTensor<XType> srcTokenTensor;
-        srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(wAddr));
         bool maskExpertFlag = maskGenerateTensor_.GetValue((tokenIndex - tStart_) * topK_ + topkId);
         if (!maskExpertFlag) {
             continue;
         }
+        int32_t localRecvXIndex = localIndexTensor_.GetValue(topkId) - 1;
+        GM_ADDR tokenAddr = nullptr;
+        if (localRecvXIndex >= 0) {
+            tokenAddr = reinterpret_cast<GM_ADDR>(
+                xGm_.GetPhyAddr(static_cast<uint64_t>(localRecvXIndex) * axisH_));
+        } else {
+            uint64_t slotOffset =
+                (static_cast<uint64_t>(tokenIndex) * topK_ + topkId) * tilingData_->cfg.perSlotBytes;
+            tokenAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + slotOffset;
+        }
+        GlobalTensor<XType> srcTokenTensor;
+        srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(tokenAddr));
         LocalTensor<XType> xLocal = xInQue_.AllocTensor<XType>();
         DataCopyPad(xLocal, srcTokenTensor, xCopyParams, padParams);
         xInQue_.EnQue(xLocal);
@@ -485,8 +493,10 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
         xInQue_.FreeTensor(xIn);
 
         if constexpr (HasTopkWeight == 1) {
-            GM_ADDR weightAddr = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) +
-                                 (tokenIndex * topK_ + topkId) * WIN_ADDR_ALIGN;
+            GM_ADDR weightAddr = localRecvXIndex >= 0 ?
+                                     reinterpret_cast<GM_ADDR>(topkWeightsGm_.GetPhyAddr(localRecvXIndex)) :
+                                     GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) +
+                                         (tokenIndex * topK_ + topkId) * WIN_ADDR_ALIGN;
             GlobalTensor<float> srcWeightTensor;
             srcWeightTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(weightAddr));
             LocalTensor<float> weightLocal = weightQue_.AllocTensor<float>();
@@ -511,8 +521,8 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     tpipe_->InitBuffer(stateBuf_, flagBufferBytes);
     tpipe_->InitBuffer(waitSumBuf_, UB_ALIGN);
 
-    // Remote NBI writes can progress while every AIV fills its share of the local-rank slots.
-    ProcessLocalData();
+    // Remote NBI writes can progress while every AIV builds its share of the local direct-read index.
+    BuildLocalIndexMap();
     if (aivId_ == 0U) {
         while (!WaitDispatch(completionChannelCount)) {
         }
