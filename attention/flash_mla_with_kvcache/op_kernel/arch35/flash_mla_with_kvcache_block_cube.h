@@ -75,11 +75,11 @@ public:
     static constexpr uint32_t KV_L1_BUFFER_ID1 = 5U;
     static constexpr uint32_t KV_L1_BUFFER_ID2 = 6U;
     static constexpr uint32_t L0A_BUFFER_ID0 = 7U;
-    static constexpr uint32_t L0A_BUFFER_ID1 = 8U;
     static constexpr uint32_t L0B_BUFFER_ID0 = 9U;
     static constexpr uint32_t L0B_BUFFER_ID1 = 10U;
     static constexpr uint32_t Q_L0A_CACHE_ID0 = 11U;
     static constexpr uint32_t Q_L0A_CACHE_ID1 = 12U;
+    static constexpr uint32_t Q_L0A_CACHE_ID2 = 13U;
 
     // ================== 静态布局常量（表 1，数值 = 现状容量）==================
     // UB CV 区（VECIN，与 vec 侧同一偏移别名）：
@@ -96,12 +96,12 @@ public:
     // L0C（CO1）：2×128K = 256K 静态（表 2 注 3）
     static constexpr uint32_t L0C_BUFCNT = 2U;
     static constexpr uint32_t L0C_BUF_BYTES = 128U * 1024U;
-    // L0A：前两个 16K 槽缓存 Q 的首个 112 和末尾 128 宽 K 分块；后两个 16K 槽供其余 Q/P 双缓冲。
+    // L0A：前三个 16K 槽缓存交替出现的 128 宽 Q 分块；末槽供两个 96 宽 Q 分块及 P 复用。
     // L0B：2×32K 双缓冲，独立游标跨 mm1/mm2 轮转。
     static constexpr uint32_t BUFFER_SIZE_BYTE_64K = 65536;
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
     static constexpr uint32_t L0A_SLOT_BYTES = 16U * 1024U;
-    static constexpr uint32_t Q_L0A_CACHE_COUNT = 2U;
+    static constexpr uint32_t Q_L0A_CACHE_COUNT = 3U;
 
     // buffer位置+用途+Buffers；使用时命名: 用途+buffer位置+Tensor
     LocalTensor<uint8_t> ubMm1ResBuffers_;
@@ -112,7 +112,6 @@ public:
     uint32_t l0cBufId_ = 0U;
     LocalTensor<uint8_t> l0ABuffers_;
     LocalTensor<uint8_t> l0BBuffers_;
-    uint32_t l0aBufId_ = 0U;
     uint32_t l0bBufId_ = 0U;
 
     /* =====================GM变量(with layout)==================== */
@@ -168,7 +167,6 @@ public:
         static_assert(mBaseSize * s2BaseSize * sizeof(Q_T) <= L0A_SLOT_BYTES, "L0A tile exceeds 16K");
         l0ABuffers_ = LocalTensor<uint8_t>(TPosition::A2, 0U, BUFFER_SIZE_BYTE_64K);
         l0BBuffers_ = LocalTensor<uint8_t>(TPosition::B2, 0U, BUFFER_SIZE_BYTE_64K);
-        l0aBufId_ = 0U;
         l0bBufId_ = 0U;
 
         /*--------------------------------------------L0C--------------------------------------------*/
@@ -392,14 +390,14 @@ public:
         LoadData(l0b, l1[offset], p);
     }
 
-    // ================== 特化 MatmulK（mm1: Q·K^T, K=576 固定, 4×112+128, M=actM, N=actS2）==================
-    // 前 4 轮 112 均匀，最后轮 128 全块：mm1 最后一轮 CUBE 计算量最大（64×128×128），
-    // 充分覆盖 mm2 启动的 MTE1 搬运。576=112×4+128，总计算量不变。
+    // ================== 特化 MatmulK（mm1: Q·K^T, K=576 固定, 128+96+128+96+128, M=actM, N=actS2）==================
+    // 缓存块与临时块交替，让缓存块的计算覆盖临时槽的下一次搬运。
+    // 最后一个 128 宽分块常驻，末尾临时槽可供 mm2 提前搬入 P。
     __aicore__ inline void Mm1MatmulK(const LocalTensor<Q_T> &qL1Tensor, const LocalTensor<KV_T> &kvpL1Tensor,
                                       const LocalTensor<MM_T> &l0CSubTensor, uint32_t actM, uint32_t actS2,
                                       bool loadQueryCache)
     {
-        // 每个 Q 块首轮（包括跨核/section 的首轮）刷新缓存；mm2 仅使用后两个 L0A 槽。
+        // 每个 Q 块首轮（包括跨核/section 的首轮）刷新缓存；mm2 仅使用最后一个 L0A 槽。
         // 缓存槽的 M/MTE1 Mutex 防止下一 Q 的搬运覆盖尚未完成的 Mmad 输入。
         constexpr uint32_t kLoops = 5;
         const uint64_t alignM = (actM + 15) >> 4 << 4;
@@ -409,12 +407,12 @@ public:
 
 #pragma unroll
         for (uint32_t k = 0; k < kLoops; k++) {
-            uint32_t tileK = (k == (kLoops - 1)) ? 128 : 112;
-            const bool cachedQuery = (k == 0) || (k == kLoops - 1);
-            const uint32_t qCacheSlot = (k == 0) ? 0U : 1U;
+            const bool cachedQuery = (k & 1U) == 0U;
+            const uint32_t tileK = cachedQuery ? 128U : 96U;
+            const uint32_t qCacheSlot = k / 2U;
             const bool loadL0A = !cachedQuery || loadQueryCache;
-            const uint32_t l0aMutexId = cachedQuery ? Q_L0A_CACHE_ID0 + qCacheSlot : L0A_BUFFER_ID0 + l0aBufId_;
-            const uint32_t l0aSlot = cachedQuery ? qCacheSlot : Q_L0A_CACHE_COUNT + l0aBufId_;
+            const uint32_t l0aMutexId = cachedQuery ? Q_L0A_CACHE_ID0 + qCacheSlot : L0A_BUFFER_ID0;
+            const uint32_t l0aSlot = cachedQuery ? qCacheSlot : Q_L0A_CACHE_COUNT;
             const uint32_t l0bMutexId = L0B_BUFFER_ID0 + l0bBufId_;
             LocalTensor<Q_T> l0aTensor =
                 l0ABuffers_[l0aSlot * L0A_SLOT_BYTES].template ReinterpretCast<Q_T>();
@@ -448,9 +446,6 @@ public:
 
             Mutex::Unlock<PIPE_M>(l0aMutexId);
             Mutex::Unlock<PIPE_M>(l0bMutexId);
-            if (!cachedQuery) {
-                l0aBufId_ ^= 1U;
-            }
             l0bBufId_ ^= 1U;
         }
     }
@@ -463,9 +458,9 @@ public:
         const uint64_t l0COffset = ((realM + 15) >> 4 << 4) * 128; // align16(M)*baseN, runtime once
         const uint64_t l1BOffset = ((actS2 + 15) >> 4 << 4) * 128; // align16(K)*baseN, runtime once
 
-        const uint32_t l0aMutexId = L0A_BUFFER_ID0 + l0aBufId_;
+        const uint32_t l0aMutexId = L0A_BUFFER_ID0;
         LocalTensor<KV_T> l0aTensor =
-            l0ABuffers_[(Q_L0A_CACHE_COUNT + l0aBufId_) * L0A_SLOT_BYTES].template ReinterpretCast<KV_T>();
+            l0ABuffers_[(Q_L0A_CACHE_COUNT) * L0A_SLOT_BYTES].template ReinterpretCast<KV_T>();
         Mutex::Lock<PIPE_MTE1>(l0aMutexId);
         Mm2LoadL0A(l0aTensor, pL1Tensor, actS2, realM);
         Mutex::Unlock<PIPE_MTE1>(l0aMutexId);
@@ -496,7 +491,6 @@ public:
             l0bBufId_ ^= 1U;
         }
         Mutex::Unlock<PIPE_M>(l0aMutexId);
-        l0aBufId_ ^= 1U;
     }
 
     // qPreloaded：本任务 Q 已由启动路径（loop==0 IterateQPreload）提前发起 MTE2，跳过重复拷贝
