@@ -873,7 +873,7 @@ sym_buffer.update_group(group) -> None
     </tr>
     <tr>
         <td>float4_E2M1(uint8)<sup>1</sup></td>
-        <td>FRACTAL_NZ/FORMAT_FRACTAL_NZ_C0_32</td>
+        <td>FORMAT_FRACTAL_NZ_C0_32</td>
         <td>(local_moe_expert_num, hidden, intermediate_hidden / 2)</td>
     </tr>
     <tr>
@@ -889,7 +889,7 @@ sym_buffer.update_group(group) -> None
         <td rowspan="2">l1_weights_sf</td>
         <td rowspan="2">list[Tensor]</td>
         <td rowspan="2">可选</td>
-        <td rowspan="2">MoE专家网络第一线性层的权重矩阵的量化缩放因子。</td>
+        <td rowspan="2">MoE专家网络第一线性层的权重矩阵的量化缩放因子。MXFP量化场景下必须输入。</td>
         <td>uint64<sup>2</sup></td>
         <td>ND</td>
         <td>(2 × intermediate_hidden, )</td>
@@ -903,7 +903,7 @@ sym_buffer.update_group(group) -> None
         <td rowspan="2">l2_weights_sf</td>
         <td rowspan="2">list[Tensor]</td>
         <td rowspan="2">可选</td>
-        <td rowspan="2">MoE专家网络第二线性层的权重矩阵的量化缩放因子。</td>
+        <td rowspan="2">MoE专家网络第二线性层的权重矩阵的量化缩放因子。MXFP量化场景下必须输入。</td>
         <td>uint64<sup>2</sup></td>
         <td>ND</td>
         <td>(hidden, )</td>
@@ -1022,7 +1022,7 @@ sym_buffer.update_group(group) -> None
     </tr>
     <tr>
         <td>FLOAT4_E2M1(uint8)</td>
-        <td>FRACTAL_NZ/FORMAT_FRACTAL_NZ_C0_32</td>
+        <td>FORMAT_FRACTAL_NZ_C0_32</td>
         <td>(shared_expert_num_per_rank, hidden, intermediate_hidden / 2)</td>
     </tr>
     <tr>
@@ -1396,7 +1396,7 @@ sym_buffer.update_group(group) -> None
     - `activation`支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"。`activation_clamp`用于配置前三种激活的截断值；`activation_params`用于配置"swigluoai"的`alpha`、`beta`以及"situglu"的`beta`、`linear_beta`。
     - num_tokens（x.dim0）范围[1, +∞)，每次调用必须不大于创建`sym_buffer`时配置的`num_max_tokens_per_rank`。不同Rank的实际num_tokens可以不同，同一个`sym_buffer`也可以用于多次不同num_tokens的调用。
     - `num_max_tokens_per_rank`必须大于等于1，所有Rank取值必须一致，建议设置为`sym_buffer`复用期间所有Rank可能出现的最大单卡token数。超过原上界时需使用更大的上界重新创建`sym_buffer`。
-    - hidden（x.dim1）范围[1024, 8192]。A8W8-FP场景要求hidden为32的倍数；A8W4-FP场景要求hidden为64的倍数；A4W4-FP场景下，l1_weights为ND格式时要求hidden为32的倍数，l1_weights为FRACTAL_NZ格式时要求hidden为64的倍数。
+    - hidden（x.dim1）范围[1024, 8192]。A8W8-FP场景要求hidden为32的倍数；A8W4-FP场景要求hidden为64的倍数；A4W4-FP场景仅支持l1_weights为FRACTAL_NZ格式，要求hidden为64的倍数。
     - num_topk（topk_ids.dim1）支持[1, 32]。
     - num_experts_per_rank 范围 [1, 1024]。
     - intermediate_hidden表示激活后的中间特征维度，范围[256, 4096]且128对齐；Linear1的完整输出宽度为2 × intermediate_hidden。
@@ -1413,8 +1413,9 @@ sym_buffer.update_group(group) -> None
     - l1_weights_sf和l2_weights_sf不可为空指针。
     - local_moe_expert_num = num_experts / ep_world_size；启用共享专家时，shared_expert_num_per_rank = shared_l1_weights.dim0；num_experts_per_rank = shared_expert_num_per_rank + local_moe_expert_num，未启用共享专家时 shared_expert_num_per_rank = 0。
     - shared_expert_num_per_rank范围 [0, 4]。
-    - topo_type由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。当前暂不支持URMA通信方式。
-    - topk_weights_type取值为0或1，0表示关闭topkWeights前移，1表示开启。当前暂不支持URMA通信方式。
+    - topo_type由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。
+    - URMA拓扑下，`activation`不支持"swiglustep"和"swigluoai"。
+    - topk_weights_type取值为0或1，0表示关闭topkWeights前移，1表示开启。
     - 通信buffer由`get_symm_buffer_for_mega_moe`自动计算并申请，用户无需自行计算或设置`ccl_buffer_size`。
     - l1_weights和l2_weights的数据类型必须一致，且仅支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。
     - topk_weights数据类型仅支持BF16或FP32。
@@ -1426,7 +1427,7 @@ sym_buffer.update_group(group) -> None
         - shared_l1_weights的逻辑shape为(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden)，shared_l2_weights的逻辑shape为(shared_expert_num_per_rank, hidden, intermediate_hidden)。FLOAT4_E2M1权重在PyTorch侧以uint8打包传入，对应的物理shape分别为(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden / 2)和(shared_expert_num_per_rank, hidden, intermediate_hidden / 2)。
         - shared_l1_weights_sf shape为(shared_expert_num_per_rank, 2 × intermediate_hidden, CeilDiv(hidden, 64), 2)，shared_l2_weights_sf shape为(shared_expert_num_per_rank, hidden, CeilDiv(intermediate_hidden, 64), 2)。
         - l1_weights_sf的dim3和l2_weights_sf的dim3必须等于2。
-        - A8W4-FP场景下，FLOAT4_E2M1类型的l1_weights必须使用FORMAT_FRACTAL_NZ_C0_32格式。
+        - A8W4-FP场景下，FLOAT4_E2M1类型的l1_weights必须使用FORMAT_FRACTAL_NZ_C0_32格式；A4W4-FP场景下，FLOAT4_E2M1类型的l1_weights必须使用FRACTAL_NZ格式。两种场景的l2_weights均必须使用FORMAT_FRACTAL_NZ_C0_32格式。启用共享专家时，shared_l1_weights和shared_l2_weights必须分别与l1_weights和l2_weights使用相同格式。
         - A8W8-FP场景下，l1_weights和l2_weights必须同为FLOAT8_E5M2或同为FLOAT8_E4M3FN，`weight1_type`和`weight2_type`可省略并从权重Tensor的数据类型推导。A8W4-FP和A4W4-FP场景下，两层权重均为FLOAT4_E2M1，必须显式将`weight1_type`和`weight2_type`设置为`float4_e2m1fn_x2`对应的类型枚举，且两者一致。
         - x_active_mask和scales必须为None。
     - 支持三种计算场景（A8W8-FP、A8W4-FP、A4W4-FP），不同场景下可选入参（缩放因子、偏置等）的必需性及数据类型有严格配套要求。调用时必须根据所选场景完整提供对应参数，不可混用或遗漏，配套关系见下表。
