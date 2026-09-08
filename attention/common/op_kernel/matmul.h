@@ -870,10 +870,10 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor, const LocalTenso
     }
     if constexpr (IsSameType<B, fp8_e5m2_t>::value || IsSameType<B, fp8_e4m3fn_t>::value ||
                   IsSameType<B, hifloat8_t>::value || IsSameType<B, int8_t>::value) {
-        L1Boffset = param.isRightTranspose ? baseK << 5 : ((param.singleN + 31) >> 5 << 5) * baseK;
+        L1Boffset = param.isRightTranspose ? baseN << 5 : ((param.singleK + 31) >> 5 << 5) * baseN;
     }
     if constexpr (IsSameType<B, hifloat4x2_t>::value || IsSameType<B, fp4x2_e2m1_t>::value) {
-        L1Boffset = param.isRightTranspose ? baseK << 6 : ((param.singleN + 31) >> 5 << 5) * baseK;
+        L1Boffset = param.isRightTranspose ? baseN << 6 : ((param.singleK + 31) >> 5 << 5) * baseN;
     }
 #endif
     uint64_t L0Coffset = ((param.singleM + 15) >> 4 << 4) * baseN;
