@@ -13,7 +13,8 @@ using namespace AscendC;
 
 constexpr uint32_t BASIC_CUBE_M = 128U;
 constexpr uint32_t BASIC_CUBE_N_STRIDE = 128U;
-constexpr uint32_t BASIC_CUBE_K_L1 = 64U;
+constexpr uint32_t BASIC_CUBE_K_L1_HF32 = 64U;
+constexpr uint32_t BASIC_CUBE_K_L1_FP32 = 128U;
 constexpr uint32_t BASIC_CUBE_K_L0 = 32U;
 constexpr uint32_t BASIC_CUBE_BUFFER_NUM = 2U;
 constexpr uint32_t BASIC_CUBE_L0_EVENT_BASE = 3U;
@@ -39,8 +40,10 @@ __aicore__ inline uint64_t BasicCubeAlign(uint64_t x, uint64_t n)
 
 class MhcPreBackwardC0Basic {
 public:
-    __aicore__ inline void Init(TPipe *pipe)
+    __aicore__ inline void Init(TPipe *pipe, bool enableHf32)
     {
+        // FP32计算更慢，增大K-L1分块以减少外层循环和L1所有权事件；HF32保持已验证的64。
+        kL1_ = enableHf32 ? BASIC_CUBE_K_L1_HF32 : BASIC_CUBE_K_L1_FP32;
         pipe->InitBuffer(l1Buffer_, BASIC_CUBE_L1_BUFFER_SIZE);
         aL1_ = l1Buffer_.Get<float>();
         bL1_ = aL1_[BASIC_CUBE_B_L1_OFFSET];
@@ -95,9 +98,9 @@ private:
         LocalTensor<float> currentC = cL0_[cSlot * BASIC_CUBE_L0C_SLOT_ELEMS];
         WaitFlag<HardEvent::FIX_M>(cSlot);
 
-        for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += BASIC_CUBE_K_L1) {
+        for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += kL1_) {
             uint32_t remainKL1 = k - offsetKL1;
-            uint32_t currentKL1 = remainKL1 < BASIC_CUBE_K_L1 ? remainKL1 : BASIC_CUBE_K_L1;
+            uint32_t currentKL1 = remainKL1 < kL1_ ? remainKL1 : kL1_;
             uint32_t l1Slot = l1LoopCount_ & 1U;
             LocalTensor<float> currentA1 = aL1_[l1Slot * BASIC_CUBE_L1_SLOT_ELEMS];
             LocalTensor<float> currentB1 = bL1_[l1Slot * BASIC_CUBE_L1_SLOT_ELEMS];
@@ -286,6 +289,7 @@ private:
     uint32_t l1LoopCount_{0};
     uint32_t l0LoopCount_{0};
     uint32_t l0cLoopCount_{0};
+    uint32_t kL1_{BASIC_CUBE_K_L1_HF32};
 };
 } // namespace MhcPreBackward
 #endif

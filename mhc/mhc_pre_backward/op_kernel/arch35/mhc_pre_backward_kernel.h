@@ -292,7 +292,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + gradHResBufLen_;
     if ASCEND_IS_AIC {
         pipe_ = initParams.tPipeIn;
-        c0Basic_.Init(pipe_);
+        c0Basic_.Init(pipe_, tiling_->implMode == MHC_PRE_BACKWARD_IMPL_MODE_HF32);
     }
     if ASCEND_IS_AIV {
         pipe_ = initParams.tPipeIn;
