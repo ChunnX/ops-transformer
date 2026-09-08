@@ -278,8 +278,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
     coreNum_ = tiling_->coreNum;
     // BS维全链路保留64位，避免大shape在核内截断后漏算或地址回绕。
     totalLength_ = tiling_->totalLength;
-    // 本轮实验统一使用高阶Matmul API，低阶Cube实现保留供后续继续验证。
-    useHighMatmul_ = true;
+    // 本轮单变量实验统一使用低阶Cube API，其余计算与数据通路保持不变。
+    useHighMatmul_ = false;
     hcEps_ = tiling_->hcEps;
     vecCoreNum_ = tiling_->vecCoreNum;
     scaleMean_ = (nD_ > 0) ? (1.0f / nD_) : 0.0f;
