@@ -130,7 +130,7 @@ cann_ops_transformer.pool_key_indexer(
 - sparse_indices无效部分填-1；sparse_values无效部分填-inf。
 - 参数actual_seq_q、actual_seq_k要求其值为当前Batch与前序Batch有效token数的累加值（TND场景），后一个元素的值必须大于等于前一个元素的值。
 - pool_key支持PA_BBND场景下0轴非连续，其余轴必须连续。
-- mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../../../docs/zh/context/sparse_mode_introduction.md)。
+- mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../../docs/zh/context/sparse_mode_introduction.md)。
 - 当layout_k为PA_BBND时，必须传入block_table和actual_seq_k；当layout_k不为PA_BBND时，不支持传入block_table。
 - 当quant_mode=-1时，不支持传入q_descale和k_descale。
 
