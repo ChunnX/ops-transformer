@@ -15,7 +15,6 @@
  */
 #include "op_graph/op_fallback.h"
 
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -25,38 +24,34 @@ using namespace ge;
 using namespace gert;
 static const size_t SORTED_EXPERTS_INDEXQ = 0;
 
-static graphStatus MoeComputeHostExecuteFunc(OpExecuteContext* host_api_ctx) {
-  OP_LOGD("aclnnFallback", "MoeComputeExpertTokens fallback begin");
+static graphStatus MoeComputeHostExecuteFunc(OpExecuteContext *host_api_ctx)
+{
+    OP_LOGD("aclnnFallback", "MoeComputeExpertTokens fallback begin");
 
-  OP_CHECK_IF(host_api_ctx == nullptr,
-    OP_LOGE("aclnnfallback", "host_api_ctx is null"), return GRAPH_FAILED);
+    OP_CHECK_IF(host_api_ctx == nullptr, OP_LOGE("aclnnfallback", "host_api_ctx is null"), return GRAPH_FAILED);
 
-  auto sortedExperts = host_api_ctx->GetInputTensor(SORTED_EXPERTS_INDEXQ);
-  OP_CHECK_IF(sortedExperts == nullptr,
-    OP_LOGE("aclnnfallback", "sortedExperts is null"), return GRAPH_FAILED);
+    auto sortedExperts = host_api_ctx->GetInputTensor(SORTED_EXPERTS_INDEXQ);
+    OP_CHECK_IF(sortedExperts == nullptr, OP_LOGE("aclnnfallback", "sortedExperts is null"), return GRAPH_FAILED);
 
-  auto attrs = host_api_ctx->GetAttrs();
-  OP_CHECK_IF(attrs == nullptr,
-    OP_LOGE("aclnnfallback", "attrs is null"), return GRAPH_FAILED);
-  const int32_t* num_experts = attrs->GetAttrPointer<int32_t>(0);
-  OP_CHECK_IF(*num_experts < 1,
-     OP_LOGE("aclnnfallback", "num_experts can not be smaller than 1"), return GRAPH_FAILED);
+    auto attrs = host_api_ctx->GetAttrs();
+    OP_CHECK_IF(attrs == nullptr, OP_LOGE("aclnnfallback", "attrs is null"), return GRAPH_FAILED);
+    const int32_t *num_experts = attrs->GetAttrPointer<int32_t>(0);
+    OP_CHECK_IF(*num_experts < 1, OP_LOGE("aclnnfallback", "num_experts can not be smaller than 1"),
+                return GRAPH_FAILED);
 
-  auto output = host_api_ctx->GetOutputTensor(0);
-  OP_CHECK_IF(output == nullptr,
-    OP_LOGE("aclnnfallback", "output is null"), return GRAPH_FAILED);
+    auto output = host_api_ctx->GetOutputTensor(0);
+    OP_CHECK_IF(output == nullptr, OP_LOGE("aclnnfallback", "output is null"), return GRAPH_FAILED);
 
-  // execute opapi
-  auto api_ret = EXEC_OPAPI_CMD(aclnnMoeComputeExpertTokens, sortedExperts, *num_experts, output);
-  OP_CHECK_IF(api_ret != GRAPH_SUCCESS,
-    OP_LOGE("aclnnfallback", "api_ret faild:%u", api_ret), return GRAPH_FAILED);
+    // execute opapi
+    auto api_ret = EXEC_OPAPI_CMD(aclnnMoeComputeExpertTokens, sortedExperts, *num_experts, output);
+    OP_CHECK_IF(api_ret != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "api_ret faild:%u", api_ret), return GRAPH_FAILED);
 
-  return GRAPH_SUCCESS;
+    return GRAPH_SUCCESS;
 }
 
 IMPL_OP(MoeComputeExpertTokens).OpExecuteFunc(MoeComputeHostExecuteFunc);
 
-}  // namespace fallback
+} // namespace fallback
 
 #ifdef __cplusplus
 }

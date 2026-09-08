@@ -35,39 +35,40 @@ constexpr size_t expandedXOutputIndex = 0;
 constexpr size_t expandedRowIdxOutputIndex = 1;
 constexpr size_t expandedExpertIdxOutputIndex = 2;
 
-static graphStatus MoeInitRoutingExecuteFunc(OpExecuteContext* host_api_ctx) {
-  OP_CHECK_IF(host_api_ctx == nullptr, OP_LOGE("aclnnfallback", "host_api_ctx is null"), return GRAPH_FAILED);
+static graphStatus MoeInitRoutingExecuteFunc(OpExecuteContext *host_api_ctx)
+{
+    OP_CHECK_IF(host_api_ctx == nullptr, OP_LOGE("aclnnfallback", "host_api_ctx is null"), return GRAPH_FAILED);
 
-  auto x_ge = host_api_ctx->GetInputTensor(xInputIndex);
-  OP_CHECK_IF(x_ge == nullptr, OP_LOGE("aclnnfallback", "x_ge is null"), return GRAPH_FAILED);
-  auto row_idx_ge = host_api_ctx->GetInputTensor(rowIdxInputIndex);
-  OP_CHECK_IF(row_idx_ge == nullptr, OP_LOGE("aclnnfallback", "row_idx_ge is null"), return GRAPH_FAILED);
-  auto expert_idx_ge = host_api_ctx->GetInputTensor(expertIdxInputIndex);
-  OP_CHECK_IF(expert_idx_ge == nullptr, OP_LOGE("aclnnfallback", "expert_idx_ge is null"), return GRAPH_FAILED);
+    auto x_ge = host_api_ctx->GetInputTensor(xInputIndex);
+    OP_CHECK_IF(x_ge == nullptr, OP_LOGE("aclnnfallback", "x_ge is null"), return GRAPH_FAILED);
+    auto row_idx_ge = host_api_ctx->GetInputTensor(rowIdxInputIndex);
+    OP_CHECK_IF(row_idx_ge == nullptr, OP_LOGE("aclnnfallback", "row_idx_ge is null"), return GRAPH_FAILED);
+    auto expert_idx_ge = host_api_ctx->GetInputTensor(expertIdxInputIndex);
+    OP_CHECK_IF(expert_idx_ge == nullptr, OP_LOGE("aclnnfallback", "expert_idx_ge is null"), return GRAPH_FAILED);
 
-  auto expanded_x_ge = host_api_ctx->GetOutputTensor(expandedXOutputIndex);
-  OP_CHECK_IF(expanded_x_ge == nullptr, OP_LOGE("aclnnfallback", "expanded_x_ge is null"), return GRAPH_FAILED);
-  auto expanded_row_idx_ge = host_api_ctx->GetOutputTensor(expandedRowIdxOutputIndex);
-  OP_CHECK_IF(expanded_row_idx_ge == nullptr, OP_LOGE("aclnnfallback", "expanded_row_idx_ge is null"),
-           return GRAPH_FAILED);
-  auto expanded_expert_idx_ge = host_api_ctx->GetOutputTensor(expandedExpertIdxOutputIndex);
-  OP_CHECK_IF(expanded_expert_idx_ge == nullptr, OP_LOGE("aclnnfallback", "expanded_expert_idx_ge is null"),
-           return GRAPH_FAILED);
+    auto expanded_x_ge = host_api_ctx->GetOutputTensor(expandedXOutputIndex);
+    OP_CHECK_IF(expanded_x_ge == nullptr, OP_LOGE("aclnnfallback", "expanded_x_ge is null"), return GRAPH_FAILED);
+    auto expanded_row_idx_ge = host_api_ctx->GetOutputTensor(expandedRowIdxOutputIndex);
+    OP_CHECK_IF(expanded_row_idx_ge == nullptr, OP_LOGE("aclnnfallback", "expanded_row_idx_ge is null"),
+                return GRAPH_FAILED);
+    auto expanded_expert_idx_ge = host_api_ctx->GetOutputTensor(expandedExpertIdxOutputIndex);
+    OP_CHECK_IF(expanded_expert_idx_ge == nullptr, OP_LOGE("aclnnfallback", "expanded_expert_idx_ge is null"),
+                return GRAPH_FAILED);
 
-  auto attrs = host_api_ctx->GetAttrs();
-  OP_CHECK_IF(attrs == nullptr, OP_LOGE("aclnnfallback", "attrs is null"), return GRAPH_FAILED);
-  const int64_t* active_num = attrs->GetAttrPointer<int64_t>(0);
-  // execute opapi
-  auto api_ret = EXEC_OPAPI_CMD(aclnnMoeInitRouting, x_ge, row_idx_ge, expert_idx_ge, active_num, expanded_x_ge,
-                                expanded_row_idx_ge, expanded_expert_idx_ge);
-  OP_CHECK_IF(api_ret != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "api_ret faild:%u", api_ret), return GRAPH_FAILED);
+    auto attrs = host_api_ctx->GetAttrs();
+    OP_CHECK_IF(attrs == nullptr, OP_LOGE("aclnnfallback", "attrs is null"), return GRAPH_FAILED);
+    const int64_t *active_num = attrs->GetAttrPointer<int64_t>(0);
+    // execute opapi
+    auto api_ret = EXEC_OPAPI_CMD(aclnnMoeInitRouting, x_ge, row_idx_ge, expert_idx_ge, active_num, expanded_x_ge,
+                                  expanded_row_idx_ge, expanded_expert_idx_ge);
+    OP_CHECK_IF(api_ret != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "api_ret faild:%u", api_ret), return GRAPH_FAILED);
 
-  return GRAPH_SUCCESS;
+    return GRAPH_SUCCESS;
 }
 
 IMPL_OP(MoeInitRouting).OpExecuteFunc(MoeInitRoutingExecuteFunc);
 
-}  // namespace fallback
+} // namespace fallback
 
 #ifdef __cplusplus
 }
