@@ -461,7 +461,7 @@ aclnnStatus CheckParams(const ChunkKdaFwdParams &params, KdaFwdLayout &layout, K
         if (params.safeGate) {
             CHECK_COND(params.lowerBound >= -5.0 && params.lowerBound < 0.0,
                        ACLNN_ERR_PARAM_INVALID,
-                       "lowerBound must be in [-5, 0) when safeGate is true.");
+                       "lowerBound must be in [-5, 0) when safeGate and useGateInKernel are true.");
         }
     }
     CHECK_RET(CheckOutputShapes(params, info) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);

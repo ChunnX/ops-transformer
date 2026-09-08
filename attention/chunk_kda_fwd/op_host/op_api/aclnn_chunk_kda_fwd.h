@@ -37,7 +37,7 @@ extern "C" {
  * @param [in] scale: Query缩放系数，通常取K^(-0.5)
  * @param [in] chunkSize: chunk大小，支持64、128，默认值为64
  * @param [in] safeGate: 是否使用有界gate，默认值为false
- * @param [in] lowerBound: 有界gate下界，safeGate=true时取值范围为[-5, 0)，默认值为-5.0
+ * @param [in] lowerBound: 有界gate下界，safeGate=true且useGateInKernel=true时取值范围为[-5, 0)，默认值为-5.0
  * @param [in] useGateInKernel: 是否在kernel内由raw gate计算激活，默认值为false
  * @param [in] stateVFirst: 是否将状态张量末两维排列为(V, K)，默认值为false
  * @param [in] attnOut: Attention输出tensor。rank-4输入固定为(B, S, HV, V)，rank-3输入固定为(T, HV, V)，支持FLOAT16、BFLOAT16
