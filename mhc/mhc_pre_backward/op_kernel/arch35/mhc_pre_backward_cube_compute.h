@@ -13,7 +13,7 @@ using namespace AscendC;
 
 constexpr uint32_t BASIC_CUBE_M = 128U;
 constexpr uint32_t BASIC_CUBE_N_STRIDE = 128U;
-constexpr uint32_t BASIC_CUBE_K_L1 = 128U;
+constexpr uint32_t BASIC_CUBE_K_L1 = 64U;
 constexpr uint32_t BASIC_CUBE_K_L0 = 32U;
 constexpr uint32_t BASIC_CUBE_BUFFER_NUM = 2U;
 constexpr uint32_t BASIC_CUBE_L0_EVENT_BASE = 3U;
