@@ -161,6 +161,12 @@ cann_ops_transformer.flash_attn(
 | layout_kv | string | 可选 | 定义输入k和v张量的布局格式 | string | - | - |
 | layout_out | string | 可选 | 定义输出张量的布局格式 | string | - | - |
 
+**关于 `head_dim_v`**：`flash_attn_metadata` 无 q/k/v 张量输入，无法从张量 shape 推导 V 的 head_dim，因此通过标量参数 `head_dim_v` 显式声明：
+
+- 缺省 None（内部传 -1）表示 **V 的 head_dim 等于 `head_dim`**（QK 维），与 qk==v 的常规场景行为一致。
+- QK 与 V 维度不同（如 QK 192 / V 128，MLA 非吸收形态）时**必须传入**，且必须与后续 `flash_attn` 调用中 value 张量末维一致——否则负载均衡切分与主算子不一致，可能导致结果错误。
+- 主算子 `flash_attn` 无对应参数：其 V 的 head_dim 直接取自 value 张量末维。当前支持的 (QK D, V DV) 组合以 `flash_attn` 的校验为准：(64,64)、(72,72)、(128,128)、(256,256)、(192,128)。
+
 ### flash_attn
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |

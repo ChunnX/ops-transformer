@@ -16,8 +16,7 @@
 
   FlashAttention算法将$Q_S \times KV_S$的注意力矩阵按块（tile）分块计算，避免实例化完整注意力矩阵，显存复杂度由$O(Q_S \cdot KV_S)$降至$O(tile_M \cdot tile_N)$。
 
-- **head_dim 支持规格**：QK 的 head_dim 与 V 的 head_dim 可以不同，由 q/k/v 张量各自的末维（D 维）表达（主算子无独立参数）。当前支持的 (QK D, V DV) 组合：**(64,64)、(72,72)、(128,128)、(256,256)、(192,128)**（192/128 为 MLA 非吸收形态，Q/K 走 bmm1 的 192 维、V 与输出走 128 维；72 复用 config 2/3 变体，见 §3）。
-- **metadata 算子配套参数 `head_dim_v`**：`flash_attn_metadata` 无 q/k/v 张量，需通过标量 `head_dim_v` 显式声明 V 的 head_dim；**缺省 -1 表示 V 的 head_dim 等于 head_dim**（QK 维）。qk≠v 时必须传入与后续 `flash_attn` 调用中 value 末维一致的值，否则负载均衡切分与主算子不一致。
+- **head_dim 支持规格**：QK 的 head_dim 与 V 的 head_dim 可以不同，由 q/k/v 张量各自的末维（D 维）表达（主算子无独立参数）。当前支持的 (QK D, V DV) 组合：**(64,64)、(72,72)、(128,128)、(256,256)、(192,128)**（192/128 为 MLA 非吸收形态，Q/K 走 bmm1 的 192 维、V 与输出走 128 维；72 复用 config 2/3 变体，见 §3）。metadata 算子配套参数 `head_dim_v` 的语义与契约见[torch 接口文档](../../torch_extension/cann_ops_transformer/docs/zh/flash_attn.md)。
 
 ## Quick Start
 
