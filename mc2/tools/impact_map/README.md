@@ -1,14 +1,14 @@
-# mc2 common/3rd 头文件影响范围映射表（impact_map）
+# mc2 common/3rd 文件影响范围映射（impact_map）
 
 ## 1. 背景与用途
 
 mc2 算子的公共代码集中在 `mc2/common` 与 `mc2/3rd`，改动这些目录时无法用算子目录级
-依赖（CMake `*_depends`）评估影响面。本目录提供**头文件级**的反向影响映射：
+依赖（CMake `*_depends`）评估影响面。本目录提供**文件级**的反向影响映射：
 
-> 输入：PR 修改的文件路径 + 目标芯片
+> 输入：PR 修改的 common/3rd 文件路径 + 目标芯片
 > 输出：需要回归测试的 mc2 算子清单
 
-**只对 .h 建模**；其余文件类型一律按全量回归处理（见第 4 节）。
+**每个文件恰好归入两类之一：测全量 / 测部分算子**（不存在不测的情况）。
 
 ## 2. 目录结构
 
@@ -16,13 +16,15 @@ mc2 算子的公共代码集中在 `mc2/common` 与 `mc2/3rd`，改动这些目�
 mc2/tools/
 ├── gen_common_impact_yaml.py    # 生成器（本表唯一来源，重新生成会覆盖yaml）
 └── impact_map/
-    ├── common/                  # mc2/common 头文件的映射
+    ├── common/                  # mc2/common 头文件的映射（仅含"测部分算子"的头）
     │   ├── A2.yaml / A3.yaml / A5.yaml
-    ├── 3rd/                     # mc2/3rd 头文件的映射
+    ├── 3rd/                     # mc2/3rd 头文件的映射（仅含"测部分算子"的头）
     │   ├── A2.yaml / A3.yaml / A5.yaml
+    └── full_regression.yaml     # 全量清单（全量算子列表 + 三种全量文件的分类）
 ```
 
 芯片对应关系：A2=ascend910b，A3=ascend910_93，A5=ascend950。
+A2/A3/A5 三张芯片表**键集合完全一致**（同为"测部分算子"的头，按芯片取算子子集）。
 
 ## 3. 生成方法
 
@@ -36,13 +38,14 @@ python3 mc2/tools/gen_common_impact_yaml.py /path/to/another_checkout [输出目
 
 纯本地扫描（无需联网）。
 
-## 4. 消费规则（极简，纯文件类型）
+## 4. 消费规则（每个文件恰好命中一类）
 
 | 文件 | 判定 |
 |---|---|
-| .h 在芯片映射表中 | 测试条目 ops 列出的算子；`ops: []` = 该芯片无引用算子，不用测 |
-| .h 不在芯片映射表中 | 全量（无明确 include 到算子关系，含冗余/仅测试引用头） |
-| 其他一切文件（.cpp/.py/.json/.ini/.sh/.csv/.txt/.md 等，不限路径） | 全量 |
+| 非 .h 文件（.cpp/.py/.json/.ini/.sh/.csv/.txt/.md 等，不限路径） | 全量 |
+| .h 被全部算子使用（`headers_used_by_all_operators`） | 全量 |
+| .h 无任何文件引用（`headers_no_reference`） | 全量（列出仅为防漏查，删除前需人工确认） |
+| .h 在芯片映射表中 | 测试条目 ops 列出的算子（按芯片过滤；`ops: []` 表示该芯片无匹配算子） |
 
 **最后一步（消费侧负责）**：得到的算子集还需**叠加 CMake `*_depends`
 反向闭包**后去重，作为最终测试清单。
@@ -51,21 +54,36 @@ python3 mc2/tools/gen_common_impact_yaml.py /path/to/another_checkout [输出目
 
 1. **只对 .h 建模**：影响面 = 直接+间接 include 该头的算子（裸文件名匹配，
    重名取并集，传递闭包用不动点迭代，天然处理环）。
-2. **芯片过滤**：算子集合按 `*_def.cpp` 的 `AICore().AddConfig()` 注册与
-   当前芯片取交集。
-3. **全量**：命中"全量"情况的改动执行全量算子回归（全量算子清单由消费侧
-   按芯片维护，可从 `*_def.cpp` 的 `AICore().AddConfig()` 注册自动获取）。
+2. **二分归类**：影响面 = 全部注册算子 → 全量；影响面为空且无任何引用 → 全量
+   （防漏查）；其余 → 部分算子，进芯片映射表。
+3. **芯片过滤**：部分算子头的 ops 按 `*_def.cpp` 的 `AICore().AddConfig()`
+   注册与当前芯片取交集，三张表键集合保持一致。
+4. **重名取并集**：同名头文件以 `note:` 标注，宁多勿漏。
 
 ## 6. yaml 格式
 
 ```yaml
+# 芯片映射表(部分算子类)
 common/op_kernel/mc2_tiling_struct.h:
   ops:
     - all_gather_matmul        # 改动该头需测试的算子，显式全列表
-    - ...
   note: 同名文件2份, 映射取并集  # 仅重名文件有此字段
 common/op_host/op_tiling/xxx.h:
-  ops: []                      # 有引用但引用算子不支持该芯片
+  ops: []                      # 该头影响的算子均未在此芯片注册(策略后续再定)
+
+# full_regression.yaml(全量类)
+full_ops_A5:                    # 全量回归算子清单(按芯片)
+  - all_gather_matmul
+  - ...
+non_header_extensions:          # 非.h文件命中即全量
+  - ".cpp"
+  - ...
+headers_used_by_all_operators:  # 被全部算子使用的头
+  common:
+    - ...
+headers_no_reference:           # 无任何引用的头(防漏查)
+  common:
+    - ...
 ```
 
 ## 7. 维护约定
