@@ -25,7 +25,7 @@ cann_ops_transformer.turbo_quant_sparse_flash_attention(
 | 参数 | 说明 |
 | --- | --- |
 | query | `[T,N,576]`，FP16/BF16；N 为 `[1,128]` 内的 2 的幂 |
-| key、value | INT8，PA_BSND `[Bn,Bs,1,386]` 或 PA_BNBD `[Bn,1,Bs,386]`；通常传同一张量 |
+| key、value | INT8，PA_BSND `[Bn,Bs,1,386]` 或 PA_BNBD `[Bn,1,Bs,386]`；当前 MLA 模式下，value 请传入与 key 相同的张量 |
 | sparse_indices | INT32 `[T,1,K]`，batch 内稀疏块索引，有效前缀后用 -1 填充 |
 | key_dequant_scale、value_dequant_scale | 可选 FLOAT32 张量；当前 COMBINE 模式不读取，可传 None |
 | block_table | INT32 `[B,maxBlocks]`，物理页映射 |
@@ -38,7 +38,9 @@ cann_ops_transformer.turbo_quant_sparse_flash_attention(
 
 全部输入须在同一 NPU。支持两种布局下 cache 首轴非连续、页间 padding 和 storage offset，页内必须连续。`B`、物理 cache 页数和页表列数须大于零，`Bs` 是 16 至 1024 内的 16 的倍数。
 
-空 query 返回空张量；零 KV batch 返回零 attention、max=-2e38、sum=0。索引、长度和页表的设备数值由调用方保证合法。仅提供前向；Meta/FakeTensor 可推导输出并拒绝不支持的元数据。ACL graph 捕获前需预热完成 JIT 编译，回放只更新固定 shape 张量的内容，不改变地址。当前未提供 GE Converter。
+空 query 返回空张量；零 KV batch 返回零 attention、max=-2e38、sum=0。索引、长度和页表的设备数值由调用方保证合法。
+
+仅提供前向；Meta/FakeTensor 可推导输出并拒绝不支持的元数据。ACL graph 捕获前需预热完成 JIT 编译，回放只更新固定 shape 张量的内容，不改变地址。当前未提供 GE Converter。
 
 ## 示例
 
@@ -65,4 +67,4 @@ torch.npu.synchronize()
 print(out.shape, maximum.shape, total.shape)
 ```
 
-历史调用方可安装算子目录中的 `torch_ops_extension` 兼容包，然后继续使用 `custom_ops` / `torch_npu.npu_turbo_quant_sparse_flash_attention`；兼容包转发到此标准实现，不再编译第二份 native 扩展。
+旧 Python 调用入口见[兼容说明](../../../../attention/turbo_quant_sparse_flash_attention/torch_ops_extension/README.md)。

@@ -8,11 +8,11 @@ Atlas A2 训练/推理系列、Atlas A3 训练/推理系列。支持前向推理
 
 对 TQ4 压缩的分页 KV cache 进行融合反量化和 MLA 稀疏 Attention。输入 query 包含 512 维 latent 与 64 维 rope，输出为 512 维 latent。K/V 共享 latent；rope 仅参与 QK 计算。量化存储、布局、数值约束见[算子说明](../README.md)。
 
-接口按两阶段调用：第一阶段校验输入元数据、创建执行器并计算 workspace 大小，第二阶段向调用方提供的流异步下发任务。API 名称及参数顺序与实验目录版本保持一致。
+接口按两阶段调用：第一阶段校验输入元数据、创建执行器并计算 workspace 大小，第二阶段向调用方提供的流异步下发任务。
 
 ## 接口原型
 
-头文件 `aclnnop/aclnn_turbo_quant_sparse_flash_attention.h` 随算子包自动生成。
+头文件：`aclnnop/aclnn_turbo_quant_sparse_flash_attention.h`。
 
 ```cpp
 aclnnStatus aclnnTurboQuantSparseFlashAttentionGetWorkspaceSize(
@@ -59,7 +59,7 @@ aclnnStatus aclnnTurboQuantSparseFlashAttention(
 | 参数 | 类型、shape 与约束 |
 | --- | --- |
 | query | FLOAT16/BFLOAT16，`[T, N, 576]`；`N` 为 `[1,128]` 内 2 的幂 |
-| key、value | INT8；PA_BSND 为 `[Bn, Bs, 1, 386]`，PA_BNBD 为 `[Bn, 1, Bs, 386]`；同形同型，通常传同一个 tensor |
+| key、value | INT8；PA_BSND 为 `[Bn, Bs, 1, 386]`，PA_BNBD 为 `[Bn, 1, Bs, 386]`；当前 MLA 模式下，value 请传入与 key 相同的张量 |
 | sparseIndices | INT32，`[T, 1, K]`；值为 batch 内局部稀疏块索引，有效前缀之后用 `-1` 填充 |
 | keyDequantScaleOptional、valueDequantScaleOptional | 可为 `nullptr`；传入时为 FLOAT32。当前 COMBINE 模式不读取其数值 |
 | blockTable | INT32，`[B, maxBlocks]`；每个有效值为 cache 的物理页号 |
@@ -88,7 +88,7 @@ cache 支持第 0 轴非连续与合法 storage offset，页内必须连续，�
 
 某个 batch 的 query 长度为 0 时不产生输出行；KV 长度为 0 时该 batch 输出为 0，softmax max 为 `-2e38`、sum 为 0。整体 `T=0` 返回空输出，元数据和物理 cache 仍须满足接口约束。非空 KV 但索引全为 `-1` 时，sum 不保证为 0，详见算子说明。
 
-长度、索引及页表是设备数据，Host 不读取其中数值。调用方负责保证合法性；成功取得 workspace 不代表这些设备值已被检查。输入、输出和 workspace 必须存活到流上任务完成，读取输出前需正确同步。
+接口不校验长度、索引及页表中的设备数值，调用方须保证其合法性。输入、输出和 workspace 必须存活到流上任务完成，读取输出前需正确同步。
 
 ## 返回值
 
@@ -96,9 +96,9 @@ cache 支持第 0 轴非连续与合法 storage offset，页内必须连续，�
 
 ## 调用示例
 
-[完整 C++ 示例](../examples/test_aclnn_turbo_quant_sparse_flash_attention.cpp)直接使用发布头文件调用两个 API，并校验结果和输入 cache 未被修改。示例覆盖两种 query dtype、两种 KV 布局、空序列和非连续 cache。
+[完整 C++ 示例](../examples/test_aclnn_turbo_quant_sparse_flash_attention.cpp)覆盖两种 query dtype、两种 KV 布局、空序列和非连续 cache。
 
-安装自定义验证包后可以执行（在仓库根目录）：
+按[构建与安装](install.md)安装自定义验证包后，在仓库根目录执行：
 
 ```bash
 source /usr/local/Ascend/cann/set_env.sh
@@ -112,4 +112,4 @@ g++ -std=c++17 -O2 \
 ASCEND_RT_VISIBLE_DEVICES=0 ./test_turbo_quant_sfa
 ```
 
-标准内置包使用安装目录中的 `libopapi_transformer.so`；上例的 `libcust_opapi.so` 对应 `--pkg --ops=...` 生成的自定义验证包。头文件、Host 和 Kernel 必须来自同一次构建。
+上例链接自定义验证包的 `libcust_opapi.so`；使用标准内置包时改为链接 `libopapi_transformer.so`。

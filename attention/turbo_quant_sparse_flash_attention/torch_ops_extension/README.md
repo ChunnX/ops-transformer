@@ -1,13 +1,14 @@
 # TurboQuantSparseFlashAttention compatibility interface
 
 The standard interface is `cann_ops_transformer.turbo_quant_sparse_flash_attention`.
-This optional Python package forwards the old `custom_ops` entry points to that implementation;
-it does not build or load a second native operator. The ACLNN name and argument order are unchanged.
+This optional Python package forwards the old `custom_ops` entry points to that implementation.
 
 ## Build and install
 
+First install the operator package and the standard wheel as described in the
+[installation guide](../docs/install.md), then run from the repository root:
+
 ```bash
-# First build/install the operator package and the standard wheel as described in ../README.md.
 cd attention/turbo_quant_sparse_flash_attention/torch_ops_extension
 bash build_and_install.sh
 ```
