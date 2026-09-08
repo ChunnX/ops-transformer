@@ -60,11 +60,17 @@ public:
                                    const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
                                    uint32_t bGmStride)
     {
+        // MhcPreBackward的fusionSize最大为80，最多占两个K_L1分块。
+        // C0的所有M tile共享同一块phi，先装入两个B-L1槽，避免每128行重复GM到L1搬运。
+        bool reuseB1 = k <= BASIC_CUBE_BUFFER_NUM * BASIC_CUBE_K_L1;
+        if (reuseB1) {
+            PreloadB1(b, n, k, bGmStride);
+        }
         for (uint32_t offsetM = 0; offsetM < m; offsetM += BASIC_CUBE_M) {
             uint32_t remainM = m - offsetM;
             uint32_t currentM = remainM < BASIC_CUBE_M ? remainM : BASIC_CUBE_M;
             ComputeTile(a[offsetM * k], b, c[offsetM * BASIC_CUBE_N_STRIDE], currentM, n, k, k,
-                        bGmStride, BASIC_CUBE_N_STRIDE, false, false, true);
+                        bGmStride, BASIC_CUBE_N_STRIDE, false, false, true, reuseB1);
         }
     }
 
@@ -72,7 +78,7 @@ public:
                                      const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
                                      uint32_t aGmStride, uint32_t bGmStride, uint32_t cGmStride, bool atomicAdd)
     {
-        ComputeTile(a, b, c, m, n, k, aGmStride, bGmStride, cGmStride, true, atomicAdd, false);
+        ComputeTile(a, b, c, m, n, k, aGmStride, bGmStride, cGmStride, true, atomicAdd, false, false);
     }
 
     __aicore__ inline void End()
@@ -88,7 +94,7 @@ private:
     __aicore__ inline void ComputeTile(const GlobalTensor<float> &a, const GlobalTensor<float> &b,
                                        const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
                                        uint32_t aGmStride, uint32_t bGmStride, uint32_t cGmStride, bool transA,
-                                       bool atomicAdd, bool publishC0)
+                                       bool atomicAdd, bool publishC0, bool reuseB1)
     {
         // 最优组合：L0A/L0B保留ping-pong，L0C固定使用第0槽。
         uint32_t cSlot = 0U;
@@ -98,7 +104,8 @@ private:
         for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += BASIC_CUBE_K_L1) {
             uint32_t remainKL1 = k - offsetKL1;
             uint32_t currentKL1 = remainKL1 < BASIC_CUBE_K_L1 ? remainKL1 : BASIC_CUBE_K_L1;
-            uint32_t l1Slot = l1LoopCount_ & 1U;
+            uint32_t l1Slot =
+                reuseB1 ? ((offsetKL1 / BASIC_CUBE_K_L1) & 1U) : (l1LoopCount_ & 1U);
             LocalTensor<float> currentA1 = aL1_[l1Slot * BASIC_CUBE_L1_SLOT_ELEMS];
             LocalTensor<float> currentB1 = bL1_[l1Slot * BASIC_CUBE_L1_SLOT_ELEMS];
 
@@ -108,7 +115,9 @@ private:
             } else {
                 CopyInA1(currentA1, a[offsetKL1], m, currentKL1, aGmStride);
             }
-            CopyInB1(currentB1, b[offsetKL1 * bGmStride], n, currentKL1, bGmStride);
+            if (!reuseB1) {
+                CopyInB1(currentB1, b[offsetKL1 * bGmStride], n, currentKL1, bGmStride);
+            }
             SetFlag<HardEvent::MTE2_MTE1>(l1Slot);
             WaitFlag<HardEvent::MTE2_MTE1>(l1Slot);
 
@@ -158,6 +167,22 @@ private:
         }
         SetFlag<HardEvent::FIX_M>(cSlot);
         ++l0cLoopCount_;
+    }
+
+    __aicore__ inline void PreloadB1(const GlobalTensor<float> &b, uint32_t n, uint32_t k,
+                                     uint32_t bGmStride)
+    {
+        for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += BASIC_CUBE_K_L1) {
+            uint32_t currentKL1 = Min(BASIC_CUBE_K_L1, k - offsetKL1);
+            uint32_t l1Slot = (offsetKL1 / BASIC_CUBE_K_L1) & 1U;
+            LocalTensor<float> currentB1 = bL1_[l1Slot * BASIC_CUBE_L1_SLOT_ELEMS];
+
+            WaitFlag<HardEvent::MTE1_MTE2>(l1Slot);
+            CopyInB1(currentB1, b[offsetKL1 * bGmStride], n, currentKL1, bGmStride);
+            SetFlag<HardEvent::MTE2_MTE1>(l1Slot);
+            WaitFlag<HardEvent::MTE2_MTE1>(l1Slot);
+            SetFlag<HardEvent::MTE1_MTE2>(l1Slot);
+        }
     }
 
     __aicore__ inline void CopyInA1(const LocalTensor<float> &dst, const GlobalTensor<float> &src, uint32_t m,
