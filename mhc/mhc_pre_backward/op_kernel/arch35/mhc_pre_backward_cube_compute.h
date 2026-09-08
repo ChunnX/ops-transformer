@@ -173,7 +173,8 @@ private:
                                      uint32_t bGmStride)
     {
         for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += BASIC_CUBE_K_L1) {
-            uint32_t currentKL1 = Min(BASIC_CUBE_K_L1, k - offsetKL1);
+            uint32_t remainKL1 = k - offsetKL1;
+            uint32_t currentKL1 = remainKL1 < BASIC_CUBE_K_L1 ? remainKL1 : BASIC_CUBE_K_L1;
             uint32_t l1Slot = (offsetKL1 / BASIC_CUBE_K_L1) & 1U;
             LocalTensor<float> currentB1 = bL1_[l1Slot * BASIC_CUBE_L1_SLOT_ELEMS];
 
