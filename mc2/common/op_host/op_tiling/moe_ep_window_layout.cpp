@@ -64,7 +64,7 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
     layout.dispatchSlotStateSize = layout.dispatchNotifyCount * epWorldSize * MOE_EP_WIN_ALIGN;
     // payload 发送状态位区：dispatch 各发送核对端 payload 到齐标志，位于 slot 状态区之后
     layout.payloadWinStateOffset = layout.slotWinStateOffset + layout.dispatchSlotStateSize;
-    layout.payloadWinStateSize = MOE_EP_WIN_ALIGN;
+    layout.payloadWinStateSize = layout.dispatchNotifyCount * MOE_EP_WIN_ALIGN;
     layout.combineStateWinOffset = layout.payloadWinStateOffset + layout.payloadWinStateSize;
     layout.combineStateWinSize =
         nmt * topK * MOE_EP_WIN_ALIGN + epWorldSize * MOE_EP_COMBINE_CHANNEL_COUNT * MOE_EP_WIN_ALIGN;
