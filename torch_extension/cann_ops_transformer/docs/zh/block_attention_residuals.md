@@ -112,7 +112,7 @@ cann_ops_transformer.block_attention_residuals(
 
 ## 返回值说明
 
-始终返回 `hidden_states`，不返回 `inv_norm` / `probs`。
+返回 `hidden_states`。
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
