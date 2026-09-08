@@ -971,8 +971,15 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
         bool mergeC1BsBlock = !enableHf32 && totalLength_ > SINGLE_M && totalLength_ <= 2 * SINGLE_M;
         if (mergeC1BsBlock) {
             uint32_t secondBSBlock = static_cast<uint32_t>(totalLength_ - SINGLE_M);
+            // 低阶C0较快，同一C1跨核flag的两次发布可能在Cube首次等待前合并。
+            // 先消费第一块V2完成信号，再发布第二块C0，保证两次C1握手一一对应。
+            if (!useHighMatmul_) {
+                AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
+            }
             ProcessC0(offsetND, currentNDBlock, SINGLE_M, secondBSBlock, buffId + 1);
-            AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
+            if (useHighMatmul_) {
+                AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
+            }
             ProcessC1(offsetND, currentNDBlock, 0, static_cast<uint32_t>(totalLength_), buffId);
             buffId += 2;
 
