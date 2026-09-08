@@ -105,12 +105,49 @@ def key_pool(
     cmp_ratio: int = 4,
     norm_eps: float = 1e-6,
     rotary_mode: int = 1,
-) -> torch.tensor:
-    """
-    Run the KeyPool aclnn operator on NPU tensors.
+) -> torch.Tensor:
+    """Run the KeyPool operator on NPU tensors.
 
-    BSH input uses ``[B, S, H]``. TH input uses ``[T, H]`` together with
-    ``cu_seqlens``.
+    Args:
+        hidden_states: Input hidden states in BSH ``[B, S, H]`` or TH
+            ``[T, H]`` layout. It is an ND, contiguous Tensor with float16 or
+            bfloat16 dtype.
+        wk: K projection weight with shape ``[D, H]``. It is an ND,
+            contiguous Tensor with the same dtype as ``hidden_states``.
+        gate_weight: Gate projection weight with shape ``[D, H]``. It is an
+            ND, contiguous Tensor with the same dtype as ``hidden_states``.
+        ape: Position bias with shape ``[cmp_ratio, D]``. It is an ND,
+            contiguous Tensor with float32 dtype.
+        state_cache: In-place cache with shape
+            ``[block_num, block_size, 2 * D]`` and float32 dtype. It is an ND
+            Tensor; the first axis may be non-contiguous and its actual
+            stride is passed to the backend. The first ``D`` channels store K
+            and the remaining ``D`` channels store Gate.
+        cache_block_table: Logical-to-physical cache block table with shape
+            ``[B, L]``, int32 dtype, and contiguous ND layout.
+        start_pos: Per-batch logical start positions with shape ``[B]`` and
+            int32 dtype. It is a contiguous ND Tensor.
+        norm_weight: Optional float32 LayerNorm weight with shape ``[D]``.
+            It is a contiguous ND Tensor and must be provided together with
+            ``norm_bias``.
+        norm_bias: Optional float32 LayerNorm bias with shape ``[D]``. Must
+            be provided together with ``norm_weight``.
+        cos: Optional RoPE cosine input. Must be omitted in this version.
+        sin: Optional RoPE sine input. Must be omitted in this version.
+        cu_seqlens: Optional contiguous ND int32 prefix sums with shape
+            ``[B + 1]``. It is required for TH layout and must be omitted for
+            BSH layout.
+        seqused: Reserved optional input. Must be omitted in this version.
+        cmp_ratio: Compression ratio. Supports ``2, 4, 8, 16, 32, 64, 128``;
+            default is ``4``.
+        norm_eps: LayerNorm epsilon, must be greater than zero; default is
+            ``1e-6``.
+        rotary_mode: RoPE mode, supports ``0`` or ``1``; default is ``1``.
+            RoPE computation is not implemented in this version.
+
+    Returns:
+        The pooled key tensor with shape ``[B, Sr, D]`` and the same dtype as
+        ``hidden_states``. ``state_cache`` is updated in place.
     """
     if (norm_weight is None) != (norm_bias is None):
         raise ValueError("norm_weight and norm_bias must be passed as a pair")
