@@ -149,7 +149,7 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
             tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1;
         } else if (faInfo_->qkHeadDim == 128 || faInfo_->qkHeadDim == 72) {
             tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 2 : 3;
-        } else {
+        } else if (faInfo_->qkHeadDim == 256) {
             tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 4 : 5;
         }
     } else {
