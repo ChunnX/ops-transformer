@@ -242,6 +242,11 @@ public:
                     if (curBlockIdx % 2 == 1) {
                         curRowFactor = tailRowFactor;
                     }
+                    if (curRowFactor == 0) {
+                        CrossCoreSetFlag<SYNC_MODE4, PIPE_MTE3>(SYNC_AIV_AIC_FLAG);
+                        aL1BufferID_ ^= 1; // 与AIC的无条件翻转保持L1双缓冲索引同步
+                        continue;
+                    }
                     float coeff = 1 / static_cast<float>(tilingData->hcMult * tilingData->d);
                     for (int64_t cvLoopIdx = 0; cvLoopIdx < cvLoopKSize; cvLoopIdx++) {
                         uint64_t kRealSize = kGmOffset + tilingData->kUbSize >= kGmEndOffset ?
