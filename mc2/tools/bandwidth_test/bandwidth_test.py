@@ -18,6 +18,12 @@ import shutil
 from pathlib import Path
 
 from typing import List, Tuple, Dict, Any
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+cache_dir = os.path.join(script_dir, "torch_extensions_cache")
+os.makedirs(cache_dir, exist_ok=True)
+os.environ["TORCH_EXTENSIONS_DIR"] = cache_dir
+
 import torch
 import torch_npu
 import torch.distributed as dist
