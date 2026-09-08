@@ -20,7 +20,7 @@ mc2/tools/
     │   ├── A2.yaml / A3.yaml / A5.yaml
     ├── 3rd/                     # mc2/3rd 头文件的映射（仅含"测部分算子"的头）
     │   ├── A2.yaml / A3.yaml / A5.yaml
-    └── full_regression.yaml     # 全量清单（全量算子列表 + 三种全量文件的分类）
+    └── file_lists.yaml             # 全量匹配清单（按目录分放，common/与3rd/各一份）
 ```
 
 芯片对应关系：A2=ascend910b，A3=ascend910_93，A5=ascend950。
@@ -40,12 +40,17 @@ python3 mc2/tools/gen_common_impact_yaml.py /path/to/another_checkout [输出目
 
 ## 4. 消费规则（每个文件恰好命中一类）
 
+**第一步：先查本目录的 `file_lists.yaml`，命中任一条 → 全量：**
+| 命中 | 条件 |
+|---|---|
+| `full_regression.non_header_extensions` | 文件扩展名为 .cpp/.py/.json/.ini/.sh/.csv/.txt/.md 等非头文件 |
+| `full_regression.headers_used_by_all_operators` | .h 被全部算子使用 |
+| `full_regression.headers_no_reference` | .h 无任何文件引用（列出仅为防漏查，删除前需人工确认） |
+
+**第二步：未命中 → .h 属"测部分算子"类，查芯片映射表：**
 | 文件 | 判定 |
 |---|---|
-| 非 .h 文件（.cpp/.py/.json/.ini/.sh/.csv/.txt/.md 等，不限路径） | 全量 |
-| .h 被全部算子使用（`headers_used_by_all_operators`） | 全量 |
-| .h 无任何文件引用（`headers_no_reference`） | 全量（列出仅为防漏查，删除前需人工确认） |
-| .h 在芯片映射表中 | 测试条目 ops 列出的算子（按芯片过滤；`ops: []` 表示该芯片无匹配算子） |
+| .h 在芯片映射表中（A2/A3/A5.yaml） | 测试条目 ops 列出的算子（按芯片过滤；`ops: []` 表示该芯片无匹配算子） |
 
 **最后一步（消费侧负责）**：得到的算子集还需**叠加 CMake `*_depends`
 反向闭包**后去重，作为最终测试清单。
@@ -71,19 +76,15 @@ common/op_kernel/mc2_tiling_struct.h:
 common/op_host/op_tiling/xxx.h:
   ops: []                      # 该头影响的算子均未在此芯片注册(策略后续再定)
 
-# full_regression.yaml(全量类)
-full_ops_A5:                    # 全量回归算子清单(按芯片)
-  - all_gather_matmul
-  - ...
-non_header_extensions:          # 非.h文件命中即全量
-  - ".cpp"
-  - ...
-headers_used_by_all_operators:  # 被全部算子使用的头
-  common:
+# file_lists.yaml(全量匹配清单, 按目录分放)
+full_regression:
+  non_header_extensions:        # 非.h文件命中即全量
+    - ".cpp"
     - ...
-headers_no_reference:           # 无任何引用的头(防漏查)
-  common:
-    - ...
+  headers_used_by_all_operators: # 被全部算子使用的头
+    - 3rd/mat_mul_v3/...
+  headers_no_reference:          # 无任何引用的头(防漏查)
+    - 3rd/batch_mat_mul_v3/...
 ```
 
 ## 7. 维护约定

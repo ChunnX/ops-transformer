@@ -132,7 +132,7 @@ for grp in ('common', '3rd'):
             '# 本表 = 影响部分算子的头文件(键集合与A2/A3/A5三张表完全一致)。',
             '#   ops = 直接+间接include该头的算子中, 注册于本芯片的子集(显式全列表)',
             f'#   ops: [] = 该头影响的算子均未在{chip_cn}注册(该芯片无匹配算子, 后续策略待定)',
-            '# 不在本表中的文件 -> 按full_regression.yaml处理(全量或无引用人工确认)',
+            '# 不在本表中的文件 -> 全量(清单见本目录file_lists.yaml)',
             f'# 算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 {chip_cn}({soc}) 的交集',
             '',
         ]
@@ -155,36 +155,35 @@ for grp in ('common', '3rd'):
         open(out, 'w').write('\n'.join(lines) + '\n')
         summary.append((f'{grp}/{chip_cn}', len(partial_g), out))
 
-# full_regression.yaml
-lines = [
-    '# mc2 全量回归清单(命中以下任一情况 -> 全量算子回归)',
-    f'# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})',
-    '#',
-    '# 1) non_header_extensions: 改动匹配这些扩展名的文件 -> 全量',
-    '# 2) headers_used_by_all_operators: 被全部算子使用的头 -> 全量',
-    '# 3) headers_no_reference: 无任何文件引用的头 -> 全量',
-    '#    (此类改动不影响mc2算子编译, 列出仅为防漏查, 删除前需人工确认)',
-    '#',
-    '# 全量回归算子清单:',
-]
-for chip_cn, soc in CHIP_MAP.items():
-    lines.append(f'  full_ops_{chip_cn}:')
-    for op in sorted(o for o in socs if soc in socs[o]):
-        lines.append(f'    - {op}')
-lines.append('  non_header_extensions:')
-for ext in NON_HDR_EXT:
-    lines.append(f'    - "{ext}"')
-lines.append('  headers_used_by_all_operators:')
+# file_lists.yaml: 全量匹配清单(按grp分放, 消费侧先查本表; 未命中再查对应soc的芯片yaml)
 for grp in ('common', '3rd'):
-    lines.append(f'    {grp}:')
-    for h in sorted(h for h in used_by_all if h.startswith(grp + '/')):
+    used_g = sorted(h for h in used_by_all if h.startswith(grp + '/'))
+    noref_g = sorted(h for h in no_reference if h.startswith(grp + '/'))
+    lines = [
+        f'# mc2/{grp} 全量匹配清单(消费侧第一步先查本表)',
+        f'# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})',
+        '# 用途: 对每个修改文件, 先在本表匹配:',
+        '#   1) 扩展名命中 full_regression.non_header_extensions -> 全量',
+        '#   2) 路径命中 full_regression.headers_used_by_all_operators -> 全量',
+        '#   3) 路径命中 full_regression.headers_no_reference -> 全量',
+        f'# 均未命中 -> 该.h属"测部分算子"类, 改查 {{A2,A3,A5}}.yaml 取ops',
+        '# 最终算子集需叠加CMake depends反向闭包后去重',
+        '',
+        'full_regression:',
+        '  non_header_extensions:',
+    ]
+    for ext in NON_HDR_EXT:
+        lines.append(f'    - "{ext}"')
+    lines.append('  headers_used_by_all_operators:')
+    for h in used_g:
         lines.append(f'      - {h}')
-lines.append('  headers_no_reference:')
-for grp in ('common', '3rd'):
-    lines.append(f'    {grp}:')
-    for h in sorted(h for h in no_reference if h.startswith(grp + '/')):
+    lines.append('  headers_no_reference:')
+    for h in noref_g:
         lines.append(f'      - {h}')
-open(os.path.join(OUTDIR, 'full_regression.yaml'), 'w').write('\n'.join(lines) + '\n')
+    os.makedirs(os.path.join(OUTDIR, grp), exist_ok=True)
+    open(os.path.join(OUTDIR, grp, 'file_lists.yaml'), 'w').write('\n'.join(lines) + '\n')
+    print(f'输出 {os.path.join(OUTDIR, grp, "file_lists.yaml")}: '
+          f'全算子使用 {len(used_g)} / 无引用 {len(noref_g)}')
 
 # ---------- 8. 覆盖性自检 ----------
 n_hdr = len(hdrs)
