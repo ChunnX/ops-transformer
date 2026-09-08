@@ -185,7 +185,8 @@ __aicore__ inline void PublishExpertCounts(const MoeStageCommonConfig &common, G
 // 因而 count 表可继续按目标 rank 合并成二维 strided copy。
 __aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job, const MoeStageCommonConfig &common,
                                                         const Params &params, GM_ADDR *winRankAddr,
-                                                        const SendMaskConfig &config, SendMaskScratch &scratch)
+                                                        const SendMaskConfig &config, SendMaskScratch &scratch,
+                                                        uint32_t physicalSyncJob = 0xFFFFFFFFU)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -223,8 +224,9 @@ __aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job
     for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.bufferCount; ++bufferIdx) {
         WaitFlag<AscendC::HardEvent::MTE3_V>(static_cast<TEventID>(bufferIdx));
     }
+    const uint32_t syncJob = physicalSyncJob == 0xFFFFFFFFU ? job.jobIndex : physicalSyncJob;
     __gm__ int32_t *launchCountSlot = reinterpret_cast<__gm__ int32_t *>(
-        params.peermemInfo.rankSyncInWorldPtr + 48U * 1024U + static_cast<uint64_t>(job.jobIndex) * 64U);
+        params.peermemInfo.rankSyncInWorldPtr + 48U * 1024U + static_cast<uint64_t>(syncJob) * 64U);
     // 本 launch epoch = 计数槽值+1(跨卡同步在本阶段之后执行,槽值仍为上一 launch)。
     int32_t arrivalEpoch = ((ReadGmByPassDCache(launchCountSlot) + 1) & 0x7F) | 0x80;
     PublishExpertCounts(common, winRankAddr, config, scratch, ownedExpertBegin, ownedExpertNum, arrivalEpoch);
