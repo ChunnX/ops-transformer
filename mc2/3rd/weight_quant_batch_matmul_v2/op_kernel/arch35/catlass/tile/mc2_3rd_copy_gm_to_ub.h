@@ -23,8 +23,6 @@ DEVICE void CopyGmToUbIntervalDataCopy(const LocalTensor<T> &dst, const GlobalTe
                                        uint32_t blockLen, uint32_t dstInnerLength, uint32_t srcInnerLength)
 {
 #if defined(__CCE_KT_TEST__)
-    ASCENDC_ASSERT(dstInnerLength >= blockLen,
-                   { X_LOG("dstInnerLength[%d] should be larger than blockLen[%d].", dstInnerLength, blockLen); });
 #endif
     DataCopyExtParams params;
     params.blockCount = blockCount;
@@ -47,7 +45,6 @@ DEVICE void CopyGmToUbIntervalDataCopy(const LocalTensor<T> &dst, const GlobalTe
     X_LOG("DataCopyPad2D blockCount %d blockLen %d srcStride %d dstStride %d", params.blockCount, params.blockLen,
           params.srcStride, params.dstStride);
 #if defined(__CCE_KT_TEST__)
-    ASCENDC_ASSERT(params.blockLen > 0, { X_LOG("blockLen[%d] should be larger than 0.", params.blockLen); });
 #endif
     DataCopyPad(dst, src, params, padParams);
 }

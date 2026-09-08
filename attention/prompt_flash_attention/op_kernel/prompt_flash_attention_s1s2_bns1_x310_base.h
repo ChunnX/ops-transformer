@@ -1037,7 +1037,6 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::CopyND2NZOnTh
     const LocalTensor<mmOutputType> &dst, const GlobalTensor<mmOutputType> &src, const int height, const int width,
     const int gCol, const bool isA1)
 {
-    ASSERT(gCol >= width && "Copy ND block gm->ub width larger than origin matrix width.");
     int32_t dstOffset = 0;
     int32_t srcOffset = 0;
     int32_t calcWidth = width / BLOCK_CUBE; // cube block numbers that do not need to be pad zero

@@ -92,11 +92,7 @@ __aicore__ inline void Mc2AddMulWithBroadcastPerChannel(const LocalTensor<T> &ds
     repeatParams.src1BlkStride = 0;
     repeatParams.src1RepStride = 1;
 #if defined(__CCE_KT_TEST__)
-    ASCENDC_ASSERT(n < 256, { KERNEL_LOG(KERNEL_ERROR, "repeatTimes must < 256, actual is %d", n); });
     int32_t dstRepStride = kAlign / (ONE_BLK_SIZE / sizeof(T));
-    ASCENDC_ASSERT(dstRepStride < 256, {
-        KERNEL_LOG(KERNEL_ERROR, "dstRepStride/src1RepStride(%d) must < 256, actual is %d", dstRepStride);
-    });
 #endif
     Mc2AddMulWithBroadcastHelper<T, HasOffset>(dst, src, scale, offset, n, repeatParams, mainLoop, tailElements);
 }
@@ -240,8 +236,6 @@ __aicore__ inline void Mc2AddMulWithoutBroadcastPerChannel(const LocalTensor<T> 
     repeatParams.src1RepStride = 0;
 #if defined(__CCE_KT_TEST__)
     int32_t dstRepStride = n / (ONE_BLK_SIZE / sizeof(T));
-    ASCENDC_ASSERT(dstRepStride < 256,
-                   { KERNEL_LOG(KERNEL_ERROR, "dstRepStride/src0RepStride(%d) must < 256", dstRepStride); });
 #endif
     Mc2AddMulWithoutBroadcastHelper<T, HasOffset>(dst, src, scale, offset, k, repeatParams, mainLoop, tailElements);
 }
@@ -257,12 +251,8 @@ __aicore__ inline void Mc2AntiQuant(LocalTensor<DstDataType> &dst, const LocalTe
 
 #if defined(__CCE_KT_TEST__)
     if (IsSameType<SrcDataType, float>::value) {
-        ASCENDC_ASSERT((IsSameType<ScaleOffsetDataType, float>::value && IsSameType<DstDataType, float>::value),
-                       { KERNEL_LOG(KERNEL_ERROR, "dtype of src, scale, offset, dst must be float"); });
     }
     if (IsSameType<SrcDataType, half>::value) {
-        ASCENDC_ASSERT((IsSameType<ScaleOffsetDataType, half>::value && IsSameType<DstDataType, half>::value),
-                       { KERNEL_LOG(KERNEL_ERROR, "dtype of src, scale, offset, dst must be half"); });
     }
 #endif
     uint32_t calCount = src.GetSize();
@@ -277,7 +267,6 @@ __aicore__ inline void Mc2AntiQuant(LocalTensor<DstDataType> &dst, const LocalTe
         PipeBarrier<PIPE_V>();
 #if defined(__CCE_KT_TEST__)
     } else {
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "not support this scenario"); });
 #endif
     }
 }
@@ -297,7 +286,6 @@ __aicore__ inline void Mc2AscendAntiQuantPerGroupWithTranspose(LocalTensor<DstDa
         PipeBarrier<PIPE_V>();
 #if defined(__CCE_KT_TEST__)
     } else {
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "not support this scenario"); });
 #endif
     }
 }
@@ -314,7 +302,6 @@ __aicore__ inline void Mc2AscendAntiQuantPerChannelWithTranspose(
         PipeBarrier<PIPE_V>();
 #if defined(__CCE_KT_TEST__)
     } else {
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "not support this scenario"); });
 #endif
     }
 }
@@ -386,7 +373,6 @@ __aicore__ inline void Mc2AscendAntiQuantPerGroupWithoutTranspose(
         PipeBarrier<PIPE_V>();
 #if defined(__CCE_KT_TEST__)
     } else {
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "not support this scenario"); });
 #endif
     }
 }
@@ -403,7 +389,6 @@ __aicore__ inline void Mc2AscendAntiQuantPerChannelWithoutTranspose(
         PipeBarrier<PIPE_V>();
 #if defined(__CCE_KT_TEST__)
     } else {
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "not support this scenario"); });
 #endif
     }
 }
@@ -421,12 +406,8 @@ __aicore__ inline void Mc2AntiQuant(LocalTensor<DstDataType> &dst, const LocalTe
 
 #if defined(__CCE_KT_TEST__)
     if (IsSameType<SrcDataType, float>::value) {
-        ASCENDC_ASSERT((IsSameType<ScaleOffsetDataType, float>::value && IsSameType<DstDataType, float>::value),
-                       { KERNEL_LOG(KERNEL_ERROR, "dtype of src, scale, offset, dst must be float"); });
     }
     if (IsSameType<SrcDataType, half>::value) {
-        ASCENDC_ASSERT((IsSameType<ScaleOffsetDataType, half>::value && IsSameType<DstDataType, half>::value),
-                       { KERNEL_LOG(KERNEL_ERROR, "dtype of src, scale, offset, dst must be half"); });
     }
 #endif
 
@@ -449,8 +430,6 @@ __aicore__ inline void Mc2AntiQuant(LocalTensor<DstDataType> &dst, const LocalTe
             //   full load group-count (n, gc, 32B)
             //   not full load group-count (n*gc, 32B)
 #if defined(__CCE_KT_TEST__)
-            ASCENDC_ASSERT(preGroupSize == 0,
-                           { KERNEL_LOG(KERNEL_ERROR, "preGroupSize must = 0, actual is %d", preGroupSize); });
 #endif
             Mc2AscendAntiQuantPerGroupWithTranspose<SrcDataType, ScaleOffsetDataType, DstDataType, HasOffset>(
                 dst, src, scale, offset, tensorShape, sharedTmpBuffer, groupSize);

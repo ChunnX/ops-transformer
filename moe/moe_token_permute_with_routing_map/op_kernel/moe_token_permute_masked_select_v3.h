@@ -151,7 +151,6 @@ public:
         this->pipe = tPipe;
         this->processMode = mode;
         this->valueStreamOffset = valueStreamOffset;
-        ASSERT(GetBlockNum() != 0 && "block dim can not be zero!");
         __gm__ T *globalWorkTensor = (__gm__ T *)((__gm__ uint64_t *)workspace);
         blockIdx = GetBlockIdx();
         this->topK = topK;

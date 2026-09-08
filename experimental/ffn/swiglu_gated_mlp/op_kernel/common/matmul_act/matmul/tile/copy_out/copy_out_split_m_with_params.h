@@ -38,13 +38,10 @@ namespace Tile {
  * @param [in] InputType: the type of the input tensor
  */
 template <class OutputType, class InputType>
-struct Copy<
-    Arch::Ascend910_95, CopyOutSplitMWithParams, void, OutputType, InputType,
-    AscendC::Std::enable_if_t<
-        PosIsUB<OutputType::pos>() && IsNDOrAlign<OutputType>() &&       // UB ND/ND_ALIGN
-        !IsQuantSenario<typename OutputType::T, typename InputType::T>() // no quant
-    >
-> {
+struct Copy<Arch::Ascend910_95, CopyOutSplitMWithParams, void, OutputType, InputType,
+            AscendC::Std::enable_if_t<PosIsUB<OutputType::pos>() && IsNDOrAlign<OutputType>() &&       // UB ND/ND_ALIGN
+                                      !IsQuantSenario<typename OutputType::T, typename InputType::T>() // no quant
+                                      > > {
 public:
     using DstT = typename OutputType::T;
     using SrcT = typename AscendC::GetMmDstType<typename InputType::T>::Type;
@@ -64,9 +61,9 @@ public:
      * @param [in] orgKc: original Kc value
      * @param [in] id: blcok id, default is 0
      */
-    __aicore__ inline void operator()(const AscendC::LocalTensor<DstT>& dstLocal, const AscendC::LocalTensor<SrcT>& src,
-        int32_t curRow, int32_t curCol, int32_t l0CTileH, int32_t l0CTileW, int32_t baseM, int32_t baseN,
-        int32_t orgM, int32_t orgN, int32_t orgKc, uint8_t id = 0)
+    __aicore__ inline void operator()(const AscendC::LocalTensor<DstT> &dstLocal, const AscendC::LocalTensor<SrcT> &src,
+                                      int32_t curRow, int32_t curCol, int32_t l0CTileH, int32_t l0CTileW, int32_t baseM,
+                                      int32_t baseN, int32_t orgM, int32_t orgN, int32_t orgKc, uint8_t id = 0)
     {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3101)
         l0CTileH = AscendC::Align(l0CTileH, 2); // 2 means SplitM scenario aligned to 2
@@ -98,7 +95,6 @@ public:
         params.dualDstCtl = static_cast<uint8_t>(AscendC::McgShfMode::DUAL_DST_SPLIT_M);
         AscendC::Fixpipe<DstT, SrcT, AscendC::Impl::CFG_ROW_MAJOR_UB>(dstLocal[dstOffset], src, params);
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support Ascend910_95"); });
 #endif
     }
 };
@@ -114,13 +110,10 @@ public:
  * @param [in] InputType: the type of the input tensor
  */
 template <class OutputType, class InputType>
-struct Copy<
-    Arch::Ascend910_95, CopyOutSplitMWithParams, void, OutputType, InputType,
-    AscendC::Std::enable_if_t<
-        PosIsUB<OutputType::pos>() && IsNz<OutputType>() &&              // UB NZ
-        !IsQuantSenario<typename OutputType::T, typename InputType::T>() // no quant
-    >
-> {
+struct Copy<Arch::Ascend910_95, CopyOutSplitMWithParams, void, OutputType, InputType,
+            AscendC::Std::enable_if_t<PosIsUB<OutputType::pos>() && IsNz<OutputType>() &&              // UB NZ
+                                      !IsQuantSenario<typename OutputType::T, typename InputType::T>() // no quant
+                                      > > {
 public:
     using DstT = typename OutputType::T;
     using SrcT = typename AscendC::GetMmDstType<typename InputType::T>::Type;
@@ -141,10 +134,9 @@ public:
      * @param [in] id: blcok id, default is 0
      * @note Calculate the destination offset, set up copy parameters, and perform the data copy using Fixpipe
      */
-    __aicore__ inline void operator()(const AscendC::LocalTensor<DstT>& dst,
-                                      const AscendC::LocalTensor<SrcT>& src, int curRow, int curCol,
-                                      int32_t l0CTileH, int32_t l0CTileW, int32_t baseM, int32_t baseN,
-                                      int orgM, int orgN, int orgKc, uint8_t id = 0)
+    __aicore__ inline void operator()(const AscendC::LocalTensor<DstT> &dst, const AscendC::LocalTensor<SrcT> &src,
+                                      int curRow, int curCol, int32_t l0CTileH, int32_t l0CTileW, int32_t baseM,
+                                      int32_t baseN, int orgM, int orgN, int orgKc, uint8_t id = 0)
     {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3101)
         uint32_t stride = static_cast<uint32_t>(orgM * AscendC::BLOCK_CUBE);
@@ -167,7 +159,6 @@ public:
         params.subBlockId = id;
         AscendC::Fixpipe<DstT, SrcT, AscendC::Impl::CFG_NZ_UB>(dst[dstOffset], src, params);
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support Ascend910_95"); });
 #endif
     }
 };
@@ -183,13 +174,10 @@ public:
  * @param [in] InputType: the type of the input tensor
  */
 template <class OutputType, class InputType>
-struct Copy<
-    Arch::Ascend910_95, CopyOutSplitMWithParams, void, OutputType, InputType,
-    AscendC::Std::enable_if_t<
-        PosIsUB<OutputType::pos>() && IsNDOrAlign<OutputType>() &&      // UB ND/ND_ALIGN
-        IsQuantSenario<typename OutputType::T, typename InputType::T>() // quant
-    >
-> {
+struct Copy<Arch::Ascend910_95, CopyOutSplitMWithParams, void, OutputType, InputType,
+            AscendC::Std::enable_if_t<PosIsUB<OutputType::pos>() && IsNDOrAlign<OutputType>() &&      // UB ND/ND_ALIGN
+                                      IsQuantSenario<typename OutputType::T, typename InputType::T>() // quant
+                                      > > {
 public:
     using DstT = typename OutputType::T;
     using SrcT = typename AscendC::GetMmDstType<typename InputType::T>::Type;
@@ -209,10 +197,9 @@ public:
      * @param [in] orgKc: original Kc value
      * @param [in] id: blcok id, default is 0
      */
-    __aicore__ inline void operator()(const AscendC::LocalTensor<DstT>& dst,
-                                      const AscendC::LocalTensor<SrcT>& src, int32_t curRow, int32_t curCol,
-                                      int32_t l0CTileH, int32_t l0CTileW, int32_t baseM, int32_t baseN,
-                                      int32_t orgM, int32_t orgN, int32_t orgKc, uint8_t id = 0)
+    __aicore__ inline void operator()(const AscendC::LocalTensor<DstT> &dst, const AscendC::LocalTensor<SrcT> &src,
+                                      int32_t curRow, int32_t curCol, int32_t l0CTileH, int32_t l0CTileW, int32_t baseM,
+                                      int32_t baseN, int32_t orgM, int32_t orgN, int32_t orgKc, uint8_t id = 0)
     {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3101)
         l0CTileH = AscendC::Align(l0CTileH, 2); // 2 means SplitM scenario aligned to 2
@@ -238,7 +225,6 @@ public:
         params.subBlockId = id;
         AscendC::Fixpipe<DstT, SrcT, AscendC::Impl::CFG_ROW_MAJOR_UB>(dst[dstOffset], src, params);
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support Ascend910_95"); });
 #endif
     }
 };

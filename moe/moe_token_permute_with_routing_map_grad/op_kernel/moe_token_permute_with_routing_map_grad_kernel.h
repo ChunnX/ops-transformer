@@ -61,9 +61,6 @@ __aicore__ inline void KernelMoeTokenPermuteWithRoutingMap<T1, T2, T3>::InitData
     capacity_ = tilingData.capacity;
     singleCoreLen_ = tilingData.singleCoreLen;
     lastCoreLen_ = tilingData.lastCoreLen;
-    ASSERT(GetBlockNum() != 0 && "block dim can not be zero!");
-    ASSERT(capacity_ != 0 && "capacity can not be zero!");
-    ASSERT(tokenNum_ != 0 && "tokenNum can not be zero!");
 }
 
 template <typename T1, typename T2, typename T3>

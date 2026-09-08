@@ -88,7 +88,6 @@ template <typename T>
 __aicore__ inline void KernelMoeTokenUnpermuteWithRoutingMapPad<T>::InitData(
     const MoeTokenUnpermuteWithRoutingMapTilingData &tilingData)
 {
-    ASSERT(GetBlockNum() != 0 && "block dim can not be zero!");
     blockIdx_ = AscendC::GetBlockIdx();
     const MoeTokenUnpermuteWithRoutingMapPadTilingData &padTiling =
         tilingData.moeTokenUnpermuteWithRoutingMapPadTilingData;

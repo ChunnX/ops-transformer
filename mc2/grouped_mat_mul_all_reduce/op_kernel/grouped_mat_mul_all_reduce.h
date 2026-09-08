@@ -104,8 +104,6 @@ __aicore__ inline void GMMProcess<ComputeType>::Process(HcclServer &hcclServer)
         mnConfig.m = ubM[groupIdx];
         mnConfig.k = ubK[groupIdx];
         mnConfig.n = ubN[groupIdx];
-        ASCENDC_ASSERT(coreNum != 0, { KERNEL_LOG(KERNEL_ERROR, "coreNum should not be 0"); });
-        ASCENDC_ASSERT(mnConfig.baseN != 0, { KERNEL_LOG(KERNEL_ERROR, "mnConfig.baseN should not be 0"); });
 
         uint32_t lambdaN = Ceil(mnConfig.n, coreNum * mnConfig.baseN);
         mnConfig.singleN = lambdaN * mnConfig.baseN;

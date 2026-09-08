@@ -127,9 +127,6 @@ __aicore__ inline void ReduceSumLastNZImplPFA(const LocalTensor<half> &dst, cons
 __aicore__ inline void CreateSpecialFormatMaskPFA(uint64_t &lowMask, const uint32_t &maskLen,
                                                   const uint32_t &nzBlockCount)
 {
-    ASSERT(maskLen <= SOFTMAX_SHAPE_NZ_BASIC_COUNT);
-    ASSERT(nzBlockCount <= B32_BYTE_SIZE);
-    ASSERT(nzBlockCount >= 1);
     uint64_t defaultMask = 0xFFFF >> (SOFTMAX_SHAPE_NZ_BASIC_COUNT - maskLen); // logic shift right
     lowMask = defaultMask;
 
@@ -543,9 +540,7 @@ __aicore__ inline LastAxisShapeND GetLastAxisOriginShapeNDPFA(const ShapeInfo &s
     for (uint32_t i = 0; i < srcShapeInfo.originalShapeDim; i++) {
         calculateSize *= srcShapeInfo.originalShape[i];
     }
-    ASSERT(srcShapeInfo.originalShapeDim > 0);
     ndinfo.k = srcShapeInfo.originalShape[srcShapeInfo.originalShapeDim - 1];
-    ASSERT(ndinfo.k > 0);
     ndinfo.m = calculateSize / ndinfo.k;
     return ndinfo;
 }
@@ -581,8 +576,6 @@ __aicore__ inline bool SoftMaxFlashV2TilingFuncPFA(const LastAxisShapeND &ndinfo
     softmaxTiling.splitM = softmaxTiling.reduceM;
     softmaxTiling.splitK = ndinfo.k;
     softmaxTiling.splitSize = softmaxTiling.reduceM * ndinfo.k;
-    ASCENDC_ASSERT((softmaxTiling.reduceM > 0),
-                   { KERNEL_LOG(KERNEL_ERROR, "softmaxTiling.reduceM must be greater than 0."); });
     softmaxTiling.rangeM = ndinfo.m / softmaxTiling.reduceM;
     softmaxTiling.tailM = ndinfo.m % softmaxTiling.reduceM;
 

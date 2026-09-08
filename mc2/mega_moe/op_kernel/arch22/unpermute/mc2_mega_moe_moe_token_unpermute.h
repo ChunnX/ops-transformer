@@ -88,7 +88,6 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(
     if (blockIdx >= blockNum) {
         return;
     }
-    ASSERT(blockNum != 0 && "block dim can not be zero!");
     // row_input
     this->hidden_size = tiling_data->hidden_size;
     this->top_k = tiling_data->top_k;

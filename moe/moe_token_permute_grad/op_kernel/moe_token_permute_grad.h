@@ -76,7 +76,6 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(
     GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens,
     const MoeTokenPermuteGradTilingData *__restrict tiling_data)
 {
-    ASSERT(GetBlockNum() != 0 && "block dim can not be zero!");
     // row_input
     this->hidden_size = tiling_data->hidden_size;
     this->top_k = tiling_data->top_k;

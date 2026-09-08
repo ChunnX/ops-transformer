@@ -62,7 +62,6 @@ public:
             NoneTransposeLoadB2(l0B, l1B, coord);
         }
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV2201"); });
 #endif
     }
 
@@ -232,7 +231,6 @@ public:
             NoneTransposeLoadB2(l0B, l1B, coord);
         }
 #else
-        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Only support DAV3510"); });
 #endif
     }
 

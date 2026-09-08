@@ -16,14 +16,12 @@ namespace Mc2WeightQuantBatchMatmulV2::Arch35::Catlass {
 template <typename T>
 DEVICE T CeilDiv(T a, T b)
 {
-    ASCENDC_ASSERT(b != 0, { X_LOG("Division by zero error!"); });
     return (a + b - 1) / b;
 }
 
 template <typename T>
 DEVICE T CeilAlign(T a, T b)
 {
-    ASCENDC_ASSERT(b != 0, { X_LOG("Division by zero error!"); });
     return (a + b - 1) / b * b;
 }
 

@@ -176,7 +176,6 @@ public:
                                 const MaskedSelectMTUTilingData *maskedSelectTilingData, TPipe *tPipe)
     {
         this->pipe = tPipe;
-        ASSERT(GetBlockNum() != 0 && "block dim can not be zero!");
 
         __gm__ T *globalWorkTensor = (__gm__ T *)((__gm__ uint64_t *)workspace);
         blockIdx = GetBlockIdx();

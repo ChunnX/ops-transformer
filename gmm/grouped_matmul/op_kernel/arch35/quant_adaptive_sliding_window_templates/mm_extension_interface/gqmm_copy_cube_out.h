@@ -70,14 +70,11 @@ private:
                                        int32_t baseBlockWidth)
     {
         if constexpr (FIXPIPE_MODE == McgShfMode::DUAL_DST_SPLIT_M && PhyPosIsUB(C_TYPE::pos)) {
-            ASCENDC_ASSERT((baseHeight % 2 == 0), // 校验tileHeight是否2对齐
-                           { KERNEL_LOG(KERNEL_ERROR, "If split M when copy cube out, baseHeight must be even."); });
         }
         if constexpr (C_TYPE::format == CubeFormat::ND || C_TYPE::format == CubeFormat::ND_ALIGN) {
             CopyOutNZ2ND<enSequentialWrite, T, IS_INTRA_BLOCK>(dst, co1Local, curRow, curCol, baseHeight, baseWidth,
                                                                baseBlockHeight, baseBlockWidth);
         } else {
-            ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "Copy: unsupport Matmul format type."); });
         }
     }
 

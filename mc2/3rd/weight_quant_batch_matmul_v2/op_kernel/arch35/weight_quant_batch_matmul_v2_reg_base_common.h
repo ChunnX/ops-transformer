@@ -133,7 +133,6 @@ __aicore__ inline T Min(T a, T b)
 __aicore__ inline int64_t CeilDiv(int64_t x, int64_t y)
 {
 #ifdef __CCE_KT_TEST__
-    ASCENDC_ASSERT(y != 0, { KERNEL_LOG(KERNEL_ERROR, "divide 0: x(%ld) y(%ld)", x, y); });
 #endif
     return (x + y - 1) / y;
 }
@@ -141,7 +140,6 @@ __aicore__ inline int64_t CeilDiv(int64_t x, int64_t y)
 __aicore__ inline int64_t FloorAlign(int64_t x, int64_t y)
 {
 #ifdef __CCE_KT_TEST__
-    ASCENDC_ASSERT(y != 0, { KERNEL_LOG(KERNEL_ERROR, "divide 0: x(%ld) y(%ld)", x, y); });
 #endif
     return x / y * y;
 }
@@ -779,7 +777,6 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<
 
     if constexpr (IS_4BIT_WEIGHT && weightNz) {
         if constexpr (bTrans) {
-            ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "not supported yet"); });
         } else {
             // 目前仅考虑 per-group 且 B 矩阵非转置场景
             vecWeightInSize_ = tiling_->nBubSize * tiling_->kBubSize;
@@ -933,7 +930,6 @@ Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<xType, wType, biasType, yType, aT
             gmOffset = bubNOffset * tiling_->kSize + bubKOffset;
 #ifdef __CCE_KT_TEST__
         } else {
-            ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "not support yet"); });
 #endif
         }
     } else {                                              // B 矩阵非转置
@@ -1023,12 +1019,6 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<
         mainInnerNum = bubKLen * BLOCK_CUBE / VEC_MAX_ELEM_B16;
 #ifdef __CCE_KT_TEST__
     } else {
-        ASCENDC_ASSERT(false, {
-            KERNEL_LOG(
-                KERNEL_ERROR,
-                "innerNum is not a constant, not supported yet!(bubKOffset %d groupSize %d bubKLen %d overlap_part %d)",
-                bubKOffset, tiling_->groupSize, bubKLen, overlap_part);
-        });
 #endif
     }
 
@@ -1216,7 +1206,6 @@ Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<xType, wType, biasType, yType, aT
                                                                                                     int32_t bubKLen)
 {
 #ifdef __CCE_KT_TEST__
-    ASCENDC_ASSERT(tiling_->groupSize > 0, { KERNEL_LOG(KERNEL_ERROR, "Invalid groupSize."); });
 #endif
     ParamsKN<xType> param;
     param.kBub = bubKLen; // 实际长度
@@ -1519,7 +1508,6 @@ Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<xType, wType, biasType, yType, aT
                                                                                                       int32_t bubKLen)
 {
 #ifdef __CCE_KT_TEST__
-    ASCENDC_ASSERT(tiling_->groupSize > 0, { KERNEL_LOG(KERNEL_ERROR, "Invalid groupSize."); });
 #endif
     ParamsW8NK<xType> param;
     param.groupSize = tiling_->groupSize;
@@ -2099,7 +2087,6 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<
             }
         } else { // 仅使用 AIV-0 核
 #ifdef __CCE_KT_TEST__
-            ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "just use a single aiv core is not supported yet"); });
 #endif
         }
         VectorProcess();

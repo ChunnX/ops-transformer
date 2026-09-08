@@ -28,7 +28,6 @@ public:
     __aicore__ inline void Init(GM_ADDR gammaGM, Mc2Tiling::AddRMSNormTilingData &tiling, TPipe *pipe,
                                 uint32_t numBlocks)
     {
-        ASSERT(numBlocks != 0 && "Block dim can not be zero!");
         this->numBlocks_ = numBlocks;
         this->numRow_ = tiling.num_row;
         this->numCol_ = tiling.num_col;

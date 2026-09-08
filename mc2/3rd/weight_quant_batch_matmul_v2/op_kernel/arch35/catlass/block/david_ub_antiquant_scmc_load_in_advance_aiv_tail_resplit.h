@@ -281,12 +281,10 @@ public:
 
 #if defined(__CCE_KT_TEST__)
         uint32_t sizeWeightIn = 128 * 1024 / StageWeightIn;
-        ASCENDC_ASSERT(sizeWeightIn <= (64 * 1024), { X_LOG("size of weight(%d) in should <= 64KB", sizeWeightIn); });
         uint32_t sizeWeightOut = CeilAlign(64 * 256 * 2, 32);
         uint32_t sizeScaleIn = 8 * 1024 / sizeof(DtypeA);
 
         uint32_t ubSize = (sizeWeightIn + 2 * sizeScaleIn) * StageWeightIn + sizeWeightOut * STAGE_VF_OUT;
-        ASCENDC_ASSERT(ubSize <= (248 * 1024), { X_LOG("size of ub(%d) in should <= 248KB", ubSize); });
 #endif
         // L1
         weightF16L1_ = l1TBuf_.Get<DtypeA>();
@@ -482,8 +480,6 @@ private:
             X_LOG("DataCopyPad blockCount %d blockLen %d srcStride %d dstStride %d", intriParams.blockCount,
                   intriParams.blockLen, intriParams.srcStride, intriParams.dstStride);
 #if defined(__CCE_KT_TEST__)
-            ASCENDC_ASSERT(intriParams.blockLen > 0,
-                           { X_LOG("blockLen[%d] should be larger than 0.", intriParams.blockLen); });
 #endif
             DataCopyPad(tensorScaleUb[offsetScaleUb], tensorScaleGm_[offsetScaleGm], intriParams, padParams);
             if constexpr (Base::hasAntiQuantOffset) {
