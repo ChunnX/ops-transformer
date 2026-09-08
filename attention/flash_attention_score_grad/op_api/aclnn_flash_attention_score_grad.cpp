@@ -665,7 +665,7 @@ static inline void ConvertInputLayout(FagInShapeInfo fagShape, const char *input
         inputLayoutUnderTrans[0] = inputLayout[0]; // 0: 'S'
         inputLayoutUnderTrans[1] = inputLayout[1]; // 1: 'B'
         inputLayoutUnderTrans[2] = 'H';            // 2: 'H'
-    } else if (fagShape.needPadDimD) { // 3. 如果是仅PAD场景，根据BSH/SBH/BNSD/BSND自适应reshape后的layout
+    } else if (fagShape.needPadDimD) {             // 3. 如果是仅PAD场景，根据BSH/SBH/BNSD/BSND自适应reshape后的layout
         /* BSH  -> BSND
            SBH  -> SBND
            TND  -> TND
@@ -2738,9 +2738,9 @@ aclnnStatus aclnnFlashAttentionScoreGradV3GetWorkspaceSize(
     L2_DFX_PHASE_1(
         aclnnFlashAttentionScoreGradV3,
         DFX_IN(query, keyIn, value, dy, pseShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
-               softmaxMaxOptional, softmaxSumOptional, softmaxInOptional, attentionInOptional, prefixOptional,
-               qStartIdxOptional, kvStartIdxOptional, scaleValue, keepProb, preTokens, nextTokens, headNum, inputLayout,
-               innerPrecise, sparseMode, pseType, sinkInOptional),
+               softmaxMaxOptional, softmaxSumOptional, softmaxInOptional, attentionInOptional, sinkInOptional,
+               prefixOptional, qStartIdxOptional, kvStartIdxOptional, scaleValue, keepProb, preTokens, nextTokens,
+               headNum, inputLayout, innerPrecise, sparseMode, pseType),
         DFX_OUT(dqOut, dkOut, dvOut, dpseOut, dsinkOut));
     // 固定写法，创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
