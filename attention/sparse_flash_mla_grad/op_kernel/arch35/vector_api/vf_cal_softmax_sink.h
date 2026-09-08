@@ -17,7 +17,7 @@
 
 namespace AscendC {
 #ifndef __CCE_KT_TEST__
-using namespace MicroAPI;
+using namespace Reg;
 /* **************************************************************************************************
 
  *
@@ -64,8 +64,7 @@ __aicore__ inline void CalculateSoftMaxSink(const LocalTensor<T> &dstTensor, con
 template <typename T>
 __aicore__ inline void CalculateSoftMaxSink(const LocalTensor<T> &dstTensor, const LocalTensor<T> &lseTensor,
                                             const LocalTensor<T> &sinkTensor, uint32_t realM)
-{
-}
+{}
 #endif
 } // namespace AscendC
 

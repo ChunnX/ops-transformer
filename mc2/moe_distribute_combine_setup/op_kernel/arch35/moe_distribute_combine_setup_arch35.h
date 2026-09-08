@@ -15,11 +15,7 @@
 #ifndef MOE_DISTRIBUTE_COMBINE_SETUP_ARCH35_H
 #define MOE_DISTRIBUTE_COMBINE_SETUP_ARCH35_H
 
-#if __has_include("../../common/mc2_kernel_utils.h")
-#include "../../common/mc2_kernel_utils.h"
-#else
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -402,8 +398,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
 }
 
 template <TemplateMC2TypeClass>
-__aicore__ inline void
-MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(const WriteWithNotifySQEInfoParams &params)
+__aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(
+    const WriteWithNotifySQEInfoParams &params)
 {
     // expandX在GM上，winIn也属于GM，数据需要GM -> Local -> winIn
     GlobalTensor<uint8_t> selfDataSrcTensor;

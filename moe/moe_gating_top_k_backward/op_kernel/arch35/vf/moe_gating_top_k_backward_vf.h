@@ -21,37 +21,45 @@
 namespace MoeGatingTopKBackwardNs {
 using namespace AscendC;
 
-constexpr MicroAPI::CastTrait castTraitB322B16 = {
-    MicroAPI::RegLayout::ZERO,
-    MicroAPI::SatMode::NO_SAT,
-    MicroAPI::MaskMergeMode::ZEROING,
+// 单次向量归约的 lane 数(64): 由向量寄存器宽度 / int32 位宽推导, Init(UB sizing) 与 VF(归约chunk) 共用
+constexpr uint16_t kReduceChunkLane = VECTOR_REG_WIDTH / sizeof(int32_t);
+
+constexpr Reg::CastTrait castTraitB322B16 = {
+    Reg::RegLayout::ZERO,
+    Reg::SatMode::NO_SAT,
+    Reg::MaskMergeMode::ZEROING,
     RoundMode::CAST_RINT,
 };
 
-constexpr MicroAPI::CastTrait castTraitB162B32 = {
-    MicroAPI::RegLayout::ZERO,
-    MicroAPI::SatMode::UNKNOWN,
-    MicroAPI::MaskMergeMode::ZEROING,
+constexpr Reg::CastTrait castTraitB162B32 = {
+    Reg::RegLayout::ZERO,
+    Reg::SatMode::UNKNOWN,
+    Reg::MaskMergeMode::ZEROING,
     RoundMode::UNKNOWN,
+};
+
+constexpr Reg::DivSpecificMode div0UlpMode = {
+    Reg::MaskMergeMode::ZEROING,
+    true,
 };
 
 __simd_vf__ void SigmoidGradFP32VF(__ubuf__ float *xNormAddr, __ubuf__ float *gradNormXAddr, __ubuf__ float *gradXAddr,
                                    uint32_t totalElements, uint32_t oneRepeatSize, uint16_t repeatTimes)
 {
-    MicroAPI::RegTensor<float> xReg, gNormReg, tmpReg, dstReg;
-    MicroAPI::MaskReg preg = MicroAPI::CreateMask<float>();
+    Reg::RegTensor<float> xReg, gNormReg, tmpReg, dstReg;
+    Reg::MaskReg preg = Reg::CreateMask<float>();
 
     for (uint16_t i = 0; i < repeatTimes; i++) {
         uint32_t remaining = totalElements - i * oneRepeatSize;
         uint32_t chunkElems = (remaining > oneRepeatSize) ? oneRepeatSize : remaining;
-        preg = MicroAPI::UpdateMask<float>(chunkElems);
-        MicroAPI::LoadAlign(xReg, xNormAddr + i * oneRepeatSize);
-        MicroAPI::LoadAlign(gNormReg, gradNormXAddr + i * oneRepeatSize);
-        MicroAPI::Muls(tmpReg, xReg, static_cast<float>(-1), preg);
-        MicroAPI::Adds(tmpReg, tmpReg, static_cast<float>(1), preg);
-        MicroAPI::Mul(tmpReg, tmpReg, xReg, preg);
-        MicroAPI::Mul(dstReg, tmpReg, gNormReg, preg);
-        MicroAPI::StoreAlign(gradXAddr + i * oneRepeatSize, dstReg, preg);
+        preg = Reg::UpdateMask<float>(chunkElems);
+        Reg::LoadAlign(xReg, xNormAddr + i * oneRepeatSize);
+        Reg::LoadAlign(gNormReg, gradNormXAddr + i * oneRepeatSize);
+        Reg::Muls(tmpReg, xReg, static_cast<float>(-1), preg);
+        Reg::Adds(tmpReg, tmpReg, static_cast<float>(1), preg);
+        Reg::Mul(tmpReg, tmpReg, xReg, preg);
+        Reg::Mul(dstReg, tmpReg, gNormReg, preg);
+        Reg::StoreAlign(gradXAddr + i * oneRepeatSize, dstReg, preg);
     }
 }
 
@@ -59,23 +67,23 @@ template <typename T>
 __simd_vf__ void SigmoidGradHalfVF(__ubuf__ float *xNormAddr, __ubuf__ float *gradNormXAddr, __ubuf__ T *gradXAddr,
                                    uint32_t totalElements, uint32_t oneRepeatSize, uint16_t repeatTimes)
 {
-    MicroAPI::RegTensor<float> xReg, gNormReg, tmpReg, dstReg;
-    MicroAPI::RegTensor<T> outReg;
-    MicroAPI::MaskReg pregFp = MicroAPI::CreateMask<float>();
+    Reg::RegTensor<float> xReg, gNormReg, tmpReg, dstReg;
+    Reg::RegTensor<T> outReg;
+    Reg::MaskReg pregFp = Reg::CreateMask<float>();
 
     for (uint16_t i = 0; i < repeatTimes; i++) {
         uint32_t remaining = totalElements - i * oneRepeatSize;
         uint32_t chunkElems = (remaining > oneRepeatSize) ? oneRepeatSize : remaining;
-        pregFp = MicroAPI::UpdateMask<float>(chunkElems);
-        MicroAPI::LoadAlign(xReg, xNormAddr + i * oneRepeatSize);
-        MicroAPI::LoadAlign(gNormReg, gradNormXAddr + i * oneRepeatSize);
-        MicroAPI::Muls(tmpReg, xReg, static_cast<float>(-1), pregFp);
-        MicroAPI::Adds(tmpReg, tmpReg, static_cast<float>(1), pregFp);
-        MicroAPI::Mul(tmpReg, tmpReg, xReg, pregFp);
-        MicroAPI::Mul(dstReg, tmpReg, gNormReg, pregFp);
+        pregFp = Reg::UpdateMask<float>(chunkElems);
+        Reg::LoadAlign(xReg, xNormAddr + i * oneRepeatSize);
+        Reg::LoadAlign(gNormReg, gradNormXAddr + i * oneRepeatSize);
+        Reg::Muls(tmpReg, xReg, static_cast<float>(-1), pregFp);
+        Reg::Adds(tmpReg, tmpReg, static_cast<float>(1), pregFp);
+        Reg::Mul(tmpReg, tmpReg, xReg, pregFp);
+        Reg::Mul(dstReg, tmpReg, gNormReg, pregFp);
 
-        MicroAPI::Cast<T, float, castTraitB322B16>(outReg, dstReg, pregFp);
-        MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(gradXAddr + i * oneRepeatSize, outReg, pregFp);
+        Reg::Cast<T, float, castTraitB322B16>(outReg, dstReg, pregFp);
+        Reg::StoreAlign<T, Reg::StoreDist::DIST_PACK_B32>(gradXAddr + i * oneRepeatSize, outReg, pregFp);
     }
 }
 
@@ -83,16 +91,16 @@ template <typename T>
 __simd_vf__ void CastGradYFlatVF(__ubuf__ T *srcAddr, __ubuf__ float *dstAddr, uint32_t totalElements,
                                  uint32_t oneRepeatSize, uint16_t repeatTimes)
 {
-    MicroAPI::MaskReg preg = MicroAPI::CreateMask<float>();
+    Reg::MaskReg preg = Reg::CreateMask<float>();
     for (uint16_t i = 0; i < repeatTimes; i++) {
         uint32_t remaining = totalElements - i * oneRepeatSize;
         uint32_t chunkElems = (remaining > oneRepeatSize) ? oneRepeatSize : remaining;
-        preg = MicroAPI::UpdateMask<float>(chunkElems);
-        MicroAPI::RegTensor<T> srcB16;
-        MicroAPI::RegTensor<float> dstF32;
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(srcB16, srcAddr + i * oneRepeatSize);
-        MicroAPI::Cast<float, T, castTraitB162B32>(dstF32, srcB16, preg);
-        MicroAPI::StoreAlign(dstAddr + i * oneRepeatSize, dstF32, preg);
+        preg = Reg::UpdateMask<float>(chunkElems);
+        Reg::RegTensor<T> srcB16;
+        Reg::RegTensor<float> dstF32;
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(srcB16, srcAddr + i * oneRepeatSize);
+        Reg::Cast<float, T, castTraitB162B32>(dstF32, srcB16, preg);
+        Reg::StoreAlign(dstAddr + i * oneRepeatSize, dstF32, preg);
     }
 }
 
@@ -110,24 +118,25 @@ __simd_vf__ void CastGradYRowsVF(__ubuf__ T *srcAddr, __ubuf__ float *dstAddr, u
         uint32_t remainingK = k;
         for (uint16_t c = 0; c < repeatTimes; c++) {
             uint16_t chunkOffset = c * chunkSize;
-            MicroAPI::MaskReg preg = MicroAPI::UpdateMask<float>(remainingK);
+            Reg::MaskReg preg = Reg::UpdateMask<float>(remainingK);
 
-            MicroAPI::RegTensor<T> srcB16;
-            MicroAPI::RegTensor<float> dstF32;
-            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(srcB16, srcRow + chunkOffset);
-            MicroAPI::Cast<float, T, castTraitB162B32>(dstF32, srcB16, preg);
-            MicroAPI::StoreAlign(dstRow + chunkOffset, dstF32, preg);
+            Reg::RegTensor<T> srcB16;
+            Reg::RegTensor<float> dstF32;
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(srcB16, srcRow + chunkOffset);
+            Reg::Cast<float, T, castTraitB162B32>(dstF32, srcB16, preg);
+            Reg::StoreAlign(dstRow + chunkOffset, dstF32, preg);
         }
     }
 }
 
 __simd_vf__ void SigmoidRenormBackwardVF(__ubuf__ float *xNormBase, __ubuf__ int32_t *expertIdxBase,
                                          __ubuf__ float *gradYBase, __ubuf__ float *gradNormXBase, float eps,
-                                         uint16_t curRows, uint16_t k, uint16_t kAlign, uint16_t n)
+                                         uint16_t curRows, uint16_t k, uint16_t kAlign, uint16_t n,
+                                         __ubuf__ float *partialSumBuf)
 {
-    constexpr uint16_t chunkSize = VECTOR_REG_WIDTH / sizeof(int32_t); // 64 for int32_t/float
+    constexpr uint16_t chunkSize = kReduceChunkLane; // 单次向量归约 chunk 的 lane 数(64)
     uint16_t repeatTimes = static_cast<uint16_t>((k + chunkSize - 1) / chunkSize);
-    MicroAPI::MaskReg maskLane0 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
+    Reg::MaskReg maskLane0 = Reg::CreateMask<float, Reg::MaskPattern::VL1>();
 
     for (uint16_t row = 0; row < curRows; row++) {
         __ubuf__ int32_t *idxRow = expertIdxBase + row * kAlign;
@@ -135,82 +144,98 @@ __simd_vf__ void SigmoidRenormBackwardVF(__ubuf__ float *xNormBase, __ubuf__ int
         __ubuf__ float *gradYRow = gradYBase + row * kAlign;
         __ubuf__ float *gradNormXRow = gradNormXBase + row * n;
 
-        // ---- Phase 1a: accumulate global D across all chunks. ----
-        MicroAPI::RegTensor<float> globalD;
-        MicroAPI::Duplicate(globalD, eps, maskLane0);
+        // ---- Phase 1a: per-chunk partial sums into partialSumBuf, then tree-reduce. ----
+        Reg::RegTensor<float> globalD;
+        Reg::Duplicate(globalD, 0.0f, maskLane0);
+        Reg::RegTensor<float> chunkSum;
 
         uint32_t remainingK1 = k;
         for (uint16_t c = 0; c < repeatTimes; c++) {
             uint16_t chunkOffset = c * chunkSize;
-            MicroAPI::MaskReg chunkMask = MicroAPI::UpdateMask<int32_t>(remainingK1);
+            Reg::MaskReg chunkMask = Reg::UpdateMask<int32_t>(remainingK1);
 
-            MicroAPI::RegTensor<int32_t> idxReg;
-            MicroAPI::RegTensor<uint32_t> idxU32Reg;
-            MicroAPI::RegTensor<float> wPrimeReg, chunkSum;
+            Reg::RegTensor<int32_t> idxReg;
+            Reg::RegTensor<uint32_t> idxU32Reg;
+            Reg::RegTensor<float> wPrimeReg;
 
-            MicroAPI::LoadAlign(idxReg, idxRow + chunkOffset);
-            idxU32Reg = (MicroAPI::RegTensor<uint32_t> &)idxReg;
-            MicroAPI::DataCopyGather(wPrimeReg, xNormRow, idxU32Reg, chunkMask);
+            Reg::LoadAlign(idxReg, idxRow + chunkOffset);
+            idxU32Reg = (Reg::RegTensor<uint32_t> &)idxReg;
+            Reg::DataCopyGather(wPrimeReg, xNormRow, idxU32Reg, chunkMask);
 
-            MicroAPI::ReduceSum(chunkSum, wPrimeReg, chunkMask);
-            MicroAPI::Add(globalD, globalD, chunkSum, maskLane0);
+            Reg::ReduceSum(chunkSum, wPrimeReg, chunkMask);
+            // 部分和(lane0) 落 partialSumBuf[c]
+            Reg::StoreAlign<float, Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(partialSumBuf + c, chunkSum, chunkMask);
         }
+        Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
+        // 二级归约：整段 LoadAlign → 一次树状 ReduceSum → D
+        uint32_t partCount = repeatTimes;
+        Reg::MaskReg partMask = Reg::UpdateMask<float>(partCount);
+        Reg::LoadAlign(globalD, partialSumBuf);
+        Reg::ReduceSum(globalD, globalD, partMask);
+        Reg::Adds(globalD, globalD, eps, maskLane0);
 
-        // ---- Phase 1b: re-gather w', compute w'/D, multiply by gradY, accumulate betaNum. ----
-        MicroAPI::RegTensor<float> globalBetaNum;
-        MicroAPI::Duplicate(globalBetaNum, 0.0f, maskLane0);
+        // ---- Phase 1b: re-gather w', compute w'/D, multiply by gradY, tree-reduce betaNum. ----
+        Reg::RegTensor<float> globalBetaNum;
+        Reg::Duplicate(globalBetaNum, 0.0f, maskLane0);
+        Reg::RegTensor<float> chunkSumB;
 
         uint32_t remainingK1b = k;
         for (uint16_t c = 0; c < repeatTimes; c++) {
             uint16_t chunkOffset = c * chunkSize;
-            MicroAPI::MaskReg chunkMask = MicroAPI::UpdateMask<int32_t>(remainingK1b);
+            Reg::MaskReg chunkMask = Reg::UpdateMask<int32_t>(remainingK1b);
 
-            MicroAPI::RegTensor<int32_t> idxReg;
-            MicroAPI::RegTensor<uint32_t> idxU32Reg;
-            MicroAPI::RegTensor<float> wPrimeReg, gradYReg, wNormReg, tmpReg, chunkSum;
+            Reg::RegTensor<int32_t> idxReg;
+            Reg::RegTensor<uint32_t> idxU32Reg;
+            Reg::RegTensor<float> wPrimeReg, gradYReg, wNormReg, tmpReg;
 
-            MicroAPI::LoadAlign(idxReg, idxRow + chunkOffset);
-            idxU32Reg = (MicroAPI::RegTensor<uint32_t> &)idxReg;
-            MicroAPI::DataCopyGather(wPrimeReg, xNormRow, idxU32Reg, chunkMask);
+            Reg::LoadAlign(idxReg, idxRow + chunkOffset);
+            idxU32Reg = (Reg::RegTensor<uint32_t> &)idxReg;
+            Reg::DataCopyGather(wPrimeReg, xNormRow, idxU32Reg, chunkMask);
 
             // Broadcast D (lane0) to every lane for this chunk's w'/D.
-            MicroAPI::RegTensor<float> bcastDReg1b;
-            MicroAPI::Duplicate<float, MicroAPI::HighLowPart::LOWEST, MicroAPI::MaskMergeMode::ZEROING>(
-                bcastDReg1b, globalD, chunkMask);
-            MicroAPI::Div(wNormReg, wPrimeReg, bcastDReg1b, chunkMask);
+            Reg::RegTensor<float> bcastDReg1b;
+            Reg::Duplicate<float, Reg::HighLowPart::LOWEST, Reg::MaskMergeMode::ZEROING>(bcastDReg1b, globalD,
+                                                                                         chunkMask);
+            Reg::Div<float, &div0UlpMode>(wNormReg, wPrimeReg, bcastDReg1b, chunkMask);
 
-            MicroAPI::LoadAlign(gradYReg, gradYRow + chunkOffset);
-            MicroAPI::Mul(tmpReg, gradYReg, wNormReg, chunkMask);
-            MicroAPI::ReduceSum(chunkSum, tmpReg, chunkMask);
-            MicroAPI::Add(globalBetaNum, globalBetaNum, chunkSum, maskLane0);
+            Reg::LoadAlign(gradYReg, gradYRow + chunkOffset);
+            Reg::Mul(tmpReg, gradYReg, wNormReg, chunkMask);
+            Reg::ReduceSum(chunkSumB, tmpReg, chunkMask);
+            // 部分和(lane0) 落 partialSumBuf[c]（与 Phase1a 时序复用同一段）
+            Reg::StoreAlign<float, Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(partialSumBuf + c, chunkSumB, chunkMask);
         }
+        Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
+        // 二级归约：整段 LoadAlign → 一次树状 ReduceSum → beta
+        uint32_t partCountB = repeatTimes;
+        Reg::MaskReg partMaskB = Reg::UpdateMask<float>(partCountB);
+        Reg::LoadAlign(globalBetaNum, partialSumBuf);
+        Reg::ReduceSum(globalBetaNum, globalBetaNum, partMaskB);
 
         // ---- Phase 2: recompute gradWPrime per chunk, scatter. ----
         uint32_t remainingK2 = k;
         for (uint16_t c = 0; c < repeatTimes; c++) {
             uint16_t chunkOffset = c * chunkSize;
-            MicroAPI::MaskReg chunkMask = MicroAPI::UpdateMask<int32_t>(remainingK2);
+            Reg::MaskReg chunkMask = Reg::UpdateMask<int32_t>(remainingK2);
 
-            MicroAPI::RegTensor<int32_t> idxReg;
-            MicroAPI::RegTensor<uint32_t> idxU32Reg;
-            MicroAPI::RegTensor<float> gradYReg;
+            Reg::RegTensor<int32_t> idxReg;
+            Reg::RegTensor<uint32_t> idxU32Reg;
+            Reg::RegTensor<float> gradYReg;
 
-            MicroAPI::LoadAlign(idxReg, idxRow + chunkOffset);
-            idxU32Reg = (MicroAPI::RegTensor<uint32_t> &)idxReg;
-            MicroAPI::LoadAlign(gradYReg, gradYRow + chunkOffset);
+            Reg::LoadAlign(idxReg, idxRow + chunkOffset);
+            idxU32Reg = (Reg::RegTensor<uint32_t> &)idxReg;
+            Reg::LoadAlign(gradYReg, gradYRow + chunkOffset);
 
             // Broadcast the row-global D/betaNum (lane0) to every lane of this chunk.
             // betaNum already includes /D from Phase 1b.
-            MicroAPI::RegTensor<float> bcastDReg;
-            MicroAPI::Duplicate<float, MicroAPI::HighLowPart::LOWEST, MicroAPI::MaskMergeMode::ZEROING>(
-                bcastDReg, globalD, chunkMask);
-            MicroAPI::RegTensor<float> gradWPrimeReg;
-            MicroAPI::Duplicate<float, MicroAPI::HighLowPart::LOWEST, MicroAPI::MaskMergeMode::ZEROING>(
-                gradWPrimeReg, globalBetaNum, chunkMask);
-            MicroAPI::Sub(gradWPrimeReg, gradYReg, gradWPrimeReg, chunkMask);
-            MicroAPI::Div(gradWPrimeReg, gradWPrimeReg, bcastDReg, chunkMask);
+            Reg::RegTensor<float> bcastDReg;
+            Reg::Duplicate<float, Reg::HighLowPart::LOWEST, Reg::MaskMergeMode::ZEROING>(bcastDReg, globalD, chunkMask);
+            Reg::RegTensor<float> gradWPrimeReg;
+            Reg::Duplicate<float, Reg::HighLowPart::LOWEST, Reg::MaskMergeMode::ZEROING>(gradWPrimeReg, globalBetaNum,
+                                                                                         chunkMask);
+            Reg::Sub(gradWPrimeReg, gradYReg, gradWPrimeReg, chunkMask);
+            Reg::Div<float, &div0UlpMode>(gradWPrimeReg, gradWPrimeReg, bcastDReg, chunkMask);
 
-            MicroAPI::DataCopyScatter(gradNormXRow, gradWPrimeReg, idxU32Reg, chunkMask);
+            Reg::DataCopyScatter(gradNormXRow, gradWPrimeReg, idxU32Reg, chunkMask);
         }
     }
 }
@@ -252,13 +277,16 @@ __aicore__ inline void CallCastGradYRowsVF(LocalTensor<T> gradYSrc, LocalTensor<
 
 __aicore__ inline void CallSigmoidRenormBackwardVF(LocalTensor<float> xNorm, LocalTensor<int32_t> expertIdx,
                                                    LocalTensor<float> gradY, LocalTensor<float> gradNormX, float eps,
-                                                   uint16_t curRows, uint16_t k, uint16_t kAlign, uint16_t n)
+                                                   uint16_t curRows, uint16_t k, uint16_t kAlign, uint16_t n,
+                                                   LocalTensor<float> partialSumBuf)
 {
     __ubuf__ float *xNormAddr = (__ubuf__ float *)xNorm.GetPhyAddr();
     __ubuf__ int32_t *expertIdxAddr = (__ubuf__ int32_t *)expertIdx.GetPhyAddr();
     __ubuf__ float *gradYAddr = (__ubuf__ float *)gradY.GetPhyAddr();
     __ubuf__ float *gradNormXAddr = (__ubuf__ float *)gradNormX.GetPhyAddr();
-    SigmoidRenormBackwardVF(xNormAddr, expertIdxAddr, gradYAddr, gradNormXAddr, eps, curRows, k, kAlign, n);
+    __ubuf__ float *partialSumAddr = (__ubuf__ float *)partialSumBuf.GetPhyAddr();
+    SigmoidRenormBackwardVF(xNormAddr, expertIdxAddr, gradYAddr, gradNormXAddr, eps, curRows, k, kAlign, n,
+                            partialSumAddr);
 }
 
 } // namespace MoeGatingTopKBackwardNs

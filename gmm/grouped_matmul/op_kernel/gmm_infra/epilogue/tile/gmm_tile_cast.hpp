@@ -11,7 +11,7 @@
 #ifndef GMM_EPILOGUE_TILE_TILE_CAST_HPP
 #define GMM_EPILOGUE_TILE_TILE_CAST_HPP
 
-#include "../../../gmm_infra/base_defs.hpp"
+#include "../../../gmm_infra/gmm_base_defs.hpp"
 
 namespace Catlass::Epilogue::Tile {
 
@@ -19,11 +19,9 @@ template <
     /// Tag indicating architecture
     class ArchTag_,
     /// Compute data type
-    class DstType_,
-    class SrcType_,
+    class DstType_, class SrcType_,
     /// Length of the compute buffer
-    class TileShape_
->
+    class TileShape_>
 struct TileCast {
     using ArchTag = ArchTag_;
     using ElementDst = typename DstType_::Element;
@@ -34,10 +32,7 @@ struct TileCast {
     TileCast() {}
 
     CATLASS_DEVICE
-    void operator()(
-        AscendC::LocalTensor<ElementDst> const &ubOut,
-        AscendC::LocalTensor<ElementSrc> const &ubIn
-    )
+    void operator()(AscendC::LocalTensor<ElementDst> const &ubOut, AscendC::LocalTensor<ElementSrc> const &ubIn)
     {
         AscendC::Cast(ubOut, ubIn, AscendC::RoundMode::CAST_RINT, TileShape::COUNT);
     }

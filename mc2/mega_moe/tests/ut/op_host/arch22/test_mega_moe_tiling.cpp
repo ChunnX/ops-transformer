@@ -143,8 +143,8 @@ TEST_F(MegaMoeArch22TilingTest, ActivationParamValidationWithLargeIntermediateHi
         {"swiglustep", {std::numeric_limits<float>::max()}, ge::GRAPH_SUCCESS},
         {"swigluoai", {std::numeric_limits<float>::max(), 0.0f, 0.0f}, ge::GRAPH_SUCCESS},
         {"swigluoai", {std::numeric_limits<float>::max(), -1.702f, -1.0f}, ge::GRAPH_SUCCESS},
-        {"situglu", {-2.0f}, ge::GRAPH_SUCCESS},
-        {"situglu", {-2.0f, -2.0f}, ge::GRAPH_SUCCESS},
+        {"situglu", {2.0f}, ge::GRAPH_SUCCESS},
+        {"situglu", {2.0f, 2.0f}, ge::GRAPH_SUCCESS},
         {"swiglu", {-1.0f}, ge::GRAPH_FAILED},
         {"swigluoai",
          {std::numeric_limits<float>::max(), std::numeric_limits<float>::quiet_NaN(), 1.0f},
@@ -181,8 +181,8 @@ TEST_F(MegaMoeArch22TilingTest, ActivationParamValidationWithLargeIntermediateHi
              {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
              {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
              {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-            {1, 1, 1, 1, kExpertPerRank, kExpertPerRank, 0, 0, 0, 0, 0, 0}, {1, 1}, &compileInfo, "Ascend910B",
-            coreNum, ubSize);
+            {1, 1, 1, 1, kExpertPerRank, kExpertPerRank, 0, 0, 0, 0, 0, 0}, {1, 1}, &compileInfo, "Ascend910B", coreNum,
+            ubSize);
 
         Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, activationCase.expectedStatus, UINT64_MAX);
