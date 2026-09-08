@@ -1,5 +1,5 @@
 # mc2/3rd 全量匹配清单(消费侧第一步先查本表)
-# 生成: 2026-09-08  基线commit: de2f05103 (clean)
+# 生成: 2026-09-08  基线commit: 8f8b4e222 (clean)
 # 用途: 对每个修改文件, 先在本表匹配:
 #   1) 扩展名命中 full_regression.non_header_extensions -> 全量
 #   2) cpp路径命中 full_regression.cpp_no_same_header(无同名.h) -> 全量
@@ -17,6 +17,14 @@ full_regression:
     - ".csv"
     - ".txt"
     - ".md"
+  cpp_no_same_header:
+      - 3rd/batch_mat_mul_v3/op_host/batch_mat_mul_v3_def.cpp
+      - 3rd/batch_mat_mul_v3/op_host/batch_mat_mul_v3_infershape.cpp
+      - 3rd/common/op_host/op_api/matmul_util.cpp
+      - 3rd/mat_mul_v3/op_host/mat_mul_v3_def.cpp
+      - 3rd/mat_mul_v3/op_host/mat_mul_v3_infershape.cpp
+      - 3rd/ops_legacy/op_tiling/runtime_kb_api.cpp
+      - 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_registry.cpp
   headers_used_by_all_operators:
       - 3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_tiling.h
       - 3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3_tiling_data.h
