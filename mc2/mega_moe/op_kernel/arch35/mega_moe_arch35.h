@@ -502,7 +502,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunSharedExpertGmm1Acti
                        SharedWeight1Format != FORMAT_ND, GMM1_TILE_M, L1_TILE_M_256, false, true, IsGmm1Interleaved,
                        true>(sharedEpilogueOp_, params_, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
                              runtimeState.vecSetSyncCom, gmmConfig.blockJob, expertBeforeCnt, sharedExpertIdx,
-                             runtimeState.pingpongIdx, nullptr, true, gmmConfig.inputLayout);
+                             runtimeState.pingpongIdx, nullptr, SharedQuantConfig::AXW_MODE == AxWMode::A8W8,
+                             gmmConfig.inputLayout);
     }
 }
 
@@ -561,9 +562,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunSharedExpertGmm2(con
     // TopK weight prefetch 仍关闭，权重 L2 bypass 仍仅用于 A8W8。
     if constexpr (SharedQuantConfig::AXW_MODE == AxWMode::A8W4 || SharedQuantConfig::AXW_MODE == AxWMode::A4W4) {
         RunGmm2A8W4<SharedActivationOutType, SharedWeightType, bfloat16_t, SharedQuantScaleType, SharedQuantScaleType,
-                    GMM1_TILE_M, false, true, false, true>(
-            problemShape, gmmAddrInfo, startBlockIdx_, gmmExecutionConfig_.blockJob,
-            static_cast<uint32_t>(Get<M_VALUE>(problemShape)), 0U);
+                    GMM1_TILE_M, false, true, false, true>(problemShape, gmmAddrInfo, startBlockIdx_,
+                                                           gmmExecutionConfig_.blockJob,
+                                                           static_cast<uint32_t>(Get<M_VALUE>(problemShape)), 0U);
     } else {
         RunGmm2Generic<COMBINE_NO_QUANT, typename SharedQuantConfig::QuantOutType,
                        typename SharedQuantConfig::QuantOutType, bfloat16_t, SharedQuantScaleType, SharedQuantScaleType,
@@ -582,9 +583,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
     GMMAddrInfo gmmAddrInfo{};
     for (uint32_t sharedExpertIdx = 0U; sharedExpertIdx < sharedExpertNum_; ++sharedExpertIdx) {
         UpdateSharedExpertGmm2GlobalBuffer<SharedActivationOutType, SharedWeightType, SharedQuantScaleType,
-                                           GMM1_TILE_M>(
-            commonConfig_, gmmExecutionConfig_, params_.workspaceInfo, sharedWeightTensorListAddrs_, gmmAddrInfo,
-            sharedExpertIdx);
+                                           GMM1_TILE_M>(commonConfig_, gmmExecutionConfig_, params_.workspaceInfo,
+                                                        sharedWeightTensorListAddrs_, gmmAddrInfo, sharedExpertIdx);
         RunSharedExpertGmm2(gmmAddrInfo, problemShape);
     }
 }
