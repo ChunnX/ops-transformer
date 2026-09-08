@@ -92,13 +92,13 @@ aclnnStatus aclnnMoeDistributeDispatchSetupGetWorkspaceSize(
     auto ret_param = CheckParams(x, expertIds, groupEp, yOut, expandIdxOut, commCmdInfoOut);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
-    uint64_t yDtype = 28;
+    uint64_t yDtype = static_cast<uint64_t>(op::DataType::DT_UNDEFINED);
     aclnnStatus retStatus;
     uint64_t hcclBuffSize = 0;
     aclTensor *mc2Context = nullptr;
     const char *opName = "moe_distribute_a2av_setup_teardown";
-    retStatus = Mc2Aclnn::Mc2Context::GetMc2ContextTensorUbCTP(groupEp, opName, hcclBuffSize, mc2Context,
-                                                               CommProtocol::COMM_PROTOCOL_UBC_CTP);
+    retStatus = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context,
+                                                          CommProtocol::COMM_PROTOCOL_UBC_CTP);
     CHECK_RET(retStatus == ACLNN_SUCCESS, retStatus);
     retStatus = aclnnInnerMoeDistributeDispatchSetupGetWorkspaceSize(
         mc2Context, x, expertIds, scalesOptional, xActiveMaskOptional, epWorldSize, epRankId, moeExpertNum,
