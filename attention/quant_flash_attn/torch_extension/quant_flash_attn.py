@@ -491,6 +491,15 @@ def quant_flash_attn(
         lambda: f"v with layout {layout_kv} expects {kv_expected} dims, but got {v.dim()} dims",
     )
 
+    # 异常拦截: 输入 q/k/v 的任一维度为 0 时报错, 避免空 shape 进入算子侧
+    for name, tensor in (("q", q), ("k", k), ("v", v)):
+        torch._check(
+            all(s > 0 for s in tensor.shape),
+            lambda name=name, tensor=tensor: (
+                f"The shape of {name} must not contain 0, but got {tuple(tensor.shape)}"
+            ),
+        )
+
     if quant_mode == int(QuantMode.A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16):
         if q.dtype != torch.uint8:
             raise ValueError(
