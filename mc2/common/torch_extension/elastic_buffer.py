@@ -262,11 +262,11 @@ def _get_moe_ep_window_layout(
     dispatch_count_size = world_size * _inline_align(
         local_experts_num * state_dtype_size, win_addr_align
     )
-    # 与 C++ 侧 MOE_EP_DISPATCH_NOTIFY_COUNT 保持一致（hybrid 内核 notify 待后续与 JETTY_CNT 对齐）
-    dispatch_notify_count = 8
+
+    max_dispatch_notify_count = 8
     dispatch_notify_size = (
         world_size * win_addr_align
-        + world_size * dispatch_notify_count * win_addr_align
+        + world_size * max_dispatch_notify_count * win_addr_align
     )
     combine_state_size = (
         num_max_tokens_per_rank * topk * win_addr_align
@@ -295,7 +295,9 @@ def _get_moe_ep_window_layout(
     dispatch_stash_per_slot_bytes = _inline_align(
         _inline_align(hidden, ub_align) + metadata_bytes * 2 + ub_align, win_addr_align
     )
-    dispatch_stash_buffer_bytes = num_max_tokens_per_rank * dispatch_stash_per_slot_bytes
+    dispatch_stash_buffer_bytes = (
+        num_max_tokens_per_rank * dispatch_stash_per_slot_bytes
+    )
     return _MoeEpWindowLayout(
         state_buffer_bytes=state_buffer_size,
         dispatch_slot_bytes=dispatch_per_slot_bytes,

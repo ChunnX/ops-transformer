@@ -572,7 +572,8 @@ static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, cons
     uint32_t scalesSizeAlign32 = isXFp8 ? ((info.scalesBytes + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN : 0;
     info.perSlotBytes =
         ((hAlign32 + scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN + WIN_ADDR_ALIGN - 1) /
-         WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+         WIN_ADDR_ALIGN) *
+        WIN_ADDR_ALIGN;
     // stash 的元数据 slot：scales + topk + topkWeights + pad（不含 hidden）。
     // 与共享布局 dispatchMetaPerSlotBytes 严格同构（窗口预留=步长基准），
     // 且 ≤ perSlotBytes - hAlign32（远端槽 meta 区容量），WQE2 整槽搬运贴合不越界
@@ -793,16 +794,17 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE(nodeName, "cclBufferSizePtr is null."),
                     return ge::GRAPH_FAILED);
     const uint64_t maxWindowSize = static_cast<uint64_t>(*cclBufferSizePtr);
+    uint32_t aivNum = info.aivNum;
     const MoeEpWindowLayoutParams params = {
         info.cfg.epWorldSize, info.cfg.numLocalExperts, info.cfg.numMaxTokensPerRank, info.cfg.topK,
         info.cfg.hidden,      info.networkMode,         info.hybrid.rankNumPerServer, info.hybrid.serverNum};
     MoeEpWindowLayout layout{};
-    OP_TILING_CHECK(CalcMoeEpWindowLayout(params, layout) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(CalcMoeEpWindowLayout(params, layout, aivNum) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Calculate Moe EP window layout failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckMoeEpWindowCapacity(layout.requiredBytes, maxWindowSize, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check Moe EP window capacity failed."), return ge::GRAPH_FAILED);
 
-    info.dumpMetadata = BuildMoeEpDumpMetadata(params, layout, info.aivNum);
+    info.dumpMetadata = BuildMoeEpDumpMetadata(params, layout, aivNum);
     info.totalWinSizeEp = maxWindowSize;
     info.dispatchNotifyCount = layout.dispatchNotifyCount;
     info.window.cntWinStateOffset = layout.cntWinStateOffset;
