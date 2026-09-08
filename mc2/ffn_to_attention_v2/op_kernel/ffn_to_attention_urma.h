@@ -56,9 +56,11 @@ constexpr uint32_t PERF_STORAGE_FIELD_NUM = 16U;
 static constexpr AscendC::UrmaWqeEntry REMOTE_DATA_WQE_CONFIG = {
     .odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_FIRST_FLAG_WQE_CONFIG = {
-    .odr = 6, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
+    .odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_FLAG_WQE_CONFIG = {
-    .odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
+    .odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
+static constexpr AscendC::UrmaWqeEntry REMOTE_LAST_FLAG_WQE_CONFIG = {
+    .odr = 6, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
 
 #define TemplateFFNToAttentionUrmaTypeClass typename xType, bool isInputRankTable
 #define TemplateFFNToAttentionUrmaTypeFunc xType, isInputRankTable
@@ -99,7 +101,8 @@ private:
     __aicore__ inline void AppendRemoteDataWrite(HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr,
                                                  const RemoteRelayInfo &relayInfo, uint32_t dstRank);
     __aicore__ inline void AppendRemoteFlagWrite(HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr,
-                                                 const RemoteRelayInfo &relayInfo, uint32_t dstRank, bool firstFlag);
+                                                 const RemoteRelayInfo &relayInfo, uint32_t dstRank, bool firstFlag,
+                                                 bool lastFlag);
     __aicore__ inline void BuildRemoteRelayLists();
     __aicore__ inline void StoreRemoteRelayInfo(uint64_t tokenIndex, const RemoteRelayInfo &relayInfo);
     __aicore__ inline void LoadRemoteRelayInfo(uint64_t tokenIndex, RemoteRelayInfo &relayInfo);
@@ -374,10 +377,13 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::A
 template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::AppendRemoteFlagWrite(
     HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr, const RemoteRelayInfo &relayInfo, uint32_t dstRank,
-    bool firstFlag)
+    bool firstFlag, bool lastFlag)
 {
     int32_t ret;
-    if (firstFlag) {
+    if (lastFlag) {
+        ret = hcomm_.WriteNbi<REMOTE_LAST_FLAG_WQE_CONFIG>(batchHandle, remoteWindowAddr + relayInfo.remoteFlagOffset,
+                                                           localFlagAddr_, static_cast<uint32_t>(sizeof(int32_t)));
+    } else if (firstFlag) {
         ret = hcomm_.WriteNbi<REMOTE_FIRST_FLAG_WQE_CONFIG>(batchHandle, remoteWindowAddr + relayInfo.remoteFlagOffset,
                                                             localFlagAddr_, static_cast<uint32_t>(sizeof(int32_t)));
     } else {
@@ -622,10 +628,11 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                         perfCycles[8] += static_cast<uint64_t>(GetSystemCycle()) - prof9Start;
                     }
                     tokenIndex = relayInfo.nextTokenIndex;
+                    const bool lastFlag = tokenIndex == INVALID_TOKEN_INDEX;
                     // prof9 LoadRemoteFlagInfo
                     // prof10 AppendRemoteFlagWrite
                     const uint64_t prof10Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
-                    AppendRemoteFlagWrite(batchHandle, remoteWindowAddr, relayInfo, dstRank, firstFlag);
+                    AppendRemoteFlagWrite(batchHandle, remoteWindowAddr, relayInfo, dstRank, firstFlag, lastFlag);
                     firstFlag = false;
                     if (perfEnabled_) {
                         perfCycles[9] += static_cast<uint64_t>(GetSystemCycle()) - prof10Start;
