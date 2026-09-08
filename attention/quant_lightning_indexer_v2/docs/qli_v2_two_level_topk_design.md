@@ -396,7 +396,7 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 | S2 对齐 | actS2Size%8=0 / ≠0（含 actS2Size=1） |
 | B | 1 / 4（变长 batch） |
 | topk_blocks | 2048 全量 + **pin 用例 64**（host 已放宽为 (0,2048] 内 64 的倍数；`numBlocks > topk_blocks` 时 pin 最新块必须入选，单/多 tile 各 1 用例） |
-| S2 大规模（生产规格） | **16K / 128K / 1M 直接作为 pytest 用例并入矩阵**（2026-09-07 用户要求，不再独立脚本）：16K（2048 块恰好装满 2048 槽，精确边界）、128K（B=1 与 B=2 变长）、1M（131072 块，pin（强制保留最新 token 所在块）硬性生效）；key pool **[7936,128,1,128]**、block_table **[B,1055]**（首维=batch，置换非恒等映射）；1M 场景 pool 放大 **[8192,128,1,128]**、表 [1,8192]（7936×128 < 1M 装不下）。**超大行数 CPU 全量 golden 不可行 → 抽样行官方规则比对 + 全行有效性检查**（见 §6.6），独立大 shape 脚本降级为设备侧深检工具（非门禁） |
+| 大规模全遍历（生产规格） | **q_seq {16K, 128K, 1M} × layout {BSND, TND} × cmp_ratio {1, 2} = 12 用例直接并入 pytest 矩阵**（2026-09-08 用户要求；q_seq=s2 全 prefill，mask_mode=3，mode=1，ratio2 带 cmp_residual_k=1）；key pool **[7936,128,1,128]**、block_table **[1,1055]**（置换非恒等映射；1M 场景 pool 默认 8192+4）。**CPU 全量 golden 不可行 → 抽样行官方规则比对 + 全行有效性 + pin（强制保留最新 token 所在块）检查**（§6.6）；独立大 shape 脚本降级为深检工具 |
 
 重点组合：mode1+尾块不对齐+causal、**mode1+prefill 首块（验证行级 pin：不同行 pin 不同块）**、mode2+causal、`numBlocks ≤ topkBlocks` 时 mode=2 与 mode=3 的等价性（mask 全选）、**全部用例统一 g=32（mBase=128 分核对齐，A1 推导的本命规格）**、**topk=min(2048, actS2Size) 与 topk=2048+滤-1 的等价性**、mode1+多核（B>1 触发行间切分，验证各核独立直出正确）、cmp_ratio=2 下块划分与 pin（actS2Size 为压缩后长度，cmp_residual_k 参与原始长度还原）。
 
@@ -595,5 +595,6 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 2. ~~A12/A13/A14~~ ✅ TND（仅 Q 侧）：host 放行 + GetS1Size TND 分支 + GM offset 同构验证；
 3. ~~A15~~ ✅ output_idx_offset 使能（InitParams 值拷贝陷阱经 InitVecCandidateTensor 传标志）；
 4. ✅ 大 shape 交叠：pa_gap_128k / tnd_big128k / off_tnd 全过。
+5. ✅ 大 shape 全遍历（2026-09-08）：12 用例（q_seq {16K,128K,1M} × layout {BSND,TND} × ratio {1,2}）全过（16K/128K 批 65s、1M 批 7m15s）。**修复 harness pin 检查公式**：mask_mode=3 下行级有效长度必须除 cmp_ratio（`(act_k−S1+i+1)//ratio`，与 kernel/golden 一致；原式漏除在小 shape 因 clamp s2 掩盖碰巧通过，大 shape 行 0 暴露——错误的参考检查比没有检查更危险）。
 
 **部署要点（踩坑记录）**：attr 变更后编译产物 hash 改变（18e4fb→d566），但 `bin/quant_lightning_indexer_v2.json`（bin 选择配置）残留旧映射——**必须删除该 json 与 binary_info_config.json 强制重生成**，否则运行时按旧映射找不到新 .o（stat file failed），或加载旧产物（新改动静默不生效）。build_install.sh 已加 autogen 头清理，需同步加 bin config 清理。
