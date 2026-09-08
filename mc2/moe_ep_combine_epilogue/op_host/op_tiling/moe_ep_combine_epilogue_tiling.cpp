@@ -76,6 +76,7 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpCombineEpilogue
             info.aivNum);
     OP_LOGD(nodeName, "combineStateWinOffset=%lu, combineDataWinOffset=%lu, totalUbSize=%lu",
             info.combineStateWinOffset, info.combineDataWinOffset, info.totalUbSize);
+    OP_LOGD(nodeName, "localIndexWorkspaceOffset=%lu", info.localIndexWorkspaceOffset);
 }
 
 static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context, const char *nodeName,
@@ -335,7 +336,11 @@ static ge::graphStatus MoeEpCombineEpilogueTilingFunc(gert::TilingContext *conte
                                                     aivNum * static_cast<uint64_t>(info.cfg.topK) +
                                                 MASK_ALIGN - 1UL) /
                                                MASK_ALIGN * MASK_ALIGN);
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + maskCalcWorkspaceSize;
+    uint64_t localIndexWorkspaceSize =
+        (static_cast<uint64_t>(info.cfg.numTokens) * info.cfg.topK * sizeof(int32_t) + MASK_ALIGN - 1UL) /
+        MASK_ALIGN * MASK_ALIGN;
+    info.localIndexWorkspaceOffset = maskCalcWorkspaceSize;
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + maskCalcWorkspaceSize + localIndexWorkspaceSize;
 
     uint32_t tplHasTopkWeights = info.hasTopkWeights ? 1 : 0;
     uint64_t tilingKey = GET_TPL_TILING_KEY(tplHasTopkWeights, TILINGKEY_TPL_A5);
