@@ -82,15 +82,6 @@ __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADD
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
     __gm__ HcclCombinOpParam *context = (__gm__ HcclCombinOpParam *)(GetHcclContext<0>());
-    printf("apt workspaceGM=0x%lx tilingGM=0x%lx\n",
-               static_cast<uint64_t>(reinterpret_cast<uintptr_t>(workspaceGM)), 
-               static_cast<uint64_t>(reinterpret_cast<uintptr_t>(tilingGM)));
-    AscendC::GlobalTensor<DTYPE_X1> x1DumpGM;
-    x1DumpGM.SetGlobalBuffer(reinterpret_cast<__gm__ DTYPE_X1 *>(aGM));
-    AscendC::DumpTensor(x1DumpGM, 9001, 64);
-    AscendC::GlobalTensor<AscendC::fp8_e8m0_t> x1ScaleDumpGM;
-    x1ScaleDumpGM.SetGlobalBuffer(reinterpret_cast<__gm__ AscendC::fp8_e8m0_t *>(scaleInv1));
-    AscendC::DumpTensor(x1ScaleDumpGM, 9002, 64);
     
 #if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) ||                                           \
      (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                    \
@@ -119,5 +110,4 @@ __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADD
         INVOKE_ALLGATHERMM_FP16_BF16_V2_OP_IMPL(AllGatherMatmulFP16BF16, TRANS_B, HCCL_COMM_MODE);
     }
 #endif
-    trap();
 }
