@@ -47,7 +47,10 @@ constexpr int32_t URMA_FLAG_VALUE = 1;
 constexpr uint32_t URMA_WQE_SIZE = 64U;
 constexpr uint32_t URMA_BATCH_WQE_CAPACITY = 256U;
 constexpr uint32_t URMA_BATCH_BUFFER_SIZE = URMA_BATCH_WQE_CAPACITY * URMA_WQE_SIZE;
-constexpr uint32_t REMOTE_RELAY_INFO_SIZE = 32U;
+constexpr uint32_t REMOTE_RELAY_INFO_FIELD_NUM = 4U;
+constexpr uint32_t REMOTE_RELAY_INFO_SIZE = REMOTE_RELAY_INFO_FIELD_NUM * sizeof(uint64_t);
+constexpr uint64_t INVALID_TOKEN_INDEX = 0xFFFFFFFFFFFFFFFFULL;
+constexpr uint64_t URMA_RESERVED_WORKSPACE_SIZE = 64ULL * 1024ULL * 1024ULL;
 constexpr uint32_t PERF_FIELD_NUM = 12U;
 constexpr uint32_t PERF_STORAGE_FIELD_NUM = 16U;
 static constexpr AscendC::UrmaWqeEntry REMOTE_DATA_WQE_CONFIG = {
@@ -65,14 +68,14 @@ using namespace AscendC;
 using HcommChannelHandle = AscendC::ChannelHandle;
 using HcommBatchHandle = AscendC::BatchHandle<HcommChannelHandle>;
 
-struct alignas(REMOTE_RELAY_INFO_SIZE) RemoteRelayInfo {
+struct RemoteRelayInfo {
     uint64_t remoteDataOffset;
     uint64_t remoteFlagOffset;
     uint64_t sourceTokenIndex;
-    uint32_t dstRank;
+    uint64_t nextTokenIndex;
 };
 
-static_assert(sizeof(RemoteRelayInfo) == REMOTE_RELAY_INFO_SIZE, "RemoteRelayInfo must occupy 32 bytes");
+static_assert(sizeof(RemoteRelayInfo) == REMOTE_RELAY_INFO_SIZE, "RemoteRelayInfo has an unexpected size");
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 class FFNToAttentionUrma {
@@ -94,9 +97,12 @@ private:
                                        const DataCopyExtParams &xCopyParams);
     __aicore__ inline void StageRemoteData(uint64_t yOffset, const DataCopyExtParams &xCopyParams);
     __aicore__ inline void AppendRemoteDataWrite(HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr,
-                                                 const RemoteRelayInfo &relayInfo);
+                                                 const RemoteRelayInfo &relayInfo, uint32_t dstRank);
     __aicore__ inline void AppendRemoteFlagWrite(HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr,
-                                                 const RemoteRelayInfo &relayInfo, bool firstFlag);
+                                                 const RemoteRelayInfo &relayInfo, uint32_t dstRank, bool firstFlag);
+    __aicore__ inline void BuildRemoteRelayLists();
+    __aicore__ inline void StoreRemoteRelayInfo(uint64_t tokenIndex, const RemoteRelayInfo &relayInfo);
+    __aicore__ inline void LoadRemoteRelayInfo(uint64_t tokenIndex, RemoteRelayInfo &relayInfo);
     __aicore__ inline void CommitBatch(HcommBatchHandle &batchHandle, uint64_t &commitCycles);
     __aicore__ inline void WritePerfData(const uint64_t (&cycles)[PERF_FIELD_NUM]);
 
@@ -115,6 +121,9 @@ private:
     GlobalTensor<int64_t> actualTokenNumGMTensor_;
     GlobalTensor<int32_t> attnRankTableGMTensor_;
     GlobalTensor<int64_t> perfDataGMTensor_;
+    GlobalTensor<uint64_t> remoteRelayInfoGMTensor_;
+    GlobalTensor<uint64_t> remoteRelayListHeadGMTensor_;
+    GlobalTensor<uint64_t> remoteRelayListTailGMTensor_;
     LocalTensor<xType> xTmpTensor_;
     LocalTensor<int32_t> statusTensor_;
     LocalTensor<uint8_t> hcommTensor_;
@@ -195,9 +204,23 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
                    "actualTokenNum exceeds x dim0, actualTokenNum=%lu, maxTokenNum=%lu", actualTokenNum_, maxTokenNum_);
     hSize_ = static_cast<uint64_t>(axisH_) * sizeof(xType);
     dataWorkspaceStride_ = Ceil(hSize_, static_cast<uint64_t>(URMA_FLAG_SLOT_SIZE)) * URMA_FLAG_SLOT_SIZE;
+    const uint64_t rankRelayListWorkspaceSize = static_cast<uint64_t>(worldSize_) * 2U * sizeof(uint64_t);
+    ascendc_assert(rankRelayListWorkspaceSize <= URMA_RESERVED_WORKSPACE_SIZE,
+                   "rank relay lists exceed reserved workspace, listSize=%lu, reservedSize=%lu",
+                   rankRelayListWorkspaceSize, URMA_RESERVED_WORKSPACE_SIZE);
+    ascendc_assert(maxTokenNum_ <= (URMA_RESERVED_WORKSPACE_SIZE - rankRelayListWorkspaceSize) / REMOTE_RELAY_INFO_SIZE,
+                   "relay info exceeds reserved workspace, maxTokenNum=%lu, relayInfoSize=%u, reservedSize=%lu",
+                   maxTokenNum_, REMOTE_RELAY_INFO_SIZE, URMA_RESERVED_WORKSPACE_SIZE);
     localDataAddr_ = workspaceGM + urmaWorkspaceOffset_;
     localFlagAddr_ = workspaceGM + urmaWorkspaceOffset_ + maxTokenNum_ * dataWorkspaceStride_ +
                      static_cast<uint64_t>(aivId_) * URMA_FLAG_SLOT_SIZE;
+    GM_ADDR remoteRelayInfoAddr = workspaceGM + urmaWorkspaceOffset_ + maxTokenNum_ * dataWorkspaceStride_ +
+                                  static_cast<uint64_t>(aivNum_) * URMA_FLAG_SLOT_SIZE;
+    remoteRelayInfoGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(remoteRelayInfoAddr));
+    GM_ADDR remoteRelayListHeadAddr = remoteRelayInfoAddr + maxTokenNum_ * REMOTE_RELAY_INFO_SIZE;
+    remoteRelayListHeadGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(remoteRelayListHeadAddr));
+    GM_ADDR remoteRelayListTailAddr = remoteRelayListHeadAddr + static_cast<uint64_t>(worldSize_) * sizeof(uint64_t);
+    remoteRelayListTailGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(remoteRelayListTailAddr));
 
     tpipe_->InitBuffer(xQueue_, URMA_BUFFER_NUM, hSize_);
     tpipe_->InitBuffer(statusBuf_, URMA_UB_ALIGN);
@@ -335,7 +358,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::AppendRemoteDataWrite(
-    HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr, const RemoteRelayInfo &relayInfo)
+    HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr, const RemoteRelayInfo &relayInfo, uint32_t dstRank)
 {
     ascendc_assert(aivId_ == 0U, "only AIV0 may append remote WQEs, aivId=%u", aivId_);
     ascendc_assert(relayInfo.sourceTokenIndex < actualTokenNum_,
@@ -345,12 +368,13 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::A
     int32_t ret = hcomm_.WriteNbi<REMOTE_DATA_WQE_CONFIG>(batchHandle, remoteWindowAddr + relayInfo.remoteDataOffset,
                                                           sourceDataAddr, static_cast<uint32_t>(hSize_));
     ascendc_assert(ret == 0, "batch data WriteNbi failed, ret=%d, rankId=%u, dstRank=%u, tokenIndex=%lu", ret, rankId_,
-                   relayInfo.dstRank, relayInfo.sourceTokenIndex);
+                   dstRank, relayInfo.sourceTokenIndex);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::AppendRemoteFlagWrite(
-    HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr, const RemoteRelayInfo &relayInfo, bool firstFlag)
+    HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr, const RemoteRelayInfo &relayInfo, uint32_t dstRank,
+    bool firstFlag)
 {
     int32_t ret;
     if (firstFlag) {
@@ -361,7 +385,77 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::A
                                                       localFlagAddr_, static_cast<uint32_t>(sizeof(int32_t)));
     }
     ascendc_assert(ret == 0, "batch flag WriteNbi failed, ret=%d, rankId=%u, dstRank=%u, tokenIndex=%lu", ret, rankId_,
-                   relayInfo.dstRank, relayInfo.sourceTokenIndex);
+                   dstRank, relayInfo.sourceTokenIndex);
+}
+
+template <TemplateFFNToAttentionUrmaTypeClass>
+__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::StoreRemoteRelayInfo(
+    uint64_t tokenIndex, const RemoteRelayInfo &relayInfo)
+{
+    ascendc_assert(tokenIndex < actualTokenNum_, "relay token index out of range, tokenIndex=%lu, actualTokenNum=%lu",
+                   tokenIndex, actualTokenNum_);
+    const uint64_t base = tokenIndex * REMOTE_RELAY_INFO_FIELD_NUM;
+    remoteRelayInfoGMTensor_.SetValue(base, relayInfo.remoteDataOffset);
+    remoteRelayInfoGMTensor_.SetValue(base + 1U, relayInfo.remoteFlagOffset);
+    remoteRelayInfoGMTensor_.SetValue(base + 2U, relayInfo.sourceTokenIndex);
+    remoteRelayInfoGMTensor_.SetValue(base + 3U, relayInfo.nextTokenIndex);
+}
+
+template <TemplateFFNToAttentionUrmaTypeClass>
+__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::LoadRemoteRelayInfo(
+    uint64_t tokenIndex, RemoteRelayInfo &relayInfo)
+{
+    ascendc_assert(tokenIndex < actualTokenNum_, "relay token index out of range, tokenIndex=%lu, actualTokenNum=%lu",
+                   tokenIndex, actualTokenNum_);
+    const uint64_t base = tokenIndex * REMOTE_RELAY_INFO_FIELD_NUM;
+    relayInfo.remoteDataOffset = remoteRelayInfoGMTensor_.GetValue(base);
+    relayInfo.remoteFlagOffset = remoteRelayInfoGMTensor_.GetValue(base + 1U);
+    relayInfo.sourceTokenIndex = remoteRelayInfoGMTensor_.GetValue(base + 2U);
+    relayInfo.nextTokenIndex = remoteRelayInfoGMTensor_.GetValue(base + 3U);
+}
+
+template <TemplateFFNToAttentionUrmaTypeClass>
+__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::BuildRemoteRelayLists()
+{
+    for (uint32_t dstRank = 0U; dstRank < worldSize_; ++dstRank) {
+        remoteRelayListHeadGMTensor_.SetValue(dstRank, INVALID_TOKEN_INDEX);
+        remoteRelayListTailGMTensor_.SetValue(dstRank, INVALID_TOKEN_INDEX);
+    }
+
+    for (uint64_t yOffset = 0UL; yOffset < actualTokenNum_; ++yOffset) {
+        ReadTokenMetaDataStruct metaDataStruct;
+        ReadTokenMetaData(metaDataStruct, yOffset);
+        if (metaDataStruct.curAttenWorkRank == rankId_) {
+            continue;
+        }
+
+        const uint64_t tokenSlot =
+            (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * axisBS_ + metaDataStruct.curTokenBatchOffset) *
+                expertNumPerToken_ +
+            metaDataStruct.curTokenTopkOffset;
+        const uint64_t remoteDataOffset = winTokenInfoTableSize_ + tokenSlot * axisHS_ * sizeof(xType);
+        const uint64_t remoteFlagOffset = tokenSlot * sizeof(int32_t);
+        ascendc_assert(remoteDataOffset <= requiredWindowSize_ && hSize_ <= requiredWindowSize_ - remoteDataOffset,
+                       "token data address exceeds window, dataOffset=%lu, dataSize=%lu, windowSize=%lu",
+                       remoteDataOffset, hSize_, requiredWindowSize_);
+        ascendc_assert(
+            remoteFlagOffset <= winTokenInfoTableSize_ && sizeof(int32_t) <= winTokenInfoTableSize_ - remoteFlagOffset,
+            "token flag address exceeds info table, flagOffset=%lu, infoSize=%lu", remoteFlagOffset,
+            winTokenInfoTableSize_);
+
+        const uint32_t dstRank = metaDataStruct.curAttenWorkRank;
+        RemoteRelayInfo relayInfo{remoteDataOffset, remoteFlagOffset, yOffset, INVALID_TOKEN_INDEX};
+        StoreRemoteRelayInfo(yOffset, relayInfo);
+        const uint64_t tailTokenIndex = remoteRelayListTailGMTensor_.GetValue(dstRank);
+        if (tailTokenIndex == INVALID_TOKEN_INDEX) {
+            remoteRelayListHeadGMTensor_.SetValue(dstRank, yOffset);
+        } else {
+            ascendc_assert(tailTokenIndex < yOffset, "invalid relay list tail, tail=%lu, tokenIndex=%lu",
+                           tailTokenIndex, yOffset);
+            remoteRelayInfoGMTensor_.SetValue(tailTokenIndex * REMOTE_RELAY_INFO_FIELD_NUM + 3U, yOffset);
+        }
+        remoteRelayListTailGMTensor_.SetValue(dstRank, yOffset);
+    }
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -464,26 +558,19 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
         // All remote tokens have unique staging slots. AIV0 may consume them after every AIV finishes staging.
         SyncAll<true>();
         if (aivId_ == 0U) {
+            // prof5 BuildRemoteRelayLists
+            const uint64_t prof5Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
+            BuildRemoteRelayLists();
+            if (perfEnabled_) {
+                perfCycles[4] += static_cast<uint64_t>(GetSystemCycle()) - prof5Start;
+            }
+            // prof5 BuildRemoteRelayLists
             for (uint32_t dstRank = 0U; dstRank < worldSize_; ++dstRank) {
                 if (dstRank == rankId_) {
                     continue;
                 }
-
-                // prof5 CountRemoteTokens
-                const uint64_t prof5Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
-                uint64_t rankTokenCount = 0UL;
-                for (uint64_t yOffset = 0UL; yOffset < actualTokenNum_; ++yOffset) {
-                    ReadTokenMetaDataStruct metaDataStruct;
-                    ReadTokenMetaData(metaDataStruct, yOffset);
-                    if (metaDataStruct.curAttenWorkRank == dstRank) {
-                        ++rankTokenCount;
-                    }
-                }
-                if (perfEnabled_) {
-                    perfCycles[4] += static_cast<uint64_t>(GetSystemCycle()) - prof5Start;
-                }
-                // prof5 CountRemoteTokens
-                if (rankTokenCount == 0U) {
+                const uint64_t firstTokenIndex = remoteRelayListHeadGMTensor_.GetValue(dstRank);
+                if (firstTokenIndex == INVALID_TOKEN_INDEX) {
                     continue;
                 }
                 // prof6 MakeBatchHandle
@@ -499,36 +586,20 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                 // prof6 MakeBatchHandle
 
                 uint32_t preparedWqeCount = 0U;
-                for (uint64_t yOffset = 0UL; yOffset < actualTokenNum_; ++yOffset) {
-                    ReadTokenMetaDataStruct metaDataStruct;
-                    ReadTokenMetaData(metaDataStruct, yOffset);
-                    if (metaDataStruct.curAttenWorkRank != dstRank) {
-                        continue;
-                    }
-                    // prof7 BuildRemoteDataInfo
+                uint64_t tokenIndex = firstTokenIndex;
+                while (tokenIndex != INVALID_TOKEN_INDEX) {
+                    // prof7 LoadRemoteDataInfo
                     const uint64_t prof7Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
-                    const uint64_t tokenSlot = (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * axisBS_ +
-                                                metaDataStruct.curTokenBatchOffset) *
-                                                   expertNumPerToken_ +
-                                               metaDataStruct.curTokenTopkOffset;
-                    const uint64_t remoteDataOffset = winTokenInfoTableSize_ + tokenSlot * axisHS_ * sizeof(xType);
-                    const uint64_t remoteFlagOffset = tokenSlot * sizeof(int32_t);
-                    ascendc_assert(
-                        remoteDataOffset <= requiredWindowSize_ && hSize_ <= requiredWindowSize_ - remoteDataOffset,
-                        "token data address exceeds window, dataOffset=%lu, dataSize=%lu, windowSize=%lu",
-                        remoteDataOffset, hSize_, requiredWindowSize_);
-                    ascendc_assert(remoteFlagOffset <= winTokenInfoTableSize_ &&
-                                       sizeof(int32_t) <= winTokenInfoTableSize_ - remoteFlagOffset,
-                                   "token flag address exceeds info table, flagOffset=%lu, infoSize=%lu",
-                                   remoteFlagOffset, winTokenInfoTableSize_);
-                    RemoteRelayInfo relayInfo{remoteDataOffset, remoteFlagOffset, yOffset, dstRank};
+                    RemoteRelayInfo relayInfo;
+                    LoadRemoteRelayInfo(tokenIndex, relayInfo);
                     if (perfEnabled_) {
                         perfCycles[6] += static_cast<uint64_t>(GetSystemCycle()) - prof7Start;
                     }
-                    // prof7 BuildRemoteDataInfo
+                    tokenIndex = relayInfo.nextTokenIndex;
+                    // prof7 LoadRemoteDataInfo
                     // prof8 AppendRemoteDataWrite
                     const uint64_t prof8Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
-                    AppendRemoteDataWrite(batchHandle, remoteWindowAddr, relayInfo);
+                    AppendRemoteDataWrite(batchHandle, remoteWindowAddr, relayInfo, dstRank);
                     if (perfEnabled_) {
                         perfCycles[7] += static_cast<uint64_t>(GetSystemCycle()) - prof8Start;
                     }
@@ -541,27 +612,20 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                 }
 
                 bool firstFlag = true;
-                for (uint64_t yOffset = 0UL; yOffset < actualTokenNum_; ++yOffset) {
-                    ReadTokenMetaDataStruct metaDataStruct;
-                    ReadTokenMetaData(metaDataStruct, yOffset);
-                    if (metaDataStruct.curAttenWorkRank != dstRank) {
-                        continue;
-                    }
-                    // prof9 BuildRemoteFlagInfo
+                tokenIndex = firstTokenIndex;
+                while (tokenIndex != INVALID_TOKEN_INDEX) {
+                    // prof9 LoadRemoteFlagInfo
                     const uint64_t prof9Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
-                    const uint64_t tokenSlot = (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * axisBS_ +
-                                                metaDataStruct.curTokenBatchOffset) *
-                                                   expertNumPerToken_ +
-                                               metaDataStruct.curTokenTopkOffset;
-                    RemoteRelayInfo relayInfo{winTokenInfoTableSize_ + tokenSlot * axisHS_ * sizeof(xType),
-                                              tokenSlot * sizeof(int32_t), yOffset, dstRank};
+                    RemoteRelayInfo relayInfo;
+                    LoadRemoteRelayInfo(tokenIndex, relayInfo);
                     if (perfEnabled_) {
                         perfCycles[8] += static_cast<uint64_t>(GetSystemCycle()) - prof9Start;
                     }
-                    // prof9 BuildRemoteFlagInfo
+                    tokenIndex = relayInfo.nextTokenIndex;
+                    // prof9 LoadRemoteFlagInfo
                     // prof10 AppendRemoteFlagWrite
                     const uint64_t prof10Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
-                    AppendRemoteFlagWrite(batchHandle, remoteWindowAddr, relayInfo, firstFlag);
+                    AppendRemoteFlagWrite(batchHandle, remoteWindowAddr, relayInfo, dstRank, firstFlag);
                     firstFlag = false;
                     if (perfEnabled_) {
                         perfCycles[9] += static_cast<uint64_t>(GetSystemCycle()) - prof10Start;
