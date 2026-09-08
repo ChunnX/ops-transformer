@@ -50,7 +50,6 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("jitCompile.flag", "false")
             .ExtendCfgInfo("opFile.value", "cumprod");
         this->AICore().AddConfig("ascend950", aicore_config);
     }
