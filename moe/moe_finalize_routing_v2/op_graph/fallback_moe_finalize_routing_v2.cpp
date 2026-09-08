@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#include "op_graph/op_fallback.h"
+#include "fallback/fallback.h"
+#include "fallback/fallback_comm.h"
 
 #ifdef __cplusplus
 extern "C" {
