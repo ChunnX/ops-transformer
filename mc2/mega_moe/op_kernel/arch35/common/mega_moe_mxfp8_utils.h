@@ -63,9 +63,8 @@ __aicore__ inline void QuantMxFp8(LocalTensor<ExpandXType> &outLocal, LocalTenso
 }
 
 // 将一条 MXFP8 token 记录反量化为 FP32，供 Unpermute 累加。
-__simd_callee__ inline void ConvertMxScaleToBf16(__ubuf__ fp8_e8m0_t *srcPtr0,
-                                                 __ubuf__ bfloat16_t *dyScaleBf16Ptr, uint32_t scaleLen,
-                                                 uint32_t bf16RepeatSize, uint16_t repeatTimes)
+__simd_callee__ inline void ConvertMxScaleToBf16(__ubuf__ fp8_e8m0_t *srcPtr0, __ubuf__ bfloat16_t *dyScaleBf16Ptr,
+                                                 uint32_t scaleLen, uint32_t bf16RepeatSize, uint16_t repeatTimes)
 {
     AscendC::Reg::RegTensor<fp8_e8m0_t> vSrcReg;
     AscendC::Reg::RegTensor<bfloat16_t> vDstReg;
@@ -83,9 +82,8 @@ __simd_callee__ inline void ConvertMxScaleToBf16(__ubuf__ fp8_e8m0_t *srcPtr0,
     Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 }
 
-__simd_callee__ inline void ConvertMxScaleToFp32(__ubuf__ bfloat16_t *dyScaleBf16Ptr,
-                                                 __ubuf__ float *dyScaleFp32Ptr, uint32_t quantCount,
-                                                 uint32_t fp32RepeatSize, uint16_t repeatTimes)
+__simd_callee__ inline void ConvertMxScaleToFp32(__ubuf__ bfloat16_t *dyScaleBf16Ptr, __ubuf__ float *dyScaleFp32Ptr,
+                                                 uint32_t quantCount, uint32_t fp32RepeatSize, uint16_t repeatTimes)
 {
     AscendC::Reg::RegTensor<bfloat16_t> dyScaleBf16Reg;
     AscendC::Reg::RegTensor<float> dyScaleFp32Reg;
@@ -95,19 +93,18 @@ __simd_callee__ inline void ConvertMxScaleToFp32(__ubuf__ bfloat16_t *dyScaleBf1
     AscendC::Reg::MaskReg maskReg1;
     for (uint16_t i = 0; i < repeatTimes; i++) {
         maskReg1 = AscendC::Reg::UpdateMask<float>(quantCount);
-        Reg::DataCopy<bfloat16_t, Reg::LoadDist::DIST_UNPACK_B16>(dyScaleBf16Reg,
-                                                                  dyScaleBf16Ptr + i * fp32RepeatSize);
+        Reg::DataCopy<bfloat16_t, Reg::LoadDist::DIST_UNPACK_B16>(dyScaleBf16Reg, dyScaleBf16Ptr + i * fp32RepeatSize);
         Reg::Cast<float, bfloat16_t, FP162FP32CastTraitZero>(dyScaleFp32Reg, dyScaleBf16Reg, maskReg1);
-        Reg::DataCopy<float, Reg::StoreDist::DIST_INTLV_B32>(dyScaleFp32Ptr + i * fp32RepeatSize * 2,
-                                                             dyScaleFp32Reg, dyScaleFp32Reg, maskReg1);
+        Reg::DataCopy<float, Reg::StoreDist::DIST_INTLV_B32>(dyScaleFp32Ptr + i * fp32RepeatSize * 2, dyScaleFp32Reg,
+                                                             dyScaleFp32Reg, maskReg1);
     }
     Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 }
 
 template <typename T>
 __simd_callee__ inline void DequantizeMxFp8Token(__ubuf__ T *tokenPtr0, __ubuf__ float *dyScaleFp32Ptr,
-                                                __ubuf__ float *sumDstPtr, uint32_t tokenLen,
-                                                uint32_t fp32RepeatSize, uint16_t repeatTimes)
+                                                 __ubuf__ float *sumDstPtr, uint32_t tokenLen, uint32_t fp32RepeatSize,
+                                                 uint16_t repeatTimes)
 {
     AscendC::Reg::RegTensor<T> tokenSrcReg;
     AscendC::Reg::RegTensor<float> tokenFp32SrcReg;
@@ -130,8 +127,8 @@ __simd_callee__ inline void DequantizeMxFp8Token(__ubuf__ T *tokenPtr0, __ubuf__
 
 template <typename T, typename XType>
 __simd_vf__ inline void DeQuantMxFp8Vf(__ubuf__ XType *inAddr, __ubuf__ float *sumDstPtr,
-                                      __ubuf__ bfloat16_t *dyScaleBf16Ptr, __ubuf__ float *dyScaleFp32Ptr,
-                                      uint32_t scaleLen, uint32_t tokenLen)
+                                       __ubuf__ bfloat16_t *dyScaleBf16Ptr, __ubuf__ float *dyScaleFp32Ptr,
+                                       uint32_t scaleLen, uint32_t tokenLen)
 {
     __ubuf__ T *tokenPtr0 = (__ubuf__ T *)inAddr;
     uint32_t tokenStorageElementCount = ((tokenLen + ALIGN_256 - 1U) / ALIGN_256 * ALIGN_256) / 2U;
