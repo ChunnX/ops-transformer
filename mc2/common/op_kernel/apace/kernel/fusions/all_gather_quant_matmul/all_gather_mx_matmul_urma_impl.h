@@ -49,7 +49,10 @@ public:
     __aicore__ inline void Process();
 
 #if MC2_DFX_ENABLE
-    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt) { runtimeInfo_ = rt; }
+    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt)
+    {
+        runtimeInfo_ = rt;
+    }
 #endif
 
     using QuantMatmulKernelImpl = AllGatherQbmmMxKernel<AType, BType, CType>;
@@ -117,7 +120,7 @@ private:
 #if MC2_DFX_ENABLE
     Mc2Kernel::Mc2RuntimeInfo *runtimeInfo_{nullptr};
     uint8_t execTurn_ = 0;
-    static constexpr uint8_t POS_COMM_BEFORE             = 0U;
+    static constexpr uint8_t POS_COMM_BEFORE = 0U;
     static constexpr uint8_t POS_COMP_CUBE_MATMUL_BEFORE = 1U;
 #endif
 };
@@ -251,7 +254,7 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::MatmulPro
 #if MC2_DFX_ENABLE
     if (runtimeInfo_ != nullptr) {
         runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_COMP_CUBE_MATMUL_BEFORE,
-            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
+                                          static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
     }
 #endif
     quantMatmulKernelImpl_(params);
@@ -281,17 +284,21 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::AllGather
             execTurn_++;
             if (runtimeInfo_ != nullptr) {
                 runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_COMM_BEFORE,
-                    static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
+                                                  static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
             }
 #endif
             allGatherScale_.Commit();
             allGatherData_.Commit();
 #if MC2_DFX_ENABLE
-            if (runtimeInfo_ != nullptr) { runtimeInfo_->IncCommitCount(); }
+            if (runtimeInfo_ != nullptr) {
+                runtimeInfo_->IncCommitCount();
+            }
 #endif
             allGatherData_.template Wait<BARRIER_DEVICE>();
 #if MC2_DFX_ENABLE
-            if (runtimeInfo_ != nullptr) { runtimeInfo_->IncWaitCount(); }
+            if (runtimeInfo_ != nullptr) {
+                runtimeInfo_->IncWaitCount();
+            }
 #endif
         }
         AscendC::SyncAll<true>();

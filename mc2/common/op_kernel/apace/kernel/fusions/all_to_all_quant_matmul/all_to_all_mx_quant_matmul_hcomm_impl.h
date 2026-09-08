@@ -75,7 +75,10 @@ struct HcommCommWaitPolicy {
     HcommCommState<ServerType> *state_{nullptr};
 #if MC2_DFX_ENABLE
     Mc2Kernel::Mc2RuntimeInfo *runtimeInfo_{nullptr};
-    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt) { runtimeInfo_ = rt; }
+    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt)
+    {
+        runtimeInfo_ = rt;
+    }
 #endif
 
     __aicore__ inline void WaitTile(uint32_t tileIdx)
@@ -149,10 +152,10 @@ public:
 
 private:
 #if MC2_DFX_ENABLE
-    static constexpr uint8_t POS_COMM_BEFORE        = 0U;
-    static constexpr uint8_t POS_COMP_LOCAL_BEFORE  = 1U;
+    static constexpr uint8_t POS_COMM_BEFORE = 0U;
+    static constexpr uint8_t POS_COMP_LOCAL_BEFORE = 1U;
     static constexpr uint8_t POS_COMP_REMOTE_BEFORE = 2U;
-    static constexpr uint8_t POS_FINALIZE_BEFORE    = 3U;
+    static constexpr uint8_t POS_FINALIZE_BEFORE = 3U;
 #endif
     AlltoAllMatmulTilingDataType *tilingData_;
 
@@ -238,7 +241,7 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
 #if MC2_DFX_ENABLE
     execTurn_++;
     runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMM_BEFORE,
-                                        static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+                                     static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
 #endif
     commState_.scaleHandle_ = commState_.hccl_.template AlltoAll<true>(
         x1Scale_, commX1ScaleGM1_, scaleSendCount, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_),
@@ -255,7 +258,7 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
         runtimeInfo_.IncCommitCount();
 #endif
     }
-    
+
     if (commTiling.splitAxisTailCnt > 0) {
         uint64_t headOffset = static_cast<uint64_t>(commTiling.splitAxisTileCnt) * commTiling.splitAxisTileSize *
                               rankForComm * sizeof(X1Type);
@@ -280,14 +283,14 @@ __aicore__ inline void AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, Com
 #if MC2_DFX_ENABLE
         execTurn_++;
         runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMP_LOCAL_BEFORE,
-                                            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
 #endif
         MatmulProcess(MatmulMode::LOCAL);
     }
 #if MC2_DFX_ENABLE
     execTurn_++;
     runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMP_REMOTE_BEFORE,
-                                        static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+                                     static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
 #endif
     MatmulProcess(MatmulMode::REMOTE);
     AscendC::SyncAll();

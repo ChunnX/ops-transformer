@@ -274,7 +274,7 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComput
 #if MC2_DFX_ENABLE
         // turn与handle序号对齐: 主块1..tileCnt, 尾块tileCnt+1..tileCnt+tailCnt
         runtimeInfo_.WriteGmByPassDCache(i + 1 + shift, POS_COMP_CUBE_MATMUL_BEFORE,
-                                          static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
 #endif
         mmv3.UpdateSlice(i, isTail);
         mmv3.Process(isLast && (i == (tileCnt - 1)));
@@ -283,7 +283,7 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComput
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
 #if MC2_DFX_ENABLE
         runtimeInfo_.WriteGmByPassDCache(i + 1 + shift, POS_COMM_BEFORE,
-                                          static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
 #endif
         handles_[i + shift] = hccl_.template ReduceScatter<true>(cWork, recvBuffer, recvCount, dataType_,
                                                                  HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);

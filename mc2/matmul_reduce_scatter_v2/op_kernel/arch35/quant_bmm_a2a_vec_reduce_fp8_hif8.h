@@ -371,7 +371,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
 #if MC2_DFX_ENABLE
         // turn与handle序号对齐: 主块1..tileCnt, 尾块tileCnt+1..tileCnt+tailCnt
         runtimeInfo_.WriteGmByPassDCache(i + 1 + (isTail ? cfg.tileCnt : 0U), POS_COMP_CUBE_MATMUL_BEFORE,
-                                          static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
 #endif
         mmv3.UpdateSlice(i, isTail);                // 更新 slice 偏移
         mmv3.Process(isLast && (i == (count - 1))); // 执行 MatMul
@@ -416,7 +416,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
     VecWaitCube(); // 确保依赖的 MatMul 已完成
 #if MC2_DFX_ENABLE
     runtimeInfo_.WriteGmByPassDCache(1U + handleShift, POS_COMM_BEFORE,
-                                      static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
+                                     static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
 #endif
     handles_[0 + handleShift] =
         hccl_.template AlltoAll<true>(currentSendPtr, currentRecvPtr, rankSliceElems, dataType_, stride, repeat);
@@ -434,7 +434,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
         if (GetBlockIdx() == 0) {
 #if MC2_DFX_ENABLE
             runtimeInfo_.WriteGmByPassDCache(i + 1U + handleShift, POS_COMM_BEFORE,
-                                              static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
+                                             static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
 #endif
             hccl_.Wait(handles_[i + handleShift]);
 #if MC2_DFX_ENABLE
@@ -447,7 +447,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
         VecWaitCube();
 #if MC2_DFX_ENABLE
         runtimeInfo_.WriteGmByPassDCache(i + 2U + handleShift, POS_COMM_BEFORE,
-                                          static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
 #endif
         handles_[i + 1 + handleShift] =
             hccl_.template AlltoAll<true>(currentSendPtr, currentRecvPtr, rankSliceElems, dataType_, stride, repeat);
@@ -460,7 +460,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
         GM_ADDR calculateOutPtr = currentOutPtr - rankSliceBytes;
 #if MC2_DFX_ENABLE
         runtimeInfo_.WriteGmByPassDCache(i + 1U + handleShift, POS_COMP_VEC_REDUCE_BEFORE,
-                                          static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
 #endif
         tPipe_->Reset();
         reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calculateRecvPtr, calculateOutPtr, tPipe_);
@@ -479,7 +479,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
     if (GetBlockIdx() == 0) {
 #if MC2_DFX_ENABLE
         runtimeInfo_.WriteGmByPassDCache(lastIndex + 1U + handleShift, POS_COMM_BEFORE,
-                                          static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
 #endif
         hccl_.Wait(handles_[lastIndex + handleShift]);
 #if MC2_DFX_ENABLE
@@ -494,7 +494,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
     GM_ADDR calculateOutPtr = currentOutPtr - rankSliceBytes;
 #if MC2_DFX_ENABLE
     runtimeInfo_.WriteGmByPassDCache(lastIndex + 1U + handleShift, POS_COMP_VEC_REDUCE_BEFORE,
-                                      static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+                                     static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
 #endif
     tPipe_->Reset();
     reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calculateRecvPtr, calculateOutPtr, tPipe_);

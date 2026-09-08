@@ -147,8 +147,8 @@ using DumpX1ScaleType = float;
 template <uint32_t QUANTMODE, bool X2TRANSPOSE, uint32_t DTYPEBIAS, bool ISSMALLK, uint32_t COMMTYPE,
           bool USING_APACE_IMPL, uint32_t ADDBIASSPLITMODE>
 __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR x1_scale, GM_ADDR x2_scale,
-                                             GM_ADDR comm_scale, GM_ADDR x1_offset, GM_ADDR x2_offset, GM_ADDR y,
-                                             GM_ADDR all2all_out, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+                                            GM_ADDR comm_scale, GM_ADDR x1_offset, GM_ADDR x2_offset, GM_ADDR y,
+                                            GM_ADDR all2all_out, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     TPipe pipe;
     constexpr HcclServerType hcclServerType = COMMTYPE == ALL2ALL_COMM_TYPE_CCU ?
@@ -194,7 +194,7 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
             op(&tilingData);
         op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM);
         op.Run();
-        trap(); 
+        trap();
     } else {
         GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
         ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, AscendC::HCCL_DATA_TYPE_UINT8, uint8_t, true);

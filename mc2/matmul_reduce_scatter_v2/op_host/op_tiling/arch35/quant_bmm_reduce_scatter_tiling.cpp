@@ -604,28 +604,26 @@ ge::graphStatus QuantBmmReduceScatterTiling::BuildQuantWorkspaceLayout()
     const uint64_t resultSize = MutableRCSTilingDataA5().cToFloatLen;
     const uint64_t commBufSize = isA2APath_ ? resultSize * 2U : resultSize;
     OP_TILING_CHECK(myWorkSpaceSize_ < commBufSize,
-                    OP_LOGE(opName_, "matmul workspace size %lu is smaller than comm buffer size %lu",
-                            myWorkSpaceSize_, commBufSize),
+                    OP_LOGE(opName_, "matmul workspace size %lu is smaller than comm buffer size %lu", myWorkSpaceSize_,
+                            commBufSize),
                     return ge::GRAPH_FAILED);
     const uint64_t matmulWorkspaceSize = myWorkSpaceSize_ - commBufSize;
     workspaceLayout_ = {};
     uint32_t idx = 0;
     uint64_t offset = 0;
     // Direct RS: gmToFloat_ = workspaceGM. A2A: sendBuf_ = workspaceGM.
-    workspaceLayout_.segments[idx++] = {offset, resultSize,
-                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_MM_RESULT), {}};
+    workspaceLayout_.segments[idx++] = {offset, resultSize, static_cast<uint8_t>(Mc2Tiling::WS_SEG_MM_RESULT), {}};
     offset += resultSize;
     if (isA2APath_) {
         // recvBuf_ = sendBuf_ + cfg.cToFloatLen.
-        workspaceLayout_.segments[idx++] = {offset, resultSize,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_RECV_BUF), {}};
+        workspaceLayout_.segments[idx++] = {offset, resultSize, static_cast<uint8_t>(Mc2Tiling::WS_SEG_RECV_BUF), {}};
         offset += resultSize;
     }
     if (matmulWorkspaceSize != 0U) {
         // Direct RS: workspaceGM_ = gmToFloat_ + cfg.cToFloatLen.
         // A2A: workspaceGM_ = recvBuf_ + cfg.cToFloatLen.
-        workspaceLayout_.segments[idx++] = {offset, matmulWorkspaceSize,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_MM_WORKSPACE), {}};
+        workspaceLayout_.segments[idx++] = {
+            offset, matmulWorkspaceSize, static_cast<uint8_t>(Mc2Tiling::WS_SEG_MM_WORKSPACE), {}};
         offset += matmulWorkspaceSize;
     }
 #if MC2_DFX_ENABLE
@@ -633,20 +631,19 @@ ge::graphStatus QuantBmmReduceScatterTiling::BuildQuantWorkspaceLayout()
     const uint64_t alignment = Mc2Tiling::RUNTIME_INFO_PER_CORE_SIZE;
     const uint64_t padding = (alignment - offset % alignment) % alignment;
     if (padding != 0U) {
-        workspaceLayout_.segments[idx++] = {offset, padding,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_RESERVED), {}};
+        workspaceLayout_.segments[idx++] = {offset, padding, static_cast<uint8_t>(Mc2Tiling::WS_SEG_RESERVED), {}};
         offset += padding;
     }
-    workspaceLayout_.segments[idx++] = {offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
-                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
+    workspaceLayout_.segments[idx++] = {
+        offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE, static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
     offset += Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
 #endif
     workspaceLayout_.totalSize = offset;
     workspaceLayout_.segCount = idx;
     for (uint32_t i = 0; i < workspaceLayout_.segCount; ++i) {
         const auto &seg = workspaceLayout_.segments[i];
-        OP_LOGI(opName_, "Quant MMRS workspace seg[%u]: type=%u, offset=%lu, size=%lu",
-                i, seg.type, seg.offset, seg.size);
+        OP_LOGI(opName_, "Quant MMRS workspace seg[%u]: type=%u, offset=%lu, size=%lu", i, seg.type, seg.offset,
+                seg.size);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -666,8 +663,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::GetWorkspaceSize()
     OP_TILING_CHECK(BuildQuantWorkspaceLayout() != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Failed to build quant MMRS workspace layout"), return ge::GRAPH_FAILED);
     workspaces[0] = workspaceLayout_.totalSize;
-    OP_LOGI(opName_, "DFX workspace totalSize=%lu, segCount=%u",
-            workspaceLayout_.totalSize, workspaceLayout_.segCount);
+    OP_LOGI(opName_, "DFX workspace totalSize=%lu, segCount=%u", workspaceLayout_.totalSize, workspaceLayout_.segCount);
     return ge::GRAPH_SUCCESS;
 }
 

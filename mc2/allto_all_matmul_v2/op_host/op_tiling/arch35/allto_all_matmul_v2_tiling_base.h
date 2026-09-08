@@ -715,11 +715,13 @@ protected:
 
         td->workspaceLayout.totalSize = libApiWorkSpaceSize_ + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
         td->workspaceLayout.segCount = 2;
-        td->workspaceLayout.segments[0] = {0UL, libApiWorkSpaceSize_,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
-        td->workspaceLayout.segments[1] = {libApiWorkSpaceSize_, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
- 
+        td->workspaceLayout.segments[0] = {
+            0UL, libApiWorkSpaceSize_, static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
+        td->workspaceLayout.segments[1] = {libApiWorkSpaceSize_,
+                                           Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
+                                           static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO),
+                                           {}};
+
         double typeSize = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 0.5 : 1.0;
         uint64_t scaleKDim = (k_ + 63UL) / 64UL;
         uint64_t dataRegionBytes = worldSize_ * m_ * static_cast<uint64_t>(static_cast<double>(k_) * typeSize);
@@ -727,10 +729,9 @@ protected:
         td->peermemDataSize = dataRegionBytes + scaleRegionBytes;
         td->peermemLayout.totalSize = td->peermemDataSize;
         td->peermemLayout.segCount = 2;
-        td->peermemLayout.segments[0] = {0UL, dataRegionBytes,
-                                         static_cast<uint8_t>(Mc2Tiling::PEERMEM_SEG_DATA), {}};
-        td->peermemLayout.segments[1] = {dataRegionBytes, scaleRegionBytes,
-                                         static_cast<uint8_t>(Mc2Tiling::PEERMEM_SEG_SCALE), {}};
+        td->peermemLayout.segments[0] = {0UL, dataRegionBytes, static_cast<uint8_t>(Mc2Tiling::PEERMEM_SEG_DATA), {}};
+        td->peermemLayout.segments[1] = {
+            dataRegionBytes, scaleRegionBytes, static_cast<uint8_t>(Mc2Tiling::PEERMEM_SEG_SCALE), {}};
 
         return ge::GRAPH_SUCCESS;
     }
