@@ -1,5 +1,5 @@
 # mc2/3rd 头文件影响范围映射表 - A3 (ascend910_93)
-# 生成: 2026-09-08  基线commit: 040b62cbe (clean)
+# 生成: 2026-09-08  基线commit: 8d32a5161 (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(3rd/开头), 与pr_files.sh输出中mc2/后的段落一致
 #
@@ -13,10 +13,56 @@
 
 3rd/add_rms_norm/op_host/add_rms_norm_tiling.h:
   ops: []
+3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_tiling_advanced.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_base_tiling.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
     - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_tiling.h:
   ops:
     - all_gather_matmul
@@ -88,6 +134,35 @@
     - moe_distribute_dispatch_v2
     - moe_distribute_dispatch_v3
     - moe_update_expert
+3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3_tiling_key.h:
+  ops:
+    - allto_all_all_gather_batch_mat_mul
+    - batch_mat_mul_reduce_scatter_allto_all
+3rd/common/op_host/matmul_common_infershape.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/common/op_host/mc2_3rd_math_util.h:
   ops:
     - all_gather_matmul
@@ -112,13 +187,21 @@
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
     - moe_distribute_dispatch_v3
-3rd/common/op_host/op_api/mc2_3rd_matmul_util.h:
+    - moe_update_expert
+3rd/common/op_host/op_api/cube_util.h:
   ops:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
     - batch_mat_mul_reduce_scatter_allto_all
     - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
     - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
     - mega_moe
@@ -129,6 +212,49 @@
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
     - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/common/op_host/op_api/mc2_3rd_matmul_util.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/common/op_host/op_tiling/debug_tiling.h:
+  ops:
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - batch_mat_mul_reduce_scatter_allto_all
+    - matmul_allto_all
+    - matmul_reduce_scatter_v2
+3rd/common/op_host/op_tiling/lock.h:
+  ops:
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter_v2
+3rd/grouped_matmul/op_kernel/gqmm_tiling_key.h:
+  ops:
+    - allto_allv_grouped_mat_mul
 3rd/grouped_matmul/op_kernel/grouped_matmul_tiling_data_apt.h:
   ops:
     - allto_allv_grouped_mat_mul
@@ -251,6 +377,7 @@
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
     - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_compile_info_advanced.h:
   ops:
     - all_gather_matmul
@@ -275,6 +402,32 @@
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
     - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_advanced.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_data.h:
   ops:
     - all_gather_matmul
@@ -349,25 +502,78 @@
     - moe_distribute_dispatch_v3
 3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_strategy.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
 3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
     - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_common.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
     - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_compile_info.h:
   ops:
     - all_gather_matmul
@@ -392,6 +598,65 @@
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
     - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_l2_cache.h:
+  ops:
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - batch_mat_mul_reduce_scatter_allto_all
+    - matmul_allto_all
+    - matmul_reduce_scatter_v2
+3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_platform_common.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_simplifiedkey.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h:
   ops:
     - all_gather_matmul
@@ -419,12 +684,29 @@
     - moe_update_expert
 3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_tuning.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
     - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_block.h:
   ops:
     - all_gather_matmul_v2
@@ -537,6 +819,39 @@
     - moe_distribute_dispatch_v2
     - moe_distribute_dispatch_v3
     - moe_update_expert
+3rd/mat_mul_v3/op_kernel/mat_mul_v3_tiling_key.h:
+  ops:
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - batch_mat_mul_reduce_scatter_allto_all
+    - matmul_allto_all
+    - matmul_reduce_scatter_v2
+3rd/ops_legacy/op_api/aclnn_kernels/cast.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/ops_legacy/op_api/aclnn_kernels/common/op_error_check.h:
   ops:
     - all_gather_matmul
@@ -563,36 +878,317 @@
     - moe_distribute_dispatch_v3
     - moe_update_expert
 3rd/ops_legacy/op_api/aclnn_kernels/contiguous.h:
-  ops: []
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/ops_legacy/op_api/aclnn_kernels/reshape.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/ops_legacy/op_api/aclnn_kernels/transdata.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/ops_legacy/op_api/aclnn_kernels/transpose.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/ops_legacy/op_api/level0/fill.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/ops_legacy/op_api/level0/mul.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/ops_legacy/op_api/level0/padv3.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/ops_legacy/op_tiling/hcom_topo_info.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+3rd/ops_legacy/op_tiling/legacy_common_manager.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/ops_legacy/op_tiling/op_cache_def_tiling.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
     - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/ops_legacy/op_tiling/op_cache_tiling.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
     - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/ops_legacy/op_tiling/register/tuning_bank_key_registry.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
     - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h:
+  ops:
+    - all_gather_matmul_v2
+    - allto_all_matmul
     - matmul_allto_all
     - matmul_reduce_scatter_v2
-3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h:
+3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/quant_batch_matmul_v3_checker.h:
+  ops:
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter_v2
+3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_info_factory.h:
   ops:
     - all_gather_matmul_v2
     - allto_all_matmul
@@ -607,6 +1203,8 @@
 3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling.h:
   ops:
     - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
     - matmul_reduce_scatter_v2
 3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling_base.h:
   ops:
@@ -697,6 +1295,10 @@
   ops: []
 3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_pertoken.h:
   ops: []
+3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_tiling_key.h:
+  ops:
+    - all_gather_matmul_v2
+    - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_arch.hpp:
   ops:
     - all_gather_matmul_v2
@@ -1080,18 +1682,284 @@
   ops: []
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_reg_base_tiling.h:
   ops: []
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_checker_for_mmads8s4.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_compute_matmul_tiling.h:
+  ops: []
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom.h:
-  ops: []
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom_nz_splitk.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_fixpipe.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_key.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd_group.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_splitk.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_tool.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_weight_nz_tiling.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_white_list.h:
   ops: []
 3rd/weight_quant_batch_matmul_v2/op_kernel/anti_quant.h:
   ops: []
@@ -1131,9 +1999,56 @@
   ops: []
 3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_custom_weight_nz.h:
   ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_kernel_tiling_key.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_tiling_data.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_weight_nz_performance.h:
   ops: []
 3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_weight_nz_performance_base.h:
