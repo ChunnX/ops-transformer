@@ -147,19 +147,6 @@ SAGE_PROFILE_ONLY=1 msprof --output=build/performance_msprof/P-01 \
 
 `benchmark_aclnn` 参数依次为 `SEQ BATCH KV_HEADS BF16 CAUSAL WARMUP REPEATS OUTPUT_JSON`。按表中配置调整参数即可采集其他用例。统计时分别按执行顺序提取 SageAttention2 和 FIA task，排除各自前 2 次预热后，对剩余 5 次 kernel duration 取中位数。
 
-### FP16 ln(448) 优化对照
-
-同机使用独立 C++ ACLNN 的 ACL event 计时，旧版（ExpSub 后乘 448）与新版串行交替运行三轮，每轮预热 5 次、采样 15 次；下表取三轮中位数的中位数。配置为 B=1、Hq=Hkv=32、D=128，smooth K 开启、smooth V 关闭。此处为 event 耗时，与上面的 msprof kernel duration 口径不同。
-
-| 配置 | 旧版 ms | 新版 ms | 加速比 |
-|---|---:|---:|---:|
-| 2K FP16 | 0.2615 | 0.2571 | 1.017× |
-| 4K FP16 | 0.6646 | 0.6401 | 1.038× |
-| 8K FP16 | 2.3813 | 2.2160 | 1.075× |
-| 8K FP16 causal | 1.3959 | 1.3267 | 1.052× |
-| 4K BF16 | 0.6645 | 0.6440 | 1.032× |
-| 16K FP16 | 9.0376 | 8.5477 | 1.057× |
-
 ## 目录说明
 
 | 目录 | 内容 |
