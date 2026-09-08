@@ -142,9 +142,9 @@ private:
 
                 if (preSplit < preSplitMax &&
                     CalUsedCoreNum(runInfo_, preSplit + 1UL, secSplit) <= platformInfo_.aicNum) {
-                    uint64_t nextTileCount =
-                        CalcAlignedSplit(preSplit, secSplit, preSplitMax, preIsM ? runInfo_.mTailSize : runInfo_.nTailSize,
-                            preIsM ? runInfo_.baseM : 0UL);
+                    uint64_t nextTileCount = CalcAlignedSplit(preSplit, secSplit, preSplitMax,
+                                                              preIsM ? runInfo_.mTailSize : runInfo_.nTailSize,
+                                                              preIsM ? runInfo_.baseM : 0UL);
                     if (nextTileCount > 0) {
                         newPreTile = nextTileCount;
                     }
@@ -152,9 +152,9 @@ private:
 
                 if (secSplit < secSplitMax &&
                     CalUsedCoreNum(runInfo_, newPreTile, secSplit + 1UL) <= platformInfo_.aicNum) {
-                    uint64_t nextTileCount =
-                        CalcAlignedSplit(secSplit, newPreTile, secSplitMax, preIsM ? runInfo_.nTailSize : runInfo_.mTailSize,
-                            preIsM ? 0UL : runInfo_.baseM);
+                    uint64_t nextTileCount = CalcAlignedSplit(secSplit, newPreTile, secSplitMax,
+                                                              preIsM ? runInfo_.nTailSize : runInfo_.mTailSize,
+                                                              preIsM ? 0UL : runInfo_.baseM);
                     if (nextTileCount > 0) {
                         newSecTile = nextTileCount;
                     }
