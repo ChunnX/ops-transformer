@@ -33,6 +33,7 @@ constexpr uint32_t ENGRAM_BATCH_BUFFER_BYTES = ENGRAM_BATCH_CAPACITY * ENGRAM_WQ
 constexpr int32_t BITS_PER_BYTE = 8;
 constexpr uint32_t ALIGNED_LEN_256 = 256U;
 constexpr uint32_t RELAY_BUFFER_NUM = 2U;
+constexpr uint32_t SF_BATCH_CAPACITY = 16U;
 
 constexpr uint32_t STATE_OFFSET = 32U;
 constexpr uint32_t WIN_REGION_COUNT = 6U;
