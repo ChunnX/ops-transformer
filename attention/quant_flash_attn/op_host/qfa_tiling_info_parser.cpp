@@ -708,11 +708,6 @@ ge::graphStatus QfaInfoParser::Parse(QfaTilingInfo &qfaInfo)
         return ge::GRAPH_FAILED;
     }
     GetKvStorageMode();
-    if (emptyTensorFlag_) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(qfaInfo.opName, "input tensor", "",
-                                              "Empty tensor (containing a dimension of size 0) is not supported");
-        return ge::GRAPH_FAILED;
-    }
     if (ge::GRAPH_SUCCESS != GetQuantMode()) {
         return ge::GRAPH_FAILED;
     }
