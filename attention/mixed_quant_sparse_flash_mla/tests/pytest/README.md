@@ -59,8 +59,42 @@
 2、执行指令：
 
 ``` bash
-bash test_run.sh single
+bash test_run.sh single --pt-dir mqsmla_testcase
 ```
+
+`single` 仅生成并保存算子输入，不计算 CPU golden，也不执行 NPU。保存的 `.pt` 文件包含
+`params`、`metadata_input` 和 `op_input`，不包含 `golden_state`、`cpu_output` 或 `cpu_lse`。
+直接运行 `test_mixed_quant_sparse_flash_mla_single.py` 时默认行为相同。
+
+执行保存的输入：
+
+``` bash
+bash test_run.sh batch_exec --mode 0 --pt-dir mqsmla_testcase
+# Graph模式：
+bash test_run.sh batch_exec_graph --mode 0 --pt-dir mqsmla_testcase
+```
+
+执行时默认跳过输出/LSE精度对比和 batch consistency 对比，只检查 NPU 是否正常完成。
+结果表记录 `Executed (accuracy skipped)`，`fulfill_percent` 留空；NPU执行错误仍使pytest失败。
+对于包含 CPU golden 的旧用例，可设置 `MQSMLA_SKIP_ACCURACY=0` 恢复原精度/一致性校验流程。
+
+#### 单用例性能测试
+
+配置 `mixed_quant_sparse_flash_mla_paramset.py` 中的 `ENABLED_PARAMS`，并在本目录准备
+与当前用例顺序一致的性能基线 `perf_golden.xlsx`（包含 `metadata_duration` 和
+`qsmla_duration` 列，单位为微秒）。在已配置 CANN、`msprof` 和 Python 测试依赖的环境中执行：
+
+``` bash
+bash perf_run.sh
+```
+
+脚本通过 `msprof` 运行 `test_mixed_quant_sparse_flash_mla_single.py`，设置
+`MQSMLA_INPUTS_ONLY=0`，生成并保存输入后执行 NPU，不计算 CPU golden、不进行精度对比。
+无需预先生成 `.pt` 文件。性能测试固定关闭 batch consistency，保证每个用例仅执行一组
+metadata / attention 算子。默认输出 `res.log`、`result.xlsx` 和 `result_perf.xlsx`；
+可通过 `MQSMLA_RESULT_SAVE_PATH` 修改结果路径，相对路径以本脚本所在目录为准。
+结果表每次运行前清空，性能报告成功保存后删除本次处理的 `PROF*` 目录。
+处理程序读取首个匹配的 `PROF*` 目录，运行前请将历史 profiling 目录移出本目录。
 
 #### 批量测试
 
@@ -69,7 +103,7 @@ bash test_run.sh single
 | 命令 | 功能 |
 |------|------|
 | `batch_save` | 从excel读取用例 → golden计算 → 保存pt文件 |
-| `batch_exec` | 读取pt文件 → NPU测试（需先`batch_save`） |
+| `batch_exec` | 读取single/batch_save生成的pt文件 → NPU执行，默认跳过精度对比 |
 | `batch` | 全流程：`batch_save` + `batch_exec`，默认完成后清理pt文件 |
 
 ##### 选项参数
@@ -78,7 +112,7 @@ bash test_run.sh single
 |------|------|--------|---------|
 | `--excel <路径>` | 指定excel文件路径 | `./excel/example.xlsx` | batch_save / batch_exec / batch |
 | `--sheet <名称>` | 指定excel sheet名 | `decode` | batch_save / batch |
-| `--pt-dir <目录>` | 指定pt文件保存/读取目录 | `qsmla_testcase` | batch_save / batch_exec / batch |
+| `--pt-dir <目录>` | 指定pt文件保存/读取目录 | `mqsmla_testcase` | single / batch_save / batch_exec / batch |
 | `--keep-pt` | 执行完成后保留pt文件 | 默认清理 | 仅batch |
 
 ##### 使用示例
