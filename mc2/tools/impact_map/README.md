@@ -48,9 +48,12 @@ python3 mc2/tools/gen_common_impact_yaml.py /path/to/another_checkout [输出目
    并集，方向为"宁多勿漏"。
 3. **间接 include 传递闭包**：算子 → common 头A → 3rd 头B 的链路中，改动 B
    同样算入算子影响（递归直至引用者落到算子目录为止，带环保护与结果缓存）。
-4. **编译级引用**：common/3rd 的非测试 .cpp 由 CMake `file(GLOB)`/
-   `add_modules_sources(DIR)` 按目录整包编译进全局目标，无需被 include，改动
-   影响全部算子（yaml 中以 `note: 编译级引用` 标注，ops 显式列出）。
+4. **编译级引用（接口反推）**：common/3rd 的非测试 .cpp 由 CMake `file(GLOB)`/
+   `add_modules_sources(DIR)` 按目录整包编译进全局目标，无需被 include。其影响面
+   **按同名头接口反推**：改实现只影响调用该接口的算子，即同名 .h 的引用算子集
+   （yaml 中以 `note: 影响面按同名头<路径>接口反推` 标注，供人工核验）。
+   - 无同名头的 .cpp：接口不明，保守回退全算子并标注待人工确认
+   - 同名头无任何算子引用的 .cpp：疑似死代码，`ops: []` + note 标注
 5. **零引用文件**：既无 include 引用、也非编译单元的文件单独记录在
    `unref.yaml`（改动当前不影响 mc2 算子编译，但需人工确认是否有仓外引用或
    引用关系尚未建立）。
