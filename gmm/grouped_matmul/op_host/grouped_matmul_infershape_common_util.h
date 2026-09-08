@@ -115,8 +115,8 @@ const std::initializer_list<ge::DataType> BIAS_DTYPE_SUPPORT_LIST = {ge::DataTyp
 class GroupedMatmulCommonUtil {
 public:
     GMMAttrs attrsInfo;
-    GroupedMatmulCommonUtil(){};
-    ~GroupedMatmulCommonUtil(){};
+    GroupedMatmulCommonUtil() {};
+    ~GroupedMatmulCommonUtil() {};
 
 private:
 };

@@ -1376,13 +1376,13 @@ static ge::graphStatus CheckGroupListCommonTensor(const gert::InferShapeContext 
         return GRAPH_SUCCESS;
     }
     int64_t groupListSize = groupTensorOptionalShape->GetDim(0);
-    OP_CHECK_IF(groupListSize > maxGroupListSize,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    context->GetNodeName(), "groupList length", std::to_string(groupListSize),
-                    Ops::Transformer::Gmm::FormatString("groupList length must be less than or equal to %ld",
-                                                        maxGroupListSize)
-                        .c_str()),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(
+        groupListSize > maxGroupListSize,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "groupList length", std::to_string(groupListSize),
+            Ops::Transformer::Gmm::FormatString("groupList length must be less than or equal to %ld", maxGroupListSize)
+                .c_str()),
+        return GRAPH_FAILED);
     OP_CHECK_IF(!((groupListSize == groupNum && groupNum > 1) || groupNum == 1),
                 OP_LOGE_FOR_INVALID_LISTSIZE(context->GetNodeName(), "groupList", std::to_string(groupListSize),
                                              std::to_string(groupNum)),
@@ -1441,11 +1441,11 @@ static ge::graphStatus SplitMSingleXSingleWeightSingleY(gert::InferShapeContext 
     const int64_t maxGroupListSize = paramsInfo.groupNum > static_cast<size_t>(GMM_MAX_GROUP_LIST_SIZE_TENSOR) ?
                                          GMM_MAX_GROUP_LIST_SIZE_TENSOR_LARGE :
                                          GMM_MAX_GROUP_LIST_SIZE_TENSOR;
-    OP_CHECK_IF(CheckGroupListCommonTensor(
-                    context, true, context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0)->GetDim(0), maxGroupListSize) !=
-                    GRAPH_SUCCESS,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "groupList", "Invalid groupList"),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(
+        CheckGroupListCommonTensor(context, true, context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0)->GetDim(0),
+                                   maxGroupListSize) != GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "groupList", "Invalid groupList"),
+        return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 
