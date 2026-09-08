@@ -176,4 +176,30 @@ TEST(qgmm_inplace_add_opapi_direct_test, phase2_null_executor_path)
     EXPECT_NE(ret, ACLNN_SUCCESS);
 }
 
+TEST(qgmm_inplace_add_opapi_direct_test, required_tensor_nullptr_returns_nullptr_error)
+{
+    TensorDesc x1 = TensorDesc({96, 512}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({512, 128}, ACL_HIFLOAT8, ACL_FORMAT_ND);
+    TensorDesc scale1 = TensorDesc({4}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc scale2 = TensorDesc({4, 128}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc groupList = TensorDesc({4}, ACL_INT64, ACL_FORMAT_ND);
+    TensorDesc yRef = TensorDesc({4, 96, 128}, ACL_FLOAT, ACL_FORMAT_ND);
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+
+    auto nullScale2 = OP_API_UT(aclnnQuantGroupedMatmulInplaceAdd,
+                                INPUT(x1, x2, scale1, nullptr, groupList, yRef, 0, 0), OUTPUT());
+    EXPECT_EQ(nullScale2.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor),
+              ACLNN_ERR_PARAM_NULLPTR);
+
+    auto nullGroupList = OP_API_UT(aclnnQuantGroupedMatmulInplaceAdd,
+                                   INPUT(x1, x2, scale1, scale2, nullptr, yRef, 0, 0), OUTPUT());
+    EXPECT_EQ(nullGroupList.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor),
+              ACLNN_ERR_PARAM_NULLPTR);
+
+    auto nullYRef = OP_API_UT(aclnnQuantGroupedMatmulInplaceAdd,
+                              INPUT(x1, x2, scale1, scale2, groupList, nullptr, 0, 0), OUTPUT());
+    EXPECT_EQ(nullYRef.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor),
+              ACLNN_ERR_PARAM_NULLPTR);
+}
 } // namespace
