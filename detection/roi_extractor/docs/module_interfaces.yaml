@@ -1,0 +1,79 @@
+schema_version: 1
+op: roi_extractor
+module_count: 1                       # 单 Module：数据依赖单链 + 单一 Vector Section + 片上空间足够（DESIGN.md §0）
+has_cross_core: false                 # DESIGN.md §6：owner=(roi,通道块) 写不相交、单执行域、无跨核共享缓冲
+is_fusion: false                      # 纯 Vector（无 cube section）→ L0 单 Module 一口气开发
+primary_inputs:                       # 镜像 golden 签名（shape/dtype 从 SPEC.md 机器合同填写）
+  # dtype 耦合规则：features_l/rois/y 三者同 dtype（float16 canonical / float32 等价第二模式，
+  # 经 @pl.jit datatype={"rois": "input_dtype"} 特化）；index 恒 int32。
+  - {name: features_0, shape: [N, C, H_0, W_0], dtype: float16}
+  - {name: features_1, shape: [N, C, H_1, W_1], dtype: float16}
+  - {name: features_2, shape: [N, C, H_2, W_2], dtype: float16}
+  - {name: features_3, shape: [N, C, H_3, W_3], dtype: float16}
+  - {name: features_4, shape: [N, C, H_4, W_4], dtype: float16}
+  - {name: features_5, shape: [N, C, H_5, W_5], dtype: float16}
+  - {name: features_6, shape: [N, C, H_6, W_6], dtype: float16}
+  - {name: features_7, shape: [N, C, H_7, W_7], dtype: float16}
+  - {name: rois, shape: [R, 5], dtype: float16}
+  - {name: index, shape: [R], dtype: int32}     # OPTIONAL：提供时输出行号=index[n]，否则=n
+  - {name: finest_scale, shape: [1], dtype: int}        # attr，默认 56
+  - {name: roi_scale_factor, shape: [1], dtype: float32} # attr，默认 0.0，接受但不参与计算
+  - {name: spatial_scale, shape: [L], dtype: float32}   # attr ListFloat，长度≥L，默认 {0.25,0.125,0.0625,0.03125}
+  - {name: pooled_height, shape: [1], dtype: int}       # attr，默认 7，独立于 pooled_width
+  - {name: pooled_width, shape: [1], dtype: int}        # attr，默认 7
+  - {name: sample_num, shape: [1], dtype: int}          # attr，默认 0（自适应 ceil(bin)）
+  - {name: pool_mode, shape: [1]}                       # attr String，仅 "avg"
+  - {name: aligned, shape: [1], dtype: bool}            # attr，默认 true（四坐标各减 0.5）
+modules:
+  - id: 1
+    name: roi_extract_all
+    description: >-
+      完整 RoiExtractor 语义（单 Module，纯 Vector）：逐工作项 (roi n, 通道块 cb=64ch)
+      执行 rois 行 fp32 化 → batch 守卫 → 层级选择（fp32 sqrt→fp16 比较）→ 坐标换算
+      （spatial_scale、aligned -0.5、max(Δ,1)、bin）→ 采样数（固定/自适应 ceil）→
+      特征窗口 strip 驻留 UB（fp32，[1792,24]=64ch×28×24，i/j chunk 分批）→
+      逐样本 4 点 vf.gather 双线性加权 fp32 寄存器累加 → 除以 sh*sw →
+      out_tile [64,64] 暂存（vf.scatter 逐像素列）→（fp16 模式原地 cast RINT）→
+      pl.store 经 y_view [R*C, pH*pW] 按 y_row（index[n] 或 n）覆盖写。
+      don't-care 行（batch 越界/负积/L=1 大 RoI/层级不匹配）不写。
+    section: vector
+    golden_steps:                      # SPEC 机器合同公式 (1)-(6) 的数学步骤（供 mathematician 切分/对账）
+      - 层级选择：s=fp16(sqrt_fp32((rois[n,3]-rois[n,1])*(rois[n,4]-rois[n,2])))，阈值 B[i]=2^i*finest_scale 的 fp16 比较（s<=B[1]→层0；L>=2 且 s>B[L-1]→层 L-1；否则 B[l]<s<=B[l+1]；无匹配→行不写入）
+      - batch 守卫：b=floor(rois[n,0])，仅 0<=b<N 时计算（否则行不写入）
+      - 坐标换算：x0,y0,x1,y1 = rois[n,1..4]*spatial_scale[l]，aligned 时各减 0.5，roi_w/h=max(Δ,1.0)，bin_w=roi_w/pooled_width，bin_h=roi_h/pooled_height（全 fp32）
+      - 采样数：sample_num>0 时 sw=sh=sample_num，否则 sw=ceil(bin_w)、sh=ceil(bin_h)
+      - 双线性采样累加：对 ph,pw,i,j 计算采样点 x=x0+(pw+(j+0.5)/sw)*bin_w、yc=y0+(ph+(i+0.5)/sh)*bin_h，bilinear(features_l[b,c],x,yc)（越界样本贡献 0 且计入分母），fp32 累加 acc[c]
+      - 平均与输出行映射：y[y_row,c,ph,pw]=acc[c]/(sh*sw)，y_row=index[n]（提供时）否则 n，覆盖写全部 c∈[0,C)
+    inputs:
+      - {name: features_0, source: primary}
+      - {name: features_1, source: primary}
+      - {name: features_2, source: primary}
+      - {name: features_3, source: primary}
+      - {name: features_4, source: primary}
+      - {name: features_5, source: primary}
+      - {name: features_6, source: primary}
+      - {name: features_7, source: primary}
+      - {name: rois, source: primary}
+      - {name: index, source: primary}
+      - {name: finest_scale, source: primary}
+      - {name: roi_scale_factor, source: primary}
+      - {name: spatial_scale, source: primary}
+      - {name: pooled_height, source: primary}
+      - {name: pooled_width, source: primary}
+      - {name: sample_num, source: primary}
+      - {name: pool_mode, source: primary}
+      - {name: aligned, source: primary}
+    outputs:
+      - {name: y, shape: [R, C, pooled_height, pooled_width], dtype: float16}  # dtype=features dtype（fp16 canonical/fp32 第二模式）
+    golden_stage_fn: roi_extractor_golden_cpu   # L0 单 Module：累积 golden 即完整 golden（无 staging 切分）
+final_outputs:
+  - {name: y, source: module_1}
+composition_verification:             # SPEC 机器合同 tolerance（canndev UT 来源）；比对基准 CPU FP32 golden，don't-care 行（NaN）排除
+  atol: 0.005
+  rtol: 0.005
+  seeds: [1001, 1002, 1003, 1004, 1011, 1012, 1013, 1014, 1021, 1031, 1036]   # golden _make_inputs 确定性种子（SPEC §10 recipe）
+  shapes:                             # P0 case 形状（有效层为连续前缀，缺席层 [N,C,1,1] 哨兵不参与）
+    - {name: ut_multilevel_fp16, features: [[1,16,16,16],[1,16,9,9],[1,16,8,8],[1,16,4,5]], rois: [1000,5], index: absent, y: [1000,16,7,7], dtype: float16}
+    - {name: st_singlelevel_fp32, features: [[5,64,76,76]], rois: [150,5], index: absent, y: [150,64,7,7], dtype: float32}
+    - {name: dynamic_singlelevel_fp16_index, features: [[4,256,200,336]], rois: [1200,5], index: [1200], y: [1200,256,7,7], dtype: float16}
+    - {name: multilevel_n2_sample2, features: [[2,32,48,48],[2,32,24,24],[2,32,12,12],[2,32,6,6]], rois: [64,5], index: absent, y: [64,32,7,7], dtype: float16, sample_num: 2}

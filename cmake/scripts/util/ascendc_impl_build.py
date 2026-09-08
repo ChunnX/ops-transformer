@@ -351,6 +351,19 @@ PYPTO_IMPORT_HEADER = """
 from unittest.mock import MagicMock as _PyptoMagicMock
 sys.modules["torch"] = _PyptoMagicMock(name="torch")
 sys.modules["torch_npu"] = _PyptoMagicMock(name="torch_npu")
+# Resolve pypto_pro from the pypto run-package install (PYPTO_INSTALL_SITE) when the environment
+# exports it: both CANN setenv.bash and the asc_opc launcher prepend the CANN-bundled site-packages
+# to PYTHONPATH, and the opc toolchain may import the bundled pypto_pro before this wrapper loads,
+# which would leave the stale module in sys.modules. Purge those modules so the fresh import below
+# binds the run-package implementation (whose pypto_compile_op matches this wrapper's call site).
+# No-op when the env var is unset or does not contain pypto_pro.
+_pypto_site = os.environ.get("PYPTO_INSTALL_SITE")
+if _pypto_site and os.path.isdir(os.path.join(_pypto_site, "pypto_pro")):
+    for _m in [m for m in list(sys.modules) if m == "pypto" or m == "pypto_pro" or m.startswith(("pypto.", "pypto_pro."))]:
+        del sys.modules[_m]
+    if _pypto_site in sys.path:
+        sys.path.remove(_pypto_site)
+    sys.path.insert(0, _pypto_site)
 from pypto_pro.runtime.opc.pypto_compile import pypto_compile_op
 """
 
