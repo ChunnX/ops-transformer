@@ -11,10 +11,7 @@ import sys
 from .compressor import compressor
 
 # 注册别名，使 from cann_ops_transformer.ops.cpv2 import compressor 可用
+# 不定义 compressor_v2 函数，避免 ops.attention.compressor_v2 暴露入口
 sys.modules.setdefault("cann_ops_transformer.ops.cpv2", sys.modules[__name__])
 
-__all__ = ["compressor_v2"]
-
-
-def compressor_v2(*args, **kwargs):
-    return compressor(*args, **kwargs)
+__all__ = []
