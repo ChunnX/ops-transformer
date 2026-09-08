@@ -2005,16 +2005,16 @@ static graphStatus CheckNonQuantMatmulParams(fe::PlatformInfo &platformInfo, ger
                         return GRAPH_FAILED);
         }
     }
-    OP_CHECK_IF(CheckMatmulDataType(context, xDtype, weightDtype, biasDtype) != GRAPH_SUCCESS,
-                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-                    context->GetNodeName(), "x, weight, bias",
-                    Ops::Transformer::Gmm::FormatString(
-                        "%s, %s, %s", TypeUtils::DataTypeToAscendString(xDtype).GetString(),
-                        TypeUtils::DataTypeToAscendString(weightDtype).GetString(),
-                        TypeUtils::DataTypeToAscendString(biasDtype).GetString())
-                        .c_str(),
-                    "x, weight, or bias has an unsupported dtype"),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(
+        CheckMatmulDataType(context, xDtype, weightDtype, biasDtype) != GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            context->GetNodeName(), "x, weight, bias",
+            Ops::Transformer::Gmm::FormatString("%s, %s, %s", TypeUtils::DataTypeToAscendString(xDtype).GetString(),
+                                                TypeUtils::DataTypeToAscendString(weightDtype).GetString(),
+                                                TypeUtils::DataTypeToAscendString(biasDtype).GetString())
+                .c_str(),
+            "x, weight, or bias has an unsupported dtype"),
+        return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 
@@ -2136,10 +2136,9 @@ static graphStatus CheckFunctionParamsForDtype(gert::InferDataTypeContext *conte
             CheckMatmulDataType(context, xDtype, weightDtype, biasDtype) != GRAPH_SUCCESS,
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                 context->GetNodeName(), "x, weight, bias",
-                Ops::Transformer::Gmm::FormatString(
-                    "%s, %s, %s", TypeUtils::DataTypeToAscendString(xDtype).GetString(),
-                    TypeUtils::DataTypeToAscendString(weightDtype).GetString(),
-                    TypeUtils::DataTypeToAscendString(biasDtype).GetString())
+                Ops::Transformer::Gmm::FormatString("%s, %s, %s", TypeUtils::DataTypeToAscendString(xDtype).GetString(),
+                                                    TypeUtils::DataTypeToAscendString(weightDtype).GetString(),
+                                                    TypeUtils::DataTypeToAscendString(biasDtype).GetString())
                     .c_str(),
                 "x, weight, or bias has an unsupported dtype"),
             return GRAPH_FAILED);
