@@ -49,7 +49,7 @@ ACLNN_API aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag, int64_t keyAntiquantMode,
     int64_t valueAntiquantMode, int64_t queryQuantMode, int64_t pseType, int64_t outDtype,
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    aclOpExecutor **executor, bool isMaxWorkspace = false);
 
 ACLNN_API aclnnStatus InnerFusedInferAttentionScoreV4GetWorkspaceSize(
     const aclTensor *query, const aclTensorList *key, const aclTensorList *value,
@@ -72,7 +72,7 @@ ACLNN_API aclnnStatus InnerFusedInferAttentionScoreV4GetWorkspaceSize(
     int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag, int64_t keyAntiquantMode,
     int64_t valueAntiquantMode, int64_t queryQuantMode, int64_t pseType, int64_t outDtype,
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    aclOpExecutor **executor, bool isMaxWorkspace = false);
 
 ACLNN_API aclnnStatus InnerFusedInferAttentionScore(
     void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream);
