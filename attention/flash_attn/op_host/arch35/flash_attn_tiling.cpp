@@ -152,8 +152,8 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
         } else {
             tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 4 : 5;
         }
-    } else {
-        // 不等长 (qkHeadDim=192, vHeadDim=128) 进入此分支 (组合合法性由 checker 保证):
+    } else if (faInfo_->qkHeadDim == 192 && faInfo_->vHeadDim == 128) {
+        // 不等长 (qkHeadDim=192, vHeadDim=128) 进入此分支:
         //   config=6: sOuter=64, sInner=128
         //   config=7: sOuter=32, sInner=256
         tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 6 : 7;
