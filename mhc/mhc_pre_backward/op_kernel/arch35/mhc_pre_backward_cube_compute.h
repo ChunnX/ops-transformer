@@ -16,7 +16,6 @@ constexpr uint32_t BASIC_CUBE_N_STRIDE = 128U;
 constexpr uint32_t BASIC_CUBE_K_L1 = 64U;
 constexpr uint32_t BASIC_CUBE_K_L0 = 32U;
 constexpr uint32_t BASIC_CUBE_BUFFER_NUM = 2U;
-constexpr uint32_t BASIC_CUBE_L0C_BUFFER_NUM = 4U;
 constexpr uint32_t BASIC_CUBE_L0_EVENT_BASE = 3U;
 constexpr uint32_t BASIC_CUBE_L1_BUFFER_SIZE = 512U * 1024U;
 // L1均分为A0/A1/B0/B1四个128KB区域，便于MTE2和MTE1跨块重叠。
@@ -26,7 +25,7 @@ constexpr uint32_t BASIC_CUBE_L0_BUFFER_SIZE = 64U * 1024U;
 constexpr uint32_t BASIC_CUBE_L0_SLOT_ELEMS = BASIC_CUBE_L0_BUFFER_SIZE / BASIC_CUBE_BUFFER_NUM / sizeof(float);
 constexpr uint32_t BASIC_CUBE_L0C_BUFFER_SIZE = 256U * 1024U;
 constexpr uint32_t BASIC_CUBE_L0C_SLOT_ELEMS =
-    BASIC_CUBE_L0C_BUFFER_SIZE / BASIC_CUBE_L0C_BUFFER_NUM / sizeof(float);
+    BASIC_CUBE_L0C_BUFFER_SIZE / BASIC_CUBE_BUFFER_NUM / sizeof(float);
 
 __aicore__ inline uint64_t BasicCubeCeilDiv(uint64_t x, uint64_t n)
 {
@@ -50,10 +49,9 @@ public:
         cL0_ = LocalTensor<float>(TPosition::CO1, 0, BASIC_CUBE_L0C_BUFFER_SIZE / sizeof(float));
 
         for (uint32_t slot = 0; slot < BASIC_CUBE_BUFFER_NUM; ++slot) {
+            // 三组初始令牌分别表示L1、L0A/B和L0C对应半区可写。
             SetFlag<HardEvent::MTE1_MTE2>(slot);
             SetFlag<HardEvent::M_MTE1>(BASIC_CUBE_L0_EVENT_BASE + slot);
-        }
-        for (uint32_t slot = 0; slot < BASIC_CUBE_L0C_BUFFER_NUM; ++slot) {
             SetFlag<HardEvent::FIX_M>(slot);
         }
     }
@@ -88,8 +86,6 @@ public:
         for (uint32_t slot = 0; slot < BASIC_CUBE_BUFFER_NUM; ++slot) {
             WaitFlag<HardEvent::MTE1_MTE2>(slot);
             WaitFlag<HardEvent::M_MTE1>(BASIC_CUBE_L0_EVENT_BASE + slot);
-        }
-        for (uint32_t slot = 0; slot < BASIC_CUBE_L0C_BUFFER_NUM; ++slot) {
             WaitFlag<HardEvent::FIX_M>(slot);
         }
     }
@@ -100,8 +96,8 @@ private:
                                        uint32_t aGmStride, uint32_t bGmStride, uint32_t cGmStride, bool transA,
                                        bool atomicAdd, bool publishC0, bool reuseB1)
     {
-        // L0C四槽轮换，使当前tile的MMAD可与前一tile的Fixpipe写回重叠。
-        uint32_t cSlot = l0cLoopCount_ % BASIC_CUBE_L0C_BUFFER_NUM;
+        // L0C双槽轮换，使当前tile的MMAD可与前一tile的Fixpipe写回重叠。
+        uint32_t cSlot = l0cLoopCount_ & 1U;
         LocalTensor<float> currentC = cL0_[cSlot * BASIC_CUBE_L0C_SLOT_ELEMS];
         WaitFlag<HardEvent::FIX_M>(cSlot);
 
