@@ -2193,10 +2193,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo<HIG
 {
     uint32_t ubAddr = ubBaseAddr;
 
-    dequantScaleUb = {
-        LocalTensor<float>(TPosition::VECIN, ubAddr, 64 * 16 * 2),
-        0}; // {64, 16,
-            // 2}：每个向量操作单元处理的元素个数为64，每个处理块包含的向量数量为16，需要处理两个不同的数据流或阶段
+    // {64, 16, 2}：每个向量操作单元处理的元素个数为64，每个处理块包含的向量数量为16，需要处理两个不同的数据流或阶段
+    dequantScaleUb = {LocalTensor<float>(TPosition::VECIN, ubAddr, 64 * 16 * 2), 0};
     ubAddr += 64 * 16 * 2 * sizeof(float); // {64, 16, 2}：同上
 
     SoftmaxInitBuffer(ubAddr);
