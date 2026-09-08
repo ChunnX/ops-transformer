@@ -1247,7 +1247,7 @@ endif ()
 endif()
 
 if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
-    if(TARGET ops_transformer_native)
+    if(TARGET ops_transformer_native AND NOT ASCENDC_OPS)
         add_cann_third_party(makeself-fetch)
     endif()
     add_custom_target(modify_vendor ALL
@@ -1255,7 +1255,8 @@ if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
     )
 
     # modify VENDOR_NAME in install.sh and upgrade.sh
-    if (EXISTS ${ASCEND_PROJECT_DIR}/fwk_modules/scripts AND TARGET cust_opapi)
+    if (EXISTS ${ASCEND_PROJECT_DIR}/fwk_modules/scripts AND
+        (NOT TARGET ops_transformer_native OR TARGET cust_opapi))
         set(ASCEND_PROJECT_DIR_SCRIPTS_PATH ${ASCEND_PROJECT_DIR}/fwk_modules/scripts)
     else()
         set(ASCEND_PROJECT_DIR_SCRIPTS_PATH ${CMAKE_SOURCE_DIR}/cmake/scripts/custom)

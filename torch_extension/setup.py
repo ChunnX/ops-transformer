@@ -103,6 +103,7 @@ _op_category_inits = {}
 _op_py_files = []
 _op_cpp_files = []
 _op_native_builds = []
+_native_build = "build_native" in sys.argv
 
 
 def _decorated_functions(declarations, decorator):
@@ -138,13 +139,6 @@ def _build_native(kernel_file, output, target, aicpu_functions):
 
 
 def _collect_op(op_cat, op_dir, te_dir):
-    _selected_op_categories.append((op_cat, op_dir))
-
-    for f in sorted(os.listdir(te_dir)):
-        if f.endswith(".py"):
-            f_src = os.path.join(te_dir, f)
-            _op_py_files.append((os.path.join("ops", op_cat, op_dir, f), f_src))
-
     # Discover the DSL declarations; export policy belongs to the framework build.
     kernel_dir = os.path.join(os.path.dirname(te_dir), "op_kernel")
     kernel_file = os.path.join(kernel_dir, op_dir + ".py")
@@ -153,12 +147,21 @@ def _collect_op(op_cat, op_dir, te_dir):
             declarations = ast.parse(stream.read()).body
         aicpu_functions = list(_decorated_functions(declarations, "aicpu_kernel"))
         if aicpu_functions or any(_decorated_functions(declarations, "register")):
+            # Native resources are installed directly by CMake, not in the legacy wheel.
+            if not _native_build:
+                return
             destination = os.path.join("ops", op_cat, op_dir)
             _op_native_builds.append((kernel_file, destination, aicpu_functions))
             for filename in sorted(os.listdir(kernel_dir)):
                 if filename.endswith(".py"):
                     _op_py_files.append((os.path.join(destination, "op_kernel", filename),
                                          os.path.join(kernel_dir, filename)))
+
+    _selected_op_categories.append((op_cat, op_dir))
+    for f in sorted(os.listdir(te_dir)):
+        if f.endswith(".py"):
+            f_src = os.path.join(te_dir, f)
+            _op_py_files.append((os.path.join("ops", op_cat, op_dir, f), f_src))
 
     csrc_dir = os.path.join(te_dir, "csrc")
     if os.path.isdir(csrc_dir):
@@ -234,7 +237,9 @@ class Clean(Command):
 
 class BuildPyWithOps(_build_py):
     def run(self):
-        _clean_build_artifacts()
+        # CMake owns the Native staging directory; preserve the legacy wheel in dist.
+        if not _native_build:
+            _clean_build_artifacts()
         super().run()
         build_pkg = os.path.join(self.build_lib, PACKAGE_NAME)
         if _selected_ops is not None:
@@ -350,11 +355,6 @@ def _clean_build_artifacts():
 if _bdist_wheel is not None:
 
     class BdistWheelWithClean(_bdist_wheel):
-        def finalize_options(self):
-            super().finalize_options()
-            if _op_native_builds:
-                self.root_is_pure = False
-
         def run(self):
             _clean_build_artifacts()
             super().run()
@@ -365,6 +365,7 @@ else:
 
 _cmdclass = {
     "build_py": BuildPyWithOps,
+    "build_native": BuildPyWithOps,
     "sdist": SdistWithClean,
     "clean": Clean,
 }
