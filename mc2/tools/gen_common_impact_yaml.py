@@ -110,11 +110,14 @@ ALL_OPS = set(socs)
 TORCH_EXT_PREFIX = 'common/torch_extension/'
 TORCH_EXT_SEED = {op for op in (
     'engram_fetch', 'engram_fetch_grad', 'engram_fetch_wait',
+    'moe_ep_dispatch', 'moe_ep_dispatch_epilogue',
+    'moe_ep_combine', 'moe_ep_combine_epilogue',
     'moe_distribute_dispatch', 'moe_distribute_dispatch_v2',
     'moe_distribute_combine', 'moe_distribute_combine_v2',
 ) if op in socs}
-TORCH_EXT_NOTE = ('torch扩展资产(PyTorch侧MoE/Engram通信封装), smoke级触发, '
-                  '不触发NPU算子全量回归')
+TORCH_EXT_NOTE = ('torch扩展资产(PyTorch侧MoE/Engram通信封装, 含moe_distribute/'
+                  'moe_ep/engram三族绑定), smoke级触发, 不触发NPU算子全量回归; '
+                  'engram_barrier/engram_write为C++运行时内部实现(无对应算子)')
 
 cpp_seed, cpp_note = {}, {}
 for c in sorted(compiled):
