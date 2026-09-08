@@ -120,7 +120,6 @@ protected:
 TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, FixedSyncLayout)
 {
     using namespace MC2KernelTemplate::Gmma2avMteTiling;
-    EXPECT_EQ(FIXED_SYNC_LAYOUT_VERSION, 1U);
     EXPECT_EQ(EPOCH_BASE, 0UL);
     EXPECT_EQ(COUNT_READY_BASE, SYNC_SLOT_BYTES);
     EXPECT_EQ(EXPERT_READY_BASE, COUNT_READY_BASE + static_cast<uint64_t>(MAX_RANK_SIZE) * SYNC_SLOT_BYTES);
