@@ -806,4 +806,114 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN_URMA_PerExpertTensorListCo
     RunPerExpertTensorListCase(3U, ge::GRAPH_FAILED);
 }
 
+static void RunPreQuantizedXContractCase(ge::DataType xDtype, ge::DataType dispatchDtype,
+                                         const std::vector<int64_t> &scalesShape, ge::DataType scalesDtype,
+                                         int64_t topoType, bool expectedSuccess, int64_t h = 4096)
+{
+    struct MegaMoeCompileInfo {
+    } compileInfo;
+
+    const ge::DataType weightDtype = static_cast<ge::DataType>(dispatchDtype);
+    const ge::Format weight2Format = weightDtype == ge::DT_FLOAT4_E2M1 ? ge::FORMAT_FRACTAL_NZ_C0_32 :
+                                                                         ge::FORMAT_ND;
+    const int64_t weight1ScaleWidth = (h + 63) / 64;
+    using TensorDescription = gert::TilingContextPara::TensorDescription;
+    std::vector<TensorDescription> inputs{
+        {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{128, h}, {128, h}}, xDtype, ge::FORMAT_ND},
+        {{{128, 8}, {128, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{128, 8}, {128, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{4, 2048, h}, {4, 2048, h}}, weightDtype, ge::FORMAT_ND},
+        {{{4, h, 1024}, {4, h, 1024}}, weightDtype, weight2Format},
+        {{{4, 2048, weight1ScaleWidth, 2}, {4, 2048, weight1ScaleWidth, 2}},
+         ge::DT_FLOAT8_E8M0,
+         ge::FORMAT_ND},
+        {{{4, h, 16, 2}, {4, h, 16, 2}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{}, ge::DT_INT8, ge::FORMAT_ND},
+    };
+    if (scalesShape.empty()) {
+        inputs.push_back({{}, scalesDtype, ge::FORMAT_ND});
+    } else if (scalesShape.size() == 2U) {
+        inputs.push_back({{{scalesShape[0], scalesShape[1]}, {scalesShape[0], scalesShape[1]}}, scalesDtype,
+                          ge::FORMAT_ND});
+    } else {
+        ASSERT_EQ(scalesShape.size(), 3U);
+        inputs.push_back({{{scalesShape[0], scalesShape[1], scalesShape[2]},
+                           {scalesShape[0], scalesShape[1], scalesShape[2]}},
+                          scalesDtype,
+                          ge::FORMAT_ND});
+    }
+    inputs.insert(inputs.end(),
+                  {{{}, weightDtype, ge::FORMAT_ND},
+                   {{}, weightDtype, ge::FORMAT_ND},
+                   {{}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+                   {{}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+                   {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+                   {{}, ge::DT_FLOAT, ge::FORMAT_ND}});
+    const std::vector<TensorDescription> outputs{
+        {{{128, h}, {128, h}}, ge::DT_BF16, ge::FORMAT_ND},
+        {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND},
+    };
+    const std::vector<gert::TilingContextPara::OpAttr> attrs{
+        {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+        {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+        {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(67108864)},
+        {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+        {"dispatch_quant_out_dtype",
+         Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(dispatchDtype))},
+        {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+        {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+        {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
+        {"activation_params",
+         Ops::Transformer::AnyValue::CreateFrom<std::vector<float>>({std::numeric_limits<float>::max()})},
+        {"activation_out_dtype",
+         Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+        {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"topo_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(topoType)},
+        {"rank_num_per_server", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+        {"topk_weights_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+    };
+    gert::TilingContextPara tilingContextPara("MegaMoe", inputs, outputs, attrs, &compileInfo);
+
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValues(hcomTopologyMockValues);
+    TilingInfo tilingInfo;
+    const bool succeeded = ExecuteTiling(tilingContextPara, tilingInfo);
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().Reset();
+    EXPECT_EQ(succeeded, expectedSuccess);
+}
+
+TEST_F(MegaMoeArch35TilingTest, PreQuantizedXValidTypesAndOddScaleWidth)
+{
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2, {128, 128}, ge::DT_FLOAT8_E8M0, 0,
+                                 true);
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, {128, 129}, ge::DT_FLOAT8_E8M0, 0,
+                                 true, 4128);
+    RunPreQuantizedXContractCase(ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1, {128, 128}, ge::DT_FLOAT8_E8M0, 0,
+                                 true);
+}
+
+TEST_F(MegaMoeArch35TilingTest, PreQuantizedXRejectsInvalidContracts)
+{
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, {}, ge::DT_FLOAT8_E8M0, 0, false);
+    RunPreQuantizedXContractCase(ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, {128, 128}, ge::DT_FLOAT8_E8M0, 0, false);
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, {128, 4, 32}, ge::DT_FLOAT8_E8M0, 0,
+                                 false);
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, {127, 128}, ge::DT_FLOAT8_E8M0, 0,
+                                 false);
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, {128, 129}, ge::DT_FLOAT8_E8M0, 0,
+                                 false);
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, {128, 128}, ge::DT_FLOAT, 0, false);
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, {128, 128}, ge::DT_FLOAT8_E8M0, 0,
+                                 false);
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, {128, 128}, ge::DT_FLOAT8_E8M0, 1,
+                                 false);
+}
+
 } // namespace MegaMoeUT

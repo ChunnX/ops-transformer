@@ -42,6 +42,8 @@ extern "C" {
  * @param [in] bias2Optional: 计算可选输入，TensorList，数据类型float32，数据格式支持ND。
  *                             GroupMatmul2的偏置参数。
  * @param [in] xActiveMaskOptional: 计算可选输入，Tensor，数据类型int8，数据格式支持ND。预留参数，暂不支持。
+ * @param [in] scalesOptional: A5 MTE 预量化 x 的 MX 反量化系数，数据类型float8_e8m0，
+ *                            shape为[BS, CeilDiv(H, 32)]。BF16 x时必须为空。
  * @param [in] sharedWeight1Optional: 计算可选输入，TensorList，共享专家GroupMatmul1的右矩阵。
  * @param [in] sharedWeight2Optional: 计算可选输入，TensorList，共享专家GroupMatmul2的右矩阵。
  * @param [in] sharedWeightScales1Optional: 计算可选输入，TensorList，共享专家GroupMatmul1右矩阵反量化参数。
@@ -78,7 +80,7 @@ ACLNN_API aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *topkIds, const aclTensor *topkWeights,
     const aclTensorList *weight1, const aclTensorList *weight2, const aclTensorList *weightScales1Optional,
     const aclTensorList *weightScales2Optional, const aclTensorList *bias1Optional, const aclTensorList *bias2Optional,
-    const aclTensor *xActiveMaskOptional, const aclTensorList *sharedWeight1Optional,
+    const aclTensor *xActiveMaskOptional, const aclTensor *scalesOptional, const aclTensorList *sharedWeight1Optional,
     const aclTensorList *sharedWeight2Optional, const aclTensorList *sharedWeightScales1Optional,
     const aclTensorList *sharedWeightScales2Optional, const aclTensorList *sharedBias1Optional,
     const aclTensorList *sharedBias2Optional, const aclTensor *maskBufferOptional, int64_t moeExpertNum,
