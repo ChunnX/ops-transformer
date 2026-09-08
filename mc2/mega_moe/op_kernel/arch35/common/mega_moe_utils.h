@@ -32,6 +32,17 @@ constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
 constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
 constexpr uint32_t UINT64_BYTE_OFFSET_SHIFT = 3U;
 
+__aicore__ inline __gm__ int32_t *GetMteSyncCountAddress(GM_ADDR rankSyncBase, uint32_t aivIndex)
+{
+    return reinterpret_cast<__gm__ int32_t *>(rankSyncBase + MTE_SYNC_COUNT_OFFSET +
+                                              static_cast<uint64_t>(aivIndex) * MTE_SYNC_COUNT_STRIDE);
+}
+
+__aicore__ inline uint32_t GetMteCountEpoch(int32_t inputSequence)
+{
+    return (static_cast<uint32_t>(inputSequence) & 0x7FU) | 0x80U;
+}
+
 struct WorkRange {
     uint32_t start = 0;
     uint32_t count = 0;
@@ -537,9 +548,8 @@ __aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint
         return;
     }
     __gm__ int32_t *syncRank = reinterpret_cast<__gm__ int32_t *>(rankSyncInWorldPtr);
-    __gm__ int32_t *syncCount = reinterpret_cast<__gm__ int32_t *>(rankSyncInWorldPtr + 48U * 1024U +
-                                                                   static_cast<uint64_t>(aivJob.jobIndex) * 64U);
-    int32_t count = ReadGmByPassDCache(syncCount) + 1;
+    __gm__ int32_t *syncCount = GetMteSyncCountAddress(rankSyncInWorldPtr, aivJob.jobIndex);
+    int32_t count = static_cast<int32_t>(static_cast<uint32_t>(ReadGmByPassDCache(syncCount)) + 1U);
     for (uint32_t rankIdx = aivJob.jobIndex; rankIdx < worldSize; rankIdx += aivJob.totalJobs) {
         __gm__ int32_t *remoteSyncAddr =
             reinterpret_cast<__gm__ int32_t *>(g_winRankAddr_[rankIdx]) + rankId * INT_CACHELINE;

@@ -11,6 +11,7 @@
 #ifndef MEGA_MOE_TOKEN_DISPATCH_H
 #define MEGA_MOE_TOKEN_DISPATCH_H
 
+#include "../common/mega_moe_count_ready.h"
 #include "../common/mega_moe_utils.h"
 #include "mega_moe_token_quant.h"
 
@@ -431,29 +432,17 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     uint32_t rawCountElementCount = common.worldSize * common.moeExpertPerRank;
     GlobalTensor<int32_t> expertCountGlobal;
     expertCountGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr));
-    DataCopyPad(scratch.cumsumInfoTensor, expertCountGlobal,
-                {1U, rawCountElementCount * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U}, {true, 0U, 0U, 0U});
-    SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
-
     /*
-     * 到达校验：count 槽高 8 位为发送侧写入的 launch epoch(与 rankSync 计数槽同源,见
-     * send_mask.h PublishExpertCounts)。跨卡同步信号与 count 数据跨源/跨通道无到达序,
-     * 同步放行不代表 count 已落地——对高位不匹配的槽单槽自旋重读至到达,再掩出低 24 位。
+     * 到达校验：count 槽高 8 位为发送侧的输入 epoch。发送前已确认源卡量化就绪、
+     * index 写完，因此整表 epoch 校验直接承担远端输入依赖，不依赖入口全卡握手。
+     * 本卡输入硬件回通知保证全体 AIV 的输入 epoch 已记账；MTE3_MTE2 保护输入 UB 复用。
+     * 出口 AIV 同步位于本函数之后，此时 slot 0 稳定为本轮计数。VF 校验失败后退避并重搬整表。
      */
-    __gm__ int32_t *launchCountSlot0 =
-        reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.rankSyncInWorldPtr + 48U * 1024U);
-    int32_t expectEpoch = (ReadGmByPassDCache(launchCountSlot0) & 0x7F) | 0x80;
-    __gm__ int32_t *rawCountGm = reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr);
-    for (uint32_t slotIdx = 0U; slotIdx < rawCountElementCount; ++slotIdx) {
-        int32_t slotValue = scratch.cumsumInfoTensor.GetValue(slotIdx);
-        while (((slotValue >> 24) & 0xFF) != expectEpoch) {
-            int64_t startCycle = AscendC::GetSystemCycle();
-            while (AscendC::GetSystemCycle() - startCycle < GM_FLAG_POLL_BACKOFF_CYCLES) {
-            }
-            slotValue = AscendC::ReadGmByPassDCache(rawCountGm + slotIdx);
-        }
-        scratch.cumsumInfoTensor.SetValue(slotIdx, slotValue & 0x00FFFFFF);
-    }
+    __gm__ int32_t *launchCountSlot0 = GetMteSyncCountAddress(params.peermemInfo.rankSyncInWorldPtr, 0U);
+    uint32_t expectEpoch = GetMteCountEpoch(ReadGmByPassDCache(launchCountSlot0));
+    // expertTokenNumsOutTensor 此时尚无输出，首项暂存 VF 的整表未就绪标志，不增加 UB 预算。
+    WaitForMteCountTable(expertCountGlobal, scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor,
+                         rawCountElementCount, expectEpoch);
     SyncFuncStatic<AscendC::HardEvent::S_V, SYNC_EVENT_ID2>();
 
     ComputeExpertCountTables(scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor, common.moeExpertPerRank,

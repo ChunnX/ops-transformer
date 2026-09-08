@@ -28,7 +28,6 @@
 #include "stage/mega_moe_token_quant.h"
 #include "stage/mega_moe_send_mask.h"
 #include "stage/mega_moe_workspace_reset.h"
-#include "stage/mega_moe_shared_expert_input.h"
 #include "stage/mega_moe_token_dispatch.h"
 #include "stage/mega_moe_gmm1_activation.h"
 #include "stage/mega_moe_gmm2_combine.h"
@@ -159,7 +158,6 @@ protected:
     static constexpr uint32_t GMM1_TILE_M = L1_TILE_M_256;
     static constexpr uint32_t EPILOGUE_TILE_M = TopkWeightsPrefetch ? L1_TILE_M_128 : L1_TILE_M_256;
     QuantProcessScratch<ActivationType> quantScratch_;
-    SharedExpertPrepareScratch<ActivationType> sharedExpertPrepareScratch_;
     SendMaskScratch sendMaskScratch_;
     LocalTensor<int32_t> resetTensor_;
 
@@ -374,7 +372,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantTokenBufferCon
 
 // ======================================================================================
 // SendAndQuantBuffInit：单核 mask/reset/quant/shared-prepare 模块使用的 buffer 申请。
-//   shared prepare 复用 quant 输出双 buffer；reset 封顶 DISPATCH_RESET_BATCH。
+//   量化输出双 buffer 同时用于共享输入直写；reset 封顶 DISPATCH_RESET_BATCH。
 // ======================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
@@ -402,8 +400,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     uint32_t xOutTensorSize = quantProcessConfig_.quantTokenScaleAlignBytes;
     uint32_t xInAlignSize = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
     uint32_t expertPerCoreMax = Ops::Base::CeilDiv(worldSize_ * moeExpertPerRank_, blockAivNum_);
-    uint32_t sendCntAccSize =
-        Ops::Base::CeilAlign(static_cast<int64_t>(expertPerCoreMax * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
+    uint32_t sendCntAccSize = expertPerCoreMax * MTE_COUNT_UB_STRIDE * sizeof(int32_t);
 
     // 必须与 host SetAdaptiveBufferConfigs 的 quotient/remainder 分核保持一致。compact route 按连续专家段
     // 分核，因此前 remainder 个 core 多处理一个 expert。
@@ -435,10 +432,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     uint32_t xOutTensorAddr2 = xOutTensorAddr1 + xOutTensorSize;
     quantScratch_.xOutTensor1 =
         LocalTensor<ActivationType>(TPosition::VECCALC, xOutTensorAddr2, xOutTensorSize / sizeof(ActivationType));
-    if (sharedExpertNum_ > 0U) {
-        sharedExpertPrepareScratch_.copyBuffer0 = quantScratch_.xOutTensor0;
-        sharedExpertPrepareScratch_.copyBuffer1 = quantScratch_.xOutTensor1;
-    }
 
     uint32_t xInAlignAddr1 = xOutTensorAddr2 + xOutTensorSize;
     quantScratch_.xInTensor0 =
@@ -655,16 +648,38 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PrepareGmmExpertState(E
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparationStage()
 {
-    SendAndQuantBuffInit();
-    QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
-        aivJob_, commonConfig_, params_, quantProcessConfig_, quantScratch_);
-    GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,
-                                     sendMaskScratch_);
-    ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
-    if (sharedExpertNum_ > 0) {
-        // 可选：为共享专家拆分连续布局的输入数据与 scale。
-        PrepareSharedExpertInput<ActivationType, QuantScaleOutType, A_ELEMS_PER_BYTE>(
-            aivJob_, commonConfig_, params_, quantProcessConfig_, sharedExpertPrepareScratch_);
+    if constexpr (g_coreType == AIC) {
+        // 等配对 AIV 的清零/共享输入，再汇合本卡输入；这里不等路由和 count 搬运。
+        CrossCoreWaitFlag<4, PIPE_S>(MTE_LOCAL_INPUT_READY_FLAG);
+        CrossCoreWaitFlag<4, PIPE_S>(MTE_LOCAL_INPUT_READY_FLAG + MTE_AIV1_FLAG_OFFSET);
+        CrossCoreSetFlag<0, PIPE_FIX>(MTE_ALL_INPUT_READY_FLAG);
+        CrossCoreWaitFlag<0, PIPE_S>(MTE_ALL_INPUT_READY_FLAG);
+        CrossCoreSetFlag<4, PIPE_S>(MTE_INPUT_READY_RELEASE_FLAG);
+        CrossCoreSetFlag<4, PIPE_S>(MTE_INPUT_READY_RELEASE_FLAG + MTE_AIV1_FLAG_OFFSET);
+        // 必须在输入汇合/回通知之后等待 UB 释放；只阻塞 FIX，允许先加载和计算。
+        CrossCoreWaitFlag<4, PIPE_FIX>(MTE_INPUT_UB_RELEASE_FLAG);
+        CrossCoreWaitFlag<4, PIPE_FIX>(MTE_INPUT_UB_RELEASE_FLAG + MTE_AIV1_FLAG_OFFSET);
+    } else {
+        SendAndQuantBuffInit();
+        ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
+        int32_t inputSequence = QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, QuantScaleOutType,
+                                                    TopkWeightsType, TopkWeightsPrefetch>(
+            aivJob_, commonConfig_, params_, quantProcessConfig_, quantScratch_);
+        // 输入通知先于路由/count；AIV 不在此等待其他核，AIC 可以提前汇合。
+        CrossCoreSetFlag<4, PIPE_MTE3>(MTE_LOCAL_INPUT_READY_FLAG);
+        GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,
+                                         sendMaskScratch_, inputSequence);
+
+        // 输入的 MTE2 读取已由 MTE2_V 接入量化/路由；V_MTE3 同时覆盖空任务上的 UB 初始化。
+        // 将旧 V 访问收口到 count 所在的 MTE3 尾部，再释放配对 AIC 的 UB 写权限。
+        SyncFuncStatic<HardEvent::V_MTE3, SYNC_EVENT_ID3>();
+        CrossCoreSetFlag<4, PIPE_MTE3>(MTE_INPUT_UB_RELEASE_FLAG);
+        // 新阶段的 V/MTE2 仅等待本核 MTE3 读完旧 UB；无需 PIPE_ALL 或 MTE3_S 阻塞标量。
+        // 后续标量 UB 访问位于相应 MTE2_S/V_S 之后，不能绕过这些数据依赖。
+        SyncFuncStatic<HardEvent::MTE3_V, SYNC_EVENT_ID3>();
+        SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
+        // 回通知仅保证本卡输入及 epoch 记账已汇合，不承担旧 UB 的完成等待。
+        CrossCoreWaitFlag<4, PIPE_S>(MTE_INPUT_READY_RELEASE_FLAG);
     }
 }
 
@@ -679,28 +694,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
 
-    // 阶段 1：量化本卡输入、推送 compact route、清零同步状态，并准备共享专家输入。
+    // 阶段 1：清零状态，量化并直写通信/共享输入，异步通知 AIC 后推送 compact route。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::INPUT_PREPARE);
     ProcessInputPreparationStage();
-    if constexpr (g_coreType == AIV) {
-        PipeBarrier<PIPE_ALL>();
-    }
-    SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算
-
-    // 等待所有 rank 完成本轮输入准备（quant/mask 发送/本地 workspace flag 清理），再进入
-    // MoE stage。该同步置于共享专家 GMM1 之前：共享 GMM1 只依赖本卡输入（SyncAll<false>
-    // 已保证可见），dispatch（奇数子核）只依赖本卡量化数据与远端输入准备完成，两者无数据
-    // 依赖；奇数子核不参与共享 GMM1 的核间交接，先同步即让 dispatch 与共享 GMM1/激活并行，
-    // 消除奇数子核在同步点等待整段共享 GMM1 的空转（与 a8w8 路径的同名改动同构）。
-    // 不变量（重排后由隐式约定承担，改动共享/通信任一侧时必须重审）：
-    //  1. 共享 GMM1/激活只触碰 workspace 侧 sharedExpert* 区与本核私有 UB；dispatch/combine
-    //     只触碰通信 window 与 count workspace——两资源面零交叠是并发安全的前提。
-    //  2. 本同步与后续 dispatch 读远端 mask 计数之间不再有共享 GMM1 的时间垫层，读计数的
-    //     到达保证由 count 高 8 位 launch epoch 校验承担（见 token_dispatch.h
-    //     PrepareMoeExpertTokenCountTable），与 a8w8 路径一致。
-    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
-    CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
-
     if (sharedExpertNum_ > 0U) {
         // 阶段 2：可选的共享专家 GMM1 及 Activation。
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM1);
@@ -711,7 +707,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     derived.ProcessMoeExpertStages();
     if constexpr (g_coreType == AIV) {
         ExportCompactExpertTokenCounts(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
-        PipeBarrier<PIPE_ALL>();
+        // MoE 尾部的跨 AIV 汇合继续保护输出阶段及 epoch 复用；SyncAll 自带本核 PIPE_ALL。
         SyncAll<true>();
     }
     if (sharedExpertNum_ > 0U) {

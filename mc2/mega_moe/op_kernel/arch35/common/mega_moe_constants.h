@@ -66,6 +66,19 @@ constexpr uint32_t SYNC_EVENT_ID2 = 2;
 constexpr uint32_t SYNC_EVENT_ID3 = 3;
 constexpr uint32_t SYNC_EVENT_ID4 = 4;
 constexpr uint32_t SYNC_EVENT_ID5 = 5;
+// Count 的发送端 UB 每项占一个 32B data block；远端仍只写一个 int32。
+constexpr uint32_t MTE_COUNT_UB_STRIDE = 8;
+// MTE 窗口原有逐 AIV epoch 计数槽：每槽 64B，仅所属 AIV 标量读写。
+constexpr uint64_t MTE_SYNC_COUNT_OFFSET = 48U * 1024U;
+constexpr uint64_t MTE_SYNC_COUNT_STRIDE = INT_CACHELINE * sizeof(int32_t);
+// mode 0 的 AIV 量化 / AIC 输入汇合事件，与 mode 4 使用独立计数器空间。
+constexpr uint16_t MTE_QUANT_READY_FLAG = 8;
+constexpr uint16_t MTE_ALL_INPUT_READY_FLAG = 9;
+// mode 4 避开 GMM/prologue 的 0/1、4--7 及 SyncAll 的 11--14；AIV1 的 AIC 侧偏移为 16。
+constexpr uint16_t MTE_LOCAL_INPUT_READY_FLAG = 8;
+constexpr uint16_t MTE_INPUT_READY_RELEASE_FLAG = 9;
+constexpr uint16_t MTE_INPUT_UB_RELEASE_FLAG = 10;
+constexpr uint16_t MTE_AIV1_FLAG_OFFSET = 16;
 constexpr int64_t GM_FLAG_POLL_BACKOFF_CYCLES = 200;
 constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
 constexpr uint8_t COMBINE_NO_QUANT = 0;
