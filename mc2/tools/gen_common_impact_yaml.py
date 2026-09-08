@@ -3,20 +3,17 @@
 """
 用法: ./gen_common_impact_yaml.py [ops-transformer仓路径] [输出目录]
       两个参数均可省略: 默认仓=本脚本所在仓, 默认输出=<仓>/mc2/tools/impact_map
-功能: 对指定的 ops-transformer 检出(任意时期/任意版本), 统计 mc2/common 与 mc2/3rd
-      每个文件的反向影响算子范围, 按目录(common/3rd)×芯片(A2/A3/A5)输出6个yaml。
+功能: 对指定的 ops-transformer 检出(任意时期/任意版本), 扫描 mc2 内全量 #include,
+      计算 mc2/common 与 mc2/3rd 头文件的反向影响算子范围(含传递闭包),
+      按芯片 A2/A3/A5 输出映射表 + 一份全量回归算子清单。
 
-影响面模型:
-  1) 头文件(.h): 被 include 才生效。影响面 = 直接+间接 include 它的算子
-     (沿 common/3rd 内部引用链传递闭包, 不动点迭代, 天然处理环)。
-  2) 编译级引用(.cpp): 由 CMake file(GLOB)/add_modules_sources(DIR) 按目录整包
-     编译进全局目标, 无需被 include。影响面 = 同名头的接口使用方算子(接口反推),
-     即"改了实现, 只有调用该接口的算子受影响"。
-     - 无同名头的 .cpp: 接口不明, 保守回退全算子, note 标注待人工确认
-     - 同名头无任何算子引用的 .cpp: 疑似死代码, ops:[] + note 待人工确认
-输出: <输出目录>/common/{A2,A3,A5,zero_reference}.yaml 与 <输出目录>/3rd/{...}
-      零引用文件(无include且非编译单元)单独写入 zero_reference.yaml。
-说明: 重名头文件的映射取并集(宁多勿漏), 相关文件带 note 标注; 重新运行覆盖输出。
+影响面模型(只对 .h 建模, 最简):
+  - 头文件: 被include才生效, 影响面 = 直接+间接include它的算子(不动点迭代, 含环)
+  - .cpp / .py / .json / .ini / 其他一切文件: 不建模, 改动一律按全量回归处理
+输出:
+  <输出目录>/common/{A2,A3,A5}.yaml  头文件 -> 算子列表(显式)
+  <输出目录>/3rd/{A2,A3,A5}.yaml
+  <输出目录>/full_regression.yaml    全量回归算子清单(按芯片)
 """
 import os, re, sys, subprocess, datetime
 
@@ -24,88 +21,74 @@ REPO = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else \
     os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 OUTDIR = os.path.abspath(sys.argv[2]) if len(sys.argv) > 2 else os.path.join(REPO, 'mc2', 'tools', 'impact_map')
 MC2 = os.path.join(REPO, 'mc2')
-SRC_EXT = ('.h', '.hpp', '.cuh', '.cpp', '.cc', '.c')
-CHIP_MAP = {'A2': 'ascend910b', 'A3': 'ascend910_93', 'A5': 'ascend950'}
+SRC_EXT = ('.h', '.hpp', '.cuh')
 INC_RE = re.compile(r'#include\s+"([^"]+)"')
 SOC_RE = re.compile(r'AddConfig\("([a-z0-9_]+)"')
+CHIP_MAP = {'A2': 'ascend910b', 'A3': 'ascend910_93', 'A5': 'ascend950'}
 EXCLUDE_OPS = ('common', '3rd', 'tools')
 
 if not os.path.isdir(MC2):
     sys.exit(f'错误: 不是 ops-transformer 仓(找不到 {MC2})')
 
-# ---------- 1. 索引 mc2 下所有源文件 ----------
+# ---------- 1. 索引 mc2 下所有源文件(cpp等仅作include扫描源, 不进映射) ----------
+SCAN_EXT = ('.h', '.hpp', '.cuh', '.cpp', '.cc', '.c')
 idx = {}
 for dp, _, fs in os.walk(MC2):
     top = os.path.relpath(dp, MC2).split('/')[0]
     if top == 'tools':
         continue
     for f in fs:
-        if f.endswith(SRC_EXT):
+        if f.endswith(SCAN_EXT):
             idx[os.path.relpath(os.path.join(dp, f), MC2)] = os.path.join(dp, f)
 
-targets = {r for r in idx if r.startswith(('common/', '3rd/'))}
+targets = {r for r in idx if r.startswith(('common/', '3rd/'))}   # 影响源: common/3rd 头文件
 by_base = {}
 for r in targets:
     by_base.setdefault(os.path.basename(r), []).append(r)
 dup_groups = {k: v for k, v in by_base.items() if len(v) > 1}
 
-# ---------- 2. 裸文件名 include 边 ----------
-referers = {r: set() for r in targets}      # 目标文件 -> 直接引用者
+# ---------- 2. 裸文件名 include 边(重名取并集, 宁多勿漏) ----------
+by_base = {}
+for r in targets:
+    by_base.setdefault(os.path.basename(r), []).append(r)
+referers = {r: set() for r in targets}   # 头 -> 直接引用者(任何mc2源文件)
 for rel, path in idx.items():
     for m in INC_RE.finditer(open(path, errors='ignore').read()):
         for t in by_base.get(os.path.basename(m.group(1)), ()):
             if t != rel:
                 referers[t].add(rel)
 
-def is_test(p):
-    return any(s in ('tests', 'test') for s in p.split('/'))
-
-compiled = {r for r in targets
-            if r.endswith(('.cpp', '.cc', '.c')) and not is_test(r)}
-
-# ---------- 3. 影响面: 单一不动点(含cpp->同名头符号链边) ----------
-base_ops = {r: {rf.split("/")[0] for rf in referers[r]
-                if rf.split("/")[0] not in EXCLUDE_OPS}
-            for r in targets}
-HDR_EXT=(".h",".hpp",".cuh"); CPP_EXT=(".cpp",".cc",".c")
-def fixpoint():
-    imp = {r: set(base_ops[r]) for r in targets}
-    changed = True
-    while changed:
-        changed = False
-        for r in targets:
-            new = set(imp[r])
-            for rf in referers[r]:
-                if rf in targets and imp[rf] - new:
-                    new |= imp[rf]; changed = True
-            if r.endswith(CPP_EXT):
-                h = r.rsplit(".",1)[0] + ".h"
-                if h in targets and imp[h] - new:
-                    new |= imp[h]; changed = True
-                elif h not in targets and ALL_OPS_IMP - new:
-                    new |= ALL_OPS_IMP; changed = True  # 无同名头: 接口不明, 保守全量
-            if new != imp[r]:
-                imp[r] = new; changed = True
-    return imp
-ALL_OPS_IMP = set()
-for op0 in sorted(os.listdir(MC2)):
-    if op0 in EXCLUDE_OPS or not os.path.isdir(os.path.join(MC2, op0)): continue
-    ALL_OPS_IMP.add(op0)
-impact = fixpoint()
-
-# ---------- 4. 算子芯片注册(来自 *_def.cpp) ----------
+# ---------- 3. 算子芯片注册(来自 *_def.cpp) ----------
 socs = {}
 for op in sorted(os.listdir(MC2)):
     if op in EXCLUDE_OPS or not os.path.isdir(os.path.join(MC2, op)):
         continue
-    s2 = set()
+    s = set()
     for dp, _, fs in os.walk(os.path.join(MC2, op)):
         for f in fs:
-            if f.endswith("_def.cpp"):
-                s2 |= set(SOC_RE.findall(open(os.path.join(dp, f), errors="ignore").read()))
-    socs[op] = s2
+            if f.endswith('_def.cpp'):
+                s |= set(SOC_RE.findall(open(os.path.join(dp, f), errors='ignore').read()))
+    socs[op] = s
+ALL_OPS = set(socs)
 
-# ---------- 4. 零引用.cpp继承同名头(编译级模型下不再需要, 保留兜底) ----------
+# ---------- 4. 影响面: 单一不动点(单调收敛, 与遍历顺序无关) ----------
+# 头的影响 = 直接引用它的算子 ∪ 引用者的影响(传递闭包, 天然处理环)
+base_ops = {r: {rf.split('/')[0] for rf in referers[r]
+                if rf.split('/')[0] not in EXCLUDE_OPS} for r in targets}
+impact = {r: set(base_ops[r]) for r in targets}
+changed = True
+while changed:
+    changed = False
+    for r in targets:
+        new = set(impact[r])
+        for rf in referers[r]:
+            if rf in targets and impact[rf] - new:
+                new |= impact[rf]
+                changed = True
+        if new != impact[r]:
+            impact[r] = new
+            changed = True
+
 # ---------- 5. git信息 ----------
 def git(*a):
     try:
@@ -116,7 +99,7 @@ def git(*a):
 commit = git('rev-parse', '--short', 'HEAD')
 branch = git('rev-parse', '--abbrev-ref', 'HEAD')
 
-# ---------- 6. 输出 yaml: 目录(common/3rd) x 芯片(A2/A3/A5) = 6个文件 + unref ----------
+# ---------- 6. 输出 ----------
 os.makedirs(OUTDIR, exist_ok=True)
 summary = []
 for grp in ('common', '3rd'):
@@ -126,24 +109,20 @@ for grp in ('common', '3rd'):
             f'# mc2/{grp} 头文件影响范围映射表 - {chip_cn} ({soc})',
             f'# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})',
             '# 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)',
-            f'# 键路径: 相对mc2目录({grp}/开头), 与pr_files.sh输出中mc2/后的段落一致',
+            f'# 键路径: 相对mc2目录({grp}/开头), 与PR修改文件列表中mc2/后的段落一致',
             '#',
-            '# 本表仅保存头文件(.h/.hpp/.cuh)条目, 影响面=直接+间接include它的算子(传递闭包)。',
-            '# 其他文件类型由消费脚本按以下规则处理(与本表配合):',
-            '#   .cpp: 同目录同名.h存在 -> 查本表同名头条目; 同名.h在zero_reference.yaml -> 疑似死代码不触发;',
-            '#         同目录无同名.h -> 全量',
-            '#   其余一切(.py/json/ini/sh/csv/txt/md等): 一律全量',
-            f'#   算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 {chip_cn}({soc}) 的交集',
-            '#   注意: 本表结果为文件直接传递的算子, 消费侧还需叠加CMake depends反向闭包',
+            '# 影响面: 被include才生效, ops = 直接+间接include该头的算子(传递闭包, 显式全列表)',
+            f'# ops: [] = 该头有引用, 但引用算子均未在{chip_cn}注册, 本芯片无需测试',
+            '# 不在本表中的头 = 无明确include到算子关系(冗余/仅测试引用), 改动按全量回归处理',
+            f'# 算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 {chip_cn}({soc}) 的交集',
+            '# 重名头文件映射取并集(note:字段标注), 宁多勿漏',
             '',
         ]
         n_map = n_empty = 0
         for r in sorted(grp_files):
-            if not r.endswith(('.h', '.hpp', '.cuh')):
-                continue
             ops = {o for o in impact[r] if soc in socs.get(o, set())}
             if not impact[r]:
-                continue
+                continue          # 零算子可达头: 不入表 -> 消费侧按全量处理
             lines.append(f'{r}:')
             if ops:
                 lines.append('  ops:')
@@ -162,40 +141,28 @@ for grp in ('common', '3rd'):
         out = os.path.join(grp_out, f'{chip_cn}.yaml')
         open(out, 'w').write('\n'.join(lines) + '\n')
         summary.append((f'{grp}/{chip_cn}', n_map, n_empty, out))
-    # unref
-    unref = sorted(r for r in grp_files if r.endswith(('.h', '.hpp', '.cuh'))
-                   and not impact[r])
-    lines = [
-        f'# mc2/{grp} 零引用文件清单 (与芯片无关, 全芯片共用)',
-        f'# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})',
-        '#',
-        '# 语义: 下列头文件无任何算子可达的引用(无人直接/间接include),',
-        '#       改动不影响mc2算子编译; .cpp的判定见映射表头部规则(同名.h在zero_reference=死代码);',
-        '#       注意与芯片映射表中 ops: [] 的区别:',
-        '#         ops: []  = 头文件无算子引用 / .cpp同名头无算子引用(疑似死代码, 看note)',
-        '#         本表     = 完全没有引用, 修改前需人工确认:',
-        '#                    - 是否被仓外代码/构建脚本引用',
-        '#                    - 是否include关系尚未建立(如新增文件)',
-        '',
-    ]
-    for r in unref:
-        lines.append(f'{r}:')
-    open(os.path.join(OUTDIR, grp, 'zero_reference.yaml'), 'w').write('\n'.join(lines) + '\n')
-    print(f'零引用 {grp}: {len(unref)} 个 -> impact_map/{grp}/zero_reference.yaml')
+
+# full_regression.yaml: 全量回归算子清单
+lines = [
+    '# mc2 全量回归算子清单',
+    f'# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})',
+    '# 触发全量回归的情况:',
+    '#   1) 改动 mc2/common|3rd 下任何 .cpp 及其他非头文件(.py/.json/.ini/.sh等)',
+    '#   2) 改动的头文件不在芯片映射表中(无明确include到算子关系, 含冗余/仅测试引用头)',
+    '# 按芯片取对应列表执行全量算子回归, 再叠加CMake depends反向闭包去重',
+    '',
+]
+for chip_cn, soc in CHIP_MAP.items():
+    lines.append(f'{chip_cn}:')
+    for op in sorted(o for o in socs if soc in socs[o]):
+        lines.append(f'  - {op}')
+open(os.path.join(OUTDIR, 'full_regression.yaml'), 'w').write('\n'.join(lines) + '\n')
 
 # ---------- 7. 摘要 ----------
 print(f'仓: {REPO}  commit: {commit} ({branch})')
-print(
-    f'common/3rd 源文件: {len(targets)}, 重名组: {len(dup_groups)}, '
-    f'编译级.cpp: {len(compiled)} (yaml不保存, 消费侧按同名头规则处理)'
-)
+print(f'common/3rd 头文件: {len(targets)}, 重名组: {len(dup_groups)}')
 top = sorted(targets, key=lambda r: -len(impact[r]))[:5]
-print(
-    '引用算子数 Top5: '
-    + '; '.join(f'{os.path.basename(r)}({len(impact[r])})' for r in top)
-)
+print('引用算子数 Top5: ' + '; '.join(f'{os.path.basename(r)}({len(impact[r])})' for r in top))
 for c, m, e, out in summary:
-    print(f'输出 {out}: 头文件条目 {m} / 该芯片无算子 {e}')
-n_cpp = len(compiled)
-n_noh = sum(1 for c in compiled if c.rsplit(".", 1)[0] + ".h" not in targets)
-print(f'编译级.cpp {n_cpp} 个不在yaml中(消费规则): 有同名头 {n_cpp - n_noh} / 无同名头走全量 {n_noh}')
+    print(f'输出 {out}: 有映射 {m} / 该芯片无算子 {e}')
+print(f'输出 {os.path.join(OUTDIR, "full_regression.yaml")}')
