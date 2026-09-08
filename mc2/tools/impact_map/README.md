@@ -48,9 +48,12 @@ python3 mc2/tools/gen_common_impact_yaml.py /path/to/another_checkout [输出目
    并集，方向为"宁多勿漏"。
 3. **间接 include 传递闭包**：算子 → common 头A → 3rd 头B 的链路中，改动 B
    同样算入算子影响（递归直至引用者落到算子目录为止，带环保护与结果缓存）。
-4. **零引用文件**：无任何 mc2 源文件 include 的文件不进入芯片映射表，单独记录
-   在 `unref.yaml`（改动这类文件当前不影响 mc2 算子编译，但需人工确认是否有
-   仓外引用或引用关系尚未建立）。
+4. **编译级引用**：common/3rd 的非测试 .cpp 由 CMake `file(GLOB)`/
+   `add_modules_sources(DIR)` 按目录整包编译进全局目标，无需被 include，改动
+   影响全部算子（yaml 中以 `note: 编译级引用` 标注，ops 显式列出）。
+5. **零引用文件**：既无 include 引用、也非编译单元的文件单独记录在
+   `unref.yaml`（改动当前不影响 mc2 算子编译，但需人工确认是否有仓外引用或
+   引用关系尚未建立）。
 5. **芯片过滤**：算子集合按 `*_def.cpp` 的 `AICore().AddConfig()` 注册与
    当前芯片取交集。
 
