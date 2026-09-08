@@ -165,6 +165,7 @@ public:
                         }
                         if (curRowFactor == 0) {
                             CrossCoreSetFlag<SYNC_MODE4, PIPE_MTE3>(SYNC_AIV_AIC_FLAG);
+                            aL1BufferID_ ^= 1; // 与AIC的无条件翻转保持L1双缓冲索引同步
                             continue;
                         }
                         uint64_t cvLoopKSize = CeilDiv(kL1RealSize, tilingData->kUbSize);
