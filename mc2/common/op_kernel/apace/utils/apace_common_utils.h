@@ -16,9 +16,6 @@
 #pragma once
 #include <cstdio>
 #include <cstdint>
-#include <cstdlib>
-#include <iostream>
-#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -94,7 +91,8 @@ template <mm::DataType dataType, typename T>
 constexpr T GetShapeWithDataType(T size)
 {
     if constexpr (dataType == mm::DataType::DT_FLOAT4_E2M1) {
-        return size << 1UL;
+        constexpr T shift = static_cast<T>(1);
+        return size << shift;
     } else {
         return size;
     }
@@ -104,7 +102,8 @@ template <mm::DataType dataType, typename T>
 constexpr T GetSizeWithDataType(T shape)
 {
     if constexpr (dataType == mm::DataType::DT_FLOAT4_E2M1) {
-        return (shape + 1) >> 1UL;
+        constexpr T shift = static_cast<T>(1);
+        return (shape + static_cast<T>(1)) >> shift;
     } else {
         return shape;
     }
