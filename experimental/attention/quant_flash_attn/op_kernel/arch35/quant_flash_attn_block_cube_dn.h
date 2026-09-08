@@ -195,7 +195,9 @@ private:
     FaGmTensor<SCALE_T, V_SCALE_FORMAT, SEQLEN_T, KV_IS_TND> valueScaleGm;
 
     CopyQueryGmToL1<DATA_T, Q_FORMAT> copyQueryGmToL1;
-    CopyKvGmToL1<DATA_T, KV_FORMAT> copyKvGmToL1;
+    // K/V 各自独立实例: 内部 GM 地址增量缓存不能在 keyGm/valueGm 间共享
+    CopyKvGmToL1<DATA_T, KV_FORMAT> copyKGmToL1;
+    CopyKvGmToL1<DATA_T, KV_FORMAT> copyVGmToL1;
     CopyQueryScaleGmToL1<SCALE_T, Q_SCALE_FORMAT> copyQueryScaleGmToL1;
     CopyKeyScaleGmToL1<SCALE_T, K_SCALE_FORMAT> copyKeyScaleGmToL1;
     CopyValueScaleGmToL1<SCALE_T, V_SCALE_FORMAT> copyValueScaleGmToL1;
@@ -691,7 +693,7 @@ private:
                           .dIdx = 0,
                           .s2DealSize = info.pairKVCopyS2Size,
                           .dDealSize = headDimInt8};
-        copyKvGmToL1(l1Tensor, keyGm, gmCoord);
+        copyKGmToL1(l1Tensor, keyGm, gmCoord);
     }
 
     __aicore__ inline void CopyVGmToL1(const RunInfo &info)
@@ -706,7 +708,7 @@ private:
                           .dIdx = 0,
                           .s2DealSize = info.pairKVCopyS2Size,
                           .dDealSize = headDimInt8};
-        copyKvGmToL1(l1Tensor, valueGm, gmCoord);
+        copyVGmToL1(l1Tensor, valueGm, gmCoord);
     }
 
     // copy query scale with full s1g

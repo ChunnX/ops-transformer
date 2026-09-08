@@ -291,25 +291,32 @@ struct GmS2OffsetCache {
     uint64_t offset = 0;
 };
 
-template <typename GmTensorType>
+// 仅用于 BNSD layout: offset = b*strideB + n2*strideN + s2*strideS2 + d*strideD,
+// 同一 (b,n2) 内 s2 单调递增时关于 s2 仿射, 用一次乘加代替完整重算。
+// TND/BSND/PA 等其它 layout 一律走原始 GetOffset, 保证行为不变。
+template <GmFormat GM_FORMAT, typename GmTensorType>
 __aicore__ inline uint64_t GetKvGmOffsetIncremental(GmS2OffsetCache &cache, GmTensorType &srcTensor,
                                                     GmKvCoord &gmCoord)
 {
     auto &offsetCalculator = srcTensor.offsetCalculator;
-    uint64_t offset = 0;
-    if (cache.srcKey == &srcTensor && cache.bIdx == gmCoord.bIdx && cache.n2Idx == gmCoord.n2Idx &&
-        gmCoord.dIdx == 0 && gmCoord.s2Idx >= cache.s2Idx) {
-        // 同一张GM张量且(b,n2)不变, s2单调前进: 增量计算
-        offset = cache.offset + static_cast<uint64_t>(gmCoord.s2Idx - cache.s2Idx) * offsetCalculator.GetStrideS2();
+    if constexpr (GM_FORMAT == GmFormat::BNSD) {
+        uint64_t offset = 0;
+        if (cache.srcKey == &srcTensor && cache.bIdx == gmCoord.bIdx && cache.n2Idx == gmCoord.n2Idx &&
+            gmCoord.dIdx == 0 && gmCoord.s2Idx >= cache.s2Idx) {
+            // 同一张GM张量且(b,n2)不变, s2单调前进: 增量计算
+            offset = cache.offset + static_cast<uint64_t>(gmCoord.s2Idx - cache.s2Idx) * offsetCalculator.GetStrideS2();
+        } else {
+            offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.s2Idx, gmCoord.dIdx);
+        }
+        cache.srcKey = &srcTensor;
+        cache.bIdx = gmCoord.bIdx;
+        cache.n2Idx = gmCoord.n2Idx;
+        cache.s2Idx = gmCoord.s2Idx;
+        cache.offset = offset;
+        return offset;
     } else {
-        offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.s2Idx, gmCoord.dIdx);
+        return offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.s2Idx, gmCoord.dIdx);
     }
-    cache.srcKey = &srcTensor;
-    cache.bIdx = gmCoord.bIdx;
-    cache.n2Idx = gmCoord.n2Idx;
-    cache.s2Idx = gmCoord.s2Idx;
-    cache.offset = offset;
-    return offset;
 }
 
 template <typename KV_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format::NZ>
@@ -332,13 +339,16 @@ public:
     }
 
 private:
+    // GM地址S2增量缓存(仅BNSD路径使用), 成员变量跨调用保持状态
+    GmS2OffsetCache offsetCache_ = {};
+
     template <typename FaGmTensorType>
     __aicore__ inline void ProcessContinuousOrTensorlist(FaL1Tensor<KV_T, L1_FORMAT> &dstTensor,
                                                          FaGmTensorType &srcTensor, GmKvCoord &gmCoord)
     {
         // B*N2*GS1*D
         auto &offsetCalculator = srcTensor.offsetCalculator;
-        uint64_t offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.s2Idx, gmCoord.dIdx);
+        uint64_t offset = GetKvGmOffsetIncremental<GM_FORMAT>(offsetCache_, srcTensor, gmCoord);
         CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.s2DealSize, gmCoord.dDealSize,
                                offsetCalculator.GetStrideS2(), dstTensor.rowCount);
     }
@@ -746,12 +756,15 @@ public:
     }
 
 private:
+    // GM地址S2增量缓存(仅BNSD路径使用), 成员变量跨调用保持状态
+    GmS2OffsetCache offsetCache_ = {};
+
     template <typename GmTensorType>
     __aicore__ inline void ProcessContinuousOrTensorlist(FaL1Tensor<K_SCALE_T, L1_FORMAT> &dstTensor,
                                                          GmTensorType &srcTensor, GmKvCoord &gmCoord)
     {
         auto &offsetCalculator = srcTensor.offsetCalculator;
-        uint64_t offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.s2Idx, gmCoord.dIdx);
+        uint64_t offset = GetKvGmOffsetIncremental<GM_FORMAT>(offsetCache_, srcTensor, gmCoord);
         CopySingleMXScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.dDealSize, gmCoord.s2DealSize,
                                 offsetCalculator.GetStrideS2(), gmCoord.dDealSize);
     }
@@ -849,12 +862,15 @@ public:
     }
 
 private:
+    // GM地址S2增量缓存(仅BNSD路径使用), 成员变量跨调用保持状态
+    GmS2OffsetCache offsetCache_ = {};
+
     template <typename GmTensorType>
     __aicore__ inline void ProcessContinuousOrTensorlist(FaL1Tensor<V_SCALE_T, L1_FORMAT> &dstTensor,
                                                          GmTensorType &srcTensor, GmKvCoord &gmCoord)
     {
         auto &offsetCalculator = srcTensor.offsetCalculator;
-        uint64_t offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.s2Idx, gmCoord.dIdx);
+        uint64_t offset = GetKvGmOffsetIncremental<GM_FORMAT>(offsetCache_, srcTensor, gmCoord);
         if (SCALE_TRANS == ScaleTrans::ND2NZ) {
             CopySingleMXScaleNDToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.s2DealSize, gmCoord.dDealSize,
                                     offsetCalculator.GetStrideS2(), dstTensor.rowCount);
