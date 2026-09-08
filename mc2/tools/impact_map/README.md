@@ -44,14 +44,14 @@ python3 mc2/tools/gen_common_impact_yaml.py /path/to/another_checkout [输出目
 
 消费脚本输入修改文件列表 + 芯片，逐文件判定：
 
-| 文件 | 判定 |
+| 文件与条件 | 处理 |
 |---|---|
 | 非 .h/.hpp/.cuh/.cpp 的一切（.py/.json/.ini/.sh/.csv/.txt/.md 等，不限路径） | 全量 |
-| .cpp，同目录无同名 .h | 全量 |
-| .cpp，同目录同名 .h 在 unref.yaml | 疑似死代码，不触发 |
-| .cpp，同目录同名 .h 在本表 | 取同名 .h 条目的 ops |
-| .h，在 unref.yaml | 零引用，人工确认 |
-| .h，在本表 | 取条目 ops（`ops: []` = 该芯片无算子，不用测） |
+| .cpp 且同目录无同名 .h | 全量 |
+| .cpp 且同目录同名 .h 在 unref.yaml | 不触发（备注：疑似死代码，建议人工复核） |
+| .cpp 且同目录同名 .h 在本表 | 测试同名 .h 条目列出的算子 |
+| .h 在 unref.yaml | 人工确认（备注：该头当前无任何引用） |
+| .h 在本表 | 测试条目 ops 列出的算子；`ops: []` 表示该芯片无引用算子，不用测 |
 
 **最后一步（消费侧负责）**：以上得到的算子集还需**叠加 CMake `*_depends`
 反向闭包**（如 yaml 传递出 `moe_distribute_dispatch_v2`，则依赖它的
