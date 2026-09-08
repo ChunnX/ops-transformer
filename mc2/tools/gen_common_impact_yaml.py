@@ -63,62 +63,47 @@ def is_test(p):
 compiled = {r for r in targets
             if r.endswith(('.cpp', '.cc', '.c')) and not is_test(r)}
 
-# ---------- 3. 不动点求值(单调收敛, 与遍历顺序无关) ----------
-base_ops = {r: {rf.split('/')[0] for rf in referers[r]
-                if rf.split('/')[0] not in EXCLUDE_OPS}
+# ---------- 3. 影响面: 单一不动点(含cpp->同名头符号链边) ----------
+base_ops = {r: {rf.split("/")[0] for rf in referers[r]
+                if rf.split("/")[0] not in EXCLUDE_OPS}
             for r in targets}
-
-def fixpoint(seeds):
-    """seeds: 编译级cpp的固定影响集; 其余节点按引用链聚合, 迭代到稳定"""
-    imp = {r: (set(seeds[r]) if r in seeds else set(base_ops[r]))
-           for r in targets}
+HDR_EXT=(".h",".hpp",".cuh"); CPP_EXT=(".cpp",".cc",".c")
+def fixpoint():
+    imp = {r: set(base_ops[r]) for r in targets}
     changed = True
     while changed:
         changed = False
         for r in targets:
-            if r in seeds:
-                continue
             new = set(imp[r])
             for rf in referers[r]:
-                if rf in targets:
-                    if imp[rf] - new:
-                        new |= imp[rf]
-                        changed = True
+                if rf in targets and imp[rf] - new:
+                    new |= imp[rf]; changed = True
+            if r.endswith(CPP_EXT):
+                h = r.rsplit(".",1)[0] + ".h"
+                if h in targets and imp[h] - new:
+                    new |= imp[h]; changed = True
+                elif h not in targets and ALL_OPS_IMP - new:
+                    new |= ALL_OPS_IMP; changed = True  # 无同名头: 接口不明, 保守全量
             if new != imp[r]:
-                imp[r] = new
-                changed = True
+                imp[r] = new; changed = True
     return imp
+ALL_OPS_IMP = set()
+for op0 in sorted(os.listdir(MC2)):
+    if op0 in EXCLUDE_OPS or not os.path.isdir(os.path.join(MC2, op0)): continue
+    ALL_OPS_IMP.add(op0)
+impact = fixpoint()
 
-# 3.1 纯头文件世界: 编译级cpp不传播(其对同名头的自引用不算使用方)
-imp_pure = fixpoint(seeds={})
-
-# 3.2 编译级cpp影响面 = 同名头接口使用方; 无同名头回退全算子
+# ---------- 4. 算子芯片注册(来自 *_def.cpp) ----------
 socs = {}
 for op in sorted(os.listdir(MC2)):
     if op in EXCLUDE_OPS or not os.path.isdir(os.path.join(MC2, op)):
         continue
-    s = set()
+    s2 = set()
     for dp, _, fs in os.walk(os.path.join(MC2, op)):
         for f in fs:
-            if f.endswith('_def.cpp'):
-                s |= set(SOC_RE.findall(open(os.path.join(dp, f), errors='ignore').read()))
-    socs[op] = s
-ALL_OPS = set(socs)
-
-cpp_seed, cpp_note = {}, {}
-for c in sorted(compiled):
-    h = c.rsplit('.', 1)[0] + '.h'
-    if h in targets:
-        cpp_seed[c] = imp_pure[h]
-        cpp_note[c] = f'编译级引用, 影响面按同名头{h}接口反推'
-    else:
-        cpp_seed[c] = set(ALL_OPS)
-        cpp_note[c] = '编译级引用, 无同名头, 按全算子处理'
-
-# 3.3 头文件最终影响面: cpp作为使用方以其seed贡献回去
-impact = fixpoint(seeds=cpp_seed)
-for c in compiled:
-    impact[c] = cpp_seed[c]
+            if f.endswith("_def.cpp"):
+                s2 |= set(SOC_RE.findall(open(os.path.join(dp, f), errors="ignore").read()))
+    socs[op] = s2
 
 # ---------- 4. 零引用.cpp继承同名头(编译级模型下不再需要, 保留兜底) ----------
 # ---------- 5. git信息 ----------
