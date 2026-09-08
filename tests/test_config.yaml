@@ -437,6 +437,36 @@ attention:
     options:
       - kv_quant_sparse_flash_attention
 
+  fmm016_streaming_top_k_blocked_v2:
+    module: True
+    src:
+      - experimental/attention/fmm016_streaming_top_k_blocked_v2
+      - attention/fmm016_streaming_top_k_blocked_v2
+    exclude:
+      - experimental/attention/fmm016_streaming_top_k_blocked_v2/README.md
+    ut_cov_exclude:
+      - experimental/attention/fmm016_streaming_top_k_blocked_v2/tests
+    test:
+      examples: False
+      ut: True
+    options:
+      - fmm016_streaming_top_k_blocked_v2
+
+  fmm016_streaming_top_k_blocked_v4:
+    module: True
+    src:
+      - experimental/attention/fmm016_streaming_top_k_blocked_v4
+      - attention/fmm016_streaming_top_k_blocked_v4
+    exclude:
+      - experimental/attention/fmm016_streaming_top_k_blocked_v4/README.md
+    ut_cov_exclude:
+      - experimental/attention/fmm016_streaming_top_k_blocked_v4/tests
+    test:
+      examples: False
+      ut: True
+    options:
+      - fmm016_streaming_top_k_blocked_v4
+
 gmm:
   grouped_matmul:
     module: True
