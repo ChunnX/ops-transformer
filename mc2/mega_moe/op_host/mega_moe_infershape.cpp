@@ -94,7 +94,11 @@ static ge::graphStatus InferDataTypeMegaMoe(gert::InferDataTypeContext *context)
     OP_LOGD(context->GetNodeName(), "Begin to do InferDataTypeMegaMoe.");
 
     auto xDtype = context->GetInputDataType(DISPATCH_FFN_COMBINE_INPUT_X_INDEX);
-    context->SetOutputDataType(DISPATCH_FFN_COMBINE_OUTPUT_Y_INDEX, xDtype);
+    const bool isPreQuantizedX = xDtype == ge::DT_FLOAT8_E5M2 || xDtype == ge::DT_FLOAT8_E4M3FN ||
+                                 xDtype == ge::DT_FLOAT4_E2M1;
+    // A5 pre-quantized token inputs are consumed by MX GMM, while the public result remains BF16.
+    // Preserve the historical Arch22 behaviour for FP16/BF16 inputs.
+    context->SetOutputDataType(DISPATCH_FFN_COMBINE_OUTPUT_Y_INDEX, isPreQuantizedX ? ge::DT_BF16 : xDtype);
     context->SetOutputDataType(DISPATCH_FFN_COMBINE_OUTPUT_EXPERT_TOKEN_NUMS_INDEX, ge::DT_INT32);
 
     OP_LOGD(context->GetNodeName(), "End to do InferDataTypeMegaMoe.");

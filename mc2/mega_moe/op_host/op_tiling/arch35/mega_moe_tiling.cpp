@@ -130,6 +130,12 @@ static MegaMoeExpertParams MakeExpertParams(const MegaMoeConfig &config)
     return params;
 }
 
+static bool IsPreQuantizedXType(ge::DataType dataType)
+{
+    return dataType == ge::DT_FLOAT8_E5M2 || dataType == ge::DT_FLOAT8_E4M3FN ||
+           dataType == ge::DT_FLOAT4_E2M1;
+}
+
 /*
  * 根据 GMM1/GMM2 的逻辑 tile 数和 AIC 数量，计算单个 wave 覆盖的 M group 数。
  */
@@ -664,13 +670,32 @@ static ge::graphStatus CheckAndSetQuantOutDtypes(const gert::TilingContext *cont
                                                  MegaMoeExpertParams &params, const char *nodeName)
 {
     auto attrs = context->GetAttrs();
+    auto xDesc = context->GetInputDesc(config.xIndex);
+    OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
+
     auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutDtypeIndex));
     ge::DataType moeQuantOutDtype = static_cast<ge::DataType>(*dispatchQuantOutDtypePtr);
-    OP_TILING_CHECK(!IsSupportedExpertQuantDtype(moeQuantOutDtype),
-                    OP_LOGE_WITH_INVALID_ATTR(nodeName, "dispatch_quant_out_dtype",
-                                              std::to_string(*dispatchQuantOutDtypePtr).c_str(),
-                                              "fp8_e5m2, fp8_e4m3fn or fp4_e2m1"),
-                    return ge::GRAPH_FAILED);
+    bool isPreQuantizedX = IsPreQuantizedXType(xDesc->GetDataType());
+    if (isPreQuantizedX) {
+        OP_TILING_CHECK(
+            moeQuantOutDtype != ge::DT_UNDEFINED,
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "dispatch_quant_out_dtype",
+                                      std::to_string(*dispatchQuantOutDtypePtr).c_str(),
+                                      "DT_UNDEFINED for pre-quantized x; its dtype is inferred from x"),
+            return ge::GRAPH_FAILED);
+        auto topoTypePtr = attrs->GetAttrPointer<int64_t>(config.attrTopoTypeIndex);
+        OP_TILING_CHECK(*topoTypePtr != TOPO_TYPE_MTE,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "topo_type", std::to_string(*topoTypePtr).c_str(),
+                                                  "MTE(0) for pre-quantized x"),
+                        return ge::GRAPH_FAILED);
+        moeQuantOutDtype = xDesc->GetDataType();
+    } else {
+        OP_TILING_CHECK(!IsSupportedExpertQuantDtype(moeQuantOutDtype),
+                        OP_LOGE_WITH_INVALID_ATTR(nodeName, "dispatch_quant_out_dtype",
+                                                  std::to_string(*dispatchQuantOutDtypePtr).c_str(),
+                                                  "fp8_e5m2, fp8_e4m3fn or fp4_e2m1"),
+                        return ge::GRAPH_FAILED);
+    }
 
     auto sharedQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>(config.attrSharedExpertQuantOutDtypeIndex);
     ge::DataType sharedQuantOutDtype = static_cast<ge::DataType>(*sharedQuantOutDtypePtr);
@@ -1476,17 +1501,26 @@ static ge::graphStatus CheckRequiredTensorPtrNullptr(const gert::TilingContext *
 }
 
 /*
- * arch35 当前不支持 xActiveMask 和 scales，可选输入一旦传入即拒绝。
+ * arch35 当前不支持 xActiveMask；scales 仅在 x 为预量化输入时必须传入。
  */
 static ge::graphStatus CheckUnsupportedOptionalInputs(const gert::TilingContext *context, const MegaMoeConfig &config,
                                                       const char *nodeName)
 {
+    auto xDesc = context->GetInputDesc(config.xIndex);
     auto xActiveMaskDesc = context->GetOptionalInputDesc(config.xActiveMaskIndex);
     auto scalesDesc = context->GetOptionalInputDesc(config.scalesIndex);
+    OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
     OP_TILING_CHECK(xActiveMaskDesc != nullptr, OP_LOGE_FOR_INVALID_VALUE(nodeName, "xActiveMask", "not null", "null"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(scalesDesc != nullptr, OP_LOGE_FOR_INVALID_VALUE(nodeName, "scales", "not null", "null"),
-                    return ge::GRAPH_FAILED);
+    if (xDesc->GetDataType() == ge::DT_BF16) {
+        OP_TILING_CHECK(scalesDesc != nullptr,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "scales", "not null", "null when x is BF16"),
+                        return ge::GRAPH_FAILED);
+    } else if (IsPreQuantizedXType(xDesc->GetDataType())) {
+        OP_TILING_CHECK(scalesDesc == nullptr,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "scales", "null", "not null for pre-quantized x"),
+                        return ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1806,7 +1840,7 @@ static ge::graphStatus CheckWeightPairShapeRelations(const gert::TilingContext *
 
     // 单专家 GMM 形状：weight1=[N, H]，weight2=[H, N/2]，x=[BS, H]。
     const gert::StorageShape *xStorageShape = context->GetInputShape(xIndex);
-    const int64_t xColumnCount = xStorageShape->GetStorageShape().GetDim(1);
+    const int64_t xColumnCount = xStorageShape->GetOriginShape().GetDim(1);
     const std::string commonMatrixDimensionsString = "[" + std::to_string(weightOneColumnCount) + ", " +
                                                      std::to_string(weightTwoRowCount) + ", " +
                                                      std::to_string(xColumnCount) + "]";
@@ -1853,8 +1887,8 @@ static ge::graphStatus CheckYShape(const gert::TilingContext *context, const Meg
 {
     const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
 
-    int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
-    int64_t h = xStorageShape->GetStorageShape().GetDim(1);
+    int64_t bs = xStorageShape->GetOriginShape().GetDim(0);
+    int64_t h = xStorageShape->GetOriginShape().GetDim(1);
     auto yStorageShape = context->GetOutputShape(config.yIndex);
     if (CheckTensorDimNum(yStorageShape, TWO_DIMS, "y", nodeName) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -1981,7 +2015,34 @@ static ge::graphStatus CheckNonWeightInputShapes(const gert::TilingContext *cont
     if (CheckTensorDimNum(xStorageShape, TWO_DIMS, "x", nodeName) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    const int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
+    const int64_t xDim0 = xStorageShape->GetOriginShape().GetDim(0);
+    const int64_t xDim1 = xStorageShape->GetOriginShape().GetDim(1);
+
+    const auto *scalesDesc = context->GetOptionalInputDesc(config.scalesIndex);
+    if (scalesDesc != nullptr) {
+        const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(config.scalesIndex);
+        OP_TILING_CHECK(scalesStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "scales"),
+                        return ge::GRAPH_FAILED);
+        const auto &scalesShape = scalesStorageShape->GetOriginShape();
+        OP_TILING_CHECK(
+            scalesShape.GetDimNum() != TWO_DIMS,
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                nodeName, "scales", (std::to_string(scalesShape.GetDimNum()) + "D").c_str(),
+                "For pre-quantized x, scales must be 2D [BS, CeilDiv(H, 32)]."),
+            return ge::GRAPH_FAILED);
+        const int64_t expectedScaleDim1 = ops::CeilDiv<int64_t>(xDim1, H_ALIGN);
+        OP_TILING_CHECK(
+            scalesShape.GetDim(0) != xDim0 || scalesShape.GetDim(1) != expectedScaleDim1,
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                nodeName, "scales",
+                (std::string("[") + std::to_string(scalesShape.GetDim(0)) + ", " +
+                 std::to_string(scalesShape.GetDim(1)) + "]")
+                    .c_str(),
+                (std::string("For pre-quantized x, scales must be [BS, CeilDiv(H, 32)] = [") +
+                 std::to_string(xDim0) + ", " + std::to_string(expectedScaleDim1) + "].")
+                    .c_str()),
+            return ge::GRAPH_FAILED);
+    }
 
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
     if (CheckTensorDimNum(topkIdsStorageShape, TWO_DIMS, "topkIds", nodeName) != ge::GRAPH_SUCCESS) {
@@ -2073,10 +2134,18 @@ static ge::graphStatus CheckNonWeightInputDataTypes(const gert::TilingContext *c
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
-        xDesc->GetDataType() != ge::DT_BF16,
+        xDesc->GetDataType() != ge::DT_BF16 && !IsPreQuantizedXType(xDesc->GetDataType()),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "x", Ops::Base::ToString(xDesc->GetDataType()).c_str(),
-                                              "The dtype of x must be DT_BF16."),
+                                              "The dtype of x must be DT_BF16, DT_FLOAT8_E5M2, "
+                                              "DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1."),
         return ge::GRAPH_FAILED);
+
+    auto scalesDesc = context->GetOptionalInputDesc(config.scalesIndex);
+    OP_TILING_CHECK(scalesDesc != nullptr && scalesDesc->GetDataType() != ge::DT_FLOAT8_E8M0,
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                        nodeName, "scales", Ops::Base::ToString(scalesDesc->GetDataType()).c_str(),
+                        "For pre-quantized x, the dtype of scales must be DT_FLOAT8_E8M0."),
+                    return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(topkIdsDesc->GetDataType() != ge::DT_INT32,
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "topkIds",
@@ -2144,6 +2213,13 @@ static ge::graphStatus CheckNonWeightTensorFormats(const gert::TilingContext *co
                                                    "a non-FRACTAL_NZ format"),
                         return ge::GRAPH_FAILED);
     }
+
+    auto scalesDesc = context->GetOptionalInputDesc(config.scalesIndex);
+    OP_TILING_CHECK(scalesDesc != nullptr && scalesDesc->GetStorageFormat() != ge::FORMAT_ND,
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "scales",
+                                               Ops::Base::ToString(scalesDesc->GetStorageFormat()).c_str(),
+                                               "FORMAT_ND"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -2229,7 +2305,7 @@ static ge::graphStatus CheckAndSetTokenDimensions(const gert::TilingContext *con
 {
     const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
-    int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
+    int64_t bs = xStorageShape->GetOriginShape().GetDim(0);
     int64_t topkIdsDim1 = topkIdsStorageShape->GetStorageShape().GetDim(1);
 
     // 校验 topK 取值范围。
@@ -2238,7 +2314,7 @@ static ge::graphStatus CheckAndSetTokenDimensions(const gert::TilingContext *con
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "topK", std::to_string(topkIdsDim1).c_str(), "only support [1, 32]"),
         return ge::GRAPH_FAILED);
 
-    int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
+    int64_t xDim1 = xStorageShape->GetOriginShape().GetDim(1);
     // 校验 H 取值范围。
     OP_TILING_CHECK(
         xDim1 < MIN_H || xDim1 > MAX_H,
