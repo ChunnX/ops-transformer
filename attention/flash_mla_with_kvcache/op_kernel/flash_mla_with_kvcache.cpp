@@ -111,7 +111,6 @@ __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ 
     using OUT_T = half;
 #endif
 
-    fa_base_matmul::idCounterNum = 0;
     // —— 编译期解析 tiling key（ConfigValue[config] 查模板块大小）——
     constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT qLayout = GetQueryLayoutMla<inOutLayoutType>();
     constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT outLayout = GetOutLayoutMla<inOutLayoutType>();

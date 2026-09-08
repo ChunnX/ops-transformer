@@ -705,7 +705,7 @@ public:
     __aicore__ inline void Process()
     {
         // AIV 先 InitBuffers→InitCrossCoreSync→AllocEventID；
-        // AIC 先 InitCrossCoreSync→InitBuffers→AllocEventID
+        // AIC 先 InitCrossCoreSync→InitBuffers，使用固定 Mutex ID
         if (constInfo_.aicIdx < constInfo_.coreNum) {
             if ASCEND_IS_AIV {
                 vecFaBlock_.InitBuffers();
@@ -714,7 +714,6 @@ public:
             } else {
                 cubeBlock_.InitCrossCoreSync();
                 cubeBlock_.InitBuffers();
-                cubeBlock_.AllocEventID();
             }
         }
 
@@ -736,7 +735,6 @@ public:
                 vecFaBlock_.FreeEventID();
                 vecFaBlock_.UnInitCrossCoreSync();
             } else {
-                cubeBlock_.FreeEventID();
                 cubeBlock_.UnInitCrossCoreSync();
             }
         }

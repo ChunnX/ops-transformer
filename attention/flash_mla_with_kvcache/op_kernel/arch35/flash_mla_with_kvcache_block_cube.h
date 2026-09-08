@@ -16,11 +16,9 @@
  */
 #ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_H_
 #define FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_H_
-#if __has_include("../../../common/op_kernel/matmul.h")
-#include "../../../common/op_kernel/matmul.h"
+#if __has_include("../../../common/op_kernel/const_def.h")
 #include "../../../common/op_kernel/const_def.h"
 #else
-#include "../../common/matmul.h"
 #include "../../common/const_def.h"
 #endif
 #include "kernel_operator_list_tensor_intf.h"
@@ -28,7 +26,6 @@
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
-using namespace fa_base_matmul;
 using namespace AttentionCommon;
 
 namespace FlashAttnKernel {
@@ -67,7 +64,8 @@ public:
     static constexpr uint32_t CROSSCORE_L1P_0 = 5U;
     static constexpr uint32_t CROSSCORE_L1P_1 = 6U;
     static constexpr uint32_t CROSSCORE_L1P_2 = 7U;
-    // AIV0_AIV1_OFFSET 使用全局宏（attention/common/op_kernel/buffer.h:30，=16）
+    // 两个 AIV 的核间同步旗标相差 16。
+    static constexpr uint32_t AIV_SYNC_OFFSET = 16U;
 
     // ================== 核内 Mutex ID（AIC 核内 0-26 自洽）==================
     static constexpr uint32_t L0C_BUFFER_ID0 = 0U;
@@ -80,6 +78,8 @@ public:
     static constexpr uint32_t L0A_BUFFER_ID1 = 8U;
     static constexpr uint32_t L0B_BUFFER_ID0 = 9U;
     static constexpr uint32_t L0B_BUFFER_ID1 = 10U;
+    static constexpr uint32_t Q_L0A_CACHE_ID0 = 11U;
+    static constexpr uint32_t Q_L0A_CACHE_ID1 = 12U;
 
     // ================== 静态布局常量（表 1，数值 = 现状容量）==================
     // UB CV 区（VECIN，与 vec 侧同一偏移别名）：
@@ -96,9 +96,12 @@ public:
     // L0C（CO1）：2×128K = 256K 静态（表 2 注 3）
     static constexpr uint32_t L0C_BUFCNT = 2U;
     static constexpr uint32_t L0C_BUF_BYTES = 128U * 1024U;
-    // L0A/L0B：静态 manager 64K + DB policy 2×32K
+    // L0A：前两个 16K 槽缓存 Q 的前两个 K 分块；后两个 16K 槽供其余 Q/P 双缓冲。
+    // L0B：2×32K 双缓冲，独立游标跨 mm1/mm2 轮转。
     static constexpr uint32_t BUFFER_SIZE_BYTE_64K = 65536;
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
+    static constexpr uint32_t L0A_SLOT_BYTES = 16U * 1024U;
+    static constexpr uint32_t Q_L0A_CACHE_COUNT = 2U;
 
     // buffer位置+用途+Buffers；使用时命名: 用途+buffer位置+Tensor
     LocalTensor<uint8_t> ubMm1ResBuffers_;
@@ -107,15 +110,10 @@ public:
     LocalTensor<uint8_t> l1KvpBuffers_; // K/V/P 共用 ring（vec 写 P 的目标偏移注释见 vec 块）
     LocalTensor<uint8_t> l0CBuffers_;
     uint32_t l0cBufId_ = 0U;
-    // L0A/B
-    fa_base_matmul::BufferManager<fa_base_matmul::BufferType::L0A> l0aBufferManager_;
-    fa_base_matmul::BufferManager<fa_base_matmul::BufferType::L0B> l0bBufferManager_;
-    using L0APolicyType =
-        BuffersPolicyDB<BufferType::L0A, SyncType::INNER_CORE_SYNC, SyncMode::LOCK_UNLOCK, IdSource::EXTERNAL>;
-    using L0BPolicyType =
-        BuffersPolicyDB<BufferType::L0B, SyncType::INNER_CORE_SYNC, SyncMode::LOCK_UNLOCK, IdSource::EXTERNAL>;
-    L0APolicyType mmL0APolicy_;
-    L0BPolicyType mmL0BPolicy_;
+    LocalTensor<uint8_t> l0ABuffers_;
+    LocalTensor<uint8_t> l0BBuffers_;
+    uint32_t l0aBufId_ = 0U;
+    uint32_t l0bBufId_ = 0U;
 
     /* =====================GM变量(with layout)==================== */
     // q/k_cache 为 576 宽单张量（nope 512 + rope 64 合并），无独立 queryRope/keyRope 张量；
@@ -167,8 +165,11 @@ public:
             LocalTensor<uint8_t>(TPosition::A1, L1_Q_BUFCNT * L1_Q_BUF_BYTES, SIZE_OF_MEMBER(L1Layout, kvpBuffers));
 
         /*--------------------------------------------L0A/B--------------------------------------------*/
-        l0aBufferManager_.Init(BUFFER_SIZE_BYTE_64K);
-        l0bBufferManager_.Init(BUFFER_SIZE_BYTE_64K);
+        static_assert(mBaseSize * s2BaseSize * sizeof(Q_T) <= L0A_SLOT_BYTES, "L0A tile exceeds 16K");
+        l0ABuffers_ = LocalTensor<uint8_t>(TPosition::A2, 0U, BUFFER_SIZE_BYTE_64K);
+        l0BBuffers_ = LocalTensor<uint8_t>(TPosition::B2, 0U, BUFFER_SIZE_BYTE_64K);
+        l0aBufId_ = 0U;
+        l0bBufId_ = 0U;
 
         /*--------------------------------------------L0C--------------------------------------------*/
         // 2×128K 静态 + M/FIX Mutex 对（表 2 注 3：bmm2 单次足迹 128K，不得拆 4×64K）
@@ -244,29 +245,16 @@ public:
 
     __aicore__ inline void UnInitCrossCoreSync()
     {
-        // 收尾 drain 8 个 c1v1/c2v2 旗标（4 标志 × {本 AIV0, +AIV0_AIV1_OFFSET}），防悬空旗标
+        // 收尾 drain 8 个 c1v1/c2v2 旗标（4 标志 × {本 AIV0, +AIV_SYNC_OFFSET}），防悬空旗标
         // 污染下一 kernel 的首次 Wait
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM1_0);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM1_0 + AIV0_AIV1_OFFSET);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM1_0 + AIV_SYNC_OFFSET);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM1_1);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM1_1 + AIV0_AIV1_OFFSET);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM1_1 + AIV_SYNC_OFFSET);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM2_0);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM2_0 + AIV0_AIV1_OFFSET);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM2_0 + AIV_SYNC_OFFSET);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM2_1);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM2_1 + AIV0_AIV1_OFFSET);
-    }
-
-    __aicore__ inline void AllocEventID()
-    {
-        // L0A/L0B 静态 policy 手填 EXTERNAL Mutex ID（表 2：L0A 7/8、L0B 9/10），与 FA IsAllocEventID 同构
-        mmL0APolicy_.Init(l0aBufferManager_, BUFFER_SIZE_BYTE_32K, L0A_BUFFER_ID0, L0A_BUFFER_ID1);
-        mmL0BPolicy_.Init(l0bBufferManager_, BUFFER_SIZE_BYTE_32K, L0B_BUFFER_ID0, L0B_BUFFER_ID1);
-    }
-
-    __aicore__ inline void FreeEventID()
-    {
-        mmL0APolicy_.Uninit(l0aBufferManager_);
-        mmL0BPolicy_.Uninit(l0bBufferManager_);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM2_1 + AIV_SYNC_OFFSET);
     }
 
     // copy query（q 为 576 宽单张量，GM 上 nope+rope 合并存储，
@@ -408,28 +396,41 @@ public:
     // 前 4 轮 112 均匀，最后轮 128 全块：mm1 最后一轮 CUBE 计算量最大（64×128×128），
     // 充分覆盖 mm2 启动的 MTE1 搬运。576=112×4+128，总计算量不变。
     __aicore__ inline void Mm1MatmulK(const LocalTensor<Q_T> &qL1Tensor, const LocalTensor<KV_T> &kvpL1Tensor,
-                                      const LocalTensor<MM_T> &l0CSubTensor, uint32_t actM, uint32_t actS2)
+                                      const LocalTensor<MM_T> &l0CSubTensor, uint32_t actM, uint32_t actS2,
+                                      bool loadQueryCache)
     {
+        // 每个 Q 块首轮（包括跨核/section 的首轮）刷新缓存；mm2 仅使用后两个 L0A 槽。
+        // 缓存槽的 M/MTE1 Mutex 防止下一 Q 的搬运覆盖尚未完成的 Mmad 输入。
         constexpr uint32_t kLoops = 5;
         const uint64_t alignM = (actM + 15) >> 4 << 4;
         const uint64_t alignN = (actS2 + 15) >> 4 << 4;
         uint64_t l1AOff = 0;
         uint64_t l1BOff = 0;
 
+#pragma unroll
         for (uint32_t k = 0; k < kLoops; k++) {
             uint32_t tileK = (k == (kLoops - 1)) ? 128 : 112;
-            auto l0aBuffer = mmL0APolicy_.Get();
-            l0aBuffer.template Wait<HardEvent::M_MTE1>();
-            LocalTensor<Q_T> l0aTensor = l0aBuffer.template GetTensor<Q_T>();
-
-            auto l0bBuffer = mmL0BPolicy_.Get();
-            l0bBuffer.template Wait<HardEvent::M_MTE1>();
-            LocalTensor<KV_T> l0bTensor = l0bBuffer.template GetTensor<KV_T>();
+            const bool cachedQuery = k < Q_L0A_CACHE_COUNT;
+            const bool loadL0A = !cachedQuery || loadQueryCache;
+            const uint32_t l0aMutexId = cachedQuery ? Q_L0A_CACHE_ID0 + k : L0A_BUFFER_ID0 + l0aBufId_;
+            const uint32_t l0aSlot = cachedQuery ? k : Q_L0A_CACHE_COUNT + l0aBufId_;
+            const uint32_t l0bMutexId = L0B_BUFFER_ID0 + l0bBufId_;
+            LocalTensor<Q_T> l0aTensor =
+                l0ABuffers_[l0aSlot * L0A_SLOT_BYTES].template ReinterpretCast<Q_T>();
+            LocalTensor<KV_T> l0bTensor =
+                l0BBuffers_[l0bBufId_ * BUFFER_SIZE_BYTE_32K].template ReinterpretCast<KV_T>();
+            if (loadL0A) {
+                Mutex::Lock<PIPE_MTE1>(l0aMutexId);
+            }
+            Mutex::Lock<PIPE_MTE1>(l0bMutexId);
             Mm1LoadL0B(l0bTensor, kvpL1Tensor, l1BOff, tileK, actS2);
-            Mm1LoadL0A(l0aTensor, qL1Tensor, l1AOff, tileK, actM);
-
-            l0bBuffer.template Set<HardEvent::MTE1_M>();
-            l0bBuffer.template Wait<HardEvent::MTE1_M>();
+            if (loadL0A) {
+                Mm1LoadL0A(l0aTensor, qL1Tensor, l1AOff, tileK, actM);
+                Mutex::Unlock<PIPE_MTE1>(l0aMutexId);
+            }
+            Mutex::Unlock<PIPE_MTE1>(l0bMutexId);
+            Mutex::Lock<PIPE_M>(l0aMutexId);
+            Mutex::Lock<PIPE_M>(l0bMutexId);
 
             MmadParams mmadParams;
             mmadParams.m = actM;
@@ -444,8 +445,12 @@ public:
             l1AOff += tileK * alignM;
             l1BOff += tileK * alignN;
 
-            l0aBuffer.template Set<HardEvent::M_MTE1>();
-            l0bBuffer.template Set<HardEvent::M_MTE1>();
+            Mutex::Unlock<PIPE_M>(l0aMutexId);
+            Mutex::Unlock<PIPE_M>(l0bMutexId);
+            if (!cachedQuery) {
+                l0aBufId_ ^= 1U;
+            }
+            l0bBufId_ ^= 1U;
         }
     }
 
@@ -457,19 +462,24 @@ public:
         const uint64_t l0COffset = ((realM + 15) >> 4 << 4) * 128; // align16(M)*baseN, runtime once
         const uint64_t l1BOffset = ((actS2 + 15) >> 4 << 4) * 128; // align16(K)*baseN, runtime once
 
-        auto l0aBuffer = mmL0APolicy_.Get();
-        l0aBuffer.template Wait<HardEvent::M_MTE1>();
-        LocalTensor<KV_T> l0aTensor = l0aBuffer.template GetTensor<KV_T>();
+        const uint32_t l0aMutexId = L0A_BUFFER_ID0 + l0aBufId_;
+        LocalTensor<KV_T> l0aTensor =
+            l0ABuffers_[(Q_L0A_CACHE_COUNT + l0aBufId_) * L0A_SLOT_BYTES].template ReinterpretCast<KV_T>();
+        Mutex::Lock<PIPE_MTE1>(l0aMutexId);
         Mm2LoadL0A(l0aTensor, pL1Tensor, actS2, realM);
+        Mutex::Unlock<PIPE_MTE1>(l0aMutexId);
+        // P 在全部 N 分块中复用，最后一次 Mmad 完成后才允许覆盖 L0A。
+        Mutex::Lock<PIPE_M>(l0aMutexId);
 
         for (uint32_t n = 0; n < nLoops; n++) {
-            auto l0bBuffer = mmL0BPolicy_.Get();
-            l0bBuffer.template Wait<HardEvent::M_MTE1>();
-            LocalTensor<KV_T> l0bTensor = l0bBuffer.template GetTensor<KV_T>();
+            const uint32_t l0bMutexId = L0B_BUFFER_ID0 + l0bBufId_;
+            LocalTensor<KV_T> l0bTensor =
+                l0BBuffers_[l0bBufId_ * BUFFER_SIZE_BYTE_32K].template ReinterpretCast<KV_T>();
+            Mutex::Lock<PIPE_MTE1>(l0bMutexId);
             Mm2LoadL0B(l0bTensor, kvpL1Tensor, n * l1BOffset, actS2);
 
-            l0bBuffer.template Set<HardEvent::MTE1_M>();
-            l0bBuffer.template Wait<HardEvent::MTE1_M>();
+            Mutex::Unlock<PIPE_MTE1>(l0bMutexId);
+            Mutex::Lock<PIPE_M>(l0bMutexId);
 
             MmadParams mmadParams;
             mmadParams.m = realM;
@@ -481,9 +491,11 @@ public:
             mmadParams.unitFlag = 0;
             Mmad(l0CSubTensor[n * l0COffset], l0aTensor, l0bTensor, mmadParams);
 
-            l0bBuffer.template Set<HardEvent::M_MTE1>();
+            Mutex::Unlock<PIPE_M>(l0bMutexId);
+            l0bBufId_ ^= 1U;
         }
-        l0aBuffer.template Set<HardEvent::M_MTE1>();
+        Mutex::Unlock<PIPE_M>(l0aMutexId);
+        l0aBufId_ ^= 1U;
     }
 
     // qPreloaded：本任务 Q 已由启动路径（loop==0 IterateQPreload）提前发起 MTE2，跳过重复拷贝
@@ -496,7 +508,7 @@ public:
             ubMm1ResBuffers_[mm1ResUbBufId * UB_MM1_RES_BUF_BYTES].template ReinterpretCast<MM_T>();
 
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx + AIV_SYNC_OFFSET);
 
         LocalTensor<Q_T> qL1Tensor = l1QBuffers_.template ReinterpretCast<Q_T>();
         if (unlikely(runInfo.isFirstS2Loop)) {
@@ -515,7 +527,7 @@ public:
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
 
             Mm1MatmulK(qL1Tensor, kvpL1Tensor, l0CSubTensor, (uint32_t)runInfo.actMSize,
-                       (uint32_t)runInfo.actSingleLoopS2Size);
+                       (uint32_t)runInfo.actSingleLoopS2Size, runInfo.isFirstS2Loop);
 
             Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
             Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
@@ -529,7 +541,7 @@ public:
         }
 
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c1v1CrossCoreSyncIdx + AIV_SYNC_OFFSET);
     }
 
     template <typename DST_TENSOR_T>
@@ -558,9 +570,9 @@ public:
             ubMm2ResBuffers_[mm2ResUbBufId * UB_MM2_RES_BUF_BYTES].template ReinterpretCast<MM_T>();
 
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx + AIV_SYNC_OFFSET);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx + AIV_SYNC_OFFSET);
 
         {
             Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
@@ -580,7 +592,7 @@ public:
         Mutex::Unlock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvpL1BufId);
 
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(c2v2CrossCoreSyncIdx + AIV_SYNC_OFFSET);
     }
 }; // FlashMlaWithKvcacheNoQuantMlaBlockCube
 
