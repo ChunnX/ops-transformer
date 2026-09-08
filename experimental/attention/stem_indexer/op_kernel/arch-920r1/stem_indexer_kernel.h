@@ -559,9 +559,6 @@ __aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t 
             if (runInfo.isLastS2InnerLoop) {
                 vectorService.ProcessScoreGmTopK(runInfo);
             }
-        } else {
-            vectorService.ProcessVec1(runInfo);
-            vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);
         }
     }
 }

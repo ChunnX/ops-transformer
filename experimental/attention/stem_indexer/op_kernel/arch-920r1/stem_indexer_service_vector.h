@@ -38,7 +38,6 @@ public:
     __aicore__ inline void ProcessVec1(const SICommon::RunInfo &info);
     __aicore__ inline void ProcessVec1ScoreGm(const SICommon::RunInfo &info);
     __aicore__ inline void ProcessScoreGmTopK(const SICommon::RunInfo &info);
-    __aicore__ inline void ProcessTopK(const SICommon::RunInfo &info, bool isFirstS2InnerLoop, bool isLastS2InnerLoop);
     __aicore__ inline void ProcessDirectOutput(const SICommon::TempLoopInfo &tempLoopInfo, uint32_t gS1Idx);
     __aicore__ inline void InitBuffers(TPipe *pipe, bool needCleanOutput);
     __aicore__ inline void InitParams(const struct SICommon::ConstInfo &constInfo, uint32_t logicalCoreIdx);
@@ -80,16 +79,7 @@ protected:
     static constexpr uint32_t FULL_GLOBAL_INDEX_BYTES = M_BASIC_BLOCK * TOPK_ALIGN_SIZE * sizeof(uint32_t);
     static constexpr uint32_t DIRECT_INDEX_BYTES = PACKED_ROW_STRIDE * sizeof(uint32_t);
     static constexpr uint32_t DIRECT_LENGTH_BYTES = 32U;
-    static constexpr uint32_t CURRENT_SCORE_BYTES = M_BASIC_BLOCK * S2_BASIC_BLOCK * sizeof(SCORE_T);
-    static constexpr uint32_t TOPK_MERGE_BYTES =
-        TOPK_ROW_BATCH * (TOPK_ALIGN_SIZE + SICommon::TOPK_TRUNK_LEN) * sizeof(SCORE_T);
-    static constexpr uint32_t TOPK_WORKSPACE_BYTES = StemIndexerTopk<SCORE_T>::TOPK_WORKSPACE_BYTES;
     static constexpr uint32_t PACKED_OUTPUT_SLOT_BYTES = TOPK_ROW_BATCH * PACKED_ROW_STRIDE * sizeof(uint32_t);
-    static constexpr uint32_t TOPK_MERGE_OFFSET_BYTES = CURRENT_SCORE_BYTES;
-    static constexpr uint32_t TOPK_WORKSPACE_OFFSET_BYTES = TOPK_MERGE_OFFSET_BYTES + TOPK_MERGE_BYTES;
-    static constexpr uint32_t PACKED_OUTPUT_SLOT0_OFFSET_BYTES = TOPK_WORKSPACE_OFFSET_BYTES + TOPK_WORKSPACE_BYTES;
-    static constexpr uint32_t PACKED_OUTPUT_SLOT1_OFFSET_BYTES =
-        PACKED_OUTPUT_SLOT0_OFFSET_BYTES + PACKED_OUTPUT_SLOT_BYTES;
 
     // 512 列的 score tile 写入 GM，由 1024 列的 TopK trunk 消费。
     static constexpr uint32_t SCORE_GM_TRUNK_LEN = 1024U;
@@ -146,17 +136,9 @@ private:
     __aicore__ inline void InitOutputSingleCore(GlobalTensor<int32_t> &outputGm, uint64_t totalSize, int32_t value);
     __aicore__ inline uint32_t CalcDynamicTopkCount(uint32_t s1Idx, int64_t kbOffset, int32_t numPromptK);
     __aicore__ inline void WriteDirectIndices(uint32_t outputLen, int64_t baseLenOffset, int64_t baseOutOffset,
-                                              uint32_t curAivGSize, int64_t curAivGS1ProcNum, uint32_t actS1Size,
-                                              uint32_t s1Idx, LocalTensor<uint32_t> &indicesOutLocal,
-                                              LocalTensor<uint32_t> &lengthLocal);
-    __aicore__ inline void CopyOutBatchRows(const SICommon::RunInfo &info, int64_t curAivGS1Idx,
-                                            const SICommon::RowIdx4 &rowIdx4, const SICommon::TopkNum4 &topkNum4,
-                                            uint32_t batchRowNum, LocalTensor<uint32_t> &packedRowsLocal);
-    __aicore__ inline void RunTopKBatchRows(const SICommon::RunInfo &info, bool isFirstS2InnerLoop,
-                                            bool isLastS2InnerLoop, const SICommon::RowIdx4 &rowIdx4,
-                                            const SICommon::TopkNum4 &topkNum4,
-                                            const SICommon::S2ValidLen4 &s2ValidLen4, uint32_t batchRowNum,
-                                            int64_t curAivGS1Idx, uint32_t packedSlotIdx);
+                                               uint32_t curAivGSize, int64_t curAivGS1ProcNum, uint32_t actS1Size,
+                                               uint32_t s1Idx, LocalTensor<uint32_t> &indicesOutLocal,
+                                               LocalTensor<uint32_t> &lengthLocal);
     __aicore__ inline void StoreScoreToWorkspace(const SICommon::RunInfo &info);
     __aicore__ inline void IssueLoadScorePair(const SICommon::RowIdx4 &rowIdx4, uint32_t pairIdx,
                                               uint32_t activeTileNum, uint32_t mergeSlotIdx);
@@ -200,7 +182,6 @@ private:
     bool needCleanOutput_ = false;
     // vector 参数
     int32_t s2BaseSize_ = 0;
-    uint32_t mrgRowStride_ = 0;
     int32_t mBaseSize_ = 0;
     float alpha_ = 1.0f;
     float kBlockNumRateMedium_ = 0.2f;
@@ -211,7 +192,6 @@ private:
     uint32_t windowSize_ = 4U;
     int64_t scoreGmCoreElems_ = 0LL;
     struct SICommon::ConstInfo constInfo_;
-    SIKernel::StemIndexerTopk<SCORE_T> topkOp_;
     SIKernel::StemIndexerTopk<SCORE_T, SCORE_GM_TRUNK_LEN> scoreGmTopkOp_;
 };
 
@@ -301,8 +281,6 @@ __aicore__ inline void SIVector<SIT>::InitParams(const struct SICommon::ConstInf
     blockId_ = static_cast<int32_t>(logicalCoreIdx);
     int64_t scoreGmTileNum = (static_cast<int64_t>(constInfo.kSeqSize) + S2_BASIC_BLOCK - 1) / S2_BASIC_BLOCK;
     scoreGmCoreElems_ = static_cast<int64_t>(M_BASIC_BLOCK) * scoreGmTileNum * S2_BASIC_BLOCK;
-    // 紧凑的 4 行 merge 布局：[history 256][current 512]。
-    mrgRowStride_ = MAX_TOPK_COUNT + SICommon::TOPK_TRUNK_LEN;
 }
 
 template <typename SIT>
@@ -564,128 +542,6 @@ __aicore__ inline void SIVector<SIT>::WriteDirectIndices(uint32_t outputLen, int
 }
 
 template <typename SIT>
-__aicore__ inline void SIVector<SIT>::CopyOutBatchRows(const SICommon::RunInfo &info, int64_t curAivGS1Idx,
-                                                        const SICommon::RowIdx4 &rowIdx4,
-                                                        const SICommon::TopkNum4 &topkNum4, uint32_t batchRowNum,
-                                                        LocalTensor<uint32_t> &packedRowsLocal)
-{
-    for (uint32_t lane = 0U; lane < batchRowNum; lane++) {
-        uint32_t mInnerIdx = SICommon::GetLane(rowIdx4, lane);
-        uint64_t globalGS1Idx = static_cast<uint64_t>(curAivGS1Idx) + mInnerIdx;
-        uint32_t globalS1Idx = static_cast<uint32_t>(globalGS1Idx % info.actS1Size);
-        uint32_t curS1RealS2Len = info.actS2Size;
-        if constexpr (SIT::causalFlag) {
-            int32_t realLen = static_cast<int32_t>(info.actS2Size) - static_cast<int32_t>(info.actS1Size) +
-                              static_cast<int32_t>(globalS1Idx) + 1;
-            curS1RealS2Len = static_cast<uint32_t>(realLen > 0 ? realLen : 0);
-        }
-
-        uint32_t topkSelectNum = Min(SICommon::GetLane(topkNum4, lane), MAX_TOPK_COUNT);
-        uint32_t outputLen = Min(Min(initialBlocks_ + topkSelectNum + windowSize_, PACKED_ROW_STRIDE),
-                                 static_cast<uint32_t>(constInfo_.kSeqSize));
-        TopkUtils::PackSparseIndicesU32VF(
-            packedRowsLocal[lane * PACKED_ROW_STRIDE], globalIndexLocal_[mInnerIdx * MAX_TOPK_COUNT],
-            PACKED_ROW_STRIDE, initialBlocks_, topkSelectNum, windowSize_, curS1RealS2Len - windowSize_);
-        // 最终索引已被 VF 消费。复用该行首个对齐 block 写入其长度。
-        Duplicate(globalIndexLocal_[mInnerIdx * MAX_TOPK_COUNT], outputLen, 1);
-    }
-    PipeBarrier<PIPE_V>();
-    // 上一个 batch 仍在 MTE3 中时，打包使用另一个 slot；仅在下发 MTE3 前做串行化。
-    WaitFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
-    SetFlag<HardEvent::V_MTE3>(topkVMte3Event_);
-    WaitFlag<HardEvent::V_MTE3>(topkVMte3Event_);
-
-    for (uint32_t lane = 0U; lane < batchRowNum; lane++) {
-        uint32_t mInnerIdx = SICommon::GetLane(rowIdx4, lane);
-        uint64_t globalGS1Idx = static_cast<uint64_t>(curAivGS1Idx) + mInnerIdx;
-        uint32_t globalGIdx = static_cast<uint32_t>(globalGS1Idx / info.actS1Size);
-        uint32_t globalS1Idx = static_cast<uint32_t>(globalGS1Idx % info.actS1Size);
-        int64_t physicalRow = static_cast<int64_t>(globalGIdx) * static_cast<int64_t>(constInfo_.qSeqSize) +
-                             globalS1Idx;
-        uint32_t outputLen =
-            Min(Min(initialBlocks_ + Min(SICommon::GetLane(topkNum4, lane), MAX_TOPK_COUNT) + windowSize_,
-                    PACKED_ROW_STRIDE),
-                static_cast<uint32_t>(constInfo_.kSeqSize));
-
-        AscendC::DataCopyParams outputParams;
-        outputParams.blockCount = 1U;
-        outputParams.blockLen = static_cast<uint16_t>(outputLen * sizeof(int32_t));
-        outputParams.srcStride = 0U;
-        outputParams.dstStride = 0U;
-        AscendC::DataCopyParams lengthParams;
-        lengthParams.blockCount = 1U;
-        lengthParams.blockLen = static_cast<uint16_t>(sizeof(uint32_t));
-        lengthParams.srcStride = 0U;
-        lengthParams.dstStride = 0U;
-        DataCopyPad(sparseIndicesGm[info.indiceOutOffset + physicalRow * constInfo_.kSeqSize],
-                    packedRowsLocal[lane * PACKED_ROW_STRIDE].ReinterpretCast<int32_t>(), outputParams);
-        DataCopyPad(sparseSeqLenGm[info.indiceLenOffset + physicalRow],
-                    globalIndexLocal_[mInnerIdx * MAX_TOPK_COUNT].ReinterpretCast<int32_t>(), lengthParams);
-    }
-    SetFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
-}
-
-template <typename SIT>
-__aicore__ inline void
-SIVector<SIT>::RunTopKBatchRows(const SICommon::RunInfo &info, bool isFirstS2InnerLoop, bool isLastS2InnerLoop,
-                                 const SICommon::RowIdx4 &rowIdx4, const SICommon::TopkNum4 &topkNum4,
-                                 const SICommon::S2ValidLen4 &s2ValidLen4, uint32_t batchRowNum, int64_t curAivGS1Idx,
-                                 uint32_t packedSlotIdx)
-{
-    const int64_t slotQkOffset =
-        static_cast<int64_t>(info.loop & 1U) * (RES_MM1_SLOT_BYTES / sizeof(QK_T));
-    LocalTensor<QK_T> slotLocal = resMm1Local_[slotQkOffset];
-    LocalTensor<SCORE_T> currentScoreLocal = slotLocal.ReinterpretCast<SCORE_T>();
-    LocalTensor<SCORE_T> mergeValueLocal =
-        slotLocal[TOPK_MERGE_OFFSET_BYTES / sizeof(QK_T)].ReinterpretCast<SCORE_T>();
-    LocalTensor<uint32_t> topkWorkspaceLocal =
-        slotLocal[TOPK_WORKSPACE_OFFSET_BYTES / sizeof(QK_T)].ReinterpretCast<uint32_t>();
-    int64_t packedOffsetBytes =
-        (packedSlotIdx & 1U) == 0U ? PACKED_OUTPUT_SLOT0_OFFSET_BYTES : PACKED_OUTPUT_SLOT1_OFFSET_BYTES;
-    LocalTensor<uint32_t> packedRowsLocal = slotLocal[packedOffsetBytes / sizeof(QK_T)].ReinterpretCast<uint32_t>();
-
-    // 在当前 MM1 slot 中构造 4 行紧凑的 [history 256][current 512]。
-    for (uint32_t lane = 0U; lane < TOPK_ROW_BATCH; lane++) {
-        uint32_t mInnerIdx = SICommon::GetLane(rowIdx4, lane);
-        if (!isFirstS2InnerLoop) {
-            AscendC::DataCopy(mergeValueLocal[lane * mrgRowStride_],
-                              historyValueLocal_[mInnerIdx * TOPK_ALIGN_SIZE], TOPK_ALIGN_SIZE);
-        }
-        AscendC::DataCopy(mergeValueLocal[lane * mrgRowStride_ + TOPK_ALIGN_SIZE],
-                          currentScoreLocal[mInnerIdx * s2BaseSize_], SICommon::TOPK_TRUNK_LEN);
-    }
-    PipeBarrier<PIPE_V>();
-
-    constexpr SICommon::RowIdx4 compactRowIdx4 = {0U, 1U, 2U, 3U};
-    if (isFirstS2InnerLoop && initialBlocks_ > 0U) {
-        TopkUtils::PadMrgRowsInitBlockVF(mergeValueLocal, mrgRowStride_, TOPK_ROW_BATCH, TOPK_ALIGN_SIZE,
-                                         initialBlocks_);
-    }
-    // padding（各行按自身s2BlockValidLen补齐到TOPK_TRUNK_LEN，非零行结果一致）
-    if (isFirstS2InnerLoop) {
-        TopkUtils::PadMrgFourRowsFirstS2RangeVF<SCORE_T>(mergeValueLocal, compactRowIdx4, topkNum4, s2ValidLen4,
-                                                         mrgRowStride_);
-    } else {
-        TopkUtils::PadMrgFourRowsNotFirstS2RangeVF<SCORE_T>(mergeValueLocal, compactRowIdx4, topkNum4, s2ValidLen4,
-                                                             mrgRowStride_);
-    }
-
-    uint32_t inputOffset = isFirstS2InnerLoop ? TOPK_ALIGN_SIZE : 0U;
-    uint32_t validLen =
-        isFirstS2InnerLoop ? SICommon::TOPK_TRUNK_LEN : (TOPK_ALIGN_SIZE + SICommon::TOPK_TRUNK_LEN);
-
-    PipeBarrier<PIPE_V>();
-
-    topkOp_.Batch4Rows(mergeValueLocal, historyValueLocal_, topkWorkspaceLocal, globalIndexLocal_, rowIdx4, topkNum4,
-                       batchRowNum, mrgRowStride_, inputOffset, validLen, info.s2Idx, info.s2LoopEnd + 1);
-
-    if (isLastS2InnerLoop) {
-        PipeBarrier<PIPE_V>();
-        CopyOutBatchRows(info, curAivGS1Idx, rowIdx4, topkNum4, batchRowNum, packedRowsLocal);
-    }
-}
-
-template <typename SIT>
 __aicore__ inline void SIVector<SIT>::CopyOutScoreGmBatchRows(
     const SICommon::RunInfo &info, const SICommon::RowIdx4 &rowIdx4, const SICommon::TopkNum4 &topkNum4,
     uint32_t batchRowNum, LocalTensor<uint32_t> &packedRowsLocal, LocalTensor<uint32_t> &lengthLocal,
@@ -923,121 +779,6 @@ __aicore__ inline void SIVector<SIT>::ProcessScoreGmTopK(const SICommon::RunInfo
 
     WaitFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
     SetFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
-}
-
-template <typename SIT>
-__aicore__ inline void SIVector<SIT>::ProcessTopK(const SICommon::RunInfo &info, bool isFirstS2InnerLoop,
-                                                  bool isLastS2InnerLoop)
-{
-    // 当前处理的GS1行起始索引（全局位置）
-    int64_t curGS1Idx = info.gS1Idx * mBaseSize_;
-    // 当前GS1行需要处理的数量（可能小于mBaseSize_，处理尾块）
-    int64_t curGS1ProcNum = info.actMBaseSize;
-    int64_t curAivGS1Idx = curGS1Idx;
-    int64_t curAivGS1ProcNum = curGS1ProcNum;
-
-    // S2 基本块信息
-    uint32_t s2BlockStart = info.s2Idx * s2BaseSize_;
-
-    // 计算动态 topkCount 所需的块级常量（使用原始 actS2Size）
-    int64_t kbOffset = static_cast<int64_t>(info.actS2Size) - static_cast<int64_t>(info.actS1Size);
-    int32_t numPromptK = static_cast<int32_t>(info.promptLen);
-
-    uint32_t curAivGSize = CeilDiv(curAivGS1ProcNum, info.actS1Size);
-    // 当前核处理的 S1 轴大小
-    // 当mBaseSize小于actS1Size时，curAivS1Size为curAivGS1ProcNum
-    // 当mBaseSize大于等于actS1Size时， curAivS1Size为info.actS1Size
-    uint32_t curAivS1Size = Min(info.actS1Size, static_cast<uint32_t>(curAivGS1ProcNum));
-    SICommon::RowIdx4 rowIdx4 = {0U, 0U, 0U, 0U};
-    SICommon::TopkNum4 topkNum4 = {0U, 0U, 0U, 0U};
-    SICommon::S2ValidLen4 s2ValidLen4 = {0U, 0U, 0U, 0U};
-    uint32_t batchRowNum = 0;
-    uint32_t packedSlotIdx = 0U;
-
-    for (uint32_t s1Idx = 0; s1Idx < curAivS1Size; s1Idx++) {
-        uint32_t nowCurAivGS1Idx = curAivGS1Idx + s1Idx;
-        uint32_t globalS1Idx = nowCurAivGS1Idx % info.actS1Size;
-        uint32_t curS1RealS2Len = info.actS2Size;
-        if constexpr (SIT::causalFlag) {
-            int32_t curS1RealS2LenTmp = static_cast<int32_t>(info.actS2Size) - static_cast<int32_t>(info.actS1Size) +
-                                        static_cast<int32_t>(globalS1Idx) + 1;
-            curS1RealS2Len = static_cast<uint32_t>(curS1RealS2LenTmp > 0 ? curS1RealS2LenTmp : 0);
-        }
-
-        uint32_t dynamicTopkCount = CalcDynamicTopkCount(globalS1Idx, kbOffset, numPromptK);
-        uint32_t topkSelectNum = Min(dynamicTopkCount, MAX_TOPK_COUNT);
-        uint32_t totalOutput = initialBlocks_ + topkSelectNum + windowSize_;
-        if ((SIT::causalFlag && (curS1RealS2Len <= initialBlocks_ + windowSize_)) ||
-            (curS1RealS2Len <= totalOutput)) {
-            if (isLastS2InnerLoop) {
-                uint32_t directOutputLen = Min(curS1RealS2Len, PACKED_ROW_STRIDE);
-                uint64_t firstGlobalGS1Idx = static_cast<uint64_t>(curAivGS1Idx) + s1Idx;
-                uint32_t firstGlobalGIdx = static_cast<uint32_t>(firstGlobalGS1Idx / info.actS1Size);
-                uint32_t firstGlobalS1Idx = static_cast<uint32_t>(firstGlobalGS1Idx % info.actS1Size);
-                int64_t baseLenOffset = info.indiceLenOffset +
-                                        static_cast<int64_t>(firstGlobalGIdx) *
-                                            static_cast<int64_t>(constInfo_.qSeqSize) +
-                                        firstGlobalS1Idx;
-                int64_t baseOutOffset =
-                    info.indiceOutOffset +
-                    (static_cast<int64_t>(firstGlobalGIdx) * static_cast<int64_t>(constInfo_.qSeqSize) +
-                     firstGlobalS1Idx) *
-                        static_cast<int64_t>(constInfo_.kSeqSize);
-                LocalTensor<uint32_t> directIndicesLocal =
-                    resMm1Local_[(info.loop & 1U) *
-                                     (RES_MM1_SLOT_BYTES / sizeof(QK_T)) +
-                                 PACKED_OUTPUT_SLOT0_OFFSET_BYTES / sizeof(QK_T)]
-                        .ReinterpretCast<uint32_t>();
-                LocalTensor<uint32_t> directLengthLocal = directIndicesLocal[PACKED_ROW_STRIDE];
-                WriteDirectIndices(directOutputLen, baseLenOffset, baseOutOffset, curAivGSize, curAivGS1ProcNum,
-                                   info.actS1Size, s1Idx, directIndicesLocal, directLengthLocal);
-                // 直写输出使用 packed slot 0；让下一个 TopK 批次在 MTE3 排空期间打包到 slot 1。
-                packedSlotIdx = 1U;
-            }
-            continue;
-        }
-
-        uint32_t s2ValidEnd = Max(curS1RealS2Len - windowSize_, 0);
-        uint32_t s2BlockEnd = Min(s2BlockStart + s2BaseSize_, s2ValidEnd);
-        uint32_t s2BlockValidLen = (s2BlockEnd > s2BlockStart) ? (s2BlockEnd - s2BlockStart) : 0;
-
-        for (uint32_t gIdx = 0; gIdx < curAivGSize; gIdx++) {
-            uint32_t mInnerIdx = gIdx * info.actS1Size + s1Idx;
-            if (mInnerIdx >= curAivGS1ProcNum) {
-                break;
-            }
-
-            SICommon::SetLane(rowIdx4, batchRowNum, mInnerIdx);
-            SICommon::SetLane(topkNum4, batchRowNum, topkSelectNum);
-            SICommon::SetLane(s2ValidLen4, batchRowNum, s2BlockValidLen);
-            batchRowNum++;
-            if (batchRowNum == TOPK_ROW_BATCH) {
-                RunTopKBatchRows(info, isFirstS2InnerLoop, isLastS2InnerLoop, rowIdx4, topkNum4, s2ValidLen4,
-                                 batchRowNum, curAivGS1Idx, packedSlotIdx);
-                packedSlotIdx ^= 1U;
-                batchRowNum = 0;
-            }
-        }
-    }
-    if (batchRowNum > 0U) {
-        uint32_t tailLane = batchRowNum - 1U;
-        uint32_t tailRowIdx = SICommon::GetLane(rowIdx4, tailLane);
-        uint32_t tailTopkNum = SICommon::GetLane(topkNum4, tailLane);
-        uint32_t tailS2ValidLen = SICommon::GetLane(s2ValidLen4, tailLane);
-        for (uint32_t lane = batchRowNum; lane < TOPK_ROW_BATCH; lane++) {
-            SICommon::SetLane(rowIdx4, lane, tailRowIdx);
-            SICommon::SetLane(topkNum4, lane, tailTopkNum);
-            SICommon::SetLane(s2ValidLen4, lane, tailS2ValidLen);
-        }
-        RunTopKBatchRows(info, isFirstS2InnerLoop, isLastS2InnerLoop, rowIdx4, topkNum4, s2ValidLen4, batchRowNum,
-                         curAivGS1Idx, packedSlotIdx);
-    }
-    if (isLastS2InnerLoop) {
-        // 打包输出复用当前 MM1 slot；MTE3 完成后才归还给 Cube。
-        WaitFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
-        SetFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
-    }
-    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + (info.loop & 1U));
 }
 
 template <typename SIT>
