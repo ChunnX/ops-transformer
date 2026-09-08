@@ -733,7 +733,7 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::MatmulFromValues(
     InitConstValueParams<float> paramsB(1, 512, 0, bvalue); // n*k*4/32B=128*32*4/32
     // 新增的两个偏移
     uint32_t offsetAval = 1024; // 4k / 4 = 1024
-    uint32_t offsetBval = 9216; // (4k+32k) / 4 = 9216
+    uint32_t offsetBval = 5120; // (4k+16k) / 4 = 5120
 
     // 在L1上声明并且初始化
     Buffer<BufferType::L1> ValueBufTemp = biasBufL1.Get();
