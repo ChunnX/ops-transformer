@@ -228,12 +228,10 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     // 调用aclnnKeyPool第一段接口
-    ret = aclnnKeyPoolGetWorkspaceSize(
-        hiddenStates, wk, gateWeight, ape, stateCacheRef, cacheBlockTable, startPos, normWeight, normBias, nullptr,
-        nullptr, nullptr, nullptr, cmpRatio, normEps, rotaryMode, stateCacheStrideDim0, pooledKeyOut, &workspaceSize,
-        &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnKeyPoolGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+    ret = aclnnKeyPoolGetWorkspaceSize(hiddenStates, wk, gateWeight, ape, stateCacheRef, cacheBlockTable, startPos,
+                                       normWeight, normBias, nullptr, nullptr, nullptr, nullptr, cmpRatio, normEps,
+                                       rotaryMode, stateCacheStrideDim0, pooledKeyOut, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnKeyPoolGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
     // 根据第一段接口计算出的workspaceSize申请device内存
     void *workspaceAddr = nullptr;
