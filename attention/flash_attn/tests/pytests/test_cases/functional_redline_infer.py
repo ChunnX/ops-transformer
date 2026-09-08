@@ -548,6 +548,5 @@ TestCases = {
         "scale": [0.0883883476483184],
         "return_softmax_lse": [1],
     },
-
 }
 # fmt: on
