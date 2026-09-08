@@ -24,6 +24,7 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_util.h"
+#include "../../lightning_indexer_v2/op_host/checkers/checker_context_lightning_indexer_v2.h"
 
 namespace optiling {
 // ------------------公共定义--------------------------
@@ -37,7 +38,11 @@ struct TilingOptionalParaInfo {
     const gert::Tensor *tensor;
 };
 
-enum class DataLayout : uint32_t { BSND = 0, TND = 1, PA_BBND = 2 };
+enum class DataLayout : uint32_t {
+    BSND = 0,
+    TND = 1,
+    PA_BBND = 2
+};
 
 // ------------------算子原型索引常量定义----------------
 // Inputs Index
@@ -85,15 +90,15 @@ constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
 constexpr uint32_t BLOCK_SIZE_FACTOR = 16;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t METADATA_LIMIT = 1024;
-constexpr int32_t QUANT_MODE_FP8 = 1;
-constexpr int32_t QUANT_MODE_INT8 = 2;
-constexpr int32_t QUANT_MODE_MXFP8 = 3;
-constexpr int32_t QUANT_MODE_HIFLOAT8 = 4;
-constexpr int32_t QUANT_MODE_MXFP4 = 5;
-constexpr uint32_t MX_SCALE_SHAPE_ALIGN = 64;
-constexpr uint32_t MX_E8M0_SCALE_PACK_NUM = 2; // MX的E8M0 scale形状最后一维打包数为2
-constexpr uint32_t MXFP4_PACK_NUM = 2;         // 每个uint8承载2个FP4 E2M1逻辑元素
-constexpr uint32_t MX_SCALE_GROUP_SIZE = 32;   // MX量化每32个D维元素对应1个E8M0 scale
+using lightning_indexer_v2_checker::QUANT_MODE_FP8;
+using lightning_indexer_v2_checker::QUANT_MODE_INT8;
+using lightning_indexer_v2_checker::QUANT_MODE_MXFP8;
+using lightning_indexer_v2_checker::QUANT_MODE_HIFLOAT8;
+using lightning_indexer_v2_checker::QUANT_MODE_MXFP4;
+using lightning_indexer_v2_checker::MX_SCALE_SHAPE_ALIGN;
+using lightning_indexer_v2_checker::MX_E8M0_SCALE_PACK_NUM;
+using lightning_indexer_v2_checker::MXFP4_PACK_NUM;
+constexpr uint32_t MX_SCALE_GROUP_SIZE = 32; // MX量化每32个D维元素对应1个E8M0 scale
 
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(QLIV2TilingData)
@@ -144,7 +149,7 @@ struct QLIV2ParaInfo {
     const int32_t *blockSize = nullptr;
     const int32_t *sparseMode = nullptr;
     const int32_t *sparseCount = nullptr;
-    const int32_t *cmpRatio = nullptr;
+    const int64_t *cmpRatio = nullptr;
     const int32_t *returnValue = nullptr;
 };
 
@@ -171,6 +176,7 @@ public:
     // Mask
     int32_t sparseMode = 0;
     // Others Flag
+    int32_t quantMode = 0;
     uint32_t sparseCount = 0;
     uint32_t cmpRatio = 1;
     bool returnValue = false;
@@ -191,7 +197,9 @@ public:
 // -----------算子Tiling入参信息解析及Check类---------------
 class QLIV2InfoParser {
 public:
-    explicit QLIV2InfoParser(gert::TilingContext *context) : context_(context) {}
+    explicit QLIV2InfoParser(gert::TilingContext *context)
+        : context_(context)
+    {}
     ~QLIV2InfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
@@ -267,7 +275,8 @@ public:
 // ---------------算子Tiling类---------------
 class QuantLightningIndexerV2Tiling {
 public:
-    explicit QuantLightningIndexerV2Tiling(gert::TilingContext *context) : context_(context) {};
+    explicit QuantLightningIndexerV2Tiling(gert::TilingContext *context)
+        : context_(context) {};
     ge::graphStatus DoTiling(QLIV2TilingInfo *tilingInfo);
 
 private:

@@ -11,7 +11,7 @@
 #ifndef GMM_EPILOGUE_TILE_TILE_ELEMWISE_GELU_HPP
 #define GMM_EPILOGUE_TILE_TILE_ELEMWISE_GELU_HPP
 
-#include "../../../gmm_infra/base_defs.hpp"
+#include "../../../gmm_infra/gmm_base_defs.hpp"
 
 namespace Catlass::Epilogue::Tile {
 template <
@@ -33,14 +33,14 @@ struct TileElemWiseGelu {
     TileElemWiseGelu() {}
 
     CATLASS_DEVICE
-    void operator () (AscendC::LocalTensor<ElementCompute> const & dstLocal,
-        AscendC::LocalTensor<ElementCompute> const & srcLocal)
+    void operator()(AscendC::LocalTensor<ElementCompute> const &dstLocal,
+                    AscendC::LocalTensor<ElementCompute> const &srcLocal)
     {
         using namespace AscendC;
-        
+
         // current realization: x / (1 + e^(-1.5957691*0.044715(x/0.044715 + x^3)))
-        Mul(dstLocal, srcLocal, srcLocal, COMPUTE_LENGTH); // d: x^2 , s:x
-        Mul(dstLocal, dstLocal, srcLocal, COMPUTE_LENGTH); // d: x^3 ,.s:x
+        Mul(dstLocal, srcLocal, srcLocal, COMPUTE_LENGTH);            // d: x^2 , s:x
+        Mul(dstLocal, dstLocal, srcLocal, COMPUTE_LENGTH);            // d: x^3 ,.s:x
         Axpy(dstLocal, srcLocal, TANH_APPROX_FACTOR, COMPUTE_LENGTH); // d: x / 0.044715 + x^3 , s: x
         // d: -1.5957691*0.044715(x/0.044715 + x^3), s: x
         Muls(dstLocal, dstLocal, NEG_SQRT_EIGHT_OVER_PI, COMPUTE_LENGTH);

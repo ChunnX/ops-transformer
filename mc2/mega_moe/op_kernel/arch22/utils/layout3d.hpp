@@ -22,9 +22,7 @@ public:
     int64_t strides[2];
 
     CATLASS_DEVICE
-    Layout3D()
-    {
-    }
+    Layout3D() {}
 
     CATLASS_DEVICE
     Layout3D(int64_t stride0, int64_t stride1)
@@ -34,7 +32,7 @@ public:
     }
 
     CATLASS_DEVICE
-    int64_t operator()(int64_t dim0, int64_t dim1, int64_t dim2)
+    int64_t operator()(int64_t dim0, int64_t dim1, int64_t dim2) const
     {
         return dim0 * strides[0] + dim1 * strides[1] + dim2;
     }

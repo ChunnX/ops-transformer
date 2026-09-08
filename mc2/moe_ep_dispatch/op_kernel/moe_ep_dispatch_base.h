@@ -33,13 +33,8 @@
 #include "kernel_operator.h"
 #endif
 
-#if __has_include("../common/mc2_moe_context.h")
-#include "../common/mc2_moe_context.h"
-#include "../common/mc2_kernel_utils.h"
-#else
 #include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 
 namespace MoeEpDispatchBase {
 
@@ -122,8 +117,7 @@ namespace Mc2Kernel {
 using MoeEpDispatchBase::GetCommHandle;
 using MoeEpDispatchBase::GetExpertFreq;
 
-__aicore__ inline GM_ADDR GetWinAddrByRankId(__gm__ Mc2Aclnn::MoeCommContext *context, uint32_t rankId,
-                                             uint64_t offset)
+__aicore__ inline GM_ADDR GetWinAddrByRankId(__gm__ Mc2Aclnn::MoeCommContext *context, uint32_t rankId, uint64_t offset)
 {
     return MoeEpDispatchBase::GetWindowAddrByRankId(context, rankId, offset);
 }

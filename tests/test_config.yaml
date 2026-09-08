@@ -218,12 +218,42 @@ attention:
       - attention/sparse_flash_mla/docs
       - attention/sparse_flash_mla/README.md
     ut_cov_exclude:
-      - attention/sparse_flash_mla
+      - attention/sparse_flash_mla/tests
     test:
       examples: False
-      ut: False
+      ut: True
     options:
       - sparse_flash_mla
+
+  mixed_quant_sparse_flash_mla:
+    module: True
+    src:
+      - attention/mixed_quant_sparse_flash_mla
+    exclude:
+      - attention/mixed_quant_sparse_flash_mla/docs
+      - attention/mixed_quant_sparse_flash_mla/README.md
+    ut_cov_exclude:
+      - attention/mixed_quant_sparse_flash_mla/tests
+    test:
+      examples: False
+      ut: True
+    options:
+      - mixed_quant_sparse_flash_mla
+
+  quant_sparse_flash_mla:
+    module: True
+    src:
+      - attention/quant_sparse_flash_mla
+    exclude:
+      - attention/quant_sparse_flash_mla/docs
+      - attention/quant_sparse_flash_mla/README.md
+    ut_cov_exclude:
+      - attention/quant_sparse_flash_mla/tests
+    test:
+      examples: False
+      ut: True
+    options:
+      - quant_sparse_flash_mla
 
   stem_oam_prep_paged_kv:
     module: True
@@ -263,8 +293,15 @@ attention:
       - attention/flash_attention_score/docs
       - attention/flash_attention_score/README.md
     ut_cov_exclude:
-      - attention/flash_attention_score
+      - attention/flash_attention_score/op_api
+      - attention/flash_attention_score/op_graph
+      - attention/flash_attention_score/op_kernel
+      - attention/flash_attention_score/tests
+      - attention/flash_attention_score/docs
+      - attention/flash_attention_score/examples
+      - attention/flash_attention_score/op_host/arch22
     test:
+      examples: True
       ut: True
     options:
       - flash_attention_score
@@ -575,6 +612,21 @@ attention:
     options:
       - lightning_indexer
 
+  lightning_indexer_v2:
+    module: True
+    src:
+      - attention/lightning_indexer_v2
+    exclude:
+      - attention/lightning_indexer_v2/docs
+      - attention/lightning_indexer_v2/README.md
+    ut_cov_exclude:
+      - attention/lightning_indexer_v2/tests
+    test:
+      examples: False
+      ut: True
+    options:
+      - lightning_indexer_v2
+
   msa_index_score:
     module: True
     src:
@@ -620,6 +672,21 @@ attention:
       ut: True
     options:
       - quant_lightning_indexer
+
+  quant_lightning_indexer_v2:
+    module: True
+    src:
+      - attention/quant_lightning_indexer_v2
+    exclude:
+      - attention/quant_lightning_indexer_v2/docs
+      - attention/quant_lightning_indexer_v2/README.md
+    ut_cov_exclude:
+      - attention/quant_lightning_indexer_v2/tests
+    test:
+      examples: False
+      ut: True
+    options:
+      - quant_lightning_indexer_v2
 
   kv_quant_sparse_flash_attention:
     module: True
@@ -1395,6 +1462,22 @@ posembedding:
       ut: False
     options:
       - qkv_rms_norm_rope_cache
+
+  qkv_rms_norm_rope_cache_with_k_scale:
+    module: True
+    src:
+      - posembedding/qkv_rms_norm_rope_cache_with_k_scale
+    exclude:
+      - posembedding/qkv_rms_norm_rope_cache_with_k_scale/docs
+      - posembedding/qkv_rms_norm_rope_cache_with_k_scale/README.md
+    ut_cov_exclude:
+      - posembedding/qkv_rms_norm_rope_cache_with_k_scale/op_kernel
+      - posembedding/qkv_rms_norm_rope_cache_with_k_scale/op_host/qkv_rms_norm_rope_cache_with_k_scale_def.cpp
+    test:
+      examples: False
+      ut: True
+    options:
+      - qkv_rms_norm_rope_cache_with_k_scale
 
   und_gen_qkv_rms_norm_rope_cache:
     module: True
@@ -2193,6 +2276,34 @@ mhc:
     test:
       examples: True
       ut: False
+  block_attention_residuals_grad:
+    module: True
+    src:
+      - mhc/block_attention_residuals_grad
+    exclude:
+      - mhc/block_attention_residuals_grad/docs
+      - mhc/block_attention_residuals_grad/README.md
+    ut_cov_exclude:
+      - mhc/block_attention_residuals_grad/examples
+      - mhc/block_attention_residuals_grad/tests
+    test:
+      examples: True
+      ut: False
+  block_attention_residuals:
+    module: True
+    src:
+      - mhc/block_attention_residuals
+    exclude:
+      - mhc/block_attention_residuals/docs
+      - mhc/block_attention_residuals/README.md
+    ut_cov_exclude:
+      - mhc/block_attention_residuals/examples
+      - mhc/block_attention_residuals/tests
+    test:
+      examples: True
+      ut: False
+    options:
+      - block_attention_residuals
 
 mamba:
     causal_conv1d:

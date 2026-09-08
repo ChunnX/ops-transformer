@@ -20,6 +20,7 @@
 #include "cpu_context.h"
 #include "cpu_kernel.h"
 #include "cpu_tensor.h"
+#include "flash_attn_metadata.h"
 #include "../../common/op_kernel/load_balance/section_stream_k/section_stream_k.h"
 
 namespace aicpu {
@@ -46,6 +47,10 @@ private:
     void LoadActualQuerySeq();
     void LoadActualKvSeq();
 
+    void SetMetadataHead(const load_balance::SectionStreamKResult &splitRes, optiling::detail::FaMetadata &faMetadata);
+    void SetMetadataFa(const load_balance::SectionStreamKResult &splitRes, optiling::detail::FaMetadata &faMetadata);
+    void SetMetadataFd(const load_balance::SectionStreamKResult &splitRes, optiling::detail::FaMetadata &faMetadata);
+
 private:
     CpuKernelContext *context_ = nullptr;
     // input tensor
@@ -63,6 +68,7 @@ private:
     int32_t numHeadsQ_ = 0;
     int32_t numHeadsKv_ = 0;
     int32_t headDim_ = 0;
+    int32_t headDimV_ = -1; // -1: 未指定, 归一化后等于 headDim_
     int32_t maskMode_ = 1;
     int32_t winLeft_ = -1;
     int32_t winRight_ = -1;
@@ -70,19 +76,19 @@ private:
     std::string layoutKv_ = "BSND";
     std::string layoutOut_ = "BSND";
     std::string socVersion_ = "";
-    int32_t aicCoreNum_ = 36U;          // 36: default aic num
-    int32_t aivCoreNum_ = 72U;          // 72: default aiv num
+    int32_t aicCoreNum_ = 36U; // 36: default aic num
+    int32_t aivCoreNum_ = 72U; // 72: default aiv num
 
     // BaseInfo
     bool isActualSeqlenQAccum_ = false;
     bool isActualSeqlenKvAccum_ = false;
-    std::vector<int64_t> actualSeqlenQ_ {};
-    std::vector<int64_t> actualSeqlenKv_ {};
+    std::vector<int64_t> actualSeqlenQ_{};
+    std::vector<int64_t> actualSeqlenKv_{};
 
     // SplitParams
     uint32_t groupSize_ = 0;
-    uint32_t mBaseSize_ = 64;           // 64: default value
-    uint32_t s2BaseSize_ = 128;         // 128: default value
+    uint32_t mBaseSize_ = 64;   // 64: default value
+    uint32_t s2BaseSize_ = 128; // 128: default value
     load_balance::DeviceInfo deviceInfo;
     load_balance::BaseInfo baseInfo;
     load_balance::SectionStreamKParam param;

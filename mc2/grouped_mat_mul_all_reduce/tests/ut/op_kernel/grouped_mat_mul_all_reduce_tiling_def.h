@@ -86,7 +86,7 @@ struct AllReduceMsg {
     uint8_t exitPolicy; // 退出策略，0，一次通信任务下发完成直接退出；1. 通信任务执行完成退出；2.
                         // 等待AIC通知退出(可以多次执行任务)。
     uint8_t commAlg;   // 用于指定具体通信算法。
-                       // 0：defualt, 1：fullmesh, 2：doublering, 3：switchwing
+                       // 0：defualt, 1：fullmesh, 2：doublering, 3：switching
     uint8_t taskType;  // 从参数获取通信任务，直接下发。AIC自己发Record激活
     uint8_t debugMode; // 调测模式
                        // 1:单独执行CUBE
@@ -119,13 +119,13 @@ inline void InitGroupedMatMulAllReduceTilingData(uint8_t *tiling, GMMAllReduceTi
     memcpy(constData, tiling, sizeof(GMMAllReduceTilingData));
 }
 
-#define GET_TILING_DATA(tilingData, tilingArg)                                                                         \
-    GMMAllReduceTilingData tilingData;                                                                                 \
+#define GET_TILING_DATA(tilingData, tilingArg) \
+    GMMAllReduceTilingData tilingData; \
     InitGroupedMatMulAllReduceTilingData(tilingArg, &tilingData)
 
-#define GET_TILING_DATA_MEMBER(tilingType, member, var, tiling)                                                        \
-    auto var = ((tilingType *)((uint8_t *)AscendC::GmAlloc(1024)))->member;                                            \
-    size_t offset##var = (size_t)(&((tilingType *)0)->member);                                                         \
+#define GET_TILING_DATA_MEMBER(tilingType, member, var, tiling) \
+    auto var = ((tilingType *)((uint8_t *)AscendC::GmAlloc(1024)))->member; \
+    size_t offset##var = (size_t)(&((tilingType *)0)->member); \
     InitTilingData<decltype(var)>(tiling + offset##var, &var);
 
 #endif // GROUPED_MATMUL_ALL_REDUCE_TILING_DEF_H

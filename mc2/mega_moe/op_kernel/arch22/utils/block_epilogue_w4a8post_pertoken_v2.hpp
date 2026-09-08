@@ -75,21 +75,35 @@ public:
         int64_t offsetD;
         int64_t offsetWinOutD;
         Layout3D tokenPerExpertLayout;
+        // 路由表 UB 缓存（可选）：置 true 时 tokenPerExpert / preSumBeforeRank 标量读取
+        // 走调用方刷新好的 UB 副本，索引为 [dstEpIdx * expertPerRank + groupIdx]，不再直接读 GM
+        // 三字段须成组赋值：useUbRouteCache=true 时 ubTokenPerExpert / ubPreSumBeforeRank
+        // 必须已由调用方完成 SetGlobalBuffer/SetSize，否则回落 GM 直接读
+        bool useUbRouteCache{false};
+        AscendC::LocalTensor<int32_t> ubTokenPerExpert;
+        AscendC::LocalTensor<int32_t> ubPreSumBeforeRank;
 
         CATLASS_DEVICE
         Params() {};
         CATLASS_DEVICE
         Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t *ptrTokenPerExpert_, LayoutC layoutC_,
                int32_t n2_, int32_t n0_, HcclShmem<IS_A2> &shmem_, int64_t offsetD_, Layout3D tokenPerExpertLayout_)
-            : ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_), expertPerRank(expertPerRank_), rank(rank_),
-              layoutC(layoutC_), n2(n2_), n0(n0_), shmem(shmem_), offsetD(offsetD_),
+            : ptrTokenPerExpert(ptrTokenPerExpert_),
+              EP(EP_),
+              expertPerRank(expertPerRank_),
+              rank(rank_),
+              layoutC(layoutC_),
+              n2(n2_),
+              n0(n0_),
+              shmem(shmem_),
+              offsetD(offsetD_),
               tokenPerExpertLayout(tokenPerExpertLayout_)
-        {
-        }
+        {}
     };
 
     CATLASS_DEVICE
-    BlockEpilogue(Arch::Resource<ArchTag> const &resource, Params const &params = Params{}) : params(params)
+    BlockEpilogue(Arch::Resource<ArchTag> const &resource, Params const &params = Params{})
+        : params(params)
     {
         // ub:192KB
         n0 = params.n0;
@@ -150,8 +164,24 @@ public:
         }
     }
     CATLASS_DEVICE
-    ~BlockEpilogue()
+    ~BlockEpilogue() {}
+
+    // 路由表标量读取：优先走 UB 缓存（紧凑索引），否则回落 GM（保持既有直接读路径）
+    CATLASS_DEVICE int32_t GetLenRankInExpert(int32_t dstEpIdx, int32_t groupIdx) const
     {
+        if (params.useUbRouteCache) {
+            return params.ubTokenPerExpert.GetValue(dstEpIdx * params.expertPerRank + groupIdx);
+        }
+        return tokenPerExpert(tokenPerExpertLayout(dstEpIdx, params.rank, groupIdx));
+    }
+
+    CATLASS_DEVICE int32_t GetDstExpertOffset(int32_t dstEpIdx, int32_t groupIdx,
+                                              AscendC::GlobalTensor<int32_t> const &preSumBeforeRank) const
+    {
+        if (params.useUbRouteCache) {
+            return params.ubPreSumBeforeRank.GetValue(dstEpIdx * params.expertPerRank + groupIdx);
+        }
+        return preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx);
     }
 
     CATLASS_DEVICE
@@ -243,8 +273,8 @@ public:
         int32_t tileOffset = 0;
 
         for (int32_t dstEpIdx = 0; dstEpIdx < params.EP; dstEpIdx++) {
-            int32_t lenRankInExpert = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, params.rank, groupIdx));
-            int32_t dstExpertOffset = preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx);
+            int32_t lenRankInExpert = GetLenRankInExpert(dstEpIdx, groupIdx);
+            int32_t dstExpertOffset = GetDstExpertOffset(dstEpIdx, groupIdx, preSumBeforeRank);
             int32_t stRankInExpert = preSumRankInExpert;
             int32_t edRankInExpert = stRankInExpert + lenRankInExpert;
             preSumRankInExpert += lenRankInExpert;

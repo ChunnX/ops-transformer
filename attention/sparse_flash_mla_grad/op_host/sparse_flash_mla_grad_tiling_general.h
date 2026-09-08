@@ -45,6 +45,9 @@ struct TempParams {
     uint32_t s1BasicSize;
     uint32_t selected_block_count;
     uint32_t mode;
+    bool usedSeqQ = false;
+    bool usedSeqOriKV = false;
+    bool usedSeqCmpKV = false;
 };
 
 struct AiCoreParams {
@@ -59,7 +62,8 @@ struct AiCoreParams {
 
 class SparseFlashMlaGradBasicTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit SparseFlashMlaGradBasicTiling(gert::TilingContext *context) : TilingBaseClass(context) {};
+    explicit SparseFlashMlaGradBasicTiling(gert::TilingContext *context)
+        : TilingBaseClass(context) {};
     SparseFlashMlaGradTilingData tilingData;
 
 protected:
