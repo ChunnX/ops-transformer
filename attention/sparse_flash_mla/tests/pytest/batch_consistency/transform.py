@@ -237,9 +237,13 @@ class ActualInputSemanticOracle:
                 tensors.get("cmp_ratio") or adapter.metadata.get("cmp_ratio") or 1
             )
             if cmp_mode == 0:
-                end = min(cmp_length, ori_length // ratio)
+                end = cmp_length
             elif cmp_mode == 3:
-                end = min(cmp_length, (ori_length - q_length + token + 1) // ratio)
+                residuals = tensors.get("cmp_residual_kv")
+                residual = int(residuals[batch]) if residuals is not None else 0
+                restored_length = cmp_length * ratio + residual
+                numerator = max(restored_length - q_length + token + 1, 0)
+                end = min(cmp_length, numerator // ratio)
             else:
                 raise InvalidTransformError(
                     f"Unsupported cmp_mask_mode={cmp_mode} in semantic oracle"
@@ -852,34 +856,50 @@ class BatchCaseTransformer:
         self._set_vector(adapter, f"seqused_{prefix}_kv", lengths, reference)
 
     def _align_position_sensitive_context(
-        self, input_data: Dict[str, Any], source_batch: int, new_ori_length: int
+        self, input_data: Dict[str, Any], source_batch: int, position_delta: int
     ) -> None:
+        """Shift each position-sensitive KV context from its own original length."""
         adapter = CaseAdapter(input_data)
         tensors = adapter.tensors
         ori_mode = int(tensors.get("ori_mask_mode") or 0)
         cmp_mode = int(tensors.get("cmp_mask_mode") or 0)
-        has_cmp = tensors.get("cmp_kv") is not None
-        if ori_mode not in (3, 4) and not (has_cmp and cmp_mode in (3, 4)):
+        align_ori = tensors.get("ori_kv") is not None and ori_mode in (3, 4)
+        align_cmp = tensors.get("cmp_kv") is not None and cmp_mode in (3, 4)
+        if not align_ori and not align_cmp:
             return
 
-        self._set_kv_lengths(input_data, "ori", [new_ori_length])
-        if has_cmp:
+        if align_ori:
+            new_ori_length = (
+                self.adapter.get_kv_lengths("ori")[source_batch] + position_delta
+            )
+            if new_ori_length < 0:
+                raise InvalidTransformError(
+                    "Position alignment requires a negative ori KV length"
+                )
+        if align_cmp:
             ratio = int(
                 tensors.get("cmp_ratio") or adapter.metadata.get("cmp_ratio") or 1
             )
-            cmp_length, residual = divmod(new_ori_length, ratio)
+            old_cmp_length = self.adapter.get_kv_lengths("cmp")[source_batch]
+            old_residuals = self.tensors.get("cmp_residual_kv")
+            old_residual = (
+                int(old_residuals[source_batch]) if old_residuals is not None else 0
+            )
+            restored_length = old_cmp_length * ratio + old_residual + position_delta
+            if restored_length < 0:
+                raise InvalidTransformError(
+                    "Position alignment requires a negative restored cmp KV length"
+                )
+            cmp_length, residual = divmod(restored_length, ratio)
+
+        if align_ori:
+            self._set_kv_lengths(input_data, "ori", [new_ori_length])
+        if align_cmp:
             self._set_kv_lengths(input_data, "cmp", [cmp_length])
             reference = tensors.get("cmp_residual_kv")
             self._set_vector(adapter, "cmp_residual_kv", [residual], reference)
         self._sync_derived_fields(adapter)
         schema.check_invariants(input_data)
-
-    def _has_position_sensitive_context(self) -> bool:
-        ori_mode = int(self.tensors.get("ori_mask_mode") or 0)
-        cmp_mode = int(self.tensors.get("cmp_mask_mode") or 0)
-        return ori_mode in (3, 4) or (
-            self.tensors.get("cmp_kv") is not None and cmp_mode in (3, 4)
-        )
 
     def token_partition(
         self, batch_id: int, split_sizes: Sequence[int]
@@ -899,27 +919,14 @@ class BatchCaseTransformer:
             raise ValueError(
                 f"Mode 3 split sizes {list(split_sizes)} sum to {sum(split_sizes)}, expected {old_q_length}"
             )
-        old_ori_length = ActualInputSemanticOracle._lengths(self.input_data, "ori")[
-            batch_id
-        ]
-
         cases = []
         start = 0
         for part, size in enumerate(split_sizes):
             end = start + int(size)
             selected = list(range(start, end))
             case = self.token_select([selected], [batch_id], validate_semantics=False)
-            new_ori_length = (
-                old_ori_length - old_q_length + end
-                if self._has_position_sensitive_context()
-                else old_ori_length
-            )
-            if self._has_position_sensitive_context() and new_ori_length < 0:
-                raise InvalidTransformError(
-                    f"Mode 3 part [{start},{end}) requires a negative aligned KV length"
-                )
             self._align_position_sensitive_context(
-                case.input_data, batch_id, new_ori_length
+                case.input_data, batch_id, end - old_q_length
             )
             mapping = [(batch_id, token, 0, token - start) for token in selected]
             oracle = ActualInputSemanticOracle.validate_mapped_tokens(
@@ -960,17 +967,9 @@ class BatchCaseTransformer:
 
         new_data = self.select_batches([batch_id])
         self._resize_query_prefix(new_data, target_length)
-        old_ori_length = ActualInputSemanticOracle._lengths(self.input_data, "ori")[
-            batch_id
-        ]
-        new_ori_length = (
-            old_ori_length + target_length - old_q_length
-            if self._has_position_sensitive_context()
-            else old_ori_length
+        self._align_position_sensitive_context(
+            new_data, batch_id, target_length - old_q_length
         )
-        if self._has_position_sensitive_context() and new_ori_length < 0:
-            raise InvalidTransformError("Mode 4 requires a negative aligned KV length")
-        self._align_position_sensitive_context(new_data, batch_id, new_ori_length)
 
         mapping = [(batch_id, token, 0, token) for token in range(common_tokens)]
         oracle = ActualInputSemanticOracle.validate_mapped_tokens(

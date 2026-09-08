@@ -34,6 +34,20 @@ def is_empty(obj):
     return obj is None
 
 
+def compressed_kv_threshold(
+    cmp_length, cmp_ratio, cmp_residual, q_length, q_index, mask_mode
+):
+    """Return the visible cmp prefix using the arch35 compressed KV timeline."""
+    cmp_length = int(cmp_length)
+    if mask_mode == 0:
+        return cmp_length
+    if mask_mode != 3:
+        raise ValueError(f"cmp_mask_mode only supports 0/3, which is {mask_mode}")
+    restored_length = cmp_length * int(cmp_ratio) + int(cmp_residual)
+    numerator = max(restored_length - int(q_length) + int(q_index) + 1, 0)
+    return min(numerator // int(cmp_ratio), cmp_length)
+
+
 # np.random.seed(42)
 # torch.manual_seed(42)
 
@@ -159,8 +173,13 @@ class GeneralizedSFA:
                 cur_cmp_act_kv = seqused_cmp_kv[i_B]
             elif cu_seqlens_cmp_kv != None:
                 cur_cmp_act_kv = cu_seqlens_cmp_kv[i_B + 1] - cu_seqlens_cmp_kv[i_B]
+            elif cmp_k_bnsd is not None:
+                cur_cmp_act_kv = cmp_k_bnsd.shape[2]
             else:
                 cur_cmp_act_kv = 0
+            cur_cmp_residual = (
+                cmp_residual_kv[i_B] if cmp_residual_kv is not None else 0
+            )
             for i_N2 in range(self.N2):
                 print(f"    i_N2 = {i_N2}/{self.N2}")
                 cur_sinks = sinks[i_N2 * G : (i_N2 + 1) * G]
@@ -180,17 +199,14 @@ class GeneralizedSFA:
 
                     if template_idx == 1 or template_idx == 2 or template_idx == 4:
                         if template_idx == 1:
-                            threshold = 0
-                            if self.cmp_mask_mode == 3:
-                                threshold = math.floor(
-                                    (cur_ori_act_kv - cur_act_q + i_S1 + 1)
-                                    / (self.cmp_ratio)
-                                )
-                            elif self.cmp_mask_mode == 0:
-                                threshold = math.floor(
-                                    cur_ori_act_kv / (self.cmp_ratio)
-                                )
-                            threshold = min(threshold, cur_cmp_act_kv)
+                            threshold = compressed_kv_threshold(
+                                cur_cmp_act_kv,
+                                self.cmp_ratio,
+                                cur_cmp_residual,
+                                cur_act_q,
+                                i_S1,
+                                self.cmp_mask_mode,
+                            )
                             if threshold <= 0:
                                 empty_flag = True
                             else:
@@ -209,13 +225,13 @@ class GeneralizedSFA:
                                 i_B,
                                 i_N2,
                                 i_S1,
-                                cur_ori_act_kv,
+                                cur_cmp_act_kv,
                                 cur_act_q,
                                 self.cmp_mask_mode,
                                 self.K,
                                 cmp_topk_length_bnsd,
                                 self.cmp_ratio,
-                                cur_cmp_act_kv,
+                                cur_cmp_residual,
                             )
                         if is_empty(cur_cmp_k):
                             cmp_s2_loop_time = 0
@@ -588,24 +604,24 @@ class GeneralizedSFA:
         i_B,
         i_N2,
         i_S1,
-        cur_ori_act_kv,
+        cur_cmp_act_kv,
         cur_act_q,
         mask_mode,
         K,
         topk_length_bnsd,
         cmp_ratio,
-        cur_cmp_act_kv=None,
+        cmp_residual=0,
         sparse_block_size=1,
     ):
         s2_sparse = list()
-        if cur_cmp_act_kv is None:
-            cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
-        threshold = 0
-        if mask_mode == 3:
-            threshold = math.floor((cur_ori_act_kv - cur_act_q + i_S1 + 1) / cmp_ratio)
-        elif mask_mode == 0:
-            threshold = math.floor(cur_ori_act_kv / cmp_ratio)
-        threshold = min(threshold, cur_cmp_act_kv)
+        threshold = compressed_kv_threshold(
+            cur_cmp_act_kv,
+            cmp_ratio,
+            cmp_residual,
+            cur_act_q,
+            i_S1,
+            mask_mode,
+        )
 
         valid_count = min(K, math.ceil(threshold / sparse_block_size))
         if topk_length_bnsd != None:
@@ -944,6 +960,7 @@ def gen_sparse_indices_bsnd(
     topk_length_override=None,
     ori_win_left=-1,
     ori_win_right=-1,
+    is_cmp=False,
 ):
     if mask_mode != 0:
         kv_topk_mode = "no"  # mask_mode != 0时，kv_topk_mode只能为no
@@ -969,16 +986,33 @@ def gen_sparse_indices_bsnd(
 
     for i_B in range(B):
         # 计算max valid s2
-        cur_act_kv = seqused_ori_kv[i_B] if seqused_ori_kv is not None else S2
+        if is_cmp:
+            cur_act_kv = seqused_cmp_kv[i_B]
+            cur_cmp_residual = (
+                cmp_residual_kv[i_B] if cmp_residual_kv is not None else 0
+            )
+        else:
+            cur_act_kv = seqused_ori_kv[i_B] if seqused_ori_kv is not None else S2
         if seqused_q is not None:
             cur_act_q = seqused_q[i_B]
-        else:
+        elif cu_seqlens_q is not None:
             cur_act_q = cu_seqlens_q[i_B + 1] - cu_seqlens_q[i_B]
+        else:
+            cur_act_q = S1
 
         for i_N2 in range(N2):
             for i_S1 in range(cur_act_q):
                 cur_valid_left = 0
-                if mask_mode == 3:
+                if is_cmp:
+                    cur_valid_s2_max = compressed_kv_threshold(
+                        cur_act_kv,
+                        cmp_ratio,
+                        cur_cmp_residual,
+                        cur_act_q,
+                        i_S1,
+                        mask_mode,
+                    )
+                elif mask_mode == 3:
                     cur_valid_s2_max = math.floor(
                         (cur_act_kv - cur_act_q + i_S1 + 1) / cmp_ratio
                     )
@@ -1012,7 +1046,7 @@ def gen_sparse_indices_bsnd(
                             1, cur_valid_s2_max, (1, 1)
                         )[0]
                     else:
-                        cur_valid_s2_max_update = 1
+                        cur_valid_s2_max_update = cur_valid_s2_max
                 else:
                     cur_valid_s2_max_update = cur_valid_s2_max
 
@@ -1052,6 +1086,7 @@ def gen_sparse_indices_tnd(
     topk_length_override=None,
     ori_win_left=-1,
     ori_win_right=-1,
+    is_cmp=False,
 ):
     if mask_mode != 0:
         kv_topk_mode = "no"  # mask_mode != 0时，kv_topk_mode只能为no
@@ -1081,7 +1116,12 @@ def gen_sparse_indices_tnd(
         else:
             cur_act_q = cu_seqlens_q[i_B + 1] - cu_seqlens_q[i_B]
         s1_prefix = cu_seqlens_q[i_B]
-        if seqused_ori_kv != None:
+        if is_cmp:
+            cur_act_kv = seqused_cmp_kv[i_B]
+            cur_cmp_residual = (
+                cmp_residual_kv[i_B] if cmp_residual_kv is not None else 0
+            )
+        elif seqused_ori_kv != None:
             cur_act_kv = seqused_ori_kv[i_B]
         else:
             cur_act_kv = cu_seqlens_ori_kv[i_B + 1] - cu_seqlens_ori_kv[i_B]
@@ -1089,7 +1129,16 @@ def gen_sparse_indices_tnd(
         for i_N2 in range(N2):
             for i_S1 in range(cur_act_q):
                 cur_valid_left = 0
-                if mask_mode == 3:
+                if is_cmp:
+                    cur_valid_s2_max = compressed_kv_threshold(
+                        cur_act_kv,
+                        cmp_ratio,
+                        cur_cmp_residual,
+                        cur_act_q,
+                        i_S1,
+                        mask_mode,
+                    )
+                elif mask_mode == 3:
                     cur_valid_s2_max = math.floor(
                         (cur_act_kv - cur_act_q + i_S1 + 1) / cmp_ratio
                     )
@@ -1124,7 +1173,7 @@ def gen_sparse_indices_tnd(
                             1, cur_valid_s2_max, (1, 1)
                         )[0]
                     else:
-                        cur_valid_s2_max_update = 1
+                        cur_valid_s2_max_update = cur_valid_s2_max
                 else:
                     cur_valid_s2_max_update = cur_valid_s2_max
                 valid_blocks_max = max(0, cur_valid_s2_max_update)
@@ -1316,9 +1365,7 @@ def gen_cmp_kv(
     cmp_kv_type,
     B,
     S1,
-    S2,
     T1,
-    T2,
     T3,
     N2,
     D,
@@ -1327,8 +1374,7 @@ def gen_cmp_kv(
     block_size2,
     cu_seqlens_q,
     seqused_q,
-    cu_seqlens_ori_kv,
-    seqused_ori_kv,
+    cu_seqlens_cmp_kv,
     seqused_cmp_kv,
     cmp_residual_kv,
     cmp_ratio,
@@ -1345,9 +1391,12 @@ def gen_cmp_kv(
     if cmp_ratio < 1 or cmp_ratio > 128:
         raise ValueError(f"cmp_ratio should be in range [1, 128], but got {cmp_ratio}")
 
+    cmp_actual_lengths = seqused_cmp_kv
+    if cmp_actual_lengths is None:
+        cmp_actual_lengths = prefix_sum_to_original(cu_seqlens_cmp_kv)
+    cmp_max_s2 = max(int(length) for length in cmp_actual_lengths)
+
     if layout_kv == "PA_BBND":
-        ori_max_s2 = max(seqused_ori_kv)
-        cmp_max_s2 = math.floor(ori_max_s2 / cmp_ratio)
         cmp_max_block_num_per_batch = math.ceil(cmp_max_s2 / block_size2)
 
         cmp_k = (
@@ -1356,8 +1405,7 @@ def gen_cmp_kv(
         ).to(cmp_kv_type)
         cmp_block_num_per_batch = []
         cmp_block_num_sum = 0
-        for cur_ori_act_kv in seqused_ori_kv:
-            cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
+        for cur_cmp_act_kv in cmp_actual_lengths:
             cur_cmp_kv_block_num = math.ceil(cur_cmp_act_kv / block_size2)
             cmp_block_num_per_batch.append(cur_cmp_kv_block_num)
             cmp_block_num_sum += cur_cmp_kv_block_num
@@ -1406,7 +1454,6 @@ def gen_cmp_kv(
     elif layout_kv == "TND":
         T3 = int(T3)
         cmp_block_table = None
-        cmp_max_s2 = get_max_adjacent_diff([x // cmp_ratio for x in cu_seqlens_ori_kv])
         cmp_k = (
             torch.rand((T3, N2, D)) * (data_range_left - data_range_right)
             + data_range_left
@@ -1414,8 +1461,6 @@ def gen_cmp_kv(
         cmp_k_in_pa_shape = cmp_k
     elif layout_kv == "BSND":
         cmp_block_table = None
-        ori_max_s2 = S2
-        cmp_max_s2 = math.floor(ori_max_s2 / cmp_ratio)
         cmp_k = (
             torch.rand((B, cmp_max_s2, N2, D)) * (data_range_left - data_range_right)
             + data_range_left
@@ -1432,18 +1477,19 @@ def gen_cmp_kv(
                 cmp_ratio,
                 B,
                 S1,
-                S2,
+                cmp_max_s2,
                 N2,
                 K,
                 None,
                 seqused_q,
-                seqused_ori_kv,
-                seqused_cmp_kv,
+                None,
+                cmp_actual_lengths,
                 cmp_residual_kv,
                 cmp_mask_mode,
                 cmp_sparse_indices_mode,
                 cmp_kv_topk_mode,
                 topk_length_override=cmp_topk_length_override,
+                is_cmp=True,
             )
         elif layout_q == "TND":
             cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_tnd(
@@ -1454,14 +1500,15 @@ def gen_cmp_kv(
                 K,
                 cu_seqlens_q,
                 seqused_q,
-                cu_seqlens_ori_kv,
-                seqused_ori_kv,
-                seqused_cmp_kv,
+                None,
+                None,
+                cmp_actual_lengths,
                 cmp_residual_kv,
                 cmp_mask_mode,
                 cmp_sparse_indices_mode,
                 cmp_kv_topk_mode,
                 topk_length_override=cmp_topk_length_override,
+                is_cmp=True,
             )
 
     return (
@@ -1474,23 +1521,22 @@ def gen_cmp_kv(
 
 
 def resolve_compressed_actual_lengths(
-    seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, cmp_ratio
+    seqused_ori_kv,
+    seqused_cmp_kv,
+    cmp_residual_kv,
+    cmp_ratio,
+    cu_seqlens_cmp_kv=None,
 ):
-    """Resolve compressed actual lengths exactly as SMLA input generation does."""
+    """Fill legacy case lengths only when no compressed lengths were supplied."""
     if seqused_ori_kv is None or cmp_ratio is None:
         return seqused_cmp_kv, cmp_residual_kv
     if cmp_ratio < 1:
         raise ValueError(f"cmp_ratio should be in range [1, 128], but got {cmp_ratio}")
-    if seqused_cmp_kv is None:
+    if seqused_cmp_kv is None and cu_seqlens_cmp_kv is None:
         if torch.is_tensor(seqused_ori_kv):
             seqused_cmp_kv = seqused_ori_kv // cmp_ratio
         else:
             seqused_cmp_kv = [value // cmp_ratio for value in seqused_ori_kv]
-    if cmp_residual_kv is None:
-        if torch.is_tensor(seqused_ori_kv):
-            cmp_residual_kv = seqused_ori_kv % cmp_ratio
-        else:
-            cmp_residual_kv = [value % cmp_ratio for value in seqused_ori_kv]
     return seqused_cmp_kv, cmp_residual_kv
 
 
@@ -1672,9 +1718,6 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
     else:
         raise ValueError(f"layout_kv is not support {layout_kv}")
 
-    seqused_cmp_kv, cmp_residual_kv = resolve_compressed_actual_lengths(
-        seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, cmp_ratio
-    )
     # 路由到三个算子的逻辑：
     template_idx = 0
 
@@ -1720,6 +1763,24 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
                 cmp_ratio = int(cmp_ratio)
             K = int(K)
     print("template_run_mode: ", template_run_mode)
+    if template_idx in (1, 2, 4):
+        seqused_cmp_kv, cmp_residual_kv = resolve_compressed_actual_lengths(
+            seqused_ori_kv,
+            seqused_cmp_kv,
+            cmp_residual_kv,
+            cmp_ratio,
+            cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
+        )
+        if layout_kv != "TND" and seqused_cmp_kv is None:
+            if cu_seqlens_cmp_kv is not None:
+                seqused_cmp_kv = cu_seqlens_cmp_kv[1:] - cu_seqlens_cmp_kv[:-1]
+            elif layout_kv == "BSND":
+                # Default storage for legacy cases without any cmp length fields.
+                seqused_cmp_kv = torch.full((B,), S2 // cmp_ratio, dtype=torch.int32)
+        if cmp_residual_kv is None:
+            # arch35 treats an absent residual as zero; the causal host check
+            # requires a tensor when cmp_ratio != 1.
+            cmp_residual_kv = torch.zeros(B, dtype=torch.int32)
     if layout_kv == "PA_BBND":
         block_size1, block_num1 = int(block_size1), int(block_num1)
         if template_idx != 0 and template_idx != 3:
@@ -1771,9 +1832,7 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
             cmp_kv_type,
             B,
             S1,
-            S2,
             T1,
-            T2,
             T3,
             N2,
             D,
@@ -1782,8 +1841,7 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
             block_size2,
             cu_seqlens_q,
             seqused_q,
-            cu_seqlens_ori_kv,
-            seqused_ori_kv,
+            cu_seqlens_cmp_kv,
             seqused_cmp_kv,
             cmp_residual_kv,
             cmp_ratio,

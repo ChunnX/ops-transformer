@@ -479,6 +479,14 @@ def generate_case_with_default_param(
     S1 = case_param["S1"]
     S2 = case_param["S2"]
     cmp_ratio = case_param["cmp_ratio"]
+    for name in (
+        "seqused_ori_kv",
+        "seqused_cmp_kv",
+        "cu_seqlens_cmp_kv",
+        "T3",
+        "cmp_residual_kv",
+    ):
+        case_param.setdefault(name, None)
     # 数据预填充
     if case_param["cu_seqlens_q"] is None:
         if layout_q == "TND":
@@ -497,33 +505,48 @@ def generate_case_with_default_param(
         )
         print("cu_seqlens_ori_kv auto set to: ", case_param["cu_seqlens_ori_kv"])
 
-    if (
-        case_param["cu_seqlens_cmp_kv"] is None
-        and layout_kv == "TND"
-        and cmp_ratio is not None
-    ):
-        case_param["seqused_ori_kv"] = generate_seqused(case_param["cu_seqlens_ori_kv"])
-        case_param["seqused_cmp_kv"] = [
-            x // cmp_ratio for x in case_param["seqused_ori_kv"]
-        ]
-        case_param["cu_seqlens_cmp_kv"] = generate_cu_seqlens(
-            case_param["seqused_cmp_kv"]
-        )
-        print("cu_seqlens_cmp_kv auto set to: ", case_param["cu_seqlens_cmp_kv"])
-        case_param["T3"] = case_param["cu_seqlens_cmp_kv"][-1]
-
-    if case_param["seqused_ori_kv"] is None and layout_kv != "TND":
-        case_param["seqused_ori_kv"] = fill_random_used_len(
-            S2, B, param_combinations["random_seq"]
-        )
+    if case_param["seqused_ori_kv"] is None:
+        if layout_kv == "TND":
+            case_param["seqused_ori_kv"] = generate_seqused(
+                case_param["cu_seqlens_ori_kv"]
+            )
+        else:
+            case_param["seqused_ori_kv"] = fill_random_used_len(
+                S2, B, param_combinations["random_seq"]
+            )
         print("seqused_ori_kv auto set to: ", case_param["seqused_ori_kv"])
 
-    if "seqused_ori_kv" not in case_param:
-        case_param["seqused_ori_kv"] = None
-    if "seqused_cmp_kv" not in case_param:
-        case_param["seqused_cmp_kv"] = None
-    if "cmp_residual_kv" not in case_param:
-        case_param["cmp_residual_kv"] = None
+    if cmp_ratio is not None:
+        if case_param["seqused_cmp_kv"] is None:
+            if case_param["cu_seqlens_cmp_kv"] is not None:
+                case_param["seqused_cmp_kv"] = generate_seqused(
+                    case_param["cu_seqlens_cmp_kv"]
+                )
+            elif case_param["T3"] is not None:
+                cmp_cu = fill_random_cu_len(
+                    case_param["T3"],
+                    case_param["T3"],
+                    B,
+                    param_combinations["random_seq"],
+                )
+                case_param["seqused_cmp_kv"] = generate_seqused(cmp_cu)
+            else:
+                # Legacy shorthand cases omit every cmp length. Derive only their
+                # initial test data here; explicit cmp lengths never depend on ori.
+                case_param["seqused_cmp_kv"] = [
+                    length // cmp_ratio for length in case_param["seqused_ori_kv"]
+                ]
+        if layout_kv == "TND":
+            if case_param["cu_seqlens_cmp_kv"] is None:
+                case_param["cu_seqlens_cmp_kv"] = generate_cu_seqlens(
+                    case_param["seqused_cmp_kv"]
+                )
+                print(
+                    "cu_seqlens_cmp_kv auto set to: ", case_param["cu_seqlens_cmp_kv"]
+                )
+            if case_param["T3"] is None:
+                case_param["T3"] = case_param["cu_seqlens_cmp_kv"][-1]
+        # A missing cmp_residual_kv denotes zero, not an ori-derived remainder.
 
     # maxSeqLen / block_size向上取整
     ori_block_num_per_batch = []
@@ -536,8 +559,8 @@ def generate_case_with_default_param(
             cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / case_param["block_size1"])
             ori_block_num_per_batch.append(cur_ori_kv_block_num)
             ori_block_num_sum += cur_ori_kv_block_num
-            if cmp_ratio is not None and case_param["block_size2"] is not None:
-                cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
+        if cmp_ratio is not None and case_param["block_size2"] is not None:
+            for cur_cmp_act_kv in case_param["seqused_cmp_kv"]:
                 cur_cmp_kv_block_num = math.ceil(
                     cur_cmp_act_kv / case_param["block_size2"]
                 )
