@@ -288,6 +288,13 @@ private:
 
     uint32_t headDimInt8 = 0;
 
+    // 内层subloop热路径参数结构体: 常量字段在InitComputeParams一次初始化,
+    // 每次调用只更新变化字段, 避免栈上完整重建结构体的MOV/ZEROEXT开销
+    LoadData2DParamsV2 loadKParamsA;
+    LoadData2DMxParams loadKParamsMx;
+    MmadParams mmadQKParams;
+    FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixpipeMm1Params;
+
 public:
     __aicore__ inline QuantFlashAttnBlockCubeDn(ConstInfo &constInfo, SeqLensTool<LAYOUT_Q, SEQLEN_T> &qSeqLensTool,
                                                 SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool)
@@ -391,6 +398,36 @@ public:
         mm1ResUB = LocalTensor<half>(TPosition::VECCALC, 0, 256 * 128 * 2);
         mm2ResUB = LocalTensor<float>(TPosition::VECCALC, 128 * 1024, 128 * 64);
         peerGlobalMaxUB = LocalTensor<half>(TPosition::VECCALC, 229888, 128 * 4);
+
+        InitComputeParams();
+    }
+
+    // 热路径参数结构体常量字段一次初始化
+    __aicore__ inline void InitComputeParams()
+    {
+        // LoadKToL0 常量字段
+        loadKParamsA.kStartPosition = 0;
+        loadKParamsA.kStep = constInfo.dSize / GetBlockElemCnt<QUANT_T>();
+        loadKParamsA.srcStride = s2BaseSize * 2 / 16;
+        loadKParamsA.ifTranspose = false;
+        loadKParamsMx.yStartPosition = 0;
+        loadKParamsMx.yStep = loadKParamsA.kStep;
+        loadKParamsMx.srcStride = loadKParamsMx.yStep;
+        loadKParamsMx.dstStride = loadKParamsMx.yStep;
+
+        // MatmulQK 常量字段 (m/n 每次更新)
+        mmadQKParams.k = constInfo.dSize;
+        mmadQKParams.cmatrixInitVal = true;
+        mmadQKParams.cmatrixSource = false;
+        mmadQKParams.disableGemv = true;
+
+        // FixpipeMm1 常量字段
+        fixpipeMm1Params.dstStride = 512 / sizeof(half);
+        fixpipeMm1Params.quantPre = QuantMode_t::QF322F16_PRE;
+        fixpipeMm1Params.deqScalar = static_cast<uint64_t>(*reinterpret_cast<const int32_t *>(&constInfo.scaleValue));
+        fixpipeMm1Params.dualDstCtl = 0;
+        fixpipeMm1Params.params.ndNum = 1;
+        fixpipeMm1Params.params.dstNdStride = 512 / sizeof(half);
     }
 
     __aicore__ inline void ComputeMm1(const RunInfo &info)
@@ -467,7 +504,7 @@ public:
             uint32_t l1P_Base_Offset = (info.loop % 20) * L1_P_SIZE;
             Fill(pL1Tensor[l1P_Base_Offset + info.actSingleLoopS2SizeAlign * 32].template ReinterpretCast<uint16_t>(),
                  PL1InitParams);
-            if (info.actMSizeAlign128 == mBaseSize) {
+            if (likely(info.actMSizeAlign128 == mBaseSize)) { // prefill整M块, Q短且128对齐时恒真
                 Fill(pL1Tensor[l1P_Base_Offset + 2 * info.actSingleLoopS2SizeAlign * 32 + 32 * 32]
                          .template ReinterpretCast<uint16_t>(),
                      PL1InitParams);
@@ -493,12 +530,12 @@ public:
         }
 
         Mutex::Unlock<PIPE_MTE2>(V_MUTEX_ID_BASE + vBufId);
-        if (info.isLastS2Loop) {
+        if (unlikely(info.isLastS2Loop)) { // 每问题仅1次, S2循环越多越稀疏
             InitL0MXBufferForReduceSum();
         }
         Mutex::Lock<PIPE_MTE1>(V_MUTEX_ID_BASE + vBufId);
         {
-            if (info.isC2Sync) {
+            if (unlikely(info.isC2Sync)) { // 1/16结构频率
                 Mutex::Lock<PIPE_M>(PV_L0C_MUTEX_ID_BASE);
             }
             {
@@ -510,7 +547,7 @@ public:
                 MatmulPV(info);
                 Mutex::Unlock<PIPE_M>(PV_L0AB_MUTEX_ID_BASE + pvL0abBufId);
             }
-            if (info.isUpdatePScale) {
+            if (unlikely(info.isUpdatePScale)) { // ~1/16结构频率
                 Mutex::Unlock<PIPE_M>(PV_L0C_MUTEX_ID_BASE);
                 Mutex::Lock<PIPE_FIX>(PV_L0C_MUTEX_ID_BASE);
                 FixpipeMm2(info);
@@ -668,7 +705,7 @@ private:
     __aicore__ inline void CopyQGmToL1(const RunInfo &info)
     {
         uint64_t queryL1BaseOffset = 0;
-        uint32_t dstStride = (info.actMSizeAlign128 + 31) >> 5 << 5;
+        uint32_t dstStride = info.actMSizeAlign128; // 已128对齐, 无需再对齐32
         // dSize是QUANT_T的元素数, 先转换为字节数, 再转成DATA_T的元素数
         FaL1Tensor<DATA_T, L1Format::NZ> l1Tensor{.tensor = qL1Tensor[queryL1BaseOffset], .rowCount = dstStride};
 
@@ -715,7 +752,7 @@ private:
     __aicore__ inline void CopyQScaleGmToL1(const RunInfo &info)
     {
         uint32_t offset = 0;
-        uint32_t dstStride = (info.actMSizeAlign128 + 31) >> 5 << 5;
+        uint32_t dstStride = info.actMSizeAlign128; // 已128对齐
         uint32_t dDealSize = constInfo.dSize / MXFP_GROUP_SIZE;
         FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor{.tensor = qDescaleL1Tensor[offset], .rowCount = dstStride};
 
@@ -750,7 +787,7 @@ private:
         LoadData2DParamsV2 loadData2DParamsA;
         loadData2DParamsA.mStartPosition = 0;
         loadData2DParamsA.kStartPosition = 0;
-        loadData2DParamsA.mStep = ((info.actMSizeAlign128 + 31) >> 5 << 5) / 16;
+        loadData2DParamsA.mStep = info.actMSizeAlign128 / 16; // 已128对齐
         loadData2DParamsA.kStep = constInfo.dSize / GetBlockElemCnt<QUANT_T>();
         loadData2DParamsA.srcStride = loadData2DParamsA.mStep;
         loadData2DParamsA.dstStride = loadData2DParamsA.mStep;
@@ -759,7 +796,7 @@ private:
         LoadData2DMxParams loadData2DMxParamsA;
         loadData2DMxParamsA.xStartPosition = 0;
         loadData2DMxParamsA.yStartPosition = 0;
-        loadData2DMxParamsA.xStep = ((info.actMSizeAlign128 + 31) >> 5 << 5) / 16; // 128 为 M 轴
+        loadData2DMxParamsA.xStep = info.actMSizeAlign128 / 16; // 已128对齐, 128 为 M 轴
         loadData2DMxParamsA.yStep = loadData2DParamsA.kStep;
         loadData2DMxParamsA.srcStride = loadData2DMxParamsA.yStep;
         loadData2DMxParamsA.dstStride = loadData2DMxParamsA.yStep;
@@ -773,75 +810,51 @@ private:
 
     __aicore__ inline void LoadKToL0(const RunInfo &info, uint32_t subLoop, uint32_t actS2SizeAlign)
     {
-        uint32_t rowOffset = info.prefetched ? (s2BaseSize / 16) : 0;
-
-        LoadData2DParamsV2 loadData2DParamsA;
-        loadData2DParamsA.mStartPosition = rowOffset + subLoop * (QK_L0_S2_SPLIT_SIZE / 16);
-        loadData2DParamsA.kStartPosition = 0;
-        loadData2DParamsA.mStep = actS2SizeAlign / 16;
-        loadData2DParamsA.kStep = constInfo.dSize / GetBlockElemCnt<QUANT_T>();
-        loadData2DParamsA.srcStride = s2BaseSize * 2 / 16;
-        loadData2DParamsA.dstStride = actS2SizeAlign / 16;
-        loadData2DParamsA.ifTranspose = false;
-
-        LoadData2DMxParams loadData2DMxParamsA;
-        loadData2DMxParamsA.xStartPosition = rowOffset + subLoop * (QK_L0_S2_SPLIT_SIZE / 16);
-        loadData2DMxParamsA.yStartPosition = 0;
-        loadData2DMxParamsA.xStep = actS2SizeAlign / 16;
-        loadData2DMxParamsA.yStep = loadData2DParamsA.kStep;
-        loadData2DMxParamsA.srcStride = loadData2DMxParamsA.yStep;
-        loadData2DMxParamsA.dstStride = loadData2DMxParamsA.yStep;
+        uint32_t mStart = (info.prefetched ? (s2BaseSize / 16) : 0) + subLoop * (QK_L0_S2_SPLIT_SIZE / 16);
+        uint32_t mStep = actS2SizeAlign / 16;
+        // 变化字段: 位置与步长; 常量字段已初始化
+        loadKParamsA.mStartPosition = mStart;
+        loadKParamsA.mStep = mStep;
+        loadKParamsA.dstStride = mStep;
+        loadKParamsMx.xStartPosition = mStart;
+        loadKParamsMx.xStep = mStep;
 
         uint32_t qkL0Offset = qkL0abBufId * (QK_L0A_SIZE / sizeof(DATA_T));
         uint32_t kL1Offset = kBufId * (L1_KV_SIZE / sizeof(DATA_T));
 
         uint32_t kScaleL1Offset = kBufId * (L1_KV_DESCALE_SIZE / sizeof(SCALE_T));
         LoadData(qkL0ATensor[qkL0Offset].ReinterpretCast<QUANT_T>(), kL1Tensor[kL1Offset].ReinterpretCast<QUANT_T>(),
-                 kDescaleL1Tensor[kScaleL1Offset], loadData2DParamsA, loadData2DMxParamsA);
+                 kDescaleL1Tensor[kScaleL1Offset], loadKParamsA, loadKParamsMx);
     }
 
     __aicore__ inline void MatmulQK(const RunInfo &info, uint32_t actS2Size)
     {
-        MmadParams mmadParams;
-        mmadParams.m = actS2Size;
-        mmadParams.n = info.actMSizeAlign128;
-        mmadParams.k = constInfo.dSize;
-        mmadParams.cmatrixInitVal = true;
-        mmadParams.cmatrixSource = false;
-        mmadParams.disableGemv = true;
+        mmadQKParams.m = actS2Size;
+        mmadQKParams.n = info.actMSizeAlign128;
         uint32_t qkL0AOffset = qkL0abBufId * (QK_L0A_SIZE / sizeof(DATA_T));
         uint32_t qkL0BOffset = qkL0abBufId * (QK_L0B_SIZE / sizeof(DATA_T));
         uint32_t qkL0COffset = qkL0cBufId * (QK_L0C_SIZE / sizeof(COMPUTE_T));
         Mmad(qkL0CTensor[qkL0COffset], qkL0ATensor[qkL0AOffset].ReinterpretCast<QUANT_T>(),
-             qkL0BTensor[qkL0BOffset].ReinterpretCast<QUANT_T>(), mmadParams);
+             qkL0BTensor[qkL0BOffset].ReinterpretCast<QUANT_T>(), mmadQKParams);
     }
 
     __aicore__ inline void FixpipeMm1(const RunInfo &info, uint32_t subLoop, uint32_t actS2Size)
     {
-        FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixpipeParams;
         // L0C上的bmm1结果矩阵N方向的size大小, 使能NZ2ND, nSize*sizeof(T) 必须是32B的倍数
-        fixpipeParams.nSize = (info.actMSizeAlign128 + 7) >> 3 << 3;
+        fixpipeMm1Params.nSize = (info.actMSizeAlign128 + 7) >> 3 << 3;
         // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
-        fixpipeParams.mSize = (actS2Size + 1) >> 1 << 1;
+        fixpipeMm1Params.mSize = (actS2Size + 1) >> 1 << 1;
         // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T)
         // 源NZ矩阵中相邻Z排布的起始地址偏移
-        fixpipeParams.srcStride = ((actS2Size + 15) / 16) * 16;
-        fixpipeParams.dstStride = 512 / sizeof(half); // mmResUb上两行之间的间隔，单位：element
-        // softmax scale 随路乘: L0C fp32结果 * deqScalar(softmax_scale) 后再转fp16,
-        // Vec1 softmax 不再对 mm1Res 逐元素 Muls(dScale), 数据与 group max 均已处于 scale 后的域
-        fixpipeParams.quantPre = QuantMode_t::QF322F16_PRE;
-        fixpipeParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<const int32_t *>(&constInfo.scaleValue));
-        fixpipeParams.dualDstCtl = 0; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
-        fixpipeParams.subBlockId = info.loop % 2;
-
-        fixpipeParams.params.ndNum = 1;
-        fixpipeParams.params.srcNdStride = (actS2Size + 1) >> 1 << 1;
-        fixpipeParams.params.dstNdStride = 512 / sizeof(half);
+        fixpipeMm1Params.srcStride = ((actS2Size + 15) / 16) * 16;
+        fixpipeMm1Params.subBlockId = info.loop % 2; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+        fixpipeMm1Params.params.srcNdStride = (actS2Size + 1) >> 1 << 1;
 
         uint32_t qkL0COffset = qkL0cBufId * (QK_L0C_SIZE / sizeof(COMPUTE_T));
-        uint32_t ubOffset = subLoop * QK_L0_S2_SPLIT_SIZE * fixpipeParams.dstStride;
+        // dstStride 已初始化为 512/sizeof(half)=256, 为编译期常量
+        uint32_t ubOffset = subLoop * QK_L0_S2_SPLIT_SIZE * 256;
         Fixpipe<half, COMPUTE_T, CFG_ROW_MAJOR_UB>(mm1ResUB[info.loop / 2 % 2 * 128 + ubOffset],
-                                                   qkL0CTensor[qkL0COffset], fixpipeParams);
+                                                   qkL0CTensor[qkL0COffset], fixpipeMm1Params);
     }
 
     __aicore__ inline void CopyVScaleGmToL1(const RunInfo &info)

@@ -91,6 +91,9 @@ public:
     // schduler params
     uint64_t actSeqLensKv = 0;
     uint64_t actSeqLensQ = 0;
+    uint64_t gS1Size_ = 0;      // actSeqLensQ * gSize, 换batch才变
+    uint64_t s2LoopTimes_ = 0;  // ceil(actSeqLensKv / s2BaseSize), 换batch才变
+    uint64_t gS1LoopTimes_ = 0; // ceil(gS1Size / mBaseSize), 换batch才变
     uint32_t curS2Start = 0;
     uint32_t curS2End = 0;
     uint32_t prevBIdx = 0;
@@ -263,19 +266,15 @@ public:
 
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
-        if (bN2Cur != bN2End_) {
-            return bN2Cur < bN2End_;
-        }
-        if (gS1Cur != gS1OEnd_) {
-            return gS1Cur < gS1OEnd_;
-        }
-        return s2Cur < s2OEnd_;
+        // 三层区间判定, 逐级回退: bN2 未到尾 -> 判 gS1; gS1 未到尾 -> 判 s2
+        return (bN2Cur < bN2End_) ||
+               (bN2Cur == bN2End_ && ((gS1Cur < gS1OEnd_) || (gS1Cur == gS1OEnd_ && s2Cur < s2OEnd_)));
     }
 
     __aicore__ inline void CalcCurS2StartEndNoSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
         curS2Start = 0U;
-        curS2End = (static_cast<uint32_t>(actSeqLensKv) + s2BaseSize - 1) / s2BaseSize;
+        curS2End = static_cast<uint32_t>(s2LoopTimes_); // 与 GetTaskDealMode 中缓存一致
 
         if ((bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
             curS2Start = s2OStart_;
@@ -296,11 +295,12 @@ public:
             prevBIdx = bIdx;
             actSeqLensQ = qSeqLensTool.GetActualSeqLength(bIdx);
             actSeqLensKv = kvSeqLensTool.GetActualSeqLength(bIdx);
+            // 循环次数只依赖 actSeqLens, 换batch才变, 缓存避免每个任务重复除法
+            gS1Size_ = actSeqLensQ * constInfo.gSize;
+            s2LoopTimes_ = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
+            gS1LoopTimes_ = (gS1Size_ + mBaseSize - 1) / mBaseSize;
         }
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-        if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
+        if (s2LoopTimes_ == 0 || gS1LoopTimes_ == 0) {
             if (gS1Cur == 0 && s2Cur == 0) {
                 return TASK_DEAL_MODE::DEAL_ZERO;
             }
@@ -331,36 +331,39 @@ public:
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
         RunInfo &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
-        RunInfo &runInfo3 = taskRunInfo[(loop - DELAY_P_SCALE_N) % PRELOAD_TASK_CACHE_SIZE];
-        RunInfo &runInfo20 = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
 
-        if (loop >= PRELOAD_N && runInfo20.isValid) {
-            if ASCEND_IS_AIC {
-                if (runInfo20.isC2Sync) {
-                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_PSCALE_C2_0 + runInfo20.pscaleNum);
-                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_PSCALE_C2_0 + runInfo20.pscaleNum + 16);
+        if (loop >= PRELOAD_N) {
+            RunInfo &runInfo20 = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
+            if (runInfo20.isValid) {
+                if ASCEND_IS_AIC {
+                    if (unlikely(runInfo20.isC2Sync)) { // 1/16结构频率
+                        CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_PSCALE_C2_0 + runInfo20.pscaleNum);
+                        CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_PSCALE_C2_0 +
+                                                                  runInfo20.pscaleNum + 16);
+                    }
+                    if (unlikely(runInfo20.isUpdatePScale)) { // ~1/16结构频率
+                        CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2);
+                        CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2 + 16);
+                    }
+                    ComputeMm2(runInfo20);
+                    if (unlikely(runInfo20.isUpdatePScale)) { // ~1/16结构频率
+                        CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2);
+                        CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2 + 16);
+                    }
+                } else {
+                    if (unlikely(runInfo20.isUpdatePScale)) { // ~1/16结构频率
+                        CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
+                        ComputeVec2(runInfo20);
+                        CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V2_C2);
+                    }
                 }
-                if (runInfo20.isUpdatePScale) {
-                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2);
-                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2 + 16);
-                }
-                ComputeMm2(runInfo20);
-                if (runInfo20.isUpdatePScale) {
-                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2);
-                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2 + 16);
-                }
-            } else {
-                if (runInfo20.isUpdatePScale) {
-                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
-                    ComputeVec2(runInfo20);
-                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V2_C2);
-                }
+                runInfo20.isValid = false;
             }
-            runInfo20.isValid = false;
         }
 
-        if (loop >= DELAY_P_SCALE_N && runInfo3.isValid) {
-            if (runInfo3.isUpdatePScale) {
+        if (loop >= DELAY_P_SCALE_N) {
+            RunInfo &runInfo3 = taskRunInfo[(loop - DELAY_P_SCALE_N) % PRELOAD_TASK_CACHE_SIZE];
+            if (runInfo3.isValid && unlikely(runInfo3.isUpdatePScale)) { // ~1/16结构频率
                 if ASCEND_IS_AIC {
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_BUF0_GMAX_UB_TO_L1 +
                                                               runInfo3.tileMaxIdx / 2);
@@ -441,9 +444,8 @@ public:
         info.curS2LoopIdx = s2Cur - curS2Start;
 
         info.actMSize = mBaseSize;
-        uint64_t gS1Size = (uint64_t)actSeqLensQ * constInfo.gSize;
-        if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
-            uint64_t tailM = (gS1Size > gS1Cur * mBaseSize) ? (gS1Size - gS1Cur * mBaseSize) : mBaseSize;
+        if (((gS1Cur + 1) * mBaseSize) > gS1Size_) {
+            uint64_t tailM = (gS1Size_ > gS1Cur * mBaseSize) ? (gS1Size_ - gS1Cur * mBaseSize) : mBaseSize;
             info.actMSize = (tailM < mBaseSize) ? static_cast<uint32_t>(tailM) : mBaseSize;
         }
         info.actSingleLoopS2Size = s2BaseSize;
@@ -490,23 +492,20 @@ public:
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-
+        // s2LoopTimes_/gS1LoopTimes_ 已在 GetTaskDealMode 中随 batch 缓存
         if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
             s2Cur = curS2Start;
             return;
         }
         if (taskDealMode != TASK_DEAL_MODE::SKIP_REMAINING_S2) {
-            if (s2Cur + 1 < s2LoopTimes) {
+            if (s2Cur + 1 < s2LoopTimes_) {
                 s2Cur++;
                 return;
             }
         }
 
         s2Cur = 0;
-        if (gS1Cur + 1 < gS1LoopTimes) {
+        if (gS1Cur + 1 < gS1LoopTimes_) {
             gS1Cur++;
             return;
         }
@@ -542,9 +541,7 @@ public:
                     cubeBlock.InitTensors();
                 }
                 FlashAttention(sectionIdx);
-                if ASCEND_IS_AIV {
-
-                } else {
+                if ASCEND_IS_AIC {
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2);
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2 + 16);
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[0]);

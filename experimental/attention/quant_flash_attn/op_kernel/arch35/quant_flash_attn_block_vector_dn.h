@@ -274,37 +274,36 @@ public:
     __aicore__ inline void ComputeVec1(const RunInfo &runInfo)
     {
         uint32_t buffIdx = GetBufferIdx(runInfo.loop);
-        if (runInfo.isS2FirstTilePerCore) { // 每个vector core都需要一个跨tile的同步
+        if (unlikely(runInfo.isS2FirstTilePerCore)) { // 1/8结构频率, 每个vector core都需要一个跨tile的同步
             Mutex::Lock<PIPE_V>(SYNC_GMAX_UB_TO_L1_BUF0_MUTEX_ID + runInfo.tileMaxIdx);
         }
         Mutex::Lock<PIPE_V>(SYNC_VEC1_RES_BUF0_MUTEX_ID + buffIdx);
 
+        // 公共子表达式一次计算, 供各分支复用
+        LocalTensor<uint8_t> vec1Res = vec1ResUB[buffIdx * ve1ResOffset];
+        LocalTensor<half> mm1Res = mm1ResUB[buffIdx * mm1ResOffset];
+        LocalTensor<half> localGrpMax = GetLocalGrpMaxUbByLoopIdx(runInfo.loop);
+        LocalTensor<half> localGlobalMax = GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx);
         if (unlikely(runInfo.isFirstS2Loop)) {
             if (likely(runInfo.actMSize == s1BaseSize &&
                        runInfo.actSingleLoopS2Size == s2BaseSize)) { // s1=128, s2=256 softmax
                 Mxfp4Api::softmaxWithGroupMaxQs128Kvs256CallVF<true, half, uint8_t, false, s2BaseSize, s1BaseSize>(
-                    vec1ResUB[buffIdx * ve1ResOffset], mm1ResUB[buffIdx * mm1ResOffset],
-                    GetLocalGrpMaxUbByLoopIdx(runInfo.loop), GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx),
-                    nd2nzIndexUB);
+                    vec1Res, mm1Res, localGrpMax, localGlobalMax, nd2nzIndexUB);
             } else {
                 // s2 padding 32 multi
                 if (runInfo.actSingleLoopS2Size != runInfo.actSingleLoopS2SizeAlign) {
                     Mxfp4Api::Mm1ResPrePaddingAlignKvs32MultiCallVF<half>(
-                        mm1ResUB[buffIdx * mm1ResOffset], static_cast<uint16_t>(runInfo.actSingleLoopS2Size),
+                        mm1Res, static_cast<uint16_t>(runInfo.actSingleLoopS2Size),
                         static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign));
                     PipeBarrier<PIPE_V>();
                 }
                 // softmax
                 if (runInfo.actSingleLoopS2SizeAlign == AttentionCommon::BYTE_BLOCK) { // softmax_padding_32
                     Mxfp4Api::SoftmaxWithGroupMaxAlignQs128Kvs32CallVF<true, half, uint8_t, false>(
-                        vec1ResUB[buffIdx * ve1ResOffset], mm1ResUB[buffIdx * mm1ResOffset],
-                        GetLocalGrpMaxUbByLoopIdx(runInfo.loop), GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx),
-                        nd2nzIndexUB);
+                        vec1Res, mm1Res, localGrpMax, localGlobalMax, nd2nzIndexUB);
                 } else { // softmax_padding_32_multi >= 64
                     Mxfp4Api::SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF<true, half, uint8_t, false>(
-                        vec1ResUB[buffIdx * ve1ResOffset], mm1ResUB[buffIdx * mm1ResOffset],
-                        GetLocalGrpMaxUbByLoopIdx(runInfo.loop), GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx),
-                        nd2nzIndexUB,
+                        vec1Res, mm1Res, localGrpMax, localGlobalMax, nd2nzIndexUB,
                         static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign),
                         static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign64));
                 }
@@ -313,28 +312,22 @@ public:
             if (likely(runInfo.actMSize == s1BaseSize &&
                        runInfo.actSingleLoopS2Size == s2BaseSize)) { // s1=128, s2=256 softmax
                 Mxfp4Api::softmaxWithGroupMaxQs128Kvs256CallVF<false, half, uint8_t, false, s2BaseSize, s1BaseSize>(
-                    vec1ResUB[buffIdx * ve1ResOffset], mm1ResUB[buffIdx * mm1ResOffset],
-                    GetLocalGrpMaxUbByLoopIdx(runInfo.loop), GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx),
-                    nd2nzIndexUB);
+                    vec1Res, mm1Res, localGrpMax, localGlobalMax, nd2nzIndexUB);
             } else {
                 // s2 padding 32 multi
                 if (runInfo.actSingleLoopS2Size != runInfo.actSingleLoopS2SizeAlign) {
                     Mxfp4Api::Mm1ResPrePaddingAlignKvs32MultiCallVF<half>(
-                        mm1ResUB[buffIdx * mm1ResOffset], static_cast<uint16_t>(runInfo.actSingleLoopS2Size),
+                        mm1Res, static_cast<uint16_t>(runInfo.actSingleLoopS2Size),
                         static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign));
                     PipeBarrier<PIPE_V>();
                 }
                 // softmax
                 if (runInfo.actSingleLoopS2SizeAlign == AttentionCommon::BYTE_BLOCK) { // softmax_padding_32
                     Mxfp4Api::SoftmaxWithGroupMaxAlignQs128Kvs32CallVF<false, half, uint8_t, false>(
-                        vec1ResUB[buffIdx * ve1ResOffset], mm1ResUB[buffIdx * mm1ResOffset],
-                        GetLocalGrpMaxUbByLoopIdx(runInfo.loop), GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx),
-                        nd2nzIndexUB);
+                        vec1Res, mm1Res, localGrpMax, localGlobalMax, nd2nzIndexUB);
                 } else { // softmax_padding_32_multi >= 64
                     Mxfp4Api::SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF<false, half, uint8_t, false>(
-                        vec1ResUB[buffIdx * ve1ResOffset], mm1ResUB[buffIdx * mm1ResOffset],
-                        GetLocalGrpMaxUbByLoopIdx(runInfo.loop), GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx),
-                        nd2nzIndexUB,
+                        vec1Res, mm1Res, localGrpMax, localGlobalMax, nd2nzIndexUB,
                         static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign),
                         static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign64));
                 }
@@ -346,15 +339,15 @@ public:
 
         if (likely(runInfo.actMSize == s1BaseSize &&
                    runInfo.actSingleLoopS2Size == s2BaseSize)) { // s1=128, s2=256 softmax
-            DataCopy(pL1Tensor[(runInfo.loop % 20) * (128 * 256 / 2)], vec1ResUB[buffIdx * ve1ResOffset],
+            DataCopy(pL1Tensor[(runInfo.loop % 20) * (128 * 256 / 2)], vec1Res,
                      {static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign / 4), 8, 8, 0});
         } else {
-            DataCopy(pL1Tensor[(runInfo.loop % 20) * (128 * 256 / 2)], vec1ResUB[buffIdx * ve1ResOffset],
+            DataCopy(pL1Tensor[(runInfo.loop % 20) * (128 * 256 / 2)], vec1Res,
                      {static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign / AttentionCommon::BYTE_BLOCK * 8 / 2), 8,
                       8, 0});
             DataCopy(pL1Tensor[(runInfo.loop % 20) * (128 * 256 / 2) +
                                runInfo.actSingleLoopS2SizeAlign64 / AttentionCommon::BYTE_BLOCK * 8 / 2 * 256],
-                     vec1ResUB[buffIdx * ve1ResOffset + BUFFER_SIZE_BYTE_16K],
+                     vec1Res[BUFFER_SIZE_BYTE_16K],
                      {static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign / AttentionCommon::BYTE_BLOCK * 8 / 2), 8,
                       8, 0});
         }
@@ -366,7 +359,7 @@ public:
         LocalTensor<half> localGlobalMax = GetLocalGlobalMaxUbByCurIdx(runInfo.tileMaxIdx);
 
         // 单任务尾tile: 该tile任务未在本核执行, 本核未持有GMAX锁, 只需上传本核gmax到L1
-        if (runInfo.s2FirstStartVecCore != constInfo.subBlockIdx && runInfo.isC2Sync) {
+        if (unlikely(runInfo.s2FirstStartVecCore != constInfo.subBlockIdx && runInfo.isC2Sync)) { // ~1/32结构频率
             DataCopy(localGlobalMaxL1[runInfo.tileMaxIdx * 256 + (1 - constInfo.subBlockIdx) * L1_SINGLE_GLOBAL_MAX_SIZE],
                      localGlobalMax, {1, 8, 0, 0});
             return;
@@ -386,7 +379,7 @@ public:
         LocalTensor<half> softmaxMaxOld = softmaxMaxUB;
         LocalTensor<float> urs = GetUpdateScaleByCurIdx(runInfo.updateScaleNum);
 
-        if (runInfo.s2FirstStartVecCore != constInfo.subBlockIdx && runInfo.isC2Sync) {
+        if (unlikely(runInfo.s2FirstStartVecCore != constInfo.subBlockIdx && runInfo.isC2Sync)) { // ~1/32结构频率
             if (unlikely(runInfo.curS2LoopIdx / 16 == 0)) {
                 Mxfp4Api::computeOnlyScale<true, half, s1BaseSize>(localGlobalMax1, localGlobalMax2, softmaxMaxOld, urs,
                                                                    constInfo.subBlockIdx);
