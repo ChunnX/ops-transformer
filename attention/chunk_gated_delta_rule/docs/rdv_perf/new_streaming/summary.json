@@ -1,0 +1,506 @@
+{
+  "full_cases": 288,
+  "full_kernel_records": 1728,
+  "selected_cases": 8,
+  "selected_kernel_records": 192,
+  "geomean_vs_baseline": 5.724463265701827,
+  "geomean_vs_old": 1.0528590039881807,
+  "sum_new_us": 506359.2594,
+  "sum_baseline_us": 3587095.763199998,
+  "sum_old_us": 576024.044,
+  "baseline_regressions": [],
+  "old_regressions_over5pct": [
+    {
+      "test_name": "ARC-001",
+      "baseline_us": 558.397,
+      "old_us": 86.9424,
+      "new_us": 91.967,
+      "new_vs_baseline": 6.071710504855003,
+      "new_vs_old": 0.9453651853382192,
+      "new_cv_pct": 0.4406048431694774
+    },
+    {
+      "test_name": "ARC-010",
+      "baseline_us": 558.4954,
+      "old_us": 86.7796,
+      "new_us": 92.143,
+      "new_vs_baseline": 6.0611809904170695,
+      "new_vs_old": 0.9417926483834909,
+      "new_cv_pct": 1.192137202799565
+    },
+    {
+      "test_name": "ARC-020",
+      "baseline_us": 1136.0264,
+      "old_us": 458.7332,
+      "new_us": 487.0904,
+      "new_vs_baseline": 2.3322701494424853,
+      "new_vs_old": 0.9417824699480836,
+      "new_cv_pct": 4.810366347752701
+    },
+    {
+      "test_name": "ARC-024-FP32",
+      "baseline_us": 5554.3196,
+      "old_us": 1666.7703999999999,
+      "new_us": 1760.5244,
+      "new_vs_baseline": 3.15492338532769,
+      "new_vs_old": 0.9467465489259904,
+      "new_cv_pct": 0.1854334564580215
+    },
+    {
+      "test_name": "ARC-031-FP32",
+      "baseline_us": 4763.0498,
+      "old_us": 1611.984,
+      "new_us": 1745.5216,
+      "new_vs_baseline": 2.7287257860343863,
+      "new_vs_old": 0.9234970223227257,
+      "new_cv_pct": 0.23734084180361575
+    },
+    {
+      "test_name": "ARC-038-FP32",
+      "baseline_us": 7422.3768,
+      "old_us": 1570.1248,
+      "new_us": 1681.4966,
+      "new_vs_baseline": 4.4141491573637435,
+      "new_vs_old": 0.9337662651235811,
+      "new_cv_pct": 4.921363557841389
+    },
+    {
+      "test_name": "ARC-001-NC",
+      "baseline_us": 556.6426,
+      "old_us": 86.3352,
+      "new_us": 90.8436,
+      "new_vs_baseline": 6.127482838636954,
+      "new_vs_old": 0.9503718478792123,
+      "new_cv_pct": 1.2606950847310494
+    },
+    {
+      "test_name": "ARC-010-NC",
+      "baseline_us": 557.6698,
+      "old_us": 86.54639999999999,
+      "new_us": 91.5784,
+      "new_vs_baseline": 6.0895342133079415,
+      "new_vs_old": 0.945052545141649,
+      "new_cv_pct": 0.7690796834887104
+    },
+    {
+      "test_name": "ARC-031-NC",
+      "baseline_us": 2945.906,
+      "old_us": 1436.4384,
+      "new_us": 1549.8509999999999,
+      "new_vs_baseline": 1.900767235043885,
+      "new_vs_old": 0.9268235462634796,
+      "new_cv_pct": 5.925268563705137
+    },
+    {
+      "test_name": "ARC-032-FP32-NC",
+      "baseline_us": 5515.8856,
+      "old_us": 1620.2178,
+      "new_us": 1740.5484,
+      "new_vs_baseline": 3.1690503981388853,
+      "new_vs_old": 0.9308662718026112,
+      "new_cv_pct": 3.6309223945028966
+    }
+  ],
+  "full_cv_over5pct": [
+    {
+      "test_name": "ARC-031",
+      "baseline_us": 2953.6796,
+      "old_us": 1510.1658,
+      "new_us": 1391.3408,
+      "new_vs_baseline": 2.1229015924782773,
+      "new_vs_old": 1.085403231185343,
+      "new_cv_pct": 10.132847802328083
+    },
+    {
+      "test_name": "ARC-034",
+      "baseline_us": 5838.0887999999995,
+      "old_us": 2945.4696,
+      "new_us": 3017.6742,
+      "new_vs_baseline": 1.9346319095679712,
+      "new_vs_old": 0.9760727649127927,
+      "new_cv_pct": 6.829065146417282
+    },
+    {
+      "test_name": "ARC-035",
+      "baseline_us": 7302.2366,
+      "old_us": 2838.5234,
+      "new_us": 2959.5424,
+      "new_vs_baseline": 2.4673532638018636,
+      "new_vs_old": 0.9591088811567627,
+      "new_cv_pct": 5.004787085685156
+    },
+    {
+      "test_name": "ARC-020-FP32",
+      "baseline_us": 1777.6656,
+      "old_us": 508.3034,
+      "new_us": 480.3996,
+      "new_vs_baseline": 3.700389425803019,
+      "new_vs_old": 1.0580845612694099,
+      "new_cv_pct": 5.1114535282232
+    },
+    {
+      "test_name": "ARC-021-FP32",
+      "baseline_us": 2236.2416,
+      "old_us": 541.4234,
+      "new_us": 517.0142,
+      "new_vs_baseline": 4.325300156165923,
+      "new_vs_old": 1.0472118560766803,
+      "new_cv_pct": 7.480398715597839
+    },
+    {
+      "test_name": "ARC-032-FP32",
+      "baseline_us": 5524.8516,
+      "old_us": 1691.391,
+      "new_us": 1718.8448,
+      "new_vs_baseline": 3.2142818246301235,
+      "new_vs_old": 0.9840277609706239,
+      "new_cv_pct": 5.572888927005564
+    },
+    {
+      "test_name": "ARC-034-FP32",
+      "baseline_us": 9451.462,
+      "old_us": 3463.2368,
+      "new_us": 3104.1096,
+      "new_vs_baseline": 3.044822257564617,
+      "new_vs_old": 1.115694110800727,
+      "new_cv_pct": 6.4896027496157656
+    },
+    {
+      "test_name": "ARC-035-FP32",
+      "baseline_us": 11025.3234,
+      "old_us": 3284.7942,
+      "new_us": 3115.7296,
+      "new_vs_baseline": 3.5386008464919416,
+      "new_vs_old": 1.0542616406763923,
+      "new_cv_pct": 5.796847348936511
+    },
+    {
+      "test_name": "ARC-020-NC",
+      "baseline_us": 1137.9536,
+      "old_us": 461.2908,
+      "new_us": 462.68919999999997,
+      "new_vs_baseline": 2.4594341082523647,
+      "new_vs_old": 0.9969776688109426,
+      "new_cv_pct": 7.524937016150832
+    },
+    {
+      "test_name": "ARC-031-NC",
+      "baseline_us": 2945.906,
+      "old_us": 1436.4384,
+      "new_us": 1549.8509999999999,
+      "new_vs_baseline": 1.900767235043885,
+      "new_vs_old": 0.9268235462634796,
+      "new_cv_pct": 5.925268563705137
+    },
+    {
+      "test_name": "ARC-035-NC",
+      "baseline_us": 7300.9802,
+      "old_us": 2954.1354,
+      "new_us": 2846.921,
+      "new_vs_baseline": 2.5645180178866926,
+      "new_vs_old": 1.0376597734886217,
+      "new_cv_pct": 9.774013395834913
+    },
+    {
+      "test_name": "ARC-038-NC",
+      "baseline_us": 5550.0278,
+      "old_us": 1284.7316,
+      "new_us": 1344.5742,
+      "new_vs_baseline": 4.1277214749472355,
+      "new_vs_old": 0.9554932706577295,
+      "new_cv_pct": 6.6378909653001585
+    },
+    {
+      "test_name": "ARC-017-FP32-NC",
+      "baseline_us": 1092.8548,
+      "old_us": 296.9606,
+      "new_us": 294.1468,
+      "new_vs_baseline": 3.7153380556919204,
+      "new_vs_old": 1.0095659718208732,
+      "new_cv_pct": 6.576792711731061
+    },
+    {
+      "test_name": "ARC-031-FP32-NC",
+      "baseline_us": 4742.687,
+      "old_us": 1656.6582,
+      "new_us": 1607.3532,
+      "new_vs_baseline": 2.9506190674209005,
+      "new_vs_old": 1.030674651968217,
+      "new_cv_pct": 7.767727337016363
+    },
+    {
+      "test_name": "ARC-034-FP32-NC",
+      "baseline_us": 9464.9566,
+      "old_us": 3192.909,
+      "new_us": 3288.2974,
+      "new_vs_baseline": 2.878376086055963,
+      "new_vs_old": 0.9709915532579262,
+      "new_cv_pct": 7.522002970280206
+    },
+    {
+      "test_name": "ARC-035-FP32-NC",
+      "baseline_us": 11043.2468,
+      "old_us": 3200.1274,
+      "new_us": 3248.7352,
+      "new_vs_baseline": 3.3992449738593655,
+      "new_vs_old": 0.9850379310692973,
+      "new_cv_pct": 6.013442016436854
+    },
+    {
+      "test_name": "ASC-018",
+      "baseline_us": 1290.2721999999999,
+      "old_us": 401.6932,
+      "new_us": 379.2184,
+      "new_vs_baseline": 3.4024514633256193,
+      "new_vs_old": 1.0592661115599877,
+      "new_cv_pct": 5.11887270533003
+    },
+    {
+      "test_name": "ASC-018-NC",
+      "baseline_us": 1292.4642,
+      "old_us": 385.0336,
+      "new_us": 377.9126,
+      "new_vs_baseline": 3.420008224123779,
+      "new_vs_old": 1.0188429811549018,
+      "new_cv_pct": 6.271648839292613
+    }
+  ],
+  "selected": [
+    {
+      "test_name": "ASC-024",
+      "baseline_us": 6120.4964,
+      "old_stream_us": 19202.4549,
+      "historical_cube_us": 1761.84355,
+      "new_stream_us": 1636.9584,
+      "new_cv_pct": 1.5734448472251001,
+      "new_vs_old_stream": 11.730569878868028,
+      "new_vs_baseline": 3.7389443739071195,
+      "new_vs_historical_cube": 1.0762909735519242,
+      "fresh_cube_us": 1762.0162,
+      "fresh_cube_cv_pct": 0.0595705064487133,
+      "new_vs_fresh_cube": 1.0763964435504287
+    },
+    {
+      "test_name": "ASC-026",
+      "baseline_us": 392.4764,
+      "old_stream_us": 228.86255,
+      "historical_cube_us": 53.3087,
+      "new_stream_us": 67.4398,
+      "new_cv_pct": 3.2873993576777227,
+      "new_vs_old_stream": 3.3935828694628394,
+      "new_vs_baseline": 5.819655455680473,
+      "new_vs_historical_cube": 0.7904634948502219,
+      "fresh_cube_us": 51.08645,
+      "fresh_cube_cv_pct": 2.657270034970411,
+      "new_vs_fresh_cube": 0.757511884673442
+    },
+    {
+      "test_name": "ASC-024-FP32",
+      "baseline_us": 6708.1578,
+      "old_stream_us": 19194.61295,
+      "historical_cube_us": 1762.92815,
+      "new_stream_us": 1654.1844,
+      "new_cv_pct": 0.7297001710167557,
+      "new_vs_old_stream": 11.60367184577487,
+      "new_vs_baseline": 4.05526602717327,
+      "new_vs_historical_cube": 1.065738589966149,
+      "fresh_cube_us": 1764.2501,
+      "fresh_cube_cv_pct": 0.05726084197301309,
+      "new_vs_fresh_cube": 1.0665377451268432
+    },
+    {
+      "test_name": "ASC-026-FP32",
+      "baseline_us": 429.4012,
+      "old_stream_us": 227.4583,
+      "historical_cube_us": 53.33255,
+      "new_stream_us": 67.17285,
+      "new_cv_pct": 4.660315353763902,
+      "new_vs_old_stream": 3.386164201757109,
+      "new_vs_baseline": 6.392481486195688,
+      "new_vs_historical_cube": 0.7939599108866157,
+      "fresh_cube_us": 52.55815,
+      "fresh_cube_cv_pct": 2.691201616295822,
+      "new_vs_fresh_cube": 0.7824314436561796
+    },
+    {
+      "test_name": "ASC-024-NC",
+      "baseline_us": 6114.6431999999995,
+      "old_stream_us": 19191.03905,
+      "historical_cube_us": 1761.44535,
+      "new_stream_us": 1653.87805,
+      "new_cv_pct": 1.183150501794999,
+      "new_vs_old_stream": 11.603660288012165,
+      "new_vs_baseline": 3.6971548174304627,
+      "new_vs_historical_cube": 1.0650394386696165,
+      "fresh_cube_us": 1762.8896,
+      "fresh_cube_cv_pct": 0.09046547137909008,
+      "new_vs_fresh_cube": 1.0659126892699253
+    },
+    {
+      "test_name": "ASC-026-NC",
+      "baseline_us": 392.27119999999996,
+      "old_stream_us": 227.7968,
+      "historical_cube_us": 53.0939,
+      "new_stream_us": 65.76745,
+      "new_cv_pct": 2.8948607780982085,
+      "new_vs_old_stream": 3.463670858456577,
+      "new_vs_baseline": 5.964518922354447,
+      "new_vs_historical_cube": 0.8072975309214513,
+      "fresh_cube_us": 50.95885,
+      "fresh_cube_cv_pct": 2.712841666315619,
+      "new_vs_fresh_cube": 0.7748339033975014
+    },
+    {
+      "test_name": "ASC-024-FP32-NC",
+      "baseline_us": 6720.3024,
+      "old_stream_us": 19193.85085,
+      "historical_cube_us": 1762.47915,
+      "new_stream_us": 1655.335,
+      "new_cv_pct": 1.3513634581735667,
+      "new_vs_old_stream": 11.595145907021841,
+      "new_vs_baseline": 4.059783910809594,
+      "new_vs_historical_cube": 1.0647265659217016,
+      "fresh_cube_us": 1766.2004,
+      "fresh_cube_cv_pct": 0.6940060478132115,
+      "new_vs_fresh_cube": 1.0669746003074905
+    },
+    {
+      "test_name": "ASC-026-FP32-NC",
+      "baseline_us": 426.6402,
+      "old_stream_us": 226.70035,
+      "historical_cube_us": 52.93105,
+      "new_stream_us": 65.47275,
+      "new_cv_pct": 3.5599136278036814,
+      "new_vs_old_stream": 3.462514557583116,
+      "new_vs_baseline": 6.516301820222917,
+      "new_vs_historical_cube": 0.8084439709650197,
+      "fresh_cube_us": 52.891,
+      "fresh_cube_cv_pct": 2.8274052337471915,
+      "new_vs_fresh_cube": 0.8078322660954366
+    }
+  ],
+  "sum_speedup_vs_baseline": 7.084092364481403,
+  "sum_speedup_vs_old": 1.1375797584555833,
+  "controls": [
+    {
+      "test_name": "ARC-001",
+      "old_recheck_us": 91.4846,
+      "new_recheck_us": 87.30835,
+      "old_cv_pct": 1.0758775668633922,
+      "new_cv_pct": 1.1978659246936874,
+      "new_over_old_ratio": 0.9543502403683243
+    },
+    {
+      "test_name": "ARC-010",
+      "old_recheck_us": 91.32655,
+      "new_recheck_us": 87.35455,
+      "old_cv_pct": 1.2789977803588473,
+      "new_cv_pct": 0.8514981541559151,
+      "new_over_old_ratio": 0.956507718730205
+    },
+    {
+      "test_name": "ARC-020",
+      "old_recheck_us": 483.78,
+      "new_recheck_us": 498.67220000000003,
+      "old_cv_pct": 5.564127231128045,
+      "new_cv_pct": 2.499067617538342,
+      "new_over_old_ratio": 1.0307830005374345
+    },
+    {
+      "test_name": "ARC-024-FP32",
+      "old_recheck_us": 1697.5694,
+      "new_recheck_us": 1743.3767,
+      "old_cv_pct": 4.6116854202203665,
+      "new_cv_pct": 2.07936613599972,
+      "new_over_old_ratio": 1.0269840514325952
+    },
+    {
+      "test_name": "ARC-031-FP32",
+      "old_recheck_us": 1564.66895,
+      "new_recheck_us": 1715.32,
+      "old_cv_pct": 5.936539779999802,
+      "new_cv_pct": 4.293702951272405,
+      "new_over_old_ratio": 1.0962830188456159
+    },
+    {
+      "test_name": "ARC-038-FP32",
+      "old_recheck_us": 1634.237,
+      "new_recheck_us": 1670.0113,
+      "old_cv_pct": 4.7228124191952325,
+      "new_cv_pct": 4.07716587166468,
+      "new_over_old_ratio": 1.0218905213870446
+    },
+    {
+      "test_name": "ARC-001-NC",
+      "old_recheck_us": 90.5408,
+      "new_recheck_us": 87.46745,
+      "old_cv_pct": 1.5076074964899666,
+      "new_cv_pct": 0.8392025537148291,
+      "new_over_old_ratio": 0.9660556345868382
+    },
+    {
+      "test_name": "ARC-010-NC",
+      "old_recheck_us": 90.3388,
+      "new_recheck_us": 87.44965,
+      "old_cv_pct": 1.2797787755462589,
+      "new_cv_pct": 1.2749423024076194,
+      "new_over_old_ratio": 0.9680187250660846
+    },
+    {
+      "test_name": "ARC-031-NC",
+      "old_recheck_us": 1446.39455,
+      "new_recheck_us": 1556.5017,
+      "old_cv_pct": 7.901690391034691,
+      "new_cv_pct": 4.821663441325385,
+      "new_over_old_ratio": 1.076125252269514
+    },
+    {
+      "test_name": "ARC-032-FP32-NC",
+      "old_recheck_us": 1667.8989,
+      "new_recheck_us": 1738.9008,
+      "old_cv_pct": 4.160492699728258,
+      "new_cv_pct": 3.583276105169617,
+      "new_over_old_ratio": 1.0425696665427382
+    }
+  ],
+  "confirmed_old_regressions_over5pct": [
+    {
+      "test_name": "ARC-031-FP32",
+      "old_recheck_us": 1564.66895,
+      "new_recheck_us": 1715.32,
+      "old_cv_pct": 5.936539779999802,
+      "new_cv_pct": 4.293702951272405,
+      "new_over_old_ratio": 1.0962830188456159
+    },
+    {
+      "test_name": "ARC-031-NC",
+      "old_recheck_us": 1446.39455,
+      "new_recheck_us": 1556.5017,
+      "old_cv_pct": 7.901690391034691,
+      "new_cv_pct": 4.821663441325385,
+      "new_over_old_ratio": 1.076125252269514
+    }
+  ],
+  "confirmation": [
+    {
+      "test_name": "ARC-031-FP32",
+      "old_us": 1649.80376,
+      "new_us": 1724.75192,
+      "old_median_us": 1743.886,
+      "new_median_us": 1746.0495,
+      "old_cv_pct": 6.970489953545472,
+      "new_cv_pct": 3.9089064608940958,
+      "new_over_old_ratio": 1.045428530239257
+    },
+    {
+      "test_name": "ARC-031-NC",
+      "old_us": 1554.81136,
+      "new_us": 1527.0411,
+      "old_median_us": 1588.1995,
+      "new_median_us": 1589.516,
+      "old_cv_pct": 4.6826899667098845,
+      "new_cv_pct": 6.780509861001225,
+      "new_over_old_ratio": 0.9821391451629219
+    }
+  ]
+}

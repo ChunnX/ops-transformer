@@ -1,0 +1,7 @@
+--- a/attention/chunk_gated_delta_rule/op_kernel/arch35/chunk_gated_delta_rule_fused_exact_arch35.h
++++ b/attention/chunk_gated_delta_rule/op_kernel/arch35/chunk_gated_delta_rule_fused_exact_arch35.h
+@@ -338,3 +338,3 @@
+         const uint64_t cubeScore = chunkCount * 2 * CUBE_MAC_PER_CHUNK;
+-        return streamScore < cubeScore;
++        return false; // 性能消融：非空序列强制使用融合 Cube 分支。
+     }

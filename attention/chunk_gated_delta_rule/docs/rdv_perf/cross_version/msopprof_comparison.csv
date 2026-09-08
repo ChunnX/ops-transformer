@@ -1,0 +1,7 @@
+﻿test_name,version,core_role,core_count,profiled_task_duration_us,frequency_mhz,compute_active_pct,scalar_active_pct,mte2_active_pct,mte3_active_pct,mte2_instructions_per_core,mte3_instructions_per_core,gm_to_ub_bandwidth_pct
+ASC-024,old_streaming,cube0,32,21944.644531,1650,0.0,0.015990625,0.0,0.0,2.0,1.0,
+ASC-024,old_streaming,vector0,32,21944.644531,1650,28.591178125,7.141528125000001,23.575103125,45.247796875,300008.0,30004.0,0.5121035
+ASC-024,old_streaming,vector1,32,21944.644531,1650,0.0,0.013184374999999998,0.008990625,0.0,2.0,1.0,2.7e-05
+ASC-024,new_streaming,cube0,32,1845.5,1650,0.0,0.205309375,9.999999999999999e-05,9.999999999999999e-05,2.0,1.0,
+ASC-024,new_streaming,vector0,32,1845.5,1650,62.709709375,2.38571875,25.9141625,10.648309375,4718.0,475.0,6.089364375
+ASC-024,new_streaming,vector1,32,1845.5,1650,0.0,0.1462375,0.12673125,9.999999999999999e-05,2.0,1.0,0.000317

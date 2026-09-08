@@ -1,0 +1,15 @@
+{
+  "cases": 8,
+  "geomean_speedup": 5.2947050248759435,
+  "sum_baseline_mean_us": 27304.3888,
+  "sum_optimized_mean_us": 7261.3624,
+  "faster_cases": 8,
+  "precision_passed_cases": 8,
+  "full_288_measured": false,
+  "baseline_warmup": 1,
+  "baseline_measured": 5,
+  "optimized_warmup": 4,
+  "optimized_measured": 20,
+  "measurement": "Historical forced-Cube ablation; fresh repeat is separately in recheck_comparison.csv",
+  "sum_duration_speedup": 3.7602294577667683
+}

@@ -1,0 +1,14 @@
+{
+  "torch": "2.13.0+cpu",
+  "torch_npu": "2.13.0.rc1",
+  "device": "_NPUDeviceProperties(name='Ascend950PR_9589', total_memory=126112MB, cube_core_num=32, vector_core_num=64, uuid=0008d80a-d200-0000-0000-000000000100, L2_cache_size=128MB)",
+  "case_count": 8,
+  "seed": 20260908,
+  "mode": "eager",
+  "warmup": 1,
+  "measured_runs": 5,
+  "precision_checked": true,
+  "pid": 2656774,
+  "ASCEND_CUSTOM_OPP_PATH": "/home/s00940320/improved_cgdr/attention/chunk_gated_delta_rule/tests/pytest/output/rdv_perf_20260908/regression_analysis/cube_opp/vendors/cgdr_cube_probe_transformer:",
+  "LD_LIBRARY_PATH": "/home/s00940320/improved_cgdr/attention/chunk_gated_delta_rule/tests/pytest/output/rdv_perf_20260908/regression_analysis/cube_opp/vendors/cgdr_cube_probe_transformer/op_api/lib/:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/lib:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/examples:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/tests/atbopstest:/usr/local/Ascend/cann-9.2.0/lib64:/usr/local/Ascend/cann-9.2.0/lib64/plugin/opskernel:/usr/local/Ascend/cann-9.2.0/lib64/plugin/nnengine:/usr/local/Ascend/cann-9.2.0/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/lib:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/examples:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/tests/atbopstest:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver"
+}

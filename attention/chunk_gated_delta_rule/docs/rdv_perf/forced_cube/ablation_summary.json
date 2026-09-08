@@ -1,0 +1,99 @@
+{
+  "warmup_per_case": 4,
+  "measured_per_case": 20,
+  "cases": 8,
+  "each_phase_kernel_records": 192,
+  "metric": "msprof OP Type=ChunkGatedDeltaRule Task Duration(us)",
+  "precision_method": "repository ENABLE_PROF=false golden/benchmark compare_cv, attention and final_state",
+  "precision_passed": 8,
+  "results": [
+    {
+      "test_name": "ASC-024",
+      "baseline_mean_us": 6120.4964,
+      "stream_mean_us": 19202.4549,
+      "cube_mean_us": 1761.84355,
+      "stream_cv_pct": 0.06533015475519656,
+      "cube_cv_pct": 0.05798291635646446,
+      "cube_vs_stream_speedup": 10.899069273205331,
+      "cube_vs_baseline_speedup": 3.473915944466238,
+      "cube_precision": "PASSED"
+    },
+    {
+      "test_name": "ASC-026",
+      "baseline_mean_us": 392.4764,
+      "stream_mean_us": 228.86255,
+      "cube_mean_us": 53.3087,
+      "stream_cv_pct": 1.0195080793506757,
+      "cube_cv_pct": 2.1457320932139985,
+      "cube_vs_stream_speedup": 4.293155713795309,
+      "cube_vs_baseline_speedup": 7.362332977544003,
+      "cube_precision": "PASSED"
+    },
+    {
+      "test_name": "ASC-024-FP32",
+      "baseline_mean_us": 6708.1578,
+      "stream_mean_us": 19194.61295,
+      "cube_mean_us": 1762.92815,
+      "stream_cv_pct": 0.5117822405860534,
+      "cube_cv_pct": 0.03798610018423915,
+      "cube_vs_stream_speedup": 10.887915624922092,
+      "cube_vs_baseline_speedup": 3.8051226307776638,
+      "cube_precision": "PASSED"
+    },
+    {
+      "test_name": "ASC-026-FP32",
+      "baseline_mean_us": 429.4012,
+      "stream_mean_us": 227.4583,
+      "cube_mean_us": 53.33255,
+      "stream_cv_pct": 1.9216209149825711,
+      "cube_cv_pct": 2.759704803742806,
+      "cube_vs_stream_speedup": 4.2649057658034355,
+      "cube_vs_baseline_speedup": 8.051390754801712,
+      "cube_precision": "PASSED"
+    },
+    {
+      "test_name": "ASC-024-NC",
+      "baseline_mean_us": 6114.6431999999995,
+      "stream_mean_us": 19191.03905,
+      "cube_mean_us": 1761.44535,
+      "stream_cv_pct": 0.4962963725938495,
+      "cube_cv_pct": 0.04268868555156146,
+      "cube_vs_stream_speedup": 10.895052208119882,
+      "cube_vs_baseline_speedup": 3.471378320082425,
+      "cube_precision": "PASSED"
+    },
+    {
+      "test_name": "ASC-026-NC",
+      "baseline_mean_us": 392.27119999999996,
+      "stream_mean_us": 227.7968,
+      "cube_mean_us": 53.0939,
+      "stream_cv_pct": 1.4230177005321578,
+      "cube_cv_pct": 2.614533579282901,
+      "cube_vs_stream_speedup": 4.290451445457953,
+      "cube_vs_baseline_speedup": 7.388253641190419,
+      "cube_precision": "PASSED"
+    },
+    {
+      "test_name": "ASC-024-FP32-NC",
+      "baseline_mean_us": 6720.3024,
+      "stream_mean_us": 19193.85085,
+      "cube_mean_us": 1762.47915,
+      "stream_cv_pct": 0.49213907196316986,
+      "cube_cv_pct": 0.027335102067306608,
+      "cube_vs_stream_speedup": 10.890256971266865,
+      "cube_vs_baseline_speedup": 3.8129826386882364,
+      "cube_precision": "PASSED"
+    },
+    {
+      "test_name": "ASC-026-FP32-NC",
+      "baseline_mean_us": 426.6402,
+      "stream_mean_us": 226.70035,
+      "cube_mean_us": 52.93105,
+      "stream_cv_pct": 1.7276202132219232,
+      "cube_cv_pct": 3.5753328800279602,
+      "cube_vs_stream_speedup": 4.282936952884932,
+      "cube_vs_baseline_speedup": 8.060301089814013,
+      "cube_precision": "PASSED"
+    }
+  ]
+}

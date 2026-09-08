@@ -1,0 +1,490 @@
+{
+  "date": "2026-09-08",
+  "operator": "chunk_gated_delta_rule",
+  "baseline_version": "CANN 9.2.0 built-in",
+  "old_optimized_commit": "8432b2351b719a9db294dfe1c6b91bff2bb5891b",
+  "new_optimized_commit": "6f599eb3aa317ac1f737def7b1eaaf51c1551d15",
+  "streaming_implementation_commit": "121832027ced531c2b057713b96bf5d0bc600b72",
+  "cube_candidate": "8432b2351 with UseStreamingExact=false for nonempty sequences; reprofiled in this update",
+  "device": "_NPUDeviceProperties(name='Ascend950PR_9589', total_memory=126112MB, cube_core_num=32, vector_core_num=64, uuid=0008d80a-d200-0000-0000-000000000100, L2_cache_size=128MB)",
+  "torch": "2.13.0+cpu",
+  "torch_npu": "2.13.0.rc1",
+  "seed": 20260908,
+  "mode": "eager",
+  "duration_unit": "microseconds",
+  "performance_metric": "msprof OP Type=ChunkGatedDeltaRule, Task Duration(us)",
+  "speedup_definition": "baseline_mean_us / optimized_mean_us",
+  "cv_definition": "sample standard deviation (ddof=1) / mean * 100",
+  "sampling": {
+    "new_streaming/comparison.csv": {
+      "cases": 288,
+      "warmup_per_case_per_version": 1,
+      "measured_per_case_per_version": 5
+    },
+    "cross_version/version_comparison.csv": {
+      "cases": 288,
+      "warmup_per_case_per_version": 1,
+      "measured_per_case_per_version": 5
+    },
+    "cross_version/selected_comparison.csv": {
+      "cases": 8,
+      "baseline_warmup": 1,
+      "baseline_measured": 5,
+      "old_stream_warmup": 4,
+      "old_stream_measured": 20,
+      "new_stream_warmup": 4,
+      "new_stream_measured": 20,
+      "historical_cube_warmup": 4,
+      "historical_cube_measured": 20,
+      "fresh_cube_warmup": 4,
+      "fresh_cube_measured": 20
+    },
+    "cross_version/control_comparison.csv": {
+      "cases": 10,
+      "warmup_per_case_per_version": 4,
+      "measured_per_case_per_version": 20
+    },
+    "cross_version/confirmation.csv": {
+      "cases": 2,
+      "warmup_per_case_per_version": 20,
+      "measured_per_case_per_version": 100,
+      "order": "new version, then old version"
+    },
+    "cross_version/msopprof_comparison.csv": {
+      "case": "ASC-024",
+      "matched_launches_per_version": 1,
+      "warmup": 5,
+      "metrics": "Default,Occupancy,Roofline",
+      "replay_mode": "kernel",
+      "rows_are": "6 aggregate rows: 2 versions x 3 core roles, not independent timing samples"
+    },
+    "old_streaming/comparison.csv": {
+      "cases": 288,
+      "warmup_per_case_per_version": 1,
+      "measured_per_case_per_version": 5
+    },
+    "forced_cube/comparison.csv": {
+      "cases": 8,
+      "baseline_warmup": 1,
+      "baseline_measured": 5,
+      "optimized_warmup": 4,
+      "optimized_measured": 20
+    },
+    "forced_cube/recheck_comparison.csv": {
+      "cases": 8,
+      "baseline_warmup": 1,
+      "baseline_measured": 5,
+      "optimized_warmup": 4,
+      "optimized_measured": 20
+    },
+    "old_streaming/selected_comparison.csv": {
+      "cases": 8,
+      "baseline_warmup": 1,
+      "baseline_measured": 5,
+      "optimized_warmup": 4,
+      "optimized_measured": 20
+    },
+    "new_streaming/selected_comparison.csv": {
+      "cases": 8,
+      "baseline_warmup": 1,
+      "baseline_measured": 5,
+      "optimized_warmup": 4,
+      "optimized_measured": 20
+    }
+  },
+  "precision": {
+    "precision_checked_definition": "True only for a matching optimized-version RDV case that passed independent ENABLE_PROF=false attention and finalState comparison. False means no matching pass record, not a failure. Baseline precision is not implied.",
+    "match_fields": [
+      "test_name",
+      "B",
+      "seqlen",
+      "nk",
+      "nv",
+      "dk",
+      "dv",
+      "state_dtype",
+      "has_g",
+      "contiguous",
+      "seed"
+    ],
+    "old_streaming": {
+      "comparison_cases": 288,
+      "rdv_precision_passed": 0,
+      "unverified_cases": 288,
+      "performance_run_precision_checked": false
+    },
+    "forced_cube": {
+      "comparison_cases": 8,
+      "rdv_precision_passed": 8,
+      "unverified_cases": 0,
+      "full_288_precision_tested": false,
+      "evidence": "forced_cube/precision/"
+    },
+    "new_streaming": {
+      "comparison_cases": 288,
+      "rdv_precision_passed": 8,
+      "unverified_cases": 280,
+      "supplemental_non_rdv_cases_passed": 24,
+      "full_288_precision_tested": false,
+      "evidence": "new_streaming/precision/"
+    }
+  },
+  "new_kernel_sha256": {
+    "op_impl/ai_core/tbe/kernel/ascend950/chunk_gated_delta_rule_apt/ChunkGatedDeltaRule_85019fc586a8ef14675ed7018c900c4f.o": "3a5b724e22783ae81d7026c47c06af822ae9471d4f613bbf618b3de0f7abe65b",
+    "op_impl/ai_core/tbe/kernel/ascend950/chunk_gated_delta_rule_apt/ChunkGatedDeltaRule_b8eaf39689b840ee88390d15b17183a4.o": "ff88b552dc9cd8bbacbd622d017bfba7ff8d58ba98cd54d931cb4c84fce8aba4"
+  },
+  "artifacts": {
+    "old_streaming/comparison.csv": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/comparison.csv",
+          "sha256": "33af1c1bc7a145fd9ae52c08283b9ec09eec628a5e8f8f1f0f8ba7241d17afaa"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/optimized/runtime.json",
+          "sha256": "7c3e9508b30ef4f941f25bac7ce5b0db24d814afdb31261e6b0f68c3717831d4"
+        }
+      ],
+      "transformation": "Performance fields unchanged; no matching independent RDV precision pass record found",
+      "sha256": "ab0fb1a4d2d0e956f6a3a162b01f064ed534758233758c1c9c0fc2bdb08c9e8f"
+    },
+    "new_streaming/comparison.csv": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/comparison.csv",
+          "sha256": "d0822addbe8a4fd1d207e56325e390932ae01cdce528437be4e00d2d44f6b04f"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/precision/pytest_results.csv",
+          "sha256": "ea8cd5503327623ae8e2b628bc6bc5c99b2bfca96a5158533b5567094ef3f20d"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/precision/runtime.json",
+          "sha256": "4a47f0c4741692f3d0514bffa04427d4fb4092e592ffe14f1c7c98f1f700fc42"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/precision/run.log",
+          "sha256": "3de30d24918bd918d8a2ce2b85610e087ae40c821ccea98fe471e77cec7d8cdc"
+        }
+      ],
+      "transformation": "Performance fields unchanged; precision_checked=True for 8 matching independently verified RDV cases",
+      "sha256": "10f482906584196153b3c60bb8ff23a65b8105207298c03b85ced2a36bbe2e37"
+    },
+    "forced_cube/comparison.csv": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/comparison.csv",
+          "sha256": "33af1c1bc7a145fd9ae52c08283b9ec09eec628a5e8f8f1f0f8ba7241d17afaa"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/regression_analysis/msprof_cube/case_performance.csv",
+          "sha256": "9a7775fd6d5bd6ccb02d1a639f7244a224eba932a67599269d29ab5af2714786"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/regression_analysis/msprof_cube/runtime.json",
+          "sha256": "b6a4b74958fcb9e340a074f4953b73bfdc589acce6d7ccb1cc7dfe5ac3fa0605"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/regression_analysis/msprof_cube/pytest_results.csv",
+          "sha256": "ea8cd5503327623ae8e2b628bc6bc5c99b2bfca96a5158533b5567094ef3f20d"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/regression_analysis/cube_precision/pytest_results.csv",
+          "sha256": "ea8cd5503327623ae8e2b628bc6bc5c99b2bfca96a5158533b5567094ef3f20d"
+        }
+      ],
+      "transformation": "Join CANN baseline by test_name; optimized mean/median/CV from this measured run; recompute ratios; merge independent precision passes for this version",
+      "sha256": "36caeea8cec519ef1abb941a289e4036109df79d68f53ee426a53a231c007178"
+    },
+    "forced_cube/recheck_comparison.csv": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/comparison.csv",
+          "sha256": "33af1c1bc7a145fd9ae52c08283b9ec09eec628a5e8f8f1f0f8ba7241d17afaa"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/cube_recheck/case_performance.csv",
+          "sha256": "bc95c0e6ac01b6134a76885b7d6558afc19a0eaa7395125e934332f2e1e83cb0"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/cube_recheck/runtime.json",
+          "sha256": "26e7564a765d82f0f91cabd4538fc4416d24f3e1ee93ec8f6c685dd4d9d734d8"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/cube_recheck/pytest_results.csv",
+          "sha256": "ea8cd5503327623ae8e2b628bc6bc5c99b2bfca96a5158533b5567094ef3f20d"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/regression_analysis/cube_precision/pytest_results.csv",
+          "sha256": "ea8cd5503327623ae8e2b628bc6bc5c99b2bfca96a5158533b5567094ef3f20d"
+        }
+      ],
+      "transformation": "Join CANN baseline by test_name; optimized mean/median/CV from this measured run; recompute ratios; merge independent precision passes for this version",
+      "sha256": "5c2e25478ffbb117427045b5f96eac1581c2e24801f66ddc8d4b1191fed66da2"
+    },
+    "old_streaming/selected_comparison.csv": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/comparison.csv",
+          "sha256": "33af1c1bc7a145fd9ae52c08283b9ec09eec628a5e8f8f1f0f8ba7241d17afaa"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/regression_analysis/msprof_stream_recheck/case_performance.csv",
+          "sha256": "513fcb9c01f6a60e6e82569117dad04948dc8c793b01b4161877f70513984504"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/regression_analysis/msprof_stream_recheck/runtime.json",
+          "sha256": "2eb851aab6972aed5bfb23fc30cec3436b78f7d594d0b753570fb572d70844bd"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/regression_analysis/msprof_stream_recheck/pytest_results.csv",
+          "sha256": "ea8cd5503327623ae8e2b628bc6bc5c99b2bfca96a5158533b5567094ef3f20d"
+        }
+      ],
+      "transformation": "Join CANN baseline by test_name; optimized mean/median/CV from this measured run; recompute ratios; merge independent precision passes for this version",
+      "sha256": "95ff5734a4640d8393401e1542dd504f221c30aad176138674373e59f96d229d"
+    },
+    "new_streaming/selected_comparison.csv": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/comparison.csv",
+          "sha256": "33af1c1bc7a145fd9ae52c08283b9ec09eec628a5e8f8f1f0f8ba7241d17afaa"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/selected/case_performance.csv",
+          "sha256": "4f74f1eac85bd2d53ce96de7eacf4fb979084ba3415056b70de1b25ae4cfa4c3"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/selected/runtime.json",
+          "sha256": "a31a66ba6404426cb45eb7e72703348ce0e2b2953046e2972dfed6930971c531"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/selected/pytest_results.csv",
+          "sha256": "ea8cd5503327623ae8e2b628bc6bc5c99b2bfca96a5158533b5567094ef3f20d"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/precision/pytest_results.csv",
+          "sha256": "ea8cd5503327623ae8e2b628bc6bc5c99b2bfca96a5158533b5567094ef3f20d"
+        }
+      ],
+      "transformation": "Join CANN baseline by test_name; optimized mean/median/CV from this measured run; recompute ratios; merge independent precision passes for this version",
+      "sha256": "deb9b27143661e9c292b7dccf4a9452917533f66982ca2469dd3629ff7799cd6"
+    },
+    "old_streaming/summary.json": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/summary.json",
+          "sha256": "11cfbab269eb7b0ea98435d2073ae3af0884566db9c8e3620fb80188e8994370"
+        }
+      ],
+      "transformation": "Unmodified copy",
+      "sha256": "11cfbab269eb7b0ea98435d2073ae3af0884566db9c8e3620fb80188e8994370"
+    },
+    "old_streaming/regressions.csv": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/regressions.csv",
+          "sha256": "7d4c174f2124d4f4407cbcd5b7b264cd8143378a98e10a1bea29b55b55b3bfa8"
+        }
+      ],
+      "transformation": "CRLF to LF only",
+      "sha256": "f0084e7737a9d2fdcea39d9860eff6321641b8a2768d664f3afeab0d48b1acc0"
+    },
+    "new_streaming/summary.json": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/summary.json",
+          "sha256": "2a9407fac6a3a64b0c07619065148bc0d2cf06dcc2509e92e754ea34dbfeac8b"
+        }
+      ],
+      "transformation": "Unmodified copy",
+      "sha256": "2a9407fac6a3a64b0c07619065148bc0d2cf06dcc2509e92e754ea34dbfeac8b"
+    },
+    "new_streaming/boundary_results.json": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/boundary_results.json",
+          "sha256": "45e7847473c1ffcb24cb458911b3a635aa576c36ed1420b12cfab014b8b8f4e3"
+        }
+      ],
+      "transformation": "Unmodified copy",
+      "sha256": "45e7847473c1ffcb24cb458911b3a635aa576c36ed1420b12cfab014b8b8f4e3"
+    },
+    "forced_cube/ablation_comparison.csv": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/regression_analysis/ablation_comparison.csv",
+          "sha256": "54cf82c632b912f7efa364fedf017753f12591de1b50f90c6a276ee2dd8b27ac"
+        }
+      ],
+      "transformation": "CRLF to LF only",
+      "sha256": "cca109fc4021b9425b4517ca5e3d352257fbb6da2fdbe41f6b764b9aeb18744e"
+    },
+    "forced_cube/ablation_summary.json": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/regression_analysis/ablation_summary.json",
+          "sha256": "7c9de022424946c687062570b3966e6f6c8182c46a3484484485b79c52d0b26c"
+        }
+      ],
+      "transformation": "Unmodified copy",
+      "sha256": "7c9de022424946c687062570b3966e6f6c8182c46a3484484485b79c52d0b26c"
+    },
+    "forced_cube/force_cube.patch": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/regression_analysis/force_cube.patch",
+          "sha256": "145fec099f9cb0a058f4cb8d808d883d9cfbffdbe0bd63482b470b161440e43d"
+        }
+      ],
+      "transformation": "Same change as original force_cube.patch; regenerated with one context line to avoid whitespace-only context in the archived patch",
+      "sha256": "7b19b5d3728da37c03e5311de7155648d39d2161959e9a209d9a6f3ef107e4a9"
+    },
+    "cross_version/version_comparison.csv": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/full_comparison.csv",
+          "sha256": "b9456a8b3e461a3248dffda03e8d4d7c932955bf869d0c2185d9f50a42440f99"
+        }
+      ],
+      "transformation": "CRLF to LF only",
+      "sha256": "9dfeb9be9d690331ad67a8afb23316e4f264fca321648bddf3053b417682846e"
+    },
+    "cross_version/selected_comparison.csv": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/selected_comparison.csv",
+          "sha256": "4b132caaed1c0093fdf9010b5d3c2412812ccc160743fd862f7d2b081086f992"
+        }
+      ],
+      "transformation": "CRLF to LF only",
+      "sha256": "2cb3319463fe85a33fe1e7e430f3fc413f593aa18f5dc5ab13409b04838808eb"
+    },
+    "cross_version/control_comparison.csv": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/control_comparison.csv",
+          "sha256": "6629c469c6aeaa3667fa07fb226f28bf04b46140cd665571bcedbe06a3f1966a"
+        }
+      ],
+      "transformation": "CRLF to LF only",
+      "sha256": "fdba9cc6f5aae0ea178401b175aa11603d120757f6dbb231a5092b3a2a031892"
+    },
+    "cross_version/confirmation.csv": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/confirmation.csv",
+          "sha256": "4613cef6fdcef8d932ef20c0f61519a16f6ee9ca9ef965540119a2d921c873a3"
+        }
+      ],
+      "transformation": "CRLF to LF only",
+      "sha256": "d462dd166431679a226c5ac33744058e7fe3488de2f72dfce7e233776a5929f4"
+    },
+    "forced_cube/precision/pytest_results.csv": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/regression_analysis/cube_precision/pytest_results.csv",
+          "sha256": "ea8cd5503327623ae8e2b628bc6bc5c99b2bfca96a5158533b5567094ef3f20d"
+        }
+      ],
+      "transformation": "CRLF to LF only",
+      "sha256": "5aff5a5c839f2eebef36cef24e42a330b2ef74954cb78aac70816325274b648a"
+    },
+    "forced_cube/precision/runtime.json": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/regression_analysis/cube_precision/runtime.json",
+          "sha256": "49005c84b9b935da42694ac41732bf675e873a6b3b5f5f3ca009973e7a97957c"
+        }
+      ],
+      "transformation": "Unmodified copy",
+      "sha256": "49005c84b9b935da42694ac41732bf675e873a6b3b5f5f3ca009973e7a97957c"
+    },
+    "forced_cube/precision/pytest_exit_code.txt": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/regression_analysis/cube_precision/pytest_exit_code.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ],
+      "transformation": "Unmodified copy",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "new_streaming/precision/pytest_results.csv": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/precision/pytest_results.csv",
+          "sha256": "ea8cd5503327623ae8e2b628bc6bc5c99b2bfca96a5158533b5567094ef3f20d"
+        }
+      ],
+      "transformation": "CRLF to LF only",
+      "sha256": "5aff5a5c839f2eebef36cef24e42a330b2ef74954cb78aac70816325274b648a"
+    },
+    "new_streaming/precision/runtime.json": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/precision/runtime.json",
+          "sha256": "4a47f0c4741692f3d0514bffa04427d4fb4092e592ffe14f1c7c98f1f700fc42"
+        }
+      ],
+      "transformation": "Unmodified copy",
+      "sha256": "4a47f0c4741692f3d0514bffa04427d4fb4092e592ffe14f1c7c98f1f700fc42"
+    },
+    "new_streaming/precision/pytest_exit_code.txt": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/precision/pytest_exit_code.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      ],
+      "transformation": "Unmodified copy",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "cross_version/msopprof_comparison.csv": {
+      "source_directories": [
+        "tests/pytest/output/rdv_perf_20260908/regression_analysis/msopprof_hooked_stream/prof/OPPROF_20260908054854_PKRLEGEBGFNZRNPH",
+        "tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/msopprof_clean/prof/OPPROF_20260908070335_IWOHOBZHSLVWWNJA"
+      ],
+      "aggregation": "Arithmetic mean over 32 cores of each role; one profiled kernel per version",
+      "sha256": "86591fbf3c5ced61e2e7412075b25cc5ade3c801f84a91b22ccade069577d45d"
+    },
+    "forced_cube/summary.json": {
+      "sources": [
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/regression_analysis/msprof_cube/case_performance.csv",
+          "sha256": "9a7775fd6d5bd6ccb02d1a639f7244a224eba932a67599269d29ab5af2714786"
+        },
+        {
+          "path": "tests/pytest/output/rdv_perf_20260908/comparison.csv",
+          "sha256": "33af1c1bc7a145fd9ae52c08283b9ec09eec628a5e8f8f1f0f8ba7241d17afaa"
+        }
+      ],
+      "transformation": "Aggregate forced_cube/comparison.csv; no extrapolation to 288 cases",
+      "sha256": "f6995613b8a586d7d8e9aaff8d2e9a4990539636fb5f4cbce15589ae4e2e6e0e"
+    }
+  },
+  "csv_format": {
+    "encoding": "UTF-8 with BOM",
+    "line_endings": "LF",
+    "normalization": "LF line endings; original performance values retained. Derived comparisons and merged precision flags are documented per artifact."
+  },
+  "versions": {
+    "old_streaming": {
+      "commit": "8432b2351b719a9db294dfe1c6b91bff2bb5891b",
+      "comparison": "old_streaming/comparison.csv",
+      "scope": "288 measured RDV cases with original automatic streaming/Cube routing"
+    },
+    "forced_cube": {
+      "commit": "8432b2351b719a9db294dfe1c6b91bff2bb5891b",
+      "patch": "forced_cube/force_cube.patch",
+      "comparison": "forced_cube/comparison.csv",
+      "scope": "8 independently measured RDV cases; nonempty sequences forced to fused Cube",
+      "repeat": "forced_cube/recheck_comparison.csv"
+    },
+    "new_streaming": {
+      "commit": "6f599eb3aa317ac1f737def7b1eaaf51c1551d15",
+      "comparison": "new_streaming/comparison.csv",
+      "scope": "288 measured RDV cases with updated streaming and original automatic routing"
+    }
+  }
+}
