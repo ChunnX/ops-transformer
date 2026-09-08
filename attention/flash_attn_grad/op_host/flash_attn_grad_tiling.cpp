@@ -16,6 +16,7 @@
 #include "flash_attn_grad_tiling.h"
 
 #include <cmath>
+#include <cstddef>
 
 #include "flash_attn_grad_tiling_check.h"
 #include "flash_attn_grad_tiling_info.h"
@@ -26,9 +27,33 @@
 namespace optiling {
 namespace {
 
-void CommitTilingData(gert::TilingContext *context, const FagParsedInfo &info)
+// TilingData 有两份互不相干的声明，谁都不引用谁：
+//   1. op_kernel/flash_attn_grad.py 的 FlashAttnGradTilingData dataclass 是权威，
+//      codegen 按它的声明顺序生成 FlashAttnGradTilingData_tiling.h（本文件强制包含），
+//      也就是下面真正写入的那份内存布局；
+//   2. op_host/flash_attn_grad_tiling.h 的 FlashAttnGradTilingDataTmp 是手写的，
+//      只为 REGISTER_TILING_DATA_CLASS 让框架知道该分配多大。
+// 两份漂移不会有任何编译或运行报错，只会让 kernel 读到整体错位的字段。下面把
+// 布局钉死：改了 py 侧字段就会在这里断编译，逼着同步改 Tmp 和这些数字。
+// 注意 scaleValue 是唯一的 4 字节字段，它后面有 4 字节填充 —— 框架的
+// CheckAlignAndGenPlaceHolder 也会插同样的填充，两边才对得上。
+static_assert(sizeof(FlashAttnGradTilingData) == 136,
+              "TilingData layout changed; update FlashAttnGradTilingDataTmp in flash_attn_grad_tiling.h too.");
+static_assert(offsetof(FlashAttnGradTilingData, scaleValue) == 56, "scaleValue moved; re-check the 4-byte padding.");
+static_assert(offsetof(FlashAttnGradTilingData, gSize) == 64, "gSize moved; re-check the padding after scaleValue.");
+static_assert(offsetof(FlashAttnGradTilingData, coefN2) == 128, "trailing field moved; a field was added or removed.");
+
+ge::graphStatus CommitTilingData(gert::TilingContext *context, const FagParsedInfo &info)
 {
     FlashAttnGradTilingData *tilingData = context->GetTilingData<FlashAttnGradTilingData>();
+    // GetTilingData 在 capacity < sizeof(T) 时返回 nullptr，而 capacity 来自上面
+    // 说的 Tmp。所以这里判空等价于「两份声明已经漂移」，不判就是段错误。
+    OP_CHECK_IF(tilingData == nullptr,
+                OP_LOGE(context->GetNodeName(),
+                        "tiling data buffer is smaller than %zu bytes; FlashAttnGradTilingDataTmp in "
+                        "flash_attn_grad_tiling.h is out of sync with the pypto kernel's tiling data.",
+                        sizeof(FlashAttnGradTilingData)),
+                return ge::GRAPH_FAILED);
     tilingData->b = info.b;
     tilingData->s1 = info.s1;
     tilingData->s2 = info.s2;
@@ -46,9 +71,10 @@ void CommitTilingData(gert::TilingContext *context, const FagParsedInfo &info)
     tilingData->coefB0KV = info.coefB0KV;
     tilingData->coefN0 = info.coefN0;
     tilingData->coefN2 = info.coefN2;
+    return ge::GRAPH_SUCCESS;
 }
 
-void CommitPlan(gert::TilingContext *context, const FagParsedInfo &info, const FagTilingPlan &plan)
+ge::graphStatus CommitPlan(gert::TilingContext *context, const FagParsedInfo &info, const FagTilingPlan &plan)
 {
     context->SetBlockDim(plan.schedule.blockDim);
     // BN2GS1S2 的 pre/post 用 sync_all，启动核数不是满片时必须 batch mode，
@@ -57,9 +83,13 @@ void CommitPlan(gert::TilingContext *context, const FagParsedInfo &info, const F
         context->SetScheduleMode(1);
     }
 
-    CommitTilingData(context, info);
+    const ge::graphStatus ret = CommitTilingData(context, info);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
     context->SetTilingKey(plan.tilingKey);
     context->GetWorkspaceSizes(1)[0] = plan.workspace.totalSize;
+    return ge::GRAPH_SUCCESS;
 }
 
 void LogPlan(gert::TilingContext *context, const FagParsedInfo &info, const FagTilingPlan &plan,
@@ -112,7 +142,11 @@ ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
         return ret;
     }
 
-    CommitPlan(context, info, plan);
+    ret = CommitPlan(context, info, plan);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
+
     LogPlan(context, info, plan, trace);
     return ge::GRAPH_SUCCESS;
 }

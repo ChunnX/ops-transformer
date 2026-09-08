@@ -19,6 +19,11 @@
 
 namespace optiling {
 
+// 这份声明只用于 REGISTER_TILING_DATA_CLASS，让框架知道 tiling data 该分配多大。
+// host 实际写入的是 codegen 出的 FlashAttnGradTilingData（由 op_kernel/flash_attn_grad.py
+// 的 dataclass 生成），两者没有任何编译期关联。字段增删必须两边同步 ——
+// flash_attn_grad_tiling.cpp 里有一组 static_assert 钉住了 codegen 侧的布局，
+// 只改 py 侧会在那里断编译；只改这里则由同文件的 nullptr 检查在运行时拦住。
 BEGIN_TILING_DATA_DEF(FlashAttnGradTilingDataTmp)
 TILING_DATA_FIELD_DEF(int64_t, b)
 TILING_DATA_FIELD_DEF(int64_t, s1)
