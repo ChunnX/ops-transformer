@@ -455,10 +455,9 @@ aclnnStatus ParamsCheckSliA5(const aclTensor *cuSeqlensQOptional, const aclTenso
                              const aclTensor *metadata, uint32_t aicCoreNum, uint32_t aivCoreNum,
                              const std::string &socVersion)
 {
-    auto ret =
-        CheckSingleParamSli(batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, headDim, topk, layoutQOptional,
-                            layoutKOptional, maskMode, cmpRatio, aicCoreNum, aivCoreNum, socVersion,
-                            SLI_TOPK_UPPER_BOUND_A5);
+    auto ret = CheckSingleParamSli(batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, headDim, topk,
+                                   layoutQOptional, layoutKOptional, maskMode, cmpRatio, aicCoreNum, aivCoreNum,
+                                   socVersion, SLI_TOPK_UPPER_BOUND_A5);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     ret = CheckExistenceSli(maskMode, cmpRatio, cuSeqlensQOptional, cuSeqlensKOptional, cmpResidualKOptional,
