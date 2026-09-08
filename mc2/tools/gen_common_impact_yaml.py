@@ -80,7 +80,7 @@ def fixpoint(seeds):
                 continue
             new = set(imp[r])
             for rf in referers[r]:
-                if rf in targets and rf not in seeds:
+                if rf in targets:
                     if imp[rf] - new:
                         new |= imp[rf]
                         changed = True

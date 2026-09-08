@@ -1,5 +1,5 @@
 # mc2/common 头文件影响范围映射表 - A3 (ascend910_93)
-# 生成: 2026-09-08  基线commit: 040b62cbe (clean)
+# 生成: 2026-09-08  基线commit: 8d32a5161 (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(common/开头), 与pr_files.sh输出中mc2/后的段落一致
 #
@@ -37,25 +37,45 @@ common/op_graph/mc2_gen_task_ops_utils.h:
     - batch_mat_mul_reduce_scatter_allto_all
     - distribute_barrier
     - ffn_to_attention
+    - grouped_mat_mul_all_reduce
     - grouped_mat_mul_allto_allv
     - matmul_allto_all
     - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
+    - mega_moe
     - moe_distribute_combine
     - moe_distribute_combine_add_rms_norm
     - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 common/op_graph/mc2_gen_task_ops_utils_arch35.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
     - grouped_mat_mul_allto_allv
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
     - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 common/op_graph/mc2_moe_gen_task_ops_utils.h:
   ops:
     - allto_all_all_gather_batch_mat_mul
@@ -283,6 +303,7 @@ common/op_host/op_tiling/tiling_key.h:
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
     - moe_distribute_dispatch_v3
+    - moe_update_expert
 common/op_kernel/apace/basic/fragment_tensor/fragment_tensor.h:
   ops: []
 common/op_kernel/apace/basic/fragment_tensor/fragment_tensor_api.h:
@@ -303,7 +324,29 @@ common/op_kernel/apace/core/aiv_comm/collective_comm_base.h:
   ops: []
 common/op_kernel/apace/core/aiv_comm/collective_comm_context.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 common/op_kernel/apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_impl.h:
   ops: []
 common/op_kernel/apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_tiling_data.h:
@@ -344,6 +387,31 @@ common/op_kernel/apace/utils/apace_common_utils.h:
 common/op_kernel/apace/utils/apace_constant.h:
   ops:
     - allto_all_matmul
+common/op_kernel/apace/utils/comm_channel_builder.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
+    - grouped_mat_mul_all_reduce
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_update_expert
 common/op_kernel/attention_ffn_context.h:
   ops: []
 common/op_kernel/gm_ub_gm_copy.h:
@@ -711,13 +779,21 @@ common/utils/mc2_moe_utils.h:
     - grouped_mat_mul_allto_allv
 common/utils/mc2_platform_info.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
+    - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
+    - attention_to_ffn
+    - batch_mat_mul_reduce_scatter_allto_all
+    - distribute_barrier
+    - ffn_to_attention
     - grouped_mat_mul_allto_allv
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
     - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
