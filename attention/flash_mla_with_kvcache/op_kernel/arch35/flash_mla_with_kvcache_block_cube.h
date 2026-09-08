@@ -334,6 +334,150 @@ public:
         Fixpipe<T, T, FIXPIPE_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
     }
 
+    // ================== 特化 LoadData (310 分支 LoadData2DParamsV2, 常量折叠) ==================
+    // mm1 L0A: MK, isLeftTranspose=false, realM=0; kSplit=tileK, mSplit=actM
+    __aicore__ inline void Mm1LoadL0A(LocalTensor<Q_T> &l0a, const LocalTensor<Q_T> &l1, uint64_t offset,
+                                      uint32_t tileK, uint32_t actM)
+    {
+        LoadData2DParamsV2 p;
+        p.mStartPosition = 0;
+        p.kStartPosition = 0;
+        p.ifTranspose = false;
+        p.mStep = ((actM + 15) >> 4 << 4) >> 4;
+        p.kStep = ((tileK + 15) >> 4 << 4) >> 4;
+        p.srcStride = p.mStep;
+        p.dstStride = p.mStep;
+        LoadData(l0a, l1[offset], p);
+    }
+    // mm1 L0B: KN, isRightTranspose=true → ifTranspose=false; kSplit=tileK, nSplit=actS2
+    __aicore__ inline void Mm1LoadL0B(LocalTensor<KV_T> &l0b, const LocalTensor<KV_T> &l1, uint64_t offset,
+                                      uint32_t tileK, uint32_t actS2)
+    {
+        LoadData2DParamsV2 p;
+        p.mStartPosition = 0;
+        p.kStartPosition = 0;
+        p.ifTranspose = false;
+        p.mStep = ((actS2 + 15) >> 4 << 4) >> 4;
+        p.kStep = ((tileK + 15) >> 4 << 4) >> 4;
+        p.srcStride = p.mStep;
+        p.dstStride = p.mStep;
+        LoadData(l0b, l1[offset], p);
+    }
+    // mm2 L0A: MK, isLeftTranspose=false, realM≠0 → mStep 用 realM; kSplit=actS2, mSplit=64
+    __aicore__ inline void Mm2LoadL0A(LocalTensor<KV_T> &l0a, const LocalTensor<KV_T> &l1, uint32_t actS2,
+                                      uint32_t realM)
+    {
+        LoadData2DParamsV2 p;
+        p.mStartPosition = 0;
+        p.kStartPosition = 0;
+        p.ifTranspose = false;
+        // 注意顺序：srcStride 用覆盖前的 mStep（mSplitSize=64 → 4），dstStride 用覆盖后的 mStep(realM)
+        p.mStep = ((mBaseSize + 15) >> 4 << 4) >> 4;
+        p.kStep = ((actS2 + 15) >> 4 << 4) >> 4;
+        p.srcStride = p.mStep;
+        p.mStep = ((realM + 15) >> 4 << 4) >> 4;
+        p.dstStride = p.mStep;
+        LoadData(l0a, l1[0], p);
+    }
+    // mm2 L0B: KN, isRightTranspose=false → ifTranspose=true; kSplit=actS2, nSplit=128(常量)
+    __aicore__ inline void Mm2LoadL0B(LocalTensor<KV_T> &l0b, const LocalTensor<KV_T> &l1, uint64_t offset,
+                                      uint32_t actS2)
+    {
+        constexpr uint32_t nSplit = 128;
+        LoadData2DParamsV2 p;
+        p.mStartPosition = 0;
+        p.kStartPosition = 0;
+        p.ifTranspose = true;
+        p.mStep = ((actS2 + 15) >> 4 << 4) >> 4;
+        p.kStep = ((nSplit + 15) >> 4 << 4) >> 4;
+        p.srcStride = p.mStep;
+        p.dstStride = (nSplit + 15) >> 4;
+        LoadData(l0b, l1[offset], p);
+    }
+
+    // ================== 特化 MatmulK（mm1: Q·K^T, K=576 固定, 4×112+128, M=actM, N=actS2）==================
+    // 前 4 轮 112 均匀，最后轮 128 全块：mm1 最后一轮 CUBE 计算量最大（64×128×128），
+    // 充分覆盖 mm2 启动的 MTE1 搬运。576=112×4+128，总计算量不变。
+    __aicore__ inline void Mm1MatmulK(const LocalTensor<Q_T> &qL1Tensor, const LocalTensor<KV_T> &kvpL1Tensor,
+                                      const LocalTensor<MM_T> &l0CSubTensor, uint32_t actM, uint32_t actS2)
+    {
+        constexpr uint32_t kLoops = 5;
+        const uint64_t alignM = (actM + 15) >> 4 << 4;
+        const uint64_t alignN = (actS2 + 15) >> 4 << 4;
+        uint64_t l1AOff = 0;
+        uint64_t l1BOff = 0;
+
+        for (uint32_t k = 0; k < kLoops; k++) {
+            uint32_t tileK = (k == (kLoops - 1)) ? 128 : 112;
+            auto l0aBuffer = mmL0APolicy_.Get();
+            l0aBuffer.template Wait<HardEvent::M_MTE1>();
+            LocalTensor<Q_T> l0aTensor = l0aBuffer.template GetTensor<Q_T>();
+
+            auto l0bBuffer = mmL0BPolicy_.Get();
+            l0bBuffer.template Wait<HardEvent::M_MTE1>();
+            LocalTensor<KV_T> l0bTensor = l0bBuffer.template GetTensor<KV_T>();
+            Mm1LoadL0B(l0bTensor, kvpL1Tensor, l1BOff, tileK, actS2);
+            Mm1LoadL0A(l0aTensor, qL1Tensor, l1AOff, tileK, actM);
+
+            l0bBuffer.template Set<HardEvent::MTE1_M>();
+            l0bBuffer.template Wait<HardEvent::MTE1_M>();
+
+            MmadParams mmadParams;
+            mmadParams.m = actM;
+            if (mmadParams.m == 1) { mmadParams.m = 16; }
+            mmadParams.n = actS2;
+            mmadParams.k = tileK;
+            mmadParams.cmatrixInitVal = (k == 0);
+            mmadParams.cmatrixSource = false;
+            mmadParams.unitFlag = 0;
+            Mmad(l0CSubTensor, l0aTensor, l0bTensor, mmadParams);
+
+            l1AOff += tileK * alignM;
+            l1BOff += tileK * alignN;
+
+            l0aBuffer.template Set<HardEvent::M_MTE1>();
+            l0bBuffer.template Set<HardEvent::M_MTE1>();
+        }
+    }
+
+    // ================== 特化 MatmulN（mm2: P·V, N=512 固定, 4×128, M=64, K=actS2）==================
+    __aicore__ inline void Mm2MatmulN(const LocalTensor<KV_T> &pL1Tensor, const LocalTensor<KV_T> &kvpL1Tensor,
+                                      const LocalTensor<MM_T> &l0CSubTensor, uint32_t realM, uint32_t actS2)
+    {
+        constexpr uint32_t nLoops = 4;   // (512+128-1)/128
+        const uint64_t l0COffset = ((realM + 15) >> 4 << 4) * 128; // align16(M)*baseN, runtime once
+        const uint64_t l1BOffset = ((actS2 + 15) >> 4 << 4) * 128; // align16(K)*baseN, runtime once
+
+        // L0A 加载一次（P 矩阵，MK 布局，M×K=64×actS2，但 mmad 只用 realM 行）
+        auto l0aBuffer = mmL0APolicy_.Get();
+        l0aBuffer.template Wait<HardEvent::M_MTE1>();
+        LocalTensor<KV_T> l0aTensor = l0aBuffer.template GetTensor<KV_T>();
+        Mm2LoadL0A(l0aTensor, pL1Tensor, actS2, realM);
+
+        for (uint32_t n = 0; n < nLoops; n++) {
+            auto l0bBuffer = mmL0BPolicy_.Get();
+            l0bBuffer.template Wait<HardEvent::M_MTE1>();
+            LocalTensor<KV_T> l0bTensor = l0bBuffer.template GetTensor<KV_T>();
+            Mm2LoadL0B(l0bTensor, kvpL1Tensor, n * l1BOffset, actS2);
+
+            l0bBuffer.template Set<HardEvent::MTE1_M>();
+            l0bBuffer.template Wait<HardEvent::MTE1_M>();
+
+            MmadParams mmadParams;
+            mmadParams.m = realM;
+            if (mmadParams.m == 1) { mmadParams.m = 16; }
+            mmadParams.n = 128;
+            mmadParams.k = actS2;
+            mmadParams.cmatrixInitVal = true;
+            mmadParams.cmatrixSource = false;
+            mmadParams.unitFlag = 0;
+            Mmad(l0CSubTensor[n * l0COffset], l0aTensor, l0bTensor, mmadParams);
+
+            l0bBuffer.template Set<HardEvent::M_MTE1>();
+        }
+        l0aBuffer.template Set<HardEvent::M_MTE1>();
+    }
+
     __aicore__ inline void IterateBmm1(FlashMlaWithKvcacheRunInfoX &runInfo)
     {
         uint32_t mm1ResUbBufId = runInfo.loop % UB_MM1_RES_BUFCNT;
@@ -359,11 +503,8 @@ public:
             Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
 
-            MMParam mmParam = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
-                                          (uint32_t)(constInfo.dSize + constInfo.dSizeRope), false, true);
-
-            MatmulK<Q_T, KV_T, T, mBaseSize, s2BaseSize, 128, ABLayout::MK, ABLayout::KN>(
-                qL1Tensor, kvpL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, mmParam);
+            Mm1MatmulK(qL1Tensor, kvpL1Tensor, l0CSubTensor, (uint32_t)runInfo.actMSize,
+                       (uint32_t)runInfo.actSingleLoopS2Size);
 
             Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
             Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
@@ -414,14 +555,10 @@ public:
             Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
             uint64_t VDsize = (uint32_t)FA_T::dVBaseSize;
-            MMParam param =
-                MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo.dSizeV, (uint32_t)runInfo.actSingleLoopS2Size,
-                            false, false, true, true, 0, (uint32_t)runInfo.actMSize);
-
             LocalTensor<KV_T> kvpL1Tensor =
                 l1KvpBuffers_[kvpL1BufId * L1_KVP_BUF_BYTES].template ReinterpretCast<KV_T>();
-            MatmulN<Q_T, KV_T, T, mBaseSize, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
-                kvpL1Tensor[s2BaseSize * VDsize], kvpL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
+            Mm2MatmulN(kvpL1Tensor[s2BaseSize * VDsize], kvpL1Tensor, l0CSubTensor, (uint32_t)runInfo.actMSize,
+                       (uint32_t)runInfo.actSingleLoopS2Size);
 
             Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
             Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
