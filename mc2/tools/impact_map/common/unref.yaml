@@ -1,5 +1,5 @@
 # mc2/common 零引用文件清单 (与芯片无关, 全芯片共用)
-# 生成: 2026-09-08  基线commit: 8d32a5161 (clean)
+# 生成: 2026-09-08  基线commit: 54ef6dfcc (clean)
 #
 # 语义: 下列头文件无任何算子可达的引用(无人直接/间接include),
 #       改动不影响mc2算子编译; .cpp的判定见映射表头部规则(同名.h在unref=死代码);
@@ -14,10 +14,14 @@ common/op_kernel/all_gather_matmul_tiling.h:
 common/op_kernel/apace/block/epilogue/block_epilogue_all_to_all.h:
 common/op_kernel/apace/block/mmad/qmm_mx_block_mmad_tile_k_wait_flag.h:
 common/op_kernel/apace/kernel/fusions/all_gather_quant_matmul/all_gather_quant_matmul_ubmem_impl.h:
+common/op_kernel/apace/kernel/fusions/quant_matmul_all_to_all/matmul_all_to_all_tiling_data.h:
+common/op_kernel/apace/kernel/fusions/quant_matmul_all_to_all/mx_quant_matmul_all_to_all_urma_impl.h:
 common/op_kernel/apace/kernel/fusions/quant_matmul_reduce_scatter/quant_matmul_reduce_scatter_impl.h:
+common/op_kernel/apace/kernel/matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel_tpn.h:
 common/op_kernel/apace/kernel/matmul/quant_batch_matmul/kernel_qbmm_mx_mix.h:
 common/op_kernel/apace/tests/st/all_gather_quant_matmul/ubmem/src/apace_agm_kernel_launcher.h:
 common/op_kernel/apace/tests/st/all_to_all_quant_matmul/src/apace_a2a_kernel_launcher.h:
+common/op_kernel/apace/tests/st/quant_matmul_all_to_all/src/kernel_launcher.h:
 common/op_kernel/apace/tests/st/quant_matmul_reduce_scatter/ubmem/src/apace_qmrs_kernel_launcher.h:
 common/op_kernel/apace/tests/st/utils/apace_st_utils.h:
 common/op_kernel/apace/tests/st/utils/root_info_exchanger.h:

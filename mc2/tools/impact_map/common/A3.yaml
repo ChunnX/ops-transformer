@@ -1,5 +1,5 @@
 # mc2/common 头文件影响范围映射表 - A3 (ascend910_93)
-# 生成: 2026-09-08  基线commit: 8d32a5161 (clean)
+# 生成: 2026-09-08  基线commit: 54ef6dfcc (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(common/开头), 与pr_files.sh输出中mc2/后的段落一致
 #
