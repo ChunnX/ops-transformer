@@ -226,7 +226,7 @@ aclnnStatus aclnnBSASelectBlockMask(
     <td>postBlockShape（aclIntArray*）</td>
     <td>输入</td>
     <td>二次池化块形状数组，指定Softmax后二次pooling的块分组大小（block单位）。</td>
-    <td><ul><li>可选输入：传入`[postBlockShapeX, postBlockShapeY]`时启用二次pooling，TopK在粗粒度pooled_score上选择，输出mask为粗粒度[B, N, postXBlocks, postYBlocks]（二次pooling拆分语义，直接输出选择结果，无展开）。</li><li>传入nullptr时禁用二次pooling（向后兼容），TopK直接在attn_score上选择，输出mask为细粒度[B, N, Xblocks, Yblocks]。</li><li>postBlockShapeX/Y为8的倍数，表示block分组数。</li></ul></td>
+    <td><ul><li>可选输入：传入`[postBlockShapeX, postBlockShapeY]`时启用二次pooling，TopK在粗粒度pooled_score上选择，输出mask为粗粒度[B, N, postXBlocks, postYBlocks]（二次pooling拆分语义，直接输出选择结果，无展开）。</li><li>传入nullptr时禁用二次pooling（向后兼容），TopK直接在attn_score上选择，输出mask为细粒度[B, N, Xblocks, Yblocks]。</li><li>postBlockShapeX/postBlockShapeY为8的倍数，表示block分组数。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>1</td>
@@ -450,7 +450,7 @@ aclnnStatus aclnnBSASelectBlockMask(
 - query和key压缩后，query和key对应的Xblocks和Yblocks需满足Xblocks * Yblocks > 1；postBlockShape非null时，BNSD场景进一步要求postXBlocks * postYBlocks > 1（粗粒度网格坍缩为1×1时无TopK选择语义，host侧拒绝；TND变长场景允许）。
 - query和key的数据类型必须一致，仅支持FLOAT16和BFLOAT16。
 - blockSparseMaskOut数据类型为INT8（二值：0或1）。
-- postBlockShape为可选输入，传入nullptr时禁用二次pooling（向后兼容）；传入`[postBlockShapeX, postBlockShapeY]`时启用，postBlockShapeX/Y为8的倍数，表示block分组数。
+- postBlockShape为可选输入，传入nullptr时禁用二次pooling（向后兼容）；传入`[postBlockShapeX, postBlockShapeY]`时启用，postBlockShapeX/postBlockShapeY为8的倍数，表示block分组数。
 - actualBlockLenQuery / actualBlockLenKey若非null，每个元素取值范围 [0, blockShapeX] / [0, blockShapeY]；为null时完整压缩。
 - 不涉及确定性计算。
 
