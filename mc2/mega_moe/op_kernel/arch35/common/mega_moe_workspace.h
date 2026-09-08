@@ -59,6 +59,8 @@ struct WorkspaceLayout {
     int64_t dispatchRemoteReadyFlagSnapshotOffset{
         INVALID_WORKSPACE_OFFSET}; // 各逻辑核的固定 256-token 远端就绪标志窗口
 
+    int64_t routesSubgroupSyncOffset{INVALID_WORKSPACE_OFFSET}; // Per-Block AIV1 arrival phase.
+
     // 连续 flag 通知区（自 flagActivationToGmm2Offset 起）的 int32 元素总数。
     // 在分配处顺手记账，保证 ResetSyncStatus 的清零范围与分配范围恒同源。
     int64_t flagResetElementCount{0};
@@ -180,6 +182,10 @@ private:
             workspaceSize +=
                 SIZE_INT_32 * tokenGroupCount * static_cast<int64_t>(tilingData->sharedExpertNum) * INT_CACHELINE;
         }
+        if (tilingData->sharedExpertNum > 0 && tilingData->topoType == TOPO_TYPE_MTE) {
+            routesSubgroupSyncOffset = workspaceSize;
+            workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
+        }
         flagResetElementCount = (workspaceSize - flagRegionBeginOffset) / SIZE_INT_32;
 
         // A8W4 / Combine 量化路径的条件 workspace 分配。
@@ -290,6 +296,7 @@ private:
 };
 
 struct WorkspaceInfo {
+    GM_ADDR routesSubgroupSyncPtr{nullptr};
     GM_ADDR dispatchRevDataPtr{nullptr};
     GM_ADDR dispatchRevScalePtr{nullptr};
     GM_ADDR dispatchRevWeightsPtr{nullptr};
@@ -335,6 +342,7 @@ private:
 public:
     HOST_DEVICE void Bind(GM_ADDR base, const WorkspaceLayout &layout)
     {
+        routesSubgroupSyncPtr = ResolveWorkspaceAddress(base, layout.routesSubgroupSyncOffset);
         dispatchRevDataPtr = ResolveWorkspaceAddress(base, layout.dispatchRevDataOffset);
         dispatchRevScalePtr = ResolveWorkspaceAddress(base, layout.dispatchRevScaleOffset);
         dispatchRevWeightsPtr = ResolveWorkspaceAddress(base, layout.dispatchRevWeightsOffset);

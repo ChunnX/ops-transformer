@@ -98,6 +98,7 @@ private:
     __aicore__ inline void ProcessMoeExpertStages();
     __aicore__ inline void ProcessSharedExpertGmm2();
     __aicore__ inline void ProcessGmmPipeline();
+    __aicore__ inline void ProcessRoutesWithShared();
     __aicore__ inline bool IsSameExpertTokenPosition(const ExpertTokenPosition &currentPosition,
                                                      const ExpertTokenPosition &targetPosition) const;
     __aicore__ inline ExpertTokenPosition DispatchNextWave(ExpertTokenPosition &dispatchPosition);
@@ -195,7 +196,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::InitInp
     aivJob_ = {.jobIndex = aivCoreIdx_, .totalJobs = blockAivNum_};
     quantProcessConfig_ = CreateQuantProcessConfig<ActivationType, QuantScaleOutType, TopkWeightsPrefetch,
                                                    PackedElementTraits<ActivationType>::ELEMENTS_PER_BYTE>(k_, params_);
-    sendMaskConfig_ = CreateSendMaskConfig(params_, aivCoreIdx_);
+    // Host assigns one complete expert range to each AIV1 when shared experts are enabled.
+    sendMaskConfig_ = CreateSendMaskConfig(params_, sharedExpertNum_ > 0 ? blockIdx_ : aivCoreIdx_);
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
@@ -390,14 +392,12 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::SendAnd
     // 单个 xOutTensor 槽位与 dispatch 的 token-scale-weight 通信记录使用相同布局。
     uint32_t xOutTensorSize = quantProcessConfig_.quantTokenScaleAlignBytes;
     uint32_t xInAlignSize = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
-    uint32_t expertPerCoreMax = Ops::Base::CeilDiv(worldSize_ * moeExpertPerRank_, blockAivNum_);
+    uint32_t expertPerCoreMax = Ops::Base::CeilDiv(worldSize_ * moeExpertPerRank_, params_.tilingData->routeJobCount);
     uint32_t sendCntAccSize =
         Ops::Base::CeilAlign(static_cast<int64_t>(expertPerCoreMax * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
 
     // 必须与 host SetAdaptiveBufferConfigs 的 quotient/remainder 分核保持一致。
-    bufferConfig = aivCoreIdx_ < params_.tilingData->sendMaskCoreCountWithExtraExpert ?
-                       params_.tilingData->sendMaskConfigForCoreWithExtraExpert :
-                       params_.tilingData->sendMaskConfigForCoreWithoutExtraExpert;
+    bufferConfig = sendMaskConfig_.bufferConfig;
     int32_t routeItemsPerBatch = bufferConfig.routeItemsPerBatch;
 
     // 按既定顺序落地址。routeItemsPerBatch 按 256 个 item 对齐，因此两个 int32 tensor 均天然满足 256B 对齐。
@@ -979,20 +979,59 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
+__aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessRoutesWithShared()
+{
+    if constexpr (g_coreType == AIC) { return; }
+    if (GetSubBlockIdx() != 1U) { return; }
+    {
+        const AivJobContext routeJob{.jobIndex = blockIdx_, .totalJobs = params_.tilingData->routeJobCount};
+        GatherAndSendExpertCompactRoutes(routeJob, commonConfig_, params_, g_winRankAddr_,
+                                         sendMaskConfig_, sendMaskScratch_, aivCoreIdx_);
+    }
+    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
+    // ResetSyncStatus cleared these slots before the common input barrier.
+    // Monotonic 1 -> 2 allows a slow peer to observe an already-advanced slot.
+    auto *arrivals = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.routesSubgroupSyncPtr);
+    WriteGmByPassDCache(arrivals + blockIdx_ * INT_CACHELINE, 1);
+    for (uint32_t peer = 0; peer < blockNum_; ++peer) {
+        while (ReadGmByPassDCache(arrivals + peer * INT_CACHELINE) < 1) {
+            const int64_t pollStart = GetSystemCycle();
+            while (GetSystemCycle() - pollStart < GM_FLAG_POLL_BACKOFF_CYCLES) {}
+        }
+    }
+    auto *syncRank = reinterpret_cast<__gm__ int32_t *>(params_.peermemInfo.rankSyncInWorldPtr);
+    auto *counts = reinterpret_cast<__gm__ int32_t *>(params_.peermemInfo.rankSyncInWorldPtr + 48U * 1024U);
+    constexpr uint32_t counterStride = 64U / sizeof(int32_t);
+    const uint32_t firstJob = blockIdx_ * 2U;
+    const int32_t epoch = ReadGmByPassDCache(counts + firstJob * counterStride) + 1;
+    for (uint32_t peerRank = blockIdx_; peerRank < worldSize_; peerRank += blockNum_) {
+        auto *remote = reinterpret_cast<__gm__ int32_t *>(g_winRankAddr_[peerRank]);
+        WriteGmByPassDCache(remote + rankId_ * INT_CACHELINE, epoch);
+        GmSignalWaitBarrier(syncRank + peerRank * INT_CACHELINE, epoch);
+    }
+    // Preserve both physical-AIV counters, including slot zero consumed by
+    // count-table preparation and the original full-AIV output synchronization.
+    WriteGmByPassDCache(counts + firstJob * counterStride, epoch);
+    WriteGmByPassDCache(counts + (firstJob + 1U) * counterStride, epoch);
+    PipeBarrier<PIPE_ALL>();
+    WriteGmByPassDCache(arrivals + blockIdx_ * INT_CACHELINE, 2);
+    for (uint32_t peer = 0; peer < blockNum_; ++peer) {
+        while (ReadGmByPassDCache(arrivals + peer * INT_CACHELINE) < 2) {
+            const int64_t pollStart = GetSystemCycle();
+            while (GetSystemCycle() - pollStart < GM_FLAG_POLL_BACKOFF_CYCLES) {}
+        }
+    }
+}
+
+template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessGmmPipeline()
 {
-    // 等待所有 rank 完成本轮输入准备（quant/mask 发送/本地 workspace flag 清理），再进入
-    // MoE stage。该同步置于共享专家 GMM1 之前：共享 GMM1 只依赖本卡输入（SyncAll<false>
-    // 已保证可见），dispatch（奇数子核）只依赖本卡量化数据与远端输入准备完成，两者无数据
-    // 依赖；奇数子核不参与共享 GMM1 的核间交接（实测穿越 <1us），先同步即让 dispatch 与
-    // 共享 GMM1/激活并行，消除奇数子核在同步点等待整段共享 GMM1 的空转（实测 8K 1010us）。
-    // 不变量（重排后由隐式约定承担，改动共享/通信任一侧时必须重审）：
-    //  1. 共享 GMM1/激活只触碰 workspace 侧 sharedExpert* 区与本核私有 UB；dispatch/combine
-    //     只触碰通信 window 与 count workspace——两资源面零交叠是并发安全的前提。
-    //  2. 本同步与后续 dispatch 读远端 mask 计数之间不再有共享 GMM1 的时间垫层，读计数的
-    //     到达保证与无共享路径（主线现役行为）完全一致。
-    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
-    CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+    if (sharedExpertNum_ > 0) {
+        ProcessRoutesWithShared(); // AIC/AIV0 return immediately to shared compute.
+    } else {
+        exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
+        CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+    }
 
     if (sharedExpertNum_ > 0) {
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM1);
@@ -1025,8 +1064,10 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::INPUT_PREPARE);
     QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
         aivJob_, commonConfig_, params_, quantProcessConfig_, quantProcessScratch_);
-    GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,
-                                     sendMaskScratch_);
+    if (sharedExpertNum_ == 0) {
+        GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,
+                                         sendMaskScratch_);
+    }
     ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
     if (sharedExpertNum_ > 0) {
         // 可选：为共享专家拆分连续布局的输入数据与 scale。
