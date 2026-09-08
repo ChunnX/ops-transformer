@@ -1942,7 +1942,7 @@ static ge::graphStatus CheckWeightScalesTensorDim(const gert::TilingContext *con
 }
 
 static ge::graphStatus CheckTensorDimNum(const gert::StorageShape *storageShape, const char *inputName,
-                                       const char *nodeName, int64_t expectedDim)
+                                         const char *nodeName, int64_t expectedDim)
 {
     OP_TILING_CHECK(storageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, inputName), return ge::GRAPH_FAILED);
     const std::string invalidDimReason =

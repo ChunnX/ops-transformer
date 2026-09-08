@@ -77,9 +77,8 @@ private:
     __aicore__ inline void DispatchNextWaveExpertSlice(ExpertTokenPosition &dispatchPosition,
                                                        uint32_t &nextDispatchWaveMGroupCount);
     __aicore__ inline ExpertTokenRange ProcessNextDispatchAndCurrentGmm1(
-        const ExpertTokenPosition &waveBeginPosition, ExpertTokenPosition &dispatchPosition,
-        ExpertLoopState &gmm1State, GMMAddrInfo &gmm1AddrInfo, GmmRuntimeState &runtimeState,
-        uint32_t gmm1TilesPerMGroup);
+        const ExpertTokenPosition &waveBeginPosition, ExpertTokenPosition &dispatchPosition, ExpertLoopState &gmm1State,
+        GMMAddrInfo &gmm1AddrInfo, GmmRuntimeState &runtimeState, uint32_t gmm1TilesPerMGroup);
     __aicore__ inline void ProcessCurrentWaveGmm2(const ExpertTokenRange &waveRange, ExpertLoopState &gmm2State,
                                                   GMMAddrInfo &gmm2AddrInfo,
                                                   WaveCombineBufferConfig &combineBufferConfig,
@@ -164,8 +163,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Dispatc
 }
 
 template <TemplateMegaMoeA4W4WaveTypeClass>
-__aicore__ inline ExpertTokenRange
-MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::ProcessNextDispatchAndCurrentGmm1(
+__aicore__ inline ExpertTokenRange MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::ProcessNextDispatchAndCurrentGmm1(
     const ExpertTokenPosition &waveBeginPosition, ExpertTokenPosition &dispatchPosition, ExpertLoopState &gmm1State,
     GMMAddrInfo &gmm1AddrInfo, GmmRuntimeState &runtimeState, uint32_t gmm1TilesPerMGroup)
 {
