@@ -49,7 +49,7 @@ constexpr uint32_t OUTPUT_EXPAND_SCALES_INDEX = 6U;
 
 constexpr uint32_t LAYERED_METAINFO_LIST_NUM = 2;
 constexpr uint32_t TWO_DIMS = 2;
-constexpr uint32_t HALF_NUM = 2; // cumsum最多只能用一半的核
+constexpr uint32_t HALF_NUM = 2; // A2/A3 cumsum最多只能用一半的核
 constexpr uint32_t ONE_DIM = 1;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8;
 
@@ -81,9 +81,10 @@ constexpr int64_t FULLMESH_K_MAX = 12;
 constexpr size_t SYSTEM_NEED_WORKSPACE = 16UL * 1024UL * 1024UL;
 constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512;
 // A5前缀和临时区位于recvCnt工作区之后，分为数据区和同步标记区
-constexpr uint64_t A5_CUMSUM_WS_FLAG_OFFSET = 32UL * 1024UL; // 32*32*32=32KB
-constexpr uint64_t A5_CUMSUM_WORKSPACE_MAX_CORE_NUM = 32U;
-constexpr uint32_t A5_CUMSUM_MAX_CORE_NUM = 8U;
+constexpr uint64_t A5_CUMSUM_WS_FLAG_OFFSET = 64UL * 1024UL; // 40*40*32=50KB
+constexpr uint64_t A5_CUMSUM_WORKSPACE_MAX_CORE_NUM = 40U;
+constexpr uint32_t A5_CUMSUM_MAX_CORE_NUM = 40U;
+constexpr uint32_t ALLTOALL_RESERVED_CORE_NUM = 16U;
 constexpr uint64_t UB_ALIGN_VAL = 32U;
 constexpr uint32_t RANK_LIST_NUM = 2;
 constexpr int32_t HCCL_BUFFER_SIZE_DEFAULT = 200 * 1024 * 1024; // Bytes
@@ -1632,8 +1633,12 @@ static uint32_t SendToMoeExpertUsedBuffer(const gert::TilingContext *context,
     uint32_t rscvStatusNum = epRankId < sharedExpertRankNum ? epWorldSize : epWorldSize * moeExpertNumPerRank;
     uint32_t aivUsedCumSum = totalExpertNum / 16; // 单核处理16个专家cnt发送
     aivUsedCumSum = (aivUsedCumSum == 0) ? 1 : aivUsedCumSum;
-    aivUsedCumSum = (aivUsedCumSum >= (aivNum / HALF_NUM)) ? (aivNum / HALF_NUM) : aivUsedCumSum;
-    aivUsedCumSum = (aivUsedCumSum >= A5_CUMSUM_MAX_CORE_NUM) ? A5_CUMSUM_MAX_CORE_NUM : aivUsedCumSum;
+    // A5按aivNum-ALLTOALL_RESERVED_CORE_NUM截断并放宽上限；A2/A3保持原截断，避免放大UB估算
+    bool isA5 = (mc2tiling::GetSocVersion(context) == "Ascend950");
+    uint32_t cumSumMaxCoreNum = isA5 ? A5_CUMSUM_MAX_CORE_NUM : 8U;
+    uint32_t cumSumCoreLimit = isA5 ? (aivNum - ALLTOALL_RESERVED_CORE_NUM) : (aivNum / HALF_NUM);
+    aivUsedCumSum = (aivUsedCumSum >= cumSumCoreLimit) ? cumSumCoreLimit : aivUsedCumSum;
+    aivUsedCumSum = (aivUsedCumSum >= cumSumMaxCoreNum) ? cumSumMaxCoreNum : aivUsedCumSum;
     aivUsedCumSum = (aivUsedCumSum >= rscvStatusNum) ? rscvStatusNum : aivUsedCumSum;
     uint32_t aivUsedAllToAll = aivNum - aivUsedCumSum;
     uint32_t sharedUsedAivNum = 0;
