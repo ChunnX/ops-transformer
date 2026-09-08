@@ -776,7 +776,8 @@ def analyze_gmm(prof_dir, label):
 def analyze_ifa(prof_dir, label):
     """IFA: 打点回读明细 CSV (run_*/ifa_head_overhead.csv), launch_index>=50 为稳态
     口径对齐根脚本: schedule_hardware=stars→kernel入口(T0-stars) / software_init=软件头(T1-T0)
-    / t2_from_stars=stars→头开销结束(T1-stars 语义); IFA 无 kernel 末打点, T2/硬件尾=N/A"""
+    / t2_from_stars=stars→头开销结束(T1-stars 语义) / kernel_end_from_stars=T2-stars
+    (kernel 末打点 slot 7, 需 kernel 带 RecordKernelEndTiming 的版本; 老数据无则 N/A)"""
     runs = sorted(glob.glob(os.path.join(prof_dir, 'run_*', 'ifa_head_overhead.csv')))
     if not runs:
         print(f"  {label}: [未找到 ifa_head_overhead.csv]")
@@ -789,7 +790,7 @@ def analyze_ifa(prof_dir, label):
         return None, None
 
     def stats3(col):
-        vs = [float(r[col]) for r in rows if r.get(col)]
+        vs = [float(r[col]) for r in rows if r.get(col) not in ('', None)]
         if not vs:
             return None, None, None
         return min(vs), statistics.mean(vs), max(vs)
@@ -797,18 +798,19 @@ def analyze_ifa(prof_dir, label):
     t0 = stats3('schedule_hardware_us')      # 调度+硬件头 (T0-stars)
     t1t0 = stats3('software_init_us')        # 软件头 (T1-T0)
     t1s = stats3('t2_from_stars_us')         # 头开销 (stars→头开销结束)
+    t2s = stats3('kernel_end_from_stars_us') # kernel末指令 (T2-stars, slot 7)
     if t0[0] is None:
         print(f"  {label}: [ifa 明细缺少口径列]")
         return None, None
     m = {
-        'shots': 1, 'n': len(rows), 'n_t1': len(rows), 'n_t2': 0,
+        'shots': 1, 'n': len(rows), 'n_t1': len(rows), 'n_t2': len(rows),
         't0_stars_min': t0[0], 't0_stars_mean': t0[1], 't0_stars': t0[2],
         't0_stars_max_blk': t0[2],
         't1_t0_min': t1t0[0], 't1_t0_mean': t1t0[1], 't1_t0_max': t1t0[2],
         't1_stars_min': t1s[0], 't1_stars_mean': t1s[1], 't1_stars': t1s[2],
         't1_stars_max_blk': t1s[2],
-        't2_stars': None, 't2_stars_min': None, 't2_stars_mean': None,
-        't2_stars_max_blk': None, 't1_stars_per_shot': None,
+        't2_stars_min': t2s[0], 't2_stars_mean': t2s[1], 't2_stars': t2s[2],
+        't2_stars_max_blk': t2s[2], 't1_stars_per_shot': None,
     }
     # TaskDur: op_summary 中 Op Name 含 incre_flash_attention, 跳过前 2 次冷启动
     csvs = sorted(glob.glob(os.path.join(prof_dir, 'run_*', 'PROF_*', '**',
@@ -826,6 +828,38 @@ def analyze_ifa(prof_dir, label):
         return None, None
     result = {'label': label, 'mean': taskdur}
     return result, m
+
+def ffts_check_ifa(prof_dir, freq, taskdur):
+    """IFA ffts PMU 校验: 硬件尾(pmu_end-T2) + 全链路(pmu_end-stars)
+    取稳态明细最后一发射: T2=max(kernel_end) 簇 + 对应 dispatch, pmu_end 取窗口内最大(最慢核)"""
+    runs = sorted(glob.glob(os.path.join(prof_dir, 'run_*', 'ifa_head_overhead.csv')))
+    profs = sorted(glob.glob(os.path.join(prof_dir, 'run_*', 'PROF_*')))
+    if not runs or not profs:
+        return None
+    with open(runs[-1]) as f:
+        rows = [r for r in csv.DictReader(f)
+                if r.get('phase') == 'replay' and int(r.get('launch_index', 0)) >= 50
+                and r.get('kernel_end_cycle', '') != '']
+    if not rows:
+        return None
+    last = max(int(r['launch_index']) for r in rows)
+    cluster = [r for r in rows if int(r['launch_index']) == last]
+    t0 = min(int(r['stars_dispatch_cycle']) for r in cluster)
+    t2 = max(int(r['kernel_end_cycle']) for r in cluster)
+    pmu = parse_ffts_pmu(profs[-1])
+    if not pmu:
+        return None
+    win = int((taskdur + 5.0) * freq)
+    ends = [r["pmu_end"] for r in pmu
+            if t0 <= r["pmu_end"] <= t0 + win and r["pmu_end"] > 0]
+    if not ends:
+        return None
+    pmuend = max(ends)
+    return {
+        "hw_tail": (pmuend - t2) / freq,
+        "pmuend_stars": (pmuend - t0) / freq,
+        "diff_vs_taskdur": (pmuend - t0) / freq - taskdur,
+    }
 
 def fmt(v):
     return f"{v:.2f}" if v is not None else "N/A"
@@ -933,9 +967,10 @@ if os.path.isdir(os.path.join(output_dir, 'ifa_full')):
     prof = os.path.join(output_dir, 'ifa_full')
     r, m = analyze_ifa(prof, 'ifa 满核')
     if r:
-        # IFA 无 ffts PMU 解析, 硬件尾/全链路 N/A; 打点明细已在 run_*/ 留档
-        print_fn('incre_flash_attention', 'Vector', add_cores, r, m, None)
-        results.append(('incre_flash_attention', 'Vector', add_cores, r, m, None))
+        # ffts PMU: 硬件尾/全链路 (需 kernel 末打点; T2 缺失时 fm=None 显示 N/A)
+        fm = ffts_check_ifa(prof, freq_add, r['mean'])
+        print_fn('incre_flash_attention', 'Vector', add_cores, r, m, fm)
+        results.append(('incre_flash_attention', 'Vector', add_cores, r, m, fm))
 
 # 生成汇总表 (长表: 每算子 min/mean/max 各一行)
 summary_path = os.path.join(output_dir, f'summary_{soc_version}.csv')

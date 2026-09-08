@@ -203,16 +203,19 @@ def write_merged_rows(aligned, kicks, output_csv: Path, syscnt_mhz: float):
         "aicore_kick_cycle",
         "kernel_entry_cycle",
         "before_first_mte2_cycle",
+        "kernel_end_cycle",
         "stars_to_kick_cycles",
         "kick_to_kernel_entry_cycles",
         "schedule_hardware_cycles",
         "software_init_cycles",
         "t2_from_stars_cycles",
+        "kernel_end_from_stars_cycles",
         "stars_to_kick_us",
         "kick_to_kernel_entry_us",
         "schedule_hardware_us",
         "software_init_us",
         "t2_from_stars_us",
+        "kernel_end_from_stars_us",
     ]
     merged = []
     for dispatch, ((phase, launch_index), timing_rows) in aligned:
@@ -225,6 +228,9 @@ def write_merged_rows(aligned, kicks, output_csv: Path, syscnt_mhz: float):
             t1 = int(timing["kernel_entry_cycle"])
             t2_text = timing["before_first_mte2_cycle"]
             t2 = int(t2_text) if t2_text else None
+            # T2 (kernel 末打点, slot 7); 老数据无此列为空
+            kend_text = timing.get("kernel_end_cycle", "")
+            kend = int(kend_text) if kend_text else None
             if t1 < t0:
                 raise RuntimeError(
                     f"Kernel entry precedes STARS dispatch for "
@@ -254,6 +260,7 @@ def write_merged_rows(aligned, kicks, output_csv: Path, syscnt_mhz: float):
                     "aicore_kick_cycle": tkick,
                     "kernel_entry_cycle": t1,
                     "before_first_mte2_cycle": t2 if t2 is not None else "",
+                    "kernel_end_cycle": kend if kend is not None else "",
                     "stars_to_kick_cycles": stars_to_kick_cycles,
                     "kick_to_kernel_entry_cycles": kick_to_kernel_entry_cycles,
                     "schedule_hardware_cycles": schedule_hardware_cycles,
@@ -266,6 +273,9 @@ def write_merged_rows(aligned, kicks, output_csv: Path, syscnt_mhz: float):
                         t2_from_stars_cycles
                         if t2_from_stars_cycles is not None
                         else ""
+                    ),
+                    "kernel_end_from_stars_cycles": (
+                        kend - t0 if kend is not None else ""
                     ),
                     "stars_to_kick_us": stars_to_kick_cycles / syscnt_mhz,
                     "kick_to_kernel_entry_us": (
@@ -281,6 +291,9 @@ def write_merged_rows(aligned, kicks, output_csv: Path, syscnt_mhz: float):
                         t2_from_stars_cycles / syscnt_mhz
                         if t2_from_stars_cycles is not None
                         else ""
+                    ),
+                    "kernel_end_from_stars_us": (
+                        (kend - t0) / syscnt_mhz if kend is not None else ""
                     ),
                 }
             )
@@ -337,6 +350,20 @@ def report_summary(rows, warmup: int, syscnt_mhz: float):
                 row["t2_from_stars_cycles"]
                 for row in stable
                 if row["t2_from_stars_cycles"] != ""
+            ]
+        ),
+        "TKend-T1_kernel_main": summarize(
+            [
+                int(row["kernel_end_cycle"]) - int(row["kernel_entry_cycle"])
+                for row in stable
+                if row.get("kernel_end_cycle", "") != ""
+            ]
+        ),
+        "TKend-stars_kernel_end": summarize(
+            [
+                row["kernel_end_from_stars_cycles"]
+                for row in stable
+                if row.get("kernel_end_from_stars_cycles", "") != ""
             ]
         ),
     }

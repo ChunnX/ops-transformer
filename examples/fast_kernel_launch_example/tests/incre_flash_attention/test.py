@@ -244,6 +244,7 @@ def read_head_timing(timing_output: torch.Tensor, phase: str, launch_index: int)
                 "ai_core": record[6],
                 "kernel_entry_cycle": record[3],
                 "before_first_mte2_cycle": record[4] if reached_first_mte2 else "",
+                "kernel_end_cycle": record[7] if record[7] > 0 else "",
             }
         )
     return result
