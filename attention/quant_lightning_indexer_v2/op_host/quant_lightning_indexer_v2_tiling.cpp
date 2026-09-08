@@ -1009,7 +1009,10 @@ ge::graphStatus QLIV2InfoParser::GetS1Size()
     if (qLayout_ == DataLayout::BSND) {
         s1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(1);
     } else if (qLayout_ == DataLayout::TND) {
-        // A12: TND 的 q 为 [T, G, D] 拼接, s1Size = 总行数 T (各 batch 行数经 cu_seqlens_q 切分)
+        // A12: TND 的 q 为 [T, G, D] 拼接, s1Size = 总行数 T。
+        // 注意: TND 主路径的批前缀/行数均由 kernel 从 cu_seqlens_q(GM) 逐批读取, 不消费 s1Size;
+        // tiling 阶段禁止读 tensor 数据 (gert::Tensor data 未就绪, 读取直接段错误);
+        // consumer shape 校验式已用 TND 专分支 (query.shape[0] x N2 x candBlocks), 与 s1Size 解耦
         s1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(0);
     }
     return ge::GRAPH_SUCCESS;
@@ -1718,8 +1721,15 @@ ge::graphStatus QuantLightningIndexerV2Tiling::DoTiling(QLIV2TilingInfo *tilingI
                         tilingInfo->opParamInfo.candidateTopkIndex.desc->GetDataType() != ge::DT_INT32,
                     OP_LOGE("QuantLightningIndexerV2", "candidate_topk_index dtype only supports int32."),
                     return ge::GRAPH_FAILED);
-        int64_t expectSize = static_cast<int64_t>(tilingInfo->bSize) * tilingInfo->s1Size * tilingInfo->n2Size *
-                             tilingInfo->candidateTopkBlocks;
+        int64_t expectSize = 0;
+        if (tilingInfo->inputQLayout == DataLayout::TND) {
+            // A12 修正: TND 输出布局为 [T, N2, K], T = query.shape[0], 非 B x s1Size (会双重计数)
+            expectSize = tilingInfo->opParamInfo.query.shape->GetStorageShape().GetDim(0) *
+                         tilingInfo->n2Size * tilingInfo->candidateTopkBlocks;
+        } else {
+            expectSize = static_cast<int64_t>(tilingInfo->bSize) * tilingInfo->s1Size * tilingInfo->n2Size *
+                         tilingInfo->candidateTopkBlocks;
+        }
         int64_t actualSize = tilingInfo->opParamInfo.candidateTopkIndex.tensor->GetShapeSize();
         OP_CHECK_IF(actualSize != expectSize,
                     OP_LOGE("QuantLightningIndexerV2",
