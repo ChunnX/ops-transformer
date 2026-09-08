@@ -8,10 +8,18 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 import sys
+import types
 from .compressor import compressor
 
-# 注册别名，使 from cann_ops_transformer.ops.cpv2 import compressor 可用
-# 不定义 compressor_v2 函数，避免 ops.attention.compressor_v2 暴露入口
-sys.modules.setdefault("cann_ops_transformer.ops.cpv2", sys.modules[__name__])
+# 构造独立模块 cpv2，使 from cann_ops_transformer.ops.cpv2 import compressor 可用。
+# 父包从 sys.modules 取 ops 模块的 __name__，不依赖当前包的路径层级。
+# 本模块由 ops/__init__.py 自动发现触发 import，此时 ops 必已在 sys.modules 中。
+parent_pkg = sys.modules["cann_ops_transformer.ops"].__name__
+cpv2 = types.ModuleType(f"{parent_pkg}.cpv2")
+cpv2.__package__ = parent_pkg
+cpv2.compressor = compressor
+sys.modules[f"{parent_pkg}.cpv2"] = cpv2
+globals()["cpv2"] = cpv2
 
-__all__ = []
+# 只暴露 cpv2，不暴露 compressor_v2 入口，避免与原 compressor 的 ops.compressor 冲突
+__all__ = ["cpv2"]
