@@ -90,10 +90,9 @@ __golden__ = {
 }
 
 
-def _sigmoid_grad(z, dy, is_pre=False, hc_eps=1e-6):
+def _sigmoid_grad(z, dy):
     y = torch.sigmoid(z)
-    sigma = y - hc_eps if is_pre else y
-    return dy * sigma * (1 - sigma)
+    return dy * y * (1 - y)
 
 
 def _rms_norm_grad(x, inv_rms, grad_inv_rms):
@@ -197,8 +196,8 @@ def mhc_pre_sinkhorn_backward_golden(
         B, S, n, n
     )
 
-    grad_z_pre = _sigmoid_grad(z_pre, grad_h_pre, is_pre=True, hc_eps=hc_eps)
-    grad_z_post = 2 * _sigmoid_grad(z_post, grad_h_post_t, is_pre=False, hc_eps=hc_eps)
+    grad_z_pre = _sigmoid_grad(z_pre, grad_h_pre)
+    grad_z_post = 2 * _sigmoid_grad(z_post, grad_h_post_t)
     # grad_h_res可能为(B,S,N*N)或(B,S,N,N), 统一reshape为(B,S,N,N)供_sinkhorn_grad处理
     grad_h_res_4d = (
         grad_h_res_t.reshape(B, S, n, n) if grad_h_res_t.dim() == 3 else grad_h_res_t
