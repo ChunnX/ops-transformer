@@ -41,14 +41,18 @@ __global__ __aicore__ void moe_distribute_combine_v3(GM_ADDR mc2Context, GM_ADDR
     TPipe pipe;
 #if (ORIG_DTYPE_EXPAND_X == DT_BF16 || ORIG_DTYPE_EXPAND_X == DT_FLOAT16)
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
-        if (tilingData.moeDistributeCombineV2Info.reserved1) {
-            MoeDistributeCombineV2A5Mte<DTYPE_EXPAND_X, DTYPE_X, int32_t, QuantMode, false, true> op;
-            op.InitSharedOutput(sharedExpertOut);
-            op.Init(mc2Context, expandX, expertIds, assistInfoForCombine, epSendCount, nullptr, nullptr, scales,
-                    xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV,
-                    performanceInfo, nullptr, nullptr, XOut, workspaceGM, &pipe, &tilingData);
-            op.Process();
-            return;
+        if constexpr (LayeredMode == TILINGKEY_TPL_MTE &&
+                      (QuantMode == TILINGKEY_NO_QUANT || QuantMode == TILINGKEY_INT8_QUANT ||
+                       QuantMode == TILINGKEY_MXFP8_E4M3_QUANT)) {
+            if (tilingData.moeDistributeCombineV2Info.reserved1) {
+                MoeDistributeCombineV2A5Mte<DTYPE_EXPAND_X, DTYPE_X, int32_t, QuantMode, false, true> op;
+                op.InitSharedOutput(sharedExpertOut);
+                op.Init(mc2Context, expandX, expertIds, assistInfoForCombine, epSendCount, nullptr, nullptr, scales,
+                        xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2,
+                        constExpertV, performanceInfo, nullptr, nullptr, XOut, workspaceGM, &pipe, &tilingData);
+                op.Process();
+                return;
+            }
         }
         MoeDistributeCombineV2A5Mte<DTYPE_EXPAND_X, DTYPE_X, int32_t, QuantMode, false> op;
         op.Init(mc2Context, expandX, expertIds, assistInfoForCombine, epSendCount, nullptr, nullptr, scales,

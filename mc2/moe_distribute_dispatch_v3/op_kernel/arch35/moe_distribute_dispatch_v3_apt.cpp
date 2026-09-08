@@ -54,50 +54,56 @@ __global__ __aicore__ void moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADD
     TPipe pipe;
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
 #if (ORIG_DTYPE_X == DT_BF16 || ORIG_DTYPE_X == DT_FLOAT16)
-    if (tilingData.moeDistributeDispatchV2Info.reserved1) {
-        if constexpr (QuantMode == Mc2Kernel::UNQUANT) {
-            RunIndependentDispatch<DTYPE_X, Mc2Kernel::UNQUANT, false>(
-                mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
-                sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
-                epSendCountsOut, workspaceGM, &pipe, &tilingData);
-        } else {
-            switch (tilingData.moeDistributeDispatchV2Info.moeExpertDtype) {
-                case DT_INT8:
-                    if constexpr (QuantMode == 1U || QuantMode == 2U) {
-                        RunIndependentDispatch<int8_t, QuantMode, ScaleMode>(
-                            mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
-                            sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut,
-                            expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
-                    }
-                    break;
-                case DT_HIFLOAT8:
-                    if constexpr (QuantMode == 1U) {
-                        RunIndependentDispatch<hifloat8_t, QuantMode, ScaleMode>(
-                            mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
-                            sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut,
-                            expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
-                    }
-                    break;
-                case DT_FLOAT8_E4M3FN:
-                    RunIndependentDispatch<fp8_e4m3fn_t, QuantMode, ScaleMode>(
-                        mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
-                        sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut,
-                        expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
-                    break;
-                case DT_FLOAT8_E5M2:
-                    if constexpr (QuantMode == 2U || QuantMode == 3U) {
-                        RunIndependentDispatch<fp8_e5m2_t, QuantMode, ScaleMode>(
-                            mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
-                            sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut,
-                            expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
-                    }
-                    break;
-                default:
-                    break; // Host validation rejects unsupported communication types.
+    // Independent shared experts are only selected for A5 fullmesh_v2 MTE kernels.
+    if constexpr (ArchTag == TILINGKEY_TPL_A5 && FullMesh == TILINGKEY_ENABLE_FULLMESH &&
+                  CommMode == TILINGKEY_TPL_MTE) {
+        if (tilingData.moeDistributeDispatchV2Info.reserved1) {
+            if constexpr (QuantMode == Mc2Kernel::UNQUANT) {
+                RunIndependentDispatch<DTYPE_X, Mc2Kernel::UNQUANT, false>(
+                    mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
+                    sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
+                    epSendCountsOut, workspaceGM, &pipe, &tilingData);
+            } else {
+                switch (tilingData.moeDistributeDispatchV2Info.moeExpertDtype) {
+                    case DT_INT8:
+                        if constexpr (QuantMode == 1U || QuantMode == 2U) {
+                            RunIndependentDispatch<int8_t, QuantMode, ScaleMode>(
+                                mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo,
+                                performanceInfo, sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut,
+                                expandScalesOut, expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                        }
+                        break;
+                    case DT_HIFLOAT8:
+                        if constexpr (QuantMode == 1U) {
+                            RunIndependentDispatch<hifloat8_t, QuantMode, ScaleMode>(
+                                mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo,
+                                performanceInfo, sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut,
+                                expandScalesOut, expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                        }
+                        break;
+                    case DT_FLOAT8_E4M3FN:
+                        if constexpr (QuantMode >= 2U && QuantMode <= 5U) {
+                            RunIndependentDispatch<fp8_e4m3fn_t, QuantMode, ScaleMode>(
+                                mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo,
+                                performanceInfo, sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut,
+                                expandScalesOut, expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                        }
+                        break;
+                    case DT_FLOAT8_E5M2:
+                        if constexpr (QuantMode == 2U || QuantMode == 3U) {
+                            RunIndependentDispatch<fp8_e5m2_t, QuantMode, ScaleMode>(
+                                mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo,
+                                performanceInfo, sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut,
+                                expandScalesOut, expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, &tilingData);
+                        }
+                        break;
+                    default:
+                        break; // Host validation rejects unsupported communication types.
+                }
             }
+            AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
+            return;
         }
-        AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
-        return;
     }
 #endif
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))

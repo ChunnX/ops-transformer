@@ -451,6 +451,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     xActiveMaskGMTensor_.SetGlobalBuffer((__gm__ bool *)xActiveMask);
     expertIdsGMTensor_.SetGlobalBuffer((__gm__ int32_t *)expertIds);
     dynamicScalesOutGMTensor_.SetGlobalBuffer((__gm__ uint8_t *)dynamicScalesOut);
+    // Shared send cores and count cores also receive quantized MoE tokens.
+    quantInst_.dynamicScalesOutGMTensor_ = dynamicScalesOutGMTensor_;
     expertTokenNumsOutGMTensor_.SetGlobalBuffer((__gm__ int64_t *)expertTokenNumsOut);
     expandIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t *)(expandIdxOut));
     elasticInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t *)(elasticInfo));

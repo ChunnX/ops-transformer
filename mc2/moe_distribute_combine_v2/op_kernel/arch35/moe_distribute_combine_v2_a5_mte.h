@@ -1129,7 +1129,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ClearP
     }
 
     LocalTensor<float> flagTensor = packedClearFlagBuf_.Get<float>();
-    if constexpr (IndependentShared) {
+    if constexpr (IndependentShared && QuantMode != UNQUANT) {
         const DataCopyExtParams params{static_cast<uint16_t>(blockCntPerToken_), SPLIT_BLOCK_FLAG_SIZE, 0U,
                                        SPLIT_BLOCK_DATA_SIZE, 0U};
         for (uint32_t slot = 0U; slot < axisK_; ++slot) {
@@ -1140,10 +1140,15 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ClearP
         }
         return;
     }
-    uint32_t clearBlockCount = flagRcvCount_ * blockCntPerToken_;
+    // Unquantized MoE slots are contiguous; shared slots are cleared separately.
+    const uint32_t clearSlotCount = IndependentShared ? axisK_ : flagRcvCount_;
+    uint32_t clearBlockCount = clearSlotCount * blockCntPerToken_;
     const DataCopyExtParams clearFlagParams{static_cast<uint16_t>(clearBlockCount), SPLIT_BLOCK_FLAG_SIZE, 0U,
                                             SPLIT_BLOCK_DATA_SIZE, 0U};
     GM_ADDR wAddr = (__gm__ uint8_t *)(epWindowGM_) + tokenIndex * flagRcvCount_ * hAlignWinSize_;
+    if constexpr (IndependentShared) {
+        wAddr = epWindowGM_ + GetTokenOffset(tokenIndex, 0U);
+    }
     GlobalTensor<float> dstFlagGlobal;
     dstFlagGlobal.SetGlobalBuffer((__gm__ float *)(wAddr + SPLIT_BLOCK_DATA_SIZE));
     DataCopyPad(dstFlagGlobal, flagTensor, clearFlagParams);
@@ -1182,7 +1187,7 @@ __aicore__ inline uint32_t MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Wa
 {
     GM_ADDR wAddr = (__gm__ uint8_t *)(epWindowGM_) + GetTokenOffset(tokenIndex, slotIdx);
     uint32_t arriveSlotCount = 0U;
-    if constexpr (IndependentShared) {
+    if constexpr (IndependentShared && QuantMode != UNQUANT) {
         // Quantized MoE slots have an unwritten tail in their fixed reservation.
         for (; arriveSlotCount < slotCount; ++arriveSlotCount) {
             GM_ADDR slot = epWindowGM_ + GetTokenOffset(tokenIndex, slotIdx + arriveSlotCount);
@@ -1868,7 +1873,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::SendIn
     const uint32_t h = axisH_ * 2U;
     const uint32_t blocks = sharedCombineBytes_ / SPLIT_BLOCK_SIZE;
     auto input = expandXInQueue_.AllocTensor<ExpandXType>();
-    DataCopyExtParams params{1U, h * sizeof(ExpandXType), 0U, 0U, 0U};
+    DataCopyExtParams params{1U, static_cast<uint32_t>(h * sizeof(ExpandXType)), 0U, 0U, 0U};
     DataCopyPadExtParams<ExpandXType> padding{false, 0U, 0U, 0U};
     DataCopyPad(input, expandXGM_[static_cast<uint64_t>(index) * h], params, padding);
     expandXInQueue_.EnQue(input);
@@ -1921,7 +1926,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Receiv
     DataCopyPadExtParams<ExpandXType> padding{false, 0U, 0U, 0U};
     DataCopyExtParams clearParams{static_cast<uint16_t>(blockCntPerToken_), SPLIT_BLOCK_FLAG_SIZE, 0U,
                                   SPLIT_BLOCK_DATA_SIZE, 0U};
-    DataCopyExtParams outputParams{1U, h * sizeof(XType), 0U, 0U, 0U};
+    DataCopyExtParams outputParams{1U, static_cast<uint32_t>(h * sizeof(XType)), 0U, 0U, 0U};
     for (uint32_t token = coreIdx_; token < axisBS_; token += aivNum_) {
         SyncFunc<AscendC::HardEvent::MTE3_V>();
         Duplicate(sum, 0.0f, h);
@@ -1954,10 +1959,12 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Receiv
         SyncFunc<AscendC::HardEvent::V_MTE3>();
         DataCopyPad(sharedOutGM_[static_cast<uint64_t>(token) * h], output, outputParams);
     }
-    if (isPerformanceFlag_) {
+    // Only participating cores have synchronized the vector initialization in the token loop.
+    if (isPerformanceFlag_ && coreIdx_ < axisBS_) {
         SyncFunc<AscendC::HardEvent::S_MTE3>();
         SetAtomicMax<int32_t>();
-        DataCopyExtParams params{1U, JUMP_WRITE * epWorldSizeOriginal_ * sizeof(int32_t), 0U, 0U, 0U};
+        DataCopyExtParams params{
+            1U, static_cast<uint32_t>(JUMP_WRITE * epWorldSizeOriginal_ * sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPad(performanceInfoGM_, performanceInfoTensor_, params);
         SetAtomicNone();
     }
