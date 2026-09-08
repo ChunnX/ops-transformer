@@ -1,5 +1,5 @@
 # mc2/3rd 文件影响范围映射表 - A5 (ascend950)
-# 生成: 2026-09-08  基线commit: aec701858 (clean)
+# 生成: 2026-09-08  基线commit: b5b84b084 (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(3rd/开头), 与pr_files.sh输出中mc2/后的段落一致
 #

@@ -1,5 +1,5 @@
 # mc2/common 文件影响范围映射表 - A5 (ascend950)
-# 生成: 2026-09-08  基线commit: aec701858 (clean)
+# 生成: 2026-09-08  基线commit: b5b84b084 (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(common/开头), 与pr_files.sh输出中mc2/后的段落一致
 #
@@ -1030,132 +1030,86 @@ common/op_kernel/reduce_sum_utils.h:
   ops:
     - matmul_all_reduce
     - matmul_reduce_scatter_v2
+common/torch_extension/__init__.py:
+  ops:
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - moe_distribute_combine
+    - moe_distribute_combine_v2
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+  note: torch扩展资产(PyTorch侧MoE/Engram通信封装), smoke级触发, 不触发NPU算子全量回归
+common/torch_extension/comm_channel_builder_manager.py:
+  ops:
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - moe_distribute_combine
+    - moe_distribute_combine_v2
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+  note: torch扩展资产(PyTorch侧MoE/Engram通信封装), smoke级触发, 不触发NPU算子全量回归
+common/torch_extension/comm_context.py:
+  ops:
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - moe_distribute_combine
+    - moe_distribute_combine_v2
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+  note: torch扩展资产(PyTorch侧MoE/Engram通信封装), smoke级触发, 不触发NPU算子全量回归
 common/torch_extension/csrc/comm_channel_builder_manager.cpp:
   ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - all_gather_matmul_v3
-    - allto_all_matmul
-    - allto_all_matmul_v2
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - attention_to_ffn_v2
-    - distribute_barrier
-    - distribute_barrier_extend
     - engram_fetch
     - engram_fetch_grad
     - engram_fetch_wait
-    - ffn_to_attention_v2
-    - grouped_mat_mul_allto_allv
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
     - moe_distribute_combine
-    - moe_distribute_combine_add_rms_norm
-    - moe_distribute_combine_setup
-    - moe_distribute_combine_teardown
     - moe_distribute_combine_v2
-    - moe_distribute_combine_v3
     - moe_distribute_dispatch
-    - moe_distribute_dispatch_setup
-    - moe_distribute_dispatch_teardown
     - moe_distribute_dispatch_v2
-    - moe_distribute_dispatch_v3
-    - moe_ep_combine
-    - moe_ep_combine_epilogue
-    - moe_ep_dispatch
-    - moe_ep_dispatch_epilogue
-    - moe_update_expert
-    - quant_all_reduce
-    - quant_grouped_mat_mul_allto_allv
-    - quant_reduce_scatter
-  note: 编译级引用, 无同名头无法接口反推, 保守全算子, 待人工确认
+  note: torch扩展资产(PyTorch侧MoE/Engram通信封装), smoke级触发, 不触发NPU算子全量回归
 common/torch_extension/csrc/comm_context.cpp:
   ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - all_gather_matmul_v3
-    - allto_all_matmul
-    - allto_all_matmul_v2
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - attention_to_ffn_v2
-    - distribute_barrier
-    - distribute_barrier_extend
     - engram_fetch
     - engram_fetch_grad
     - engram_fetch_wait
-    - ffn_to_attention_v2
-    - grouped_mat_mul_allto_allv
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
     - moe_distribute_combine
-    - moe_distribute_combine_add_rms_norm
-    - moe_distribute_combine_setup
-    - moe_distribute_combine_teardown
     - moe_distribute_combine_v2
-    - moe_distribute_combine_v3
     - moe_distribute_dispatch
-    - moe_distribute_dispatch_setup
-    - moe_distribute_dispatch_teardown
     - moe_distribute_dispatch_v2
-    - moe_distribute_dispatch_v3
-    - moe_ep_combine
-    - moe_ep_combine_epilogue
-    - moe_ep_dispatch
-    - moe_ep_dispatch_epilogue
-    - moe_update_expert
-    - quant_all_reduce
-    - quant_grouped_mat_mul_allto_allv
-    - quant_reduce_scatter
-  note: 编译级引用, 无同名头无法接口反推, 保守全算子, 待人工确认
+  note: torch扩展资产(PyTorch侧MoE/Engram通信封装), smoke级触发, 不触发NPU算子全量回归
 common/torch_extension/csrc/elastic_buffer.cpp:
   ops:
-    - all_gather_matmul
-    - all_gather_matmul_v2
-    - all_gather_matmul_v3
-    - allto_all_matmul
-    - allto_all_matmul_v2
-    - allto_allv_grouped_mat_mul
-    - allto_allv_quant_grouped_mat_mul
-    - attention_to_ffn_v2
-    - distribute_barrier
-    - distribute_barrier_extend
     - engram_fetch
     - engram_fetch_grad
     - engram_fetch_wait
-    - ffn_to_attention_v2
-    - grouped_mat_mul_allto_allv
-    - matmul_all_reduce
-    - matmul_allto_all
-    - matmul_reduce_scatter
-    - matmul_reduce_scatter_v2
-    - mega_moe
     - moe_distribute_combine
-    - moe_distribute_combine_add_rms_norm
-    - moe_distribute_combine_setup
-    - moe_distribute_combine_teardown
     - moe_distribute_combine_v2
-    - moe_distribute_combine_v3
     - moe_distribute_dispatch
-    - moe_distribute_dispatch_setup
-    - moe_distribute_dispatch_teardown
     - moe_distribute_dispatch_v2
-    - moe_distribute_dispatch_v3
-    - moe_ep_combine
-    - moe_ep_combine_epilogue
-    - moe_ep_dispatch
-    - moe_ep_dispatch_epilogue
-    - moe_update_expert
-    - quant_all_reduce
-    - quant_grouped_mat_mul_allto_allv
-    - quant_reduce_scatter
-  note: 编译级引用, 无同名头无法接口反推, 保守全算子, 待人工确认
+  note: torch扩展资产(PyTorch侧MoE/Engram通信封装), smoke级触发, 不触发NPU算子全量回归
+common/torch_extension/elastic_buffer.py:
+  ops:
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - moe_distribute_combine
+    - moe_distribute_combine_v2
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+  note: torch扩展资产(PyTorch侧MoE/Engram通信封装), smoke级触发, 不触发NPU算子全量回归
+common/torch_extension/moe_distribute_buffer.py:
+  ops:
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - moe_distribute_combine
+    - moe_distribute_combine_v2
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+  note: torch扩展资产(PyTorch侧MoE/Engram通信封装), smoke级触发, 不触发NPU算子全量回归
 common/utils/aclnn_util.h:
   ops:
     - all_gather_matmul
