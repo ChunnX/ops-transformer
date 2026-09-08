@@ -95,12 +95,12 @@
   SparseValues = PoolScores[TopK\_pool]
   $$
 
-  当return_value为true时输出$SparseValues$，即选中pool的分数值；return_value为false时不输出。
+  当returnValue为true时输出$SparseValues$，即选中pool的分数值；returnValue为false时不输出。
 
   符号说明如下：
 
   - $SparseIndices$：输出的稀疏token索引。
-  - $SparseValues$：输出的选中pool分数（return_value为true时输出）。
+  - $SparseValues$：输出的选中pool分数（returnValue为true时输出）。
   - $PoolScores$：每个pool的综合分数。
   - $TopK\_pool$：被选中的top-k pool索引。
   - $Top$-$k$：取前$k$个最大分数对应的pool索引，$k = \lfloor topk / pool\_size \rfloor$。
@@ -188,7 +188,7 @@ aclnnStatus aclnnPoolKeyIndexer(
     </tr></thead>
   <tbody>
     <tr>
-      <td>query</td>
+      <td>query（aclTensor*）</td>
       <td>输入</td>
       <td>公式中的输入Q。</td>
       <td>不支持空tensor。</td>
@@ -200,150 +200,151 @@ aclnnStatus aclnnPoolKeyIndexer(
                 <li>layoutQueryOptional为TND时，shape为(T1,N1,D)。</li>
           </ul>
       </td>
-      <td>√*</td>
+      <td>√</td>
     </tr>
     <tr>
-      <td>poolKey</td>
+      <td>poolKey（aclTensor*）</td>
       <td>输入</td>
-      <td>公式中的输入K_pool。</td>
+      <td>公式中的输入K<sub>pool</sub>。</td>
       <td>
           <ul>
                 <li>不支持空tensor。</li>
                 <li>block_num为PageAttention时block总数，block_size为一个block的pool数（块内每行为一个pool的key，行距为headDim，不做token展开）。</li>
                 <li>数据类型需与query保持一致。</li>
                 <li>数据布局需与query保持一致，PageAttention场景（layoutKeyOptional为PA_BBND）除外。</li>
-          </ul>
-      </td>
-      <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN</td>
-      <td>ND</td>
-      <td>
-          <ul>
                 <li>layoutKeyOptional为PA_BBND时，shape为(block_num, block_size, N2, D)。</li>
                 <li>layoutKeyOptional为BSND时，shape为(B, S2, N2, D)。</li>
                 <li>layoutKeyOptional为TND时，shape为(T2, N2, D)。</li>
           </ul>
       </td>
+      <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN</td>
+      <td>ND</td>
+      <td>2-5</td>
       <td>支持0轴非连续（仅PA_BBND布局，需配合keyStride0属性；BSND/TND布局要求连续输入）</td>
     </tr>
     <tr>
-      <td>weights</td>
+      <td>weights（aclTensor*）</td>
       <td>输入</td>
       <td>公式中的输入W。</td>
-      <td>不支持空tensor。</td>
-      <td>FLOAT16、BFLOAT16</td>
-      <td>ND</td>
       <td>
           <ul>
+                <li>不支持空tensor。</li>
                 <li>layoutQueryOptional为BSND时，shape为(B,S1,N1)。</li>
                 <li>layoutQueryOptional为TND时，shape为(T1,N1)。</li>
           </ul>
       </td>
-      <td>√*</td>
+      <td>FLOAT16、BFLOAT16</td>
+      <td>ND</td>
+      <td>2-3</td>
+      <td>√</td>
     </tr>
     <tr>
-      <td>poolTailK</td>
+      <td>poolTailK（aclIntArray*）</td>
       <td>输入</td>
       <td>每个Batch中尾部不完整pool的有效token数。</td>
       <td>
           <ul>
                 <li>不支持空tensor。</li>
                 <li>取值范围为[0, pool_size-1]，0表示无尾部有效token。</li>
+                <li>shape为(B,)。</li>
           </ul>
       </td>
       <td>INT64</td>
       <td>ND</td>
-      <td>(B,)</td>
-      <td>√*</td>
+      <td>1</td>
+      <td>√</td>
     </tr>
     <tr>
-      <td>actualSeqLengthsQueryOptional</td>
+      <td>actualSeqLengthsQueryOptional（aclIntArray*）</td>
       <td>输入</td>
       <td>每个Batch中，Query的有效token数。</td>
       <td>
           <ul>
                 <li>可选输入，不指定seqlen时可传入空指针，表示与query的shape的S长度相同。</li>
+                <li>不支持空Tensor。</li>
                 <li>该入参中每个Batch的有效token数不超过query中的维度S大小且不小于0，支持长度为B的一维tensor。</li>
                 <li>当layoutQueryOptional为TND时，该入参必须传入，且以该入参元素的数量作为B值，该入参中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</li>
+                <li>shape为(B,)。</li>
           </ul>
       </td>
       <td>INT64</td>
       <td>ND</td>
-      <td>(B,)</td>
-      <td>√*</td>
+      <td>1</td>
+      <td>√</td>
     </tr>
     <tr>
-      <td>actualSeqLengthsKeyOptional</td>
+      <td>actualSeqLengthsKeyOptional（aclIntArray*）</td>
       <td>输入</td>
       <td>每个Batch中，Key的有效token数。</td>
       <td>
           <ul>
                 <li>可选输入，不指定seqlen时可传入空指针，表示与poolKey的shape的S长度相同。</li>
+                <li>不支持空Tensor。</li>
                 <li>该参数中每个Batch的有效pool数不超过poolKey的维度S（BSND/TND）或blockSize总池数（PA_BBND）大小且不小于0，支持长度为B的一维tensor。</li>
                 <li>当layoutKeyOptional为TND或PA_BBND时，该入参必须传入。layoutKeyOptional为TND时，该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值；layoutKeyOptional为PA_BBND时，该参数中每个元素的值表示当前batch的pool数（即该batch有效token数除以pool_size后向下取整的池数，非前缀和形式）。</li>
+                <li>shape为(B,)。</li>
           </ul>
       </td>
       <td>INT64</td>
       <td>ND</td>
-      <td>(B,)</td>
-      <td>√*</td>
+      <td>1</td>
+      <td>√</td>
     </tr>
     <tr>
-      <td>blockTableOptional</td>
+      <td>blockTableOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示PageAttention中KV存储使用的block映射表。</td>
       <td>
           <ul>
                 <li>可选输入，非PageAttention场景可传入空指针。</li>
+                <li>不支持空Tensor。</li>
                 <li>PageAttention场景下，block_table必须为二维，第一维长度需要等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actual_seq_lengths_key对应的block数量）。</li>
+                <li>shape为(B, maxBlockNumPerSeq)。</li>
           </ul>
       </td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B, maxBlockNumPerSeq)</td>
-      <td>√*</td>
+      <td>2</td>
+      <td>√</td>
     </tr>
     <tr>
-      <td>qDescaleOptional</td>
+      <td>qDescaleOptional（aclTensor*）</td>
       <td>输入</td>
       <td>Query的反量化系数。</td>
       <td>
           <ul>
                 <li>可选输入，非量化场景（quantMode为-1）可传入空指针。</li>
+                <li>不支持空Tensor。</li>
                 <li>量化场景下必传，数据类型由quantMode决定：quantMode为0时为FLOAT（FP8 per-token-head量化），quantMode为1时为FLOAT8_E8M0（mxFP8量化）。</li>
-          </ul>
-      </td>
-      <td>FLOAT、FLOAT8_E8M0</td>
-      <td>ND</td>
-      <td>
-          <ul>
                 <li>quantMode为0时：layoutQueryOptional为BSND时shape为(B,S1,N1)；layoutQueryOptional为TND时shape为(T1,N1)。</li>
                 <li>quantMode为1时（mxFP8，每32个D维度元素共享一个E8M0 scale）：layoutQueryOptional为BSND时shape为(B,S1,N1,D/64,2)；layoutQueryOptional为TND时shape为(T1,N1,D/64,2)。</li>
           </ul>
       </td>
-      <td>√*</td>
+      <td>FLOAT、FLOAT8_E8M0</td>
+      <td>ND</td>
+      <td>2-5</td>
+      <td>√</td>
     </tr>
     <tr>
-      <td>kDescaleOptional</td>
+      <td>kDescaleOptional（aclTensor*）</td>
       <td>输入</td>
       <td>Key的反量化系数。</td>
       <td>
           <ul>
                 <li>可选输入，非量化场景（quantMode为-1）可传入空指针。</li>
+                <li>不支持空Tensor。</li>
                 <li>量化场景下必传，数据类型由quantMode决定：quantMode为0时为FLOAT（FP8 per-token-head量化），quantMode为1时为FLOAT8_E8M0（mxFP8量化）。</li>
-          </ul>
-      </td>
-      <td>FLOAT、FLOAT8_E8M0</td>
-      <td>ND</td>
-      <td>
-          <ul>
                 <li>quantMode为0时：layoutKeyOptional为BSND时shape为(B,S2,N2)；layoutKeyOptional为TND时shape为(T2,N2)；layoutKeyOptional为PA_BBND时shape为(block_num, block_size, N2)。</li>
                 <li>quantMode为1时（mxFP8）：layoutKeyOptional为BSND时shape为(B,S2,N2,D/64,2)；layoutKeyOptional为TND时shape为(T2,N2,D/64,2)；layoutKeyOptional为PA_BBND时shape为(block_num, block_size, N2, D/64,2)。</li>
           </ul>
       </td>
+      <td>FLOAT、FLOAT8_E8M0</td>
+      <td>ND</td>
+      <td>2-5</td>
       <td>支持0轴非连续（仅PA_BBND布局且量化场景，需配合kDescaleStride0属性；BSND/TND布局要求连续输入）</td>
     </tr>
     <tr>
-      <td>topk</td>
+      <td>topk（int64_t）</td>
       <td>输入</td>
       <td>展开后需要保留的token数量，对应公式中的topk。可选属性，建议值为2048。</td>
       <td>
@@ -352,23 +353,23 @@ aclnnStatus aclnnPoolKeyIndexer(
                 <li>需满足topk % pool_size == 0。</li>
           </ul>
       </td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>poolSize</td>
+      <td>poolSize（int64_t）</td>
       <td>输入</td>
       <td>每个pool包含的token数量，对应公式中的pool_size。可选属性，建议值为16。</td>
       <td>支持[1, 128]。</td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>layoutQueryOptional</td>
+      <td>layoutQueryOptional（char*）</td>
       <td>输入</td>
       <td>用于标识输入Query的数据排布格式。</td>
       <td>
@@ -377,13 +378,13 @@ aclnnStatus aclnnPoolKeyIndexer(
                 <li>当前支持BSND、TND。</li>
           </ul>
       </td>
-      <td>STRING</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>layoutKeyOptional</td>
+      <td>layoutKeyOptional（char*）</td>
       <td>输入</td>
       <td>用于标识输入Key的数据排布格式。</td>
       <td>
@@ -392,13 +393,13 @@ aclnnStatus aclnnPoolKeyIndexer(
                 <li>当前支持PA_BBND、BSND、TND。</li>
           </ul>
       </td>
-      <td>STRING</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>maskMode</td>
+      <td>maskMode（int64_t）</td>
       <td>输入</td>
       <td>表示mask的模式。</td>
       <td>
@@ -407,13 +408,13 @@ aclnnStatus aclnnPoolKeyIndexer(
                 <li>maskMode为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</li>
           </ul>
       </td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>quantMode</td>
+      <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示Query/Key的量化模式。</td>
       <td>
@@ -423,13 +424,13 @@ aclnnStatus aclnnPoolKeyIndexer(
                 <li>quantMode为1时，表示mxFP8量化模式，反量化系数为FLOAT8_E8M0。</li>
           </ul>
       </td>
-      <td>INT64</td>
+      <td>-/td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>returnValue</td>
+      <td>returnValue（bool）</td>
       <td>输入</td>
       <td>表示是否输出sparseValuesOut。可选属性，建议值为false。</td>
       <td>
@@ -438,13 +439,13 @@ aclnnStatus aclnnPoolKeyIndexer(
                 <li>returnValue为true时，表示输出sparseValuesOut。</li>
           </ul>
       </td>
-      <td>BOOL</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>keyStride0</td>
+      <td>keyStride0（int64_t）</td>
       <td>输入</td>
       <td>poolKey第0轴的stride（元素单位），用于layoutKeyOptional为PA_BBND场景下0轴非连续poolKey的寻址。可选属性，建议值为-1。</td>
       <td>
@@ -454,13 +455,13 @@ aclnnStatus aclnnPoolKeyIndexer(
                 <li>指定值与poolKey运行时实际stride冲突时报错。</li>
           </ul>
       </td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>kDescaleStride0</td>
+      <td>kDescaleStride0（int64_t）</td>
       <td>输入</td>
       <td>kDescaleOptional第0轴的stride（元素单位），用于layoutKeyOptional为PA_BBND场景下0轴非连续kDescaleOptional的寻址。可选属性，建议值为-1。</td>
       <td>
@@ -471,48 +472,46 @@ aclnnStatus aclnnPoolKeyIndexer(
                 <li>指定值与kDescaleOptional运行时实际stride冲突时报错。</li>
           </ul>
       </td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>sparseIndicesOut</td>
+      <td>sparseIndicesOut（aclTensor*）</td>
       <td>输出</td>
       <td>公式中的SparseIndices输出，展开后的稀疏token索引。</td>
-      <td>不支持空tensor。</td>
-      <td>INT32</td>
-      <td>ND</td>
       <td>
           <ul>
+                <li>不支持空tensor。</li>
                 <li>layoutQueryOptional为BSND时，输出shape为(B, S1, topk + pool_size - 1)。</li>
                 <li>layoutQueryOptional为TND时，输出shape为(T1, topk + pool_size - 1)。</li>
           </ul>
       </td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>2-3</td>
       <td>x</td>
     </tr>
     <tr>
-      <td>sparseValuesOut</td>
+      <td>sparseValuesOut（aclTensor*）</td>
       <td>输出</td>
       <td>公式中的SparseValues输出，即选中pool对应的分数值。</td>
       <td>
           <ul>
                 <li>当returnValue为true时，输出有效结果，不支持空tensor。</li>
                 <li>当returnValue为false时，输出shape为(0,)的空tensor。</li>
-          </ul>
-      </td>
-      <td>FLOAT</td>
-      <td>ND</td>
-      <td>
-          <ul>
                 <li>layoutQueryOptional为BSND时，输出shape为(B, S1, topk // pool_size)。</li>
                 <li>layoutQueryOptional为TND时，输出shape为(T1, topk // pool_size)。</li>
           </ul>
       </td>
+      <td>FLOAT</td>
+      <td>ND</td>
+      <td>2-3</td>
       <td>x</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t*）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -522,7 +521,7 @@ aclnnStatus aclnnPoolKeyIndexer(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor**）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
@@ -620,7 +619,7 @@ aclnnStatus aclnnPoolKeyIndexer(
 
 ## 约束说明
 
-- 确定性说明：
+- 确定性实现：
   - aclnnPoolKeyIndexer默认确定性实现。
 - 输入shape限制：
   - 参数query的N1支持小于等于64，poolKey的N2必须为1，headDim支持128，且poolKey的D必须与query的headDim保持一致。
@@ -637,8 +636,12 @@ aclnnStatus aclnnPoolKeyIndexer(
 - 输入数据类型限制：
   - 参数query、poolKey的数据类型应保持一致。
   - 非量化场景（quantMode为-1）下，参数weights的数据类型应与query、poolKey保持一致；量化场景（quantMode为0或1）下，参数weights为FLOAT16或BFLOAT16。
+  <!-- npu="950" id8 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：支持FLOAT8_E4M3FN（query、poolKey）数据类型，并支持量化场景（quantMode为0时反量化系数为FLOAT，quantMode为1时反量化系数为FLOAT8_E8M0）。
+  <!-- end id8 -->
+  <!-- npu="A3,910b" id7 -->
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持FLOAT8_E4M3FN与FLOAT8_E8M0数据类型，不支持量化场景。
+  <!-- end id7 -->
 - 输入数据布局限制：
   - 参数query、poolKey的数据布局（layoutQueryOptional与layoutKeyOptional）需保持一致，PageAttention场景（layoutKeyOptional为PA_BBND时）除外。
 - 其他限制：
@@ -650,21 +653,6 @@ aclnnStatus aclnnPoolKeyIndexer(
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
-/**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file test_aclnn_pool_key_indexer.cpp
- * \brief
- */
-//testci
 #include <iostream>
 #include <vector>
 #include <cmath>
