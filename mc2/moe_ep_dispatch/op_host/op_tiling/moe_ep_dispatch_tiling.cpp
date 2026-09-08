@@ -574,6 +574,7 @@ static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, cons
         ((hAlign32 + scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN + WIN_ADDR_ALIGN - 1) /
          WIN_ADDR_ALIGN) *
         WIN_ADDR_ALIGN;
+    info.metaSlotBytes = scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN;
     info.isTopkWeights = (context->GetOptionalInputShape(TOPK_WEIGHTS_INDEX) != nullptr) ? 1 : 0;
     OP_LOGD(nodeName, "perSlotBytes = %u (hidden=%u)", info.perSlotBytes, info.cfg.hidden);
 
@@ -744,6 +745,8 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     uint64_t sendCntPerRankBytes = epWorldSize * WIN_ADDR_ALIGN;
 
     uint64_t sendCntBytes = counterBytes + sendCntPerRankBytes + sendCntPerExpertBytes;
+    // urma发送 地址信息暂存区
+    uint64_t addrTableBytes = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank) * WIN_ADDR_ALIGN * epWorldSize;
     // scaleout counter 与 scaleup counter 一样按每 AIV 一份，SendPhase 用它做 slot prefix。
     uint64_t scaleoutCounterBytes =
         (info.networkMode == NETWORK_HYBRID) ? aivNum * AlignUpWin(superNodeCount * sizeof(int32_t)) : 0UL;
@@ -764,7 +767,7 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     info.workspace.routeWorkspaceOffset = 0UL;
     info.workspace.scaleoutSendEntryOffset = 0UL;
     info.workspace.scaleupSendEntryOffset = 0UL;
-    return SYSTEM_NEED_WORKSPACE + sendCntBytes + globalABytes;
+    return SYSTEM_NEED_WORKSPACE + sendCntBytes + addrTableBytes + globalABytes;
 }
 
 static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *context, MoeEpDispatchInfo &info,
@@ -789,6 +792,7 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     info.dispatchNotifyCount = layout.dispatchNotifyCount;
     info.window.cntWinStateOffset = layout.cntWinStateOffset;
     info.window.slotWinStateOffset = layout.slotWinStateOffset;
+    info.window.payloadWinStateOffset = layout.payloadStateWinOffset;
     info.window.winDataOffset = layout.winDataOffset;
     info.window.scaleoutRecvDataOffset = layout.scaleoutRecvDataOffset;
     info.window.scaleoutRecvStatusOffset = layout.scaleoutRecvStatusOffset;
