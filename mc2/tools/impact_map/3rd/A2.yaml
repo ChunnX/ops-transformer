@@ -1,5 +1,5 @@
 # mc2/3rd 文件影响范围映射表 - A2 (ascend910b)
-# 生成: 2026-09-08  基线commit: df6a3b865 (clean)
+# 生成: 2026-09-08  基线commit: 7693755b7 (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(3rd/开头), 与pr_files.sh输出中mc2/后的段落一致
 #
@@ -16,8 +16,8 @@
 # 判定规则:
 #   - mc2内所有#include按裸文件名匹配, 重名文件取并集(note:字段标注), 宁多勿漏
 #   - 算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 A2(ascend910b) 的交集
-#   - 未建模文件类型: common/3rd下除.h/.cpp/.py外的文件(json/ini/sh/csv/txt等)
-#     一律按全量算子回归处理(见impact_map/README.md)
+#   - 未建模文件类型: common/3rd下除.h/.cpp外的所有文件(.py/json/ini/sh等)
+#     改动一律按全量算子回归处理(见impact_map/README.md)
 
 3rd/add_rms_norm/op_host/add_rms_norm_tiling.h:
   ops:
@@ -39,7 +39,7 @@
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
-  note: 编译级引用, 无同名头无法接口反推, 保守全算子, 待人工确认
+  note: 编译级引用, 无同名头, 按全算子处理
 3rd/batch_mat_mul_v3/op_host/batch_mat_mul_v3_infershape.cpp:
   ops:
     - all_gather_matmul
@@ -57,7 +57,7 @@
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
-  note: 编译级引用, 无同名头无法接口反推, 保守全算子, 待人工确认
+  note: 编译级引用, 无同名头, 按全算子处理
 3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_al1_full_load_tiling.cpp:
   ops: []
   note: 编译级引用, 影响面按同名头3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_al1_full_load_tiling.h接口反推
@@ -189,7 +189,7 @@
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
-  note: 编译级引用, 无同名头无法接口反推, 保守全算子, 待人工确认
+  note: 编译级引用, 无同名头, 按全算子处理
 3rd/common/op_host/op_api/mc2_3rd_matmul_util.h:
   ops:
     - all_gather_matmul
@@ -246,7 +246,7 @@
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
-  note: 编译级引用, 无同名头无法接口反推, 保守全算子, 待人工确认
+  note: 编译级引用, 无同名头, 按全算子处理
 3rd/mat_mul_v3/op_host/mat_mul_v3_infershape.cpp:
   ops:
     - all_gather_matmul
@@ -264,7 +264,7 @@
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
-  note: 编译级引用, 无同名头无法接口反推, 保守全算子, 待人工确认
+  note: 编译级引用, 无同名头, 按全算子处理
 3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_base_tiling.h:
   ops:
     - all_gather_matmul
@@ -679,7 +679,7 @@
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
-  note: 编译级引用, 无同名头无法接口反推, 保守全算子, 待人工确认
+  note: 编译级引用, 无同名头, 按全算子处理
 3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.cpp:
   ops:
     - all_gather_matmul_v2
@@ -1289,7 +1289,7 @@
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
-  note: 编译级引用, 无同名头无法接口反推, 保守全算子, 待人工确认
+  note: 编译级引用, 无同名头, 按全算子处理
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_splitk.cpp:
   ops: []
   note: 编译级引用, 影响面按同名头3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_splitk.h接口反推
