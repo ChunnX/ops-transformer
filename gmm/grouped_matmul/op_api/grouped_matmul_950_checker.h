@@ -18,12 +18,14 @@ namespace gmm {
 template <typename T>
 class AclnnGroupedMatmulDAV3510Checker {
 public:
-    explicit AclnnGroupedMatmulDAV3510Checker(const GroupedMatmulParamsBase<T> &gmmParams) : gmmParams_(gmmParams) {};
+    explicit AclnnGroupedMatmulDAV3510Checker(const GroupedMatmulParamsBase<T> &gmmParams)
+        : gmmParams_(gmmParams) {};
     ~AclnnGroupedMatmulDAV3510Checker() {};
     aclnnStatus CheckGroupedMatmulDAV3510() const;
     bool IsPerTileQuantMode() const;
     void SetInputName(const std::string &xName, const std::string &weightName, const std::string &perTokenScaleName,
                       const std::string &scaleName, const std::string &groupTensorName);
+    void SetAclnnOpName(const std::string &opName);
 
 private:
     struct TensorDimInfo {
@@ -75,6 +77,7 @@ private:
     aclnnStatus CheckInputParamsForV3Version() const;
     aclnnStatus CheckInputShapeForV3Version() const;
     aclnnStatus CheckInputAndOutputDtypeForV3Version() const;
+    aclnnStatus CheckInputTensorsNotNull() const;
     bool CheckTensorListSizeForEachInput() const;
     bool IsSpecialMXCase(const T *tensorList) const;
     bool IsMxfp4() const;
@@ -98,6 +101,7 @@ private:
     std::string groupTensorName_ = "groupTensor";
     std::string biasName_ = "bias";
     std::string yName_ = "y";
+    std::string aclnnOpName_;
     const std::vector<op::DataType> SPECIAL_QUANT_DTYPES = {DataType::DT_FLOAT4_E2M1, DataType::DT_INT4};
 };
 } // namespace gmm

@@ -11,29 +11,18 @@
 #ifndef GMM_GEMM_TILE_TILE_COPY_TLA_HPP
 #define GMM_GEMM_TILE_TILE_COPY_TLA_HPP
 
-#include "../../../gmm_infra/base_defs.hpp"
+#include "../../../gmm_infra/gmm_base_defs.hpp"
 
 namespace Catlass::Gemm::Tile {
 
-template <
-    class ArchTag,
-    class TensorSrc,
-    class TensorDst,
-    class Enable = void
->
+template <class ArchTag, class TensorSrc, class TensorDst, class Enable = void>
 struct TileCopyTla {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported TileCopyTla, can not find the specialization.");
 };
 
 // Extended template for TileCopyTla that supports manually specifying LayoutTagSrc and LayoutTagDst.
 // Users can specialize the copy class by LayoutTagSrc and LayoutTagDst.
-template <
-    class ArchTag,
-    class TensorSrc,
-    class TensorDst,
-    class LayoutTagSrc,
-    class LayoutTagDst
->
+template <class ArchTag, class TensorSrc, class TensorDst, class LayoutTagSrc, class LayoutTagDst>
 struct TileCopyTlaExt {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported TileCopyTlaExt, can not find the specialization.");
 };

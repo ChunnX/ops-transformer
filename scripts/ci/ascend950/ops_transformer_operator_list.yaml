@@ -22,6 +22,7 @@ operator_group_1:
   - mhc_pre
   - mhc_pre_backward
   - mhc_sinkhorn_backward
+  - block_attention_residuals_grad
 operator_group_2:
   - grouped_matmul
   - grouped_matmul_add
@@ -69,6 +70,7 @@ operator_group_6:
   - quant_lightning_indexer
   - block_sparse_attention
   - generic_block_sparse_attention
+  - generic_block_sparse_attention_grad
 operator_group_7:
   - attention_pioneer
   - fused_infer_attention_score,10-0
@@ -100,6 +102,8 @@ operator_group_10:
   - moe_update_expert
   - distribute_barrier
   - distribute_barrier_extend
+  - ffn_to_attention_v2
+  - attention_to_ffn_v2
 operator_group_11:
   - fused_infer_attention_score,10-3
 operator_group_12:

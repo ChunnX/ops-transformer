@@ -46,6 +46,22 @@ namespace Mc2Kernel {
 
 #if defined(ENABLE_ENGRAM_FETCH_KERNEL)
 
+constexpr AscendC::UrmaWqeEntry URMA_UNORDERED_CFG = {
+    .odr = 5,
+    .fence = 1,
+    .se = 0,
+    .cqe = 0,
+    .inlineEn = 0,
+};
+
+constexpr AscendC::UrmaWqeEntry URMA_CQE_CFG = {
+    .odr = 6,
+    .fence = 1,
+    .se = 0,
+    .cqe = 1,
+    .inlineEn = 0,
+};
+
 template <AscendC::HardEvent event>
 __aicore__ inline void SyncFunc()
 {
@@ -101,8 +117,18 @@ private:
     AscendC::TBuf<> positionsBuf_;
     AscendC::TBuf<> divisorBuf_;
     AscendC::TBuf<> maskBuf_;
+    AscendC::TBuf<> hcommBatchBuf_;
 
     AscendC::Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> hcomm_;
+    using HcommBatchHandle = AscendC::BatchHandle<AscendC::ChannelHandle>;
+    HcommBatchHandle activeBatchHandle_{};
+    uint64_t activeChannelHandle_{0};
+    uint32_t preparedReadCount_{0};
+    uint32_t sqReadCount_{0};
+
+    template <auto const &config>
+    __aicore__ inline void PrepareRead(uint64_t commHandle, GM_ADDR remoteBase, GM_ADDR dst, GM_ADDR src, uint64_t len);
+    __aicore__ inline void FlushPreparedReads();
 };
 
 __aicore__ inline void EngramFetchArch35::Init(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched,
@@ -118,7 +144,7 @@ __aicore__ inline void EngramFetchArch35::Init(GM_ADDR commContext, GM_ADDR indi
     ctxPtr_ = (__gm__ EngramCommContext *)commContext;
     rankId_ = ctxPtr_->rankId;
     numRanks_ = ctxPtr_->rankSize;
-    channelsPerRank_ = (HANDLE_ARRAY_SIZE + numRanks_ - 1U) / numRanks_;
+    channelsPerRank_ = ctxPtr_->channelsPerRank;
     if (channelsPerRank_ == 0U) {
         channelsPerRank_ = 1U;
     }
@@ -133,6 +159,10 @@ __aicore__ inline void EngramFetchArch35::Init(GM_ADDR commContext, GM_ADDR indi
     hcomm_.Init(hcommTensor, HCOMM_INIT_SIZE);
 
     tpipe_->InitBuffer(relayQue_, RELAY_BUFFER_NUM, TILE_BYTES);
+    tpipe_->InitBuffer(hcommBatchBuf_, ENGRAM_BATCH_BUFFER_BYTES);
+    AscendC::LocalTensor<uint8_t> hcommBatchTensor = hcommBatchBuf_.Get<uint8_t>();
+    AscendC::Duplicate<uint8_t>(hcommBatchTensor, 0U, ENGRAM_BATCH_BUFFER_BYTES);
+    SyncFunc<AscendC::HardEvent::V_S>();
 
     uint32_t countsBufSize = AscendC::Ceil(numRanks_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(rankCountsBuf_, countsBufSize);
@@ -146,8 +176,8 @@ __aicore__ inline void EngramFetchArch35::Init(GM_ADDR commContext, GM_ADDR indi
     constexpr uint64_t ubReserved = 8U * 1024U;
     // ScatterByRank 需要: indices + tokenIdxInRank + rankIDs + positions + divisor (各4字节) + mask(每元素1字节近似)
     uint32_t bytesPerIndice = sizeof(int32_t) + sizeof(uint32_t) + sizeof(int32_t) * 3U + 1U;
-    uint64_t usedUb = HCOMM_INIT_SIZE + TILE_BYTES * RELAY_BUFFER_NUM + countsBufSize + offsetsBufSize +
-                      commBufferBufSize + hcommHandleBufSize;
+    uint64_t usedUb = HCOMM_INIT_SIZE + TILE_BYTES * RELAY_BUFFER_NUM + ENGRAM_BATCH_BUFFER_BYTES + countsBufSize +
+                      offsetsBufSize + commBufferBufSize + hcommHandleBufSize;
     uint64_t availableUb = (ubSize_ > usedUb + ubReserved) ? (ubSize_ - usedUb - ubReserved) : 0U;
     uint32_t maxBatchSize = static_cast<uint32_t>(availableUb / bytesPerIndice);
     uint32_t numTokens = static_cast<uint32_t>(numTokens_);
@@ -294,8 +324,8 @@ __aicore__ inline void EngramFetchArch35::LocalFetchTokens(uint32_t indicesBatch
     uint32_t numEntriesPerRank = static_cast<uint32_t>(numEntriesPerRank_);
     uint32_t localIdxStart = rankId_ * numEntriesPerRank;
     uint32_t rankStart = rankOffsets(rankId_);
-    uint32_t cnt = rankCounts(rankId_);
-    for (uint32_t tokenPos = tokenOffset; tokenPos < cnt; tokenPos += tokenStride) {
+    uint32_t rankTokenCount = rankCounts(rankId_);
+    for (uint32_t tokenPos = tokenOffset; tokenPos < rankTokenCount; tokenPos += tokenStride) {
         uint32_t i = tokenIdxInRank(rankStart + tokenPos);
         int32_t globalIdx = indicesLocal(i);
         uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - localIdxStart;
@@ -305,6 +335,31 @@ __aicore__ inline void EngramFetchArch35::LocalFetchTokens(uint32_t indicesBatch
         LocalCopySlice(dst, src, hiddenBytes);
     }
     SyncFunc<AscendC::HardEvent::MTE3_S>();
+}
+
+template <auto const &config>
+__aicore__ inline void EngramFetchArch35::PrepareRead(uint64_t commHandle, GM_ADDR remoteBase, GM_ADDR dst, GM_ADDR src,
+                                                      uint64_t len)
+{
+    if (preparedReadCount_ == ENGRAM_BATCH_CAPACITY) {
+        FlushPreparedReads();
+    }
+    if (preparedReadCount_ == 0U) {
+        AscendC::LocalTensor<uint8_t> hcommBatchTensor = hcommBatchBuf_.Get<uint8_t>();
+        activeBatchHandle_ =
+            hcomm_.MakeBatchHandle(commHandle, hcommBatchTensor, ENGRAM_BATCH_BUFFER_BYTES, remoteBase);
+    }
+    int32_t ret = hcomm_.ReadNbi<config>(activeBatchHandle_, dst, src, static_cast<uint32_t>(len));
+    ascendc_assert(ret == 0, "batch ReadNbi failed, ret=%d", ret);
+    ++preparedReadCount_;
+    ++sqReadCount_;
+}
+
+__aicore__ inline void EngramFetchArch35::FlushPreparedReads()
+{
+    int32_t ret = hcomm_.BatchCommit(activeBatchHandle_);
+    ascendc_assert(ret == 0, "BatchCommit failed, ret=%d", ret);
+    preparedReadCount_ = 0U;
 }
 
 __aicore__ inline void EngramFetchArch35::RemoteFetchRank(uint32_t ownerRank, uint32_t indicesBatchStart,
@@ -322,48 +377,53 @@ __aicore__ inline void EngramFetchArch35::RemoteFetchRank(uint32_t ownerRank, ui
 
     uint32_t idxStart = ownerRank * numEntriesPerRank;
     uint32_t rankStart = rankOffsets(ownerRank);
-    uint32_t cnt = rankCounts(ownerRank);
-    if (cnt == 0) {
+    uint32_t rankTokenCount = rankCounts(ownerRank);
+    if (rankTokenCount == 0) {
         return;
     }
     uint64_t channelHandle = hcommHandleLocal(ownerRank * channelsPerRank_ + channelIdxInRank);
     GM_ADDR remoteBase = (GM_ADDR)commBufferLocal(ownerRank);
-    uint32_t pendingReadCount = 0;
-    uint32_t threshold = READ_COMMIT_FIRST_THRESHOLD;
+    if (activeChannelHandle_ != channelHandle) {
+        sqReadCount_ = 0;
+    }
+    activeChannelHandle_ = channelHandle;
 
-    for (uint32_t tokenPos = channelIdxInRank; tokenPos < cnt; tokenPos += channelCount) {
+    for (uint32_t tokenPos = channelIdxInRank; tokenPos < rankTokenCount; tokenPos += channelCount) {
         uint32_t i = tokenIdxInRank(rankStart + tokenPos);
         int32_t globalIdx = indicesLocal(i);
         uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - idxStart;
         uint64_t globalTokenIdx = indicesBatchStart + i;
         GM_ADDR dst = fetchedGM_ + globalTokenIdx * hiddenBytes;
         GM_ADDR remoteSrcAddr = remoteBase + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
-        int32_t ret = hcomm_.ReadNbi<false>(channelHandle, dst, remoteSrcAddr, hiddenBytes);
-        ascendc_assert(ret == 0, "Urma readNbi failed, ret=%d, ownerRank=%u", ret, ownerRank);
-        pendingReadCount++;
-        if (pendingReadCount >= threshold) {
-            ret = hcomm_.Commit(channelHandle);
-            ascendc_assert(ret == 0, "Urma commit failed, ret=%d, ownerRank=%u", ret, ownerRank);
-            pendingReadCount = 0;
-            threshold = READ_COMMIT_THRESHOLD;
+        bool isLast = (tokenPos + channelCount >= rankTokenCount);
+        bool needDrain = (sqReadCount_ + 1U >= HCOMM_SQ_MAX_PENDING);
+        if (isLast || needDrain) {
+            PrepareRead<URMA_CQE_CFG>(channelHandle, remoteBase, dst, remoteSrcAddr, hiddenBytes);
+        } else {
+            PrepareRead<URMA_UNORDERED_CFG>(channelHandle, remoteBase, dst, remoteSrcAddr, hiddenBytes);
+        }
+        if (needDrain) {
+            FlushPreparedReads();
+            int32_t drainRet = hcomm_.Drain(static_cast<AscendC::ChannelHandle>(channelHandle));
+            ascendc_assert(drainRet == 0, "mid-stream Drain failed, ret=%d", drainRet);
+            sqReadCount_ = 0;
         }
     }
-    if (pendingReadCount > 0) {
-        int32_t ret = hcomm_.Commit(channelHandle);
-        ascendc_assert(ret == 0, "Urma commit failed, ret=%d, ownerRank=%u", ret, ownerRank);
+    if (preparedReadCount_ > 0U) {
+        FlushPreparedReads();
     }
 }
 
 __aicore__ inline void EngramFetchArch35::FetchByRank(uint32_t indicesBatchStart)
 {
     uint32_t totalBlocks = AscendC::GetBlockNum();
+    uint32_t maxCh = (channelsPerRank_ < MAX_CHANNELS_PER_RANK) ? channelsPerRank_ : MAX_CHANNELS_PER_RANK;
     if (totalBlocks >= numRanks_) {
         auto coreAssign = GetCoreAssignment(totalBlocks, aivId_, numRanks_);
         if (coreAssign.assignedRank == rankId_) {
             LocalFetchTokens(indicesBatchStart, coreAssign.idxInRankGroup, coreAssign.rankGroupSize);
-        } else if (coreAssign.idxInRankGroup < channelsPerRank_) {
-            uint32_t effectiveStride =
-                (coreAssign.rankGroupSize < channelsPerRank_) ? coreAssign.rankGroupSize : channelsPerRank_;
+        } else if (coreAssign.idxInRankGroup < maxCh) {
+            uint32_t effectiveStride = (coreAssign.rankGroupSize < maxCh) ? coreAssign.rankGroupSize : maxCh;
             RemoteFetchRank(coreAssign.assignedRank, indicesBatchStart, coreAssign.idxInRankGroup, effectiveStride);
         }
     } else {
@@ -391,10 +451,13 @@ __aicore__ inline void EngramFetchArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR sr
         uint64_t thisLen = (len - off > TILE_BYTES) ? tileLen : (len - off);
 
         AscendC::LocalTensor<uint8_t> tmp = relayQue_.AllocTensor<uint8_t>();
-        AscendC::DataCopy(tmp, srcGm[off], thisLen);
+        AscendC::DataCopyExtParams mte2Params{1U, static_cast<uint32_t>(thisLen), 0U, 0U, 0U};
+        AscendC::DataCopyPadExtParams<uint8_t> mte2Pad{false, 0, 0, 0};
+        AscendC::DataCopyPad(tmp, srcGm[off], mte2Params, mte2Pad);
         relayQue_.EnQue<uint8_t>(tmp);
         tmp = relayQue_.DeQue<uint8_t>();
-        AscendC::DataCopy(dstGm[off], tmp, thisLen);
+        AscendC::DataCopyParams mte3Params{1U, static_cast<uint16_t>(thisLen), 0U, 0U};
+        AscendC::DataCopyPad(dstGm[off], tmp, mte3Params);
         relayQue_.FreeTensor<uint8_t>(tmp);
 
         off += thisLen;

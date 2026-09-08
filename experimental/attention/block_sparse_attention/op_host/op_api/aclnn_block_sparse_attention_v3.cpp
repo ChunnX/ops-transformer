@@ -370,7 +370,10 @@ static aclnnStatus ValidateMxfp4Constraints(int64_t quantMode, int64_t softmaxLs
     return ACLNN_SUCCESS;
 }
 
-static string ConvertLayoutString(char *layoutStr) { return op::ToString(layoutStr).GetString(); }
+static string ConvertLayoutString(char *layoutStr)
+{
+    return op::ToString(layoutStr).GetString();
+}
 
 } // namespace
 

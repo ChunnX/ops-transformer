@@ -11,17 +11,13 @@
 #ifndef GMM_COPY_UB_TO_GM_HPP
 #define GMM_COPY_UB_TO_GM_HPP
 
-#include "../../../gmm_infra/base_defs.hpp"
+#include "../../../gmm_infra/gmm_base_defs.hpp"
 #include "../../../gmm_infra/arch/gmm_arch.hpp"
 #include "../../../gmm_infra/gemm/gmm_gemm_type.hpp"
 
 namespace Catlass::Gemm::Tile {
 
-
-template <
-    class ArchTag,
-    class GmType
->
+template <class ArchTag, class GmType>
 struct CopyUb2Gm {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy ub to gm, can not find the specialization.");
 };
@@ -37,24 +33,16 @@ struct CopyUb2Gm<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
     CopyUb2Gm() = default;
 
     CATLASS_DEVICE
-    void operator()(
-        AscendC::GlobalTensor<Element> const &dstTensor,
-        AscendC::LocalTensor<Element> const &srcTensor,
-        layout::RowMajor const &layoutDst,
-        layout::RowMajor const &layoutSrc)
+    void operator()(AscendC::GlobalTensor<Element> const &dstTensor, AscendC::LocalTensor<Element> const &srcTensor,
+                    layout::RowMajor const &layoutDst, layout::RowMajor const &layoutSrc)
     {
-        AscendC::DataCopyExtParams dataCopyParams(
-            layoutDst.shape(0),
-            layoutDst.shape(1) * sizeof(Element),
-            (layoutSrc.stride(0) - layoutSrc.shape(1)) / ELE_NUM_PER_C0,
-            (layoutDst.stride(0) - layoutDst.shape(1)) * sizeof(Element),
-            0
-        );
+        AscendC::DataCopyExtParams dataCopyParams(layoutDst.shape(0), layoutDst.shape(1) * sizeof(Element),
+                                                  (layoutSrc.stride(0) - layoutSrc.shape(1)) / ELE_NUM_PER_C0,
+                                                  (layoutDst.stride(0) - layoutDst.shape(1)) * sizeof(Element), 0);
         AscendC::DataCopyPad(dstTensor, srcTensor, dataCopyParams);
     }
 };
 
-
-}  // Catlass::Gemm::Tile
+} // namespace Catlass::Gemm::Tile
 
 #endif // GMM_COPY_UB_TO_GM_HPP

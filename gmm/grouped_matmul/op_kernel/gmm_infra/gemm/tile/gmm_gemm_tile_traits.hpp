@@ -11,7 +11,7 @@
 #ifndef GMM_GEMM_PROLOGUE_TRATIS_HPP
 #define GMM_GEMM_PROLOGUE_TRATIS_HPP
 
-#include "../../../gmm_infra/base_defs.hpp"
+#include "../../../gmm_infra/gmm_base_defs.hpp"
 
 namespace Catlass::Gemm::Tile {
 
@@ -38,10 +38,10 @@ struct PrologueTraits<void> {
     using Params = EmptyType;
 
     template <class... Args>
-    CATLASS_DEVICE
-    PrologueTraits(Args...) {}
+    CATLASS_DEVICE PrologueTraits(Args...)
+    {}
 };
 
-}  //namespace Catlass::Gemm::Tile
+} // namespace Catlass::Gemm::Tile
 
 #endif
