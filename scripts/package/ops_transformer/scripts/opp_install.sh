@@ -360,8 +360,7 @@ add_init_py() {
       chmod u+w -R "${built_in_impl_path}" 2>/dev/null
     fi
   fi
-  # A frozen Provider-only package does not install the traditional Python impl.
-  [ -d "${built_in_impl_path}" ] && touch "${built_in_impl_path}/__init__.py"
+  touch ${built_in_impl_path}/__init__.py
 
   [ -d ${built_in_impl_path}/dynamic ] && touch ${built_in_impl_path}/dynamic/__init__.py
 

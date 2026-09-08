@@ -9,10 +9,7 @@
 # ----------------------------------------------------------------------------
 set(OPBASE_TAG_ID ec8c387b251655664f4679f1bc5fd30a69efc5a7)
 
-if(OPBASE_SOURCE_PATH AND EXISTS "${OPBASE_SOURCE_PATH}/CMakeLists.txt")
-  get_filename_component(OPBASE_SOURCE_PATH "${OPBASE_SOURCE_PATH}" REALPATH)
-  message(STATUS "Use explicit opbase source dir: ${OPBASE_SOURCE_PATH}")
-elseif(EXISTS "${PROJECT_SOURCE_DIR}/../../ops-base")
+if(EXISTS "${PROJECT_SOURCE_DIR}/../../ops-base")
   get_filename_component(OPBASE_SOURCE_PATH
                          ${PROJECT_SOURCE_DIR}/../../ops-base REALPATH)
   message(STATUS "Find opbase source dir: ${OPBASE_SOURCE_PATH}")

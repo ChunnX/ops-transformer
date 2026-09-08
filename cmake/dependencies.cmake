@@ -28,9 +28,7 @@ else()
 endif()
 message(STATUS "Search libs under install path ${ASCEND_DIR}")
 
-# Keep caller-provided SDK prefixes, including CANNBotFramework installed by
-# the compiler run package, while retaining the CANN dependency search root.
-list(APPEND CMAKE_PREFIX_PATH "${ASCEND_DIR}")
+set(CMAKE_PREFIX_PATH ${ASCEND_DIR}/)
 
 set(CMAKE_MODULE_PATH
   ${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules
