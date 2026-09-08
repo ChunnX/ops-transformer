@@ -66,18 +66,21 @@ TEST_F(SparseFlashMlaMetadataApiTest, a2a3_compressed_ratio_support)
         for (int64_t topk : {0, 512}) {
             SCOPED_TRACE(soc);
             SCOPED_TRACE(topk);
+            EXPECT_EQ(RunParamsCheck(params, nullptr, 1, topk, soc),
+                      topk > 0 ? ACLNN_SUCCESS : ACLNN_ERR_PARAM_INVALID);
             EXPECT_EQ(RunParamsCheck(params, params.cmpResidualKv.get(), 2, topk, soc),
                       topk > 0 ? ACLNN_SUCCESS : ACLNN_ERR_PARAM_INVALID);
             EXPECT_EQ(RunParamsCheck(params, nullptr, topk > 0 ? 2 : 128, topk, soc), ACLNN_ERR_PARAM_INVALID);
             EXPECT_EQ(RunParamsCheck(params, params.cmpResidualKv.get(), topk == 0 ? 128 : 4, topk, soc),
                       ACLNN_SUCCESS);
-            for (int64_t ratio : {0, 1, 3, 8, 129}) {
+            for (int64_t ratio : {0, 3, 8, 129}) {
                 EXPECT_EQ(RunParamsCheck(params, params.cmpResidualKv.get(), ratio, topk, soc),
                           ACLNN_ERR_PARAM_INVALID);
             }
         }
         EXPECT_FALSE(IsCmpRatioSupportSmla(soc, false, 0, 2));
-        EXPECT_TRUE(IsCmpRatioSupportSmla(soc, false, 0, 1));
+        EXPECT_FALSE(IsCmpRatioSupportSmla(soc, false, 0, 1));
+        EXPECT_TRUE(IsCmpRatioSupportSmla(soc, false, 0, 0));
     }
 }
 
