@@ -648,8 +648,8 @@ aclnnStatus Mc2Context::GetHcclCommChannelUbCTP(const HcclComm &hcclHandle, uint
     auto hcclRet =
         HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, mc2ContextStruct->hcommHandle_);
     if (hcclRet != HCCL_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "Acquire UB_CTP HCCL channel failed");
-        return ACLNN_ERR_INNER;
+        OP_LOGE(hcclRet, "Acquire UB_CTP HCCL channel failed");
+        return hcclRet;
     }
     return ACLNN_SUCCESS;
 }
