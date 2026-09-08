@@ -564,7 +564,7 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
     auto gradUniqueDesc = context->GetOutputDesc(OUT_GRAD_UNIQUE);
     tilingData.outputDtype = static_cast<int32_t>(gradUniqueDesc->GetDataType());
     // 半精度输出时 FlushAccum 借用 entryBuf_ 尾部（20KB 偏移后）作 flush cast 双缓冲，
-    // 需 20KB + 2*Align32(hiddenDim*2) 不越界（SEC-4.2③/TIL-3①；Kernel 侧另有 RUNTIME_ABORT 兜底）
+    // 需 20KB + 2*Align32(hiddenDim*2) 不越界（SEC-4.2③/TIL-3①；Kernel 侧另有 ascendc_assert 兜底）
     if (tilingData.outputDtype != static_cast<int32_t>(ge::DT_FLOAT)) {
         int64_t flushCastNeed =
             Mc2Kernel::FLUSH_CAST_HEAD_BYTES + 2 * AlignTo(static_cast<int64_t>(hiddenDim) * 2, Mc2Kernel::UB_ALIGN);

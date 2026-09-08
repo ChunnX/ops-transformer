@@ -468,10 +468,9 @@ __aicore__ inline void EngramFetchGradUnique::FlushAccum(GM_ADDR gradUniqueOutGM
                                  Mc2Kernel::UB_ALIGN * Mc2Kernel::UB_ALIGN;
         // 双缓冲借用区必须完整落在 entryBuf_ 尾部内（Host 侧已按 hiddenDim 上界拒绝超限 shape，此处兜底）
         uint32_t castTailBytes = flushCastOffset + 2U * castHalfBytes;
-        if (castTailBytes > Mc2Kernel::ENTRY_BUF_BYTES) {
-            RUNTIME_ABORT("FlushAccum cast staging overflow: need %u bytes, entryBuf=%u bytes, hiddenDim=%u",
-                          castTailBytes, Mc2Kernel::ENTRY_BUF_BYTES, static_cast<uint32_t>(hiddenDim_));
-        }
+        ascendc_assert(castTailBytes <= Mc2Kernel::ENTRY_BUF_BYTES,
+                       "FlushAccum cast staging overflow: need %u bytes, entryBuf=%u bytes, hiddenDim=%u",
+                       castTailBytes, Mc2Kernel::ENTRY_BUF_BYTES, static_cast<uint32_t>(hiddenDim_));
         AscendC::LocalTensor<uint8_t> flushCastBuf = entryRaw[flushCastOffset + bufIdx * castHalfBytes];
         uint32_t castCount = static_cast<uint32_t>(hiddenDim_);
 
