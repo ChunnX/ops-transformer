@@ -11,8 +11,7 @@
 namespace MhcPreBackward {
 using namespace AscendC;
 
-// 单个M tile扩大到256行：L0A占256*32*4=32KB，L0C占256*128*4=128KB，均不超过单槽容量。
-constexpr uint32_t BASIC_CUBE_M = 256U;
+constexpr uint32_t BASIC_CUBE_M = 128U;
 constexpr uint32_t BASIC_CUBE_N_STRIDE = 128U;
 constexpr uint32_t BASIC_CUBE_K_L1 = 64U;
 constexpr uint32_t BASIC_CUBE_K_L0 = 32U;
