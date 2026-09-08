@@ -16,7 +16,7 @@ python3 -m pip install --force-reinstall --no-deps build_out/cann_ops_transforme
 
 ACLNN 头文件、Host 和 Kernel 必须来自同一次构建。升级时完整更新算子包；增量构建也需重新生成 ACLNN 入口。
 
-标准内置包使用安装目录中的 `libopapi_transformer.so`；以上自定义验证包使用 `libcust_opapi.so`。直接 ACLNN 调用及示例编译命令见 [ACLNN 接口](aclnnTurboQuantSparseFlashAttention.md)。
+标准内置包使用安装目录中的 `libopapi_transformer.so`；以上自定义验证包使用 `libcust_opapi.so`。接口调用示例见 [ACLNN 接口](aclnnTurboQuantSparseFlashAttention.md)，验证程序的编译运行方式见[测试说明](../tests/README.md)。
 
 旧 Python 调用入口的安装方式见[兼容说明](../torch_ops_extension/README.md)。
 

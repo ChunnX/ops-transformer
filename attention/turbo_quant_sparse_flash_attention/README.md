@@ -86,7 +86,6 @@
 - [旧 Python 入口兼容说明](torch_ops_extension/README.md)。
 - [构建与安装](docs/install.md)。
 - [测试说明](tests/README.md)。
-- [实现说明](docs/design.md)。
 
 接口仅支持推理前向，支持 Meta/FakeTensor，不提供 GE Converter 或反向实现。ACL graph 捕获前需完成首次调用及 JIT 编译；回放时保持张量的 shape 和地址不变，仅更新内容。
 

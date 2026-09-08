@@ -21,6 +21,26 @@ ASCEND_RT_VISIBLE_DEVICES=0 python3 -m pytest attention/turbo_quant_sparse_flash
 
 [资产测试](pytest/test_turbo_quant_sparse_flash_attention_assets.py)覆盖稀疏块大小 1/2/4/8/16、页大小 16/1024、8K/32K KV，并通过故意扰动输出检查比较器能否检出错误。直接运行这些 pytest 不等同于执行完整 TTK 流程。
 
+## 直接 ACLNN 验证
+
+[C++ 验证程序](../examples/test_aclnn_turbo_quant_sparse_flash_attention.cpp)覆盖 FP16/BF16、PA_BSND/PA_BNBD、空 query、零 KV 长度及带 storage offset 的非连续 cache，共 16 个用例，并检查结果与输入 cache 未被修改。
+
+安装自定义验证包后，在仓库根目录执行：
+
+```bash
+source /usr/local/Ascend/cann/set_env.sh
+export CUSTOM_OP=/your/operator/install/vendors/custom_transformer
+source "$CUSTOM_OP/bin/set_env.bash"
+g++ -std=c++17 -O2 \
+  attention/turbo_quant_sparse_flash_attention/examples/test_aclnn_turbo_quant_sparse_flash_attention.cpp \
+  -I"$ASCEND_HOME_PATH/include" -I"$CUSTOM_OP/op_api/include" \
+  -L"$ASCEND_HOME_PATH/lib64" -L"$CUSTOM_OP/op_api/lib" \
+  -lcust_opapi -lnnopbase -lascendcl -o test_turbo_quant_sfa
+ASCEND_RT_VISIBLE_DEVICES=0 ./test_turbo_quant_sfa
+```
+
+使用标准内置包时，按[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)调整头文件、库路径及链接库。
+
 ## 精度判据
 
 当前回归用例中，FP16/BF16 均使用 `atol=rtol=2^-9`，同时满足以下条件才判定通过：

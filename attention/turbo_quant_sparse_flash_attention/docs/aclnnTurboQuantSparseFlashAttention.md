@@ -96,20 +96,178 @@ cache 支持第 0 轴非连续与合法 storage offset，页内必须连续，�
 
 ## 调用示例
 
-[完整 C++ 示例](../examples/test_aclnn_turbo_quant_sparse_flash_attention.cpp)覆盖两种 query dtype、两种 KV 布局、空序列和非连续 cache。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。本例使用 BF16 query、PA_BSND cache，包含 1 个 query token、8 个 query head 和 1 个有效 KV token。
 
-按[构建与安装](install.md)安装自定义验证包后，在仓库根目录执行：
+```cpp
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
-```bash
-source /usr/local/Ascend/cann/set_env.sh
-export CUSTOM_OP=/your/operator/install/vendors/custom_transformer
-source "$CUSTOM_OP/bin/set_env.bash"
-g++ -std=c++17 -O2 \
-  attention/turbo_quant_sparse_flash_attention/examples/test_aclnn_turbo_quant_sparse_flash_attention.cpp \
-  -I"$ASCEND_HOME_PATH/include" -I"$CUSTOM_OP/op_api/include" \
-  -L"$ASCEND_HOME_PATH/lib64" -L"$CUSTOM_OP/op_api/lib" \
-  -lcust_opapi -lnnopbase -lascendcl -o test_turbo_quant_sfa
-ASCEND_RT_VISIBLE_DEVICES=0 ./test_turbo_quant_sfa
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <iostream>
+#include <vector>
+#include "acl/acl.h"
+#include "aclnnop/aclnn_turbo_quant_sparse_flash_attention.h"
+
+bool Check(int status, const char *operation)
+{
+    if (status != ACL_SUCCESS) {
+        std::cerr << operation << " failed: " << status << '\n';
+        return false;
+    }
+    return true;
+}
+
+struct TensorData {
+    void *data = nullptr;
+    aclTensor *tensor = nullptr;
+};
+
+struct Resources {
+    TensorData query, kv, indices, blockTable, queryLengths, kvLengths, output, maximum, sum;
+    void *workspace = nullptr;
+    aclrtStream stream = nullptr;
+    bool initialized = false;
+    bool deviceSet = false;
+
+    ~Resources()
+    {
+        // 保证异步任务结束后再释放张量和 workspace；失败返回时也执行清理。
+        if (stream != nullptr) {
+            aclrtSynchronizeStream(stream);
+        }
+        for (auto *item : {&query, &kv, &indices, &blockTable, &queryLengths, &kvLengths,
+                           &output, &maximum, &sum}) {
+            if (item->tensor != nullptr) {
+                aclDestroyTensor(item->tensor);
+            }
+            if (item->data != nullptr) {
+                aclrtFree(item->data);
+            }
+        }
+        if (workspace != nullptr) {
+            aclrtFree(workspace);
+        }
+        if (stream != nullptr) {
+            aclrtDestroyStream(stream);
+        }
+        if (deviceSet) {
+            aclrtResetDevice(0);
+        }
+        if (initialized) {
+            aclFinalize();
+        }
+    }
+};
+
+template <typename T>
+bool CreateTensor(const std::vector<T> &host, const std::vector<int64_t> &shape,
+                  aclDataType dtype, TensorData &result)
+{
+    const size_t bytes = host.size() * sizeof(T);
+    if (!Check(aclrtMalloc(&result.data, bytes, ACL_MEM_MALLOC_HUGE_FIRST), "aclrtMalloc") ||
+        !Check(aclrtMemcpy(result.data, bytes, host.data(), bytes, ACL_MEMCPY_HOST_TO_DEVICE), "H2D")) {
+        return false;
+    }
+    std::vector<int64_t> strides(shape.size(), 1);
+    for (size_t i = shape.size(); i > 1; --i) {
+        strides[i - 2] = strides[i - 1] * shape[i - 1];
+    }
+    result.tensor = aclCreateTensor(shape.data(), shape.size(), dtype, strides.data(), 0,
+                                    ACL_FORMAT_ND, shape.data(), shape.size(), result.data);
+    if (result.tensor == nullptr) {
+        std::cerr << "aclCreateTensor failed\n";
+        return false;
+    }
+    return true;
+}
+
+int main()
+{
+    // 1. 初始化设备与流。可通过 ASCEND_RT_VISIBLE_DEVICES 选择物理设备。
+    Resources r;
+    if (!Check(aclInit(nullptr), "aclInit")) {
+        return 1;
+    }
+    r.initialized = true;
+    if (!Check(aclrtSetDevice(0), "aclrtSetDevice")) {
+        return 1;
+    }
+    r.deviceSet = true;
+    if (!Check(aclrtCreateStream(&r.stream), "aclrtCreateStream")) {
+        return 1;
+    }
+
+    // 2. 创建输入与输出。本例用 uint16_t 保存 BF16 位模式，query 为全零。
+    // cache 为 [1,16,1,386]：latent 的 nibble 均为 code 8，rope 为零，FP16 scale 为 1。
+    std::vector<uint8_t> cache(16 * 386, 0);
+    for (size_t token = 0; token < 16; ++token) {
+        std::fill_n(cache.data() + token * 386, 256, uint8_t{0x88});
+        cache[token * 386 + 385] = 0x3c;
+    }
+    if (!CreateTensor(std::vector<uint16_t>(8 * 576, 0), {1, 8, 576}, ACL_BF16, r.query) ||
+        !CreateTensor(cache, {1, 16, 1, 386}, ACL_INT8, r.kv) ||
+        !CreateTensor(std::vector<int32_t>{0}, {1, 1, 1}, ACL_INT32, r.indices) ||
+        !CreateTensor(std::vector<int32_t>{0}, {1, 1}, ACL_INT32, r.blockTable) ||
+        !CreateTensor(std::vector<int32_t>{1}, {1}, ACL_INT32, r.queryLengths) ||
+        !CreateTensor(std::vector<int32_t>{1}, {1}, ACL_INT32, r.kvLengths) ||
+        !CreateTensor(std::vector<uint16_t>(8 * 512, 0), {1, 8, 512}, ACL_BF16, r.output) ||
+        !CreateTensor(std::vector<float>(8, 0.0F), {1, 1, 8}, ACL_FLOAT, r.maximum) ||
+        !CreateTensor(std::vector<float>(8, 0.0F), {1, 1, 8}, ACL_FLOAT, r.sum)) {
+        return 1;
+    }
+
+    // 3. 获取 workspace 大小。key 与 value 传同一个张量，两个可选 scale 传 nullptr。
+    char layoutQuery[] = "TND";
+    char layoutKv[] = "PA_BSND";
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    if (!Check(aclnnTurboQuantSparseFlashAttentionGetWorkspaceSize(
+                   r.query.tensor, r.kv.tensor, r.kv.tensor, r.indices.tensor, nullptr, nullptr,
+                   r.blockTable.tensor, r.queryLengths.tensor, r.kvLengths.tensor,
+                   1.0, 3, 3, 1, layoutQuery, layoutKv, 3, INT64_MAX, INT64_MAX, 2, 1, 128, 64,
+                   true, r.output.tensor, r.maximum.tensor, r.sum.tensor, &workspaceSize, &executor),
+               "aclnnTurboQuantSparseFlashAttentionGetWorkspaceSize")) {
+        return 1;
+    }
+    if (workspaceSize != 0 &&
+        !Check(aclrtMalloc(&r.workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST), "workspace allocation")) {
+        return 1;
+    }
+
+    // 4. 下发计算并同步。
+    if (!Check(aclnnTurboQuantSparseFlashAttention(r.workspace, workspaceSize, executor, r.stream),
+               "aclnnTurboQuantSparseFlashAttention") ||
+        !Check(aclrtSynchronizeStream(r.stream), "aclrtSynchronizeStream")) {
+        return 1;
+    }
+
+    // 5. 拷回结果，展示首个 attention 元素与首行 softmax 结果。
+    std::vector<uint16_t> output(8 * 512);
+    std::vector<float> maximum(8), sum(8);
+    if (!Check(aclrtMemcpy(output.data(), output.size() * sizeof(uint16_t), r.output.data,
+                          output.size() * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST), "attention D2H") ||
+        !Check(aclrtMemcpy(maximum.data(), maximum.size() * sizeof(float), r.maximum.data,
+                          maximum.size() * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST), "maximum D2H") ||
+        !Check(aclrtMemcpy(sum.data(), sum.size() * sizeof(float), r.sum.data,
+                          sum.size() * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST), "sum D2H")) {
+        return 1;
+    }
+    const uint32_t bits = static_cast<uint32_t>(output[0]) << 16;
+    float first;
+    std::memcpy(&first, &bits, sizeof(first));
+    std::cout << "attention_out[0] = " << first << ", softmax_max[0] = " << maximum[0]
+              << ", softmax_sum[0] = " << sum[0] << '\n';
+
+    // 6. Resources 析构时释放张量、workspace、流及设备资源。
+    return 0;
+}
 ```
-
-上例链接自定义验证包的 `libcust_opapi.so`；使用标准内置包时改为链接 `libopapi_transformer.so`。
