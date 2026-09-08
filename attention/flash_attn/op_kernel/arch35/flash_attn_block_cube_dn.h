@@ -342,21 +342,6 @@ public:
             qL1BufId_ = (qL1BufId_ + 1) % L1_Q_BUFCNT;
         }
     }
-    __aicore__ inline void FixpipeMm1DnSplitM(const LocalTensor<MM_T> &dstTensor, const LocalTensor<MM_T> &l0C,
-                                               uint32_t mSize, RunInfo &runInfo)
-    {
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        fixpipeParams.nSize = runInfo.actMSize;
-        fixpipeParams.mSize = mSize;
-        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) >> 4) << 4;
-        fixpipeParams.dstStride = runInfo.actMSizeAlign64;
-        fixpipeParams.dualDstCtl = 0;
-        fixpipeParams.unitFlag = UNITFLAG_EN_OUTER_LAST;  // 读后置0, 允许后续 Mmad 写
-        fixpipeParams.params.ndNum = 1;
-        fixpipeParams.params.srcNdStride = 0;
-        fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
-    }
 
     __aicore__ inline void IterateBmm2(RunInfo &runInfo)
     {

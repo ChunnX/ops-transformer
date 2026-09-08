@@ -132,6 +132,8 @@ public:
     GlobalTensor<float> softmaxFDSumGm_;
     GlobalTensor<float> softmaxFDMaxGm_;
 
+    static constexpr MaskFormat MASK_LAYOUT =
+        (LAYOUT_T == FA_LAYOUT::BSH || LAYOUT_T == FA_LAYOUT::TND) ? MaskFormat::SG : MaskFormat::GS;
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
     uint32_t negativeIntScalar_ = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
     T negativeFloatScalar_;
@@ -178,11 +180,10 @@ public:
 
         /*--------------------------------------------UB--------------------------------------------*/
         struct UbLayout {
-            uint8_t ubMmResBuffers[UB_MM_RES_BUFCNT][UB_MM_RES_BUF_BYTES]; // CV通信BUF
-            uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES];         // 输入BUF: MASK拷入
-            uint8_t vec2Res[UB_VEC2_RES_BUF_BYTES];                          // 输出BUF: attn_out拷出
-            uint8_t vec1ResBuffers[UB_VEC1_RES_BUFCNT]
-                                  [UB_VEC1_RES_BUF_BYTES];                           // softmax结果拷至L1
+            uint8_t ubMmResBuffers[UB_MM_RES_BUFCNT][UB_MM_RES_BUF_BYTES];           // CV通信BUF
+            uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES];                  // 输入BUF: MASK拷入
+            uint8_t vec2Res[UB_VEC2_RES_BUF_BYTES];                                  // 输出BUF: attn_out拷出
+            uint8_t vec1ResBuffers[UB_VEC1_RES_BUFCNT][UB_VEC1_RES_BUF_BYTES];       // softmax结果拷至L1
             uint8_t softmaxSumBuf_[UB_SOFTMAX_SUM_BUFCNT][UB_SOFTMAX_SUM_BUF_BYTES]; // sum常驻BUF
             uint8_t softmaxMaxBuf_[UB_SOFTMAX_MAX_BUFCNT][UB_SOFTMAX_MAX_BUF_BYTES]; // max常驻BUF
             uint8_t softmaxExpBuf_[UB_SOFTMAX_EXP_BUFCNT][UB_SOFTMAX_EXP_BUF_BYTES]; // exp常驻BUF
@@ -191,8 +192,8 @@ public:
         };
         static_assert(sizeof(UbLayout) <= 248 * 1024, "UB buffer too large");
         ubMmResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, ubMmResBuffers),
-                                                SIZE_OF_MEMBER(UbLayout, ubMmResBuffers));
-        
+                                               SIZE_OF_MEMBER(UbLayout, ubMmResBuffers));
+
         ubMaskBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, maskBuffers),
                                               SIZE_OF_MEMBER(UbLayout, maskBuffers));
         ubVec2Res_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, vec2Res),
@@ -395,22 +396,24 @@ public:
             ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
         if constexpr (HAS_MASK) {
             if (likely(isSkipMask)) {
-                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, mBaseSize, s2BaseSize, true, false>(
-                    stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, attenMaskUb, runInfo.actMSizeAlign64,
-                    runInfo.actSingleLoopS2Size, static_cast<T>(constInfo_.scaleValue), negativeFloatScalar_, 0.0F);
+                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
+                    stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
+                    runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
+                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false);
             } else {
                 Mutex::Lock<PIPE_V>(UB_MASK_BUFCNT + maskBufId);
-                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, mBaseSize, s2BaseSize, true, true>(
-                    stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, attenMaskUb, runInfo.actMSizeAlign64,
-                    runInfo.actSingleLoopS2Size, static_cast<T>(constInfo_.scaleValue), negativeFloatScalar_, 0.0F);
+                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, true, s2BaseSize>(
+                    stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
+                    runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
+                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, true);
                 Mutex::Unlock<PIPE_V>(UB_MASK_BUFCNT + maskBufId);
             }
         } else {
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, mBaseSize, s2BaseSize, true, false>(
-                stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, attenMaskUb, runInfo.actMSizeAlign64,
-                runInfo.actSingleLoopS2Size, static_cast<T>(constInfo_.scaleValue), negativeFloatScalar_, 0.0F);
+            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
+                stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
+                runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
+                static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false);
         }
-        
 
         Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
         Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
@@ -585,8 +588,8 @@ public:
             }
         }
     }
-    __aicore__ inline void AttenMaskCopyInDn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx,
-        uint32_t mDealSize, bool &isSkipMask, RunInfo &runInfo)
+    __aicore__ inline void AttenMaskCopyInDn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
+                                             bool &isSkipMask, RunInfo &runInfo)
     {
         uint32_t s2RealSize = runInfo.actSingleLoopS2Size;
         MaskInfo maskInfo;
@@ -608,6 +611,7 @@ public:
         maskInfo.maskValue = negativeIntScalar_;
         maskInfo.s1LeftPaddingSize = runInfo.qPaddingBeginOffset;
         maskInfo.s2LeftPaddingSize = runInfo.kvPaddingBeginOffset;
+        maskInfo.maskFormat = MASK_LAYOUT;
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
         isSkipMask = IsSkipAttentionmask(maskInfo);

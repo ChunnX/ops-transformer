@@ -81,9 +81,6 @@ __aicore__ inline constexpr bool IsPageAttention()
 template <bool hasAttenMask, uint8_t config>
 __aicore__ inline constexpr bool EnableSoftmaxDn()
 {
-    if constexpr (hasAttenMask) {
-        return false;
-    }
     return ((config == 0) || (config == 2));
 }
 
