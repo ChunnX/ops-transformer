@@ -29,23 +29,23 @@
 
   1. Top-k value的计算公式：
 
-    $$
-    I_{t,:}=W_{t,:}@ReLU(\tilde{q}_{t,:}@\tilde{K}_{:t,:}^\top)
-    $$
+     $$
+     I_{t,:}=W_{t,:}@ReLU(\tilde{q}_{t,:}@\tilde{K}_{:t,:}^\top)
+     $$
 
-      - $W_{t,:}$是第$t$个token对应的$weights$；
-      - $\tilde{q}_{t,:}$是$\tilde{q}$矩阵第$t$个token对应的$G$个query头合轴后的结果；
-      - $\tilde{K}_{:t,:}$为$t$行$\tilde{K}$矩阵。
+     - $W_{t,:}$是第$t$个token对应的$weights$；
+     - $\tilde{q}_{t,:}$是$\tilde{q}$矩阵第$t$个token对应的$G$个query头合轴后的结果；
+     - $\tilde{K}_{:t,:}$为$t$行$\tilde{K}$矩阵。
 
   2. 正向的Softmax对应公式：
 
-    $$
-    p_{t,:} = \text{Softmax}(q_{t,:} @ K_{:t,:}^\top/\sqrt{d})
-    $$
+     $$
+     p_{t,:} = \text{Softmax}(q_{t,:} @ K_{:t,:}^\top/\sqrt{d})
+     $$
 
-      - $p_{t,:}$是第$t$个token对应的Softmax结果；
-      - $q_{t,:}$是$q$矩阵第$t$个token对应的$G$个query头合轴后的结果；
-      - ${K}_{:t,:}$为$t$行$K$矩阵。
+     - $p_{t,:}$是第$t$个token对应的Softmax结果；
+     - $q_{t,:}$是$q$矩阵第$t$个token对应的$G$个query头合轴后的结果；
+     - ${K}_{:t,:}$为$t$行$K$矩阵。
 
   3. npu_lightning_indexer会单独训练，对应的loss function为：
 
@@ -319,7 +319,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>preTokens（int64_t）</td>
        <td>输入</td>
        <td>用于稀疏计算，表示Attention需要和前几个token计算关联</td>
-       <td>>和Attention中的preTokens定义相同，在sparseMode = 0和4的时候生效，默认值2^63-1。</td>
+        <td>和Attention中的preTokens定义相同，在sparseMode = 0和4的时候生效，默认值2147483647。</td>
        <td>-</td>
        <td>-</td>
        <td>-</td>
@@ -329,7 +329,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>nextTokens（int64_t）</td>
        <td>输入</td>
        <td>用于稀疏计算，表示Attention需要和后几个token计算关联</td>
-       <td>和Attention中的nextTokens定义相同，在sparseMode = 0和4的时候生效，默认值2^63-1。</td>
+        <td>和Attention中的nextTokens定义相同，在sparseMode = 0和4的时候生效，默认值2147483647。</td>
        <td>-</td>
        <td>-</td>
        <td>-</td>
@@ -571,7 +571,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       </tr>
       <tr>
        <td>S1、S2</td>
-       <td>1~128k</td>
+       <td>1~1M</td>
        <td>S1、S2支持不等长</td>
       </tr>
       <tr>
@@ -858,7 +858,7 @@ int main() {
   int64_t sparseMode = 3;
   bool deterministic = false;
 
-  char layOut[5] = {'T', 'N', 'D', 0};
+  char layout[5] = {'T', 'N', 'D', 0};
 
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   uint64_t workspaceSize = 0;
@@ -867,7 +867,7 @@ int main() {
   // 调用aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize第一段接口
   ret = aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize(
             q, k, qIndex, kIndex, weight, softmaxMax, softmaxSum, softmaxMaxIndex, softmaxSumIndex, qRope, kRope,
-            acSeqQLen, acSeqKvLen, scaleValue, layOut, sparseMode, preTokens, nextTokens, dQIndex, dKIndex, dWeight, loss,
+            acSeqQLen, acSeqKvLen, scaleValue, layout, sparseMode, preTokens, nextTokens, dQIndex, dKIndex, dWeight, loss,
             &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize failed. ERROR: %d\n", ret);
             return ret);

@@ -67,8 +67,6 @@ constexpr uint32_t SYNC_EVENT_ID3 = 3;
 constexpr uint32_t SYNC_EVENT_ID4 = 4;
 constexpr uint32_t SYNC_EVENT_ID5 = 5;
 constexpr int64_t GM_FLAG_POLL_BACKOFF_CYCLES = 200;
-constexpr int64_t E5M2_QUANT = 3U;
-constexpr int64_t E2M1_QUANT = 5U;
 constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
 constexpr uint8_t COMBINE_NO_QUANT = 0;
 constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;
@@ -85,6 +83,14 @@ constexpr uint32_t L1_TILE_M_128 = 128U;
 constexpr uint32_t L1_TILE_N = 256U;
 constexpr uint32_t L0_TILE_K = 128U;
 constexpr uint32_t ACTIVATION_N_HALF = 2U;
+
+// Hcomm 批量句柄中每条普通读写描述符占 64B。
+// Layered 的数据批次仍按最多 256 个 token 组织，64 KiB 可容纳同批 token 的附加 WQE。
+constexpr uint32_t HCOMM_BATCH_WQE_BYTES = 64U;
+constexpr uint32_t LAYERED_USABLE_UB_BYTES = 248U * 1024U;
+constexpr uint32_t LAYERED_HCOMM_BATCH_UB_BYTES = 64U * 1024U;
+constexpr uint32_t LAYERED_HCOMM_BATCH_UB_OFFSET = LAYERED_USABLE_UB_BYTES - LAYERED_HCOMM_BATCH_UB_BYTES;
+constexpr uint32_t LAYERED_HCOMM_BATCH_WQE_CAPACITY = LAYERED_HCOMM_BATCH_UB_BYTES / HCOMM_BATCH_WQE_BYTES;
 } // namespace MegaMoeImpl
 
 #endif // MEGA_MOE_CONSTANTS_H

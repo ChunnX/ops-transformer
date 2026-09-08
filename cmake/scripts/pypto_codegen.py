@@ -17,6 +17,7 @@ It runs host-side binary artifact preparation and copies all generated artifacts
 """
 
 import argparse
+import importlib.util
 import logging
 import os
 import shutil
@@ -44,6 +45,45 @@ def _prepend_pypto_install_site():
         sys.path.insert(0, site)
 
 
+def _load_legacy_kernel(py_file: Path):
+    """Load the sole @pl.jit kernel for the legacy header-generation API."""
+    from pypto_pro.runtime.jit import _TileJitKernel
+
+    spec = importlib.util.spec_from_file_location("_pypto_codegen_kernel_mod", py_file)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load kernel module from {py_file}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    kernels = [
+        value for value in vars(module).values() if isinstance(value, _TileJitKernel)
+    ]
+    if len(kernels) != 1:
+        raise RuntimeError(
+            f"kernel module '{py_file}' must define exactly one @pl.jit kernel, found {len(kernels)}"
+        )
+    return kernels[0]
+
+
+def _prepare_binary_headers(py_file: Path) -> Path:
+    try:
+        from pypto_pro.runtime.opc import prepare_binary_headers
+
+        return Path(prepare_binary_headers(str(py_file))).resolve()
+    except Exception as error:
+        logging.warning(
+            "prepare_binary_headers failed, falling back to generate_binary_headers: %s",
+            error,
+        )
+
+    import pypto_pro.runtime.opc.pypto_compile as pto_compile
+
+    return Path(
+        pto_compile.generate_binary_headers(_load_legacy_kernel(py_file))
+    ).resolve()
+
+
 def main():
     parser = argparse.ArgumentParser(description="PyPTO kernel codegen driver")
     parser.add_argument("--py-file", required=True, help="kernel python source file")
@@ -64,9 +104,7 @@ def main():
 
     _install_build_only_torch_stub()
     _prepend_pypto_install_site()
-    from pypto_pro.runtime.opc import prepare_binary_headers
-
-    binary_dir = Path(prepare_binary_headers(str(py_file))).resolve()
+    binary_dir = _prepare_binary_headers(py_file)
     shutil.copytree(binary_dir, out_dir, dirs_exist_ok=True)
     copied = sorted(
         path.relative_to(binary_dir).as_posix()
