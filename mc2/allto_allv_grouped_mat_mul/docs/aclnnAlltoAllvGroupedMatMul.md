@@ -125,7 +125,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
     <tr>
         <td>sendCountsTensorOptional(aclTensor*)</td>
         <td>输入</td>
-        <td>预留参数，当前版本仅支持传nullptr。</td>
+        <td>预留参数，当前版本仅支持传nullptr；任一count Tensor非nullptr时返回ACLNN_ERR_PARAM_INVALID。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -135,7 +135,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
     <tr>
         <td>recvCountsTensorOptional(aclTensor*)</td>
         <td>输入</td>
-        <td>预留参数，当前版本仅支持传nullptr。</td>
+        <td>预留参数，当前版本仅支持传nullptr；任一count Tensor非nullptr时返回ACLNN_ERR_PARAM_INVALID。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
