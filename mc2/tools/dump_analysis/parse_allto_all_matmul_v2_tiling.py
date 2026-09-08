@@ -150,7 +150,6 @@ def main():
     parser.add_argument("--workspace", action="store_true")
     parser.add_argument("--aic-core-num", type=int)
     parser.add_argument("--comm-ctx", action="store_true")
-    parser.add_argument("--peermem", action="store_true")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
@@ -188,9 +187,6 @@ def main():
     elif args.comm_ctx:
         result = common.parse_urma_comm_context(data)
         title += " CommContext"
-    elif args.peermem:
-        result = common.parse_peermem_window(data)
-        title += " peermem"
     else:
         result = parse_tiling_data(data)
         title += " tiling_data"

@@ -9,13 +9,13 @@
 # !
 #  \file parse_all_gather_matmul_v3_tiling.py
 #  \brief AllGatherMatmulV3 (AllGatherMxMatmulUrma) TilingData / Workspace / RuntimeInfo /
-#         CommContext / PeermemWindow dump 解析脚本。
+#         CommContext dump 解析脚本。
 #         解析异常 dump 产生的 tiling_data_*.bin、args_info_*.bin、
-#         workspace_seg*_type*_*.bin、comm_context_*.bin 或 peermem_window_*.bin 文件。
+#         workspace_seg*_type*_*.bin 或 comm_context_*.bin 文件。
 #
 # 用法:
 #   python parse_all_gather_matmul_v3_tiling.py <bin_file> [--args] [--ws-layout]
-#                                                   [--workspace] [--comm-ctx] [--peermem]
+#                                                   [--workspace] [--comm-ctx]
 #                                                   [--aic-core-num N] [--json]
 #
 # 模式:
@@ -24,7 +24,6 @@
 #   --ws-layout  从 tiling_data_*.bin 中解析 WorkspaceLayoutInfo
 #   --workspace  解析 workspace_seg*_type*_*.bin（type=12 解析 RuntimeInfo）
 #   --comm-ctx   解析 comm_context_*.bin（CommContext = CommUdmaContext + CommUbmemContext, 1552B）
-#   --peermem    解析 peermem_window_*.bin（peermem 窗口数据 hex 预览）
 #   --json       以 JSON 格式输出（默认为人类可读表格）
 
 import sys
@@ -416,33 +415,6 @@ def parse_urma_comm_context(data: bytes) -> dict:
     }
 
 
-def parse_peermem_window(data: bytes) -> dict:
-    """解析 peermem_window_*.bin（peermem 窗口数据）。
-
-    peermem 布局（Rank-major）:
-      ┌──────────────────────────────────────────────┐
-      │  rank0 M行 data │ ... │ rankR-1 M行 data     │  data 段
-      │  rank0 M行 scale│ ... │ rankR-1 M行 scale    │  scale 段
-      └──────────────────────────────────────────────┘
-    data 段大小 = rankSize * m * dataBytesPerMRow
-    scale 段大小 = rankSize * m * scaleBytesPerMRow
-    """
-    result = {
-        "fileSize": len(data),
-        "hexPreview": data[:512].hex(),
-    }
-    if len(data) <= 512:
-        result["note"] = "peermem 窗口数据较小，请结合 tiling 参数分析。"
-    else:
-        result["note"] = (
-            "peermem 窗口数据。布局: rank-major，data 段在前，scale 段在后。"
-            " dataRegionBytes = rankSize * m * dataBytesPerMRow，"
-            " scaleRegionBytes = rankSize * m * scaleBytesPerMRow。"
-            " 请结合 tiling_data 解析结果中的 commTile 和 mmTile 参数确定具体偏移。"
-        )
-    return result
-
-
 def print_section(title: str):
     logging.info("=" * 70)
     logging.info("  %s", title)
@@ -604,21 +576,6 @@ def print_urma_comm_context(result: dict):
         logging.info("    syncBuf[%d]: %s", idx, addr)
 
 
-def print_peermem_window(result: dict):
-    """人类可读格式打印 peermem 窗口数据。"""
-    print_section(f"Peermem Window ({result['fileSize']}B)")
-    logging.info("  文件大小: %d bytes", result["fileSize"])
-    logging.info("  Hex 预览 (前 512 字节):")
-    hex_str = result.get("hexPreview", "")
-    for i in range(0, min(len(hex_str), 1024), 64):
-        offset_hex = f"{i // 2:04x}"
-        chunk = hex_str[i:i + 64]
-        formatted = " ".join(chunk[j:j + 2] for j in range(0, len(chunk), 2))
-        logging.info("    %s: %s", offset_hex, formatted)
-    logging.info("")
-    logging.info("  %s", result.get("note", ""))
-
-
 def verify_tiling_data(dump_data: bytes, ref_data: bytes) -> bool:
     """对比 dump 文件与 host 参考文件，逐字节验证。
 
@@ -704,7 +661,7 @@ def verify_tiling_data(dump_data: bytes, ref_data: bytes) -> bool:
 def main():
     parser = argparse.ArgumentParser(
         description="AllGatherMatmulV3 (AllGatherMxMatmulUrma) TilingData / Workspace / RuntimeInfo / "
-                    "CommContext / PeermemWindow dump 解析脚本",
+                    "CommContext dump 解析脚本",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 示例:
@@ -726,9 +683,6 @@ def main():
   # 解析 comm_context（通信拓扑）
   python parse_all_gather_matmul_v3_tiling.py comm_context_AllGatherMatmulV3.0.1.20260819.bin --comm-ctx
 
-  # 解析 peermem_window（窗口数据 hex 预览）
-  python parse_all_gather_matmul_v3_tiling.py peermem_window_AllGatherMatmulV3.0.1.20260819.bin --peermem
-
   # JSON 格式输出
   python parse_all_gather_matmul_v3_tiling.py tiling_data_*.bin --json
 
@@ -744,8 +698,6 @@ def main():
                         help="解析 workspace_seg*_type*_*.bin（段文件，type=12 自动解析 RuntimeInfo）")
     parser.add_argument("--comm-ctx", action="store_true",
                         help="解析 comm_context_*.bin（CommContext = CommUdmaContext + CommUbmemContext, 1552B, 通信拓扑）")
-    parser.add_argument("--peermem", action="store_true",
-                        help="解析 peermem_window_*.bin（peermem 窗口数据 hex 预览）")
     parser.add_argument("--aic-core-num", type=int, metavar="N", default=None,
                         help="AIC 核数，用于 workspace 段解析时区分 C/V 核。"
                              " 从 tiling_data 解析结果的 mmTile.usedCoreNum 字段获取。"
@@ -781,15 +733,6 @@ def main():
             print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
         else:
             print_urma_comm_context(result)
-        return
-
-    # --- peermem_window 解析 ---
-    if args.peermem:
-        result = parse_peermem_window(data)
-        if args.json:
-            print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
-        else:
-            print_peermem_window(result)
         return
 
     # --- workspace 段文件解析 ---

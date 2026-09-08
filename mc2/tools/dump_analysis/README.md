@@ -192,7 +192,7 @@ aiv_mte3_time：AI CORE->片上内存搬运类指令在AI Vector Core上的耗�
 
 更完整的命令示例、Workspace Segment 说明和矩阵查看方法见 [MC2 Dump 解析脚本使用说明](./MC2_DUMP_USAGE.md)。
 
-`parse_mc2_dump.py` 是统一入口。脚本会根据算子名递归查找 dump 根目录中的文件，并自动解析 `tiling_data`、`args_info`、`workspace`、CCU XN/CKE 地址表以及 URMA 通信上下文/peermem。统一入口不读取 `exception_info.*`，也不生成 NPY。
+`parse_mc2_dump.py` 是统一入口。脚本会根据算子名递归查找 dump 根目录中的文件，并自动解析 `tiling_data`、`args_info`、`workspace`、CCU XN/CKE 地址表以及 URMA 通信上下文。统一入口不读取 `exception_info.*`，也不生成 NPY。
 
 ### 支持的算子和通路
 
@@ -236,10 +236,9 @@ python3 parse_mc2_dump.py MatmulReduceScatterV2 /path/to/data-dump
 | `args_info_` | 全部 | 必有 | Kernel 参数地址 |
 | `workspace_segN_typeM_` | 全部 | 必有 | Workspace 段编号、类型和大小；`type12` 进一步解析 RuntimeInfo |
 | `xn_addr_info_`、`cke_addr_info_` | CCU | 应有 | 小端 `uint64` 地址表 |
-| `comm_context_` | AIV + URMA | 应有 | URMA 通信上下文 |
-| `peermem_window_`、`peermem_segN_typeM_` | AIV + URMA | 应有 | Peer Memory 布局、段类型、大小和数据预览 |
+| `comm_context_` | AIV + URMA | 应有 | URMA 通信上下文，并提示使用 `parse_matrix.py` 查看原始字节 |
 
-`tiling_data_*`、`args_info_*` 和 `workspace_segN_typeM_*` 是已开启 MC2 DFX Dump 后的核心文件。XN/CKE 只在 CCU 通路出现；`comm_context_*` 和 `peermem_*` 只在 URMA 通路出现。`exception_info.*`、算子 `.json`、`.o` 和 `*_host.o` 不参与统一解析。
+`tiling_data_*`、`args_info_*` 和 `workspace_segN_typeM_*` 是已开启 MC2 DFX Dump 后的核心文件。XN/CKE 只在 CCU 通路出现，`comm_context_*` 只在 URMA 通路出现。`peermem_window_*`、`peermem_segN_typeM_*`、`exception_info.*`、算子 `.json`、`.o` 和 `*_host.o` 不参与统一解析。
 
 结果输出到 `<dump根目录>/mc2_dump_analysis/<标准算子名>/`。每个源文件分别生成一个同名 `.txt`，并保留原 rank 子目录；不生成 NPY，也不生成合并的 `analysis.txt`。TilingData、ArgsInfo、RuntimeInfo 等后端脚本在终端显示的字段级结果会原样写入对应 TXT。若同一 rank 目录包含多次调用，RuntimeInfo TXT 中的 `associatedTiling` 会标明实际配对的 TilingData。
 
@@ -311,7 +310,7 @@ python3 parse_matmul_reduce_scatter_v2_tiling.py workspace_seg2_type12_xxx \
   --workspace --aic-core-num N
 ```
 
-URMA 算子的后端脚本还支持 `--comm-ctx` 和 `--peermem`。建议日常优先使用统一入口，因为它会从同一次调用的 TilingData 自动推导 AIC 核数，并让每个输入文件单独生成一个易于查看和比较的 TXT。
+URMA 算子的后端脚本还支持 `--comm-ctx`。建议日常优先使用统一入口，因为它会从同一次调用的 TilingData 自动推导 AIC 核数，并让每个输入文件单独生成一个易于查看和比较的 TXT。
 
 ### 常见问题
 
