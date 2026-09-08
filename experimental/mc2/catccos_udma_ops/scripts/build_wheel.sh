@@ -8,7 +8,7 @@ REPO_ROOT=$(cd -- "${PROJECT_DIR}/../../.." && pwd)
 export CATCCOS_SOURCE_PATH=${CATCCOS_SOURCE_PATH:-"${REPO_ROOT}/3rdparty/catccos"}
 export SHMEM_SOURCE_PATH=${SHMEM_SOURCE_PATH:-"${REPO_ROOT}/3rdparty/shmem"}
 export SHMEM_HOME_PATH=${SHMEM_HOME_PATH:-"${SHMEM_SOURCE_PATH}/install"}
-EXPECTED_SHMEM_COMMIT=2a59c8fdcce9b717114fe445be09c96a13a55c39
+EXPECTED_SHMEM_COMMIT=0132a6f504c2035d9c1a04100e0d7254fd2968e4
 
 if [[ ! -f "${SHMEM_SOURCE_PATH}/include/shmem.h" ||
       ! -f "${SHMEM_HOME_PATH}/shmem/lib/libshmem.so" ||
@@ -21,7 +21,7 @@ ACTUAL_SHMEM_COMMIT=$(git -C "${SHMEM_SOURCE_PATH}" rev-parse HEAD 2>/dev/null |
 BUILT_SHMEM_COMMIT=$(tr -d '[:space:]' < "${SHMEM_HOME_PATH}/shmem/.ops_transformer_source_commit")
 if [[ "${ACTUAL_SHMEM_COMMIT}" != "${EXPECTED_SHMEM_COMMIT}" ||
       "${BUILT_SHMEM_COMMIT}" != "${EXPECTED_SHMEM_COMMIT}" ]]; then
-    echo "error: SHMEM source or library is not the pinned official master snapshot" >&2
+    echo "error: SHMEM source or library is not the pinned official release/v1.6.0 snapshot" >&2
     echo "expected: ${EXPECTED_SHMEM_COMMIT}" >&2
     echo "source:   ${ACTUAL_SHMEM_COMMIT:-missing}" >&2
     echo "library:  ${BUILT_SHMEM_COMMIT:-missing}" >&2

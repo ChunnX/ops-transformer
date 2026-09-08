@@ -9,8 +9,8 @@ CATCCOS_REPOSITORY=https://gitcode.com/cann/catccos.git
 CATCCOS_COMMIT=878c2e0a504be8c49c03b5e1157a7c714a628e29
 CATCCOS_DIR=${CATCCOS_SOURCE_PATH:-"${REPO_ROOT}/3rdparty/catccos"}
 SHMEM_REPOSITORY=https://gitcode.com/cann/shmem.git
-# Official master snapshot (2026-09-04); VERSION is 1.7.0, not a release tag.
-SHMEM_COMMIT=2a59c8fdcce9b717114fe445be09c96a13a55c39
+# Official release/v1.6.0 branch tip verified on 2026-09-08; VERSION is 1.6.0.
+SHMEM_COMMIT=0132a6f504c2035d9c1a04100e0d7254fd2968e4
 SHMEM_DIR=${SHMEM_SOURCE_PATH:-"${REPO_ROOT}/3rdparty/shmem"}
 
 if [[ ! -d "${CATCCOS_DIR}/.git" ]]; then

@@ -56,8 +56,8 @@ public:
     }
 
     /// Complete this worker's pending copies before a software signal without
-    /// closing the local MTE event loop. SHMEM's generic fence polls every peer
-    /// queue, including queues owned by other concurrently progressing AIVs.
+    /// closing the local MTE event loop. In SHMEM 1.6.0 a generic fence only
+    /// drains local pipes/cache, so UDMA must first be completed by its owner.
     CATLASS_DEVICE
     void CompleteForSignal()
     {

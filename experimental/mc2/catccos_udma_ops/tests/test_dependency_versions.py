@@ -11,7 +11,7 @@ import pytest
 
 
 PROJECT_ROOT = Path(__file__).parents[1]
-SHMEM_COMMIT = "2a59c8fdcce9b717114fe445be09c96a13a55c39"
+SHMEM_COMMIT = "0132a6f504c2035d9c1a04100e0d7254fd2968e4"
 
 
 def test_package_version_has_one_source_of_truth():
@@ -45,7 +45,7 @@ def test_wheel_build_cleans_and_verifies_distribution_metadata():
     assert 'metadata.get("Version") != expected_version' in source
 
 
-def test_prepare_dependencies_pins_official_shmem_master_snapshot():
+def test_prepare_dependencies_pins_official_shmem_release_snapshot():
     source = (PROJECT_ROOT / "scripts" / "prepare_dependencies.sh").read_text()
     assert "SHMEM_REPOSITORY=https://gitcode.com/cann/shmem.git" in source
     assert f"SHMEM_COMMIT={SHMEM_COMMIT}" in source
@@ -67,8 +67,8 @@ def test_wheel_records_bundled_shmem_revision():
         / "ops_transformer_catccos_udma"
         / "_build_versions.py"
     ).read_text()
-    assert 'SHMEM_VERSION = "1.7.0"' in source
-    assert 'SHMEM_REF = "master"' in source
+    assert 'SHMEM_VERSION = "1.6.0"' in source
+    assert 'SHMEM_REF = "release/v1.6.0"' in source
     assert f'SHMEM_COMMIT = "{SHMEM_COMMIT}"' in source
 
 
@@ -131,8 +131,12 @@ def _prepare_checkout(repository, revision, remote=None):
     )
 
 
-def test_prepare_upgrades_clean_checkout_and_preserves_ignored_build(shmem_checkout):
-    repository, _, revision = shmem_checkout
+@pytest.mark.parametrize("downgrade", [False, True])
+def test_prepare_switches_clean_checkout_and_preserves_ignored_build(shmem_checkout, downgrade):
+    repository, old_revision, revision = shmem_checkout
+    if downgrade:
+        _git(repository, "checkout", "--quiet", "--detach", revision)
+        revision = old_revision
     (repository / "build").mkdir()
     cached_object = repository / "build" / "keep.o"
     cached_object.write_text("ignored build cache")
@@ -141,13 +145,18 @@ def test_prepare_upgrades_clean_checkout_and_preserves_ignored_build(shmem_check
 
     assert result.returncode == 0, result.stdout
     assert _git(repository, "rev-parse", "HEAD") == revision
-    assert (repository / "header.h").read_text() == "new revision\n"
+    expected_source = "old revision\n" if downgrade else "new revision\n"
+    assert (repository / "header.h").read_text() == expected_source
     assert cached_object.read_text() == "ignored build cache"
 
 
 @pytest.mark.parametrize("filename", ["header.h", "untracked.h"])
-def test_prepare_preserves_dirty_checkout(shmem_checkout, filename):
+@pytest.mark.parametrize("downgrade", [False, True])
+def test_prepare_preserves_dirty_checkout(shmem_checkout, filename, downgrade):
     repository, old_revision, revision = shmem_checkout
+    if downgrade:
+        _git(repository, "checkout", "--quiet", "--detach", revision)
+        old_revision, revision = revision, old_revision
     user_file = repository / filename
     user_file.write_text("user changes\n")
 
@@ -157,6 +166,39 @@ def test_prepare_preserves_dirty_checkout(shmem_checkout, filename):
     assert "local changes" in result.stdout
     assert _git(repository, "rev-parse", "HEAD") == old_revision
     assert user_file.read_text() == "user changes\n"
+
+
+@pytest.mark.parametrize("stale_part", ["source", "library", None])
+def test_wheel_preflight_requires_matching_source_and_library(shmem_checkout, stale_part):
+    repository, old_revision, revision = shmem_checkout
+    source_revision = old_revision if stale_part == "source" else revision
+    library_revision = old_revision if stale_part == "library" else revision
+    _git(repository, "checkout", "--quiet", "--detach", source_revision)
+    (repository / "include").mkdir()
+    (repository / "include" / "shmem.h").touch()
+    # The fake public header is test scaffolding, not a dirty source edit.
+    (repository / ".git" / "info" / "exclude").write_text("/include/\n")
+    install = repository / "install"
+    libraries = install / "shmem" / "lib"
+    libraries.mkdir(parents=True)
+    for library in ("libshmem.so", "libshmem_utils.so"):
+        (libraries / library).touch()
+    marker = install / "shmem" / ".ops_transformer_source_commit"
+    marker.write_text(library_revision + "\n")
+    source = (PROJECT_ROOT / "scripts" / "build_wheel.sh").read_text()
+    start = source.index('if [[ ! -f "${SHMEM_SOURCE_PATH}/include/shmem.h"')
+    end = source.index('cd "${PROJECT_DIR}"')
+
+    result = _run_dependency_shell(
+        source[start:end], SHMEM_SOURCE_PATH=repository.as_posix(),
+        SHMEM_HOME_PATH=install.as_posix(), EXPECTED_SHMEM_COMMIT=revision,
+    )
+
+    assert result.returncode == (0 if stale_part is None else 1), result.stdout
+    if stale_part is not None:
+        assert "source or library is not the pinned official release/v1.6.0 snapshot" in result.stdout
+    assert _git(repository, "rev-parse", "HEAD") == source_revision
+    assert marker.read_text().strip() == library_revision
 
 
 def test_prepare_fetches_missing_pinned_commit(shmem_checkout, tmp_path):
@@ -185,7 +227,7 @@ def test_incomplete_build_cannot_keep_old_provenance(tmp_path, build_status):
     (repository / "install" / "shmem").mkdir(parents=True)
     marker = repository / "install" / "shmem" / ".ops_transformer_source_commit"
     marker.write_text("old revision\n")
-    (repository / "VERSION").write_text("1.7.0\n")
+    (repository / "VERSION").write_text("1.6.0\n")
     (repository / "scripts" / "build.sh").write_text(f"exit {build_status}\n")
     source = (PROJECT_ROOT / "scripts" / "prepare_dependencies.sh").read_text()
     start = source.index('rm -f "${SHMEM_DIR}/install/shmem/.ops_transformer_source_commit"')

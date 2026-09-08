@@ -69,9 +69,9 @@ if(DEFINED ENV{ASCEND_HOME_PATH})
 else()
     set(ASCEND_HOME "/usr/local/Ascend/latest" CACHE PATH "Ascend installation path")
 endif()
-# Exact official master snapshot (upstream VERSION 1.7.0, not a release tag).
+# Exact official release/v1.6.0 branch snapshot, verified on 2026-09-08.
 # A normal variable also overrides an old SHMEM_TAG_ID left in CMakeCache.txt.
-set(SHMEM_TAG_ID "2a59c8fdcce9b717114fe445be09c96a13a55c39")
+set(SHMEM_TAG_ID "0132a6f504c2035d9c1a04100e0d7254fd2968e4")
 if(SHMEM_SOURCE_PATH)
     get_filename_component(SHMEM_SOURCE_PATH "${SHMEM_SOURCE_PATH}" REALPATH)
 elseif(DEFINED ENV{SHMEM_SOURCE_PATH} AND IS_DIRECTORY "$ENV{SHMEM_SOURCE_PATH}")
@@ -80,7 +80,7 @@ elseif(IS_DIRECTORY "${OPS_TRANSFORMER_ROOT}/3rdparty/shmem")
     get_filename_component(SHMEM_SOURCE_PATH "${OPS_TRANSFORMER_ROOT}/3rdparty/shmem" REALPATH)
 else()
     message(FATAL_ERROR
-        "The pinned official SHMEM master checkout was not found. "
+        "The pinned official SHMEM release/v1.6.0 checkout was not found. "
         "Run scripts/prepare_dependencies.sh first.")
 endif()
 if(NOT EXISTS "${SHMEM_SOURCE_PATH}/include/shmem.h")
@@ -96,7 +96,7 @@ execute_process(
 )
 if(NOT SHMEM_REVISION_STATUS EQUAL 0 OR NOT SHMEM_ACTUAL_REVISION STREQUAL SHMEM_TAG_ID)
     message(FATAL_ERROR
-        "SHMEM revision mismatch: expected official master snapshot ${SHMEM_TAG_ID}, "
+        "SHMEM revision mismatch: expected official release/v1.6.0 snapshot ${SHMEM_TAG_ID}, "
         "got ${SHMEM_ACTUAL_REVISION}")
 endif()
 execute_process(

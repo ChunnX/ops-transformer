@@ -19,16 +19,19 @@ namespace {
 int32_t FillInitAttributes(int32_t rank, int32_t worldSize, uint64_t heapSize, const char *initMethod,
                            aclshmemx_init_attr_t *attributes, aclshmemx_uniqueid_t *uniqueId)
 {
-    std::memset(attributes, 0, sizeof(*attributes));
-    std::memset(uniqueId, 0, sizeof(*uniqueId));
+    // Preserve SHMEM's optional-attribute ABI version and timeout defaults.
+    // Its version encodes sizeof(aclshmem_init_optional_attr_t), not the
+    // enclosing aclshmemx_init_attr_t.
+    *attributes = aclshmemx_init_attr_t{};
+    *uniqueId = aclshmemx_uniqueid_t{};
     const size_t length = std::min(std::strlen(initMethod), sizeof(attributes->ip_port) - 1);
     std::copy_n(initMethod, length, attributes->ip_port);
     attributes->ip_port[length] = '\0';
     attributes->my_pe = rank;
     attributes->n_pes = worldSize;
     attributes->local_mem_size = heapSize;
-    const int32_t version = (1 << 16) + sizeof(aclshmemx_init_attr_t);
-    attributes->option_attr = {version, ACLSHMEM_DATA_OP_UDMA, DEFAULT_TIMEOUT, DEFAULT_TIMEOUT, DEFAULT_TIMEOUT};
+    attributes->option_attr.data_op_engine_type = ACLSHMEM_DATA_OP_UDMA;
+    uniqueId->version = ACLSHMEM_UNIQUEID_VERSION;
     uniqueId->my_pe = rank;
     uniqueId->n_pes = worldSize;
     attributes->comm_args = reinterpret_cast<void *>(uniqueId);

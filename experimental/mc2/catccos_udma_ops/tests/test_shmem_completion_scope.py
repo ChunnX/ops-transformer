@@ -30,8 +30,8 @@ def _function_body(source, name):
 
 
 def test_peer_owned_workers_do_not_use_rank_wide_completion():
-    # SHMEM !715 makes both APIs scan the rank's peer queues. Every peer in
-    # these fused kernels has a different AIV owner; polling is not concurrent.
+    # SHMEM 1.6.0's generic APIs only drain local pipes/cache, while master !715
+    # polls all peers. Neither replaces completion by the UDMA peer's AIV owner.
     offenders = []
     for path in OVERLAY.rglob("*.hpp"):
         source = _without_comments(path.read_text(encoding="utf-8"))

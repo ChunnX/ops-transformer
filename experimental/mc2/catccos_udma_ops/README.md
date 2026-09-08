@@ -11,11 +11,14 @@ The CatCCOS dependency comes from the official
 `https://gitcode.com/cann/catccos.git` repository and is pinned to
 `878c2e0a504be8c49c03b5e1157a7c714a628e29`; its CATLASS gitlink is used, so
 this project does not change the repository-wide CATLASS version. SHMEM is
-independently pinned to the official `cann/shmem` master snapshot
-`2a59c8fdcce9b717114fe445be09c96a13a55c39`, checked on 2026-09-04. Its upstream
-`VERSION` is `1.7.0`; this is an unreleased master commit. The exact commit is
-used for both device headers and bundled SHMEM libraries, and is recorded in
-the package's `_build_versions.py` together with `SHMEM_REF = "master"`.
+independently pinned to the official `cann/shmem`
+[`release/v1.6.0`](https://gitcode.com/cann/shmem/tree/release/v1.6.0) branch tip
+`0132a6f504c2035d9c1a04100e0d7254fd2968e4`, verified on 2026-09-08. Its upstream
+`VERSION` is `1.6.0`; the snapshot includes fixes after the `v1.6.0` tag.
+The exact commit is used for both device headers and bundled SHMEM libraries,
+and is recorded in the package's `_build_versions.py` together with
+`SHMEM_REF = "release/v1.6.0"`.
+Builds stay pinned to this commit when the upstream branch advances.
 The operator-local `csrc/catccos_overlay` directory contains only the
 UDMA all-to-all-v headers that have not yet landed in that official revision.
 The GroupedMatMul-AllToAllV configuration is migrated from CatCCOS commit
@@ -27,8 +30,11 @@ follow CatCCOS commits `1d96ae736f1054a28b0ddf3cbb96cd0c64c81a21` and
 ## Build and install
 
 On an Ascend950 build host, source the CANN and torch_npu environments first.
-The build requires CMake 3.18.4 or newer from `PATH`; a system or Conda
+Building SHMEM requires CMake 3.19 or newer from `PATH`; a system or Conda
 installation is supported and the PyPI `cmake` package is not required.
+The pinned SHMEM branch documents CANN 9.1.0+ and Ascend HDK 25.5.6+ for
+Ascend950 UDMA; see its
+[environment requirements](https://gitcode.com/cann/shmem/blob/0132a6f504c2035d9c1a04100e0d7254fd2968e4/docs/quickstart.md).
 
 ```bash
 cd experimental/mc2/catccos_udma_ops
@@ -51,20 +57,25 @@ commit when needed; local changes and untracked source files are rejected.
 SHMEM is built with `-soc_type Ascend950` and the same C++ ABI setting as the
 active PyTorch installation. A successful build records the source commit;
 the Wheel build rejects mismatched source, modified headers, or libraries
-without a matching build marker. Rerun dependency preparation when upgrading
-an existing installation. This SHMEM snapshot also requires the CANN-provided
-`libhcomm.so` on both build and target hosts.
+without a matching build marker. When switching from the previous 1.7.0
+snapshot, rerun both preparation and Wheel building using the commands above;
+the old SHMEM libraries and Wheel must be rebuilt. This SHMEM snapshot also
+requires the CANN-provided `libhcomm.so` on both build and target hosts.
 The target host only installs the Wheel; it does not need either source checkout,
 `SHMEM_HOME_PATH`, or a manually generated rootinfo file.
 
 The custom MTE/UDMA communication blocks use peer-scoped completion before
-publishing a software completion signal. SHMEM master makes the generic
-`aclshmem_fence()` and `aclshmem_quiet()` poll all reachable peers, which would
-cross the fused kernels' AIV queue ownership boundaries. These workers instead
+publishing a software completion signal. In SHMEM 1.6.0 the generic
+`aclshmem_fence()` and `aclshmem_quiet()` only drain local pipelines and flush
+the data cache; they do not wait for UDMA transfers. These workers explicitly
 drain their own pending UDMA peer through `aclshmemx_udma_quiet(peer)` and use
 `aclshmemx_mte_quiet()` for local memory completion. Mid-loop completion keeps
-the local MTE events alive for subsequent tiles. The existing UDMA tile calls
-retain the default QP 0 and inherit upstream's CQ error/timeout trap behavior.
+the local MTE events alive for subsequent tiles. The UDMA tile calls use the
+release branch's single QP 0 per peer and its `PIPE_S` / `PIPE_MTE3` overloads;
+no master-only UDMA QP configuration, batching, or operation-config APIs are
+required. CQ error handling follows the release implementation.
+Host initialization preserves the release header's optional-attribute version
+and timeout defaults, and selects UDMA explicitly.
 
 ## PyTorch API
 
