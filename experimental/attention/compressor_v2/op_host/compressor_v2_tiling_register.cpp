@@ -32,7 +32,7 @@ struct CompressorV2CompileInfo {
     int64_t core_num;
 };
 
-CMP_EXTERN_C ge::graphStatus TilingCompressor(gert::TilingContext *context)
+CMP_EXTERN_C ge::graphStatus TilingCompressorV2(gert::TilingContext *context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("CompressorV2", "context", "is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -43,14 +43,14 @@ CMP_EXTERN_C ge::graphStatus TilingCompressor(gert::TilingContext *context)
     return TilingCompressorArch35(context);
 }
 
-ge::graphStatus TilingPrepareForCompressor(gert::TilingParseContext *context)
+ge::graphStatus TilingPrepareForCompressorV2(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
 }
 
 IMPL_OP_OPTILING(CompressorV2)
-    .Tiling(TilingCompressor)
-    .TilingParse<CompressorV2CompileInfo>(TilingPrepareForCompressor);
+    .Tiling(TilingCompressorV2)
+    .TilingParse<CompressorV2CompileInfo>(TilingPrepareForCompressorV2);
 
 } // namespace optiling
