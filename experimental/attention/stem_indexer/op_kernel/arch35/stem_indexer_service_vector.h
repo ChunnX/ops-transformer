@@ -78,14 +78,14 @@ private:
                                             const SICommon::S2ValidLen4 &s2ValidLen4, uint32_t batchRowNum,
                                             int64_t curAivGS1Idx);
     // ================================Local Buffer区====================================
-    // tmp buff for vector
+    // vector 临时 buffer
     TBuf<TPosition::VECCALC> resMm1Buf_;
     LocalTensor<QK_T> resMm1Local_;
-    // tmp buff for vbias
+    // vbias 临时 buffer
     TBuf<TPosition::VECCALC> vBiasBuf_;
     LocalTensor<float> vBiasLocal_;
 
-    // tmp buff for topk
+    // topk 临时 buffer
     TBuf<TPosition::VECCALC> mrgValueBuf_;
     LocalTensor<SCORE_T> mrgValueLocal_;
 
@@ -97,7 +97,7 @@ private:
 
     int32_t blockId_ = -1;
     bool needCleanOutput_ = false;
-    // para for vector
+    // vector 参数
     int32_t s2BaseSize_ = 0;
     uint32_t mrgRowStride_ = 0;
     int32_t mBaseSize_ = 0;

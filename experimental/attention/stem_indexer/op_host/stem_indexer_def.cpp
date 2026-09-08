@@ -65,7 +65,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true);
-        // Supported platforms
+        // 支持的平台列表
         this->AICore().AddConfig("ascend950", aicoreConfig);
         this->AICore().AddConfig("ascend910_96", aicoreConfig);
     }

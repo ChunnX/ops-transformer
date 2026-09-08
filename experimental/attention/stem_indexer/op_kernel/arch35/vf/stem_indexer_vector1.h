@@ -79,18 +79,18 @@ FloatToSortableKey(AscendC::MicroAPI::RegTensor<typename FloatSortTraits<FloatT>
 
     auto &inBits = (AscendC::MicroAPI::RegTensor<UInt> &)inVal;
 
-    // 1. NaN check
+    // 1. NaN 检查
     AscendC::MicroAPI::Compare<UInt, CMPMODE::EQ>(regSelectNan, inBits, ctx.nan, maskAll);
 
     // 2. NaN -> ALL_ONE
     AscendC::MicroAPI::Select(outKey, ctx.allOne, inBits, regSelectNan);
 
-    // 3. sign bit
+    // 3. 符号位
     AscendC::MicroAPI::And(regTemp, outKey, ctx.signMask, maskAll);
 
     AscendC::MicroAPI::Compare<UInt, CMPMODE::GT>(regSelectSign, regTemp, ctx.zeros, maskAll);
 
-    // 4. xor mask
+    // 4. 异或掩码
     AscendC::MicroAPI::Select(regMask, ctx.allOne, ctx.signMask, regSelectSign);
     AscendC::MicroAPI::Xor(outKey, outKey, regMask, maskAll);
 }
@@ -113,7 +113,7 @@ FloatX2ToSortableKey(AscendC::MicroAPI::RegTensor<typename FloatSortTraits<Float
     auto &inBits0 = (AscendC::MicroAPI::RegTensor<UInt> &)inVal0;
     auto &inBits1 = (AscendC::MicroAPI::RegTensor<UInt> &)inVal1;
 
-    // 1. NaN check
+    // 1. NaN 检查
     AscendC::MicroAPI::Compare<UInt, CMPMODE::EQ>(regSelectNan[0], inBits0, ctx.nan, maskAll);
     AscendC::MicroAPI::Compare<UInt, CMPMODE::EQ>(regSelectNan[1], inBits1, ctx.nan, maskAll);
 
@@ -121,14 +121,14 @@ FloatX2ToSortableKey(AscendC::MicroAPI::RegTensor<typename FloatSortTraits<Float
     AscendC::MicroAPI::Select(outKey0, ctx.allOne, inBits0, regSelectNan[0]);
     AscendC::MicroAPI::Select(outKey1, ctx.allOne, inBits1, regSelectNan[1]);
 
-    // 3. sign bit
+    // 3. 符号位
     AscendC::MicroAPI::And(regTemp[0], outKey0, ctx.signMask, maskAll);
     AscendC::MicroAPI::And(regTemp[1], outKey1, ctx.signMask, maskAll);
 
     AscendC::MicroAPI::Compare<UInt, CMPMODE::GT>(regSelectSign[0], regTemp[0], ctx.zeros, maskAll);
     AscendC::MicroAPI::Compare<UInt, CMPMODE::GT>(regSelectSign[1], regTemp[1], ctx.zeros, maskAll);
 
-    // 4. xor mask
+    // 4. 异或掩码
     AscendC::MicroAPI::Select(regMask[0], ctx.allOne, ctx.signMask, regSelectSign[0]);
     AscendC::MicroAPI::Select(regMask[1], ctx.allOne, ctx.signMask, regSelectSign[1]);
     AscendC::MicroAPI::Xor(outKey0, outKey0, regMask[0], maskAll);
@@ -190,7 +190,7 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint32_t *outBuf, _
     }
 }
 
-// float in uint16 out, use bf16 sortable key to match uint16 topk.
+// float 输入 uint16 输出，使用 bf16 sortable key 匹配 uint16 topk。
 template <typename QK_T>
 __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint16_t *outBuf, __ubuf__ QK_T *qkBuf,
                                                     __ubuf__ float *vBiasBuf, const float rSquare,

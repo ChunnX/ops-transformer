@@ -24,11 +24,11 @@ namespace optiling {
 constexpr uint32_t AIC_CORE_NUM = 36U;
 using SLI_METADATA_T = uint32_t;
 
-// Section-based metadata layout
+// 按 section 组织的 metadata 布局
 constexpr uint32_t SLI_PER_CORE_STRIDE = 16U;
 constexpr uint32_t SLI_METADATA_HEADER_OFFSET = SLI_PER_CORE_STRIDE * sizeof(uint32_t);
 
-// Section-based FA Metadata Index (0-based, matching AICPU flash_attn_metadata format)
+// 按 section 组织的 Metadata 字段下标
 constexpr uint32_t SLI_SEC_BN2_START_INDEX = 0U;
 constexpr uint32_t SLI_SEC_M_START_INDEX = 1U;
 constexpr uint32_t SLI_SEC_S2_START_INDEX = 2U;

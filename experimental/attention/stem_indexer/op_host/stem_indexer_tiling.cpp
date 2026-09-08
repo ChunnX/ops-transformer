@@ -550,7 +550,7 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
     size_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201 ||
         ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9202) {
-        // Per logical Vector core: 64 rows * AlignUp(maxKb, 512 columns) * selected score width.
+        // 每个 Vector 核：64 rows * AlignUp(maxKb, 512 columns) * 按 score 精度选择的元素宽度。
         size_t scoreS2Stride =
             (static_cast<size_t>(tilingInfo->maxKb) + STEM_S2_BASE_SIZE_920R1 - 1U) /
             STEM_S2_BASE_SIZE_920R1 * STEM_S2_BASE_SIZE_920R1;

@@ -15,7 +15,7 @@
 
 /*!
  * \file stem_indexer_service_cube.h
- * \brief use multi-buffer for matmul, better pipeline
+ * \brief matmul 使用多 buffer 流水，提升流水效率
  */
 #ifndef stem_indexer_SERVICE_CUBE_H
 #define stem_indexer_SERVICE_CUBE_H

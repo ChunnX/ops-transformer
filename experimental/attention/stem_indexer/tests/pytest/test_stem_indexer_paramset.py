@@ -10,8 +10,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-# StemIndexer single pytest case set.
-# Add new cases by appending one dict to ENABLED_PARAMS. Keep fixed-spec attrs unchanged unless testing FAIL paths.
+# StemIndexer single 模式 pytest 用例集。
+# 新增用例时在 ENABLED_PARAMS 中追加一个字典值。除非测试 FAIL 路径，固定规格的属性保持不变。
 ENABLED_PARAMS = [
     # SI_WB_001 basic_prefill_32k_kv_no_tail
     # 覆盖: 基础链路；prefill；kv/prompt为32K token；causal=true

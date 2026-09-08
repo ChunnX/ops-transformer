@@ -872,7 +872,7 @@ __aicore__ inline void SiTopKVF(const LocalTensor<uint32_t> &tmpIdxLocal, const 
     // tmpIdxOffset 对齐 256，与外部 indicesOutLocal/hisValueLocal 行步长一致
     uint32_t tmpIdxOffset = (maxTopK + TOPK_ALIGN_ELEMS - 1U) & ~(TOPK_ALIGN_ELEMS - 1U);
 
-    // find kth-value
+    // 查找第 k 大值
     HistogramsFirstVFImpl<uint32_t>(histogramsBuf, inputValueBuf, histogramsLoopNum, offset, rowIdx0, rowIdx1, rowIdx2,
                                     rowIdx3);
     FindFirstTargetBinVFImpl(idx0Buf, nkValueBuf, histogramsBuf, validLen, topkNum0, topkNum1, topkNum2, topkNum3);

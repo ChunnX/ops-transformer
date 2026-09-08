@@ -527,7 +527,7 @@ __aicore__ inline void SiTopKVF(const LocalTensor<uint16_t> &tmpIdxLocal, const 
     // tmpIdx/outputValue 的行距由外部传入，确保 VF 内部写入和外部后处理读取使用同一个 stride。
     uint32_t tmpIdxOffset = tmpIdxStride;
 
-    // find kth-value
+    // 查找 kth-value
     HistogramsHighVFImpl<uint16_t>(histogramsBuf, inputValueBuf, histogramsLoopNum, offset, rowIdx0, rowIdx1, rowIdx2,
                                    rowIdx3);
     FindHighTargetBinVFImpl(idxHighBuf, nkValueBuf, histogramsBuf, validLen, topkNum0, topkNum1, topkNum2, topkNum3);
