@@ -41,7 +41,7 @@ MC2_QUANT_BMM_TILING_PARAMS_SIZE = 364  # params(128) + TCubeTiling(200) + L2cac
 ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE = 1152  # 64+512+104+236+236
 ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE = 1408  # 64+512+104+364+364
 ALLTO_ALL_MATMUL_TILING_DATA_SIZE = ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE + 208  # 1360
-ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE = ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE + 208  # 1608
+ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE = ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE + 208  # 1616
 APACE_ALLTO_ALL_MATMUL_TILING_DATA_SIZE = 896  # 64+512+40+64+4+4+208
 TILING_DUMP_SIZE = 2048  # dump 固定大小
 
@@ -56,7 +56,7 @@ RUNTIME_INFO_MAGIC = 0x5A5A5A5A
 
 # WorkspaceLayoutInfo 在 TilingData 中的偏移（追加在结构体末尾）
 OFFSET_WS_LAYOUT_NON_QUANT = ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE  # 1152
-OFFSET_WS_LAYOUT_QUANT = ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE  # 1400
+OFFSET_WS_LAYOUT_QUANT = ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE  # 1408
 OFFSET_APACE_COMM_TILING = MC2_INIT_TILING_SIZE + MC2_CC_TILING_SIZE  # 576
 OFFSET_APACE_QUANT_MATMUL = OFFSET_APACE_COMM_TILING + 40  # 616
 OFFSET_APACE_LOCAL_MATMUL = OFFSET_APACE_QUANT_MATMUL + 64  # 680
@@ -84,7 +84,7 @@ OFFSET_TILING_INFO = MC2_INIT_TILING_SIZE + MC2_CC_TILING_SIZE  # 576
 OFFSET_TILE_MM_TILING = OFFSET_TILING_INFO + ALLTO_ALL_MATMUL_TILING_INFO_SIZE  # 680
 OFFSET_TAIL_MM_TILING_NON_QUANT = OFFSET_TILE_MM_TILING + MC2_MM_V3_TILING_DATA_SIZE  # 916
 OFFSET_TILE_QUANT_MM_TILING = OFFSET_TILE_MM_TILING  # 680
-OFFSET_TAIL_QUANT_MM_TILING = OFFSET_TILE_MM_TILING + MC2_QUANT_BMM_TILING_PARAMS_SIZE  # 1040
+OFFSET_TAIL_QUANT_MM_TILING = OFFSET_TILE_MM_TILING + MC2_QUANT_BMM_TILING_PARAMS_SIZE  # 1044
 
 # args_info_*.bin 中 kernel 参数索引
 ARGS_INDEX_NAMES = [
@@ -541,12 +541,13 @@ def parse_runtime_info_per_core(data: bytes, offset: int,
 
 
 def parse_runtime_info_segment(data: bytes, aic_core_num=None,
-                               pos_tag_map=POS_TAG_MAP_ALLTO_ALL) -> dict:
+                               pos_tag_map=POS_TAG_MAP_ALLTO_ALL,
+                               aiv_per_aic=2) -> dict:
     """解析 workspace_segN_type12_*.bin（RuntimeInfo 段，64KB = 128 × 512B）。
 
     aic_core_num: tiling data 中的 aicCoreNum，用于区分 C/V 核。
-                  AIC coreId 范围 0 ~ aicCoreNum-1; AIV coreId 范围 aicCoreNum ~ 3*aicCoreNum-1
-                  (MIX_AIC_1_2 模式下 AIV slotIdx = aicCoreNum + GetBlockIdx())。
+                  主线路径为 MIX_AIC_1_2，AIV 数量为 2*aicCoreNum；
+                  Apace 路径为 AIC_ONLY，没有 AIV slot。
                   为 None 时 coreType 标记为 "未知"，需通过 --aic-core-num 传入。
     """
     max_slots = len(data) // RUNTIME_INFO_PER_CORE_SIZE
@@ -571,6 +572,9 @@ def parse_runtime_info_segment(data: bytes, aic_core_num=None,
         "maxSlots": max_slots,
         "activeSlots": active_count,
         "aicCoreNum": aic_core_num,
+        "aivPerAic": aiv_per_aic,
+        "expectedSlots": (max_slots if aic_core_num is None else
+                          min(max_slots, aic_core_num * (1 + aiv_per_aic))),
         "slots": slots,
     }
 
@@ -586,7 +590,8 @@ def detect_workspace_seg_from_filename(filename: str) -> tuple:
 
 
 def parse_workspace_segment_file(data: bytes, seg_type: int, aic_core_num=None,
-                                 pos_tag_map=POS_TAG_MAP_ALLTO_ALL) -> dict:
+                                 pos_tag_map=POS_TAG_MAP_ALLTO_ALL,
+                                 aiv_per_aic=2) -> dict:
     """解析 workspace_seg*_type*_*.bin 文件，根据段类型选择解析方式。"""
     type_name = WS_SEG_TYPE_MAP.get(seg_type, f"UNKNOWN({seg_type})")
     result = {
@@ -595,7 +600,7 @@ def parse_workspace_segment_file(data: bytes, seg_type: int, aic_core_num=None,
         "fileSize": len(data),
     }
     if seg_type == 12:  # WS_SEG_RUNTIME_INFO
-        rt_info = parse_runtime_info_segment(data, aic_core_num, pos_tag_map)
+        rt_info = parse_runtime_info_segment(data, aic_core_num, pos_tag_map, aiv_per_aic)
         result["runtimeInfo"] = rt_info
     else:
         # 非 RuntimeInfo 段：做基础 hex 统计
@@ -691,19 +696,38 @@ def print_runtime_info_segment(rt_info: dict):
     else:
         logging.info("  %-30s: %d (coreId < %d 为 C核, 否则为 V核)",
                      "aicCoreNum", rt_info["aicCoreNum"], rt_info["aicCoreNum"])
+    expected_slots = rt_info["expectedSlots"]
+    expected = rt_info["slots"][:expected_slots]
+    valid_expected = sum(slot.get("magicValid", False) for slot in expected)
+    logging.info("  %-30s: %d", "expectedSlots", expected_slots)
+    logging.info("  %-30s: %d / %d", "validExpectedSlots", valid_expected, expected_slots)
+    if valid_expected == 0:
+        logging.warning("  预期 slot 均未发现 magic 0x%08X；下表仍显示原始 commit/wait 字节。",
+                        RUNTIME_INFO_MAGIC)
     logging.info("")
-    logging.info("  --- 仅显示 magicNum 校验通过的 slot (0x%08X) ---", RUNTIME_INFO_MAGIC)
-    active_slots = [s for s in rt_info["slots"] if s.get("magicValid", False)]
-    if not active_slots:
-        logging.warning("  无有效 slot，可能 runtime info 未被写入（异常发生在 Init 之前）。")
-    else:
-        for slot in active_slots:
-            core_type = slot.get("coreType", "未知")
-            logging.info("  Core %-4d (%s):  turn=%d, pos=%d (%s), phase=%s, commit=%d, wait=%d",
-                         slot["coreId"], core_type,
-                         slot["execTurn"], slot["execPosition"], slot["execPositionName"],
-                         slot["commPhaseName"],
-                         slot["commCommitCount"], slot["commWaitCount"])
+    logging.info("  %-5s %-4s %-5s %-10s %-5s %-22s %-14s %-6s %-6s %-7s %s",
+                 "slot", "核型", "valid", "storedCore", "turn", "position", "phase",
+                 "commit", "wait", "pending", "state")
+    for slot in expected:
+        is_valid = slot.get("magicValid", False)
+        slot_index = slot["slotIdx"]
+        if rt_info.get("aicCoreNum") is None:
+            core_type = "未知"
+        else:
+            core_type = "C核" if slot_index < rt_info["aicCoreNum"] else "V核"
+        commit_count = slot["commCommitCount"]
+        wait_count = slot["commWaitCount"]
+        pending = max(commit_count - wait_count, 0)
+        state = ("NOT_WRITTEN" if not is_valid else
+                 "COUNT_ERROR" if wait_count > commit_count else
+                 "PENDING" if commit_count > wait_count else "BALANCED")
+        position = f"{slot['execPosition']}/{slot['execPositionName']}" if is_valid else "-"
+        logging.info("  %-5d %-4s %-5s %-10s %-5s %-22s %-14s %-6d %-6d %-7d %s",
+                     slot_index, core_type, "yes" if is_valid else "no",
+                     str(slot["coreId"]) if is_valid else "-",
+                     str(slot["execTurn"]) if is_valid else "-", position,
+                     slot["commPhaseName"] if is_valid else "-",
+                     commit_count, wait_count, pending, state)
 
 
 def print_workspace_segment(result: dict):
@@ -876,7 +900,8 @@ def main():
         pos_tag_map = POS_TAG_MAP_ALLTO_ALL_APACE if args.apace else POS_TAG_MAP_ALLTO_ALL
         if args.apace:
             logging.info("使用 Apace 路径 position 枚举标签")
-        result = parse_workspace_segment_file(data, seg_type, args.aic_core_num, pos_tag_map)
+        aiv_per_aic = 0 if args.apace else 2
+        result = parse_workspace_segment_file(data, seg_type, args.aic_core_num, pos_tag_map, aiv_per_aic)
         result["segIdx"] = seg_idx
         if args.json:
             print(json.dumps(result, indent=2, ensure_ascii=False, default=str))

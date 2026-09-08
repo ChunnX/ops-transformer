@@ -32,8 +32,8 @@ logging.basicConfig(level=logging.NOTSET, format="[%(levelname)s] %(message)s", 
 MC2_INIT_TILING_SIZE = 64
 MC2_CC_TILING_SIZE = 512
 RCS_TILING_SIZE = 128  # 16*u32(64) + 3*u64(24) + 9*u32(36) + 4(pad to align 8) = 128
-ALL_GATHER_MATMUL_TILING_DATA_V2_SIZE = 1640   # 64+512+128+4+4+4+3*236+8+208
-ALL_GATHER_MATMUL_TILING_DATA_FP8_SIZE = 2016  # 64+512+128+4+4+4+3*360+4(pad)+8+208
+MC2_MM_V3_TILING_DATA_SIZE = 236               # TCubeTiling(200) + 9*u32(36)
+MC2_QUANT_BMM_TILING_PARAMS_SIZE = 364         # params(128) + TCubeTiling(200) + L2(24) + sliding(12)
 TILING_DUMP_SIZE = 2048
 
 # ====== Workspace 结构体大小常量 ======
@@ -49,9 +49,18 @@ RUNTIME_INFO_MAGIC = 0x5A5A5A5A
 OFFSET_MC2_INIT_TILING = 0
 OFFSET_MC2_CC_TILING = MC2_INIT_TILING_SIZE  # 64
 OFFSET_RCS_TILING = MC2_INIT_TILING_SIZE + MC2_CC_TILING_SIZE  # 576
-OFFSET_QUANT_MODE = OFFSET_RCS_TILING + RCS_TILING_SIZE + 4 + 4  # 576 + 128 + 4 + 4 = 712
-OFFSET_WS_LAYOUT_V2 = ALL_GATHER_MATMUL_TILING_DATA_V2_SIZE - WORKSPACE_LAYOUT_INFO_SIZE  # 1432
-OFFSET_WS_LAYOUT_FP8 = ALL_GATHER_MATMUL_TILING_DATA_FP8_SIZE - WORKSPACE_LAYOUT_INFO_SIZE  # 1808
+OFFSET_DATA_TYPE = OFFSET_RCS_TILING + RCS_TILING_SIZE  # 704
+OFFSET_DEBUG_MODE = OFFSET_DATA_TYPE + 4                # 708
+OFFSET_QUANT_MODE = OFFSET_DEBUG_MODE + 4               # 712
+OFFSET_MM_TILING = OFFSET_QUANT_MODE + 4                # 716
+OFFSET_TILING_KEY_V2 = OFFSET_MM_TILING + 3 * MC2_MM_V3_TILING_DATA_SIZE  # 1424
+OFFSET_WS_LAYOUT_V2 = OFFSET_TILING_KEY_V2 + 8                            # 1432
+OFFSET_TILING_KEY_FP8 = (
+    OFFSET_MM_TILING + 3 * MC2_QUANT_BMM_TILING_PARAMS_SIZE + 7
+) & ~7  # 1808，uint64_t 按 8 字节对齐
+OFFSET_WS_LAYOUT_FP8 = OFFSET_TILING_KEY_FP8 + 8  # 1816
+ALL_GATHER_MATMUL_TILING_DATA_V2_SIZE = OFFSET_WS_LAYOUT_V2 + WORKSPACE_LAYOUT_INFO_SIZE    # 1640
+ALL_GATHER_MATMUL_TILING_DATA_FP8_SIZE = OFFSET_WS_LAYOUT_FP8 + WORKSPACE_LAYOUT_INFO_SIZE  # 2024
 
 # args_info_*.bin 中 kernel 参数索引
 ARGS_INDEX_NAMES = [
@@ -192,27 +201,27 @@ def detect_quant_mode(data: bytes) -> bool:
     return quant_mode != 0
 
 
-def parse_non_quant_tiling_data(data: bytes) -> dict:
+def parse_non_quant_tiling_data(data: bytes, ws_offset: int = OFFSET_WS_LAYOUT_V2) -> dict:
     return {
         "mc2InitTiling": parse_mc2_init_tiling(data, 0),
         "mc2CcTiling": parse_mc2_cc_tiling(data, MC2_INIT_TILING_SIZE),
         "param": parse_rcs_tiling(data, OFFSET_RCS_TILING),
-        "dataType": struct.unpack_from("<I", data, OFFSET_RCS_TILING + RCS_TILING_SIZE)[0],
-        "debugMode": struct.unpack_from("<I", data, OFFSET_RCS_TILING + RCS_TILING_SIZE + 4)[0],
+        "dataType": struct.unpack_from("<I", data, OFFSET_DATA_TYPE)[0],
+        "debugMode": struct.unpack_from("<I", data, OFFSET_DEBUG_MODE)[0],
         "quantMode": struct.unpack_from("<I", data, OFFSET_QUANT_MODE)[0],
-        "tilingKey": struct.unpack_from("<Q", data, OFFSET_WS_LAYOUT_V2 - 8)[0],
+        "tilingKey": struct.unpack_from("<Q", data, ws_offset - 8)[0],
     }
 
 
-def parse_quant_tiling_data(data: bytes) -> dict:
+def parse_quant_tiling_data(data: bytes, ws_offset: int = OFFSET_WS_LAYOUT_FP8) -> dict:
     return {
         "mc2InitTiling": parse_mc2_init_tiling(data, 0),
         "mc2CcTiling": parse_mc2_cc_tiling(data, MC2_INIT_TILING_SIZE),
         "param": parse_rcs_tiling(data, OFFSET_RCS_TILING),
-        "dataType": struct.unpack_from("<I", data, OFFSET_RCS_TILING + RCS_TILING_SIZE)[0],
-        "debugMode": struct.unpack_from("<I", data, OFFSET_RCS_TILING + RCS_TILING_SIZE + 4)[0],
+        "dataType": struct.unpack_from("<I", data, OFFSET_DATA_TYPE)[0],
+        "debugMode": struct.unpack_from("<I", data, OFFSET_DEBUG_MODE)[0],
         "quantMode": struct.unpack_from("<I", data, OFFSET_QUANT_MODE)[0],
-        "tilingKey": struct.unpack_from("<Q", data, OFFSET_WS_LAYOUT_FP8 - 8)[0],
+        "tilingKey": struct.unpack_from("<Q", data, ws_offset - 8)[0],
     }
 
 
@@ -239,8 +248,50 @@ def parse_workspace_layout_info(data: bytes, offset: int) -> dict:
     return {
         "totalSize": total_size,
         "segCount": seg_count,
+        "reserved": reserved,
         "segments": segments,
     }
+
+
+def is_valid_workspace_layout(ws_layout: dict) -> bool:
+    """检查候选 WorkspaceLayoutInfo，防止把 Matmul tiling 数据误识别成布局。"""
+    if "error" in ws_layout:
+        return False
+    total_size = ws_layout.get("totalSize", 0)
+    seg_count = ws_layout.get("segCount", 0)
+    segments = ws_layout.get("segments", [])
+    if total_size <= 0 or not 1 <= seg_count <= MAX_WORKSPACE_SEGMENTS or len(segments) != seg_count:
+        return False
+
+    previous_end = 0
+    for seg in segments:
+        if "error" in seg or seg.get("type") not in WS_SEG_TYPE_MAP:
+            return False
+        offset = seg.get("offset", 0)
+        size = seg.get("size", 0)
+        if offset < previous_end or offset > total_size or size > total_size - offset:
+            return False
+        previous_end = offset + size
+    return segments[0].get("offset") == 0 and previous_end == total_size
+
+
+def locate_workspace_layout(data: bytes, preferred_offset: int):
+    """优先使用 ABI 计算值；无效时在 TilingData 中按 8B 对齐自动定位。"""
+    candidates = [preferred_offset, OFFSET_WS_LAYOUT_V2, OFFSET_WS_LAYOUT_FP8]
+    scan_begin = (OFFSET_MM_TILING + 7) & ~7
+    scan_end = len(data) - WORKSPACE_LAYOUT_INFO_SIZE
+    if scan_end >= scan_begin:
+        candidates.extend(range(scan_begin, scan_end + 1, 8))
+
+    checked = set()
+    for offset in candidates:
+        if offset in checked or offset < 8 or offset + WORKSPACE_LAYOUT_INFO_SIZE > len(data):
+            continue
+        checked.add(offset)
+        ws_layout = parse_workspace_layout_info(data, offset)
+        if is_valid_workspace_layout(ws_layout):
+            return offset, ws_layout
+    return None, None
 
 
 def parse_runtime_info_per_core(data: bytes, offset: int) -> dict:
@@ -403,19 +454,40 @@ def print_runtime_info_segment(rt_info: dict):
     else:
         logging.info("  %-30s: %d (coreId < %d 为 C核, 否则为 V核)",
                      "aicCoreNum", rt_info["aicCoreNum"], rt_info["aicCoreNum"])
+    expected_slots = rt_info["maxSlots"] if rt_info.get("aicCoreNum") is None else min(
+        rt_info["maxSlots"], rt_info["aicCoreNum"] * 3
+    )
+    expected = rt_info["slots"][:expected_slots]
+    valid_expected = sum(slot.get("magicValid", False) for slot in expected)
+    logging.info("  %-30s: %d", "expectedSlots", expected_slots)
+    logging.info("  %-30s: %d / %d", "validExpectedSlots", valid_expected, expected_slots)
+    if valid_expected == 0:
+        logging.warning("  预期 slot 均未发现 magic 0x%08X；下表仍显示原始 commit/wait 字节。",
+                        RUNTIME_INFO_MAGIC)
     logging.info("")
-    logging.info("  --- 仅显示 magicNum 校验通过的 slot (0x%08X) ---", RUNTIME_INFO_MAGIC)
-    active_slots = [s for s in rt_info["slots"] if s.get("magicValid", False)]
-    if not active_slots:
-        logging.warning("  无有效 slot，可能 runtime info 未被写入。")
-    else:
-        for slot in active_slots:
-            core_type = slot.get("coreType", "未知")
-            logging.info("  Core %-4d (%s):  turn=%d, pos=%d (%s), phase=%s, commit=%d, wait=%d",
-                         slot["coreId"], core_type,
-                         slot["execTurn"], slot["execPosition"], slot["execPositionName"],
-                         slot["commPhaseName"],
-                         slot["commCommitCount"], slot["commWaitCount"])
+    logging.info("  %-5s %-4s %-5s %-10s %-5s %-22s %-14s %-6s %-6s %-7s %s",
+                 "slot", "核型", "valid", "storedCore", "turn", "position", "phase",
+                 "commit", "wait", "pending", "state")
+    for slot in expected:
+        is_valid = slot.get("magicValid", False)
+        slot_index = slot["slotIdx"]
+        if rt_info.get("aicCoreNum") is None:
+            core_type = "未知"
+        else:
+            core_type = "C核" if slot_index < rt_info["aicCoreNum"] else "V核"
+        commit_count = slot["commCommitCount"]
+        wait_count = slot["commWaitCount"]
+        pending = max(commit_count - wait_count, 0)
+        state = ("NOT_WRITTEN" if not is_valid else
+                 "COUNT_ERROR" if wait_count > commit_count else
+                 "PENDING" if commit_count > wait_count else "BALANCED")
+        position = f"{slot['execPosition']}/{slot['execPositionName']}" if is_valid else "-"
+        logging.info("  %-5d %-4s %-5s %-10s %-5s %-22s %-14s %-6d %-6d %-7d %s",
+                     slot_index, core_type, "yes" if is_valid else "no",
+                     str(slot["coreId"]) if is_valid else "-",
+                     str(slot["execTurn"]) if is_valid else "-", position,
+                     slot["commPhaseName"] if is_valid else "-",
+                     commit_count, wait_count, pending, state)
 
 
 def print_workspace_segment(result: dict):
@@ -487,13 +559,16 @@ def main():
 
     if args.ws_layout:
         is_quant = detect_quant_mode(data)
-        ws_offset = OFFSET_WS_LAYOUT_FP8 if is_quant else OFFSET_WS_LAYOUT_V2
+        expected_offset = OFFSET_WS_LAYOUT_FP8 if is_quant else OFFSET_WS_LAYOUT_V2
+        ws_offset, ws_layout = locate_workspace_layout(data, expected_offset)
         mode_str = "量化" if is_quant else "非量化"
-        logging.info("解析 WorkspaceLayoutInfo (%s模式, offset=%d)", mode_str, ws_offset)
-        ws_layout = parse_workspace_layout_info(data, ws_offset)
-        if "error" in ws_layout:
-            logging.error("解析失败: %s", ws_layout["error"])
+        if ws_layout is None:
+            logging.error("未找到有效 WorkspaceLayoutInfo（%s模式预期 offset=%d）", mode_str, expected_offset)
             sys.exit(1)
+        if ws_offset != expected_offset:
+            logging.warning("WorkspaceLayoutInfo ABI 偏移与预期不一致: expected=%d, actual=%d",
+                            expected_offset, ws_offset)
+        logging.info("解析 WorkspaceLayoutInfo (%s模式, offset=%d)", mode_str, ws_offset)
         if args.json:
             print(json.dumps(ws_layout, indent=2, ensure_ascii=False, default=str))
         else:
@@ -505,20 +580,23 @@ def main():
     mode_str = "量化" if is_quant else "非量化"
     logging.info("解析模式: %s (quantMode=%d)", mode_str, struct.unpack_from("<I", data, OFFSET_QUANT_MODE)[0])
 
+    expected_offset = OFFSET_WS_LAYOUT_FP8 if is_quant else OFFSET_WS_LAYOUT_V2
+    ws_offset, ws_layout = locate_workspace_layout(data, expected_offset)
+    actual_ws_offset = ws_offset if ws_offset is not None else expected_offset
+    if ws_offset is not None and ws_offset != expected_offset:
+        logging.warning("WorkspaceLayoutInfo ABI 偏移与预期不一致: expected=%d, actual=%d",
+                        expected_offset, ws_offset)
+
     if is_quant:
-        result = parse_quant_tiling_data(data)
+        result = parse_quant_tiling_data(data, actual_ws_offset)
         logging.info("结构体 AllGatherMatmulTilingDataFp8: %dB", ALL_GATHER_MATMUL_TILING_DATA_FP8_SIZE)
     else:
-        result = parse_non_quant_tiling_data(data)
+        result = parse_non_quant_tiling_data(data, actual_ws_offset)
         logging.info("结构体 AllGatherMatmulTilingDataV2: %dB", ALL_GATHER_MATMUL_TILING_DATA_V2_SIZE)
 
-    # 尝试解析尾部 WorkspaceLayoutInfo
-    ws_offset = OFFSET_WS_LAYOUT_FP8 if is_quant else OFFSET_WS_LAYOUT_V2
-    if len(data) >= ws_offset + WORKSPACE_LAYOUT_INFO_SIZE:
-        ws_layout = parse_workspace_layout_info(data, ws_offset)
-        if "error" not in ws_layout and ws_layout.get("segCount", 0) > 0:
-            result["workspaceLayout"] = ws_layout
-            logging.info("检测到 WorkspaceLayoutInfo (offset=%d, segCount=%d)", ws_offset, ws_layout["segCount"])
+    if ws_layout is not None:
+        result["workspaceLayout"] = ws_layout
+        logging.info("检测到 WorkspaceLayoutInfo (offset=%d, segCount=%d)", ws_offset, ws_layout["segCount"])
 
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False, default=str))

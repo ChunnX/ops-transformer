@@ -130,6 +130,7 @@ CCU 通路没有 `comm_context_*` 和 `peermem_*` 文件。
 - 不生成 NPY。
 - 不生成汇总 `analysis.txt`；再次运行时会删除旧版本遗留的该文件。
 - 解析结果同时显示在终端，便于直接观察执行情况。
+- 启动时会检查当前通路预期的文件类别；缺少核心文件或通路专有文件时在终端显示警告，但仍继续解析已经存在的文件。
 
 各类 TXT 的主要内容：
 
@@ -138,7 +139,7 @@ CCU 通路没有 `comm_context_*` 和 `peermem_*` 文件。
 | TilingData | 完整字段、量化/通路信息、WorkspaceLayout、Segment 偏移和大小 |
 | ArgsInfo | Kernel 参数名及对应 GM 地址 |
 | 普通 Workspace Segment | `segIdx`、`segType`、含义、文件大小和前 64 字节十进制预览 |
-| `type12/RUNTIME_INFO` | 每核 magic、position、phase、commit、wait、pending 和状态 |
+| `type12/RUNTIME_INFO` | 关联的 TilingData、推导出的 AIC 核数、通路，以及每核 magic、position、phase、commit、wait、pending 和状态 |
 | XN/CKE | 地址表 shape、非零地址数量和逐行十六进制地址 |
 | URMA CommContext | 通信上下文字段 |
 | URMA PeerMem | Window/Layout 字段，或 Segment 类型、大小和预览 |
@@ -245,6 +246,8 @@ python3 parse_matrix.py workspace.bin \
 
 `type12/RUNTIME_INFO` 不是矩阵数据。其 TXT 会按核显示：
 
+- `expectedSlots`：根据 TilingData 中的 AIC 核数和 Kernel task 类型得到的预期 slot 数；`MIX_AIC_1_2` 为 `3 × AIC`，`MIX_AIC_1_1` 为 `2 × AIC`，AlltoAllMatmul Apace 的 `AIC_ONLY` 为 `1 × AIC`。
+- `validExpectedSlots`：预期范围内 magic 校验通过的 slot 数。
 - `commit`：该核已提交的通信次数。
 - `wait`：该核已等待完成的通信次数。
 - `pending = commit - wait`。
@@ -278,3 +281,4 @@ python3 parse_matrix.py workspace.bin \
 - 缺少 CommContext/PeerMem：先确认当前是否为 AIV + URMA 通路。
 - Workspace 文件大小与 TilingData 中 Segment size 不一致：检查段偏移、对齐/padding 和 Dump 时机。
 - RuntimeInfo 全部无效：检查 Kernel 初始化、Workspace 起始地址以及异常发生阶段。
+- 同一 rank 目录包含多次调用时，统一入口会优先按文件名末尾的 Dump 序号/时间戳关联最近的 TilingData；可在 RuntimeInfo TXT 的 `associatedTiling` 字段确认配对结果。
