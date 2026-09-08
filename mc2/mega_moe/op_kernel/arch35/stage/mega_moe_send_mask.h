@@ -51,8 +51,6 @@ struct SendMaskScratch {
 struct ExpertRouteInfo {
     int32_t ownedIdx;
     int32_t globalExpertId;
-    int32_t dstRank;
-    int32_t localExpertId;
     int32_t bufferIdx;
 };
 
@@ -61,10 +59,6 @@ struct ExpertRouteInfo {
 __aicore__ inline void LoadRouteBatch(SendMaskScratch &scratch, GlobalTensor<int32_t> &topkIdsGm, int32_t batchStart,
                                       int32_t validLen)
 {
-    SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
-    if (validLen <= 0) {
-        return;
-    }
     DataCopyExtParams loadParams{1U, static_cast<uint32_t>(validLen * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> loadPad{false, 0U, 0U, 0U};
     DataCopyPad(scratch.topkIdsTensor, topkIdsGm[batchStart], loadParams, loadPad);
@@ -97,21 +91,23 @@ __aicore__ inline void GatherAndSendExpertCompactRoute(const MoeStageCommonConfi
 
     int32_t previousCount = scratch.sendCntAccTensor.GetValue(routeInfo.ownedIdx);
     int32_t remainingCapacity = static_cast<int32_t>(common.tokenNum) - previousCount;
+    remainingCapacity = remainingCapacity > 0 ? remainingCapacity : 0;
     int32_t copiedCount = static_cast<int32_t>(batchMatchedRouteCount);
-    if (copiedCount > remainingCapacity) {
-        copiedCount = remainingCapacity > 0 ? remainingCapacity : 0;
-    }
+    copiedCount = remainingCapacity > copiedCount ? copiedCount : remainingCapacity;
     scratch.sendCntAccTensor.SetValue(routeInfo.ownedIdx, previousCount + copiedCount);
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
 
     if (copiedCount > 0) {
+        int32_t expertPerRank = static_cast<int32_t>(common.moeExpertPerRank);
+        int32_t dstRank = routeInfo.globalExpertId / expertPerRank;
+        int32_t localExpertId = routeInfo.globalExpertId % expertPerRank;
         uint64_t dstOffset = config.routeIndexWinOffset +
-                             static_cast<uint64_t>(routeInfo.localExpertId * static_cast<int32_t>(common.worldSize) +
+                             static_cast<uint64_t>(localExpertId * static_cast<int32_t>(common.worldSize) +
                                                    static_cast<int32_t>(common.rankId)) *
                                  config.routeIndexAlignSize +
                              static_cast<uint64_t>(previousCount) * sizeof(int32_t);
         GlobalTensor<int32_t> dstRouteIndexGm;
-        dstRouteIndexGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(winRankAddr[routeInfo.dstRank] + dstOffset));
+        dstRouteIndexGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(winRankAddr[dstRank] + dstOffset));
         DataCopyPad(dstRouteIndexGm, tokValidIndexTensor,
                     {1U, static_cast<uint32_t>(copiedCount * sizeof(int32_t)), 0U, 0U, 0U});
     }
@@ -177,23 +173,6 @@ __aicore__ inline void PublishExpertCounts(const MoeStageCommonConfig &common, G
     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID3>();
 }
 
-__aicore__ inline bool GetOwnedExpertRange(const AivJobContext &job, const MoeStageCommonConfig &common,
-                                           int32_t &ownedExpertBegin, int32_t &ownedExpertNum)
-{
-    if (job.totalJobs == 0U || job.jobIndex >= job.totalJobs) {
-        return false;
-    }
-    int32_t totalExperts = static_cast<int32_t>(common.worldSize * common.moeExpertPerRank);
-    int32_t jobIndex = static_cast<int32_t>(job.jobIndex);
-    int32_t totalJobs = static_cast<int32_t>(job.totalJobs);
-    int32_t expertsPerJob = totalExperts / totalJobs;
-    int32_t jobCountWithExtraExpert = totalExperts % totalJobs;
-    ownedExpertNum = expertsPerJob + (jobIndex < jobCountWithExtraExpert ? 1 : 0);
-    ownedExpertBegin =
-        jobIndex * expertsPerJob + (jobIndex < jobCountWithExtraExpert ? jobIndex : jobCountWithExtraExpert);
-    return ownedExpertNum > 0;
-}
-
 // 三条 MTE Wave 路径的唯一 route 入口。专家 ownership 仍使用连续 quotient/remainder 分配，
 // 因而 count 表可继续按目标 rank 合并成二维 strided copy。
 __aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job, const MoeStageCommonConfig &common,
@@ -204,11 +183,13 @@ __aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job
         return;
     }
     const MegaMoeSendMaskBufferConfig &bufferConfig = config.bufferConfig;
-    int32_t ownedExpertBegin = 0;
-    int32_t ownedExpertNum = 0;
-    if (!GetOwnedExpertRange(job, common, ownedExpertBegin, ownedExpertNum)) {
+    WorkRange ownedExpertRange =
+        GetBalancedWorkRange(common.worldSize * common.moeExpertPerRank, job.jobIndex, job.totalJobs);
+    if (ownedExpertRange.count == 0U) {
         return;
     }
+    int32_t ownedExpertBegin = static_cast<int32_t>(ownedExpertRange.start);
+    int32_t ownedExpertNum = static_cast<int32_t>(ownedExpertRange.count);
 
     GlobalTensor<int32_t> topkIdsGm;
     topkIdsGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.expertIdxGmAddr));
@@ -228,15 +209,16 @@ __aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job
             validLen = realRemain > 0 ? realRemain : 0;
         }
 
-        LoadRouteBatch(scratch, topkIdsGm, batchStart, validLen);
+        if (validLen > 0) {
+            SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
+            LoadRouteBatch(scratch, topkIdsGm, batchStart, validLen);
+        }
 
         const int32_t batchRingBegin = batchIdx * ownedExpertNum;
         for (int32_t ownedIdx = 0; ownedIdx < ownedExpertNum; ++ownedIdx) {
             int32_t globalExpertId = ownedExpertBegin + ownedIdx;
             ExpertRouteInfo routeInfo{.ownedIdx = ownedIdx,
                                       .globalExpertId = globalExpertId,
-                                      .dstRank = globalExpertId / static_cast<int32_t>(common.moeExpertPerRank),
-                                      .localExpertId = globalExpertId % static_cast<int32_t>(common.moeExpertPerRank),
                                       .bufferIdx = (batchRingBegin + ownedIdx) % bufferConfig.bufferCount};
             GatherAndSendExpertCompactRoute(common, winRankAddr, config, scratch, routeInfo, validLen);
         }

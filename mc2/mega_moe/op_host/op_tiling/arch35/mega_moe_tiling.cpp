@@ -1956,30 +1956,6 @@ static ge::graphStatus CheckTensorDimNum(const gert::StorageShape *storageShape,
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckBasicInputShapeDimRelation(const char *nodeName, int64_t xDim0, int64_t topkIdsDim0,
-                                                       int64_t topkWeightsDim0, int64_t topkIdsDim1,
-                                                       int64_t topkWeightsDim1)
-{
-    OP_TILING_CHECK(xDim0 != topkIdsDim0 || xDim0 != topkWeightsDim0,
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                        nodeName, "x, topkIds, topkWeights",
-                        (std::string("[") + std::to_string(xDim0) + ", " + std::to_string(topkIdsDim0) + ", " +
-                         std::to_string(topkWeightsDim0) + "]")
-                            .c_str(),
-                        "The shape [dim0] of x, topkIds, and topkWeights must be equal."),
-                    return ge::GRAPH_FAILED);
-
-    OP_TILING_CHECK(
-        topkIdsDim1 != topkWeightsDim1,
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-            nodeName, "topkIds, topkWeights",
-            (std::string("[") + std::to_string(topkIdsDim1) + ", " + std::to_string(topkWeightsDim1) + "]").c_str(),
-            "The shape [dim1] of topkIds and topkWeights must be equal."),
-        return ge::GRAPH_FAILED);
-
-    return ge::GRAPH_SUCCESS;
-}
-
 /*
  * 校验基础输入张量的维度：context 为 1D，x / topkIds / topkWeights 为 2D，
  * 并校验三者之间的 dim0 / dim1 一致性。
@@ -1998,28 +1974,37 @@ static ge::graphStatus CheckBasicInputTensorDim(const gert::TilingContext *conte
     if (CheckTensorDimNum(xStorageShape, "x", nodeName, TWO_DIMS) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
-    int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
-
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
     if (CheckTensorDimNum(topkIdsStorageShape, "topkIds", nodeName, TWO_DIMS) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    const int64_t topkIdsDim0 = topkIdsStorageShape->GetStorageShape().GetDim(0);
-    const int64_t topkIdsDim1 = topkIdsStorageShape->GetStorageShape().GetDim(1);
-    OP_LOGD(nodeName, "topkIds dim0 = %ld", topkIdsDim0);
-    OP_LOGD(nodeName, "topkIds dim1 = %ld", topkIdsDim1);
-
     const gert::StorageShape *topkWeightsStorageShape = context->GetInputShape(config.topkWeightsIndex);
     if (CheckTensorDimNum(topkWeightsStorageShape, "topkWeights", nodeName, TWO_DIMS) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    const int64_t topkWeightsDim0 = topkWeightsStorageShape->GetStorageShape().GetDim(0);
-    const int64_t topkWeightsDim1 = topkWeightsStorageShape->GetStorageShape().GetDim(1);
-    OP_LOGD(nodeName, "topkWeights dim0 = %ld", topkWeightsDim0);
-    OP_LOGD(nodeName, "topkWeights dim1 = %ld", topkWeightsDim1);
 
-    return CheckBasicInputShapeDimRelation(nodeName, xDim0, topkIdsDim0, topkWeightsDim0, topkIdsDim1, topkWeightsDim1);
+    const int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
+    const int64_t topkIdsDim0 = topkIdsStorageShape->GetStorageShape().GetDim(0);
+    const int64_t topkWeightsDim0 = topkWeightsStorageShape->GetStorageShape().GetDim(0);
+    OP_TILING_CHECK(xDim0 != topkIdsDim0 || xDim0 != topkWeightsDim0,
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                        nodeName, "x, topkIds, topkWeights",
+                        (std::string("[") + std::to_string(xDim0) + ", " + std::to_string(topkIdsDim0) + ", " +
+                         std::to_string(topkWeightsDim0) + "]")
+                            .c_str(),
+                        "The shape [dim0] of x, topkIds, and topkWeights must be equal."),
+                    return ge::GRAPH_FAILED);
+
+    const int64_t topkIdsDim1 = topkIdsStorageShape->GetStorageShape().GetDim(1);
+    const int64_t topkWeightsDim1 = topkWeightsStorageShape->GetStorageShape().GetDim(1);
+    OP_TILING_CHECK(
+        topkIdsDim1 != topkWeightsDim1,
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            nodeName, "topkIds, topkWeights",
+            (std::string("[") + std::to_string(topkIdsDim1) + ", " + std::to_string(topkWeightsDim1) + "]").c_str(),
+            "The shape [dim1] of topkIds and topkWeights must be equal."),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
 }
 
 /*
