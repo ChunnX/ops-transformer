@@ -23,6 +23,8 @@
 - <term>Atlas 训练系列产品</term>：不支持
 <!-- end id6 -->
 
+Ascend 950PR/Ascend 950DT（arch35）支持`tokenDtype=0～5`；Atlas A2/A3支持`tokenDtype=0～2`。新增低精度类型仅在arch35上支持。
+
 ## 功能说明
 
 - 接口功能：Attention与FFN分离部署场景下，FFN worker侧的token重排算子。Attention将token按专家路由发送到对应FFN worker的预分配数据区，本接口从该数据区中扫描调度信息，按专家维度聚合并重排token，产出各专家对应的连续token数据块。
@@ -35,7 +37,7 @@
 
     3. 多核并行按gather索引从`token_data`中提取token的hidden states和dynamic scale，同时查表得到对应的session_id、micro_batch_id、token_id。
 
-    4. 单核扫描排序后的专家ID序列，查找跳变点，生成`groupList`（每个专家处理的token起止偏移）。
+    4. 根据排序后的专家ID序列统计各专家的token数，生成`groupList`（每行包含专家ID和该专家的token数）。
 
     其中 $Y = A \times BS \times (K+1)$，$A$ 为Attention worker数量，$BS$ 为micro batch size，$K+1$ 为topK加共享专家数。
 
@@ -122,7 +124,7 @@ aclnnStatus aclnnFfnWorkerBatching(
       <td>不支持空tensor。</td>
       <td>INT8</td>
       <td>ND</td>
-      <td>1维，shape固定为(1024)</td>
+      <td>1维，调度上下文结构体占1024字节；若测试中内嵌辅助数据，Tensor长度须包含完整打包数据</td>
       <td>×</td>
     </tr>
     <tr>
@@ -139,7 +141,7 @@ aclnnStatus aclnnFfnWorkerBatching(
       <td>maxOutShape</td>
       <td>输入</td>
       <td>输出shape上限，格式为 {A, BS, topK+1, H}。用于推导y输出的shape上限 Y = A × BS × (topK+1)，以及H值。</td>
-      <td>数组长度必须为4。其中A取值范围为(0, 1024]，BS大于0，topK+1取值范围为(0, 64]，H大于0。</td>
+      <td>数组长度必须为4。其中A取值范围为(0, 1024]，BS大于0，topK+1取值范围为(0, 64]，H大于0。arch35上tokenDtype=5时H须为偶数。</td>
       <td>LIST_INT64</td>
       <td>-</td>
       <td>-</td>
@@ -148,8 +150,8 @@ aclnnStatus aclnnFfnWorkerBatching(
     <tr>
       <td>tokenDtype</td>
       <td>输入</td>
-      <td>输入token的数据类型。0表示FP16；1表示BF16；2表示INT8动态量化（INT8数据与FP32 dynamic scale连续排布）。取值为2时需输出dynamic_scale。</td>
-      <td>取值为0、1或2。</td>
+      <td>输入token的数据类型：0为FP16；1为BF16；2为INT8动态量化，每行一个FP32 scale；3为FLOAT8_E5M2；4为FLOAT8_E4M3FN（float8_e4m3）；5为FLOAT4_E2M1。3、4、5每32个逻辑hidden state元素对应一个FLOAT8_E8M0 scale，全部scale紧跟整行token数据。</td>
+      <td>arch35取值为0～5，其它支持的产品取值为0～2。y与dynamicScale的数据类型及shape须与tokenDtype对应，见下方映射表。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -179,8 +181,8 @@ aclnnStatus aclnnFfnWorkerBatching(
       <td>y</td>
       <td>输出</td>
       <td>重排后的token hidden states，按专家ID排序后连续存放。</td>
-      <td>-</td>
-      <td>FP16、BF16、INT8</td>
+      <td>数据类型由tokenDtype决定；FP4的逻辑shape仍为(Y, H)，两个元素打包为一个字节。</td>
+      <td>FP16、BF16、INT8；arch35另支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
       <td>ND</td>
       <td>2维，(Y, H)，其中Y = A × BS × (topK+1)</td>
       <td>×</td>
@@ -228,7 +230,7 @@ aclnnStatus aclnnFfnWorkerBatching(
     <tr>
       <td>expertOffsets</td>
       <td>输出</td>
-      <td>每个输出token在其所属专家分组内的偏移。</td>
+      <td>每个输出token在原始topK加共享专家选择中的位置索引。</td>
       <td>-</td>
       <td>INT32</td>
       <td>ND</td>
@@ -238,11 +240,11 @@ aclnnStatus aclnnFfnWorkerBatching(
     <tr>
       <td>dynamicScale</td>
       <td>输出</td>
-      <td>动态量化的scale值，仅在tokenDtype=2时有效。tokenDtype为0或1时为空tensor。</td>
-      <td>-</td>
-      <td>FP32</td>
+      <td>随token重排的scale值。tokenDtype=2时每行一个FP32 scale；arch35上tokenDtype=3、4、5时每32个逻辑元素一个FLOAT8_E8M0 scale。</td>
+      <td>tokenDtype=0、1时该输出无有效数据。尾部不足32个元素的分组仍占一个E8M0 scale。</td>
+      <td>FP32；arch35另支持FLOAT8_E8M0</td>
       <td>ND</td>
-      <td>1维，(Y)</td>
+      <td>tokenDtype=0、1、2：(Y)；tokenDtype=3、4、5：(Y, ceil(H/32))</td>
       <td>×</td>
     </tr>
     <tr>
@@ -357,13 +359,34 @@ aclnnStatus aclnnFfnWorkerBatching(
 - 参数M（micro batch数量）支持 ≤ 64。
 - 参数K+1（topK加共享专家数）支持 ≤ 64。
 - 参数BS（micro batch size）和Y支持泛化，无硬上限（受内存限制）。
-- 参数H（hidden size）支持泛化。
+- 参数H（hidden size）大于0；arch35上`tokenDtype=5`时H须为偶数。
+- arch35上的`tokenDtype=3、4、5`均支持`needSchedule=0、1`；其它产品不支持这三种类型。
+- 令`S=ceil(H/32)`，新类型的`dynamicScale`为FLOAT8_E8M0，shape为`(Y,S)`。所有scale紧跟整行token数据，源行步长取自`attn_to_ffn_token_size`，以字节计，可包含行尾padding。
+- FP8行包含H字节token和S字节scale；FP4行包含H/2字节token和S字节scale。FP4每字节低半字节存放前一个元素，高半字节存放后一个元素。
+- `y`、索引输出及有效的`dynamicScale`仅保证前`actualTokenNum`行有效；算子只做原始位模式搬运，不进行量化或反量化。
 - 确定性计算：
   - aclnnFfnWorkerBatching默认确定性实现。
 
+## arch35低精度类型映射与验证
+
+| tokenDtype | y数据类型 | 每行token字节数 | dynamicScale数据类型 | dynamicScale形状 |
+| --- | --- | --- | --- | --- |
+| 0 | FLOAT16 | 2H | FLOAT32（无有效数据） | (Y) |
+| 1 | BFLOAT16 | 2H | FLOAT32（无有效数据） | (Y) |
+| 2 | INT8 | H | FLOAT32 | (Y) |
+| 3 | FLOAT8_E5M2 | H | FLOAT8_E8M0 | (Y, ceil(H/32)) |
+| 4 | FLOAT8_E4M3FN | H | FLOAT8_E8M0 | (Y, ceil(H/32)) |
+| 5 | FLOAT4_E2M1 | H/2，H为偶数 | FLOAT8_E8M0 | (Y, ceil(H/32)) |
+
+例如H=66时，FP8每行包含66字节token和3字节scale，FP4每行包含33字节token和3字节scale；dynamicScale的shape均为(Y,3)，行尾可另加padding。
+
+- [需求设计文档](arch35_low_precision_design.md)：存储协议、UB规划及分块搬运设计。
+- [验证报告与复现命令](arch35_low_precision_validation.md)：Host UT 32/32、Kernel ST 68/68、ACLNN ST 67/67通过。
+- [逐用例结果](arch35_low_precision_results.csv)与[arch35 ACLNN用例](../tests/st/arch35/test_aclnn_ffn_worker_batching_arch35.csv)。
+
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+以下示例使用tokenDtype=0（FP16）。新增类型的输出dtype、shape及token/scale打包方式见上文映射表，完整覆盖用例见上述arch35 ACLNN用例链接。具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>

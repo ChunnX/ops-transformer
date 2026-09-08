@@ -46,19 +46,22 @@ namespace ge {
  * @li layer_num: A scalar, the number of layers.
  *
  * @par Restrictions:
+ * token_dtype 3/4/5 and E8M0 scale are supported only on Ascend950.
+ * Each 32 token elements share one scale; dynamic_scale shape is [Y, ceil(H/32)].
+ * FP4 requires even H.
  * Warning: THIS FUNCTION IS EXPERIMENTAL. Please do not use.
  */
 #ifndef OPS_PROTO_DEF_FFNWORKERBATCHING
 #define OPS_PROTO_DEF_FFNWORKERBATCHING
 REG_OP(FfnWorkerBatching)
     .INPUT(schedule_context, TensorType({DT_INT8}))
-    .OUTPUT(y, TensorType({DT_INT8, DT_FLOAT16, DT_BFLOAT16}))
+    .OUTPUT(y, TensorType({DT_INT8, DT_FLOAT16, DT_BFLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E2M1}))
     .OUTPUT(group_list, TensorType({DT_INT64}))
     .OUTPUT(session_ids, TensorType({DT_INT32}))
     .OUTPUT(micro_batch_ids, TensorType({DT_INT32}))
     .OUTPUT(token_ids, TensorType({DT_INT32}))
     .OUTPUT(expert_offsets, TensorType({DT_INT32}))
-    .OUTPUT(dynamic_scale, TensorType({DT_FLOAT32}))
+    .OUTPUT(dynamic_scale, TensorType({DT_FLOAT32, DT_FLOAT8_E8M0}))
     .OUTPUT(actual_token_num, TensorType({DT_INT64}))
     .REQUIRED_ATTR(expert_num, Int)
     .REQUIRED_ATTR(max_out_shape, ListInt)
