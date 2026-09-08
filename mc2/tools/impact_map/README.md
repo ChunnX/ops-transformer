@@ -84,6 +84,8 @@ common/op_host/op_tiling/xxx.h:
 ## 7. 维护约定
 
 - common/3rd 下**头文件新增/删除、include 关系变化**后，重新运行生成器刷新 yaml。
+- **对齐上游（rebase/合入上游新基线）后**，需重新运行生成器刷新 yaml 并作为一笔
+  提交带入（yaml 头部基线 commit 会同步更新）。
 - 本目录不参与编译构建（无 CMakeLists.txt，tools 的构建遍历自动跳过）。
 - 映射表由生成器产出，请勿手工编辑（重新生成会覆盖）；如需长期例外，请调整
   生成器规则后在 PR 中说明。
