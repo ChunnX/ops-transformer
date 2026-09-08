@@ -206,7 +206,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
         perfDataGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(perfData));
     }
 
-    DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(actualTokenNumGMTensor_);
     int64_t actualTokenNumValue = actualTokenNumGMTensor_.GetValue(0);
     ascendc_assert(actualTokenNumValue >= 0, "actualTokenNum must be non-negative, actualTokenNum=%ld",
                    actualTokenNumValue);
@@ -546,9 +545,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::W
     for (uint32_t i = 0U; i < PERF_FIELD_NUM; ++i) {
         perfDataGMTensor_.SetValue(base + i, static_cast<int64_t>(cycles[i]));
     }
-    DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(perfDataGMTensor_[base]);
-    DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-        perfDataGMTensor_[base + 8U]);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -697,14 +693,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                 if (preparedWqeCount != 0U) {
                     CommitBatch(batchHandle, perfCycles[10]);
                 }
-                // prof12 Drain
-                const uint64_t prof12Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
-                int32_t ret = hcomm_.Drain(batchHandle);
-                ascendc_assert(ret == 0, "batch drain failed, ret=%d, rankId=%u, dstRank=%u", ret, rankId_, dstRank);
-                if (perfEnabled_) {
-                    perfCycles[11] += static_cast<uint64_t>(GetSystemCycle()) - prof12Start;
-                }
-                // prof12 Drain
             }
         }
 
