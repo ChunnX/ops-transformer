@@ -72,7 +72,7 @@
         <col style="width: 170px">
         <col style="width: 120px">
         <col style="width: 300px">
-        <col style="width: 212px">  
+        <col style="width: 212px">
         <col style="width: 100px">
         </colgroup>
     <thead>
@@ -287,28 +287,28 @@
         <td>BFLOAT16、FLOAT16</td>
         <td>ND</td>
     </tr>
-    <tr>  
+    <tr>
         <td>dCmpKvOptional</td>
         <td>输出</td>
         <td>表示cmpKvOptional的梯度。</td>
         <td>BFLOAT16、FLOAT16</td>
         <td>ND</td>
     </tr>
-    <tr>  
+    <tr>
         <td>dSinksOutOptional</td>
         <td>输出</td>
         <td>表示sinksOptional的梯度。</td>
         <td>FLOAT32</td>
         <td>ND</td>
     </tr>
-    <tr>  
+    <tr>
         <td>oriSoftmaxL1NormOptional</td>
         <td>输出</td>
         <td>表示query与oriKvOptional计算得出的softmax结果。</td>
         <td>FLOAT32</td>
         <td>ND</td>
     </tr>
-    <tr>  
+    <tr>
         <td>cmpSoftmaxL1NormOptional</td>
         <td>输出</td>
         <td>表示query与cmpKvOptional计算得出的softmax结果。</td>
