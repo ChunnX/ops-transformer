@@ -769,15 +769,18 @@ ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
         OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) is only supported on chip 950.");
         return ge::GRAPH_FAILED;
     }
-    // effRows 接入条件：fp8 全量化，且走 512 kv tile 的分支
-    //   - blockShapeY=512 的原 512 优化分支；或
-    //   - per-head kv scale([B, kvHeads] 两维) 分支：kv 拼接仍按 512 tile，blockShapeY 可为 256 等其它值
-    // 注：quantMode 由 aclnn v2 封装推导、不一定能可靠到达 tiling，故此处只依赖 dtype 与 scale shape 判定。
+    // effRows 仅在 per-head kv scale([B, kvHeads] 两维) 分支接入。
+    // 原因: QK/PV 反量化用 tile 级标量 deqScalar(L0C 出口整 tile 一次)，
+    // 而 effRows 的 K/V gather 会跨源块填满 kvBaseTile(=512)，tile 内含多个源块的行。
+    // 每块一个 scale(quantMode=1 的 4D 形态)时 tile 级标量无法表达块间 scale 差异，
+    // 只有 per-head(每头一个 scale，与块无关)才是安全的。
+    // 注：quantMode 由 aclnn v2 封装推导、不一定能可靠到达 tiling，且 attenMask 校验早于
+    //     dequantScale 校验，故此处只依赖 dtype 与 K scale 的 shape 判定。
     bool kvScalePerHead = IsKvScalePerHeadShape(bsaContext);
-    if (dataType_ != ge::DT_FLOAT8_E4M3FN || (blockShapeY_ != TILE_SIZE_512 && !kvScalePerHead)) {
+    if (dataType_ != ge::DT_FLOAT8_E4M3FN || !kvScalePerHead) {
         OP_LOGE(bsaContext->GetNodeName(),
-                "attenMask (blockEffRows) is only supported for fp8 full-quant with blockShapeY=512 or per-head kv "
-                "scale, but got dtype=%s, blockShapeY=%u, perHeadKvScale=%d.",
+                "attenMask (blockEffRows) is only supported for fp8 full-quant with per-head kv scale (quantMode=4, "
+                "k/v scale 2D), but got dtype=%s, blockShapeY=%u, perHeadKvScale=%d.",
                 DataTypeToString(dataType_).c_str(), blockShapeY_, static_cast<int>(kvScalePerHead));
         return ge::GRAPH_FAILED;
     }
