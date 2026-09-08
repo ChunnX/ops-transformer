@@ -43,25 +43,25 @@ IMPL_OP_OPTILING(AllGatherMatmulV2)
 // Register exception dump func
 inline void AllGatherMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
-    const char* socName = aclrtGetSocName();
+    const char *socName = aclrtGetSocName();
     if (std::strstr(socName, "Ascend950") == nullptr) {
         return;
     }
     Mc2Exception::Mc2ExceptionImplTmp(args, userdata, "AllGatherMatmulV2");
- 
-    Mc2Exception::Mc2DumpTilingData(args, "AllGatherMatmulV2",
-        11U,   // tilingGmArgIdx
-        0U,    // argsOffset
-        10U,   // workspaceGmArgIdx
-        offsetof(Mc2Tiling::AllGatherMatmulTilingDataV2, quantMode),             // quantModeOffset
-        offsetof(Mc2Tiling::AllGatherMatmulTilingDataV2, workspaceLayout),       // wsLayoutOffsetNonQuant
-        offsetof(Mc2Tiling::AllGatherMatmulTilingDataFp8, workspaceLayout));     // wsLayoutOffsetQuant
+
+    Mc2Exception::Mc2DumpTilingData(
+        args, "AllGatherMatmulV2",
+        11U,                                                                 // tilingGmArgIdx
+        0U,                                                                  // argsOffset
+        10U,                                                                 // workspaceGmArgIdx
+        offsetof(Mc2Tiling::AllGatherMatmulTilingDataV2, quantMode),         // quantModeOffset
+        offsetof(Mc2Tiling::AllGatherMatmulTilingDataV2, workspaceLayout),   // wsLayoutOffsetNonQuant
+        offsetof(Mc2Tiling::AllGatherMatmulTilingDataFp8, workspaceLayout)); // wsLayoutOffsetQuant
 }
- 
+
 __attribute__((constructor)) void RegisterAllGatherMatmulV2ExceptionFunc()
 {
-    IMPL_OP(AllGatherMatmulV2)
-        .ExceptionDumpParseFunc(AllGatherMatmulV2ExceptionImplWrapper);
+    IMPL_OP(AllGatherMatmulV2).ExceptionDumpParseFunc(AllGatherMatmulV2ExceptionImplWrapper);
 }
 #endif // MC2_DFX_ENABLE
 

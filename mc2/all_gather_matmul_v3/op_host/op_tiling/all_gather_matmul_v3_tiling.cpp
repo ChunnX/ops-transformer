@@ -788,10 +788,9 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
     uint64_t libApiSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     tilingData->workspaceLayout.totalSize = libApiSize + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
     tilingData->workspaceLayout.segCount = 2;
-    tilingData->workspaceLayout.segments[0] = {0UL, libApiSize,
-                                                static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
-    tilingData->workspaceLayout.segments[1] = {libApiSize, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
-                                                static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
+    tilingData->workspaceLayout.segments[0] = {0UL, libApiSize, static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
+    tilingData->workspaceLayout.segments[1] = {
+        libApiSize, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE, static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
     auto x1Dtype = context->GetInputDesc(IDX_INPUT_X1)->GetDataType();
     double typeSize = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 0.5 : 1.0;
     uint64_t scaleKDim = (k + 63) / 64;
@@ -800,10 +799,10 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
     tilingData->peermemDataSize = dataRegionBytes + scaleRegionBytes;
     tilingData->peermemLayout.totalSize = tilingData->peermemDataSize;
     tilingData->peermemLayout.segCount = 2;
-    tilingData->peermemLayout.segments[0] = {0UL, dataRegionBytes,
-                                             static_cast<uint8_t>(Mc2Tiling::PEERMEM_SEG_DATA), {}};
-    tilingData->peermemLayout.segments[1] = {dataRegionBytes, scaleRegionBytes,
-                                             static_cast<uint8_t>(Mc2Tiling::PEERMEM_SEG_SCALE), {}};
+    tilingData->peermemLayout.segments[0] = {
+        0UL, dataRegionBytes, static_cast<uint8_t>(Mc2Tiling::PEERMEM_SEG_DATA), {}};
+    tilingData->peermemLayout.segments[1] = {
+        dataRegionBytes, scaleRegionBytes, static_cast<uint8_t>(Mc2Tiling::PEERMEM_SEG_SCALE), {}};
     return ge::GRAPH_SUCCESS;
 }
 
@@ -887,26 +886,26 @@ inline void AllGatherMatmulV3ExceptionImplWrapper(aclrtExceptionInfo *args, void
     if (std::strstr(socName, "Ascend950") == nullptr) {
         return;
     }
-    Mc2Exception::Mc2DumpTilingData(args, "AllGatherMatmulV3",
-        10U,  // tilingGmArgIdx
-        0U,   // argsOffset
-        9U,   // workspaceGmArgIdx
-        0U,   // quantModeOffset
+    Mc2Exception::Mc2DumpTilingData(
+        args, "AllGatherMatmulV3",
+        10U,                                                         // tilingGmArgIdx
+        0U,                                                          // argsOffset
+        9U,                                                          // workspaceGmArgIdx
+        0U,                                                          // quantModeOffset
         offsetof(AllGatherMxMatmulUrmaTilingData, workspaceLayout),  // wsLayoutOffsetNonQuant
         offsetof(AllGatherMxMatmulUrmaTilingData, workspaceLayout),  // wsLayoutOffsetQuant
         offsetof(AllGatherMxMatmulUrmaTilingData, workspaceLayout)); // wsLayoutOffsetApace
     Mc2Exception::Mc2DumpUrmaContext(args, "AllGatherMatmulV3",
-        0U,   // contextArgIdx
-        0U,   // argsOffset
-        10U,  // tilingGmArgIdx
-        offsetof(AllGatherMxMatmulUrmaTilingData, peermemDataSize),
-        offsetof(AllGatherMxMatmulUrmaTilingData, peermemLayout));
+                                     0U,  // contextArgIdx
+                                     0U,  // argsOffset
+                                     10U, // tilingGmArgIdx
+                                     offsetof(AllGatherMxMatmulUrmaTilingData, peermemDataSize),
+                                     offsetof(AllGatherMxMatmulUrmaTilingData, peermemLayout));
 }
 
 __attribute__((constructor)) void RegisterAllGatherMatmulV3ExceptionFunc()
 {
-    IMPL_OP(AllGatherMatmulV3)
-        .ExceptionDumpParseFunc(AllGatherMatmulV3ExceptionImplWrapper);
+    IMPL_OP(AllGatherMatmulV3).ExceptionDumpParseFunc(AllGatherMatmulV3ExceptionImplWrapper);
 }
 #endif // MC2_DFX_ENABLE
 

@@ -58,7 +58,10 @@ public:
     // 释放通信器资源
     __aicore__ inline void End();
 #if MC2_DFX_ENABLE
-    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt) { runtimeInfo_ = rt; }
+    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt)
+    {
+        runtimeInfo_ = rt;
+    }
 #endif
 
 private:
@@ -196,9 +199,9 @@ __aicore__ inline void HcclCommunicator<AICSync, ServerType, ContextType, Tiling
         hTasks_[endIndex_ + taskIndex] = primitive_.SyncSend(&hccl_, &context_, taskIndex);
         taskSuccess_[endIndex_ + taskIndex] = false;
 #if MC2_DFX_ENABLE
-            if (runtimeInfo_ != nullptr) {
-                runtimeInfo_->IncCommitCount();
-            }
+        if (runtimeInfo_ != nullptr) {
+            runtimeInfo_->IncCommitCount();
+        }
 #endif
     }
 }

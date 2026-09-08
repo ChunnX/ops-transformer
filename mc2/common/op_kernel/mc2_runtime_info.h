@@ -27,9 +27,7 @@ class Mc2RuntimeInfo {
 public:
     __aicore__ inline Mc2RuntimeInfo() = default;
 
-    __aicore__ inline void Init(GM_ADDR workspaceGM,
-                                Mc2Tiling::WorkspaceLayoutInfo *wsLayout,
-                                uint32_t aicCoreNum)
+    __aicore__ inline void Init(GM_ADDR workspaceGM, Mc2Tiling::WorkspaceLayoutInfo *wsLayout, uint32_t aicCoreNum)
     {
         runtimeInfoBase_ = nullptr;
         slotIdx_ = 0;
@@ -49,8 +47,7 @@ public:
             }
             if (wsLayout->segments[i].type == Mc2Tiling::WS_SEG_RUNTIME_INFO) {
                 uint64_t userOffset = wsLayout->segments[i].offset - libApiSize;
-                runtimeInfoBase_ = reinterpret_cast<__gm__ Mc2Tiling::RuntimeInfoPerCore *>(
-                    workspaceGM + userOffset);
+                runtimeInfoBase_ = reinterpret_cast<__gm__ Mc2Tiling::RuntimeInfoPerCore *>(workspaceGM + userOffset);
                 break;
             }
         }
@@ -142,7 +139,8 @@ private:
         AscendC::GlobalTensor<uint8_t> cacheLine;
         cacheLine.SetGlobalBuffer(reinterpret_cast<GM_ADDR>(&runtimeInfoBase_[slotIdx_]),
                                   Mc2Tiling::RUNTIME_INFO_PER_CORE_SIZE);
-        DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(cacheLine);
+        DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
+            cacheLine);
     }
 
     __gm__ Mc2Tiling::RuntimeInfoPerCore *runtimeInfoBase_ = nullptr;

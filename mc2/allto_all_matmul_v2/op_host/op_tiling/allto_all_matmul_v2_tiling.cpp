@@ -69,25 +69,24 @@ inline void AlltoAllMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void 
         return;
     }
     Mc2Exception::Mc2DumpTilingData(args, "AlltoAllMatmulV2",
-        9U,   // tilingGmArgIdx
-        0U,   // argsOffset
-        8U,   // workspaceGmArgIdx
-        0U,   // quantModeOffset
-        offsetof(allToAllMatmulTilingData, workspaceLayout),  // wsLayoutOffsetNonQuant
-        offsetof(allToAllMatmulTilingData, workspaceLayout),  // wsLayoutOffsetQuant
-        offsetof(allToAllMatmulTilingData, workspaceLayout)); // wsLayoutOffsetApace
+                                    9U,                                                   // tilingGmArgIdx
+                                    0U,                                                   // argsOffset
+                                    8U,                                                   // workspaceGmArgIdx
+                                    0U,                                                   // quantModeOffset
+                                    offsetof(allToAllMatmulTilingData, workspaceLayout),  // wsLayoutOffsetNonQuant
+                                    offsetof(allToAllMatmulTilingData, workspaceLayout),  // wsLayoutOffsetQuant
+                                    offsetof(allToAllMatmulTilingData, workspaceLayout)); // wsLayoutOffsetApace
     Mc2Exception::Mc2DumpUrmaContext(args, "AlltoAllMatmulV2",
-        0U,   // contextArgIdx
-        0U,   // argsOffset
-        9U,   // tilingGmArgIdx
-        offsetof(allToAllMatmulTilingData, peermemDataSize),
-        offsetof(allToAllMatmulTilingData, peermemLayout));
+                                     0U, // contextArgIdx
+                                     0U, // argsOffset
+                                     9U, // tilingGmArgIdx
+                                     offsetof(allToAllMatmulTilingData, peermemDataSize),
+                                     offsetof(allToAllMatmulTilingData, peermemLayout));
 }
 
 __attribute__((constructor)) void RegisterAlltoAllMatmulV2ExceptionFunc()
 {
-    IMPL_OP(AlltoAllMatmulV2)
-        .ExceptionDumpParseFunc(AlltoAllMatmulV2ExceptionImplWrapper);
+    IMPL_OP(AlltoAllMatmulV2).ExceptionDumpParseFunc(AlltoAllMatmulV2ExceptionImplWrapper);
 }
 #endif // MC2_DFX_ENABLE
 } // namespace MC2Tiling

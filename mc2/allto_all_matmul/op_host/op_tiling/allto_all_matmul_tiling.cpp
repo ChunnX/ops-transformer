@@ -49,30 +49,30 @@ struct AlltoAllMatmulCompileInfo {};
 IMPL_OP_OPTILING(AlltoAllMatmul)
     .Tiling(AlltoAllMatmulTilingFunc)
     .TilingParse<AlltoAllMatmulCompileInfo>(TilingParseForAlltoAllMatmul);
-    
+
 #if MC2_DFX_ENABLE
 // Register exception dump func
 inline void AlltoAllMatmulExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
-    const char* socName = aclrtGetSocName();
+    const char *socName = aclrtGetSocName();
     if (std::strstr(socName, "Ascend950") == nullptr) {
         return;
     }
     Mc2Exception::Mc2ExceptionImplTmp(args, userdata, "AlltoAllMatmul");
-    Mc2Exception::Mc2DumpTilingData(args, "AlltoAllMatmul",
-        12U,   // tilingGmArgIdx
-        0U,    // argsOffset
-        11U,   // workspaceGmArgIdx
-        offsetof(AlltoAllMatmulTilingData, alltoAllMatmulTilingInfo.x1QuantMode),  // quantModeOffset
-        offsetof(AlltoAllMatmulTilingData, workspaceLayout),                       // wsLayoutOffsetNonQuant
+    Mc2Exception::Mc2DumpTilingData(
+        args, "AlltoAllMatmul",
+        12U,                                                                      // tilingGmArgIdx
+        0U,                                                                       // argsOffset
+        11U,                                                                      // workspaceGmArgIdx
+        offsetof(AlltoAllMatmulTilingData, alltoAllMatmulTilingInfo.x1QuantMode), // quantModeOffset
+        offsetof(AlltoAllMatmulTilingData, workspaceLayout),                      // wsLayoutOffsetNonQuant
         offsetof(AlltoAllQuantMatmulTilingData, workspaceLayout),                 // wsLayoutOffsetQuant
-        offsetof(Apace::hcommAllToAllMatmulTilingData, workspaceLayout));        // wsLayoutOffsetApace
+        offsetof(Apace::hcommAllToAllMatmulTilingData, workspaceLayout));         // wsLayoutOffsetApace
 }
- 
+
 __attribute__((constructor)) void RegisterAlltoAllMatmulExceptionFunc()
 {
-    IMPL_OP(AlltoAllMatmul)
-        .ExceptionDumpParseFunc(AlltoAllMatmulExceptionImplWrapper);
+    IMPL_OP(AlltoAllMatmul).ExceptionDumpParseFunc(AlltoAllMatmulExceptionImplWrapper);
 }
 #endif // MC2_DFX_ENABLE
 } // namespace MC2Tiling

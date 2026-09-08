@@ -54,10 +54,10 @@ public:
 private:
 #if MC2_DFX_ENABLE
     // position 枚举 (AllGather 专用)
-    static constexpr uint8_t POS_COMM_BEFORE        = 0U;  // AllGatherCommit 前
-    static constexpr uint8_t POS_COMP_LOCAL_BEFORE  = 1U;  // 本地 matmul 前
-    static constexpr uint8_t POS_COMP_GATHER_BEFORE = 2U;  // 远端 gather matmul 前
-    static constexpr uint8_t POS_FINALIZE_BEFORE    = 3U;  // Finalize 前
+    static constexpr uint8_t POS_COMM_BEFORE = 0U;        // AllGatherCommit 前
+    static constexpr uint8_t POS_COMP_LOCAL_BEFORE = 1U;  // 本地 matmul 前
+    static constexpr uint8_t POS_COMP_GATHER_BEFORE = 2U; // 远端 gather matmul 前
+    static constexpr uint8_t POS_FINALIZE_BEFORE = 3U;    // Finalize 前
 #endif
     __aicore__ inline void AllGatherCommit();         /* allgather通信 */
     __aicore__ inline void QuantMatmulCompute();      /* 计算入口 */
@@ -338,7 +338,7 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
 #if MC2_DFX_ENABLE
         execTurn_++;
         runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMP_GATHER_BEFORE,
-                                            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
 #endif
         if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
             hcclAllgather_.Wait(handleList_[i + shift]);
@@ -370,7 +370,7 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
 #if MC2_DFX_ENABLE
         execTurn_++;
         runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMP_LOCAL_BEFORE,
-                                            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
 #endif
         QuantMatmulLocalCompute();
     }
@@ -452,7 +452,7 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
 #if MC2_DFX_ENABLE
         execTurn_++;
         runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMM_BEFORE,
-                                            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
 #endif
         // debugmode 为 MC2_DEBUG_ONLY_CUBE时，只做本片计算不做通信
         if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
@@ -463,7 +463,7 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
 #if MC2_DFX_ENABLE
         execTurn_++;
         runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_FINALIZE_BEFORE,
-                                            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
 #endif
         // 后处理：AIC全核同步+终止hcclserver
         PostProcess();

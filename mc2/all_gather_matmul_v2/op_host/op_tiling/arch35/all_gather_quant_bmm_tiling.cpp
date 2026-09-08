@@ -566,38 +566,35 @@ void AllGatherQuantBmmTiling::SetTilingKeyParams()
 void AllGatherQuantBmmTiling::BuildWorkspaceLayout()
 {
     uint64_t libApiSize = (args_.nValue == 0) ? libApiWorkSpaceSize_ : matmulWs_;
- 
+
     uint64_t offset = 0;
     uint32_t idx = 0;
- 
-    workspaceLayout_.segments[idx++] = {offset, libApiSize,
-                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
+
+    workspaceLayout_.segments[idx++] = {offset, libApiSize, static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
     offset += libApiSize;
- 
+
     if (scale1kSpaceSize_ > 0) {
-        workspaceLayout_.segments[idx++] = {offset, scale1kSpaceSize_,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_GATHER_SCALE1), {}};
+        workspaceLayout_.segments[idx++] = {
+            offset, scale1kSpaceSize_, static_cast<uint8_t>(Mc2Tiling::WS_SEG_GATHER_SCALE1), {}};
         offset += scale1kSpaceSize_;
     }
- 
+
     if (storageA_ > 0) {
-        workspaceLayout_.segments[idx++] = {offset, storageA_,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_GATHER), {}};
+        workspaceLayout_.segments[idx++] = {offset, storageA_, static_cast<uint8_t>(Mc2Tiling::WS_SEG_GATHER), {}};
         offset += storageA_;
     }
- 
+
     if (biasLen_ > 0) {
-        workspaceLayout_.segments[idx++] = {offset, biasLen_,
-                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_BIAS), {}};
+        workspaceLayout_.segments[idx++] = {offset, biasLen_, static_cast<uint8_t>(Mc2Tiling::WS_SEG_BIAS), {}};
         offset += biasLen_;
     }
- 
+
 #if MC2_DFX_ENABLE
-    workspaceLayout_.segments[idx++] = {offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
-                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
+    workspaceLayout_.segments[idx++] = {
+        offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE, static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
     offset += Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
 #endif
- 
+
     workspaceLayout_.totalSize = offset;
     workspaceLayout_.segCount = idx;
 }

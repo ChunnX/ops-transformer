@@ -59,16 +59,19 @@ public:
 
 #if MC2_DFX_ENABLE
     // 注入 runtimeInfo 指针，使 pipeline 循环内可记录 tile/tail 进度
-    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt) { runtimeInfo_ = rt; }
+    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt)
+    {
+        runtimeInfo_ = rt;
+    }
 #endif
 
 private:
 #if MC2_DFX_ENABLE
     // position 枚举 (pipeline 内部使用)
-    static constexpr uint8_t POS_COMM_BEFORE             = 0U;  // hccl.Wait 前
-    static constexpr uint8_t POS_SCALE_COMM_BEFORE       = 1U;  // scale 通信前
-    static constexpr uint8_t POS_COMP_CUBE_MATMUL_BEFORE = 2U;  // C核 matmul 前
-    static constexpr uint8_t POS_COMP_VEC_PERMUTE_BEFORE = 3U;  // V核转置前
+    static constexpr uint8_t POS_COMM_BEFORE = 0U;             // hccl.Wait 前
+    static constexpr uint8_t POS_SCALE_COMM_BEFORE = 1U;       // scale 通信前
+    static constexpr uint8_t POS_COMP_CUBE_MATMUL_BEFORE = 2U; // C核 matmul 前
+    static constexpr uint8_t POS_COMP_VEC_PERMUTE_BEFORE = 3U; // V核转置前
 #endif
     CommunicationType *commStage_;        // 通信节点
     TransposeType *transStage_;           // 转置计算的计算节点
@@ -121,7 +124,7 @@ __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, Transpos
 #if MC2_DFX_ENABLE
             if (runtimeInfo_ != nullptr) {
                 runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_COMM_BEFORE,
-                                                    static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+                                                  static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
             }
 #endif
             commStage_->Process(index);
@@ -129,7 +132,7 @@ __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, Transpos
 #if MC2_DFX_ENABLE
             if (runtimeInfo_ != nullptr) {
                 runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_COMP_VEC_PERMUTE_BEFORE,
-                                                    static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+                                                  static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
             }
 #endif
             transStage_->Process(index);
@@ -140,7 +143,7 @@ __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, Transpos
 #if MC2_DFX_ENABLE
             if (runtimeInfo_ != nullptr) {
                 runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_COMP_CUBE_MATMUL_BEFORE,
-                                                    static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+                                                  static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
             }
 #endif
         }
@@ -164,7 +167,7 @@ __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, Transpos
 #if MC2_DFX_ENABLE
         if (runtimeInfo_ != nullptr) {
             runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_SCALE_COMM_BEFORE,
-                                                static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+                                              static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         }
 #endif
         commStage_->Process(0);

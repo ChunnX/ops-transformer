@@ -79,9 +79,12 @@ public:
      * @brief 执行算子逻辑（包含 AIC/AIV 分离逻辑）
      */
     __aicore__ inline void Run();
-    
+
 #if MC2_DFX_ENABLE
-    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt) { runtimeInfo_ = rt; }
+    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt)
+    {
+        runtimeInfo_ = rt;
+    }
 #endif
 
     using TypeA = AType;
@@ -157,9 +160,9 @@ private:
 #if MC2_DFX_ENABLE
     Mc2Kernel::Mc2RuntimeInfo *runtimeInfo_{nullptr};
     uint8_t execTurn_ = 0;
-    static constexpr uint8_t POS_COMM_BEFORE             = 0U;
+    static constexpr uint8_t POS_COMM_BEFORE = 0U;
     static constexpr uint8_t POS_COMP_CUBE_MATMUL_BEFORE = 1U;
-    static constexpr uint8_t POS_COMP_LOCAL_BEFORE      = 2U;
+    static constexpr uint8_t POS_COMP_LOCAL_BEFORE = 2U;
 #endif
     // ---------------- 私有方法 ----------------
     __aicore__ inline void InitBaseParams(const allToAllMatmulTilingData *tilingData);
@@ -240,7 +243,7 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
             execTurn_++;
             if (runtimeInfo_ != nullptr) {
                 runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_COMM_BEFORE,
-                    static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
+                                                  static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
             }
 #endif
             allToAllScaleA_.Commit();
@@ -356,7 +359,7 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 #if MC2_DFX_ENABLE
     if (runtimeInfo_ != nullptr) {
         runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_COMP_LOCAL_BEFORE,
-            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
+                                          static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
     }
 #endif
     quantMatmulKernelImpl_(localParams);
@@ -376,7 +379,7 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 #if MC2_DFX_ENABLE
     if (runtimeInfo_ != nullptr) {
         runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_COMP_CUBE_MATMUL_BEFORE,
-            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
+                                          static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
     }
 #endif
     quantMatmulKernelImpl_(params);
