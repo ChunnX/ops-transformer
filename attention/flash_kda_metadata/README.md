@@ -13,8 +13,9 @@ metadata = ops.flash_kda_metadata(q, v, initial_state, layout_qkv, cu_seqlens=No
 int32 `cu_seqlens`，长度为 `B+1`，首项为 0，末项为总 token 数。
 返回的 metadata 直接传给 `ops.flash_kda`。
 
-构建命令和调用示例见 [FlashKDA](../flash_kda/README.md)。构建时，文件末尾的
-`build_native` 用框架已有 `compile_aicpu_kernel` 编译原 AICPU kernel，随 Torch
+构建命令和调用示例见 [FlashKDA](../flash_kda/README.md)。构建时，Transformer 的
+`torch_extension/setup.py` 识别 `@aicpu_kernel`，统一调用框架已有
+`compile_aicpu_kernel` 编译原 AICPU kernel，随 Torch
 扩展发布 `flash_kda_metadata.so`。运行时，`load_native` 用框架已有
 `CompiledAicpuKernel` 加载该二进制，原有公开入口继续执行参数检查、分配和 launch。
 

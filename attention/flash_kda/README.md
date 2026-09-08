@@ -176,8 +176,8 @@ FlashKDA，本仓保留原计算公式、分组调度、双阶段执行结构和
 
 - 增加 `@register("flash_kda")` 发布入口，使框架打包阶段可以收集原动态编译入口并生成
   Native Provider。
-- 增加 `build_native(output, target)`，接入 CANNBotDSL `package.native.build`，用于 custom
-  和 builtin run 包构建。
+- Transformer 的 `torch_extension/setup.py` 统一识别发布声明并调用 CANNBotDSL
+  `package.native.build`；算子文件不负责选择输出目录或执行打包编排。
 - 增加 Torch extension 包装，注册 `flash_kda`、`flash_kda_metadata` 的 schema、NPU 调用和
   Meta 推导，让用户通过 `cann_ops_transformer_custom` 或 `cann_ops_transformer_builtin`
   调用。
@@ -186,7 +186,7 @@ FlashKDA，本仓保留原计算公式、分组调度、双阶段执行结构和
   FlashKDA 的数学计算和任务调度。
 - 在 L1 清零后、写入单位矩阵对角线前补充一次 `cube_sync_pipe(PIPE.MTE2)`。该同步用于保证
   后续对角线写入不会与前序 MTE2 清零发生乱序；计算公式不变。
-- 为 `flash_kda_metadata` 增加 AICPU 二进制导出和加载适配。metadata 的容量估算、序列解析、
+- 框架构建统一导出 Metadata AICPU 二进制，算子侧保留加载适配。metadata 的容量估算、序列解析、
   cost 公式、分组和任务划分仍保留在原 Python/AICPU 实现中。
 
 ## 接口切换后的精度异常记录

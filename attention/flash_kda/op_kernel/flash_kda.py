@@ -2231,11 +2231,3 @@ def export_flash_kda():
             if _COMPILED_KERNEL is not None:
                 _COMPILED_KERNEL.close()
                 _COMPILED_KERNEL = None
-
-
-def build_native(output, target):
-    from pathlib import Path
-    from cannbotdsl.package.native import build
-
-    return build(collectors=Path(__file__).resolve().parents[2], operators=["flash_kda"],
-                 pattern="flash_kda.py", target=target, output=output)

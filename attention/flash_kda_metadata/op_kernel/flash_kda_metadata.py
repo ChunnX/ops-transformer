@@ -918,19 +918,6 @@ __all__ = [
 ]
 
 
-def build_native(output, target):
-    """Export the original AICPU executable; all shapes remain runtime arguments."""
-    from pathlib import Path
-    import shutil
-
-    output = Path(output)
-    output.mkdir(parents=True, exist_ok=False)
-    with tempfile.TemporaryDirectory(prefix="flash_kda_metadata_build_") as workdir:
-        compiled = compile_aicpu_kernel(flash_kda_metadata_kernel, workdir=workdir,
-                                       launch_mode="interface", npu_arch=target)
-        shutil.copy2(compiled.so_path, output / "flash_kda_metadata.so")
-
-
 def load_native(directory):
     """Bind the packaged AICPU executable to the unchanged metadata entry."""
     from pathlib import Path

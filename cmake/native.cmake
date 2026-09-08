@@ -1,13 +1,12 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # Licensed under the CANN Open Software License Agreement Version 2.0.
 
-# Python operators opt in through the same build_native hook used by Torch wheels.
-set(NATIVE_ONLY FALSE)
+# Split selected operators by their declared compilation frontend.
+string(REPLACE "," ";" ASCENDC_OPS "${ASCEND_OP_NAME}")
 set(NATIVE_OPS)
 if(NOT BUILD_OPEN_PROJECT OR ENABLE_TEST)
   return()
 endif()
-string(REPLACE "," ";" _requested_ops "${ASCEND_OP_NAME}")
 file(GLOB _native_entries CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*/*/op_kernel/*.py")
 foreach(_entry IN LISTS _native_entries)
   get_filename_component(_kernel_dir "${_entry}" DIRECTORY)
@@ -16,13 +15,13 @@ foreach(_entry IN LISTS _native_entries)
   get_filename_component(_category_dir "${_op_dir}" DIRECTORY)
   get_filename_component(_category "${_category_dir}" NAME)
   should_add_module("${_category}" _include_module)
-  if(NOT _include_module OR (NOT ASCEND_OP_NAME MATCHES "^[Aa][Ll][Ll]$" AND NOT _op IN_LIST _requested_ops))
+  if(NOT _include_module OR (NOT ASCEND_OP_NAME MATCHES "^[Aa][Ll][Ll]$" AND NOT _op IN_LIST ASCENDC_OPS))
     continue()
   endif()
   if(NOT _entry STREQUAL "${_kernel_dir}/${_op}.py")
     continue()
   endif()
-  file(STRINGS "${_entry}" _hook REGEX "^def build_native\\(")
+  file(STRINGS "${_entry}" _hook REGEX "^@(register\\(|aicpu_kernel)")
   if(_hook)
     list(APPEND NATIVE_OPS "${_op}")
   endif()
@@ -31,12 +30,6 @@ if(NOT NATIVE_OPS)
   return()
 endif()
 
-# Preserve legacy C++ operator discovery when the selection also contains C++ ops.
-set(_remaining_ops ${_requested_ops})
-list(REMOVE_ITEM _remaining_ops ${NATIVE_OPS})
-if(NOT _remaining_ops)
-  set(NATIVE_ONLY TRUE)
-endif()
 if(NOT ASCEND_COMPUTE_UNIT STREQUAL "ascend950" OR
    (DEFINED ENABLE_OPS_KERNEL AND NOT ENABLE_OPS_KERNEL))
   if(ASCEND_OP_NAME MATCHES "^[Aa][Ll][Ll]$")
@@ -45,6 +38,7 @@ if(NOT ASCEND_COMPUTE_UNIT STREQUAL "ascend950" OR
   endif()
   message(FATAL_ERROR "Selected Native operators currently require --pkg --soc=ascend950")
 endif()
+list(REMOVE_ITEM ASCENDC_OPS ${NATIVE_OPS})
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 set(_native_stage "${CMAKE_CURRENT_BINARY_DIR}/native")
 string(JOIN "," _native_names ${NATIVE_OPS})
