@@ -67,7 +67,7 @@ public:
             .PrecisionReduceFlag(true);
         // 支持的平台列表
         this->AICore().AddConfig("ascend950", aicoreConfig);
-        this->AICore().AddConfig("ascend910_96", aicoreConfig);
+        this->AICore().AddConfig("ascend960pr", aicoreConfig);
     }
 };
 

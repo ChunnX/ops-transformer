@@ -24,12 +24,16 @@ enum class SI_LAYOUT : uint32_t {
     PA_BNSD = 2,
     BNSD = 3
 };
-// Sync mode between Cube and Vector.
+// Cube 与 Vector 之间的同步模式。
 constexpr uint32_t SI_SYNC_MODE4 = 4U;
 constexpr uint32_t AIV0_AIV1_OFFSET = 16U;
+constexpr uint32_t MM1_RES_BUFFER_NUM = 3U;
+constexpr uint32_t VBIAS_BUFFER_NUM = 3U;
+// M=64时每个AIV的QK结果为32KB；TopK histogram使用独立UB，不占用结果槽。
+constexpr uint32_t MM1_RES_SLOT_BYTES = 32U * 1024U;
 constexpr uint32_t CROSS_VC_EVENT = 0U;
-constexpr uint32_t CROSS_CV_EVENT = 2U;
-// Buffer size in bytes.
+constexpr uint32_t CROSS_CV_EVENT = CROSS_VC_EVENT + MM1_RES_BUFFER_NUM;
+// Buffer 大小（字节）。
 constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32U;
 constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64U;
 constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256U;
@@ -40,6 +44,7 @@ constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096U;
 constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192U;
 constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384U;
 constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768U;
+// TopK 流式处理每轮的 trunk 长度为 256（与 S2 基本块 256 对齐）。
 constexpr uint32_t TRUNK_LEN_256 = 256U;
 // Invalid index.
 constexpr int INVALID_IDX = -1;
@@ -83,7 +88,6 @@ __aicore__ inline uint32_t GetLane(const T &value4, uint32_t lane)
 {
     return (lane == 0U) ? value4.v0 : ((lane == 1U) ? value4.v1 : ((lane == 2U) ? value4.v2 : value4.v3));
 }
-
 
 template <typename Q_T, typename K_T, typename OUT_T, const bool CAUSAL = false, const int TOPK_SCORE_PRECISION = 1,
           typename... Args>
@@ -135,19 +139,19 @@ struct RunInfo {
     uint32_t actMBaseSize;
     uint32_t actualSingleProcessSInnerSize;
 
-    uint64_t tensorQueryOffset;
-    uint64_t tensorKeyOffset;
-    uint64_t tensorKeyScaleOffset;
-    uint64_t tensorWeightsOffset;
-    uint64_t tensorVBiasOffset;
-    uint64_t indiceOutOffset;
-    uint64_t indiceLenOffset;
+    int64_t tensorQueryOffset;
+    int64_t tensorKeyOffset;
+    int64_t tensorKeyScaleOffset;
+    int64_t tensorWeightsOffset;
+    int64_t tensorVBiasOffset;
+    int64_t indiceOutOffset;
+    int64_t indiceLenOffset;
     uint32_t promptLen;
 
     bool isFirstS2InnerLoop;
     bool isLastS2InnerLoop;
     bool isNeedLD = false;
-    uint32_t saveWorkSpaceIdx = 0;
+    int64_t saveWorkSpaceIdx = 0LL;
 };
 
 struct ConstInfo {
@@ -193,7 +197,7 @@ struct ConstInfo {
 
 struct LdSplitCoreInfo {
     bool isLdCoreEnable = false;    // 当前核是否参与规约任务
-    uint32_t saveWorkSpaceIdx = 0U; // 存放LD参数的地址
+    int64_t saveWorkSpaceIdx = 0LL; // 存放LD参数的地址
     uint32_t bn2Idx = 0U;           // 归约任务
     uint32_t bIdx = 0U;
     uint32_t n2Idx = 0U;
@@ -202,7 +206,7 @@ struct LdSplitCoreInfo {
     uint32_t workspaceNum = 0U; // 当前AIV核上规约任务的S2切分数量
     uint32_t mStart = 0U;
     uint32_t mNum = 0U;
-    uint64_t indiceOutCoreOffset = 0U; // 最终输出索引搬出Topk的初始偏移地址
+    int64_t indiceOutCoreOffset = 0LL; // 最终输出索引搬出Topk的初始偏移地址
 };
 
 struct SplitCoreInfo {

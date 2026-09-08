@@ -58,8 +58,8 @@ class TestCustomStemIndexer(TestCase):
         num_prompt_tokens = torch.tensor([kv_len], dtype=torch.int32)
 
         case = {
-            "case_id": "SI_DECODE_001",
-            "testcase_name": "decode_s2_split_non_causal",
+            "case_id": "SI_MANUAL_001",
+            "testcase_name": "manual_long_s2_non_causal",
             "expected_result": "PASS",
             "batch_size": b,
             "q_heads": q_heads,

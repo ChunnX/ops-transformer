@@ -68,6 +68,7 @@ constexpr uint32_t DIM_NUM_FOUR = 4;
 constexpr uint32_t STEM_BLOCK_SIZE_LIMIT = 128;
 constexpr uint32_t STEM_STRIDE_LIMIT = 16;
 constexpr uint32_t HEAD_DIM_LIMIT = 2048;
+constexpr uint32_t BATCH_SIZE_LIMIT = 65536U;
 constexpr uint32_t INITIAL_BLOCKS_LIMIT = 4;
 constexpr uint32_t WINDOW_SIZE_LIMIT = 4;
 constexpr uint64_t STEM_INDEXER_METADATA_HEADER_ELEMS = 16U;
@@ -82,7 +83,7 @@ constexpr uint32_t Q_HEAD_NUM_64 = 64;
 constexpr uint32_t KV_HEAD_NUM_2 = 2;
 constexpr uint32_t KV_HEAD_NUM_4 = 4;
 constexpr uint32_t KV_HEAD_NUM_8 = 8;
-constexpr uint32_t STEM_M_BASE_SIZE = 96;
+constexpr uint32_t STEM_M_BASE_SIZE = 64;
 constexpr uint32_t STEM_S2_BASE_SIZE = 256;
 constexpr uint32_t STEM_M_BASE_SIZE_920R1 = 64;
 constexpr uint32_t STEM_S2_BASE_SIZE_920R1 = 512;
@@ -192,9 +193,9 @@ public:
 
 class StemIndexerInfoParser {
 public:
-    explicit StemIndexerInfoParser(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit StemIndexerInfoParser(gert::TilingContext *context)
+        : context_(context)
+    {}
     ~StemIndexerInfoParser() = default;
 
     ge::graphStatus GetOpName();
@@ -212,9 +213,9 @@ public:
     void GenerateInfo(StemIndexerTilingInfo &stemInfo);
 
 private:
-    bool IsFloatEqual(float lhs, float rhs) const;
-    bool IsSupportedQHeadNum(uint32_t qHeadNum) const;
-    bool IsSupportedKvHeadNum(uint32_t kvHeadNum) const;
+    __attribute__((noinline)) bool IsFloatEqual(float lhs, float rhs) const;
+    __attribute__((noinline)) bool IsSupportedQHeadNum(uint32_t qHeadNum) const;
+    __attribute__((noinline)) bool IsSupportedKvHeadNum(uint32_t kvHeadNum) const;
 
 private:
     gert::TilingContext *context_ = nullptr;
@@ -240,9 +241,9 @@ private:
 
 class StemIndexerTiling {
 public:
-    explicit StemIndexerTiling(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit StemIndexerTiling(gert::TilingContext *context)
+        : context_(context)
+    {}
     ge::graphStatus DoTiling(const StemIndexerTilingInfo *tilingInfo);
 
 private:
