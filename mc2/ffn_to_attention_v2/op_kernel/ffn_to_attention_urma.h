@@ -55,8 +55,6 @@ constexpr uint32_t REMOTE_RELAY_INFO_FIELD_NUM = 4U;
 constexpr uint32_t REMOTE_RELAY_INFO_SIZE = REMOTE_RELAY_INFO_FIELD_NUM * sizeof(uint64_t);
 constexpr uint64_t INVALID_TOKEN_INDEX = 0xFFFFFFFFFFFFFFFFULL;
 constexpr uint64_t URMA_RESERVED_WORKSPACE_SIZE = 64ULL * 1024ULL * 1024ULL;
-constexpr uint32_t PERF_FIELD_NUM = 12U;
-constexpr uint32_t PERF_STORAGE_FIELD_NUM = 16U;
 static constexpr AscendC::UrmaWqeEntry REMOTE_DATA_WQE_CONFIG = {
     .odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_FIRST_FLAG_WQE_CONFIG = {
@@ -89,8 +87,7 @@ public:
     __aicore__ inline FFNToAttentionUrma(){};
     __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds,
                                 GM_ADDR tokenIds, GM_ADDR expertOffsets, GM_ADDR actualTokenNum, GM_ADDR attnRankTable,
-                                GM_ADDR perfData, GM_ADDR workspaceGM, TPipe *pipe,
-                                const FFNToAttentionV2TilingData *tilingData);
+                                GM_ADDR workspaceGM, TPipe *pipe, const FFNToAttentionV2TilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
@@ -111,8 +108,7 @@ private:
     __aicore__ inline void BuildRemoteRelayLists();
     __aicore__ inline void StoreRemoteRelayInfo(uint64_t tokenIndex, const RemoteRelayInfo &relayInfo);
     __aicore__ inline void LoadRemoteRelayInfo(uint64_t tokenIndex, RemoteRelayInfo &relayInfo);
-    __aicore__ inline void CommitBatch(HcommBatchHandle &batchHandle, uint64_t &commitCycles);
-    __aicore__ inline void WritePerfData(const uint64_t (&cycles)[PERF_FIELD_NUM]);
+    __aicore__ inline void CommitBatch(HcommBatchHandle &batchHandle);
 
     TPipe *tpipe_{nullptr};
     Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
@@ -128,7 +124,6 @@ private:
     GlobalTensor<int32_t> expertOffsetsGMTensor_;
     GlobalTensor<int64_t> actualTokenNumGMTensor_;
     GlobalTensor<int32_t> attnRankTableGMTensor_;
-    GlobalTensor<int64_t> perfDataGMTensor_;
     GlobalTensor<uint64_t> remoteRelayInfoGMTensor_;
     GlobalTensor<uint64_t> remoteRelayListHeadGMTensor_;
     GlobalTensor<uint64_t> remoteRelayListTailGMTensor_;
@@ -162,13 +157,12 @@ private:
     uint64_t winTokenInfoTableSize_{0};
     uint64_t requiredWindowSize_{0};
     uint64_t urmaWorkspaceOffset_{0};
-    bool perfEnabled_{false};
 };
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(
     GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds, GM_ADDR tokenIds, GM_ADDR expertOffsets,
-    GM_ADDR actualTokenNum, GM_ADDR attnRankTable, GM_ADDR perfData, GM_ADDR workspaceGM, TPipe *pipe,
+    GM_ADDR actualTokenNum, GM_ADDR attnRankTable, GM_ADDR workspaceGM, TPipe *pipe,
     const FFNToAttentionV2TilingData *tilingData)
 {
     tpipe_ = pipe;
@@ -200,10 +194,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     actualTokenNumGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(actualTokenNum));
     if constexpr (isInputRankTable) {
         attnRankTableGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(attnRankTable));
-    }
-    perfEnabled_ = perfData != nullptr;
-    if (perfEnabled_) {
-        perfDataGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(perfData));
     }
 
     int64_t actualTokenNumValue = actualTokenNumGMTensor_.GetValue(0);
@@ -522,36 +512,16 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::CommitBatch(
-    HcommBatchHandle &batchHandle, uint64_t &commitCycles)
+    HcommBatchHandle &batchHandle)
 {
-    // prof11 BatchCommit
-    const uint64_t prof11Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
     int32_t ret = hcomm_.BatchCommit(batchHandle);
     ascendc_assert(ret == 0, "BatchCommit failed, ret=%d, rankId=%u", ret, rankId_);
-    if (perfEnabled_) {
-        commitCycles += static_cast<uint64_t>(GetSystemCycle()) - prof11Start;
-    }
-    // prof11 BatchCommit
-}
-
-template <TemplateFFNToAttentionUrmaTypeClass>
-__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::WritePerfData(
-    const uint64_t (&cycles)[PERF_FIELD_NUM])
-{
-    if (!perfEnabled_) {
-        return;
-    }
-    const uint64_t base = static_cast<uint64_t>(aivId_) * PERF_STORAGE_FIELD_NUM;
-    for (uint32_t i = 0U; i < PERF_FIELD_NUM; ++i) {
-        perfDataGMTensor_.SetValue(base + i, static_cast<int64_t>(cycles[i]));
-    }
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
-        uint64_t perfCycles[PERF_FIELD_NUM] = {0UL};
         if (aivId_ == 0U) {
             HcommInit();
         }
@@ -563,16 +533,8 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
             const uint64_t yOffset = static_cast<uint64_t>(aivId_) + round * aivNum_;
             if (yOffset < actualTokenNum_) {
                 ReadTokenMetaDataStruct metaDataStruct;
-                // prof1 ReadTokenMetaData
-                const uint64_t prof1Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
                 ReadTokenMetaData(metaDataStruct, yOffset);
-                if (perfEnabled_) {
-                    perfCycles[0] += static_cast<uint64_t>(GetSystemCycle()) - prof1Start;
-                }
-                // prof1 ReadTokenMetaData
                 if (metaDataStruct.curAttenWorkRank == rankId_) {
-                    // prof2 LocalAddressAndOffset
-                    const uint64_t prof2Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
                     GM_ADDR curRankWinAddr = GetWindowAddr(metaDataStruct.curAttenWorkRank);
                     ascendc_assert(curRankWinAddr != nullptr, "window address is null, dstRank=%u",
                                    metaDataStruct.curAttenWorkRank);
@@ -590,18 +552,8 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                                        sizeof(int32_t) <= winTokenInfoTableSize_ - remoteFlagOffset,
                                    "token flag address exceeds info table, flagOffset=%lu, infoSize=%lu",
                                    remoteFlagOffset, winTokenInfoTableSize_);
-                    if (perfEnabled_) {
-                        perfCycles[1] += static_cast<uint64_t>(GetSystemCycle()) - prof2Start;
-                    }
-                    // prof2 LocalAddressAndOffset
-                    // prof3 SendToLocal
-                    const uint64_t prof3Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
                     SendToLocal(curRankWinAddr + remoteDataOffset, curRankWinAddr + remoteFlagOffset, yOffset,
                                 xCopyParams);
-                    if (perfEnabled_) {
-                        perfCycles[2] += static_cast<uint64_t>(GetSystemCycle()) - prof3Start;
-                    }
-                    // prof3 SendToLocal
                 }
             }
         }
@@ -609,13 +561,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
         // AIV0 starts remote writes only after every AIV completes its local path.
         SyncAll<true>();
         if (aivId_ == 0U) {
-            // prof5 BuildRemoteRelayLists
-            const uint64_t prof5Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
             BuildRemoteRelayLists();
-            if (perfEnabled_) {
-                perfCycles[4] += static_cast<uint64_t>(GetSystemCycle()) - prof5Start;
-            }
-            // prof5 BuildRemoteRelayLists
             for (uint32_t dstRank = 0U; dstRank < worldSize_; ++dstRank) {
                 if (dstRank == rankId_) {
                     continue;
@@ -624,40 +570,22 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                 if (firstTokenIndex == INVALID_TOKEN_INDEX) {
                     continue;
                 }
-                // prof6 MakeBatchHandle
-                const uint64_t prof6Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
                 GM_ADDR remoteWindowAddr = GetWindowAddr(dstRank);
                 ascendc_assert(remoteWindowAddr != nullptr, "window address is null, dstRank=%u", dstRank);
                 HcommChannelHandle channel = GetUrmaCommHandle(dstRank);
                 HcommBatchHandle batchHandle =
                     hcomm_.MakeBatchHandle(channel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, remoteWindowAddr);
-                if (perfEnabled_) {
-                    perfCycles[5] += static_cast<uint64_t>(GetSystemCycle()) - prof6Start;
-                }
-                // prof6 MakeBatchHandle
 
                 uint32_t preparedWqeCount = 0U;
                 uint64_t tokenIndex = firstTokenIndex;
                 while (tokenIndex != INVALID_TOKEN_INDEX) {
-                    // prof7 LoadRemoteDataInfo
-                    const uint64_t prof7Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
                     RemoteRelayInfo relayInfo;
                     LoadRemoteRelayInfo(tokenIndex, relayInfo);
-                    if (perfEnabled_) {
-                        perfCycles[6] += static_cast<uint64_t>(GetSystemCycle()) - prof7Start;
-                    }
                     tokenIndex = relayInfo.nextTokenIndex;
-                    // prof7 LoadRemoteDataInfo
-                    // prof8 AppendRemoteDataWrite
-                    const uint64_t prof8Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
                     AppendRemoteDataWrite(batchHandle, remoteWindowAddr, relayInfo, dstRank);
-                    if (perfEnabled_) {
-                        perfCycles[7] += static_cast<uint64_t>(GetSystemCycle()) - prof8Start;
-                    }
-                    // prof8 AppendRemoteDataWrite
                     ++preparedWqeCount;
                     if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
-                        CommitBatch(batchHandle, perfCycles[10]);
+                        CommitBatch(batchHandle);
                         preparedWqeCount = 0U;
                     }
                 }
@@ -665,42 +593,27 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                 bool firstFlag = true;
                 tokenIndex = firstTokenIndex;
                 while (tokenIndex != INVALID_TOKEN_INDEX) {
-                    // prof9 LoadRemoteFlagInfo
-                    const uint64_t prof9Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
                     RemoteRelayInfo relayInfo;
                     LoadRemoteRelayInfo(tokenIndex, relayInfo);
-                    if (perfEnabled_) {
-                        perfCycles[8] += static_cast<uint64_t>(GetSystemCycle()) - prof9Start;
-                    }
                     tokenIndex = relayInfo.nextTokenIndex;
                     const bool lastFlag = tokenIndex == INVALID_TOKEN_INDEX;
-                    // prof9 LoadRemoteFlagInfo
-                    // prof10 AppendRemoteFlagWrite
-                    const uint64_t prof10Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
                     AppendRemoteFlagWrite(batchHandle, remoteWindowAddr, relayInfo, dstRank, firstFlag, lastFlag);
                     firstFlag = false;
-                    if (perfEnabled_) {
-                        perfCycles[9] += static_cast<uint64_t>(GetSystemCycle()) - prof10Start;
-                    }
-                    // prof10 AppendRemoteFlagWrite
                     ++preparedWqeCount;
                     if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
-                        CommitBatch(batchHandle, perfCycles[10]);
+                        CommitBatch(batchHandle);
                         preparedWqeCount = 0U;
                     }
                 }
 
                 if (preparedWqeCount != 0U) {
-                    CommitBatch(batchHandle, perfCycles[10]);
+                    CommitBatch(batchHandle);
                 }
             }
         }
 
         // Keep all AIVs alive until AIV0 has drained every destination channel.
         SyncAll<true>();
-        if (perfEnabled_) {
-            WritePerfData(perfCycles);
-        }
     }
 }
 
