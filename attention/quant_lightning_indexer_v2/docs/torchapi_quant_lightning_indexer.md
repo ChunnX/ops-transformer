@@ -192,7 +192,7 @@ cann_ops_transformer.quant_lightning_indexer(
   - cmp_ratio仅支持2的幂次方值：1/2/4/8/16/32/64/128。
   - 不支持return_value功能，不建议传入该参数。
 <!-- end id7 -->
-<!-- npu="950" id8 -->
+<!-- npu="950" id5 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：
   - topk取值范围当前仅支持[1, 8192]。
   - 支持num_heads_q = 1~64、q_n = 1~64。
@@ -203,7 +203,7 @@ cann_ops_transformer.quant_lightning_indexer(
   - q、k在quant_mode为1/3时支持float8_e4m3fn，quant_mode为4时支持HIfloat8，quant_mode为5时支持float4_e2m1，quant_mode为2时支持int8。
   - q_descale和k_descale在quant_mode为3/5时支持float8_e8m0，quant_mode为1/4时支持float32，quant_mode为2时支持float16。
   - w在quant_mode为2时支持float16，quant_mode为1/3/4/5时支持float32。
-<!-- end id8 -->
+<!-- end id5 -->
 
 ### 特性参数组
 
