@@ -18,6 +18,13 @@
 namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
 const int DIM_TWO = 2;
+const int64_t MX_SCALE_GROUP_SIZE = 32;
+const int64_t PACKED_FLOAT4_ELEMENTS_PER_BYTE = 2;
+
+bool HasTensor(const c10::optional<at::Tensor> &tensor)
+{
+    return tensor.has_value() && tensor.value().defined();
+}
 
 std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     const at::Tensor &context, const at::Tensor &x, const at::Tensor &topkIds, const at::Tensor &topkWeights,
@@ -25,6 +32,7 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     int64_t epWorldSize, int64_t cclBufferSize, const c10::optional<std::vector<at::Tensor>> &weightScales1,
     const c10::optional<std::vector<at::Tensor>> &weightScales2, const c10::optional<std::vector<at::Tensor>> &bias1,
     const c10::optional<std::vector<at::Tensor>> &bias2, const c10::optional<at::Tensor> &xActiveMask,
+    const c10::optional<at::Tensor> &scales,
     const c10::optional<std::vector<at::Tensor>> &sharedWeight1,
     const c10::optional<std::vector<at::Tensor>> &sharedWeight2,
     const c10::optional<std::vector<at::Tensor>> &sharedWeightScales1,
@@ -40,9 +48,57 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
 {
     TORCH_CHECK((epWorldSize > 0), "The ep_world_sizes should be greater than 0, current is: ", epWorldSize);
     TORCH_CHECK((x.dim() == DIM_TWO) && (topkIds.dim() == DIM_TWO), "The x and topk_ids should be 2D");
+
+    const auto xScalarType = x.scalar_type();
+    const bool isFp8X = xScalarType == at::ScalarType::Float8_e5m2 ||
+                        xScalarType == at::ScalarType::Float8_e4m3fn;
+    const bool isPackedFp4X = xScalarType == at::kByte || xScalarType == at::ScalarType::Float4_e2m1fn_x2;
+    const bool isPreQuantizedX = isFp8X || isPackedFp4X;
     TORCH_CHECK(
-        ((x.scalar_type() == at::kBFloat16) || (x.scalar_type() == at::kHalf)) && (topkIds.scalar_type() == at::kInt),
-        "dtype of x should be bfloat16, float16, dtype of topk_ids should be int.");
+        ((xScalarType == at::kBFloat16) || (xScalarType == at::kHalf) || isPreQuantizedX) &&
+            (topkIds.scalar_type() == at::kInt),
+        "dtype of x should be bfloat16, float16, float8_e5m2, float8_e4m3fn, or uint8/float4_e2m1fn_x2 "
+        "for packed FP4; dtype of topk_ids should be int32.");
+
+    aclDataType dispatchQuantAclDtype = dispatchQuantOutDtype.has_value() ?
+                                            GetAclDataType(dispatchQuantOutDtype.value()) :
+                                            ACL_DT_UNDEFINED;
+    aclDataType xAclDtype = isPackedFp4X ? ACL_FLOAT4_E2M1 : ConvertToAclDataType(xScalarType);
+    const bool hasScales = HasTensor(scales);
+    TORCH_CHECK(isPreQuantizedX ? hasScales : !hasScales,
+                isPreQuantizedX ? "scales is required for pre-quantized x."
+                                : "scales must be None when x is bfloat16 or float16.");
+    if (isPreQuantizedX) {
+        TORCH_CHECK(dispatchQuantMode == 4, "dispatch_quant_mode must be 4 for pre-quantized x.");
+        TORCH_CHECK(topoType.value_or(0) == 0, "pre-quantized x is supported only by the A5 MTE path (topo_type=0).");
+        TORCH_CHECK(dispatchQuantOutDtype.has_value(),
+                    "dispatch_quant_out_dtype is required for pre-quantized x.");
+        TORCH_CHECK(dispatchQuantAclDtype == xAclDtype,
+                    "dispatch_quant_out_dtype must exactly match the logical dtype of pre-quantized x.");
+    }
+
+    auto xSize = x.sizes();
+    int64_t bs = xSize[0];
+    int64_t h = xSize[1];
+    if (isPackedFp4X) {
+        TORCH_CHECK(h <= std::numeric_limits<int64_t>::max() / PACKED_FLOAT4_ELEMENTS_PER_BYTE,
+                    "The packed FP4 hidden dimension is too large.");
+        h *= PACKED_FLOAT4_ELEMENTS_PER_BYTE;
+    }
+    TORCH_CHECK(x.is_contiguous(), "x must be contiguous.");
+    if (hasScales) {
+        const at::Tensor &scaleTensor = scales.value();
+        const auto scaleScalarType = scaleTensor.scalar_type();
+        TORCH_CHECK(scaleScalarType == at::kByte || scaleScalarType == at::ScalarType::Float8_e8m0fnu,
+                    "scales only supports torch.uint8 storage or torch.float8_e8m0fnu.");
+        TORCH_CHECK(scaleTensor.dim() == DIM_TWO, "scales must be 2D [BS, CeilDiv(H, 32)].");
+        const int64_t expectedScaleWidth = (h + MX_SCALE_GROUP_SIZE - 1) / MX_SCALE_GROUP_SIZE;
+        TORCH_CHECK(scaleTensor.size(0) == bs && scaleTensor.size(1) == expectedScaleWidth,
+                    "scales shape must be [BS, CeilDiv(H, 32)] = [", bs, ", ", expectedScaleWidth, "], but got ",
+                    scaleTensor.sizes(), ".");
+        TORCH_CHECK(scaleTensor.device() == x.device(), "scales must be on the same device as x.");
+        TORCH_CHECK(scaleTensor.is_contiguous(), "scales must be contiguous.");
+    }
     if (maskBuffer.has_value()) {
         const at::Tensor &mask = maskBuffer.value();
         TORCH_CHECK(mask.scalar_type() == at::kInt, "mask_buffer dtype must be int32.");
@@ -82,12 +138,6 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
         weightScales2Dtype = aclDataType::ACL_UINT64;
     }
 
-    auto xSize = x.sizes();
-    auto topkIdsSize = topkIds.sizes();
-    int64_t bs = xSize[0];
-    int64_t h = xSize[1];
-    int64_t k = topkIdsSize[1];
-
     const bool dispatchQuantOutIsFp4 =
         dispatchQuantOutDtype.has_value() && dispatchQuantOutDtype.value() == static_cast<int64_t>(DType::FLOAT4_E2M1);
     const bool sharedQuantOutIsFp4 = sharedExpertQuantOutDtype.has_value() ?
@@ -113,14 +163,19 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     int64_t topoTypeValue = topoType.value_or(0);
     int64_t rankNumPerServerValue = rankNumPerServer.value_or(2);
 
-    int64_t dispatchQuantResultType =
-        dispatchQuantOutDtype.has_value() ? static_cast<int64_t>(GetAclDataType(dispatchQuantOutDtype.value())) : 28;
+    int64_t dispatchQuantResultType = dispatchQuantOutDtype.has_value() ?
+                                                  static_cast<int64_t>(GetAclDataType(dispatchQuantOutDtype.value())) :
+                                                  28;
     int64_t sharedExpertQuantResultType = sharedExpertQuantOutDtype.has_value() ?
                                               static_cast<int64_t>(GetAclDataType(sharedExpertQuantOutDtype.value())) :
                                               dispatchQuantResultType;
 
-    at::Tensor y;
-    y = at::empty({bs, h}, topkIds.options().dtype(x.scalar_type()));
+    at::ScalarType outputScalarType = isPreQuantizedX ? at::kBFloat16 : xScalarType;
+    at::Tensor y = at::empty({bs, h}, x.options().dtype(outputScalarType));
+
+    at::Tensor scalesTensor = hasScales ? scales.value() : at::Tensor();
+    TensorWrapper xWrapper = {x, xAclDtype};
+    TensorWrapper scalesWrapper = {scalesTensor, hasScales ? ACL_FLOAT8_E8M0 : ACL_DT_UNDEFINED};
 
     TensorListWrapper weight1Wrapper = {weight1Ref, weight1RefDtype};
     TensorListWrapper weight2Wrapper = {weight2Ref, weight2RefDtype};
@@ -158,13 +213,13 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     TensorListWrapper sharedBias1Wrapper = {sharedBias1Ref, aclDataType::ACL_FLOAT};
     TensorListWrapper sharedBias2Wrapper = {sharedBias2Ref, aclDataType::ACL_FLOAT};
 
-    ACLNN_CMD(aclnnMegaMoe, context, x, topkIds, topkWeights, weight1Wrapper, weight2Wrapper, weightScales1Wrapper,
-              weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask, sharedWeight1Wrapper, sharedWeight2Wrapper,
-              sharedWeightScales1Wrapper, sharedWeightScales2Wrapper, sharedBias1Wrapper, sharedBias2Wrapper,
-              maskBuffer, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode,
-              dispatchQuantResultType, sharedExpertQuantResultType, combineQuantMode, commAlgPtr, numMaxTokensPerRank,
-              activationPtr, activationParams, topoTypeValue, rankNumPerServerValue, topkWeightsType, y,
-              expertTokenNums);
+    ACLNN_CMD(aclnnMegaMoe, context, xWrapper, topkIds, topkWeights, weight1Wrapper, weight2Wrapper,
+              weightScales1Wrapper, weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask, scalesWrapper,
+              sharedWeight1Wrapper, sharedWeight2Wrapper, sharedWeightScales1Wrapper, sharedWeightScales2Wrapper,
+              sharedBias1Wrapper, sharedBias2Wrapper, maskBuffer, moeExpertNum, epWorldSize, cclBufferSize,
+              maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType, sharedExpertQuantResultType,
+              combineQuantMode, commAlgPtr, numMaxTokensPerRank, activationPtr, activationParams, topoTypeValue,
+              rankNumPerServerValue, topkWeightsType, y, expertTokenNums);
 
     return std::tie(y, expertTokenNums);
 }
