@@ -29,6 +29,8 @@ using namespace gert;
 const std::string OP_NAME = "MoeDistributeDispatchTeardown";
 constexpr int64_t CONTEXT_DIM0 = 2052;
 constexpr int64_t DEFAULT_CCL_BUFFER_SIZE = 12000;
+constexpr uint64_t CORE_NUM = 20;
+constexpr uint64_t UB_SIZE = 192 * 1024;
 
 template <typename T>
 auto build_from(const T &value)
@@ -3590,7 +3592,6 @@ struct MoeDistributeDispatchTeardownCompileInfo {
 
 static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeDispatchTeardownTilingTestParam &param)
 {
-    std::cout << "[TEST_CASE] " << param << std::endl;
     // 存储用例中输入信息：context 为必选第 0 输入，其后为 x/y/expert_ids/comm_cmd_info
     std::vector<pair<std::initializer_list<int64_t>, ge::DataType>> inputshapeDtypeList = {
         {param.x, param.x_dtype},
@@ -3638,7 +3639,7 @@ static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeDispatc
     }
 
     return gert::TilingContextPara(OP_NAME, inputTensorDesc, outputTensorDesc, attrs, &compileInfo, param.socVersion,
-                                   20, 196608);
+                                   CORE_NUM, UB_SIZE);
 }
 
 TEST_P(TestMoeDistributeTeardownTiling, general_cases)

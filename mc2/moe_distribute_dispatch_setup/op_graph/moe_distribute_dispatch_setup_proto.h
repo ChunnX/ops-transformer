@@ -81,7 +81,7 @@ REG_OP(MoeDistributeDispatchSetup)
     .ATTR(global_bs, Int, 0)
     .ATTR(comm_type, Int, 0)
     .ATTR(comm_alg, String, "")
-    .ATTR(y_dtype, Int, 28)
+    .ATTR(y_dtype, Int, DT_UNDEFINED)
     .OP_END_FACTORY_REG(MoeDistributeDispatchSetup)
 } // namespace ge
 
