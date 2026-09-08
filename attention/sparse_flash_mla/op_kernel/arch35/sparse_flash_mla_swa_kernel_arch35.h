@@ -231,13 +231,10 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Par
     constInfo.oriWinRight = sparseFlashMLABaseParams.oriWinRight;
     constInfo.layoutType = sparseFlashMLABaseParams.outputLayout;
     constInfo.returnSoftmaxLse = sparseFlashMLABaseParams.returnSoftmaxLse;
-    constInfo.tileSize = 0;
-    constInfo.dSizeRope = 64;
     constInfo.softmaxScale = sparseFlashMLABaseParams.softmaxScale;
     constInfo.dSize = 512;
     constInfo.dSizeV = constInfo.dSize;
     constInfo.dSizeVInput = constInfo.dSize;
-    constInfo.dSizeNope = constInfo.dSize - constInfo.dSizeRope;
     constInfo.sparseBlockSize = 1;
     constInfo.actualSeqLenSize = constInfo.bSize + 1;
     constInfo.actualSeqLenKVSize = constInfo.bSize;
