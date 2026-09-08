@@ -63,9 +63,11 @@ using namespace AscendC;
 constexpr uint32_t DOUBLE_BUFFER = 2;
 constexpr uint32_t INOUT_QUEUE_SIZE = 32 * 1024;              // 32KB
 constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;               // 1KB
-constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 3 - 1) * 1024; // 151KB
+// V0/V1的最大占用约49.5KB；V2统一使用64行chunk后最大占用约42.75KB。
+// 将TBuf压缩到55KB，为后续VECOUT双缓冲预留32KB。
+constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 6 - 1) * 1024; // 55KB；两个VECIN队列均使用双缓冲
 constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 128;               // ProcessV2函数使用的chunk大小
-constexpr uint32_t SINGLE_M = 1024;
+constexpr uint32_t SINGLE_M = 512;
 constexpr uint32_t ND_BLOCK_SIZE = 128;
 constexpr uint32_t ALPHA_GRAD_LAST_DIM_SIZE = 3;
 constexpr uint32_t ALPHA_GRAD_PADDING = 24;
@@ -84,7 +86,7 @@ constexpr uint32_t CEIL_ALIGN_128 = 128;
 constexpr float NEG_HALF = -0.5f;
 constexpr float ONE = 1.0f;
 constexpr float ZERO = 0.0f;
-constexpr uint32_t MATMUL_WRITE_OFFSET_M = 256;
+constexpr uint32_t MATMUL_WRITE_OFFSET_M = 128;
 constexpr uint32_t MATMUL_WRITE_OFFSET_N = 128;
 constexpr uint32_t CROSS_CORE_FLAG_INDEX = 0x2;
 constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0 = 0x9;
@@ -143,7 +145,44 @@ struct V0V1Buffers {
 using aT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using bT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using cT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
-using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0>;
+using biasT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+constexpr MatmulConfig C0_CUSTOM_CFG_MDL = GetMDLConfig(false, false, 0, true, false, false, true);
+
+constexpr MatmulConfig GetC0StaticConfig()
+{
+    MatmulConfig config = C0_CUSTOM_CFG_MDL;
+    config.singleCoreM = SINGLE_M;
+    config.singleCoreN = ND_BLOCK_SIZE;
+    config.singleCoreK = 80; // fusionSize最大为N=8时的80
+    config.basicM = 128;
+    config.basicN = 128;
+    config.basicK = 32;
+    return config;
+}
+
+constexpr MatmulApiStaticTiling GetC0StaticTiling(const MatmulApiStaticTiling& mmTiling)
+{
+    MatmulApiStaticTiling tiling = mmTiling;
+    // 与当前host tiling的流水参数保持一致，只将重复的shape推导常量化。
+    tiling.stepM = 1;
+    tiling.stepN = 1;
+    tiling.stepKa = 1;
+    tiling.stepKb = 1;
+    tiling.depthA1 = 1;
+    tiling.depthB1 = 1;
+    tiling.dbL0C = 1;
+    return tiling;
+}
+
+template <class AT_, class BT_, class CT_, class BiasT_>
+struct C0StaticMMImplType {
+    static constexpr MatmulConfig cfg = GetC0StaticConfig();
+    static constexpr MatmulApiStaticTiling mdl =
+        GetC0StaticTiling(GetMatmulApiTiling<AT_, BT_, CT_, BiasT_>(cfg));
+    using MT = matmul::MatmulImpl<AT_, BT_, CT_, BiasT_, mdl>;
+};
+
+using MT_C0 = typename C0StaticMMImplType<aT_C0, bT_C0, cT_C0, biasT_C0>::MT;
 
 using aT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
 using bT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
