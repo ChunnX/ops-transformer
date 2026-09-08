@@ -40,17 +40,20 @@ python3 mc2/tools/gen_common_impact_yaml.py /path/to/another_checkout [输出目
 
 ## 4. 消费规则（每个文件恰好命中一类）
 
-**第一步：先查本目录的 `file_lists.yaml`，命中任一条 → 全量：**
+**第一步：.cpp 先找同目录同名 .h——有则按该 .h 走下述流程；无同名 .h → 全量：**
+`full_regression.cpp_no_same_header` 列出了所有无同名 .h 的 .cpp，命中即全量。
+
+**第二步：非 .cpp 文件先查本目录的 `file_lists.yaml`，命中任一条 → 全量：**
 | 命中 | 条件 |
 |---|---|
-| `full_regression.non_header_extensions` | 文件扩展名为 .cpp/.py/.json/.ini/.sh/.csv/.txt/.md 等非头文件 |
+| `full_regression.non_header_extensions` | 文件扩展名为 .py/.json/.ini/.sh/.csv/.txt/.md 等非头文件 |
 | `full_regression.headers_used_by_all_operators` | .h 被全部算子使用 |
 | `full_regression.headers_no_reference` | .h 无任何文件引用（列出仅为防漏查，删除前需人工确认） |
 
-**第二步：未命中 → .h 属"测部分算子"类，查芯片映射表：**
+**第三步：未命中 → .h（含同名 .h 命中的 .cpp）属"测部分算子"类，查芯片映射表：**
 | 文件 | 判定 |
 |---|---|
-| .h 在芯片映射表中（A2/A3/A5.yaml） | 测试条目 ops 列出的算子（按芯片过滤；`ops: []` 表示该芯片无匹配算子） |
+| .h 在芯片映射表中（A2/A3/A5.yaml） | 测试条目 ops 列出的算子（按芯片过滤；`ops: []` 表示该芯片无匹配算子）；cpp 按其同名 .h 的 ops 走 |
 
 **最后一步（消费侧负责）**：得到的算子集还需**叠加 CMake `*_depends`
 反向闭包**后去重，作为最终测试清单。
@@ -59,7 +62,9 @@ python3 mc2/tools/gen_common_impact_yaml.py /path/to/another_checkout [输出目
 
 1. **只对 .h 建模**：影响面 = 直接+间接 include 该头的算子（裸文件名匹配，
    重名取并集，传递闭包用不动点迭代，天然处理环）。
-2. **二分归类**：影响面 = 全部注册算子 → 全量；影响面为空且无任何引用 → 全量
+2. **.cpp 跟随同名 .h**：cpp 的影响范围由其同目录同名 .h 确立；无同名头的
+   cpp 列入 `cpp_no_same_header`（全量）。
+3. **二分归类**：影响面 = 全部注册算子 → 全量；影响面为空且无任何引用 → 全量
    （防漏查）；其余 → 部分算子，进芯片映射表。
 3. **芯片过滤**：部分算子头的 ops 按 `*_def.cpp` 的 `AICore().AddConfig()`
    注册与当前芯片取交集，三张表键集合保持一致。
@@ -78,9 +83,11 @@ common/op_host/op_tiling/xxx.h:
 
 # file_lists.yaml(全量匹配清单, 按目录分放)
 full_regression:
-  non_header_extensions:        # 非.h文件命中即全量
-    - ".cpp"
+  non_header_extensions:        # 非.h且非.cpp的文件命中即全量
+    - ".py"
     - ...
+  cpp_no_same_header:            # 无同名.h的cpp(全量)
+    - 3rd/batch_mat_mul_v3/op_host/batch_mat_mul_v3_def.cpp
   headers_used_by_all_operators: # 被全部算子使用的头
     - 3rd/mat_mul_v3/...
   headers_no_reference:          # 无任何引用的头(防漏查)
