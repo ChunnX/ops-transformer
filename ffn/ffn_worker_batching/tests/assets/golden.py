@@ -24,7 +24,10 @@ import struct
 import numpy as np
 import torch
 
-__spec__ = {"aclnnFfnWorkerBatching": "AclnnFfnWorkerBatchingTestSpec"}
+__spec__ = {
+    "aclnnFfnWorkerBatching": "AclnnFfnWorkerBatchingTestSpec",
+    "ffn_worker_batching": "FfnWorkerBatchingKernelTestSpec",
+}
 
 # ==================== Shared cache ====================
 
@@ -174,7 +177,9 @@ def _generate_test_data(
     else:
         expert_ids = rng.randint(0, expertNum, size=(A, M, BS, K)).astype(np.int32)
 
-    if single_expert:
+    if "all_masked" in testcase_name:
+        expert_ids[...] = _MASK_VALUE
+    elif single_expert:
         expert_ids[...] = 0
     elif has_mask:
         mask = rng.random(expert_ids.shape) < 0.15
@@ -186,6 +191,14 @@ def _generate_test_data(
     elif tokenDtype == 1:
         token_data = (rng.randn(A, M, BS, K, H) * 0.1).astype(np.float32)
         token_scales = None
+    elif tokenDtype >= 3:
+        from ttk.utilities.dtypes import (
+            numpy_float8_e5m2, numpy_float8_e4m3fn, numpy_float4_e2m1, numpy_float8_e8m0,
+        )
+        dtype = {3: numpy_float8_e5m2, 4: numpy_float8_e4m3fn, 5: numpy_float4_e2m1}[tokenDtype]()
+        # 原始位模式包含正负零及 FP8 非有限值，搬运不得改变位模式。
+        token_data = rng.randint(0, 16 if tokenDtype == 5 else 256, size=(A, M, BS, K, H)).astype(np.uint8).view(dtype)
+        token_scales = rng.randint(0, 256, size=(A, M, BS, K, (H + 31) // 32)).astype(np.uint8).view(numpy_float8_e8m0())
     else:
         token_data = rng.randint(-128, 127, size=(A, M, BS, K, H)).astype(np.int8)
         token_scales = (rng.rand(A, M, BS, K) * 2 + 0.1).astype(np.float32)
@@ -213,6 +226,10 @@ def _generate_test_data(
 
 
 def _build_token_data_bytes(token_data, token_scales, tokenDtype, A, M, BS, K, H):
+    if tokenDtype >= 3:
+        from ttk.utilities.dtypes import pack_4bits
+        raw_tokens = pack_4bits(token_data).reshape(A, M, BS, K, H // 2) if tokenDtype == 5 else token_data.view(np.uint8)
+        return np.concatenate((raw_tokens, token_scales.view(np.uint8)), axis=-1)
     if tokenDtype == 1:
         t = torch.from_numpy(np.ascontiguousarray(token_data, dtype=np.float32))
         t_bf16 = t.to(torch.bfloat16)
@@ -313,6 +330,10 @@ def _generate_group_list(sorted_expert_ids, valid_count, expert_num):
 
 
 def _to_torch(arr, dtype):
+    if "float8" in arr.dtype.name or "float4" in arr.dtype.name:
+        from ttk.utilities.dtypes import numpy_to_torch_tensor
+        tensor = numpy_to_torch_tensor(np.ascontiguousarray(arr))
+        return tensor.reshape(*arr.shape[:-1], arr.shape[-1] // 2) if "float4" in arr.dtype.name else tensor
     t = torch.from_numpy(np.ascontiguousarray(arr))
     if dtype is not None:
         t = t.to(dtype)
@@ -365,6 +386,8 @@ class AclnnFfnWorkerBatchingTestSpec:
         else:
             dtype_size = 1
         HS = H * dtype_size if tokenDtype != 2 else H + 4
+        if tokenDtype >= 3:
+            HS = (H // 2 if tokenDtype == 5 else H) + (H + 31) // 32
 
         td_arr = _build_token_data_bytes(
             token_data, token_scales, tokenDtype, A, M, BS, K, H
@@ -418,18 +441,23 @@ class AclnnFfnWorkerBatchingTestSpec:
         ctx[1024 : 1024 + len(aux_data)] = aux_data
 
         ctx_arr = np.array(ctx, dtype=np.int8)
-        cur_storage = scheduleContext.untyped_storage()
-        if cur_storage.nbytes() < total_size:
-            new_storage = torch.UntypedStorage(total_size)
-            scheduleContext.set_(
-                new_storage,
-                scheduleContext.storage_offset(),
-                scheduleContext.shape,
-                scheduleContext.stride(),
+        if isinstance(scheduleContext, np.ndarray):
+            if scheduleContext.nbytes < total_size:
+                raise ValueError(f"scheduleContext requires {total_size} bytes, got {scheduleContext.nbytes}")
+            scheduleContext.reshape(-1)[:total_size] = ctx_arr
+        else:
+            cur_storage = scheduleContext.untyped_storage()
+            if cur_storage.nbytes() < total_size:
+                new_storage = torch.UntypedStorage(total_size)
+                scheduleContext.set_(
+                    new_storage,
+                    scheduleContext.storage_offset(),
+                    scheduleContext.shape,
+                    scheduleContext.stride(),
+                )
+            scheduleContext.untyped_storage()[:total_size].copy_(
+                torch.from_numpy(ctx_arr).untyped_storage()
             )
-        scheduleContext.untyped_storage()[:total_size].copy_(
-            torch.from_numpy(ctx_arr).untyped_storage()
-        )
 
         data["HS"] = HS
         _DATA_CACHE[testcase_name] = data
@@ -461,6 +489,8 @@ class AclnnFfnWorkerBatchingTestSpec:
         M = 1
         if tokenDtype in (0, 1):
             HS = H * 2
+        elif tokenDtype >= 3:
+            HS = (H // 2 if tokenDtype == 5 else H) + (H + 31) // 32
         else:
             HS = H + 4
         data = _get_cached_data(
@@ -495,6 +525,9 @@ class AclnnFfnWorkerBatchingTestSpec:
         elif tokenDtype == 1:
             out_torch_dtype = torch.bfloat16
             out_np_dtype = np.float32
+        elif tokenDtype >= 3:
+            out_torch_dtype = None
+            out_np_dtype = token_data.dtype
         else:
             out_torch_dtype = torch.int8
             out_np_dtype = np.int8
@@ -507,7 +540,8 @@ class AclnnFfnWorkerBatchingTestSpec:
         micro_batch_ids_out = np.zeros(Y, dtype=np.int32)
         token_ids_out = np.zeros(Y, dtype=np.int32)
         expert_offsets_out = np.zeros(Y, dtype=np.int32)
-        dynamic_scale_out = np.ones(Y, dtype=np.float32)
+        dynamic_scale_out = (np.zeros((Y, (H + 31) // 32), dtype=token_scales.dtype)
+                             if tokenDtype >= 3 else np.ones(Y, dtype=np.float32))
 
         bsk = BS * K
         cur_mb = data.get("cur_micro_batch_id", 0)
@@ -532,11 +566,15 @@ class AclnnFfnWorkerBatchingTestSpec:
             expert_offsets_out[i] = k_idx
             y_out[i] = token_data[s_idx, mb_idx, bs_idx, k_idx, :]
 
-            if tokenDtype == 2 and token_scales is not None:
+            if tokenDtype >= 2 and token_scales is not None:
                 dynamic_scale_out[i] = token_scales[s_idx, mb_idx, bs_idx, k_idx]
 
         group_list_out = _generate_group_list(sorted_valid_ids, valid_count, expertNum)
         actual_token_num_out = np.array([valid_count], dtype=np.int64)
+
+        if kwargs.get("use_numpy", False):
+            return [y_out, group_list_out, session_ids_out, micro_batch_ids_out,
+                    token_ids_out, expert_offsets_out, dynamic_scale_out, actual_token_num_out]
 
         return [
             _to_torch(y_out, out_torch_dtype),
@@ -566,16 +604,25 @@ class AclnnFfnWorkerBatchingTestSpec:
 
         def to_np(t):
             if isinstance(t, torch.Tensor):
-                if t.dtype == torch.bfloat16:
-                    return t.to(torch.float32).numpy()
-                return t.numpy()
+                from ttk.utilities.dtypes import torch_to_numpy_tensor
+                array = torch_to_numpy_tensor(t)
+                if "float4" in str(t.dtype):
+                    array = array.reshape(*t.shape[:-1], t.shape[-1] * 2)
+                return array
             return np.asarray(t)
 
         actual_token_num = int(to_np(golden_outputs[7]).flat[0])
+        has_scale = to_np(golden_outputs[0]).dtype.name not in ("float16", "bfloat16")
         results = []
         for idx in range(num_outputs):
+            if idx == 6 and not has_scale:
+                results.append({"pass": True, "precision": "100%", "error_info": None})
+                continue
             npu = to_np(npu_outputs[idx])
             gold = to_np(golden_outputs[idx])
+            if any(kind in gold.dtype.name for kind in ("float8", "float4", "bfloat16")):
+                npu = npu.view(np.uint8)
+                gold = gold.view(np.uint8)
             if idx == 1:
                 npu_arr = npu.reshape(-1, 2)
                 gold_arr = gold.reshape(-1, 2)
@@ -599,12 +646,12 @@ class AclnnFfnWorkerBatchingTestSpec:
                         "error_info": None if passed else "group_list mismatch",
                     }
                 )
-            elif idx in (0, 2, 3, 4, 5):
+            elif idx in (0, 2, 3, 4, 5, 6):
                 npu_flat = npu.flatten()
                 gold_flat = gold.flatten()
                 n = (
                     actual_token_num * (npu.shape[-1] if npu.ndim > 1 else 1)
-                    if idx == 0
+                    if idx in (0, 6)
                     else actual_token_num
                 )
                 n = min(n, npu_flat.size)
@@ -642,3 +689,33 @@ class AclnnFfnWorkerBatchingTestSpec:
                     }
                 )
         return results
+
+
+class FfnWorkerBatchingKernelTestSpec:
+    """Kernel 接口使用 snake_case 属性及 numpy 数据，复用 ACLNN 的输入协议和 golden。"""
+
+    @staticmethod
+    def customize_inputs(schedule_context, expert_num, max_out_shape, token_dtype=0,
+                         need_schedule=0, layer_num=0, **kwargs):
+        tensor = torch.from_numpy(schedule_context.copy())
+        AclnnFfnWorkerBatchingTestSpec.customize_inputs(
+            tensor, expert_num, max_out_shape, token_dtype, need_schedule, layer_num,
+            *([None] * 8), **kwargs)
+        # 上下文逻辑 shape 为 1024，测试内嵌辅助数据通过完整 storage 提供。
+        raw = torch.empty(0, dtype=torch.int8).set_(tensor.untyped_storage())
+        return [raw.numpy()]
+
+    @staticmethod
+    def golden(schedule_context, expert_num, max_out_shape, token_dtype=0,
+               need_schedule=0, layer_num=0, **kwargs):
+        from ttk.utilities.dtypes import torch_to_numpy_tensor
+        outputs = AclnnFfnWorkerBatchingTestSpec.golden(
+            schedule_context, expert_num, max_out_shape, token_dtype, need_schedule, layer_num,
+            *([None] * 8), **kwargs)
+        arrays = [torch_to_numpy_tensor(t) for t in outputs]
+        if token_dtype == 5:
+            arrays[0] = arrays[0].reshape(-1, max_out_shape[3])
+        return arrays
+
+    compare = staticmethod(AclnnFfnWorkerBatchingTestSpec.compare)
+    tolerance = AclnnFfnWorkerBatchingTestSpec.tolerance
