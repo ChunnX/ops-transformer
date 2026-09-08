@@ -23,7 +23,7 @@
 
 ## 功能说明
 
-- 接口功能：aclnnGenericBlockSparseAttentionGrad是通用块稀疏注意力的反向计算算子。依据`rsvdBlockIdx`/`rsvdBlockCount`（稀疏块索引表）定义的索引，仅在被选中的KV块上计算和传播梯度，支持动态、可变长的分块稀疏模式。调用前须先通过`aclnnGenericBlockSparseAttentionGradMetadata`生成分核`metadata`。
+- 接口功能：aclnnGenericBlockSparseAttentionGrad是通用块稀疏注意力的反向计算算子。依据`sparseBlockIdx`/`sparseBlockCount`（稀疏块索引表）定义的索引，仅在被选中的KV块上计算和传播梯度，支持动态、可变长的分块稀疏模式。调用前须先通过`aclnnGenericBlockSparseAttentionGradMetadata`生成分核`metadataOptional`。
 - 计算公式：
 
 $$
@@ -62,23 +62,23 @@ aclnnStatus aclnnGenericBlockSparseAttentionGradGetWorkspaceSize(
     const aclTensor *dout,
     const aclTensor *out,
     const aclTensor *lse,
-    const aclTensor *rsvdBlockIdx,
-    const aclTensor *rsvdBlockCount,
-    const aclTensor *metadata,
+    const aclTensor *sparseBlockIdx,
+    const aclTensor *sparseBlockCount,
+    const aclTensor *metadataOptional,
     const aclTensor *attenMaskOptional,
-    const aclTensor *cuSeqLengthsOptional,
+    const aclTensor *cuSeqLengthsQOptional,
     const aclTensor *cuSeqLengthsKvOptional,
     const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKvOptional,
     const aclIntArray *blockShape,
-    int64_t isPackedGqa,
-    char *qInputLayout,
-    char *kvInputLayout,
+    int64_t isPackedGQA,
+    char *layoutQ,
+    char *layoutKv,
     double scaleValue,
     int64_t maskType,
     int64_t softmaxPrecision,
-    int64_t windowSizeLeft,
-    int64_t windowSizeRight,
+    int64_t winLeft,
+    int64_t winRight,
     aclTensor *dQuery,
     aclTensor *dKey,
     aclTensor *dValue,
@@ -213,13 +213,13 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                   <td>√</td>
               </tr>
               <tr>
-                  <td>rsvdBlockIdx</td>
+                  <td>sparseBlockIdx</td>
                   <td>输入</td>
                   <td>稀疏块索引数组，指定每个KV块选择的Q块/token索引。</td>
                   <td>
                       <ul>
-                          <li>同group每个KVHead对应的Q稀疏pattern一致（isPackedGqa=1）。</li>
-                          <li>第4维maxS1应≥rsvdBlockCount中所有元素的最大值。</li>
+                          <li>同group每个KVHead对应的Q稀疏pattern一致（isPackedGQA=1）。</li>
+                          <li>第4维maxS1应≥sparseBlockCount中所有元素的最大值。</li>
                           <li>不支持空Tensor。</li>
                       </ul>
                   </td>
@@ -229,7 +229,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                   <td>√</td>
               </tr>
               <tr>
-                  <td>rsvdBlockCount</td>
+                  <td>sparseBlockCount</td>
                   <td>输入</td>
                   <td>指定每个KV块实际选择的Q数量。</td>
                   <td>不支持空Tensor。</td>
@@ -239,16 +239,16 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                   <td>√</td>
               </tr>
               <tr>
-                  <td>metadata</td>
-                  <td>输入</td>
+                  <td>metadataOptional</td>
+                  <td>可选输入</td>
                   <td>由aclnnGenericBlockSparseAttentionGradMetadata生成的分核信息。</td>
                   <td>
                       <ul>
                           <li>必须传入。</li>
-                          <li>长度≥80+B×N1×J×4（int64元素个数）。</li>
+                          <li>长度≥80+B×N1×J×4（int32元素个数）。</li>
                       </ul>
                   </td>
-                  <td>INT64</td>
+                  <td>INT32</td>
                   <td>ND</td>
                   <td>(x,)</td>
                   <td>√</td>
@@ -264,10 +264,10 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                   <td>√</td>
               </tr>
               <tr>
-                  <td>cuSeqLengthsOptional</td>
+                  <td>cuSeqLengthsQOptional</td>
                   <td>可选输入</td>
                   <td>每个Batch对应的query序列长度前缀和。</td>
-                  <td>qInputLayout为"TND"时必须配置；为"BNSD"或"BSND"时传nullptr。</td>
+                  <td>layoutQ为"TND"时必须配置；为"BNSD"或"BSND"时传nullptr。</td>
                   <td>INT64</td>
                   <td>ND</td>
                   <td>(B+1,)</td>
@@ -277,7 +277,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                   <td>cuSeqLengthsKvOptional</td>
                   <td>可选输入</td>
                   <td>每个Batch对应的key/value序列长度前缀和。</td>
-                  <td>kvInputLayout为"TND"时必须配置；为"BNSD"或"BSND"时传nullptr。</td>
+                  <td>layoutKv为"TND"时必须配置；为"BNSD"或"BSND"时传nullptr。</td>
                   <td>INT64</td>
                   <td>ND</td>
                   <td>(B+1,)</td>
@@ -286,7 +286,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
               <tr>
                   <td>sequsedQOptional</td>
                   <td>可选输入</td>
-                  <td>各batch中query的实际序列长度。</td>
+                  <td>各batch中query的实际序列长度。仅layoutQ为"TND"时生效；为"BNSD"或"BSND"时须传nullptr，实际长度取自query的S维。</td>
                   <td>长度为B。</td>
                   <td>INT32</td>
                   <td>ND</td>
@@ -296,7 +296,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
               <tr>
                   <td>sequsedKvOptional</td>
                   <td>可选输入</td>
-                  <td>各batch中kv的实际序列长度。</td>
+                  <td>各batch中kv的实际序列长度。仅layoutKv为"TND"时生效；为"BNSD"或"BSND"时须传nullptr，实际长度取自key/value的S维。</td>
                   <td>长度为B。</td>
                   <td>INT32</td>
                   <td>ND</td>
@@ -311,7 +311,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                       <ul>
                           <li>含两个元素[blockShapeX, blockShapeY]。</li>
                           <li>blockShapeX当前仅支持1。</li>
-                          <li>blockShapeY须≥128且按64对齐；当前实现仅支持128。</li>
+                          <li>blockShapeY须≥128且按64对齐。Cube/Softmax按baseN=128对每个稀疏块做S2切分（LSE Softmax，与整块数值等价）。</li>
                       </ul>
                   </td>
                   <td>INT64</td>
@@ -320,7 +320,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                   <td>-</td>
               </tr>
               <tr>
-                  <td>isPackedGqa</td>
+                  <td>isPackedGQA</td>
                   <td>输入</td>
                   <td>同一group内的qHead是否共享同样的稀疏pattern。</td>
                   <td>当前仅支持1。不同batch之间不共享。</td>
@@ -330,7 +330,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                   <td>-</td>
               </tr>
               <tr>
-                  <td>qInputLayout</td>
+                  <td>layoutQ</td>
                   <td>输入</td>
                   <td>输入query的数据排布格式。</td>
                   <td>当前支持"TND"、"BNSD"、"BSND"。</td>
@@ -340,10 +340,10 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                   <td>-</td>
               </tr>
               <tr>
-                  <td>kvInputLayout</td>
+                  <td>layoutKv</td>
                   <td>输入</td>
                   <td>输入key、value的数据排布格式。</td>
-                  <td>当前支持"TND"、"BNSD"、"BSND"，须与qInputLayout一致。</td>
+                  <td>当前支持"TND"、"BNSD"、"BSND"，须与layoutQ一致。</td>
                   <td>STRING</td>
                   <td>-</td>
                   <td>-</td>
@@ -375,10 +375,8 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                   <td>Softmax计算采取的精度级别。</td>
                   <td>
                       <ul>
-                          <li>仅支持0或1。</li>
+                          <li>当前仅支持0。</li>
                           <li>0：online softmax和rescale均使用fp32。</li>
-                          <li>1：online softmax使用fp16/bf16，rescale使用fp32，可能发生数值溢出。</li>
-                          <li>当前实现传0。</li>
                       </ul>
                   </td>
                   <td>INT64</td>
@@ -387,7 +385,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                   <td>-</td>
               </tr>
               <tr>
-                  <td>windowSizeLeft</td>
+                  <td>winLeft</td>
                   <td>输入</td>
                   <td>滑窗attention场景下，滑窗需要向前包含多少个token。</td>
                   <td>不使能时必须为-1，需要与maskType、mask配合使用。</td>
@@ -397,7 +395,7 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
                   <td>-</td>
               </tr>
               <tr>
-                  <td>windowSizeRight</td>
+                  <td>winRight</td>
                   <td>输入</td>
                   <td>滑窗attention场景下，滑窗需要向后包含多少个token。</td>
                   <td>不使能时必须为-1，需要与maskType、mask配合使用。</td>
@@ -483,15 +481,15 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
         <tr>
           <td>ACLNN_ERR_PARAM_NULLPTR</td>
           <td>161001</td>
-          <td>必选参数或输出为空指针；qInputLayout为"TND"时未提供cuSeqLengthsOptional；kvInputLayout为"TND"时未提供cuSeqLengthsKvOptional。</td>
+          <td>必选参数或输出为空指针；metadataOptional未传入；layoutQ为"TND"时未提供cuSeqLengthsQOptional；layoutKv为"TND"时未提供cuSeqLengthsKvOptional。</td>
         </tr>
         <tr>
           <td class="merged-cell" rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
           <td class="merged-cell" rowspan="2">161002</td>
-          <td>输入、输出、属性的数据类型、数据格式或取值不在支持范围内；qInputLayout与kvInputLayout不一致。</td>
+          <td>输入、输出、属性的数据类型、数据格式或取值不在支持范围内；layoutQ与layoutKv不一致。</td>
         </tr>
         <tr>
-          <td>isPackedGqa!=1；windowSizeLeft/Right!=-1；blockShape不满足约束。</td>
+          <td>isPackedGQA!=1；winLeft/Right!=-1；blockShape不满足约束。</td>
         </tr>
         <tr>
           <td>ACLNN_ERR_RUNTIME_ERROR</td>
@@ -544,18 +542,19 @@ aclnnStatus aclnnGenericBlockSparseAttentionGrad(
 
 - 确定性计算：
   - aclnnGenericBlockSparseAttentionGrad默认为非确定性实现，暂不支持确定性实现，确定性计算配置后不会生效。
-- 须先调用[aclnnGenericBlockSparseAttentionGradMetadata](../../generic_block_sparse_attention_grad_metadata/docs/aclnnGenericBlockSparseAttentionGradMetadata.md)生成`metadata`，再调用本接口。
+- 须先调用[aclnnGenericBlockSparseAttentionGradMetadata](../../generic_block_sparse_attention_grad_metadata/docs/aclnnGenericBlockSparseAttentionGradMetadata.md)生成`metadataOptional`，再调用本接口。
 - 参数query、key、value、dout、out、dQuery、dKey、dValue的数据类型应保持一致，支持FLOAT16和BFLOAT16。
 - 参数lse的数据类型应为FLOAT32。
-- 参数rsvdBlockIdx、rsvdBlockCount、sequsedQOptional、sequsedKvOptional的数据类型应为INT32。
-- 参数cuSeqLengthsOptional、cuSeqLengthsKvOptional、metadata的数据类型应为INT64。
-- qInputLayout和kvInputLayout当前支持TND、BNSD、BSND，且必须保持一致。
-- 当qInputLayout为TND时，需要传入cuSeqLengthsOptional；当kvInputLayout为TND时，需要传入cuSeqLengthsKvOptional。
-- HeadDim固定为128；N1/N2取值范围[1, 128]，且N1 % N2 == 0。
-- blockShape当前仅支持[1, 128]；isPackedGqa当前仅支持1；maskType当前仅支持1。
-- windowSizeLeft和windowSizeRight不使能时必须为-1；attenMaskOptional当前应传nullptr。
+- 参数sparseBlockIdx、sparseBlockCount、sequsedQOptional、sequsedKvOptional的数据类型应为INT32。
+- 参数cuSeqLengthsQOptional、cuSeqLengthsKvOptional的数据类型应为INT64；参数metadataOptional的数据类型应为INT32。
+- layoutQ和layoutKv当前支持TND、BNSD、BSND，且必须保持一致。
+- 当layoutQ为TND时，需要传入cuSeqLengthsQOptional；当layoutKv为TND时，需要传入cuSeqLengthsKvOptional。
+- sequsedQOptional/sequsedKvOptional仅在TND时生效；BNSD/BSND须传nullptr，实际序列长度取自Q/K的S维。
+- HeadDim固定为128；N1/N2取值范围[1, 128]，且N1 > N2，N1 % N2 == 0。
+- blockShape：blockShapeX仅支持1；blockShapeY须≥128且为64的倍数（Cube按baseN=128对每个稀疏块做S2切分）；isPackedGQA当前仅支持1；maskType当前仅支持1；softmaxPrecision当前仅支持0。
+- winLeft和winRight不使能时必须为-1；attenMaskOptional当前应传nullptr。
 - Softmax LSE的head/seq轴语义须与query布局一致。
-- `rsvdBlockIdx`第4维maxS1应≥`rsvdBlockCount`中所有元素的最大值。
+- `sparseBlockIdx`第4维maxS1应≥`sparseBlockCount`中所有元素的最大值。
 
 ## 调用示例
 
@@ -663,7 +662,7 @@ int main()
     std::vector<float> lseHost(GetShapeSize(lseShape), 5.0f);
     std::vector<int32_t> idxHost(GetShapeSize(idxShape), -1);
     std::vector<int32_t> cntHost(GetShapeSize(cntShape), 0);
-    std::vector<int64_t> metaHost(metaSize, 0);
+    std::vector<int32_t> metaHost(metaSize, 0);
     std::vector<uint16_t> dqHost(GetShapeSize(qShape), 0);
     std::vector<uint16_t> dkHost(GetShapeSize(kvShape), 0);
     std::vector<uint16_t> dvHost(GetShapeSize(kvShape), 0);
@@ -700,7 +699,7 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(cntHost, cntShape, &cntAddr, aclDataType::ACL_INT32, &cnt);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(metaHost, metaShape, &metaAddr, aclDataType::ACL_INT64, &metadata);
+    ret = CreateAclTensor(metaHost, metaShape, &metaAddr, aclDataType::ACL_INT32, &metadata);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(dqHost, qShape, &dqAddr, aclDataType::ACL_FLOAT16, &dq);
     CHECK_RET(ret == ACL_SUCCESS, return ret);

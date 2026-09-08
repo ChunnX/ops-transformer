@@ -28,9 +28,9 @@ namespace MegaMoeImpl {
     XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch
 
 template <TemplateMegaMoeA4W4WaveTypeClass>
-class MegaMoeA4W4Wave : public MegaMoe<TemplateMegaMoeA4W4WaveTypeFunc> {
+class MegaMoeA4W4Wave : public MegaMoe<TemplateMegaMoeA4W4WaveTypeFunc, false> {
 private:
-    using MegaMoeBase = MegaMoe<TemplateMegaMoeA4W4WaveTypeFunc>;
+    using MegaMoeBase = MegaMoe<TemplateMegaMoeA4W4WaveTypeFunc, false>;
     friend MegaMoeBase;
 
 public:
@@ -55,9 +55,11 @@ private:
     using MegaMoeBase::countWorkspace_;
     using MegaMoeBase::epilogueOp_;
     using MegaMoeBase::gmmExecutionConfig_;
+    using MegaMoeBase::gmmTileSequence_;
     using MegaMoeBase::mGroupsPerWave_;
     using MegaMoeBase::moeWeightTensorListAddrs_;
     using MegaMoeBase::params_;
+    using MegaMoeBase::startBlockIdx_;
     using MegaMoeBase::tokenDispatchConfig_;
     using MegaMoeBase::tokenDispatchScratch_;
     using MegaMoeBase::waveCombineScratch_;
@@ -254,24 +256,22 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
         combineBufferConfig = InitWaveCombineBuffers<CombineQuantMode>(commonConfig_, waveCombineScratch_);
     }
     uint32_t combineRowSequence = 0U;
-    int32_t pairwiseTileSequence = 0;
 
     ExpertLoopState gmm1State = CreateExpertLoopState(commonConfig_);
     ExpertLoopState gmm2State = CreateExpertLoopState(commonConfig_);
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
 
-    // 同一 Block 内绑定的 1C2V 各自持有分核游标，必须按相同调用顺序推进并始终保持一致。
-    // 某个角色即使不参与当前 GMM 计算，也必须使用该 problem 的 tile 数更新游标。
-    uint32_t startBlockIdx = 0U;
+    // 同一 Block 内绑定的 1C2V 各自持有分核游标，按相同调用顺序推进并始终保持一致；
+    // MoE GMM1 与 GMM2 沿用该游标持续滚动。
     int32_t vecSetSyncCom = 0;
     uint16_t gmm1PingPongIdx = 0U;
-    GmmRuntimeState gmm1RuntimeState{startBlockIdx, vecSetSyncCom, gmm1PingPongIdx};
+    GmmRuntimeState gmm1RuntimeState{startBlockIdx_, vecSetSyncCom, gmm1PingPongIdx};
 
     const uint32_t gmm1TilesPerMGroup =
         Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF, static_cast<uint32_t>(L1_TILE_N));
-    WaveGmm2PipelineState gmm2RuntimeState{startBlockIdx, combineBufferConfig, combineRowSequence,
-                                           pairwiseTileSequence};
+    WaveGmm2PipelineState gmm2RuntimeState{startBlockIdx_, combineBufferConfig, combineRowSequence,
+                                           gmmTileSequence_};
 
     ExpertTokenPosition dispatchPosition{};
     DispatchFirstWave(dispatchPosition);
