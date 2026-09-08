@@ -62,10 +62,8 @@ static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t COMBINE_CHANNEL_COUNT = 7U;
 static constexpr uint32_t HCOMM_CHANNEL_TOKEN_CAPACITY = 32368U;
 static constexpr uint32_t RECV_META_FIELDS = 5U;
-static constexpr uint32_t META_SRC_RANK_OFFSET = 0U;
 static constexpr uint32_t META_TOKEN_IDX_OFFSET = 1U;
 static constexpr uint32_t META_TOPK_IDX_OFFSET = 2U;
-static constexpr uint32_t META_SLOT_IDX_OFFSET = 3U;
 static constexpr uint32_t META_RECV_X_IDX_OFFSET = 4U;
 // Keep one SQ entry unused. A token that would make the following token cross this limit requests a CQE and drains.
 static constexpr uint32_t HCOMM_SQ_MAX_PENDING = 32767U;
@@ -540,9 +538,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GetCoreAssign
                                                                                      uint32_t &groupSize)
 {
     uint32_t maxChannelAivNum = epWorldSize_ * combineChannelCount_;
-    bool assignRemainingToLocal = totalBlocks > maxChannelAivNum;
-    if (assignRemainingToLocal) {
-        // Put all remote communication AIVs first, then give every remaining AIV to local copies.
+    bool hasExtraAivs = totalBlocks > maxChannelAivNum;
+    if (hasExtraAivs) {
+        // Put all remote communication AIVs first; the remaining AIVs only publish local completion flags.
         uint32_t remoteAivNum = (epWorldSize_ - 1U) * combineChannelCount_;
         if (aivId_ < remoteAivNum) {
             uint32_t remoteRankIndex = aivId_ / combineChannelCount_;
