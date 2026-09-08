@@ -16,13 +16,11 @@ from cann_ops_transformer.op_builder import OpBuilder
 
 class CompressorOpBuilder(OpBuilder):
     def __init__(self):
-        super(CompressorOpBuilder, self).__init__(
-            "cpv2_compressor", category="attention"
-        )
+        super(CompressorOpBuilder, self).__init__("compressor_v2", category="attention")
 
     def sources(self):
         """Path to C++ source code."""
-        return ["csrc/attention/cpv2_compressor.cpp"]
+        return ["csrc/attention/compressor_v2.cpp"]
 
     def schema(self):
         """PyTorch operator signature."""

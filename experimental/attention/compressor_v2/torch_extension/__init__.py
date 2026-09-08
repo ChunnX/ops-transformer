@@ -7,6 +7,14 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-__all__ = ["compressor"]
-
+import sys
 from .compressor import compressor
+
+# 注册别名，使 from cann_ops_transformer.ops.cpv2 import compressor 可用
+sys.modules.setdefault("cann_ops_transformer.ops.cpv2", sys.modules[__name__])
+
+__all__ = ["compressor_v2"]
+
+
+def compressor_v2(*args, **kwargs):
+    return compressor(*args, **kwargs)
