@@ -13,6 +13,9 @@
  * \brief
  */
 
+#include <algorithm>
+#include <vector>
+#include <utility>
 #include <unordered_set>
 #include <string>
 #include "opdev/format_utils.h"
@@ -106,28 +109,14 @@ inline aclnnStatus FlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int6
     CHECK_COND(numHeadsQ > 0, ACLNN_ERR_RUNTIME_ERROR, "numHeadsQ must be greater than 0, but got %ld", numHeadsQ);
     CHECK_COND(numHeadsKv > 0, ACLNN_ERR_RUNTIME_ERROR, "numHeadsKv must be greater than 0, but got %ld", numHeadsKv);
 
-    constexpr int64_t HEAD_DIM_64 = 64;
-    constexpr int64_t HEAD_DIM_72 = 72;
-    constexpr int64_t HEAD_DIM_128 = 128;
-    constexpr int64_t HEAD_DIM_192 = 192;
-    constexpr int64_t HEAD_DIM_256 = 256;
-    static const std::unordered_set<int64_t> headDimSet = {HEAD_DIM_64, HEAD_DIM_72, HEAD_DIM_128, HEAD_DIM_192,
-                                                           HEAD_DIM_256};
-    CHECK_COND(headDimSet.count(headDim) > 0, ACLNN_ERR_RUNTIME_ERROR,
-               "headDim only supports %ld, %ld, %ld, %ld, %ld, but got %ld", HEAD_DIM_64, HEAD_DIM_72, HEAD_DIM_128,
-               HEAD_DIM_192, HEAD_DIM_256, headDim);
-
-    // headDimV 为 -1（NONE_VALUE）时表示 v 的 head_dim 等于 headDim
-    static const std::unordered_set<int64_t> headDimVSet = {NONE_VALUE, HEAD_DIM_64, HEAD_DIM_72, HEAD_DIM_128,
-                                                            HEAD_DIM_256};
-    CHECK_COND(headDimVSet.count(headDimV) > 0, ACLNN_ERR_RUNTIME_ERROR,
-               "headDimV only supports %ld, %ld, %ld, %ld, %ld, but got %ld", NONE_VALUE, HEAD_DIM_64, HEAD_DIM_72,
-               HEAD_DIM_128, HEAD_DIM_256, headDimV);
-    // 组合白名单需与 flash_attn 主算子 checker 保持一致：(64,64)/(72,72)/(128,128)/(256,256)/(192,128)
+    // headDimV 为 NONE_VALUE(-1) 时表示 V 的 head_dim 等于 headDim (QK 维)
     const int64_t effectiveHeadDimV = (headDimV == NONE_VALUE) ? headDim : headDimV;
-    const bool isSupportedDimComb =
-        (headDim == effectiveHeadDimV) || (headDim == HEAD_DIM_192 && effectiveHeadDimV == HEAD_DIM_128);
-    CHECK_COND(isSupportedDimComb, ACLNN_ERR_RUNTIME_ERROR,
+    // 支持的 (head_dim, head_dim_v) 组合, 与 flash_attn 主算子 checker 保持一致
+    static const std::vector<std::pair<int64_t, int64_t>> supportedDimCombos = {
+        {64, 64}, {72, 72}, {128, 128}, {256, 256}, {192, 128}};
+    CHECK_COND(std::find(supportedDimCombos.begin(), supportedDimCombos.end(),
+                         std::make_pair(headDim, effectiveHeadDimV)) != supportedDimCombos.end(),
+               ACLNN_ERR_RUNTIME_ERROR,
                "The (head_dim, head_dim_v) combination is not supported, supported: (64,64), (72,72), (128,128), "
                "(256,256), (192,128), but got (%ld, %ld)",
                headDim, headDimV);
