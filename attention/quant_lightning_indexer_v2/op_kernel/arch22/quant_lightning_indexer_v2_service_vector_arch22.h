@@ -542,7 +542,13 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessCandBlockTopk(const QLIV2Comm
     LocalTensor<float> tmp = tmpBuf_.Get<float>();
     // 块内归约: vcgmax 每 32B 块 (8 fp32) 出 1 个 max, 紧凑输出 [blockNum]
     LocalTensor<float> blkScore = tmp[6144];
-    int32_t brmRepeat = (blkLen / 64) > 0 ? (blkLen / 64) : 1;
+    // R10: blkLen=96 是 AlignS2 输出中唯一非 64 倍数的值 (≤128 段对齐到 32 的倍数),
+    // 96/64 整除截断为 1 只归约 [0,64) — 块 8..11 残留上一 tile/行的 stale 分数
+    // (实测 big128k_b2_varlen b1 行 73 tile 56: 块 14344 拿到 tile 55 块 14088 的
+    // 3.5568, 虚高挤掉 2048 名边界块 2760; 小 shape 总块数≤2048 集合不变故未暴露)。
+    // 改 CeilDiv 覆盖全部块; 多归约的 [96,128) stale 只落在 pad 块槽位, 被 -inf
+    // 位型链位精确覆盖, 无害。
+    int32_t brmRepeat = CeilDiv(blkLen, 64);
     BlockReduceMax(blkScore, tmp[0], brmRepeat, 64, 1, 1, 8);
     PipeBarrier<PIPE_V>();
     int32_t lastBlk = (cuRealAcSeq - 1) / blockSize;

@@ -396,7 +396,7 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 | 大 shape × key 非连续 | **{16K,128K,1M}×{m1,m2} 全 6 用例**（stride0=2×紧凑， 生产 pool 翻倍 [15872,128,1,128]） |
 | numBlocks vs topkBlocks | <, =, > |
 | S2 对齐 | actS2Size%8=0 / ≠0（含 actS2Size=1） |
-| B | 1 / 4（变长 batch） |
+| B | 1 / 2 / 4（变长 batch；2026-09-08 补 B=2 四件套 + B=4 三件套大 shape：m1/m2/mask0 × BSND/TND，变长 seqused_k，B=4 含非对齐尾 tile 98432） |
 | topk_blocks | 2048 全量 + **pin 用例 64**（host 已放宽为 (0,2048] 内 64 的倍数；`numBlocks > topk_blocks` 时 pin 最新块必须入选，单/多 tile 各 1 用例） |
 | 大规模全遍历（生产规格） | **q_seq {16K, 128K, 1M} × layout {BSND, TND} × cmp_ratio {1, 2} = 12 用例直接并入 pytest 矩阵**（2026-09-08 用户要求；q_seq=s2 全 prefill，mask_mode=3，mode=1，ratio2 带 cmp_residual_k=1）；key pool **[7936,128,1,128]**、block_table **[1,1055]**（置换非恒等映射；1M 场景 pool 默认 8192+4）。**CPU 全量 golden 不可行 → 抽样行官方规则比对 + 全行有效性 + pin（强制保留最新 token 所在块）检查**（§6.6）；独立大 shape 脚本降级为深检工具 |
 
@@ -462,7 +462,8 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 1. **抽样行官方规则比对**：每 batch 固定行 + 等分行 + 固定 seed 随机行（1M 约 16 行、16K/128K 约 32 行），逐行计算 golden（逐行 matmul：q 行向量 [G,D] × k 段 [S2,D]，秒级/行）并按 §6.2 两级规则比对；抽样覆盖 vl（valid length，行级有效长度）极小（首行）/中间/极大（末行）；
 2. **全行有效性检查**（numpy 向量化）：sparse_indices（稀疏索引输出）∈ [-1, S2)、candidate_topk_index（候选块索引输出）∈ [-1, numBlocks)、mode=2 输出第三元为空；
 3. **pin（强制保留最新 token 所在块）检查**：numBlocks > candidate_topk_blocks 的抽样行必须含最新块；
-4. **双跑确定性**：大 shape 用例二次运行抽样行逐元素一致。
+4. **双跑确定性**：大 shape 用例二次运行抽样行逐元素一致；
+5. **force_rows 确定性锚点（R10，2026-09-08）**：用例可声明 `force_rows` 行号列表并入抽样集——随机抽样可能漏掉特定 vl（行级有效长度）窗口行（R10 的 stale 窗口：尾 tile cuS2Len∈(64,96]，即 mask_mode=3 下行号 i 满足 (vl mod 2048)∈(64,96]，每 batch 仅约 32 行）；big128k_b2_varlen 锚 [64,73,95]×2 batch，big128k_b4_varlen 锚 12 行覆盖 4 batch。
 
 ### 7. 风险与开放问题
 
@@ -476,6 +477,7 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 | R7（§11） | TND 下 candidateOutOffset 与 cuS1Idx 双重前缀（两者均含 cu_seqlens_q 前缀则行号翻倍） | 偏移结构与主输出 indiceOutOffset 完全同构（前缀在 offset、行号 batch 内），理论无双重；tnd_m1_decode 用例显式验证 GM 行对位 |
 | R8（§11） | keyStride0 改造影响现网紧凑场景（PA 现网假设 stride==块大小） | keyStride0==0 或 ==紧凑值时走原公式兜底，现网行为 bit 级不变；pa_gap_m3_regress 回归 |
 | R9（§11.6） | **output_idx_offset 在 arch22 为死参数**（入口收指针未绑定未消费，host 校验完整但合法值被静默忽略）；调用方传非零偏移时 sparse_indices 不含偏移 → 上层绝对位置还原错误 | A15 对齐 arch35 使能；与 candidate 的契约：offset 仅作用于 sparse_indices，candidate_topk_index 保持相对块号（source 输出取加 offset 前），避免 mode=2 掩蔽整行错位 |
+| ~~R10（2026-09-08 实测，**当日已解**）~~ | mode=1 大 shape（总块数>candidate_topk_blocks）vl（行级有效长度）尾 tile 块分数 stale：`brmRepeat = blkLen/64` 整除截断，blkLen=96（AlignS2 在 (64,128] 段唯一非 64 倍数输出）时只归约 [0,64)，块 8..11 残留上一 tile/行分数 | 实测 big128k_b2_varlen b1 行 73：块 14344 拿 stale 3.5568（真值 1.1753）虚高挤掉第 2048 名边界块 2760（3.0918）；**小 shape 总块数≤2048 时候选集合=全部块，stale 分数不改变集合故漏检**；B=1 大 shape 抽样未踩中窗口行（尾 tile cuS2Len∈(64,96] 即行号 i∈[64,95] 每 batch 仅 32 行） | **修复：brmRepeat 改 `CeilDiv(blkLen, 64)`**（多归约的 [96,128) stale 只落 pad 块槽位，被 -inf 位型链位精确覆盖，无害）；harness 新增 force_rows 确定性锚点（§6.6），B=2 锚 6 行、B=4 锚 12 行覆盖各 batch 窗口 |
 | **R5（标红，O3 未决）** | **mid-chunk prefill（start_pos≠0 且 S1>1）形态下模型不做行内因果 mask，与常规认知相反**；该调用形态是否存在未确认 | 若误当作 bug "修复"（擅自加行级 mask）将引入语义变更；测试碰 mode0+S1>1 数据可能误报精度问题 | **暂不测试该用例，问题保留**（§5.0 O3 标红段）；三不准：不准顺手加 mask / 不准以"常规认知"为 golden / 处理前必须先与模型侧确认调用形态 |
 
 已决策记录：
@@ -524,12 +526,13 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 
 ## 10. 当前验证状态（2026-09-07）
 
-- pytest **80 用例全绿**（2026-09-08 矩阵补齐后：24 基础 + 12 m1 大遍历 + 5 m2 大补 + 6 pa_gap 大 + 24 mask0 大遍历 + 其余 TND/offset/门禁；总时长 ~31 分钟）：
+- pytest **87 用例全绿**（2026-09-08 R10 修复 + B=2/B=4 变长补齐后：24 基础 + 12 m1 大遍历 + 5 m2 大补 + 6 pa_gap 大 + 24 mask0 大遍历 + 4 B=2 变长 + 3 B=4 变长 + 其余 TND/offset/门禁；总时长 ~32 分钟）：
   - 22 基础用例（mode 1/2/3 × cmp_ratio 1/2 × g32/64 × decode/prefill/tail/sparse2048/pin64 单/多 tile/B=4 变长/S1 尾块/tiny/cand64×mode2）全过，零 aicore
   - **大 shape 直接入矩阵全过**：big16k_m1 / big128k_m1 / big128k_m1_b2（B=2 变长）/ big1m_m1（131072 块 pin（强制保留最新 token 所在块）抽样验证）/ big1m_m3（回归）——§6.6 抽样行官方两级规则比对 + 全行有效性 + pin 检查，总时长 ~4 分钟
   - 等价回归全过：pa_gap_m3_regress（紧凑场景现网行为不变，R8）、off_zero_regress（零偏移与不传一致）
   - **A11/A12/A15 实施后（2026-09-08）：tnd_*×7、pa_gap_m1/m2/128k×3、off_m1_decode/m2/off_tnd×3 全部 XPASS 转正；pa_gap_m3_regress（紧凑等价）与 off_zero_regress（零偏移等价）回归保持通过
   - **R6 修复转正（2026-09-08）：candBuf 按行分区（同核 2 行共享是根因）**——big128k_m2 通过；新增 r1_m2_prefill（s1=8 mode=2）作为 R6 小 shape 门禁；大 shape 全遍历 12 用例（q_seq×layout×ratio）全过；xfail 清零
+  - **R10 修复转正（2026-09-08）：blkLen=96 时 brmRepeat 整除截断致尾 tile 块分数 stale（§7 R10）**——B=2 变长四件套（big128k_b2_varlen/tnd_m2/mask0_r2 + big1m_b2_m1）+ B=4 变长三件套（[65536, 98432, 131072, 81920]，b1=98432 使尾 tile 窗口行移位覆盖非对齐 vl）全过；修复后全量 84 + B=4 新增 3 = 87 用例全绿
 - 大规模生产规格（`/opt/tjj/qli_cand_test/test_big_shape_m1.py`，设备侧 harness）：16K(b=1) / 128K(b=2) mode=1、128K(b=2) mode=2 随机半数候选、1M(b=1) mode=1 全部 IoU=1.000000；**1M 场景 pin 块 131071 确认入选**（131072 块中选 top-2048）
 - 大 shape 回归：1M mode=3（IoU=1.0 抽样行精确比对 + 双跑确定性）、1M cmp_ratio=2、qseq 256..2048 扫描全过
 - 提交序列：`aede3e62e`（功能实现）→ `a346acdcb`（五处正确性修复：pad 块 int32 向量算术填充 / MergeSortVecCopy 位精确回拷 / pin 纯向量化（全局块号比较）/ mode=2 CountGE 窗口边界 + CAST_RINT + isOutI32 区域重叠 / V_S fence）
