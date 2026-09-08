@@ -28,9 +28,9 @@ namespace MegaMoeImpl {
     XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch
 
 template <TemplateMegaMoeA8W4WaveTypeClass>
-class MegaMoeA8W4Wave : public MegaMoe<TemplateMegaMoeA8W4WaveTypeFunc> {
+class MegaMoeA8W4Wave : public MegaMoe<TemplateMegaMoeA8W4WaveTypeFunc, false> {
 private:
-    using MegaMoeBase = MegaMoe<TemplateMegaMoeA8W4WaveTypeFunc>;
+    using MegaMoeBase = MegaMoe<TemplateMegaMoeA8W4WaveTypeFunc, false>;
     friend MegaMoeBase;
 
 public:
@@ -55,10 +55,12 @@ private:
     using MegaMoeBase::commonConfig_;
     using MegaMoeBase::countWorkspace_;
     using MegaMoeBase::gmmExecutionConfig_;
+    using MegaMoeBase::gmmTileSequence_;
     using MegaMoeBase::mGroupsPerWave_;
     using MegaMoeBase::syncWorkspaceLayout_;
     using MegaMoeBase::moeWeightTensorListAddrs_;
     using MegaMoeBase::params_;
+    using MegaMoeBase::startBlockIdx_;
     using MegaMoeBase::tokenDispatchConfig_;
     using MegaMoeBase::tokenDispatchScratch_;
     using MegaMoeBase::waveCombineScratch_;
@@ -68,29 +70,27 @@ private:
     }
 
     __aicore__ inline void RunGmm1ActivationForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
-                                                      uint32_t &startBlockIdx, int32_t &gmm1TileReadySequence,
-                                                      uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount,
-                                                      uint32_t gmm1TilesPerMGroup);
-    __aicore__ inline void DispatchFirstWave(ExpertTokenPosition &dispatchPosition);
+                                                      uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
+                                                      uint32_t sliceTokenCount, uint32_t gmm1TilesPerMGroup);
+    __aicore__ inline ExpertTokenPosition DispatchFirstWave();
     __aicore__ inline void DispatchNextWaveExpertSlice(ExpertTokenPosition &dispatchPosition,
-                                                       uint32_t &nextDispatchWaveMGroupCount,
-                                                       bool &nextWaveNeedsDispatch);
-    __aicore__ inline uint32_t ProcessCurrentWaveGmm1(ExpertTokenRange &waveRange,
-                                                      ExpertTokenPosition &dispatchPosition, ExpertLoopState &gmm1State,
-                                                      GMMAddrInfo &gmm1AddrInfo, uint32_t &startBlockIdx,
-                                                      int32_t &gmm1TileReadySequence,
-                                                      uint32_t gmm1TilesPerMGroup);
-    __aicore__ inline void ProcessCurrentWaveGmm2(const ExpertTokenRange &waveRange, uint32_t waveLastActiveExpertIdx,
-                                                  ExpertLoopState &gmm2State, GMMAddrInfo &gmm2AddrInfo,
-                                                  WaveGmm2PipelineState &runtimeState);
-    __aicore__ inline void ProcessMoeExpertStages(int32_t &gmm1TileReadySequence);
+                                                       uint32_t &nextDispatchWaveMGroupCount);
+    __aicore__ inline ExpertTokenRange ProcessNextDispatchAndCurrentGmm1(
+        const ExpertTokenPosition &waveBeginPosition, ExpertTokenPosition &dispatchPosition,
+        ExpertLoopState &gmm1State, GMMAddrInfo &gmm1AddrInfo, uint32_t &startBlockIdx,
+        uint32_t gmm1TilesPerMGroup);
+    __aicore__ inline void RunGmm2CombineForWaveRange(const ExpertTokenRange &waveRange,
+                                                      ExpertLoopState &gmm2State, GMMAddrInfo &gmm2AddrInfo,
+                                                      WaveCombineBufferConfig &combineBufferConfig,
+                                                      uint32_t &combineRowSequence);
+    __aicore__ inline void ProcessMoeExpertStages();
 };
 
 // 更新当前专家切片的输入、输出及同步地址，并执行 GMM1 和 Activation。
 template <TemplateMegaMoeA8W4WaveTypeClass>
 __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1ActivationForExpert(
-    ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmm1TileReadySequence,
-    uint32_t tokenStartIndexInExpert, uint32_t sliceTokenCount, uint32_t gmm1TilesPerMGroup)
+    ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
+    uint32_t sliceTokenCount, uint32_t gmm1TilesPerMGroup)
 {
     uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm1TilesPerMGroup;
     if (HandleWaveProblemWithoutWork(problemTileCount, gmmExecutionConfig_.blockJob, startBlockIdx)) {
@@ -104,19 +104,19 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
     RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
                 EPILOGUE_TILE_M, TopkWeightsPrefetch, false, true>(
-        epilogueOp_, params_, sliceProblemShape, gmmAddrInfo, startBlockIdx, gmm1TileReadySequence,
+        epilogueOp_, params_, sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmTileSequence_,
         gmmExecutionConfig_.blockJob, static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert,
         state.expertIdx);
 }
 
 template <TemplateMegaMoeA8W4WaveTypeClass>
-__aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::DispatchFirstWave(
-    ExpertTokenPosition &dispatchPosition)
+__aicore__ inline ExpertTokenPosition MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::DispatchFirstWave()
 {
+    ExpertTokenPosition dispatchPosition{};
     // 启动阶段：GMM1 开始消费输入前，由 AIV1 先 Dispatch 第一个完整 Wave。
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() != 1U) {
-            return;
+            return dispatchPosition;
         }
         ExpertTokenRange firstDispatchRange{dispatchPosition, dispatchPosition};
         ExpertTokenPosition plannedDispatchPosition = dispatchPosition;
@@ -135,14 +135,15 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Dispatc
         // 首 WAVE 的全部数据和 ready flag 发布完成后，再提交 Dispatch 进度。
         dispatchPosition = plannedDispatchPosition;
     }
+    return dispatchPosition;
 }
 
 template <TemplateMegaMoeA8W4WaveTypeClass>
 __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::DispatchNextWaveExpertSlice(
-    ExpertTokenPosition &dispatchPosition, uint32_t &nextDispatchWaveMGroupCount, bool &nextWaveNeedsDispatch)
+    ExpertTokenPosition &dispatchPosition, uint32_t &nextDispatchWaveMGroupCount)
 {
     if constexpr (g_coreType == AIV) {
-        if (GetSubBlockIdx() != 1U || !nextWaveNeedsDispatch) {
+        if (GetSubBlockIdx() != 1U) {
             return;
         }
         ExpertTokenRange nextExpertDispatchRange = PlanNextExpertTokenRangeInWave<GMM1_TILE_M>(
@@ -159,17 +160,16 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Dispatc
         }
         // 有效 slice 完成 Dispatch，或仅跳过空专家后，提交本次规划的末尾位置。
         dispatchPosition = nextExpertDispatchRange.end;
-        nextWaveNeedsDispatch = IsPositionWithinWave(dispatchPosition, nextDispatchWaveMGroupCount);
     }
 }
 
 template <TemplateMegaMoeA8W4WaveTypeClass>
-__aicore__ inline uint32_t MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::ProcessCurrentWaveGmm1(
-    ExpertTokenRange &waveRange, ExpertTokenPosition &dispatchPosition, ExpertLoopState &gmm1State,
-    GMMAddrInfo &gmm1AddrInfo, uint32_t &startBlockIdx, int32_t &gmm1TileReadySequence,
-    uint32_t gmm1TilesPerMGroup)
+__aicore__ inline ExpertTokenRange
+MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::ProcessNextDispatchAndCurrentGmm1(
+    const ExpertTokenPosition &waveBeginPosition, ExpertTokenPosition &dispatchPosition, ExpertLoopState &gmm1State,
+    GMMAddrInfo &gmm1AddrInfo, uint32_t &startBlockIdx, uint32_t gmm1TilesPerMGroup)
 {
-    uint32_t waveLastActiveExpertIdx = commonConfig_.moeExpertPerRank;
+    ExpertTokenRange waveRange{waveBeginPosition, waveBeginPosition};
     uint32_t currentWaveMGroupCount = 0U;
     bool currentWaveNeedsGmm1 = true;
     uint32_t nextDispatchWaveMGroupCount = 0U;
@@ -181,7 +181,10 @@ __aicore__ inline uint32_t MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Pro
     }
     while (currentWaveNeedsGmm1 || nextWaveNeedsDispatch) {
         // AIV1 每轮先发送下一 Wave 的一个专家 slice，再处理当前 Wave 的一个专家 slice。
-        DispatchNextWaveExpertSlice(dispatchPosition, nextDispatchWaveMGroupCount, nextWaveNeedsDispatch);
+        if (nextWaveNeedsDispatch) {
+            DispatchNextWaveExpertSlice(dispatchPosition, nextDispatchWaveMGroupCount);
+            nextWaveNeedsDispatch = IsPositionWithinWave(dispatchPosition, nextDispatchWaveMGroupCount);
+        }
         if (currentWaveNeedsGmm1) {
             if (waveRange.end.tokenIndexInExpert == 0U) {
                 this->template PrepareGmmExpertState<true>(gmm1State, waveRange.end.expertIdx);
@@ -191,23 +194,24 @@ __aicore__ inline uint32_t MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Pro
             uint32_t sliceTokenCount = AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(
                 expertTokenCount, mGroupsPerWave_, currentWaveMGroupCount, waveRange.end);
             if (sliceTokenCount != 0U) {
-                waveLastActiveExpertIdx = gmm1State.expertIdx;
-                RunGmm1ActivationForExpert(gmm1State, gmm1AddrInfo, startBlockIdx, gmm1TileReadySequence,
-                                           sliceTokenStartIndexInExpert, sliceTokenCount, gmm1TilesPerMGroup);
+                RunGmm1ActivationForExpert(gmm1State, gmm1AddrInfo, startBlockIdx, sliceTokenStartIndexInExpert,
+                                           sliceTokenCount, gmm1TilesPerMGroup);
             }
             currentWaveNeedsGmm1 = IsPositionWithinWave(waveRange.end, currentWaveMGroupCount);
         }
     }
-    return waveLastActiveExpertIdx;
+    return waveRange;
 }
 
+// 消费一个已完成 Wave 的 GMM2/Combine（内联循环的逐字提取；调度本体在基类 RunGmm2CombineForExpert）。
+// Wave 在专家内结束时需包含该专家；在专家边界结束时，range.end 已指向下一专家。
 template <TemplateMegaMoeA8W4WaveTypeClass>
-__aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::ProcessCurrentWaveGmm2(
-    const ExpertTokenRange &waveRange, uint32_t waveLastActiveExpertIdx, ExpertLoopState &gmm2State,
-    GMMAddrInfo &gmm2AddrInfo, WaveGmm2PipelineState &runtimeState)
+__aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2CombineForWaveRange(
+    const ExpertTokenRange &waveRange, ExpertLoopState &gmm2State, GMMAddrInfo &gmm2AddrInfo,
+    WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence)
 {
-    // GMM2 调度与 Combine 量化模式无关：统一按当前 WAVE 覆盖的专家 slice 顺序推进。
-    uint32_t waveGmm2ExpertEndExclusive = waveRange.end.expertIdx + (waveRange.end.tokenIndexInExpert == 0U ? 0U : 1U);
+    uint32_t waveGmm2ExpertEndExclusive = waveRange.end.expertIdx +
+                                          (waveRange.end.tokenIndexInExpert == 0U ? 0U : 1U);
     for (uint32_t expertIdx = waveRange.begin.expertIdx; expertIdx < waveGmm2ExpertEndExclusive; ++expertIdx) {
         uint32_t sliceTokenStartIndexInExpert =
             expertIdx == waveRange.begin.expertIdx ? waveRange.begin.tokenIndexInExpert : 0U;
@@ -220,17 +224,18 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
             expertIdx == waveRange.end.expertIdx ? waveRange.end.tokenIndexInExpert : expertTokenCount;
         uint32_t sliceTokenCount = sliceTokenEndIndexInExpert - sliceTokenStartIndexInExpert;
         if (sliceTokenCount != 0U) {
+            uint64_t sliceGlobalEndIndex =
+                static_cast<uint64_t>(gmm2State.globalTokenStartIndex) + sliceTokenEndIndexInExpert;
             bool isFinalCombine = waveRange.end.expertIdx >= commonConfig_.moeExpertPerRank &&
-                                  expertIdx == waveLastActiveExpertIdx &&
-                                  sliceTokenEndIndexInExpert >= expertTokenCount;
+                                  sliceGlobalEndIndex >= waveRange.end.globalTokenIndex;
             // W4 的 GMM2/Combine 调度集中在基类，派生模板只负责提供当前专家 slice。
-            RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, runtimeState.startBlockIdx,
-                                    sliceTokenStartIndexInExpert, sliceTokenCount, runtimeState.combineBufferConfig,
-                                    runtimeState.combineRowSequence, runtimeState.pairwiseTileSequence, isFinalCombine);
+            RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx_, sliceTokenStartIndexInExpert,
+                                    sliceTokenCount, combineBufferConfig, combineRowSequence, gmmTileSequence_,
+                                    isFinalCombine);
         }
     }
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        DrainCombineRowBuffers(runtimeState.combineRowSequence, runtimeState.combineBufferConfig.rowBufferCount);
+        DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
     }
 }
 
@@ -239,10 +244,12 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
  * 按专家 slice 交替执行下一 Wave 的 Dispatch 和当前 Wave 的 Activation，同时 AIC/AIV0 执行当前 Wave 的 GMM1。
  * 整 Wave 与专家 slice 都向 DispatchTokenRange 传入显式 [begin, end) 范围。当前 Wave 完成后立即启动
  * GMM2/Combine，无需等待所有专家的 GMM1。
+ * 大 bs 下 GMM2 滞后一拍：wave w 的 GMM2/Combine 延至 GMM1(w+1) 之后，用下一 Wave 的 GMM1
+ * 覆盖 AIC 等激活的自旋（对齐 A8W8 的 gmm2LaggedTarget 设计；A8W4 的 AIV0 prologue 与
+ * AIV1 combine 在 GMM2 调用内均有实活，故三角色整调用同序滞后）。
  */
 template <TemplateMegaMoeA8W4WaveTypeClass>
-__aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::ProcessMoeExpertStages(
-    int32_t &gmm1TileReadySequence)
+__aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::ProcessMoeExpertStages()
 {
     // GMM1/GMM2 交错流水只记录一次阶段入口，各 Wave 完成轮次由独立计数记录。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::MOE_GMM1_ACTIVATION);
@@ -261,26 +268,41 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
 
-    // A8W4 GMM1 与 GMM2 按相同的跨 Wave tile 顺序执行，因此共用分核起点。
-    uint32_t startBlockIdx = 0U;
+    // MoE GMM1 与 GMM2 沿用同一分核游标，按 tile 顺序持续滚动。
 
     const uint32_t gmm1TilesPerMGroup =
         Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF, static_cast<uint32_t>(L1_TILE_N));
-    WaveGmm2PipelineState gmm2RuntimeState{startBlockIdx, combineBufferConfig, combineRowSequence,
-                                           gmm1TileReadySequence};
 
-    ExpertTokenPosition dispatchPosition{};
-    DispatchFirstWave(dispatchPosition);
+    ExpertTokenPosition dispatchPosition = DispatchFirstWave();
+    // GMM2 滞后一拍门控：与 A8W8 的 GMM2_LAG_MIN_TOKEN_NUM(4096) 同门槛；
+    // 关闭态与现役"当前 Wave 完成后立即消费"逐字等价。
+    const bool gmm2LagActive = commonConfig_.tokenNum >= 4096U;
+    bool hasPendingWave = false;
+    ExpertTokenRange pendingWaveRange{};
     ExpertTokenPosition gmm1Position{};
     while (gmm1Position.expertIdx < commonConfig_.moeExpertPerRank) {
-        ExpertTokenRange waveRange{gmm1Position, gmm1Position};
-        uint32_t waveLastActiveExpertIdx = ProcessCurrentWaveGmm1(waveRange, dispatchPosition, gmm1State, gmm1AddrInfo,
-                                                                  startBlockIdx, gmm1TileReadySequence,
-                                                                  gmm1TilesPerMGroup);
+        ExpertTokenRange waveRange = ProcessNextDispatchAndCurrentGmm1(
+            gmm1Position, dispatchPosition, gmm1State, gmm1AddrInfo, startBlockIdx_, gmm1TilesPerMGroup);
         gmm1Position = waveRange.end;
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM1, ++gmm1Count);
-        // 当前 Wave 完成后立即消费，使其 GMM2/Combine 与下一 Wave 的输入预取重叠。
-        ProcessCurrentWaveGmm2(waveRange, waveLastActiveExpertIdx, gmm2State, gmm2AddrInfo, gmm2RuntimeState);
+        if (!gmm2LagActive) {
+            RunGmm2CombineForWaveRange(waveRange, gmm2State, gmm2AddrInfo, combineBufferConfig,
+                                       combineRowSequence);
+            UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
+        } else {
+            if (hasPendingWave) {
+                RunGmm2CombineForWaveRange(pendingWaveRange, gmm2State, gmm2AddrInfo, combineBufferConfig,
+                                           combineRowSequence);
+                UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
+            }
+            pendingWaveRange = waveRange;
+            hasPendingWave = true;
+        }
+    }
+    // 滞后流水收尾：三角色共同补跑最后一个 Wave 的 GMM2/Combine。
+    if (hasPendingWave) {
+        RunGmm2CombineForWaveRange(pendingWaveRange, gmm2State, gmm2AddrInfo, combineBufferConfig,
+                                   combineRowSequence);
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
     }
 }
