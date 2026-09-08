@@ -19,15 +19,17 @@
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
 #include "adv_api/hcomm/hcomm.h"
 #endif
-#if __has_include("../../../common/mc2_moe_context.h")
-#include "../../../common/mc2_moe_context.h"
-#else
 #include "../../../../common/op_kernel/mc2_moe_context.h"
-#endif
 
 namespace MegaMoeImpl {
 
 using namespace AscendC;
+
+enum DispatchQuantOutDtype : int64_t {
+    E5M2_QUANT = 3U,
+    E4M3_QUANT = 4U,
+    E2M1_QUANT = 5U,
+};
 
 using ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
 
@@ -40,7 +42,7 @@ struct ExpertLoopState {
     bool expertCountTableReady = false;
 };
 
-// GMM1/GMM2 执行期间共同维护的流水状态；引用成员将更新直接回写到调用方持有的状态。
+// GMM1 执行期间共同维护的流水状态；引用成员将更新直接回写到调用方持有的状态。
 struct GmmRuntimeState {
     uint32_t &startBlockIdx;
     int32_t &vecSetSyncCom;

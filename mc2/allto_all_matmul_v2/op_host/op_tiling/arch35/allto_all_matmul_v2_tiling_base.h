@@ -661,7 +661,7 @@ protected:
             return ge::GRAPH_FAILED;
         }
         auto x1Dtype = x1DescTiling->GetDataType();
-        bool hasBias = context_->GetOptionalInputDesc(IDX_INPUT_BIAS) != nullptr;
+        bool hasBias = context_->GetOptionalInputShape(IDX_INPUT_BIAS) != nullptr;
         if (x1Dtype == ge::DT_FLOAT4_E2M1) {
             QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1,
                                   mm::BiasDataType::DT_FLOAT>
@@ -669,6 +669,7 @@ protected:
             tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
             tilingEngine.SetBiasInfo(hasBias);
             tilingEngine.EnableBaseMHalving(true);
+            tilingEngine.SetBiasInfo(hasBias);
             tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
         } else {
             QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN,
@@ -677,6 +678,7 @@ protected:
             tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
             tilingEngine.SetBiasInfo(hasBias);
             tilingEngine.EnableBaseMHalving(true);
+            tilingEngine.SetBiasInfo(hasBias);
             tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
         }
 

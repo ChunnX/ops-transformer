@@ -19,7 +19,7 @@
 
 #include "quant_matmul_tiling_base.h"
 
-template <mm::DataType aDataType, mm::DataType bDataType, mm::BiasDataType biasDtype = mm::BiasDataType::DT_FLOAT>
+template <mm::DataType aDataType, mm::DataType bDataType, mm::BiasDataType biasDtype>
 class QuantMatmulTilingSwat : public QuantMatmulTilingBase<aDataType, bDataType> {
 public:
     QuantMatmulTilingSwat()
@@ -144,8 +144,9 @@ private:
 
                 if (preSplit < preSplitMax &&
                     CalUsedCoreNum(runInfo_, preSplit + 1UL, secSplit) <= platformInfo_.aicNum) {
-                    uint64_t nextTileCount =
-                        CalcAlignedSplit(preSplit, secSplit, preSplitMax, preIsM ? runInfo_.mTailSize : 0);
+                    uint64_t nextTileCount = CalcAlignedSplit(preSplit, secSplit, preSplitMax,
+                                                              preIsM ? runInfo_.mTailSize : runInfo_.nTailSize,
+                                                              preIsM ? runInfo_.baseM : 0UL);
                     if (nextTileCount > 0) {
                         newPreTile = nextTileCount;
                     }
@@ -153,8 +154,9 @@ private:
 
                 if (secSplit < secSplitMax &&
                     CalUsedCoreNum(runInfo_, newPreTile, secSplit + 1UL) <= platformInfo_.aicNum) {
-                    uint64_t nextTileCount =
-                        CalcAlignedSplit(secSplit, newPreTile, secSplitMax, !preIsM ? runInfo_.mTailSize : 0);
+                    uint64_t nextTileCount = CalcAlignedSplit(secSplit, newPreTile, secSplitMax,
+                                                              preIsM ? runInfo_.nTailSize : runInfo_.mTailSize,
+                                                              preIsM ? 0UL : runInfo_.baseM);
                     if (nextTileCount > 0) {
                         newSecTile = nextTileCount;
                     }
@@ -404,7 +406,7 @@ private:
     }
 
     uint64_t CalcAlignedSplit(uint64_t growTileCount, uint64_t fixedTileCount, uint64_t tileCountMax,
-                              uint64_t alignTailSize) const
+                              uint64_t alignTailSize, uint64_t alignBaseSize = 0UL)
     {
         for (uint64_t increment = 1; increment <= ALIGN_SPLIT_MAX_INCREMENT; ++increment) {
             uint64_t nextTileCount = growTileCount + increment;
@@ -416,7 +418,9 @@ private:
                 break;
             }
             if (alignTailSize == 0 || CeilDiv(alignTailSize, nextTileCount) % CUBE_BLOCK == 0) {
-                return nextTileCount;
+                if (alignBaseSize == 0 || CeilDiv(alignBaseSize, nextTileCount) % CUBE_BLOCK == 0) {
+                    return nextTileCount;
+                }
             }
         }
         return 0;

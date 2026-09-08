@@ -37,10 +37,14 @@ enum class BiasDataType {
 template <BiasDataType biasDtype>
 constexpr uint64_t GetBiasDataSize()
 {
+    // apace_common_utils.h is included ahead of apace_constant.h, so keep the
+    // named widths local instead of pulling in that dependency.
+    constexpr uint64_t FP32_BYTES = 4UL;
+    constexpr uint64_t FP16_BYTES = 2UL;
     if constexpr (biasDtype == BiasDataType::DT_FLOAT) {
-        return 4UL;
+        return FP32_BYTES;
     } else {
-        return 2UL;
+        return FP16_BYTES;
     }
 }
 } // namespace mm
