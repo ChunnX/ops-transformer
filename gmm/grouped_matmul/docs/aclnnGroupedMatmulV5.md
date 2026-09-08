@@ -321,7 +321,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 - groupListType：支持0、1、2。
   - groupListType=0：groupList须为非负单调非递减数列（累积和），最后一个值不大于x中tensor的第一维。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
   - groupListType=1：groupList须为非负数列（各组大小），数值总和不大于x中tensor的第一维。例如：`[64, 0, 128, 64]`
-  - groupListType=2：仅全量化且groupType=0场景下支持，groupList须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`，非零组前置，第二列的数值总和不大于x中tensor的第一维。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
+  - groupListType=2：仅全量化和非量化，且groupType=0场景下支持，groupList须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`，非零组前置，第二列的数值总和不大于x中tensor的第一维。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
 - tuningConfigOptional：可选参数，数组中的第一个值表示各个专家处理的token数的预期值。当前仅S8S4场景支持，详见[S8S4场景约束](#ascend950-s8s4场景约束)。如不使用该参数不传即可。
   - `[1]`：是否开启weight亲和格式（先转置再NZ），适用场景：[S8S4](#ascend950-s8s4场景约束)。
 - actType（0~5）：
