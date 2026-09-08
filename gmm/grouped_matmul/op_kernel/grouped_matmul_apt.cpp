@@ -88,7 +88,6 @@ static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_DYNAMIC = {4, 0};
 #endif
 #else
 #include "arch35/non_quant/grouped_matmul_kernel_arch35.h"
-#include "arch35/non_quant/grouped_matmul_basic_kernel.h"
 #include "arch35/non_quant/grouped_matmul_tiling_key.h"
 #endif
 
@@ -558,17 +557,12 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                                                                                           tiling);
         }
     } else if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_TRANS) { // x transposed
-        if ASCEND_IS_AIV {
-            EmptyTensor<DTYPE_Y>(x, weight, groupList, y, tiling);
-        }
-        if ASCEND_IS_AIC {
-            if constexpr (wFormat == CubeFormat::NZ) {
-                GroupedMatMulKernel<AscendC::Te::DNExtLayoutPtn, AscendC::Te::NZLayoutPtn>(x, weight, bias, groupList,
-                                                                                           y, tiling);
-            } else {
-                GroupedMatMulKernel<AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(x, weight, bias,
-                                                                                              groupList, y, tiling);
-            }
+        if constexpr (wFormat == CubeFormat::NZ) {
+            GroupedMatMulKernel<AscendC::Te::DNExtLayoutPtn, AscendC::Te::NZLayoutPtn>(x, weight, bias, groupList, y,
+                                                                                       tiling);
+        } else {
+            GroupedMatMulKernel<AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(x, weight, bias, groupList, y,
+                                                                                          tiling);
         }
     } else if constexpr (NO_QUANT_B_TRANS == GMM_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) { // weight transposed
         if constexpr (wFormat == CubeFormat::NZ) {
