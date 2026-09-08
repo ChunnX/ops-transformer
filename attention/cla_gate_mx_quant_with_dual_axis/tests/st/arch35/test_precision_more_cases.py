@@ -104,6 +104,7 @@ def _load_ttk_cases(case_file):
                 "dst_type": int(attrs["dst_type"]),
                 "scale_alg": int(attrs["scale_alg"]),
                 "round_mode": attrs.get("round_mode", "rint"),
+                "quant_mode": int(attrs.get("quant_mode", 1)),
                 "ranges": [tuple(r) for r in ranges],
             })
         return cases
@@ -204,7 +205,7 @@ def main():
                         help="TTK kernel CSV used as the case list")
     parser.add_argument("--limit", type=int, default=0,
                         help="limit number of cases (0 means all)")
-    parser.add_argument("--device", type=int, default=0, help="NPU device id")
+    parser.add_argument("--device", type=int, default=6, help="NPU device id")
     parser.add_argument("--seed", type=int, default=20260905, help="random seed base")
     args = parser.parse_args()
 
@@ -247,6 +248,7 @@ def main():
                 round_mode=case["round_mode"],
                 scale_alg=case["scale_alg"],
                 dst_type=case["dst_type"],
+                quant_mode=case["quant_mode"],
             )
             golden = _small_op(
                 go, lo, gg, lg,

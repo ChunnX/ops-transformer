@@ -53,16 +53,26 @@ op::Shape MakeColScaleShape(const op::Shape& xShape)
 std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*> ClaGateMxQuantWithDualAxis(
     const aclTensor* globalOut, const aclTensor* localOut, const aclTensor* globalGateLogits,
     const aclTensor* localGateLogits, const char* roundModeOptional, int64_t scaleAlg, int64_t dstType,
-    aclOpExecutor* executor)
+    int64_t quantMode, aclOpExecutor* executor)
 {
     L0_DFX(ClaGateMxQuantWithDualAxis, globalOut, localOut, globalGateLogits, localGateLogits,
-           roundModeOptional, scaleAlg, dstType);
+           roundModeOptional, scaleAlg, dstType, quantMode);
 
     auto xShape = globalOut->GetViewShape();
     auto rowDataShape = MakeRowDataShape(xShape);
-    auto colDataShape = rowDataShape;
     auto rowScaleShape = MakeRowScaleShape(xShape);
-    auto colScaleShape = MakeColScaleShape(xShape);
+    op::Shape colDataShape;
+    op::Shape colScaleShape;
+    if (quantMode == 0) {
+        colDataShape.AppendDim(0);
+        colDataShape.AppendDim(xShape.GetDim(1) * xShape.GetDim(2));
+        colScaleShape.AppendDim(0);
+        colScaleShape.AppendDim(xShape.GetDim(1) * xShape.GetDim(2));
+        colScaleShape.AppendDim(2);
+    } else {
+        colDataShape = rowDataShape;
+        colScaleShape = MakeColScaleShape(xShape);
+    }
 
     auto rowData = executor->AllocTensor(rowDataShape, op::DataType(dstType));
     auto rowScale = executor->AllocTensor(rowScaleShape, op::DataType::DT_FLOAT8_E8M0);
@@ -74,12 +84,12 @@ std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*> ClaGateMxQuantWithDua
     }
 
     // OP_ATTR order must match op_def attr declaration:
-    // dst_type(0), scale_alg(1), round_mode(2)
+    // dst_type(0), scale_alg(1), round_mode(2), quant_mode(3)
     const char* roundMode = (roundModeOptional != nullptr) ? roundModeOptional : "rint";
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(ClaGateMxQuantWithDualAxis,
                                            OP_INPUT(globalOut, localOut, globalGateLogits, localGateLogits),
                                            OP_OUTPUT(rowData, rowScale, colData, colScale),
-                                           OP_ATTR(dstType, scaleAlg, roundMode));
+                                           OP_ATTR(dstType, scaleAlg, roundMode, quantMode));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "ClaGateMxQuantWithDualAxis launch kernel failed.");
         return std::make_tuple(nullptr, nullptr, nullptr, nullptr);

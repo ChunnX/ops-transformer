@@ -8,6 +8,7 @@ namespace ops {
 constexpr int64_t ROW_BLOCK = 64;
 constexpr int64_t SCALE_LAST_DIM = 2;
 constexpr int64_t INDEX_ATTR_DST_TYPE = 0;
+constexpr int64_t INDEX_ATTR_QUANT_MODE = 3;
 
 ge::graphStatus InferShapeForClaGateMxQuantWithDualAxis(gert::InferShapeContext* context)
 {
@@ -32,11 +33,20 @@ ge::graphStatus InferShapeForClaGateMxQuantWithDualAxis(gert::InferShapeContext*
         OP_LOGE(context->GetNodeName(), "global_out shape must be positive.");
         return ge::GRAPH_FAILED;
     }
+    auto attrs = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    const int32_t* quantModePtr = attrs->GetAttrPointer<int32_t>(INDEX_ATTR_QUANT_MODE);
+    int64_t quantMode = quantModePtr != nullptr ? *quantModePtr : 0;
     int64_t k = n * d;
     *rowData = gert::Shape({t, k});
-    *colData = gert::Shape({t, k});
     *rowScale = gert::Shape({t, Ops::Base::CeilDiv(k, ROW_BLOCK), SCALE_LAST_DIM});
-    *colScale = gert::Shape({Ops::Base::CeilDiv(t, ROW_BLOCK), k, SCALE_LAST_DIM});
+    if (quantMode == 0) {
+        *colData = gert::Shape({0, k});
+        *colScale = gert::Shape({0, k, SCALE_LAST_DIM});
+    } else {
+        *colData = gert::Shape({t, k});
+        *colScale = gert::Shape({Ops::Base::CeilDiv(t, ROW_BLOCK), k, SCALE_LAST_DIM});
+    }
     return ge::GRAPH_SUCCESS;
 }
 

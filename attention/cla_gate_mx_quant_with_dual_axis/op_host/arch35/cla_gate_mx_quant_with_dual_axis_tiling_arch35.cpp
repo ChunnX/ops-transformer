@@ -28,10 +28,11 @@ using namespace ClaGateMxQuantWithDualAxisOp;
 namespace optiling {
 namespace {
 // Attr order must match op_def:
-// dst_type(0), scale_alg(1), round_mode(2)
+// dst_type(0), scale_alg(1), round_mode(2), quant_mode(3)
 constexpr int64_t INDEX_ATTR_DST_TYPE = 0;
 constexpr int64_t INDEX_ATTR_SCALE_ALG = 1;
 constexpr int64_t INDEX_ATTR_ROUND_MODE = 2;
+constexpr int64_t INDEX_ATTR_QUANT_MODE = 3;
 
 constexpr int64_t INPUT_GLOBAL_OUT = 0;
 constexpr int64_t INPUT_LOCAL_OUT = 1;
@@ -46,6 +47,8 @@ constexpr int64_t BLOCK_W = 256;
 constexpr int64_t BLOCK_H = 64;
 constexpr int64_t MIN_N = 1;
 constexpr int64_t MAX_N = 128;
+constexpr int64_t FULL_ROW_BLOCK = 64;
+constexpr int64_t FULL_COL_BLOCK = 256;
 
 const std::set<ge::DataType> INPUT_SUPPORT_DTYPE_SET = {ge::DT_FLOAT16, ge::DT_BF16};
 const std::set<ge::DataType> Y_SUPPORT_DTYPE_SET = {ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2,
@@ -90,19 +93,69 @@ ge::graphStatus CheckOutputShapes(const gert::Shape& go, const gert::Shape& rowD
 {
     int64_t t = go.GetDim(0);
     int64_t k = go.GetDim(1) * go.GetDim(2);
-    if (rowData.GetDimNum() != 2 || colData.GetDimNum() != 2 || rowData != colData ||
-        rowData.GetDim(0) != t || rowData.GetDim(1) != k) {
+    if (rowData.GetDimNum() != 2 || rowData.GetDim(0) != t || rowData.GetDim(1) != k) {
         return ge::GRAPH_FAILED;
     }
     if (rowScale.GetDimNum() != 3 || rowScale.GetDim(0) != t ||
         rowScale.GetDim(1) != Ops::Base::CeilDiv(k, BLOCK_H) || rowScale.GetDim(2) != 2) {
         return ge::GRAPH_FAILED;
     }
-    if (colScale.GetDimNum() != 3 || colScale.GetDim(0) != Ops::Base::CeilDiv(t, BLOCK_H) ||
-        colScale.GetDim(1) != k || colScale.GetDim(2) != 2) {
-        return ge::GRAPH_FAILED;
+    bool colEmpty = (colData.GetDimNum() >= 1 && colData.GetDim(0) == 0) &&
+                    (colScale.GetDimNum() >= 1 && colScale.GetDim(0) == 0);
+    if (!colEmpty) {
+        if (colData.GetDimNum() != 2 || colData.GetDim(0) != t || colData.GetDim(1) != k) {
+            return ge::GRAPH_FAILED;
+        }
+        if (colScale.GetDimNum() != 3 || colScale.GetDim(0) != Ops::Base::CeilDiv(t, BLOCK_H) ||
+            colScale.GetDim(1) != k || colScale.GetDim(2) != 2) {
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
+}
+
+void CalcTailAxisTiling(ClaGateMxQuantWithDualAxisTilingParam& params)
+{
+    int64_t m = params.dimM;
+    int64_t k = params.dimN;
+
+    // For the single-axis (tail-axis) path, choose the number of AIV cores by
+    // the amount of input data first. Every full 4KB input chunk is treated as
+    // the smallest amount of work that should occupy one core. Double buffering
+    // doubles the resident input volume, so divide the 4KB-based hint by 2 as
+    // well. If the data is large enough, fall back to the full core count and
+    // split by T*N (256-column tiles) over those cores.
+    constexpr int64_t BYTES_PER_CORE_HINT = 4096;
+    int64_t inputBytes = m * k * params.dtypeSize;
+    int64_t coreHint = inputBytes / BYTES_PER_CORE_HINT / 2;
+    if (coreHint < 1) {
+        coreHint = 1;
+    }
+    params.usedCoreNum = std::min(params.totalCoreNum, coreHint);
+
+    // Single-axis tiling granularity: one row x one 256-column block.
+    // rowBlock is always 1; only the column direction is split into 256-wide
+    // blocks. If the last column block is shorter than 256, the kernel pads it
+    // with zeros before the interleaved double-buffer copy/quantization.
+    int64_t rowBlock = 1;
+    int64_t colBlock = FULL_COL_BLOCK;
+    int64_t colTileNum = Ops::Base::CeilDiv(k, colBlock);
+    params.rowBlockSize = rowBlock;
+    params.colBlockSize = colBlock;
+    params.rowTileNum = Ops::Base::CeilDiv(m, rowBlock);
+    params.colTileNum = colTileNum;
+    params.rowTailSize = 1;
+    params.colTailSize = k - (colTileNum - 1) * colBlock;
+    if (params.colTailSize <= 0) {
+        params.colTailSize = colBlock;
+    }
+
+    // UB batch parameters are computed on the host side. Each batch is simply
+    // up to 64 full 256-column tiles; the last batch is allowed to be smaller.
+    int64_t totalTiles = params.rowTileNum * params.colTileNum;
+    int64_t maxTilesPerCore = Ops::Base::CeilDiv(totalTiles, params.usedCoreNum);
+    params.batchSize = FULL_ROW_BLOCK;
+    params.batchCount = Ops::Base::CeilDiv(maxTilesPerCore, FULL_ROW_BLOCK);
 }
 
 ge::graphStatus GetPlatformInfo(gert::TilingContext* context, ClaGateMxQuantWithDualAxisTilingParam& params)
@@ -139,9 +192,11 @@ ge::graphStatus GetAndCheckAttrs(gert::TilingContext* context, ClaGateMxQuantWit
     OP_CHECK_NULL_WITH_CONTEXT(context, scaleAlgPtr);
     auto dstTypePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_DST_TYPE);
     OP_CHECK_NULL_WITH_CONTEXT(context, dstTypePtr);
+    auto quantModePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_QUANT_MODE);
     params.roundMode = static_cast<int64_t>(roundMode);
     params.scaleAlg = *scaleAlgPtr;
     params.dstType = *dstTypePtr;
+    params.quantMode = (quantModePtr != nullptr) ? *quantModePtr : 0;
 
     OP_CHECK_IF(params.scaleAlg != 0 && params.scaleAlg != 1,
                 OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale_alg",
@@ -230,6 +285,7 @@ ge::graphStatus TilingForClaGateMxQuantWithDualAxis(gert::TilingContext* context
     params.dimHeadNum = go.GetDim(1);
     params.dimHeadSize = go.GetDim(2);
     params.dimN = params.dimHeadNum * params.dimHeadSize;
+    params.dtypeSize = 2; // fp16/bf16 inputs are both 2 bytes per element.
     params.blockW = BLOCK_W;
     params.splitBlockH = BLOCK_H;
 
@@ -242,11 +298,18 @@ ge::graphStatus TilingForClaGateMxQuantWithDualAxis(gert::TilingContext* context
                 OP_LOGE(context->GetNodeName(), "GetAndCheckAttrs failed."),
                 return ge::GRAPH_FAILED);
 
+    params.quantMode = params.quantMode == 0 ? 0 : 1;
+
     params.dimNBlockNum = Ops::Base::CeilDiv(params.dimN, params.blockW);
     params.dimNTail = params.dimN % params.blockW == 0 ? params.blockW : params.dimN % params.blockW;
-    int64_t dimMSplit = Ops::Base::CeilDiv(params.dimM, params.splitBlockH);
-    int64_t totalBlocks = dimMSplit * params.dimNBlockNum;
-    params.usedCoreNum = std::min(params.totalCoreNum, totalBlocks);
+
+    if (params.quantMode == 0) {
+        CalcTailAxisTiling(params);
+    } else {
+        int64_t dimMSplit = Ops::Base::CeilDiv(params.dimM, params.splitBlockH);
+        int64_t totalBlocks = dimMSplit * params.dimNBlockNum;
+        params.usedCoreNum = std::min(params.totalCoreNum, totalBlocks);
+    }
     context->SetBlockDim(params.usedCoreNum);
     context->SetTilingKey(GET_TPL_TILING_KEY(keyMode, keyRound, params.scaleAlg, TPL_NO_GROUP_INDEX));
 
@@ -265,6 +328,15 @@ ge::graphStatus TilingForClaGateMxQuantWithDualAxis(gert::TilingContext* context
     data->dimNTail = params.dimNTail;
     data->headNum = params.dimHeadNum;
     data->headDim = params.dimHeadSize;
+    data->quantMode = params.quantMode;
+    data->rowTileNum = params.rowTileNum;
+    data->colTileNum = params.colTileNum;
+    data->rowBlockSize = params.rowBlockSize;
+    data->rowTailSize = params.rowTailSize;
+    data->colBlockSize = params.colBlockSize;
+    data->colTailSize = params.colTailSize;
+    data->batchCount = params.batchCount;
+    data->batchSize = params.batchSize;
 
     size_t* workspaces = context->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, workspaces);

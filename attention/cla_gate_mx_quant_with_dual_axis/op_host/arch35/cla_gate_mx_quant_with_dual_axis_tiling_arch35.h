@@ -55,6 +55,15 @@ struct ClaGateMxQuantWithDualAxisTilingParam {
     int64_t dimNTail{0};
     int64_t workspaceSize{0};
     int64_t dtypeSize{2};
+    int64_t quantMode{1};     // 0: tail-axis single, 1: dual-axis
+    int64_t rowTileNum{0};
+    int64_t colTileNum{0};
+    int64_t rowBlockSize{0};
+    int64_t rowTailSize{0};
+    int64_t colBlockSize{0};
+    int64_t colTailSize{0};
+    int64_t batchCount{0};
+    int64_t batchSize{0};
     ge::DataType yDtype{ge::DT_UNDEFINED};
 };
 

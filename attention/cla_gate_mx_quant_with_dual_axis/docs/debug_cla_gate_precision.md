@@ -226,12 +226,12 @@ python3 tests/assets/analyze_ttk_dump.py \
 
 1. 源码：
 ```text
-op_kernel/arch35/cla_gate_mx_quant_with_dual_axis_regbase.h
+op_kernel/arch35/cla_gate_mx_quant_with_dual_axis.h
 ```
 
 2. CANN vendor 编译路径：
 ```text
-/home/g00940185/work/CANN9.2.0/cann-9.2.0/opp/vendors/custom_nn/op_impl/ai_core/tbe/custom_nn_impl/ascendc/cla_gate_mx_quant_with_dual_axis/arch35/cla_gate_mx_quant_with_dual_axis_regbase.h
+/home/g00940185/work/CANN9.2.0/cann-9.2.0/opp/vendors/custom_nn/op_impl/ai_core/tbe/custom_nn_impl/ascendc/cla_gate_mx_quant_with_dual_axis/arch35/cla_gate_mx_quant_with_dual_axis.h
 ```
 
 ### 8.2 在文件顶部增加调试宏

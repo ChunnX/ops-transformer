@@ -79,12 +79,35 @@ def _torch_uint8_bytes(tensor):
 
 
 def _get_device_id():
-    """Select the NPU device that can actually be opened in this process.
+    """Select the NPU device used by the golden.
 
-    TTK may run the golden on a device other than 0 (for example device 6).
-    torch.npu.current_device() can still report 0 before a context is bound, so
-    try current, ASCEND_RT_VISIBLE_DEVICES, and then all visible NPUs.
+    TTK_GOLDEN_DEVICE_ID is set by run_ttk_kernel_single_axis.sh from
+    --device-whitelist. If it is present, use only that device.
     """
+    explicit = os.environ.get("TTK_GOLDEN_DEVICE_ID", "").strip()
+    if explicit.isdigit():
+        dev_id = int(explicit)
+        try:
+            torch.npu.set_device(dev_id)
+            _ = torch.zeros(1, device=f"npu:{dev_id}")
+            return dev_id
+        except Exception:
+            pass
+
+    visible = os.environ.get("ASCEND_RT_VISIBLE_DEVICES", "").strip()
+    if visible:
+        for item in visible.split(","):
+            item = item.strip()
+            if not item.isdigit():
+                continue
+            dev_id = int(item)
+            try:
+                torch.npu.set_device(dev_id)
+                _ = torch.zeros(1, device=f"npu:{dev_id}")
+                return dev_id
+            except Exception:
+                continue
+
     candidates = []
     try:
         current = torch.npu.current_device()
@@ -93,27 +116,22 @@ def _get_device_id():
     except Exception:
         pass
 
-    visible = os.environ.get("ASCEND_RT_VISIBLE_DEVICES", "").strip()
-    if visible:
-        for item in visible.split(","):
-            item = item.strip()
-            if item.isdigit():
-                candidates.append(int(item))
-
     try:
         device_count = torch.npu.device_count()
     except Exception:
         device_count = 0
-    for dev_id in range(max(device_count, 8)):
+    for dev_id in range(max(device_count, 1)):
         if dev_id not in candidates:
             candidates.append(dev_id)
 
     for dev_id in candidates:
         try:
             torch.npu.set_device(dev_id)
+            _ = torch.zeros(1, device=f"npu:{dev_id}")
             return dev_id
         except Exception:
             continue
+
     return 0
 
 
@@ -178,7 +196,7 @@ def cla_gate_quant_dual_npu_tensors(global_out, local_out, global_gate_logits, l
 
 
 def cla_gate_quant_dual_npu(global_out, local_out, global_gate_logits, local_gate_logits, *,
-                            scale_alg=1, dst_type=36, round_mode="rint"):
+                            scale_alg=1, dst_type=36, round_mode="rint", quant_mode=1):
     row_data, row_scale, col_data, col_scale = cla_gate_quant_dual_npu_tensors(
         global_out,
         local_out,
@@ -208,6 +226,12 @@ def cla_gate_quant_dual_npu(global_out, local_out, global_gate_logits, local_gat
     col_scale_np = np.frombuffer(_torch_uint8_bytes(col_scale), dtype=_e8m0_numpy_dtype()).reshape(
         col_scale.shape
     )
+    if quant_mode == 0:
+        # Single-axis mode outputs empty col_data/col_scale.
+        col_data_np = np.empty((0,) + col_data_np.shape[1:], dtype=col_data_np.dtype)
+        col_scale_np = np.empty((0, col_scale_np.shape[1], col_scale_np.shape[2]),
+                                dtype=col_scale_np.dtype)
+
     return row_data_np, row_scale_np, col_data_np, col_scale_np
 
 
@@ -230,6 +254,7 @@ def cla_gate_mx_quant_with_dual_axis_npu_golden(
     if dst_type in (40, 41) and scale_alg != 0:
         raise ValueError("FP4 only supports scale_alg=0")
 
+    quant_mode = int(kwargs.get("quant_mode", 1))
     return cla_gate_quant_dual_npu(
         global_out,
         local_out,
@@ -238,6 +263,7 @@ def cla_gate_mx_quant_with_dual_axis_npu_golden(
         scale_alg=scale_alg,
         dst_type=dst_type,
         round_mode=round_mode,
+        quant_mode=quant_mode,
     )
 
 

@@ -72,7 +72,8 @@ cla_gate_mx_quant_with_dual_axis(
     const at::Tensor& local_gate_logits,
     const std::string& round_mode,
     int64_t scale_alg,
-    int64_t dst_type)
+    int64_t dst_type,
+    int64_t quant_mode)
 {
     CheckNpuTensor(global_out, "global_out");
     CheckNpuTensor(local_out, "local_out");
@@ -122,6 +123,7 @@ cla_gate_mx_quant_with_dual_axis(
     TORCH_CHECK(round_mode == "rint" || round_mode == "round" || round_mode == "floor",
                 "round_mode must be rint/round/floor, got ", round_mode);
     TORCH_CHECK(scale_alg == 0 || scale_alg == 1, "scale_alg must be 0 or 1, but got ", scale_alg);
+    TORCH_CHECK(quant_mode == 0 || quant_mode == 1, "quant_mode must be 0 or 1, but got ", quant_mode);
     if (IsFp4DstType(dst_type)) {
         TORCH_CHECK(scale_alg == 0, "FP4 only supports scale_alg=0");
     } else {
@@ -135,11 +137,18 @@ cla_gate_mx_quant_with_dual_axis(
     const int64_t k = n * d;
     const int64_t data_cols = IsFp4DstType(dst_type) ? k / 2 : k;
     at::Tensor row_data = at::empty({t, data_cols}, global_out.options().dtype(data_scalar_type));
-    at::Tensor col_data = at::empty({t, data_cols}, global_out.options().dtype(data_scalar_type));
     at::Tensor row_scale = at::empty({t, (k + SPLIT_BLOCK_SIZE - 1) / SPLIT_BLOCK_SIZE, 2},
                                      global_out.options().dtype(at::kByte));
-    at::Tensor col_scale = at::empty({(t + SPLIT_BLOCK_SIZE - 1) / SPLIT_BLOCK_SIZE, k, 2},
-                                     global_out.options().dtype(at::kByte));
+    at::Tensor col_data;
+    at::Tensor col_scale;
+    if (quant_mode == 0) {
+        col_data = at::empty({0, data_cols}, global_out.options().dtype(data_scalar_type));
+        col_scale = at::empty({0, k, 2}, global_out.options().dtype(at::kByte));
+    } else {
+        col_data = at::empty({t, data_cols}, global_out.options().dtype(data_scalar_type));
+        col_scale = at::empty({(t + SPLIT_BLOCK_SIZE - 1) / SPLIT_BLOCK_SIZE, k, 2},
+                              global_out.options().dtype(at::kByte));
+    }
 
     TensorWrapper row_data_wrapper = {row_data, data_acl_type};
     TensorWrapper col_data_wrapper = {col_data, data_acl_type};
@@ -150,7 +159,7 @@ cla_gate_mx_quant_with_dual_axis(
     char *round_mode_ptr = const_cast<char *>(round_mode.c_str());
     ACLNN_CMD(aclnnClaGateMxQuantWithDualAxis,
               global_out, local_out, global_gate_logits, local_gate_logits,
-              round_mode_ptr, scale_alg, dst_type,
+              round_mode_ptr, scale_alg, dst_type, quant_mode,
               row_data_wrapper, row_scale_wrapper, col_data_wrapper, col_scale_wrapper);
 
     return std::make_tuple(std::move(row_data), std::move(row_scale),

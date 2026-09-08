@@ -29,6 +29,15 @@ struct ClaGateMxQuantWithDualAxisTilingData {
     int64_t dimNTail;     // K 方向尾块列数
     int64_t headNum;      // head 数量 N
     int64_t headDim;      // 每个 head 的 D（128 或 256）
+    int64_t quantMode;    // 0: tail-axis single, 1: dual-axis
+    int64_t rowTileNum;   // tail-axis single: 行方向 tile 数
+    int64_t colTileNum;   // tail-axis single: 列方向 tile 数
+    int64_t rowBlockSize; // tail-axis single: 正常行块行数
+    int64_t rowTailSize;  // tail-axis single: 行尾块行数
+    int64_t colBlockSize; // tail-axis single: 正常列块列数
+    int64_t colTailSize;  // tail-axis single: 列尾块列数
+    int64_t batchCount;   // tail-axis single: 每个核的最大 UB batch 数
+    int64_t batchSize;    // tail-axis single: 每个 UB batch 包含的 256 列块数
 };
 
 #endif // OPS_NN_CLA_GATE_MX_QUANT_WITH_DUAL_AXIS_TILINGDATA_H

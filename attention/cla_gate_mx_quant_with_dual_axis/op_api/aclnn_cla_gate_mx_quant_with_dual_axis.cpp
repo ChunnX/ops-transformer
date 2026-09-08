@@ -128,25 +128,35 @@ static bool CheckShape(const aclTensor* globalOut, const aclTensor* localOut,
 }
 
 static bool CheckOutputShape(const aclTensor* rowData, const aclTensor* rowScale,
-                             const aclTensor* colData, const aclTensor* colScale, int64_t t, int64_t k)
+                             const aclTensor* colData, const aclTensor* colScale, int64_t t, int64_t k,
+                             int64_t quantMode)
 {
     auto rdShape = rowData->GetViewShape();
     auto rsShape = rowScale->GetViewShape();
     auto cdShape = colData->GetViewShape();
     auto csShape = colScale->GetViewShape();
-    if (rdShape.GetDimNum() != 2 || cdShape.GetDimNum() != 2 || rdShape.GetDim(0) != t ||
-        rdShape.GetDim(1) != k || cdShape.GetDim(0) != t || cdShape.GetDim(1) != k) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "row_data/col_data must be [T,N*D].");
+    if (rdShape.GetDimNum() != 2 || rdShape.GetDim(0) != t || rdShape.GetDim(1) != k) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "row_data must be [T,N*D].");
         return false;
     }
-    if (rsShape.GetDimNum() != 3 || csShape.GetDimNum() != 3 ||
-        rsShape.GetDim(0) != t || rsShape.GetDim(1) != (k + ROW_BLOCK - 1) / ROW_BLOCK ||
-        rsShape.GetDim(2) != SCALE_LAST_DIM ||
-        csShape.GetDim(0) != (t + ROW_BLOCK - 1) / ROW_BLOCK || csShape.GetDim(1) != k ||
-        csShape.GetDim(2) != SCALE_LAST_DIM) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "row_scale/col_scale physical shape mismatch, expected "
-                "[T,ceil(N*D/64),2] and [ceil(T/64),N*D,2].");
+    if (rsShape.GetDimNum() != 3 || rsShape.GetDim(0) != t ||
+        rsShape.GetDim(1) != (k + ROW_BLOCK - 1) / ROW_BLOCK ||
+        rsShape.GetDim(2) != SCALE_LAST_DIM) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "row_scale physical shape mismatch.");
+        return false;
+    }
+    bool colEmpty = (cdShape.GetDimNum() == 2 && cdShape.GetDim(0) == 0) &&
+                    (csShape.GetDimNum() == 3 && csShape.GetDim(0) == 0);
+    if (quantMode == 0) {
+        return colEmpty;
+    }
+    if (cdShape.GetDimNum() != 2 || cdShape.GetDim(0) != t || cdShape.GetDim(1) != k) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "col_data must be [T,N*D].");
+        return false;
+    }
+    if (csShape.GetDimNum() != 3 || csShape.GetDim(0) != (t + ROW_BLOCK - 1) / ROW_BLOCK ||
+        csShape.GetDim(1) != k || csShape.GetDim(2) != SCALE_LAST_DIM) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "col_scale physical shape mismatch.");
         return false;
     }
     return true;
@@ -154,7 +164,7 @@ static bool CheckOutputShape(const aclTensor* rowData, const aclTensor* rowScale
 
 static aclnnStatus CheckParams(const aclTensor* globalOut, const aclTensor* localOut,
                                const aclTensor* globalGateLogits, const aclTensor* localGateLogits,
-                               const char* roundMode, int64_t scaleAlg, int64_t dstType,
+                               const char* roundMode, int64_t scaleAlg, int64_t dstType, int64_t quantMode,
                                const aclTensor* rowData, const aclTensor* rowScale,
                                const aclTensor* colData, const aclTensor* colScale)
 {
@@ -165,6 +175,7 @@ static aclnnStatus CheckParams(const aclTensor* globalOut, const aclTensor* loca
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckShape(globalOut, localOut, globalGateLogits, localGateLogits), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(IsRoundModeValid(roundMode), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(quantMode == 0 || quantMode == 1, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(scaleAlg == SCALE_ALG_OCP || scaleAlg == SCALE_ALG_CUBLAS, ACLNN_ERR_PARAM_INVALID);
     if ((dstType == FP4_E2M1 || dstType == FP4_E1M2) && scaleAlg != SCALE_ALG_OCP) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FP4 only supports scale_alg=0.");
@@ -178,7 +189,7 @@ static aclnnStatus CheckParams(const aclTensor* globalOut, const aclTensor* loca
     auto goShape = globalOut->GetViewShape();
     int64_t t = goShape.GetDim(0);
     int64_t k = goShape.GetDim(1) * goShape.GetDim(2);
-    CHECK_RET(CheckOutputShape(rowData, rowScale, colData, colScale, t, k), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckOutputShape(rowData, rowScale, colData, colScale, t, k, quantMode), ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 } // namespace
@@ -186,19 +197,21 @@ static aclnnStatus CheckParams(const aclTensor* globalOut, const aclTensor* loca
 aclnnStatus aclnnClaGateMxQuantWithDualAxisGetWorkspaceSize(
     const aclTensor* globalOut, const aclTensor* localOut,
     const aclTensor* globalGateLogits, const aclTensor* localGateLogits,
-    const char* roundModeOptional, int64_t scaleAlg, int64_t dstType,
+    const char* roundModeOptional, int64_t scaleAlg, int64_t dstType, int64_t quantMode,
     aclTensor* rowData, aclTensor* rowScale,
     aclTensor* colData, aclTensor* colScale,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(aclnnClaGateMxQuantWithDualAxis,
-                   DFX_IN(globalOut, localOut, globalGateLogits, localGateLogits, roundModeOptional, scaleAlg, dstType),
+                   DFX_IN(globalOut, localOut, globalGateLogits, localGateLogits,
+                          roundModeOptional, scaleAlg, dstType, quantMode),
                    DFX_OUT(rowData, rowScale, colData, colScale));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     auto ret = CheckParams(globalOut, localOut, globalGateLogits, localGateLogits,
-                           roundModeOptional, scaleAlg, dstType, rowData, rowScale, colData, colScale);
+                           roundModeOptional, scaleAlg, dstType, quantMode,
+                           rowData, rowScale, colData, colScale);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     auto globalOutContiguous = l0op::Contiguous(globalOut, uniqueExecutor.get());
@@ -212,7 +225,7 @@ aclnnStatus aclnnClaGateMxQuantWithDualAxisGetWorkspaceSize(
 
     auto result = l0op::ClaGateMxQuantWithDualAxis(
         globalOutContiguous, localOutContiguous, globalGateContiguous, localGateContiguous,
-        roundModeOptional, scaleAlg, dstType, uniqueExecutor.get());
+        roundModeOptional, scaleAlg, dstType, quantMode, uniqueExecutor.get());
     const aclTensor* rowDataOut = std::get<0>(result);
     const aclTensor* rowScaleOut = std::get<1>(result);
     const aclTensor* colDataOut = std::get<2>(result);

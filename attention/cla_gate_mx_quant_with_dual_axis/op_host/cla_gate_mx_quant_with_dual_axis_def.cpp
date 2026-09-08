@@ -39,6 +39,7 @@ public:
         this->Attr("dst_type").AttrType(OPTIONAL).Int(DEFAULT_DST_TYPE);
         this->Attr("scale_alg").AttrType(OPTIONAL).Int(DEFAULT_SCALE_ALG);
         this->Attr("round_mode").AttrType(OPTIONAL).String("rint");
+        this->Attr("quant_mode").AttrType(OPTIONAL).Int(0);
         OpAICoreConfig config;
         config.DynamicCompileStaticFlag(true).DynamicRankSupportFlag(true).DynamicShapeSupportFlag(true)
             .ExtendCfgInfo("opFile.value", "cla_gate_mx_quant_with_dual_axis_apt");

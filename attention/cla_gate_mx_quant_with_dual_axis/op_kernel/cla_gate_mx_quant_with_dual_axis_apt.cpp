@@ -10,10 +10,11 @@
 
 /*!
  * \file cla_gate_mx_quant_with_dual_axis_apt.cpp
- * \brief ClaGateMxQuantWithDualAxis kernel entry (regbase mode)
+ * \brief ClaGateMxQuantWithDualAxis kernel entry
  */
 
-#include "arch35/cla_gate_mx_quant_with_dual_axis_regbase.h"
+#include "arch35/cla_gate_mx_quant_with_dual_axis.h"
+#include "arch35/cla_gate_mx_quant_single_axis.h"
 #include "arch35/cla_gate_mx_quant_with_dual_axis_tilingdata.h"
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
@@ -58,11 +59,19 @@ __global__ __aicore__ void cla_gate_mx_quant_with_dual_axis(
     GET_TILING_DATA_WITH_STRUCT(ClaGateMxQuantWithDualAxisTilingData, tilingData, tiling);
     TPipe pipe;
     constexpr AscendC::RoundMode ascendcRoundMode = RoundModeMapper<roundMode>::value;
-    ClaGateMxQuantWithDualAxisBase<DTYPE_GLOBAL_OUT, DTYPE_ROW_DATA, mode, ascendcRoundMode,
-                                  scaleAlg, isGroupIdx> op(&tilingData, &pipe);
-    op.Init(global_out, local_out, global_gate_logits, local_gate_logits,
-            row_data, row_scale, col_data, col_scale);
-    op.Process();
+    if (tilingData.quantMode == 0) {
+        ClaGateMxQuantTailAxisBase<DTYPE_GLOBAL_OUT, DTYPE_ROW_DATA, mode, ascendcRoundMode,
+                                   scaleAlg, isGroupIdx> op(&tilingData, &pipe);
+        op.Init(global_out, local_out, global_gate_logits, local_gate_logits,
+                row_data, row_scale, col_data, col_scale);
+        op.Process();
+    } else {
+        ClaGateMxQuantWithDualAxisBase<DTYPE_GLOBAL_OUT, DTYPE_ROW_DATA, mode, ascendcRoundMode,
+                                       scaleAlg, isGroupIdx> op(&tilingData, &pipe);
+        op.Init(global_out, local_out, global_gate_logits, local_gate_logits,
+                row_data, row_scale, col_data, col_scale);
+        op.Process();
+    }
 #if (__NPU_ARCH__ == 3510)
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
 #endif
