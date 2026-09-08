@@ -505,6 +505,11 @@ public:
         if (loop == 0) {
             if (runInfo0.isValid) {
                 if ASCEND_IS_AIC {
+                    // Q 的 MTE2 与首任务 KV 同拍发出，压缩启动期（仅首任务安全：Q 单槽 L1）
+                    if (runInfo0.isFirstS2Loop) {
+                        ComputeQPreload(runInfo0);
+                        runInfo0.qPreloaded = true;
+                    }
                     ComputeBmm1Load(runInfo0);
                 }
             }
@@ -512,9 +517,18 @@ public:
 
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
-                ComputeMm1(runInfo0);
+                ComputeMm1(runInfo0, runInfo0.qPreloaded);
             } else {
                 ComputeVec1(runInfo0);
+            }
+        }
+
+        // 下一任务为换 Q 块首任务：Q 的 MTE2 提前到本轮发起（须在 ComputeMm1 释 MTE1(Q) 锁之后，
+        // Mutex 顺序保证覆盖时不与本轮 Q 的 MTE1 读冲突；Q 单槽 L1，故仅边界任务可提前）
+        if (runInfo0.isValid && runInfoNext.isValid && runInfo0.isLastS2Loop && runInfoNext.isFirstS2Loop) {
+            if ASCEND_IS_AIC {
+                ComputeQPreload(runInfoNext);
+                runInfoNext.qPreloaded = true;
             }
         }
 
@@ -530,9 +544,14 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(FlashMlaWithKvcacheRunInfoX &runInfo)
+    __aicore__ inline void ComputeMm1(FlashMlaWithKvcacheRunInfoX &runInfo, bool qPreloaded = false)
     {
-        cubeBlock_.IterateBmm1(runInfo);
+        cubeBlock_.IterateBmm1(runInfo, qPreloaded);
+    }
+
+    __aicore__ inline void ComputeQPreload(FlashMlaWithKvcacheRunInfoX &runInfo)
+    {
+        cubeBlock_.IterateQPreload(runInfo);
     }
 
     __aicore__ inline void ComputeBmm1Load(FlashMlaWithKvcacheRunInfoX &runInfo)
@@ -558,6 +577,7 @@ public:
     __aicore__ inline void EnableTask(FlashMlaWithKvcacheRunInfoX &runInfo)
     {
         runInfo.isValid = true;
+        runInfo.qPreloaded = false; // 槽位跨轮复用，必须重置
         validTaskNum_++;
     }
 
