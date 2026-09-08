@@ -145,30 +145,32 @@ for grp in ('common', '3rd'):
         open(out, 'w').write('\n'.join(lines) + '\n')
         summary.append((f'{grp}/{chip_cn}', n_map, n_empty, out))
 
-# file_lists.yaml: 修改文件匹配清单(按grp分放)
-for grp in ('common', '3rd'):
-    grp_files = sorted(r for r in targets if r.startswith(grp + '/'))
-    unrel_g = [r for r in grp_files if not impact[r]]
-    lines = [
-        f'# mc2/{grp} 修改文件匹配清单',
-        f'# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})',
-        '# 用途: 输入修改的文件路径, 按以下列表匹配判定测试范围:',
-        '#   1) full_regression.non_header_extensions: 非头文件(按扩展名匹配) -> 全量',
-        '#   2) full_regression.headers_no_operator_relation: 无明确include到算子关系的头 -> 全量',
-        f'#   注: 不在以上列表中的.h, 按{{A2,A3,A5}}.yaml映射测试(有算子关系的头全在里面)',
-        '#   最终算子集需叠加CMake depends反向闭包后去重',
-        '',
-        'full_regression:',
-        '  non_header_extensions:',
-    ]
-    for ext in ('.cpp', '.cc', '.c', '.py', '.json', '.ini', '.sh', '.csv', '.txt', '.md'):
-        lines.append(f'    - "{ext}"')
-    lines.append('  headers_no_operator_relation:')
-    for r in unrel_g:
-        lines.append(f'    - {r}')
-    os.makedirs(os.path.join(OUTDIR, grp), exist_ok=True)
-    open(os.path.join(OUTDIR, grp, 'file_lists.yaml'), 'w').write('\n'.join(lines) + '\n')
-    print(f'输出 {os.path.join(OUTDIR, grp, "file_lists.yaml")}: 无关系全量 {len(unrel_g)}')
+# file_lists.yaml: 全量匹配表(消费侧第一步先查本表, 命中即全量; 未命中再查对应soc的芯片yaml)
+unrel_all = {g: sorted(r for r in targets if r.startswith(g + '/') and not impact[r])
+             for g in ('common', '3rd')}
+lines = [
+    '# mc2 全量匹配表(消费侧第一步先查本表)',
+    f'# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})',
+    '# 用途: 对每个修改文件, 先在本表匹配:',
+    '#   1) 扩展名命中 full_regression.non_header_extensions -> 全量',
+    '#   2) 路径命中 full_regression.headers_no_operator_relation -> 全量',
+    '# 均未命中 -> 改到对应soc的 {A2,A3,A5}.yaml 查映射(有算子关系的头全在其中)取ops',
+    '# 最终算子集需叠加CMake depends反向闭包后去重',
+    '',
+    'full_regression:',
+    '  non_header_extensions:',
+]
+for ext in ('.cpp', '.cc', '.c', '.py', '.json', '.ini', '.sh', '.csv', '.txt', '.md'):
+    lines.append(f'    - "{ext}"')
+lines.append('  headers_no_operator_relation:')
+for g in ('common', '3rd'):
+    lines.append(f'    {g}:')
+    for r in unrel_all[g]:
+        lines.append(f'      - {r}')
+os.makedirs(os.path.join(OUTDIR, '3rd'), exist_ok=True)
+open(os.path.join(OUTDIR, '3rd', 'file_lists.yaml'), 'w').write('\n'.join(lines) + '\n')
+print(f'输出 {os.path.join(OUTDIR, "3rd", "file_lists.yaml")}: '
+      f'无关系头 common {len(unrel_all["common"])} / 3rd {len(unrel_all["3rd"])}')
 
 # ---------- 7. 摘要 ----------
 print(f'仓: {REPO}  commit: {commit} ({branch})')

@@ -1,5 +1,5 @@
 # mc2/3rd 修改文件匹配清单
-# 生成: 2026-09-08  基线commit: afbd5766f (clean)
+# 生成: 2026-09-08  基线commit: d84ffcd69 (clean)
 # 用途: 输入修改的文件路径, 按以下列表匹配判定测试范围:
 #   1) full_regression.non_header_extensions: 非头文件(按扩展名匹配) -> 全量
 #   2) full_regression.headers_no_operator_relation: 无明确include到算子关系的头 -> 全量
