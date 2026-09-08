@@ -28,6 +28,10 @@ SoftmaxTilingMocker &SoftmaxTilingMocker::GetInstance()
     return instance;
 }
 
+namespace {
+constexpr const char *kDefaultSoftmaxSocVersion = "Ascend910B";
+}
+
 void SoftmaxTilingMocker::SetSocVersion(const std::string &socVersion)
 {
     socVersion_ = socVersion;
@@ -35,12 +39,12 @@ void SoftmaxTilingMocker::SetSocVersion(const std::string &socVersion)
 
 const char *SoftmaxTilingMocker::GetSocVersion() const
 {
-    return socVersion_.empty() ? nullptr : socVersion_.c_str();
+    return socVersion_.empty() ? kDefaultSoftmaxSocVersion : socVersion_.c_str();
 }
 
 void SoftmaxTilingMocker::Reset()
 {
-    socVersion_.clear();
+    socVersion_ = kDefaultSoftmaxSocVersion;
 }
 
 // Mock implementation for AscendC high-level API
@@ -69,6 +73,26 @@ inline std::vector<uint32_t> GetLastAxisShapeND(const ge::Shape &srcShape)
     return {srcM, srcK};
 }
 
+inline NpuArch ResolveNpuArchForUt()
+{
+    platform_ascendc::PlatformAscendC *platform =
+        platform_ascendc::PlatformAscendCManager::GetInstance(SoftmaxTilingMocker::GetInstance().GetSocVersion());
+    if (platform == nullptr) {
+        return static_cast<NpuArch>(0U);
+    }
+    return platform->GetCurNpuArch();
+}
+
+inline bool IsDav3510Family(NpuArch npuArch)
+{
+    return npuArch == NpuArch::DAV_3510 || npuArch == NpuArch::DAV_3003 || npuArch == NpuArch::DAV_5102;
+}
+
+inline bool IsDav3510Or5102(NpuArch npuArch)
+{
+    return npuArch == NpuArch::DAV_3510 || npuArch == NpuArch::DAV_5102;
+}
+
 // Mock: GetSoftMaxMinTmpSize
 uint32_t GetSoftMaxMinTmpSize(const ge::Shape &srcShape, const uint32_t dataTypeSize, const bool /*isReuseSource*/)
 {
@@ -84,16 +108,10 @@ uint32_t GetSoftMaxMinTmpSize(const ge::Shape &srcShape, const uint32_t dataType
     const uint32_t srcM = retVec[0];
     const uint32_t srcK = retVec[1];
     const uint32_t elementNumPerBlk = SOFTMAX_DEFAULT_BLK_SIZE / dataTypeSize;
-
-    platform_ascendc::PlatformAscendC *platform =
-        platform_ascendc::PlatformAscendCManager::GetInstance(SoftmaxTilingMocker::GetInstance().GetSocVersion());
-    if (platform == nullptr) {
-        return 0U;
-    }
-    const auto npuArch = platform->GetCurNpuArch();
+    const auto npuArch = ResolveNpuArchForUt();
 
     uint32_t needSize;
-    if (npuArch == NpuArch::DAV_3510 || npuArch == NpuArch::DAV_3003 || npuArch == NpuArch::DAV_5102) {
+    if (IsDav3510Family(npuArch)) {
         const uint32_t needSize1 = srcM * (BASIC_TILE_NUM + srcK) +
                                    SOFTMAX_BASICBLOCK_UNIT * SOFTMAX_TMPFLASHUPDATE_COUNT +
                                    (srcM + BASIC_TILE_NUM - 1U) / BASIC_TILE_NUM * BASIC_TILE_NUM;
@@ -103,6 +121,11 @@ uint32_t GetSoftMaxMinTmpSize(const ge::Shape &srcShape, const uint32_t dataType
         needSize = elementNumPerBlk + srcK + SOFTMAX_BASICBLOCK_UNIT;
     }
     return needSize * SOFTMAX_FLOAT_SIZE;
+}
+
+uint32_t GetSoftMaxMaxTmpSize(const ge::Shape &srcShape, const uint32_t dataTypeSize, const bool isReuseSource)
+{
+    return GetSoftMaxMinTmpSize(srcShape, dataTypeSize, isReuseSource);
 }
 
 // Mock: GetSoftMaxFlashV2MinTmpSize
@@ -125,16 +148,10 @@ uint32_t GetSoftMaxFlashV2MinTmpSize(const ge::Shape &srcShape, const uint32_t d
     const uint32_t srcM = retVec[0];
     const uint32_t srcK = retVec[1];
     const uint32_t elementNumPerBlk = SOFTMAX_DEFAULT_BLK_SIZE / dataTypeSize2;
-
-    platform_ascendc::PlatformAscendC *platform =
-        platform_ascendc::PlatformAscendCManager::GetInstance(SoftmaxTilingMocker::GetInstance().GetSocVersion());
-    if (platform == nullptr) {
-        return 0U;
-    }
-    const auto npuArch = platform->GetCurNpuArch();
+    const auto npuArch = ResolveNpuArchForUt();
 
     uint32_t needMinSize = 0U;
-    if (npuArch == NpuArch::DAV_3510 || npuArch == NpuArch::DAV_5102) {
+    if (IsDav3510Or5102(npuArch)) {
         if (isUpdate) {
             if (dataTypeSize1 == SOFTMAX_HALF_SIZE) {
                 const uint32_t size1 =
@@ -188,7 +205,6 @@ uint32_t GetSoftMaxFlashV2MinTmpSize(const ge::Shape &srcShape, const uint32_t d
     return needMinSize * SOFTMAX_FLOAT_SIZE;
 }
 
-// Mock: GetSoftMaxFlashMinTmpSize
 uint32_t GetSoftMaxFlashMinTmpSize(const ge::Shape &srcShape, const uint32_t dataTypeSize, const bool isUpdate,
                                    const bool /*isReuseSource*/)
 {
@@ -204,16 +220,10 @@ uint32_t GetSoftMaxFlashMinTmpSize(const ge::Shape &srcShape, const uint32_t dat
     const uint32_t elementNumPerBlk = SOFTMAX_DEFAULT_BLK_SIZE / dataTypeSize;
     const uint32_t srcM = retVec[0];
     const uint32_t srcK = retVec[1];
-
-    platform_ascendc::PlatformAscendC *platform =
-        platform_ascendc::PlatformAscendCManager::GetInstance(SoftmaxTilingMocker::GetInstance().GetSocVersion());
-    if (platform == nullptr) {
-        return 0U;
-    }
-    const auto npuArch = platform->GetCurNpuArch();
+    const auto npuArch = ResolveNpuArchForUt();
 
     uint32_t needSize;
-    if (npuArch == NpuArch::DAV_3510 || npuArch == NpuArch::DAV_5102) {
+    if (IsDav3510Or5102(npuArch)) {
         const uint32_t needSize2 = srcM * (elementNumPerBlk + srcK);
         if (!isUpdate) {
             const uint32_t needSize1 = srcM * (BASIC_TILE_NUM + srcK) + SOFTMAX_BASICBLOCK_UNIT * SOFTMAX_FLOAT_SIZE +
@@ -227,6 +237,20 @@ uint32_t GetSoftMaxFlashMinTmpSize(const ge::Shape &srcShape, const uint32_t dat
                                elementNumPerBlk * SOFTMAX_TMPFLASHUPDATE_COUNT + srcK * SOFTMAX_TMPBUFFER_COUNT;
     }
     return needSize * SOFTMAX_FLOAT_SIZE;
+}
+
+uint32_t GetSoftMaxFlashMaxTmpSize(const ge::Shape &srcShape, const uint32_t dataTypeSize, const bool isUpdate,
+                                   const bool isReuseSource)
+{
+    return GetSoftMaxFlashMinTmpSize(srcShape, dataTypeSize, isUpdate, isReuseSource);
+}
+
+uint32_t GetSoftMaxFlashV2MaxTmpSize(const ge::Shape &srcShape, const uint32_t dataTypeSize1,
+                                     const uint32_t dataTypeSize2, const bool isUpdate, const bool isBasicBlock,
+                                     const bool isFlashOutputBrc)
+{
+    return GetSoftMaxFlashV2MinTmpSize(srcShape, dataTypeSize1, dataTypeSize2, isUpdate, isBasicBlock,
+                                       isFlashOutputBrc);
 }
 
 } // namespace AscendC
