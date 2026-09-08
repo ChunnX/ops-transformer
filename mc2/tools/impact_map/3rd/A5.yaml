@@ -1,5 +1,5 @@
 # mc2/3rd 头文件影响范围映射表 - A5 (ascend950)
-# 生成: 2026-09-08  基线commit: e7f2272c5 (clean)
+# 生成: 2026-09-08  基线commit: 040b62cbe (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(3rd/开头), 与pr_files.sh输出中mc2/后的段落一致
 #
@@ -7,7 +7,7 @@
 # 其他文件类型由消费脚本按以下规则处理(与本表配合):
 #   .cpp: 同目录同名.h存在 -> 查本表同名头条目; 同名.h在unref.yaml -> 疑似死代码不触发;
 #         同目录无同名.h -> 全量
-#   其余一切(.py/json/ini/sh/csv/txt/md等)及tests/路径下文件: 一律全量
+#   其余一切(.py/json/ini/sh/csv/txt/md等): 一律全量
 #   算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 A5(ascend950) 的交集
 #   注意: 本表结果为文件直接传递的算子, 消费侧还需叠加CMake depends反向闭包
 

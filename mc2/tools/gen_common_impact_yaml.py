@@ -147,14 +147,14 @@ for grp in ('common', '3rd'):
             '# 其他文件类型由消费脚本按以下规则处理(与本表配合):',
             '#   .cpp: 同目录同名.h存在 -> 查本表同名头条目; 同名.h在unref.yaml -> 疑似死代码不触发;',
             '#         同目录无同名.h -> 全量',
-            '#   其余一切(.py/json/ini/sh/csv/txt/md等)及tests/路径下文件: 一律全量',
+            '#   其余一切(.py/json/ini/sh/csv/txt/md等): 一律全量',
             f'#   算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 {chip_cn}({soc}) 的交集',
             '#   注意: 本表结果为文件直接传递的算子, 消费侧还需叠加CMake depends反向闭包',
             '',
         ]
         n_map = n_empty = 0
         for r in sorted(grp_files):
-            if not r.endswith(('.h', '.hpp', '.cuh')) or is_test(r):
+            if not r.endswith(('.h', '.hpp', '.cuh')):
                 continue
             ops = {o for o in impact[r] if soc in socs.get(o, set())}
             if not impact[r]:
@@ -179,7 +179,7 @@ for grp in ('common', '3rd'):
         summary.append((f'{grp}/{chip_cn}', n_map, n_empty, out))
     # unref
     unref = sorted(r for r in grp_files if r.endswith(('.h', '.hpp', '.cuh'))
-                   and not is_test(r) and not impact[r])
+                   and not impact[r])
     lines = [
         f'# mc2/{grp} 零引用文件清单 (与芯片无关, 全芯片共用)',
         f'# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})',
