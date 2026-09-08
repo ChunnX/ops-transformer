@@ -58,6 +58,18 @@ public:
     constexpr static uint32_t ARRIVAL_STATUS = 2;
     constexpr static uint32_t SKIP_STATUS = 3;
 
+    // 阶段性能打点：枚举值即该阶段[开始,结束]时间对(us)在本核打点区域内的下标，未执行的阶段保持0
+    constexpr static uint32_t STAGE_REORDER = 0;     // ReorderTokens，所有核
+    constexpr static uint32_t STAGE_SEND_DATA = 1;   // SendDataToServer，仅aivId_ < serverNum且非本Server的核
+    constexpr static uint32_t STAGE_INNER_TABLE = 2; // CreateInnerReduceInfo，仅aivId_ < serverNum的核
+    constexpr static uint32_t STAGE_OUTER_TABLE = 3; // CreateOuterReduceInfo，仅aivId_ == serverNum的核
+    constexpr static uint32_t STAGE_WIN2IPC = 4;     // Win2Ipc，其余核
+    constexpr static uint32_t STAGE_IPC_SYNC = 5;    // SetIpcFlag + WaitIpcFlag，所有核
+    constexpr static uint32_t STAGE_IPC2OUT = 6;     // Ipc2Out，所有核
+    constexpr static uint32_t STAGE_CLEANUP = 7;     // CleanUp，所有核
+    constexpr static uint32_t STAGE_NUM = 8;
+    constexpr static uint32_t STAGE_PROFILE_UB_SIZE = 128U; // STAGE_NUM * 2 * sizeof(int64_t)向上32B对齐
+
     template <typename T>
     inline __aicore__ T RoundUp(const T val, const T align)
     {
@@ -194,6 +206,8 @@ private:
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     MoeDistributeA2Base::MoeDistributeA2DispatchAddrInfo addrInfo_;
     Mc2A2Kernel::MoeDistributeA2ADump aDump_;
+    Mc2StageProfiler stageProfiler_; // 阶段性能打点
+    GlobalTensor<int32_t> stageProfileOutGMTensor_; // assistInfoOut，layered未使用，整体作为各核打点区域
 };
 
 template <TemplateMC2TypeA2layeredClass>
@@ -266,6 +280,8 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     expandXGM_ = x;
     expandIdxGM_ = expertIds;
     weightsGM_ = expertScales;
+    // assistInfoOut，bs*topk之后为各核阶段打点区域
+    stageProfileOutGMTensor_.SetGlobalBuffer((__gm__ int32_t *)expandIdxOut);
 
     // RDMA send/recv global tensor init
     sendTokensU8Tensor_.SetGlobalBuffer((__gm__ uint8_t *)(addrInfo_.GetLocalSendBuffDataAddr()));
@@ -309,6 +325,9 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         Duplicate<int32_t>(performanceInfoI32Tensor_, 0, performanceInfoSize_ * sizeof(int64_t) / sizeof(int32_t));
         leftBufSize -= RoundUp(worldSize_, B64_PER_BLOCK) * sizeof(uint64_t);
     }
+    // 阶段打点UB buffer，需在总tBuf之前申请并扣除空间
+    stageProfiler_.Init(tpipe_, STAGE_NUM);
+    leftBufSize -= STAGE_PROFILE_UB_SIZE;
     tpipe_->InitBuffer(tBuf, leftBufSize);
 
     // The maximum value of expertIdsCnt_ is 256 * 16, so there is no integer wrap.
@@ -1358,36 +1377,54 @@ template <TemplateMC2TypeA2layeredClass>
 __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
+        stageProfiler_.BeginStage();
         ReorderTokens();
+        stageProfiler_.EndStage(STAGE_REORDER);
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_REORDERTOKEN);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
         if (aivId_ < serverNum) {
+            stageProfiler_.BeginStage();
             if (aivId_ != serverId_) {
                 SendDataToServer(aivId_);
             }
+            stageProfiler_.EndStage(STAGE_SEND_DATA);
             aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_INTER_SEND);
+            stageProfiler_.BeginStage();
             CreateInnerReduceInfo(aivId_);
+            stageProfiler_.EndStage(STAGE_INNER_TABLE);
         } else if (aivId_ == serverNum) {
+            stageProfiler_.BeginStage();
             CreateOuterReduceInfo();
+            stageProfiler_.EndStage(STAGE_OUTER_TABLE);
         } else {
+            stageProfiler_.BeginStage();
             Win2Ipc();
+            stageProfiler_.EndStage(STAGE_WIN2IPC);
         }
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_INTER_FINISH);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+        stageProfiler_.BeginStage();
         SetIpcFlag(IPC_FLAG_STEP_1);
         WaitIpcFlag(IPC_FLAG_STEP_1);
+        stageProfiler_.EndStage(STAGE_IPC_SYNC);
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_INTRA_FINISH);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+        stageProfiler_.BeginStage();
         Ipc2Out();
+        stageProfiler_.EndStage(STAGE_IPC2OUT);
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_IPC2OUT);
         PipeBarrier<PIPE_ALL>();
+        stageProfiler_.BeginStage();
         CleanUp();
+        stageProfiler_.EndStage(STAGE_CLEANUP);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
         CopyPerformanceInfo();
+        // 各核的阶段打点一次搬运到assistInfoOut中本核(aivId_)自己的区域
+        stageProfiler_.CopyOut(stageProfileOutGMTensor_, aivId_);
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_END);
         hccl_.Finalize();
     }
