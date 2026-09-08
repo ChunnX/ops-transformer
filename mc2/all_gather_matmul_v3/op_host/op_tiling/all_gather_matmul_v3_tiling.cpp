@@ -30,7 +30,6 @@
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../op_kernel/arch35/all_gather_matmul_v3_tiling_key.h"
 #include "mc2_exception_dump.h"
-#include "mc2_hcomm_dfx_dump.h"
 
 using namespace AscendC;
 using namespace ge;
