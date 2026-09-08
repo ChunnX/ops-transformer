@@ -83,12 +83,10 @@ constexpr uint32_t HISTOGRAM_SCOPE_SIZE = 256U; // 直方图uint8, 统计范围0
 constexpr uint32_t DATA_BLOCK_NUM = 8U;         // 256B/32B=8
 constexpr uint8_t BUFFER_NUM = 2;
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
-constexpr uint32_t JETTY_CNT = 1U;   // 打桩 通信使用jetty个数  取1-8
-constexpr uint32_t MAX_BATCH_SIZE = 160 * 1024U;   // 打桩 通信地址信息 160KB
+constexpr uint32_t MAX_BATCH_SIZE = 160 * 1024U;   // srcTokenIdx 160KB
 constexpr uint32_t HCOMM_BATCH_CAPACITY = 256U;
 constexpr uint32_t HCOMM_WRITE_TASK_BYTES = 64U;
 constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = 2 * HCOMM_BATCH_CAPACITY * HCOMM_WRITE_TASK_BYTES;
-constexpr bool ENABLE_DISPATCH_WAIT = false;   // 打桩开关: dispatch内额外做一次waitDispatch(不清状态位)
 constexpr struct UrmaWqeEntry DATA_CFG = {
     .odr      = 5,
     .fence    = 1,
@@ -142,7 +140,6 @@ private:
     __aicore__ inline void LocalCopyPhase(uint32_t slotStart, uint32_t slotCnt); // 本组新增本端命中的 x 拷贝
     __aicore__ inline void GetSlotStartNum();
     __aicore__ inline void CopyInMetaInfo(uint32_t tokenId, uint32_t topkOffset);
-    __aicore__ inline void DispatchWaitNotify();
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId, uint32_t &endId,
                                        uint32_t &sendNum);
     __aicore__ inline bool GetCoreAssignment(uint32_t &copyRankStart, uint32_t &copyRankNum, uint32_t &channelIndex,
@@ -347,11 +344,15 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     moeExpertNumAlign512_ = Ceil(moeExpertNum_ * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     cntFlagWinSize_ = epWorldSize_ * WIN_ADDR_ALIGN;
     dstRankWinOffset_ = static_cast<uint64_t>(epRankId_) * axisMaxBS_ * perSlotBytes_; // 目标窗口地址偏移
-    dstStateWinOffset_ = static_cast<uint64_t>(epRankId_) * JETTY_CNT * WIN_ADDR_ALIGN; //  目标状态地址偏移
     tokenCntAlign_ = srcTokenListBytes_ / sizeof(int32_t);
     if (channelsPerRank_ == 0 || (epWorldSize_ > 0 && channelsPerRank_ > HCCL_MAX_RANK_SIZE / epWorldSize_)) {
         channelsPerRank_ = 1;
     }
+    // 实际 jetty 数不得超过每对端通道数, 否则句柄越界/通知数失配; 与 epilogue 同式钳位保证收发一致
+    if (dispatchNotifyCount_ > channelsPerRank_) {
+        dispatchNotifyCount_ = channelsPerRank_;
+    }
+    dstStateWinOffset_ = static_cast<uint64_t>(epRankId_) * dispatchNotifyCount_ * WIN_ADDR_ALIGN; // 目标状态地址偏移
 
     xGMTensor_.SetGlobalBuffer((__gm__ XType *)x);
     topkIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t *)topkIdx);
@@ -423,7 +424,7 @@ __aicore__ inline bool MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetCoreAssi
     uint32_t &copyRankStart, uint32_t &copyRankNum, uint32_t &channelIndex,
     uint32_t &coreIndexInGroup, uint32_t &groupSize)
 {
-    uint32_t maxJettyAivNum = epWorldSize_ * JETTY_CNT;
+    uint32_t maxJettyAivNum = epWorldSize_ * dispatchNotifyCount_;
     uint32_t activeAivNum = aivNum_ > maxJettyAivNum ? maxJettyAivNum : aivNum_;
     if (aivId_ >= activeAivNum) {
         return false;
@@ -1152,41 +1153,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
 }
 
 template <TemplateMoeEpDispatchTypeClass>
-__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::DispatchWaitNotify()
-{
-    if (!ENABLE_DISPATCH_WAIT) {
-        return;
-    }
-    if (aivId_ != aivNum_ - 1) {
-        return;
-    }
-
-    uint32_t totalNotifyCnt = epWorldSize_ * JETTY_CNT;
-    GlobalTensor<int32_t> statusGMTensor;
-    statusGMTensor.SetGlobalBuffer((__gm__ int32_t *)localSlotStateWinAddr_);
-    LocalTensor<int32_t> waitStatus = tempBuf_.GetWithOffset<int32_t>(totalNotifyCnt * UB_STRIDE, 0);
-    LocalTensor<float> waitStatusFp32 = waitStatus.template ReinterpretCast<float>();
-    LocalTensor<int32_t> waitSum = tempBuf_.GetWithOffset<int32_t>(UB_ALIGN, totalNotifyCnt * UB_ALIGN);
-    LocalTensor<float> waitSumFp32 = waitSum.template ReinterpretCast<float>();
-    LocalTensor<float> sharedTmp =
-        tempBuf_.GetWithOffset<float>(2 * WIN_ADDR_ALIGN, totalNotifyCnt * UB_ALIGN + UB_ALIGN);
-    DataCopyParams statusCopyParams = {static_cast<uint16_t>(totalNotifyCnt), 1U,
-                                       static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN), 0U};
-    uint32_t mask = 1;
-    int32_t sumOfFlag = 0;
-    int32_t commpareFlag = static_cast<int32_t>(totalNotifyCnt);
-    SyncFunc<AscendC::HardEvent::S_MTE2>();
-
-    while (sumOfFlag != commpareFlag) {
-        DataCopy(waitStatus, statusGMTensor, statusCopyParams);
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
-        ReduceSum(waitSumFp32, waitStatusFp32, sharedTmp, mask, totalNotifyCnt, 1);
-        SyncFunc<AscendC::HardEvent::V_S>();
-        sumOfFlag = waitSum.GetValue(0);
-    }
-}
-
-template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
@@ -1195,10 +1161,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
         SyncAll<true>();
         Communication();
         GetRecvCount();
-        SendPhase(); // 含本端命中 x 分组拷贝（LocalCopyPhase 按组内联）
+        SendPhase();
         SyncAll<true>();
         WriteToRemoteWindow();
-        DispatchWaitNotify();
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
     }
 }

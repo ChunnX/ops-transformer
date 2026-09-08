@@ -20,9 +20,6 @@ namespace Mc2Tiling {
 
 constexpr uint64_t MOE_EP_UB_ALIGN = 32UL;
 constexpr uint64_t MOE_EP_WIN_ALIGN = 512UL;
-// dispatch payload notify 槽位数（固定预留，支持 kernel 侧 JETTY_CNT 取 1-8）。
-// 注意：当前 kernel JETTY_CNT=1，direct/epilogue 按 [rank*JETTY_CNT] 寻址一致；
-// hybrid 内核按 rank*该值*512 寻址，与 JETTY_CNT=1 的等待数不一致，hybrid 待后续调整。
 constexpr uint64_t MOE_EP_DISPATCH_NOTIFY_COUNT = 8UL;
 constexpr uint64_t MOE_EP_COMBINE_CHANNEL_COUNT = 7UL;
 constexpr uint64_t MOE_EP_MAX_OUT_DTYPE_SIZE = 2UL;
@@ -88,7 +85,8 @@ uint64_t AlignMoeEpWin(uint64_t value);
 ge::graphStatus ResolveMoeEpTopology(uint32_t epWorldSize, int64_t requestedNetworkMode, int64_t rankNumPerServer,
                                      MoeEpTopology &topology);
 
-ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, MoeEpWindowLayout &layout);
+ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, MoeEpWindowLayout &layout,
+                                      uint32_t aivNum = 0);
 
 ge::graphStatus CheckMoeEpWindowCapacity(uint64_t requiredBytes, uint64_t cclBufferSize, const char *nodeName);
 
