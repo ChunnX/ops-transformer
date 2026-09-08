@@ -251,6 +251,8 @@ def _get_moe_ep_window_layout(
 ) -> _MoeEpWindowLayout:
     win_addr_align = 512
     ub_align = 32
+    max_dispatch_channel_count = 64
+    max_dispatch_notify_count = 8
     combine_channel_count = 7
     max_out_dtype_size = 2
     metadata_dtype_size = 4
@@ -262,8 +264,11 @@ def _get_moe_ep_window_layout(
     dispatch_count_size = world_size * _inline_align(
         local_experts_num * state_dtype_size, win_addr_align
     )
-    # 与 C++ 侧 MOE_EP_DISPATCH_NOTIFY_COUNT 保持一致（hybrid 内核 notify 待后续与 JETTY_CNT 对齐）
-    dispatch_notify_count = 8
+    dispatch_notify_count = min(
+        max_dispatch_notify_count, max_dispatch_channel_count // world_size
+    )
+    dispatch_notify_count = max(dispatch_notify_count, 1)
+
     dispatch_notify_size = (
         world_size * win_addr_align
         + world_size * dispatch_notify_count * win_addr_align
@@ -272,13 +277,13 @@ def _get_moe_ep_window_layout(
         num_max_tokens_per_rank * topk * win_addr_align
         + world_size * combine_channel_count * win_addr_align
     )
-    # 额外预留 win_addr_align 的 payload 发送状态位区
+    # payload 发送状态位区: 按每对端预留 notify 槽位数预留
     state_buffer_size = (
         dump_metadata_bytes
         + per_core_diag_bytes
         + dispatch_count_size
         + dispatch_notify_size
-        + win_addr_align
+        + dispatch_notify_count * win_addr_align
         + combine_state_size
     )
 
@@ -295,7 +300,9 @@ def _get_moe_ep_window_layout(
     dispatch_stash_per_slot_bytes = _inline_align(
         _inline_align(hidden, ub_align) + metadata_bytes * 2 + ub_align, win_addr_align
     )
-    dispatch_stash_buffer_bytes = num_max_tokens_per_rank * dispatch_stash_per_slot_bytes
+    dispatch_stash_buffer_bytes = (
+        num_max_tokens_per_rank * dispatch_stash_per_slot_bytes
+    )
     return _MoeEpWindowLayout(
         state_buffer_bytes=state_buffer_size,
         dispatch_slot_bytes=dispatch_per_slot_bytes,

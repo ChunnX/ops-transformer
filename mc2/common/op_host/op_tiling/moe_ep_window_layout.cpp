@@ -44,7 +44,6 @@ ge::graphStatus ResolveMoeEpTopology(uint32_t epWorldSize, int64_t requestedNetw
 ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, MoeEpWindowLayout &layout)
 {
     std::memset(&layout, 0, sizeof(layout));
-    layout.dispatchNotifyCount = static_cast<uint32_t>(MOE_EP_DISPATCH_NOTIFY_COUNT);
 
     layout.metadataOffset = 0UL;
     layout.metadataSize = MOE_EP_DUMP_METADATA_BYTES;
@@ -58,13 +57,19 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
     const uint64_t countNotifySize = epWorldSize * MOE_EP_WIN_ALIGN;
     const uint64_t expertCountSize = epWorldSize * AlignMoeEpWin(params.localExpertNum * sizeof(int32_t));
 
+    uint64_t notifySlots = MOE_EP_CHANNEL_BUDGET / epWorldSize;
+    if (notifySlots > MOE_EP_DISPATCH_NOTIFY_COUNT) {
+        notifySlots = MOE_EP_DISPATCH_NOTIFY_COUNT;
+    }
+    layout.dispatchNotifyCount = static_cast<uint32_t>(notifySlots == 0UL ? 1UL : notifySlots);
+
     layout.cntWinStateOffset = MOE_EP_FIXED_PREFIX_BYTES;
     layout.cntWinStateSize = countNotifySize + expertCountSize;
     layout.slotWinStateOffset = layout.cntWinStateOffset + layout.cntWinStateSize;
     layout.dispatchSlotStateSize = layout.dispatchNotifyCount * epWorldSize * MOE_EP_WIN_ALIGN;
     // payload 发送状态位区：dispatch 各发送核对端 payload 到齐标志，位于 slot 状态区之后
     layout.payloadWinStateOffset = layout.slotWinStateOffset + layout.dispatchSlotStateSize;
-    layout.payloadWinStateSize = MOE_EP_WIN_ALIGN;
+    layout.payloadWinStateSize = layout.dispatchNotifyCount * MOE_EP_WIN_ALIGN;
     layout.combineStateWinOffset = layout.payloadWinStateOffset + layout.payloadWinStateSize;
     layout.combineStateWinSize =
         nmt * topK * MOE_EP_WIN_ALIGN + epWorldSize * MOE_EP_COMBINE_CHANNEL_COUNT * MOE_EP_WIN_ALIGN;
