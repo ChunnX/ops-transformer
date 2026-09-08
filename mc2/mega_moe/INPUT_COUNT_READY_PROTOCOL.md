@@ -7,6 +7,56 @@ MTE 路径删除共享专家前的入口跨卡握手，以量化硬件通知和 
 Dispatch 通过整表 MTE2 搬运和 VF 批量 epoch 校验等待完整 count 表；失败后退避 500 cycle 重试。
 远端 24-bit count + 8-bit epoch 布局和 VF cumsum 不变。
 
+## 两类入口同步分别如何替代
+
+这里的“全卡同步”指参与通信的 rank 之间的入口跨卡握手；“全核同步”指本卡
+AIC/AIV 在共享专家入口执行的 `SyncAll<false>()`。两者传递的依赖不同。
+
+### 全卡同步：由 count 自带的 epoch ready 标记传递远端依赖
+
+每个 count 是一个 int32：低 24 位保存计数，高 8 位保存本轮 epoch，兼任 ready Flag。
+两部分随同一个 4B 表项发布，不增加独立的跨卡 ready 消息。这里的 24/8 是位数，
+与发送 UB 中每项预留的 32B 空间无关。
+
+```text
+源卡全部 MoE token/scale 量化写回完成 + 本发送核对应的 index 已写完
+  → 发布 count | (本轮 epoch << 24)
+  → 接收端 VF 确认全部有效 count 的 epoch 匹配本轮
+  → 去掉 epoch，使用 count 做 cumsum，随后 Dispatch 读取源卡 token/scale
+```
+
+关键是先满足数据依赖，再允许 count 发布。量化按 token 分核、路由按专家分核，
+因此每个 count 发送核都通过 mode 0 MTE3 事件等待全体本卡量化生产者，并在 index
+完成后发布 count。接收端匹配到本轮 epoch，才将该项视为远端输入已就绪；
+不能仅检查 count 非零，零 count 同样必须携带本轮 epoch。
+
+这样省去 `CrossRankSyncInWorldSize` 入口握手及其末尾 `SyncAll<true>()`，将远端依赖
+交给真正消费这些数据的接收 AIV。当前接收实现仍等待整张表就绪，尚未改成某一项
+count 到达就启动对应专家的 Dispatch；共享计算则不再受入口跨卡握手阻塞。
+出口跨卡同步继续保留，以维持跨轮次窗口复用约束。
+
+### 全核同步：拆成按数据用途和流水划分的硬件依赖
+
+原 `SyncAll<false>()` 把量化、路由/count 发送、清零及共享输入准备一起汇合。
+修改后，清零与共享输入准备提前，AIV 发出输入通知后继续生成路由，AIC 只等待
+自己开始访问数据所必需的输入条件。具体分成以下几条依赖：
+
+| 依赖 | 通知与等待 | 允许继续的工作 |
+|---|---|---|
+| 本卡 MoE 量化完成 | 全体 AIV mode 0 flag 8；发送核在 MTE3 等待 | index 后发布带 epoch 的 count |
+| 分段清零、共享输入写回完成 | AIV mode 4 通知配对 AIC；AIC 再经 mode 0 汇合本卡输入 | AIC 继续下发共享输入加载和计算 |
+| 全体输入 epoch 已记账 | AIC 汇合后用 mode 4 回通知各 AIV | 接收 AIV 可安全读取本轮 epoch |
+| 路由/count 源 UB 已用完 | AIV 本核 PIPE_ALL 后用 mode 4 通知；配对 AIC 仅在 FIX 等待 | AIC 可以向配对 AIV 的 UB 写结果 |
+
+因此，移除的是共享入口统一等待整个准备阶段的 `SyncAll<false>()`，改为更细粒度的
+硬件流水同步；本卡输入仍需汇合，必要的等待并未消失。AIC 的输入等待仍在 PIPE_S，
+但不再把所有 AIV 的路由完成纳入该入口条件；UB 复用等待放在 PIPE_FIX，使输入加载
+和 MMAD 可以按各自依赖提前推进。每个 AIV 的本核 PIPE_ALL、MoE 末尾 AIV 同步和
+出口同步继续保留。
+
+跨卡的 epoch Flag 是 count 的高 8 位数据；本卡的 mode 0/mode 4 Flag 是硬件事件
+计数器。两者不是同一类状态，也没有为本卡同步新增 GM ready 轮询槽。
+
 ## 修改前后对比
 
 修改前，每个 AIV 完成自身量化后生成并发送 index/count，接着清零 workspace、
@@ -138,7 +188,15 @@ UB 预算。`MTE2_V` 保护 VF 读取，`V_S` 保护标量读取归约结果，`
 ```
 
 `MTE_COUNT_UB_STRIDE=8` 同时用于 host 预算、kernel 分配和索引。Normal 模式下每个
-block 的 UB 步长为 32B；每个 block 仅发送 4B，GM 的额外步长为 `(worldSize-1)*4B`。
+block 的 UB 步长为 32B。实际搬运参数是 `blockLen=4`、`srcStride=0`，所以每个
+block 仅向目标写入 4B，旁边的 28B padding 不写入远端；GM 的额外步长为
+`(worldSize-1)*4B`，相邻目标表项地址相差 `worldSize*4B`。这是接口层面的有效写入长度，
+不代表物理链路每个事务恰好为 4B；底层事务粒度及协议开销需要设备测量。
+
+一个 sourceRank 写入 `[localExpert][sourceRank]` 表中的一列，各源卡填充后整表连续，
+每项只有 4B，没有发送 UB 的 padding。接收 AIV 直接整表搬入 UB 供 VF 校验及 cumsum，
+最多 2048 项、8 KiB。因此每项预留 32B 增加的是发送端 UB 占用，没有把接收表扩大八倍。
+
 任意专家分段的 UB 起点都对齐，不再复用 `topkIndexTensor` 重排 count，段间和函数末尾
 均无需 `MTE3_S`。每个目的 rank 仍合并为一次二维搬运，不新增跨卡状态消息。
 
