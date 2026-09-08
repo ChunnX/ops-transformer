@@ -14,8 +14,8 @@
      即"改了实现, 只有调用该接口的算子受影响"。
      - 无同名头的 .cpp: 接口不明, 保守回退全算子, note 标注待人工确认
      - 同名头无任何算子引用的 .cpp: 疑似死代码, ops:[] + note 待人工确认
-输出: <输出目录>/common/{A2,A3,A5,unref}.yaml 与 <输出目录>/3rd/{...}
-      零引用文件(无include且非编译单元)单独写入 unref.yaml。
+输出: <输出目录>/common/{A2,A3,A5,zero_reference}.yaml 与 <输出目录>/3rd/{...}
+      零引用文件(无include且非编译单元)单独写入 zero_reference.yaml。
 说明: 重名头文件的映射取并集(宁多勿漏), 相关文件带 note 标注; 重新运行覆盖输出。
 """
 import os, re, sys, subprocess, datetime
@@ -145,7 +145,7 @@ for grp in ('common', '3rd'):
             '#',
             '# 本表仅保存头文件(.h/.hpp/.cuh)条目, 影响面=直接+间接include它的算子(传递闭包)。',
             '# 其他文件类型由消费脚本按以下规则处理(与本表配合):',
-            '#   .cpp: 同目录同名.h存在 -> 查本表同名头条目; 同名.h在unref.yaml -> 疑似死代码不触发;',
+            '#   .cpp: 同目录同名.h存在 -> 查本表同名头条目; 同名.h在zero_reference.yaml -> 疑似死代码不触发;',
             '#         同目录无同名.h -> 全量',
             '#   其余一切(.py/json/ini/sh/csv/txt/md等): 一律全量',
             f'#   算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 {chip_cn}({soc}) 的交集',
@@ -185,7 +185,7 @@ for grp in ('common', '3rd'):
         f'# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})',
         '#',
         '# 语义: 下列头文件无任何算子可达的引用(无人直接/间接include),',
-        '#       改动不影响mc2算子编译; .cpp的判定见映射表头部规则(同名.h在unref=死代码);',
+        '#       改动不影响mc2算子编译; .cpp的判定见映射表头部规则(同名.h在zero_reference=死代码);',
         '#       注意与芯片映射表中 ops: [] 的区别:',
         '#         ops: []  = 头文件无算子引用 / .cpp同名头无算子引用(疑似死代码, 看note)',
         '#         本表     = 完全没有引用, 修改前需人工确认:',
@@ -195,8 +195,8 @@ for grp in ('common', '3rd'):
     ]
     for r in unref:
         lines.append(f'{r}:')
-    open(os.path.join(OUTDIR, grp, 'unref.yaml'), 'w').write('\n'.join(lines) + '\n')
-    print(f'零引用 {grp}: {len(unref)} 个 -> impact_map/{grp}/unref.yaml')
+    open(os.path.join(OUTDIR, grp, 'zero_reference.yaml'), 'w').write('\n'.join(lines) + '\n')
+    print(f'零引用 {grp}: {len(unref)} 个 -> impact_map/{grp}/zero_reference.yaml')
 
 # ---------- 7. 摘要 ----------
 print(f'仓: {REPO}  commit: {commit} ({branch})')
