@@ -1640,9 +1640,15 @@ static graphStatus CheckNonQuantMatmulParams(fe::PlatformInfo& platformInfo, ger
         }
     }
     OP_CHECK_IF(CheckMatmulDataType(context, xDtype, weightDtype, biasDtype) != GRAPH_SUCCESS,
-              OP_LOGE(context->GetNodeName(), "case with x dtype %s and weight dtype %s is not supported!",
-                        TypeUtils::DataTypeToAscendString(xDtype).GetString(), TypeUtils::DataTypeToAscendString(weightDtype).GetString()),
-              return GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                    context->GetNodeName(), "x, weight, bias",
+                    Ops::Transformer::Gmm::FormatString(
+                        "%s, %s, %s", TypeUtils::DataTypeToAscendString(xDtype).GetString(),
+                        TypeUtils::DataTypeToAscendString(weightDtype).GetString(),
+                        TypeUtils::DataTypeToAscendString(biasDtype).GetString())
+                        .c_str(),
+                    "x, weight, or bias has an unsupported dtype"),
+                return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 
@@ -1724,11 +1730,18 @@ static graphStatus CheckFunctionParamsForDtype(gert::InferDataTypeContext* conte
     if ((xDtype == DataType::DT_BF16 || xDtype == DataType::DT_FLOAT16) &&
         (weightDtype == DataType::DT_INT8 || weightDtype == DataType::DT_INT4)) {
         // antiquant
-        DataType biasDtype = xDtype == DataType::DT_BF16 ? DataType::DT_FLOAT: DataType::DT_FLOAT16;
-        OP_CHECK_IF(CheckMatmulDataType(context, xDtype, weightDtype, biasDtype) != GRAPH_SUCCESS,
-                  OP_LOGE(context->GetNodeName(), "case with x dtype %s and weight dtype %s is not supported!",
-                            TypeUtils::DataTypeToAscendString(xDtype).GetString(), TypeUtils::DataTypeToAscendString(weightDtype).GetString()),
-                  return GRAPH_FAILED);
+        DataType biasDtype = xDtype == DataType::DT_BF16 ? DataType::DT_FLOAT : DataType::DT_FLOAT16;
+        OP_CHECK_IF(
+            CheckMatmulDataType(context, xDtype, weightDtype, biasDtype) != GRAPH_SUCCESS,
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                context->GetNodeName(), "x, weight, bias",
+                Ops::Transformer::Gmm::FormatString(
+                    "%s, %s, %s", TypeUtils::DataTypeToAscendString(xDtype).GetString(),
+                    TypeUtils::DataTypeToAscendString(weightDtype).GetString(),
+                    TypeUtils::DataTypeToAscendString(biasDtype).GetString())
+                    .c_str(),
+                "x, weight, or bias has an unsupported dtype"),
+            return GRAPH_FAILED);
         return CheckGroupedMatmulAntiQuantForDtype(context);
     }
     OP_LOGE(context->GetNodeName(), "GMM: there is no matching xDtype and weightDtype pattern. "
