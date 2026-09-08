@@ -195,31 +195,9 @@ AIV 同步保证所有接收者读完后，才可能在出口更新 slot 0。现
 
 ## 验证
 
-```bash
-python3 mc2/mega_moe/tests/ut/op_kernel/arch35/run_input_sync_test.py
-python3 mc2/mega_moe/tests/ut/op_kernel/arch35/run_count_ready_test.py
-python3 mc2/mega_moe/tests/ut/op_kernel/arch35/run_input_prepare_test.py
-```
-
-测试直接编译生产通知、等待和 count 发布函数，以确定性 CPU MTE3 队列代替设备流水。
-覆盖 3120 轮调用、延迟量化、空 token/无专家任务、index 先推进、异步 count 返回、
-跨目的 rank 的非对齐专家分段、零/最大 count、epoch/符号/uint32 回绕、单写者及
-UB/GM 哨兵。DMA 在队列执行时才读 UB，检查源未被提前覆盖；AIC 测试禁止状态与事件访问。
-这验证协议和地址计算，不代表真实 NPU 性能或硬件内存顺序。
-
-接收测试直接编译生产 VF 和整表轮询函数，以 CPU 寄存器及延迟执行的 MTE2/V 模型验证
-10,240 个快照、2,560 个轮询用例：覆盖 1～2048 项的全部长度、尾部掩码、任意位置
-单槽未就绪、全部 128 个 epoch、零/最大 count、分批到达、立即成功和失败退避，
-并检查每轮仅一次标量结果读取、UB/GM 哨兵、事件配对及 AIC 无访问。启用 UBSan。
-
-输入准备测试分别编译生产 AIC/AIV helper，再以 CPU S/MTE3/FIX/M 队列组合执行。
-1,536 组握手覆盖 1/2/8 个配对 block、慢输入生产者、无共享专家和逐核释放 UB，
-验证所有输入到齐前不计算、路由未完成时允许计算但禁止 FIX 覆盖、所有硬件事件成对消费。
-1,024 组布局覆盖 hiddenDim 32～8192、FP8/packed FP4、topk weights 开关，验证直接写回的
-共享 data/scale、补齐 scale、通信记录和边界哨兵。DMA 执行时才读源 UB；AIC store 无访问。
-这些测试验证 helper 的队列依赖和布局，不替代生产量化算术、真实流水调度或 NPU 精度验证。
-
-本地验证（2026-09-08）：上述 CPU 协议测试通过；host tiling 翻译单元编译通过。
+本地验证（2026-09-08）：CPU 模型检查已通过，覆盖 count 发送、整表 VF 轮询、
+输入硬件事件配对及共享输入布局；验证脚本不随本 PR 入库。
+这些检查不替代真实 NPU 内存顺序、精度或性能验证。Host tiling 翻译单元编译通过。
 CANN 9.2 beta2、Ascend950PR_9599 下 A8W8/W4 两组共 36 个 MTE tiling key 编译通过，
 包含 combine 量化和 topk weights prefetch 变体。内核编译使用验证专用 Hcomm shim
 屏蔽当前 SDK 缺失的无关 URMA API；URMA 和真实多卡运行不在本次验证范围内。
