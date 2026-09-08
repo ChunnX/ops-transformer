@@ -46,6 +46,15 @@ if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE flash_attn_grad ACLNNTYPE aclnn)
 endif()
 
+# 校验层拆在 checkers/ 子目录，父级的 tiling 源文件 glob 只认 *_tiling*.cpp，
+# 所以照正向 flash_attn 的写法显式收一遍。
+file(GLOB_RECURSE FAG_CHECKER_SRC_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/checkers/*checker*.cpp
+)
+
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_tiling_modules()
+    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
+        ${FAG_CHECKER_SRC_FILES}
+    )
 endif()

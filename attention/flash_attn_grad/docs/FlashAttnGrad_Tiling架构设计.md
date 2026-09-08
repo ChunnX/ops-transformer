@@ -245,7 +245,7 @@ auto maxSeqlenQPtr = attrs->GetAttrPointer<int64_t>(4);
 
 ### 5.3 校验层：拆成组合式 checker
 
-当前 `FlashAttnGradCheck` 是一个 438 行、6 个静态方法的类，`CheckShape` 单函数约 200 行、覆盖 B/S/N/D × 8 个张量。随着 TND/sparse/sinks 接入，它会线性膨胀。
+> **已落地。** 原先 `FlashAttnGradCheck` 是一个 456 行、6 个静态方法的类，`CheckShape` 单函数约 200 行、覆盖 B/S/N/D × 8 个张量，随着 TND/sparse/sinks 接入会线性膨胀。现已按下述关注点拆到 `op_host/checkers/`，实际落法见本节末的「落地记录」。
 
 建议按**关注点**拆到 `checkers/`，**形态**参照正向 `flash_attn/op_host/checkers/fa_checker.h` 的组合模式：一个 `FagChecker` 持有 `std::vector<std::unique_ptr<FagBaseChecker>>`，分 `CheckParaExistence` / `CheckSinglePara` / `CheckMultiPara` / `CheckFeature` 四轮。收益不只是行数，更重要的是错报可控：错误信息集中，便于统一成 `OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON` 这类带原因的格式（arch35 用的就是这套）。
 
@@ -258,6 +258,28 @@ auto maxSeqlenQPtr = attrs->GetAttrPointer<int64_t>(4);
 2. **正反向口径对照表**：把易漂移的具体口径列成表，随校验改动一起更新 —— 例如 `attn_mask` 是否必须 `[2048,2048]`、TND 下 `cu_seqlens` 是否必传、`layout_q/kv/out` 是否必须三者相同、`max_seqlen_*` 的默认值语义。表放在本文档或 checker 目录的 README，作为正反向对比的唯一落点。
 
 拆分不必一次做完：先把 `CheckShape` 按 B/S/N/D 四个维度拆成四个私有函数，再按上表落到文件，是可增量的。
+
+#### 落地记录
+
+`op_host/checkers/` 下的文件与 checker：
+
+| 文件 | checker | 覆盖 |
+| --- | --- | --- |
+| `fag_base_checker.h` | `FagBaseChecker` / `FagCheckCtx` | 基类与共享上下文 |
+| `fag_feature_checker.*` | `FagDeterministicChecker` | D2 确定性拒绝 |
+| `fag_input_checker.*` | `FagInputExistenceChecker`、`FagDtypeChecker` | 必选输入齐全、8 个张量 dtype 一致 |
+| `fag_attr_checker.*` | `FagAttrRangeChecker`、`FagMaskChecker`、`FagLayoutChecker` | 属性取值范围、mask_mode↔attn_mask↔window、layout 枚举与三者相同 |
+| `fag_shape_checker.*` | `FagShapeChecker` | 维度数、B/S/N/D 一致、softmax_lse、cu_seqlens |
+| `fag_checker.*` | `FagChecker` | 组合器，注册顺序即校验顺序 |
+
+`flash_attn_grad_tiling_check.{h,cpp}` 收成门面（22 行），只把 `CheckParams` 转发给 `FagChecker::Process`，所以 `flash_attn_grad_tiling.cpp` 不受影响。子目录靠 `op_host/CMakeLists.txt` 里 `file(GLOB_RECURSE ... checkers/*checker*.cpp)` + `target_sources` 收进编译 —— 父级的 tiling glob 只认 `*_tiling*.cpp`，不显式收会静默漏编。写法与正向 `flash_attn/op_host/CMakeLists.txt` 一致。
+
+**两处对设计的偏离，都是有意的：**
+
+1. **没有分四轮。** 正向分四轮是因为它有八个 checker、多数要参与多轮；FAGrad 只有六个 checker，每个都只落在一轮里。做成四轮会让每个 checker 实现一个方法、另外三个返回 `SUCCESS`，正是 §8.2 第一条列为反面写法的空虚函数。所以退成「单个 `Check` + 有序列表」，顺序由 `FagChecker` 构造函数显式表达。等 checker 数量涨上来再分轮。
+2. **checker 吃 `gert::TilingContext` 而不是已解析的 POD。** 正向的 checker 吃 `FaTilingInfo`，但 FAGrad 的校验发生在 parser 之前（入口顺序 `CheckParams` → `ParseInfo`），所以只能直接读 context。属性集中在 `FagAttrRangeChecker` 里读一次、存进 `FagCheckCtx` 供后续复用，不让每个 checker 各读一遍。若将来要改成吃 POD，得先调整入口顺序，那是行为相关改动，不在本次范围内。
+
+`CheckShape` 的收敛靠三个表驱动辅助函数（`CheckDimNum` / `CheckDimEqual` / `GetAxisIndex`）替掉逐张量重复的 `OP_CHECK_IF`：原先加一个张量要改八处，现在只改一处张量表。顺带修掉两个小问题：`qN % kN` 缺 `kN == 0` 守卫（空张量可达，原为除零 UB），以及 `GetDimNum()` 返回 `size_t` 却用 `%ld` 打印。
 
 ### 5.4 模板层与注册表
 
