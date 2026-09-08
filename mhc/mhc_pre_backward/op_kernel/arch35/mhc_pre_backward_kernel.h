@@ -956,6 +956,25 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     for (uint32_t offsetND = dealStartND_; offsetND < dealEndND_; offsetND += ND_BLOCK_SIZE) {
         currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - offsetND);
 
+        // FP32下将两个连续512行V2结果合并为一次C1，避免GM原子累加改变近零dphi的加法顺序。
+        // C0和V2仍保持512/128/64流水；两个xRs双缓冲槽在GM中连续，可作为1024行右矩阵读取。
+        bool mergeC1BsBlock = !enableHf32 && totalLength_ > SINGLE_M && totalLength_ <= 2 * SINGLE_M;
+        if (mergeC1BsBlock) {
+            uint32_t secondBSBlock = static_cast<uint32_t>(totalLength_ - SINGLE_M);
+            ProcessC0(offsetND, currentNDBlock, SINGLE_M, secondBSBlock, buffId + 1);
+            AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
+            ProcessC1(offsetND, currentNDBlock, 0, static_cast<uint32_t>(totalLength_), buffId);
+            buffId += 2;
+
+            uint32_t nextOffsetND = offsetND + ND_BLOCK_SIZE;
+            if (nextOffsetND < dealEndND_) {
+                uint32_t nextNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - nextOffsetND);
+                ProcessC0(nextOffsetND, nextNDBlock, 0, static_cast<uint32_t>(Min(
+                    static_cast<uint64_t>(SINGLE_M), totalLength_)), buffId);
+            }
+            continue;
+        }
+
         for (uint64_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
             currentBSBlock =
                 static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - offsetBS));
