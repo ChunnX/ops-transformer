@@ -23,8 +23,11 @@ _ENGRAM_DTYPE_TO_INT = {
     torch.float16: 5,
     torch.float32: 6,
     torch.bfloat16: 15,
+    torch.float8_e5m2: 23,
+    torch.float8_e4m3fn: 24,
 }
 _ENGRAM_INT_TO_DTYPE = {v: k for k, v in _ENGRAM_DTYPE_TO_INT.items()}
+_ENGRAM_SF_DTYPES = (torch.float32, torch.float8_e8m0fnu)
 
 
 @dataclass
@@ -65,7 +68,8 @@ class ElasticBufferOpBuilder(OpBuilder):
         """PyTorch operator signature."""
         return [
             "engram_fetch(Tensor context, Tensor indices, int hidden_size, "
-            "int num_entries, int dtype) -> Tensor",
+            "int num_entries, int dtype, Tensor fetched_sf, "
+            "int sf_table_addr) -> Tensor",
             "engram_fetch_train(Tensor context, Tensor indices, int hidden_size, "
             "int num_entries, int dtype, Tensor local_storage_addr, "
             "int num_max_tokens_per_rank, int comm_buffer_size, int rank_size) "
@@ -81,7 +85,9 @@ class ElasticBufferOpBuilder(OpBuilder):
         """Meta implementation for FakeTensor / torch.compile graph tracing."""
 
         @impl(get_as_library(), "engram_fetch", "Meta")
-        def engram_fetch_meta(context, indices, hidden_size, num_entries, dtype):
+        def engram_fetch_meta(
+            context, indices, hidden_size, num_entries, dtype, fetched_sf, sf_table_addr
+        ):
             return torch.empty(
                 (indices.size(0), hidden_size),
                 dtype=_ENGRAM_INT_TO_DTYPE[dtype],
@@ -180,10 +186,12 @@ _elastic_buffer_op_builder._ensure_initialized()
 
 
 @impl(get_as_library(), "engram_fetch", "PrivateUse1")
-def engram_fetch(context, indices, hidden_size, num_entries, dtype):
+def engram_fetch(
+    context, indices, hidden_size, num_entries, dtype, fetched_sf, sf_table_addr
+):
     op_module = _elastic_buffer_op_builder.load()
     return op_module.ElasticBuffer.engram_fetch(
-        context, indices, hidden_size, num_entries, dtype
+        context, indices, hidden_size, num_entries, dtype, fetched_sf, sf_table_addr
     )
 
 
@@ -414,11 +422,13 @@ class ElasticBuffer:
         self._engram_context_tensor = None
         self._engram_hidden_size = None
         self._engram_num_entries = None
-        self._engram_dtype_int = None
+        self._engram_dtype = None
         self._engram_fetch_in_progress = False
         self._local_storage_addr = None
         self._comm_buffer_size = 0
         self._rank_size = 0
+        self._engram_sf = None
+        self._engram_sf_table_addr = 0
 
     @staticmethod
     def get_engram_storage_size_hint(
@@ -449,8 +459,15 @@ class ElasticBuffer:
             lambda: f"hidden must be 128-aligned, got {hidden}",
         )
         torch._check(
-            dtype in (torch.bfloat16, torch.float16, torch.float32),
-            lambda: f"dtype must be bfloat16/float16/float32, got {dtype}",
+            dtype
+            in (
+                torch.bfloat16,
+                torch.float16,
+                torch.float32,
+                torch.float8_e4m3fn,
+                torch.float8_e5m2,
+            ),
+            lambda: f"dtype must be bfloat16/float16/float32/float8_e4m3fn/float8_e5m2, got {dtype}",
         )
         _elastic_buffer_ops = _elastic_buffer_op_builder.load()
         return _elastic_buffer_ops.ElasticBuffer.get_engram_storage_size_hint(
@@ -582,12 +599,17 @@ class ElasticBuffer:
                 ),
             )
 
-    def engram_write(self, storage: torch.Tensor) -> None:
+    def engram_write(
+        self, storage: torch.Tensor, sf: Optional[torch.Tensor] = None
+    ) -> None:
         """
         Write data to the host pinned memory of ElasticBuffer.
 
         Arguments:
-            storage: the CPU tensor to write (must be 2D, contiguous, dtype=bf16/fp16/fp32).
+            storage: the CPU tensor to write (must be 2D, contiguous, dtype=bf16/fp16/fp32/fp8_e4m3fn).
+            sf: optional scaling factor table for FP8 quantization (GPU tensor,
+                shape [num_entries, num_sf_packs]). When provided, engram_fetch
+                will return a fetched_sf tensor alongside fetched data.
 
         Returns:
             None
@@ -604,8 +626,15 @@ class ElasticBuffer:
         )
         torch._check(storage.is_contiguous(), lambda: "storage must be contiguous")
         torch._check(
-            storage.dtype in (torch.bfloat16, torch.float16, torch.float32),
-            lambda: f"storage dtype must be bfloat16/float16/float32, got: {storage.dtype}",
+            storage.dtype
+            in (
+                torch.bfloat16,
+                torch.float16,
+                torch.float32,
+                torch.float8_e4m3fn,
+                torch.float8_e5m2,
+            ),
+            lambda: f"storage dtype must be bfloat16/float16/float32/float8_e4m3fn/float8_e5m2, got: {storage.dtype}",
         )
         torch._check(
             storage.size(1) > 0,
@@ -615,11 +644,36 @@ class ElasticBuffer:
             storage.size(1) % 128 == 0,
             lambda: f"storage second dimension must be 128-aligned, got: {storage.size(1)}",
         )
-        self._runtime.engram_write(storage)
+        if sf is not None:
+            torch._check(
+                sf.device.type == torch.device("npu").type,
+                lambda: f"sf must be on NPU, got device: {sf.device}",
+            )
+            torch._check(
+                sf.dim() == 2,
+                lambda: f"sf must be 2D, got dimensions: {sf.dim()}",
+            )
+            torch._check(
+                sf.is_contiguous(),
+                lambda: "sf must be contiguous",
+            )
+            torch._check(
+                sf.size(0) == storage.size(0) * self._ep_world_size,
+                lambda: f"sf dim0 ({sf.size(0)}) must match storage dim0 * world_size "
+                f"({storage.size(0)} * {self._ep_world_size} = "
+                f"{storage.size(0) * self._ep_world_size}), sf must be the full replicated table",
+            )
+            torch._check(
+                sf.dtype in _ENGRAM_SF_DTYPES,
+                lambda: f"sf dtype must be one of {_ENGRAM_SF_DTYPES}, got: {sf.dtype}",
+            )
+        self._runtime.engram_write(storage, sf)
         self._engram_context_tensor = self._runtime.get_context_tensor()
         self._engram_hidden_size = storage.size(1)
         self._engram_num_entries = storage.size(0)
-        self._engram_dtype_int = _ENGRAM_DTYPE_TO_INT[storage.dtype]
+        self._engram_dtype = storage.dtype
+        self._engram_sf = sf
+        self._engram_sf_table_addr = sf.data_ptr() if sf is not None else 0
         self._local_storage_addr = self._runtime.get_local_storage_addr()
         self._comm_buffer_size = self._runtime.get_comm_buffer_size()
         self._rank_size = self._runtime.get_rank_size()
@@ -633,12 +687,15 @@ class ElasticBuffer:
 
         Returns:
             wait_callable: a callable that returns the fetched tensor when invoked.
+            When scaling factors were provided in engram_write, the callable returns
+            (fetched_tensor, fetched_sf). Otherwise returns fetched_tensor only.
             In training mode (with_grad=True), the callable returns a tuple of
             (fetched_tensor, EngramFetchCtx) for save-for-backward.
         """
         self._check_engram_fetch_ready(indices)
         self._engram_fetch_in_progress = True
         context = self._engram_context_tensor
+        sf = self._engram_sf
 
         if self._with_grad:
             fetched, perm, send_counts, recv_counts, recv_local_entry, num_recv = (
@@ -647,7 +704,7 @@ class ElasticBuffer:
                     indices,
                     self._engram_hidden_size,
                     self._engram_num_entries,
-                    self._engram_dtype_int,
+                    _ENGRAM_DTYPE_TO_INT[self._engram_dtype],
                     self._local_storage_addr,
                     self._num_max_tokens_per_rank,
                     self._comm_buffer_size,
@@ -668,17 +725,31 @@ class ElasticBuffer:
 
             return _wait_train
 
+        fetched_sf = None
+        if sf is not None:
+            fetched_sf = torch.empty(
+                (indices.size(0), sf.size(1)),
+                dtype=sf.dtype,
+                device=indices.device,
+            )
+
         fetched = torch.ops.cann_ops_transformer.engram_fetch(
             context,
             indices,
             self._engram_hidden_size,
             self._engram_num_entries,
-            self._engram_dtype_int,
+            _ENGRAM_DTYPE_TO_INT[self._engram_dtype],
+            fetched_sf
+            if fetched_sf is not None
+            else torch.empty(0, device=indices.device),
+            self._engram_sf_table_addr,
         )
 
         def _wait():
             result = torch.ops.cann_ops_transformer.engram_fetch_wait(context, fetched)
             self._engram_fetch_in_progress = False
+            if sf is not None:
+                return result, fetched_sf
             return result
 
         return _wait
@@ -730,7 +801,7 @@ class ElasticBuffer:
             self._engram_context_tensor is not None,
             lambda: "engram_fetch_grad must be called after at least one engram_write",
         )
-        expected_dtype = _ENGRAM_INT_TO_DTYPE[self._engram_dtype_int]
+        expected_dtype = self._engram_dtype
         _torch_check(
             grad_fetched.dtype == expected_dtype,
             lambda: (
@@ -1067,11 +1138,13 @@ class ElasticBuffer:
         self._engram_context_tensor = None
         self._engram_hidden_size = None
         self._engram_num_entries = None
-        self._engram_dtype_int = None
+        self._engram_dtype = None
         self._engram_fetch_in_progress = False
         self._local_storage_addr = None
         self._comm_buffer_size = 0
         self._rank_size = 0
+        self._engram_sf = None
+        self._engram_sf_table_addr = 0
 
     def _check_engram_fetch_ready(self, indices: torch.Tensor) -> None:
         if indices.device.type != torch.device("npu").type:
