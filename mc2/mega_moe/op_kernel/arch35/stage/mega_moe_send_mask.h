@@ -131,15 +131,16 @@ __aicore__ inline void PublishExpertCounts(const MoeStageCommonConfig &common, G
         return;
     }
     /*
-     * 到达标记内嵌：count 与跨卡同步信号走不同源核/不同通道(MTE3 vs scalar)，互连不保证
-     * 到达序，接收端凭同步放行后可能读到在途 count(旧序靠共享 GMM1 时间垫层掩盖)。
-     * 判据必须内嵌在数据自身的单次写内：高 8 位写 launch epoch(值域[0x80,0xFF]恒非零,
+     * 到达标记内嵌：调用方已等待本卡量化就绪，并收口本核所有 index 写入。
+     * count 自身兼任该源卡/专家的输入 ready，不再发送独立的入口跨卡同步信号。
+     * 高 8 位写 launch epoch(值域[0x80,0xFF]恒非零,
      * 避开窗口零初值)，低 24 位为真实 count(上限 maxOutputSize 远小于 2^24)。
      * 接收端逐槽校验 epoch 后取低 24 位(见 token_dispatch.h PrepareMoeExpertTokenCountTable)。
      */
     for (int32_t ownedIdx = 0; ownedIdx < ownedExpertNum; ++ownedIdx) {
         int32_t rawCount = scratch.sendCntAccTensor.GetValue(ownedIdx);
-        scratch.sendCntAccTensor.SetValue(ownedIdx, (arrivalEpoch << 24) | rawCount);
+        uint32_t taggedCount = (static_cast<uint32_t>(arrivalEpoch) << 24U) | static_cast<uint32_t>(rawCount);
+        scratch.sendCntAccTensor.SetValue(ownedIdx, static_cast<int32_t>(taggedCount));
     }
 
     int32_t sourceRank = static_cast<int32_t>(common.rankId);
@@ -223,10 +224,14 @@ __aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job
     for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.bufferCount; ++bufferIdx) {
         WaitFlag<AscendC::HardEvent::MTE3_V>(static_cast<TEventID>(bufferIdx));
     }
-    __gm__ int32_t *launchCountSlot = reinterpret_cast<__gm__ int32_t *>(
-        params.peermemInfo.rankSyncInWorldPtr + 48U * 1024U + static_cast<uint64_t>(job.jobIndex) * 64U);
-    // 本 launch epoch = 计数槽值+1(跨卡同步在本阶段之后执行,槽值仍为上一 launch)。
-    int32_t arrivalEpoch = ((ReadGmByPassDCache(launchCountSlot) + 1) & 0x7F) | 0x80;
+    // PublishMteQuantReady 已在量化后推进本核的输入计数。index 的生产者按专家分核，
+    // 量化按 token 分核，故 count 发布必须等所有本卡量化生产者，不能只等本核。
+    int32_t inputSequence =
+        ReadGmByPassDCache(GetMteSyncCountAddress(params.peermemInfo.rankSyncInWorldPtr, job.jobIndex));
+    WaitForMteQuantReady(params.peermemInfo.rankSyncInWorldPtr, job.jobIndex, job.totalJobs, inputSequence);
+    // index 与 count 走同一发送核的 MTE3；显式分隔两批写入，count 继续与后续清零重叠。
+    PipeBarrier<PIPE_MTE3>();
+    int32_t arrivalEpoch = static_cast<int32_t>(GetMteCountEpoch(inputSequence));
     PublishExpertCounts(common, winRankAddr, config, scratch, ownedExpertBegin, ownedExpertNum, arrivalEpoch);
 }
 

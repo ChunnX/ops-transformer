@@ -21,6 +21,7 @@
 #include "kernel_operator.h"
 #include "op_kernel/math_util.h"
 #include "mega_moe_constants.h"
+#include "mega_moe_input_sync.h"
 #include "mega_moe_types.h"
 
 namespace MegaMoeImpl {
@@ -537,9 +538,8 @@ __aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint
         return;
     }
     __gm__ int32_t *syncRank = reinterpret_cast<__gm__ int32_t *>(rankSyncInWorldPtr);
-    __gm__ int32_t *syncCount = reinterpret_cast<__gm__ int32_t *>(rankSyncInWorldPtr + 48U * 1024U +
-                                                                   static_cast<uint64_t>(aivJob.jobIndex) * 64U);
-    int32_t count = ReadGmByPassDCache(syncCount) + 1;
+    __gm__ int32_t *syncCount = GetMteSyncCountAddress(rankSyncInWorldPtr, aivJob.jobIndex);
+    int32_t count = static_cast<int32_t>(static_cast<uint32_t>(ReadGmByPassDCache(syncCount)) + 1U);
     for (uint32_t rankIdx = aivJob.jobIndex; rankIdx < worldSize; rankIdx += aivJob.totalJobs) {
         __gm__ int32_t *remoteSyncAddr =
             reinterpret_cast<__gm__ int32_t *>(g_winRankAddr_[rankIdx]) + rankId * INT_CACHELINE;

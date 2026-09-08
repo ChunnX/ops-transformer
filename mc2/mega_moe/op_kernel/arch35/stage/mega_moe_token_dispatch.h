@@ -436,17 +436,17 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
 
     /*
-     * 到达校验：count 槽高 8 位为发送侧写入的 launch epoch(与 rankSync 计数槽同源,见
-     * send_mask.h PublishExpertCounts)。跨卡同步信号与 count 数据跨源/跨通道无到达序,
-     * 同步放行不代表 count 已落地——对高位不匹配的槽单槽自旋重读至到达,再掩出低 24 位。
+     * 到达校验：count 槽高 8 位为发送侧的输入 epoch。发送前已确认源卡量化就绪、
+     * index 写完，因此逐槽检查直接承担远端输入依赖，不依赖入口全卡握手。
+     * 本卡 SyncAll<false> 已收口所有 AIV 的量化发布；出口 AIV 同步在本函数之后，
+     * 所以此时 slot 0 稳定为本轮输入计数。未匹配的槽重读至到达，再掩出低 24 位。
      */
-    __gm__ int32_t *launchCountSlot0 =
-        reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.rankSyncInWorldPtr + 48U * 1024U);
-    int32_t expectEpoch = (ReadGmByPassDCache(launchCountSlot0) & 0x7F) | 0x80;
+    __gm__ int32_t *launchCountSlot0 = GetMteSyncCountAddress(params.peermemInfo.rankSyncInWorldPtr, 0U);
+    uint32_t expectEpoch = GetMteCountEpoch(ReadGmByPassDCache(launchCountSlot0));
     __gm__ int32_t *rawCountGm = reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr);
     for (uint32_t slotIdx = 0U; slotIdx < rawCountElementCount; ++slotIdx) {
         int32_t slotValue = scratch.cumsumInfoTensor.GetValue(slotIdx);
-        while (((slotValue >> 24) & 0xFF) != expectEpoch) {
+        while ((static_cast<uint32_t>(slotValue) >> 24U) != expectEpoch) {
             int64_t startCycle = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - startCycle < GM_FLAG_POLL_BACKOFF_CYCLES) {
             }
