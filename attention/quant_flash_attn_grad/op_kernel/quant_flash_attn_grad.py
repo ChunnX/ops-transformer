@@ -32,6 +32,8 @@ VEC_CHUNK = 128
 
 M_16 = 16
 N_4096 = 4096
+ATTEN_MASK_COMPRESS_SIZE = 2048
+ATTEN_MASK_MIN = -3.4028234663852886e+38
 
 BASE_K = 128
 BASE_N = 128
@@ -60,10 +62,13 @@ SYNC_PDS_TO_DQ_FLAG = 7
 SYNC_DETER_FLAG = 11
 SYNC_PDS_TO_DKV_FLAG_TAIL = 12
 
+init_data = [1] * 16
 
 def _align_up(value, align=1024):
     return ((value + align - 1) // align) * align
 
+def _abs(value):
+    return value if value > 0 else value * -1
 
 def ceil(a, b):
     return (a + b - 1) // b
@@ -84,7 +89,8 @@ VA0 = 0
 VA1 = _align_up(VA0 + VB4_KV)
 VA2 = _align_up(VA1 + VB4_KV)
 VA3 = _align_up(VA2 + VB4_KV)
-VA4 = VA3 + TS_HALF * 4
+VA4 = VA3 + TS * HALF_D_SIZE * 4
+# VA4 = VA3 + TS_HALF * 4
 VAP_0 = 0
 VAP_1 = _align_up(VAP_0 + VB_P)
 MA0 = 0
@@ -1177,7 +1183,6 @@ def is_valid_for_deter(index, const_info):
     s2_idx_left = s2o_dim_idx * CUBE_BASEN
     s2_idx_right = min((s2o_dim_idx + 1) * CUBE_BASEN, const_info.s2_size)
     if has_attn_mask:
-        pl.printf("111111 \n")
         if const_info.mask_mode == 3:
             s2_ignored_end_len = const_info.s1_size - CUBE_BASEM * (s1o_dim_idx + 1)
             if const_info.s2_size > s2_ignored_end_len:
@@ -1310,7 +1315,8 @@ def set_run_info(
     inner_s2_tail_size = (
         128 if run_info.s2_real_size % 128 == 0 else run_info.s2_real_size % 128
     )
-
+    delta = const_info.s1_size - const_info.s2_size
+    is_outer_valid = True if _abs((run_info.s1o_idx * CUBE_BASEM - delta)- run_info.s2o_idx * CUBE_BASEN) < 512 else False
     for i in pl.range(4):
         run_info.inner_s1_real_size[i] = (
             inner_s1_tail_size if i == run_info.inner_s1_loop_num - 1 else 128
@@ -1318,7 +1324,13 @@ def set_run_info(
         run_info.inner_s2_real_size[i] = (
             inner_s2_tail_size if i == run_info.inner_s2_loop_num - 1 else 128
         )
-
+        if has_attn_mask:
+            if is_outer_valid:
+                s1_offset = run_info.s1o_idx * CUBE_BASEM + i * TS - delta
+                for j in pl.range(4):
+                    s2_offset = run_info.s2o_idx * CUBE_BASEM + j * TS
+                    run_info.is_valid_inner_block[i] = 0 if ((i < run_info.inner_s1_loop_num and j < run_info.inner_s2_loop_num)
+                    and (s1_offset - s2_offset < 128)) else 1
 
 def set_quant_run_info(run_info, s1_idx, s2_idx):
     run_info.s1_idx = s1_idx
@@ -1473,6 +1485,7 @@ def compute_p_ds_vf(
     perm_tile,
     lse_tile,
     d_tile,
+    attn_tile,
     src_m,
     src_n,
     ss,
@@ -1484,7 +1497,13 @@ def compute_p_ds_vf(
     un_roll_num = 8
     preg_all = vf.update_mask(src_n, dtype=pl.DT_FP32)
     preg_all_8 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_UINT8)
-    preg_all_16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP16)
+    preg_all_32 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    if has_attn_mask:
+        preg_mask1 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
+        preg_mask2 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
+        preg_mask3 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
+        preg_mask4 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
+        vreg_min = vf.full(ATTEN_MASK_MIN, preg_all_32, dtype=pl.DT_FP32)
 
     vreg_d = vf.load_align(d_tile, 0)
     vreg_perm = vf.load_align(perm_tile, 0)
@@ -1499,6 +1518,7 @@ def compute_p_ds_vf(
     vreg_dps = vf.muls(vreg_dps, ds_scale, preg_all)
 
     for i in pl.range(0, src_m, un_roll_num):
+    # for i in pl.range(0, 8, un_roll_num):
         vreg_sp1 = vf.load_align(sp_tile, i * 128)
         vreg_sp2 = vf.load_align(sp_tile, (i + 1) * 128)
         vreg_sp3 = vf.load_align(sp_tile, (i + 2) * 128)
@@ -1508,12 +1528,23 @@ def compute_p_ds_vf(
         vreg_sp2 = vf.muls(vreg_sp2, ss, preg_all)
         vreg_sp3 = vf.muls(vreg_sp3, ss, preg_all)
         vreg_sp4 = vf.muls(vreg_sp4, ss, preg_all)
+        if has_attn_mask:
+            preg_mask1 = vf.load_align(attn_tile, i * 64, dist=pl.LoadDist.DS)
+            preg_mask2 = vf.load_align(attn_tile, (i + 1) * 64, dist=pl.LoadDist.DS)
+            preg_mask3 = vf.load_align(attn_tile, (i + 2) * 64, dist=pl.LoadDist.DS)
+            preg_mask4 = vf.load_align(attn_tile, (i + 3) * 64, dist=pl.LoadDist.DS)
 
+            vreg_sp1 = vf.select(vreg_sp1, vreg_min, preg_mask1)
+            vreg_sp2 = vf.select(vreg_sp2, vreg_min, preg_mask2)
+            vreg_sp3 = vf.select(vreg_sp3, vreg_min, preg_mask3)
+            vreg_sp4 = vf.select(vreg_sp4, vreg_min, preg_mask4)
+
+        # vf.store(sp_tile, vreg_sp1)
         vreg_sp1 = vf.exp_sub(vreg_sp1, vreg_lse, preg_all)
         vreg_sp2 = vf.exp_sub(vreg_sp2, vreg_lse, preg_all)
         vreg_sp3 = vf.exp_sub(vreg_sp3, vreg_lse, preg_all)
         vreg_sp4 = vf.exp_sub(vreg_sp4, vreg_lse, preg_all)
-
+        # return
         vreg_p1 = vf.astype(
             vreg_sp1,
             preg_all,
@@ -1644,6 +1675,7 @@ def compute_p_ds_vf(
         )
 
     for i in pl.range(0, src_m, un_roll_num):
+    # for i in pl.range(0, 8, un_roll_num):
         vreg_sp1 = vf.load_align(sp_tile, (i + 4) * 128)
         vreg_sp2 = vf.load_align(sp_tile, (i + 5) * 128)
         vreg_sp3 = vf.load_align(sp_tile, (i + 6) * 128)
@@ -1654,11 +1686,22 @@ def compute_p_ds_vf(
         vreg_sp3 = vf.muls(vreg_sp3, ss, preg_all)
         vreg_sp4 = vf.muls(vreg_sp4, ss, preg_all)
 
+        if has_attn_mask:
+            preg_mask1 = vf.load_align(attn_tile, (i + 4) * 64, dist=pl.LoadDist.DS)
+            preg_mask2 = vf.load_align(attn_tile, (i + 5) * 64, dist=pl.LoadDist.DS)
+            preg_mask3 = vf.load_align(attn_tile, (i + 6) * 64, dist=pl.LoadDist.DS)
+            preg_mask4 = vf.load_align(attn_tile, (i + 7) * 64, dist=pl.LoadDist.DS)
+
+            vreg_sp1 = vf.select(vreg_sp1, vreg_min, preg_mask1)
+            vreg_sp2 = vf.select(vreg_sp2, vreg_min, preg_mask2)
+            vreg_sp3 = vf.select(vreg_sp3, vreg_min, preg_mask3)
+            vreg_sp4 = vf.select(vreg_sp4, vreg_min, preg_mask4)
+
         vreg_sp1 = vf.exp_sub(vreg_sp1, vreg_lse, preg_all)
         vreg_sp2 = vf.exp_sub(vreg_sp2, vreg_lse, preg_all)
         vreg_sp3 = vf.exp_sub(vreg_sp3, vreg_lse, preg_all)
         vreg_sp4 = vf.exp_sub(vreg_sp4, vreg_lse, preg_all)
-
+        # vf.store(sp_tile, vreg_sp1)
         vreg_p1 = vf.astype(
             vreg_sp1,
             preg_all,
@@ -1798,6 +1841,7 @@ def compute_p_ds(
     lse_tile,
     d_tile,
     zero_tile,
+    attn_tile,
     src_m,
     src_n,
     ss,
@@ -1816,6 +1860,7 @@ def compute_p_ds(
         perm_tile,
         lse_tile,
         d_tile,
+        attn_tile,
         src_m,
         src_n,
         ss,
@@ -1823,6 +1868,20 @@ def compute_p_ds(
         deq_p_scale,
         ds_scale,
     )
+
+
+def cal_atten_mask_offset(run_info, const_info):
+    real_s1 = run_info.inner_s1_real_size[run_info.s1_idx]
+    first_half_s1 = ceil(real_s1, QUANT_S1_BASE_COUNT) * QUANT_S1_BASE_COUNT // 2
+    delta_n = const_info.s1_size - const_info.s2_size
+    s1_offset = (
+        run_info.s1o_idx * CUBE_BASEM
+        + run_info.s1_idx * TS
+        + const_info.sub_id * first_half_s1
+    )
+    s2_offset = run_info.s2_cv_begin + run_info.s2_idx * TS
+    delta = s1_offset - s2_offset - delta_n
+    return delta
 
 
 def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_info):
@@ -1844,6 +1903,28 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
     zero_vec = tensor_info.zero_vec.current()
     pl.set_validshape(lse_vec, [1, current_real_s1])
     pl.set_validshape(d_vec, [1, current_real_s1])
+
+    attn_vec = tensor_info.attn_vec.current()
+    if has_attn_mask:
+        delta = cal_atten_mask_offset(run_info, const_info)
+        if delta >= 0:
+            s1_offset = pl.min(delta, 128) + 1
+            s2_offset = 0
+        else:
+            s1_offset = 1
+            s2_offset = pl.min(_abs(delta), 128)
+        pl.load(
+            attn_vec,
+            tensor_info.tensor_attn_mask,
+            [
+                s2_offset,
+                s1_offset,
+            ],
+            order=[0, 1],
+        )
+    # pl.system.bar_all()
+    # pl.printf("222 wenyu  \n")
+    # pl.dump_data(attn_vec, offsets=[0, 0], shapes=[4,64])
     if layout == 0 or layout == 1:
         pl.load(
             lse_vec,
@@ -1874,6 +1955,8 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
     sp_vec_bit8 = tensor_info.sp_vec_bit8[sdp_id]
     dpds_vec = tensor_info.dpds_vec[sdp_id]
     dpds_vec_bit8 = tensor_info.dpds_vec_bit8[sdp_id]
+    # pl.system.bar_all()
+    # pl.dump_data(sp_vec, offsets=[0, 0], shapes=[2,64])
     compute_p_ds(
         sp_vec,
         dpds_vec,
@@ -1883,6 +1966,7 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
         lse_vec,
         d_vec,
         zero_vec,
+        attn_vec,
         current_real_s2,
         current_real_s1,
         run_info.deq_scale_q_value
@@ -1892,6 +1976,8 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
         const_info.deq_scale_p_value,
         const_info.deq_scale_p_value * const_info.scale_ds,
     )
+    # pl.system.bar_all()
+    # pl.dump_data(sp_vec, offsets=[0, 0], shapes=[2,64])
     if first_half_s1 > BLOCK_SIZE:
         pl.insert(p_l1_bit8, sp_vec_bit8[:, :256], [const_info.sub_id * 32, 0])
         pl.insert(p_l1_bit8, sp_vec_bit8[:, 512:768], [const_info.sub_id * 32 + 16, 0])
@@ -2326,15 +2412,29 @@ def dequant_out(tensor, real_length, scale):
         vf.store_align(tensor + i * D_SIZE * 2, vreg_x1, preg_all)
         vf.store_align(tensor + i * D_SIZE * 2 + D_SIZE, vreg_x2, preg_all)
 
+@pl.vector_function
+def dequant_out_dq(tensor, real_length, scale):
+    preg_all = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    for i in pl.range(real_length):
+        vreg_x1 = vf.load_align(tensor, i * D_SIZE)
+        vreg_x2 = vf.load_align(tensor, i * D_SIZE + HALF_D_SIZE)
+
+        vreg_x1 = vf.muls(vreg_x1, scale, preg_all)
+        vreg_x2 = vf.muls(vreg_x2, scale, preg_all)
+
+        vf.store_align(tensor + i * D_SIZE, vreg_x1, preg_all)
+        vf.store_align(tensor + i * D_SIZE + HALF_D_SIZE, vreg_x2, preg_all)
+
 
 def dequant_dqkv(mode, tensor_1, tensor_2, const_info, run_info):
     if mode == 0:
         scale = run_info.deq_scale_k_value * const_info.deq_scale_ds_value
         real_length = run_info.inner_s1_real_size[run_info.s1_idx]
+        dequant_out_dq(tensor_1, ceil(real_length, 2), scale)
     else:
         scale = run_info.deq_scale_do_value * const_info.deq_scale_p_value
         real_length = run_info.inner_s2_real_size[run_info.s2_idx]
-    dequant_out(tensor_1, ceil(real_length, 2), scale)
+        dequant_out(tensor_1, ceil(real_length, 2), scale)
     if mode != 0:
         scale = run_info.deq_scale_q_value * const_info.deq_scale_ds_value
         dequant_out(tensor_2, ceil(real_length, 2), scale)
@@ -2863,6 +2963,12 @@ def quant_flash_attn_grad(
         [tiling.metadata_len, 1],
         dtype=pl.DT_INT32,
     )
+    tensor_attn_mask = pl.make_tensor(
+        attn_mask,
+        [2048, 2048],
+        [2048, 1],
+        dtype=pl.DT_INT8,
+    )
     tensor_workspace_sfmg = pl.make_tensor(
         workspace + tiling.sfmg_work_space_offset,
         [tiling.b, tiling.n1, tiling.s1],
@@ -3229,7 +3335,7 @@ def quant_flash_attn_grad(
     )
     dq_vec = pl.make_tile_group(
         type=pl.TileType(
-            shape=[TS, TS], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+            shape=[TS, HALF_D_SIZE], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
         ),
         addrs=VA3,
         mutex_ids=[31],
@@ -3261,6 +3367,13 @@ def quant_flash_attn_grad(
         ),
         addrs=[VA4 + 512 * 9],
         mutex_ids=[18],
+    )
+    attn_vec = pl.make_tile_group(
+        type=pl.TileType(
+            shape=[128, 64], dtype=pl.DT_INT8, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=[VA4 + 512 * 10],
+        mutex_ids=[19],
     )
     with pl.section_vector():
         pl.expands(zero_vec.current(), 0)
@@ -3471,6 +3584,7 @@ def quant_flash_attn_grad(
         tensor_p_scale=tensor_p_scale,
         tensor_ds_scale=tensor_ds_scale,
         tensor_metadata=tensor_metadata,
+        tensor_attn_mask=tensor_attn_mask,
         tensor_q=tensor_q,
         tensor_q_ds=tensor_q_ds,
         tensor_k=tensor_k,
@@ -3502,6 +3616,7 @@ def quant_flash_attn_grad(
         d_vec=d_vec,
         perm_vec=perm_vec,
         zero_vec=zero_vec,
+        attn_vec=attn_vec,
         ds_l1=ds_l1,
         ds_l1_t=ds_l1_t,
         ds_l1_bit8=ds_l1_bit8,
@@ -3541,6 +3656,7 @@ def quant_flash_attn_grad(
         inner_s2_loop_num=0,
         inner_s1_real_size=[0, 0, 0, 0],
         inner_s2_real_size=[0, 0, 0, 0],
+        is_valid_inner_block=init_data,
         maxsum_offset=0,
         deq_scale_q_value=0.0,
         deq_scale_k_value=0.0,
@@ -3602,20 +3718,20 @@ def quant_flash_attn_grad(
     )
     band_info = band_infos[0]
 
-    # # process presfmg
-    # presfmg_quant_inner_hif8(const_info, tensor_info)
-    # pl.system.sync_all()
+    # process presfmg
+    presfmg_quant_inner_hif8(const_info, tensor_info)
+    pl.system.sync_all()
 
     # process kernel
 
-    # alloc_event_id()
+    alloc_event_id()
     if sparse_type == 4:
         gen_band_info(const_info, band_info)
     loop_max = 0
     # loop_max = loop_max + tensor_metadata[1, 0]
     loop_max = cal_deter_max_loop_num(const_info, band_info)
-    with pl.section_cube():
-        pl.printf("wenyu check1 loop_max : %d \n", loop_max)
+    # with pl.section_cube():
+    #     pl.printf("wenyu check1 loop_max : %d \n", loop_max)
     task_id = 0
     next_valid_loop_idx = 0
     next_block_idx = 0
@@ -3651,8 +3767,8 @@ def quant_flash_attn_grad(
     next_valid_loop_idx, next_block_idx = cal_deter_index(
         0, loop_max, coordinate_infos[task_id % 2], const_info, band_info
     )
-    with pl.section_cube():
-        pl.printf("wenyu check2 next_valid_loop_idx : %d next_block_idx : %d \n", next_valid_loop_idx, next_block_idx)
+    # with pl.section_cube():
+    #     pl.printf("wenyu check2 next_valid_loop_idx : %d next_block_idx : %d \n", next_valid_loop_idx, next_block_idx)
     for loop_idx in pl.range(loop_max):
         block_inner_idx = next_block_idx
         if loop_idx >= next_valid_loop_idx:
@@ -3671,146 +3787,146 @@ def quant_flash_attn_grad(
         is_valid_block = block_inner_idx >= 0
         if is_valid_block:
             is_valid_block = is_valid_for_deter(block_inner_idx, const_info)
-        with pl.section_cube():
-            pl.printf("wenyu check3 next_valid_loop_idx : %d next_block_idx : %d is_valid_block : %d \n", next_valid_loop_idx, next_block_idx, is_valid_block)
-        # if is_valid_block:
-        #     set_run_info(
-        #         run_infos[task_id % 2],
-        #         run_infos[(task_id + 1) % 2],
-        #         task_id,
-        #         coordinate_infos[task_id % 2],
-        #         coordinate_infos[(task_id + 1) % 2],
-        #         next_core_first_block_coordinate_info,
-        #         const_info,
-        #         tensor_info,
-        #         tmp_info[0],
-        #     )
-        #     run_info = run_infos[task_id % 2]
-        #     for kv_inner_id in pl.range(4):
-        #         process_first_s2(
-        #             const_info,
-        #             run_infos[task_id % 2],
-        #             run_infos[(task_id + 1) % 2],
-        #             kv_inner_id,
-        #             tensor_info,
-        #             tmp_info[0],
-        #         )
-    #     else:
-    #         with pl.section_vector():
-    #             if loop_idx > 0:
-    #                 for j in pl.range(4):
-    #                     pl.system.wait_cross_core(
-    #                         pipe=pl.PipeType.MTE3,
-    #                         event_id=SYNC_DETER_FLAG,
-    #                         sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-    #                     )
-    #                     pl.system.set_cross_core(
-    #                         pipe=pl.PipeType.MTE3,
-    #                         event_id=SYNC_DETER_FLAG,
-    #                         sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-    #                     )
-    #     if is_valid_block:
-    #         task_id += 1
+        # with pl.section_cube():
+        #     pl.printf("wenyu check3 next_valid_loop_idx : %d next_block_idx : %d is_valid_block : %d \n", next_valid_loop_idx, next_block_idx, is_valid_block)
+        if is_valid_block:
+            set_run_info(
+                run_infos[task_id % 2],
+                run_infos[(task_id + 1) % 2],
+                task_id,
+                coordinate_infos[task_id % 2],
+                coordinate_infos[(task_id + 1) % 2],
+                next_core_first_block_coordinate_info,
+                const_info,
+                tensor_info,
+                tmp_info[0],
+            )
+            run_info = run_infos[task_id % 2]
+            for kv_inner_id in pl.range(4):
+                process_first_s2(
+                    const_info,
+                    run_infos[task_id % 2],
+                    run_infos[(task_id + 1) % 2],
+                    kv_inner_id,
+                    tensor_info,
+                    tmp_info[0],
+                )
+        else:
+            with pl.section_vector():
+                if loop_idx > 0:
+                    for j in pl.range(4):
+                        pl.system.wait_cross_core(
+                            pipe=pl.PipeType.MTE3,
+                            event_id=SYNC_DETER_FLAG,
+                            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+                        )
+                        pl.system.set_cross_core(
+                            pipe=pl.PipeType.MTE3,
+                            event_id=SYNC_DETER_FLAG,
+                            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+                        )
+        if is_valid_block:
+            task_id += 1
 
-    # if not run_infos[(task_id + 1) % 2].is_dkv_completed:
-    #     kv_iib = 3
-    #     with pl.section_vector():
-    #         set_quant_run_info(run_infos[(task_id + 1) % 2], 0, kv_iib - 1)
-    #         if (
-    #             run_infos[(task_id + 1) % 2].s2_idx
-    #             < run_infos[(task_id + 1) % 2].inner_s2_loop_num
-    #         ):
-    #             copy_dqkv2gm(
-    #                 True, run_infos[(task_id + 1) % 2], const_info, tensor_info
-    #             )
-    #         pl.system.set_cross_core(
-    #             pipe=pl.PipeType.MTE3,
-    #             event_id=SYNC_TRANSFER_DKV_FLAG,
-    #             sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
-    #         )
+    if not run_infos[(task_id + 1) % 2].is_dkv_completed:
+        kv_iib = 3
+        with pl.section_vector():
+            set_quant_run_info(run_infos[(task_id + 1) % 2], 0, kv_iib - 1)
+            if (
+                run_infos[(task_id + 1) % 2].s2_idx
+                < run_infos[(task_id + 1) % 2].inner_s2_loop_num
+            ):
+                copy_dqkv2gm(
+                    True, run_infos[(task_id + 1) % 2], const_info, tensor_info
+                )
+            pl.system.set_cross_core(
+                pipe=pl.PipeType.MTE3,
+                event_id=SYNC_TRANSFER_DKV_FLAG,
+                sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
+            )
 
-    #     set_quant_run_info(run_infos[(task_id + 1) % 2], 0, kv_iib)
-    #     process_dkv(
-    #         False, run_infos[(task_id + 1) % 2], 0, const_info, tensor_info, tmp_info[0]
-    #     )
-    #     set_quant_run_info(run_infos[(task_id + 1) % 2], 2, kv_iib)
-    #     process_dkv(
-    #         False, run_infos[(task_id + 1) % 2], 2, const_info, tensor_info, tmp_info[0]
-    #     )
+        set_quant_run_info(run_infos[(task_id + 1) % 2], 0, kv_iib)
+        process_dkv(
+            False, run_infos[(task_id + 1) % 2], 0, const_info, tensor_info, tmp_info[0]
+        )
+        set_quant_run_info(run_infos[(task_id + 1) % 2], 2, kv_iib)
+        process_dkv(
+            False, run_infos[(task_id + 1) % 2], 2, const_info, tensor_info, tmp_info[0]
+        )
 
-    #     set_quant_run_info(run_infos[(task_id + 1) % 2], 0, kv_iib)
-    #     process_dkv(
-    #         True, run_infos[(task_id + 1) % 2], 0, const_info, tensor_info, tmp_info[0]
-    #     )
-    #     set_quant_run_info(run_infos[(task_id + 1) % 2], 2, kv_iib)
-    #     process_dkv(
-    #         True, run_infos[(task_id + 1) % 2], 2, const_info, tensor_info, tmp_info[0]
-    #     )
+        set_quant_run_info(run_infos[(task_id + 1) % 2], 0, kv_iib)
+        process_dkv(
+            True, run_infos[(task_id + 1) % 2], 0, const_info, tensor_info, tmp_info[0]
+        )
+        set_quant_run_info(run_infos[(task_id + 1) % 2], 2, kv_iib)
+        process_dkv(
+            True, run_infos[(task_id + 1) % 2], 2, const_info, tensor_info, tmp_info[0]
+        )
 
-    #     with pl.section_vector():
-    #         set_quant_run_info(run_infos[(task_id + 1) % 2], 0, kv_iib)
-    #         if (
-    #             run_infos[(task_id + 1) % 2].s2_idx
-    #             < run_infos[(task_id + 1) % 2].inner_s2_loop_num
-    #         ):
-    #             copy_dqkv2gm(
-    #                 True, run_infos[(task_id + 1) % 2], const_info, tensor_info
-    #             )
-    #         pl.system.set_cross_core(
-    #             pipe=pl.PipeType.MTE3,
-    #             event_id=SYNC_TRANSFER_DKV_FLAG,
-    #             sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
-    #         )
+        with pl.section_vector():
+            set_quant_run_info(run_infos[(task_id + 1) % 2], 0, kv_iib)
+            if (
+                run_infos[(task_id + 1) % 2].s2_idx
+                < run_infos[(task_id + 1) % 2].inner_s2_loop_num
+            ):
+                copy_dqkv2gm(
+                    True, run_infos[(task_id + 1) % 2], const_info, tensor_info
+                )
+            pl.system.set_cross_core(
+                pipe=pl.PipeType.MTE3,
+                event_id=SYNC_TRANSFER_DKV_FLAG,
+                sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
+            )
 
-    # if not run_infos[(task_id + 1) % 2].is_dq_completed:
-    #     for i in pl.range(4):
-    #         set_quant_run_info(run_infos[(task_id + 1) % 2], i, 0)
-    #         process_dq(
-    #             run_infos[(task_id + 1) % 2], 0, const_info, tensor_info, tmp_info[0]
-    #         )
-    #         set_quant_run_info(run_infos[(task_id + 1) % 2], i, 2)
-    #         process_dq(
-    #             run_infos[(task_id + 1) % 2], 2, const_info, tensor_info, tmp_info[0]
-    #         )
-    #         compute_dq(run_infos[(task_id + 1) % 2], const_info, tensor_info)
-    #         with pl.section_vector():
-    #             pl.system.wait_cross_core(
-    #                 pipe=pl.PipeType.MTE3,
-    #                 event_id=SYNC_DETER_FLAG,
-    #                 sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-    #             )
-    #             if (
-    #                 run_infos[(task_id + 1) % 2].s1_idx
-    #                 < run_infos[(task_id + 1) % 2].inner_s1_loop_num
-    #             ):
-    #                 copy_dqkv2gm(
-    #                     False, run_infos[(task_id + 1) % 2], const_info, tensor_info
-    #                 )
-    #             pl.system.set_cross_core(
-    #                 pipe=pl.PipeType.MTE3,
-    #                 event_id=SYNC_DETER_FLAG,
-    #                 sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-    #             )
-    #             pl.system.set_cross_core(
-    #                 pipe=pl.PipeType.MTE3,
-    #                 event_id=SYNC_TRANSFER_DQ_FLAG,
-    #                 sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
-    #             )
-    # else:
-    #     with pl.section_vector():
-    #         for i in pl.range(4):
-    #             pl.system.wait_cross_core(
-    #                 pipe=pl.PipeType.MTE3,
-    #                 event_id=SYNC_DETER_FLAG,
-    #                 sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-    #             )
-    #             pl.system.set_cross_core(
-    #                 pipe=pl.PipeType.MTE3,
-    #                 event_id=SYNC_DETER_FLAG,
-    #                 sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
-    #             )
-    # free_event_id()
-    # pl.system.sync_all()
+    if not run_infos[(task_id + 1) % 2].is_dq_completed:
+        for i in pl.range(4):
+            set_quant_run_info(run_infos[(task_id + 1) % 2], i, 0)
+            process_dq(
+                run_infos[(task_id + 1) % 2], 0, const_info, tensor_info, tmp_info[0]
+            )
+            set_quant_run_info(run_infos[(task_id + 1) % 2], i, 2)
+            process_dq(
+                run_infos[(task_id + 1) % 2], 2, const_info, tensor_info, tmp_info[0]
+            )
+            compute_dq(run_infos[(task_id + 1) % 2], const_info, tensor_info)
+            with pl.section_vector():
+                pl.system.wait_cross_core(
+                    pipe=pl.PipeType.MTE3,
+                    event_id=SYNC_DETER_FLAG,
+                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+                )
+                if (
+                    run_infos[(task_id + 1) % 2].s1_idx
+                    < run_infos[(task_id + 1) % 2].inner_s1_loop_num
+                ):
+                    copy_dqkv2gm(
+                        False, run_infos[(task_id + 1) % 2], const_info, tensor_info
+                    )
+                pl.system.set_cross_core(
+                    pipe=pl.PipeType.MTE3,
+                    event_id=SYNC_DETER_FLAG,
+                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+                )
+                pl.system.set_cross_core(
+                    pipe=pl.PipeType.MTE3,
+                    event_id=SYNC_TRANSFER_DQ_FLAG,
+                    sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK,
+                )
+    else:
+        with pl.section_vector():
+            for i in pl.range(4):
+                pl.system.wait_cross_core(
+                    pipe=pl.PipeType.MTE3,
+                    event_id=SYNC_DETER_FLAG,
+                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+                )
+                pl.system.set_cross_core(
+                    pipe=pl.PipeType.MTE3,
+                    event_id=SYNC_DETER_FLAG,
+                    sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+                )
+    free_event_id()
+    pl.system.sync_all()
 
     # # process post
-    # process_post_dqkv(const_info, tensor_info)
+    process_post_dqkv(const_info, tensor_info)
