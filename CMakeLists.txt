@@ -152,6 +152,23 @@ set_directory_properties(PROPERTIES
     ADDITIONAL_MAKE_CLEAN_FILES "${CMAKE_BINARY_DIR}/_CPack_Packages"
 )
 
+include(cmake/native.cmake)
+if(NATIVE_ONLY AND BUILD_OPEN_PROJECT AND NOT ENABLE_TEST)
+    # Native operators have no op_host or C++ library targets.
+    include(cmake/config.cmake)
+    set(CMAKE_INSTALL_PREFIX "${CMAKE_SOURCE_DIR}/build_out")
+    set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME ops-transformer)
+    file(REMOVE "${CMAKE_BINARY_DIR}/no_ops.flag")
+    add_cann_third_party(makeself-fetch)
+    if(ENABLE_BUILT_IN)
+        include(cmake/package.cmake)
+        pack_built_in()
+    else()
+        include(cmake/custom_package.cmake)
+    endif()
+    return()
+endif()
+
 include(cmake/third_party/opbase.cmake)
 if(DOWNLOAD_OPS_TEST_KIT)
   include(cmake/third_party/ops_test_kit.cmake)

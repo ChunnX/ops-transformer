@@ -355,7 +355,9 @@ add_init_py() {
   if [ -d ${built_in_impl_path} ]; then
     opp_builtin_mod=$(stat -c %a ${built_in_impl_path})
   fi
-  touch ${built_in_impl_path}/__init__.py
+  if [ -d "${built_in_impl_path}" ]; then
+    touch "${built_in_impl_path}/__init__.py"
+  fi
 
   [ -d ${built_in_impl_path}/dynamic ] && touch ${built_in_impl_path}/dynamic/__init__.py
 
