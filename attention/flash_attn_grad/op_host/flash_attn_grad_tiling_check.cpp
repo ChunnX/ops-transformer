@@ -404,11 +404,29 @@ ge::graphStatus FlashAttnGradCheck::CheckShape(gert::TilingContext *context, con
     return ge::GRAPH_SUCCESS;
 }
 
+// dq/dk/dv 目前用 fp32 atomicAdd 累加，跨核累加顺序不固定，因此开启确定性
+// 计算时结果并不确定。这不是参数非法，而是特性未支持 —— 明确拒绝，不静默放行，
+// 避免用户以为拿到了确定性结果。待确定性模板落地后（独立 tilingkey 分支、
+// 前缀表放 AICPU），把这里改成正例即可。
+ge::graphStatus FlashAttnGradCheck::CheckDeterministic(gert::TilingContext *context)
+{
+    OP_CHECK_IF(context->GetDeterministic() == 1,
+                OP_LOGE(context->GetNodeName(),
+                        "FlashAttnGrad does not support deterministic computation yet "
+                        "(dq/dk/dv are accumulated with fp32 atomicAdd). Please disable the deterministic "
+                        "switch, or use FlashAttentionScoreGrad instead."),
+                return ge::GRAPH_PARAM_INVALID);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus FlashAttnGradCheck::CheckParams(gert::TilingContext *context)
 {
     const char *opName = context->GetNodeName();
 
-    auto ret = CheckInputExistence(context);
+    auto ret = CheckDeterministic(context);
+    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, OP_LOGE(opName, "CheckDeterministic failed."), return ret);
+
+    ret = CheckInputExistence(context);
     OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, OP_LOGE(opName, "CheckInputExistence failed."), return ret);
 
     ret = CheckDtypeConsistency(context);

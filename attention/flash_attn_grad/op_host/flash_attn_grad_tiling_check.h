@@ -12,28 +12,13 @@
 #define FLASH_ATTN_GRAD_CHECK_H_
 
 #include "exe_graph/runtime/tiling_context.h"
+#include "flash_attn_grad_tiling_info.h"
 #include "log/log.h"
 
 namespace optiling {
 
-constexpr size_t Q_INDEX = 0;
-constexpr size_t K_INDEX = 1;
-constexpr size_t V_INDEX = 2;
-constexpr size_t DOUT_INDEX = 3;
-constexpr size_t ATTN_OUT_INDEX = 4;
-constexpr size_t SOFTMAX_LSE_INDEX = 5;
-constexpr size_t CU_SEQLENS_Q_INDEX = 6;
-constexpr size_t CU_SEQLENS_KV_INDEX = 7;
-constexpr size_t SEQUSED_Q_INDEX = 8;
-constexpr size_t SEQUSED_KV_INDEX = 9;
-constexpr size_t SINKS_INDEX = 10;
-constexpr size_t ATTN_MASK_INDEX = 11;
-constexpr size_t METADATA_INDEX = 12;
-
-constexpr int64_t MASK_MODE_NO_MASK = 0;
-constexpr int64_t MASK_MODE_CAUSAL = 3;
-constexpr int64_t MASK_MODE_WINDOW = 4;
-constexpr int64_t ATTN_MASK_DIM = 2048;
+// 输入/属性索引与 mask_mode 取值统一定义在 flash_attn_grad_tiling_info.h，
+// 此处不再重复声明，避免两份常量各自漂移。
 
 class FlashAttnGradCheck {
 public:
@@ -51,6 +36,7 @@ private:
     static ge::graphStatus CheckLayout(gert::TilingContext *context, const std::string &layoutQStr,
                                        const std::string &layoutKvStr, const std::string &layoutOutStr);
     static ge::graphStatus CheckShape(gert::TilingContext *context, const std::string &layoutQStr);
+    static ge::graphStatus CheckDeterministic(gert::TilingContext *context);
 };
 
 } // namespace optiling
