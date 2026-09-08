@@ -39,6 +39,7 @@ enum QuantMode : int64_t {
     FP8_QUANT = 1,
     MXFP4_OCP_QUANT = 2,
     MXFP4_CX_QUANT = 3,
+    MXFP8_OCP_QUANT = 4,
 };
 
 static bool CheckDataType(const aclTensor *query, const aclTensor *key, const aclTensor *value)
@@ -126,8 +127,11 @@ static bool CheckQuantModeAndDtype(int64_t quantMode, const aclTensor *query, co
         case MXFP4_CX_QUANT: // quantMode=2/3: QKV=FP4_E2M1, scales=FP8_E8M0
             return CheckQuantParams(query, key, value, qScale, kScale, vScale, DataType::DT_FLOAT4_E2M1,
                                     DataType::DT_FLOAT8_E8M0, quantMode, "FP4_E2M1", "FP8_E8M0");
+        case MXFP8_OCP_QUANT: // quantMode=4: QKV=FP8_E4M3FN, scales=FP8_E8M0 (OCP only)
+            return CheckQuantParams(query, key, value, qScale, kScale, vScale, DataType::DT_FLOAT8_E4M3FN,
+                                    DataType::DT_FLOAT8_E8M0, quantMode, "FP8_E4M3FN", "FP8_E8M0");
         default:
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid quantMode %ld, must be 0/1/2/3.", quantMode);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid quantMode %ld, must be 0/1/2/3/4.", quantMode);
             return false;
     }
 }
@@ -291,8 +295,9 @@ static aclnnStatus MakeContiguous(const aclTensor *&query, const aclTensor *&key
             return ACLNN_ERR_PARAM_INVALID;
         }
 
-    } else if (quantMode == MXFP4_OCP_QUANT || quantMode == MXFP4_CX_QUANT) {
-        // mxfp4(OCP/CX): scale 维度按 layout 校验, TND=4维, BNSD/BSND=5维
+    } else if (quantMode == MXFP4_OCP_QUANT || quantMode == MXFP4_CX_QUANT ||
+               quantMode == MXFP8_OCP_QUANT) {
+        // mxfp4 / mxfp8: e8m0 scale 维度按 layout 校验, TND=4维, BNSD/BSND=5维
         qDequantScaleOptional = l0op::Contiguous(qDequantScaleOptional, executor);
         CHECK_RET(qDequantScaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
         kDequantScaleOptional = l0op::Contiguous(kDequantScaleOptional, executor);
@@ -344,27 +349,28 @@ static aclnnStatus ValidateAdditionalParams(int64_t innerPrecise, int64_t quantM
 static aclnnStatus ValidateMxfp4Constraints(int64_t quantMode, int64_t softmaxLseFlag, int64_t innerPrecise,
                                             const aclTensor *attenMaskOptional, const aclTensor *blockTableOptional)
 {
-    if (quantMode != MXFP4_OCP_QUANT && quantMode != MXFP4_CX_QUANT) {
+    if (quantMode != MXFP4_OCP_QUANT && quantMode != MXFP4_CX_QUANT &&
+        quantMode != MXFP8_OCP_QUANT) {
         return ACLNN_SUCCESS;
     }
-    // mxfp4 量化下 innerPrecise 必须为 4
+    // mxfp4 / mxfp8 量化下 innerPrecise 必须为 4
     if (innerPrecise != 4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "innerPrecise must be 4 in mxfp4 quantMode(%lld), got %lld.", quantMode,
-                innerPrecise);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "innerPrecise must be 4 in mx full-quant quantMode(%lld), got %lld.",
+                quantMode, innerPrecise);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    // mxfp4 量化场景下暂不支持 LSE、attenMask、pageAttention
+    // mx 全量化场景下暂不支持 LSE、attenMask、pageAttention
     if (softmaxLseFlag != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "softmaxLseFlag must be 0 in mxfp4 quantMode(%lld), got %lld.", quantMode,
-                softmaxLseFlag);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "softmaxLseFlag must be 0 in mx full-quant quantMode(%lld), got %lld.",
+                quantMode, softmaxLseFlag);
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (attenMaskOptional != nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "attenMaskOptional must be nullptr in mxfp4 quantMode(%lld).", quantMode);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "attenMaskOptional must be nullptr in mx full-quant quantMode(%lld).", quantMode);
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (blockTableOptional != nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockTableOptional must be nullptr in mxfp4 quantMode(%lld).", quantMode);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockTableOptional must be nullptr in mx full-quant quantMode(%lld).", quantMode);
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
