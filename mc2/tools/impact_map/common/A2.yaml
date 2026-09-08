@@ -1,12 +1,12 @@
 # mc2/common 头文件影响范围映射表 - A2 (ascend910b)
-# 生成: 2026-09-08  基线commit: 96e0395d5 (clean)
+# 生成: 2026-09-08  基线commit: 67c95a40e (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(common/开头), 与PR修改文件列表中mc2/后的段落一致
 #
 # 本表 = 影响部分算子的头文件(键集合与A2/A3/A5三张表完全一致)。
 #   ops = 直接+间接include该头的算子中, 注册于本芯片的子集(显式全列表)
 #   ops: [] = 该头影响的算子均未在A2注册(该芯片无匹配算子, 后续策略待定)
-# 不在本表中的文件 -> 按full_regression.yaml处理(全量或无引用人工确认)
+# 不在本表中的文件 -> 全量(清单见本目录file_lists.yaml)
 # 算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 A2(ascend910b) 的交集
 
 common/op_api/mc2_aclnn_util.h:
