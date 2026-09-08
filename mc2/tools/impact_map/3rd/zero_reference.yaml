@@ -1,5 +1,5 @@
 # mc2/3rd 零引用文件清单 (与芯片无关, 全芯片共用)
-# 生成: 2026-09-08  基线commit: 82a2637a2 (clean)
+# 生成: 2026-09-08  基线commit: 39e00aeaa (clean)
 #
 # 语义: 下列头文件无任何算子可达的引用(无人直接/间接include),
 #       改动不影响mc2算子编译; .cpp的判定见映射表头部规则(同名.h在zero_reference=死代码);
@@ -14,10 +14,8 @@
 3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_bl1_full_load_basic_tiling.h:
 3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_bl1_full_load_tiling.h:
 3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_tiling.h:
-3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_common_advanced.h:
 3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_iterbatch_basicapi_tiling.h:
 3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_iterbatch_tiling.h:
-3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_tiling_strategy.h:
 3rd/batch_mat_mul_v3/op_kernel/arch35/batch_mat_mul_v3_asw_al1_full_load_kernel_advanced.h:
 3rd/batch_mat_mul_v3/op_kernel/arch35/batch_mat_mul_v3_asw_bl1_full_load_kernel_advanced.h:
 3rd/batch_mat_mul_v3/op_kernel/arch35/batch_mat_mul_v3_asw_block_advanced.h:

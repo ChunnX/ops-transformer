@@ -1,5 +1,5 @@
 # mc2/common 头文件影响范围映射表 - A5 (ascend950)
-# 生成: 2026-09-08  基线commit: 82a2637a2 (clean)
+# 生成: 2026-09-08  基线commit: 39e00aeaa (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(common/开头), 与pr_files.sh输出中mc2/后的段落一致
 #
@@ -429,37 +429,455 @@ common/op_host/op_tiling/tiling_key.h:
     - quant_reduce_scatter
 common/op_kernel/apace/basic/fragment_tensor/fragment_tensor.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/basic/fragment_tensor/fragment_tensor_api.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/block/epilogue/block_epilogue_all_to_all.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/block/mmad/qmm_mx_block_mmad_fragment.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/block/mmad/qmm_mx_block_mmad_tile_k_wait_flag.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/core/aiv_comm/all_gather/all_gather_udma_put.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
+    - allto_all_matmul
     - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/core/aiv_comm/all_to_all/all_to_all_udma_get.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
+    - allto_all_matmul
     - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/core/aiv_comm/all_to_all/all_to_all_udma_put.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
+    - allto_all_matmul
     - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/core/aiv_comm/barrier/barrier_ubmem.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
+    - allto_all_matmul
     - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/core/aiv_comm/collective_comm_api.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
+    - allto_all_matmul
     - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/core/aiv_comm/collective_comm_base.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
+    - allto_all_matmul
     - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/core/aiv_comm/collective_comm_context.h:
   ops:
     - all_gather_matmul
@@ -503,66 +921,1077 @@ common/op_kernel/apace/core/aiv_comm/collective_comm_context.h:
     - quant_reduce_scatter
 common/op_kernel/apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_impl.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
-common/op_kernel/apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_tiling_data.h:
-  ops:
-    - all_gather_matmul_v3
-common/op_kernel/apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h:
-  ops:
     - allto_all_matmul
     - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_tiling_data.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/kernel/fusions/all_gather_quant_matmul/all_gather_quant_matmul_ubmem_impl.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_mx_quant_matmul_hcomm_impl.h:
   ops:
     - allto_all_matmul
 common/op_kernel/apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_mx_quant_matmul_urma_impl.h:
   ops:
-    - allto_all_matmul_v2
-common/op_kernel/apace/kernel/matmul/quant_batch_matmul/all_gather_qbmm_mx_kernel.h:
-  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
-common/op_kernel/apace/kernel/matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel.h:
-  ops:
     - allto_all_matmul
     - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/kernel/fusions/quant_matmul_all_to_all/matmul_all_to_all_tiling_data.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/kernel/fusions/quant_matmul_all_to_all/mx_quant_matmul_all_to_all_urma_impl.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/kernel/fusions/quant_matmul_reduce_scatter/quant_matmul_reduce_scatter_impl.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/kernel/matmul/quant_batch_matmul/all_gather_qbmm_mx_kernel.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/kernel/matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/kernel/matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel_tpn.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/kernel/matmul/quant_batch_matmul/kernel_qbmm_mx_mix.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/tests/st/all_gather_quant_matmul/ubmem/src/apace_agm_kernel_launcher.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/tests/st/all_to_all_quant_matmul/src/apace_a2a_kernel_launcher.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/tests/st/quant_matmul_all_to_all/src/kernel_launcher.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/tests/st/quant_matmul_reduce_scatter/ubmem/src/apace_qmrs_kernel_launcher.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/tests/st/utils/apace_st_utils.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/tests/st/utils/root_info_exchanger.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/tiling/comm_tiling_base.h:
   ops:
     - allto_all_matmul_v2
 common/op_kernel/apace/tiling/comm_tiling_data.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
     - allto_all_matmul
     - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/tiling/quant_matmul_tiling_base.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
     - allto_all_matmul
     - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/tiling/quant_matmul_tiling_common.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
     - allto_all_matmul
     - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/tiling/quant_matmul_tiling_data.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
     - allto_all_matmul
     - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/tiling/quant_matmul_tiling_swat.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
     - allto_all_matmul
     - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/utils/apace_common_utils.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
     - allto_all_matmul
     - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/utils/apace_constant.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
     - all_gather_matmul_v3
     - allto_all_matmul
     - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/op_kernel/apace/utils/comm_channel_builder.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+common/op_kernel/apace/utils/comm_resource_builder.h:
   ops:
     - all_gather_matmul
     - all_gather_matmul_v2
@@ -1118,22 +2547,43 @@ common/utils/mc2_platform_info.h:
   ops:
     - all_gather_matmul
     - all_gather_matmul_v2
+    - all_gather_matmul_v3
     - allto_all_matmul
+    - allto_all_matmul_v2
     - allto_allv_grouped_mat_mul
     - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
     - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
     - grouped_mat_mul_allto_allv
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
+    - mega_moe
     - moe_distribute_combine
     - moe_distribute_combine_add_rms_norm
     - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
     - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
     - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
     - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
     - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
 common/utils/moe_ep_exception_dump.h:
   ops:
     - moe_ep_combine

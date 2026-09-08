@@ -1,5 +1,5 @@
 # mc2/3rd 头文件影响范围映射表 - A2 (ascend910b)
-# 生成: 2026-09-08  基线commit: 82a2637a2 (clean)
+# 生成: 2026-09-08  基线commit: 39e00aeaa (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(3rd/开头), 与pr_files.sh输出中mc2/后的段落一致
 #
@@ -14,7 +14,43 @@
 3rd/add_rms_norm/op_host/add_rms_norm_tiling.h:
   ops:
     - matmul_all_reduce_add_rms_norm
+3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_common_advanced.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_all_reduce
+    - inplace_matmul_all_reduce_add_rms_norm
+    - matmul_all_reduce
+    - matmul_all_reduce_add_rms_norm
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_v2
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
 3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_tiling_advanced.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_all_reduce
+    - inplace_matmul_all_reduce_add_rms_norm
+    - matmul_all_reduce
+    - matmul_all_reduce_add_rms_norm
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_v2
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
+3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_tiling_strategy.h:
   ops:
     - all_gather_matmul
     - all_gather_matmul_v2
@@ -99,7 +135,23 @@
     - moe_distribute_dispatch
     - moe_distribute_dispatch_v2
 3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3_tiling_key.h:
-  ops: []
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_all_reduce
+    - inplace_matmul_all_reduce_add_rms_norm
+    - matmul_all_reduce
+    - matmul_all_reduce_add_rms_norm
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_v2
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
 3rd/common/op_host/matmul_common_infershape.h:
   ops:
     - all_gather_matmul
@@ -174,12 +226,22 @@
     - moe_distribute_dispatch_v2
 3rd/common/op_host/op_tiling/debug_tiling.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_all_reduce
+    - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_v2
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
 3rd/common/op_host/op_tiling/lock.h:
   ops:
     - all_gather_matmul_v2
@@ -217,7 +279,9 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
+    - matmul_all_reduce_add_rms_norm
     - matmul_allto_all
     - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
@@ -233,7 +297,9 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
+    - matmul_all_reduce_add_rms_norm
     - matmul_allto_all
     - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
@@ -244,11 +310,22 @@
     - moe_distribute_dispatch_v2
 3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_tiling_registry.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_all_reduce
+    - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
+    - matmul_all_reduce_add_rms_norm
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_v2
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
 3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_base_tiling_advanced.h:
   ops:
     - all_gather_matmul
@@ -374,7 +451,9 @@
     - allto_all_matmul
     - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
+    - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
+    - matmul_all_reduce_add_rms_norm
     - matmul_allto_all
     - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
@@ -439,11 +518,22 @@
     - moe_distribute_dispatch_v2
 3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_l2_cache.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_all_reduce
+    - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
+    - matmul_all_reduce_add_rms_norm
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_v2
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
 3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_platform_common.h:
   ops:
     - all_gather_matmul
@@ -610,11 +700,22 @@
     - moe_distribute_dispatch_v2
 3rd/mat_mul_v3/op_kernel/mat_mul_v3_tiling_key.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_all_reduce
+    - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
+    - matmul_all_reduce_add_rms_norm
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_v2
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
 3rd/ops_legacy/op_api/aclnn_kernels/cast.h:
   ops:
     - all_gather_matmul
@@ -1000,7 +1101,9 @@
 3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_tiling_key.h:
   ops:
     - all_gather_matmul_v2
+    - allto_all_matmul
     - matmul_all_reduce
+    - matmul_allto_all
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_arch.hpp:
   ops:
@@ -1409,7 +1512,22 @@
     - moe_distribute_dispatch_v2
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_compute_matmul_tiling.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_all_reduce
+    - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
+    - matmul_all_reduce_add_rms_norm
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_v2
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.h:
   ops:
     - all_gather_matmul
@@ -1592,7 +1710,22 @@
     - moe_distribute_dispatch_v2
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_white_list.h:
   ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_all_reduce
+    - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
+    - matmul_all_reduce_add_rms_norm
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_v2
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_v2
 3rd/weight_quant_batch_matmul_v2/op_kernel/anti_quant.h:
   ops:
     - matmul_all_reduce
