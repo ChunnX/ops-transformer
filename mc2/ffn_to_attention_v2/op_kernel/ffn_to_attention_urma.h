@@ -47,6 +47,9 @@ constexpr int32_t URMA_FLAG_VALUE = 1;
 constexpr uint32_t URMA_WQE_SIZE = 64U;
 constexpr uint32_t URMA_BATCH_WQE_CAPACITY = 256U;
 constexpr uint32_t URMA_BATCH_BUFFER_SIZE = URMA_BATCH_WQE_CAPACITY * URMA_WQE_SIZE;
+constexpr uint32_t METADATA_CHUNK_TOKEN_NUM = 256U;
+constexpr uint32_t METADATA_FIELD_NUM = 4U;
+constexpr uint32_t METADATA_CHUNK_BUFFER_SIZE = METADATA_CHUNK_TOKEN_NUM * METADATA_FIELD_NUM * sizeof(int32_t);
 constexpr uint32_t REMOTE_RELAY_INFO_FIELD_NUM = 4U;
 constexpr uint32_t REMOTE_RELAY_INFO_SIZE = REMOTE_RELAY_INFO_FIELD_NUM * sizeof(uint64_t);
 constexpr uint64_t INVALID_TOKEN_INDEX = 0xFFFFFFFFFFFFFFFFULL;
@@ -91,13 +94,14 @@ public:
 
 private:
     __aicore__ inline void ReadTokenMetaData(ReadTokenMetaDataStruct &metaDataStruct, uint64_t yOffset);
+    __aicore__ inline void ReadTokenMetaDataFromLocal(ReadTokenMetaDataStruct &metaDataStruct, uint32_t localOffset,
+                                                      uint64_t yOffset);
     __aicore__ inline GM_ADDR GetWindowAddr(uint32_t curAttenWorkRank);
     __aicore__ inline uint64_t GetUrmaCommHandle(uint32_t dstRank);
     __aicore__ inline void HcommInit();
     __aicore__ inline void InitLocalFlag();
     __aicore__ inline void SendToLocal(GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr, uint64_t yOffset,
                                        const DataCopyExtParams &xCopyParams);
-    __aicore__ inline void StageRemoteData(uint64_t yOffset, const DataCopyExtParams &xCopyParams);
     __aicore__ inline void AppendRemoteDataWrite(HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr,
                                                  const RemoteRelayInfo &relayInfo, uint32_t dstRank);
     __aicore__ inline void AppendRemoteFlagWrite(HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr,
@@ -113,7 +117,7 @@ private:
     Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
     __gm__ Mc2Aclnn::AttentionFFNContext *mc2Context_{nullptr};
 
-    GM_ADDR localDataAddr_{nullptr};
+    GM_ADDR inputDataAddr_{nullptr};
     GM_ADDR localFlagAddr_{nullptr};
 
     GlobalTensor<xType> xGMTensor_;
@@ -131,9 +135,11 @@ private:
     LocalTensor<int32_t> statusTensor_;
     LocalTensor<uint8_t> hcommTensor_;
     LocalTensor<uint8_t> hcommBatchTensor_;
+    LocalTensor<int32_t> metadataTensor_;
 
     TBuf<> statusBuf_;
     TBuf<> hcommBuf_;
+    TBuf<> metadataBuf_;
     TBuf<TPosition::VECOUT> hcommBatchBuf_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_;
 
@@ -184,6 +190,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     ascendc_assert(aivNum_ > 0U, "aivNum must be greater than zero");
     ascendc_assert(axisH_ <= axisHS_, "H must be <= HS, H=%u, HS=%u", axisH_, axisHS_);
 
+    inputDataAddr_ = x;
     xGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(x));
     sessionIdsGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(sessionIds));
     microBatchIdsGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(microBatchIds));
@@ -214,7 +221,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     ascendc_assert(maxTokenNum_ <= (URMA_RESERVED_WORKSPACE_SIZE - rankRelayListWorkspaceSize) / REMOTE_RELAY_INFO_SIZE,
                    "relay info exceeds reserved workspace, maxTokenNum=%lu, relayInfoSize=%u, reservedSize=%lu",
                    maxTokenNum_, REMOTE_RELAY_INFO_SIZE, URMA_RESERVED_WORKSPACE_SIZE);
-    localDataAddr_ = workspaceGM + urmaWorkspaceOffset_;
     localFlagAddr_ = workspaceGM + urmaWorkspaceOffset_ + maxTokenNum_ * dataWorkspaceStride_ +
                      static_cast<uint64_t>(aivId_) * URMA_FLAG_SLOT_SIZE;
     GM_ADDR remoteRelayInfoAddr = workspaceGM + urmaWorkspaceOffset_ + maxTokenNum_ * dataWorkspaceStride_ +
@@ -228,6 +234,8 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     tpipe_->InitBuffer(xQueue_, URMA_BUFFER_NUM, hSize_);
     tpipe_->InitBuffer(statusBuf_, URMA_UB_ALIGN);
     statusTensor_ = statusBuf_.Get<int32_t>();
+    tpipe_->InitBuffer(metadataBuf_, METADATA_CHUNK_BUFFER_SIZE);
+    metadataTensor_ = metadataBuf_.Get<int32_t>();
 
     batchSizeSendCnt_ = static_cast<uint64_t>(axisBS_) * expertNumPerToken_;
     winTokenInfoTableSize_ =
@@ -319,6 +327,47 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::R
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
+__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::ReadTokenMetaDataFromLocal(
+    ReadTokenMetaDataStruct &metaDataStruct, uint32_t localOffset, uint64_t yOffset)
+{
+    int32_t curAttenWorkId = metadataTensor_.GetValue(localOffset);
+    ascendc_assert(curAttenWorkId >= 0, "sessionId must be non-negative, sessionId=%d, yOffset=%lu", curAttenWorkId,
+                   yOffset);
+    metaDataStruct.curAttenWorkIds = static_cast<uint32_t>(curAttenWorkId);
+    metaDataStruct.curAttenWorkRank = metaDataStruct.curAttenWorkIds;
+
+    if constexpr (isInputRankTable) {
+        ascendc_assert(metaDataStruct.curAttenWorkIds < axisA_,
+                       "sessionId exceeds attnRankTable, sessionId=%u, attnRankNum=%u, yOffset=%lu",
+                       metaDataStruct.curAttenWorkIds, axisA_, yOffset);
+        int32_t curAttenWorkRank = attnRankTableGMTensor_.GetValue(metaDataStruct.curAttenWorkIds);
+        ascendc_assert(curAttenWorkRank >= 0, "attention rank must be non-negative, rank=%d, sessionId=%u",
+                       curAttenWorkRank, metaDataStruct.curAttenWorkIds);
+        metaDataStruct.curAttenWorkRank = static_cast<uint32_t>(curAttenWorkRank);
+    }
+    ascendc_assert(metaDataStruct.curAttenWorkRank < worldSize_,
+                   "attention rank exceeds worldSize, rank=%u, worldSize=%u, yOffset=%lu",
+                   metaDataStruct.curAttenWorkRank, worldSize_, yOffset);
+
+    int32_t curMicroBatchId = metadataTensor_.GetValue(METADATA_CHUNK_TOKEN_NUM + localOffset);
+    ascendc_assert(curMicroBatchId >= 0 && static_cast<uint32_t>(curMicroBatchId) < microBatchNum_,
+                   "microBatchId out of range, microBatchId=%d, microBatchNum=%u, yOffset=%lu", curMicroBatchId,
+                   microBatchNum_, yOffset);
+    metaDataStruct.curMicroBatchIds = static_cast<uint32_t>(curMicroBatchId);
+
+    int32_t curTokenBatchOffset = metadataTensor_.GetValue(2U * METADATA_CHUNK_TOKEN_NUM + localOffset);
+    ascendc_assert(curTokenBatchOffset >= 0 && static_cast<uint32_t>(curTokenBatchOffset) < axisBS_,
+                   "tokenId out of range, tokenId=%d, BS=%u, yOffset=%lu", curTokenBatchOffset, axisBS_, yOffset);
+    metaDataStruct.curTokenBatchOffset = static_cast<uint32_t>(curTokenBatchOffset);
+
+    int32_t curTokenTopkOffset = metadataTensor_.GetValue(3U * METADATA_CHUNK_TOKEN_NUM + localOffset);
+    ascendc_assert(curTokenTopkOffset >= 0 && static_cast<uint32_t>(curTokenTopkOffset) < expertNumPerToken_,
+                   "expertOffset out of range, expertOffset=%d, expertNumPerToken=%u, yOffset=%lu", curTokenTopkOffset,
+                   expertNumPerToken_, yOffset);
+    metaDataStruct.curTokenTopkOffset = static_cast<uint32_t>(curTokenTopkOffset);
+}
+
+template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::SendToLocal(
     GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr, uint64_t yOffset, const DataCopyExtParams &xCopyParams)
 {
@@ -342,24 +391,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
-__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::StageRemoteData(
-    uint64_t yOffset, const DataCopyExtParams &xCopyParams)
-{
-    DataCopyPadExtParams<xType> copyPadExtParams{false, 0U, 0U, 0U};
-    xTmpTensor_ = xQueue_.AllocTensor<xType>();
-    DataCopyPad(xTmpTensor_, xGMTensor_[yOffset * axisH_], xCopyParams, copyPadExtParams);
-    xQueue_.EnQue(xTmpTensor_);
-    xTmpTensor_ = xQueue_.DeQue<xType>();
-
-    GlobalTensor<xType> localDataGMTensor;
-    localDataGMTensor.SetGlobalBuffer(
-        reinterpret_cast<__gm__ xType *>(localDataAddr_ + yOffset * dataWorkspaceStride_));
-    DataCopyPad(localDataGMTensor, xTmpTensor_, xCopyParams);
-    xQueue_.FreeTensor<xType>(xTmpTensor_);
-    SyncFunc<HardEvent::MTE3_S>();
-}
-
-template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::AppendRemoteDataWrite(
     HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr, const RemoteRelayInfo &relayInfo, uint32_t dstRank)
 {
@@ -367,7 +398,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::A
     ascendc_assert(relayInfo.sourceTokenIndex < actualTokenNum_,
                    "source token index out of range, tokenIndex=%lu, actualTokenNum=%lu", relayInfo.sourceTokenIndex,
                    actualTokenNum_);
-    GM_ADDR sourceDataAddr = localDataAddr_ + relayInfo.sourceTokenIndex * dataWorkspaceStride_;
+    GM_ADDR sourceDataAddr = inputDataAddr_ + relayInfo.sourceTokenIndex * hSize_;
     int32_t ret = hcomm_.WriteNbi<REMOTE_DATA_WQE_CONFIG>(batchHandle, remoteWindowAddr + relayInfo.remoteDataOffset,
                                                           sourceDataAddr, static_cast<uint32_t>(hSize_));
     ascendc_assert(ret == 0, "batch data WriteNbi failed, ret=%d, rankId=%u, dstRank=%u, tokenIndex=%lu", ret, rankId_,
@@ -428,39 +459,59 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
         remoteRelayListTailGMTensor_.SetValue(dstRank, INVALID_TOKEN_INDEX);
     }
 
-    for (uint64_t yOffset = 0UL; yOffset < actualTokenNum_; ++yOffset) {
-        ReadTokenMetaDataStruct metaDataStruct;
-        ReadTokenMetaData(metaDataStruct, yOffset);
-        if (metaDataStruct.curAttenWorkRank == rankId_) {
-            continue;
+    for (uint64_t tokenStart = 0UL; tokenStart < actualTokenNum_; tokenStart += METADATA_CHUNK_TOKEN_NUM) {
+        const uint32_t tokenNum = static_cast<uint32_t>(actualTokenNum_ - tokenStart < METADATA_CHUNK_TOKEN_NUM ?
+                                                            actualTokenNum_ - tokenStart :
+                                                            METADATA_CHUNK_TOKEN_NUM);
+        if (tokenStart != 0UL) {
+            SyncFunc<HardEvent::S_MTE2>();
         }
+        DataCopyExtParams metadataCopyParams = {1U, tokenNum * sizeof(int32_t), 0U, 0U, 0U};
+        DataCopyPadExtParams<int32_t> metadataPadParams = {false, 0U, 0U, 0U};
+        DataCopyPad(metadataTensor_, sessionIdsGMTensor_[tokenStart], metadataCopyParams, metadataPadParams);
+        DataCopyPad(metadataTensor_[METADATA_CHUNK_TOKEN_NUM], microBatchIdsGMTensor_[tokenStart], metadataCopyParams,
+                    metadataPadParams);
+        DataCopyPad(metadataTensor_[2U * METADATA_CHUNK_TOKEN_NUM], tokenIdsGMTensor_[tokenStart], metadataCopyParams,
+                    metadataPadParams);
+        DataCopyPad(metadataTensor_[3U * METADATA_CHUNK_TOKEN_NUM], expertOffsetsGMTensor_[tokenStart],
+                    metadataCopyParams, metadataPadParams);
+        SyncFunc<HardEvent::MTE2_S>();
 
-        const uint64_t tokenSlot =
-            (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * axisBS_ + metaDataStruct.curTokenBatchOffset) *
-                expertNumPerToken_ +
-            metaDataStruct.curTokenTopkOffset;
-        const uint64_t remoteDataOffset = winTokenInfoTableSize_ + tokenSlot * axisHS_ * sizeof(xType);
-        const uint64_t remoteFlagOffset = tokenSlot * sizeof(int32_t);
-        ascendc_assert(remoteDataOffset <= requiredWindowSize_ && hSize_ <= requiredWindowSize_ - remoteDataOffset,
-                       "token data address exceeds window, dataOffset=%lu, dataSize=%lu, windowSize=%lu",
-                       remoteDataOffset, hSize_, requiredWindowSize_);
-        ascendc_assert(
-            remoteFlagOffset <= winTokenInfoTableSize_ && sizeof(int32_t) <= winTokenInfoTableSize_ - remoteFlagOffset,
-            "token flag address exceeds info table, flagOffset=%lu, infoSize=%lu", remoteFlagOffset,
-            winTokenInfoTableSize_);
+        for (uint32_t localOffset = 0U; localOffset < tokenNum; ++localOffset) {
+            const uint64_t yOffset = tokenStart + localOffset;
+            ReadTokenMetaDataStruct metaDataStruct;
+            ReadTokenMetaDataFromLocal(metaDataStruct, localOffset, yOffset);
+            if (metaDataStruct.curAttenWorkRank == rankId_) {
+                continue;
+            }
 
-        const uint32_t dstRank = metaDataStruct.curAttenWorkRank;
-        RemoteRelayInfo relayInfo{remoteDataOffset, remoteFlagOffset, yOffset, INVALID_TOKEN_INDEX};
-        StoreRemoteRelayInfo(yOffset, relayInfo);
-        const uint64_t tailTokenIndex = remoteRelayListTailGMTensor_.GetValue(dstRank);
-        if (tailTokenIndex == INVALID_TOKEN_INDEX) {
-            remoteRelayListHeadGMTensor_.SetValue(dstRank, yOffset);
-        } else {
-            ascendc_assert(tailTokenIndex < yOffset, "invalid relay list tail, tail=%lu, tokenIndex=%lu",
-                           tailTokenIndex, yOffset);
-            remoteRelayInfoGMTensor_.SetValue(tailTokenIndex * REMOTE_RELAY_INFO_FIELD_NUM + 3U, yOffset);
+            const uint64_t tokenSlot = (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * axisBS_ +
+                                        metaDataStruct.curTokenBatchOffset) *
+                                           expertNumPerToken_ +
+                                       metaDataStruct.curTokenTopkOffset;
+            const uint64_t remoteDataOffset = winTokenInfoTableSize_ + tokenSlot * axisHS_ * sizeof(xType);
+            const uint64_t remoteFlagOffset = tokenSlot * sizeof(int32_t);
+            ascendc_assert(remoteDataOffset <= requiredWindowSize_ && hSize_ <= requiredWindowSize_ - remoteDataOffset,
+                           "token data address exceeds window, dataOffset=%lu, dataSize=%lu, windowSize=%lu",
+                           remoteDataOffset, hSize_, requiredWindowSize_);
+            ascendc_assert(remoteFlagOffset <= winTokenInfoTableSize_ &&
+                               sizeof(int32_t) <= winTokenInfoTableSize_ - remoteFlagOffset,
+                           "token flag address exceeds info table, flagOffset=%lu, infoSize=%lu", remoteFlagOffset,
+                           winTokenInfoTableSize_);
+
+            const uint32_t dstRank = metaDataStruct.curAttenWorkRank;
+            RemoteRelayInfo relayInfo{remoteDataOffset, remoteFlagOffset, yOffset, INVALID_TOKEN_INDEX};
+            StoreRemoteRelayInfo(yOffset, relayInfo);
+            const uint64_t tailTokenIndex = remoteRelayListTailGMTensor_.GetValue(dstRank);
+            if (tailTokenIndex == INVALID_TOKEN_INDEX) {
+                remoteRelayListHeadGMTensor_.SetValue(dstRank, yOffset);
+            } else {
+                ascendc_assert(tailTokenIndex < yOffset, "invalid relay list tail, tail=%lu, tokenIndex=%lu",
+                               tailTokenIndex, yOffset);
+                remoteRelayInfoGMTensor_.SetValue(tailTokenIndex * REMOTE_RELAY_INFO_FIELD_NUM + 3U, yOffset);
+            }
+            remoteRelayListTailGMTensor_.SetValue(dstRank, yOffset);
         }
-        remoteRelayListTailGMTensor_.SetValue(dstRank, yOffset);
     }
 }
 
@@ -549,19 +600,11 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                         perfCycles[2] += static_cast<uint64_t>(GetSystemCycle()) - prof3Start;
                     }
                     // prof3 SendToLocal
-                } else {
-                    // prof4 StageRemoteData
-                    const uint64_t prof4Start = perfEnabled_ ? static_cast<uint64_t>(GetSystemCycle()) : 0UL;
-                    StageRemoteData(yOffset, xCopyParams);
-                    if (perfEnabled_) {
-                        perfCycles[3] += static_cast<uint64_t>(GetSystemCycle()) - prof4Start;
-                    }
-                    // prof4 StageRemoteData
                 }
             }
         }
 
-        // All remote tokens have unique staging slots. AIV0 may consume them after every AIV finishes staging.
+        // Keep all AIVs alive until AIV0 starts issuing remote writes from the input GM.
         SyncAll<true>();
         if (aivId_ == 0U) {
             // prof5 BuildRemoteRelayLists
