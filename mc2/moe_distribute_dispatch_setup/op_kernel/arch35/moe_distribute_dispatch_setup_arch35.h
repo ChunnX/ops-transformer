@@ -965,12 +965,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
     uint32_t moeStartToken = 0; // 当前核处理的第一张moe卡之前的token数，根据该值计算起始偏移地址
     CalMoeStartTokenNum(startRankId, statusTensor_, moeStartToken);
 
-    // 水线的计算方式：waterline = 总 token-expert 路由数 / MoE expert 总数
-    // axisBS_ * axisK_：总路由条目数，也就是 batch 中每个 token 选 K 个 expert 后的总 token-expert 数量。
-    // moeExpertNum_：MoE expert 总数，也就是 moeExpertRankNum_ * moeExpertNumPerRank_
-    // waterline：MoE expert 的平均 token 路由数，平均每个 expert/block 分到多少 token
-    // uint32_t waterline = (axisBS_ * axisK_) / moeExpertNum_;
-
     uint32_t middleRank = epRankId_ < startRankId ? startRankId : epRankId_;
     for (uint32_t dstRankId = middleRank; dstRankId < endRankId; ++dstRankId) {
         if (dstRankId < sharedExpertRankNum_) {
@@ -1019,9 +1013,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
 
             if (moeExpertNumPerRank_ > 0) {
                 hcomm_.Commit(channelId);
-                // 回收 CQ，避免联跑后续 combine 复用 jetty/window 时迟到写污染
-                // 开启时会造成性能下降
-                // hcomm_.Drain(channelId);
             }
         }
     }
@@ -1074,9 +1065,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
 
             if (moeExpertNumPerRank_ > 0) {
                 hcomm_.Commit(channelId);
-                // 回收 CQ，避免联跑后续 combine 复用 jetty/window 时迟到写污染
-                // 开启时会造成性能下降
-                // hcomm_.Drain(channelId);
             }
         }
     }
