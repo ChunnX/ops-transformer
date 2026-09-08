@@ -73,7 +73,7 @@
 - 当quant_mode=-1时，不支持传入q_descale和k_descale。
 - pool_tail_k取值校验仅对CPU输入在host侧执行；NPU输入经aclnn Tensor变体直传device数据，host侧不做值校验，调用方须自行保证取值合法，否则kernel行为未定义。
 - sparse_indices无效部分填-1；sparse_values无效部分填-inf。
-- mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../../docs/zh/context/sparse_mode_introduction.md)。
+- mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../docs/zh/context/sparse_mode_introduction.md)。
 - <term>Ascend 950PR/Ascend 950DT</term>：
   - query、pool_key支持FLOAT8_E4M3FN数据类型。
   - quant_mode支持-1（不量化）、0（FP8 per-token-head量化）、1（mxFP8量化）。
