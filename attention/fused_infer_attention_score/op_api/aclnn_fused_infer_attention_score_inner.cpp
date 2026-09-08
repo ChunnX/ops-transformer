@@ -609,10 +609,8 @@ aclnnStatus NormalizeDim0CacheTensor(const aclTensor *&tensor, const char *name,
 
     const aclTensor *normalizedTensor = nullptr;
     if (IsContiguous(tensor)) {
-        auto contiguousTensor = l0op::Contiguous(tensor, executor);
-        if (contiguousTensor != nullptr) {
-            normalizedTensor = CreateStrideAwareView(contiguousTensor, name, executor);
-        }
+        // Validate the offset against the original storage extent of a sliced cache.
+        normalizedTensor = CreateStrideAwareView(tensor, name, executor);
     } else if (IsFirstAxisOnlyNonContiguous(tensor, name)) {
         normalizedTensor = CreateStrideAwareView(tensor, name, executor);
     } else {
