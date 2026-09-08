@@ -20,7 +20,6 @@ mc2/tools/
     │   ├── A2.yaml / A3.yaml / A5.yaml
     ├── 3rd/                     # mc2/3rd 头文件的映射
     │   ├── A2.yaml / A3.yaml / A5.yaml
-    └── full_regression.yaml     # 全量回归算子清单（按芯片）
 ```
 
 芯片对应关系：A2=ascend910b，A3=ascend910_93，A5=ascend950。
@@ -43,7 +42,7 @@ python3 mc2/tools/gen_common_impact_yaml.py /path/to/another_checkout [输出目
 |---|---|
 | .h 在芯片映射表中 | 测试条目 ops 列出的算子；`ops: []` = 该芯片无引用算子，不用测 |
 | .h 不在芯片映射表中 | 全量（无明确 include 到算子关系，含冗余/仅测试引用头） |
-| 其他一切文件（.cpp/.py/.json/.ini/.sh/.csv/.txt/.md 等，不限路径） | 全量（算子清单见 `full_regression.yaml`） |
+| 其他一切文件（.cpp/.py/.json/.ini/.sh/.csv/.txt/.md 等，不限路径） | 全量 |
 
 **最后一步（消费侧负责）**：得到的算子集还需**叠加 CMake `*_depends`
 反向闭包**后去重，作为最终测试清单。
@@ -54,8 +53,8 @@ python3 mc2/tools/gen_common_impact_yaml.py /path/to/another_checkout [输出目
    重名取并集，传递闭包用不动点迭代，天然处理环）。
 2. **芯片过滤**：算子集合按 `*_def.cpp` 的 `AICore().AddConfig()` 注册与
    当前芯片取交集。
-3. **全量清单**：`full_regression.yaml` 按芯片列出全部注册算子，凡命中
-   上表"全量"情况的改动按该清单执行。
+3. **全量**：命中"全量"情况的改动执行全量算子回归（全量算子清单由消费侧
+   按芯片维护，可从 `*_def.cpp` 的 `AICore().AddConfig()` 注册自动获取）。
 
 ## 6. yaml 格式
 
