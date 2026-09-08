@@ -887,7 +887,6 @@ inline void AllGatherMatmulV3ExceptionImplWrapper(aclrtExceptionInfo *args, void
     if (std::strstr(socName, "Ascend950") == nullptr) {
         return;
     }
-    uint64_t channelHandle = 0U;
     Mc2Exception::Mc2DumpTilingData(args, "AllGatherMatmulV3",
         10U,  // tilingGmArgIdx
         0U,   // argsOffset
@@ -901,13 +900,7 @@ inline void AllGatherMatmulV3ExceptionImplWrapper(aclrtExceptionInfo *args, void
         0U,   // argsOffset
         10U,  // tilingGmArgIdx
         offsetof(AllGatherMxMatmulUrmaTilingData, peermemDataSize),
-        offsetof(AllGatherMxMatmulUrmaTilingData, peermemLayout), &channelHandle);
-    if (channelHandle != 0U) {
-        Mc2Hcomm::TriggerDeferredDump(channelHandle, static_cast<int32_t>(aclrtGetDeviceIdFromExceptionInfo(args)),
-                                      "AllGatherMatmulV3");
-    } else {
-        OP_LOGE("AllGatherMatmulV3", "No valid channel handle, skip hcomm dump.");
-    }
+        offsetof(AllGatherMxMatmulUrmaTilingData, peermemLayout));
 }
 
 __attribute__((constructor)) void RegisterAllGatherMatmulV3ExceptionFunc()

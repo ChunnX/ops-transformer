@@ -68,7 +68,6 @@ inline void AlltoAllMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void 
     if (std::strstr(socName, "Ascend950") == nullptr) {
         return;
     }
-    uint64_t channelHandle = 0U;
     Mc2Exception::Mc2DumpTilingData(args, "AlltoAllMatmulV2",
         9U,   // tilingGmArgIdx
         0U,   // argsOffset
@@ -82,13 +81,7 @@ inline void AlltoAllMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void 
         0U,   // argsOffset
         9U,   // tilingGmArgIdx
         offsetof(allToAllMatmulTilingData, peermemDataSize),
-        offsetof(allToAllMatmulTilingData, peermemLayout), &channelHandle);
-    if (channelHandle != 0U) {
-        Mc2Hcomm::TriggerDeferredDump(channelHandle, static_cast<int32_t>(aclrtGetDeviceIdFromExceptionInfo(args)),
-                                      "AlltoAllMatmulV2");
-    } else {
-        OP_LOGE("AlltoAllMatmulV2", "No valid channel handle, skip hcomm dump.");
-    }
+        offsetof(allToAllMatmulTilingData, peermemLayout));
 }
 
 __attribute__((constructor)) void RegisterAlltoAllMatmulV2ExceptionFunc()

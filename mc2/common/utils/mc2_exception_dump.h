@@ -963,8 +963,7 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
  
 inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_t contextArgIdx,
                                uint32_t argsOffset = 0U, uint32_t tilingGmArgIdx = 0U,
-                               uint32_t peermemSizeOffset = 0U, uint32_t peermemLayoutOffset = 0U,
-                               uint64_t *channelHandle = nullptr)
+                               uint32_t peermemSizeOffset = 0U, uint32_t peermemLayoutOffset = 0U)
 {
     if (args == nullptr || op == nullptr) {
         return;
@@ -1037,25 +1036,6 @@ inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_
     if (rankId >= URMA_MAX_RANK_NUM) {
         OP_LOGE(OP_NAME, "rankId=%u >= URMA_MAX_RANK_NUM=%u, skip peermem dump.", rankId, URMA_MAX_RANK_NUM);
         return;
-    }
-    if (channelHandle != nullptr) {
-        *channelHandle = 0U;
-        uint32_t peerLimit = std::min<uint32_t>(urmaCtx->udmaCtx.rankSize, URMA_MAX_RANK_NUM);
-        for (uint32_t peer = 0; peer < peerLimit; ++peer) {
-            if (peer == rankId) {
-                continue;
-            }
-            if (urmaCtx->udmaCtx.channelHandles[peer] != 0U) {
-                *channelHandle = urmaCtx->udmaCtx.channelHandles[peer];
-                break;
-            }
-        }
-        if (*channelHandle == 0U && urmaCtx->udmaCtx.channelHandles[rankId] != 0U) {
-            *channelHandle = urmaCtx->udmaCtx.channelHandles[rankId];
-        }
-        if (*channelHandle == 0U) {
-            OP_LOGE(OP_NAME, "no valid channel handle found in urmaCtx, skip hcomm dump.");
-        }
     }
     uint64_t selfWinAddr = urmaCtx->udmaCtx.commBufferAddrs[rankId];
     OP_LOGE(OP_NAME, "selfWinAddr=0x%lx (commBufferAddrs[%u])", selfWinAddr, rankId);
@@ -1163,8 +1143,7 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
                             uint32_t wsLayoutOffsetQuant = 0U, uint32_t wsLayoutOffsetApace = 0U) {}
 inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_t contextArgIdx,
                                uint32_t argsOffset = 0U, uint32_t tilingGmArgIdx = 0U,
-                               uint32_t peermemSizeOffset = 0U, uint32_t peermemLayoutOffset = 0U,
-                               uint64_t *channelHandle = nullptr) {}
+                               uint32_t peermemSizeOffset = 0U, uint32_t peermemLayoutOffset = 0U) {}
 #endif // MC2_DFX_ENABLE
 
 } // namespace Mc2Exception

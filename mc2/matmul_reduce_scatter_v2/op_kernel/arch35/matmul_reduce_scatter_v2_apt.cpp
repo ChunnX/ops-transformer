@@ -90,15 +90,6 @@ __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM
     TPipe pipe;
     auto context = GetHcclContext<0>();
     GET_TILING_DATA(tilingData, tilingGM);
-    printf("apt workspaceGM=0x%lx tilingGM=0x%lx\n",
-               static_cast<uint64_t>(reinterpret_cast<uintptr_t>(workspaceGM)), 
-               static_cast<uint64_t>(reinterpret_cast<uintptr_t>(tilingGM)));
-    AscendC::GlobalTensor<DTYPE_X1> x1DumpGM;
-    x1DumpGM.SetGlobalBuffer(reinterpret_cast<__gm__ DTYPE_X1 *>(aGM));
-    AscendC::DumpTensor(x1DumpGM, 9001, 64);
-    AscendC::GlobalTensor<AscendC::fp8_e8m0_t> x1ScaleDumpGM;
-    x1ScaleDumpGM.SetGlobalBuffer(reinterpret_cast<__gm__ AscendC::fp8_e8m0_t *>(x1ScaleGM));
-    AscendC::DumpTensor(x1ScaleDumpGM, 9002, 64);
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
     // bf16/fp16 场景
     using BiasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, typename BiasType<BIAS_DTYPE>::type>;
@@ -146,5 +137,4 @@ __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM
         }
     }
 #endif
-    trap();
 }

@@ -29,20 +29,6 @@ __global__ __aicore__ void allto_all_matmul_v2(GM_ADDR context, GM_ADDR x1, GM_A
 
     REGISTER_TILING_DEFAULT(allToAllMatmulTilingData);
     GET_TILING_DATA_WITH_STRUCT(allToAllMatmulTilingData, tilingData, tilingGM);
-    AscendC::GlobalTensor<DTYPE_X1> x1DumpGM;
-    x1DumpGM.SetGlobalBuffer(reinterpret_cast<__gm__ DTYPE_X1 *>(x1));
-    AscendC::DumpTensor(x1DumpGM, 9001, 64);
-    AscendC::GlobalTensor<AscendC::fp8_e8m0_t> x1ScaleDumpGM;
-    x1ScaleDumpGM.SetGlobalBuffer(reinterpret_cast<__gm__ AscendC::fp8_e8m0_t *>(x1_scale));
-    AscendC::DumpTensor(x1ScaleDumpGM, 9002, 64);
-    if ASCEND_IS_AIV {
-        if (GetBlockIdx() == 0) {
-            printf("workspaceGM=0x%lx tilingGM=0x%lx  context=0x%lx\n",
-                   static_cast<uint64_t>(reinterpret_cast<uintptr_t>(workspaceGM)),
-                static_cast<uint64_t>(reinterpret_cast<uintptr_t>(tilingGM)),
-                static_cast<uint64_t>(reinterpret_cast<uintptr_t>(context)));
-        }
-    }
 
     __gm__ CommContext *hcommCtx = reinterpret_cast<__gm__ CommContext *>(context);
 
@@ -68,5 +54,4 @@ __global__ __aicore__ void allto_all_matmul_v2(GM_ADDR context, GM_ADDR x1, GM_A
 #endif
     impl.Init(hcommCtx, x1, x1_scale, x2, x2_scale, y, bias, &tilingData);
     impl.Run();
-    trap();
 }
