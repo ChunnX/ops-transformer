@@ -1,5 +1,5 @@
 # mc2/3rd 文件影响范围映射表 - A5 (ascend950)
-# 生成: 2026-09-08  基线commit: b51f0bc9b (clean)
+# 生成: 2026-09-08  基线commit: df6a3b865 (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(3rd/开头), 与pr_files.sh输出中mc2/后的段落一致
 #
@@ -16,6 +16,8 @@
 # 判定规则:
 #   - mc2内所有#include按裸文件名匹配, 重名文件取并集(note:字段标注), 宁多勿漏
 #   - 算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 A5(ascend950) 的交集
+#   - 未建模文件类型: common/3rd下除.h/.cpp/.py外的文件(json/ini/sh/csv/txt等)
+#     一律按全量算子回归处理(见impact_map/README.md)
 
 3rd/add_rms_norm/op_host/add_rms_norm_tiling.h:
   ops: []
