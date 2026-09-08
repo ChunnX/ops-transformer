@@ -16,6 +16,7 @@ import logging
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 
 
@@ -135,9 +136,10 @@ def build_metadata_arguments(
     k_shape = tuple(int(value) for value in key.shape)
     num_heads_q = q_shape[2] if layout_q == "BSND" else q_shape[1]
     num_heads_k = k_shape[1] if layout_k == "TND" else k_shape[2]
-    head_dim = q_shape[-1] * (
-        2 if int(quant_mode) in (QUANT_MODE_MXFP4, QUANT_MODE_HIF4) else 1
-    )
+    head_dim = q_shape[-1]
+    is_aclnn_float4 = isinstance(query, np.ndarray) and "float4" in str(query.dtype)
+    if int(quant_mode) in (QUANT_MODE_MXFP4, QUANT_MODE_HIF4) and not is_aclnn_float4:
+        head_dim *= 2
     cu_q = kwargs.get("cu_seqlens_q")
     cu_k = kwargs.get("cu_seqlens_k")
     seq_q = kwargs.get("seqused_q")
