@@ -633,7 +633,7 @@ protected:
                      std::to_string(scaleKGroups) + " * " + std::to_string(SCALE_LAST_DIM) +
                      " * 8 bits)) / 8 + reserved(" + std::to_string(HCCL_BUFFER_RESERVED_BYTES) +
                      " bytes) = " + std::to_string(needBytes) + " bytes (" + std::to_string(needMb) +
-                     " MB). Please export HCCL_BUFFSIZE=" + std::to_string(needMb) + " and retry.")
+                     " MB). Please export HCCL_BUFFSIZE=" + std::to_string(needMb) + " and retry")
                         .c_str());
                 return ge::GRAPH_FAILED;
             }
