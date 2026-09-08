@@ -1242,5 +1242,3 @@ if (ENABLE_OPS_KERNEL)
         )
     endforeach ()
 endif ()
-
-include(${CMAKE_CURRENT_LIST_DIR}/custom_package.cmake)

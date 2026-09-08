@@ -7,7 +7,7 @@ if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
     )
 
     # modify VENDOR_NAME in install.sh and upgrade.sh
-    if (EXISTS ${ASCEND_PROJECT_DIR}/fwk_modules/scripts AND NOT NATIVE_ONLY)
+    if (EXISTS ${ASCEND_PROJECT_DIR}/fwk_modules/scripts AND NOT TARGET ops_transformer_native)
         set(ASCEND_PROJECT_DIR_SCRIPTS_PATH ${ASCEND_PROJECT_DIR}/fwk_modules/scripts)
     else()
         set(ASCEND_PROJECT_DIR_SCRIPTS_PATH ${CMAKE_SOURCE_DIR}/cmake/scripts/custom)
