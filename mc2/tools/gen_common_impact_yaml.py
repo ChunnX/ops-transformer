@@ -29,7 +29,7 @@ INC_RE = re.compile(r'#include\s+"([^"]+)"')
 SOC_RE = re.compile(r'AddConfig\("([a-z0-9_]+)"')
 CHIP_MAP = {'A2': 'ascend910b', 'A3': 'ascend910_93', 'A5': 'ascend950'}
 EXCLUDE_OPS = ('common', '3rd', 'tools')
-NON_HDR_EXT = ('.cpp', '.cc', '.c', '.py', '.json', '.ini', '.sh', '.csv', '.txt', '.md')
+NON_HDR_EXT = ('.py', '.json', '.ini', '.sh', '.csv', '.txt', '.md')
 
 if not os.path.isdir(MC2):
     sys.exit(f'错误: 不是 ops-transformer 仓(找不到 {MC2})')
@@ -156,6 +156,13 @@ for grp in ('common', '3rd'):
         summary.append((f'{grp}/{chip_cn}', len(partial_g), out))
 
 # file_lists.yaml: 全量匹配清单(按grp分放, 消费侧先查本表; 未命中再查对应soc的芯片yaml)
+cpp_no_same = {}
+for grp in ('common', '3rd'):
+    cpp_no_same[grp] = sorted(
+        r for r in scan_files
+        if r.startswith(grp + '/') and r.endswith(('.cpp', '.cc', '.c'))
+        and (r.rsplit('.', 1)[0] + '.h') not in hdrs
+    )
 for grp in ('common', '3rd'):
     used_g = sorted(h for h in used_by_all if h.startswith(grp + '/'))
     noref_g = sorted(h for h in no_reference if h.startswith(grp + '/'))
@@ -164,9 +171,10 @@ for grp in ('common', '3rd'):
         f'# 生成: {datetime.date.today()}  基线commit: {commit} ({branch})',
         '# 用途: 对每个修改文件, 先在本表匹配:',
         '#   1) 扩展名命中 full_regression.non_header_extensions -> 全量',
-        '#   2) 路径命中 full_regression.headers_used_by_all_operators -> 全量',
-        '#   3) 路径命中 full_regression.headers_no_reference -> 全量',
-        f'# 均未命中 -> 该.h属"测部分算子"类, 改查 {{A2,A3,A5}}.yaml 取ops',
+        '#   2) cpp路径命中 full_regression.cpp_no_same_header(无同名.h) -> 全量',
+        '#   3) 头路径命中 full_regression.headers_used_by_all_operators -> 全量',
+        '#   4) 头路径命中 full_regression.headers_no_reference -> 全量',
+        f'# 其余.h属"测部分算子"类, 改查 {{A2,A3,A5}}.yaml 取ops; cpp先找同目录同名.h, 按.h规则走',
         '# 最终算子集需叠加CMake depends反向闭包后去重',
         '',
         'full_regression:',
