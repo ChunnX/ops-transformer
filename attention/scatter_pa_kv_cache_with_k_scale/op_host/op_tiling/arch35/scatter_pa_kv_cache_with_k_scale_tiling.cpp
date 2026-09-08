@@ -547,7 +547,7 @@ static int64_t GetKeyDtypeSize(gert::TilingContext *context)
 }
 
 // SIMD 模板使用 DataCopyPad 多行搬运，要求 headSize 不小于 128B、key/value/cache 尾轴连续且头间无重叠，
-// key_scale 为标量直读直写，对 stride 无要求
+// key_scale 走 DataCopyPad 分块拷贝（连续整行/非连续多块），要求尾轴 stride 为正
 static bool IsSimdCapable(const TensorParams &params, int64_t dtypeSize)
 {
     if (dtypeSize <= 0) {
@@ -562,7 +562,9 @@ static bool IsSimdCapable(const TensorParams &params, int64_t dtypeSize)
                            params.valueStride[DIM_HEAD] >= params.vHeadSize &&
                            params.keyCacheStride[DIM_CACHE_HEAD] >= params.kHeadSize &&
                            params.valueCacheStride[DIM_CACHE_HEAD] >= params.vHeadSize;
-    return headSizeValid && lastAxisContiguous && headStrideValid;
+    bool scaleStrideValid =
+        params.keyScaleStride[DIM_SCALE_HEAD] >= 1 && params.keyScaleCacheStride[DIM_SCALE_CACHE_HEAD] >= 1;
+    return headSizeValid && lastAxisContiguous && headStrideValid && scaleStrideValid;
 }
 
 // ==================== set tiling key ====================

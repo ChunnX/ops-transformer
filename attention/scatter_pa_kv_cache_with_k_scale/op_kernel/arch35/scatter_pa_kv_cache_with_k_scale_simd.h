@@ -26,7 +26,7 @@ using namespace AscendC;
 
 constexpr int64_t SIMD_DOUBLE_BUFFER = 2;
 constexpr int64_t SIMD_ONE_BLK_SIZE = 32;
-constexpr int64_t SIMD_KV_QUEUE_NUM = 2; // key / value
+constexpr int64_t SIMD_QUEUE_NUM = 3; // key / value / keyScale
 
 template <typename T, typename IndexDtype>
 class ScatterPaKvCacheWithKScaleSimd {
@@ -48,6 +48,8 @@ private:
                                        int64_t headSize);
     __aicore__ inline void CopyOutValue(int64_t blockIdx, int64_t blockOffset, int64_t headIdx, int64_t sizeOffset,
                                         int64_t headNum, int64_t headSize);
+    __aicore__ inline void CopyInKeyScale(int64_t tokenIdx, int64_t headIdx, int64_t headNum);
+    __aicore__ inline void CopyOutKeyScale(int64_t blockIdx, int64_t blockOffset, int64_t headIdx, int64_t headNum);
     __aicore__ inline int64_t RoundUp(int64_t x);
     __aicore__ inline void InitLoopInfo();
     __aicore__ inline void ProcessKey(int64_t tokenIdx, int64_t blockIdx, int64_t blockOffset);
@@ -58,6 +60,7 @@ private:
     TPipe *pipe_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, SIMD_DOUBLE_BUFFER> keyQue_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, SIMD_DOUBLE_BUFFER> valueQue_;
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, SIMD_DOUBLE_BUFFER> scaleQue_;
     const ScatterPaKvCacheWithKScaleTilingData *__restrict tilingData_;
 
     GlobalTensor<T> keyGm_;
@@ -72,6 +75,12 @@ private:
     int64_t blockFactorOffset_ = 0;
     int64_t maxSlot_ = 0;
     int64_t maxHandleSize_ = 0;
+    int64_t scaleBufSize_ = 0;
+
+    bool scaleRowContiguous_ = false;
+    int64_t scaleNumHeadIn_ = 0;
+    int64_t scaleNumHeadLoop_ = 0;
+    int64_t scaleNumHeadTail_ = 0;
 
     bool kFullyLoad_ = false;
     int64_t kHeadSizeIn_ = 0;
@@ -109,7 +118,20 @@ __aicore__ inline void ScatterPaKvCacheWithKScaleSimd<T, IndexDtype>::Init(GM_AD
     keyScaleCacheGm_.SetGlobalBuffer((__gm__ float *)(keyScaleCacheOut));
 
     int64_t ubSize = tilingData_->ubSize;
-    int64_t maxHandleSize = ubSize / SIMD_KV_QUEUE_NUM / SIMD_DOUBLE_BUFFER;
+    // scale 队列：整行 numHead 个 float（32B 对齐），上限为 UB 的 1/6
+    int64_t scaleBufCap = ubSize / (SIMD_QUEUE_NUM * SIMD_DOUBLE_BUFFER);
+    scaleBufCap = scaleBufCap / SIMD_ONE_BLK_SIZE * SIMD_ONE_BLK_SIZE;
+    int64_t scaleRowBytes = tilingData_->numHead * static_cast<int64_t>(sizeof(float));
+    int64_t scaleBufSize = (scaleRowBytes + SIMD_ONE_BLK_SIZE - 1) / SIMD_ONE_BLK_SIZE * SIMD_ONE_BLK_SIZE;
+    if (scaleBufSize > scaleBufCap) {
+        scaleBufSize = scaleBufCap;
+    }
+    if (scaleBufSize < SIMD_ONE_BLK_SIZE) {
+        scaleBufSize = SIMD_ONE_BLK_SIZE;
+    }
+    // key/value 队列均分剩余 UB
+    int64_t kvAvailSize = ubSize - scaleBufSize * SIMD_DOUBLE_BUFFER;
+    int64_t maxHandleSize = kvAvailSize / (SIMD_QUEUE_NUM - 1) / SIMD_DOUBLE_BUFFER;
     maxHandleSize = maxHandleSize / SIMD_ONE_BLK_SIZE * SIMD_ONE_BLK_SIZE;
     if (maxHandleSize < SIMD_ONE_BLK_SIZE) {
         maxHandleSize = SIMD_ONE_BLK_SIZE;
@@ -117,7 +139,9 @@ __aicore__ inline void ScatterPaKvCacheWithKScaleSimd<T, IndexDtype>::Init(GM_AD
 
     pipe_->InitBuffer(keyQue_, SIMD_DOUBLE_BUFFER, maxHandleSize);
     pipe_->InitBuffer(valueQue_, SIMD_DOUBLE_BUFFER, maxHandleSize);
+    pipe_->InitBuffer(scaleQue_, SIMD_DOUBLE_BUFFER, scaleBufSize);
     maxHandleSize_ = maxHandleSize;
+    scaleBufSize_ = scaleBufSize;
 }
 
 template <typename T, typename IndexDtype>
@@ -206,6 +230,56 @@ __aicore__ inline void ScatterPaKvCacheWithKScaleSimd<T, IndexDtype>::CopyOutVal
 }
 
 template <typename T, typename IndexDtype>
+__aicore__ inline void ScatterPaKvCacheWithKScaleSimd<T, IndexDtype>::CopyInKeyScale(int64_t tokenIdx, int64_t headIdx,
+                                                                                     int64_t headNum)
+{
+    LocalTensor<float> keyScaleLocal = scaleQue_.AllocTensor<float>();
+
+    int64_t keyScaleOffset = tokenIdx * tilingData_->keyScaleStride[0] + headIdx * tilingData_->keyScaleStride[1];
+
+    DataCopyExtParams keyScaleParams;
+    if (scaleRowContiguous_) {
+        // 尾轴连续：单块整行拷贝
+        keyScaleParams = {static_cast<uint16_t>(1), static_cast<uint32_t>(headNum * sizeof(float)),
+                          static_cast<uint32_t>(0), static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+    } else {
+        // 尾轴带 stride：每个 head 拷 4B 的多块拷贝
+        keyScaleParams = {static_cast<uint16_t>(headNum), static_cast<uint32_t>(sizeof(float)),
+                          static_cast<uint32_t>((tilingData_->keyScaleStride[1] - 1) * sizeof(float)),
+                          static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+    }
+    DataCopyPadExtParams<float> padParams = {false, static_cast<uint8_t>(0), static_cast<uint8_t>(0), 0.0f};
+    DataCopyPad(keyScaleLocal, keyScaleGm_[keyScaleOffset], keyScaleParams, padParams);
+
+    scaleQue_.EnQue(keyScaleLocal);
+}
+
+template <typename T, typename IndexDtype>
+__aicore__ inline void ScatterPaKvCacheWithKScaleSimd<T, IndexDtype>::CopyOutKeyScale(int64_t blockIdx,
+                                                                                      int64_t blockOffset,
+                                                                                      int64_t headIdx, int64_t headNum)
+{
+    LocalTensor<float> keyScaleLocal = scaleQue_.DeQue<float>();
+
+    int64_t keyScaleCacheOffset = blockIdx * tilingData_->keyScaleCacheStride[0] +
+                                  headIdx * tilingData_->keyScaleCacheStride[1] +
+                                  blockOffset * tilingData_->keyScaleCacheStride[2];
+
+    DataCopyExtParams outKeyScaleCacheParams;
+    if (scaleRowContiguous_) {
+        outKeyScaleCacheParams = {static_cast<uint16_t>(1), static_cast<uint32_t>(headNum * sizeof(float)),
+                                  static_cast<uint32_t>(0), static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+    } else {
+        outKeyScaleCacheParams = {
+            static_cast<uint16_t>(headNum), static_cast<uint32_t>(sizeof(float)), static_cast<uint32_t>(0),
+            static_cast<uint32_t>((tilingData_->keyScaleCacheStride[1] - 1) * sizeof(float)), static_cast<uint32_t>(0)};
+    }
+    DataCopyPad(keyScaleCacheGm_[keyScaleCacheOffset], keyScaleLocal, outKeyScaleCacheParams);
+
+    scaleQue_.FreeTensor(keyScaleLocal);
+}
+
+template <typename T, typename IndexDtype>
 __aicore__ inline void ScatterPaKvCacheWithKScaleSimd<T, IndexDtype>::InitLoopInfo()
 {
     int64_t ubHandleSize = maxHandleSize_ / SIMD_ONE_BLK_SIZE * SIMD_ONE_BLK_SIZE;
@@ -261,6 +335,24 @@ __aicore__ inline void ScatterPaKvCacheWithKScaleSimd<T, IndexDtype>::InitLoopIn
         vNumHeadLoop_ = tilingData_->numHead;
         vNumHeadTail_ = 0;
     }
+
+    // scale 分块拷贝参数：连续时按 float 数量分块，非连续时每个 4B 块占 32B UB 对齐空间
+    scaleRowContiguous_ = (tilingData_->keyScaleStride[1] == 1) && (tilingData_->keyScaleCacheStride[1] == 1);
+    int64_t scaleNumHeadIn;
+    if (scaleRowContiguous_) {
+        scaleNumHeadIn = scaleBufSize_ / static_cast<int64_t>(sizeof(float));
+    } else {
+        scaleNumHeadIn = scaleBufSize_ / SIMD_ONE_BLK_SIZE;
+    }
+    if (scaleNumHeadIn > tilingData_->numHead) {
+        scaleNumHeadIn = tilingData_->numHead;
+    }
+    if (scaleNumHeadIn < 1) {
+        scaleNumHeadIn = 1;
+    }
+    scaleNumHeadIn_ = scaleNumHeadIn;
+    scaleNumHeadLoop_ = tilingData_->numHead / scaleNumHeadIn_;
+    scaleNumHeadTail_ = tilingData_->numHead - scaleNumHeadIn_ * scaleNumHeadLoop_;
 }
 
 template <typename T, typename IndexDtype>
@@ -332,14 +424,16 @@ __aicore__ inline void ScatterPaKvCacheWithKScaleSimd<T, IndexDtype>::ProcessKey
                                                                                       int64_t blockIdx,
                                                                                       int64_t blockOffset)
 {
-    // key_scale 每个 (token, head) 仅一个标量，直接标量读写，无需 DataCopyPad
-    for (int64_t headIdx = 0; headIdx < tilingData_->numHead; headIdx++) {
-        int64_t keyScaleOffset = tokenIdx * tilingData_->keyScaleStride[0] + headIdx * tilingData_->keyScaleStride[1];
-        int64_t keyScaleCacheOffset = blockIdx * tilingData_->keyScaleCacheStride[0] +
-                                      headIdx * tilingData_->keyScaleCacheStride[1] +
-                                      blockOffset * tilingData_->keyScaleCacheStride[2];
-        keyScaleCacheGm_.SetValue(static_cast<uint64_t>(keyScaleCacheOffset),
-                                  keyScaleGm_.GetValue(static_cast<uint64_t>(keyScaleOffset)));
+    // key_scale 按 numHead 分块，DataCopyPad 搬入/搬出
+    for (int64_t scaleLoop = 0; scaleLoop < scaleNumHeadLoop_; scaleLoop++) {
+        int64_t headIdx = scaleLoop * scaleNumHeadIn_;
+        CopyInKeyScale(tokenIdx, headIdx, scaleNumHeadIn_);
+        CopyOutKeyScale(blockIdx, blockOffset, headIdx, scaleNumHeadIn_);
+    }
+    if (scaleNumHeadTail_ > 0) {
+        int64_t headIdx = scaleNumHeadLoop_ * scaleNumHeadIn_;
+        CopyInKeyScale(tokenIdx, headIdx, scaleNumHeadTail_);
+        CopyOutKeyScale(blockIdx, blockOffset, headIdx, scaleNumHeadTail_);
     }
 }
 

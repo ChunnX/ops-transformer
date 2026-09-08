@@ -729,8 +729,9 @@ TEST_F(scatter_pa_kv_cache_with_k_scale_test, test_case_simd_generalized_fp8_e5m
     tilingData->slotMappingStride[0] = 1;
     tilingData->keyScaleStride[0] = numHead;
     tilingData->keyScaleStride[1] = 1;
-    // 该用例 key_scale/key_scale_cache 使用头相邻布局（stride[1] != 规范值），
-    // 验证 scale 标量直读直写对任意 stride 的正确性
+    // 该用例 key_scale_cache 使用头相邻布局（kscStride[1] == 1，与规范 BNBD 不同），
+    // 覆盖 scale DataCopyPad 整行连续拷贝路径；规范布局（kscStride[1] == blockSize）
+    // 由 specialized 用例覆盖 4B 多块拷贝路径
     tilingData->keyScaleCacheStride[0] = numHead * blockSize;
     tilingData->keyScaleCacheStride[1] = 1;
     tilingData->keyScaleCacheStride[2] = numHead;
