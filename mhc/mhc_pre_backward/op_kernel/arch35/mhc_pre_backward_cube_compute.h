@@ -96,8 +96,8 @@ private:
                                        uint32_t aGmStride, uint32_t bGmStride, uint32_t cGmStride, bool transA,
                                        bool atomicAdd, bool publishC0, bool reuseB1)
     {
-        // 最优组合：L0A/L0B保留ping-pong，L0C固定使用第0槽。
-        uint32_t cSlot = 0U;
+        // L0C双槽轮换，使当前tile的MMAD可与前一tile的Fixpipe写回重叠。
+        uint32_t cSlot = l0cLoopCount_ & 1U;
         LocalTensor<float> currentC = cL0_[cSlot * BASIC_CUBE_L0C_SLOT_ELEMS];
         WaitFlag<HardEvent::FIX_M>(cSlot);
 
