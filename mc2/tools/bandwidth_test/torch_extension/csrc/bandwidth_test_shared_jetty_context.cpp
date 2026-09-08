@@ -18,7 +18,6 @@
 #include <vector>
 #include <torch/extension.h>
 #include "hccl_common.h"
-#include "hccl/hccl_channel.h"
 
 namespace op_api {
 HcclResult BuildSharedJettyMultiChannelHandle(HcclComm comm, const char *sharedQueueTag,
@@ -30,7 +29,6 @@ constexpr uint32_t MAX_RANKS = 1024;
 constexpr uint32_t MAX_SHARED_JETTYS = 56;
 constexpr int64_t WIN_STATE_BYTES = 1024 * 1024;
 constexpr size_t HCCL_CONTEXT_TAG_MAX_LEN = 255;
-constexpr char HCOMM_LIBRARY_NAME[] = "libhcomm.so";
 
 // Wire layout matches SharedJettyContext in bandwidth_test_urma_shared_jetty.h.
 struct SharedJettyContext {
@@ -38,53 +36,8 @@ struct SharedJettyContext {
     uint32_t sharedJettyNum = 0;
     uint64_t bufferSize = 0;
     uint64_t epHcclBuffer_[MAX_RANKS] = {};
-    uint64_t sharedJettyHandles_[MAX_SHARED_JETTYS] = {};
-    // Preserve the original context tensor shape used by captured graphs; these entries are not consumed.
-    uint64_t reserved_[MAX_RANKS - MAX_SHARED_JETTYS] = {};
+    uint64_t sharedJettyHandle_[MAX_RANKS] = {};
 };
-static_assert(sizeof(SharedJettyContext) == 16400, "Shared jetty context wire layout changed");
-static_assert(offsetof(SharedJettyContext, epRankId) == 0 && offsetof(SharedJettyContext, sharedJettyNum) == 4 &&
-                  offsetof(SharedJettyContext, bufferSize) == 8 && offsetof(SharedJettyContext, epHcclBuffer_) == 16 &&
-                  offsetof(SharedJettyContext, sharedJettyHandles_) == 8208 &&
-                  offsetof(SharedJettyContext, reserved_) == 8656,
-              "Shared jetty context field offsets changed");
-
-using HcclChannelConfigCreateFn = decltype(&HcclChannelConfigCreate);
-using HcclChannelConfigDestroyFn = decltype(&HcclChannelConfigDestroy);
-using HcclChannelConfigSetIntFn = decltype(&HcclChannelConfigSetInt);
-using HcclChannelConfigSetStrFn = decltype(&HcclChannelConfigSetStr);
-using HcclChannelAcquireWithConfigFn = decltype(&HcclChannelAcquireWithConfig);
-
-HcclChannelConfigCreateFn HcclChannelConfigCreateFnPtr = nullptr;
-HcclChannelConfigDestroyFn HcclChannelConfigDestroyFnPtr = nullptr;
-HcclChannelConfigSetIntFn HcclChannelConfigSetIntFnPtr = nullptr;
-HcclChannelConfigSetStrFn HcclChannelConfigSetStrFnPtr = nullptr;
-HcclChannelAcquireWithConfigFn HcclChannelAcquireWithConfigFnPtr = nullptr;
-
-void *GetHcommLibraryHandle()
-{
-    // This operator-local control-plane path loads all of its HCCL/Hcomm APIs from libhcomm.so.
-    static void *handle = GetOpApiLibHandler(HCOMM_LIBRARY_NAME);
-    return handle;
-}
-
-template <typename T>
-T GetHcommFunction(const char *apiName)
-{
-    void *handle = GetHcommLibraryHandle();
-    if (handle == nullptr) {
-        return nullptr;
-    }
-    return reinterpret_cast<T>(GetOpApiFuncAddrInLib(handle, HCOMM_LIBRARY_NAME, apiName));
-}
-
-template <typename T>
-T RequireHcommFunction(const char *apiName)
-{
-    T function = GetHcommFunction<T>(apiName);
-    TORCH_CHECK(function != nullptr, "load ", apiName, " from ", HCOMM_LIBRARY_NAME, " failed");
-    return function;
-}
 
 struct RankLinkInfo {
     CommProtocol protocol;
@@ -113,40 +66,15 @@ void CheckHccl(HcclResult result, const char *operation)
     TORCH_CHECK(result == HCCL_SUCCESS, operation, " failed, ret=", result);
 }
 
-void InitSharedJettyHcommFunctions()
-{
-    static const bool initialized = []() {
-        HcomGetCommHandleByGroupFunc = RequireHcommFunction<_HcomGetCommHandleByGroup>("HcomGetCommHandleByGroup");
-        HcclRankGraphGetLinksFunc = RequireHcommFunction<_HcclRankGraphGetLinks>("HcclRankGraphGetLinks");
-        HcclRankGraphGetLayersFunc = RequireHcommFunction<_HcclRankGraphGetLayers>("HcclRankGraphGetLayers");
-        HcclRankGraphGetRanksByLayerFunc =
-            RequireHcommFunction<_HcclRankGraphGetRanksByLayer>("HcclRankGraphGetRanksByLayer");
-        HcclEngineCtxCreateFunc = RequireHcommFunction<_HcclEngineCtxCreate>("HcclEngineCtxCreate");
-        HcclEngineCtxCopyFunc = RequireHcommFunction<_HcclEngineCtxCopy>("HcclEngineCtxCopy");
-        HcclGetRankIdFunc = RequireHcommFunction<_HcclGetRankId>("HcclGetRankId");
-        HcclGetRankSizeFunc = RequireHcommFunction<_HcclGetRankSize>("HcclGetRankSize");
-        HcclCommMemRegFunc = RequireHcommFunction<_HcclCommMemReg>("HcclCommMemReg");
-        HcclChannelGetRemoteMemsFunc = RequireHcommFunction<_HcclChannelGetRemoteMems>("HcclChannelGetRemoteMems");
-        HcclChannelConfigCreateFnPtr = RequireHcommFunction<HcclChannelConfigCreateFn>("HcclChannelConfigCreate");
-        HcclChannelConfigDestroyFnPtr = RequireHcommFunction<HcclChannelConfigDestroyFn>("HcclChannelConfigDestroy");
-        HcclChannelConfigSetIntFnPtr = RequireHcommFunction<HcclChannelConfigSetIntFn>("HcclChannelConfigSetInt");
-        HcclChannelConfigSetStrFnPtr = RequireHcommFunction<HcclChannelConfigSetStrFn>("HcclChannelConfigSetStr");
-        HcclChannelAcquireWithConfigFnPtr =
-            RequireHcommFunction<HcclChannelAcquireWithConfigFn>("HcclChannelAcquireWithConfig");
-        return true;
-    }();
-    (void)initialized;
-}
-
 class ChannelConfigGuard {
 public:
     ChannelConfigGuard()
     {
-        auto ret = HcclChannelConfigCreateFnPtr(&config_);
+        auto ret = HcclChannelConfigCreateFunc(&config_);
         if (ret != HCCL_SUCCESS) {
             HcclResult cleanupRet = HCCL_SUCCESS;
             if (config_ != nullptr) {
-                cleanupRet = HcclChannelConfigDestroyFnPtr(config_);
+                cleanupRet = HcclChannelConfigDestroyFunc(config_);
                 config_ = nullptr;
             }
             TORCH_CHECK(false, "HcclChannelConfigCreate failed, ret=", ret,
@@ -157,7 +85,7 @@ public:
     ~ChannelConfigGuard()
     {
         if (config_ != nullptr) {
-            HcclResult ret = HcclChannelConfigDestroyFnPtr(config_);
+            HcclResult ret = HcclChannelConfigDestroyFunc(config_);
             if (ret != HCCL_SUCCESS) {
                 ASCEND_LOGE("HcclChannelConfigDestroy cleanup failed, ret=%d", ret);
             }
@@ -177,7 +105,7 @@ public:
         if (config_ == nullptr) {
             return HCCL_SUCCESS;
         }
-        HcclResult ret = HcclChannelConfigDestroyFnPtr(config_);
+        HcclResult ret = HcclChannelConfigDestroyFunc(config_);
         if (ret == HCCL_SUCCESS) {
             config_ = nullptr;
         }
@@ -207,7 +135,8 @@ public:
                at::Tensor &contextTensor)
     {
         ASCEND_LOGI("Start to build shared Jetty context, group: %s", group.c_str());
-        InitSharedJettyHcommFunctions();
+        InitHcclEngineCtxFunctions();
+        InitHcclSharedChannelFunctions();
 
         worldSize_ = worldSize;
         commLevel_ = commLevel;
@@ -341,17 +270,17 @@ private:
         // The Torch ProcessGroup already owns an HcclComm, so use its standard wrapper; HCCL dispatches the
         // actual endpoint/channel creation to HcommChannelCreateWithConfig internally.
         ChannelConfigGuard config;
-        CheckHccl(HcclChannelConfigSetIntFnPtr(config.Get(), HCCL_CHANNEL_CONFIG_TYPE_IS_SHARED_QUEUE, 1),
+        CheckHccl(HcclChannelConfigSetIntFunc(config.Get(), HCCL_CHANNEL_CONFIG_TYPE_IS_SHARED_QUEUE, 1),
                   "HcclChannelConfigSetInt(IS_SHARED_QUEUE)");
         const std::string queueTag = QueueTag(jetty);
         // All peer descriptors in one call use one tag/Endpoint/Jetty; a new tag creates the next Jetty.
         CheckHccl(
-            HcclChannelConfigSetStrFnPtr(config.Get(), HCCL_CHANNEL_CONFIG_TYPE_SHARED_QUEUE_TAG, queueTag.c_str()),
+            HcclChannelConfigSetStrFunc(config.Get(), HCCL_CHANNEL_CONFIG_TYPE_SHARED_QUEUE_TAG, queueTag.c_str()),
             "HcclChannelConfigSetStr(SHARED_QUEUE_TAG)");
 
         std::vector<ChannelHandle> channels(channelNum, 0);
-        HcclResult acquireRet = HcclChannelAcquireWithConfigFnPtr(comm_, COMM_ENGINE_AIV, descriptors.data(),
-                                                                  channelNum, config.Get(), channels.data());
+        HcclResult acquireRet = HcclChannelAcquireWithConfigFunc(comm_, COMM_ENGINE_AIV, descriptors.data(), channelNum,
+                                                                 config.Get(), channels.data());
         HcclResult destroyRet = config.Destroy();
         TORCH_CHECK(acquireRet == HCCL_SUCCESS, "HcclChannelAcquireWithConfig failed for shared Jetty ", jetty,
                     ", ret=", acquireRet, "; HcclChannelConfigDestroy ret=", destroyRet);
@@ -386,7 +315,7 @@ private:
                                                                 &multiChannel);
             TORCH_CHECK(ret == HCCL_SUCCESS && multiChannel != 0, "MakeMultiChannelHandle failed for shared Jetty ",
                         jetty, ", ret=", ret);
-            hostContext_.sharedJettyHandles_[jetty] = multiChannel;
+            hostContext_.sharedJettyHandle_[jetty] = multiChannel;
         }
     }
 

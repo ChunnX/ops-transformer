@@ -21,7 +21,6 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include <cstddef>
 #include "kernel_tiling/kernel_tiling.h"
 #include "bandwidth_test_tiling.h"
 #include "adv_api/hccl/hccl.h"
@@ -47,15 +46,8 @@ struct SharedJettyContext {
     uint32_t sharedJettyNum;
     uint64_t bufferSize;
     uint64_t epHcclBuffer_[1024];
-    uint64_t sharedJettyHandles_[BandwidthTestTiling::URMA_MAX_SHARED_JETTYS];
-    uint64_t reserved_[1024 - BandwidthTestTiling::URMA_MAX_SHARED_JETTYS];
+    uint64_t sharedJettyHandle_[1024];
 };
-static_assert(sizeof(SharedJettyContext) == 16400, "Shared jetty context wire layout changed");
-static_assert(offsetof(SharedJettyContext, epRankId) == 0 && offsetof(SharedJettyContext, sharedJettyNum) == 4 &&
-                  offsetof(SharedJettyContext, bufferSize) == 8 && offsetof(SharedJettyContext, epHcclBuffer_) == 16 &&
-                  offsetof(SharedJettyContext, sharedJettyHandles_) == 8208 &&
-                  offsetof(SharedJettyContext, reserved_) == 8656,
-              "Shared jetty context field offsets changed");
 
 template <TemplateBandwidthTestTypeClass>
 class BandwidthTestUrmaSharedJetty {
@@ -141,8 +133,7 @@ private:
     uint32_t startStatusIndex_{0};    // 起始状态索引
     uint32_t totalUbSize_{0};         // 总UB大小
     uint64_t totalWinSizeEp_{0};      // 总窗口大小
-    // The public asc-comm batch implementation currently requires the UBC_CTP template protocol.
-    Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
+    Hcomm<COMM_PROTOCOL_UB_CTP> hcomm_;
     using HcommBatchHandle = AscendC::BatchHandle<AscendC::MultiChannelHandle>;
     TBuf<> batchBuf_;
     LocalTensor<uint8_t> batchTensor_;
@@ -341,7 +332,7 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
     preparedWrites_ = 0;
     // The multi-channel handle keeps one queue cursor for this core-owned Jetty; GetHandleRef selects the peer.
     batchHandle_ =
-        hcomm_.MakeBatchHandle(static_cast<AscendC::MultiChannelHandle>(context_->sharedJettyHandles_[aivId_]),
+        hcomm_.MakeBatchHandle(static_cast<AscendC::MultiChannelHandle>(context_->sharedJettyHandle_[aivId_]),
                                batchTensor_, batchBufferBytes_);
 }
 

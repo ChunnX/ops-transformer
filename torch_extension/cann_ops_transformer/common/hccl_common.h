@@ -32,6 +32,7 @@
 #include "torch_npu/csrc/aten/NPUNativeFunctions.h"
 #include "torch_npu/csrc/core/npu/DeviceUtils.h"
 #include "hccl/hccl_res.h"
+#include "hccl/hccl_channel.h"
 #include "hccl/hcomm_res_defs.h"
 #include "hccl/hccl_rank_graph.h"
 #if __has_include("torch_npu/csrc/flopcount/FlopCount.h")
@@ -76,6 +77,12 @@ using _HcclBarrier = HcclResult (*)(HcclComm, aclrtStream);
 using _HcclCommMemReg = HcclResult (*)(HcclComm, const char *, const CommMem *, HcclMemHandle *);
 // 通过channel获取远端注册的内存
 using _HcclChannelGetRemoteMems = HcclResult (*)(HcclComm, ChannelHandle, uint32_t *, CommMem **, char ***);
+using _HcclChannelConfigCreate = HcclResult (*)(HcclChannelConfig *);
+using _HcclChannelConfigDestroy = HcclResult (*)(HcclChannelConfig);
+using _HcclChannelConfigSetInt = HcclResult (*)(HcclChannelConfig, HcclChannelConfigType, uint32_t);
+using _HcclChannelConfigSetStr = HcclResult (*)(HcclChannelConfig, HcclChannelConfigType, const char *);
+using _HcclChannelAcquireWithConfig = HcclResult (*)(HcclComm, CommEngine, const HcclChannelDesc *, uint32_t,
+                                                     HcclChannelConfig, ChannelHandle *);
 
 static _HcclKfcAllocOpArgs HcclKfcAllocOpArgsFunc = nullptr;
 static _HcclKfcOpArgsSetAlgConfig HcclKfcOpArgsSetAlgConfigFunc = nullptr;
@@ -102,6 +109,11 @@ static _HcclEngineCtxCopy HcclEngineCtxCopyFunc = nullptr;
 static _HcclBarrier HcclBarrierFunc = nullptr;
 static _HcclCommMemReg HcclCommMemRegFunc = nullptr;
 static _HcclChannelGetRemoteMems HcclChannelGetRemoteMemsFunc = nullptr;
+static _HcclChannelConfigCreate HcclChannelConfigCreateFunc = nullptr;
+static _HcclChannelConfigDestroy HcclChannelConfigDestroyFunc = nullptr;
+static _HcclChannelConfigSetInt HcclChannelConfigSetIntFunc = nullptr;
+static _HcclChannelConfigSetStr HcclChannelConfigSetStrFunc = nullptr;
+static _HcclChannelAcquireWithConfig HcclChannelAcquireWithConfigFunc = nullptr;
 
 inline const char *GetHcclLibName(void)
 {
@@ -111,6 +123,11 @@ inline const char *GetHcclLibName(void)
 inline const char *GetHcclFwkLibName(void)
 {
     return "libhccl_fwk.so";
+}
+
+inline const char *GetHcommLibName(void)
+{
+    return "libhcomm.so";
 }
 
 template <typename T>
@@ -143,6 +160,21 @@ inline T GetHcclFwkFuncAddr(const char *apiName)
         return nullptr;
     }
     return GetFuncAddr<T>(opApiHandler, GetHcclFwkLibName(), apiName);
+}
+
+template <typename T>
+inline T GetHcommFuncAddr(const char *apiName)
+{
+    static auto opApiHandler = GetOpApiLibHandler(GetHcommLibName());
+    if (opApiHandler == nullptr) {
+        return nullptr;
+    }
+    auto funcAddr = GetOpApiFuncAddrInLib(opApiHandler, GetHcommLibName(), apiName);
+    if (funcAddr == nullptr) {
+        ASCEND_LOGW("dlsym %s from %s failed, error:%s", apiName, GetHcommLibName(), dlerror());
+        return nullptr;
+    }
+    return reinterpret_cast<T>(funcAddr);
 }
 
 inline void InitHcclFunctions()
@@ -210,6 +242,25 @@ inline void InitHcclEngineCtxFunctions()
     TORCH_CHECK(HcclCommMemRegFunc != nullptr, "getHcclCommMemReg failed.");
     HcclChannelGetRemoteMemsFunc = GetHcclFwkFuncAddr<_HcclChannelGetRemoteMems>("HcclChannelGetRemoteMems");
     TORCH_CHECK(HcclChannelGetRemoteMemsFunc != nullptr, "getHcclChannelGetRemoteMems failed.");
+}
+
+inline void InitHcclSharedChannelFunctions()
+{
+    HcclChannelConfigCreateFunc =
+        GetHcommFuncAddr<_HcclChannelConfigCreate>("HcclChannelConfigCreate");
+    TORCH_CHECK(HcclChannelConfigCreateFunc != nullptr, "getHcclChannelConfigCreate failed.");
+    HcclChannelConfigDestroyFunc =
+        GetHcommFuncAddr<_HcclChannelConfigDestroy>("HcclChannelConfigDestroy");
+    TORCH_CHECK(HcclChannelConfigDestroyFunc != nullptr, "getHcclChannelConfigDestroy failed.");
+    HcclChannelConfigSetIntFunc =
+        GetHcommFuncAddr<_HcclChannelConfigSetInt>("HcclChannelConfigSetInt");
+    TORCH_CHECK(HcclChannelConfigSetIntFunc != nullptr, "getHcclChannelConfigSetInt failed.");
+    HcclChannelConfigSetStrFunc =
+        GetHcommFuncAddr<_HcclChannelConfigSetStr>("HcclChannelConfigSetStr");
+    TORCH_CHECK(HcclChannelConfigSetStrFunc != nullptr, "getHcclChannelConfigSetStr failed.");
+    HcclChannelAcquireWithConfigFunc =
+        GetHcommFuncAddr<_HcclChannelAcquireWithConfig>("HcclChannelAcquireWithConfig");
+    TORCH_CHECK(HcclChannelAcquireWithConfigFunc != nullptr, "getHcclChannelAcquireWithConfig failed.");
 }
 
 #endif // CANN_OPS_TRANSFORMER_HCCL_COMMON_H

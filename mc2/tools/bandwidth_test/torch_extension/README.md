@@ -21,8 +21,8 @@ y, receive_cnt = bandwidth_test(
 Host 控制面建联使用 [hcomm 的 HCCL shared-channel 接口](https://gitcode.com/cann/hcomm/blob/7c391e58a83fbd64a999f3892498596e009034b3/include/hccl/hccl_channel.h)。已有 `HcclComm` 时，每个逻辑 Jetty
 按以下顺序构造：`HcclChannelConfigCreate → SetInt(IS_SHARED_QUEUE) → SetStr(SHARED_QUEUE_TAG)
 → HcclChannelAcquireWithConfig → HcclChannelConfigDestroy`。这条 HCCL 接口内部完成底层
-`HcommChannelCreateWithConfig`、READY 等待及 device ChannelEntity 填充。该独立 context 使用的控制面符号
-统一从 `libhcomm.so` 动态加载，不要求 Torch extension 直接链接该库，也不修改公共 context 的 loader。
+`HcommChannelCreateWithConfig`、READY 等待及 device ChannelEntity 填充。已有 HCCL 句柄继续复用公共
+`hccl_common.h` 的 loader；新增的 shared-channel 配置接口也统一放在该公共 loader 中从 `libhcomm.so` 加载。
 
 Host 使用 `torch_extension/shared_jetty_context.py` 和同目录 `csrc` 中的独立实现，按
 `shared_jetty_comm_level` 选择协议和网络层。自动模式先按原 `HcclChannelContextBuilder` 的拓扑方式确定连续
@@ -34,7 +34,7 @@ shared-Jetty device batch ABI，为每个 Jetty 生成一个 `MultiChannelHandle
 from-Channels 构造接口，所以公开 `MakeMultiChannelHandle` helper 会以相同 tag 再次 acquire；hcomm
 shared-channel pool 复用前一步的 Channel/Jetty，不创建第二套物理 Jetty。最终 context 只保存
 `MultiChannelHandle[jetty]`，不把普通 Channel 矩阵暴露给 kernel，也不读取 `ChannelEntity` 私有字段。
-有效句柄区按最多 56 个 Jetty 定义，尾部为保留区，以维持原有 4100 个 `int32` 的 context tensor 形状。
+context 继续复用原有 `sharedJettyHandle_[1024]`，前 `shared_jetty_num` 项保存有效句柄。
 HCCL shared queue 要求 V2 communicator、AIV engine、UB_CTP/UB_RTP 协议及相同的 local endpoint；不满足时
 在 context 创建阶段明确报错，不隐式回退普通 channel。同一通信域的所有 rank 必须使用相同的 Jetty 数量、
 通信层级、窗口大小和构造顺序；这是标准建链接口的调用前提。单 rank 无远端时跳过 Channel 建联。
@@ -52,7 +52,7 @@ owner 持有的 Win。C++ 内部不查询或切换 NPU，调用方须保持正�
 共享 Channel 逐项销毁接口，因此 Python wrapper 会先销毁已污染的 ProcessGroup，再释放 Win，并将原异常继续抛出；
 调用方必须重建通信组。若 ProcessGroup 销毁本身也失败，则为避免释放仍被 HCCL 引用的地址，Win 会被有意保留到
 进程退出，并在异常中明确报告。Host hcomm 当前支持 UB_RTP shared channel；但
-公开 asc-comm 的 `MakeBatchHandle` 实现仍只静态保证 UBC_CTP，UB_RTP device batch 路径必须用目标联调包验证。
+公开 asc-comm 的 `MakeBatchHandle` 实现按 UB_CTP 协议实例化，UB_RTP device batch 路径必须用目标联调包验证。
 
 tiling key 先选择通信算法，再在 URMA 下选择 `SHARED_JETTY`；kernel 独立文件为
 `op_kernel/bandwidth_test_urma_shared_jetty.h`，保留 mode 0/1/3：
