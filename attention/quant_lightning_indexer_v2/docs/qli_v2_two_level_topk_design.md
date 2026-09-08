@@ -235,7 +235,7 @@ dtype/精度约束：score 全程 fp32（现有路径不变）；块化 amax 与
 **mode=2 增量**（实装）：
 | buffer | 元素数 | 字节 | 说明 |
 |---|---|---|---|
-| candBuf_（TBuf） | topkBlocks × 2 (fp32 pair) | 16KB | 排序后的候选 [values|idx] 对 |
+| candBuf_（TBuf） | CeilDiv(s1BaseSize,2) 行 × topkBlocks × 2 (fp32 pair) | 32KB（R6 按行分区） | 排序后的候选 [values|idx] 对，每行独立（同核行间 tile0 重排序覆盖是 R6 根因） |
 | candConstBuf_（TBuf） | topkBlocks (fp32) | 8KB | -1e30 常量（候选外罚分） |
 | 掩码临时（复用 tmpBuf） | candInt@12288 / candSortTmp@4096 / blkIdxF·acc·diff@4352–4864 / posDist@12288 / isOutI32@14336 | ~20KB | **isOutI32 必须避开 [4096,6144)**（该区被 ProcessVec1 的 pen/idxPen 复用，曾重叠致掩码失效） |
 
@@ -470,7 +470,7 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 | R2 | Sort32/MrgSort 降序假设不成立 | 整体语义反转 | 验证点 V1：实现前单测确认 API 排序方向 |
 | R3 | g=32 改动触碰 `mBaseSize/s1BaseSize` 推导，影响分核与循环边界（kernel 与 metadata 基准必须一致） | g=32 分核错乱/越界 | 对齐 v1 推导（§3.1）+ `cand_r1_mode1_g32` 用例 + g=64 全量回归（推导变更影响既有路径，mode=0 也需回归） |
 | R4 | source/consumer 的 block_size 不一致（跨算子约定） | 语义错乱 | 文档强约束 + torch 层断言（`quant_lightning_indexer.candidate` python 封装内校验，§4.3） |
-| **R6（2026-09-07 实测，未解）** | **mode=2 大 shape（S2≥128K prefill）candBuf 被中途污染**：tile0 排序后窗口值与输入候选不符（实测 w1525 位型漂移），致掩蔽窗口错误、topk 混入候选外 -inf 位置；pytest（S2≤20K）与 16K 不触发，128K 必现。已排除：加载（DataCopyPad 抽验一致）、排序、窗口 lo/hi、Brcb/Mins、score' 掩蔽、行末累加器（全部实测正确）；二分至主路径 SortAll/MergeSort 跳过后仍污染——凶手在 tile0 排序后至 tile1 之间的其余指令（pen/idxPen/GetKeyScale/Cast(isOutI32) 等），待专项定位 | mode=2 大 shape 暂列 known issue；生产启用 mode=2 + S2≥128K 前必须修复 |
+| ~~R6（2026-09-07 实测，**2026-09-08 已解**）~~ | mode=2 S2≥128K prefill candBuf 被中途污染 | **根因：同核多行共享 candBuf**——每 AIV 处理 CeilDiv(s1BaseSize,2)=2 行，s2 内层循环按 gS1 块整体推进，后一行（row+2）的 tile0 重排序覆盖前一行候选，前一行 tile1..63 全部读错（三点快照 SNAP/MID/REF 定位：MID==SNAP 证明主路径无辜，漂移精确在 tile 切换）；s1=1（每核单行）不触发，故此前所有小 shape 用例漏检 | **修复：candBuf 按行分区**（innerS1Idx × candBlocks × 2 对索引，2 行 32KB，mode=2 UB 184KB≤192KB）；新增 r1_m2_prefill（s1=8 mode=2）作为 R6 小 shape 门禁 + big128k_m2 转正；47 用例全绿 |
 | R7（§11） | TND 下 candidateOutOffset 与 cuS1Idx 双重前缀（两者均含 cu_seqlens_q 前缀则行号翻倍） | 偏移结构与主输出 indiceOutOffset 完全同构（前缀在 offset、行号 batch 内），理论无双重；tnd_m1_decode 用例显式验证 GM 行对位 |
 | R8（§11） | keyStride0 改造影响现网紧凑场景（PA 现网假设 stride==块大小） | keyStride0==0 或 ==紧凑值时走原公式兜底，现网行为 bit 级不变；pa_gap_m3_regress 回归 |
 | R9（§11.6） | **output_idx_offset 在 arch22 为死参数**（入口收指针未绑定未消费，host 校验完整但合法值被静默忽略）；调用方传非零偏移时 sparse_indices 不含偏移 → 上层绝对位置还原错误 | A15 对齐 arch35 使能；与 candidate 的契约：offset 仅作用于 sparse_indices，candidate_topk_index 保持相对块号（source 输出取加 offset 前），避免 mode=2 掩蔽整行错位 |
@@ -522,11 +522,12 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 
 ## 10. 当前验证状态（2026-09-07）
 
-- pytest **43 用例 = 29 passed + 14 xfail(strict)**（2026-09-07 大 shape 并入后）：
+- pytest **47 用例全绿零 xfail**（2026-09-08 R6 修复后，含大 shape 全遍历 12 用例）：
   - 22 基础用例（mode 1/2/3 × cmp_ratio 1/2 × g32/64 × decode/prefill/tail/sparse2048/pin64 单/多 tile/B=4 变长/S1 尾块/tiny/cand64×mode2）全过，零 aicore
   - **大 shape 直接入矩阵全过**：big16k_m1 / big128k_m1 / big128k_m1_b2（B=2 变长）/ big1m_m1（131072 块 pin（强制保留最新 token 所在块）抽样验证）/ big1m_m3（回归）——§6.6 抽样行官方两级规则比对 + 全行有效性 + pin 检查，总时长 ~4 分钟
   - 等价回归全过：pa_gap_m3_regress（紧凑场景现网行为不变，R8）、off_zero_regress（零偏移与不传一致）
-  - **A11/A12/A15 实施后（2026-09-08）：42 passed + 1 xfailed（仅 big128k_m2 的 R6 candBuf 污染未解）**——tnd_*×7（含 tnd_big128k_m1 大 shape 抽样）、pa_gap_m1/m2/128k×3、off_m1_decode/m2/off_tnd×3 全部 XPASS 转正；pa_gap_m3_regress（紧凑等价）与 off_zero_regress（零偏移等价）回归保持通过
+  - **A11/A12/A15 实施后（2026-09-08）：tnd_*×7、pa_gap_m1/m2/128k×3、off_m1_decode/m2/off_tnd×3 全部 XPASS 转正；pa_gap_m3_regress（紧凑等价）与 off_zero_regress（零偏移等价）回归保持通过
+  - **R6 修复转正（2026-09-08）：candBuf 按行分区（同核 2 行共享是根因）**——big128k_m2 通过；新增 r1_m2_prefill（s1=8 mode=2）作为 R6 小 shape 门禁；大 shape 全遍历 12 用例（q_seq×layout×ratio）全过；xfail 清零
 - 大规模生产规格（`/opt/tjj/qli_cand_test/test_big_shape_m1.py`，设备侧 harness）：16K(b=1) / 128K(b=2) mode=1、128K(b=2) mode=2 随机半数候选、1M(b=1) mode=1 全部 IoU=1.000000；**1M 场景 pin 块 131071 确认入选**（131072 块中选 top-2048）
 - 大 shape 回归：1M mode=3（IoU=1.0 抽样行精确比对 + 双跑确定性）、1M cmp_ratio=2、qseq 256..2048 扫描全过
 - 提交序列：`aede3e62e`（功能实现）→ `a346acdcb`（五处正确性修复：pad 块 int32 向量算术填充 / MergeSortVecCopy 位精确回拷 / pin 纯向量化（全局块号比较）/ mode=2 CountGE 窗口边界 + CAST_RINT + isOutI32 区域重叠 / V_S fence）
