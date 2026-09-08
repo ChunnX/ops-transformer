@@ -186,7 +186,7 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
                 "FP8_DTYPE": torch.float8_e4m3fn,
                 "QUANT_MODE": quant_mode,
                 "QUANT_GROUP_SIZE": 32,
-                "INPUT_LAYOUT": input_layout,
+                "INPUT_LAYOUT": layout_q,
                 "LAYOUT_Q": layout_q,
                 "LAYOUT_Q_DESCALE": layout_q_descale,
                 "LAYOUT_KV": layout_kv,
