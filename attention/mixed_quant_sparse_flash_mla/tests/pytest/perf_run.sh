@@ -21,12 +21,37 @@ export MQSMLA_INPUTS_ONLY=0
 
 rm -f -- "$MQSMLA_RESULT_SAVE_PATH"
 test_status=0
+pytest_report=$(mktemp /tmp/mqsmla_pytest.XXXXXX.xml)
 msprof python3 -m pytest -rA -s test_mixed_quant_sparse_flash_mla_single.py \
-    -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning \
+    -v -m ci --junitxml="$pytest_report" -W ignore::UserWarning -W ignore::DeprecationWarning \
     2>&1 | tee res.log || test_status=$?
 
+# msprof可能在pytest失败时返回0，直接检查pytest测试报告。
+if ! python3 - "$pytest_report" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+try:
+    root = ET.parse(sys.argv[1]).getroot()
+    suites = list(root.iter("testsuite"))
+    tests = sum(int(suite.get("tests", 0)) for suite in suites)
+    failures = sum(int(suite.get("failures", 0)) + int(suite.get("errors", 0)) for suite in suites)
+    skipped = sum(int(suite.get("skipped", 0)) for suite in suites)
+    if tests == skipped or failures:
+        raise ValueError(f"{tests} tests, {failures} failures/errors, {skipped} skipped")
+except (OSError, ValueError, ET.ParseError) as error:
+    print(f"pytest未全部成功: {error}。请检查res.log。", file=sys.stderr)
+    sys.exit(1)
+PY
+then
+    test_status=1
+fi
+
 # NPU执行失败时仍尝试生成性能报告，同时保留测试失败退出码。
-report_args=(--test_result_path="$MQSMLA_RESULT_SAVE_PATH" --delete_perf_file True)
+report_args=(--test_result_path="$MQSMLA_RESULT_SAVE_PATH")
+if [ "${MQSMLA_KEEP_PROF:-0}" != "1" ] && [ "$test_status" -eq 0 ]; then
+    report_args+=(--delete_perf_file True)
+fi
 if [ -f perf_golden.xlsx ]; then
     report_args+=(--is_compare True)
 else

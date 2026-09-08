@@ -94,8 +94,12 @@ bash perf_run.sh
 无需预先生成 `.pt` 文件。性能测试固定关闭 batch consistency，保证每个用例仅执行一组
 metadata / attention 算子。默认输出 `res.log`、`result.xlsx` 和 `result_perf.xlsx`；
 可通过 `MQSMLA_RESULT_SAVE_PATH` 修改结果路径，相对路径以本脚本所在目录为准。
-结果表每次运行前清空，性能报告成功保存后删除本次处理的 `PROF*` 目录。
-处理程序读取首个匹配的 `PROF*` 目录，运行前请将历史 profiling 目录移出本目录。
+结果表每次运行前清空；全部测试成功且性能报告保存成功后，删除本次处理的 `PROF*` 目录。
+设置 `MQSMLA_KEEP_PROF=1` 可保留原始性能数据；测试失败时自动保留。
+处理程序读取最新的 `PROF*` 目录，并按算子类型和执行顺序匹配 metadata / attention，
+跳过失败用例遗留的单独 metadata 记录。没有成功用例或性能记录数不匹配时明确报错。
+脚本检查pytest的XML报告，因此即使msprof未透传测试失败退出码，脚本仍返回失败。
+当前已安装算子的原始KV稀疏模式要求两个mask均为0；对应参数已设置为0，并将窗口设为-1。
 
 如果已采集性能，仅因缺少基线文件导致报告生成失败，可保留现有 `PROF*` 目录并直接执行，
 无需重新运行 NPU：
