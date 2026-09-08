@@ -140,8 +140,6 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
         headDimV = vShape->GetDim(3);
     } else if (layoutKvStr == "TND" && vShape->GetDimNum() == 3) {
         headDimV = vShape->GetDim(2);
-    } else if (layoutKvStr == "PA_ND" && vShape->GetDimNum() == 4) {
-        headDimV = vShape->GetDim(3);
     } else if ((layoutKvStr == "PA_BBND" || layoutKvStr == "PA_BNBD") && vShape->GetDimNum() == 4) {
         // PA_BBND (Bn,Bs,N2,D) / PA_BNBD (Bn,N2,Bs,D) 的 D 维在 index 3
         headDimV = vShape->GetDim(3);
