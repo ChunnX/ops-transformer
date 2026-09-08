@@ -1,5 +1,5 @@
 # mc2/3rd 头文件影响范围映射表 - A2 (ascend910b)
-# 生成: 2026-09-08  基线commit: 8d32a5161 (clean)
+# 生成: 2026-09-08  基线commit: 54ef6dfcc (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(3rd/开头), 与pr_files.sh输出中mc2/后的段落一致
 #
@@ -19,6 +19,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -36,6 +37,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -53,6 +55,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -82,6 +85,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -101,6 +105,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -118,6 +123,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -135,6 +141,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -152,6 +159,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -180,9 +188,11 @@
     - matmul_allto_all
     - matmul_reduce_scatter_v2
 3rd/grouped_matmul/op_kernel/gqmm_tiling_key.h:
-  ops: []
+  ops:
+    - allto_allv_grouped_mat_mul
 3rd/grouped_matmul/op_kernel/grouped_matmul_tiling_data_apt.h:
-  ops: []
+  ops:
+    - allto_allv_grouped_mat_mul
 3rd/grouped_matmul/op_kernel/mc2_3rd_gqmm_cube_on_the_fly.h:
   ops: []
 3rd/grouped_matmul/op_kernel/mc2_3rd_grouped_matmul_utils.h:
@@ -192,16 +202,20 @@
 3rd/grouped_matmul/op_kernel/mc2_3rd_quant_utils.h:
   ops: []
 3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h:
-  ops: []
+  ops:
+    - allto_allv_grouped_mat_mul
 3rd/grouped_matmul/op_tiling/mc2_grouped_matmul_host_util.h:
-  ops: []
+  ops:
+    - allto_allv_grouped_mat_mul
 3rd/grouped_matmul/op_tiling/mc2_grouped_matmul_tiling.h:
-  ops: []
+  ops:
+    - allto_allv_grouped_mat_mul
 3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_base_tiling.h:
   ops:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - matmul_all_reduce
     - matmul_allto_all
@@ -217,6 +231,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - matmul_all_reduce
     - matmul_allto_all
@@ -239,6 +254,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - matmul_all_reduce
     - matmul_allto_all
@@ -254,6 +270,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -271,6 +288,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -288,6 +306,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -305,6 +324,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - matmul_all_reduce
     - matmul_allto_all
@@ -320,6 +340,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - matmul_all_reduce
     - matmul_allto_all
@@ -335,6 +356,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - matmul_all_reduce
     - matmul_allto_all
@@ -350,6 +372,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - matmul_all_reduce
     - matmul_allto_all
@@ -365,6 +388,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -382,6 +406,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -399,6 +424,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -423,6 +449,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -440,6 +467,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -457,6 +485,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -474,6 +503,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -512,6 +542,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -564,6 +595,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -588,6 +620,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -605,6 +638,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -622,6 +656,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -639,6 +674,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -656,6 +692,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -673,6 +710,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -690,6 +728,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -707,6 +746,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -724,6 +764,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -741,6 +782,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - matmul_all_reduce
     - matmul_allto_all
@@ -756,6 +798,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -773,6 +816,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -790,6 +834,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -807,6 +852,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -915,6 +961,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -1347,6 +1394,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -1367,6 +1415,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -1384,6 +1433,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -1401,6 +1451,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -1418,6 +1469,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -1435,6 +1487,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -1452,6 +1505,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -1469,6 +1523,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -1486,6 +1541,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -1503,6 +1559,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -1520,6 +1577,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -1597,6 +1655,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -1614,6 +1673,7 @@
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce

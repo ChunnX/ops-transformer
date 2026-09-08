@@ -1,5 +1,5 @@
 # mc2/common 头文件影响范围映射表 - A2 (ascend910b)
-# 生成: 2026-09-08  基线commit: 8d32a5161 (clean)
+# 生成: 2026-09-08  基线commit: 54ef6dfcc (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(common/开头), 与pr_files.sh输出中mc2/后的段落一致
 #
@@ -34,6 +34,7 @@ common/op_graph/mc2_gen_task_ops_utils.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -51,6 +52,7 @@ common/op_graph/mc2_gen_task_ops_utils_arch35.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -65,6 +67,7 @@ common/op_graph/mc2_gen_task_ops_utils_arch35.h:
     - moe_distribute_dispatch_v2
 common/op_graph/mc2_moe_gen_task_ops_utils.h:
   ops:
+    - allto_allv_grouped_mat_mul
     - moe_distribute_combine
     - moe_distribute_combine_v2
     - moe_distribute_dispatch
@@ -82,6 +85,7 @@ common/op_host/op_tiling/formulaic_tiling_datatype.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - matmul_all_reduce
     - matmul_allto_all
@@ -97,6 +101,7 @@ common/op_host/op_tiling/hccl_formulaic_tiling.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter_v2
@@ -105,6 +110,7 @@ common/op_host/op_tiling/hccl_performance.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter_v2
@@ -120,6 +126,7 @@ common/op_host/op_tiling/matmul_formulaic_tiling.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - matmul_all_reduce
     - matmul_allto_all
@@ -135,6 +142,7 @@ common/op_host/op_tiling/matmul_performance.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter_v2
@@ -146,7 +154,8 @@ common/op_host/op_tiling/matmul_performance_arch35.h:
     - matmul_allto_all
     - matmul_reduce_scatter_v2
 common/op_host/op_tiling/mc2_calc_num_blocks.h:
-  ops: []
+  ops:
+    - allto_allv_grouped_mat_mul
 common/op_host/op_tiling/mc2_fit_based_balance_tiling.h:
   ops:
     - all_gather_matmul_v2
@@ -172,6 +181,7 @@ common/op_host/op_tiling/mc2_tiling_struct.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -190,6 +200,7 @@ common/op_host/op_tiling/mc2_tiling_utils.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - matmul_all_reduce
     - matmul_allto_all
@@ -222,6 +233,7 @@ common/op_host/op_tiling/tiling_key.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -257,6 +269,7 @@ common/op_kernel/apace/core/aiv_comm/collective_comm_context.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -314,6 +327,7 @@ common/op_kernel/apace/utils/comm_channel_builder.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -443,6 +457,7 @@ common/op_kernel/mc2_tiling_struct.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -505,6 +520,7 @@ common/utils/aclnn_util.h:
   ops:
     - all_gather_matmul
     - all_gather_matmul_v2
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -524,6 +540,7 @@ common/utils/context_transfer.h:
 common/utils/context_util.h:
   ops:
     - all_gather_matmul
+    - allto_allv_grouped_mat_mul
     - matmul_reduce_scatter
     - moe_distribute_combine
     - moe_distribute_dispatch
@@ -543,6 +560,7 @@ common/utils/mc2_comm_utils.h:
   ops:
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - matmul_all_reduce
     - matmul_allto_all
     - matmul_reduce_scatter_v2
@@ -551,6 +569,7 @@ common/utils/mc2_common_log.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -574,6 +593,7 @@ common/utils/mc2_hcom_topo_info.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - matmul_all_reduce
     - matmul_allto_all
@@ -589,6 +609,7 @@ common/utils/mc2_log.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -606,6 +627,7 @@ common/utils/mc2_log_compat.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -625,6 +647,7 @@ common/utils/mc2_platform_info.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
     - matmul_all_reduce_add_rms_norm
@@ -642,6 +665,7 @@ common/utils/op_mc2.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
@@ -659,6 +683,7 @@ common/utils/op_mc2_def.h:
     - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
     - grouped_mat_mul_all_reduce
     - inplace_matmul_all_reduce_add_rms_norm
     - matmul_all_reduce
