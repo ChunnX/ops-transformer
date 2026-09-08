@@ -278,6 +278,12 @@ ge::graphStatus QLIV2InfoParser::GetAttrParaInfo()
     opParamInfo_.candidateMode = attrs->GetAttrPointer<int32_t>(ATTR_CANDIDATE_MODE_INDEX);
     opParamInfo_.candidateTopkBlocks = attrs->GetAttrPointer<int32_t>(ATTR_CANDIDATE_TOPK_BLOCKS_INDEX);
     opParamInfo_.candidateBlockSize = attrs->GetAttrPointer<int32_t>(ATTR_CANDIDATE_BLOCK_SIZE_INDEX);
+    // A11: key 0 轴非连续 — tiling 侧 stride 来源优先级:
+    // 1) GetDynamicInputStride (仅 TensorV2/图模式携带非连续描述时有值)
+    // 2) 显式属性 key_stride0/key_dequant_scale_stride0 (aclnn 动态调用下 1) 恒为空, csrc 从 tensor.stride() 自动传入)
+    // 两路都空 = 紧凑存储
+    opParamInfo_.keyStride0Attr = attrs->GetAttrPointer<int32_t>(ATTR_KEY_STRIDE0_INDEX);
+    opParamInfo_.keyDequantScaleStride0Attr = attrs->GetAttrPointer<int32_t>(ATTR_KEY_DEQUANT_SCALE_STRIDE0_INDEX);
     auto keyStrides = context_->GetDynamicInputStride(KEY_INDEX, 0);
     auto keyDequantScaleStrides = context_->GetDynamicInputStride(KEY_DEQUANT_SCALE_INDEX, 0);
     if (keyStrides != nullptr && keyStrides->GetDimNum() > 0) {
@@ -425,11 +431,20 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
         OP_CHECK_IF(npuArch_ == NpuArch::DAV_3510,
                     OP_LOGE(opName_, "candidate_mode only supported on ascend910b/ascend910_93."),
                     return ge::GRAPH_FAILED);
-        // layout_q 仅 BSND
-        OP_CHECK_IF(std::string(opParamInfo_.layOutQuery) != "BSND",
-                    OP_LOGE(opName_, "candidate_mode only supports layout_q=BSND, but got %s.",
+        // A12: layout_q 支持 BSND 与 TND (TND 需 cu_seqlens_q; layout_k 固定 PA_BBND — K 仅支持分页布局)
+        OP_CHECK_IF(std::string(opParamInfo_.layOutQuery) != "BSND" && std::string(opParamInfo_.layOutQuery) != "TND",
+                    OP_LOGE(opName_, "candidate_mode only supports layout_q=BSND/TND, but got %s.",
                             layout_query.c_str()),
                     return ge::GRAPH_FAILED);
+        if (std::string(opParamInfo_.layOutQuery) == "TND") {
+            OP_CHECK_IF(std::string(opParamInfo_.layOutKey) != "PA_BBND",
+                        OP_LOGE(opName_, "candidate_mode with layout_q=TND requires layout_k=PA_BBND, but got %s.",
+                                layout_key.c_str()),
+                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(opParamInfo_.cuSeqLensQ.tensor == nullptr,
+                        OP_LOGE(opName_, "candidate_mode with layout_q=TND requires cu_seqlens_q."),
+                        return ge::GRAPH_FAILED);
+        }
         uint32_t candBlocks = (opParamInfo_.candidateTopkBlocks != nullptr) ?
                                   static_cast<uint32_t>(*opParamInfo_.candidateTopkBlocks) :
                                   CANDIDATE_TOPK_BLOCKS_FIX;
@@ -993,6 +1008,9 @@ ge::graphStatus QLIV2InfoParser::GetS1Size()
 {
     if (qLayout_ == DataLayout::BSND) {
         s1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(1);
+    } else if (qLayout_ == DataLayout::TND) {
+        // A12: TND 的 q 为 [T, G, D] 拼接, s1Size = 总行数 T (各 batch 行数经 cu_seqlens_q 切分)
+        s1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(0);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1431,10 +1449,11 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
 {
     bool keyNonContiguous = false;
     bool scaleNonContiguous = false;
-    // A5 PA_BBND: 0轴允许非连续，从1轴开始检查；非PA_BBND或A3: 从0轴开始检查
+    // A5/A11 PA_BBND: 0轴允许非连续，从1轴开始检查；非PA_BBND: 从0轴开始检查
+    // (A11 起不限 arch35 — arch22 kernel 已按 keyStride0/keyDequantScaleStride0 寻址, 紧凑值兜底)
     // PA_BBND: axis 0 allows non-contiguous, check starts from axis 1
     // Non-PA_BBND: check starts from axis 0
-    size_t checkStartIdx = (npuArch_ == NpuArch::DAV_3510 && kLayout_ == DataLayout::PA_BBND) ? 1 : 0;
+    size_t checkStartIdx = (kLayout_ == DataLayout::PA_BBND) ? 1 : 0;
     if (!keyStridesVec_.empty() && opParamInfo_.key.shape != nullptr) {
         auto &shape = opParamInfo_.key.shape->GetStorageShape();
         std::vector<uint32_t> expectedStrides;
@@ -1496,8 +1515,28 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
                                 opName_, "k",
                                 "When layout_k is PA_BBND, key stride0 must be positive, but got " +
                                     std::to_string(keyStridesVec_[0])),
-                            return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
             }
+        }
+        // A11 校验: 显式属性 stride0 不得小于紧凑值 (0 轴只允许 padding 型非连续)
+        if (opParamInfo_.keyStride0Attr != nullptr && *opParamInfo_.keyStride0Attr > 0) {
+            uint64_t compactKey0 = static_cast<uint64_t>(blockSize_) * n2Size_ * headDim_;
+            OP_CHECK_IF(static_cast<uint64_t>(*opParamInfo_.keyStride0Attr) < compactKey0,
+                        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                            opName_, "key_stride0",
+                            "key_stride0 (" + std::to_string(*opParamInfo_.keyStride0Attr) +
+                                ") is smaller than the compact value (" + std::to_string(compactKey0) +
+                                "); only 0-axis padding (stride >= compact) is supported"),
+                        return ge::GRAPH_FAILED);
+        }
+        if (opParamInfo_.keyDequantScaleStride0Attr != nullptr && *opParamInfo_.keyDequantScaleStride0Attr > 0) {
+            uint64_t compactScale0 = static_cast<uint64_t>(blockSize_) * n2Size_;
+            OP_CHECK_IF(static_cast<uint64_t>(*opParamInfo_.keyDequantScaleStride0Attr) < compactScale0,
+                        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                            opName_, "key_dequant_scale_stride0",
+                            "key_dequant_scale_stride0 (" + std::to_string(*opParamInfo_.keyDequantScaleStride0Attr) +
+                                ") is smaller than the compact value (" + std::to_string(compactScale0) + ")"),
+                        return ge::GRAPH_FAILED);
         }
         if (isMxQuantMode && !keyDequantScaleStridesVec_.empty()) {
             OP_CHECK_IF(
@@ -1564,16 +1603,24 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
             keyStride0 /= MXFP4_PACK_NUM;
         }
         QLIV2Info.keyStride0 = keyStride0;
+    } else if (opParamInfo_.keyStride0Attr != nullptr && *opParamInfo_.keyStride0Attr > 0) {
+        // A11: aclnn 动态调用下 GetDynamicInputStride 恒空, 由显式属性兜底 (csrc 自动取 tensor.stride(0) 传入)
+        QLIV2Info.keyStride0 = static_cast<uint32_t>(*opParamInfo_.keyStride0Attr);
     } else {
-        QLIV2Info.keyStride0 = 0; // 非PA无需使用stride
+        QLIV2Info.keyStride0 = 0; // 紧凑存储
     }
     if (!keyDequantScaleStridesVec_.empty()) {
         QLIV2Info.keyDequantScaleStride0 = static_cast<uint32_t>(keyDequantScaleStridesVec_[0]);
+    } else if (opParamInfo_.keyDequantScaleStride0Attr != nullptr &&
+               *opParamInfo_.keyDequantScaleStride0Attr > 0) {
+        QLIV2Info.keyDequantScaleStride0 = static_cast<uint32_t>(*opParamInfo_.keyDequantScaleStride0Attr);
     } else if ((*opParamInfo_.quantMode == QUANT_MODE_MXFP8) || (*opParamInfo_.quantMode == QUANT_MODE_MXFP4)) {
         QLIV2Info.keyDequantScaleStride0 = static_cast<uint32_t>(blockSize_) * (headDim_ / MX_SCALE_GROUP_SIZE);
     } else {
         QLIV2Info.keyDequantScaleStride0 = 0;
     }
+    // A11 校验: 显式/描述的 stride0 不得小于紧凑值 (1 轴起必须连续, 由 CheckKeyContiguous 保证;
+    // 0 轴 stride < 块紧凑值意味着块内跨块, 不支持) — 见 CheckKeyContiguous 内 PA_BBND 段
 
     QLIV2Info.inputQLayout = qLayout_;
     QLIV2Info.inputKLayout = kLayout_;

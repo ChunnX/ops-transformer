@@ -53,7 +53,9 @@ public:
     __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<half> vec0OutGm, GlobalTensor<MM1_OUT_T> mm1ResGm,
                                                   GlobalTensor<float> vec1ResGm);
     __aicore__ inline void InitVecCandidateTensor(GlobalTensor<int32_t> candidateTopkIndexInGm,
-                                                  GlobalTensor<int32_t> candidateTopkIndexOutGm);
+                                                  GlobalTensor<int32_t> candidateTopkIndexOutGm,
+                                                  GlobalTensor<int32_t> outputIdxOffsetGm,
+                                                  bool outputIdxOffsetValid);
     __aicore__ inline void InitVecInputTensor(GlobalTensor<half> weightsGm, GlobalTensor<half> qScaleGm,
                                               GlobalTensor<half> kScaleGm, GlobalTensor<int32_t> indiceOutGm,
                                               GlobalTensor<int32_t> blockTableGm);
@@ -129,6 +131,8 @@ private:
     LocalTensor<float> candIsOut_;       // mode=2: position 级 0/1 (1=候选外)
     LocalTensor<int32_t> candIsOutI32_;  // mode=2: isOut 的 int32 形式
     LocalTensor<float> candNegHuge_;     // -1e30 常量
+    GlobalTensor<int32_t> outputIdxOffsetGm_;        // A15: 每行输出索引偏移 (仅 sparse_indices)
+    bool isOutputIdxOffsetValid_ = false;            // A15: offset 是否传入 (经 InitVecCandidateTensor 传递)
 
     int32_t blockId_ = -1;
     // para for vector
@@ -160,6 +164,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::GetKeyScale(const QLIV2Common::RunIn
     AscendC::DataCopyPadExtParams<half> padParams{false, 0, 0, 0};
     AscendC::DataCopyExtParams copyInParams;
     if constexpr (PAGE_ATTENTION) {
+        // A11: k_scale 0 轴非连续 — 块基址 = 表值 x keyDequantScaleStride0 (真实 stride);
+        // 0 时兜底原紧凑公式 (kCacheBlockSize_), 现网行为不变 (R8)
+        int32_t kScaleBlkStride = constInfo_.keyDequantScaleStride0 != 0 ?
+                                      static_cast<int32_t>(constInfo_.keyDequantScaleStride0) : kCacheBlockSize_;
         int32_t startBlockTableIdx = startS2 / kCacheBlockSize_;
         int32_t startBlockTableOffset = startS2 % kCacheBlockSize_;
         int32_t blockTableBatchOffset = batchId * maxBlockNumPerBatch_;
@@ -174,8 +182,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::GetKeyScale(const QLIV2Common::RunIn
             copyInParams.blockLen = firstPartLen * sizeof(half);
             int32_t blockId = blockTableGm.GetValue(blockTableBatchOffset + startBlockTableIdx);
             SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
-            AscendC::DataCopyPad(resUb, kScaleGm[blockId * kCacheBlockSize_ + startBlockTableOffset], copyInParams,
-                                 padParams);
+            AscendC::DataCopyPad(resUb,
+                                 kScaleGm[blockId * kScaleBlkStride + startBlockTableOffset], copyInParams, padParams);
             startBlockTableIdx++;
             getLen = getLen - firstPartLen;
             resUbBaseOffset = firstPartLen;
@@ -188,8 +196,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::GetKeyScale(const QLIV2Common::RunIn
             }
             int32_t blockId = blockTableGm.GetValue(blockTableBatchOffset + startBlockTableIdx + i);
             SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
-            AscendC::DataCopyPad(resUb[resUbBaseOffset + i * kCacheBlockSize_], kScaleGm[blockId * kCacheBlockSize_],
-                                 copyInParams, padParams);
+            AscendC::DataCopyPad(resUb[resUbBaseOffset + i * kCacheBlockSize_],
+                                 kScaleGm[blockId * kScaleBlkStride], copyInParams, padParams);
         }
     } else {
         copyInParams.blockCount = 1;
@@ -291,10 +299,14 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitVecWorkspaceTensor(GlobalTensor<
 
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::InitVecCandidateTensor(GlobalTensor<int32_t> candidateTopkIndexInGm,
-                                                                   GlobalTensor<int32_t> candidateTopkIndexOutGm)
+                                                                   GlobalTensor<int32_t> candidateTopkIndexOutGm,
+                                                                   GlobalTensor<int32_t> outputIdxOffsetGm,
+                                                                   bool outputIdxOffsetValid)
 {
     this->candidateTopkIndexInGm = candidateTopkIndexInGm;
     this->candidateTopkIndexOutGm = candidateTopkIndexOutGm;
+    this->outputIdxOffsetGm_ = outputIdxOffsetGm;  // A15
+    this->isOutputIdxOffsetValid_ = outputIdxOffsetValid;
 }
 
 template <typename QLIV2T>
@@ -881,6 +893,20 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
                              globalTopkUb_[innerS1Idx * BASE_TOPK_VALUE_IDX_SIZE].template ReinterpretCast<uint32_t>(),
                              BASE_TOPK);
                 PipeBarrier<PIPE_V>();
+                // A15: output_idx_offset — 输出拷 GM 前逐元素加行偏移 (对齐 arch35 IndicesAddOffset;
+                // 零偏移零开销; GM 标量读无 V_S 竞态; int32 整数域 Adds 位精确, -1 槽 +0 不变。
+                // candidate_topk_index 不加 (相对块号契约, §11.6))
+                if (isOutputIdxOffsetValid_) {
+                    int32_t rowOff = outputIdxOffsetGm_.GetValue(info.outputIdxOffsetCoreOffset +
+                                                                 cuS1Idx * kHeadNum_);
+                    if (rowOff != 0) {
+                        LocalTensor<int32_t> idxI32 = idxULocal.template ReinterpretCast<int32_t>();
+                        for (int32_t off = 0; off < constInfo_.sparseCount; off += 64) {
+                            Adds(idxI32[off], idxI32[off], rowOff, 64);
+                        }
+                        PipeBarrier<PIPE_V>();
+                    }
+                }
                 InitSortOutBuf(globalTopkUb_[innerS1Idx * BASE_TOPK_VALUE_IDX_SIZE], BASE_TOPK_VALUE_IDX_SIZE);
                 outQueue_.EnQue<uint32_t>(idxULocal);
                 idxULocal = outQueue_.DeQue<uint32_t>();
@@ -1074,6 +1100,19 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
         PipeBarrier<PIPE_V>();
         InitSortOutBuf(curValueIdxUb, BASE_TOPK_VALUE_IDX_SIZE);
         LocalTensor<int32_t> idxULocal1 = outIdxUb.template ReinterpretCast<int32_t>();
+        // A15: LD(decode) 路径同样加 output_idx_offset (行前缀 = indiceOutCoreOffset/sparseCount, 即
+        // batch 前缀 x kHeadNum + n2; 与 ProcessVec1 消费点同语义)
+        if (isOutputIdxOffsetValid_) {
+            uint32_t rowGlobal = ldInfo_.mStart + j;
+            int32_t rowOff = outputIdxOffsetGm_.GetValue(
+                ldInfo_.indiceOutCoreOffset / constInfo_.sparseCount + rowGlobal * constInfo_.kHeadNum);
+            if (rowOff != 0) {
+                for (int32_t off = 0; off < constInfo_.sparseCount; off += 64) {
+                    Adds(idxULocal1[off], idxULocal1[off], rowOff, 64);
+                }
+                PipeBarrier<PIPE_V>();
+            }
+        }
         SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
         uint64_t outOffset =
             ldInfo_.indiceOutCoreOffset + (ldInfo_.mStart + j) * constInfo_.kHeadNum * constInfo_.sparseCount;

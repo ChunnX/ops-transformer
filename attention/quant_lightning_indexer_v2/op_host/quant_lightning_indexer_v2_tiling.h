@@ -74,6 +74,8 @@ constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 7;
 constexpr uint32_t ATTR_CANDIDATE_MODE_INDEX = 8;
 constexpr uint32_t ATTR_CANDIDATE_TOPK_BLOCKS_INDEX = 9;
 constexpr uint32_t ATTR_CANDIDATE_BLOCK_SIZE_INDEX = 10;
+constexpr uint32_t ATTR_KEY_STRIDE0_INDEX = 11;                 // A11: key 第0维 stride
+constexpr uint32_t ATTR_KEY_DEQUANT_SCALE_STRIDE0_INDEX = 12;   // A11: k_scale 第0维 stride
 
 // Dim Index
 constexpr uint32_t DIM_IDX_ZERO = 0;
@@ -171,6 +173,8 @@ struct QLIV2ParaInfo {
     const int32_t *candidateMode = nullptr;
     const int32_t *candidateTopkBlocks = nullptr;
     const int32_t *candidateBlockSize = nullptr;
+    const int32_t *keyStride0Attr = nullptr;               // A11: key 第0维 stride 显式属性
+    const int32_t *keyDequantScaleStride0Attr = nullptr;   // A11: k_scale 第0维 stride 显式属性
 };
 
 // -----------算子Tiling入参信息类---------------

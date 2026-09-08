@@ -526,15 +526,15 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
   - 22 基础用例（mode 1/2/3 × cmp_ratio 1/2 × g32/64 × decode/prefill/tail/sparse2048/pin64 单/多 tile/B=4 变长/S1 尾块/tiny/cand64×mode2）全过，零 aicore
   - **大 shape 直接入矩阵全过**：big16k_m1 / big128k_m1 / big128k_m1_b2（B=2 变长）/ big1m_m1（131072 块 pin（强制保留最新 token 所在块）抽样验证）/ big1m_m3（回归）——§6.6 抽样行官方两级规则比对 + 全行有效性 + pin 检查，总时长 ~4 分钟
   - 等价回归全过：pa_gap_m3_regress（紧凑场景现网行为不变，R8）、off_zero_regress（零偏移与不传一致）
-  - xfail(strict) 14 个（实施后 XPASS 自动报警）：tnd_*×7（A12 host 拒绝）、pa_gap_m1/m2/128k×3（A11 紧凑寻址读错）、off_m1/m2/tnd×3（A15 offset 忽略）、big128k_m2（R6 candBuf 污染，见 §7）
+  - **A11/A12/A15 实施后（2026-09-08）：42 passed + 1 xfailed（仅 big128k_m2 的 R6 candBuf 污染未解）**——tnd_*×7（含 tnd_big128k_m1 大 shape 抽样）、pa_gap_m1/m2/128k×3、off_m1_decode/m2/off_tnd×3 全部 XPASS 转正；pa_gap_m3_regress（紧凑等价）与 off_zero_regress（零偏移等价）回归保持通过
 - 大规模生产规格（`/opt/tjj/qli_cand_test/test_big_shape_m1.py`，设备侧 harness）：16K(b=1) / 128K(b=2) mode=1、128K(b=2) mode=2 随机半数候选、1M(b=1) mode=1 全部 IoU=1.000000；**1M 场景 pin 块 131071 确认入选**（131072 块中选 top-2048）
 - 大 shape 回归：1M mode=3（IoU=1.0 抽样行精确比对 + 双跑确定性）、1M cmp_ratio=2、qseq 256..2048 扫描全过
 - 提交序列：`aede3e62e`（功能实现）→ `a346acdcb`（五处正确性修复：pad 块 int32 向量算术填充 / MergeSortVecCopy 位精确回拷 / pin 纯向量化（全局块号比较）/ mode=2 CountGE 窗口边界 + CAST_RINT + isOutI32 区域重叠 / V_S fence）
 
 ## 11. TND 与 key 0 轴非连续支持（2026-09-07 需求追加，待实施）
 
-### 11.1 需求
-1. **layout_q = TND**（q/k 均 TND）：candidate 三 mode 全支持。现网非 candidate 路径已有 TND 模板分支（`Q_LAYOUT_T`/`K_LAYOUT_T`，cu_seqlens_q/k 前缀定位），本轮打通 candidate 的 host 校验、GM offset 与输出布局。
+### 11.1 需求（2026-09-08 用户澄清后修正）
+1. **layout_q = TND（仅 Q 侧）**：q 为变长拼接 `[T, G, D]` + cu_seqlens_q；**layout_k 固定 PA_BBND（K 仅支持分页布局，不支持 TND）**——q=TND 时 metadata 强制要求 layout_k=PA_BBND。candidate 三 mode 全支持；现网 kernel 已有 TND 模板分支，本轮打通 host 校验（GetS1Size 的 TND 分支补齐 s1Size=T）、candidate 的 GM offset 与输出布局。
 2. **key 0 轴非连续**（PA_BBND）：key 与 k_scale 的第 0 维物理 stride 可大于块逻辑大小（block_table 指向的物理块之间存在间隙，如池化重组后的非紧凑存储）。
 
 ### 11.2 arch35 参照机制（已实现，直接移植）
@@ -542,10 +542,11 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 - **k_scale**（vector `GetKeyScale`）：`blockId * constInfo_.keyDequantScaleStride0 + startBlockTableOffset`（arch35/..._service_vector_arch35.h:456）；
 - **host 侧**：tiling.cpp 从 acl tensor `keyStridesVec_[0]` / `keyDequantScaleStridesVec_[0]` 取真实 stride 经 `set_keyStride0`/`set_keyDequantScaleStride0` 下发（tiling.h 字段已存在）；
 - **arch22 现状差异**：`KeyNd2NzForPA` 硬编码 `blk * kCacheBlockSize * kHeadNum * headDim`（service_cube_arch22.h:317）、`GetKeyScale` 硬编码 `blockId * kCacheBlockSize_`（service_vector_arch22.h:157）——均假设紧凑存储；tiling 字段已下发但 **arch22 kernel 未消费**。
+- **实施补丁（A11）**：kernel 两处寻址改用 `keyStride0`/`keyDequantScaleStride0`（0 时兜底原紧凑公式，现网行为不变）；host `CheckKeyContiguous` 的 0 轴放行从仅 arch35 扩展到全部 PA_BBND。**关键发现：aclnn 动态调用下 `GetDynamicInputStride` 恒为空**（仅 TensorV2 图模式携带非连续描述，exe_graph TensorV1 的 GetStride 亦为空）——新增可选属性 `key_stride0`/`key_dequant_scale_stride0`（def.cpp + tiling 下发，csrc 自动取 `key.stride(0)` 传入，调用方无感），GetDynamicInputStride 有值时优先。
 
 ### 11.3 适配点（A11–A14，见 §8 表）
 
-**TND 偏移结构（A13 核心）**：`candidateOutOffset = cu_seqlens_q(bIdx) × kHeadNum × candBlocks + n2Idx × candBlocks`（batch 级前缀，CalcRunInfo 已含 TND 分支），行偏移 `cuS1Idx（batch 内行号）× candBlocks`——与主输出 `indiceOutOffset` 完全同构；输出布局 `[T, N2, K]`（csrc ConstructOutputTensor 已有分支），无效行清理走既有 `outputLayout == TND` 分支（kernel_arch22.h:418）。
+**TND 偏移结构（A13 核心）**：`candidateOutOffset = cu_seqlens_q(bIdx) × kHeadNum × candBlocks + n2Idx × candBlocks`（batch 级前缀，CalcRunInfo 已含 TND 分支），行偏移 `cuS1Idx（batch 内行号）× candBlocks`——与主输出 `indiceOutOffset` 完全同构；输出布局 `[T, N2, K]`（csrc ConstructOutputTensor 已有分支），无效行清理走既有 `outputLayout == TND` 分支（kernel_arch22.h:418）。**实施补丁（A12/A13）**：host GetS1Size 补 TND 分支（s1Size = q.shape[0]，原仅 BSND 赋值导致 TND 下 s1Size=0、consumer shape 校验 expectSize=0 误报）；candidate host 校验放行 layout_q∈{BSND,TND} 且 TND 时强制 layout_k=PA_BBND + cu_seqlens_q 必传。
 
 ### 11.4 测试用例设计（§6.3 矩阵新增行）
 
@@ -575,7 +576,7 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 
 ### 11.6 output_idx_offset 使能（A15，2026-09-07 追加调查）
 
-**现状（不能正常使用）**：arch22 入口签名收了 `outputIdxOffset` 指针（kernel_arch22.h:446）但**从未绑定/消费**——合法输入被静默忽略，sparse_indices 永远输出 batch 内相对索引；host 校验却完整（int32 / TND 下 dim0==qTsize），形成"校验通过但无效果"的死参数。torch 层已透传。
+**现状（A15 已实施，2026-09-08）**：原为死参数（入口收指针未绑定未消费）。现已使能：入口 SetGlobalBuffer + 经 InitVecCandidateTensor 传 tensor 与有效标志（注意 **InitParams 先值拷贝 constInfo**，之后再改 constInfo 标志不生效——标志必须走传参）；主输出路径（ProcessVec1 的 needCopyOutGm 分支）与 LD（低延迟归约）路径（ProcessLD 搬出前）各加一处消费：GM 标量读行偏移（读 offset 无 V→S 竞态）+ int32 向量 Adds（64 分块、零偏移零开销、-1 槽位精确不变）。**注**：910b 上 LD 未启用（metadata AICPU 内核 supportFd_ 仅 ASCEND950 置位，fdUsedVecNum=0，isLdCoreEnable 恒 false，ProcessDecode 的 ProcessLD 为死路）——LD 路径消费点为将来 LD 启用的对称实现。
 
 **语义（arch35 已实现，直接移植）**：每行一个 int32 偏移，输出拷 GM 前对 sparse_indices 逐元素 `+= offset`（`IndicesAddOffset`：int32 向量 Adds，64 对齐）；用于 TND 多请求聚合（各请求 KV cache 起始不同，kernel 内相对 → 输出绝对）。消费点：arch35 vector:681（`outputIdxOffsetGm.GetValue(outputIdxCoreOffset + rowIdx*kHeadNum)`，GM 标量读无 V_S 竞态）与 :856（非零才加，零偏移路径零开销）；`outputIdxCoreOffset` 与 indiceOutCoreOffset 同构（TND 前缀）。
 
@@ -589,8 +590,10 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 | off_zero_regress | offset=0 行为与不传 bit 级一致（零偏移路径零改动） |
 | off_m2 | mode=2 + offset：掩蔽用相对候选，输出 sparse_indices 仍加 offset（consumer 场景契约） |
 
-### 11.5 实施顺序
-1. **A11**（独立且对现网 PA 具有 bug 修复性质：生产池若非紧凑，现网寻址即错）→ pa_gap 用例三连；
-2. **A12/A13/A14**（TND）→ tnd 用例六连；
-3. **A15**（output_idx_offset 使能，独立于 TND 可先行）→ off 用例四连；
-4. 大 shape 交叠（TND 16K/128K、pa_gap 128K、off_tnd 大 shape）。
+### 11.5 实施顺序（2026-09-08 全部完成）
+1. ~~A11~~ ✅ kernel 寻址 + host 放行 + stride attr 通路（GetDynamicInputStride aclnn 动态调用恒空）；
+2. ~~A12/A13/A14~~ ✅ TND（仅 Q 侧）：host 放行 + GetS1Size TND 分支 + GM offset 同构验证；
+3. ~~A15~~ ✅ output_idx_offset 使能（InitParams 值拷贝陷阱经 InitVecCandidateTensor 传标志）；
+4. ✅ 大 shape 交叠：pa_gap_128k / tnd_big128k / off_tnd 全过。
+
+**部署要点（踩坑记录）**：attr 变更后编译产物 hash 改变（18e4fb→d566），但 `bin/quant_lightning_indexer_v2.json`（bin 选择配置）残留旧映射——**必须删除该 json 与 binary_info_config.json 强制重生成**，否则运行时按旧映射找不到新 .o（stat file failed），或加载旧产物（新改动静默不生效）。build_install.sh 已加 autogen 头清理，需同步加 bin config 清理。
