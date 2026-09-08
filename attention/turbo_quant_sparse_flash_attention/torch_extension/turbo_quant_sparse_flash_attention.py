@@ -335,13 +335,13 @@ def turbo_quant_sparse_flash_attention(
     rope_head_dim: int = 64,
     return_softmax_lse: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """计算 TQ4 量化 KV cache 的 MLA 稀疏注意力。
+    """面向 DeepSeek Sparse Attention（DSA）推理场景，计算 TQ4 量化 KV cache 的稀疏注意力。
 
     Args:
         query: TND [T, N, 576]，float16 或 bfloat16；N 为 [1, 128] 内的 2 的幂。
         key: int8 KV cache，PA_BSND [Bn, Bs, 1, 386] 或 PA_BNBD [Bn, 1, Bs, 386]。
             每个 slot 包含 nibble、与 query 同型的 rope/scale、float16 scale。支持首轴非连续。
-        value: 与 key 同形同型的共享 latent；调用方传入 key 即可。
+        value: 请传入与 key 相同的张量。
         sparse_indices: int32 [T, 1, K]，batch 内局部稀疏块索引，无效后缀填 -1。
         key_dequant_scale: 可选 float32 张量；COMBINE 模式不读取。
         value_dequant_scale: 可选 float32 张量；COMBINE 模式不读取。
@@ -357,7 +357,7 @@ def turbo_quant_sparse_flash_attention(
         sparse_mode: 0 为无因果掩码，3 为右下对齐因果掩码。
         pre_tokens: 必须为 INT64_MAX。
         next_tokens: 必须为 INT64_MAX。
-        attention_mode: 必须为 2（MLA absorb）。
+        attention_mode: 当前 DSA 路径的底层计算模式，必须为 2（MLA-absorb）。
         quant_scale_repo_mode: 必须为 1（COMBINE）。
         tile_size: 必须为 128。
         rope_head_dim: 必须为 64。

@@ -2,7 +2,7 @@
 
 ## 功能
 
-对 TQ4 分页 KV cache 执行融合反量化和 MLA 稀疏 Attention，支持 Atlas A2/A3 前向推理。query 和输出支持 `torch.float16`、`torch.bfloat16`，内嵌 rope 必须与 query 同型。
+面向 DeepSeek Sparse Attention（DSA）推理场景，对 TQ4 分页 KV cache 执行融合反量化与稀疏 Attention 计算，支持 Atlas A2/A3 前向推理。query 和输出支持 `torch.float16`、`torch.bfloat16`，内嵌 rope 必须与 query 同型。
 
 ## 接口
 
@@ -25,7 +25,7 @@ cann_ops_transformer.turbo_quant_sparse_flash_attention(
 | 参数 | 说明 |
 | --- | --- |
 | query | `[T,N,576]`，FP16/BF16；N 为 `[1,128]` 内的 2 的幂 |
-| key、value | INT8，PA_BSND `[Bn,Bs,1,386]` 或 PA_BNBD `[Bn,1,Bs,386]`；当前 MLA 模式下，value 请传入与 key 相同的张量 |
+| key、value | INT8，PA_BSND `[Bn,Bs,1,386]` 或 PA_BNBD `[Bn,1,Bs,386]`；value 请传入与 key 相同的张量 |
 | sparse_indices | INT32 `[T,1,K]`，batch 内稀疏块索引，有效前缀后用 -1 填充 |
 | key_dequant_scale、value_dequant_scale | 可选 FLOAT32 张量；当前 COMBINE 模式不读取，可传 None |
 | block_table | INT32 `[B,maxBlocks]`，物理页映射 |

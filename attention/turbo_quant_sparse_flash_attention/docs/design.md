@@ -11,7 +11,7 @@ s_t\left(Q_{latent}\hat{K}_t^T + Q_{rope}(R_t/s_t)^T\right)
 = Q_{latent}(s_t\hat{K}_t)^T + Q_{rope}R_t^T
 $$
 
-MLA 的 V 与 K 共用 latent。softmax 后将概率的对应列乘以 $s_t$，再与归一化 latent 相乘，等价于使用反量化后的 V 计算输出。
+当前 DSA 路径采用 MLA-absorb 结构，K/V 共用 latent。softmax 后将概率的对应列乘以 $s_t$，再与归一化 latent 相乘，等价于使用反量化后的 V 计算输出。
 
 ## 分页寻址与搬运
 

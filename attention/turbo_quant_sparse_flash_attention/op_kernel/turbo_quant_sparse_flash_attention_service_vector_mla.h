@@ -742,7 +742,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::DealBmm1ResBaseBlock(const RunI
                           info.actualSingleProcessSInnerSize);
 
     PipeBarrier<PIPE_V>();
-    // [TQ4] V 侧：MLA 中 K=V，score 侧已按列乘过 s_j，输出侧还需再乘一次 ——
+    // [TQ4] V 侧：当前 DSA 路径的 K/V 共用 latent，score 侧已按列乘过 s_j，输出侧还需再乘一次 ——
     //   out[i] = Σ_j P[i][j]·(s_j·ŷ_j) = Σ_j (P[i][j]·s_j)·ŷ_j
     // 即“缩放 V 的行”等价于“缩放 P 的列”。必须在 softmax 之后，
     // 否则会改变 softmax 的输入分布（LSE 也就跟着错，DCP 的 merge 会崩）。
@@ -877,7 +877,7 @@ __aicore__ inline int64_t QSFAVectorService<QSFAT>::GetKeyByteOffset(int64_t rea
 }
 
 // [TQ4] Phase B: codebook dequant of `dealRow` combined slots (int4 nope + rope + 2B scale)
-// -> dstB16 [dealRow,headDim] in query dtype (Hadamard-space K=V). bf16 path: 32B-burst compact
+// -> dstB16 [dealRow,headDim] in query dtype (shared K/V latent in Hadamard space). bf16 path: 32B-burst compact
 // the packed bytes then one byte-LUT Gather per byte (uint32 carries 2 centroids);
 // other dtypes: per-nibble int4b_t Cast/index/Gather/output Cast in 4-row chunks.
 // The 2B slot scale is expected to be vecNorm/sqrt(Sum c^2) on the fused-SFA write path.
@@ -915,7 +915,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::Tq4DequantRows(LocalTensor<KV_T
         return;
     }
 
-    // per-row 的 s_t 不在此处施加：MLA 里 K=V，缩放 K 的行等价于缩放 score/P 的列，
+    // per-row 的 s_t 不在此处施加：K/V 共用 latent，缩放 latent 的行等价于缩放 score/P 的列，
     // 故改到 attention 侧按列做一次（见 ElewiseCompute 与 DealBmm1ResBaseBlock）。
     // 省掉的是 dealRow 条 512 宽的 Muls，单算子实测约 3%。
     if constexpr (TQ4_FAST_BF16) {

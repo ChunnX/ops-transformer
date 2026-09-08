@@ -31,9 +31,7 @@ public:
             .DataType({ge::DT_INT8, ge::DT_INT8})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .IgnoreContiguous();
-        // MLA 场景下 K 与 V 为同一份 latent，本算子不单独读取 value；
-        // 保留该输入是为与 c8 稀疏注意力路径的接口保持一致，调用方传入与 key
-        // 相同的张量即可。host 侧校验其 dtype 与 shape 必须与 key 一致。
+        // 当前 DSA 路径的 K/V 共用 latent，value 请传入与 key 相同的张量。
         this->Input("value").ParamType(REQUIRED).Follow("key").IgnoreContiguous();
         this->Input("sparse_indices")
             .ParamType(REQUIRED)

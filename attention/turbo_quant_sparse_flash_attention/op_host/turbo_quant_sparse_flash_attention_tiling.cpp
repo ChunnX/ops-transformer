@@ -782,9 +782,7 @@ ge::graphStatus TQSFATilingCheck::CheckKV()
         return ge::GRAPH_FAILED;
     }
 
-    // MLA 场景下 K 与 V 为同一份 latent，kernel 的 MM2 复用已反量化的合并缓冲，
-    // 不单独读取 value。此处要求两者 shape 完全一致：既是该语义的直接表达，
-    // 也可拦住误传不匹配 value 的调用（原先仅校验 dtype 会放行）。
+    // 当前 DSA 路径的 K/V 共用 latent，value 的 shape 必须与 key 完全一致。
     OP_CHECK_IF(valueShapeCmp_.GetDimNum() != keyShapeCmp_.GetDimNum(),
                 OPS_REPORT_VECTOR_INNER_ERR(opName_, "value dim num invalid"), return ge::GRAPH_FAILED);
     for (size_t i = 0U; i < keyShapeCmp_.GetDimNum(); ++i) {

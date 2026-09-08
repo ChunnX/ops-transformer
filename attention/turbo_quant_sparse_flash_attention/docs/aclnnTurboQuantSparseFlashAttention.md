@@ -6,7 +6,7 @@ Atlas A2 训练/推理系列、Atlas A3 训练/推理系列。支持前向推理
 
 ## 功能说明
 
-对 TQ4 压缩的分页 KV cache 进行融合反量化和 MLA 稀疏 Attention。输入 query 包含 512 维 latent 与 64 维 rope，输出为 512 维 latent。K/V 共享 latent；rope 仅参与 QK 计算。量化存储、布局、数值约束见[算子说明](../README.md)。
+面向 DeepSeek Sparse Attention（DSA）推理场景，对 TQ4 量化存储的分页 KV cache 执行融合反量化与稀疏 Attention 计算。输入 query 包含 512 维 latent 与 64 维 rope，输出为 512 维 latent。K/V 共享 latent；rope 仅参与 QK 计算。量化存储、布局、数值约束见[算子说明](../README.md)。
 
 接口按两阶段调用：第一阶段校验输入元数据、创建执行器并计算 workspace 大小，第二阶段向调用方提供的流异步下发任务。
 
@@ -59,7 +59,7 @@ aclnnStatus aclnnTurboQuantSparseFlashAttention(
 | 参数 | 类型、shape 与约束 |
 | --- | --- |
 | query | FLOAT16/BFLOAT16，`[T, N, 576]`；`N` 为 `[1,128]` 内 2 的幂 |
-| key、value | INT8；PA_BSND 为 `[Bn, Bs, 1, 386]`，PA_BNBD 为 `[Bn, 1, Bs, 386]`；当前 MLA 模式下，value 请传入与 key 相同的张量 |
+| key、value | INT8；PA_BSND 为 `[Bn, Bs, 1, 386]`，PA_BNBD 为 `[Bn, 1, Bs, 386]`；value 请传入与 key 相同的张量 |
 | sparseIndices | INT32，`[T, 1, K]`；值为 batch 内局部稀疏块索引，有效前缀之后用 `-1` 填充 |
 | keyDequantScaleOptional、valueDequantScaleOptional | 可为 `nullptr`；传入时为 FLOAT32。当前 COMBINE 模式不读取其数值 |
 | blockTable | INT32，`[B, maxBlocks]`；每个有效值为 cache 的物理页号 |

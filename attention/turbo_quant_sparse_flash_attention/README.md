@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- API功能：TurboQuantSparseFlashAttention算子面向 MLA（Multi-head Latent Attention）推理场景，对 4bit 量化存储的 KV latent 执行融合反量化与稀疏 Attention 计算。
+- API功能：TurboQuantSparseFlashAttention算子面向 DeepSeek Sparse Attention（DSA）推理场景，对 TQ4 量化存储的分页 KV cache 执行融合反量化与稀疏 Attention 计算。
 
 - 计算公式：
 
@@ -31,7 +31,7 @@
 |-------------|------------|------|-----|-----|
 |query|输入|公式中的 $Q$，layout_query 仅支持 TND，shape 为 [T1, N1, D]，最后一维 D 含 rope 分量|FLOAT16、BFLOAT16|ND|
 |key|输入|公式中 $\tilde{K}$ 的 4bit 量化存储，以 INT8 承载打包后的 nibble、rope 与归一化系数|INT8|ND|
-|value|输入|当前 MLA 模式下，请传入与 key 相同的张量|INT8|ND|
+|value|输入|请传入与 key 相同的张量|INT8|ND|
 |sparse_indices|输入|稀疏选取的 KV 索引，标识每个 query 实际参与计算的 KV 位置|INT32|ND|
 |key_dequant_scale|可选输入|key 的反量化系数。当前 COMBINE 模式下系数存放于 KV slot 内，本输入不参与计算，可不传|FLOAT32|ND|
 |value_dequant_scale|可选输入|value 的反量化系数。当前 COMBINE 模式下不参与计算，可不传|FLOAT32|ND|
@@ -47,7 +47,7 @@
 |sparse_mode|可选属性|mask 模式，默认值 3，表示以右顶点为划分的下三角场景|INT32|-|
 |pre_tokens|可选属性|query 对过去 token 的计算数量，默认值 INT64_MAX|INT64|-|
 |next_tokens|可选属性|query 对未来 token 的计算数量，默认值 INT64_MAX|INT64|-|
-|attention_mode|可选属性|Attention 计算模式，当前仅支持 2（MLA-absorb），默认值 2|INT32|-|
+|attention_mode|可选属性|底层 Attention 计算模式，当前 DSA 路径仅支持 2（MLA-absorb），默认值 2|INT32|-|
 |quant_scale_repo_mode|可选属性|量化系数的存放模式。当前仅支持 1（COMBINE），即反量化系数与 Nope、Rope 合并存放于同一个 KV slot 内，默认值 1|INT32|-|
 |tile_size|可选属性|量化粒度，默认值 128|INT32|-|
 |rope_head_dim|可选属性|rope 分量的 head dim，默认值 64|INT32|-|

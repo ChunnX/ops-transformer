@@ -261,7 +261,7 @@ TEST_F(TurboQuantSparseFlashAttentionTiling, TurboQuantSparseFlashAttention_910b
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-// MLA 场景下 K 与 V 为同一份 latent，value 的 shape 必须与 key 完全一致。
+// 当前 DSA 路径的 K/V 共用 latent，value 的 shape 必须与 key 完全一致。
 TEST_F(TurboQuantSparseFlashAttentionTiling, TurboQuantSparseFlashAttention_910b_value_shape_mismatch)
 {
     TurboQuantSparseFlashAttentionCompileInfo compileInfo;
