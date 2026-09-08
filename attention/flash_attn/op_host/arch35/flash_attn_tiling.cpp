@@ -140,8 +140,8 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
     // config:
     //   config=0: D=64,  sOuter=64,  sInner=128
     //   config=1: D=64,  sOuter=32,  sInner=256
-    //   config=2: D=128, sOuter=64, sInner=128 (D=72 复用, kernel 内 pad 到 128)
-    //   config=3: D=128, sOuter=32, sInner=256 (D=72 复用, kernel 内 pad 到 128)
+    //   config=2: D=128, sOuter=64,  sInner=128 (D=72 复用, kernel 内 pad 到 128)
+    //   config=3: D=128, sOuter=32,  sInner=256 (D=72 复用, kernel 内 pad 到 128)
     //   config=4: D=256, sOuter=64, sInner=128
     //   config=5: D=256, sOuter=32, sInner=256
     //   config=6: D=192(DV=128), sOuter=64, sInner=128
