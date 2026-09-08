@@ -451,9 +451,9 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
     message = pl.struct("Message", max_v0=0.0, sum_v0=0.0, max_v1=0.0, sum_v1=0.0)
 
     if core_id < fore_core_num:
-        work_count = b_s1_per_core
+        work_count = 0 + b_s1_per_core
     elif core_id < total_cores:
-        work_count = b_s1_per_tail_core
+        work_count = 0 + b_s1_per_tail_core
 
     # 【128，64】基本块用于qk的结果，这里UB开两块做db
     qk_vec = pl.make_tile_group(
@@ -580,11 +580,11 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
             else:
                 k_used_size = s2_dim
             valid_s1_start = 0
-            valid_k_size = k_used_size
+            valid_k_size = 0 + k_used_size
             if mask_mode == 3:
                 cur_residual_k = 0
                 if cmp_ratio > 1:
-                    cur_residual_k = pl.getval(cmp_residual_k, b_idx)
+                    cur_residual_k = 0 + pl.getval(cmp_residual_k, b_idx)
                 ori_k_size = k_used_size * cmp_ratio + cur_residual_k
                 qk_residual = q_used_size - ori_k_size
                 valid_s1_start = pl.max(qk_residual, 0)
@@ -717,11 +717,11 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
                 else:
                     k_used_size = s2_dim
                 valid_s1_start = 0
-                valid_k_size = k_used_size
+                valid_k_size = 0 + k_used_size
                 if mask_mode == 3:
                     cur_residual_k = 0
                     if cmp_ratio > 1:
-                        cur_residual_k = pl.getval(cmp_residual_k, b_idx)
+                        cur_residual_k = 0 + pl.getval(cmp_residual_k, b_idx)
                     ori_k_size = k_used_size * cmp_ratio + cur_residual_k
                     qk_residual = q_used_size - ori_k_size
                     valid_s1_start = pl.max(qk_residual, 0)
