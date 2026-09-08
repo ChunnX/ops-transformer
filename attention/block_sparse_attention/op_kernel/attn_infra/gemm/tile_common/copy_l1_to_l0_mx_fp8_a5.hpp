@@ -65,10 +65,12 @@ struct CopyL1ToL0AMxFp8A5 {
         AscendC::LoadData(dst, src, scale, loadData2DParamsA, load2DMxParamsA);
     }
 
-    // 带完整 L1 S2 行 stride 的重载（k-split 时 srcStride 必须是整 tile）
+    // 带完整 L1 S2 行 stride 的重载（k-split 时 srcStride 必须是整 tile）。
+    // scaleS2Start / scaleS2FullAlign16 允许 scale 与 data 不在同一 S2 窗口（P1b 512 行 scale）。
     template <class TensorDst, class TensorSrc, class TensorScale>
     __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
-                                      uint32_t dAct, uint32_t s2Act, uint32_t s2Start, uint32_t s2FullAlign16)
+                                      uint32_t dAct, uint32_t s2Act, uint32_t s2Start, uint32_t s2FullAlign16,
+                                      uint32_t scaleS2Start, uint32_t scaleS2FullAlign16)
     {
         constexpr uint32_t NZ_C0 = Block::MXFP8::NZ_C0_ELEMS;
         constexpr uint32_t FP8_C0 = Block::MXFP8::FP8_C0_ELEMS;
@@ -90,13 +92,20 @@ struct CopyL1ToL0AMxFp8A5 {
 
         AscendC::LoadData2DMxParams load2DMxParamsA;
         load2DMxParamsA.xStartPosition = 0;
-        load2DMxParamsA.yStartPosition = s2Start / MX_FRAC;
+        load2DMxParamsA.yStartPosition = scaleS2Start / MX_FRAC;
         load2DMxParamsA.xStep = (dAct + NZ_C0 - 1) / NZ_C0;
         load2DMxParamsA.yStep = (s2Act + MX_FRAC - 1) / MX_FRAC;
-        load2DMxParamsA.srcStride = (s2FullAlign16 + MX_FRAC - 1) / MX_FRAC;
+        load2DMxParamsA.srcStride = (scaleS2FullAlign16 + MX_FRAC - 1) / MX_FRAC;
         load2DMxParamsA.dstStride = load2DMxParamsA.yStep;
 
         AscendC::LoadData(dst, src, scale, loadData2DParamsA, load2DMxParamsA);
+    }
+
+    template <class TensorDst, class TensorSrc, class TensorScale>
+    __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
+                                      uint32_t dAct, uint32_t s2Act, uint32_t s2Start, uint32_t s2FullAlign16)
+    {
+        operator()(dst, src, scale, dAct, s2Act, s2Start, s2FullAlign16, s2Start, s2FullAlign16);
     }
 };
 
@@ -142,7 +151,7 @@ struct CopyL1ToL0AMxFp8QKA5 {
     template <class TensorDst, class TensorSrc, class TensorScale>
     __aicore__ inline void operator()(TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
                                       uint32_t nSubRowStart, uint32_t nCur, uint32_t alignK, uint32_t s2Align16Full,
-                                      uint32_t scaleK, uint32_t kStart = 0)
+                                      uint32_t scaleK, uint32_t kStart = 0, uint32_t scaleRowStart = 0)
     {
         constexpr uint32_t NZ_C0 = Block::MXFP8::NZ_C0_ELEMS;
         constexpr uint32_t FP8_C0 = Block::MXFP8::FP8_C0_ELEMS;
@@ -161,7 +170,7 @@ struct CopyL1ToL0AMxFp8QKA5 {
         loadDataParams.ifTranspose = false;
 
         AscendC::LoadData2DMxParams loadMxDataParams;
-        loadMxDataParams.xStartPosition = nSubRowStart / NZ_C0;
+        loadMxDataParams.xStartPosition = scaleRowStart / NZ_C0;
         loadMxDataParams.yStartPosition = kStart / Block::MXFP8::CONST_64;
         loadMxDataParams.xStep = nCurAlign16 / NZ_C0;
         loadMxDataParams.yStep = scaleRowHalf;
@@ -169,6 +178,7 @@ struct CopyL1ToL0AMxFp8QKA5 {
         loadMxDataParams.srcStride = scaleRowHalf;
         loadMxDataParams.dstStride = scaleRowHalf;
 
+        (void)scaleK;
         AscendC::LoadData(dst, src, scale, loadDataParams, loadMxDataParams);
     }
 };

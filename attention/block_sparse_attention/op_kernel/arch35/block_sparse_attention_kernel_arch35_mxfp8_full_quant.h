@@ -28,6 +28,10 @@ namespace BsaKernelArch35 {
 #ifndef BSA_MXFP8_K_PREFETCH
 #define BSA_MXFP8_K_PREFETCH 1
 #endif
+// P1：偶 tile 一次搬 256 行 K/V。置 0 回到每拍 128 行。
+#ifndef BSA_MXFP8_K_PAIR256
+#define BSA_MXFP8_K_PAIR256 1
+#endif
 #if BSA_MXFP8_DUMP
 #define BSA_MXFP8_DUMP_CORE() (AscendC::GetBlockIdx() == 0)
 #endif

@@ -24,14 +24,17 @@ namespace NpuArch::Gemm::Tile {
 struct CopyGmToL1MxScaleDn2NzA5 {
     __aicore__ inline CopyGmToL1MxScaleDn2NzA5() {}
 
-    // rows      : 本次搬的 token 行数
+    // rows      : 本次搬的 token 行数（dnNum>1 时是单块行数）
     // scaleK    : Ceil(D/64)*2
     // srcB16Off : 源 half 偏移（稀疏多段拼接时使用，稠密传 0）
     // dstB16Off : 目的 half 偏移
     // headMul   : 头内 token 步长因子（BNSD=1, BSND/TND=N）
+    // dnNum     : 等形状 DN 块数；2 时用 src/dst matrix stride 一条指令搬两块
     __aicore__ inline void operator()(AscendC::LocalTensor<uint8_t> const &l1Scale,
                                       AscendC::GlobalTensor<uint8_t> const &gScale, uint32_t rows, uint32_t scaleK,
-                                      uint32_t srcB16Off = 0, uint32_t dstB16Off = 0, uint32_t headMul = 1)
+                                      uint32_t srcB16Off = 0, uint32_t dstB16Off = 0, uint32_t headMul = 1,
+                                      uint32_t dnNum = 1, uint64_t srcDnMatrixStride = 0,
+                                      uint32_t dstNzMatrixStride = 0)
     {
         uint32_t scaleRowHalf = scaleK / 2;
 
@@ -40,15 +43,16 @@ struct CopyGmToL1MxScaleDn2NzA5 {
         auto l1ScaleB16 = l1Scale.ReinterpretCast<half>();
 
         AscendC::Dn2NzParams dn2nzParams;
-        dn2nzParams.dnNum = 1;
+        dn2nzParams.dnNum = static_cast<uint16_t>(dnNum);
         dn2nzParams.dValue = rows;
         dn2nzParams.nValue = scaleRowHalf;
-        dn2nzParams.srcDnMatrixStride = 0;
+        dn2nzParams.srcDnMatrixStride = srcDnMatrixStride;
         dn2nzParams.srcDValue = headMul * scaleRowHalf;
         dn2nzParams.dstNzC0Stride = scaleRowHalf;
         dn2nzParams.dstNzNStride = 1;
         // FIA CopySingleMXScaleDNToNZ: dstNzMatrixStride = nValue（half 列数）
-        dn2nzParams.dstNzMatrixStride = dn2nzParams.nValue;
+        // dnNum=2 时改为两块 L1 起点之差（half 元素）。
+        dn2nzParams.dstNzMatrixStride = (dnNum > 1 && dstNzMatrixStride != 0) ? dstNzMatrixStride : dn2nzParams.nValue;
 
         AscendC::DataCopy(l1ScaleB16[dstB16Off], gScaleB16[srcB16Off], dn2nzParams);
     }
