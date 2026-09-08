@@ -179,6 +179,8 @@ for grp in ('common', '3rd'):
             '# 判定规则:',
             '#   - mc2内所有#include按裸文件名匹配, 重名文件取并集(note:字段标注), 宁多勿漏',
             f'#   - 算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 {chip_cn}({soc}) 的交集',
+            '#   - 未建模文件类型: common/3rd下除.h/.cpp/.py外的文件(json/ini/sh/csv/txt等)',
+            '#     一律按全量算子回归处理(见impact_map/README.md)',
             '',
         ]
         n_map = n_empty = 0
