@@ -18,12 +18,16 @@
 - <term>Atlas 推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
+
 - <term>Atlas 训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
 
 - **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程如下：
+
+
+
     - 首先对输入$x$ RmsNormQuant后乘以$W^{DQKV}$进行下采样后分为通路1和通路2。
     - 通路1做RmsNormQuant后乘以$W^{UQ}$后再分为通路3和通路4。
     - 通路3后乘以$W^{uk}$后输出$q^N$。
