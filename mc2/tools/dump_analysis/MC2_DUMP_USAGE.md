@@ -86,18 +86,18 @@ AIV + URMA 通路没有 XN/CKE 文件。
 
 ### 4.3 AIV + URMA 通路文件
 
-下面两类文件只有 URMA 通路才会生成，即 AllGatherMatmulV3 和 AlltoAllMatmulV2：
+下面文件只有 URMA 通路才会生成，即 AllGatherMatmulV3 和 AlltoAllMatmulV2：
 
 | 文件 | URMA 通路 | 解析内容 |
 | --- | --- | --- |
-| `comm_context_*` | 应有 | URMA 通信上下文 |
-| `peermem_window_*`、`peermem_segN_typeM_*` | 应有 | Peer Memory 布局、Segment 类型、长度和数据预览 |
+| `comm_context_*` | 应有 | URMA 通信上下文；解析结果会提示使用 `parse_matrix.py` 查看原始字节 |
 
-CCU 通路没有 `comm_context_*` 和 `peermem_*` 文件。
+CCU 通路没有 `comm_context_*` 文件。
 
 ### 4.4 不参与统一解析的文件
 
 - `exception_info.*`：统一入口不再读取或解析。
+- `peermem_window_*`、`peermem_segN_typeM_*`：统一入口不读取或解析。
 - 算子 `.o`、`*_host.o`、`.json`：不属于本脚本的 MC2 Tiling/Workspace 解析输入，会被忽略。
 - 已生成的 `mc2_dump_analysis` 目录：递归扫描时会跳过，避免重复解析输出文件。
 
@@ -141,8 +141,7 @@ CCU 通路没有 `comm_context_*` 和 `peermem_*` 文件。
 | 普通 Workspace Segment | `segIdx`、`segType`、含义、文件大小和前 64 字节十进制预览 |
 | `type12/RUNTIME_INFO` | 关联的 TilingData、推导出的 AIC 核数、通路，以及每核 magic、position、phase、commit、wait、pending 和状态 |
 | XN/CKE | 地址表 shape、非零地址数量和逐行十六进制地址 |
-| URMA CommContext | 通信上下文字段 |
-| URMA PeerMem | Window/Layout 字段，或 Segment 类型、大小和预览 |
+| URMA CommContext | 通信上下文字段，以及使用 `parse_matrix.py` 查看原始字节的命令提示 |
 
 普通数据型 Workspace 可能非常大，因此统一入口不会把整个二进制展开成文本；需要查看指定行列时使用 `parse_matrix.py`。
 
@@ -184,9 +183,6 @@ URMA 示例：
 ```bash
 python3 parse_all_gather_matmul_v3_tiling.py \
   /path/to/comm_context_AllGatherMatmulV3.xxx --comm-ctx
-
-python3 parse_all_gather_matmul_v3_tiling.py \
-  /path/to/peermem_window_AllGatherMatmulV3.xxx --peermem
 ```
 
 ## 7. 按行列查看 Workspace 数据
@@ -278,7 +274,7 @@ python3 parse_matrix.py workspace.bin \
 
 - 提示“没有找到受支持 Dump 文件”：确认 Dump 根目录和算子名正确，并检查文件名是否包含对应算子名。
 - 缺少 XN/CKE：先确认当前是否确实为 CCU 通路。
-- 缺少 CommContext/PeerMem：先确认当前是否为 AIV + URMA 通路。
+- 缺少 CommContext：先确认当前是否为 AIV + URMA 通路。
 - Workspace 文件大小与 TilingData 中 Segment size 不一致：检查段偏移、对齐/padding 和 Dump 时机。
 - RuntimeInfo 全部无效：检查 Kernel 初始化、Workspace 起始地址以及异常发生阶段。
 - 同一 rank 目录包含多次调用时，统一入口会优先按文件名末尾的 Dump 序号/时间戳关联最近的 TilingData；可在 RuntimeInfo TXT 的 `associatedTiling` 字段确认配对结果。

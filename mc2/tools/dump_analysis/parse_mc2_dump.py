@@ -10,7 +10,7 @@
 
 Only the operator name is required when this script is run in a dump directory.
 The script discovers and dispatches tiling_data, args_info, workspace segments,
-CCU xn/cke address tables, and URMA context/peermem files automatically.  Each
+CCU xn/cke address tables, and URMA context files automatically.  Each
 source dump gets an independent readable text report; no combined report or
 NumPy output is generated.
 """
@@ -78,7 +78,6 @@ FILE_KINDS = (
     ("xn", re.compile(r"^xn_addr_info_", re.IGNORECASE)),
     ("cke", re.compile(r"^cke_addr_info_", re.IGNORECASE)),
     ("comm_context", re.compile(r"^comm_context_", re.IGNORECASE)),
-    ("peermem", re.compile(r"^peermem_(?:window|seg\d+_type\d+)_", re.IGNORECASE)),
     ("workspace", re.compile(r"^workspace_seg\d+_type\d+_", re.IGNORECASE)),
 )
 
@@ -88,8 +87,7 @@ KIND_ORDER = {
     "xn": 2,
     "cke": 3,
     "comm_context": 4,
-    "peermem": 5,
-    "workspace": 6,
+    "workspace": 5,
 }
 
 WORKSPACE_SEG_TYPE_NAMES = {
@@ -118,11 +116,6 @@ WORKSPACE_SEG_DESCRIPTIONS = {
 }
 
 WORKSPACE_PREVIEW_SIZE = 64
-
-PEERMEM_SEG_TYPE_NAMES = {
-    0: "DATA", 1: "SCALE", 2: "BIAS", 3: "FLAG", 255: "RESERVED",
-}
-
 
 def normalize(value):
     return re.sub(r"[^a-z0-9]", "", value.lower())
@@ -323,8 +316,6 @@ def backend_command(profile, kind, path, aic_core_num, use_apace=False):
             command.append("--apace")
     elif kind == "comm_context":
         command.append("--comm-ctx")
-    elif kind == "peermem":
-        command.append("--peermem")
     return command
 
 
@@ -451,24 +442,21 @@ def main(argv=None):
                 emit(console_lines, f"saved TXT: {output_path}")
                 continue
 
-        if kind == "peermem":
-            identity = segment_identity(path, "peermem")
-            if identity is not None:
-                seg_index, seg_type = identity
-                emit(result_lines, f"segIdx: {seg_index}")
-                emit(result_lines, f"segType: {seg_type} ({PEERMEM_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
-                emit(result_lines, f"fileSize: {path.stat().st_size} bytes")
-                emit(result_lines, f"hexPreview(512B): {read_preview(path, 512).hex()}")
-                save_text_result(output_path, profile, kind, relative_path, result_lines)
-                emit(console_lines, f"saved TXT: {output_path}")
-                continue
-
         aic_core_num = core_num_for_file(path, profile, core_index) if kind == "workspace" else None
         use_apace = kind == "workspace" and path.parent in apace_parents
         return_code, output = run_backend(profile, kind, path, aic_core_num, use_apace)
         if output:
             for line in output.splitlines():
                 emit(result_lines, line)
+        if kind == "comm_context":
+            file_size = path.stat().st_size
+            emit(result_lines, "")
+            emit(result_lines, "rawDataHint: 如需按十进制查看 comm_context 原始字节，可使用 parse_matrix.py：")
+            emit(
+                result_lines,
+                f'python3 "{SCRIPT_DIR / "parse_matrix.py"}" "{path}" '
+                f'--dtype uint8 --rows 1 --cols {file_size} --row 0 --col-range 0 64',
+            )
         if return_code != 0:
             failures += 1
             emit(result_lines, f"ERROR: backend exited with code {return_code}")
