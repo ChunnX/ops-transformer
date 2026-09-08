@@ -26,6 +26,7 @@ def _get_hccl_comm_name(group, rank_id):
 
 class MoeDistributeBuffer:
     def __init__(self, group, ccl_buffer_size: int = 0, comm_alg: int = 0):
+        """Create a buffer; the A5 custom ccl_buffer_size is the total size in bytes."""
         self.group = group
         self.rank_id = torch.distributed.get_rank(group)
         self.world_size = torch.distributed.get_world_size(group)
@@ -56,6 +57,12 @@ class MoeDistributeBuffer:
         num_shared_expert_ranks: int = 0,
         comm_alg: str = "",
     ) -> int:
+        """Return the HCCL buffer configuration size in MiB (legacy documentation: MB).
+
+        For an A5 custom buffer, pass result * 2 * 1024 * 1024 to the
+        MoeDistributeBuffer constructor, which expects total bytes.
+        """
+
         def inline_align(value, base):
             return (value + base - 1) // base * base
 

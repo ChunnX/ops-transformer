@@ -533,7 +533,14 @@ def get_ccl_buffer_size(
     quant_mode=0,
     moe_expert_dtype=None,
 ):
-    """Return bytes for both 0/1 partitions, state and per-rank address offsets."""
+    """Return the HCCL buffer configuration size in MiB (called MB in legacy APIs).
+
+    Matches MoeDistributeBuffer.get_low_latency_ccl_buffer_size: convert the
+    result to total bytes with size * 2 * 1024 * 1024 before constructing an
+    A5 MoeDistributeBuffer. The budget includes both 0/1 partitions, state and
+    per-rank address offsets. Do not pass this configuration value directly
+    to a constructor or operator parameter that expects bytes.
+    """
 
     def align(value, base):
         return (value + base - 1) // base * base
@@ -592,9 +599,11 @@ def get_ccl_buffer_size(
     moe_combine = (hidden * 2 + 479) // 480 * 512
     shared_combine = (hidden * 4 + 479) // 480 * 512
     combine_bytes = max_bs * (topk * moe_combine + shared_expert_num * shared_combine)
-    return align(
-        (dispatch_bytes + combine_bytes) * 2 + 1024 * 1024 + ep_world_size * 1024, 512
+    mb_conversion = 1024 * 1024
+    minimum_buffer_bytes = (
+        (dispatch_bytes + combine_bytes) * 2 + mb_conversion + ep_world_size * 1024
     )
+    return align(minimum_buffer_bytes, 2 * mb_conversion) // (2 * mb_conversion)
 
 
 # Graph converters live beside the eager and Meta implementations.
