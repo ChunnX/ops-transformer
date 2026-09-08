@@ -190,9 +190,7 @@ def _rope(x, cos, sin):
     x2 = x[..., half:]
     c = cos.unsqueeze(1)
     s = sin.unsqueeze(1)
-    return torch.cat(
-        [_fma_f32(x2, -s, x1 * c), _fma_f32(x1, s, x2 * c)], dim=-1
-    )
+    return torch.cat([_fma_f32(x2, -s, x1 * c), _fma_f32(x1, s, x2 * c)], dim=-1)
 
 
 # 稠密段：split + index + rmsnorm + mrope（不含 cache 写入）
