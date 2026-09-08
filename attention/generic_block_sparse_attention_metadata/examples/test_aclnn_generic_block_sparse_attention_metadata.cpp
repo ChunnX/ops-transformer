@@ -24,7 +24,7 @@
 #include "aclnnop/aclnn_generic_block_sparse_attention_metadata.h"
 #include "securec.h"
 
-#include "../generic_block_sparse_attention_metadata.h"
+#include "../generic_block_sparse_attention_metadata_tiling.h"
 
 #define CHECK_LOG_RET(condition, returnValue, format, ...) \
     do { \
@@ -48,6 +48,7 @@ constexpr int64_t GBSA_MASK_TYPE = 1;
 constexpr int64_t GBSA_QUANT_TYPE = 0;
 constexpr int64_t GBSA_SOFTMAX_PRECISION = 0;
 constexpr int64_t GBSA_WINDOW_SIZE = -1;
+constexpr int64_t GBSA_DEFAULT_MAX_SEQ_LEN = -1;
 
 struct ScopeGuard {
     explicit ScopeGuard(std::function<void()> callback)
@@ -81,8 +82,8 @@ struct CaseContext {
     Tensor seqUsedKv;
     Tensor metadata;
     aclIntArray *blockShape = nullptr;
-    int64_t maxQSeqLen = 0;
-    int64_t maxKvSeqLen = 0;
+    int64_t maxQSeqLen = GBSA_DEFAULT_MAX_SEQ_LEN;
+    int64_t maxKvSeqLen = GBSA_DEFAULT_MAX_SEQ_LEN;
     int64_t numQHeads = 0;
     int64_t numKvHeads = 0;
     int64_t headDim = 0;
@@ -197,13 +198,13 @@ aclnnStatus CreateTndDecodeCase(CaseContext &context)
     constexpr int32_t secondQBlockCount = 3;
 
     context.name = "TND decode schedule";
-    context.maxQSeqLen = qStorageLength;
-    context.maxKvSeqLen = kvStorageLength;
+    context.maxQSeqLen = GBSA_DEFAULT_MAX_SEQ_LEN;
+    context.maxKvSeqLen = GBSA_DEFAULT_MAX_SEQ_LEN;
     context.numQHeads = numQHeads;
     context.numKvHeads = numKvHeads;
     context.headDim = GBSA_HEAD_DIM;
     context.qInputLayout = "TND";
-    context.kvInputLayout = "PAGED_BBND";
+    context.kvInputLayout = "PA_BBND";
     context.expectedSaTotalTaskNum = static_cast<int32_t>(qStorageLength * numKvHeads);
     context.expectDecodeSchedule = true;
 
@@ -217,10 +218,9 @@ aclnnStatus CreateTndDecodeCase(CaseContext &context)
     const std::vector<int64_t> cuSeqLengths = {0, qStorageLength};
     ret = CreateTensor(ACL_INT64, {static_cast<int64_t>(cuSeqLengths.size())}, cuSeqLengths, context.cuSeqLengths);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "create TND cuSeqLengths failed, error: %d", ret);
-    const std::vector<int64_t> cuSeqLengthsKv = {0, kvStorageLength};
-    ret =
-        CreateTensor(ACL_INT64, {static_cast<int64_t>(cuSeqLengthsKv.size())}, cuSeqLengthsKv, context.cuSeqLengthsKv);
-    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "create TND cuSeqLengthsKv failed, error: %d", ret);
+    const std::vector<int32_t> seqUsedKv = {static_cast<int32_t>(kvStorageLength)};
+    ret = CreateTensor(ACL_INT32, {batchSize}, seqUsedKv, context.seqUsedKv);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "create PA seqUsedKv failed, error: %d", ret);
     const std::vector<int32_t> seqUsedQ = {static_cast<int32_t>(qStorageLength)};
     ret = CreateTensor(ACL_INT32, {batchSize}, seqUsedQ, context.seqUsedQ);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "create TND seqUsedQ failed, error: %d", ret);
@@ -241,13 +241,13 @@ aclnnStatus CreateTndSeqUsedCase(CaseContext &context)
     constexpr int32_t firstBlockCount = 1;
 
     context.name = "TND cuSeqLengths and seqUsedQ";
-    context.maxQSeqLen = qStorageLengthPerBatch;
-    context.maxKvSeqLen = kvStorageLengthPerBatch;
+    context.maxQSeqLen = GBSA_DEFAULT_MAX_SEQ_LEN;
+    context.maxKvSeqLen = GBSA_DEFAULT_MAX_SEQ_LEN;
     context.numQHeads = numQHeads;
     context.numKvHeads = numKvHeads;
     context.headDim = GBSA_HEAD_DIM;
     context.qInputLayout = "TND";
-    context.kvInputLayout = "PAGED_BBND";
+    context.kvInputLayout = "PA_BBND";
     context.expectedSaTotalTaskNum = (firstBatchUsedQ + secondBatchUsedQ) * static_cast<int32_t>(numKvHeads);
 
     // The two batches occupy physical Q ranges [0, 4) and [4, 8). seqUsedQ selects [0, 2) and [4, 7).
@@ -265,10 +265,10 @@ aclnnStatus CreateTndSeqUsedCase(CaseContext &context)
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "create TND sparseBlockCount failed, error: %d", ret);
     ret = CreateTensor(ACL_INT64, {static_cast<int64_t>(cuSeqLengths.size())}, cuSeqLengths, context.cuSeqLengths);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "create TND cuSeqLengths failed, error: %d", ret);
-    const std::vector<int64_t> cuSeqLengthsKv = {0, kvStorageLengthPerBatch, batchSize * kvStorageLengthPerBatch};
-    ret =
-        CreateTensor(ACL_INT64, {static_cast<int64_t>(cuSeqLengthsKv.size())}, cuSeqLengthsKv, context.cuSeqLengthsKv);
-    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "create TND cuSeqLengthsKv failed, error: %d", ret);
+    const std::vector<int32_t> seqUsedKv = {static_cast<int32_t>(kvStorageLengthPerBatch),
+                                            static_cast<int32_t>(kvStorageLengthPerBatch)};
+    ret = CreateTensor(ACL_INT32, {batchSize}, seqUsedKv, context.seqUsedKv);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "create PA seqUsedKv failed, error: %d", ret);
     ret = CreateTensor(ACL_INT32, {batchSize}, seqUsedQ, context.seqUsedQ);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "create TND seqUsedQ failed, error: %d", ret);
     return CreateCommonArgs(context);

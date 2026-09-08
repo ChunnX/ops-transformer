@@ -62,6 +62,20 @@ cd build_out
 
   各 tiling key 的编码含义见[开发者指南 §5](#5-tilingkey)。
 
+  **如何从运行日志中查找 tiling key**：在跑用例时打开 ASCEND DEBUG 日志（`export ASCEND_SLOG_PRINT_TO_STDOUT=1` 和 `export ASCEND_GLOBAL_LOG_LEVEL=0`），日志中搜索**最后一次**出现的 `kernel_name=FlashAttn_`，格式为 `FlashAttn_<hash>_<tiling_key>`，末尾的数字即为本次用例的 tiling key。例如日志中出现：
+
+  ```
+  StreamLaunchKernelV2: ... kernel_name=FlashAttn_7a9b290f0be5028cb35fc6d409953d1d_262144 ...
+  ```
+
+  则该用例的 tiling key 为 `262144`，将其填入 `--tiling_key` 即可只编译该变体。
+
+  也可通过 tiling 日志辅助确认：搜索 `GenTilingKey`，日志会直接打印 tiling key 值，例如：
+
+  ```
+  [flash_attn_tiling.cpp:198] ... GenTilingKey ... The tilingkey is 262144.
+  ```
+
 ### 2. torch 扩展包构建与安装
 
 使用 torch 接口前必做。在仓根目录构建 torch 扩展 whl 并安装：
@@ -165,7 +179,7 @@ cd build && ctest -R flash_attn_tiling --output-on-failure
 | BSND / BNSD / TND | (B, S, N, D) / (B, N, S, D) / (T, N, D) | 连续 KV，非分页 |
 | PA_BBND | (num_blocks, block_size, KV_N, D) | block 内按 BSND 排布 |
 | PA_BNBD | (num_blocks, KV_N, block_size, D) | block 内按 BNSD 排布 |
-| PA_NZ | (num_blocks, KV_N, D/16, block_size, 16) | NZ 分块格式 |
+| PA_NZ | (num_blocks, KV_N, D/16, block_size, 16) | NZ 分块格式，要求 head_dim 为 16 的倍数（D 轴分形粒度为 16 元素） |
 
 - PA 场景约束：PA 时 `seqused_kv` 必填；非 PA 场景传入 `block_table` 会直接报错。`layout_kv` 为 PA 时，`layout_q`/`layout_out` 维持 BSND/BNSD/TND 不变。
 
@@ -242,9 +256,7 @@ AICPU 侧与 Host 侧 tiling 共享 `fa_adjust_sinner_souter.h` 的档位选择�
 
 | 文件 | 重点内容 |
 |---|---|
-| `op_api/aclnn_flash_attn.h` / `op_api/aclnn_flash_attn.cpp` | 对外 `aclnnFlashAttn` 两段式接口（GetWorkspaceSize + 执行），薄壳转发 |
-| `op_api/aclnn_flash_attn_inner.h` / `op_api/aclnn_flash_attn_inner.cpp` | inner 实现：对可选输入（sinks/softmax_lse）造占位 tensor |
-| `op_api/flash_attn.h` / `op_api/flash_attn.cpp` | L0 API 层（`namespace l0op`）：注册 launcher-list，由框架据此自动生成 inner workspace 计算 |
+| `op_api/aclnn_flash_attn.cpp` | 对外 `aclnnFlashAttn` 两段式接口（GetWorkspaceSize + 执行），薄壳转发；内含 sinks/softmax_lse 占位 tensor 处理与 inner 接口 extern 声明 |
 
 **② 算子定义与 shape 推导**
 
@@ -349,8 +361,8 @@ FA 计算的核心是把注意力矩阵按块切分、逐块 online 计算。基
 |---|---|---|---|---|
 | 0 | 64 | 128 | 64 | 64 |
 | 1 | 32 | 256 | 64 | 64 |
-| 2 | 64 | 128 | 128 | 128 |
-| 3 | 32 | 256 | 128 | 128 |
+| 2 | 64 | 128 | 128（D=72 复用） | 128（DV=72 复用） |
+| 3 | 32 | 256 | 128（D=72 复用） | 128（DV=72 复用） |
 | 4 | 64 | 128 | 256 | 256 |
 | 5 | 32 | 256 | 256 | 256 |
 
@@ -361,7 +373,7 @@ FA 计算的核心是把注意力矩阵按块切分、逐块 online 计算。基
 
 - **mBaseSize = sOuter × CV_RATIO**（CV_RATIO=2，AIC:AIV=1:2）：一个 AIC 核承担 mBaseSize 行 Q，对应 2 个 AIV 核各处理 mBaseSize/2 行。
 - **s2BaseSize = sInner**：KV 序列方向的块大小。
-- host 侧 `AdjustSinnerAndSouter` 按 D（及 gSize/maxSeq/window 条件）选择 sOuter/sInner，再映射到 config（D=64→config0/1，D=128→config2/3，D=256→config4/5：`gSize × maxSeqQ ≥ 64` 时取 sOuter=64/sInner=128→config4，否则取 sOuter=32/sInner=256→config5）。
+- host 侧 `AdjustSinnerAndSouter` 按 D（及 gSize/maxSeq/window 条件）选择 sOuter/sInner，再映射到 config（D=64→config0/1，D=72 与 D=128→config2/3，D=256→config4/5：`gSize × maxSeqQ ≥ 64` 时取 sOuter=64/sInner=128→config4，否则取 sOuter=32/sInner=256→config5）。D=72 与 D=128 共享 kernel 变体（零新增 tiling key），kernel 内 L1→L0 搬运宽度按 16 元素分形对齐（72→80，`MMParam.loadK/loadN`），Mmad 按真实 D 精确累加，无需 L1 清零。
 
 **gS1 合轴**：
 

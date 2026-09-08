@@ -48,6 +48,8 @@
 |[aclnnAttentionWorkerCombine](../../attention/attention_worker_combine/docs/aclnnAttentionWorkerCombine.md)|Attention和FFN分离部署场景下，Attention侧数据融合算子，将多个计算单元处理的注意力token数据进行融合，结合专家权重对结果进行加权，输出最终的注意力融合结果，并更新层ID。|默认确定性实现| - |
 |[aclnnBatchMatMulReduceScatterAlltoAll](../../mc2/batch_mat_mul_reduce_scatter_allto_all/docs/aclnnBatchMatMulReduceScatterAlltoAll.md)|BatchMatMulReduceScatterAllToAll是通算融合算子，实现BatchMatMul计算与ReduceScatter、AllToAll集合通信并行的算子。|默认确定性实现| - |
 |[aclnnBlitzSparseAttention](../../experimental/attention/blitz_sparse_attention/docs/aclnnBlitzSparseAttention.md)|全量推理场景的FlashAttention算子，支持sparse优化、actualSeqLengthsKv优化、int8量化功能、innerPrecise参数（用于支持高精度或者高性能模式选择）。|-|-|
+|[aclnnBlockAttentionResiduals](../../mhc/block_attention_residuals/docs/aclnnBlockAttentionResiduals.md)|将 `partialBlock` 与 `blockRes` 拼接后完成 RMS、投影打分与 Softmax 加权融合，输出 `hiddenStates`。|默认确定性实现|默认确定性实现|
+|[aclnnBlockAttentionResidualsGrad](../../mhc/block_attention_residuals_grad/docs/aclnnBlockAttentionResidualsGrad.md)|aclnnBlockAttentionResidualsGrad 是 BlockAttentionResiduals（注意力残差）的反向传播算子，根据前向保存的inv_norm、probs和上游梯度grad_hidden_states，计算partial_block、block_res、proj_weight、norm_weight的梯度。|默认确定性实现|默认确定性实现|
 |[aclnnBlockAttnResPrepare](../../attention/block_attn_res_prepare/docs/aclnnBlockAttnResPrepare.md)|计算历史残差块与伪 Query 的块间注意力，输出 softmax 加权分子、logit 最大值和指数和，供后续阶段融合当前残差。|-|默认确定性实现|
 |[aclnnBlockAttnResUpdate](../../attention/block_attn_res_update/docs/aclnnBlockAttnResUpdate.md)|将`delta`原地累加到`partialBlockRef`，计算更新后`partialBlockRef`的RMSNorm score，并与历史online softmax中间状态合并，输出当前层结果`h`。|-|默认确定性实现|
 |[aclnnBlockSparseAttention](../../attention/block_sparse_attention/docs/aclnnBlockSparseAttention.md)|BlockSparseAttention通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现|默认确定性实现|
@@ -100,6 +102,8 @@
 |[aclnnFusedInferAttentionScoreV5](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScoreV5.md)|适配增量&全量推理场景的FlashAttention算子。|默认确定性实现| 默认确定性实现 |
 |[aclnnGatherPaKvCache](../../attention/gather_pa_kv_cache/docs/aclnnGatherPaKvCache.md)|根据blockTables中的blockId值、seqLens中key/value的seqLen从keyCache/valueCache中将内存不连续的token搬运、拼接成连续的key/value序列。|默认确定性实现| 默认确定性实现 |
 |[aclnnGenericBlockSparseAttention](../../attention/generic_block_sparse_attention/docs/aclnnGenericBlockSparseAttention.md)|GenericBlockSparseAttention通过sparseBlockIdx指定每个Q块选择的KV块，sparseBlockCount指定每个Q块保留的KV块数量，实现高效的稀疏注意力计算。|默认确定性实现|默认确定性实现|
+|[aclnnGenericBlockSparseAttentionGrad](../../attention/generic_block_sparse_attention_grad/docs/aclnnGenericBlockSparseAttentionGrad.md)|GenericBlockSparseAttention的反向算子，依据rsvdBlockIdx/rsvdBlockCount在被选中的Q块上计算并传播梯度。需与aclnnGenericBlockSparseAttentionGradMetadata配套使用。|-|默认非确定性实现，不支持配置开启|
+|[aclnnGenericBlockSparseAttentionGradMetadata](../../attention/generic_block_sparse_attention_grad_metadata/docs/aclnnGenericBlockSparseAttentionGradMetadata.md)|aclnnGenericBlockSparseAttentionGrad接口的前置接口，用于计算aclnnGenericBlockSparseAttentionGrad的负载均衡。|-|默认确定性实现|
 |[aclnnGenericBlockSparseAttentionMetadata](../../attention/generic_block_sparse_attention_metadata/docs/aclnnGenericBlockSparseAttentionMetadata.md)|aclnnGenericBlockSparseAttention接口的前置接口，用于计算aclnnGenericBlockSparseAttention的负载均衡。|默认确定性实现| 默认确定性实现 |
 |[aclnnGroupedMatmulV5](../../gmm/grouped_matmul/docs/aclnnGroupedMatmulV5.md)|实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。|默认确定性实现| 默认确定性实现 |
 |[aclnnGroupedMatmulAdd](../../gmm/grouped_matmul_add/docs/aclnnGroupedMatmulAdd.md)|实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。|默认确定性实现| 默认确定性实现 |
@@ -198,7 +202,7 @@
 |[aclnnMhcPre](../../mhc/mhc_pre/docs/aclnnMhcPre.md)|基于一系列计算得到MHC架构中hidden层的$H^{res}$和$H^{post}$投影矩阵以及Attention或MLP层的输入矩阵$h^{in}$。|默认确定性实现|默认确定性实现|
 |[aclnnMhcPreV2](../../mhc/mhc_pre/docs/aclnnMhcPreV2.md)|兼容[aclnnMhcPre](../../mhc/mhc_pre/docs/aclnnMhcPre.md)支持的功能，在此基础上新增opImplMode参数，供用户选择MhcPre计算模式。| - |默认确定性实现|
 |[aclnnMhcPreBackward](../../mhc/mhc_pre_backward/docs/aclnnMhcPreBackward.md)|[aclnnMhcPre](../../mhc/mhc_pre/docs/aclnnMhcPre.md)的反向传播。|默认确定性实现|默认确定性实现|
-|[aclnnMhcPreSinkhorn](../../mhc/mhc_pre_sinkhorn/docs/aclnnMhcPreSinkhorn.md)| 基于一系列计算得到MHC架构中hidden层的$\mathbf{H}'_{\text{res}}$和$\mathbf{H}_{\text{post}}$投影矩阵以及Attention或MLP层的输入矩阵$\mathbf{h}_{\text{in}}$。对$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出中间计算结果，用于反向梯度计算。 |默认确定性实现| - |
+|[aclnnMhcPreSinkhorn](../../mhc/mhc_pre_sinkhorn/docs/aclnnMhcPreSinkhorn.md)| 基于一系列计算得到MHC架构中hidden层的$\mathbf{H}'_{\text{res}}$和$\mathbf{H}_{\text{post}}$投影矩阵以及Attention或MLP层的输入矩阵$\mathbf{h}_{\text{in}}$。对$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出中间计算结果，用于反向梯度计算。 |默认确定性实现| 默认确定性实现 |
 |[aclnnMhcPost](../../mhc/mhc_post/docs/aclnnMhcPost.md)|基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。|默认确定性实现| 默认确定性实现 |
 |[aclnnMhcPostBackward](../../mhc/mhc_post_backward/docs/aclnnMhcPostBackward.md)|mhc_post基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。该算子实现前述过程的反向。|默认确定性实现| 默认确定性实现 |
 |[aclnnMhcSinkhorn](../../mhc/mhc_sinkhorn/docs/aclnnMhcSinkhorn.md)| 对mHC架构中的$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出迭代过程中的中间归一化结果（norm_out）和求和结果（sum_out），用于反向梯度计算。 | - | 默认确定性实现 |

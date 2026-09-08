@@ -34,11 +34,7 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "../engram_fetch_wait_tiling_data.h"
-#if __has_include("../../engram_fetch/engram_fetch_utils.h")
-#include "../../engram_fetch/engram_fetch_utils.h"
-#else
 #include "../../../engram_fetch/op_kernel/engram_fetch_utils.h"
-#endif
 #include "adv_api/hccl/hccl.h"
 #if __has_include("adv_api/hcomm/hcomm.h")
 #include "adv_api/hcomm/hcomm.h"
@@ -78,7 +74,7 @@ __aicore__ inline void EngramFetchWaitArch35::Init(GM_ADDR commContext, GM_ADDR 
     ctxPtr_ = (__gm__ EngramCommContext *)commContext;
     rankId_ = ctxPtr_->rankId;
     numRanks_ = ctxPtr_->rankSize;
-    channelsPerRank_ = (Mc2Kernel::HANDLE_ARRAY_SIZE + numRanks_ - 1U) / numRanks_;
+    channelsPerRank_ = ctxPtr_->channelsPerRank;
     if (channelsPerRank_ == 0U) {
         channelsPerRank_ = 1U;
     }
