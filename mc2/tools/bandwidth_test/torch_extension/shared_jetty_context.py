@@ -36,11 +36,13 @@ class SharedJettyContextManager:
                  buffer_size, sequence):
         self.group = group
         self.ccl_buffer_size = buffer_size
-        # The communicator owns the Win, registration and multi-channel handles.
-        # Keeping the ProcessGroup alive also protects them during graph replay.
+        # The manager owns the Win; the communicator owns its registration and multi-channel handles.
+        # Keep both owners alive while kernels or captured graphs may use these resources. The bandwidth
+        # test destroys its process group before this owner is released, matching the shared-Jetty sample.
         tag = f"bandwidth_test_shared_jetty_{sequence}_level_{shared_jetty_comm_level}"
         self._manager = _builder.load().SharedJettyContextManager(
             group_name, world_size, shared_jetty_num, shared_jetty_comm_level, buffer_size, tag)
+        self._manager.prepare()
         local = (shared_jetty_num, shared_jetty_comm_level, buffer_size, sequence,
                  self._manager.local_buffer_address)
         gathered = [None] * world_size

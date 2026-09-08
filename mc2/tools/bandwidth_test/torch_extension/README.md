@@ -28,17 +28,22 @@ Host 使用 `torch_extension/shared_jetty_context.py` 和同目录 `csrc` 中的
 `channelProtocol`。UB_RTP（UBG）共享 jetty 使用用户提供的
 支持该能力的联调包；不按公开仓库旧版文档拦截，也不将 UB_RTP 归类为 MTE。
 每个共享 jetty 使用独立 tag，包含按 rank 排序、跳过本卡的所有对端 descriptor；
-context 保留共享 jetty 的环境和兼容性检查：仅支持 Ascend950，
+context 不再硬编码校验 SoC 型号；仍会检查所选 layer、协议和 endpoint 是否能够建立共享 Jetty，
 所选 layer 内各 peer 的首个匹配协议 link 必须使用共同的本地 endpoint，否则明确报错。
 不会因为链路协议是 `UB_RTP` 而拒绝它。
 共享队列 API 不可用或 HCCL 建链失败时，同样在 context 创建阶段报错，报告 jetty 编号及返回码。
-底层 C++ context 不查询设备核数，也不承担共享 jetty 数量上限校验；数量限制由 tiling 统一处理。
+底层 C++ context 不查询设备核数，但会先校验共享 jetty 数量位于 `[1, 56]`；tiling 再校验其不超过实际选中的 AIV 数。
 不会隐式创建额外 jetty 或回退普通 channel；单 rank 无远端，跳过建链。
 
-Win 通过 HCCL engine context 分配、清零并注册；构造阶段通过组内 collective 交换 Win 地址，
-同时核对共享 jetty 数、通信层级选择、窗口大小和构造顺序。句柄、注册和 Win 均由 communicator 管理，
-Python owner 保留 ProcessGroup。多配置和图重放应复用 owner；所有 kernel 完成后销毁通信组
-才释放这些资源。构造中途失败的 HCCL 资源同样保留到通信组销毁，不能重试同一个失败 owner。
+shared Jetty context 参照公共 `HcclChannelContextBuilder` 构造：`HcclEngineCtxCreate` 只申请
+`sizeof(SharedJettyContext)` 的设备 context，Jetty 句柄填充完成后通过 `HcclEngineCtxCopy` 更新。
+业务 Win 由 Torch context manager 通过 `aclrtMalloc` 独立申请、清零并注册；构造阶段通过组内 collective
+交换 Win 地址，同时核对共享 jetty 数、通信层级选择、窗口大小和构造顺序。注册和句柄由
+communicator 管理，Win 则由 manager 持有，释放前先同步设备。Python owner 保留 ProcessGroup，并应在所有 kernel
+和图重放完成前保持存活；测试流程先销毁 ProcessGroup，再释放 owner，与共享 jetty 示例的析构顺序一致。
+与公共 `CommContextManager` 一样，C++ 内部不查询或切换 NPU，调用方须在创建和释放 owner 时保持所属设备为当前设备。
+Win 初始化或注册失败会立即回滚已申请内存；本地资源准备或 context 构造一旦失败，
+该 owner 均不可重试，需重建通信组。
 
 tiling key 先选择通信算法，再在 URMA 下选择 `SHARED_JETTY`；kernel 独立文件为
 `op_kernel/bandwidth_test_urma_shared_jetty.h`，保留 mode 0/1/3：

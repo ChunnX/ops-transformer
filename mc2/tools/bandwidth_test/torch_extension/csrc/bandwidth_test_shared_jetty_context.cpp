@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -17,6 +18,9 @@
 namespace op_api {
 namespace {
 constexpr uint32_t MAX_RANKS = 1024;
+constexpr int64_t MAX_SHARED_JETTYS = 56;
+constexpr int64_t WIN_STATE_BYTES = 1024 * 1024;
+constexpr size_t HCCL_CONTEXT_TAG_MAX_LEN = 255;
 
 // Wire layout matches SharedJettyContext in bandwidth_test_urma_shared_jetty.h.
 // Keep the ordinary context's tensor size so existing graph shape contracts remain valid.
@@ -61,28 +65,41 @@ void CheckHccl(HcclResult result, const char *operation)
 {
     TORCH_CHECK(result == HCCL_SUCCESS, operation, " failed, ret=", result);
 }
+
+void CopyContextToTensor(const SharedJettyContext &context, at::Tensor &tensor)
+{
+    at::Tensor hostContext = at::from_blob(const_cast<SharedJettyContext *>(&context),
+                                           {sizeof(SharedJettyContext) / sizeof(int32_t)}, at::kInt);
+    tensor.copy_(hostContext);
+}
 } // namespace
 
-class SharedJettyContextManager {
+// Preparation and context construction are separate because Python exchanges the registered Win addresses
+// between the two phases. HcclChannelContextBuilder does not need this split because it queries remote memory
+// from acquired channels.
+class SharedJettyContextBuilder {
 public:
-    SharedJettyContextManager(const std::string &group, int64_t worldSize, int64_t sharedJettyNum,
-                              int64_t sharedJettyCommLevel, int64_t bufferSize, const std::string &tag)
-        : tag_(tag), worldSize_(worldSize)
+    SharedJettyContextBuilder() = default;
+    SharedJettyContextBuilder(const SharedJettyContextBuilder &) = delete;
+    SharedJettyContextBuilder &operator=(const SharedJettyContextBuilder &) = delete;
+
+    void PrepareLocalResources(const std::string &group, uint32_t worldSize, uint32_t sharedJettyNum,
+                               SharedJettyCommLevel commLevel, uint64_t bufferSize, const std::string &tag,
+                               void **localWindow, HcclMemHandle *windowMemHandle)
     {
-        TORCH_CHECK(worldSize > 0 && worldSize <= MAX_RANKS, "world_size must be in [1, 1024]");
-        TORCH_CHECK(bufferSize > 1024 * 1024, "shared jetty Win must exceed the 1 MiB state area");
-        TORCH_CHECK(!tag.empty() && tag.size() < 200, "invalid shared jetty context tag");
-        TORCH_CHECK(sharedJettyCommLevel >= static_cast<int64_t>(SharedJettyCommLevel::AUTO) &&
-                        sharedJettyCommLevel <= static_cast<int64_t>(SharedJettyCommLevel::UB_RTP),
-                    "shared_jetty_comm_level must be 0, 1 or 2");
-        commLevel_ = static_cast<SharedJettyCommLevel>(sharedJettyCommLevel);
-        const char *soc = aclrtGetSocName();
-        TORCH_CHECK(soc != nullptr && std::strstr(soc, "Ascend950") != nullptr,
-                    "BandwidthTest shared jetty requires Ascend950");
-        TORCH_CHECK(aclrtGetDevice(&device_) == ACL_SUCCESS, "aclrtGetDevice failed");
+        ASCEND_LOGI("Start to prepare shared Jetty resources, group: %s", group.c_str());
         InitHcclEngineCtxFunctions();
-        CheckHccl(HcomGetCommHandleByGroupFunc(group.c_str(), &comm_), "HcomGetCommHandleByGroup");
-        TORCH_CHECK(comm_ != nullptr, "HCCL communicator is null");
+
+        worldSize_ = worldSize;
+        commLevel_ = commLevel;
+        tag_ = tag;
+        localWindow_ = localWindow;
+        windowMemHandle_ = windowMemHandle;
+        TORCH_CHECK(localWindow_ != nullptr && windowMemHandle_ != nullptr,
+                    "shared Jetty buffer owner pointers must not be null");
+        ValidateTags(sharedJettyNum);
+        AcquireHcclHandle(group);
+
         uint32_t actualWorldSize = 0;
         CheckHccl(HcclGetRankSizeFunc(comm_, &actualWorldSize), "HcclGetRankSize");
         CheckHccl(HcclGetRankIdFunc(comm_, &hostContext_.epRankId), "HcclGetRankId");
@@ -90,40 +107,22 @@ public:
                     "Context rank or world size does not match the group");
         hostContext_.sharedJettyNum = sharedJettyNum;
         hostContext_.bufferSize = bufferSize;
-        // HCCL releases engine memory and registered resources with the communicator,
-        // including partial construction failures. Never free memory behind live channels.
-        const std::string winTag = tag_ + "_win";
-        CheckHccl(HcclEngineCtxCreateFunc(comm_, winTag.c_str(), COMM_ENGINE_AIV, bufferSize, &localBuffer_),
-                  "HcclEngineCtxCreate(Win)");
-        TORCH_CHECK(localBuffer_ != nullptr, "HCCL returned a null Win");
-        TORCH_CHECK(aclrtMemset(localBuffer_, bufferSize, 0, bufferSize) == ACL_SUCCESS, "Win initialization failed");
-        CommMem mem{};
-        mem.type = COMM_MEM_TYPE_DEVICE;
-        mem.addr = localBuffer_;
-        mem.size = bufferSize;
-        CheckHccl(HcclCommMemRegFunc(comm_, winTag.c_str(), &mem, &memHandle_), "HcclCommMemReg(Win)");
+        CreateDeviceContext();
+        AllocateAndRegisterDeviceBuffer(bufferSize);
     }
 
-    uint64_t LocalBufferAddress() const
+    void ValidateRemoteBuffers(const std::vector<uint64_t> &remoteBuffers) const
     {
-        return reinterpret_cast<uint64_t>(localBuffer_);
-    }
-
-    at::Tensor CreateContext(const std::vector<uint64_t> &remoteBuffers)
-    {
-        const c10::OptionalDeviceGuard guard(c10::Device(c10::DeviceType::PrivateUse1, device_));
         TORCH_CHECK(remoteBuffers.size() == worldSize_, "Missing remote Win addresses");
-        TORCH_CHECK(remoteBuffers[hostContext_.epRankId] == LocalBufferAddress(), "Local Win address mismatch");
+        TORCH_CHECK(remoteBuffers[hostContext_.epRankId] == reinterpret_cast<uint64_t>(*localWindow_),
+                    "Local Win address mismatch");
         for (uint32_t rank = 0; rank < worldSize_; ++rank) {
             TORCH_CHECK(remoteBuffers[rank] != 0, "Null Win for rank ", rank);
         }
-        if (context_.defined()) {
-            TORCH_CHECK(std::equal(remoteBuffers.begin(), remoteBuffers.end(), hostContext_.epHcclBuffer_),
-                        "Cannot replace Win addresses on a live shared jetty context");
-            return context_;
-        }
-        TORCH_CHECK(!creationStarted_, "Shared jetty construction failed; recreate the communication group");
-        creationStarted_ = true;
+    }
+
+    void BuildSharedContext(const std::vector<uint64_t> &remoteBuffers, at::Tensor &contextTensor)
+    {
         std::copy(remoteBuffers.begin(), remoteBuffers.end(), hostContext_.epHcclBuffer_);
         auto descriptors = BuildDescriptors();
         if (!descriptors.empty()) {
@@ -139,13 +138,85 @@ public:
                 hostContext_.sharedJettyHandle_[jetty] = handle;
             }
         }
-        auto host = at::from_blob(&hostContext_, {sizeof(SharedJettyContext) / sizeof(int32_t)}, at::kInt);
-        context_ = at::empty_like(host, host.options().device(c10::Device(c10::DeviceType::PrivateUse1, device_)));
-        context_.copy_(host);
-        return context_;
+        CopyDeviceContext();
+        CopyContextToTensor(hostContext_, contextTensor);
+        ASCEND_LOGI("Build shared Jetty context success");
     }
 
 private:
+    void ValidateTags(uint32_t sharedJettyNum) const
+    {
+        const std::string windowTag = tag_ + "_win";
+        const std::string longestQueueTag = tag_ + "_rank_" + std::to_string(worldSize_ - 1) + "_jetty_" +
+            std::to_string(sharedJettyNum - 1);
+        TORCH_CHECK(tag_.size() <= HCCL_CONTEXT_TAG_MAX_LEN, "Shared Jetty context tag is too long, max size is ",
+                    HCCL_CONTEXT_TAG_MAX_LEN, ", got ", tag_.size());
+        TORCH_CHECK(windowTag.size() <= HCCL_CONTEXT_TAG_MAX_LEN, "Shared Jetty Win tag is too long, max size is ",
+                    HCCL_CONTEXT_TAG_MAX_LEN, ", got ", windowTag.size());
+        TORCH_CHECK(longestQueueTag.size() <= HCCL_CONTEXT_TAG_MAX_LEN,
+                    "Shared Jetty queue tag is too long, max size is ", HCCL_CONTEXT_TAG_MAX_LEN, ", got ",
+                    longestQueueTag.size());
+    }
+
+    void AcquireHcclHandle(const std::string &group)
+    {
+        auto hcclRet = HcomGetCommHandleByGroupFunc(group.c_str(), &comm_);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL handle failed, group: ", group, ", ret: ", hcclRet);
+        TORCH_CHECK(comm_ != nullptr, "HCCL communicator is null");
+        ASCEND_LOGI("Get HCCL communication handle success hcclHandle is: %p", comm_);
+    }
+
+    void CreateDeviceContext()
+    {
+        void *context = nullptr;
+        uint64_t contextSize = sizeof(SharedJettyContext);
+        auto hcclRet = HcclEngineCtxCreateFunc(comm_, tag_.c_str(), COMM_ENGINE_AIV, contextSize, &context);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Create shared Jetty device context failed, ret: ", hcclRet);
+        TORCH_CHECK(context != nullptr, "HCCL returned a null shared Jetty device context");
+    }
+
+    void CopyDeviceContext()
+    {
+        uint64_t contextSize = sizeof(SharedJettyContext);
+        auto hcclRet = HcclEngineCtxCopyFunc(comm_, COMM_ENGINE_AIV, tag_.c_str(), &hostContext_, contextSize, 0);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Copy shared Jetty context from host to device failed, ret: ", hcclRet);
+    }
+
+    void AllocateAndRegisterDeviceBuffer(uint64_t bufferSize)
+    {
+        if (*localWindow_ == nullptr) {
+            aclError aclRet = aclrtMalloc(localWindow_, bufferSize, ACL_MEM_MALLOC_HUGE_FIRST);
+            TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtMalloc(", bufferSize, ") failed, ret=", aclRet);
+            aclRet = aclrtMemset(*localWindow_, bufferSize, 0, bufferSize);
+            if (aclRet != ACL_SUCCESS) {
+                aclError freeRet = aclrtFree(*localWindow_);
+                if (freeRet == ACL_SUCCESS) {
+                    *localWindow_ = nullptr;
+                }
+                TORCH_CHECK(false, "aclrtMemset(shared Jetty buffer) failed, ret=", aclRet,
+                            "; aclrtFree rollback ret=", freeRet);
+            }
+        }
+
+        if (*windowMemHandle_ == nullptr) {
+            CommMem mem{};
+            mem.type = COMM_MEM_TYPE_DEVICE;
+            mem.addr = *localWindow_;
+            mem.size = bufferSize;
+            const std::string windowTag = tag_ + "_win";
+            auto hcclRet = HcclCommMemRegFunc(comm_, windowTag.c_str(), &mem, windowMemHandle_);
+            if (hcclRet != HCCL_SUCCESS) {
+                *windowMemHandle_ = nullptr;
+                aclError freeRet = aclrtFree(*localWindow_);
+                if (freeRet == ACL_SUCCESS) {
+                    *localWindow_ = nullptr;
+                }
+                TORCH_CHECK(false, "HcclCommMemReg(tag='", windowTag, "', size=", bufferSize,
+                            ") failed, ret=", hcclRet, "; aclrtFree rollback ret=", freeRet);
+            }
+        }
+    }
+
     CommLink *FindProtocolLink(uint32_t layer, uint32_t peer, CommProtocol protocol) const
     {
         CommLink *links = nullptr;
@@ -418,8 +489,7 @@ private:
                 localEndpoint = link->srcEndpointDesc;
                 hasLocalEndpoint = true;
             } else {
-                TORCH_CHECK(std::memcmp(localEndpoint.commAddr.raws, link->srcEndpointDesc.commAddr.raws,
-                                        sizeof(localEndpoint.commAddr.raws)) == 0,
+                TORCH_CHECK(SameEndpoint(localEndpoint, link->srcEndpointDesc),
                             "Shared jetty peers do not use one local endpoint; this environment does not support ",
                             "one Jetty connecting every peer");
             }
@@ -428,22 +498,136 @@ private:
             desc.channelProtocol = linkInfo.protocol;
             desc.localEndpoint = link->srcEndpointDesc;
             desc.remoteEndpoint = link->dstEndpointDesc;
-            desc.memHandles = &memHandle_;
+            desc.memHandles = windowMemHandle_;
             desc.memHandleNum = 1;
         }
         return descriptors;
     }
 
     std::string tag_;
-    uint32_t worldSize_;
-    int32_t device_ = 0;
+    uint32_t worldSize_ = 0;
     HcclComm comm_ = nullptr;
-    void *localBuffer_ = nullptr;
-    HcclMemHandle memHandle_ = nullptr;
+    void **localWindow_ = nullptr;
+    HcclMemHandle *windowMemHandle_ = nullptr;
     SharedJettyCommLevel commLevel_ = SharedJettyCommLevel::AUTO;
     std::unordered_map<uint32_t, RankLinkInfo> rankLinkMap_;
     SharedJettyContext hostContext_{};
+};
+
+class SharedJettyContextManager {
+public:
+    SharedJettyContextManager(const std::string &group, int64_t worldSize, int64_t sharedJettyNum,
+                              int64_t sharedJettyCommLevel, int64_t bufferSize, const std::string &tag)
+        : group_(group),
+          tag_(tag),
+          worldSize_(worldSize),
+          sharedJettyNum_(sharedJettyNum),
+          bufferSize_(bufferSize)
+    {
+        TORCH_CHECK(worldSize > 0 && worldSize <= MAX_RANKS, "world_size must be in [1, 1024]");
+        TORCH_CHECK(sharedJettyNum > 0 && sharedJettyNum <= MAX_SHARED_JETTYS,
+                    "shared_jetty_num must be in [1, 56]");
+        // Matches STATE_SIZE in moe_distribute_v2_constant.h; kernel data starts after this state area.
+        TORCH_CHECK(bufferSize > WIN_STATE_BYTES, "shared jetty Win must exceed the 1 MiB state area");
+        TORCH_CHECK(!tag.empty(), "shared jetty context tag must not be empty");
+        TORCH_CHECK(sharedJettyCommLevel >= static_cast<int64_t>(SharedJettyCommLevel::AUTO) &&
+                        sharedJettyCommLevel <= static_cast<int64_t>(SharedJettyCommLevel::UB_RTP),
+                    "shared_jetty_comm_level must be 0, 1 or 2");
+        commLevel_ = static_cast<SharedJettyCommLevel>(sharedJettyCommLevel);
+    }
+
+    ~SharedJettyContextManager()
+    {
+        try {
+            Destroy();
+        } catch (const std::exception &error) {
+            ASCEND_LOGE("SharedJettyContextManager destroy failed: %s", error.what());
+        }
+    }
+    SharedJettyContextManager(const SharedJettyContextManager &) = delete;
+    SharedJettyContextManager &operator=(const SharedJettyContextManager &) = delete;
+
+    void Prepare()
+    {
+        EnsurePrepared();
+    }
+
+    uint64_t LocalBufferAddress() const
+    {
+        TORCH_CHECK(prepared_, "Shared Jetty resources are not prepared");
+        return reinterpret_cast<uint64_t>(localWindow_);
+    }
+
+    at::Tensor CreateContext(const std::vector<uint64_t> &remoteBuffers)
+    {
+        EnsurePrepared();
+        if (context_.defined()) {
+            TORCH_CHECK(remoteBuffers == remoteBuffers_,
+                        "Cannot replace Win addresses on a live shared jetty context");
+            return context_;
+        }
+        TORCH_CHECK(!creationStarted_, "Shared jetty construction failed; recreate the communication group");
+        builder_.ValidateRemoteBuffers(remoteBuffers);
+
+        at::Tensor context = at::empty({ContextTensorSize()}, at::TensorOptions()
+                                                                  .dtype(at::kInt)
+                                                                  .device(c10::DeviceType::PrivateUse1)
+                                                                  .memory_format(c10::MemoryFormat::Contiguous));
+        creationStarted_ = true;
+        builder_.BuildSharedContext(remoteBuffers, context);
+        remoteBuffers_ = remoteBuffers;
+        context_ = context;
+        return context_;
+    }
+
+private:
+    static int64_t ContextTensorSize()
+    {
+        return (sizeof(SharedJettyContext) + sizeof(int32_t) - 1) / sizeof(int32_t);
+    }
+
+    void EnsurePrepared()
+    {
+        if (prepared_) {
+            return;
+        }
+        TORCH_CHECK(!preparationStarted_, "Shared Jetty preparation failed; recreate the communication group");
+        preparationStarted_ = true;
+        builder_.PrepareLocalResources(group_, static_cast<uint32_t>(worldSize_),
+                                       static_cast<uint32_t>(sharedJettyNum_), commLevel_,
+                                       static_cast<uint64_t>(bufferSize_), tag_, &localWindow_, &windowMemHandle_);
+        prepared_ = true;
+    }
+
+    void Destroy()
+    {
+        if (windowMemHandle_ != nullptr || localWindow_ != nullptr) {
+            aclError aclRet = aclrtSynchronizeDevice();
+            TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtSynchronizeDevice failed, ret=", aclRet);
+        }
+        if (windowMemHandle_ != nullptr) {
+            windowMemHandle_ = nullptr;
+        }
+        if (localWindow_ != nullptr) {
+            aclError aclRet = aclrtFree(localWindow_);
+            TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtFree(shared Jetty buffer) failed, ret=", aclRet);
+            localWindow_ = nullptr;
+        }
+    }
+
+    std::string group_;
+    std::string tag_;
+    int64_t worldSize_;
+    int64_t sharedJettyNum_;
+    int64_t bufferSize_;
+    SharedJettyCommLevel commLevel_ = SharedJettyCommLevel::AUTO;
+    void *localWindow_ = nullptr;
+    HcclMemHandle windowMemHandle_ = nullptr;
+    SharedJettyContextBuilder builder_;
     at::Tensor context_;
+    std::vector<uint64_t> remoteBuffers_;
+    bool preparationStarted_ = false;
+    bool prepared_ = false;
     bool creationStarted_ = false;
 };
 
@@ -451,6 +635,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     py::class_<SharedJettyContextManager>(m, "SharedJettyContextManager")
         .def(py::init<const std::string &, int64_t, int64_t, int64_t, int64_t, const std::string &>())
+        .def("prepare", &SharedJettyContextManager::Prepare)
         .def("create_context", &SharedJettyContextManager::CreateContext)
         .def_property_readonly("local_buffer_address", &SharedJettyContextManager::LocalBufferAddress);
 }
