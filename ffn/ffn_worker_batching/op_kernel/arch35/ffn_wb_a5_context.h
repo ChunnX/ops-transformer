@@ -77,7 +77,7 @@ struct ScheduleContextInfo {
     uint32_t Y = 0;               // A*BS*K
     uint64_t curMicroBatchID = 0; // RECV:当前 expert id 已就绪的 micro batch
     uint32_t outNum = 0;          // NORM:FfnArea 中有效的 session 数
-    uint32_t tokenDtype = 0;      // 0:FP16 1:BF16 2:int8 + dynamic scale 连续排布
+    uint32_t tokenDtype = 0;      // 0:FP16 1:BF16 2:int8 3:E5M2 4:E4M3 5:E2M1；scale 紧跟 token
     uint32_t expertNum = 0;
     int64_t coreNum = 0;
     int64_t ubSize = 0;

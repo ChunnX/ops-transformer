@@ -236,8 +236,11 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::ParseOptionalAttrs(const gert::Ru
 {
     const int64_t *tokenDtype = attrs->GetAttrPointer<int64_t>(TOKEN_DTYPE_ATTR);
     if (tokenDtype != nullptr) {
-        OP_CHECK_IF((*tokenDtype < 0 || *tokenDtype > NUM_TWO),
-                    OP_LOGE(context_->GetNodeName(), "token_dtype:%ld must be one of [0, 1, 2]", *tokenDtype),
+        OP_CHECK_IF((*tokenDtype < 0 || *tokenDtype > 5),
+                    OP_LOGE(context_->GetNodeName(), "token_dtype:%ld must be one of [0, 1, 2, 3, 4, 5]", *tokenDtype),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(*tokenDtype == 5 && H_ % NUM_TWO != 0,
+                    OP_LOGE(context_->GetNodeName(), "float4_e2m1 requires even H, got %ld", H_),
                     return ge::GRAPH_FAILED);
         tokenDtype_ = *tokenDtype;
     }

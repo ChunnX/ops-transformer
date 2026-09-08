@@ -92,7 +92,17 @@ static graphStatus InferShape4FfnWorkerBatching(gert::InferShapeContext *context
     *microBatchIds = {Y};
     *tokenIds = {Y};
     *expertOffsets = {Y};
-    *dynamicScale = {Y};
+    const int64_t *tokenDtypePtr = attrs->GetAttrPointer<int64_t>(TOKEN_DTYPE_ATTR);
+    const int64_t tokenDtype = tokenDtypePtr == nullptr ? TOKEN_KIND_ZERO : *tokenDtypePtr;
+    if (tokenDtype == 5 && H % 2 != 0) {
+        OP_LOGE(context->GetNodeName(), "float4_e2m1 requires even H, got %ld", H);
+        return ge::GRAPH_FAILED;
+    }
+    if (tokenDtype >= 3 && tokenDtype <= 5) {
+        *dynamicScale = {Y, (H + 31) / 32};
+    } else {
+        *dynamicScale = {Y};
+    }
     *actualTokenNum = {1};
 
     return GRAPH_SUCCESS;
@@ -112,6 +122,12 @@ static graphStatus InferDataType4FfnWorkerBatching(gert::InferDataTypeContext *c
         context->SetOutputDataType(Y_OUT, ge::DT_FLOAT16);
     } else if (tokenDtype == TOKEN_KIND_ONE) {
         context->SetOutputDataType(Y_OUT, ge::DT_BF16);
+    } else if (tokenDtype == 3) {
+        context->SetOutputDataType(Y_OUT, ge::DT_FLOAT8_E5M2);
+    } else if (tokenDtype == 4) {
+        context->SetOutputDataType(Y_OUT, ge::DT_FLOAT8_E4M3FN);
+    } else if (tokenDtype == 5) {
+        context->SetOutputDataType(Y_OUT, ge::DT_FLOAT4_E2M1);
     } else {
         context->SetOutputDataType(Y_OUT, ge::DT_INT8);
     }
@@ -121,7 +137,8 @@ static graphStatus InferDataType4FfnWorkerBatching(gert::InferDataTypeContext *c
     context->SetOutputDataType(MICRO_BATCH_IDS_OUT, ge::DT_INT32);
     context->SetOutputDataType(TOKEN_IDS_OUT, ge::DT_INT32);
     context->SetOutputDataType(EXPERT_OFFSETS_OUT, ge::DT_INT32);
-    context->SetOutputDataType(DYNAMIC_SCALE_OUT, ge::DT_FLOAT);
+    context->SetOutputDataType(DYNAMIC_SCALE_OUT,
+                               tokenDtype >= 3 && tokenDtype <= 5 ? ge::DT_FLOAT8_E8M0 : ge::DT_FLOAT);
     context->SetOutputDataType(ACTUAL_TOKEN_NUM_OUT, ge::DT_INT64);
     return ge::GRAPH_SUCCESS;
 }
