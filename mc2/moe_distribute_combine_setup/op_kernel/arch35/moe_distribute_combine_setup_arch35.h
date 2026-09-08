@@ -226,26 +226,19 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::BuffInit(
     uint64_t totalUbSize = moeDistributeCombineSetupInfo_->totalUbSize;
     uint32_t assistInfoQueueSize = Ceil(moeSendNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     uint64_t reservedUbSize = HCOMM_INIT_SIZE + assistInfoQueueSize;
-    if (reservedUbSize > totalUbSize) {
-        printf("[ERROR] hcomm_.Init UB space is insufficient, reserved=%llu total=%u\n", reservedUbSize, totalUbSize);
-    }
     const uint64_t leftover = totalUbSize - reservedUbSize;
     const uint64_t halfAlign = (leftover / 2U) / UB_ALIGN * UB_ALIGN;
     tpipe_->Reset();
     if (moeDistributeCombineSetupInfo_->bs > BS_PERF_THRESHOLD && halfAlign > 0U) {
         remain_ub_space = halfAlign;
         localCopyQueueNum_ = 2U;
-        if (!tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize)) ||
-            !tpipe_->InitBuffer(expertTokenTmpQueue_, 2, static_cast<uint32_t>(remain_ub_space))) {
-            printf("[ERROR] hcomm_.Init communication buffers failed\n");
-        }
+        tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize));
+        tpipe_->InitBuffer(expertTokenTmpQueue_, 2, static_cast<uint32_t>(remain_ub_space));
     } else {
         remain_ub_space = leftover;
         localCopyQueueNum_ = 1U;
-        if (!tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize)) ||
-            !tpipe_->InitBuffer(expertTokenTmpQueue_, 1, static_cast<uint32_t>(remain_ub_space))) {
-            printf("[ERROR] hcomm_.Init communication buffers failed\n");
-        }
+        tpipe_->InitBuffer(assistInfoQueue_, 1, static_cast<uint32_t>(reservedUbSize));
+        tpipe_->InitBuffer(expertTokenTmpQueue_, 1, static_cast<uint32_t>(remain_ub_space));
     }
 }
 
@@ -281,7 +274,6 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
     hcommTensor_ = assistStorage[assistInfoSize];
     int32_t ret = hcomm_.Init(hcommTensor_, static_cast<uint32_t>(HCOMM_INIT_SIZE));
     if (ret != HCOMM_SUCCESS) {
-        printf("[ERROR] hcomm_.Init Init hcomm failed, ret=%d\n", ret);
         assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
         return;
     }
@@ -292,7 +284,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         if (unlikely(dstRankId == epRankId_)) {
             continue;
         }
-        // 每 dst 只取一次 channelId（内含单行 DCCI），Commit 后立刻 Drain，避免二次读 handle
+        // 每 dst 只取一次 channelId（内含单行 DCCI）
         auto channelId = GetCommHandle(dstRankId);
         GM_ADDR dstStatusAddr = GetUrmaStateAddrByRankId(dstRankId) + epStateOffsetOnWin_;
         for (uint32_t expertIdx = 0U; expertIdx < curRankExpertNum; ++expertIdx) {
@@ -325,7 +317,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         if (unlikely(dstRankId == epRankId_)) {
             continue;
         }
-        // 每 dst 只取一次 channelId（内含单行 DCCI），Commit 后立刻 Drain，避免二次读 handle
+        // 每 dst 只取一次 channelId（内含单行 DCCI）
         auto channelId = GetCommHandle(dstRankId);
         GM_ADDR dstStatusAddr = GetUrmaStateAddrByRankId(dstRankId) + epStateOffsetOnWin_;
         for (uint32_t expertIdx = 0U; expertIdx < curRankExpertNum; ++expertIdx) {
