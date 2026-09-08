@@ -3,14 +3,25 @@
 
 import struct
 from numbers import Integral
-from typing import Optional, Sequence, Tuple, Union
+from typing import Mapping, Optional, Sequence, Tuple, Union
 
 import torch
 
 from .runtime import get_udma_config
+from validation.tiling_space import TILING_FIELDS, validate_tiling
 
 
 RouteInput = Union[torch.Tensor, Sequence[int]]
+
+
+def _tiling_arguments(operator, tiling, x, weight, ep_size, output_all_to_allv=False):
+    if tiling is None:
+        return {}
+    profile = validate_tiling(
+        operator, tiling, output_all_to_allv=output_all_to_allv,
+        m=x.shape[0], n=weight.shape[2], k=x.shape[1], world_size=ep_size,
+    )
+    return {"tiling": [profile[name] for name in TILING_FIELDS[operator]]}
 
 _MOE_ROUTE_MAX_RANKS = 8
 _MOE_ROUTE_MAX_LOCAL_EXPERTS = 64
@@ -196,6 +207,7 @@ def all_to_allv_grouped_mat_mul(
     out: Optional[torch.Tensor] = None,
     output_all_to_allv: bool = False,
     all_to_allv_out: Optional[torch.Tensor] = None,
+    tiling: Optional[Mapping[str, int]] = None,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """Dispatch tokens with UDMA and apply the destination rank's grouped matmuls.
 
@@ -219,12 +231,19 @@ def all_to_allv_grouped_mat_mul(
     by grouped matmul, ordered by local expert first and source rank second, with
     shape ``[sum(global_tokens_per_local_expert), k]``. The default path selects
     the original kernel variant and performs no export copy.
+
+    ``tiling`` overrides the built-in shape profile with a measured search
+    result. Every rank must pass the same configuration for this collective.
+    Load it once with :func:`load_tiling_config` outside the hot loop.
     """
     config = get_udma_config()
     if ep_size != config.world_size:
         raise ValueError("TP=1 requires ep_size == UDMA world_size")
     if expert_num <= 0 or expert_num % ep_size:
         raise ValueError("expert_num must be positive and divisible by ep_size")
+    tiling_arguments = _tiling_arguments(
+        "all_to_allv_grouped_mat_mul", tiling, x, weight, ep_size, output_all_to_allv,
+    )
     local_tokens_per_expert, local_host_values = _normalize_route(
         local_tokens_per_expert,
         "local_tokens_per_expert",
@@ -259,10 +278,10 @@ def all_to_allv_grouped_mat_mul(
     if not output_all_to_allv:
         if out is None:
             return torch.ops.ops_transformer_catccos_udma.all_to_allv_grouped_mat_mul_udma(
-                *arguments
+                *arguments, **tiling_arguments
             )
         return torch.ops.ops_transformer_catccos_udma.all_to_allv_grouped_mat_mul_udma_out(
-            *arguments, out
+            *arguments, out, **tiling_arguments
         )
 
     if all_to_allv_out is None:
@@ -283,10 +302,10 @@ def all_to_allv_grouped_mat_mul(
     )
     if out is None:
         return torch.ops.ops_transformer_catccos_udma.all_to_allv_grouped_mat_mul_udma_export(
-            *arguments, route_metadata, all_to_allv_out
+            *arguments, route_metadata, all_to_allv_out, **tiling_arguments
         )
     return torch.ops.ops_transformer_catccos_udma.all_to_allv_grouped_mat_mul_udma_out_export(
-        *arguments, route_metadata, out, all_to_allv_out
+        *arguments, route_metadata, out, all_to_allv_out, **tiling_arguments
     )
 
 
@@ -299,6 +318,7 @@ def grouped_mat_mul_all_to_allv(
     ep_size: int,
     expert_num: int,
     out: Optional[torch.Tensor] = None,
+    tiling: Optional[Mapping[str, int]] = None,
 ) -> torch.Tensor:
     """Apply local grouped matmuls and return tokens with UDMA AllToAllV.
 
@@ -313,12 +333,18 @@ def grouped_mat_mul_all_to_allv(
     UDMA GET writes directly to that local allocation, so a reusable ``out`` can
     be created with :func:`torch.empty` and no symmetric-output staging or D2D
     copy is required.
+
+    ``tiling`` accepts a search result loaded with :func:`load_tiling_config`.
+    All ranks in the collective must use the same configuration.
     """
     config = get_udma_config()
     if ep_size != config.world_size:
         raise ValueError("TP=1 requires ep_size == UDMA world_size")
     if expert_num <= 0 or expert_num % ep_size:
         raise ValueError("expert_num must be positive and divisible by ep_size")
+    tiling_arguments = _tiling_arguments(
+        "grouped_mat_mul_all_to_allv", tiling, x, weight, ep_size,
+    )
     local_tokens_per_expert, local_host_values = _normalize_route(
         local_tokens_per_expert,
         "local_tokens_per_expert",
@@ -356,8 +382,8 @@ def grouped_mat_mul_all_to_allv(
     )
     if out is None:
         return torch.ops.ops_transformer_catccos_udma.grouped_mat_mul_all_to_allv_udma(
-            *arguments
+            *arguments, **tiling_arguments
         )
     return torch.ops.ops_transformer_catccos_udma.grouped_mat_mul_all_to_allv_udma_out(
-        *arguments, out
+        *arguments, out, **tiling_arguments
     )

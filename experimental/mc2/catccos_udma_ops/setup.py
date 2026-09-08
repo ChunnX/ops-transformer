@@ -154,7 +154,7 @@ setup(
     packages=find_packages(),
     package_data={
         PACKAGE_NAME: ["*.so", ".libs/*.so", ".libs/*.so.*"],
-        "validation": ["cases/*.yaml"],
+        "validation": ["cases/*.yaml", "cases/*.json"],
     },
     include_package_data=True,
     zip_safe=False,
@@ -166,6 +166,7 @@ setup(
             "ops-transformer-udma-accuracy=validation.run_accuracy:main",
             "ops-transformer-udma-performance=validation.run_performance:main",
             "ops-transformer-udma-import-baseline=validation.import_msprof_baseline:main",
+            "ops-transformer-udma-search-tiling=validation.search_tiling:main",
         ]
     },
     distclass=BinaryDistribution,

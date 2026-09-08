@@ -147,7 +147,7 @@ def _padding_stats(tensor, valid_rows):
     }
 
 
-def _run_case(case, rank, world_size, device, output_root):
+def _run_case(case, rank, world_size, device, output_root, tiling=None):
     shape = case["shape"]
     m, n, k = shape["m"], shape["n"], shape["k"]
     expert_num = case["expert_num"]
@@ -175,7 +175,7 @@ def _run_case(case, rank, world_size, device, output_root):
         )
         ordinary = udma.grouped_mat_mul_all_to_allv(
             x, weight, local_table, global_table,
-            ep_size=world_size, expert_num=expert_num,
+            ep_size=world_size, expert_num=expert_num, tiling=tiling,
         )
         torch_npu.npu.synchronize()
         candidates.append(("ordinary", ordinary.clone(), _padding_stats(ordinary, valid_rows)))
@@ -184,9 +184,10 @@ def _run_case(case, rank, world_size, device, output_root):
 
         reusable_out = torch.empty((m, n), dtype=torch.bfloat16, device=device)
         for repeat in range(case["accuracy"]["repeats"]):
+            reusable_out.fill_(float("nan"))
             out_actual = udma.grouped_mat_mul_all_to_allv(
                 x, weight, local_table, global_table,
-                ep_size=world_size, expert_num=expert_num, out=reusable_out,
+                ep_size=world_size, expert_num=expert_num, tiling=tiling, out=reusable_out,
             )
             torch_npu.npu.synchronize()
             candidates.append((
@@ -207,7 +208,7 @@ def _run_case(case, rank, world_size, device, output_root):
         if export_enabled:
             ordinary, exported_all_to_allv = udma.all_to_allv_grouped_mat_mul(
                 x, weight, local_table, global_table,
-                ep_size=world_size, expert_num=expert_num,
+                ep_size=world_size, expert_num=expert_num, tiling=tiling,
                 received_rows=received_rows,
                 output_all_to_allv=True,
             )
@@ -227,7 +228,7 @@ def _run_case(case, rank, world_size, device, output_root):
         else:
             ordinary = udma.all_to_allv_grouped_mat_mul(
                 x, weight, local_table, global_table,
-                ep_size=world_size, expert_num=expert_num,
+                ep_size=world_size, expert_num=expert_num, tiling=tiling,
                 received_rows=received_rows,
             )
             torch_npu.npu.synchronize()
@@ -243,9 +244,10 @@ def _run_case(case, rank, world_size, device, output_root):
         for repeat in range(case["accuracy"]["repeats"]):
             reusable_out.zero_()
             if export_enabled:
+                reusable_all_to_allv_out.fill_(float("nan"))
                 out_actual, _ = udma.all_to_allv_grouped_mat_mul(
                     x, weight, local_table, global_table,
-                    ep_size=world_size, expert_num=expert_num, out=reusable_out,
+                    ep_size=world_size, expert_num=expert_num, tiling=tiling, out=reusable_out,
                     received_rows=received_rows,
                     output_all_to_allv=True,
                     all_to_allv_out=reusable_all_to_allv_out,
@@ -253,10 +255,24 @@ def _run_case(case, rank, world_size, device, output_root):
             else:
                 out_actual = udma.all_to_allv_grouped_mat_mul(
                     x, weight, local_table, global_table,
-                    ep_size=world_size, expert_num=expert_num, out=reusable_out,
+                    ep_size=world_size, expert_num=expert_num, tiling=tiling, out=reusable_out,
                     received_rows=received_rows,
                 )
             torch_npu.npu.synchronize()
+            if export_enabled:
+                export_name = "all_to_allv_export_repeat_{}".format(repeat)
+                export_report = analyze_accuracy(
+                    reusable_all_to_allv_out, expected_all_to_allv,
+                    global_table=global_table_2d.cpu().tolist(),
+                    topk=case["accuracy"]["topk"],
+                    heatmap_bins=case["accuracy"]["heatmap_bins"],
+                )
+                export_report.update(
+                    case_id=case["id"], rank=rank, path=export_name,
+                    valid_rows=expected_all_to_allv.shape[0],
+                    padding={"elements": 0, "nonzero_count": 0, "max_abs": 0.0},
+                )
+                additional_reports.append((export_name, export_report))
             candidates.append((
                 "out_repeat_{}".format(repeat), out_actual.clone(),
                 _padding_stats(out_actual, valid_rows),

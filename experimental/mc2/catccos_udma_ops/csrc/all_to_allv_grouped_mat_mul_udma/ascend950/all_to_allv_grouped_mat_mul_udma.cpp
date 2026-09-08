@@ -17,6 +17,7 @@
 
 #include "all_to_allv_grouped_mat_mul_udma_device.h"
 #include "udma_runtime.h"
+#include "../../tiling_validation.h"
 
 #include "catccos/dgemm/device/kernel_adapter.hpp"
 #include "catccos/dgemm/moe_route_metadata.hpp"
@@ -26,6 +27,7 @@
 #include <limits>
 #include <string>
 #include <tuple>
+#include <vector>
 
 namespace OpsTransformer::CatccosUdma {
 namespace {
@@ -117,6 +119,49 @@ const TilingProfile &SelectTiling(
             : kM131072K2048N512NonExportTiling;
     }
     return kDefaultTiling;
+}
+
+TilingProfile ResolveTiling(const TilingProfile &defaultTiling, at::IntArrayRef values,
+                           bool exportOutput)
+{
+    if (values.empty()) {
+        return defaultTiling;
+    }
+    TilingValidation::AllToAllV parsed{};
+    const char *error = TilingValidation::ParseAllToAllV(
+        values.data(), values.size(), exportOutput, parsed);
+    TORCH_CHECK(error == nullptr, "invalid AllToAllV tiling: ", error);
+    TilingProfile result = defaultTiling;
+    result.kernelVariant = parsed.m0 == 128 ? KernelVariant::kM0_128 :
+        (parsed.n0 == 128 ? KernelVariant::kM0_256 : KernelVariant::kM0_256N0_256);
+    result.m0 = parsed.m0;
+    result.n0 = parsed.n0;
+    result.k0 = parsed.k0;
+    result.commBlockM = parsed.commBlockM;
+    result.stageRows = parsed.stageRows;
+    result.commInterval = parsed.stageRows / parsed.m0;
+    result.workspaceStages = parsed.workspaceStages;
+    result.localCopyTileRows = parsed.localCopyTileRows;
+    result.mSplit = parsed.mSplit;
+    result.exportCoreCount = parsed.exportCoreCount;
+    result.selfCopyCores = parsed.selfCopyCores;
+    return result;
+}
+
+std::vector<int64_t> TilingHardware(const at::Tensor &deviceAnchor)
+{
+    TORCH_CHECK(deviceAnchor.defined() &&
+                    deviceAnchor.device().type() == c10::DeviceType::PrivateUse1,
+                "device_anchor must be an NPU tensor");
+    const c10::OptionalDeviceGuard guard(deviceAnchor.device());
+    auto platform = platform_ascendc::PlatformAscendCManager::GetInstance();
+    const uint32_t coreCount = platform->GetCoreNumAic();
+    uint64_t ubBytes = 0;
+    platform->GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubBytes);
+    TORCH_CHECK(coreCount > 0 && ubBytes > TilingValidation::kWqeScratchBytes &&
+                    ubBytes <= static_cast<uint64_t>(std::numeric_limits<int64_t>::max()),
+                "failed to query Ascend AI-core count and UB capacity");
+    return {static_cast<int64_t>(coreCount), static_cast<int64_t>(ubBytes)};
 }
 
 uint32_t RoundUp(uint32_t value, uint32_t alignment)
@@ -247,7 +292,8 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
     int64_t receivedRows64,
     const c10::optional<at::Tensor> &outputOptional,
     const c10::optional<at::Tensor> &allToAllVOutputOptional,
-    const c10::optional<at::Tensor> &routeMetadataOptional)
+    const c10::optional<at::Tensor> &routeMetadataOptional,
+    at::IntArrayRef tilingValues)
 {
     const c10::OptionalDeviceGuard guard(x.device());
     CheckNpuTensor(x, "x", at::kBFloat16);
@@ -292,9 +338,23 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
     const uint32_t k = static_cast<uint32_t>(k64);
     const uint32_t n = static_cast<uint32_t>(n64);
     const uint32_t receivedRows = static_cast<uint32_t>(receivedRows64);
-    const TilingProfile &tiling = SelectTiling(
+    const TilingProfile tiling = ResolveTiling(SelectTiling(
         m, k, n, static_cast<uint32_t>(worldSize), static_cast<uint32_t>(expertNum),
-        allToAllVOutputOptional.has_value());
+        allToAllVOutputOptional.has_value()), tilingValues, allToAllVOutputOptional.has_value());
+    if (!tilingValues.empty()) {
+        const auto hardware = TilingHardware(x);
+        const TilingValidation::AllToAllV requested{
+            tiling.m0, tiling.n0, tiling.k0, tiling.commBlockM, tiling.stageRows,
+            tiling.workspaceStages, tiling.localCopyTileRows, tiling.mSplit,
+            tiling.exportCoreCount, tiling.selfCopyCores};
+        const char *error = TilingValidation::ValidateAllToAllV(
+            requested, m, k, static_cast<uint32_t>(worldSize),
+            static_cast<uint32_t>(hardware[0]), static_cast<uint64_t>(hardware[1]));
+        TORCH_CHECK(error == nullptr, "invalid AllToAllV tiling: ", error);
+        error = TilingValidation::ValidateAllToAllVGrid(
+            requested, n, static_cast<uint32_t>(worldSize), static_cast<uint32_t>(hardware[0]));
+        TORCH_CHECK(error == nullptr, "invalid AllToAllV tiling: ", error);
+    }
     TORCH_CHECK((tiling.workspaceStages == 2 || tiling.workspaceStages == 3) &&
                     tiling.stageRows > 0 && tiling.stageRows % tiling.m0 == 0,
                 "invalid CatCCOS physical staging profile");
@@ -448,12 +508,13 @@ at::Tensor AllToAllVGroupedMatMulUdmaNpu(
     const at::Tensor &globalTokensPerLocalExpert,
     int64_t epSize,
     int64_t expertNum,
-    int64_t receivedRows)
+    int64_t receivedRows,
+    at::IntArrayRef tiling)
 {
     return AllToAllVGroupedMatMulUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
         epSize, expertNum, receivedRows, c10::nullopt, c10::nullopt,
-        c10::nullopt);
+        c10::nullopt, tiling);
 }
 
 at::Tensor AllToAllVGroupedMatMulUdmaOutNpu(
@@ -464,12 +525,13 @@ at::Tensor AllToAllVGroupedMatMulUdmaOutNpu(
     int64_t epSize,
     int64_t expertNum,
     int64_t receivedRows,
-    const at::Tensor &output)
+    const at::Tensor &output,
+    at::IntArrayRef tiling)
 {
     return AllToAllVGroupedMatMulUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
         epSize, expertNum, receivedRows, output, c10::nullopt,
-        c10::nullopt);
+        c10::nullopt, tiling);
 }
 
 std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaExportNpu(
@@ -481,12 +543,13 @@ std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaExportNpu(
     int64_t expertNum,
     int64_t receivedRows,
     const c10::optional<at::Tensor> &routeMetadata,
-    const at::Tensor &allToAllVOutput)
+    const at::Tensor &allToAllVOutput,
+    at::IntArrayRef tiling)
 {
     at::Tensor output = AllToAllVGroupedMatMulUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
         epSize, expertNum, receivedRows, c10::nullopt, allToAllVOutput,
-        routeMetadata);
+        routeMetadata, tiling);
     return {output, allToAllVOutput};
 }
 
@@ -500,12 +563,13 @@ std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaOutExportNpu(
     int64_t receivedRows,
     const c10::optional<at::Tensor> &routeMetadata,
     const at::Tensor &output,
-    const at::Tensor &allToAllVOutput)
+    const at::Tensor &allToAllVOutput,
+    at::IntArrayRef tiling)
 {
     AllToAllVGroupedMatMulUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
         epSize, expertNum, receivedRows, output, allToAllVOutput,
-        routeMetadata);
+        routeMetadata, tiling);
     return {output, allToAllVOutput};
 }
 
@@ -516,8 +580,10 @@ at::Tensor AllToAllVGroupedMatMulUdmaMeta(
     const at::Tensor &,
     int64_t epSize,
     int64_t expertNum,
-    int64_t receivedRows)
+    int64_t receivedRows,
+    at::IntArrayRef tiling)
 {
+    (void)ResolveTiling(kDefaultTiling, tiling, false);
     TORCH_CHECK(x.dim() == 2 && weight.dim() == 3, "expected x[m,k] and weight[e,k,n]");
     TORCH_CHECK(epSize > 0 && expertNum > 0 && expertNum % epSize == 0, "invalid expert topology");
     TORCH_CHECK(receivedRows >= 0 && receivedRows <= epSize * x.size(0), "invalid received_rows");
@@ -532,8 +598,10 @@ at::Tensor AllToAllVGroupedMatMulUdmaOutMeta(
     int64_t epSize,
     int64_t expertNum,
     int64_t receivedRows,
-    const at::Tensor &output)
+    const at::Tensor &output,
+    at::IntArrayRef tiling)
 {
+    (void)ResolveTiling(kDefaultTiling, tiling, false);
     TORCH_CHECK(x.dim() == 2 && weight.dim() == 3, "expected x[m,k] and weight[e,k,n]");
     TORCH_CHECK(epSize > 0 && expertNum > 0 && expertNum % epSize == 0, "invalid expert topology");
     TORCH_CHECK(receivedRows >= 0 && receivedRows <= epSize * x.size(0), "invalid received_rows");
@@ -551,8 +619,10 @@ std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaExportMeta(
     int64_t expertNum,
     int64_t receivedRows,
     const c10::optional<at::Tensor> &,
-    const at::Tensor &allToAllVOutput)
+    const at::Tensor &allToAllVOutput,
+    at::IntArrayRef tiling)
 {
+    (void)ResolveTiling(kDefaultTiling, tiling, true);
     TORCH_CHECK(receivedRows >= 0 && receivedRows <= epSize * x.size(0), "invalid received_rows");
     TORCH_CHECK(allToAllVOutput.dim() == 2 && allToAllVOutput.size(0) == receivedRows &&
                 allToAllVOutput.size(1) == x.size(1),
@@ -570,8 +640,10 @@ std::tuple<at::Tensor, at::Tensor> AllToAllVGroupedMatMulUdmaOutExportMeta(
     int64_t receivedRows,
     const c10::optional<at::Tensor> &,
     const at::Tensor &output,
-    const at::Tensor &allToAllVOutput)
+    const at::Tensor &allToAllVOutput,
+    at::IntArrayRef tiling)
 {
+    (void)ResolveTiling(kDefaultTiling, tiling, true);
     TORCH_CHECK(x.dim() == 2 && weight.dim() == 3, "expected x[m,k] and weight[e,k,n]");
     TORCH_CHECK(epSize > 0 && expertNum > 0 && expertNum % epSize == 0, "invalid expert topology");
     TORCH_CHECK(receivedRows >= 0 && receivedRows <= epSize * x.size(0), "invalid received_rows");
@@ -589,23 +661,27 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
 {
     m.def("_configure_udma(Tensor device_anchor, int rank, int world_size, str init_method, int heap_size) -> ()");
     m.def("_finalize_udma(Tensor device_anchor) -> ()");
+    m.def("_tiling_hardware(Tensor device_anchor) -> int[]");
     m.def("all_to_allv_grouped_mat_mul_udma(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
-          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, int received_rows) -> Tensor");
+          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, int received_rows, "
+          "int[] tiling=[]) -> Tensor");
     m.def("all_to_allv_grouped_mat_mul_udma_out(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
           "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, int received_rows, "
-          "Tensor(a!) out) -> Tensor(a!)");
+          "Tensor(a!) out, int[] tiling=[]) -> Tensor(a!)");
     m.def("all_to_allv_grouped_mat_mul_udma_export(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
           "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, int received_rows, "
-          "Tensor? route_metadata, Tensor(a!) all_to_allv_out) -> (Tensor, Tensor(a!))");
+          "Tensor? route_metadata, Tensor(a!) all_to_allv_out, int[] tiling=[]) -> (Tensor, Tensor(a!))");
     m.def("all_to_allv_grouped_mat_mul_udma_out_export(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
           "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, int received_rows, "
-          "Tensor? route_metadata, Tensor(a!) out, Tensor(b!) all_to_allv_out) -> (Tensor(a!), Tensor(b!))");
+          "Tensor? route_metadata, Tensor(a!) out, Tensor(b!) all_to_allv_out, "
+          "int[] tiling=[]) -> (Tensor(a!), Tensor(b!))");
 }
 
 TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
 {
     m.impl("_configure_udma", ConfigureUdma);
     m.impl("_finalize_udma", FinalizeUdma);
+    m.impl("_tiling_hardware", TilingHardware);
     m.impl("all_to_allv_grouped_mat_mul_udma", AllToAllVGroupedMatMulUdmaNpu);
     m.impl("all_to_allv_grouped_mat_mul_udma_out", AllToAllVGroupedMatMulUdmaOutNpu);
     m.impl("all_to_allv_grouped_mat_mul_udma_export", AllToAllVGroupedMatMulUdmaExportNpu);

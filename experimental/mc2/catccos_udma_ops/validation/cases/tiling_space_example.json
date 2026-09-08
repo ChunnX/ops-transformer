@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "operators": {
+    "all_to_allv_grouped_mat_mul": {
+      "mmad": [[128, 256, 256], [256, 128, 256], [256, 256, 256]],
+      "comm_block_m": [32, 64, 128],
+      "stage_rows": [1024, 1536, 2048, 3072],
+      "workspace_stages": [2, 3],
+      "local_copy_tile_rows": [16, 32, 64],
+      "m_split": [1, 2, 4],
+      "export_core_count": [0, 8, 16, 24, 32],
+      "self_copy_cores": [1, 2, 4, 8]
+    },
+    "grouped_mat_mul_all_to_allv": {
+      "mmad": [[128, 256, 256], [256, 128, 256]],
+      "comm_interval": [2, 4, 6, 8, 10, 12, 14, 16],
+      "local_copy_tile_rows": [1, 2, 4, 8, 16, 24, 31, 32, 64]
+    }
+  }
+}

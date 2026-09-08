@@ -12,6 +12,7 @@
 
 #include "grouped_mat_mul_all_to_allv_udma_device.h"
 #include "../../all_to_allv_grouped_mat_mul_udma/ascend950/udma_runtime.h"
+#include "../../tiling_validation.h"
 
 #include "catccos/dgemm/device/kernel_adapter.hpp"
 #include "platform/platform_ascendc.h"
@@ -67,6 +68,24 @@ const TilingProfile &SelectTiling(
         return kK512N2048Tiling;
     }
     return kDefaultTiling;
+}
+
+TilingProfile ResolveTiling(const TilingProfile &defaultTiling, at::IntArrayRef values)
+{
+    if (values.empty()) {
+        return defaultTiling;
+    }
+    TilingValidation::GroupedMatMul parsed{};
+    const char *error = TilingValidation::ParseGroupedMatMul(values.data(), values.size(), parsed);
+    TORCH_CHECK(error == nullptr, "invalid GroupedMatMul tiling: ", error);
+    TilingProfile result = defaultTiling;
+    result.kernelVariant = parsed.m0 == 128 ? KernelVariant::kM0_128 : KernelVariant::kM0_256;
+    result.m0 = parsed.m0;
+    result.n0 = parsed.n0;
+    result.k0 = parsed.k0;
+    result.commInterval = parsed.commInterval;
+    result.commTileM = 2 * parsed.localCopyTileRows;
+    return result;
 }
 
 constexpr uint32_t kUbStages = 2;
@@ -165,7 +184,8 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
     const at::Tensor &globalTokensPerLocalExpert,
     int64_t epSize,
     int64_t expertNum,
-    const c10::optional<at::Tensor> &outputOptional)
+    const c10::optional<at::Tensor> &outputOptional,
+    at::IntArrayRef tilingValues)
 {
     const c10::OptionalDeviceGuard guard(x.device());
     CheckNpuTensor(x, "x", at::kBFloat16);
@@ -216,9 +236,21 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
     const uint32_t m = static_cast<uint32_t>(inputRows64);
     const uint32_t k = static_cast<uint32_t>(k64);
     const uint32_t n = static_cast<uint32_t>(n64);
-    const TilingProfile &tiling = SelectTiling(
+    const TilingProfile tiling = ResolveTiling(SelectTiling(
         k, n, static_cast<uint32_t>(worldSize),
-        static_cast<uint32_t>(expertNum));
+        static_cast<uint32_t>(expertNum)), tilingValues);
+    if (!tilingValues.empty()) {
+        uint64_t ubBytes = 0;
+        platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreMemSize(
+            platform_ascendc::CoreMemType::UB, ubBytes);
+        const TilingValidation::GroupedMatMul requested{
+            tiling.m0, tiling.n0, tiling.k0, tiling.commInterval, tiling.commTileM / 2};
+        const char *error = TilingValidation::ValidateGroupedMatMul(
+            requested, n, static_cast<uint32_t>(worldSize), blockDim, ubBytes);
+        TORCH_CHECK(error == nullptr, "invalid GroupedMatMul tiling: ", error);
+        TORCH_CHECK(inputRows64 <= std::numeric_limits<uint32_t>::max() - tiling.m0 + 1,
+                    "input rows overflow the target-order tiling scheduler");
+    }
     TORCH_CHECK((static_cast<uint64_t>(blockDim) * tiling.commInterval) % worldSize == 0,
                 "AI-core count * comm_interval must be divisible by world_size");
 
@@ -337,29 +369,30 @@ at::Tensor GroupedMatMulAllToAllVUdmaNpu(
     const at::Tensor &x, const at::Tensor &weight,
     const at::Tensor &localTokensPerExpert,
     const at::Tensor &globalTokensPerLocalExpert,
-    int64_t epSize, int64_t expertNum)
+    int64_t epSize, int64_t expertNum, at::IntArrayRef tiling)
 {
     return GroupedMatMulAllToAllVUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
-        epSize, expertNum, c10::nullopt);
+        epSize, expertNum, c10::nullopt, tiling);
 }
 
 at::Tensor GroupedMatMulAllToAllVUdmaOutNpu(
     const at::Tensor &x, const at::Tensor &weight,
     const at::Tensor &localTokensPerExpert,
     const at::Tensor &globalTokensPerLocalExpert,
-    int64_t epSize, int64_t expertNum, const at::Tensor &output)
+    int64_t epSize, int64_t expertNum, const at::Tensor &output, at::IntArrayRef tiling)
 {
     return GroupedMatMulAllToAllVUdmaImpl(
         x, weight, localTokensPerExpert, globalTokensPerLocalExpert,
-        epSize, expertNum, output);
+        epSize, expertNum, output, tiling);
 }
 
 at::Tensor GroupedMatMulAllToAllVUdmaMeta(
     const at::Tensor &x, const at::Tensor &weight,
     const at::Tensor &, const at::Tensor &,
-    int64_t epSize, int64_t expertNum)
+    int64_t epSize, int64_t expertNum, at::IntArrayRef tiling)
 {
+    (void)ResolveTiling(kDefaultTiling, tiling);
     TORCH_CHECK(x.dim() == 2 && weight.dim() == 3,
                 "expected x[m,k] and weight[e,k,n]");
     TORCH_CHECK(epSize > 0 && expertNum > 0 && expertNum % epSize == 0,
@@ -373,8 +406,9 @@ at::Tensor GroupedMatMulAllToAllVUdmaMeta(
 at::Tensor GroupedMatMulAllToAllVUdmaOutMeta(
     const at::Tensor &x, const at::Tensor &weight,
     const at::Tensor &, const at::Tensor &,
-    int64_t epSize, int64_t expertNum, const at::Tensor &output)
+    int64_t epSize, int64_t expertNum, const at::Tensor &output, at::IntArrayRef tiling)
 {
+    (void)ResolveTiling(kDefaultTiling, tiling);
     TORCH_CHECK(x.dim() == 2 && weight.dim() == 3,
                 "expected x[m,k] and weight[e,k,n]");
     TORCH_CHECK(epSize > 0 && expertNum > 0 && expertNum % epSize == 0,
@@ -390,10 +424,10 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
 {
     m.def("_empty_symmetric(Tensor device_anchor, int[] size, ScalarType dtype) -> Tensor");
     m.def("grouped_mat_mul_all_to_allv_udma(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
-          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num) -> Tensor");
+          "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, int[] tiling=[]) -> Tensor");
     m.def("grouped_mat_mul_all_to_allv_udma_out(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
           "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, "
-          "Tensor(a!) out) -> Tensor(a!)");
+          "Tensor(a!) out, int[] tiling=[]) -> Tensor(a!)");
 }
 
 TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)

@@ -356,7 +356,152 @@ under unbalanced routing: `x.shape[0] == sum(global_tokens)` and
 `out=` avoids an additional device-to-host route-count reduction in the launch
 path.
 
-## Fixed business-shape tiling
+## Search tiling on the deployment machines
+
+Both operators accept an optional `tiling=` mapping. Without it, the built-in
+profiles below remain the default. Search follows the finite compiled-instance
+enumeration and parameter filtering in
+[CatCCOS tests/dynamic_tiling](https://gitcode.com/cann/catccos/tree/master/tests/dynamic_tiling)
+(reference revision `4aef53a9d28e1eb62b2749945945440b9aabf76c`). It uses the
+UDMA operators and validation cases in this Wheel, including the export path.
+Rebuild and reinstall this Wheel on every participating host first; an older
+extension does not expose the tiling override or hardware query.
+
+Install the search dependency in the target Python environment:
+
+```bash
+python3 -m pip install PyYAML
+```
+
+From this subproject directory, first inspect a plan without loading Torch or
+using an NPU. `--aic-cores` is an optional hardware estimate for a dry run; in a
+real run it must match the queried AI-core count.
+
+```bash
+bash scripts/search_tiling.sh --dry-run --aic-cores 32 \
+  --max-candidates 8 --output-dir /tmp/udma_tiling_plan
+```
+
+Run the search on the customer's machines with their actual rank placement and
+network configuration. The default manifests cover both operators with small
+two-rank cases. The following selects one of the bundled eight-rank model cases:
+
+```bash
+bash scripts/search_tiling.sh \
+  --cases validation/cases/tiling_business.yaml \
+  --case-id a2av_gmm_m131072_k2048_n1024_export \
+  --strategy random --max-candidates 64 --seed 2026 \
+  --topology-label customer-cluster-a \
+  --timeout 1200 --output-dir /tmp/udma_tiling_customer
+```
+
+The installed equivalent is `ops-transformer-udma-search-tiling`, or
+`python3 -m validation.search_tiling`. `--cases` is repeatable. Copy and edit a
+manifest for the customer's M/K/N, expert count, world size, export mode, input
+distribution, warmup and repeat counts. The current validation generator
+supports **balanced BF16 routes, TP=1 and at most eight ranks**. Its measured
+winner is specific to that workload; it does not characterize an unbalanced
+production route. Search runs in **performance-only mode**: it does not build
+CPU Golden results, compare outputs or generate accuracy reports for any
+candidate, the built-in fallback or the selected winner. Manifest `accuracy`
+settings are used by the separate accuracy workflow and do not run during search.
+
+`--space validation/cases/tiling_space_example.json` customizes the Cartesian
+space. Unspecified dimensions keep their defaults. `mmad` selects an existing
+`[M0, N0, K0]` instance; changing runtime parameters does not rebuild a kernel.
+`--strategy random` samples without replacement using `--seed`;
+`--strategy exhaustive` visits the grid in order. `--max-candidates` is a
+per-case cap **including the valid built-in fallback**; raise it to cover a
+larger grid. The tool reports the best **successfully measured** configuration,
+not a guarantee beyond the tested space. Hardware-equivalent candidates are
+deduplicated before applying the budget.
+
+| Operator | Search dimensions |
+|---|---|
+| AllToAllV → GroupedMatMul | `mmad`: 128×256×256, 256×128×256 or 256×256×256; `comm_block_m`, `stage_rows`, `local_copy_tile_rows`, `self_copy_cores` |
+| AllToAllV → GroupedMatMul with export | All the above, plus `workspace_stages` 2/3, `m_split` 1/2/4 and `export_core_count` (0 means all AI cores) |
+| GroupedMatMul → AllToAllV | `mmad`: 128×256×256 or 256×128×256; `comm_interval`, `local_copy_tile_rows` |
+
+Non-export AllToAllV uses two workspace stages, `m_split=1` and
+`export_core_count=0`. The current inverse operator always uses two workspace
+stages. Historical NPU/data split fields, the inverse operator's comm block M,
+and AllToAllV's legacy interval are not search dimensions because the selected
+kernel paths do not consume them independently.
+
+The launcher probes actual AI-core count and UB capacity before generating
+candidates. Both Python and native code check compiled instances, staging,
+worker pools, UB and the 400 MiB symmetric workspace. All ranks must run the
+same operator build and have the same AI-core count; the inverse operator's
+communication geometry depends on that count. Each candidate starts in a
+fresh `torchrun` process group, checks the complete plan across ranks, then
+warms up and times reusable-output calls. Successful measurement requires
+complete, finite timing samples from every rank. Failed or timed-out candidates
+are recorded and the search continues in fresh processes.
+
+Timing uses NPU events around batches of preallocated-output calls. For each
+batch it takes the **maximum per-call time across ranks**, then reports the
+median across batches. Host rendezvous and input creation are outside the
+timed interval. This is a stream/batch measurement and is
+different from the kernel-only `msprof` metric in `run_performance.sh`; do not
+compare their absolute values as the same metric.
+The built-in fallback is measured through the same explicit-tiling API as
+other candidates when reporting `speedup_vs_default`.
+
+The output directory contains `search_manifest.json`, per-candidate logs,
+rank timing samples, `summary.csv`, `summary.json`, and
+`best_tilings.json`. Hardware/software versions, device/rank placement, build
+hashes and `--topology-label` are recorded. Set that label to identify cabling,
+network settings or topology changes that device APIs cannot discover.
+Single-node searches can resume with the same arguments plus `--resume`;
+`--retry-failed` retries previously failed candidates. Resume re-probes the
+machines and rejects a changed workload, environment, search mode or search plan.
+Results record `search_mode="performance_only"` and `accuracy_checked=false`.
+The `passed`/`valid` fields in `best_tilings.json` mean measurement succeeded;
+they do not claim numerical correctness. The existing accuracy scripts remain
+available independently of search when output validation is needed.
+
+For two hosts with four NPUs each, run this on **both hosts**, setting
+`NODE_RANK=0` on the first and `NODE_RANK=1` on the second:
+
+```bash
+bash scripts/search_tiling.sh \
+  --cases validation/cases/tiling_business.yaml \
+  --case-id gmm_a2av_m131072_k1024_n2048 \
+  --nnodes 2 --node-rank "$NODE_RANK" --nproc-per-node 4 \
+  --master-addr 10.0.0.10 --run-id customer-search-001 \
+  --max-candidates 64 --timeout 1200 \
+  --topology-label customer-cluster-a --output-dir /tmp/udma_tiling_customer
+```
+
+Replace the address with the first host's reachable IPv4 address. Keep all
+other search arguments identical. Torchrun and SHMEM use separate ports that
+advance per trial. Results are aggregated through Gloo and written under each
+host's `node_0`/`node_1` directory; a shared filesystem is not required.
+Multi-node resume is currently unsupported.
+If changing the base ports, `--master-port` and `--udma-master-port` must have
+opposite parity, ensuring their two advancing port sequences never overlap.
+
+Load the chosen configuration once and explicitly pass it on every rank:
+
+```python
+tiling = udma.load_tiling_config(
+    "/tmp/udma_tiling_customer/best_tilings.json",
+    "a2av_gmm_m131072_k2048_n1024_export",
+)
+output, dispatched = udma.all_to_allv_grouped_mat_mul(
+    x, weight, local_route, global_route,
+    ep_size=world_size, expert_num=expert_num, received_rows=received_rows,
+    out=output, output_all_to_allv=True, all_to_allv_out=dispatched,
+    tiling=tiling,
+)
+```
+
+`grouped_mat_mul_all_to_allv(..., tiling=tiling)` uses the same loading pattern
+with its own case ID. Use the same configuration on every rank and re-search
+when the deployment workload or topology changes. There is no automatic
+shape-only cache that could silently select a profile measured elsewhere.
+
+## Built-in business-shape profiles
 
 `all_to_allv_grouped_mat_mul` selects the following tuned profiles only when
 `world_size=8`, `expert_num=256`, and `(M, K, N)` matches exactly. Export and
@@ -374,8 +519,8 @@ For AllToAllV-GroupedMatMul, `commNpuSplit`, `commDataSplit`, and the explicit
 `commTileM` value are compatibility fields: the migrated kernel consumes
 `commBlockM` and `localCopyTileRows` instead. MMAD id 2 maps to the compiled
 `256x256x256` instance. The search result's execution mode is not part of this
-kernel ABI. The new search was performed through the training/export entry, so
-the non-export profiles remain unchanged.
+kernel ABI. These built-in export records were tuned through the training/export
+entry; the non-export records come from the earlier non-export tuning.
 
 `grouped_mat_mul_all_to_allv` independently selects these profiles for the
 same `world_size=8`, `expert_num=256` topology. Because imbalanced routing can
@@ -391,5 +536,6 @@ selection predicate. Other K/N shapes and topologies retain the default profile.
 
 The grouped-matmul host forwards both split values through `commCoreSplit` for
 ABI parity with the tuning record. The target-order scheduler currently does
-not use them to partition transfers; M0, `commInterval`, `commTileM`, and
-`commBlockM` are effective in the selected kernel path.
+not use them or `commBlockM` to partition transfers. The active parameters are
+the compiled MMAD shape, `commInterval`, and the local copy rows derived from
+`commTileM / 2` (capped by UB capacity for the built-in fallback).
