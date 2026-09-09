@@ -30,12 +30,14 @@
 #endif
 
 #include "flash_attn_tiling_data.h"
+#include "../../../common/op_kernel/arch_info.h"
 
 using namespace AscendC;
 using namespace optiling;
 using namespace AscendC::Impl::Detail;
 
 namespace FlashAttnKernel {
+using ArchInfo::CV_RATIO;
 template <typename FA_T, typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
 class FlashAttentionNoQuantGqaKernelDn {
 public:
@@ -99,6 +101,7 @@ public:
     uint32_t mloop_ = 0;
     bool headS2Split_ = false;
     bool tailS2Split_ = false;
+    uint32_t s2FirstToken_ = 0;
 
     // ==============================fuction=======================================================
     __aicore__ inline FlashAttentionNoQuantGqaKernelDn()
@@ -346,6 +349,7 @@ public:
 
     __aicore__ inline void CalcCurS2StartEndNoSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
+        s2FirstToken_ = 0;
         curS2Start_ = 0U;
         curS2End_ = (static_cast<uint32_t>(actSeqLensKv_) + s2BaseSize - 1) / s2BaseSize;
 
@@ -362,6 +366,7 @@ public:
 
     __aicore__ inline void CalcCurS2StartEndWithSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
+        s2FirstToken_ = 0;
         // 1. Calc preTokenLeftUp, nextTokenLeftUp
         int64_t preTokenLeftUp = 0;
         int64_t nextTokenLeftUp = 0;
@@ -400,11 +405,13 @@ public:
         if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv_) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
             curS2Start_ = 0U;
             curS2End_ = 0U;
+            s2FirstToken_ = s2FirstToken;
             return;
         }
         // get valid range
         s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKv_ - 1));
         s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv_ - 1));
+        s2FirstToken_ = s2FirstToken;
 
         s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / s2BaseSize;
         s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / s2BaseSize + 1U;
@@ -480,15 +487,18 @@ public:
     {
         info.loop = loop;
         info.mloop = mloop_;
+        info.isFirstFdBlock = (s2Cur == (s2FirstToken_ / s2BaseSize));
         info.bIdx = bN2Cur / constInfo_.n2Size;
         info.n2Idx = bN2Cur % constInfo_.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
         if constexpr (LAYOUT_T == FA_LAYOUT::BSND || LAYOUT_T == FA_LAYOUT::TND) {
             // S1G layout
             info.s1Idx = info.gS1Idx / constInfo_.gSize;
+            info.gIdx = info.gS1Idx % constInfo_.gSize;
         } else {
             // GS1 layout
             info.s1Idx = info.gS1Idx % actSeqLensQ_;
+            info.gIdx = info.gS1Idx / actSeqLensQ_;
         }
         info.s2Idx = s2Cur * s2BaseSize;
         info.actS1Size = actSeqLensQ_;
@@ -517,7 +527,7 @@ public:
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End_);
         info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-        info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
+        info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 / CV_RATIO);
         info.vecMbaseIdx = 0;
         if (constInfo_.subBlockIdx == 1) {
             info.vecMbaseIdx = info.actVecMSize;
@@ -575,7 +585,7 @@ public:
             return;
         }
         GetFDSectionInfo(sectionIdx);
-        vecFdBlock_.InitBuffers();
+        vecFdBlock_.template InitBuffers<VecFaBlockType::GetFdBaseOffset()>();
         AscendC::ICachePreLoad(2);
         AscendC::SyncAll();
         vecFdBlock_.FlashDecode(fdParams_);

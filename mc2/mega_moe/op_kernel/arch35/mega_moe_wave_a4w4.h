@@ -22,15 +22,18 @@
 namespace MegaMoeImpl {
 
 #define TemplateMegaMoeA4W4WaveTypeClass \
-    typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode, \
-        int32_t CombineQuantMode, bool TopkWeightsPrefetch
+    typename XType, typename OutputType, typename TopkWeightsType, typename MoeWeightType, int32_t MoeQuantMode, \
+        typename SharedWeightType, int32_t SharedQuantMode, int32_t MoeWeight1Format, int32_t MoeWeight2Format, \
+        int32_t SharedWeight1Format, int32_t SharedWeight2Format, int32_t CombineQuantMode, bool TopkWeightsPrefetch
 #define TemplateMegaMoeA4W4WaveTypeFunc \
-    XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch
+    XType, OutputType, TopkWeightsType, MoeWeightType, MoeQuantMode, SharedWeightType, SharedQuantMode, \
+        MoeWeight1Format, MoeWeight2Format, SharedWeight1Format, SharedWeight2Format, CombineQuantMode, \
+        TopkWeightsPrefetch
 
 template <TemplateMegaMoeA4W4WaveTypeClass>
-class MegaMoeA4W4Wave : public MegaMoe<TemplateMegaMoeA4W4WaveTypeFunc> {
+class MegaMoeA4W4Wave : public MegaMoe<TemplateMegaMoeA4W4WaveTypeFunc, false> {
 private:
-    using MegaMoeBase = MegaMoe<TemplateMegaMoeA4W4WaveTypeFunc>;
+    using MegaMoeBase = MegaMoe<TemplateMegaMoeA4W4WaveTypeFunc, false>;
     friend MegaMoeBase;
 
 public:
@@ -38,12 +41,8 @@ public:
     __aicore__ inline void Process();
 
 private:
-    using QuantOutType = typename MegaMoeBase::QuantOutType;
-    using ActivationType = typename MegaMoeBase::ActivationType;
-    using QuantScaleOutType = typename MegaMoeBase::QuantScaleOutType;
-    using ActivationQuantOutType = typename MegaMoeBase::ActivationQuantOutType;
+    using MoeQuantConfig = typename MegaMoeBase::MoeQuantConfig;
 
-    static constexpr uint32_t A_ELEMS_PER_BYTE = MegaMoeBase::A_ELEMS_PER_BYTE;
     static constexpr uint32_t GMM1_TILE_M = MegaMoeBase::GMM1_TILE_M;
     static constexpr uint32_t EPILOGUE_TILE_M = MegaMoeBase::EPILOGUE_TILE_M;
 
@@ -55,9 +54,11 @@ private:
     using MegaMoeBase::countWorkspace_;
     using MegaMoeBase::epilogueOp_;
     using MegaMoeBase::gmmExecutionConfig_;
+    using MegaMoeBase::gmmTileSequence_;
     using MegaMoeBase::mGroupsPerWave_;
     using MegaMoeBase::moeWeightTensorListAddrs_;
     using MegaMoeBase::params_;
+    using MegaMoeBase::startBlockIdx_;
     using MegaMoeBase::tokenDispatchConfig_;
     using MegaMoeBase::tokenDispatchScratch_;
     using MegaMoeBase::waveCombineScratch_;
@@ -84,16 +85,20 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1
     if (HandleWaveProblemWithoutWork(problemTileCount, gmmExecutionConfig_.blockJob, runtimeState.startBlockIdx)) {
         return;
     }
-    UpdateMoeExpertGmm1GlobalBuffer<ActivationType, Weight1Type, ActivationQuantOutType, QuantScaleOutType,
-                                    A_ELEMS_PER_BYTE, false, TopkWeightsPrefetch>(
+    UpdateMoeExpertGmm1GlobalBuffer<
+        typename MoeQuantConfig::QuantStorageType, MoeWeightType, typename MoeQuantConfig::ActivationQuantOutType,
+        typename MoeQuantConfig::QuantScaleType, MoeQuantConfig::A_ELEMS_PER_BYTE, false, TopkWeightsPrefetch>(
         gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, epilogueOp_,
         gmmAddrInfo, state, tokenStartIndexInExpert, gmm1TilesPerMGroup);
     ProblemShape sliceProblemShape = state.problemShape;
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
-    RunGmm1GenericByWeightFormat<QuantOutType, ActivationQuantOutType, QuantScaleOutType, GMM1_TILE_M, EPILOGUE_TILE_M,
-                                 TopkWeightsPrefetch, false, true>(
-        gmmExecutionConfig_, params_, epilogueOp_, gmmAddrInfo, sliceProblemShape,
-        static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert, runtimeState, state.expertIdx);
+    RunGmm1Generic<typename MoeQuantConfig::QuantOutType, typename MoeQuantConfig::ActivationQuantOutType,
+                   typename MoeQuantConfig::QuantOutType, bfloat16_t, typename MoeQuantConfig::QuantScaleType,
+                   typename MoeQuantConfig::QuantScaleType, MoeWeight1Format != FORMAT_ND, GMM1_TILE_M, EPILOGUE_TILE_M,
+                   TopkWeightsPrefetch, false, false, true>(
+        epilogueOp_, params_, sliceProblemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
+        gmmExecutionConfig_.blockJob, static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert,
+        state.expertIdx, runtimeState.pingpongIdx);
 }
 
 /*
@@ -119,19 +124,17 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
         combineBufferConfig = InitWaveCombineBuffers<CombineQuantMode>(commonConfig_, waveCombineScratch_);
     }
     uint32_t combineRowSequence = 0U;
-    int32_t pairwiseTileSequence = 0;
 
     ExpertLoopState gmm1State = CreateExpertLoopState(commonConfig_);
     ExpertLoopState gmm2State = CreateExpertLoopState(commonConfig_);
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
 
-    // 同一 Block 内绑定的 1C2V 各自持有分核游标，必须按相同调用顺序推进并始终保持一致。
-    // 某个角色即使不参与当前 GMM 计算，也必须使用该 problem 的 tile 数更新游标。
-    uint32_t startBlockIdx = 0U;
+    // 同一 Block 内绑定的 1C2V 各自持有分核游标，按相同调用顺序推进并始终保持一致；
+    // MoE GMM1 与 GMM2 沿用该游标持续滚动。
     int32_t vecSetSyncCom = 0;
     uint16_t gmm1PingPongIdx = 0U;
-    GmmRuntimeState gmm1RuntimeState{startBlockIdx, vecSetSyncCom, gmm1PingPongIdx};
+    GmmRuntimeState gmm1RuntimeState{startBlockIdx_, vecSetSyncCom, gmm1PingPongIdx};
 
     const uint32_t gmm1TilesPerMGroup =
         Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF, static_cast<uint32_t>(L1_TILE_N));
@@ -152,7 +155,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                 firstDispatchRange.end = nextDispatchRange.end;
             }
             // count-table 准备刚完成，UB prefix 仍有效；首 WAVE 无需从 GM 备份重复恢复。
-            DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+            DispatchTokenRange<typename MoeQuantConfig::QuantStorageType, typename MoeQuantConfig::QuantScaleType,
+                               GMM1_TILE_M, TopkWeightsPrefetch>(
                 tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
                 g_winRankAddr_, tokenDispatchScratch_, firstDispatchRange);
             // 首 WAVE 的全部数据和 ready flag 发布完成后，再提交 Dispatch 进度。
@@ -190,7 +194,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                         ReloadDispatchCumsumRange(commonConfig_, tokenDispatchScratch_,
                                                   nextExpertDispatchRange.begin.expertIdx,
                                                   nextExpertDispatchRange.begin.expertIdx);
-                        DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+                        DispatchTokenRange<typename MoeQuantConfig::QuantStorageType,
+                                           typename MoeQuantConfig::QuantScaleType, GMM1_TILE_M, TopkWeightsPrefetch>(
                             tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_,
                             params_, g_winRankAddr_, tokenDispatchScratch_, nextExpertDispatchRange);
                     }
@@ -237,8 +242,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                                       expertIdx == waveLastActiveExpertIdx &&
                                       sliceTokenEndIndexInExpert >= expertTokenCount;
                 // W4 的 GMM2/Combine 调度集中在基类，派生模板只负责提供当前专家 slice。
-                RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx, sliceTokenStartIndexInExpert,
-                                        sliceTokenCount, combineBufferConfig, combineRowSequence, pairwiseTileSequence,
+                RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx_, sliceTokenStartIndexInExpert,
+                                        sliceTokenCount, combineBufferConfig, combineRowSequence, gmmTileSequence_,
                                         isFinalCombine);
             }
         }
