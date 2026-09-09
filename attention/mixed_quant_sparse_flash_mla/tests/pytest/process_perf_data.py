@@ -18,6 +18,35 @@ import numpy as np
 import argparse
 import shutil
 
+
+def collect_operator_timings(summary, expected_count):
+    """Match completed metadata/attention pairs, ignoring orphan metadata calls."""
+    type_column = next((name for name in ("OP Type", "Op Type") if name in summary), None)
+    if type_column is None:
+        raise ValueError("op_summary缺少OP Type列，无法匹配算子性能")
+    summary = summary[summary[type_column].isin(
+        ["MixedQuantSparseFlashMlaMetadata", "MixedQuantSparseFlashMla"]
+    )]
+    if "Task Start Time(us)" in summary:
+        summary = summary.sort_values("Task Start Time(us)", kind="stable")
+    pairs = []
+    metadata_duration = None
+    for _, row in summary.iterrows():
+        duration = float(row["Task Duration(us)"])
+        if not np.isfinite(duration) or duration <= 0:
+            raise ValueError(f"无效的算子耗时: {duration}")
+        if row[type_column] == "MixedQuantSparseFlashMlaMetadata":
+            metadata_duration = duration
+        else:
+            if metadata_duration is None:
+                raise ValueError("attention算子缺少对应的metadata性能数据")
+            pairs.append((metadata_duration, duration))
+            metadata_duration = None
+    if len(pairs) != expected_count:
+        raise ValueError(f"性能数据与成功用例数不匹配: {len(pairs)}组算子, {expected_count}个用例")
+    return pairs
+
+
 def process_profiler_data(args):
     """
     读取性能数据写入test result表格
@@ -31,7 +60,7 @@ def process_profiler_data(args):
         print("PROF文件夹不存在")
         return
 
-    prof_folder = prof_folders[0]
+    prof_folder = max(prof_folders, key=os.path.getmtime)
     print(f"PROF path: {prof_folder}")
 
     profiler_output_path = os.path.join(prof_folder, "mindstudio_profiler_output")
@@ -49,7 +78,7 @@ def process_profiler_data(args):
         print(f"在 {profiler_output_path} 中未找到 op_summary 开头的表格文件，直接返回")
         return
 
-    op_summary_file = op_summary_files[0]
+    op_summary_file = max(op_summary_files, key=os.path.getmtime)
     print(f"从 {op_summary_file}解析性能数据")
 
     # 读取表格A (op_summary)
@@ -69,6 +98,16 @@ def process_profiler_data(args):
         print(f"读取表格B失败: {e}")
         return
 
+    successful = df_b["result"].ne("NPU ERROR")
+    if not successful.any():
+        print("没有成功执行的NPU用例，无法生成性能数据。请检查res.log中的NPU ERROR。")
+        return
+    try:
+        timings = collect_operator_timings(df_a, int(successful.sum()))
+    except (ValueError, KeyError) as error:
+        print(f"无法匹配算子性能: {error}")
+        return
+
     # 读取表格C (duration 基线数据表格)
     if args.is_compare:
         try:
@@ -83,21 +122,16 @@ def process_profiler_data(args):
     perf_threshold = 10
     row_idx = 0
     try:
-        task_duration_col = "Task Duration(us)"
-        df_b["metadata_duration"] = ""
-        df_b["qsmla_duration"] = ""
-        df_b["metadata_perf_diff"] = ""
-        df_b["qsmla_perf_diff"] = ""
-        df_b["perf_result"] = ""
+        df_b["metadata_duration"] = np.nan
+        df_b["qsmla_duration"] = np.nan
+        df_b["metadata_perf_diff"] = np.nan
+        df_b["qsmla_perf_diff"] = np.nan
+        df_b["perf_result"] = np.where(successful, "Not compared", "NPU ERROR")
 
         for i in range(df_b.shape[0]):
-            a_row1_idx = 2 * row_idx          # 当前case metadata性能数据
-            a_row2_idx = 2 * row_idx + 1      # 当前case qsmla性能数据
-
             if df_b.iloc[i]["result"] != "NPU ERROR":    # NPU ERROR时跳过
-                cur_metadata_perf = df_a.iloc[a_row1_idx][task_duration_col]
+                cur_metadata_perf, cur_qsmla_perf = timings[row_idx]
                 df_b.at[i, "metadata_duration"] = cur_metadata_perf
-                cur_qsmla_perf = df_a.iloc[a_row2_idx][task_duration_col]
                 df_b.at[i, "qsmla_duration"] = cur_qsmla_perf
 
                 if args.is_compare:
@@ -110,7 +144,7 @@ def process_profiler_data(args):
 
                     if abs(qsmla_perf_diff) > perf_threshold:
                         df_b.at[i, "perf_result"] = "Failed"
-                        perf_fail_list.append(df_b.iloc[i]["case_name"])
+                        perf_fail_list.append(df_b.iloc[i]["Testcase_Name"])
 
                     else:
                         df_b.at[i, "perf_result"] = "Pass"
@@ -165,7 +199,8 @@ def main():
     parser.add_argument('--delete_perf_file', type=bool, default=False, help='是否删除PROF文件夹内容', required=False)
     args = parser.parse_args()
 
-    process_profiler_data(args)
+    if process_profiler_data(args) is None:
+        raise SystemExit(1)
 
 if __name__ == "__main__":
     main()
