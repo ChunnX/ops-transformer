@@ -18,7 +18,6 @@
 #include "arch35/mhc_pre_backward_tiling_key.h"
 
 using namespace AscendC;
-using namespace matmul;
 using namespace MhcPreBackward;
 
 template <int8_t TILING_MODE>
@@ -39,15 +38,7 @@ __global__ __aicore__ void mhc_pre_backward(GM_ADDR x, GM_ADDR phi, GM_ADDR alph
             x,          phi,      alpha, gradHIn,   gradHPost, gradHRes, invRms,  hMix,
             hPre,      hPost,   gamma, gradXPostOptional, gradX, gradPhi, gradAlpha, gradBias,
             gradGamma, user,     &pipe, &tilingData};
-        MT_C0 mm0;
-        MT_C1 mm1;
-        // 与Kernel路由保持一致：全量低阶Cube路径不初始化高阶Matmul对象。
-        constexpr bool useHighMatmul = false;
-        if (useHighMatmul) {
-            mm0.Init(&tilingData.matmulTilingC0, &pipe);
-            mm1.Init(&tilingData.matmulTilingC1, &pipe);
-        }
-        MhcPreBackwardKernel<DTYPE_X, float32_t> op(mm0, mm1);
+        MhcPreBackwardKernel<DTYPE_X, float32_t> op;
         op.Init(initParams);
         op.Process();
     }

@@ -38,9 +38,6 @@ const constexpr int64_t INDEX_T = 0;
 const constexpr int64_t INDEX_N = 1;
 const constexpr int64_t INDEX_D_TND = 1;
 
-const constexpr int32_t C0_BASE_M = 128;
-const constexpr int32_t C0_BASE_N = 128;
-const constexpr int32_t C0_BASE_K = 32;
 const constexpr uint32_t MIN_D_LENGTH = 1;
 const constexpr uint32_t MAX_D_LENGTH = 16384;
 const constexpr uint32_t D_ALIGN = 64;
@@ -53,7 +50,6 @@ const constexpr int64_t IMPL_MODE_FP32 = 0;
 const constexpr int64_t IMPL_MODE_HF32 = 1;
 const constexpr uint32_t IMPL_MODE_ATTR_INDEX = 1;
 
-const constexpr uint32_t C0_SET_VALUE = 2;
 const constexpr uint32_t ALPHA_GRAD_CORE_FACTOR = 24;
 const constexpr uint32_t BUFFER_NUM = 2;
 const constexpr uint32_t EXTRA_BUFFER_SIZE = 2 * 1024 * 1024;
@@ -63,8 +59,6 @@ const constexpr int32_t SCHEDULE_MODE = 1;
 
 const constexpr uint32_t C0_SET_SHAPE_M = 512;
 const constexpr uint32_t C0_SET_SHAPE_N = 128;
-const constexpr uint32_t C1_SET_SHAPE_M_BASE = 128;
-const constexpr uint32_t C1_SET_SHAPE_K = 512;
 
 REGISTER_OPS_TILING_TEMPLATE(MhcPreBackward, MhcPreBackwardTiling, DEFAULT_TILING_PRIORITY);
 
@@ -263,33 +257,6 @@ ge::graphStatus MhcPreBackwardTiling::ParseInputAndAttr()
 }
 
 
-void MhcPreBackwardTiling::SetC0TilingParams()
-{
-    // 每次迭代只产出一个128行M块，与V2的细粒度等待一一对应。
-    const uint32_t c0MStep = C0_SET_VALUE;
-    tilingData_.matmulTilingC0.set_dbL0C(C0_SET_VALUE);
-    tilingData_.matmulTilingC0.set_stepKa(C0_SET_VALUE);
-    tilingData_.matmulTilingC0.set_stepKb(C0_SET_VALUE);
-    tilingData_.matmulTilingC0.set_depthA1(c0MStep);
-    tilingData_.matmulTilingC0.set_depthB1(C0_SET_VALUE);
-    tilingData_.matmulTilingC0.set_stepM(c0MStep);
-    tilingData_.matmulTilingC0.set_stepN(C0_SET_VALUE);
-    tilingData_.matmulTilingC0.set_baseM(C0_BASE_M);
-    tilingData_.matmulTilingC0.set_baseN(C0_BASE_N);
-    tilingData_.matmulTilingC0.set_baseK(C0_BASE_K);
-}
-
-void MhcPreBackwardTiling::SetC1TilingParams()
-{
-    tilingData_.matmulTilingC1.set_dbL0C(C0_SET_VALUE);
-    tilingData_.matmulTilingC1.set_stepKa(C0_SET_VALUE);
-    tilingData_.matmulTilingC1.set_stepKb(C0_SET_VALUE);
-    tilingData_.matmulTilingC1.set_depthA1(C0_SET_VALUE);
-    tilingData_.matmulTilingC1.set_depthB1(C0_SET_VALUE);
-    tilingData_.matmulTilingC1.set_stepM(C0_SET_VALUE);
-    tilingData_.matmulTilingC1.set_stepN(C0_SET_VALUE);
-}
-
 void MhcPreBackwardTiling::SetCommonTilingParams()
 {
     tilingData_.set_coreNum(blockDim_);
@@ -305,8 +272,6 @@ void MhcPreBackwardTiling::SetCommonTilingParams()
 
 void MhcPreBackwardTiling::FillTilingData()
 {
-    SetC0TilingParams();
-    SetC1TilingParams();
     SetCommonTilingParams();
 }
 
@@ -327,70 +292,10 @@ uint64_t MhcPreBackwardTiling::CalculateWorkspaceSize(uint64_t totalLength, uint
     return totalElements * elementSize;
 }
 
-void MhcPreBackwardTiling::SetMatmulC0Tiling(matmul_tiling::MatmulApiTiling &mm)
-{
-    mm.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT, false);
-    mm.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT, false);
-    mm.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-                matmul_tiling::DataType::DT_FLOAT);
-    mm.SetBias(false);
-    mm.SetShape(C0_SET_SHAPE_M, C0_SET_SHAPE_N, N_ * N_ + 2 * N_);
-    mm.SetOrgShape(totalLength_, N_ * D_, N_ * N_ + 2 * N_);
-    mm.SetBufferSpace(-1, -1, -1);
-}
-
-void MhcPreBackwardTiling::SetMatmulC1Tiling(matmul_tiling::MatmulApiTiling &mm)
-{
-    mm.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT, true);
-    mm.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT, false);
-    mm.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
-    mm.SetBias(false);
-    mm.SetShape(N_ * N_ + 2 * N_, C1_SET_SHAPE_M_BASE, C1_SET_SHAPE_K);
-    mm.SetOrgShape(N_ * N_ + 2 * N_, N_ * D_, totalLength_);
-    mm.SetBufferSpace(-1, -1, -1);
-}
-
-ge::graphStatus MhcPreBackwardTiling::GetMatmulTiling(matmul_tiling::MatmulApiTiling &mm, bool isC0)
-{
-    if (isC0) {
-        SetMatmulC0Tiling(mm);
-    } else {
-        SetMatmulC1Tiling(mm);
-    }
-    if (mm.GetTiling(isC0 ? tilingData_.matmulTilingC0 : tilingData_.matmulTilingC1) == -1) {
-        OP_LOGE(context_->GetNodeName(), "ProcessC%d Get Tiling Failed!, m = %lu, n = %lu, k = %lu", isC0 ? 0 : 1,
-                isC0 ? totalLength_ : N_ * N_ + 2 * N_, N_ * D_,
-                isC0 ? N_ * N_ + 2 * N_ : totalLength_);
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus MhcPreBackwardTiling::TilingProcess()
 {
     size_t userWorkspaceSize = CalculateWorkspaceSize(totalLength_, fusionSize_, blockDim_, vecCoreNum_, sizeof(float));
     size_t systemWorkspaceSize = SYSTEM_WORKSPACE_SIZE;
-
-    auto platformInfo = context_->GetPlatformInfo();
-    if (platformInfo == nullptr) {
-        OP_LOGE(context_->GetNodeName(), "get platform info failed");
-        return ge::GRAPH_FAILED;
-    }
-    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-
-    matmul_tiling::MatmulApiTiling mm0_(ascendcPlatform);
-    matmul_tiling::MatmulApiTiling mm1_(ascendcPlatform);
-
-    auto ret = GetMatmulTiling(mm0_, true);
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
-    }
-
-    ret = GetMatmulTiling(mm1_, false);
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
-    }
-
     workspaceSize_ = userWorkspaceSize + systemWorkspaceSize;
     return ge::GRAPH_SUCCESS;
 }

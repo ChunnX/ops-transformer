@@ -25,8 +25,6 @@
 namespace optiling {
 
 BEGIN_TILING_DATA_DEF(MhcPreBackwardTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTilingC0);
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTilingC1);
 TILING_DATA_FIELD_DEF(uint32_t, coreNum);
 TILING_DATA_FIELD_DEF(uint32_t, vecCoreNum);
 TILING_DATA_FIELD_DEF(uint64_t, totalLength);
@@ -75,7 +73,7 @@ protected:
     };
     // 3、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
-    // 4、计算高阶API的TilingData
+    // 4、库API Tiling阶段
     ge::graphStatus DoLibApiTiling() override
     {
         return ge::GRAPH_SUCCESS;
@@ -102,12 +100,7 @@ protected:
     void PrintTilingData();
     ge::graphStatus ParseInputAndAttr();
     void FillTilingData();
-    void SetC0TilingParams();
-    void SetC1TilingParams();
     void SetCommonTilingParams();
-    void SetMatmulC0Tiling(matmul_tiling::MatmulApiTiling &mm);
-    void SetMatmulC1Tiling(matmul_tiling::MatmulApiTiling &mm);
-    ge::graphStatus GetMatmulTiling(matmul_tiling::MatmulApiTiling &mm, bool isC0);
     ge::graphStatus TilingProcess();
 
     static uint64_t CalculateWorkspaceSize(uint64_t totalLength, uint64_t fusionSize, uint64_t cubeCoreNum,

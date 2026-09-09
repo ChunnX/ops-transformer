@@ -17,27 +17,22 @@
 #define __mhc_pre_backward_KERNEL_H_
 
 #include "kernel_operator.h"
-#include "lib/matmul_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "mhc_pre_backward_utils.h"
 #include "mhc_pre_backward_cube_compute.h"
 
 namespace MhcPreBackward {
 
-using namespace matmul;
 using namespace AscendC;
 using namespace MhcPreBackwardUtils;
 
 constexpr uint32_t GAMMA_REG_REUSE_T_THRESHOLD = 3072;
 constexpr uint32_t MHC_PRE_BACKWARD_IMPL_MODE_HF32 = 1U;
-constexpr uint64_t MHC_PRE_BACKWARD_FP32_HIGH_MATMUL_THRESHOLD = 1024U;
 
 template <class T, class P>
 class MhcPreBackwardKernel {
 public:
-    __aicore__ inline MhcPreBackwardKernel(MT_C0 &matmul0, MT_C1 &matmul1) : mm0(matmul0), mm1(matmul1)
-    {
-    }
+    __aicore__ inline MhcPreBackwardKernel() = default;
     // 入口函数
     __aicore__ inline void Init(InitParams initParams);
     __aicore__ inline void Process();
@@ -132,8 +127,6 @@ public:
 
 private:
     MhcPreBackwardC0Basic c0Basic_;
-    MT_C0 &mm0;
-    MT_C1 &mm1;
     uint32_t coreNum_;
     uint64_t totalLength_;
     uint64_t vecDealBSPeCore_;
@@ -149,7 +142,6 @@ private:
     uint32_t blockIdx_;
     uint32_t nD_;
     uint32_t v1UsedCubeCoreNum_;
-    bool useHighMatmul_;
     uint32_t cubeDealnDPeCore_;
     uint32_t dealStartND_;
     uint32_t dealEndND_;
@@ -278,8 +270,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
     coreNum_ = tiling_->coreNum;
     // BS维全链路保留64位，避免大shape在核内截断后漏算或地址回绕。
     totalLength_ = tiling_->totalLength;
-    // 本轮单变量实验统一使用低阶Cube API，其余计算与数据通路保持不变。
-    useHighMatmul_ = false;
     hcEps_ = tiling_->hcEps;
     vecCoreNum_ = tiling_->vecCoreNum;
     scaleMean_ = (nD_ > 0) ? (1.0f / nD_) : 0.0f;
@@ -300,9 +290,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + gradHResBufLen_;
     if ASCEND_IS_AIC {
         pipe_ = initParams.tPipeIn;
-        if (!useHighMatmul_) {
-            c0Basic_.Init(pipe_);
-        }
+        c0Basic_.Init(pipe_);
     }
     if ASCEND_IS_AIV {
         pipe_ = initParams.tPipeIn;
@@ -973,13 +961,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
             uint32_t secondBSBlock = static_cast<uint32_t>(totalLength_ - SINGLE_M);
             // 低阶C0较快，同一C1跨核flag的两次发布可能在Cube首次等待前合并。
             // 先消费第一块V2完成信号，再发布第二块C0，保证两次C1握手一一对应。
-            if (!useHighMatmul_) {
-                AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
-            }
+            AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
             ProcessC0(offsetND, currentNDBlock, SINGLE_M, secondBSBlock, buffId + 1);
-            if (useHighMatmul_) {
-                AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
-            }
             ProcessC1(offsetND, currentNDBlock, 0, static_cast<uint32_t>(totalLength_), buffId);
             buffId += 2;
 
@@ -1016,9 +999,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
             buffId++;
         }
     }
-    if (!useHighMatmul_) {
-        c0Basic_.End();
-    }
+    c0Basic_.End();
 
     if ASCEND_IS_AIC {
         if (enableHf32) {
@@ -1035,26 +1016,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
 {
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffIdx);
-    if (!useHighMatmul_) {
-        // FP32的512～1024行合并C1路径会连续预执行两个C0，保持原B-L1事件生命周期以避免同步冲突。
-        bool enableB1Reuse = tiling_->implMode == MHC_PRE_BACKWARD_IMPL_MODE_HF32 ||
-                             totalLength_ <= SINGLE_M || totalLength_ > 2U * SINGLE_M;
-        c0Basic_.Process(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], phiGm_[offsetND],
-                         workSpaceGm_[writeOffset], currentBSBlock, currentNDBlock, fusionSize_, nD_,
-                         enableB1Reuse);
-        return;
-    }
-
-    mm0.SetOrgShape(totalLength_, nD_, fusionSize_);
-    mm0.SetSingleShape(currentBSBlock, currentNDBlock, fusionSize_);
-    mm0.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)]);
-    mm0.SetTensorB(phiGm_[offsetND], false);
-    while (mm0.Iterate()) {
-        mm0.GetTensorC(workSpaceGm_[writeOffset], 0, true);
-        AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(CROSS_CORE_WAIT_FLAG_C0);
-        writeOffset += MATMUL_WRITE_OFFSET_M * MATMUL_WRITE_OFFSET_N;
-    }
-    mm0.End();
+    // FP32的512～1024行合并C1路径会连续预执行两个C0，保持原B-L1事件生命周期以避免同步冲突。
+    bool enableB1Reuse = tiling_->implMode == MHC_PRE_BACKWARD_IMPL_MODE_HF32 ||
+                         totalLength_ <= SINGLE_M || totalLength_ > 2U * SINGLE_M;
+    c0Basic_.Process(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], phiGm_[offsetND],
+                     workSpaceGm_[writeOffset], currentBSBlock, currentNDBlock, fusionSize_, nD_, enableB1Reuse);
 }
 
 template <class T, class P>
@@ -1067,19 +1033,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffIdx);
     bool enAtomic = (offsetBS != 0);
-    if (!useHighMatmul_) {
-        c0Basic_.ProcessC1(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], workSpaceGm_[offsetXs],
-                           gradPhiGm_[offsetND], fusionSize_, currentNDBlock, currentBSBlock, fusionSize_,
-                           ND_BLOCK_SIZE, nD_, enAtomic);
-        return;
-    }
-
-    mm1.SetOrgShape(fusionSize_, currentNDBlock, totalLength_, currentBSBlock, nD_);
-    mm1.SetSingleShape(fusionSize_, currentNDBlock, currentBSBlock);
-    mm1.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], true);
-    mm1.SetTensorB(workSpaceGm_[offsetXs], false);
-    mm1.IterateAll(gradPhiGm_[offsetND], enAtomic);
-    mm1.End();
+    c0Basic_.ProcessC1(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], workSpaceGm_[offsetXs],
+                       gradPhiGm_[offsetND], fusionSize_, currentNDBlock, currentBSBlock, fusionSize_,
+                       ND_BLOCK_SIZE, nD_, enAtomic);
 }
 
 template <class T, class P>
