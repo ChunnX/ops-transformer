@@ -157,9 +157,10 @@ protected:
 
     using BlockEpilogue = BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, EPILOGUE_TILE_M, L1_TILE_N,
                                                          TopkWeightsPrefetch, IsGmm1Interleaved>;
+    static constexpr bool SHARED_GMM1_INTERLEAVED = IsGmm1Interleaved && SharedQuantConfig::AXW_MODE == AxWMode::A8W8;
     using SharedBlockEpilogue =
         BlockEpilogueActivationMxQuant<typename SharedQuantConfig::ActivationQuantOutType, bfloat16_t, L1_TILE_M_256,
-                                       L1_TILE_N, false, IsGmm1Interleaved>;
+                                       L1_TILE_N, false, SHARED_GMM1_INTERLEAVED>;
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
     TokenDispatchScratch<ActivationType> tokenDispatchScratch_;
@@ -513,11 +514,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunSharedExpertGmm1Acti
     } else {
         RunGmm1Generic<typename SharedQuantConfig::QuantOutType, SharedActivationOutType,
                        typename SharedQuantConfig::QuantOutType, bfloat16_t, SharedQuantScaleType, SharedQuantScaleType,
-                       SharedWeight1Format != FORMAT_ND, GMM1_TILE_M, L1_TILE_M_256, false, true, IsGmm1Interleaved,
-                       true>(sharedEpilogueOp_, params_, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
-                             runtimeState.vecSetSyncCom, gmmConfig.blockJob, expertBeforeCnt, sharedExpertIdx,
-                             runtimeState.pingpongIdx, nullptr, SharedQuantConfig::AXW_MODE == AxWMode::A8W8,
-                             gmmConfig.inputLayout);
+                       SharedWeight1Format != FORMAT_ND, GMM1_TILE_M, L1_TILE_M_256, false, true,
+                       SHARED_GMM1_INTERLEAVED, true>(
+            sharedEpilogueOp_, params_, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
+            runtimeState.vecSetSyncCom, gmmConfig.blockJob, expertBeforeCnt, sharedExpertIdx, runtimeState.pingpongIdx,
+            nullptr, SharedQuantConfig::AXW_MODE == AxWMode::A8W8, gmmConfig.inputLayout);
     }
 }
 
@@ -563,7 +564,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
             gmmAddrInfo, sharedExpertIdx);
         RunSharedExpertGmm1Activation(gmmAddrInfo, problemShape, sharedGmmConfig, runtimeState, sharedExpertIdx);
     }
-    EndSync<IsGmm1Interleaved>(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
+    EndSync<SHARED_GMM1_INTERLEAVED>(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
     gmm1PingPongIdx_ = 0U;
     startBlockIdx_ = 0U;
 }
@@ -582,8 +583,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunSharedExpertGmm2(con
     } else {
         RunGmm2Generic<COMBINE_NO_QUANT, typename SharedQuantConfig::QuantOutType,
                        typename SharedQuantConfig::QuantOutType, bfloat16_t, SharedQuantScaleType, SharedQuantScaleType,
-                       SharedWeight2Format != FORMAT_ND, false, GMM1_TILE_M, false, true, IsGmm1Interleaved, true>(
-            problemShape, gmmAddrInfo, startBlockIdx_, gmmExecutionConfig_.blockJob, nullptr, true);
+                       SharedWeight2Format != FORMAT_ND, false, GMM1_TILE_M, false, true, SHARED_GMM1_INTERLEAVED,
+                       true>(problemShape, gmmAddrInfo, startBlockIdx_, gmmExecutionConfig_.blockJob, nullptr, true);
     }
 }
 
