@@ -16,7 +16,7 @@
 #define MLA_PROLOG_VERSION 3
 #define GLOBAL_OVERFLOW_MODE_CTRL 60
 
-#if __CCE_AICORE__ == 310
+#if (__CCE_AICORE__ == 310) || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
 #if __has_include("../../mla_prolog/op_kernel/arch35/kernel_mla_prolog_split_n_arch35.h")
 #include "../../mla_prolog/op_kernel/arch35/kernel_mla_prolog_split_n_arch35.h"
 #include "../../mla_prolog/op_kernel/arch35/kernel_mla_prolog_split_m.h"
@@ -46,12 +46,16 @@ __global__ __aicore__ void mla_prolog_v3(
     __gm__ uint8_t *krCacheOut, __gm__ uint8_t *dequantScaleQNopeOut, __gm__ uint8_t *queryNormOut,
     __gm__ uint8_t *dequantScaleQNormOut, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
-#if (__NPU_ARCH__ == 3510)
+#if (__NPU_ARCH__ == 3510 || __NPU_ARCH__ == 9201)
     int64_t globalOriOverflowMode = AscendC::GetCtrlSpr<GLOBAL_OVERFLOW_MODE_CTRL, GLOBAL_OVERFLOW_MODE_CTRL>();
 #endif
 
     REGISTER_TILING_DEFAULT(optiling::MlaPrologTilingData);
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+#else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#endif
 
     constexpr auto emptyMode = static_cast<EMPTY_TENSOR_MODE>(EmptyTensorMode);
     if constexpr (emptyMode == EMPTY_TENSOR_MODE::EMPTY_QUERY) {
@@ -67,7 +71,7 @@ __global__ __aicore__ void mla_prolog_v3(
     const optiling::MlaPrologBaseParams *__restrict tilingDataBaseParams = &tilingDataIn.baseParams;
 
     TPipe pipe;
-#if (__NPU_ARCH__ == 3510)
+#if (__NPU_ARCH__ == 3510 || __NPU_ARCH__ == 9201)
     AscendC::SetCtrlSpr<GLOBAL_OVERFLOW_MODE_CTRL, GLOBAL_OVERFLOW_MODE_CTRL>(0);
 #endif
     if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::NO_QUANT) {
@@ -140,7 +144,7 @@ __global__ __aicore__ void mla_prolog_v3(
                 queryOut, queryRopeOut, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace);
         op.Process();
     }
-#if __CCE_AICORE__ == 310
+#if (__CCE_AICORE__ == 310) || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
     else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT &&
                        static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT) {
         if constexpr (splitMMode == SPLIT_M_MODE::ENABLED) {
@@ -268,7 +272,7 @@ __global__ __aicore__ void mla_prolog_v3(
         op.Process();
     }
 #endif
-#if (__NPU_ARCH__ == 3510)
+#if (__NPU_ARCH__ == 3510 || __NPU_ARCH__ == 9201)
     AscendC::SetCtrlSpr<GLOBAL_OVERFLOW_MODE_CTRL, GLOBAL_OVERFLOW_MODE_CTRL>(globalOriOverflowMode);
 #endif
 }
