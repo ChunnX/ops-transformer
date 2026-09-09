@@ -32,7 +32,7 @@ set(HOST_INCLUDES
     ${ASCEND_DIR}/${SYSTEM_PREFIX}/include
 )
 
-set(KERNEL_OPTS "-xasc" "--npu-arch=dav-3510" "-DASC_DEVKIT_MAJOR=9" "-D_GLIBCXX_USE_CXX11_ABI=0" "-w" "-O3")
+set(KERNEL_OPTS "-xasc" "--npu-arch=dav-3510" "-DASC_DEVKIT_MAJOR=9" "-D_GLIBCXX_USE_CXX11_ABI=0" "-w" "-O3" "-DCANN_ASC_USE_EXPERIMENTAL=ON")
 set(HOST_OPTS "-std=c++17" "-w" "-O2")
 
 set(COMMON_LIBS dl platform tiling_api register ascendcl runtime hccl stdc++ pthread)
