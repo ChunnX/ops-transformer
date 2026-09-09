@@ -55,18 +55,21 @@ python3 mc2/tools/gen_common_impact_yaml.py /path/to/another_checkout [输出目
 |---|---|
 | .h 在芯片映射表中（A2/A3/A5.yaml） | 测试条目 ops 列出的算子（按芯片过滤；`ops: []` 表示该芯片无匹配算子）；cpp 按其同名 .h 的 ops 走 |
 
-**最后一步（消费侧负责）**：得到的算子集还需**叠加 CMake `*_depends`
-反向闭包**后去重，作为最终测试清单。
+**无需消费侧再补闭包**：yaml 中的 ops 已烙入 CMake `*_depends` 反向闭包
+（依赖链上的算子自动纳入，如某头只被 matmul_all_reduce 引用，而
+moe_distribute_combine_v2 依赖前者，则后者也在 ops 里），拿到的即最终测试清单。
 
 ## 5. 判定规则（生成器侧）
 
 1. **只对 .h 建模**：影响面 = 直接+间接 include 该头的算子（裸文件名匹配，
    重名取并集，传递闭包用不动点迭代，天然处理环）。
-2. **.cpp 跟随同名 .h**：cpp 的影响范围由其同目录同名 .h 确立；无同名头的
+2. **算子级 depends 闭包已烙入**：include 闭包结果再叠加 CMake `*_depends`
+   反向闭包，ops 即最终测试清单。
+3. **.cpp 跟随同名 .h**：cpp 的影响范围由其同目录同名 .h 确立；无同名头的
    cpp 列入 `cpp_no_same_header`（全量）。
-3. **二分归类**：影响面 = 全部注册算子 → 全量；影响面为空且无任何引用 → 全量
+4. **二分归类**：影响面 = 全部注册算子 → 全量；影响面为空且无任何引用 → 全量
    （防漏查）；其余 → 部分算子，进芯片映射表。
-3. **芯片过滤**：部分算子头的 ops 按 `*_def.cpp` 的 `AICore().AddConfig()`
+5. **芯片过滤**：部分算子头的 ops 按 `*_def.cpp` 的 `AICore().AddConfig()`
    注册与当前芯片取交集，三张表键集合保持一致。
 4. **重名取并集**：同名头文件以 `note:` 标注，宁多勿漏。
 
@@ -96,7 +99,8 @@ full_regression:
 
 ## 7. 维护约定
 
-- common/3rd 下**头文件新增/删除、include 关系变化**后，重新运行生成器刷新 yaml。
+- common/3rd 下**头文件新增/删除、include 关系变化**，或任意算子的
+  **CMake `*_depends` 声明变化**后，重新运行生成器刷新 yaml。
 - **对齐上游（rebase/合入上游新基线）后**，需重新运行生成器刷新 yaml 并作为一笔
   提交带入（yaml 头部基线 commit 会同步更新）。
 - 本目录不参与编译构建（无 CMakeLists.txt，tools 的构建遍历自动跳过）。
