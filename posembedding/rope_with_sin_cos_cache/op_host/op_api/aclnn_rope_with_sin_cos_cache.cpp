@@ -158,8 +158,7 @@ static bool CheckPositionsShape(const aclTensor *positions, const aclTensor *que
     int64_t numTokens = queryIn->GetViewShape()[DIM_ZERO];
     if (!isMrope) {
         OP_CHECK(positionsShape.GetDimNum() == DIM_ONE && positionsShape[DIM_ZERO] == numTokens,
-                 OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                         "Expected positions shape to be [%ld] in rope mode, but got %s.",
+                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected positions shape to be [%ld] in rope mode, but got %s.",
                          numTokens, op::ToString(positionsShape).GetString()),
                  return false);
         return true;
@@ -168,8 +167,7 @@ static bool CheckPositionsShape(const aclTensor *positions, const aclTensor *que
     OP_CHECK(positionsShape.GetDimNum() == DIM_NUM &&
                  positionsShape[DIM_ZERO] == static_cast<int64_t>(mropeSectionSize) &&
                  positionsShape[DIM_ONE] == numTokens,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                     "Expected positions shape to be [%lu, %ld] in mrope mode, but got %s.",
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected positions shape to be [%lu, %ld] in mrope mode, but got %s.",
                      mropeSectionSize, numTokens, op::ToString(positionsShape).GetString()),
              return false);
     return true;
