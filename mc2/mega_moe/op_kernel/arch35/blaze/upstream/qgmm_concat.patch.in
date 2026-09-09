@@ -1,0 +1,114 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+#
+# MegaMoe-private extensions to ops-tensor de3bf6f. Applied only to generated private headers.
+--- a/blaze/gemm/block/block_mmad_qgmm_mx.h
++++ b/blaze/gemm/block/block_mmad_qgmm_mx.h
+@@ -291,11 +291,12 @@
+         RunImpl(gmA, gmBSecond, gmScaleA, gmScaleBSecond, gmBias, ubCSecond, blockShape);
+     }
+
+-    template <typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB, typename TensorUbC>
++    template <bool SplitM = true, typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
++              typename TensorUbC>
+     __aicore__ inline void operator()(TensorA gmA, TensorB gmBLeft, TensorScaleA gmScaleA, TensorScaleB gmScaleBLeft,
+                                       TensorUbC& ubC, const BlockShape& singleShape)
+     {
+-        RunConcatN(gmA, gmBLeft, gmScaleA, gmScaleBLeft, ubC, singleShape);
++        RunConcatN<SplitM>(gmA, gmBLeft, gmScaleA, gmScaleBLeft, ubC, singleShape);
+     }
+
+ private:
+@@ -720,12 +721,26 @@
+         }
+     }
+
+-    template <typename TensorUbC, typename TensorL0C>
+-    __aicore__ inline void CopyConcatL0C2SingleUb(TensorUbC& ubC, TensorL0C tensorL0C, uint64_t, uint64_t)
+-    {
+-        auto copyL0C2UBSplitM = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{},
+-                                                      Blaze::Gemm::Tile::CopyL0C2UBTraitSplitM{});
+-        AscendC::Te::Copy(copyL0C2UBSplitM.with(AscendC::Te::FixpipeParams(FINAL_ACCUMULATION)), ubC, tensorL0C);
++    template <bool SplitM, typename TensorUbC, typename TensorL0C>
++    __aicore__ inline void CopyConcatL0C2SingleUb(TensorUbC& ubC, TensorL0C tensorL0C, uint64_t curM, uint64_t curN)
++    {
++        constexpr bool isUbOutput = AscendC::Std::is_same_v<AscendC::Te::GetMemLocation<TensorUbC>,
++                                                           AscendC::Te::Location::UB>;
++        if constexpr (isUbOutput && SplitM) {
++            auto copyL0C2UBSplitM = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{},
++                                                          Blaze::Gemm::Tile::CopyL0C2UBTraitSplitM{});
++            AscendC::Te::Copy(copyL0C2UBSplitM.with(AscendC::Te::FixpipeParams(FINAL_ACCUMULATION)), ubC, tensorL0C);
++        } else {
++            auto validL0C = tensorL0C.Slice(AscendC::Te::MakeCoord(uint64_t(0), uint64_t(0)),
++                                            AscendC::Te::MakeShape(curM, curN * CONCAT_N_FACTOR));
++            if constexpr (isUbOutput) {
++                auto copyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{});
++                AscendC::Te::Copy(copyL0C2UB.with(AscendC::Te::FixpipeParams(FINAL_ACCUMULATION)), ubC, validL0C);
++            } else {
++                auto copyL0C2GM = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2GM{});
++                AscendC::Te::Copy(copyL0C2GM.with(AscendC::Te::FixpipeParams(FINAL_ACCUMULATION)), ubC, validL0C);
++            }
++        }
+     }
+
+     template <typename TensorL0C, typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB>
+@@ -804,7 +819,8 @@
+         }
+     }
+
+-    template <typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB, typename TensorUbC>
++    template <bool SplitM, typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
++              typename TensorUbC>
+     __aicore__ inline void RunConcatN(TensorA gmA, TensorB gmBLeft, TensorScaleA gmScaleA, TensorScaleB gmScaleBLeft,
+                                       TensorUbC& ubC, const BlockShape& singleShape)
+     {
+@@ -826,7 +842,7 @@
+             RunConcatNWithBOuter(tensorL0C, gmA, gmBLeft, gmScaleA, gmScaleBLeft, curM, curN, concatN);
+         }
+
+-        CopyConcatL0C2SingleUb(ubC, tensorL0C, curM, curN);
++        CopyConcatL0C2SingleUb<SplitM>(ubC, tensorL0C, curM, curN);
+         if (enableL0cPingPong_) {
+             l0cPingPong_++;
+         }
+--- a/blaze/gemm/tile/arch35/copy_gm_to_l1.h
++++ b/blaze/gemm/tile/arch35/copy_gm_to_l1.h
+@@ -95,6 +95,8 @@
+                                                             AscendC::Te::ScaleBDNLayoutPtn>;
+         if constexpr (isScaleB) {
+             CopyScaleB(dst, src, params);
++        } else if constexpr (AscendC::Std::is_same_v<SrcLayoutPtn, AscendC::Te::ZNLayoutPtn>) {
++            CopyZnB(dst, src, params);
+         } else {
+             CopyB(dst, src, params);
+         }
+@@ -103,6 +105,24 @@
+ private:
+     static constexpr uint16_t CONCAT_MATRIX_NUM = 2U;
+     static constexpr uint64_t CONCAT_N_FACTOR = 2UL;
++
++    template <typename T, typename U>
++    __aicore__ inline static void CopyZnB(const T& dst, const U& src, const CopyConcatGM2L1Params& params)
++    {
++        using ElementType = AscendC::Te::GetAttributeElementType<typename U::elementType*>;
++        const uint64_t c0 = AscendC::Std::get<0>(AscendC::Std::get<0>(src.Layout().Shape()));
++        const uint64_t singleN = AscendC::Te::GetTotalColumnShape(src.Layout());
++        const uint64_t curK = AscendC::Te::GetTotalRowShape(src.Layout());
++        const uint64_t columnBytes = PackFp4Size<ElementType>(c0) * sizeof(ElementType);
++        // ZN stores [K/C0, N, C0]. Alternate gate/up bursts within each K block.
++        // Strides are byte distances between successive burst starts.
++        asc_copy_gm2l1_align(reinterpret_cast<__cbuf__ uint8_t*>(dst.Data().Get()),
++                              reinterpret_cast<__gm__ uint8_t*>(src.Data().Get()),
++                              static_cast<uint32_t>(CONCAT_N_FACTOR * curK / c0),
++                              static_cast<uint32_t>(singleN * columnBytes), 0, 0, true, src.Engine().GetCacheMode(),
++                              (params.n / CONCAT_N_FACTOR) * columnBytes,
++                              static_cast<uint32_t>(singleN * columnBytes));
++    }
+
+     template <typename T, typename U>
+     __aicore__ inline static void CopyB(const T& dst, const U& src, const CopyConcatGM2L1Params& params)

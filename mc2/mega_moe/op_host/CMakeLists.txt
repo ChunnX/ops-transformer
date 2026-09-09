@@ -8,6 +8,10 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+if("ascend950" IN_LIST ASCEND_COMPUTE_UNIT)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/arch35/blaze/upstream/prepare_qgmm.cmake)
+endif()
+
 if (BUILD_OPEN_PROJECT)  # custom
     target_sources(op_host_aclnnInner PRIVATE
         mega_moe_def.cpp
