@@ -71,7 +71,7 @@ jobs:
             export BOOSTER=NextCache
             env|grep NB
             env|grep XCACHE
-            export JOB_NUM=64
+            export JOB_NUM=96
             ls -al "${WORKSPACE}"/third_party
             BuildAccelerate bash .gitcode/scripts/compile.sh
             ls -al "${WORKSPACE}"/third_party
