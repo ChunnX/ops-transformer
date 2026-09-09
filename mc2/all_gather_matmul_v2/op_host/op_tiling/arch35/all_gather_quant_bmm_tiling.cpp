@@ -588,24 +588,35 @@ ge::graphStatus AllGatherQuantBmmTiling::DoApaceMatmulTiling()
     param.tailCnt = static_cast<uint32_t>(cutRes.numShortTile);
 
     uint32_t tileM = static_cast<uint32_t>(tileMValue_);
-    uint32_t paddedTailM = (param.tailM > 0) ? static_cast<uint32_t>((param.tailM + APACE_TAIL_ALIGN - 1) /
-                                                                     APACE_TAIL_ALIGN * APACE_TAIL_ALIGN) :
-                                               0U;
+    uint32_t paddedTailM =
+        (param.tailM > 0) ?
+            static_cast<uint32_t>((param.tailM + APACE_TAIL_ALIGN - 1) / APACE_TAIL_ALIGN * APACE_TAIL_ALIGN) :
+            0U;
     uint32_t totalLogicalM =
         static_cast<uint32_t>(args_.rankDim) * (param.tileCnt * tileM + param.tailCnt * paddedTailM);
 
+    // bias 与 A/B/scale 同样驻留 L1（kernel 侧 mmadFrag 按 params.isBias 接线 bias），tiling 预算须同步计入；
+    // hasBias 与 kernel 侧 isBias 同源（optional bias 输入的存在性，见 CheckBiasInput），bias dtype 与
+    // kernel 侧 BiasType 实例化一致（当前为 float），经类模板第三参数显式声明
+    bool hasBias = args_.isBias;
+
     if (isFp4_) {
-        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingEngine;
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1, mm::BiasDataType::DT_FLOAT>
+            tilingEngine;
         tilingEngine.SetOptimizeEnable(false);
         tilingEngine.SetMTailAlignEnable(true);
         tilingEngine.SetAdjustBasicBlockEnable(false);
+        tilingEngine.SetBiasInfo(hasBias);
         tilingEngine.GetTilingData(static_cast<uint64_t>(totalLogicalM), args_.nValue, args_.kValue, false,
                                    args_.isBTrans, hcommTilingData_.mmTile);
     } else {
-        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN,
+                              mm::BiasDataType::DT_FLOAT>
+            tilingEngine;
         tilingEngine.SetOptimizeEnable(false);
         tilingEngine.SetMTailAlignEnable(true);
         tilingEngine.SetAdjustBasicBlockEnable(false);
+        tilingEngine.SetBiasInfo(hasBias);
         tilingEngine.GetTilingData(static_cast<uint64_t>(totalLogicalM), args_.nValue, args_.kValue, false,
                                    args_.isBTrans, hcommTilingData_.mmTile);
     }
