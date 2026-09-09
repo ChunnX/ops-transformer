@@ -142,11 +142,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             layout_out: Optional[str] = "BSND",
         ):
             metadata_size = _calculate_metadata_size()
-            device = next(
-                (t.device for t in (cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv) if t is not None),
-                torch.device("npu"),
-            )
-            return torch.empty((metadata_size,), dtype=torch.int32, device=device)
+            return torch.empty((metadata_size,), dtype=torch.int32, device="meta")
 
         @impl(AS_LIBRARY, self.name, "Meta")
         def quant_flash_attn_meta(
