@@ -51,9 +51,12 @@ ge::graphStatus InferShapeBSASelectBlockMask(gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, maskShape);
 
     auto attrs = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     size_t idx = 0;
     auto qLayoutPtr = attrs->GetAttrPointer<char>(idx++);
     auto kvLayoutPtr = attrs->GetAttrPointer<char>(idx++);
+    OP_CHECK_NULL_WITH_CONTEXT(context, qLayoutPtr);
+    OP_CHECK_NULL_WITH_CONTEXT(context, kvLayoutPtr);
 
     int64_t sqLen = 0;
     int64_t skvLen = 0;
@@ -61,12 +64,18 @@ ge::graphStatus InferShapeBSASelectBlockMask(gert::InferShapeContext *context)
     int64_t numHeads = 0;
 
     size_t qDimNum = queryShape->GetDimNum();
-    if (qLayoutPtr != nullptr && qLayoutPtr[0] == 'B' && qDimNum == 4) {
+    const size_t expectedQDimNum = qLayoutPtr[0] == 'B' ? 4 : 3;
+    const size_t expectedKvDimNum = kvLayoutPtr[0] == 'B' ? 4 : 3;
+    if (qDimNum != expectedQDimNum || keyShape->GetDimNum() != expectedKvDimNum) {
+        OP_LOGE(context->GetNodeName(), "query/key rank does not match the selected layouts.");
+        return ge::GRAPH_FAILED;
+    }
+    if (qLayoutPtr[0] == 'B') {
         batchSize = queryShape->GetDim(0);
         numHeads = queryShape->GetDim(1);
         sqLen = queryShape->GetDim(2);
         skvLen = keyShape->GetDim(2);
-    } else if (qDimNum == 3) {
+    } else {
         numHeads = queryShape->GetDim(1);
         sqLen = queryShape->GetDim(0);
         skvLen = keyShape->GetDim(0);
