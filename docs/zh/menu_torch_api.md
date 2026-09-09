@@ -1,6 +1,7 @@
 # Transformer类接口
 
 - [Transformer类torch接口列表](torch_api_list.md)
+- [attention_to_ffn](../../torch_extension/cann_ops_transformer/docs/zh/attention_to_ffn.md)
 - [block_attn_res_prepare](../../torch_extension/cann_ops_transformer/docs/zh/block_attn_res_prepare.md)
 - [block_attn_res_update](../../torch_extension/cann_ops_transformer/docs/zh/block_attn_res_update.md)
 - [block_attention_residuals](../../torch_extension/cann_ops_transformer/docs/zh/block_attention_residuals.md)
@@ -10,6 +11,7 @@
 - [causal_conv1d_update](../../torch_extension/cann_ops_transformer/docs/zh/causal_conv1d_update.md)
 - [compressor](../../torch_extension/cann_ops_transformer/docs/zh/compressor.md)
 - [ElasticBuffer](../../torch_extension/cann_ops_transformer/docs/zh/ElasticBuffer.md)
+- [ffn_to_attention](../../torch_extension/cann_ops_transformer/docs/zh/ffn_to_attention.md)
 - [flash_attn](../../torch_extension/cann_ops_transformer/docs/zh/flash_attn.md)
 - [flash_attn_grad](../../torch_extension/cann_ops_transformer/docs/zh/flash_attn_grad.md)
 - [fused_causal_conv1d](../../torch_extension/cann_ops_transformer/docs/zh/fused_causal_conv1d.md)
