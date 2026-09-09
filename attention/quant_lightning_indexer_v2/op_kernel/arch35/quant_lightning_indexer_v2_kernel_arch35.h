@@ -445,7 +445,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
-        aiCoreIdx = tmpBlockIdx / 2;
+        aiCoreIdx = tmpBlockIdx / CVRATIO;
     } else {
         tmpBlockIdx = GetBlockIdx(); // cube:0-23
         aiCoreIdx = tmpBlockIdx;
@@ -638,7 +638,7 @@ template <typename QLIV2T>
 __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessInvalid()
 {
     if ASCEND_IS_AIV {
-        uint32_t aivCoreNum = GetBlockNum() * 2; // 2 means c:v = 1:2
+        uint32_t aivCoreNum = GetBlockNum() * CVRATIO; // A5:CVRATIO=2(1:2), A6:CVRATIO=1(1:1)
         uint64_t totalOutputSize = static_cast<uint64_t>(constInfo.batchSize) * constInfo.qSeqSize *
                                    constInfo.kHeadNum * constInfo.sparseCount;
         uint64_t singleCoreSize =

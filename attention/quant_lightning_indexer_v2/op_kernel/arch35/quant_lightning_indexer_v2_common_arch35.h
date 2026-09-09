@@ -18,6 +18,12 @@
 #include "../../../lightning_indexer_v2/op_kernel/arch35/common/lightning_indexer_v2_base_arch35.h"
 #include "../../../lightning_indexer_v2/op_kernel/arch35/common/lightning_indexer_v2_const_info_common.h"
 
+#if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 9201)
+    #define CVRATIO 1
+#else
+    #define CVRATIO 2
+#endif
+
 using namespace AscendC;
 namespace QLIV2Common {
 using FP8E4M3 = fp8_e4m3fn_t;
