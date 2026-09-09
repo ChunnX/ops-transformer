@@ -27,8 +27,8 @@ struct EffRowsCtx {
     bool enabled = false;
     uint32_t *curBlockIdx = nullptr;
     uint32_t *curBlockCopied = nullptr;
-    bool gather = true; // per-head 跨块 gather 填充; per-tile 只拷贝块内一段。
-    int64_t srcOffset = 0;
+    bool gatherAcrossBlocks = true; // per-head 跨块 gather 填充; per-tile 只拷贝块内一段。
+    int64_t oriSeqOffset = 0;       // per-tile 片段在原始 kv 序列中的起始行偏移。
 };
 
 // effRows 模式的搬运：按 effectiveY 逐 block 搬移填充目标 tile
@@ -45,17 +45,19 @@ __aicore__ inline uint32_t EffRowsGatherCopy(TensorB &gBTensor, TensorL1B &l1BTe
     if (!ctx.enabled) {
         return 0;
     }
-    if (!ctx.gather) {
+    if (!ctx.gatherAcrossBlocks) {
         // K 可能分多次载入同一 tile 的多个 L1 分片, 需带上分片内偏移。
-        int64_t start = ctx.srcOffset + tileInnerOffset;
+        int64_t oriTileStartOffset = ctx.oriSeqOffset + tileInnerOffset;
         if constexpr (Transposed) {
-            auto dst = tla::GetTile(l1BTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(embed, targetLen));
-            auto src = tla::GetTile(gBTensor, tla::MakeCoord(0, start), tla::MakeShape(embed, targetLen));
-            copyFn(dst, src);
+            auto l1BTile = tla::GetTile(l1BTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(embed, targetLen));
+            auto gBTile =
+                tla::GetTile(gBTensor, tla::MakeCoord(0, oriTileStartOffset), tla::MakeShape(embed, targetLen));
+            copyFn(l1BTile, gBTile);
         } else {
-            auto dst = tla::GetTile(l1BTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(targetLen, embed));
-            auto src = tla::GetTile(gBTensor, tla::MakeCoord(start, 0), tla::MakeShape(targetLen, embed));
-            copyFn(dst, src);
+            auto l1BTile = tla::GetTile(l1BTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(targetLen, embed));
+            auto gBTile =
+                tla::GetTile(gBTensor, tla::MakeCoord(oriTileStartOffset, 0), tla::MakeShape(targetLen, embed));
+            copyFn(l1BTile, gBTile);
         }
         return targetLen;
     }

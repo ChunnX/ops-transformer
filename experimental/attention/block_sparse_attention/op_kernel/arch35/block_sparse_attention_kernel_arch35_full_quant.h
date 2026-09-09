@@ -289,7 +289,7 @@ public:
                                           kvSeqlen - lastSparseIdx * blockShapeY_ :
                                           blockShapeY_;
             const bool perTileEffRows = enableEffRows_ && !perHeadKvScale_;
-            uint32_t effectiveTileCount = 0;
+            uint32_t kvTileNumEff = 0;
             int64_t gatheredKvSeqlen;
             if (yBlockNumRsvd == 0) {
                 gatheredKvSeqlen = 0;
@@ -301,7 +301,7 @@ public:
                     effectiveY = Gemm::Block::ClampEffectiveRows(effectiveY, origIdx, blockShapeY_, kvSeqlen);
                     gatheredKvSeqlen += effectiveY;
                     if (perTileEffRows) {
-                        effectiveTileCount += CeilDiv(effectiveY, kvBaseTile_);
+                        kvTileNumEff += CeilDiv(effectiveY, kvBaseTile_);
                     }
                 }
             } else {
@@ -313,7 +313,7 @@ public:
             uint32_t rowNumRound = RoundUp(rowNum, 16);
             uint32_t kvSLoopNum = static_cast<uint32_t>(CeilDiv(gatheredKvSeqlen, static_cast<int64_t>(kvBaseTile_)));
             if (perTileEffRows) {
-                kvSLoopNum = effectiveTileCount;
+                kvSLoopNum = kvTileNumEff;
             }
             if (enableEffRows_ && kvSLoopNum == 0) {
                 continue;
@@ -393,7 +393,7 @@ public:
                         kTile = Gemm::Block::NextEffRowsTile(gSparseIdx[gmOffsetSparseIdx], gBlockEffRows, effRowsBase,
                                                              yBlockNumRsvd, blockShapeY_, kvSeqlen, kvBaseTile_,
                                                              kCurBlockIdx, kCurBlockCopied);
-                        kvSTileSizeAct = kTile.rows;
+                        kvSTileSizeAct = kTile.validRows;
                     } else if (gatheredKvSTileIdx == kvSLoopNum - 1) {
                         kvSTileSizeAct = gatheredKvSeqlen - gatheredKvSTileIdx * kvBaseTile_;
                     } else {
@@ -418,13 +418,13 @@ public:
                         gatheredKvSTileIdx, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, true);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdx, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, true);
-                    Gemm::Block::EffRowsCtx kEffRowsCtx{gBlockEffRows,  effRowsBase,      enableEffRows_ != 0,
-                                                        &kCurBlockIdx,  &kCurBlockCopied, !perTileEffRows,
-                                                        kTile.srcOffset};
+                    Gemm::Block::EffRowsCtx kEffRowsCtx{gBlockEffRows,     effRowsBase,      enableEffRows_ != 0,
+                                                        &kCurBlockIdx,     &kCurBlockCopied, !perTileEffRows,
+                                                        kTile.oriSeqOffset};
                     uint32_t yBlockIndexOffset = (gatheredKvSTileIdx * kvBaseTile_) / blockShapeY_;
                     uint32_t yBlockIndex =
                         perTileEffRows ?
-                            kTile.blockIndex :
+                            kTile.oriBlockIdx :
                             (perHeadKvScale_ ? 0 : gSparseIdx[gmOffsetSparseIdx].GetValue(yBlockIndexOffset));
                     uint32_t kvDequantScaleOffset =
                         perHeadKvScale_ ?
@@ -468,7 +468,7 @@ public:
                         vTile = Gemm::Block::NextEffRowsTile(gSparseIdx[gmOffsetSparseIdx], gBlockEffRows, effRowsBase,
                                                              yBlockNumRsvd, blockShapeY_, kvSeqlen, kvBaseTile_,
                                                              vCurBlockIdx, vCurBlockCopied);
-                        kvSTileSizeAct = vTile.rows;
+                        kvSTileSizeAct = vTile.validRows;
                     } else if (gatheredKvSTileIdxDe == kvSLoopNum - 1) {
                         kvSTileSizeAct = gatheredKvSeqlen - gatheredKvSTileIdxDe * kvBaseTile_;
                     } else {
@@ -492,13 +492,13 @@ public:
                         gatheredKvSTileIdxDe, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, false);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdxDe, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, false);
-                    Gemm::Block::EffRowsCtx vEffRowsCtx{gBlockEffRows,  effRowsBase,      enableEffRows_ != 0,
-                                                        &vCurBlockIdx,  &vCurBlockCopied, !perTileEffRows,
-                                                        vTile.srcOffset};
+                    Gemm::Block::EffRowsCtx vEffRowsCtx{gBlockEffRows,     effRowsBase,      enableEffRows_ != 0,
+                                                        &vCurBlockIdx,     &vCurBlockCopied, !perTileEffRows,
+                                                        vTile.oriSeqOffset};
                     uint32_t yBlockIndexOffsetDe = (gatheredKvSTileIdxDe * kvBaseTile_) / blockShapeY_;
                     uint32_t yBlockIndexDe =
                         perTileEffRows ?
-                            vTile.blockIndex :
+                            vTile.oriBlockIdx :
                             (perHeadKvScale_ ? 0 : gSparseIdx[gmOffsetSparseIdx].GetValue(yBlockIndexOffsetDe));
                     uint32_t kvDequantScaleOffsetDe =
                         perHeadKvScale_ ?
