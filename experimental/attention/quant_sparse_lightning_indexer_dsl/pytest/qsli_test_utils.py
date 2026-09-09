@@ -10,7 +10,10 @@ import torch
 
 import result_compare_method
 from qsli_parameter_normalization import normalize_qsli_params
-from quant_sparse_lightning_indexer_golden import quant_sparse_lightning_indexer_golden
+from quant_sparse_lightning_indexer_golden import (
+    quant_sparse_lightning_indexer_golden,
+    quant_sparse_lightning_indexer_golden_selected,
+)
 import cann_ops_transformer.ops.attention.quant_sparse_lightning_indexer_dsl  # noqa: F401,E402
 
 
@@ -105,13 +108,16 @@ def _int_tensor(value, default):
     return torch.tensor(source, dtype=torch.int32)
 
 
-def _make_candidate_inputs(p, rows, logical_blocks, generator):
+def _make_candidate_inputs(p, rows, logical_blocks, generator, cu):
     explicit_indices = p["candidate_block_indices"]
     explicit_lengths = p["candidate_block_length"]
     candidate = torch.full(
         (rows, N2, CANDIDATE_CAPACITY), -1, dtype=torch.int32
     )
-    if explicit_indices is None:
+    auto_indices = explicit_indices is None or (
+        isinstance(explicit_indices, str) and explicit_indices.upper() == "AUTO"
+    )
+    if auto_indices:
         valid_blocks = min(CANDIDATE_CAPACITY, logical_blocks)
         valid_blocks = (
             valid_blocks
@@ -120,8 +126,8 @@ def _make_candidate_inputs(p, rows, logical_blocks, generator):
         )
         for batch_index in range(p["batch_size"]):
             order = torch.randperm(logical_blocks, generator=generator)[:valid_blocks]
-            begin = batch_index * p["query_length"]
-            end = (batch_index + 1) * p["query_length"]
+            begin = int(cu[batch_index])
+            end = int(cu[batch_index + 1])
             candidate[begin:end, 0, :valid_blocks] = order.to(torch.int32)
         lengths = torch.full((rows, N2), valid_blocks, dtype=torch.int32)
         return candidate, lengths
@@ -181,8 +187,8 @@ def generate_qsli_test_data(params):
         raise ValueError(f"QSLI candidate_block_size must be {BLOCK_SIZE}")
     if p["layout_q"] != "TND" or p["layout_kv"] != "PA_BBND":
         raise ValueError("QSLI requires layout_q=TND and layout_kv=PA_BBND")
-    if p["q_t_size"] != p["batch_size"] * p["query_length"]:
-        raise ValueError("q_t_size must equal batch_size * q_seq")
+    if p["q_t_size"] < 1:
+        raise ValueError("q_t_size must be positive")
     if p["k_t_size"] != p["sequence_length"]:
         raise ValueError("k_t_size must equal k_seq")
     if (p["q_head_num"], p["k_head_num"], p["head_dim"]) != (N1, N2, 128):
@@ -190,7 +196,25 @@ def generate_qsli_test_data(params):
     if p["block_size"] != PAGE_SIZE:
         raise ValueError("QSLI DSL requires block_size=128")
     generator = torch.Generator(device="cpu").manual_seed(p["seed"])
-    rows = batch * q_len
+    rows = p["q_t_size"]
+    if p["cu_seqlens_q"] is None and rows != batch * q_len:
+        raise ValueError(
+            "variable-length TND requires explicit cu_seqlens_q when "
+            "q_t_size != batch_size * q_seq"
+        )
+    default_cu = [index * q_len for index in range(batch + 1)]
+    cu = _int_tensor(p["cu_seqlens_q"], default_cu)
+    if tuple(cu.shape) != (batch + 1,) or int(cu[0]) != 0 or int(cu[-1]) != rows:
+        raise ValueError("cu_seqlens_q must have shape (B+1), start at 0, and end at q_t_size")
+    q_lengths = (cu[1:] - cu[:-1]).tolist()
+    if any(length < 0 or length > q_len for length in q_lengths):
+        raise ValueError("each TND query length must be within [0, q_seq]")
+    used_q = _int_tensor(p["seqused_q"], q_lengths)
+    if tuple(used_q.shape) != (batch,) or any(
+        int(value) < 0 or int(value) > int(q_lengths[index])
+        for index, value in enumerate(used_q.tolist())
+    ):
+        raise ValueError("seqused_q must have shape (B,) and fit cu_seqlens_q")
     pages = (s2 + PAGE_SIZE - 1) // PAGE_SIZE
     if p["block_num"] != pages:
         raise ValueError(f"block_num must equal ceil(k_seq/128)={pages}")
@@ -230,25 +254,26 @@ def generate_qsli_test_data(params):
         raise ValueError(f"unsupported storage_mode: {p['storage_mode']}")
 
     candidate, candidate_length = _make_candidate_inputs(
-        p, rows, logical_blocks, generator
+        p, rows, logical_blocks, generator, cu
+    )
+    auto_block_table = p["block_table"] is None or (
+        isinstance(p["block_table"], str) and p["block_table"].upper() == "AUTO"
     )
     block_table = (
         torch.stack([
             torch.randperm(pages, generator=generator).to(torch.int32)
             for _ in range(batch)
         ])
-        if p["block_table"] is None
+        if auto_block_table
         else _int_tensor(p["block_table"], p["block_table"])
     )
     if tuple(block_table.shape) != (batch, pages):
         raise ValueError(
             f"block_table must have shape ({batch},{pages}), got {tuple(block_table.shape)}"
         )
-    cu = _int_tensor(p["cu_seqlens_q"], list(range(0, rows + 1, q_len)))
     cu_k = _int_tensor(p["cu_seqlens_k"], list(range(0, batch * s2 + 1, s2)))
     if tuple(cu_k.shape) != (batch + 1,) or int(cu_k[0]) != 0:
         raise ValueError("cu_seqlens_k must have shape (B+1,) and start at zero")
-    used_q = _int_tensor(p["seqused_q"], [q_len] * batch)
     used_k = _int_tensor(p["seqused_k"], [s2] * batch)
     residual_value = p["cmp_residual_k"]
     if residual_value is None and p["cmp_ratio"] != 1:
@@ -287,9 +312,8 @@ def generate_qsli_test_data(params):
         "_k_storage": k_storage,
         "_scale_storage": scale_storage,
     }
-    golden = quant_sparse_lightning_indexer_golden(
-        q, k, tensors["weights"], tensors["descale_q"], descale_k,
-        candidate, candidate_length, cu_seqlens_q=cu, seqused_q=tensors["used_q"],
+    golden_kwargs = dict(
+        cu_seqlens_q=cu, seqused_q=tensors["used_q"],
         seqused_k=tensors["used_k"], cmp_residual_k=tensors["residual"],
         block_table=block_table, output_idx_offset=offset, topk=p["topk"],
         candidate_block_size=p["candidate_block_size"],
@@ -298,7 +322,33 @@ def generate_qsli_test_data(params):
         layout_q=p["layout_q"], layout_kv=p["layout_kv"],
         return_value=p["return_value"],
     )
-    return {"params": p, "tensors": tensors, "cpu_result": golden}
+    selected_rows = None
+    if q_len >= 1024:
+        if p["mask_mode"] != 0:
+            raise ValueError("sampled Prefill comparison requires sparse_mode=0")
+        selected_rows = []
+        for batch_index, begin in enumerate(cu[:-1].tolist()):
+            used = int(used_q[batch_index])
+            if used <= 0:
+                continue
+            selected_rows.append(int(begin))
+            if used > 1:
+                selected_rows.append(int(begin) + used - 1)
+        if not selected_rows:
+            raise ValueError("Prefill comparison requires at least one used query row")
+        golden = quant_sparse_lightning_indexer_golden_selected(
+            q, k, tensors["weights"], tensors["descale_q"], descale_k,
+            candidate, candidate_length, selected_rows, **golden_kwargs,
+        )
+    else:
+        golden = quant_sparse_lightning_indexer_golden(
+            q, k, tensors["weights"], tensors["descale_q"], descale_k,
+            candidate, candidate_length, **golden_kwargs,
+        )
+    return {
+        "params": p, "tensors": tensors, "cpu_result": golden,
+        "selected_rows": selected_rows,
+    }
 
 
 def _to_npu_tensors(tensors):
@@ -365,15 +415,23 @@ def _remove_offset(indices, offset):
 
 def compare_qsli_case(case_data, actual):
     p, golden = case_data["params"], case_data["cpu_result"]
+    selected_rows = case_data.get("selected_rows")
+    if selected_rows is not None:
+        selected = torch.tensor(selected_rows, dtype=torch.long)
+        actual = {
+            name: value.index_select(0, selected)
+            for name, value in actual.items()
+        }
     offset = golden["_output_idx_offset"]
     expected_idx = _remove_offset(golden["sparse_indices"], offset)
     actual_idx = _remove_offset(actual["sparse_indices"], offset)
     rows, s2 = actual_idx.shape[0], p["sequence_length"]
-    batch = p["batch_size"]
+    batch = len(selected_rows) if selected_rows is not None else p["batch_size"]
     cu = case_data["tensors"]["cu"].tolist()
     used_k = case_data["tensors"]["used_k"].tolist()
     compare_params = (
-        batch, p["query_length"], s2, rows, batch*s2, N1, N2, 128,
+        batch, 1 if selected_rows is not None else p["query_length"],
+        s2, rows, batch*s2, N1, N2, 128,
         PAGE_SIZE, (s2+PAGE_SIZE-1)//PAGE_SIZE, torch.uint8, torch.float32,
         torch.uint8, torch.int32, cu, used_k,
         1, 1, "TND", "PA_BBND", p["topk"], p["mask_mode"],

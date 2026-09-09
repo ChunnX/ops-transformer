@@ -180,6 +180,20 @@ Batch、T1 或 S2 不会重复编译。
 - Sparse 与 Candidate 均使用融合 Kernel 内的 raw-VF radix TopK；跨 VF 阶段的
   标量通过 UB 存取，不使用 `vreduce_max + vscatter` 合并方案。
 
+## 调用说明
+
+依赖已配置的 CANN、PyTorch、torch_npu 和 CANNBotDSL 环境。通过仓库
+`torch_extension` 构建流程安装 `cann_ops_transformer` 后使用：
+
+| 调用方式 | 入口 | 说明 |
+| :--- | :--- | :--- |
+| PyTorch API | `cann_ops_transformer.ops.ds41.quant_lightning_indexer` | 分配输出并调用 DSL，返回 `(sparse_indices, sparse_values, candidate_block_indices, candidate_block_length)` |
+| torch.ops | `torch.ops.cann_ops_transformer.ds41.quant_lightning_indexer` | 导入扩展完成注册后，可通过 PyTorch 自定义算子入口调用；参数和返回值与 PyTorch API 一致 |
+| DSL 直调 | [`torch_extension/quant_lightning_indexer_dsl.py`](torch_extension/quant_lightning_indexer_dsl.py) | 返回包含四个输出的 `dict`，主要用于内部实现和调试 |
+
+`ds41` 是实际 Python 模块名和 `torch.library` 注册名。正常业务代码推荐使用
+PyTorch API；需要验证注册通路时可直接使用 `torch.ops`。
+
 ## 调用示例
 
 以下示例假设输入 Tensor 已按上表在 NPU 上准备完成；Sample 接口本身不负责生成
@@ -196,22 +210,22 @@ result = quant_lightning_indexer(
     w,
     q_descale,
     k_descale,
-    512,
-    1,
+    topk,
+    quant_mode,
     cu_seqlens_q=cu_seqlens_q,
     seqused_q=seqused_q,
     seqused_k=seqused_k,
     cmp_residual_k=None,
     block_table=block_table,
     metadata=None,
-    max_seqlen_q=-1,
-    mask_mode=0,
-    cmp_ratio=1,
-    layout_q="TND",
-    layout_kv="PA_BBND",
-    return_value=True,
-    candidate_topk_blocks=2048,
-    candidate_block_size=8,
+    max_seqlen_q=max_seqlen_q,
+    mask_mode=mask_mode,
+    cmp_ratio=cmp_ratio,
+    layout_q=layout_q,
+    layout_kv=layout_kv,
+    return_value=return_value,
+    candidate_topk_blocks=candidate_topk_blocks,
+    candidate_block_size=candidate_block_size,
 )
 
 (
@@ -220,6 +234,37 @@ result = quant_lightning_indexer(
     candidate_indices,
     candidate_length,
 ) = result
+```
+
+等价的 `torch.ops` 调用如下。先导入算子扩展以完成注册：
+
+```python
+import torch
+import cann_ops_transformer.ops.attention.quant_lightning_indexer_dsl
+
+result = torch.ops.cann_ops_transformer.ds41.quant_lightning_indexer(
+    q,
+    k,
+    w,
+    q_descale,
+    k_descale,
+    topk,
+    quant_mode,
+    cu_seqlens_q=cu_seqlens_q,
+    seqused_q=seqused_q,
+    seqused_k=seqused_k,
+    cmp_residual_k=None,
+    block_table=block_table,
+    metadata=None,
+    max_seqlen_q=max_seqlen_q,
+    mask_mode=mask_mode,
+    cmp_ratio=cmp_ratio,
+    layout_q=layout_q,
+    layout_kv=layout_kv,
+    return_value=return_value,
+    candidate_topk_blocks=candidate_topk_blocks,
+    candidate_block_size=candidate_block_size,
+)
 ```
 
 关闭 Candidate 时两个属性必须同时传 `-1`：
@@ -231,8 +276,8 @@ result = quant_lightning_indexer(
     w,
     q_descale,
     k_descale,
-    512,
-    1,
+    topk,
+    quant_mode,
     cu_seqlens_q=cu_seqlens_q,
     seqused_q=seqused_q,
     seqused_k=seqused_k,

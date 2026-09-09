@@ -160,8 +160,8 @@ def generate_qliv2_test_data(test_data):
     s1 = int(p["q_seq"])
     s2 = int(p["k_seq"])
     total_q = int(p["q_t_size"])
-    if total_q != batch * s1:
-        raise ValueError("q_t_size must equal batch_size * q_seq for this TND paramset")
+    if total_q < 1:
+        raise ValueError("q_t_size must be positive")
     if (int(p["q_head_num"]), int(p["k_head_num"]), int(p["head_dim"])) != (32, 1, 128):
         raise ValueError("fixed QLI axes must be N1=32, N2=1, D=128")
     if int(p["block_size"]) != PAGE_SIZE:
@@ -205,9 +205,24 @@ def generate_qliv2_test_data(test_data):
     if storage_layout in ("scale_axis0_noncontiguous", "axis0_noncontiguous"):
         k_descale = _with_axis0_gap(k_descale)
 
-    default_cu = list(range(0, total_q + 1, s1))
+    if p["cu_seqlens_q"] is None and total_q != batch * s1:
+        raise ValueError(
+            "variable-length TND requires explicit cu_seqlens_q when "
+            "q_t_size != batch_size * q_seq"
+        )
+    default_cu = [index * s1 for index in range(batch + 1)]
     cu = _int_tensor(p["cu_seqlens_q"], default_cu)
-    used_q = _int_tensor(p["seqused_q"], [s1] * batch)
+    if tuple(cu.shape) != (batch + 1,) or int(cu[0]) != 0 or int(cu[-1]) != total_q:
+        raise ValueError("cu_seqlens_q must have shape (B+1), start at 0, and end at q_t_size")
+    q_lengths = (cu[1:] - cu[:-1]).tolist()
+    if any(length < 0 or length > s1 for length in q_lengths):
+        raise ValueError("each TND query length must be within [0, q_seq]")
+    used_q = _int_tensor(p["seqused_q"], q_lengths)
+    if tuple(used_q.shape) != (batch,) or any(
+        int(value) < 0 or int(value) > int(q_lengths[index])
+        for index, value in enumerate(used_q.tolist())
+    ):
+        raise ValueError("seqused_q must have shape (B,) and fit cu_seqlens_q")
     tails = (0, 1, 7, 9, 31, 63, 95, 127)
     default_used_k = [max(1, s2 - tails[index % len(tails)]) for index in range(batch)]
     used_k = _int_tensor(p["seqused_k"], default_used_k)
@@ -266,9 +281,45 @@ def run_qliv2_case_data(data, device_id=0):
     torch_npu.npu.set_device(device_id)
     p = _params_dict(data.params)
     kwargs = _operator_kwargs(p, data)
-    cpu_result = quant_lightning_indexer_golden(
-        data.q, data.k, data.w, data.q_descale, data.k_descale, **kwargs
-    )
+    selected_rows = None
+    if int(p["q_seq"]) >= 1024:
+        if int(p["sparse_mode"]) != 0:
+            raise ValueError("sampled Prefill comparison requires sparse_mode=0")
+        cu = data.cu_seqlens_q.tolist()
+        used_q = data.seqused_q.tolist()
+        selected_rows = []
+        selected_batches = []
+        for batch_index, begin in enumerate(cu[:-1]):
+            used = int(used_q[batch_index])
+            if used <= 0:
+                continue
+            rows = [int(begin)]
+            if used > 1:
+                rows.append(int(begin) + used - 1)
+            selected_rows.extend(rows)
+            selected_batches.extend([batch_index] * len(rows))
+        if not selected_rows:
+            raise ValueError("Prefill comparison requires at least one used query row")
+        selected = torch.tensor(selected_rows, dtype=torch.long)
+        selected_batch = torch.tensor(selected_batches, dtype=torch.long)
+        sampled_kwargs = dict(kwargs)
+        sampled_kwargs.update({
+            "cu_seqlens_q": torch.arange(len(selected_rows) + 1, dtype=torch.int32),
+            "seqused_q": torch.ones(len(selected_rows), dtype=torch.int32),
+            "seqused_k": data.seqused_k.index_select(0, selected_batch),
+            "cmp_residual_k": None,
+            "block_table": data.block_table.index_select(0, selected_batch),
+        })
+        cpu_result = quant_lightning_indexer_golden(
+            data.q.index_select(0, selected), data.k,
+            data.w.index_select(0, selected),
+            data.q_descale.index_select(0, selected), data.k_descale,
+            **sampled_kwargs,
+        )
+    else:
+        cpu_result = quant_lightning_indexer_golden(
+            data.q, data.k, data.w, data.q_descale, data.k_descale, **kwargs
+        )
     k_npu = _to_npu_preserving_strides(data.k)
     k_scale_npu = _to_npu_preserving_strides(data.k_descale)
     npu_kwargs = {name: _to_npu(value) for name, value in kwargs.items()}
@@ -288,6 +339,12 @@ def run_qliv2_case_data(data, device_id=0):
     npu_result = {
         name: value.cpu() for name, value in zip(output_names, npu_outputs)
     }
+    if selected_rows is not None:
+        selected = torch.tensor(selected_rows, dtype=torch.long)
+        npu_result = {
+            name: value.index_select(0, selected)
+            for name, value in npu_result.items()
+        }
     return cpu_result, npu_result
 
 

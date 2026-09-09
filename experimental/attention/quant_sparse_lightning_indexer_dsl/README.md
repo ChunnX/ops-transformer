@@ -163,6 +163,20 @@ S2 对应的 `logical_k_capacity` 作为运行时标量传入 Kernel。编译结
   `None`。
 - `descale_k` 第 0 轴 stride 必须满足 E8M0 pair 对齐。
 
+## 调用说明
+
+依赖已配置的 CANN、PyTorch、torch_npu 和 CANNBotDSL 环境。通过仓库
+`torch_extension` 构建流程安装 `cann_ops_transformer` 后使用：
+
+| 调用方式 | 入口 | 说明 |
+| :--- | :--- | :--- |
+| PyTorch API | `cann_ops_transformer.ops.ds41.quant_sparse_lightning_indexer` | 分配输出并调用 DSL，返回 `(sparse_indices, sparse_values)` |
+| torch.ops | `torch.ops.cann_ops_transformer.ds41.quant_sparse_lightning_indexer` | 导入扩展完成注册后，可通过 PyTorch 自定义算子入口调用；参数和返回值与 PyTorch API 一致 |
+| DSL 直调 | [`torch_extension/quant_sparse_lightning_indexer_dsl.py`](torch_extension/quant_sparse_lightning_indexer_dsl.py) | 返回包含两个输出的 `dict`，主要用于内部实现和调试 |
+
+`ds41` 是实际 Python 模块名和 `torch.library` 注册名。正常业务代码推荐使用
+PyTorch API；需要验证注册通路时可直接使用 `torch.ops`。
+
 ## 调用示例
 
 ```python
@@ -178,22 +192,52 @@ result = quant_sparse_lightning_indexer(
     descale_k,
     candidate_block_indices,
     candidate_block_length,
-    512,
-    1,
-    8,
+    topk,
+    quant_mode,
+    candidate_block_size,
     cu_seqlens_q=cu_seqlens_q,
     seqused_q=seqused_q,
     seqused_k=seqused_k,
     cmp_residual_k=None,
     block_table=block_table,
     output_idx_offset=output_idx_offset,
-    mask_mode=3,
-    cmp_ratio=1,
-    layout_q="TND",
-    layout_kv="PA_BBND",
+    mask_mode=mask_mode,
+    cmp_ratio=cmp_ratio,
+    layout_q=layout_q,
+    layout_kv=layout_kv,
 )
 
 sparse_indices, sparse_values = result
+```
+
+等价的 `torch.ops` 调用如下。先导入算子扩展以完成注册：
+
+```python
+import torch
+import cann_ops_transformer.ops.attention.quant_sparse_lightning_indexer_dsl
+
+result = torch.ops.cann_ops_transformer.ds41.quant_sparse_lightning_indexer(
+    q,
+    k,
+    weights,
+    descale_q,
+    descale_k,
+    candidate_block_indices,
+    candidate_block_length,
+    topk,
+    quant_mode,
+    candidate_block_size,
+    cu_seqlens_q=cu_seqlens_q,
+    seqused_q=seqused_q,
+    seqused_k=seqused_k,
+    cmp_residual_k=None,
+    block_table=block_table,
+    output_idx_offset=output_idx_offset,
+    mask_mode=mask_mode,
+    cmp_ratio=cmp_ratio,
+    layout_q=layout_q,
+    layout_kv=layout_kv,
+)
 ```
 
 测试入口和转测用例说明见
