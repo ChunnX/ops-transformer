@@ -724,6 +724,28 @@ protected:
 
         OP_LOGI(opName, "localMatmul precisionMode=%u", precisionMode_);
 
+        platform_ascendc::PlatformAscendC ascendcPlatform(context_->GetPlatformInfo());
+        libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
+
+        td->workspaceLayout.totalSize = libApiWorkSpaceSize_ + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+        td->workspaceLayout.segCount = 2;
+        td->workspaceLayout.segments[0] = {0UL, libApiWorkSpaceSize_,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
+        td->workspaceLayout.segments[1] = {libApiWorkSpaceSize_, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
+ 
+        double typeSize = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 0.5 : 1.0;
+        uint64_t scaleKDim = (k_ + 63UL) / 64UL;
+        uint64_t dataRegionBytes = worldSize_ * m_ * static_cast<uint64_t>(static_cast<double>(k_) * typeSize);
+        uint64_t scaleRegionBytes = worldSize_ * m_ * scaleKDim * 2UL;
+        td->peermemDataSize = dataRegionBytes + scaleRegionBytes;
+        td->peermemLayout.totalSize = td->peermemDataSize;
+        td->peermemLayout.segCount = 2;
+        td->peermemLayout.segments[0] = {0UL, dataRegionBytes,
+                                         static_cast<uint8_t>(Mc2Tiling::PEERMEM_SEG_DATA), {}};
+        td->peermemLayout.segments[1] = {dataRegionBytes, scaleRegionBytes,
+                                         static_cast<uint8_t>(Mc2Tiling::PEERMEM_SEG_SCALE), {}};
+
         return ge::GRAPH_SUCCESS;
     }
 
@@ -740,13 +762,10 @@ protected:
 
     ge::graphStatus GetWorkspaceSize() override
     {
-        auto *platformInfo = context_->GetPlatformInfo();
-        if (platformInfo == nullptr) {
-            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "platformInfo");
-            return ge::GRAPH_FAILED;
-        }
-        platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-        workspaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
+        workspaceSize_ = libApiWorkSpaceSize_ + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+        OP_LOGI(context_->GetNodeName(),
+                "AAMV2 workspace: libApiWorkSpaceSize=%lu, runtimeInfoSize=%lu, workspaceSize=%lu",
+                libApiWorkSpaceSize_, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE, workspaceSize_);
         auto *wsBuf = context_->GetWorkspaceSizes(1);
         if (wsBuf != nullptr) {
             wsBuf[0] = workspaceSize_;
@@ -756,7 +775,9 @@ protected:
 
     ge::graphStatus PostTiling() override
     {
-        context_->GetRawTilingData()->SetDataSize(context_->GetRawTilingData()->GetCapacity());
+        // tiling 数据只声明结构体大小（capacity-8），尾部 8 字节留给框架写入 DFX 指针（atomicIndex），
+        // 否则异常 dump 时 IDEDD 从 opParaSize-8 处读到 0，导致 exception_info 解析中止
+        context_->GetRawTilingData()->SetDataSize(sizeof(allToAllMatmulTilingData));
         context_->SetBlockDim(usedCoreNum_);
         return ge::GRAPH_SUCCESS;
     }
@@ -765,6 +786,7 @@ private:
     uint64_t m_{0}, k_{0}, n_{0};
     uint64_t worldSize_{1};
     uint32_t precisionMode_{0};
+    uint64_t libApiWorkSpaceSize_{0};
     QuantMatmulPlatformInfo quantPlatformInfo_;
 };
 
