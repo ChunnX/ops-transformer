@@ -382,6 +382,13 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
         outStarted = true;
         Duplicate<int32_t>(tokenIndices, -1, segLen);
         PipeBarrier<PIPE_V>();
+        if (!vecPath) {
+            // V→S: 标量路径的 SetValue 必须等本段 -1 填充(V 写)先落地 —— 否则
+            // S 写先发射、V 写后落地时标量 token 被 -1 覆盖(丢池, ps%8!=0 +
+            // 多块全选场景实测每行丢 1-3 池)。arch35 修复含此同步(Duplicate →
+            // VToSSync → 标量写), arch22 移植时展开段遗漏(尾块段已有)。
+            VToSSync();
+        }
 
         uint32_t kLo = segDone / poolSize;
         uint32_t kHi = PkiCommon::Min(kLo + kLen, expandRounds);

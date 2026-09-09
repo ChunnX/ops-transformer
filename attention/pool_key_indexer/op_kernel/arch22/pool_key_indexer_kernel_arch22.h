@@ -318,6 +318,10 @@ __aicore__ void inline PoolKeyIndexerKernel<LIT>::SplitCore(uint32_t curCoreIdx,
     bool findLastCoreEnd = true;
     uint32_t actS1Size, actS2Size, actS2SizeOrig;
     uint32_t s1GBaseNum, s2BaseNum, s2Loop;
+    // 尾部残余 fill 的高水位终点跟踪(见函数末尾注释)
+    uint32_t tailBN2End = 0;
+    uint32_t tailGS1End = 0;
+    uint32_t tailS2End = 0;
     for (uint32_t bN2Idx = 0; bN2Idx < constInfo.batchSize * constInfo.kHeadNum; bN2Idx++) {
         uint32_t bIdx = bN2Idx / constInfo.kHeadNum;
         if (bN2Idx % constInfo.kHeadNum == 0) {
@@ -352,6 +356,19 @@ __aicore__ void inline PoolKeyIndexerKernel<LIT>::SplitCore(uint32_t curCoreIdx,
                     findLastCoreEnd = false;
                 }
                 uint32_t s2RemainBaseNum = s2Loop - s2Idx;
+                // S2 跨核规避(LD 缺陷修复): 当前 fill 已包含本 gS1 的 S2 首块(s2Idx==0,
+                // 配额未在更早的 gS1 耗尽)且自然终点会落在本 S2 中间时, 扩展配额吃满
+                // 整个 S2 —— 保证每个 (batch, gS1) 的 S2 块完整落在单核内, isLD 永不
+                // 触发, 走 needCopyOutGm 单核直出路径。LD 跨核归并(ProcessLD)在
+                // arch22 上存在三族缺陷: ① 归并链 >=5 表时尾部部分归并(validBit !=
+                // 0b1111)触发 VEC 指令非法配置(aicore exception, 大规格用例挂死);
+                // ② 归并列表污染导致缺选/多选(indices 集合比对失败); ③ 部分 M 块
+                // 行输出未写(GM 残留垃圾值)。代价是多 batch 大 S2 场景核利用率下降
+                // (fill 数 = 参与计算的 (batch, gS1) 组数), 空闲核重复处理首块(幂等,
+                // 无害)。仅扩展不收缩: 配额充足跨多个 gS1 的场景保持原行为。
+                if (s2Idx == 0 && lastGS1RemainBlockCnt + s2RemainBaseNum > coreDealBlockCnt) {
+                    coreDealBlockCnt = lastGS1RemainBlockCnt + s2RemainBaseNum;
+                }
                 if (lastGS1RemainBlockCnt + s2RemainBaseNum >= coreDealBlockCnt) {
                     info.bN2End = bN2Idx;
                     info.gS1End = gS1Idx;
@@ -378,10 +395,29 @@ __aicore__ void inline PoolKeyIndexerKernel<LIT>::SplitCore(uint32_t curCoreIdx,
                     coreDealBlockCnt = coreIdx < deal1MoreBlockCoreNum ? minBlockPerCore + 1 : minBlockPerCore;
                 } else {
                     lastGS1RemainBlockCnt += s2RemainBaseNum;
+                    // 记录未完成 fill 的高水位终点(尾部残余 fill 用)
+                    tailBN2End = bN2Idx;
+                    tailGS1End = gS1Idx;
+                    tailS2End = s2Loop - 1;
                     break;
                 }
             }
         }
+    }
+    // 尾部残余 fill: S2 整块对齐(LD 规避)后各 fill 向上取整到 (batch,gS1) 的 S2
+    // 边界, 最后一段块数可能不足配额而永远凑不满 —— 若不处理, 遍历走完仍不
+    // return, 尾部块无人执行(对应行输出缺失/残留)。由当前核吃满剩余, 终点为
+    // 最后一个累计过的 (batch,gS1) 的 S2 末块; 空尾 batch 的输出清理同主路径。
+    if (!findLastCoreEnd && coreIdx == curCoreIdx) {
+        info.bN2End = tailBN2End;
+        info.gS1End = tailGS1End;
+        info.s2End = tailS2End;
+        if (info.bN2End != constInfo.batchSize - 1) {
+            info.bN2End = constInfo.batchSize - 1;
+            info.gS1End = 0;
+            info.s2End = 0;
+        }
+        return;
     }
 }
 
