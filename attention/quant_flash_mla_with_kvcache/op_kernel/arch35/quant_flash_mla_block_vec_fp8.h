@@ -144,23 +144,30 @@ public:
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *dequantScaleQuery,
                                         __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue,
                                         __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-                                        __gm__ uint8_t *workspace, QSeqParserType &qParser)
+                                        __gm__ uint8_t *workspace, QSeqParserType &qParser,
+                                        __gm__ uint8_t *attenMask)
     {
         tPipe_ = pipe;
         qSeqParserPtr_ = &qParser;
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
         this->negativeFloatScalar_ = *((T *)&tmp1);
 
-        InitVecInput(dequantScaleQuery, dequantScaleKey, dequantScaleValue, softmaxLse, attentionOut, workspace);
+        InitVecInput(dequantScaleQuery, dequantScaleKey, dequantScaleValue, softmaxLse, attentionOut, workspace,
+                     attenMask);
     }
 
     __aicore__ inline void InitVecInput(__gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
                                         __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *softmaxLse,
-                                        __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
+                                        __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+                                        __gm__ uint8_t *attenMask)
     {
         this->attentionOutGm_.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
         if (constInfo_.isSoftmaxLseEnable) {
             softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
+        }
+
+        if constexpr (HAS_MASK) {
+            attenMaskGmInt_.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
         }
 
         // MLA全量化dequantScale: Q per-token-head, KV per-tensor

@@ -159,7 +159,7 @@ public:
         if ASCEND_IS_AIV {
             // MLA: V=K_nope, descale共用k_descale
             vecFaBlock_.InitVecBlock(tPipe, qDescale, kDescale, kDescale, softmaxLse, attnOut, workspace,
-                                     qCuSeqLensParser_);
+                                     qCuSeqLensParser_, attnMask);
             vecFaBlock_.ClearOutput();
         }
 
