@@ -12,13 +12,14 @@
 #include "register/register.h"
 
 namespace domi {
-static Status ParseParamsMoeFinalizeRoutingV2(const ge::Operator &op_src, ge::Operator &op_dest) {
-  int64_t drop_pad_mode = 0;
-  if (op_src.GetAttr("drop_pad_mode", drop_pad_mode) != ge::GRAPH_SUCCESS) {
-    drop_pad_mode = 0;
-  }
-  op_dest.SetAttr("drop_pad_mode", drop_pad_mode);
-  return SUCCESS;
+static Status ParseParamsMoeFinalizeRoutingV2(const ge::Operator &op_src, ge::Operator &op_dest)
+{
+    int64_t drop_pad_mode = 0;
+    if (op_src.GetAttr("drop_pad_mode", drop_pad_mode) != ge::GRAPH_SUCCESS) {
+        drop_pad_mode = 0;
+    }
+    op_dest.SetAttr("drop_pad_mode", drop_pad_mode);
+    return SUCCESS;
 }
 
 // register npu_moe_finalize_routing op info to GE
@@ -35,4 +36,4 @@ REGISTER_CUSTOM_OP("MoeFinalizeRoutingV2")
                    ge::AscendString("ai.onnx::18::NPUMoeFinalizeRoutingV2")})
     .ParseParamsByOperatorFn(ParseParamsMoeFinalizeRoutingV2)
     .ImplyType(ImplyType::TVM);
-} // namespace V2domi
+} // namespace domi
