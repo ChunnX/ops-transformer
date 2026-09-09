@@ -87,7 +87,7 @@ class MegaMoeMteWave<XType, OutputType, TopkWeightsType, fp4x2_e2m1_t, MoeWeight
                      SharedQuantMode, CombineQuantMode, TopkWeightsPrefetch, IsGmm1Interleaved>
     : public MegaMoeA4W4Wave<XType, OutputType, TopkWeightsType, fp4x2_e2m1_t, EXPERT_QUANT_OUT_DTYPE_E2M1,
                              SharedWeightType, SharedQuantMode, MoeWeight1Format, MoeWeight2Format, SharedWeight1Format,
-                             SharedWeight2Format, CombineQuantMode, TopkWeightsPrefetch> {};
+                             SharedWeight2Format, CombineQuantMode, TopkWeightsPrefetch, IsGmm1Interleaved> {};
 
 } // namespace MegaMoeImpl
 #endif
