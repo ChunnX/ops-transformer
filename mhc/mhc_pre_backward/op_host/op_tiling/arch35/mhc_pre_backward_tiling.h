@@ -21,13 +21,10 @@
 #include "err/ops_err.h"
 #include "platform/platform_infos_def.h"
 #include "../../../op_kernel/arch35/mhc_pre_backward_tiling_key.h"
-#include "../mhc_pre_backward_tiling.h"
 
 namespace optiling {
 
 BEGIN_TILING_DATA_DEF(MhcPreBackwardTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTilingC0);
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTilingC1);
 TILING_DATA_FIELD_DEF(uint32_t, coreNum);
 TILING_DATA_FIELD_DEF(uint32_t, vecCoreNum);
 TILING_DATA_FIELD_DEF(uint64_t, totalLength);
@@ -36,9 +33,21 @@ TILING_DATA_FIELD_DEF(uint64_t, N);
 TILING_DATA_FIELD_DEF(uint64_t, D);
 TILING_DATA_FIELD_DEF(uint64_t, fusionSize); // N ^ 2 + 2 * N
 TILING_DATA_FIELD_DEF(float, hcEps);
+TILING_DATA_FIELD_DEF(uint32_t, implMode);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPreBackward, MhcPreBackwardTilingData);
+
+struct MhcPreBackwardCompileInfo {
+    uint64_t aicNum{0UL};
+    uint64_t aivNum{0UL};
+    uint64_t ubSize{0UL};
+    uint64_t l1Size{0UL};
+    uint64_t l2Size{0UL};
+    uint64_t l0CSize{0UL};
+    uint64_t l0ASize{0UL};
+    uint64_t l0BSize{0UL};
+};
 
 class MhcPreBackwardTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
@@ -64,7 +73,7 @@ protected:
     };
     // 3、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
-    // 4、计算高阶API的TilingData
+    // 4、库API Tiling阶段
     ge::graphStatus DoLibApiTiling() override
     {
         return ge::GRAPH_SUCCESS;
@@ -81,7 +90,7 @@ protected:
 
     ge::graphStatus GetInputShape();
     ge::graphStatus GetInputTensors(const gert::Tensor *&gradHInTensor, const gert::Tensor *&gradHPostTensor,
-                                    const gert::Tensor *&gradHResTensor);
+                                   const gert::Tensor *&gradHResTensor);
     ge::graphStatus ValidateInputDims(int64_t gradHInDims, int64_t gradHPostDims, int64_t gradHResDims);
     ge::graphStatus ParseBSDFormat(const gert::Tensor *gradHInTensor, const gert::Tensor *gradHPostTensor,
                                    const gert::Tensor *gradHResTensor);
@@ -91,12 +100,7 @@ protected:
     void PrintTilingData();
     ge::graphStatus ParseInputAndAttr();
     void FillTilingData();
-    void SetC0TilingParams();
-    void SetC1TilingParams();
     void SetCommonTilingParams();
-    void SetMatmulC0Tiling(matmul_tiling::MatmulApiTiling &mm);
-    void SetMatmulC1Tiling(matmul_tiling::MatmulApiTiling &mm);
-    ge::graphStatus GetMatmulTiling(matmul_tiling::MatmulApiTiling &mm, bool isC0);
     ge::graphStatus TilingProcess();
 
     static uint64_t CalculateWorkspaceSize(uint64_t totalLength, uint64_t fusionSize, uint64_t cubeCoreNum,
@@ -110,6 +114,7 @@ private:
     uint64_t N_{0};
     uint64_t D_{0};
     float hcEps_{0.0f};
+    uint32_t implMode_{0U};
     uint64_t fusionSize_{0};
 };
 
