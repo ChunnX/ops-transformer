@@ -811,7 +811,9 @@ ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
                 attenMaskBatch, attenMaskNumHeads);
         return ge::GRAPH_FAILED;
     }
-    if (attenMaskNumHeads != kvHeads_) {
+    // GQA/MQA 限制来自 FP8 effRows 实现(kv 侧按 kvHead 取块), mxfp4 的 blockEffRows
+    // 按 qHeads 布局(attenMask dim1 == numHeads), 不受此限制
+    if (!IsMxfp4Quant(quantMode_) && attenMaskNumHeads != kvHeads_) {
         OP_LOGE(bsaContext->GetNodeName(),
                 "attenMask (blockEffRows) requires numHeads == kvHeads (no GQA/MQA), but numHeads=%u, kvHeads=%u.",
                 numHeads_, kvHeads_);
