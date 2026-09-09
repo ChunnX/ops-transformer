@@ -212,7 +212,7 @@
 </table>
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> 、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：
-  - cache_mode不支持输入2，且state_cache不支持0轴非连续。
+  - cache_mode不支持输入2。state_cache支持0轴非连续，其余轴必须连续。
   - cmp_ratio仅支持2/4/8/16/32/64/128。
 
 ## 约束说明
