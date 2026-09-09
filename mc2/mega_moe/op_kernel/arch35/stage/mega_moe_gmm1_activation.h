@@ -172,11 +172,18 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(WorkSet &workSet, const Params
             WaitForGmm1InputReady<IsShared>(gmmAddrInfo, config, mLoc);
             lastWaveWaited = waveIdx;
         }
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->WaitForSwiglu();
+        }
         Gmm1AicMmadTileToGmGeneric<BlockMmad>(blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmC,
                                               actualShape, mLoc, nLoc, kLoc, gmBlockA, gmBlockScaleA);
-        AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-        NotifyGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->NotifySwiglu();
+        } else {
+            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+            NotifyGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
+        }
     }
 }
 
@@ -254,15 +261,25 @@ __aicore__ inline void Gmm1AicMmadA8W4(WorkSet &workSet, const Params &params, c
             lastWaveWaited = waveIdx;
         }
 
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->WaitForSwiglu();
+        }
         Gmm1AicMmadTileA8W4(blockMmad, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, config,
                             actualShape, mLoc, nLoc);
 
-        AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-        if constexpr (TopkWeightsPrefetch) {
-            NotifyGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->NotifySwiglu();
+            if constexpr (!TopkWeightsPrefetch) {
+                ++gmm1TileReadySequence;
+            }
         } else {
-            AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++gmm1TileReadySequence);
+            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+            if constexpr (TopkWeightsPrefetch) {
+                NotifyGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
+            } else {
+                AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++gmm1TileReadySequence);
+            }
         }
     }
 }
@@ -405,7 +422,7 @@ __aicore__ inline void WaitGmm1TileStatus(const GMMAddrInfo &gmmAddrInfo, uint32
     WaitUntilGmFlagEquals(statusAddr, roundTag);
 }
 
-// Prefetch 路径的 AIV0 等待 GM tile 就绪，再执行 SwiGLU/量化。
+// Prefetch 路径的 AIV0 通过硬件通知或 GM 状态等待 tile 就绪，再执行 SwiGLU/量化。
 template <typename MakeLayoutC, typename ElementC, bool IsWaveFlagGrained, typename WorkSet, typename Config,
           typename ActivationQuantOp>
 __aicore__ inline void Gmm1Aiv0PrefetchEpilogueGeneric(WorkSet &workSet, const Params &params,
@@ -419,10 +436,17 @@ __aicore__ inline void Gmm1Aiv0PrefetchEpilogueGeneric(WorkSet &workSet, const P
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
-        WaitGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->WaitForGmm1();
+        } else {
+            WaitGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
+        }
         Gmm1Aiv0PrefetchEpilogueTileGeneric<MakeLayoutC, ElementC, IsWaveFlagGrained>(
             config, workSet.gmC, workSet.metaInfoGm, activationQuantOp, gmmAddrInfo, expertBeforeCnt, actualShape, mLoc,
             nLoc);
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->NotifyGmm1();
+        }
     }
 }
 
@@ -522,7 +546,7 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
     }
 }
 
-// Prefetch 路径的 AIV1 等待 GM tile 就绪，再执行 A8W4 SwiGLU/量化。
+// Prefetch 路径的 AIV1 通过硬件通知或 GM 状态等待 tile 就绪，再执行 A8W4 SwiGLU/量化。
 template <typename ElementC, typename MakeLayoutC, bool IsWaveFlagGrained, typename WorkSet, typename Config,
           typename ActivationQuantOp>
 __aicore__ inline void Gmm1Aiv1PrefetchEpilogueA8W4(WorkSet &workSet, const Params &params,
@@ -536,14 +560,21 @@ __aicore__ inline void Gmm1Aiv1PrefetchEpilogueA8W4(WorkSet &workSet, const Para
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
-        WaitGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->WaitForGmm1();
+        } else {
+            WaitGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
+        }
         Gmm1Aiv1PrefetchEpilogueTileA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(
             activationQuantOp, workSet.gmC, workSet.metaInfoGm, gmmAddrInfo, config, actualShape, mLoc, nLoc,
             expertBeforeCnt);
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->NotifyGmm1();
+        }
     }
 }
 
-// 非 Prefetch 路径的 AIV1 按 AIC 序号消费 A8W4 GMM1 tile。
+// 非 Prefetch 路径的 AIV1 按 AIC 通知顺序消费 A8W4 GMM1 tile。
 template <typename ElementC, typename MakeLayoutC, bool IsWaveFlagGrained, typename WorkSet, typename Config,
           typename ActivationQuantOp>
 __aicore__ inline void Gmm1Aiv1EpilogueA8W4(WorkSet &workSet, const GMMAddrInfo &gmmAddrInfo, const Config &config,
@@ -556,10 +587,17 @@ __aicore__ inline void Gmm1Aiv1EpilogueA8W4(WorkSet &workSet, const GMMAddrInfo 
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         int32_t expectedReadySequence = gmm1TileReadySequence + 1;
-        WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag, expectedReadySequence);
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->WaitForGmm1();
+        } else {
+            WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag, expectedReadySequence);
+        }
         Gmm1Aiv1EpilogueTileA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(activationQuantOp, workSet.gmC, gmmAddrInfo,
                                                                            config, actualShape, mLoc, nLoc);
         gmm1TileReadySequence = expectedReadySequence;
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->NotifyGmm1();
+        }
     }
 }
 
