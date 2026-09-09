@@ -53,6 +53,17 @@ inline int64_t ComputeTimes(const int64_t value, const int64_t factor)
 } // namespace
 
 namespace optiling {
+
+namespace {
+std::string ShapeValue(const gert::Shape &shape)
+{
+    std::string value = Ops::Base::ToString(shape);
+    if (value.size() >= 2 && value.front() == '[' && value.back() == ']') {
+        return value.substr(1, value.size() - 2);
+    }
+    return value;
+}
+} // namespace
 using namespace Ops::Base;
 struct ApplyRotaryPosEmbParams {
     int64_t totalCoreNum = 0;
@@ -265,7 +276,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
         return ge::GRAPH_FAILED;
     }
     if (params.cosDim3 != LASTDIM_64 && params.cosDim3 != LASTDIM_128) {
-        std::string shapeStr = ToString(cosShape);
+        std::string shapeStr = ShapeValue(cosShape);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "cos", shapeStr.c_str(),
                                               "The last dim of input cos should be 64 or 128");
         return ge::GRAPH_FAILED;
@@ -278,7 +289,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
         return ge::GRAPH_FAILED;
     }
     if (params.qDim3 != LASTDIM_128 && params.qDim3 != LASTDIM_64) {
-        std::string shapeStr = ToString(qShape);
+        std::string shapeStr = ShapeValue(qShape);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "query", shapeStr.c_str(),
                                               "The last dim of input query should be 64 or 128");
         return ge::GRAPH_FAILED;
@@ -287,7 +298,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
         std::string reasonMsg = "The N axis of input cos should be 1, "
                                 "where N refers to the 2nd dim when the attr layout is 1 (BSND), "
                                 "or the 1st dim when the attr layout is 4 (TND)";
-        std::string shapeStr = ToString(cosShape);
+        std::string shapeStr = ShapeValue(cosShape);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "cos", shapeStr.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
