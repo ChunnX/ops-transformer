@@ -713,13 +713,13 @@ protected:
         platform_ascendc::PlatformAscendC ascendcPlatform(context_->GetPlatformInfo());
         libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
 
-        td->workspaceLayout.totalSize = libApiWorkSpaceSize_ + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+        td->workspaceLayout.totalSize = libApiWorkSpaceSize_ + Mc2Tiling::STATE_DUMP_TOTAL_SIZE;
         td->workspaceLayout.segCount = 2;
         td->workspaceLayout.segments[0] = {
             0UL, libApiWorkSpaceSize_, static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
         td->workspaceLayout.segments[1] = {libApiWorkSpaceSize_,
-                                           Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
-                                           static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO),
+                                           Mc2Tiling::STATE_DUMP_TOTAL_SIZE,
+                                           static_cast<uint8_t>(Mc2Tiling::WS_SEG_STATE_DUMP),
                                            {}};
 
         double typeSize = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 0.5 : 1.0;
@@ -749,10 +749,10 @@ protected:
 
     ge::graphStatus GetWorkspaceSize() override
     {
-        workspaceSize_ = libApiWorkSpaceSize_ + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+        workspaceSize_ = libApiWorkSpaceSize_ + Mc2Tiling::STATE_DUMP_TOTAL_SIZE;
         OP_LOGI(context_->GetNodeName(),
-                "AAMV2 workspace: libApiWorkSpaceSize=%lu, runtimeInfoSize=%lu, workspaceSize=%lu",
-                libApiWorkSpaceSize_, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE, workspaceSize_);
+                "AAMV2 workspace: libApiWorkSpaceSize=%lu, stateDumpSize=%lu, workspaceSize=%lu",
+                libApiWorkSpaceSize_, Mc2Tiling::STATE_DUMP_TOTAL_SIZE, workspaceSize_);
         auto *wsBuf = context_->GetWorkspaceSizes(1);
         if (wsBuf != nullptr) {
             wsBuf[0] = workspaceSize_;
