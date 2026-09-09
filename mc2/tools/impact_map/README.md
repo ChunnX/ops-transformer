@@ -18,9 +18,10 @@ mc2/tools/
 └── impact_map/
     ├── common/                  # mc2/common 头文件的映射（仅含"测部分算子"的头）
     │   ├── A2.yaml / A3.yaml / A5.yaml
+    │   └── file_lists.yaml      # 全量匹配清单
     ├── 3rd/                     # mc2/3rd 头文件的映射（仅含"测部分算子"的头）
     │   ├── A2.yaml / A3.yaml / A5.yaml
-    └── file_lists.yaml             # 全量匹配清单（按目录分放，common/与3rd/各一份）
+    │   └── file_lists.yaml      # 全量匹配清单
 ```
 
 芯片对应关系：A2=ascend910b，A3=ascend910_93，A5=ascend950。
