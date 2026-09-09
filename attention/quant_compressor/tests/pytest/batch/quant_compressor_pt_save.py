@@ -234,7 +234,7 @@ def compressor_output_single(data_case):
             return
         old_S = Seq_len
         if seqused is not None:
-            Seq_len = max(seqused)
+            Seq_len = max(seqused) if len(seqused) > 0 else 0
         else:
             Seq_len = 0
             for i in range(batch_size):
