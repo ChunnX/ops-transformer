@@ -24,6 +24,17 @@ using namespace std;
 
 class l2_ai_mhc_pre_backward_test : public testing::Test {
 protected:
+    void SetUp() override
+    {
+        // This is a Host-side platform stub. Hardware compatibility still requires testing on the actual SoC.
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+    }
+
+    void TearDown() override
+    {
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+    }
+
     static void SetUpTestCase()
     {
         cout << "l2_ai_mhc_pre_backward_test SetUp" << endl;
@@ -34,6 +45,44 @@ protected:
         cout << "l2_ai_mhc_pre_backward_test TearDown" << endl;
     }
 };
+
+aclnnStatus RunMhcPreBackward(bool useFactorialGradHRes = false)
+{
+    int64_t n = 4;
+    int64_t d = 8;
+    int64_t t = 10;
+    int64_t nD = n * d;
+    int64_t residualSize = useFactorialGradHRes ? 24 : n * n;
+    int64_t fusionSize = residualSize + 2 * n;
+
+    auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto phi = TensorDesc({fusionSize, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = useFactorialGradHRes
+                        ? TensorDesc({t, residualSize}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1)
+                        : TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, fusionSize}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({fusionSize, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({fusionSize}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    float hcEps = 1e-6f;
+
+    auto ut = OP_API_UT(
+        aclnnMhcPreBackward,
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    return ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+}
 
 aclnnStatus RunMhcPreBackwardV2(int64_t opImplMode)
 {
@@ -71,19 +120,47 @@ aclnnStatus RunMhcPreBackwardV2(int64_t opImplMode)
     return ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
 }
 
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_v2_fp32_mode)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_v1_ascend950)
 {
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    EXPECT_EQ(RunMhcPreBackward(), ACLNN_SUCCESS);
+}
+
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_v1_factorial_grad_h_res_ascend910b)
+{
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+    EXPECT_EQ(RunMhcPreBackward(true), ACLNN_SUCCESS);
+}
+
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_v1_factorial_grad_h_res_ascend910_93)
+{
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910_93);
+    EXPECT_EQ(RunMhcPreBackward(true), ACLNN_SUCCESS);
+}
+
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_v1_factorial_grad_h_res_ascend950)
+{
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    EXPECT_NE(RunMhcPreBackward(true), ACLNN_SUCCESS);
+}
+
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_v2_fp32_mode_ascend950)
+{
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
     EXPECT_EQ(RunMhcPreBackwardV2(0), ACLNN_SUCCESS);
 }
 
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_v2_hf32_mode)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_v2_hf32_mode_ascend950)
 {
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
     EXPECT_EQ(RunMhcPreBackwardV2(1), ACLNN_SUCCESS);
 }
 
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_v2_invalid_mode)
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_v2_invalid_mode_ascend950)
 {
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
     EXPECT_NE(RunMhcPreBackwardV2(2), ACLNN_SUCCESS);
+    EXPECT_NE(RunMhcPreBackwardV2(-1), ACLNN_SUCCESS);
 }
 
 // ==================== 正常测试用例（成功路径） ====================
