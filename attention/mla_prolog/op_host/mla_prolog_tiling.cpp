@@ -220,7 +220,7 @@ QUANT_MODE MlaPrologTiling::GetQuantizationModeV3Dav() const
 QUANT_MODE MlaPrologTiling::GetQuantizationMode() const
 {
     if (std::strncmp(context_->opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
-        if (GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (GetCurNpuArch() == NpuArch::DAV_3510 || GetCurNpuArch() == NpuArch::DAV_9201) {
             return GetQuantizationModeV3Dav();
         } else {
             return GetQuantizationModeV3();
@@ -334,8 +334,8 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
         (scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_BSND || scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_NZ)) {
         OP_CHECK_IF(context_->actualSeqLen.shape == nullptr,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "actualSeqLen", "null",
-                                                          "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX "
-                                                          "shape dim num is 2, actualSeqLen should not be null"),
+                                                             "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX "
+                                                             "shape dim num is 2, actualSeqLen should not be null"),
                     return GRAPH_FAILED);
         baseShapeInfo_.bSize = context_->actualSeqLen.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_0);
         scenarioInfo_.actualSeqMode_ = ACTUAL_SEQ_MODE::EN_Q_LEN;
@@ -345,8 +345,7 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
     uint32_t cvRatio = aivNum_ / aicNum_;
     // 当前仅在BS>=8K且数据类型为MXFP8时路由到切M模板，其他情况均路由到切N模板
     scenarioInfo_.splitMFlag_ = 0U;
-    if (scenarioInfo_.weightQuantMode_ == WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT && baseShapeInfo_.tSize >= 8192 &&
-        cvRatio == 2) { // 8192：BS >= 8K
+    if (scenarioInfo_.weightQuantMode_ == WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT && baseShapeInfo_.tSize >= 8192) { // 8192：BS >= 8K
         if ((baseShapeInfo_.heSize == HEAD_SIZE1 || baseShapeInfo_.heSize == HEAD_SIZE2) &&
             baseShapeInfo_.nSize == 128) { // 128：N为128时路由到切M模板
             scenarioInfo_.splitMFlag_ = 1U;
@@ -670,16 +669,44 @@ ge::graphStatus MlaPrologTiling::GenTilingKey() const
     if (aivNum_ == aicNum_) {
         cvMode = ASCENDC_TPL_MIX_AIC_1_1; // cv 1:1模式
     }
-
-    if (cvMode == ASCENDC_TPL_MIX_AIC_1_1 &&
-        (scenarioInfo_.quantMode_ != QUANT_MODE::NO_QUANT ||
-         (scenarioInfo_.cacheMode_ != CACHE_MODE::PA_BSND && scenarioInfo_.cacheMode_ != CACHE_MODE::PA_NZ))) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            context_->opName, "quantMode",
-            std::to_string(static_cast<uint32_t>(scenarioInfo_.quantMode_)) + ", cacheMode is " +
-                std::to_string(static_cast<uint32_t>(scenarioInfo_.cacheMode_)),
-            "CV1:1 mode only support quantMode in {NO_QUANT} and cacheMode in {PA_BSND,PA_NZ}");
-        return ge::GRAPH_FAILED;
+    if (GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (cvMode == ASCENDC_TPL_MIX_AIC_1_1 &&
+            (scenarioInfo_.quantMode_ != QUANT_MODE::NO_QUANT ||
+            (scenarioInfo_.cacheMode_ != CACHE_MODE::PA_BSND && scenarioInfo_.cacheMode_ != CACHE_MODE::PA_NZ))) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                context_->opName, "quantMode",
+                std::to_string(static_cast<uint32_t>(scenarioInfo_.quantMode_)) + ", cacheMode is " +
+                    std::to_string(static_cast<uint32_t>(scenarioInfo_.cacheMode_)),
+                "CV1:1 mode only support quantMode in {NO_QUANT} and cacheMode in {PA_BSND,PA_NZ}");
+            return ge::GRAPH_FAILED;
+        }
+    } else if (GetCurNpuArch() == NpuArch::DAV_9201) {
+        if ((cvMode == ASCENDC_TPL_MIX_AIC_1_1) && (scenarioInfo_.quantMode_ != QUANT_MODE::NO_QUANT  && 
+                scenarioInfo_.quantMode_ != QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT && 
+                scenarioInfo_.quantMode_ != QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR && 
+                scenarioInfo_.quantMode_ != QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE && 
+                scenarioInfo_.quantMode_ != QUANT_MODE::HIF8_FULL_QUANT_KV_NO_QUANT && 
+                scenarioInfo_.quantMode_ != QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR && 
+                scenarioInfo_.quantMode_ != QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE &&
+                scenarioInfo_.quantMode_ != QUANT_MODE::FP8_FULL_QUANT_KV_NO_QUANT && 
+                scenarioInfo_.quantMode_ != QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR && 
+                scenarioInfo_.quantMode_ != QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE &&
+                scenarioInfo_.quantMode_ != QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT &&
+                scenarioInfo_.quantMode_ != QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_CHANNEL &&
+                scenarioInfo_.quantMode_ != QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_TILE &&
+                scenarioInfo_.quantMode_ != QUANT_MODE::FULL_QUANT_KV_NO_QUANT &&
+                scenarioInfo_.quantMode_ != QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR &&
+                scenarioInfo_.quantMode_ != QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE)) {
+            OP_LOGE(context_->opName,
+                "When socversion is V121, CV1:1 mode only support quantMode is in {NO_QUANT,"
+                "MXFP8_FULL_QUANT_KV_NO_QUANT, MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR, MXFP8_FULL_QUANT_KV_QUANT_PER_TILE,"
+                "HIF8_FULL_QUANT_KV_NO_QUANT, HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR, HIF8_FULL_QUANT_KV_QUANT_PER_TILE,"
+                "FP8_FULL_QUANT_KV_NO_QUANT, FP8_FULL_QUANT_KV_QUANT_PER_TENSOR, FP8_FULL_QUANT_KV_QUANT_PER_TILE,"
+                "PARTIAL_QUANT_KV_NO_QUANT, PARTIAL_QUANT_KV_QUANT_PER_CHANNEL, PARTIAL_QUANT_KV_QUANT_PER_TILE,"
+                "FULL_QUANT_KV_NO_QUANT, FULL_QUANT_KV_QUANT_PER_TENSOR, FULL_QUANT_KV_QUANT_PER_TILE}, quantMode is %d.",
+                scenarioInfo_.quantMode_);
+            return ge::GRAPH_FAILED;
+        }
     }
 
     if (scenarioInfo_.emptyTensorMode_ == EMPTY_TENSOR_MODE::EMPTY_QUERY) {
