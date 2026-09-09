@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -21,21 +22,21 @@ def case(operator=ALL_TO_ALLV, export=True, n=1024, k=2048):
 
 
 @pytest.mark.parametrize("export,n,expected", [
-    (True, 1024, (256, 256, 2048, 2, 16, 1, 16, 8)),
-    (True, 512, (256, 256, 3072, 3, 16, 2, 32, 4)),
-    (False, 1024, (128, 256, 1536, 2, 64, 1, 0, 1)),
-    (False, 512, (256, 128, 1536, 2, 64, 1, 0, 1)),
+    (True, 1024, (256, 256, 32, 1280, 3, 16, 1, 24, 8)),
+    (True, 512, (256, 128, 64, 1280, 2, 8, 1, 0, 8)),
+    (False, 1024, (128, 256, 128, 1536, 2, 64, 1, 0, 1)),
+    (False, 512, (256, 128, 128, 1536, 2, 64, 1, 0, 1)),
 ])
-def test_delivery_business_profiles_remain_search_baselines(export, n, expected):
+def test_fixed_business_profiles_remain_search_baselines(export, n, expected):
     profile = default_tiling(case(export=export, n=n))
     assert tuple(profile[key] for key in (
-        "m0", "n0", "stage_rows", "workspace_stages", "local_copy_tile_rows",
+        "m0", "n0", "comm_block_m", "stage_rows", "workspace_stages", "local_copy_tile_rows",
         "m_split", "export_core_count", "self_copy_cores",
     )) == expected
 
 
-@pytest.mark.parametrize("k,expected", [(1024, (128, 256, 14, 31)), (512, (256, 128, 12, 8))])
-def test_inverse_profiles_use_effective_ub_clamped_default(k, expected):
+@pytest.mark.parametrize("k,expected", [(1024, (128, 256, 10, 4)), (512, (128, 256, 16, 16))])
+def test_inverse_profiles_use_searched_local_copy_rows(k, expected):
     profile = default_tiling(case(GROUPED_MATMUL, False, 2048, k))
     assert tuple(profile[key] for key in ("m0", "n0", "comm_interval", "local_copy_tile_rows")) == expected
 
@@ -66,7 +67,7 @@ def test_invalid_dispatch_and_resource_profiles_are_rejected(field, value, match
 
 def test_workspace_boundary_and_valid_copy_tails():
     profile = default_tiling(case())
-    profile.update(stage_rows=6400, comm_block_m=97, local_copy_tile_rows=31)
+    profile.update(stage_rows=6400, workspace_stages=2, comm_block_m=97, local_copy_tile_rows=31)
     # 2 * 6400 * 8 * 2048 * 2 == exactly 400 MiB; tail rows are legal.
     validate_tiling(ALL_TO_ALLV, profile, output_all_to_allv=True, aic_cores=32, world_size=8, k=2048)
     profile["stage_rows"] += 256
@@ -142,7 +143,7 @@ def test_custom_space_keeps_baseline_and_omits_equivalent_all_core_export():
     }
     result = candidates_for_case(workload, space, strategy="exhaustive", max_candidates=None, aic_cores=32)
     assert result[0] == default_tiling(workload)
-    assert len(result) == 2  # Baseline16cores, then one effective all-core candidate.
+    assert len(result) == 2  # Tuned baseline, then one effective all-core candidate.
     assert result[1]["export_core_count"] == 0
 
 
@@ -159,10 +160,54 @@ def test_bad_or_ineffective_search_dimensions_fail_early(space):
 
 
 def test_unsafe_old_hardware_profile_does_not_prevent_search():
-    workload = case(n=512)
-    assert default_tiling(workload)["export_core_count"] == 32
+    workload = case(n=1024)
+    assert default_tiling(workload)["export_core_count"] == 24
     result = candidates_for_case(workload, aic_cores=16, max_candidates=8)
     assert all(item["export_core_count"] <= 16 for item in result)
+
+
+@pytest.mark.parametrize("operator,n,k,native_name", [
+    (ALL_TO_ALLV, 1024, 2048, "kM131072K2048N1024ExportTiling"),
+    (ALL_TO_ALLV, 512, 2048, "kM131072K2048N512ExportTiling"),
+    (GROUPED_MATMUL, 2048, 1024, "kK1024N2048Tiling"),
+    (GROUPED_MATMUL, 2048, 512, "kK512N2048Tiling"),
+])
+def test_native_model_profiles_match_search_baselines_and_fit_deployment_ub(operator, n, k, native_name):
+    # Search previously omitted the inverse baseline because it exceeded 248 KiB.
+    # Check the independently maintained native and Python defaults together, so
+    # the default measured by search also describes the no-override native call.
+    native_operator = "all_to_allv_grouped_mat_mul" if operator == ALL_TO_ALLV else operator
+    source = (Path(__file__).parents[1] / "csrc" / (native_operator + "_udma") /
+              "ascend950" / (native_operator + "_udma.cpp")).read_text(encoding="utf-8")
+    struct = re.search(r"struct TilingProfile\s*\{(.*?)\};", source, re.S).group(1)
+    names = re.findall(r"uint32_t\s+(\w+)\s*;", struct)
+    record = re.search(r"constexpr TilingProfile " + native_name + r"\s*\{(.*?)\};", source, re.S).group(1)
+    values = record.split(",")[1:]  # The first field selects the compiled kernel variant.
+    assert len(names) == len(values)
+    native = dict(zip(names, (int(value.strip()) for value in values)))
+    assert record.strip().startswith(
+        "KernelVariant::" + ("kM0_128" if native["m0"] == 128 else
+                             "kM0_256" if native["n0"] == 128 else "kM0_256N0_256") + ",")
+    wire = {name: native[name] for name in ("m0", "n0", "k0")}
+    if operator == ALL_TO_ALLV:
+        wire.update({snake: native[camel] for snake, camel in (
+            ("comm_block_m", "commBlockM"), ("stage_rows", "stageRows"),
+            ("workspace_stages", "workspaceStages"), ("local_copy_tile_rows", "localCopyTileRows"),
+            ("m_split", "mSplit"), ("export_core_count", "exportCoreCount"),
+            ("self_copy_cores", "selfCopyCores"),
+        )})
+        assert native["commInterval"] == native["stageRows"] // native["m0"]
+    else:
+        assert native["commTileM"] % 2 == 0
+        wire.update(comm_interval=native["commInterval"], local_copy_tile_rows=native["commTileM"] // 2)
+    workload = case(operator, operator == ALL_TO_ALLV, n, k)
+    baseline = default_tiling(workload)
+    assert wire == baseline
+    validate_tiling(operator, baseline, output_all_to_allv=operator == ALL_TO_ALLV,
+                    m=131072, n=n, k=k, world_size=8, aic_cores=32, ub_bytes=248 * 1024)
+    candidates = candidates_for_case(workload, aic_cores=32, ub_bytes=248 * 1024, max_candidates=8)
+    assert candidates[0] == baseline
+    assert candidates.count(baseline) == 1
 
 
 def _loader():

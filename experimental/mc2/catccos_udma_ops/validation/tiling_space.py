@@ -162,18 +162,18 @@ def default_tiling(case):
         values = [128, 256, 256, 64, 1280, 2, 32, 1, 0, 1]
         if business and m == 131072 and k == 2048:
             if n == 1024:
-                values = ([256, 256, 256, 32, 2048, 2, 16, 1, 16, 8] if export
+                values = ([256, 256, 256, 32, 1280, 3, 16, 1, 24, 8] if export
                           else [128, 256, 256, 128, 1536, 2, 64, 1, 0, 1])
             elif n == 512:
-                values = ([256, 256, 256, 32, 3072, 3, 16, 2, 32, 4] if export
+                values = ([256, 128, 256, 64, 1280, 2, 8, 1, 0, 8] if export
                           else [256, 128, 256, 128, 1536, 2, 64, 1, 0, 1])
     elif operator == GROUPED_MATMUL:
         values = [128, 256, 256, 10, 32]
         if business and n == 2048:
             if k == 1024:
-                values = [128, 256, 256, 14, 32]
+                values = [128, 256, 256, 10, 4]
             elif k == 512:
-                values = [256, 128, 256, 12, 8]
+                values = [128, 256, 256, 16, 16]
         # Native fallback caps the requested copy rows to the compiled UB size.
         capacity = (UB_BYTES - UDMA_SCRATCH_BYTES) // (4 * _aligned(n, 16))
         values[-1] = min(values[-1], capacity)

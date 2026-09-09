@@ -48,10 +48,12 @@ struct TilingProfile {
 
 constexpr TilingProfile kDefaultTiling{
     KernelVariant::kM0_128, 128, 256, 256, 10, 64, 64, 1, 16};
+// 2026-09-09 Ascend950DT_9582 search winners, with commTileM = 2 * local copy rows.
+// K1024: f1d10672a756a4a9; K512: fdfb758ae9b102f9.
 constexpr TilingProfile kK1024N2048Tiling{
-    KernelVariant::kM0_128, 128, 256, 256, 14, 64, 64, 4, 4};
+    KernelVariant::kM0_128, 128, 256, 256, 10, 8, 64, 4, 4};
 constexpr TilingProfile kK512N2048Tiling{
-    KernelVariant::kM0_256, 256, 128, 256, 12, 16, 16, 1, 20};
+    KernelVariant::kM0_128, 128, 256, 256, 16, 32, 16, 1, 20};
 
 const TilingProfile &SelectTiling(
     uint32_t k, uint32_t n, uint32_t worldSize, uint32_t expertNum)

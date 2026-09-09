@@ -151,11 +151,11 @@ def test_ep8_256_expert_business_shapes_use_rank_invariant_tuned_profiles():
         encoding="utf-8"
     )
     assert (
-        "KernelVariant::kM0_128, 128, 256, 256, 14, 64, 64, 4, 4"
+        "KernelVariant::kM0_128, 128, 256, 256, 10, 8, 64, 4, 4"
         in host
     )
     assert (
-        "KernelVariant::kM0_256, 256, 128, 256, 12, 16, 16, 1, 20"
+        "KernelVariant::kM0_128, 128, 256, 256, 16, 32, 16, 1, 20"
         in host
     )
     assert "worldSize == 8 && expertNum == 256" in host

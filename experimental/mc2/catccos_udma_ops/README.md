@@ -555,24 +555,40 @@ shape-only cache that could silently select a profile measured elsewhere.
 
 ## Built-in business-shape profiles
 
+The four model-case defaults use the winners from the customer's
+`tiling_full_20260909_012623` search on 2026-09-09, with
+Ascend950DT_9582, 32 AI cores and 248 KiB of available UB per device. The
+eight-rank balanced BF16 search used three primer calls, three timed calls
+per repeat and three repeats. Latency is the median of the per-repeat
+maximum across ranks. These are performance-only results
+(`accuracy_checked=false`); the independent accuracy workflow remains
+available to validate outputs after rebuilding and reinstalling the Wheel.
+
+| Case | Winning candidate | Search latency (us) |
+|---|---|---:|
+| `a2av_gmm_model_case_1` (export enabled) | `986c5d67aef6c9a2` | 1671.049 |
+| `a2av_gmm_model_case_2` (export enabled) | `55f6ea82e55c35f2` | 1615.745 |
+| `gmm_a2av_model_case_1` | `f1d10672a756a4a9` | 1991.315 |
+| `gmm_a2av_model_case_2` | `fdfb758ae9b102f9` | 1637.861 |
+
 `all_to_allv_grouped_mat_mul` selects the following tuned profiles only when
 `world_size=8`, `expert_num=256`, and `(M, K, N)` matches exactly. Export and
 non-export calls select separate records. All other shapes and topologies
 retain the default profile.
 
-| AllToAllV output | M | K | N | MMAD id | M split | M0 | N0 | K0 | interval | comm tile M | comm block M | NPU/data split | stage rows | WS stages | local-copy rows | export cores | self-copy cores |
-|:---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|:---:|---:|---:|---:|---:|---:|
-| disabled | 131072 | 2048 | 1024 | 0 | 1 | 128 | 256 | 256 | 12 | 128 | 128 | 4/4 | 1536 | 2 | 64 | 0 | 1 |
-| enabled | 131072 | 2048 | 1024 | 2 | 1 | 256 | 256 | 256 | 8 | 32 | 32 | 1/16 | 2048 | 2 | 16 | 16 | 8 |
-| disabled | 131072 | 2048 | 512 | 1 | 1 | 256 | 128 | 256 | 6 | 128 | 128 | 4/4 | 1536 | 2 | 64 | 0 | 1 |
-| enabled | 131072 | 2048 | 512 | 2 | 2 | 256 | 256 | 256 | 12 | 32 | 32 | 1/16 | 3072 | 3 | 16 | 32 | 4 |
+| AllToAllV output | M | K | N | M0 | N0 | K0 | comm block M | stage rows | WS stages | local-copy rows | M split | export cores | self-copy cores |
+|:---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| disabled | 131072 | 2048 | 1024 | 128 | 256 | 256 | 128 | 1536 | 2 | 64 | 1 | 0 | 1 |
+| enabled | 131072 | 2048 | 1024 | 256 | 256 | 256 | 32 | 1280 | 3 | 16 | 1 | 24 | 8 |
+| disabled | 131072 | 2048 | 512 | 256 | 128 | 256 | 128 | 1536 | 2 | 64 | 1 | 0 | 1 |
+| enabled | 131072 | 2048 | 512 | 256 | 128 | 256 | 64 | 1280 | 2 | 8 | 1 | 0 | 8 |
 
 For AllToAllV-GroupedMatMul, `commNpuSplit`, `commDataSplit`, and the explicit
 `commTileM` value are compatibility fields: the migrated kernel consumes
-`commBlockM` and `localCopyTileRows` instead. MMAD id 2 maps to the compiled
-`256x256x256` instance. The search result's execution mode is not part of this
-kernel ABI. These built-in export records were tuned through the training/export
-entry; the non-export records come from the earlier non-export tuning.
+`commBlockM` and `localCopyTileRows` instead. The table lists the active
+parameters; `export cores=0` means all AI cores. The search result's execution
+mode is not part of this kernel ABI. Both model-case winners were measured
+with export enabled. The non-export records retain the earlier non-export tuning.
 
 `grouped_mat_mul_all_to_allv` independently selects these profiles for the
 same `world_size=8`, `expert_num=256` topology. Because imbalanced routing can
@@ -581,13 +597,18 @@ all peers therefore keep the same M0 and communication schedule. The M column
 below records the balanced workload used for tuning and is not a runtime
 selection predicate. Other K/N shapes and topologies retain the default profile.
 
-| Tuning M | K | N | M0 | N0 | K0 | commInterval | commTileM | commBlockM | commNpuSplit | commDataSplit |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 131072 | 1024 | 2048 | 128 | 256 | 256 | 14 | 64 | 64 | 4 | 4 |
-| 131072 | 512 | 2048 | 256 | 128 | 256 | 12 | 16 | 16 | 1 | 20 |
+| Tuning M | K | N | M0 | N0 | K0 | comm interval | local-copy rows |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 131072 | 1024 | 2048 | 128 | 256 | 256 | 10 | 4 |
+| 131072 | 512 | 2048 | 128 | 256 | 256 | 16 | 16 |
 
 The grouped-matmul host forwards both split values through `commCoreSplit` for
-ABI parity with the tuning record. The target-order scheduler currently does
+ABI compatibility. The target-order scheduler currently does
 not use them or `commBlockM` to partition transfers. The active parameters are
 the compiled MMAD shape, `commInterval`, and the local copy rows derived from
-`commTileM / 2` (capped by UB capacity for the built-in fallback).
+`commTileM / 2` (capped by UB capacity for the built-in fallback). The two
+new records therefore store `commTileM=8` and `commTileM=32`, respectively;
+their local-copy rows both fit the search machine's 248 KiB available UB.
+The Python search baselines use the same effective parameters as these
+native defaults, so subsequent searches include and measure them as default
+candidates when the deployment hardware passes validation.

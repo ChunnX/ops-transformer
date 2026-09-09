@@ -82,18 +82,18 @@ constexpr TilingProfile kM131072K2048N1024NonExportTiling{
     KernelVariant::kM0_128, 128, 256, 256, 12, 128, 128, 4, 4,
     1536, 2, 64, 1, 0, 1};
 constexpr TilingProfile kM131072K2048N1024ExportTiling{
-    KernelVariant::kM0_256N0_256, 256, 256, 256, 8, 32, 32, 1, 16,
-    2048, 2, 16, 1, 16, 8};
+    KernelVariant::kM0_256N0_256, 256, 256, 256, 5, 32, 32, 1, 16,
+    1280, 3, 16, 1, 24, 8};
 constexpr TilingProfile kM131072K2048N512NonExportTiling{
     KernelVariant::kM0_256, 256, 128, 256, 6, 128, 128, 4, 4,
     1536, 2, 64, 1, 0, 1};
 constexpr TilingProfile kM131072K2048N512ExportTiling{
-    KernelVariant::kM0_256N0_256, 256, 256, 256, 12, 32, 32, 1, 16,
-    3072, 3, 16, 2, 32, 4};
+    KernelVariant::kM0_256, 256, 128, 256, 5, 32, 64, 1, 16,
+    1280, 2, 8, 1, 0, 8};
 
-// Dynamic-tiling compatibility mapping for the two export records above:
-//   * MMAD config id 2 is encoded by kM0_256N0_256 and (256, 256, 256).
-//   * execution mode is not part of the migrated kernel ABI.
+// Export profiles use the 2026-09-09 Ascend950DT_9582 search winners:
+//   N1024: 986c5d67aef6c9a2; N512: 55f6ea82e55c35f2.
+// The search execution mode is not part of the migrated kernel ABI.
 // commNpuSplit/commDataSplit remain recorded for traceability but are not
 // consumed by this operator's current host/kernel ABI.
 

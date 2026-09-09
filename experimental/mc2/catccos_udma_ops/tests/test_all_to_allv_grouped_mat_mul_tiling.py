@@ -56,18 +56,17 @@ def test_export_business_shapes_use_separate_tuned_profiles():
     assert "kM131072K2048N1024NonExportTiling" in source
     assert "kM131072K2048N1024ExportTiling" in source
     assert (
-        "KernelVariant::kM0_256N0_256, 256, 256, 256, 8, 32, 32, 1, 16"
+        "KernelVariant::kM0_256N0_256, 256, 256, 256, 5, 32, 32, 1, 16"
         in source
     )
-    assert "2048, 2, 16, 1, 16, 8" in source
+    assert "1280, 3, 16, 1, 24, 8" in source
     assert "kM131072K2048N512NonExportTiling" in source
     assert "kM131072K2048N512ExportTiling" in source
     assert (
-        "KernelVariant::kM0_256N0_256, 256, 256, 256, 12, 32, 32, 1, 16"
+        "KernelVariant::kM0_256, 256, 128, 256, 5, 32, 64, 1, 16"
         in source
     )
-    assert "3072, 3, 16, 2, 32, 4" in source
-    assert "MMAD config id 2 is encoded by kM0_256N0_256" in source
+    assert "1280, 2, 8, 1, 0, 8" in source
     assert "execution mode is not part of the migrated kernel ABI" in source
     assert "bool outputAllToAllV" in source
     assert "? kM131072K2048N1024ExportTiling" in source
