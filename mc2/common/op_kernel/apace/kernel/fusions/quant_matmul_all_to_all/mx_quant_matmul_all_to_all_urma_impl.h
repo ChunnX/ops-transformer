@@ -343,6 +343,8 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Ru
     if (GetBlockIdx() < baseParams_.rankSize) {
         allToAll_.Finalize();
     }
+    dcci(reinterpret_cast<__gm__ void *>(udmaCtx_->commBufferAddrs),
+        static_cast<uint64_t>(CacheLine::ENTIRE_DATA_CACHE), static_cast<uint64_t>(DcciDst::CACHELINE_OUT));
 }
 
 } // namespace Apace
