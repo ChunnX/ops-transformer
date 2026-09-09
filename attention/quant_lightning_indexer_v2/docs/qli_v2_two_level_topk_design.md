@@ -629,4 +629,6 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 
 **验证**：pytest `test_qli_newapi*` 4 用例（BSND B=1 prefill mask3+ratio2+residual / BSND B=1 decode mask0 / TND B=2 变长 mask3 / 错误路径×5）——source/consumer 与旧入口 bit 级一致 + metadata 自动/手传 bit 级一致 + block_length 公式对照 + B>1 无 cu_seqlens_q 防御。既有 87 用例零影响（旧入口抽查回归通过）。
 
+**全量矩阵经新接口重跑（2026-09-09，`qli_cand_test/test_qli_newapi_full.py`）**：87 用例中 **76 全过 + 11 规范限制跳过 + 0 失败**（31m54s，机制=monkeypatch `npu_run` → 适配层，主比较逻辑/官方两级规则/pin/全行有效性原样复用）。跳过项两类均为规范表达能力边界而非适配层缺陷：① B>1 且 BSND ×9（新接口 q 恒 3 维，多 batch 必须 cu_seqlens_q/TND——含 big128k_b2_varlen/big1m_b2_m1 等）；② mode=1 + 非零 output_idx_offset ×2（off_m1_decode/off_tnd_m1，规范 source 无该参数，仅 consumer 有）。覆盖确认：pa_gap 非连续（大 shape ×6）、pin64、g64、tiny(s2=1)、sparse2048、mask0 大 shape 全遍历、TND B=2/B=4 变长、off_m2（consumer+offset 透传）、off_zero_regress（source 零偏移等价回归）均过。
+
 **规范侧待澄清（不阻塞本适配层）**：seqused_q 注释 keys 与命名矛盾；`ori_sparse_indices` 未在输入列表；k_descale 末维 `2` 语义（新芯片侧消费）；mode=1 输出 BSND 4 维变体（本适配层统一 3 维 (T1,N2,·)，调用侧在新芯片侧由其实现给出）。
