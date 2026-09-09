@@ -118,7 +118,8 @@ public:
         sinGm_.SetGlobalBuffer((__gm__ DTYPE_ROPE_SIN *)sin);
         cosGm_.SetGlobalBuffer((__gm__ DTYPE_ROPE_SIN *)cos);
         pipe->InitBuffer(ropeQueue_, SINGLE_BUFFER, alignedTotalRopeDim_ * NUM_TWO * sizeof(DTYPE_ROPE_SIN));
-        pipe->InitBuffer(buf_, (alignedTotalRopeDim_ * sizeof(int32_t) + alignedTotalRopeDim_ * NUM_TWO * sizeof(float)));
+        pipe->InitBuffer(buf_,
+                         (alignedTotalRopeDim_ * sizeof(int32_t) + alignedTotalRopeDim_ * NUM_TWO * sizeof(float)));
         sin_ = buf_.GetWithOffset<float>(alignedTotalRopeDim_, 0);
         cos_ = buf_.GetWithOffset<float>(alignedTotalRopeDim_, alignedTotalRopeDim_ * sizeof(float));
         mask_ = buf_.GetWithOffset<uint32_t>(alignedTotalRopeDim_, alignedTotalRopeDim_ * sizeof(float) * NUM_TWO);
@@ -233,7 +234,7 @@ public:
                                     uint32_t alignedNormNum)
         : eps_(eps),
           scale_(scale),
-          normDim_(normDim), 
+          normDim_(normDim),
           normNum_(normNum),
           alignedNormDim_(alignedNormDim),
           alignedNormNum_(alignedNormNum)

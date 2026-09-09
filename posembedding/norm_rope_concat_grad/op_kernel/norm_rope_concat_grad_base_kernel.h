@@ -133,7 +133,7 @@ public:
     {
         yGm_.SetGlobalBuffer((__gm__ DTYPE_QUERY *)y);
         if constexpr (ropeType == RopeType::NONE) {
-            return; 
+            return;
         }
 
         if (!isActive_) {
