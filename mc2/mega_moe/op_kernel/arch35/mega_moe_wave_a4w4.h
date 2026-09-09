@@ -269,6 +269,14 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     ExpertLoopState gmm2State = CreateExpertLoopState(commonConfig_);
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
+    Gmm1SwigluSync gmm1SwigluSync(0U); // SwiGLU 位于 AIV0。
+    Gmm2CombineSync gmm2CombineSync;
+    if constexpr (TopkWeightsPrefetch) {
+        gmm1AddrInfo.gmm1SwigluSync = &gmm1SwigluSync;
+    }
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        gmm2AddrInfo.gmm2CombineSync = &gmm2CombineSync;
+    }
 
     // 同一 Block 内绑定的 1C2V 各自持有分核游标，按相同调用顺序推进并始终保持一致；
     // MoE GMM1 与 GMM2 沿用该游标持续滚动。
@@ -294,6 +302,9 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     if constexpr (!TopkWeightsPrefetch) {
         EndSync(gmm1RuntimeState.vecSetSyncCom, gmm1RuntimeState.pingpongIdx);
     }
+    // 计数跨 expert/wave 保留，最后一个 GMM2 完成后再统一排空。
+    gmm1SwigluSync.EndSync();
+    gmm2CombineSync.EndSync();
 }
 
 template <TemplateMegaMoeA4W4WaveTypeClass>

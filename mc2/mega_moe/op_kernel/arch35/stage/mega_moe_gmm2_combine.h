@@ -594,16 +594,18 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
 
         auto gmBlockB = workSet.gmB.slice(asc::te::make_coord(kLoc, nLoc),
                                           asc::te::make_shape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-        auto gmBlockScaleB = workSet.gmScaleB.slice(asc::te::make_coord(0, nLoc),
-                                                    asc::te::make_shape(config.scaleK, Get<N_VALUE>(actualShape)));
+        auto gmBlockScaleB =
+            workSet.gmScaleB.slice(asc::te::make_coord(0, nLoc), asc::te::make_shape(config.scaleK, Get<N_VALUE>(actualShape)));
         auto gmBlockC = workSet.gmC.slice(asc::te::make_coord(mLoc, nLoc),
                                           asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+        if constexpr (NotifyCombineTileReady && !IsShared) {
+            gmmAddrInfo.gmm2CombineSync->WaitForCombine();
+        }
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
         if constexpr (NotifyCombineTileReady && !IsShared) {
             // GMM2 tile 与配对 AIV1 的 Combine tile 一对一通知。
-            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-            AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++(*gmTileSequence));
+            gmmAddrInfo.gmm2CombineSync->NotifyCombine();
+            ++(*gmTileSequence);
         } else if constexpr (IsLayered && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
         } else if constexpr (IsShared && !IsLayered) {
@@ -627,7 +629,7 @@ __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
 
         int32_t expectedReadySequence = gmTileSequence + 1;
-        WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag, expectedReadySequence);
+        gmmAddrInfo.gmm2CombineSync->WaitForGmm2();
         auto tensorBlockGm = l0cOutGm.slice(asc::te::make_coord(mLoc, nLoc),
                                             asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         constexpr uint32_t tileUbBase = WAVE_COMBINE_UB_BASE;
@@ -652,6 +654,7 @@ __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         gmTileSequence = expectedReadySequence;
+        gmmAddrInfo.gmm2CombineSync->NotifyGmm2();
     }
 }
 
@@ -699,13 +702,15 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
             gmScaleB.slice(asc::te::make_coord(0, nLoc), asc::te::make_shape(config.scaleK, Get<N_VALUE>(actualShape)));
         auto tensorBlockGm = l0cOutGm.slice(asc::te::make_coord(mLoc, nLoc),
                                             asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+        if constexpr (NotifyCombineTileReady && !IsShared) {
+            gmmAddrInfo.gmm2CombineSync->WaitForCombine();
+        }
         blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
         if constexpr (NotifyCombineTileReady && !IsShared) {
-            // AIV1 与本 AIC 重放同一 scheduler。FIX 写回完成后发布本核单调序号；
+            // AIV1 与本 AIC 重放同一 scheduler。FIX 完成后通知 Combine 读取 GM；
             // W4 prologue 仍由 AIV0 独立推进，不参与该一对一完成链路。
-            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-            AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++(*gmTileSequence));
+            gmmAddrInfo.gmm2CombineSync->NotifyCombine();
+            ++(*gmTileSequence);
         } else if constexpr (IsLayered && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(rowOffsetInExpert + mLoc, groupSyncSlotLayout,
                                                    gmmAddrInfo.gmm2CombineSyncCounter);
