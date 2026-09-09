@@ -61,6 +61,20 @@ __aicore__ inline void CopyGmm1WeightConcatToL1(const Dst &dst, const Src &src, 
 }
 
 template <typename Dst, typename Src>
+__aicore__ inline void CopyGmm1WeightConcatToUb(const Dst &dst, const Src &src, uint64_t halfN)
+{
+    using Pattern = AscendC::Te::GetLayoutPattern<typename Src::layoutType>;
+    static_assert(AscendC::Std::is_same_v<Pattern, AscendC::Te::ZNLayoutPtn>,
+                  "A8W4 prologue consumes packed C0=32 ZN weights");
+    const uint64_t c0 = AscendC::Std::get<0>(AscendC::Std::get<0>(src.Layout().Shape()));
+    const auto copy = MakeGmm1ConcatZnCopy(ConcatTensorRows(src), ConcatTensorColumns(src) / 2U, halfN, c0, 2U);
+    // Unlike tensor strides, these intrinsics take byte distances between block starts.
+    asc_copy_gm2ub_align(reinterpret_cast<__ubuf__ uint8_t *>(dst.Data().Get()),
+                         reinterpret_cast<__gm__ uint8_t *>(src.Data().Get()), copy.blockCount, copy.blockBytes, 0, 0,
+                         false, src.Engine().GetCacheMode(), copy.sourceStrideBytes, copy.destinationStrideBytes);
+}
+
+template <typename Dst, typename Src>
 __aicore__ inline void CopyGmm1ScaleConcatToL1(const Dst &dst, const Src &src, uint64_t halfN, uint64_t fullK)
 {
     using Pattern = AscendC::Te::GetLayoutPattern<typename Src::layoutType>;
