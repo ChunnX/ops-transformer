@@ -16,7 +16,7 @@ from cann_ops_transformer.op_builder import OpBuilder
 
 class CompressorOpBuilder(OpBuilder):
     def __init__(self):
-        super(CompressorOpBuilder, self).__init__("compressor_v2", category="attention")
+        super(CompressorOpBuilder, self).__init__("ds41.compressor_v2", category="attention")
 
     def sources(self):
         """Path to C++ source code."""
