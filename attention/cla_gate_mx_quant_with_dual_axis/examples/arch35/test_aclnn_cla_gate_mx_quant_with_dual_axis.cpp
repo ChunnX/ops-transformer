@@ -4,18 +4,18 @@
 #include "aclnnop/aclnn_cla_gate_mx_quant_with_dual_axis.h"
 
 #define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
+#define LOG_PRINT(message, ...) \
+    do { \
         printf(message, ##__VA_ARGS__); \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t>& shape)
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -24,7 +24,7 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape)
     return shapeSize;
 }
 
-int Init(int32_t deviceId, aclrtStream* stream)
+int Init(int32_t deviceId, aclrtStream *stream)
 {
     // 固定写法，资源初始化
     auto ret = aclInit(nullptr);
@@ -37,8 +37,8 @@ int Init(int32_t deviceId, aclrtStream* stream)
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
-                    aclDataType dataType, aclTensor** tensor)
+int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
+                    aclDataType dataType, aclTensor **tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     // 调用aclrtMalloc申请device侧内存
@@ -82,19 +82,19 @@ int main()
     // mxscale2 shape: [floor(M/64) + G, N, 2] = [1 + 1, 128, 2] = [2, 128, 2]
     std::vector<int64_t> mxscale2OutShape = {2, 128, 2};
 
-    void* xDeviceAddr = nullptr;
-    void* groupIndexDeviceAddr = nullptr;
-    void* y1OutDeviceAddr = nullptr;
-    void* mxscale1OutDeviceAddr = nullptr;
-    void* y2OutDeviceAddr = nullptr;
-    void* mxscale2OutDeviceAddr = nullptr;
+    void *xDeviceAddr = nullptr;
+    void *groupIndexDeviceAddr = nullptr;
+    void *y1OutDeviceAddr = nullptr;
+    void *mxscale1OutDeviceAddr = nullptr;
+    void *y2OutDeviceAddr = nullptr;
+    void *mxscale2OutDeviceAddr = nullptr;
 
-    aclTensor* x = nullptr;
-    aclTensor* groupIndex = nullptr;
-    aclTensor* y1Out = nullptr;
-    aclTensor* mxscale1Out = nullptr;
-    aclTensor* y2Out = nullptr;
-    aclTensor* mxscale2Out = nullptr;
+    aclTensor *x = nullptr;
+    aclTensor *groupIndex = nullptr;
+    aclTensor *y1Out = nullptr;
+    aclTensor *mxscale1Out = nullptr;
+    aclTensor *y2Out = nullptr;
+    aclTensor *mxscale2Out = nullptr;
 
     // 输入数据初始化（BF16）
     std::vector<uint16_t> xHostData(64 * 256, 0);
@@ -137,15 +137,15 @@ int main()
 
     // 3. 调用CANN算子库API，需要修改为具体的Api名称
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor;
+    aclOpExecutor *executor;
     // 调用aclnnClaGateMxQuantWithDualAxis第一段接口（带 groupIndex 输入）
     ret = aclnnClaGateMxQuantWithDualAxisGetWorkspaceSize(x, groupIndex, activateLeft, "rint", scaleAlg, dstType,
-                                                         maxDtypeValue, y1Out, mxscale1Out, y2Out, mxscale2Out,
-                                                         &workspaceSize, &executor);
+                                                          maxDtypeValue, y1Out, mxscale1Out, y2Out, mxscale2Out,
+                                                          &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnClaGateMxQuantWithDualAxisGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
-    void* workspaceAddr = nullptr;
+    void *workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);

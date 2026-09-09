@@ -51,12 +51,12 @@ constexpr int64_t FULL_ROW_BLOCK = 64;
 constexpr int64_t FULL_COL_BLOCK = 256;
 
 const std::set<ge::DataType> INPUT_SUPPORT_DTYPE_SET = {ge::DT_FLOAT16, ge::DT_BF16};
-const std::set<ge::DataType> Y_SUPPORT_DTYPE_SET = {ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2,
-                                                    ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2};
+const std::set<ge::DataType> Y_SUPPORT_DTYPE_SET = {ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2, ge::DT_FLOAT8_E4M3FN,
+                                                    ge::DT_FLOAT8_E5M2};
 const std::set<ge::DataType> Y_SUPPORT_DTYPE_FP4_SET = {ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2};
 const std::set<ge::DataType> Y_SUPPORT_DTYPE_FP8_SET = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2};
 
-RoundModeList GetRoundMode(const string& roundMode)
+RoundModeList GetRoundMode(const string &roundMode)
 {
     if (roundMode == "rint") {
         return RoundModeList::MODE_RINT;
@@ -70,54 +70,54 @@ RoundModeList GetRoundMode(const string& roundMode)
     return RoundModeList::MODE_UNDEFINED;
 }
 
-bool IsValidTNDShape(const gert::Shape& shape)
+bool IsValidTNDShape(const gert::Shape &shape)
 {
-    return shape.GetDimNum() == 3 && shape.GetDim(0) > 0 && shape.GetDim(1) >= MIN_N &&
-           shape.GetDim(1) <= MAX_N &&
+    return shape.GetDimNum() == 3 && shape.GetDim(0) > 0 && shape.GetDim(1) >= MIN_N && shape.GetDim(1) <= MAX_N &&
            (shape.GetDim(2) == 128 || shape.GetDim(2) == 256);
 }
 
-bool IsValidGateShape(const gert::Shape& shape, int64_t t, int64_t n)
+bool IsValidGateShape(const gert::Shape &shape, int64_t t, int64_t n)
 {
     return shape.GetDimNum() == 2 && shape.GetDim(0) == t && shape.GetDim(1) == n;
 }
 
-bool CheckShape(const gert::Shape& go, const gert::Shape& lo, const gert::Shape& gg, const gert::Shape& lg)
+bool CheckShape(const gert::Shape &globalOut, const gert::Shape &localOut, const gert::Shape &globalGate,
+                const gert::Shape &localGate)
 {
-    return IsValidTNDShape(go) && lo == go && IsValidGateShape(gg, go.GetDim(0), go.GetDim(1)) &&
-           lg == gg;
+    return IsValidTNDShape(globalOut) && localOut == globalOut &&
+           IsValidGateShape(globalGate, globalOut.GetDim(0), globalOut.GetDim(1)) && localGate == globalGate;
 }
 
-ge::graphStatus CheckOutputShapes(const gert::Shape& go, const gert::Shape& rowData, const gert::Shape& rowScale,
-                                  const gert::Shape& colData, const gert::Shape& colScale)
+ge::graphStatus CheckOutputShapes(const gert::Shape &globalOut, const gert::Shape &rowData, const gert::Shape &rowScale,
+                                  const gert::Shape &colData, const gert::Shape &colScale)
 {
-    int64_t t = go.GetDim(0);
-    int64_t k = go.GetDim(1) * go.GetDim(2);
-    if (rowData.GetDimNum() != 2 || rowData.GetDim(0) != t || rowData.GetDim(1) != k) {
+    int64_t rowCount = globalOut.GetDim(0);
+    int64_t columnCount = globalOut.GetDim(1) * globalOut.GetDim(2);
+    if (rowData.GetDimNum() != 2 || rowData.GetDim(0) != rowCount || rowData.GetDim(1) != columnCount) {
         return ge::GRAPH_FAILED;
     }
-    if (rowScale.GetDimNum() != 3 || rowScale.GetDim(0) != t ||
-        rowScale.GetDim(1) != Ops::Base::CeilDiv(k, BLOCK_H) || rowScale.GetDim(2) != 2) {
+    if (rowScale.GetDimNum() != 3 || rowScale.GetDim(0) != rowCount ||
+        rowScale.GetDim(1) != Ops::Base::CeilDiv(columnCount, BLOCK_H) || rowScale.GetDim(2) != 2) {
         return ge::GRAPH_FAILED;
     }
-    bool colEmpty = (colData.GetDimNum() >= 1 && colData.GetDim(0) == 0) &&
-                    (colScale.GetDimNum() >= 1 && colScale.GetDim(0) == 0);
+    bool colEmpty =
+        (colData.GetDimNum() >= 1 && colData.GetDim(0) == 0) && (colScale.GetDimNum() >= 1 && colScale.GetDim(0) == 0);
     if (!colEmpty) {
-        if (colData.GetDimNum() != 2 || colData.GetDim(0) != t || colData.GetDim(1) != k) {
+        if (colData.GetDimNum() != 2 || colData.GetDim(0) != rowCount || colData.GetDim(1) != columnCount) {
             return ge::GRAPH_FAILED;
         }
-        if (colScale.GetDimNum() != 3 || colScale.GetDim(0) != Ops::Base::CeilDiv(t, BLOCK_H) ||
-            colScale.GetDim(1) != k || colScale.GetDim(2) != 2) {
+        if (colScale.GetDimNum() != 3 || colScale.GetDim(0) != Ops::Base::CeilDiv(rowCount, BLOCK_H) ||
+            colScale.GetDim(1) != columnCount || colScale.GetDim(2) != 2) {
             return ge::GRAPH_FAILED;
         }
     }
     return ge::GRAPH_SUCCESS;
 }
 
-void CalcTailAxisTiling(ClaGateMxQuantWithDualAxisTilingParam& params)
+void CalcTailAxisTiling(ClaGateMxQuantWithDualAxisTilingParam &params)
 {
-    int64_t m = params.dimM;
-    int64_t k = params.dimN;
+    int64_t rowCount = params.dimM;
+    int64_t columnCount = params.dimN;
 
     // For the single-axis (tail-axis) path, choose the number of AIV cores by
     // the amount of input data first. Every full 4KB input chunk is treated as
@@ -126,7 +126,7 @@ void CalcTailAxisTiling(ClaGateMxQuantWithDualAxisTilingParam& params)
     // well. If the data is large enough, fall back to the full core count and
     // split by T*N (256-column tiles) over those cores.
     constexpr int64_t BYTES_PER_CORE_HINT = 4096;
-    int64_t inputBytes = m * k * params.dtypeSize;
+    int64_t inputBytes = rowCount * columnCount * params.dtypeSize;
     int64_t coreHint = inputBytes / BYTES_PER_CORE_HINT / 2;
     if (coreHint < 1) {
         coreHint = 1;
@@ -139,13 +139,13 @@ void CalcTailAxisTiling(ClaGateMxQuantWithDualAxisTilingParam& params)
     // with zeros before the interleaved double-buffer copy/quantization.
     int64_t rowBlock = 1;
     int64_t colBlock = FULL_COL_BLOCK;
-    int64_t colTileNum = Ops::Base::CeilDiv(k, colBlock);
+    int64_t colTileNum = Ops::Base::CeilDiv(columnCount, colBlock);
     params.rowBlockSize = rowBlock;
     params.colBlockSize = colBlock;
-    params.rowTileNum = Ops::Base::CeilDiv(m, rowBlock);
+    params.rowTileNum = Ops::Base::CeilDiv(rowCount, rowBlock);
     params.colTileNum = colTileNum;
     params.rowTailSize = 1;
-    params.colTailSize = k - (colTileNum - 1) * colBlock;
+    params.colTailSize = columnCount - (colTileNum - 1) * colBlock;
     if (params.colTailSize <= 0) {
         params.colTailSize = colBlock;
     }
@@ -158,7 +158,7 @@ void CalcTailAxisTiling(ClaGateMxQuantWithDualAxisTilingParam& params)
     params.batchCount = Ops::Base::CeilDiv(maxTilesPerCore, FULL_ROW_BLOCK);
 }
 
-ge::graphStatus GetPlatformInfo(gert::TilingContext* context, ClaGateMxQuantWithDualAxisTilingParam& params)
+ge::graphStatus GetPlatformInfo(gert::TilingContext *context, ClaGateMxQuantWithDualAxisTilingParam &params)
 {
     auto platformInfo = context->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
@@ -173,8 +173,8 @@ ge::graphStatus GetPlatformInfo(gert::TilingContext* context, ClaGateMxQuantWith
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GetAndCheckAttrs(gert::TilingContext* context, ClaGateMxQuantWithDualAxisTilingParam& params,
-                                 int64_t& tilingKeyMode, int64_t& tilingKeyRound)
+ge::graphStatus GetAndCheckAttrs(gert::TilingContext *context, ClaGateMxQuantWithDualAxisTilingParam &params,
+                                 int64_t &tilingKeyMode, int64_t &tilingKeyRound)
 {
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
@@ -183,10 +183,10 @@ ge::graphStatus GetAndCheckAttrs(gert::TilingContext* context, ClaGateMxQuantWit
     OP_CHECK_NULL_WITH_CONTEXT(context, roundModePtr);
     string roundModeStr = roundModePtr;
     RoundModeList roundMode = GetRoundMode(roundModeStr);
-    OP_CHECK_IF(roundMode == RoundModeList::MODE_UNDEFINED,
-                OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "round_mode", roundModeStr.c_str(),
-                                          "rint, floor or round"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        roundMode == RoundModeList::MODE_UNDEFINED,
+        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "round_mode", roundModeStr.c_str(), "rint, floor or round"),
+        return ge::GRAPH_FAILED);
 
     auto scaleAlgPtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_SCALE_ALG);
     OP_CHECK_NULL_WITH_CONTEXT(context, scaleAlgPtr);
@@ -199,20 +199,18 @@ ge::graphStatus GetAndCheckAttrs(gert::TilingContext* context, ClaGateMxQuantWit
     params.quantMode = (quantModePtr != nullptr) ? *quantModePtr : 0;
 
     OP_CHECK_IF(params.scaleAlg != 0 && params.scaleAlg != 1,
-                OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale_alg",
-                                          std::to_string(params.scaleAlg).c_str(), "0 or 1"),
+                OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale_alg", std::to_string(params.scaleAlg).c_str(),
+                                          "0 or 1"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(Y_SUPPORT_DTYPE_SET.count(params.yDtype) == 0 || static_cast<int64_t>(params.yDtype) != params.dstType,
-                OP_LOGE(context->GetNodeName(), "dst_type and output data type mismatch."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context->GetNodeName(), "dst_type and output data type mismatch."), return ge::GRAPH_FAILED);
     // FP8 only rint
     OP_CHECK_IF(Y_SUPPORT_DTYPE_FP8_SET.count(params.yDtype) != 0 && roundMode != RoundModeList::MODE_RINT,
                 OP_LOGE(context->GetNodeName(), "When output is FP8, round_mode only supports rint."),
                 return ge::GRAPH_FAILED);
     // FP4 only scale_alg=0
     OP_CHECK_IF(Y_SUPPORT_DTYPE_FP4_SET.count(params.yDtype) != 0 && params.scaleAlg != 0,
-                OP_LOGE(context->GetNodeName(), "When output is FP4, scale_alg must be 0."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context->GetNodeName(), "When output is FP4, scale_alg must be 0."), return ge::GRAPH_FAILED);
 
     if (roundMode == RoundModeList::MODE_RINT) {
         tilingKeyRound = TPL_RINT;
@@ -226,33 +224,32 @@ ge::graphStatus GetAndCheckAttrs(gert::TilingContext* context, ClaGateMxQuantWit
 }
 } // namespace
 
-ge::graphStatus TilingForClaGateMxQuantWithDualAxis(gert::TilingContext* context)
+ge::graphStatus TilingForClaGateMxQuantWithDualAxis(gert::TilingContext *context)
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
 
-    auto goShapePtr = context->GetInputShape(INPUT_GLOBAL_OUT);
-    auto loShapePtr = context->GetInputShape(INPUT_LOCAL_OUT);
-    auto ggShapePtr = context->GetInputShape(INPUT_GLOBAL_GATE);
-    auto lgShapePtr = context->GetInputShape(INPUT_LOCAL_GATE);
-    OP_CHECK_NULL_WITH_CONTEXT(context, goShapePtr);
-    OP_CHECK_NULL_WITH_CONTEXT(context, loShapePtr);
-    OP_CHECK_NULL_WITH_CONTEXT(context, ggShapePtr);
-    OP_CHECK_NULL_WITH_CONTEXT(context, lgShapePtr);
-    const auto& go = goShapePtr->GetStorageShape();
-    const auto& lo = loShapePtr->GetStorageShape();
-    const auto& gg = ggShapePtr->GetStorageShape();
-    const auto& lg = lgShapePtr->GetStorageShape();
-    OP_CHECK_IF(!CheckShape(go, lo, gg, lg),
-                OP_LOGE(context->GetNodeName(),
-                        "Expected global_out/local_out [T,N,D], gate [T,N]; "
-                        "N in [1,128], D in {128,256}"),
+    auto globalOutShapePtr = context->GetInputShape(INPUT_GLOBAL_OUT);
+    auto localOutShapePtr = context->GetInputShape(INPUT_LOCAL_OUT);
+    auto globalGateShapePtr = context->GetInputShape(INPUT_GLOBAL_GATE);
+    auto localGateShapePtr = context->GetInputShape(INPUT_LOCAL_GATE);
+    OP_CHECK_NULL_WITH_CONTEXT(context, globalOutShapePtr);
+    OP_CHECK_NULL_WITH_CONTEXT(context, localOutShapePtr);
+    OP_CHECK_NULL_WITH_CONTEXT(context, globalGateShapePtr);
+    OP_CHECK_NULL_WITH_CONTEXT(context, localGateShapePtr);
+    const auto &globalOutShape = globalOutShapePtr->GetStorageShape();
+    const auto &localOutShape = localOutShapePtr->GetStorageShape();
+    const auto &globalGateShape = globalGateShapePtr->GetStorageShape();
+    const auto &localGateShape = localGateShapePtr->GetStorageShape();
+    OP_CHECK_IF(!CheckShape(globalOutShape, localOutShape, globalGateShape, localGateShape),
+                OP_LOGE(context->GetNodeName(), "Expected global_out/local_out [T,N,D], gate [T,N]; "
+                                                "N in [1,128], D in {128,256}"),
                 return ge::GRAPH_FAILED);
 
-    auto dtype = context->GetInputDesc(INPUT_GLOBAL_OUT)->GetDataType();
-    OP_CHECK_IF(INPUT_SUPPORT_DTYPE_SET.count(dtype) == 0 ||
-                    context->GetInputDesc(INPUT_LOCAL_OUT)->GetDataType() != dtype ||
-                    context->GetInputDesc(INPUT_GLOBAL_GATE)->GetDataType() != dtype ||
-                    context->GetInputDesc(INPUT_LOCAL_GATE)->GetDataType() != dtype,
+    auto inputDtype = context->GetInputDesc(INPUT_GLOBAL_OUT)->GetDataType();
+    OP_CHECK_IF(INPUT_SUPPORT_DTYPE_SET.count(inputDtype) == 0 ||
+                    context->GetInputDesc(INPUT_LOCAL_OUT)->GetDataType() != inputDtype ||
+                    context->GetInputDesc(INPUT_GLOBAL_GATE)->GetDataType() != inputDtype ||
+                    context->GetInputDesc(INPUT_LOCAL_GATE)->GetDataType() != inputDtype,
                 OP_LOGE(context->GetNodeName(), "all four inputs must have the same float16 or bfloat16 dtype"),
                 return ge::GRAPH_FAILED);
 
@@ -268,22 +265,21 @@ ge::graphStatus TilingForClaGateMxQuantWithDualAxis(gert::TilingContext* context
                     colDataDesc->GetDataType() != rowDataDesc->GetDataType() ||
                     rowScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0 ||
                     colScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0,
-                OP_LOGE(context->GetNodeName(), "Invalid output dtype."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context->GetNodeName(), "Invalid output dtype."), return ge::GRAPH_FAILED);
 
     auto rowDataShape = context->GetOutputShape(OUTPUT_ROW_DATA)->GetStorageShape();
     auto rowScaleShape = context->GetOutputShape(OUTPUT_ROW_SCALE)->GetStorageShape();
     auto colDataShape = context->GetOutputShape(OUTPUT_COL_DATA)->GetStorageShape();
     auto colScaleShape = context->GetOutputShape(OUTPUT_COL_SCALE)->GetStorageShape();
-    OP_CHECK_IF(CheckOutputShapes(go, rowDataShape, rowScaleShape, colDataShape, colScaleShape) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context->GetNodeName(), "Invalid output shapes."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CheckOutputShapes(globalOutShape, rowDataShape, rowScaleShape, colDataShape, colScaleShape) !=
+                    ge::GRAPH_SUCCESS,
+                OP_LOGE(context->GetNodeName(), "Invalid output shapes."), return ge::GRAPH_FAILED);
 
     ClaGateMxQuantWithDualAxisTilingParam params;
     params.yDtype = rowDataDesc->GetDataType();
-    params.dimM = go.GetDim(0);
-    params.dimHeadNum = go.GetDim(1);
-    params.dimHeadSize = go.GetDim(2);
+    params.dimM = globalOutShape.GetDim(0);
+    params.dimHeadNum = globalOutShape.GetDim(1);
+    params.dimHeadSize = globalOutShape.GetDim(2);
     params.dimN = params.dimHeadNum * params.dimHeadSize;
     params.dtypeSize = 2; // fp16/bf16 inputs are both 2 bytes per element.
     params.blockW = BLOCK_W;
@@ -292,11 +288,9 @@ ge::graphStatus TilingForClaGateMxQuantWithDualAxis(gert::TilingContext* context
     int64_t keyMode = TPL_MODE_BLOCK;
     int64_t keyRound = TPL_RINT;
     OP_CHECK_IF(GetPlatformInfo(context, params) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context->GetNodeName(), "GetPlatformInfo failed."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context->GetNodeName(), "GetPlatformInfo failed."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(GetAndCheckAttrs(context, params, keyMode, keyRound) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context->GetNodeName(), "GetAndCheckAttrs failed."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context->GetNodeName(), "GetAndCheckAttrs failed."), return ge::GRAPH_FAILED);
 
     params.quantMode = params.quantMode == 0 ? 0 : 1;
 
@@ -306,45 +300,45 @@ ge::graphStatus TilingForClaGateMxQuantWithDualAxis(gert::TilingContext* context
     if (params.quantMode == 0) {
         CalcTailAxisTiling(params);
     } else {
-        int64_t dimMSplit = Ops::Base::CeilDiv(params.dimM, params.splitBlockH);
-        int64_t totalBlocks = dimMSplit * params.dimNBlockNum;
-        params.usedCoreNum = std::min(params.totalCoreNum, totalBlocks);
+        int64_t rowSplitCount = Ops::Base::CeilDiv(params.dimM, params.splitBlockH);
+        int64_t totalTaskCount = rowSplitCount * params.dimNBlockNum;
+        params.usedCoreNum = std::min(params.totalCoreNum, totalTaskCount);
     }
     context->SetBlockDim(params.usedCoreNum);
-    context->SetTilingKey(GET_TPL_TILING_KEY(keyMode, keyRound, params.scaleAlg, TPL_NO_GROUP_INDEX));
+    context->SetTilingKey(GET_TPL_TILING_KEY(keyMode, keyRound, params.scaleAlg));
 
-    auto data = context->GetTilingData<ClaGateMxQuantWithDualAxisTilingData>();
-    OP_CHECK_NULL_WITH_CONTEXT(context, data);
-    *data = {};
-    data->usedCoreNum = params.usedCoreNum;
-    data->dstType = params.dstType;
-    data->activateLeft = 1;
-    data->dimM = params.dimM;
-    data->dimN = params.dimN;
-    data->numGroups = 1;
-    data->blockW = params.blockW;
-    data->splitBlockH = params.splitBlockH;
-    data->dimNBlockNum = params.dimNBlockNum;
-    data->dimNTail = params.dimNTail;
-    data->headNum = params.dimHeadNum;
-    data->headDim = params.dimHeadSize;
-    data->quantMode = params.quantMode;
-    data->rowTileNum = params.rowTileNum;
-    data->colTileNum = params.colTileNum;
-    data->rowBlockSize = params.rowBlockSize;
-    data->rowTailSize = params.rowTailSize;
-    data->colBlockSize = params.colBlockSize;
-    data->colTailSize = params.colTailSize;
-    data->batchCount = params.batchCount;
-    data->batchSize = params.batchSize;
+    auto tilingData = context->GetTilingData<ClaGateMxQuantWithDualAxisTilingData>();
+    OP_CHECK_NULL_WITH_CONTEXT(context, tilingData);
+    *tilingData = {};
+    tilingData->usedCoreNum = params.usedCoreNum;
+    tilingData->dstType = params.dstType;
+    tilingData->activateLeft = 1;
+    tilingData->dimM = params.dimM;
+    tilingData->dimN = params.dimN;
+    tilingData->numGroups = 1;
+    tilingData->blockW = params.blockW;
+    tilingData->splitBlockH = params.splitBlockH;
+    tilingData->dimNBlockNum = params.dimNBlockNum;
+    tilingData->dimNTail = params.dimNTail;
+    tilingData->headNum = params.dimHeadNum;
+    tilingData->headDim = params.dimHeadSize;
+    tilingData->quantMode = params.quantMode;
+    tilingData->rowTileNum = params.rowTileNum;
+    tilingData->colTileNum = params.colTileNum;
+    tilingData->rowBlockSize = params.rowBlockSize;
+    tilingData->rowTailSize = params.rowTailSize;
+    tilingData->colBlockSize = params.colBlockSize;
+    tilingData->colTailSize = params.colTailSize;
+    tilingData->batchCount = params.batchCount;
+    tilingData->batchSize = params.batchSize;
 
-    size_t* workspaces = context->GetWorkspaceSizes(1);
+    size_t *workspaces = context->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, workspaces);
     workspaces[0] = params.workspaceSize;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPrepareForClaGateMxQuantWithDualAxis(gert::TilingParseContext* context)
+ge::graphStatus TilingPrepareForClaGateMxQuantWithDualAxis(gert::TilingParseContext *context)
 {
     return context == nullptr ? ge::GRAPH_FAILED : ge::GRAPH_SUCCESS;
 }

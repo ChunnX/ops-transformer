@@ -27,15 +27,21 @@ using namespace std;
 
 class ClaGateMxQuantWithDualAxisTilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "ClaGateMxQuantWithDualAxisTilingTest SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "ClaGateMxQuantWithDualAxisTilingTest SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "ClaGateMxQuantWithDualAxisTilingTest TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "ClaGateMxQuantWithDualAxisTilingTest TearDown" << std::endl;
+    }
 };
 
 static void ExecuteTestCase(ge::DataType xDtype, ge::DataType y1Dtype, ge::DataType mxScale1Dtype, ge::DataType y2Dtype,
                             ge::DataType mxScale2Dtype, gert::StorageShape xShape, gert::StorageShape y1Shape,
                             gert::StorageShape mxScale1Shape, gert::StorageShape y2Shape,
-                            gert::StorageShape mxScale2Shape, bool activate_left, const string& round_mode,
+                            gert::StorageShape mxScale2Shape, bool activate_left, const string &round_mode,
                             int64_t dst_type, int64_t scale_alg, ge::graphStatus status = ge::GRAPH_SUCCESS)
 {
     string compile_info_string = R"({
@@ -64,12 +70,12 @@ static void ExecuteTestCase(ge::DataType xDtype, ge::DataType y1Dtype, ge::DataT
     auto tiling_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling;
     auto tiling_parse_func = gert::OpImplRegistry::GetInstance().GetOpImpl(op_type.c_str())->tiling_parse;
 
-    auto kernel_holder = gert::KernelRunContextFaker()
-                             .KernelIONum(2, 1)
-                             .Inputs({const_cast<char*>(compile_info_string.c_str()),
-                                      reinterpret_cast<void*>(&platform_info)})
-                             .Outputs({&compile_info})
-                             .Build();
+    auto kernel_holder =
+        gert::KernelRunContextFaker()
+            .KernelIONum(2, 1)
+            .Inputs({const_cast<char *>(compile_info_string.c_str()), reinterpret_cast<void *>(&platform_info)})
+            .Outputs({&compile_info})
+            .Build();
 
     ASSERT_TRUE(kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->Init());
     kernel_holder.GetContext<gert::TilingParseContext>()->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);
@@ -83,7 +89,7 @@ static void ExecuteTestCase(ge::DataType xDtype, ge::DataType y1Dtype, ge::DataT
 
     auto param = gert::TilingData::CreateCap(4096);
     auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
-    auto ws_size = reinterpret_cast<gert::ContinuousVector*>(workspace_size_holer.get());
+    auto ws_size = reinterpret_cast<gert::ContinuousVector *>(workspace_size_holer.get());
     ASSERT_NE(param, nullptr);
     auto holder = gert::TilingContextFaker()
                       .SetOpType(op_type)
@@ -92,7 +98,7 @@ static void ExecuteTestCase(ge::DataType xDtype, ge::DataType y1Dtype, ge::DataT
                       .InputShapes({&xShape})
                       .OutputShapes({&y1Shape, &mxScale1Shape, &y2Shape, &mxScale2Shape})
                       .CompileInfo(&compile_info)
-                      .PlatformInfo(reinterpret_cast<char*>(&platform_info))
+                      .PlatformInfo(reinterpret_cast<char *>(&platform_info))
                       .NodeInputTd(0, xDtype, ge::FORMAT_ND, ge::FORMAT_ND)
                       .NodeOutputTd(0, y1Dtype, ge::FORMAT_ND, ge::FORMAT_ND)
                       .NodeOutputTd(1, mxScale1Dtype, ge::FORMAT_ND, ge::FORMAT_ND)
@@ -106,7 +112,7 @@ static void ExecuteTestCase(ge::DataType xDtype, ge::DataType y1Dtype, ge::DataT
                       .Workspace(ws_size)
                       .Build();
 
-    gert::TilingContext* tiling_context = holder.GetContext<gert::TilingContext>();
+    gert::TilingContext *tiling_context = holder.GetContext<gert::TilingContext>();
     ASSERT_NE(tiling_context, nullptr);
     ASSERT_NE(tiling_context->GetPlatformInfo(), nullptr);
     tiling_context->GetPlatformInfo()->SetPlatformRes("SoCInfo", soc_infos);

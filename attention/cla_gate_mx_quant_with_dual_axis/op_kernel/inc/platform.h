@@ -43,7 +43,10 @@ __aicore__ inline constexpr bool IsDataCopyPadSupport()
 /**
  * Get the block size of unified buffer in bytes
  */
-__aicore__ inline constexpr uint32_t GetUbBlockSize() { return 32U; }
+__aicore__ inline constexpr uint32_t GetUbBlockSize()
+{
+    return 32U;
+}
 
 /**
  * Get the size of vector registers in bytes
@@ -74,7 +77,10 @@ __aicore__ inline constexpr bool IsSupportAtomicAddTypeSIMD()
 } // namespace platform
 
 namespace PlatformSocInfo {
-__aicore__ inline constexpr bool IsDataCopyPadSupport() { return platform::IsDataCopyPadSupport(); }
+__aicore__ inline constexpr bool IsDataCopyPadSupport()
+{
+    return platform::IsDataCopyPadSupport();
+}
 
 } // namespace PlatformSocInfo
 

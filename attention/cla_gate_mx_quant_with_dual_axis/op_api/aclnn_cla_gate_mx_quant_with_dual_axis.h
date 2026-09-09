@@ -21,26 +21,16 @@ extern "C" {
  * @brief aclnnClaGateMxQuantWithDualAxis 的第一段接口。
  */
 ACLNN_API aclnnStatus aclnnClaGateMxQuantWithDualAxisGetWorkspaceSize(
-    const aclTensor* globalOut,
-    const aclTensor* localOut,
-    const aclTensor* globalGateLogits,
-    const aclTensor* localGateLogits,
-    const char* roundModeOptional,
-    int64_t scaleAlg,
-    int64_t dstType,
-    int64_t quantMode,
-    aclTensor* rowData,
-    aclTensor* rowScale,
-    aclTensor* colData,
-    aclTensor* colScale,
-    uint64_t* workspaceSize,
-    aclOpExecutor** executor);
+    const aclTensor *globalOut, const aclTensor *localOut, const aclTensor *globalGateLogits,
+    const aclTensor *localGateLogits, const char *roundModeOptional, int64_t scaleAlg, int64_t dstType,
+    int64_t quantMode, aclTensor *rowData, aclTensor *rowScale, aclTensor *colData, aclTensor *colScale,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnClaGateMxQuantWithDualAxis 的第二段接口。
  */
-ACLNN_API aclnnStatus aclnnClaGateMxQuantWithDualAxis(void* workspace, uint64_t workspaceSize,
-                                                      aclOpExecutor* executor, aclrtStream stream);
+ACLNN_API aclnnStatus aclnnClaGateMxQuantWithDualAxis(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                                      aclrtStream stream);
 
 #ifdef __cplusplus
 }

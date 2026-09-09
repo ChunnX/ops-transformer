@@ -10,13 +10,13 @@ constexpr int64_t SCALE_LAST_DIM = 2;
 constexpr int64_t INDEX_ATTR_DST_TYPE = 0;
 constexpr int64_t INDEX_ATTR_QUANT_MODE = 3;
 
-ge::graphStatus InferShapeForClaGateMxQuantWithDualAxis(gert::InferShapeContext* context)
+ge::graphStatus InferShapeForClaGateMxQuantWithDualAxis(gert::InferShapeContext *context)
 {
-    const gert::Shape* xShape = context->GetInputShape(0);
-    gert::Shape* rowData = context->GetOutputShape(0);
-    gert::Shape* rowScale = context->GetOutputShape(1);
-    gert::Shape* colData = context->GetOutputShape(2);
-    gert::Shape* colScale = context->GetOutputShape(3);
+    const gert::Shape *xShape = context->GetInputShape(0);
+    gert::Shape *rowData = context->GetOutputShape(0);
+    gert::Shape *rowScale = context->GetOutputShape(1);
+    gert::Shape *colData = context->GetOutputShape(2);
+    gert::Shape *colScale = context->GetOutputShape(3);
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, rowData);
     OP_CHECK_NULL_WITH_CONTEXT(context, rowScale);
@@ -35,7 +35,7 @@ ge::graphStatus InferShapeForClaGateMxQuantWithDualAxis(gert::InferShapeContext*
     }
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int32_t* quantModePtr = attrs->GetAttrPointer<int32_t>(INDEX_ATTR_QUANT_MODE);
+    const int32_t *quantModePtr = attrs->GetAttrPointer<int32_t>(INDEX_ATTR_QUANT_MODE);
     int64_t quantMode = quantModePtr != nullptr ? *quantModePtr : 0;
     int64_t k = n * d;
     *rowData = gert::Shape({t, k});
@@ -50,15 +50,15 @@ ge::graphStatus InferShapeForClaGateMxQuantWithDualAxis(gert::InferShapeContext*
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeForClaGateMxQuantWithDualAxis(gert::InferDataTypeContext* context)
+ge::graphStatus InferDataTypeForClaGateMxQuantWithDualAxis(gert::InferDataTypeContext *context)
 {
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int32_t* dstType = attrs->GetAttrPointer<int32_t>(INDEX_ATTR_DST_TYPE);
+    const int32_t *dstType = attrs->GetAttrPointer<int32_t>(INDEX_ATTR_DST_TYPE);
     OP_CHECK_NULL_WITH_CONTEXT(context, dstType);
     ge::DataType outDtype = static_cast<ge::DataType>(*dstType);
-    if (outDtype != ge::DT_FLOAT4_E2M1 && outDtype != ge::DT_FLOAT4_E1M2 &&
-        outDtype != ge::DT_FLOAT8_E4M3FN && outDtype != ge::DT_FLOAT8_E5M2) {
+    if (outDtype != ge::DT_FLOAT4_E2M1 && outDtype != ge::DT_FLOAT4_E1M2 && outDtype != ge::DT_FLOAT8_E4M3FN &&
+        outDtype != ge::DT_FLOAT8_E5M2) {
         OP_LOGE(context->GetNodeName(), "dst_type must be one of float4_e2m1/e1m2/float8_e4m3fn/e5m2.");
         return ge::GRAPH_FAILED;
     }

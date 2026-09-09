@@ -55,7 +55,7 @@ struct ClaGateMxQuantWithDualAxisTilingParam {
     int64_t dimNTail{0};
     int64_t workspaceSize{0};
     int64_t dtypeSize{2};
-    int64_t quantMode{1};     // 0: tail-axis single, 1: dual-axis
+    int64_t quantMode{1}; // 0: tail-axis single, 1: dual-axis
     int64_t rowTileNum{0};
     int64_t colTileNum{0};
     int64_t rowBlockSize{0};
@@ -77,8 +77,8 @@ enum class RoundModeList {
     MODE_UNDEFINED = -1,
 };
 
-ge::graphStatus TilingForClaGateMxQuantWithDualAxis(gert::TilingContext* context);
-ge::graphStatus TilingPrepareForClaGateMxQuantWithDualAxis(gert::TilingParseContext* context);
+ge::graphStatus TilingForClaGateMxQuantWithDualAxis(gert::TilingContext *context);
+ge::graphStatus TilingPrepareForClaGateMxQuantWithDualAxis(gert::TilingParseContext *context);
 
 } // namespace optiling
 

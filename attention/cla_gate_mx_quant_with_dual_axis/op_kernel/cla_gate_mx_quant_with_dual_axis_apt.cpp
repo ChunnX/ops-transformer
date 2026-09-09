@@ -45,11 +45,11 @@ struct RoundModeMapper {
 };
 } // namespace
 
-template <uint64_t mode, uint64_t roundMode, uint64_t scaleAlg, uint64_t isGroupIdx>
-__global__ __aicore__ void cla_gate_mx_quant_with_dual_axis(
-    GM_ADDR global_out, GM_ADDR local_out, GM_ADDR global_gate_logits, GM_ADDR local_gate_logits,
-    GM_ADDR row_data, GM_ADDR row_scale, GM_ADDR col_data, GM_ADDR col_scale,
-    GM_ADDR workspace, GM_ADDR tiling)
+template <uint64_t mode, uint64_t roundMode, uint64_t scaleAlg>
+__global__ __aicore__ void cla_gate_mx_quant_with_dual_axis(GM_ADDR global_out, GM_ADDR local_out,
+                                                            GM_ADDR global_gate_logits, GM_ADDR local_gate_logits,
+                                                            GM_ADDR row_data, GM_ADDR row_scale, GM_ADDR col_data,
+                                                            GM_ADDR col_scale, GM_ADDR workspace, GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
 #if (__NPU_ARCH__ == 3510)
@@ -60,16 +60,14 @@ __global__ __aicore__ void cla_gate_mx_quant_with_dual_axis(
     TPipe pipe;
     constexpr AscendC::RoundMode ascendcRoundMode = RoundModeMapper<roundMode>::value;
     if (tilingData.quantMode == 0) {
-        ClaGateMxQuantTailAxisBase<DTYPE_GLOBAL_OUT, DTYPE_ROW_DATA, mode, ascendcRoundMode,
-                                   scaleAlg, isGroupIdx> op(&tilingData, &pipe);
-        op.Init(global_out, local_out, global_gate_logits, local_gate_logits,
-                row_data, row_scale, col_data, col_scale);
+        ClaGateMxQuantTailAxisBase<DTYPE_GLOBAL_OUT, DTYPE_ROW_DATA, mode, ascendcRoundMode, scaleAlg> op(&tilingData,
+                                                                                                          &pipe);
+        op.Init(global_out, local_out, global_gate_logits, local_gate_logits, row_data, row_scale, col_data, col_scale);
         op.Process();
     } else {
-        ClaGateMxQuantWithDualAxisBase<DTYPE_GLOBAL_OUT, DTYPE_ROW_DATA, mode, ascendcRoundMode,
-                                       scaleAlg, isGroupIdx> op(&tilingData, &pipe);
-        op.Init(global_out, local_out, global_gate_logits, local_gate_logits,
-                row_data, row_scale, col_data, col_scale);
+        ClaGateMxQuantWithDualAxisBase<DTYPE_GLOBAL_OUT, DTYPE_ROW_DATA, mode, ascendcRoundMode, scaleAlg> op(
+            &tilingData, &pipe);
+        op.Init(global_out, local_out, global_gate_logits, local_gate_logits, row_data, row_scale, col_data, col_scale);
         op.Process();
     }
 #if (__NPU_ARCH__ == 3510)

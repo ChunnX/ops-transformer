@@ -57,22 +57,16 @@ static bool IsFp4DstType(int64_t dst_type)
     return dst_type == DST_TYPE_FP4_E2M1 || dst_type == DST_TYPE_FP4_E1M2;
 }
 
-void CheckNpuTensor(const at::Tensor& tensor, const char* name)
+void CheckNpuTensor(const at::Tensor &tensor, const char *name)
 {
     TORCH_CHECK(tensor.defined(), name, " must be defined");
     TORCH_CHECK(tensor.device().type() == at::kPrivateUse1, name, " must be on NPU device");
 }
 } // namespace
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>
-cla_gate_mx_quant_with_dual_axis(
-    const at::Tensor& global_out,
-    const at::Tensor& local_out,
-    const at::Tensor& global_gate_logits,
-    const at::Tensor& local_gate_logits,
-    const std::string& round_mode,
-    int64_t scale_alg,
-    int64_t dst_type,
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> cla_gate_mx_quant_with_dual_axis(
+    const at::Tensor &global_out, const at::Tensor &local_out, const at::Tensor &global_gate_logits,
+    const at::Tensor &local_gate_logits, const std::string &round_mode, int64_t scale_alg, int64_t dst_type,
     int64_t quant_mode)
 {
     CheckNpuTensor(global_out, "global_out");
@@ -80,8 +74,7 @@ cla_gate_mx_quant_with_dual_axis(
     CheckNpuTensor(global_gate_logits, "global_gate_logits");
     CheckNpuTensor(local_gate_logits, "local_gate_logits");
 
-    TORCH_CHECK(global_out.device() == local_out.device(),
-                "global_out and local_out must be on the same device");
+    TORCH_CHECK(global_out.device() == local_out.device(), "global_out and local_out must be on the same device");
     TORCH_CHECK(global_out.device() == global_gate_logits.device(),
                 "global_out and global_gate_logits must be on the same device");
     TORCH_CHECK(global_out.device() == local_gate_logits.device(),
@@ -89,36 +82,28 @@ cla_gate_mx_quant_with_dual_axis(
 
     TORCH_CHECK(global_out.dim() == 3, "global_out must be 3D [T,N,D], but got ", global_out.dim(), "D");
     TORCH_CHECK(local_out.dim() == 3, "local_out must be 3D [T,N,D], but got ", local_out.dim(), "D");
-    TORCH_CHECK(local_out.sizes() == global_out.sizes(),
-                "local_out shape must match global_out shape");
+    TORCH_CHECK(local_out.sizes() == global_out.sizes(), "local_out shape must match global_out shape");
 
     const int64_t t = global_out.size(0);
     const int64_t n = global_out.size(1);
     const int64_t d = global_out.size(2);
-    TORCH_CHECK(n >= 1 && n <= 128,
-                "N must be in [1,128], got ", n);
-    TORCH_CHECK(d == 128 || d == 256,
-                "D must be 128 or 256, got ", d);
+    TORCH_CHECK(n >= 1 && n <= 128, "N must be in [1,128], got ", n);
+    TORCH_CHECK(d == 128 || d == 256, "D must be 128 or 256, got ", d);
 
     const int64_t gate_dim = global_gate_logits.dim();
-    TORCH_CHECK(gate_dim == 2,
-                "global_gate_logits must be [T,N], but got ", gate_dim, "D");
-    TORCH_CHECK(local_gate_logits.dim() == gate_dim,
-                "local_gate_logits rank must match global_gate_logits rank");
+    TORCH_CHECK(gate_dim == 2, "global_gate_logits must be [T,N], but got ", gate_dim, "D");
+    TORCH_CHECK(local_gate_logits.dim() == gate_dim, "local_gate_logits rank must match global_gate_logits rank");
     TORCH_CHECK(local_gate_logits.sizes() == global_gate_logits.sizes(),
                 "local_gate_logits shape must match global_gate_logits shape");
-    TORCH_CHECK(global_gate_logits.size(0) == t && global_gate_logits.size(1) == n,
-                "gate logits must match [T,N]");
+    TORCH_CHECK(global_gate_logits.size(0) == t && global_gate_logits.size(1) == n, "gate logits must match [T,N]");
 
     const auto input_dtype = global_out.scalar_type();
     TORCH_CHECK(input_dtype == at::kHalf || input_dtype == at::kBFloat16,
                 "global_out dtype must be float16 or bfloat16, but got ", input_dtype);
-    TORCH_CHECK(local_out.scalar_type() == input_dtype,
-                "local_out dtype must match global_out dtype");
+    TORCH_CHECK(local_out.scalar_type() == input_dtype, "local_out dtype must match global_out dtype");
     TORCH_CHECK(global_gate_logits.scalar_type() == input_dtype,
                 "global_gate_logits dtype must match global_out dtype");
-    TORCH_CHECK(local_gate_logits.scalar_type() == input_dtype,
-                "local_gate_logits dtype must match global_out dtype");
+    TORCH_CHECK(local_gate_logits.scalar_type() == input_dtype, "local_gate_logits dtype must match global_out dtype");
 
     TORCH_CHECK(round_mode == "rint" || round_mode == "round" || round_mode == "floor",
                 "round_mode must be rint/round/floor, got ", round_mode);
@@ -137,8 +122,8 @@ cla_gate_mx_quant_with_dual_axis(
     const int64_t k = n * d;
     const int64_t data_cols = IsFp4DstType(dst_type) ? k / 2 : k;
     at::Tensor row_data = at::empty({t, data_cols}, global_out.options().dtype(data_scalar_type));
-    at::Tensor row_scale = at::empty({t, (k + SPLIT_BLOCK_SIZE - 1) / SPLIT_BLOCK_SIZE, 2},
-                                     global_out.options().dtype(at::kByte));
+    at::Tensor row_scale =
+        at::empty({t, (k + SPLIT_BLOCK_SIZE - 1) / SPLIT_BLOCK_SIZE, 2}, global_out.options().dtype(at::kByte));
     at::Tensor col_data;
     at::Tensor col_scale;
     if (quant_mode == 0) {
@@ -146,8 +131,8 @@ cla_gate_mx_quant_with_dual_axis(
         col_scale = at::empty({0, k, 2}, global_out.options().dtype(at::kByte));
     } else {
         col_data = at::empty({t, data_cols}, global_out.options().dtype(data_scalar_type));
-        col_scale = at::empty({(t + SPLIT_BLOCK_SIZE - 1) / SPLIT_BLOCK_SIZE, k, 2},
-                              global_out.options().dtype(at::kByte));
+        col_scale =
+            at::empty({(t + SPLIT_BLOCK_SIZE - 1) / SPLIT_BLOCK_SIZE, k, 2}, global_out.options().dtype(at::kByte));
     }
 
     TensorWrapper row_data_wrapper = {row_data, data_acl_type};
@@ -157,19 +142,16 @@ cla_gate_mx_quant_with_dual_axis(
 
     // ACLNN_CMD 的 ConvertTypes 要求字符串指针作为非 const 左值传入。
     char *round_mode_ptr = const_cast<char *>(round_mode.c_str());
-    ACLNN_CMD(aclnnClaGateMxQuantWithDualAxis,
-              global_out, local_out, global_gate_logits, local_gate_logits,
-              round_mode_ptr, scale_alg, dst_type, quant_mode,
-              row_data_wrapper, row_scale_wrapper, col_data_wrapper, col_scale_wrapper);
+    ACLNN_CMD(aclnnClaGateMxQuantWithDualAxis, global_out, local_out, global_gate_logits, local_gate_logits,
+              round_mode_ptr, scale_alg, dst_type, quant_mode, row_data_wrapper, row_scale_wrapper, col_data_wrapper,
+              col_scale_wrapper);
 
-    return std::make_tuple(std::move(row_data), std::move(row_scale),
-                           std::move(col_data), std::move(col_scale));
+    return std::make_tuple(std::move(row_data), std::move(row_scale), std::move(col_data), std::move(col_scale));
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("cla_gate_mx_quant_with_dual_axis",
-          &cla_gate_mx_quant_with_dual_axis,
+    m.def("cla_gate_mx_quant_with_dual_axis", &cla_gate_mx_quant_with_dual_axis,
           "ClaGateMxQuantWithDualAxis operator on NPU");
 }
 } // namespace op_api
