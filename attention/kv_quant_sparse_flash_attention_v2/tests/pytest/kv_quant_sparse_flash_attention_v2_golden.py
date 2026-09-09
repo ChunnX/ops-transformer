@@ -937,6 +937,23 @@ def softmax(x, sinks=None):
     return ans, x_max, x_sum
 
 
+def bmm1(q_curr, k_sparse, calc_dtype):
+    cpu_matmul = torch.matmul(q_curr.float(), k_sparse.float().T)
+    if calc_dtype is not torch.bfloat16:
+        return cpu_matmul
+    try:
+        if not (hasattr(torch, "npu") and torch.npu.is_available()):
+            return cpu_matmul
+        device = torch.device("npu")
+        q_dev = q_curr.to(device=device, dtype=torch.bfloat16)
+        k_dev = k_sparse.to(device=device, dtype=torch.bfloat16)
+        npu_matmul = torch.matmul(q_dev, k_dev.T).float().cpu()
+        keep = torch.isfinite(npu_matmul) & torch.isfinite(cpu_matmul)
+        return torch.where(keep, cpu_matmul, npu_matmul)
+    except Exception:
+        return cpu_matmul
+
+
 def _t_increattention_bnsd(fa_param):
     batch_size = fa_param["b"]
     numheads = fa_param["numHeads"]
@@ -961,21 +978,28 @@ def _t_increattention_bnsd(fa_param):
     v_bnsd_tensor = fa_param["v_bnsd_tensor"].float()
     v_dequant_scale_bnsd_tensor = fa_param["v_dequant_scale_bnsd_tensor"].float()
     tile_size = 128
+    # 对齐算子 Cast(CAST_RINT, NO_SAT) 语义:
+    # kv 反量化(fp32×scale)后 Cast 到 q 的 dtype(算子输出 Q_T 类型).
+    # 与 SFA 不同, 此处 q 和 kv 数据类型不同(q:fp16/bf16, kv:int8/fp8).
+    # 算子使用 NO_SAT, 即有限值超出目标 dtype 范围时溢出为±inf, 而非饱和钳到上下界.
+    kv_dequant = k_bnsd_tensor[..., :512] * torch.repeat_interleave(
+        k_dequant_scale_bnsd_tensor, tile_size, dim=-1
+    )
     if fa_param["q_dtype"] == "float16":
-        k_bnsd_tensor[..., :512] = (
-            k_bnsd_tensor[..., :512]
-            * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)
-        ).to(torch.float16)
+        kv_dtype = torch.float16
     elif fa_param["q_dtype"] == "bfloat16":
-        k_bnsd_tensor[..., :512] = (
-            k_bnsd_tensor[..., :512]
-            * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)
-        ).to(torch.bfloat16)
-    elif fa_param["q_dtype"] == "float32":
-        k_bnsd_tensor[..., :512] = (
-            k_bnsd_tensor[..., :512]
-            * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)
-        ).to(torch.float32)
+        kv_dtype = torch.bfloat16
+    else:
+        kv_dtype = torch.float32
+    kv_dequant_sat = kv_dequant.to(kv_dtype)
+    kv_dequant_overflow = torch.isfinite(kv_dequant) & (
+        kv_dequant.abs() > torch.finfo(kv_dtype).max
+    )
+    k_bnsd_tensor[..., :512] = torch.where(
+        kv_dequant_overflow,
+        torch.sign(kv_dequant) * float("inf"),
+        kv_dequant_sat,
+    )
     v_bnsd_tensor = k_bnsd_tensor[..., :512].clone()
     matmul_dtype = torch.float32
     y = torch.zeros(out_shape_bnsd, dtype=torch.float32)
@@ -1023,7 +1047,13 @@ def _t_increattention_bnsd(fa_param):
                     cur_sinks = sinks_tensor[n2Idx * g : (n2Idx + 1) * g]
                 if emptyFlag:
                     continue
-                bmm1Res = torch.matmul(q_curr.float(), k_sparse.float().T)
+                bmm1Res = bmm1(
+                    q_curr,
+                    k_sparse,
+                    torch.bfloat16
+                    if fa_param["q_dtype"] == "bfloat16"
+                    else torch.float16,
+                )
                 scaleRes = bmm1Res * scaleValue
                 softmax_res, x_max, x_sum = softmax(scaleRes, cur_sinks)
                 exp_unnorm = torch.exp(scaleRes - x_max)
