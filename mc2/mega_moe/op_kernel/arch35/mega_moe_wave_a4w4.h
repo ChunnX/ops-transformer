@@ -31,9 +31,9 @@ namespace MegaMoeImpl {
         TopkWeightsPrefetch
 
 template <TemplateMegaMoeA4W4WaveTypeClass>
-class MegaMoeA4W4Wave : public MegaMoe<TemplateMegaMoeA4W4WaveTypeFunc, false> {
+class MegaMoeA4W4Wave : public MegaMoe<TemplateMegaMoeA4W4WaveTypeFunc> {
 private:
-    using MegaMoeBase = MegaMoe<TemplateMegaMoeA4W4WaveTypeFunc, false>;
+    using MegaMoeBase = MegaMoe<TemplateMegaMoeA4W4WaveTypeFunc>;
     friend MegaMoeBase;
 
 public:
@@ -108,7 +108,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1
     RunGmm1Generic<typename MoeQuantConfig::QuantOutType, typename MoeQuantConfig::ActivationQuantOutType,
                    typename MoeQuantConfig::QuantOutType, bfloat16_t, typename MoeQuantConfig::QuantScaleType,
                    typename MoeQuantConfig::QuantScaleType, MoeWeight1Format != FORMAT_ND, GMM1_TILE_M, EPILOGUE_TILE_M,
-                   TopkWeightsPrefetch, false, false, true>(
+                   TopkWeightsPrefetch, false, true>(
         epilogueOp_, params_, sliceProblemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
         gmmExecutionConfig_.blockJob, static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert,
         state.expertIdx, runtimeState.pingpongIdx);
@@ -277,7 +277,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     GmmRuntimeState gmm1RuntimeState{startBlockIdx_, vecSetSyncCom, gmm1PingPongIdx};
 
     const uint32_t gmm1TilesPerMGroup =
-        Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF, static_cast<uint32_t>(L1_TILE_N));
+        Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim, static_cast<uint32_t>(L1_TILE_N));
 
     ExpertTokenPosition dispatchPosition = DispatchFirstWave();
     EnterSteadyDispatch();
@@ -292,7 +292,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     }
 
     if constexpr (!TopkWeightsPrefetch) {
-        EndSync(gmm1RuntimeState.vecSetSyncCom);
+        EndSync(gmm1RuntimeState.vecSetSyncCom, gmm1RuntimeState.pingpongIdx);
     }
 }
 

@@ -56,9 +56,9 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, 
 // 预留：XType OutputType TopkWeightsType Weight1Type
 #define TemplateMegaMoeLayeredTypeClass \
     typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode, \
-        int32_t CombineQuantMode, bool TopkWeightsPrefetch, bool IsGmm1Interleaved
+        int32_t CombineQuantMode, bool TopkWeightsPrefetch
 #define TemplateMegaMoeLayeredTypeFunc \
-    XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch, IsGmm1Interleaved
+    XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch
 
 template <TemplateMegaMoeLayeredTypeClass>
 class MegaMoeLayered {
@@ -286,8 +286,6 @@ private:
     // A4W4 场景下 GMM1 走通用 A4W4、GMM2 走 A8W4，避免两段都使用 A4W4 导致精度损失过大。
     static constexpr bool ENABLE_A4W4 =
         Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value && Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value;
-    // GMM1 搬运普通分离权重时在片内拼成 [gate128, up128]。
-    static constexpr bool GMM1_INTERLEAVED = IsGmm1Interleaved && !ENABLE_A4W4;
     static constexpr int32_t DISPATCH_COPY_BUFFER_COUNT = 5;
     static constexpr uint32_t MX_QUANT_TEMP_UB_BYTES = 2U * 1024U;
     static constexpr uint32_t DISPATCH_READY_FLAG_BATCH_TOKENS = 256U;
@@ -364,10 +362,11 @@ private:
     static constexpr uint32_t GMM1_TILE_M = L1_TILE_M_256;
     static constexpr uint32_t EPILOGUE_TILE_M = TopkWeightsPrefetch ? L1_TILE_M_128 : L1_TILE_M_256;
 
+    // GMM1 的每个 tile 固定为 [gate128, up128]，由同一 epilogue 消费。
     using BlockEpilogue = BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, EPILOGUE_TILE_M, L1_TILE_N,
-                                                         TopkWeightsPrefetch, GMM1_INTERLEAVED>;
-    using SharedBlockEpilogue = BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, L1_TILE_M_256,
-                                                               L1_TILE_N, false, GMM1_INTERLEAVED>;
+                                                         TopkWeightsPrefetch>;
+    using SharedBlockEpilogue =
+        BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, L1_TILE_M_256, L1_TILE_N, false>;
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
 };
@@ -889,20 +888,20 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::RunGmm1Wi
     }
     if constexpr (ENABLE_A8W4) {
         RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                    epilogueTileM, prefetchWeights, IsShared, false, GMM1_INTERLEAVED>(
-            epilogue, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, gmTileSequence, state.expertBeforeCnt,
-            expertIdx);
+                    epilogueTileM, prefetchWeights, IsShared, false>(epilogue, params_, state.problemShape, gmmAddrInfo,
+                                                                     startBlockIdx_, gmTileSequence,
+                                                                     state.expertBeforeCnt, expertIdx);
     } else {
         if (params_.tilingData->moeGmmMode == GMM_MODE_A8W8_NZ || params_.tilingData->moeGmmMode == GMM_MODE_A4W4_NZ) {
             RunGmm1Generic<QuantOutType, ActivationQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
-                           QuantScaleOutType, true, GMM1_TILE_M, epilogueTileM, prefetchWeights, IsShared,
-                           GMM1_INTERLEAVED>(epilogue, params_, state.problemShape, gmmAddrInfo, startBlockIdx_,
-                                             vecSetSyncCom, state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
+                           QuantScaleOutType, true, GMM1_TILE_M, epilogueTileM, prefetchWeights, IsShared>(
+                epilogue, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
+                state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
         } else {
             RunGmm1Generic<QuantOutType, ActivationQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
-                           QuantScaleOutType, false, GMM1_TILE_M, epilogueTileM, prefetchWeights, IsShared,
-                           GMM1_INTERLEAVED>(epilogue, params_, state.problemShape, gmmAddrInfo, startBlockIdx_,
-                                             vecSetSyncCom, state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
+                           QuantScaleOutType, false, GMM1_TILE_M, epilogueTileM, prefetchWeights, IsShared>(
+                epilogue, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
+                state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
         }
     }
 }
@@ -931,18 +930,18 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
 {
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                    L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false, GMM1_INTERLEAVED>(
-            state.problemShape, gmmAddrInfo, startBlockIdx_);
+                    L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false>(state.problemShape, gmmAddrInfo,
+                                                                                      startBlockIdx_);
     } else {
         // A8W8_NZ / Generic 共用 RunGmm2Generic，仅 LayoutB 不同（ZN/ND）。
         if (params_.tilingData->moeGmmMode == GMM_MODE_A8W8_NZ) {
             RunGmm2Generic<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
-                           QuantScaleOutType, true, true, L1_TILE_M_256, TopkWeightsPrefetch, IsShared,
-                           GMM1_INTERLEAVED, false>(state.problemShape, gmmAddrInfo, startBlockIdx_);
+                           QuantScaleOutType, true, true, L1_TILE_M_256, TopkWeightsPrefetch, IsShared, false>(
+                state.problemShape, gmmAddrInfo, startBlockIdx_);
         } else {
             RunGmm2Generic<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
-                           QuantScaleOutType, false, true, L1_TILE_M_256, TopkWeightsPrefetch, IsShared,
-                           GMM1_INTERLEAVED, false>(state.problemShape, gmmAddrInfo, startBlockIdx_);
+                           QuantScaleOutType, false, true, L1_TILE_M_256, TopkWeightsPrefetch, IsShared, false>(
+                state.problemShape, gmmAddrInfo, startBlockIdx_);
         }
     }
 }
@@ -970,7 +969,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSh
         GroupMatmulWithActivationQuant<true>(sharedGmm1AddrInfo, sharedGmm1State, sharedIdx, vecSetSyncCom,
                                              gmTileSequence);
     }
-    EndSync<GMM1_INTERLEAVED>(vecSetSyncCom, gmm1PingPongIdx_);
+    EndSync(vecSetSyncCom, gmm1PingPongIdx_);
     gmm1PingPongIdx_ = 0U;
     startBlockIdx_ = 0; // 共享专家GMM1修改了startBlockIdx_，重置给GMM1使用
 }
@@ -1099,7 +1098,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessMo
     if constexpr (TopkWeightsPrefetch) {
         PublishOrWaitGmm1AllDone();
     } else {
-        EndSync<GMM1_INTERLEAVED>(vecSetSyncCom, gmm1PingPongIdx_);
+        EndSync(vecSetSyncCom, gmm1PingPongIdx_);
     }
     gmm1PingPongIdx_ = 0U;
     if constexpr (g_coreType == AIV) {
