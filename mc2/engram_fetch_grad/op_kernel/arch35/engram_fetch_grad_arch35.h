@@ -140,6 +140,7 @@ private:
     uint64_t ubSize_{0};
     uint32_t tileBytes_{0};
     uint32_t gradSubBatch_{Mc2Kernel::GRAD_SUB_BATCH};
+    uint32_t uniqueEntryBytes_{0};
 
     uint64_t barrierFlagOffset_{0};
     uint64_t tokenWriteOffset_{0};
@@ -430,6 +431,17 @@ __aicore__ inline static uint32_t AccumBufBytes(uint32_t hiddenDim)
     return Ceil(hiddenDim * sizeof(float), UB_ALIGN) * UB_ALIGN * Mc2Kernel::ACCUM_BUF_COPIES;
 }
 
+__aicore__ inline static uint32_t UniqueEntryBytes(uint32_t hiddenDim, int32_t outputDtype)
+{
+    uint32_t bytes = Mc2Kernel::FLUSH_CAST_HEAD_BYTES;
+    if (outputDtype != Mc2Kernel::ENGRAM_DT_FLOAT) {
+        uint32_t castHalfBytes =
+            (hiddenDim * 2U + Mc2Kernel::UB_ALIGN - 1U) / Mc2Kernel::UB_ALIGN * Mc2Kernel::UB_ALIGN;
+        bytes += 2U * castHalfBytes;
+    }
+    return bytes;
+}
+
 __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR gradFetched, GM_ADDR permOut,
                                                    GM_ADDR sendCountsOut, GM_ADDR recvCountsOut,
                                                    GM_ADDR recvLocalEntryOut, GM_ADDR numRecvOut, GM_ADDR gradUniqueOut,
@@ -607,7 +619,9 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     uint32_t maxByPong = MaxGradRowsPerPing(static_cast<uint32_t>(hiddenBytes_), gradSubBatch_);
     uint32_t castBufSize = (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) ? CastBufBytes(hiddenDim_, maxByPong) : 0U;
     uint32_t accumBufSize = AccumBufBytes(hiddenDim_);
-    uint32_t uniqueBufSize = Mc2Kernel::COMM_BUF_BYTES + castBufSize + accumBufSize;
+    uniqueEntryBytes_ = UniqueEntryBytes(hiddenDim_, outputDtype_);
+    // unique 阶段池峰值：grad 整缓冲 + entryBuf 收缩区 + cast + accum（与 Process 二次 InitBuffer 布局一致）
+    uint32_t uniqueBufSize = Mc2Kernel::GRAD_BUF_BYTES + uniqueEntryBytes_ + castBufSize + accumBufSize;
     uint32_t poolSize = sortUbSize;
     if (uniqueBufSize > poolSize) {
         poolSize = uniqueBufSize;
@@ -1277,7 +1291,7 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             RunSort(numRecv);
 
             sortPool_.Reset();
-            sortPool_.InitBuffer(entryBuf_, Mc2Kernel::ENTRY_BUF_BYTES);
+            sortPool_.InitBuffer(entryBuf_, uniqueEntryBytes_);
             sortPool_.InitBuffer(gradBuf_, Mc2Kernel::GRAD_BUF_BYTES);
             uint32_t maxByPong = MaxGradRowsPerPing(static_cast<uint32_t>(hiddenBytes_), gradSubBatch_);
             if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
