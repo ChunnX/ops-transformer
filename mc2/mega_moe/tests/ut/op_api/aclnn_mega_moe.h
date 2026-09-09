@@ -42,7 +42,7 @@ extern "C" {
  * @param [in] bias2Optional: 计算可选输入，TensorList，数据类型float32，数据格式支持ND。
  *                             GroupMatmul2的偏置参数。
  * @param [in] xActiveMaskOptional: 计算可选输入，Tensor，数据类型int8，数据格式支持ND。预留参数，暂不支持。
- * @param [in] scalesOptional: A5 MTE 预量化 x 的 MX 反量化系数，数据类型float8_e8m0，
+ * @param [in] scalesOptional: 预量化 x 的 MX 反量化系数，数据类型float8_e8m0，
  *                            shape为[BS, CeilDiv(H, 32)]。BF16 x时必须为空。
  * @param [in] sharedWeight1Optional: 计算可选输入，TensorList，共享专家GroupMatmul1的右矩阵。
  * @param [in] sharedWeight2Optional: 计算可选输入，TensorList，共享专家GroupMatmul2的右矩阵。

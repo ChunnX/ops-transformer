@@ -275,22 +275,45 @@ static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
     return ge::DT_UNDEFINED;
 }
 
-static int64_t GetOpQuantModeByAttrDispatchOutType(const gert::TilingContext *context, MegaMoeConfig &config)
+static int64_t GetOpQuantModeByDataType(ge::DataType dispatchDataType)
 {
-    auto attrs = context->GetAttrs();
-    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutDtypeIndex));
-    int64_t dispatchQuantOutDtype = static_cast<int64_t>(*dispatchQuantOutDtypePtr);
+    switch (dispatchDataType) {
+        case ge::DT_FLOAT8_E5M2:
+            return DISPATCH_QUANT_OUT_DTYPE_E5M2;
+        case ge::DT_FLOAT8_E4M3FN:
+            return DISPATCH_QUANT_OUT_DTYPE_E4M3FN;
+        case ge::DT_FLOAT4_E2M1:
+            return DISPATCH_QUANT_OUT_DTYPE_E2M1;
+        default:
+            return -1;
+    }
+}
 
-    int64_t opQuantMode;
-    if (dispatchQuantOutDtype == static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) {
-        opQuantMode = DISPATCH_QUANT_OUT_DTYPE_E5M2;
-    } else if (dispatchQuantOutDtype == static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) {
-        opQuantMode = DISPATCH_QUANT_OUT_DTYPE_E4M3FN;
-    } else {
-        opQuantMode = DISPATCH_QUANT_OUT_DTYPE_E2M1;
+/*
+ * dispatch_quant_out_dtype 只用于选择算子内量化的输出类型。预量化 x 已携带实际分发数据类型，
+ * 因此其有效分发类型直接从 x 推导，不再读取该属性。
+ */
+static ge::DataType GetEffectiveDispatchDataType(const gert::TilingContext *context, MegaMoeConfig &config)
+{
+    auto xDesc = context->GetInputDesc(config.xIndex);
+    if (xDesc != nullptr && IsPreQuantizedXType(xDesc->GetDataType())) {
+        return xDesc->GetDataType();
     }
 
-    return opQuantMode;
+    auto attrs = context->GetAttrs();
+    if (attrs == nullptr) {
+        return ge::DT_UNDEFINED;
+    }
+    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>(config.attrDispatchQuantOutDtypeIndex);
+    if (dispatchQuantOutDtypePtr == nullptr) {
+        return ge::DT_UNDEFINED;
+    }
+    return static_cast<ge::DataType>(*dispatchQuantOutDtypePtr);
+}
+
+static int64_t GetEffectiveOpQuantMode(const gert::TilingContext *context, MegaMoeConfig &config)
+{
+    return GetOpQuantModeByDataType(GetEffectiveDispatchDataType(context, config));
 }
 
 static int64_t GetCombineQuantModeByAttr(const gert::TilingContext *context, MegaMoeConfig &config)
@@ -309,7 +332,7 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
     auto attrs = context->GetAttrs();
 
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
-    int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
+    int64_t opQuantMode = GetEffectiveOpQuantMode(context, config);
     int64_t combineQuantMode = GetCombineQuantModeByAttr(context, config);
     int64_t topoType = TILINGKEY_TPL_MTE;
     if (tilingData->topoType == TOPO_TYPE_URMA) {
@@ -631,25 +654,14 @@ static ge::graphStatus CheckQuantAttrs(const gert::TilingContext *context, MegaM
 
     auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutDtypeIndex));
     int64_t dispatchQuantOutDtype = static_cast<int64_t>(*dispatchQuantOutDtypePtr);
-    OP_TILING_CHECK(
-        dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
-            dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
-            dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT4_E2M1)),
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "dispatchQuantOutDtype", std::to_string(dispatchQuantOutDtype).c_str(),
-                                  "only support fp8_e5m2, fp8_e4m3fn and fp4_e2m1"),
-        return ge::GRAPH_FAILED);
-
     auto xDesc = context->GetInputDesc(config.xIndex);
     OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
-    if (IsPreQuantizedXType(xDesc->GetDataType())) {
+    bool isPreQuantizedX = IsPreQuantizedXType(xDesc->GetDataType());
+    if (isPreQuantizedX) {
         OP_TILING_CHECK(
-            dispatchQuantOutDtype != static_cast<int64_t>(xDesc->GetDataType()),
-            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-                nodeName, "x/dispatchQuantOutDtype",
-                (std::string("[") + Ops::Base::ToString(xDesc->GetDataType()) + ", " +
-                 Ops::Base::ToString(static_cast<ge::DataType>(dispatchQuantOutDtype)) + "]")
-                    .c_str(),
-                "For pre-quantized x, dispatchQuantOutDtype must exactly match x dtype."),
+            dispatchQuantOutDtype != static_cast<int64_t>(ge::DT_UNDEFINED),
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "dispatchQuantOutDtype", std::to_string(dispatchQuantOutDtype).c_str(),
+                                      "DT_UNDEFINED for pre-quantized x; its dispatch dtype is inferred from x"),
             return ge::GRAPH_FAILED);
 
         auto topoTypePtr = attrs->GetAttrPointer<int64_t>(config.attrTopoTypeIndex);
@@ -657,25 +669,35 @@ static ge::graphStatus CheckQuantAttrs(const gert::TilingContext *context, MegaM
                         OP_LOGE_FOR_INVALID_VALUE(nodeName, "topoType", std::to_string(*topoTypePtr).c_str(),
                                                   "MTE(0) for pre-quantized x"),
                         return ge::GRAPH_FAILED);
+    } else {
+        OP_TILING_CHECK(
+            GetOpQuantModeByDataType(static_cast<ge::DataType>(dispatchQuantOutDtype)) < 0,
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "dispatchQuantOutDtype", std::to_string(dispatchQuantOutDtype).c_str(),
+                                      "fp8_e5m2, fp8_e4m3fn or fp4_e2m1 for non-pre-quantized x"),
+            return ge::GRAPH_FAILED);
     }
 
     auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
-    int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
+    ge::DataType effectiveDispatchDataType = GetEffectiveDispatchDataType(context, config);
+    int64_t opQuantMode = GetOpQuantModeByDataType(effectiveDispatchDataType);
     ge::DataType refWeightDataType = GetDataTypeByOpQuantMode(opQuantMode);
     OP_TILING_CHECK(
         refWeightDataType == ge::DT_UNDEFINED,
-        OP_LOGE(nodeName, "unsupported dispatchQuantMode(%ld), leading out data type to being DT_UNDEFINED.",
-                dispatchQuantMode),
+        OP_LOGE(nodeName, "unsupported effective dispatch dtype(%s).",
+                Ops::Base::ToString(effectiveDispatchDataType).c_str()),
         return ge::GRAPH_FAILED);
-    // weight1 must match dispatch quant dtype; the only allowed mismatch is A8W4 (fp4_e2m1 + fp8_e4m3fn).
+    // weight1 必须与有效分发类型匹配；唯一允许的不同类型组合是 A8W4：
+    // fp8_e4m3fn 激活与 fp4_e2m1 权重。
     if (refWeightDataType != weightOneDesc->GetDataType()) {
         std::string weightDtypeErrMsg = std::string("The dtype of weightOne (") +
                                         Ops::Base::ToString(weightOneDesc->GetDataType()) +
-                                        ") must match dispatch quant dtype (" + Ops::Base::ToString(refWeightDataType) +
-                                        "), or be fp4_e2m1 with fp8_e4m3fn dispatch quant.";
+                                        ") must match effective dispatch dtype (" +
+                                        Ops::Base::ToString(refWeightDataType) +
+                                        "), or be fp4_e2m1 with fp8_e4m3fn activation.";
         OP_TILING_CHECK(
             weightOneDesc->GetDataType() != ge::DT_FLOAT4_E2M1 || opQuantMode != DISPATCH_QUANT_OUT_DTYPE_E4M3FN,
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "dispatchQuantOutDtype/weight1", weightDtypeErrMsg.c_str(),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "effectiveDispatchDtype/weight1",
+                                                  weightDtypeErrMsg.c_str(),
                                                   "weight1 dtype mismatch."),
             return ge::GRAPH_FAILED);
     }
@@ -939,7 +961,7 @@ static void SetGroupedMatmulMode(const gert::TilingContext *context, MegaMoeConf
                                  MegaMoeTilingData *tilingData)
 {
     auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
-    int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
+    int64_t opQuantMode = GetEffectiveOpQuantMode(context, config);
     if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 && opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) {
         // A8W4: fp4_e2m1 weight in NZ_C0_32, dispatched via separate template instantiation
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A8W4;
@@ -1420,7 +1442,7 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
                     return ge::GRAPH_FAILED);
 
     uint32_t activationElementsPerByte =
-        GetOpQuantModeByAttrDispatchOutType(context, config) == DISPATCH_QUANT_OUT_DTYPE_E2M1 ? 2U : 1U;
+        GetEffectiveOpQuantMode(context, config) == DISPATCH_QUANT_OUT_DTYPE_E2M1 ? 2U : 1U;
     // 所有 AIV 核共用同一套 dispatch UB 配置：这块布局和怎么分核无关。
     // kernel 那边如果改成按核拆 tensor，或者动了 copyTmp 的槽位布局，这里要跟着改。
     tilingData->dispatchBufferConfig =
@@ -2287,7 +2309,7 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context, Meg
                     return ge::GRAPH_FAILED);
 
     bool isW4 = weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1;
-    int64_t dispatchOutType = GetOpQuantModeByAttrDispatchOutType(context, config);
+    int64_t dispatchOutType = GetEffectiveOpQuantMode(context, config);
     ge::Format weightOnePrimaryFormat =
         static_cast<ge::Format>(ge::GetPrimaryFormat(weightOneDesc->GetStorageFormat()));
     ge::Format weightTwoPrimaryFormat =
