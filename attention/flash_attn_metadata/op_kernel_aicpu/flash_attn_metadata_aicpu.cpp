@@ -42,11 +42,14 @@ uint32_t FlashAttnMetadataCpuKernel::Compute(CpuKernelContext &ctx)
     success = GenMetadata(splitRes);
     KERNEL_CHECK_FALSE(success, FA_KERNEL_STATUS_PARAM_INVALID, "Generate balance result failed!");
 
+    // ===== FAG metadata start =====
+    // FAG (Flash Attn Grad) metadata: only executed when is_grad_enabled=true.
     if (fagIsGradEnabled_) {
         InitFagParams();
         DoFagSparse();
         GenFagMetadata(splitRes.sectionNum);
     }
+    // ===== FAG metadata end =====
 
     return FA_KERNEL_STATUS_OK;
 }
@@ -80,7 +83,7 @@ bool FlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
     GetAttrValueOpt(ctx, "layout_out", layoutOut_);
     GetAttrValueOpt(ctx, "head_dim_v", headDimV_);
-    // head_dim_v unset (-1): V head_dim equals QK head_dim
+    // head_dim_v 未指定(-1)时, v 的 head_dim 等于 head_dim
     if (headDimV_ == -1) {
         headDimV_ = headDim_;
     }
