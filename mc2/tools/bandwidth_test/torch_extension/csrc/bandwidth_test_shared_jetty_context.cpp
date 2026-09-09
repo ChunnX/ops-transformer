@@ -457,11 +457,9 @@ private:
         return true;
     }
 
-    static bool SameEndpoint(const EndpointDesc &lhs, const EndpointDesc &rhs)
+    static bool HasSameEndpointAddress(const EndpointDesc &lhs, const EndpointDesc &rhs)
     {
-        return lhs.protocol == rhs.protocol && lhs.commAddr.type == rhs.commAddr.type &&
-               std::memcmp(lhs.commAddr.raws, rhs.commAddr.raws, sizeof(lhs.commAddr.raws)) == 0 &&
-               lhs.loc.locType == rhs.loc.locType && std::memcmp(lhs.loc.raws, rhs.loc.raws, sizeof(lhs.loc.raws)) == 0;
+        return std::memcmp(lhs.commAddr.raws, rhs.commAddr.raws, sizeof(lhs.commAddr.raws)) == 0;
     }
 
     bool ResolveLayerEndpoint(const LayerRanks &layer, const std::vector<uint32_t> &peers, CommProtocol protocol,
@@ -479,7 +477,7 @@ private:
             if (!hasEndpoint) {
                 resolvedEndpoint = link->srcEndpointDesc;
                 hasEndpoint = true;
-            } else if (!SameEndpoint(resolvedEndpoint, link->srcEndpointDesc)) {
+            } else if (!HasSameEndpointAddress(resolvedEndpoint, link->srcEndpointDesc)) {
                 return false;
             }
         }
@@ -541,7 +539,7 @@ private:
             SharedLayerInfo crossSelection{};
             for (const auto &ubLayer : ubLayers) {
                 for (const auto &crossLayer : crossLayers) {
-                    if (!SameEndpoint(ubLayer.endpoint, crossLayer.endpoint)) {
+                    if (!HasSameEndpointAddress(ubLayer.endpoint, crossLayer.endpoint)) {
                         continue;
                     }
                     if (!found || ubLayer.rankNum > ubSelection.rankNum ||
@@ -629,7 +627,7 @@ private:
                 localEndpoint = link->srcEndpointDesc;
                 hasLocalEndpoint = true;
             } else {
-                TORCH_CHECK(SameEndpoint(localEndpoint, link->srcEndpointDesc),
+                TORCH_CHECK(HasSameEndpointAddress(localEndpoint, link->srcEndpointDesc),
                             "Shared jetty peers do not use one local endpoint; this environment does not support ",
                             "one Jetty connecting every peer");
             }
