@@ -230,7 +230,7 @@ private:
         Append(key, *value);
     }
 
-    static void AppendAttrStr(std::string &key, const gert::Attrs *attrs, const uint32_t index)
+    static void AppendAttrStr(std::string &key, const gert::RuntimeAttrs *attrs, const uint32_t index)
     {
         const char *value = attrs->GetAttrPointer<char>(index);
         if (value == nullptr) {
