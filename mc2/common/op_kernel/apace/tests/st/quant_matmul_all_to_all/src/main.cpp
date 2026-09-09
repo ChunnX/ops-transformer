@@ -322,7 +322,8 @@ int RunMatmulAllToAll(const AllToAllArgs &args, int rankId)
 
 #define DO_TILING(dTypeA, dTypeB) \
     do { \
-        QuantMatmulTilingSwat<dTypeA, dTypeB> tilingEngine; \
+        QuantMatmulTilingSwat<dTypeA, dTypeB, mm::BiasDataType::DT_FLOAT> tilingEngine; \
+        tilingEngine.SetBiasInfo(args.isBias != 0); \
         tilingEngine.GetTilingData(mmTileM, np, static_cast<uint64_t>(k), tilingData.tileQbmmTilingData, remoteBatch); \
         if (tailSize > 0) { \
             tilingEngine.GetTilingData(static_cast<uint64_t>(tailSize), np, static_cast<uint64_t>(k), \
