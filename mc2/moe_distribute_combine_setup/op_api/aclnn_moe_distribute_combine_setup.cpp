@@ -46,9 +46,9 @@ static inline bool CheckEmptyTensor(const aclTensor *tensor, const char *name)
     return true;
 }
 
-#define OP_CHECK_EMPTY_TENSOR(tensor, retExpr)                                                                         \
-    if (!CheckEmptyTensor(tensor, #tensor)) {                                                                          \
-        retExpr;                                                                                                       \
+#define OP_CHECK_EMPTY_TENSOR(tensor, retExpr) \
+    if (!CheckEmptyTensor(tensor, #tensor)) { \
+        retExpr; \
     }
 
 static constexpr size_t TWO_DIM = 2;
@@ -94,9 +94,10 @@ static bool CheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, c
 // 入参校验
 static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *expertIds,
                                const aclTensor *assistInfoForCombine, const char *groupEp, int64_t epWorldSize,
-                               int64_t epRankId, int64_t moeExpertNum, int64_t expertShardType, int64_t sharedExpertNum,
-                               int64_t sharedExpertRankNum, int64_t globalBs, int64_t commQuantMode, int64_t commType,
-                               const char *commAlg, aclTensor *quantExpandXOut, aclTensor *commCmdInfoOut)
+                               int64_t epRankId, int64_t moeExpertNum, int64_t expertSharedType,
+                               int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t globalBs,
+                               int64_t commQuantMode, int64_t commType, const char *commAlg, aclTensor *quantExpandXOut,
+                               aclTensor *commCmdInfoOut)
 {
     (void)epWorldSize;
     (void)epRankId;
@@ -168,7 +169,7 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
 
 extern "C" aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
     const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *assistInfoForCombine, const char *groupEp,
-    int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t expertShardType, int64_t sharedExpertNum,
+    int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t expertSharedType, int64_t sharedExpertNum,
     int64_t sharedExpertRankNum, int64_t globalBs, int64_t commQuantMode, int64_t commType, const char *commAlg,
     uint64_t &tokenMsgSize, uint64_t &commCmdInfoOutSize)
 {
