@@ -144,7 +144,7 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Process()
             ctrlParam.basicBlockLimit = startBasicBlockId;
             for (ctrlParam.mOffset = 0; ctrlParam.mOffset < ctrlParam.mSize; ctrlParam.mOffset += ctrlParam.mL1Size) {
                 ctrlParam.nOffset = 0;
-                // SiTU splits N axis into gate/up halves, so each core processes N_L1/2 per half.
+                // SwiGLU splits N axis into swish/gate halves, so each core processes N_L1/2 per half
                 SplitNByMultiCore(offsetParam, ctrlParam, CeilDivide(offsetParam[0].nSize / 2, N_L1 / 2), N_L1 / 2);
                 ctrlParam.basicBlockLimit += CeilDivide(offsetParam[0].nSize / 2, N_L1 / 2);
             }
