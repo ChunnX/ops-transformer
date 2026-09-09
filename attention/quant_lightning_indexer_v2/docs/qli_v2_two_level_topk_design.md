@@ -604,3 +604,29 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 5. ✅ 大 shape 全遍历（2026-09-08）：12 用例（q_seq {16K,128K,1M} × layout {BSND,TND} × ratio {1,2}）全过（16K/128K 批 65s、1M 批 7m15s）。**修复 harness pin 检查公式**：mask_mode=3 下行级有效长度必须除 cmp_ratio（`(act_k−S1+i+1)//ratio`，与 kernel/golden 一致；原式漏除在小 shape 因 clamp s2 掩盖碰巧通过，大 shape 行 0 暴露——错误的参考检查比没有检查更危险）。
 
 **部署要点（踩坑记录）**：attr 变更后编译产物 hash 改变（18e4fb→d566），但 `bin/quant_lightning_indexer_v2.json`（bin 选择配置）残留旧映射——**必须删除该 json 与 binary_info_config.json 强制重生成**，否则运行时按旧映射找不到新 .o（stat file failed），或加载旧产物（新改动静默不生效）。build_install.sh 已加 autogen 头清理，需同步加 bin config 清理。
+
+## 12. 新接口规范 py 适配层（2026-09-09）
+
+面向新芯片接口规范（mxfp4/uint8/e8m0 descale、candidate_block_indices/candidate_block_length 命名）的 **py 分发封装**：按规范签名收参，内部映射到已注册的 `quant_lightning_indexer_candidate`（分别固定 candidate_mode=1/2），**不改 csrc / 算子校验 / 数据类型**；调用侧按芯片选择接口（本后端 910b 走本适配层，新芯片走其自带实现）。
+
+**新增入口**（`torch_extension/quant_lightning_indexer.py` 末尾；pip 包 `cann_ops_transformer.ops` 与源仓库 `torch_extension/__init__.py` 同步导出）：
+- `quant_lightning_indexer_candidate_source(...)` — 规范接口1（source）：返回 4 元组 `(sparse_indices (T1,N2,k), sparse_values, candidate_block_indices (T1,N2,cb), candidate_block_length (T1,N2))`；
+- `quant_lightning_indexer_candidate_consumer(...)` — 规范接口2（consumer）：输入 `candidate_block_indices (T1,N2,cb)` + `candidate_block_length`，返回 2 元组 `(sparse_indices, sparse_values)`（布局随内部：B=1 BSND 4 维 / TND 3 维）。
+
+**映射约定（规范项 → 内部接口）**：
+| 规范项 | 映射 |
+|---|---|
+| `q_descale` / `k_descale` | `query_dequant_scale` / `key_dequant_scale`（仅改名） |
+| `candidate_block_indices` | `candidate_topk_index`（仅改名；块级相对块号；BSND 路径自动补/去 batch 维） |
+| `seqused_q`（规范注释为每 batch **key** 截断） | `seqused_k`（歧义点①：若实为截断 query 行数则改一行） |
+| `candidate_block_length` | mode=1 输出：py 公式 `vl(i)=clamp((act_k−S1+i+1)//ratio, 0, K)`（act_k=K×ratio+residual，与 golden 同式）；mode=2 输入：**忽略**（op 内部已按 mask 规则与 K 取小截断，语义冗余） |
+| `candidate_topk_blocks=-1`（无机制默认） | source 场景取 2048；consumer 由 `candidate_block_indices.shape[-1]` 推导 |
+| layout 参数消失 | q 恒 3 维 (T1,N1,D)：有 `cu_seqlens_q`=TND 直传；无=B=1 BSND（q/w/q_descale 补 batch 维，输出端去掉）；**B>1 且无 cu_seqlens_q 显式报错**（batch 维丢失防御） |
+| `metadata` 缺省 | py 自动调 metadata 算子生成（shape 推导；含一次 `.item()` 主机同步，调用方可预生成传入绕过） |
+| `output_idx_offset`（仅接口2） | 透传（A15 既有支持，仅作用于 sparse_indices） |
+
+**本后端限制（py 层显式报错，非 op 校验改动）**：`block_table` 必传（key 仅支持 PA_BBND 分页布局）；`return_value=True` 不支持（内部入口硬编码 False，不改 csrc）。
+
+**验证**：pytest `test_qli_newapi*` 4 用例（BSND B=1 prefill mask3+ratio2+residual / BSND B=1 decode mask0 / TND B=2 变长 mask3 / 错误路径×5）——source/consumer 与旧入口 bit 级一致 + metadata 自动/手传 bit 级一致 + block_length 公式对照 + B>1 无 cu_seqlens_q 防御。既有 87 用例零影响（旧入口抽查回归通过）。
+
+**规范侧待澄清（不阻塞本适配层）**：seqused_q 注释 keys 与命名矛盾；`ori_sparse_indices` 未在输入列表；k_descale 末维 `2` 语义（新芯片侧消费）；mode=1 输出 BSND 4 维变体（本适配层统一 3 维 (T1,N2,·)，调用侧在新芯片侧由其实现给出）。
