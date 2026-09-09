@@ -304,7 +304,7 @@ private:
                                              ConstInfo &constInfo, int32_t sparseBlockCount,
                                              const PhyAddrValidInfo &validInfo);
     __aicore__ inline void ReduceIntraBlockAndStage(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<T> &vec2ResUb,
-                                                     LocalTensor<T> &partialTmpUb);
+                                                    LocalTensor<T> &partialTmpUb);
 
     TPipe *tPipe;
 
@@ -536,8 +536,14 @@ __aicore__ inline uint32_t CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTenso
             return dealRow;
         }
         uint32_t combineBytes = constInfo.dSizeVInput;
-        int64_t keySrcStride =
-            (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) : (keyOffset1 - keyOffset0)) - combineBytes;
+        int64_t keySrcStride;
+        if constexpr (IS_BATCH_CONSISTENCY) {
+            // batch一致性场景，按逻辑 token 顺序读取，禁止交换物理地址顺序
+            keySrcStride = (keyOffset1 - keyOffset0) - combineBytes;
+        } else {
+            keySrcStride =
+                (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) : (keyOffset1 - keyOffset0)) - combineBytes;
+        }
         if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0) || constInfo.sparseBlockSize > 1) {
             // stride溢出、stride为负数、s2超长等异常场景，还原成2条搬运指令
             CopyInSingleKv(kvInUb, startRow, keyOffset0);
