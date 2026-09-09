@@ -71,6 +71,7 @@ aclnnStatus aclnnFfnWorkerBatchingGetWorkspaceSize(
     int64_t            tokenDtype,
     int64_t            needSchedule,
     int64_t            layerNum,
+    int64_t            syncFlag,
     const aclTensor   *y,
     const aclTensor   *groupList,
     const aclTensor   *sessionIds,
@@ -721,7 +722,7 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     ret = aclnnFfnWorkerBatchingGetWorkspaceSize(scheduleContextRef, expertNum, maxOutShapeArray, tokenDtype,
-                                                 needSchedule, layerNum, yRef, groupListRef, sessionIdsRef,
+                                                 needSchedule, layerNum, 0 /* syncFlag */, yRef, groupListRef, sessionIdsRef,
                                                  microBatchIdsRef, tokenIdsRef, expertOffsetsRef, dynamicScaleRef,
                                                  actualTokenNumRef, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFfnWorkerBatchingGetWorkspaceSize failed. ERROR: %d\n", ret);
@@ -791,3 +792,7 @@ int main()
     return 0;
 }
 ```
+
+### arch35 syncFlag
+
+新增可选属性 `sync_flag`（ACLNN 参数 `syncFlag`，位于 `layerNum` 后），默认 0，取值 0/1。仅 arch35 的 `need_schedule=1` 生效：0 等 A 个 session 全 ready；1 从轮询下标循环扫描 micro batch，无数据时等待，有数据时立即处理该次快照中的 ready session。`need_schedule=0` 不改变行为。ACLNN 调用方需用新头文件重新编译。详见 [需求设计](arch35_sync_flag_design.md)。

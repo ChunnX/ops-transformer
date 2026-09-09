@@ -61,6 +61,11 @@ struct FfnWorkerBatchingArch35TilingData {
     int64_t wsPairB{0};     // 排序/归并工作区 B（与 A 乒乓）
     int64_t wsSegCnt{0};    // 各段有效元素数：每段一个 32B 槽
     int64_t wsSortedIds{0}; // 有序 expert_id：Y 个 int32
+    // 与 tokenDtype 正交，不增加 tiling key；kernel 仅在 RECV 路径解释此值。
+    int64_t syncFlag{0};   // 0: wait all; 1: consume ready (RECV only)
+    // 单位为 int32 word，相对 userWorkspace；仅异步 RECV 使用。
+    // 头块存 uint64 selectedMb；后续每块存一个 int32 flag，其余字节为对齐填充。
+    int64_t wsReady{0};    // selected micro batch block + A padded flag blocks
     int64_t wsGatherIdx{0}; // gather_idx：Y 个 int32
 };
 
