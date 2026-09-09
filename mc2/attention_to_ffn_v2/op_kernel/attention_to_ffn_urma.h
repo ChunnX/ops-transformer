@@ -11,21 +11,6 @@
 /*!
  * \file attention_to_ffn_urma.h
  * \brief AttentionToFfnV2 URMA implementation.
- *
- * Communication pattern (mirrors ffn_to_attention_urma.h for token data relay):
- *   - All cores initialise Hcomm (needed for completion-flag WriteNbi in SetFlagToFFN).
- *   - Token data relay: worker cores stage token data (with optional quantization)
- *     into per-core workspace slots and publish a per-token flag (local expert ID)
- *     into a per-core flag slot.  After SyncAll, core 0 pre-collects remote relay
- *     metadata, groups tokens by target rank, and relays data + flag to the remote
- *     rank window via batchHandle (MakeBatchHandle/WriteNbi/BatchCommit/Drain).
- *     Per-rank batching reduces doorbell writes and Drain synchronisation points;
- *     data and flag are committed in separate phases so flags arrive after data.
- *     A second SyncAll ensures core 0 has finished relaying before workers
- *     overwrite their slots in the next round.
- *   - Completion flags (SetFlagToFFN / SetFlagInAttn): each core sends directly
- *     via its own Hcomm handle. SetFlagToFFN stages the flag once and issues all
- *     remote WriteNbi before draining, allowing cross-rank parallelism.
  */
 #ifndef ATTENTION_TO_FFN_URMA_H
 #define ATTENTION_TO_FFN_URMA_H
