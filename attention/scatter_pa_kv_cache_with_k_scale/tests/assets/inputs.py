@@ -10,7 +10,9 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 __input__ = {
-    "kernel": {"scatter_kv_cache_with_k_scale": "scatter_kv_cache_with_k_scale_input"},
+    "kernel": {
+        "scatter_pa_kv_cache_with_k_scale": "scatter_pa_kv_cache_with_k_scale_input"
+    },
     "aclnn": {
         "aclnnScatterPaKvCacheWithKScale": "aclnnScatterPaKvCacheWithKScaleInput"
     },
@@ -20,7 +22,7 @@ import numpy as np
 import torch
 
 
-def scatter_kv_cache_with_k_scale_input(
+def scatter_pa_kv_cache_with_k_scale_input(
     key,
     value,
     key_cache,
