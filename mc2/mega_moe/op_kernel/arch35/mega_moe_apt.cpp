@@ -99,19 +99,29 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(MegaMoeTilingData);
     GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
-#if defined(ENABLE_TENSOR_API) && defined(ORIG_DTYPE_X) && (ORIG_DTYPE_X == DT_BF16) && defined(ORIG_DTYPE_Y) && \
-    (ORIG_DTYPE_Y == DT_BF16) && defined(ORIG_DTYPE_WEIGHT1) && \
+#if defined(ENABLE_TENSOR_API) && defined(ORIG_DTYPE_X) && \
+    ((ORIG_DTYPE_X == DT_BF16) || (ORIG_DTYPE_X == DT_FLOAT8_E5M2) || \
+     (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X == DT_FLOAT4_E2M1)) && \
+    defined(ORIG_DTYPE_Y) && (ORIG_DTYPE_Y == DT_BF16) && defined(ORIG_DTYPE_WEIGHT1) && \
     ((ORIG_DTYPE_WEIGHT1 == DT_FLOAT8_E5M2) || (ORIG_DTYPE_WEIGHT1 == DT_FLOAT8_E4M3FN) || \
      (ORIG_DTYPE_WEIGHT1 == DT_FLOAT4_E2M1)) && \
     defined(ORIG_DTYPE_WEIGHT2) && (ORIG_DTYPE_WEIGHT2 == ORIG_DTYPE_WEIGHT1)
-    constexpr bool isSupportedDtypePair =
+    constexpr bool isBf16Input = ORIG_DTYPE_X == DT_BF16;
+    // DispatchQuantOutType 是 tiling key 编码的有效分发类型。预量化场景由 Host 根据 x 推导，
+    // 不读取可选属性 dispatch_quant_out_dtype。
+    constexpr bool isMteInputCompatibleWithDispatchType =
+        isBf16Input ||
+        (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E5M2 && ORIG_DTYPE_X == DT_FLOAT8_E5M2) ||
+        (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E4M3FN && ORIG_DTYPE_X == DT_FLOAT8_E4M3FN) ||
+        (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E2M1 && ORIG_DTYPE_X == DT_FLOAT4_E2M1);
+    constexpr bool isWeightCompatibleWithDispatchType =
         (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E5M2 && Std::IsSame<DTYPE_WEIGHT1, fp8_e5m2_t>::value) ||
         (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E4M3FN &&
          (Std::IsSame<DTYPE_WEIGHT1, fp8_e4m3fn_t>::value || Std::IsSame<DTYPE_WEIGHT1, fp4x2_e2m1_t>::value)) ||
         (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E2M1 && Std::IsSame<DTYPE_WEIGHT1, fp4x2_e2m1_t>::value);
     if constexpr (CommModeType == TILINGKEY_TPL_MTE) {
         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
-            if constexpr (isSupportedDtypePair) {
+            if constexpr (isMteInputCompatibleWithDispatchType && isWeightCompatibleWithDispatchType) {
                 MegaMoeImpl::MegaMoeMteWave<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType,
                                             CombineQuantOutType, TopkWeightsPrefetch, WEIGHT1_INTERLEAVED>
                     op;
@@ -123,7 +133,8 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
         }
     } else if constexpr (CommModeType == TILINGKEY_TPL_URMA) {
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
-        if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP && isSupportedDtypePair) {
+        if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP && isBf16Input &&
+                      isWeightCompatibleWithDispatchType) {
             MegaMoeImpl::MegaMoeLayered<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType,
                                         CombineQuantOutType, TopkWeightsPrefetch, WEIGHT1_INTERLEAVED>
                 op;

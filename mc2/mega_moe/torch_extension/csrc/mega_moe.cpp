@@ -20,6 +20,7 @@ using npu_utils = at_npu::native::NpuUtils;
 const int DIM_TWO = 2;
 const int64_t MX_SCALE_GROUP_SIZE = 32;
 const int64_t PACKED_FLOAT4_ELEMENTS_PER_BYTE = 2;
+constexpr int64_t GE_DTYPE_UNDEFINED = 28;
 
 bool HasTensor(const c10::optional<at::Tensor> &tensor)
 {
@@ -59,9 +60,6 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
         "dtype of x should be bfloat16, float16, float8_e5m2, float8_e4m3fn, or uint8/float4_e2m1fn_x2 "
         "for packed FP4; dtype of topk_ids should be int32.");
 
-    aclDataType dispatchQuantAclDtype = dispatchQuantOutDtype.has_value() ?
-                                            GetAclDataType(dispatchQuantOutDtype.value()) :
-                                            ACL_DT_UNDEFINED;
     aclDataType xAclDtype = isPackedFp4X ? ACL_FLOAT4_E2M1 : ConvertToAclDataType(xScalarType);
     const bool hasScales = HasTensor(scales);
     TORCH_CHECK(isPreQuantizedX ? hasScales : !hasScales,
@@ -70,11 +68,13 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     if (isPreQuantizedX) {
         TORCH_CHECK(dispatchQuantMode == 4, "dispatch_quant_mode must be 4 for pre-quantized x.");
         TORCH_CHECK(topoType.value_or(0) == 0, "pre-quantized x is supported only by the A5 MTE path (topo_type=0).");
-        TORCH_CHECK(dispatchQuantOutDtype.has_value(),
-                    "dispatch_quant_out_dtype is required for pre-quantized x.");
-        TORCH_CHECK(dispatchQuantAclDtype == xAclDtype,
-                    "dispatch_quant_out_dtype must exactly match the logical dtype of pre-quantized x.");
+        TORCH_CHECK(!dispatchQuantOutDtype.has_value(),
+                    "dispatch_quant_out_dtype must be None for pre-quantized x; the dispatch dtype is inferred "
+                    "from x.");
     }
+    aclDataType dispatchQuantAclDtype = dispatchQuantOutDtype.has_value() ?
+                                            GetAclDataType(dispatchQuantOutDtype.value()) :
+                                            ACL_DT_UNDEFINED;
 
     auto xSize = x.sizes();
     int64_t bs = xSize[0];
@@ -158,8 +158,11 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     int64_t topoTypeValue = topoType.value_or(0);
     int64_t rankNumPerServerValue = rankNumPerServer.value_or(2);
 
-    int64_t dispatchQuantResultType =
-        dispatchQuantOutDtype.has_value() ? static_cast<int64_t>(dispatchQuantAclDtype) : 28;
+    // 这里传给 ACLNN 的是 GE dtype 属性；GE DT_UNDEFINED 为 28，与 ACL_DT_UNDEFINED=-1 不同。
+    int64_t dispatchQuantResultType = GE_DTYPE_UNDEFINED;
+    if (dispatchQuantOutDtype.has_value()) {
+        dispatchQuantResultType = static_cast<int64_t>(dispatchQuantAclDtype);
+    }
 
     at::ScalarType outputScalarType = isPreQuantizedX ? at::kBFloat16 : xScalarType;
     at::Tensor y = at::empty({bs, h}, x.options().dtype(outputScalarType));

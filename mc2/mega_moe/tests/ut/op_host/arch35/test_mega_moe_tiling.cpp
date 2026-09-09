@@ -813,7 +813,9 @@ static void RunPreQuantizedXContractCase(ge::DataType xDtype, ge::DataType dispa
     struct MegaMoeCompileInfo {
     } compileInfo;
 
-    const ge::DataType weightDtype = static_cast<ge::DataType>(dispatchDtype);
+    const bool isPreQuantizedX = xDtype == ge::DT_FLOAT8_E5M2 || xDtype == ge::DT_FLOAT8_E4M3FN ||
+                                 xDtype == ge::DT_FLOAT4_E2M1;
+    const ge::DataType weightDtype = isPreQuantizedX ? xDtype : dispatchDtype;
     const ge::Format weight2Format = weightDtype == ge::DT_FLOAT4_E2M1 ? ge::FORMAT_FRACTAL_NZ_C0_32 :
                                                                          ge::FORMAT_ND;
     const int64_t weight1ScaleWidth = (h + 63) / 64;
@@ -891,28 +893,30 @@ static void RunPreQuantizedXContractCase(ge::DataType xDtype, ge::DataType dispa
 
 TEST_F(MegaMoeArch35TilingTest, PreQuantizedXValidTypesAndOddScaleWidth)
 {
-    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2, {128, 128}, ge::DT_FLOAT8_E8M0, 0,
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E5M2, ge::DT_UNDEFINED, {128, 128}, ge::DT_FLOAT8_E8M0, 0,
                                  true);
-    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, {128, 129}, ge::DT_FLOAT8_E8M0, 0,
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_UNDEFINED, {128, 129}, ge::DT_FLOAT8_E8M0, 0,
                                  true, 4128);
-    RunPreQuantizedXContractCase(ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1, {128, 128}, ge::DT_FLOAT8_E8M0, 0,
+    RunPreQuantizedXContractCase(ge::DT_FLOAT4_E2M1, ge::DT_UNDEFINED, {128, 128}, ge::DT_FLOAT8_E8M0, 0,
                                  true);
 }
 
 TEST_F(MegaMoeArch35TilingTest, PreQuantizedXRejectsInvalidContracts)
 {
-    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, {}, ge::DT_FLOAT8_E8M0, 0, false);
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_UNDEFINED, {}, ge::DT_FLOAT8_E8M0, 0, false);
     RunPreQuantizedXContractCase(ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, {128, 128}, ge::DT_FLOAT8_E8M0, 0, false);
-    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, {128, 4, 32}, ge::DT_FLOAT8_E8M0, 0,
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_UNDEFINED, {128, 4, 32}, ge::DT_FLOAT8_E8M0, 0,
                                  false);
-    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, {127, 128}, ge::DT_FLOAT8_E8M0, 0,
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_UNDEFINED, {127, 128}, ge::DT_FLOAT8_E8M0, 0,
                                  false);
-    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, {128, 129}, ge::DT_FLOAT8_E8M0, 0,
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_UNDEFINED, {128, 129}, ge::DT_FLOAT8_E8M0, 0,
                                  false);
-    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, {128, 128}, ge::DT_FLOAT, 0, false);
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_UNDEFINED, {128, 128}, ge::DT_FLOAT, 0, false);
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, {128, 128}, ge::DT_FLOAT8_E8M0, 0,
+                                 false);
     RunPreQuantizedXContractCase(ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, {128, 128}, ge::DT_FLOAT8_E8M0, 0,
                                  false);
-    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, {128, 128}, ge::DT_FLOAT8_E8M0, 1,
+    RunPreQuantizedXContractCase(ge::DT_FLOAT8_E4M3FN, ge::DT_UNDEFINED, {128, 128}, ge::DT_FLOAT8_E8M0, 1,
                                  false);
 }
 
