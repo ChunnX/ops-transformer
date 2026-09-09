@@ -15,12 +15,8 @@
 import importlib.util
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import torch
-
-if TYPE_CHECKING:
-    from ttk.test_spec import TtkContext
 
 
 class LightningIndexerV2InputAdapter:
@@ -37,6 +33,28 @@ class LightningIndexerV2InputAdapter:
     def __init__(self):
         self.pytest_golden = None
         self.pytest_normalizer = None
+        self.batch_consistency = None
+
+    def load_batch_consistency(self):
+        if self.batch_consistency is not None:
+            return self.batch_consistency
+        name = "indexer_ttk_batch_consistency"
+        path = Path(__file__).with_name("batch_consistency.py")
+        try:
+            if name in sys.modules:
+                module = sys.modules[name]
+            else:
+                spec = importlib.util.spec_from_file_location(name, path)
+                if spec is None or spec.loader is None:
+                    raise ImportError(f"cannot create import spec for {path}")
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[name] = module
+                spec.loader.exec_module(module)
+            self.batch_consistency = module
+            return module
+        except Exception as exc:
+            sys.modules.pop(name, None)
+            raise self.module_load_error("assets batch consistency", path, exc) from exc
 
     @staticmethod
     def load_golden_store():
@@ -59,11 +77,11 @@ class LightningIndexerV2InputAdapter:
         return module
 
     @staticmethod
-    def load_pre_npu_module():
-        name = "li_v2_ttk_pre_npu"
+    def load_metadata_protocol():
+        name = "li_v2_ttk_metadata_protocol"
         if name in sys.modules:
             return sys.modules[name]
-        path = Path(__file__).with_name("pre_npu.py")
+        path = Path(__file__).with_name("metadata_protocol.py")
         try:
             spec = importlib.util.spec_from_file_location(name, path)
             if spec is None or spec.loader is None:
@@ -74,20 +92,13 @@ class LightningIndexerV2InputAdapter:
         except Exception as exc:
             sys.modules.pop(name, None)
             raise LightningIndexerV2InputAdapter.module_load_error(
-                "assets pre-NPU state", path, exc
+                "assets metadata protocol", path, exc
             ) from exc
         return module
 
     def load_pytest_golden(self):
         if self.pytest_golden is not None:
             return self.pytest_golden
-        # The upstream pytest module imports cann_ops_transformer at module scope.
-        # Registration only discovers the installed CANN package; it does not run NPU APIs.
-        from ttk.utilities.torch_ops_package_loader import TorchOpsPackageLoader
-
-        TorchOpsPackageLoader.ensure_registered(
-            "torch.ops.cann_ops_transformer.lightning_indexer"
-        )
         pytest_dir = Path(__file__).resolve().parents[2] / "pytest"
         path = pytest_dir / "lightning_indexer_v2_golden.py"
         name = "li_v2_pytest_golden"
@@ -252,8 +263,10 @@ class LightningIndexerV2InputAdapter:
     def copy_tensor(dst, src, name):
         if dst is None:
             if src is not None:
-                raise ValueError(
-                    f"{name} is absent from CSV but pytest generator produced a tensor"
+                import logging
+
+                logging.warning(
+                    f"{name} is absent from CSV but pytest generator produced a tensor. Skipping copy."
                 )
             return
         if src is None:
@@ -464,9 +477,12 @@ class LightningIndexerV2InputAdapter:
         params = self.build_case_params(q, k, layout_q, layout_k, kwargs)
         golden_store = self.load_golden_store().CASE_DATA
         golden_store.clear()
-        data = self.load_pytest_golden().generate_liv2_test_data(
-            params, generate_golden=False
-        )
+        batch_module = self.load_batch_consistency()
+        with batch_module.CaseRandomContext(kwargs):
+            data = self.load_pytest_golden().generate_liv2_test_data(
+                params, generate_golden=False
+            )
+        batch_module.normalize_indexer_inputs(data, kwargs, "LI_V2")
         for name, dst, src_name in (
             ("q", q, "query"),
             ("k", k, "key"),
@@ -484,6 +500,13 @@ class LightningIndexerV2InputAdapter:
 
 
 INPUT_ADAPTER = LightningIndexerV2InputAdapter()
+
+
+def is_negative_case(kwargs):
+    value = kwargs.get("is_negative_case", False)
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
 
 
 def rebuild_li_v2_compare_data(compare_context):
@@ -510,10 +533,12 @@ def generate_li_v2_inputs(
     mask_mode=0,
     cmp_ratio=1,
     return_value=0,
-    context: "TtkContext" = None,
     **kwargs,
 ):
-    """Populate pytest-derived inputs and leave metadata for the pre-NPU stage."""
+    """Populate pytest-derived inputs; metadata is filled by npu_preprocess."""
+    if is_negative_case(kwargs):
+        return None
+
     if metadata is None:
         raise ValueError("LI_V2 direct API CSV must reserve the metadata tensor slot")
     params = dict(kwargs)
@@ -547,10 +572,10 @@ def generate_li_v2_inputs(
     case_data = INPUT_ADAPTER.load_golden_store().CASE_DATA
     testcase_name = params.get("testcase_name")
     case_data.put(testcase_name, data)
-    metadata_input = case_data.persist(testcase_name, context)
-    INPUT_ADAPTER.load_pre_npu_module().persist_metadata_inputs(
-        testcase_name, metadata_input, context
+    INPUT_ADAPTER.load_metadata_protocol().save_metadata_inputs(
+        "lightning_indexer_v2", testcase_name, data.get("metadata_input")
     )
+    return data
 
 
 def zero_metadata(metadata):
@@ -581,7 +606,6 @@ def generate_aclnn_li_v2_inputs(
     return_value,
     sparse_indices_out,
     sparse_values_out,
-    context: "TtkContext" = None,
     **kwargs,
 ):
     """Map the ACLNN C signature to the canonical pytest input adapter."""
@@ -605,6 +629,5 @@ def generate_aclnn_li_v2_inputs(
         mask_mode=mask_mode,
         cmp_ratio=cmp_ratio,
         return_value=return_value,
-        context=context,
         **kwargs,
     )

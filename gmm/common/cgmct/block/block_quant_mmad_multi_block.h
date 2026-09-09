@@ -19,11 +19,11 @@
 #include "lib/matmul/tiling.h"
 #include "lib/matmul/constant_tiling.h"
 
-#include "./block_mmad.h"
+#include "./cgmct_block_mmad.h"
 #include "./block_mmad_utils.h"
 #include "../utils/tensor_utils.h"
 #include "../utils/tuple_utils.h"
-#include "../policy/dispatch_policy.h"
+#include "../policy/cgmct_dispatch_policy.h"
 #include "../tile/tile_copy.h"
 
 namespace Cgmct {
@@ -140,7 +140,9 @@ public:
 private:
     using MM = AscendC::MatmulImpl<AType, BType, CType, BiasType, staticTiling,
                                    AscendC::MatmulCallBackFunc<nullptr, nullptr, nullptr>, MatmulPolicyNew>;
-    MM matmul_;
+    // Value-initialize the matmul implementation so its runtime state is defined
+    // before Init/Iterate perform any read-modify-write updates.
+    MM matmul_{};
 };
 } // namespace Block
 } // namespace Gemm

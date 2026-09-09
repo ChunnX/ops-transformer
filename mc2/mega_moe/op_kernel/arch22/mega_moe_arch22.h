@@ -35,28 +35,23 @@ using namespace AscendC;
 #include "kernel_operator.h"
 #endif
 
-#if __has_include("../../common/moe_distribute_base.h")
-#include "../../common/moe_distribute_base.h"
-#else
 #include "../../../common/op_kernel/moe_distribute_base.h"
-#endif
 
 #include "mega_moe_tiling_a2a3.h"
-#include "moe_init_routing_v2/mc2_mega_moe_moe_init_routing_v2_tiling.h"
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/arch/arch.hpp"
-#include "template_linear_algebra_v2/epilogue/dispatch_policy.hpp"
-#include "template_linear_algebra_v2/epilogue/block/block_epilogue.hpp"
-#include "template_linear_algebra_v2/epilogue/tile/tile_copy.hpp"
-#include "template_linear_algebra_v2/epilogue/tile/tile_elemwise_add.hpp"
-#include "template_linear_algebra_v2/epilogue/tile/tile_elemwise_muls.hpp"
-#include "template_linear_algebra_v2/gemm/block/block_mmad.hpp"
-#include "template_linear_algebra_v2/gemm/block/block_swizzle.hpp"
-#include "template_linear_algebra_v2/gemm/dispatch_policy.hpp"
-#include "template_linear_algebra_v2/gemm/kernel/matmul_epilogue.hpp"
-#include "template_linear_algebra_v2/gemm/gemm_type.hpp"
-#include "template_linear_algebra_v2/layout/layout.hpp"
+#include "template_linear_algebra_v2/mega_moe_catlass.hpp"
+#include "template_linear_algebra_v2/arch/mega_moe_arch.hpp"
+#include "template_linear_algebra_v2/epilogue/mega_moe_epilogue_dispatch_policy.hpp"
+#include "template_linear_algebra_v2/epilogue/block/mega_moe_block_epilogue.hpp"
+#include "template_linear_algebra_v2/epilogue/tile/mega_moe_epilogue_tile_copy.hpp"
+#include "template_linear_algebra_v2/epilogue/tile/mega_moe_tile_elemwise_add.hpp"
+#include "template_linear_algebra_v2/epilogue/tile/mega_moe_tile_elemwise_muls.hpp"
+#include "template_linear_algebra_v2/gemm/block/mega_moe_block_mmad.hpp"
+#include "template_linear_algebra_v2/gemm/block/mega_moe_block_swizzle.hpp"
+#include "template_linear_algebra_v2/gemm/mega_moe_gemm_dispatch_policy.hpp"
+#include "template_linear_algebra_v2/gemm/kernel/mega_moe_matmul_epilogue.hpp"
+#include "template_linear_algebra_v2/gemm/mega_moe_gemm_type.hpp"
+#include "template_linear_algebra_v2/layout/mega_moe_layout.hpp"
 
 #include "utils/select_helper.hpp"
 #include "utils/const_args.hpp"
@@ -64,7 +59,6 @@ using namespace AscendC;
 #include "mc2_moe_context.h"
 #include "utils/block_epilogue_pertoken_v2.hpp"
 #include "mega_moe_kernel_a3.hpp"
-#include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
 
 namespace MegaMoeImpl {
 using namespace AscendC;
@@ -89,8 +83,9 @@ public:
     __aicore__ inline MegaMoe(){};
     __aicore__ inline void Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM, GM_ADDR topkWeightsGM,
                                 GM_ADDR weight1GM, GM_ADDR weight2GM, GM_ADDR weightScales1GM, GM_ADDR weightScales2GM,
-                                GM_ADDR bias1GM, GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM, GM_ADDR yGM,
-                                GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM);
+                                GM_ADDR bias1GM, GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM,
+                                GM_ADDR maskBufferGM, GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM,
+                                GM_ADDR tilingGM);
     __aicore__ inline void Process();
 
 private:
@@ -106,6 +101,7 @@ private:
     GM_ADDR bias2GM_;
     GM_ADDR xActiveMaskGM_;
     GM_ADDR scalesGM_;
+    GM_ADDR maskBufferGM_;
     GM_ADDR yGM_;
     GM_ADDR gmExpertTokenNums_;
     GM_ADDR workspaceGM_;
@@ -127,25 +123,23 @@ private:
     int32_t topK_;
     int32_t expertPerRank_;
     uint64_t maxOutputSize_;
+    // 接收侧轮表份数上限 = ceil(PERMUTE_CHUNK*EP*min(topK,epr) / recvRoundBudget)，A3 接收端轮次切分用
+    uint64_t recvRoundsMax_;
     int32_t epWorldSize_;
     int32_t listLen_;
     uint32_t activationCode_;
     float activationClamp_;
     float activationParams1_;
     float activationParams2_;
-
-    MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
-    MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
-    uint64_t initRoutingQuantTilingKey;
 };
-
 
 template <MegaMoeClass>
 __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM,
                                                   GM_ADDR topkWeightsGM, GM_ADDR weight1GM, GM_ADDR weight2GM,
                                                   GM_ADDR weightScales1GM, GM_ADDR weightScales2GM, GM_ADDR bias1GM,
-                                                  GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM, GM_ADDR yGM,
-                                                  GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+                                                  GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM,
+                                                  GM_ADDR maskBufferGM, GM_ADDR yGM, GM_ADDR expertTokenNumsGM,
+                                                  GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     constexpr bool kRoutingIsQuant =
         std::is_same_v<BType_, AscendC::int4b_t> || std::is_same_v<BType_, int32_t> || std::is_same_v<BType_, int8_t>;
@@ -162,6 +156,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
     bias2GM_ = bias2GM;
     xActiveMaskGM_ = xActiveMaskGM;
     scalesGM_ = scalesGM;
+    maskBufferGM_ = maskBufferGM;
     yGM_ = yGM;
     gmExpertTokenNums_ = expertTokenNumsGM;
     workspaceGM_ = workspaceGM;
@@ -177,16 +172,15 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
         epWorldSize_ = tilingData.common.worldSize;
         topK_ = tilingData.common.topK;
         expertPerRank_ = tilingData.common.expertPerRank;
-        maxOutputSize_ = tilingData.common.maxRecvTokenNum;
+        // maxOutputSize 语义 = 单轮接收预算 B（recvRoundBudget）；接收行超出 B 由 kernel 接收端轮次切分处理
+        maxOutputSize_ = tilingData.common.recvRoundBudget;
+        recvRoundsMax_ = tilingData.common.recvRoundsMax;
         listLen_ = tilingData.common.listLen;
 
         activationCode_ = tilingData.common.activationCode;
         activationClamp_ = tilingData.common.activationClamp;
         activationParams1_ = tilingData.common.activationParams1;
         activationParams2_ = tilingData.common.activationParams2;
-
-        moeInitRoutingQuantV2TilingData = tilingData.moeInitRoutingQuantV2TilingData;
-        initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
     } else {
         GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataNonQuant, tilingData, tilingGM);
 
@@ -197,16 +191,15 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
         epWorldSize_ = tilingData.common.worldSize;
         topK_ = tilingData.common.topK;
         expertPerRank_ = tilingData.common.expertPerRank;
-        maxOutputSize_ = tilingData.common.maxRecvTokenNum;
+        // maxOutputSize 语义 = 单轮接收预算 B（recvRoundBudget）；接收行超出 B 由 kernel 接收端轮次切分处理
+        maxOutputSize_ = tilingData.common.recvRoundBudget;
+        recvRoundsMax_ = tilingData.common.recvRoundsMax;
         listLen_ = tilingData.common.listLen;
 
         activationCode_ = tilingData.common.activationCode;
         activationClamp_ = tilingData.common.activationClamp;
         activationParams1_ = tilingData.common.activationParams1;
         activationParams2_ = tilingData.common.activationParams2;
-
-        moeInitRoutingV2TilingData = tilingData.moeInitRoutingV2TilingData;
-        initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
     }
 }
 
@@ -337,7 +330,6 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                static_cast<uint32_t>(expertPerRank_),
                                                static_cast<uint64_t>(maxOutputSize_),
                                                static_cast<uint32_t>(topK_),
-                                               initRoutingQuantTilingKey,
                                                epilogueCoreNum,
                                                contextGM_,
                                                xGM_,
@@ -365,13 +357,13 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                gmExpertTokenNums_,
                                                xActiveMaskGM_,
                                                scalesGM_,
-                                               moeInitRoutingQuantV2TilingData,
                                                epilogueGranularity,
                                                activationClamp_,
                                                activationCode_,
                                                activationParams1_,
                                                activationParams2_,
-                                               tilingGM_};
+                                               tilingGM_,
+                                               maskBufferGM_};
     } else {
         params = typename MatmulKernel::Params{problemShape,
                                                static_cast<uint32_t>(epWorldSize_),
@@ -379,7 +371,6 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                static_cast<uint32_t>(expertPerRank_),
                                                static_cast<uint64_t>(maxOutputSize_),
                                                static_cast<uint32_t>(topK_),
-                                               initRoutingQuantTilingKey,
                                                epilogueCoreNum,
                                                contextGM_,
                                                xGM_,
@@ -407,14 +398,16 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                gmExpertTokenNums_,
                                                xActiveMaskGM_,
                                                scalesGM_,
-                                               moeInitRoutingV2TilingData,
                                                epilogueGranularity,
                                                activationClamp_,
                                                activationCode_,
                                                activationParams1_,
                                                activationParams2_,
-                                               tilingGM_};
+                                               tilingGM_,
+                                               maskBufferGM_};
     }
+
+    params.recvRoundsMax = recvRoundsMax_;
 
     MatmulKernel kernel(params);
     kernel(params);

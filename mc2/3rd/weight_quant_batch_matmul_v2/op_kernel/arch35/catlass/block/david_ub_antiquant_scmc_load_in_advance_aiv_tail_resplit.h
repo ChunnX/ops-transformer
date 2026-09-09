@@ -10,7 +10,7 @@
 #ifndef ARCH35_CATLASS_BLOCK_DAVID_UB_ANTIQUANT_SCMC_LOAD_IN_ADVANCE_AIV_TAIL_RESPLIT_H
 #define ARCH35_CATLASS_BLOCK_DAVID_UB_ANTIQUANT_SCMC_LOAD_IN_ADVANCE_AIV_TAIL_RESPLIT_H
 
-#include "../constant.h"
+#include "../wq_catlass_constant.h"
 #include "../iterator/continuous_iterator.h"
 #include "../pipeline/pipeline_stage_mixcore.h"
 #include "../pipeline/pipeline_stage_singlecore.h"
@@ -19,11 +19,11 @@
 #include "../simd/a16w4_pergroup_kn_nz.h"
 #include "../tile/mc2_3rd_copy_gm_to_ub.h"
 #include "../tile/copy_ub_to_l1.h"
-#include "../utils/constant.h"
-#include "../utils/device_utils.h"
+#include "../utils/wq_utils_constant.h"
+#include "../utils/wq_device_utils.h"
 #include "../utils/math_utils.h"
 #include "block_decl.h"
-#include "constant.h"
+#include "wq_block_constant.h"
 #include "david_ub_antiquant_scmc.h"
 
 using AscendC::DataCopyParams;
@@ -103,9 +103,7 @@ private:
     TBuf<TPosition::TSCM> l1TBuf_;
 
 public:
-    DEVICE BlockMmad()
-    {
-    }
+    DEVICE BlockMmad() {}
 
     struct Params {
         __gm__ DtypeB *bGmAddr = nullptr;
@@ -247,8 +245,7 @@ public:
 
     template <class ProblemShape>
     DEVICE static Params GetParams(ProblemShape &problemShape, Arguments const &args)
-    {
-    }
+    {}
 
     template <class ProblemShape>
     DEVICE auto Init(ProblemShape const &problemShape, Params const &params)
@@ -580,11 +577,11 @@ private:
             if constexpr (Base::isTransB) {
             } else {
                 // (n1, k1, k0, n0)
-                CopyUbToL1IntervalDataCopy(weightF16L1_[offsetWeightL1], tensorWeightOutUb[offsetWeightUb],
-                                           CeilAlign(tileSizeK, ONE_BLOCK_ELEM) * CeilAlign(tileSizeN, ONE_BLOCK_ELEM) /
-                                               ONE_REG_ELEM,
-                                           ONE_REG_ELEM / ONE_BLOCK_ELEM, 0,
-                                           (UB_WEIGHT_OUTPUT_F16BUFFER_NUM - 1) * ONE_REG_ELEM / ONE_BLOCK_ELEM);
+                CopyUbToL1IntervalDataCopy(
+                    weightF16L1_[offsetWeightL1], tensorWeightOutUb[offsetWeightUb],
+                    CeilAlign(tileSizeK, ONE_BLOCK_ELEM) * CeilAlign(tileSizeN, ONE_BLOCK_ELEM) / ONE_REG_ELEM,
+                    ONE_REG_ELEM / ONE_BLOCK_ELEM, 0,
+                    (UB_WEIGHT_OUTPUT_F16BUFFER_NUM - 1) * ONE_REG_ELEM / ONE_BLOCK_ELEM);
             }
         }
     }

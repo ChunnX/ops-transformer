@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 #include "allto_all_matmul_base.h"
 
 #include "acl/acl.h"
@@ -274,14 +273,14 @@ extern "C" aclnnStatus InnerAlltoAllMatmulGetWorkspaceSize(
         str_group, worldSize, alltoAllAxesOptional, yDtype, x1QuantMode, x2QuantMode, commQuantMode, x1QuantDtype,
         commQuantDtype, transposeX1, transposeX2, groupSize, str_commMode, all2AllOutFlag, out, all2AllOutOptional,
         workspaceSize, executor);
-    OP_LOGD("AlltoAllMatmul, aclnnnInnerGetWorkspaceSize ret %d.", ret);
+    OP_LOGD("AlltoAllMatmul, aclnnInnerGetWorkspaceSize ret %d.", ret);
 
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER,
                 "This is an error in launch aicore, aclnnAlltoAllMatmulBaseGetWorkspaceSize interface call failed.");
     }
 
-    if (ret == ACLNN_SUCCESS && *executor != nullptr) {
+    if (ret == ACLNN_SUCCESS && executor != nullptr && *executor != nullptr) {
         void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeEnum));
         NnopbaseSetUserHandle(*executor, args);
     }
@@ -350,6 +349,7 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulBase(void *workspace, uint64_t workspa
         } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);

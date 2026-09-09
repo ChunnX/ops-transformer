@@ -53,12 +53,12 @@ set(ASCEND_OP_NAME                "ALL"                           CACHE   STRING
 set(ASCEND_MODULE_NAME            "ALL"                           CACHE   STRING   "modules that need to be compiled")
 set(ARCH_DIRECTORY                ""                           CACHE   STRING   "arch directory that need to be compiled")
 set(VENDOR_NAME                   "custom"                     CACHE   STRING   "vendor name")
-set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend950;mc62;kirinx90;kirin9030" CACHE STRING "all soc list")
+set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend950;ascend350;mc62;kirinx90;kirin9030" CACHE STRING "all soc list")
 set(ASCEND_ALL_MODULE_NAME        "mc2;attention;moe;ffn;mhc;posembedding;gmm;mamba" CACHE STRING "all module list")
 
-#SOC和ARCH目录对应关系:ascend310p:arch20,ascend910b:arch22,ascend910_93:arch22,ascend950:arch35,mc62:arch38,kirinx90:arch22,kirin9030:arch22
-set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 mc62 kirinx90 kirin9030)
-set(ARCH_DIRECTORY_LIST arch20 arch22 arch22 arch35 arch38 arch22 arch22)
+#SOC和ARCH目录对应关系:ascend310p:arch20,ascend910b:arch22,ascend910_93:arch22,ascend950:arch35,ascend350:arch35,mc62:arch38,kirinx90:arch22,kirin9030:arch22
+set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 ascend350 mc62 kirinx90 kirin9030)
+set(ARCH_DIRECTORY_LIST arch20 arch22 arch22 arch35 arch35 arch38 arch22 arch22)
 set(BISHENG_FLAGS "" CACHE STRING "bisheng compiler flags")
 set(ENABLE_AICPU_KERNEL FALSE CACHE BOOL "Enable AICPU Kernel")
 set(PACKAGE_TYPE "run" CACHE STRING "package type: run/rpm/deb/all")
@@ -181,6 +181,7 @@ if (BUILD_OPEN_PROJECT)
         include(ExternalProject)
         include(cmake/dependencies.cmake)
         include(cmake/third_party/ops-tensor.cmake)
+        include(cmake/third_party/catlass.cmake)
         include(cmake/variables.cmake)
         include(cmake/obj_func.cmake)
         add_cann_third_party(eigen)
@@ -218,6 +219,7 @@ if (BUILD_OPEN_PROJECT)
 else()
     include(cmake/dependencies.cmake)
     include(cmake/third_party/ops-tensor.cmake)
+    include(cmake/third_party/catlass.cmake)
     include(cmake/variables.cmake)
     include(cmake/opbuild.cmake)
     include(cmake/rty_obj_func.cmake)
@@ -352,6 +354,7 @@ set(OP_LIST)
 set(OP_DIR_LIST)
 op_add_subdirectory(OP_LIST OP_DIR_LIST)
 
+set_property(GLOBAL PROPERTY _OP_HOST_COMPILE_PHASE "DIRECT")
 foreach (OP_DIR ${OP_DIR_LIST})
     if (EXISTS "${OP_DIR}/op_host")
         add_subdirectory(${OP_DIR}/op_host)
@@ -397,6 +400,7 @@ op_add_depend_directory(
         OP_DIR_LIST OP_DEPEND_DIR_LIST
 )
 
+set_property(GLOBAL PROPERTY _OP_HOST_COMPILE_PHASE "DEPENDENCY")
 foreach (OP_DEPEND_DIR ${OP_DEPEND_DIR_LIST})
     if (EXISTS "${OP_DEPEND_DIR}/op_host")
         add_subdirectory(${OP_DEPEND_DIR}/op_host)
@@ -404,6 +408,7 @@ foreach (OP_DEPEND_DIR ${OP_DEPEND_DIR_LIST})
         add_subdirectory(${OP_DEPEND_DIR})
     endif()
 endforeach ()
+set_property(GLOBAL PROPERTY _OP_HOST_COMPILE_PHASE "DIRECT")
 
 if (BUILD_OPS_RTY_KERNEL)
     get_target_property(base_aclnn_srcs op_host_aclnn SOURCES)
@@ -483,6 +488,22 @@ if (BUILD_OPS_RTY_KERNEL)
                 ${CMAKE_CURRENT_BINARY_DIR}/op_host_aclnn_exc_stub.cpp
         )
     endif ()
+
+    # 零算子（所有请求算子均被 CANN 版本检查跳过）：打印被跳过算子，写标志文件供 build.sh 跳过编译
+    if (NOT generate_aclnn_srcs AND NOT generate_aclnn_inner_srcs AND NOT generate_exclude_proto_srcs)
+        get_property(_cann_skipped_ops GLOBAL PROPERTY CANN_VERSION_SKIPPED_OPS)
+        if (_cann_skipped_ops)
+            list(REMOVE_DUPLICATES _cann_skipped_ops)
+            get_cann_package_version(_cann_cur_ver)
+            message(STATUS "当前 CANN 版本为 ${_cann_cur_ver}（soc=${ASCEND_COMPUTE_UNIT}），以下算子要求的最低版本不满足，不符合编译要求，已跳过编译：")
+            foreach(_cann_skipped_op IN LISTS _cann_skipped_ops)
+                message(STATUS "  - ${_cann_skipped_op}")
+            endforeach()
+        endif()
+        file(WRITE "${CMAKE_BINARY_DIR}/no_ops.flag" "all requested ops skipped by CANN version check\n")
+    else()
+        file(REMOVE "${CMAKE_BINARY_DIR}/no_ops.flag")
+    endif()
 
 
     if (generate_aclnn_srcs OR generate_aclnn_inner_srcs)
@@ -608,6 +629,11 @@ if (BUILD_OPS_RTY_KERNEL)
     add_dependencies(generate_transformer_adapt_py opbuild_gen_default opbuild_gen_inner opbuild_gen_exc)
 
     foreach (_op_name ${OP_LIST})
+        get_property(_op_version_skipped GLOBAL PROPERTY ${_op_name}_CANN_VERSION_SKIPPED)
+        if(_op_version_skipped)
+            message(STATUS "Skip install adapt py for ${_op_name}: CANN version check failed")
+            continue()
+        endif()
         install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}.py
                 DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
                 OPTIONAL
@@ -630,6 +656,12 @@ if (BUILD_OPS_RTY_KERNEL)
     foreach (op_dir ${OP_DIR_LIST})
         get_filename_component(_op_name "${op_dir}" NAME)
 
+        get_property(_op_version_skipped GLOBAL PROPERTY ${_op_name}_CANN_VERSION_SKIPPED)
+        if(_op_version_skipped)
+            message(STATUS "Skip install kernel files for ${_op_name}: CANN version check failed")
+            continue()
+        endif()
+
         if (EXISTS "${op_dir}/op_kernel")
             file(GLOB KERNEL_FILES
                 ${op_dir}/op_kernel/*.cpp
@@ -643,22 +675,22 @@ if (BUILD_OPS_RTY_KERNEL)
         endif()
 
         install(FILES ${KERNEL_FILES}
-                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}/op_kernel
                 OPTIONAL
         )
 
         install(DIRECTORY ${op_dir}/arch22
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}/op_kernel
             OPTIONAL
         )
 
         install(DIRECTORY ${op_dir}/arch35
-                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}/op_kernel
                 OPTIONAL
         )
 
         install(DIRECTORY ${op_dir}/arch38
-                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+                DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}/op_kernel
                 OPTIONAL
         )
 

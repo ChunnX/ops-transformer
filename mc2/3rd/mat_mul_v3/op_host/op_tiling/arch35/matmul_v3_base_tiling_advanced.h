@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /* !
  * \file matmul_v3_base_tiling_advanced.h
  * \brief
@@ -16,7 +15,7 @@
 #ifndef __OP_HOST_MATMUL_V3_BASE_TILING_ADVANCED_H__
 #define __OP_HOST_MATMUL_V3_BASE_TILING_ADVANCED_H__
 
-#include "common/op_host/math_util.h"
+#include "common/op_host/mc2_3rd_math_util.h"
 #include "matmul_base_tiling.h"
 #include "matmul_v3_common_advanced.h"
 #include "matmul_v3_compile_info_advanced.h"
@@ -34,11 +33,8 @@ public:
           compileInfo_(*static_cast<const Mc2MatmulV3CompileInfo *>(cfg.compileInfo)),
           args_(*static_cast<const Mc2MatMulV3Args *>(cfg.args)),
           batchInfo_(static_cast<const Mc2MatMulV3BatchInfo *>(args_.batchInfo))
-    {
-    }
-    ~Mc2MatMulV3BaseTiling() override
-    {
-    }
+    {}
+    ~Mc2MatMulV3BaseTiling() override {}
 
 protected:
     ge::graphStatus GetShapeAttrsInfo() override

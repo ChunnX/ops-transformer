@@ -19,7 +19,7 @@
 #endif
 
 #include "catlass/arch/arch.hpp"
-#include "catlass/arch/kda_cross_core_sync.hpp"
+#include "catlass/arch/cross_core_sync.hpp"
 #include "catlass/arch/resource.hpp"
 #include "catlass/catlass.hpp"
 #include "catlass/gemm/block/block_mmad.hpp"
@@ -31,7 +31,7 @@
 #include "kernel_operator.h"
 #include "../chunk_kda_fwd_varlen.h"
 #include "tla/layout.hpp"
-#include "tla/kda_tensor.hpp"
+#include "tla/tensor.hpp"
 
 using namespace AscendC;
 
@@ -83,10 +83,10 @@ constexpr uint32_t KDA_GATE_TILE_ROWS = 32;
 constexpr uint32_t KDA_CUBE_MIN_REDUCTION = 16;
 
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
-constexpr AscendC::MicroAPI::CastTrait KDA_TAIL_BF16_TO_FP32 = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr AscendC::Reg::CastTrait KDA_TAIL_BF16_TO_FP32 = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_NONE,
 };
 
@@ -95,7 +95,7 @@ static __simd_vf__ inline void ComputeKdaTailOutputRegbase(__ubuf__ float *dst, 
                                                            __ubuf__ bfloat16_t *aqk, uint16_t rows, uint16_t curT,
                                                            float scale)
 {
-    using namespace AscendC::MicroAPI;
+    using namespace AscendC::Reg;
     constexpr uint16_t DIM = 128;
     constexpr uint16_t FP32_REG_ELEMENTS = AscendC::VECTOR_REG_WIDTH / sizeof(float);
     constexpr uint16_t AQK_ROW_ELEMENTS = 16;
@@ -319,7 +319,10 @@ public:
         ReleaseVectorEvents();
     }
 
-    __aicore__ inline void ProcessAic() { ProcessOutAic(); }
+    __aicore__ inline void ProcessAic()
+    {
+        ProcessOutAic();
+    }
 
 private:
     __aicore__ inline void AllocVectorEvents()
@@ -368,7 +371,10 @@ private:
         return ((b * T_ + t) * HV_ + hv) * V_ + d;
     }
 
-    __aicore__ inline uint64_t BetaOffset(uint64_t b, uint64_t hv, uint64_t t) const { return (b * HV_ + hv) * T_ + t; }
+    __aicore__ inline uint64_t BetaOffset(uint64_t b, uint64_t hv, uint64_t t) const
+    {
+        return (b * HV_ + hv) * T_ + t;
+    }
 
     __aicore__ inline uint64_t AOffset(uint64_t b, uint64_t hv, uint64_t t, uint64_t j) const
     {
@@ -399,7 +405,10 @@ private:
         return (((solveCoreIdx_ * KDA_SCORE_QUEUE_DEPTH + slot) * KDA_SCORE_SCRATCH_PLANES + plane) * BT_ + t) * K_ + d;
     }
 
-    __aicore__ inline uint64_t ScoreRefBlockSize() const { return KDA_SCORE_REF_BC; }
+    __aicore__ inline uint64_t ScoreRefBlockSize() const
+    {
+        return KDA_SCORE_REF_BC;
+    }
 
     __aicore__ inline uint64_t ScoreRowBlockCount(uint64_t curT, uint64_t rowBegin) const
     {

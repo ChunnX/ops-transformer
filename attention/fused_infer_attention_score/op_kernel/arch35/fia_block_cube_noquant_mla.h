@@ -82,9 +82,6 @@ public:
 
     BuffersPolicySingleBuffer<BufferType::L1> l1QBuffers;
 
-    __gm__ uint8_t *keyPtr = nullptr;
-    __gm__ uint8_t *valuePtr = nullptr;
-
     const ConstInfoX &constInfo;
 
     /*============================================================================== */
@@ -133,11 +130,9 @@ public:
         InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSize,
                     actualSeqLengthsGmQ, constInfo.actualSeqLenSize, queryGm, query);
 
-        keyPtr = key;
-        valuePtr = value;
-        ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
+        ListTensorDesc keyListTensorDesc((__gm__ void *)(key));
         __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
-        ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
+        ListTensorDesc valueListTensorDesc((__gm__ void *)(value));
         __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
 
         InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
@@ -153,6 +148,16 @@ public:
         InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
                      constInfo.n2Size, constInfo.blockSize, constInfo.dSizeRope, keyRopeGm, keyRope,
                      constInfo.kRopeStrides.bnStride, constInfo.kRopeStrides.n2Stride);
+
+        if (constInfo.l2CacheOffFlag) {
+            // gSize*s1Size<=64单token场景: K/V数据量远超L2容量, 完全无法复用, 关闭L2 Cache避免无意义的缓存填充/驱逐开销
+            // 注意: 必须等全部GM buffer(含keyRope) SetGlobalBuffer完成后再统一设置hint
+#ifndef ASCENDC_OOM
+            keyGm.gmTensor.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+            valueGm.gmTensor.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+            keyRopeGm.gmTensor.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+#endif
+        }
     }
 
     __aicore__ inline void InitQBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
@@ -212,12 +217,12 @@ public:
         {
             FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-            GmCoord gmCoord{.bIdx = runInfo.bIdx,
-                            .n2Idx = runInfo.n2Idx,
-                            .gS1Idx = runInfo.gS1Idx,
-                            .dIdx = 0,
-                            .gS1DealSize = runInfo.actMSize,
-                            .dDealSize = (uint32_t)constInfo.dSize};
+            GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
+                                    .n2Idx = runInfo.n2Idx,
+                                    .gS1Idx = runInfo.gS1Idx,
+                                    .dIdx = 0,
+                                    .gS1DealSize = runInfo.actMSize,
+                                    .dDealSize = (uint32_t)constInfo.dSize};
             copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
         }
 
@@ -225,12 +230,12 @@ public:
             uint32_t queryRopeL1Offset = constInfo.dSize * dstStride;
             FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor[queryRopeL1Offset], .rowCount = dstStride};
 
-            GmCoord gmCoord{.bIdx = runInfo.bIdx,
-                            .n2Idx = runInfo.n2Idx,
-                            .gS1Idx = runInfo.gS1Idx,
-                            .dIdx = 0,
-                            .gS1DealSize = runInfo.actMSize,
-                            .dDealSize = (uint32_t)constInfo.dSizeRope};
+            GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
+                                    .n2Idx = runInfo.n2Idx,
+                                    .gS1Idx = runInfo.gS1Idx,
+                                    .dIdx = 0,
+                                    .gS1DealSize = runInfo.actMSize,
+                                    .dDealSize = (uint32_t)constInfo.dSizeRope};
             copyQueryGmToL1(l1Tensor, queryRopeGm, gmCoord);
         }
     }
@@ -277,7 +282,7 @@ public:
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = (fixpipeParams.mSize + 15) >> 4 << 4;
         fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element
-        fixpipeParams.dualDstCtl = 1;         // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+        fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;

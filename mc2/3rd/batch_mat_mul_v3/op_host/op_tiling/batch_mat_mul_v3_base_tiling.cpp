@@ -20,7 +20,7 @@
 #include "mc2_log.h"
 #include "ops_legacy/op_tiling/op_cache_tiling.h"
 #include "runtime_kb_api.h"
-#include "common/op_host/math_util.h"
+#include "common/op_host/mc2_3rd_math_util.h"
 #include "common/op_host/op_tiling/debug_tiling.h"
 #include "platform/platform_infos_def.h"
 
@@ -765,7 +765,6 @@ void Mc2BatchMatmulV3BaseTiling::DoMultiBatchL1FullLoadTiling()
     tilingEnable_.tilingEnableMixNd2Nz = Mc2TilingEnableMixNd2Nz::IS_FALSE;
     return;
 }
-
 
 void Mc2BatchMatmulV3BaseTiling::UpdateMultiBatchNd2nz()
 {

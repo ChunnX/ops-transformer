@@ -22,7 +22,7 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "common.h"
+#include "../agm_v2_common.h"
 #include "lib/hccl/hccl.h"
 #include "../all_gather_matmul_tiling_data.h"
 
@@ -49,7 +49,9 @@ public:
     __aicore__ inline AllGatherMatmulBase(MC2GmAddrs *addrs, QuantGmAddrs *quantAddrs,
                                           Mc2Tiling::AllGatherMatmulTilingDataFp8 *tilingData, GM_ADDR contextGM,
                                           TPipe *tPipe)
-        : addrs_(addrs), quantAddrs_(quantAddrs), tPipe_(tPipe)
+        : addrs_(addrs),
+          quantAddrs_(quantAddrs),
+          tPipe_(tPipe)
     {
         tilingData_ = tilingData;
         paramInTiling_ = &tilingData->param;

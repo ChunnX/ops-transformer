@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_init_routing_v3_tiling_arch35.h
@@ -129,7 +129,13 @@ constexpr int64_t QUANT_MODE_TILINGKEY_BASE = 10000LL;
 constexpr int64_t ROWIDX_TYPE_TILINGKEY_BASE = 1000LL;
 constexpr int64_t DROP_MODE_TILINGKEY_BASE = 100LL;
 constexpr uint64_t EMPTY_TENSOR_TILINGKEY = 3000000ULL;
+constexpr uint64_t COUTSORT_BASE = 10LL; // 分阶段:00  计数排序全载:10  计数排序非全载:20
+
+constexpr int64_t COUTSORT_MODE_NONE = 0LL;      // 未启用计数排序（走普通流程）
+constexpr int64_t COUTSORT_MODE_FULLLOAD = 1LL;  // 计数排序 FullLoad（核内全载）
+constexpr int64_t COUTSORT_MODE_CUTORIGIN = 2LL; // 计数排序 CutOrigin（核内 chunk 切分）
 constexpr int64_t KEY_VALUE_MODE_DIM0_NUM = 2LL;
+constexpr int64_t MASK_STRIDE = 64;
 
 inline static int64_t CeilLog4(int64_t x)
 {
@@ -299,6 +305,10 @@ protected:
     bool isEmptyTensor_ = false;
     int64_t ep_ = 0LL;
 
+    // CountingSort 性能模板标志：COUTSORT_MODE_NONE=未启用, COUTSORT_MODE_FULLLOAD=FullLoad,
+    // COUTSORT_MODE_CUTORIGIN=CutOrigin
+    int64_t countingSortMode_ = 0LL;
+
     // input attrs
     int64_t activeNum_ = -1LL;
     int64_t expertCapacity_ = -1LL;
@@ -352,6 +362,8 @@ private:
     ge::graphStatus CheckSetEmptyTensor();
     ge::graphStatus CheckOutputs();
     ge::graphStatus GetEmptyTensorWorkspaceSize();
+    ge::graphStatus GetCountingSortWorkspaceSize();
+    ge::graphStatus GetNormalWorkspaceSize();
 
     // CheckInputShape使用的子函数
     ge::graphStatus CheckInputX();
@@ -391,8 +403,7 @@ private:
     void SetPerLoopParams4NoQuantDropPad(const MultipleParams &multipleParams, PerLoopParams &perLoopParams,
                                          const int64_t perCoreIndicesElements);
     int64_t GetXBufferNum(const int additionalBufferNum);
-    void SetPerLoopParams4NoQuantDropLess(PerLoopParams &perLoopParams,
-                                          const int64_t perCoreIndicesElements);
+    void SetPerLoopParams4NoQuantDropLess(PerLoopParams &perLoopParams, const int64_t perCoreIndicesElements);
     void Tiling4GatherOutCompute();
     void Tiling4GatherOutMxFP8NoQuantCompute();
     void Tiling4GatherOutMxQuant();
@@ -409,11 +420,17 @@ private:
     bool IsFullLoad();
     bool IsSupportGatherCopyKernels() const;
     void ComputeUseGatherCopy();
-    void Tiling4TopkWeightOut();
     void SetIndicesLoopParams4GatherOut(int64_t perLoopMaxIndicesElements, int64_t perCoreIndicesElements,
                                         int64_t lastCoreIndicesElements);
     void SetLastCoreIndicesTiling(MoeV3Arch35GatherOutComputeTilingData *gatherOutTiling,
                                   int64_t lastCoreIndicesElements, int64_t perLoopMaxIndicesElements);
+
+    // CountingSort 性能模板
+    bool IsCountingSortApplicable();
+    void ComputeCountingSortMode();
+    int64_t EstimateArch35CountingSortFullLoadUB(int64_t perCoreTokens);
+    void ComputeArch35CountingSortFullLoadTiling();
+    void ComputeArch35CountingSortCutOriginTiling();
 
     // DropPad模式Tiling计算函数
     void SetCoreSplitParams4SrcToDstDropPad(int64_t &needCoreNum, int64_t &perCoreRows, int64_t &lastCoreRows);
@@ -435,8 +452,9 @@ private:
 
     bool IsMXFPXNoQuantCase(int64_t quantMode, ge::DataType xDtype) const
     {
-        return quantMode == QUANT_MODE_UNQUANT && (xDtype == ge::DataType::DT_FLOAT8_E5M2 ||
-               xDtype == ge::DataType::DT_FLOAT8_E4M3FN || xDtype == ge::DataType::DT_FLOAT4_E2M1);
+        return quantMode == QUANT_MODE_UNQUANT &&
+               (xDtype == ge::DataType::DT_FLOAT8_E5M2 || xDtype == ge::DataType::DT_FLOAT8_E4M3FN ||
+                xDtype == ge::DataType::DT_FLOAT4_E2M1);
     }
 
     bool IsSupportFullloadQuantMode() const

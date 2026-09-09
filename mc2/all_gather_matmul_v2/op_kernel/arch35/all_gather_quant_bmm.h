@@ -21,7 +21,7 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "../common.h"
+#include "../agm_v2_common.h"
 #include "lib/hccl/hccl.h"
 #include "all_gather_matmul_base_v2.h"
 #include "../../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_cube_on_the_fly.h"
@@ -41,9 +41,7 @@ template <typename AType, typename BType, typename BiasType, typename X2ScaleTyp
           bool BTrans, bool IsMxFp4 = false, uint8_t ServerMode = HCCL_COMM_MODE_CCU>
 class AllGatherQuantBmm {
 public:
-    __aicore__ inline AllGatherQuantBmm()
-    {
-    }
+    __aicore__ inline AllGatherQuantBmm() {}
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM1, GM_ADDR dequantGM2, GM_ADDR biasGM,
                                 GM_ADDR scaleGM, GM_ADDR cGM, GM_ADDR gatherOut, GM_ADDR workspaceGM, GM_ADDR contextGM,
                                 Mc2Tiling::AllGatherMatmulTilingDataFp8 *tilingData, __gm__ void *mc2InitTiling,

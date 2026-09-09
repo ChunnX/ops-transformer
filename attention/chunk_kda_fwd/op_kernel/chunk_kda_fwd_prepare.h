@@ -15,7 +15,7 @@
 #endif
 
 #include "catlass/arch/arch.hpp"
-#include "catlass/arch/kda_cross_core_sync.hpp"
+#include "catlass/arch/cross_core_sync.hpp"
 #include "catlass/arch/resource.hpp"
 #include "catlass/catlass.hpp"
 #include "catlass/gemm/block/block_mmad.hpp"
@@ -27,7 +27,7 @@
 #include "kernel_operator.h"
 #include "chunk_kda_fwd_varlen.h"
 #include "tla/layout.hpp"
-#include "tla/kda_tensor.hpp"
+#include "tla/tensor.hpp"
 
 using namespace AscendC;
 
@@ -257,7 +257,10 @@ public:
         ReleaseVectorEvents();
     }
 
-    __aicore__ inline void ProcessAic() { ProcessPreAic(); }
+    __aicore__ inline void ProcessAic()
+    {
+        ProcessPreAic();
+    }
 
 private:
     __aicore__ inline void AllocVectorEvents()
@@ -310,7 +313,10 @@ private:
         return ((b * HV_ + hv) * T_ + t) * dim + d;
     }
 
-    __aicore__ inline uint64_t BetaOffset(uint64_t b, uint64_t hv, uint64_t t) const { return (b * HV_ + hv) * T_ + t; }
+    __aicore__ inline uint64_t BetaOffset(uint64_t b, uint64_t hv, uint64_t t) const
+    {
+        return (b * HV_ + hv) * T_ + t;
+    }
 
     __aicore__ inline uint64_t AOffset(uint64_t b, uint64_t hv, uint64_t t, uint64_t j) const
     {
@@ -484,7 +490,10 @@ private:
         return vecBuf_.Get<float>()[slot * EXP2_UB_ELEMENTS];
     }
 
-    __aicore__ inline uint64_t GateStageElems() const { return GatePipelineRows() * K_; }
+    __aicore__ inline uint64_t GateStageElems() const
+    {
+        return GatePipelineRows() * K_;
+    }
 
     __aicore__ inline uint64_t GatePipelineRows() const
     {
@@ -495,7 +504,10 @@ private:
         return rows < KDA_GATE_TILE_ROWS ? rows : KDA_GATE_TILE_ROWS;
     }
 
-    __aicore__ inline uint64_t GateInputSlotBytes() const { return GateStageElems() * (2 * sizeof(T) + sizeof(GK_T)); }
+    __aicore__ inline uint64_t GateInputSlotBytes() const
+    {
+        return GateStageElems() * (2 * sizeof(T) + sizeof(GK_T));
+    }
 
     __aicore__ inline LocalTensor<T> GateQTyped(uint64_t slot)
     {
@@ -545,14 +557,20 @@ private:
         SetFlag<HardEvent::MTE2_V>(mte2ToVEvent_);
     }
 
-    __aicore__ inline void WaitGateInputReady() { WaitFlag<HardEvent::MTE2_V>(mte2ToVEvent_); }
+    __aicore__ inline void WaitGateInputReady()
+    {
+        WaitFlag<HardEvent::MTE2_V>(mte2ToVEvent_);
+    }
 
     __aicore__ inline void WaitGateOutputForMte2(uint64_t slot = 0)
     {
         WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2Events_[slot]);
     }
 
-    __aicore__ inline void WaitGateOutputForVector() { WaitFlag<HardEvent::MTE3_V>(mte3ToVEvent_); }
+    __aicore__ inline void WaitGateOutputForVector()
+    {
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVEvent_);
+    }
 
     __aicore__ inline void SignalGateOutputDone()
     {

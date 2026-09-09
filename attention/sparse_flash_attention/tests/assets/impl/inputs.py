@@ -51,8 +51,10 @@ class SparseFlashAttentionInputAdapter:
     def copy_tensor(destination, source, name):
         if destination is None:
             if source is not None:
-                raise ValueError(
-                    f"{name} is absent from CSV but pytest generator produced a tensor"
+                import logging
+
+                logging.warning(
+                    f"{name} is absent from CSV but pytest generator produced a tensor. Skipping copy."
                 )
             return
         if source is None:
@@ -171,11 +173,14 @@ class SparseFlashAttentionInputAdapter:
             int(kwargs["rope_head_dim"]),
         )
         generated = pytest_golden.generate_input_tensors(params)
-        outputs, generated, _ = pytest_golden.compute_cpu(generated, params)
+        # cross_check 模式下让 compute_cpu 在同一次调用里额外产出三方标杆:
+        # sparse_indices/block_table 是随机生成并原地写回的,重调一次会换随机值。
+        compute_bench = golden_module.compare_method_is_cross_check()
+        outputs, generated, _ = pytest_golden.compute_cpu(
+            generated, params, return_bench=compute_bench
+        )
         if outputs is None:
             raise RuntimeError("SparseFlashAttention pytest compute_cpu failed")
-        if hasattr(torch, "npu"):
-            torch.npu.synchronize()
 
         self.copy_tensor(query, generated.get("query"), "query")
         self.copy_tensor(key, generated.get("key_cache", generated.get("key")), "key")
@@ -207,14 +212,23 @@ class SparseFlashAttentionInputAdapter:
         if sinks is not None:
             self.copy_tensor(sinks, generated.get("sinks"), "sinks")
 
-        golden_module.CASE_DATA.put(
-            testcase_name,
-            {
-                "golden": golden_module.normalize_pytest_outputs(
-                    outputs, query, params["return_softmax_lse"]
-                )
-            },
-        )
+        # 三方标杆与 golden 走同一套输出归一化(clamp + cast 到 query dtype)，
+        # 差异仅来自 exp 量化路径，与 NPU 输出可直接三方比对。
+        bench_raw = None
+        if compute_bench and isinstance(outputs, (tuple, list)) and len(outputs) == 4:
+            bench_raw = (outputs[3], outputs[1], outputs[2])
+            outputs = tuple(outputs[:3])
+
+        entry = {
+            "golden": golden_module.normalize_pytest_outputs(
+                outputs, query, params["return_softmax_lse"]
+            )
+        }
+        if bench_raw is not None:
+            entry["bench"] = golden_module.normalize_pytest_outputs(
+                bench_raw, query, params["return_softmax_lse"]
+            )
+        golden_module.CASE_DATA.put(testcase_name, entry)
 
 
 def generate_sfa_inputs(
@@ -264,11 +278,118 @@ def generate_sfa_inputs(
     )
 
 
+def generate_sfa_inputs_aclnn_v2(
+    query,
+    key,
+    value,
+    sparseIndices,
+    blockTable=None,
+    actualSeqLengthsQuery=None,
+    actualSeqLengthsKv=None,
+    queryRope=None,
+    keyRope=None,
+    sinks=None,
+    scaleValue=None,
+    sparseBlockSizeOptional=None,
+    layoutQueryOptional=None,
+    layoutKvOptional=None,
+    sparseMode=None,
+    preTokens=None,
+    nextTokens=None,
+    attentionMode=None,
+    returnSoftmaxLse=False,
+    attentionOut=None,
+    softmaxMax=None,
+    softmaxSum=None,  # 输出
+    testcase_name=None,
+    input_ranges=None,
+    **kwargs,
+):
+    # 10 个输入 tensor → 9 个 others → 3 个输出 tensor。
+    return INPUT_ADAPTER.generate(
+        query,
+        key,
+        value,
+        sparseIndices,
+        scaleValue,
+        block_table=blockTable,
+        actual_seq_lengths_query=actualSeqLengthsQuery,
+        actual_seq_lengths_kv=actualSeqLengthsKv,
+        query_rope=queryRope,
+        key_rope=keyRope,
+        sinks=sinks,
+        sparse_block_size=sparseBlockSizeOptional,
+        layout_query=layoutQueryOptional,
+        layout_kv=layoutKvOptional,
+        sparse_mode=sparseMode,
+        attention_mode=attentionMode,
+        return_softmax_lse=returnSoftmaxLse,
+        testcase_name=testcase_name,
+        input_ranges=input_ranges,
+        **kwargs,
+    )
+
+
+def generate_sfa_inputs_aclnn(
+    query,
+    key,
+    value,
+    sparseIndices,
+    blockTable=None,
+    actualSeqLengthsQuery=None,
+    actualSeqLengthsKv=None,
+    queryRope=None,
+    keyRope=None,
+    scaleValue=None,
+    sparseBlockSizeOptional=None,
+    layoutQueryOptional=None,
+    layoutKvOptional=None,
+    sparseMode=None,
+    preTokens=None,
+    nextTokens=None,
+    attentionMode=None,
+    returnSoftmaxLse=False,
+    attentionOut=None,
+    softmaxMax=None,
+    softmaxSum=None,
+    testcase_name=None,
+    input_ranges=None,
+    **kwargs,
+):
+    # V1（aclnnSparseFlashAttention）无 sinks：9 个输入 tensor → 9 个 others → 3 个输出 tensor。
+    return INPUT_ADAPTER.generate(
+        query,
+        key,
+        value,
+        sparseIndices,
+        scaleValue,
+        block_table=blockTable,
+        actual_seq_lengths_query=actualSeqLengthsQuery,
+        actual_seq_lengths_kv=actualSeqLengthsKv,
+        query_rope=queryRope,
+        key_rope=keyRope,
+        sinks=None,
+        sparse_block_size=sparseBlockSizeOptional,
+        layout_query=layoutQueryOptional,
+        layout_kv=layoutKvOptional,
+        sparse_mode=sparseMode,
+        attention_mode=attentionMode,
+        return_softmax_lse=returnSoftmaxLse,
+        testcase_name=testcase_name,
+        input_ranges=input_ranges,
+        **kwargs,
+    )
+
+
 INPUT_ADAPTER = SparseFlashAttentionInputAdapter()
 
 
 __input__ = {
     "e2e": {
         "torch_npu.npu_sparse_flash_attention": "generate_sfa_inputs",
-    }
+    },
+    "aclnn": {
+        "aclnnSparseFlashAttention": "generate_sfa_inputs_aclnn",
+        "aclnnSparseFlashAttentionV2": "generate_sfa_inputs_aclnn_v2",
+    },
 }

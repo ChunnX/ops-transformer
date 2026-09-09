@@ -94,7 +94,7 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor     *softmaxMax,
     const aclTensor     *softmaxSum,
     const aclTensor     *actualSeqLengthsQueryOptional,
-    const aclTensor     *actualSeqLengthskvOptional,
+    const aclTensor     *actualSeqLengthsKvOptional,
     const aclTensor     *queryRopeOptional,
     const aclTensor     *keyRopeOptional,
     double               scaleValue,
@@ -251,7 +251,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             </td>
             <td>√</td>
         </tr>
-  <tr>
+        <tr>
             <td>actualSeqLengthsQueryOptional</td>
             <td>输入</td>
             <td>每个Batch中，Query的有效token数。</td>
@@ -269,7 +269,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>actualSeqLengthskvOptional</td>
+            <td>actualSeqLengthsKvOptional</td>
             <td>输入</td>
             <td>每个Batch中，Key、value的有效token数。</td>
             <td>
@@ -683,7 +683,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         </tr>
         <tr>
             <td>K</td>
-            <td>1024、2048、3072、4096、5120、6144、7168、8192</td>
+            <td>1024、2048、2051、3072、4096、5120、6144、7168、8192</td>
             <td>不建议K * sparseBlockSize超过100k，由于内部算法硬件限制可能会导致oom</td>
         </tr>
         <tr>
@@ -900,9 +900,9 @@ int main() {
   aclOpExecutor* executor;
 
   // 调用aclnnSparseFlashAttentionGrad第一段接口
-  ret = aclnnSparseFlashAttentionGradGetWorkspaceSize(q, k, v, sparseIndices, dOut, out, softmaxMax, softmaxSum, actSeqQLen, actSeqKvLen,
-            qRope, kRope, scaleValue, sparseBlockSize, layout, sparseMode, preTokens, nextTokens, deterministic, dq, dk, dv, dqRope, dkRope,
-            &workspaceSize, &executor);
+  ret = aclnnSparseFlashAttentionGradGetWorkspaceSize(q, k, v, sparseIndices, dOut, out, softmaxMax, softmaxSum,
+            actSeqQLen, actSeqKvLen, qRope, kRope, scaleValue, sparseBlockSize, layout, sparseMode, preTokens, nextTokens,
+            deterministic, dq, dk, dv, dqRope, dkRope, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashAttentionGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
   // 根据第一段接口计算出的workspaceSize申请device内存

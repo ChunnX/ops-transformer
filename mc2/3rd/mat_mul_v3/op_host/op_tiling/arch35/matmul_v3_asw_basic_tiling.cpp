@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /* !
  * \file matmul_v3_asw_basic_tiling.cc
  * \brief
@@ -16,7 +15,7 @@
 #include "matmul_v3_asw_basic_tiling.h"
 #include "matmul_v3_tiling_strategy.h"
 #include "./matmul_tiling_registry.h"
-#include "common/op_host/math_util.h"
+#include "common/op_host/mc2_3rd_math_util.h"
 
 using Ops::Transformer::MathUtil;
 namespace optiling {
@@ -47,7 +46,6 @@ bool Mc2MatMulV3AswBasicApiTiling::IsCapable()
     OP_LOGI(args_.opName, "Mc2MatMulV3 tiling enable state basic api");
     return true;
 }
-
 
 uint64_t Mc2MatMulV3AswBasicApiTiling::GetTilingKey() const
 {

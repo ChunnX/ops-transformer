@@ -177,6 +177,7 @@ class PytestV2TopKComparator:
 COMPARATOR = PytestV2TopKComparator()
 
 
-def compare(*outputs, compare_data=None):
-    """Compare V2 TopK outputs with the canonical pytest policy."""
+def compare(*outputs, compare_data=None, compare_context=None, **_kwargs):
+    """Run ordinary pytest precision; batch output checks run in phase two."""
+    del compare_context
     return COMPARATOR.compare(*outputs, compare_data=compare_data)

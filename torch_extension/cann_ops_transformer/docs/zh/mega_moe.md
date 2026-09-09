@@ -25,7 +25,7 @@
 
 - **接口功能**：
 
-  - Mega MoE算子将MoE层的专家FFN的完整计算流程及前后数据通信（即Dispatch + Linear1 + SwiGLU + Linear2 + Combine）融合为单个算子，实现了通信和计算的掩盖。
+  - Mega MoE算子将MoE层的专家FFN的完整计算流程及前后数据通信（即Dispatch + Linear1 + Activation + Linear2 + Combine）融合为单个算子，实现了通信和计算的掩盖。
   - 该算子提供了mega_moe与get_symm_buffer_for_mega_moe等接口配套使用。
   - get_symm_buffer_for_mega_moe：用于封装输入参数并创建SymmBuffer结构体，生成`context`、`ep_world_size`和`ccl_buffer_size`等mega_moe算子运行所需信息。
 
@@ -53,7 +53,7 @@
     - 张量切片操作采用Python风格的 `start:stop:step` 表示法，例如$[0::2, :]$ 代表取偶数行、$[1::2, :]$ 代表取奇数行。
     - $\mathrm{bitcast}_{T}(\mathbf{Z})$ 表示二进制重解释操作，将张量$\mathbf{Z}$的底层二进制数据按目标类型 $T$ 重新解释。
   - <span id="activation-formulas">激活函数公式：</span>
-    - 记 Linear1 输出拆分后的 gate 分支为 $\mathbf{G}$，up 分支为 $\mathbf{U}$，激活输出为 $\mathbf{A}$。Sigmoid 函数和 SiLU 函数定义为：
+    - 记 Linear1 输出拆分后的 gate 分支为 $\mathbf{G}$，up 分支为 $\mathbf{U}$，激活输出为 $\mathbf{A}$。下文将由 `activation`、`activation_clamp` 和 `activation_params` 共同确定的具体激活计算统称为 Activation。Sigmoid 函数和 SiLU 函数定义为：
       $$
       \sigma(z)=\frac{1}{1+e^{-z}}, \qquad
       \operatorname{SiLU}(z)=z\cdot\sigma(z)=\frac{z}{1+e^{-z}}.
@@ -66,6 +66,7 @@
       =\operatorname{Swish}_1(\mathbf{G}_c)\odot\mathbf{U}_c
       =\operatorname{SiLU}(\mathbf{G}_c)\odot\mathbf{U}_c.
       $$
+    <!-- npu="950" id25 -->
     - `swiglustep`：
       $$
       \mathbf{A}=\operatorname{SwiGLUStep}(\mathbf{G},\mathbf{U})=\min\!\left(\operatorname{SiLU}(\mathbf{G}),c\right)\odot\mathbf{U}_c.
@@ -87,6 +88,7 @@
       & \text{已配置 linear\_beta}.
       \end{cases}
       $$
+    <!-- end id25 -->
 
 - 计算说明：
 
@@ -102,10 +104,10 @@
     | A4W4-FP | FLOAT4_E2M1        | FLOAT4_E2M1            |
 
     <!-- npu="A3,910b" id7 -->
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持上表中A8W8-FP场景。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持A16W16、A8W8-INT和A8W4-INT场景。
     <!-- end id7 -->
     <!-- npu="950" id8 -->
-    - <term>Ascend 950PR/Ascend 950DT</term>：不支持上表中A16W16 、A8W8-INT、A8W4-INT场景。
+    - <term>Ascend 950PR/Ascend 950DT</term>：支持A8W8-FP、A8W4-FP和A4W4-FP场景。
     <!-- end id8 -->
 
     <details>
@@ -121,7 +123,7 @@
 
     - **Expert Compute**
 
-        在MoE层中，每个专家本质上是一个独立的前馈网络（FFN），采用 **SwiGLU** 结构以提升表达能力。整个计算过程分为如下三个子步骤。
+        在MoE层中，每个专家本质上是一个独立的前馈网络（FFN），采用由 `activation` 指定的门控激活结构以提升表达能力。整个计算过程分为如下三个子步骤。
 
         **1. Linear1 投影**
 
@@ -186,7 +188,7 @@
 
     - **Expert Compute**
 
-        在MoE层中，每个专家本质上是一个独立的前馈网络（FFN），采用SwiGLU结构以提升表达能力。在A8W8场景下，两个线性层都使用int8 输入和int8 权重进行矩阵乘，得到int32 中间结果并反量化。具体分为三个子步骤。
+        在MoE层中，每个专家本质上是一个独立的前馈网络（FFN），采用由 `activation` 指定的门控激活结构以提升表达能力。在A8W8场景下，两个线性层都使用int8 输入和int8 权重进行矩阵乘，得到int32 中间结果并反量化。具体分为三个子步骤。
 
         **1. Linear1 投影（int8 矩阵乘 + 反量化）**
 
@@ -264,7 +266,7 @@
 
     - **Expert Compute**
 
-        在MoE层中，每个专家本质上是一个独立的前馈网络（FFN），采用 **SwiGLU** 结构以提升表达能力。在A8W4-INT场景下，两个线性层都采用MSD（Mixed-precision Split-activation Decomposition，混合精度激活拆分分解）方案进行矩阵乘，通过将int8 值拆为高4位和低4位两个有符号int4，使得int8×int4 的矩阵乘可分解为两个int4×int4 的矩阵乘，从而利用硬件的int4 矩阵乘加速。该方案的数学原理和实现逻辑可参阅[GroupedMatmul W4A8量化与MSD方案](https://gitcode.com/cann/ops-transformer/wiki/GMM--GroupedMatmul%E9%87%8F%E5%8C%96%E6%9E%81%E8%87%B4%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96-%E6%8E%A8%E7%90%86%E6%8F%90%E5%8D%87%E7%99%BE%E5%88%86%E4%B9%8B%E4%B8%89%E5%8D%81)。
+        在MoE层中，每个专家本质上是一个独立的前馈网络（FFN），采用由 `activation` 指定的门控激活结构以提升表达能力。在A8W4-INT场景下，两个线性层都采用MSD（Mixed-precision Split-activation Decomposition，混合精度激活拆分分解）方案进行矩阵乘，通过将int8 值拆为高4位和低4位两个有符号int4，使得int8×int4 的矩阵乘可分解为两个int4×int4 的矩阵乘，从而利用硬件的int4 矩阵乘加速。该方案的数学原理和实现逻辑可参阅[GroupedMatmul W4A8量化与MSD方案](https://gitcode.com/cann/ops-transformer/wiki/GMM--GroupedMatmul%E9%87%8F%E5%8C%96%E6%9E%81%E8%87%B4%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96-%E6%8E%A8%E7%90%86%E6%8F%90%E5%8D%87%E7%99%BE%E5%88%86%E4%B9%8B%E4%B8%89%E5%8D%81)。
 
         **1. 生成精度补偿的偏置矩阵（离线生成，在算子外完成，并作为算子输入）**
 
@@ -430,6 +432,7 @@
 
     </details>
 
+    <!-- npu="950" id23 -->
     <details>
     <summary> A8W8-FP量化场景</summary>
 
@@ -439,23 +442,23 @@
     \hat{X}_e,\ S_{X,e} = \mathrm{Q}_{\text{MX}}\!\left(X[\mathcal{T}_e]\right), \quad e = 0, 1, \ldots, E_{\text{local}}-1
     $$
 
-    说明：根据 `topk_ids` 将 Token 按专家排序收集，$\mathcal{T}_e$ 为分配到专家 $e$ 的 Token 索引集合，$E_{local}$表示当前专家收到的最大token数，每个专家数值可能不同，$X[\mathcal{T}_e]$ 为对应的子矩阵。$\mathrm{Q}_{\text{MX}}$ 表示 MX 逐组量化（group size = 32），对每组 32 个元素提取共享指数后量化为 FP8 目标类型（FLOAT8_E5M2 或 FLOAT8_E4M3FN），同时输出 FLOAT8_E8M0 缩放因子。量化后的数据将作为 GMM1 的输入。
+    说明：根据 `topk_ids` 将 Token 按专家排序收集，$\mathcal{T}_e$ 为分配到专家 $e$ 的 Token 索引集合，$E_{\text{local}}$ 表示本 Rank 的路由 MoE 专家数。$X[\mathcal{T}_e]$ 为专家 $e$ 对应的输入子矩阵，其行数由该专家本次实际接收的 Token 数决定。$\mathrm{Q}_{\text{MX}}$ 表示 MX 逐组量化（group size = 32），对每组 32 个元素提取共享指数后量化为 FP8 目标类型（FLOAT8_E5M2 或 FLOAT8_E4M3FN），同时输出 FLOAT8_E8M0 缩放因子。量化后的数据将作为 GMM1 的输入。
 
-    第二阶段对每个专家执行GMM1 矩阵乘法（将 $W_1$ 沿列方向分为两半分别计算）、SwiGLU激活和MX量化：
+    第二阶段对每个专家执行GMM1 矩阵乘法（将 $W_1$ 沿列方向分为两半分别计算）、Activation和MX量化：
 
     $$
     G_e = \mathrm{DQ}_{\text{MX}}(\hat{X}_e, S_{X,e}) \cdot \mathrm{DQ}_{\text{MX}}(W_{1,e}^{(G)}, S_{1,e}^{(G)}), \quad U_e = \mathrm{DQ}_{\text{MX}}(\hat{X}_e, S_{X,e}) \cdot \mathrm{DQ}_{\text{MX}}(W_{1,e}^{(U)}, S_{1,e}^{(U)})
     $$
 
     $$
-    A_e = \operatorname{SwiGLU}(G_e,U_e)
+    A_e = \operatorname{Activation}(G_e,U_e)
     $$
 
     $$
     \hat{A}_e,\ S_{A,e} = \mathrm{Q}_{\text{MX}}(A_e)
     $$
 
-    说明：将 $W_1$ 的前 $N/2$ 列 $W_{1,e}^{(G)}$ 和后 $N/2$ 列 $W_{1,e}^{(U)}$ 分别与MX反量化后的输入做矩阵乘法，得到gate分支 $G_e$ 和up分支 $U_e$。SwiGLU的计算方式参见[激活函数公式](#activation-formulas)，其输出维度为 $N/2$。随后对激活输出做MX量化，得到GMM2 的量化输入 $\hat{A}_e$。
+    说明：将 $W_1$ 的前 $N/2$ 列 $W_{1,e}^{(G)}$ 和后 $N/2$ 列 $W_{1,e}^{(U)}$ 分别与MX反量化后的输入做矩阵乘法，得到gate分支 $G_e$ 和up分支 $U_e$。具体激活函数的计算方式参见[激活函数公式](#activation-formulas)，其输出维度为 $N/2$。随后对激活输出做MX量化，量化类型与Dispatch阶段的量化类型一致，即同为 `FLOAT8_E5M2` 或同为 `FLOAT8_E4M3FN`，得到GMM2 的量化输入 $\hat{A}_e$。
 
     第三阶段对每个专家执行GMM2 矩阵乘法，并将结果按目标Rank分发：
 
@@ -463,11 +466,11 @@
     O_e = \mathrm{DQ}_{\text{MX}}(\hat{A}_e, S_{A,e}) \cdot \mathrm{DQ}_{\text{MX}}(W_{2,e}, S_{2,e})
     $$
 
-    说明：将量化后的SwiGLU输出与第二组权重 $W_2$ 做MX反量化后的矩阵乘法，将 $N/2$ 维中间表示映射回 $H$ 维隐藏空间，得到每个专家的输出 $O_e$。计算完成后通过RDMA peermem将结果按目标Rank的专家偏移地址写入远端，实现跨Rank聚合。
+    说明：将量化后的激活输出与第二组权重 $W_2$ 做MX反量化后的矩阵乘法，将 $N/2$ 维中间表示映射回 $H$ 维隐藏空间，得到每个专家的输出 $O_e$。计算完成后通过RDMA peermem将结果按目标Rank的专家偏移地址写入远端，实现跨Rank聚合。
 
     第四阶段对所有 Token 按路由权重加权求和，并叠加共享专家输出，恢复为与输入相同形状的输出：
 
-    当启用共享专家（`shared_expert_num_per_rank` > 0）时，共享专家在每张卡上对本卡全部 token 本地执行与路由专家相同的 GMM1 + SwiGLU + GMM2 计算，使用 `shared_l1_weights`、`shared_l2_weights`、`shared_l1_weights_sf`、`shared_l2_weights_sf`，无需参与 Dispatch 通信。各共享专家的输出记为 $O^{\mathrm{shared}}_s$，$s \in \{0, \dots, \text{shared\_expert\_num\_per\_rank} - 1\}$。
+    当启用共享专家（`shared_expert_num_per_rank` > 0）时，共享专家在每张卡上对本卡全部 token 本地执行与路由专家相同的 GMM1 + Activation + GMM2 计算，使用 `shared_l1_weights`、`shared_l2_weights`、`shared_l1_weights_sf`、`shared_l2_weights_sf`，无需参与 Dispatch 通信。各共享专家的输出记为 $O^{\mathrm{shared}}_s$，$s \in \{0, \dots, \text{shared\_expert\_num\_per\_rank} - 1\}$。
 
     $$
     Y[i] = \sum_{k=0}^{K-1} W[i,\, k] \cdot O[\pi(i,\, k)] + \sum_{s=0}^{\text{shared\_expert\_num\_per\_rank}-1} O^{\mathrm{shared}}_s[i]
@@ -479,13 +482,14 @@
 
     局部变量说明：
     - $\mathcal{T}_e$：被路由到专家 $e$ 的 Token 索引集合，由 `topk_ids` 排序后确定。
+    - $m_e=|\mathcal{T}_e|$：专家 $e$ 本次实际接收的 Token 数，不同专家的 $m_e$ 可以不同。
     - $\hat{X}_e,\ S_{X,e}$：专家 $e$ 的量化输入及其 MX 缩放因子，第一阶段中间结果。
     - $W_{1,e}^{(G)}$、$W_{1,e}^{(U)}$：$W_1$ 对应专家 $e$ 的前 $N/2$ 列和后 $N/2$ 列子矩阵，由 `l1_weights` 按gate分支和up分支拆分推导。
     - $S_{1,e}^{(G)}$、$S_{1,e}^{(U)}$：$W_{1,e}^{(G)}$ 和 $W_{1,e}^{(U)}$ 对应的 MX 缩放因子，从 `l1_weights_sf` 按维度截取。
     - $S_{2,e}$：$W_{2,e}$ 对应的 MX 缩放因子，来自参数 `l2_weights_sf`。
     - $G_e,\ U_e$：GMM1 的gate分支和up分支输出，中间结果。
-    - $A_e$：SwiGLU激活输出，维度 $m_e \times N/2$，中间结果。
-    - $\hat{A}_e,\ S_{A,e}$：量化后的SwiGLU输出及其MX缩放因子，中间结果。
+    - $A_e$：激活输出，维度 $m_e \times N/2$，中间结果。
+    - $\hat{A}_e,\ S_{A,e}$：量化后的激活输出及其MX缩放因子，中间结果。
     - $O_e$：GMM2 的专家级输出，维度 $m_e \times H$，中间结果。
     - $\pi(i, k)$：Token $i$ 的第 $k$ 个top-k专家在展开排序后的行索引，由路由排序确定。
     - $\mathrm{Q}_{\text{MX}}(\cdot)$：MX逐组量化操作，block size = 32，输出FP8 数据和E8M0 缩放因子。
@@ -497,20 +501,20 @@
 
     第一阶段（Token 选择、量化与 Dispatch）：
 
-    对本 rank 的输入 Token \(X \in \mathbb{R}^{B\times H}\)，根据 `topk_ids` 得到每个专家 \(e\) 对应的 Token 下标集合 \(T_e\)，并将选中的 BF16 Token 按 32 个元素一组量化为 MXFP8 E4M3：
+    对本 rank 的输入 Token $X \in \mathbb{R}^{B\times H}$，根据 `topk_ids` 得到每个专家 $e$ 对应的 Token 下标集合 $T_e$，并将选中的 BF16 Token 按 32 个元素一组量化为 MXFP8 E4M3：
 
     $$
     \hat{X}_e,\;S_{X,e}
     = \mathrm{Q}_{\mathrm{MX}}\!\left(X[T_e]\right),
     $$
 
-    其中，\(\hat{X}_e\) 的数据类型为 `FLOAT8_E4M3FN`，\(S_{X,e}\) 的数据类型为 `FLOAT8_E8M0`。随后将量化后的 Token 及其缩放因子发送到专家所在 rank。
+    其中，$\hat{X}_e$ 的数据类型为 `FLOAT8_E4M3FN`，$S_{X,e}$ 的数据类型为 `FLOAT8_E8M0`。随后将量化后的 Token 及其缩放因子发送到专家所在 rank。
 
     路由 MoE 专家的第一层和第二层权重 $W_{1,e}$、$W_{2,e}$ 均为 MXFP4 E2M1 数据，缩放因子为 E8M0，$e$ 的范围为 $[0,\text{local\_moe\_expert\_num})$。共享专家权重单独由 `shared_l1_weights`、`shared_l2_weights` 提供，其第一维为 `shared_expert_num_per_rank`。A8W4 kernel 在矩阵乘 Prologue 中处理 FP4 权重，送入矩阵乘的逻辑数据流为 FP8 激活乘 FP4 权重。
 
-    第二阶段（GMM1、SwiGLU 与再次量化）：
+    第二阶段（GMM1、Activation 与再次量化）：
 
-    对专家 \(e\) 收到的 Token，第一层分组矩阵乘和 SwiGLU 计算为：
+    对专家 $e$ 收到的 Token，第一层分组矩阵乘和激活函数计算为：
 
     $$
     G_e = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{X}_e,S_{X,e}\right)
@@ -523,10 +527,10 @@
     $$
 
     $$
-    A_e = \operatorname{SwiGLU}(G_e,U_e).
+    A_e = \operatorname{Activation}(G_e,U_e).
     $$
 
-    SwiGLU的计算方式参见[激活函数公式](#activation-formulas)。其输出继续按 32 个元素一组量化为 MXFP8 E4M3，供第二层矩阵乘使用：
+    具体激活函数的计算方式参见[激活函数公式](#activation-formulas)。其输出继续按 32 个元素一组量化为 MXFP8 E4M3，与Dispatch阶段的量化类型一致，均为 `FLOAT8_E4M3FN`，供第二层矩阵乘使用：
 
     $$
     \hat{A}_e,\;S_{A,e}
@@ -542,7 +546,7 @@
           \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{2,e},S_{2,e}\right).
     $$
 
-    当启用共享专家（`shared_expert_num_per_rank` > 0）时，共享专家在每张卡上对本卡全部 token 本地执行与路由专家相同的 GMM1 + SwiGLU + GMM2 计算，使用 `shared_l1_weights`、`shared_l2_weights`、`shared_l1_weights_sf`、`shared_l2_weights_sf`，无需参与 Dispatch 通信。各共享专家的输出记为 $O^{\mathrm{shared}}_s$，$s \in \{0, \dots, \text{shared\_expert\_num\_per\_rank} - 1\}$。
+    当启用共享专家（`shared_expert_num_per_rank` > 0）时，共享专家在每张卡上对本卡全部 token 本地执行与路由专家相同的 GMM1 + Activation + GMM2 计算，使用 `shared_l1_weights`、`shared_l2_weights`、`shared_l1_weights_sf`、`shared_l2_weights_sf`，无需参与 Dispatch 通信。各共享专家的输出记为 $O^{\mathrm{shared}}_s$，$s \in \{0, \dots, \text{shared\_expert\_num\_per\_rank} - 1\}$。
 
     第四阶段（Combine 与加权合并）：
 
@@ -560,16 +564,16 @@
 
     第一阶段（Token 选择、量化与 Dispatch）：
 
-    对每个专家 \(e\) 对应的 Token 集合 \(T_e\)，将选中的 BF16 Token 按 32 个元素一组量化为 MXFP4 E2M1：
+    对每个专家 $e$ 对应的 Token 集合 $T_e$，将选中的 BF16 Token 按 32 个元素一组量化为 MXFP4 E2M1：
 
     $$
     \hat{X}_e,\;S_{X,e}
     = \mathrm{Q}_{\mathrm{MX}}\!\left(X[T_e]\right),
     $$
 
-    其中，\(\hat{X}_e\) 的数据类型为 `FLOAT4_E2M1`，\(S_{X,e}\) 的数据类型为 `FLOAT8_E8M0`。路由 MoE 专家的第一层和第二层权重 \(W_{1,e}\)、\(W_{2,e}\) 均为 MXFP4 E2M1，\(e\) 的范围为 \([0,\text{local\_moe\_expert\_num})\)；共享专家权重的第一维为 `shared_expert_num_per_rank`。权重缩放因子为 E8M0。
+    其中，$\hat{X}_e$ 的数据类型为 `FLOAT4_E2M1`，$S_{X,e}$ 的数据类型为 `FLOAT8_E8M0`。路由 MoE 专家的第一层和第二层权重 $W_{1,e}$、$W_{2,e}$ 均为 MXFP4 E2M1，$e$ 的范围为 $[0,\text{local\_moe\_expert\_num})$；共享专家权重的第一维为 `shared_expert_num_per_rank`。权重缩放因子为 E8M0。
 
-    第二阶段（A4W4 GMM1、SwiGLU 与输出类型提升）：
+    第二阶段（A4W4 GMM1、Activation 与激活后量化）：
 
     第一层分组矩阵乘为 A4W4：
 
@@ -584,10 +588,10 @@
     $$
 
     $$
-    A_e = \operatorname{SwiGLU}(G_e,U_e).
+    A_e = \operatorname{Activation}(G_e,U_e).
     $$
 
-    SwiGLU的计算方式参见[激活函数公式](#activation-formulas)。这里不能继续把SwiGLU输出量化为FP4。kernel在 `QuantMode == E2M1_QUANT` 时，将 `SwigluQuantOutType` 指定为 `fp8_e4m3fn_t`，因此输出会提升为MXFP8 E4M3：
+    具体激活函数的计算方式参见[激活函数公式](#activation-formulas)。A4W4-FP场景下，第一层矩阵乘后的激活结果按32个连续元素一组量化为MXFP8 E4M3，缩放因子为E8M0，并作为第二层矩阵乘的输入。该设计用于避免两层矩阵乘均采用A4W4带来较大的精度损失：
 
     $$
     \hat{A}_e,\;S_{A,e}
@@ -596,14 +600,14 @@
 
     第三阶段（A8W4 GMM2）：
 
-    由于 SwiGLU 量化输出为 FP8 E4M3，而第二层权重仍为 FP4 E2M1，因此第二层矩阵乘实际为 A8W4，而不是 A4W4：
+    由于激活输出量化后为 FP8 E4M3，而第二层权重仍为 FP4 E2M1，因此第二层矩阵乘实际为 A8W4，而不是 A4W4：
 
     $$
     O_e = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{A}_e,S_{A,e}\right)
           \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{2,e},S_{2,e}\right).
     $$
 
-    当启用共享专家（`shared_expert_num_per_rank` > 0）时，共享专家在每张卡上对本卡全部 token 本地执行与路由专家相同的 GMM1 + SwiGLU + GMM2 计算，使用 `shared_l1_weights`、`shared_l2_weights`、`shared_l1_weights_sf`、`shared_l2_weights_sf`，无需参与 Dispatch 通信。各共享专家的输出记为 $O^{\mathrm{shared}}_s$，$s \in \{0, \dots, \text{shared\_expert\_num\_per\_rank} - 1\}$。
+    当启用共享专家（`shared_expert_num_per_rank` > 0）时，共享专家在每张卡上对本卡全部 token 本地执行与路由专家相同的 GMM1 + Activation + GMM2 计算，使用 `shared_l1_weights`、`shared_l2_weights`、`shared_l1_weights_sf`、`shared_l2_weights_sf`，无需参与 Dispatch 通信。各共享专家的输出记为 $O^{\mathrm{shared}}_s$，$s \in \{0, \dots, \text{shared\_expert\_num\_per\_rank} - 1\}$。
 
     第四阶段（Combine 与加权合并）：
 
@@ -613,6 +617,7 @@
 
     未启用共享专家时，共享专家求和项为零。最终输出 $Y$ 的数据类型为 BF16。A4W4-FP 的完整数据类型流为：`BF16 -> MXFP4 E2M1 -> A4W4 GMM1 -> MXFP8 E4M3 -> A8W4 GMM2 -> BF16`。其中所有 MX 缩放因子的类型均为 `FLOAT8_E8M0`，量化粒度均为 32 个连续元素。
     </details>
+    <!-- end id23 -->
 
 ## 函数原型
 
@@ -625,6 +630,32 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
 ```python
 mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_weights_sf=None, l2_weights_sf=None, l1_bias=None, l2_bias=None, x_active_mask=None, activation="swiglu", activation_clamp=None, activation_params=None, weight1_type=None, weight2_type=None, shared_l1_weights=None, shared_l2_weights=None, shared_l1_weights_sf=None, shared_l2_weights_sf=None, shared_l1_bias=None, shared_l2_bias=None) -> (Tensor, Tensor)
 ```
+
+### 弹性扩缩容接口
+
+```python
+sym_buffer.query_mask_buffer(mask_status) -> None
+sym_buffer.update_mask_buffer(rank, masked) -> None
+sym_buffer.clean_mask_buffer() -> None
+sym_buffer.get_local_buffer_tensor(dtype, size=None, offset=0) -> Tensor
+sym_buffer.update_group(group) -> None
+```
+
+`mask_buffer` 及以上五个 `SymmBuffer` 弹性扩缩容接口当前仅支持 <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>。`SymmBuffer` 默认不创建 `mask_buffer`，因此各代际默认均不会向算子传入该参数。第一次调用 `query_mask_buffer`、`update_mask_buffer` 或 `clean_mask_buffer` 时，才会在 NPU 上创建 shape 为 `[ep_world_size]` 的全 0 int32 掩码；0 表示正常 rank，1 表示失能 rank，失能 rank 会在后续计算和卡间通信中被跳过。
+
+- `query_mask_buffer` 接收调用者预先创建的 `mask_status`，其 dtype 必须为 `torch.int32`，shape、所在 NPU 必须与内部 `mask_buffer` 一致。接口通过 D2D 拷贝将当前掩码写入 `mask_status`，不返回 Tensor。
+- `update_mask_buffer` 只更新当前进程中的本地掩码，各 rank 的掩码一致性由调用者保证。当恢复 rank，即 `masked` 输入为 `False` 时，必须调用 `get_local_buffer_tensor` 清空算子现存通信缓存区标志位。样例如下：
+
+  ```python
+  symm_buffer.update_mask_buffer(0, False)  # 恢复 rank 0 通信
+  symm_buffer.update_mask_buffer(1, False)  # 恢复 rank 1 通信
+  local_buffer = symm_buffer.get_local_buffer_tensor(torch.uint8)
+  local_buffer.zero_()
+  ```
+
+- `clean_mask_buffer` 在当前 NPU stream 上将本地掩码的所有元素清零；各 rank 需要分别调用，跨 rank 的一致性仍由调用者保证。掩码尚未创建时，接口会创建全 0 掩码。
+- `get_local_buffer_tensor` 将当前 Rank 的本地 CCL Buffer 零拷贝包装为 NPU Tensor。`offset` 以 `dtype` 元素为单位，`size` 为 `None` 时返回从 `offset` 到 Buffer 末尾的一维视图，否则返回指定 shape。返回 Tensor 不持有底层内存，其生命周期不得超过 `SymmBuffer`；调用 `update_group` 后旧视图失效，必须重新获取。调用者写入原始通信 Buffer 前必须保证相关算子已经执行完成，并确保写入范围正确。
+- `update_group` 使用新 group 完整重建通信链路；旧通信链路的算子执行完成以及新 group 与现有 mask shape 的一致性需要调用者保证。如需清除失能状态，应显式调用 `clean_mask_buffer`。
 
 ## 参数说明
 
@@ -661,7 +692,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>num_max_tokens_per_rank</td>
         <td>int</td>
         <td>必选</td>
-        <td>每张卡上的token数量，当前仅支持各卡token数一致。</td>
+        <td>通信域内各Rank可能出现的最大单卡token数。<term>Ascend 950PR/Ascend 950DT</term>支持各Rank的实际token数不同，每次调用需满足x.shape[0]不大于该值；所有Rank必须配置相同的上界。</td>
     </tr>
     <tr>
         <td>num_topk</td>
@@ -679,7 +710,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>intermediate_hidden</td>
         <td>int</td>
         <td>必选</td>
-        <td>中间层投影维度。</td>
+        <td>激活后的中间特征维度。Linear1同时生成gate和up两个分支，因此Linear1的完整输出宽度为2 × intermediate_hidden。</td>
     </tr>
     <tr>
         <td>max_recv_token_num</td>
@@ -799,17 +830,17 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     <tr>
         <td>float8_e5m2<sup>1</sup></td>
         <td>ND</td>
-        <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
+        <td>(local_moe_expert_num, 2 × intermediate_hidden, hidden)</td>
     </tr>
     <tr>
         <td>float8_e4m3fn<sup>1</sup></td>
-        <td>ND</td>
-        <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
+        <td>ND/FRACTAL_NZ</td>
+        <td>(local_moe_expert_num, 2 × intermediate_hidden, hidden)</td>
     </tr>
     <tr>
-        <td>float4_E2M1<sup>1</sup></td>
+        <td>float4_E2M1(uint8)<sup>1</sup></td>
         <td>FRACTAL_NZ/FORMAT_FRACTAL_NZ_C0_32</td>
-        <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
+        <td>(local_moe_expert_num, 2 × intermediate_hidden, hidden / 2)</td>
     </tr>
     <tr>
         <td rowspan="6">l2_weights</td>
@@ -833,17 +864,17 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     <tr>
         <td>float8_e5m2<sup>1</sup></td>
         <td>ND</td>
-        <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
+        <td>(local_moe_expert_num, hidden, intermediate_hidden)</td>
     </tr>
     <tr>
         <td>float8_e4m3fn<sup>1</sup></td>
-        <td>ND</td>
-        <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
+        <td>ND/FRACTAL_NZ</td>
+        <td>(local_moe_expert_num, hidden, intermediate_hidden)</td>
     </tr>
     <tr>
-        <td>float4_E2M1<sup>1</sup></td>
-        <td>FRACTAL_NZ/FORMAT_FRACTAL_NZ_C0_32</td>
-        <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
+        <td>float4_E2M1(uint8)<sup>1</sup></td>
+        <td>FORMAT_FRACTAL_NZ_C0_32</td>
+        <td>(local_moe_expert_num, hidden, intermediate_hidden / 2)</td>
     </tr>
     <tr>
         <td>sym_buffer</td>
@@ -858,7 +889,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td rowspan="2">l1_weights_sf</td>
         <td rowspan="2">list[Tensor]</td>
         <td rowspan="2">可选</td>
-        <td rowspan="2">MoE专家网络第一线性层的权重矩阵的量化缩放因子。</td>
+        <td rowspan="2">MoE专家网络第一线性层的权重矩阵的量化缩放因子。MXFP量化场景下必须输入。</td>
         <td>uint64<sup>2</sup></td>
         <td>ND</td>
         <td>(2 × intermediate_hidden, )</td>
@@ -866,13 +897,13 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     <tr>
         <td>float8_e8m0<sup>1</sup></td>
         <td>ND</td>
-        <td>(num_experts_per_rank, 2 × intermediate_hidden, CeilDiv(hidden, 64), 2)</td>
+        <td>(local_moe_expert_num, 2 × intermediate_hidden, CeilDiv(hidden, 64), 2)</td>
     </tr>
     <tr>
         <td rowspan="2">l2_weights_sf</td>
         <td rowspan="2">list[Tensor]</td>
         <td rowspan="2">可选</td>
-        <td rowspan="2">MoE专家网络第二线性层的权重矩阵的量化缩放因子。</td>
+        <td rowspan="2">MoE专家网络第二线性层的权重矩阵的量化缩放因子。MXFP量化场景下必须输入。</td>
         <td>uint64<sup>2</sup></td>
         <td>ND</td>
         <td>(hidden, )</td>
@@ -880,7 +911,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     <tr>
         <td>float8_e8m0<sup>1</sup></td>
         <td>ND</td>
-        <td>(num_experts_per_rank, hidden, CeilDiv(intermediate_hidden, 64), 2)</td>
+        <td>(local_moe_expert_num, hidden, CeilDiv(intermediate_hidden, 64), 2)</td>
     </tr>
     <tr>
         <td>l1_bias<sup>2</sup></td>
@@ -931,29 +962,31 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation_params</td>
         <td>dict[str, float]</td>
         <td>可选</td>
-        <td>激活函数参数字典，默认值为None。"swiglu"和"swiglustep"无需设置；"swigluoai"支持"alpha"和"beta"，默认值分别为1.702和1.0；"situglu"支持"beta"和"linear_beta"，"beta"默认值为1.0，"linear_beta"未配置时保持up分支不变。</td>
+        <td>激活函数参数字典，默认值为None。"swiglu"和"swiglustep"无需设置；"swigluoai"支持"alpha"和"beta"，默认值分别为1.702和1.0；"situglu"支持"beta"和"linear_beta"，"beta"默认值为1.0，"linear_beta"未配置时保持up分支不变。各产品上实际使用的"beta"以及已配置的"linear_beta"均需为大于0的有限值。</td>
         <td>float</td>
         <td>不涉及</td>
         <td>不涉及</td>
     </tr>
+    <!-- npu="950" id22 -->
     <tr>
         <td>weight1_type</td>
-        <td>预留参数</td>
+        <td>int</td>
         <td>可选</td>
-        <td>预留参数，使用默认值即可。</td>
-        <td>预留参数</td>
+        <td>权重1的逻辑数据类型。A8W8-FP场景可选，默认从l1_weights的Tensor数据类型推导；A8W4-FP和A4W4-FP场景必须设置为float4_e2m1fn_x2对应的类型枚举。取值必须与weight2_type一致。</td>
+        <td>int</td>
         <td>不涉及</td>
         <td>不涉及</td>
     </tr>
     <tr>
         <td>weight2_type</td>
-        <td>预留参数</td>
+        <td>int</td>
         <td>可选</td>
-        <td>预留参数，使用默认值即可。</td>
-        <td>预留参数</td>
+        <td>权重2的逻辑数据类型。A8W8-FP场景可选，默认从l2_weights的Tensor数据类型推导；A8W4-FP和A4W4-FP场景必须设置为float4_e2m1fn_x2对应的类型枚举。取值必须与weight1_type一致。</td>
+        <td>int</td>
         <td>不涉及</td>
         <td>不涉及</td>
     </tr>
+    <!-- end id22 -->
     <tr>
         <td rowspan="3">shared_l1_weights<sup>1</sup></td>
         <td rowspan="3">list[Tensor]</td>
@@ -965,13 +998,13 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     </tr>
     <tr>
         <td>FLOAT8_E4M3FN</td>
-        <td>ND</td>
+        <td>ND/FRACTAL_NZ</td>
         <td>(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden)</td>
     </tr>
     <tr>
-        <td>FLOAT4_E2M1</td>
+        <td>FLOAT4_E2M1(uint8)</td>
         <td>FRACTAL_NZ/FORMAT_FRACTAL_NZ_C0_32</td>
-        <td>(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden)</td>
+        <td>(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden / 2)</td>
     </tr>
     <tr>
         <td rowspan="3">shared_l2_weights<sup>1</sup></td>
@@ -984,13 +1017,13 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     </tr>
     <tr>
         <td>FLOAT8_E4M3FN</td>
-        <td>ND</td>
+        <td>ND/FRACTAL_NZ</td>
         <td>(shared_expert_num_per_rank, hidden, intermediate_hidden)</td>
     </tr>
     <tr>
-        <td>FLOAT4_E2M1</td>
-        <td>FRACTAL_NZ/FORMAT_FRACTAL_NZ_C0_32</td>
-        <td>(shared_expert_num_per_rank, hidden, intermediate_hidden)</td>
+        <td>FLOAT4_E2M1(uint8)</td>
+        <td>FORMAT_FRACTAL_NZ_C0_32</td>
+        <td>(shared_expert_num_per_rank, hidden, intermediate_hidden / 2)</td>
     </tr>
     <tr>
         <td>shared_l1_weights_sf<sup>1</sup></td>
@@ -1034,7 +1067,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     <td colspan="7">表格中的<code>CeilDiv(<var>x</var>, <var>y</var>) = ⌈<var>x</var> / <var>y</var>⌉ = ⌊(<var>x</var> + <var>y</var> - 1) / <var>y</var>⌋</code></td>
 </tr>
 <tr>
-    <td colspan="7">表格中用T1(T2)表示数据类型T1在传入前要求重解释为另一个数据类型T2再传入，例如，int4(int32)表示实际int4的数据，在传入需重解释为int32传入，其shape为重解释后的shape。</td>
+    <td colspan="7">表格中用T1(T2)表示逻辑数据类型T1在PyTorch侧以数据类型T2作为物理载体传入，表中的shape为T2载体的实际传入shape。例如，int4(int32)表示每个int32打包8个int4元素；float4_E2M1(uint8)表示每个uint8打包2个FLOAT4_E2M1元素，并需通过<code>weight1_type</code>和<code>weight2_type</code>将权重的逻辑数据类型指定为<code>float4_e2m1fn_x2</code>。</td>
 </tr>
 </tfoot>
 </table>
@@ -1152,25 +1185,25 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         </tr>
         <tr>
             <td>l1_weights</td>
-            <td>num_experts_per_rank（bfloat16/int8/int4场景）或1（float8_e5m2/float8_e4m3fn/float4_E2M1场景）</td>
+            <td>Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品为num_experts_per_rank；Ascend 950PR/Ascend 950DT的逐专家布局为local_moe_expert_num，堆叠布局为1</td>
             <td>否（bfloat16/int8/int4场景）/是（float8_e5m2/float8_e4m3fn/float4_E2M1场景）</td>
             <td>不支持</td>
         </tr>
         <tr>
             <td>l2_weights</td>
-            <td>num_experts_per_rank（bfloat16/int8/int4场景）或1（float8_e5m2/float8_e4m3fn/float4_E2M1场景）</td>
+            <td>Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品为num_experts_per_rank；Ascend 950PR/Ascend 950DT的逐专家布局为local_moe_expert_num，堆叠布局为1</td>
             <td>否（bfloat16/int8/int4场景）/是（float8_e5m2/float8_e4m3fn/float4_E2M1场景）</td>
             <td>不支持</td>
         </tr>
         <tr>
             <td>l1_weights_sf</td>
-            <td>num_experts_per_rank（uint64场景）或1（float8_e8m0场景）</td>
+            <td>与对应权重的TensorList长度和布局一致；Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品为num_experts_per_rank；Ascend 950PR/Ascend 950DT的逐专家布局为local_moe_expert_num，堆叠布局为1</td>
             <td>否</td>
             <td>不支持</td>
         </tr>
         <tr>
             <td>l2_weights_sf</td>
-            <td>num_experts_per_rank（uint64场景）或1（float8_e8m0场景）</td>
+            <td>与对应权重的TensorList长度和布局一致；Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品为num_experts_per_rank；Ascend 950PR/Ascend 950DT的逐专家布局为local_moe_expert_num，堆叠布局为1</td>
             <td>否</td>
             <td>不支持</td>
         </tr>
@@ -1195,19 +1228,19 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     </tbody>
     </table>
 
+  <!-- npu="950" id21 -->
+  - Ascend 950PR/Ascend 950DT的MXFP场景支持两种TensorList布局。对于`l1_weights`、`l2_weights`、`l1_weights_sf`和`l2_weights_sf`，逐专家布局下四个TensorList的长度均为`local_moe_expert_num`，权重列表中的Tensor为二维，权重缩放因子列表中的Tensor为三维；堆叠布局下四个TensorList的长度均为1，权重Tensor为三维，权重缩放因子Tensor为四维，且各Tensor的dim0均为`local_moe_expert_num`。四个输入必须采用同一种布局；启用共享专家时，对应的四个共享专家输入也必须采用与MoE专家相同的布局。
+  <!-- end id21 -->
+
 - **参数一致性约束**：
   - mega_moe接口的所有输入参数及其对应的张量维度，必须与get_symm_buffer_for_mega_moe的同名参数（例如 `num_experts`、`hidden`、`intermediate_hidden` 等）保持一致。
   - 调用算子过程中使用的`num_experts`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
 
-- **通信域和组网约束**：
-    - 所有卡的`ep_world_size`、`ccl_buffer_size`参数取值需保持一致。
-    - 各卡的通信域缓存区大小应当一致。`ccl_buffer_size` 为 HBM 上分配的 CCL 通信缓冲区**总大小**（Bytes），包含等大小的 **windowIn** 和 **windowOut** 两块空间，其中
-        - Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品校验时以单个空间 `ccl_buffer_size / 2` 为准，需满足：
+- **通信域约束**：
+    - 所有卡的`ep_world_size`参数取值需保持一致。
+    - Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品的通信域缓存区大小应当一致。`ccl_buffer_size` 为 HBM 上分配的 CCL 通信缓冲区**总大小**（Bytes），包含等大小的 **windowIn** 和 **windowOut** 两块空间，校验时以单个空间 `ccl_buffer_size / 2` 为准，需满足：
 
         $$ccl\_buffer\_size\ /\ 2 \ge \mathrm{offsetTokenPerExpert} + \mathrm{offsetTensor} + \mathrm{offsetFlag} + 10\,\mathrm{MB}$$
-        - Ascend 950PR/Ascend 950DT校验时以单个空间 `ccl_buffer_size ` 为准，需满足：
-
-        $$ccl\_buffer\_size \ge \mathrm{peermemDataOffset} + \mathrm{maskRecvSize} + \mathrm{quantTokenScaleSize} + \mathrm{combineOut}$$
     <!-- npu="910b" id11 -->
      **Atlas A2 训练系列产品/Atlas A2 推理系列产品：**
 
@@ -1257,32 +1290,12 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     <!-- npu="950" id13 -->
      **Ascend 950PR/Ascend 950DT：**
 
-    ```text
-    expertPerRank = moeExpertNum / epWorldSize;
-
-    // 全卡软同步使用 60KB
-    peermemDataOffset = 60LL * 1024LL;
-
-    // mask_recv_size
-    compareCount = CeilAlign(numMaxTokensPerRank * numTopk * 4, 256) / 4;
-    maskAlignSize = CeilAlign(compareCount / 8, 32);
-    maskSlotSize = maskAlignSize + 32;
-    maskRecvSize = CeilAlign(expertPerRank * epWorldSize * maskSlotSize, 512);
-
-    // quant_token_scale_size
-    mxScaleNum = (hidden + 31) / 32;
-    dataBytes = CeilAlign(hidden, 256);
-    tokenBytes = CeilAlign(dataBytes + mxScaleNum, 32);
-    quantTokenScaleSize = CeilAlign(numMaxTokensPerRank * tokenBytes, 512);
-
-    // combine_send_size
-    combineOut = CeilAlign(numMaxTokensPerRank * hidden * numTopk * 2, 512);
-
-    totalBytes = peermemDataOffset + maskRecvSize + quantTokenScaleSize + combineOut;
-    ```
-    其中 `ep_world_size` 即通信域大小，$maxExpertPerRank$ 表示每张卡上可能专家数的最大值，$\mathrm{quant}$ 表示是否开启dispatch量化（`dispatch_quant_mode = 2`）。预留空间10 MB为内部元数据对齐与安全余量。
-  - 通信域各节点的驱动版本应当相同。
+    通信buffer由`get_symm_buffer_for_mega_moe`根据通信域配置、`num_max_tokens_per_rank`等参数自动计算并申请，用户无需自行计算或设置`ccl_buffer_size`。`num_max_tokens_per_rank`越大，内部申请的通信内存越多，建议按预期最大单卡token数合理设置。
     <!-- end id13 -->
+  - 通信域各节点的驱动版本应当相同。
+
+- **组网约束**：
+
   <!-- npu="910b" id14 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机通信域要求交换机组网，不支持双机直连组网。
   <!-- end id14 -->
@@ -1299,7 +1312,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
   - **Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品：**
 
     - 各卡 `num_tokens` 需保持一致。
-    - `ep_world_size`：取值为 `2`、`4`、`8`、`16`、`32`。
+    - `ep_world_size`：取值为 `2`、`4`、`8`、`16`、`32`、`48`、`64`、`96`、`128`。
     - `num_experts`：取值范围为`world_size ≤ num_experts ≤ 1024`，且 `num_experts % ep_world_size == 0`。
     - `num_experts_per_rank`：取值范围为 `1 ≤ num_experts_per_rank ≤ 128`，且 `num_experts_per_rank = num_experts / world_size`。
     - `num_max_tokens_per_rank`：取值范围为 `1 ≤ num_max_tokens_per_rank ≤ 4096`。
@@ -1380,42 +1393,42 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
   <!-- end id17 -->
   <!-- npu="950" id18 -->
   - **Ascend 950PR/Ascend 950DT：**
-    - `activation`仅支持"swiglu"。
-    - `activation_params`无需设置，截断值通过`activation_clamp`传入。
-    - num_tokens（x.dim0）范围 [1, +∞)，实际上限受`ccl_buffer_size`约束。算子采用分批处理机制，BS不再受UB容量硬限制，dispatch阶段按固定粒度分批处理。
-    - hidden（x.dim1）仅支持1024、2048、3072、4096、5120、6144、7168、8192。
+    - `activation`支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"。`activation_clamp`用于配置前三种激活的截断值；`activation_params`用于配置"swigluoai"的`alpha`、`beta`以及"situglu"的`beta`、`linear_beta`。
+    - num_tokens（x.dim0）范围[1, +∞)，每次调用必须不大于创建`sym_buffer`时配置的`num_max_tokens_per_rank`。不同Rank的实际num_tokens可以不同，同一个`sym_buffer`也可以用于多次不同num_tokens的调用。
+    - `num_max_tokens_per_rank`必须大于等于1，所有Rank取值必须一致，建议设置为`sym_buffer`复用期间所有Rank可能出现的最大单卡token数。超过原上界时需使用更大的上界重新创建`sym_buffer`。
+    - hidden（x.dim1）范围[1024, 8192]。A8W8-FP场景要求hidden为32的倍数；A8W4-FP场景要求hidden为64的倍数；A4W4-FP场景仅支持l1_weights为FRACTAL_NZ格式，要求hidden为64的倍数。
     - num_topk（topk_ids.dim1）支持[1, 32]。
     - num_experts_per_rank 范围 [1, 1024]。
-    - intermediate_hidden（l1_weights.dim1）仅支持1024、2048、3072、4096、7168。
+    - intermediate_hidden表示激活后的中间特征维度，范围[256, 4096]且128对齐；Linear1的完整输出宽度为2 × intermediate_hidden。
     - ep_world_size范围 [2, 1024]。
     - num_experts范围 [ep_world_size, 2048]，且num_experts % ep_world_size == 0。
-    - max_recv_token_num范围 [0, num_tokens × ep_world_size × min(num_topk, local_moe_expert_num)]。
+    - max_recv_token_num范围 [0, num_max_tokens_per_rank × ep_world_size × min(num_topk, local_moe_expert_num)]；建议保持默认值0，由接口自动计算接收容量。
     - dispatch_quant_out_dtype仅支持torch.float8_e5m2或torch.float8_e4m3fn或torch.float4_e2m1。
     - 当前版本仅支持MXFP量化模式（dispatch_quant_mode = 4），dispatch阶段使用MX逐组量化（group size = 32），量化缩放因子类型为FLOAT8_E8M0。
     - x_active_mask和scales参数当前版本必须传入None，不支持非空输入。
     - combine_quant_mode当前支持0（非量化），3（MX模式float8_e5m2类型），4（MX模式float8_e4m3类型）。
     - comm_alg预留参数，必须为空字符串""。
     - y的数据类型与x相同。
-    - l1_weights的dim1（intermediate_hidden）必须等于l2_weights的dim2的二倍，这是因为SwiGLU激活需要将中间维度从intermediate_hidden减半为intermediate_hidden/2。
+    - l1_weights的Linear1输出维必须等于2 × intermediate_hidden，l2_weights的输入维必须等于intermediate_hidden。
     - l1_weights_sf和l2_weights_sf不可为空指针。
     - local_moe_expert_num = num_experts / ep_world_size；启用共享专家时，shared_expert_num_per_rank = shared_l1_weights.dim0；num_experts_per_rank = shared_expert_num_per_rank + local_moe_expert_num，未启用共享专家时 shared_expert_num_per_rank = 0。
     - shared_expert_num_per_rank范围 [0, 4]。
-    - topo_type由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。当前暂不支持URMA通信方式。
-    - topk_weights_type取值为0或1，0表示关闭topkWeights前移，1表示开启。当前暂不支持URMA通信方式。
-    - num_max_tokens_per_rank为0时自动计算；非0时必须等于num_tokens。
-    - ccl_buffer_size需 >= 全卡软同步预留空间（固定60KB） + mask接收空间 + 量化token缩放因子空间 + combine发送空间。
+    - topo_type由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。
+    - URMA拓扑下，`activation`不支持"swiglustep"和"swigluoai"。
+    - topk_weights_type取值为0或1，0表示关闭topkWeights前移，1表示开启。
+    - 通信buffer由`get_symm_buffer_for_mega_moe`自动计算并申请，用户无需自行计算或设置`ccl_buffer_size`。
     - l1_weights和l2_weights的数据类型必须一致，且仅支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。
     - topk_weights数据类型仅支持BF16或FP32。
 
     - **MXFP量化场景约束**：
-        - l1_weights shape为(local_moe_expert_num, intermediate_hidden, hidden)，l2_weights shape为(local_moe_expert_num, hidden, intermediate_hidden / 2)。
-        - l1_weights_sf shape为(local_moe_expert_num, intermediate_hidden, CeilDiv(hidden, 64), 2)，CeilDiv(hidden, 64) = ⌈hidden / 64⌉ = ⌊(hidden + 63) / 64⌋。
-        - l2_weights_sf shape为(local_moe_expert_num, hidden, CeilDiv(intermediate_hidden / 2, 64), 2)，CeilDiv(intermediate_hidden / 2, 64) = ⌈(intermediate_hidden / 2) / 64⌉ = ⌊(intermediate_hidden / 2 + 63) / 64⌋。
-        - shared_l1_weights shape为(shared_expert_num_per_rank, intermediate_hidden, hidden)，shared_l2_weights shape为(shared_expert_num_per_rank, hidden, intermediate_hidden / 2)。
-        - shared_l1_weights_sf shape为(shared_expert_num_per_rank, intermediate_hidden, CeilDiv(hidden, 64), 2)，shared_l2_weights_sf shape为(shared_expert_num_per_rank, hidden, CeilDiv(intermediate_hidden / 2, 64), 2)。
+        - l1_weights的逻辑shape为(local_moe_expert_num, 2 × intermediate_hidden, hidden)，l2_weights的逻辑shape为(local_moe_expert_num, hidden, intermediate_hidden)。FLOAT4_E2M1权重在PyTorch侧以uint8打包传入，对应的物理shape分别为(local_moe_expert_num, 2 × intermediate_hidden, hidden / 2)和(local_moe_expert_num, hidden, intermediate_hidden / 2)。
+        - l1_weights_sf shape为(local_moe_expert_num, 2 × intermediate_hidden, CeilDiv(hidden, 64), 2)，CeilDiv(hidden, 64) = ⌈hidden / 64⌉ = ⌊(hidden + 63) / 64⌋。
+        - l2_weights_sf shape为(local_moe_expert_num, hidden, CeilDiv(intermediate_hidden, 64), 2)，CeilDiv(intermediate_hidden, 64) = ⌈intermediate_hidden / 64⌉ = ⌊(intermediate_hidden + 63) / 64⌋。
+        - shared_l1_weights的逻辑shape为(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden)，shared_l2_weights的逻辑shape为(shared_expert_num_per_rank, hidden, intermediate_hidden)。FLOAT4_E2M1权重在PyTorch侧以uint8打包传入，对应的物理shape分别为(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden / 2)和(shared_expert_num_per_rank, hidden, intermediate_hidden / 2)。
+        - shared_l1_weights_sf shape为(shared_expert_num_per_rank, 2 × intermediate_hidden, CeilDiv(hidden, 64), 2)，shared_l2_weights_sf shape为(shared_expert_num_per_rank, hidden, CeilDiv(intermediate_hidden, 64), 2)。
         - l1_weights_sf的dim3和l2_weights_sf的dim3必须等于2。
-        - A8W4-FP场景下，FLOAT4_E2M1类型的l1_weights必须使用FORMAT_FRACTAL_NZ_C0_32格式。
-        - MXFP场景下，dispatch_quant_out_dtype=torch.float8_e5m2时l1_weights和l2_weights必须为FLOAT8_E5M2，dispatch_quant_out_dtype=torch.float8_e4m3fn时必须为FLOAT8_E4M3FN，dispatch_quant_out_dtype=torch.float4_e2m1时必须为FLOAT4_E2M1。
+        - A8W4-FP场景下，FLOAT4_E2M1类型的l1_weights必须使用FORMAT_FRACTAL_NZ_C0_32格式；A4W4-FP场景下，FLOAT4_E2M1类型的l1_weights必须使用FRACTAL_NZ格式。两种场景的l2_weights均必须使用FORMAT_FRACTAL_NZ_C0_32格式。启用共享专家时，shared_l1_weights和shared_l2_weights必须分别与l1_weights和l2_weights使用相同格式。
+        - A8W8-FP场景下，l1_weights和l2_weights必须同为FLOAT8_E5M2或同为FLOAT8_E4M3FN，`weight1_type`和`weight2_type`可省略并从权重Tensor的数据类型推导。A8W4-FP和A4W4-FP场景下，两层权重均为FLOAT4_E2M1，必须显式将`weight1_type`和`weight2_type`设置为`float4_e2m1fn_x2`对应的类型枚举，且两者一致。
         - x_active_mask和scales必须为None。
     - 支持三种计算场景（A8W8-FP、A8W4-FP、A4W4-FP），不同场景下可选入参（缩放因子、偏置等）的必需性及数据类型有严格配套要求。调用时必须根据所选场景完整提供对应参数，不可混用或遗漏，配套关系见下表。
         <table>
@@ -1464,7 +1477,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
             <tr>
             <td><strong>A8W4-FP</strong></td>
             <td>BFLOAT16</td>
-            <td>FLOAT8_E4M3FN</td>
+            <td>FLOAT4_E2M1</td>
             <td>FLOAT4_E2M1</td>
             <td>FLOAT8_E8M0</td>
             <td>FLOAT8_E8M0</td>
@@ -1530,6 +1543,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     N = 1024
     topK = 6
     num_experts = 8
+    scene = "A8W8"  # 可选："A8W8"、"A8W4"、"A4W4"
 
     server_num = 1
     rank_per_dev = 2
@@ -1540,6 +1554,22 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
     def ceil(a, b):
         return (a + b - 1) // b
+
+    def pack_fp4(weight):
+        # 示例使用随机uint8模拟两个FP4 E2M1打包后的一个字节；实际使用时传入量化后的权重。
+        return torch.randint(0, 256, (*weight.shape[:-1], weight.shape[-1] // 2), dtype=torch.uint8)
+
+    def prepare_weight(weight, gmm_x_dtype):
+        if scene == "A8W8":
+            return weight.to(torch.float8_e5m2).npu()
+        packed_weight = pack_fp4(weight).npu()
+        if gmm_x_dtype == torch_npu.float4_e2m1fn_x2:
+            return torch_npu.npu_format_cast(packed_weight, 29)
+        return torch_npu.npu_format_cast(
+            packed_weight, 29,
+            customize_dtype=gmm_x_dtype,
+            input_dtype=torch_npu.float4_e2m1fn_x2,
+        )
 
     def set_device(rank):
         torch_npu.npu.set_device(rank % rank_per_dev)
@@ -1567,13 +1597,14 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     ):
         x = x.to(torch.bfloat16).npu()
         expert_ids = expert_ids.to(torch.int32).npu()
-        weights1 = weights1.to(torch.float8_e5m2).npu()
+        gmm1_x_dtype = torch_npu.float4_e2m1fn_x2 if scene == "A4W4" else torch.float8_e4m3fn
+        weights1 = prepare_weight(weights1, gmm1_x_dtype)
         weights_scales1 = weights_scales1.to(torch.float8_e8m0fnu).npu()
-        weights2 = weights2.to(torch.float8_e5m2).npu()
+        weights2 = prepare_weight(weights2, torch.float8_e4m3fn)
         weights_scales2 = weights_scales2.to(torch.float8_e8m0fnu).npu()
         expert_scales = expert_scales.to(torch.bfloat16).npu()
 
-        return {
+        kwargs = {
             'x': x,
             'topk_ids': expert_ids,
             'topk_weights': expert_scales,
@@ -1582,6 +1613,12 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
             'l2_weights': [weights2],
             'l2_weights_sf': [weights_scales2],
         }
+        if scene != "A8W8":
+            kwargs.update(
+                weight1_type=torch_npu.float4_e2m1fn_x2,
+                weight2_type=torch_npu.float4_e2m1fn_x2,
+            )
+        return kwargs
 
     def run_megamoe_npu(
         queue, rank, x, expert_ids, weights1, weights_scales1, weights2, weights_scales2, expert_scales
@@ -1603,8 +1640,12 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         distribute_buffer = get_symm_buffer_for_mega_moe(
             ep_group, num_experts=num_experts,
             num_max_tokens_per_rank=num_tokens, num_topk=topK,
-            hidden=H, intermediate_hidden=0,
-            dispatch_quant_mode=4, dispatch_quant_out_dtype=torch.float8_e5m2
+            hidden=H, intermediate_hidden=N // 2,
+            dispatch_quant_mode=4,
+            dispatch_quant_out_dtype=(
+                torch_npu.float4_e2m1fn_x2 if scene == "A4W4" else
+                torch.float8_e4m3fn if scene == "A8W4" else torch.float8_e5m2
+            )
         )
         # 步骤2：运行mega_moe，传入上一步构造的sym_buffer
         y, expert_token_nums = mega_moe(**megamoe_kwargs, sym_buffer=distribute_buffer)
@@ -1693,9 +1734,9 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         expert_ids = torch.stack(
             [torch.randperm(num_experts)[:topK] for _ in range(num_tokens)]
         ).to(torch.int32)
-        l1_weights = torch.randn(weight_shape, dtype=torch.float32).to(torch.float8_e5m2)
+        l1_weights = torch.randn(weight_shape, dtype=torch.float32)
         weight_scales1 = torch.randint(125, 130, weight_scale_shape, dtype=torch.uint8).view(torch.float8_e8m0fnu)
-        l2_weights = torch.randn(weight2_shape, dtype=torch.float32).to(torch.float8_e5m2)
+        l2_weights = torch.randn(weight2_shape, dtype=torch.float32)
         weight_scales2 = torch.randint(125, 130, weight2_scale_shape, dtype=torch.uint8).view(torch.float8_e8m0fnu)
 
         golden_x_list = [x.clone() for _ in range(rank_per_dev)]

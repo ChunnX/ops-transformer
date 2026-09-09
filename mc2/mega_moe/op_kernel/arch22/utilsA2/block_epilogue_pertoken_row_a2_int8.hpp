@@ -11,14 +11,14 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_ROW_A2_INT8_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_ROW_A2_INT8_HPP
 
-#include "../template_linear_algebra_v2/catlass.hpp"
-#include "../template_linear_algebra_v2/arch/resource.hpp"
-#include "../template_linear_algebra_v2/epilogue/dispatch_policy.hpp"
-#include "../template_linear_algebra_v2/gemm_coord.hpp"
-#include "../template_linear_algebra_v2/matrix_coord.hpp"
-#include "../template_linear_algebra_v2/layout/layout.hpp"
+#include "../template_linear_algebra_v2/mega_moe_catlass.hpp"
+#include "../template_linear_algebra_v2/arch/mega_moe_resource.hpp"
+#include "../template_linear_algebra_v2/epilogue/mega_moe_epilogue_dispatch_policy.hpp"
+#include "../template_linear_algebra_v2/mega_moe_gemm_coord.hpp"
+#include "../template_linear_algebra_v2/mega_moe_matrix_coord.hpp"
+#include "../template_linear_algebra_v2/layout/mega_moe_layout.hpp"
 #include "../template_linear_algebra_v2/detail/tla_v2_callback.hpp"
-#include "../template_linear_algebra_v2/epilogue/block/block_epilogue.hpp"
+#include "../template_linear_algebra_v2/epilogue/block/mega_moe_block_epilogue.hpp"
 
 namespace Catlass::Epilogue::Block {
 
@@ -38,6 +38,10 @@ public:
     using LayoutPerTokenScale = LayoutPerTokenScale_;
     using ElementD = typename DType_::Element;
     using LayoutD = typename DType_::Layout;
+
+    // 批量加载 per-token scale 到 UB，避免逐个标量读 GM（读旧值 + 性能差）
+    static constexpr uint32_t SCALE_INPUT_COUNT = 256;
+    static constexpr uint32_t SCALE_INPUT_BYTES = SCALE_INPUT_COUNT * sizeof(float);
 
     // Check data infos
     static_assert(std::is_same_v<ElementC, half> &&
@@ -63,13 +67,16 @@ public:
 
         CATLASS_DEVICE
         Params(int32_t EP_, int32_t expertPerRank_, __gm__ int32_t *ptrTokenPerExpert_, int32_t n2_)
-            : ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_), expertPerRank(expertPerRank_), n2(n2_)
-        {
-        }
+            : ptrTokenPerExpert(ptrTokenPerExpert_),
+              EP(EP_),
+              expertPerRank(expertPerRank_),
+              n2(n2_)
+        {}
     };
 
     CATLASS_DEVICE
-    BlockEpilogue(Arch::Resource<ArchTag> const &resource, Params const &params = Params{}) : params(params)
+    BlockEpilogue(Arch::Resource<ArchTag> const &resource, Params const &params = Params{})
+        : params(params)
     {
         size_t ubOffset = 0;
         int32_t eventVMTE2 = 0;
@@ -93,6 +100,8 @@ public:
             ubCFp32List[i] = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
             ubOffset += blockN * sizeof(float);
         }
+        ubPerTokenScaleInput = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
+        ubOffset += SCALE_INPUT_BYTES;
     }
     CATLASS_DEVICE
     void Finalize()
@@ -103,9 +112,7 @@ public:
         }
     }
     CATLASS_DEVICE
-    ~BlockEpilogue()
-    {
-    }
+    ~BlockEpilogue() {}
 
     CATLASS_DEVICE
     void UpdateParams(Params const &params_)
@@ -132,6 +139,19 @@ public:
             auto gmTileD = gmD[loopIdx * blockN];
             LayoutC layoutUbC{1, blockN};
 
+            uint32_t scaleOffsetInBatch = loopIdx % SCALE_INPUT_COUNT;
+            if (scaleOffsetInBatch == 0) {
+                uint32_t remain = tileLoops - loopIdx;
+                constexpr uint32_t ELE_PER_BLK = BYTE_PER_BLK / sizeof(ElementPerTokenScale);
+                uint32_t copyCount = remain >= SCALE_INPUT_COUNT ?
+                                         SCALE_INPUT_COUNT :
+                                         (remain + ELE_PER_BLK - 1) / ELE_PER_BLK * ELE_PER_BLK;
+                AscendC::DataCopy(ubPerTokenScaleInput, gmPerTokenScale[loopIdx], copyCount);
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+            }
+            ElementPerTokenScale perTokenScale = ubPerTokenScaleInput.GetValue(scaleOffsetInBatch);
+
             // Move C from GM workspace to UB
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
             copyGmToUbC(ubC, gmTileC, layoutUbC, layoutUbC);
@@ -141,9 +161,6 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
             AscendC::Cast(ubCFp32, ubC, AscendC::RoundMode::CAST_NONE, blockN);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
-
-            // Get per-token scale from row loopIdx of gmPerTokenScale
-            ElementPerTokenScale perTokenScale = gmPerTokenScale(loopIdx);
 
             AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);
@@ -182,6 +199,7 @@ private:
 
     AscendC::LocalTensor<float> ubCFp32List[UB_STAGES];
     AscendC::LocalTensor<float> ubMulList[UB_STAGES];
+    AscendC::LocalTensor<float> ubPerTokenScaleInput;
 
     CopyGmToUbC copyGmToUbC;
     CopyUbToGmD copyUbToGmD;

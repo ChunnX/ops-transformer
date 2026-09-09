@@ -26,7 +26,7 @@
 #include "adv_api/pad/broadcast.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "quant_reduce_scatter_tiling_data.h"
-#include "utils.h"
+#include "quant_reduce_scatter_utils.h"
 #include "mte_comm.h"
 #include "vec_comp.h"
 
@@ -42,7 +42,7 @@ template <TemplateTypeClass>
 class QuantReduceScatterMte {
 public:
     __aicore__ inline QuantReduceScatterMte(){};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR scales, GM_ADDR output, TPipe *pipe,
+    __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR scales, GM_ADDR output, TPipe *pipe,
                                 const QuantReduceScatterTilingData *tilingData);
     __aicore__ inline void Process();
 
@@ -87,11 +87,11 @@ private:
 };
 
 template <TemplateTypeClass>
-__aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR x, GM_ADDR scales, GM_ADDR output,
-                                                                 TPipe *tPipe,
+__aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR scales,
+                                                                 GM_ADDR output, TPipe *tPipe,
                                                                  const QuantReduceScatterTilingData *tilingData)
 {
-    mteComm_.InitHcclContext();
+    mteComm_.InitHcclContext(context, tilingData->quantReduceScatterTilingInfo.hcclBufferSize);
     ParseTilingInfo(tilingData);
     tPipe->Reset();
     ComputeXPerBlock(tilingData, tPipe);
@@ -101,8 +101,8 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR x, GM_A
 }
 
 template <TemplateTypeClass>
-__aicore__ inline void
-QuantReduceScatterMte<TemplateType>::ParseTilingInfo(const QuantReduceScatterTilingData *tilingData)
+__aicore__ inline void QuantReduceScatterMte<TemplateType>::ParseTilingInfo(
+    const QuantReduceScatterTilingData *tilingData)
 {
     auto &&info = tilingData->quantReduceScatterTilingInfo;
     totalWinSize_ = info.totalWinSize;
@@ -111,23 +111,23 @@ QuantReduceScatterMte<TemplateType>::ParseTilingInfo(const QuantReduceScatterTil
     if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
         scaleSize_ *= MX_SCALES_LAST_DIM;
     }
-    uint64_t xSliceSize = xSize_ / (mteComm_.hcclContext_->rankDim);
+    uint64_t xSliceSize = xSize_ / (mteComm_.rankDimHccl_);
     xSliceSizeNums_ = xSliceSize / sizeof(XType);
-    scaleSliceNums_ = scaleSize_ / (mteComm_.hcclContext_->rankDim * sizeof(ScalesType));
+    scaleSliceNums_ = scaleSize_ / (mteComm_.rankDimHccl_ * sizeof(ScalesType));
 }
 
 template <TemplateTypeClass>
-__aicore__ inline void
-QuantReduceScatterMte<TemplateType>::ComputeXPerBlock(const QuantReduceScatterTilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void QuantReduceScatterMte<TemplateType>::ComputeXPerBlock(
+    const QuantReduceScatterTilingData *tilingData, TPipe *tPipe)
 {
     auto &&info = tilingData->quantReduceScatterTilingInfo;
 
     // 固定开销：不随 xPerBlock_ 变化的 buffer
-    uint64_t mteCommFixedSpace = BUFFER_NUM * X_BLOCK_BYTES +                      // scaleQueue_
-                                 UB_ALIGN_BYTES +                                  // winFlagsBuf_
-                                 UB_ALIGN_BYTES +                                  // writeStateBuf_
-                                 mteComm_.hcclContext_->rankDim * UB_ALIGN_BYTES + // readStateBuf_
-                                 mteComm_.hcclContext_->rankDim * UB_ALIGN_BYTES;  // stateResetBuf_
+    uint64_t mteCommFixedSpace = BUFFER_NUM * X_BLOCK_BYTES +             // scaleQueue_
+                                 UB_ALIGN_BYTES +                         // winFlagsBuf_
+                                 UB_ALIGN_BYTES +                         // writeStateBuf_
+                                 mteComm_.rankDimHccl_ * UB_ALIGN_BYTES + // readStateBuf_
+                                 mteComm_.rankDimHccl_ * UB_ALIGN_BYTES;  // stateResetBuf_
 
     // 动态开销：每增加 1 个 x 需要的 UB 字节（整数部分，分数部分见下方比例校正）
     uint64_t baseDynamic = BUFFER_NUM * sizeof(OutputType) + // xOutQueue_
@@ -242,7 +242,6 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ReadDataBlockReduceS
     scaleInQue_.FreeTensor(scaleTmpTensor);
 }
 
-
 template <TemplateTypeClass>
 __aicore__ inline void QuantReduceScatterMte<TemplateType>::ClearSumTensor()
 {
@@ -278,9 +277,9 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
 
         // 遍历每张卡，读取其Win区的数据，采取错卡序读取，从自己卡上读起
         /* rank0: [0,1,2]; rank1: [1,2,0]; rank2: [2,0,1] */
-        uint32_t startRankId = mteComm_.hcclContext_->rankId;
-        for (uint32_t i = 0; i < mteComm_.hcclContext_->rankDim; ++i) {
-            uint32_t remoteRankId = (startRankId + i) % mteComm_.hcclContext_->rankDim;
+        uint32_t startRankId = mteComm_.rankIdHccl_;
+        for (uint32_t i = 0; i < mteComm_.rankDimHccl_; ++i) {
+            uint32_t remoteRankId = (startRankId + i) % mteComm_.rankDimHccl_;
 
             // 获取对端Win区中数据区相关的地址
             GM_ADDR remoteDataSpaceGm = mteComm_.GetWinDataAddrGm(remoteRankId, mteComm_.winBufferFlags_);
@@ -290,8 +289,8 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
 
             // 读取对端对应地址的 x 和 scale数据，进行反量化和求和
             // ReduceScatter过程，all2all仅需与rankId相关的数据，加上本卡偏移
-            uint64_t curRankXOffset = curXOffset + mteComm_.hcclContext_->rankId * xSliceSizeNums_;
-            uint64_t curRankScaleOffset = curScaleOffset + mteComm_.hcclContext_->rankId * scaleSliceNums_;
+            uint64_t curRankXOffset = curXOffset + mteComm_.rankIdHccl_ * xSliceSizeNums_;
+            uint64_t curRankScaleOffset = curScaleOffset + mteComm_.rankIdHccl_ * scaleSliceNums_;
             ReadDataBlockReduceSum(curRankXOffset, curRankScaleOffset, curXNum, curScaleNum);
         }
 

@@ -11,7 +11,7 @@
 #ifndef SPARSE_MLA_SPARSE_COMPRESSION_CHECKER_H
 #define SPARSE_MLA_SPARSE_COMPRESSION_CHECKER_H
 
-#include "base_checker.h"
+#include "base_checker_sparse_flash_mla.h"
 
 namespace optiling {
 namespace sparse_mla_checker {
@@ -27,8 +27,7 @@ private:
     ge::graphStatus CheckIndex(const CheckContext &context, const TensorParam &param, const char *name) const;
     ge::graphStatus CheckTopkLength(const CheckContext &context, const TensorParam &param, const char *name) const;
     ge::graphStatus CheckIndexShape(const CheckContext &context, const TensorParam &param, const char *name) const;
-    ge::graphStatus CheckTopkLengthShape(const CheckContext &context, const TensorParam &param,
-                                         const char *name) const;
+    ge::graphStatus CheckTopkLengthShape(const CheckContext &context, const TensorParam &param, const char *name) const;
 };
 
 } // namespace sparse_mla_checker

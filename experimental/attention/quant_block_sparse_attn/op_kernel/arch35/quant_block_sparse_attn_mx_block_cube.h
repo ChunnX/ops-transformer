@@ -106,64 +106,18 @@ public:
     }
 
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                       MxRunInfo &runInfo, const MxConstInfo &constInfo, uint32_t subLoop)
+                                       MxRunInfo &runInfo, const MxConstInfo &constInfo)
     {
-        // C1: K[256,D] x Q^T[D,128]；K 由多个 sparse block 拼接。
-        const uint32_t s2CalcSize = GetSubLoopS2Size(runInfo, subLoop);
+        IterateBmm1Impl<0U, true, true>(outputBuf, runInfo, constInfo);
+    }
 
-        Buffer<BufferType::L1> qBuf;
-        const uint64_t qScaleOffset = static_cast<uint64_t>(AlignUp32(runInfo.actMSize)) * constInfo.dSize;
-        if (unlikely(runInfo.isFirstS2Loop && subLoop == 0U)) {
-            // Q 用 ND2NZ，QScale 用 DN2NZ；后续 S2 loop 复用。
-            qBuf = l1QBuffers_.Get();
-            qBuf.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<INPUT_T> qTensor = qBuf.GetTensor<INPUT_T>();
-            CopyToL1Nd2Nz<INPUT_T>(qTensor, queryGm_[runInfo.queryOffset], runInfo.actMSize, constInfo.dSize,
-                                   constInfo.n2GD);
-
-            LocalTensor<SCALE_T> qScaleTensor = qBuf.GetTensor<SCALE_T>(qScaleOffset);
-            MxCopyScaleToL1Dn2Nz<SCALE_T>(qScaleTensor, qScaleGm_[runInfo.queryScaleOffset],
-                                          constInfo.queryScaleDSize * constInfo.scaleLastDim, runInfo.actMSize,
-                                          constInfo.qScaleN1D);
-            qBuf.Set<HardEvent::MTE2_MTE1>();
-        } else {
-            qBuf = l1QBuffers_.GetPre();
-            qBuf.Set<HardEvent::MTE2_MTE1>();
-        }
-
-        Buffer<BufferType::L1> kBuf = l1KVBuffers_.Get();
-        kBuf.Wait<HardEvent::MTE1_MTE2>();
-        LocalTensor<INPUT_T> kTensor = kBuf.GetTensor<INPUT_T>();
-        const uint64_t kScaleOffset = static_cast<uint64_t>(AlignUp32(s2CalcSize)) * constInfo.dSize;
-        LocalTensor<SCALE_T> kScaleTensor = kBuf.GetTensor<SCALE_T>(kScaleOffset);
-        // K/KScale 共用 sparse overlap 计算，分别发起 PA data 与 scale 搬运。
-        CopyKeyAndScaleToL1(kTensor, kScaleTensor, runInfo, constInfo, s2CalcSize, subLoop);
-        kBuf.Set<HardEvent::MTE2_MTE1>();
-
-        kBuf.Wait<HardEvent::MTE2_MTE1>();
-        qBuf.Wait<HardEvent::MTE2_MTE1>();
-
-        Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers_.Get();
-        mm1ResL0C.Wait<HardEvent::FIX_M>();
-        // MxMatmulFull 同时消费 fp8 data 与 e8m0 scale。
-        MMParam param = MxMakeMMParam(s2CalcSize, runInfo.actMSize, constInfo.dSize, false, true);
-        MxMatmulFull<INPUT_T, INPUT_T, MM_T, S2_SPLIT, M_BASE, D_BASE, ABLayout::MK, ABLayout::KN,
-                     BuffersPolicyDB<BufferType::L0A>, BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T,
-                     mx_fp8_e4m3_t, mx_fp8_e4m3_t>(kTensor, qBuf.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_,
-                                                   mm1ResL0C.GetTensor<MM_T>(), param, kScaleTensor,
-                                                   qBuf.GetTensor<SCALE_T>(qScaleOffset));
-
-        if (unlikely(runInfo.isLastS2Loop && IsLastSubLoop(runInfo, subLoop))) {
-            qBuf.Set<HardEvent::MTE1_MTE2>();
-        }
-        kBuf.Set<HardEvent::MTE1_MTE2>();
-        mm1ResL0C.Set<HardEvent::M_FIX>();
-        mm1ResL0C.Wait<HardEvent::M_FIX>();
-
-        outputBuf.WaitCrossCore();
-        FixpipeMm1(outputBuf.GetTensor<MM_T>(), mm1ResL0C.GetTensor<MM_T>(), runInfo, s2CalcSize);
-        mm1ResL0C.Set<HardEvent::FIX_M>();
-        outputBuf.SetCrossCore();
+    __aicore__ inline void IterateBmm1ReuseQ(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf0,
+                                             Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf1,
+                                             MxRunInfo &runInfo, const MxConstInfo &constInfo)
+    {
+        // Both 256-column C1 subLoops share Q/QScale. Keep Q resident in L0B across the paired MMADs.
+        IterateBmm1Impl<0U, true, false>(outputBuf0, runInfo, constInfo);
+        IterateBmm1Impl<1U, false, true>(outputBuf1, runInfo, constInfo);
     }
 
     __aicore__ inline void IterateBmm2(MxBmm2Buf &outputBuf,
@@ -205,8 +159,15 @@ public:
             vBuf.Set<HardEvent::MTE2_MTE1>();
             vBuf.Wait<HardEvent::MTE2_MTE1>();
 
-            MMParam param =
-                MxMakeMMParam(M_BASE, constInfo.dSizeV, AlignUp64(realK), true, false, kIdx == 0U, kIdx == 0U);
+            // C2: P[M,K] * V[K,DV] -> C2[M,DV]。
+            const bool isFirstKLoop = kIdx == 0U;
+            MMParam param = MxMakeMMParam(M_BASE,           // singleM：固定的 Q block 行数。
+                                          constInfo.dSizeV, // singleN：V 的 head dimension。
+                                          AlignUp64(realK), // singleK：当前 K 分块按 64 对齐后的长度。
+                                          true,             // isLeftTranspose：P 按 [M,K] 转置视图加载。
+                                          false,            // isRightTranspose：V 按 [K,DV] 加载，不转置。
+                                          isFirstKLoop,     // cmatrixInitVal：首个 K 分块初始化 C 矩阵。
+                                          isFirstKLoop);    // isOutKFisrt：标记当前是外层 K 循环首块。
             // P 转置，V 保持 KN。
             MxMatmulFull<INPUT_T, INPUT_T, MM_T, M_BASE, DV_BASE, baseK, ABLayout::MK, ABLayout::KN,
                          BuffersPolicyDB<BufferType::L0A>, BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T,
@@ -225,21 +186,116 @@ public:
     }
 
 private:
-    __aicore__ inline uint32_t AlignUp32(uint32_t value) const { return (value + 31U) >> 5 << 5; }
-
-    __aicore__ inline uint32_t AlignUp64(uint32_t value) const { return (value + 63U) >> 6 << 6; }
-
-    __aicore__ inline uint32_t GetSubLoopS2Size(const MxRunInfo &runInfo, uint32_t subLoop) const
+    template <uint32_t SUB_LOOP, bool LOAD_Q_TO_L0B, bool RELEASE_Q_L0B>
+    __aicore__ inline void IterateBmm1Impl(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+                                           MxRunInfo &runInfo, const MxConstInfo &constInfo)
     {
-        if (runInfo.actSingleLoopS2Size <= S2_SPLIT) {
-            return subLoop == 0U ? runInfo.actSingleLoopS2Size : 0U;
+        static_assert(SUB_LOOP < 2U, "MX C1 only supports subLoop 0/1");
+        // C1: K[256,D] x Q^T[D,128]；K 由多个 sparse block 拼接。
+        const uint32_t s2CalcSize = GetSubLoopS2Size<SUB_LOOP>(runInfo);
+
+        Buffer<BufferType::L1> qBuf;
+        const uint64_t qScaleOffset = static_cast<uint64_t>(AlignUp32(runInfo.actMSize)) * constInfo.dSize;
+        if constexpr (LOAD_Q_TO_L0B) {
+            if (unlikely(runInfo.isFirstS2Loop)) {
+                // Q 用 ND2NZ，QScale 用 DN2NZ；后续 S2 loop 复用。
+                qBuf = l1QBuffers_.Get();
+                qBuf.Wait<HardEvent::MTE1_MTE2>();
+                LocalTensor<INPUT_T> qTensor = qBuf.GetTensor<INPUT_T>();
+                CopyToL1Nd2Nz<INPUT_T>(qTensor, queryGm_[runInfo.queryOffset], runInfo.actMSize, constInfo.dSize,
+                                       constInfo.n2GD);
+
+                LocalTensor<SCALE_T> qScaleTensor = qBuf.GetTensor<SCALE_T>(qScaleOffset);
+                MxCopyScaleToL1Dn2Nz<SCALE_T>(qScaleTensor, qScaleGm_[runInfo.queryScaleOffset],
+                                              constInfo.queryScaleDSize * constInfo.scaleLastDim, runInfo.actMSize,
+                                              constInfo.qScaleN1D);
+                qBuf.Set<HardEvent::MTE2_MTE1>();
+            } else {
+                qBuf = l1QBuffers_.GetPre();
+            }
+        } else {
+            // Paired subLoop1 reuses both the current L1 Q buffer and its already loaded L0B tile.
+            qBuf = l1QBuffers_.GetPre();
         }
-        return subLoop == 0U ? S2_SPLIT : runInfo.actSingleLoopS2Size - S2_SPLIT;
+
+        Buffer<BufferType::L1> kBuf = l1KVBuffers_.Get();
+        kBuf.Wait<HardEvent::MTE1_MTE2>();
+        LocalTensor<INPUT_T> kTensor = kBuf.GetTensor<INPUT_T>();
+        const uint64_t kScaleOffset = static_cast<uint64_t>(AlignUp32(s2CalcSize)) * constInfo.dSize;
+        LocalTensor<SCALE_T> kScaleTensor = kBuf.GetTensor<SCALE_T>(kScaleOffset);
+        // K/KScale 共用 sparse overlap 计算，分别发起 PA data 与 scale 搬运。
+        CopyKeyAndScaleToL1(kTensor, kScaleTensor, runInfo, constInfo, s2CalcSize, SUB_LOOP);
+        kBuf.Set<HardEvent::MTE2_MTE1>();
+
+        kBuf.Wait<HardEvent::MTE2_MTE1>();
+        if constexpr (LOAD_Q_TO_L0B) {
+            if (unlikely(runInfo.isFirstS2Loop)) {
+                qBuf.Wait<HardEvent::MTE2_MTE1>();
+            }
+        }
+
+        Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers_.Get();
+        mm1ResL0C.Wait<HardEvent::FIX_M>();
+        // MxMatmulFull 同时消费 fp8 data 与 e8m0 scale。
+        // C1: K[S2,D] * Q^T[D,M] -> C1[S2,M]。
+        MMParam param = MxMakeMMParam(s2CalcSize,       // singleM：当前 subLoop 的实际 S2 长度。
+                                      runInfo.actMSize, // singleN：当前 Q block 的实际 M 长度。
+                                      constInfo.dSize,  // singleK：Q/K head dimension。
+                                      false,            // isLeftTranspose：K 按 [S2,D] 加载，不转置。
+                                      true);            // isRightTranspose：Q 按 [D,M] 转置视图加载。
+        if constexpr (LOAD_Q_TO_L0B && RELEASE_Q_L0B) {
+            MxMatmulFull<INPUT_T, INPUT_T, MM_T, S2_SPLIT, M_BASE, D_BASE, ABLayout::MK, ABLayout::KN,
+                         BuffersPolicyDB<BufferType::L0A>, BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T,
+                         mx_fp8_e4m3_t, mx_fp8_e4m3_t>(kTensor, qBuf.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_,
+                                                       mm1ResL0C.GetTensor<MM_T>(), param, kScaleTensor,
+                                                       qBuf.GetTensor<SCALE_T>(qScaleOffset));
+        } else {
+            MxMatmulFullReuseB<LOAD_Q_TO_L0B, RELEASE_Q_L0B, INPUT_T, INPUT_T, MM_T, S2_SPLIT, M_BASE, D_BASE,
+                               ABLayout::MK, ABLayout::KN, BuffersPolicyDB<BufferType::L0A>,
+                               BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
+                kTensor, qBuf.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_, mm1ResL0C.GetTensor<MM_T>(), param,
+                kScaleTensor, qBuf.GetTensor<SCALE_T>(qScaleOffset));
+        }
+
+        if constexpr (RELEASE_Q_L0B) {
+            if (unlikely(runInfo.isLastS2Loop)) {
+                qBuf.Set<HardEvent::MTE1_MTE2>();
+            }
+        }
+        kBuf.Set<HardEvent::MTE1_MTE2>();
+        mm1ResL0C.Set<HardEvent::M_FIX>();
+        mm1ResL0C.Wait<HardEvent::M_FIX>();
+
+        outputBuf.WaitCrossCore();
+        FixpipeMm1(outputBuf.GetTensor<MM_T>(), mm1ResL0C.GetTensor<MM_T>(), runInfo, s2CalcSize);
+        mm1ResL0C.Set<HardEvent::FIX_M>();
+        outputBuf.SetCrossCore();
     }
 
-    __aicore__ inline bool IsLastSubLoop(const MxRunInfo &runInfo, uint32_t subLoop) const
+    __aicore__ inline uint32_t AlignUp32(uint32_t value) const
     {
-        return (runInfo.actSingleLoopS2Size <= S2_SPLIT) || (subLoop != 0U);
+        return (value + 31U) >> 5 << 5;
+    }
+
+    __aicore__ inline uint32_t AlignUp64(uint32_t value) const
+    {
+        return (value + 63U) >> 6 << 6;
+    }
+
+    template <uint32_t SUB_LOOP>
+    __aicore__ inline uint32_t GetSubLoopS2Size(const MxRunInfo &runInfo) const
+    {
+        static_assert(SUB_LOOP < 2U, "MX C1 only supports subLoop 0/1");
+        if (runInfo.actSingleLoopS2Size <= S2_SPLIT) {
+            if constexpr (SUB_LOOP == 0U) {
+                return runInfo.actSingleLoopS2Size;
+            }
+            return 0U;
+        }
+        if constexpr (SUB_LOOP == 0U) {
+            return S2_SPLIT;
+        }
+        return runInfo.actSingleLoopS2Size - S2_SPLIT;
     }
 
     __aicore__ inline uint32_t GetBlockOverlapStart(uint32_t tileStart, uint32_t blockStart) const

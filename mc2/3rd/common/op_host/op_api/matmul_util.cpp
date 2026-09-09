@@ -32,7 +32,7 @@
 #include "opdev/shape_utils.h"
 #include "op_api/op_api_def.h"
 #include "common/op_host/op_api/cube_util.h"
-#include "common/op_host/math_util.h"
+#include "common/op_host/mc2_3rd_math_util.h"
 
 using namespace std;
 using namespace op;
@@ -170,7 +170,6 @@ static bool CheckShapeValid(const aclTensor *self, const aclTensor *mat2, bool t
     return true;
 }
 
-
 static bool CheckSupportSingleSplitKFp16Bf16(const aclTensor *self, const aclTensor *mat2, const DataType selfDtype,
                                              const DataType mat2Dtype)
 {
@@ -242,7 +241,6 @@ static aclnnStatus SetMatmulOpSupportInfo(const aclTensor *self, const aclTensor
         isNdNzIn ? mmOpInfo.support_info.mat2_dtype : mmOpInfo.support_info.output_dtype;
     return ACLNN_SUCCESS;
 }
-
 
 static inline bool IsSplitKThenForbiddenNd2Nz(const uint64_t mDim, const uint64_t kDim, const uint64_t nDim,
                                               const bool transposeX1, const bool transposeX2)

@@ -30,7 +30,7 @@ namespace GmmKernel {
 constexpr uint32_t L1_TILE_K = 256U;
 constexpr uint32_t SCALE_K_L1_RATE = 2U;
 
-using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>; // 3: SwizzleOffset
+using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 0>; // 3: SwizzleOffset
 
 // 根据数据类型路径选择对应的 BlockMmad 实现。
 template <bool IsA8W4, typename C>
@@ -57,9 +57,8 @@ struct BlockMmadSelector<true, C> {
 
 // 汇总 GMM1/GMM2 在不同量化路径下共用的类型、shape 和 layout 配置。
 template <bool IsA8W4, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
-          typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false,
-          bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsLayered = false, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
+          typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool TopkWeightsPrefetch = false,
+          bool IsShared = false, bool IsLayered = false, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
 struct Config {
     static constexpr bool IS_SHARED = IsShared;
     static constexpr bool IS_WEIGHT_NZ = IsWeightNZ;
@@ -102,6 +101,8 @@ struct Config {
     using LayoutScaleBType = decltype(MakeLayoutScaleB{}(uint32_t{}, uint32_t{}));
     using LayoutCType = decltype(MakeLayoutC{}(uint32_t{}, uint32_t{}));
     using LayoutBiasType = decltype(MakeLayoutBias{}(uint32_t{}, uint32_t{}));
+    using LayoutATrait = Te::get_layout_trait<LayoutAType>;
+    using LayoutScaleATrait = Te::get_layout_trait<LayoutScaleAType>;
 
     using BlockMmad = typename BlockMmadSelector<IsA8W4, Config>::type;
     using BlockPrologue =
@@ -189,8 +190,7 @@ struct Config {
         const uint64_t doubleScaleBBytes = scaleBBytesPerUnit * maxKL1Units;
         const uint64_t doubleScaleBytes = scaleBytesPerUnit * maxKL1Units;
         const bool canUseDoubleKL1 = doubleDataBytes + doubleScaleBytes <= halfL1Size &&
-                                     doubleScaleABytes <= scaleTransferBytes &&
-                                     doubleScaleBBytes <= scaleTransferBytes;
+                                     doubleScaleABytes <= scaleTransferBytes && doubleScaleBBytes <= scaleTransferBytes;
         const uint64_t kL1Units = canUseDoubleKL1 ? maxKL1Units : 1U;
         const uint64_t kL1 = static_cast<uint64_t>(L1_TILE_K) * kL1Units;
         const uint64_t dataBytes = dataBytesPerUnit * kL1Units;
@@ -225,8 +225,7 @@ struct Config {
         return BlockMmadTilingConfig{blockM, L1_TILE_N, CalcAdaptiveL1Params(blockM, L1_TILE_N, k)};
     }
 
-    static __aicore__ inline BlockMmadTilingConfig SelectBlockMmadTilingConfig(uint32_t m, uint32_t k,
-                                                                               uint32_t tileM)
+    static __aicore__ inline BlockMmadTilingConfig SelectBlockMmadTilingConfig(uint32_t m, uint32_t k, uint32_t tileM)
     {
         BlockMmadTilingConfig baselineConfig = MakeBaselineBlockMmadTilingConfig(tileM);
         if (m == 0U || m >= tileM) {
@@ -239,10 +238,8 @@ struct Config {
              * BlockMmad 还会独立按实际 M/N 选择 kaL1。scale 使用专用实现固定的 4096K 窗口。
              */
             return BlockMmadTilingConfig{
-                tileM,
-                L1_TILE_N,
-                typename BlockMmad::L1Params{
-                    .kL1 = 0U, .scaleKL1 = Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE}};
+                tileM, L1_TILE_N,
+                typename BlockMmad::L1Params{.kL1 = 0U, .scaleKL1 = Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE}};
         }
 
         if constexpr (g_coreType == AscendC::AIC) {
@@ -305,8 +302,7 @@ struct Config {
     }
 
     __aicore__ static inline ProblemConfig BuildGmm1ProblemConfig(const ProblemShape &problemShape,
-                                                                  const BlockJobContext &blockJob,
-                                                                  uint32_t gmm1TileM)
+                                                                  const BlockJobContext &blockJob, uint32_t gmm1TileM)
     {
         ProblemConfig config;
         config.m = Get<M_VALUE>(problemShape);
@@ -320,8 +316,7 @@ struct Config {
     }
 
     __aicore__ static inline ProblemConfig BuildGmm2ProblemConfig(const ProblemShape &problemShape,
-                                                                  const BlockJobContext &blockJob,
-                                                                  uint32_t gmm1TileM)
+                                                                  const BlockJobContext &blockJob, uint32_t gmm1TileM)
     {
         ProblemConfig config;
         config.m = Get<M_VALUE>(problemShape);
@@ -340,6 +335,24 @@ struct Config {
         layouts.a = MakeLayoutA{}(config.m, config.k);
         layouts.b = MakeLayoutB{}(config.k, config.n);
         layouts.scaleA = MakeLayoutScaleA{}(config.m, config.scaleK);
+        layouts.scaleB = MakeLayoutScaleB{}(config.scaleK, config.n);
+        layouts.c = MakeLayoutC{}(config.m, config.n);
+        layouts.bias = MakeLayoutBias{}(1U, config.n);
+        return layouts;
+    }
+
+    __aicore__ static inline LayoutBundle BuildLayouts(const ProblemConfig &config, const StridedAConfig &aConfig)
+    {
+        LayoutBundle layouts;
+        auto aShape = Te::make_shape(Te::make_shape(Te::_1{}, config.m), Te::make_shape(Te::_1{}, config.k));
+        auto aStride =
+            Te::make_stride(Te::make_stride(Te::_0{}, aConfig.rowStrideElements), Te::make_stride(Te::_0{}, Te::_1{}));
+        layouts.a = Te::make_pattern_layout<LayoutA, LayoutATrait>(aShape, aStride);
+        layouts.b = MakeLayoutB{}(config.k, config.n);
+        auto scaleAShape = Te::make_shape(Te::make_shape(Te::_1{}, config.m), Te::make_shape(Te::_1{}, config.scaleK));
+        auto scaleAStride = Te::make_stride(Te::make_stride(Te::_0{}, aConfig.scaleRowStrideElements),
+                                            Te::make_stride(Te::_0{}, Te::_1{}));
+        layouts.scaleA = Te::make_pattern_layout<LayoutScaleA, LayoutScaleATrait>(scaleAShape, scaleAStride);
         layouts.scaleB = MakeLayoutScaleB{}(config.scaleK, config.n);
         layouts.c = MakeLayoutC{}(config.m, config.n);
         layouts.bias = MakeLayoutBias{}(1U, config.n);
@@ -377,12 +390,8 @@ __aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &
 {
     using BlockMmad = decltype(context.blockMmad);
     const auto &tilingConfig = config.blockMmadTiling;
-    const BlockMmadInitConfig requestedConfig{
-        config.k,
-        tilingConfig.tileM,
-        tilingConfig.tileN,
-        tilingConfig.l1Params.kL1,
-        tilingConfig.l1Params.scaleKL1};
+    const BlockMmadInitConfig requestedConfig{config.k, tilingConfig.tileM, tilingConfig.tileN,
+                                              tilingConfig.l1Params.kL1, tilingConfig.l1Params.scaleKL1};
     if (!context.initialized || context.initConfig != requestedConfig) {
         typename BlockMmad::BlockShape l0TileShape{tilingConfig.tileM, tilingConfig.tileN, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
@@ -416,8 +425,7 @@ __aicore__ inline void SetWaveWeightL2CacheHint(const typename MatmulConfig::Pro
     if constexpr (!IsWeightNz) {
         bypassWeightL2 = bypassWeightL2 && config.k % 256U == 0U;
     }
-    gmB.SetL2CacheHint(
-        bypassWeightL2 ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
+    gmB.SetL2CacheHint(bypassWeightL2 ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
 
     /*
      * ScaleBDN 的连续维是 N，每个 logical N 含 C0_SIZE_SCALE 个 scale。这里检查完整 N 行跨度；
@@ -429,8 +437,7 @@ __aicore__ inline void SetWaveWeightL2CacheHint(const typename MatmulConfig::Pro
     uint64_t scaleNStrideBytes = static_cast<uint64_t>(config.n) * MatmulConfig::C0_SIZE_SCALE *
                                  sizeof(typename MatmulConfig::ElementMxScaleBType);
     bool bypassScaleL2 = hasNoLaterWeightReuse && scaleNStrideBytes % cacheLineBytes == 0U;
-    gmScaleB.SetL2CacheHint(
-        bypassScaleL2 ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
+    gmScaleB.SetL2CacheHint(bypassScaleL2 ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
 }
 
 // 保存 GMM 执行所需的全部 tensor；当 bias 或 C 无实际存储时，调用方传入零地址占位 tensor。

@@ -199,7 +199,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>mask_mode=0 时不使用；mask_mode=3 时为 causal mask。</td>
       <td>UINT8</td>
       <td>ND</td>
-      <td>mask_mode=0 时可不传或传空指针；mask_mode=3:(2048,2048)</td>
+      <td>mask_mode=0 时可不传或传空指针，传入非空则报错；mask_mode=3:(2048,2048)</td>
     </tr>
     <tr>
       <td>cu_seqlens_q</td>
@@ -595,12 +595,12 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 - 存在性约束
 
-  - `query`、`key`、`value`、`q_descale`、`k_descale`、`v_descale`、`sparse_indices`、`sparse_seq_len`、`metadata` 必须传入；`p_scale` 允许传空，传空时使用默认值 1.0 进行量化计算；`atten_mask` 在 `mask_mode=3` 时必须传入，在 `mask_mode=0` 时可不传或传空指针。
+  - `query`、`key`、`value`、`q_descale`、`k_descale`、`v_descale`、`sparse_indices`、`sparse_seq_len`、`metadata` 必须传入；`p_scale` 允许传空，传空时使用默认值 1.0 进行量化计算；`atten_mask` 在 `mask_mode=3` 时必须传入，在 `mask_mode=0` 时可不传或传空指针；若在 `mask_mode=0` 时传入非空掩码，Tiling 阶段将上报错误。
   - 当前算子支持 4D PA_BNBD KV Cache 输入和 BF16 attention_out 输出。
 
 - 一致性约束
 
-  - `quant_mode=1` 时，`BatchSize` 的取值范围必须为 `(0, 65536]`，`N1` 的取值范围必须为 `(0, 128]`；`N2`、`G` 均必须大于 0。
+  - `quant_mode=1` 时，`BatchSize` 的取值范围必须为 `(0, 65536]`，`N1` 的取值范围必须为 `(0, 128]`；`N2`、`G` 均必须大于 0，且 `N2` <= `8`，`G` <= `16`。
   - `N1` 必须能被 `N2` 整除。
   - `sparse_indices` 必须按 `(BatchSize, N1, max_Qb, max_Kb)` 传入，`sparse_seq_len` 必须按 `(BatchSize, N1, max_Qb)` 传入；当前主算子默认这两个 Tensor 的 shape 正确，不在 host 中对max_Qb和max_Kb进行拦截校验。
   - `block_table` 必须按 `(BatchSize, max_block_num_per_batch)` 传入。主算子使用 `sparse_indices.shape[2]` 作为 `max_Qb`，使用 `block_table.shape[1]` 作为 `max_block_num_per_batch`，二者均必须大于 0。
@@ -723,7 +723,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 - 存在性约束
 
-  - `mask_mode=0` 时，`atten_mask` 为可选输入，可以不传或传入空指针。
+  - `mask_mode=0` 时，`atten_mask` 为可选输入，可以不传或传入空指针；若传入非空 `atten_mask`，Tiling 阶段会拦截并报错。
   - `mask_mode=3` 时，`atten_mask` 为必选输入。
 
 - 一致性约束

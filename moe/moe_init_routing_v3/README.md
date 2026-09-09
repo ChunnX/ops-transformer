@@ -68,7 +68,7 @@
     expandedXOut[i]=quantResult[sortedRowIdx[i]\%NUM\_ROWS]
     $$
 
-  6.expandedRowIdxOut的有效元素数量availableIdxNum计算方式为，expertIdx中activeExpertRangeOptional范围内的元素的个数
+  6.expandedRowIdxOut的有效元素数量availableIdxNum计算方式为，expertIdx中activeExpertRangeOptional范围内的元素的个数，-1也不在该范围内，表示无效专家，不参与路由计算：
     $$
     availableIdxNum = |\{x\in expertIdx| expert\_start \le x<expert\_end \ \}|
     $$
@@ -101,7 +101,7 @@
       <tr>
         <td>expertIdx</td>
         <td>输入</td>
-        <td>每一行特征对应的K个处理专家，里面元素专家id不能超过专家数。对应公式中expertIdx。</td>
+        <td>每一行特征对应的K个处理专家，里面元素专家id不能超过专家数，-1表示无效专家（该位置不参与路由，会被过滤）。对应公式中expertIdx。</td>
         <td>INT32</td>
         <td>ND</td>
       </tr>
@@ -129,7 +129,7 @@
       <tr>
         <td>expertCapacity</td>
         <td>属性</td>
-        <td>表示每个专家能够处理的tokens数，取值范围大于等于0。</td>
+        <td>表示每个专家能够处理的tokens数。在Dropless场景下不使用该参数；在DropPad场景下必须校验且取值范围为(0, NUM_ROWS]。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
@@ -143,7 +143,7 @@
       <tr>
         <td>dropPadMode</td>
         <td>属性</td>
-        <td>表示是否为DropPad场景，取值为0 和1。<br>• 0：表示Dropless场景，该场景下不校验expertCapacity。<br>• 1：表示DropPad场景。</td>
+        <td>表示是否为DropPad场景，取值为0 和1。<br>• 0：表示Dropless场景。<br>• 1：表示DropPad场景。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
@@ -218,7 +218,7 @@
 
 - 输入值域限制：
   - activeNum当前未使用，校验需等于NUM_ROWS*K。
-  - expertCapacity在Dropless场景下仅校验其值，不使用该参数；在DropPad场景下必须校验且取值范围为(0, NUM_ROWS]。
+  - expertCapacity在Dropless场景下不使用该参数；在DropPad场景下必须校验且取值范围为(0, NUM_ROWS]。
   - dropPadMode支持取值为0和1，分别代表Dropless场景和DropPad场景。
   - expertTokensNumType当前只支持0、1 和2，分别代表cumsum模式、count模式和key\_value模式。
   - expertTokensNumFlag只支持true，代表输出expertTokensCountOrCumsumOut。

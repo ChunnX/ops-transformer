@@ -8,13 +8,16 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "common_checker.h"
+#include "common_checker_sparse_flash_mla.h"
 #include <cmath>
 #include <vector>
 #include "log/log.h"
 
 namespace optiling {
 namespace sparse_mla_checker {
+constexpr uint32_t DIM_IDX_TWO = 2;
+constexpr uint32_t DIM_IDX_THREE = 3;
+
 namespace {
 const char *Op(const CheckContext &context)
 {
@@ -83,25 +86,24 @@ ge::graphStatus CommonChecker::CheckOutput(const CheckContext &context) const
 
 ge::graphStatus CommonChecker::CheckSinglePara(const CheckContext &context) const
 {
-    OP_CHECK_IF(context.qLayout != Layout::BSND && context.qLayout != Layout::TND,
-                OP_LOGE_FOR_INVALID_VALUE(Op(context), "layout_q",
-                                          std::to_string(static_cast<uint32_t>(context.qLayout)).c_str(),
-                                          "BSND or TND"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.kvLayout != Layout::BSND && context.kvLayout != Layout::TND &&
-                    context.kvLayout != Layout::PA_BBND,
-                OP_LOGE_FOR_INVALID_VALUE(Op(context), "layout_kv",
-                                          std::to_string(static_cast<uint32_t>(context.kvLayout)).c_str(),
-                                          "BSND, TND or PA_BBND"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!std::isfinite(context.softmaxScale),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(Op(context), "softmax_scale",
-                                                      std::to_string(context.softmaxScale).c_str(),
-                                                      "Softmax_scale must be finite"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        context.qLayout != Layout::BSND && context.qLayout != Layout::TND,
+        OP_LOGE_FOR_INVALID_VALUE(Op(context), "layout_q",
+                                  std::to_string(static_cast<uint32_t>(context.qLayout)).c_str(), "BSND or TND"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        context.kvLayout != Layout::BSND && context.kvLayout != Layout::TND && context.kvLayout != Layout::PA_BBND,
+        OP_LOGE_FOR_INVALID_VALUE(Op(context), "layout_kv",
+                                  std::to_string(static_cast<uint32_t>(context.kvLayout)).c_str(),
+                                  "BSND, TND or PA_BBND"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        !std::isfinite(context.softmaxScale),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            Op(context), "softmax_scale", std::to_string(context.softmaxScale).c_str(), "Softmax_scale must be finite"),
+        return ge::GRAPH_FAILED);
     if (CheckQuery(context) != ge::GRAPH_SUCCESS || CheckKv(context, context.oriKv, "ori_kv") != ge::GRAPH_SUCCESS ||
-        CheckKv(context, context.cmpKv, "cmp_kv") != ge::GRAPH_SUCCESS ||
-        CheckOutput(context) != ge::GRAPH_SUCCESS) {
+        CheckKv(context, context.cmpKv, "cmp_kv") != ge::GRAPH_SUCCESS || CheckOutput(context) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -109,30 +111,28 @@ ge::graphStatus CommonChecker::CheckSinglePara(const CheckContext &context) cons
 
 ge::graphStatus CommonChecker::CheckParaExistence(const CheckContext &context) const
 {
-    OP_CHECK_IF(!context.q.present,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "q", "Q is required"),
+    OP_CHECK_IF(!context.q.present, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "q", "Q is required"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!context.oriKv.present,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "ori_kv",
-                                                         "Ori_kv is required in all supported modes"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        !context.oriKv.present,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "ori_kv", "Ori_kv is required in all supported modes"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(!context.attentionOut.present,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "attention_out",
-                                                         "Attention_out is required"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(Op(context), "attention_out", "Attention_out is required"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus CommonChecker::CheckFeature(const CheckContext &context) const
 {
-    OP_CHECK_IF(context.kvLayout != Layout::PA_BBND && context.qLayout != context.kvLayout,
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-                    Op(context), "layout_q and layout_kv",
-                    (std::to_string(static_cast<uint32_t>(context.qLayout)) + " and " +
-                     std::to_string(static_cast<uint32_t>(context.kvLayout)))
-                        .c_str(),
-                    "Non-PA layout_q and layout_kv must be the same"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        context.kvLayout != Layout::PA_BBND && context.qLayout != context.kvLayout,
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(Op(context), "layout_q and layout_kv",
+                                               (std::to_string(static_cast<uint32_t>(context.qLayout)) + " and " +
+                                                std::to_string(static_cast<uint32_t>(context.kvLayout)))
+                                                   .c_str(),
+                                               "Non-PA layout_q and layout_kv must be the same"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -143,33 +143,30 @@ ge::graphStatus CommonChecker::CheckQueryAxes(const CheckContext &context) const
     int64_t qDim = -1;
     if (context.qLayout == Layout::BSND) {
         OP_CHECK_IF(GetDim(context.q, 0) <= 0 || GetDim(context.q, 1) <= 0,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        Op(context), "q",
-                        ("Batch=" + std::to_string(GetDim(context.q, 0)) +
-                         ", sequence=" + std::to_string(GetDim(context.q, 1)))
-                            .c_str(),
-                        "Batch and sequence dimensions must be greater than 0"),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(Op(context), "q",
+                                                          ("Batch=" + std::to_string(GetDim(context.q, 0)) +
+                                                           ", sequence=" + std::to_string(GetDim(context.q, 1)))
+                                                              .c_str(),
+                                                          "Batch and sequence dimensions must be greater than 0"),
                     return ge::GRAPH_FAILED);
-        qHeads = GetDim(context.q, 2);
-        qDim = GetDim(context.q, 3);
+        qHeads = GetDim(context.q, DIM_IDX_TWO);
+        qDim = GetDim(context.q, DIM_IDX_THREE);
     } else {
-        OP_CHECK_IF(qSeq <= 0,
-                    OP_LOGE_FOR_INVALID_SHAPESIZE(Op(context), "q_t", std::to_string(qSeq).c_str(), "> 0"),
+        OP_CHECK_IF(qSeq <= 0, OP_LOGE_FOR_INVALID_SHAPESIZE(Op(context), "q_t", std::to_string(qSeq).c_str(), "> 0"),
                     return ge::GRAPH_FAILED);
         qHeads = GetDim(context.q, 1);
-        qDim = GetDim(context.q, 2);
+        qDim = GetDim(context.q, DIM_IDX_TWO);
     }
-    OP_CHECK_IF(qHeads <= 0 || qHeads > 128,
+    OP_CHECK_IF(qHeads <= 0 || qHeads > 128, // 128：最大支持的注意力头数
                 OP_LOGE_FOR_INVALID_VALUE(Op(context), "q_n", std::to_string(qHeads).c_str(), "[1, 128]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(qDim != 512,
+    OP_CHECK_IF(qDim != 512, // 512：每个注意力头的固定维度大小
                 OP_LOGE_FOR_INVALID_VALUE(Op(context), "q head dimension", std::to_string(qDim).c_str(), "512"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CommonChecker::CheckKvAxes(const CheckContext &context, const TensorParam &kv,
-                                           const char *name) const
+ge::graphStatus CommonChecker::CheckKvAxes(const CheckContext &context, const TensorParam &kv, const char *name) const
 {
     if (!kv.present) {
         return ge::GRAPH_SUCCESS;
@@ -178,18 +175,18 @@ ge::graphStatus CommonChecker::CheckKvAxes(const CheckContext &context, const Te
     int64_t headDim = -1;
     if (context.kvLayout == Layout::TND) {
         numHeads = GetDim(kv, 1);
-        headDim = GetDim(kv, 2);
+        headDim = GetDim(kv, DIM_IDX_TWO);
     } else {
-        numHeads = GetDim(kv, 2);
-        headDim = GetDim(kv, 3);
+        numHeads = GetDim(kv, DIM_IDX_TWO);
+        headDim = GetDim(kv, DIM_IDX_THREE);
     }
     OP_CHECK_IF(numHeads != 1,
                 OP_LOGE_FOR_INVALID_VALUE(Op(context), (std::string(name) + " kv_n").c_str(),
                                           std::to_string(numHeads).c_str(), "1"),
                 return ge::GRAPH_FAILED);
-    int64_t expectedDim = 512;
+    int64_t expectedDim = 512; // 512：预期维度大小
     if (context.variant == OperatorVariant::MIXED_QUANT) {
-        expectedDim = context.quantMode == 1 ? 608 : 584;
+        expectedDim = context.quantMode == 1 ? 608 : 584; // 608，584：混合量化模式下根据量化模式选择不同维度
     }
     OP_CHECK_IF(headDim != expectedDim,
                 OP_LOGE_FOR_INVALID_VALUE(Op(context), (std::string(name) + " head dimension").c_str(),
@@ -208,7 +205,9 @@ ge::graphStatus CommonChecker::CheckKvAxes(const CheckContext &context, const Te
 ge::graphStatus CommonChecker::CheckMultiPara(const CheckContext &context) const
 {
     if (CheckSameShape(context, context.q, "q", context.attentionOut, "attention_out") != ge::GRAPH_SUCCESS ||
-        CheckQueryAxes(context) != ge::GRAPH_SUCCESS || CheckKvAxes(context, context.oriKv, "ori_kv") != ge::GRAPH_SUCCESS || CheckKvAxes(context, context.cmpKv, "cmp_kv") != ge::GRAPH_SUCCESS) {
+        CheckQueryAxes(context) != ge::GRAPH_SUCCESS ||
+        CheckKvAxes(context, context.oriKv, "ori_kv") != ge::GRAPH_SUCCESS ||
+        CheckKvAxes(context, context.cmpKv, "cmp_kv") != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(context.variant == OperatorVariant::SPARSE &&

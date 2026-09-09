@@ -50,7 +50,7 @@ bool MatmulAllReduceCheckFormat(const aclTensor *x2)
 {
     // 非量化不支持B矩阵转置
     bool isWeightNZ = MatmulAllReduceIsWeightNZFormat(x2);
-    OP_LOGI("MatmulAllReduce, is Weigth NZ: %d", isWeightNZ);
+    OP_LOGI("MatmulAllReduce, is Weight NZ: %d", isWeightNZ);
     if (isWeightNZ) {
         OP_LOGE_FOR_INVALID_FORMAT("MatmulAllReduce", "x2", "FRACTAL_NZ", "ND");
         return false;
@@ -168,6 +168,10 @@ bool MatmulAllReduceCheckDtypeValid(const aclTensor *x1, const aclTensor *x2, co
 // 检查传入的reduction数值是否在可选范围内
 bool MatmulAllReduceCheckAttr(const char *reduceOp, int64_t streamMode)
 {
+    if (reduceOp == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE("MatmulAllReduce", "reduceOp", "nullptr", "\"sum\"");
+        return false;
+    }
     bool flag = (strcmp(reduceOp, REDUCE_OP_SUM) == 0);
     if (!flag) {
         OP_LOGE_FOR_INVALID_VALUE("MatmulAllReduce", "reduceOp", reduceOp, "\"sum\"");
@@ -311,10 +315,10 @@ bool MatmulAllReduceIsWeightNZFormat(const aclTensor *x2)
     aclFormat format = aclFormat::ACL_FORMAT_UNDEFINED;
     aclGetFormat(x2, &format);
     if (format == aclFormat::ACL_FORMAT_ND) {
-        OP_LOGD("MatmulAllReduce, Recieved weight format is ACL_FORMAT_ND");
+        OP_LOGD("MatmulAllReduce, Received weight format is ACL_FORMAT_ND");
     }
     if (format == aclFormat::ACL_FORMAT_FRACTAL_NZ) {
-        OP_LOGD("MatmulAllReduce, Recieved weight format is ACL_FORMAT_FRACTAL_NZ");
+        OP_LOGD("MatmulAllReduce, Received weight format is ACL_FORMAT_FRACTAL_NZ");
         uint64_t storageDimsNum = x2->GetStorageShape().GetDimNum();
         OP_LOGD("MatmulAllReduce, Shape is %lu", storageDimsNum);
         const uint64_t transdataNzDim = 4U;
@@ -328,7 +332,7 @@ bool MatmulAllReduceIsWeightNZFormat(const aclTensor *x2)
 bool QuantMatmulAllReduceIsWeightNZFormat(const aclTensor *x2)
 {
     auto format = ge::GetPrimaryFormat(x2->GetStorageFormat());
-    OP_LOGD("MatmulAllReduce, Recieved weight format is %d", format);
+    OP_LOGD("MatmulAllReduce, Received weight format is %d", format);
     if (format == Format::FORMAT_FRACTAL_NZ) {
         uint64_t storageDimsNum = x2->GetStorageShape().GetDimNum();
         OP_LOGD("MatmulAllReduce, Shape is %lu", storageDimsNum);

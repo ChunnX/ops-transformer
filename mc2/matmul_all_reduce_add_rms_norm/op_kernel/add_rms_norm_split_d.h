@@ -14,15 +14,13 @@
  */
 #ifndef ADD_RMS_NORM_SPLIT_D_H
 #define ADD_RMS_NORM_SPLIT_D_H
-#include "rms_norm_base.h"
+#include "mararn_rms_norm_base.h"
 using namespace AscendC;
 
 template <typename T>
 class KernelAddRmsNormSplitD {
 public:
-    __aicore__ inline KernelAddRmsNormSplitD()
-    {
-    }
+    __aicore__ inline KernelAddRmsNormSplitD() {}
     __aicore__ inline void Init(GM_ADDR gamma, Mc2Tiling::AddRMSNormTilingData &tilingData, TPipe *Ppipe,
                                 uint32_t numBlocks)
     {

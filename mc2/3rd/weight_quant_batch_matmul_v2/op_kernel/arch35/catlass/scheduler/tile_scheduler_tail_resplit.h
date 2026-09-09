@@ -12,7 +12,7 @@
 
 #include "../iterator/continuous_iterator.h"
 #include "../iterator/tail_resplit_iterator.h"
-#include "../utils/device_utils.h"
+#include "../utils/wq_device_utils.h"
 #include "../utils/math_utils.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -63,8 +63,7 @@ public:
     template <typename ProblemShape, typename TilingShape,
               AscendC::Std::enable_if_t<AscendC::Std::is_tuple_v<TilingShape>, bool> = true>
     DEVICE TileSchedulerTailResplit(ProblemShape const &problemShape, TilingShape const &tiling)
-    {
-    }
+    {}
 
     DEVICE bool IsValid()
     {

@@ -58,25 +58,25 @@ __aicore__ inline void MoeSortOneCore::SortCompute()
 
     uint16_t repeatTimes = Ceil(this->tileLength, FLOAT_REG_TENSOR_LENGTH);
     uint32_t sreg = static_cast<uint32_t>(this->tileLength);
-    __local_mem__ float *inUbAddr = (__local_mem__ float *)expertIdxFp32.GetPhyAddr();
+    __ubuf__ float *inUbAddr = (__ubuf__ float *)expertIdxFp32.GetPhyAddr();
     float cmpScalar = static_cast<float>(expertStart_);
     float negone = static_cast<float>(-1);
 
     __VEC_SCOPE__
     {
-        MicroAPI::MaskReg maskRegLoop, cmpMaskReg;
-        MicroAPI::MaskReg pregMain = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+        Reg::MaskReg maskRegLoop, cmpMaskReg;
+        Reg::MaskReg pregMain = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
 
-        MicroAPI::RegTensor<float> inRegToFloat, infFloat, vDstReg0;
+        Reg::RegTensor<float> inRegToFloat, infFloat, vDstReg0;
         Duplicate(infFloat, static_cast<float>(MIN_FP32), pregMain);
 
         for (uint16_t i = 0; i < repeatTimes; i++) {
-            maskRegLoop = MicroAPI::UpdateMask<float>(sreg);
-            MicroAPI::DataCopy(inRegToFloat, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
-            MicroAPI::CompareScalar<float, CMPMODE::LT>(cmpMaskReg, inRegToFloat, cmpScalar, maskRegLoop);
-            MicroAPI::Muls(inRegToFloat, inRegToFloat, negone, maskRegLoop);
-            MicroAPI::Select(vDstReg0, infFloat, inRegToFloat, cmpMaskReg);
-            MicroAPI::DataCopy(inUbAddr + i * FLOAT_REG_TENSOR_LENGTH, vDstReg0, maskRegLoop);
+            maskRegLoop = Reg::UpdateMask<float>(sreg);
+            Reg::LoadAlign(inRegToFloat, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
+            Reg::Compares<float, CMPMODE::LT>(cmpMaskReg, inRegToFloat, cmpScalar, maskRegLoop);
+            Reg::Muls(inRegToFloat, inRegToFloat, negone, maskRegLoop);
+            Reg::Select(vDstReg0, infFloat, inRegToFloat, cmpMaskReg);
+            Reg::StoreAlign(inUbAddr + i * FLOAT_REG_TENSOR_LENGTH, vDstReg0, maskRegLoop);
         }
     }
 
@@ -143,9 +143,9 @@ __aicore__ inline void MoeSortOneCore::Init(GM_ADDR expertIdx, GM_ADDR expandedR
     }
 
     if (GetBlockIdx() == 0) {
-        expertCountTempGm.SetGlobalBuffer((__gm__ int32_t *)workspace +
-                                              Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2,
-                                          tilingData->actualExpertNum);
+        expertCountTempGm.SetGlobalBuffer(
+            (__gm__ int32_t *)workspace + Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2,
+            tilingData->actualExpertNum);
         InitGlobalMemory(expertCountTempGm, tilingData->actualExpertNum, 0);
         SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
     }

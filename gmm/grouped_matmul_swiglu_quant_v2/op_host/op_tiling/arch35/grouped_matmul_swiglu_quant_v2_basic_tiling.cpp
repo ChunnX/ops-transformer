@@ -30,6 +30,10 @@ constexpr int64_t INVALID_MXFP4_WEIGHT_DIM = 1;
 constexpr size_t MIN_X_ORIGIN_SHAPE_DIM = 2;
 constexpr size_t MIN_WEIGHT_ORIGIN_SHAPE_DIM = 2;
 constexpr size_t MX_MULTI_WEIGHT_SCALE_DIM = 3;
+constexpr size_t PERTOKEN_WEIGHT_ORIGIN_DIM = 3;
+constexpr size_t PERTOKEN_WEIGHT_NZ_STORAGE_DIM = 5;
+constexpr int64_t NZ_INNER_SIZE = 16;
+constexpr int64_t B8_NZ_C0_SIZE = 32;
 constexpr uint64_t MXFP_BASEK_FACTOR = 64UL;
 constexpr size_t WEIGHT_ORIGIN_LAST_DIM_OFFSET = 1;
 constexpr size_t WEIGHT_ORIGIN_LAST_SECOND_DIM_OFFSET = 2;
@@ -407,16 +411,16 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtype()
                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype)),
                     "the dtypes of scale and per_token_scale must be DT_FLOAT8_E8M0"),
                 return false);
-    OP_CHECK_IF(!(IsFp4(inputParams_.outDataDtype) || IsFp8(inputParams_.outDataDtype)),
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "y",
-                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype),
-                                          "FLOAT8 or FLOAT4"),
-                return false);
-    OP_CHECK_IF(inputParams_.outScaleDtype != ge::DT_FLOAT8_E8M0,
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "out_scale",
-                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.outScaleDtype),
-                                          "DT_FLOAT8_E8M0"),
-                return false);
+    OP_CHECK_IF(
+        !(IsFp4(inputParams_.outDataDtype) || IsFp8(inputParams_.outDataDtype)),
+        OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "y",
+                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype), "FLOAT8 or FLOAT4"),
+        return false);
+    OP_CHECK_IF(
+        inputParams_.outScaleDtype != ge::DT_FLOAT8_E8M0,
+        OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "out_scale",
+                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.outScaleDtype), "DT_FLOAT8_E8M0"),
+        return false);
 
     OP_CHECK_IF(IsFp8Input() && !IsFp8(inputParams_.outDataDtype),
                 OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "y",
@@ -509,50 +513,119 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDims(const gert::Shape &xShape, c
 
     return true;
 }
+bool GroupedMatmulSwigluQuantV2Tiling950::GetInputShapes(const gert::Shape *&xShape, const gert::Shape *&wShape,
+                                                         const gert::Shape *&wScaleShape)
+{
+    auto xStorageShape = context_->GetInputShape(X_INDEX);
+    OP_CHECK_IF(
+        xStorageShape == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x", "nullptr", "xStorageShape cannot be nullptr"),
+        return false);
+    xShape = &xStorageShape->GetOriginShape();
+    auto wStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
+    OP_CHECK_IF(wStorageShape == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight", "nullptr",
+                                                      "wStorageShape cannot be nullptr"),
+                return false);
+    wShape = &wStorageShape->GetOriginShape();
+    auto scaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
+    OP_CHECK_IF(scaleStorageShape == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "scale", "nullptr",
+                                                      "scaleStorageShape cannot be nullptr"),
+                return false);
+    wScaleShape = &scaleStorageShape->GetOriginShape();
+    return true;
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::GetAndCheckXScaleShape(const gert::Shape *&xScaleShape)
+{
+    auto x1ScaleStorageShape = context_->GetInputShape(PER_TOKEN_SCALE_INDEX);
+    OP_CHECK_IF(x1ScaleStorageShape == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x_scale", "nullptr",
+                                                      "xScaleStorageShape cannot be nullptr"),
+                return false);
+    xScaleShape = &x1ScaleStorageShape->GetOriginShape();
+    auto xScaleDimNum = xScaleShape->GetDimNum();
+    OP_CHECK_IF(xScaleDimNum != MX_X_SCALE_DIM,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "x_scale", std::to_string(xScaleDimNum), "3"),
+                return false);
+    return true;
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxPerGroupShape(const gert::Shape &xScaleShape,
+                                                               const gert::Shape &wScaleShape, size_t weightCount,
+                                                               bool isMultiWeightNz)
+{
+    if (isMultiWeightNz) {
+        auto expectedKDimValue = GroupedMatmul::CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
+        uint64_t expectedWeightDim0 = inputParams_.transB ? inputParams_.nSize : inputParams_.kSize;
+        uint64_t expectedWeightDim1 = inputParams_.transB ? inputParams_.kSize : inputParams_.nSize;
+        uint64_t expectedScaleDim0 = inputParams_.transB ? inputParams_.nSize : expectedKDimValue;
+        uint64_t expectedScaleDim1 = inputParams_.transB ? expectedKDimValue : inputParams_.nSize;
+        for (size_t i = 0; i < weightCount; ++i) {
+            auto curWStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, i);
+            auto curScaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, i);
+            OP_CHECK_IF(curWStorageShape == nullptr || curScaleStorageShape == nullptr,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight/weight_scale", "nullptr",
+                                                              "dynamic weight and weightScale cannot be nullptr"),
+                        return false);
+            const gert::Shape &curWShape = curWStorageShape->GetOriginShape();
+            const gert::Shape &curScaleShape = curScaleStorageShape->GetOriginShape();
+            OP_CHECK_IF(curWShape.GetDimNum() != MIN_WEIGHT_ORIGIN_SHAPE_DIM ||
+                            static_cast<uint64_t>(curWShape.GetDim(0)) != expectedWeightDim0 ||
+                            static_cast<uint64_t>(curWShape.GetDim(1)) != expectedWeightDim1,
+                        OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "weight", ShapeToString(curWShape),
+                                                  ShapeDimsToString(expectedWeightDim0, expectedWeightDim1)),
+                        return false);
+            OP_CHECK_IF(curScaleShape.GetDimNum() != MX_MULTI_WEIGHT_SCALE_DIM ||
+                            static_cast<uint64_t>(curScaleShape.GetDim(0)) != expectedScaleDim0 ||
+                            static_cast<uint64_t>(curScaleShape.GetDim(1)) != expectedScaleDim1 ||
+                            static_cast<uint64_t>(curScaleShape.GetDim(2)) != MXFP_MULTI_BASE_SIZE,
+                        OP_LOGE_FOR_INVALID_SHAPE(
+                            inputParams_.opType, "weight_scale", ShapeToString(curScaleShape),
+                            ShapeDimsToString(expectedScaleDim0, expectedScaleDim1, MXFP_MULTI_BASE_SIZE)),
+                        return false);
+        }
+        OP_CHECK_IF(
+            static_cast<uint64_t>(xScaleShape.GetDim(0)) != inputParams_.mSize ||
+                static_cast<uint64_t>(xScaleShape.GetDim(1)) != expectedKDimValue ||
+                static_cast<uint64_t>(xScaleShape.GetDim(2)) != MXFP_MULTI_BASE_SIZE,
+            OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "x_scale", ShapeToString(xScaleShape),
+                                      ShapeDimsToString(inputParams_.mSize, expectedKDimValue, MXFP_MULTI_BASE_SIZE)),
+            return false);
+    } else {
+        OP_CHECK_IF(!CheckQuantParamsForMXTypeM(xScaleShape, wScaleShape),
+                    OP_LOGE(inputParams_.opName, "CheckQuantParamsForMXTypeM failed."), return false);
+    }
+    return true;
+}
+
 bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
 {
     OP_CHECK_IF(!CheckCoreNum(), OP_LOGE(inputParams_.opName, "CheckCoreNum failed."), return false);
     if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {
         return AnalyzeInputsPertoken();
     }
-    auto xStorageShape = context_->GetInputShape(X_INDEX);
-    OP_CHECK_IF(
-        xStorageShape == nullptr,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x", "nullptr", "xStorageShape cannot be nullptr"),
-        return false);
-    const gert::Shape &xShape = xStorageShape->GetOriginShape();
-    auto wStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
-    OP_CHECK_IF(wStorageShape == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight", "nullptr",
-                                                      "wStorageShape cannot be nullptr"),
-                return false);
-    const gert::Shape &wShape = wStorageShape->GetOriginShape();
-    auto scaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
-    OP_CHECK_IF(scaleStorageShape == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "scale", "nullptr",
-                                                      "scaleStorageShape cannot be nullptr"),
-                return false);
-    const gert::Shape &wScaleShape = scaleStorageShape->GetOriginShape();
-    auto scaleDimNum = wScaleShape.GetDimNum();
+    const gert::Shape *xShape = nullptr;
+    const gert::Shape *wShape = nullptr;
+    const gert::Shape *wScaleShape = nullptr;
+    if (!GetInputShapes(xShape, wShape, wScaleShape)) {
+        return false;
+    }
+    auto scaleDimNum = wScaleShape->GetDimNum();
     size_t weightCount = GetDynamicInputCount(context_, WEIGHT_INDEX);
     size_t scaleCount = GetDynamicInputCount(context_, SCALE_INDEX);
-    bool isMultiWeightNz = IsMxWeightNzMultiTensor(wShape);
+    bool isMultiWeightNz = IsMxWeightNzMultiTensor(*wShape);
     isMxWeightNzMultiTensor_ = isMultiWeightNz;
     size_t expectedScaleDim = isMultiWeightNz ? MX_MULTI_WEIGHT_SCALE_DIM : MX_WEIGHT_SCALE_DIM;
     OP_CHECK_IF(scaleDimNum != expectedScaleDim,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight_scale", std::to_string(scaleDimNum),
                                              std::to_string(expectedScaleDim)),
                 return false);
-    auto x1ScaleStorageShape = context_->GetInputShape(PER_TOKEN_SCALE_INDEX);
-    OP_CHECK_IF(x1ScaleStorageShape == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x_scale", "nullptr",
-                                                      "xScaleStorageShape cannot be nullptr"),
-                return false);
-    const gert::Shape &xScaleShape = x1ScaleStorageShape->GetOriginShape();
-    auto xScaleDimNum = xScaleShape.GetDimNum();
-    OP_CHECK_IF(xScaleDimNum != MX_X_SCALE_DIM,
-                OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "x_scale", std::to_string(xScaleDimNum), "3"),
-                return false);
+    const gert::Shape *xScaleShape = nullptr;
+    if (!GetAndCheckXScaleShape(xScaleShape)) {
+        return false;
+    }
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
     OP_CHECK_IF(isMultiWeightNz && weightCount != static_cast<size_t>(inputParams_.groupNum),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight", std::to_string(weightCount),
@@ -563,49 +636,11 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
                                                       "weightScale tensor list size must equal "
                                                       "weight tensor list size"),
                 return false);
-    OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
-    OP_CHECK_IF(!CheckDims(xShape, wShape), OP_LOGE(inputParams_.opName, "CheckDims failed."), return false);
+    OP_CHECK_IF(!SetMKN(*xShape, *wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
+    OP_CHECK_IF(!CheckDims(*xShape, *wShape), OP_LOGE(inputParams_.opName, "CheckDims failed."), return false);
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
-        if (isMultiWeightNz) {
-            auto expectedKDimValue = GroupedMatmul::CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
-            uint64_t expectedWeightDim0 = inputParams_.transB ? inputParams_.nSize : inputParams_.kSize;
-            uint64_t expectedWeightDim1 = inputParams_.transB ? inputParams_.kSize : inputParams_.nSize;
-            uint64_t expectedScaleDim0 = inputParams_.transB ? inputParams_.nSize : expectedKDimValue;
-            uint64_t expectedScaleDim1 = inputParams_.transB ? expectedKDimValue : inputParams_.nSize;
-            for (size_t i = 0; i < weightCount; ++i) {
-                auto curWStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, i);
-                auto curScaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, i);
-                OP_CHECK_IF(curWStorageShape == nullptr || curScaleStorageShape == nullptr,
-                            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight/weight_scale", "nullptr",
-                                                                  "dynamic weight and weightScale cannot be nullptr"),
-                            return false);
-                const gert::Shape &curWShape = curWStorageShape->GetOriginShape();
-                const gert::Shape &curScaleShape = curScaleStorageShape->GetOriginShape();
-                OP_CHECK_IF(curWShape.GetDimNum() != MIN_WEIGHT_ORIGIN_SHAPE_DIM ||
-                                static_cast<uint64_t>(curWShape.GetDim(0)) != expectedWeightDim0 ||
-                                static_cast<uint64_t>(curWShape.GetDim(1)) != expectedWeightDim1,
-                            OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "weight", ShapeToString(curWShape),
-                                                      ShapeDimsToString(expectedWeightDim0, expectedWeightDim1)),
-                            return false);
-                OP_CHECK_IF(curScaleShape.GetDimNum() != MX_MULTI_WEIGHT_SCALE_DIM ||
-                                static_cast<uint64_t>(curScaleShape.GetDim(0)) != expectedScaleDim0 ||
-                                static_cast<uint64_t>(curScaleShape.GetDim(1)) != expectedScaleDim1 ||
-                                static_cast<uint64_t>(curScaleShape.GetDim(2)) != MXFP_MULTI_BASE_SIZE,
-                            OP_LOGE_FOR_INVALID_SHAPE(
-                                inputParams_.opType, "weight_scale", ShapeToString(curScaleShape),
-                                ShapeDimsToString(expectedScaleDim0, expectedScaleDim1, MXFP_MULTI_BASE_SIZE)),
-                            return false);
-            }
-            OP_CHECK_IF(static_cast<uint64_t>(xScaleShape.GetDim(0)) != inputParams_.mSize ||
-                            static_cast<uint64_t>(xScaleShape.GetDim(1)) != expectedKDimValue ||
-                            static_cast<uint64_t>(xScaleShape.GetDim(2)) != MXFP_MULTI_BASE_SIZE,
-                        OP_LOGE_FOR_INVALID_SHAPE(
-                            inputParams_.opType, "x_scale", ShapeToString(xScaleShape),
-                            ShapeDimsToString(inputParams_.mSize, expectedKDimValue, MXFP_MULTI_BASE_SIZE)),
-                        return false);
-        } else {
-            OP_CHECK_IF(!CheckQuantParamsForMXTypeM(xScaleShape, wScaleShape),
-                        OP_LOGE(inputParams_.opName, "CheckShapeForMxQuant failed."), return false);
+        if (!CheckMxPerGroupShape(*xScaleShape, *wScaleShape, weightCount, isMultiWeightNz)) {
+            return false;
         }
     }
     return true;
@@ -617,13 +652,12 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckCoreNum() const
     OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(inputParams_.opName, "compileInfo is nullptr."), return false);
     auto aicNum = compileInfo->aicNum_;
     auto aivNum = compileInfo->aivNum_;
-    OP_CHECK_IF(aicNum == 0,
-                OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
+    OP_CHECK_IF(aicNum == 0, OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
                 return false);
-    OP_CHECK_IF(aivNum != GmmConstant::CORE_RATIO * aicNum,
-                OP_LOGE(inputParams_.opName,
-                        "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
-                return false);
+    OP_CHECK_IF(
+        aivNum != GmmConstant::CORE_RATIO * aicNum,
+        OP_LOGE(inputParams_.opName, "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
+        return false);
     return true;
 }
 
@@ -799,15 +833,16 @@ void GroupedMatmulSwigluQuantV2Tiling950::ModifyWeightNzDepthForUnalign(uint64_t
     }
 }
 
-ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzScaleFactors()
+ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalBaseSizesAndScaleInit(uint64_t &baseScaleASize,
+                                                                              uint64_t &baseScaleBSize,
+                                                                              uint32_t &scaleInit)
 {
     uint64_t baseASize = GetSizeWithDataType(basicTiling_.baseM * basicTiling_.baseK, inputParams_.aDtype);
     uint64_t baseBSize = GetSizeWithDataType(basicTiling_.baseN * basicTiling_.baseK, inputParams_.bDtype);
-    uint64_t baseScaleASize =
-        GetSizeWithDataType(GroupedMatmul::CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) * basicTiling_.baseM,
-                            inputParams_.perTokenScaleDtype);
-    uint64_t baseScaleBSize = GetSizeWithDataType(
-        GroupedMatmul::CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) * basicTiling_.baseN, inputParams_.scaleDtype);
+    baseScaleASize = GetSizeWithDataType(GroupedMatmul::CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) * basicTiling_.baseM,
+                                         inputParams_.perTokenScaleDtype);
+    baseScaleBSize = GetSizeWithDataType(GroupedMatmul::CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) * basicTiling_.baseN,
+                                         inputParams_.scaleDtype);
     OP_CHECK_IF(baseScaleASize == 0 || baseScaleBSize == 0,
                 OP_LOGE(context_->GetNodeName(),
                         "When m(%lu)/n(%lu)/k(%lu)/groupNum(%lu) in mx quant mode, baseScaleASize(%lu) and "
@@ -819,7 +854,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzScaleFactors()
     uint64_t baseBiasSize = inputParams_.hasBias ? basicTiling_.baseN * biasDtypeSize : 0;
     uint64_t leftL1Size =
         aicoreParams_.l1Size - (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize + baseBiasSize);
-    uint32_t scaleInit = static_cast<uint32_t>(
+    scaleInit = static_cast<uint32_t>(
         leftL1Size / (std::max(basicTiling_.depthA1, basicTiling_.depthB1) * (baseScaleASize + baseScaleBSize)));
     OP_CHECK_IF(
         scaleInit == 0,
@@ -827,7 +862,12 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzScaleFactors()
                 "When m(%lu)/n(%lu)/k(%lu)/groupNum(%lu) in mx quant mode, scaleFactor should not be equal to 0.",
                 inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum),
         return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
 
+ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalScaleFactors(uint64_t baseScaleASize, uint64_t baseScaleBSize,
+                                                                     uint32_t scaleInit)
+{
     uint32_t scaleFactorAMax =
         std::min(static_cast<uint32_t>(MTE2_MIN_LOAD_SIZE_V120 / baseScaleASize), SCALER_FACTOR_MAX);
     uint32_t scaleFactorBMax =
@@ -856,6 +896,21 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzScaleFactors()
             basicTiling_.scaleFactorA = scaleInit * basicTiling_.depthB1 / basicTiling_.depthA1;
             basicTiling_.scaleFactorB = scaleInit;
         }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzScaleFactors()
+{
+    uint64_t baseScaleASize = 0;
+    uint64_t baseScaleBSize = 0;
+    uint32_t scaleInit = 0;
+    if (CalBaseSizesAndScaleInit(baseScaleASize, baseScaleBSize, scaleInit) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (CalScaleFactors(baseScaleASize, baseScaleBSize, scaleInit) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(basicTiling_.scaleFactorA < SCALER_FACTOR_MIN || basicTiling_.scaleFactorA > SCALER_FACTOR_MAX ||
                     basicTiling_.scaleFactorB < SCALER_FACTOR_MIN || basicTiling_.scaleFactorB > SCALER_FACTOR_MAX,
@@ -902,11 +957,46 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtypePertoken()
                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
                     "the dtypes of x and weight must be within the range FLOAT8, INT8 or HIFLOAT8"),
                 return false);
-    OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT,
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "x_scale",
-                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype),
-                                          "DT_FLOAT"),
-                return false);
+    if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
+        const bool isInt8 = inputParams_.aDtype == ge::DT_INT8;
+        OP_CHECK_IF(isInt8 && (inputParams_.bDtype != ge::DT_INT8 || inputParams_.outDataDtype != ge::DT_INT8),
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                        inputParams_.opType, "x, weight, y",
+                        ListToString(ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
+                                     ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype)),
+                        "in per-token mode, when weight format is FRACTAL_NZ and x dtype is INT8, "
+                        "weight and y dtypes must be INT8"),
+                    return false);
+        const bool isHifloat8 = inputParams_.aDtype == ge::DT_HIFLOAT8;
+        OP_CHECK_IF(
+            isHifloat8 && (inputParams_.bDtype != ge::DT_HIFLOAT8 || inputParams_.outDataDtype != ge::DT_HIFLOAT8),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                inputParams_.opType, "x, weight, y",
+                ListToString(ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
+                             ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype)),
+                "in per-token mode, when weight format is FRACTAL_NZ and x dtype is HIFLOAT8, "
+                "weight and y dtypes must be HIFLOAT8"),
+            return false);
+        const bool isFp8 = inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_FLOAT8_E5M2;
+        OP_CHECK_IF(isFp8 && (inputParams_.bDtype != ge::DT_FLOAT8_E4M3FN ||
+                              (inputParams_.outDataDtype != ge::DT_FLOAT8_E4M3FN &&
+                               inputParams_.outDataDtype != ge::DT_FLOAT8_E5M2)),
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                        inputParams_.opType, "x, weight, y",
+                        ListToString(ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
+                                     ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype)),
+                        "in per-token mode, when weight format is FRACTAL_NZ and x dtype is FLOAT8, "
+                        "weight dtype must be FLOAT8_E4M3FN and y dtype must be FLOAT8_E4M3FN or FLOAT8_E5M2"),
+                    return false);
+    }
+    OP_CHECK_IF(
+        inputParams_.perTokenScaleDtype != ge::DT_FLOAT,
+        OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "x_scale",
+                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype), "DT_FLOAT"),
+        return false);
     OP_CHECK_IF(!(inputParams_.scaleDtype == ge::DT_FLOAT || inputParams_.scaleDtype == ge::DT_BF16 ||
                   (inputParams_.scaleDtype == ge::DT_FLOAT16 && inputParams_.aDtype == ge::DT_INT8)),
                 OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "weight_scale",
@@ -918,10 +1008,37 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtypePertoken()
                                           ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype),
                                           "FLOAT8, INT8 or HIFLOAT8"),
                 return false);
-    OP_CHECK_IF(inputParams_.outScaleDtype != ge::DT_FLOAT,
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "out_scale",
-                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.outScaleDtype),
-                                          "DT_FLOAT"),
+    OP_CHECK_IF(
+        inputParams_.outScaleDtype != ge::DT_FLOAT,
+        OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "out_scale",
+                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.outScaleDtype), "DT_FLOAT"),
+        return false);
+    return true;
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckPertokenWeightNzShape(const gert::Shape &wShape,
+                                                                     const gert::Shape &wStorageShape) const
+{
+    OP_CHECK_IF(
+        wShape.GetDimNum() != PERTOKEN_WEIGHT_ORIGIN_DIM,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight origin shape", std::to_string(wShape.GetDimNum()),
+                                     std::to_string(PERTOKEN_WEIGHT_ORIGIN_DIM)),
+        return false);
+    OP_CHECK_IF(wStorageShape.GetDimNum() != PERTOKEN_WEIGHT_NZ_STORAGE_DIM,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight storage shape",
+                                             std::to_string(wStorageShape.GetDimNum()),
+                                             std::to_string(PERTOKEN_WEIGHT_NZ_STORAGE_DIM)),
+                return false);
+
+    const int64_t groupNum = wShape.GetDim(0);
+    const int64_t n1 = inputParams_.transB ? GroupedMatmul::CeilDiv(inputParams_.kSize, B8_NZ_C0_SIZE) :
+                                             GroupedMatmul::CeilDiv(inputParams_.nSize, B8_NZ_C0_SIZE);
+    const int64_t k1 = inputParams_.transB ? GroupedMatmul::CeilDiv(inputParams_.nSize, NZ_INNER_SIZE) :
+                                             GroupedMatmul::CeilDiv(inputParams_.kSize, NZ_INNER_SIZE);
+    const gert::Shape expectedStorageShape{groupNum, n1, k1, NZ_INNER_SIZE, B8_NZ_C0_SIZE};
+    OP_CHECK_IF(wStorageShape != expectedStorageShape,
+                OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "weight storage shape", ShapeToString(wStorageShape),
+                                          ShapeToString(expectedStorageShape)),
                 return false);
     return true;
 }
@@ -934,6 +1051,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputsPertoken()
                                                       "wStorageShape cannot be nullptr"),
                 return false);
     const gert::Shape &wShape = wStorageShape->GetOriginShape();
+    const gert::Shape &wNzStorageShape = wStorageShape->GetStorageShape();
     auto scaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
     OP_CHECK_IF(scaleStorageShape == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight_scale", "nullptr",
@@ -955,6 +1073,29 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputsPertoken()
                 OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "x_scale", std::to_string(xScaleDimNum), "1"),
                 return false);
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
+    OP_CHECK_IF(wShape.GetDimNum() != PERTOKEN_WEIGHT_ORIGIN_DIM ||
+                    static_cast<uint64_t>(wShape.GetDim(0)) != inputParams_.groupNum,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opType, "weight", ShapeToString(wShape),
+                                                      "weight first dimension must equal groupList length"),
+                return false);
+    OP_CHECK_IF(static_cast<uint64_t>(wScaleShape.GetDim(0)) != inputParams_.groupNum ||
+                    static_cast<uint64_t>(wScaleShape.GetDim(1)) != inputParams_.nSize,
+                OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "weight_scale", ShapeToString(wScaleShape),
+                                          ShapeDimsToString(inputParams_.groupNum, inputParams_.nSize)),
+                return false);
+    OP_CHECK_IF(static_cast<uint64_t>(xScaleShape.GetDim(0)) != inputParams_.mSize,
+                OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "x_scale", ShapeToString(xScaleShape),
+                                          ShapeDimsToString(inputParams_.mSize)),
+                return false);
+    if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_CHECK_IF(inputParams_.nSize == 0 || inputParams_.nSize % GmmConstant::WEIGHTNZ_64 != 0,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        inputParams_.opType, "weight", ShapeToString(wShape),
+                        "in per-token B8 mode, N of FRACTAL_NZ weight must be positive and aligned to 64"),
+                    return false);
+        OP_CHECK_IF(!CheckPertokenWeightNzShape(wShape, wNzStorageShape),
+                    OP_LOGE(inputParams_.opName, "CheckPertokenWeightNzShape failed."), return false);
+    }
     OP_CHECK_IF(inputParams_.nSize % GmmConstant::EVEN_FACTOR != 0,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opType, "weight", ShapeToString(wShape),
                                                       "n axis element number of weight must be an even number"),

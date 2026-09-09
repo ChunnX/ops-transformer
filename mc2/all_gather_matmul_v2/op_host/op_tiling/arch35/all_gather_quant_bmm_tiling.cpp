@@ -155,10 +155,12 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFP4Input()
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kValue", std::to_string(args_.kValue).c_str(),
                                                           "The value of K must be even in mxfp4 scene"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((!args_.isBTrans),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "BTrans", std::to_string(args_.isBTrans).c_str(),
-                                                          "x2 only support transpose"),
-                    return ge::GRAPH_FAILED);
+    // mxfp4: N must be even when x2 is not transposed
+    OP_TILING_CHECK(
+        (!args_.isBTrans) && (args_.nValue % EVEN_ALIGN != 0),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "nValue", std::to_string(args_.nValue).c_str(),
+                                              "The value of N must be even when x2 is not transposed in mxfp4 scene"),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK((scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0),
                     OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                         opName_, "scale1", (Ops::Base::ToString(scaleInv1Desc->GetDataType())).c_str(),
@@ -181,6 +183,25 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckX1Input()
     OP_TILING_CHECK((quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) && (isFp4_),
                     OP_LOGE(opName_, "fp4 only support mx quant."), return ge::GRAPH_FAILED);
 
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus AllGatherQuantBmmTiling::CheckScaleShapeValid(const char *scaleName, uint64_t firstDim,
+                                                              uint64_t secondDim, uint64_t expectFirstDim,
+                                                              uint64_t expectSecondDim)
+{
+    if (scaleName == nullptr) {
+        OP_LOGE(opName_, "scaleName of CheckScaleShapeValid must not be null.");
+        return ge::GRAPH_FAILED;
+    }
+    OP_TILING_CHECK((firstDim != expectFirstDim) || (secondDim != expectSecondDim),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName_, scaleName,
+                        (std::string("[") + std::to_string(firstDim) + ", " + std::to_string(secondDim) + "]").c_str(),
+                        (std::string("The shape of ") + scaleName + " must be [" + std::to_string(expectFirstDim) +
+                         ", " + std::to_string(expectSecondDim) + "]")
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -212,24 +233,12 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckPerBlockScaleInput()
     scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(float);
     OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
 
-    OP_TILING_CHECK(
-        (scale1FirstDim != ceilMValue) || (scale1SecondDim != ceilKValue),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            opName_, "x1Scale",
-            (std::string("[") + std::to_string(scale1FirstDim) + ", " + std::to_string(scale1SecondDim) + "]").c_str(),
-            (std::string("The shape of x1Scale must be [") + std::to_string(ceilMValue) + ", " +
-             std::to_string(ceilKValue) + "]")
-                .c_str()),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        (scale2FirstDim != ceilKValue) || (scale2SecondDim != ceilNValue),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            opName_, "x2Scale",
-            (std::string("[") + std::to_string(scale2FirstDim) + ", " + std::to_string(scale2SecondDim) + "]").c_str(),
-            (std::string("The shape of x2Scale must be [") + std::to_string(ceilKValue) + ", " +
-             std::to_string(ceilNValue) + "]")
-                .c_str()),
-        return ge::GRAPH_FAILED);
+    if (CheckScaleShapeValid("x1Scale", scale1FirstDim, scale1SecondDim, ceilMValue, ceilKValue) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckScaleShapeValid("x2Scale", scale2FirstDim, scale2SecondDim, ceilKValue, ceilNValue) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -262,43 +271,43 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
             "scale2FirstDim=%lu, scale2SecondDim=%lu, scale2ThirdDim=%lu, mValue=%lu, ceilKAlign=%lu, nValue=%lu.",
             scale1FirstDim, scale1SecondDim, scale1ThirdDim, scale2FirstDim, scale2SecondDim, scale2ThirdDim,
             args_.mValue, ceilKAlign, args_.nValue);
-    OP_TILING_CHECK((scale1FirstDim != args_.mValue) || (scale1SecondDim != ceilKAlign) ||
-                        (scale1ThirdDim != EVEN_ALIGN),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName_, "x1Scale",
-                        (std::string("[") + std::to_string(scale1FirstDim) + ", " + std::to_string(scale1SecondDim) +
-                         ", " + std::to_string(scale1ThirdDim) + "]")
-                            .c_str(),
-                        (std::string("The shape of x1Scale must be [") + std::to_string(args_.mValue) + ", " +
-                         std::to_string(ceilKAlign) + ", " + std::to_string(EVEN_ALIGN) + "]")
-                            .c_str()),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (scale1FirstDim != args_.mValue) || (scale1SecondDim != ceilKAlign) || (scale1ThirdDim != EVEN_ALIGN),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            opName_, "x1Scale",
+            (std::string("[") + std::to_string(scale1FirstDim) + ", " + std::to_string(scale1SecondDim) + ", " +
+             std::to_string(scale1ThirdDim) + "]")
+                .c_str(),
+            (std::string("The shape of x1Scale must be [") + std::to_string(args_.mValue) + ", " +
+             std::to_string(ceilKAlign) + ", " + std::to_string(EVEN_ALIGN) + "]")
+                .c_str()),
+        return ge::GRAPH_FAILED);
 
     bool isTransB = *context_->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_B);
     if (isTransB) {
-        OP_TILING_CHECK((scale2FirstDim != args_.nValue) || (scale2SecondDim != ceilKAlign) ||
-                            (scale2ThirdDim != EVEN_ALIGN),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            opName_, "x2Scale",
-                            (std::string("[") + std::to_string(scale2FirstDim) + ", " +
-                             std::to_string(scale2SecondDim) + ", " + std::to_string(scale2ThirdDim) + "]")
-                                .c_str(),
-                            (std::string("The shape of x2Scale must be [") + std::to_string(args_.nValue) + ", " +
-                             std::to_string(ceilKAlign) + ", " + std::to_string(EVEN_ALIGN) + "]")
-                                .c_str()),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (scale2FirstDim != args_.nValue) || (scale2SecondDim != ceilKAlign) || (scale2ThirdDim != EVEN_ALIGN),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                opName_, "x2Scale",
+                (std::string("[") + std::to_string(scale2FirstDim) + ", " + std::to_string(scale2SecondDim) + ", " +
+                 std::to_string(scale2ThirdDim) + "]")
+                    .c_str(),
+                (std::string("The shape of x2Scale must be [") + std::to_string(args_.nValue) + ", " +
+                 std::to_string(ceilKAlign) + ", " + std::to_string(EVEN_ALIGN) + "]")
+                    .c_str()),
+            return ge::GRAPH_FAILED);
     } else {
-        OP_TILING_CHECK((scale2FirstDim != ceilKAlign) || (scale2SecondDim != args_.nValue) ||
-                            (scale2ThirdDim != EVEN_ALIGN),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            opName_, "x2Scale",
-                            (std::string("[") + std::to_string(scale2FirstDim) + ", " +
-                             std::to_string(scale2SecondDim) + ", " + std::to_string(scale2ThirdDim) + "]")
-                                .c_str(),
-                            (std::string("The shape of x2Scale must be [") + std::to_string(ceilKAlign) + ", " +
-                             std::to_string(args_.nValue) + ", " + std::to_string(EVEN_ALIGN) + "]")
-                                .c_str()),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (scale2FirstDim != ceilKAlign) || (scale2SecondDim != args_.nValue) || (scale2ThirdDim != EVEN_ALIGN),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                opName_, "x2Scale",
+                (std::string("[") + std::to_string(scale2FirstDim) + ", " + std::to_string(scale2SecondDim) + ", " +
+                 std::to_string(scale2ThirdDim) + "]")
+                    .c_str(),
+                (std::string("The shape of x2Scale must be [") + std::to_string(ceilKAlign) + ", " +
+                 std::to_string(args_.nValue) + ", " + std::to_string(EVEN_ALIGN) + "]")
+                    .c_str()),
+            return ge::GRAPH_FAILED);
     }
     scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(ge::DT_FLOAT8_E8M0);
     OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
@@ -334,7 +343,7 @@ ge::graphStatus AllGatherQuantBmmTiling::SetQuantScene()
     auto scaleInv1Desc = context_->GetOptionalInputDesc(SCALE_INV1);
     auto scaleInv2Desc = context_->GetOptionalInputDesc(SCALE_INV2);
     OP_TILING_CHECK(isFp4_ && ((scaleInv1Shape->GetStorageShape().GetDimNum() != DIM_NUM_IS_THREE) ||
-                                   (scaleInv2Shape->GetStorageShape().GetDimNum() != DIM_NUM_IS_THREE)),
+                               (scaleInv2Shape->GetStorageShape().GetDimNum() != DIM_NUM_IS_THREE)),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         opName_, "x1Scale and x2Scale",
                         (std::to_string(scaleInv1Shape->GetStorageShape().GetDimNum()) + "D and " +
@@ -425,12 +434,12 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckInputValid()
                                                                .c_str(),
                                                            "The dtypes of scale1 and scale2 must be the same"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((args_.geAType == ge::DataType::DT_HIFLOAT8) &&
-                        (scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "scale1",
-                                                          Ops::Base::ToString(scaleInv1Desc->GetDataType()).c_str(),
-                                                          "The dtype of scale1 must be float32"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (args_.geAType == ge::DataType::DT_HIFLOAT8) && (scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "scale1",
+                                              Ops::Base::ToString(scaleInv1Desc->GetDataType()).c_str(),
+                                              "The dtype of scale1 must be float32"),
+        return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
         (((scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT) &&
@@ -731,7 +740,6 @@ CutResult AllGatherQuantBmmTiling::GetTilingResult()
     return result;
 }
 
-
 Mc2Tiling::RCSTiling &AllGatherQuantBmmTiling::MutableRCSTilingDataA5()
 {
     return allGatherMatmulTilingDataFp8_->param;
@@ -805,6 +813,10 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
     if (args_.nValue != 0) {
         AllGatherQuantBmmHelper mmLocalTile(*this, allGatherMatmulTilingDataFp8_->quantBmmv3LocalTiling, true);
         MC2_CHECK_LOG_RET(opName_, mmLocalTile.DoTiling());
+        if (isFp4_ && !args_.isBTrans) {
+            OP_LOGI(opName_, "enable alignNTailSplit for local tiling");
+            MutableTCubeLocalTilingWindowParam().alignNTailSplit = 1;
+        }
     }
     args_.mValue = (quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ?
                        (tileMValue_ * (args_.rankDim - 1) * (MutableRCSTilingDataA5().tileCnt)) :
@@ -814,6 +826,10 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
     // 当N=0时，跳过matmul tiling，避免shape检查失败
     if (args_.nValue != 0) {
         MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
+        if (isFp4_ && !args_.isBTrans) {
+            OP_LOGI(opName_, "enable alignNTailSplit for tile tiling");
+            MutableTCubeTileTilingWindowParam().alignNTailSplit = 1;
+        }
     }
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         MutableTCubeTileTilingData().M = tileMValue_;
@@ -830,6 +846,10 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
     // 当N=0时，跳过matmul tiling，避免shape检查失败
     if (args_.nValue != 0) {
         MC2_CHECK_LOG_RET(opName_, mmTail.DoTiling());
+        if (isFp4_ && !args_.isBTrans) {
+            OP_LOGI(opName_, "enable alignNTailSplit for tail tiling");
+            MutableTCubeTailTilingWindowParam().alignNTailSplit = 1;
+        }
     }
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         MutableTCubeTailTilingData().M = tailMValue_;
@@ -840,7 +860,8 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
 }
 
 AllGatherQuantBmmTiling::AllGatherQuantBmmTiling(gert::TilingContext *context)
-    : AllGatherMatmulTilingBase(context), allGatherMatmulTilingDataFp8_(&allGatherMatmulTilingDataFp8Self_)
+    : AllGatherMatmulTilingBase(context),
+      allGatherMatmulTilingDataFp8_(&allGatherMatmulTilingDataFp8Self_)
 {
     allGatherMatmulTilingDataFp8_ = context_->GetTilingData<AllGatherMatmulTilingDataFp8>();
 }
@@ -879,9 +900,8 @@ void AllGatherQuantBmmHelper::SetBatch()
     }
 }
 
-const gert::Shape AllGatherQuantBmmHelper::GetX1Shape(const size_t index)
+const gert::Shape AllGatherQuantBmmHelper::GetX1Shape([[maybe_unused]] const size_t index)
 {
-    (void)index;
     SetBatch();
     if (tilingProcesser_.args_.isATrans) {
         return gert::Shape({batch1_, batch2_, batch3_, batch4_, static_cast<int64_t>(tilingProcesser_.args_.kValue),
@@ -891,9 +911,8 @@ const gert::Shape AllGatherQuantBmmHelper::GetX1Shape(const size_t index)
                         static_cast<int64_t>(tilingProcesser_.args_.kValue)});
 }
 
-const gert::Shape AllGatherQuantBmmHelper::GetX2Shape(const size_t index)
+const gert::Shape AllGatherQuantBmmHelper::GetX2Shape([[maybe_unused]] const size_t index)
 {
-    (void)index;
     if (tilingProcesser_.args_.isBTrans) {
         return gert::Shape({1, 1, 1, 1, static_cast<int64_t>(tilingProcesser_.args_.nValue),
                             static_cast<int64_t>(tilingProcesser_.args_.kValue)});
@@ -904,17 +923,15 @@ const gert::Shape AllGatherQuantBmmHelper::GetX2Shape(const size_t index)
              tilingProcesser_.args_.nValue)}); // x2构造4维全1 Batch，防止matmul规则自动融合x1/output的batch轴
 }
 
-const gert::Shape AllGatherQuantBmmHelper::GetOutputShape(const size_t index)
+const gert::Shape AllGatherQuantBmmHelper::GetOutputShape([[maybe_unused]] const size_t index)
 {
-    (void)index;
     SetBatch();
     return gert::Shape({batch1_, batch2_, batch3_, batch4_, static_cast<int64_t>(tilingProcesser_.args_.mValue),
                         static_cast<int64_t>(tilingProcesser_.args_.nValue)});
 }
 
-const gert::Shape &AllGatherQuantBmmHelper::GetScaleShape(const size_t index)
+const gert::Shape &AllGatherQuantBmmHelper::GetScaleShape([[maybe_unused]] const size_t index)
 {
-    (void)index;
     if (context_->GetOptionalInputShape(static_cast<size_t>(SCALE_INV1)) == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(inputParams_.opName, "scale_inv1");
         return defaultShape;
@@ -923,21 +940,18 @@ const gert::Shape &AllGatherQuantBmmHelper::GetScaleShape(const size_t index)
 }
 
 // matmul 将protoken 作为第二路scale输入
-const gert::StorageShape *AllGatherQuantBmmHelper::GetPertokenShape(const size_t index)
+const gert::StorageShape *AllGatherQuantBmmHelper::GetPertokenShape([[maybe_unused]] const size_t index)
 {
-    (void)index;
     return context_->GetOptionalInputShape(static_cast<size_t>(SCALE_INV2));
 }
 
-const gert::StorageShape *AllGatherQuantBmmHelper::GetBiasShape(const size_t index)
+const gert::StorageShape *AllGatherQuantBmmHelper::GetBiasShape([[maybe_unused]] const size_t index)
 {
-    (void)index;
     return context_->GetOptionalInputShape(static_cast<size_t>(BIAS));
 }
 
-const gert::StorageShape *AllGatherQuantBmmHelper::GetOffsetShape(const size_t index)
+const gert::StorageShape *AllGatherQuantBmmHelper::GetOffsetShape([[maybe_unused]] const size_t index)
 {
-    (void)index;
     return (gert::StorageShape *)nullptr;
 }
 
@@ -1029,11 +1043,11 @@ void AllGatherQuantBmmHelper::PrintTilingInputParam(Mc2QuantBatchMatmulInfo &qua
             static_cast<int32_t>(quantBatchMatmulInfo.isDoubleScale));
 }
 AllGatherQuantBmmHelper::AllGatherQuantBmmHelper(AllGatherQuantBmmTiling &allGatherQuantBmmTiling,
-                                                 DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &data, bool isLocal)
-    : Mc2AdaptiveSlidingWindowTiling(allGatherQuantBmmTiling.context_, &data),
-      tilingProcesser_(allGatherQuantBmmTiling), isLocal_(isLocal)
-{
-}
+                                                 DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &out, bool isLocal)
+    : Mc2AdaptiveSlidingWindowTiling(allGatherQuantBmmTiling.context_, &out),
+      tilingProcesser_(allGatherQuantBmmTiling),
+      isLocal_(isLocal)
+{}
 // 注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(AllGatherMatmulV2, AllGatherQuantBmmTiling, static_cast<int32_t>(NpuArch::DAV_3510),
                                    1);

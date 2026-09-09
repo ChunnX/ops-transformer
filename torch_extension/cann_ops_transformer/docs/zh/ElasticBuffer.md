@@ -25,9 +25,9 @@
 
 ElasticBuffer类提供统一的分布式通信buffer管理能力：
 
-- Engram存储接口用于分布式Engram存储管理，支持将本rank的表写入host pinned共享段，以及通过RDMA从远端rank抓取Engram数据。需与 [get_engram_storage_size_hint](#get_engram_storage_size_hint静态方法) 配套使用。
+- Engram存储接口用于分布式Engram存储管理，支持将本rank的表注册为通信可达的存储（推理模式写入host pinned共享段，训练模式直接映射上层锁页表内存，零拷贝），以及通过RDMA从远端rank抓取Engram数据。需与 [get_engram_storage_size_hint](#get_engram_storage_size_hint静态方法) 配套使用。
 - Engram训练接口在推理接口的基础上，通过 `with_grad=True` 开启训练模式。前向 [engram_fetch](#engram_fetch) 在抓取数据的同时保存反向所需的通信元数据（封装为 [EngramFetchCtx](#engramfetchctx)），反向 [engram_fetch_grad](#engram_fetch_grad) 根据这些元数据将梯度沿前向路径反向交换并按local entry稀疏累加，产出稀疏梯度用于优化器更新。
-- Dispatch/Combine接口用于MoE的Expert Parallelism（EP）并行部署，支持通过[dispatch](#dispatch)将token数据分发到对应专家卡，再通过[combine](#combine)将专家输出按原路由聚合回原始序列。需与[get_moe_ep_ccl_buffer_size](#get_moe_ep_ccl_buffer_size静态方法)配套使用。
+- Dispatch/Combine接口用于MoE的Expert Parallelism（EP）并行部署，支持通过[dispatch](#dispatch)将token数据分发到对应专家卡，再通过[combine](#combine)将专家输出按原路由聚合回原始序列。所需的CCL通信buffer由ElasticBuffer内部按算子参数自动计算并申请，无需手动配置。
 
 ## 函数原型
 
@@ -42,6 +42,7 @@ class ElasticBuffer:
         hidden: Optional[int] = None,
         num_topk: Optional[int] = None,
         with_grad: bool = False,
+        explicitly_destroy: bool = False,
     )
 
     def engram_write(self, storage: torch.Tensor) -> None
@@ -120,27 +121,41 @@ class ElasticBuffer:
 
 - **group** (`torch.distributed.ProcessGroup`)：必选参数，分布式进程组，用于跨rank通信和同步。
 - <strong>*</strong>：其之前的变量是位置相关的；之后的变量是可选参数，需要使用键值对赋值，不赋值会使用默认值。
-- **num_cpu_bytes** (`int`)：可选参数，CPU buffer大小（字节），用于host pinned存储区分配。默认值为0，且必须2MB对齐。
+- **num_cpu_bytes** (`int`)：可选参数，CPU buffer大小（字节），用于host pinned存储区分配（仅推理模式生效；训练模式不分配内部存储区，该参数不生效）。默认值为0，且必须2MB对齐。
 - **num_max_tokens_per_rank** (`int`)：可选参数，表示每张卡上的最大token数量上限。使用 [dispatch](#dispatch) 和 [combine](#combine) 时必须与 `hidden`、`num_topk` 一起指定；使用 `with_grad=True` 训练模式时必须指定且大于0。
 - **hidden** (`int`)：可选参数，hidden size隐藏层大小。
 - **num_topk** (`int`)：可选参数，表示选取topK个专家。
 - **with_grad** (`bool`)：可选参数，是否开启训练。默认为 `False`（推理）。设为 `True` 时，前向 [engram_fetch](#engram_fetch) 会额外保存反向所需的通信元数据（封装为 [EngramFetchCtx](#engramfetchctx)），并可通过 [engram_fetch_grad](#engram_fetch_grad) 执行反向。
+- **explicitly_destroy** (`bool`)：可选参数，是否需要显式调用 [destroy](#destroy) 释放资源。默认为 `False`，实例被垃圾回收时会自动调用 `destroy` 释放资源；设为 `True` 时，调用方需要显式调用 `destroy` 释放资源。推荐设置为 `True` 并在使用结束后手动调用 `destroy` 释放资源，以确保资源释放时机确定。
 
 **输出**：无返回值，构造ElasticBuffer实例。
 
 ### engram_write
 
-**功能**：将本rank的Engram表数据写入host pinned共享内存段，使其他rank可通过RDMA读取该数据。推理模式和训练模式均通过此接口写入storage。写入完成后，内部会自动获取通信上下文tensor、本地storage地址、通信buffer大小和rank数等信息，供后续 [engram_fetch](#engram_fetch) 使用。
+**功能**：将本rank的Engram表注册为通信可达的Engram storage，使其他rank可读取该数据。按构造时的 `with_grad` 区分两种行为：
 
-> **host pinned共享内存段**：指通过 `aclrtMallocHost` 分配的页锁定（pinned）主机内存，并经 `aclrtHostRegisterV2` 映射后获得设备可访问地址。该内存段既可被本卡NPU直接访问，也可被远端rank的NPU通过RDMA读取，从而实现跨rank的零拷贝数据共享。其大小由构造函数的 `num_cpu_bytes` 参数指定。
+- **推理**（`with_grad=False`）：将 `storage` 数据拷贝到内部host pinned共享内存段。
+- **训练**（`with_grad=True`）：将 `storage` 的锁页内存直接映射为Engram storage（零拷贝，无数据搬运），`storage` 的原地更新对后续 [engram_fetch](#engram_fetch) 可见。
+
+两种模式写入完成后，内部都会自动获取通信上下文tensor、本地storage地址、通信buffer大小和rank数等信息，供后续 [engram_fetch](#engram_fetch) 使用。
+
+> **host pinned共享内存段**（推理模式）：指通过 `aclrtMallocHost` 分配的页锁定（pinned）主机内存，并经 `aclrtHostRegisterV2` 映射后获得设备可访问地址。该内存段既可被本卡NPU直接访问，也可被远端rank的NPU通过RDMA读取，从而实现跨rank的零拷贝数据共享。其大小由构造函数的 `num_cpu_bytes` 参数指定。
+
+> **训练模式内存映射**：`storage` 的锁页主机内存经 `aclrtHostRegisterV2` 注册并映射到设备地址，再注册到HCCL通信域供远端rank访问。要求：`storage` 必须为锁页内存（如 `pin_memory()` 或 `torch.empty(..., pin_memory=True)` 分配）；普通（非锁页）CPU内存在当前驱动的主机注册路径下不受支持，会在首次调用时报 `aclrtHostGetDevicePointer` 失败；`storage` 在本ElasticBuffer生命周期内必须保持存活且地址不变。重复调用本接口须传入同一 `storage`（可作为表原地更新后的跨rank同步点），传入其他地址会报错。
 
 **计算公式**：
 
+推理模式通过`memcpy_s`将`storage`的数据按字节拷贝到host pinned共享内存段起始位置：
+
 $$HostPinnedBuf[0 : storage.nbytes()] \leftarrow storage.data()$$
 
-即通过`memcpy_s`将`storage`的数据按字节拷贝到host pinned共享内存段起始位置。拷贝前后的两次 `Barrier` 保证所有rank写入完成且对彼此可见：
+训练模式无拷贝，直接以 `storage` 作为本rank的Engram表：
 
-$$Barrier \rightarrow memcpy\_s(storage \rightarrow HostPinnedBuf) \rightarrow Barrier$$
+$$EngramTable[rank\_id] \equiv storage$$
+
+两种模式写入前后均有两次 `Barrier`，保证所有rank写入完成且对彼此可见：
+
+$$Barrier \rightarrow write(storage) \rightarrow Barrier$$
 
 其中 `storage.nbytes() = num_entries × hidden × dtype_size`，须满足 `storage.nbytes() ≤ num_cpu_bytes`。
 
@@ -152,9 +167,9 @@ ElasticBuffer.engram_write(storage) -> None
 
 **输入参数**：
 
-- **storage** (`Tensor`)：必选参数，待写入的CPU tensor，shape为 `(num_entries, hidden)`，表示有 `num_entries` 个条目，每个条目维度为 `hidden`。要求2维、连续、`hidden`必须128对齐，数据类型支持 `bfloat16`、`float16`、`float32`。
+- **storage** (`Tensor`)：必选参数，待写入的CPU tensor，shape为 `(num_entries, hidden)`，表示有 `num_entries` 个条目，每个条目维度为 `hidden`。要求2维、连续、`hidden`必须大于0，数据类型支持 `bfloat16`、`float16`、`float32`。
 
-**输出说明**：无返回值，数据写入host pinned内存。
+**输出说明**：无返回值。推理模式数据写入host pinned内存；训练模式 `storage` 内存被注册为Engram storage。
 
 ### engram_fetch
 
@@ -180,7 +195,7 @@ $$fetched[i] = EngramTable[rank\_id][local\_idx]$$
 - $world\_size$：通信域中的rank总数。
 - $rank\_id$：$global\_idx$ 映射到的目标rank编号，取值范围 $[0, world\_size)$。当 $rank\_id$ 为本rank时，数据直接从本地host pinned内存读取；当 $rank\_id$ 为远端rank时，通过RDMA跨卡读取。
 - $local\_idx$：目标rank内的本地条目索引，取值范围 $[0, num\_entries)$。
-- $EngramTable[rank\_id]$：目标rank通过 [engram_write](#engram_write) 写入host pinned共享内存的Engram表数据，shape为 `(num_entries, hidden)`，
+- $EngramTable[rank\_id]$：目标rank通过 [engram_write](#engram_write) 提供的Engram表数据（推理模式位于host pinned共享内存，训练模式为直接映射的上层表内存），shape为 `(num_entries, hidden)`，
 $EngramTable[rank\_id][local\_idx]$ 表示其中第 $local\_idx$ 个条目。
 - $fetched[i]$：输出张量中第 $i$ 个token对应的Engram数据，$i \in [0, num\_tokens)$，$num\_tokens$ 为 `indices` 的长度。
 
@@ -212,7 +227,7 @@ ElasticBuffer.engram_fetch(indices) -> Callable
 
 **输入参数**：
 
-- **indices** (`Tensor`)：必选参数，查询索引的NPU tensor，shape为 `(num_tokens,)`，表示要抓取的条目全局索引。数据类型支持 `int32`，数据格式为 $ND$。元素取值范围需在 `[0, world_size × num_entries)`，若某一位置的元素取值超过了该范围，则返回值中该位置对应的数据为0。
+- **indices** (`Tensor`)：必选参数，查询索引的NPU tensor，shape为 `(num_tokens,)`，表示要抓取的条目全局索引，各卡`len(indices)`保持一致。数据类型支持 `int32`，数据格式为 $ND$。元素取值范围需在 `[0, world_size × num_entries)`，若某一位置的元素取值超过了该范围，则返回值中该位置对应的数据为0。
 
 **输出说明**：
 
@@ -312,12 +327,12 @@ ElasticBuffer.get_engram_storage_size_hint(
 **输入参数**：
 
 - **num_entries** (`int`)：必选参数，Engram storage的条目数，必须非负。
-- **hidden** (`int`)：必选参数，每个条目的隐藏层维度，必须128 数量对齐且大于0。
+- **hidden** (`int`)：必选参数，每个条目的隐藏层维度，必须大于0。
 - **dtype** (`torch.dtype`)：可选参数，数据类型，默认为 `torch.bfloat16`。仅在此处用于按dtype计算字节数。
 
 **输出说明**：
 
-- **num_cpu_bytes** (`int`)：CPU buffer大小（字节），用于engram_write的本地存储区，已2MB对齐。
+- **num_cpu_bytes** (`int`)：CPU buffer大小（字节），用于engram_write的本地存储区（仅推理模式使用），已2MB对齐。
 
 ### dispatch
 
@@ -347,7 +362,7 @@ ElasticBuffer.dispatch(
     num_max_tokens_per_rank=None,
     expert_alignment=None,
     do_cpu_sync=None,
-) -> (Tensor, Tensor, Tensor, EPHandle)
+) -> (Tensor | Tuple[Tensor, Tensor], Tensor | None, Tensor | None, EPHandle)
 ```
 
 **输入参数**：
@@ -357,10 +372,10 @@ ElasticBuffer.dispatch(
 - **topk_idx** (`Tensor`)：可选参数，表示每个token的topK个专家索引，决定每个token要发给哪些专家。要求为2 维张量，shape为 `(BS, K)`，数据类型支持 `int32`，数据格式为 $ND$。张量里value取值范围为 `[0, num_experts)`。非cached模式下为必选参数，cached模式下必须为 `None`。
 - **topk_weights** (`Tensor`)：可选参数，表示每个token对应的topK专家权重。要求为2 维张量，shape为 `(BS, K)`，数据类型支持 `float32`，数据格式为 $ND$。非cached模式下为可选参数，cached模式下必须为 `None`。
 - **handle** (`EPHandle`)：可选参数，表示上一次dispatch返回的handle对象，用于cached模式。传入handle时，`topk_idx` 和 `topk_weights` 必须为 `None`，`do_cpu_sync` 必须为 `False`。默认为 `None`，即非cached模式。
-- **num_experts** (`int`)：可选参数，MoE专家总数量。取值范围 `[2, 2048]`，且满足 `num_experts % ep_world_size = 0`。非cached模式下为必选参数；cached模式下必须为 `None`。
-- **num_max_tokens_per_rank** (`int`)：可选参数，表示每张卡上的最大token数量上限，传入时覆盖ElasticBuffer初始化的值。默认使用初始化时传入的值。
-- **expert_alignment** (`int`)：可选参数，表示专家对齐数。非cached模式默认值为1；cached模式使用 `handle` 中的值。
-- **do_cpu_sync** (`bool`)：可选参数，表示是否进行CPU同步等待。非cached模式默认为 `True`，cached模式必须为 `False`。
+- **num_experts** (`int`)：可选参数，MoE专家总数量。取值范围 `[2, 2048]`，且满足 `num_experts % ep_world_size = 0`。非cached模式下为必选参数；cached模式下使用 `handle` 中的值，传入参数被忽略。
+- **num_max_tokens_per_rank** (`int`)：可选参数，表示每张卡上的最大token数量上限，传入时覆盖ElasticBuffer初始化的值。默认使用初始化时传入的值。cached模式下使用 `handle` 中的值，传入参数被忽略。
+- **expert_alignment** (`int`)：可选参数，表示专家对齐数。当前仅支持取值1；cached模式使用 `handle` 中的值。
+- **do_cpu_sync** (`bool`)：可选参数，表示是否进行CPU同步等待。非cached模式默认为 `True`，cached模式下不能为 `True`。
 
 **输出说明**：
 
@@ -402,7 +417,7 @@ ElasticBuffer.combine(x, handle, *, topk_weights=None, bias=None) -> (Tensor, Te
 
 **输入参数**：
 
-- **x** (`Tensor`)：必选参数，表示经过专家计算后的token数据，即 [dispatch](#dispatch) 输出的 `recv_x` 经过专家网络处理后的结果。要求为2 维张量，shape为 `(A, H)`，数据类型仅支持 `bfloat16`，数据格式为 $ND$。
+- **x** (`Tensor`)：必选参数，表示经过专家计算后的token数据，即 [dispatch](#dispatch) 输出的 `recv_x` 经过专家网络处理后的结果。要求为2 维张量，shape为 `(A, H)`，数据类型支持 `bfloat16`、`float16`，数据格式为 $ND$。
 - **handle** (`EPHandle`)：必选参数，表示 [dispatch](#dispatch) 返回的handle对象，包含slot索引、接收元数据等信息。handle的属性参见 [dispatch](#dispatch) 输出说明。
 - <strong>*</strong>：其之前的变量是位置相关的；之后的变量是可选参数，需要使用键值对赋值，不赋值会使用默认值。
 - **topk_weights** (`Tensor`)：可选参数，表示每个token对应的topK专家权重，用于加权聚合。要求为1 维张量，shape为 `(A,)`，数据类型支持 `float32`，数据格式为 $ND$，对应 [dispatch](#dispatch) 的 `recv_topk_weights` 输出。若不提供，则进行纯累加combine，输出 `combined_topk_weights` 为 `None`。
@@ -410,12 +425,12 @@ ElasticBuffer.combine(x, handle, *, topk_weights=None, bias=None) -> (Tensor, Te
 
 **输出说明**：
 
-- **combined_x** (`Tensor`)：表示combine后的token数据，还原为原始序列顺序。要求为2 维张量，shape为 `(BS, H)`，数据类型为 `bfloat16`，数据格式为 $ND$，不支持非连续的Tensor。
+- **combined_x** (`Tensor`)：表示combine后的token数据，还原为原始序列顺序。要求为2 维张量，shape为 `(BS, H)`，数据类型与 `x` 一致（`bfloat16` 或 `float16`），数据格式为 $ND$，不支持非连续的Tensor。
 - **combined_topk_weights** (`Tensor | None`)：表示combine后的topK专家权重。当 `topk_weights` 输入不为 `None` 时，要求为2 维张量，shape为 `(BS, K)`，数据类型为 `float32`，数据格式为 $ND$；当 `topk_weights` 输入为 `None` 时，返回 `None`。
 
 ### get_moe_ep_ccl_buffer_size（静态方法）
 
-**功能**：需与 [dispatch](#dispatch) 和 [combine](#combine) 配套使用，用于计算dispatch和combine算子所需的HCCL通信 `buffer_size` 大小（单位：MB）。该接口为静态方法，可在初始化ElasticBuffer前调用。
+**功能**：返回默认的CCL通信buffer大小（单位：MB）。当前dispatch和combine所需的通信buffer无需再通过 `HCCL_BUFFSIZE` 环境变量手动配置，无需调用该接口。
 
 **函数原型**：
 
@@ -425,55 +440,19 @@ ElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hi
 
 **输入参数**：
 
-- **world_size** (`int`)：必选参数，表示EP通信域的大小（即参与EP通信的卡数）。取值范围 `[2, 768]`。
+- **world_size** (`int`)：必选参数，表示EP通信域的大小（即参与EP通信的卡数）。取值范围 `[2, 1024]`。
 - **num_max_tokens_per_rank** (`int`)：必选参数，表示每张卡上的最大token数量上限。
-- **hidden** (`int`)：必选参数，表示hidden size隐藏层大小。取值范围 `[1024, 8192]`。
+- **hidden** (`int`)：必选参数，表示hidden size隐藏层大小。取值范围 `(0, 8192]`。
 - **num_experts** (`int`)：必选参数，MoE专家总数量，取值范围 `[2, 2048]`，且满足 `num_experts % ep_world_size = 0`。
 - **topk** (`int`)：必选参数，表示选取topK个专家，取值范围 `[1, 32]`。
 
 **输出说明**：
 
-- **ccl_buffer_size** (`int`)：计算得到的 `ccl_buffer_size` 大小，单位为MB。将该值设置为 `HCCL_BUFFSIZE` 环境变量即可满足通信域的内存需求。
-
-**计算公式**：
-
-```text
-local_experts_num = num_experts // world_size
-state_buffer_size =
-    world_size * Align512(local_experts_num * 4)
-    + 2 * world_size * 512
-    + num_max_tokens_per_rank * topk * 512
-    + world_size * 512
-
-metadata_bytes = Align32(topk * 4)
-hidden_align = Align32(hidden * 2)
-dispatch_per_slot_bytes = Align512(hidden_align + metadata_bytes * 2 + 32)
-combine_per_slot_bytes = Align512(hidden_align + 32)
-
-dispatch_recv_buffer_size =
-    world_size * num_max_tokens_per_rank * dispatch_per_slot_bytes
-combine_recv_buffer_size =
-    num_max_tokens_per_rank * topk * combine_per_slot_bytes
-dispatch_send_buffer_size = dispatch_recv_buffer_size
-
-minimum_buffer_size =
-    state_buffer_size
-    + dispatch_recv_buffer_size
-    + combine_recv_buffer_size
-    + dispatch_send_buffer_size
-
-ccl_buffer_size = Align2(Align1MB(minimum_buffer_size) / 1MB) / 2
-```
-
-其中 `AlignX(value) = ((value + X - 1) / X) * X`，公式中的 `/` 表示整除。
-
-通信窗口依次存放状态区、Dispatch接收区、Combine接收区和Dispatch发送区。Dispatch发送区与接收区均按
-`dispatch_per_slot_bytes` 的最大2字节hidden规格预留；kernel实际读写和通信仍使用当前数据类型对应的
-`per_slot_bytes`。Combine发送数据在Combine算子的workspace中暂存，不计入HCCL通信窗口大小。
+- **ccl_buffer_size** (`int`)：默认的CCL通信buffer大小，固定返回200，单位为MB。当前通信buffer已由ElasticBuffer内部按算子参数自动计算并申请，该值目前无参考意义。
 
 ### destroy
 
-**功能**：释放ElasticBuffer资源，包括host pinned内存、Engram运行时资源和Dispatch/Combine通信上下文。训练模式下HCCL默认通信buffer由框架管理，无需手动释放。
+**功能**：释放ElasticBuffer资源，包括host pinned内存（推理模式）、Engram运行时资源（训练模式下同时解除上层表内存的注册映射，不会释放调用方的内存）和Dispatch/Combine通信上下文。训练模式下HCCL默认通信buffer由框架管理，无需手动释放。当构造时 `explicitly_destroy=False`（默认）时，实例被垃圾回收时会自动调用本方法；当 `explicitly_destroy=True` 时，需要由调用方显式调用。
 
 **输入参数**：无参数。
 
@@ -483,7 +462,7 @@ ccl_buffer_size = Align2(Align1MB(minimum_buffer_size) / 1MB) / 2
 
 - **参数对齐约束**：
   - `num_cpu_bytes` 必须为2MB对齐（即能被 `2 × 1024 × 1024` 整除）。
-  - `hidden` 必须为128 数量对齐。
+  - `hidden` 必须大于0。
   - [get_engram_storage_size_hint](#get_engram_storage_size_hint静态方法) 返回值自动满足2MB对齐。
 
 - **Engram维度约束**：
@@ -508,6 +487,7 @@ ccl_buffer_size = Align2(Align1MB(minimum_buffer_size) / 1MB) / 2
   - `with_grad=True` 时，[engram_fetch](#engram_fetch) 返回的 `fetch_ctx` 为局部变量，多次fetch不会覆盖（每次调用返回独立的ctx）。
   - [engram_fetch_grad](#engram_fetch_grad) 的 `grad_fetched` shape 必须与前向 `fetched` 一致。
   - 训练模式下，通信buffer使用HCCL默认buffer（大小受 `HCCL_BUFFSIZE` 环境变量控制，默认200MB），由框架管理，无需手动申请或释放。
+  - 训练模式下，[engram_write](#engram_write) 直接映射 `storage` 锁页内存（零拷贝）：`storage` 必须为**锁页内存**（`pin_memory()` 分配），普通（非锁页）CPU内存不受支持；`storage` 必须非空，且在ElasticBuffer生命周期内保持存活、地址不变；重复调用须传入同一 `storage`。
 
 - **Engram数值约束**：
   - `num_cpu_bytes`、`num_entries`必须非负。
@@ -526,13 +506,12 @@ ccl_buffer_size = Align2(Align1MB(minimum_buffer_size) / 1MB) / 2
   - `A`：表示本卡接收的最大token数量，`A = ep_world_size * num_max_tokens_per_rank * MIN(K, num_local_experts)`。
   - `H`：表示hidden size隐藏层大小。取值范围为 `(0, 8192]`。
   - `BS`：表示batch sequence size，即本卡的token数量。
-  - `K`：表示选取topK个专家，取值范围为 `1 ≤ K ≤ 32`。
-  - `num_local_experts`：表示本卡专家数量，`num_local_experts = num_experts / ep_world_size`，应满足 `0 < num_local_experts * ep_world_size ≤ 2048`。
+  - `K`：表示选取topK个专家，取值范围为 `1 ≤ K ≤ min(32, num_experts)`。
+  - `num_local_experts`：表示本卡专家数量，`num_local_experts = num_experts / ep_world_size`，其中 `num_experts` 取值范围为 `[2, 2048]` 且须被 `ep_world_size` 整除，即满足 `0 < num_local_experts * ep_world_size ≤ 2048`。
 
 - **HCCL通信域缓存区大小**：
-  - 调用 [dispatch](#dispatch) 或 [combine](#combine) 前需检查 `HCCL_BUFFSIZE` 环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
-  - 通信域缓存区大小可通过调用 [get_moe_ep_ccl_buffer_size](#get_moe_ep_ccl_buffer_size静态方法) 计算。
-  - 计算得到的 `ccl_buffer_size` 需通过环境变量 `HCCL_BUFFSIZE` 设置，每个通信域独占一组 `2 * HCCL_BUFFSIZE` 大小的内存。
+  - [dispatch](#dispatch) 和 [combine](#combine) 所需的CCL通信buffer由ElasticBuffer内部自动计算并按需申请，无需配置 `HCCL_BUFFSIZE` 环境变量。
+  - Engram训练模式（`with_grad=True`）的a2a收发仍使用HCCL默认通信buffer，`HCCL_BUFFSIZE` 环境变量仅对该路径生效（不配置时默认200MB）。
 
 - **通信域约束**：
   - Engram通信域 `world_size` 范围 `[2, 1024]`，支持多卡分布式场景。
@@ -592,7 +571,7 @@ def run_elastic_buffer(queue, rank, world_size, storage, indices):
     )
     print(f"[INFO] device_{rank} num_cpu_bytes={num_cpu_bytes}")
 
-    buffer = ElasticBuffer(group, num_cpu_bytes=num_cpu_bytes)
+    buffer = ElasticBuffer(group, num_cpu_bytes=num_cpu_bytes, explicitly_destroy=True)
 
     print(f"[INFO] device_{rank} run engram_write")
     buffer.engram_write(storage)
@@ -703,6 +682,7 @@ def train_worker(rank):
         num_cpu_bytes=num_cpu_bytes,
         num_max_tokens_per_rank=num_tokens,
         with_grad=True,
+        explicitly_destroy=True,
     )
 
     # ==================== 写入 storage ====================
@@ -778,6 +758,7 @@ def run_dispatch_combine(rank):
         num_max_tokens_per_rank=num_max_tokens_per_rank,
         hidden=hidden,
         num_topk=top_k,
+        explicitly_destroy=True,
     )
 
     num_tokens = 64
@@ -827,15 +808,6 @@ def run_dispatch_combine(rank):
 
 if __name__ == "__main__":
     os.environ["HCCL_WHITELIST_DISABLE"] = "1"
-    os.environ["HCCL_BUFFSIZE"] = str(
-        ElasticBuffer.get_moe_ep_ccl_buffer_size(
-            world_size,
-            num_max_tokens_per_rank,
-            hidden,
-            num_experts,
-            top_k,
-        )
-    )
 
     processes = []
     for rank in range(world_size):

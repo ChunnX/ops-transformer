@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /*!
  * \file allto_all_matmul_util.h
  * \brief
@@ -18,7 +17,7 @@
 
 #include "allto_all_matmul_tiling.h"
 #include "adv_api/hccl/hccl.h"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/numeric_size.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_numeric_size.hpp"
 #include <cstdint>
 
 #define MC2_NON_QUANT 0
@@ -31,6 +30,7 @@ using namespace AscendC;
 namespace {
 constexpr static uint32_t BUFFER_NUM = 2U;
 constexpr static uint32_t BLOCK_SIZE = 512U;
+constexpr static uint32_t HALF_BLOCK_SIZE = 256U;
 constexpr static int32_t MAX_BLOCK_COUNT = 2;
 constexpr static int32_t FLAG_ZERO_IDX = 0;
 constexpr static int32_t FLAG_ONE_IDX = 1;
@@ -70,13 +70,13 @@ struct BaseBlock {
 };
 
 template <typename T>
-using Block32B = BaseBlock<T, 32>;
+using Block32B = BaseBlock<T, BLOCK_ALIGN_BYTES>;
 
 template <typename T>
-using Block256B = BaseBlock<T, 256>;
+using Block256B = BaseBlock<T, HALF_BLOCK_SIZE>;
 
 template <typename T>
-using Block512B = BaseBlock<T, 512>;
+using Block512B = BaseBlock<T, BLOCK_SIZE>;
 
 class CommBase {
 public:
@@ -145,7 +145,7 @@ public:
         swizzlDirect = info.cocTiling.swizzlDirect;
         pValue = info.cocTiling.pValue;
 
-        ubPingPongSize = info.cocTiling.ubMoveNum / 2;
+        ubPingPongSize = info.cocTiling.ubMoveNum / BUFFER_NUM;
         quantCoreNum = info.allToAllMatmulInfo.quantCoreNum;
     }
 

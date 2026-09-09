@@ -14,8 +14,8 @@
 
 #ifndef PSE_ATTEN_MASK_MULS_SIMPLE_SOFTMAX__SFMG
 #define PSE_ATTEN_MASK_MULS_SIMPLE_SOFTMAX__SFMG
-#include "../common.h"
-#include "../../../../../../../../attention/common/op_kernel/arch35/pse.h"
+#include "../sparse_flash_mla_grad_arch35_common.h"
+#include "../../../../../../../../attention/common/op_kernel/arch35/pse_arch35.h"
 #include "../../../../../../../../attention/common/op_kernel/arch35/attenmask_arch35.h"
 #include "vf_muls_sel_simple_softmax_sfmg.h"
 
@@ -66,12 +66,11 @@ srcTensor：VF输入，入参
 template <typename T1, typename T2, const uint32_t IS_ATTEN_MASK = 0, const uint32_t IS_PSE = 0,
           const uint32_t IS_DETER_OLD = 0, const uint32_t VECTOR_BASEM = 64, const uint32_t VECTOR_BASEN = 128,
           const uint32_t IsSparseIndicesExist = 0>
-__aicore__ inline void
-CalculatePseMulsSelSimpleSoftMax(FagConstInfo &constInfo, FagRunInfo &runInfo, PseInfo &pseInfo,
-                                 AttenMaskInfo &attenMaskInfo, TQue<QuePosition::VECIN, 1> &lseInQue,
-                                 TQue<QuePosition::VECIN, 1> &attenMaskInQue, TQue<QuePosition::VECIN, 1> &pseInQue,
-                                 LocalTensor<T2> &dstTensor, LocalTensor<T2> &srcTensor,
-                                 LocalTensor<T2> &softmaxL1Tensor, __gm__ uint8_t *pseSlope, float pScalar)
+__aicore__ inline void CalculatePseMulsSelSimpleSoftMax(
+    FagConstInfo &constInfo, FagRunInfo &runInfo, PseInfo &pseInfo, AttenMaskInfo &attenMaskInfo,
+    TQue<QuePosition::VECIN, 1> &lseInQue, TQue<QuePosition::VECIN, 1> &attenMaskInQue,
+    TQue<QuePosition::VECIN, 1> &pseInQue, LocalTensor<T2> &dstTensor, LocalTensor<T2> &srcTensor,
+    LocalTensor<T2> &softmaxL1Tensor, __gm__ uint8_t *pseSlope, float pScalar)
 {
     if (runInfo.halfGRealSize == 0) {
         return;

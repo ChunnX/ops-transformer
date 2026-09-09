@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <string>
 #include <vector>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
@@ -17,7 +18,6 @@
 #include "opdev/op_executor.h"
 #include "opdev/platform.h"
 #include "aclnn/aclnn_base.h"
-#include "aclnn_util.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnnInner_mega_moe.h"
@@ -42,7 +42,8 @@ aclTensorList *ConvertTensorListToInt4(const aclTensorList *input, aclOpExecutor
     }
     constexpr int64_t INT4_NUMS_IN_INT32 = 8; // 每个int32包含8个int4
     std::vector<aclTensor *> tensors;
-    for (int i = 0; i < input->Size(); i++) {
+    const int tensorCount = input->Size();
+    for (int i = 0; i < tensorCount; ++i) {
         auto tensor = (*input)[i];
         auto viewShape = tensor->GetViewShape();
         viewShape[viewShape.GetDimNum() - 1] = viewShape[viewShape.GetDimNum() - 1] * INT4_NUMS_IN_INT32;
@@ -102,10 +103,11 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensor *xActiveMaskOptional, const aclTensorList *sharedWeight1Optional,
     const aclTensorList *sharedWeight2Optional, const aclTensorList *sharedWeightScales1Optional,
     const aclTensorList *sharedWeightScales2Optional, const aclTensorList *sharedBias1Optional,
-    const aclTensorList *sharedBias2Optional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
-    int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
-    const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, const aclFloatArray *activationParams,
-    int64_t topoType, int64_t rankNumPerServer, int64_t topkWeightsType, aclTensor *yOut, aclTensor *expertTokenNumsOut,
+    const aclTensorList *sharedBias2Optional, const aclTensor *maskBufferOptional, int64_t moeExpertNum,
+    int64_t epWorldSize, int64_t cclBufferSize, int64_t maxRecvTokenNum, int64_t dispatchQuantMode,
+    int64_t dispatchQuantOutDtype, int64_t sharedExpertQuantOutDtype, int64_t combineQuantMode, const char *commAlg,
+    int64_t numMaxTokensPerRank, const char *activation, const aclFloatArray *activationParams, int64_t topoType,
+    int64_t rankNumPerServer, int64_t topkWeightsType, aclTensor *yOut, aclTensor *expertTokenNumsOut,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
@@ -169,7 +171,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         }
     }
 
-    // 共享专家权重的dtype/format与MoE权重一致，为空时用MoE权重的dtype和format创建空tensor
+    // shared weight 为空时，使用 MoE weight 的 dtype/format 创建占位 tensor 以完成原型匹配。
     aclDataType moeWeight1Dtype = (weight1 != nullptr && weight1->Size() > 0) ?
                                       static_cast<aclDataType>((*weight1)[0]->GetDataType()) :
                                       ACL_FLOAT8_E4M3FN;
@@ -187,14 +189,18 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     CreateEmptyTensorWithFormat(moeWeight2Dtype, moeWeight2Format, sharedWeight2Optional, tmpSharedWeightList,
                                 *executor);
 
+    std::string commAlgValue = commAlg == nullptr ? std::string() : std::string(commAlg);
+    std::string activationValue(activation);
+    char *commAlgData = commAlg == nullptr ? nullptr : commAlgValue.data();
+
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2, weightScales1Optional, weightScales2Optional, bias1Optional,
         bias2Optional, xActiveMaskOptional, nullptr, sharedWeight1Optional, sharedWeight2Optional,
         sharedWeightScales1Optional, sharedWeightScales2Optional, sharedBias1Optional, sharedBias2Optional,
-        moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantOutDtype,
-        combineQuantMode, const_cast<char *>(commAlg), numMaxTokensPerRank, const_cast<char *>(activation),
-        activationParams, ge::DT_UNDEFINED, false, false, 0, topoType, rankNumPerServer, topkWeightsType, yOut,
-        expertTokenNumsOut, workspaceSize, executor);
+        maskBufferOptional, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode,
+        dispatchQuantOutDtype, sharedExpertQuantOutDtype, combineQuantMode, commAlgData, numMaxTokensPerRank,
+        activationValue.data(), activationParams, ge::DT_UNDEFINED, false, false, 0, topoType, rankNumPerServer,
+        topkWeightsType, yOut, expertTokenNumsOut, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }

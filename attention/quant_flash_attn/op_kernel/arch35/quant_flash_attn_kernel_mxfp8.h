@@ -118,6 +118,8 @@ public:
 
     // metadata
     uint32_t sectionNum_;
+    uint32_t metadataAicNum_;
+    uint32_t metadataAivNum_;
     // fa metadata
     uint32_t bN2Start_;
     uint32_t bN2End_;
@@ -157,6 +159,7 @@ public:
         this->tilingData_ = tiling;
 
         InitConstInfo();
+        constInfo_.needInitOutput = ((__gm__ uint32_t *)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
 
         keyPtr_ = key;
         valuePtr_ = value;
@@ -173,10 +176,12 @@ public:
         } else {
             seqUsedGmKv_.SetGlobalBuffer((__gm__ int32_t *)sequsedKv, constInfo_.seqUsedKvSize);
         }
-        sectionNum_ = ((__gm__ uint32_t *)metadata)[0];
+        sectionNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_SECTION_NUM_INDEX];
+        metadataAicNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_AIC_NUM_INDEX];
+        metadataAivNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_AIV_NUM_INDEX];
 
-        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + FA_METADATA_HEADER_OFFSET),
-                                      QFA_AIC_CORE_NUM * 16U * sectionNum_);
+        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + METADATA_HEADER_OFFSET),
+                                      sectionNum_ * metadataAicNum_ * METADATA_STRIDE);
 
         InitQCuSeqLensParser(cuSeqLensQ, sequsedQ);
         InitKvCuSeqLensParser(cuSeqLensKv, sequsedKv);
@@ -207,9 +212,9 @@ public:
         if constexpr (FLASH_DECODE) {
             if ASCEND_IS_AIV {
                 fdMetaDataGm_.SetGlobalBuffer(
-                    (__gm__ uint32_t *)(metadata + FA_METADATA_HEADER_OFFSET +
-                                        QFA_METADATA_SIZE * QFA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
-                    QFA_AIV_CORE_NUM * 16U * sectionNum_);
+                    (__gm__ uint32_t *)(metadata + METADATA_HEADER_OFFSET +
+                                        sectionNum_ * metadataAicNum_ * METADATA_STRIDE * sizeof(uint32_t)),
+                    sectionNum_ * metadataAivNum_ * METADATA_STRIDE);
                 vecFdBlock_.InitParams();
                 vecFdBlock_.InitGlobalTensor(this->vecFaBlock_.softmaxFDMaxGm_, this->vecFaBlock_.softmaxFDSumGm_,
                                              this->vecFaBlock_.accumOutGm_, this->vecFaBlock_.attentionOutGm_, keyPtr_);
@@ -280,7 +285,6 @@ public:
         constInfo_.scaleValue = static_cast<float>(qfaBaseParams.scaleValue);
         constInfo_.isKvContinuous = true;
         constInfo_.coreNum = qfaBaseParams.coreNum;
-        constInfo_.needInitOutput = qfaBaseParams.needInitOutput;
         constInfo_.outputLayout = static_cast<FA_LAYOUT>(qfaBaseParams.outputLayout);
         constInfo_.sparseMode =
             qfaAttenMaskParams.sparseMode; // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
@@ -292,6 +296,16 @@ public:
 
         constInfo_.accumOutSize = qfaWorkspaceParams.accumOutSize;
         constInfo_.logSumExpSize = qfaWorkspaceParams.logSumExpSize;
+
+        // strides
+        constInfo_.keyStrides.bnStride = qfaBaseParams.keyStrides.bnStride;
+        constInfo_.keyStrides.n2Stride = qfaBaseParams.keyStrides.n2Stride;
+        constInfo_.valueStrides.bnStride = qfaBaseParams.valueStrides.bnStride;
+        constInfo_.valueStrides.n2Stride = qfaBaseParams.valueStrides.n2Stride;
+        constInfo_.kDescaleStrides.bnStride = qfaBaseParams.kDescaleStrides.bnStride;
+        constInfo_.kDescaleStrides.n2Stride = qfaBaseParams.kDescaleStrides.n2Stride;
+        constInfo_.vDescaleStrides.bnStride = qfaBaseParams.vDescaleStrides.bnStride;
+        constInfo_.vDescaleStrides.n2Stride = qfaBaseParams.vDescaleStrides.n2Stride;
 
         // pageAttention
         if constexpr (PAGE_ATTENTION) {
@@ -328,12 +342,12 @@ public:
 
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
-        return QFA_METADATA_SIZE * QFA_AIC_CORE_NUM * sectionIdx + 16U * coreIdx + metaIdx;
+        return METADATA_STRIDE * metadataAicNum_ * sectionIdx + METADATA_STRIDE * coreIdx + metaIdx;
     }
 
     __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
-        return QFA_FD_METADATA_SIZE * QFA_AIV_CORE_NUM * sectionIdx + QFA_FD_METADATA_SIZE * coreIdx + metaIdx;
+        return METADATA_STRIDE * metadataAivNum_ * sectionIdx + METADATA_STRIDE * coreIdx + metaIdx;
     }
 
     __aicore__ inline void CrossCoreBufferInit()

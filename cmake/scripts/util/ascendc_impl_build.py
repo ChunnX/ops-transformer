@@ -27,6 +27,9 @@ import const_var
 PYF_PATH = os.path.dirname(os.path.realpath(__file__))
 COMPUTE_UNIT = None
 ENABLE_EXPERIMENTAL = "OFF"
+PYPTO_ARCH_MAP = {
+    "ascend950": "a5",
+}
 
 if const_var.CHECK_ASC_DEVKIT_VERSION:
     IMPORT_HEADER = """
@@ -206,6 +209,7 @@ def {}({}, kernel_name="{}"{}):
         tikcpp_path = os.path.realpath(os.path.join(bisheng_path, "..", "..", "tikcpp"))
     else:
         tikcpp_path = os.path.realpath("/usr/local/Ascend/latest/compiler/tikcpp")
+    options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "catlass", "include"))
     options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "tensor_api", "include"))
     options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "tensor_api"))
     options.append("-I" + tikcpp_path)
@@ -215,6 +219,7 @@ def {}({}, kernel_name="{}"{}):
     options.append("-I" + os.path.join(tikcpp_path, "tikcfw", "interface"))
     options.append("-I" + os.path.join(tikcpp_path, "..", "ascendc", "act"))
     options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common"))
+    options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "op_kernel"))
     toolkit_path = os.environ.get('ASCEND_HOME_PATH')
     if toolkit_path is None:
         toolkit_path = os.path.realpath("/usr/local/Ascend/latest/")
@@ -337,12 +342,16 @@ PYPTO_COMPILE_OP_API = """
         attrs = __attrs__ {}, origin_inputs=[{}], origin_outputs = [{}],\\
                 param_type_dynamic = {}, mc2_ctx = {}, param_type_list = {}, init_value_list = {},\\
                 output_shape_depend_on_compute = {})
-    pypto_compile_op(src, origin_func_name, op_info, options, code_channel, '{}', {})
+    pypto_compile_kwargs = {{}}
+    if "arch" in inspect.signature(pypto_compile_op).parameters:
+        pypto_compile_kwargs["arch"] = '{pypto_arch}'
+    pypto_compile_op(src, origin_func_name, op_info, options, code_channel, '{}', {}, **pypto_compile_kwargs)
 """
 
 # Extra import appended to the wrapper head for pypto ops (kept out of the default head so non-pypto
 # builds / environments without pypto_pro are unaffected).
 PYPTO_IMPORT_HEADER = """
+import inspect
 from unittest.mock import MagicMock as _PyptoMagicMock
 sys.modules["torch"] = _PyptoMagicMock(name="torch")
 sys.modules["torch_npu"] = _PyptoMagicMock(name="torch_npu")
@@ -423,8 +432,10 @@ class AdpBuilder(opdesc_parser.OpDesc):
         self.argsdefv = []
         self.op_compile_option: str = "{}"
         # pypto-pro binary-delivery op: emit a wrapper that calls pypto_compile_op (src = the DSL .py
-        # co-located at op_kernel/<op_file>.py) instead of the template compile_op. Set from --pypto-ops.
+        # co-located at op_kernel/<op_file>.py) instead of the template compile_op. Set from --pypto-ops
+        # and the per-SOC ops-info generated for the compute units originating from build.sh --soc.
         self.is_pypto = False
+        self.pypto_arch = None
         super().__init__(op_type)
 
     def write_adapt(
@@ -831,6 +842,7 @@ class AdpBuilder(opdesc_parser.OpDesc):
                     self.output_shape_depend_on_compute,
                     self.op_compile_option,
                     repr(extend_opt),
+                    pypto_arch=self.pypto_arch,
                 )
             )
         else:
@@ -954,6 +966,18 @@ def write_scripts(
         # pypto-pro binary-delivery ops (from --pypto-ops, matched by op_file): emit the pypto wrapper
         # variant (calls pypto_compile_op). Non-pypto ops keep the template compile_op wrapper.
         op_desc.is_pypto = op_desc.op_file in pypto_ops
+        if op_desc.is_pypto:
+            if not ini_soc:
+                raise RuntimeError(
+                    "PyPTO binary compilation requires a SOC-specific ops-info file"
+                )
+            if _compute_unit and ini_soc not in _compute_unit:
+                continue
+            op_desc.pypto_arch = PYPTO_ARCH_MAP.get(ini_soc)
+            if op_desc.pypto_arch is None:
+                raise RuntimeError(
+                    f"PyPTO binary compilation does not support compute unit '{ini_soc}'"
+                )
         op_desc.write_adapt(
             dirs.get(const_var.CFG_IMPL_DIR),
             dirs.get(const_var.CFG_OUT_DIR),
@@ -1012,7 +1036,10 @@ if __name__ == "__main__":
     if args.opsinfo_dir:
         ops_infos.extend(get_ops_info_files(args.opsinfo_dir))
         if not ops_infos:
-            raise OpFileNotExistsError(args.opsinfo_dir)
+            print(
+                f"No aic-*-ops-info.ini found in {args.opsinfo_dir}, skip adapt py generation."
+            )
+            sys.exit(0)
     else:
         ops_infos.append(args.argv[1])
     COMPUTE_UNIT = args.compute_unit

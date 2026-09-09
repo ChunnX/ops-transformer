@@ -78,14 +78,20 @@ struct AntiquantTaskParamBaseAPI {
     bool isPertensor;
     bool isPerHead;
     bool isKvCacheNz;
+    uint32_t kvCacheNzD0;
     uint32_t kvCacheBlockSize;
     uint32_t maxBlockNumPerSeq;
     uint32_t paKvShapeType;
     uint64_t kvPaddingBeginOffset;
 
     bool isPrefixLoop = 0;
+    uint64_t kvBnStride = 0;
+    uint64_t kvN2Stride = 0;
+    uint64_t scaleBnStride = 0;
+    uint64_t scaleN2Stride = 0;
+    uint64_t offsetBnStride = 0;
+    uint64_t offsetN2Stride = 0;
 };
-
 
 template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
 class AntiquantProcessorBaseAPI {
@@ -99,13 +105,15 @@ public:
 
     __aicore__ inline AntiquantProcessorBaseAPI(){};
 
-    __aicore__ inline void
-    ProcessBaseAPI(Buffer<BufferType::L1> &outBufAntiRes, GlobalTensor<KV_T> &kvGm,
-                   GlobalTensor<ANTIQ_PARAMS_T> &antiqScaleGm, GlobalTensor<ANTIQ_PARAMS_T> &antiqOffsetGm,
-                   GlobalTensor<int32_t> &blockTableGm, TQue<QuePosition::VECIN, 1> &kvInputQue,
-                   TQue<QuePosition::VECOUT, 1> &kvOutputQue, TQue<QuePosition::VECIN, 1> &antiqScaleInputQue,
-                   TQue<QuePosition::VECIN, 1> &antiqOffsetInputQue, TBuf<> kvAntiqMxScaleRes,
-                   const AntiquantTaskParamBaseAPI &taskParam, int32_t taskId, bool isBeforeHalf, int32_t s2RealSize);
+    __aicore__ inline void ProcessBaseAPI(Buffer<BufferType::L1> &outBufAntiRes, GlobalTensor<KV_T> &kvGm,
+                                          GlobalTensor<ANTIQ_PARAMS_T> &antiqScaleGm,
+                                          GlobalTensor<ANTIQ_PARAMS_T> &antiqOffsetGm,
+                                          GlobalTensor<int32_t> &blockTableGm, TQue<QuePosition::VECIN, 1> &kvInputQue,
+                                          TQue<QuePosition::VECOUT, 1> &kvOutputQue,
+                                          TQue<QuePosition::VECIN, 1> &antiqScaleInputQue,
+                                          TQue<QuePosition::VECIN, 1> &antiqOffsetInputQue, TBuf<> kvAntiqMxScaleRes,
+                                          const AntiquantTaskParamBaseAPI &taskParam, int32_t taskId, bool isBeforeHalf,
+                                          int32_t s2RealSize);
 
     __aicore__ inline void CopyAntiqScaleE8M0(LocalTensor<Q_T> dstLocal, GlobalTensor<Q_T> &srcGm, uint64_t offset,
                                               uint32_t rowCnt, uint32_t grpNum);
@@ -116,11 +124,13 @@ public:
                                                             TBuf<> kvAntiqMxScaleRes,
                                                             const AntiquantTaskParamBaseAPI &taskParam,
                                                             bool isBeforeHalf, int32_t s2RealSize);
-    __aicore__ inline void
-    LoadAntiquantParamsPerToken(GlobalTensor<ANTIQ_PARAMS_T> &antiqScaleGm, GlobalTensor<ANTIQ_PARAMS_T> &antiqOffsetGm,
-                                GlobalTensor<int32_t> &blockTableGm, TQue<QuePosition::VECIN, 1> &antiqScaleInputQue,
-                                TQue<QuePosition::VECIN, 1> &antiqOffsetInputQue,
-                                const AntiquantTaskParamBaseAPI &taskParam, bool isBeforeHalf, int32_t s2RealSize);
+    __aicore__ inline void LoadAntiquantParamsPerToken(GlobalTensor<ANTIQ_PARAMS_T> &antiqScaleGm,
+                                                       GlobalTensor<ANTIQ_PARAMS_T> &antiqOffsetGm,
+                                                       GlobalTensor<int32_t> &blockTableGm,
+                                                       TQue<QuePosition::VECIN, 1> &antiqScaleInputQue,
+                                                       TQue<QuePosition::VECIN, 1> &antiqOffsetInputQue,
+                                                       const AntiquantTaskParamBaseAPI &taskParam, bool isBeforeHalf,
+                                                       int32_t s2RealSize);
 
     __aicore__ inline void CopyAntiqParam(LocalTensor<ANTIQ_PARAMS_T> dstLocal, GlobalTensor<ANTIQ_PARAMS_T> &srcGm,
                                           uint32_t rowCnt, const AntiquantTaskParamBaseAPI &taskParam);
@@ -146,12 +156,10 @@ public:
                                                GlobalTensor<int32_t> &blockTableGm,
                                                const AntiquantTaskParamBaseAPI &taskParam, uint32_t curSequence,
                                                uint32_t dealRowCount);
-    __aicore__ inline void CopyAntiquantParamsPageAttention(LocalTensor<ANTIQ_PARAMS_T> dstLocal,
-                                                            GlobalTensor<ANTIQ_PARAMS_T> &srcGm,
-                                                            GlobalTensor<int32_t> &blockTableGm,
-                                                            const AntiquantTaskParamBaseAPI &taskParam,
-                                                            DataCopyExtParams copyInParams,
-                                                            DataCopyPadExtParams<ANTIQ_PARAMS_T> copyInPadParams);
+    __aicore__ inline void CopyAntiquantParamsPageAttention(
+        LocalTensor<ANTIQ_PARAMS_T> dstLocal, GlobalTensor<ANTIQ_PARAMS_T> &srcGm, GlobalTensor<int32_t> &blockTableGm,
+        const AntiquantTaskParamBaseAPI &taskParam, DataCopyExtParams copyInParams,
+        DataCopyPadExtParams<ANTIQ_PARAMS_T> copyInPadParams, bool isOffset = false);
     template <bool HAS_OFFSET, bool IS_PER_TOKEN>
     __aicore__ inline void CallAntiquantVF(LocalTensor<Q_T> &antiqResUb, LocalTensor<KV_T> &antiqInUb,
                                            LocalTensor<ANTIQ_PARAMS_T> &offsetTensor,
@@ -398,8 +406,9 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::LoadAnt
     if (taskParam.isExistOffset) {
         LocalTensor<ANTIQ_PARAMS_T> antiqOffsetTmpUb = antiqOffsetInputQue.template AllocTensor<ANTIQ_PARAMS_T>();
         if (taskParam.isPageAttentionAntiquant) {
+            const bool isOffset = true; // offset 用自己的 stride (与 scale 可不同), 区别于 scale 路径
             CopyAntiquantParamsPageAttention(antiqOffsetTmpUb, antiqOffsetGm, blockTableGm, taskParam, copyInParams,
-                                             copyInPadParams);
+                                             copyInPadParams, isOffset);
         } else {
             DataCopyPad(antiqOffsetTmpUb, antiqOffsetGm[scaleOffset], copyInParams, copyInPadParams);
         }
@@ -427,17 +436,30 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
 
         DataCopyExtParams copyInParams;
         DataCopyPadExtParams<ANTIQ_PARAMS_T> copyInPadParams;
-        copyInParams.blockCount = rowCnt;
-        copyInParams.blockLen = taskParam.headDim * sizeof(ANTIQ_PARAMS_T);
-        copyInParams.srcStride = static_cast<int64_t>(copyInParams.blockLen) * (-1);
-        copyInParams.dstStride = (dBaseSize - taskParam.headDim) * sizeof(ANTIQ_PARAMS_T) / BYTE_BLOCK;
-
         copyInPadParams.isPad = false;
         copyInPadParams.leftPadding = 0;
         copyInPadParams.rightPadding = 0;
         copyInPadParams.paddingValue = 0;
 
-        DataCopyPad(dstLocal, srcGm[taskParam.antiqParamOffset], copyInParams, copyInPadParams);
+        if (taskParam.isKvCacheNz && taskParam.kvCacheNzD0 == 32) {
+            uint32_t d0ElemPerGrp = taskParam.kvCacheNzD0;
+            uint32_t grpNum = taskParam.headDim / d0ElemPerGrp;
+            uint32_t copyTimesPerGrp = dBaseSize / d0ElemPerGrp;
+            copyInParams.blockCount = static_cast<uint16_t>(copyTimesPerGrp);
+            copyInParams.blockLen = d0ElemPerGrp * sizeof(ANTIQ_PARAMS_T);
+            copyInParams.srcStride = static_cast<int64_t>(copyInParams.blockLen) * (-1);
+            copyInParams.dstStride = 0;
+            for (uint32_t g = 0; g < grpNum; g++) {
+                DataCopyPad(dstLocal[g * dBaseSize], srcGm[taskParam.antiqParamOffset + g * d0ElemPerGrp], copyInParams,
+                            copyInPadParams);
+            }
+        } else {
+            copyInParams.blockCount = rowCnt;
+            copyInParams.blockLen = taskParam.headDim * sizeof(ANTIQ_PARAMS_T);
+            copyInParams.srcStride = static_cast<int64_t>(copyInParams.blockLen) * (-1);
+            copyInParams.dstStride = (dBaseSize - taskParam.headDim) * sizeof(ANTIQ_PARAMS_T) / BYTE_BLOCK;
+            DataCopyPad(dstLocal, srcGm[taskParam.antiqParamOffset], copyInParams, copyInPadParams);
+        }
     }
 }
 template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
@@ -510,7 +532,7 @@ __aicore__ inline void
 AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAntiquantParamsPageAttention(
     LocalTensor<ANTIQ_PARAMS_T> dstLocal, GlobalTensor<ANTIQ_PARAMS_T> &srcGm, GlobalTensor<int32_t> &blockTableGm,
     const AntiquantTaskParamBaseAPI &taskParam, DataCopyExtParams copyInParams,
-    DataCopyPadExtParams<ANTIQ_PARAMS_T> copyInPadParams)
+    DataCopyPadExtParams<ANTIQ_PARAMS_T> copyInPadParams, bool isOffset)
 {
     uint32_t useKvHeadNum = 1;
     uint32_t useN2Idx = 0;
@@ -530,8 +552,18 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAnt
         if (copyElmenCnt + copyFinishElmenCnt > taskParam.copyTotalS) {
             copyElmenCnt = taskParam.copyTotalS - copyFinishElmenCnt;
         }
-        uint64_t srcOffset = idInBlockTable * taskParam.kvCacheBlockSize * useKvHeadNum +
-                             taskParam.kvCacheBlockSize * useN2Idx + remainElmenCnt;
+        uint64_t blockStride = taskParam.kvCacheBlockSize * useKvHeadNum;
+        uint64_t headStride = taskParam.kvCacheBlockSize;
+        // offset 用自己的 stride (与 scale 可不同), scale 用 scale 的
+        uint64_t bnStride = isOffset ? taskParam.offsetBnStride : taskParam.scaleBnStride;
+        uint64_t n2Stride = isOffset ? taskParam.offsetN2Stride : taskParam.scaleN2Stride;
+        if (bnStride != 0) {
+            blockStride = bnStride;
+        }
+        if (n2Stride != 0) {
+            headStride = n2Stride;
+        }
+        uint64_t srcOffset = idInBlockTable * blockStride + useN2Idx * headStride + remainElmenCnt;
         copyInParams.blockLen = copyElmenCnt * sizeof(ANTIQ_PARAMS_T);
         DataCopyPad(dstLocal[dstOffset], srcGm[srcOffset], copyInParams, copyInPadParams);
         dstOffset += copyElmenCnt;
@@ -588,7 +620,7 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
     LocalTensor<KV_T> dstLocal, GlobalTensor<KV_T> &srcGm, uint64_t offset, uint32_t rowCnt, uint32_t dealRowCount,
     const AntiquantTaskParamBaseAPI &taskParam)
 {
-    uint32_t typeElementSize = ONE_BLK_SIZE / sizeof(Q_T);
+    uint32_t typeElementSize = taskParam.kvCacheNzD0;
     uint32_t blockElemNum;
     if constexpr (KVINT4 || KVFP4) {
         blockElemNum = ONE_BLK_SIZE * 2;
@@ -611,7 +643,7 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
     LocalTensor<KV_T> dstLocal, GlobalTensor<KV_T> &srcGm, GlobalTensor<int32_t> &blockTableGm,
     const AntiquantTaskParamBaseAPI &taskParam, uint32_t curSequence, uint32_t dealRowCount)
 {
-    uint32_t typeElementSize = ONE_BLK_SIZE / sizeof(Q_T);
+    uint32_t typeElementSize = taskParam.isKvCacheNz ? taskParam.kvCacheNzD0 : (ONE_BLK_SIZE / sizeof(Q_T));
     uint64_t blockTableBaseOffset = taskParam.bIdx * taskParam.maxBlockNumPerSeq;
     uint32_t copyFinishRowCnt = 0;
     while (copyFinishRowCnt < dealRowCount) {
@@ -624,19 +656,41 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
         }
         uint64_t curOffset = 0;
         if (taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_NZ)) { // NZ
-            curOffset = idInBlockTable * taskParam.kvHeadNum * taskParam.headDim * taskParam.kvCacheBlockSize +
-                        (uint64_t)(taskParam.n2Idx * taskParam.headDim * taskParam.kvCacheBlockSize) +
+            uint64_t nzHeadStride = taskParam.headDim * taskParam.kvCacheBlockSize;
+            uint64_t nzBlockStride = taskParam.kvHeadNum * nzHeadStride;
+            if (taskParam.kvN2Stride != 0) {
+                nzHeadStride = taskParam.kvN2Stride;
+            }
+            if (taskParam.kvBnStride != 0) {
+                nzBlockStride = taskParam.kvBnStride;
+            } else if (taskParam.kvN2Stride != 0) {
+                nzBlockStride = taskParam.kvHeadNum * nzHeadStride;
+            }
+            curOffset = idInBlockTable * nzBlockStride + (uint64_t)(taskParam.n2Idx * nzHeadStride) +
                         reaminRowCnt * typeElementSize;
             CopyKVPaNz(dstLocal[copyFinishRowCnt * typeElementSize], srcGm, curOffset, copyRowCnt, dealRowCount,
                        taskParam);
         } else {
             if (taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_BSH)) { // BBH
-                curOffset = (idInBlockTable * taskParam.kvCacheBlockSize + reaminRowCnt) * taskParam.kvHeadNum *
-                                taskParam.headDim +
+                uint64_t bsStride = taskParam.kvHeadNum * taskParam.headDim;
+                uint64_t bnStride = taskParam.kvCacheBlockSize * bsStride;
+                if (taskParam.kvBnStride != 0) {
+                    bnStride = taskParam.kvBnStride;
+                }
+                curOffset = idInBlockTable * bnStride + reaminRowCnt * bsStride +
                             (uint64_t)(taskParam.n2Idx * taskParam.headDim);
             } else { // BNBD
-                curOffset = idInBlockTable * taskParam.kvHeadNum * taskParam.kvCacheBlockSize * taskParam.headDim +
-                            (uint64_t)(taskParam.n2Idx * taskParam.kvCacheBlockSize * taskParam.headDim) +
+                uint64_t headStride = taskParam.kvCacheBlockSize * taskParam.headDim;
+                uint64_t blockStride = taskParam.kvHeadNum * headStride;
+                if (taskParam.kvN2Stride != 0) {
+                    headStride = taskParam.kvN2Stride;
+                }
+                if (taskParam.kvBnStride != 0) {
+                    blockStride = taskParam.kvBnStride;
+                } else if (taskParam.kvN2Stride != 0) {
+                    blockStride = taskParam.kvHeadNum * headStride;
+                }
+                curOffset = idInBlockTable * blockStride + (uint64_t)(taskParam.n2Idx * headStride) +
                             reaminRowCnt * taskParam.headDim;
             }
             CopyKV(dstLocal[copyFinishRowCnt * dBaseSize], srcGm, curOffset, copyRowCnt, taskParam.headDim,
@@ -655,8 +709,25 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
     LocalTensor<ANTIQ_PARAMS_T> &scaleTensor, uint32_t dealRowCount, const AntiquantTaskParamBaseAPI &taskParam)
 {
     if (taskParam.isKvCacheNz) {
-        FaVectorApi::AntiquantVF<Q_T, KV_T, ANTIQ_PARAMS_T, dBaseSize, HAS_OFFSET, IS_PER_TOKEN, true>(
-            antiqInUb, antiqResUb, offsetTensor, scaleTensor, dealRowCount, taskParam.headDim, taskParam.copyTotalS);
+        if constexpr (IsSameType<KV_T, int8_t>::value) {
+            if (taskParam.kvCacheNzD0 == 32) {
+                if constexpr (!IS_PER_TOKEN) {
+                    FaVectorApi::AntiquantVFW8NzD032<Q_T, KV_T, ANTIQ_PARAMS_T, dBaseSize>(antiqInUb, antiqResUb,
+                                                                                           scaleTensor, dealRowCount);
+                } else {
+                    FaVectorApi::AntiquantVFW8PerTokenNzD032<Q_T, KV_T, ANTIQ_PARAMS_T, dBaseSize>(
+                        antiqInUb, antiqResUb, scaleTensor, dealRowCount);
+                }
+            } else {
+                FaVectorApi::AntiquantVF<Q_T, KV_T, ANTIQ_PARAMS_T, dBaseSize, HAS_OFFSET, IS_PER_TOKEN, true>(
+                    antiqInUb, antiqResUb, offsetTensor, scaleTensor, dealRowCount, taskParam.headDim,
+                    taskParam.copyTotalS);
+            }
+        } else {
+            FaVectorApi::AntiquantVF<Q_T, KV_T, ANTIQ_PARAMS_T, dBaseSize, HAS_OFFSET, IS_PER_TOKEN, true>(
+                antiqInUb, antiqResUb, offsetTensor, scaleTensor, dealRowCount, taskParam.headDim,
+                taskParam.copyTotalS);
+        }
     } else {
         FaVectorApi::AntiquantVF<Q_T, KV_T, ANTIQ_PARAMS_T, dBaseSize, HAS_OFFSET, IS_PER_TOKEN, false>(
             antiqInUb, antiqResUb, offsetTensor, scaleTensor, dealRowCount, taskParam.headDim, taskParam.copyTotalS);
@@ -716,16 +787,32 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAnt
     }
     uint64_t outOffset = subBlockIdx * GetRealDealSize(s2RealSize) * 16 + copyLoopIdx * taskParam.copySplitS * 16;
 
-    struct DataCopyParams dataCopyParams;
-    dataCopyParams.blockCount = taskParam.headDimAlignBlock / elementTypeSize;
-    dataCopyParams.blockLen = dealRowCount;
-    dataCopyParams.srcStride = 1;
-    dataCopyParams.dstStride = dstStep - dealRowCount;
-    if constexpr (PAGE_ATTENTION) {
-        dataCopyParams.srcStride = taskParam.isKvCacheNz ? 0 : 1;
+    if (taskParam.isKvCacheNz && taskParam.kvCacheNzD0 == 32) {
+        uint32_t d0ElemPerGrp = taskParam.kvCacheNzD0;
+        uint32_t grpNum = taskParam.headDimAlignBlock / d0ElemPerGrp;
+        DataCopyParams dataCopyParams;
+        dataCopyParams.blockCount = static_cast<uint16_t>(dealRowCount);
+        dataCopyParams.blockLen = 1;
+        dataCopyParams.srcStride = 1;
+        dataCopyParams.dstStride = 0;
+        for (uint32_t g = 0; g < grpNum; g++) {
+            uint64_t srcOffset = g * dealRowCount * 2 * elementTypeSize;
+            uint64_t dstFrontOffset = outOffset + (2 * g) * dstStep * elementTypeSize;
+            uint64_t dstBackOffset = outOffset + (2 * g + 1) * dstStep * elementTypeSize;
+            DataCopy(antiqResScm[dstFrontOffset], antiqResUb[srcOffset], dataCopyParams);
+            DataCopy(antiqResScm[dstBackOffset], antiqResUb[srcOffset + elementTypeSize], dataCopyParams);
+        }
+    } else {
+        DataCopyParams dataCopyParams;
+        dataCopyParams.blockCount = taskParam.headDimAlignBlock / elementTypeSize;
+        dataCopyParams.blockLen = dealRowCount;
+        dataCopyParams.srcStride = 1;
+        dataCopyParams.dstStride = dstStep - dealRowCount;
+        if constexpr (PAGE_ATTENTION) {
+            dataCopyParams.srcStride = taskParam.isKvCacheNz ? 0 : 1;
+        }
+        DataCopy(antiqResScm[outOffset], antiqResUb, dataCopyParams);
     }
-
-    DataCopy(antiqResScm[outOffset], antiqResUb, dataCopyParams);
 }
 } // namespace BaseApi
 #endif

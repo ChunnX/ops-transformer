@@ -15,7 +15,7 @@
 
 #ifndef ADD_RMS_NORM_KERNEL_H
 #define ADD_RMS_NORM_KERNEL_H
-#include "rms_norm_base.h"
+#include "mararn_rms_norm_base.h"
 #include "add_rms_norm.h"
 #include "add_rms_norm_split_d.h"
 #include "add_rms_norm_multi_n.h"
@@ -38,10 +38,15 @@ public:
     __aicore__ inline AddRmsNormKernel(ArnGmAddrs *arnAddrs, TPipe *tPipe, uint32_t dataSize, uint32_t tileCnt,
                                        uint32_t tailCnt, Hccl<HCCL_SERVER_TYPE_AICPU> *hccl,
                                        AscendC::HcclHandle tileHandleId, AscendC::HcclHandle tailHandleId)
-        : arnAddrs_(arnAddrs), tPipe_(tPipe), dataSize_(dataSize), tileCnt_(tileCnt), tailCnt_(tailCnt), hccl_(hccl),
-          tileHandleId_(tileHandleId), tailHandleId_(tailHandleId)
-    {
-    }
+        : arnAddrs_(arnAddrs),
+          tPipe_(tPipe),
+          dataSize_(dataSize),
+          tileCnt_(tileCnt),
+          tailCnt_(tailCnt),
+          hccl_(hccl),
+          tileHandleId_(tileHandleId),
+          tailHandleId_(tailHandleId)
+    {}
 
     __aicore__ inline void ComputeAddRmsNorm(Mc2Tiling::AddRMSNormTilingData &addRMSNormTileTilingData,
                                              Mc2Tiling::AddRMSNormTilingData &addRMSNormTailTilingData,
@@ -90,12 +95,12 @@ public:
     }
 
 private:
-#define INVOKE_ARN_OP_IMPL(templateClass, dType)                                                                       \
-    do {                                                                                                               \
-        templateClass<dType> op;                                                                                       \
-        op.Init(arnAddrs_->gammaGM, rmsTilingData, tPipe_, numBlocks);                                                 \
+#define INVOKE_ARN_OP_IMPL(templateClass, dType) \
+    do { \
+        templateClass<dType> op; \
+        op.Init(arnAddrs_->gammaGM, rmsTilingData, tPipe_, numBlocks); \
         op.ComputeProcess(arnAddrs_->normOutGM, arnAddrs_->residualGM, arnAddrs_->yGM, rmsTilingData, addRmsNormCount, \
-                          rcvCnt);                                                                                     \
+                          rcvCnt); \
     } while (0)
 
     __aicore__ inline void AddRmsNorm(Mc2Tiling::AddRMSNormTilingData &rmsTilingData, uint32_t keyTile,

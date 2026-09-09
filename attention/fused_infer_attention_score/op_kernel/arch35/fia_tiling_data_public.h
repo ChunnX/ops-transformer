@@ -19,7 +19,6 @@
 namespace optiling {
 
 // 数组长度
-// TODO，host和device宏定义不一样，如何通过编译宏隔离？
 constexpr uint32_t NPU_AIC_CORE_NUM = 36;
 constexpr uint32_t NPU_AIV_CORE_NUM = 72;
 
@@ -84,6 +83,7 @@ struct FiaBaseParams {
     float scaleValue = 0.0f;
     uint8_t isKvContinuous = 0;
     uint8_t isSoftMaxLseEnable = 0;
+    uint8_t l2CacheOffFlag = 0;
     uint32_t coreNum = 0;
     uint32_t outputLayout = 0;
     // 增加strides参数

@@ -30,8 +30,7 @@ MMNTilingTransferHelper::MMNTilingTransferHelper(MatmulAllReduceAddRmsNormTiling
     : MatmulAllReduceTiling910(MatmulAllReduceAddRmsNormTiling.context_,
                                &MatmulAllReduceAddRmsNormTiling.mrnCtxInfo_.mmrCtxInfo, &data),
       tilingProcesser_(MatmulAllReduceAddRmsNormTiling)
-{
-}
+{}
 ge::graphStatus MMNTilingTransferHelper::GetShapeAttrsInfo()
 {
     return MatmulAllReduceTilingBase::AnalyzeShapeAttr();
@@ -140,7 +139,7 @@ ge::graphStatus MatmulAllReduceAddRmsNormTiling::GetWorkspaceSize()
     MC2_CHECK_TRUE_RET(context_->GetNodeName(), tilingOutAddRmsNormTile_.workSpaceSize >= SYS_WORKSPACE_SIZE);
     const auto arnWorkSpace = tilingOutAddRmsNormTile_.workSpaceSize - SYS_WORKSPACE_SIZE;
     const auto myWorkSpace = mc2WorkSpace + arnWorkSpace;
-    OP_LOGI(helper_->opName_, " Workspace %lu with detail: mc2: %lu arn：%u", myWorkSpace, mc2WorkSpace, arnWorkSpace);
+    OP_LOGI(helper_->opName_, " Workspace %lu with detail: mc2: %lu arn: %u", myWorkSpace, mc2WorkSpace, arnWorkSpace);
     size_t *workspaces = context_->GetWorkspaceSizes(1); // set workspace
     workspaces[0] = myWorkSpace;
     return ge::GRAPH_SUCCESS;
@@ -185,7 +184,7 @@ uint64_t MatmulAllReduceAddRmsNormTiling::GetTilingKey() const
 {
     const auto mc2_key = helper_->GetTilingKey();
     const auto my_key = mc2_key; // use mc2 key as mrn key
-    OP_LOGI(helper_->opName_, " tilingKey %lu with detail: mc2_key: %lu arn_key tile：%u arn_key tail: %u", my_key,
+    OP_LOGI(helper_->opName_, " tilingKey %lu with detail: mc2_key: %lu arn_key tile: %u arn_key tail: %u", my_key,
             mc2_key, tilingOutAddRmsNormTile_.tilingKey, tilingOutAddRmsNormTail_.tilingKey);
     return my_key;
 }

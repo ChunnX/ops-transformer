@@ -48,15 +48,20 @@ using AscendC::Reg::StoreDist;
 #else
 #include "../common/buffers_policy.h"
 #endif
-#if __has_include("../../common/op_kernel/buffer_manager.h")
-#include "../../common/op_kernel/buffer_manager.h"
+#if __has_include("../../common/op_kernel/attn_buffer_manager.h")
+#include "../../common/op_kernel/attn_buffer_manager.h"
 #else
-#include "../common/buffer_manager.h"
+#include "../common/attn_buffer_manager.h"
 #endif
-#if __has_include("../../common/op_kernel/buffer.h")
-#include "../../common/op_kernel/buffer.h"
+#if __has_include("../../common/op_kernel/attn_buffer.h")
+#include "../../common/op_kernel/attn_buffer.h"
 #else
-#include "../common/buffer.h"
+#include "../common/attn_buffer.h"
+#endif
+#if __has_include("../../common/op_kernel/init_output.h")
+#include "../../common/op_kernel/init_output.h"
+#else
+#include "../common/init_output.h"
 #endif
 
 using namespace AscendC;
@@ -64,9 +69,22 @@ using namespace FaVectorApi;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 using namespace matmul;
+using namespace fa_base_matmul;
 using AttentionCommon::FdRunInfo;
 
 namespace SMLAKernel {
+
+// 统一窗口公式
+struct PhyAddrValidInfo {
+    static constexpr int64_t BIAS_UNBOUND = 0x7FFFFFFF; // INT32_MAX
+    int64_t oriLeftBias = BIAS_UNBOUND;
+    int64_t oriRightBias = BIAS_UNBOUND;
+    int32_t oriS2Act = 0;
+    bool oriTopkMode = false; // oriMaskMode==0: 走topkLength语义(保持原行为)
+    bool cmpTopkMode = true;  // cmpMaskMode==0: 走topkLength语义(保持原行为)
+    int64_t cmpBase = 0;      // restoredSize - actualS1Size + 1
+};
+
 TEMPLATES_DEF
 class CSABlockVec {
 public:
@@ -79,23 +97,19 @@ public:
     static constexpr uint32_t dVTemplateType = 512;
     static constexpr uint32_t dTemplateAlign64 = Align64Func(dVTemplateType);
     static constexpr float R0 = 1.0f;
-
-    // GetKVPhyAddrForKvType 事件 ID (手动管理, 不通过 AllocEventID)
-    static constexpr uint32_t blkTableVToMte2FlagId = 3;  // block table V→MTE2
-    static constexpr uint32_t sparseIdxVToMte2FlagId = 4; // sparse indices V→MTE2
-    static constexpr uint32_t phyAddrVToMte3FlagId = 5;   // phy addr V→MTE3
-    static constexpr uint32_t sparseIdxMte2ToVFlagId = 6; // sparse indices MTE2→V
-    static constexpr uint32_t phyAddrMte3ToVFlagId = 7;   // phy addr MTE3→V
-    static constexpr uint32_t blkTableMte2ToVFlagId = 8;  // block table MTE2→V
+    static constexpr uint32_t initOutputEventId =
+        INNERCORE_INITOUT_MTE3_V; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
+    // Sparse KV搬入/拷出块大小：每次搬入8行，每16行做一次拷出
+    static constexpr int64_t KV_COPYIN_UNIT = 8;   // 每次搬入8行
+    static constexpr int64_t KV_PROCESS_UNIT = 16; // 每次拷出16行
 
     // ==================== Functions ======================
     __aicore__ inline CSABlockVec(){};
-    __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
+    __aicore__ inline void InitVecBlock(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
                                         __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *seqUsedOriKV,
                                         __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *cmpResidualKV)
     {
         if ASCEND_IS_AIV {
-            tPipe = pipe;
             if (cuSeqlensQ != nullptr) {
                 cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
             }
@@ -119,7 +133,7 @@ public:
     }
 
     // 初始化LocalTensor
-    __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo);
+    __aicore__ inline void InitLocalBuffer(ConstInfo &constInfo, uint32_t ubBaseAddr);
     // 初始化attentionOutGM
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, ConstInfo &constInfo);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
@@ -131,19 +145,15 @@ public:
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void ProcessVec0(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
                                        const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                       RunInfo &runInfo,
+    __aicore__ inline void ProcessVec1(StaticBuffer<Q_T> &outputBuf, StaticBuffer<T> &bmm1ResBuf, RunInfo &runInfo,
                                        ConstInfo &constInfo);
-    __aicore__ inline void InitS2SplitStaging(
-        Buffer<BufferType::GM, SyncType::INNER_CORE_SYNC> &fdStaging)
+    __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::NO_SYNC> &fdStaging)
     {
         fdStagingBase = fdStaging.template GetTensor<uint8_t>().GetPhyAddr(0);
         stagingOutGm = fdStaging.template GetTensor<float>();
     }
-    __aicore__ inline void InitS2SplitStaging(
-        Buffer<BufferType::GM, SyncType::INNER_CORE_SYNC> &intraCoreCombine,
-        Buffer<BufferType::GM, SyncType::INNER_CORE_SYNC> &crossCoreCombine)
+    __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::NO_SYNC> &intraCoreCombine,
+                                              Buffer<BufferType::GM, SyncType::NO_SYNC> &crossCoreCombine)
     {
         intraCoreCombineBase = intraCoreCombine.template GetTensor<uint8_t>().GetPhyAddr(0);
         intraCoreCombineGm = intraCoreCombine.template GetTensor<float>();
@@ -154,8 +164,7 @@ public:
     }
     __aicore__ inline void InitFDBuffers(FdRunInfo &fdRunInfo);
     __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &constInfo);
-    using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
-    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void ProcessVec2(StaticBuffer<T> &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void GetKVPhyAddr(uint32_t hasLoad, uint32_t bN2StartIdx, uint32_t bN2EndIdx,
                                         uint32_t gS1StartIdx, uint32_t nextGs1Idx, bool hasActualSeqQlen,
                                         bool hasCuSeqlensQ, bool hasActualSeqOriKvlen, bool hasCuSeqlensOriKv,
@@ -167,25 +176,25 @@ public:
                                         GlobalTensor<int32_t> cmpResidualKvGm, GlobalTensor<int32_t> actualSeqQlenGm,
                                         GlobalTensor<int32_t> cuSeqlensQGm, __gm__ uint8_t *workspace,
                                         ConstInfo &constInfo);
+    __aicore__ inline void FreeEvent(ConstInfo &constInfo);
 
 private:
     template <bool UPDATE>
     __aicore__ inline void ComputeVec1Softmax(LocalTensor<Q_T> &stage1CastTensor, LocalTensor<T> &mmRes,
-                                              LocalTensor<float> &sumUb, LocalTensor<float> &maxUb, LocalTensor<T> &apiTmpBuffer,
+                                              LocalTensor<float> &sumUb, LocalTensor<float> &maxUb,
+                                              LocalTensor<T> &apiTmpBuffer, RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void InitVec1SoftmaxFromSinks(LocalTensor<float> &sumUb, LocalTensor<float> &maxUb,
+                                                    RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void CopyVec1ResultToL1(StaticBuffer<Q_T> &outputBuf, LocalTensor<Q_T> &stage1CastTensor,
                                               RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void InitVec1SoftmaxFromSinks(
-        LocalTensor<float> &sumUb, LocalTensor<float> &maxUb, RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void CopyVec1ResultToL1(
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-        LocalTensor<Q_T> &stage1CastTensor, RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void StageCrossCoreVec1Lse(
-        LocalTensor<float> &maxUb, LocalTensor<float> &sumUb, RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void StageBatchConsistencyVec1Lse(
-        LocalTensor<float> &maxUb, LocalTensor<float> &sumUb, RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void StageLegacyVec1Lse(
-        LocalTensor<float> &maxUb, LocalTensor<float> &sumUb, RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void CopyOutVec1Lse(
-        LocalTensor<float> &maxUb, LocalTensor<float> &sumUb, RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void StageCrossCoreVec1Lse(LocalTensor<float> &maxUb, LocalTensor<float> &sumUb, RunInfo &runInfo,
+                                                 ConstInfo &constInfo);
+    __aicore__ inline void StageBatchConsistencyVec1Lse(LocalTensor<float> &maxUb, LocalTensor<float> &sumUb,
+                                                        RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void StageLegacyVec1Lse(LocalTensor<float> &maxUb, LocalTensor<float> &sumUb, RunInfo &runInfo,
+                                              ConstInfo &constInfo);
+    __aicore__ inline void CopyOutVec1Lse(LocalTensor<float> &maxUb, LocalTensor<float> &sumUb, RunInfo &runInfo,
+                                          ConstInfo &constInfo);
 
     __aicore__ inline uint32_t GetStagingSlotNum(bool isInner = false) const
     {
@@ -208,8 +217,7 @@ private:
         }
     }
 
-    __aicore__ inline uint32_t GetIntraCoreWorkspaceIdx(
-        const RunInfo &runInfo, const ConstInfo &constInfo) const
+    __aicore__ inline uint32_t GetIntraCoreWorkspaceIdx(const RunInfo &runInfo, const ConstInfo &constInfo) const
     {
         uint32_t coreIdx;
         if constexpr (IS_SPLIT_G) {
@@ -238,10 +246,15 @@ private:
                                            const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void CalSparseCalSize(const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline int64_t GetkeyOffset(int64_t s2Idx, const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void GetRealCmpS2Idx(int64_t *tokenData, int64_t s2IdxInBase,
-                                           const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline uint32_t CopyInKvSparse(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t *tokenData,
-                                              const RunInfo &runInfo, ConstInfo &constInfo);
+    template <bool IS_FULL = false>
+    __aicore__ inline void GetRealCmpS2Idx(int64_t *tokenData, int64_t s2IdxInBase, const RunInfo &runInfo,
+                                           ConstInfo &constInfo);
+    template <bool IS_FULL = false>
+    __aicore__ inline void CopyInKvSparse(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t *tokenData,
+                                          const RunInfo &runInfo, ConstInfo &constInfo);
+    template <bool IS_FULL = false>
+    __aicore__ inline void CopyIn8Block(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t &s2, const RunInfo &runInfo,
+                                        ConstInfo &constInfo);
     __aicore__ inline void CopyToOutUb(LocalTensor<Q_T> kvNzUb, LocalTensor<KV_T> srcTensor, int64_t dealRow,
                                        ConstInfo &constInfo);
     __aicore__ inline void CopyOutKvUb2Gm(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
@@ -249,6 +262,7 @@ private:
                                           const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t keyOffset,
                                           ConstInfo &constInfo);
+    template <bool IS_FULL = false>
     __aicore__ inline void GetRealS2Addr(int64_t *tokenData, int64_t s2IdxInBase, const RunInfo &runInfo,
                                          ConstInfo &constInfo);
     __aicore__ inline void GetKVPhyAddrForKvType(
@@ -262,13 +276,12 @@ private:
     __aicore__ inline int32_t GetSeqLen(int32_t bIdx, bool hasActualSeq, bool hasCuSeqlens,
                                         GlobalTensor<int32_t> &actualSeqGm, GlobalTensor<int32_t> &cuSeqlensGm,
                                         int64_t defaultSize);
+    __aicore__ inline PhyAddrValidInfo CalcPhyAddrValidInfo(bool isOriKv, int32_t actualS1Size, int32_t actualOriS2Size,
+                                                            int32_t restoredSize, ConstInfo &constInfo);
     __aicore__ inline int32_t CalcCurValidS2(uint32_t bIdx, int32_t s1Idx, int32_t actualS1Size, bool isOriKv,
-                                             bool hasActualSeqKvlen, bool hasCuSeqlensKv,
-                                             GlobalTensor<int32_t> &cuSeqlensQGm,
-                                             GlobalTensor<int32_t> &actualSeqKvlenGm,
-                                             GlobalTensor<int32_t> &cuSeqlensKvGm, GlobalTensor<int32_t> &topkLengthGm,
-                                             GlobalTensor<int32_t> &cmpResidualKvGm, ConstInfo &constInfo,
-                                             int32_t sparseBlockCount);
+                                             GlobalTensor<int32_t> &cuSeqlensQGm, GlobalTensor<int32_t> &topkLengthGm,
+                                             ConstInfo &constInfo, int32_t sparseBlockCount,
+                                             const PhyAddrValidInfo &validInfo);
     __aicore__ inline void CopyPhyAddrToGm(LocalTensor<uint32_t> kvPhyAddrUb, int64_t bS1Idx, int64_t s1Idx,
                                            int64_t validS2, int64_t alignNum, GlobalTensor<uint32_t> &phyAddrGm,
                                            uint32_t alignedSparseBlockCount);
@@ -285,13 +298,11 @@ private:
     __aicore__ inline void CopyOutAttentionOut(RunInfo &runInfo, ConstInfo &constInfo,
                                                LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx,
                                                int64_t vec2CalcSize);
-    __aicore__ inline void SoftmaxInitBuffer();
+    __aicore__ inline void SoftmaxInitBuffer(uint32_t &ubAddr);
     __aicore__ inline void GetExtremeValue(T &negativeScalar);
     __aicore__ inline void InitSinksBuffer(ConstInfo &constInfo);
-    __aicore__ inline void ReduceIntraBlockAndStage(RunInfo &runInfo, ConstInfo &constInfo,
-                                                    LocalTensor<T> &vec2ResUb, LocalTensor<T> &partialTmpUb);
-
-    TPipe *tPipe;
+    __aicore__ inline void ReduceIntraBlockAndStage(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<T> &vec2ResUb,
+                                                    LocalTensor<T> &partialTmpUb);
 
     GlobalTensor<OUTPUT_T> attentionOutGm;
     GlobalTensor<T> softmaxLseGm;
@@ -315,50 +326,27 @@ private:
     GlobalTensor<uint32_t> oriKvPhyAddrGm;
     GlobalTensor<uint32_t> cmpKvPhyAddrGm;
 
-    TBuf<> commonTBuf; // common的复用空间
-    TBuf<> sinksBuf;
-    TQue<QuePosition::VECOUT, 1> stage1OutQue[2]; // 2份表示可能存在pingpong
-    TQue<QuePosition::VECIN, 2> stage0InQue;      // for v0 input, 2份表示可能存在pingpong
-    TQue<QuePosition::VECOUT, 1> stage0OutQue;    // for v0 output, 2份表示可能存在pingpong
-    TBuf<> stage0OutBuf[2];
-    TBuf<> stage2OutBuf;
-    TEventID mte3ToVId[2];     // 存放MTE3_V的eventId, 2份表示可能存在pingpong
-    TEventID vToMte3Id[2];     // 存放V_MTE3的eventId, 2份表示可能存在pingpong
-    TEventID mte3ToVAttnOutId; // 存放MTE3_V的eventId, 用于V2 attentionOut拷出阶段的同步
-    TEventID vToMte3AttnOutId; // 存放V_MTE3的eventId, 用于V2 attentionOut拷出阶段的同步
-    TEventID stageMte3ToVId;   // staging 专用 MTE3_V event
-    TEventID mte3ToVLseOutId;  // 存放MTE3_V的eventId, 用于V1 LSE拷出阶段的同步
-    TEventID vToMte3LseOutId;  // 存放V_MTE3的eventId, 用于V1 LSE拷出阶段的同步
-    TEventID mte2ToMte3[2];
-    TEventID mte3ToMte2[2];
-    TEventID intraLseMte3ToMte2Id[2];
-    TEventID intraAttnOutMte3ToMte2Id[2];
-    TEventID intraPartialOVToMte2Id;
-    TEventID reduceMaxSumVToMte2Id;
-    TEventID reduceMte2ToVId;
-    // Flash-decode reduction uses dedicated events because it may process
-    // multiple bounded chunks and must not alias the Vec0 pipeline events.
-    TEventID fdVToMte2Id[2];
-    TEventID fdMte2ToVId;
-    TEventID fdMte3ToVId;
-    TEventID fdMte3ToMte2Id;
-    TBuf<> softmaxMaxBuf[2];
-    TBuf<> softmaxSumBuf[2];
-    TBuf<> softmaxFinalMaxBuf[2];
-    TBuf<> softmaxFinalSumBuf[2];
-    TBuf<> softmaxExpBuf[2];
-    TBuf<> batchReduceTmpBuf;
-    TBuf<> outLseBuf[2];
+    StaticBuffer<T> commonUb;
+    StaticBuffer<T> sinksUb;
+    StaticBuffer<Q_T> stage1OutBufs[2];
+    StaticBuffer<T> stage2OutBufs;
+    StaticBuffer<Q_T> stage0OutBufs[2];
+    StaticBuffer<float> softmaxMaxBufs[2];
+    StaticBuffer<float> softmaxSumBufs[2];
+    StaticBuffer<float> softmaxFinalMaxBufs[2];
+    StaticBuffer<float> softmaxFinalSumBufs[2];
+    StaticBuffer<T> softmaxExpBufs[2];
+    StaticBuffer<float> batchReduceTmpUb;
+    StaticBuffer<float> outLseUbs[2];
     TBuf<> vselrIndexesBuf[2];
-    AttentionCommon::FdBuffers<TBuf<>> fdBuffers;
+    AttentionCommon::FdBuffers<StaticBuffer<uint8_t>> fdBuffers;
+    uint32_t pingPongV0 = 0;
     __gm__ uint8_t *fdStagingBase = nullptr;
     GlobalTensor<float> stagingOutGm;
     __gm__ uint8_t *intraCoreCombineBase = nullptr;
     GlobalTensor<float> intraCoreCombineGm;
     __gm__ uint8_t *crossCoreCombineBase = nullptr;
     GlobalTensor<float> crossCoreCombineGm;
-    TEventID mte2ToVV0Id[2];
-    TEventID vToMte2V0Id[2];
 
     T negativeFloatScalar;
     bool isSinks = false;
@@ -367,14 +355,14 @@ private:
     int64_t sparseCalSize;
     int64_t sparseS2Start;
     int64_t sparseS2End;
-
-    TEventID initOutputEventId; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 };
 
 TEMPLATES_DEF_NO_DEFAULT
+template <bool IS_FULL>
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t *tokenData, int64_t s2IdxInBase,
                                                                    const RunInfo &runInfo, ConstInfo &constInfo)
 {
+    int64_t curSparseS2End = this->sparseS2End;
     int64_t sparseBlockCount = 0;
     int64_t curS2LoopCnt = runInfo.s2LoopCount;
     if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
@@ -400,21 +388,28 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t *toke
     }
 
     uint64_t topkKIdx = s2IdxInBase + curS2LoopCnt * constInfo.s2BaseSize;
-    for (uint64_t i = 0; i < 8; ++i) {
+    for (uint64_t i = 0; i < KV_COPYIN_UNIT; ++i) { // 每次处理8个数据块
         uint64_t idx = topkBS1Idx + runInfo.s2StartIdx + topkKIdx + i;
-        if (likely((topkKIdx + i < sparseBlockCount) && (s2IdxInBase + i < sparseS2End))) {
-            tokenData[i] = sparseIndicesGm.GetValue(idx);
+        if constexpr (!IS_FULL) {
+            // 尾块：保留边界判断，防止越界读取
+            if (likely(s2IdxInBase + i < curSparseS2End)) {
+                tokenData[i] = sparseIndicesGm.GetValue(idx);
+            } else {
+                break;
+            }
         } else {
-            break;
+            // 非尾块：8行均有效，直接读取
+            tokenData[i] = sparseIndicesGm.GetValue(idx);
         }
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
+template <bool IS_FULL>
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealS2Addr(int64_t *tokenData, int64_t s2IdxInBase,
                                                                  const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    uint32_t sparseBlockCount = runInfo.isCmp ? constInfo.cmpSparseBlockCount : constInfo.oriSparseBlockCount;
+    int64_t curSparseS2End = this->sparseS2End;
     uint32_t alignedSparseBlockCount =
         runInfo.isCmp ? constInfo.alignedCmpSparseBlockCount : constInfo.alignedOriSparseBlockCount;
     int64_t curS2LoopCnt = runInfo.s2LoopCount;
@@ -435,12 +430,18 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealS2Addr(int64_t *tokenD
             runInfo.boIdx * constInfo.s1Size * alignedSparseBlockCount + runInfo.s1oIdx * alignedSparseBlockCount;
     }
     uint64_t topkKIdx = s2IdxInBase + curS2LoopCnt * constInfo.s2BaseSize;
-    for (uint64_t i = 0; i < 8; ++i) {
+    for (uint64_t i = 0; i < KV_COPYIN_UNIT; ++i) { // 每次处理8个数据块
         uint64_t idx = topkBS1Idx + runInfo.s2StartIdx + topkKIdx + i;
-        if (likely((topkKIdx + i < sparseBlockCount) && (s2IdxInBase + i < sparseS2End))) {
-            tokenData[i] = phyAddrGm64.GetValue(idx);
+        if constexpr (!IS_FULL) {
+            // 尾块：保留边界判断，防止越界读取
+            if (likely(s2IdxInBase + i < curSparseS2End)) {
+                tokenData[i] = phyAddrGm64.GetValue(idx);
+            } else {
+                break;
+            }
         } else {
-            break;
+            // 非尾块：8行均有效，直接读取
+            tokenData[i] = phyAddrGm64.GetValue(idx);
         }
     }
 }
@@ -456,7 +457,7 @@ __aicore__ inline int64_t CSABlockVec<TEMPLATE_ARGS>::GetkeyOffset(int64_t s2Idx
     if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         int64_t blkTableIdx = s2Idx / blockSize;
         int64_t blkTableOffset = s2Idx % blockSize;
-        int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
+        int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKvStride : constInfo.oriKvStride;
         realkeyOffset = blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) * paBlockStride +
                         blkTableOffset * constInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
     } else if constexpr (LAYOUT_T == SMLA_LAYOUT::BSND) {
@@ -498,12 +499,12 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline uint32_t CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV_T> kvInUb, int64_t startRow,
-                                                                      int64_t *tokenData, const RunInfo &runInfo,
-                                                                      ConstInfo &constInfo)
+template <bool IS_FULL>
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV_T> kvInUb, int64_t startRow,
+                                                                  int64_t *tokenData, const RunInfo &runInfo,
+                                                                  ConstInfo &constInfo)
 {
-    uint32_t dealRow = 0;
-    for (uint32_t i = 0; i < 8; i += 2) {
+    for (uint32_t i = 0; i < 8; i += 2) { // 遍历8个元素的数组/缓冲区，每次处理2个元素
         int64_t keyOffset0;
         int64_t keyOffset1;
         if constexpr (IS_VEC_S2PHYADDR) {
@@ -513,8 +514,11 @@ __aicore__ inline uint32_t CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTenso
             keyOffset0 = GetkeyOffset(tokenData[i], runInfo, constInfo);
             keyOffset1 = GetkeyOffset(tokenData[i + 1], runInfo, constInfo);
         }
-        if (unlikely(keyOffset0 < 0 && keyOffset1 < 0)) {
-            return dealRow;
+        if constexpr (!IS_FULL) {
+            // 尾块：提前返回判断
+            if (unlikely(keyOffset0 < 0 && keyOffset1 < 0)) {
+                return;
+            }
         }
         int64_t combineBytes = constInfo.dSizeVInput * sizeof(KV_T);
         int64_t keySrcStride =
@@ -526,7 +530,13 @@ __aicore__ inline uint32_t CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTenso
             CopyInSingleKv(kvInUb, startRow + 1, keyOffset1, constInfo);
         } else {
             DataCopyExtParams intriParams;
-            intriParams.blockCount = (keyOffset0 >= 0) + (keyOffset1 >= 0);
+            if constexpr (!IS_FULL) {
+                // 尾块：根据实际有效条目数设置blockCount,且此处仅有可能存在keyOffset1为-1的情况
+                intriParams.blockCount = 1 + (keyOffset1 >= 0);
+            } else {
+                // 非尾块：两条均有效，blockCount恒为2
+                intriParams.blockCount = 2;
+            }
             intriParams.blockLen = combineBytes;
             intriParams.dstStride = 0;
             intriParams.srcStride = keySrcStride;
@@ -536,16 +546,17 @@ __aicore__ inline uint32_t CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTenso
             padParams.rightPadding = (CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) - combineBytes) / sizeof(KV_T);
             padParams.paddingValue = 0;
 
-            int64_t keyOffset = keyOffset0 > -1 ? keyOffset0 : keyOffset1;
-            if (keyOffset1 > -1 && keyOffset1 < keyOffset0) {
-                keyOffset = keyOffset1;
+            int64_t keyOffset;
+            if constexpr (!IS_FULL) {
+                keyOffset = (keyOffset1 > -1 && keyOffset1 < keyOffset0) ? keyOffset1 : keyOffset0;
+            } else {
+                // 非尾块：两条均有效，取较小地址作为起始
+                keyOffset = keyOffset0 < keyOffset1 ? keyOffset0 : keyOffset1;
             }
             DataCopyPad(kvInUb[startRow * constInfo.dSize], keyGm[keyOffset], intriParams, padParams);
         }
-        dealRow += (keyOffset0 >= 0) + (keyOffset1 >= 0);
-        startRow += 2;
+        startRow += 2; // 每次迭代处理2个输入元素
     }
-    return dealRow;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -557,10 +568,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyToOutUb(LocalTensor<Q_T> 
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-CSABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-                                           LocalTensor<Q_T> kvOutUb, int64_t dealRow, int64_t s2StartIdx,
-                                           const RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, LocalTensor<Q_T> kvOutUb, int64_t dealRow,
+    int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
     DataCopy(v0ResGmTensor[s2StartIdx * constInfo.dSize], kvOutUb, dealRow * constInfo.dSize);
@@ -573,27 +583,31 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CalSparseCalSize(const RunInf
         uint32_t aicIdx = constInfo.aivIdx >> 1U;
         uint32_t v0S2SizeFirstCore = CeilDiv(runInfo.s2RealSize, 2);
         uint32_t v0S2SizeSecondCore = runInfo.s2RealSize - v0S2SizeFirstCore;
-        int32_t vecCnt = (aicIdx % 2U == 0) ? (GetSubBlockIdx() == 0 ? 0 : 1) : (GetSubBlockIdx() == 0 ? 2 : 3);
-        if (aicIdx % 2U == 0) {
+        int32_t vecCnt = (aicIdx % 2U == 0) ?
+                             (GetSubBlockIdx() == 0 ? 0 : 1) :
+                             (GetSubBlockIdx() == 0 ? 2 : 3); // 2，3：根据核心索引和子块索引设置处理参数
+        if (aicIdx % 2 == 0) { // 2：根据aicIdx的奇偶性来区分不同的处理逻辑
             if (GetSubBlockIdx() == 0) {
-                sparseCalSize = CeilDiv(v0S2SizeFirstCore, 2);
+                sparseCalSize = CeilDiv(v0S2SizeFirstCore, 2); // 2：处理大小为v0S2SizeFirstCore的一半
                 sparseS2Start = 0;
             } else {
-                sparseCalSize = v0S2SizeFirstCore - CeilDiv(v0S2SizeFirstCore, 2);
-                sparseS2Start = CeilDiv(v0S2SizeFirstCore, 2);
+                sparseCalSize = v0S2SizeFirstCore - CeilDiv(v0S2SizeFirstCore, 2); // 2：处理剩余部分
+                sparseS2Start = CeilDiv(v0S2SizeFirstCore, 2); // 2：起始位置为v0S2SizeFirstCore的一半
             }
         } else {
             if (GetSubBlockIdx() == 0) {
-                sparseCalSize = CeilDiv(v0S2SizeSecondCore, 2);
+                sparseCalSize = CeilDiv(v0S2SizeSecondCore, 2); // 2：处理大小为v0S2SizeSecondCore的一半
                 sparseS2Start = v0S2SizeFirstCore;
             } else {
-                sparseCalSize = v0S2SizeSecondCore - CeilDiv(v0S2SizeSecondCore, 2);
-                sparseS2Start = v0S2SizeFirstCore + CeilDiv(v0S2SizeSecondCore, 2);
+                sparseCalSize = v0S2SizeSecondCore - CeilDiv(v0S2SizeSecondCore, 2); // 2：处理剩余部分
+                sparseS2Start =
+                    v0S2SizeFirstCore +
+                    CeilDiv(v0S2SizeSecondCore, 2); // 2：起始位置为v0S2SizeFirstCore加上v0S2SizeSecondCore的一半
             }
         }
         sparseS2End = sparseS2Start + sparseCalSize;
     } else {
-        uint32_t v0S2SizeFirstCore = CeilDiv(runInfo.s2RealSize, 2);
+        uint32_t v0S2SizeFirstCore = CeilDiv(runInfo.s2RealSize, 2); // 2：平均分配给两个子块
         sparseCalSize = GetSubBlockIdx() == 0 ? v0S2SizeFirstCore : runInfo.s2RealSize - v0S2SizeFirstCore;
         sparseS2Start = GetSubBlockIdx() == 0 ? 0 : v0S2SizeFirstCore;
         sparseS2End = sparseS2Start + sparseCalSize;
@@ -601,9 +615,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CalSparseCalSize(const RunInf
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-                                        const RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
         if (runInfo.s2LoopCount < runInfo.oriKvLoopEndIdx) {
@@ -648,87 +661,110 @@ CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(Buffer<BufferType::GM, SyncType::CROSS_C
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-CSABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-                                            const RunInfo &runInfo, ConstInfo &constInfo)
+template <bool IS_FULL>
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyIn8Block(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t &s2,
+                                                                const RunInfo &runInfo, ConstInfo &constInfo)
+{
+    // tokenData元素为-1表示无效token，尾块场景下GetReal*仅填充有效区间，其余保持-1
+    int64_t tokenData[KV_COPYIN_UNIT] = {-1, -1, -1, -1, -1, -1, -1, -1};
+    if constexpr (IS_VEC_S2PHYADDR) {
+        GetRealS2Addr<IS_FULL>(tokenData, s2, runInfo, constInfo);
+    } else {
+        GetRealCmpS2Idx<IS_FULL>(tokenData, s2, runInfo, constInfo);
+    }
+    s2 += KV_COPYIN_UNIT;
+    CopyInKvSparse<IS_FULL>(kvInUb, startRow, tokenData, runInfo, constInfo);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
                   TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                   TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        if (sparseCalSize == 0) {
+        int64_t curSparseCalSize = this->sparseCalSize;
+        if (curSparseCalSize == 0) {
             return;
         }
-        bool meetEnd = false;
-        int64_t s2Start = sparseS2Start;
+
+        // 前置计算：16行拷出循环数、尾块行数、尾块内8行搬入次数及剩余行数
+        int64_t process16LoopCnt = curSparseCalSize / KV_PROCESS_UNIT;
+        int64_t tail16Rows = curSparseCalSize % KV_PROCESS_UNIT;
+        int64_t tail8FullCnt = tail16Rows / KV_COPYIN_UNIT;
+        int64_t tail8Remain = tail16Rows % KV_COPYIN_UNIT;
         int64_t s2 = sparseS2Start;
-        uint32_t pingPong = 0;
-        while ((s2 < sparseS2End) && !meetEnd) {
+
+        // 阶段1：完整16行块（非尾块，8行均有效，无需判断）
+        for (int64_t i = 0; i < process16LoopCnt; i++) {
+            int64_t s2StartIdx = sparseS2Start + i * KV_PROCESS_UNIT;
+            // 1、copy kv in, gm -> ub
+            LocalTensor<Q_T> stage0OutUb = this->stage0OutBufs[pingPongV0].tensor;
+            WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_STAGE0OUT_MTE3_MTE2(pingPongV0));
+            CopyIn8Block<true>(stage0OutUb, 0, s2, runInfo, constInfo);
+            CopyIn8Block<true>(stage0OutUb, KV_COPYIN_UNIT, s2, runInfo, constInfo);
+            // 2、copy kv out, ub -> l1
+            SetFlag<HardEvent::MTE2_MTE3>(INNERCORE_STAGE0OUT_MTE2_MTE3(pingPongV0));
+            WaitFlag<HardEvent::MTE2_MTE3>(INNERCORE_STAGE0OUT_MTE2_MTE3(pingPongV0));
+            CopyOutKvUb2Gm(v0ResGm, stage0OutUb, KV_PROCESS_UNIT, s2StartIdx, runInfo, constInfo);
+            SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_STAGE0OUT_MTE3_MTE2(pingPongV0));
+            pingPongV0 ^= 1;
+        }
+
+        // 阶段2：尾块（不足16行，保留判断逻辑）
+        if (tail16Rows > 0) {
+            int64_t s2StartIdx = sparseS2Start + process16LoopCnt * KV_PROCESS_UNIT;
             int64_t dealRow = 0;
-            LocalTensor<Q_T> stage0OutUb = this->stage0OutBuf[pingPong].template Get<Q_T>();
-            WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[pingPong]);
-            while (dealRow < Min(16, sparseCalSize) && s2 < sparseS2End) {
-                int64_t tokenData[8] = {-1, -1, -1, -1, -1, -1, -1, -1};
-                if constexpr (IS_VEC_S2PHYADDR) {
-                    GetRealS2Addr(tokenData, s2, runInfo, constInfo);
-                } else {
-                    GetRealCmpS2Idx(tokenData, s2, runInfo, constInfo);
-                }
-                s2 += 8;
-                if (tokenData[0] == -1 && tokenData[1] == -1 && tokenData[2] == -1 && tokenData[3] == -1 &&
-                    tokenData[4] == -1 && tokenData[5] == -1 && tokenData[6] == -1 && tokenData[7] == -1) {
-                    meetEnd = true;
-                    break;
-                }
-                dealRow += CopyInKvSparse(stage0OutUb, dealRow, tokenData, runInfo, constInfo);
-                if (tokenData[7] == -1) {
-                    meetEnd = true;
-                    break;
-                }
+            // 1、copy kv in, gm -> ub
+            LocalTensor<Q_T> stage0OutUb = this->stage0OutBufs[pingPongV0].tensor;
+            WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_STAGE0OUT_MTE3_MTE2(pingPongV0));
+            // 尾块内满8行搬入（8行均有效，无需判断）
+            for (int64_t j = 0; j < tail8FullCnt; j++) {
+                CopyIn8Block<true>(stage0OutUb, dealRow, s2, runInfo, constInfo);
+                dealRow += KV_COPYIN_UNIT;
             }
-            if (dealRow == 0) {
-                SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[pingPong]);
-                pingPong ^= 1;
-                return;
+            // 尾块内不足8行（需判断边界，与当前逻辑一致）
+            if (tail8Remain > 0) {
+                CopyIn8Block<false>(stage0OutUb, dealRow, s2, runInfo, constInfo);
+                dealRow += tail8Remain;
             }
-            SetFlag<HardEvent::MTE2_MTE3>(mte2ToMte3[pingPong]);
-            WaitFlag<HardEvent::MTE2_MTE3>(mte2ToMte3[pingPong]);
-            CopyOutKvUb2Gm(v0ResGm, stage0OutUb, dealRow, s2Start, runInfo, constInfo);
-            SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[pingPong]);
-            s2Start += dealRow;
-            pingPong ^= 1;
+            // 2、copy kv out, ub -> l1
+            SetFlag<HardEvent::MTE2_MTE3>(INNERCORE_STAGE0OUT_MTE2_MTE3(pingPongV0));
+            WaitFlag<HardEvent::MTE2_MTE3>(INNERCORE_STAGE0OUT_MTE2_MTE3(pingPongV0));
+            CopyOutKvUb2Gm(v0ResGm, stage0OutUb, tail16Rows, s2StartIdx, runInfo, constInfo);
+            SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_STAGE0OUT_MTE3_MTE2(pingPongV0));
+            pingPongV0 ^= 1;
         }
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 template <bool UPDATE>
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ComputeVec1Softmax(
-    LocalTensor<Q_T> &stage1CastTensor, LocalTensor<T> &mmRes, LocalTensor<float> &sumUb,
-    LocalTensor<float> &maxUb, LocalTensor<T> &apiTmpBuffer, RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ComputeVec1Softmax(LocalTensor<Q_T> &stage1CastTensor,
+                                                                      LocalTensor<T> &mmRes, LocalTensor<float> &sumUb,
+                                                                      LocalTensor<float> &maxUb,
+                                                                      LocalTensor<T> &apiTmpBuffer, RunInfo &runInfo,
+                                                                      ConstInfo &constInfo)
 {
     if (likely(runInfo.s2RealSize == 128 && runInfo.s2RealSizeUpdate == 128)) {
         ProcessVec1Vf<T, Q_T, UPDATE, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
-            stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf,
-            runInfo.halfMRealSize, runInfo.s2RealSizeUpdate, static_cast<T>(constInfo.softmaxScale),
-            negativeFloatScalar);
+            stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf, runInfo.halfMRealSize,
+            runInfo.s2RealSizeUpdate, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
     } else if (runInfo.s2RealSize <= 64) {
-        ProcessVec1Vf<T, Q_T, UPDATE, s1BaseSize, s2BaseSize,
-                      FaVectorApi::OriginNRange::GT_0_AND_LTE_64_SFA>(
-            stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf,
-            runInfo.halfMRealSize, runInfo.s2RealSizeUpdate, static_cast<T>(constInfo.softmaxScale),
-            negativeFloatScalar);
+        ProcessVec1Vf<T, Q_T, UPDATE, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_0_AND_LTE_64_SFA>(
+            stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf, runInfo.halfMRealSize,
+            runInfo.s2RealSizeUpdate, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
     } else if (runInfo.s2RealSize < 128 || runInfo.s2RealSizeUpdate < 128) {
-        ProcessVec1Vf<T, Q_T, UPDATE, s1BaseSize, s2BaseSize,
-                      FaVectorApi::OriginNRange::GT_64_AND_LTE_128_SFA>(
-            stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf,
-            runInfo.halfMRealSize, runInfo.s2RealSizeUpdate, static_cast<T>(constInfo.softmaxScale),
-            negativeFloatScalar);
+        ProcessVec1Vf<T, Q_T, UPDATE, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_64_AND_LTE_128_SFA>(
+            stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf, runInfo.halfMRealSize,
+            runInfo.s2RealSizeUpdate, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitVec1SoftmaxFromSinks(
-    LocalTensor<float> &sumUb, LocalTensor<float> &maxUb, RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitVec1SoftmaxFromSinks(LocalTensor<float> &sumUb,
+                                                                            LocalTensor<float> &maxUb, RunInfo &runInfo,
+                                                                            ConstInfo &constInfo)
 {
     bool includeSink = (!runInfo.isCrossCoreSplit) || runInfo.isFirstS2SplitCore;
     if constexpr (IS_BATCH_CONSISTENCY) {
@@ -741,26 +777,26 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitVec1SoftmaxFromSinks(
     }
     int64_t sinksOffset = 0;
     if constexpr (!IS_SPLIT_G) {
-        sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : runInfo.firstHalfMRealSize;
+        sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : runInfo.firstHalfMRealSize; // 2：判断块索引的奇偶性
     } else {
         sinksOffset = runInfo.goIdx;
         if (constInfo.subBlockIdx == 1) {
             sinksOffset += runInfo.firstHalfMRealSize;
         }
     }
-    LocalTensor<T> sinksUb = this->sinksBuf.template Get<T>();
+    LocalTensor<T> sinksUb = this->sinksUb.tensor;
     InitSoftmaxFromSinks<T>(sumUb, maxUb, sinksUb, sinksOffset, R0, runInfo.halfMRealSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyVec1ResultToL1(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-    LocalTensor<Q_T> &stage1CastTensor, RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyVec1ResultToL1(StaticBuffer<Q_T> &outputBuf,
+                                                                      LocalTensor<Q_T> &stage1CastTensor,
+                                                                      RunInfo &runInfo, ConstInfo &constInfo)
 {
     int64_t stage1Offset = runInfo.taskIdMod2;
-    this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
-    this->stage1OutQue[stage1Offset].template DeQue<Q_T>();
-    LocalTensor<Q_T> mm2AL1Tensor = outputBuf.GetTensor<Q_T>();
+    SetFlag<HardEvent::V_MTE3>(INNERCORE_STAGE1(stage1Offset));
+    WaitFlag<HardEvent::V_MTE3>(INNERCORE_STAGE1(stage1Offset));
+    LocalTensor<Q_T> mm2AL1Tensor = outputBuf.tensor;
     if (likely(runInfo.halfMRealSize != 0)) {
         DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (BLOCK_BYTE / sizeof(Q_T)) *
                               (runInfo.mRealSize - runInfo.halfMRealSize)],
@@ -769,115 +805,114 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyVec1ResultToL1(
                   static_cast<uint16_t>(vec1Srcstride - runInfo.halfMRealSize),
                   static_cast<uint16_t>(Align16Func(runInfo.mRealSize) - runInfo.halfMRealSize)});
     }
-    this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
-    outputBuf.SetCrossCore();
+    SetFlag<HardEvent::MTE3_V>(INNERCORE_STAGE1(stage1Offset));
+    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(CROSSCORE_L1P(outputBuf.idx));
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::StageCrossCoreVec1Lse(
-    LocalTensor<float> &maxUb, LocalTensor<float> &sumUb, RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::StageCrossCoreVec1Lse(LocalTensor<float> &maxUb,
+                                                                         LocalTensor<float> &sumUb, RunInfo &runInfo,
+                                                                         ConstInfo &constInfo)
 {
-    AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize, dTemplateAlign64,
-                                                             GetStagingSlotNum(false), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
-                                                             AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-    LocalTensor<float> tmpUb = this->batchReduceTmpBuf.template Get<float>();
+    AttentionCommon::S2SplitFdStagingLayout stagingLayout = {
+        constInfo.gSize, dTemplateAlign64, GetStagingSlotNum(false), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
+        AttentionCommon::FD_REDUCE_CHUNK_ROWS};
+    LocalTensor<float> tmpUb = this->batchReduceTmpUb.tensor;
     AttentionCommon::StageVec1Lse(stagingLayout, crossCoreCombineBase, GetCrossCoreWorkspaceIdx(runInfo),
                                   GetFaStagingMOffset(runInfo, constInfo), runInfo.halfMRealSize, maxUb, sumUb, tmpUb,
-                                  vToMte3AttnOutId, stageMte3ToVId);
+                                  INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::StageBatchConsistencyVec1Lse(
-    LocalTensor<float> &maxUb, LocalTensor<float> &sumUb, RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::StageBatchConsistencyVec1Lse(LocalTensor<float> &maxUb,
+                                                                                LocalTensor<float> &sumUb,
+                                                                                RunInfo &runInfo, ConstInfo &constInfo)
 {
     if (!runInfo.isLastBase) {
         return;
     }
     if (runInfo.halfMRealSize > 0) {
-        LocalTensor<float> finalMaxUb =
-            this->softmaxFinalMaxBuf[runInfo.taskIdMod2].template Get<float>();
-        LocalTensor<float> finalSumUb =
-            this->softmaxFinalSumBuf[runInfo.taskIdMod2].template Get<float>();
+        LocalTensor<float> finalMaxUb = this->softmaxFinalMaxBufs[runInfo.taskIdMod2].tensor;
+        LocalTensor<float> finalSumUb = this->softmaxFinalSumBufs[runInfo.taskIdMod2].tensor;
         uint64_t snapshotElems = Align8Func(runInfo.halfMRealSize);
         DataCopy(finalMaxUb, maxUb, snapshotElems);
         DataCopy(finalSumUb, sumUb, snapshotElems);
     }
     if (runInfo.isCrossCoreSplit && !runInfo.isFirstS2SplitCore) {
         StageCrossCoreVec1Lse(maxUb, sumUb, runInfo, constInfo);
-    } else if (runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0 &&
-               runInfo.s2LoopCount < runInfo.s2LoopLimit) {
-        AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize, dTemplateAlign64,
-                                                                 GetStagingSlotNum(true), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
-                                                                 AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-        LocalTensor<float> tmpUb = this->batchReduceTmpBuf.template Get<float>();
-        AttentionCommon::StageVec1Lse(stagingLayout, intraCoreCombineBase,
-                                      GetIntraCoreWorkspaceIdx(runInfo, constInfo), GetFaStagingMOffset(runInfo, constInfo),
-                                      runInfo.halfMRealSize, maxUb, sumUb, tmpUb, vToMte3AttnOutId, stageMte3ToVId);
-        SetFlag<HardEvent::MTE3_MTE2>(intraLseMte3ToMte2Id[runInfo.multiCoreIdxMod2]);
+    } else if (runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0 && runInfo.s2LoopCount < runInfo.s2LoopLimit) {
+        AttentionCommon::S2SplitFdStagingLayout stagingLayout = {
+            constInfo.gSize, dTemplateAlign64, GetStagingSlotNum(true), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
+            AttentionCommon::FD_REDUCE_CHUNK_ROWS};
+        LocalTensor<float> tmpUb = this->batchReduceTmpUb.tensor;
+        AttentionCommon::StageVec1Lse(stagingLayout, intraCoreCombineBase, GetIntraCoreWorkspaceIdx(runInfo, constInfo),
+                                      GetFaStagingMOffset(runInfo, constInfo), runInfo.halfMRealSize, maxUb, sumUb,
+                                      tmpUb, INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
+        SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_INTRALSE_MTE3_MTE2(runInfo.multiCoreIdxMod2));
     } else if (runInfo.isCrossCoreSplit && runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0) {
         StageCrossCoreVec1Lse(maxUb, sumUb, runInfo, constInfo);
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::StageLegacyVec1Lse(
-    LocalTensor<float> &maxUb, LocalTensor<float> &sumUb, RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::StageLegacyVec1Lse(LocalTensor<float> &maxUb,
+                                                                      LocalTensor<float> &sumUb, RunInfo &runInfo,
+                                                                      ConstInfo &constInfo)
 {
-    if (!runInfo.isCrossCoreSplit || runInfo.halfMRealSize <= 0 ||
-        runInfo.s2LoopCount != runInfo.s2LoopLimit) {
+    if (!runInfo.isCrossCoreSplit || runInfo.halfMRealSize <= 0 || runInfo.s2LoopCount != runInfo.s2LoopLimit) {
         return;
     }
-    AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize, dTemplateAlign64,
-                                                             GetStagingSlotNum(), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
+    AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize, dTemplateAlign64, GetStagingSlotNum(),
+                                                             AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
                                                              AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-    LocalTensor<float> tmpUb = this->stage2OutBuf.template Get<float>();
+    LocalTensor<float> tmpUb = this->stage2OutBufs.tensor.template ReinterpretCast<float>();
     AttentionCommon::StageVec1Lse(stagingLayout, fdStagingBase, GetCrossCoreWorkspaceIdx(runInfo),
                                   GetFaStagingMOffset(runInfo, constInfo), static_cast<uint32_t>(runInfo.halfMRealSize),
-                                  maxUb, sumUb, tmpUb, vToMte3AttnOutId, stageMte3ToVId);
+                                  maxUb, sumUb, tmpUb, INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutVec1Lse(
-    LocalTensor<float> &maxUb, LocalTensor<float> &sumUb, RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyOutVec1Lse(LocalTensor<float> &maxUb, LocalTensor<float> &sumUb,
+                                                                  RunInfo &runInfo, ConstInfo &constInfo)
 {
-    bool copyOutLse = constInfo.returnSoftmaxLse && runInfo.halfMRealSize > 0 &&
-                      runInfo.s2LoopCount == runInfo.s2LoopLimit;
+    bool copyOutLse =
+        constInfo.isSoftmaxLseEnable && runInfo.halfMRealSize > 0 && runInfo.s2LoopCount == runInfo.s2LoopLimit;
     if constexpr (IS_BATCH_CONSISTENCY) {
         copyOutLse = copyOutLse && !runInfo.isCrossCoreSplit && !runInfo.needReduce;
     }
     if (!copyOutLse) {
         return;
     }
-    LocalTensor<float> outLse = this->outLseBuf[runInfo.multiCoreIdxMod2].template Get<float>();
+    LocalTensor<float> outLse = this->outLseUbs[runInfo.multiCoreIdxMod2].tensor;
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = 1;
     dataCopyParams.blockLen = sizeof(float) * runInfo.halfMRealSize;
     dataCopyParams.srcStride = 0;
     dataCopyParams.dstStride = 0;
-    WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+    WaitFlag<HardEvent::MTE3_V>(INNERCORE_LSE_MTE3_V);
     ComputeLse<float>(outLse, sumUb, maxUb, runInfo.halfMRealSize);
-    SetFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
-    WaitFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
+    SetFlag<HardEvent::V_MTE3>(INNERCORE_LSE_V_MTE3);
+    WaitFlag<HardEvent::V_MTE3>(INNERCORE_LSE_V_MTE3);
     DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], outLse, dataCopyParams);
-    SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+    SetFlag<HardEvent::MTE3_V>(INNERCORE_LSE_MTE3_V);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                        RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(StaticBuffer<Q_T> &outputBuf,
+                                                               StaticBuffer<T> &bmm1ResBuf, RunInfo &runInfo,
+                                                               ConstInfo &constInfo)
 {
-    bmm1ResBuf.WaitCrossCore();
+    CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CROSSCORE_BMM1(bmm1ResBuf.idx));
 
-    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-    LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-    LocalTensor<float> expUb = this->softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
+    LocalTensor<float> sumUb = this->softmaxSumBufs[runInfo.multiCoreIdxMod2].tensor;
+    LocalTensor<float> maxUb = this->softmaxMaxBufs[runInfo.multiCoreIdxMod2].tensor;
+    LocalTensor<float> expUb = this->softmaxExpBufs[runInfo.taskIdMod2].tensor;
     int64_t stage1Offset = runInfo.taskIdMod2;
-    auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<Q_T>();
+    WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE1(stage1Offset));
+    LocalTensor<Q_T> stage1CastTensor = this->stage1OutBufs[stage1Offset].tensor;
 
-    LocalTensor<T> apiTmpBuffer = this->commonTBuf.template Get<T>();
-    LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
+    LocalTensor<T> apiTmpBuffer = this->commonUb.tensor;
+    LocalTensor<T> mmRes = bmm1ResBuf.tensor;
 
     runInfo.s2RealSizeUpdate = runInfo.s2RealSize;
 
@@ -894,7 +929,7 @@ CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_C
         }
         ComputeVec1Softmax<true>(stage1CastTensor, mmRes, sumUb, maxUb, apiTmpBuffer, runInfo, constInfo);
     }
-    bmm1ResBuf.SetCrossCore();
+    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CROSSCORE_BMM1(bmm1ResBuf.idx));
     CopyVec1ResultToL1(outputBuf, stage1CastTensor, runInfo, constInfo);
     if (!isFirstSoftmaxBase || isSinks) {
         SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
@@ -908,33 +943,32 @@ CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_C
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(
-    RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<T> &vec2ResUb, LocalTensor<T> &partialTmpUb)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(RunInfo &runInfo, ConstInfo &constInfo,
+                                                                            LocalTensor<T> &vec2ResUb,
+                                                                            LocalTensor<T> &partialTmpUb)
 {
-    AttentionCommon::S2SplitFdStagingLayout intraLayout = {constInfo.gSize, dTemplateAlign64,
-                                                           GetStagingSlotNum(true), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
+    AttentionCommon::S2SplitFdStagingLayout intraLayout = {constInfo.gSize, dTemplateAlign64, GetStagingSlotNum(true),
+                                                           AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
                                                            AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-    AttentionCommon::S2SplitFdStagingLayout crossLayout = {constInfo.gSize, dTemplateAlign64,
-                                                           GetStagingSlotNum(false), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
+    AttentionCommon::S2SplitFdStagingLayout crossLayout = {constInfo.gSize, dTemplateAlign64, GetStagingSlotNum(false),
+                                                           AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
                                                            AttentionCommon::FD_REDUCE_CHUNK_ROWS};
     uint32_t intraWorkspaceIdx = GetIntraCoreWorkspaceIdx(runInfo, constInfo);
-    uint32_t crossWorkspaceIdx = static_cast<uint32_t>(
-        runInfo.firstFdDataWorkspaceIdx + runInfo.s2SplitIdx - runInfo.reduceBlockId);
+    uint32_t crossWorkspaceIdx =
+        static_cast<uint32_t>(runInfo.firstFdDataWorkspaceIdx + runInfo.s2SplitIdx - runInfo.reduceBlockId);
     int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
-    LocalTensor<float> tmpUb = this->batchReduceTmpBuf.template Get<float>();
+    LocalTensor<float> tmpUb = this->batchReduceTmpUb.tensor;
     LocalTensor<float> blockMaxUb = tmpUb;
     LocalTensor<float> blockSumUb = tmpUb[256];
     LocalTensor<float> lseBroadcastUb = tmpUb[512];
     LocalTensor<float> sumBroadcastUb = tmpUb[640];
-    LocalTensor<float> maxUb =
-        this->softmaxFinalMaxBuf[runInfo.taskIdMod2].template Get<float>();
-    LocalTensor<float> sumUb =
-        this->softmaxFinalSumBuf[runInfo.taskIdMod2].template Get<float>();
-    bool copyOutMergedLse = constInfo.returnSoftmaxLse && !runInfo.isCrossCoreSplit &&
-                            runInfo.s2LoopCount == runInfo.s2LoopLimit;
+    LocalTensor<float> maxUb = this->softmaxFinalMaxBufs[runInfo.taskIdMod2].tensor;
+    LocalTensor<float> sumUb = this->softmaxFinalSumBufs[runInfo.taskIdMod2].tensor;
+    bool copyOutMergedLse =
+        constInfo.isSoftmaxLseEnable && !runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit;
 
-    WaitFlag<HardEvent::MTE3_MTE2>(intraLseMte3ToMte2Id[runInfo.multiCoreIdxMod2]);
-    WaitFlag<HardEvent::MTE3_MTE2>(intraAttnOutMte3ToMte2Id[runInfo.multiCoreIdxMod2]);
+    WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_INTRALSE_MTE3_MTE2(runInfo.multiCoreIdxMod2));
+    WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_INTRAATTN_MTE3_MTE2(runInfo.multiCoreIdxMod2));
     LocalTensor<T> sinkUb;
     int64_t startRow = 0;
     while (startRow < runInfo.vec2MRealSize) {
@@ -946,74 +980,71 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(
         LocalTensor<float> chunkMaxUb = maxUb[startRow];
         LocalTensor<float> chunkSumUb = sumUb[startRow];
         if (copyOutMergedLse) {
-            WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+            WaitFlag<HardEvent::MTE3_V>(INNERCORE_LSE_MTE3_V);
         }
-        AttentionCommon::MergeStagedAndCurrentChunk<T, dTemplateAlign64>(intraLayout,
-                                                                         intraCoreCombineBase, intraWorkspaceIdx, stagingMOffset + startRow,
-                                                                         dealRowCount, static_cast<int64_t>(constInfo.dSizeV), chunkMaxUb, chunkSumUb,
-                                                                         chunkCurrent, blockMaxUb, blockSumUb, partialTmpUb, lseBroadcastUb, sumBroadcastUb,
-                                                                         sinkUb, reduceMaxSumVToMte2Id, intraPartialOVToMte2Id, reduceMte2ToVId);
+        AttentionCommon::MergeStagedAndCurrentChunk<T, dTemplateAlign64>(
+            intraLayout, intraCoreCombineBase, intraWorkspaceIdx, stagingMOffset + startRow, dealRowCount,
+            static_cast<int64_t>(constInfo.dSizeV), chunkMaxUb, chunkSumUb, chunkCurrent, blockMaxUb, blockSumUb,
+            partialTmpUb, lseBroadcastUb, sumBroadcastUb, sinkUb, INNERCORE_REDUCE_MAXSUM_V_MTE2,
+            INNERCORE_INTRAPARTIALO_V_MTE2, INNERCORE_REDUCE_MTE2_V);
 
         AttentionCommon::StageBroadcastMaxSum(intraLayout, intraCoreCombineBase, intraWorkspaceIdx,
                                               stagingMOffset + startRow, dealRowCount, lseBroadcastUb, sumBroadcastUb,
-                                              vToMte3AttnOutId, stageMte3ToVId);
+                                              INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
         if (copyOutMergedLse) {
             DataCopyExtParams lseParams;
             lseParams.blockCount = static_cast<uint16_t>(dealRowCount);
             lseParams.blockLen = sizeof(float);
             lseParams.srcStride = 0;
             lseParams.dstStride = 0;
-            SetFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
-            WaitFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
-            DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset + startRow],
-                        lseBroadcastUb, lseParams);
-            SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+            SetFlag<HardEvent::V_MTE3>(INNERCORE_LSE_V_MTE3);
+            WaitFlag<HardEvent::V_MTE3>(INNERCORE_LSE_V_MTE3);
+            DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset + startRow], lseBroadcastUb, lseParams);
+            SetFlag<HardEvent::MTE3_V>(INNERCORE_LSE_MTE3_V);
         }
         if (runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
             AttentionCommon::StageBroadcastMaxSum(crossLayout, crossCoreCombineBase, crossWorkspaceIdx,
-                                                  stagingMOffset + startRow, dealRowCount, lseBroadcastUb, sumBroadcastUb,
-                                                  vToMte3AttnOutId, stageMte3ToVId);
+                                                  stagingMOffset + startRow, dealRowCount, lseBroadcastUb,
+                                                  sumBroadcastUb, INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
         }
         startRow += intraLayout.chunkRows;
     }
 
-    AttentionCommon::StageVec2PartialOAndWait<T>(intraLayout, intraCoreCombineGm, intraWorkspaceIdx,
-                                                 stagingMOffset, runInfo.vec2MRealSize, static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb,
-                                                 vToMte3AttnOutId, stageMte3ToVId);
+    AttentionCommon::StageVec2PartialOAndWait<T>(intraLayout, intraCoreCombineGm, intraWorkspaceIdx, stagingMOffset,
+                                                 runInfo.vec2MRealSize, static_cast<uint32_t>(constInfo.dSizeV),
+                                                 vec2ResUb, INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
     if (runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
-        AttentionCommon::StageVec2PartialOAndWait<T>(crossLayout, crossCoreCombineGm, crossWorkspaceIdx,
-                                                     stagingMOffset, runInfo.vec2MRealSize, static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb,
-                                                     vToMte3AttnOutId, stageMte3ToVId);
+        AttentionCommon::StageVec2PartialOAndWait<T>(crossLayout, crossCoreCombineGm, crossWorkspaceIdx, stagingMOffset,
+                                                     runInfo.vec2MRealSize, static_cast<uint32_t>(constInfo.dSizeV),
+                                                     vec2ResUb, INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
     }
     if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
-        SetFlag<HardEvent::MTE3_MTE2>(intraLseMte3ToMte2Id[runInfo.multiCoreIdxMod2]);
-        SetFlag<HardEvent::MTE3_MTE2>(intraAttnOutMte3ToMte2Id[runInfo.multiCoreIdxMod2]);
+        SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_INTRALSE_MTE3_MTE2(runInfo.multiCoreIdxMod2));
+        SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_INTRAATTN_MTE3_MTE2(runInfo.multiCoreIdxMod2));
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf, RunInfo &runInfo,
-    ConstInfo &constInfo)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(StaticBuffer<T> &bmm2ResBuf, RunInfo &runInfo,
+                                                               ConstInfo &constInfo)
 {
-    bmm2ResBuf.WaitCrossCore();
+    CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CROSSCORE_BMM2);
     if (unlikely(runInfo.vec2MBaseSize == 0)) {
-        bmm2ResBuf.SetCrossCore();
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CROSSCORE_BMM2);
         return;
     }
 
     runInfo.vec2MRealSize = runInfo.vec2MBaseSize;
     int64_t vec2CalcSize = runInfo.vec2MRealSize * dTemplateAlign64;
-    LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
-    LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
-    WaitFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    LocalTensor<T> vec2ResUb = this->stage2OutBufs.tensor;
+    LocalTensor<T> mmRes = bmm2ResBuf.tensor;
+    WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE2);
     bool needIntraBlockReduce = false;
     if constexpr (IS_BATCH_CONSISTENCY) {
-        needIntraBlockReduce =
-            runInfo.isLastBase && runInfo.isFirstS2SplitCore && runInfo.reduceBlockId > 0;
+        needIntraBlockReduce = runInfo.isLastBase && runInfo.isFirstS2SplitCore && runInfo.reduceBlockId > 0;
         if (needIntraBlockReduce) {
-            WaitFlag<HardEvent::V_MTE2>(intraPartialOVToMte2Id);
-            WaitFlag<HardEvent::V_MTE2>(reduceMaxSumVToMte2Id);
+            WaitFlag<HardEvent::V_MTE2>(INNERCORE_INTRAPARTIALO_V_MTE2);
+            WaitFlag<HardEvent::V_MTE2>(INNERCORE_REDUCE_MAXSUM_V_MTE2);
         }
     }
     bool isFirstVec2Base = runInfo.s2LoopCount == 0;
@@ -1024,7 +1055,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
         DataCopy(vec2ResUb, mmRes, vec2CalcSize);
     } else {
         if (runInfo.s2RealSizeUpdate > 0) {
-            LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
+            LocalTensor<T> expUb = softmaxExpBufs[runInfo.taskIdMod2].tensor;
             bool isLastVec2Base = (runInfo.s2LoopCount == runInfo.s2LoopLimit);
             if constexpr (IS_BATCH_CONSISTENCY) {
                 isLastVec2Base = runInfo.isLastBase;
@@ -1032,17 +1063,16 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
             if (isLastVec2Base) {
                 LocalTensor<float> sumUb;
                 if constexpr (IS_BATCH_CONSISTENCY) {
-                    sumUb = this->softmaxFinalSumBuf[runInfo.taskIdMod2].template Get<float>();
+                    sumUb = this->softmaxFinalSumBufs[runInfo.taskIdMod2].tensor;
                 } else {
-                    sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
+                    sumUb = this->softmaxSumBufs[runInfo.multiCoreIdxMod2].tensor;
                 }
                 FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb,
-                    runInfo.vec2MRealSize, dTemplateAlign64, 1.0, 1.0);
+                    vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0,
+                    1.0);
             } else {
                 FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, expUb,
-                    runInfo.vec2MRealSize, dTemplateAlign64, 1.0, 1.0);
+                    vec2ResUb, mmRes, vec2ResUb, expUb, expUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0, 1.0);
             }
         } else {
             bool isLastVec2Base = runInfo.s2LoopCount >= runInfo.s2LoopLimit;
@@ -1052,12 +1082,12 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
             if (isLastVec2Base) {
                 LocalTensor<float> sumUb;
                 if constexpr (IS_BATCH_CONSISTENCY) {
-                    sumUb = this->softmaxFinalSumBuf[runInfo.taskIdMod2].template Get<float>();
+                    sumUb = this->softmaxFinalSumBufs[runInfo.taskIdMod2].tensor;
                 } else {
-                    sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
+                    sumUb = this->softmaxSumBufs[runInfo.multiCoreIdxMod2].tensor;
                 }
-                LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(
-                    vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0);
+                LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(vec2ResUb, vec2ResUb, sumUb,
+                                                                      runInfo.vec2MRealSize, dTemplateAlign64, 1.0);
             }
         }
     }
@@ -1065,14 +1095,13 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
     if constexpr (IS_BATCH_CONSISTENCY) {
         if (runInfo.isLastBase) {
             if (unlikely(isFirstVec2Base)) {
-                LocalTensor<float> sumUb =
-                    this->softmaxFinalSumBuf[runInfo.taskIdMod2].template Get<float>();
-                LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(
-                    vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0);
+                LocalTensor<float> sumUb = this->softmaxFinalSumBufs[runInfo.taskIdMod2].tensor;
+                LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(vec2ResUb, vec2ResUb, sumUb,
+                                                                      runInfo.vec2MRealSize, dTemplateAlign64, 1.0);
             }
             if (needIntraBlockReduce) {
-                SetFlag<HardEvent::V_MTE2>(intraPartialOVToMte2Id);
-                SetFlag<HardEvent::V_MTE2>(reduceMaxSumVToMte2Id);
+                SetFlag<HardEvent::V_MTE2>(INNERCORE_INTRAPARTIALO_V_MTE2);
+                SetFlag<HardEvent::V_MTE2>(INNERCORE_REDUCE_MAXSUM_V_MTE2);
                 ReduceIntraBlockAndStage(runInfo, constInfo, vec2ResUb, mmRes);
                 if (!runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
                     this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
@@ -1080,28 +1109,28 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
             } else {
                 if (runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0 &&
                     runInfo.s2LoopCount < runInfo.s2LoopLimit) {
-                    AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
-                                                                             dTemplateAlign64, GetStagingSlotNum(true), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
-                                                                             AttentionCommon::FD_REDUCE_CHUNK_ROWS};
+                    AttentionCommon::S2SplitFdStagingLayout stagingLayout = {
+                        constInfo.gSize, dTemplateAlign64, GetStagingSlotNum(true),
+                        AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW, AttentionCommon::FD_REDUCE_CHUNK_ROWS};
                     int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
-                    AttentionCommon::StageVec2PartialOAndWait<T>(stagingLayout, intraCoreCombineGm,
-                                                                 GetIntraCoreWorkspaceIdx(runInfo, constInfo), stagingMOffset, runInfo.vec2MRealSize,
-                                                                 static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb,
-                                                                 vToMte3AttnOutId, stageMte3ToVId);
-                    SetFlag<HardEvent::MTE3_MTE2>(intraAttnOutMte3ToMte2Id[runInfo.multiCoreIdxMod2]);
+                    AttentionCommon::StageVec2PartialOAndWait<T>(
+                        stagingLayout, intraCoreCombineGm, GetIntraCoreWorkspaceIdx(runInfo, constInfo), stagingMOffset,
+                        runInfo.vec2MRealSize, static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb, INNERCORE_STAGE2,
+                        INNERCORE_STAGE_FD_MTE3_V);
+                    SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_INTRAATTN_MTE3_MTE2(runInfo.multiCoreIdxMod2));
                 }
-                if (runInfo.isCrossCoreSplit && (!runInfo.isFirstS2SplitCore ||
-                                                 (runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0 &&
-                                                  runInfo.s2LoopCount == runInfo.s2LoopLimit))) {
-                    AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
-                                                                             dTemplateAlign64, GetStagingSlotNum(false), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
-                                                                             AttentionCommon::FD_REDUCE_CHUNK_ROWS};
+                if (runInfo.isCrossCoreSplit &&
+                    (!runInfo.isFirstS2SplitCore || (runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0 &&
+                                                     runInfo.s2LoopCount == runInfo.s2LoopLimit))) {
+                    AttentionCommon::S2SplitFdStagingLayout stagingLayout = {
+                        constInfo.gSize, dTemplateAlign64, GetStagingSlotNum(false),
+                        AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW, AttentionCommon::FD_REDUCE_CHUNK_ROWS};
                     uint32_t workspaceIdx = GetCrossCoreWorkspaceIdx(runInfo);
                     int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
-                    AttentionCommon::StageVec2PartialOAndWait<T>(stagingLayout, crossCoreCombineGm,
-                                                                 workspaceIdx, stagingMOffset, runInfo.vec2MRealSize,
+                    AttentionCommon::StageVec2PartialOAndWait<T>(stagingLayout, crossCoreCombineGm, workspaceIdx,
+                                                                 stagingMOffset, runInfo.vec2MRealSize,
                                                                  static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb,
-                                                                 vToMte3AttnOutId, stageMte3ToVId);
+                                                                 INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
                 } else if (!runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
                     this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
                 }
@@ -1109,7 +1138,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
         }
     } else if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         if (unlikely(runInfo.s2LoopCount == 0)) {
-            LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
+            LocalTensor<float> sumUb = this->softmaxSumBufs[runInfo.multiCoreIdxMod2].tensor;
             LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize,
                                                                   dTemplateAlign64, 1.0);
         }
@@ -1121,13 +1150,13 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
             int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
             AttentionCommon::StageVec2PartialO<T>(
                 stagingLayout, stagingOutGm, workspaceIdx, stagingMOffset, static_cast<uint32_t>(runInfo.vec2MRealSize),
-                static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb, vToMte3AttnOutId, stageMte3ToVId);
+                static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb, INNERCORE_STAGE2, INNERCORE_STAGE_FD_MTE3_V);
         } else {
             this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
         }
     }
-    bmm2ResBuf.SetCrossCore();
-    SetFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CROSSCORE_BMM2);
+    SetFlag<HardEvent::MTE3_V>(INNERCORE_STAGE2);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1137,7 +1166,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitFDBuffers(FdRunInfo &fdRu
     if (fdBufferInfo.mNum > AttentionCommon::FD_REDUCE_CHUNK_ROWS) {
         fdBufferInfo.mNum = AttentionCommon::FD_REDUCE_CHUNK_ROWS;
     }
-    AttentionCommon::InitFDBuffers<T, dTemplateAlign64>(fdBufferInfo, this->tPipe, fdBuffers);
+    AttentionCommon::InitFDBuffersStatic<T, dTemplateAlign64>(fdBufferInfo, 0, fdBuffers);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1150,53 +1179,47 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(FdRunInfo 
     } else {
         seqOffset = fdRunInfo.bn2Idx * constInfo.s1Size;
     }
-    int64_t attentionOutOffset = seqOffset * constInfo.n2GDv +
-                                 fdRunInfo.mIdx * constInfo.n2GDv +
-                                 fdRunInfo.mStartIdx * constInfo.dSizeV;
+    int64_t attentionOutOffset =
+        seqOffset * constInfo.n2GDv + fdRunInfo.mIdx * constInfo.n2GDv + fdRunInfo.mStartIdx * constInfo.dSizeV;
     int64_t softmaxLseOffset = 0;
     if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
         softmaxLseOffset = (seqOffset + fdRunInfo.mIdx) * constInfo.gSize + fdRunInfo.mStartIdx;
     } else {
-        softmaxLseOffset = (fdRunInfo.bn2Idx * constInfo.s1Size + fdRunInfo.mIdx) *
-                               constInfo.gSize +
-                           fdRunInfo.mStartIdx;
+        softmaxLseOffset =
+            (fdRunInfo.bn2Idx * constInfo.s1Size + fdRunInfo.mIdx) * constInfo.gSize + fdRunInfo.mStartIdx;
     }
-    LocalTensor<T> accumulatedO = this->fdBuffers.accumOut.template Get<T>();
-    LocalTensor<float> lseExpUb = this->fdBuffers.lseExp.template Get<float>();
-    LocalTensor<float> blockMaxUb = this->fdBuffers.blockMax.template Get<float>();
-    LocalTensor<float> blockSumUb = this->fdBuffers.blockSum.template Get<float>();
-    LocalTensor<T> partialOFp32 = this->fdBuffers.partialO.template Get<T>();
-    AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
-                                                             dTemplateAlign64, GetStagingSlotNum(), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
+    LocalTensor<T> accumulatedO = this->fdBuffers.accumOut.tensor.template ReinterpretCast<T>();
+    LocalTensor<float> lseExpUb = this->fdBuffers.lseExp.tensor.template ReinterpretCast<float>();
+    LocalTensor<float> blockMaxUb = this->fdBuffers.blockMax.tensor.template ReinterpretCast<float>();
+    LocalTensor<float> blockSumUb = this->fdBuffers.blockSum.tensor.template ReinterpretCast<float>();
+    LocalTensor<T> partialOFp32 = this->fdBuffers.partialO.tensor.template ReinterpretCast<T>();
+    AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize, dTemplateAlign64, GetStagingSlotNum(),
+                                                             AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
                                                              AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-    int64_t attentionOutRowStride = static_cast<int64_t>(constInfo.dSizeV) +
-                                    static_cast<int64_t>(constInfo.attentionOutStride) / sizeof(OUTPUT_T);
+    int64_t attentionOutRowStride =
+        static_cast<int64_t>(constInfo.dSizeV) + static_cast<int64_t>(constInfo.attentionOutStride) / sizeof(OUTPUT_T);
     int64_t startRow = 0;
     while (startRow < fdRunInfo.mNum) {
         int64_t dealRowCount = AttentionCommon::FD_REDUCE_CHUNK_ROWS;
         if (startRow + dealRowCount > fdRunInfo.mNum) {
             dealRowCount = fdRunInfo.mNum - startRow;
         }
-        WaitFlag<HardEvent::MTE3_V>(fdMte3ToVId);
+        WaitFlag<HardEvent::MTE3_V>(INNERCORE_FD_MTE3_V);
         if constexpr (IS_BATCH_CONSISTENCY) {
-            WaitFlag<HardEvent::MTE3_MTE2>(fdMte3ToMte2Id);
-            AttentionCommon::ReducePairwiseWithLse<T, dTemplateAlign64>(stagingLayout, fdStagingBase,
-                                                                        fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
-                                                                        static_cast<uint32_t>(fdRunInfo.mStartIdx + startRow), dealRowCount,
-                                                                        static_cast<uint32_t>(constInfo.dSizeV),
-                                                                        accumulatedO, lseExpUb, blockMaxUb, blockSumUb, partialOFp32,
-                                                                        constInfo.returnSoftmaxLse, softmaxLseGm, softmaxLseOffset + startRow,
-                                                                        fdVToMte2Id[0], fdVToMte2Id[1], fdMte2ToVId,
-                                                                        vToMte3LseOutId, mte3ToVLseOutId);
+            WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
+            AttentionCommon::ReducePairwiseWithLse<T, dTemplateAlign64>(
+                stagingLayout, fdStagingBase, fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
+                static_cast<uint32_t>(fdRunInfo.mStartIdx + startRow), dealRowCount,
+                static_cast<uint32_t>(constInfo.dSizeV), accumulatedO, lseExpUb, blockMaxUb, blockSumUb, partialOFp32,
+                constInfo.isSoftmaxLseEnable, softmaxLseGm, softmaxLseOffset + startRow, INNERCORE_FD_V_MTE2(0),
+                INNERCORE_FD_V_MTE2(1), INNERCORE_FD_MTE2_V, INNERCORE_LSE_V_MTE3, INNERCORE_LSE_MTE3_V);
         } else {
-            AttentionCommon::ReduceWithLse<T, dTemplateAlign64>(stagingLayout, fdStagingBase,
-                                                                fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
-                                                                static_cast<uint32_t>(fdRunInfo.mStartIdx + startRow), dealRowCount,
-                                                                static_cast<uint32_t>(constInfo.dSizeV),
-                                                                accumulatedO, lseExpUb, blockMaxUb, blockSumUb, partialOFp32,
-                                                                constInfo.returnSoftmaxLse, softmaxLseGm, softmaxLseOffset + startRow,
-                                                                fdVToMte2Id[0], fdVToMte2Id[1], fdMte2ToVId,
-                                                                vToMte3LseOutId, mte3ToVLseOutId);
+            AttentionCommon::ReduceWithLse<T, dTemplateAlign64>(
+                stagingLayout, fdStagingBase, fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
+                static_cast<uint32_t>(fdRunInfo.mStartIdx + startRow), dealRowCount,
+                static_cast<uint32_t>(constInfo.dSizeV), accumulatedO, lseExpUb, blockMaxUb, blockSumUb, partialOFp32,
+                constInfo.isSoftmaxLseEnable, softmaxLseGm, softmaxLseOffset + startRow, INNERCORE_FD_V_MTE2(0),
+                INNERCORE_FD_V_MTE2(1), INNERCORE_FD_MTE2_V, INNERCORE_LSE_V_MTE3, INNERCORE_LSE_MTE3_V);
         }
         RunInfo runInfo;
         runInfo.vec2MRealSize = dealRowCount;
@@ -1204,9 +1227,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(FdRunInfo 
         int64_t vec2CalcSize = dealRowCount * dTemplateAlign64;
         this->CopyOutAttentionOut(runInfo, constInfo, accumulatedO, 0, vec2CalcSize);
         if constexpr (IS_BATCH_CONSISTENCY) {
-            SetFlag<HardEvent::MTE3_MTE2>(fdMte3ToMte2Id);
+            SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
         }
-        SetFlag<HardEvent::MTE3_V>(fdMte3ToVId);
+        SetFlag<HardEvent::MTE3_V>(INNERCORE_FD_MTE3_V);
         startRow += dealRowCount;
     }
 }
@@ -1222,8 +1245,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo &runI
 
     attenOut.SetAddr(vec2ResUb.address_);
     Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, vec2CalcSize);
-    SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
-    WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+    SetFlag<HardEvent::V_MTE3>(INNERCORE_STAGE2);
+    WaitFlag<HardEvent::V_MTE3>(INNERCORE_STAGE2);
 
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
@@ -1247,6 +1270,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInfo &constInfo)
 {
     uint32_t coreNum = GetBlockNum();
+    uint32_t vecCoreNum = CV_RATIO * coreNum;
     uint64_t totalOutputSize = 0;
 
     // n2 = 1, n1 = gn2 = gSize
@@ -1256,39 +1280,27 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
         totalOutputSize = constInfo.s1Size * constInfo.gSize * constInfo.dSizeV;
     }
 
-    if (coreNum != 0) {
-        uint64_t singleCoreSize = (totalOutputSize + (CV_RATIO * coreNum) - 1) / (CV_RATIO * coreNum);
-        uint64_t tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
-        uint64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
-        if (singleInitOutputSize > 0) {
-            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            matmul::InitOutput<OUTPUT_T>(this->attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
-                                         0);
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-        }
+    static constexpr uint32_t ATTEN_OUT_POP_BUF_START_ADDR = 184U * 1024U;
+    static constexpr uint32_t ATTEN_OUT_POP_BUF_ELE_SIZE = (32U * 1024U) / sizeof(OUTPUT_T);
+    if (coreNum != 0 && totalOutputSize > 0) {
+        AttentionCommon::InitOutput<OUTPUT_T, initOutputEventId, ATTEN_OUT_POP_BUF_START_ADDR,
+                                    ATTEN_OUT_POP_BUF_ELE_SIZE, false>(this->attentionOutGm, totalOutputSize,
+                                                                       vecCoreNum, static_cast<OUTPUT_T>(0));
     }
-
-    if (constInfo.returnSoftmaxLse) {
+    if (constInfo.isSoftmaxLseEnable) {
         uint64_t totalReturnSoftmaxSize = 0;
         if constexpr (LAYOUT_T == SMLA_LAYOUT::BSND) {
             totalReturnSoftmaxSize = constInfo.bSize * constInfo.n2Size * constInfo.s1Size * constInfo.gSize;
         } else if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
             totalReturnSoftmaxSize = constInfo.n2Size * constInfo.s1Size * constInfo.gSize; // (N2,T1,G)
         }
+        static constexpr uint32_t LSE_POP_BUF_START_ADDR = 216U * 1024U;
+        static constexpr uint32_t LSE_POP_BUF_ELE_SIZE = (32U * 1024U) / sizeof(float);
         if (coreNum != 0 && totalReturnSoftmaxSize > 0) {
-            uint64_t singleCoreSoftmaxSize = (totalReturnSoftmaxSize + (CV_RATIO * coreNum) - 1) / (CV_RATIO * coreNum);
-            uint64_t tailSoftmaxSize = totalReturnSoftmaxSize - constInfo.aivIdx * singleCoreSoftmaxSize;
-            uint64_t singleInitSoftmaxSize =
-                tailSoftmaxSize < singleCoreSoftmaxSize ? tailSoftmaxSize : singleCoreSoftmaxSize;
-            if (constInfo.aivIdx * singleCoreSoftmaxSize < totalReturnSoftmaxSize && singleInitSoftmaxSize > 0) {
-                WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-                matmul::InitOutput<float>(this->softmaxLseGm[constInfo.aivIdx * singleCoreSoftmaxSize],
-                                          singleInitSoftmaxSize, 0);
-                SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            }
+            AttentionCommon::InitOutput<float, initOutputEventId, LSE_POP_BUF_START_ADDR, LSE_POP_BUF_ELE_SIZE, false>(
+                this->softmaxLseGm, totalReturnSoftmaxSize, vecCoreNum, static_cast<float>(0));
         }
     }
-    SyncAll();
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1299,9 +1311,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *a
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
         this->softmaxLseGm.SetGlobalBuffer((__gm__ T *)softmaxLse);
         if (constInfo.needInit == 1) {
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
             InitOutputSingleCore(constInfo);
-            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 }
@@ -1337,28 +1347,41 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::SoftmaxInitBuffer()
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::SoftmaxInitBuffer(uint32_t &ubAddr)
 {
     constexpr uint32_t softmaxBufSize = 256; // VF单次操作256Byte
-    tPipe->InitBuffer(softmaxSumBuf[0], softmaxBufSize);
-    tPipe->InitBuffer(softmaxSumBuf[1], softmaxBufSize);
-    tPipe->InitBuffer(softmaxMaxBuf[0], softmaxBufSize);
-    tPipe->InitBuffer(softmaxMaxBuf[1], softmaxBufSize);
+    constexpr uint32_t softmaxElems = softmaxBufSize / sizeof(float);
+    softmaxSumBufs[0] = {LocalTensor<float>(TPosition::VECIN, ubAddr, softmaxElems), 0};
+    ubAddr += softmaxBufSize;
+    softmaxSumBufs[1] = {LocalTensor<float>(TPosition::VECIN, ubAddr, softmaxElems), 1};
+    ubAddr += softmaxBufSize;
+    softmaxMaxBufs[0] = {LocalTensor<float>(TPosition::VECIN, ubAddr, softmaxElems), 0};
+    ubAddr += softmaxBufSize;
+    softmaxMaxBufs[1] = {LocalTensor<float>(TPosition::VECIN, ubAddr, softmaxElems), 1};
+    ubAddr += softmaxBufSize;
     if constexpr (IS_BATCH_CONSISTENCY) {
-        tPipe->InitBuffer(softmaxFinalSumBuf[0], softmaxBufSize);
-        tPipe->InitBuffer(softmaxFinalSumBuf[1], softmaxBufSize);
-        tPipe->InitBuffer(softmaxFinalMaxBuf[0], softmaxBufSize);
-        tPipe->InitBuffer(softmaxFinalMaxBuf[1], softmaxBufSize);
-        tPipe->InitBuffer(batchReduceTmpBuf, 768 * sizeof(float));
+        softmaxFinalSumBufs[0] = {LocalTensor<float>(TPosition::VECIN, ubAddr, softmaxElems), 0};
+        ubAddr += softmaxBufSize;
+        softmaxFinalSumBufs[1] = {LocalTensor<float>(TPosition::VECIN, ubAddr, softmaxElems), 1};
+        ubAddr += softmaxBufSize;
+        softmaxFinalMaxBufs[0] = {LocalTensor<float>(TPosition::VECIN, ubAddr, softmaxElems), 0};
+        ubAddr += softmaxBufSize;
+        softmaxFinalMaxBufs[1] = {LocalTensor<float>(TPosition::VECIN, ubAddr, softmaxElems), 1};
+        ubAddr += softmaxBufSize;
+        batchReduceTmpUb = {LocalTensor<float>(TPosition::VECIN, ubAddr, 768),
+                            0}; // 768：batchReduceTmpUb申请内存大小为768个float
+        ubAddr += 768U * sizeof(float);
     }
-    tPipe->InitBuffer(softmaxExpBuf[0], softmaxBufSize);
-    tPipe->InitBuffer(softmaxExpBuf[1], softmaxBufSize);
+    softmaxExpBufs[0] = {LocalTensor<T>(TPosition::VECIN, ubAddr, softmaxBufSize / sizeof(T)), 0};
+    ubAddr += softmaxBufSize;
+    softmaxExpBufs[1] = {LocalTensor<T>(TPosition::VECIN, ubAddr, softmaxBufSize / sizeof(T)), 1};
+    ubAddr += softmaxBufSize;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitSinksBuffer(ConstInfo &constInfo)
 {
-    LocalTensor<T> sinksUb = this->sinksBuf.template Get<T>();
+    LocalTensor<T> sinksUb = this->sinksUb.tensor;
     const uint32_t maxN = constInfo.gSize; // N最大支持128, sink shape是[N]
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = 1U;
@@ -1367,19 +1390,21 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitSinksBuffer(ConstInfo &co
     dataCopyParams.dstStride = 0U;
     DataCopyPadExtParams<T> padParams;
     DataCopyPad(sinksUb, this->sinksGm, dataCopyParams, padParams);
-    TEventID mte2ToV = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
-    SetFlag<AscendC::HardEvent::MTE2_V>(mte2ToV);
-    WaitFlag<AscendC::HardEvent::MTE2_V>(mte2ToV);
+    SetFlag<AscendC::HardEvent::MTE2_V>(INNERCORE_SINKS_SYNC);
+    WaitFlag<AscendC::HardEvent::MTE2_V>(INNERCORE_SINKS_SYNC);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo)
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo &constInfo, uint32_t ubBaseAddr)
 {
-    // ub buffer
-    SoftmaxInitBuffer();
+    uint32_t ubAddr = ubBaseAddr;
 
-    tPipe->InitBuffer(commonTBuf, 512); // commonTBuf内存申请512B
-    tPipe->InitBuffer(sinksBuf, 512);   // sinksBuf内存申请512B
+    SoftmaxInitBuffer(ubAddr);
+
+    commonUb = {LocalTensor<T>(TPosition::VECIN, ubAddr, 512 / sizeof(T)), 0}; // 512 for common ub size
+    ubAddr += 512;                                                             // 512 for common ub offset
+    sinksUb = {LocalTensor<T>(TPosition::VECIN, ubAddr, 512 / sizeof(T)), 0};  // 512 for sinks ub size
+    ubAddr += 512;                                                             // 512 for sinks ub offset
     if (this->isSinks) {
         InitSinksBuffer(constInfo);
     }
@@ -1387,66 +1412,71 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
                   TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                   TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        tPipe->InitBuffer(stage0OutBuf[0], dVTemplateType * 16 * sizeof(KV_T));
-        tPipe->InitBuffer(stage0OutBuf[1], dVTemplateType * 16 * sizeof(KV_T));
+        stage0OutBufs[0] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, dVTemplateType * 16U),
+                            0}; // 输出缓冲区处理16个seq
+        ubAddr += dVTemplateType * 16U * sizeof(KV_T);
+        stage0OutBufs[1] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, dVTemplateType * 16U),
+                            1}; // 输出缓冲区处理16个seq
+        ubAddr += dVTemplateType * 16U * sizeof(KV_T);
     }
-    if (constInfo.returnSoftmaxLse) {
-        tPipe->InitBuffer(outLseBuf[0], 256);
-        tPipe->InitBuffer(outLseBuf[1], 256);
+    if (constInfo.isSoftmaxLseEnable) {
+        outLseUbs[0] = {LocalTensor<float>(TPosition::VECIN, ubAddr, 256 / sizeof(float)),
+                        0}; // outLseBuf[0]内存申请256B
+        ubAddr += 256U;
+        outLseUbs[1] = {LocalTensor<float>(TPosition::VECIN, ubAddr, 256 / sizeof(float)),
+                        1}; // outLseBuf[1]内存申请256B
+        ubAddr += 256U;
     }
 
-    tPipe->InitBuffer(stage1OutQue[0], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
-    tPipe->InitBuffer(stage1OutQue[1], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
-    tPipe->InitBuffer(stage2OutBuf, (s1BaseSize / CV_RATIO) * dTemplateAlign64 * sizeof(T));
+    stage1OutBufs[0] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, vec1Srcstride * s2BaseSize), 0};
+    ubAddr += vec1Srcstride * s2BaseSize * sizeof(Q_T);
+    stage1OutBufs[1] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, vec1Srcstride * s2BaseSize), 1};
+    ubAddr += vec1Srcstride * s2BaseSize * sizeof(Q_T);
 
-    mte3ToVAttnOutId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-    mte3ToVLseOutId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-    stageMte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-    SetFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
-    SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
-    vToMte3AttnOutId = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-    vToMte3LseOutId = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-    mte3ToVId[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-    mte3ToVId[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-    SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
-    SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
-    vToMte3Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-    vToMte3Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-    mte3ToMte2[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
-    mte3ToMte2[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
-    SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[0]);
-    SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[1]);
-    mte2ToMte3[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE3>();
-    mte2ToMte3[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE3>();
-    fdVToMte2Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
-    fdVToMte2Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
-    fdMte2ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
-    fdMte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-    SetFlag<HardEvent::V_MTE2>(fdVToMte2Id[0]);
-    SetFlag<HardEvent::V_MTE2>(fdVToMte2Id[1]);
-    SetFlag<HardEvent::MTE3_V>(fdMte3ToVId);
+    stage2OutBufs = {LocalTensor<T>(TPosition::VECIN, ubAddr, (s1BaseSize / CV_RATIO) * dTemplateAlign64), 0};
+
+    // 显式 flag 初始化 (替代 AllocEventID + 初始 SetFlag)
+    SetFlag<HardEvent::MTE3_V>(INNERCORE_STAGE2);
     if constexpr (IS_BATCH_CONSISTENCY) {
-        fdMte3ToMte2Id = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
-        SetFlag<HardEvent::MTE3_MTE2>(fdMte3ToMte2Id);
-        for (uint32_t eventIdx = 0; eventIdx < 2; ++eventIdx) {
-            intraLseMte3ToMte2Id[eventIdx] =
-                GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
-            intraAttnOutMte3ToMte2Id[eventIdx] =
-                GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
-        }
-        intraPartialOVToMte2Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
-        reduceMaxSumVToMte2Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
-        reduceMte2ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
-        SetFlag<HardEvent::V_MTE2>(intraPartialOVToMte2Id);
-        SetFlag<HardEvent::V_MTE2>(reduceMaxSumVToMte2Id);
+        SetFlag<HardEvent::V_MTE2>(INNERCORE_INTRAPARTIALO_V_MTE2);
+        SetFlag<HardEvent::V_MTE2>(INNERCORE_REDUCE_MAXSUM_V_MTE2);
     }
-    mte2ToVV0Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
-    mte2ToVV0Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
-    vToMte2V0Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
-    vToMte2V0Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
-    SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
-    SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[1]);
-    initOutputEventId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+    if (constInfo.isSoftmaxLseEnable) {
+        SetFlag<HardEvent::MTE3_V>(INNERCORE_LSE_MTE3_V);
+    }
+    SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_STAGE0OUT_MTE3_MTE2(0));
+    SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_STAGE0OUT_MTE3_MTE2(1));
+    SetFlag<HardEvent::MTE3_V>(INNERCORE_STAGE1(0));
+    SetFlag<HardEvent::MTE3_V>(INNERCORE_STAGE1(1));
+    SetFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(0));
+    SetFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(1));
+    SetFlag<HardEvent::MTE3_V>(INNERCORE_FD_MTE3_V);
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        SetFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::FreeEvent(ConstInfo &constInfo)
+{
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        WaitFlag<HardEvent::V_MTE2>(INNERCORE_INTRAPARTIALO_V_MTE2);
+        WaitFlag<HardEvent::V_MTE2>(INNERCORE_REDUCE_MAXSUM_V_MTE2);
+    }
+    WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE2);
+    if (constInfo.isSoftmaxLseEnable) {
+        WaitFlag<HardEvent::MTE3_V>(INNERCORE_LSE_MTE3_V);
+    }
+    WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_STAGE0OUT_MTE3_MTE2(0));
+    WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_STAGE0OUT_MTE3_MTE2(1));
+    WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE1(0));
+    WaitFlag<HardEvent::MTE3_V>(INNERCORE_STAGE1(1));
+    WaitFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(0));
+    WaitFlag<HardEvent::V_MTE2>(INNERCORE_FD_V_MTE2(1));
+    WaitFlag<HardEvent::MTE3_V>(INNERCORE_FD_MTE3_V);
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        WaitFlag<HardEvent::MTE3_MTE2>(INNERCORE_FD_MTE3_MTE2);
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1467,70 +1497,70 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
     static const uint16_t out_offset_per_loop = 256;
     static const uint16_t out_offset_per_reg = 128;
     static const uint32_t invalid_value = 0xFFFFFFFF;
-    MicroAPI::MaskReg preg_all_b32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg add_carry_l_1;
-    MicroAPI::MaskReg add_carry_h_1;
-    MicroAPI::MaskReg add_carry_l_2;
-    MicroAPI::MaskReg add_carry_h_2;
-    MicroAPI::MaskReg preg_tail_neg_1_b32;
-    MicroAPI::MaskReg preg_tail_neg_2_b32;
+    Reg::MaskReg preg_all_b32 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
+    Reg::MaskReg add_carry_l_1;
+    Reg::MaskReg add_carry_h_1;
+    Reg::MaskReg add_carry_l_2;
+    Reg::MaskReg add_carry_h_2;
+    Reg::MaskReg preg_tail_neg_1_b32;
+    Reg::MaskReg preg_tail_neg_2_b32;
 
-    MicroAPI::RegTensor<uint32_t> vreg_kv_stride;
-    MicroAPI::RegTensor<uint32_t> vreg_sparse_idx_1;
-    MicroAPI::RegTensor<uint32_t> vreg_sparse_idx_2;
-    MicroAPI::RegTensor<uint32_t> vreg_block_size;
-    MicroAPI::RegTensor<uint32_t> vreg_shift_rights_num;
-    MicroAPI::RegTensor<uint32_t> vreg_pa_blk_idx_1;
-    MicroAPI::RegTensor<uint32_t> vreg_pa_blk_idx_2;
-    MicroAPI::RegTensor<uint32_t> vreg_pa_tmp_1;
-    MicroAPI::RegTensor<uint32_t> vreg_pa_tmp_2;
-    MicroAPI::RegTensor<uint32_t> vreg_pa_offset_1;
-    MicroAPI::RegTensor<uint32_t> vreg_pa_offset_2;
-    MicroAPI::RegTensor<uint32_t> vreg_phy_offset_1;
-    MicroAPI::RegTensor<uint32_t> vreg_phy_offset_2;
-    MicroAPI::RegTensor<uint32_t> vreg_phy_blk_idx_1;
-    MicroAPI::RegTensor<uint32_t> vreg_phy_blk_idx_2;
+    Reg::RegTensor<uint32_t> vreg_kv_stride;
+    Reg::RegTensor<uint32_t> vreg_sparse_idx_1;
+    Reg::RegTensor<uint32_t> vreg_sparse_idx_2;
+    Reg::RegTensor<uint32_t> vreg_block_size;
+    Reg::RegTensor<uint32_t> vreg_shift_rights_num;
+    Reg::RegTensor<uint32_t> vreg_pa_blk_idx_1;
+    Reg::RegTensor<uint32_t> vreg_pa_blk_idx_2;
+    Reg::RegTensor<uint32_t> vreg_pa_tmp_1;
+    Reg::RegTensor<uint32_t> vreg_pa_tmp_2;
+    Reg::RegTensor<uint32_t> vreg_pa_offset_1;
+    Reg::RegTensor<uint32_t> vreg_pa_offset_2;
+    Reg::RegTensor<uint32_t> vreg_phy_offset_1;
+    Reg::RegTensor<uint32_t> vreg_phy_offset_2;
+    Reg::RegTensor<uint32_t> vreg_phy_blk_idx_1;
+    Reg::RegTensor<uint32_t> vreg_phy_blk_idx_2;
 
-    MicroAPI::RegTensor<uint32_t> vreg_blk_id_mul_stride_h_1;
-    MicroAPI::RegTensor<uint32_t> vreg_blk_id_mul_stride_tmp_h_1;
-    MicroAPI::RegTensor<uint32_t> vreg_blk_id_mul_stride_l_1;
-    MicroAPI::RegTensor<uint32_t> vreg_mul_overflow_l_1;
-    MicroAPI::RegTensor<uint32_t> vreg_total_offset_l_1;
-    MicroAPI::RegTensor<uint32_t> vreg_total_offset_h_1;
+    Reg::RegTensor<uint32_t> vreg_blk_id_mul_stride_h_1;
+    Reg::RegTensor<uint32_t> vreg_blk_id_mul_stride_tmp_h_1;
+    Reg::RegTensor<uint32_t> vreg_blk_id_mul_stride_l_1;
+    Reg::RegTensor<uint32_t> vreg_mul_overflow_l_1;
+    Reg::RegTensor<uint32_t> vreg_total_offset_l_1;
+    Reg::RegTensor<uint32_t> vreg_total_offset_h_1;
 
-    MicroAPI::RegTensor<uint32_t> vreg_blk_id_mul_stride_h_2;
-    MicroAPI::RegTensor<uint32_t> vreg_blk_id_mul_stride_tmp_h_2;
-    MicroAPI::RegTensor<uint32_t> vreg_blk_id_mul_stride_l_2;
-    MicroAPI::RegTensor<uint32_t> vreg_mul_overflow_l_2;
-    MicroAPI::RegTensor<uint32_t> vreg_total_offset_l_2;
-    MicroAPI::RegTensor<uint32_t> vreg_total_offset_h_2;
+    Reg::RegTensor<uint32_t> vreg_blk_id_mul_stride_h_2;
+    Reg::RegTensor<uint32_t> vreg_blk_id_mul_stride_tmp_h_2;
+    Reg::RegTensor<uint32_t> vreg_blk_id_mul_stride_l_2;
+    Reg::RegTensor<uint32_t> vreg_mul_overflow_l_2;
+    Reg::RegTensor<uint32_t> vreg_total_offset_l_2;
+    Reg::RegTensor<uint32_t> vreg_total_offset_h_2;
 
-    MicroAPI::RegTensor<uint32_t> vreg_zero;
-    MicroAPI::Duplicate(vreg_zero, 0);
-    MicroAPI::Duplicate(vreg_kv_stride, kvStride);
+    Reg::RegTensor<uint32_t> vreg_zero;
+    Reg::Duplicate(vreg_zero, 0);
+    Reg::Duplicate(vreg_kv_stride, kvStride);
 
     for (; s2Loop > 1;) {
         for (uint16_t i = 0; i < s2Loop - 1; i++) {
-            MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>(
-                (MicroAPI::RegTensor<int32_t> &)vreg_sparse_idx_1, sparseIdxUb + i * s2_num_per_loop);
-            MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>(
-                (MicroAPI::RegTensor<int32_t> &)vreg_sparse_idx_2, sparseIdxUb + s2_num_per_reg + i * s2_num_per_loop);
+            Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)vreg_sparse_idx_1,
+                                                              sparseIdxUb + i * s2_num_per_loop);
+            Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)vreg_sparse_idx_2,
+                                                              sparseIdxUb + s2_num_per_reg + i * s2_num_per_loop);
             // * sparseBlockSize
-            MicroAPI::Muls(vreg_sparse_idx_1, vreg_sparse_idx_1, sparseBlockSize, preg_all_b32);
-            MicroAPI::Muls(vreg_sparse_idx_2, vreg_sparse_idx_2, sparseBlockSize, preg_all_b32);
+            Reg::Muls(vreg_sparse_idx_1, vreg_sparse_idx_1, sparseBlockSize, preg_all_b32);
+            Reg::Muls(vreg_sparse_idx_2, vreg_sparse_idx_2, sparseBlockSize, preg_all_b32);
             // 计算右移位数
             // 右移 -> 除blockSize 得到paBlockIdx，vreg_sparse_idx - pa_idx * blocksize -> pa offset
-            MicroAPI::ShiftRights(vreg_pa_blk_idx_1, vreg_sparse_idx_1, shiftRightNum, preg_all_b32);
-            MicroAPI::ShiftRights(vreg_pa_blk_idx_2, vreg_sparse_idx_2, shiftRightNum, preg_all_b32);
+            Reg::ShiftRights(vreg_pa_blk_idx_1, vreg_sparse_idx_1, shiftRightNum, preg_all_b32);
+            Reg::ShiftRights(vreg_pa_blk_idx_2, vreg_sparse_idx_2, shiftRightNum, preg_all_b32);
 
-            MicroAPI::Muls(vreg_pa_tmp_1, vreg_pa_blk_idx_1, blockSize, preg_all_b32);
-            MicroAPI::Muls(vreg_pa_tmp_2, vreg_pa_blk_idx_2, blockSize, preg_all_b32);
+            Reg::Muls(vreg_pa_tmp_1, vreg_pa_blk_idx_1, blockSize, preg_all_b32);
+            Reg::Muls(vreg_pa_tmp_2, vreg_pa_blk_idx_2, blockSize, preg_all_b32);
             // offset
-            MicroAPI::Sub(vreg_pa_offset_1, vreg_sparse_idx_1, vreg_pa_tmp_1, preg_all_b32);
-            MicroAPI::Sub(vreg_pa_offset_2, vreg_sparse_idx_2, vreg_pa_tmp_2, preg_all_b32);
+            Reg::Sub(vreg_pa_offset_1, vreg_sparse_idx_1, vreg_pa_tmp_1, preg_all_b32);
+            Reg::Sub(vreg_pa_offset_2, vreg_sparse_idx_2, vreg_pa_tmp_2, preg_all_b32);
             // 物理页内offset
-            MicroAPI::Muls(vreg_phy_offset_1, vreg_pa_offset_1, kvDim, preg_all_b32);
-            MicroAPI::Muls(vreg_phy_offset_2, vreg_pa_offset_2, kvDim, preg_all_b32);
+            Reg::Muls(vreg_phy_offset_1, vreg_pa_offset_1, kvDim, preg_all_b32);
+            Reg::Muls(vreg_phy_offset_2, vreg_pa_offset_2, kvDim, preg_all_b32);
 
             // int32 paBlockId -> 物理id
             DataCopyGather(vreg_phy_blk_idx_1, blkTableUb, vreg_pa_blk_idx_1, preg_all_b32);
@@ -1538,26 +1568,24 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
 
             // 分高低32位计算int64物理地址 -- 乘 stride
             // 低位乘 带进位
-            MicroAPI::Mull(vreg_blk_id_mul_stride_l_1, vreg_mul_overflow_l_1, vreg_phy_blk_idx_1, vreg_kv_stride,
-                           preg_all_b32);
-            MicroAPI::Mull(vreg_blk_id_mul_stride_l_2, vreg_mul_overflow_l_2, vreg_phy_blk_idx_2, vreg_kv_stride,
-                           preg_all_b32);
+            Reg::Mull(vreg_blk_id_mul_stride_l_1, vreg_mul_overflow_l_1, vreg_phy_blk_idx_1, vreg_kv_stride,
+                      preg_all_b32);
+            Reg::Mull(vreg_blk_id_mul_stride_l_2, vreg_mul_overflow_l_2, vreg_phy_blk_idx_2, vreg_kv_stride,
+                      preg_all_b32);
 
             // 分高低32位计算int64物理地址 -- 加 offset
-            MicroAPI::Add(add_carry_l_1, vreg_total_offset_l_1, vreg_blk_id_mul_stride_l_1, vreg_phy_offset_1,
-                          preg_all_b32);
-            MicroAPI::Add(add_carry_l_2, vreg_total_offset_l_2, vreg_blk_id_mul_stride_l_2, vreg_phy_offset_2,
-                          preg_all_b32);
+            Reg::Add(add_carry_l_1, vreg_total_offset_l_1, vreg_blk_id_mul_stride_l_1, vreg_phy_offset_1, preg_all_b32);
+            Reg::Add(add_carry_l_2, vreg_total_offset_l_2, vreg_blk_id_mul_stride_l_2, vreg_phy_offset_2, preg_all_b32);
 
-            MicroAPI::AddC(add_carry_h_1, vreg_total_offset_h_1, vreg_mul_overflow_l_1, vreg_zero, add_carry_l_1,
-                           preg_all_b32);
-            MicroAPI::AddC(add_carry_h_2, vreg_total_offset_h_2, vreg_mul_overflow_l_2, vreg_zero, add_carry_l_2,
-                           preg_all_b32);
+            Reg::AddC(add_carry_h_1, vreg_total_offset_h_1, vreg_mul_overflow_l_1, vreg_zero, add_carry_l_1,
+                      preg_all_b32);
+            Reg::AddC(add_carry_h_2, vreg_total_offset_h_2, vreg_mul_overflow_l_2, vreg_zero, add_carry_l_2,
+                      preg_all_b32);
 
             // 搬出 由于拆分为了int32类型，元素个数翻倍
-            MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(
+            Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
                 kvPhyAddrUb + i * out_offset_per_loop, vreg_total_offset_l_1, vreg_total_offset_h_1, preg_all_b32);
-            MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(
+            Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
                 kvPhyAddrUb + out_offset_per_reg + i * out_offset_per_loop, vreg_total_offset_l_2,
                 vreg_total_offset_h_2, preg_all_b32);
         }
@@ -1565,31 +1593,31 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
     }
 
     for (uint16_t i = s2Loop - 1; i < s2Loop; i++) {
-        MicroAPI::MaskReg preg_tail_1_b32 = MicroAPI::UpdateMask<int32_t>(s2Tail);
-        MicroAPI::MaskReg preg_tail_2_b32 = MicroAPI::UpdateMask<int32_t>(s2Tail);
-        MicroAPI::Not(preg_tail_neg_1_b32, preg_tail_1_b32, preg_all_b32);
-        MicroAPI::Not(preg_tail_neg_2_b32, preg_tail_2_b32, preg_all_b32);
+        Reg::MaskReg preg_tail_1_b32 = Reg::UpdateMask<int32_t>(s2Tail);
+        Reg::MaskReg preg_tail_2_b32 = Reg::UpdateMask<int32_t>(s2Tail);
+        Reg::Not(preg_tail_neg_1_b32, preg_tail_1_b32, preg_all_b32);
+        Reg::Not(preg_tail_neg_2_b32, preg_tail_2_b32, preg_all_b32);
 
-        MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>((MicroAPI::RegTensor<int32_t> &)vreg_sparse_idx_1,
-                                                                    sparseIdxUb + i * s2_num_per_loop);
-        MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>((MicroAPI::RegTensor<int32_t> &)vreg_sparse_idx_2,
-                                                                    sparseIdxUb + s2_num_per_reg + i * s2_num_per_loop);
+        Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)vreg_sparse_idx_1,
+                                                          sparseIdxUb + i * s2_num_per_loop);
+        Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)vreg_sparse_idx_2,
+                                                          sparseIdxUb + s2_num_per_reg + i * s2_num_per_loop);
         // * sparseBlockSize
-        MicroAPI::Muls(vreg_sparse_idx_1, vreg_sparse_idx_1, sparseBlockSize, preg_tail_1_b32);
-        MicroAPI::Muls(vreg_sparse_idx_2, vreg_sparse_idx_2, sparseBlockSize, preg_tail_2_b32);
+        Reg::Muls(vreg_sparse_idx_1, vreg_sparse_idx_1, sparseBlockSize, preg_tail_1_b32);
+        Reg::Muls(vreg_sparse_idx_2, vreg_sparse_idx_2, sparseBlockSize, preg_tail_2_b32);
         // 计算右移位数
         // 右移 -> 除blockSize 得到paBlockIdx，vreg_sparse_idx - pa_idx * blocksize -> pa offset
-        MicroAPI::ShiftRights(vreg_pa_blk_idx_1, vreg_sparse_idx_1, shiftRightNum, preg_tail_1_b32);
-        MicroAPI::ShiftRights(vreg_pa_blk_idx_2, vreg_sparse_idx_2, shiftRightNum, preg_tail_2_b32);
+        Reg::ShiftRights(vreg_pa_blk_idx_1, vreg_sparse_idx_1, shiftRightNum, preg_tail_1_b32);
+        Reg::ShiftRights(vreg_pa_blk_idx_2, vreg_sparse_idx_2, shiftRightNum, preg_tail_2_b32);
 
-        MicroAPI::Muls(vreg_pa_tmp_1, vreg_pa_blk_idx_1, blockSize, preg_tail_1_b32);
-        MicroAPI::Muls(vreg_pa_tmp_2, vreg_pa_blk_idx_2, blockSize, preg_tail_2_b32);
+        Reg::Muls(vreg_pa_tmp_1, vreg_pa_blk_idx_1, blockSize, preg_tail_1_b32);
+        Reg::Muls(vreg_pa_tmp_2, vreg_pa_blk_idx_2, blockSize, preg_tail_2_b32);
         // offset
-        MicroAPI::Sub(vreg_pa_offset_1, vreg_sparse_idx_1, vreg_pa_tmp_1, preg_tail_1_b32);
-        MicroAPI::Sub(vreg_pa_offset_2, vreg_sparse_idx_2, vreg_pa_tmp_2, preg_tail_2_b32);
+        Reg::Sub(vreg_pa_offset_1, vreg_sparse_idx_1, vreg_pa_tmp_1, preg_tail_1_b32);
+        Reg::Sub(vreg_pa_offset_2, vreg_sparse_idx_2, vreg_pa_tmp_2, preg_tail_2_b32);
         // 物理页内offset
-        MicroAPI::Muls(vreg_phy_offset_1, vreg_pa_offset_1, kvDim, preg_tail_1_b32);
-        MicroAPI::Muls(vreg_phy_offset_2, vreg_pa_offset_2, kvDim, preg_tail_2_b32);
+        Reg::Muls(vreg_phy_offset_1, vreg_pa_offset_1, kvDim, preg_tail_1_b32);
+        Reg::Muls(vreg_phy_offset_2, vreg_pa_offset_2, kvDim, preg_tail_2_b32);
 
         // int32 paBlockId -> 物理id
         DataCopyGather(vreg_phy_blk_idx_1, blkTableUb, vreg_pa_blk_idx_1, preg_tail_1_b32);
@@ -1597,102 +1625,99 @@ __simd_vf__ void GetKVPhyAddrVFPaImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ i
 
         // 分高低32位计算int64物理地址 -- 乘 stride
         // 低位乘 带进位
-        MicroAPI::Mull(vreg_blk_id_mul_stride_l_1, vreg_mul_overflow_l_1, vreg_phy_blk_idx_1, vreg_kv_stride,
-                       preg_tail_1_b32);
-        MicroAPI::Mull(vreg_blk_id_mul_stride_l_2, vreg_mul_overflow_l_2, vreg_phy_blk_idx_2, vreg_kv_stride,
-                       preg_tail_2_b32);
+        Reg::Mull(vreg_blk_id_mul_stride_l_1, vreg_mul_overflow_l_1, vreg_phy_blk_idx_1, vreg_kv_stride,
+                  preg_tail_1_b32);
+        Reg::Mull(vreg_blk_id_mul_stride_l_2, vreg_mul_overflow_l_2, vreg_phy_blk_idx_2, vreg_kv_stride,
+                  preg_tail_2_b32);
 
         // 分高低32位计算int64物理地址 -- 加 offset
-        MicroAPI::Add(add_carry_l_1, vreg_total_offset_l_1, vreg_blk_id_mul_stride_l_1, vreg_phy_offset_1,
-                      preg_tail_1_b32);
-        MicroAPI::Add(add_carry_l_2, vreg_total_offset_l_2, vreg_blk_id_mul_stride_l_2, vreg_phy_offset_2,
-                      preg_tail_2_b32);
+        Reg::Add(add_carry_l_1, vreg_total_offset_l_1, vreg_blk_id_mul_stride_l_1, vreg_phy_offset_1, preg_tail_1_b32);
+        Reg::Add(add_carry_l_2, vreg_total_offset_l_2, vreg_blk_id_mul_stride_l_2, vreg_phy_offset_2, preg_tail_2_b32);
 
-        MicroAPI::AddC(add_carry_h_1, vreg_total_offset_h_1, vreg_mul_overflow_l_1, vreg_zero, add_carry_l_1,
-                       preg_tail_1_b32);
-        MicroAPI::AddC(add_carry_h_2, vreg_total_offset_h_2, vreg_mul_overflow_l_2, vreg_zero, add_carry_l_2,
-                       preg_tail_2_b32);
+        Reg::AddC(add_carry_h_1, vreg_total_offset_h_1, vreg_mul_overflow_l_1, vreg_zero, add_carry_l_1,
+                  preg_tail_1_b32);
+        Reg::AddC(add_carry_h_2, vreg_total_offset_h_2, vreg_mul_overflow_l_2, vreg_zero, add_carry_l_2,
+                  preg_tail_2_b32);
 
         // 无效值填充-1(0xFFFFFFFF)
-        MicroAPI::Duplicate<uint32_t, MicroAPI::MaskMergeMode::MERGING>(vreg_total_offset_l_1, invalid_value,
-                                                                        preg_tail_neg_1_b32);
-        MicroAPI::Duplicate<uint32_t, MicroAPI::MaskMergeMode::MERGING>(vreg_total_offset_h_1, invalid_value,
-                                                                        preg_tail_neg_1_b32);
-        MicroAPI::Duplicate<uint32_t, MicroAPI::MaskMergeMode::MERGING>(vreg_total_offset_l_2, invalid_value,
-                                                                        preg_tail_neg_2_b32);
-        MicroAPI::Duplicate<uint32_t, MicroAPI::MaskMergeMode::MERGING>(vreg_total_offset_h_2, invalid_value,
-                                                                        preg_tail_neg_2_b32);
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_l_1, invalid_value,
+                                                              preg_tail_neg_1_b32);
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_h_1, invalid_value,
+                                                              preg_tail_neg_1_b32);
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_l_2, invalid_value,
+                                                              preg_tail_neg_2_b32);
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_h_2, invalid_value,
+                                                              preg_tail_neg_2_b32);
+        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
             kvPhyAddrUb + i * out_offset_per_loop, vreg_total_offset_l_1, vreg_total_offset_h_1, preg_all_b32);
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(
-            kvPhyAddrUb + out_offset_per_reg + i * out_offset_per_loop, vreg_total_offset_l_2,
-            vreg_total_offset_h_2, preg_all_b32);
+        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
+            kvPhyAddrUb + out_offset_per_reg + i * out_offset_per_loop, vreg_total_offset_l_2, vreg_total_offset_h_2,
+            preg_all_b32);
     }
 }
 
 template <typename T>
 __aicore__ inline void GetKVPhyAddrVFPa(LocalTensor<uint32_t> kvPhyAddrTensor, LocalTensor<int32_t> sparseIdxTensor,
-                                        LocalTensor<int32_t> blkTableTensor, const uint16_t s2Loop, const uint32_t s2Tail,
-                                        const uint32_t blockSize, const int16_t shiftRightNum,
+                                        LocalTensor<int32_t> blkTableTensor, const uint16_t s2Loop,
+                                        const uint32_t s2Tail, const uint32_t blockSize, const int16_t shiftRightNum,
                                         const uint32_t sparseBlockSize, const uint32_t kvDim, const uint32_t kvStride)
 {
     __ubuf__ uint32_t *kv_phy_addr_ub = (__ubuf__ uint32_t *)(kvPhyAddrTensor.GetPhyAddr());
     __ubuf__ int32_t *sparse_idx_ub = (__ubuf__ int32_t *)(sparseIdxTensor.GetPhyAddr());
     __ubuf__ int32_t *blk_table_ub = (__ubuf__ int32_t *)(blkTableTensor.GetPhyAddr());
-    GetKVPhyAddrVFPaImpl<uint32_t>(kv_phy_addr_ub, sparse_idx_ub, blk_table_ub, s2Loop, s2Tail, blockSize, shiftRightNum,
-                                   sparseBlockSize, kvDim, kvStride);
+    GetKVPhyAddrVFPaImpl<uint32_t>(kv_phy_addr_ub, sparse_idx_ub, blk_table_ub, s2Loop, s2Tail, blockSize,
+                                   shiftRightNum, sparseBlockSize, kvDim, kvStride);
 }
 
 template <typename T>
 __simd_vf__ void GetKVPhyAddrVFTndImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ int32_t *sparseIdxUb,
-                                       const uint16_t s2Loop, uint32_t s2Tail,
-                                       const uint32_t sparseBlockSize, const uint32_t kvDim,
-                                       const uint32_t kvPrefix)
+                                       const uint16_t s2Loop, uint32_t s2Tail, const uint32_t sparseBlockSize,
+                                       const uint32_t kvDim, const uint32_t kvPrefix)
 {
     static const uint16_t s2_num_per_loop = 128;
     static const uint16_t s2_num_per_reg = 64;
     static const uint16_t out_offset_per_loop = 256;
     static const uint16_t out_offset_per_reg = 128;
     static const uint32_t invalid_value = 0xFFFFFFFF;
-    MicroAPI::MaskReg preg_all_b32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg preg_tail_neg_1_b32;
-    MicroAPI::MaskReg preg_tail_neg_2_b32;
+    Reg::MaskReg preg_all_b32 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
+    Reg::MaskReg preg_tail_neg_1_b32;
+    Reg::MaskReg preg_tail_neg_2_b32;
 
-    MicroAPI::RegTensor<uint32_t> vreg_sparse_idx_1;
-    MicroAPI::RegTensor<uint32_t> vreg_sparse_idx_2;
-    MicroAPI::RegTensor<uint32_t> vreg_kv_prefix;
-    MicroAPI::RegTensor<uint32_t> vreg_kv_dim;
-    MicroAPI::RegTensor<uint32_t> vreg_sum_1;
-    MicroAPI::RegTensor<uint32_t> vreg_sum_2;
-    MicroAPI::RegTensor<uint32_t> vreg_mul_overflow_l_1;
-    MicroAPI::RegTensor<uint32_t> vreg_mul_overflow_l_2;
-    MicroAPI::RegTensor<uint32_t> vreg_total_offset_l_1;
-    MicroAPI::RegTensor<uint32_t> vreg_total_offset_h_1;
-    MicroAPI::RegTensor<uint32_t> vreg_total_offset_l_2;
-    MicroAPI::RegTensor<uint32_t> vreg_total_offset_h_2;
+    Reg::RegTensor<uint32_t> vreg_sparse_idx_1;
+    Reg::RegTensor<uint32_t> vreg_sparse_idx_2;
+    Reg::RegTensor<uint32_t> vreg_kv_prefix;
+    Reg::RegTensor<uint32_t> vreg_kv_dim;
+    Reg::RegTensor<uint32_t> vreg_sum_1;
+    Reg::RegTensor<uint32_t> vreg_sum_2;
+    Reg::RegTensor<uint32_t> vreg_mul_overflow_l_1;
+    Reg::RegTensor<uint32_t> vreg_mul_overflow_l_2;
+    Reg::RegTensor<uint32_t> vreg_total_offset_l_1;
+    Reg::RegTensor<uint32_t> vreg_total_offset_h_1;
+    Reg::RegTensor<uint32_t> vreg_total_offset_l_2;
+    Reg::RegTensor<uint32_t> vreg_total_offset_h_2;
 
-    MicroAPI::Duplicate(vreg_kv_prefix, kvPrefix);
-    MicroAPI::Duplicate(vreg_kv_dim, kvDim);
+    Reg::Duplicate(vreg_kv_prefix, kvPrefix);
+    Reg::Duplicate(vreg_kv_dim, kvDim);
 
     for (; s2Loop > 1;) {
         for (uint16_t i = 0; i < s2Loop - 1; i++) {
-            MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>(
-                (MicroAPI::RegTensor<int32_t> &)vreg_sparse_idx_1, sparseIdxUb + i * s2_num_per_loop);
-            MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>(
-                (MicroAPI::RegTensor<int32_t> &)vreg_sparse_idx_2, sparseIdxUb + s2_num_per_reg + i * s2_num_per_loop);
+            Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)vreg_sparse_idx_1,
+                                                              sparseIdxUb + i * s2_num_per_loop);
+            Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)vreg_sparse_idx_2,
+                                                              sparseIdxUb + s2_num_per_reg + i * s2_num_per_loop);
             // * sparseBlockSize
-            MicroAPI::Muls(vreg_sparse_idx_1, vreg_sparse_idx_1, sparseBlockSize, preg_all_b32);
-            MicroAPI::Muls(vreg_sparse_idx_2, vreg_sparse_idx_2, sparseBlockSize, preg_all_b32);
+            Reg::Muls(vreg_sparse_idx_1, vreg_sparse_idx_1, sparseBlockSize, preg_all_b32);
+            Reg::Muls(vreg_sparse_idx_2, vreg_sparse_idx_2, sparseBlockSize, preg_all_b32);
             // (kvPrefix + sparseIdx) * kvDim -> int64 物理地址
-            MicroAPI::Add(vreg_sum_1, vreg_sparse_idx_1, vreg_kv_prefix, preg_all_b32);
-            MicroAPI::Add(vreg_sum_2, vreg_sparse_idx_2, vreg_kv_prefix, preg_all_b32);
+            Reg::Add(vreg_sum_1, vreg_sparse_idx_1, vreg_kv_prefix, preg_all_b32);
+            Reg::Add(vreg_sum_2, vreg_sparse_idx_2, vreg_kv_prefix, preg_all_b32);
             // 带进位乘法
-            MicroAPI::Mull(vreg_total_offset_l_1, vreg_total_offset_h_1, vreg_sum_1, vreg_kv_dim, preg_all_b32);
-            MicroAPI::Mull(vreg_total_offset_l_2, vreg_total_offset_h_2, vreg_sum_2, vreg_kv_dim, preg_all_b32);
+            Reg::Mull(vreg_total_offset_l_1, vreg_total_offset_h_1, vreg_sum_1, vreg_kv_dim, preg_all_b32);
+            Reg::Mull(vreg_total_offset_l_2, vreg_total_offset_h_2, vreg_sum_2, vreg_kv_dim, preg_all_b32);
             // 搬出
-            MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(
+            Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
                 kvPhyAddrUb + i * out_offset_per_loop, vreg_total_offset_l_1, vreg_total_offset_h_1, preg_all_b32);
-            MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(
+            Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
                 kvPhyAddrUb + out_offset_per_reg + i * out_offset_per_loop, vreg_total_offset_l_2,
                 vreg_total_offset_h_2, preg_all_b32);
         }
@@ -1700,115 +1725,112 @@ __simd_vf__ void GetKVPhyAddrVFTndImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ 
     }
 
     for (uint16_t i = s2Loop - 1; i < s2Loop; i++) {
-        MicroAPI::MaskReg preg_tail_1_b32 = MicroAPI::UpdateMask<int32_t>(s2Tail);
-        MicroAPI::MaskReg preg_tail_2_b32 = MicroAPI::UpdateMask<int32_t>(s2Tail);
-        MicroAPI::Not(preg_tail_neg_1_b32, preg_tail_1_b32, preg_all_b32);
-        MicroAPI::Not(preg_tail_neg_2_b32, preg_tail_2_b32, preg_all_b32);
+        Reg::MaskReg preg_tail_1_b32 = Reg::UpdateMask<int32_t>(s2Tail);
+        Reg::MaskReg preg_tail_2_b32 = Reg::UpdateMask<int32_t>(s2Tail);
+        Reg::Not(preg_tail_neg_1_b32, preg_tail_1_b32, preg_all_b32);
+        Reg::Not(preg_tail_neg_2_b32, preg_tail_2_b32, preg_all_b32);
 
-        MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>((MicroAPI::RegTensor<int32_t> &)vreg_sparse_idx_1,
-                                                                    sparseIdxUb + i * s2_num_per_loop);
-        MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>((MicroAPI::RegTensor<int32_t> &)vreg_sparse_idx_2,
-                                                                    sparseIdxUb + s2_num_per_reg + i * s2_num_per_loop);
+        Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)vreg_sparse_idx_1,
+                                                          sparseIdxUb + i * s2_num_per_loop);
+        Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)vreg_sparse_idx_2,
+                                                          sparseIdxUb + s2_num_per_reg + i * s2_num_per_loop);
         // * sparseBlockSize
-        MicroAPI::Muls(vreg_sparse_idx_1, vreg_sparse_idx_1, sparseBlockSize, preg_tail_1_b32);
-        MicroAPI::Muls(vreg_sparse_idx_2, vreg_sparse_idx_2, sparseBlockSize, preg_tail_2_b32);
+        Reg::Muls(vreg_sparse_idx_1, vreg_sparse_idx_1, sparseBlockSize, preg_tail_1_b32);
+        Reg::Muls(vreg_sparse_idx_2, vreg_sparse_idx_2, sparseBlockSize, preg_tail_2_b32);
         // (kvPrefix + sparseIdx) * kvDim -> int64 物理地址
-        MicroAPI::Add(vreg_sum_1, vreg_sparse_idx_1, vreg_kv_prefix, preg_tail_1_b32);
-        MicroAPI::Add(vreg_sum_2, vreg_sparse_idx_2, vreg_kv_prefix, preg_tail_2_b32);
+        Reg::Add(vreg_sum_1, vreg_sparse_idx_1, vreg_kv_prefix, preg_tail_1_b32);
+        Reg::Add(vreg_sum_2, vreg_sparse_idx_2, vreg_kv_prefix, preg_tail_2_b32);
         // 带进位乘法
-        MicroAPI::Mull(vreg_total_offset_l_1, vreg_total_offset_h_1, vreg_sum_1, vreg_kv_dim, preg_tail_1_b32);
-        MicroAPI::Mull(vreg_total_offset_l_2, vreg_total_offset_h_2, vreg_sum_2, vreg_kv_dim, preg_tail_2_b32);
+        Reg::Mull(vreg_total_offset_l_1, vreg_total_offset_h_1, vreg_sum_1, vreg_kv_dim, preg_tail_1_b32);
+        Reg::Mull(vreg_total_offset_l_2, vreg_total_offset_h_2, vreg_sum_2, vreg_kv_dim, preg_tail_2_b32);
         // 无效值填充-1(0xFFFFFFFF)
-        MicroAPI::Duplicate<uint32_t, MicroAPI::MaskMergeMode::MERGING>(vreg_total_offset_l_1, invalid_value,
-                                                                        preg_tail_neg_1_b32);
-        MicroAPI::Duplicate<uint32_t, MicroAPI::MaskMergeMode::MERGING>(vreg_total_offset_h_1, invalid_value,
-                                                                        preg_tail_neg_1_b32);
-        MicroAPI::Duplicate<uint32_t, MicroAPI::MaskMergeMode::MERGING>(vreg_total_offset_l_2, invalid_value,
-                                                                        preg_tail_neg_2_b32);
-        MicroAPI::Duplicate<uint32_t, MicroAPI::MaskMergeMode::MERGING>(vreg_total_offset_h_2, invalid_value,
-                                                                        preg_tail_neg_2_b32);
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_l_1, invalid_value,
+                                                              preg_tail_neg_1_b32);
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_h_1, invalid_value,
+                                                              preg_tail_neg_1_b32);
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_l_2, invalid_value,
+                                                              preg_tail_neg_2_b32);
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_h_2, invalid_value,
+                                                              preg_tail_neg_2_b32);
+        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
             kvPhyAddrUb + i * out_offset_per_loop, vreg_total_offset_l_1, vreg_total_offset_h_1, preg_all_b32);
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(
-            kvPhyAddrUb + out_offset_per_reg + i * out_offset_per_loop, vreg_total_offset_l_2,
-            vreg_total_offset_h_2, preg_all_b32);
+        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
+            kvPhyAddrUb + out_offset_per_reg + i * out_offset_per_loop, vreg_total_offset_l_2, vreg_total_offset_h_2,
+            preg_all_b32);
     }
 }
 
 template <typename T>
 __aicore__ inline void GetKVPhyAddrVFTnd(LocalTensor<uint32_t> kvPhyAddrTensor, LocalTensor<int32_t> sparseIdxTensor,
-                                         const uint16_t s2Loop, const uint32_t s2Tail,
-                                         const uint32_t sparseBlockSize, const uint32_t kvDim,
-                                         const uint32_t kvPrefix)
+                                         const uint16_t s2Loop, const uint32_t s2Tail, const uint32_t sparseBlockSize,
+                                         const uint32_t kvDim, const uint32_t kvPrefix)
 {
     __ubuf__ uint32_t *kv_phy_addr_ub = (__ubuf__ uint32_t *)(kvPhyAddrTensor.GetPhyAddr());
     __ubuf__ int32_t *sparse_idx_ub = (__ubuf__ int32_t *)(sparseIdxTensor.GetPhyAddr());
-    GetKVPhyAddrVFTndImpl<uint32_t>(kv_phy_addr_ub, sparse_idx_ub, s2Loop, s2Tail,
-                                    sparseBlockSize, kvDim, kvPrefix);
+    GetKVPhyAddrVFTndImpl<uint32_t>(kv_phy_addr_ub, sparse_idx_ub, s2Loop, s2Tail, sparseBlockSize, kvDim, kvPrefix);
 }
 
 template <typename T>
 __simd_vf__ void GetKVPhyAddrVFBsndImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ int32_t *sparseIdxUb,
-                                        const uint16_t s2Loop, uint32_t s2Tail,
-                                        const uint32_t sparseBlockSize, const uint32_t kvDim,
-                                        const uint32_t bS2BaseLow, const uint32_t bS2BaseHigh)
+                                        const uint16_t s2Loop, uint32_t s2Tail, const uint32_t sparseBlockSize,
+                                        const uint32_t kvDim, const uint32_t bS2BaseLow, const uint32_t bS2BaseHigh)
 {
     static const uint16_t s2_num_per_loop = 128;
     static const uint16_t s2_num_per_reg = 64;
     static const uint16_t out_offset_per_loop = 256;
     static const uint16_t out_offset_per_reg = 128;
     static const uint32_t invalid_value = 0xFFFFFFFF;
-    MicroAPI::MaskReg preg_all_b32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg add_carry_l_1;
-    MicroAPI::MaskReg add_carry_h_1;
-    MicroAPI::MaskReg add_carry_l_2;
-    MicroAPI::MaskReg add_carry_h_2;
-    MicroAPI::MaskReg preg_tail_neg_1_b32;
-    MicroAPI::MaskReg preg_tail_neg_2_b32;
+    Reg::MaskReg preg_all_b32 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
+    Reg::MaskReg add_carry_l_1;
+    Reg::MaskReg add_carry_h_1;
+    Reg::MaskReg add_carry_l_2;
+    Reg::MaskReg add_carry_h_2;
+    Reg::MaskReg preg_tail_neg_1_b32;
+    Reg::MaskReg preg_tail_neg_2_b32;
 
-    MicroAPI::RegTensor<uint32_t> vreg_sparse_idx_1;
-    MicroAPI::RegTensor<uint32_t> vreg_sparse_idx_2;
-    MicroAPI::RegTensor<uint32_t> vreg_kv_dim;
-    MicroAPI::RegTensor<uint32_t> vreg_b_s2_base_low;
-    MicroAPI::RegTensor<uint32_t> vreg_b_s2_base_high;
-    MicroAPI::RegTensor<uint32_t> vreg_s2_offset_l_1;
-    MicroAPI::RegTensor<uint32_t> vreg_s2_offset_l_2;
-    MicroAPI::RegTensor<uint32_t> vreg_mul_overflow_l_1;
-    MicroAPI::RegTensor<uint32_t> vreg_mul_overflow_l_2;
-    MicroAPI::RegTensor<uint32_t> vreg_total_offset_l_1;
-    MicroAPI::RegTensor<uint32_t> vreg_total_offset_h_1;
-    MicroAPI::RegTensor<uint32_t> vreg_total_offset_l_2;
-    MicroAPI::RegTensor<uint32_t> vreg_total_offset_h_2;
-    MicroAPI::RegTensor<uint32_t> vreg_zero;
+    Reg::RegTensor<uint32_t> vreg_sparse_idx_1;
+    Reg::RegTensor<uint32_t> vreg_sparse_idx_2;
+    Reg::RegTensor<uint32_t> vreg_kv_dim;
+    Reg::RegTensor<uint32_t> vreg_b_s2_base_low;
+    Reg::RegTensor<uint32_t> vreg_b_s2_base_high;
+    Reg::RegTensor<uint32_t> vreg_s2_offset_l_1;
+    Reg::RegTensor<uint32_t> vreg_s2_offset_l_2;
+    Reg::RegTensor<uint32_t> vreg_mul_overflow_l_1;
+    Reg::RegTensor<uint32_t> vreg_mul_overflow_l_2;
+    Reg::RegTensor<uint32_t> vreg_total_offset_l_1;
+    Reg::RegTensor<uint32_t> vreg_total_offset_h_1;
+    Reg::RegTensor<uint32_t> vreg_total_offset_l_2;
+    Reg::RegTensor<uint32_t> vreg_total_offset_h_2;
+    Reg::RegTensor<uint32_t> vreg_zero;
 
-    MicroAPI::Duplicate(vreg_zero, 0);
-    MicroAPI::Duplicate(vreg_kv_dim, kvDim);
-    MicroAPI::Duplicate(vreg_b_s2_base_low, bS2BaseLow);
-    MicroAPI::Duplicate(vreg_b_s2_base_high, bS2BaseHigh);
+    Reg::Duplicate(vreg_zero, 0);
+    Reg::Duplicate(vreg_kv_dim, kvDim);
+    Reg::Duplicate(vreg_b_s2_base_low, bS2BaseLow);
+    Reg::Duplicate(vreg_b_s2_base_high, bS2BaseHigh);
 
     for (; s2Loop > 1;) {
         for (uint16_t i = 0; i < s2Loop - 1; i++) {
-            MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>(
-                (MicroAPI::RegTensor<int32_t> &)vreg_sparse_idx_1, sparseIdxUb + i * s2_num_per_loop);
-            MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>(
-                (MicroAPI::RegTensor<int32_t> &)vreg_sparse_idx_2, sparseIdxUb + s2_num_per_reg + i * s2_num_per_loop);
+            Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)vreg_sparse_idx_1,
+                                                              sparseIdxUb + i * s2_num_per_loop);
+            Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)vreg_sparse_idx_2,
+                                                              sparseIdxUb + s2_num_per_reg + i * s2_num_per_loop);
             // * sparseBlockSize
-            MicroAPI::Muls(vreg_sparse_idx_1, vreg_sparse_idx_1, sparseBlockSize, preg_all_b32);
-            MicroAPI::Muls(vreg_sparse_idx_2, vreg_sparse_idx_2, sparseBlockSize, preg_all_b32);
+            Reg::Muls(vreg_sparse_idx_1, vreg_sparse_idx_1, sparseBlockSize, preg_all_b32);
+            Reg::Muls(vreg_sparse_idx_2, vreg_sparse_idx_2, sparseBlockSize, preg_all_b32);
             // sparseIdx * kvDim (带进位乘法)
-            MicroAPI::Mull(vreg_s2_offset_l_1, vreg_mul_overflow_l_1, vreg_sparse_idx_1, vreg_kv_dim, preg_all_b32);
-            MicroAPI::Mull(vreg_s2_offset_l_2, vreg_mul_overflow_l_2, vreg_sparse_idx_2, vreg_kv_dim, preg_all_b32);
+            Reg::Mull(vreg_s2_offset_l_1, vreg_mul_overflow_l_1, vreg_sparse_idx_1, vreg_kv_dim, preg_all_b32);
+            Reg::Mull(vreg_s2_offset_l_2, vreg_mul_overflow_l_2, vreg_sparse_idx_2, vreg_kv_dim, preg_all_b32);
             // s2_offset + bS2Base (int64 + int64)
-            MicroAPI::Add(add_carry_l_1, vreg_total_offset_l_1, vreg_s2_offset_l_1, vreg_b_s2_base_low, preg_all_b32);
-            MicroAPI::Add(add_carry_l_2, vreg_total_offset_l_2, vreg_s2_offset_l_2, vreg_b_s2_base_low, preg_all_b32);
-            MicroAPI::AddC(add_carry_h_1, vreg_total_offset_h_1, vreg_mul_overflow_l_1, vreg_b_s2_base_high,
-                           add_carry_l_1, preg_all_b32);
-            MicroAPI::AddC(add_carry_h_2, vreg_total_offset_h_2, vreg_mul_overflow_l_2, vreg_b_s2_base_high,
-                           add_carry_l_2, preg_all_b32);
+            Reg::Add(add_carry_l_1, vreg_total_offset_l_1, vreg_s2_offset_l_1, vreg_b_s2_base_low, preg_all_b32);
+            Reg::Add(add_carry_l_2, vreg_total_offset_l_2, vreg_s2_offset_l_2, vreg_b_s2_base_low, preg_all_b32);
+            Reg::AddC(add_carry_h_1, vreg_total_offset_h_1, vreg_mul_overflow_l_1, vreg_b_s2_base_high, add_carry_l_1,
+                      preg_all_b32);
+            Reg::AddC(add_carry_h_2, vreg_total_offset_h_2, vreg_mul_overflow_l_2, vreg_b_s2_base_high, add_carry_l_2,
+                      preg_all_b32);
             // 搬出
-            MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(
+            Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
                 kvPhyAddrUb + i * out_offset_per_loop, vreg_total_offset_l_1, vreg_total_offset_h_1, preg_all_b32);
-            MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(
+            Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
                 kvPhyAddrUb + out_offset_per_reg + i * out_offset_per_loop, vreg_total_offset_l_2,
                 vreg_total_offset_h_2, preg_all_b32);
         }
@@ -1816,55 +1838,54 @@ __simd_vf__ void GetKVPhyAddrVFBsndImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__
     }
 
     for (uint16_t i = s2Loop - 1; i < s2Loop; i++) {
-        MicroAPI::MaskReg preg_tail_1_b32 = MicroAPI::UpdateMask<int32_t>(s2Tail);
-        MicroAPI::MaskReg preg_tail_2_b32 = MicroAPI::UpdateMask<int32_t>(s2Tail);
-        MicroAPI::Not(preg_tail_neg_1_b32, preg_tail_1_b32, preg_all_b32);
-        MicroAPI::Not(preg_tail_neg_2_b32, preg_tail_2_b32, preg_all_b32);
+        Reg::MaskReg preg_tail_1_b32 = Reg::UpdateMask<int32_t>(s2Tail);
+        Reg::MaskReg preg_tail_2_b32 = Reg::UpdateMask<int32_t>(s2Tail);
+        Reg::Not(preg_tail_neg_1_b32, preg_tail_1_b32, preg_all_b32);
+        Reg::Not(preg_tail_neg_2_b32, preg_tail_2_b32, preg_all_b32);
 
-        MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>((MicroAPI::RegTensor<int32_t> &)vreg_sparse_idx_1,
-                                                                    sparseIdxUb + i * s2_num_per_loop);
-        MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>((MicroAPI::RegTensor<int32_t> &)vreg_sparse_idx_2,
-                                                                    sparseIdxUb + s2_num_per_reg + i * s2_num_per_loop);
+        Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)vreg_sparse_idx_1,
+                                                          sparseIdxUb + i * s2_num_per_loop);
+        Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)vreg_sparse_idx_2,
+                                                          sparseIdxUb + s2_num_per_reg + i * s2_num_per_loop);
         // * sparseBlockSize
-        MicroAPI::Muls(vreg_sparse_idx_1, vreg_sparse_idx_1, sparseBlockSize, preg_tail_1_b32);
-        MicroAPI::Muls(vreg_sparse_idx_2, vreg_sparse_idx_2, sparseBlockSize, preg_tail_2_b32);
+        Reg::Muls(vreg_sparse_idx_1, vreg_sparse_idx_1, sparseBlockSize, preg_tail_1_b32);
+        Reg::Muls(vreg_sparse_idx_2, vreg_sparse_idx_2, sparseBlockSize, preg_tail_2_b32);
         // sparseIdx * kvDim (带进位乘法)
-        MicroAPI::Mull(vreg_s2_offset_l_1, vreg_mul_overflow_l_1, vreg_sparse_idx_1, vreg_kv_dim, preg_tail_1_b32);
-        MicroAPI::Mull(vreg_s2_offset_l_2, vreg_mul_overflow_l_2, vreg_sparse_idx_2, vreg_kv_dim, preg_tail_2_b32);
+        Reg::Mull(vreg_s2_offset_l_1, vreg_mul_overflow_l_1, vreg_sparse_idx_1, vreg_kv_dim, preg_tail_1_b32);
+        Reg::Mull(vreg_s2_offset_l_2, vreg_mul_overflow_l_2, vreg_sparse_idx_2, vreg_kv_dim, preg_tail_2_b32);
         // s2_offset + bS2Base (int64 + int64)
-        MicroAPI::Add(add_carry_l_1, vreg_total_offset_l_1, vreg_s2_offset_l_1, vreg_b_s2_base_low, preg_tail_1_b32);
-        MicroAPI::Add(add_carry_l_2, vreg_total_offset_l_2, vreg_s2_offset_l_2, vreg_b_s2_base_low, preg_tail_2_b32);
-        MicroAPI::AddC(add_carry_h_1, vreg_total_offset_h_1, vreg_mul_overflow_l_1, vreg_b_s2_base_high,
-                       add_carry_l_1, preg_tail_1_b32);
-        MicroAPI::AddC(add_carry_h_2, vreg_total_offset_h_2, vreg_mul_overflow_l_2, vreg_b_s2_base_high,
-                       add_carry_l_2, preg_tail_2_b32);
+        Reg::Add(add_carry_l_1, vreg_total_offset_l_1, vreg_s2_offset_l_1, vreg_b_s2_base_low, preg_tail_1_b32);
+        Reg::Add(add_carry_l_2, vreg_total_offset_l_2, vreg_s2_offset_l_2, vreg_b_s2_base_low, preg_tail_2_b32);
+        Reg::AddC(add_carry_h_1, vreg_total_offset_h_1, vreg_mul_overflow_l_1, vreg_b_s2_base_high, add_carry_l_1,
+                  preg_tail_1_b32);
+        Reg::AddC(add_carry_h_2, vreg_total_offset_h_2, vreg_mul_overflow_l_2, vreg_b_s2_base_high, add_carry_l_2,
+                  preg_tail_2_b32);
         // 无效值填充-1(0xFFFFFFFF)
-        MicroAPI::Duplicate<uint32_t, MicroAPI::MaskMergeMode::MERGING>(vreg_total_offset_l_1, invalid_value,
-                                                                        preg_tail_neg_1_b32);
-        MicroAPI::Duplicate<uint32_t, MicroAPI::MaskMergeMode::MERGING>(vreg_total_offset_h_1, invalid_value,
-                                                                        preg_tail_neg_1_b32);
-        MicroAPI::Duplicate<uint32_t, MicroAPI::MaskMergeMode::MERGING>(vreg_total_offset_l_2, invalid_value,
-                                                                        preg_tail_neg_2_b32);
-        MicroAPI::Duplicate<uint32_t, MicroAPI::MaskMergeMode::MERGING>(vreg_total_offset_h_2, invalid_value,
-                                                                        preg_tail_neg_2_b32);
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_l_1, invalid_value,
+                                                              preg_tail_neg_1_b32);
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_h_1, invalid_value,
+                                                              preg_tail_neg_1_b32);
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_l_2, invalid_value,
+                                                              preg_tail_neg_2_b32);
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(vreg_total_offset_h_2, invalid_value,
+                                                              preg_tail_neg_2_b32);
+        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
             kvPhyAddrUb + i * out_offset_per_loop, vreg_total_offset_l_1, vreg_total_offset_h_1, preg_all_b32);
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(
-            kvPhyAddrUb + out_offset_per_reg + i * out_offset_per_loop, vreg_total_offset_l_2,
-            vreg_total_offset_h_2, preg_all_b32);
+        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
+            kvPhyAddrUb + out_offset_per_reg + i * out_offset_per_loop, vreg_total_offset_l_2, vreg_total_offset_h_2,
+            preg_all_b32);
     }
 }
 
 template <typename T>
 __aicore__ inline void GetKVPhyAddrVFBsnd(LocalTensor<uint32_t> kvPhyAddrTensor, LocalTensor<int32_t> sparseIdxTensor,
-                                          const uint16_t s2Loop, const uint32_t s2Tail,
-                                          const uint32_t sparseBlockSize, const uint32_t kvDim,
-                                          const uint32_t bS2BaseLow, const uint32_t bS2BaseHigh)
+                                          const uint16_t s2Loop, const uint32_t s2Tail, const uint32_t sparseBlockSize,
+                                          const uint32_t kvDim, const uint32_t bS2BaseLow, const uint32_t bS2BaseHigh)
 {
     __ubuf__ uint32_t *kv_phy_addr_ub = (__ubuf__ uint32_t *)(kvPhyAddrTensor.GetPhyAddr());
     __ubuf__ int32_t *sparse_idx_ub = (__ubuf__ int32_t *)(sparseIdxTensor.GetPhyAddr());
-    GetKVPhyAddrVFBsndImpl<uint32_t>(kv_phy_addr_ub, sparse_idx_ub, s2Loop, s2Tail,
-                                     sparseBlockSize, kvDim, bS2BaseLow, bS2BaseHigh);
+    GetKVPhyAddrVFBsndImpl<uint32_t>(kv_phy_addr_ub, sparse_idx_ub, s2Loop, s2Tail, sparseBlockSize, kvDim, bS2BaseLow,
+                                     bS2BaseHigh);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1882,45 +1903,84 @@ __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::GetSeqLen(int32_t bIdx, bo
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::CalcCurValidS2(
-    uint32_t bIdx, int32_t s1Idx, int32_t actualS1Size, bool isOriKv, bool hasActualSeqKvlen, bool hasCuSeqlensKv,
-    GlobalTensor<int32_t> &cuSeqlensQGm, GlobalTensor<int32_t> &actualSeqKvlenGm,
-    GlobalTensor<int32_t> &cuSeqlensKvGm, GlobalTensor<int32_t> &topkLengthGm,
-    GlobalTensor<int32_t> &cmpResidualKvGm, ConstInfo &constInfo, int32_t sparseBlockCount)
+__aicore__ inline PhyAddrValidInfo CSABlockVec<TEMPLATE_ARGS>::CalcPhyAddrValidInfo(bool isOriKv, int32_t actualS1Size,
+                                                                                    int32_t actualOriS2Size,
+                                                                                    int32_t restoredSize,
+                                                                                    ConstInfo &constInfo)
 {
-    int32_t curValidS2 = 0;
-    if (isOriKv) {
-        if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
-                      TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-            uint64_t topkIdx = (LAYOUT_T == SMLA_LAYOUT::TND) ? (cuSeqlensQGm.GetValue(bIdx) + s1Idx) :
-                                                                (bIdx * constInfo.s1Size + s1Idx);
-            int32_t topkLen = constInfo.hasOriTopkLength ? topkLengthGm.GetValue(topkIdx) : sparseBlockCount;
-            curValidS2 = Min(topkLen, sparseBlockCount);
-        }
-    } else {
-        if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
-            if (constInfo.cmpMaskMode == 0) {
-                uint64_t topkIdx = (LAYOUT_T == SMLA_LAYOUT::TND) ? (cuSeqlensQGm.GetValue(bIdx) + s1Idx) :
-                                                                    (bIdx * constInfo.s1Size + s1Idx);
-                int32_t topkLen = constInfo.hasCmpTopkLength ? topkLengthGm.GetValue(topkIdx) : sparseBlockCount;
-                curValidS2 = Min(topkLen, sparseBlockCount);
+    // per-batch执行一次,  per-s1循环内不再判断maskmode
+    PhyAddrValidInfo validInfo;
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        validInfo.oriS2Act = actualOriS2Size;
+        if (isOriKv) {
+            if (constInfo.oriMaskMode == 0U) {
+                validInfo.oriTopkMode = true;
+            } else if (constInfo.oriMaskMode == 3U) {
+                validInfo.oriRightBias = 0;
             } else {
-                int32_t actualCmpS2Size = GetSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
-                                                    cuSeqlensKvGm, constInfo.s2Size);
-                int32_t cmpRestoredSize =
-                    actualCmpS2Size * static_cast<int32_t>(constInfo.cmpRatio) + cmpResidualKvGm.GetValue(bIdx);
-                int32_t numerator = cmpRestoredSize - actualS1Size + 1 + s1Idx;
-                curValidS2 =
-                    (numerator > 0) ? Min(sparseBlockCount, numerator / static_cast<int32_t>(constInfo.cmpRatio)) : 0;
+                validInfo.oriLeftBias =
+                    (constInfo.oriWinLeft == -1) ? PhyAddrValidInfo::BIAS_UNBOUND : constInfo.oriWinLeft + 1;
+                validInfo.oriRightBias =
+                    (constInfo.oriWinRight == -1) ? PhyAddrValidInfo::BIAS_UNBOUND : constInfo.oriWinRight;
             }
-        } else if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-            uint64_t topkIdx = (LAYOUT_T == SMLA_LAYOUT::TND) ? (cuSeqlensQGm.GetValue(bIdx) + s1Idx) :
-                                                                (bIdx * constInfo.s1Size + s1Idx);
-            int32_t topkLen = constInfo.hasCmpTopkLength ? topkLengthGm.GetValue(topkIdx) : sparseBlockCount;
-            curValidS2 = Min(topkLen, sparseBlockCount);
         }
     }
-    return curValidS2;
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (!isOriKv) {
+            validInfo.cmpTopkMode = (constInfo.cmpMaskMode == 0U);
+            validInfo.cmpBase = restoredSize - actualS1Size + 1;
+        }
+    }
+    return validInfo;
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::CalcCurValidS2(uint32_t bIdx, int32_t s1Idx, int32_t actualS1Size,
+                                                                     bool isOriKv, GlobalTensor<int32_t> &cuSeqlensQGm,
+                                                                     GlobalTensor<int32_t> &topkLengthGm,
+                                                                     ConstInfo &constInfo, int32_t sparseBlockCount,
+                                                                     const PhyAddrValidInfo &validInfo)
+{
+    bool topkMode = false;
+    bool hasTopk = false;
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (isOriKv) {
+            topkMode = validInfo.oriTopkMode;
+            hasTopk = constInfo.hasOriTopkLength;
+        }
+    }
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (!isOriKv) {
+            topkMode = validInfo.cmpTopkMode;
+            hasTopk = constInfo.hasCmpTopkLength;
+        }
+    }
+    if (topkMode) {
+        uint64_t topkIdx =
+            (LAYOUT_T == SMLA_LAYOUT::TND) ? (cuSeqlensQGm.GetValue(bIdx) + s1Idx) : (bIdx * constInfo.s1Size + s1Idx);
+        int32_t topkLen = hasTopk ? topkLengthGm.GetValue(topkIdx) : sparseBlockCount;
+        return Min(topkLen, sparseBlockCount);
+    }
+
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (isOriKv) {
+            int64_t thr = validInfo.oriS2Act - actualS1Size + 1 + s1Idx;
+            int64_t leftBound = Max(thr - validInfo.oriLeftBias, 0);
+            int64_t rightBound = Min(thr + validInfo.oriRightBias, static_cast<int64_t>(validInfo.oriS2Act));
+            return Min(static_cast<int32_t>(Max(0, rightBound - leftBound)), sparseBlockCount);
+        }
+    }
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        int64_t numerator = Max(validInfo.cmpBase + s1Idx, 0);
+        return Min(sparseBlockCount, static_cast<int32_t>(numerator / static_cast<int32_t>(constInfo.cmpRatio)));
+    }
+    return 0;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1980,9 +2040,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
     static constexpr uint16_t s2NumPerLoop = 128;
     static constexpr uint32_t vecCoreNum = IS_SPLIT_G ? 4 : 2;
     uint32_t vecCoreIdx = IS_SPLIT_G ? constInfo.aivIdx % 4 : constInfo.aivIdx % 2;
-    TBuf<> blkTableBuf;
-    TBuf<> sparseIdxBuf;
-    TBuf<> kvPhyAddrBuf;
+    uint32_t phyAddrUb = 0;
     int16_t shiftRightNum = 0;
     LocalTensor<int32_t> blkTableUb;
 
@@ -1992,13 +2050,12 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
             blkSize >>= 1;
             shiftRightNum++;
         }
-        tPipe->InitBuffer(blkTableBuf, maxBlockNumPerBatch * sizeof(int32_t));
-        blkTableUb = blkTableBuf.template Get<int32_t>();
+        blkTableUb = LocalTensor<int32_t>(TPosition::VECIN, phyAddrUb, maxBlockNumPerBatch);
+        phyAddrUb = CeilAlign(phyAddrUb + maxBlockNumPerBatch * sizeof(int32_t), BUFFER_SIZE_BYTE_32B);
     }
-    tPipe->InitBuffer(sparseIdxBuf, alignedSparseBlockCount * sizeof(int32_t));
-    tPipe->InitBuffer(kvPhyAddrBuf, alignedSparseBlockCount * sizeof(int64_t));
-    LocalTensor<int32_t> sparseIdxUb = sparseIdxBuf.template Get<int32_t>();
-    LocalTensor<uint32_t> kvPhyAddrUb = kvPhyAddrBuf.template Get<uint32_t>();
+    LocalTensor<int32_t> sparseIdxUb(TPosition::VECIN, phyAddrUb, alignedSparseBlockCount);
+    phyAddrUb += alignedSparseBlockCount * sizeof(int32_t);
+    LocalTensor<uint32_t> kvPhyAddrUb(TPosition::VECIN, phyAddrUb, alignedSparseBlockCount * 2); // 2 for ori/cmp kv
 
     // 第一遍: 统计totalValidS1
     int64_t totalValidS1 = 0;
@@ -2019,11 +2076,29 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
             bS1IdxBase = constInfo.s1Size * bIdx;
         }
 
+        int32_t restoredSize = 0;
+        if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                      TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+            if (!isOriKv && constInfo.cmpMaskMode != 0) {
+                int32_t actualKvSize = GetSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
+                                                 cuSeqlensKvGm, constInfo.cmpS2Size);
+                restoredSize = actualKvSize * static_cast<int32_t>(constInfo.cmpRatio) + cmpResidualKvGm.GetValue(bIdx);
+            }
+        }
+        int32_t actualOriS2Size = 0;
+        if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                      TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+            if (isOriKv && constInfo.oriMaskMode != 0) {
+                actualOriS2Size = GetSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm, cuSeqlensKvGm,
+                                            constInfo.s2Size);
+            }
+        }
+        PhyAddrValidInfo validInfo =
+            CalcPhyAddrValidInfo(isOriKv, actualS1Size, actualOriS2Size, restoredSize, constInfo);
+
         for (int32_t s1Idx = tmpGS1Start; s1Idx < s1End; ++s1Idx) {
-            int32_t curValidS2 = CalcCurValidS2(bIdx, s1Idx, actualS1Size, isOriKv, hasActualSeqKvlen,
-                                                hasCuSeqlensKv, cuSeqlensQGm, actualSeqKvlenGm, cuSeqlensKvGm,
-                                                topkLengthGm, cmpResidualKvGm, constInfo,
-                                                static_cast<int32_t>(sparseBlockCount));
+            int32_t curValidS2 = CalcCurValidS2(bIdx, s1Idx, actualS1Size, isOriKv, cuSeqlensQGm, topkLengthGm,
+                                                constInfo, static_cast<int32_t>(sparseBlockCount), validInfo);
             if (curValidS2 > 0) {
                 totalValidS1++;
             }
@@ -2047,10 +2122,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
     bool done = false;
 
     if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-        SetFlag<AscendC::HardEvent::V_MTE2>(blkTableVToMte2FlagId);
+        SetFlag<AscendC::HardEvent::V_MTE2>(INNERCORE_PHYADDR_BLKTABLE_FREE);
     }
-    SetFlag<AscendC::HardEvent::V_MTE2>(sparseIdxVToMte2FlagId);
-    SetFlag<AscendC::HardEvent::MTE3_V>(phyAddrMte3ToVFlagId);
+    SetFlag<AscendC::HardEvent::V_MTE2>(INNERCORE_PHYADDR_SPARSEIDX_FREE);
+    SetFlag<AscendC::HardEvent::MTE3_V>(INNERCORE_PHYADDR_KVADDR_FREE);
     for (uint32_t bIdx = bN2StartIdx; bIdx < bN2EndIdx && !done; ++bIdx) {
         bool lastBN = (bIdx == bN2EndIdx - 1);
         int32_t actualS1Size =
@@ -2074,26 +2149,43 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
         if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
             kvPrefix = static_cast<uint32_t>(cuSeqlensKvGm.GetValue(bIdx));
         } else {
-            uint32_t s2Size = isOriKv ? static_cast<uint32_t>(constInfo.s2Size) :
-                                        static_cast<uint32_t>(constInfo.cmpS2Size);
-            uint64_t bS2Base = static_cast<uint64_t>(bIdx) * s2Size *
-                               static_cast<uint64_t>(constInfo.dSize);
+            uint32_t s2Size =
+                isOriKv ? static_cast<uint32_t>(constInfo.s2Size) : static_cast<uint32_t>(constInfo.cmpS2Size);
+            uint64_t bS2Base = static_cast<uint64_t>(bIdx) * s2Size * static_cast<uint64_t>(constInfo.dSize);
             bS2BaseLow = static_cast<uint32_t>(bS2Base);
             bS2BaseHigh = static_cast<uint32_t>(bS2Base >> 32U);
         }
 
+        int32_t restoredSize = 0;
+        if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                      TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+            if (!isOriKv && constInfo.cmpMaskMode != 0) {
+                int32_t actualKvSize = GetSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
+                                                 cuSeqlensKvGm, constInfo.cmpS2Size);
+                restoredSize = actualKvSize * static_cast<int32_t>(constInfo.cmpRatio) + cmpResidualKvGm.GetValue(bIdx);
+            }
+        }
+        int32_t actualOriS2Size = 0;
+        if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                      TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+            if (isOriKv && constInfo.oriMaskMode != 0) {
+                actualOriS2Size = GetSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm, cuSeqlensKvGm,
+                                            constInfo.s2Size);
+            }
+        }
+        PhyAddrValidInfo validInfo =
+            CalcPhyAddrValidInfo(isOriKv, actualS1Size, actualOriS2Size, restoredSize, constInfo);
+
         if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-            WaitFlag<AscendC::HardEvent::V_MTE2>(blkTableVToMte2FlagId);
+            WaitFlag<AscendC::HardEvent::V_MTE2>(INNERCORE_PHYADDR_BLKTABLE_FREE);
             CopyPaTableToUb(blkTableUb, bIdx, blockTableGm, maxBlockNumPerBatch);
-            SetFlag<AscendC::HardEvent::MTE2_V>(blkTableMte2ToVFlagId);
-            WaitFlag<AscendC::HardEvent::MTE2_V>(blkTableMte2ToVFlagId);
+            SetFlag<AscendC::HardEvent::MTE2_V>(INNERCORE_PHYADDR_BLKTABLE_READY);
+            WaitFlag<AscendC::HardEvent::MTE2_V>(INNERCORE_PHYADDR_BLKTABLE_READY);
         }
 
         for (int32_t s1Idx = tmpGS1Start; s1Idx < s1End; ++s1Idx) {
-            int32_t curValidS2 = CalcCurValidS2(bIdx, s1Idx, actualS1Size, isOriKv, hasActualSeqKvlen,
-                                                hasCuSeqlensKv, cuSeqlensQGm, actualSeqKvlenGm, cuSeqlensKvGm,
-                                                topkLengthGm, cmpResidualKvGm, constInfo,
-                                                static_cast<int32_t>(sparseBlockCount));
+            int32_t curValidS2 = CalcCurValidS2(bIdx, s1Idx, actualS1Size, isOriKv, cuSeqlensQGm, topkLengthGm,
+                                                constInfo, static_cast<int32_t>(sparseBlockCount), validInfo);
             if (curValidS2 <= 0) {
                 continue;
             }
@@ -2106,32 +2198,28 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
 
             uint16_t s2Loop = (curValidS2 + s2NumPerLoop - 1) / s2NumPerLoop;
             int32_t s2Tail = curValidS2 - (s2Loop - 1) * s2NumPerLoop;
-            WaitFlag<AscendC::HardEvent::V_MTE2>(sparseIdxVToMte2FlagId);
+            WaitFlag<AscendC::HardEvent::V_MTE2>(INNERCORE_PHYADDR_SPARSEIDX_FREE);
             CopySparseIdxToUb(sparseIdxUb, bS1Idx, s1Idx, curValidS2, sparseIndicesGm, sparseBlockCount);
-            SetFlag<AscendC::HardEvent::MTE2_V>(sparseIdxMte2ToVFlagId);
+            SetFlag<AscendC::HardEvent::MTE2_V>(INNERCORE_PHYADDR_SPARSEIDX_READY);
 
-            WaitFlag<AscendC::HardEvent::MTE2_V>(sparseIdxMte2ToVFlagId);
-            WaitFlag<AscendC::HardEvent::MTE3_V>(phyAddrMte3ToVFlagId);
+            WaitFlag<AscendC::HardEvent::MTE2_V>(INNERCORE_PHYADDR_SPARSEIDX_READY);
+            WaitFlag<AscendC::HardEvent::MTE3_V>(INNERCORE_PHYADDR_KVADDR_FREE);
             if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
                 GetKVPhyAddrVFPa<uint32_t>(kvPhyAddrUb, sparseIdxUb, blkTableUb, s2Loop, s2Tail, blockSize,
                                            shiftRightNum, constInfo.sparseBlockSize,
                                            static_cast<uint32_t>(constInfo.dSize), kvStride);
             } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
-                GetKVPhyAddrVFTnd<uint32_t>(kvPhyAddrUb, sparseIdxUb, s2Loop, s2Tail,
-                                            constInfo.sparseBlockSize,
+                GetKVPhyAddrVFTnd<uint32_t>(kvPhyAddrUb, sparseIdxUb, s2Loop, s2Tail, constInfo.sparseBlockSize,
                                             static_cast<uint32_t>(constInfo.dSize), kvPrefix);
             } else {
-                GetKVPhyAddrVFBsnd<uint32_t>(kvPhyAddrUb, sparseIdxUb, s2Loop, s2Tail,
-                                             constInfo.sparseBlockSize,
-                                             static_cast<uint32_t>(constInfo.dSize),
-                                             bS2BaseLow, bS2BaseHigh);
+                GetKVPhyAddrVFBsnd<uint32_t>(kvPhyAddrUb, sparseIdxUb, s2Loop, s2Tail, constInfo.sparseBlockSize,
+                                             static_cast<uint32_t>(constInfo.dSize), bS2BaseLow, bS2BaseHigh);
             }
-            SetFlag<AscendC::HardEvent::V_MTE2>(sparseIdxVToMte2FlagId);
-            SetFlag<AscendC::HardEvent::V_MTE3>(phyAddrVToMte3FlagId);
-            WaitFlag<AscendC::HardEvent::V_MTE3>(phyAddrVToMte3FlagId);
-            CopyPhyAddrToGm(kvPhyAddrUb, bS1Idx, s1Idx, curValidS2, s2NumPerLoop, phyAddrGm,
-                            alignedSparseBlockCount);
-            SetFlag<AscendC::HardEvent::MTE3_V>(phyAddrMte3ToVFlagId);
+            SetFlag<AscendC::HardEvent::V_MTE2>(INNERCORE_PHYADDR_SPARSEIDX_FREE);
+            SetFlag<AscendC::HardEvent::V_MTE3>(INNERCORE_PHYADDR_KVADDR_READY);
+            WaitFlag<AscendC::HardEvent::V_MTE3>(INNERCORE_PHYADDR_KVADDR_READY);
+            CopyPhyAddrToGm(kvPhyAddrUb, bS1Idx, s1Idx, curValidS2, s2NumPerLoop, phyAddrGm, alignedSparseBlockCount);
+            SetFlag<AscendC::HardEvent::MTE3_V>(INNERCORE_PHYADDR_KVADDR_FREE);
 
             processedCount++;
             if (processedCount >= curCount) {
@@ -2140,15 +2228,15 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
             }
         }
         if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-            SetFlag<AscendC::HardEvent::V_MTE2>(blkTableVToMte2FlagId);
+            SetFlag<AscendC::HardEvent::V_MTE2>(INNERCORE_PHYADDR_BLKTABLE_FREE);
         }
         tmpGS1Start = 0;
     }
     if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-        WaitFlag<AscendC::HardEvent::V_MTE2>(blkTableVToMte2FlagId);
+        WaitFlag<AscendC::HardEvent::V_MTE2>(INNERCORE_PHYADDR_BLKTABLE_FREE);
     }
-    WaitFlag<AscendC::HardEvent::V_MTE2>(sparseIdxVToMte2FlagId);
-    WaitFlag<AscendC::HardEvent::MTE3_V>(phyAddrMte3ToVFlagId);
+    WaitFlag<AscendC::HardEvent::V_MTE2>(INNERCORE_PHYADDR_SPARSEIDX_FREE);
+    WaitFlag<AscendC::HardEvent::MTE3_V>(INNERCORE_PHYADDR_KVADDR_FREE);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -2162,8 +2250,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
     GlobalTensor<int32_t> cuSeqlensQGm, __gm__ uint8_t *workspace, ConstInfo &constInfo)
 {
     if (hasLoad == 0) {
-        SyncAll();
-        tPipe->Reset();
         return;
     }
 
@@ -2203,7 +2289,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
         GetKVPhyAddrForKvType(bN2StartIdx, bN2EndIdx, gS1StartIdx, nextGs1Idx, hasActualSeqQlen, hasCuSeqlensQ,
                               hasActualSeqOriKvlen, hasCuSeqlensOriKv, actualSeqQlenGm, cuSeqlensQGm,
                               actualSeqOriKvlenGm, cuSeqlensOriKvGm, oriTopkLengthGm, cmpResidualKvGm, constInfo,
-                              oriBlockTableGm, oriSparseIndicesGm, oriKvPhyAddrGm, constInfo.oriKeyStride0,
+                              oriBlockTableGm, oriSparseIndicesGm, oriKvPhyAddrGm, constInfo.oriKvStride,
                               constInfo.oriBlockSize, constInfo.oriMaxBlockNumPerBatch, constInfo.oriSparseBlockCount,
                               constInfo.alignedOriSparseBlockCount, true);
     }
@@ -2214,13 +2300,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
         GetKVPhyAddrForKvType(bN2StartIdx, bN2EndIdx, gS1StartIdx, nextGs1Idx, hasActualSeqQlen, hasCuSeqlensQ,
                               hasActualSeqCmpKvlen, hasCuSeqlensCmpKv, actualSeqQlenGm, cuSeqlensQGm,
                               actualSeqCmpKvlenGm, cuSeqlensCmpKvGm, cmpTopkLengthGm, cmpResidualKvGm, constInfo,
-                              cmpBlockTableGm, cmpSparseIndicesGm, cmpKvPhyAddrGm, constInfo.cmpKeyStride0,
+                              cmpBlockTableGm, cmpSparseIndicesGm, cmpKvPhyAddrGm, constInfo.cmpKvStride,
                               constInfo.cmpBlockSize, constInfo.cmpMaxBlockNumPerBatch, constInfo.cmpSparseBlockCount,
                               constInfo.alignedCmpSparseBlockCount, false);
     }
-
-    SyncAll();
-    tPipe->Reset();
 }
 
 TEMPLATES_DEF
@@ -2228,23 +2311,29 @@ class CSABlockVecDummy {
 public:
     __aicore__ inline CSABlockVecDummy(){};
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, ConstInfo &constInfo)
-    {
-    }
+    {}
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
-                                            __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable,
-                                            __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks,
-                                            __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv) {}
-    __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ,
-                                        __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *seqUsedOriKV,
+                                            __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices,
+                                            __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
+                                            __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks,
+                                            __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv,
+                                            __gm__ uint8_t *cmpResidualKv)
+    {}
+    __aicore__ inline void InitVecBlock(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
+                                        __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *seqUsedOriKV,
                                         __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *cmpResidualKV) {};
-    __aicore__ inline void InitS2SplitStaging(
-        Buffer<BufferType::GM, SyncType::INNER_CORE_SYNC> &fdStaging) {}
-    __aicore__ inline void InitS2SplitStaging(
-        Buffer<BufferType::GM, SyncType::INNER_CORE_SYNC> &intraCoreCombine,
-        Buffer<BufferType::GM, SyncType::INNER_CORE_SYNC> &crossCoreCombine) {}
-    __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
+    __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::NO_SYNC> &fdStaging) {}
+    __aicore__ inline void InitS2SplitStaging(Buffer<BufferType::GM, SyncType::NO_SYNC> &intraCoreCombine,
+                                              Buffer<BufferType::GM, SyncType::NO_SYNC> &crossCoreCombine)
+    {}
+    __aicore__ inline void InitLocalBuffer(ConstInfo &constInfo, uint32_t ubBaseAddr) {}
     __aicore__ inline void InitFDBuffers(FdRunInfo &fdRunInfo) {}
     __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &constInfo) {}
+    __aicore__ inline void ProcessVec1(StaticBuffer<Q_T> &outputBuf, StaticBuffer<T> &bmm1ResBuf, RunInfo &runInfo,
+                                       ConstInfo &constInfo)
+    {}
+    __aicore__ inline void ProcessVec2(StaticBuffer<T> &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo) {}
+    __aicore__ inline void FreeEvent(ConstInfo &constInfo) {}
 };
 } // namespace SMLAKernel
 #endif // SPARSE_FLASH_MLA_CSA_BLOCK_VECTOR_ARCH35_H

@@ -17,37 +17,37 @@
 
 #include "vf_basic_block_utils.h"
 #include "vf_basic_block_unaligned512_common.h"
-#include "../pse.h"
+#include "../pse_arch35.h"
 
 using namespace regbaseutil;
 
 namespace FaVectorApi {
 
 template <typename T, typename T2, uint32_t s2BaseSize>
-__simd_callee__ static inline void
-PostMaxStage512(__ubuf__ T *&tmpMaxUb, UnalignRegForStore &ureg_max, __ubuf__ T *inMaxUb, __ubuf__ T *tmpMaxUb2,
-                RegTensor<float> &vreg_in_max, RegTensor<float> &vreg_input_max, RegTensor<float> &vreg_max_new,
-                MaskReg &preg_all, RegTensor<float> &vreg_max, const uint16_t m, __ubuf__ T *srcUb,
-                RegTensor<float> &vreg_input_x1, RegTensor<float> &vreg_input_x2, RegTensor<float> &vreg_input_x3,
-                RegTensor<float> &vreg_input_x4, RegTensor<float> &vreg_input_x5, RegTensor<float> &vreg_input_x6,
-                RegTensor<float> &vreg_input_x7, RegTensor<float> &vreg_input_x8, RegTensor<float> &vreg_exp_even1,
-                RegTensor<float> &vreg_exp_odd1, RegTensor<float> &vreg_exp_even2, RegTensor<float> &vreg_exp_odd2,
-                RegTensor<float> &vreg_exp_even3, RegTensor<float> &vreg_exp_odd3, RegTensor<float> &vreg_exp_even4,
-                RegTensor<float> &vreg_exp_odd4, RegTensor<float> &vreg_exp_sum3, UnalignRegForStore &ureg_exp_sum,
-                __ubuf__ T *&tmpExpSumUb, __ubuf__ T2 *expUb1, __ubuf__ T2 *expUb2, __ubuf__ T2 *expUb3,
-                __ubuf__ T2 *expUb4, const uint32_t blockStride, const uint32_t repeatStride, MaskReg &preg_n_b16)
+__simd_callee__ static inline void PostMaxStage512(
+    __ubuf__ T *&tmpMaxUb, UnalignRegForStore &ureg_max, __ubuf__ T *inMaxUb, __ubuf__ T *tmpMaxUb2,
+    RegTensor<float> &vreg_in_max, RegTensor<float> &vreg_input_max, RegTensor<float> &vreg_max_new, MaskReg &preg_all,
+    RegTensor<float> &vreg_max, const uint16_t m, __ubuf__ T *srcUb, RegTensor<float> &vreg_input_x1,
+    RegTensor<float> &vreg_input_x2, RegTensor<float> &vreg_input_x3, RegTensor<float> &vreg_input_x4,
+    RegTensor<float> &vreg_input_x5, RegTensor<float> &vreg_input_x6, RegTensor<float> &vreg_input_x7,
+    RegTensor<float> &vreg_input_x8, RegTensor<float> &vreg_exp_even1, RegTensor<float> &vreg_exp_odd1,
+    RegTensor<float> &vreg_exp_even2, RegTensor<float> &vreg_exp_odd2, RegTensor<float> &vreg_exp_even3,
+    RegTensor<float> &vreg_exp_odd3, RegTensor<float> &vreg_exp_even4, RegTensor<float> &vreg_exp_odd4,
+    RegTensor<float> &vreg_exp_sum3, UnalignRegForStore &ureg_exp_sum, __ubuf__ T *&tmpExpSumUb, __ubuf__ T2 *expUb1,
+    __ubuf__ T2 *expUb2, __ubuf__ T2 *expUb3, __ubuf__ T2 *expUb4, const uint32_t blockStride,
+    const uint32_t repeatStride, MaskReg &preg_n_b16)
 {
-    StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
+    StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
     LoadAlign(vreg_in_max, inMaxUb);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_input_max, tmpMaxUb2);
 
     Max(vreg_max_new, vreg_input_max, vreg_in_max, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)tmpMaxUb2, vreg_max_new, preg_all);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)tmpMaxUb2, vreg_max_new, preg_all);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>(); // 同步
 
     for (uint16_t i = 0; i < m; ++i) {
-        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_max, tmpMaxUb2 + i);
+        LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_max, tmpMaxUb2 + i);
 
         LoadInputDinterleave4<T>(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4, vreg_input_x5,
                                  vreg_input_x6, vreg_input_x7, vreg_input_x8, srcUb, i, s2BaseSize);
@@ -70,7 +70,7 @@ PostMaxStage512(__ubuf__ T *&tmpMaxUb, UnalignRegForStore &ureg_max, __ubuf__ T 
                                     blockStride, repeatStride, preg_all, preg_n_b16);
         }
     }
-    StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb), ureg_exp_sum, 0);
+    StoreUnAlignPost<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb), ureg_exp_sum, 0);
 }
 
 template <typename T, typename T2, typename OUTPUT_T, uint32_t s1BaseSize = 16, uint32_t s2BaseSize = 512,
@@ -201,8 +201,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512VF(
                        vreg_in_x7_new, vreg_in_x8_new, preg_all);
         }
 
-        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max,
-                                                                     ureg_max, 1);
+        StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max, ureg_max, 1);
     }
     PostMaxStage512<T, T2, s2BaseSize>(tmpMaxUb, ureg_max, inMaxUb, tmpMaxUb2, vreg_in_max, vreg_input_max,
                                        vreg_max_new, preg_all, vreg_max, m, srcUb, vreg_in_x1, vreg_in_x2, vreg_in_x3,
@@ -341,8 +340,7 @@ __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1UpdateGeneralImpl512VFStage2(
                        vreg_x_in7_new, vreg_x_in8_new, preg_all);
         }
 
-        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max,
-                                                                     ureg_max, 1);
+        StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max, ureg_max, 1);
     }
     PostMaxStage512<T, T2, s2BaseSize>(tmpMaxUb, ureg_max, inMaxUb, tmpMaxUb2, vreg_in_max, vreg_input_max,
                                        vreg_max_new, preg_all, vreg_max, m, srcUb, vreg_x_in1, vreg_x_in2, vreg_x_in3,

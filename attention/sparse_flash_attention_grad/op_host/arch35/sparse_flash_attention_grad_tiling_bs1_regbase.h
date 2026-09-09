@@ -40,15 +40,19 @@ struct TempParams {
     int64_t dqWorkspaceLen;
     int64_t dkWorkspaceLen;
     int64_t dvWorkspaceLen;
+    int64_t dSinkWorkSpaceLen; // dSink 跨核 reduce 中间 workspace 长度（host 侧，不入 TilingData；仅
+                               // deter+HAS_SINKS 非零）
     uint32_t layout;
     uint32_t selected_block_count;
-    uint32_t selected_block_size;
+    uint32_t selected_block_size = 1;
     bool attenEnable = false;
     uint32_t singleM;
     uint32_t singleN;
     int64_t ropeDim;
     bool ropeEnable = false;
     bool deterministic = false;
+    bool kvMerge = false;
+    bool hasSinks = false; // sinks 输入是否存在（编入 tiling key bit35 HasSinks）
 };
 
 struct AiCoreParams {
@@ -63,8 +67,10 @@ struct AiCoreParams {
 
 class SparseFlashAttentionGradBs1Regbase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit SparseFlashAttentionGradBs1Regbase(gert::TilingContext *context) : TilingBaseClass(context) {};
-    SparseFlashAttentionGradTilingDataRegbase *tilingData = context_->GetTilingData<SparseFlashAttentionGradTilingDataRegbase>();
+    explicit SparseFlashAttentionGradBs1Regbase(gert::TilingContext *context)
+        : TilingBaseClass(context) {};
+    SparseFlashAttentionGradTilingDataRegbase *tilingData =
+        context_->GetTilingData<SparseFlashAttentionGradTilingDataRegbase>();
     SparseFlashAttentionGradBaseParamsRegbase *baseParams_ = &tilingData->baseParams;
     PreParamsRegbase *preTilingData_ = &tilingData->preTilingData;
     PostParamsRegbase *postTilingData_ = &tilingData->postTilingData;
@@ -80,8 +86,8 @@ protected:
     uint64_t GetTilingKey() const override;
 
 private:
-    ge::graphStatus CheckOutShapeInfo(const gert::Shape &inputshape, const char *inputName, 
-                    const gert::Shape &outputshape, const char *inputLayout);
+    ge::graphStatus CheckOutShapeInfo(const gert::Shape &inputshape, const char *inputName,
+                                      const gert::Shape &outputshape, const char *inputLayout);
     ge::graphStatus GetBaseShapeInfo();
     ge::graphStatus DoSftTiling();
     ge::graphStatus DoBlockTiling();

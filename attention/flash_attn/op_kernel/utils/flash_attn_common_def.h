@@ -18,8 +18,6 @@
 
 // 提供flash_attn算子tiling和kernel共用的相关定义
 
-// CUBE与VEC核间同步的模式
-static constexpr uint32_t FIA_SYNC_MODE2 = 2;
 // BUFFER的字节数
 static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
 static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
@@ -32,13 +30,7 @@ static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
 static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
 static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
 static constexpr uint32_t BUFFER_SIZE_BYTE_64K = 65536;
-// FP32的0值和极大值
-static constexpr float FLOAT_ZERO = 0;
-static constexpr float FLOAT_MAX = 3.402823466e+38F;
-static constexpr float FLOAT_INF = 3e+99;
 
-#define ASCENDC_TPL_5_BW 5
-#define ASCENDC_TPL_10_BW 10
 #define ASCENDC_TPL_3_BW 3
 
 enum class FA_LAYOUT : uint32_t {
@@ -102,16 +94,6 @@ enum class inferS2TemplateType {
     NotAligned,
 };
 
-enum class inferImplModeEnum {
-    AA_HIGH_PRECISION = 0,
-    AA_HIGH_PERFORMANCE = 1,
-    AA_INVALID_LINE_HIGH_PRECISION = 2
-};
-
-#define ImplMode_AA_HIGH_PRECISION 0
-#define ImplMode_AA_HIGH_PERFORMANCE 1
-#define ImplMode_AA_INVALID_LINE_HIGH_PRECISION 2
-
 // q_out layout → (inputLayout, outputLayout)
 //   0=BSND → (BSND, BSND)
 //   1=BNSD → (BNSD, BNSD)
@@ -142,15 +124,16 @@ static constexpr inferPFALayoutTypeEnum InOutLayoutPFATypeValue[5][2] = {
 #define InOutLayoutType_BNSD 1
 #define InOutLayoutType_TND 2
 #define InOutLayoutType_BNSD_BSND 3
-#define InOutLayoutType_NTD_NTD 4
-// backward compat
-#define InOutLayoutType_BSH_BSH InOutLayoutType_BSND
 
 // KvLayoutType
 #define KvLayoutType_NO_PA 0
 #define KvLayoutType_PA_BBH 1
 #define KvLayoutType_PA_BNBD 2
 #define KvLayoutType_PA_NZ 3
+
+// templateId
+#define FA_Template_ND 0
+#define FA_Template_DN 1
 
 struct ConfigParams {
     inferS1TemplateType s1;
@@ -159,9 +142,15 @@ struct ConfigParams {
     inferDTemplateType dv;
 };
 
-// config, D=128 fixed
-//   config=0: sOuter=64,sInner=128 → S1=128,S2=128
-//   config=1: sOuter=32,sInner=256 → S1=64,S2=256
+// config:
+//   config=0: sOuter=64, sInner=128 → S1=128, S2=128, D=64
+//   config=1: sOuter=32, sInner=256 → S1=64,  S2=256, D=64
+//   config=2: sOuter=64, sInner=128 → S1=128, S2=128, D=128
+//   config=3: sOuter=32, sInner=256 → S1=64,  S2=256, D=128
+//   config=4: sOuter=64, sInner=128 → S1=128, S2=128, D=256
+//   config=5: sOuter=32, sInner=256 → S1=64,  S2=256, D=256
+//   config=6: sOuter=64, sInner=128 → S1=128, S2=128, D=192, DV=128
+//   config=7: sOuter=32, sInner=256 → S1=64,  S2=256, D=192, DV=128
 static constexpr ConfigParams ConfigValue[] = {
     // D=64 configurations
     {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned64,
@@ -176,9 +165,41 @@ static constexpr ConfigParams ConfigValue[] = {
      inferDTemplateType::Aligned128}, // config=3
 
     // D=256 configurations
-    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256,
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned256,
      inferDTemplateType::Aligned256}, // config=4
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256,
+     inferDTemplateType::Aligned256}, // config=5
+
+    // D=192, DV=128 configurations (MLA qk != v)
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned192,
+     inferDTemplateType::Aligned128}, // config=6
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned192,
+     inferDTemplateType::Aligned128}, // config=7
 };
+
+// Config macro definitions for D=64
+#define Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64 0
+#define Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64 1
+
+// Config macro definitions for D=128
+#define Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128 2
+#define Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128 3
+
+// Config macro definitions for D=256
+#define Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256 4
+#define Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256 5
+
+// Config macro definitions for D=192, DV=128 (MLA qk != v)
+#define Config_S1Aligned128_S2Aligned128_DAligned192_DVAligned128 6
+#define Config_S1Aligned64_S2Aligned256_DAligned192_DVAligned128 7
+
+// PseMode
+#define PSE_MODE_PSE_OUTER_MUL_ADD_TYPE 0
+#define PSE_MODE_PSE_OUTER_ADD_MUL_TYPE 1
+#define PSE_MODE_PSE_INNER_MUL_ADD_TYPE 2
+#define PSE_MODE_PSE_INNER_MUL_ADD_SQRT_TYPE 3
+#define PSE_MODE_PSE_INVALID_TYPE 4
+#define PSE_MODE_PSE_NONE_TYPE 9
 
 // QuantModeEnum
 #define NoQuantMode 31
@@ -190,8 +211,9 @@ static constexpr ConfigParams ConfigValue[] = {
 #define OFFSET_OF_MEMBER(TYPE, MEMBER) ((uint64_t) & ((TYPE *)0)->MEMBER)
 #define SIZE_OF_MEMBER(TYPE, MEMBER) sizeof(((TYPE *)0)->MEMBER)
 
-// kernel stream related struct
-struct FDparamsX {
+namespace FlashAttnKernel {
+
+struct FDparams {
     uint32_t fdCoreEnable;
     uint32_t fdBN2Idx;
     uint32_t fdMIdx;
@@ -201,13 +223,7 @@ struct FDparamsX {
     uint32_t fdWorkspaceIdx;
 };
 
-enum class FiaKernelType : uint8_t {
-    NO_QUANT = 0,
-    ANTI_QUANT,
-    FULL_QUANT
-};
-
-struct RunInfoX {
+struct RunInfo {
     uint32_t loop = 0;
     uint32_t mloop = 0;
     bool isValid = false;
@@ -232,6 +248,7 @@ struct RunInfoX {
     // uint32_t curS2LoopTimes = 0;
     bool isS2SplitCore = false;
     uint32_t faTmpOutWsPos = 0; // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块
+    bool isFirstFdBlock = false;
 
     int64_t preTokensLeftUp = 0;
     int64_t nextTokensLeftUp = 0;
@@ -311,13 +328,8 @@ struct SinkConstInfo {
     bool learnableSinkFlag = false;
 };
 
-template <FiaKernelType>
-struct ConstInfo_t;
+struct ConstInfo_t : CommonConstInfo, PAConstInfo, LseConstInfo, SinkConstInfo {};
 
-template <>
-struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo,
-                                              PAConstInfo,
-                                              LseConstInfo,
-                                              SinkConstInfo {};
+} // namespace FlashAttnKernel
 
 #endif // FLASH_ATTN_COMMON_DEF_H_

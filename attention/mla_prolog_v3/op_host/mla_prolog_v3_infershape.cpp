@@ -13,6 +13,39 @@
 using namespace ge;
 
 namespace ops {
+static ge::graphStatus ValidateInputShapeDims(const gert::InferShapeContext *context, const gert::Shape *tokenXShape,
+                                              const gert::Shape *weightUkShape, const gert::Shape *ropeSinShape,
+                                              const gert::Shape *weightDqShape, const gert::Shape *kvCacheShape,
+                                              const gert::Shape *krCacheShape, const bool &doRope)
+{
+    OP_CHECK_IF(((tokenXShape->GetDimNum() != DIM_NUM_2) && (tokenXShape->GetDimNum() != DIM_NUM_3)),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "tokenX",
+                                             std::to_string(tokenXShape->GetDimNum()) + "D", "2D or 3D"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((weightUkShape->GetDimNum() != DIM_NUM_3),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "weightUk",
+                                             std::to_string(weightUkShape->GetDimNum()) + "D", "3D"),
+                return ge::GRAPH_FAILED);
+    // do_rope=false 且 rope 为空 tensor 时跳过 ropeSin 常规维度校验
+    OP_CHECK_IF(doRope && ((ropeSinShape->GetDimNum() != DIM_NUM_2) && (ropeSinShape->GetDimNum() != DIM_NUM_3)),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "ropeSin",
+                                             std::to_string(ropeSinShape->GetDimNum()) + "D", "2D or 3D"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((weightDqShape->GetDimNum() != DIM_NUM_2),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "weightDq",
+                                             std::to_string(weightDqShape->GetDimNum()) + "D", "2D"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(((kvCacheShape->GetDimNum() != DIM_NUM_3) && (kvCacheShape->GetDimNum() != DIM_NUM_4)),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "kvCache",
+                                             std::to_string(kvCacheShape->GetDimNum()) + "D", "3D or 4D"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(((krCacheShape->GetDimNum() != DIM_NUM_1) && (krCacheShape->GetDimNum() != DIM_NUM_3) &&
+                 (krCacheShape->GetDimNum() != DIM_NUM_4)),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "krCache",
+                                             std::to_string(krCacheShape->GetDimNum()) + "D", "1D or 3D or 4D"),
+                return ge::GRAPH_FAILED);
+    return GRAPH_SUCCESS;
+}
 
 ge::graphStatus GetMlaPrologV3ShapeDim(const gert::InferShapeContext *context, MlaPrologProtoShapeParam &shapeParam)
 {
@@ -31,38 +64,22 @@ ge::graphStatus GetMlaPrologV3ShapeDim(const gert::InferShapeContext *context, M
     auto krCacheShape = context->GetRequiredInputShape(KR_CACHE_INDEX_V3); // (B, Nkv, Skv, Dr)
     OP_CHECK_NULL_WITH_CONTEXT(context, krCacheShape);
 
-    OP_CHECK_IF(((tokenXShape->GetDimNum() != DIM_NUM_2) && (tokenXShape->GetDimNum() != DIM_NUM_3)),
-                OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "tokenX",
-                                             std::to_string(tokenXShape->GetDimNum()) + "D", "2D or 3D"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((weightUkShape->GetDimNum() != DIM_NUM_3),
-                OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "weightUk",
-                                             std::to_string(weightUkShape->GetDimNum()) + "D", "3D"),
-                return ge::GRAPH_FAILED);
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const bool *doRopePtr = attrs->GetAttrPointer<bool>(ATTR_DO_ROPE_INDEX);
-    const bool doRope = (doRopePtr == nullptr) ? true : *doRopePtr;
+    // RoPE 开关由 do_rope attr 控制（aclnnV3 默认 true，aclnnV4 透传用户开关），缺省视为开启
+    // 入图场景下旧图不携带 do_rope，attr 数组可能不足 13 个，先判越界再取值，避免 GetAttrPointer 越界报错
+    bool doRope = true;
+    if (attrs->GetAttrNum() > ATTR_DO_ROPE_INDEX) {
+        const bool *doRopePtr = attrs->GetAttrPointer<bool>(ATTR_DO_ROPE_INDEX);
+        if (doRopePtr != nullptr) {
+            doRope = *doRopePtr;
+        }
+    }
     const bool ropeSinEmpty = (ropeSinShape->GetShapeSize() == 0);
-    // do_rope=false 且 rope 为空 tensor 时跳过 ropeSin 常规维度校验
-    OP_CHECK_IF(
-        (!ropeSinEmpty) && ((ropeSinShape->GetDimNum() != DIM_NUM_2) && (ropeSinShape->GetDimNum() != DIM_NUM_3)),
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "ropeSin", std::to_string(ropeSinShape->GetDimNum()) + "D",
-                                     "2D or 3D"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF((weightDqShape->GetDimNum() != DIM_NUM_2),
-                OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "weightDq",
-                                             std::to_string(weightDqShape->GetDimNum()) + "D", "2D"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(((kvCacheShape->GetDimNum() != DIM_NUM_3) && (kvCacheShape->GetDimNum() != DIM_NUM_4)),
-                OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "kvCache",
-                                             std::to_string(kvCacheShape->GetDimNum()) + "D", "3D or 4D"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(((krCacheShape->GetDimNum() != DIM_NUM_1) && (krCacheShape->GetDimNum() != DIM_NUM_3) &&
-                 (krCacheShape->GetDimNum() != DIM_NUM_4)),
-                OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "krCache",
-                                             std::to_string(krCacheShape->GetDimNum()) + "D", "1D or 3D or 4D"),
-                return ge::GRAPH_FAILED);
+    if (ValidateInputShapeDims(context, tokenXShape, weightUkShape, ropeSinShape, weightDqShape, kvCacheShape,
+                               krCacheShape, doRope) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     if (doRope && !ropeSinEmpty) {
         if (tokenXShape->GetDimNum() == DIM_NUM_3) { // BS

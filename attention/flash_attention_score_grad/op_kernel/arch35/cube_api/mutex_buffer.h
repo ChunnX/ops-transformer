@@ -15,7 +15,7 @@
 #ifndef MUTEX_BUFFER_H
 #define MUTEX_BUFFER_H
 
-#include "../../../../common/op_kernel/buffer.h"
+#include "../../../../common/op_kernel/attn_buffer.h"
 
 namespace fa_base_matmul {
 
@@ -58,12 +58,11 @@ class MutexBuffer {
     using TargetTensorType = LocalTensor<T>;
 
 public:
-    __aicore__ inline MutexBuffer()
-    {
-    }
-    __aicore__ inline MutexBuffer(TensorType tensor, uint32_t size) : tensor_(tensor), size_(size)
-    {
-    }
+    __aicore__ inline MutexBuffer() {}
+    __aicore__ inline MutexBuffer(TensorType tensor, uint32_t size)
+        : tensor_(tensor),
+          size_(size)
+    {}
 
     __aicore__ inline void Init()
     {

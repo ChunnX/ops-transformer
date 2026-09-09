@@ -10,7 +10,7 @@
 
 /*!
  * \file metadata_checker.cpp
- * \brief Checker for metadata parameter (文档约束: 公共参数组 - metadata)
+ * \brief Checker for metadata parameter ( 公共参数组 - metadata)
  */
 
 #include <map>
@@ -52,16 +52,20 @@ ge::graphStatus MetadataChecker::CheckSinglePara(const QfaTilingInfo &qfaInfo)
         return ge::GRAPH_FAILED;
     }
 
-    // shape dim 必须为 1
+    // shape dim 支持 1 或 2: 1D 为 (max_schedule_size,), 仅正向 FA 调度数据;
+    // 2D 为 (2, max_schedule_size), 第一维存正向 FA 调度数据, 第二维存反向 FAG 调度数据
     uint32_t dimNum = metadataTensor->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(dimNum != DIM_NUM_1,
+    OP_CHECK_IF(dimNum != DIM_NUM_1 && dimNum != DIM_NUM_2,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, METADATA_NAME.c_str(),
-                                             (std::to_string(dimNum) + "D").c_str(), "1D"),
+                                             (std::to_string(dimNum) + "D").c_str(), "1D or 2D"),
                 return ge::GRAPH_FAILED);
 
     // shape dim0 必须 > 0（shape 由 quant_flash_attn_metadata 动态计算，不应为空）
     int64_t dim0 = metadataTensor->GetStorageShape().GetDim(0);
-    OP_CHECK_IF(dim0 <= 0, OP_LOGE(qfaInfo.opName, "metadata shape dim0(%ld) must be greater than 0", dim0),
+    OP_CHECK_IF(dim0 <= 0,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(qfaInfo.opName, METADATA_NAME.c_str(),
+                                                      ("[" + std::to_string(dim0) + "]").c_str(),
+                                                      "The value of dim0 of metadata shape must be greater than 0"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -73,7 +77,7 @@ ge::graphStatus MetadataChecker::CheckSinglePara(const QfaTilingInfo &qfaInfo)
 
 ge::graphStatus MetadataChecker::CheckParaExistence(const QfaTilingInfo &qfaInfo)
 {
-    // 文档约束：当前不支持不传入 metadata，未传入将发出拦截报警
+    // 当前不支持不传入 metadata，未传入将发出拦截报警
     OP_CHECK_IF(qfaInfo.opParamInfo.metadata.tensor == nullptr || qfaInfo.opParamInfo.metadata.desc == nullptr,
                 OP_LOGE_WITH_INVALID_INPUT(qfaInfo.opName, METADATA_NAME.c_str()), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
