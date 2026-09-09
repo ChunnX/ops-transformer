@@ -18,7 +18,8 @@
  * \file ffn_worker_batching_apt.cpp
  * \brief arch35 (Ascend950 / DAV_3510) kernel 入口 —— 纯 A5 实现,不复用任何 A2 kernel 头。
  *
- *   phase0 prepare   NORM/RECV 的 expert_id 归一到同一个扁平缓冲(RECV 另含握手等待与回写)
+ *   phase0 prepare   NORM/RECV 的 expert_id 归一到同一个扁平缓冲
+ *                    (RECV 另含握手等待、快照发布与选中描述符的即时清理)
  *      ↓ SyncAll
  *   phase1 段内排序   各段压掉被 mask 的 token 后排序,结果为 proposal 对
  *      ↓ SyncAll
@@ -103,9 +104,9 @@ __aicore__ inline void RunEmitAndGather(GM_ADDR sortedIdsWs, GM_ADDR gatherIdxWs
 }
 
 // phase0:把 expert_id 归一到同一个扁平缓冲。NORM 直接取 expert_ids_buf 整段;
-// RECV 先等本 micro batch 的全部 session 就绪并推进轮询下标,再逐 session 取 FfnDataDesc。
+// RECV 按 syncFlag 等待全部/部分 session，并以统一快照驱动本次接收。
 template <bool isRecv>
-__aicore__ inline void RunPrepare(GM_ADDR schedule_context, GM_ADDR flatIdsWs, ScheduleContextInfo &ctx,
+__aicore__ inline void RunPrepare(GM_ADDR schedule_context, GM_ADDR flatIdsWs, GM_ADDR readyWs, ScheduleContextInfo &ctx,
                                   const FfnWorkerBatchingTilingData *tilingData, TPipe &pipe)
 {
     // ---------------- phase0:expert_id 归一 ----------------
@@ -115,16 +116,21 @@ __aicore__ inline void RunPrepare(GM_ADDR schedule_context, GM_ADDR flatIdsWs, S
         // A=512/M=4 时 micro_batch_ids 出现 0 与 1 各半、y 也跟着取错 micro batch。
         // 故回写前先等所有核把上下文读完。
         SyncAll();
-        // 先等本 micro batch 的全部 session 就绪,并推进轮询下标
+        // 按同步/异步策略选取就绪数据,并推进轮询下标
         GM_ADDR tokenInfoBuf = reinterpret_cast<GM_ADDR>(ctx.bufferPtr.tokenInfoBuf);
         FfnWbA5RecvWait waiter;
-        waiter.Init(schedule_context, tokenInfoBuf, &ctx, &pipe);
+        waiter.Init(schedule_context, tokenInfoBuf, &ctx, &pipe, readyWs);
         waiter.Process();
         pipe.Reset();
+        // 发布屏障：0 号核已完成快照/索引的 MTE3 回写，其它核才可读取 readyWs。
+        // pipe.Reset 只回收本核 UB 资源，不能替代这个跨核屏障。
         SyncAll();
 
+        if (ctx.asyncRecv) {
+            LoadSelectedMicroBatch(readyWs, ctx, pipe);
+        }
         FfnWbPrepareArch35 prep;
-        prep.Init(flatIdsWs, &ctx, &pipe, tilingData->flatElements, tilingData->preparePerLoopRows);
+        prep.Init(flatIdsWs, &ctx, &pipe, tilingData->flatElements, tilingData->preparePerLoopRows, readyWs);
         prep.ProcessRecv(tokenInfoBuf);
         pipe.Reset();
     } else {
@@ -214,7 +220,10 @@ __aicore__ inline void FfnWorkerBatchingA5(GM_ADDR schedule_context, GM_ADDR y, 
     GM_ADDR sortedIdsWs = userWS + tilingData->wsSortedIds * wordSize;
     GM_ADDR gatherIdxWs = userWS + tilingData->wsGatherIdx * wordSize;
 
-    RunPrepare<isRecv>(schedule_context, flatIdsWs, ctx, tilingData, pipe);
+    // host 下发偏移的单位是 int32 word，此处转换成 GM 字节地址。
+    // NORM/同步路径不读写快照；仅异步 RECV 为该段分配有效载荷空间。
+    GM_ADDR readyWs = userWS + tilingData->wsReady * wordSize;
+    RunPrepare<isRecv>(schedule_context, flatIdsWs, readyWs, ctx, tilingData, pipe);
     const int64_t totalValid =
         RunSortPipeline(flatIdsWs, pairAWs, pairBWs, segCntWs, sortedIdsWs, gatherIdxWs, ctx, tilingData, pipe);
     RunEmitAndGather<isRecv>(sortedIdsWs, gatherIdxWs, group_list, y, session_ids, micro_batch_ids, token_ids,

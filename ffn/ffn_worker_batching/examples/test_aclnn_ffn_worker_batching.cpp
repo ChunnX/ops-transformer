@@ -340,7 +340,7 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     ret = aclnnFfnWorkerBatchingGetWorkspaceSize(scheduleContextRef, expertNum, maxOutShapeArray, tokenDtype,
-                                                 needSchedule, layerNum, yRef, groupListRef, sessionIdsRef,
+                                                 needSchedule, layerNum, 0 /* syncFlag */, yRef, groupListRef, sessionIdsRef,
                                                  microBatchIdsRef, tokenIdsRef, expertOffsetsRef, dynamicScaleRef,
                                                  actualTokenNumRef, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFfnWorkerBatchingGetWorkspaceSize failed. ERROR: %d\n", ret);
