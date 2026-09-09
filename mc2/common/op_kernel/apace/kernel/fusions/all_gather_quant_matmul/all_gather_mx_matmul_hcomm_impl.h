@@ -12,24 +12,13 @@
  * \file all_gather_mx_matmul_hcomm_impl.h
  * \brief AllGather + QuantMatmul fusion kernel implementation (Hcomm/CCU variant)
  *
- * 复用 UDMA 的 FragmentTensor kernel (AllGatherQbmmMxKernel)，通过 CommPolicy 模板参数
- * 注入 HcommCommWaitPolicy，将通信等待从 CrossCoreWaitFlag 替换为 hccl_.Wait(handle)。
- *
- * 接收 apace 自有的 hcommAllGatherMatmulTilingData（不依赖外部算子 tiling 结构）。
- * 算子接入时由 host 侧负责从算子 tiling 填充到 hcommAllGatherMatmulTilingData。
- *
- * 与 URMA 版本 (all_gather_mx_matmul_urma_impl.h) 的核心差异：
- * 1. 通信方式：HCCL AllGather<true>（AIC 核内）替代 UDMA CollectiveComm（AIV 跨核）
- * 2. 执行模型：AIC-only（全 C 核，无 AIV 参与通信）
- * 3. CommPolicy：HcommCommWaitPolicy（hccl_.Wait）替代 UrmaCommWaitPolicy（CrossCoreWaitFlag）
- * 4. Kernel 复用：AllGatherQbmmMxKernel<..., HcommCommWaitPolicy>，计算逻辑完全不变
- *
  * Init():
  *   AIC: hccl_.InitV2()/SetCcTilingV2()，批量下发 AllGather<true>（scale + dataHead + dataTail），
  *        GetCommPolicy().state_ = &commState_ 绑定 WaitPolicy。
  *
  * Run():
- *   AIC: 执行 FragmentTensor kernel → SyncAll → hccl_.Finalize。
+ *   AIC: 执行 FragmentTensor kernel → SyncAll<false> 全核同步（isAIVOnly=false 才覆盖
+ *        AIC 核；默认 true 仅同步 AIV，AIC-only kernel 不可用默认形式）→ hccl_.Finalize。
  *        kernel 内逐 tile commPolicy_.WaitTile(dependTileIdx) → state_->hccl_.Wait(handle)。
  */
 
@@ -288,7 +277,7 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
     KernelParams params;
     SetupKernelParams(params);
     quantMatmulKernelImpl_(params);
-    AscendC::SyncAll();
+    AscendC::SyncAll<false>();
     commState_.hccl_.Finalize();
 }
 
