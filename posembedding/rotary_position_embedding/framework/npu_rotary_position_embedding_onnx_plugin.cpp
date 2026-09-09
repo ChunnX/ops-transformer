@@ -8,52 +8,85 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "onnx_common.h"
-#include "nlohmann/json.hpp"
+#include <cstdint>
+#include <limits>
 
-using namespace ge;
-using json = nlohmann::json;
+#include "nlohmann/json.hpp"
+#include "graph/operator.h"
+#include "register/register.h"
 
 namespace domi {
-using NodeProto = ge::onnx::NodeProto;
-static const int REQ_ATTR_NUM = 1;
-
-static Status ParseParamsNpuRotaryPositionEmbedding(const Message* op_src, ge::Operator& op_dest) {
-    const NodeProto *node = dynamic_cast<const NodeProto *>(op_src);
-    if (node == nullptr) {
-      OP_LOGE(GetOpName(op_dest).c_str(), "Dynamic cast op_src to NodeProto failed.");
-      return FAILED;
+static Status ParseParamsNpuRotaryPositionEmbedding(const ge::Operator &op_src, ge::Operator &op_dest)
+{
+    int64_t parsed_value = 0;
+    bool found = false;
+    ge::AscendString attributes;
+    // ONNX repeated AttributeProto messages are exposed as JSON in "attribute".
+    if (op_src.GetAttr("attribute", attributes) == ge::GRAPH_SUCCESS) {
+        if (attributes.GetString() == nullptr) {
+            return FAILED;
+        }
+        try {
+            const auto root = nlohmann::json::parse(attributes.GetString());
+            if (!root.is_object()) {
+                return FAILED;
+            }
+            if (root.contains("attribute")) {
+                const auto &attrs = root.at("attribute");
+                if (!attrs.is_array()) {
+                    return FAILED;
+                }
+                for (const auto &attr : attrs) {
+                    if (!attr.is_object()) {
+                        return FAILED;
+                    }
+                    // ONNX AttributeProto::INT is 2. Other types were ignored by the old parser.
+                    if (attr.value("name", "") != "mode" || attr.value("type", 0) != 2) {
+                        continue;
+                    }
+                    if (found) {
+                        return FAILED;
+                    }
+                    found = true;
+                    // An omitted protobuf integer field has the default value zero.
+                    if (!attr.contains("i")) {
+                        parsed_value = 0;
+                        continue;
+                    }
+                    const auto &value = attr.at("i");
+                    if (!value.is_number_integer() ||
+                        (value.is_number_unsigned() &&
+                         value.get<uint64_t>() > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))) {
+                        return FAILED;
+                    }
+                    parsed_value = value.get<int64_t>();
+                }
+            }
+        } catch (const nlohmann::json::exception &) {
+            return FAILED;
+        }
     }
-    // The initialization of required attributes count
-    int req_attr_count = 0;
-    for (const auto& attr: node->attribute()) {
-      if (attr.name() == "mode" && attr.type() == ge::onnx::AttributeProto::INT) {
-        int mode = attr.i();
-        op_dest.SetAttr("mode", mode);
-        ++req_attr_count;
-      }
+    if (!found) {
+        return FAILED;
     }
-    // Node must have required attribute mode
-    if (req_attr_count != REQ_ATTR_NUM) {
-      OP_LOGE(GetOpName(op_dest).c_str(), "Node must have attr mode.");
-      return FAILED;
-    }
+    op_dest.SetAttr("mode", parsed_value);
     return SUCCESS;
 }
 
 // register npu_rotary_position_embedding op info to GE
 REGISTER_CUSTOM_OP("RotaryPositionEmbedding")
-  .FrameworkType(ONNX)
-  .OriginOpType({ge::AscendString("npu::1::NPURotaryPositionEmbedding"),
-                 ge::AscendString("ai.onnx::11::NPURotaryPositionEmbedding"),
-                 ge::AscendString("ai.onnx::12::NPURotaryPositionEmbedding"),
-                 ge::AscendString("ai.onnx::13::NPURotaryPositionEmbedding"),
-                 ge::AscendString("ai.onnx::14::NPURotaryPositionEmbedding"),
-                 ge::AscendString("ai.onnx::15::NPURotaryPositionEmbedding"),
-                 ge::AscendString("ai.onnx::16::NPURotaryPositionEmbedding"),
-                 ge::AscendString("ai.onnx::17::NPURotaryPositionEmbedding"),
-                 ge::AscendString("ai.onnx::18::NPURotaryPositionEmbedding"),
-                })
-  .ParseParamsFn(ParseParamsNpuRotaryPositionEmbedding)
-  .ImplyType(ImplyType::TVM);
-} // namespace V2domi
+    .FrameworkType(ONNX)
+    .OriginOpType({
+        ge::AscendString("npu::1::NPURotaryPositionEmbedding"),
+        ge::AscendString("ai.onnx::11::NPURotaryPositionEmbedding"),
+        ge::AscendString("ai.onnx::12::NPURotaryPositionEmbedding"),
+        ge::AscendString("ai.onnx::13::NPURotaryPositionEmbedding"),
+        ge::AscendString("ai.onnx::14::NPURotaryPositionEmbedding"),
+        ge::AscendString("ai.onnx::15::NPURotaryPositionEmbedding"),
+        ge::AscendString("ai.onnx::16::NPURotaryPositionEmbedding"),
+        ge::AscendString("ai.onnx::17::NPURotaryPositionEmbedding"),
+        ge::AscendString("ai.onnx::18::NPURotaryPositionEmbedding"),
+    })
+    .ParseParamsByOperatorFn(ParseParamsNpuRotaryPositionEmbedding)
+    .ImplyType(ImplyType::TVM);
+} // namespace domi
