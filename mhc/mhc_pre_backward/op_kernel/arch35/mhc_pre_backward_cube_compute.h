@@ -6,6 +6,7 @@
 #ifndef MHC_PRE_BACKWARD_CUBE_COMPUTE_H
 #define MHC_PRE_BACKWARD_CUBE_COMPUTE_H
 #include "kernel_operator.h"
+#include "lib/matmul_intf.h"
 #include "mhc_pre_backward_utils.h"
 
 namespace MhcPreBackward {
