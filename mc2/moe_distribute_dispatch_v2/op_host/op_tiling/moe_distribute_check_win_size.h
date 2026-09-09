@@ -151,10 +151,10 @@ inline ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
             OP_LOGE_WITH_INVALID_INPUT(nodeName, "cclBuffSizePtr");
             return ge::GRAPH_FAILED;
         }
-        OP_TILING_CHECK(*cclBuffSizePtr < 0,
-                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "cclBuffSizePtr", std::to_string(*cclBuffSizePtr).c_str(),
-                                                  "should be >= 0"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            *cclBuffSizePtr < static_cast<int64_t>(MB_SIZE),
+            OP_LOGE_WITHOUT_REPORT(nodeName, "ccl_buffer_size is too small: %ld B < %lu B.", *cclBuffSizePtr, MB_SIZE),
+            return ge::GRAPH_FAILED);
         maxWindowSizeEp = *cclBuffSizePtr - MB_SIZE;
         hcclBufferSizeEp = *cclBuffSizePtr;
     }
