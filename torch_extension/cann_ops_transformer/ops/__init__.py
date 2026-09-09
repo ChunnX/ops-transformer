@@ -119,6 +119,7 @@ _legacy_map = {
     "dense_lightning_indexer_softmax_lse": "attention.dense_lightning_indexer_softmax_lse_v2",
     "elastic_buffer": "mc2.common",
     "flash_attn": "attention.flash_attn",
+    "flash_attn_grad": "attention.flash_attn_grad",
     "generic_block_sparse_attention": "attention.generic_block_sparse_attention",
     "ffn_to_attention": "mc2.ffn_to_attention_v2",
     "grouped_matmul_activation_quant": "gmm.grouped_matmul_activation_quant",
@@ -158,6 +159,7 @@ _legacy_map = {
     "fused_causal_conv1d_": "attention.inplace_fused_causal_conv1d",
     "block_sparse_attention": "attention.block_sparse_attention",
     "block_attention_residuals": "mhc.block_attention_residuals",
+    "block_attention_residuals_backward": "mhc.block_attention_residuals_grad",
     "apply_rotary_pos_emb": "posembedding.apply_rotary_pos_emb",
     "apply_rotary_pos_emb_grad": "posembedding.apply_rotary_pos_emb_grad",
 }
