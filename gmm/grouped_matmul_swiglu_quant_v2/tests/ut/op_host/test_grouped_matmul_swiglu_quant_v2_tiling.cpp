@@ -28,6 +28,7 @@
 #include "../../../op_host/op_tiling/grouped_matmul_swiglu_quant_v2_base_tiling.h"
 #include "../../../op_host/op_tiling/grouped_matmul_swiglu_quant_v2_fusion_tiling.h"
 #include "../../../op_host/op_tiling/grouped_matmul_swiglu_quant_v2_tiling.h"
+#include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_v2_tensor_api_tiling_data.h"
 #include "../../../op_kernel/arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_data.h"
 #include "../../../op_kernel/arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_key.h"
 #include "tiling_case_executor.h"
@@ -132,7 +133,7 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
                 {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(tuningConfigVec)},
             },
             inputInstanceNum, outputInstanceNum, compileInfoForRun, socVersion, compileInfoForRun->aicNum_,
-            compileInfoForRun->ubSize_);
+            compileInfoForRun->ubSize_, 4096, socInfoString);
     }
 
     void Run() const
@@ -168,6 +169,7 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
     bool transposeWeight = false;
     int64_t groupListType = 0;
     string tuningConfig;
+    string socInfoString;
 
 private:
     template <size_t N>
@@ -269,6 +271,53 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
 string MakeParamName(const testing::TestParamInfo<GroupedMatmulSwigluQuantV2TilingCase> &info)
 {
     return ops::ut::MakeSafeParamName(info.param.prefix);
+}
+
+GroupedMatmulSwigluQuantV2TilingCase MakeTensorApiTailCase(int64_t k)
+{
+    constexpr int64_t m = 65536;
+    constexpr int64_t n = 128;
+    constexpr int64_t groupNum = 5;
+    const int64_t scaleK = (k + 63) / 64;
+    const auto makeTensor = [](vector<int64_t> shape, ge::DataType dtype) {
+        return TensorDescParam{shape, shape, dtype, ge::FORMAT_ND};
+    };
+
+    GroupedMatmulSwigluQuantV2TilingCase tc;
+    tc.socVersion = "Ascend950";
+    tc.caseName = "tensor_api_k_tail_" + to_string(k);
+    tc.prefix = tc.caseName;
+    tc.expectSuccess = true;
+    tc.expectTilingKey = static_cast<int64_t>(GET_TPL_TILING_KEY(0, 0, 1));
+    tc.compileInfo = {260046848ULL, 32U, 64U, 128U, 256U, true};
+    tc.socInfoString =
+        R"({"hardware_info":{"BT_SIZE":0,"load3d_constraints":"1","Intrinsic_fix_pipe_l0c2out":false,
+        "Intrinsic_data_move_l12ub":true,"Intrinsic_data_move_l0c2ub":true,
+        "Intrinsic_data_move_out2l1_nd2nz":false,"UB_SIZE":253952,"L2_SIZE":33554432,
+        "L1_SIZE":524288,"L0A_SIZE":65536,"L0B_SIZE":65536,"L0C_SIZE":262144,
+        "CORE_NUM":32,"cube_core_cnt":32,"vector_core_cnt":64}})";
+    tc.inputs[GroupedMatmulSwigluQuantV2Tiling::X_INDEX] =
+        {makeTensor({m, k}, ge::DT_FLOAT8_E5M2)};
+    tc.inputs[GroupedMatmulSwigluQuantV2Tiling::X_SCALE_INDEX] =
+        {makeTensor({m, scaleK, 2}, ge::DT_FLOAT8_E8M0)};
+    tc.inputs[GroupedMatmulSwigluQuantV2Tiling::GROUPLIST_INDEX] =
+        {makeTensor({groupNum}, ge::DT_INT64)};
+    tc.inputs[GroupedMatmulSwigluQuantV2Tiling::WEIGHT_INDEX] =
+        {makeTensor({groupNum, k, n}, ge::DT_FLOAT8_E5M2)};
+    tc.inputs[GroupedMatmulSwigluQuantV2Tiling::WEIGHT_SCALE_INDEX] =
+        {makeTensor({groupNum, scaleK, n, 2}, ge::DT_FLOAT8_E8M0)};
+    tc.outputs[GroupedMatmulSwigluQuantV2Tiling::Y_INDEX] =
+        {makeTensor({m, n / 2}, ge::DT_FLOAT8_E5M2)};
+    tc.outputs[GroupedMatmulSwigluQuantV2Tiling::Y_SCALE_INDEX] =
+        {makeTensor({m, (n / 2 + 63) / 64, 2}, ge::DT_FLOAT8_E8M0)};
+    tc.dequantMode = 2;
+    tc.dequantDtype = static_cast<int64_t>(ge::DT_FLOAT);
+    tc.quantMode = 2;
+    tc.quantDtype = static_cast<int64_t>(ge::DT_FLOAT8_E5M2);
+    tc.transposeWeight = false;
+    tc.groupListType = 1;
+    tc.tuningConfig = "0";
+    return tc;
 }
 
 } // namespace
@@ -374,6 +423,42 @@ TEST(TestGroupedMatmulSwigluQuantV2Tiling950WhiteBox, NonSmsTilingKeyAndDataFiel
     EXPECT_EQ(tilingData->groupSize, 32U);
     EXPECT_EQ(tilingData->kSize, 32U);
     EXPECT_EQ(tilingData->nSize, 128U);
+}
+
+TEST(TestGroupedMatmulSwigluQuantV2Tiling950WhiteBox, TensorApiKTailTilingData)
+{
+    for (const int64_t k : {13888L, 13632L}) {
+        SCOPED_TRACE(k);
+        auto testCase = MakeTensorApiTailCase(k);
+        auto compileInfoForRun = testCase.compileInfo;
+        auto tilingContextPara = testCase.BuildContext(&compileInfoForRun);
+        TilingInfo tilingInfo;
+        ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+        EXPECT_EQ(tilingInfo.tilingKey, testCase.expectTilingKey);
+        ASSERT_GE(tilingInfo.tilingDataSize,
+                  sizeof(GroupedMatmulSwigluQuantV2TensorApi::GMMSwigluQuantV2TensorApiTilingData));
+
+        using TensorApiTilingData =
+            GroupedMatmulSwigluQuantV2TensorApi::GMMSwigluQuantV2TensorApiTilingData;
+        const auto *tilingData = reinterpret_cast<const TensorApiTilingData *>(tilingInfo.tilingData.get());
+        ASSERT_NE(tilingData, nullptr);
+        EXPECT_EQ(tilingData->mmTilingData.k, static_cast<uint32_t>(k));
+        EXPECT_EQ(tilingData->mmTilingData.baseK, 64U);
+        EXPECT_LE(tilingData->mmTilingData.kAL1, 256U);
+        EXPECT_LE(tilingData->mmTilingData.kBL1, 256U);
+        EXPECT_EQ(tilingData->mmTilingData.scaleKAL1, tilingData->mmTilingData.scaleKBL1);
+        EXPECT_LE(tilingData->mmTilingData.scaleKAL1, 256U);
+    }
+}
+
+TEST(TestGroupedMatmulSwigluQuantV2Tiling950WhiteBox, TensorApiRejectsKNotScaleAligned)
+{
+    auto testCase = MakeTensorApiTailCase(13890);
+    auto compileInfoForRun = testCase.compileInfo;
+    auto tilingContextPara = testCase.BuildContext(&compileInfoForRun);
+    TilingInfo tilingInfo;
+    const bool tilingSuccess = ExecuteTiling(tilingContextPara, tilingInfo);
+    EXPECT_TRUE(!tilingSuccess || tilingInfo.tilingKey != testCase.expectTilingKey);
 }
 
 class TestGroupedMatmulSwigluQuantV2Tiling910B : public testing::TestWithParam<GroupedMatmulSwigluQuantV2TilingCase> {
