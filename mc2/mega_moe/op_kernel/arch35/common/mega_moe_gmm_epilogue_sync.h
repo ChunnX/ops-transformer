@@ -14,22 +14,30 @@
 
 namespace MegaMoeImpl {
 
-// 两条同步链路各允许 AIC 领先 15 个逻辑 tile，计数跨 expert/wave 保留。
+// 每条同步链路各允许 AIC 领先 15 个逻辑 tile，计数跨 expert/wave 保留。
 // 每个 tile 的所有 GM 输出完成后通知消费者，消费者处理完所有子 tile 后通知 AIC。
 constexpr uint32_t GMM_MAX_PENDING_TILES = 15;
 
 // GMM1 -> SwiGLU：A8W8/A4W4 使用 AIV0，A8W4 使用 AIV1。
 class Gmm1SwigluSync {
 public:
-    __aicore__ explicit inline Gmm1SwigluSync(uint16_t swigluSubBlockIdx)
-        : aivFlagOffset_(swigluSubBlockIdx * 16U)
+    // 每对使用相邻的 Ready/ACK 编号。共享专家与 MoE 独立，允许共享 ACK 延后回收。
+    enum class EventPair : uint16_t {
+        MOE = 8,
+        SHARED = 12,
+    };
+
+    __aicore__ explicit inline Gmm1SwigluSync(uint16_t swigluSubBlockIdx, EventPair eventPair = EventPair::MOE)
+        : aivFlagOffset_(swigluSubBlockIdx * 16U),
+          gmm1FinishedFlag_(static_cast<uint16_t>(eventPair)),
+          swigluFinishedFlag_(gmm1FinishedFlag_ + 1U)
     {}
 
     // AIC：提交前预留额度。累计第 16 个 tile 起，每次消费一个 ACK；已到达的 ACK 可直接通过。
     __aicore__ inline void WaitForSwiglu()
     {
         if (pendingTiles_ == GMM_MAX_PENDING_TILES) {
-            AscendC::CrossCoreWaitFlag<4, PIPE_S>(SWIGLU_FINISHED_FLAG + aivFlagOffset_);
+            AscendC::CrossCoreWaitFlag<4, PIPE_S>(swigluFinishedFlag_ + aivFlagOffset_);
             --pendingTiles_;
         }
         ++pendingTiles_;
@@ -38,27 +46,27 @@ public:
     // AIC：整个交织 tile 的 Fixpipe 已提交，由 FIX 通知 SwiGLU 读取 GM。
     __aicore__ inline void NotifySwiglu()
     {
-        AscendC::CrossCoreSetFlag<4, PIPE_FIX>(GMM1_FINISHED_FLAG + aivFlagOffset_);
+        AscendC::CrossCoreSetFlag<4, PIPE_FIX>(gmm1FinishedFlag_ + aivFlagOffset_);
     }
 
     // AIV：在 MTE2 读取 GMM1 结果前等待。
     __aicore__ inline void WaitForGmm1()
     {
-        AscendC::CrossCoreWaitFlag<4, PIPE_MTE2>(GMM1_FINISHED_FLAG);
+        AscendC::CrossCoreWaitFlag<4, PIPE_MTE2>(gmm1FinishedFlag_);
     }
 
     // AIV：整个逻辑 tile 的 SwiGLU/量化输出写回后，归还一个额度。
     __aicore__ inline void NotifyGmm1()
     {
-        AscendC::CrossCoreSetFlag<4, PIPE_MTE3>(SWIGLU_FINISHED_FLAG);
+        AscendC::CrossCoreSetFlag<4, PIPE_MTE3>(swigluFinishedFlag_);
     }
 
-    // 仅在整个专家流（包括滞后的 GMM2）结束时收回剩余额度。
+    // 完整 MoE 流（包括滞后的 GMM2）结束后排空；共享 GMM1 的 ACK 也延后至此回收。
     __aicore__ inline void EndSync()
     {
         if constexpr (g_coreType == AscendC::AIC) {
             while (pendingTiles_ != 0U) {
-                AscendC::CrossCoreWaitFlag<4, PIPE_S>(SWIGLU_FINISHED_FLAG + aivFlagOffset_);
+                AscendC::CrossCoreWaitFlag<4, PIPE_S>(swigluFinishedFlag_ + aivFlagOffset_);
                 --pendingTiles_;
             }
         }
@@ -66,9 +74,9 @@ public:
 
 private:
     // Mode 4：AIC 的 flagId 加 16 选择 AIV1；AIV 使用本地 flagId。
-    static constexpr uint16_t GMM1_FINISHED_FLAG = 8;
-    static constexpr uint16_t SWIGLU_FINISHED_FLAG = 9;
     const uint16_t aivFlagOffset_;
+    const uint16_t gmm1FinishedFlag_;
+    const uint16_t swigluFinishedFlag_;
     uint32_t pendingTiles_ = 0; // 已提交的 tile 数减去 AIC 已消费的 SwiGLU 完成通知数。
 };
 
