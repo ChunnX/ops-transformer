@@ -44,6 +44,8 @@ namespace ge {
  * @li token_dtype: A scalar, support FP16, BF16, quantization type of the input tokens.
  * @li need_schedule: A scalar, whether the op should be scheduled.
  * @li layer_num: A scalar, the number of layers.
+ * @li sync_flag: A scalar, default 0. On Ascend950 with need_schedule=1,
+ *                0 waits for all sessions; 1 consumes the ready sessions.
  *
  * @par Restrictions:
  * token_dtype 3/4/5 and E8M0 scale are supported only on Ascend950.
@@ -68,6 +70,7 @@ REG_OP(FfnWorkerBatching)
     .ATTR(token_dtype, Int, 0)
     .ATTR(need_schedule, Int, 0)
     .ATTR(layer_num, Int, 0)
+    .ATTR(sync_flag, Int, 0)
     .OP_END_FACTORY_REG(FfnWorkerBatching)
 #endif // OPS_PROTO_DEF_FFNWORKERBATCHING
 

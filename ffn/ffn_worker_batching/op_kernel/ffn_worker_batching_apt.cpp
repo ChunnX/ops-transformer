@@ -103,9 +103,9 @@ __aicore__ inline void RunEmitAndGather(GM_ADDR sortedIdsWs, GM_ADDR gatherIdxWs
 }
 
 // phase0:把 expert_id 归一到同一个扁平缓冲。NORM 直接取 expert_ids_buf 整段;
-// RECV 先等本 micro batch 的全部 session 就绪并推进轮询下标,再逐 session 取 FfnDataDesc。
+// RECV 按 syncFlag 等待全部/部分 session，并以统一快照驱动本次接收。
 template <bool isRecv>
-__aicore__ inline void RunPrepare(GM_ADDR schedule_context, GM_ADDR flatIdsWs, ScheduleContextInfo &ctx,
+__aicore__ inline void RunPrepare(GM_ADDR schedule_context, GM_ADDR flatIdsWs, GM_ADDR readyWs, ScheduleContextInfo &ctx,
                                   const FfnWorkerBatchingTilingData *tilingData, TPipe &pipe)
 {
     // ---------------- phase0:expert_id 归一 ----------------
@@ -115,16 +115,34 @@ __aicore__ inline void RunPrepare(GM_ADDR schedule_context, GM_ADDR flatIdsWs, S
         // A=512/M=4 时 micro_batch_ids 出现 0 与 1 各半、y 也跟着取错 micro batch。
         // 故回写前先等所有核把上下文读完。
         SyncAll();
-        // 先等本 micro batch 的全部 session 就绪,并推进轮询下标
+        // 按同步/异步策略选取就绪数据,并推进轮询下标
         GM_ADDR tokenInfoBuf = reinterpret_cast<GM_ADDR>(ctx.bufferPtr.tokenInfoBuf);
         FfnWbA5RecvWait waiter;
-        waiter.Init(schedule_context, tokenInfoBuf, &ctx, &pipe);
+        waiter.Init(schedule_context, tokenInfoBuf, &ctx, &pipe, readyWs);
         waiter.Process();
         pipe.Reset();
+        // 发布屏障：0 号核已完成快照/索引的 MTE3 回写，其它核才可读取 readyWs。
+        // pipe.Reset 只回收本核 UB 资源，不能替代这个跨核屏障。
         SyncAll();
 
+        if (ctx.asyncRecv) {
+            // 扫描可能跳过若干空项，故入口 ctx.curMicroBatchID 不一定是最终选中项。
+            // 所有核统一读取快照头块，后续 descriptor 寻址和 gather 输出的 micro_batch_ids
+            // 都使用这个本次索引；不使用已经指向下一项的 schedule_context.polling_index。
+            GlobalTensor<uint64_t> selection;
+            selection.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(readyWs));
+            TBuf<TPosition::VECIN> selectionBuf;
+            pipe.InitBuffer(selectionBuf, ONE_BLK_SIZE);
+            LocalTensor<uint64_t> mb = selectionBuf.Get<uint64_t>();
+            DataCopyExtParams cp{1, static_cast<uint32_t>(sizeof(uint64_t)), 0, 0, 0};
+            DataCopyPadExtParams<uint64_t> pad{false, 0, 0, 0};
+            DataCopyPad(mb, selection, cp, pad);
+            SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
+            ctx.curMicroBatchID = mb.GetValue(0);
+            pipe.Reset();
+        }
         FfnWbPrepareArch35 prep;
-        prep.Init(flatIdsWs, &ctx, &pipe, tilingData->flatElements, tilingData->preparePerLoopRows);
+        prep.Init(flatIdsWs, &ctx, &pipe, tilingData->flatElements, tilingData->preparePerLoopRows, readyWs);
         prep.ProcessRecv(tokenInfoBuf);
         pipe.Reset();
     } else {
@@ -214,11 +232,27 @@ __aicore__ inline void FfnWorkerBatchingA5(GM_ADDR schedule_context, GM_ADDR y, 
     GM_ADDR sortedIdsWs = userWS + tilingData->wsSortedIds * wordSize;
     GM_ADDR gatherIdxWs = userWS + tilingData->wsGatherIdx * wordSize;
 
-    RunPrepare<isRecv>(schedule_context, flatIdsWs, ctx, tilingData, pipe);
+    // host 下发偏移的单位是 int32 word，此处转换成 GM 字节地址。
+    // NORM/同步路径不读写快照；仅异步 RECV 为该段分配有效载荷空间。
+    GM_ADDR readyWs = userWS + tilingData->wsReady * wordSize;
+    RunPrepare<isRecv>(schedule_context, flatIdsWs, readyWs, ctx, tilingData, pipe);
     const int64_t totalValid =
         RunSortPipeline(flatIdsWs, pairAWs, pairBWs, segCntWs, sortedIdsWs, gatherIdxWs, ctx, tilingData, pipe);
     RunEmitAndGather<isRecv>(sortedIdsWs, gatherIdxWs, group_list, y, session_ids, micro_batch_ids, token_ids,
                              expert_offsets, dynamic_scale, actual_token_num, totalValid, ctx, tilingData, pipe);
+    if constexpr (isRecv) {
+        if (ctx.asyncRecv) {
+            // session 行的清理归属与 gather 输出行的核归属不一定相同。
+            // 因而“本核已搬完”不足以释放该 session：必须等所有核完成 gather，
+            // 再用同一快照清 ids/flag。totalValid=0 时也要走释放，完成全 mask 描述符握手。
+            // 这次调用不重新扫描 flag，迟到的未选中行留给后续调用处理。
+            SyncAll();
+            FfnWbPrepareArch35 release;
+            release.Init(flatIdsWs, &ctx, &pipe, tilingData->flatElements, tilingData->preparePerLoopRows, readyWs);
+            release.ProcessRecv(reinterpret_cast<GM_ADDR>(ctx.bufferPtr.tokenInfoBuf), true);
+            pipe.Reset();
+        }
+    }
 }
 
 extern "C" __global__ __aicore__ void ffn_worker_batching(GM_ADDR schedule_context, GM_ADDR y, GM_ADDR group_list,

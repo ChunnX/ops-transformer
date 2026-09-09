@@ -31,6 +31,8 @@ constexpr uint32_t MAX_OUT_SHAPE_ATTR = 1;
 constexpr uint32_t TOKEN_DTYPE_ATTR = 2;
 constexpr uint32_t NEED_SCHEDULE_ATTR = 3;
 constexpr uint32_t LAY_NUM_ATTR = 4;
+// 追加在 layer_num 后，保持 expert_num 等已有属性的索引稳定。
+constexpr uint32_t SYNC_FLAG_ATTR = 5;
 
 constexpr uint32_t INDEX_ZERO = 0;
 constexpr uint32_t INDEX_ONE = 1;
@@ -119,6 +121,7 @@ private:
     int64_t expertNum_ = 0;
     int64_t tokenDtype_ = 0;
     int64_t needSchedule_ = 0;
+    int64_t syncFlag_ = 0;
     int64_t layerNum_ = 0;
     int64_t aivNum_ = 0;
     int64_t coreNum_ = 0;
@@ -253,6 +256,15 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::ParseOptionalAttrs(const gert::Ru
         needSchedule_ = *needSchedulePtr;
     }
 
+    // 未提供时保留成员默认值 0，兼容旧图的同步语义。
+    // need_schedule=0 时虽不启用异步接收，仍校验属性域，避免非法值被静默接受。
+    const int64_t *syncFlagPtr = attrs->GetAttrPointer<int64_t>(SYNC_FLAG_ATTR);
+    if (syncFlagPtr != nullptr) {
+        OP_CHECK_IF((*syncFlagPtr < 0 || *syncFlagPtr > 1),
+                    OP_LOGE(context_->GetNodeName(), "sync_flag:%ld must be one of [0, 1]", *syncFlagPtr),
+                    return ge::GRAPH_FAILED);
+        syncFlag_ = *syncFlagPtr;
+    }
     const int64_t *layNumPtr = attrs->GetAttrPointer<int64_t>(LAY_NUM_ATTR);
     if (layNumPtr != nullptr) {
         OP_CHECK_IF(
@@ -299,6 +311,7 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::DoOpTiling()
     flatElements_ = (needSchedule_ == 1) ? A_ * bskAlign_ : Y_;
     tilingDataPtr_->flatElements = flatElements_;
 
+    tilingDataPtr_->syncFlag = syncFlag_;
     SplitPrepare();
     SplitSortAndMerge();
     SplitGroupList();
@@ -315,7 +328,10 @@ void FfnWorkerBatchingTilingArch35::SplitPrepare()
     //   · 握手回写的清零区   rows * ONE_BLK_BYTES(每行一个 32B 块写 flag)
     // 按运行时 UB 反推每轮行数,不设固定上限;NORM 是整段直搬,按同一公式给出块内元素数即可。
     const int64_t prepBytesPerRow = bskAlign_ * static_cast<int64_t>(sizeof(int32_t)) + ONE_BLK_BYTES;
-    int64_t prepRows = static_cast<int64_t>(ubSize_) / std::max<int64_t>(1, prepBytesPerRow);
+    // 异步 prepare/release 另用一个 UB 块读取快照中的单行 flag。
+    // 只为异步扣除该空间，保持同步/NORM 的原有批量行数预算。
+    const int64_t selectionBytes = (needSchedule_ == 1 && syncFlag_ == 1) ? ONE_BLK_BYTES : 0;
+    int64_t prepRows = (static_cast<int64_t>(ubSize_) - selectionBytes) / std::max<int64_t>(1, prepBytesPerRow);
     prepRows = std::max<int64_t>(1, std::min<int64_t>(prepRows, A_));
     preparePerLoopRows_ = prepRows;
     tilingDataPtr_->preparePerLoopRows = preparePerLoopRows_;
@@ -403,6 +419,15 @@ void FfnWorkerBatchingTilingArch35::LayoutWorkspace()
     off += Y_;
     wsGatherIdx_ = off;
     off += Y_;
+    // off 以 int32 word 计；8 words = 32B，先把快照起点对齐到数据块。
+    // 异步载荷为 (A+1)*32B：头块低 8B 存选中 micro batch，后 A 块低 4B 各存一个 flag。
+    // A=1024 时载荷为 32800B；末尾可能另有最多 28B 的起点对齐空隙。
+    // 默认路径只记录段起点，不分配快照载荷；其 kernel 也不会访问该段。
+    off = (off + NUM_EIGHT - 1) / NUM_EIGHT * NUM_EIGHT;
+    tilingDataPtr_->wsReady = off;
+    if (needSchedule_ == 1 && syncFlag_ == 1) {
+        off += (A_ + 1) * (ONE_BLK_BYTES / static_cast<int64_t>(sizeof(int32_t)));
+    }
     userWorkspaceWords_ = off;
 
     tilingDataPtr_->wsFlatIds = wsFlatIds_;

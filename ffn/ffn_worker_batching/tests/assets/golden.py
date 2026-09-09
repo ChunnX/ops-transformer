@@ -352,6 +352,7 @@ class AclnnFfnWorkerBatchingTestSpec:
         tokenDtype,
         needSchedule,
         layerNum,
+        syncFlag,
         y,
         groupList,
         sessionIds,
@@ -368,7 +369,7 @@ class AclnnFfnWorkerBatchingTestSpec:
         BS = int(maxOutShape[1])
         K = int(maxOutShape[2])
         H = int(maxOutShape[3])
-        M = 1
+        M = 3 if "sync_skip_mb" in testcase_name else 1
 
         data = _generate_test_data(
             testcase_name, A, M, BS, K, H, expertNum, tokenDtype, needSchedule
@@ -404,7 +405,26 @@ class AclnnFfnWorkerBatchingTestSpec:
             si_offset = ei_offset + len(ei_bytes)
             mi_offset = si_offset + len(si_bytes)
         else:
-            ti_bytes = _build_token_info_buf(expert_ids, A, M, BS, K).tobytes()
+            token_info = _build_token_info_buf(expert_ids, A, M, BS, K)
+            # 独立构造“已发布描述符”的集合，不把未就绪行的 expert_ids 预先 mask。
+            # 这样错误读取未就绪行的 kernel 会产生额外 token，能够被 golden 检出。
+            ready = np.ones((A, M), dtype=bool)
+            if syncFlag == 1 and "sync_" in testcase_name:
+                if "sync_partial" in testcase_name:
+                    ready[1::2, :] = False
+                elif "sync_last" in testcase_name or "sync_skip_mb" in testcase_name:
+                    ready[:] = False
+                    ready[-1, -1] = True
+                elif "sync_masked" in testcase_name:
+                    ready[1:, :] = False
+                    token_info[0, :, 2:] = _MASK_VALUE
+                    expert_ids[0, :, :, :] = _MASK_VALUE
+            token_info[:, :, 0] = ready.astype(np.int32)
+            data["ready"] = ready
+            # 静态 ST 的入口 cursor 为 0，至少预置一个 ready；期望选中首个非空 micro batch。
+            # 完全无 ready 的等待/延迟发布不能用静态 CSV 表达，由状态脚本单独验证。
+            data["cur_micro_batch_id"] = next(m for m in range(M) if ready[:, m].any())
+            ti_bytes = token_info.tobytes()
             aux_data = td_bytes + ti_bytes
             td_offset = 1024
             ti_offset = td_offset + len(td_bytes)
@@ -470,6 +490,7 @@ class AclnnFfnWorkerBatchingTestSpec:
         tokenDtype,
         needSchedule,
         layerNum,
+        syncFlag,
         y,
         groupList,
         sessionIds,
@@ -532,7 +553,15 @@ class AclnnFfnWorkerBatchingTestSpec:
             out_torch_dtype = torch.int8
             out_np_dtype = np.int8
 
-        expert_ids_flat = expert_ids.reshape(-1).astype(np.int32)
+        if needSchedule == 1:
+            cur_mb = data.get("cur_micro_batch_id", 0)
+            # 只在 CPU 参考副本上屏蔽未选中 session；设备输入仍保留它们的合法 ids。
+            ids = expert_ids[:, cur_mb].copy()
+            if syncFlag == 1:
+                ids[~data.get("ready", np.ones((A, M), dtype=bool))[:, cur_mb]] = _MASK_VALUE
+            expert_ids_flat = ids.reshape(-1).astype(np.int32)
+        else:
+            expert_ids_flat = expert_ids.reshape(-1).astype(np.int32)
         sorted_order, valid_count, sorted_valid_ids = _sort_expert_ids(expert_ids_flat)
 
         y_out = np.zeros((Y, H), dtype=out_np_dtype)
@@ -696,10 +725,10 @@ class FfnWorkerBatchingKernelTestSpec:
 
     @staticmethod
     def customize_inputs(schedule_context, expert_num, max_out_shape, token_dtype=0,
-                         need_schedule=0, layer_num=0, **kwargs):
+                         need_schedule=0, layer_num=0, sync_flag=0, **kwargs):
         tensor = torch.from_numpy(schedule_context.copy())
         AclnnFfnWorkerBatchingTestSpec.customize_inputs(
-            tensor, expert_num, max_out_shape, token_dtype, need_schedule, layer_num,
+            tensor, expert_num, max_out_shape, token_dtype, need_schedule, layer_num, sync_flag,
             *([None] * 8), **kwargs)
         # 上下文逻辑 shape 为 1024，测试内嵌辅助数据通过完整 storage 提供。
         raw = torch.empty(0, dtype=torch.int8).set_(tensor.untyped_storage())
@@ -707,10 +736,10 @@ class FfnWorkerBatchingKernelTestSpec:
 
     @staticmethod
     def golden(schedule_context, expert_num, max_out_shape, token_dtype=0,
-               need_schedule=0, layer_num=0, **kwargs):
+               need_schedule=0, layer_num=0, sync_flag=0, **kwargs):
         from ttk.utilities.dtypes import torch_to_numpy_tensor
         outputs = AclnnFfnWorkerBatchingTestSpec.golden(
-            schedule_context, expert_num, max_out_shape, token_dtype, need_schedule, layer_num,
+            schedule_context, expert_num, max_out_shape, token_dtype, need_schedule, layer_num, sync_flag,
             *([None] * 8), **kwargs)
         arrays = [torch_to_numpy_tensor(t) for t in outputs]
         if token_dtype == 5:
