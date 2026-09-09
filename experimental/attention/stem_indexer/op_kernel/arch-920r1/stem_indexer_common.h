@@ -4,7 +4,7 @@
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -24,22 +24,13 @@ enum class SI_LAYOUT : uint32_t {
     PA_BNSD = 2,
     BNSD = 3
 };
-// Sync mode between Cube and Vector.
+// Cube 与 Vector 之间的同步模式。
 constexpr uint32_t SI_SYNC_MODE4 = 4U;
+// arch-920r1：1C:1V，MM1 结果采用双 buffer ping-pong。
 constexpr uint32_t MM1_RES_BUFFER_NUM = 2U;
 constexpr uint32_t CROSS_VC_EVENT = 0U;
 constexpr uint32_t CROSS_CV_EVENT = 2U;
-// Buffer size in bytes.
-constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32U;
-constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64U;
-constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256U;
-constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512U;
-constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024U;
-constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048U;
-constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096U;
-constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192U;
-constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384U;
-constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768U;
+// TopK 流式处理每轮的 trunk 长度为 512（与 S2 基本块 512 对齐）。
 constexpr uint32_t TOPK_TRUNK_LEN = 512U;
 // Invalid index.
 constexpr int INVALID_IDX = -1;
@@ -83,7 +74,6 @@ __aicore__ inline uint32_t GetLane(const T &value4, uint32_t lane)
 {
     return (lane == 0U) ? value4.v0 : ((lane == 1U) ? value4.v1 : ((lane == 2U) ? value4.v2 : value4.v3));
 }
-
 
 template <typename Q_T, typename K_T, typename OUT_T, const bool CAUSAL = false, const int TOPK_SCORE_PRECISION = 1,
           typename... Args>
@@ -135,19 +125,19 @@ struct RunInfo {
     uint32_t actMBaseSize;
     uint32_t actualSingleProcessSInnerSize;
 
-    uint64_t tensorQueryOffset;
-    uint64_t tensorKeyOffset;
-    uint64_t tensorKeyScaleOffset;
-    uint64_t tensorWeightsOffset;
-    uint64_t tensorVBiasOffset;
-    uint64_t indiceOutOffset;
-    uint64_t indiceLenOffset;
+    int64_t tensorQueryOffset;
+    int64_t tensorKeyOffset;
+    int64_t tensorKeyScaleOffset;
+    int64_t tensorWeightsOffset;
+    int64_t tensorVBiasOffset;
+    int64_t indiceOutOffset;
+    int64_t indiceLenOffset;
     uint32_t promptLen;
 
     bool isFirstS2InnerLoop;
     bool isLastS2InnerLoop;
     bool isNeedLD = false;
-    uint32_t saveWorkSpaceIdx = 0;
+    int64_t saveWorkSpaceIdx = 0LL;
 };
 
 struct ConstInfo {
@@ -167,7 +157,6 @@ struct ConstInfo {
     uint64_t kSeqSize = 0ULL;    // kv最大S长度
     uint64_t qSeqSize = 1ULL;    // q最大S长度
     uint32_t usedCoreNum = 0U;
-    uint32_t causal = 1U;
     uint32_t stemBlockSize = 128U;
     uint32_t stemStride = 16U;
     uint32_t initialBlocks = 4U;
@@ -193,7 +182,7 @@ struct ConstInfo {
 
 struct LdSplitCoreInfo {
     bool isLdCoreEnable = false;    // 当前核是否参与规约任务
-    uint32_t saveWorkSpaceIdx = 0U; // 存放LD参数的地址
+    int64_t saveWorkSpaceIdx = 0LL; // 存放LD参数的地址
     uint32_t bn2Idx = 0U;           // 归约任务
     uint32_t bIdx = 0U;
     uint32_t n2Idx = 0U;
@@ -202,7 +191,7 @@ struct LdSplitCoreInfo {
     uint32_t workspaceNum = 0U; // 当前AIV核上规约任务的S2切分数量
     uint32_t mStart = 0U;
     uint32_t mNum = 0U;
-    uint64_t indiceOutCoreOffset = 0U; // 最终输出索引搬出Topk的初始偏移地址
+    int64_t indiceOutCoreOffset = 0LL; // 最终输出索引搬出Topk的初始偏移地址
 };
 
 struct SplitCoreInfo {

@@ -15,7 +15,7 @@
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-// A6: 9201/9202; all other architectures use the existing A5 kernel.
+// arch-920r1 平台：9201/9202；其余架构均使用现有 A5 kernel。
 #if (defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 9201) || (__NPU_ARCH__ == 9202)))
 #include "arch-920r1/stem_indexer_kernel.h"
 #else

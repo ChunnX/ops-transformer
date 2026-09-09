@@ -190,7 +190,7 @@ def build_pt_payload(case):
 
 
 def init_worker():
-    """Keep each case worker single-threaded to avoid CPU oversubscription."""
+    """每个 case worker 保持单线程，避免 CPU 过度占用。"""
     torch.set_num_threads(1)
     try:
         torch.set_num_interop_threads(1)

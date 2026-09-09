@@ -12,9 +12,8 @@
 
 """Custom op loader for stem_indexer pytest.
 
-The StemIndexer pytest tree should not hard-code one development worktree.  This module
-checks the current torch registry and only loads an external extension when
-`STEM_INDEXER_CUSTOM_OPS_PATH` explicitly points to one.
+StemIndexer pytest 目录不应硬编码某个开发工作区路径。本模块检查当前 torch 注册表，
+仅当 `STEM_INDEXER_CUSTOM_OPS_PATH` 显式指向外部扩展时才加载它。
 """
 
 import glob

@@ -56,7 +56,7 @@ def to_float32(value):
 
 
 def fma_float32(multiplier, multiplicand, addend):
-    # Emulate one correctly rounded float32 multiply-add used by the AICore scalar expression.
+    # 仿真 AICore 标量表达式中一次正确舍入的 float32 乘加。
     return to_float32(float(multiplier) * float(multiplicand) + float(addend))
 
 
