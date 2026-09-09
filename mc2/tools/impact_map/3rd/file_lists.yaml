@@ -1,0 +1,114 @@
+# mc2/3rd 全量匹配清单(消费侧第一步先查本表)
+# 生成: 2026-09-09  基线commit: 949492ae4 (clean)
+# 用途: 对每个修改文件, 先在本表匹配:
+#   1) 扩展名命中 full_regression.non_header_extensions -> 全量
+#   2) cpp路径命中 full_regression.cpp_no_same_header(无同名.h) -> 全量
+#   3) 头路径命中 full_regression.headers_used_by_all_operators -> 全量
+#   4) 头路径命中 full_regression.headers_no_reference -> 全量
+# 其余.h属"测部分算子"类, 改查 {A2,A3,A5}.yaml 取ops; cpp先找同目录同名.h, 按.h规则走
+# 最终算子集需叠加CMake depends反向闭包后去重
+
+full_regression:
+  non_header_extensions:
+    - ".py"
+    - ".json"
+    - ".ini"
+    - ".sh"
+    - ".csv"
+    - ".txt"
+    - ".md"
+  cpp_no_same_header:
+      - 3rd/batch_mat_mul_v3/op_host/batch_mat_mul_v3_def.cpp
+      - 3rd/batch_mat_mul_v3/op_host/batch_mat_mul_v3_infershape.cpp
+      - 3rd/common/op_host/op_api/matmul_util.cpp
+      - 3rd/mat_mul_v3/op_host/mat_mul_v3_def.cpp
+      - 3rd/mat_mul_v3/op_host/mat_mul_v3_infershape.cpp
+      - 3rd/ops_legacy/op_tiling/runtime_kb_api.cpp
+      - 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_registry.cpp
+  headers_used_by_all_operators:
+      - 3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_tiling.h
+      - 3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3_tiling_data.h
+      - 3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h
+      - 3rd/mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h
+      - 3rd/mat_mul_v3/op_kernel/mat_mul_v3_tiling_data.h
+      - 3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmv3_arch35_tiling_data.h
+  headers_no_reference:
+      - 3rd/batch_mat_mul_v3/op_kernel/arch35/batch_mat_mul_v3_asw_al1_full_load_kernel_advanced.h
+      - 3rd/batch_mat_mul_v3/op_kernel/arch35/batch_mat_mul_v3_asw_bl1_full_load_kernel_advanced.h
+      - 3rd/batch_mat_mul_v3/op_kernel/arch35/batch_mat_mul_v3_asw_kernel_advanced.h
+      - 3rd/batch_mat_mul_v3/op_kernel/arch35/batch_mat_mul_v3_iterbatch_basicapi_act.h
+      - 3rd/batch_mat_mul_v3/op_kernel/arch35/batch_mat_mul_v3_iterbatch_kernel_advanced.h
+      - 3rd/mat_mul_v3/op_kernel/arch35/block_scheduler_streamk.h
+      - 3rd/mat_mul_v3/op_kernel/arch35/mat_mul_fixpipe_opti.h
+      - 3rd/mat_mul_v3/op_kernel/arch35/mat_mul_fixpipe_opti_basic_act.h
+      - 3rd/mat_mul_v3/op_kernel/arch35/mat_mul_full_load.h
+      - 3rd/mat_mul_v3/op_kernel/arch35/mat_mul_pingpong_basic_act.h
+      - 3rd/mat_mul_v3/op_kernel/arch35/mat_mul_stream_k_kernel.h
+      - 3rd/mat_mul_v3/op_kernel/arch35/mat_mul_streamk_basic_act.h
+      - 3rd/mat_mul_v3/op_kernel/mat_mul_cvp_base_kernel.h
+      - 3rd/mat_mul_v3/op_kernel/mat_mul_multi_core_splitk_kernel.h
+      - 3rd/mat_mul_v3/op_kernel/mat_mul_optimized_fixpipe_algorithm.h
+      - 3rd/mat_mul_v3/op_kernel/mat_mul_sc_splitk_kernel.h
+      - 3rd/mat_mul_v3/op_kernel/mat_mul_sc_splitk_kernel_gm_to_l1.h
+      - 3rd/mat_mul_v3/op_kernel/mat_mul_unaligned_deterministic_splitk_kernel.h
+      - 3rd/mat_mul_v3/op_kernel/mat_mul_unaligned_sc_splitk_kernel.h
+      - 3rd/mat_mul_v3/op_kernel/mat_mul_unaligned_sc_splitk_kernel_gm_to_l1.h
+      - 3rd/ops_legacy/op_api/aclnn_kernels/pad.h
+      - 3rd/ops_legacy/op_api/aclnn_kernels/slice.h
+      - 3rd/ops_legacy/op_api/level0/add.h
+      - 3rd/ops_legacy/op_api/level0/axpy.h
+      - 3rd/ops_legacy/op_api/level0/broadcast_to.h
+      - 3rd/ops_legacy/op_api/level0/dot.h
+      - 3rd/ops_legacy/op_api/level0/muls.h
+      - 3rd/ops_legacy/op_api/level0/reduce_mean.h
+      - 3rd/ops_legacy/op_api/level0/reduce_sum_op.h
+      - 3rd/ops_legacy/op_api/level0/shape_op.h
+      - 3rd/ops_legacy/op_api/level0/squeeze.h
+      - 3rd/ops_legacy/op_api/level0/unsqueeze.h
+      - 3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_cube_on_the_fly_al1_full_load.h
+      - 3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_mix_online_dynamic_al1_full_load.h
+      - 3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_bf16_basic.h
+      - 3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_bf16_opt.h
+      - 3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_cube_basic.h
+      - 3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_init_output.h
+      - 3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_pertoken_basic.h
+      - 3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_pertoken_opt.h
+      - 3rd/rms_norm/op_kernel/rms_norm_base.h
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_broadcast_inplace_by_column.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_broadcast_inplace_by_row.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_cast.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_elemwise_add.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_elemwise_mul.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_elemwise_muls.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_basic_matmul.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_basic_matmul_tla.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_batched_matmul.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_gemm.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_group_gemm.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_grouped_matmul.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_grouped_matmul_slice_k.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_grouped_matmul_slice_k_per_token_dequant.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_grouped_matmul_slice_m.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_grouped_matmul_slice_m_per_token_dequant.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_grouped_matmul_slice_m_per_token_dequant_multistage_workspace.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_matmul_epilogue.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_optimized_matmul.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_optimized_matmul_tla.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_quant_matmul.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_quant_matmul_multistage_workspace.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_splitk_matmul.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemv/block/tla_gemv_block_gemv.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemv/kernel/tla_gemv_kernel_gemv_aic.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemv/kernel/tla_gemv_kernel_gemv_aiv.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemv/tile/tla_gemv_tile_copy.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemv/tile/tla_gemv_tile_vmad.hpp
+      - 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemv/tile/tla_gemv_tile_vmuls.hpp
+      - 3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass_convertor.h
+      - 3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/n_first/weight_quant_batch_matmul_v2_vcv_basic_block.h
+      - 3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/weight_quant_batch_matmul_v2_adaptive_sliding_window.h
+      - 3rd/weight_quant_batch_matmul_v2/op_kernel/fixpipe/weight_quant_batch_matmul_v2_fixpipe.h
+      - 3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_custom_mix_splitk.h
+      - 3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_custom_nz_splitk.h
+      - 3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_msd_group.h
+      - 3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_msd_multicore.h
+      - 3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_msd_split_k.h
