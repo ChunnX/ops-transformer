@@ -22,10 +22,13 @@
 namespace MegaMoeImpl {
 
 #define TemplateMegaMoeA4W4WaveTypeClass \
-    typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode, \
-        int32_t CombineQuantMode, bool TopkWeightsPrefetch
+    typename XType, typename OutputType, typename TopkWeightsType, typename MoeWeightType, int32_t MoeQuantMode, \
+        typename SharedWeightType, int32_t SharedQuantMode, int32_t MoeWeight1Format, int32_t MoeWeight2Format, \
+        int32_t SharedWeight1Format, int32_t SharedWeight2Format, int32_t CombineQuantMode, bool TopkWeightsPrefetch
 #define TemplateMegaMoeA4W4WaveTypeFunc \
-    XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch
+    XType, OutputType, TopkWeightsType, MoeWeightType, MoeQuantMode, SharedWeightType, SharedQuantMode, \
+        MoeWeight1Format, MoeWeight2Format, SharedWeight1Format, SharedWeight2Format, CombineQuantMode, \
+        TopkWeightsPrefetch
 
 template <TemplateMegaMoeA4W4WaveTypeClass>
 class MegaMoeA4W4Wave : public MegaMoe<TemplateMegaMoeA4W4WaveTypeFunc, false> {
@@ -38,12 +41,8 @@ public:
     __aicore__ inline void Process();
 
 private:
-    using QuantOutType = typename MegaMoeBase::QuantOutType;
-    using ActivationType = typename MegaMoeBase::ActivationType;
-    using QuantScaleOutType = typename MegaMoeBase::QuantScaleOutType;
-    using ActivationQuantOutType = typename MegaMoeBase::ActivationQuantOutType;
+    using MoeQuantConfig = typename MegaMoeBase::MoeQuantConfig;
 
-    static constexpr uint32_t A_ELEMS_PER_BYTE = MegaMoeBase::A_ELEMS_PER_BYTE;
     static constexpr uint32_t GMM1_TILE_M = MegaMoeBase::GMM1_TILE_M;
     static constexpr uint32_t EPILOGUE_TILE_M = MegaMoeBase::EPILOGUE_TILE_M;
 
@@ -96,16 +95,20 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1
     if (HandleWaveProblemWithoutWork(problemTileCount, gmmExecutionConfig_.blockJob, runtimeState.startBlockIdx)) {
         return;
     }
-    UpdateMoeExpertGmm1GlobalBuffer<ActivationType, Weight1Type, ActivationQuantOutType, QuantScaleOutType,
-                                    A_ELEMS_PER_BYTE, false, TopkWeightsPrefetch>(
+    UpdateMoeExpertGmm1GlobalBuffer<
+        typename MoeQuantConfig::QuantStorageType, MoeWeightType, typename MoeQuantConfig::ActivationQuantOutType,
+        typename MoeQuantConfig::QuantScaleType, MoeQuantConfig::A_ELEMS_PER_BYTE, false, TopkWeightsPrefetch>(
         gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, epilogueOp_,
         gmmAddrInfo, state, tokenStartIndexInExpert, gmm1TilesPerMGroup);
     ProblemShape sliceProblemShape = state.problemShape;
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
-    RunGmm1GenericByWeightFormat<QuantOutType, ActivationQuantOutType, QuantScaleOutType, GMM1_TILE_M, EPILOGUE_TILE_M,
-                                 TopkWeightsPrefetch, false, true>(
-        gmmExecutionConfig_, params_, epilogueOp_, gmmAddrInfo, sliceProblemShape,
-        static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert, runtimeState, state.expertIdx);
+    RunGmm1Generic<typename MoeQuantConfig::QuantOutType, typename MoeQuantConfig::ActivationQuantOutType,
+                   typename MoeQuantConfig::QuantOutType, bfloat16_t, typename MoeQuantConfig::QuantScaleType,
+                   typename MoeQuantConfig::QuantScaleType, MoeWeight1Format != FORMAT_ND, GMM1_TILE_M, EPILOGUE_TILE_M,
+                   TopkWeightsPrefetch, false, false, true>(
+        epilogueOp_, params_, sliceProblemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
+        gmmExecutionConfig_.blockJob, static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert,
+        state.expertIdx, runtimeState.pingpongIdx);
 }
 
 template <TemplateMegaMoeA4W4WaveTypeClass>
