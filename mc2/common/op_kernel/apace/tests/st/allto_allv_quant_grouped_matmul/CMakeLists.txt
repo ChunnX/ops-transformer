@@ -64,3 +64,17 @@ target_link_libraries(apace_a2av_gmm_st PRIVATE ${COMMON_LIBS} apace_blaze_api)
 # libhccl_fwk.so 提供 HCCL 内部符号（HcclChannelAcquire 等），
 # --no-as-needed 防止链接器丢弃，放在 OBJECT 之后确保符号解析
 target_link_libraries(apace_a2av_gmm_st PRIVATE "-Wl,--no-as-needed" hccl_fwk "-Wl,--as-needed")
+
+# ---- segment 模式隔离验证（直驱 QuantGroupedMatmulKernel，segW=2）----
+add_executable(apace_seg_gmm_st
+    src/main_seg.cpp
+)
+set_source_files_properties(src/main_seg.cpp PROPERTIES
+    COMPILE_OPTIONS "${KERNEL_OPTS}"
+    INCLUDE_DIRECTORIES "${KERNEL_INCLUDES}"
+)
+target_link_directories(apace_seg_gmm_st PRIVATE
+    ${ASCEND_DIR}/${SYSTEM_PREFIX}/lib64
+    ${ASCEND_DIR}/lib64
+)
+target_link_libraries(apace_seg_gmm_st PRIVATE ${COMMON_LIBS} apace_blaze_api)

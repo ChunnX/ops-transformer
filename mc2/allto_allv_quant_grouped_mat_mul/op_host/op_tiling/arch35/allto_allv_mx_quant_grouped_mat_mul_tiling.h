@@ -17,6 +17,7 @@
 
 #include "allto_allv_quant_grouped_mat_mul_tiling_common.h"
 #include "../../../../3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h"
+#include "apace/kernel/fusions/allto_allv_quant_grouped_matmul/allto_allv_quant_grouped_matmul_tiling_data.h"
 
 namespace optiling {
 class AlltoAllvMXQuantGmmTiling : public AlltoAllvQuantGmmTilingCommon {
@@ -48,6 +49,15 @@ private:
     ge::graphStatus CheckQuantGroupSize() const;
     ge::graphStatus CheckGmmScaleShape() const;
     ge::graphStatus CheckMmScaleShape() const;
+
+protected:
+    // MX 量化 apace 切换路径（参照 AlltoAllMatmul：MX 时切 hcomm 纯 C 核实现）
+    ge::graphStatus GetShapeAttrsInfo() override;
+    ge::graphStatus PostTiling() override;
+    bool CheckApaceImplCapable() const;
+    ge::graphStatus BuildApaceTiling();
+    bool usingApaceImpl_ = false;
+    Apace::hcommA2avQuantGmmTilingData apaceTilingData_{};
 };
 
 class AlltoAllvMXQuantGmmTilingHelper : public Mc2GroupedMatmulTiling::Mc2GroupedQbmmTiling {

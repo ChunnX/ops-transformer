@@ -16,6 +16,7 @@
 #include "allto_allv_mx_quant_grouped_mat_mul_tiling.h"
 #include "mc2_tiling_utils.h"
 #include "mc2_comm_utils.h"
+#include "securec.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -43,8 +44,82 @@ uint64_t AlltoAllvMXQuantGmmTiling::GetTilingKey() const
     if (AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    uint64_t tilingKey = GET_TPL_TILING_KEY(transGmmWeight_, transMmWeight_, commMode);
+    // apace 路径不支持共享专家，transMm 固定取 false
+    const bool transMmForKey = usingApaceImpl_ ? false : transMmWeight_;
+    uint64_t tilingKey = GET_TPL_TILING_KEY(transGmmWeight_, transMmForKey, commMode, usingApaceImpl_);
     return tilingKey;
+}
+
+ge::graphStatus AlltoAllvMXQuantGmmTiling::GetShapeAttrsInfo()
+{
+    // 复用公共 shape/attr 解析，再判定是否切换 apace 实现
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), AlltoAllvQuantGmmTilingCommon::GetShapeAttrsInfo());
+    usingApaceImpl_ = CheckApaceImplCapable();
+    OP_LOGD(context_->GetNodeName(), "AlltoAllvQuantGroupedMatMul usingApaceImpl=%d.", static_cast<int>(usingApaceImpl_));
+    return ge::GRAPH_SUCCESS;
+}
+
+bool AlltoAllvMXQuantGmmTiling::CheckApaceImplCapable() const
+{
+    // 参照 AlltoAllMatmul 的 MX 切 apace 策略：
+    // 无 permute_out 输出、无共享专家（mm 路径）、rank 数与段数在 apace 表容量内时，
+    // MX 量化场景切换 hcomm 纯 C 核（AIC_ONLY）实现
+    if (permuteOutFlag_ || hasSharedExpertFlag_) {
+        return false;
+    }
+    if (epWorldSize_ == 0 || epWorldSize_ > A2AV_GMM_MAX_RANK_NUM) {
+        return false;
+    }
+    if (e_ * epWorldSize_ > Apace::A2AV_GMM_MAX_SEG_NUM) {
+        return false;
+    }
+    return true;
+}
+
+ge::graphStatus AlltoAllvMXQuantGmmTiling::BuildApaceTiling()
+{
+    const char *opName = context_->GetNodeName();
+    // workspace 布局与主线一致：[0, permuteOutSize_) 数据接收区，之后为 scale 接收区
+    Apace::BuildHcommA2avQuantGmmTiling(static_cast<uint32_t>(epWorldSize_), static_cast<uint32_t>(e_),
+                                         static_cast<uint32_t>(h1_), static_cast<uint32_t>(n1_), transGmmWeight_,
+                                         gmmXDataType_ == ge::DT_FLOAT4_E2M1, sendCounts, recvCounts, aicCoreNum_, 0,
+                                         permuteOutSize_, apaceTilingData_);
+    apaceTilingData_.mc2InitTiling = tilingData->hcclA2avTilingInfo.hcclInitTiling;
+    apaceTilingData_.mc2CcTiling = tilingData->hcclA2avTilingInfo.a2avCcTiling;
+    OP_LOGI(opName,
+            "apace tiling: W=%lu E=%lu K=%lu N=%lu transB=%d segNum=%u totalRecv=%u baseM=%u baseN=%u baseK=%u kAL1=%u "
+            "scaleRecvOffset=%lu",
+            epWorldSize_, e_, h1_, n1_, static_cast<int>(transGmmWeight_), apaceTilingData_.segNum,
+            apaceTilingData_.segList[apaceTilingData_.segNum - 1], apaceTilingData_.baseM, apaceTilingData_.baseN,
+            apaceTilingData_.baseK, apaceTilingData_.kAL1, apaceTilingData_.scaleRecvOffset);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus AlltoAllvMXQuantGmmTiling::PostTiling()
+{
+    // 先走公共 PostTiling（填充主线结构体：hccl tiling、counts 等）
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), AlltoAllvQuantGmmTilingCommon::PostTiling());
+    if (!usingApaceImpl_) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const char *opName = context_->GetNodeName();
+    MC2_CHECK_LOG_RET(opName, BuildApaceTiling());
+    // 以 apace 结构体覆写 tiling buffer，并按 AIC_ONLY 调整 blockDim
+    auto *rawTiling = context_->GetRawTilingData();
+    OP_TILING_CHECK(rawTiling == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "rawTilingData"),
+                    return ge::GRAPH_FAILED);
+    size_t tilingBufCap = rawTiling->GetCapacity();
+    OP_TILING_CHECK(tilingBufCap < sizeof(Apace::hcommA2avQuantGmmTilingData),
+                    OP_LOGE_WITHOUT_REPORT(opName, "tiling buffer capacity %zu is less than apace tiling size %zu.",
+                                           tilingBufCap, sizeof(Apace::hcommA2avQuantGmmTilingData)),
+                    return ge::GRAPH_FAILED);
+    errno_t ret = memcpy_s(rawTiling->GetData(), tilingBufCap, &apaceTilingData_,
+                           sizeof(Apace::hcommA2avQuantGmmTilingData));
+    OP_TILING_CHECK(ret != EOK, OP_LOGE_WITHOUT_REPORT(opName, "memcpy_s apace tiling data failed, ret=%d.", ret),
+                    return ge::GRAPH_FAILED);
+    rawTiling->SetDataSize(sizeof(Apace::hcommA2avQuantGmmTilingData));
+    context_->SetBlockDim(aicCoreNum_);
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckInputDtype() const

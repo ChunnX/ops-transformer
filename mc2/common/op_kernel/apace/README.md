@@ -61,7 +61,7 @@ apace/
 ### 核心算子：AllToAllvQuantGroupedMatmul（MXFP 量化）
 
 `kernel/fusions/allto_allv_quant_grouped_matmul/` 实现 AllToAllv + MX 量化 GroupedMatMul 融合算子，
-语义对齐 `aclnnAlltoAllvQuantGroupedMatMul`（MX 模式，gmm 路径）：
+语义对齐 `aclnnAlltoAllvQuantGroupedMatMul`（MX 模式，gmm 路径），提供两个实现变体：
 
 - **输入**：`gmm_x [BSK, H1]`（E4M3/E5M2）、`gmm_x_scale [BSK, ceildiv(H1,64), 2]`（E8M0）、
   `gmm_weight`（`transB=0: [E, H1, N1]` / `transB=1: [E, N1, H1]`）、
@@ -71,6 +71,10 @@ apace/
   位置，免去通信后的独立 permute；本 rank 自身段经 UB 中转落窗；
 - **计算**：AIC 侧 `kernel/matmul/grouped_matmul/qgmm_mx_kernel.h` 以 groupList（累计行数）驱动
   Blaze `BlockMmad<GroupedMatmulWithScaleMx>` 分组 MX 量化 Matmul，支持 M/N 尾块切分与负载均衡；
+- **hcomm 变体**（`*_hcomm_impl.h`，供算子集成）：通信走 AIC 核内 `Hccl<>::AlltoAllV`（变长原生支持），
+  rank-major 接收布局由“段式分组”直接消费——每个 (expert, srcRank) 段为独立计算分组，
+  免去独立 permute；算子 `AlltoAllvQuantGroupedMatMul` 在 MX 量化且无共享专家/无 permute_out 时
+  由 tiling 自动切换到该路径（AIC_ONLY 纯 C 核），参照 AlltoAllMatmul 的“MX 切 apace”模式；
 - **约束**：`H1 % 1024 == 0`（MX scale 通信 32B 对齐）；`rankSize ≤ 16`、单卡专家数 ≤ 32；
   共享专家（mm 路径）与 `permute_out` 输出暂不支持。
 

@@ -101,14 +101,24 @@ public:
 
     /*!
      * \brief kernel 顶层参数
+     *
+     * 两种分组模式：
+     *  - expert-major（segW == 0）：A/C 行序与分组列表一致（组 e 行区间 [start_e, start_e + rows_e)），
+     *    B/scaleB 按组 stride 推进，适用 UDMA 直写落窗场景；
+     *  - segment（segW != 0）：groupList 为 W*E 个 (expert, srcRank) 段的累计行数（rank-major 通信输出
+     *    布局直接消费），segIdx = expert * segW + src；段在 A（含 scaleA，行偏移同数据）与 C 的行偏移
+     *    由 segAOff/segCOff 显式给出，B/scaleB 偏移按段所属 expert 推进。
      */
     struct Params {
-        __gm__ AType *aBasePtr;              // [totalM, K] 量化 A（expert-major）
+        __gm__ AType *aBasePtr;              // [totalM, K] 量化 A
         __gm__ fp8_e8m0_t *scaleABasePtr;    // [totalM, scaleKLen] A 的 MX scale
         __gm__ BType *bBasePtr;              // [groupNum, K, N] / [groupNum, N, K] 权重
         __gm__ fp8_e8m0_t *scaleBBasePtr;    // 权重 MX scale（布局随 TransB）
         __gm__ CType *cBasePtr;              // [totalM, N] 输出
         __gm__ const uint32_t *groupList;    // 累计行数分组列表，长度 groupNum
+        __gm__ const uint32_t *segAOff{nullptr}; // 段模式：段在 A/scaleA 的行偏移表（null = expert-major）
+        __gm__ const uint32_t *segCOff{nullptr}; // 段模式：段在 C 的行偏移表
+        uint32_t segW{0};                    // 段模式 rank 数（0 = expert-major 模式）
         GMMTiling gmm;
     };
 
@@ -217,6 +227,9 @@ private:
         curBaseM_ = params.gmm.baseM;
         baseN_ = params.gmm.baseN;
         preGroupOffset_ = 0;
+        segAOffGm_ = params.segAOff;
+        segCOffGm_ = params.segCOff;
+        segW_ = params.segW;
 
         const BlockShape l0Shape{static_cast<int64_t>(params.gmm.baseM), static_cast<int64_t>(params.gmm.baseN),
                                  static_cast<int64_t>(params.gmm.baseK), 0};
@@ -241,12 +254,40 @@ private:
 
         mmadOp_.UpdateParamsForNextProblem(ProblemShape{problemM, n_, k_, 0});
 
-        // 组内偏移：A/scaleA/C 按累计行数推进；B/scaleB 按组 stride 推进
-        const int64_t aOffset = groupStart * k_;
-        const int64_t scaleAOffset = groupStart * scaleK;
-        const int64_t bOffset = static_cast<int64_t>(groupIdx) * k_ * n_;
-        const int64_t scaleBOffset = static_cast<int64_t>(groupIdx) * n_ * scaleK;
-        const int64_t cOffset = groupStart * n_;
+        // 组内偏移：分段模式下 (expert, srcRank) 段的 A/scaleA/C 行偏移由段表显式给出，
+        // B/scaleB 按段所属 expert 推进（segIdx = expert * segW + src）；
+        // expert-major 模式下 A/scaleA/C 按累计行数推进，B/scaleB 按组 stride 推进。
+        // fp4 打包存储（2 个元素 1 字节），A/B 的元素偏移需减半，scale 为 e8m0 不受影响。
+        int64_t aOffset;
+        int64_t scaleAOffset;
+        int64_t bOffset;
+        int64_t scaleBOffset;
+        int64_t cOffset;
+        if (segW_ != 0) {
+            const uint32_t expertIdx = static_cast<uint32_t>(groupIdx) / segW_;
+            const int64_t aRowOff = static_cast<int64_t>(segAOffGm_[groupIdx]);
+            const int64_t cRowOff = static_cast<int64_t>(segCOffGm_[groupIdx]);
+            aOffset = Blaze::Gemm::IsFp4<AType>() ? ((aRowOff * k_) >> 1) : (aRowOff * k_);
+            scaleAOffset = aRowOff * scaleK;
+            bOffset = static_cast<int64_t>(expertIdx) * k_ * n_;
+            if (Blaze::Gemm::IsFp4<BType>()) {
+                bOffset >>= 1;
+            }
+            scaleBOffset = static_cast<int64_t>(expertIdx) * n_ * scaleK;
+            cOffset = cRowOff * n_;
+        } else {
+            aOffset = groupStart * k_;
+            if (Blaze::Gemm::IsFp4<AType>()) {
+                aOffset >>= 1;
+            }
+            scaleAOffset = groupStart * scaleK;
+            bOffset = static_cast<int64_t>(groupIdx) * k_ * n_;
+            if (Blaze::Gemm::IsFp4<BType>()) {
+                bOffset >>= 1;
+            }
+            scaleBOffset = static_cast<int64_t>(groupIdx) * n_ * scaleK;
+            cOffset = groupStart * n_;
+        }
 
         auto layoutA = MakeLayoutA{}(problemM, k_);
         auto layoutScaleA = MakeLayoutScaleA{}(problemM, scaleK);
@@ -293,6 +334,9 @@ private:
 private:
     BlockMmad mmadOp_;
     __gm__ const uint32_t *groupListGm_{nullptr};
+    __gm__ const uint32_t *segAOffGm_{nullptr};
+    __gm__ const uint32_t *segCOffGm_{nullptr};
+    uint32_t segW_{0};
     int64_t preGroupOffset_{0};
     int64_t n_{0};
     int64_t k_{0};

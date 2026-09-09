@@ -20,10 +20,16 @@
 #include "../allto_allv_quant_grouped_mat_mul_tiling_key.h"
 #include "../allto_allv_quant_grouped_mat_mul_tiling.h"
 #include "../mc2_templates/mc2_templates.h"
+#include "../../../common/op_kernel/apace/kernel/fusions/allto_allv_quant_grouped_matmul/allto_allv_quant_grouped_matmul_tiling_data.h"
+#include "../../../common/op_kernel/apace/kernel/fusions/allto_allv_quant_grouped_matmul/allto_allv_quant_grouped_matmul_hcomm_impl.h"
 
 using namespace AscendC;
 using namespace MC2KernelTemplate;
 using namespace Mc2GroupedMatmulTilingData;
+
+// tiling buffer 容量以主线（非 apace）结构体注册，apace 结构体必须不大于该容量
+static_assert(sizeof(QuantAlltoAllvGroupedMatmulTilingData) >= sizeof(Apace::hcommA2avQuantGmmTilingData),
+              "apace tiling struct must fit in registered tiling buffer");
 
 #define INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL() \
     do { \
@@ -33,7 +39,29 @@ using namespace Mc2GroupedMatmulTilingData;
         op.Process(); \
     } while (0)
 
-template <bool TILINGKEY_GMM_WEIGHT_TRANSPOSE, bool TILINGKEY_MM_WEIGHT_TRANSPOSE, int TILINGKEY_COMM_MODE>
+// MX 量化 apace 切换路径支持的量化数据类型（受 Blaze MX mmad 类型约束，不含 hifloat8）
+#if (ORIG_DTYPE_GMM_X == DT_FLOAT8_E4M3FN || ORIG_DTYPE_GMM_X == DT_FLOAT8_E5M2 || \
+     ORIG_DTYPE_GMM_X == DT_FLOAT4_E2M1) && \
+    (ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E4M3FN || ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT8_E5M2 || \
+     ORIG_DTYPE_GMM_WEIGHT == DT_FLOAT4_E2M1)
+#define A2AV_APACE_DTYPE_SUPPORTED 1
+#else
+#define A2AV_APACE_DTYPE_SUPPORTED 0
+#endif
+
+// MX 量化 apace 切换路径：hcomm 纯 C 核通信 + 段式分组量化 Matmul（AIC_ONLY）
+#define INVOKE_ALLTOALLV_QUANT_GMM_APACE_IMPL(hcclServerType) \
+    do { \
+        GET_TILING_DATA_WITH_STRUCT(Apace::hcommA2avQuantGmmTilingData, tilingData, tilingGM); \
+        Apace::AllToAllvQuantGmmHcommImpl<DTYPE_GMM_X, DTYPE_GMM_WEIGHT, DTYPE_GMM_Y, \
+                                          TILINGKEY_GMM_WEIGHT_TRANSPOSE, hcclServerType> \
+            op(&tilingData); \
+        op.Init(gmmxGM, gmmxScaleGM, gmmweightGM, gmmWeightScaleGM, gmmyGM, userWorkspace, tilingGM); \
+        op.Run(); \
+    } while (0)
+
+template <bool TILINGKEY_GMM_WEIGHT_TRANSPOSE, bool TILINGKEY_MM_WEIGHT_TRANSPOSE, int TILINGKEY_COMM_MODE,
+          bool TILINGKEY_USING_APACE_IMPL>
 __global__ __aicore__ void allto_allv_quant_grouped_mat_mul(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM,
     GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM, GM_ADDR mmxOptionalGM,
@@ -43,6 +71,15 @@ __global__ __aicore__ void allto_allv_quant_grouped_mat_mul(
     SetSysWorkspace(workspaceGM);
     GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspaceGM);
     if (userWorkspace == nullptr) {
+        return;
+    }
+    if constexpr (TILINGKEY_USING_APACE_IMPL && A2AV_APACE_DTYPE_SUPPORTED) {
+        // kernel task type 由 tiling key 的 TPL_KERNEL_TYPE_SEL 指定为 AIC_ONLY
+        if constexpr (TILINGKEY_COMM_MODE == TILINGKEY_TPL_CCU) {
+            INVOKE_ALLTOALLV_QUANT_GMM_APACE_IMPL(AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU);
+        } else {
+            INVOKE_ALLTOALLV_QUANT_GMM_APACE_IMPL(AscendC::HcclServerType::HCCL_SERVER_TYPE_AICPU);
+        }
         return;
     }
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);

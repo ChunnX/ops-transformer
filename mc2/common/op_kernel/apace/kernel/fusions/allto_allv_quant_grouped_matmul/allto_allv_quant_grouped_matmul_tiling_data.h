@@ -27,7 +27,7 @@
 
 #include <cstdint>
 #include <algorithm>
-#include "apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
+#include "kernel_tiling/kernel_tiling.h" // Mc2InitTiling / Mc2CcTiling
 
 // 表容量约束（与结构体固定数组配套）
 constexpr uint32_t A2AV_GMM_MAX_RANK_NUM = 16;   // 最大 rank 数
@@ -189,12 +189,16 @@ inline void BuildAllToAllvQuantGmmTiling(uint32_t rankId, uint32_t rankSize, uin
         tiling.baseM = ceilAlign(maxByL0, 16U);
     }
     tiling.baseN = std::min(std::min(n, 256U), maxByL0);
-    // L0C 双缓冲约束：baseM * baseN * 4B <= 128KB
-    const uint32_t maxNByL0c = std::max(16U, 32768U / tiling.baseM);
+    // L0C 双缓冲约束：baseM * baseN * 4B <= 128KB（先按对齐粒度向下取整，防止 ceilAlign 回推超限）
+    const uint32_t nAlign = transB ? 16U : 32U;
+    uint32_t maxNByL0c = (std::max<uint32_t>(nAlign, 32768U / tiling.baseM) / nAlign) * nAlign;
     if (tiling.baseN > maxNByL0c) {
         tiling.baseN = maxNByL0c;
     }
-    tiling.baseN = ceilAlign(tiling.baseN, transB ? 16U : 32U);
+    tiling.baseN = ceilAlign(tiling.baseN, nAlign);
+    if (tiling.baseN > maxNByL0c) {
+        tiling.baseN = maxNByL0c;
+    }
     // L1 半区预算（A + B + scale）：约 220KB
     const uint64_t l1Budget = 220UL * 1024UL;
     uint64_t kAL1 = std::min<uint64_t>(k, 512U);
@@ -208,3 +212,214 @@ inline void BuildAllToAllvQuantGmmTiling(uint32_t rankId, uint32_t rankSize, uin
     tiling.scaleKAL1 = tiling.kAL1; // MX 要求 scaleKAL1 == scaleKBL1
 }
 
+// =====================================================================================
+// hcomm（HCCL 集合通信）版本：供算子 op_host/op_kernel 集成使用
+//
+// 与 UDMA 直写版本不同，本版本通过 Hccl<>::AlltoAllV 完成变长通信（AIC 核内下发），
+// 通信输出为 rank-major 布局；GMM 计算按“段式分组”直接消费该布局：
+// 每个 (expert, srcRank) 段是一个独立计算分组（段内 A/scaleA/C 连续），
+// 免去通信后的独立 permute 步骤。
+// =====================================================================================
+
+namespace Apace {
+
+// 段数上限：W*E（与算子侧 MAX_EXPERT_SIZE 对齐）
+constexpr uint32_t A2AV_GMM_MAX_SEG_NUM = 256;
+
+/*!
+ * \brief hcomm 版 tiling 数据（host 构建后随 kernel tiling buffer 下发）
+ */
+struct hcommA2avQuantGmmTilingData {
+    Mc2InitTiling mc2InitTiling; // 复用算子侧 SetHcclTiling 结果
+    Mc2CcTiling mc2CcTiling;
+    // 问题维度
+    uint32_t rankSize{0};
+    uint32_t expertNum{0}; // 本 rank 专家数 E
+    uint32_t k{0};         // H1（元素计）
+    uint32_t n{0};         // N1
+    uint32_t transB{0};
+    uint32_t scaleKLen{0}; // ceildiv(K,64)*2
+    uint32_t isMxFp4{0};
+    uint32_t segNum{0};      // 段数 = W*E
+    uint32_t usedCoreNum{0}; // AIC 核数
+    // workspace 内通信缓冲偏移（字节）
+    uint64_t dataRecvOffset{0};  // 数据接收区
+    uint64_t scaleRecvOffset{0}; // scale 接收区
+    // AlltoAllV 通信参数（元素计，axis 已乘入；fp4 场景数据 axis 为打包字节数）
+    uint64_t dataSendCnt[A2AV_GMM_MAX_RANK_NUM]{0};
+    uint64_t dataSendOff[A2AV_GMM_MAX_RANK_NUM]{0};
+    uint64_t dataRecvCnt[A2AV_GMM_MAX_RANK_NUM]{0};
+    uint64_t dataRecvOff[A2AV_GMM_MAX_RANK_NUM]{0};
+    uint64_t scaleSendCnt[A2AV_GMM_MAX_RANK_NUM]{0};
+    uint64_t scaleSendOff[A2AV_GMM_MAX_RANK_NUM]{0};
+    uint64_t scaleRecvCnt[A2AV_GMM_MAX_RANK_NUM]{0};
+    uint64_t scaleRecvOff[A2AV_GMM_MAX_RANK_NUM]{0};
+    // 段表（expert-major：segIdx = e*W + s）
+    uint32_t segList[A2AV_GMM_MAX_SEG_NUM + 1]{0}; // 段累计行数（kernel 分组列表）
+    uint32_t segAOff[A2AV_GMM_MAX_SEG_NUM]{0};     // 段在数据/scale 接收区的行偏移
+    uint32_t segCOff[A2AV_GMM_MAX_SEG_NUM]{0};     // 段在 gmm_y 输出的行偏移
+    // GMM 计算 tiling
+    uint32_t baseM{0};
+    uint32_t baseN{0};
+    uint32_t baseK{0};
+    uint32_t kAL1{0};
+    uint32_t kBL1{0};
+    uint32_t scaleKAL1{0};
+    uint32_t localMatmul{0}; // 预留
+};
+
+/*!
+ * \brief host 侧 hcomm 版 tiling 构建。
+ *
+ * \param[in]  rankSize       world size W
+ * \param[in]  expertNum      本 rank 专家数 E
+ * \param[in]  k              H1（元素计）
+ * \param[in]  n              N1
+ * \param[in]  transB         权重是否转置（[E,N,K] 存放）
+ * \param[in]  isMxFp4        量化数据是否 fp4（打包存储）
+ * \param[in]  sendCounts     本 rank 发送计数，布局 [dst][e]：sendCounts[dst*E + e]
+ * \param[in]  recvCounts     本 rank 接收计数，布局 [src][e]：recvCounts[src*E + e]
+ * \param[in]  usedCoreNum    AIC 核数
+ * \param[in]  dataRecvOffset workspace 内数据接收区偏移（字节）
+ * \param[in]  scaleRecvOffset workspace 内 scale 接收区偏移（字节）
+ * \param[out] tiling         输出（mc2InitTiling/mc2CcTiling 由调用方另行填充）
+ */
+inline void BuildHcommA2avQuantGmmTiling(uint32_t rankSize, uint32_t expertNum, uint32_t k, uint32_t n, bool transB,
+                                         bool isMxFp4, const int64_t *sendCounts, const int64_t *recvCounts,
+                                         uint32_t usedCoreNum, uint64_t dataRecvOffset, uint64_t scaleRecvOffset,
+                                         hcommA2avQuantGmmTilingData &tiling)
+{
+    tiling = {};
+    tiling.rankSize = rankSize;
+    tiling.expertNum = expertNum;
+    tiling.k = k;
+    tiling.n = n;
+    tiling.transB = transB ? 1U : 0U;
+    tiling.isMxFp4 = isMxFp4 ? 1U : 0U;
+    tiling.usedCoreNum = usedCoreNum;
+    tiling.dataRecvOffset = dataRecvOffset;
+    tiling.scaleRecvOffset = scaleRecvOffset;
+    tiling.segNum = rankSize * expertNum;
+    tiling.scaleKLen = static_cast<uint32_t>(((k + 63U) / 64U) * 2U);
+
+    auto sendAt = [sendCounts, expertNum](uint32_t d, uint32_t e) -> int64_t {
+        return sendCounts[d * expertNum + e];
+    };
+    auto recvAt = [recvCounts, expertNum](uint32_t s, uint32_t e) -> int64_t {
+        return recvCounts[s * expertNum + e];
+    };
+
+    // ---- AlltoAllV 通信参数（axis 乘入，元素计）----
+    const uint64_t dataAxis = isMxFp4 ? static_cast<uint64_t>((k + 1U) / 2U) : static_cast<uint64_t>(k);
+    const uint64_t scaleAxis = static_cast<uint64_t>(tiling.scaleKLen);
+    for (uint32_t i = 0; i < rankSize; ++i) {
+        uint64_t sendRows = 0;
+        uint64_t recvRows = 0;
+        for (uint32_t e = 0; e < expertNum; ++e) {
+            sendRows += static_cast<uint64_t>(sendAt(i, e));
+            recvRows += static_cast<uint64_t>(recvAt(i, e));
+        }
+        tiling.dataSendCnt[i] = sendRows * dataAxis;
+        tiling.dataRecvCnt[i] = recvRows * dataAxis;
+        tiling.scaleSendCnt[i] = sendRows * scaleAxis;
+        tiling.scaleRecvCnt[i] = recvRows * scaleAxis;
+    }
+    tiling.dataSendOff[0] = 0;
+    tiling.dataRecvOff[0] = 0;
+    tiling.scaleSendOff[0] = 0;
+    tiling.scaleRecvOff[0] = 0;
+    for (uint32_t i = 1; i < rankSize; ++i) {
+        tiling.dataSendOff[i] = tiling.dataSendOff[i - 1] + tiling.dataSendCnt[i - 1];
+        tiling.dataRecvOff[i] = tiling.dataRecvOff[i - 1] + tiling.dataRecvCnt[i - 1];
+        tiling.scaleSendOff[i] = tiling.scaleSendOff[i - 1] + tiling.scaleSendCnt[i - 1];
+        tiling.scaleRecvOff[i] = tiling.scaleRecvOff[i - 1] + tiling.scaleRecvCnt[i - 1];
+    }
+
+    // ---- 段表（expert-major：segIdx = e*W + s）----
+    // 接收区 rank-major：src s 区起始行 = sum_{s'<s} sum_e recvCnt(s', e)
+    // 组 e 的段 (s) 数据行偏移 = src 区起始行 + sum_{e'<e} recvCnt(s, e')
+    // 输出 expert-major：expert e 输出区起始行 = sum_{e'<e} sum_s recvCnt(s, e')
+    //                   段 (e, s) 输出行偏移 = expert 起始 + sum_{s'<s} recvCnt(s', e)
+    uint32_t srcStart[A2AV_GMM_MAX_RANK_NUM] = {0};
+    uint32_t expertStart[A2AV_GMM_MAX_SEG_NUM] = {0};
+    {
+        uint32_t running = 0;
+        for (uint32_t s = 0; s < rankSize; ++s) {
+            srcStart[s] = running;
+            for (uint32_t e = 0; e < expertNum; ++e) {
+                running += static_cast<uint32_t>(recvAt(s, e));
+            }
+        }
+    }
+    {
+        uint32_t running = 0;
+        for (uint32_t e = 0; e < expertNum; ++e) {
+            expertStart[e] = running;
+            for (uint32_t s = 0; s < rankSize; ++s) {
+                running += static_cast<uint32_t>(recvAt(s, e));
+            }
+        }
+    }
+    uint32_t segCum = 0;
+    for (uint32_t e = 0; e < expertNum; ++e) {
+        uint32_t srcPrefix = 0; // sum_{s'<s} recvCnt(s', e)，输出侧行偏移
+        for (uint32_t s = 0; s < rankSize; ++s) {
+            const uint32_t segIdx = e * rankSize + s;
+            const uint32_t rows = static_cast<uint32_t>(recvAt(s, e));
+            // 数据/scale 段行偏移（行数相同，scale 每行 scaleKLen 字节）
+            uint32_t ePrefix = 0; // sum_{e'<e} recvCnt(s, e')
+            for (uint32_t e2 = 0; e2 < e; ++e2) {
+                ePrefix += static_cast<uint32_t>(recvAt(s, e2));
+            }
+            tiling.segAOff[segIdx] = srcStart[s] + ePrefix;
+            tiling.segCOff[segIdx] = expertStart[e] + srcPrefix;
+            srcPrefix += rows;
+            segCum += rows;
+            // segList 为包含式累计（list[i] = 前 i+1 段总行数），与 kernel GetGroupRows 语义一致
+            tiling.segList[segIdx] = segCum;
+        }
+    }
+
+    // ---- GMM 计算 tiling（dav-3510 保守取值，L1 512KB / L0A,L0B 64KB / L0C 256KB）----
+    auto ceilAlign = [](uint32_t v, uint32_t align) -> uint32_t {
+        return (v + align - 1U) / align * align;
+    };
+    uint32_t maxSegRows = 1;
+    for (uint32_t seg = 0; seg < tiling.segNum; ++seg) {
+        const uint32_t rows = tiling.segList[seg + 1] - tiling.segList[seg];
+        maxSegRows = std::max(maxSegRows, rows);
+    }
+    tiling.baseK = std::min(k, 128U);
+    tiling.baseK = ceilAlign(tiling.baseK, 64U); // MX mmad 要求 baseK 对齐 64
+    // L0A/L0B pingpong 半区约束：baseM * baseK <= 32KB 且 baseN * baseK <= 32KB
+    const uint32_t maxByL0 = std::max(16U, 32768U / tiling.baseK);
+    tiling.baseM = std::min(std::min(maxSegRows, 256U), maxByL0);
+    tiling.baseM = ceilAlign(tiling.baseM, 16U); // CUBE_BLOCK
+    if (tiling.baseM > maxByL0) {
+        tiling.baseM = ceilAlign(maxByL0, 16U);
+    }
+    tiling.baseN = std::min(std::min(n, 256U), maxByL0);
+    // L0C 双缓冲约束：baseM * baseN * 4B <= 128KB（先按对齐粒度向下取整，防止 ceilAlign 回推超限）
+    const uint32_t nAlign = transB ? 16U : 32U;
+    uint32_t maxNByL0c = (std::max<uint32_t>(nAlign, 32768U / tiling.baseM) / nAlign) * nAlign;
+    if (tiling.baseN > maxNByL0c) {
+        tiling.baseN = maxNByL0c;
+    }
+    tiling.baseN = ceilAlign(tiling.baseN, nAlign);
+    if (tiling.baseN > maxNByL0c) {
+        tiling.baseN = maxNByL0c;
+    }
+    // L1 半区预算（A + B + scale）：约 220KB
+    const uint64_t l1Budget = 220UL * 1024UL;
+    uint64_t kAL1 = std::min<uint64_t>(k, 512U);
+    const uint64_t perK = static_cast<uint64_t>(tiling.baseM) + tiling.baseN +
+                          (static_cast<uint64_t>(tiling.baseM) + tiling.baseN) / 32U;
+    while (kAL1 > 64U && kAL1 * perK > l1Budget) {
+        kAL1 -= 64U;
+    }
+    tiling.kAL1 = static_cast<uint32_t>(ceilAlign(static_cast<uint32_t>(kAL1), 64U));
+    tiling.kBL1 = tiling.kAL1;
+    tiling.scaleKAL1 = tiling.kAL1; // MX 要求 scaleKAL1 == scaleKBL1
+}
+
+} // namespace Apace

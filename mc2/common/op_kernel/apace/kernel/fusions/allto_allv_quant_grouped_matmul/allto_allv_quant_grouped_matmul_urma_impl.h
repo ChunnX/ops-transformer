@@ -31,6 +31,7 @@
 #include "blaze/gemm/utils/common_utils.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "allto_allv_quant_grouped_matmul_tiling_data.h"
+#include "apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h" // CommContext
 
 #include "apace/core/aiv_comm/collective_comm_context.h"
 #include "apace/core/aiv_comm/barrier/barrier_ubmem.h"
