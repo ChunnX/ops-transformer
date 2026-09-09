@@ -157,6 +157,8 @@ void DeserializeRegbaseTilingData(const TilingInfo &tilingInfo,
     READ_TILING_FIELD(int64_t, bufferPool0Size);
     READ_TILING_FIELD(int64_t, bufferPool1Size);
     READ_TILING_FIELD(int64_t, mUbSize);
+    READ_TILING_FIELD(int64_t, sinkhornCoreNum);
+    READ_TILING_FIELD(int64_t, sinkhornRowFactor);
 #undef READ_TILING_FIELD
     EXPECT_EQ(offset, tilingInfo.tilingDataSize) << "Regbase tiling data schema changed; update the deserializer";
 }
