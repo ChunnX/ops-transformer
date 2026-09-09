@@ -29,7 +29,7 @@ uint32_t QuantLightningIndexerV2MetadataCpuKernel::Compute(CpuKernelContext &ctx
 
 bool QuantLightningIndexerV2MetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 {
-    // input
+    // input.
     cuSeqlensQ_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenQ));
     cuSeqlensK_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenK));
     sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedQ));
