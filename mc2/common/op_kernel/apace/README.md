@@ -76,7 +76,10 @@ apace/
 
 ### tiling
 
-提供量化 Matmul 切分算法（含 MX baseline 与 SWAT 切分策略）及通信 `CommTilingData` 结构定义，同时供 host 侧切分与 kernel 侧通信使用。
+提供三类内容：
+1. `matmul_tiling/quant_matmul_tiling.h`：量化 Matmul 切分引擎（共享类型 + 公共工作流 + SWAT 特化），`quant_matmul_tiling_data.h` 为 host-device 契约的序列化结果；
+2. `apace_tiling_data_def.h`：通信切分公共数据结构 `CommTilingData`（host 切分与 kernel 通信共用）；
+3. 通信切分策略：`wave_aligned_comm_tiling.h`（计算波对齐/核利用率优先）与 `fit_balance_tiling.h`（基于标定时延模型的通算配平，算子特有逻辑与拟合数据在各算子 `op_host/op_tiling` 侧维护）。
 
 ### utils
 

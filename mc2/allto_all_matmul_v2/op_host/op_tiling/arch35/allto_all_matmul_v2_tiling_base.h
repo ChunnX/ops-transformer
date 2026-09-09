@@ -18,8 +18,9 @@
 #include <ascendc/host_api/tiling/template_argument.h>
 #include "securec.h"
 #include "apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
-#include "apace/tiling/quant_matmul_tiling_swat.h"
-#include "apace/tiling/comm_tiling_base.h"
+#include "apace/tiling/matmul_tiling/quant_matmul_tiling.h"
+#include "apace/tiling/wave_aligned_comm_tiling.h"
+#include "allto_all_matmul_v2_fit_balance_tiling.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "op_host/tiling_base.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
@@ -703,12 +704,39 @@ protected:
             return ge::GRAPH_FAILED;
         }
 
-        apace::CommTilingBase::GetCommTilingData(m_, n_, ka, mm, td->commTilingData, td->scaleCommTilingData);
+        // fit-balance 通信切分: 环境开关 + 标定数据就绪时启用, 否则走现有 WaveAlignedCommTiling 路径。
+        // 逻辑与拟合数据来源见 allto_all_matmul_v2_fit_balance_tiling.h。
+        bool fitBalanceUsed = false;
+        if (fit_balance::IsEnabled()) {
+            fit_balance::AllToAllFitBalanceInput fbInput;
+            if (fit_balance::BuildScheduleInput(m_, n_, ka, static_cast<uint32_t>(worldSize_),
+                                                x1Dtype == ge::DT_FLOAT4_E2M1, precisionMode_, mm.baseM, mm.baseN,
+                                                mm.usedCoreNum, fbInput)) {
+                const fit_balance::AllToAllFitBalanceResult fbRes = fit_balance::Schedule(fbInput);
+                fit_balance::FillCommTilingData(fbRes, td->commTilingData, td->scaleCommTilingData);
+                fitBalanceUsed = true;
+                OP_LOGI(opName,
+                        "fit-balance comm tiling: k=%lu, rounds=%lu, head=%lu x%lu, tail=%lu x%lu, merged=%d, "
+                        "ratio=%.3f, est=%.1fus (k=1 est=%.1fus), noCut=%d",
+                        fbRes.cut.chosenK, fbRes.cut.rounds, fbRes.cut.headSize, fbRes.cut.headCnt, fbRes.cut.tailSize,
+                        fbRes.cut.tailCnt, static_cast<int32_t>(fbRes.cut.mergedTail), fbRes.cut.ratioCalcComm,
+                        fbRes.cut.estTimeUs, fbRes.cut.estTimeUsK1, static_cast<int32_t>(fbRes.cut.noCut));
+            } else {
+                OP_LOGI(opName,
+                        "fit-balance tiling: calibrated data missing (rankDim=%lu, fp4=%d, mode=%u), "
+                        "fallback to WaveAlignedCommTiling",
+                        worldSize_, static_cast<int32_t>(x1Dtype == ge::DT_FLOAT4_E2M1), precisionMode_);
+            }
+        }
+        if (!fitBalanceUsed) {
+            apace::WaveAlignedCommTiling::GetCommTilingData(m_, n_, ka, mm, td->commTilingData,
+                                                            td->scaleCommTilingData);
 
-        // MXFP4 打包存储(2 个 fp4 占 1 字节)，数据通信的 K 轴字节数需减半；
-        // scale 仍是 e8m0(每 32 元素 1 字节)，不受 fp4 影响。
-        if (x1Dtype == ge::DT_FLOAT4_E2M1) {
-            td->commTilingData.nonSplitAxisSize = ka / 2;
+            // MXFP4 打包存储(2 个 fp4 占 1 字节)，数据通信的 K 轴字节数需减半；
+            // scale 仍是 e8m0(每 32 元素 1 字节)，不受 fp4 影响。
+            if (x1Dtype == ge::DT_FLOAT4_E2M1) {
+                td->commTilingData.nonSplitAxisSize = ka / 2;
+            }
         }
 
         OP_LOGI(opName, "comm tiling: tileSize=%lu, tileCnt=%lu, tailSize=%lu, tailCnt=%lu, nonSplitSize=%lu",

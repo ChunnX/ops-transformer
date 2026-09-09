@@ -121,6 +121,9 @@ public:
         uint32_t splitKNum;
         MatmulMode matmulMode; // 1: LOCAL, 2: REMOTE, 3: DEFERRED_SYNC
         uint32_t headTileSize;
+        // 通信总轮数(headCnt + tailCnt)。0 表示调用方未设置, 按头轮大小推导, 与历史行为一致;
+        // 非零时直接采用, 用于支持"尾轮大于头轮"的合并切分(此时 ceil(m/headTileSize) 会比实际轮数多 1)。
+        uint32_t roundCnt;
     };
 
     /**
@@ -360,7 +363,12 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
     int64_t mPos = 0L;
     int64_t nPos = 0L;
     constexpr int64_t kPos = 0L;
-    uint32_t totalTiles = (oriM + params.localParams.headTileSize - 1) / params.localParams.headTileSize;
+    // 通信总轮数: 优先采用调用方显式传入的 roundCnt(支持尾轮大于头轮的合并切分),
+    // 未设置(0)时按头轮大小推导, 与历史行为完全一致。
+    uint32_t totalTiles = params.localParams.roundCnt;
+    if (totalTiles == 0U) {
+        totalTiles = (oriM + params.localParams.headTileSize - 1) / params.localParams.headTileSize;
+    }
     int32_t readyTileIdx = -1;
     // 遍历当前块的调度任务
     while (bs.GetTileIdx(blockIdx)) {

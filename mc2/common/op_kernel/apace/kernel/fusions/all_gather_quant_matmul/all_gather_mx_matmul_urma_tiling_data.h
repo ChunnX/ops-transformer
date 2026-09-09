@@ -16,8 +16,8 @@
 #pragma once
 
 #include <cstdint>
-#include "apace/tiling/quant_matmul_tiling_data.h"
-#include "apace/tiling/comm_tiling_data.h"
+#include "apace/tiling/matmul_tiling/quant_matmul_tiling_data.h"
+#include "apace/tiling/apace_tiling_data_def.h"
 #include "apace/core/aiv_comm/collective_comm_context.h"
 
 namespace Apace {

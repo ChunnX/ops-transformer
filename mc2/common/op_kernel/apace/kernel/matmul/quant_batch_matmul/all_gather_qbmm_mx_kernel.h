@@ -29,7 +29,7 @@
 #include "apace/block/mmad/qmm_mx_block_mmad_fragment.h"
 #include "apace/basic/fragment_tensor/fragment_tensor.h"
 #include "apace/basic/fragment_tensor/fragment_tensor_api.h"
-#include "apace/tiling/quant_matmul_tiling_data.h"
+#include "apace/tiling/matmul_tiling/quant_matmul_tiling_data.h"
 
 namespace Apace {
 

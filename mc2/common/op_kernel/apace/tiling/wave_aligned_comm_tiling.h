@@ -4,19 +4,21 @@
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
- * \file comm_tiling_base.h
- * \brief 通信 Tiling 基类：根据 matmul tiling 结果推导 AllToAll/AllGather 通信切分方案
+ * \file wave_aligned_comm_tiling.h
+ * \brief 计算波对齐的通信切分策略：根据 matmul tiling 结果推导 AllToAll/AllGather 通信切分方案
  *
- * 通信切分跟随 matmul 的最优分核结果：在 M 维度上与 matmul tile 粒度对齐，
- * 确保每个 tile 的通信数据量匹配一份核算力覆盖的 M-range，实现通信与计算流水并行。
+ * 这不是基类，而是一个独立的静态切分策略：核利用率优先，通信切分直接跟随
+ * matmul 的最优分核结果——每轮通信的 M 跨度等于一个计算波
+ * （headMSize = ceil(usedCoreNum / nTile) * baseM），不引入任何时延模型。
+ * 当通算耗时不均衡时的进一步配平，见 fit_balance_tiling.h 的 fit-balance 策略。
  *
  * 用法：
- *   1. 先由 QuantMatmulTilingSwat / QuantMatmulTilingBase 计算 matmul tiling
+ *   1. 先由 QuantMatmulTilingSwat 计算 matmul tiling
  *   2. 将 mm tiling 的 baseM/baseN/usedCoreNum + 算子维度 (m, n, ka) 传入
  *   3. 得到 data 和 scale 两组 CommTilingData
  */
@@ -24,13 +26,13 @@
 #pragma once
 
 #include <cstdint>
-#include "comm_tiling_data.h"
-#include "quant_matmul_tiling_data.h"
+#include "apace_tiling_data_def.h"
+#include "matmul_tiling/quant_matmul_tiling_data.h"
 #include "../utils/apace_constant.h"
 
 namespace apace {
 
-class CommTilingBase {
+class WaveAlignedCommTiling {
 public:
     /*!
      * \brief 计算数据通道的通信 tiling
