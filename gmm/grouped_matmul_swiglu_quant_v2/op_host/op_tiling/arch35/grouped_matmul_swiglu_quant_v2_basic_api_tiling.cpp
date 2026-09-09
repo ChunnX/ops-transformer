@@ -361,8 +361,13 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::DoLibApiTiling()
     mmTiling.baseK = static_cast<uint32_t>(basicTiling_.baseK);
     mmTiling.kAL1 = static_cast<uint32_t>(basicTiling_.stepKa * basicTiling_.baseK);
     mmTiling.kBL1 = static_cast<uint32_t>(basicTiling_.stepKb * basicTiling_.baseK);
+    // Tensor API passes scaleKAL1/scaleKBL1 directly to the Blaze kernel. Its
+    // BlockMmad has separate A/B scale buffers but one shared K span and does
+    // not consume the generic scaleFactorA/B metadata. Therefore the tail
+    // path must cover the larger direct L1 K load; the regular path retains
+    // the scale-factor-based span used by the Cgmct kernel.
     const uint64_t scaleKL1 =
-        hasKTail ? std::min(basicTiling_.stepKa * basicTiling_.baseK, basicTiling_.stepKb * basicTiling_.baseK) :
+        hasKTail ? std::max(basicTiling_.stepKa * basicTiling_.baseK, basicTiling_.stepKb * basicTiling_.baseK) :
                    std::min(std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa,
                                      basicTiling_.scaleFactorB * basicTiling_.stepKb) *
                                 basicTiling_.baseK,
