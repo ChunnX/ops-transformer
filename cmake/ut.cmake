@@ -32,31 +32,31 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       ${PKG_NAME}_op_infershape_ut
       CACHE STRING "op_infershape ut module name" FORCE
     )
-  set(OP_FRAMEWORK_MODULE_NAME
-      ${PKG_NAME}_op_framework_ut
-      CACHE STRING "op_framework ut module name" FORCE
+  set(OP_ONNX_MODULE_NAME
+      ${PKG_NAME}_op_onnx_ut
+      CACHE STRING "ONNX plugin ut module name" FORCE
     )
 
-  function(add_framework_ut_modules OP_FRAMEWORK_MODULE_NAME)
-    if(TARGET ${OP_FRAMEWORK_MODULE_NAME}_cases)
+  function(add_onnx_ut_modules OP_ONNX_MODULE_NAME)
+    if(TARGET ${OP_ONNX_MODULE_NAME}_cases)
       return()
     endif()
 
-    if(NOT TARGET ${OP_FRAMEWORK_MODULE_NAME}_cases_obj)
-      add_library(${OP_FRAMEWORK_MODULE_NAME}_cases_obj OBJECT ${UT_PATH}/empty.cpp)
+    if(NOT TARGET ${OP_ONNX_MODULE_NAME}_cases_obj)
+      add_library(${OP_ONNX_MODULE_NAME}_cases_obj OBJECT ${UT_PATH}/empty.cpp)
     endif()
     target_include_directories(
-      ${OP_FRAMEWORK_MODULE_NAME}_cases_obj PRIVATE ${GTEST_INCLUDE}
+      ${OP_ONNX_MODULE_NAME}_cases_obj PRIVATE ${GTEST_INCLUDE}
           ${ASCEND_DIR}/include ${ASCEND_DIR}/pkg_inc
       )
     target_link_libraries(
-      ${OP_FRAMEWORK_MODULE_NAME}_cases_obj
+      ${OP_ONNX_MODULE_NAME}_cases_obj
       PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17> graph register gtest
       )
 
-    add_library(${OP_FRAMEWORK_MODULE_NAME}_cases STATIC)
+    add_library(${OP_ONNX_MODULE_NAME}_cases STATIC)
     target_link_libraries(
-      ${OP_FRAMEWORK_MODULE_NAME}_cases PRIVATE ${OP_FRAMEWORK_MODULE_NAME}_cases_obj
+      ${OP_ONNX_MODULE_NAME}_cases PRIVATE ${OP_ONNX_MODULE_NAME}_cases_obj
       )
   endfunction()
 
@@ -390,7 +390,7 @@ if(UT_TEST_ALL
     endif()
 
     # ONNX plugin ut under <op>/tests/ut/framework/.
-    if((UT_TEST_ALL OR OP_HOST_UT) AND "${MODULE_UT_NAME}" STREQUAL "${OP_FRAMEWORK_MODULE_NAME}")
+    if((UT_TEST_ALL OR OP_HOST_UT) AND "${MODULE_UT_NAME}" STREQUAL "${OP_ONNX_MODULE_NAME}")
       get_filename_component(UT_DIR ${MODULE_DIR} DIRECTORY)
       get_filename_component(TESTS_DIR ${UT_DIR} DIRECTORY)
       get_filename_component(OP_NAME_DIR ${TESTS_DIR} DIRECTORY)
@@ -400,14 +400,14 @@ if(UT_TEST_ALL
         return()
       endif()
 
-      file(GLOB OPFRAMEWORK_CASES_SRC ${MODULE_DIR}/test_*_onnx_plugin.cpp)
-      if(NOT OPFRAMEWORK_CASES_SRC)
+      file(GLOB ONNX_CASES_SRC ${MODULE_DIR}/test_*_onnx_plugin.cpp)
+      if(NOT ONNX_CASES_SRC)
         return()
       endif()
       if(NOT TARGET ${MODULE_UT_NAME}_cases_obj)
         add_library(${MODULE_UT_NAME}_cases_obj OBJECT)
       endif()
-      target_sources(${MODULE_UT_NAME}_cases_obj ${MODULE_MODE} ${OPFRAMEWORK_CASES_SRC})
+      target_sources(${MODULE_UT_NAME}_cases_obj ${MODULE_MODE} ${ONNX_CASES_SRC})
     endif()
 
     # op_graph ut
