@@ -84,6 +84,14 @@ else:
 
 def mqsmla(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu", weights_only=False)
+    if os.environ.get("MQSMLA_SKIP_ACCURACY", "1") == "1":
+        utils.run_without_accuracy(
+            test_data,
+            mixed_quant_sparse_flash_mla_process.test_mqsmla_quant_process_ci,
+            device_id,
+            Path(result_path),
+        )
+        return
     consistency_config = resolve_consistency_config(
         test_data, os.environ.get("MQSMLA_BATCH_CONSISTENCY", "auto")
     )

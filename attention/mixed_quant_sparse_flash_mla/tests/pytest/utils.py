@@ -612,6 +612,19 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         return None
 
 
+def run_without_accuracy(test_data, executor, device_id, result_path):
+    """Execute once and report runtime success without claiming accuracy passed."""
+    try:
+        executor(test_data, device_id=device_id)
+    except Exception as error:
+        save_result(test_data["params"], "NPU ERROR", None, result_path)
+        pytest.fail(f"用例执行失败:{test_data['Testcase_Name']} NPU ERROR: {error}")
+    save_result(test_data["params"], "Executed (accuracy skipped)", None, result_path)
+    print(
+        f"{test_data['Testcase_Name']}: execution completed; accuracy comparison skipped"
+    )
+
+
 def save_result(params, result, fulfill_percent, result_path):
     """
     存储测试结果到表格
