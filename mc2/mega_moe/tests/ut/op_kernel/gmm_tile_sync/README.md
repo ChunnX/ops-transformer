@@ -8,7 +8,7 @@ cmake --build /tmp/mega-moe-gmm-sync-test -j2
 ctest --test-dir /tmp/mega-moe-gmm-sync-test --output-on-failure
 ```
 
-The test includes the production `mega_moe_gmm_tile_sync.h` with a minimal `kernel_operator.h` stub. Stubs validate exact mode, pipeline and event ID; condition variables model independent Ready/ACK counters with bounded waits. Assertions remain enabled in release builds.
+The test exercises both `Gmm1SwigluSync` and `Gmm2CombineSync` from the production `mega_moe_gmm_epilogue_sync.h` with a minimal `kernel_operator.h` stub. Stubs validate exact mode, pipeline and event ID; condition variables model independent Ready/ACK counters with bounded waits. Assertions remain enabled in release builds.
 
 All 98 schedules must complete with matched notifications, counters at zero and no counter exceeding 15. One test per AIV0/AIV1 mapping accumulates 15 notifications on each channel before any consumer runs, then consumes GMM2 first. This checks isolation and independent limits; it does not suggest changing the kernel's stage order.
 

@@ -16,9 +16,10 @@
 #include <mutex>
 #include <thread>
 #include <vector>
-#include "mega_moe_gmm_tile_sync.h"
+#include "mega_moe_gmm_epilogue_sync.h"
 
-using Sync = MegaMoeImpl::GmmTileSync;
+using MegaMoeImpl::Gmm1SwigluSync;
+using MegaMoeImpl::Gmm2CombineSync;
 namespace {
 struct Counts {
     int ready = 0, ack = 0, sets = 0, waits = 0;
@@ -29,7 +30,7 @@ std::condition_variable cv;
 thread_local bool producer = false;
 thread_local int channel = 0;
 bool prefilled = false;
-Sync::Consumer gmm1Peer = Sync::Consumer::AIV1;
+uint16_t swigluSubBlockIdx = 1;
 } // namespace
 namespace AscendC {
 void TestSet(uint8_t mode, pipe_t pipe, uint16_t id)
@@ -38,13 +39,13 @@ void TestSet(uint8_t mode, pipe_t pipe, uint16_t id)
     std::lock_guard<std::mutex> lock(mu);
     auto &c = counts[channel];
     if (producer) {
-        assert(pipe == PIPE_FIX && id == 8 + 2 * channel + (channel == 0 ? static_cast<int>(gmm1Peer) : 16));
+        assert(pipe == PIPE_FIX && id == 8 + 2 * channel + (channel == 0 ? 16 * swigluSubBlockIdx : 16));
         ++c.ready;
     } else {
         assert(pipe == PIPE_MTE3 && id == 9 + 2 * channel);
         ++c.ack;
     }
-    assert(c.ready <= Sync::MAX_INFLIGHT && c.ack <= Sync::MAX_INFLIGHT);
+    assert(c.ready <= 15 && c.ack <= 15);
     ++c.sets;
     cv.notify_all();
 }
@@ -54,7 +55,7 @@ void TestWait(uint8_t mode, pipe_t pipe, uint16_t id)
     std::unique_lock<std::mutex> lock(mu);
     auto &c = counts[channel];
     if (producer) {
-        assert(pipe == PIPE_S && id == 9 + 2 * channel + (channel == 0 ? static_cast<int>(gmm1Peer) : 16));
+        assert(pipe == PIPE_S && id == 9 + 2 * channel + (channel == 0 ? 16 * swigluSubBlockIdx : 16));
         assert(cv.wait_for(lock, std::chrono::seconds(5), [&] { return c.ack > 0; }));
         --c.ack;
     } else {
@@ -72,12 +73,17 @@ void Run(const std::vector<int> &schedule, bool delayProducer, bool fillBothFirs
     prefilled = false;
     std::thread p([&] {
         producer = true;
-        Sync g1(Sync::Stage::GMM1, gmm1Peer), g2(Sync::Stage::GMM2, Sync::Consumer::AIV1);
-        Sync *s[] = {&g1, &g2};
+        Gmm1SwigluSync g1(swigluSubBlockIdx);
+        Gmm2CombineSync g2;
         for (int which : schedule) {
             channel = which;
-            s[which]->Acquire();
-            s[which]->PublishReady();
+            if (which == 0) {
+                g1.WaitForSwiglu();
+                g1.NotifySwiglu();
+            } else {
+                g2.WaitForCombine();
+                g2.NotifyCombine();
+            }
             if (delayProducer)
                 std::this_thread::sleep_for(std::chrono::microseconds(5));
         }
@@ -88,14 +94,14 @@ void Run(const std::vector<int> &schedule, bool delayProducer, bool fillBothFirs
             cv.notify_all();
         }
         channel = 0;
-        g1.Drain();
+        g1.EndSync();
         channel = 1;
-        g2.Drain();
+        g2.EndSync();
     });
     std::thread c([&] {
         producer = false;
-        Sync g1(Sync::Stage::GMM1, gmm1Peer), g2(Sync::Stage::GMM2, Sync::Consumer::AIV1);
-        Sync *s[] = {&g1, &g2};
+        Gmm1SwigluSync g1(swigluSubBlockIdx);
+        Gmm2CombineSync g2;
         if (fillBothFirst) {
             std::unique_lock<std::mutex> lock(mu);
             assert(cv.wait_for(lock, std::chrono::seconds(5), [] { return prefilled; }));
@@ -105,10 +111,18 @@ void Run(const std::vector<int> &schedule, bool delayProducer, bool fillBothFirs
             std::reverse(consumeSchedule.begin(), consumeSchedule.end());
         for (int which : consumeSchedule) {
             channel = which;
-            s[which]->WaitReady();
+            if (which == 0) {
+                g1.WaitForGmm1();
+            } else {
+                g2.WaitForGmm2();
+            }
             if (!delayProducer)
                 std::this_thread::sleep_for(std::chrono::microseconds(5));
-            s[which]->Release();
+            if (which == 0) {
+                g1.NotifyGmm1();
+            } else {
+                g2.NotifyGmm2();
+            }
         }
     });
     p.join();
@@ -121,10 +135,9 @@ void Run(const std::vector<int> &schedule, bool delayProducer, bool fillBothFirs
 }
 int main()
 {
-    static_assert(Sync::MAX_INFLIGHT == 15);
     int runs = 0;
-    for (auto peer : {Sync::Consumer::AIV0, Sync::Consumer::AIV1}) {
-        gmm1Peer = peer;
+    for (uint16_t peer : {0, 1}) {
+        swigluSubBlockIdx = peer;
         for (int n : {0, 1, 14, 15, 16, 31, 275, 1000}) {
             for (int pattern = 0; pattern < 3; ++pattern) {
                 std::vector<int> schedule;
@@ -150,7 +163,7 @@ int main()
         Run(full, false, true);
         ++runs;
     }
-    std::cout << "Actual split helper: " << runs
+    std::cout << "GMM1/SwiGLU and GMM2/Combine: " << runs
               << " schedules passed; independent 15+15 ready notifications, exact IDs/pipes,"
                  " separate ACK accounting and final drains passed\n";
 }

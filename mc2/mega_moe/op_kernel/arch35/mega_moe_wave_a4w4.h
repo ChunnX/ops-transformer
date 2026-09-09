@@ -268,16 +268,14 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     ExpertLoopState gmm2State = CreateExpertLoopState(commonConfig_);
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
-    GmmTileSync gmm1TileSync(GmmTileSync::Stage::GMM1, GmmTileSync::Consumer::AIV0);
-    GmmTileSync gmm2TileSync(GmmTileSync::Stage::GMM2, GmmTileSync::Consumer::AIV1);
-#if MEGA_MOE_GMM_HARD_TILE_SYNC
+    Gmm1SwigluSync gmm1SwigluSync(0U); // SwiGLU 位于 AIV0。
+    Gmm2CombineSync gmm2CombineSync;
     if constexpr (TopkWeightsPrefetch) {
-        gmm1AddrInfo.tileSync = &gmm1TileSync;
+        gmm1AddrInfo.gmm1SwigluSync = &gmm1SwigluSync;
     }
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        gmm2AddrInfo.tileSync = &gmm2TileSync;
+        gmm2AddrInfo.gmm2CombineSync = &gmm2CombineSync;
     }
-#endif
 
     // 同一 Block 内绑定的 1C2V 各自持有分核游标，按相同调用顺序推进并始终保持一致；
     // MoE GMM1 与 GMM2 沿用该游标持续滚动。
@@ -303,8 +301,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
         EndSync(gmm1RuntimeState.vecSetSyncCom);
     }
     // Keep both counters across GMM/expert/wave boundaries; drain after the final GMM2.
-    gmm1TileSync.Drain();
-    gmm2TileSync.Drain();
+    gmm1SwigluSync.EndSync();
+    gmm2CombineSync.EndSync();
 }
 
 template <TemplateMegaMoeA4W4WaveTypeClass>

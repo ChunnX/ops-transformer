@@ -198,14 +198,14 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(WorkSet &workSet, const Params
             WaitForGmm1InputReady<IsShared>(gmmAddrInfo, config, mLoc);
             lastWaveWaited = waveIdx;
         }
-        if (gmmAddrInfo.tileSync != nullptr) {
-            gmmAddrInfo.tileSync->Acquire();
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->WaitForSwiglu();
         }
         Gmm1AicMmadTileToGmGeneric<BlockMmad, IsGmm1Interleaved>(blockMmad, config, workSet.gmB, workSet.gmScaleB,
                                                                  workSet.gmBias, workSet.gmC, actualShape, mLoc, nLoc,
                                                                  kLoc, gmBlockA, gmBlockScaleA);
-        if (gmmAddrInfo.tileSync != nullptr) {
-            gmmAddrInfo.tileSync->PublishReady();
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->NotifySwiglu();
         } else {
             AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
             AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
@@ -297,14 +297,14 @@ __aicore__ inline void Gmm1AicMmadA8W4(WorkSet &workSet, const Params &params, c
             lastWaveWaited = waveIdx;
         }
 
-        if (gmmAddrInfo.tileSync != nullptr) {
-            gmmAddrInfo.tileSync->Acquire();
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->WaitForSwiglu();
         }
         Gmm1AicMmadTileA8W4(blockMmad, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, config,
                             actualShape, mLoc, nLoc);
 
-        if (gmmAddrInfo.tileSync != nullptr) {
-            gmmAddrInfo.tileSync->PublishReady();
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->NotifySwiglu();
             if constexpr (!TopkWeightsPrefetch) {
                 ++gmm1TileReadySequence;
             }
@@ -627,8 +627,8 @@ __aicore__ inline void Gmm1Aiv0PrefetchEpilogueGeneric(WorkSet &workSet, const P
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
-        if (gmmAddrInfo.tileSync != nullptr) {
-            gmmAddrInfo.tileSync->WaitReady();
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->WaitForGmm1();
         } else {
             WaitGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
         }
@@ -641,8 +641,8 @@ __aicore__ inline void Gmm1Aiv0PrefetchEpilogueGeneric(WorkSet &workSet, const P
                 config, workSet.gmC, workSet.metaInfoGm, activationQuantOp, gmmAddrInfo, expertBeforeCnt, actualShape,
                 mLoc, nLoc);
         }
-        if (gmmAddrInfo.tileSync != nullptr) {
-            gmmAddrInfo.tileSync->Release();
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->NotifyGmm1();
         }
     }
 }
@@ -767,16 +767,16 @@ __aicore__ inline void Gmm1Aiv1PrefetchEpilogueA8W4(WorkSet &workSet, const Para
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
-        if (gmmAddrInfo.tileSync != nullptr) {
-            gmmAddrInfo.tileSync->WaitReady();
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->WaitForGmm1();
         } else {
             WaitGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
         }
         Gmm1Aiv1PrefetchEpilogueTileA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(
             activationQuantOp, workSet.gmC, workSet.metaInfoGm, gmmAddrInfo, config, actualShape, mLoc, nLoc,
             expertBeforeCnt);
-        if (gmmAddrInfo.tileSync != nullptr) {
-            gmmAddrInfo.tileSync->Release();
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->NotifyGmm1();
         }
     }
 }
@@ -794,16 +794,16 @@ __aicore__ inline void Gmm1Aiv1EpilogueA8W4(WorkSet &workSet, const GMMAddrInfo 
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         int32_t expectedReadySequence = gmm1TileReadySequence + 1;
-        if (gmmAddrInfo.tileSync != nullptr) {
-            gmmAddrInfo.tileSync->WaitReady();
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->WaitForGmm1();
         } else {
             WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag, expectedReadySequence);
         }
         Gmm1Aiv1EpilogueTileA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(activationQuantOp, workSet.gmC, gmmAddrInfo,
                                                                            config, actualShape, mLoc, nLoc);
         gmm1TileReadySequence = expectedReadySequence;
-        if (gmmAddrInfo.tileSync != nullptr) {
-            gmmAddrInfo.tileSync->Release();
+        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
+            gmmAddrInfo.gmm1SwigluSync->NotifyGmm1();
         }
     }
 }
