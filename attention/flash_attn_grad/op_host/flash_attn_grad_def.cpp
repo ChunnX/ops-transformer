@@ -108,8 +108,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("opFile.value", "flash_attn_grad")
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
+            .ExtendCfgInfo("opFile.value", "flash_attn_grad");
         this->AICore().AddConfig("ascend950", aicore_config);
     }
 };

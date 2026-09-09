@@ -278,6 +278,7 @@ static aclnnStatus CheckParams(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParam
     } else {
         auto checker = gmm::AclnnGroupedMatmulDAV3510Checker<aclTensor>(gmmParams);
         checker.SetInputName("x1", "x2", "scale1Optional", "scale2", "groupList");
+        checker.SetAclnnOpName(QGMM_INPLACE_ADD_ACLNN_OP_NAME);
         CHECK_RET(checker.CheckGroupedMatmulDAV3510() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     }
     return ACLNN_SUCCESS;
@@ -287,7 +288,7 @@ static aclnnStatus SetTransViewShape(const aclTensor *&inputTensor, aclOpExecuto
 {
     op::Shape viewShape = inputTensor->GetViewShape();
     uint32_t viewShapeDimsNum = viewShape.GetDimNum();
-    CHECK_RET(viewShapeDimsNum >= 2, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(viewShapeDimsNum >= 2, ACLNN_ERR_PARAM_INVALID); // 矩阵转置操作要求 tensor 至少要有 2 个维度
     op::Shape shape;
     shape.SetScalar();
     // 2: the second last dimension; in for-loops, it indicates dimensions before the second last remain unchanged.

@@ -93,6 +93,10 @@ TILING_DATA_FIELD_DEF(uint32_t, useUniformKvSeqlen); // 是否使用统一的kvs
 TILING_DATA_FIELD_DEF(uint64_t, tilingKey);
 TILING_DATA_FIELD_DEF(uint64_t, selectNumIdxSize);
 TILING_DATA_FIELD_DEF(uint64_t, selectIdxSize);
+// effectiveRows related
+TILING_DATA_FIELD_DEF(uint32_t, enableEffRows);
+TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumEff);
+TILING_DATA_FIELD_DEF(uint32_t, perHeadKvScale); // kv dequantScale 为 [B, kvHeads] 两维(per-head 量化)
 // Workspace大小
 TILING_DATA_FIELD_DEF(uint64_t, mm1OutSize);
 TILING_DATA_FIELD_DEF(uint64_t, smOnlineOutSize);
@@ -103,9 +107,6 @@ TILING_DATA_FIELD_DEF(uint64_t, workSpaceSize);
 // V3 新增:量化参数
 TILING_DATA_FIELD_DEF(float, log2Cx);
 TILING_DATA_FIELD_DEF(float, log2CxCeil);
-
-// V3 新增:blockEffRows(attenMask) dim2参数
-TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumEff);
 
 TILING_DATA_FIELD_DEF_STRUCT(BsaMask2IdxTiling, BsaMask2IdxTileInfo);
 TILING_DATA_FIELD_DEF_STRUCT(BsaBaseTiling, BsaBaseTileInfo);
@@ -202,6 +203,9 @@ private:
     void CalcSplitCoreTilingParams950();
     void CalcWorkspaceTilingParams950(gert::TilingContext *bsaContext);
     void CalcMatmulPhaseL1TileInfo950();
+    void B8FullQuantKVPL1TileInfo950(uint32_t qBaseTileAligned128, uint32_t embeddingSizeAligned128,
+                                     uint32_t kvBaseTileAligned128);
+    void TransposedMatmulConfig950();
     // 910 exclusive
     ge::graphStatus CalculateTaskSplit(gert::TilingContext *bsaContext);
     ge::graphStatus CalculateWorkSpace(gert::TilingContext *bsaContext);
@@ -233,7 +237,6 @@ private:
     uint32_t totalQBlocks_ = 0;
     uint32_t maxKvBlockNum_ = 0;
     uint32_t maxQBlockNum_ = 0;
-    uint32_t maxBlockNumEff_ = 0; // 0=未启用blockEffRows(attenMask)
     uint32_t avgRowNumPerSubCore_ = 0;
     uint32_t preActivateSubCoreNum_ = 0;
     uint32_t firstQBlockNum_ = 0;
@@ -253,6 +256,11 @@ private:
     uint64_t updateSize_ = 0;
     uint64_t selectNumIdxSize_ = 0;
     uint64_t selectIdxSize_ = 0;
+    // effectiveRows related
+    bool enableEffRows_ = false;
+    uint32_t maxBlockNumEff_ = 0;
+    // per-head kv 反量化(k/v dequantScale 为 [B, kvHeads] 两维)
+    bool perHeadKvScale_ = false;
 
     BSAQInputLayout qInputLayout_ = BSAQInputLayout::TND_Q;
     BSAKvCacheLayout kvCacheLayout_ = BSAKvCacheLayout::TND_KV;
@@ -293,6 +301,9 @@ private:
     uint32_t kL1BufNum_;
     uint32_t vL1BufNum_;
     uint32_t pL1BufNum_;
+
+    bool transposedMm1_ = false;
+    bool transposedMm2_ = false;
 
     ge::DataType dataType_ = ge::DT_FLOAT16;
     ge::DataType attentionOutDataType_ = ge::DT_FLOAT16;

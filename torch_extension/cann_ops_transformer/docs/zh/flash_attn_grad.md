@@ -319,5 +319,3 @@ cann_ops_transformer.flash_attn_metadata(
     assert dk.shape == k.shape
     assert dv.shape == v.shape
     ```
-
-- 图模式调用

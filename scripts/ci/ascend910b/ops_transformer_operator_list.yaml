@@ -25,6 +25,7 @@ operator_group_1:
   - grouped_mat_mul_all_reduce
   - grouped_matmul
   - grouped_matmul_swiglu_quant
+  - block_attention_residuals_grad
 operator_group_2:
   - mla_prolog_v2
   - mla_prolog_v3
@@ -45,6 +46,7 @@ operator_group_6:
   - rain_fusion_attention
   - block_sparse_attention
   - generic_block_sparse_attention
+  - generic_block_sparse_attention_grad
   - recurrent_gated_delta_rule
   - ring_attention_update
   - sparse_lightning_indexer_grad_kl_loss
