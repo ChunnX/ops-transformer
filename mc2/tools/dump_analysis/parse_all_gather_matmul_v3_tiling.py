@@ -557,11 +557,11 @@ def print_urma_comm_context(result: dict):
     logging.info("")
     logging.info("  --- channelHandles (非零) ---")
     for idx, addr in result["channelHandles"].items():
-        logging.info("    channel[%d]: %s", idx, addr)
+        logging.info("    %-28s: %s", f"channel[{idx}]", addr)
     logging.info("")
     logging.info("  --- commBufferAddrs (非零) ---")
     for idx, addr in result["commBufferAddrs"].items():
-        logging.info("    buffer[%d]: %s", idx, addr)
+        logging.info("    %-28s: %s", f"buffer[{idx}]", addr)
 
     ubmem = result.get("ubmemCtx", {})
     logging.info("")
@@ -573,7 +573,7 @@ def print_urma_comm_context(result: dict):
     logging.info("")
     logging.info("  --- ubmemCtx commBufferAddrs (非零) ---")
     for idx, addr in ubmem.get("commBufferAddrs", {}).items():
-        logging.info("    syncBuf[%d]: %s", idx, addr)
+        logging.info("    %-28s: %s", f"syncBuf[{idx}]", addr)
 
 
 def verify_tiling_data(dump_data: bytes, ref_data: bytes) -> bool:

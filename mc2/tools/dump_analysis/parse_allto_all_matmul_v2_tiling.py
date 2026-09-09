@@ -193,6 +193,8 @@ def main():
 
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
+    elif args.comm_ctx:
+        common.print_urma_comm_context(result)
     elif args.workspace and result.get("segmentType") == 12:
         common.print_section(title)
         common.print_kv("segment", {key: value for key, value in result.items() if key != "runtimeInfo"})

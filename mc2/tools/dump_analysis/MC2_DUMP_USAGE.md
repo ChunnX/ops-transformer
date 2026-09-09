@@ -155,7 +155,31 @@ CCU 通路没有 `comm_context_*` 文件。
 | AlltoAllMatmulV2 | `parse_allto_all_matmul_v2_tiling.py` |
 | MatmulReduceScatterV2 | `parse_matmul_reduce_scatter_v2_tiling.py` |
 
-MMRS 示例：
+### 6.1 入参说明
+
+调用格式：
+
+```bash
+python3 <后端解析脚本> <bin_file> [解析模式] [辅助参数]
+```
+
+| 入参 | 是否必填 | 输入文件/适用范围 | 说明 |
+| --- | --- | --- | --- |
+| `<bin_file>` | 是 | 所有脚本 | 要解析的 Dump 文件路径。文件通常没有 `.bin` 后缀，应直接填写实际文件名。 |
+| 不加解析模式 | 否 | `tiling_data_*` | 默认按完整 TilingData 解析。 |
+| `--args` | 否 | `args_info_*`；所有脚本 | 按 Kernel 参数顺序解析各输入、输出、Workspace 和 TilingData 的 GM 地址。 |
+| `--ws-layout` | 否 | `tiling_data_*`；所有脚本 | 只解析 TilingData 中的 `WorkspaceLayoutInfo`，查看每个 Segment 的 `offset`、`size` 和 `type`。 |
+| `--workspace` | 否 | `workspace_segN_typeM_*`；所有脚本 | 按文件名中的 Segment 类型解析 Workspace。`type12` 会进一步解析为每核 RuntimeInfo。 |
+| `--aic-core-num N` | 否 | 配合 `--workspace` 解析 `type12` | 指定实际 AIC 核数，用于计算预期 slot 数并区分 AIC/AIV 核。`N` 取同次 TilingData 中的 `aicCoreNum` 或 `usedCoreNum`。 |
+| `--comm-ctx` | 否 | `comm_context_*`；仅 AllGatherMatmulV3、AlltoAllMatmulV2 | 将文件按 URMA `CommUdmaContext + CommUbmemContext` 解析，显示 rank、channel 和通信缓冲区地址。 |
+| `--cann DIR` | 否 | 仅 AllGatherMatmulV2、AlltoAllMatmul、MatmulReduceScatterV2 | 指定生成该 Dump 时使用的 CANN 根目录，使脚本按对应版本的头文件计算 TilingData 结构偏移；不指定时从当前 CANN 环境定位。 |
+| `--apace` | 否 | 仅 AlltoAllMatmul，配合 `--workspace` | 按 Apace 通路解释 RuntimeInfo 的 position 标签。只影响标签含义，不改变原始数值。 |
+| `--json` | 否 | 所有脚本 | 将本次解析结果输出为 JSON，便于其他程序继续处理。 |
+| `--verify REF_FILE` | 否 | 仅 AllGatherMatmulV3、AlltoAllMatmul | 将 TilingData Dump 与指定的 Host 参考文件逐字节比较；`REF_FILE` 是参考文件路径。 |
+
+`--args`、`--ws-layout`、`--workspace` 和 `--comm-ctx` 表示不同的文件解析模式，一次命令只应选择其中一个。解析 TilingData 时不加这些模式参数。
+
+### 6.2 MMRS 示例
 
 ```bash
 # 解析 TilingData
@@ -178,7 +202,7 @@ python3 parse_matmul_reduce_scatter_v2_tiling.py \
 
 `--aic-core-num` 应填写该次 TilingData 中记录的实际 AIC Core 数量。统一入口会自动从同次 TilingData 获取，一般不需要手工填写。
 
-URMA 示例：
+### 6.3 URMA 示例
 
 ```bash
 python3 parse_all_gather_matmul_v3_tiling.py \
