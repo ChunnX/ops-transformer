@@ -137,23 +137,29 @@ void FlashAttnTilingImpl::SplitPolicy()
 
 void FlashAttnTilingImpl::UpdateTilingKeyConfig()
 {
-    // config:
-    //   config=0: D=64,  sOuter=64,  sInner=128
-    //   config=1: D=64,  sOuter=32,  sInner=256
-    //   config=2: D=128, sOuter=64,  sInner=128 (D=72 复用, kernel 内 pad 到 128)
-    //   config=3: D=128, sOuter=32,  sInner=256 (D=72 复用, kernel 内 pad 到 128)
-    //   config=4: D=256, sOuter=64, sInner=128
-    //   config=5: D=256, sOuter=32, sInner=256
-    if (faInfo_->qkHeadDim == 64) {
-        tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1;
-    } else if (faInfo_->qkHeadDim == 72 || faInfo_->qkHeadDim == 128) {
-        tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 2 : 3;
-    } else if (faInfo_->qkHeadDim == 256) {
-        tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 4 : 5;
+    if (faInfo_->qkHeadDim == faInfo_->vHeadDim) {
+        // 等长 (QK D == V DV) 按 D 值映射:
+        //   config=0: Dk=64,  Dv=64,  sOuter=64,  sInner=128
+        //   config=1: Dk=64,  Dv=64,  sOuter=32,  sInner=256
+        //   config=2: Dk=128, Dv=128, sOuter=64,  sInner=128 (Dk=72 复用, kernel 内 pad 到 128)
+        //   config=3: Dk=128, Dv=128, sOuter=32,  sInner=256 (Dk=72 复用, kernel 内 pad 到 128)
+        //   config=4: Dk=256, Dv=256, sOuter=64, sInner=128
+        //   config=5: Dk=256, Dv=256, sOuter=32, sInner=256
+        if (faInfo_->qkHeadDim == 64) {
+            tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1;
+        } else if (faInfo_->qkHeadDim == 128 || faInfo_->qkHeadDim == 72) {
+            tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 2 : 3;
+        } else if (faInfo_->qkHeadDim == 256) {
+            tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 4 : 5;
+        }
     } else {
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo_->opName, "qkHeadDim(Head num of Q/K)",
-                                               std::to_string(faInfo_->qkHeadDim).c_str(),
-                                               "The value of qkHeadDim(Head num of Q/K) can only be 64/72/128/256");
+        // 不等长 (qkHeadDim != vHeadDim) 按 (QK D, V DV) 组合映射:
+        if (faInfo_->qkHeadDim == 192 && faInfo_->vHeadDim == 128) {
+            // QK D=192 且 V DV=128 (MLA 非吸收形态) 进入此分支:
+            //   config=6: Dk=192, Dv=128, sOuter=64, sInner=128
+            //   config=7: Dk=192, Dv=128, sOuter=32, sInner=256
+            tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 6 : 7;
+        }
     }
 }
 
@@ -183,24 +189,36 @@ void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
     }
 }
 
+void FlashAttnTilingImpl::UpdateTilingKeyTemplateId()
+{
+    // templateId: 0=ND模板, 1=DN模板
+    // DN模板仅支持无attenMask且config=0/2/6（sOuter=64, D=64/128, QK
+    // D=192/DV=128）场景，与kernel侧模板实例化范围保持一致
+    dnFlag_ = (!tilingKeyInfo_.hasAttenMask) &&
+              ((tilingKeyInfo_.config == 0) || (tilingKeyInfo_.config == 2) || (tilingKeyInfo_.config == 6));
+    tilingKeyInfo_.templateId = dnFlag_ ? 1 : 0;
+}
+
 void FlashAttnTilingImpl::UpdateTilingKeyInfo()
 {
     UpdateTilingKeyLayout();
     UpdateTilingKeyConfig();
     UpdateTilingKeyKvLayout();
     tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) ? 0 : 1;
+    UpdateTilingKeyTemplateId();
 }
 
 void FlashAttnTilingImpl::GenTilingKey()
 {
     UpdateTilingKeyInfo();
     tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType,
-                                    tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.config);
+                                    tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.templateId, tilingKeyInfo_.config);
     OP_LOGI(faInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(faInfo_->opName,
-            "The tilingkey param is inOutLayoutType: %llu, kvLayoutType: %llu, hasAttenMask: %llu, config: %llu.",
+            "The tilingkey param is inOutLayoutType: %llu, kvLayoutType: %llu, hasAttenMask: %llu, templateId: %llu, "
+            "config: %llu.",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.hasAttenMask,
-            tilingKeyInfo_.config);
+            tilingKeyInfo_.templateId, tilingKeyInfo_.config);
 }
 
 void FlashAttnTilingImpl::CalcNumBlocks(uint32_t aicNum)
