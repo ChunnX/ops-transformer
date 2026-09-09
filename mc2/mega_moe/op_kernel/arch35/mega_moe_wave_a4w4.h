@@ -47,6 +47,7 @@ private:
     static constexpr uint32_t EPILOGUE_TILE_M = MegaMoeBase::EPILOGUE_TILE_M;
 
     using MegaMoeBase::DispatchBuffInit;
+    using MegaMoeBase::EnterSteadyDispatch;
     using MegaMoeBase::RunGmm2CombineForExpert;
     using MegaMoeBase::exceptionDump_;
     using MegaMoeBase::gmmLoopCount_;
@@ -161,6 +162,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                 g_winRankAddr_, tokenDispatchScratch_, firstDispatchRange);
             // 首 WAVE 的全部数据和 ready flag 发布完成后，再提交 Dispatch 进度。
             dispatchPosition = plannedDispatchPosition;
+            EnterSteadyDispatch();
         }
     }
 

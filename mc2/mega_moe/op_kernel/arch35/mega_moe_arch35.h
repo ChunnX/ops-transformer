@@ -80,6 +80,16 @@ private:
 protected:
     __aicore__ inline void SendAndQuantBuffInit();
     __aicore__ inline void DispatchBuffInit();
+    __aicore__ inline void EnterSteadyDispatch()
+    {
+        if constexpr (g_coreType == AIV) {
+            if (GetSubBlockIdx() == 1U) {
+                // Startup Dispatch has drained all MTE3 events. Keep the six-slot UB
+                // layout and route batch unchanged; only reuse slots 0/1 from now on.
+                tokenDispatchConfig_.bufferConfig.bufferCount = STEADY_DISPATCH_BUFFER_COUNT;
+            }
+        }
+    }
     __aicore__ inline void InitQuantTokenBufferConfig();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void ProcessInputPreparationStage();
@@ -333,7 +343,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     // Tensor 用途：DispatchExpertTokens 中的动态 dispatch 环形缓冲区，配合
     // EVENT_ID0..EVENT_ID(bufferCount-1) 形成软流水；
     // 只记基址：槽视图在热路径由 GetDispatchCopyBuffer 现场构造，
-    // Tensor 大小：bufferConfig.bufferCount 块（Host 配置固定为 2），
+    // Tensor 大小：bufferConfig.bufferCount 块（启动轮 6 槽；稳态仅使用前 2 槽，不重新布局），
     // 每块 tokenDispatchConfig_.quantTokenScaleAlignBytes；
     // 该值即 Init() 算好的 Align256(token) + Align32(scale) + optional Align32(weight)，与 host
     // CalcDispatchBufferConfig 的 copyBufferBytes 恒相等，故连续 ring 中每个槽位均保持 32B 对齐。
