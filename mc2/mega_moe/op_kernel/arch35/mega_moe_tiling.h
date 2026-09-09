@@ -135,6 +135,16 @@ constexpr int32_t DISPATCH_RESET_BATCH = 2048;
 // GMM2 M 方向的一个 tile 对应一个 combine token group；同步 slot 的粒度必须与该 tile 保持一致。
 constexpr uint32_t COMBINE_TOKEN_GROUP_SIZE = 256U;
 
+/*
+ * Unpermute token-batch read policy
+ *
+ * 量化 combine 时接收窗口同一 token 的 topK 条记录物理连续（行公式 tokenIdx*topK+topkIdx），
+ * 开启 token 批读后每个输入槽一次 DataCopy 搬入整 token 的 K 条记录，槽内按记录步进逐条
+ * DeQuant/累加，MTE2 发射次数从每 token K 次降为 1 次。槽容量 = K×记录，由 host 按 UB 预算
+ * 决定槽数；非量化记录为整行 bf16（K×2H），单槽即可能超出 UB，保持逐条读布局。
+ */
+constexpr int32_t MAX_UNPERMUTE_TOKEN_BATCH_BUFFER_COUNT = 6;
+
 // Adaptive buffer configs written by host tiling and consumed by the kernel.
 struct MegaMoeUnpermuteBufferConfig {
     int32_t tokensPerBatch;
@@ -143,6 +153,9 @@ struct MegaMoeUnpermuteBufferConfig {
     uint32_t fp32SlotElementCount;
     uint32_t topKWeightsBufferBytes;
     uint32_t topKWeightsConversionBufferBytes;
+    // 1 = 量化 token 批读布局（bf16 槽容量为 K 条记录，inputBufferCount 为 token 批槽数，
+    // fp32 区固定为累加器 + 单工作槽）；0 = 逐条读布局（原语义）。
+    uint8_t useTokenBatchRead;
 };
 
 struct MegaMoeDispatchBufferConfig {

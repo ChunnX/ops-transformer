@@ -1183,12 +1183,70 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
         return bufferConfig;
     }
 
+    uint32_t baseTokensPerBatch = UNPERMUTE_WEIGHT_ITEMS_PER_BATCH / tilingData->topK;
+    /*
+     * 量化 combine 优先采用 token 批读布局：接收窗口同一 token 的 topK 条记录物理连续
+     * （行公式 tokenIdx*topK+topkIdx），单个输入槽一次 DataCopy 搬入整 token 记录段，
+     * MTE2 发射次数从每 token topK 次降为 1 次。布局：
+     *   [bf16 输出暂存 1×2H][token 批槽 N×(topK×记录)] [fp32 累加器+工作槽 2×4H] [weight][scale]
+     * 输入槽下标从 1 起（槽 0 为输出 Cast 暂存），与逐条布局的偏移结构保持一致。
+     * 单槽放不下（如 topK×H 过大致 UB 超限）时落回下方逐条读布局。
+     */
+    if (tilingData->combineQuantMode != COMBINE_NO_QUANT && tilingData->topK >= 2U) {
+        int64_t recordBytes =
+            CalcCombineTokenBytes(static_cast<int64_t>(tilingData->h), static_cast<int64_t>(sizeof(bfloat16_t)), true);
+        uint64_t tokenBatchSlotBytes = static_cast<uint64_t>(recordBytes) * tilingData->topK;
+        uint32_t dataSlotBytes = 0U;
+        uint32_t scaleBytes = 0U;
+        CalcUnpermuteSlotAndScaleBytes(tilingData, bufferConfig, dataSlotBytes, scaleBytes);
+        uint32_t fp32SlotBytes = static_cast<uint32_t>(
+            ops::CeilAlign(static_cast<uint64_t>(tilingData->h) * sizeof(float), static_cast<uint64_t>(ALIGN_32)));
+        uint32_t bf16OutputSlotBytes = dataSlotBytes - fp32SlotBytes;
+        // 共享专家行（2H bf16）复用 token 批槽暂存，topK>=2 时槽容量（topK×记录 > 2H）必然容纳。
+
+        bufferConfig.tokensPerBatch = static_cast<int32_t>(std::min(baseTokensPerBatch, coreTokenCount));
+        SetUnpermuteWeightBufferBytes(bufferConfig,
+                                      static_cast<uint32_t>(bufferConfig.tokensPerBatch) * tilingData->topK,
+                                      topKWeightsConversionElementBytes);
+
+        uint64_t fixedBytes = static_cast<uint64_t>(bf16OutputSlotBytes) + 2ULL * fp32SlotBytes + scaleBytes +
+                              bufferConfig.topKWeightsBufferBytes + bufferConfig.topKWeightsConversionBufferBytes;
+        uint64_t remainBytes = availableUbBytes > fixedBytes ? availableUbBytes - fixedBytes : 0ULL;
+        if (remainBytes >= tokenBatchSlotBytes) {
+            uint64_t slotCount64 = std::min(remainBytes / tokenBatchSlotBytes,
+                                            static_cast<uint64_t>(MAX_UNPERMUTE_TOKEN_BATCH_BUFFER_COUNT));
+            bufferConfig.inputBufferCount = static_cast<int32_t>(slotCount64);
+            bufferConfig.bf16SlotElementCount = static_cast<uint32_t>(tokenBatchSlotBytes / sizeof(uint16_t));
+            bufferConfig.fp32SlotElementCount = fp32SlotBytes / sizeof(float);
+            bufferConfig.useTokenBatchRead = 1U;
+            // 第二阶段：token 批槽数固定后，使用剩余 UB 扩大 weight batch。
+            if (baseTokensPerBatch < coreTokenCount) {
+                uint64_t fixedBytesAfterSlot = static_cast<uint64_t>(bf16OutputSlotBytes) + 2ULL * fp32SlotBytes +
+                                               scaleBytes + slotCount64 * tokenBatchSlotBytes;
+                uint64_t weightBudgetBytes =
+                    availableUbBytes - fixedBytesAfterSlot - UNPERMUTE_WEIGHT_ALIGNMENT_RESERVE_BYTES;
+                uint64_t weightBytesPerToken =
+                    static_cast<uint64_t>(tilingData->topK) * (sizeof(float) + topKWeightsConversionElementBytes);
+                uint64_t expandedTokensPerBatch =
+                    std::min(weightBudgetBytes / weightBytesPerToken, static_cast<uint64_t>(coreTokenCount));
+                if (expandedTokensPerBatch > static_cast<uint64_t>(bufferConfig.tokensPerBatch)) {
+                    bufferConfig.tokensPerBatch = static_cast<int32_t>(expandedTokensPerBatch);
+                    SetUnpermuteWeightBufferBytes(bufferConfig,
+                                                  static_cast<uint32_t>(expandedTokensPerBatch) * tilingData->topK,
+                                                  topKWeightsConversionElementBytes);
+                }
+            }
+            return bufferConfig;
+        }
+        // 单个 token 批槽超出 UB 预算：清空后落入逐条读布局。
+        bufferConfig = MegaMoeUnpermuteBufferConfig{};
+    }
+
     uint32_t dataSlotBytes = 0U;
     uint32_t scaleBytes = 0U;
     CalcUnpermuteSlotAndScaleBytes(tilingData, bufferConfig, dataSlotBytes, scaleBytes);
 
     // 第一阶段：按基准 weight batch 确定每批 token 数和 weight 区，再以剩余 UB 分配输入 ring。
-    uint32_t baseTokensPerBatch = UNPERMUTE_WEIGHT_ITEMS_PER_BATCH / tilingData->topK;
     bufferConfig.tokensPerBatch = static_cast<int32_t>(std::min(baseTokensPerBatch, coreTokenCount));
     uint32_t weightElementCount = static_cast<uint32_t>(bufferConfig.tokensPerBatch) * tilingData->topK;
     SetUnpermuteWeightBufferBytes(bufferConfig, weightElementCount, topKWeightsConversionElementBytes);
