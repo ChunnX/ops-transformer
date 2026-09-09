@@ -361,14 +361,12 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::DoLibApiTiling()
     mmTiling.baseK = static_cast<uint32_t>(basicTiling_.baseK);
     mmTiling.kAL1 = static_cast<uint32_t>(basicTiling_.stepKa * basicTiling_.baseK);
     mmTiling.kBL1 = static_cast<uint32_t>(basicTiling_.stepKb * basicTiling_.baseK);
-    const uint64_t scaleKL1 = hasKTail
-                                  ? std::min(basicTiling_.stepKa * basicTiling_.baseK,
-                                             basicTiling_.stepKb * basicTiling_.baseK)
-                                  : std::min(
-                                        std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa,
-                                                 basicTiling_.scaleFactorB * basicTiling_.stepKb) *
-                                            basicTiling_.baseK,
-                                        inputParams_.kSize);
+    const uint64_t scaleKL1 =
+        hasKTail ? std::min(basicTiling_.stepKa * basicTiling_.baseK, basicTiling_.stepKb * basicTiling_.baseK) :
+                   std::min(std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa,
+                                     basicTiling_.scaleFactorB * basicTiling_.stepKb) *
+                                basicTiling_.baseK,
+                            inputParams_.kSize);
     mmTiling.scaleKAL1 = static_cast<uint32_t>(scaleKL1);
     mmTiling.scaleKBL1 = static_cast<uint32_t>(scaleKL1);
     mmTiling.dbL0C = static_cast<uint8_t>(basicTiling_.dbL0c);
