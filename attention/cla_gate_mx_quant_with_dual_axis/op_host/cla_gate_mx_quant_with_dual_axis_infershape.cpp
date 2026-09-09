@@ -36,13 +36,13 @@ ge::graphStatus InferShapeForClaGateMxQuantWithDualAxis(gert::InferShapeContext 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int32_t *quantModePtr = attrs->GetAttrPointer<int32_t>(INDEX_ATTR_QUANT_MODE);
-    int64_t quantMode = quantModePtr != nullptr ? *quantModePtr : 0;
+    int64_t quantMode = quantModePtr != nullptr ? *quantModePtr : 1;
     int64_t k = n * d;
     *rowData = gert::Shape({t, k});
     *rowScale = gert::Shape({t, Ops::Base::CeilDiv(k, ROW_BLOCK), SCALE_LAST_DIM});
     if (quantMode == 0) {
-        *colData = gert::Shape({0, k});
-        *colScale = gert::Shape({0, k, SCALE_LAST_DIM});
+        *colData = gert::Shape({0});
+        *colScale = gert::Shape({0});
     } else {
         *colData = gert::Shape({t, k});
         *colScale = gert::Shape({Ops::Base::CeilDiv(t, ROW_BLOCK), k, SCALE_LAST_DIM});

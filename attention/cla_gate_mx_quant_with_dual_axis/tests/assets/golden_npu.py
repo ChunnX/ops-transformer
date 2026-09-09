@@ -228,9 +228,8 @@ def cla_gate_quant_dual_npu(global_out, local_out, global_gate_logits, local_gat
     )
     if quant_mode == 0:
         # Single-axis mode outputs empty col_data/col_scale.
-        col_data_np = np.empty((0,) + col_data_np.shape[1:], dtype=col_data_np.dtype)
-        col_scale_np = np.empty((0, col_scale_np.shape[1], col_scale_np.shape[2]),
-                                dtype=col_scale_np.dtype)
+        col_data_np = np.empty((0,), dtype=col_data_np.dtype)
+        col_scale_np = np.empty((0,), dtype=col_scale_np.dtype)
 
     return row_data_np, row_scale_np, col_data_np, col_scale_np
 

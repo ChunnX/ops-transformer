@@ -53,10 +53,10 @@ op::Shape MakeColScaleShape(const op::Shape &xShape)
 std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *> ClaGateMxQuantWithDualAxis(
     const aclTensor *globalOut, const aclTensor *localOut, const aclTensor *globalGateLogits,
     const aclTensor *localGateLogits, const char *roundModeOptional, int64_t scaleAlg, int64_t dstType,
-    int64_t quantMode, aclOpExecutor *executor)
+    int64_t layout, int64_t quantMode, aclOpExecutor *executor)
 {
     L0_DFX(ClaGateMxQuantWithDualAxis, globalOut, localOut, globalGateLogits, localGateLogits, roundModeOptional,
-           scaleAlg, dstType, quantMode);
+           scaleAlg, dstType, layout, quantMode);
 
     auto xShape = globalOut->GetViewShape();
     auto rowDataShape = MakeRowDataShape(xShape);
@@ -65,10 +65,7 @@ std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *> ClaGateMxQuantWit
     op::Shape colScaleShape;
     if (quantMode == 0) {
         colDataShape.AppendDim(0);
-        colDataShape.AppendDim(xShape.GetDim(1) * xShape.GetDim(2));
         colScaleShape.AppendDim(0);
-        colScaleShape.AppendDim(xShape.GetDim(1) * xShape.GetDim(2));
-        colScaleShape.AppendDim(2);
     } else {
         colDataShape = rowDataShape;
         colScaleShape = MakeColScaleShape(xShape);
@@ -84,11 +81,11 @@ std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *> ClaGateMxQuantWit
     }
 
     // OP_ATTR order must match op_def attr declaration:
-    // dst_type(0), scale_alg(1), round_mode(2), quant_mode(3)
+    // dst_type(0), scale_alg(1), round_mode(2), quant_mode(3), layout(4)
     const char *roundMode = (roundModeOptional != nullptr) ? roundModeOptional : "rint";
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
         ClaGateMxQuantWithDualAxis, OP_INPUT(globalOut, localOut, globalGateLogits, localGateLogits),
-        OP_OUTPUT(rowData, rowScale, colData, colScale), OP_ATTR(dstType, scaleAlg, roundMode, quantMode));
+        OP_OUTPUT(rowData, rowScale, colData, colScale), OP_ATTR(dstType, scaleAlg, roundMode, quantMode, layout));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "ClaGateMxQuantWithDualAxis launch kernel failed.");
         return std::make_tuple(nullptr, nullptr, nullptr, nullptr);

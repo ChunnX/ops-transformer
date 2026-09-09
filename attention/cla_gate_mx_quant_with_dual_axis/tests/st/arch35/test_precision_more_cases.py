@@ -54,7 +54,7 @@ def _dst_torch_dtype(dst_type):
 
 
 def _small_op(global_out, local_out, global_gate_logits, local_gate_logits, *,
-              scale_alg=1, dst_type=36, round_mode="rint"):
+              scale_alg=1, dst_type=36, round_mode="rint", quant_mode=1):
     """Unfused NPU small-op reference; this is the only golden used here."""
     orig_dtype = global_out.dtype
     if global_gate_logits.dim() == global_out.dim():
@@ -68,6 +68,20 @@ def _small_op(global_out, local_out, global_gate_logits, local_gate_logits, *,
         + local_out.to(torch.float32) * local_scale
     ).to(orig_dtype)
     merged = merged.reshape(merged.shape[0], -1)
+
+    if quant_mode == 0:
+        # Single-axis mode: only row-wise quant; col outputs are empty.
+        row_data, row_scale = torch_npu.npu_dynamic_mx_quant(
+            merged,
+            round_mode=round_mode,
+            dst_type=_dst_torch_dtype(dst_type),
+            scale_alg=scale_alg,
+        )
+        torch.npu.synchronize()
+        col_data = torch.empty((0,), dtype=row_data.dtype, device=row_data.device)
+        col_scale = torch.empty((0,), dtype=row_scale.dtype, device=row_scale.device)
+        return row_data, row_scale, col_data, col_scale
+
     return torch_npu.npu_dynamic_mx_quant_with_dual_axis(
         merged,
         round_mode=round_mode,
@@ -255,6 +269,7 @@ def main():
                 scale_alg=case["scale_alg"],
                 dst_type=case["dst_type"],
                 round_mode=case["round_mode"],
+                quant_mode=case["quant_mode"],
             )
             torch.npu.synchronize()
         except Exception as exc:  # noqa: BLE001

@@ -9,6 +9,7 @@
 namespace ops {
 constexpr int32_t DEFAULT_DST_TYPE = 36; // FLOAT8_E4M3FN
 constexpr int32_t DEFAULT_SCALE_ALG = 1;
+constexpr int32_t DEFAULT_LAYOUT = 0; // TND
 
 // 8 dtype branches: fp16->e2m1, bf16->e2m1, fp16->e1m2, bf16->e1m2,
 //                   fp16->e4m3fn, bf16->e4m3fn, fp16->e5m2, bf16->e5m2
@@ -39,7 +40,8 @@ public:
         this->Attr("dst_type").AttrType(OPTIONAL).Int(DEFAULT_DST_TYPE);
         this->Attr("scale_alg").AttrType(OPTIONAL).Int(DEFAULT_SCALE_ALG);
         this->Attr("round_mode").AttrType(OPTIONAL).String("rint");
-        this->Attr("quant_mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("quant_mode").AttrType(OPTIONAL).Int(1);
+        this->Attr("layout").AttrType(OPTIONAL).Int(DEFAULT_LAYOUT);
         OpAICoreConfig config;
         config.DynamicCompileStaticFlag(true).DynamicRankSupportFlag(true).DynamicShapeSupportFlag(true).ExtendCfgInfo(
             "opFile.value", "cla_gate_mx_quant_with_dual_axis_apt");

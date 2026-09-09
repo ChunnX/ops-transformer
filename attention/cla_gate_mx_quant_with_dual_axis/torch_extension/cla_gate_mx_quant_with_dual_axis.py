@@ -34,7 +34,8 @@ class ClaGateMxQuantWithDualAxisOpBuilder(OpBuilder):
             "str round_mode='rint', "
             "int scale_alg=1, "
             "int dst_type=36, "
-            "int quant_mode=0"
+            "int layout=0, "
+            "int quant_mode=1"
             ") -> (Tensor, Tensor, Tensor, Tensor)"
         )
 
@@ -49,7 +50,8 @@ class ClaGateMxQuantWithDualAxisOpBuilder(OpBuilder):
             round_mode: str = "rint",
             scale_alg: int = 1,
             dst_type: int = 36,
-            quant_mode: int = 0,
+            layout: int = 0,
+            quant_mode: int = 1,
         ):
             torch._check(global_out.dim() == 3, lambda: f"global_out must be 3D [T,N,D], but got {global_out.dim()}D")
             torch._check(local_out.dim() == 3, lambda: f"local_out must be 3D [T,N,D], but got {local_out.dim()}D")
@@ -91,6 +93,10 @@ class ClaGateMxQuantWithDualAxisOpBuilder(OpBuilder):
                 lambda: f"scale_alg must be 0 or 1, but got {scale_alg}",
             )
             torch._check(
+                layout == 0,
+                lambda: f"layout must be 0 (TND), but got {layout}",
+            )
+            torch._check(
                 quant_mode in (0, 1),
                 lambda: f"quant_mode must be 0 or 1, but got {quant_mode}",
             )
@@ -117,8 +123,8 @@ class ClaGateMxQuantWithDualAxisOpBuilder(OpBuilder):
             row_data = torch.empty([t, data_cols], dtype=data_dtype, device="meta")
             row_scale = torch.empty([t, (k + 63) // 64, 2], dtype=torch.uint8, device="meta")
             if quant_mode == 0:
-                col_data = torch.empty([0, data_cols], dtype=data_dtype, device="meta")
-                col_scale = torch.empty([0, k, 2], dtype=torch.uint8, device="meta")
+                col_data = torch.empty([0], dtype=data_dtype, device="meta")
+                col_scale = torch.empty([0], dtype=torch.uint8, device="meta")
             else:
                 col_data = torch.empty([t, data_cols], dtype=data_dtype, device="meta")
                 col_scale = torch.empty([(t + 63) // 64, k, 2], dtype=torch.uint8, device="meta")
@@ -145,7 +151,8 @@ def cla_gate_mx_quant_with_dual_axis(
     round_mode: str = "rint",
     scale_alg: int = 1,
     dst_type: int = 36,
-    quant_mode: int = 0,
+    layout: int = 0,
+    quant_mode: int = 1,
 ):
     """NPU 上的四输入 ClaGateMxQuantWithDualAxis 融合算子。"""
     op_module = cla_gate_mx_quant_with_dual_axis_builder.load()
@@ -157,5 +164,6 @@ def cla_gate_mx_quant_with_dual_axis(
         round_mode,
         scale_alg,
         dst_type,
+        layout,
         quant_mode,
     )

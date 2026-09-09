@@ -28,11 +28,12 @@ using namespace ClaGateMxQuantWithDualAxisOp;
 namespace optiling {
 namespace {
 // Attr order must match op_def:
-// dst_type(0), scale_alg(1), round_mode(2), quant_mode(3)
+// dst_type(0), scale_alg(1), round_mode(2), quant_mode(3), layout(4)
 constexpr int64_t INDEX_ATTR_DST_TYPE = 0;
 constexpr int64_t INDEX_ATTR_SCALE_ALG = 1;
 constexpr int64_t INDEX_ATTR_ROUND_MODE = 2;
 constexpr int64_t INDEX_ATTR_QUANT_MODE = 3;
+constexpr int64_t INDEX_ATTR_LAYOUT = 4;
 
 constexpr int64_t INPUT_GLOBAL_OUT = 0;
 constexpr int64_t INPUT_LOCAL_OUT = 1;
@@ -193,10 +194,15 @@ ge::graphStatus GetAndCheckAttrs(gert::TilingContext *context, ClaGateMxQuantWit
     auto dstTypePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_DST_TYPE);
     OP_CHECK_NULL_WITH_CONTEXT(context, dstTypePtr);
     auto quantModePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_QUANT_MODE);
+    auto layoutPtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_LAYOUT);
     params.roundMode = static_cast<int64_t>(roundMode);
     params.scaleAlg = *scaleAlgPtr;
     params.dstType = *dstTypePtr;
-    params.quantMode = (quantModePtr != nullptr) ? *quantModePtr : 0;
+    params.quantMode = (quantModePtr != nullptr) ? *quantModePtr : 1;
+    int64_t layout = (layoutPtr != nullptr) ? *layoutPtr : 0;
+    OP_CHECK_IF(layout != 0,
+                OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "layout", std::to_string(layout).c_str(), "0"),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(params.scaleAlg != 0 && params.scaleAlg != 1,
                 OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale_alg", std::to_string(params.scaleAlg).c_str(),

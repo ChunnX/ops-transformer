@@ -134,12 +134,12 @@ __aicore__ inline void ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, ro
     // If all tiles owned by this core are full 256-column blocks, the whole
     // range is memory-contiguous and can be copied in batches with one DataCopy
     // per batch. The batch size is supplied by tiling.
+    // A contiguous range of full 256-column tiles can cross row boundaries.
+    // All full tiles have the same per-tile head count, so ProcessBatchChunk
+    // can safely batch them once the local slot/head addressing is explicit.
     bool canBatchFullTiles = true;
     int64_t firstRow = firstBlock / colTileNum;
     int64_t lastRow = (firstBlock + loops - 1) / colTileNum;
-    if (firstRow != lastRow) {
-        canBatchFullTiles = false;
-    }
     for (int64_t i = 0; i < loops; ++i) {
         int64_t tile = firstBlock + i;
         int64_t colTileIdx = tile % colTileNum;
@@ -280,8 +280,13 @@ ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::Com
 {
     uint16_t vfsPerHead = static_cast<uint16_t>(headSize_ / VF_LEN_FP32);
     uint16_t headsPerRow = static_cast<uint16_t>(headsPerTileRow_);
-    // For full 256-column blocks, every slot advances by headsPerRow heads.
-    uint32_t baseHead = static_cast<uint32_t>(firstColTile) * headsPerRow;
+    // CopyInClaGateBatch copies a contiguous tile range into UB. Activation and
+    // gate buffers are therefore both indexed by the local slot:
+    //   activation: slot * tileRowLength_ + h * headSize_ + vf * VF_LEN_FP32
+    //   gate:       slot * headsPerRow + h
+    // firstColTile is not a local UB offset; using it here caused cross-tile
+    // batches to read the wrong gate/activation data.
+    (void)firstColTile;
     __VEC_SCOPE__
     {
         Reg::RegTensor<xDtype> globalReg, localReg, outputReg;
@@ -289,18 +294,17 @@ ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::Com
         Reg::RegTensor<float> gateF, tmpF, oneF, globalSigF, localSigF;
         Reg::RegTensor<float> globalRegF, localRegF, outputRegF;
         Reg::MaskReg allMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-        Reg::AddrReg offset;
 
         for (uint16_t slot = 0; slot < calcRows; ++slot) {
-            uint32_t rowOffset = slot * static_cast<uint32_t>(tileRowLength_);
-            __ubuf__ xDtype *rowGlobal = globalAddr + rowOffset;
-            __ubuf__ xDtype *rowLocal = localAddr + rowOffset;
-            __ubuf__ xDtype *rowOut = outputAddr + rowOffset;
-            uint32_t headStart = baseHead + slot * headsPerRow;
+            uint32_t tileOffset = slot * static_cast<uint32_t>(tileRowLength_);
+            __ubuf__ xDtype *tileGlobal = globalAddr + tileOffset;
+            __ubuf__ xDtype *tileLocal = localAddr + tileOffset;
+            __ubuf__ xDtype *tileOut = outputAddr + tileOffset;
+            uint32_t localHeadBase = slot * headsPerRow;
             for (uint16_t h = 0; h < headsPerRow; ++h) {
-                uint32_t headIndex = headStart + h;
+                uint32_t localHead = localHeadBase + h;
 
-                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(globalGateReg, globalGateRow + headIndex);
+                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(globalGateReg, globalGateRow + localHead);
                 Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, globalGateReg, allMask);
                 Reg::Muls(tmpF, gateF, -1.0f, allMask);
                 Reg::Exp(tmpF, tmpF, allMask);
@@ -308,7 +312,7 @@ ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::Com
                 Reg::Duplicate(oneF, 1.0f, allMask);
                 Reg::Div(globalSigF, oneF, tmpF, allMask);
 
-                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(localGateReg, localGateRow + headIndex);
+                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(localGateReg, localGateRow + localHead);
                 Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, localGateReg, allMask);
                 Reg::Muls(tmpF, gateF, -1.0f, allMask);
                 Reg::Exp(tmpF, tmpF, allMask);
@@ -316,16 +320,20 @@ ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::Com
                 Reg::Div(localSigF, oneF, tmpF, allMask);
 
                 for (uint16_t vf = 0; vf < vfsPerHead; ++vf) {
-                    offset = Reg::CreateAddrReg<xDtype>(0, ONCE_ROW_LEN, h, headSize_, vf, VF_LEN_FP32);
-                    Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(globalReg, rowGlobal, offset);
-                    Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(localReg, rowLocal, offset);
+                    uint32_t vfOffset = h * static_cast<uint32_t>(headSize_) + vf * VF_LEN_FP32;
+                    __ubuf__ xDtype *vfGlobal = tileGlobal + vfOffset;
+                    __ubuf__ xDtype *vfLocal = tileLocal + vfOffset;
+                    __ubuf__ xDtype *vfOut = tileOut + vfOffset;
+
+                    Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(globalReg, vfGlobal);
+                    Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(localReg, vfLocal);
                     Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(globalRegF, globalReg, allMask);
                     Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(localRegF, localReg, allMask);
                     Reg::Mul(globalRegF, globalRegF, globalSigF, allMask);
                     Reg::Mul(localRegF, localRegF, localSigF, allMask);
                     Reg::Add(outputRegF, globalRegF, localRegF, allMask);
                     Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(outputReg, outputRegF, allMask);
-                    Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(rowOut, outputReg, offset, allMask);
+                    Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(vfOut, outputReg, allMask);
                 }
             }
         }
@@ -509,12 +517,37 @@ ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::Com
     __ubuf__ xDtype *dataStartAddr = xAddr;
     __ubuf__ uint16_t *rowScaleReciprocalStartAddr = rowScaleReciprocalAddr;
     PipeBarrier<PIPE_V>();
+
+    // Phase 1: collect row maxima. StoreUnAlignPost must end a vector scope:
+    // keeping later vector loads in the same scope causes VEC UB alignment errors.
     __VEC_SCOPE__
     {
         Reg::RegTensor<xDtype> evenData;
         Reg::RegTensor<xDtype> oddData;
         Reg::RegTensor<uint16_t> evenAbs;
         Reg::RegTensor<uint16_t> oddAbs;
+        Reg::RegTensor<uint16_t> absMaxDim1;
+        Reg::RegTensor<uint16_t> absMask;
+        Reg::MaskReg maskAll = Reg::CreateMask<xDtype, Reg::MaskPattern::ALL>();
+        Reg::UnalignReg ureg;
+
+        Reg::Duplicate(absMask, ABS_MASK_FOR_16BIT);
+        for (uint16_t i = 0; i < blockCount; i++) {
+            Reg::LoadAlign<xDtype, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B16>(
+                evenData, oddData, xAddr, dataLen);
+            Reg::And(evenAbs, (Reg::RegTensor<uint16_t> &)evenData, absMask, maskAll);
+            Reg::And(oddAbs, (Reg::RegTensor<uint16_t> &)oddData, absMask, maskAll);
+            Reg::Max(absMaxDim1, evenAbs, oddAbs, maskAll);
+            Reg::ReduceDataBlock<AscendC::Reg::ReduceType::MAX>(absMaxDim1, absMaxDim1, maskAll);
+            Reg::StoreUnAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(absMaxTempAddr, absMaxDim1, ureg,
+                                                                            dataLen / BLOCK_SIZE);
+        }
+        Reg::StoreUnAlignPost(absMaxTempAddr, ureg, 0);
+    }
+
+    // Phase 2: compute/scatter row scale and reciprocal from the compacted maxima.
+    __VEC_SCOPE__
+    {
         Reg::RegTensor<uint16_t> absMaxDim1;
         Reg::RegTensor<uint32_t> max32;
         Reg::RegTensor<uint32_t> exp32;
@@ -528,7 +561,6 @@ ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::Com
         Reg::RegTensor<uint16_t> reciprocalBf16Reg;
         Reg::RegTensor<uint16_t> reciprocalBf16Row;
         Reg::RegTensor<int8_t> extractIdx;
-        Reg::RegTensor<uint16_t> absMask;
         Reg::RegTensor<uint32_t> invMax;
         Reg::RegTensor<uint32_t> manMaskReg;
         Reg::RegTensor<uint32_t> expMaskReg;
@@ -544,20 +576,6 @@ ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::Com
         Reg::MaskReg maskAll32 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
         Reg::MaskReg maskReduceB8 = Reg::CreateMask<uint8_t, Reg::MaskPattern::VL8>();
         Reg::MaskReg maskReduceB16 = Reg::CreateMask<uint8_t, Reg::MaskPattern::VL16>();
-        Reg::UnalignReg ureg;
-
-        Reg::Duplicate(absMask, ABS_MASK_FOR_16BIT);
-        for (uint16_t i = 0; i < blockCount; i++) {
-            Reg::LoadAlign<xDtype, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B16>(
-                evenData, oddData, xAddr, dataLen);
-            Reg::And(evenAbs, (Reg::RegTensor<uint16_t> &)evenData, absMask, maskAll);
-            Reg::And(oddAbs, (Reg::RegTensor<uint16_t> &)oddData, absMask, maskAll);
-            Reg::Max(absMaxDim1, evenAbs, oddAbs, maskAll);
-            Reg::ReduceDataBlock<AscendC::Reg::ReduceType::MAX>(absMaxDim1, absMaxDim1, maskAll);
-            Reg::StoreUnAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(absMaxTempAddr, absMaxDim1, ureg,
-                                                                            dataLen / BLOCK_SIZE);
-        }
-        Reg::StoreUnAlignPost(absMaxTempAddr, ureg, 0);
 
         Reg::Duplicate(invMax, outputDtypeInvMax);
         Reg::Duplicate(manMaskReg, MAN_MASK_FLOAT);
@@ -612,7 +630,14 @@ ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::Com
                     rowScaleReciprocalAddr, reciprocalBf16Row, ROW_SCALE_RECIPROCAL_ROW_ELEMS, maskReduceB16);
             }
         }
+    }
 
+    // Phase 3: quantize row data using the generated row-scale reciprocals.
+    __VEC_SCOPE__
+    {
+        Reg::RegTensor<xDtype> evenData;
+        Reg::RegTensor<xDtype> oddData;
+        Reg::MaskReg maskAll = Reg::CreateMask<xDtype, Reg::MaskPattern::ALL>();
         Reg::MaskReg maskAllB8 = Reg::CreateMask<uint8_t, Reg::MaskPattern::ALL>();
         Reg::RegTensor<uint16_t> scaleForMulFP16;
         Reg::RegTensor<float> scaleForMulFP32;

@@ -23,8 +23,8 @@ extern "C" {
 ACLNN_API aclnnStatus aclnnClaGateMxQuantWithDualAxisGetWorkspaceSize(
     const aclTensor *globalOut, const aclTensor *localOut, const aclTensor *globalGateLogits,
     const aclTensor *localGateLogits, const char *roundModeOptional, int64_t scaleAlg, int64_t dstType,
-    int64_t quantMode, aclTensor *rowData, aclTensor *rowScale, aclTensor *colData, aclTensor *colScale,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    int64_t layout, int64_t quantMode, aclTensor *rowData, aclTensor *rowScale, aclTensor *colData,
+    aclTensor *colScale, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnClaGateMxQuantWithDualAxis 的第二段接口。

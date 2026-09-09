@@ -37,14 +37,14 @@ constexpr int64_t ROW_BLOCK = 64;
 constexpr int64_t SCALE_LAST_DIM = 2;
 constexpr int64_t SCALE_ALG_OCP = 0;
 constexpr int64_t SCALE_ALG_CUBLAS = 1;
+constexpr int64_t LAYOUT_TND = 0;
 constexpr int64_t FP8_E4M3FN = 36;
 constexpr int64_t FP8_E5M2 = 35;
 constexpr int64_t FP4_E2M1 = 40;
 constexpr int64_t FP4_E1M2 = 41;
 
 static bool CheckNotNull(const aclTensor *globalOut, const aclTensor *localOut, const aclTensor *globalGateLogits,
-                         const aclTensor *localGateLogits, const aclTensor *rowData, const aclTensor *rowScale,
-                         const aclTensor *colData, const aclTensor *colScale)
+                         const aclTensor *localGateLogits, const aclTensor *rowData, const aclTensor *rowScale)
 {
     OP_CHECK_NULL(globalOut, return false);
     OP_CHECK_NULL(localOut, return false);
@@ -52,8 +52,6 @@ static bool CheckNotNull(const aclTensor *globalOut, const aclTensor *localOut, 
     OP_CHECK_NULL(localGateLogits, return false);
     OP_CHECK_NULL(rowData, return false);
     OP_CHECK_NULL(rowScale, return false);
-    OP_CHECK_NULL(colData, return false);
-    OP_CHECK_NULL(colScale, return false);
     return true;
 }
 
@@ -128,8 +126,6 @@ static bool CheckOutputShape(const aclTensor *rowData, const aclTensor *rowScale
 {
     auto rowDataShape = rowData->GetViewShape();
     auto rowScaleShape = rowScale->GetViewShape();
-    auto colDataShape = colData->GetViewShape();
-    auto colScaleShape = colScale->GetViewShape();
     if (rowDataShape.GetDimNum() != 2 || rowDataShape.GetDim(0) != rowCount || rowDataShape.GetDim(1) != columnCount) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "row_data must be [T,N*D].");
         return false;
@@ -140,11 +136,15 @@ static bool CheckOutputShape(const aclTensor *rowData, const aclTensor *rowScale
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "row_scale physical shape mismatch.");
         return false;
     }
-    bool colEmpty = (colDataShape.GetDimNum() == 2 && colDataShape.GetDim(0) == 0) &&
-                    (colScaleShape.GetDimNum() == 3 && colScaleShape.GetDim(0) == 0);
     if (quantMode == 0) {
-        return colEmpty;
+        return colData == nullptr && colScale == nullptr;
     }
+    if (colData == nullptr || colScale == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "col_data/col_scale must be provided when quant_mode=1.");
+        return false;
+    }
+    auto colDataShape = colData->GetViewShape();
+    auto colScaleShape = colScale->GetViewShape();
     if (colDataShape.GetDimNum() != 2 || colDataShape.GetDim(0) != rowCount || colDataShape.GetDim(1) != columnCount) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "col_data must be [T,N*D].");
         return false;
@@ -159,16 +159,17 @@ static bool CheckOutputShape(const aclTensor *rowData, const aclTensor *rowScale
 
 static aclnnStatus CheckParams(const aclTensor *globalOut, const aclTensor *localOut, const aclTensor *globalGateLogits,
                                const aclTensor *localGateLogits, const char *roundMode, int64_t scaleAlg,
-                               int64_t dstType, int64_t quantMode, const aclTensor *rowData, const aclTensor *rowScale,
-                               const aclTensor *colData, const aclTensor *colScale)
+                               int64_t dstType, int64_t layout, int64_t quantMode, const aclTensor *rowData,
+                               const aclTensor *rowScale, const aclTensor *colData, const aclTensor *colScale)
 {
     CHECK_RET(
-        CheckNotNull(globalOut, localOut, globalGateLogits, localGateLogits, rowData, rowScale, colData, colScale),
+        CheckNotNull(globalOut, localOut, globalGateLogits, localGateLogits, rowData, rowScale),
         ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckDtypeValid(globalOut, localOut, globalGateLogits, localGateLogits, dstType),
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckShape(globalOut, localOut, globalGateLogits, localGateLogits), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(IsRoundModeValid(roundMode), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(layout == LAYOUT_TND, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(quantMode == 0 || quantMode == 1, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(scaleAlg == SCALE_ALG_OCP || scaleAlg == SCALE_ALG_CUBLAS, ACLNN_ERR_PARAM_INVALID);
     if ((dstType == FP4_E2M1 || dstType == FP4_E1M2) && scaleAlg != SCALE_ALG_OCP) {
@@ -191,18 +192,19 @@ static aclnnStatus CheckParams(const aclTensor *globalOut, const aclTensor *loca
 aclnnStatus aclnnClaGateMxQuantWithDualAxisGetWorkspaceSize(
     const aclTensor *globalOut, const aclTensor *localOut, const aclTensor *globalGateLogits,
     const aclTensor *localGateLogits, const char *roundModeOptional, int64_t scaleAlg, int64_t dstType,
-    int64_t quantMode, aclTensor *rowData, aclTensor *rowScale, aclTensor *colData, aclTensor *colScale,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t layout, int64_t quantMode, aclTensor *rowData, aclTensor *rowScale, aclTensor *colData,
+    aclTensor *colScale, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(
         aclnnClaGateMxQuantWithDualAxis,
-        DFX_IN(globalOut, localOut, globalGateLogits, localGateLogits, roundModeOptional, scaleAlg, dstType, quantMode),
+        DFX_IN(globalOut, localOut, globalGateLogits, localGateLogits, roundModeOptional, scaleAlg, dstType, layout,
+               quantMode),
         DFX_OUT(rowData, rowScale, colData, colScale));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     auto ret = CheckParams(globalOut, localOut, globalGateLogits, localGateLogits, roundModeOptional, scaleAlg, dstType,
-                           quantMode, rowData, rowScale, colData, colScale);
+                           layout, quantMode, rowData, rowScale, colData, colScale);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     auto globalOutContiguous = l0op::Contiguous(globalOut, uniqueExecutor.get());
@@ -215,8 +217,8 @@ aclnnStatus aclnnClaGateMxQuantWithDualAxisGetWorkspaceSize(
     CHECK_RET(localGateContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     auto result = l0op::ClaGateMxQuantWithDualAxis(globalOutContiguous, localOutContiguous, globalGateContiguous,
-                                                   localGateContiguous, roundModeOptional, scaleAlg, dstType, quantMode,
-                                                   uniqueExecutor.get());
+                                                   localGateContiguous, roundModeOptional, scaleAlg, dstType, layout,
+                                                   quantMode, uniqueExecutor.get());
     const aclTensor *rowDataOut = std::get<0>(result);
     const aclTensor *rowScaleOut = std::get<1>(result);
     const aclTensor *colDataOut = std::get<2>(result);
@@ -229,10 +231,14 @@ aclnnStatus aclnnClaGateMxQuantWithDualAxisGetWorkspaceSize(
     CHECK_RET(viewRowData != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto viewRowScale = l0op::ViewCopy(rowScaleOut, rowScale, uniqueExecutor.get());
     CHECK_RET(viewRowScale != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto viewColData = l0op::ViewCopy(colDataOut, colData, uniqueExecutor.get());
-    CHECK_RET(viewColData != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto viewColScale = l0op::ViewCopy(colScaleOut, colScale, uniqueExecutor.get());
-    CHECK_RET(viewColScale != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    if (colData != nullptr) {
+        auto viewColData = l0op::ViewCopy(colDataOut, colData, uniqueExecutor.get());
+        CHECK_RET(viewColData != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    if (colScale != nullptr) {
+        auto viewColScale = l0op::ViewCopy(colScaleOut, colScale, uniqueExecutor.get());
+        CHECK_RET(viewColScale != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);

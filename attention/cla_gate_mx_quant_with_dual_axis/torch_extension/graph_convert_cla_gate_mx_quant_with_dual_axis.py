@@ -52,6 +52,8 @@ if _TORCHAIR_AVAILABLE:
         round_mode: str = "rint",
         scale_alg: int = 1,
         dst_type: int = 36,
+        layout: int = 0,
+        quant_mode: int = 1,
         meta_outputs: TensorSpec = None,
     ):
         row_data, row_scale, col_data, col_scale = ge_op(
@@ -66,6 +68,8 @@ if _TORCHAIR_AVAILABLE:
                 "round_mode": attr.String(round_mode),
                 "scale_alg": attr.Int(scale_alg),
                 "dst_type": attr.Int(dst_type),
+                "layout": attr.Int(layout),
+                "quant_mode": attr.Int(quant_mode),
             },
             outputs=[
                 "row_data",
@@ -81,6 +85,8 @@ if _TORCHAIR_AVAILABLE:
             .attr("round_mode", attr.String("rint"))
             .attr("scale_alg", attr.Int(1))
             .attr("dst_type", attr.Int(36))
+            .attr("layout", attr.Int(0))
+            .attr("quant_mode", attr.Int(1))
             .output("row_data", "DT_FLOAT4_E2M1, DT_FLOAT4_E1M2, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2")
             .output("row_scale", "DT_FLOAT8_E8M0")
             .output("col_data", "DT_FLOAT4_E2M1, DT_FLOAT4_E1M2, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2")
