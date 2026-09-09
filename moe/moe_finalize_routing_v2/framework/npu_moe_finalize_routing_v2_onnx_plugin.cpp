@@ -8,23 +8,14 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "onnx_common.h"
+#include "graph/operator.h"
+#include "register/register.h"
 
 namespace domi {
-using NodeProto = ge::onnx::NodeProto;
-
-static Status ParseParamsMoeFinalizeRoutingV2(const Message *op_src, ge::Operator &op_dest) {
-  const NodeProto *node = dynamic_cast<const NodeProto *>(op_src);
-  if (node == nullptr) {
-    OP_LOGE(GetOpName(op_dest).c_str(), "Dynamic op_src to NodeProto failed.");
-    return FAILED;
-  }
-
-  int drop_pad_mode = 0;
-  for (auto attr : node->attribute()) {
-    if (attr.name() == "drop_pad_mode" && attr.type() == ge::onnx::AttributeProto::INT) {
-      drop_pad_mode = attr.i();
-    }
+static Status ParseParamsMoeFinalizeRoutingV2(const ge::Operator &op_src, ge::Operator &op_dest) {
+  int64_t drop_pad_mode = 0;
+  if (op_src.GetAttr("drop_pad_mode", drop_pad_mode) != ge::GRAPH_SUCCESS) {
+    drop_pad_mode = 0;
   }
   op_dest.SetAttr("drop_pad_mode", drop_pad_mode);
   return SUCCESS;
@@ -42,6 +33,6 @@ REGISTER_CUSTOM_OP("MoeFinalizeRoutingV2")
                    ge::AscendString("ai.onnx::16::NPUMoeFinalizeRoutingV2"),
                    ge::AscendString("ai.onnx::17::NPUMoeFinalizeRoutingV2"),
                    ge::AscendString("ai.onnx::18::NPUMoeFinalizeRoutingV2")})
-    .ParseParamsFn(ParseParamsMoeFinalizeRoutingV2)
+    .ParseParamsByOperatorFn(ParseParamsMoeFinalizeRoutingV2)
     .ImplyType(ImplyType::TVM);
 } // namespace V2domi
