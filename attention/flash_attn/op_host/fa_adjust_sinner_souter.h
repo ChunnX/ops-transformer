@@ -49,7 +49,7 @@ constexpr uint32_t DSIZE_256 = 256;
  */
 inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t gSize, int64_t maxSeqQ, int64_t maxSeqKv,
                                   int32_t maskMode, int64_t winLeft, int64_t winRight, uint32_t qLayout,
-                                  uint32_t &sOuterFactor, uint32_t &sInnerFactor)
+                                  uint32_t &sOuterFactor, uint32_t &sInnerFactor, bool enableD64Prefill = false)
 {
     if (maxSeqQ == -1) {
         maxSeqQ = MAX_SEQ_LEN_DEFAULT;
@@ -59,6 +59,14 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t gSize, int64_t max
     }
     sOuterFactor = SOUTER_64;
     sInnerFactor = SINNER_128;
+
+    // The host and metadata opt into this tile using identical B/D/layout guards.
+    if (enableD64Prefill && vHeadDim == 64 && gSize == 1 && maxSeqQ >= 16384 && maxSeqKv >= 16384 &&
+        maxSeqQ % 128 == 0 && maxSeqKv % 256 == 0 && maskMode == 0 && qLayout == LAYOUT_BNSD) {
+        sOuterFactor = SOUTER_64;
+        sInnerFactor = SINNER_256;
+        return;
+    }
 
     bool checkQueryAndValueS = maxSeqQ <= SOUTER_64 && maxSeqKv > SINNER_128;
 

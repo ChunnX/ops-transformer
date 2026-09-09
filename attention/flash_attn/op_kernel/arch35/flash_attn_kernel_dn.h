@@ -51,9 +51,12 @@ public:
     static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
     static constexpr bool HAS_MASK = FA_T::hasMask;
 
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
-    // task ring buffer 至少需要 PRELOAD_N+1(=3) 个slot；为了用位掩码(loop & MASK)代替取模(loop % SIZE)，
-    // 将容量向上取整到最近的2的幂(=4)。代价仅为多1个RunInfo slot，换取消除内层循环的取模scalar bound。
+    static constexpr uint32_t PRELOAD_N =
+        (static_cast<uint32_t>(FA_T::dBaseSize) == 64 && static_cast<uint32_t>(FA_T::dVBaseSize) == 64 &&
+         mBaseSize == 128 && (s2BaseSize == 128 || s2BaseSize == 256)) ?
+            3U :
+            2U;
+    // Four slots cover PRELOAD_N+1 for both preload depths and allow bitmask indexing.
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
     static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
     static_assert(PRELOAD_TASK_CACHE_SIZE >= PRELOAD_N + 1, "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 1");

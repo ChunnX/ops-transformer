@@ -61,15 +61,18 @@ public:
     CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1_;
     GlobalTensor<int32_t> blockTableGm_;
 
+    static constexpr bool D64_DEEP_PRELOAD =
+        dBaseSize == 64 && dVBaseSize == 64 && mBaseSize == 128 && (s2BaseSize == 128 || s2BaseSize == 256);
+
     // 核间同步ID
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
     static constexpr uint32_t CROSSCORE_MM_0 = 0U;
     static constexpr uint32_t CROSSCORE_MM_1 = 1U;
     static constexpr uint32_t CROSSCORE_MM_2 = 2U;
     static constexpr uint32_t CROSSCORE_MM_3 = 3U;
-    static constexpr uint32_t CROSSCORE_L1P_0 = 5U;
-    static constexpr uint32_t CROSSCORE_L1P_1 = 6U;
-    static constexpr uint32_t CROSSCORE_L1P_2 = 7U;
+    static constexpr uint32_t CROSSCORE_L1P_0 = (D64_DEEP_PRELOAD ? 4U : 5U) + 0U;
+    static constexpr uint32_t CROSSCORE_L1P_1 = (D64_DEEP_PRELOAD ? 4U : 5U) + 1U;
+    static constexpr uint32_t CROSSCORE_L1P_2 = (D64_DEEP_PRELOAD ? 4U : 5U) + 2U;
 
     // 核内同步ID
     static constexpr uint32_t Q_L1_BUFFER_ID0 = 0U;
@@ -87,18 +90,39 @@ public:
     static constexpr uint32_t L0C_BUFFER_ID2 = 12U;
     static constexpr uint32_t L0C_BUFFER_ID3 = 13U;
 
+    static constexpr bool D64_UNIT_FLAG_PATH =
+        dBaseSize == 64 && dVBaseSize == 64 && mBaseSize == 128 && (s2BaseSize == 128 || s2BaseSize == 256);
+    static constexpr uint32_t UNIT_FLAG_VALUE = 3U;
+
+    bool useUnitFlag_ = false;
+
+    __aicore__ inline bool UseUnitFlag(const RunInfo &) const
+    {
+        return useUnitFlag_;
+    }
+
     // UB
-    static constexpr uint32_t UB_MM_RES_BUFCNT = (dBaseSize > 128) ? 2U : 4U;
+    static constexpr bool SPLIT_MM_QUEUES = D64_DEEP_PRELOAD && s2BaseSize == 256;
+    static constexpr uint32_t UB_MM_RES_BUFCNT =
+        (D64_DEEP_PRELOAD && s2BaseSize == 256) ? 4U : ((dBaseSize > 128 || s2BaseSize > 128) ? 2U : 4U);
     static constexpr uint32_t UB_MM_RES_BUF_BYTES =
-        mBaseSize / CV_RATIO * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(MM_T);
+        mBaseSize / CV_RATIO * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(MM_T) +
+        ((dBaseSize == 64 && dVBaseSize == 64 && mBaseSize == 128 && s2BaseSize == 128) ? 128U : 0U);
+    static constexpr uint32_t UB_MM1_BUF_BYTES = mBaseSize / CV_RATIO * s2BaseSize * sizeof(MM_T);
+    static constexpr uint32_t UB_MM2_BUF_BYTES = mBaseSize / CV_RATIO * dVBaseSize * sizeof(MM_T);
+    static constexpr uint32_t UB_MM_RES_TOTAL_BYTES =
+        SPLIT_MM_QUEUES ? 2U * (UB_MM1_BUF_BYTES + UB_MM2_BUF_BYTES + 256U) : UB_MM_RES_BUFCNT * UB_MM_RES_BUF_BYTES;
     LocalTensor<uint8_t> ubMmResBuffers_;
     // L1
-    static constexpr uint32_t L1_P_BUFCNT = 3U;
+    static constexpr uint32_t L1_P_BUFCNT = D64_DEEP_PRELOAD ? 4U : 3U;
     static constexpr uint32_t L1_P_BUF_BYTES = mBaseSize * s2BaseSize * sizeof(INPUT_T);
     static constexpr uint32_t L1_Q_BUFCNT = 2U;
     static constexpr uint32_t L1_Q_BUF_BYTES = mBaseSize * dBaseSize * sizeof(Q_T);
     static constexpr uint32_t L1_KV_BUFCNT = 4U;
-    static constexpr uint32_t L1_KV_BUF_BYTES = 64U * 1024U;
+    static constexpr uint32_t L1_KV_BUF_BYTES = (D64_UNIT_FLAG_PATH && s2BaseSize == 256) ? 32U * 1024U : 64U * 1024U;
+    static_assert(L1_P_BUFCNT * L1_P_BUF_BYTES + L1_Q_BUFCNT * L1_Q_BUF_BYTES + L1_KV_BUFCNT * L1_KV_BUF_BYTES <=
+                      512U * 1024U,
+                  "FA buffers exceed L1 capacity");
     // buffer位置+用途+Buffers, 例如l1PBuffers; 使用时命名: 用途+buffer位置+Tensor, 例如pL1Tensor
     LocalTensor<uint8_t> l1PBuffers_;
     LocalTensor<uint8_t> l1QBuffers_;
@@ -106,11 +130,43 @@ public:
     uint32_t qL1BufId_ = 0U;
     uint32_t kvL1BufId_ = 0U;
     // L0C
-    static constexpr uint32_t L0C_BUFCNT = 4U;
-    static constexpr uint32_t L0C_BUF_BYTES = 64U * 1024U;
+    static constexpr uint32_t L0C_BUFCNT = (D64_UNIT_FLAG_PATH && s2BaseSize == 256) ? 2U : 4U;
+    static constexpr uint32_t L0C_BUF_BYTES = (D64_UNIT_FLAG_PATH && s2BaseSize == 256) ? 128U * 1024U : 64U * 1024U;
     LocalTensor<uint8_t> l0CBuffers_;
     uint32_t l0cBufId_ = 0U;
     uint32_t mmResBufId_ = 0U;
+    uint32_t mm1ResBufId_ = 0U;
+    uint32_t mm2ResBufId_ = 0U;
+
+    __aicore__ inline uint32_t AcquireMmSlot(bool second)
+    {
+        if constexpr (SPLIT_MM_QUEUES) {
+            if (second) {
+                uint32_t id = mm2ResBufId_;
+                mm2ResBufId_ = (mm2ResBufId_ + 1U) % 2U;
+                return 2U + id;
+            }
+            uint32_t id = mm1ResBufId_;
+            mm1ResBufId_ = (mm1ResBufId_ + 1U) % 2U;
+            return id;
+        } else {
+            uint32_t id = mmResBufId_;
+            mmResBufId_ = (mmResBufId_ + 1U) % UB_MM_RES_BUFCNT;
+            return id;
+        }
+    }
+
+    __aicore__ inline uint32_t MmSlotOffset(uint32_t id)
+    {
+        if constexpr (SPLIT_MM_QUEUES) {
+            // Rotate the four slot bases through UB phases 0/128/256/384B.
+            return id < 2U ? id * (UB_MM1_BUF_BYTES + 128U) :
+                             2U * (UB_MM1_BUF_BYTES + 128U) + (id - 2U) * (UB_MM2_BUF_BYTES + 128U);
+        } else {
+            return id * UB_MM_RES_BUF_BYTES;
+        }
+    }
+
     // L0A/B
     fa_base_matmul::BufferManager<fa_base_matmul::BufferType::L0A> l0aBufferManager_;
     fa_base_matmul::BufferManager<fa_base_matmul::BufferType::L0B> l0bBufferManager_;
@@ -140,13 +196,25 @@ public:
                      keyGm_, key, constInfo_.keyBnStride, constInfo_.keyN2Stride);
         InitKVBuffer(constInfo_.bSize, constInfo_.s2Size, constInfo_.n2Size, constInfo_.blockSize, constInfo_.dSizeV,
                      valueGm_, value, constInfo_.valueBnStride, constInfo_.valueN2Stride);
+        // Whole-invocation guard: no mixing unit-managed and software-managed L0C reuse.
+        if constexpr (D64_UNIT_FLAG_PATH && !PAGE_ATTENTION && LAYOUT_T == FA_LAYOUT::BNSD &&
+                      LAYOUT_KV == FA_LAYOUT::BNSD) {
+            useUnitFlag_ = constInfo_.bSize == 1 && constInfo_.gSize == 1 && constInfo_.dSize == 64 &&
+                           constInfo_.dSizeV == 64 && qSeqLensTool_.GetActualSeqLength(0) > 0 &&
+                           qSeqLensTool_.GetActualSeqLength(0) % 128 == 0 && kvSeqLensTool_.GetActualSeqLength(0) > 0 &&
+                           kvSeqLensTool_.GetActualSeqLength(0) % s2BaseSize == 0;
+        }
     }
 
     __aicore__ inline void InitBuffers()
     {
+        if constexpr (D64_UNIT_FLAG_PATH) {
+            set_loop3_para(1);
+            AscendC::PipeBarrier<PIPE_FIX>();
+        }
         /*--------------------------------------------UB--------------------------------------------*/
         uint32_t addrUb = 0;
-        ubMmResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_MM_RES_BUFCNT * UB_MM_RES_BUF_BYTES);
+        ubMmResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_MM_RES_TOTAL_BYTES);
 
         /*--------------------------------------------L1--------------------------------------------*/
         uint32_t addrL1 = 0;
@@ -164,6 +232,11 @@ public:
 
         /*--------------------------------------------L0C--------------------------------------------*/
         l0CBuffers_ = LocalTensor<uint8_t>(TPosition::CO1, 0U, L0C_BUFCNT * L0C_BUF_BYTES);
+        if (useUnitFlag_) {
+            SetFixPipeConfig<MM_T>(l0CBuffers_.template ReinterpretCast<MM_T>(), true);
+            SetMMRowMajor(); // Match the NZ2ND reader's N-first order.
+            AscendC::PipeBarrier<PIPE_ALL>();
+        }
     }
 
     __aicore__ inline void InitQBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
@@ -202,15 +275,9 @@ public:
 
     __aicore__ inline void UnInitCrossCoreSync()
     {
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_0);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_0 + AIV0_AIV1_OFFSET);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_1);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_1 + AIV0_AIV1_OFFSET);
-        if constexpr (dBaseSize <= 128) {
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_2);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_2 + AIV0_AIV1_OFFSET);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_3);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_3 + AIV0_AIV1_OFFSET);
+        for (uint32_t slot = 0; slot < UB_MM_RES_BUFCNT; ++slot) {
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_0 + slot);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM_0 + slot + AIV0_AIV1_OFFSET);
         }
     }
 
@@ -273,10 +340,8 @@ public:
 
     __aicore__ inline void IterateBmm1(RunInfo &runInfo)
     {
-        uint32_t mmResUbBufId = mmResBufId_;
-        mmResBufId_ = (mmResBufId_ + 1) % UB_MM_RES_BUFCNT;
-        LocalTensor<MM_T> mm1ResUbTensor =
-            ubMmResBuffers_[mmResUbBufId * UB_MM_RES_BUF_BYTES].template ReinterpretCast<MM_T>();
+        uint32_t mmResUbBufId = AcquireMmSlot(false);
+        LocalTensor<MM_T> mm1ResUbTensor = ubMmResBuffers_[MmSlotOffset(mmResUbBufId)].template ReinterpretCast<MM_T>();
         uint32_t mmSyncIdx = CROSSCORE_MM_0 + mmResUbBufId;
 
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx);
@@ -284,6 +349,24 @@ public:
         IterateBmm1Dn(mm1ResUbTensor, runInfo);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx + AIV0_AIV1_OFFSET);
+    }
+
+    template <typename DST_TENSOR_T>
+    __aicore__ inline void CopyMmResult(const DST_TENSOR_T &dstTensor, const LocalTensor<MM_T> &l0C,
+                                        const FixpipeParamsC310<CO2Layout::ROW_MAJOR> &params)
+    {
+        if constexpr (D64_UNIT_FLAG_PATH) {
+            // Match AscendC FixpipeL0cToUB, with fixed LOOP3_PARA initialized once.
+            // L0C readiness and UB ownership remain protected by the existing flags.
+            copy_matrix_cc_to_ub((__ubuf__ MM_T *)dstTensor.GetPhyAddr(), (__cc__ MM_T *)l0C.GetPhyAddr(), 0,
+                                 params.nSize, params.mSize, params.dstStride, params.srcStride, params.dualDstCtl,
+                                 params.subBlockId, 0, params.unitFlag, static_cast<uint64_t>(params.quantPre),
+                                 static_cast<uint8_t>(params.reluEn), false, true,
+                                 static_cast<uint64_t>(QuantMode_post::NoConv), 0, false, false, 0, false, false, false,
+                                 false, false, false);
+        } else {
+            Fixpipe<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(dstTensor, l0C, params);
+        }
     }
 
     __aicore__ inline void FixpipeMm1Dn(const LocalTensor<MM_T> &dstTensor, const LocalTensor<MM_T> &l0C,
@@ -295,10 +378,11 @@ public:
         fixpipeParams.srcStride = (fixpipeParams.mSize + 15) >> 4 << 4;
         fixpipeParams.dstStride = fixpipeParams.nSize / 2;
         fixpipeParams.dualDstCtl = 2;
+        fixpipeParams.unitFlag = UseUnitFlag(runInfo) ? UNIT_FLAG_VALUE : 0U;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
+        CopyMmResult(dstTensor, l0C, fixpipeParams);
     }
 
     __aicore__ inline void IterateBmm1Dn(LocalTensor<MM_T> &mm1ResUbTensor, RunInfo &runInfo)
@@ -317,12 +401,15 @@ public:
         Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         {
-            Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
+            if (!useUnitFlag_) {
+                Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
+            }
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
             // Mmad K=D 精确累加; LoadData 搬运宽度按分形粒度对齐(对齐D=原值, D=72→80与Nd2Nz写入组数一致)
             uint32_t ldK = ((constInfo_.dSize + 15) >> 4) << 4;
-            MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
-                                        constInfo_.dSize, false, true, true, true, 0, 0, ldK, 0);
+            MMParam param =
+                MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize, constInfo_.dSize, false,
+                            true, true, true, UseUnitFlag(runInfo) ? UNIT_FLAG_VALUE : 0U, 0, ldK, 0);
             if constexpr (dBaseSize > 128) {
                 MatmulK<KV_T, Q_T, MM_T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(kL1Tensor, qL1Tensor, mmL0APolicy_,
                                                                                     mmL0BPolicy_, l0CSubTensor, param);
@@ -330,12 +417,16 @@ public:
                 MatmulBase<KV_T, Q_T, MM_T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
                     kL1Tensor, qL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
             }
-            Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
-            Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
+            if (!UseUnitFlag(runInfo)) {
+                Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
+                Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
+            }
 
             FixpipeMm1Dn(mm1ResUbTensor, l0CSubTensor, runInfo);
 
-            Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
+            if (!useUnitFlag_) {
+                Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
+            }
             l0cBufId_ = (l0cBufId_ + 1) % L0C_BUFCNT;
         }
         Mutex::Unlock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
@@ -349,14 +440,12 @@ public:
 
     __aicore__ inline void IterateBmm2(RunInfo &runInfo)
     {
-        uint32_t mmResUbBufId = mmResBufId_;
-        mmResBufId_ = (mmResBufId_ + 1) % UB_MM_RES_BUFCNT;
+        uint32_t mmResUbBufId = AcquireMmSlot(true);
         uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
         uint32_t v1c2CrossCoreSyncIdx = CROSSCORE_L1P_0 + pL1BufId;
         uint32_t mmSyncIdx = CROSSCORE_MM_0 + mmResUbBufId;
         LocalTensor<Q_T> pL1Tensor = l1PBuffers_[pL1BufId * L1_P_BUF_BYTES].template ReinterpretCast<Q_T>();
-        LocalTensor<MM_T> mm2ResUbTensor =
-            ubMmResBuffers_[mmResUbBufId * UB_MM_RES_BUF_BYTES].template ReinterpretCast<MM_T>();
+        LocalTensor<MM_T> mm2ResUbTensor = ubMmResBuffers_[MmSlotOffset(mmResUbBufId)].template ReinterpretCast<MM_T>();
 
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
@@ -378,10 +467,11 @@ public:
         fixpipeParams.srcStride = (mBaseSize + 15) >> 4 << 4;
         fixpipeParams.dstStride = (dVBaseSize + 15) >> 4 << 4;
         fixpipeParams.dualDstCtl = 1;
+        fixpipeParams.unitFlag = UseUnitFlag(runInfo) ? UNIT_FLAG_VALUE : 0U;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
+        CopyMmResult(dstTensor, l0C, fixpipeParams);
     }
 
     __aicore__ inline void IterateBmm2l0Split(LocalTensor<MM_T> &mm2ResUbTensor, LocalTensor<Q_T> &pL1Tensor,
@@ -401,7 +491,9 @@ public:
             for (uint32_t n = 0; n < nLoops; n++) {
                 uint32_t tileN = (n == nLoops - 1) ? lastTileN : 128;
                 uint32_t tileLdN = (n == nLoops - 1) ? ldN : 128;
-                Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
+                if (!useUnitFlag_) {
+                    Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
+                }
                 LocalTensor<MM_T> l0CSubTensor =
                     l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
                 MMParam param = {(uint32_t)mBaseSize,
@@ -415,6 +507,7 @@ public:
                                  0,
                                  0,
                                  tileLdN};
+                param.unitFlag = UseUnitFlag(runInfo) ? UNIT_FLAG_VALUE : 0U;
 
                 uint32_t s2Aligned = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U);
                 uint64_t vL1Offset = n * 128U / 16U * s2Aligned * 16U;
@@ -432,13 +525,17 @@ public:
                             pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
                     }
                 }
-                Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
-                Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
+                if (!UseUnitFlag(runInfo)) {
+                    Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
+                    Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
+                }
 
                 uint32_t dstOffset = n * 128U;
                 FixpipeMm2PartialN(mm2ResUbTensor[dstOffset], l0CSubTensor, tileN, runInfo);
 
-                Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
+                if (!useUnitFlag_) {
+                    Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
+                }
                 l0cBufId_ = (l0cBufId_ + 1) % L0C_BUFCNT;
             }
         }

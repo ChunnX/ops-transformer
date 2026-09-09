@@ -127,10 +127,13 @@ void FlashAttnTilingImpl::SplitPolicy()
     if (winRight == -1) {
         winRight = MASK_MODE_INT_MAX;
     }
-    fa_tiling_util::AdjustSinnerAndSouter(static_cast<uint32_t>(faInfo_->vHeadDim),
-                                          static_cast<uint32_t>(faInfo_->gSize), faInfo_->maxSeqQ, faInfo_->maxSeqKv,
-                                          static_cast<int32_t>(faInfo_->maskMode), winLeft, winRight,
-                                          static_cast<uint32_t>(faInfo_->qLayout), sOuterFactor_, sInnerFactor_);
+    const bool enableD64Prefill = faInfo_->bSize == 1 && faInfo_->qkHeadDim == 64 &&
+                                  faInfo_->qLayout == FaLayout::BNSD && faInfo_->kvLayout == FaLayout::BNSD &&
+                                  faInfo_->outLayout == FaLayout::BNSD;
+    fa_tiling_util::AdjustSinnerAndSouter(
+        static_cast<uint32_t>(faInfo_->vHeadDim), static_cast<uint32_t>(faInfo_->gSize), faInfo_->maxSeqQ,
+        faInfo_->maxSeqKv, static_cast<int32_t>(faInfo_->maskMode), winLeft, winRight,
+        static_cast<uint32_t>(faInfo_->qLayout), sOuterFactor_, sInnerFactor_, enableD64Prefill);
     CalcNumBlocks(platformInfo_.aicNum);
     flashDecodeFlag_ = true;
 }
@@ -146,7 +149,10 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
         //   config=4: Dk=256, Dv=256, sOuter=64, sInner=128
         //   config=5: Dk=256, Dv=256, sOuter=32, sInner=256
         if (faInfo_->qkHeadDim == 64) {
-            tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1;
+            tilingKeyInfo_.config =
+                (sOuterFactor_ == fa_tiling_util::SOUTER_64 && sInnerFactor_ == fa_tiling_util::SINNER_256) ?
+                    8 :
+                    ((sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1);
         } else if (faInfo_->qkHeadDim == 128 || faInfo_->qkHeadDim == 72) {
             tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 2 : 3;
         } else if (faInfo_->qkHeadDim == 256) {
@@ -194,8 +200,8 @@ void FlashAttnTilingImpl::UpdateTilingKeyTemplateId()
     // templateId: 0=ND模板, 1=DN模板
     // DN模板仅支持无attenMask且config=0/2/6（sOuter=64, D=64/128, QK
     // D=192/DV=128）场景，与kernel侧模板实例化范围保持一致
-    dnFlag_ = (!tilingKeyInfo_.hasAttenMask) &&
-              ((tilingKeyInfo_.config == 0) || (tilingKeyInfo_.config == 2) || (tilingKeyInfo_.config == 6));
+    dnFlag_ = (!tilingKeyInfo_.hasAttenMask) && ((tilingKeyInfo_.config == 0) || (tilingKeyInfo_.config == 2) ||
+                                                 (tilingKeyInfo_.config == 6) || (tilingKeyInfo_.config == 8));
     tilingKeyInfo_.templateId = dnFlag_ ? 1 : 0;
 }
 
