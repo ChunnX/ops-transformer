@@ -19,7 +19,7 @@
 
 using namespace AscendC;
 
-#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__) // CUBE 实现
+#ifdef __DAV_C220_CUBE__ // CUBE 实现
 
 #define COPY_TILING_DATA(tiling)                                                                                       \
     GET_TILING_DATA_MEMBER(FusedFloydAttentionGeneralTilingData, bmm1TilingData, bmm1TilingDataVar, tiling);           \
