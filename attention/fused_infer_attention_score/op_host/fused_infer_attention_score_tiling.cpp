@@ -2519,9 +2519,8 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
                               !FusedInferAttentionScoreTilingCache::IsCacheDisabled();
     std::string cacheKey;
     const bool cacheKeyValid =
-        cacheEnabled &&
-        FusedInferAttentionScoreTilingCache::BuildKey(context, static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()),
-                                                     cacheKey);
+        cacheEnabled && FusedInferAttentionScoreTilingCache::BuildKey(
+                            context, static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()), cacheKey);
     if (cacheKeyValid) {
         FusedInferAttentionScoreTilingCache::TilingResult cachedResult;
         if (FusedInferAttentionScoreTilingCache::GetInstance().Get(cacheKey, cachedResult) &&
