@@ -203,7 +203,18 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsForRouting()
                         "DT_FLOAT, or DT_FLOAT/DT_BF16 when output is DT_BF16 in mx quant mode"),
                     return false);
     }
-    if (inputParams_.aDtype != ge::DT_INT8) {
+    if (IsMicroScaling() && inputParams_.cDtype == ge::DT_BF16) {
+        auto rowIndexDesc = context_->GetOptionalInputDesc(ROW_INDEX_INDEX);
+        if (rowIndexDesc != nullptr) {
+            auto rowIndexDtype = rowIndexDesc->GetDataType();
+            OP_CHECK_IF(rowIndexDtype != ge::DT_INT32,
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                            inputParams_.opType, "row_index", ge::TypeUtils::DataTypeToSerialString(rowIndexDtype),
+                            "when output is DT_BF16 in mx quant mode, row_index must be DT_INT32"),
+                        return false);
+            rowIndexType_ = 1;
+        }
+    } else if (inputParams_.aDtype != ge::DT_INT8) {
         OP_CHECK_IF(!CheckOptional(ROW_INDEX_INDEX, "RowIndex", ge::DT_INT64),
                     OP_LOGE(context_->GetNodeName(), "RowIndex check failed."), return false);
     } else if (context_->GetOptionalInputDesc(ROW_INDEX_INDEX) != nullptr) {
@@ -507,7 +518,22 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
                 return false);
     const gert::Shape &yShape = yStorageShape->GetOriginShape();
 
-    if (!IsMicroScaling()) {
+    if (IsMicroScaling()) {
+        bool isFullMx = (IsFp8Dtype(inputParams_.aDtype) && IsFp8Dtype(inputParams_.bDtype)) ||
+                        (IsFp4Dtype(inputParams_.aDtype) && IsFp4Dtype(inputParams_.bDtype));
+        bool isBf16Output = inputParams_.cDtype == ge::DT_BF16;
+        bool isWeightNz = inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+        OP_CHECK_IF(isFullMx && isBf16Output && !isWeightNz,
+                    OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(
+                        inputParams_.opType, "weight", ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
+                        "when output is DT_BF16 in mx quant mode, the format of weight must be FRACTAL_NZ"),
+                    return false);
+        OP_CHECK_IF(isFullMx && !isBf16Output && isWeightNz,
+                    OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(
+                        inputParams_.opType, "weight", ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
+                        "when output is DT_FLOAT in mx quant mode, the format of weight must be ND"),
+                    return false);
+    } else {
         OP_CHECK_IF(inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ,
                     OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(
                         inputParams_.opType, "weight", ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),

@@ -63,8 +63,10 @@
 #include "arch35/grouped_matmul_finalize_routing_pertoken_dequant.h"
 #elif ORIG_DTYPE_X == DT_FLOAT4_E1M2 || ORIG_DTYPE_X == DT_FLOAT4_E2M1
 #include "arch35/grouped_matmul_finalize_routing_arch35.h"
+#include "arch35/grouped_matmul_finalize_routing_arch35_cgmct.h"
 #else
 #include "arch35/grouped_matmul_finalize_routing_arch35.h"
+#include "arch35/grouped_matmul_finalize_routing_arch35_cgmct.h"
 #include "arch35/grouped_matmul_finalize_routing_pertoken_dequant.h"
 #endif
 #endif
@@ -187,7 +189,15 @@ __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w,
                                                                       workspaceGM, tilingGM);
     }
 #elif ORIG_DTYPE_X == DT_FLOAT4_E1M2 || ORIG_DTYPE_X == DT_FLOAT4_E2M1
-    if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {
+    if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
+        grouped_matmul_finalize_routing_mx_cgmct<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(
+            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+            tilingGM);
+    } else if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
+        grouped_matmul_finalize_routing_mx_cgmct<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(
+            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+            tilingGM);
+    } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {
         RunGmmFrMx<0>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y,
                       workspaceGM, tilingGM);
     } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {
@@ -195,7 +205,15 @@ __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w,
                       workspaceGM, tilingGM);
     }
 #else
-    if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {
+    if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
+        grouped_matmul_finalize_routing_mx_cgmct<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(
+            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+            tilingGM);
+    } else if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
+        grouped_matmul_finalize_routing_mx_cgmct<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(
+            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
+            tilingGM);
+    } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {
         RunGmmFrMx<0>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y,
                       workspaceGM, tilingGM);
     } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {

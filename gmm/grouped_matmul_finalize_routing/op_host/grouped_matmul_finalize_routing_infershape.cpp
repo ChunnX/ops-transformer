@@ -114,6 +114,14 @@ static bool IsSupportMxLogitDtype(ge::DataType logitDtype, const int64_t *output
     return logitDtype == ge::DT_FLOAT;
 }
 
+static bool IsSupportMxRowIndexDtype(ge::DataType rowIndexDtype, const int64_t *outputDtype)
+{
+    if (IsMxBf16Output(outputDtype)) {
+        return rowIndexDtype == ge::DT_INT32;
+    }
+    return rowIndexDtype == ge::DT_INT64;
+}
+
 struct CheckXandWParams {
     const gert::Shape *shape_x1 = nullptr;
     const gert::Shape *shape_x2 = nullptr;
@@ -411,9 +419,11 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
                                       "The MXFP4/MXFP8 InputDataType of groupList is wrong. Supported type: INT64"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
-            (context->GetOptionalInputDataType(rowIndexOptionIndex) != ge::DT_INT64),
-            OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(),
-                                      "The MXFP4/MXFP8 InputDataType of rowIndex is wrong. Supported type: INT64"),
+            !IsSupportMxRowIndexDtype(context->GetOptionalInputDataType(rowIndexOptionIndex), outputDtype),
+            OPS_REPORT_CUBE_INNER_ERR(
+                context->GetNodeName(),
+                "The MXFP4/MXFP8 InputDataType of rowIndex is wrong. Supported type: INT32 when output dtype is BF16, "
+                "otherwise INT64"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             !IsSupportMxLogitDtype(context->GetOptionalInputDataType(logitOptionIndex), outputDtype),
@@ -446,7 +456,7 @@ static bool IsSupportMX(const gert::InferDataTypeContext *context, const int64_t
         CheckType(context->GetInputDataType(wIndex), MX_IN_TYPE_SUPPORT_LIST) &&
         context->GetOptionalInputDataType(scaleOptionIndex) == ge::DT_FLOAT8_E8M0 &&
         context->GetOptionalInputDataType(groupListOptionIndex) == ge::DT_INT64 &&
-        context->GetOptionalInputDataType(rowIndexOptionIndex) == ge::DT_INT64 &&
+        IsSupportMxRowIndexDtype(context->GetOptionalInputDataType(rowIndexOptionIndex), outputDtype) &&
         IsSupportMxLogitDtype(context->GetOptionalInputDataType(logitOptionIndex), outputDtype) &&
         context->GetOptionalInputDataType(pertokenScaleOptionIndex) == ge::DT_FLOAT8_E8M0) {
         return true;
