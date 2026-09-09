@@ -16,6 +16,7 @@ import ast
 import importlib
 import sys
 import tempfile
+from dataclasses import dataclass
 from setuptools import setup, find_packages
 from setuptools import Command
 from setuptools.command.build_py import build_py as _build_py
@@ -106,6 +107,14 @@ _op_native_builds = []
 _native_build = "build_native" in sys.argv
 
 
+@dataclass(frozen=True)
+class _NativeBuildTask:
+    kernel_file: str
+    destination: str
+    frontend: str
+    aicpu_function: str | None = None
+
+
 def _decorated_functions(declarations, decorator):
     for node in declarations:
         if isinstance(node, ast.FunctionDef):
@@ -116,15 +125,13 @@ def _decorated_functions(declarations, decorator):
                     yield node.name
 
 
-def _build_native(kernel_file, output, target, aicpu_functions):
-    operator = os.path.splitext(os.path.basename(kernel_file))[0]
-    if aicpu_functions:
+def _build_native(task, output, target):
+    operator = os.path.splitext(os.path.basename(task.kernel_file))[0]
+    if task.frontend == "aicpu":
         from cannbotdsl.aicpu.toolchain import compile_aicpu_kernel
 
-        if len(aicpu_functions) != 1:
-            raise ValueError(f"Expected one public AICPU kernel in {kernel_file}")
-        module_name = os.path.relpath(kernel_file, OPS_TRANSFORMER_ROOT)[:-3].replace(os.sep, ".")
-        kernel = getattr(importlib.import_module(module_name), aicpu_functions[0])
+        module_name = os.path.relpath(task.kernel_file, OPS_TRANSFORMER_ROOT)[:-3].replace(os.sep, ".")
+        kernel = getattr(importlib.import_module(module_name), task.aicpu_function)
         os.makedirs(output, exist_ok=False)
         with tempfile.TemporaryDirectory(prefix="native_aicpu_") as workdir:
             compiled = compile_aicpu_kernel(kernel, workdir=workdir,
@@ -133,8 +140,8 @@ def _build_native(kernel_file, output, target, aicpu_functions):
     else:
         from cannbotdsl.package.native import build
 
-        category = os.path.dirname(os.path.dirname(os.path.dirname(kernel_file)))
-        build(collectors=category, operators=[operator], pattern=os.path.basename(kernel_file),
+        category = os.path.dirname(os.path.dirname(os.path.dirname(task.kernel_file)))
+        build(collectors=category, operators=[operator], pattern=os.path.basename(task.kernel_file),
               target=target, output=output)
 
 
@@ -146,12 +153,18 @@ def _collect_op(op_cat, op_dir, te_dir):
         with open(kernel_file) as stream:
             declarations = ast.parse(stream.read()).body
         aicpu_functions = list(_decorated_functions(declarations, "aicpu_kernel"))
-        if aicpu_functions or any(_decorated_functions(declarations, "register")):
+        has_provider = any(_decorated_functions(declarations, "register"))
+        if aicpu_functions or has_provider:
             # Native resources are installed directly by CMake, not in the legacy wheel.
             if not _native_build:
                 return
             destination = os.path.join("ops", op_cat, op_dir)
-            _op_native_builds.append((kernel_file, destination, aicpu_functions))
+            if len(aicpu_functions) > 1:
+                raise ValueError(f"Expected one public AICPU kernel in {kernel_file}")
+            _op_native_builds.append(_NativeBuildTask(
+                kernel_file, destination,
+                "aicpu" if aicpu_functions else "provider",
+                aicpu_functions[0] if aicpu_functions else None))
             for filename in sorted(os.listdir(kernel_dir)):
                 if filename.endswith(".py"):
                     _op_py_files.append((os.path.join(destination, "op_kernel", filename),
@@ -304,9 +317,8 @@ class BuildPyWithOps(_build_py):
             sys.path.insert(0, OPS_TRANSFORMER_ROOT)
             try:
                 target = os.environ.get("CANNBOTDSL_NPU_ARCH", "dav-3510")
-                for kernel_file, destination, aicpu_functions in _op_native_builds:
-                    _build_native(kernel_file, os.path.join(build_pkg, destination, "_native"),
-                                  target, aicpu_functions)
+                for task in _op_native_builds:
+                    _build_native(task, os.path.join(build_pkg, task.destination, "_native"), target)
             finally:
                 sys.path.remove(OPS_TRANSFORMER_ROOT)
         common_src_dir = os.path.join(_src_path, "common")
