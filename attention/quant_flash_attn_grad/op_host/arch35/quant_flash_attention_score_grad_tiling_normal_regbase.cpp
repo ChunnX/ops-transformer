@@ -300,6 +300,12 @@ uint32_t QuantFlashAttentionScoreGradTilingNormalRegbase::GetDeterSparseTilingKe
         return static_cast<uint32_t>(DeterSparseType::NO_DETER);
     }
 
+    // mask_mode=4显式指定band，即使窗口大到覆盖整个序列（winLeft/winRight传-1）也保持band调度，
+    // 不退化到dense，避免kernel按sparse_type选mask分支时与band语义不一致
+    if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND)) {
+        return static_cast<uint32_t>(DeterSparseType::DETER_BAND);
+    }
+
     if (!fBaseParams.isSparse || (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::ALL_MASK)) ||
         (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) &&
          fBaseParams.s1Token >= fBaseParams.s1 && fBaseParams.s2Token >= fBaseParams.s2)) {

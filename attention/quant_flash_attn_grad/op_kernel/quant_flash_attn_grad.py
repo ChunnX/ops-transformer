@@ -1209,10 +1209,9 @@ def cal_deter_index(round_id, max_loop_num, coordinate_info, const_info, band_in
     next_valid_index = -1
     for current_round_id in pl.range(round_id, max_loop_num, 1):
         if sparse_type == 4:
-            # next_valid_index = cal_band_deter_index(
-            #     current_round_id, max_loop_num, coordinate_info, const_info, band_info, flag
-            # )
-            pass
+            next_valid_index = cal_band_deter_index(
+                current_round_id, max_loop_num, coordinate_info, const_info, band_info, flag
+            )
         elif sparse_type == 3:
             next_valid_index = cal_causal_deter_index(
                 current_round_id, max_loop_num, coordinate_info, const_info, flag
@@ -1486,6 +1485,7 @@ def compute_p_ds_vf(
     lse_tile,
     d_tile,
     attn_tile,
+    attn_pre_tile,
     src_m,
     src_n,
     ss,
@@ -1504,6 +1504,11 @@ def compute_p_ds_vf(
         preg_mask3 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
         preg_mask4 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
         vreg_min = vf.full(ATTEN_MASK_MIN, preg_all_32, dtype=pl.DT_FP32)
+        if sparse_type == 4:
+            preg_pre1 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
+            preg_pre2 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
+            preg_pre3 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
+            preg_pre4 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_INT32)
 
     vreg_d = vf.load_align(d_tile, 0)
     vreg_perm = vf.load_align(perm_tile, 0)
@@ -1538,6 +1543,17 @@ def compute_p_ds_vf(
             vreg_sp2 = vf.select(vreg_sp2, vreg_min, preg_mask2)
             vreg_sp3 = vf.select(vreg_sp3, vreg_min, preg_mask3)
             vreg_sp4 = vf.select(vreg_sp4, vreg_min, preg_mask4)
+
+            if sparse_type == 4:
+                preg_pre1 = vf.load_align(attn_pre_tile, i * 64, dist=pl.LoadDist.DS)
+                preg_pre2 = vf.load_align(attn_pre_tile, (i + 1) * 64, dist=pl.LoadDist.DS)
+                preg_pre3 = vf.load_align(attn_pre_tile, (i + 2) * 64, dist=pl.LoadDist.DS)
+                preg_pre4 = vf.load_align(attn_pre_tile, (i + 3) * 64, dist=pl.LoadDist.DS)
+
+                vreg_sp1 = vf.select(vreg_min, vreg_sp1, preg_pre1)
+                vreg_sp2 = vf.select(vreg_min, vreg_sp2, preg_pre2)
+                vreg_sp3 = vf.select(vreg_min, vreg_sp3, preg_pre3)
+                vreg_sp4 = vf.select(vreg_min, vreg_sp4, preg_pre4)
 
         # vf.store(sp_tile, vreg_sp1)
         vreg_sp1 = vf.exp_sub(vreg_sp1, vreg_lse, preg_all)
@@ -1697,6 +1713,17 @@ def compute_p_ds_vf(
             vreg_sp3 = vf.select(vreg_sp3, vreg_min, preg_mask3)
             vreg_sp4 = vf.select(vreg_sp4, vreg_min, preg_mask4)
 
+            if sparse_type == 4:
+                preg_pre1 = vf.load_align(attn_pre_tile, (i + 4) * 64, dist=pl.LoadDist.DS)
+                preg_pre2 = vf.load_align(attn_pre_tile, (i + 5) * 64, dist=pl.LoadDist.DS)
+                preg_pre3 = vf.load_align(attn_pre_tile, (i + 6) * 64, dist=pl.LoadDist.DS)
+                preg_pre4 = vf.load_align(attn_pre_tile, (i + 7) * 64, dist=pl.LoadDist.DS)
+
+                vreg_sp1 = vf.select(vreg_min, vreg_sp1, preg_pre1)
+                vreg_sp2 = vf.select(vreg_min, vreg_sp2, preg_pre2)
+                vreg_sp3 = vf.select(vreg_min, vreg_sp3, preg_pre3)
+                vreg_sp4 = vf.select(vreg_min, vreg_sp4, preg_pre4)
+
         vreg_sp1 = vf.exp_sub(vreg_sp1, vreg_lse, preg_all)
         vreg_sp2 = vf.exp_sub(vreg_sp2, vreg_lse, preg_all)
         vreg_sp3 = vf.exp_sub(vreg_sp3, vreg_lse, preg_all)
@@ -1842,6 +1869,7 @@ def compute_p_ds(
     d_tile,
     zero_tile,
     attn_tile,
+    attn_pre_tile,
     src_m,
     src_n,
     ss,
@@ -1861,6 +1889,7 @@ def compute_p_ds(
         lse_tile,
         d_tile,
         attn_tile,
+        attn_pre_tile,
         src_m,
         src_n,
         ss,
@@ -1871,17 +1900,32 @@ def compute_p_ds(
 
 
 def cal_atten_mask_offset(run_info, const_info):
+    # next侧: 有效条件 s2 - s1 <= s2_token, s2_token已由host按右下角校正
+    # mask_mode=3时host下发的s2_token恒等于-(s1_size-s2_size), 与原causal公式等价
     real_s1 = run_info.inner_s1_real_size[run_info.s1_idx]
     first_half_s1 = ceil(real_s1, QUANT_S1_BASE_COUNT) * QUANT_S1_BASE_COUNT // 2
-    delta_n = const_info.s1_size - const_info.s2_size
     s1_offset = (
         run_info.s1o_idx * CUBE_BASEM
         + run_info.s1_idx * TS
         + const_info.sub_id * first_half_s1
     )
     s2_offset = run_info.s2_cv_begin + run_info.s2_idx * TS
-    delta = s1_offset - s2_offset - delta_n
+    delta = s1_offset - s2_offset + const_info.s2_token
     return delta
+
+
+def cal_atten_mask_offset_pre(run_info, const_info):
+    # pre侧: 有效条件 s1 - s2 <= s1_token, 取出的压缩mask位为1表示被pre边界屏蔽
+    real_s1 = run_info.inner_s1_real_size[run_info.s1_idx]
+    first_half_s1 = ceil(real_s1, QUANT_S1_BASE_COUNT) * QUANT_S1_BASE_COUNT // 2
+    s1_offset = (
+        run_info.s1o_idx * CUBE_BASEM
+        + run_info.s1_idx * TS
+        + const_info.sub_id * first_half_s1
+    )
+    s2_offset = run_info.s2_cv_begin + run_info.s2_idx * TS
+    delta_pre = const_info.s1_token - (s1_offset - s2_offset)
+    return delta_pre
 
 
 def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_info):
@@ -1905,6 +1949,7 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
     pl.set_validshape(d_vec, [1, current_real_s1])
 
     attn_vec = tensor_info.attn_vec.current()
+    attn_pre_vec = tensor_info.attn_pre_vec.current()
     if has_attn_mask:
         delta = cal_atten_mask_offset(run_info, const_info)
         if delta >= 0:
@@ -1922,6 +1967,24 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
             ],
             order=[0, 1],
         )
+        if sparse_type == 4:
+            # pre侧复用同一张压缩mask, 位为1的位置由pre边界屏蔽, 与next侧极性相反
+            delta_pre = cal_atten_mask_offset_pre(run_info, const_info)
+            if delta_pre >= 0:
+                s1_offset_pre = 0
+                s2_offset_pre = pl.min(delta_pre, 128)
+            else:
+                s1_offset_pre = pl.min(_abs(delta_pre), 128)
+                s2_offset_pre = 0
+            pl.load(
+                attn_pre_vec,
+                tensor_info.tensor_attn_mask,
+                [
+                    s2_offset_pre,
+                    s1_offset_pre,
+                ],
+                order=[0, 1],
+            )
     # pl.system.bar_all()
     # pl.printf("222 wenyu  \n")
     # pl.dump_data(attn_vec, offsets=[0, 0], shapes=[4,64])
@@ -1967,6 +2030,7 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
         d_vec,
         zero_vec,
         attn_vec,
+        attn_pre_vec,
         current_real_s2,
         current_real_s1,
         run_info.deq_scale_q_value
@@ -3375,6 +3439,14 @@ def quant_flash_attn_grad(
         addrs=[VA4 + 512 * 10],
         mutex_ids=[19],
     )
+    # band需要pre/next两条边界, 各自从同一张压缩mask取一块, 仅sparse_type=4会真正搬运
+    attn_pre_vec = pl.make_tile_group(
+        type=pl.TileType(
+            shape=[128, 64], dtype=pl.DT_INT8, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=[VA4 + 512 * 26],
+        mutex_ids=[20],
+    )
     with pl.section_vector():
         pl.expands(zero_vec.current(), 0)
         perm_tile = perm_vec.current()
@@ -3617,6 +3689,7 @@ def quant_flash_attn_grad(
         perm_vec=perm_vec,
         zero_vec=zero_vec,
         attn_vec=attn_vec,
+        attn_pre_vec=attn_pre_vec,
         ds_l1=ds_l1,
         ds_l1_t=ds_l1_t,
         ds_l1_bit8=ds_l1_bit8,
