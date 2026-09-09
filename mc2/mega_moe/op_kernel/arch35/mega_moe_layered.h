@@ -187,7 +187,7 @@ private:
     __aicore__ inline uint64_t RelayFlagOffset(uint32_t sourceServer, uint32_t tokenId) const;
     __aicore__ inline void SharedExpertCopyInput();
     __aicore__ inline void ProcessSharedExpertGmm1(const TupleShape &initShape, const BlockOffset &initOffset,
-                                                   int32_t &gmTileSequence);
+                                                   int32_t &gmTileSequence, Gmm1SwigluSync &sharedGmm1SwigluSync);
     __aicore__ inline void ProcessSharedExpertGmm2(const TupleShape &initShape, const BlockOffset &initOffset);
     __aicore__ inline void UnpermuteSharedExpert(int32_t tokenIdx);
     __aicore__ inline void LoadTopkWeightsToUb(const LocalTensor<ActivationType> &xOutTensor, int32_t currentOffset,
@@ -873,7 +873,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::RunGmm1Wi
     Epilogue &epilogue, const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx,
     int32_t &vecSetSyncCom, int32_t &gmTileSequence)
 {
-    // Shared experts retain the 256-row, non-prefetch epilogue and its synchronization path.
+    // Shared experts use the 256-row, non-prefetch epilogue; the caller binds A8W4 GM-output notifications.
     constexpr uint32_t epilogueTileM = IsShared ? L1_TILE_M_256 : EPILOGUE_TILE_M;
     constexpr bool prefetchWeights = !IsShared && TopkWeightsPrefetch;
     if constexpr (g_coreType == AIV) {
@@ -948,7 +948,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
 
 template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSharedExpertGmm1(
-    const TupleShape &initShape, const BlockOffset &initOffset, int32_t &gmTileSequence)
+    const TupleShape &initShape, const BlockOffset &initOffset, int32_t &gmTileSequence,
+    Gmm1SwigluSync &sharedGmm1SwigluSync)
 {
     sharedEpilogueOp_.Init({.yGmAddr = params_.workspaceInfo.sharedExpertActivationDataPtr,
                             .yScaleGmAddr = params_.workspaceInfo.sharedExpertActivationScalePtr,
@@ -959,6 +960,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSh
                             .activationBeta = params_.tilingData->activationBeta});
 
     GMMAddrInfo sharedGmm1AddrInfo{};
+    if constexpr (ENABLE_A8W4) {
+        sharedGmm1AddrInfo.gmm1SwigluSync = &sharedGmm1SwigluSync;
+    }
     ExpertLoopState sharedGmm1State{initShape, initOffset, 0};
     int32_t vecSetSyncCom = 0;
     for (uint32_t sharedIdx = 0; sharedIdx < sharedExpertNum_; sharedIdx++) {
@@ -1136,8 +1140,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     Get<K_VALUE>(initShape) = k_;
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     int32_t gmTileSequence = 0; // Specialized A8W4/A4W4 GMM1 AIC-AIV1 tile ready sequence.
+    Gmm1SwigluSync sharedGmm1SwigluSync(1U, Gmm1SwigluSync::EventPair::SHARED);
     if (sharedExpertNum_ > 0) {
-        ProcessSharedExpertGmm1(initShape, initOffset, gmTileSequence);
+        ProcessSharedExpertGmm1(initShape, initOffset, gmTileSequence, sharedGmm1SwigluSync);
         SyncAll<false>();
     }
 
@@ -1154,6 +1159,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
 
     // URMA Layered 的 A8W8、A4W4 和 A8W4 共用同一专家 Wave 状态机。
     ProcessMoeExpertWave(initShape, initOffset, gmTileSequence);
+    sharedGmm1SwigluSync.EndSync();
 
     // 3.5: 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
     if (sharedExpertNum_ > 0) {
