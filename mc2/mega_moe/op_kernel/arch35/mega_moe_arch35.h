@@ -260,6 +260,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
         g_winRankAddr_[i] = reinterpret_cast<GM_ADDR>(mc2Context_->epHcclBuffer_[i]) + EXCEPTION_DUMP_REGION_SIZE;
     }
     params_.aGmAddr = x;
+    params_.xScaleGmAddr = scales;
     params_.expertIdxGmAddr = topkIds;
     moeWeightTensorListAddrs_ = {
         .weight1 = weight1, .weightScales1 = weightScales1, .weight2 = weight2, .weightScales2 = weightScales2};
@@ -418,14 +419,15 @@ __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTen
 
     uint32_t routeRingAddr = xInAlignAddr2 + xInAlignSize;
     /*
-     * h%64==32（scale 组数为奇数）时，量化链路存在三处"计算不覆盖、却进入定长通信记录或参与
+     * h%64==32（scale 组数为奇数）时，在线量化链路存在三处"计算不覆盖、却进入定长通信记录或参与
      * 计算"的跨 launch UB 残留：xIn 尾部（进 ComputeMaxExp 尾块 mask 内 lane）、xOut 记录的
      * scale 偶数补齐槽（ComputeScale 掩码写不到）、mxTemp 的 halfScale 补偶槽（被
      * ComputeFp8Data 尾块 E2B 广播进乘法，0×NaN 仍为 NaN）。残留呈 NaN/大指数位型时整行
      * GMM 输出被污染为 NaN，最终 combine 输出成块清零（首轮 UB 干净故仅多轮调用时显形）。
      * 此处对 [mxTempTensorAddr, routeRingAddr) 连续 span（mxTemp/xOut0/xOut1/xIn0/xIn1 五段
      * 量化 scratch）一次性清零：span 边界取 routeRingAddr、与本函数的地址推进公式同源，
-     * 中间插入新 buffer 时范围自动跟随；有效区随后每 token 均被完整覆写，残留位恒为良性 0。
+     * 中间插入新 buffer 时范围自动跟随。在线量化路径由计算覆写有效区；预量化路径由 MTE2
+     * 覆写 data/scale/weight 有效区，xOut 中未覆盖的 record padding 在连续多轮调用中仍保持为 0。
      * h%64==0 时不存在上述缝隙，本清零不改变任何可观测行为。
      */
     LocalTensor<int16_t> quantScratchSpan(TPosition::VECCALC, mxTempTensorAddr,
@@ -687,14 +689,14 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparationStage()
 {
     SendAndQuantBuffInit();
-    QuantizeLocalTokens<MoeQuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
+    PrepareLocalTokenRecords<XType, MoeQuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
         aivJob_, commonConfig_, params_, quantProcessConfig_, params_.peermemInfo.quantTokenScalePtr, quantScratch_);
     if constexpr (!SHARED_INPUT_REUSES_MOE_QUANT) {
         if (sharedExpertNum_ > 0U) {
-            QuantizeLocalTokens<SharedQuantMode, typename SharedQuantConfig::QuantOutType, SharedActivationType,
-                                TopkWeightsType, false>(aivJob_, commonConfig_, params_, sharedQuantProcessConfig_,
-                                                        params_.workspaceInfo.sharedExpertInputPtr,
-                                                        sharedQuantScratch_);
+            PrepareLocalTokenRecords<XType, SharedQuantMode, typename SharedQuantConfig::QuantOutType,
+                                     SharedActivationType, TopkWeightsType, false>(
+                aivJob_, commonConfig_, params_, sharedQuantProcessConfig_, params_.workspaceInfo.sharedExpertInputPtr,
+                sharedQuantScratch_);
         }
     }
     GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,
@@ -713,7 +715,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
 
-    // 阶段 1：量化本卡输入、推送 compact route、清零同步状态，并准备共享专家输入。
+    // 阶段 1：生成本卡输入 record（BF16 在线量化或 FP8/FP4 预量化直通）、
+    // 推送 compact route、清零同步状态，并准备共享专家输入。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::INPUT_PREPARE);
     ProcessInputPreparationStage();
     if constexpr (g_coreType == AIV) {
@@ -721,9 +724,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     }
     SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算
 
-    // 等待所有 rank 完成本轮输入准备（quant/mask 发送/本地 workspace flag 清理），再进入
+    // 等待所有 rank 完成本轮输入准备（record/mask 发送/本地 workspace flag 清理），再进入
     // MoE stage。该同步置于共享专家 GMM1 之前：共享 GMM1 只依赖本卡输入（SyncAll<false>
-    // 已保证可见），dispatch（奇数子核）只依赖本卡量化数据与远端输入准备完成，两者无数据
+    // 已保证可见），dispatch（奇数子核）只依赖本卡 record 与远端输入准备完成，两者无数据
     // 依赖；奇数子核不参与共享 GMM1 的核间交接，先同步即让 dispatch 与共享 GMM1/激活并行，
     // 消除奇数子核在同步点等待整段共享 GMM1 的空转（与 a8w8 路径的同名改动同构）。
     // 不变量（重排后由隐式约定承担，改动共享/通信任一侧时必须重审）：
