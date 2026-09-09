@@ -19,16 +19,14 @@
 
 namespace op_api {
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor>
-FlashAttnGrad(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v,
-              const at::Tensor &doTensor, const at::Tensor &attnOut, const at::Tensor &softmaxLse,
-              const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensKv,
-              const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedKv,
-              const c10::optional<at::Tensor> &sinks, const c10::optional<at::Tensor> &attnMask,
-              const c10::optional<at::Tensor> &metadata,
-              double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
-              int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-              std::string layoutQ, std::string layoutKv, std::string layoutOut)
+std::tuple<at::Tensor, at::Tensor, at::Tensor> FlashAttnGrad(
+    const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, const at::Tensor &doTensor,
+    const at::Tensor &attnOut, const at::Tensor &softmaxLse, const c10::optional<at::Tensor> &cuSeqlensQ,
+    const c10::optional<at::Tensor> &cuSeqlensKv, const c10::optional<at::Tensor> &sequsedQ,
+    const c10::optional<at::Tensor> &sequsedKv, const c10::optional<at::Tensor> &sinks,
+    const c10::optional<at::Tensor> &attnMask, const c10::optional<at::Tensor> &metadata, double softmaxScale,
+    int64_t maskMode, int64_t winLeft, int64_t winRight, int64_t maxSeqlenQ, int64_t maxSeqlenKv, std::string layoutQ,
+    std::string layoutKv, std::string layoutOut)
 {
     TORCH_CHECK(q.defined(), "q must be defined");
     TORCH_CHECK(k.defined(), "k must be defined");
@@ -53,9 +51,8 @@ FlashAttnGrad(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v,
     char *layoutKvPtr = const_cast<char *>(layoutKv.c_str());
     char *layoutOutPtr = const_cast<char *>(layoutOut.c_str());
 
-    ACLNN_CMD(aclnnFlashAttnGrad, q, k, v, doTensor, attnOut, softmaxLse,
-              cuSeqlensQ, cuSeqlensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata,
-              softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKv,
+    ACLNN_CMD(aclnnInnerFlashAttnGrad, q, k, v, doTensor, attnOut, softmaxLse, cuSeqlensQ, cuSeqlensKv, sequsedQ,
+              sequsedKv, sinks, attnMask, metadata, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKv,
               layoutQPtr, layoutKvPtr, layoutOutPtr, dq, dk, dv);
 
     return std::make_tuple(dq, dk, dv);

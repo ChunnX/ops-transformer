@@ -31,7 +31,6 @@
 #include <cstdlib>
 #include "apace_st_utils.h"
 #include "apace/utils/apace_constant.h"
-#include "apace/utils/apace_common_utils.h"
 #include "apace/tiling/quant_matmul_tiling_swat.h"
 #include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_tiling_data.h"
 #include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_impl.h"
@@ -118,7 +117,8 @@ int RunAllGatherQuantMatmul(int rankNum, int rankId, int m, int k, int n, const 
     uint32_t paddedTailM = (tailM > 0) ? ((tailM + 15U) / 16U * 16U) : 0U;
     uint32_t totalLogicalM = static_cast<uint32_t>(rankNum) * (tileCnt * tileM + tailCnt * paddedTailM);
 
-    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN, mm::BiasDataType::DT_FLOAT>
+        tilingEngine;
     tilingEngine.SetOptimizeEnable(false);
     tilingEngine.SetMTailAlignEnable(true);
     tilingEngine.GetTilingData(totalLogicalM, static_cast<uint32_t>(n), static_cast<uint32_t>(k), tilingData.mmTile);
