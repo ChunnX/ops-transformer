@@ -35,7 +35,7 @@ bash run_head_overhead.sh
 
 脚本会自动完成：
 1. 检查 CANN 环境 + NPU 设备 + torch_npu，平台自动检测（A5/A3/A2）
-2. sed 改核数构建满核 wheel（IFA 及其 meta 算子在 ascend950 / ascend910_93 纳入构建）
+2. 查询设备核数（CANN platform_config），sed 改核数构建满核 wheel（IFA 及其 meta 算子在 ascend950 / ascend910_93 纳入构建；ascend910b 主线目录完整保留，构建按 NPU_SOC_VERSION 惰性跳过；临时排除部分 CANN 版本不兼容的无关算子，trap 退出自动恢复源码）
 3. 采集 add / grouped_matmul（NPUGraph capture + replay 多拍）；ascend950 与 ascend910_93 上追加采集 incre_flash_attention（250 次发射 + 打点回读）
 4. 汇总输出结果表 + `summary_{soc}.csv`（三算子 min/mean/max 长表）
 
@@ -45,7 +45,7 @@ bash run_head_overhead.sh
 
 ## 打点方法：GetSystemCycle
 
-**原理**：在 kernel 内部关键位置调用 `AscendC::GetSystemCycle()` 读取 SYS_CNT 硬件寄存器（A5 实测 1000MHz，1 cycle = 1ns；A3 实测 50MHz，1 cycle = 20ns，脚本按 SoC 内置默认，可用 `SYS_CNT_FREQ_MHZ` 覆盖），获取周期级时间戳。结果写入持久 GM buffer（跨 launch 复用，capture/replay 兼容），host 侧读取后计算各阶段耗时。
+**原理**：在 kernel 内部关键位置调用 `AscendC::GetSystemCycle()` 读取 SYS_CNT 硬件寄存器（A5 实测 1000MHz，1 cycle = 1ns；A3 实测 50MHz，1 cycle = 20ns，脚本按 SoC 内置默认，可用 `SYS_CNT_FREQ_MHZ` 覆盖），获取周期级时间戳。打点值写入持久 GM cycleData buffer（每核 3×int64，跨 launch 复用，capture/replay 兼容），由 host 侧读回解析；dispatch 时刻取自 STARS 日志的每核 sys cnt。
 
 **时间轴与打点位置**：
 
@@ -59,6 +59,8 @@ STARS dispatch → kick(核启动) → T0(kernel入口) → T1(prologue后) → 
 | T1 | TPipe Init 完成后、首个 MTE2 搬运前 | 首个 MTE2 搬运前（`beforeFirstMte2Cycle`） |
 | T2 | kernel 末尾（MTE3/FIX 排空同步后） | AIV 侧 `op.Process()` 返回后（timing slot 7） |
 
+add kernel 以 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY)` 声明任务类型。
+
 **输出指标口径**（每指标 min=最快核 / mean=核平均 / max=最慢核）：
 
 | 指标 | 含义 |
@@ -71,7 +73,14 @@ STARS dispatch → kick(核启动) → T0(kernel入口) → T1(prologue后) → 
 | 硬件尾 pmu_end-T2 | 写回 GM + SyncAll + DCCI + END（ffts PMU 权威时间戳） |
 | 全链路 pmu_end-stars | dispatch → 最慢核结束（与 TaskDur 同语义闭环校验） |
 
-add/gmm 采用 NPUGraph capture + replay 多拍（默认 5 拍），各拍独立计算全部指标后取 median，滤除单拍快照的 icache 冷热 / 核启动错峰干扰；IFA 采用 250 次发射（50 热身 + 200 稳态），逐 block 回读打点（A5 56 AIV 核 / A3 48 AIV 核）。
+add/gmm 采用 NPUGraph capture 101 次连发 + replay 多拍（默认 5 拍），各拍独立计算全部指标后取 median，滤除单拍快照的 icache 冷热 / 核启动错峰干扰；IFA 采用 250 次发射（50 热身 + 200 稳态），逐 block 回读打点（A5 56 AIV 核 / A3 48 AIV 核）。
+
+## 测试输入与参考数据
+
+测试输入 shape（scan_replay.py 定义，A5/A3 双平台同一 shape）：
+
+- add：fp16 一维 **7,339,920** 元素（336×21845；A5 56 核 / A3 48 核均分整 tile，无尾块分支）
+- grouped_matmul：bf16 **E=1, M=448, K=16, N=16**（x [448,16] × weight [16,16]；M=448 切满 A5 28 Cube 核 / A3 24 Cube 核，聚焦头开销取小 K/N）
 
 ### A5（Ascend950PR / dav-3510, CANN 9.1.0T103, 满核 56 AIV + 28 AIC, SYS_CNT=1000MHz）
 
@@ -187,6 +196,15 @@ add_sources("--npu-arch=dav-3510 -mllvm -cce-aicore-dcci-before-kernel-end=false
 2. TaskDur A/B（604 稳态样本）：**关闭后 8.49us vs 基线 8.88~9.03us → DCCI ≈ 0.4-0.5us**
 3. 副作用：打点数据（cycleBuf）读不回——证明标量写停在 DCache 脏行，**可见性依赖 DCCI**；需要打点时应在源码对 cycleBuf 调 `DataCacheCleanAndInvalid<T, CacheLine>(GlobalTensor)` 单行刷（A5/3510 支持）代替全量刷
 
+## 编译适配（跨平台修复）
+
+- grouped_matmul_utils.h 宏守卫添加 `__NPU_ARCH__ == 3510`（GetSplitValueFromGroupList 在 dav-3510 下可用）
+- ascend950/ascend910_93 的 groupedmatmul_kernel 增加 `__cube__` 核属性（A5/A3 Cube 核函数声明）
+- CMakeLists.txt ASC/AICPU 路径自动探测（兼容 CANN 8.5.T107 的 ASCConfig.cmake 与新版 asc-config.cmake）
+- add.cpp (ascend910_93)：HardEvent/SetFlag/WaitFlag 补 `AscendC::` 前缀，AllocEventID 返回的 TEventID 显式 `static_cast<event_t>`（新版 CANN ccec 不再注入全局命名空间）
+- grouped_matmul_kernel.h (ascend910_93)：GMM_CUBE_IMP 宏内 "Hard Event" typo 修正为 HardEvent
+- 上述修复已在 A3（Ascend910_9392）实测编译通过并完成 5 轮复测
+
 ## 目录结构
 
 ```
@@ -197,12 +215,13 @@ examples/fast_kernel_launch_example/
 │   ├── incre_flash_attention/ascend950/       # IFA 算子 (A5: MIX 1:2; A3: 纯 Vector)
 │   └── incre_flash_attention_meta/ascend950/  # IFA metadata (AICPU)
 ├── tests/                         # 测试脚本
-│   ├── add/                       # test_add / cycle_test / compile_kernel / test_tail_return
+│   ├── add/                       # test_add / cycle_test / compile_kernel / test_tail_return（for 体内 return 死代码与 tail 块开销的历史探索结论）
 │   ├── grouped_matmul/test_groupedmatmul.py
 │   └── incre_flash_attention/     # test.py + run_head_overhead.sh + analyze_head_overhead.py
 ├── disasm/                        # 三算子 device 反汇编产物 (A5/A3 两平台, 含 add 关 DCCI 对照版)
-├── scan_replay.py                 # NPUGraph capture/replay + 逐 block 打点 dump
+├── scan_replay.py                 # NPUGraph capture 101 次连发 + 多拍 replay + 逐 block 打点 dump
 ├── parse_stars_log.py             # STARS dispatch 事件解析
+├── parse_ffts_pmu.py              # ffts_profile PMU 解析（核侧 pmu_start/pmu_end 时戳）
 ├── run_head_overhead.sh           # 一键测试脚本 (构建+三算子采集+汇总, 平台自动检测)
 ├── HEAD_OVERHEAD_GUIDE.md         # 本文档
 ├── CMakeLists.txt
