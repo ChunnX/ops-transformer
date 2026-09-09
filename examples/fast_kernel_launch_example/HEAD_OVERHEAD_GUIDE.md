@@ -11,11 +11,11 @@
 | 项目 | A5: Ascend 950PR | A3: Ascend 910C |
 |------|------|------|
 | NPU | Ascend 950PR (dav-3510, 28 Cube + 56 Vector) | Ascend910_9392 (dav-2201, 24 Cube + 48 Vector) |
-| CANN | 9.1.0+ (需含 msprof) | 9.1.T103 实测 (需含 msprof) |
+| CANN | 9.1.0T103 (需含 msprof) | 9.1.0T103 实测 (需含 msprof) |
 | SYS_CNT | 1000MHz (1 cycle = 1ns) | 50MHz (1 cycle = 20ns) |
-| torch | 2.7.1+ | 2.7.1+ |
-| torch_npu | 2.7.1.post4+ (需支持 Ascend950) | 无 Ascend950 支持要求 |
-| Python | 3.12+ | 3.12+ |
+| torch | 2.7.1+ (2.12.0+cpu 实测通过) | 2.7.1+ |
+| torch_npu | 2.7.1.post4+ (需支持 Ascend950；2.12.0.dev 实测通过) | 无 Ascend950 支持要求 |
+| Python | 3.11+ (3.11 / 3.12 实测通过) | 3.12+ |
 
 > **注意**：torch_npu 2.7.1.post2 及更早版本不支持 Ascend950PR，会报 `Unsupported soc version`。需使用 torch_npu 2.7.1.post4 或更高版本。
 
@@ -73,21 +73,29 @@ STARS dispatch → kick(核启动) → T0(kernel入口) → T1(prologue后) → 
 
 add/gmm 采用 NPUGraph capture + replay 多拍（默认 5 拍），各拍独立计算全部指标后取 median，滤除单拍快照的 icache 冷热 / 核启动错峰干扰；IFA 采用 250 次发射（50 热身 + 200 稳态），逐 block 回读打点（A5 56 AIV 核 / A3 48 AIV 核）。
 
-### A5（Ascend950PR, CANN 9.1.0, SYS_CNT=1000MHz）
+### A5（Ascend950PR / dav-3510, CANN 9.1.0T103, 满核 56 AIV + 28 AIC, SYS_CNT=1000MHz）
 
-| 指标 (mean/max us) | add (Vector, 56核) | grouped_matmul (Cube, 28核) | incre_flash_attention (MIX, 28+56核) |
+数据版本 20260909 刷新：以 5 轮独立复测平均为准（每轮全量重建 + capture + 5-shot median，各轮 min/mean/max 分别跨轮取平均）。add/grouped_matmul 与 PR 描述 §3.2（B 环境独立复测，20260904，NPU 15，提交 c26563855）跨机器一致：add 头开销 0.33/0.79/1.04 精确相同，gmm 头开销差 ≤0.04us，TaskDur 差 ≤0.06us。
+
+主表（B 环境复测，20260909，NPU 0，CANN 9.1.0T103，提交 6e6e2693f）：
+
+| 指标 (min/mean/max us) | add (Vector, 56核) | grouped_matmul (Cube, 28核) | incre_flash_attention (MIX, AIV 56核打点) |
 |------|-----------|-----------|-----------|
-| 调度+硬件头 T0-stars | 0.16 / 0.17 | 0.79 / 1.07 | 1.84 / 4.25 |
-| 软件头 T1-T0 | 0.28 / 0.36 | 0.68 / 1.06 | 1.15 / 3.97 |
-| **头开销 T1-stars** | **0.44 / 0.51** | **1.47 / 1.68** | **3.00 / 4.98** |
-| kernel主体 T2-T1 | 7.10 / 7.18 | 0.48 / 1.28 | 0.27（AIV 视角） |
-| kernel末指令 T2-stars | 7.55 / 7.69 | 1.97 / 2.97 | 3.27 / 5.19 |
-| 硬件尾 pmu_end-T2 | 0.34~1.12 | 0.53~0.76 | 0.64 |
-| TaskDur 稳态 mean | 8.96 | 3.83 | 4.61 |
+| 调度+硬件头 T0-stars | 0.15 / 0.16 / 0.17 | 0.28 / 0.79 / 1.19 | 0.41 / 2.33 / 5.37 |
+| 软件头 T1-T0 | 0.18 / 0.63 / 0.88 | 0.58 / 0.99 / 1.57 | 0.45 / 1.57 / 4.94 |
+| **头开销 T1-stars** | 0.33 / 0.79 / **1.04** | 1.08 / 1.77 / **2.10** | 1.37 / 3.90 / **6.52** |
+| kernel主体 T2-T1 | 6.91 / 6.99 | 0.57 / 1.38 | 0.24（AIV 视角） |
+| kernel末指令 T2-stars | 7.16 / 7.70 / 8.03 | 1.43 / 2.35 / 3.48 | 1.66 / 4.14 / 6.70 |
+| 硬件尾 pmu_end-T2 | 0.52 ~ 0.86 | 0.49 ~ 0.63 | 0.43 ~ 0.62 |
+| TaskDur 稳态 mean | 8.85 | 4.09 | 5.79 |
 
-注：IFA 的 T2 只打 AIV 侧，AIC Cube 计算拖尾约 0.9us 计入 TaskDur 而非 T2，解读 IFA 数据时注意是 AIV 视角。
+软件栈复验（torch 2.12.0+cpu + torch_npu 2.12.0.dev，CANN 9.1.0T103，同提交 6e6e2693f，5 轮）：grouped_matmul 与主表一致（头开销 1.08/1.79/2.11，max 精确相同，TaskDur 4.11）；IFA 头开销 1.35/3.70/5.73 略低（TaskDur 5.42）；add 轮间波动加大（软件头 max 0.87~1.54us、TaskDur 8.83~10.26us），头开销均值升至 0.90/1.22，但其最优轮（0.32/0.79/1.04）与主表精确一致。add 的 T0-stars（调度+硬件头）在全部轮次恒为 0.15/0.16/0.17，是最稳定的参照指标。
 
-### A3（Ascend910_9392, CANN 9.1.T103, SYS_CNT=50MHz，5 轮独立复测跨轮平均）
+> 旧版参考表（头开销 add 0.44/0.51、gmm 1.47/1.68、IFA 3.00/4.98 mean/max）经多轮独立复测均无法复现——差距集中在其偏低的软件头（add 0.28/0.36 vs 实测 0.63/0.88）——已废弃，以本表为准。
+
+注：IFA 的 T2 只打 AIV 侧，AIC Cube 计算拖尾计入 TaskDur 而非 T2，解读 IFA 数据时注意是 AIV 视角。
+
+### A3（Ascend910_9392, CANN 9.1.0T103, SYS_CNT=50MHz，5 轮独立复测跨轮平均）
 
 | 指标 (mean/max us) | add (Vector, 48核) | grouped_matmul (Cube, 24核) | incre_flash_attention (Vector, 48核) |
 |------|-----------|-----------|-----------|
@@ -143,14 +151,14 @@ Mapping Symbols：`$x`=MainScalar / `$k`=SIMD / `$t`=SIMT；MIX 混合核有 `_m
 
 | 阶段 (mean us) | add (56核) | gmm (28核) | IFA (28AIC+56AIV) |
 |------|-----------|-----------|-----------|
-| T0-stars 调度+硬件头 | 0.16 | 0.79 | 1.86 |
+| T0-stars 调度+硬件头 | 0.16 | 0.79 | 2.33 |
 | entry 指令数 | 30 | 82 | AIC 37 / AIV 55 |
 | 参数预取量 | 48B (×1) | 2KB (×33) | 1.25KB (×20, 每核) |
 
-> **kick 拆分仅 A5 有效**（A5 上 kick=ffts pmu_start，可拆为 stars→kick 调度 ~0.13-0.19us + kick→T0 硬件头：add 0.03 / gmm 0.65 / IFA 1.66us）。A3 的 ffts f[19] 非 kick 时刻（实测恒为 dispatch+20cyc），无拆分意义——故上表只列合并口径 T0-stars（两平台通用），A3 汇总输出也不拆 kick 段，`seg1_pairs_*.csv` 仅 A5 有效。
+> **kick 拆分仅 A5 有效**（A5 上 kick=ffts pmu_start，可拆为 stars→kick 调度 ~0.14-0.19us + kick→T0 硬件头：add 0.03 / gmm 0.65 / IFA ~2.1us；20260909 B 环境 5 轮实测 stars→kick：add/gmm 0.135、IFA 0.188，轮间恒定）。A3 的 ffts f[19] 非 kick 时刻（实测恒为 dispatch+20cyc），无拆分意义——故上表只列合并口径 T0-stars（两平台通用），A3 汇总输出也不拆 kick 段，`seg1_pairs_*.csv` 仅 A5 有效。
 
 - **add/gmm**：指令级估算与实测吻合。gmm 慢 0.63us 根因 = 参数区体积（48B vs 2KB）：预取数据量 + 装载指令数双重放大
-- **IFA**：指令数与参数量均小于 gmm，但 kick→T0 是其 2.5 倍，~1.4us 缺口归因：**230KB 大二进制 ICache 冷启动**（8 组模板实例化只用 1 组）+ **MIX 1:2 派发错峰**（max/mean≈2.4 倍佐证）+ 84 核重复预取同一参数区的总线竞争
+- **IFA**：指令数与参数量均小于 gmm，但 kick→T0（~2.1us）是其 3.3 倍，~1.5us 缺口归因：**230KB 大二进制 ICache 冷启动**（8 组模板实例化只用 1 组）+ **MIX 1:2 派发错峰**（max/mean≈2.3 倍佐证）+ 84 核重复预取同一参数区的总线竞争
 
 > A3 的 entry/epilogue 段可用归档产物 `disasm/*_ascend910_93_disasm.txt` 同法分析：entry 段要素与 A5 一致（PARA_BASE 装载 → 预取/栈帧 → 参数装载 → T0 打点），但 A3 的 add/gmm 二进制中**无 `DC_PRELOADI` 参数预取**（A5 上 add ×1 / gmm ×33），IFA 保留（60 处），跨平台对账时注意该差异。
 
