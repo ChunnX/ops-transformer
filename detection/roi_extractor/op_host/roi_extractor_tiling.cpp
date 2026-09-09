@@ -93,7 +93,7 @@ ge::graphStatus RoiExtractorCompileInfo::ParamCheck(gert::TilingContext *context
                         OP_LOGE(nodeName,
                                 "features must be a contiguous prefix features_0..features_%ld, "
                                 "but features_%u is provided while features_%ld is missing.",
-                                level - 1, i, i - 1),
+                                level - 1, i, static_cast<int64_t>(i) - 1),
                         return ge::GRAPH_PARAM_INVALID);
             level = level + 1;
         }
@@ -104,7 +104,8 @@ ge::graphStatus RoiExtractorCompileInfo::ParamCheck(gert::TilingContext *context
     auto firstShape = context->GetInputShape(IDX_FEATURES_0);
     OP_CHECK_NULL_WITH_CONTEXT(context, firstShape);
     OP_CHECK_IF(firstShape->GetStorageShape().GetDimNum() != 4,
-                OP_LOGE(nodeName, "features must be 4D NCHW, but got %ldD.", firstShape->GetStorageShape().GetDimNum()),
+                OP_LOGE(nodeName, "features must be 4D NCHW, but got %ldD.",
+                        static_cast<int64_t>(firstShape->GetStorageShape().GetDimNum())),
                 return ge::GRAPH_PARAM_INVALID);
     const int64_t nDim = firstShape->GetStorageShape().GetDim(0);
     const int64_t cDim = firstShape->GetStorageShape().GetDim(1);
@@ -146,7 +147,7 @@ ge::graphStatus RoiExtractorCompileInfo::ParamCheck(gert::TilingContext *context
     OP_CHECK_NULL_WITH_CONTEXT(context, roisShape);
     OP_CHECK_IF(roisShape->GetStorageShape().GetDimNum() != 2 || roisShape->GetStorageShape().GetDim(1) != 5,
                 OP_LOGE(nodeName, "rois must be [R, 5], but got %ldD with last dim %ld.",
-                        roisShape->GetStorageShape().GetDimNum(),
+                        static_cast<int64_t>(roisShape->GetStorageShape().GetDimNum()),
                         roisShape->GetStorageShape().GetDim(roisShape->GetStorageShape().GetDimNum() - 1)),
                 return ge::GRAPH_PARAM_INVALID);
     const int64_t rDim = roisShape->GetStorageShape().GetDim(0);
@@ -296,6 +297,7 @@ static ge::graphStatus RoiExtractorTilingFunc(gert::TilingContext *context)
 
 static ge::graphStatus TilingParseForRoiExtractor(gert::TilingParseContext *context)
 {
+    (void)context; // no compile-time info to parse for RoiExtractor
     return ge::GRAPH_SUCCESS;
 }
 
