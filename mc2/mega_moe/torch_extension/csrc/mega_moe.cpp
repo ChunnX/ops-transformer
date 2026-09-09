@@ -249,7 +249,8 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     const auto xScalarType = x.scalar_type();
     const bool isFp8X = xScalarType == at::ScalarType::Float8_e5m2 ||
                         xScalarType == at::ScalarType::Float8_e4m3fn;
-    // 当前 Torch C++ ScalarType 未统一提供 FP4 枚举，FP4 输入使用 uint8 保存两个 E2M1 元素。
+    // 当前 Torch C++ ScalarType 未统一提供 FP4 枚举；FP4 x 使用 uint8 保存两个 E2M1 元素，
+    // 传入 ACLNN 前通过 TensorWrapper 将逻辑 dtype 覆盖为 ACL_FLOAT4_E2M1。
     const bool isPackedFp4X = xScalarType == at::kByte;
     const bool isPreQuantizedX = isFp8X || isPackedFp4X;
     TORCH_CHECK((isAscend950 || !isPreQuantizedX) &&
