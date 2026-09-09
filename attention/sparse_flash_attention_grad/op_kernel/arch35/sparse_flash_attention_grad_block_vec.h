@@ -52,10 +52,10 @@ private:
     __aicore__ inline void ScatterRowsToGm(const GlobalTensor<CALC_TYPE> &dkOutGm,
                                            const GlobalTensor<CALC_TYPE> &dvOutGm,
                                            const LocalTensor<CALC_TYPE> &dkInTensor,
-                                           const LocalTensor<CALC_TYPE> &dvInTensor,
-                                           const LocalTensor<int32_t> &topkUb, bool useUbTopk, uint64_t topkGmOffset,
-                                           int64_t blkCount, FagConstInfo &constInfo, int64_t rowCount,
-                                           ScatterRowCursor &cursor, event_t eventIDVToMTE3);
+                                           const LocalTensor<CALC_TYPE> &dvInTensor, const LocalTensor<int32_t> &topkUb,
+                                           bool useUbTopk, uint64_t topkGmOffset, int64_t blkCount,
+                                           FagConstInfo &constInfo, int64_t rowCount, ScatterRowCursor &cursor,
+                                           event_t eventIDVToMTE3);
     __aicore__ inline void GatherKVSingleRow(const GlobalTensor<INPUT_TYPE> &selectedKWorkSpaceGm,
                                              FagConstInfo &constInfo, FagRunInfo &runInfo);
     __aicore__ inline void GatherKVMultiRow(const GlobalTensor<INPUT_TYPE> &selectedKWorkSpaceGm,
@@ -347,8 +347,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GatherKVMultiRow(
     uint32_t firstVecEnd = s2Pair / 2;
     uint32_t blkBegin = GetSubBlockIdx() == 0 ? 0 : firstVecEnd;
     uint32_t blkEnd = GetSubBlockIdx() == 0 ? firstVecEnd : static_cast<uint32_t>(runInfo.actualSelCntOffset);
-    uint64_t outWsOffset =
-        runInfo.kSelectedWsAddr + (GetSubBlockIdx() == 0 ? 0 : firstVecEnd * blockSize * dTotal);
+    uint64_t outWsOffset = runInfo.kSelectedWsAddr + (GetSubBlockIdx() == 0 ? 0 : firstVecEnd * blockSize * dTotal);
 
     LocalTensor<INPUT_TYPE> gatherTensorPing = dSOutQue.AllocTensor<INPUT_TYPE>();
     LocalTensor<INPUT_TYPE> gatherTensorPong = pOutQue.AllocTensor<INPUT_TYPE>();
@@ -368,8 +367,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GatherKVMultiRow(
     for (uint32_t i = blkBegin; i < blkEnd; i++) {
         int64_t keyOffset = GetTopkIdx(topkUb, useUbTopk, gmOffset, i) * blockSize;
         // tile 里只有最后一个 block 可能被因果对角线截断，越界的行既不搬也不进 mm 的 N 维
-        bool isTailBlk =
-            runInfo.isLastBasicBlock && (i + 1 == static_cast<uint32_t>(runInfo.actualSelCntOffset));
+        bool isTailBlk = runInfo.isLastBasicBlock && (i + 1 == static_cast<uint32_t>(runInfo.actualSelCntOffset));
         int64_t rowsInBlk = isTailBlk ? runInfo.lastBlockSize : blockSize;
         for (int64_t r = 0; r < rowsInBlk; r += GATHER_UB_ROWS) {
             uint32_t chunkRows = static_cast<uint32_t>(Min<int64_t>(GATHER_UB_ROWS, rowsInBlk - r));
@@ -916,8 +914,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddHead64(const Global
     LocalTensor<CALC_TYPE> dkInTensor = dSOutQue.AllocTensor<CALC_TYPE>();
     LocalTensor<CALC_TYPE> dvInTensor = pOutQue.AllocTensor<CALC_TYPE>();
 
-    uint64_t gmOffset = runInfo.t1Index * (constInfo.n2Size * constInfo.selectedBlockCount) + runInfo.blkCntOffset +
-                        curBlkBegin;
+    uint64_t gmOffset =
+        runInfo.t1Index * (constInfo.n2Size * constInfo.selectedBlockCount) + runInfo.blkCntOffset + curBlkBegin;
     bool useUbTopk = true;
     LocalTensor<int32_t> topkUb = LoadTopkToUb(gmOffset, static_cast<uint32_t>(curCoreBlkSize));
     ScatterRowCursor cursor;
@@ -1019,10 +1017,9 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor
     GlobalTensor<float> dkOutGm = dkWorkSpaceGm[runInfo.keyOffsetWithRope];
     GlobalTensor<float> dvOutGm = dvWorkSpaceGm[runInfo.commonRunInfo.valueOffset];
     int64_t currentMm4SrcOffset = runInfo.mm4ResWsAddr + curBlkBegin * blockSize * HEAD_DIM_ALIGN;
-    int64_t currentMm5SrcOffset =
-        runInfo.mm5ResWsAddr + curBlkBegin * blockSize * constInfo.commonConstInfo.dSizeV;
-    uint64_t gmOffset = runInfo.t1Index * (constInfo.n2Size * constInfo.selectedBlockCount) + runInfo.blkCntOffset +
-                        curBlkBegin;
+    int64_t currentMm5SrcOffset = runInfo.mm5ResWsAddr + curBlkBegin * blockSize * constInfo.commonConstInfo.dSizeV;
+    uint64_t gmOffset =
+        runInfo.t1Index * (constInfo.n2Size * constInfo.selectedBlockCount) + runInfo.blkCntOffset + curBlkBegin;
     bool useUbTopk = true;
     LocalTensor<int32_t> topkUb = LoadTopkToUb(gmOffset, static_cast<uint32_t>(curCoreBlkSize));
     ScatterRowCursor cursor;
@@ -1078,8 +1075,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor
         SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
         WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
     }
-    ScatterRowsToGm<(!KV_MERGE)>(dkOutGm, dvOutGm, dkInTensor, dvInTensor, topkUb, useUbTopk, gmOffset,
-                                 curCoreBlkSize, constInfo, tailRows, cursor, eventIDVToMTE3);
+    ScatterRowsToGm<(!KV_MERGE)>(dkOutGm, dvOutGm, dkInTensor, dvInTensor, topkUb, useUbTopk, gmOffset, curCoreBlkSize,
+                                 constInfo, tailRows, cursor, eventIDVToMTE3);
     SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
     SetAtomicNone();
     WaitFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
@@ -1149,8 +1146,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         // 该 Q token 的最后一个 block 可能被因果对角线截断，只有分到它的那个 V 核要缩短行数
         const int64_t blockSize = constInfo.selectedBlockSize;
         bool hasTailBlk = (s2SrcOffset + currentCoreBlkSize == runInfo.actualSelectedBlockCount);
-        int64_t currentCoreKSize = hasTailBlk ? (currentCoreBlkSize - 1) * blockSize + runInfo.lastBlockSize :
-                                                currentCoreBlkSize * blockSize;
+        int64_t currentCoreKSize =
+            hasTailBlk ? (currentCoreBlkSize - 1) * blockSize + runInfo.lastBlockSize : currentCoreBlkSize * blockSize;
 
         SetAtomicAdd<CALC_TYPE>();
         int64_t maxLoops = CeilDiv(currentCoreKSize, UB_ROW_SIZE);
@@ -1292,8 +1289,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GetRunInfo(int64_t bS1Index, 
     runInfo.lastBlockSize = blockSize;
     int64_t tailRows = maxS2 - (maxS2Blk - 1) * blockSize;
     if (runInfo.actualSelectedBlockCount > 0 && tailRows != blockSize) {
-        uint64_t topkOffset = bS1Index * (constInfo.n2Size * constInfo.selectedBlockCount) +
-                              runInfo.actualSelectedBlockCount - 1;
+        uint64_t topkOffset =
+            bS1Index * (constInfo.n2Size * constInfo.selectedBlockCount) + runInfo.actualSelectedBlockCount - 1;
         if (topkIndicesGm.GetValue(topkOffset) == maxS2Blk - 1) {
             runInfo.lastBlockSize = tailRows;
         }

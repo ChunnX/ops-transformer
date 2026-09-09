@@ -643,8 +643,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline int64_t FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetLastBlockSize(
-    const int64_t t1Idx, const int64_t n2Idx, const int64_t maxS2, const int64_t maxS2Blk,
-    const int64_t actSelBlkCount)
+    const int64_t t1Idx, const int64_t n2Idx, const int64_t maxS2, const int64_t maxS2Blk, const int64_t actSelBlkCount)
 {
     // 因果场景下 maxS2Blk-1 号 block 只有 maxS2 - (maxS2Blk-1)*blockSize 行落在下三角内。topk 升序，
     // 它若被选中必然排在最后一个位置；没被选中时本 tile 全是满块，不能截断。
