@@ -9,6 +9,8 @@
 import sys
 import types
 
+import torch
+
 from .quant_sparse_lightning_indexer import quant_sparse_lightning_indexer
 
 # Share the ds41 module with the other experimental operators.
@@ -20,6 +22,8 @@ if ds41 is None:
     ds41.__package__ = parent_pkg
     sys.modules[module_name] = ds41
 
-ds41.quant_sparse_lightning_indexer = quant_sparse_lightning_indexer
+ds41.quant_sparse_lightning_indexer = (
+    torch.ops.cann_ops_transformer.ds41.quant_sparse_lightning_indexer
+)
 
 __all__ = ["ds41"]

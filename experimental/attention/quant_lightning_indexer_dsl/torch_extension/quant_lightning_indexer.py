@@ -11,26 +11,23 @@ import torch
 import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
-from .quant_lightning_indexer_dsl import (
-    quant_lightning_indexer as _dsl_quant_lightning_indexer,
-)
 
 
 class QuantLightningIndexerOpBuilder(OpBuilder):
     def __init__(self):
         super(QuantLightningIndexerOpBuilder, self).__init__(
-            "quant_lightning_indexer", category="attention"
+            "ds41.quant_lightning_indexer", category="attention"
         )
 
     def sources(self):
-        """Allocation-only Python placeholder; DSL integration is pending."""
+        """Python DSL implementation; no C++ extension is compiled."""
         return []
 
     def schema(self):
         """PyTorch operator signature."""
         return [
             (
-                "quant_lightning_indexer(Tensor q, Tensor k, Tensor w, "
+                "ds41.quant_lightning_indexer(Tensor q, Tensor k, Tensor w, "
                 "Tensor q_descale, Tensor k_descale, int topk, int quant_mode, *, "
                 "Tensor? cu_seqlens_q=None, Tensor? seqused_q=None, "
                 "Tensor? seqused_k=None, Tensor? cmp_residual_k=None, "
@@ -44,7 +41,7 @@ class QuantLightningIndexerOpBuilder(OpBuilder):
         ]
 
     def register_meta(self):
-        """Register the allocation-only Meta implementation."""
+        """Register the FakeTensor/Meta output implementation."""
         @impl(get_as_library(), self.name, "Meta")
         def quant_lightning_indexer_meta(
             q,
@@ -132,7 +129,11 @@ def quant_lightning_indexer(
     candidate_block_size=-1,
 ):
     """Run the CANNBotDSL QLI kernel through the Torch NPU dispatcher."""
-    outputs = _dsl_quant_lightning_indexer(
+    from .quant_lightning_indexer_dsl import (
+        quant_lightning_indexer as dsl_quant_lightning_indexer,
+    )
+
+    outputs = dsl_quant_lightning_indexer(
         q,
         k,
         w,

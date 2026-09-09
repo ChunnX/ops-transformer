@@ -11,26 +11,23 @@ import torch
 import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
-from .quant_sparse_lightning_indexer_dsl import (
-    quant_sparse_lightning_indexer as _dsl_quant_sparse_lightning_indexer,
-)
 
 
 class QuantSparseLightningIndexerOpBuilder(OpBuilder):
     def __init__(self):
         super(QuantSparseLightningIndexerOpBuilder, self).__init__(
-            "quant_sparse_lightning_indexer", category="attention"
+            "ds41.quant_sparse_lightning_indexer", category="attention"
         )
 
     def sources(self):
-        """Allocation-only Python placeholder; DSL integration is pending."""
+        """Python DSL implementation; no C++ extension is compiled."""
         return []
 
     def schema(self):
         """PyTorch operator signature."""
         return [
             (
-                "quant_sparse_lightning_indexer(Tensor q, Tensor k, Tensor w, "
+                "ds41.quant_sparse_lightning_indexer(Tensor q, Tensor k, Tensor w, "
                 "Tensor descale_q, Tensor descale_k, Tensor candidate_block_indices, "
                 "Tensor candidate_block_length, int topk, int quant_mode, "
                 "int candidate_block_size, *, Tensor? cu_seqlens_q=None, "
@@ -45,7 +42,7 @@ class QuantSparseLightningIndexerOpBuilder(OpBuilder):
         ]
 
     def register_meta(self):
-        """Register the allocation-only Meta implementation."""
+        """Register the FakeTensor/Meta output implementation."""
         @impl(get_as_library(), self.name, "Meta")
         def quant_sparse_lightning_indexer_meta(
             q,
@@ -116,7 +113,11 @@ def quant_sparse_lightning_indexer(
     return_value=False,
 ):
     """Run the CANNBotDSL QSLI kernel through the Torch NPU dispatcher."""
-    outputs = _dsl_quant_sparse_lightning_indexer(
+    from .quant_sparse_lightning_indexer_dsl import (
+        quant_sparse_lightning_indexer as dsl_quant_sparse_lightning_indexer,
+    )
+
+    outputs = dsl_quant_sparse_lightning_indexer(
         q,
         k,
         w,
