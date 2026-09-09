@@ -96,10 +96,10 @@ public:
         LocalTensor<float> currentC = cL0_[cSlot * BASIC_CUBE_L0C_SLOT_ELEMS];
         WaitFlag<HardEvent::FIX_M>(cSlot);
 
-        AccumulateKRange(currentC, a, b, m, n, firstK, aGmStride, bGmStride, true);
+        AccumulateKRange(currentC, a, b, m, n, firstK, aGmStride, bGmStride, true, true);
         CrossCoreWaitFlag(MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C1);
         AccumulateKRange(currentC, a[firstK * aGmStride], b[firstK * bGmStride], m, n, secondK,
-                         aGmStride, bGmStride, false);
+                         aGmStride, bGmStride, true, false);
 
         SetFlag<HardEvent::M_FIX>(cSlot);
         WaitFlag<HardEvent::M_FIX>(cSlot);
@@ -128,7 +128,7 @@ private:
         LocalTensor<float> currentC = cL0_[cSlot * BASIC_CUBE_L0C_SLOT_ELEMS];
         WaitFlag<HardEvent::FIX_M>(cSlot);
 
-        AccumulateKRange(currentC, a, b, m, n, k, aGmStride, bGmStride, true, reuseB1);
+        AccumulateKRange(currentC, a, b, m, n, k, aGmStride, bGmStride, transA, true, reuseB1);
 
         SetFlag<HardEvent::M_FIX>(cSlot);
         WaitFlag<HardEvent::M_FIX>(cSlot);
@@ -153,7 +153,7 @@ private:
 
     __aicore__ inline void AccumulateKRange(const LocalTensor<float> &currentC, const GlobalTensor<float> &a,
                                             const GlobalTensor<float> &b, uint32_t m, uint32_t n, uint32_t k,
-                                            uint32_t aGmStride, uint32_t bGmStride, bool initFirst,
+                                            uint32_t aGmStride, uint32_t bGmStride, bool transA, bool initFirst,
                                             bool reuseB1 = false)
     {
 
