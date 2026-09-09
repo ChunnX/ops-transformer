@@ -48,7 +48,6 @@ __aicore__ inline void grouped_matmul_finalize_routing_mx(GM_ADDR x, GM_ADDR w, 
 {
     (void)offset;
     (void)workspaceGM;
-    (void)bias;
     REGISTER_TILING_DEFAULT(GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingTilingData);
     GET_TILING_DATA(tilingData, tilingGM);
 
@@ -60,6 +59,7 @@ __aicore__ inline void grouped_matmul_finalize_routing_mx(GM_ADDR x, GM_ADDR w, 
     using CType = DTYPE_Y;
     using C1Type = CType;
     using LogitType = DTYPE_LOGIT;
+    using RowIndexType = AscendC::Std::conditional_t<AscendC::Std::is_same_v<CType, bfloat16_t>, int32_t, int64_t>;
     using LayoutA = layoutA;
     using LayoutB = layoutB;
     using LayoutC = AscendC::Te::NDExtLayoutPtn;
@@ -71,7 +71,7 @@ __aicore__ inline void grouped_matmul_finalize_routing_mx(GM_ADDR x, GM_ADDR w, 
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, C1Type, LayoutC,
                                                     BiasType, LayoutBias>;
     using BlockPrologue = Blaze::Gemm::Block::BlockPrologueFinalizeRouting<CType, BiasType>;
-    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueFinalizeRouting<CType, C1Type, LogitType>;
+    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueFinalizeRouting<CType, C1Type, LogitType, RowIndexType>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
     using BlockPrologueEpilogue = AscendC::Std::tuple<BlockPrologue, BlockEpilogue>;
     using GmmKernel = Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, BlockMmad, BlockPrologueEpilogue,
@@ -96,17 +96,17 @@ __aicore__ inline void grouped_matmul_finalize_routing_mx(GM_ADDR x, GM_ADDR w, 
                         kBL1,
                         scaleKL1,
                         scaleKL1,
-                        static_cast<uint8_t>(0),
+                        static_cast<uint8_t>(gmmParamsIn.hasBias),
                         static_cast<uint8_t>(matmulTiling.dbL0C),
                         static_cast<uint8_t>(gmmParamsIn.groupListType),
                         static_cast<uint8_t>(gmmParamsIn.l0cOutUbBufferNum)};
-    BlockMmadParams blockMmadParams{x, w, y, nullptr, xScale, wScale};
+    BlockMmadParams blockMmadParams{x, w, y, bias, xScale, wScale};
     Params params = {{static_cast<int64_t>(matmulTiling.M), static_cast<int64_t>(matmulTiling.N),
                       static_cast<int64_t>(matmulTiling.Ka), static_cast<int64_t>(1)},
                      blockMmadParams,
                      {shareInput, y, gmmParamsIn.sharedInputOffset, gmmParamsIn.sharedInputLen, matmulTiling.N,
                       gmmParamsIn.batch, gmmParamsIn.residualScale},
-                     {y, wScale, xScale, nullptr, logit, rowIndex, matmulTiling.baseM, matmulTiling.baseN,
+                     {y, wScale, xScale, bias, logit, rowIndex, matmulTiling.baseM, matmulTiling.baseN,
                       static_cast<uint8_t>(gmmParamsIn.l0cOutUbBufferNum)},
                      groupList,
                      gmmParams};

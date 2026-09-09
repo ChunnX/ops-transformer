@@ -63,10 +63,8 @@
 #include "arch35/grouped_matmul_finalize_routing_pertoken_dequant.h"
 #elif ORIG_DTYPE_X == DT_FLOAT4_E1M2 || ORIG_DTYPE_X == DT_FLOAT4_E2M1
 #include "arch35/grouped_matmul_finalize_routing_arch35.h"
-#include "arch35/grouped_matmul_finalize_routing_arch35_cgmct.h"
 #else
 #include "arch35/grouped_matmul_finalize_routing_arch35.h"
-#include "arch35/grouped_matmul_finalize_routing_arch35_cgmct.h"
 #include "arch35/grouped_matmul_finalize_routing_pertoken_dequant.h"
 #endif
 #endif
@@ -80,9 +78,14 @@ static constexpr bool GMM_FR_WEIGHT_NZ = true;
 static constexpr bool GMM_FR_WEIGHT_NZ = false;
 #endif
 
-template <int BTRANS>
+template <int BTRANS, bool WEIGHT_NZ>
 struct GmmFrMxLayoutBSelector {
     using type = AscendC::Std::conditional_t<BTRANS == 0, AscendC::Te::NZLayoutPtn, AscendC::Te::ZNLayoutPtn>;
+};
+
+template <int BTRANS>
+struct GmmFrMxLayoutBSelector<BTRANS, false> {
+    using type = AscendC::Std::conditional_t<BTRANS == 0, AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn>;
 };
 
 template <int BTRANS>
@@ -90,7 +93,7 @@ __aicore__ inline void RunGmmFrMx(GM_ADDR x, GM_ADDR w, GM_ADDR scale, GM_ADDR b
                                   GM_ADDR groupList, GM_ADDR shareInput, GM_ADDR logit, GM_ADDR rowIndex,
                                   GM_ADDR offset, GM_ADDR y, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    using LayoutB = typename GmmFrMxLayoutBSelector<BTRANS>::type;
+    using LayoutB = typename GmmFrMxLayoutBSelector<BTRANS, GMM_FR_WEIGHT_NZ>::type;
     grouped_matmul_finalize_routing_mx<AscendC::Te::NDExtLayoutPtn, LayoutB>(
         x, w, scale, bias, pertokenScale, groupList, shareInput, logit, rowIndex, offset, y, workspaceGM, tilingGM);
 }
@@ -190,33 +193,17 @@ __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w,
     }
 #elif ORIG_DTYPE_X == DT_FLOAT4_E1M2 || ORIG_DTYPE_X == DT_FLOAT4_E2M1
     if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
-        grouped_matmul_finalize_routing_mx_cgmct<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(
-            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
-            tilingGM);
-    } else if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
-        grouped_matmul_finalize_routing_mx_cgmct<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(
-            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
-            tilingGM);
-    } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {
         RunGmmFrMx<0>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y,
                       workspaceGM, tilingGM);
-    } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {
+    } else if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
         RunGmmFrMx<1>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y,
                       workspaceGM, tilingGM);
     }
 #else
     if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
-        grouped_matmul_finalize_routing_mx_cgmct<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(
-            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
-            tilingGM);
-    } else if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
-        grouped_matmul_finalize_routing_mx_cgmct<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(
-            x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
-            tilingGM);
-    } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {
         RunGmmFrMx<0>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y,
                       workspaceGM, tilingGM);
-    } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {
+    } else if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
         RunGmmFrMx<1>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y,
                       workspaceGM, tilingGM);
     } else if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 1 && ROWINDEXTYPE == 0) {
