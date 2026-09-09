@@ -7,7 +7,8 @@ apace/
 ├── kernel/                       # 通算融合算子实现
 │   ├── fusions/                  #   通信 + Matmul 融合算子
 │   │   ├── all_gather_quant_matmul/
-│   │   └── all_to_all_quant_matmul/
+│   │   ├── all_to_all_quant_matmul/
+│   │   └── allto_allv_quant_grouped_matmul/
 │   └── matmul/                   #   Matmul kernel
 │       ├── grouped_matmul/
 │       └── quant_batch_matmul/
@@ -56,6 +57,23 @@ apace/
 | `mmad` | 基于 [ops-tensor](https://gitcode.com/cann/ops-tensor) Blaze 库的量化 MMAD fragment，对接 FragmentTensor。 |
 | `epilogue` | Matmul 后处理 block。 |
 | `scheduler` | 多核/多 block 调度 block。 |
+
+### 核心算子：AllToAllvQuantGroupedMatmul（MXFP 量化）
+
+`kernel/fusions/allto_allv_quant_grouped_matmul/` 实现 AllToAllv + MX 量化 GroupedMatMul 融合算子，
+语义对齐 `aclnnAlltoAllvQuantGroupedMatMul`（MX 模式，gmm 路径）：
+
+- **输入**：`gmm_x [BSK, H1]`（E4M3/E5M2）、`gmm_x_scale [BSK, ceildiv(H1,64), 2]`（E8M0）、
+  `gmm_weight`（`transB=0: [E, H1, N1]` / `transB=1: [E, N1, H1]`）、
+  `gmm_weight_scale`（`transB=0: [E, ceildiv(H1,64), N1, 2]` / `transB=1: [E, N1, ceildiv(H1,64), 2]`）；
+- **输出**：`gmm_y [sumRecv, N1]`，行序为 expert-major（组内按 src rank 排列），BF16；
+- **通信即 permute**：AIV 按 (dst, expert) 段通过 hcomm WriteNbi 直接写入对端窗口的 expert-major
+  位置，免去通信后的独立 permute；本 rank 自身段经 UB 中转落窗；
+- **计算**：AIC 侧 `kernel/matmul/grouped_matmul/qgmm_mx_kernel.h` 以 groupList（累计行数）驱动
+  Blaze `BlockMmad<GroupedMatmulWithScaleMx>` 分组 MX 量化 Matmul，支持 M/N 尾块切分与负载均衡；
+- **约束**：`H1 % 1024 == 0`（MX scale 通信 32B 对齐）；`rankSize ≤ 16`、单卡专家数 ≤ 32；
+  共享专家（mm 路径）与 `permute_out` 输出暂不支持。
+
 
 ### core 核心层
 
