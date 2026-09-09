@@ -233,7 +233,7 @@ public:
                                     uint32_t alignedNormNum)
         : eps_(eps),
           scale_(scale),
-          normDim_(normDim),
+          normDim_(normDim), 
           normNum_(normNum),
           alignedNormDim_(alignedNormDim),
           alignedNormNum_(alignedNormNum)
