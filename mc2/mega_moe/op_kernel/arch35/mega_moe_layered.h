@@ -287,7 +287,7 @@ private:
     static constexpr bool ENABLE_A4W4 =
         Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value && Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value;
     // GMM1 搬运普通分离权重时在片内拼成 [gate128, up128]。
-    static constexpr bool GMM1_INTERLEAVED = IsGmm1Interleaved && !ENABLE_A4W4;
+    static constexpr bool GMM1_INTERLEAVED = IsGmm1Interleaved;
     static constexpr int32_t DISPATCH_COPY_BUFFER_COUNT = 5;
     static constexpr uint32_t MX_QUANT_TEMP_UB_BYTES = 2U * 1024U;
     static constexpr uint32_t DISPATCH_READY_FLAG_BATCH_TOKENS = 256U;

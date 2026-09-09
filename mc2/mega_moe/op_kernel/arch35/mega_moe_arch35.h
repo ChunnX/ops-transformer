@@ -155,7 +155,7 @@ protected:
 
     using BlockEpilogue = BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, EPILOGUE_TILE_M, L1_TILE_N,
                                                          TopkWeightsPrefetch, IsGmm1Interleaved>;
-    static constexpr bool SHARED_GMM1_INTERLEAVED = IsGmm1Interleaved && SharedQuantConfig::AXW_MODE != AxWMode::A4W4;
+    static constexpr bool SHARED_GMM1_INTERLEAVED = IsGmm1Interleaved;
     using SharedBlockEpilogue =
         BlockEpilogueActivationMxQuant<typename SharedQuantConfig::ActivationQuantOutType, bfloat16_t, L1_TILE_M_256,
                                        L1_TILE_N, false, SHARED_GMM1_INTERLEAVED>;
