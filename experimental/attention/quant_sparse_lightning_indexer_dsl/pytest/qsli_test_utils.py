@@ -10,10 +10,7 @@ import torch
 
 import result_compare_method
 from qsli_parameter_normalization import normalize_qsli_params
-from quant_sparse_lightning_indexer_golden import (
-    quant_sparse_lightning_indexer_golden,
-    quant_sparse_lightning_indexer_golden_selected,
-)
+from quant_sparse_lightning_indexer_golden import quant_sparse_lightning_indexer_golden
 import cann_ops_transformer.ops.attention.quant_sparse_lightning_indexer_dsl  # noqa: F401,E402
 
 
@@ -322,33 +319,11 @@ def generate_qsli_test_data(params):
         layout_q=p["layout_q"], layout_kv=p["layout_kv"],
         return_value=p["return_value"],
     )
-    selected_rows = None
-    if q_len >= 1024:
-        if p["mask_mode"] != 0:
-            raise ValueError("sampled Prefill comparison requires sparse_mode=0")
-        selected_rows = []
-        for batch_index, begin in enumerate(cu[:-1].tolist()):
-            used = int(used_q[batch_index])
-            if used <= 0:
-                continue
-            selected_rows.append(int(begin))
-            if used > 1:
-                selected_rows.append(int(begin) + used - 1)
-        if not selected_rows:
-            raise ValueError("Prefill comparison requires at least one used query row")
-        golden = quant_sparse_lightning_indexer_golden_selected(
-            q, k, tensors["weights"], tensors["descale_q"], descale_k,
-            candidate, candidate_length, selected_rows, **golden_kwargs,
-        )
-    else:
-        golden = quant_sparse_lightning_indexer_golden(
-            q, k, tensors["weights"], tensors["descale_q"], descale_k,
-            candidate, candidate_length, **golden_kwargs,
-        )
-    return {
-        "params": p, "tensors": tensors, "cpu_result": golden,
-        "selected_rows": selected_rows,
-    }
+    golden = quant_sparse_lightning_indexer_golden(
+        q, k, tensors["weights"], tensors["descale_q"], descale_k,
+        candidate, candidate_length, **golden_kwargs,
+    )
+    return {"params": p, "tensors": tensors, "cpu_result": golden}
 
 
 def _to_npu_tensors(tensors):
@@ -415,22 +390,15 @@ def _remove_offset(indices, offset):
 
 def compare_qsli_case(case_data, actual):
     p, golden = case_data["params"], case_data["cpu_result"]
-    selected_rows = case_data.get("selected_rows")
-    if selected_rows is not None:
-        selected = torch.tensor(selected_rows, dtype=torch.long)
-        actual = {
-            name: value.index_select(0, selected)
-            for name, value in actual.items()
-        }
     offset = golden["_output_idx_offset"]
     expected_idx = _remove_offset(golden["sparse_indices"], offset)
     actual_idx = _remove_offset(actual["sparse_indices"], offset)
     rows, s2 = actual_idx.shape[0], p["sequence_length"]
-    batch = len(selected_rows) if selected_rows is not None else p["batch_size"]
+    batch = p["batch_size"]
     cu = case_data["tensors"]["cu"].tolist()
     used_k = case_data["tensors"]["used_k"].tolist()
     compare_params = (
-        batch, 1 if selected_rows is not None else p["query_length"],
+        batch, p["query_length"],
         s2, rows, batch*s2, N1, N2, 128,
         PAGE_SIZE, (s2+PAGE_SIZE-1)//PAGE_SIZE, torch.uint8, torch.float32,
         torch.uint8, torch.int32, cu, used_k,

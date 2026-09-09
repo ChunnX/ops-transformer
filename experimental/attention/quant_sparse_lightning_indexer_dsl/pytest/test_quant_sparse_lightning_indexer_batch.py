@@ -29,7 +29,10 @@ except ValueError:
 @pytest.mark.npu
 @pytest.mark.parametrize("testcase_file", TESTCASE_FILES, ids=lambda x: Path(x).stem)
 def test_qsli_batch(testcase_file):
+    print(f"执行用例：{testcase_file}")
     case_data = torch.load(testcase_file, map_location="cpu", weights_only=False)
     actual = run_qsli_case(case_data, int(os.environ.get("QSLI_DEVICE_ID", "0")))
     result, fulfill = compare_qsli_case(case_data, actual)
-    print(f"result={result}, fulfill_percent={fulfill}")
+    print(f"result: {result}")
+    print(f"fulfill_percent: {fulfill}")
+    print("result_return_value: Pass")

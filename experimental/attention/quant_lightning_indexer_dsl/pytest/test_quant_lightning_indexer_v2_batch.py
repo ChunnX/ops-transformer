@@ -32,6 +32,7 @@ elif os.path.isdir(TEST_INPUT_PATH):
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_file", TESTCASE_FILES)
 def test_qliv2(testcase_file):
+    print(f"执行用例：{testcase_file}")
     cpu, npu, scores, cpu_values, npu_values, offset, params = (
         quant_lightning_indexer_v2_pt_loadprocess.test_qliv2_process(
             testcase_file, device_id=0
@@ -43,6 +44,10 @@ def test_qliv2(testcase_file):
     value_result, value_percent = result_compare_method.check_result_return_value(
         cpu_values, npu_values, params, cpu, npu, scores, offset
     )
+    print(f"result: {result}")
+    print(f"fulfill_percent: {percent}")
+    print(f"result_return_value: {value_result}")
+    print(f"fulfill_percent_return_value: {value_percent}")
     case_name = Path(testcase_file).stem
     if RESULT_PATH:
         QliV2ResultWriter.append(
