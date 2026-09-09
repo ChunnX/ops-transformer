@@ -1,5 +1,5 @@
 # mc2/common 全量匹配清单(消费侧第一步先查本表)
-# 生成: 2026-09-09  基线commit: 949492ae4 (clean)
+# 生成: 2026-09-09  基线commit: b68ff6ced (clean)
 # 用途: 对每个修改文件, 先在本表匹配:
 #   1) 扩展名命中 full_regression.non_header_extensions -> 全量
 #   2) cpp路径命中 full_regression.cpp_no_same_header(无同名.h) -> 全量
