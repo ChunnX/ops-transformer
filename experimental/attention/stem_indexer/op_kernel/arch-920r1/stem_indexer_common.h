@@ -12,8 +12,8 @@
  * \file stem_indexer_common.h
  * \brief
  */
-#ifndef stem_indexer_COMMON_H
-#define stem_indexer_COMMON_H
+#ifndef STEM_INDEXER_COMMON_H
+#define STEM_INDEXER_COMMON_H
 using namespace AscendC;
 namespace SICommon {
 
@@ -230,4 +230,4 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 }
 } // namespace SICommon
 
-#endif // stem_indexer_COMMON_H
+#endif // STEM_INDEXER_COMMON_H

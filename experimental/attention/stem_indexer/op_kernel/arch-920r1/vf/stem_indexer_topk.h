@@ -12,8 +12,8 @@
  * \file stem_indexer_topk.h
  * \brief
  */
-#ifndef stem_indexer_TOPK_H
-#define stem_indexer_TOPK_H
+#ifndef STEM_INDEXER_TOPK_H
+#define STEM_INDEXER_TOPK_H
 
 #include "kernel_operator.h"
 #include "vf_topk_gather.h"

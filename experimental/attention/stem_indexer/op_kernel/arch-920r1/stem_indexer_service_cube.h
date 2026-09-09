@@ -17,8 +17,8 @@
  * \file stem_indexer_service_cube.h
  * \brief matmul 使用多 buffer 流水，提升流水效率
  */
-#ifndef stem_indexer_SERVICE_CUBE_H
-#define stem_indexer_SERVICE_CUBE_H
+#ifndef STEM_INDEXER_SERVICE_CUBE_H
+#define STEM_INDEXER_SERVICE_CUBE_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"

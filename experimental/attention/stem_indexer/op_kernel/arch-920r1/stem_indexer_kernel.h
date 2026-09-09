@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef stem_indexer_KERNEL_H
-#define stem_indexer_KERNEL_H
+#ifndef STEM_INDEXER_KERNEL_H
+#define STEM_INDEXER_KERNEL_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -564,4 +564,4 @@ __aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t 
 }
 
 } // namespace SIKernel
-#endif // stem_indexer_KERNEL_H
+#endif // STEM_INDEXER_KERNEL_H
