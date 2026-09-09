@@ -19,6 +19,100 @@ namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
 const int DIM_TWO = 2;
 
+static void CheckNpuInput(const at::Tensor &tensor, const std::string &name, const char *socName)
+{
+    TORCH_CHECK(tensor.defined(), name, " must not be None on ", socName, ".");
+    TORCH_CHECK(torch_npu::utils::is_npu(tensor), name, " must be on NPU on ", socName, ", but got ", tensor.device());
+}
+
+static void CheckNpuInput(const std::vector<at::Tensor> &tensors, const std::string &name, const char *socName)
+{
+    for (size_t i = 0; i < tensors.size(); ++i) {
+        CheckNpuInput(tensors[i], name + "[" + std::to_string(i) + "]", socName);
+    }
+}
+
+template <typename T>
+static void CheckNpuInput(const c10::optional<T> &input, const std::string &name, const char *socName)
+{
+    if (input.has_value()) {
+        CheckNpuInput(input.value(), name, socName);
+    }
+}
+
+template <typename T>
+static void CheckInputAbsent(const c10::optional<T> &input, const std::string &name, const char *socName)
+{
+    TORCH_CHECK(!input.has_value(), name, " must be None on ", socName, ".");
+}
+
+struct MegaMoeTensorInputs {
+    const at::Tensor &context;
+    const at::Tensor &x;
+    const at::Tensor &topkIds;
+    const at::Tensor &topkWeights;
+    const std::vector<at::Tensor> &weight1;
+    const std::vector<at::Tensor> &weight2;
+    const c10::optional<std::vector<at::Tensor>> &weightScales1;
+    const c10::optional<std::vector<at::Tensor>> &weightScales2;
+    const c10::optional<std::vector<at::Tensor>> &bias1;
+    const c10::optional<std::vector<at::Tensor>> &bias2;
+    const c10::optional<std::vector<at::Tensor>> &sharedWeight1;
+    const c10::optional<std::vector<at::Tensor>> &sharedWeight2;
+    const c10::optional<std::vector<at::Tensor>> &sharedWeightScales1;
+    const c10::optional<std::vector<at::Tensor>> &sharedWeightScales2;
+    const c10::optional<std::vector<at::Tensor>> &sharedBias1;
+    const c10::optional<std::vector<at::Tensor>> &sharedBias2;
+    const c10::optional<at::Tensor> &xActiveMask;
+    const c10::optional<at::Tensor> &maskBuffer;
+};
+
+static void CheckMegaMoeInputs(const MegaMoeTensorInputs &inputs, int64_t epWorldSize, int64_t moeExpertNum,
+                               const char *socName)
+{
+    TORCH_CHECK((epWorldSize > 0), "The ep_world_sizes should be greater than 0, current is: ", epWorldSize);
+    if (socName != nullptr && std::strstr(socName, "Ascend950") != nullptr) {
+        TORCH_CHECK(moeExpertNum >= epWorldSize && moeExpertNum <= 2048 && moeExpertNum % epWorldSize == 0,
+                    "num_experts must be in [ep_world_size, 2048] and divisible by ep_world_size on ", socName,
+                    ", but got num_experts=", moeExpertNum, " and ep_world_size=", epWorldSize);
+        TORCH_CHECK(!inputs.weight1.empty(), "l1_weights must not be empty on Ascend950.");
+        TORCH_CHECK(!inputs.weight2.empty(), "l2_weights must not be empty on Ascend950.");
+        TORCH_CHECK(inputs.weightScales1.has_value() && !inputs.weightScales1->empty(),
+                    "l1_weights_sf must not be None or empty on Ascend950.");
+        TORCH_CHECK(inputs.weightScales2.has_value() && !inputs.weightScales2->empty(),
+                    "l2_weights_sf must not be None or empty on Ascend950.");
+        CheckInputAbsent(inputs.xActiveMask, "x_active_mask", socName);
+        CheckInputAbsent(inputs.bias1, "l1_bias", socName);
+        CheckInputAbsent(inputs.bias2, "l2_bias", socName);
+        CheckInputAbsent(inputs.sharedBias1, "shared_l1_bias", socName);
+        CheckInputAbsent(inputs.sharedBias2, "shared_l2_bias", socName);
+        CheckNpuInput(inputs.x, "x", socName);
+        CheckNpuInput(inputs.context, "context", socName);
+        CheckNpuInput(inputs.topkIds, "topk_ids", socName);
+        CheckNpuInput(inputs.topkWeights, "topk_weights", socName);
+        CheckNpuInput(inputs.weight1, "l1_weights", socName);
+        CheckNpuInput(inputs.weight2, "l2_weights", socName);
+        CheckNpuInput(inputs.weightScales1, "l1_weights_sf", socName);
+        CheckNpuInput(inputs.weightScales2, "l2_weights_sf", socName);
+        CheckNpuInput(inputs.sharedWeight1, "shared_l1_weights", socName);
+        CheckNpuInput(inputs.sharedWeight2, "shared_l2_weights", socName);
+        CheckNpuInput(inputs.sharedWeightScales1, "shared_l1_weights_sf", socName);
+        CheckNpuInput(inputs.sharedWeightScales2, "shared_l2_weights_sf", socName);
+        CheckNpuInput(inputs.maskBuffer, "mask_buffer", socName);
+    }
+    TORCH_CHECK((inputs.x.dim() == DIM_TWO) && (inputs.topkIds.dim() == DIM_TWO), "The x and topk_ids should be 2D");
+    TORCH_CHECK(((inputs.x.scalar_type() == at::kBFloat16) || (inputs.x.scalar_type() == at::kHalf)) &&
+                    (inputs.topkIds.scalar_type() == at::kInt),
+                "dtype of x should be bfloat16, float16, dtype of topk_ids should be int.");
+    if (inputs.maskBuffer.has_value()) {
+        const at::Tensor &mask = inputs.maskBuffer.value();
+        TORCH_CHECK(mask.scalar_type() == at::kInt, "mask_buffer dtype must be int32.");
+        TORCH_CHECK(mask.dim() == 1 && mask.numel() == epWorldSize, "mask_buffer shape must be [ep_world_size].");
+        TORCH_CHECK(mask.device() == inputs.x.device(), "mask_buffer must be on the same device as x.");
+        TORCH_CHECK(mask.is_contiguous(), "mask_buffer must be contiguous.");
+    }
+}
+
 std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     const at::Tensor &context, const at::Tensor &x, const at::Tensor &topkIds, const at::Tensor &topkWeights,
     const std::vector<at::Tensor> &weight1, const std::vector<at::Tensor> &weight2, int64_t moeExpertNum,
@@ -38,18 +132,25 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     c10::optional<int64_t> sharedWeight2Type, c10::optional<int64_t> topoType, c10::optional<int64_t> rankNumPerServer,
     int64_t topkWeightsType)
 {
-    TORCH_CHECK((epWorldSize > 0), "The ep_world_sizes should be greater than 0, current is: ", epWorldSize);
-    TORCH_CHECK((x.dim() == DIM_TWO) && (topkIds.dim() == DIM_TWO), "The x and topk_ids should be 2D");
-    TORCH_CHECK(
-        ((x.scalar_type() == at::kBFloat16) || (x.scalar_type() == at::kHalf)) && (topkIds.scalar_type() == at::kInt),
-        "dtype of x should be bfloat16, float16, dtype of topk_ids should be int.");
-    if (maskBuffer.has_value()) {
-        const at::Tensor &mask = maskBuffer.value();
-        TORCH_CHECK(mask.scalar_type() == at::kInt, "mask_buffer dtype must be int32.");
-        TORCH_CHECK(mask.dim() == 1 && mask.numel() == epWorldSize, "mask_buffer shape must be [ep_world_size].");
-        TORCH_CHECK(mask.device() == x.device(), "mask_buffer must be on the same device as x.");
-        TORCH_CHECK(mask.is_contiguous(), "mask_buffer must be contiguous.");
-    }
+    const MegaMoeTensorInputs inputs{context,
+                                     x,
+                                     topkIds,
+                                     topkWeights,
+                                     weight1,
+                                     weight2,
+                                     weightScales1,
+                                     weightScales2,
+                                     bias1,
+                                     bias2,
+                                     sharedWeight1,
+                                     sharedWeight2,
+                                     sharedWeightScales1,
+                                     sharedWeightScales2,
+                                     sharedBias1,
+                                     sharedBias2,
+                                     xActiveMask,
+                                     maskBuffer};
+    CheckMegaMoeInputs(inputs, epWorldSize, moeExpertNum, aclrtGetSocName());
 
     at::TensorList weight1Ref = weight1;
     at::TensorList weight2Ref = weight2;
