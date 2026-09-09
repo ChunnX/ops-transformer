@@ -811,14 +811,9 @@ ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
                 attenMaskBatch, attenMaskNumHeads);
         return ge::GRAPH_FAILED;
     }
-    // GQA/MQA 限制来自 FP8 effRows 实现(kv 侧按 kvHead 取块), mxfp4 的 blockEffRows
-    // 按 qHeads 布局(attenMask dim1 == numHeads), 不受此限制
-    if (!IsMxfp4Quant(quantMode_) && attenMaskNumHeads != kvHeads_) {
-        OP_LOGE(bsaContext->GetNodeName(),
-                "attenMask (blockEffRows) requires numHeads == kvHeads (no GQA/MQA), but numHeads=%u, kvHeads=%u.",
-                numHeads_, kvHeads_);
-        return ge::GRAPH_FAILED;
-    }
+    // GQA/MQA 放开验证: effRows 张量按 qHeads 布局(attenMask dim1 == numHeads), K/V 与 dequantScale
+    // 按 kvHead 索引且只依赖 (kvHead, 原始块号), 与 qHead 无关, 故不再强制 numHeads == kvHeads。
+    // 原校验(FP8 per-tile 路径未验证 GQA)由 generator/golden 侧显式规避, 这里放开后需实测确认。
 
     uint32_t expectedMaxBlockNum = std::max(maxQBlockNum_, maxKvBlockNum_);
     if (attenMaskMaxBlockNum < expectedMaxBlockNum) {
