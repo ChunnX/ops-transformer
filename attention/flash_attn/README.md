@@ -16,6 +16,8 @@
 
   FlashAttention算法将$Q_S \times KV_S$的注意力矩阵按块（tile）分块计算，避免实例化完整注意力矩阵，显存复杂度由$O(Q_S \cdot KV_S)$降至$O(tile_M \cdot tile_N)$。
 
+- **head_dim 支持规格**：QK 的 head_dim 与 V 的 head_dim 可以不同，由 q/k/v 张量各自的末维（D 维）表达（主算子无独立参数）。当前支持的 (QK D, V DV) 组合：**(64,64)、(72,72)、(128,128)、(256,256)、(192,128)**（192/128 为 MLA 非吸收形态，Q/K 走 bmm1 的 192 维、V 与输出走 128 维；72 复用 config 2/3 变体，见 §3）。metadata 算子配套参数 `head_dim_v` 的语义与契约见[torch 接口文档](../../torch_extension/cann_ops_transformer/docs/zh/flash_attn.md)。
+
 ## Quick Start
 
 ### 1. custom 包编译与安装
@@ -54,10 +56,10 @@ cd build_out
   bash build.sh --pkg --soc=ascend950 --ops=flash_attn,flash_attn_metadata -j16 --op_debug_config dump_cce
   ```
 
-- **`--tiling_key`（只编译指定 tiling key 变体）**：默认全量编译会生成所有 tiling key 的 kernel 变体，耗时较长。当只需要调试/验证特定布局与配置组合（如仅 BSND/BNSD/TND × 无 mask × D=128）时，可只编译对应变体以加速：
+- **`--tiling_key`（只编译指定 tiling key 变体）**：默认全量编译会生成所有 tiling key 的 kernel 变体，耗时较长。当只需要调试/验证特定布局与配置组合（如仅 BSND/BNSD/TND × 无 mask × D=128，走 DN 模板）时，可只编译对应变体以加速：
 
   ```bash
-  bash build.sh --pkg --soc=ascend950 --ops=flash_attn,flash_attn_metadata --tiling_key="2279866368;2279866369;2279866370"
+  bash build.sh --pkg --soc=ascend950 --ops=flash_attn,flash_attn_metadata --tiling_key="67239936;67239937;67239938"
   ```
 
   各 tiling key 的编码含义见[开发者指南 §5](#5-tilingkey)。
@@ -329,7 +331,7 @@ FiaTilingRegistry::DoTilingImpl（common/op_host/fia_tiling_templates_registry.h
 
 | 层 | 位置 | 重点内容 |
 |---|---|---|
-| ① 入口层 | `op_kernel/flash_attn.cpp` | 唯一的 `__global__` 入口：按 tiling key 路由 Dn/Nd（`EnableSoftmaxDn`），并用 `__DAV_C310_CUBE__` 宏区分 AIC/AIV 双编译（`KERNEL_TYPE_MIX_AIC_1_2`），同一份源码编译出 Cube 侧与 Vector 侧两个变体 |
+| ① 入口层 | `op_kernel/flash_attn.cpp` | 唯一的 `__global__` 入口：按 tiling key 的 `templateId` 路由 Dn/Nd，并用 `__DAV_CUBE__` 宏区分 AIC/AIV 双编译（`KERNEL_TYPE_MIX_AIC_1_2`），同一份源码编译出 Cube 侧与 Vector 侧两个变体 |
 | ② 调度框架层 | `arch35/flash_attn_kernel_dn.h` / `arch35/flash_attn_kernel_nd.h` | 任务级流水框架：`Process()` 按 metadata section 循环 `FlashAttention`（(bN2, gS1, s2) 三重循环 + `CreateTask/ExecuteTask`，PRELOAD_N=2 预取）与 `FlashDecode`（AIV 做跨核归约，两端 `SyncAll`） |
 | ③ 计算 block 层（AIC/AIV 分离） | `arch35/flash_attn_block_cube_dn.h` / `arch35/flash_attn_block_cube_nd.h`（AIC 侧）、`flash_attn_block_vec_dn.h` / `flash_attn_block_vec_nd.h`（AIV 侧）、`flash_attn_block_vec_flashdecode.h`（FD 归约） | AIC：BMM1/BMM2（L0A/L0B/L0C 多级 buffer、MTE2→MTE1→M→FIX 四级流水）；AIV：softmax VF（ProcessVec1）与 output 累加（ProcessVec2）、FD 用的跨 split 归约 |
 | ④ 公共 API 层 | `attention/common/op_kernel/arch35/`（`flash_attention_score_common_regbase_arch35.h` 等）、`utils/`（`flash_attn_type.h`、`flash_attn_common_def.h`、`attenmask_gs1.h`） | 指令级 VF 算子库（`ProcessVec1VfDn`/`FusedExpSub`/`FlashUpdateNew` 等）与类型/布局/掩码工具；与 flash_attention_score 等算子共享 |
@@ -365,6 +367,8 @@ FA 计算的核心是把注意力矩阵按块切分、逐块 online 计算。基
 | 3 | 32 | 256 | 128（D=72 复用） | 128（DV=72 复用） |
 | 4 | 64 | 128 | 256 | 256 |
 | 5 | 32 | 256 | 256 | 256 |
+| 6 | 64 | 128 | 192 | 128 |
+| 7 | 32 | 256 | 192 | 128 |
 
 - **sOuter**：M 方向（Q 序列）每核每次迭代的块行数。
 - **sInner**：N 方向（KV 序列）的块大小，即 s2BaseSize。
@@ -373,7 +377,7 @@ FA 计算的核心是把注意力矩阵按块切分、逐块 online 计算。基
 
 - **mBaseSize = sOuter × CV_RATIO**（CV_RATIO=2，AIC:AIV=1:2）：一个 AIC 核承担 mBaseSize 行 Q，对应 2 个 AIV 核各处理 mBaseSize/2 行。
 - **s2BaseSize = sInner**：KV 序列方向的块大小。
-- host 侧 `AdjustSinnerAndSouter` 按 D（及 gSize/maxSeq/window 条件）选择 sOuter/sInner，再映射到 config（D=64→config0/1，D=72 与 D=128→config2/3，D=256→config4/5：`gSize × maxSeqQ ≥ 64` 时取 sOuter=64/sInner=128→config4，否则取 sOuter=32/sInner=256→config5）。D=72 与 D=128 共享 kernel 变体（零新增 tiling key），kernel 内 L1→L0 搬运宽度按 16 元素分形对齐（72→80，`MMParam.loadK/loadN`），Mmad 按真实 D 精确累加，无需 L1 清零。
+- host 侧 `AdjustSinnerAndSouter` 按 V 的 head_dim（及 gSize/maxSeq/window 条件）选择 sOuter/sInner，再映射到 config（D=64→config0/1，D=72 与 D=128→config2/3，D=256→config4/5：`gSize × maxSeqQ ≥ 64` 时取 sOuter=64/sInner=128→config4，否则取 sOuter=32/sInner=256→config5；QK D=192 且 DV=128→config6/7）。D=72 与 D=128 共享 kernel 变体（零新增 tiling key），kernel 内 L1→L0 搬运宽度按 16 元素分形对齐（72→80，`MMParam.loadK/loadN`），Mmad 按真实 D 精确累加，无需 L1 清零。
 
 **gS1 合轴**：
 
@@ -430,39 +434,45 @@ FD 段  [section][aivIdx(72)][16 字段]：bN2Idx, mIdx(gS1Idx), workspaceIdx, s
 
 ### 5. TilingKey
 
-**作用**：编译期决定生成哪些 kernel 变体，运行期选择变体。4 个模板参数按 8+8+1+3 位从 bit0 起拼成 tiling key（`flash_attn_template_tiling_key.h`）：
+**作用**：编译期决定生成哪些 kernel 变体，运行期选择变体。5 个模板参数按 8+8+1+8+3 位从 bit0 起拼成 tiling key（`flash_attn_template_tiling_key.h`）：
 
 | bits | 参数 | 取值 |
 |---|---|---|
 | 0-7 | InOutLayoutType | 0=BSND, 1=BNSD, 2=TND, 3=BNSD_BSND |
 | 8-15 | KvLayoutType | 0=连续, 1=PA_BBND, 2=PA_BNBD, 3=PA_NZ |
 | 16 | HasAttenMask | false/true |
-| 17-19 | Config | 0~5（sOuter×sInner×D×DV 组合，见 §3 基本块） |
+| 17-24 | TemplateId | 0=ND模板, 1=DN模板 |
+| 25-28 | Config | 0~7（sOuter×sInner×D×DV 组合，见 §3 基本块；config 6/7 为 QK D=192/DV=128） |
 
-**生成**：host tiling 的 `GenTilingKey` 一步 —— `UpdateTilingKeyInfo`（按布局/mask/config 填 tilingKeyInfo）→ `GET_TPL_TILING_KEY`（`arch35/flash_attn_tiling.cpp:194-204`）。
+**SEL 实例化范围**（两段，编译期按组合枚举 kernel 变体）：
+
+- ND（templateId=0）：全组合 4×4×2×6=192 个；
+- DN（templateId=1）：仅无 attenMask 且 config∈{0,2,6}，4×4×1×3=48 个。
+
+**生成**：host tiling 的 `GenTilingKey` 一步 —— `UpdateTilingKeyInfo`（按布局/mask/templateId/config 填 tilingKeyInfo）→ `GET_TPL_TILING_KEY`（`arch35/flash_attn_tiling.cpp`）。其中 `UpdateTilingKeyTemplateId` 按无mask且config∈{0,2,6}选 DN（templateId=1），其余选 ND（templateId=0），并同步置 `dnFlag_` 供 workspace 分配使用。
 
 **下发与选择**：tiling 期 `SetTilingKey` 写入 TilingContext；运行时 kernel 按 key 选择变体执行。编译期可用 `--tiling_key` 指定只生成部分变体（见 Quick Start 编译）。
 
-**示例解码**：tiling key `2279866368` = 0x87E40000 → InOutLayoutType=0(BSND)、KvLayout=0(连续)、无mask、config=2(D=128, sOuter=64, sInner=128)。
+**示例解码**：tiling key `67239936` = 0x4020000 → InOutLayoutType=0(BSND)、KvLayout=0(连续)、无mask、templateId=1(DN)、config=2(D=128, sOuter=64, sInner=128)。
 
-**与 Dn/Nd 的关系**：`useDn = !hasAttenMask && (config==0||config==2)`，见 §6。
+**与 Dn/Nd 的关系**：`templateId = (!hasAttenMask && (config==0||config==2||config==6)) ? 1 : 0`（host 侧 `UpdateTilingKeyTemplateId` 决定，kernel 侧按 `templateId` 路由），见 §6。
 
 ### 6. kernel 入口与模板范围
 
-kernel 按 tiling key 的 4 个模板参数编译出不同变体；运行时入口 `op_kernel/flash_attn.cpp` 同时编译 AIC 与 AIV（`KERNEL_TYPE_MIX_AIC_1_2`，`__DAV_C310_CUBE__` 区分 Cube 编译/Vector 编译），每个 AIC 配 2 个 AIV（CV_RATIO=2）。
+kernel 按 tiling key 的 5 个模板参数编译出不同变体；运行时入口 `op_kernel/flash_attn.cpp` 同时编译 AIC 与 AIV（`KERNEL_TYPE_MIX_AIC_1_2`，`__DAV_CUBE__` 区分 Cube 编译/Vector 编译），每个 AIC 配 2 个 AIV（CV_RATIO=2）。
 
-Dn/Nd 路由（`EnableSoftmaxDn`）：
+Dn/Nd 路由（按模板参数 `templateId`，host 侧 `UpdateTilingKeyTemplateId` 决定）：
 
 ```cpp
-useDn = !hasAttenMask && (config == 0 || config == 2)
+templateId = (!hasAttenMask && (config == 0 || config == 2 || config == 6)) ? 1 : 0
 ```
 
 | 路径 | 条件 | 调度框架 | softmax VF | 适用 |
 |---|---|---|---|---|
-| Dn | 无mask 且 config∈{0,2} | flash_attn_kernel_dn.h | ProcessVec1VfDn（无mask专用优化） | 无mask、D≤128 |
-| Nd | 其余（有mask 或 config∈{1,3,4,5}） | flash_attn_kernel_nd.h | ProcessVec1Vf（按 actS2 四档通用） | 有mask或 D=256 |
+| Dn（templateId=1） | 无mask 且 config∈{0,2,6} | flash_attn_kernel_dn.h | ProcessVec1VfDn（无mask专用优化） | 无mask、D≤128 |
+| Nd（templateId=0） | 其余（有mask 或 config∈{1,3,4,5,6,7}） | flash_attn_kernel_nd.h | ProcessVec1Vf（按 actS2 四档通用） | 有mask或 D=256 |
 
-加新模板组合（如新 config、新布局）的改动点：`flash_attn_template_tiling_key.h`（参数声明）→ host `UpdateTilingKeyConfig`（映射）→ `flash_attn.cpp` 的路由与 kernel 模板实例化处。
+加新模板组合（如新 config、新布局）的改动点：`flash_attn_template_tiling_key.h`（参数声明与 SEL 实例化范围）→ host `UpdateTilingKeyConfig`/`UpdateTilingKeyTemplateId`（映射）→ `flash_attn.cpp` 的路由与 kernel 模板实例化处。
 
 ### 7. kernel 层：调度框架（flash_attn_kernel_dn.h / flash_attn_kernel_nd.h）
 

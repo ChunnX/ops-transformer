@@ -154,16 +154,16 @@ struct MoeContextResources {
     std::string contextTag;
 };
 
-// 进程级 MoE 通信 buffer 共享池：HCCL 引擎 ctx 以 tag 为单例缓存在通信域内（无销毁接口），
-// 其内容(epHcclBuffer[])指向本类自建的物理内存。为避免"实例销毁释放内存后，缓存 ctx 中
-// 地址悬空导致其他实例/后续内核访问 use-after-free"，物理内存生命周期与 tag 绑定并由引用
-// 计数管理：同 tag 多实例共享，最后一个持有者 Destroy 时才真正释放。
+// 进程级 MoE 通信 buffer 共享池：HCCL 引擎 ctx 以 tag 为单例缓存在通信域内，注册内存
+// (HcclCommMemReg)与 channel 均无反注册/销毁接口，其内容(epHcclBuffer[])指向本类自建的
+// 物理内存。因此物理内存生命周期与 tag 绑定并保留至进程级：同 tag 多实例共享，Destroy 仅
+// 解除本实例引用、不释放内存，同 group destroy 后重建 ElasticBuffer 时按既有容量直接复用
+// (重建声明的 cclBufferSize 不得超过首建值)。
 struct MoeSharedBufferEntry {
     void *deviceBufPtr = nullptr;
     aclrtDrvMemHandle physicalMemHandle = nullptr;
     HcclMemHandle memHandle = nullptr;
     int64_t cclBufferSize = 0; // 实际已申请的物理内存字节数
-    uint32_t refCount = 0;
 };
 static std::mutex gMoeSharedBufferMutex;
 static std::unordered_map<std::string, MoeSharedBufferEntry> gMoeSharedBuffers;
@@ -173,6 +173,7 @@ struct EngramContextResources {
     HcclMemHandle memHandle = nullptr;
     void *hostBufPtr = nullptr;
     void *deviceBufPtr = nullptr;
+    bool externalRegistered = false;
     int64_t commBufferSize = 0;
     EngramCommContext context;
     at::Tensor contextTensor;
@@ -435,7 +436,8 @@ protected:
 
 class EngramContextBuilder : public HcclContextBuilderBase {
 public:
-    EngramContextResources Build(const std::string &groupName, int64_t numCpuBytes, bool withGrad)
+    EngramContextResources Build(const std::string &groupName, int64_t numCpuBytes, bool withGrad,
+                                 void *externalHostPtr = nullptr, int64_t externalBytes = 0)
     {
         withGrad_ = withGrad;
         EngramContextResources resources;
@@ -445,7 +447,15 @@ public:
         CheckContextTag(contextTag);
 
         HostBufferGuard guard;
-        CreateContext(resources, contextTag, numCpuBytes, guard);
+        try {
+            CreateContext(resources, contextTag, numCpuBytes, guard, externalHostPtr, externalBytes);
+        } catch (...) {
+            if (externalHostPtr != nullptr && resources.externalRegistered) {
+                (void)aclrtHostUnregister(externalHostPtr);
+                resources.externalRegistered = false;
+            }
+            throw;
+        }
         resources.contextTensor = CreateCommContextTensor(resources.context);
         guard.Release();
         return resources;
@@ -464,29 +474,43 @@ private:
 
     static void AllocateAndRegisterBuffer(const HcclComm &commHandle, const std::string &memBufferTag,
                                           int64_t numCpuBytes, EngramContextResources &resources,
-                                          HostBufferGuard &guard)
+                                          HostBufferGuard &guard, void *externalHostPtr = nullptr,
+                                          int64_t externalBytes = 0)
     {
-        aclError ar = aclrtMallocHost(&guard.hostPtr, static_cast<uint64_t>(numCpuBytes));
-        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMallocHost(", numCpuBytes, " B) failed, ret=", ar);
+        if (externalHostPtr == nullptr) {
+            aclError ar = aclrtMallocHost(&guard.hostPtr, static_cast<uint64_t>(numCpuBytes));
+            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMallocHost(", numCpuBytes, " B) failed, ret=", ar);
 
-        ar = aclrtHostRegisterV2(guard.hostPtr, static_cast<uint64_t>(numCpuBytes), ACL_HOST_REG_MAPPED);
-        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostRegisterV2(", numCpuBytes, " B) failed, ret=", ar);
-        guard.registered = true;
+            ar = aclrtHostRegisterV2(guard.hostPtr, static_cast<uint64_t>(numCpuBytes), ACL_HOST_REG_MAPPED);
+            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostRegisterV2(", numCpuBytes, " B) failed, ret=", ar);
+            guard.registered = true;
+        } else {
+            // Map caller-owned storage memory directly (zero-copy): plain memory is supported
+            aclError ar =
+                aclrtHostRegisterV2(externalHostPtr, static_cast<uint64_t>(externalBytes), ACL_HOST_REG_MAPPED);
+            resources.externalRegistered = (ar == ACL_SUCCESS);
+            if (ar != ACL_SUCCESS) {
+                ASCEND_LOGW("aclrtHostRegisterV2(%lld B) failed, ret=%d, fallback to existing registration",
+                            externalBytes, static_cast<int>(ar));
+            }
+        }
 
+        void *hostPtr = (externalHostPtr != nullptr) ? externalHostPtr : guard.hostPtr;
         void *devPtr = nullptr;
-        ar = aclrtHostGetDevicePointer(guard.hostPtr, &devPtr, 0);
-        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostGetDevicePointer failed, ret=", ar);
+        aclError ar = aclrtHostGetDevicePointer(hostPtr, &devPtr, 0);
+        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostGetDevicePointer failed, ret=", ar,
+                    ", storage host memory cannot be mapped to device");
 
         CommMem mem;
         mem.type = COMM_MEM_TYPE_DEVICE;
         mem.addr = devPtr;
-        mem.size = static_cast<uint64_t>(numCpuBytes);
+        mem.size = static_cast<uint64_t>((externalHostPtr != nullptr) ? externalBytes : numCpuBytes);
 
         auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, &resources.memHandle);
-        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", numCpuBytes,
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", mem.size,
                     ") failed, ret=", hcclRet);
 
-        resources.hostBufPtr = guard.hostPtr;
+        resources.hostBufPtr = hostPtr;
         resources.deviceBufPtr = devPtr;
     }
 
@@ -703,7 +727,7 @@ private:
     }
 
     void CreateContext(EngramContextResources &resources, const std::string &contextTag, int64_t numCpuBytes,
-                       HostBufferGuard &guard)
+                       HostBufferGuard &guard, void *externalHostPtr = nullptr, int64_t externalBytes = 0)
     {
         uint64_t contextSize = sizeof(EngramCommContext);
         void *ctx = nullptr;
@@ -712,12 +736,13 @@ private:
         GetRankInfo(resources.hcclComm, resources.context.rankId, resources.context.rankSize);
         ValidateRankSize(resources.context.rankSize);
 
-        if (numCpuBytes == 0) {
+        if (numCpuBytes == 0 && externalHostPtr == nullptr) {
             return;
         }
 
         std::string memBufferTag = contextTag + "_buffer";
-        AllocateAndRegisterBuffer(resources.hcclComm, memBufferTag, numCpuBytes, resources, guard);
+        AllocateAndRegisterBuffer(resources.hcclComm, memBufferTag, numCpuBytes, resources, guard, externalHostPtr,
+                                  externalBytes);
 
         uint32_t *netLayerList = nullptr;
         uint32_t netLayerNum = 0;
@@ -787,14 +812,13 @@ public:
         resources.memHandle = memHandle_;
         resources.contextTag = groupName + "moe_dispatch_combine_multi_channel";
         if (createdNew_) {
-            // 首次创建: 物理内存入共享池(与引擎 ctx 同生命周期)，由引用计数管理最终释放
+            // 首次创建: 物理内存入共享池(与 tag 绑定的不可销毁资源同生命周期)，Destroy 不释放，同 group 重建时复用
             std::lock_guard<std::mutex> lock(gMoeSharedBufferMutex);
             MoeSharedBufferEntry &entry = gMoeSharedBuffers[resources.contextTag];
             entry.deviceBufPtr = deviceBufPtr_;
             entry.physicalMemHandle = physicalMemHandle_;
             entry.memHandle = memHandle_;
             entry.cclBufferSize = cclBufferSize_;
-            entry.refCount = 1;
         }
         ownershipReleased_ = true; // 所有权已转移(共享池/既有持有者)，builder 析构不释放
         return resources;
@@ -854,22 +878,20 @@ private:
             createdNew_ = true;
             return;
         }
-        // ctx 已存在(同 group 曾创建过)：物理内存由共享池按引用计数管理，此处复用既有 buffer。
-        // 容量校验：本次声明的容量不得超过既有 buffer 实际容量(物理内存按首次创建时大小申请)，
-        // 否则 tiling 按声明值校验通过、kernel 经共享 ctx 写入会超出实际物理内存。
+        // ctx 已存在(同 group 曾创建过，含 destroy 后重建)：物理内存由共享池按 tag 保留，复用既有 buffer。
+        // 重建声明的容量不得超过首建容量，否则 tiling 按声明值校验通过、 kernel 经共享 ctx 写入会超出实际物理内存。
         MoeSharedBufferEntry entry;
         {
             std::lock_guard<std::mutex> lock(gMoeSharedBufferMutex);
             auto iter = gMoeSharedBuffers.find(contextTag);
             TORCH_CHECK(iter != gMoeSharedBuffers.end(), "MoE comm context of group '", contextTag,
-                        "' exists but its buffer has been released; "
-                        "creating a new ElasticBuffer on the same group after destroy() is not supported, "
-                        "please reuse the previous instance or use a new comm group");
+                        "' exists but its buffer is missing from the shared pool; an earlier build on this "
+                        "group may have failed midway, please use a new comm group");
             TORCH_CHECK(cclBufferSize_ <= iter->second.cclBufferSize,
                         "ccl buffer size exceeds the existing buffer of this group, requested ", cclBufferSize_,
                         ", allocated ", iter->second.cclBufferSize,
-                        "; the shared comm buffer is sized by the first ElasticBuffer created on this group");
-            iter->second.refCount++;
+                        "; the shared comm buffer is sized by the first ElasticBuffer created on this group, "
+                        "destroy and recreate with a larger size is not supported, please use a new comm group");
             entry = iter->second;
         }
         deviceBufPtr_ = entry.deviceBufPtr;
@@ -1132,10 +1154,6 @@ public:
     void EngramBarrier(bool useCommStream = true, bool withCpuSync = false);
     void Destroy();
 
-    int64_t GetHostBufPtr() const
-    {
-        return reinterpret_cast<int64_t>(engramHostBufPtr_);
-    }
     const at::Tensor &GetContextTensor() const
     {
         return engramContextTensor_;
@@ -1162,10 +1180,6 @@ public:
                                                    int64_t commBufferSize, int64_t rankSize);
     static at::Tensor EngramFetchWait(const at::Tensor &context, const at::Tensor &fetched);
 
-    std::tuple<at::Tensor, at::Tensor> EngramFetchGrad(const at::Tensor &gradFetched, const at::Tensor &perm,
-                                                       const at::Tensor &sendCounts, const at::Tensor &recvCounts,
-                                                       const at::Tensor &recvLocalEntry, const at::Tensor &numRecv);
-
     // Stateless static method for training backward (graph-mode compatible).
     // Outputs: gradUnique [maxR, H], uniqueLocalEntry [maxR], numUnique [1] (NOT narrowed).
     // Caller is responsible for narrowing by numUnique.item() outside the graph.
@@ -1175,11 +1189,6 @@ public:
                                                  const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry,
                                                  const at::Tensor &numRecv, int64_t numEntries, int64_t commBufferSize,
                                                  int64_t numMaxTokensPerRank, int64_t rankSize);
-
-    bool IsWithGrad() const
-    {
-        return withGrad_;
-    }
 
     static int64_t GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
                                             at::ScalarType dtype = at::kBFloat16);
@@ -1213,7 +1222,7 @@ public:
                                                    const c10::optional<at::Tensor> &combinedTopkWeightsOpt);
 
 private:
-    void EnsureEngramContext();
+    void EnsureEngramContext(void *externalHostPtr = nullptr, int64_t externalBytes = 0);
     void EnsureMoeContext(int64_t cclBufferSize);
     int64_t ResolveRankNumPerServer(int64_t epWorldSize) const;
     int64_t ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerServer) const;
@@ -1233,6 +1242,9 @@ private:
     at::Tensor engramContextTensor_;    // Cached Engram context tensor
     at::Tensor localStorageAddrTensor_; // int64 scalar tensor, stores deviceBufPtr_ address
     bool engramContextInitialized_ = false;
+    bool engramStorageExternal_ = false;
+    bool engramExternalRegisteredByUs_ = false;
+    int64_t engramExternalBytes_ = 0;
 
     at::Tensor moeContextTensor_;
     int64_t moeCclBufferSize_ = 0; // MoE 通信 buffer 大小（首次调用时按算子参数计算并内部申请注册）
@@ -1240,7 +1252,7 @@ private:
     void *moeDeviceBufPtr_ = nullptr;
     aclrtDrvMemHandle moePhysicalMemHandle_ = nullptr;
     HcclMemHandle moeMemHandle_ = nullptr;
-    std::string moeContextTag_; // 共享池 key（group + opName），Destroy 时按 tag 减引用
+    std::string moeContextTag_; // 共享池 key（group + opName），复用/入池时使用
     bool moeContextInitialized_ = false;
 
     int64_t engramHiddenSize_ = 0;
@@ -1285,7 +1297,7 @@ ElasticBuffer::~ElasticBuffer()
     }
 }
 
-void ElasticBuffer::EnsureEngramContext()
+void ElasticBuffer::EnsureEngramContext(void *externalHostPtr, int64_t externalBytes)
 {
     TORCH_CHECK(!destroyed_, "ElasticBuffer cannot be used after destroy, please create a new ElasticBuffer instance");
     if (engramContextInitialized_) {
@@ -1294,7 +1306,8 @@ void ElasticBuffer::EnsureEngramContext()
     commStream_ = c10_npu::getNPUStreamFromPool().stream(false);
     TORCH_CHECK(commStream_ != nullptr, "Failed to get NPU stream from pool for comm stream");
     EngramContextBuilder builder;
-    EngramContextResources resources = builder.Build(groupName_, engramNumCpuBytes_, withGrad_);
+    EngramContextResources resources =
+        builder.Build(groupName_, withGrad_ ? 0 : engramNumCpuBytes_, withGrad_, externalHostPtr, externalBytes);
     engramHcclComm_ = resources.hcclComm;
     engramMemHandle_ = resources.memHandle;
     engramHostBufPtr_ = resources.hostBufPtr;
@@ -1302,6 +1315,9 @@ void ElasticBuffer::EnsureEngramContext()
     engramCommContext_ = resources.context;
     engramContextTensor_ = resources.contextTensor;
     commBufferSize_ = resources.commBufferSize;
+    engramStorageExternal_ = (externalHostPtr != nullptr);
+    engramExternalRegisteredByUs_ = resources.externalRegistered;
+    engramExternalBytes_ = externalBytes;
     int64_t addrValue = reinterpret_cast<int64_t>(engramDeviceBufPtr_);
     auto hostAddrTensor = at::full({1}, addrValue, at::TensorOptions().dtype(at::kLong));
     localStorageAddrTensor_ = hostAddrTensor.to(c10::DeviceType::PrivateUse1);
@@ -1344,15 +1360,38 @@ int64_t ElasticBuffer::ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerSe
     return (epWorldSize / rankNumPerServer > 1) ? NETWORK_HYBRID : NETWORK_DIRECT;
 }
 
-// EngramWrite - write data with automatic barrier
+// EngramWrite - write data with automatic barrier.
 void ElasticBuffer::EngramWrite(const at::Tensor &storage)
 {
     TORCH_CHECK(!destroyed_, "engram_write cannot be called after destroy, "
                              "please create a new ElasticBuffer instance");
-    EnsureEngramContext();
+    void *externalHostPtr = nullptr;
+    int64_t externalBytes = 0;
+    if (withGrad_) {
+        TORCH_CHECK(storage.nbytes() > 0, "engram_write in with_grad mode requires non-empty storage, got ",
+                    storage.nbytes(), " bytes");
+        if (engramContextInitialized_) {
+            TORCH_CHECK(engramHostBufPtr_ == storage.data_ptr(),
+                        "engram_write: engram storage is already initialized from a different address, expected "
+                        "ptr=",
+                        engramHostBufPtr_, ", got ptr=", storage.data_ptr(),
+                        "; note: in with_grad mode the first engram API call initializes the context, an earlier "
+                        "engram_barrier without storage would initialize it with no storage");
+            TORCH_CHECK(engramExternalBytes_ == static_cast<int64_t>(storage.nbytes()),
+                        "engram_write: storage size changed after the engram storage was registered from this "
+                        "address, registered ",
+                        engramExternalBytes_, " bytes, got ", storage.nbytes(), " bytes");
+        } else {
+            externalHostPtr = storage.data_ptr();
+            externalBytes = static_cast<int64_t>(storage.nbytes());
+        }
+    }
+    EnsureEngramContext(externalHostPtr, externalBytes);
 
-    TORCH_CHECK(storage.nbytes() <= static_cast<size_t>(engramNumCpuBytes_), "storage size ", storage.nbytes(),
-                " exceeds buffer capacity ", engramNumCpuBytes_);
+    if (!withGrad_) {
+        TORCH_CHECK(storage.nbytes() <= static_cast<size_t>(engramNumCpuBytes_), "storage size ", storage.nbytes(),
+                    " exceeds buffer capacity ", engramNumCpuBytes_);
+    }
 
     constexpr int64_t int32Max = static_cast<int64_t>(INT32_MAX);
     TORCH_CHECK(storage.size(0) * static_cast<int64_t>(engramCommContext_.rankSize) <= int32Max,
@@ -1366,7 +1405,7 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
     engramNumEntries_ = storage.size(0);
     engramDtype_ = storage.scalar_type();
 
-    if (engramNumEntries_ > 0) {
+    if (!withGrad_ && engramNumEntries_ > 0) {
         constexpr size_t MEMCPY_MAX_BYTES = 0x7fffffff;
         size_t totalBytes = storage.nbytes();
         size_t remaining = totalBytes;
@@ -1418,11 +1457,11 @@ ElasticBuffer::EngramFetchTrainOutput ElasticBuffer::EngramFetchTrain(
                 "numMaxTokensPerRank * rankSize overflow, got numMaxTokensPerRank=", numMaxTokensPerRank,
                 ", rankSize=", rankSize);
     int64_t maxR = numMaxTokensPerRank * rankSize;
-    at::Tensor perm = at::empty({numTokens}, intOpts);
-    at::Tensor sendCounts = at::empty({rankSize * SEND_COUNTS_ALIGN_FACTOR}, intOpts); // 32b对齐
-    at::Tensor recvCounts = at::empty({rankSize}, intOpts);
-    at::Tensor recvLocalEntry = at::empty({maxR}, intOpts);
-    at::Tensor numRecv = at::empty({1}, intOpts);
+    at::Tensor perm = at::zeros({numTokens}, intOpts);
+    at::Tensor sendCounts = at::zeros({rankSize * SEND_COUNTS_ALIGN_FACTOR}, intOpts); // 32b对齐
+    at::Tensor recvCounts = at::zeros({rankSize}, intOpts);
+    at::Tensor recvLocalEntry = at::zeros({maxR}, intOpts);
+    at::Tensor numRecv = at::zeros({1}, intOpts);
 
     if (numTokens > 0) {
         constexpr int64_t withGrad = 1;
@@ -1440,42 +1479,6 @@ at::Tensor ElasticBuffer::EngramFetchWait(const at::Tensor &context, const at::T
     }
     ACLNN_CMD(aclnnEngramFetchWait, context, fetched);
     return fetched;
-}
-
-// EngramFetchGrad - training backward: produce gradUnique, uniqueLocalEntry (sparse index).。
-std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(const at::Tensor &gradFetched, const at::Tensor &perm,
-                                                                  const at::Tensor &sendCounts,
-                                                                  const at::Tensor &recvCounts,
-                                                                  const at::Tensor &recvLocalEntry,
-                                                                  const at::Tensor &numRecv)
-{
-    EnsureEngramContext();
-    TORCH_CHECK(!destroyed_, "engram_fetch_grad cannot be called after destroy");
-    TORCH_CHECK(withGrad_, "engram_fetch_grad requires with_grad=True");
-    TORCH_CHECK(engramWriteCalled_, "engram_fetch_grad must be called after at least one engram_write");
-
-    int64_t hidden = gradFetched.size(1);
-    uint32_t rankSize = engramCommContext_.rankSize;
-    int64_t rankSizeI64 = static_cast<int64_t>(rankSize);
-    TORCH_CHECK(rankSizeI64 > 0 && numMaxTokensPerRank_ <= INT64_MAX / rankSizeI64,
-                "numMaxTokensPerRank_ * rankSize overflow, got numMaxTokensPerRank_=", numMaxTokensPerRank_,
-                ", rankSize=", rankSize);
-    int64_t maxR = numMaxTokensPerRank_ * rankSizeI64;
-
-    auto gradUnique =
-        at::empty({maxR, hidden}, at::TensorOptions().dtype(gradFetched.dtype()).device(gradFetched.device()));
-    auto uniqueLocalEntry = at::empty({maxR}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
-    auto numUnique = at::empty({1}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
-
-    ACLNN_CMD(aclnnEngramFetchGrad, engramContextTensor_, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry,
-              numRecv, gradUnique, uniqueLocalEntry, numUnique, engramNumEntries_, commBufferSize_);
-
-    int64_t actualK = static_cast<int64_t>(numUnique.item<int32_t>());
-    if (actualK < maxR) {
-        gradUnique = gradUnique.narrow(0, 0, actualK);
-        uniqueLocalEntry = uniqueLocalEntry.narrow(0, 0, actualK);
-    }
-    return {gradUnique, uniqueLocalEntry};
 }
 
 // EngramFetchGrad - stateless static method for training backward (graph-mode compatible).
@@ -1550,36 +1553,9 @@ void ElasticBuffer::Destroy()
     // HCCL 默认 buffer 由框架管理，无需手动释放
     commBufferSize_ = 0;
 
-    // MoE 通信 buffer 为同 tag(group+opName) 多实例共享，与 HCCL 引擎 ctx 同生命周期：
-    // 引用计数减一，最后一个持有者才释放物理内存，避免缓存 ctx 中的地址悬空(use-after-free)
-    if (moeDeviceBufPtr_ != nullptr) {
-        aclError aclRet = aclrtSynchronizeDevice();
-        TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtSynchronizeDevice failed, ret: ", aclRet);
-        bool isLastOwner = false;
-        MoeSharedBufferEntry entry;
-        {
-            std::lock_guard<std::mutex> lock(gMoeSharedBufferMutex);
-            auto iter = gMoeSharedBuffers.find(moeContextTag_);
-            if (iter != gMoeSharedBuffers.end() && iter->second.refCount > 0) {
-                isLastOwner = (--iter->second.refCount == 0);
-                if (isLastOwner) {
-                    entry = iter->second;
-                    gMoeSharedBuffers.erase(iter);
-                }
-            }
-        }
-        if (isLastOwner) {
-            // 物理内存释放: 解除映射 → 释放物理内存 → 释放虚拟地址区间
-            if (entry.physicalMemHandle != nullptr) {
-                aclError ret = aclrtUnmapMem(entry.deviceBufPtr);
-                TORCH_CHECK(ret == ACL_SUCCESS, "aclrtUnmapMem failed, ret: ", ret);
-                ret = aclrtFreePhysical(entry.physicalMemHandle);
-                TORCH_CHECK(ret == ACL_SUCCESS, "aclrtFreePhysical failed, ret: ", ret);
-            }
-            aclError ret = aclrtReleaseMemAddress(entry.deviceBufPtr);
-            TORCH_CHECK(ret == ACL_SUCCESS, "aclrtReleaseMemAddress failed, ret: ", ret);
-        }
-    }
+    // MoE 通信 buffer 已按 tag 注册进 HCCL 通信域(HcclCommMemReg 无反注册接口)，其地址被
+    // 引擎 ctx(含其他 rank 缓存的 epHcclBuffer[])引用且无法销毁：Destroy 仅解除本实例引用，
+    // 物理内存由共享池按 tag 保留，同 group 重建 ElasticBuffer 时复用(容量以首建为准)。
     moeDeviceBufPtr_ = nullptr;
     moePhysicalMemHandle_ = nullptr;
     moeMemHandle_ = nullptr;
@@ -1587,12 +1563,19 @@ void ElasticBuffer::Destroy()
     moeCclBufferSize_ = 0;
 
     if (engramHostBufPtr_ != nullptr) {
-        aclError ret = aclrtHostUnregister(engramHostBufPtr_);
-        TORCH_CHECK(ret == ACL_SUCCESS, "aclrtHostUnregister failed, ret: ", ret);
-        ret = aclrtFreeHost(engramHostBufPtr_);
-        TORCH_CHECK(ret == ACL_SUCCESS, "aclrtFreeHost failed, ret: ", ret);
+        if (!engramStorageExternal_ || engramExternalRegisteredByUs_) {
+            aclError ret = aclrtHostUnregister(engramHostBufPtr_);
+            TORCH_CHECK(ret == ACL_SUCCESS, "aclrtHostUnregister failed, ret: ", ret);
+        }
+        if (!engramStorageExternal_) {
+            aclError ret = aclrtFreeHost(engramHostBufPtr_);
+            TORCH_CHECK(ret == ACL_SUCCESS, "aclrtFreeHost failed, ret: ", ret);
+        }
         engramHostBufPtr_ = nullptr;
         engramDeviceBufPtr_ = nullptr;
+        engramStorageExternal_ = false;
+        engramExternalRegisteredByUs_ = false;
+        engramExternalBytes_ = 0;
     }
     engramContextInitialized_ = false;
     moeContextInitialized_ = false;
@@ -1858,13 +1841,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
                     pybind11::arg("rank_size"))
         .def_static("engram_fetch_wait", &Mc2Api::ElasticBuffer::EngramFetchWait, pybind11::arg("context"),
                     pybind11::arg("fetched"))
-        .def("engram_fetch_grad",
-             static_cast<std::tuple<at::Tensor, at::Tensor> (Mc2Api::ElasticBuffer::*)(
-                 const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &,
-                 const at::Tensor &)>(&Mc2Api::ElasticBuffer::EngramFetchGrad),
-             pybind11::arg("gradFetched").noconvert(), pybind11::arg("perm").noconvert(),
-             pybind11::arg("sendCounts").noconvert(), pybind11::arg("recvCounts").noconvert(),
-             pybind11::arg("recvLocalEntry").noconvert(), pybind11::arg("numRecv").noconvert())
         .def_static(
             "engram_fetch_grad_op",
             static_cast<Mc2Api::ElasticBuffer::EngramFetchGradOutput (*)(
@@ -1879,7 +1855,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("useCommStream") = true,
              pybind11::arg("withCpuSync") = false)
         .def("destroy", &Mc2Api::ElasticBuffer::Destroy)
-        .def("get_host_buf_ptr", &Mc2Api::ElasticBuffer::GetHostBufPtr)
         .def("get_context_tensor", &Mc2Api::ElasticBuffer::GetContextTensor)
         .def("get_local_storage_addr", &Mc2Api::ElasticBuffer::GetLocalStorageAddrTensor)
         .def("get_comm_buffer_size", &Mc2Api::ElasticBuffer::GetCommBufferSize)
