@@ -18,11 +18,12 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "op_common/op_host/util/platform_util.h"
 #include "moe_re_routing_r_tiling.h"
+#include "../op_kernel/arch35/moe_re_routing_common.h"
 
 namespace optiling {
 constexpr int64_t NUM_TWO = 2;
 constexpr int64_t BYTE_LENGTH_FOUR = 4;
-constexpr int64_t RESERVE_UB_GAP = 32;
+constexpr int64_t TOPK_OFFSET_UB_SIZE = MoeReRoutingTopk::TOPK_OFFSET_UB_SIZE;
 constexpr uint64_t MOE_RE_ROUTING_R_WITHOUT_SCALE = 210000;
 constexpr uint64_t MOE_RE_ROUTING_R_WITH_SCALE_FLOAT = 210100;
 /* Note: MOE_RE_ROUTING_R_WITH_SCALE_FLOAT8_E8M0 key is shared by multiple quantization types:
@@ -53,12 +54,12 @@ ge::graphStatus MoeReRoutingRTiling::SplitUb()
     // 切分ub
     int64_t reserveUbSize = INDEX_UB_SIZE * DOUBLE_BUFFER * ge::GetSizeByDataType(expertDtype_);
     if (hasTopkWeight_) {
-        reserveUbSize += INDEX_UB_SIZE * DOUBLE_BUFFER * sizeof(float);
+        // The grouped topk path uses the main queue for the weight payload and
+        // one offset buffer for every non-regular group.  Reserve it uniformly
+        // so the fallback path does not depend on a shape-specific UB layout.
+        reserveUbSize += TOPK_OFFSET_UB_SIZE;
     }
     int64_t canUseUbSize = (ubSize_ - reserveUbSize) / DOUBLE_BUFFER;
-    if (hasTopkWeight_) {
-        canUseUbSize -= RESERVE_UB_GAP;
-    }
     ubFactor_ = Ops::Base::CeilAlign(canUseUbSize, static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_)));
     return ge::GRAPH_SUCCESS;
 }
@@ -66,13 +67,12 @@ ge::graphStatus MoeReRoutingRTiling::SplitUb()
 ge::graphStatus MoeReRoutingRTiling::DoOpTiling()
 {
     OP_CHECK_IF(CheckParam() != ge::GRAPH_SUCCESS,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    context_->GetNodeName(), "CheckParam()", "GRAPH_FAILED", "check param fail."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "CheckParam()", "GRAPH_FAILED",
+                                                      "check param fail."),
                 return ge::GRAPH_FAILED);
     SplitCore();
     if (SplitUb() != ge::GRAPH_SUCCESS) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            context_->GetNodeName(), "SplitUb()", "GRAPH_FAILED", "SplitUb failed.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "SplitUb()", "GRAPH_FAILED", "SplitUb failed.");
         return ge::GRAPH_FAILED;
     }
     if (hasScale_) {

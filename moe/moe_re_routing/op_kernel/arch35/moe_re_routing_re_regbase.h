@@ -20,6 +20,7 @@
 #include "platform.h"
 #include "op_kernel/math_util.h"
 #include "moe_re_routing_common.h"
+#include "moe_re_routing_topk_weight_common.h"
 
 namespace MoeReRouting {
 using namespace AscendC;
@@ -46,7 +47,12 @@ protected:
     __aicore__ inline void CopyIn(const int64_t blockLen, const int64_t offset, const bool isScale);
     __aicore__ inline void CopyOut(const int64_t blockLen, const int64_t offset, const bool isScale);
     __aicore__ inline void CopyOutIndex(const int64_t rows, const int64_t srcOffset, const int64_t dstOffset);
-    __aicore__ inline void CopyTopkWeight(const int64_t rows, const int64_t srcOffset, const int64_t dstOffset);
+    __aicore__ inline void AppendTopkWeight(const int64_t rows, const int64_t srcOffset, const int64_t dstOffset,
+                                            const int64_t rankId, const int64_t expertId,
+                                            MoeReRoutingTopk::TopkWeightGroupState &state,
+                                            LocalTensor<int64_t> &topkOffsets);
+    __aicore__ inline void FlushTopkWeight(const int64_t rankId, MoeReRoutingTopk::TopkWeightGroupState &state,
+                                           LocalTensor<int64_t> &topkOffsets);
 
     TPipe *pipe_ = nullptr;
     const MoeReRoutingReTilingData *tilingData_;
@@ -62,9 +68,9 @@ protected:
     GlobalTensor<float> dstTopkWeightGm_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> queBind_;
     TQue<QuePosition::VECOUT, 1> idxOutQue_;
-    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> topkWeightQue_;
+    TBuf<QuePosition::VECCALC> topkOffsetBuf_;
     static constexpr int64_t DOUBLE_BUFFER = 2;
-    static constexpr int64_t INDEX_UB_SIZE = 256;
+    static constexpr int64_t INDEX_UB_SIZE = MoeReRoutingTopk::INDEX_UB_SIZE;
     int64_t blockIdx_ = 0;
     int64_t rIdx_ = 0;
     int64_t eIdx_ = 0;
@@ -109,8 +115,7 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Init
     this->pipe_->InitBuffer(idxOutQue_, DOUBLE_BUFFER,
                             Ops::Base::CeilAlign(INDEX_UB_SIZE * sizeof(TIndex), BLOCK_SIZE / sizeof(TIndex)));
     if (tilingData_->hasTopkWeight == HAS_TOPK_WEIGHT) {
-        this->pipe_->InitBuffer(topkWeightQue_, DOUBLE_BUFFER,
-                                Ops::Base::CeilAlign(INDEX_UB_SIZE * sizeof(float), BLOCK_SIZE / sizeof(float)));
+        this->pipe_->InitBuffer(topkOffsetBuf_, TOPK_GROUP_EXPERTS * sizeof(int64_t));
     }
 }
 
@@ -181,6 +186,14 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Proc
     int64_t eIdxStart = eIdx_ * tilingData_->blockFactorE;
     for (int64_t rIdx = rIdxStart; rIdx < rIdxStart + rNum_; rIdx++) {
         CalSrcOffSet(rIdx, eIdxStart);
+        const bool hasTopkWeight = tilingData_->hasTopkWeight == HAS_TOPK_WEIGHT;
+        LocalTensor<int64_t> topkOffsets;
+        MoeReRoutingTopk::TopkWeightGroupState topkGroup;
+        if (hasTopkWeight) {
+            topkOffsets = topkOffsetBuf_.Get<int64_t>();
+        }
+        // The rerouting loop keeps the original token/scale/index order.  The optional
+        // topk-weight output only appends a segment to its copy context.
         for (int64_t eIdx = eIdxStart; eIdx < eIdxStart + eNum_; eIdx++) {
             int64_t currTokenNum = srcRankTokenGm_.GetValue(rIdx * expertNum_ + eIdx);
             if (currTokenNum == 0) {
@@ -191,10 +204,13 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Proc
             if constexpr (hasScales) {
                 ProcessTokenScale(currTokenNum, scaleSize_, true);
             }
-            if (tilingData_->hasTopkWeight == HAS_TOPK_WEIGHT) {
-                CopyTopkWeight(currTokenNum, tokensSrc_, tokensDst_);
+            if (hasTopkWeight) {
+                AppendTopkWeight(currTokenNum, tokensSrc_, tokensDst_, rIdx, eIdx, topkGroup, topkOffsets);
             }
             tokensSrc_ += currTokenNum;
+        }
+        if (hasTopkWeight) {
+            FlushTopkWeight(rIdx, topkGroup, topkOffsets);
         }
     }
     CalcExpertTokenNum();
@@ -341,25 +357,21 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Copy
 }
 
 template <typename T, typename TIndex, typename TScale, bool hasScales>
-__aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::CopyTopkWeight(const int64_t rows,
-                                                                                           const int64_t srcOffset,
-                                                                                           const int64_t dstOffset)
+__aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::AppendTopkWeight(
+    const int64_t rows, const int64_t srcOffset, const int64_t dstOffset, const int64_t rankId, const int64_t expertId,
+    MoeReRoutingTopk::TopkWeightGroupState &state, LocalTensor<int64_t> &topkOffsets)
 {
-    int64_t loopCnt = Ops::Base::CeilDiv(rows, INDEX_UB_SIZE);
-    int64_t subRows = INDEX_UB_SIZE;
-    for (int64_t loopIdx = 0; loopIdx < loopCnt; loopIdx++) {
-        if (loopIdx == loopCnt - 1 && rows % INDEX_UB_SIZE != 0) {
-            subRows = rows % INDEX_UB_SIZE;
-        }
-        LocalTensor<float> topkLocal = topkWeightQue_.AllocTensor<float>();
-        DataCopyExtParams copyParams(1, subRows * sizeof(float), 0, 0, 0);
-        DataCopyPadExtParams<float> padParams(false, 0, 0, 0);
-        DataCopyPad(topkLocal, srcTopkWeightGm_[srcOffset + loopIdx * INDEX_UB_SIZE], copyParams, padParams);
-        topkWeightQue_.EnQue(topkLocal);
-        topkLocal = topkWeightQue_.DeQue<float>();
-        DataCopyPad(dstTopkWeightGm_[dstOffset + loopIdx * INDEX_UB_SIZE], topkLocal, copyParams);
-        topkWeightQue_.FreeTensor(topkLocal);
-    }
+    MoeReRoutingTopk::AppendWeight(srcTopkWeightGm_, dstTopkWeightGm_, srcRankTokenGm_, queBind_, topkOffsets, state,
+                                   rows, srcOffset, dstOffset, rankId, expertId, expertNum_,
+                                   tilingData_->ubFactor / sizeof(float));
+}
+
+template <typename T, typename TIndex, typename TScale, bool hasScales>
+__aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::FlushTopkWeight(
+    const int64_t rankId, MoeReRoutingTopk::TopkWeightGroupState &state, LocalTensor<int64_t> &topkOffsets)
+{
+    MoeReRoutingTopk::FlushWeight(srcTopkWeightGm_, dstTopkWeightGm_, srcRankTokenGm_, queBind_, topkOffsets, state,
+                                  rankId, expertNum_);
 }
 
 } // end namespace MoeReRouting

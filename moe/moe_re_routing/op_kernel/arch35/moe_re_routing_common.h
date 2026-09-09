@@ -10,13 +10,23 @@
 
 /*!
  * \file moe_re_routing_common.h
- * \brief Common constants shared by re_regbase and r_regbase
+ * \brief Common constants shared by host tiling and arch35 kernels
  */
 #ifndef MOE_RE_ROUTING_COMMON_H
 #define MOE_RE_ROUTING_COMMON_H
 
+#include <cstdint>
+
 namespace MoeReRouting {
 constexpr int32_t HAS_TOPK_WEIGHT = 1;
 }
+
+// Keep topk-weight constants in the lightweight common header.  Host tiling can
+// include this header without pulling in AscendC kernel APIs.
+namespace MoeReRoutingTopk {
+constexpr int64_t INDEX_UB_SIZE = 256;
+constexpr int64_t TOPK_GROUP_EXPERTS = 256;
+constexpr int64_t TOPK_OFFSET_UB_SIZE = TOPK_GROUP_EXPERTS * sizeof(int64_t);
+} // namespace MoeReRoutingTopk
 
 #endif // MOE_RE_ROUTING_COMMON_H

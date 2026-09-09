@@ -20,9 +20,22 @@
 #include "platform.h"
 #include "op_kernel/math_util.h"
 #include "moe_re_routing_common.h"
+#include "moe_re_routing_topk_weight_common.h"
 
 namespace MoeReRouting {
 using namespace AscendC;
+
+struct RTopkWeightContext {
+    MoeReRoutingTopk::TopkWeightGroupState group;
+    int64_t rankSrcOffset = 0;
+    int64_t regularRows = 0;
+    int64_t regularSegmentRows = 0;
+    int64_t regularDstOffset = 0;
+    int64_t previousDstOffset = 0;
+    int64_t regularDstStep = 0;
+    bool regularCandidate = false;
+    bool isRegular = false;
+};
 
 template <typename T, typename TIndex, typename TScale, bool hasScales>
 class MoeReRoutingRRegbase {
@@ -49,7 +62,23 @@ protected:
     __aicore__ inline void CopyInScale(const int64_t blockLen, const int64_t offset);
     __aicore__ inline void CopyOutScale(const int64_t blockLen, const int64_t offset);
     __aicore__ inline void CopyOutIndex(const int64_t rows, const int64_t srcOffset, const int64_t dstOffset);
-    __aicore__ inline void CopyTopkWeight(const int64_t rows, const int64_t srcOffset, const int64_t dstOffset);
+    __aicore__ inline void BeginTopkWeight(RTopkWeightContext &context, LocalTensor<int64_t> &topkOffsets,
+                                           const int64_t rankSrcOffset);
+    __aicore__ inline void RecordTopkWeight(const int64_t rows, const int64_t srcOffset, const int64_t dstOffset,
+                                            const int64_t rankId, const int64_t expertId, RTopkWeightContext &context,
+                                            LocalTensor<int64_t> &topkOffsets);
+    __aicore__ inline void EndTopkWeight(const int64_t rankId, RTopkWeightContext &context,
+                                         LocalTensor<int64_t> &topkOffsets);
+    __aicore__ inline void AppendTopkWeight(const int64_t rows, const int64_t srcOffset, const int64_t dstOffset,
+                                            const int64_t rankId, const int64_t expertId,
+                                            MoeReRoutingTopk::TopkWeightGroupState &state,
+                                            LocalTensor<int64_t> &topkOffsets);
+    __aicore__ inline void FlushTopkWeight(const int64_t rankId, MoeReRoutingTopk::TopkWeightGroupState &state,
+                                           LocalTensor<int64_t> &topkOffsets);
+    __aicore__ inline void CopyTopkWeightRegular(const int64_t rows, const int64_t segmentRows, const int64_t srcOffset,
+                                                 const int64_t dstOffset, const int64_t blockCount,
+                                                 const int64_t dstStride);
+    __aicore__ inline void CopyTopkWeightGeneric(const int64_t rankId, const int64_t rankSrcOffset);
 
     TPipe *pipe_ = nullptr;
     const MoeReRoutingRTilingData *tilingData_;
@@ -65,9 +94,10 @@ protected:
     GlobalTensor<float> dstTopkWeightGm_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> queBind_;
     TQue<QuePosition::VECOUT, 1> idxOutQue_;
-    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> topkWeightQue_;
+    TBuf<QuePosition::VECCALC> topkOffsetBuf_;
     static constexpr int64_t DOUBLE_BUFFER = 2;
-    static constexpr int64_t INDEX_UB_SIZE = 256;
+    static constexpr int64_t INDEX_UB_SIZE = MoeReRoutingTopk::INDEX_UB_SIZE;
+    static constexpr int64_t TOPK_GROUP_EXPERTS = MoeReRoutingTopk::TOPK_GROUP_EXPERTS;
     int64_t blockIdx_ = 0;
     int64_t tokensSrc_ = 0;
     int64_t tokensDst_ = 0;
@@ -104,8 +134,7 @@ __aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::Init(
     this->pipe_->InitBuffer(idxOutQue_, DOUBLE_BUFFER,
                             Ops::Base::CeilAlign(INDEX_UB_SIZE * sizeof(TIndex), BLOCK_SIZE / sizeof(TIndex)));
     if (tilingData_->hasTopkWeight == HAS_TOPK_WEIGHT) {
-        this->pipe_->InitBuffer(topkWeightQue_, DOUBLE_BUFFER,
-                                Ops::Base::CeilAlign(INDEX_UB_SIZE * sizeof(float), BLOCK_SIZE / sizeof(float)));
+        this->pipe_->InitBuffer(topkOffsetBuf_, TOPK_GROUP_EXPERTS * sizeof(int64_t));
     }
 }
 
@@ -139,21 +168,29 @@ __aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::Proce
                 tokensSrc_ += srcRankTokenGm_(rankId * tilingData_->expertNum + expertIdx);
             }
         }
-        // 计算当前rankId之前的dst偏移
+        const bool hasTopkWeight = tilingData_->hasTopkWeight == HAS_TOPK_WEIGHT;
+        RTopkWeightContext topkContext;
+        LocalTensor<int64_t> topkOffsets;
+        if (hasTopkWeight) {
+            BeginTopkWeight(topkContext, topkOffsets, tokensSrc_);
+        }
+        // Keep the rerouting loop independent of the optional topk-weight output.
         for (int64_t expertIdx = 0; expertIdx < tilingData_->expertNum; expertIdx++) {
             int64_t currTokenNum = srcRankTokenGm_(expertIdx + currRankId * tilingData_->expertNum);
             for (int64_t rankIdx = 0; rankIdx < currRankId; rankIdx++) {
                 tokensDst_ += srcRankTokenGm_(rankIdx * tilingData_->expertNum + expertIdx);
             }
             ProcessTokenScale(currTokenNum);
-            if (tilingData_->hasTopkWeight == HAS_TOPK_WEIGHT) {
-                CopyTopkWeight(currTokenNum, tokensSrc_, tokensDst_);
+            if (hasTopkWeight) {
+                RecordTopkWeight(currTokenNum, tokensSrc_, tokensDst_, currRankId, expertIdx, topkContext, topkOffsets);
             }
             tokensSrc_ += currTokenNum;
-            // 计算当前rank之后的dst偏移
             for (int64_t rankIdx = currRankId; rankIdx < tilingData_->rankNum; rankIdx++) {
                 tokensDst_ += srcRankTokenGm_(rankIdx * tilingData_->expertNum + expertIdx);
             }
+        }
+        if (hasTopkWeight) {
+            EndTopkWeight(currRankId, topkContext, topkOffsets);
         }
     }
     CalcExpertTokenNum();
@@ -355,25 +392,127 @@ __aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::CopyO
 }
 
 template <typename T, typename TIndex, typename TScale, bool hasScales>
-__aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::CopyTopkWeight(const int64_t rows,
-                                                                                          const int64_t srcOffset,
-                                                                                          const int64_t dstOffset)
+__aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::BeginTopkWeight(
+    RTopkWeightContext &context, LocalTensor<int64_t> &topkOffsets, const int64_t rankSrcOffset)
 {
-    int64_t loopCnt = Ops::Base::CeilDiv(rows, INDEX_UB_SIZE);
-    int64_t subRows = INDEX_UB_SIZE;
-    for (int64_t loopIdx = 0; loopIdx < loopCnt; loopIdx++) {
-        if (loopIdx == loopCnt - 1 && rows % INDEX_UB_SIZE != 0) {
-            subRows = rows % INDEX_UB_SIZE;
-        }
-        LocalTensor<float> topkLocal = topkWeightQue_.AllocTensor<float>();
-        DataCopyExtParams copyParams(1, subRows * sizeof(float), 0, 0, 0);
-        DataCopyPadExtParams<float> padParams(false, 0, 0, 0);
-        DataCopyPad(topkLocal, srcTopkWeightGm_[srcOffset + loopIdx * INDEX_UB_SIZE], copyParams, padParams);
-        topkWeightQue_.EnQue(topkLocal);
-        topkLocal = topkWeightQue_.DeQue<float>();
-        DataCopyPad(dstTopkWeightGm_[dstOffset + loopIdx * INDEX_UB_SIZE], topkLocal, copyParams);
-        topkWeightQue_.FreeTensor(topkLocal);
+    context.rankSrcOffset = rankSrcOffset;
+    context.regularCandidate =
+        tokenSize_ == 1 && tilingData_->expertNum > 0 && tilingData_->expertNum <= TOPK_GROUP_EXPERTS;
+    context.isRegular = context.regularCandidate;
+    if (!context.regularCandidate) {
+        topkOffsets = topkOffsetBuf_.Get<int64_t>();
     }
+}
+
+template <typename T, typename TIndex, typename TScale, bool hasScales>
+__aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::RecordTopkWeight(
+    const int64_t rows, const int64_t srcOffset, const int64_t dstOffset, const int64_t rankId, const int64_t expertId,
+    RTopkWeightContext &context, LocalTensor<int64_t> &topkOffsets)
+{
+    if (!context.regularCandidate) {
+        AppendTopkWeight(rows, srcOffset, dstOffset, rankId, expertId, context.group, topkOffsets);
+        return;
+    }
+    const int64_t topkBlockElements = BLOCK_SIZE / sizeof(float);
+    if (expertId == 0) {
+        context.regularSegmentRows = rows;
+        context.regularDstOffset = dstOffset;
+        context.isRegular = rows > 0 && rows % topkBlockElements == 0;
+    } else {
+        const int64_t dstStep = dstOffset - context.previousDstOffset;
+        if (expertId == 1) {
+            context.regularDstStep = dstStep;
+        }
+        context.isRegular =
+            context.isRegular && rows == context.regularSegmentRows && dstStep == context.regularDstStep;
+    }
+    context.regularRows += rows;
+    context.previousDstOffset = dstOffset;
+}
+
+template <typename T, typename TIndex, typename TScale, bool hasScales>
+__aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::EndTopkWeight(
+    const int64_t rankId, RTopkWeightContext &context, LocalTensor<int64_t> &topkOffsets)
+{
+    if (!context.regularCandidate) {
+        FlushTopkWeight(rankId, context.group, topkOffsets);
+        return;
+    }
+    if (tilingData_->expertNum == 1) {
+        context.regularDstStep = context.regularSegmentRows;
+    }
+    context.isRegular = context.isRegular &&
+                        (tilingData_->expertNum == 1 || context.regularDstStep >= context.regularSegmentRows) &&
+                        context.regularRows <= tilingData_->ubFactor / sizeof(float);
+    if (context.isRegular) {
+        CopyTopkWeightRegular(context.regularRows, context.regularSegmentRows, context.rankSrcOffset,
+                              context.regularDstOffset, tilingData_->expertNum,
+                              context.regularDstStep - context.regularSegmentRows);
+    } else {
+        CopyTopkWeightGeneric(rankId, context.rankSrcOffset);
+    }
+}
+
+template <typename T, typename TIndex, typename TScale, bool hasScales>
+__aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::AppendTopkWeight(
+    const int64_t rows, const int64_t srcOffset, const int64_t dstOffset, const int64_t rankId, const int64_t expertId,
+    MoeReRoutingTopk::TopkWeightGroupState &state, LocalTensor<int64_t> &topkOffsets)
+{
+    MoeReRoutingTopk::AppendWeight(srcTopkWeightGm_, dstTopkWeightGm_, srcRankTokenGm_, queBind_, topkOffsets, state,
+                                   rows, srcOffset, dstOffset, rankId, expertId, tilingData_->expertNum,
+                                   tilingData_->ubFactor / sizeof(float));
+}
+
+template <typename T, typename TIndex, typename TScale, bool hasScales>
+__aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::FlushTopkWeight(
+    const int64_t rankId, MoeReRoutingTopk::TopkWeightGroupState &state, LocalTensor<int64_t> &topkOffsets)
+{
+    MoeReRoutingTopk::FlushWeight(srcTopkWeightGm_, dstTopkWeightGm_, srcRankTokenGm_, queBind_, topkOffsets, state,
+                                  rankId, tilingData_->expertNum);
+}
+
+template <typename T, typename TIndex, typename TScale, bool hasScales>
+__aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::CopyTopkWeightRegular(
+    const int64_t rows, const int64_t segmentRows, const int64_t srcOffset, const int64_t dstOffset,
+    const int64_t blockCount, const int64_t dstStride)
+{
+    if (rows <= 0 || segmentRows <= 0 || blockCount <= 0) {
+        return;
+    }
+    LocalTensor<float> topkLocal = queBind_.AllocTensor<float>();
+    DataCopyExtParams copyInParams(1, rows * sizeof(float), 0, 0, 0);
+    DataCopyPadExtParams<float> padParams(false, 0, 0, 0);
+    DataCopyPad(topkLocal, srcTopkWeightGm_[srcOffset], copyInParams, padParams);
+    queBind_.EnQue(topkLocal);
+    topkLocal = queBind_.DeQue<float>();
+    DataCopyExtParams copyOutParams(static_cast<uint16_t>(blockCount),
+                                    static_cast<uint32_t>(segmentRows * sizeof(float)), 0,
+                                    static_cast<uint32_t>(dstStride * sizeof(float)), 0);
+    DataCopyPad(dstTopkWeightGm_[dstOffset], topkLocal, copyOutParams);
+    queBind_.FreeTensor(topkLocal);
+}
+
+template <typename T, typename TIndex, typename TScale, bool hasScales>
+__aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::CopyTopkWeightGeneric(
+    const int64_t rankId, const int64_t rankSrcOffset)
+{
+    LocalTensor<int64_t> topkOffsets = topkOffsetBuf_.Get<int64_t>();
+    MoeReRoutingTopk::TopkWeightGroupState group;
+    int64_t srcOffset = rankSrcOffset;
+    int64_t expertDstBase = 0;
+    for (int64_t expertId = 0; expertId < tilingData_->expertNum; ++expertId) {
+        const int64_t rows = srcRankTokenGm_(rankId * tilingData_->expertNum + expertId);
+        int64_t dstOffset = expertDstBase;
+        for (int64_t rankBefore = 0; rankBefore < rankId; ++rankBefore) {
+            dstOffset += srcRankTokenGm_(rankBefore * tilingData_->expertNum + expertId);
+        }
+        AppendTopkWeight(rows, srcOffset, dstOffset, rankId, expertId, group, topkOffsets);
+        srcOffset += rows;
+        for (int64_t rank = 0; rank < tilingData_->rankNum; ++rank) {
+            expertDstBase += srcRankTokenGm_(rank * tilingData_->expertNum + expertId);
+        }
+    }
+    FlushTopkWeight(rankId, group, topkOffsets);
 }
 
 } // end namespace MoeReRouting
