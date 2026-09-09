@@ -186,15 +186,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
         ):
             b_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
             max_schedule_size = _calculate_max_schedule_size(b_size, num_heads_kv)
-            device = next(
-                (
-                    t.device
-                    for t in (cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv)
-                    if t is not None
-                ),
-                torch.device("npu"),
-            )
-            return torch.empty((2, max_schedule_size), dtype=torch.int32, device=device)
+            return torch.empty((2, max_schedule_size), dtype=torch.int32, device="meta")
 
         @impl(get_as_library(), self.name, "Meta")
         def quant_flash_attn_meta(
