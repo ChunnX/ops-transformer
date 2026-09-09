@@ -155,6 +155,9 @@ private:
         SetFlag<HardEvent::M_FIX>(cSlot);
         WaitFlag<HardEvent::M_FIX>(cSlot);
         if (atomicAdd) {
+            // 后续C1分段写同一gradPhi前仅等待上一条Fixpipe完成，固定AtomicAdd顺序；
+            // 等待发生在当前MMAD结束后，继续保留L0C双槽和MMAD/Fixpipe重叠。
+            PipeBarrier<PIPE_FIX>();
             SetAtomicAdd<float>();
         }
         CopyOut(c, currentC, m, n, cGmStride);
