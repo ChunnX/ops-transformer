@@ -166,20 +166,17 @@ def compressor(testcase_files):  # 初始化参数和tensor
         "head_dim": params[3],
         "block_size": params[4],
         "cmp_ratio": params[5],
-        "coff": params[6],
-        "start_p": params[7],
-        "cache_mode": params[8],
-        "layout_x": params[9],
-        "data_type": params[10],
-        "cu_seqlens": params[11],
-        "seqused": params[12],
-        "start_pos": params[13],
-        "x_datarange": params[14],
-        "wkv_datarange": params[15],
-        "wgate_datarange": params[16],
-        "ape_datarange": params[17],
-        "kv_state_datarange": params[18],
-        "score_state_datarange": params[19],
+        "start_p": params[6],
+        "layout_x": params[7],
+        "data_type": params[8],
+        "cu_seqlens": params[9],
+        "seqused": params[10],
+        "start_pos": params[11],
+        "x_datarange": params[12],
+        "wkv_datarange": params[13],
+        "wgate_datarange": params[14],
+        "kv_state_datarange": params[15],
+        "score_state_datarange": params[16],
         "result": result,
         "result_percent": result_percent,
         "kv_state_update": kv_state_result,
@@ -230,7 +227,10 @@ def test_compressor(testcase_files):  # 初始化参数和tensor
                     pytest.fail(f"当前用例线程执行失败：{e}")
     else:
         # 非隔离模式（直接 pytest）：使用子进程隔离，防止单条用例崩溃影响整体
-        with concurrent.futures.ProcessPoolExecutor(max_workers=1) as executor:
+        # NPU 不支持 fork 方式，需使用 spawn
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=1, mp_context=mp.get_context("spawn")
+        ) as executor:
             future1 = executor.submit(compressor, testcase_files)
             for future in concurrent.futures.as_completed([future1]):
                 try:

@@ -18,7 +18,7 @@ import pytest
 import random
 import math
 import ast
-from cann_ops_transformer.ops import compressor
+from cann_ops_transformer.ops.cpv2 import compressor as compressor
 
 
 def test_compressor_process(filepath, device_id=0):
@@ -42,14 +42,15 @@ def test_compressor_process(filepath, device_id=0):
     wgate = test_data["wgate"]
     kv_state = test_data["kv_state"]
     score_state = test_data["score_state"]
-    ape = test_data["ape"]
+    # ape = test_data["ape"]  # 新版已移除 ape
     block_table = test_data["block_table"]
     cu_seqlens = test_data["cu_seqlens"]
     seqused = test_data["seqused"]
     start_pos = test_data["start_pos"]
     cmp_ratio = test_data["cmp_ratio"]
-    coff = test_data["coff"]
-    cache_mode = test_data["cache_mode"]
+    # 新版 params 已移除 coff/cache_mode/ape，硬编码
+    coff = 1
+    cache_mode = 2
 
     is_contiguous_flag = True
     if cache_mode == 1:  # 连续buffer(支持在第二维非连续)
@@ -122,20 +123,17 @@ def test_compressor_process(filepath, device_id=0):
         kv_block_table = block_table.npu()
         score_block_table = block_table.npu()
 
-    # 调用compressor算子
+    # 调用compressor算子（新版接口，无 ape）
     npu_result = compressor(
         x.npu(),
         wkv.npu(),
         wgate.npu(),
         state_cache,
-        ape.npu(),
         cmp_ratio=cmp_ratio,
         state_block_table=kv_block_table,
         cu_seqlens=cu_seqlens,
         seqused=seqused,
         start_pos=start_pos,
-        coff=coff,
-        cache_mode=cache_mode,
     )
     return (
         cpu_result,

@@ -22,7 +22,7 @@ import random
 import math
 import ast
 import argparse
-import custom_ops
+# import custom_ops  # unused, commented to avoid ImportError
 
 
 def load_excel_test_cases(excel_file_path: str, sheetname: str):
@@ -59,9 +59,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
             "head_dim",
             "block_size",
             "cmp_ratio",
-            "coff",
             "start_p",
-            "cache_mode",
             "layout_x",
             "data_type",
             "cu_seqlens",
@@ -70,7 +68,6 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
             "x_datarange",
             "wkv_datarange",
             "wgate_datarange",
-            "ape_datarange",
             "kv_state_datarange",
             "score_state_datarange",
         ]
@@ -95,9 +92,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                     row["head_dim"],
                     row["block_size"],
                     row["cmp_ratio"],
-                    row["coff"],
                     row["start_p"],
-                    row["cache_mode"],
                     row["layout_x"],
                     row["data_type"],
                     row["cu_seqlens"],
@@ -106,7 +101,6 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                     row["x_datarange"],
                     row["wkv_datarange"],
                     row["wgate_datarange"],
-                    row["ape_datarange"],
                     row["kv_state_datarange"],
                     row["score_state_datarange"],
                 )
@@ -129,7 +123,6 @@ class Generalized_operator:
         score_state,
         update_kv_position,
         update_score_position,
-        ape,
         block_table,
         cu_seqlens,
         seqused,
@@ -138,7 +131,7 @@ class Generalized_operator:
         coff,
         cache_mode,
     ):
-        return cpu_compressor(
+        result = cpu_compressor(
             x,
             wkv,
             wgate,
@@ -146,7 +139,6 @@ class Generalized_operator:
             score_state,
             update_kv_position,
             update_score_position,
-            ape,
             block_table=block_table,
             cu_seqlens=cu_seqlens,
             seqused=seqused,
@@ -155,11 +147,16 @@ class Generalized_operator:
             coff=coff,
             cache_mode=cache_mode,
         )
+        return result[0], result[1]
 
 
 def compressor_output_single(data_case):
     casename = data_case[0]
     params = data_case[1:]
+
+    # 硬编码旧版参数（新版已移除 coff/cache_mode）
+    coff = 1
+    cache_mode = 2
 
     (
         batch_size,
@@ -168,9 +165,7 @@ def compressor_output_single(data_case):
         head_dim,
         block_size,
         cmp_ratio,
-        coff,
         start_p,
-        cache_mode,
         layout_x,
         data_type,
         cu_seqlens,
@@ -179,7 +174,6 @@ def compressor_output_single(data_case):
         x_datarange,
         wkv_datarange,
         wgate_datarange,
-        ape_datarange,
         kv_state_datarange,
         score_state_datarange,
     ) = params
@@ -219,7 +213,6 @@ def compressor_output_single(data_case):
     x_datarange = [float(x.strip()) for x in x_datarange.split(",")]
     wkv_datarange = [float(x.strip()) for x in wkv_datarange.split(",")]
     wgate_datarange = [float(x.strip()) for x in wgate_datarange.split(",")]
-    ape_datarange = [float(x.strip()) for x in ape_datarange.split(",")]
     kv_state_datarange = [float(x.strip()) for x in kv_state_datarange.split(",")]
     score_state_datarange = [float(x.strip()) for x in score_state_datarange.split(",")]
 
@@ -468,11 +461,6 @@ def compressor_output_single(data_case):
             wgate_datarange[0], wgate_datarange[1], (coff * head_dim, hidden_size)
         )
     ).to(data_type)
-    ape = torch.tensor(
-        np.random.uniform(
-            ape_datarange[0], ape_datarange[1], (cmp_ratio, coff * head_dim)
-        )
-    ).to(torch.float32)
     ### ======================== gen input data finish =============================
     ### ======================== execute cpu start =================================
     cpu_kv_state = kv_state.clone()
@@ -496,7 +484,6 @@ def compressor_output_single(data_case):
         cpu_score_state,
         update_kv,
         update_score,
-        ape,
         block_table=block_table,
         cu_seqlens=cu_seqlens,
         seqused=seqused,
@@ -521,7 +508,6 @@ def compressor_output_single(data_case):
         "wgate": wgate,
         "kv_state": kv_state,
         "score_state": score_state,
-        "ape": ape,
         "block_table": block_table,
         "cu_seqlens": cu_seqlens,
         "seqused": seqused,
