@@ -43,6 +43,4 @@ Reference: [Ascend C CrossCoreWaitFlag documentation](https://asc.gitcode.com/ap
 
 ## Validation
 
-The standalone host protocol test exercises the actual helper with pipeline/event-ID stubs. It covers both consumer mappings, empty and unequal channels, 15/16-tile boundaries, producer/consumer delays, independent 15+15 outstanding Ready events, and final drains (98 schedules). It checks accounting and routing, not NPU pipeline semantics. See [test instructions](../tests/ut/op_kernel/gmm_tile_sync/README.md).
-
 Performance must be measured separately for the final kernel. Earlier A8W4 experiments with different window sizes or communication stubs are not performance measurements of this change.
