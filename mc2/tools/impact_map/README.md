@@ -56,9 +56,11 @@ python3 mc2/tools/gen_common_impact_yaml.py /path/to/another_checkout [输出目
 |---|---|
 | .h 在芯片映射表中（A2/A3/A5.yaml） | 测试条目 ops 列出的算子（按芯片过滤；`ops: []` 表示该芯片无匹配算子）；cpp 按其同名 .h 的 ops 走 |
 
-**无需消费侧再补闭包**：yaml 中的 ops 已烙入 CMake `*_depends` 反向闭包
-（依赖链上的算子自动纳入，如某头只被 matmul_all_reduce 引用，而
-moe_distribute_combine_v2 依赖前者，则后者也在 ops 里），拿到的即最终测试清单。
+**无需消费侧再补闭包**：yaml 中的 ops 已烙入 CMake `*_depends` 反向闭包。
+真实示例（mc2_hcom_topo_info.h 在 A2 上的闭包过程）：该头被 matmul_all_reduce
+include；而 matmul_all_reduce_add_rms_norm / inplace_matmul_all_reduce_add_rms_norm
+的 CMake `*_depends` 声明依赖 matmul_all_reduce——三者虽不互相 include，
+后者仍被闭包自动纳入（A2 上该头的 ops 由 15 扩到 17）。
 
 ## 5. 判定规则（生成器侧）
 
