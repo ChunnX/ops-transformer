@@ -213,6 +213,7 @@ void PrintWorkspaceLayout(const struct WorkspaceLayout *layout, const char *node
     OP_LOGD(nodeName, "expertRevTokenNumsOffset:      %ld\n", layout->expertRevTokenNumsOffset);
     OP_LOGD(nodeName, "metaInfoOffset:                %ld\n", layout->metaInfoOffset);
     OP_LOGD(nodeName, "flagActivationToGmm2Offset:    %ld\n", layout->flagActivationToGmm2Offset);
+    OP_LOGD(nodeName, "sharedActivationToGmm2Offset:  %ld\n", layout->sharedActivationToGmm2Offset);
     OP_LOGD(nodeName, "flagDispatchToGmm1Offset:      %ld\n", layout->flagDispatchToGmm1Offset);
     OP_LOGD(nodeName, "flagSendCntCalToUpdParamsOffset: %ld\n", layout->flagSendCntCalToUpdParamsOffset);
     OP_LOGD(nodeName, "flagGmmToEpilogueOffset:       %ld\n", layout->flagGmmToEpilogueOffset);
@@ -420,12 +421,10 @@ static ge::graphStatus CheckSwiGluOaiActivationParams(const float *activationPar
 }
 
 /*
- * situglu 的 beta 必填，且仅支持大于 0 的有限值。
- * linear_beta 选填，指定后使用 LINEAR
- * 子模式，同样仅支持大于 0 的有限值。
- *
- * 必须先检查参数个数，再读取参数；没有参数时 activationParams 是空指针。
-
+ * situglu 的 beta 必填：Ascend 950PR/Ascend 950DT 仅支持大于 0 的有限值。
+ * linear_beta 选填，给了就切到 LINEAR 子模式，同样仅支持大于 0 的有限值。
+ * 注意个数校验必须排在取值之前：一个参数都不传时 activationParams 是空指针，
+ * 先取 activationParams[0] 会直接段错误，而不是干净地报错返回。
  */
 static ge::graphStatus CheckSituGluActivationParams(const float *activationParams, size_t paramCount,
                                                     const char *nodeName)
@@ -1298,6 +1297,9 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
     if (tilingData->sharedExpertNum > 0 && tilingData->topoType == TOPO_TYPE_MTE) {
         uint64_t tokenGroupCount = ops::CeilDiv<uint64_t>(tilingData->bs, L1_TILE_M_256);
         flagElementCount += tokenGroupCount * tilingData->sharedExpertNum * INT_CACHELINE;
+        flagElementCount +=
+            static_cast<uint64_t>(CalcSharedActivationFlagElementsPerExpert(static_cast<int64_t>(tilingData->bs))) *
+            tilingData->sharedExpertNum;
     }
     return flagElementCount;
 }
