@@ -972,7 +972,7 @@ __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
     }
 
     GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
-    uint32_t recvIdx = aivId_ - numSendCores_;
+    uint32_t recvIdx = (aivId_ > numSendCores_) ? (aivId_ - numSendCores_) : 0U;
     uint32_t totalWorkUnits = (numRanks_ - 1U) * sendersPerRank_;
     if (totalWorkUnits == 0U) {
         return;
@@ -1301,6 +1301,7 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             uniqueScatter_.SetCastBuf(castFp32Buf_);
             uniqueScatter_.SetAccumBuf(accumBuf_);
             uniqueScatter_.SetGradSubBatch(gradSubBatch_);
+            uniqueScatter_.SetEntryBufBytes(uniqueEntryBytes_);
 
             uniqueScatter_.CountUniquesParallel(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
             uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
