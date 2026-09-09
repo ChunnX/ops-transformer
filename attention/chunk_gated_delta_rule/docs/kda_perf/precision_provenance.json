@@ -1,0 +1,1178 @@
+{
+  "kind": "full_scan_plus_changed_tail_retest",
+  "full_scan_rows": 288,
+  "replaced_rows": 20,
+  "rule": "Only 128x128 nonaligned sequence inputs changed; all other measured inputs retained",
+  "sources": [
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/precision_before_tail_padding/results.json",
+      "sha256": "9dd0384b1a4a965351cc4bef4434ea68706fcc8379e339cc74bb1c0ec7f325bf"
+    },
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/precision_before_tail_padding/runtime.json",
+      "sha256": "8fd9ecb4479e248dfef1782be5826953db72ba9ebd08db2e26d0c0d86c7be8d4"
+    },
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/precision_tail_aligned/results.json",
+      "sha256": "0d4a1993170e6163b156dcd8b96d2f1c4b6a4526d92015540e731307034572e8"
+    },
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/precision_tail_aligned/runtime.json",
+      "sha256": "c5c0cabdebbecbc4d0a8a064fad65a25ff0f0843c60c55f1e656107a492a3e98"
+    }
+  ],
+  "case_sources": [
+    {
+      "test_name": "ARC-001",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-001-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-001-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-001-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-002",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-002-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-002-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-002-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-003",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-003-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-003-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-003-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-004",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-004-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-004-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-004-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-005",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-005-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-005-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-005-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-006",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-006-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-006-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-006-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-007",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-007-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-007-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-007-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-008",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-008-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-008-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-008-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-009",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-009-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-009-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-009-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-010",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-010-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-010-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-010-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-011",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-011-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-011-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-011-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-012",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-012-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-012-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-012-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-013",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-013-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-013-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-013-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-014",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-014-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-014-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-014-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-015",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-015-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-015-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-015-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-016",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-016-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-016-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-016-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-017",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-017-NC",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-017-FP32",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-017-FP32-NC",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-018",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-018-NC",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-018-FP32",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-018-FP32-NC",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-019",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-019-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-019-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-019-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-020",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-020-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-020-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-020-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-021",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-021-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-021-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-021-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-022",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-022-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-022-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-022-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-023",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-023-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-023-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-023-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-024",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-024-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-024-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-024-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-025",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-025-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-025-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-025-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-026",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-026-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-026-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-026-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-027",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-027-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-027-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-027-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-028",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-028-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-028-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-028-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-029",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-029-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-029-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-029-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-030",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-030-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-030-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-030-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-031",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-031-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-031-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-031-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-032",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-032-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-032-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-032-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-033",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-033-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-033-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-033-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-034",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-034-NC",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-034-FP32",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-034-FP32-NC",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-035",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-035-NC",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-035-FP32",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-035-FP32-NC",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-036",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-036-NC",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-036-FP32",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-036-FP32-NC",
+      "source": "precision_tail_aligned/results.json"
+    },
+    {
+      "test_name": "ARC-037",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-037-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-037-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-037-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-038",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-038-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-038-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ARC-038-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-001",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-001-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-001-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-001-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-002",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-002-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-002-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-002-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-003",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-003-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-003-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-003-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-004",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-004-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-004-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-004-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-005",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-005-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-005-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-005-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-006",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-006-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-006-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-006-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-007",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-007-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-007-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-007-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-008",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-008-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-008-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-008-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-009",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-009-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-009-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-009-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-010",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-010-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-010-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-010-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-011",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-011-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-011-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-011-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-012",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-012-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-012-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-012-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-013",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-013-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-013-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-013-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-014",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-014-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-014-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-014-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-015",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-015-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-015-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-015-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-016",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-016-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-016-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-016-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-017",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-017-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-017-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-017-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-018",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-018-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-018-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-018-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-019",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-019-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-019-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-019-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-020",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-020-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-020-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-020-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-021",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-021-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-021-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-021-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-022",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-022-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-022-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-022-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-023",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-023-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-023-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-023-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-024",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-024-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-024-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-024-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-025",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-025-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-025-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-025-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-026",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-026-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-026-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-026-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-027",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-027-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-027-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-027-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-028",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-028-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-028-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-028-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-029",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-029-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-029-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-029-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-030",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-030-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-030-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-030-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-031",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-031-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-031-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-031-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-032",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-032-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-032-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-032-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-033",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-033-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-033-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-033-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-034",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-034-NC",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-034-FP32",
+      "source": "precision_before_tail_padding/results.json"
+    },
+    {
+      "test_name": "ASC-034-FP32-NC",
+      "source": "precision_before_tail_padding/results.json"
+    }
+  ]
+}

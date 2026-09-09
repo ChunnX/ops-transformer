@@ -1,0 +1,60 @@
+{
+  "date": "2026-09-09",
+  "git_head": "f6d8cd6ff2d5b621b33ca938b08e8ca62aaaf439",
+  "upstream_checked": "4638b57dafcbd6bdd511e2463c817a70bcc32b9d",
+  "extension_source": "Binding added locally following existing OpBuilder/C++ convention; upstream lacks binding sources although pytest imports it.",
+  "installation": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/installed",
+  "call_interface": "cann_ops_transformer.ops.chunk_kda_fwd",
+  "torch_npu_schema_kda_matches": [],
+  "local_op_plugin_checked_commit": "ddc9063a",
+  "local_pytorch_checked_commit": "7e378b27d",
+  "stock_kda_operator_unchanged": true,
+  "files": {
+    "/usr/local/Ascend/cann-9.2.0/x86_64-linux/lib64/libopapi.so": "d2496a71a78c88522d1639023338e00c55ac602332ff0d61f47cd36b1f87d4de",
+    "/usr/local/Ascend/cann-9.2.0/x86_64-linux/include/aclnnop/aclnn_chunk_kda_fwd.h": "07cc89c4a492e05366d0d0273f8cfebbf5cdb22f2c50fadfd80ab94c67db790d",
+    "/home/s00940320/improved_cgdr/torch_extension/dist/cann_ops_transformer-1.0.0-py3-none-any.whl": "4397bc258ea6739792f3be0f01064bce339e65d5aeba8052120e181790f375b6",
+    "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/torch_extension/__init__.py": "a190901f9904554aa013c7bcc35658a889f9f977460ce21d05dc05a86f2ed437",
+    "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/torch_extension/chunk_kda_fwd.py": "a37d96acdb42303f6ce62ad0ae0843cef26997a462c5014bdbd46f7bc907a5ff",
+    "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/torch_extension/csrc/chunk_kda_fwd.cpp": "7acee585f7c7e8e7e08f347d17e3c1d879bda71e0360ee30aba0cfc210aa9abf"
+  },
+  "builtin_kda_kernel_files": {
+    "/usr/local/Ascend/cann-9.2.0/opp/built-in/op_impl/ai_core/tbe/kernel/ascend950/ops_transformer/chunk_kda_fwd/ChunkKdaFwd_c7537eac07b2e805494bc8b22c2da1a4.json": "7ec9ec99f2316256d7631505f98ef868105a003eea2025bdc17e540c3f3838c1",
+    "/usr/local/Ascend/cann-9.2.0/opp/built-in/op_impl/ai_core/tbe/kernel/ascend950/ops_transformer/chunk_kda_fwd/ChunkKdaFwd_739e9f97dc2733c698e3a00e12fb80ab.o": "1be95d710734d4d38b2e434a9fcde6233ea15ff5ab23d95c8af275d065c029ba",
+    "/usr/local/Ascend/cann-9.2.0/opp/built-in/op_impl/ai_core/tbe/kernel/ascend950/ops_transformer/chunk_kda_fwd/ChunkKdaFwd_6476ca0e1178d6f9989248428cab5a3c.json": "a353ce89ca45d060b473e4f881acebde6d0d640153e43ac1df8a48543d9bd69f",
+    "/usr/local/Ascend/cann-9.2.0/opp/built-in/op_impl/ai_core/tbe/kernel/ascend950/ops_transformer/chunk_kda_fwd/ChunkKdaFwd_fa73d2b349dc97ef1ea5da4e484ceccf.json": "3dcdaf27a04bc5d12df283aa9313ad9dee9e537c8fb32bc95f3121092ce001de",
+    "/usr/local/Ascend/cann-9.2.0/opp/built-in/op_impl/ai_core/tbe/kernel/ascend950/ops_transformer/chunk_kda_fwd/ChunkKdaFwd_5fc9a4d54f054c7c0081057a92293b10.o": "743445975417d9d021a3b8bb3949b59322b4d80a290a9f3e28a9d5c1b099f9f7",
+    "/usr/local/Ascend/cann-9.2.0/opp/built-in/op_impl/ai_core/tbe/kernel/ascend950/ops_transformer/chunk_kda_fwd/ChunkKdaFwd_ec5c70105c2ca6873f26879e62efa878.json": "788f4788699dada85cdd21118f490ec9ca4fbc9a4be43779d4ff9d02cd7b88c1",
+    "/usr/local/Ascend/cann-9.2.0/opp/built-in/op_impl/ai_core/tbe/kernel/ascend950/ops_transformer/chunk_kda_fwd/ChunkKdaFwd_c7537eac07b2e805494bc8b22c2da1a4.o": "87b4196499793ab5ace77aef9eb74359eac9fb11763cd4f85ac0c07b1a39b7dd",
+    "/usr/local/Ascend/cann-9.2.0/opp/built-in/op_impl/ai_core/tbe/kernel/ascend950/ops_transformer/chunk_kda_fwd/ChunkKdaFwd_739e9f97dc2733c698e3a00e12fb80ab.json": "f401872bd7a2dfa38577071a530450d7e79251d24541085d58a50047288ae387",
+    "/usr/local/Ascend/cann-9.2.0/opp/built-in/op_impl/ai_core/tbe/kernel/ascend950/ops_transformer/chunk_kda_fwd/ChunkKdaFwd_6476ca0e1178d6f9989248428cab5a3c.o": "bef2813c7bcda743718241da73f7eedfed4d064e2cc3858b30b225b1327b2ef6",
+    "/usr/local/Ascend/cann-9.2.0/opp/built-in/op_impl/ai_core/tbe/kernel/ascend950/ops_transformer/chunk_kda_fwd/ChunkKdaFwd_e1f47b7ed74c47416550f45ace82d988.o": "23544723faf91eed1af8d4fa1b8add2fd2a50ac602eb7adce1072c195d80417f",
+    "/usr/local/Ascend/cann-9.2.0/opp/built-in/op_impl/ai_core/tbe/kernel/ascend950/ops_transformer/chunk_kda_fwd/ChunkKdaFwd_ec5c70105c2ca6873f26879e62efa878.o": "ed862905f7250f2a62d1a543cc8d08455f1fd8acb1c95b9b73dabb3ad4e3382b",
+    "/usr/local/Ascend/cann-9.2.0/opp/built-in/op_impl/ai_core/tbe/kernel/ascend950/ops_transformer/chunk_kda_fwd/ChunkKdaFwd_fa73d2b349dc97ef1ea5da4e484ceccf.o": "3585a888942104c44f6e5fcea3acbe2c35afcd6bdb5d383049b20c537db7e276",
+    "/usr/local/Ascend/cann-9.2.0/opp/built-in/op_impl/ai_core/tbe/kernel/ascend950/ops_transformer/chunk_kda_fwd/ChunkKdaFwd_2abd624f2831d861ffa7ac1b0049c12a.json": "fe298afe9ec36ffe3649acc75f170ff3d3112f934afa2e3f90cb14281ecc071d",
+    "/usr/local/Ascend/cann-9.2.0/opp/built-in/op_impl/ai_core/tbe/kernel/ascend950/ops_transformer/chunk_kda_fwd/ChunkKdaFwd_2abd624f2831d861ffa7ac1b0049c12a.o": "cca48be5a6ecd89ac76fb89de4f0a246d2f7fe993618df86a13ea145a0e591a1",
+    "/usr/local/Ascend/cann-9.2.0/opp/built-in/op_impl/ai_core/tbe/kernel/ascend950/ops_transformer/chunk_kda_fwd/ChunkKdaFwd_e1f47b7ed74c47416550f45ace82d988.json": "d41350c55aa5e74d60384b0fafe31af3a59ef803af41d4be62fb98ea09881bee",
+    "/usr/local/Ascend/cann-9.2.0/opp/built-in/op_impl/ai_core/tbe/kernel/ascend950/ops_transformer/chunk_kda_fwd/ChunkKdaFwd_5fc9a4d54f054c7c0081057a92293b10.json": "16ec24b7b6cb6a505238806447b513f057a54cbb6917befca842017e4260e7db"
+  },
+  "custom_kda_files": [],
+  "diagnosed_constraints": {
+    "generic_tail": "original S=300/D=64 and S=2000/D=16 timed out; neutral pad to 320/2048",
+    "generic_raw_gate": "ASC-019 waits with raw safe gate; generic dimensions use preactivated gate",
+    "dense_state": "ARC-004 B=2,S=2048,Nv=32 has nondeterministic final state; TND + host cu_seqlens passed 10 repeats",
+    "kernel_change": false,
+    "dimension128_tail": "ARC-036 original S=65535 fails attention max-error criterion at token 65475 across BSND/TND and raw/preactivated gate; all 20 dimension128 tail variants passed after alignment; final run pads all 28 nonaligned cases"
+  },
+  "custom_opapi_libraries": {
+    "/usr/local/Ascend/cann-9.2.0/opp/vendors/custom_transformer/op_api/lib/libcust_opapi.so": {
+      "sha256": "816d01f439768888fbf94e942d10080a2fce8200ea5303583a30e92a44bb67c2",
+      "kda_exported_symbols": []
+    }
+  },
+  "precision_reference": "CPU FP64 C++ recurrence, cross-checked against Python recurrence; RMS<=0.02 and normalized max<=0.10",
+  "original_pytest_passed": 7,
+  "final_precision": {
+    "measured_passed": 272,
+    "unsupported": 16,
+    "padding_equivalence_passed": 28,
+    "collection": "full scan plus 20 changed-input tail retests"
+  }
+}

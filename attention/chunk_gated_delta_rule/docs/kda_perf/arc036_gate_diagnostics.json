@@ -1,0 +1,150 @@
+[
+  {
+    "layout": "BSND",
+    "raw_gate": true,
+    "metrics": [
+      {
+        "passed": false,
+        "relative_rms": 0.0028062670284095515,
+        "normalized_max": 0.132621879503074,
+        "relative_rms_limit": 0.02,
+        "normalized_max_limit": 0.1,
+        "absolute_floor": 2e-05,
+        "max_abs_error": 0.004044327037062409,
+        "rmse": 8.553209646943091e-05,
+        "legacy_allclose_passed": false,
+        "legacy_max_tolerance_ratio": 1.8085727496349868
+      },
+      {
+        "passed": true,
+        "relative_rms": 0.0021565356422946834,
+        "normalized_max": 0.011937531888397175,
+        "relative_rms_limit": 0.02,
+        "normalized_max_limit": 0.1,
+        "absolute_floor": 2e-05,
+        "max_abs_error": 0.0009149839561330975,
+        "rmse": 8.6045743474625e-05,
+        "legacy_allclose_passed": true,
+        "legacy_max_tolerance_ratio": 0.21569358145789236
+      }
+    ],
+    "worst_coordinate": [
+      65475,
+      19,
+      11
+    ],
+    "expected": 0.012220887707129454,
+    "actual": 0.0081787109375
+  },
+  {
+    "layout": "BSND",
+    "raw_gate": false,
+    "metrics": [
+      {
+        "passed": false,
+        "relative_rms": 0.0028064875879394344,
+        "normalized_max": 0.13456485281747904,
+        "relative_rms_limit": 0.02,
+        "normalized_max_limit": 0.1,
+        "absolute_floor": 2e-05,
+        "max_abs_error": 0.004194584723899601,
+        "rmse": 8.55388188942024e-05,
+        "legacy_allclose_passed": false,
+        "legacy_max_tolerance_ratio": 1.835893701644945
+      },
+      {
+        "passed": true,
+        "relative_rms": 0.00217473470447665,
+        "normalized_max": 0.011937531888397175,
+        "relative_rms_limit": 0.02,
+        "normalized_max_limit": 0.1,
+        "absolute_floor": 2e-05,
+        "max_abs_error": 0.0009094183724271954,
+        "rmse": 8.677188581388259e-05,
+        "legacy_allclose_passed": true,
+        "legacy_max_tolerance_ratio": 0.21578488352422295
+      }
+    ],
+    "worst_coordinate": [
+      65475,
+      19,
+      4
+    ],
+    "expected": 0.011700273525888942,
+    "actual": 0.007598876953125
+  },
+  {
+    "layout": "TND",
+    "raw_gate": true,
+    "metrics": [
+      {
+        "passed": false,
+        "relative_rms": 0.0028062670284095515,
+        "normalized_max": 0.132621879503074,
+        "relative_rms_limit": 0.02,
+        "normalized_max_limit": 0.1,
+        "absolute_floor": 2e-05,
+        "max_abs_error": 0.004044327037062409,
+        "rmse": 8.553209646943091e-05,
+        "legacy_allclose_passed": false,
+        "legacy_max_tolerance_ratio": 1.8085727496349868
+      },
+      {
+        "passed": true,
+        "relative_rms": 0.0021565356422946834,
+        "normalized_max": 0.011937531888397175,
+        "relative_rms_limit": 0.02,
+        "normalized_max_limit": 0.1,
+        "absolute_floor": 2e-05,
+        "max_abs_error": 0.0009149839561330975,
+        "rmse": 8.6045743474625e-05,
+        "legacy_allclose_passed": true,
+        "legacy_max_tolerance_ratio": 0.21569358145789236
+      }
+    ],
+    "worst_coordinate": [
+      65475,
+      19,
+      11
+    ],
+    "expected": 0.012220887707129454,
+    "actual": 0.0081787109375
+  },
+  {
+    "layout": "TND",
+    "raw_gate": false,
+    "metrics": [
+      {
+        "passed": false,
+        "relative_rms": 0.0028064875879394344,
+        "normalized_max": 0.13456485281747904,
+        "relative_rms_limit": 0.02,
+        "normalized_max_limit": 0.1,
+        "absolute_floor": 2e-05,
+        "max_abs_error": 0.004194584723899601,
+        "rmse": 8.55388188942024e-05,
+        "legacy_allclose_passed": false,
+        "legacy_max_tolerance_ratio": 1.835893701644945
+      },
+      {
+        "passed": true,
+        "relative_rms": 0.00217473470447665,
+        "normalized_max": 0.011937531888397175,
+        "relative_rms_limit": 0.02,
+        "normalized_max_limit": 0.1,
+        "absolute_floor": 2e-05,
+        "max_abs_error": 0.0009094183724271954,
+        "rmse": 8.677188581388259e-05,
+        "legacy_allclose_passed": true,
+        "legacy_max_tolerance_ratio": 0.21578488352422295
+      }
+    ],
+    "worst_coordinate": [
+      65475,
+      19,
+      4
+    ],
+    "expected": 0.011700273525888942,
+    "actual": 0.007598876953125
+  }
+]

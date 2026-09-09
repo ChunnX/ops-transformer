@@ -1,0 +1,33 @@
+{
+  "mode": "perf",
+  "warmup": 1,
+  "measured": 5,
+  "seed": 20260908,
+  "per_dim_gate_seed": 20260909,
+  "torch": "2.13.0+cpu",
+  "torch_npu": "2.13.0.rc1",
+  "device": "_NPUDeviceProperties(name='Ascend950PR_9589', total_memory=126112MB, cube_core_num=32, vector_core_num=64, uuid=0008d80a-d200-0000-0000-000000000100, L2_cache_size=128MB)",
+  "case_source": "/home/s00940320/improved_cgdr/attention/chunk_gated_delta_rule/docs/rdv_perf/new_streaming/comparison.csv",
+  "case_source_sha256": "10f482906584196153b3c60bb8ff23a65b8105207298c03b85ced2a36bbe2e37",
+  "ASCEND_OPP_PATH": "/usr/local/Ascend/cann-9.2.0/opp",
+  "ASCEND_CUSTOM_OPP_PATH": null,
+  "case_count": 288,
+  "pad_generic_tail": false,
+  "pad_sequence_tails": true,
+  "layout_policy": "TND with host cu_seqlens for 128x128 and B*Nv>32; BSND otherwise",
+  "pid": 2963864,
+  "layout": "auto",
+  "state_v_first": true,
+  "state_dtype": "float32",
+  "use_gate_in_kernel": "has_g and Dk=Dv=128",
+  "gate_mapping": "inverse safe sigmoid, A_log=0, lower_bound=-5; zero gate preactivated",
+  "safe_gate": "Dk=Dv=128",
+  "python_interface": "cann_ops_transformer.ops.chunk_kda_fwd",
+  "extension_package": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/installed/cann_ops_transformer/__init__.py",
+  "required_outputs": [
+    "attention",
+    "final_state",
+    "Aqk",
+    "Akk"
+  ]
+}

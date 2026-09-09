@@ -1,0 +1,15 @@
+{
+  "baseline_manifest_exact_match": true,
+  "performance_precision_inputs_and_layouts_match": true,
+  "kernel_shapes_dtypes_blocks_and_task_order_checked": true,
+  "rdv_rows": 288,
+  "performance_rows": 272,
+  "kernel_samples": 1632,
+  "samples_per_measured_case": 6,
+  "precision_checked_rows": 272,
+  "precision_passed_rows": 272,
+  "precision_failed_rows": 0,
+  "padding_equivalence_checked_rows": 28,
+  "unmeasured_durations_blank": true,
+  "unsupported_precision_not_marked_passed": true
+}

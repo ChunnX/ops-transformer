@@ -1,0 +1,138 @@
+[
+  {
+    "test_name": "ASC-025",
+    "status": "TIMEOUT",
+    "returncode": -9,
+    "timeout_seconds": 20,
+    "elapsed_wall_seconds": 26.0069194259122,
+    "command": [
+      "/usr/bin/python3",
+      "-u",
+      "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/kda_rdv_perf.py",
+      "--output",
+      "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/tail_probes/ASC-025",
+      "--names",
+      "ASC-025"
+    ],
+    "log": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/tail_probes/ASC-025.log"
+  },
+  {
+    "test_name": "ASC-034",
+    "status": "TIMEOUT",
+    "returncode": -9,
+    "timeout_seconds": 20,
+    "elapsed_wall_seconds": 26.007620472926646,
+    "command": [
+      "/usr/bin/python3",
+      "-u",
+      "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/kda_rdv_perf.py",
+      "--output",
+      "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/tail_probes/ASC-034",
+      "--names",
+      "ASC-034"
+    ],
+    "log": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/tail_probes/ASC-034.log"
+  },
+  {
+    "test_name": "ASC-025-FP32",
+    "status": "TIMEOUT",
+    "returncode": -9,
+    "timeout_seconds": 20,
+    "elapsed_wall_seconds": 26.009101093979552,
+    "command": [
+      "/usr/bin/python3",
+      "-u",
+      "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/kda_rdv_perf.py",
+      "--output",
+      "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/tail_probes/ASC-025-FP32",
+      "--names",
+      "ASC-025-FP32"
+    ],
+    "log": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/tail_probes/ASC-025-FP32.log"
+  },
+  {
+    "test_name": "ASC-034-FP32",
+    "status": "TIMEOUT",
+    "returncode": -9,
+    "timeout_seconds": 20,
+    "elapsed_wall_seconds": 26.00846198410727,
+    "command": [
+      "/usr/bin/python3",
+      "-u",
+      "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/kda_rdv_perf.py",
+      "--output",
+      "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/tail_probes/ASC-034-FP32",
+      "--names",
+      "ASC-034-FP32"
+    ],
+    "log": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/tail_probes/ASC-034-FP32.log"
+  },
+  {
+    "test_name": "ASC-025-NC",
+    "status": "TIMEOUT",
+    "returncode": -9,
+    "timeout_seconds": 20,
+    "elapsed_wall_seconds": 26.00986108602956,
+    "command": [
+      "/usr/bin/python3",
+      "-u",
+      "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/kda_rdv_perf.py",
+      "--output",
+      "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/tail_probes/ASC-025-NC",
+      "--names",
+      "ASC-025-NC"
+    ],
+    "log": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/tail_probes/ASC-025-NC.log"
+  },
+  {
+    "test_name": "ASC-034-NC",
+    "status": "TIMEOUT",
+    "returncode": -9,
+    "timeout_seconds": 20,
+    "elapsed_wall_seconds": 26.008544693002477,
+    "command": [
+      "/usr/bin/python3",
+      "-u",
+      "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/kda_rdv_perf.py",
+      "--output",
+      "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/tail_probes/ASC-034-NC",
+      "--names",
+      "ASC-034-NC"
+    ],
+    "log": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/tail_probes/ASC-034-NC.log"
+  },
+  {
+    "test_name": "ASC-025-FP32-NC",
+    "status": "TIMEOUT",
+    "returncode": -9,
+    "timeout_seconds": 20,
+    "elapsed_wall_seconds": 26.009178946958855,
+    "command": [
+      "/usr/bin/python3",
+      "-u",
+      "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/kda_rdv_perf.py",
+      "--output",
+      "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/tail_probes/ASC-025-FP32-NC",
+      "--names",
+      "ASC-025-FP32-NC"
+    ],
+    "log": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/tail_probes/ASC-025-FP32-NC.log"
+  },
+  {
+    "test_name": "ASC-034-FP32-NC",
+    "status": "TIMEOUT",
+    "returncode": -9,
+    "timeout_seconds": 20,
+    "elapsed_wall_seconds": 26.009232114069164,
+    "command": [
+      "/usr/bin/python3",
+      "-u",
+      "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/kda_rdv_perf.py",
+      "--output",
+      "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/tail_probes/ASC-034-FP32-NC",
+      "--names",
+      "ASC-034-FP32-NC"
+    ],
+    "log": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/tail_probes/ASC-034-FP32-NC.log"
+  }
+]

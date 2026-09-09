@@ -1,0 +1,13 @@
+ninja: no work to do.
+[W909 04:12:23.859904934 Module.cpp:234] Warning: AclrtGetDeviceInfo failed to get total global memory, error code is 507899. The possible cause is that the driver version is too old or does not match CANN. Fall back to aclrtGetMemInfo. Please upgrade the driver to the matching version. (function operator())
+Failed to load op 'minimax_sparse_attention_split_kv': '_OpNamespace' 'cann_ops_transformer' object has no attribute 'minimax_sparse_attention_split_kv'
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+Current thread 0x00007f8efa961740 (most recent call first):
+  File "/usr/local/lib/python3.10/dist-packages/torch_npu/npu/utils.py", line 72 in synchronize
+  File "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/kda_rdv_perf.py", line 193 in __call__
+  File "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/kda_rdv_perf.py", line 259 in main
+  File "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/kda_rdv_perf.py", line 316 in <module>

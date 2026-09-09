@@ -1,0 +1,98 @@
+{
+  "date": "2026-09-09",
+  "interface": "cann_ops_transformer.ops.chunk_kda_fwd",
+  "operator": "CANN 9.2.0 built-in ChunkKdaFwd",
+  "cgdr_version": "6f599eb3aa317ac1f737def7b1eaaf51c1551d15",
+  "metric": "msprof main operator Task Duration(us)",
+  "unit": "microseconds",
+  "ratio_definition": "kda_mean_us / cgdr_mean_us; >1 means KDA is slower",
+  "sampling": {
+    "warmup_per_case": 1,
+    "measured_per_case": 5,
+    "cv_ddof": 1
+  },
+  "log_formatting": "Archived build/pytest log copies have trailing whitespace removed; original logs are hashed in sources",
+  "sources": [
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_gated_delta_rule/docs/rdv_perf/new_streaming/comparison.csv",
+      "sha256": "10f482906584196153b3c60bb8ff23a65b8105207298c03b85ced2a36bbe2e37"
+    },
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/full/prof/PROF_000001_20260909040958025_02963864PKCIGMLQ/mindstudio_profiler_output/op_summary_20260909041139.csv",
+      "sha256": "909729327f8d1617920e3574d39111b772c67838bdbc2f3a31c87913cecd7f6e"
+    },
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/full/case_manifest.json",
+      "sha256": "307c2baa566e6aab028422470760d082bdf75ffaca722b613d7224392ba0c1da"
+    },
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/full/results.json",
+      "sha256": "648c7fed27cabbe6ef28d427d05ee3a36c7982e0745a271671720a8cc1e07e6c"
+    },
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/precision/results.json",
+      "sha256": "d2977c631a20e18ede8058a1354f7897c2c957b05f85e6c3ef6453d0aacfd211"
+    },
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/tail_probes/results.json",
+      "sha256": "493b16929275618b423a15a4c89de85af2cd156aa3c056092d373bf926c8426b"
+    },
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/build/pytest_binding.log",
+      "sha256": "8c2b33b6b5d3e94b226c9fa7c37df78cefb549f1a86f2764908882b52d3d8efe"
+    },
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/rdv_perf_20260909_torch_extension/build/cpu_reference.log",
+      "sha256": "b3c63d2d57a092e30f01bb6addf764cb796a3aa35343acc841ecc6ec020fe53c"
+    }
+  ],
+  "scripts": {
+    "attention/chunk_kda_fwd/tests/pytest/kda_merge_precision.py": "ea89a3b73c6b8889688052ac79b4a901ba51f52575c59b23bd1548f27d3d9557",
+    "attention/chunk_kda_fwd/tests/pytest/kda_diagnose_state.py": "3c7330ae419db848a0d6c4023ead07cbd1680b4f44f3e2126946b345bf939d6e",
+    "attention/chunk_kda_fwd/tests/pytest/kda_rdv_perf.py": "a9b92b3df10c49ec06524a7290cced9f3ba9d73696b8abe303068fc1f6db4c4f",
+    "attention/chunk_kda_fwd/tests/pytest/kda_probe_tail.py": "ed22dd6dc903ab9b32af6d11ab4f96bd6d7c66110dc59c3405cef4ae9697b8fd",
+    "attention/chunk_kda_fwd/tests/pytest/kda_analyze_rdv.py": "12b39e523721fa25046f706cab304adb481e03fc17ae70dfdd28ac06e04d6006",
+    "attention/chunk_kda_fwd/tests/pytest/kda_cpu_reference.cpp": "13c8446ae2b39ec7a4aaa2911706ed8525d0a76e294d1cd321b3ff90230a5898"
+  },
+  "comparison_caveats": [
+    "CGDR timings are the historical archived full run, not a same-session retest",
+    "KDA uses independent per-dimension gate; its mathematical operator differs from CGDR",
+    "28 tail cases measured with neutral sequence padding, tracked separately",
+    "raw safe gate activation runs inside KDA for gated 128x128; generic dimensions use preactivated gate",
+    "KDA state is FP32; BF16 CGDR initial-state values were promoted outside the measured operator",
+    "KDA uses TND+host cu_seqlens for 128x128 with B*Nv>32 to avoid nondeterministic dense final-state errors; BSND otherwise",
+    "main-kernel comparison excludes auxiliary device tasks and host overhead",
+    "KDA must also write Aqk/Akk, while CGDR returns attention/finalState only",
+    "KDA API device-task sum includes Transpose and NC Slice, but excludes host time and task gaps",
+    "Precision status is from full CPU FP64 recurrence with CGDR generalization RMS/max criteria"
+  ],
+  "artifacts": {
+    "runtime.json": "8e564f414cecf39635892f64e59f9820743e6dfec9afaeb51f36abb4e100f306",
+    "precision_results.csv": "3b25ec1a11d2177c3add5abfd5b6f0488d73a77bdc50c20b053dc63d3110825e",
+    "group_summary.csv": "205e79ccbcfc1de96ef03d02b17f733c55be9bb554e0e3534fb3712b2cc609e1",
+    "README.md": "b30f46518e620b13ff46b09aa49f5ebabb98eb11e37a22454bc1bec6622f4c01",
+    "precision_provenance.json": "afaf4a2ecaddf60abaf4dacfb8655f5a8096e76e7e6d04a56d604494b67b4fa3",
+    "loaded_libraries.txt": "f70ac66b1d56ac3f9532f3a9e593fe49a2f8d625d275be71e05f05a2457df95d",
+    "state_layout_diagnostics.json": "277e060602d5449f40e8d1b365435cfcafdebecd8035790fa6b8622891bbb79f",
+    "kernel_samples.csv": "29f4c9d41bad784e8a88091d3f17c7bfbd3d61ac9fb815abe37abc64e6d83b13",
+    "environment.json": "ac5c6eebffe2879b31bb737a777495e55cf2d23e093933a4b672b605f00cfd65",
+    "case_performance.csv": "3c89332d7403acd7c00ed7807bbb490b9841adfde4f4d390a39c97c3d08485e9",
+    "state_pregate_diagnostics.json": "8a9155a42a7250dab5f55d8c467298b9fe3f2bf7e04405f39dac7003441f632a",
+    "tail_probes.json": "493b16929275618b423a15a4c89de85af2cd156aa3c056092d373bf926c8426b",
+    "validation.json": "5b024a462ea26c03952c41b1e98c05a4dd10f815854054beb3822fecf2fc24b8",
+    "cpu_reference_crosscheck.log": "867c04f1a2008e4dea52832fb422ead20574f9a3eb58ffbdcb3b1addf5f76ad6",
+    "extension_pytest.log": "19671c77fcb83f1eeeefeff1bed39924c890870866150dddbd55f736e360338f",
+    "summary.json": "495e21893211747fdfeb5dcb3088c0b11a15d7b604aaf0ffc46b42bc8af34a4c",
+    "arc036_gate_diagnostics.json": "a1971cbd1586b254299d54d993be387303e59e30532f648587a1a75d6f3d2b94",
+    "state_diagnostics.json": "a8efe6fbde8d82a79fbb1de795485d64942fe7ee8492c078c3de95c0f4151010",
+    "comparison.csv": "cd4f5f7741327cd04dcc24c9b49644a698092c2b73d386f3e35b3a6f7147b1fc",
+    "diagnostics/ASC-025-NC.log": "386368d6c0b91a80bd1b01b36b19012cde17b265a00df20070eb75bbcb1b3bb6",
+    "diagnostics/ASC-034-NC.log": "2cfbee13ebf4b08a1d0c31af8e8f0fb663a7b5c029ac89c9e28322337593ddb0",
+    "diagnostics/ASC-025-FP32.log": "4fba8a7675f965d923c86c475ef39bf99724db070a69a918290b923aca425252",
+    "diagnostics/ASC-034-FP32-NC.log": "948c7f1244f11245641fa1c0eb3688fd8170ffa7d36cfa07ff00f1b8c55b81fb",
+    "diagnostics/ASC-034.log": "e897368fd8b5afe85c24e0c15c4e3af81af416bdeb031d6f0e799cb7e2eacf75",
+    "diagnostics/ASC-025-FP32-NC.log": "dce0311002360d78d1f61418b61f0b3de37b9ce24c1ddf16e388d5d590a6ce75",
+    "diagnostics/ASC-034-FP32.log": "7e37d905c544aecc1c8aa48cb476c4bd0302b6cd33061a90fe773d121f14bcb5",
+    "diagnostics/ASC-025.log": "36bbaab6a67b564040574d6dd1a5c3c7d95ec3cf5b57bbce14c2232dd19bac24"
+  }
+}

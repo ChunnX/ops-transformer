@@ -115,3 +115,13 @@ python3 attention/chunk_kda_fwd/tests/pytest/check_msopprof.py \
 - `profile_a5_h96_t16k.py`在确定性通过时输出`binary_determinism=PASS`。
 - `check_msopprof.py`输出每个组件的样本数、最小/平均/最大耗时及端到端最大耗时。
 - `output/chunk_kda_fwd_profiles/`为本地性能分析产物，不应提交到代码仓。
+
+## 与 CGDR 的 288 条 RDV 对比
+
+`kda_rdv_perf.py` 通过已安装的 `cann_ops_transformer.ops.chunk_kda_fwd` 调用内置 KDA，
+支持独立性能采集和 CPU FP64 精度验证；`kda_analyze_rdv.py` 校验 msprof 样本顺序、形状和类型，
+再与已归档的 CGDR new_streaming 数据配对。
+
+构建安装、复现命令、输入约束、尾块补齐和布局适配详见
+[RDV 性能报告](../../../chunk_gated_delta_rule/docs/kda_perf/README.md)。
+报告保留全部 288 条记录，不适用的维度不填写时延；补齐用例单独统计，精度通过状态来自实测。
