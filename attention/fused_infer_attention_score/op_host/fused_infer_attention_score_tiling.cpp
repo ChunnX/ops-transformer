@@ -28,6 +28,7 @@
 #include "../../incre_flash_attention/op_host/incre_flash_attention_tiling_impl.h"
 #include "arch35/fused_infer_attention_score_tiling_v4.h"
 #include "arch38/fused_infer_attention_score_tiling_arch38.h"
+#include "fused_infer_attention_score_tiling_cache.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -2508,19 +2509,43 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "platformInfoPtr is null"),
                 return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+
+    // 仅在 A3（DAV_5102 / arch38 路由）启用
+    const bool cacheEnabled = (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_5102) &&
+                              !FusedInferAttentionScoreTilingCache::IsCacheDisabled();
+    std::string cacheKey;
+    const bool cacheKeyValid =
+        cacheEnabled &&
+        FusedInferAttentionScoreTilingCache::BuildKey(context, static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()),
+                                                     cacheKey);
+    if (cacheKeyValid) {
+        FusedInferAttentionScoreTilingCache::TilingResult cachedResult;
+        if (FusedInferAttentionScoreTilingCache::GetInstance().Get(cacheKey, cachedResult) &&
+            (FusedInferAttentionScoreTilingCache::Restore(context, cachedResult) == ge::GRAPH_SUCCESS)) {
+            return ge::GRAPH_SUCCESS;
+        }
+    }
+
+    ge::graphStatus tilingRet = ge::GRAPH_FAILED;
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        return TilingFusedInferAttentionScoreV4(context);
+        tilingRet = TilingFusedInferAttentionScoreV4(context);
     } else if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_5102) {
         OP_CHECK_IF(
             HasNonContiguousCacheInput(context),
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
                                         "Non-contiguous key/value/keyRope cache is not supported by the arch38 route."),
             return ge::GRAPH_FAILED);
-        return TilingFusedInferAttentionScoreArch38(context);
+        tilingRet = TilingFusedInferAttentionScoreArch38(context);
     } else {
-        return TilingFusedInferAttentionScore(context);
+        tilingRet = TilingFusedInferAttentionScore(context);
     }
-    return ge::GRAPH_SUCCESS;
+    if (tilingRet == ge::GRAPH_SUCCESS && cacheKeyValid) {
+        FusedInferAttentionScoreTilingCache::TilingResult newResult;
+        if (FusedInferAttentionScoreTilingCache::Snapshot(context, newResult)) {
+            FusedInferAttentionScoreTilingCache::GetInstance().Add(cacheKey, newResult);
+        }
+    }
+    return tilingRet;
 }
 
 extern "C" {
