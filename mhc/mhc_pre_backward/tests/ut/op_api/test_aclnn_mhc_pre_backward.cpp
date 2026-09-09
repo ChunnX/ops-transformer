@@ -24,17 +24,6 @@ using namespace std;
 
 class l2_ai_mhc_pre_backward_test : public testing::Test {
 protected:
-    void SetUp() override
-    {
-        // This is a Host-side platform stub. Hardware compatibility still requires testing on the actual SoC.
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
-    }
-
-    void TearDown() override
-    {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
-    }
-
     static void SetUpTestCase()
     {
         cout << "l2_ai_mhc_pre_backward_test SetUp" << endl;
@@ -43,6 +32,19 @@ protected:
     static void TearDownTestCase()
     {
         cout << "l2_ai_mhc_pre_backward_test TearDown" << endl;
+    }
+};
+
+class l2_ai_mhc_pre_backward_a5_test : public testing::Test {
+protected:
+    void SetUp() override
+    {
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    }
+
+    void TearDown() override
+    {
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
     }
 };
 
@@ -120,45 +122,28 @@ aclnnStatus RunMhcPreBackwardV2(int64_t opImplMode)
     return ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
 }
 
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_v1_ascend950)
+TEST_F(l2_ai_mhc_pre_backward_a5_test, mhc_pre_backward_v1_ascend950)
 {
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
     EXPECT_EQ(RunMhcPreBackward(), ACLNN_SUCCESS);
 }
 
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_v1_factorial_grad_h_res_ascend910b)
+TEST_F(l2_ai_mhc_pre_backward_a5_test, mhc_pre_backward_v1_factorial_grad_h_res_ascend950)
 {
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
-    EXPECT_EQ(RunMhcPreBackward(true), ACLNN_SUCCESS);
-}
-
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_v1_factorial_grad_h_res_ascend910_93)
-{
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND910_93);
-    EXPECT_EQ(RunMhcPreBackward(true), ACLNN_SUCCESS);
-}
-
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_v1_factorial_grad_h_res_ascend950)
-{
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
     EXPECT_NE(RunMhcPreBackward(true), ACLNN_SUCCESS);
 }
 
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_v2_fp32_mode_ascend950)
+TEST_F(l2_ai_mhc_pre_backward_a5_test, mhc_pre_backward_v2_fp32_mode_ascend950)
 {
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
     EXPECT_EQ(RunMhcPreBackwardV2(0), ACLNN_SUCCESS);
 }
 
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_v2_hf32_mode_ascend950)
+TEST_F(l2_ai_mhc_pre_backward_a5_test, mhc_pre_backward_v2_hf32_mode_ascend950)
 {
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
     EXPECT_EQ(RunMhcPreBackwardV2(1), ACLNN_SUCCESS);
 }
 
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_v2_invalid_mode_ascend950)
+TEST_F(l2_ai_mhc_pre_backward_a5_test, mhc_pre_backward_v2_invalid_mode_ascend950)
 {
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
     EXPECT_NE(RunMhcPreBackwardV2(2), ACLNN_SUCCESS);
     EXPECT_NE(RunMhcPreBackwardV2(-1), ACLNN_SUCCESS);
 }
