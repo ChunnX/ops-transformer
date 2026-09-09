@@ -182,13 +182,11 @@ TEST_F(SparseFlashAttentionGradArch35Tiling, deterministic_sparse_block_size_sup
     }
 }
 
-// S2=16384、blockSize=64 时确定性计算需要 min(1024, 256) * 64 = 16384 行，超过 8192 行上限。
-// 非确定性不受影响：每核恒为 singleN 行。
-TEST_F(SparseFlashAttentionGradArch35Tiling, deterministic_scatter_workspace_rows_exceed_should_fail)
+TEST_F(SparseFlashAttentionGradArch35Tiling, deterministic_large_s2_block_size_64)
 {
     CompileInfo compileInfo;
     auto para = MakeKvMergePara(compileInfo, 64, 16384, 1);
-    ExecuteTestCase(para, ge::GRAPH_FAILED);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, kKeyBsndBf16KvMergeDeter);
 }
 
 TEST_F(SparseFlashAttentionGradArch35Tiling, non_deterministic_large_s2_block_size_64)

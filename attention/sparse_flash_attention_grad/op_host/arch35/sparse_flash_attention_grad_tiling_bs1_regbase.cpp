@@ -29,7 +29,6 @@ constexpr int64_t GM_ALIGN = 512;
 constexpr uint32_t PING_PONG_BUFFER = 2;
 constexpr uint32_t D_SIZE = 512;
 constexpr uint32_t DROPE_SIZE = 64;
-constexpr int64_t MAX_SCATTER_WS_ROWS = 8192;
 
 ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetShapeAttrsInfo()
 {
@@ -155,13 +154,6 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetWorkspaceSize()
             std::min<int64_t>(tmpData.selected_block_count, CeilCommon(tmpData.s2, tmpData.selected_block_size)) *
                 tmpData.selected_block_size :
             static_cast<int64_t>(tmpData.singleN);
-    OP_CHECK_IF(scatterWsRows > MAX_SCATTER_WS_ROWS,
-                OP_LOGE(context_,
-                        "SparseFlashAttentionGrad scatter workspace needs %ld rows (selected_block_count=%u, "
-                        "sparse_block_size=%u, s2=%ld), exceeding the limit %ld.",
-                        scatterWsRows, tmpData.selected_block_count, tmpData.selected_block_size, tmpData.s2,
-                        MAX_SCATTER_WS_ROWS),
-                return ge::GRAPH_FAILED);
     baseParams_->set_scatterWsRows(scatterWsRows);
 
     int64_t mm4WorkspaceLen = scatterWsRows * tmpData.d * B32;
