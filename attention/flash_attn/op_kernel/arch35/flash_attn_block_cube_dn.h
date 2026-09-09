@@ -298,16 +298,14 @@ public:
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
             // Mmad K=D 精确累加; LoadData 搬运宽度按分形粒度对齐(对齐D=原值, D=72→80与Nd2Nz写入组数一致)
             uint32_t ldK = ((constInfo_.dSize + 15) >> 4) << 4;
-            FlashAttnMatmul::MMParam param = {(uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
-                                             constInfo_.dSize, 0, ldK, 0};
+            FlashAttnMatmul::MMParam param = {
+                (uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize, constInfo_.dSize, 0, ldK, 0};
             // UpdateTilingKeyConfig maps actual D <= dBaseSize (D=72 uses 128).
             // DN BMM1 N=actMSize <= mBaseSize <= 128, so small D needs no K/N split.
             if constexpr (dBaseSize > 128) {
-                FlashAttnMatmul::MatmulK<128, false, true>(
-                    kL1Tensor, qL1Tensor, l0aIdx_, l0bIdx_, l0CSubTensor, param);
+                FlashAttnMatmul::MatmulK<128, false, true>(kL1Tensor, qL1Tensor, l0aIdx_, l0bIdx_, l0CSubTensor, param);
             } else {
-                FlashAttnMatmul::MatmulFull<false, true>(
-                    kL1Tensor, qL1Tensor, l0aIdx_, l0bIdx_, l0CSubTensor, param);
+                FlashAttnMatmul::MatmulFull<false, true>(kL1Tensor, qL1Tensor, l0aIdx_, l0bIdx_, l0CSubTensor, param);
             }
             Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
             Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
@@ -383,16 +381,16 @@ public:
                 Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
                 LocalTensor<MM_T> l0CSubTensor =
                     l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
-                FlashAttnMatmul::MMParam param = {(uint32_t)mBaseSize, tileN,
-                                                 (uint32_t)runInfo.actSingleLoopS2Size, 0, 0, tileLdN};
+                FlashAttnMatmul::MMParam param = {
+                    (uint32_t)mBaseSize, tileN, (uint32_t)runInfo.actSingleLoopS2Size, 0, 0, tileLdN};
 
                 uint32_t s2Aligned = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U);
                 uint64_t vL1Offset = n * 128U / 16U * s2Aligned * 16U;
                 LocalTensor<KV_T> vL1TileTensor = vL1Tensor[vL1Offset];
 
                 // DN S2 is 128; the outer loop already splits N into <=128 columns.
-                FlashAttnMatmul::MatmulFull<true, false>(
-                    pL1Tensor, vL1TileTensor, l0aIdx_, l0bIdx_, l0CSubTensor, param);
+                FlashAttnMatmul::MatmulFull<true, false>(pL1Tensor, vL1TileTensor, l0aIdx_, l0bIdx_, l0CSubTensor,
+                                                         param);
                 Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
                 Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
 

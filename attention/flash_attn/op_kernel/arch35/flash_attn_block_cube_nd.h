@@ -307,23 +307,23 @@ public:
             // K 轴取 pad 后宽度(D=72 → 128), L1 pad 区已清零, Mmad 结果数学等价
             // Mmad K=D 精确累加; LoadData 搬运宽度按分形粒度对齐(对齐D=原值, D=72→80与Nd2Nz写入组数一致)
             uint32_t ldK = ((constInfo_.dSize + 15) >> 4) << 4;
-            FlashAttnMatmul::MMParam param = {(uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
-                                             constInfo_.dSize, 0, ldK, 0};
+            FlashAttnMatmul::MMParam param = {
+                (uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size, constInfo_.dSize, 0, ldK, 0};
             // Actual D <= dBaseSize; only the S2=256 template can need an N split here.
             if constexpr (dBaseSize > 128) {
                 if constexpr (s2BaseSize == 256) {
-                    FlashAttnMatmul::MatmulN<128, false, true, L1_KV_LARGE_BUF>(
-                        qL1Tensor, kL1Tensor, l0aIdx_, l0bIdx_, l0CSubTensor, param);
+                    FlashAttnMatmul::MatmulN<128, false, true, L1_KV_LARGE_BUF>(qL1Tensor, kL1Tensor, l0aIdx_, l0bIdx_,
+                                                                                l0CSubTensor, param);
                 } else {
-                    FlashAttnMatmul::MatmulK<128, false, true, L1_KV_LARGE_BUF>(
-                        qL1Tensor, kL1Tensor, l0aIdx_, l0bIdx_, l0CSubTensor, param);
+                    FlashAttnMatmul::MatmulK<128, false, true, L1_KV_LARGE_BUF>(qL1Tensor, kL1Tensor, l0aIdx_, l0bIdx_,
+                                                                                l0CSubTensor, param);
                 }
             } else if (s2BaseSize > 128 && param.singleN > 128) {
-                FlashAttnMatmul::MatmulN<128, false, true, L1_KV_LARGE_BUF>(
-                    qL1Tensor, kL1Tensor, l0aIdx_, l0bIdx_, l0CSubTensor, param);
+                FlashAttnMatmul::MatmulN<128, false, true, L1_KV_LARGE_BUF>(qL1Tensor, kL1Tensor, l0aIdx_, l0bIdx_,
+                                                                            l0CSubTensor, param);
             } else {
-                FlashAttnMatmul::MatmulFull<false, true, L1_KV_LARGE_BUF>(
-                    qL1Tensor, kL1Tensor, l0aIdx_, l0bIdx_, l0CSubTensor, param);
+                FlashAttnMatmul::MatmulFull<false, true, L1_KV_LARGE_BUF>(qL1Tensor, kL1Tensor, l0aIdx_, l0bIdx_,
+                                                                          l0CSubTensor, param);
             }
 
             Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
@@ -401,8 +401,9 @@ public:
                 Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
                 LocalTensor<MM_T> l0CSubTensor =
                     l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
-                FlashAttnMatmul::MMParam param = {(uint32_t)mBaseSize, tileN, (uint32_t)runInfo.actSingleLoopS2Size,
-                                                 (uint32_t)runInfo.actMSize, 0, tileLdN};
+                FlashAttnMatmul::MMParam param = {
+                    (uint32_t)mBaseSize,        tileN, (uint32_t)runInfo.actSingleLoopS2Size,
+                    (uint32_t)runInfo.actMSize, 0,     tileLdN};
 
                 uint32_t s2Aligned = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U);
                 uint64_t vL1Offset = n * 128U / 16U * s2Aligned * 16U;
@@ -410,14 +411,14 @@ public:
 
                 // N is already split by the outer loop and never exceeds dVBaseSize.
                 if constexpr (dVBaseSize > 128 || s2BaseSize == 128) {
-                    FlashAttnMatmul::MatmulFull<false, false, L1_KV_LARGE_BUF>(
-                        pL1Tensor, vL1TileTensor, l0aIdx_, l0bIdx_, l0CSubTensor, param);
+                    FlashAttnMatmul::MatmulFull<false, false, L1_KV_LARGE_BUF>(pL1Tensor, vL1TileTensor, l0aIdx_,
+                                                                               l0bIdx_, l0CSubTensor, param);
                 } else if (param.singleK > 128) {
-                    FlashAttnMatmul::MatmulK<128, false, false, L1_KV_LARGE_BUF>(
-                        pL1Tensor, vL1TileTensor, l0aIdx_, l0bIdx_, l0CSubTensor, param);
+                    FlashAttnMatmul::MatmulK<128, false, false, L1_KV_LARGE_BUF>(pL1Tensor, vL1TileTensor, l0aIdx_,
+                                                                                 l0bIdx_, l0CSubTensor, param);
                 } else {
-                    FlashAttnMatmul::MatmulFull<false, false, L1_KV_LARGE_BUF>(
-                        pL1Tensor, vL1TileTensor, l0aIdx_, l0bIdx_, l0CSubTensor, param);
+                    FlashAttnMatmul::MatmulFull<false, false, L1_KV_LARGE_BUF>(pL1Tensor, vL1TileTensor, l0aIdx_,
+                                                                               l0bIdx_, l0CSubTensor, param);
                 }
                 Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
                 Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
