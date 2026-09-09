@@ -267,6 +267,14 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     ExpertLoopState gmm2State = CreateExpertLoopState(commonConfig_);
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
+    GmmTileSync gmm1TileSync(GmmTileSync::Stage::GMM1, GmmTileSync::Consumer::AIV1);
+    GmmTileSync gmm2TileSync(GmmTileSync::Stage::GMM2, GmmTileSync::Consumer::AIV1);
+#if MEGA_MOE_GMM_HARD_TILE_SYNC
+    gmm1AddrInfo.tileSync = &gmm1TileSync;
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        gmm2AddrInfo.tileSync = &gmm2TileSync;
+    }
+#endif
 
     // MoE GMM1 与 GMM2 沿用同一分核游标，按 tile 顺序持续滚动。
 
@@ -303,6 +311,9 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
         RunGmm2CombineForWaveRange(pendingWaveRange, gmm2State, gmm2AddrInfo, combineBufferConfig, combineRowSequence);
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
     }
+    // Keep both counters across GMM/expert/wave boundaries; drain after the final GMM2.
+    gmm1TileSync.Drain();
+    gmm2TileSync.Drain();
 }
 
 template <TemplateMegaMoeA8W4WaveTypeClass>

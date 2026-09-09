@@ -65,6 +65,8 @@ struct ExpertTokenRange {
 
 using Mc2MoeContext = Mc2Aclnn::Mc2MoeContext;
 
+class GmmTileSync;
+
 struct GMMAddrInfo {
     GM_ADDR aGlobal;
     GM_ADDR bGlobal;
@@ -80,6 +82,7 @@ struct GMMAddrInfo {
     __gm__ int32_t *gmm1TileStatus;
     __gm__ int32_t *sharedExpertGmm2TileCounter;
     uint32_t gmm2CombineLogicalCoreCount = 0U;
+    GmmTileSync *tileSync = nullptr;
 };
 
 // A/ScaleA 以逻辑元素为单位记录相邻行起始地址的跨度。

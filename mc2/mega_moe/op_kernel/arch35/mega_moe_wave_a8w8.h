@@ -435,6 +435,17 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
+    GmmTileSync gmm1TileSync(GmmTileSync::Stage::GMM1, GmmTileSync::Consumer::AIV0);
+    GmmTileSync gmm2TileSync(GmmTileSync::Stage::GMM2, GmmTileSync::Consumer::AIV1);
+#if MEGA_MOE_GMM_HARD_TILE_SYNC
+    if constexpr (TopkWeightsPrefetch) {
+        gmm1AddrInfo.tileSync = &gmm1TileSync;
+    }
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        gmm2AddrInfo.tileSync = &gmm2TileSync;
+    }
+#endif
+
     GMMAddrInfo combineAddrInfo{};
     ExpertLoopState gmm1ExpertState = CreateExpertLoopState(commonConfig_);
     ExpertLoopState gmm2ExpertState = CreateExpertLoopState(commonConfig_);
@@ -564,6 +575,9 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         EndSync<IsGmm1Interleaved>(vecSetSyncCom, gmm1PingPongIdx_);
     }
     gmm1PingPongIdx_ = 0;
+    // Keep both counters across GMM/expert/wave boundaries; drain after the final GMM2.
+    gmm1TileSync.Drain();
+    gmm2TileSync.Drain();
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>

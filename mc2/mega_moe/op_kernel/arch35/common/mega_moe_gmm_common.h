@@ -11,6 +11,7 @@
 #ifndef MEGA_MOE_GMM_COMMON_H
 #define MEGA_MOE_GMM_COMMON_H
 
+#include "mega_moe_gmm_tile_sync.h"
 #include "kernel_operator.h"
 #include "tensor_api/tensor.h"
 #include "mega_moe_constants.h"
