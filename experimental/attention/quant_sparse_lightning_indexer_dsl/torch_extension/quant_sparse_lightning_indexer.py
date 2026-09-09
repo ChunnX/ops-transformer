@@ -11,6 +11,9 @@ import torch
 import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+from .quant_sparse_lightning_indexer_dsl import (
+    quant_sparse_lightning_indexer as _dsl_quant_sparse_lightning_indexer,
+)
 
 
 class QuantSparseLightningIndexerOpBuilder(OpBuilder):
@@ -112,11 +115,30 @@ def quant_sparse_lightning_indexer(
     layout_kv="PA_BBND",
     return_value=False,
 ):
-    """NPU allocation placeholder; no input validation or kernel launch."""
-    output_shape = (q.shape[0], k.shape[2], topk)
-    sparse_indices = torch.empty(output_shape, dtype=torch.int32, device=q.device)
-    sparse_values_shape = output_shape if return_value else (0,)
-    sparse_values = torch.empty(
-        sparse_values_shape, dtype=torch.bfloat16, device=q.device
+    """Run the CANNBotDSL QSLI kernel through the Torch NPU dispatcher."""
+    outputs = _dsl_quant_sparse_lightning_indexer(
+        q,
+        k,
+        w,
+        descale_q,
+        descale_k,
+        candidate_block_indices,
+        candidate_block_length,
+        cu_seqlens_q=cu_seqlens_q,
+        seqused_q=seqused_q,
+        seqused_k=seqused_k,
+        cmp_residual_k=cmp_residual_k,
+        block_table=block_table,
+        output_idx_offset=output_idx_offset,
+        metadata=metadata,
+        topk=topk,
+        quant_mode=quant_mode,
+        candidate_block_size=candidate_block_size,
+        max_seqlen_q=max_seqlen_q,
+        mask_mode=mask_mode,
+        cmp_ratio=cmp_ratio,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+        return_value=return_value,
     )
-    return sparse_indices, sparse_values
+    return outputs["sparse_indices"], outputs["sparse_values"]

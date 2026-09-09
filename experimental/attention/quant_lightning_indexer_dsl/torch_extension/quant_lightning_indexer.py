@@ -11,6 +11,9 @@ import torch
 import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+from .quant_lightning_indexer_dsl import (
+    quant_lightning_indexer as _dsl_quant_lightning_indexer,
+)
 
 
 class QuantLightningIndexerOpBuilder(OpBuilder):
@@ -128,32 +131,33 @@ def quant_lightning_indexer(
     candidate_topk_blocks=-1,
     candidate_block_size=-1,
 ):
-    """NPU allocation placeholder; no input validation or kernel launch."""
-    output_shape = (q.shape[0], k.shape[2], topk)
-    sparse_indices = torch.empty(output_shape, dtype=torch.int32, device=q.device)
-    sparse_values_shape = output_shape if return_value else (0,)
-    sparse_values = torch.empty(
-        sparse_values_shape, dtype=torch.bfloat16, device=q.device
-    )
-    if candidate_topk_blocks > 0:
-        candidate_indices_shape = (
-            q.shape[0],
-            k.shape[2],
-            candidate_topk_blocks,
-        )
-        candidate_length_shape = (q.shape[0], k.shape[2])
-    else:
-        candidate_indices_shape = (0,)
-        candidate_length_shape = (0,)
-    candidate_block_indices = torch.empty(
-        candidate_indices_shape, dtype=torch.int32, device=q.device
-    )
-    candidate_block_length = torch.empty(
-        candidate_length_shape, dtype=torch.int32, device=q.device
+    """Run the CANNBotDSL QLI kernel through the Torch NPU dispatcher."""
+    outputs = _dsl_quant_lightning_indexer(
+        q,
+        k,
+        w,
+        q_descale,
+        k_descale,
+        cu_seqlens_q=cu_seqlens_q,
+        seqused_q=seqused_q,
+        seqused_k=seqused_k,
+        cmp_residual_k=cmp_residual_k,
+        block_table=block_table,
+        metadata=metadata,
+        topk=topk,
+        quant_mode=quant_mode,
+        max_seqlen_q=max_seqlen_q,
+        mask_mode=mask_mode,
+        cmp_ratio=cmp_ratio,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+        return_value=return_value,
+        candidate_topk_blocks=candidate_topk_blocks,
+        candidate_block_size=candidate_block_size,
     )
     return (
-        sparse_indices,
-        sparse_values,
-        candidate_block_indices,
-        candidate_block_length,
+        outputs["sparse_indices"],
+        outputs["sparse_values"],
+        outputs["candidate_block_indices"],
+        outputs["candidate_block_length"],
     )
