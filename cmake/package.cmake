@@ -127,7 +127,7 @@ function(pack_built_in)
       DESTINATION share/info/ops_transformer/script
   )
 
-  if(ASCENDC_OPS)
+  if(ASCENDC_SELECTED_OPS)
   # 打包 cann_ops_transformer whl 文件
   set(WHL_SOURCE_DIR "${CMAKE_SOURCE_DIR}/torch_extension/dist")
   file(GLOB WHL_FILES "${WHL_SOURCE_DIR}/cann_ops_transformer-*.whl")

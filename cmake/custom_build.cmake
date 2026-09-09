@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-if(ASCENDC_OPS)
+if(ASCENDC_SELECTED_OPS)
 if (BUILD_OPEN_PROJECT)
     set(CMAKE_MODULE_PATH
         ${CMAKE_MODULE_PATH}
@@ -1247,7 +1247,7 @@ endif ()
 endif()
 
 if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
-    if(TARGET ops_transformer_native AND NOT ASCENDC_OPS)
+    if(TARGET ops_transformer_native AND NOT ASCENDC_SELECTED_OPS)
         add_cann_third_party(makeself-fetch)
     endif()
     add_custom_target(modify_vendor ALL
