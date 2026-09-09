@@ -12,8 +12,8 @@
  * \file stem_indexer_service_vector.h
  * \brief
  */
-#ifndef stem_indexer_SERVICE_VECTOR_H
-#define stem_indexer_SERVICE_VECTOR_H
+#ifndef STEM_INDEXER_SERVICE_VECTOR_H
+#define STEM_INDEXER_SERVICE_VECTOR_H
 
 #include "kernel_operator.h"
 #include "stem_indexer_common.h"
