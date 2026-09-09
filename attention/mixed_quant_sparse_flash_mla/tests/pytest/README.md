@@ -59,7 +59,53 @@
 2、执行指令：
 
 ``` bash
-bash test_run.sh single
+bash test_run.sh single --pt-dir mqsmla_testcase
+```
+
+`single` 仅生成并保存算子输入，不计算 CPU golden，也不执行 NPU。保存的 `.pt` 文件包含
+`params`、`metadata_input` 和 `op_input`，不包含 `golden_state`、`cpu_output` 或 `cpu_lse`。
+直接运行 `test_mixed_quant_sparse_flash_mla_single.py` 时默认行为相同。
+
+执行保存的输入：
+
+``` bash
+bash test_run.sh batch_exec --mode 0 --pt-dir mqsmla_testcase
+# Graph模式：
+bash test_run.sh batch_exec_graph --mode 0 --pt-dir mqsmla_testcase
+```
+
+执行时默认跳过输出/LSE精度对比和 batch consistency 对比，只检查 NPU 是否正常完成。
+结果表记录 `Executed (accuracy skipped)`，`fulfill_percent` 留空；NPU执行错误仍使pytest失败。
+对于包含 CPU golden 的旧用例，可设置 `MQSMLA_SKIP_ACCURACY=0` 恢复原精度/一致性校验流程。
+
+#### 单用例性能测试
+
+配置 `mixed_quant_sparse_flash_mla_paramset.py` 中的 `ENABLED_PARAMS`。
+如需性能基线对比，可在本目录准备与当前用例顺序一致的 `perf_golden.xlsx`
+（包含 `metadata_duration` 和 `qsmla_duration` 列，单位为微秒）；没有该文件时仅生成性能报告。
+在已配置 CANN、`msprof` 和 Python 测试依赖的环境中执行：
+
+``` bash
+bash perf_run.sh
+```
+
+脚本通过 `msprof` 运行 `test_mixed_quant_sparse_flash_mla_single.py`，设置
+`MQSMLA_INPUTS_ONLY=0`，生成并保存输入后执行 NPU，不计算 CPU golden、不进行精度对比。
+无需预先生成 `.pt` 文件。性能测试固定关闭 batch consistency，保证每个用例仅执行一组
+metadata / attention 算子。默认输出 `res.log`、`result.xlsx` 和 `result_perf.xlsx`；
+可通过 `MQSMLA_RESULT_SAVE_PATH` 修改结果路径，相对路径以本脚本所在目录为准。
+结果表每次运行前清空；全部测试成功且性能报告保存成功后，删除本次处理的 `PROF*` 目录。
+设置 `MQSMLA_KEEP_PROF=1` 可保留原始性能数据；测试失败时自动保留。
+处理程序读取最新的 `PROF*` 目录，并按算子类型和执行顺序匹配 metadata / attention，
+跳过失败用例遗留的单独 metadata 记录。没有成功用例或性能记录数不匹配时明确报错。
+脚本检查pytest的XML报告，因此即使msprof未透传测试失败退出码，脚本仍返回失败。
+当前已安装算子的原始KV稀疏模式要求两个mask均为0；对应参数已设置为0，并将窗口设为-1。
+
+如果已采集性能，仅因缺少基线文件导致报告生成失败，可保留现有 `PROF*` 目录并直接执行，
+无需重新运行 NPU：
+
+``` bash
+python3 process_perf_data.py --test_result_path=result.xlsx
 ```
 
 #### 批量测试
@@ -69,7 +115,7 @@ bash test_run.sh single
 | 命令 | 功能 |
 |------|------|
 | `batch_save` | 从excel读取用例 → golden计算 → 保存pt文件 |
-| `batch_exec` | 读取pt文件 → NPU测试（需先`batch_save`） |
+| `batch_exec` | 读取single/batch_save生成的pt文件 → NPU执行，默认跳过精度对比 |
 | `batch` | 全流程：`batch_save` + `batch_exec`，默认完成后清理pt文件 |
 
 ##### 选项参数
@@ -78,7 +124,7 @@ bash test_run.sh single
 |------|------|--------|---------|
 | `--excel <路径>` | 指定excel文件路径 | `./excel/example.xlsx` | batch_save / batch_exec / batch |
 | `--sheet <名称>` | 指定excel sheet名 | `decode` | batch_save / batch |
-| `--pt-dir <目录>` | 指定pt文件保存/读取目录 | `qsmla_testcase` | batch_save / batch_exec / batch |
+| `--pt-dir <目录>` | 指定pt文件保存/读取目录 | `mqsmla_testcase` | single / batch_save / batch_exec / batch |
 | `--keep-pt` | 执行完成后保留pt文件 | 默认清理 | 仅batch |
 
 ##### 使用示例
