@@ -15,7 +15,7 @@ namespace Sage {
 template <uint32_t DP, bool SMOOTH>
 __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, __ubuf__ float *mean, __ubuf__ float *scales,
                                       __ubuf__ int8_t *out, __ubuf__ half *halfScales, __ubuf__ float *factor,
-                                      uint32_t valid)
+                                      __ubuf__ float *inverseScales, uint32_t valid)
 {
     using namespace AscendC::MicroAPI;
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
@@ -60,15 +60,19 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, __ubuf__ float *mean, _
     Compare<float, CMPMODE::GT>(positive, m, zero, full);
     Select(m, m, one, positive);
     StoreAlign(scales, m, full);
+    // Keep the original scales for dequantization; reuse one reciprocal per token.
+    RegTensor<float> inverse;
+    Div(inverse, one, m, full);
+    StoreAlign(inverseScales, inverse, full);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     static constexpr CastTrait trait{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     for (uint16_t row = 0; row < 64; ++row) {
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(m, scales + row);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(m, inverseScales + row);
 #pragma unroll
         for (uint16_t col = 0; col < DP; col += 64) {
             RegTensor<int32_t> packed;
             LoadAlign(a, x + row * DP + col);
-            Div(a, a, m, full);
+            Mul(a, a, m, full);
             Cast<int32_t, float, trait>(packed, a, full);
             StoreAlign<int8_t, StoreDist::DIST_PACK4_B32>(out + row * DP + col, (RegTensor<int8_t> &)packed, full);
         }
@@ -76,19 +80,20 @@ __simd_vf__ inline void QuantRowsImpl(__ubuf__ float *x, __ubuf__ float *mean, _
     PackFixedScaleBlock(scales, halfScales, factor, valid);
 }
 __aicore__ inline void QuantRowsVF(__ubuf__ float *x, __ubuf__ float *mean, __ubuf__ float *scales,
-                                   __ubuf__ int8_t *out, __ubuf__ half *halfScales, __ubuf__ float *factor, uint32_t dp,
+                                   __ubuf__ int8_t *out, __ubuf__ half *halfScales, __ubuf__ float *factor,
+                                   __ubuf__ float *inverseScales, uint32_t dp,
                                    uint32_t smooth, uint32_t valid)
 {
     if (dp == 128) {
         if (smooth)
-            QuantRowsImpl<128, true>(x, mean, scales, out, halfScales, factor, valid);
+            QuantRowsImpl<128, true>(x, mean, scales, out, halfScales, factor, inverseScales, valid);
         else
-            QuantRowsImpl<128, false>(x, mean, scales, out, halfScales, factor, valid);
+            QuantRowsImpl<128, false>(x, mean, scales, out, halfScales, factor, inverseScales, valid);
     } else {
         if (smooth)
-            QuantRowsImpl<64, true>(x, mean, scales, out, halfScales, factor, valid);
+            QuantRowsImpl<64, true>(x, mean, scales, out, halfScales, factor, inverseScales, valid);
         else
-            QuantRowsImpl<64, false>(x, mean, scales, out, halfScales, factor, valid);
+            QuantRowsImpl<64, false>(x, mean, scales, out, halfScales, factor, inverseScales, valid);
     }
 }
 template <bool PERMUTE_V = false, bool SMOOTH = false>
@@ -100,8 +105,11 @@ __simd_vf__ inline void QuantVRowsVF(__ubuf__ float *x, __ubuf__ float *scales, 
     auto full = CreateMask<float, MaskPattern::ALL>();
     static constexpr CastTrait trait{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     for (uint16_t col = 0; col < dp; col += 64) {
-        RegTensor<float> scale, a, mu;
+        RegTensor<float> scale, a, mu, one;
         LoadAlign(scale, scales + col);
+        Duplicate(one, 1.0f);
+        // Each channel reciprocal is shared by all 64 input rows.
+        Div(scale, one, scale, full);
         if constexpr (SMOOTH)
             LoadAlign(mu, mean + col);
         if constexpr (PERMUTE_V) {
@@ -117,8 +125,8 @@ __simd_vf__ inline void QuantVRowsVF(__ubuf__ float *x, __ubuf__ float *scales, 
                         Sub(a0, a0, mu, full);
                         Sub(a1, a1, mu, full);
                     }
-                    Div(a0, a0, scale, full);
-                    Div(a1, a1, scale, full);
+                    Mul(a0, a0, scale, full);
+                    Mul(a1, a1, scale, full);
                     Cast<float8_e4m3_t, float, trait>(p0, a0, full);
                     Cast<float8_e4m3_t, float, trait>(p1, a1, full);
                     StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + (group + row * 2) * dp + col, p0, full);
@@ -132,7 +140,7 @@ __simd_vf__ inline void QuantVRowsVF(__ubuf__ float *x, __ubuf__ float *scales, 
                 LoadAlign(a, x + row * dp + col);
                 if constexpr (SMOOTH)
                     Sub(a, a, mu, full);
-                Div(a, a, scale, full);
+                Mul(a, a, scale, full);
                 Cast<float8_e4m3_t, float, trait>(packed, a, full);
                 StoreAlign<float8_e4m3_t, StoreDist::DIST_PACK4_B32>(out + row * dp + col, packed, full);
             }
@@ -172,6 +180,8 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
     constexpr uint32_t QK_OUTPUT = 65536, V_OUTPUT = 73728;
     constexpr uint32_t MEAN = 81920, V_SCALE = 82432, RAW_SCALE = 82944, HALF_SCALE = 83200;
     constexpr uint32_t V_MEAN = 83456;
+    constexpr uint32_t INVERSE_SCALE = V_MEAN + 512;
+    static_assert(INVERSE_SCALE + 64 * sizeof(float) <= SLOT_BYTES, "inverse scale exceeds slot");
     static_assert(V_MEAN + 512 <= SLOT_BYTES, "quant slot overflow");
     static_assert(2 * SLOT_BYTES + 512 <= 248 * 1024, "quant pipeline exceeds UB");
     auto factors = r.ubBuf.GetBufferByByte<float>(2 * SLOT_BYTES);
@@ -232,6 +242,7 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
         auto fp8 = r.ubBuf.GetBufferByByte<float8_e4m3_t>(base + V_OUTPUT);
         auto scales = r.ubBuf.GetBufferByByte<float>(base + RAW_SCALE);
         auto halfScales = r.ubBuf.GetBufferByByte<half>(base + HALF_SCALE);
+        auto inverseScales = r.ubBuf.GetBufferByByte<float>(base + INVERSE_SCALE);
         if (info.valid)
             Cast(x, input, RoundMode::CAST_NONE, 64 * p.dp);
         else
@@ -240,7 +251,8 @@ __aicore__ void QuantBatch(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mean, GM_ADD
         QuantRowsVF((__ubuf__ float *)x.GetPhyAddr(), (__ubuf__ float *)mu.GetPhyAddr(),
                     (__ubuf__ float *)scales.GetPhyAddr(), (__ubuf__ int8_t *)out.GetPhyAddr(),
                     (__ubuf__ half *)halfScales.GetPhyAddr(), (__ubuf__ float *)factors[info.isq ? 0 : 64].GetPhyAddr(),
-                    p.dp, !info.isq && p.smoothK && info.valid, info.valid ? 64 : 0);
+                    (__ubuf__ float *)inverseScales.GetPhyAddr(), p.dp, !info.isq && p.smoothK && info.valid,
+                    info.valid ? 64 : 0);
         if (!info.isq) {
             PipeBarrier<PIPE_V>();
             if (info.valid)

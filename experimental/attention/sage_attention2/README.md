@@ -19,6 +19,8 @@
 2. **Quant**：按 token 将 Q/K 量化为 INT8，将 V 量化为 E4M3 FP8，生成吸收 `sm_scale` 的固定平衡 FP16 scale。
 3. **Core**：INT8 QK、online softmax、FP8 PV 与 FP32 O 更新流水执行，最终恢复 V scale 和可选 V 均值。
 
+连续长序列的 Stats 使用两个 128 行 K/V 输入槽，预取下一批输入与当前批计算重叠。V 的绝对值最大值直接在 FP16/BF16 中归约，只将最终通道最大值转成 FP32；K 均值保留原有分片和每通道 FP32 累加顺序。
+
 Stats 内部分片归约和 Stats→Quant 使用 `SyncAll<true>()` 同步所有 AIV；Quant→Core 使用 `SyncAll<false>()` 同步所有 AIC/AIV，确保量化数据写入 GM 后才开始 Attention。预处理按 `2 * cores` 分配 AIV 任务，空闲核也参与屏障。Host 使用 `SetScheduleMode(1)` 的 batch 调度，保证全核同步所需的同时驻留。
 
 dtype 和 wide 通过 `ASCENDC_TPL_ARGS_DECL` 声明为模板参数，Host 用 `GET_TPL_TILING_KEY(input_dtype, wide)` 选择入口。FP16/BF16 与普通/wide 共四种模板组合，tiling key 分别为 1/27/257/283（dtype 占低 8 位，wide 占第 8 位）。每次调用仍只启动一个融合 kernel。`WIDE` 同时传给 Quant 的 V 排列和 Attention 的 N256/N512 路径，融合设备代码不再按 dtype 或 shape 执行这两处分发；公共 `attention.h` 只提供 `Attention<T, WIDE>`。
@@ -26,6 +28,8 @@ dtype 和 wide 通过 `ASCENDC_TPL_ARGS_DECL` 声明为模板参数，Host 用 `
 中间结果仅保存在算子 workspace：K/V 均值、V scale、Q8/K8/V8、FP16 Q/K scale 和 Stats 分片归约缓冲。各区域按 512 字节对齐，tiling 检查大小溢出并加上 CANN 系统 workspace 前缀；每次调用独立分配，无跨调用全局状态。ACLNN 只注册和启动一个融合算子，接口签名不变。
 
 QK 在 Cube 中累加为 INT32，经固定 `2^-11` DEQF16 转为 FP16，再乘预处理的 Q/K scale；score 与 max 使用 FP16，ExpSub 输出 FP32。每个块的 max 在 FP16 中减去 `FP16(ln(448))`，与旧的平移后 max 取最大值；概率、online alpha 和 LSE 共用这一状态，因此省去概率逐元素乘 448，LSE 使用 `shifted_max + log(denom)`。V 的 FP8 缩放为 448，PV、持续累加的 O 和 softmax 分母全部使用 FP32，除法采用默认 AscendC Div。
+
+连续输入的批量量化路径按 64 行处理：Q/K 预先计算每个 token 的 FP32 scale 倒数并保存在独立 UB 区域，V 预先计算每个通道的 FP32 scale 倒数，随后通过乘法完成归一化。供 Attention 使用的原始 scale 保持不变；倒数乘法与直接除法在量化舍入边界处可能存在差异。
 
 通用路径采用 M128/N256 分块、四个 score 槽和两个 P/PV 共享槽。D padding 为 128、Sq 为 128 的倍数且 Sk 为 512 的倍数并不少于 4096 时，使用 N512 路径：两个 N256 Cube 片段共享一次 softmax/O 更新，流水跨 query 连续执行。O 常驻 UB，P 经 UB→L1 交给 Cube，QK/PV 经 L0C→UB 交给 Vector。
 
@@ -146,6 +150,22 @@ SAGE_PROFILE_ONLY=1 msprof --output=build/performance_msprof/P-01 \
 ```
 
 `benchmark_aclnn` 参数依次为 `SEQ BATCH KV_HEADS BF16 CAUSAL WARMUP REPEATS OUTPUT_JSON`。按表中配置调整参数即可采集其他用例。统计时分别按执行顺序提取 SageAttention2 和 FIA task，排除各自前 2 次预热后，对剩余 5 次 kernel duration 取中位数。
+
+### Stats 预处理优化后的接口复测
+
+2026-09-09，在 scale 倒数复用基础上加入 Stats 的 16 位最大值归约和双缓冲后，复测 P-01～P-07。所有用例 smooth K 开启、smooth V 关闭。PyTorch 使用公开 API 外的 NPU event；独立 ACLNN 使用 ACL device event，输出/workspace 预分配、GetWorkspaceSize 在计时外。每例、每实现预热 20 次、采样 50 次，取中位数。以下是接口计时，与前表的历史 msprof kernel 计时分别列示。
+
+| 用例 | PyTorch Sage ms | PyTorch FIA ms | 加速比 | ACLNN Sage ms | ACLNN FIA ms | 加速比 |
+|---|---:|---:|---:|---:|---:|---:|
+| P-01 | 0.6766 | 1.0050 | 1.485× | 0.6493 | 1.0241 | 1.577× |
+| P-02 | 2.4217 | 5.8448 | 2.414× | 2.3880 | 6.0154 | 2.519× |
+| P-03 | 1.4423 | 2.1258 | 1.474× | 1.3981 | 2.1098 | 1.509× |
+| P-04 | 5.8196 | 11.4924 | 1.975× | 5.8012 | 11.8270 | 2.039× |
+| P-05 | 0.5827 | 0.9960 | 1.709× | 0.5256 | 0.9487 | 1.805× |
+| P-06 | 0.6914 | 0.9388 | 1.358× | 0.6517 | 0.9866 | 1.514× |
+| P-07 | 10.8357 | 28.8634 | 2.664× | 10.7714 | 28.4442 | 2.641× |
+
+P-01、P-03、P-06 仍未满足两条接口均 ≥1.6× 的性能门禁。正式 OPP 的两轮 msprof op A/B 对照中，这三项 kernel 耗时分别下降约 2.30%、0.67%、1.16%；独立 Stats 的提速不能直接作为完整算子加速比。全量回归 641 项通过，额外 48 组零、次正规数、有限数值、padding/stride 输入的 K mean 和 V scale 与优化前逐位一致。
 
 ## 目录说明
 
