@@ -9,6 +9,8 @@
 import sys
 import types
 
+import torch
+
 from .mixed_quant_sparse_flash_mla import (
     mixed_quant_sparse_flash_mla,
     mixed_quant_sparse_flash_mla_metadata,
@@ -23,7 +25,7 @@ if ds41 is None:
     ds41.__package__ = parent_pkg
     sys.modules[module_name] = ds41
 
-ds41.mixed_quant_sparse_flash_mla = mixed_quant_sparse_flash_mla
-ds41.mixed_quant_sparse_flash_mla_metadata = mixed_quant_sparse_flash_mla_metadata
+ds41.mixed_quant_sparse_flash_mla = torch.ops.cann_ops_transformer.ds41.mixed_quant_sparse_flash_mla
+ds41.mixed_quant_sparse_flash_mla_metadata = torch.ops.cann_ops_transformer.ds41.mixed_quant_sparse_flash_mla_metadata
 
 __all__ = ["ds41"]

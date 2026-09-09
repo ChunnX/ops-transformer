@@ -7,9 +7,4 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 
 
-"""No GE converter is registered for the allocation-only DSL placeholder.
-
-The package collector overlays experimental operators onto attention operators
-with the same name. Keep this module to replace the legacy ACLNN converter,
-whose schema and metadata operator do not match this interface.
-"""
+"""No GE converter is registered for the ds41 DSL operators."""

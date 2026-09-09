@@ -14,24 +14,24 @@ import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
-MQSMLA_METADATA_OP_NAME = "mixed_quant_sparse_flash_mla_metadata"
+MQSMLA_METADATA_OP_NAME = "ds41.mixed_quant_sparse_flash_mla_metadata"
 
 
 class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
     def __init__(self):
         super(MixedQuantSparseFlashMlaOpBuilder, self).__init__(
-            "mixed_quant_sparse_flash_mla", category="attention"
+            "ds41.mixed_quant_sparse_flash_mla", category="attention"
         )
 
     def sources(self):
-        """Allocation-only Python placeholder; DSL integration is pending."""
+        """Python DSL implementation; no C++ extension is compiled."""
         return []
 
     def schema(self):
         """PyTorch operator signatures."""
         return [
             (
-                'mixed_quant_sparse_flash_mla_metadata(Tensor win_topk_length, '
+                'ds41.mixed_quant_sparse_flash_mla_metadata(Tensor win_topk_length, '
                 'Tensor cmp_topk_length, '
                 '*, '
                 'Tensor? cu_seqlens_q=None, '
@@ -52,7 +52,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                 'bool has_cmp_kv=True) -> Tensor'
             ),
             (
-                'mixed_quant_sparse_flash_mla(Tensor q, '
+                'ds41.mixed_quant_sparse_flash_mla(Tensor q, '
                 '*, '
                 'Tensor? win_kv=None, '
                 'Tensor? cmp_kv=None, '
@@ -101,7 +101,9 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
             has_win_kv: bool = True,
             has_cmp_kv: bool = True,
         ):
-            blocks = int(torch.npu.get_device_properties().cube_core_num)
+            device = win_topk_length.device
+            target = None if device.type == "meta" else device
+            blocks = int(torch.npu.get_device_properties(target).cube_core_num)
             return torch.empty((2 * blocks,), dtype=torch.int32, device="meta")
 
         @impl(get_as_library(), self.name, "Meta")
@@ -167,9 +169,29 @@ def mixed_quant_sparse_flash_mla_metadata(
     has_win_kv: bool = True,
     has_cmp_kv: bool = True,
 ):
-    """NPU allocation placeholder; no input validation or kernel launch."""
-    blocks = int(torch.npu.get_device_properties().cube_core_num)
-    return torch.empty((2 * blocks,), dtype=torch.int32, device="npu")
+    """Generate the core task table through the bundled DSL host interface."""
+    from .mqsmla import mixed_quant_sparse_flash_mla_metadata as dsl_metadata
+
+    return dsl_metadata(
+        win_topk_length,
+        cmp_topk_length,
+        cu_seqlens_q=cu_seqlens_q,
+        seqused_q=seqused_q,
+        seqused_win_kv=seqused_win_kv,
+        seqused_cmp_kv=seqused_cmp_kv,
+        batch_size=batch_size,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_win_kv=max_seqlen_win_kv,
+        max_seqlen_cmp_kv=max_seqlen_cmp_kv,
+        num_heads_q=num_heads_q,
+        num_heads_kv=num_heads_kv,
+        head_dim=head_dim,
+        quant_mode=quant_mode,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+        has_win_kv=has_win_kv,
+        has_cmp_kv=has_cmp_kv,
+    )
 
 
 @torch.library.register_kernel("cann_ops_transformer::" + MQSMLA_METADATA_OP_NAME, None)
@@ -243,7 +265,8 @@ def mixed_quant_sparse_flash_mla(
     layout_kv="PA_BBND",
     return_softmax_lse=False,
 ):
-    """NPU allocation placeholder; no input validation or kernel launch."""
+    """Allocate outputs and pass the original inputs to the bundled DSL."""
+    from .mqsmla import mixed_quant_sparse_flash_mla as dsl_attention
     attn_out = torch.empty(q.shape, dtype=torch.bfloat16, device=q.device)
     if return_softmax_lse:
         n2 = win_kv.shape[2]
@@ -254,4 +277,28 @@ def mixed_quant_sparse_flash_mla(
     else:
         lse_shape = (0,)
     softmax_lse = torch.empty(lse_shape, dtype=torch.float32, device=q.device)
+    dsl_attention(
+        q,
+        win_kv=win_kv,
+        cmp_kv=cmp_kv,
+        win_sparse_indices=win_sparse_indices,
+        cmp_sparse_indices=cmp_sparse_indices,
+        win_block_table=win_block_table,
+        cmp_block_table=cmp_block_table,
+        cu_seqlens_q=cu_seqlens_q,
+        seqused_q=seqused_q,
+        seqused_win_kv=seqused_win_kv,
+        seqused_cmp_kv=seqused_cmp_kv,
+        win_topk_length=win_topk_length,
+        cmp_topk_length=cmp_topk_length,
+        sinks=sinks,
+        metadata=metadata,
+        quant_mode=quant_mode,
+        softmax_scale=softmax_scale,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+        return_softmax_lse=return_softmax_lse,
+        out=attn_out,
+        lse=softmax_lse,
+    )
     return attn_out, softmax_lse
