@@ -47,6 +47,7 @@ option(ENABLE_OOM                 "Enable kernel oom"               OFF)
 option(ENABLE_MSSANITIZER         "Enable mssanitizer mode"         OFF)
 option(ENABLE_DUMP_CCE            "Enable dump_cce mode"            OFF)
 option(UT_INFERSHAPE_FLAG         "Enable infershape ut"            OFF)
+option(ASCENDC_DEBUG              "Enable AscendC/Hcomm kernel debug logs" OFF)
 
 set(ASCEND_COMPUTE_UNIT           "ascend910b"           CACHE   STRING   "soc that need to be compiled")
 set(ASCEND_OP_NAME                "ALL"                           CACHE   STRING   "operators that need to be compiled")
@@ -60,6 +61,20 @@ set(ASCEND_ALL_MODULE_NAME        "mc2;attention;moe;ffn;mhc;posembedding;gmm;ma
 set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 ascend350 mc62 kirinx90 kirin9030)
 set(ARCH_DIRECTORY_LIST arch20 arch22 arch22 arch35 arch35 arch38 arch22 arch22)
 set(BISHENG_FLAGS "" CACHE STRING "bisheng compiler flags")
+
+# AscendC kernels are compiled by the generated ascendc build scripts rather
+# than as ordinary CMake ASC targets. Forward the debug definition through the
+# compile-options channel consumed by those scripts.
+if(ASCENDC_DEBUG)
+    if(OPS_COMPILE_OPTIONS)
+        list(APPEND OPS_COMPILE_OPTIONS "-DASCENDC_DEBUG")
+    else()
+        set(OPS_COMPILE_OPTIONS "-DASCENDC_DEBUG")
+    endif()
+    set(OPS_COMPILE_OPTIONS "${OPS_COMPILE_OPTIONS}" CACHE STRING
+        "Additional AscendC kernel compile options" FORCE)
+endif()
+
 set(ENABLE_AICPU_KERNEL FALSE CACHE BOOL "Enable AICPU Kernel")
 set(PACKAGE_TYPE "run" CACHE STRING "package type: run/rpm/deb/all")
 set_property(CACHE PACKAGE_TYPE PROPERTY STRINGS run rpm deb all)
