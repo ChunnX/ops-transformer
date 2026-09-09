@@ -54,7 +54,6 @@ constexpr uint32_t METADATA_CHUNK_BUFFER_SIZE = METADATA_CHUNK_TOKEN_NUM * METAD
 constexpr uint32_t REMOTE_RELAY_INFO_FIELD_NUM = 4U;
 constexpr uint32_t REMOTE_RELAY_INFO_SIZE = REMOTE_RELAY_INFO_FIELD_NUM * sizeof(uint64_t);
 constexpr uint64_t INVALID_TOKEN_INDEX = 0xFFFFFFFFFFFFFFFFULL;
-constexpr uint64_t URMA_RESERVED_WORKSPACE_SIZE = 64ULL * 1024ULL * 1024ULL;
 static constexpr AscendC::UrmaWqeEntry REMOTE_DATA_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_ORDERED_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_FLAG_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .inlineEn = 0};
@@ -87,8 +86,7 @@ public:
 
 private:
     __aicore__ inline void ReadTokenMetaData(ReadTokenMetaDataStruct &metaDataStruct, uint64_t yOffset);
-    __aicore__ inline void ReadTokenMetaDataFromLocal(ReadTokenMetaDataStruct &metaDataStruct, uint32_t localOffset,
-                                                      uint64_t yOffset);
+    __aicore__ inline void ReadTokenMetaDataFromLocal(ReadTokenMetaDataStruct &metaDataStruct, uint32_t localOffset);
     __aicore__ inline GM_ADDR GetWindowAddr(uint32_t curAttenWorkRank);
     __aicore__ inline uint64_t GetUrmaCommHandle(uint32_t dstRank);
     __aicore__ inline void HcommInit();
@@ -103,6 +101,7 @@ private:
     __aicore__ inline void BuildRemoteRelayLists();
     __aicore__ inline void StoreRemoteRelayInfo(uint64_t tokenIndex, const RemoteRelayInfo &relayInfo);
     __aicore__ inline void LoadRemoteRelayInfo(uint64_t tokenIndex, RemoteRelayInfo &relayInfo);
+    __aicore__ inline void CheckHcommRet(int32_t ret);
     __aicore__ inline void CommitBatch(HcommBatchHandle &batchHandle);
 
     TPipe *tpipe_{nullptr};
@@ -174,8 +173,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     worldSize_ = tilingData->ffnToAttentionV2Info.worldSize;
     maxTokenNum_ = tilingData->ffnToAttentionV2Info.maxTokenNum;
     urmaWorkspaceOffset_ = tilingData->ffnToAttentionV2Info.urmaWorkspaceOffset;
-    ascendc_assert(workspaceGM != nullptr, "workspace address must not be null");
-
     ascendc_assert(aivNum_ > 0U, "aivNum must be greater than zero");
 
     inputDataAddr_ = x;
@@ -190,23 +187,15 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     }
 
     int64_t actualTokenNumValue = actualTokenNumGMTensor_.GetValue(0);
-    ascendc_assert(actualTokenNumValue >= 0, "actualTokenNum must be non-negative, actualTokenNum=%ld",
-                   actualTokenNumValue);
+    ascendc_assert(actualTokenNumValue >= 0 && static_cast<uint64_t>(actualTokenNumValue) <= maxTokenNum_,
+                   "actualTokenNum out of range, actualTokenNum=%ld, maxTokenNum=%lu", actualTokenNumValue,
+                   maxTokenNum_);
     actualTokenNum_ = static_cast<uint64_t>(actualTokenNumValue);
-    ascendc_assert(actualTokenNum_ <= maxTokenNum_,
-                   "actualTokenNum exceeds x dim0, actualTokenNum=%lu, maxTokenNum=%lu", actualTokenNum_, maxTokenNum_);
     hSize_ = static_cast<uint64_t>(axisH_) * sizeof(xType);
     ascendc_assert(hSize_ > 0U && hSize_ <= URMA_WQE_MAX_DATA_SIZE && hSize_ % URMA_FLAG_SLOT_SIZE == 0U,
                    "direct URMA source requires a non-zero 32B-aligned token size within the WQE limit, hSize=%lu",
                    hSize_);
     dataWorkspaceStride_ = Ceil(hSize_, static_cast<uint64_t>(URMA_FLAG_SLOT_SIZE)) * URMA_FLAG_SLOT_SIZE;
-    const uint64_t rankRelayListWorkspaceSize = static_cast<uint64_t>(worldSize_) * 2U * sizeof(uint64_t);
-    ascendc_assert(rankRelayListWorkspaceSize <= URMA_RESERVED_WORKSPACE_SIZE,
-                   "rank relay lists exceed reserved workspace, listSize=%lu, reservedSize=%lu",
-                   rankRelayListWorkspaceSize, URMA_RESERVED_WORKSPACE_SIZE);
-    ascendc_assert(maxTokenNum_ <= (URMA_RESERVED_WORKSPACE_SIZE - rankRelayListWorkspaceSize) / REMOTE_RELAY_INFO_SIZE,
-                   "relay info exceeds reserved workspace, maxTokenNum=%lu, relayInfoSize=%u, reservedSize=%lu",
-                   maxTokenNum_, REMOTE_RELAY_INFO_SIZE, URMA_RESERVED_WORKSPACE_SIZE);
     localFlagAddr_ = workspaceGM + urmaWorkspaceOffset_ + maxTokenNum_ * dataWorkspaceStride_ +
                      static_cast<uint64_t>(aivId_) * URMA_FLAG_SLOT_SIZE;
     GM_ADDR remoteRelayInfoAddr = workspaceGM + urmaWorkspaceOffset_ + maxTokenNum_ * dataWorkspaceStride_ +
@@ -278,15 +267,9 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::R
     metaDataStruct.curAttenWorkRank = metaDataStruct.curAttenWorkIds;
 
     if constexpr (isInputRankTable) {
-        ascendc_assert(metaDataStruct.curAttenWorkIds < axisA_,
-                       "sessionId exceeds attnRankTable, sessionId=%u, attnRankNum=%u, yOffset=%lu",
-                       metaDataStruct.curAttenWorkIds, axisA_, yOffset);
         int32_t curAttenWorkRank = attnRankTableGMTensor_.GetValue(metaDataStruct.curAttenWorkIds);
         metaDataStruct.curAttenWorkRank = static_cast<uint32_t>(curAttenWorkRank);
     }
-    ascendc_assert(metaDataStruct.curAttenWorkRank < worldSize_,
-                   "attention rank exceeds worldSize, rank=%u, worldSize=%u, yOffset=%lu",
-                   metaDataStruct.curAttenWorkRank, worldSize_, yOffset);
 
     int32_t curMicroBatchId = microBatchIdsGMTensor_.GetValue(yOffset);
     metaDataStruct.curMicroBatchIds = static_cast<uint32_t>(curMicroBatchId);
@@ -300,22 +283,16 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::R
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::ReadTokenMetaDataFromLocal(
-    ReadTokenMetaDataStruct &metaDataStruct, uint32_t localOffset, uint64_t yOffset)
+    ReadTokenMetaDataStruct &metaDataStruct, uint32_t localOffset)
 {
     int32_t curAttenWorkId = metadataTensor_.GetValue(localOffset);
     metaDataStruct.curAttenWorkIds = static_cast<uint32_t>(curAttenWorkId);
     metaDataStruct.curAttenWorkRank = metaDataStruct.curAttenWorkIds;
 
     if constexpr (isInputRankTable) {
-        ascendc_assert(metaDataStruct.curAttenWorkIds < axisA_,
-                       "sessionId exceeds attnRankTable, sessionId=%u, attnRankNum=%u, yOffset=%lu",
-                       metaDataStruct.curAttenWorkIds, axisA_, yOffset);
         int32_t curAttenWorkRank = attnRankTableGMTensor_.GetValue(metaDataStruct.curAttenWorkIds);
         metaDataStruct.curAttenWorkRank = static_cast<uint32_t>(curAttenWorkRank);
     }
-    ascendc_assert(metaDataStruct.curAttenWorkRank < worldSize_,
-                   "attention rank exceeds worldSize, rank=%u, worldSize=%u, yOffset=%lu",
-                   metaDataStruct.curAttenWorkRank, worldSize_, yOffset);
 
     int32_t curMicroBatchId = metadataTensor_.GetValue(METADATA_CHUNK_TOKEN_NUM + localOffset);
     metaDataStruct.curMicroBatchIds = static_cast<uint32_t>(curMicroBatchId);
@@ -357,8 +334,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::A
     GM_ADDR sourceDataAddr = inputDataAddr_ + relayInfo.sourceTokenIndex * hSize_;
     int32_t ret = hcomm_.WriteNbi<REMOTE_DATA_WQE_CONFIG>(batchHandle, remoteWindowAddr + relayInfo.remoteDataOffset,
                                                           sourceDataAddr, static_cast<uint32_t>(hSize_));
-    ascendc_assert(ret == 0, "batch data WriteNbi failed, ret=%d, rankId=%u, dstRank=%u, tokenIndex=%lu", ret, rankId_,
-                   dstRank, relayInfo.sourceTokenIndex);
+    CheckHcommRet(ret);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -375,8 +351,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::A
         ret = hcomm_.WriteNbi<REMOTE_FLAG_WQE_CONFIG>(batchHandle, remoteWindowAddr + relayInfo.remoteFlagOffset,
                                                       localFlagAddr_, static_cast<uint32_t>(sizeof(int32_t)));
     }
-    ascendc_assert(ret == 0, "batch flag WriteNbi failed, ret=%d, rankId=%u, dstRank=%u, tokenIndex=%lu", ret, rankId_,
-                   dstRank, relayInfo.sourceTokenIndex);
+    CheckHcommRet(ret);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -430,7 +405,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
         for (uint32_t localOffset = 0U; localOffset < tokenNum; ++localOffset) {
             const uint64_t yOffset = tokenStart + localOffset;
             ReadTokenMetaDataStruct metaDataStruct;
-            ReadTokenMetaDataFromLocal(metaDataStruct, localOffset, yOffset);
+            ReadTokenMetaDataFromLocal(metaDataStruct, localOffset);
             if (metaDataStruct.curAttenWorkRank == rankId_) {
                 continue;
             }
@@ -456,11 +431,17 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
+__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::CheckHcommRet(int32_t ret)
+{
+    ascendc_assert(ret == 0, "Hcomm operation failed, ret=%d, rankId=%u", ret, rankId_);
+}
+
+template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::CommitBatch(
     HcommBatchHandle &batchHandle)
 {
     int32_t ret = hcomm_.BatchCommit(batchHandle);
-    ascendc_assert(ret == 0, "BatchCommit failed, ret=%d, rankId=%u", ret, rankId_);
+    CheckHcommRet(ret);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -481,8 +462,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                 ReadTokenMetaData(metaDataStruct, yOffset);
                 if (metaDataStruct.curAttenWorkRank == rankId_) {
                     GM_ADDR curRankWinAddr = GetWindowAddr(metaDataStruct.curAttenWorkRank);
-                    ascendc_assert(curRankWinAddr != nullptr, "window address is null, dstRank=%u",
-                                   metaDataStruct.curAttenWorkRank);
                     const uint64_t tokenSlot = (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * axisBS_ +
                                                 metaDataStruct.curTokenBatchOffset) *
                                                    expertNumPerToken_ +
@@ -508,7 +487,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     continue;
                 }
                 GM_ADDR remoteWindowAddr = GetWindowAddr(dstRank);
-                ascendc_assert(remoteWindowAddr != nullptr, "window address is null, dstRank=%u", dstRank);
                 HcommChannelHandle channel = GetUrmaCommHandle(dstRank);
                 HcommBatchHandle batchHandle =
                     hcomm_.MakeBatchHandle(channel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, remoteWindowAddr);
