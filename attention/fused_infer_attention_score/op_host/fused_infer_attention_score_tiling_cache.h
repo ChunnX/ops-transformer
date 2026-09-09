@@ -219,7 +219,7 @@ private:
     }
 
     template <typename T>
-    static void AppendAttr(std::string &key, const gert::Attrs *attrs, const uint32_t index)
+    static void AppendAttr(std::string &key, const gert::RuntimeAttrs *attrs, const uint32_t index)
     {
         const T *value = attrs->GetAttrPointer<T>(index);
         if (value == nullptr) {
