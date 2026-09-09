@@ -51,11 +51,19 @@ class SharedJettyContextOpBuilder(OpBuilder):
                 "install the matching asc-comm development headers"
             )
         dependency_candidates = [
+            os.path.join(self.cann_path, "aarch64-linux/include"),
+            os.path.join(self.cann_path, "aarch64-linux/include/hcomm"),
             os.path.join(self.cann_path, "aarch64-linux/pkg_inc"),
+            os.path.join(self.cann_path, "aarch64-linux/pkg_inc/hcomm"),
             os.path.join(self.cann_path, "aarch64-linux/asc/impl/adv_api/detail"),
+            os.path.join(self.cann_path, "x86_64-linux/include"),
+            os.path.join(self.cann_path, "x86_64-linux/include/hcomm"),
             os.path.join(self.cann_path, "x86_64-linux/pkg_inc"),
+            os.path.join(self.cann_path, "x86_64-linux/pkg_inc/hcomm"),
             os.path.join(self.cann_path, "x86_64-linux/asc/impl/adv_api/detail"),
+            os.path.join(self.cann_path, "include/hcomm"),
             os.path.join(self.cann_path, "pkg_inc"),
+            os.path.join(self.cann_path, "pkg_inc/hcomm"),
             os.path.join(self.cann_path, "asc/impl/adv_api/detail"),
             os.path.join(self.cann_path, "include/ascendc/host_api"),
         ]
