@@ -1,0 +1,62 @@
+{
+  "date": "2026-09-09",
+  "metric": "msprof Task Duration(us), one FlashKDA kernel per public call",
+  "sources": [
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_gated_delta_rule/docs/rdv_perf/new_streaming/comparison.csv",
+      "sha256": "10f482906584196153b3c60bb8ff23a65b8105207298c03b85ced2a36bbe2e37"
+    },
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_gated_delta_rule/docs/kda_perf/comparison.csv",
+      "sha256": "cd4f5f7741327cd04dcc24c9b49644a698092c2b73d386f3e35b3a6f7147b1fc"
+    },
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/flash_kda_rdv_20260909/full/prof/PROF_000001_20260909072553870_02987385KIJPKBCE/mindstudio_profiler_output/op_summary_20260909073236.csv",
+      "sha256": "9b97c13328fa270ffbac3538c0f5af24621550b7ded92f3fa987d73dd0fbd1ce"
+    },
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/flash_kda_rdv_20260909/full/results.json",
+      "sha256": "955a524b47a527dae5464852c0da49ce4a45a4b713778cc4465b213da2a571e7"
+    },
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/flash_kda_rdv_20260909/full/case_manifest.json",
+      "sha256": "5985fe56ac5615f315960c5a28c2548a1969df5e4253654e9336ad12546a640e"
+    },
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/flash_kda_rdv_20260909/precision/results.json",
+      "sha256": "8d1ec93b43885ba4a8b1e9249ecd66f8e3741d819480734ee610942d04d391b8"
+    },
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/flash_kda_rdv_20260909/precision/runtime.json",
+      "sha256": "33e4d424fe2ca39fdbd4b0c777d200bfecb828aa0c83550a3115194779cfc5be"
+    },
+    {
+      "path": "/home/s00940320/improved_cgdr/attention/chunk_kda_fwd/tests/pytest/output/flash_kda_rdv_20260909/precision/runner_exit_code.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    }
+  ],
+  "scripts": {
+    "attention/chunk_kda_fwd/tests/pytest/flash_kda_analyze_rdv.py": "49da12222fa85fa42f206ea732076ebefd2d2b31a541163142f21695c85b0dcf",
+    "attention/chunk_kda_fwd/tests/pytest/flash_kda_rdv_perf.py": "725dca4660326c00e90f4085a1363ce4565ad116f6da9092768e54dd5883de6e",
+    "attention/chunk_kda_fwd/tests/pytest/kda_cpu_reference.cpp": "13c8446ae2b39ec7a4aaa2911706ed8525d0a76e294d1cd321b3ff90230a5898",
+    "attention/chunk_kda_fwd/tests/pytest/kda_analyze_rdv.py": "12b39e523721fa25046f706cab304adb481e03fc17ae70dfdd28ac06e04d6006"
+  },
+  "artifacts": {
+    "runtime.json": "9c632efbd301769841f0ea6b7383d39111d473805a57eda71ee6d9c7d2698ce6",
+    "precision_results.csv": "14151a79074805caae8c91c9ad23c912512af778066b5d0f67f5667830c0defe",
+    "group_summary.csv": "dd62b67c9f3b1e48fd1d6f801d478f0ea470ba3f80ede1957e61b4ada0174133",
+    "precision_execution_results.json": "8d1ec93b43885ba4a8b1e9249ecd66f8e3741d819480734ee610942d04d391b8",
+    "execution_results.json": "955a524b47a527dae5464852c0da49ce4a45a4b713778cc4465b213da2a571e7",
+    "README.md": "05d9e4b0ac498b4d69d4cfd150232d52d2e3e6a83f1cb88b3f7ca41a30edec42",
+    "kernel_samples.csv": "d4305d629c4c65eff8d3c9e6a53dd4bbe2361d3e53bcb81cb0d58b42e130bde2",
+    "original_pytest.log": "6df3f1b1ae4c22bba16273874f75f346ed77da446887825589f0639ed6ff07bf",
+    "environment.json": "99cff598bed013cc2ac4c2797e64a2fb7028ebe8280b4da94d558c141eba287d",
+    "env_check.json": "9fbaaa0cb812bbb0b6428929cb4659d2708ac1b1171aee641664f6fe1f809e53",
+    "case_performance.csv": "9495099d38b2cb442b046f741dc83c777bfeac022ab1393b052eabf415d0fe34",
+    "validation.json": "649d7ede48f08d8530a9ff191c45b52707166c067a80c096b29b96156d0665b5",
+    "pip_freeze.txt": "62c5ed28bd38f2bd690176125fb4873a698ac8ccb018572a18178a02813e68e2",
+    "summary.json": "de0ce1b23465093fc79df57f100c3f6355c4483a408d35aa77f4dda76634d0af",
+    "precision_runtime.json": "33e4d424fe2ca39fdbd4b0c777d200bfecb828aa0c83550a3115194779cfc5be",
+    "comparison.csv": "06faad93880718bc6c4691ad46c2acf0ab62c03ce10f957fb40c6a4dd064f5f5"
+  }
+}

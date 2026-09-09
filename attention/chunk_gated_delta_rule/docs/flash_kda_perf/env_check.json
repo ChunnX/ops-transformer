@@ -1,0 +1,10 @@
+{
+  "l0_python_frontend": "PASS",
+  "l1_translate": "PASS",
+  "l2_compile": "PASS",
+  "l3_npu": "PASS",
+  "max_stage": "NPU execute",
+  "evidence": "original_pytest.log: 1 passed; flash_kda compiled by CANN9.2 bisheng and executed on NPU",
+  "python": "/home/s00940320/.venvs/flash-kda-py312/bin/python",
+  "activation_script": "/home/s00940320/.venvs/flash-kda-py312/activate_flash_kda.sh"
+}

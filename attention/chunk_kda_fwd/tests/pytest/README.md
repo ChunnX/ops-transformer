@@ -125,3 +125,11 @@ python3 attention/chunk_kda_fwd/tests/pytest/check_msopprof.py \
 构建安装、复现命令、输入约束、尾块补齐和布局适配详见
 [RDV 性能报告](../../../chunk_gated_delta_rule/docs/kda_perf/README.md)。
 报告保留全部 288 条记录，不适用的维度不填写时延；补齐用例单独统计，精度通过状态来自实测。
+
+## CANNBot-DSL FlashKDA 对比
+
+`flash_kda_rdv_perf.py` 调用外部 `cannbot-dsl` 仓库的公共 `flash_kda` 入口，
+使用独立 Python 3.12 环境；安装包名为 `cannbot-dsl`，导入名为 `cannbotdsl`。
+`flash_kda_analyze_rdv.py` 通过设备 Add 标记匹配每条 RDV 的六次 kernel 调用，
+与同一份 CGDR、CANN KDA 归档数据对比。详见
+[FlashKDA 性能报告](../../../chunk_gated_delta_rule/docs/flash_kda_perf/README.md)。

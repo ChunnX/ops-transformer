@@ -1,0 +1,14 @@
+{
+  "rdv_rows": 288,
+  "matched_baseline_manifest": true,
+  "unique_profile_marker_pairs": 236,
+  "exact_six_tasks_inside_each_marker_pair": true,
+  "positive_durations_and_blocks_checked": true,
+  "performance_precision_input_config_match": true,
+  "precision_execution_rows": 288,
+  "precision_runner_exit_code": 0,
+  "performance_rows": 236,
+  "kernel_samples": 1416,
+  "unsupported_durations_blank": true,
+  "precision_true_only_when_checked": true
+}
