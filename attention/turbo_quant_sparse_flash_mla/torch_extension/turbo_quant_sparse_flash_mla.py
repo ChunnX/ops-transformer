@@ -14,7 +14,7 @@ from typing import Optional
 import torch
 from torch.library import impl
 
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY, OpBuilder
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 
 class TurboQuantSparseFlashMlaOpBuilder(OpBuilder):
@@ -45,7 +45,7 @@ class TurboQuantSparseFlashMlaOpBuilder(OpBuilder):
         )
 
     def register_meta(self):
-        @impl(AS_LIBRARY, self.name, "Meta")
+        @impl(get_as_library(), self.name, "Meta")
         def turbo_quant_sparse_flash_mla_meta(
             q,
             *,
@@ -92,7 +92,7 @@ class TurboQuantSparseFlashMlaOpBuilder(OpBuilder):
 turbo_quant_sparse_flash_mla_op_builder = TurboQuantSparseFlashMlaOpBuilder()
 
 
-@impl(AS_LIBRARY, turbo_quant_sparse_flash_mla_op_builder.name, "PrivateUse1")
+@impl(get_as_library(), turbo_quant_sparse_flash_mla_op_builder.name, "PrivateUse1")
 def turbo_quant_sparse_flash_mla(
     q: torch.Tensor,
     *,
