@@ -175,6 +175,7 @@ public:
     FaGmTensorVScale valueScaleGm_;
     GlobalTensor<int32_t> blockTableGm_;
     FaGmTensorVTail vTailGm_;
+    __gm__ bfloat16_t *vTailGmRaw_ = nullptr; // u8视角搬运用的裸指针
     GlobalTensor<int32_t> blockTableTailGm_;
 
     QSeqParserType *qSeqParserPtr_ = nullptr;
@@ -302,6 +303,7 @@ public:
         if constexpr (PAGE_ATTENTION) {
             blockTableTailGm_.SetGlobalBuffer((__gm__ int32_t *)blockTableTail);
             // 尾块cache独立, s2容量按边界64对齐, 寻址用尾blockTable
+            vTailGmRaw_ = (__gm__ bfloat16_t *)vTail;
             vTailGm_.gmTensor.SetGlobalBuffer((__gm__ bfloat16_t *)vTail);
             if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
                 vTailGm_.offsetCalculator.Init(constInfo_.n2Size, constInfo_.blockSize, constInfo_.dSizeV,
@@ -871,68 +873,22 @@ public:
         // P尾区(bf16)在L1P的字节偏移: P主区(fp8,1B) + PScale区(e8m0,1B)之后; 转为bf16元素单位需/2
         constexpr uint64_t pTailOffset =
             (static_cast<uint64_t>(mBaseSize) * s2BaseSize + mBaseSize * s2BaseSize / 32) / sizeof(bfloat16_t);
-        Buffer<BufferType::L1> mm2BTail = l1KVBuffers_.Get(); // 复用主V轮转slot(零新增L1)
-        mm2BTail.Wait<HardEvent::MTE1_MTE2>();
-        LocalTensor<bfloat16_t> vTailTensor = mm2BTail.GetTensor<bfloat16_t>();
-        if constexpr (!isDAligned) {
-            // d=72档: N方向(dSizeV→dVBaseSize)补齐区清零, 参照主体片的InitValueL1BufferNAxis, bf16同为2字节
-            InitConstValueParams<half> nAxisParams;
-            nAxisParams.repeatTimes = dVBaseSize / 32U;
-            nAxisParams.blockNum = MXFP8_V_TAIL_BOUNDARY;
-            nAxisParams.dstGap = 0;
-            nAxisParams.initValue = 0;
-            InitConstValue(vTailTensor.template ReinterpretCast<half>(), nAxisParams);
-            AscendC::PipeBarrier<PIPE_MTE2>();
-        }
-        // 尾块补零到64对齐(补零列P为0, 乘积不污染累加), nd2nz padding to k 64 align, (k,n)->(n1,k1,k0,n0)
-        InitVTailPadZero(vTailTensor, runInfo.kvTailLen, (uint32_t)constInfo_.dSizeV);
-        CopyVTailSlice(vTailTensor, runInfo);
-        mm2BTail.Set<HardEvent::MTE2_MTE1>();
-        mm2BTail.Wait<HardEvent::MTE2_MTE1>();
+        // B尾块(bf16)在L1P的偏移: P尾区(mBase*64*2B)之后, 由AIV侧搬运(尾片上下文的MTE2 GM->L1实测失效)
+        // 布局: dVBaseSize/16个16列分形 x 64行 x 32B, 分形距2KB(与LoadDataToL0B k=64的srcStride匹配)
+        constexpr uint64_t bTailOffset = pTailOffset + mBaseSize * MXFP8_V_TAIL_BOUNDARY;
 
-        MMParam tailParam = MakeMMParam((uint32_t)mBaseSize, dVBaseSize, MXFP_DIVISOR_SIZE, false, false,
+        // k=64对齐: B尾块固定64行(pad行0), Mmad k=64, LoadDataToL0B srcStride=4*512B=2KB=分形距
+        MMParam tailParam = MakeMMParam((uint32_t)mBaseSize, dVBaseSize, MXFP8_V_TAIL_BOUNDARY, false, false,
                                         isGlobalFirstK, isGlobalFirstK);
         if constexpr (!USE_DN) {
             tailParam.realM = (uint32_t)runInfo.actMSize;
         }
         MatmulFull<bfloat16_t, bfloat16_t, T, 128, dVBaseSize, MXFP_DIVISOR_SIZE, ABLayout::MK, ABLayout::KN, L0AType,
-                   L0BType>(mm2A.GetTensor<bfloat16_t>()[pTailOffset], vTailTensor, mmL0ABuffers_, mmL0BBuffers_,
+                   L0BType>(mm2A.GetTensor<bfloat16_t>()[pTailOffset],
+                            mm2A.GetTensor<bfloat16_t>()[bTailOffset], mmL0ABuffers_, mmL0BBuffers_,
                             mm2ResL0C.GetTensor<T>(), tailParam);
-        mm2BTail.Set<HardEvent::MTE1_MTE2>();
     }
 
-    // 尾块V(bf16)装载: 独立cache, s2坐标从0计, 仅装载[kvTailLen]行, 其余保持补零
-    __aicore__ inline void CopyVTailSlice(const LocalTensor<bfloat16_t> &dstTensor, RunInfoX &runInfo)
-    {
-        uint32_t dstStride = MXFP8_V_TAIL_BOUNDARY; // 已按64补零, 行距64
-        FaL1Tensor<bfloat16_t, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
-        GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
-                          .n2Idx = runInfo.n2Idx,
-                          .s2Idx = 0,
-                          .dIdx = 0,
-                          .s2DealSize = runInfo.kvTailLen,
-                          .dDealSize = (uint32_t)constInfo_.dSizeV};
-        copyVTailGmToL1_(l1Tensor, vTailGm_, gmCoord);
-    }
-
-    // bf16尾块的k向补零(到64对齐), 逻辑同InitValueL1BufferNoTrans, 元素为2字节
-    __aicore__ inline void InitVTailPadZero(const LocalTensor<bfloat16_t> &valueL1, const uint32_t realK,
-                                            const uint32_t curN)
-    {
-        InitConstValueParams<half> initConstValueParams;
-        uint64_t offset = 0;
-        uint32_t curPadK = (realK + 63) >> 6 << 6;
-        uint32_t movK = realK;
-        if (curPadK == movK) {
-            return;
-        }
-        offset = movK * 16U;
-        initConstValueParams.repeatTimes = AttentionCommon::Align(curN, 16U) / 32U;
-        initConstValueParams.blockNum = curPadK - movK;
-        initConstValueParams.dstGap = movK;
-        initConstValueParams.initValue = 0;
-        InitConstValue(valueL1.template ReinterpretCast<half>()[offset], initConstValueParams);
-    }
 
     template <typename DST_TENSOR_T>
     __aicore__ inline void FixpipeMm2(const DST_TENSOR_T &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo)

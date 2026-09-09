@@ -41,6 +41,7 @@ PARAM_MAP = {
     "data_range_qr": "DATA_RANGE_QR",
     "data_range_kr": "DATA_RANGE_KR",
     "enable_lse": "ENABLE_LSE",
+    "enable_v_tail": "ENABLE_V_TAIL",
     "quant_mode": None,  # quant_mode 用于新接口，golden 中不需要设置全局变量
     "device_id": "DEVICE_ID",
     "is_contiguous": "IS_CONTIGUOUS",
@@ -84,6 +85,7 @@ def execute_test(params, mode, cdir=None):
                 qr_bf16,
                 kr_bf16,
                 block_table_torch,
+                vtail_bundle=golden._VTAIL_BUNDLE,
             ),
             cache_dir=cdir,
         )
@@ -100,6 +102,7 @@ def execute_test(params, mode, cdir=None):
             kr_bf16,
             block_table_torch,
         ) = golden_cache.load_input(case_name, cache_dir=cdir)
+        golden._VTAIL_BUNDLE = golden_cache.load_vtail_bundle(case_name, cache_dir=cdir)
 
     if (
         "gen" in mode

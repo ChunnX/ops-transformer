@@ -28,12 +28,24 @@ import torch.nn as nn
 import torch_npu
 
 try:
-    from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn
+    # v_tail特性扩展了aclnn签名(15->18输入), 必须优先custom包(配套python层);
+    # builtin包的15输入schema先注册会导致custom注册被拒, 故不可先import builtin.ops
+    from cann_ops_transformer_custom.ops.attention.quant_flash_attn import (
+        quant_flash_attn,
+        quant_flash_attn_metadata,
+    )
 
     _HAS_NPU = True
-except ImportError as e:
-    logger.warning("Failed to import cann_ops_transformer.ops: %s", e)
-    _HAS_NPU = False
+except ImportError:
+    try:
+        from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn
+
+        _HAS_NPU = True
+    except ImportError as e:
+        quant_flash_attn = None
+        quant_flash_attn_metadata = None
+        _NPU_IMPORT_ERR = str(e)
+        _HAS_NPU = False
 
 try:
     from . import result_compare_method
@@ -46,6 +58,8 @@ except ImportError:
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
 logger = logging.getLogger(__name__)
+if not _HAS_NPU:
+    logger.warning("Failed to import quant_flash_attn (cann_ops_transformer / custom): %s", _NPU_IMPORT_ERR)
 
 # ==============================================================================
 # 配置区
@@ -107,6 +121,10 @@ KV_CACHE_LAYOUT = "BnNBsD"
 IS_CONTIGUOUS = True
 
 ENABLE_LSE = False
+
+# V尾块高精窗口: 尾段(非64对齐部分)以bf16直存独立cache, 不参与量化
+ENABLE_V_TAIL = False
+_VTAIL_BUNDLE = None  # generate_data产出: {v_tail_bnsd, v_tail_pa, block_table_tail, seqused_kv_tail}
 
 # e8m0fnu 最小正数: 2^(-127)，用于替换 scale 中的 0 和非有限值
 # e8m0fnu 没有 0 值语义，0 的 biased exponent 会被 NPU 解释为 NaN
@@ -855,8 +873,23 @@ def generate_data():
     quant_scale_k = get_mxfp8_per_token_group_quant_scale(
         k_fp16, FP8_DTYPE, QUANT_GROUP_SIZE
     )
+    # 尾块高精窗口: 主体段(每batch前align_down(kvLen,64)行)才参与V的量化, 尾段置零不进cache
+    global _VTAIL_BUNDLE
+    _VTAIL_BUNDLE = None
+    v_quant_input = v_fp16
+    if ENABLE_V_TAIL:
+        v_quant_input = v_fp16.clone()
+        tail_lens = []
+        for b in range(B):
+            main_len = (seqused_kv[b] // 64) * 64
+            tail_len = seqused_kv[b] - main_len
+            tail_lens.append(tail_len)
+            if tail_len > 0:
+                v_quant_input[b, :, main_len:seqused_kv[b], :] = 0
+        logger.info("[V_TAIL] enable_v_tail=True, seqused_kv=%s, tail_lens=%s",
+                    seqused_kv, tail_lens)
     quant_scale_v = get_mxfp8_per_channel_group_quant_scale(
-        v_fp16, FP8_DTYPE, QUANT_GROUP_SIZE
+        v_quant_input, FP8_DTYPE, QUANT_GROUP_SIZE
     )
 
     dequant_scale_q = quant_scale_q
@@ -878,10 +911,32 @@ def generate_data():
         .to(FP8_DTYPE)
     )
     v_fp8 = (
-        mxfp8_per_channel_group_quant(v_fp16, quant_scale_v, QUANT_GROUP_SIZE)
+        mxfp8_per_channel_group_quant(v_quant_input, quant_scale_v, QUANT_GROUP_SIZE)
         .clamp(-fp8_max, fp8_max)
         .to(FP8_DTYPE)
     )
+
+    if ENABLE_V_TAIL and any(t > 0 for t in tail_lens):
+        # 构造尾块三件套: BNSD原值(供CPU参考替换) / PA版v_tail(供NPU) / 尾块表 / 每batch尾长
+        v_tail_bnsd_list = []
+        for b in range(B):
+            main_len = seqused_kv[b] - tail_lens[b]
+            seg = v_fp16[b, :, main_len:seqused_kv[b], :]  # (N_kv, tail, D) fp16原值
+            seg_pad = torch.zeros(N_kv, BLOCK_SIZE, D, dtype=torch.float16)
+            seg_pad[:, :tail_lens[b], :] = seg
+            v_tail_bnsd_list.append(seg_pad)
+        block_table_tail = torch.arange(B, dtype=torch.int32).view(B, 1)
+        v_tail_pa = torch.stack(v_tail_bnsd_list, dim=0).to(torch.bfloat16)  # (B,N2,Bs,D)即每batch独立块
+        seqused_kv_tail = torch.tensor(tail_lens, dtype=torch.int32)
+        _VTAIL_BUNDLE = {
+            # 各batch尾长可能不同(0<tail<64), 用list按batch存放原值, CPU参考逐batch切片替换
+            "v_tail_bnsd_fp16": [t[:, : tail_lens[b], :] for b, t in enumerate(v_tail_bnsd_list)],
+            "v_tail_pa": v_tail_pa,
+            "block_table_tail": block_table_tail,
+            "seqused_kv_tail": seqused_kv_tail,
+        }
+        logger.info("[V_TAIL] bundle ready: v_tail_pa=%s block_table_tail=%s tail=%s",
+                    tuple(v_tail_pa.shape), tuple(block_table_tail.shape), tail_lens)
 
     block_table_torch = None
     if ENABLE_PA:
@@ -1070,6 +1125,23 @@ def cpu_mxfp8_golden(
     )[:, :, :, :D]
     v_descale_expanded = v_descale.repeat_interleave(QUANT_GROUP_SIZE, dim=2)
 
+    # 尾块高精窗口: CPU参考 = 主体V反量化 + 尾段V的bf16原值(模拟完美尾块cache, 尾段scale恒1)
+    if ENABLE_V_TAIL and _VTAIL_BUNDLE is not None:
+        tail_lens = _VTAIL_BUNDLE["seqused_kv_tail"].tolist()
+        for b_i in range(v_tensor.shape[0]):
+            kv_len = actual_seq_kv[b_i]
+            tail_len = tail_lens[b_i]
+            main_len = kv_len - tail_len
+            if tail_len > 0 and main_len < v_tensor.shape[2]:
+                tail_seg = _VTAIL_BUNDLE["v_tail_bnsd_fp16"][b_i].to(torch.float32)
+                # GQA: 尾块原值按KV head组织, 需与已广播的v_tensor头数对齐(同broadcast_kv语义)
+                if tail_seg.shape[0] != v_tensor.shape[1]:
+                    factor = v_tensor.shape[1] // tail_seg.shape[0]
+                    tail_seg = tail_seg.repeat_interleave(factor, dim=0)
+                v_tensor[b_i, :, main_len:kv_len, :] = tail_seg
+                v_descale_expanded[b_i, :, main_len:kv_len, :] = 1.0
+        logger.info("[V_TAIL] CPU参考已注入尾段bf16原值, tail_lens=%s", tail_lens)
+
     logger.info(
         "[CPU Golden] TILES_Q=%d, TILES_KV=%d, Sq=%d, Skv=%d",
         TILES_Q,
@@ -1209,6 +1281,9 @@ def _call_npu_fa_op(
     block_size,
     sparse_mode,
     out_dtype,
+    v_tail=None,
+    block_table_tail=None,
+    seqused_kv_tail=None,
 ):
     """调用 NPU 双算子 (QFA: quant_flash_attn_metadata + quant_flash_attn)"""
     if not _HAS_NPU:
@@ -1286,7 +1361,19 @@ def _call_npu_fa_op(
         max_seqlen_q=max_seqlen_q,
         max_seqlen_kv=max_seqlen_kv,
     )
+    # v_tail 三件套仅在新版 cann_ops_transformer 接口存在；旧接口无此时需跳过
+    # v_tail args exist only in newer cann_ops_transformer interface; skip for older ones
+    if v_tail is not None:
+        main_kwargs["v_tail"] = v_tail
+        main_kwargs["block_table_tail"] = block_table_tail
+        main_kwargs["seqused_kv_tail"] = seqused_kv_tail
     main_kwargs.update(_get_npu_fa_kwargs())
+    if v_tail is not None:
+        vt_dev = main_kwargs["v_tail"]
+        logger.info("[VT_DATA] vt dev ptr=%s first4=%s tailLen=%s btt=%s",
+                    hex(vt_dev.data_ptr()), vt_dev.flatten()[:4].float().tolist(),
+                    main_kwargs["seqused_kv_tail"].flatten().tolist(),
+                    main_kwargs["block_table_tail"].flatten().tolist())
     atten_out, lse_out = quant_flash_attn(**main_kwargs)
     torch.npu.synchronize()
     return atten_out, lse_out
@@ -1376,6 +1463,9 @@ class Network(nn.Module):
             layout_out=layout_out,
             max_seqlen_q=max_seqlen_q,
             max_seqlen_kv=max_seqlen_kv,
+            v_tail=v_tail,
+            block_table_tail=block_table_tail,
+            seqused_kv_tail=seqused_kv_tail,
         )
         main_kwargs.update(_get_npu_fa_kwargs())
         atten_out, lse_out = quant_flash_attn(**main_kwargs)
@@ -1619,6 +1709,13 @@ def prepare_npu_inputs(
         _pa_layout_kv_map = {"BnNBsD": "PA_BNBD", "BnBsND": "PA_BBND", "PA_NZ": "PA_NZ"}
         pa_layout_kv = _pa_layout_kv_map.get(KV_CACHE_LAYOUT, "PA_BNBD")
 
+        # v_tail三件套: PA场景同样需要传递(一期v_tail仅PA_BNBD支持, 必须在本分支透传)
+        _vtail_pa = _VTAIL_BUNDLE if ENABLE_V_TAIL else None
+        import os as _os_amp
+        if _vtail_pa is not None and _os_amp.environ.get("VTAIL_AMP", "0") == "1":
+            # [VTAIL_DEBUG] 临时放大尾块V, 判定尾乘链路通断(输出变=链路通)
+            _vtail_pa = dict(_vtail_pa)
+            _vtail_pa["v_tail_pa"] = (_vtail_pa["v_tail_pa"].float() * 10000.0).to(torch.bfloat16)
         logger.info("[NPU] prepare PA inputs done.")
         return dict(
             q=q_npu,
@@ -1648,6 +1745,9 @@ def prepare_npu_inputs(
             block_size=BLOCK_SIZE,
             sparse_mode=SPARSE_MODE,
             out_dtype=out_dtype,
+            v_tail=_vtail_pa["v_tail_pa"].npu() if _vtail_pa is not None else None,
+            block_table_tail=_vtail_pa["block_table_tail"].npu() if _vtail_pa is not None else None,
+            seqused_kv_tail=_vtail_pa["seqused_kv_tail"].npu() if _vtail_pa is not None else None,
         )
 
     # 非 PA 模式: K/V 按 INPUT_LAYOUT 转换
@@ -1700,6 +1800,7 @@ def prepare_npu_inputs(
     )
 
     logger.info("[NPU] prepare non-PA inputs done.")
+    _vtail = _VTAIL_BUNDLE if ENABLE_V_TAIL else None
     return dict(
         q=q_npu,
         k=k_npu,
@@ -1728,6 +1829,9 @@ def prepare_npu_inputs(
         block_size=0,
         sparse_mode=SPARSE_MODE,
         out_dtype=out_dtype,
+        v_tail=_vtail["v_tail_pa"].npu() if _vtail is not None else None,
+        block_table_tail=_vtail["block_table_tail"].npu() if _vtail is not None else None,
+        seqused_kv_tail=_vtail["seqused_kv_tail"].npu() if _vtail is not None else None,
     )
 
 
@@ -1817,6 +1921,9 @@ def mxfp8_fa_torch_npu(
     block_size,
     sparse_mode,
     out_dtype,
+    v_tail=None,
+    block_table_tail=None,
+    seqused_kv_tail=None,
 ):
     """NPU 调用入口, 支持 GRAPH_PATH=0 (单算子) 和 GRAPH_PATH=7 (aclgraph)"""
     if GRAPH_PATH == 0:
@@ -1849,6 +1956,9 @@ def mxfp8_fa_torch_npu(
             block_size,
             sparse_mode,
             out_dtype,
+            v_tail,
+            block_table_tail,
+            seqused_kv_tail,
         )
 
     # GRAPH_PATH == 7: aclgraph

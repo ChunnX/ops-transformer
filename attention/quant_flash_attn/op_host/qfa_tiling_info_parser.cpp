@@ -571,7 +571,7 @@ void QfaInfoParser::GenerateVTailInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.hasVTail = !isEmptyOptional(opParamInfo_.vTail) && !isEmptyOptional(opParamInfo_.sequsedKvTail);
     qfaInfo.tailMaxBlockNum = 0;
     if (qfaInfo.hasVTail && !isEmptyOptional(opParamInfo_.blockTableTail) &&
-        (opParamInfo_.blockTableTail.tensor->GetStorageShape().GetDimNum() >= DIM_NUM_2)) {
+        (opParamInfo_.blockTableTail.tensor->GetStorageShape().GetDimNum() >= arch35QFA::DIM_NUM_2)) {
         qfaInfo.tailMaxBlockNum = opParamInfo_.blockTableTail.tensor->GetStorageShape().GetDim(1);
     }
 }
