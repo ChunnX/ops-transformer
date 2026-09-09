@@ -716,11 +716,15 @@ private:
         if (routeCacheNum == 0) {
             return;
         }
-        // tokenPerExpert 紧凑化：[dstEpIdx][runtimeRank][groupIdx] -> UB[dstEpIdx*expertPerRank+groupIdx]
-        // 与 GetCumsumForMMAIV 相同的 2D DataCopyPad（跨 dstEpIdx 取 runtimeRank 平面）
+        // DataCopyPad pads each UB row to 32 bytes. Keep the cache compact even
+        // when expertPerRank is not a multiple of eight (e.g. four experts/rank).
         uint32_t runtimeRank = static_cast<uint32_t>(RuntimeRank(params));
+        const uint32_t paddedExperts = AlignUp(params.expertPerRank, BYTE_PER_BLK / sizeof(int32_t));
+        const bool needsCompaction = paddedExperts != params.expertPerRank;
+        AscendC::LocalTensor<int32_t> copiedCounts =
+            needsCompaction ? resource.ubBuf.template GetBufferByByte<int32_t>(0) : ubTokenPerExpertCache;
         AscendC::DataCopyPad(
-            ubTokenPerExpertCache, tokenPerExpert[runtimeRank * params.expertPerRank],
+            copiedCounts, tokenPerExpert[runtimeRank * params.expertPerRank],
             {static_cast<uint16_t>(params.EP), static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t)),
              static_cast<uint16_t>((paddedExpertNumAligned - params.expertPerRank) * sizeof(int32_t)), 0},
             {});
@@ -730,6 +734,14 @@ private:
         // 标量读取前确保 MTE2 搬入完成（与 CopyRankMaskToLocal 一致）
         AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+        if (needsCompaction) {
+            for (uint32_t rank = 0; rank < params.EP; ++rank) {
+                for (uint32_t expert = 0; expert < params.expertPerRank; ++expert) {
+                    ubTokenPerExpertCache.SetValue(rank * params.expertPerRank + expert,
+                                                   copiedCounts.GetValue(rank * paddedExperts + expert));
+                }
+            }
+        }
     }
 
     // 发送侧 chunk 总数
@@ -786,7 +798,8 @@ private:
     // 的三张轮表并写 GM。count[s][g] = cumsumMM[s*epr+g] - cumsumMM[(s-1)*epr+g]，不依赖 UB 缓存
     // （其内容已被上一轮轮表覆盖）。第 r 轮覆盖行区间 [r*B, min((r+1)*B, R))：
     //   tokenPerExpert_r[s][g] = max(0, min((r+1)*B, blkLo+cnt) - max(r*B, blkLo))
-    //   preSumBeforeRank_r[s][g] = max(r*B, blkLo)，即块内偏移（仍是 chunk A/D 行空间全局偏移）
+    //   preSumBeforeRank_r[s][g] = senderPrefix[s][g] + max(0, r*B - blkLo)
+    // blkLo is a receiver-order offset, NOT an offset in the sender's A/D buffers.
     //   cumsumMM_r[(s-1)*epr+g] = Σ_{s'<s} tokenPerExpert_r[g][s']，[(EP-1)*epr+g] = 轮内 group 行数
     CATLASS_DEVICE void BuildRoundTables(Params const &params, int64_t chunkIdx, int64_t roundIdx)
     {
@@ -799,11 +812,20 @@ private:
         const int64_t roundLo = roundIdx * B;
         const int64_t roundHi = roundLo + B; // 轮右界（开区间）
         const int64_t n = ep * epr;
+        const int64_t tableBytes = AlignUp(n * sizeof(int32_t), BYTE_PER_BLK);
 
         AscendC::LocalTensor<int32_t> ubCumR = resource.ubBuf.template GetBufferByByte<int32_t>(0);
-        AscendC::LocalTensor<int32_t> ubTpeR = resource.ubBuf.template GetBufferByByte<int32_t>(n * sizeof(int32_t));
-        AscendC::LocalTensor<int32_t> ubPreSumR =
-            resource.ubBuf.template GetBufferByByte<int32_t>(2 * n * sizeof(int32_t));
+        AscendC::LocalTensor<int32_t> ubTpeR = resource.ubBuf.template GetBufferByByte<int32_t>(tableBytes);
+        AscendC::LocalTensor<int32_t> ubPreSumR = resource.ubBuf.template GetBufferByByte<int32_t>(2 * tableBytes);
+        AscendC::LocalTensor<int32_t> ubSenderPrefix = resource.ubBuf.template GetBufferByByte<int32_t>(3 * tableBytes);
+        // The member preSumBeforeRank and UB cache may refer to the previous
+        // round. Reload the original chunk's sender prefixes from their fixed
+        // workspace allocation; MTE2 also avoids stale scalar GM cache reads.
+        AscendC::GlobalTensor<int32_t> gmSenderPrefix;
+        gmSenderPrefix.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceInfo.ptrSumBeforeRank));
+        AscendC::DataCopyPad(ubSenderPrefix, gmSenderPrefix, {1, static_cast<uint16_t>(n * sizeof(int32_t)), 0, 0}, {});
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
 
         for (int64_t g = 0; g < epr; ++g) {
             int64_t prevGroupSum = 0;
@@ -823,7 +845,9 @@ private:
                     ubCumR.SetValue((s - 1) * epr + g, static_cast<int32_t>(pre));
                 }
                 ubTpeR.SetValue(s * epr + g, static_cast<int32_t>(m));
-                ubPreSumR.SetValue(s * epr + g, static_cast<int32_t>(lo)); // = blkLo + slice_r
+                const int64_t senderOffset = ubSenderPrefix.GetValue(s * epr + g);
+                // Empty intersections must not manufacture out-of-range peer pointers.
+                ubPreSumR.SetValue(s * epr + g, static_cast<int32_t>(senderOffset + (m > 0 ? lo - blkLo : 0)));
                 pre += m;
             }
             ubCumR.SetValue((ep - 1) * epr + g, static_cast<int32_t>(pre));
@@ -859,7 +883,7 @@ private:
         roundPreSumBeforeRankGm.SetGlobalBuffer(
             reinterpret_cast<__gm__ int32_t *>(RoundTablePtr(params, chunkIdx, roundIdx, RoundTableSeg::kPreSum)));
         // CombineV2 的 epilogue 以成员 GT 读 D 区写回偏移表，轮内切到 preSum_r
-        // （= 全局 chunk 行偏移，D 区布局不受轮次影响）；
+        // （= 对应发送 rank 的 chunk 行偏移，D 区布局不受轮次影响）；
         // 调用方须在下一 chunk 的 AllGather 前恢复其 chunk 级指向
         preSumBeforeRank.SetGlobalBuffer(
             reinterpret_cast<__gm__ int32_t *>(RoundTablePtr(params, chunkIdx, roundIdx, RoundTableSeg::kPreSum)));
@@ -1990,10 +2014,12 @@ private:
             if (coreIdx == 0) {
                 AscendC::LocalTensor<int32_t> zeroBuf = resource.ubBuf.template GetBufferByByte<int32_t>(0);
                 AscendC::Duplicate(zeroBuf, 0, params.expertPerRank);
-                AscendC::PipeBarrier<PIPE_V>();
-                AscendC::DataCopy(gmExpertTokenNums[0], zeroBuf, params.expertPerRank);
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+                AscendC::DataCopyPad(gmExpertTokenNums, zeroBuf,
+                                     {1, static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t)), 0, 0});
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
             }
         }
         if (params.sharedExpertNum > 0U) {
@@ -2062,14 +2088,16 @@ private:
                     AscendC::LocalTensor<int32_t> ubSum = resource.ubBuf.template GetBufferByByte<int32_t>(0);
                     AscendC::LocalTensor<int32_t> ubOut = resource.ubBuf.template GetBufferByByte<int32_t>(
                         AlignUp(params.expertPerRank * sizeof(int32_t), 32));
-                    AscendC::DataCopy(ubSum, cumsumMM[(params.EP - 1) * params.expertPerRank], params.expertPerRank);
-                    AscendC::DataCopy(ubOut, gmExpertTokenNums[0], params.expertPerRank);
+                    const AscendC::DataCopyParams countCopy{
+                        1, static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t)), 0, 0};
+                    AscendC::DataCopyPad(ubSum, cumsumMM[(params.EP - 1) * params.expertPerRank], countCopy, {});
+                    AscendC::DataCopyPad(ubOut, gmExpertTokenNums, countCopy, {});
                     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                     AscendC::Add(ubOut, ubOut, ubSum, params.expertPerRank);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
                     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-                    AscendC::DataCopy(gmExpertTokenNums[0], ubOut, params.expertPerRank);
+                    AscendC::DataCopyPad(gmExpertTokenNums, ubOut, countCopy);
                     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
                 }
@@ -2091,8 +2119,7 @@ private:
                     SetRoundTableBuffers(params, chunkIdx, roundIdx);
                     CacheRoundTablesToUb();
                 }
-                ProcessRecvRound(params, chunkIdx,
-                                 chunkIdx == 0 && roundIdx == 0 && params.sharedExpertNum > 0U);
+                ProcessRecvRound(params, chunkIdx, chunkIdx == 0 && roundIdx == 0 && params.sharedExpertNum > 0U);
                 if (roundIdx + 1 >= numRecvRounds) {
                     break;
                 }

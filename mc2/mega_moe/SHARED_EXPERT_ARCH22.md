@@ -87,3 +87,41 @@ bindings, seed, inputs and isolated OPP packages on two idle NPUs. Compare the
 zero-shared cases first, then resolve the BF16 failures and rerun shared and
 multi-chunk cases. Masked execution and broader quantized shapes still need
 device coverage. No performance improvement is claimed without profiling.
+
+### BF16 routing fixes and verification (2026-09-09)
+
+The exact master control subsequently reproduced both zero-shared failures
+(M=8 and M=1025). Inspection identified three related routing defects:
+
+- A 2D GM-to-UB DataCopyPad pads each expert-count row to 32 bytes, whereas
+  consumers index a compact `[source_rank, local_expert]` cache. For unaligned
+  expert counts, copy into temporary padded rows and compact after MTE2 completes.
+  Aligned expert counts retain the direct-copy path.
+- ExpertTokenNums initialization and accumulation used aligned DataCopy for
+  potentially shorter rows. Use exact-byte DataCopyPad with producer/consumer
+  events around vector operations and GM writes.
+- Receive-round intersections are calculated in receiver row order, but remote
+  A/D buffers use sender row order. The transfer offset must be the original
+  sender prefix plus the intersection's offset within the block. Reload the
+  original chunk prefixes, not the preceding round's shifted prefixes. Empty
+  intersections retain a valid base offset; temporary tables are 32-byte aligned.
+
+After these fixes, all five original BF16 cases passed the unchanged cosine
+threshold of 0.999 (minimum observed 0.999918). All ten rank/case expert-count
+outputs matched the CPU reference exactly. The final source also compiled all
+18 Ascend910_93 kernel configurations. Evidence:
+`/tmp/mega-moe-bf16-actual-fix.log`,
+`/tmp/mega-moe-bf16-actual-fix-results`, and
+`/tmp/mega-moe-full-fix-build.log`.
+
+Build caveat: generated scripts prefer their copied `op_kernel` tree over
+BUILD_KERNEL_SRC. Early attempted fix runs still used the old snapshot and are
+not fix-validation evidence. The successful run used the updated snapshot;
+the final full build's snapshot was checked against the working source.
+
+The standalone `tests/st/arch22_shared_precision.py` regression adds repeated
+calls, active-prefix masks, exact counts and a relative-L2 check. Its first run
+exposed missing test communicator initialization, which has been corrected;
+rerunning it was blocked by execution approval limits. Its full matrix and
+INT8/INT4 device regression **after these routing fixes** remain pending. The
+earlier quantized passes predate these fixes and are not substitutes for reruns.
