@@ -303,17 +303,14 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFlag(uint32_t dstRank,
                                                                                    uint32_t channelIndex)
 {
-    uint64_t flagIndex = static_cast<uint64_t>(rankId_) * combineChannelCount_ + channelIndex;
+    if (dstRank == rankId_) {
+        return;
+    }
+    uint32_t sourceRankOrdinal = rankId_ < dstRank ? rankId_ : rankId_ - 1U;
+    uint64_t flagIndex = static_cast<uint64_t>(sourceRankOrdinal) * combineChannelCount_ + channelIndex;
     uint64_t flagOffset =
         static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ * WIN_ADDR_ALIGN + flagIndex * WIN_ADDR_ALIGN;
     GM_ADDR flagAddr = GetUrmaStateAddrByRankId(dstRank, combineStateWinOffset_) + flagOffset;
-    if (dstRank == rankId_) {
-        GlobalTensor<uint64_t> localFlag;
-        localFlag.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagAddr));
-        localFlag.SetValue(0, 1U);
-        DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localFlag);
-        return;
-    }
     BeginPreparedWrites(dstRank, channelIndex);
     PrepareWrite<CHANNEL_FLAG_WQE_CONFIG>(flagAddr, flagSourceWinAddr_, WIN_ADDR_ALIGN);
 }
@@ -517,14 +514,18 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
         }
     }
 
-    // Match upstream: publish flags after this AIV's payload phase, even for empty rank/channel slices.
+    // Only remote rank/channel owners publish completion flags; local data is consumed directly by epilogue.
     // In the low-AIV branch the same strided rank list is visited again, using channel 0 only.
-    bool publishesChannelFlag = aivId_ < activeAivNum && (!splitRankTokens || coreIndexInGroup < combineChannelCount_);
+    bool publishesChannelFlag = aivId_ < activeAivNum && targetRank != rankId_ &&
+                                (!splitRankTokens || coreIndexInGroup < combineChannelCount_);
     if (publishesChannelFlag) {
         if (splitRankTokens) {
             SendChannelFlag(targetRank, coreIndexInGroup);
         } else {
             for (uint32_t dstRank = aivId_; dstRank < epWorldSize_; dstRank += activeAivNum) {
+                if (dstRank == rankId_) {
+                    continue;
+                }
                 SendChannelFlag(dstRank, 0U);
             }
         }

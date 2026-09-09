@@ -316,7 +316,8 @@ __aicore__ inline bool MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     LocalTensor<uint32_t> stateTensor = stateBuf_.Get<uint32_t>();
     LocalTensor<uint32_t> waitSum = waitSumBuf_.Get<uint32_t>();
 
-    uint32_t totalFlagCount = epWorldSize_ * combineChannelCount_;
+    uint32_t remoteRankCount = epWorldSize_ > 0U ? epWorldSize_ - 1U : 0U;
+    uint32_t totalFlagCount = remoteRankCount * combineChannelCount_;
     GlobalTensor<uint32_t> stateGMTensor;
     stateGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(stateGM));
     DataCopyParams params = {static_cast<uint16_t>(totalFlagCount), 1U,
@@ -326,7 +327,7 @@ __aicore__ inline bool MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     uint32_t shape[] = {totalFlagCount, UB_ALIGN / sizeof(uint32_t)};
     ReduceSum<uint32_t, AscendC::Pattern::Reduce::RA, false>(waitSum, stateTensor, shape, true);
     SyncFunc<AscendC::HardEvent::V_S>();
-    uint32_t expectedFlagSum = epWorldSize_ * completionChannelCount;
+    uint32_t expectedFlagSum = remoteRankCount * completionChannelCount;
     return waitSum.GetValue(0) == expectedFlagSum;
 }
 
@@ -371,7 +372,8 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     uint64_t flagOffset = static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ * WIN_ADDR_ALIGN;
     GM_ADDR stateGM = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) + flagOffset;
     LocalTensor<uint32_t> stateTensor = stateBuf_.Get<uint32_t>();
-    uint32_t totalFlagCount = epWorldSize_ * combineChannelCount_;
+    uint32_t remoteRankCount = epWorldSize_ > 0U ? epWorldSize_ - 1U : 0U;
+    uint32_t totalFlagCount = remoteRankCount * combineChannelCount_;
     SyncFunc<AscendC::HardEvent::S_V>();
     Duplicate<uint32_t>(stateTensor, 0U, totalFlagCount * STATE_OFFSET / sizeof(uint32_t));
     SyncFunc<AscendC::HardEvent::V_MTE3>();
@@ -497,7 +499,8 @@ template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::RecvPhaseReduce()
 {
     uint32_t completionChannelCount = GetCompletionChannelCount();
-    uint32_t totalFlagCount = epWorldSize_ * combineChannelCount_;
+    uint32_t remoteRankCount = epWorldSize_ > 0U ? epWorldSize_ - 1U : 0U;
+    uint32_t totalFlagCount = remoteRankCount * combineChannelCount_;
     uint32_t flagBufferBytes = totalFlagCount * STATE_OFFSET;
     tpipe_->InitBuffer(stateBuf_, flagBufferBytes);
     tpipe_->InitBuffer(waitSumBuf_, UB_ALIGN);
