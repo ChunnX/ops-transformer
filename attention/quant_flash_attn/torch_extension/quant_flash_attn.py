@@ -339,10 +339,6 @@ def quant_flash_attn_metadata(
         head_dim is not None and head_dim > 0,
         lambda: f"The head_dim of quant_flash_attn_metadata must be greater than 0, but got {head_dim}",
     )
-    torch._check(
-        head_dim_v is not None and head_dim_v > 0,
-        lambda: f"The head_dim_v of quant_flash_attn_metadata must be greater than 0, but got {head_dim_v}",
-    )
     batch_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
