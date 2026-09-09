@@ -93,19 +93,22 @@ TILE_N = 128             # n-tile：一个 s2 任务的 KV token 数
 WS_DEPTH = 3             # GM ws 三深环：复用前借 softmax(T−3) 确认 loadQK(T−3) 已完成
 D_ROPE = 64              # rope 段元素数（物理存储在行首）
 D_NOPE = 448             # nope 段元素数
-GROUP_SIZE = 32          # per-token-group 量化的组宽（每 token 16 组）
-NUM_GROUPS = D // GROUP_SIZE
+GROUP_SIZE_WIN = 32
+GROUP_SIZE_CMP = 16
+NUM_GROUPS_WIN = D // GROUP_SIZE_WIN
+NUM_GROUPS_CMP = D // GROUP_SIZE_CMP
 
-# ---- 量化 v2 物理布局（quant_change_design.md §2，契约冻结）----
-# 物理字节序 = rope[64] ‖ nope[448]，每 32 个元素共享 1 个 BF16 scale（每 token 16 个），
+# ---- per-token-group 物理布局 ----
+# 物理字节序 = rope[64] ‖ nope[448]；win 每 32 元素、cmp 每 16 元素共享 1 个 BF16 scale。
 # scale 内联在数据段尾、无 pad 字段，均以 uint8 字节视图传入：
 #   win_kv (FP8 E4M3)    544 B/token = 512B fp8 数据 + 32B scale
-#   cmp_kv (FP4 E2M1 x2) 288 B/token = 256B fp4x2 数据（偶元素低 nibble）+ 32B scale
+#   cmp_kv (FP4 E2M1 x2) 320 B/token = 256B fp4x2 数据（偶元素低 nibble）+ 64B scale
 KV_ROW_BYTES_WIN = 544
-KV_ROW_BYTES_CMP = 288
-KV_SCALE_BYTES = 32
+KV_ROW_BYTES_CMP = 320
+KV_SCALE_BYTES_WIN = NUM_GROUPS_WIN * 2
+KV_SCALE_BYTES_CMP = NUM_GROUPS_CMP * 2
 ROW_BF16_WIN = KV_ROW_BYTES_WIN // 2      # win 池 bf16 视图行宽 272
-ROW_BF16_CMP = KV_ROW_BYTES_CMP // 2      # cmp 池 bf16 视图行宽 144
+ROW_BF16_CMP = KV_ROW_BYTES_CMP // 2      # cmp 池 bf16 视图行宽 160
 SCALE_BF16_OFF_WIN = 256                  # scale 段在 win 行内的 bf16 偏移（512B/2）
 SCALE_BF16_OFF_CMP = 128                  # scale 段在 cmp 行内的 bf16 偏移（256B/2）
 
@@ -1155,7 +1158,7 @@ class mqsmla_b1_attn_kernel:
 
     @staticmethod
     def _scale_idx(grp_lane, base: int, m16):
-        # scale gather 的索引向量：idx[lane m] = 组基号 base + m//32（u16）。
+        # scale gather 的索引向量：idx[lane m] = 组基号 base + m//group_size（u16）。
         # ★ u16 运算必须用 b16 粒度掩码：用 b32 的 full_mask 会把移位结果整寄存器清零
         # ⇒ gather 恒取 srow[0] ⇒ 全列小误差（0.018 量级，板证教训）。
         return rr.vadd(grp_lane, rr.vdups(base, dtypes.uint16), mask=m16)
@@ -1274,12 +1277,12 @@ class mqsmla_b1_attn_kernel:
         d0, _ = rr.vinterleave(ce, co)
         return d0
 
-    def _antiquant_vf_fp4_g32(self, kv_in, kv_fp8, out):
-        # cmp：物理字节序 rope32B|nope224B|scale32B → BF16 计算序 nope448|rope64。
-        # 反量化链路：加载打包字节 → 拆出低/高 4-bit 编码 → 查 BF16 LUT → 乘 group32 scale。
+    def _antiquant_vf_fp4_g16(self, kv_in, kv_fp8, out):
+        # cmp：物理字节序 rope32B|nope224B|scale64B → BF16 计算序 nope448|rope64。
+        # 反量化链路：加载打包字节 → 拆出低/高 4-bit 编码 → 查 BF16 LUT → 乘 group16 scale。
         # kv_fp8 只是共用的字节加载视图，实际承载 FP4x2；此路径不调用 FP4 数值 cast。
         # 一笔 unpack 读 64B，拆出 128 个 FP4 值；scale 仍按重排前 rope|nope 的组号取值。
-        # GM 每 token 为 288B，但 gather 后 UB 行距仍为 544B（272 个 BF16 元素）；
+        # GM 每 token 为 320B，但 gather 后 UB 行距仍为 544B（272 个 BF16 元素）；
         # scale 在行内字节偏移 256，即 BF16 偏移 128。packed 是乘 scale 后的 BF16 结果。
         SUB = _TILE_ROWS
         with vf(mode="raw"):
@@ -1287,17 +1290,17 @@ class mqsmla_b1_attn_kernel:
             m16, _ = rr.update_mask(_VL, elem_bits=16)
             m16h, _ = rr.update_mask(_TILE_SIZE, elem_bits=16)
             lut_reg = self._fp4_lut_reg(m16)
-            # lane//32：每 32 个连续元素共用一项 scale，随后加各段的组基号。
-            grp_lane = rr.vshr(rr.varange(0, dtypes.uint16), 5, mask=m16)
+            # lane//16：每 16 个连续元素共用一项 scale，随后加各段的组基号。
+            grp_lane = rr.vshr(rr.varange(0, dtypes.uint16), 4, mask=m16)
             row_fp8 = _COMBINE_DIM
             scale_off = SCALE_BF16_OFF_CMP
 
             # 主循环：p=0/1/2 从字节 32/96/160 各读 64B，处理 NoPE 前 384 维。
-            # 每段输出 128 维，分别使用 scale 组 2..5 / 6..9 / 10..13；i 遍历 token。
+            # 每段输出 128 维，分别使用 scale 组 4..11 / 12..19 / 20..27；i 遍历 token。
             for p in tuple(range(D_NOPE // _KV_NUM_PER_LOOP)):
                 src_p = D_ROPE // 2 + p * _TILE_SIZE
                 dst_p = p * _KV_NUM_PER_LOOP
-                idx_p = self._scale_idx(grp_lane, 4 * p + 2, m16)
+                idx_p = self._scale_idx(grp_lane, 8 * p + 4, m16)
                 for i in range(SUB):
                     u = rr.vload_unpack(kv_fp8, src_p + i * row_fp8,
                                         unpack_mode="b8_to_b32")
@@ -1307,12 +1310,12 @@ class mqsmla_b1_attn_kernel:
                                      mask=m16)
                     self._v0_store(out, i, dst_p, packed, m16)
 
-            # NoPE 尾 64 维：从字节 224 读 64B，前 32B 是数据，后 32B 是 scale。
-            # 全部字节都会拆码查表，但 m16h 只允许前 64 个值乘 scale[14/15] 并写到列 384。
+            # NoPE 尾 64 维：从字节 224 读 64B，前 32B 是数据，后 32B 是 scale 段的前半部分。
+            # 全部字节都会拆码查表，但 m16h 只允许前 64 个值乘 scale[28..31] 并写到列 384。
             tail_p = D_NOPE // _KV_NUM_PER_LOOP
             src_t = D_ROPE // 2 + tail_p * _TILE_SIZE
             dst_t = tail_p * _KV_NUM_PER_LOOP
-            idx_t = self._scale_idx(grp_lane, 4 * tail_p + 2, m16)
+            idx_t = self._scale_idx(grp_lane, 8 * tail_p + 4, m16)
             for i in range(SUB):
                 u = rr.vload_unpack(kv_fp8, src_t + i * row_fp8,
                                     unpack_mode="b8_to_b32")
@@ -1323,7 +1326,7 @@ class mqsmla_b1_attn_kernel:
                 self._v0_store(out, i, dst_t, packed_t, m16h)
 
             # RoPE 64 维：从字节 0 读 64B，后 32B 属于 NoPE，同样由 m16h 屏蔽。
-            # 前 64 个值乘 scale[0/1]，写到列 448，完成 nope|rope 重排。
+            # 前 64 个值乘 scale[0..3]，写到列 448，完成 nope|rope 重排。
             idx_r = self._scale_idx(grp_lane, 0, m16)
             for i in range(SUB):
                 u = rr.vload_unpack(kv_fp8, i * row_fp8,
@@ -1358,7 +1361,7 @@ class mqsmla_b1_attn_kernel:
         #      两轮 DMA 的索引都在寻址前钳到有效前缀，避免读取尾部 -1。
         #   3. 双视图 wait 后反量化：win FP8 / cmp FP4，scale 都在同一行内。
         #   4. V→MTE3 就绪事件后，将 BF16 数据写入本核 GM ws 的 tick%3 槽。
-        # 两池 UB 行距统一为 544B；cmp 每行只搬入前 288B，反量化仅使用有效数据/scale。
+        # 两池 UB 行距统一为 544B；cmp 每行只搬入前 320B，反量化仅使用有效数据/scale。
         # 输出 _v0_out0/1 按 lt%2 交替复用，MTE3→V 事件阻止 VF 覆盖尚未搬完的源槽。
         # 只处理 sub_row<n_real 的子块；完全无效的子块不写，ws 保留零初值或前一代内容。
         # 对已处理残块的尾行重读，可避免未初始化值进入 PV 的 0*Value 路径。
@@ -1447,7 +1450,7 @@ class mqsmla_b1_attn_kernel:
 
                 v0_out = self._v0_out
                 if const_expr(is_cmp):
-                    self._antiquant_vf_fp4_g32(rslot, rslot_bytes, v0_out)
+                    self._antiquant_vf_fp4_g16(rslot, rslot_bytes, v0_out)
                 else:
                     self._antiquant_vf_fp8_g32(rslot, rslot_bytes, v0_out)
                 self.ch_batch.release(rslot)

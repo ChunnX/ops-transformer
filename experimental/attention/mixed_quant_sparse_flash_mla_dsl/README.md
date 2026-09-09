@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-MixedQuantSparseFlashMla（MQSMLA）用于混合量化稀疏 MLA 注意力计算。Q 为 BF16；窗口 KV 使用 per-token-group FP8 E4M3，压缩 KV 使用 per-token-group FP4 E2M1，group size 均为 32、scale 为 BF16。算子按稀疏逻辑索引和 block table 从分页 KV 中收集数据，反量化后计算注意力，Key 和 Value 共享同一份 latent 数据。
+MixedQuantSparseFlashMla（MQSMLA）用于混合量化稀疏 MLA 注意力计算。Q 为 BF16；窗口 KV 使用 per-token-group FP8 E4M3，压缩 KV 使用 per-token-group FP4 E2M1，窗口侧 group size 为 32、压缩侧为 16、scale 为 BF16。算子按稀疏逻辑索引和 block table 从分页 KV 中收集数据，反量化后计算注意力，Key 和 Value 共享同一份 latent 数据。
 
 - `ORI_SPARSE`：仅使用 win 侧。
 - `ORI_CMP_SPARSE`：同时使用 win 与 cmp 侧，两侧 KV 一起参与 softmax。
@@ -96,7 +96,7 @@ mixed_quant_sparse_flash_mla(
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `q` | Tensor | 必选 | Query输入。 | `bfloat16` | ND | `(T1, N1, 512)` |
 | `win_kv` | Tensor | 可选 | 窗口KV Cache，Key和Value共享同一份MLA latent数据。按token进行group size为32的FP8 E4M3量化，以`uint8`字节视图传入；每个token占544字节。 | `uint8` | ND | `(blocknum1, blocksize1, N2, 544)` |
-| `cmp_kv` | Tensor | 可选 | 压缩KV Cache。`ORI_CMP_SPARSE`模式必选，`ORI_SPARSE`模式不传。按token进行group size为32的FP4 E2M1量化，以两个FP4元素打包为一个字节的`uint8`视图传入；每个token占288字节。 | `uint8` | ND | `(blocknum2, blocksize2, N2, 288)` |
+| `cmp_kv` | Tensor | 可选 | 压缩KV Cache。`ORI_CMP_SPARSE`模式必选，`ORI_SPARSE`模式不传。按token进行group size为16的FP4 E2M1量化，以两个FP4元素打包为一个字节的`uint8`视图传入；每个token占320字节。 | `uint8` | ND | `(blocknum2, blocksize2, N2, 320)` |
 | `win_sparse_indices` | Tensor | 可选 | 窗口KV的逻辑token索引。传入length时每行前`win_topk_length`个元素有效、其余填`-1`；不传length时全部K1列有效。 | `int32` | ND | `(T1, N2, K1)` |
 | `cmp_sparse_indices` | Tensor | 可选 | 压缩KV的逻辑token索引。`ORI_CMP_SPARSE`模式必选，`ORI_SPARSE`模式不传。传入length时每行前`cmp_topk_length`个元素有效、其余填`-1`；不传length时全部K2列有效。 | `int32` | ND | `(T1, N2, K2)` |
 | `win_block_table` | Tensor | 可选 | `win_kv`的逻辑block到物理block映射表。 | `int32` | ND | `(B, max_num_blocks_per_seq1)` |
@@ -109,7 +109,7 @@ mixed_quant_sparse_flash_mla(
 | `cmp_topk_length` | Tensor | 可选 | 默认None，使用全部K2列。 每个query实际使用的压缩稀疏索引数，是`cmp_sparse_indices`有效前缀的准确长度，取值范围为`[0, K2]`。仅在`ORI_CMP_SPARSE`模式可传。 当前不支持空query；可不传（None）。 | `int32` | ND | `(T1, N2)` |
 | `sinks` | Tensor | 可选 | 各Q头的可学习attention sink，只进softmax分母。算子不生成缺省值，缺传时拦截报错；不需要sink时显式传入全0张量。 | `float32` | ND | `(B,N1)`；B=1时也支持`(N1,)` |
 | `metadata` | Tensor | 可选 | 分核任务表，驱动多核的query行划分。前blocks项为各核分到的首个query行序号（m-tile起点），后blocks项为各核分到的query行数；所有核的区间合起来必须恰好无缝无叠地覆盖`[0, T1)`。算子不生成缺省值，缺传时拦截报错；须先调用`mixed_quant_sparse_flash_mla_metadata(win_topk_length, cmp_topk_length, cu_seqlens_q=..., num_heads_q=64, num_heads_kv=1, head_dim=512, quant_mode=1, has_cmp_kv=...)`生成（两阶段调用）。 | `int32` | ND | `(2 * blocks,)` |
-| `quant_mode` | int | 必选 | 量化模式，必须显式传入`1`，无默认值。Q为BF16；`win_kv`为per-token-group FP8 E4M3、group size为32、scale为BF16；`cmp_kv`为per-token-group FP4 E2M1、group size为32、scale为BF16。 | `int32` | - | - |
+| `quant_mode` | int | 必选 | 量化模式，必须显式传入`1`，无默认值。Q为BF16；`win_kv`为per-token-group FP8 E4M3、group size为32、scale为BF16；`cmp_kv`为per-token-group FP4 E2M1、group size为16、scale为BF16。 | `int32` | - | - |
 | `softmax_scale` | float | 可选 | Softmax前QK乘积的缩放系数。默认值为`None`，表示使用`1/sqrt(512)`。 | `float32` | - | - |
 | `layout_q` | string | 可选 | Q布局，当前仅支持`"TND"`，默认值为`"TND"`。 | string | - | - |
 | `layout_kv` | string | 可选 | KV布局，当前仅支持`"PA_BBND"`，默认值为`"PA_BBND"`。 | string | - | - |
@@ -182,14 +182,14 @@ query token总数依次由`cu_seqlens_q[-1]`、`seqused_q.sum()`或`batch_size *
 
 ### KV 量化与分页布局
 
-每个 token 逻辑顺序为 `rope[64] + nope[448]`，每连续 32 个元素共享一个 BF16 scale，共 16 个 scale。输入均为 uint8 字节视图，token 内没有额外 padding。
+每个 token 逻辑顺序为 `rope[64] + nope[448]`，win 每连续 32 个元素共享一个 BF16 scale，共 16 个 scale；cmp 每连续 16 个元素共享一个 BF16 scale，共 32 个 scale。输入均为 uint8 字节视图，token 内没有额外 padding。
 
 | 输入 | 数据字节范围 | scale 字节范围 | 每 token 字节数 |
 | :--- | :--- | :--- | :--- |
 | win_kv | `[0,512)`，512 个 FP8 E4M3 元素 | `[512,544)`，16 个 BF16 scale | 544 |
-| cmp_kv | `[0,256)`，512 个 FP4 E2M1 元素 | `[256,288)`，16 个 BF16 scale | 288 |
+| cmp_kv | `[0,256)`，512 个 FP4 E2M1 元素 | `[256,320)`，32 个 BF16 scale | 320 |
 
-FP4 偶数位置元素存于低 4 bit，奇数位置元素存于高 4 bit。第 i 个 scale 覆盖逻辑元素 `[32*i,32*(i+1))`。
+FP4 偶数位置元素存于低 4 bit，奇数位置元素存于高 4 bit。第 i 个 scale 覆盖物理顺序中的元素 `[g*i,g*(i+1))`，win 的 g=32，cmp 的 g=16。
 
 win/cmp 使用各自的 block size、block table 和逻辑索引空间。batch b 内逻辑 token p 的地址为：
 
