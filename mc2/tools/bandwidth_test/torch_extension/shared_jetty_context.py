@@ -33,11 +33,24 @@ class SharedJettyContextOpBuilder(OpBuilder):
         pass
 
     def include_paths(self):
-        # Building the Device multi-channel adapter requires the installed AscendC communication Host headers.
-        return [
+        # hcomm_host.h is an AscendC/asc-comm Host API. CANN run packages place it under
+        # <arch>-linux/asc/include/adv_api, while some development layouts expose include/ascendc.
+        candidates = [
+            os.path.join(self.cann_path, "aarch64-linux/asc/include/adv_api"),
+            os.path.join(self.cann_path, "x86_64-linux/asc/include/adv_api"),
+            os.path.join(self.cann_path, "asc/include/adv_api"),
             os.path.join(self.cann_path, "include/ascendc/host_api"),
             os.path.join(self.cann_path, "include/ascendc/adv_api"),
-        ] + super().include_paths()
+        ]
+        asc_comm_paths = [
+            path for path in candidates if os.path.isfile(os.path.join(path, "hcomm/hcomm_host.h"))
+        ]
+        if not asc_comm_paths:
+            raise FileNotFoundError(
+                "AscendC Host header hcomm/hcomm_host.h was not found in the CANN installation; "
+                "install the matching asc-comm development headers"
+            )
+        return asc_comm_paths + super().include_paths()
 
 
 _builder = SharedJettyContextOpBuilder()
