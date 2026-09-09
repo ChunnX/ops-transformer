@@ -12,14 +12,23 @@
 import numpy as np
 
 __golden__ = {
-    "kernel": {"scatter_kv_cache_with_k_scale": "scatter_kv_cache_with_k_scale_golden"},
+    "kernel": {
+        "scatter_pa_kv_cache_with_k_scale": "scatter_pa_kv_cache_with_k_scale_golden"
+    },
     "aclnn": {
         "aclnnScatterPaKvCacheWithKScale": "aclnnScatterPaKvCacheWithKScaleGolden"
     },
 }
 
 
-def scatter_kv_cache_with_k_scale_golden(
+def _clone_tensor(x):
+    """拷贝 inplace tensor，避免 golden 修改原始输入导致 kernel 假通过"""
+    if hasattr(x, "clone"):
+        return x.clone()
+    return np.copy(x)
+
+
+def scatter_pa_kv_cache_with_k_scale_golden(
     key,
     value,
     key_cache,
@@ -49,8 +58,13 @@ def scatter_kv_cache_with_k_scale_golden(
     - cache_layout:    str, default "BNBD"
 
     Returns:
-        tuple: (key_cache, value_cache, key_scale_cache) - inplace-modified inputs
+        tuple: (key_cache, value_cache, key_scale_cache) - copies of inputs with scattered results
     """
+    # 本算子为 inplace 语义，golden 在拷贝上计算，防止污染 runner 后续喂给 kernel 的原始输入
+    key_cache = _clone_tensor(key_cache)
+    value_cache = _clone_tensor(value_cache)
+    key_scale_cache = _clone_tensor(key_scale_cache)
+
     num_tokens = key.shape[0]
     num_head = key.shape[1]
     k_head_size = key.shape[2]
@@ -106,6 +120,11 @@ def aclnnScatterPaKvCacheWithKScaleGolden(
     cache_layout="BNBD",
     **kwargs,
 ):
+    # inplace 语义，golden 在拷贝上计算，防止污染 runner 后续喂给 aclnn 的原始输入
+    key_cache = _clone_tensor(key_cache_ref)
+    value_cache = _clone_tensor(value_cache_ref)
+    key_scale_cache = _clone_tensor(key_scale_cache_ref)
+
     num_tokens = key.shape[0]
     num_head = key.shape[1]
     k_head_size = key.shape[2]
@@ -125,6 +144,8 @@ def aclnnScatterPaKvCacheWithKScaleGolden(
 
         for j in range(num_head):
             # scatter key (raw memory copy, dtype-agnostic)
-            key_cache_ref[block_idx, j, block_offset, :] = key[i, j, :]
-            value_cache_ref[block_idx, j, block_offset, :] = value[i, j, :]
-            key_scale_cache_ref[block_idx, j, block_offset, 0] = key_scale[i, j]
+            key_cache[block_idx, j, block_offset, :] = key[i, j, :]
+            value_cache[block_idx, j, block_offset, :] = value[i, j, :]
+            key_scale_cache[block_idx, j, block_offset, 0] = key_scale[i, j]
+
+    return key_cache, value_cache, key_scale_cache
