@@ -201,7 +201,7 @@ ge::graphStatus QLIV2InfoParser::GetNpuInfo()
 
     socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
-    if ((npuArch_ != NpuArch::DAV_2201) && (npuArch_ != NpuArch::DAV_3510)) {
+    if ((npuArch_ != NpuArch::DAV_2201) && (npuArch_ != NpuArch::DAV_3510) && (npuArch_ != NpuArch::DAV_9201)) {
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
@@ -327,7 +327,7 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                             "but now layout_key is %s.",
                             layout_key.c_str()),
                     return ge::GRAPH_FAILED);
-    } else if (npuArch_ == NpuArch::DAV_3510) {
+    } else if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
         OP_CHECK_IF(
             ((std::string(opParamInfo_.layOutKey) != "PA_BBND") && (std::string(opParamInfo_.layOutKey) != "BSND") &&
              (std::string(opParamInfo_.layOutKey) != "TND")),
@@ -348,7 +348,7 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                             " but now cmpRatio is %ld.",
                             *opParamInfo_.cmpRatio),
                     return ge::GRAPH_FAILED);
-    } else if (npuArch_ == NpuArch::DAV_3510) {
+    } else if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
         OP_CHECK_IF(
             !((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT_8K)),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "topk", std::to_string(*opParamInfo_.sparseCount),
@@ -388,12 +388,22 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                                                           std::to_string(*opParamInfo_.quantMode).c_str(),
                                                           "Quant_mode only supports 1, 2, 3, 4 and 5"),
                     return ge::GRAPH_FAILED);
+    } else if (npuArch_ == NpuArch::DAV_9201) {
+        OP_CHECK_IF((*opParamInfo_.quantMode != QUANT_MODE_FP8) &&
+                        (*opParamInfo_.quantMode != QUANT_MODE_MXFP8) &&
+                        (*opParamInfo_.quantMode != QUANT_MODE_HIFLOAT8) &&
+                        (*opParamInfo_.quantMode != QUANT_MODE_MXFP4) && 
+                        (*opParamInfo_.quantMode != QUANT_MODE_HIFLOAT4),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse_mode",
+                                                          std::to_string(*opParamInfo_.quantMode).c_str(),
+                                                          "Quant_mode only supports 1, 3, 4, 5 and 6"),
+                    return ge::GRAPH_FAILED);
     }
 
     if (npuArch_ == NpuArch::DAV_2201) {
         OP_CHECK_IF(*opParamInfo_.returnValue, OP_LOGE(opName_, "input attr returnValue only supported False."),
                     return ge::GRAPH_FAILED);
-    } else if (npuArch_ == NpuArch::DAV_3510) {
+    } else if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
         OP_CHECK_IF((*opParamInfo_.returnValue != 0) && (*opParamInfo_.returnValue != 1),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "return_value",
                                                           std::to_string(*opParamInfo_.returnValue).c_str(),
@@ -485,7 +495,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
     if (npuArch_ == NpuArch::DAV_2201) {
         OP_CHECK_IF(weightsType_ != ge::DT_FLOAT16,
                     OP_LOGE(opName_, "The data types of the input weights must be float16."), return ge::GRAPH_FAILED);
-    } else if (npuArch_ == NpuArch::DAV_3510) {
+    } else if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
         if (inputQType_ == ge::DT_INT8) {
             OP_CHECK_IF(weightsType_ != ge::DT_FLOAT16,
                         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
@@ -716,7 +726,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckOptionalInput()
                         return ge::GRAPH_FAILED);
         }
     }
-    if (npuArch_ == NpuArch::DAV_3510) {
+    if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
         if (opParamInfo_.outputIdxOffset.tensor != nullptr) {
             OP_CHECK_IF(opParamInfo_.outputIdxOffset.desc->GetDataType() != ge::DT_INT32,
                         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
@@ -776,7 +786,7 @@ ge::graphStatus QLIV2InfoParser::CheckShapeDim()
                                          std::to_string(expectShapeDim - 1).c_str()),
             return ge::GRAPH_FAILED);
     }
-    if (npuArch_ == NpuArch::DAV_3510 && *opParamInfo_.returnValue == 1) {
+    if ((npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) && *opParamInfo_.returnValue == 1) {
         uint32_t sparseValuesShapeDim = opParamInfo_.sparseValues.shape->GetStorageShape().GetDimNum();
         OP_CHECK_IF(sparseValuesShapeDim != expectShapeDim,
                     OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "sparse_values", std::to_string(sparseValuesShapeDim).c_str(),
@@ -846,7 +856,7 @@ ge::graphStatus QLIV2InfoParser::GetGSize()
     }
     gSize_ = n1Size_ / n2Size_;
 
-    if (npuArch_ == NpuArch::DAV_3510) {
+    if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
         OP_CHECK_IF(gSize_ > G_SIZE_LIMIT,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         opName_, "q and k",
@@ -1063,7 +1073,7 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
                             std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)) +
                             " respectively, they must be same"),
                     return ge::GRAPH_FAILED);
-        if (npuArch_ == NpuArch::DAV_3510) {
+        if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
             if (*opParamInfo_.returnValue == 1 && opParamInfo_.sparseValues.shape != nullptr) {
                 OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(0) != qTsize),
                             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
@@ -1206,7 +1216,7 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
             return ge::GRAPH_FAILED);
     }
     // -----------------------check sparse_values------------------
-    if (npuArch_ == NpuArch::DAV_3510) {
+    if (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) {
         if (*opParamInfo_.returnValue == 1) {
             OP_CHECK_IF((opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
                         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
@@ -1226,10 +1236,12 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
         }
     }
     // -----------------------check metadata-------------------
-    OP_CHECK_IF((opParamInfo_.metadata.tensor->GetShapeSize() != METADATA_LIMIT),
+    bool isA6Version = npuArch_ == NpuArch::DAV_9201;
+    uint32_t metadataLimit = isA6Version ? METADATA_LIMIT_A6 : METADATA_LIMIT;
+    OP_CHECK_IF((opParamInfo_.metadata.tensor->GetShapeSize() != metadataLimit),
                 OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
                     opName_, "metadata", std::to_string(opParamInfo_.metadata.tensor->GetShapeSize()).c_str(),
-                    "The shape size of metadata must be " + std::to_string(METADATA_LIMIT)),
+                    "The shape size of metadata must be " + std::to_string(metadataLimit)),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1382,7 +1394,7 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
     // A5 PA_BBND: 0轴允许非连续，从1轴开始检查；非PA_BBND或A3: 从0轴开始检查
     // PA_BBND: axis 0 allows non-contiguous, check starts from axis 1
     // Non-PA_BBND: check starts from axis 0
-    size_t checkStartIdx = (npuArch_ == NpuArch::DAV_3510 && kLayout_ == DataLayout::PA_BBND) ? 1 : 0;
+    size_t checkStartIdx = ((npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) && kLayout_ == DataLayout::PA_BBND) ? 1 : 0;
     if (!keyStridesVec_.empty() && opParamInfo_.key.shape != nullptr) {
         auto &shape = opParamInfo_.key.shape->GetStorageShape();
         std::vector<uint32_t> expectedStrides;
@@ -1578,17 +1590,17 @@ ge::graphStatus QuantLightningIndexerV2Tiling::DoTiling(QLIV2TilingInfo *tilingI
     constexpr uint32_t V1_DECODE_DATA_NUM = 2;        // Decode每个核需要存储头和尾部两块数据
     constexpr uint32_t S1_BASE_SIZE = 4;              // S1轴基本块的大小
     constexpr uint32_t TOPK_MAX_SIZE = 2048;          // TopK选取个数
-    constexpr uint32_t TOPK_MAX_SIZE_950 = 8192;      // A5 TopK最大选取个数
+    constexpr uint32_t TOPK_MAX_SIZE1 = 8192;      // A5/A6 TopK最大选取个数
     uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     // 主流程需Workspace大小
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        constexpr uint32_t S1_BASE_SIZE_950 = 4;
-        constexpr uint32_t S2_BASE_SIZE_950 = 128;
-        workspaceSize += S1_BASE_SIZE_950 * ((tilingInfo->s2Size + S2_BASE_SIZE_950 - 1) / S2_BASE_SIZE_950) *
-                         S2_BASE_SIZE_950 * sizeof(uint16_t) * aicNum;
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510 || ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201) {
+        constexpr uint32_t S1_BASE_SIZE1 = 4;
+        constexpr uint32_t S2_BASE_SIZE1 = 128;
+        workspaceSize += S1_BASE_SIZE1 * ((tilingInfo->s2Size + S2_BASE_SIZE1 - 1) / S2_BASE_SIZE1) *
+                         S2_BASE_SIZE1 * sizeof(uint16_t) * aicNum;
         // 临时存储Decode中间结果大小: 2(头/尾)*8(s1Base)*2(idx/value)*2048(K)*sizeof(int32)*24=6M
         workspaceSize +=
-            V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_RES_ELEM_TYPE * TOPK_MAX_SIZE_950 * V1_RES_ELEM_SIZE * aicNum;
+            V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_RES_ELEM_TYPE * TOPK_MAX_SIZE1 * V1_RES_ELEM_SIZE * aicNum;
         // 临时存储Decode中间参数信息大小: 2(头/尾)*8(s1Base)*16(paramNum)*sizeof(int64_t)*24=48k
         workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
     } else {
