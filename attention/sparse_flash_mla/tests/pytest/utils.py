@@ -536,8 +536,14 @@ def generate_case_with_default_param(
             cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / case_param["block_size1"])
             ori_block_num_per_batch.append(cur_ori_kv_block_num)
             ori_block_num_sum += cur_ori_kv_block_num
-            if cmp_ratio is not None and case_param["block_size2"] is not None:
-                cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
+        if cmp_ratio is not None and case_param["block_size2"] is not None:
+            cmp_actual_lengths = case_param["seqused_cmp_kv"]
+            if cmp_actual_lengths is None:
+                cmp_actual_lengths = [
+                    cur_ori_act_kv // cmp_ratio
+                    for cur_ori_act_kv in case_param["seqused_ori_kv"]
+                ]
+            for cur_cmp_act_kv in cmp_actual_lengths:
                 cur_cmp_kv_block_num = math.ceil(
                     cur_cmp_act_kv / case_param["block_size2"]
                 )
