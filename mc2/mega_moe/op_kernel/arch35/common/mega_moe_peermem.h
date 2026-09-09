@@ -120,6 +120,14 @@ HOST_DEVICE int64_t CalcQuantTokenScaleBytes(int64_t h, uint32_t elemsPerByte, i
     return static_cast<int64_t>(tokenScaleBytes);
 }
 
+// 去重 rowDesc 每行的 int32 数：头 2 个 + 成员三元组 3*topK 个，向上对齐到 8 个 int32（32B），
+// 使描述符批量搬运天然 32B 对齐。字段语义见 mega_moe_constants.h 的 DEDUP_ROW_* 注释。
+HOST_DEVICE int64_t CalcDedupRowDescStrideInt32(int64_t topK)
+{
+    int64_t rawInt32 = static_cast<int64_t>(DEDUP_ROW_DESC_HEADER_INT32) + 3LL * topK;
+    return Ops::Base::CeilAlign(rawInt32, static_cast<int64_t>(INT32_PER_256B));
+}
+
 // combine 接收区单 token 记录字节数：须与 kernel InitCombineBuffers 的 combine record 布局一致。
 HOST_DEVICE int64_t CalcCombineTokenBytes(int64_t h, int64_t yDtypeSize, bool isQuantCombine)
 {

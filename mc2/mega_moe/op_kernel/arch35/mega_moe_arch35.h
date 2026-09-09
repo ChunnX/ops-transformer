@@ -341,6 +341,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     uint32_t metaInfoTensorSize = static_cast<uint32_t>(bufferConfig.bufferCount) * INT32_PER_256B * sizeof(int32_t);
     scratch.metaInfoTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, metaInfoTensorAddr, metaInfoTensorSize / sizeof(int32_t));
+    scratch.dedupUbBaseAddr = static_cast<uint32_t>(Ops::Base::CeilAlign(
+        static_cast<uint64_t>(metaInfoTensorAddr + metaInfoTensorSize), static_cast<uint64_t>(ALIGN_512)));
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -552,6 +554,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
     }
 
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        // 非量化 combine 去重：专家末 slice 完成后补发 per-expert 标记（含 AIC 被跳过 problem 的情形，
+        // 本分支在 HandleWaveProblemWithoutWork 之后、两条路径都会到达）。
+        if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0 &&
+            tokenStartIndexInExpert + sliceTokenCount >= expertTokenCount) {
+            NotifyWaveGmm2Ready(waveCombineJob_, params_, state.expertIdx);
+        }
         // AIV1 已在上述 GMM2 调用中消费当前 slice；无需在外部重建 scheduler。
         return;
     }

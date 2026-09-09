@@ -37,6 +37,7 @@
 #include "stage/mega_moe_gmm1_activation.h"
 #include "stage/mega_moe_gmm2_combine.h"
 #include "stage/mega_moe_unpermute.h"
+#include "common/mgb_kts_mega_moe.h" // KTS 打点（默认关，见 mgb_kts_switch.h）
 #if __has_include("../../common/quantize_functions.h")
 #include "../../common/quantize_functions.h"
 #else
@@ -355,6 +356,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
         static_cast<uint32_t>(bufferConfig.bufferCount) * static_cast<uint32_t>(INT32_PER_256B) * sizeof(int32_t);
     tokenDispatchScratch_.metaInfoTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, metaInfoTensorAddr, metaInfoReserveSize / sizeof(int32_t));
+    tokenDispatchScratch_.dedupUbBaseAddr = static_cast<uint32_t>(Ops::Base::CeilAlign(
+        static_cast<uint64_t>(metaInfoTensorAddr + metaInfoReserveSize), static_cast<uint64_t>(ALIGN_512)));
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
@@ -556,9 +559,13 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
         plannedDispatchPosition = nextDispatchRange.end;
         dispatchRange.end = nextDispatchRange.end;
     }
+    MM_KTS_T(ktsDispatchT0);
     DispatchTokenRange<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
         tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
         g_winRankAddr_, tokenDispatchScratch_, dispatchRange);
+    MM_KTS_SPAN(MgbKts::MM_DISPATCH_WAVE, dispatchRange.begin.expertIdx, dispatchRange.end.expertIdx,
+                static_cast<uint32_t>(dispatchRange.end.globalTokenIndex - dispatchRange.begin.globalTokenIndex), 0U,
+                ktsDispatchT0);
     // 整 WAVE 的数据和 ready flag 发布完成后，再提交 Dispatch 进度。
     dispatchPosition = plannedDispatchPosition;
     return dispatchPosition;
@@ -647,6 +654,7 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
         }
         ProblemShape gmm1WaveProblemShape = gmm1ExpertState.problemShape;
         Get<M_VALUE>(gmm1WaveProblemShape) = waveEndTokenIndexInExpert - gmm1Position.tokenIndexInExpert;
+        MM_KTS_T(ktsGmm1T0);
         UpdateMoeExpertGmm1GlobalBuffer<ActivationType, Weight1Type, ActivationType, QuantScaleOutType,
                                         PackedElementTraits<QuantOutType>::ELEMENTS_PER_BYTE, false,
                                         TopkWeightsPrefetch>(
@@ -664,6 +672,8 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
                                      TopkWeightsPrefetch, GMM1_INTERLEAVED, true>(
             gmmExecutionConfig_, params_, epilogueOp_, gmm1AddrInfo, gmm1WaveProblemShape, waveTokenStartIndex,
             runtimeState, gmm1Position.expertIdx, nullptr, isWholeExpert);
+        MM_KTS_SPAN_ISSUE(MgbKts::MM_GMM1_PROBLEM, processedMGroupCount, gmm1Position.expertIdx, waveRowCount, 0U,
+                          ktsGmm1T0);
 
         processedMGroupCount += problemMGroupCount;
         gmm1Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
@@ -721,6 +731,9 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             if (gmm2Position.tokenIndexInExpert >= expertRowCount) {
                 if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
                     NotifyWaveGmm2Ready(waveCombineJob_, params_, gmm2Position.expertIdx);
+                } else if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+                    // 非量化 combine 去重：合并驱动行要等成员专家 GMM2 落地，补发 per-expert 标记。
+                    NotifyWaveGmm2Ready(waveCombineJob_, params_, gmm2Position.expertIdx);
                 }
                 ++gmm2Position.expertIdx;
                 gmm2Position.tokenIndexInExpert = 0U;
@@ -730,6 +743,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 
         ProblemShape gmm2WaveProblemShape = gmm2ExpertState.problemShape;
         Get<M_VALUE>(gmm2WaveProblemShape) = waveEndTokenIndexInExpert - gmm2Position.tokenIndexInExpert;
+        MM_KTS_T(ktsGmm2T0);
         UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationType, QuantScaleOutType>(
             gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmm2AddrInfo,
             gmm2ExpertState, gmm2Position.tokenIndexInExpert);
@@ -750,6 +764,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                       CombineQuantMode == COMBINE_NO_QUANT>(gmmExecutionConfig_, gmm2AddrInfo, gmm2WaveProblemShape,
                                                             runtimeState, nullptr, isWholeExpert,
                                                             gmm2Position.tokenIndexInExpert, &params_, tileSequence);
+        MM_KTS_SPAN_ISSUE(MgbKts::MM_GMM2_PROBLEM, 0U, gmm2Position.expertIdx, waveRowCount, 0U, ktsGmm2T0);
 
         gmm2Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
         gmm2Position.globalTokenIndex += waveRowCount;
@@ -760,6 +775,9 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                         allCoreCombineExpertState = gmm2ExpertState;
                     }
                 }
+                NotifyWaveGmm2Ready(waveCombineJob_, params_, gmm2Position.expertIdx);
+            } else if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+                // 非量化 combine 去重：合并驱动行要等成员专家 GMM2 落地，补发 per-expert 标记。
                 NotifyWaveGmm2Ready(waveCombineJob_, params_, gmm2Position.expertIdx);
             }
             ++gmm2Position.expertIdx;
@@ -838,7 +856,14 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         combineBufferConfig = InitCombineBuffers();
     }
+    MM_KTS_T(ktsCountT0);
     PrepareMoeExpertTokenCountTable(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
+    MM_KTS_SPAN(MgbKts::MM_COUNT_TABLE_PREP, 0U, 0U, 0U, 0U, ktsCountT0);
+    if (tokenDispatchConfig_.dedup.dedupMode != 0) {
+        // 去重建表：route 槽到达保证与 count epoch 校验同源；函数尾部含 AIV1 间栅栏。
+        BuildDedupRowDescTable(tokenDispatchConfig_.dedup, commonConfig_, gmmExecutionConfig_.blockJob,
+                               syncWorkspaceLayout_, params_, tokenDispatchScratch_);
+    }
 
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
@@ -992,11 +1017,15 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     //  2. 本同步与后续 dispatch 读远端 mask 计数之间不再有共享 GMM1 的时间垫层，读计数的
     //     到达保证与无共享路径（主线现役行为）完全一致。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
+    MM_KTS_T(ktsSyncInT0);
     CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+    MM_KTS_SPAN(MgbKts::MM_CROSS_RANK_SYNC_IN, 0U, 0U, 0U, 0U, ktsSyncInT0);
 
     if (sharedExpertNum_ > 0) {
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM1);
+        MM_KTS_T(ktsSharedG1T0);
         ProcessSharedExpertGmm1();
+        MM_KTS_SPAN_ISSUE(MgbKts::MM_SHARED_GMM1, 0U, 0U, 0U, 0U, ktsSharedG1T0);
     }
 
     // Dispatch、GMM1、SwiGLU、GMM2 与 Combine 使用同一 wave 边界滚动推进。
@@ -1004,12 +1033,16 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 
     if constexpr (g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
+        MM_KTS_T(ktsTailSyncT0);
         SyncAll<true>();
+        MM_KTS_SPAN(MgbKts::MM_MOE_TAIL_SYNC, 0U, 0U, 0U, 0U, ktsTailSyncT0);
     }
 
     if (sharedExpertNum_ > 0) {
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM2);
+        MM_KTS_T(ktsSharedG2T0);
         ProcessSharedExpertGmm2();
+        MM_KTS_SPAN_ISSUE(MgbKts::MM_SHARED_GMM2, 0U, 0U, 0U, 0U, ktsSharedG2T0);
     }
 }
 
@@ -1019,15 +1052,22 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     // 保存入口时的溢出模式，并初始化输入准备阶段使用的 UB。
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
+    MM_KTS_INIT(params_);
     SendAndQuantBuffInit();
 
     // 阶段 1：AIV 完成本卡输入量化、路由 mask 推送和 flag 清零。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::INPUT_PREPARE);
+    MM_KTS_T(ktsQuantT0);
     QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
         aivJob_, commonConfig_, params_, quantProcessConfig_, quantProcessScratch_);
+    MM_KTS_SPAN(MgbKts::MM_INPUT_QUANTIZE, 0U, 0U, 0U, 0U, ktsQuantT0);
+    MM_KTS_T(ktsRouteT0);
     GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,
                                      sendMaskScratch_);
+    MM_KTS_SPAN(MgbKts::MM_ROUTE_SEND, 0U, 0U, 0U, 0U, ktsRouteT0);
+    MM_KTS_T(ktsResetT0);
     ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
+    MM_KTS_SPAN(MgbKts::MM_SYNC_RESET, 0U, 0U, 0U, 0U, ktsResetT0);
     if (sharedExpertNum_ > 0) {
         // 可选：为共享专家拆分连续布局的输入数据与 scale。
         PrepareSharedExpertInput<ActivationType, QuantScaleOutType, 1U>(
@@ -1044,12 +1084,17 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     // 阶段 3：等待所有 rank 的 Combine 发送完成，再执行本卡 Unpermute。
     if constexpr (g_coreType == AIV) {
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_OUTPUT);
+        MM_KTS_T(ktsSyncOutT0);
         CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+        MM_KTS_SPAN(MgbKts::MM_CROSS_RANK_SYNC_OUT, 0U, 0U, 0U, 0U, ktsSyncOutT0);
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::UNPERMUTE);
+        MM_KTS_T(ktsUnpermT0);
         UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
             tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
+        MM_KTS_SPAN(MgbKts::MM_UNPERMUTE, 0U, 0U, 0U, 0U, ktsUnpermT0);
     }
+    MM_KTS_FINISH(params_);
     // 恢复入口时保存的溢出模式。
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::COMPLETE);

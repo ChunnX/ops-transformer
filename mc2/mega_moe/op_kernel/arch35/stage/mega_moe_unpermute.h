@@ -92,14 +92,39 @@ __aicore__ inline void LoadMoeExpertInput(const TokenUnpermuteConfig &context, c
 }
 
 // 累加一个 token 对应的全部 MoE 专家输入。
+// combine 去重模式：生产卡已按卡合并（同卡多专家的贡献落在该卡首个 topk 槽、其余槽不再到达），
+// 归属卡只累加 canonical 槽——即该 token 的 topK 里每个目标卡的首个 k。canonical 判定用本卡
+// topkIds 输入逐 k 标量读取（专家→卡 = expertId / moeExpertPerRank），与生产卡 minTopkIdx 约定一致。
 template <uint8_t CombineMode, bool TopkWeightsPrefetch>
 __aicore__ inline void AccumulateMoeExpertsForToken(const TokenUnpermuteConfig &context,
-                                                    const MoeStageCommonConfig &common, TokenUnpermuteScratch &scratch,
-                                                    int32_t tokenIdx, int32_t localIdx,
+                                                    const MoeStageCommonConfig &common, const Params &params,
+                                                    TokenUnpermuteScratch &scratch, int32_t tokenIdx, int32_t localIdx,
                                                     const GlobalTensor<bfloat16_t> &expandedX,
                                                     const MegaMoeUnpermuteBufferConfig &bufferConfig)
 {
+    const bool dedupCombineActive = (params.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0;
+    int32_t expertRanks[32]; // topK ≤ 32（host 校验），仅 dedup 模式使用
+    if (dedupCombineActive) {
+        __gm__ int32_t *topkIdsBase = reinterpret_cast<__gm__ int32_t *>(params.expertIdxGmAddr) +
+                                      static_cast<uint64_t>(tokenIdx) * common.topK;
+        for (int32_t k = 0; k < static_cast<int32_t>(common.topK); ++k) {
+            expertRanks[k] = ReadGmByPassDCache(topkIdsBase + k) / static_cast<int32_t>(common.moeExpertPerRank);
+        }
+    }
+    bool accumStarted = false;
     for (int32_t expertIdx = 0; expertIdx < static_cast<int32_t>(common.topK); ++expertIdx) {
+        if (dedupCombineActive) {
+            bool canonical = true;
+            for (int32_t prevIdx = 0; prevIdx < expertIdx; ++prevIdx) {
+                if (expertRanks[prevIdx] == expertRanks[expertIdx]) {
+                    canonical = false;
+                    break;
+                }
+            }
+            if (!canonical) {
+                continue; // 该槽不会到达（已并入同卡首槽）
+            }
+        }
         int32_t accumulationItemIdx = localIdx * static_cast<int32_t>(common.topK + common.sharedExpertNum) + expertIdx;
         int32_t inputBufferIdx = accumulationItemIdx % bufferConfig.inputBufferCount;
         TEventID event = static_cast<TEventID>(inputBufferIdx);
@@ -113,7 +138,8 @@ __aicore__ inline void AccumulateMoeExpertsForToken(const TokenUnpermuteConfig &
         SetFlag<HardEvent::S_V>(event);
         WaitFlag<HardEvent::S_V>(event);
         PipeBarrier<PIPE_V>();
-        if (expertIdx == 0) {
+        if (!accumStarted) {
+            accumStarted = true;
             if constexpr (TopkWeightsPrefetch) {
                 DataCopy(scratch.dataResFp32Tensor, dataInFp32, common.tokenHiddenDim);
             } else {
@@ -191,8 +217,8 @@ __aicore__ inline void ProcessTokenUnpermuteBatch(
     }
     for (int32_t localIdx = 0; localIdx < batchTokenCount; ++localIdx) {
         int32_t tokenIdx = jobOffset + batchTokenOffset + localIdx;
-        AccumulateMoeExpertsForToken<CombineMode, TopkWeightsPrefetch>(context, common, scratch, tokenIdx, localIdx,
-                                                                       expandedX, bufferConfig);
+        AccumulateMoeExpertsForToken<CombineMode, TopkWeightsPrefetch>(context, common, params, scratch, tokenIdx,
+                                                                       localIdx, expandedX, bufferConfig);
         for (uint32_t sharedExpertIdx = 0; sharedExpertIdx < common.sharedExpertNum; ++sharedExpertIdx) {
             AccumulateSharedExpertForToken<Gmm1TileM>(common, params, scratch, tokenIdx, localIdx, sharedExpertIdx,
                                                       bufferConfig);

@@ -54,6 +54,8 @@ struct WorkspaceLayout {
     int64_t sharedExpertActivationScaleOffset{INVALID_WORKSPACE_OFFSET};
     int64_t gmm1TileStatusOffset{INVALID_WORKSPACE_OFFSET}; // GMM1 tile 就绪状态位区（仅 prefetch 软同步分配）
     int64_t sharedExpertGmm2TileCounterOffset{INVALID_WORKSPACE_OFFSET};
+    int64_t dedupPrepassReadyOffset{INVALID_WORKSPACE_OFFSET};      // 去重 prepass 完成计数（flag 区内，自动清零）
+    int64_t dedupRowDescOffset{INVALID_WORKSPACE_OFFSET};           // 去重 rowDesc 表（仅 MTE 且 dedupMode!=0）
     int64_t maskSlotOffset{INVALID_WORKSPACE_OFFSET};               // urma发送mask临时GM
     int64_t dispatchRelaySendQueueOffset{INVALID_WORKSPACE_OFFSET}; // 按目标 Server 划分的一级中继发送队列
     int64_t dispatchRemoteReadyFlagSnapshotOffset{
@@ -149,6 +151,16 @@ private:
         flagSendCntCalToUpdParamsOffset = workspaceSize;
         workspaceSize += SIZE_INT_32 * INT_CACHELINE * moeExpertCount * tilingData->aicNum;
 
+        // 去重 prepass 完成标记（flag 连续区内，随 ResetSyncStatus 每 launch 自动清零）：
+        // 槽 0 = 每核 done 计数（AIV1 完成全部认领项后 +1；combine 消费 desc 前等其到齐）；
+        // 槽 1+item = 该工作项 ready（dispatch 每批只等自己覆盖的 (srcRank,chunk) 项）。
+        // 按 worldSize*DEDUP_PREPASS_MAX_CHUNKS 上界分配，每槽独占一个 cache line。
+        if (tilingData->topoType == TOPO_TYPE_MTE && tilingData->dedupMode != 0) {
+            dedupPrepassReadyOffset = workspaceSize;
+            workspaceSize += SIZE_INT_32 * INT_CACHELINE *
+                             (1 + static_cast<int64_t>(tilingData->epWorldSize) * DEDUP_PREPASS_MAX_CHUNKS);
+        }
+
         // 每个 AIC 的就绪序列与前面的 flag 连续存放，使 ResetFlagList 能用同一次 MTE reset 清理；
         // 每个序列独占一个 64B cache line。
         // W4 GMM1 activation 始终使用该序号；非量化 GMM2/Combine 也复用它做 tile 一对一通知。
@@ -160,8 +172,11 @@ private:
             workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
         }
 
-        if (tilingData->topoType == TOPO_TYPE_MTE && tilingData->combineQuantMode != COMBINE_NO_QUANT) {
-            // 量化 Combine 在完整专家结束后等待每个 AIC 的完成标记。
+        // 量化 Combine 在完整专家结束后等待每个 AIC 的完成标记；combine 去重下非量化路径的
+        // 合并驱动行也要等值组内成员所在专家的 GMM2 全部落地，同样需要该 per-expert 标记区。
+        if (tilingData->topoType == TOPO_TYPE_MTE &&
+            (tilingData->combineQuantMode != COMBINE_NO_QUANT ||
+             (tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0)) {
             gmm2ReadyOffset = workspaceSize;
             workspaceSize += SIZE_INT_32 * moeExpertCount * tilingData->aicNum * INT_CACHELINE;
         }
@@ -216,6 +231,15 @@ private:
                                   static_cast<int64_t>(tilingData->h);
         workspaceSize += useMteWaveCombine ? Ops::Base::CeilAlign(gmm2OutputBytes, static_cast<int64_t>(ALIGN_512)) :
                                              gmm2OutputBytes;
+
+        // 去重 rowDesc 表：每个接收行一条定长描述符。无需清零——prepass 在 dispatch 读取前
+        // 覆盖写全部有效行，超出实际接收计数的行不会被读取。
+        if (tilingData->topoType == TOPO_TYPE_MTE && tilingData->dedupMode != 0) {
+            dedupRowDescOffset = workspaceSize;
+            int64_t rowDescStrideInt32 = CalcDedupRowDescStrideInt32(static_cast<int64_t>(tilingData->topK));
+            workspaceSize += Ops::Base::CeilAlign(
+                SIZE_INT_32 * rowDescStrideInt32 * static_cast<int64_t>(tilingData->maxOutputSize), ALIGN_512);
+        }
 
         // GMM1 tile 状态位区（仅 prefetch 路径分配，用于 AIC→AIV 软同步）。
         // 每个 tile 状态和末尾 allDone 状态都独占一条 64B cache line。
@@ -315,6 +339,9 @@ struct WorkspaceInfo {
     GM_ADDR gmm1TileStatusPtr{nullptr};
     GM_ADDR sharedExpertGmm2TileCounterPtr{nullptr};
 
+    GM_ADDR dedupPrepassReadyPtr{nullptr};
+    GM_ADDR dedupRowDescPtr{nullptr};
+
     GM_ADDR maskSlotPtr{nullptr};
     GM_ADDR dispatchRelaySendQueuePtr{nullptr};
     GM_ADDR dispatchRemoteReadyFlagSnapshotPtr{nullptr};
@@ -359,6 +386,8 @@ public:
         sharedExpertActivationScalePtr = ResolveWorkspaceAddress(base, layout.sharedExpertActivationScaleOffset);
         gmm1TileStatusPtr = ResolveWorkspaceAddress(base, layout.gmm1TileStatusOffset);
         sharedExpertGmm2TileCounterPtr = ResolveWorkspaceAddress(base, layout.sharedExpertGmm2TileCounterOffset);
+        dedupPrepassReadyPtr = ResolveWorkspaceAddress(base, layout.dedupPrepassReadyOffset);
+        dedupRowDescPtr = ResolveWorkspaceAddress(base, layout.dedupRowDescOffset);
         maskSlotPtr = ResolveWorkspaceAddress(base, layout.maskSlotOffset);
         dispatchRelaySendQueuePtr = ResolveWorkspaceAddress(base, layout.dispatchRelaySendQueueOffset);
         dispatchRemoteReadyFlagSnapshotPtr =

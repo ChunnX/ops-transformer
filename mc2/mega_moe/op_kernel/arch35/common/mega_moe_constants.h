@@ -86,6 +86,30 @@ constexpr uint32_t L1_TILE_N = 256U;
 constexpr uint32_t L0_TILE_K = 128U;
 constexpr uint32_t ACTIVATION_N_HALF = 2U;
 
+// ============ MTE 通信去重（tilingData->dedupMode，host 由 attr comm_alg 转译）============
+constexpr int32_t DEDUP_MODE_DISPATCH = 0x1; // dispatch 拉取去重（同一源 token 每卡只跨片拉一次，数值恒等）
+constexpr int32_t DEDUP_MODE_COMBINE = 0x2;
+// prepass 工作项 chunk 数上限：flag 区按 worldSize*MAX_CHUNKS 上界分配；
+// CalcDedupPrepassChunkTokens 的 floor-clamp 保证实际 chunkCount 不超此值。
+constexpr uint32_t DEDUP_PREPASS_MAX_CHUNKS = 128U;  // combine 生产卡预加权合并后单发（可选能力，强制 prefetch 语义）
+/*
+ * rowDesc：去重 prepass 为每个接收行生成的定长描述符（布局尺寸见 peermem.h CalcDedupRowDescStrideInt32）。
+ * [0] flags | memberCount：0 表示该 (srcRank, token) 在本卡只出现一次，走原路径；
+ * [1] 组内最小 topkIdx（combine 合并行发送的目标槽，与归属卡 unpermute 的 canonical 槽约定一致）；
+ * [2+3i] / [3+3i] / [4+3i] 组内第 i 个成员的（全局接收行号 / 该成员 topkIndex / dispatch→GMM1
+ * flag 槽偏移），成员按行号升序排列、含本行。flag 槽偏移在 prepass 预先算好，使扇出发布
+ * 不依赖 cumsum UB（W4 路径的 Activation 会覆盖 AIV1 cumsum、分片只恢复本片区间）。
+ * 组内每个成员行都持有整组的完整拷贝，读一行描述符即可拿到全组信息。
+ */
+constexpr int32_t DEDUP_ROW_FLAG_GROUP = 0x40000000; // 本行属于某个重复组
+constexpr int32_t DEDUP_ROW_FLAG_FIRST = 0x20000000; // 组内首行（dispatch 扇出驱动行：拉一次远端、写全组）
+constexpr int32_t DEDUP_ROW_FLAG_LAST = 0x10000000;  // 组内末行（combine 合并驱动行：读全组、加和、单发）
+constexpr int32_t DEDUP_ROW_MEMBER_COUNT_MASK = 0xFFFF;
+constexpr uint32_t DEDUP_ROW_DESC_HEADER_INT32 = 2U;
+// dispatch 去重的批内 UB 暂存（desc 装载 48K + 扇出 meta 8K + 活跃表 8K）从 dispatch 固定区尾动态起址；
+// host 在 dedupMode!=0 时从 dispatch 自适应预算中预留本值，保证暂存区恒有落位（含对齐余量）。
+constexpr uint32_t DEDUP_DISPATCH_UB_RESERVE_BYTES = 72U * 1024U;
+
 // Hcomm 批量句柄中每条普通读写描述符占 64B。
 // Layered 的数据批次仍按最多 256 个 token 组织，64 KiB 可容纳同批 token 的附加 WQE。
 constexpr uint32_t HCOMM_BATCH_WQE_BYTES = 64U;

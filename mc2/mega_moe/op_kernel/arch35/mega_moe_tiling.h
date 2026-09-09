@@ -207,5 +207,8 @@ struct MegaMoeTilingData {
     uint32_t numMaxTokensPerRank;
     // URMA 分层拓扑；Host workspace 计算与 Device 通道映射必须使用同一个值。
     uint32_t rankNumPerServer;
+    // MTE 通信去重开关（attr comm_alg 转译）：bit0=dispatch 去重（数值恒等），bit1=combine 去重
+    // （生产卡预加权合并，走 prefetch 语义）。0 表示关闭，此时所有路径与无该字段时逐字等价。
+    int32_t dedupMode;
 };
 #endif
