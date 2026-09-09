@@ -88,6 +88,7 @@ struct UbBufferConfig {
     int64_t mUbSize = 0;
     bool withGradOut = false;
     bool isKSplit = false;
+    bool isMpmd = false;
 };
 
 bool CalcCoreRowTiling(int64_t bs, int64_t coreNum, CoreRowTiling &rowTiling)
@@ -123,13 +124,17 @@ int64_t CalcUbBufferSize(const UbBufferConfig &config, int64_t rowFactor, int64_
     totalSize += rowFactor * config.hcMult * dAlign * BF16_BYTES * DOUBLE_BUFFER;                // x
     totalSize += rowFactor * dAlign * BF16_BYTES * DOUBLE_BUFFER;                                // y
     totalSize += rowFactor * config.hcMultAlign * sizeof(float) * DOUBLE_BUFFER;                 // post
-    totalSize += rowFactor * config.hcMult * config.hcMultAlign * sizeof(float) * DOUBLE_BUFFER; // combFrag
+    if (!config.isMpmd) {
+        totalSize += rowFactor * config.hcMult * config.hcMultAlign * sizeof(float) * DOUBLE_BUFFER; // combFrag
+    }
 
     if (config.isKSplit) {
         totalSize += config.kBlockNum * rowFactor * hcMixAlign * sizeof(float) * DOUBLE_BUFFER;         // mm
         totalSize += config.kBlockNum * RoundUp(rowFactor, floatAlign) * sizeof(float) * DOUBLE_BUFFER; // rms
         totalSize += config.hcMultAlign * sizeof(float) * 2;                                            // base0/base1
-        totalSize += config.hcMult * config.hcMultAlign * sizeof(float);                                // base2
+        if (!config.isMpmd) {
+            totalSize += config.hcMult * config.hcMultAlign * sizeof(float);                            // base2
+        }
     }
 
     if (config.withGradOut) {
@@ -375,8 +380,30 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::CalcRegbaseCommonTiling(GradOutMode
 {
     const bool withGradOut = gradOutMode == GradOutMode::ENABLED;
     const bool isKSplit = splitMode == SplitMode::K_SPLIT;
+    int64_t prePostCoreNum = static_cast<int64_t>(aivCoreNum_);
+    tilingData_.set_sinkhornCoreNum(0);
+    tilingData_.set_sinkhornRowFactor(0);
+    if (isKSplit && !withGradOut && bs_ >= 128 && aivCoreNum_ >= 4) {
+        // MPMD follows A3: reserve a separate AIV group for Sinkhorn. The
+        // group consumes compact [K, rows, 16] residual tiles from workspace.
+        const int64_t sinkhornCoreNum = std::min(CeilDiv(bs_, 32), prePostCoreNum / 4);
+        const int64_t kBlocks = tilingData_.get_cubeBlockDimK();
+        const int64_t matrixElements = hcMult_ * hcMult_;
+        const auto fitsSinkhorn = [&](int64_t rows) {
+            const int64_t partialSize = kBlocks * (rows * matrixElements + RoundUp(rows, 8));
+            const int64_t outputSize = rows * matrixElements;
+            const int64_t biasSize = hcMult_ * RoundUp(hcMult_, 8);
+            return (DOUBLE_BUFFER * (partialSize + outputSize) + biasSize) * sizeof(float) <= ubSize_;
+        };
+        const int64_t sinkhornRows = FindMaxRowFactor(64, fitsSinkhorn);
+        if (sinkhornRows > 0) {
+            tilingData_.set_sinkhornCoreNum(sinkhornCoreNum);
+            tilingData_.set_sinkhornRowFactor(sinkhornRows);
+            prePostCoreNum -= sinkhornCoreNum;
+        }
+    }
     CoreRowTiling coreRowTiling;
-    OP_CHECK_IF(!CalcCoreRowTiling(bs_, static_cast<int64_t>(aivCoreNum_), coreRowTiling),
+    OP_CHECK_IF(!CalcCoreRowTiling(bs_, prePostCoreNum, coreRowTiling),
                 OP_LOGE(context_->GetNodeName(), "Invalid row tiling input: bs=%ld, aivCoreNum=%lu", bs_, aivCoreNum_),
                 return ge::GRAPH_FAILED);
 
@@ -403,6 +430,7 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::CalcRegbaseCommonTiling(GradOutMode
     bufferConfig.mUbSize = mUbSize;
     bufferConfig.withGradOut = withGradOut;
     bufferConfig.isKSplit = isKSplit;
+    bufferConfig.isMpmd = tilingData_.get_sinkhornCoreNum() > 0;
 
     const auto fitsInUb = [&bufferConfig, availableUbSize](int64_t rowFactor, int64_t dFactor) {
         return CalcUbBufferSize(bufferConfig, rowFactor, dFactor) <= availableUbSize;
@@ -569,7 +597,8 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::PostTiling()
     if (tilingKey_ == TILING_KEY_NO_GRAD_K_SPLIT || tilingKey_ == TILING_KEY_GRAD_K_SPLIT) {
         uint64_t stage1BlockNum =
             tilingData_.get_cubeBlockDimM() * tilingData_.get_cubeBlockDimK();
-        uint64_t stage2BlockNum = CeilDiv(tilingData_.get_secondUsedCoreNum(), 2);
+        uint64_t stage2BlockNum = CeilDiv(tilingData_.get_secondUsedCoreNum() +
+                                         tilingData_.get_sinkhornCoreNum(), 2);
         blockDim = std::min(std::max(stage1BlockNum, stage2BlockNum), aicCoreNum_);
     }
     context_->SetBlockDim(blockDim);
