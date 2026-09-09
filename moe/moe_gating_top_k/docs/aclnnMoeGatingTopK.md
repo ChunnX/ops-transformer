@@ -92,10 +92,10 @@ $$
   gathered = normOut[\text{expertIdxOut}]
   $$
 
-  normType=1 or normType=2 时做归一化；normType=0 时，renorm参数生效，renorm=1 时做renorm：
+  normType=0或1时由renorm控制是否归一化；normType=2时保持归一化：
 
   $$
-  if\ (normType = 1\ or\ normType = 2)\ or\ (normType = 0\ and\ renorm = 1):
+  if\ (normType = 2)\ or\ ((normType = 0\ or\ normType = 1)\ and\ renorm = 1):
   $$
 
   $$
@@ -438,7 +438,7 @@ aclnnStatus aclnnMoeGatingTopK(
     <!-- npu="A3,910b" id7 -->
     * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>: 参数normType取值为2时要求groupCount为1
     <!-- end id7 -->
-    * normType取值为1或2时，renorm参数无效；normType取值为0时，renorm参数生效，renorm取值为0和1，0表示不做renorm，1表示做renorm。
+    * normType取值为0或1时renorm参数生效，0表示不做renorm，1表示做renorm；normType取值为2时renorm参数无效，并始终做renorm。
     * outFlag取值true和false，true表示输出，false表示不输出。
     * 输入不支持空Tensor，不支持标量Tensor。
 

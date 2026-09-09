@@ -629,6 +629,8 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertS
             RegTensor<float> vregTmp1;
             RegTensor<float> vregTmp2;
             RegTensor<float> vregTmp3;
+            RegTensor<float> vregSum;
+            RegTensor<float> vregSumBcast;
             RegTensor<int32_t> vregZeroIdx;
             Reg::MaskReg preg0 = Reg::CreateMask<float>();
             Reg::Duplicate<float, Reg::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
@@ -640,13 +642,15 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertS
                 Reg::Exp(vregTmp2, vregTmp1, preg0);
                 Reg::Adds(vregTmp3, vregTmp2, static_cast<float>(1), preg0);
                 Reg::Div<float, &WG_DIV_MODE>(vregNorm, vregOne, vregTmp3, preg0);
-                RegTensor<float> vregSum;
-                Reg::Reduce<Reg::ReduceType::SUM>(vregSum, vregNorm, preg0);
-                Reg::Adds(vregSum, vregSum, eps_, preg0);
-                RegTensor<float> vregSumBcast;
-                Reg::Duplicate(vregSumBcast, vregSum, preg0);
-                Reg::Div(vregOut, vregNorm, vregSumBcast, preg0);
-                Reg::Muls(vregOut, vregOut, routedScalingFactor_, preg0);
+                if (renorm_ == 0) {
+                    Reg::Muls(vregOut, vregNorm, routedScalingFactor_, preg0);
+                } else {
+                    Reg::Reduce<Reg::ReduceType::SUM>(vregSum, vregNorm, preg0);
+                    Reg::Adds(vregSum, vregSum, eps_, preg0);
+                    Reg::Duplicate(vregSumBcast, vregSum, preg0);
+                    Reg::Div(vregOut, vregNorm, vregSumBcast, preg0);
+                    Reg::Muls(vregOut, vregOut, routedScalingFactor_, preg0);
+                }
                 Reg::Duplicate(vregZeroIdx, static_cast<int32_t>(0), preg0);
                 ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, preg0, i * VL_FLOAT_SIZE);
                 Reg::StoreAlign(expertIdxAddr + i * VL_FLOAT_SIZE, vregZeroIdx, preg0);
@@ -847,7 +851,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::Init(GM_ADDR x, GM_A
     normType_ = tilingData_->normType;
     renorm_ = tilingData_->renorm;
     outFlag_ = tilingData_->outFlag == 1;
-    noNorm_ = (normType_ == 0 && renorm_ == 0);
+    noNorm_ = !ShouldRenormalizeScore(normType_, renorm_);
     routedScalingFactor_ = tilingData_->routedScalingFactor;
     eps_ = tilingData_->eps;
     batchRows_ = tilingData_->batchRows > 0 ? tilingData_->batchRows : DEFAULT_BATCH_ROWS;

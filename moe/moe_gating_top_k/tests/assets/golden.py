@@ -105,7 +105,7 @@ class AclnnMoeGatingTopKTestSpec:
 
         y = torch.gather(original_x, 1, indices)
 
-        if normType != 0 or renorm != 0:
+        if normType == 2 or renorm != 0:
             y = y / (y.sum(dim=-1, keepdim=True) + eps)
         y = y * routedScalingFactor
 
@@ -187,7 +187,7 @@ class AclnnMoeGatingTopKV2TestSpec:
 
         y = torch.gather(original_x, 1, indices)
 
-        if normType != 0 or renorm != 0:
+        if normType == 2 or renorm != 0:
             y = y / (y.sum(dim=-1, keepdim=True) + eps)
         y = y * routedScalingFactor
 
@@ -264,7 +264,7 @@ class MoeGatingTopKTestSpec:
 
         y = numpy.take_along_axis(original_x, indices, axis=1)
 
-        if norm_type != 0 or renorm != 0:
+        if norm_type == 2 or renorm != 0:
             y = y / (numpy.sum(y, axis=-1, keepdims=True) + eps)
         y = y * routed_scaling_factor
 

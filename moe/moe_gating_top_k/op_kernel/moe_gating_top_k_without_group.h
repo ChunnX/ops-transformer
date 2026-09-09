@@ -245,9 +245,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroup<T, U1, U2>::SelectTopKExpertSco
     PipeBarrier<PIPE_V>();
     Gather(yOutTensor, xNormTensor, topKExpertIdWithByte.template ReinterpretCast<uint32_t>(), static_cast<uint32_t>(0),
            k_);
-    bool needRenorm =
-        (normType_ == NORM_TYPE_SIGMOID || normType_ == NORM_TYPE_SOFTPLUS) || // sigmoid/softplus恒做归一化
-        (normType_ == NORM_TYPE_SOFTMAX && renorm_ == 1);                      // softmax + renorm
+    bool needRenorm = ShouldRenormalizeScore(normType_, renorm_);
     if (needRenorm == 1) {
         LocalTensor<float> maxValueTensor = calcTmpBuf_.Get<float>();
         LocalTensor<float> tmpTensor = calcTmpBuf_.Get<float>()[BLOCK_BYTES];

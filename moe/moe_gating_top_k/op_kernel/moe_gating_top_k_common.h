@@ -42,6 +42,13 @@ constexpr int64_t NORM_TYPE_SOFTMAX = 0;
 constexpr int64_t NORM_TYPE_SIGMOID = 1;
 constexpr int64_t NORM_TYPE_SOFTPLUS = 2;
 
+// Softmax and Sigmoid honor the renorm attribute. SqrtSoftplus keeps the
+// historical always-renormalize behavior.
+__aicore__ inline bool ShouldRenormalizeScore(int64_t normType, int64_t renorm)
+{
+    return normType == NORM_TYPE_SOFTPLUS || renorm != 0;
+}
+
 __aicore__ inline int64_t Ceil(int64_t a, int64_t b)
 {
     if (b == 0) {

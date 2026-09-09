@@ -84,10 +84,10 @@ $$
   gathered = normOut[\text{expertIdxOut}]
   $$
 
-  normType=1 or normType=2 时做归一化；normType=0 时，renorm参数生效，renorm=1 时做renorm：
+  normType=0或1时由renorm控制是否归一化；normType=2时保持归一化：
 
   $$
-  if\ (normType = 1\ or\ normType = 2)\ or\ (normType = 0\ and\ renorm = 1):
+  if\ (normType = 2)\ or\ ((normType = 0\ or\ normType = 1)\ and\ renorm = 1):
   $$
 
   $$
@@ -141,10 +141,10 @@ $$
   gathered = normOut[expertIdxOut]
   $$
 
-  normType=1 or normType=2 时做归一化；normType=0 时，renorm参数生效，renorm=1 时做renorm：
+  normType=0或1时由renorm控制是否归一化；normType=2时保持归一化：
 
   $$
-  if\ (normType = 1\ or\ normType = 2)\ or\ (normType = 0\ and\ renorm = 1):
+  if\ (normType = 2)\ or\ ((normType = 0\ or\ normType = 1)\ and\ renorm = 1):
   $$
 
   $$
@@ -300,12 +300,12 @@ $$
       * 要求1 <= k <= x_shape[-1] / groupCount * kGroup。
       * 要求1 <= kGroup <= groupCount，并且kGroup * x_shape[-1] / groupCount的值要大于等于k。
       * 要求groupCount > 0，x_shape[-1]能够被groupCount整除且整除后的结果大于groupSelectMode，并且整除的结果按照32个数对齐后乘groupCount的结果不大于2048。
-      * renorm支持0和1。normType=1或者normType=2时做归一化；normType=0 时，renorm参数生效，renorm=1 时做renorm。
+      * renorm支持0和1。normType=0或1时，renorm=0表示不做renorm，renorm=1表示做renorm；normType=2时始终做renorm。
   * 其他限制：
       * groupSelectMode取值0和1，0表示使用最大值对group进行排序，1表示使用topk2的sum值对group进行排序。
       * normType取值0、1和2，0表示使用Softmax函数，1表示使用Sigmoid函数，2表示使用SqrtSoftplus函数。
       * 在Atlas A2/A3系列产品上，normType取值为2时要求groupCount为1（Ascend 950PR/Ascend 950DT无此限制）。
-      * normType取值为1或2时，renorm参数无效；normType取值为0时，renorm参数生效，renorm取值为0和1，0表示不做renorm，1表示做renorm。
+      * normType取值为0或1时renorm参数生效；normType取值为2时renorm参数无效，并始终做renorm。
       * outFlag取值true和false，true表示输出，false表示不输出。
   * **Hash模式限制**：
       * Hash模式需同时提供inputIdsOptional和tid2eidOptional，否则为TopK模式。
