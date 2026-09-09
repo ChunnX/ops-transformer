@@ -107,7 +107,8 @@ int main()
             for (size_t expert : {0, 1, 7}) {
                 Check(halfN, k, 32, 1, expert); // A8W8 NZ
                 Check(halfN, k, 32, 2, expert); // A8W4 packed UB input
-                cases += 2;
+                Check(halfN, k, 64, 2, expert); // A4W4 native FP4 L1
+                cases += 3;
             }
         }
     }
