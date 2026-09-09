@@ -47,6 +47,19 @@ __aicore__ inline void RecordKernelEntryTiming(__gm__ uint8_t *attentionOut, uin
     }
 }
 
+__aicore__ inline void RecordKernelEndTiming(__gm__ uint8_t *attentionOut)
+{
+    // T2: kernel 末尾打点 (op.Process 返回后, 源码最后一行), 写 slot 7 (原保留位)
+    if ASCEND_IS_AIV {
+        constexpr uint32_t HEAD_TIMING_SLOT_COUNT = 8;
+        const uint32_t vectorBlockIdx = GetBlockIdx();
+        const uint32_t base = vectorBlockIdx * HEAD_TIMING_SLOT_COUNT;
+        GlobalTensor<uint64_t> headTimingGm;
+        headTimingGm.SetGlobalBuffer((__gm__ uint64_t *)attentionOut);
+        headTimingGm.SetValue(base + 7, static_cast<uint64_t>(asc_get_system_cycle()));
+    }
+}
+
 template <class T>
 __inline__ __attribute__((always_inline)) __aicore__ void InitMetaData(const __gm__ uint8_t *p_metadata, T *metadata)
 {
@@ -81,6 +94,7 @@ __inline__ __attribute__((always_inline)) __aicore__ void InitMetaData(const __g
         op.InitQuant(deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2, antiquantScale, antiquantOffset,    \
                      keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset, user);          \
         op.Process();                                                                                                  \
+        RecordKernelEndTiming(attentionOut);                                                                          \
     } while (0)
 
 #define INVOKE_IFA_NO_KFC_DD_OP_IMPL_SK(templateClass, headStartCycle, ...)                                            \
@@ -104,6 +118,7 @@ __inline__ __attribute__((always_inline)) __aicore__ void InitMetaData(const __g
         op.InitQuant(deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2, antiquantScale, antiquantOffset,    \
                      keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset, user);          \
         op.Process();                                                                                                  \
+        RecordKernelEndTiming(attentionOut);                                                                          \
     } while (0)
 
 template <uint8_t FLASH_DECODE, uint8_t LAYOUT_T, uint8_t ANTIQUANT_MODE>

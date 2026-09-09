@@ -161,9 +161,10 @@ trap cleanup EXIT
 
 # IFA 头开销测试需把 incre_flash_attention (及其 meta 算子) 纳入构建:
 #   ascend950: IFA 代码迁移自 ifa-head-overhead-test 分支, CANN 9.0 实测编译通过
+#   ascend910_93: CANN 26.0.rc2 实测编译通过 (T2 打点已移植到 910_93 arch22.h)
 #   其他平台: 保持排除 (旧 CANN 有 aclprofTensor 编译问题)
 BUILD_IFA=0
-if [ "$SOC_VERSION" = "ascend950" ]; then
+if [ "$SOC_VERSION" = "ascend950" ] || [ "$SOC_VERSION" = "ascend910_93" ]; then
     BUILD_IFA=1
 fi
 
@@ -340,13 +341,12 @@ if [ "$RUN_GMM" = "1" ]; then
     collect_gmm "满核" "$OUTPUT_DIR/gmm_full"
     echo ""
 fi
-# ascend950: 追加采集 incre_flash_attention (与 add/gmm 同一轮, 无开关)
-if [ "$SOC_VERSION" = "ascend950" ] \
+# ascend950/ascend910_93: 追加采集 incre_flash_attention (与 add/gmm 同一轮, 无开关)
+if ([ "$SOC_VERSION" = "ascend950" ] || [ "$SOC_VERSION" = "ascend910_93" ]) \
     && [ -f "tests/incre_flash_attention/run_head_overhead.sh" ]; then
     collect_ifa "满核" "$OUTPUT_DIR/ifa_full"
     echo ""
 fi
-
 # ============================================================
 # 汇总分析 (TaskDuration + STARS 三指标: T0-stars / T1-T0 / T1-stars)
 # ============================================================

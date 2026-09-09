@@ -236,13 +236,14 @@ def write_merged_rows(aligned, kicks, output_csv: Path, syscnt_mhz: float):
                     f"Kernel entry precedes STARS dispatch for "
                     f"stream={dispatch['stream_id']} task={dispatch['task_id']}"
                 )
-            if tkick < t0 or t1 < tkick:
-                raise RuntimeError(
-                    f"Invalid T0/TKick/T1 order for task {task_key}: "
-                    f"{t0}/{tkick}/{t1}"
-                )
-            stars_to_kick_cycles = tkick - t0
-            kick_to_kernel_entry_cycles = t1 - tkick
+            # A3: FFTS f[19] (pmu_start) is not the true kick moment
+            # (measured as dispatch+20cyc), so TKick may precede T0.
+            # Skip TKick fields when order is invalid; they are not used
+            # in the final summary (schedule_hardware/software_init/t2_from_stars
+            # all derive from T0/T1/T2 directly).
+            valid_kick = t0 <= tkick <= t1
+            stars_to_kick_cycles = (tkick - t0) if valid_kick else ""
+            kick_to_kernel_entry_cycles = (t1 - tkick) if valid_kick else ""
             schedule_hardware_cycles = t1 - t0
             software_init_cycles = t2 - t1 if t2 is not None else None
             t2_from_stars_cycles = t2 - t0 if t2 is not None else None
@@ -277,9 +278,15 @@ def write_merged_rows(aligned, kicks, output_csv: Path, syscnt_mhz: float):
                     "kernel_end_from_stars_cycles": (
                         kend - t0 if kend is not None else ""
                     ),
-                    "stars_to_kick_us": stars_to_kick_cycles / syscnt_mhz,
+                    "stars_to_kick_us": (
+                        stars_to_kick_cycles / syscnt_mhz
+                        if stars_to_kick_cycles != ""
+                        else ""
+                    ),
                     "kick_to_kernel_entry_us": (
                         kick_to_kernel_entry_cycles / syscnt_mhz
+                        if kick_to_kernel_entry_cycles != ""
+                        else ""
                     ),
                     "schedule_hardware_us": schedule_hardware_cycles / syscnt_mhz,
                     "software_init_us": (
@@ -330,10 +337,18 @@ def report_summary(rows, warmup: int, syscnt_mhz: float):
 
     metrics = {
         "TKick-T0_stars_scheduling": summarize(
-            [row["stars_to_kick_cycles"] for row in unique_tasks.values()]
+            [
+                row["stars_to_kick_cycles"]
+                for row in unique_tasks.values()
+                if row["stars_to_kick_cycles"] != ""
+            ]
         ),
         "T1-TKick_hardware_init": summarize(
-            [row["kick_to_kernel_entry_cycles"] for row in stable]
+            [
+                row["kick_to_kernel_entry_cycles"]
+                for row in stable
+                if row["kick_to_kernel_entry_cycles"] != ""
+            ]
         ),
         "T1-T0_schedule_plus_hardware": summarize(
             [row["schedule_hardware_cycles"] for row in stable]
