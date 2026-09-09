@@ -92,10 +92,10 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr &runParam, const ConstInfo
         }
     }
 
-    if (constInfo.oriMaskMode == 3U) {
+    if (constInfo.oriMaskMode == 3) { // 3: RightDownCausal模式
         runParam.nextTokensPerBatchOri = runParam.actualS2OriSize - runParam.actualS1Size;
         runParam.preTokensPerBatchOri = runParam.actualS1Size;
-    } else if (constInfo.oriMaskMode == 4U) {
+    } else if (constInfo.oriMaskMode == 4) { // 4: Band模式
         const int64_t casualOffset = runParam.actualS2OriSize - runParam.actualS1Size;
 
         runParam.preTokensPerBatchOri =
@@ -236,7 +236,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr &runParam, const ConstIn
         if (constInfo.subBlockIdx == 1) {
             runParam.attentionOutOffset += runParam.firstHalfMRealSize * constInfo.dSizeV;
         }
-        if (constInfo.returnSoftmaxLse) {
+        if (constInfo.isSoftmaxLseEnable) {
             if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
                 // [N2, T, G] (TND)
                 runParam.softmaxLseOffset = runParam.n2oIdx * constInfo.s1Size * constInfo.gSize +

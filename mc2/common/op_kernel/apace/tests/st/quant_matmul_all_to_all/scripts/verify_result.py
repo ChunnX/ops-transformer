@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # coding=utf-8
 
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
@@ -9,7 +9,7 @@
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------
 
 import os
 import sys
@@ -126,7 +126,6 @@ def verify_single_rank(
         npu_output_tensor,
         rtol=ERROR_TOL_RTOL,
         atol=ERROR_TOL_ATOL,
-        equal_nan=True,
     )
 
 
@@ -219,6 +218,9 @@ if __name__ == "__main__":
     out_dtype = torch.float16 if is_fp16 else torch.bfloat16
 
     # Validate parameters
+    if rank_num <= 0:
+        print(f"Error: rank_num={rank_num} must be a positive integer")
+        sys.exit(1)
     if n % rank_num != 0:
         print(f"Error: n={n} is not divisible by rank_num={rank_num}")
         sys.exit(1)

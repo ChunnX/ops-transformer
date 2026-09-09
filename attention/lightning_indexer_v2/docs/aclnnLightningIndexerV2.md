@@ -186,7 +186,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>blockTableOptional（aclTensor*）</td>
     <td>输入</td>
     <td>表示PageAttention中KV存储使用的block映射表。</td>
-    <td><ul><li>不支持空tensor。</li><li>PageAttention场景下，block_table必须为二维，第一维长度需要等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大的序列长度对应的block数量）</li><li>shape约束大小为[1-1024]</li></ul></td>
+    <td><ul><li>不支持空tensor。</li><li>PageAttention场景下，block_table必须为二维，第一维长度需要等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大的序列长度对应的block数量）</li></ul></td>
     <td>INT32</td>
     <td>ND</td>
     <td>shape支持(B,S2_max/block_size)</td>
@@ -196,10 +196,10 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>outputIdxOffsetOptional（aclTensor*）</td>
     <td>输入</td>
     <td>表示topK结果输出索引所需要加上的偏移。</td>
-    <td><ul><li>值必须大于0。</li><li>加上偏移后，topK index不能超过int32最大值</li></ul></td>
+    <td><ul><li>值必须大于等于0。</li><li>加上偏移后，topK index不能超过int32最大值</li></ul></td>
     <td>INT32</td>
     <td>ND</td>
-    <td><ul><li>layoutQ为"BSND"时输出shape为[B, S1, N2]。</li><li>layoutQ为"TND"时输出shape为[T1, N2]。</li></ul></td>
+    <td><ul><li>layoutQ为"BSND"时shape为[B, S1, N2]。</li><li>layoutQ为"TND"时shape为[T1, N2]。</li></ul></td>
     <td>x</td>
     </tr>
     <tr>
@@ -215,7 +215,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <tr>
     <td>topk（int64_t）</td>
     <td>输入</td>
-    <td>topK阶段需要保留的block数量。</td>
+    <td>topK阶段需要保留的Key token索引数量。</td>
     <td><ul><li>当前支持[1, 8192]。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
@@ -297,10 +297,10 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>sparseValues（aclTensor*）</td>
     <td>输出</td>
     <td>公式中的Indices对应的Values输出。</td>
-    <td>不支持空tensor。</td>
+    <td>returnValue为1时输出对应值；为0时输出shape为(0,)的空tensor。</td>
     <td>FLOAT</td>
     <td>ND</td>
-    <td><ul><li>layoutQ为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>layoutQ为"TND"时输出shape为[T1, N2, topk]。</li></ul></td>
+    <td><ul><li>returnValue为1且layoutQ为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>returnValue为1且layoutQ为"TND"时输出shape为[T1, N2, topk]。</li></ul></td>
     <td>x</td>
     </tr>
     <tr>
@@ -408,7 +408,7 @@ aclnnStatus aclnnLightningIndexerV2(
   - aclnnLightningIndexerV2默认确定性实现。
 - 参数q的N支持1~64，k的N支持1。
 - headdim支持128。
-- pa_kv_cache支持0轴非连续；pa_block_size支持1~1024，满足block大小32 Byte对齐。
+- pa_kv_cache支持0轴非连续；pa_block_size支持1~1024，满足block大小32Byte对齐。
 - 参数q、k的数据类型应保持一致。
 - sparseIndices无效部分填-1；sparseValues无效部分填-inf。
 - 传入的cmpResidualKOptional中每一个元素的值都应小于压缩率cmpRatio。
@@ -417,12 +417,12 @@ aclnnStatus aclnnLightningIndexerV2(
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - topk取值范围当前仅支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
   - 当前不支持sequsedQOptional、outputIdxOffsetOptional、maxSeqlenQ功能，不建议传入这些参数。
-  - 当layoutK为PA_BBND时，必须传入sequsedKOptional；当layoutK不为PA_BBND时，不支持sequsedKOptional功能，不建议传入该参数。
+  - 当layoutK为PA_BBND时，必须传入sequsedKOptional；当layoutK为BSND或TND时，sequsedKOptional可选传入。
 <!-- end id7 -->
 <!-- npu="950" id8 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：
   - 当传入的参数layoutQ为BSND时，不支持传入cuSeqlensQOptional；当layoutK为BSND或PA_BBND时，不支持传入cuSeqlensKOptional。
-  - 当传入参数outputIdxOffsetOptional时，只支持大于0的索引偏移值；且应满足约束：加上传入的索引偏移值后，得到的sparseIndice值不超过INT32的最大值。
+  - 当传入参数outputIdxOffsetOptional时，支持大于等于0的索引偏移值；且应满足约束：加上传入的索引偏移值后，得到的sparseIndice值不超过INT32的最大值。
   - 当传入的参数layoutQ为TND时，必须传入cuSeqlensQOptional，如果也传入sequsedQOptional，应保证由sequsedQOptional传入的各个batch的query长度不超过根据cuSeqlensQOptional计算出的各个batch的q序列长度。当某个batch由sequsedQOptional传入的q序列长度seqlen1小于由cuSeqlensQOptional计算出的query长度seqlen2时，会启用TND Padding功能，将该batch的seqlen2与seqlen1差值部分的query输出的sparseIndices和sparseValues全部置为无效值。部分长序列场景下，如果需要填充的无效数据过多，由于硬件限制可能会导致aicore执行超时，可以通过(seqlen2 - seqlen1) * topk来计算需要填充的数据量，建议将这个数据量控制在4亿以内。
   - 当传入的cmpRatio > 1且maskMode = 3时，必须传入cmpResidualKOptional，其余情况不传入。
   - 当传入的参数layoutK为PA_BBND时，必须传入sequsedKOptional。
@@ -442,88 +442,96 @@ aclnnStatus aclnnLightningIndexerV2(
 #include "securec.h"
 #include "acl/acl.h"
 #include "aclnnop/aclnn_lightning_indexer_v2.h"
+#include "aclnnop/aclnn_lightning_indexer_v2_metadata.h"
+#include "aclnn/opdev/platform.h"
 
 using namespace std;
 
 namespace {
 
-#define CHECK_RET(cond) ((cond) ? true :(false))
+#define CHECK_RET(cond) ((cond) ? true : (false))
 
-#define LOG_PRINT(message, ...)     \
-  do {                              \
-    (void)printf(message, ##__VA_ARGS__); \
-  } while (0)
+#define LOG_PRINT(message, ...) \
+    do { \
+        (void)printf(message, ##__VA_ARGS__); \
+    } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t>& shape) {
-  int64_t shapeSize = 1;
-  for (auto i : shape) {
-    shapeSize *= i;
-  }
-  return shapeSize;
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
+{
+    int64_t shapeSize = 1;
+    for (auto i : shape) {
+        shapeSize *= i;
+    }
+    return shapeSize;
 }
 
-int Init(int32_t deviceId, aclrtStream* stream) {
-  auto ret = aclInit(nullptr);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclInit failed. ERROR: %d\n", ret);
-    return ret;
-  }
-  ret = aclrtSetDevice(deviceId);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret);
-    return ret;
-  }
-  ret = aclrtCreateStream(stream);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret);
-    return ret;
-  }
-  return 0;
+int Init(int32_t deviceId, aclrtStream *stream)
+{
+    auto ret = aclInit(nullptr);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclInit failed. ERROR: %d\n", ret);
+        return ret;
+    }
+    ret = aclrtSetDevice(deviceId);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret);
+        return ret;
+    }
+    ret = aclrtCreateStream(stream);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret);
+        return ret;
+    }
+    return 0;
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
-                    aclDataType dataType, aclTensor** tensor) {
-  auto size = GetShapeSize(shape) * sizeof(T);
-  auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret);
-    return ret;
-  }
+int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
+                    aclDataType dataType, aclTensor **tensor)
+{
+    auto size = GetShapeSize(shape) * sizeof(T);
+    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret);
+        return ret;
+    }
 
-  ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
-    return ret;
-  }
+    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
+        return ret;
+    }
 
-  std::vector<int64_t> strides(shape.size(), 1);
-  for (int64_t i = shape.size() - 2; i >= 0; i--) {
-    strides[i] = shape[i + 1] * strides[i + 1];
-  }
+    std::vector<int64_t> strides(shape.size(), 1);
+    for (int64_t i = shape.size() - 2; i >= 0; i--) {
+        strides[i] = shape[i + 1] * strides[i + 1];
+    }
 
-  *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                            shape.data(), shape.size(), *deviceAddr);
-  return 0;
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
+                              shape.data(), shape.size(), *deviceAddr);
+    return 0;
 }
 
 struct TensorResources {
-    void* queryDeviceAddr = nullptr;
-    void* keyDeviceAddr = nullptr;
-    void* weightsDeviceAddr = nullptr;
-    void* cmpResidualKDeviceAddr = nullptr;
-    void* sparseIndicesDeviceAddr = nullptr;
-    void* sparseValuesDeviceAddr = nullptr;
+    void *queryDeviceAddr = nullptr;
+    void *keyDeviceAddr = nullptr;
+    void *weightsDeviceAddr = nullptr;
+    void *cmpResidualKDeviceAddr = nullptr;
+    void *metadataDeviceAddr = nullptr;
+    void *sparseIndicesDeviceAddr = nullptr;
+    void *sparseValuesDeviceAddr = nullptr;
 
-    aclTensor* queryTensor = nullptr;
-    aclTensor* keyTensor = nullptr;
-    aclTensor* weightsTensor = nullptr;
-    aclTensor* cmpResidualKTensor = nullptr;
-    aclTensor* sparseIndicesTensor = nullptr;
-    aclTensor* sparseValuesTensor = nullptr;
+    aclTensor *queryTensor = nullptr;
+    aclTensor *keyTensor = nullptr;
+    aclTensor *weightsTensor = nullptr;
+    aclTensor *cmpResidualKTensor = nullptr;
+    aclTensor *metadataTensor = nullptr;
+    aclTensor *sparseIndicesTensor = nullptr;
+    aclTensor *sparseValuesTensor = nullptr;
 };
 
-int InitializeTensors(TensorResources& resources) {
+int InitializeTensors(TensorResources &resources)
+{
     int64_t B = 2;
     int64_t S1 = 64;
     int64_t N1 = 16;
@@ -539,12 +547,14 @@ int InitializeTensors(TensorResources& resources) {
     std::vector<int64_t> keyShape = {B, S2Compressed, N2, D};
     std::vector<int64_t> weightsShape = {B, S1, N1};
     std::vector<int64_t> cmpResidualKShape = {B};
+    std::vector<int64_t> metadataShape = {1024};
     std::vector<int64_t> sparseIndicesShape = {B, S1, N2, topk};
     std::vector<int64_t> sparseValuesShape = {B, S1, N2, topk};
 
     int64_t queryShapeSize = GetShapeSize(queryShape);
     int64_t keyShapeSize = GetShapeSize(keyShape);
     int64_t weightsShapeSize = GetShapeSize(weightsShape);
+    int64_t metadataShapeSize = GetShapeSize(metadataShape);
     int64_t sparseIndicesShapeSize = GetShapeSize(sparseIndicesShape);
     int64_t sparseValuesShapeSize = GetShapeSize(sparseValuesShape);
 
@@ -552,52 +562,120 @@ int InitializeTensors(TensorResources& resources) {
     std::vector<uint16_t> keyHostData(keyShapeSize, 0x3C00);
     std::vector<float> weightsHostData(weightsShapeSize, 1.0f);
     std::vector<int32_t> cmpResidualKHostData(B, static_cast<int32_t>(resK));
+    std::vector<int32_t> metadataHostData(metadataShapeSize, 0);
     std::vector<int32_t> sparseIndicesHostData(sparseIndicesShapeSize, 0);
     std::vector<float> sparseValuesHostData(sparseValuesShapeSize, 0.0f);
 
-    int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr,
-                              aclDataType::ACL_FLOAT16, &resources.queryTensor);
+    int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr, aclDataType::ACL_FLOAT16,
+                              &resources.queryTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-      return ret;
+        return ret;
     }
 
-    ret = CreateAclTensor(keyHostData, keyShape, &resources.keyDeviceAddr,
-                          aclDataType::ACL_FLOAT16, &resources.keyTensor);
+    ret = CreateAclTensor(keyHostData, keyShape, &resources.keyDeviceAddr, aclDataType::ACL_FLOAT16,
+                          &resources.keyTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-      return ret;
+        return ret;
     }
 
-    ret = CreateAclTensor(weightsHostData, weightsShape, &resources.weightsDeviceAddr,
-                          aclDataType::ACL_FLOAT, &resources.weightsTensor);
+    ret = CreateAclTensor(weightsHostData, weightsShape, &resources.weightsDeviceAddr, aclDataType::ACL_FLOAT,
+                          &resources.weightsTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-      return ret;
+        return ret;
     }
 
     ret = CreateAclTensor(cmpResidualKHostData, cmpResidualKShape, &resources.cmpResidualKDeviceAddr,
                           aclDataType::ACL_INT32, &resources.cmpResidualKTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-      return ret;
+        return ret;
     }
 
+    ret = CreateAclTensor(metadataHostData, metadataShape, &resources.metadataDeviceAddr, aclDataType::ACL_INT32,
+                          &resources.metadataTensor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        return ret;
+    }
     ret = CreateAclTensor(sparseIndicesHostData, sparseIndicesShape, &resources.sparseIndicesDeviceAddr,
                           aclDataType::ACL_INT32, &resources.sparseIndicesTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-      return ret;
+        return ret;
     }
 
     ret = CreateAclTensor(sparseValuesHostData, sparseValuesShape, &resources.sparseValuesDeviceAddr,
                           aclDataType::ACL_FLOAT, &resources.sparseValuesTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-      return ret;
+        return ret;
     }
 
     return ACL_SUCCESS;
 }
 
-int ExecuteLightningIndexerV2(TensorResources& resources, aclrtStream stream,
-                                 void** workspaceAddr, uint64_t* workspaceSize) {
+int GenerateMetadata(TensorResources &resources, aclrtStream stream, int64_t B, int64_t S1, int64_t S2, int64_t N1,
+                     int64_t N2, int64_t D, int64_t topk, int64_t maskMode, int64_t cmpRatio)
+{
+    constexpr const char layoutQ[] = "BSND";
+    constexpr const char layoutK[] = "BSND";
+    constexpr size_t layoutLen = sizeof(layoutQ);
+    char layoutQCopy[layoutLen];
+    char layoutKCopy[layoutLen];
+    errno_t memcpyRet = memcpy_s(layoutQCopy, sizeof(layoutQCopy), layoutQ, layoutLen);
+    if (!CHECK_RET(memcpyRet == 0)) {
+        LOG_PRINT("metadata memcpy_s layoutQ failed. ERROR: %d\n", memcpyRet);
+        return -1;
+    }
+    memcpyRet = memcpy_s(layoutKCopy, sizeof(layoutKCopy), layoutK, layoutLen);
+    if (!CHECK_RET(memcpyRet == 0)) {
+        LOG_PRINT("metadata memcpy_s layoutK failed. ERROR: %d\n", memcpyRet);
+        return -1;
+    }
+
+    aclOpExecutor *executor;
+    uint64_t workspaceSize = 0;
+    int ret = aclnnLightningIndexerV2MetadataGetWorkspaceSize(
+        nullptr, nullptr, nullptr, nullptr, nullptr, N1, N2, D, topk, B, S1, S2, layoutQCopy, layoutKCopy, maskMode,
+        cmpRatio, resources.metadataTensor, &workspaceSize, &executor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclnnLightningIndexerV2MetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
+        return ret;
+    }
+
+    void *metadataWsAddr = nullptr;
+    if (workspaceSize > 0ULL) {
+        ret = aclrtMalloc(&metadataWsAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        if (!CHECK_RET(ret == ACL_SUCCESS)) {
+            LOG_PRINT("metadata allocate workspace failed. ERROR: %d\n", ret);
+            return ret;
+        }
+    }
+
+    ret = aclnnLightningIndexerV2Metadata(metadataWsAddr, workspaceSize, executor, stream);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclnnLightningIndexerV2Metadata failed. ERROR: %d\n", ret);
+        if (metadataWsAddr) {
+            (void)aclrtFree(metadataWsAddr);
+        }
+        return ret;
+    }
+
+    ret = aclrtSynchronizeStream(stream);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("metadata synchronize stream failed. ERROR: %d\n", ret);
+        if (metadataWsAddr) {
+            (void)aclrtFree(metadataWsAddr);
+        }
+        return ret;
+    }
+
+    if (metadataWsAddr) {
+        (void)aclrtFree(metadataWsAddr);
+    }
+    return ACL_SUCCESS;
+}
+int ExecuteLightningIndexerV2(TensorResources &resources, aclrtStream stream, void **workspaceAddr,
+                              uint64_t *workspaceSize)
+{
     int64_t topk = 32;
-    int64_t maxSeqlenQ = 64;
+    int64_t maxSeqlenQ = -1;
     int64_t maskMode = 3;
     int64_t cmpRatio = 4;
     int64_t returnValue = 0;
@@ -617,16 +695,12 @@ int ExecuteLightningIndexerV2(TensorResources& resources, aclrtStream stream,
         LOG_PRINT("memcpy_s layoutKey failed. ERROR: %d\n", memcpyRet);
         return -1;
     }
-    aclOpExecutor* executor;
+    aclOpExecutor *executor;
 
     int ret = aclnnLightningIndexerV2GetWorkspaceSize(
-        resources.queryTensor, resources.keyTensor, resources.weightsTensor,
-        nullptr, nullptr, nullptr, nullptr,
-        resources.cmpResidualKTensor, nullptr, nullptr, nullptr,
-        topk, maxSeqlenQ,
-        layoutQuery, layoutKey,
-        maskMode, cmpRatio, returnValue,
-        resources.sparseIndicesTensor, resources.sparseValuesTensor,
+        resources.queryTensor, resources.keyTensor, resources.weightsTensor, nullptr, nullptr, nullptr, nullptr,
+        resources.cmpResidualKTensor, nullptr, nullptr, resources.metadataTensor, topk, maxSeqlenQ, layoutQuery,
+        layoutKey, maskMode, cmpRatio, returnValue, resources.sparseIndicesTensor, resources.sparseValuesTensor,
         workspaceSize, &executor);
 
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
@@ -651,66 +725,70 @@ int ExecuteLightningIndexerV2(TensorResources& resources, aclrtStream stream,
     return ACL_SUCCESS;
 }
 
-int PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
-  auto size = GetShapeSize(shape);
-  std::vector<int32_t> resultData(size, 0);
-  auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
-                         *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) {
+int PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr)
+{
+    auto size = GetShapeSize(shape);
+    std::vector<int32_t> resultData(size, 0);
+    auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), *deviceAddr,
+                           size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
         return ret;
-  }
-  for (int64_t i = 0; i < size; i++) {
-    LOG_PRINT("sparse_indices result[%ld] is: %d\n", i, resultData[i]);
-  }
-  return ACL_SUCCESS;
+    }
+    for (int64_t i = 0; i < size; i++) {
+        LOG_PRINT("sparse_indices result[%ld] is: %d\n", i, resultData[i]);
+    }
+    return ACL_SUCCESS;
 }
 
-void CleanupResources(TensorResources& resources, void* workspaceAddr,
-                     aclrtStream stream, int32_t deviceId) {
+void CleanupResources(TensorResources &resources, void *workspaceAddr, aclrtStream stream, int32_t deviceId)
+{
     if (resources.queryTensor) {
-      aclDestroyTensor(resources.queryTensor);
+        aclDestroyTensor(resources.queryTensor);
     }
     if (resources.keyTensor) {
-      aclDestroyTensor(resources.keyTensor);
+        aclDestroyTensor(resources.keyTensor);
     }
     if (resources.weightsTensor) {
-      aclDestroyTensor(resources.weightsTensor);
+        aclDestroyTensor(resources.weightsTensor);
     }
     if (resources.cmpResidualKTensor) {
-      aclDestroyTensor(resources.cmpResidualKTensor);
+        aclDestroyTensor(resources.cmpResidualKTensor);
+    }
+    if (resources.metadataTensor) {
+        aclDestroyTensor(resources.metadataTensor);
     }
     if (resources.sparseIndicesTensor) {
-      aclDestroyTensor(resources.sparseIndicesTensor);
+        aclDestroyTensor(resources.sparseIndicesTensor);
     }
     if (resources.sparseValuesTensor) {
-      aclDestroyTensor(resources.sparseValuesTensor);
+        aclDestroyTensor(resources.sparseValuesTensor);
     }
 
     if (resources.queryDeviceAddr) {
-      aclrtFree(resources.queryDeviceAddr);
+        aclrtFree(resources.queryDeviceAddr);
     }
     if (resources.keyDeviceAddr) {
-      aclrtFree(resources.keyDeviceAddr);
+        aclrtFree(resources.keyDeviceAddr);
     }
     if (resources.weightsDeviceAddr) {
-      aclrtFree(resources.weightsDeviceAddr);
+        aclrtFree(resources.weightsDeviceAddr);
     }
     if (resources.cmpResidualKDeviceAddr) {
-      aclrtFree(resources.cmpResidualKDeviceAddr);
+        aclrtFree(resources.cmpResidualKDeviceAddr);
     }
     if (resources.sparseIndicesDeviceAddr) {
-      aclrtFree(resources.sparseIndicesDeviceAddr);
+        aclrtFree(resources.sparseIndicesDeviceAddr);
     }
     if (resources.sparseValuesDeviceAddr) {
-      aclrtFree(resources.sparseValuesDeviceAddr);
+        aclrtFree(resources.sparseValuesDeviceAddr);
     }
 
     if (workspaceAddr) {
-      aclrtFree(workspaceAddr);
+        aclrtFree(workspaceAddr);
     }
     if (stream) {
-      aclrtDestroyStream(stream);
+        aclrtDestroyStream(stream);
     }
     aclrtResetDevice(deviceId);
     aclFinalize();
@@ -718,15 +796,22 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
 
 } // namespace
 
-int main() {
+int main()
+{
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+        return 0;
+    }
     int32_t deviceId = 0;
     aclrtStream stream = nullptr;
     TensorResources resources = {};
-    void* workspaceAddr = nullptr;
+    void *workspaceAddr = nullptr;
     uint64_t workspaceSize = 0;
     int64_t B = 2;
     int64_t S1 = 64;
     int64_t N2 = 1;
+    int64_t S2 = 32;
+    int64_t N1 = 16;
+    int64_t D = 128;
     int64_t topk = 32;
     std::vector<int64_t> sparseIndicesShape = {B, S1, N2, topk};
     int ret = ACL_SUCCESS;
@@ -743,7 +828,12 @@ int main() {
         CleanupResources(resources, workspaceAddr, stream, deviceId);
         return ret;
     }
-
+    ret = GenerateMetadata(resources, stream, B, S1, S2, N1, N2, D, topk, 3, 4);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("GenerateMetadata failed. ERROR: %d\n", ret);
+        CleanupResources(resources, workspaceAddr, stream, deviceId);
+        return ret;
+    }
     ret = ExecuteLightningIndexerV2(resources, stream, &workspaceAddr, &workspaceSize);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("ExecuteLightningIndexerV2 failed. ERROR: %d\n", ret);

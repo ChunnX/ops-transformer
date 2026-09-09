@@ -18,6 +18,8 @@ import pandas as pd
 from pathlib import Path
 import pytest
 import torch
+
+from batch_consistency.config import prepare_consistency_params
 import time
 import random
 
@@ -32,6 +34,15 @@ str_map_dict = {
     "BF16": torch.bfloat16,
     "FP16": torch.float16,
 }
+
+
+def normalize_topk_mode(value):
+    """Accept the case-insensitive ``fullK`` spelling used by Excel cases."""
+    if isinstance(value, list):
+        return [normalize_topk_mode(item) for item in value]
+    if isinstance(value, str) and value.casefold() == "fullk":
+        return "fullK"
+    return value
 
 
 def to_int_or_na(x):
@@ -297,8 +308,12 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
             "cmp_mask_mode": params.get("cmp_mask_mode", [None]),
             "ori_win_left": params.get("ori_win_left", [None]),
             "ori_win_right": params.get("ori_win_right", [None]),
-            "ori_kv_topk_mode": params.get("ori_kv_topk_mode", ori_topk_default),
-            "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode", cmp_topk_default),
+            "ori_kv_topk_mode": normalize_topk_mode(
+                params.get("ori_kv_topk_mode", ori_topk_default)
+            ),
+            "cmp_kv_topk_mode": normalize_topk_mode(
+                params.get("cmp_kv_topk_mode", cmp_topk_default)
+            ),
             "ori_sparse_indices_mode": params.get("ori_sparse_indices_mode", ["full"]),
             "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", ["full"]),
             "actlen_mode": params.get("actlen_mode", ["full"]),
@@ -310,8 +325,29 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
             "return_softmax_lse": params.get("return_softmax_lse", [False]),
             "ori_topk_length": params.get("ori_topk_length", [None]),
             "cmp_topk_length": params.get("cmp_topk_length", [None]),
+            "batch_consistency": params.get("batch_consistency", [False]),
+            "batch_consistency_seed": params.get("batch_consistency_seed", [None]),
+            "batch_consistency_order": params.get("batch_consistency_order", [None]),
+            "batch_consistency_batch_split": params.get(
+                "batch_consistency_batch_split", [None]
+            ),
+            "batch_consistency_mode_batch": params.get(
+                "batch_consistency_mode_batch", [None]
+            ),
+            "batch_consistency_token_split": params.get(
+                "batch_consistency_token_split", [None]
+            ),
+            "batch_consistency_shape_change": params.get(
+                "batch_consistency_shape_change", [None]
+            ),
         }
         param_names = list(param_values.keys())
+        if is_save_pt:
+            # Excel rows are already individual cases. Unwrap only defaults for
+            # absent columns; explicitly supplied list-valued cells stay intact.
+            for name, value in param_values.items():
+                if name not in params and isinstance(value, list) and len(value) == 1:
+                    param_values[name] = value[0]
         for key, value in param_values.items():
             if isinstance(value, str) and value in str_map_dict:
                 param_values[key] = str_map_dict[value]
@@ -395,8 +431,44 @@ def fill_random_used_len(SMax, B, random_seq=False):
     return used_lens
 
 
-def generate_case_with_default_param(param_combinations):
+def fill_actual_seq_len(full_lengths, actlen_mode="full"):
+    """Generate actual sequence lengths; full lengths are the default."""
+    if actlen_mode == "full":
+        return list(full_lengths)
+    if actlen_mode == "random":
+        return [
+            random.randint(0, length) if length > 0 else 0 for length in full_lengths
+        ]
+    raise ValueError(f"actlen_mode should be 'full' or 'random', but got {actlen_mode}")
+
+
+def is_swa_case(params):
+    """Return whether a case selects SWA, including the legacy implicit mode."""
+    template_mode = params.get("template_mode")
+    if template_mode == "SWA":
+        return True
+    return (
+        template_mode is None
+        and (params.get("K") is None or params.get("K") == ["None"])
+        and params.get("cmp_ratio") is None
+    )
+
+
+def has_cmp_kv_case(params):
+    """Return whether the selected template consumes compressed KV inputs."""
+    template_mode = params.get("template_mode")
+    if template_mode in ("HCA", "CSA", "ORI_CMP_SPARSE"):
+        return True
+    if template_mode in ("SWA", "ORI_SPARSE"):
+        return False
+    return not is_swa_case(params)
+
+
+def generate_case_with_default_param(
+    param_combinations, batch_consistency_policy="auto"
+):
     case_param = param_combinations.copy()
+    prepare_consistency_params(case_param, batch_consistency_policy)
     case_param.setdefault("testcase_name", "case_" + str(int(time.time() * 1000000)))
     case_param.update(
         {
@@ -436,7 +508,7 @@ def generate_case_with_default_param(param_combinations):
         }
     )
 
-    # 测试用，数据预填充，TND场景下cu_seqlens如果没有传入，根据T和S自动填充随机值
+    # 测试用数据预填充
     # 常用参数提取
     layout_q = case_param["layout_q"]
     layout_kv = case_param["layout_kv"]
@@ -446,44 +518,92 @@ def generate_case_with_default_param(param_combinations):
     S1 = case_param["S1"]
     S2 = case_param["S2"]
     cmp_ratio = case_param["cmp_ratio"]
-    # 数据预填充
+    is_swa = is_swa_case(case_param)
+    has_cmp_kv = has_cmp_kv_case(case_param)
+    actlen_mode = case_param.get("actlen_mode") or "full"
+    case_param["actlen_mode"] = actlen_mode
+
+    # SWA/ORI_SPARSE have no compressed-KV branch. Clear values that may have
+    # come from a shared parameter set before compressed inputs are derived.
+    if not has_cmp_kv:
+        if is_swa:
+            case_param["cmp_mask_mode"] = 0
+        for key in (
+            "cmp_kv_type",
+            "T3",
+            "K",
+            "block_num2",
+            "block_size2",
+            "cu_seqlens_cmp_kv",
+            "seqused_cmp_kv",
+            "cmp_residual_kv",
+            "cmp_topk_length",
+        ):
+            case_param[key] = None
+
+    # 数据预填充。cu_seqlens描述存储容量，默认actual length取每个batch的满长度；
+    # 仅当actlen_mode显式设为random时才随机actual length。
     if case_param["cu_seqlens_q"] is None:
         if layout_q == "TND":
-            case_param["cu_seqlens_q"] = fill_random_cu_len(
-                T1, S1, B, param_combinations["random_seq"]
-            )
+            case_param["cu_seqlens_q"] = fill_random_cu_len(T1, S1, B, False)
             print("cu_seqlens_q auto set to: ", case_param["cu_seqlens_q"])
         elif layout_q == "BSND":
-            case_param["cu_seqlens_q"] = fill_random_cu_len(
-                B * S1, S1, B, param_combinations["random_seq"]
-            )
+            case_param["cu_seqlens_q"] = generate_cu_seqlens([S1] * B)
             print("cu_seqlens_q auto set to: ", case_param["cu_seqlens_q"])
-    if case_param["cu_seqlens_ori_kv"] is None and layout_kv == "TND":
-        case_param["cu_seqlens_ori_kv"] = fill_random_cu_len(
-            T2, S2, B, param_combinations["random_seq"]
+
+    if case_param["seqused_q"] is None:
+        q_full_lengths = (
+            generate_seqused(case_param["cu_seqlens_q"])
+            if layout_q == "TND"
+            else [S1] * B
         )
+        case_param["seqused_q"] = fill_actual_seq_len(q_full_lengths, actlen_mode)
+        print("seqused_q auto set to: ", case_param["seqused_q"])
+
+    if case_param["cu_seqlens_ori_kv"] is None and layout_kv == "TND":
+        case_param["cu_seqlens_ori_kv"] = fill_random_cu_len(T2, S2, B, False)
         print("cu_seqlens_ori_kv auto set to: ", case_param["cu_seqlens_ori_kv"])
 
-    if (
-        case_param["cu_seqlens_cmp_kv"] is None
-        and layout_kv == "TND"
-        and cmp_ratio is not None
-    ):
-        case_param["seqused_ori_kv"] = generate_seqused(case_param["cu_seqlens_ori_kv"])
-        case_param["seqused_cmp_kv"] = [
-            x // cmp_ratio for x in case_param["seqused_ori_kv"]
-        ]
-        case_param["cu_seqlens_cmp_kv"] = generate_cu_seqlens(
-            case_param["seqused_cmp_kv"]
+    if case_param["seqused_ori_kv"] is None:
+        ori_full_lengths = (
+            generate_seqused(case_param["cu_seqlens_ori_kv"])
+            if layout_kv == "TND"
+            else [S2] * B
         )
-        print("cu_seqlens_cmp_kv auto set to: ", case_param["cu_seqlens_cmp_kv"])
-        case_param["T3"] = case_param["cu_seqlens_cmp_kv"][-1]
-
-    if case_param["seqused_ori_kv"] is None and layout_kv != "TND":
-        case_param["seqused_ori_kv"] = fill_random_used_len(
-            S2, B, param_combinations["random_seq"]
+        case_param["seqused_ori_kv"] = fill_actual_seq_len(
+            ori_full_lengths, actlen_mode
         )
         print("seqused_ori_kv auto set to: ", case_param["seqused_ori_kv"])
+
+    effective_cmp_ratio = None
+    if has_cmp_kv:
+        effective_cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
+        if effective_cmp_ratio < 1 or effective_cmp_ratio > 128:
+            raise ValueError(
+                f"cmp_ratio should be in range [1, 128], but got {effective_cmp_ratio}"
+            )
+        if case_param["seqused_cmp_kv"] is None:
+            case_param["seqused_cmp_kv"] = [
+                length // effective_cmp_ratio for length in case_param["seqused_ori_kv"]
+            ]
+            print("seqused_cmp_kv auto set to: ", case_param["seqused_cmp_kv"])
+        if case_param["cmp_residual_kv"] is None:
+            case_param["cmp_residual_kv"] = [
+                length % effective_cmp_ratio for length in case_param["seqused_ori_kv"]
+            ]
+            print("cmp_residual_kv auto set to: ", case_param["cmp_residual_kv"])
+        if layout_kv == "TND":
+            if case_param["cu_seqlens_cmp_kv"] is None:
+                cmp_full_lengths = [
+                    length // effective_cmp_ratio
+                    for length in generate_seqused(case_param["cu_seqlens_ori_kv"])
+                ]
+                case_param["cu_seqlens_cmp_kv"] = generate_cu_seqlens(cmp_full_lengths)
+                print(
+                    "cu_seqlens_cmp_kv auto set to: ",
+                    case_param["cu_seqlens_cmp_kv"],
+                )
+            case_param["T3"] = case_param["cu_seqlens_cmp_kv"][-1]
 
     if "seqused_ori_kv" not in case_param:
         case_param["seqused_ori_kv"] = None
@@ -503,13 +623,17 @@ def generate_case_with_default_param(param_combinations):
             cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / case_param["block_size1"])
             ori_block_num_per_batch.append(cur_ori_kv_block_num)
             ori_block_num_sum += cur_ori_kv_block_num
-            if cmp_ratio is not None and case_param["block_size2"] is not None:
-                cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
+            if (
+                has_cmp_kv
+                and effective_cmp_ratio is not None
+                and case_param["block_size2"] is not None
+            ):
+                cur_cmp_act_kv = math.floor(cur_ori_act_kv / effective_cmp_ratio)
                 cur_cmp_kv_block_num = math.ceil(
                     cur_cmp_act_kv / case_param["block_size2"]
                 )
                 cmp_block_num_per_batch.append(cur_cmp_kv_block_num)
                 cmp_block_num_sum += cur_cmp_kv_block_num
     case_param["block_num1"] = ori_block_num_sum
-    case_param["block_num2"] = cmp_block_num_sum
+    case_param["block_num2"] = None if not has_cmp_kv else cmp_block_num_sum
     return case_param

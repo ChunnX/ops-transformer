@@ -58,7 +58,7 @@ class _AllToAllQuantMatmulOpBuilder(OpBuilder):
             x2_scale=None,
             x1_quant_mode=None,
             x2_quant_mode=None,
-            group_sizes=[],
+            group_sizes=None,
             x1_dtype=None,
             x2_dtype=None,
             x1_scale_dtype=None,
@@ -110,7 +110,7 @@ def _npu_all_to_all_quant_matmul(
     x2_scale=None,
     x1_quant_mode=None,
     x2_quant_mode=None,
-    group_sizes=[],
+    group_sizes=None,
     x1_dtype=None,
     x2_dtype=None,
     x1_scale_dtype=None,
@@ -132,7 +132,7 @@ def _npu_all_to_all_quant_matmul(
         x2_scale,
         x1_quant_mode,
         x2_quant_mode,
-        group_sizes,
+        group_sizes if group_sizes is not None else [],
         x1_dtype,
         x2_dtype,
         x1_scale_dtype,
@@ -204,7 +204,8 @@ def all_to_all_quant_matmul(
         x2_scale_dtype (int): x2_scale dtype enum, -1 means use tensor dtype.
         y_dtype (int): Output dtype enum, must be 5 (FP16) or 15 (BF16); the default
             fp32 is rejected by the operator.
-        comm_mode (str): Communication engine, e.g. ``"ai_cpu"`` or ``"ccu"``.
+        comm_mode (str): Communication engine, only ``"aiv_urma"`` is supported; must be
+            passed explicitly.
         precision_mode (int): Precision mode, 0 means default.
 
     Returns:

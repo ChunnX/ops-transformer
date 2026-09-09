@@ -8,7 +8,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-
 # run.sh — apace QuantMatmulAllToAll ST
 #
 # 流程: 生成数据 -> 编译 -> 多 rank 运行 -> 精度比对

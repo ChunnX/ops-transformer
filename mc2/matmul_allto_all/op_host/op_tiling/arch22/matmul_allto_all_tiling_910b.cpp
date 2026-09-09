@@ -79,7 +79,7 @@ T ClampValue(T value, T minVal, T maxVal)
     return (value < minVal) ? minVal : (value > maxVal) ? maxVal : value;
 }
 
-void TilingParamDeal(CoCTiling &cocTilingData, MatmulAlltoAllInfo &info)
+static void TilingParamDeal(CoCTiling &cocTilingData, MatmulAlltoAllInfo &info)
 {
     int32_t dataTypeSize = ELEMENT_SIZE;
     int32_t peerMemSize = (MAX_BUFF_BYTES - FLAG_BUFF_BYTES) / dataTypeSize;
@@ -852,7 +852,10 @@ void MatmulAlltoAllTiling910B::SetTilingKey()
  *
  * @return uint64_t tilingKey结果
  */
-uint64_t MatmulAlltoAllTiling910B::GetTilingKey() const { return tilingKey_; }
+uint64_t MatmulAlltoAllTiling910B::GetTilingKey() const
+{
+    return tilingKey_;
+}
 
 /**
  * @brief 设置hccl的config,进行hccl对应的通信任务设置

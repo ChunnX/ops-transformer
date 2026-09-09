@@ -18,17 +18,49 @@
 #include "moe_v3_common.h"
 #include "kernel_operator.h"
 #include "op_kernel/load_store_utils.h"
+#include "simt_api/asc_simt.h"
 
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
+
+constexpr int64_t COUNT_SOURT_SIMT_THREAD_NUM = 1024;
+
+// ===== topkWeight 重排输出（SIMT GM->GM，scatter）=====
+__simt_vf__ __aicore__ LAUNCH_BOUND(COUNT_SOURT_SIMT_THREAD_NUM) inline void CoutSortFullLoadTopkWeightScatterSimt(
+    int64_t elements, int64_t dstBase, int64_t totalLength, __gm__ int32_t *dstToSrcRow, __gm__ float *topkWeight,
+    __gm__ volatile float *expandedTopkWeight)
+{
+    for (int64_t i = static_cast<int64_t>(threadIdx.x); i < elements; i += static_cast<int64_t>(blockDim.x)) {
+        int64_t dstIndex = dstBase + i;
+        int32_t srcIndex = dstToSrcRow[dstIndex];
+        if (srcIndex >= 0 && srcIndex < totalLength) {
+            expandedTopkWeight[dstIndex] = topkWeight[srcIndex];
+        }
+    }
+}
+
+// ===== gather 模式 topkWeight 展开（src 遍历 + 无效 -1 跳过）=====
+__simt_vf__ __aicore__ LAUNCH_BOUND(COUNT_SOURT_SIMT_THREAD_NUM) inline void CoutSortFullLoadTopkWeightGatherSimt(
+    int64_t elements, int64_t srcBase, int64_t outputRows, __gm__ int32_t *srcToDstRow, __gm__ float *topkWeight,
+    __gm__ volatile float *expandedTopkWeight)
+{
+    for (int64_t i = static_cast<int64_t>(threadIdx.x); i < elements; i += static_cast<int64_t>(blockDim.x)) {
+        int64_t srcIndex = srcBase + i;
+        int32_t dstIndex = srcToDstRow[srcIndex];
+        if (dstIndex >= 0 && dstIndex < outputRows) {
+            expandedTopkWeight[dstIndex] = topkWeight[srcIndex];
+        }
+    }
+}
 
 template <typename T>
 class MoeV3CountingSortFullLoadUnquantized {
 public:
     __aicore__ inline MoeV3CountingSortFullLoadUnquantized(){};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedX,
-                                GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale,
-                                GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tiling, TPipe *pipe);
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
+                                GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale, GM_ADDR topkWeight,
+                                GM_ADDR expandedTopkWeight, GM_ADDR workspace,
+                                const MoeInitRoutingV3Arch35TilingData *tiling, TPipe *pipe);
     __aicore__ inline void Process();
 
 private:
@@ -36,7 +68,6 @@ private:
     __aicore__ inline void InitCommon(GM_ADDR expertIdx, GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum,
                                       GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tiling, TPipe *pipe);
     __aicore__ inline void PrefillAndSync();
-    __aicore__ inline void ZeroOutExpandedDropPad(GlobalTensor<T> &expandedXGm);
     __aicore__ inline void ComputeCommonUbLayout();
     __aicore__ inline void LoadExpertIdx();
     __aicore__ inline void LoadXBackground(GlobalTensor<T> &xGm);
@@ -46,9 +77,7 @@ private:
     __aicore__ inline void ComputeGlobalOffset();
     __aicore__ inline void WriteExpertTokens();
     __aicore__ inline void WaitXLoadCommon();
-    // 聚合搬出（csAggrEnable=1 时；FullLoad 模板仅 dropless，故无 dropPad 分支）
     __aicore__ inline void BucketByExpert();
-    __aicore__ inline int64_t ComputeBatchStartNewPos(int64_t expertOffset, int64_t slotStart);
     __aicore__ inline void GatherAndWriteByExpert(LocalTensor<T> &xLocal, LocalTensor<float> &scaleLocal,
                                                   GlobalTensor<T> &expandedXGmRef,
                                                   GlobalTensor<float> &expandedScaleGmRef);
@@ -57,6 +86,7 @@ private:
     __aicore__ inline void LoadScale();
     __aicore__ inline void GatherAndWrite();
     __aicore__ inline void GatherOneRow(int64_t newPos, int64_t tokenRow, int64_t origFlatIdx);
+    __aicore__ inline void TopkWeightPhase();
 
     static constexpr int64_t DST_REP_STRIDE = 8;
     static constexpr int64_t MASK_STRIDE = 64;
@@ -73,8 +103,8 @@ private:
     GlobalTensor<T> expandedXGm_;
     GlobalTensor<float> scaleGm_;
     GlobalTensor<float> expandedScaleGm_;
-
-    int64_t quantMode_;
+    GlobalTensor<float> topkWeightGm_;
+    GlobalTensor<float> expandedTopkWeightGm_;
 
     int64_t blockIdx_;
     int64_t n_;
@@ -87,14 +117,14 @@ private:
     int64_t expertNum_;
     int64_t rowIdxType_;
     int64_t isInputScale_;
+    int64_t isInputTopkWeight_{0};
     int64_t filterNeedCoreNum_;
-    int64_t coreNum_;
     int64_t expertTokensNumFlag_;
     int64_t expertTokensNumType_;
     int64_t activeNum_;
-    int64_t dropPadMode_;
-    int64_t expertCapacity_;
     int64_t outputRows_;
+    int64_t expertTotalCount_; // 实际保留（写满）的行数：dropless 下由 ComputeGlobalOffset 求得的 cumulativeSum，<=
+                               // outputRows_
     int64_t filterPerCoreTokens_;
 
     int64_t coreTokenStart_;
@@ -131,7 +161,7 @@ private:
     int64_t commonBufSize_; // 公共区结尾 offset
 
     // 聚合搬出参数（从 tiling 读取）
-    int64_t csAggrEnable_{0};
+    int64_t coutSortAggrEnable_{0};
     int64_t aggrOutRows_{0};        // k：搬出聚合 UB 容纳行数
     int64_t aggrOutBufBytes_{0};    // 搬出聚合区字节数
     int64_t gatherOutBufOffset_{0}; // 搬出聚合区在 buf_ 中的字节偏移
@@ -143,9 +173,9 @@ private:
 
 template <typename T>
 __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::Init(
-    GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
-    GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale, GM_ADDR workspace,
-    const MoeInitRoutingV3Arch35TilingData *tiling, TPipe *pipe)
+    GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
+    GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale, GM_ADDR topkWeight, GM_ADDR expandedTopkWeight,
+    GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tiling, TPipe *pipe)
 {
     InitCommon(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, workspace, tiling, pipe);
 
@@ -155,26 +185,15 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::Init(
         scaleGm_.SetGlobalBuffer((__gm__ float *)scale);
         expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale);
     }
+    // topkWeight 重排输出仅在输入携带 topk_weight（isInputTopkWeight=1）时启用；
+    // 非全载场景（dropPad）被 host gating 排除，expandedTopkWeight 长度恒为 totalLength_（dropless）。
+    if (isInputTopkWeight_) {
+        topkWeightGm_.SetGlobalBuffer((__gm__ float *)topkWeight, totalLength_);
+        expandedTopkWeightGm_.SetGlobalBuffer((__gm__ float *)expandedTopkWeight, totalLength_);
+    }
 
-    // GATHER 预填 rowIdx=-1；dropPad 还需整块清零 expandedX（空槽零填充）
+    // GATHER 预填 rowIdx=-1
     PrefillAndSync();
-    if (rowIdxType_ == GATHER && dropPadMode_ == DROP_PAD_MODE) {
-        ZeroOutExpandedDropPad(expandedXGm_);
-        if (isInputScale_) {
-            // scale 透传空槽清零（golden 语义：空槽为 0）
-            int64_t perCoreRows = Ceil(outputRows_, filterNeedCoreNum_);
-            int64_t rowStart = blockIdx_ * perCoreRows;
-            int64_t rowEnd = Min(rowStart + perCoreRows, outputRows_);
-            if (rowStart < rowEnd) {
-                GlobalTensor<float> scaleZeroSeg = expandedScaleGm_[rowStart];
-                InitGlobalMemory(scaleZeroSeg, rowEnd - rowStart, static_cast<float>(0));
-                SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-            }
-        }
-    }
-    if (rowIdxType_ == GATHER) {
-        SyncAll();
-    }
 
     // 非量化无量化临时区，UB 尺寸即公共区尺寸
     pipe_->InitBuffer(buf_, commonBufSize_);
@@ -229,7 +248,7 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::GatherOneRow(int
 template <typename T>
 __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::GatherAndWrite()
 {
-    if (csAggrEnable_) {
+    if (coutSortAggrEnable_) {
         // 聚合搬出路径：按专家外循环 + k 行切批
         LocalTensor<T> xLocal = buf_.template Get<T>()[xLocalOffset_ / sizeof(T)];
         LocalTensor<float> scaleLocal =
@@ -261,7 +280,8 @@ template <typename T>
 __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::Process()
 {
     if (blockIdx_ >= filterNeedCoreNum_) {
-        SyncAll();
+        SyncAll(); // 等 Phase A：各核计数写回 GM 完成
+        SyncAll(); // 等 Phase C：各核 expandedRowIdx 写 GM 完成（tail 核与会者补全，保证 barrier 对称）
         return;
     }
 
@@ -283,6 +303,10 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::Process()
     // Phase C: 等待 x 加载 + 数据搬运
     WaitXLoadCommon();
     GatherAndWrite();
+
+    // Phase D: topk 重排输出（scatter/gather dropless，见 TopkWeightPhase）
+    SyncAll(); // 等全部核的 expandedRowIdx 写 GM 完成，随后 SIMT 读回 map
+    TopkWeightPhase();
 }
 
 template <typename T>
@@ -303,17 +327,16 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::InitCommon(
     expertNum_ = tiling->expertNum;
     rowIdxType_ = tiling->rowIdxType;
     isInputScale_ = tiling->isInputScale;
+    isInputTopkWeight_ = tiling->isInputTopkWeight;
     filterNeedCoreNum_ = tiling->countingSortParamsOp.filterNeedCoreNum;
-    coreNum_ = tiling->coreNum;
     expertTokensNumFlag_ = tiling->expertTokensNumFlag;
     expertTokensNumType_ = tiling->expertTokensNumType;
     activeNum_ = tiling->activeNum;
-    dropPadMode_ = tiling->dropPadMode;
-    quantMode_ = tiling->quantMode;
     outputRows_ = activeNum_;
-    csAggrEnable_ = tiling->countingSortParamsOp.csAggrEnable;
-    aggrOutRows_ = tiling->countingSortParamsOp.csAggrOutRows;
-    aggrOutBufBytes_ = tiling->countingSortParamsOp.csAggrOutBufBytes;
+    expertTotalCount_ = activeNum_;
+    coutSortAggrEnable_ = tiling->countingSortParamsOp.coutSortAggrEnable;
+    aggrOutRows_ = tiling->countingSortParamsOp.coutSortAggrOutRows;
+    aggrOutBufBytes_ = tiling->countingSortParamsOp.coutSortAggrOutBufBytes;
 
     filterPerCoreTokens_ = tiling->countingSortParamsOp.filterPerCoreTokens;
     coreTokenStart_ = blockIdx_ * filterPerCoreTokens_;
@@ -331,10 +354,11 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::InitCommon(
     maxFilteredCount_ = coreEntries_;
     filteredCount_ = 0;
 
-    // expertTokens 缓冲：KEY_VALUE 输出 [expertId,count] 键值对，需 actualExpertNum*2 元素；COUNT/CUMSUM 为
-    // actualExpertNum。
-    expertTokensBufElems_ =
-        (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) ? actualExpertNum_ * EXPERT_ID_VALUE_NUM : actualExpertNum_;
+    if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
+        expertTokensBufElems_ = Min(actualExpertNum_ + 1, expertNum_) * EXPERT_ID_VALUE_NUM;
+    } else {
+        expertTokensBufElems_ = actualExpertNum_;
+    }
     expertCountElements_ = expertTokensBufElems_;
 
     entriesAligned_ = Ceil(coreEntries_, ONE_REPEAT_COMPARE_NUM) * ONE_REPEAT_COMPARE_NUM;
@@ -351,7 +375,7 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::InitCommon(
     ComputeCommonUbLayout();
 }
 
-// GATHER 模式预填 rowIdx=-1 + dropPad 清零后 SyncAll。
+// GATHER 模式预填 rowIdx=-1
 template <typename T>
 __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::PrefillAndSync()
 {
@@ -364,28 +388,12 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::PrefillAndSync()
     }
 }
 
-// dropPad 空槽零填充：跨核均分 outputRows_，每核清零自己负责的 expandedX 行段。
-template <typename T>
-__aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::ZeroOutExpandedDropPad(GlobalTensor<T> &expandedXGm)
-{
-    int64_t perCoreRows = Ceil(outputRows_, filterNeedCoreNum_);
-    int64_t rowStart = blockIdx_ * perCoreRows;
-    int64_t rowEnd = Min(rowStart + perCoreRows, outputRows_);
-    if (rowStart >= rowEnd) {
-        return;
-    }
-    int64_t elemCnt = (rowEnd - rowStart) * cols_;
-    GlobalTensor<T> zeroSeg = expandedXGm[rowStart * cols_];
-    InitGlobalMemory(zeroSeg, elemCnt, static_cast<T>(0));
-    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-}
-
 template <typename T>
 __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::ComputeCommonUbLayout()
 {
     int64_t offset = 0;
     // 聚合搬出：UB 最前独立预留 aggrOutBufBytes_ 作为 gatherOutBuf（不挤占 xLocal）
-    if (csAggrEnable_ == 1 && aggrOutBufBytes_ > 0) {
+    if (coutSortAggrEnable_ == 1 && aggrOutBufBytes_ > 0) {
         gatherOutBufOffset_ = offset;
         offset += AlignBytes(aggrOutBufBytes_, static_cast<int64_t>(sizeof(T)));
     }
@@ -437,8 +445,8 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::ComputeCommonUbL
     offset += AlignBytes(entriesAligned_, static_cast<int64_t>(sizeof(int32_t)));
 
     // 公共区结尾
-    // 聚合搬出分桶区（csAggrEnable=1 时）：bucketBase + offsetTbl + countTbl
-    if (csAggrEnable_ == 1) {
+    // 聚合搬出分桶区（coutSortAggrEnable=1 时）：bucketBase + offsetTbl + countTbl
+    if (coutSortAggrEnable_ == 1) {
         bucketBaseOffset_ = offset;
         offset += AlignBytes(maxFilteredCount_, static_cast<int64_t>(sizeof(int32_t)));
         bucketOffsetTblOffset_ = offset;
@@ -598,6 +606,12 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::ComputeGlobalOff
 
     // 标量：本核在专家 e 全局起始位置
     LocalTensor<int64_t> expertTokensLocal = buf_.Get<int64_t>()[expertTokensLocalOffset_ / sizeof(int64_t)];
+    // KEY_VALUE 模式：先整块清零（含尾部哨兵 0,0），再按非零专家紧凑写入，保证末尾始终有 (0,0) 分隔。
+    if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
+        Duplicate(expertTokensLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
+                  static_cast<int32_t>(expertTokensBufElems_ * EXPERT_ID_VALUE_NUM));
+        SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+    }
     int64_t cumulativeSum = 0;
     int64_t keyValueOffset = 0; // KEY_VALUE 模式下的紧凑写出下标（跳过 count==0 的专家）
     for (int64_t e = 0; e < actualExpertNum_; e++) {
@@ -623,19 +637,16 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::ComputeGlobalOff
             }
         }
 
-        // dropPad：seed 为该专家跨核 per-expert 前缀（本核在该专家的起始 slot）；
         // dropless：seed 为全局跨专家 cumulative + per-expert 前缀。
-        if (dropPadMode_ == DROP_PAD_MODE) {
-            expertCountLocal.SetValue(e, prefixForExpert);
-        } else {
-            expertCountLocal.SetValue(e, static_cast<int32_t>(cumulativeSum) + prefixForExpert);
-        }
+        expertCountLocal.SetValue(e, static_cast<int32_t>(cumulativeSum) + prefixForExpert);
         cumulativeSum += totalForExpert;
     }
 
-    // KEY_VALUE 模式实际写出元素数 = 非零专家数 * 2；上限为 actualExpertNum*2。
-    if (blockIdx_ == 0 && expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
-        expertCountElements_ = keyValueOffset * EXPERT_ID_VALUE_NUM;
+    // dropless：cumulativeSum = 跨专家保留行总数，各 filter 核由全核计数求得同一值（无需额外广播）。
+    // Phase D 以 expertTotalCount_ 为上界，只展开已写满的 dst 前缀；expert 越界（expertTotalCount_<outputRows_）时
+    // 仅 SCATTER 需要该上界，GATHER 不消费保持 Init 初值
+    if (rowIdxType_ == SCATTER) {
+        expertTotalCount_ = cumulativeSum;
     }
 }
 
@@ -647,9 +658,10 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::WriteExpertToken
     }
     LocalTensor<int64_t> expertTokensLocal = buf_.Get<int64_t>()[expertTokensLocalOffset_ / sizeof(int64_t)];
     SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-    // COUNT/CUMSUM: expertCountElements_==actualExpertNum_；KEY_VALUE: 非零专家数*2
-    DataCopyExtParams copyParams{static_cast<uint16_t>(1),
-                                 static_cast<uint32_t>(expertCountElements_ * sizeof(int64_t)), 0, 0, 0};
+    // COUNT/CUMSUM: expertCountElements_==actualExpertNum_；KEY_VALUE: 非零对*2+哨兵
+    uint32_t expertCount = static_cast<uint32_t>(expertCountElements_);
+    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(expertCount * sizeof(int64_t)), 0, 0,
+                                 0};
     DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
 }
 
@@ -661,10 +673,6 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::WaitXLoadCommon(
 }
 
 // 分桶：扫描 filteredPairsLocal，按 expertOffset 分桶，每桶存 localFlatIdx。
-// 注意：Phase B ComputeGlobalOffset 已把 expertCountLocal[eo] 改写为本核在专家 e 的全局起始 newPos
-// （dropless 下 = cumulativeSum + prefixForExpert），不再是每专家 count。若直接派生 bucketCountTbl
-// 会用 seed 当 count，前缀和溢出 maxFilteredCount_，bucketBase 写越界。故重新扫 filteredPairsLocal
-// 统计每专家 count；expertCountLocal 保持 seed 语义供 GatherAndWriteByExpert 用。
 template <typename T>
 __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::BucketByExpert()
 {
@@ -705,18 +713,8 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::BucketByExpert()
     }
 }
 
-// 计算批次起始 newPos（dropless）：expertCountLocal[eo] + slotStart
-// seed 来自 ComputeGlobalOffset 的跨核归约结果。批内可递增，避免每行 GetValue。
-template <typename T>
-__aicore__ inline int64_t MoeV3CountingSortFullLoadUnquantized<T>::ComputeBatchStartNewPos(int64_t expertOffset,
-                                                                                           int64_t slotStart)
-{
-    LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
-    return static_cast<int64_t>(expertCountLocal.GetValue(expertOffset)) + slotStart;
-}
-
-// 聚合搬出主循环：外层 expertOffset，内层按 k 切批，每批一次 DataCopyPad 写连续 GM 段。
-// expandedX 行聚合；rowIdx/scale 在同一批循环内逐行穿插（合并原 WriteBypassForRowIdxScale）。
+// 聚合搬出主循环：外层 expertOffset，内层按 k 切批，每批一次 DataCopyPad 写连续 GM 段。expandedX
+// 行聚合；rowIdx/scale 在批循环内逐行穿插。
 template <typename T>
 __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::GatherAndWriteByExpert(
     LocalTensor<T> &xLocal, LocalTensor<float> &scaleLocal, GlobalTensor<T> &expandedXGmRef,
@@ -797,6 +795,44 @@ __aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::GatherAndWriteBy
             remaining -= batchRows;
         }
     }
+}
+
+// ===== Phase D: topk 重排输出（dropless）=====
+// SIMT 直读 GM 的 map（DCCI 基址把各核新写刷出 cache 保证可见，同 ComputeGlobalOffset 读全核计数的先例）。
+// scatter：按 dst 连续段展开写 expandedTopkWeight[dst]=topkWeight[map[dst]]，各核互斥覆盖 [0,expertTotalCount_)
+// 前缀。 gather：按 src 遍历 + dst>=0 跳过（-1 预填），scatter 写 expandedTopkWeight[dst]=topkWeight[src]。
+template <typename T>
+__aicore__ inline void MoeV3CountingSortFullLoadUnquantized<T>::TopkWeightPhase()
+{
+    // 跨核新写 GM 读前一致性：SyncAll 后 DCCI 基址单行，SIMT __gm__ 直读 map 才见各核新值（同 ComputeGlobalOffset
+    // 模式）
+    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(expandedRowIdxGm_);
+
+    if (rowIdxType_ == SCATTER) {
+        // scatter：expandedRowIdx 为 dst->src map。只展开有效专家idx [0, dstRows)。
+        int64_t dstRows = Min(outputRows_, expertTotalCount_);
+        int64_t perCoreRows = Ceil(dstRows, filterNeedCoreNum_);
+        int64_t dstStart = blockIdx_ * perCoreRows;
+        int64_t dstEnd = Min(dstStart + perCoreRows, dstRows);
+        if (dstStart >= dstEnd) {
+            return;
+        }
+        int64_t segmentRows = dstEnd - dstStart;
+        uint32_t threadNum = static_cast<uint32_t>(Min(segmentRows, static_cast<int64_t>(COUNT_SOURT_SIMT_THREAD_NUM)));
+        asc_vf_call<CoutSortFullLoadTopkWeightScatterSimt>(dim3{threadNum, 1, 1}, segmentRows, dstStart, totalLength_,
+                                                           (__gm__ int32_t *)expandedRowIdxGm_.GetPhyAddr(),
+                                                           (__gm__ float *)topkWeightGm_.GetPhyAddr(),
+                                                           (__gm__ volatile float *)expandedTopkWeightGm_.GetPhyAddr());
+        return;
+    }
+
+    // gather：expandedRowIdx 为 src->dst map，无效专家id预填 -1。各 filter 核 只扫Phase C的[coreFlatStart_,
+    // coreFlatStart_+coreEntries_)
+    uint32_t threadNum = static_cast<uint32_t>(Min(coreEntries_, static_cast<int64_t>(COUNT_SOURT_SIMT_THREAD_NUM)));
+    asc_vf_call<CoutSortFullLoadTopkWeightGatherSimt>(dim3{threadNum, 1, 1}, coreEntries_, coreFlatStart_, outputRows_,
+                                                      (__gm__ int32_t *)expandedRowIdxGm_.GetPhyAddr(),
+                                                      (__gm__ float *)topkWeightGm_.GetPhyAddr(),
+                                                      (__gm__ volatile float *)expandedTopkWeightGm_.GetPhyAddr());
 }
 
 } // namespace MoeInitRoutingV3

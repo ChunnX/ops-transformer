@@ -649,41 +649,57 @@ protected:
         // 正式 QBMM tiling：LocalDelay 固定开启，remoteBatch = worldSize - 1；
         // localQbmm 覆盖本 rank 完整 M 的延迟计算，batch = 1。
         uint64_t remoteBatch = worldSize_ - 1;
+        const bool hasBias = context_->GetOptionalInputShape(IDX_INPUT_BIAS) != nullptr;
         if (x1Dtype == ge::DT_FLOAT4_E2M1 && x2Dtype == ge::DT_FLOAT4_E2M1) {
-            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingEngine;
+            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1,
+                                  mm::BiasDataType::DT_FLOAT>
+                tilingEngine;
             tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
+            tilingEngine.SetBiasInfo(hasBias);
             tilingEngine.GetTilingData(headMSize, np_, k_, false, true, td->tileQbmmTilingData, remoteBatch);
             if (tailMSize > 0) {
                 tilingEngine.GetTilingData(tailMSize, np_, k_, false, true, td->tailQbmmTilingData, remoteBatch);
             }
             tilingEngine.GetTilingData(m_, np_, k_, false, true, td->localQbmmTilingData, 1);
         } else if (x1Dtype == ge::DT_FLOAT8_E4M3FN && x2Dtype == ge::DT_FLOAT8_E4M3FN) {
-            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN,
+                                  mm::BiasDataType::DT_FLOAT>
+                tilingEngine;
             tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
+            tilingEngine.SetBiasInfo(hasBias);
             tilingEngine.GetTilingData(headMSize, np_, k_, false, true, td->tileQbmmTilingData, remoteBatch);
             if (tailMSize > 0) {
                 tilingEngine.GetTilingData(tailMSize, np_, k_, false, true, td->tailQbmmTilingData, remoteBatch);
             }
             tilingEngine.GetTilingData(m_, np_, k_, false, true, td->localQbmmTilingData, 1);
         } else if (x1Dtype == ge::DT_FLOAT8_E5M2 && x2Dtype == ge::DT_FLOAT8_E5M2) {
-            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E5M2, mm::DataType::DT_FLOAT8_E5M2> tilingEngine;
+            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E5M2, mm::DataType::DT_FLOAT8_E5M2,
+                                  mm::BiasDataType::DT_FLOAT>
+                tilingEngine;
             tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
+            tilingEngine.SetBiasInfo(hasBias);
             tilingEngine.GetTilingData(headMSize, np_, k_, false, true, td->tileQbmmTilingData, remoteBatch);
             if (tailMSize > 0) {
                 tilingEngine.GetTilingData(tailMSize, np_, k_, false, true, td->tailQbmmTilingData, remoteBatch);
             }
             tilingEngine.GetTilingData(m_, np_, k_, false, true, td->localQbmmTilingData, 1);
         } else if (x1Dtype == ge::DT_FLOAT8_E4M3FN && x2Dtype == ge::DT_FLOAT8_E5M2) {
-            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E5M2> tilingEngine;
+            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E5M2,
+                                  mm::BiasDataType::DT_FLOAT>
+                tilingEngine;
             tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
+            tilingEngine.SetBiasInfo(hasBias);
             tilingEngine.GetTilingData(headMSize, np_, k_, false, true, td->tileQbmmTilingData, remoteBatch);
             if (tailMSize > 0) {
                 tilingEngine.GetTilingData(tailMSize, np_, k_, false, true, td->tailQbmmTilingData, remoteBatch);
             }
             tilingEngine.GetTilingData(m_, np_, k_, false, true, td->localQbmmTilingData, 1);
         } else if (x1Dtype == ge::DT_FLOAT8_E5M2 && x2Dtype == ge::DT_FLOAT8_E4M3FN) {
-            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E5M2, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+            QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E5M2, mm::DataType::DT_FLOAT8_E4M3FN,
+                                  mm::BiasDataType::DT_FLOAT>
+                tilingEngine;
             tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
+            tilingEngine.SetBiasInfo(hasBias);
             tilingEngine.GetTilingData(headMSize, np_, k_, false, true, td->tileQbmmTilingData, remoteBatch);
             if (tailMSize > 0) {
                 tilingEngine.GetTilingData(tailMSize, np_, k_, false, true, td->tailQbmmTilingData, remoteBatch);

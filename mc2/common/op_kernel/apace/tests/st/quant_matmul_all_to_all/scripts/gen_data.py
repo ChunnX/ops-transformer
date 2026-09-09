@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # coding=utf-8
 
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
@@ -9,7 +9,7 @@
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------
 
 """
 Generate MXFP test data for QuantMatmulAllToAll operator.
@@ -327,13 +327,20 @@ def gen_golden_data_matmul_all_to_all(m, k, n, rank_num, quant_type, is_fp16, is
     b_codes_list = []
     b_scale_list = []
     bias_list = []
+    # fp16 动态范围 ±65504，全正数据 C≈K·E[a]·E[b] 随 K 增长会溢出 inf 使比对失效，
+    # 预估 C 幅度并对 A/B 幅度等比压缩（bias_scale 由实际 a/b mean 计算，自动跟随）
+    amp = 1.0
+    if is_fp16:
+        a_mid = (DATA_RANGE[a_kind][0] + DATA_RANGE[a_kind][1]) / 2.0 * 1.5
+        b_mid = (DATA_RANGE[b_kind][0] + DATA_RANGE[b_kind][1]) / 2.0 * 1.5
+        amp = min(1.0, 5.0e4 / (a_mid * b_mid * K))
     for rank_id in range(rank_num):
         np.random.seed(BASE_SEED + rank_id)
         a_lo, a_hi = DATA_RANGE[a_kind]
         b_lo, b_hi = DATA_RANGE[b_kind]
-        a_codes = quantize(a_kind, np.random.uniform(a_lo, a_hi, (M, K)))
+        a_codes = quantize(a_kind, np.random.uniform(a_lo, a_hi, (M, K)) * amp)
         a_scale = generate_fp8_e8m0_scale((M, ck, 2))
-        b_codes = quantize(b_kind, np.random.uniform(b_lo, b_hi, (K, N)))
+        b_codes = quantize(b_kind, np.random.uniform(b_lo, b_hi, (K, N)) * amp)
         b_scale = generate_fp8_e8m0_scale((ck, 2, N))
         a_codes_list.append(a_codes)
         a_scale_list.append(a_scale)
@@ -410,6 +417,12 @@ def gen_golden_data_matmul_all_to_all(m, k, n, rank_num, quant_type, is_fp16, is
     # Convert to BF16 / FP16
     out_dtype = torch.float16 if is_fp16 else torch.bfloat16
     allto_all_outputs_out = [out.to(out_dtype) for out in allto_all_outputs]
+    for out in allto_all_outputs_out:
+        if not torch.isfinite(out).all():
+            print(
+                f"Error: golden output contains non-finite values (inf/nan) after cast to {out_dtype}"
+            )
+            sys.exit(1)
 
     base_dir = os.getcwd()
     for rank_id in range(rank_num):
@@ -449,6 +462,10 @@ if __name__ == "__main__":
     quant_type = int(sys.argv[5]) if len(sys.argv) > 5 else 1
     is_fp16 = int(sys.argv[6]) if len(sys.argv) > 6 else 0
     is_bias = int(sys.argv[7]) if len(sys.argv) > 7 else 0
+
+    if rank_num <= 0:
+        print(f"Error: rank_num={rank_num} must be a positive integer")
+        sys.exit(1)
 
     if k % 32 != 0:
         print(f"Error: K={k} not divisible by 32")

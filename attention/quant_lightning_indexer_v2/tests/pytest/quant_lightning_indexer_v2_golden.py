@@ -2144,9 +2144,13 @@ def qliv2_output_single(
             cpu_result, topk_value, cpu_topk_value = None, None, None
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32)
     # ======================== metadata 构造 ========================
-    # max_seqlen 从个体长度中取
-    max_seqlen_q_meta = actual_seq_lengths_query.max().item()
-    max_seqlen_k_meta = actual_seq_lengths_key.max().item()
+    # BSND 的 max_seqlen 对应物理 S 轴；TND/PA 从各 batch 的实际长度中取。
+    max_seqlen_q_meta = (
+        q_seq if layout_query == "BSND" else actual_seq_lengths_query.max().item()
+    )
+    max_seqlen_k_meta = (
+        k_seq if layout_key == "BSND" else actual_seq_lengths_key.max().item()
+    )
 
     if is_batch:
         if qk_dtype == torch.float8_e4m3fn:
@@ -2161,7 +2165,7 @@ def qliv2_output_single(
         )
         golden_block_table = block_table
         if torch.is_tensor(golden_block_table):
-            golden_block_table = golden_block_table.detach().cpu().numpy()
+            golden_block_table = golden_block_table.detach().cpu()
         golden_state = {
             "model_args": (
                 batch_size,
@@ -2392,6 +2396,11 @@ def generate_cpu_golden(input_data):
         s1size=state["s1size"],
     )
     values = state["forward_inputs"]
+    block_table = values["block_table"]
+    if torch.is_tensor(block_table):
+        # The CPU reference indexes block tables as an ndarray; keep the saved
+        # tensor intact for PT consumers and convert only this local argument.
+        block_table = block_table.detach().cpu().numpy()
     cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(
         values["query"],
         values["key"],
@@ -2402,7 +2411,7 @@ def generate_cpu_golden(input_data):
         values["cu_seqlens_k"],
         values["seqused_q"],
         values["seqused_k"],
-        values["block_table"],
+        block_table,
         values["output_idx_offset"],
     )
     state["cpu_result"] = cpu_result
