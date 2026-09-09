@@ -53,3 +53,37 @@ Validation must use freshly generated kernel scripts and matching master Python
 bindings: old bindings lack the mask-buffer argument and cause an ABI mismatch
 before kernel execution. Kernel compilation and host/API smoke tests do not
 replace device precision tests, especially for multi-chunk and INT4 paths.
+
+### Recorded migration checks (2026-09-09)
+
+The migration is based on master `e14caf335`. The original feature history is
+retained at `backup/arch22-shared-expert-v1-pre-master-20260908`.
+
+- Fresh Ascend910_93 build: all 18 kernel targets compiled.
+- Host tiling tests: 12/12 passed. API tests: 11/11 passed; shared-input API
+  cases are smoke tests using runtime stubs, not device precision checks.
+- INT8 and INT4 device checks: one EP=2, shared=4 case per dtype passed the
+  harness cosine threshold of 0.999 (M=4, H=2048, topK=8, experts/rank=32).
+  This is limited coverage, not a precision guarantee for other shapes.
+- BF16 device checks: all five tested cases failed comparison (EP=2, H=1024,
+  topK=2, experts/rank=4): M=8 with shared=0/2/4, and M=1025 with shared=0/2
+  and receive budget 128. Expert-count outputs also disagreed with the
+  reference. Failures with shared=0 mean shared arithmetic alone is not a
+  sufficient explanation; they do not prove the failures originate in master.
+- Exact-master device comparison is still pending. A supplemental BF16
+  experts/rank=8 run could not start because HCCL port 16666 was already bound.
+  All 16 NPUs were occupied when checked; no other jobs were stopped.
+
+Device checks use seed 20260908 and Python bindings generated from this tree,
+with an isolated custom OPP install. Local evidence is retained in
+`/tmp/mega-moe-rebase-{host-test,api-test,quant-run,bf16-v2-run}.log` and
+`/tmp/mega-moe-rebase-{quant,bf16-v2}-results`. Input cases are in
+`/tmp/mega-moe-rebase-{quant,bf16,bf16-epr8}-cases.json`.
+An unmodified master worktree for the control is at
+`/tmp/mega-moe-master-baseline-20260908`.
+
+Before accepting precision, run master and the migrated branch with matching
+bindings, seed, inputs and isolated OPP packages on two idle NPUs. Compare the
+zero-shared cases first, then resolve the BF16 failures and rerun shared and
+multi-chunk cases. Masked execution and broader quantized shapes still need
+device coverage. No performance improvement is claimed without profiling.
