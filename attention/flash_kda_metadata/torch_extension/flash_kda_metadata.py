@@ -3,7 +3,7 @@
 """Torch dispatcher entry for the packaged FlashKDA metadata AICPU executable."""
 import torch
 from torch.library import impl
-from cannbotdsl.aicpu.toolchain import register_aicpu_resources
+from cannbotdsl.aicpu.toolchain import CompiledAicpuKernel
 from cann_ops_transformer.op_builder import get_as_library
 from .op_kernel.flash_kda_metadata import (
     flash_kda_metadata as _flash_kda_metadata,
@@ -11,7 +11,15 @@ from .op_kernel.flash_kda_metadata import (
     metadata_capacity_upper_bound,
 )
 
-register_aicpu_resources(__package__, flash_kda_metadata_kernel, "_native/flash_kda_metadata.so")
+def _load_native_metadata():
+    from pathlib import Path
+    binary = Path(__file__).parent / "_native/flash_kda_metadata.so"
+    if not binary.is_file():
+        raise FileNotFoundError(binary)
+    from ..op_kernel import _runtime
+    _runtime.set_aicpu_kernel(CompiledAicpuKernel(str(binary), flash_kda_metadata_kernel.spec, name=flash_kda_metadata_kernel.fn.__name__, launch_mode="interface"))
+
+_load_native_metadata()
 _library = get_as_library()
 _library.define(
     "flash_kda_metadata(Tensor q, Tensor v, Tensor initial_state, "

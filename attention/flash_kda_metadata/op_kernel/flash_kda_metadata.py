@@ -19,6 +19,7 @@ os.environ.setdefault("TORCH_DEVICE_BACKEND_AUTOLOAD", "0")
 import torch
 from cannbotdsl.aicpu import GmIn, GmOut, I32, I64, U32, aicpu_kernel, current_raw_stream
 from cannbotdsl.aicpu.toolchain import compile_aicpu_kernel
+from . import _runtime
 
 
 MAGIC = 0x4B444132
@@ -813,6 +814,8 @@ def _device_block_num(ref: Optional[torch.Tensor] = None) -> int:
 def _get_aicpu_kernel():
     global _AICPU_COMPILED
     with _AICPU_LOCK:
+        if _AICPU_COMPILED is None:
+            _AICPU_COMPILED = _runtime.get_aicpu_kernel()
         if _AICPU_COMPILED is None:
             workdir = tempfile.mkdtemp(prefix="flash_kda_metadata_aicpu_")
             _AICPU_COMPILED = compile_aicpu_kernel(flash_kda_metadata_kernel, workdir=workdir, launch_mode="interface")
