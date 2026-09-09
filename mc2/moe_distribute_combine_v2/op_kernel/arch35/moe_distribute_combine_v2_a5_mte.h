@@ -1049,6 +1049,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AddRms
 {
     // 计算x + residual_x
     LocalTensor<XType> x2 = tokenBuf_.Get<XType>();
+    // 维测进度更新出的MTE3_S保证上一轮的sumBufLocal（tokenBuf_对应内存）已经完成搬出，该内存可在此处复用
     SyncFunc<AscendC::HardEvent::V_MTE2>();
     DataCopyPad(x2, residualXGM_[tokenIndex * axisH_ + tokenOffset], copyExtParams, copyPadExtParams);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
@@ -1147,6 +1148,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Proces
     float alpha2Float = static_cast<float>(0.0);
 
     // 读取输入token
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     DataCopyPad(rowTmpLocal, oriXGM_[tokenIndex * axisH_], expandXCopyParams, copyPadExtParams);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     Cast(rowTmpFloatLocal_, rowTmpLocal, AscendC::RoundMode::CAST_NONE, axisH_);
@@ -1287,9 +1289,9 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Expert
             static_cast<uint16_t>(tokenPerAivNum), static_cast<uint32_t>(axisK_ * sizeof(float)),
             static_cast<uint32_t>((receiveAivNum - 1U) * axisK_ * sizeof(float)), 0U, 0U};
         const DataCopyPadExtParams<float> copyPadFloatParams{false, 0U, 0U, 0U};
+        // 下方MTE2在moe/共享路径由轮询链兜底，特殊专家路径在取值处增加MTE2_S
         DataCopyPad<float, PaddingMode::Compact>(expertScalesLocal_, expertScalesGM_[beginIndex * axisK_],
                                                  tokenScaleParams, copyPadFloatParams);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
     }
 }
 
@@ -1345,6 +1347,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Proces
 {
     float scaleVal = 0.0;
     if (hasExpertScalesFlag_) {
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
         scaleVal = expertScalesLocal_.GetValue(index);
     }
     if (expertId < moeExpertOriginalNum_ + zeroExpertNum_) {
@@ -1447,7 +1450,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AddSha
     const DataCopyExtParams expandXCopyParams{1U, static_cast<uint32_t>(hExpandXTypeSize_), 0U, 0U, 0U};
     const DataCopyPadExtParams<ExpandXType> copyPadExtParams{false, 0U, 0U, 0U};
     LocalTensor<XType> rowTmpLocal = tokenBuf_.Get<XType>();
-    SyncFunc<AscendC::HardEvent::V_MTE2>();
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     DataCopyPad(rowTmpLocal, sharedExpertXGM_[tokenIndex * axisH_], expandXCopyParams, copyPadExtParams);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     Cast(rowTmpFloatLocal_, rowTmpLocal, AscendC::RoundMode::CAST_NONE, processLen);
@@ -1543,11 +1546,6 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::TokenI
     }
     topkId = 0U;
     index = tokenLocalIdx * axisK_;
-    if (outputCopyPending_) {
-        // 上一个token搬出完成后，V流水才能复用tokenBuf_
-        SyncFunc<AscendC::HardEvent::MTE3_V>();
-        outputCopyPending_ = false;
-    }
     sumFloatBufLocal_ = sumFloatBuf_.Get<float>()[bufferIndex * sumFloatBufOffset_];
     Duplicate(sumFloatBufLocal_, static_cast<float>(0), axisH_);
 }
@@ -1565,9 +1563,11 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Proces
     uint32_t processLen = axisH_;
     const DataCopyPadExtParams<XType> copyPadXTypeParams{false, 0U, 0U, 0U};
     const DataCopyExtParams expandXCopyParams{1U, static_cast<uint32_t>(hExpandXTypeSize_), 0U, 0U, 0U};
-    if (outputCopyPending_) {
-        SyncFunc<AscendC::HardEvent::MTE3_V>();
-        outputCopyPending_ = false;
+    if constexpr (HasAddRmsNorm) {
+        if (outputCopyPending_) {
+            SyncFunc<AscendC::HardEvent::MTE3_V>();
+            outputCopyPending_ = false;
+        }
     }
     sumFloatBufLocal_ = sumFloatBuf_.Get<float>()[bufferIndex * sumFloatBufOffset_];
     if (!ProcessExpert(tokenIndex, processLen, tokenLocalIdx, topkId, index)) {
@@ -1588,6 +1588,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Proces
     // 结果搬出
     PipeBarrier<PIPE_V>();
     LocalTensor<XType> sumBufLocal = tokenBuf_.Get<XType>();
+    // 维测进度更新出的MTE3_S保证上一轮的sumBufLocal已经完成搬出，该内存可在此处复用
     Cast(sumBufLocal, sumFloatBufLocal_, AscendC::RoundMode::CAST_RINT, processLen);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopyPad(expandOutGlobal_[tokenIndex * axisH_], sumBufLocal, expandXCopyParams);
