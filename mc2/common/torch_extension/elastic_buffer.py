@@ -27,6 +27,7 @@ _ENGRAM_DTYPE_TO_INT = {
     torch.float8_e4m3fn: 24,
 }
 _ENGRAM_INT_TO_DTYPE = {v: k for k, v in _ENGRAM_DTYPE_TO_INT.items()}
+_ENGRAM_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 _ENGRAM_SF_DTYPES = (torch.float32, torch.float8_e8m0fnu)
 
 
@@ -646,17 +647,16 @@ class ElasticBuffer:
             lambda: f"storage must be 2D, got dimensions: {storage.dim()}",
         )
         torch._check(storage.is_contiguous(), lambda: "storage must be contiguous")
-        torch._check(
-            storage.dtype
-            in (
-                torch.bfloat16,
-                torch.float16,
-                torch.float32,
-                torch.float8_e4m3fn,
-                torch.float8_e5m2,
-            ),
-            lambda: f"storage dtype must be bfloat16/float16/float32/float8_e4m3fn/float8_e5m2, got: {storage.dtype}",
-        )
+        if sf is not None:
+            torch._check(
+                storage.dtype in _ENGRAM_FP8_DTYPES,
+                lambda: f"quantized storage dtype must be one of {_ENGRAM_FP8_DTYPES}, got: {storage.dtype}",
+            )
+        else:
+            torch._check(
+                storage.dtype in (torch.bfloat16, torch.float16, torch.float32),
+                lambda: f"storage dtype must be bfloat16/float16/float32, got: {storage.dtype}",
+            )
         torch._check(
             storage.size(1) > 0,
             lambda: f"storage second dimension must be positive, got: {storage.size(1)}",
