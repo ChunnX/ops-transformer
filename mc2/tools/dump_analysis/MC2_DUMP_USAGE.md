@@ -169,7 +169,7 @@ python3 <后端解析脚本> <bin_file> [解析模式] [辅助参数]
 | 不加解析模式 | 否 | `tiling_data_*` | 默认按完整 TilingData 解析。 |
 | `--args` | 否 | `args_info_*`；所有脚本 | 按 Kernel 参数顺序解析各输入、输出、Workspace 和 TilingData 的 GM 地址。 |
 | `--ws-layout` | 否 | `tiling_data_*`；所有脚本 | 只解析 TilingData 中的 `WorkspaceLayoutInfo`，查看每个 Segment 的 `offset`、`size` 和 `type`。 |
-| `--workspace` | 否 | `workspace_segN_typeM_*`；所有脚本 | 按文件名中的 Segment 类型解析 Workspace。`type12` 会进一步解析为每核 RuntimeInfo。 |
+| `--workspace` | 否 | `workspace_segN_typeM_*`；所有脚本 | 按文件名中的 Segment 类型解析 Workspace；识别到 `type12` 时，直接按每核 RuntimeInfo 结构解析并显示运行状态。 |
 | `--aic-core-num N` | 否 | 配合 `--workspace` 解析 `type12` | 指定实际 AIC 核数，用于计算预期 slot 数并区分 AIC/AIV 核。`N` 取同次 TilingData 中的 `aicCoreNum` 或 `usedCoreNum`。 |
 | `--comm-ctx` | 否 | `comm_context_*`；仅 AllGatherMatmulV3、AlltoAllMatmulV2 | 将文件按 URMA `CommUdmaContext + CommUbmemContext` 解析，显示 rank、channel 和通信缓冲区地址。 |
 | `--cann DIR` | 否 | 仅 AllGatherMatmulV2、AlltoAllMatmul、MatmulReduceScatterV2 | 指定生成该 Dump 时使用的 CANN 根目录，使脚本按对应版本的头文件计算 TilingData 结构偏移；不指定时从当前 CANN 环境定位。 |
