@@ -614,8 +614,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
      - 表中xScale、weightScale、outputScale的shape最后一维为2，表示每个64元素的存储block中包含2个MX量化group，每个group覆盖32个元素。
 
      - 非空场景下N必须为64整数倍，且N至少为64。
-     - 非空场景下K必须大于0；MXFP4场景下x和weight必须同时为FLOAT4，二者可分别选择E2M1或E1M2，且K必须为偶数且不能为2。
-     - 不额外设置K至少为16的通用约束；shape是否可用由上述对齐、dtype和存储格式约束共同决定。
+     - 非空场景下K必须大于0；MXFP4场景下x和weight必须同时为FLOAT4，二者可分别选择FLOAT4_E2M1或FLOAT4_E1M2，且K必须为偶数且不能为2。
 
 ## 调用示例
 
