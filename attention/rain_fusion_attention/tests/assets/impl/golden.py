@@ -1,15 +1,3 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
-# -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
-# Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-# See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
-
 """RFA (RainFusionAttention) CPU Golden 实现 — 从 ATK 移植
 
 纯计算模块，不含 TTK 框架依赖。
@@ -30,18 +18,18 @@ import torch
 def safe_to_tensor(arr):
     if arr is None:
         return None
-    if arr.dtype.name == "bfloat16":
+    if arr.dtype.name == 'bfloat16':
         return torch.from_numpy(arr.astype(np.float32)).to(torch.bfloat16)
     return torch.from_numpy(arr)
 
 
 def _online_softmax_attention_torch_high(q_block, kv_blocks, scale):
     q_block = q_block.cpu()
-    device = torch.device("cpu")
+    device = torch.device('cpu')
     q_len = q_block.shape[1]
     head_size = q_block.shape[2]
 
-    m_i = torch.full((1, q_len, 1), -float("inf"), dtype=torch.float32, device=device)
+    m_i = torch.full((1, q_len, 1), -float('inf'), dtype=torch.float32, device=device)
     l_i = torch.zeros((1, q_len, 1), dtype=torch.float32, device=device)
     O_i = torch.zeros((1, q_len, head_size), dtype=torch.float32, device=device)
 
@@ -55,9 +43,7 @@ def _online_softmax_attention_torch_high(q_block, kv_blocks, scale):
         alpha = torch.exp(m_i - m_new)
         P_i = torch.exp(S_i - m_new)
         l_i = alpha * l_i + torch.sum(P_i, dim=-1, keepdim=True)
-        O_i = alpha * O_i + torch.matmul(
-            P_i.to(torch.float32), v_block.to(torch.float32)
-        )
+        O_i = alpha * O_i + torch.matmul(P_i.to(torch.float32), v_block.to(torch.float32))
         m_i = m_new
 
     O_final = O_i / l_i
@@ -66,11 +52,11 @@ def _online_softmax_attention_torch_high(q_block, kv_blocks, scale):
 
 def _online_softmax_attention_torch(q_block, kv_blocks, scale, torch_dtype):
     q_block = q_block.cpu()
-    device = torch.device("cpu")
+    device = torch.device('cpu')
     q_len = q_block.shape[1]
     head_size = q_block.shape[2]
 
-    m_i = torch.full((1, q_len, 1), -float("inf"), dtype=torch.float32, device=device)
+    m_i = torch.full((1, q_len, 1), -float('inf'), dtype=torch.float32, device=device)
     l_i = torch.zeros((1, q_len, 1), dtype=torch.float32, device=device)
     O_i = torch.zeros((1, q_len, head_size), dtype=torch.float32, device=device)
 
@@ -91,31 +77,20 @@ def _online_softmax_attention_torch(q_block, kv_blocks, scale, torch_dtype):
     return O_final
 
 
-def _ref_select_idx_attention_torch(
-    query,
-    key,
-    value,
-    scale,
-    select_idx_list,
-    select_num_idx_list,
-    s_block_x,
-    s_block_y,
-    total_q_blocks,
-    max_kv_block_num,
-    q_seqlen_list,
-    kv_seqlen_list,
-    batch,
-    torch_dtype,
-    inner_precise,
-):
-    if query.device.type != "cpu":
+def _ref_select_idx_attention_torch(query, key, value, scale,
+                                    select_idx_list, select_num_idx_list,
+                                    s_block_x, s_block_y,
+                                    total_q_blocks, max_kv_block_num,
+                                    q_seqlen_list, kv_seqlen_list,
+                                    batch, torch_dtype, inner_precise):
+    if query.device.type != 'cpu':
         query = query.cpu()
-    if key.device.type != "cpu":
+    if key.device.type != 'cpu':
         key = key.cpu()
-    if value.device.type != "cpu":
+    if value.device.type != 'cpu':
         value = value.cpu()
 
-    device = torch.device("cpu")
+    device = torch.device('cpu')
     query = query.permute(1, 0, 2)
     key = key.permute(1, 2, 0)
     value = value.permute(1, 0, 2)
@@ -124,9 +99,7 @@ def _ref_select_idx_attention_torch(
 
     total_q_tokens = query.shape[1]
     head_size = query.shape[2]
-    out = torch.zeros(
-        (num_heads, total_q_tokens, head_size), dtype=query.dtype, device=device
-    )
+    out = torch.zeros((num_heads, total_q_tokens, head_size), dtype=query.dtype, device=device)
 
     q_token_offset = 0
     kv_token_offset = 0
@@ -147,16 +120,12 @@ def _ref_select_idx_attention_torch(
             q_end_global = q_token_offset + q_end_local
 
             for head in range(num_heads):
-                select_idx_offset = (
-                    t_global * num_heads * max_kv_block_num + head * max_kv_block_num
-                )
+                select_idx_offset = t_global * num_heads * max_kv_block_num + head * max_kv_block_num
                 select_num_offset = t_global * num_heads + head
                 select_num = select_num_idx_list[select_num_offset]
-                selected_kv_blocks = select_idx_list[
-                    select_idx_offset : select_idx_offset + max_kv_block_num
-                ]
+                selected_kv_blocks = select_idx_list[select_idx_offset:select_idx_offset + max_kv_block_num]
 
-                q_block = query[head : head + 1, q_start_global:q_end_global, :]
+                q_block = query[head:head + 1, q_start_global:q_end_global, :]
                 group_size = num_heads // kv_heads
                 kv_head_idx = head // group_size
 
@@ -175,12 +144,8 @@ def _ref_select_idx_attention_torch(
                         continue
                     k_start_global = kv_token_offset + k_start_local
                     k_end_global = kv_token_offset + k_end_local
-                    k_block = key[
-                        kv_head_idx : kv_head_idx + 1, :, k_start_global:k_end_global
-                    ]
-                    v_block = value[
-                        kv_head_idx : kv_head_idx + 1, k_start_global:k_end_global, :
-                    ]
+                    k_block = key[kv_head_idx:kv_head_idx + 1, :, k_start_global:k_end_global]
+                    v_block = value[kv_head_idx:kv_head_idx + 1, k_start_global:k_end_global, :]
                     k_blocks.append(k_block)
                     v_blocks.append(v_block)
 
@@ -199,27 +164,16 @@ def _ref_select_idx_attention_torch(
                     for i in range(num_chunks):
                         start = i * 512
                         end = start + 512
-                        kv_blocks.append(
-                            (k_block_com[:, :, start:end], v_block_com[:, start:end, :])
-                        )
+                        kv_blocks.append((k_block_com[:, :, start:end], v_block_com[:, start:end, :]))
                     if remainder > 0:
-                        kv_blocks.append(
-                            (
-                                k_block_com[:, :, -remainder:],
-                                v_block_com[:, -remainder:, :],
-                            )
-                        )
+                        kv_blocks.append((k_block_com[:, :, -remainder:], v_block_com[:, -remainder:, :]))
 
                 if query.dtype == torch.float32:
-                    out_block = _online_softmax_attention_torch_high(
-                        q_block, kv_blocks, scale
-                    )
+                    out_block = _online_softmax_attention_torch_high(q_block, kv_blocks, scale)
                 else:
-                    out_block = _online_softmax_attention_torch(
-                        q_block, kv_blocks, scale, torch_dtype
-                    )
+                    out_block = _online_softmax_attention_torch(q_block, kv_blocks, scale, torch_dtype)
 
-                out[head : head + 1, q_start_global:q_end_global, :] = out_block
+                out[head:head + 1, q_start_global:q_end_global, :] = out_block
 
         q_token_offset += q_seqlen
         kv_token_offset += kv_seqlen
@@ -229,20 +183,10 @@ def _ref_select_idx_attention_torch(
     return out
 
 
-def rain_fusion_attention_forward(
-    query,
-    key,
-    value,
-    select_idx,
-    select_num_idx,
-    block_shape,
-    q_seqlen_list,
-    kv_seqlen_list,
-    scale_value,
-    q_input_layout,
-    kv_input_layout,
-    inner_precise,
-):
+def rain_fusion_attention_forward(query, key, value, select_idx, select_num_idx,
+                                  block_shape, q_seqlen_list, kv_seqlen_list,
+                                  scale_value, q_input_layout, kv_input_layout,
+                                  inner_precise):
     """RFA 前向计算 — 与 ATK TestRainFusionAttentionTorch.calc_data 等价
 
     输入 shape (TND layout):
@@ -282,7 +226,7 @@ def rain_fusion_attention_forward(
     if inner_precise == 1:
         scale_value = np.float16(scale_value)
 
-    if q_input_layout == "TND" and kv_input_layout == "TND":
+    if q_input_layout == 'TND' and kv_input_layout == 'TND':
         if isinstance(q_seqlen_list, (list, tuple)):
             num_tokens = sum(q_seqlen_list)
         else:
@@ -294,11 +238,11 @@ def rain_fusion_attention_forward(
         query_dtype = query.dtype
         if isinstance(query_dtype, torch.dtype):
             torch_dtype = query_dtype
-        elif query_dtype == np.float32 or str(query_dtype) == "float32":
+        elif query_dtype == np.float32 or str(query_dtype) == 'float32':
             torch_dtype = torch.float32
-        elif query_dtype == np.float16 or str(query_dtype) == "float16":
+        elif query_dtype == np.float16 or str(query_dtype) == 'float16':
             torch_dtype = torch.float16
-        elif query_dtype == np.bfloat16 or str(query_dtype) == "bfloat16":
+        elif query_dtype == np.bfloat16 or str(query_dtype) == 'bfloat16':
             torch_dtype = torch.bfloat16
         else:
             torch_dtype = torch.float32
@@ -314,21 +258,11 @@ def rain_fusion_attention_forward(
         select_num_idx_list = select_num_idx.flatten().tolist()
 
         ref_output = _ref_select_idx_attention_torch(
-            query,
-            key,
-            value,
-            scale_value,
-            select_idx_list,
-            select_num_idx_list,
-            s_block_x,
-            s_block_y,
-            total_q_blocks,
-            max_kv_block_num,
-            q_seqlen_list,
-            kv_seqlen_list,
-            batch_size,
-            torch_dtype,
-            inner_precise,
+            query, key, value, scale_value,
+            select_idx_list, select_num_idx_list,
+            s_block_x, s_block_y,
+            total_q_blocks, max_kv_block_num,
+            q_seqlen_list, kv_seqlen_list, batch_size, torch_dtype, inner_precise
         )
         if query.dtype != torch.float32:
             ref_output_h = ref_output.to(torch.float32)
@@ -337,20 +271,10 @@ def rain_fusion_attention_forward(
             return ref_output
 
 
-def rain_fusion_attention_forward_fp16(
-    query,
-    key,
-    value,
-    select_idx,
-    select_num_idx,
-    block_shape,
-    q_seqlen_list,
-    kv_seqlen_list,
-    scale_value,
-    q_input_layout,
-    kv_input_layout,
-    inner_precise,
-):
+def rain_fusion_attention_forward_fp16(query, key, value, select_idx, select_num_idx,
+                                       block_shape, q_seqlen_list, kv_seqlen_list,
+                                       scale_value, q_input_layout, kv_input_layout,
+                                       inner_precise):
     """原dtype精度版本的 RFA 前向计算
 
     模拟ATK CPU后端 (cpu_0) 用原dtype输入完整计算的标杆输出。
@@ -366,17 +290,8 @@ def rain_fusion_attention_forward_fp16(
     # 再转回原dtype作为benchmark输出
     orig_dtype = query.dtype if isinstance(query, torch.Tensor) else torch.float16
     out = rain_fusion_attention_forward(
-        query,
-        key,
-        value,
-        select_idx,
-        select_num_idx,
-        block_shape,
-        q_seqlen_list,
-        kv_seqlen_list,
-        scale_value,
-        q_input_layout,
-        kv_input_layout,
-        inner_precise,
+        query, key, value, select_idx, select_num_idx,
+        block_shape, q_seqlen_list, kv_seqlen_list,
+        scale_value, q_input_layout, kv_input_layout, inner_precise
     )
     return out.to(orig_dtype)

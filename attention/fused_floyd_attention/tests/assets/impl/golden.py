@@ -1,15 +1,3 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
-# -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
-# Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-# See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
-
 """FFA (FusedFloydAttention) CPU Golden 实现 — 从 ATK 移植
 
 纯计算模块，不含 TTK 框架依赖。
@@ -54,7 +42,7 @@ def floyd_attn_forward(Q, K1, K2, V1, V2, atten_mask, scale):
     """
     dtype = Q.dtype
     fp32_bits = 0xFF7FFFFF
-    float_value = struct.unpack(">f", struct.pack(">I", fp32_bits))[0]
+    float_value = struct.unpack('>f', struct.pack('>I', fp32_bits))[0]
     golden_dtype = torch.float64 if dtype == torch.float32 else torch.float32
 
     Q_g = Q.to(golden_dtype)
@@ -64,9 +52,8 @@ def floyd_attn_forward(Q, K1, K2, V1, V2, atten_mask, scale):
     V2_g = V2.to(golden_dtype)
 
     # s = Q·K1^T + Q·K2^T
-    s = torch.einsum("bhikc,bhijc->bhikj", Q.to(dtype), K1.to(dtype)).to(
-        golden_dtype
-    ) + torch.einsum("bhikc,bhjkc->bhikj", Q.to(dtype), K2.to(dtype)).to(golden_dtype)
+    s = (torch.einsum('bhikc,bhijc->bhikj', Q.to(dtype), K1.to(dtype)).to(golden_dtype)
+         + torch.einsum('bhikc,bhjkc->bhikj', Q.to(dtype), K2.to(dtype)).to(golden_dtype))
     s = s * scale
 
     if atten_mask is not None:
@@ -75,9 +62,8 @@ def floyd_attn_forward(Q, K1, K2, V1, V2, atten_mask, scale):
     p, x_max, x_sum = _tsoftmax(s)
 
     # output = P·V1 + P·V2
-    output = torch.einsum("bhikj,bhijc->bhikc", p.to(dtype), V1.to(dtype)).to(
-        golden_dtype
-    ) + torch.einsum("bhikj,bhjkc->bhikc", p.to(dtype), V2.to(dtype)).to(golden_dtype)
+    output = (torch.einsum('bhikj,bhijc->bhikc', p.to(dtype), V1.to(dtype)).to(golden_dtype)
+              + torch.einsum('bhikj,bhjkc->bhikc', p.to(dtype), V2.to(dtype)).to(golden_dtype))
 
     return x_max.to(torch.float32), x_sum.to(torch.float32), output.to(dtype)
 

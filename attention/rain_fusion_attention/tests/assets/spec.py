@@ -1,15 +1,3 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
-# -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
-# Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-# See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
-
 """RFA (RainFusionAttention) TestSpec 入口
 
 ACLNN 模式 TestSpec，从 impl/ 加载各模块。
@@ -49,28 +37,13 @@ customize_inputs = _inputs_mod.customize_inputs
 compare = _compare_mod.compare
 
 
-def _golden(
-    query,
-    key,
-    value,
-    selectIdx,
-    selectNumIdx,
-    blockShape,
-    attenMaskOptional,
-    actualSeqLengthsOptional,
-    actualSeqLengthsKvOptional,
-    blockTableOptional,
-    qInputLayout,
-    kvInputLayout,
-    numKeyValueHeads,
-    maskType,
-    scaleValue,
-    innerPrecise,
-    blockSize,
-    attentionOut,
-    softmaxLseOptional,
-    **kwargs,
-):
+def _golden(query, key, value, selectIdx, selectNumIdx, blockShape,
+            attenMaskOptional, actualSeqLengthsOptional, actualSeqLengthsKvOptional,
+            blockTableOptional,
+            qInputLayout, kvInputLayout, numKeyValueHeads, maskType,
+            scaleValue, innerPrecise, blockSize,
+            attentionOut, softmaxLseOptional,
+            **kwargs):
     """CPU golden — 高精度参考, 与 ATK cpu_benchmark 等价
 
     参数签名与 aclnnRainFusionAttentionGetWorkspaceSize 一致
@@ -88,14 +61,8 @@ def _golden(
     query = query.detach().cpu() if isinstance(query, torch.Tensor) else query
     key = key.detach().cpu() if isinstance(key, torch.Tensor) else key
     value = value.detach().cpu() if isinstance(value, torch.Tensor) else value
-    selectIdx = (
-        selectIdx.detach().cpu() if isinstance(selectIdx, torch.Tensor) else selectIdx
-    )
-    selectNumIdx = (
-        selectNumIdx.detach().cpu()
-        if isinstance(selectNumIdx, torch.Tensor)
-        else selectNumIdx
-    )
+    selectIdx = selectIdx.detach().cpu() if isinstance(selectIdx, torch.Tensor) else selectIdx
+    selectNumIdx = selectNumIdx.detach().cpu() if isinstance(selectNumIdx, torch.Tensor) else selectNumIdx
 
     # 处理 scaleValue
     if isinstance(scaleValue, (list, tuple)):
@@ -110,20 +77,11 @@ def _golden(
         block_shape = [64, 128]
 
     # 处理 actualSeqLengths
-    q_seqlen_list = (
-        list(actualSeqLengthsOptional) if actualSeqLengthsOptional is not None else []
-    )
-    kv_seqlen_list = (
-        list(actualSeqLengthsKvOptional)
-        if actualSeqLengthsKvOptional is not None
-        else []
-    )
+    q_seqlen_list = list(actualSeqLengthsOptional) if actualSeqLengthsOptional is not None else []
+    kv_seqlen_list = list(actualSeqLengthsKvOptional) if actualSeqLengthsKvOptional is not None else []
 
-    testcase_name = kwargs.get("testcase_name", "")
-    print(
-        f"[GOLDEN-RFA] testcase_name={testcase_name}, scaleValue={scaleValue}",
-        flush=True,
-    )
+    testcase_name = kwargs.get('testcase_name', '')
+    print(f"[GOLDEN-RFA] testcase_name={testcase_name}, scaleValue={scaleValue}", flush=True)
 
     # 与 ATK golden 一致: ATK double benchmark 中 golden 和 benchmark 使用不同 dtype
     # ATK 框架在两次 __call__ 调用中传入不同 dtype 的输入:
@@ -141,18 +99,9 @@ def _golden(
     value_hp = value.to(golden_dtype) if isinstance(value, torch.Tensor) else value
 
     atten_out = rain_fusion_attention_forward(
-        query_hp,
-        key_hp,
-        value_hp,
-        selectIdx,
-        selectNumIdx,
-        block_shape,
-        q_seqlen_list,
-        kv_seqlen_list,
-        scaleValue,
-        qInputLayout,
-        kvInputLayout,
-        innerPrecise,
+        query_hp, key_hp, value_hp, selectIdx, selectNumIdx,
+        block_shape, q_seqlen_list, kv_seqlen_list,
+        scaleValue, qInputLayout, kvInputLayout, innerPrecise
     )
 
     # 返回 [attentionOut, softmaxLse(None)]

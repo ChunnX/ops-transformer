@@ -1,15 +1,3 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
-# -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
-# Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-# See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
-
 """FFA (FusedFloydAttention) customize_inputs — 从 ATK init_by_input_data 移植
 
 参数签名与 aclnnFusedFloydAttentionGetWorkspaceSize 一致（含输出 tensor 占位）。
@@ -26,7 +14,7 @@ import torch
 def _parse_case_id(testcase_name):
     """从 testcase_name 中解析用例 id"""
     try:
-        parts = testcase_name.rsplit("_", 1)
+        parts = testcase_name.rsplit('_', 1)
         if len(parts) == 2:
             return int(parts[1])
     except (ValueError, IndexError):
@@ -44,11 +32,7 @@ def _is_nd_sentinel(rv):
     """
     if rv is None or not isinstance(rv, (tuple, list)):
         return False
-    return (
-        len(rv) == 2
-        and rv[0] == _ND_SENTINEL_RANGE[0]
-        and rv[1] == _ND_SENTINEL_RANGE[1]
-    )
+    return len(rv) == 2 and rv[0] == _ND_SENTINEL_RANGE[0] and rv[1] == _ND_SENTINEL_RANGE[1]
 
 
 def _gen_nd_tensor(case_id, tensor_idx, shape, dtype, mean_range, std_range):
@@ -68,22 +52,13 @@ def _gen_nd_tensor(case_id, tensor_idx, shape, dtype, mean_range, std_range):
     return data
 
 
-_INPUT_TENSOR_NAMES = ["query", "key1", "value1", "key2", "value2", "atten_mask"]
+_INPUT_TENSOR_NAMES = ['query', 'key1', 'value1', 'key2', 'value2', 'atten_mask']
 
 
-def customize_inputs(
-    query,
-    key1,
-    value1,
-    key2,
-    value2,
-    attenMaskOptional,
-    scaleValue,
-    softmaxMaxOut,
-    softmaxSumOut,
-    attentionOutOut,
-    **kwargs,
-):
+def customize_inputs(query, key1, value1, key2, value2, attenMaskOptional,
+                     scaleValue,
+                     softmaxMaxOut, softmaxSumOut, attentionOutOut,
+                     **kwargs):
     """定制输入修正
 
     参数签名与 aclnnFusedFloydAttentionGetWorkspaceSize 一致:
@@ -101,39 +76,32 @@ def customize_inputs(
     **kwargs: testcase_name, tensor_dtypes, tensor_formats, scalar_dtypes,
               use_torch, short_soc_version
     """
-    testcase_name = kwargs.get("testcase_name", "")
+    testcase_name = kwargs.get('testcase_name', '')
     case_id = _parse_case_id(testcase_name)
     print(f"[CUSTOMIZE-FFA] case_id={case_id}, scaleValue={scaleValue}", flush=True)
 
     # scaleValue 随机参数处理: 如果是范围值 [min, max], 用 case_id 作为 seed 生成
     _caller = _inspect.currentframe().f_back
-    _self_obj = _caller.f_locals.get("self") if _caller is not None else None
-    _ctx_obj = getattr(_self_obj, "_ctx", None) if _self_obj is not None else None
-    if _ctx_obj is not None and hasattr(_ctx_obj, "attributes"):
-        _sv = _ctx_obj.attributes.get("scaleValue")
+    _self_obj = _caller.f_locals.get('self') if _caller is not None else None
+    _ctx_obj = getattr(_self_obj, '_ctx', None) if _self_obj is not None else None
+    if _ctx_obj is not None and hasattr(_ctx_obj, 'attributes'):
+        _sv = _ctx_obj.attributes.get('scaleValue')
         if isinstance(_sv, (list, tuple)) and len(_sv) == 2:
             _rng = np.random.RandomState(case_id)
             _new_sv = float(_rng.uniform(_sv[0], _sv[1]))
-            _ctx_obj.attributes["scaleValue"] = _new_sv
-            print(
-                f"[SCALAR-GEN-FFA] case_id={case_id}, scaleValue: {_sv} -> {_new_sv:.6f}",
-                flush=True,
-            )
+            _ctx_obj.attributes['scaleValue'] = _new_sv
+            print(f"[SCALAR-GEN-FFA] case_id={case_id}, scaleValue: {_sv} -> {_new_sv:.6f}", flush=True)
 
     # nd 分布输入修正: 从 _ctx 获取 input_data_ranges，解析 nd: 前缀
     nd_tensors = {
-        "query": query,
-        "key1": key1,
-        "value1": value1,
-        "key2": key2,
-        "value2": value2,
-        "atten_mask": attenMaskOptional,
+        'query': query, 'key1': key1, 'value1': value1,
+        'key2': key2, 'value2': value2, 'atten_mask': attenMaskOptional,
     }
     input_ranges = None
     flat_shapes = None
     if _ctx_obj is not None:
-        input_ranges = getattr(_ctx_obj, "flat_input_data_ranges", None)
-        flat_shapes = getattr(_ctx_obj, "flat_tensor_view_shapes", None)
+        input_ranges = getattr(_ctx_obj, 'flat_input_data_ranges', None)
+        flat_shapes = getattr(_ctx_obj, 'flat_tensor_view_shapes', None)
 
     if input_ranges is not None and flat_shapes is not None:
         input_tensor_list = [query, key1, value1, key2, value2, attenMaskOptional]
@@ -148,30 +116,21 @@ def customize_inputs(
             std_range = (1.0, 25.0)
             shape = flat_shapes[idx] if idx < len(flat_shapes) else list(tensor.shape)
             orig_dtype = tensor.dtype
-            new_data = _gen_nd_tensor(
-                case_id, idx, shape, orig_dtype, mean_range, std_range
-            )
+            new_data = _gen_nd_tensor(case_id, idx, shape, orig_dtype,
+                                      mean_range, std_range)
             tensor.copy_(new_data)
-            print(
-                f"[ND-GEN-FFA] case_id={case_id}, tensor_idx={idx} "
-                f"({_INPUT_TENSOR_NAMES[idx]}), nd=({mean_range[0]},{mean_range[1]},{std_range[0]},{std_range[1]}), "
-                f"shape={shape}, dtype={orig_dtype}",
-                flush=True,
-            )
+            print(f"[ND-GEN-FFA] case_id={case_id}, tensor_idx={idx} "
+                  f"({_INPUT_TENSOR_NAMES[idx]}), nd=({mean_range[0]},{mean_range[1]},{std_range[0]},{std_range[1]}), "
+                  f"shape={shape}, dtype={orig_dtype}", flush=True)
 
     # bool 策略修正: 对齐 ATK 的 50/50 随机 True/False
     # ATK 对 bool dtype 有专路径，直接 np.random.choice([True, False])，无视 range
     if attenMaskOptional is not None and attenMaskOptional.dtype == torch.bool:
         _bool_rng = np.random.RandomState(case_id * 100 + 5)
-        _bool_data = _bool_rng.choice(
-            [True, False], size=tuple(attenMaskOptional.shape)
-        )
+        _bool_data = _bool_rng.choice([True, False], size=tuple(attenMaskOptional.shape))
         attenMaskOptional.copy_(torch.from_numpy(_bool_data))
-        print(
-            f"[BOOL-GEN-FFA] case_id={case_id}, atten_mask bool 50/50 random, "
-            f"True ratio={_bool_data.mean():.4f}",
-            flush=True,
-        )
+        print(f"[BOOL-GEN-FFA] case_id={case_id}, atten_mask bool 50/50 random, "
+              f"True ratio={_bool_data.mean():.4f}", flush=True)
 
     # ===== dump 输入数据用于 ATK vs TTK 对比 =====
     try:
@@ -179,22 +138,13 @@ def customize_inputs(
         os.makedirs(_dump_dir, exist_ok=True)
         _input_marker = os.path.join(_dump_dir, f"case_{case_id}_input.done")
         if not os.path.exists(_input_marker):
-            for _tname, _tensor in [
-                ("query", query),
-                ("key1", key1),
-                ("value1", value1),
-                ("key2", key2),
-                ("value2", value2),
-                ("atten_mask", attenMaskOptional),
-            ]:
+            for _tname, _tensor in [("query", query), ("key1", key1), ("value1", value1),
+                                     ("key2", key2), ("value2", value2), ("atten_mask", attenMaskOptional)]:
                 if _tensor is not None:
                     _tpath = os.path.join(_dump_dir, f"case_{case_id}_{_tname}.pt")
                     torch.save(_tensor.cpu().clone(), _tpath)
-            print(
-                f"[TTK-FFA-INPUT-DUMP] case_{case_id} saved 6 tensors to {_dump_dir}",
-                flush=True,
-            )
-            open(_input_marker, "w").close()
+            print(f"[TTK-FFA-INPUT-DUMP] case_{case_id} saved 6 tensors to {_dump_dir}", flush=True)
+            open(_input_marker, 'w').close()
     except Exception as e:
         print(f"[TTK-FFA-INPUT-DUMP] save failed: {e}", flush=True)
     # ===== dump 结束 =====
@@ -203,17 +153,8 @@ def customize_inputs(
     # 不返回任何值
 
 
-def customize_inputs_e2e(
-    query_ik,
-    key_ij,
-    value_ij,
-    key_jk,
-    value_jk,
-    *,
-    atten_mask=None,
-    scale_value=1.0,
-    **kwargs,
-):
+def customize_inputs_e2e(query_ik, key_ij, value_ij, key_jk, value_jk,
+                         *, atten_mask=None, scale_value=1., **kwargs):
     """E2E 定制输入修正 — 与 torch_npu.npu_fused_floyd_attention 签名一致
 
     参数签名:
@@ -229,33 +170,28 @@ def customize_inputs_e2e(
     **kwargs: testcase_name, tensor_dtypes, tensor_formats, scalar_dtypes,
               use_torch, short_soc_version
     """
-    testcase_name = kwargs.get("testcase_name", "")
+    testcase_name = kwargs.get('testcase_name', '')
     case_id = _parse_case_id(testcase_name)
-    print(
-        f"[CUSTOMIZE-FFA-E2E] case_id={case_id}, scale_value={scale_value}", flush=True
-    )
+    print(f"[CUSTOMIZE-FFA-E2E] case_id={case_id}, scale_value={scale_value}", flush=True)
 
     # scale_value 随机参数处理: 如果是范围值 [min, max], 用 case_id 作为 seed 生成
     _caller = _inspect.currentframe().f_back
-    _self_obj = _caller.f_locals.get("self") if _caller is not None else None
-    _ctx_obj = getattr(_self_obj, "_ctx", None) if _self_obj is not None else None
-    if _ctx_obj is not None and hasattr(_ctx_obj, "attributes"):
-        _sv = _ctx_obj.attributes.get("scale_value")
+    _self_obj = _caller.f_locals.get('self') if _caller is not None else None
+    _ctx_obj = getattr(_self_obj, '_ctx', None) if _self_obj is not None else None
+    if _ctx_obj is not None and hasattr(_ctx_obj, 'attributes'):
+        _sv = _ctx_obj.attributes.get('scale_value')
         if isinstance(_sv, (list, tuple)) and len(_sv) == 2:
             _rng = np.random.RandomState(case_id)
             _new_sv = float(_rng.uniform(_sv[0], _sv[1]))
-            _ctx_obj.attributes["scale_value"] = _new_sv
-            print(
-                f"[SCALAR-GEN-FFA-E2E] case_id={case_id}, scale_value: {_sv} -> {_new_sv:.6f}",
-                flush=True,
-            )
+            _ctx_obj.attributes['scale_value'] = _new_sv
+            print(f"[SCALAR-GEN-FFA-E2E] case_id={case_id}, scale_value: {_sv} -> {_new_sv:.6f}", flush=True)
 
     # nd 分布输入修正: 从 _ctx 获取 input_data_ranges
     input_ranges = None
     flat_shapes = None
     if _ctx_obj is not None:
-        input_ranges = getattr(_ctx_obj, "flat_input_data_ranges", None)
-        flat_shapes = getattr(_ctx_obj, "flat_tensor_view_shapes", None)
+        input_ranges = getattr(_ctx_obj, 'flat_input_data_ranges', None)
+        flat_shapes = getattr(_ctx_obj, 'flat_tensor_view_shapes', None)
 
     if input_ranges is not None and flat_shapes is not None:
         input_tensor_list = [query_ik, key_ij, value_ij, key_jk, value_jk, atten_mask]
@@ -269,26 +205,19 @@ def customize_inputs_e2e(
             std_range = (1.0, 25.0)
             shape = flat_shapes[idx] if idx < len(flat_shapes) else list(tensor.shape)
             orig_dtype = tensor.dtype
-            new_data = _gen_nd_tensor(
-                case_id, idx, shape, orig_dtype, mean_range, std_range
-            )
+            new_data = _gen_nd_tensor(case_id, idx, shape, orig_dtype,
+                                      mean_range, std_range)
             tensor.copy_(new_data)
-            print(
-                f"[ND-GEN-FFA-E2E] case_id={case_id}, tensor_idx={idx} "
-                f"({_INPUT_TENSOR_NAMES[idx]}), nd=({mean_range[0]},{mean_range[1]},{std_range[0]},{std_range[1]}), "
-                f"shape={shape}, dtype={orig_dtype}",
-                flush=True,
-            )
+            print(f"[ND-GEN-FFA-E2E] case_id={case_id}, tensor_idx={idx} "
+                  f"({_INPUT_TENSOR_NAMES[idx]}), nd=({mean_range[0]},{mean_range[1]},{std_range[0]},{std_range[1]}), "
+                  f"shape={shape}, dtype={orig_dtype}", flush=True)
 
     # bool 策略修正: 对齐 ATK 的 50/50 随机 True/False
     if atten_mask is not None and atten_mask.dtype == torch.bool:
         _bool_rng = np.random.RandomState(case_id * 100 + 5)
         _bool_data = _bool_rng.choice([True, False], size=tuple(atten_mask.shape))
         atten_mask.copy_(torch.from_numpy(_bool_data))
-        print(
-            f"[BOOL-GEN-FFA-E2E] case_id={case_id}, atten_mask bool 50/50 random, "
-            f"True ratio={_bool_data.mean():.4f}",
-            flush=True,
-        )
+        print(f"[BOOL-GEN-FFA-E2E] case_id={case_id}, atten_mask bool 50/50 random, "
+              f"True ratio={_bool_data.mean():.4f}", flush=True)
 
     # 不返回任何值

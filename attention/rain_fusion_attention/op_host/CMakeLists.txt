@@ -35,3 +35,4 @@ if (BUILD_OPS_RTY_KERNEL)
 else()
     add_modules_sources(OPTYPE rain_fusion_attention ACLNNTYPE aclnn_exclude)
 endif()
+
