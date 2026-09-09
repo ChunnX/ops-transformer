@@ -19,6 +19,7 @@ It runs host-side binary artifact preparation and copies all generated artifacts
 import argparse
 import importlib.util
 import logging
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -29,6 +30,19 @@ def _install_build_only_torch_stub():
     """Stub runtime-only dependencies that binary codegen does not use."""
     sys.modules["torch"] = MagicMock(name="torch")
     sys.modules["torch_npu"] = MagicMock(name="torch_npu")
+
+
+def _prepend_pypto_install_site():
+    """Prefer the pypto run-package install when the environment exports it.
+
+    CANN setenv.bash prepends the CANN-bundled site-packages to PYTHONPATH, which
+    shadows a newer pypto run-package install (PYPTO_INSTALL_SITE, e.g. a --pylocal
+    0.2.1 tree exporting prepare_binary_headers). Honor the env var so configure-time
+    codegen resolves the same pypto_pro the JIT workflow uses. No-op when unset.
+    """
+    site = os.environ.get("PYPTO_INSTALL_SITE")
+    if site and os.path.isdir(os.path.join(site, "pypto_pro")):
+        sys.path.insert(0, site)
 
 
 def _load_legacy_kernel(py_file: Path):
@@ -89,6 +103,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     _install_build_only_torch_stub()
+    _prepend_pypto_install_site()
     binary_dir = _prepare_binary_headers(py_file)
     shutil.copytree(binary_dir, out_dir, dirs_exist_ok=True)
     copied = sorted(
