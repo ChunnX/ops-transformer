@@ -50,7 +50,17 @@ class SharedJettyContextOpBuilder(OpBuilder):
                 "AscendC Host header hcomm/hcomm_host.h was not found in the CANN installation; "
                 "install the matching asc-comm development headers"
             )
-        return asc_comm_paths + super().include_paths()
+        dependency_candidates = [
+            os.path.join(self.cann_path, "aarch64-linux/pkg_inc"),
+            os.path.join(self.cann_path, "aarch64-linux/asc/impl/adv_api/detail"),
+            os.path.join(self.cann_path, "x86_64-linux/pkg_inc"),
+            os.path.join(self.cann_path, "x86_64-linux/asc/impl/adv_api/detail"),
+            os.path.join(self.cann_path, "pkg_inc"),
+            os.path.join(self.cann_path, "asc/impl/adv_api/detail"),
+            os.path.join(self.cann_path, "include/ascendc/host_api"),
+        ]
+        dependency_paths = [path for path in dependency_candidates if os.path.isdir(path)]
+        return asc_comm_paths + dependency_paths + super().include_paths()
 
 
 _builder = SharedJettyContextOpBuilder()
