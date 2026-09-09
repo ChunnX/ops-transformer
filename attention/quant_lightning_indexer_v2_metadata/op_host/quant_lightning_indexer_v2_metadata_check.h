@@ -187,7 +187,7 @@ aclnnStatus CheckSingleParamQliV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t 
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 校验 A2/A3 参数
-    if (socVersion.find("Ascend950") == std::string::npos) {
+    if (socVersion.find("Ascend950") == std::string::npos && socVersion.find("Ascend960DT") == std::string::npos) {
         // num_heads_q 校验
         CHECK_COND(numHeadsQ == QLI_V2_NUM_HEADS_Q_UPPER_BOUND, ACLNN_ERR_PARAM_INVALID,
                    "num_heads_q should be %lld, but got %lld", QLI_V2_NUM_HEADS_Q_UPPER_BOUND, numHeadsQ);
