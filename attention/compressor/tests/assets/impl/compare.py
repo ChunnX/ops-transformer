@@ -446,7 +446,7 @@ def compare_aclnn(*outputs, **kwargs):
 
     npu_cmp_kv = npu_outputs[0].to(torch.float32)
     npu_state_cache = npu_outputs[-1].to(torch.float32)
-    cpu_cmp_kv = golden_outputs[0].to(torch.float32)
+    cpu_cmp_kv = golden_outputs[0].to(npu_outputs[0].dtype).to(torch.float32)
     cpu_state_cache = golden_outputs[-1].to(torch.float32)
 
     update_kv = kwargs.get("update_kv", None)
