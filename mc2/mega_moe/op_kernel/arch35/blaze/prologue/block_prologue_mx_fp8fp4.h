@@ -85,6 +85,7 @@
 
  */
 #pragma once
+#include "../gemm/tile/copy_gmm1_concat.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
@@ -135,6 +136,10 @@ struct PrologueMxCastWOffsetParam {
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 class BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION {
 public:
+    __aicore__ inline void SetGmm1ConcatHalfN(uint64_t halfN)
+    {
+        concatHalfN_ = halfN;
+    }
     using DispatchPolicy = MatmulMxFp8Fp4DynamicKL1TailResplit;
     using OutType = OutType_;
     using InType = InType_;
@@ -185,6 +190,7 @@ protected:
     // L1 tensor creation functions
     __aicore__ inline auto MakeL1WeightTensor(uint64_t l1RealLen, uint64_t nL1Size);
 
+    uint64_t concatHalfN_ = 0;
     uint64_t cvLoopIdx_ = 0;
 
     uint64_t ubMte2LoopIdx_ = 0;
@@ -379,7 +385,11 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::CopyGmToUb(
         auto gmSliceTensor = gmWeightBaseTensor.slice(asc::te::make_coord(kOffset, param.nOffset),
                                                       asc::te::make_shape(mte2RealK, param.nL1Size));
         auto copyGM2UBWeight = asc::te::make_copy(Blaze::Gemm::Tile::CopyGM2UBWeight{});
-        asc::te::copy(copyGM2UBWeight, weight4BitTensor, gmSliceTensor);
+        if (concatHalfN_ != 0U) {
+            MegaMoeImpl::CopyGmm1WeightConcatToUb(weight4BitTensor, gmSliceTensor, concatHalfN_);
+        } else {
+            asc::te::copy(copyGM2UBWeight, weight4BitTensor, gmSliceTensor);
+        }
     }
 
     // Synchronization point after copy completes

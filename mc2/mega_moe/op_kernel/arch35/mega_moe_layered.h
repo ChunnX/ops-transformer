@@ -286,8 +286,8 @@ private:
     // A4W4 场景下 GMM1 走通用 A4W4、GMM2 走 A8W4，避免两段都使用 A4W4 导致精度损失过大。
     static constexpr bool ENABLE_A4W4 =
         Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value && Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value;
-    // 仅通用 A8W8 路径支持 gate/up 交织布局，FP4 配对路径保持专用布局和同步协议。
-    static constexpr bool GMM1_INTERLEAVED = IsGmm1Interleaved && !ENABLE_A8W4 && !ENABLE_A4W4;
+    // GMM1 搬运普通分离权重时在片内拼成 [gate128, up128]。
+    static constexpr bool GMM1_INTERLEAVED = IsGmm1Interleaved && !ENABLE_A4W4;
     static constexpr int32_t DISPATCH_COPY_BUFFER_COUNT = 5;
     static constexpr uint32_t MX_QUANT_TEMP_UB_BYTES = 2U * 1024U;
     static constexpr uint32_t DISPATCH_READY_FLAG_BATCH_TOKENS = 256U;
@@ -889,9 +889,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::RunGmm1Wi
     }
     if constexpr (ENABLE_A8W4) {
         RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                    epilogueTileM, prefetchWeights, IsShared>(epilogue, params_, state.problemShape, gmmAddrInfo,
-                                                              startBlockIdx_, gmTileSequence, state.expertBeforeCnt,
-                                                              expertIdx);
+                    epilogueTileM, prefetchWeights, IsShared, false, GMM1_INTERLEAVED>(
+            epilogue, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, gmTileSequence, state.expertBeforeCnt,
+            expertIdx);
     } else {
         if (params_.tilingData->moeGmmMode == GMM_MODE_A8W8_NZ || params_.tilingData->moeGmmMode == GMM_MODE_A4W4_NZ) {
             RunGmm1Generic<QuantOutType, ActivationQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
@@ -931,8 +931,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
 {
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                    L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true>(state.problemShape, gmmAddrInfo,
-                                                                        startBlockIdx_);
+                    L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false, GMM1_INTERLEAVED>(
+            state.problemShape, gmmAddrInfo, startBlockIdx_);
     } else {
         // A8W8_NZ / Generic 共用 RunGmm2Generic，仅 LayoutB 不同（ZN/ND）。
         if (params_.tilingData->moeGmmMode == GMM_MODE_A8W8_NZ) {
