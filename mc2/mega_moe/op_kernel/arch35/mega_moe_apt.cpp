@@ -77,7 +77,7 @@ class MegaMoeMteWave<XType, OutputType, TopkWeightsType, fp4x2_e2m1_t, MoeWeight
                      SharedQuantMode, CombineQuantMode, TopkWeightsPrefetch, IsGmm1Interleaved>
     : public MegaMoeA8W4Wave<XType, OutputType, TopkWeightsType, fp4x2_e2m1_t, EXPERT_QUANT_OUT_DTYPE_E4M3FN,
                              SharedWeightType, SharedQuantMode, MoeWeight1Format, MoeWeight2Format, SharedWeight1Format,
-                             SharedWeight2Format, CombineQuantMode, TopkWeightsPrefetch> {};
+                             SharedWeight2Format, CombineQuantMode, TopkWeightsPrefetch, IsGmm1Interleaved> {};
 
 template <typename XType, typename OutputType, typename TopkWeightsType, int32_t MoeWeight1Format,
           int32_t MoeWeight2Format, typename SharedWeightType, int32_t SharedWeight1Format, int32_t SharedWeight2Format,
