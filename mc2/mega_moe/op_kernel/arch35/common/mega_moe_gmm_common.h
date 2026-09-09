@@ -18,6 +18,7 @@
 #include "mega_moe_utils.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "../blaze/gemm/block/block_scheduler_swizzle.h"
+#include "../blaze/gemm/block/block_mmad_mx_concat.h"
 #include "../blaze/gemm/block/block_mmad_mx_fp8fp4.h"
 #include "../blaze/prologue/block_prologue_mx_fp8fp4.h"
 
@@ -38,10 +39,14 @@ struct BlockMmadSelector;
 
 template <typename C>
 struct BlockMmadSelector<false, C> {
-    using type =
+    using type = Std::conditional_t<
+        C::CONCAT_GMM1,
+        Blaze::Gemm::Block::BlockMmadConcat<typename C::DispatchPolicy, typename C::ElementAType, typename C::LayoutA,
+                                            typename C::ElementBType, typename C::LayoutB, typename C::ElementCType,
+                                            typename C::LayoutC, typename C::BiasType, typename C::LayoutBias>,
         Blaze::Gemm::Block::BlockMmad<typename C::DispatchPolicy, typename C::ElementAType, typename C::LayoutA,
                                       typename C::ElementBType, typename C::LayoutB, typename C::ElementCType,
-                                      typename C::LayoutC, typename C::BiasType, typename C::LayoutBias>;
+                                      typename C::LayoutC, typename C::BiasType, typename C::LayoutBias>>;
 };
 
 template <typename C>
@@ -58,8 +63,10 @@ struct BlockMmadSelector<true, C> {
 // 汇总 GMM1/GMM2 在不同量化路径下共用的类型、shape 和 layout 配置。
 template <bool IsA8W4, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool TopkWeightsPrefetch = false,
-          bool IsShared = false, bool IsLayered = false, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
+          bool IsShared = false, bool IsLayered = false, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false,
+          bool ConcatGmm1 = false>
 struct Config {
+    static constexpr bool CONCAT_GMM1 = ConcatGmm1;
     static constexpr bool IS_SHARED = IsShared;
     static constexpr bool IS_WEIGHT_NZ = IsWeightNZ;
     static constexpr bool TOPK_WEIGHTS_PREFETCH = TopkWeightsPrefetch;
@@ -364,6 +371,7 @@ struct Config {
 // 通用 MX BlockMmad 的 l1BufNum 始终固定为 2，A8W4 L1Params 则没有该字段，因此不纳入运行时状态。
 struct BlockMmadInitConfig {
     uint32_t problemK = 0U;
+    uint32_t problemN = 0U;
     uint32_t tileM = 0U;
     uint32_t tileN = 0U;
     uint64_t kL1 = 0U;
@@ -371,8 +379,8 @@ struct BlockMmadInitConfig {
 
     __aicore__ inline bool operator!=(const BlockMmadInitConfig &other) const
     {
-        return problemK != other.problemK || tileM != other.tileM || tileN != other.tileN || kL1 != other.kL1 ||
-               scaleKL1 != other.scaleKL1;
+        return problemK != other.problemK || problemN != other.problemN || tileM != other.tileM ||
+               tileN != other.tileN || kL1 != other.kL1 || scaleKL1 != other.scaleKL1;
     }
 };
 
@@ -390,8 +398,12 @@ __aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &
 {
     using BlockMmad = decltype(context.blockMmad);
     const auto &tilingConfig = config.blockMmadTiling;
-    const BlockMmadInitConfig requestedConfig{config.k, tilingConfig.tileM, tilingConfig.tileN,
-                                              tilingConfig.l1Params.kL1, tilingConfig.l1Params.scaleKL1};
+    const BlockMmadInitConfig requestedConfig{config.k,
+                                              config.n,
+                                              tilingConfig.tileM,
+                                              tilingConfig.tileN,
+                                              tilingConfig.l1Params.kL1,
+                                              tilingConfig.l1Params.scaleKL1};
     if (!context.initialized || context.initConfig != requestedConfig) {
         typename BlockMmad::BlockShape l0TileShape{tilingConfig.tileM, tilingConfig.tileN, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};

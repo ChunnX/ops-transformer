@@ -87,10 +87,10 @@ __aicore__ inline void Gmm1AicMmadTileToGmGeneric(BlockMmad &blockMmad, const Co
                                                Get<K_VALUE>(actualShape), 0};
 
     if constexpr (IsGmm1Interleaved) {
-        auto gmBlockB =
-            gmB.Slice(Te::MakeCoord(kLoc, nLoc), Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-        auto gmBlockScaleB =
-            gmScaleB.Slice(Te::MakeCoord(0, nLoc), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
+        auto gmBlockB = gmB.Slice(Te::MakeCoord(kLoc, nLoc / ACTIVATION_N_HALF),
+                                  Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+        auto gmBlockScaleB = gmScaleB.Slice(Te::MakeCoord(0, nLoc / ACTIVATION_N_HALF),
+                                            Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
         auto tensorBlockGm =
             gmC.Slice(Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, tensorBlockGm, singleShape);
@@ -121,10 +121,10 @@ __aicore__ inline void Gmm1AicMmadTileToUbGeneric(BlockMmad &blockMmad, const Co
                                                Get<K_VALUE>(actualShape), 0};
 
     if constexpr (IsGmm1Interleaved) {
-        auto gmBlockB =
-            gmB.Slice(Te::MakeCoord(kLoc, nLoc), Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-        auto gmBlockScaleB =
-            gmScaleB.Slice(Te::MakeCoord(0, nLoc), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
+        auto gmBlockB = gmB.Slice(Te::MakeCoord(kLoc, nLoc / ACTIVATION_N_HALF),
+                                  Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+        auto gmBlockScaleB = gmScaleB.Slice(Te::MakeCoord(0, nLoc / ACTIVATION_N_HALF),
+                                            Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
         auto tensorUb = pingpongIdx == 0U ? l0cOutUbFirst : l0cOutUbSecond;
         auto tensorBlockUb =
             tensorUb.Slice(Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
@@ -839,9 +839,9 @@ __aicore__ inline void RunGmm1Generic(
     uint32_t expertBeforeCnt, uint32_t expertIdx, uint16_t &pingpongIdx, void *blockMmadContext = nullptr,
     bool allowWeightL2Bypass = false, const LayoutArgs &...layoutArgs)
 {
-    using GmmConfig =
-        GmmKernel::Config<false, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB,
-                          IsWeightNZ, TopkWeightsPrefetch, IsShared, false, IsGmm1Interleaved, IsWaveFlagGrained>;
+    using GmmConfig = GmmKernel::Config<false, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
+                                        ElementMxScaleB, IsWeightNZ, TopkWeightsPrefetch, IsShared, false,
+                                        IsGmm1Interleaved, IsWaveFlagGrained, IsGmm1Interleaved>;
     auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, blockJob, Gmm1TileM);
 
     GmmKernel::BlockScheduler scheduler({config.m, config.schedulerN, config.k},
