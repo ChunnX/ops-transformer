@@ -1,0 +1,1577 @@
+# mc2/3rd 头文件影响范围映射表 - A5 (ascend950)
+# 生成: 2026-09-09  基线commit: 0a19c1eb2 (clean)
+# 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
+# 键路径: 相对mc2目录(3rd/开头), 与PR修改文件列表中mc2/后的段落一致
+#
+# 本表 = 影响部分算子的头文件(键集合与A2/A3/A5三张表完全一致)。
+#   ops = 直接+间接include该头的算子中, 注册于本芯片的子集(显式全列表)
+#   ops: [] = 该头影响的算子均未在A5注册(该芯片无匹配算子, 后续策略待定)
+# 不在本表中的文件 -> 全量(清单见本目录file_lists.yaml)
+# 算子范围 = 其*_def.cpp的AICore().AddConfig()注册 与 A5(ascend950) 的交集
+
+3rd/add_rms_norm/op_host/add_rms_norm_tiling.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_al1_full_load_tiling.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_basic_tiling.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_bl1_full_load_basic_tiling.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_bl1_full_load_tiling.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_tiling.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_common_advanced.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_iterbatch_basicapi_tiling.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_iterbatch_tiling.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_tiling_advanced.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_tiling_strategy.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_base_tiling.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_kernel/arch35/batch_mat_mul_v3_asw_block_advanced.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_kernel/arch35/batch_mat_mul_v3_dasw_block_advanced.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_kernel/arch35/batch_mat_mul_v3_iterbatch_basicapi_block_scheduler.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_kernel/arch35/batch_mat_mul_v3_iterbatch_block_advanced.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_nd2nz.h:
+  ops:
+    - matmul_all_reduce
+    - matmul_reduce_scatter
+3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3_block.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3_com_base_block.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3_com_base_block_struct.h:
+  ops: []
+3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3_tiling_key.h:
+  ops: []
+3rd/common/op_host/matmul_common_infershape.h:
+  ops: []
+3rd/common/op_host/mc2_3rd_math_util.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+3rd/common/op_host/op_api/cube_util.h:
+  ops: []
+3rd/common/op_host/op_api/mc2_3rd_matmul_util.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - distribute_barrier
+    - distribute_barrier_extend
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+3rd/common/op_host/op_tiling/debug_tiling.h:
+  ops: []
+3rd/common/op_host/op_tiling/hash.h:
+  ops: []
+3rd/common/op_host/op_tiling/lock.h:
+  ops: []
+3rd/common/op_host/op_tiling/tiling_cache.h:
+  ops: []
+3rd/grouped_matmul/op_kernel/gqmm_tiling_key.h:
+  ops: []
+3rd/grouped_matmul/op_kernel/grouped_matmul_tiling_data_apt.h:
+  ops:
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
+    - quant_grouped_mat_mul_allto_allv
+3rd/grouped_matmul/op_kernel/mc2_3rd_gqmm_cube_on_the_fly.h:
+  ops:
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
+    - quant_grouped_mat_mul_allto_allv
+3rd/grouped_matmul/op_kernel/mc2_3rd_grouped_matmul_utils.h:
+  ops:
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
+    - quant_grouped_mat_mul_allto_allv
+3rd/grouped_matmul/op_kernel/mc2_3rd_quant_block_sch.h:
+  ops:
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
+    - quant_grouped_mat_mul_allto_allv
+3rd/grouped_matmul/op_kernel/mc2_3rd_quant_utils.h:
+  ops:
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
+    - quant_grouped_mat_mul_allto_allv
+3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h:
+  ops:
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
+    - quant_grouped_mat_mul_allto_allv
+3rd/grouped_matmul/op_tiling/mc2_grouped_matmul_host_util.h:
+  ops:
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
+    - quant_grouped_mat_mul_allto_allv
+3rd/grouped_matmul/op_tiling/mc2_grouped_matmul_tiling.h:
+  ops:
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
+    - quant_grouped_mat_mul_allto_allv
+3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_base_tiling.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_tiling_cfg.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_tiling_registry.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - quant_grouped_mat_mul_allto_allv
+3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_asw_basic_tiling.h:
+  ops: []
+3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_asw_full_load_tiling.h:
+  ops: []
+3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_asw_tiling.h:
+  ops: []
+3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_base_tiling_advanced.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_basic_streamk_tiling.h:
+  ops: []
+3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_common_advanced.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_compile_info_advanced.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_stream_k_tiling.h:
+  ops: []
+3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_advanced.h:
+  ops: []
+3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_data.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_helper.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_key.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_strategy.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_common.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_compile_info.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_all_matmul_v2
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_l2_cache.h:
+  ops: []
+3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_platform_common.h:
+  ops: []
+3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_simplifiedkey.h:
+  ops: []
+3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_tuning.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/mat_mul_v3/op_kernel/arch35/block_scheduler_aswt.h:
+  ops: []
+3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_block.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_kernel.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/mat_mul_v3/op_kernel/arch35/mat_mul_dasw_block.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/mat_mul_v3/op_kernel/arch35/mat_mul_stream_k_block.h:
+  ops: []
+3rd/mat_mul_v3/op_kernel/arch35/mat_mul_v3_full_load_kernel_helper.h:
+  ops: []
+3rd/mat_mul_v3/op_kernel/arch35/mm_extension_interface/mm_copy_cube_out.h:
+  ops: []
+3rd/mat_mul_v3/op_kernel/arch35/mm_extension_interface/mm_custom_mm_policy.h:
+  ops: []
+3rd/mat_mul_v3/op_kernel/mat_mul_base_block.h:
+  ops:
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+3rd/mat_mul_v3/op_kernel/mat_mul_base_kernel.h:
+  ops:
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+3rd/mat_mul_v3/op_kernel/mat_mul_deterministic_splitk_kernel.h:
+  ops: []
+3rd/mat_mul_v3/op_kernel/mat_mul_l1_full_load.h:
+  ops: []
+3rd/mat_mul_v3/op_kernel/mat_mul_nd2nz.h:
+  ops:
+    - matmul_all_reduce
+    - matmul_reduce_scatter
+3rd/mat_mul_v3/op_kernel/mat_mul_nd2nz_kernel.h:
+  ops:
+    - matmul_all_reduce
+    - matmul_reduce_scatter
+3rd/mat_mul_v3/op_kernel/mat_mul_nd2nz_util.h:
+  ops:
+    - matmul_all_reduce
+    - matmul_reduce_scatter
+3rd/mat_mul_v3/op_kernel/mat_mul_sc_splitk_block.h:
+  ops: []
+3rd/mat_mul_v3/op_kernel/mat_mul_unaligned_base_kernel.h:
+  ops:
+    - matmul_all_reduce
+3rd/mat_mul_v3/op_kernel/mat_mul_v3_common.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/mat_mul_v3/op_kernel/mat_mul_v3_tiling_key.h:
+  ops: []
+3rd/norm_common/op_kernel/reduce_common.h:
+  ops: []
+3rd/ops_legacy/op_api/aclnn_kernels/cast.h:
+  ops: []
+3rd/ops_legacy/op_api/aclnn_kernels/common/op_error_check.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - all_gather_matmul_v3
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - attention_to_ffn_v2
+    - distribute_barrier
+    - distribute_barrier_extend
+    - engram_fetch
+    - engram_fetch_grad
+    - engram_fetch_wait
+    - ffn_to_attention_v2
+    - grouped_mat_mul_allto_allv
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+    - mega_moe
+    - moe_distribute_combine
+    - moe_distribute_combine_add_rms_norm
+    - moe_distribute_combine_setup
+    - moe_distribute_combine_teardown
+    - moe_distribute_combine_v2
+    - moe_distribute_combine_v3
+    - moe_distribute_dispatch
+    - moe_distribute_dispatch_setup
+    - moe_distribute_dispatch_teardown
+    - moe_distribute_dispatch_v2
+    - moe_distribute_dispatch_v3
+    - moe_ep_combine
+    - moe_ep_combine_epilogue
+    - moe_ep_dispatch
+    - moe_ep_dispatch_epilogue
+    - moe_update_expert
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+3rd/ops_legacy/op_api/aclnn_kernels/contiguous.h:
+  ops:
+    - matmul_all_reduce
+3rd/ops_legacy/op_api/aclnn_kernels/reshape.h:
+  ops: []
+3rd/ops_legacy/op_api/aclnn_kernels/transdata.h:
+  ops:
+    - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - allto_allv_quant_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
+    - matmul_allto_all
+    - quant_all_reduce
+    - quant_grouped_mat_mul_allto_allv
+    - quant_reduce_scatter
+3rd/ops_legacy/op_api/aclnn_kernels/transpose.h:
+  ops: []
+3rd/ops_legacy/op_api/level0/fill.h:
+  ops: []
+3rd/ops_legacy/op_api/level0/mul.h:
+  ops: []
+3rd/ops_legacy/op_api/level0/padv3.h:
+  ops: []
+3rd/ops_legacy/op_tiling/hcom_topo_info.h:
+  ops: []
+3rd/ops_legacy/op_tiling/legacy_common_manager.h:
+  ops: []
+3rd/ops_legacy/op_tiling/op_cache_def_tiling.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/ops_legacy/op_tiling/op_cache_tiling.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/ops_legacy/op_tiling/register/tuning_bank_key_registry.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/quant_batch_matmul_v3_checker.h:
+  ops: []
+3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_info_factory.h:
+  ops: []
+3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_basic_tiling.h:
+  ops: []
+3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_compile_info.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - matmul_all_reduce
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling_base.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling_cache.h:
+  ops: []
+3rd/quant_batch_matmul_v3/op_kernel/arch35/mm_extension_interface/qbmm_copy_cube_out.h:
+  ops:
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+3rd/quant_batch_matmul_v3/op_kernel/arch35/mm_extension_interface/qbmm_custom_mm_policy.h:
+  ops:
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_api_utils.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - matmul_all_reduce
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_asw_block.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_cube_on_the_fly.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_mix_online_dynamic.h:
+  ops:
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_mix_perblock.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - matmul_all_reduce
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_perblock_api_param_utils.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - matmul_all_reduce
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_perblock_api_utils.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - matmul_all_reduce
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/quant_batch_matmul_v3/op_kernel/qbmv3_tiling_data.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3.h:
+  ops:
+    - matmul_all_reduce
+3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_base.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_all_reduce
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_bf16.h:
+  ops:
+    - matmul_all_reduce
+3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_block.h:
+  ops: []
+3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_pertoken.h:
+  ops:
+    - matmul_all_reduce
+3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_tiling_key.h:
+  ops: []
+3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_update.h:
+  ops: []
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_arch.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_cross_core_sync.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_local_tensor_buffer.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_resource.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/tla_detail_alignment.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/tla_detail_callback.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/tla_detail_dependent_false.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/tla_detail_macros.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/block_epilogue_fa_rescal_o.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/block_epilogue_mla_fd_rescal_o.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/block_epilogue_mla_rescal_o.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/block_epilogue_mla_tp1_rescal_o.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/tla_block_epilogue.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/tla_block_epilogue_elemwise_one_source.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/tla_block_epilogue_fa_softmax.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/tla_block_epilogue_gemm.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/tla_block_epilogue_gemv.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/tla_block_epilogue_mla_softmax.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/tla_block_epilogue_mla_tp1_softmax.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/tla_block_epilogue_per_token_dequant.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_copy_gm_to_ub.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_copy_ub_to_gm.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_broadcast_mul.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_broadcast_one_blk.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_copy.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_swizzle.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tla_epilogue_dispatch_policy.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_fa_pv.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_fa_qk.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_gemm.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_mla_pv.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_mla_pv_tp1_spec.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_mla_qk.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_mla_qk_tp1_spec.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_pingpong.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_pingpong_bias.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_preload.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_preload_async.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_preload_async_with_callback.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_swizzle.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_padding_matmul.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_copy_gm_to_l1.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_copy_l0c_to_gm.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_copy_l1_to_bt.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_copy_l1_to_l0a.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_copy_l1_to_l0b.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_tile_copy.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_tile_mmad.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_dispatch_policy.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_gemm_type.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_helper.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemv/block/tla_gemv_block_gemv_aic.hpp:
+  ops: []
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemv/block/tla_gemv_block_gemv_aiv.hpp:
+  ops: []
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemv/tile/tla_gemv_matrix_copy_gm_to_ub.hpp:
+  ops: []
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemv/tile/tla_gemv_vec_copy_gm_to_ub.hpp:
+  ops: []
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemv/tile/tla_gemv_vec_copy_ub_to_gm.hpp:
+  ops: []
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemv/tla_gemv_helper.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/tla_layout_layout.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/tla_layout_matrix.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/tla_layout_vector.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_catlass.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_coord.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_gemm_coord.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_gemv_coord.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_matrix_coord.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_numeric_size.hpp:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - allto_all_matmul
+    - matmul_allto_all
+    - matmul_reduce_scatter
+    - matmul_reduce_scatter_v2
+3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_status.hpp:
+  ops:
+    - allto_all_matmul
+    - matmul_allto_all
+3rd/weight_quant_batch_matmul_v2/op_host/op_api/weight_quant_batch_matmul_v2.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_adaptive_sliding_window_tiling.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_adaptive_split_tiling.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_basic_block_table.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_basic_block_tiling.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_reg_base_tiling.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_checker_for_mmads8s4.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_compute_matmul_tiling.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom_nz_splitk.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_fixpipe.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_key.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd_group.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_splitk.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_tool.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_weight_nz_tiling.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_white_list.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/anti_quant.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/block/block_decl.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/block/block_utils.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/block/david_ub_antiquant_scmc.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/block/david_ub_antiquant_scmc_load_in_advance_aic_tail_resplit.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/block/david_ub_antiquant_scmc_load_in_advance_aiv_tail_resplit.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/block/wq_block_constant.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/iterator/continuous_iterator.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/iterator/tail_resplit_iterator.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/kernel/david_wqbmm_load_in_advance.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/pipeline/pipeline_stage_mixcore.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/pipeline/pipeline_stage_singlecore.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/pipeline/pipeline_stage_singlecore_base.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/pipeline/pipeline_stage_singlecore_copy_in_advance.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/pipeline/pipeline_state.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/pipeline/wq_pipeline_utils.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/scheduler/tile_scheduler_tail_resplit.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/simd/a16w4_pergroup_kn_nz.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/tile/copy_ub_to_l1.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/tile/mc2_3rd_copy_gm_to_l1.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/tile/mc2_3rd_copy_gm_to_ub.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/utils/math_utils.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/utils/wq_device_utils.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/utils/wq_utils_constant.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/wq_catlass_constant.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/catlass/wq_dispatch_policy.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/n_first/anti_quant_y_vf.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/n_first/basic_block_config.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/n_first/basic_block_vf_mx.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/n_first/basic_block_vf_nd.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/n_first/basic_block_vf_nz.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/n_first/weight_quant_batch_matmul_v2_basic_block.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/n_first/weight_quant_batch_matmul_v2_basic_block_controller.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/n_first/weight_quant_batch_matmul_v2_cube_compute.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/n_first/weight_quant_batch_matmul_v2_vec_compute.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/tool_arch35.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/weight_quant_batch_matmul_v2_asw_block.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/weight_quant_batch_matmul_v2_reg_base.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/weight_quant_batch_matmul_v2_reg_base_common.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/weight_quant_batch_matmul_v2_vf.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/fixpipe/static_diag_constant.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/fixpipe/weight_quant_batch_matmul_v2_fixpipe_stage1.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/fixpipe/weight_quant_batch_matmul_v2_fixpipe_stage2.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/tool.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_common.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_constant.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_custom.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_custom_weight_nz.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_kernel_tiling_key.h:
+  ops: []
+3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_tiling_data.h:
+  ops:
+    - all_gather_matmul
+    - all_gather_matmul_v2
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_weight_nz_performance.h:
+  ops:
+    - matmul_all_reduce
+3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_weight_nz_performance_base.h:
+  ops:
+    - matmul_all_reduce
