@@ -495,11 +495,11 @@ __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, con
     if (gmmAddrInfo.activationToGmm2Flag == nullptr) {
         return;
     }
+    constexpr uint32_t sourceNFactor = Config::SOURCE_GMM1_INTERLEAVED ? ACTIVATION_N_HALF : 1U;
     if constexpr (Config::IS_WAVE_FLAG_GRAINED) {
         uint32_t waveIdx = mLoc / L1_TILE_M_256;
         uint32_t waveStart = waveIdx * L1_TILE_M_256;
         uint32_t waveM = waveStart + L1_TILE_M_256 > config.m ? config.m - waveStart : L1_TILE_M_256;
-        constexpr uint32_t sourceNFactor = Config::SOURCE_GMM1_INTERLEAVED ? ACTIVATION_N_HALF : 1U;
         uint32_t targetLoops =
             Ops::Base::CeilDiv(waveM, config.activationTileM) * Ops::Base::CeilDiv(config.k * sourceNFactor, L1_TILE_N);
         uint64_t flagOffset = static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
@@ -507,7 +507,7 @@ __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, con
         WaitUntilGmFlagEquals(flagValueAddr, static_cast<int32_t>(targetLoops));
     } else {
         GmmKernel::BlockScheduler gmmBlockScheduler(
-            {config.m, config.k, config.n},
+            {config.m, config.k * sourceNFactor, config.n},
             GmmKernel::BlockScheduler::Params{
                 asc::te::make_coord(static_cast<int64_t>(config.activationTileM), static_cast<int64_t>(L1_TILE_N))});
         uint32_t targetLoops = gmmBlockScheduler.GetTileNum();

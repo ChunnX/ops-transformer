@@ -54,14 +54,8 @@ using namespace AscendC;
 #define FORMAT_FRACTAL_NZ_C0_32 51
 #endif
 
-#ifndef MEGA_MOE_WEIGHT1_INTERLEAVED
-#define MEGA_MOE_WEIGHT1_INTERLEAVED 0
-#endif
-#if MEGA_MOE_WEIGHT1_INTERLEAVED != 0 && MEGA_MOE_WEIGHT1_INTERLEAVED != 1
-#error "MEGA_MOE_WEIGHT1_INTERLEAVED must be 0 or 1"
-#endif
-
-static constexpr bool WEIGHT1_INTERLEAVED = MEGA_MOE_WEIGHT1_INTERLEAVED != 0;
+// GMM1 consumes ordinary gate/up-separated weights and concatenates them during loading.
+static constexpr bool GMM1_CONCAT = true;
 
 #ifdef ENABLE_TENSOR_API
 namespace MegaMoeImpl {
@@ -121,7 +115,7 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
             MegaMoeImpl::MegaMoeMteWave<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, MoeWeightType, FORMAT_WEIGHT1,
                                         FORMAT_WEIGHT2, SharedWeightType, FORMAT_SHARED_WEIGHT1, FORMAT_SHARED_WEIGHT2,
                                         DispatchQuantOutType, SharedQuantOutType, CombineQuantOutType,
-                                        TopkWeightsPrefetch, WEIGHT1_INTERLEAVED>
+                                        TopkWeightsPrefetch, GMM1_CONCAT>
                 op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
                     scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2, yOut,
@@ -132,7 +126,7 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
             MegaMoeImpl::MegaMoeLayered<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType,
-                                        CombineQuantOutType, TopkWeightsPrefetch, WEIGHT1_INTERLEAVED>
+                                        CombineQuantOutType, TopkWeightsPrefetch, GMM1_CONCAT>
                 op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
                     scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2, yOut,
