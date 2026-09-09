@@ -1101,7 +1101,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
     uint32_t tokenStart, uint32_t tokenNum, uint32_t dstRankId, uint64_t commHandle, GM_ADDR notifyAddr)
 {
     uint32_t processed = 0;
-    uint32_t commCnt = 0;
     uint32_t maxBatchCnt = MAX_BATCH_SIZE / sizeof(int32_t);
     uint32_t tokenSize = axisH_ * sizeof(XType);
     DataCopyExtParams srcTokenCopyParams = {1U, 0U, 0U, 0U, 0U};
@@ -1115,6 +1114,19 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
     auto batchHandle =
         hcomm_.MakeBatchHandle(commHandle, hcommBatchTensor_, HCOMM_BATCH_BUFFER_BYTES, remoteWinBaseAddr);
     GM_ADDR remoteWinAddr = remoteWinBaseAddr;
+    // hcomm batch 缓冲区以 64B WQEBB 为槽位，multi-sge 任务按 SQE(40B)+N*SGE(16B) 估算占用槽位数。
+    // 按估算槽位控制提交节奏（预留 2x 余量），避免超容量后 WriteNbi 失败被静默忽略造成数据丢失。
+    constexpr size_t SGE_MAX_NUM = 8;
+    constexpr uint32_t WQEBB_BYTES = HCOMM_WRITE_TASK_BYTES;
+    constexpr uint32_t SQE_CTX_BYTES = 40U;
+    constexpr uint32_t SGE_CTX_BYTES = 16U;
+    constexpr uint32_t WQEBB_SAFETY_FACTOR = 2U;
+    uint32_t wqebbCapacity = HCOMM_BATCH_BUFFER_BYTES / WQEBB_BYTES;
+    uint32_t wqebbPending = 0;
+    // multi-sge 目的地址连续打包，meta 段会落在 slot 内 tokenSize 偏移处；
+    // 对端 epilogue 固定按 hAlignSize_ 偏移读 meta，因此 meta 源地址需前移 gapBytes（<32B，仍在窗口区内），
+    // 使 meta 内容落到 slot 的 hAlignSize_ 偏移，前移多读的 x 槽尾 padding 落在 slot gap 区，对端不读。
+    uint32_t gapBytes = hAlignSize_ - tokenSize;
     while (processed < tokenNum) {
         uint32_t batchCnt = (tokenNum - processed > maxBatchCnt) ? maxBatchCnt : tokenNum - processed;
         srcTokenCopyParams.blockLen = static_cast<uint32_t>(batchCnt * sizeof(int32_t));
@@ -1122,7 +1134,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
                     srcTokenCopyPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
 
-        constexpr size_t SGE_MAX_NUM = 8;
         size_t sgeNum = 0;
         GM_ADDR srcAddrs[SGE_MAX_NUM] = {};
         uint32_t srcSizes[SGE_MAX_NUM] = {};
@@ -1135,28 +1146,44 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
             srcAddrs[sgeNum] = xAddr_ + srcTokenId * tokenSize;
             srcSizes[sgeNum] = tokenSize;
             sgeNum++;
-            srcAddrs[sgeNum] = payloadStashWinAddr_ + srcTokenId * metaSlotBytesAlign512_;
-            srcSizes[sgeNum] = perSlotBytes - tokenSize;
+            srcAddrs[sgeNum] = payloadStashWinAddr_ + srcTokenId * metaSlotBytesAlign512_ - gapBytes;
+            srcSizes[sgeNum] = perSlotBytes_ - tokenSize;
             sgeNum++;
             if (sgeNum == SGE_MAX_NUM) {
-                hcomm_.WriteNbi<DATA_CFG>(batchHandle, writeAddr, srcAddrs, srcSizes, SGE_MAX_NUM);
-                commCnt++;
+                uint32_t taskWqebbCnt = static_cast<uint32_t>(
+                    (SQE_CTX_BYTES + SGE_MAX_NUM * SGE_CTX_BYTES + WQEBB_BYTES - 1U) / WQEBB_BYTES *
+                    WQEBB_SAFETY_FACTOR);
+                if (wqebbPending + taskWqebbCnt > wqebbCapacity) {
+                    (void)hcomm_.BatchCommit(batchHandle);
+                    wqebbPending = 0;
+                }
+                int32_t ret = hcomm_.WriteNbi<DATA_CFG>(batchHandle, writeAddr, srcAddrs, srcSizes, SGE_MAX_NUM);
+                ascendc_assert(ret == 0, "multi-sge batch WriteNbi failed, ret=%d", ret);
+                wqebbPending += taskWqebbCnt;
                 sgeNum = 0;
-            }
-            if (commCnt == HCOMM_BATCH_CAPACITY) {
-                hcomm_.BatchCommit(batchHandle);
-                commCnt = 0;
             }
             processed++;
             remoteWinAddr += perSlotBytes_;
         }
         if (sgeNum > 0) {
-            hcomm_.WriteNbi<DATA_CFG>(batchHandle, writeAddr, srcAddrs, srcSizes, sgeNum);
-            hcomm_.BatchCommit(batchHandle);
+            uint32_t taskWqebbCnt = static_cast<uint32_t>(
+                (SQE_CTX_BYTES + static_cast<uint32_t>(sgeNum) * SGE_CTX_BYTES + WQEBB_BYTES - 1U) / WQEBB_BYTES *
+                WQEBB_SAFETY_FACTOR);
+            if (wqebbPending + taskWqebbCnt > wqebbCapacity) {
+                (void)hcomm_.BatchCommit(batchHandle);
+                wqebbPending = 0;
+            }
+            int32_t ret = hcomm_.WriteNbi<DATA_CFG>(batchHandle, writeAddr, srcAddrs, srcSizes, sgeNum);
+            ascendc_assert(ret == 0, "multi-sge batch WriteNbi failed, ret=%d", ret);
+            wqebbPending += taskWqebbCnt;
         }
         if (processed < tokenNum) {
             SyncFunc<AscendC::HardEvent::S_MTE2>();
         }
+    }
+    // notify 前兜底提交残余 data 任务（write-with-notify 额外占用 2 个 WQEBB，防超容量）
+    if (wqebbPending > 0) {
+        (void)hcomm_.BatchCommit(batchHandle);
     }
     hcomm_.WriteNbi<NOTIFY_CFG>(batchHandle, notifyAddr, payloadStashStateWinAddr_, WIN_ADDR_ALIGN);
     hcomm_.BatchCommit(batchHandle);
