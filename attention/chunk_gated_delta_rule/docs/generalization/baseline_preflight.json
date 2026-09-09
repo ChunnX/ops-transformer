@@ -1,0 +1,17 @@
+{
+  "function_owner": "/usr/local/Ascend/cann-9.2.0/lib64/libopapi.so",
+  "results": [
+    {
+      "nv": 0,
+      "dv": 8,
+      "status": 0,
+      "kernel_executed": false
+    },
+    {
+      "nv": 4,
+      "dv": 0,
+      "status": 0,
+      "kernel_executed": false
+    }
+  ]
+}

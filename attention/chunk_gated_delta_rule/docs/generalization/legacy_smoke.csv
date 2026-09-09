@@ -1,0 +1,2 @@
+﻿seed,test_name,model,status,B,seqlen,nk,nv,dk,dv,chunk_size,data_type,state_data_type,has_g,is_continue,errmsg,durations
+20260908,legacy_csv_smoke,torch直调,PASSED,1,65,1,2,5,8,64,torch.bfloat16,torch.bfloat16,True,True,,

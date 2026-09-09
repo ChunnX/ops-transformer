@@ -1,0 +1,17 @@
+{
+  "opapi": "/home/s00940320/improved_cgdr/attention/chunk_gated_delta_rule/tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/opp/vendors/cgdr_stream_update_transformer/op_api/lib/libcust_opapi.so",
+  "vendor": "/home/s00940320/improved_cgdr/attention/chunk_gated_delta_rule/tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/opp/vendors/cgdr_stream_update_transformer",
+  "libraries": [
+    "/home/s00940320/improved_cgdr/attention/chunk_gated_delta_rule/tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/opp/vendors/cgdr_stream_update_transformer/op_api/lib/libcust_opapi.so",
+    "/home/s00940320/improved_cgdr/attention/chunk_gated_delta_rule/tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/opp/vendors/cgdr_stream_update_transformer/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64/libcust_opmaster_rt2.0.so",
+    "/home/s00940320/improved_cgdr/attention/chunk_gated_delta_rule/tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/opp/vendors/cgdr_stream_update_transformer/op_proto/lib/linux/x86_64/libcust_opsproto_rt2.0.so",
+    "/usr/local/Ascend/cann-9.2.0/opp/vendors/custom_transformer/op_impl/ai_core/tbe/op_tiling/lib/linux/x86_64/libcust_opmaster_rt2.0.so",
+    "/usr/local/Ascend/cann-9.2.0/x86_64-linux/lib64/libopapi_cv.so",
+    "/usr/local/Ascend/cann-9.2.0/x86_64-linux/lib64/libopapi_math.so",
+    "/usr/local/Ascend/cann-9.2.0/x86_64-linux/lib64/libopapi_nn.so",
+    "/usr/local/Ascend/cann-9.2.0/x86_64-linux/lib64/libopapi_oam.so",
+    "/usr/local/Ascend/cann-9.2.0/x86_64-linux/lib64/libopapi_transformer.so"
+  ],
+  "torch": "2.13.0+cpu",
+  "torch_npu": "2.13.0.rc1"
+}

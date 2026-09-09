@@ -1,0 +1,97 @@
+{
+  "total": 616,
+  "status": {
+    "PASSED": 614,
+    "FAILED": 2
+  },
+  "groups": {
+    "generalization_precision": {
+      "PASSED": 356
+    },
+    "invalid_input": {
+      "PASSED": 70,
+      "FAILED": 2
+    },
+    "invariants": {
+      "PASSED": 144
+    },
+    "network_precision": {
+      "PASSED": 16
+    },
+    "semantic_relations": {
+      "PASSED": 28
+    }
+  },
+  "limits": {
+    "relative_rms": 0.02,
+    "normalized_max": 0.1,
+    "absolute_floor": 2e-05
+  },
+  "cases_with_recorded_precision": 442,
+  "max_relative_rms": {
+    "nodeid": "test_chunk_gated_delta_rule_generalization.py::test_generalization_precision[beta_near_one_one_hot_128_128_float32]",
+    "group": "generalization_precision",
+    "output": "attention",
+    "relative_rms": 0.013772332586270862,
+    "normalized_max": 0.07685492948736362,
+    "max_abs": 0.003908233863298881
+  },
+  "max_normalized_max": {
+    "nodeid": "test_chunk_gated_delta_rule_generalization.py::test_generalization_precision[beta_near_one_one_hot_128_128_float32]",
+    "group": "generalization_precision",
+    "output": "attention",
+    "relative_rms": 0.013772332586270862,
+    "normalized_max": 0.07685492948736362,
+    "max_abs": 0.003908233863298881
+  },
+  "network_max_relative_rms": {
+    "nodeid": "test_chunk_gated_delta_rule_generalization.py::test_network_precision[T8000_Nk14_float32]",
+    "group": "network_precision",
+    "output": "attention",
+    "relative_rms": 0.0037020903531445296,
+    "normalized_max": 0.04655265225908774,
+    "max_abs": 0.00024036554805143343
+  },
+  "network_max_normalized_max": {
+    "nodeid": "test_chunk_gated_delta_rule_generalization.py::test_network_precision[T11264_Nk16_float32]",
+    "group": "network_precision",
+    "output": "attention",
+    "relative_rms": 0.00369515196676168,
+    "normalized_max": 0.06052319349415997,
+    "max_abs": 0.00032078730868394245
+  },
+  "invalid_status_counts": {
+    "161002": 25,
+    "561103": 44,
+    "561101": 1,
+    "0": 2
+  },
+  "failed_cases": [
+    "test_chunk_gated_delta_rule_validation.py::test_invalid_input_is_rejected[dimension_nv_0]",
+    "test_chunk_gated_delta_rule_validation.py::test_invalid_input_is_rejected[dimension_dv_0]"
+  ],
+  "runs": [
+    {
+      "run": "quick_final",
+      "name": "pytest",
+      "errors": "0",
+      "failures": "2",
+      "skipped": "0",
+      "tests": "600",
+      "time": "23.477",
+      "timestamp": "2026-09-08T13:37:00.523005+00:00",
+      "hostname": "84d20579c8ef"
+    },
+    {
+      "run": "network",
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "16",
+      "time": "572.022",
+      "timestamp": "2026-09-08T13:23:04.941058+00:00",
+      "hostname": "84d20579c8ef"
+    }
+  ]
+}

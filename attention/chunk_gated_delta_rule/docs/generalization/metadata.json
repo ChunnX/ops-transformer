@@ -1,0 +1,89 @@
+{
+  "date": "2026-09-08",
+  "head": "f6d8cd6ff2d5b621b33ca938b08e8ca62aaaf439",
+  "device": "Ascend950PR_9589 device 0",
+  "cann": "/usr/local/Ascend/cann-9.2.0",
+  "seed": 20260908,
+  "additional_seeds": [
+    1000,
+    1001,
+    1002,
+    1003,
+    1004,
+    1005,
+    1006,
+    1007,
+    1008,
+    1009,
+    1010,
+    1011,
+    1012,
+    1013,
+    1014,
+    1015
+  ],
+  "raw_directory": "attention/chunk_gated_delta_rule/tests/pytest/output/generalization_20260908",
+  "vendor": "/home/s00940320/improved_cgdr/attention/chunk_gated_delta_rule/tests/pytest/output/rdv_perf_20260908/streaming_update_121832027/opp/vendors/cgdr_stream_update_transformer",
+  "kernel_audit": {
+    "case": "test_generalization_precision[diagonal_5_bfloat16]",
+    "binary_sha256": "ff88b552dc9cd8bbacbd622d017bfba7ff8d58ba98cd54d931cb4c84fce8aba4",
+    "matches_installed_package": true,
+    "installed_objects": {
+      "op_impl/ai_core/tbe/kernel/ascend950/chunk_gated_delta_rule_apt/ChunkGatedDeltaRule_85019fc586a8ef14675ed7018c900c4f.o": "3a5b724e22783ae81d7026c47c06af822ae9471d4f613bbf618b3de0f7abe65b",
+      "op_impl/ai_core/tbe/kernel/ascend950/chunk_gated_delta_rule_apt/ChunkGatedDeltaRule_b8eaf39689b840ee88390d15b17183a4.o": "ff88b552dc9cd8bbacbd622d017bfba7ff8d58ba98cd54d931cb4c84fce8aba4"
+    },
+    "scope": "One BF16-state gated case sampled with msopprof BasicInfo; not a per-case binary audit",
+    "hook_audit_status": "target_finished"
+  },
+  "installed_source_checks": [
+    {
+      "source": "attention/chunk_gated_delta_rule/op_kernel/chunk_gated_delta_rule.cpp",
+      "sha256": "5aee7a0ec7c5e32f391bafaf8baf6cd717047c650638277db201c5ff407317dd"
+    },
+    {
+      "source": "attention/chunk_gated_delta_rule/op_kernel/chunk_gated_delta_rule_tiling_data.h",
+      "sha256": "6e134bcf6d89771dd83aca3efbeadc87ef33b9438e9f6a9f553ab65952abf0ca"
+    },
+    {
+      "source": "attention/chunk_gated_delta_rule/op_kernel/chunk_gated_delta_rule_tiling_key.h",
+      "sha256": "9906461b44412013d9c96909f56b6228de97eda7ef241b2df17ea982c4febd47"
+    },
+    {
+      "source": "attention/chunk_gated_delta_rule/op_kernel/chunk_gated_delta_rule_apt.cpp",
+      "sha256": "0412b1212bb71e54c63ad2f82db958bd9903f0f02e45732125f0ed32cc0dea06"
+    },
+    {
+      "source": "attention/chunk_gated_delta_rule/op_kernel/arch35/chunk_gated_delta_rule_utils.h",
+      "sha256": "9a47eb0cb1860caefc5dba70172af5b3705e2f0a5f4c3f59a6278dd6151a9e4f"
+    },
+    {
+      "source": "attention/chunk_gated_delta_rule/op_kernel/arch35/chunk_gated_delta_rule_matmul_basic.h",
+      "sha256": "f63776c51f6dc500e003d05f148986fd4f8428bae1ab5ad7c57b0af6691c594b"
+    },
+    {
+      "source": "attention/chunk_gated_delta_rule/op_kernel/arch35/chunk_gated_delta_rule_fused_exact_arch35.h",
+      "sha256": "0418622aefe20d7b12c67aab6b3a4b818ed6de90a96aeecc1d0eedcbfb58e230"
+    },
+    {
+      "source": "attention/chunk_gated_delta_rule/op_kernel/arch35/chunk_gated_delta_rule_arch35.h",
+      "sha256": "f81cfcdfe4f7611201bbca131a804f59d3722a484a73f57107c63c29b2b308d5"
+    },
+    {
+      "source": "attention/chunk_gated_delta_rule/op_kernel/arch35/vf/chunk_gated_delta_rule_stage1_vf.h",
+      "sha256": "01ea78ea92762f3641c6cb2f27d2766ca141a74defe039bd444de41aceda6e6e"
+    },
+    {
+      "source": "attention/chunk_gated_delta_rule/op_kernel/arch35/vf/chunk_gated_delta_rule_stage2_vf.h",
+      "sha256": "21298901a1eb7b4159999a45f930a582302e740dad319f16962bf008d7d4d0bc"
+    }
+  ],
+  "test_source_sha256": {
+    "test_chunk_gated_delta_rule_generalization.py": "7fd114bb14cb2e071d985c71c379d3d50bbfa1a9249669e2bddb556d14f0a2dd",
+    "conftest.py": "2022440c10b5304c407e92161de7bf76e2ec21b361ca341b9cc0942f63ed0267",
+    "pytest.ini": "fb451066f564dcf192f63da27b4289d69d54198920d5240b2a506df10b80f7e9",
+    "cgdr_generalization_utils.py": "bf78d67282eee16a22739bfc1f77d1d9b1f8b266efb27c0812115357c2dc8c12",
+    "test_chunk_gated_delta_rule_validation.py": "3e3435b5587a64e6d3d42c09f153b7cf754c0225783ff94f6c4f9d4f2b684e31",
+    "test_chunk_gated_delta_rule_invariants.py": "69815c4bbeaec0ec12547fd95c937c1b5100a8a8a4257c9346716e906f0cdcd0"
+  },
+  "note": "Primary results: quick_final.xml + network.xml. Smoke, profiling, and legacy checks are excluded from 616-case count. Runtime audit path parsing subsequently corrected without changing numerical tests."
+}

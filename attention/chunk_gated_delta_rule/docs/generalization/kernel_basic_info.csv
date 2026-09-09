@@ -1,0 +1,2 @@
+Op Name,Op Type,Task Duration(us),Block Dim,Mix Block Dim,Device Id,Pid,Current Freq,Rated Freq,
+ChunkGatedDeltaRule_b8eaf39689b840ee88390d15b17183a4_10_mix_aic,mix,14.466000,32,64,0,2787199,1650,1650,

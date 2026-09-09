@@ -47,10 +47,30 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     report = outcome.get_result()
 
-    if report.when != "call":
+    if report.when != "call" and not (report.when == "setup" and (report.failed or report.skipped)):
         return
 
-    params = item.funcargs.get("param_combinations", {})
+    params = item.funcargs.get("param_combinations")
+    if params is None:
+        # 泛化测试以case字典/独立参数组织；保留旧RDV列格式，并用nodeid确保失败可定位。
+        case = item.funcargs.get("case", {})
+        lengths = case.get("lengths", (65,)) if case else None
+        params = {
+            "_name": item.nodeid,
+            "model": "ACLNN直调",
+            "B": len(lengths) if lengths is not None else "",
+            "seqlen": lengths if lengths is not None else "",
+            "nk": case.get("nk", 2) if case else "",
+            "nv": case.get("nv", 4) if case else "",
+            "dk": case.get("dk", 128) if case else item.funcargs.get("dk", ""),
+            "dv": case.get("dv", 128) if case else item.funcargs.get("dv", ""),
+            "chunk_size": 64,
+            "data_type": "bfloat16",
+            "state_data_type": case.get("state_dtype", item.funcargs.get("dtype", "")),
+            "has_g": case.get("gate", "random") != "none" if case else "",
+            "is_contiguous": not bool(case.get("layouts")) if case else "",
+            "seed": case.get("seed", 20260908),
+        }
 
     if report.passed:
         status = "PASSED"
@@ -66,9 +86,9 @@ def pytest_runtest_makereport(item, call):
         error = str(report.longreprtext).replace("\n", " | ")[:2000]
 
     row = {
-        "seed": _CURRENT_SEED,
+        "seed": params.get("seed", _CURRENT_SEED),
         "test_name": params.get("_name", ""),
-        "model": _get_model_name(),
+        "model": params.get("model", _get_model_name()),
         "status": status,
         "B": params.get("B", ""),
         "seqlen": params.get("seqlen", ""),
@@ -123,6 +143,4 @@ def pytest_sessionfinish(session, exitstatus):
     total = len(_RESULT_ROWS)
     passed = sum(1 for r in _RESULT_ROWS if r["status"] == "PASSED")
     failed = sum(1 for r in _RESULT_ROWS if r["status"] in ("FAILED", "ERROR"))
-    logger.info(
-        f"\nCSV generated: {csv_file} (total {total}, passed{passed}, failed{failed})"
-    )
+    logger.info(f"\nCSV generated: {csv_file} (total {total}, passed{passed}, failed{failed})")
