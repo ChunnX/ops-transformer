@@ -180,8 +180,9 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::InitParams(const ConstInfo &constInf
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Matmul<QLIV2T>::InitBuffers(TPipe *pipe)
 {
-    pipe->InitBuffer(bufUB_, 2 * CeilDiv(constInfo_.mBaseSizeMax, 2) * constInfo_.s2BaseSize * sizeof(QK_T));
-    // 大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
+    // 大小：2(开dB) * CeilDiv(M_BASIC_BLOCK, CVRATIO) * s2BaseSize * sizeof(QK_T) = 128KB
+    pipe->InitBuffer(bufUB_, 2 * CeilDiv(constInfo_.mBaseSizeMax, CVRATIO) * constInfo_.s2BaseSize * sizeof(QK_T));
+    
     mm1ResUB_ = bufUB_.Get<QK_T>();
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * constInfo_.mBaseSizeMax * D_BASIC_BLOCK * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
@@ -224,8 +225,10 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
 {
     CrossCoreWaitFlag<QLIV2Common::ConstInfo::QLIV2_SYNC_MODE4, PIPE_FIX>(QLIV2Common::ConstInfo::CROSS_VC_EVENT +
                                                                           runInfo.loop % 2);
+#if CVRATIO > 1
     CrossCoreWaitFlag<QLIV2Common::ConstInfo::QLIV2_SYNC_MODE4, PIPE_FIX>(
         QLIV2Common::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2 + QLIV2Common::ConstInfo::AIV0_AIV1_OFFSET);
+#endif
     uint64_t s2GmBaseOffset = runInfo.s2Idx * constInfo_.s2BaseSize;
     uint64_t s1gProcessSize = runInfo.actMBaseSize;
     uint64_t s2ProcessSize = runInfo.actualSingleProcessSInnerSize;
@@ -402,8 +405,10 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
 
     CrossCoreSetFlag<QLIV2Common::ConstInfo::QLIV2_SYNC_MODE4, PIPE_FIX>(QLIV2Common::ConstInfo::CROSS_CV_EVENT +
                                                                          runInfo.loop % 2);
+#if CVRATIO > 1
     CrossCoreSetFlag<QLIV2Common::ConstInfo::QLIV2_SYNC_MODE4, PIPE_FIX>(
         QLIV2Common::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2 + QLIV2Common::ConstInfo::AIV0_AIV1_OFFSET);
+#endif
 }
 
 template <typename QLIV2T>
@@ -668,8 +673,14 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
         fixpipeParams.mSize = s1gSizeAlign2G;
         fixpipeParams.srcStride = (s1gL0RealSize + 1) >> 1 << 1;       // 已16对齐
         fixpipeParams.dstStride = UB_BANK_DEPTH_STRIDE / sizeof(QK_T); // 落到同一个bank
-        // 双目标模式，按M维度拆分，M/2*N写入每个UB，M必须为2的倍数
+    #if CVRATIO > 1
+        // A5(1:2):双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
         fixpipeParams.dualDstCtl = 1;
+    #else
+        // A6(1:1):单目标模式，不拆M，relu随路执行（vec1不做relu)
+        fixpipeParams.dualDstCtl = 0;
+        fixpipeParams.reluEn = true;
+    #endif
 
         // nSize已保证N方向32B对齐
         if (nSize <= (256 / sizeof(float))) {
@@ -684,7 +695,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
             fixpipeParams.params.ndNum = 2;
             fixpipeParams.params.srcNdStride = ((fixpipeParams.mSize + 15) / 16) * fixpipeParams.nSize;
             fixpipeParams.params.dstNdStride =
-                constInfo_.s2BaseSize * constInfo_.mBaseSizeMax / 2; // s2BasicBlock_ * M_BASE_SIZE / 2
+                constInfo_.s2BaseSize * constInfo_.mBaseSizeMax / CVRATIO; // s2BasicBlock_ * M_BASE_SIZE / CVRATIO
         }
         Fixpipe<QK_T, CL0_T, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
                                                      // 未考虑s1gGmOffset和s2GmOffset，将matmul结果从L0C搬运到UB

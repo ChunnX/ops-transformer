@@ -14,6 +14,11 @@
  */
 #ifndef QUANT_LIGHTNING_INDEXER_V2_COMMON_H
 #define QUANT_LIGHTNING_INDEXER_V2_COMMON_H
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
+    #define CVRATIO 1
+#else
+    #define CVRATIO 2
+#endif
 using namespace AscendC;
 namespace QLIV2Common {
 using FP8E4M3 = fp8_e4m3fn_t;
