@@ -85,6 +85,29 @@ public:
         ComputeTile(a, b, c, m, n, k, aGmStride, bGmStride, cGmStride, true, atomicAdd, false, false);
     }
 
+    __aicore__ inline void ProcessC1TwoStage(const GlobalTensor<float> &a, const GlobalTensor<float> &b,
+                                             const GlobalTensor<float> &c, uint32_t m, uint32_t n,
+                                             uint32_t firstK, uint32_t secondK, uint32_t aGmStride,
+                                             uint32_t bGmStride, uint32_t cGmStride)
+    {
+        // 先将前半块累加到L0C；后半块V2就绪后继续在同一L0C累加，最后只写回一次GM。
+        // 既保持1024行单一FP32累加链的精度，又让前半块C1与后半块V2并行。
+        uint32_t cSlot = l0cLoopCount_ & 1U;
+        LocalTensor<float> currentC = cL0_[cSlot * BASIC_CUBE_L0C_SLOT_ELEMS];
+        WaitFlag<HardEvent::FIX_M>(cSlot);
+
+        AccumulateKRange(currentC, a, b, m, n, firstK, aGmStride, bGmStride, true);
+        CrossCoreWaitFlag(MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C1);
+        AccumulateKRange(currentC, a[firstK * aGmStride], b[firstK * bGmStride], m, n, secondK,
+                         aGmStride, bGmStride, false);
+
+        SetFlag<HardEvent::M_FIX>(cSlot);
+        WaitFlag<HardEvent::M_FIX>(cSlot);
+        CopyOut(c, currentC, m, n, cGmStride);
+        SetFlag<HardEvent::FIX_M>(cSlot);
+        ++l0cLoopCount_;
+    }
+
     __aicore__ inline void End()
     {
         for (uint32_t slot = 0; slot < BASIC_CUBE_BUFFER_NUM; ++slot) {
@@ -104,6 +127,35 @@ private:
         uint32_t cSlot = l0cLoopCount_ & 1U;
         LocalTensor<float> currentC = cL0_[cSlot * BASIC_CUBE_L0C_SLOT_ELEMS];
         WaitFlag<HardEvent::FIX_M>(cSlot);
+
+        AccumulateKRange(currentC, a, b, m, n, k, aGmStride, bGmStride, true, reuseB1);
+
+        SetFlag<HardEvent::M_FIX>(cSlot);
+        WaitFlag<HardEvent::M_FIX>(cSlot);
+        if (atomicAdd) {
+            // 后续C1分段写同一gradPhi前仅等待上一条Fixpipe完成，固定AtomicAdd顺序；
+            // 等待发生在当前MMAD结束后，继续保留L0C双槽和MMAD/Fixpipe重叠。
+            PipeBarrier<PIPE_FIX>();
+            SetAtomicAdd<float>();
+        }
+        CopyOut(c, currentC, m, n, cGmStride);
+        if (atomicAdd) {
+            DisableDmaAtomic();
+        }
+        if (publishC0) {
+            // FIX流水完成当前最多128行C0写回后，按原粒度唤醒对应Vector核。
+            CrossCoreSetFlag<MhcPreBackwardUtils::CROSS_CORE_FLAG_INDEX, PIPE_FIX>(
+                MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0);
+        }
+        SetFlag<HardEvent::FIX_M>(cSlot);
+        ++l0cLoopCount_;
+    }
+
+    __aicore__ inline void AccumulateKRange(const LocalTensor<float> &currentC, const GlobalTensor<float> &a,
+                                            const GlobalTensor<float> &b, uint32_t m, uint32_t n, uint32_t k,
+                                            uint32_t aGmStride, uint32_t bGmStride, bool initFirst,
+                                            bool reuseB1 = false)
+    {
 
         for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += BASIC_CUBE_K_L1) {
             uint32_t remainKL1 = k - offsetKL1;
@@ -144,7 +196,7 @@ private:
                 SetFlag<HardEvent::MTE1_M>(l0Slot);
                 WaitFlag<HardEvent::MTE1_M>(l0Slot);
 
-                bool initC = (offsetKL1 == 0U && offsetKL0 == 0U);
+                bool initC = initFirst && offsetKL1 == 0U && offsetKL0 == 0U;
                 Compute(currentC, currentA2, currentB2, m, n, currentKL0, initC);
                 SetFlag<HardEvent::M_MTE1>(BASIC_CUBE_L0_EVENT_BASE + l0Slot);
                 ++l0LoopCount_;
@@ -154,26 +206,6 @@ private:
             SetFlag<HardEvent::MTE1_MTE2>(l1Slot);
             ++l1LoopCount_;
         }
-
-        SetFlag<HardEvent::M_FIX>(cSlot);
-        WaitFlag<HardEvent::M_FIX>(cSlot);
-        if (atomicAdd) {
-            // 后续C1分段写同一gradPhi前仅等待上一条Fixpipe完成，固定AtomicAdd顺序；
-            // 等待发生在当前MMAD结束后，继续保留L0C双槽和MMAD/Fixpipe重叠。
-            PipeBarrier<PIPE_FIX>();
-            SetAtomicAdd<float>();
-        }
-        CopyOut(c, currentC, m, n, cGmStride);
-        if (atomicAdd) {
-            DisableDmaAtomic();
-        }
-        if (publishC0) {
-            // FIX流水完成当前最多128行C0写回后，按原粒度唤醒对应Vector核。
-            CrossCoreSetFlag<MhcPreBackwardUtils::CROSS_CORE_FLAG_INDEX, PIPE_FIX>(
-                MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0);
-        }
-        SetFlag<HardEvent::FIX_M>(cSlot);
-        ++l0cLoopCount_;
     }
 
     __aicore__ inline void PreloadB1(const GlobalTensor<float> &b, uint32_t n, uint32_t k,

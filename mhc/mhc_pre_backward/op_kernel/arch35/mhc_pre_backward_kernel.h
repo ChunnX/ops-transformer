@@ -967,7 +967,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
             // 先消费第一块V2完成信号，再发布第二块C0，保证两次C1握手一一对应。
             AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
             ProcessC0(offsetND, currentNDBlock, SINGLE_M, secondBSBlock, buffId + 1);
-            ProcessC1(offsetND, currentNDBlock, 0, static_cast<uint32_t>(totalLength_), buffId);
+            uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffId % VEC_CORE_VECIDX_MOD);
+            c0Basic_.ProcessC1TwoStage(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(0)], workSpaceGm_[offsetXs],
+                                       gradPhiGm_[offsetND], fusionSize_, currentNDBlock, SINGLE_M, secondBSBlock,
+                                       fusionSize_, ND_BLOCK_SIZE, nD_);
             buffId += 2;
 
             uint32_t nextOffsetND = offsetND + ND_BLOCK_SIZE;
