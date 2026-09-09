@@ -16,7 +16,7 @@ from cann_ops_transformer.op_builder import OpBuilder
 
 class CompressorOpBuilder(OpBuilder):
     def __init__(self):
-        super(CompressorOpBuilder, self).__init__("ds41.compressor_v2", category="attention")
+        super(CompressorOpBuilder, self).__init__("compressor_v2", category="attention")
 
     def sources(self):
         """Path to C++ source code."""
@@ -42,7 +42,7 @@ compressor_op_builder._ensure_initialized()
 # Register compressor forward
 # ===========================================================================
 @torch.library.custom_op(
-    "cann_ops_transformer::_compressor_v2_forward", mutates_args=(), device_types="npu"
+    "cann_ops_transformer::ds41.compressor", mutates_args=(), device_types="npu"
 )
 def _compressor_forward(
     x: torch.Tensor,
@@ -69,7 +69,7 @@ def _compressor_forward(
     )
 
 
-@torch.library.register_fake("cann_ops_transformer::_compressor_v2_forward")
+@torch.library.register_fake("cann_ops_transformer::ds41.compressor")
 def _compressor_forward_fake(
     x: torch.Tensor,
     wkv: torch.Tensor,
