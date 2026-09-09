@@ -108,7 +108,7 @@ private:
     uint32_t aivNum_{0};              // AIV核总数
     uint32_t epWorldSize_{0};         // rank总数
     int32_t epRankId_{0};             // 当前rank ID
-    int32_t mode_{0};                // 模式: 0=完整流程, 1=业务发送, 3=Win直接打流
+    int32_t mode_{0};                // 模式: 0=完整流程, 1=业务发送, 2=Win直接打流
     uint32_t aivId_{0};               // 当前AIV核ID
     uint32_t globalBS_{0};            // 全局最大batch size
     uint32_t hOutSize_{0};            // 输出hidden size (字节)
@@ -142,7 +142,7 @@ private:
     uint32_t preparedWrites_{0};
     float sumTarget_;                 // 状态同步目标值 (1.0)
 
-    // Mode 3 uses separate slots inside the 1 MiB state area, outside the business status/ping-pong fields.
+    // Mode 2 uses separate slots inside the 1 MiB state area, outside the business status/ping-pong fields.
     static constexpr uint32_t STREAM_FLAG_STRIDE = 32;
     static constexpr uint32_t STREAM_FLAGS_OFFSET = 128 * 1024;
     static constexpr uint32_t STREAM_EPOCH_OFFSET = STREAM_FLAGS_OFFSET + HCCL_MAX_RANK_SIZE * STREAM_FLAG_STRIDE;
@@ -158,7 +158,7 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::Init(GM
     aivId_ = GetBlockIdx(); // 获取当前核ID
     mode_ = tilingData->mode;
     epWorldSize_ = tilingData->worldSize;
-    if (mode_ == 3 && aivId_ >= epWorldSize_) {
+    if (mode_ == 2 && aivId_ >= epWorldSize_) {
         return;
     }
 
@@ -173,7 +173,7 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::Init(GM
     batchBufferBytes_ = tilingData->batchBufferBytes;
     batchCapacity_ = tilingData->batchTokens;
     // Direct Win streaming only needs communication parameters; its WQE buffer is allocated in Process.
-    if (mode_ == 3) {
+    if (mode_ == 2) {
         return;
     }
 
@@ -672,7 +672,7 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::Process
     // 主处理函数
     // mode=0: 完整流程 (发送 + 同步 + 接收)
     // mode=1: 仅发送模式 (用于单向带宽测试)
-    // mode=3: 直接从Win分批发送，等待通信完成，不搬运或校验业务数据
+    // mode=2: 直接从Win分批发送，等待通信完成，不搬运或校验业务数据
     if ASCEND_IS_AIV {
         if (mode_ == 0) {
             SendToMoeExpert(); // 步骤1: 发送数据到各rank的窗口
@@ -683,7 +683,7 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::Process
             SendToMoeExpert(); // 步骤1: 发送数据到各rank的窗口
             SetStatus();
             WaitDispatch();
-        } else if (mode_ == 3) {
+        } else if (mode_ == 2) {
             StreamFromWindow();
         }
     }

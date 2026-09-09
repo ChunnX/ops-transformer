@@ -25,8 +25,13 @@ std::tuple<at::Tensor, at::Tensor> bandwidth_test(
     TORCH_CHECK(world_size > 0 && world_size <= 1024 && max_bs > 0 &&
                     max_bs <= INT32_MAX / world_size,
                 "invalid world_size or max_bs");
-    TORCH_CHECK(mode == 0 || mode == 1 || (mode == 3 && comm_alg == "urma"),
-                "mode must be 0, 1 or 3; mode=3 requires comm_alg=urma");
+    TORCH_CHECK(mode >= 0 && mode <= 4, "mode must be in [0, 4]");
+    TORCH_CHECK(mode < 2 || comm_alg == "urma", "mode 2/3/4 requires comm_alg=urma");
+    TORCH_CHECK(mode < 3 || shared_jetty, "mode 3/4 requires shared_jetty=true");
+    TORCH_CHECK(mode != 3 || (world_size > 1 && max_bs >= world_size),
+                "mode=3 requires world_size > 1 and max_bs >= world_size");
+    TORCH_CHECK(mode != 4 || (world_size > 1 && shared_jetty_num == world_size - 1),
+                "mode=4 requires world_size > 1 and shared_jetty_num=world_size-1");
     at::Tensor y;
     at::Tensor receive_cnt;
     {

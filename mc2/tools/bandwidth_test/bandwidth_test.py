@@ -47,6 +47,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 URMA_MAX_BATCH_TOKENS = 2048  # Matches the current tiling cap for all supported shapes.
+WIN_STREAM_MODES = (2, 3, 4)
 
 # Resolve the environment and derive runtime values from config.py.
 server_index = CONFIG.parallel.server_index
@@ -79,17 +80,26 @@ dtype_bytes = torch.empty(0, dtype=input_dtype).element_size()
 mode = CONFIG.model.mode
 if mode is None:
     mode = 0 if CONFIG.run.is_precision_test else 1
-if mode not in (0, 1, 3):
-    raise ValueError("mode must be 0, 1 or 3")
+if mode not in (0, 1, 2, 3, 4):
+    raise ValueError("mode must be in [0, 4]")
+if mode in WIN_STREAM_MODES and CONFIG.model.comm_alg != "urma":
+    raise ValueError(f"mode={mode} requires comm_alg=urma")
+if mode in (3, 4) and not CONFIG.model.shared_jetty:
+    raise ValueError(f"mode={mode} requires shared_jetty=True")
+effective_shared_jetty_num = (
+    world_size - 1 if CONFIG.model.shared_jetty and mode == 4 else CONFIG.model.shared_jetty_num
+)
 if CONFIG.model.shared_jetty:
-    if CONFIG.model.comm_alg != "urma" or not 1 <= CONFIG.model.shared_jetty_num <= 56:
+    if CONFIG.model.comm_alg != "urma" or not 1 <= effective_shared_jetty_num <= 56:
         raise ValueError("shared_jetty requires urma and shared_jetty_num in [1, 56]")
     if CONFIG.model.shared_jetty_comm_level not in (0, 1, 2):
         raise ValueError("shared_jetty_comm_level must be 0, 1 or 2")
-    if aiv_num != -1 and CONFIG.model.shared_jetty_num > aiv_num:
+    if aiv_num != -1 and effective_shared_jetty_num > aiv_num:
         raise ValueError("shared_jetty_num must not exceed aiv_num")
-if mode == 3 and CONFIG.model.comm_alg != "urma":
-    raise ValueError("mode=3 requires comm_alg=urma")
+if mode == 3 and (world_size <= 1 or any(cfg["max_bs"] < world_size for cfg in test_configs)):
+    raise ValueError("mode=3 requires world_size > 1 and max_bs >= world_size")
+if mode == 4 and world_size <= 1:
+    raise ValueError("mode=4 requires world_size > 1")
 if CONFIG.run.is_precision_test and mode != 0:
     raise ValueError("precision testing requires mode=0")
 
@@ -98,8 +108,15 @@ def cal_hccl_buffsize(test_max_bs, h, ep_world_size):
     # A5 allocates twice HCCL_BUFFSIZE; each half includes one reserved token block.
     row_bytes = ((h * 2 + 511) // 512) * 512
     required_bytes = 1024 * 1024 + 2 * (ep_world_size + 1) * test_max_bs * row_bytes
-    if mode == 3:
-        required_bytes = 1024 * 1024 + 2 * test_max_bs * h * dtype_bytes
+    token_bytes = h * dtype_bytes
+    source_bytes = test_max_bs * token_bytes
+    if mode == 2:
+        required_bytes = 1024 * 1024 + 2 * source_bytes
+    elif mode == 3:
+        peer_bytes = (test_max_bs // ep_world_size) * token_bytes
+        required_bytes = 1024 * 1024 + source_bytes + ep_world_size * effective_shared_jetty_num * peer_bytes
+    elif mode == 4:
+        required_bytes = 1024 * 1024 + (ep_world_size + 1) * source_bytes
     return str((required_bytes + 2 * 1024 * 1024 - 1) // (2 * 1024 * 1024))
 
 
@@ -128,7 +145,8 @@ def print_setting():
     logger.info(f"{CONFIG.model.comm_alg=}")
     logger.info(f"{CONFIG.model.batch_tokens=}")
     logger.info(
-        f"{CONFIG.model.shared_jetty=}, {CONFIG.model.shared_jetty_num=}, "
+        f"{CONFIG.model.shared_jetty=}, configured_shared_jetty_num={CONFIG.model.shared_jetty_num}, "
+        f"{effective_shared_jetty_num=}, "
         f"{CONFIG.model.shared_jetty_comm_level=}"
     )
     logger.info(f"{CONFIG.model.graph_type=}")
@@ -215,6 +233,17 @@ def clean_previous_profiling_result():
             shutil.rmtree(path)
 
 
+def win_stream_rank_data_bytes(test_bs, token_bytes, num_world_size):
+    if mode == 2:
+        return (test_bs // num_world_size) * (num_world_size - 1) * token_bytes
+    if mode == 3:
+        return (effective_shared_jetty_num * (test_bs // num_world_size) *
+                (num_world_size - 1) * token_bytes)
+    if mode == 4:
+        return test_bs * (num_world_size - 1) * token_bytes
+    raise ValueError(f"mode={mode} is not a Win streaming mode")
+
+
 def get_bandwidth_performance(
     prof_result_path: str, data_size_bytes: int, num_world_size: int, test_bs: int
 ):
@@ -250,8 +279,8 @@ def get_bandwidth_performance(
     single_rank_data_bytes = (
         test_bs * data_size_bytes * ((num_world_size - 1) / num_world_size)
     )
-    if mode == 3:
-        single_rank_data_bytes = (test_bs // num_world_size) * (num_world_size - 1) * data_size_bytes
+    if mode in WIN_STREAM_MODES:
+        single_rank_data_bytes = win_stream_rank_data_bytes(test_bs, data_size_bytes, num_world_size)
     total_data_bytes = single_rank_data_bytes * num_world_size
     mean_bandwidth_gbps = (
         (total_data_bytes / mean_time_s) / 1024 / 1024 / 1024 / num_world_size
@@ -416,7 +445,7 @@ def init_hccl_comm(rank, world_size_local):
 
     return BandwidthTestBuffer(comm_group, comm_alg=CONFIG.model.comm_alg,
                                shared_jetty=CONFIG.model.shared_jetty,
-                               shared_jetty_num=CONFIG.model.shared_jetty_num,
+                               shared_jetty_num=effective_shared_jetty_num,
                                shared_jetty_comm_level=CONFIG.model.shared_jetty_comm_level), comm_group
 
 
@@ -429,7 +458,7 @@ def generate_inputs(
     test_bs: int, test_data_size: int
 ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
     """生成测试输入数据，每个发送方内部的目标rank均衡"""
-    if mode == 3:
+    if mode in WIN_STREAM_MODES:
         # Only tensor shapes are used by this mode; the registered Win supplies the payload.
         return ([torch.empty((test_bs, test_data_size), dtype=input_dtype) for _ in range(world_size)],
                 [torch.empty((test_bs,), dtype=torch.int32) for _ in range(world_size)])
@@ -458,7 +487,7 @@ def generate_inputs(
 
 
 def prepare_npu_inputs(x, dstrank_id, test_mode):
-    if test_mode == 3:
+    if test_mode in WIN_STREAM_MODES:
         return (torch.empty(x.shape, dtype=input_dtype, device="npu"),
                 torch.empty(dstrank_id.shape, dtype=torch.int32, device="npu"))
     return x.to(input_dtype).npu(), dstrank_id.to(torch.int32).npu()
@@ -601,7 +630,7 @@ def run_bandwidth_test_npu(
     if sym_buffer is None:
         sym_buffer, _ = init_hccl_comm(rank, test_world_size)
 
-    if CONFIG.diagnostics.is_save_tensor_to_bin and test_mode != 3:
+    if CONFIG.diagnostics.is_save_tensor_to_bin and test_mode not in WIN_STREAM_MODES:
         save_tensor_to_bin(x.to(torch.float32), "x_in_" + str(rank))
         save_tensor_to_bin(dstrank_id.to(torch.int32), "dstrank_id_" + str(rank))
 
@@ -624,7 +653,7 @@ def run_bandwidth_test_npu(
             "aiv_num": aiv_num,
             "batch_tokens": CONFIG.model.batch_tokens,
             "shared_jetty": CONFIG.model.shared_jetty,
-            "shared_jetty_num": CONFIG.model.shared_jetty_num,
+            "shared_jetty_num": effective_shared_jetty_num,
         }
 
         if not is_perf_mode:
@@ -653,7 +682,7 @@ def run_bandwidth_test_npu(
             "test_aiv_num": aiv_num,
             "test_batch_tokens": CONFIG.model.batch_tokens,
             "test_shared_jetty": CONFIG.model.shared_jetty,
-            "test_shared_jetty_num": CONFIG.model.shared_jetty_num,
+            "test_shared_jetty_num": effective_shared_jetty_num,
         }
         if not is_perf_mode:
             model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
@@ -679,11 +708,11 @@ def run_bandwidth_test_npu(
 
     logger.info(f"rank {rank} npu finished! \n")
 
-    if CONFIG.diagnostics.is_save_tensor_to_bin and test_mode != 3:
+    if CONFIG.diagnostics.is_save_tensor_to_bin and test_mode not in WIN_STREAM_MODES:
         save_tensor_to_bin(y.to(torch.float32), "y_out_" + str(rank))
         save_tensor_to_bin(receive_cnt, "receive_cnt_" + str(rank))
 
-    outputs = [None, None] if test_mode == 3 else [y.cpu(), receive_cnt.cpu()]
+    outputs = [None, None] if test_mode in WIN_STREAM_MODES else [y.cpu(), receive_cnt.cpu()]
     queue.put([rank, outputs])
 
 
@@ -764,7 +793,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
                 "aiv_num": aiv_num,
                 "batch_tokens": CONFIG.model.batch_tokens,
                 "shared_jetty": CONFIG.model.shared_jetty,
-                "shared_jetty_num": CONFIG.model.shared_jetty_num,
+                "shared_jetty_num": effective_shared_jetty_num,
             }
             with get_profiling(
                 CONFIG.run.loop, CONFIG.run.repeat, CONFIG.run.warmup, config_profiling_path
@@ -787,7 +816,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
                 "test_aiv_num": aiv_num,
                 "test_batch_tokens": CONFIG.model.batch_tokens,
                 "test_shared_jetty": CONFIG.model.shared_jetty,
-                "test_shared_jetty_num": CONFIG.model.shared_jetty_num,
+                "test_shared_jetty_num": effective_shared_jetty_num,
             }
             torch._dynamo.reset()
             model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
@@ -805,7 +834,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
         torch.npu.synchronize()
         torch.npu.empty_cache()
 
-        if CONFIG.diagnostics.is_save_tensor_to_bin and mode != 3:
+        if CONFIG.diagnostics.is_save_tensor_to_bin and mode not in WIN_STREAM_MODES:
             save_tensor_to_bin(
                 y.to(torch.float32), f"y_out_{rank}_config{config_index}"
             )
@@ -814,8 +843,8 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
         results.append(
             {
                 "config_index": config_index,
-                "y": None if mode == 3 else y.cpu(),
-                "receive_cnt": None if mode == 3 else receive_cnt.cpu(),
+                "y": None if mode in WIN_STREAM_MODES else y.cpu(),
+                "receive_cnt": None if mode in WIN_STREAM_MODES else receive_cnt.cpu(),
                 "test_bs": test_bs,
                 "test_data_size": test_data_size,
             }
@@ -965,12 +994,16 @@ def run_bandwidth_test(
 
 def shared_jetty_batch_tokens(dstrank_id_per_rank, test_bs, ep_world_size, test_mode,
                               shared_jetty_num, requested_batch_tokens):
-    """Largest actual payload batch after the kernel's BS split, excluding local copies."""
+    """Return the largest payload commit selected by the shared-Jetty mode."""
     if ep_world_size == 1:
         return 0
     capacity = requested_batch_tokens or URMA_MAX_BATCH_TOKENS
-    if test_mode == 3:
+    if test_mode == 2:
         return min(capacity, (test_bs // ep_world_size + shared_jetty_num - 1) // shared_jetty_num)
+    if test_mode == 3:
+        return min(test_bs // ep_world_size, URMA_MAX_BATCH_TOKENS)
+    if test_mode == 4:
+        return min(requested_batch_tokens or test_bs, test_bs, URMA_MAX_BATCH_TOKENS)
     largest = 0
     base, remainder = divmod(test_bs, shared_jetty_num)
     for rank, destinations in enumerate(dstrank_id_per_rank):
@@ -1052,7 +1085,7 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
             if CONFIG.model.shared_jetty:
                 perf_result["shared_jetty_batch_tokens"] = shared_jetty_batch_tokens(
                     all_inputs[i][1], test_bs, world_size, mode,
-                    CONFIG.model.shared_jetty_num, CONFIG.model.batch_tokens)
+                    effective_shared_jetty_num, CONFIG.model.batch_tokens)
             all_results.append(perf_result)
 
     print_summary_table(all_results)
@@ -1086,9 +1119,10 @@ def print_summary_table(results: List[Dict[str, Any]]):
     for r in results:
         cfg = r["config"]
         token_bytes = cfg["data_size"] * dtype_bytes
-        rank_data_mb = cfg["bs"] * token_bytes / (1024 * 1024)
-        if mode == 3:
-            rank_data_mb = (cfg["bs"] // world_size) * (world_size - 1) * token_bytes / (1024 * 1024)
+        rank_data_bytes = cfg["bs"] * token_bytes
+        if mode in WIN_STREAM_MODES:
+            rank_data_bytes = win_stream_rank_data_bytes(cfg["bs"], token_bytes, world_size)
+        rank_data_mb = rank_data_bytes / (1024 * 1024)
         if CONFIG.model.comm_alg != "urma":
             batch_tokens_text = batch_data_mb_text = "N/A"
         elif CONFIG.model.shared_jetty:
@@ -1098,8 +1132,8 @@ def print_summary_table(results: List[Dict[str, Any]]):
         else:
             batch_capacity = CONFIG.model.batch_tokens or URMA_MAX_BATCH_TOKENS
             max_peer_tokens = cfg["bs"] // world_size
-            # Business inputs distribute the remainder; mode 3 sends only floor(BS/world_size).
-            if mode != 3 and cfg["bs"] % world_size:
+            # Business inputs distribute the remainder; mode 2 sends only floor(BS/world_size).
+            if mode != 2 and cfg["bs"] % world_size:
                 max_peer_tokens += 1
             batch_tokens = min(batch_capacity, max_peer_tokens) if world_size > 1 else 0
             batch_tokens_text = str(batch_tokens)
@@ -1118,12 +1152,20 @@ def print_summary_table(results: List[Dict[str, Any]]):
 
     logger.info("-" * len(header))
     logger.info("MB = 1024^2 bytes. Mode 0/1 Rank Data includes local destinations.")
-    logger.info("Mode 3 Rank Data = floor(BS/world_size) * (world_size-1) * H * dtype bytes; only remote payload.")
+    logger.info("Mode 2 Rank Data = floor(BS/world_size) * (world_size-1) * H * dtype bytes.")
+    logger.info(
+        "Mode 3 Rank Data = shared_jetty_num * floor(BS/world_size) * (world_size-1) * H * dtype bytes.")
+    logger.info("Mode 4 Rank Data = BS * (world_size-1) * H * dtype bytes.")
     logger.info(
         "Batch Tokens/Data show the largest actual data commit to one remote destination; smaller tails may exist.")
-    logger.info("Shared jetty Batch Tokens account for the BS split across shared_jetty_num cores.")
-    logger.info("Ordinary URMA mode 3 Batch Tokens = min(selected batch, floor(BS/world_size)).")
-    logger.info("URMA batch_tokens=0 uses the current tiling maximum of 2048. N/A: MTE has no URMA batch submission.")
+    logger.info("Shared mode 2 Batch Tokens account for the BS split across shared_jetty_num cores.")
+    logger.info(
+        "Mode 3 ignores batch_tokens; Batch Tokens = min(floor(BS/world_size), tiling maximum).")
+    logger.info(
+        "Mode 4 uses world_size-1 Jettys; Batch Tokens = min(requested batch or BS, BS, tiling maximum).")
+    logger.info("Ordinary URMA mode 2 Batch Tokens = min(selected batch, floor(BS/world_size)).")
+    logger.info(
+        "URMA mode 0/1/2 batch_tokens=0 uses the current tiling maximum of 2048; MTE reports N/A.")
 
     if max_bw_config:
         logger.info(f"\n{'*' * 90}")
@@ -1133,7 +1175,7 @@ def print_summary_table(results: List[Dict[str, Any]]):
         logger.info(f"  H: {max_bw_config['config']['data_size']}")
         best_cfg = max_bw_config["config"]
         best_rank_data_mb = best_cfg["bs"] * best_cfg["data_size"] * dtype_bytes / (1024 * 1024)
-        if mode == 3:
+        if mode in WIN_STREAM_MODES:
             best_rank_data_mb = max_bw_config["single_rank_data_kb"] / 1024
         logger.info(f"  Rank Data: {best_rank_data_mb:.4f} MB")
         logger.info(f"  Mean Time: {max_bw_config['mean_time_us']:.2f} us")

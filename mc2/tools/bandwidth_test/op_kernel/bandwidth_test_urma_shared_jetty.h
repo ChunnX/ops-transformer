@@ -70,6 +70,10 @@ private:
     __aicore__ inline void ProcessToken(GlobalTensor<XType> &outTokenGT, uint32_t tokenIndex);
     __aicore__ inline void SplitToCore(uint32_t itemCount, uint32_t coreCount, uint32_t &startIndex,
                                        uint32_t &endIndex);
+    __aicore__ inline uint32_t RemoteRankForJetty(uint32_t jettyId)
+    {
+        return jettyId < static_cast<uint32_t>(epRankId_) ? jettyId : jettyId + 1;
+    }
 
     // 获取指定 rank 的通信窗口数据区地址
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
@@ -113,7 +117,7 @@ private:
     uint32_t sharedJettyNum_{0};      // 共享jetty数，也是参与发送的核数
     uint32_t epWorldSize_{0};         // rank总数
     int32_t epRankId_{0};             // 当前rank ID
-    int32_t mode_{0};                // 模式: 0=完整流程, 1=业务发送, 3=Win直接打流
+    int32_t mode_{0};                // 模式: 0/1=业务路径, 2/3/4=Win打流
     uint32_t aivId_{0};               // 当前AIV核ID
     uint32_t globalBS_{0};            // 全局最大batch size
     uint32_t hOutSize_{0};            // 输出hidden size (字节)
@@ -155,7 +159,7 @@ private:
     uint32_t preparedWrites_{0};
     float sumTarget_;                 // 状态同步目标值 (1.0)
 
-    // Mode 3 uses separate slots inside the 1 MiB state area, outside the business status/ping-pong fields.
+    // Win streaming modes use separate slots inside the 1 MiB state area, outside the business fields.
     static constexpr uint32_t STREAM_FLAG_STRIDE = 32;
     static constexpr uint32_t STREAM_FLAGS_OFFSET = 128 * 1024;
     static constexpr uint32_t STREAM_EPOCH_OFFSET =
@@ -188,7 +192,7 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
     batchBufferBytes_ = tilingData->batchBufferBytes;
     batchCapacity_ = tilingData->batchTokens;
     // Direct Win streaming only needs communication parameters; its WQE buffer is allocated in Process.
-    if (mode_ == 3) {
+    if (mode_ >= 2 && mode_ <= 4) {
         return;
     }
 
@@ -652,16 +656,27 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
 {
     BeginBatch(rankId);
     GM_ADDR remoteWin = reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[rankId]);
-    uint32_t peerTokens = axisBS_ / epWorldSize_;
     uint32_t start = 0;
-    uint32_t end = 0;
-    SplitToCore(peerTokens, sharedJettyNum_, start, end);
-    uint32_t remaining = end - start;
-    uint64_t peerBytes = static_cast<uint64_t>(peerTokens) * hOutSize_;
+    uint32_t remaining = axisBS_;
     uint64_t sourceBytes = static_cast<uint64_t>(axisBS_) * hOutSize_;
-    GM_ADDR src = windowGM_ + STATE_SIZE + rankId * peerBytes + static_cast<uint64_t>(start) * hOutSize_;
-    GM_ADDR dst = remoteWin + STATE_SIZE + sourceBytes + epRankId_ * peerBytes +
-        static_cast<uint64_t>(start) * hOutSize_;
+    GM_ADDR src = windowGM_ + STATE_SIZE;
+    GM_ADDR dst = remoteWin + STATE_SIZE + sourceBytes + static_cast<uint64_t>(epRankId_) * sourceBytes;
+    if (mode_ != 4) {
+        uint32_t peerTokens = axisBS_ / epWorldSize_;
+        uint64_t peerBytes = static_cast<uint64_t>(peerTokens) * hOutSize_;
+        remaining = peerTokens;
+        if (mode_ == 2) {
+            uint32_t end = 0;
+            SplitToCore(peerTokens, sharedJettyNum_, start, end);
+            remaining = end - start;
+            dst = remoteWin + STATE_SIZE + sourceBytes + static_cast<uint64_t>(epRankId_) * peerBytes +
+                static_cast<uint64_t>(start) * hOutSize_;
+        } else {
+            dst = remoteWin + STATE_SIZE + sourceBytes +
+                (static_cast<uint64_t>(epRankId_) * sharedJettyNum_ + aivId_) * peerBytes;
+        }
+        src += static_cast<uint64_t>(rankId) * peerBytes + static_cast<uint64_t>(start) * hOutSize_;
+    }
     while (remaining != 0) {
         --remaining;
         PrepareWrite(dst, src, hOutSize_, remaining == 0);
@@ -687,6 +702,19 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
         windowGM_ + STREAM_EPOCH_OFFSET + aivId_ * STREAM_FLAG_STRIDE);
     uint32_t epoch = ReadGmByPassDCache(epochAddr) + 1U;
     WriteGmByPassDCache(epochAddr, epoch);
+    if (mode_ == 4) {
+        uint32_t remoteRank = RemoteRankForJetty(aivId_);
+        SendWindowToRank(remoteRank, reinterpret_cast<GM_ADDR>(epochAddr));
+        uint32_t senderJetty = static_cast<uint32_t>(epRankId_) < remoteRank
+            ? static_cast<uint32_t>(epRankId_)
+            : static_cast<uint32_t>(epRankId_ - 1);
+        auto flag = reinterpret_cast<__gm__ uint32_t *>(
+            windowGM_ + STREAM_FLAGS_OFFSET +
+            (static_cast<uint64_t>(remoteRank) * BandwidthTestTiling::URMA_MAX_SHARED_JETTYS + senderJetty) *
+                sizeof(uint32_t));
+        while (static_cast<int32_t>(ReadGmByPassDCache(flag) - epoch) < 0) {}
+        return;
+    }
     for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {
         if (rankId != static_cast<uint32_t>(epRankId_)) {
             SendWindowToRank(rankId, reinterpret_cast<GM_ADDR>(epochAddr));
@@ -709,7 +737,7 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
     // 主处理函数
     // mode=0: 完整流程 (发送 + 同步 + 接收)
     // mode=1: 仅发送模式 (用于单向带宽测试)
-    // mode=3: 直接从Win分批发送，等待通信完成，不搬运或校验业务数据
+    // mode=2/3/4: 按各自流量模型从Win发送，等待通信完成，不搬运或校验业务数据
     if ASCEND_IS_AIV {
         if (mode_ == 0) {
             SendToMoeExpert(); // 步骤1: 发送数据到各rank的窗口
@@ -720,7 +748,7 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
             SendToMoeExpert(); // 步骤1: 发送数据到各rank的窗口
             SetStatus();
             WaitDispatch();
-        } else if (mode_ == 3) {
+        } else if (mode_ >= 2 && mode_ <= 4) {
             StreamFromWindow();
         }
     }

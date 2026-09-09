@@ -91,6 +91,11 @@ static bool IsSharedJetty(const gert::TilingContext *context)
     return IsUrma(context) && shared != nullptr && *shared;
 }
 
+static bool IsWinStreamMode(int32_t mode)
+{
+    return mode >= 2 && mode <= 4;
+}
+
 // 打印TilingData调试信息
 static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &tilingData)
 {
@@ -148,8 +153,8 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
                     OP_LOGE(nodeName, "maxBs must be in [1, INT32_MAX/worldSize], got %ld.", *maxBsPtr),
                     return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(*modePtr != 0 && *modePtr != 1 && *modePtr != 3,
-                    OP_LOGE(nodeName, "mode must be 0, 1 or 3, got %ld.", *modePtr),
+    OP_TILING_CHECK(*modePtr < 0 || *modePtr > 4,
+                    OP_LOGE(nodeName, "mode must be in [0, 4], got %ld.", *modePtr),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -183,8 +188,8 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
                         (std::strcmp(commAlg, "") != 0 && std::strcmp(commAlg, "mte") != 0 &&
                          std::strcmp(commAlg, "urma") != 0),
                     OP_LOGE(nodeName, "comm_alg must be mte or urma."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(tilingData.mode == 3 && std::strcmp(commAlg, "urma") != 0,
-                    OP_LOGE(nodeName, "mode=3 requires comm_alg=urma."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(IsWinStreamMode(tilingData.mode) && std::strcmp(commAlg, "urma") != 0,
+                    OP_LOGE(nodeName, "mode 2/3/4 requires comm_alg=urma."), return ge::GRAPH_FAILED);
 
     auto shared = attrs->GetAttrPointer<bool>(ATTR_SHARED_JETTY_INDEX);
     auto jettyNum = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_JETTY_NUM_INDEX);
@@ -194,6 +199,16 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*shared && std::strcmp(commAlg, "urma") != 0,
                     OP_LOGE(nodeName, "shared_jetty requires comm_alg=urma."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tilingData.mode >= 3 && !*shared,
+                    OP_LOGE(nodeName, "mode 3/4 requires shared_jetty=true."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tilingData.mode == 3 &&
+                        (tilingData.worldSize <= 1 || tilingData.maxBs < tilingData.worldSize),
+                    OP_LOGE(nodeName, "mode=3 requires world_size > 1 and max_bs >= world_size."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tilingData.mode == 4 &&
+                        (tilingData.worldSize <= 1 || *jettyNum != tilingData.worldSize - 1),
+                    OP_LOGE(nodeName, "mode=4 requires world_size > 1 and shared_jetty_num=world_size-1."),
+                    return ge::GRAPH_FAILED);
     tilingData.sharedJettyNum = static_cast<int32_t>(*jettyNum);
 
     OP_LOGD(nodeName, "group = %s", groupPtr);
@@ -332,7 +347,7 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestT
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     workSpaces[0] = SYSTEM_NEED_WORKSPACE;
-    if (tilingData->mode != 3) {
+    if (!IsWinStreamMode(tilingData->mode)) {
         if (IsSharedJetty(context)) {
             // Each shared-Jetty core records one world-size row of destination token counts.
             uint64_t countStride = (static_cast<uint64_t>(tilingData->worldSize) + 7) / 8 * 8;
@@ -359,9 +374,18 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, Bandwidt
         uint64_t worldSize = tilingData->worldSize;
         // Reuse the MTE state area and its reserved max_bs staging block in each data half.
         uint64_t required = MB_SIZE + 2 * (worldSize + 1) * rankBytes;
-        if (tilingData->mode == 3) {
+        uint64_t tokenBytes = static_cast<uint64_t>(tilingData->dataSize) * 2;
+        uint64_t sourceBytes = static_cast<uint64_t>(tilingData->maxBs) * tokenBytes;
+        if (tilingData->mode == 2) {
             // One read-only BS block and one disjoint receive block, with compact token rows.
-            required = MB_SIZE + 2 * static_cast<uint64_t>(tilingData->maxBs) * tilingData->dataSize * 2;
+            required = MB_SIZE + 2 * sourceBytes;
+        } else if (tilingData->mode == 3) {
+            // Every Jetty sends one peer-sized block; receive slots are disjoint by source rank and Jetty.
+            uint64_t peerBytes = static_cast<uint64_t>(tilingData->maxBs / tilingData->worldSize) * tokenBytes;
+            required = MB_SIZE + sourceBytes + worldSize * tilingData->sharedJettyNum * peerBytes;
+        } else if (tilingData->mode == 4) {
+            // One source BS block plus one complete BS receive block for every source rank.
+            required = MB_SIZE + (worldSize + 1) * sourceBytes;
         }
         OP_TILING_CHECK(static_cast<uint64_t>(*bufferSize) < required,
                         OP_LOGE(nodeName, "Context Win too small: need %lu bytes, got %ld.", required, *bufferSize),
@@ -475,7 +499,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     OP_TILING_CHECK(batchTokensPtr == nullptr || *batchTokensPtr < 0,
                     OP_LOGE(nodeName, "batch_tokens must be 0 (auto) or positive."), return ge::GRAPH_FAILED);
     tilingData->batchTokens = 0;
-    bool directWin = tilingData->mode == 3;
+    bool directWin = IsWinStreamMode(tilingData->mode);
     if (IsUrma(context)) {
         // Direct Win streaming only needs WQEs; business modes also stage one row and a chunk of IDs.
         uint64_t countBytes =
@@ -496,15 +520,29 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
             --maxBatchTokens;
         }
         maxBatchTokens = std::min(maxBatchTokens, static_cast<uint64_t>(URMA_MAX_BATCH_TOKENS));
-        OP_TILING_CHECK(static_cast<uint64_t>(*batchTokensPtr) > maxBatchTokens,
-                        OP_LOGE(nodeName, "batch_tokens=%ld exceeds maximum=%lu (usable_ub=%lu, fixed_bytes=%lu).",
-                                *batchTokensPtr, maxBatchTokens, ubSize, fixedBytes), return ge::GRAPH_FAILED);
-        uint64_t batchTokens = *batchTokensPtr == 0 ? maxBatchTokens : static_cast<uint64_t>(*batchTokensPtr);
+        uint64_t batchTokens = 0;
+        if (tilingData->mode == 3) {
+            uint64_t peerTokens = static_cast<uint64_t>(tilingData->maxBs / tilingData->worldSize);
+            batchTokens = std::min(peerTokens, maxBatchTokens);
+        } else if (tilingData->mode == 4) {
+            uint64_t requestedBatch = *batchTokensPtr == 0
+                ? static_cast<uint64_t>(tilingData->maxBs)
+                : std::min(static_cast<uint64_t>(*batchTokensPtr), static_cast<uint64_t>(tilingData->maxBs));
+            batchTokens = std::min(requestedBatch, maxBatchTokens);
+        } else {
+            OP_TILING_CHECK(static_cast<uint64_t>(*batchTokensPtr) > maxBatchTokens,
+                            OP_LOGE(nodeName,
+                                    "batch_tokens=%ld exceeds maximum=%lu (usable_ub=%lu, fixed_bytes=%lu).",
+                                    *batchTokensPtr, maxBatchTokens, ubSize, fixedBytes),
+                            return ge::GRAPH_FAILED);
+            batchTokens = *batchTokensPtr == 0 ? maxBatchTokens : static_cast<uint64_t>(*batchTokensPtr);
+        }
         tilingData->batchTokens = static_cast<uint32_t>(batchTokens);
         tilingData->batchBufferBytes = batchTokens * URMA_WQE_BYTES;
         requiredUb = fixedBytes + batchTokens * URMA_WQE_BYTES + alignUp(batchTokens * idBytesPerToken, 32);
-        OP_LOGI(nodeName, "URMA batch_tokens: requested=%ld, selected=%lu, maximum=%lu.",
-                *batchTokensPtr, batchTokens, maxBatchTokens);
+        OP_LOGI(nodeName, "URMA batch_tokens: requested=%ld, selected=%lu, maximum=%lu%s.",
+                *batchTokensPtr, batchTokens, maxBatchTokens,
+                tilingData->mode == 3 ? " (mode 3 ignores the request)" : "");
     } else {
         OP_TILING_CHECK(*batchTokensPtr != 0,
                         OP_LOGE(nodeName, "batch_tokens is only supported for urma; use 0 for mte."),

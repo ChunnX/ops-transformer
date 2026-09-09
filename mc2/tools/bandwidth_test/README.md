@@ -30,10 +30,10 @@ python bandwidth_test.py
 
 ## 配置说明
 
-默认使用 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 3`，运行多配置带宽测试。
-模式 3 使用 Torch context、URMA batch 接口和 Win 直接打流。
-默认每个目标卡固定由一个 AIV 负责；开启共享 jetty 后，tiling 仍按原有 `aiv_num` 规则启动 AIV，
-仅前 `shared_jetty_num` 个核按 BS 分片并各自独占一个共享 jetty，其余核参与状态等待和接收搬运。
+默认使用 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 2`，运行多配置带宽测试。
+模式 2 保留原有 Torch context、URMA batch 接口和 Win 直接打流逻辑。共享 Jetty 下还支持模式 3/4：
+模式 3 的每个 Jetty 都向所有远端卡发送 `BS // world_size` 个 token；模式 4 固定建立
+`world_size - 1` 个 Jetty，每个 Jetty 负责一张远端卡并发送完整 BS。
 精度模式和带宽模式沿用原配置开关，URMA 的窗口容量和依赖见
 [Torch Extension 说明](torch_extension/README.md)。
 
@@ -67,21 +67,23 @@ is_single_test = False    # True: 单配置测试; False: 多配置批量测试
 graph_type = 3           # 0: 单算子模式; 3: aclgraph模式
 comm_alg = "urma"        # mte 或 urma
 shared_jetty = False     # True: URMA 共享 jetty；MTE 不支持
-shared_jetty_num = 1     # 共享 jetty 及发送核数量；tiling 校验不超过所选 AIV 核数且最多 56
+shared_jetty_num = 1     # 共享 jetty 数量；mode 4 忽略此值并固定使用 world_size - 1
 shared_jetty_comm_level = 0  # 仅共享模式生效：0=域内UB_CTP/域间UB_RTP，1=全UB_CTP，2=全UB_RTP
-mode = 3                # URMA直接Win打流；精度测试改为0或None
-batch_tokens = 0         # URMA: 0 自动最大批量（最高 2048）；正数超限由 tiling 报最大值
+mode = 2                # 2=原Win打流，3=每Jetty发所有卡，4=每远端卡一个Jetty
+batch_tokens = 0         # mode 3忽略；mode 4取min(配置或BS, BS, tiling上限)
 is_full_core = True      # True: 使用全部核心; False: 使用部分核心
 partial_core_num = 16    # 非全核时的 AIC 数量，AIV 数量由脚本自动取其两倍
 aiv_num = None          # 算子 AIV 核数，None 使用自动值，也可单独指定
 ```
 
-`batch_tokens` 表示每张目标卡每次 BatchCommit 的 token 数，只有最后一批允许不足。
-BS 不受单批容量限制，tiling 的最大提交数也不按 BS 截断；MTE 使用 `batch_tokens=0`。
+`batch_tokens` 通常表示每张目标卡每次 BatchCommit 的 token 数，只有最后一批允许不足。
+模式 3 不读取该配置，有效值为 `min(BS // world_size, tiling最大值)`；能一次提交完就一次提交，
+否则按 tiling 最大值分批。模式 4 的有效值为 `min(batch_tokens or BS, BS, tiling最大值)`。
+MTE 使用 `batch_tokens=0`。
 `shared_jetty_comm_level=0` 沿用拓扑自动选择；1 和 2 分别要求所有远端能够在同一层通过
 UB_CTP 或 UB_RTP 建立共享 Jetty。该配置不作为算子属性下发，只用于共享 context 建链。
 调用方必须保证通信参数有效，并自行确认选定批量小于所有使用的 SQ 和 CQ 深度（包括 0/最大值模式）。
-kernel 不重复校验参数范围或自动缩小批量；共享路径只断言 context 与 tiling 的 Jetty 数量一致。
+kernel 不重复校验参数范围；模式 4 的 BS 截断由 tiling 完成，共享路径断言 context 与 tiling 的 Jetty 数量一致。
 UB 预算与完成流控说明见 [Torch 扩展说明](torch_extension/README.md)。
 
 ### 性能采集配置
@@ -125,9 +127,9 @@ random_seed = 90         # 随机种子
 修改 `ModelConfig` 中的字段。
 
 ```python
-# ModelConfig.mode 为 None 时自动决定：精度为 0，带宽为 1；显式设为 3 启用 URMA Win 打流
+# ModelConfig.mode 为 None 时自动决定：精度为 0，带宽为 1；显式设为 2 启用 URMA Win 打流
 comm_alg = "urma"        # 默认通信算法
-mode = 3                # 默认URMA Win打流
+mode = 2                # 默认URMA Win打流
 ```
 
 ### 测试数据配置
@@ -243,7 +245,7 @@ No.   BS       H          Rank Data(MB)    Batch Tokens   Batch Data(MB)   Mean 
 ...
 ```
 
-示例仅演示报告格式，使用 FP16、URMA 模式 3、8 卡、`batch_tokens=512`，耗时和带宽为示意数值。
+示例仅演示报告格式，使用 FP16、URMA 模式 2、8 卡、`batch_tokens=512`，耗时和带宽为示意数值。
 MB 按 `1024²` 字节计算，`Rank Data = (BS // world_size) × (world_size - 1) × H × 元素字节数`。
 `Batch Tokens = min(选定批量, BS // world_size)`，`Batch Data = Batch Tokens × H × 元素字节数`，
 表示该用例实际最大的单次远端数据提交；有多次提交时，最后一批仍可能更小。
@@ -258,40 +260,51 @@ profiler 配置恢复到已验证可采集的 `124d318a` 基线：`Level1`、`Pi
 
 ## 核心函数说明
 
-### URMA 极限带宽模式 3
+### URMA Win 打流模式 2/3/4
 
-`config.py` 默认设置 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 3`，
+`config.py` 默认设置 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 2`，
 开启带宽测试并关闭精度测试。`graph_type` 仍独立选择 eager 或 aclgraph。
-调节 `batch_tokens`（0 自动选择 2048）和 `ShapeConfig.data_size`（H）观察带宽；BS 决定发送持续量，
-应足够大，使 `BS // world_size` 能形成多次满批提交。
+模式 2 逻辑保持不变：调节 `batch_tokens`（0 自动选择 2048）和 `ShapeConfig.data_size`（H）观察带宽。
 
 普通 URMA 下每个目标卡由一个 AIV 核负责，目标卡数多于核数时按核号步进处理。
-共享 jetty 下由前 N 个核共同拆分每个对端的 BS，N 为 `shared_jetty_num`。
+共享 Jetty 模式 2 下由前 N 个核共同拆分每个对端的 BS，N 为 `shared_jetty_num`。
 每个远端目标发送 `BS // world_size` 个 token，自卡跳过，除法余数不参与传输。
-不足一条 token 时只交换完成 flag，数据带宽为 0。
+模式 2 不足一条 token 时只交换完成 flag，数据带宽为 0。
 `Rank Data` 和带宽分子均使用实际远端字节数：
 `(BS // world_size) * (world_size - 1) * H * 2`；`Batch Data` 按实际最大单次提交计算，不超过每个目标卡的数据量。
+
+共享 Jetty 模式 3 不再拆分对端数据。前 N 个核各自独占一个 Jetty，每个核都遍历全部远端卡，
+向每张远端卡发送 `BS // world_size` 个 token；`batch_tokens` 被忽略。实际 batch 为
+`min(BS // world_size, tiling最大值)`，因此放得下时一次提交，否则按最大容量分批。
+单 rank 流量为 `N * (BS // world_size) * (world_size - 1) * H * 2`。
+
+共享 Jetty 模式 4 忽略配置的 `shared_jetty_num`，脚本建立 `world_size - 1` 个 Jetty，并按跳过本卡的
+rank 顺序一一绑定远端卡。每个 Jetty 向负责卡发送完整 BS，单 rank 流量为
+`BS * (world_size - 1) * H * 2`。有效批量为
+`min(batch_tokens or BS, BS, tiling最大值)`，超过 BS 或最大容量时直接取对应上限。
 
 kernel 直接从已注册 Win 的只读源区向远端独立接收区逐 token 调用 Batch Write，
 只分配 WQE buffer，不读取 x 或目标 ID，不做 token 搬运、统计、输出拷贝或双缓冲初始化。
 所有 URMA 模式直接调用 `hcomm_.WriteNbi(handle, dst, src, len)`，不传 WQE 配置，完全使用 SDK 默认值。
 所有 URMA 模式通过公开 Hcomm 接口提交通信，不读取 channel entity、队列深度或 handle 内部字段。
 每次凑够 batch 就 Commit，再通过 Drain 确认该批完成；不根据私有队列信息决定在途批次数。
-普通 URMA 模式 3 的尾批未满时，将 flag 接在尾批后一起 Commit，数据与 flag 合计不超过配置批量；
+普通 URMA 模式 2 的尾批未满时，将 flag 接在尾批后一起 Commit，数据与 flag 合计不超过配置批量；
 SDK 默认的 fence 保证 flag 在前面的数据完成后到达，最终一次 Drain 收齐尾批数据和 flag 的完成通知。
 数据恰好满批时先完成该批，再单独提交并完成 flag。共享 jetty 模式始终先完成数据批，
 再单独 batch 提交并完成 flag。两条路径的报告都只计算数据 token 和字节，不计 flag。
-最后参与发送的各核等待负责的来源卡 flag，全部核退出后算子才结束。
+模式 2/3 的每个发送核等待所有来源卡同编号 Jetty 的 flag；模式 4 的每个发送核等待一张配对来源卡的 flag。
 
 flag 使用 Win 中独立的递增序号，避免清零和旧 flag 误判；Win 在通信接口初始化时已清零。
 同一 context 的调用必须串行，所有 rank 的模式、shape、当次核数和调用顺序必须一致。
 普通 URMA 路径改变核数需要重建 context；共享 jetty 路径使用公共双缓冲位，同步完成后可以改变
 `aiv_num`，但仍须满足 `aiv_num >= shared_jetty_num`。
 此模式不校验数据内容，y 和 receive_cnt 不保证有效；脚本不初始化输入内容、不保存或回传无效输出。
-输出 tensor 形状沿用接口约定。窗口最小值为 `1 MiB + 2 * BS * H * 2`，包含分离的源区和接收区。
+输出 tensor 形状沿用接口约定。模式 2 的窗口最小值为 `1 MiB + 2 * BS * H * 2`；
+模式 3 为 `1 MiB + BS*H*2 + world_size*N*(BS//world_size)*H*2`；
+模式 4 为 `1 MiB + (world_size+1)*BS*H*2`。
 Batch buffer 复用不代表网络完成；报告时间包含 CQE 回收及 flag 等待。
-普通 URMA 的模式 3 与模式 0/1 共用 `BandwidthTestUrma`，在 `Process()` 的 `mode_ == 3` 分支执行；
-共享 jetty 使用 `BandwidthTestUrmaSharedJetty` 和共享 tiling key。两者的 `Init()` 都只读取该模式需要的
+普通 URMA 的模式 2 与模式 0/1 共用 `BandwidthTestUrma`，在 `Process()` 的 `mode_ == 2` 分支执行；
+共享 jetty 使用 `BandwidthTestUrmaSharedJetty` 和共享 tiling key。Win 打流分支的 `Init()` 只读取需要的
 通信参数便返回，不初始化 mode 0/1 的业务缓冲区。
 超出目标卡范围的核在读取通信 context 前返回；只负责自卡的核不分配 WQE buffer 或更新序号。
 

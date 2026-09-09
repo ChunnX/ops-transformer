@@ -72,22 +72,35 @@ def _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
                  lambda: "all inputs must be on the same device")
     torch._check(0 < len(group.encode()) < 128 and "\0" not in group,
                  lambda: "group must be a valid HCCL group name")
-    torch._check(test_mode in (0, 1, 3), lambda: "test_mode must be 0, 1 or 3")
+    torch._check(test_mode in (0, 1, 2, 3, 4), lambda: "test_mode must be in [0, 4]")
     torch._check(comm_alg in ("", "mte", "urma"), lambda: "comm_alg must be mte or urma")
-    torch._check(test_mode != 3 or comm_alg == "urma", lambda: "mode=3 requires comm_alg=urma")
+    torch._check(test_mode not in (2, 3, 4) or comm_alg == "urma",
+                 lambda: "mode 2/3/4 requires comm_alg=urma")
     torch._check(aiv_num == -1 or aiv_num > 0, lambda: "aiv_num must be -1 or positive")
     torch._check(batch_tokens >= 0, lambda: "batch_tokens must be 0 (auto) or positive")
     torch._check(comm_alg == "urma" or batch_tokens == 0,
                  lambda: "batch_tokens is only supported for urma")
     torch._check(not shared_jetty or comm_alg == "urma", lambda: "shared_jetty requires urma")
+    torch._check(test_mode not in (3, 4) or shared_jetty,
+                 lambda: "mode 3/4 requires shared_jetty=True")
     torch._check(1 <= shared_jetty_num <= 56, lambda: "shared_jetty_num must be in [1, 56]")
     torch._check(not shared_jetty or aiv_num == -1 or shared_jetty_num <= aiv_num,
                  lambda: "shared_jetty_num must not exceed aiv_num")
+    torch._check(test_mode != 3 or (world_size > 1 and max_bs >= world_size),
+                 lambda: "mode=3 requires world_size > 1 and max_bs >= world_size")
+    torch._check(test_mode != 4 or (world_size > 1 and shared_jetty_num == world_size - 1),
+                 lambda: "mode=4 requires world_size > 1 and shared_jetty_num=world_size-1")
     # Kernel divides the data window in two and reserves one max_bs block per half.
     row_bytes = ((x.size(1) * 2 + 511) // 512) * 512
     required_bytes = 1024 * 1024 + 2 * (world_size + 1) * max_bs * row_bytes
-    if test_mode == 3:
+    if test_mode == 2:
         required_bytes = 1024 * 1024 + 2 * max_bs * x.size(1) * 2
+    elif test_mode == 3:
+        source_bytes = max_bs * x.size(1) * 2
+        peer_bytes = (max_bs // world_size) * x.size(1) * 2
+        required_bytes = 1024 * 1024 + source_bytes + world_size * shared_jetty_num * peer_bytes
+    elif test_mode == 4:
+        required_bytes = 1024 * 1024 + (world_size + 1) * max_bs * x.size(1) * 2
     torch._check(ccl_buffer_size >= required_bytes,
                  lambda: "HCCL buffer too small; increase HCCL_BUFFSIZE before creating the group")
 
@@ -185,16 +198,19 @@ def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
             in [0, world_size). Device values are not checked during capture.
         world_size: Group size in [1, 1024], matching sym_buffer.
         max_bs: Positive row count shared by all ranks.
-        mode: 0 exchanges and receives rows; 1 sends and waits; 3 streams Win data directly (URMA only).
+        mode: 0 exchanges and receives rows; 1 sends and waits; 2 keeps the original Win stream;
+            shared mode 3 makes every Jetty send floor(BS/world_size) rows to every remote rank;
+            shared mode 4 creates one Jetty per remote rank and sends all BS rows.
         comm_alg: "mte", "" or "urma"; must match the context owner.
         aiv_num: -1 selects platform defaults; otherwise a positive AIV count.
-        batch_tokens: URMA tokens per commit; 0 selects capacity automatically.
+        batch_tokens: URMA tokens per commit; mode 3 ignores it and uses the largest feasible batch.
+            In mode 4, 0 selects BS and the result is capped by BS and the tiling maximum.
         shared_jetty: Enable the URMA shared jetty kernel and context.
         shared_jetty_num: Number of shared jettys and sending AIVs, in [1, min(aiv_num, 56)].
 
     Returns:
         FP16 y [max_bs * world_size, hidden] and INT32 receive_cnt [world_size].
-        Only y[:receive_cnt.sum()] is valid in mode=0; mode=1 and mode=3 outputs are
+        Only y[:receive_cnt.sum()] is valid in mode=0; mode=1 and mode=2/3/4 outputs are
         unspecified. Calls sharing a context must be submitted serially.
     """
     if world_size != sym_buffer.world_size:

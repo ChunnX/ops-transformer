@@ -5,7 +5,8 @@
 在 `config.py` 中设置 `shared_jetty=True`、`shared_jetty_num=N`，保留 `comm_alg="urma"`。
 `shared_jetty_comm_level` 只用于共享 context 建链：0 表示 UB 域内使用 UB_CTP、域间使用
 UB_RTP（UBG）；1 表示全部远端使用 UB_CTP；2 表示全部远端使用 UB_RTP。
-`N` 为实际建立的共享队列数量，也是按 BS 分片的发送核数。tiling 仍沿用原有 `aiv_num`
+`N` 通常为实际建立的共享队列数量，也是发送核数；mode 4 忽略配置值并要求调用方建立
+`world_size - 1` 个 Jetty。tiling 仍沿用原有 `aiv_num`
 规则选择并启动全部 AIV（设备当前最多 72 个）；只允许 `1 <= N <= min(所选 AIV 数, 56)`。
 `aiv_num=-1` 时使用设备 AIV 数。该数量关系在 tiling 中校验。
 关闭共享 jetty 时沿用现有 MTE / 普通 URMA 路径。MTE 开启此开关会报参数错误。
@@ -56,18 +57,23 @@ Host 建联使用 hcomm 的 `COMM_PROTOCOL_UB_CTP`；CANN 9.2 的 Device `adv_ap
 `COMM_PROTOCOL_UBC_CTP`，因此两个 kernel 的 `Hcomm<>` 必须使用该 SDK 枚举。UB_RTP device batch 路径仍须用目标联调包验证。
 
 tiling key 先选择通信算法，再在 URMA 下选择 `SHARED_JETTY`；kernel 独立文件为
-`op_kernel/bandwidth_test_urma_shared_jetty.h`，保留 mode 0/1/3：
+`op_kernel/bandwidth_test_urma_shared_jetty.h`，支持 mode 0/1/2/3/4：
 
 - mode 0/1：将输入 BS 的完整 token 连续分给 N 核，先在 workspace 写各核各对端计数，
   同步后按核号前缀计算紧凑发送位置。每核独占中转 token 区间，全部数据完成后再汇总并发送
   count / ready。其余已启动 AIV 继续参与全核同步、状态等待和接收搬运，mode 0 沿用原来的
   接收和输出排列。
-- mode 3：将每个对端的 `floor(BS/world_size)` 个完整 token 分给 N 核；每核遍历全部远端。
+- mode 2：将每个对端的 `floor(BS/world_size)` 个完整 token 分给 N 核；每核遍历全部远端。
   总流量口径不变，各 `(源 rank, 核)` 使用独立 epoch flag，空区间仍通知完成。
+- mode 3：N 个 Jetty 都遍历全部远端，每个 Jetty 向每张卡发送 `floor(BS/world_size)` 个 token。
+  `batch_tokens` 不生效，实际 batch 取 `min(floor(BS/world_size), tiling最大值)`；接收区按
+  `(源 rank, Jetty)` 分槽，避免并发覆盖。
+- mode 4：实际 Jetty 数固定为 `world_size - 1`，每个 Jetty 绑定一张远端卡并发送完整 BS。
+  有效批量为 `min(batch_tokens or BS, BS, tiling最大值)`；接收区按源 rank 分槽。
 - 每个发送核只操作自己的共享 jetty，并在切换 peer 前完成上一批 Drain；同一 Jetty 上的 Channel 不并发使用。
   数据、count、ready 和 epoch 的远端写都使用
   `MakeBatchHandle(MultiChannelHandle) → GetHandleRef(peerIndex) → WriteNbi(batch) → BatchCommit → Drain`。
-  `batch_tokens` 是每核向一个目标卡提交的 payload token 数，尾批可以不足；
+  `batch_tokens` 是每核向一个目标卡提交的 payload token 数，mode 3 除外，尾批可以不足；
   统计表根据实际 BS 分核后的路由计算最大数据批量，状态通知不计入 payload。
   `WriteNbi`、`BatchCommit`、`Drain` 返回错误时触发 `Trap()`，中止 kernel，避免继续发布成功标志。
 
@@ -76,7 +82,7 @@ tiling key 先选择通信算法，再在 URMA 下选择 `SHARED_JETTY`；kernel
 以下原有普通 URMA / MTE 布局说明中的按目标卡分核和 channel 锁仅适用于非共享路径。
 
 当前交付基于静态分析；仍需在支持上述接口的 CANN 上编译，并验证多 rank 的
-mode 0 精度、mode 1/3 重复调用、图重放、非整除 BS、空区间、56 jetty，以及联调包的
+mode 0 精度、mode 1/2/3/4 重复调用、图重放、非整除 BS、空区间、56 jetty，以及联调包的
 跨超 UB_RTP 和混合 UB_CTP/UB_RTP 拓扑。这里的静态检查不代表目标包编译或实机通信已验证。
 
 ## 安装和原有调用方式
@@ -167,8 +173,9 @@ hidden 是 16 的倍数且小于 32768，
 各 rank 使用相同的 max_bs、hidden、world_size、mode、aiv_num、batch_tokens。
 目标 rank ID 应在 `[0, world_size)`；扩展不会在捕获期间读取 NPU tensor 的值。
 `aiv_num=-1` 使用平台默认值，正值不应超过设备 AIV 核数。
-测试脚本在 `config.py` 的 `ModelConfig.batch_tokens` 设置每次提交的 token/WQE 数：
-0 自动选择容量；正数由 tiling 校验，通过后按原值提交；负数非法。
+测试脚本在 `config.py` 的 `ModelConfig.batch_tokens` 设置每次提交的 token/WQE 数。
+mode 0/1/2 中 0 自动选择容量，正数由 tiling 校验后按原值提交；mode 3 忽略该值并取
+`min(BS // world_size, maximum)`；mode 4 取 `min(配置或BS, BS, maximum)`。负数始终非法。
 `batch_tokens` 仅适用于 URMA，MTE 保持 0。每张目标卡的最后一批可以不足指定数，
 状态通知仍分别提交 count 和 ready flag，不受数据批量凑整影响。
 
@@ -186,7 +193,7 @@ URMA 将 MTE 已预留的首个 max_bs 数据块作为中转区；接收区仍�
 中转数据和通知源地址全部位于 context 注册的 Win；workspace 仅保留框架系统空间。
 URMA 通过 MTE 的 `SplitToCore(world_size, aiv_num, ...)` 将连续的目标卡范围分配给各核，
 前面的核处理余数卡，本卡仍使用 `ProcessToken` 本地搬运。
-kernel 通过已有的通信算法 tiling key 和 `if constexpr` 选择 MTE/URMA；mode 3 不新增 tiling key。
+kernel 通过已有的通信算法 tiling key 和 `if constexpr` 选择 MTE/URMA；mode 2/3/4 不新增 tiling key。
 URMA 是独立类，声明、类外实现和 `Process()` 分支排列与 MTE 一致。
 `mode=0` 顺序执行 `SendToMoeExpert → SetStatus → WaitDispatch → LocalWindowCopy`；
 `mode=1` 顺序执行前三个阶段。
@@ -211,10 +218,10 @@ batch_buffer_bytes = capacity * 64
 
 Ascend950 的 256 KiB UB 扣除系统预留的 8 KiB 后，算子使用完整的 248 KiB，
 不再对平台查询值额外扣减 8 KiB；不按 UB 批容量给 BS 设置上限，也不按 BS 截断 maximum。
-总 token 数可以超过单批容量，`batch_tokens` 也可以超过 BS（实际数据不足时形成尾批）。
+mode 0/1/2 的总 token 数可以超过单批容量，`batch_tokens` 也可以超过 BS（实际数据不足时形成尾批）。
 现有 INT32 计数表示检查和实际 tensor/通信窗口容量检查仍然有效。
-若传入正数超过 maximum，tiling 返回失败并报告 `batch_tokens=... exceeds maximum=...`；
-合法值会打印 `requested / selected / maximum`。UB 最大值与 BS 无关。
+mode 0/1/2 若传入正数超过 maximum，tiling 返回失败；mode 3/4 则把各自规则算出的批量截断到
+maximum。合法值会打印 `requested / selected / maximum`。UB 最大值与 BS 无关。
 例如 `world_size=8、aiv_num=64` 时，`max_bs=4096、hidden=16384` 和
 `max_bs=8192、hidden=8192` 的 tiling 最大提交数均为 **2048 个 token/WQE**。
 设备端分块扫描 ID，为当前目标卡跨 ID 块累计 WQE；凑够指定数量就 `BatchCommit`。
@@ -253,20 +260,25 @@ kernel 只通过公开 Hcomm 接口提交和完成通信；普通 URMA 路径还
 切换 shape、mode 或测试配置前，所有 rank 必须完成此前调用并同步；各 rank 调用次数和顺序须相同。
 普通 URMA owner 的 `aiv_num` 必须固定；该路径按核保存双缓冲位，改变核数需要同步后重建 owner。
 共享 jetty owner 使用公共双缓冲位，同步完成后允许改变 `aiv_num`，但不得小于 `shared_jetty_num`。
-`mode=0` 仅 `y[:receive_cnt.sum()]` 有效；`mode=1/3` 不搬运输出，两个输出均不保证有效，
+`mode=0` 仅 `y[:receive_cnt.sum()]` 有效；`mode=1/2/3/4` 不搬运输出，两个输出均不保证有效，
 测试脚本的图内循环因此继续使用原始输入。schema 将 context 声明为可变输入，
 沿用仓库通信算子的副作用约定；目标环境仍须确认优化后的图保留全部通信次数和顺序。
 
-`mode=3` 仅支持此 Torch context 的 URMA 路径，直接从 Win 发送 `BS // world_size` 个 token 到每个远端卡。
-它在同一个 `BandwidthTestUrma::Process()` 的 `mode_ == 3` 分支中执行，沿用原有 URMA tiling key。
+`mode=2` 仅支持此 Torch context 的 URMA 路径，直接从 Win 发送 `BS // world_size` 个 token 到每个远端卡。
+它在同一个 `BandwidthTestUrma::Process()` 的 `mode_ == 2` 分支中执行，沿用原有 URMA tiling key。
 `Init()` 读取通信参数后提前返回，不做 mode 0/1 的业务初始化、ID 扫描和数据搬运；
 `StreamFromWindow()` 只为有远端任务的核分配 `batch_tokens * 64` 字节 UB。
 Win 使用紧凑 H 行，最小容量为 `1 MiB + 2 * BS * H * 2`；该模式不适用上文 mode 0/1 的双缓冲及 ID 预算公式。
 flag 位于 Win 的 128 KiB 处（每个来源卡 32B），本核序号位于 160 KiB 处（每核 32B）。
-有远端任务的核每次调用递增本核序号；尾批未满时，将 flag 并入尾批 Commit，WQE 总数不超过配置批量。
-满批先 Commit/Drain，随后单独 Commit/Drain flag；合并尾批时只需一次 Commit/Drain。
-flag 的先后关系依赖当前 SDK 默认的 `fence=1`，算子不显式传配置；部署 SDK 的默认值必须保留该完成顺序及 CQE。
-等待时允许对方序号超前一轮，支持 uint32 回绕。
+普通 URMA mode 2 的尾批未满时将 flag 并入尾批 Commit；满批则先 Commit/Drain 数据，再单独提交 flag。
+合并尾批的先后关系依赖当前 SDK 默认的 `fence=1` 和 CQE 语义。
+
+`mode=3/4` 仅支持共享 Jetty。mode 3 的每个 Jetty 都向全部远端发送 `BS // world_size` 个 token，
+按 tiling 最大容量决定一次提交或分批；mode 4 使用 `world_size - 1` 个 Jetty，一对一向远端发送完整 BS。
+mode 3/4 与 mode 2 共用 Win 状态区和公开 Hcomm batch 接口，但采用独立的接收槽布局；脚本、Torch 入参检查
+和 host tiling 使用同一套有效 Jetty 数、批量和 Win 容量公式。
+共享 mode 2/3/4 始终先 Commit/Drain 完整数据批，再单独 Commit/Drain flag，不将 flag 合入 payload 尾批。
+有远端任务的核每次调用递增本核序号；等待时允许对方序号超前一轮，支持 uint32 回绕。
 不读取 x/dstrank_id 内容，仍保留原 tensor shape/type 接口约定；完整使用和计时口径见主目录 README。
 
 需在装有 CANN、PyTorch、torch_npu 和兼容 TorchAir 的 Ascend950 多 rank 环境

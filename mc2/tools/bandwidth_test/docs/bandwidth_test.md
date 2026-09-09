@@ -2,7 +2,8 @@
 
 URMA batch 带宽测试使用 [Torch 接口](../torch_extension/README.md) 和 Torch 已创建的 context。
 本页公开 ACLNN 包装接口不创建 URMA context；传入 `commAlg="urma"` 会报参数错误。
-新增 `mode=3` 的 URMA Win 直接打流模式也通过上述 Torch 接口调用；本页公开接口仍只支持 mode 0/1。
+`mode=2` 的原有 URMA Win 打流及共享 Jetty 专用的 `mode=3/4` 均通过上述 Torch 接口调用；
+本页公开接口仍只支持 mode 0/1。
 URMA 共享 jetty 使用 Torch 的 `shared_jetty` / `shared_jetty_num` 参数及独立 context，
 详见 [共享 jetty 说明](../torch_extension/README.md#urma-共享-jetty)。公开 ACLNN 第一段接口同步声明并透传
 `sharedJetty` / `sharedJettyNum`，但该包装层仍只创建 MTE context；URMA 共享 jetty 必须走 Torch 接口。
