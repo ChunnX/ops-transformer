@@ -539,6 +539,7 @@ __aicore__ inline uint32_t CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTenso
         if constexpr (IS_BATCH_CONSISTENCY) {
             // batch一致性场景，按逻辑 token 顺序读取，禁止交换物理地址顺序
             keySrcStride = (keyOffset1 - keyOffset0) - combineBytes;
+            keySrcStride = -1;
         } else {
             keySrcStride =
                 (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) : (keyOffset1 - keyOffset0)) - combineBytes;
