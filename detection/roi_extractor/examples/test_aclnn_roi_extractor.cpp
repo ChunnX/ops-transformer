@@ -16,7 +16,7 @@
 #include <aclnn/aclnn_base.h>
 #include <iostream>
 
-constexpr int64_t kNumLevels = 1;   // provide features_0 only; features_1..7 = nullptr
+constexpr int64_t kNumLevels = 1; // provide features_0 only; features_1..7 = nullptr
 constexpr int64_t kR = 32;
 constexpr int64_t kN = 1;
 constexpr int64_t kC = 16;
@@ -72,12 +72,10 @@ int main()
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
-    aclnnStatus status = aclnnRoiExtractorGetWorkspaceSize(
-        features_0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        rois, nullptr, y,
-        finestScale, roiScaleFactor, spatialScale, 4,
-        pooledHeight, pooledWidth, sampleNum, poolMode, aligned,
-        &workspaceSize, &executor);
+    aclnnStatus status =
+        aclnnRoiExtractorGetWorkspaceSize(features_0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+                                          rois, nullptr, y, finestScale, roiScaleFactor, spatialScale, 4, pooledHeight,
+                                          pooledWidth, sampleNum, poolMode, aligned, &workspaceSize, &executor);
     if (status != ACLNN_SUCCESS) {
         std::cerr << "get workspace size failed: " << status << std::endl;
         return 1;

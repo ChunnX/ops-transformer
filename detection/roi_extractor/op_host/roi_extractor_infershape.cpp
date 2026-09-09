@@ -46,10 +46,10 @@ static ge::graphStatus InferShapeRoiExtractor(gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, yShape);
 
     yShape->SetDimNum(4);
-    yShape->SetDim(0, roisShape->GetDim(0));        // R
-    yShape->SetDim(1, featuresShape->GetDim(1));    // C
-    yShape->SetDim(2, *pooledHPtr);                 // pooled_height (independent)
-    yShape->SetDim(3, *pooledWPtr);                 // pooled_width  (independent)
+    yShape->SetDim(0, roisShape->GetDim(0));     // R
+    yShape->SetDim(1, featuresShape->GetDim(1)); // C
+    yShape->SetDim(2, *pooledHPtr);              // pooled_height (independent)
+    yShape->SetDim(3, *pooledWPtr);              // pooled_width  (independent)
     return GRAPH_SUCCESS;
 }
 
@@ -60,7 +60,5 @@ static ge::graphStatus InferDataTypeRoiExtractor(gert::InferDataTypeContext *con
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(RoiExtractor)
-    .InferShape(InferShapeRoiExtractor)
-    .InferDataType(InferDataTypeRoiExtractor);
+IMPL_OP_INFERSHAPE(RoiExtractor).InferShape(InferShapeRoiExtractor).InferDataType(InferDataTypeRoiExtractor);
 } // namespace ops

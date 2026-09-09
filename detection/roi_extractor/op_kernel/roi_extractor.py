@@ -50,31 +50,31 @@ from pypto_pro.runtime.tilingkey import TilingKeyField
 # ================================================================
 #  Tile dimensions and constants
 # ================================================================
-CH_BLOCK = 64     # channels per work item = fp32 VF register lane width
-STRIP_COLS = 48   # strip physical columns (fp32: 48*4B = 192B aligned)
+CH_BLOCK = 64  # channels per work item = fp32 VF register lane width
+STRIP_COLS = 48  # strip physical columns (fp32: 48*4B = 192B aligned)
 STRIP_ROWS = 896  # strip physical rows (64ch x 14 at full channels)
-STRIP_ELEMS = STRIP_ROWS * STRIP_COLS   # 43008 strip elements (fp32)
-STAGE_ROWS = 56   # staging physical rows (fp16 hop; >= any ys_cap)
-STAGE_COLS = 48   # staging physical columns (fp16: 48*2B = 96B aligned)
-PX_PHYS = 64      # out_tile pixel columns per stored group
-FRAC_N = 128      # legacy sample-count bound kept for parity notes
-XS_BUDGET = 46    # fallback per-pixel x-chunk margin (2 cols for hi taps)
-JB = 4            # samples batched per VF accumulation call
+STRIP_ELEMS = STRIP_ROWS * STRIP_COLS  # 43008 strip elements (fp32)
+STAGE_ROWS = 56  # staging physical rows (fp16 hop; >= any ys_cap)
+STAGE_COLS = 48  # staging physical columns (fp16: 48*2B = 96B aligned)
+PX_PHYS = 64  # out_tile pixel columns per stored group
+FRAC_N = 128  # legacy sample-count bound kept for parity notes
+XS_BUDGET = 46  # fallback per-pixel x-chunk margin (2 cols for hi taps)
+JB = 4  # samples batched per VF accumulation call
 
 # ================================================================
 #  UB(Vec) address map (platform ini key ub_size=253952)
 #  High water: staging [56,48] in the fp32 datatype key is the worst case:
 #  0x2F000 + 56*48*4 = 0x31A00 = 203264 / 253952 (80.0%).
 # ================================================================
-VA_STRIP = 0x00000     # [896,48]  FP32  strip residency            172032B
-VA_OUT = 0x2A000       # [64,64]   FP32  out_tile (+fp16 view)       16384B
+VA_STRIP = 0x00000  # [896,48]  FP32  strip residency            172032B
+VA_OUT = 0x2A000  # [64,64]   FP32  out_tile (+fp16 view)       16384B
 VA_ROIS_RAW = 0x2EE00  # [1,16]    input_dtype rois row                 64B
 VA_ROIS_F32 = 0x2EE40  # [1,8]     FP32  rois row widened                32B
-VA_COORD_A = 0x2EE60   # [1,8]     FP32  scalar cast source             32B
-VA_COORD_I = 0x2EE80   # [1,8]     INT32 scalar cast result             32B
-VA_COORD_F16 = 0x2EEA0 # [1,16]    FP16  level-chain hop                32B
-VA_ACC = 0x2EEC0       # [1,64]    FP32  pixel accumulator              256B
-VA_STAGING = 0x2F000   # [56,48]   input_dtype fp16 load stage         5376B
+VA_COORD_A = 0x2EE60  # [1,8]     FP32  scalar cast source             32B
+VA_COORD_I = 0x2EE80  # [1,8]     INT32 scalar cast result             32B
+VA_COORD_F16 = 0x2EEA0  # [1,16]    FP16  level-chain hop                32B
+VA_ACC = 0x2EEC0  # [1,64]    FP32  pixel accumulator              256B
+VA_STAGING = 0x2F000  # [56,48]   input_dtype fp16 load stage         5376B
 # 0x2E000..0x2EE00 (3584B) retired: the old [28,32] staging region.
 
 
@@ -83,20 +83,20 @@ VA_STAGING = 0x2F000   # [56,48]   input_dtype fp16 load stage         5376B
 # ================================================================
 @dataclass
 class RoiExtractorTiling:
-    r: int               # R (rois rows)
-    n: int               # N (batch)
-    c: int               # C (channels)
-    l: int               # valid level count 1..8 (features prefix length)
-    pooled_h: int        # attr pooled_height
-    pooled_w: int        # attr pooled_width (independent of pooled_h)
-    sample_num: int      # attr sample_num (0 = adaptive ceil(bin))
-    finest_scale: int    # attr finest_scale
-    aligned: int         # attr aligned bool -> 0/1
-    is_fp16: int         # features dtype == fp16 ? 1 : 0
-    feat_h: "int[8]"     # per-level H_l; absent levels (l>=L) padded with 1
-    feat_w: "int[8]"     # per-level W_l; same padding
+    r: int  # R (rois rows)
+    n: int  # N (batch)
+    c: int  # C (channels)
+    l: int  # valid level count 1..8 (features prefix length)
+    pooled_h: int  # attr pooled_height
+    pooled_w: int  # attr pooled_width (independent of pooled_h)
+    sample_num: int  # attr sample_num (0 = adaptive ceil(bin))
+    finest_scale: int  # attr finest_scale
+    aligned: int  # attr aligned bool -> 0/1
+    is_fp16: int  # features dtype == fp16 ? 1 : 0
+    feat_h: "int[8]"  # per-level H_l; absent levels (l>=L) padded with 1
+    feat_w: "int[8]"  # per-level W_l; same padding
     spatial_scale: "float[8]"  # attr spatial_scale, first L entries valid
-    b_pow2: "float[9]"   # B[i] = 2^i * finest_scale, i=0..8 (fp16-exact fp32)
+    b_pow2: "float[9]"  # B[i] = 2^i * finest_scale, i=0..8 (fp16-exact fp32)
 
 
 # ================================================================
@@ -131,8 +131,9 @@ def _zero_acc_vf(acc_tile):
 
 
 @pl.vector_function
-def _bilinear_acc_vf(strip_tile, acc_tile, pitch, c_eff,
-                     pos00, pos01, pos10, pos11, w00, w01, w10, w11):
+def _bilinear_acc_vf(
+    strip_tile, acc_tile, pitch, c_eff, pos00, pos01, pos10, pos11, w00, w01, w10, w11
+):
     """One sample: 4-point gather + weighted fp32 accumulate."""
     preg = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
     preg_ch = vf.update_mask(c_eff, dtype=pl.DT_FP32)
@@ -165,11 +166,44 @@ def _bilinear_acc_vf(strip_tile, acc_tile, pitch, c_eff,
 
 
 @pl.vector_function
-def _bilinear_acc4_vf(strip_tile, acc_tile, pitch, c_eff,
-                      a00, a01, a10, a11, b00, b01, b10, b11,
-                      c00, c01, c10, c11, d00, d01, d10, d11,
-                      e00, e01, e10, e11, f00, f01, f10, f11,
-                      g00, g01, g10, g11, h00, h01, h10, h11):
+def _bilinear_acc4_vf(
+    strip_tile,
+    acc_tile,
+    pitch,
+    c_eff,
+    a00,
+    a01,
+    a10,
+    a11,
+    b00,
+    b01,
+    b10,
+    b11,
+    c00,
+    c01,
+    c10,
+    c11,
+    d00,
+    d01,
+    d10,
+    d11,
+    e00,
+    e01,
+    e10,
+    e11,
+    f00,
+    f01,
+    f10,
+    f11,
+    g00,
+    g01,
+    g10,
+    g11,
+    h00,
+    h01,
+    h10,
+    h11,
+):
     """Four samples (a..h = per-sample pos00..pos11/w00..w11 pairs).
 
     Layout: (a, b) = sample 1 (pos, w); (c, d) = sample 2; (e, f) = sample 3;
@@ -302,52 +336,89 @@ def roi_extractor_inner(
     rois_view = pl.make_tensor(rois, [tiling.r, 5], [5, 1], dtype=input_dtype)
     idx_view = pl.make_tensor(index, [tiling.r, 1], [1, 1], dtype=pl.DT_INT32)
     n_pxw = tiling.pooled_h * tiling.pooled_w
-    y_view = pl.make_tensor(y, [tiling.r * tiling.c, n_pxw], [n_pxw, 1],
-                            dtype=input_dtype)
+    y_view = pl.make_tensor(
+        y, [tiling.r * tiling.c, n_pxw], [n_pxw, 1], dtype=input_dtype
+    )
 
     # ---- tile groups (declared ONCE above the section; FA-05) ----
     strip_g = pl.make_tile_group(
-        type=pl.TileType(shape=[STRIP_ROWS, STRIP_COLS], dtype=pl.DT_FP32,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_STRIP, mutex_ids=[0])
+        type=pl.TileType(
+            shape=[STRIP_ROWS, STRIP_COLS],
+            dtype=pl.DT_FP32,
+            target_memory=pl.MemorySpace.Vec,
+        ),
+        addrs=VA_STRIP,
+        mutex_ids=[0],
+    )
     out_g = pl.make_tile_group(
-        type=pl.TileType(shape=[PX_PHYS, PX_PHYS], dtype=pl.DT_FP32,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_OUT, mutex_ids=[1])
+        type=pl.TileType(
+            shape=[PX_PHYS, PX_PHYS], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA_OUT,
+        mutex_ids=[1],
+    )
     # fp16 view of the same UB region (in-place fp32->fp16 RINT at S15);
     # shares mutex id 1 with the fp32 group (same-address serialisation).
     out16_g = pl.make_tile_group(
-        type=pl.TileType(shape=[PX_PHYS, PX_PHYS], dtype=input_dtype,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_OUT, mutex_ids=[1])
+        type=pl.TileType(
+            shape=[PX_PHYS, PX_PHYS],
+            dtype=input_dtype,
+            target_memory=pl.MemorySpace.Vec,
+        ),
+        addrs=VA_OUT,
+        mutex_ids=[1],
+    )
     stage_g = pl.make_tile_group(
-        type=pl.TileType(shape=[STAGE_ROWS, STAGE_COLS], dtype=input_dtype,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_STAGING, mutex_ids=[2])
+        type=pl.TileType(
+            shape=[STAGE_ROWS, STAGE_COLS],
+            dtype=input_dtype,
+            target_memory=pl.MemorySpace.Vec,
+        ),
+        addrs=VA_STAGING,
+        mutex_ids=[2],
+    )
     roisraw_g = pl.make_tile_group(
-        type=pl.TileType(shape=[1, 16], dtype=input_dtype,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_ROIS_RAW, mutex_ids=[3])
+        type=pl.TileType(
+            shape=[1, 16], dtype=input_dtype, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA_ROIS_RAW,
+        mutex_ids=[3],
+    )
     roisf32_g = pl.make_tile_group(
-        type=pl.TileType(shape=[1, 8], dtype=pl.DT_FP32,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_ROIS_F32, mutex_ids=[4])
+        type=pl.TileType(
+            shape=[1, 8], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA_ROIS_F32,
+        mutex_ids=[4],
+    )
     coorda_g = pl.make_tile_group(
-        type=pl.TileType(shape=[1, 8], dtype=pl.DT_FP32,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_COORD_A, mutex_ids=[5])
+        type=pl.TileType(
+            shape=[1, 8], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA_COORD_A,
+        mutex_ids=[5],
+    )
     coordi_g = pl.make_tile_group(
-        type=pl.TileType(shape=[1, 8], dtype=pl.DT_INT32,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_COORD_I, mutex_ids=[7])
+        type=pl.TileType(
+            shape=[1, 8], dtype=pl.DT_INT32, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA_COORD_I,
+        mutex_ids=[7],
+    )
     coordf16_g = pl.make_tile_group(
-        type=pl.TileType(shape=[1, 16], dtype=pl.DT_FP16,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_COORD_F16, mutex_ids=[8])
+        type=pl.TileType(
+            shape=[1, 16], dtype=pl.DT_FP16, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA_COORD_F16,
+        mutex_ids=[8],
+    )
     acc_g = pl.make_tile_group(
-        type=pl.TileType(shape=[1, CH_BLOCK], dtype=pl.DT_FP32,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_ACC, mutex_ids=[11])
+        type=pl.TileType(
+            shape=[1, CH_BLOCK], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA_ACC,
+        mutex_ids=[11],
+    )
 
     with pl.section_vector():
         core_id = pl.get_block_idx()
@@ -488,7 +559,8 @@ def roi_extractor_inner(
                 feat_ptr,
                 [tiling.n * tiling.c * tiling.feat_h[lvl], tiling.feat_w[lvl]],
                 [tiling.feat_w[lvl], 1],
-                dtype=input_dtype)
+                dtype=input_dtype,
+            )
             lvl_w_m1 = (lvl_w - 1) + 0.0
             lvl_h_m1 = (lvl_h - 1) + 0.0
             lvl_w_f = lvl_w + 0.0
@@ -505,8 +577,9 @@ def roi_extractor_inner(
             # so floor(window_edge) can never round below the extreme
             # sample's x_lo and leave its hi tap outside the loaded window.
             xf = (x0 + 0 * bin_w) + (0.5 * inv_sw) * bin_w
-            xl = (x0 + (tiling.pooled_w - 1) * bin_w) \
-                + ((sw - 1 + 0.5) * inv_sw) * bin_w
+            xl = (x0 + (tiling.pooled_w - 1) * bin_w) + (
+                (sw - 1 + 0.5) * inv_sw
+            ) * bin_w
             xf_c = min(max(xf, 0.0), lvl_w_m1)
             xl_c = min(max(xl, 0.0), lvl_w_m1)
             coord_a[0, 0] = xf_c
@@ -538,8 +611,7 @@ def roi_extractor_inner(
                     # chunk y window from the group's first/last samples
                     # (bit-identical association to the per-sample y chain)
                     yf = (y0 + ph0 * bin_h) + (0.5 * inv_sh) * bin_h
-                    yl = (y0 + (ph1 - 1) * bin_h) \
-                        + ((sh - 1 + 0.5) * inv_sh) * bin_h
+                    yl = (y0 + (ph1 - 1) * bin_h) + ((sh - 1 + 0.5) * inv_sh) * bin_h
                     yf_c = min(max(yf, 0.0), lvl_h_m1)
                     yl_c = min(max(yl, 0.0), lvl_h_m1)
                     coord_a[0, 0] = yf_c
@@ -554,7 +626,7 @@ def roi_extractor_inner(
                     # ---- S11: strip load (per channel), whole-row-group window ----
                     pl.system.bar_mte2()
                     for c in pl.range(0, c_eff):
-                        sl = strip[c * ys_c:(c + 1) * ys_c, 0:xs_roi]
+                        sl = strip[c * ys_c : (c + 1) * ys_c, 0:xs_roi]
                         pl.set_validshape(sl, [ys_c, xs_roi])
                         row_off = b * tiling.c * lvl_h + (c0 + c) * lvl_h + yc0
                         if input_dtype == pl.DT_FP16:
@@ -579,8 +651,9 @@ def roi_extractor_inner(
                                         continue
                                     yc_c = min(max(yc, 0.0), lvl_h_m1)
                                     coord_a[0, 0] = yc_c
-                                    pl.cast(coord_i, coord_a,
-                                            mode=pl.RoundMode.CAST_FLOOR)
+                                    pl.cast(
+                                        coord_i, coord_a, mode=pl.RoundMode.CAST_FLOOR
+                                    )
                                     y_lo = pl.getval(coord_i, 0)
                                     y_hi = pl.min(y_lo + 1, lvl_h - 1)
                                     ly = yc_c - y_lo
@@ -601,8 +674,11 @@ def roi_extractor_inner(
                                         coord_a[0, 1] = xb_c
                                         coord_a[0, 2] = xc_c
                                         coord_a[0, 3] = xd_c
-                                        pl.cast(coord_i, coord_a,
-                                                mode=pl.RoundMode.CAST_FLOOR)
+                                        pl.cast(
+                                            coord_i,
+                                            coord_a,
+                                            mode=pl.RoundMode.CAST_FLOOR,
+                                        )
                                         xl_a = pl.getval(coord_i, 0)
                                         xl_b = pl.getval(coord_i, 1)
                                         xl_c2 = pl.getval(coord_i, 2)
@@ -688,54 +764,90 @@ def roi_extractor_inner(
                                             pd2 = py1 + (xl_d - xc0)
                                             pd3 = py1 + (xh_d - xc0)
                                         _bilinear_acc4_vf(
-                                            strip, acc, pitch, c_eff,
-                                            pa0, pa1, pa2, pa3,
-                                            hy * wa0, hy * wa1,
-                                            ly * wa0, ly * wa1,
-                                            pb0, pb1, pb2, pb3,
-                                            hy * wb0, hy * wb1,
-                                            ly * wb0, ly * wb1,
-                                            pc0, pc1, pc2, pc3,
-                                            hy * wc0, hy * wc1,
-                                            ly * wc0, ly * wc1,
-                                            pd0, pd1, pd2, pd3,
-                                            hy * wd0, hy * wd1,
-                                            ly * wd0, ly * wd1)
+                                            strip,
+                                            acc,
+                                            pitch,
+                                            c_eff,
+                                            pa0,
+                                            pa1,
+                                            pa2,
+                                            pa3,
+                                            hy * wa0,
+                                            hy * wa1,
+                                            ly * wa0,
+                                            ly * wa1,
+                                            pb0,
+                                            pb1,
+                                            pb2,
+                                            pb3,
+                                            hy * wb0,
+                                            hy * wb1,
+                                            ly * wb0,
+                                            ly * wb1,
+                                            pc0,
+                                            pc1,
+                                            pc2,
+                                            pc3,
+                                            hy * wc0,
+                                            hy * wc1,
+                                            ly * wc0,
+                                            ly * wc1,
+                                            pd0,
+                                            pd1,
+                                            pd2,
+                                            pd3,
+                                            hy * wd0,
+                                            hy * wd1,
+                                            ly * wd0,
+                                            ly * wd1,
+                                        )
                                     for j in pl.range(nj4, sw):
                                         x = xbase + (j + 0.5) * inv_sw * bin_w
                                         if x < -1.0 or x > lvl_w_f:
                                             continue
                                         xc_s = min(max(x, 0.0), lvl_w_m1)
                                         coord_a[0, 0] = xc_s
-                                        pl.cast(coord_i, coord_a,
-                                                mode=pl.RoundMode.CAST_FLOOR)
+                                        pl.cast(
+                                            coord_i,
+                                            coord_a,
+                                            mode=pl.RoundMode.CAST_FLOOR,
+                                        )
                                         x_lo = pl.getval(coord_i, 0)
                                         x_hi = pl.min(x_lo + 1, lvl_w - 1)
                                         lx = xc_s - x_lo
                                         hx = 1.0 - lx
                                         _bilinear_acc_vf(
-                                            strip, acc, pitch, c_eff,
+                                            strip,
+                                            acc,
+                                            pitch,
+                                            c_eff,
                                             py0 + (x_lo - xc0),
                                             py0 + (x_hi - xc0),
                                             py1 + (x_lo - xc0),
                                             py1 + (x_hi - xc0),
-                                            hy * hx, hy * lx,
-                                            ly * hx, ly * lx)
-                                _finish_pixel_vf(acc, out, inv_area,
-                                                 pw - pw0, c_eff)
+                                            hy * hx,
+                                            hy * lx,
+                                            ly * hx,
+                                            ly * lx,
+                                        )
+                                _finish_pixel_vf(acc, out, inv_area, pw - pw0, c_eff)
                             # ---- S15: per-row group tail cast + store ----
                             pl.set_validshape(out, [c_eff, n_cols])
                             if input_dtype == pl.DT_FP16:
                                 out16 = out16_g.current()
                                 pl.set_validshape(out16, [c_eff, n_cols])
                                 pl.cast(out16, out, mode=pl.RoundMode.CAST_RINT)
-                                pl.store(y_view, out16,
-                                         [y_row * tiling.c + c0,
-                                          ph * tiling.pooled_w + pw0])
+                                pl.store(
+                                    y_view,
+                                    out16,
+                                    [y_row * tiling.c + c0, ph * tiling.pooled_w + pw0],
+                                )
                             else:
-                                pl.store(y_view, out,
-                                         [y_row * tiling.c + c0,
-                                          ph * tiling.pooled_w + pw0])
+                                pl.store(
+                                    y_view,
+                                    out,
+                                    [y_row * tiling.c + c0, ph * tiling.pooled_w + pw0],
+                                )
             else:
                 # ---- fallback: per-pixel chunked windows (legacy geometry,
                 #      adapted to the wide strip view + runtime pitch) ----
@@ -765,20 +877,17 @@ def roi_extractor_inner(
                                     fj1 = (j_end - 1 + 0.5) * inv_sw
                                     fi0 = (i0 + 0.5) * inv_sh
                                     fi1 = (i_end - 1 + 0.5) * inv_sh
-                                    xf_c2 = min(max(xbase + fj0 * bin_w, 0.0),
-                                                lvl_w_m1)
-                                    xl_c3 = min(max(xbase + fj1 * bin_w, 0.0),
-                                                lvl_w_m1)
-                                    yf_c2 = min(max(ybase + fi0 * bin_h, 0.0),
-                                                lvl_h_m1)
-                                    yl_c2 = min(max(ybase + fi1 * bin_h, 0.0),
-                                                lvl_h_m1)
+                                    xf_c2 = min(max(xbase + fj0 * bin_w, 0.0), lvl_w_m1)
+                                    xl_c3 = min(max(xbase + fj1 * bin_w, 0.0), lvl_w_m1)
+                                    yf_c2 = min(max(ybase + fi0 * bin_h, 0.0), lvl_h_m1)
+                                    yl_c2 = min(max(ybase + fi1 * bin_h, 0.0), lvl_h_m1)
                                     coord_a[0, 0] = xf_c2
                                     coord_a[0, 1] = xl_c3
                                     coord_a[0, 2] = yf_c2
                                     coord_a[0, 3] = yl_c2
-                                    pl.cast(coord_i, coord_a,
-                                            mode=pl.RoundMode.CAST_FLOOR)
+                                    pl.cast(
+                                        coord_i, coord_a, mode=pl.RoundMode.CAST_FLOOR
+                                    )
                                     xc0 = pl.getval(coord_i, 0)
                                     xl_fl = pl.getval(coord_i, 1)
                                     yc0 = pl.getval(coord_i, 2)
@@ -791,21 +900,22 @@ def roi_extractor_inner(
 
                                     pl.system.bar_mte2()
                                     for c in pl.range(0, c_eff):
-                                        sl = strip[c * ys:(c + 1) * ys, 0:xs]
+                                        sl = strip[c * ys : (c + 1) * ys, 0:xs]
                                         pl.set_validshape(sl, [ys, xs])
-                                        row_off = (b * tiling.c * lvl_h
-                                                   + (c0 + c) * lvl_h + yc0)
+                                        row_off = (
+                                            b * tiling.c * lvl_h
+                                            + (c0 + c) * lvl_h
+                                            + yc0
+                                        )
                                         if input_dtype == pl.DT_FP16:
                                             pl.set_validshape(stage, [ys, xs])
-                                            pl.load(stage, lvl_view,
-                                                    [row_off, xc0])
-                                            pl.cast(sl, stage,
-                                                    mode=pl.RoundMode.CAST_NONE)
+                                            pl.load(stage, lvl_view, [row_off, xc0])
+                                            pl.cast(
+                                                sl, stage, mode=pl.RoundMode.CAST_NONE
+                                            )
                                         else:
-                                            pl.load(sl, lvl_view,
-                                                    [row_off, xc0])
-                                    pl.set_validshape(strip,
-                                                      [STRIP_ROWS, STRIP_COLS])
+                                            pl.load(sl, lvl_view, [row_off, xc0])
+                                    pl.set_validshape(strip, [STRIP_ROWS, STRIP_COLS])
 
                                     for i in pl.range(i0, i_end):
                                         yc = ybase + (i + 0.5) * inv_sh * bin_h
@@ -813,8 +923,11 @@ def roi_extractor_inner(
                                             continue
                                         yc_c = min(max(yc, 0.0), lvl_h_m1)
                                         coord_a[0, 0] = yc_c
-                                        pl.cast(coord_i, coord_a,
-                                                mode=pl.RoundMode.CAST_FLOOR)
+                                        pl.cast(
+                                            coord_i,
+                                            coord_a,
+                                            mode=pl.RoundMode.CAST_FLOOR,
+                                        )
                                         y_lo = pl.getval(coord_i, 0)
                                         y_hi = pl.min(y_lo + 1, lvl_h - 1)
                                         ly = yc_c - y_lo
@@ -822,40 +935,51 @@ def roi_extractor_inner(
                                         py0 = (y_lo - yc0) * STRIP_COLS
                                         py1 = (y_hi - yc0) * STRIP_COLS
                                         for j in pl.range(j0, j_end):
-                                            x = (xbase
-                                                 + (j + 0.5) * inv_sw * bin_w)
+                                            x = xbase + (j + 0.5) * inv_sw * bin_w
                                             if x < -1.0 or x > lvl_w_f:
                                                 continue
                                             xc_s = min(max(x, 0.0), lvl_w_m1)
                                             coord_a[0, 0] = xc_s
-                                            pl.cast(coord_i, coord_a,
-                                                    mode=pl.RoundMode.CAST_FLOOR)
+                                            pl.cast(
+                                                coord_i,
+                                                coord_a,
+                                                mode=pl.RoundMode.CAST_FLOOR,
+                                            )
                                             x_lo = pl.getval(coord_i, 0)
                                             x_hi = pl.min(x_lo + 1, lvl_w - 1)
                                             lx = xc_s - x_lo
                                             hx = 1.0 - lx
                                             _bilinear_acc_vf(
-                                                strip, acc, pitch, c_eff,
+                                                strip,
+                                                acc,
+                                                pitch,
+                                                c_eff,
                                                 py0 + (x_lo - xc0),
                                                 py0 + (x_hi - xc0),
                                                 py1 + (x_lo - xc0),
                                                 py1 + (x_hi - xc0),
-                                                hy * hx, hy * lx,
-                                                ly * hx, ly * lx)
-                            _finish_pixel_vf(acc, out, inv_area,
-                                             pw - pw0, c_eff)
+                                                hy * hx,
+                                                hy * lx,
+                                                ly * hx,
+                                                ly * lx,
+                                            )
+                            _finish_pixel_vf(acc, out, inv_area, pw - pw0, c_eff)
                         pl.set_validshape(out, [c_eff, n_cols])
                         if input_dtype == pl.DT_FP16:
                             out16 = out16_g.current()
                             pl.set_validshape(out16, [c_eff, n_cols])
                             pl.cast(out16, out, mode=pl.RoundMode.CAST_RINT)
-                            pl.store(y_view, out16,
-                                     [y_row * tiling.c + c0,
-                                      ph * tiling.pooled_w + pw0])
+                            pl.store(
+                                y_view,
+                                out16,
+                                [y_row * tiling.c + c0, ph * tiling.pooled_w + pw0],
+                            )
                         else:
-                            pl.store(y_view, out,
-                                     [y_row * tiling.c + c0,
-                                      ph * tiling.pooled_w + pw0])
+                            pl.store(
+                                y_view,
+                                out,
+                                [y_row * tiling.c + c0, ph * tiling.pooled_w + pw0],
+                            )
     return
 
 
@@ -884,7 +1008,16 @@ def roi_extractor(
     tiling: RoiExtractorTiling,
 ):
     roi_extractor_inner(
-        features_0, features_1, features_2, features_3,
-        features_4, features_5, features_6, features_7,
-        rois, index, y, tiling,
+        features_0,
+        features_1,
+        features_2,
+        features_3,
+        features_4,
+        features_5,
+        features_6,
+        features_7,
+        rois,
+        index,
+        y,
+        tiling,
     )

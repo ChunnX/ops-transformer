@@ -73,6 +73,7 @@ if _OP_DIR not in sys.path:
 # 形态下都能干净加载。__main__ 与已注册路径不受影响。
 if __name__ not in sys.modules:
     import types as _types
+
     _fallback_mod = _types.ModuleType(__name__)
     _fallback_mod.__dict__.update(globals())
     sys.modules[__name__] = _fallback_mod
@@ -82,31 +83,31 @@ if __name__ not in sys.modules:
 # ================================================================
 #  Tile dimensions and constants
 # ================================================================
-CH_BLOCK = 64     # channels per work item = fp32 VF register lane width
-STRIP_COLS = 48   # strip physical columns (fp32: 48*4B = 192B aligned)
+CH_BLOCK = 64  # channels per work item = fp32 VF register lane width
+STRIP_COLS = 48  # strip physical columns (fp32: 48*4B = 192B aligned)
 STRIP_ROWS = 896  # strip physical rows (64ch x 14 at full channels)
-STRIP_ELEMS = STRIP_ROWS * STRIP_COLS   # 43008 strip elements (fp32)
-STAGE_ROWS = 56   # staging physical rows (fp16 hop; >= any ys_cap)
-STAGE_COLS = 48   # staging physical columns (fp16: 48*2B = 96B aligned)
-PX_PHYS = 64      # out_tile pixel columns per stored group
-FRAC_N = 128      # legacy sample-count bound kept for parity notes
-XS_BUDGET = 46    # fallback per-pixel x-chunk margin (2 cols for hi taps)
-JB = 4            # samples batched per VF accumulation call
+STRIP_ELEMS = STRIP_ROWS * STRIP_COLS  # 43008 strip elements (fp32)
+STAGE_ROWS = 56  # staging physical rows (fp16 hop; >= any ys_cap)
+STAGE_COLS = 48  # staging physical columns (fp16: 48*2B = 96B aligned)
+PX_PHYS = 64  # out_tile pixel columns per stored group
+FRAC_N = 128  # legacy sample-count bound kept for parity notes
+XS_BUDGET = 46  # fallback per-pixel x-chunk margin (2 cols for hi taps)
+JB = 4  # samples batched per VF accumulation call
 
 # ================================================================
 #  UB(Vec) address map (platform ini key ub_size=253952)
 #  High water: staging [56,48] in the fp32 datatype key is the worst case:
 #  0x2F000 + 56*48*4 = 0x31A00 = 203264 / 253952 (80.0%).
 # ================================================================
-VA_STRIP = 0x00000     # [896,48]  FP32  strip residency            172032B
-VA_OUT = 0x2A000       # [64,64]   FP32  out_tile (+fp16 view)       16384B
+VA_STRIP = 0x00000  # [896,48]  FP32  strip residency            172032B
+VA_OUT = 0x2A000  # [64,64]   FP32  out_tile (+fp16 view)       16384B
 VA_ROIS_RAW = 0x2EE00  # [1,16]    input_dtype rois row                 64B
 VA_ROIS_F32 = 0x2EE40  # [1,8]     FP32  rois row widened                32B
-VA_COORD_A = 0x2EE60   # [1,8]     FP32  scalar cast source             32B
-VA_COORD_I = 0x2EE80   # [1,8]     INT32 scalar cast result             32B
-VA_COORD_F16 = 0x2EEA0 # [1,16]    FP16  level-chain hop                32B
-VA_ACC = 0x2EEC0       # [1,64]    FP32  pixel accumulator              256B
-VA_STAGING = 0x2F000   # [56,48]   input_dtype fp16 load stage         5376B
+VA_COORD_A = 0x2EE60  # [1,8]     FP32  scalar cast source             32B
+VA_COORD_I = 0x2EE80  # [1,8]     INT32 scalar cast result             32B
+VA_COORD_F16 = 0x2EEA0  # [1,16]    FP16  level-chain hop                32B
+VA_ACC = 0x2EEC0  # [1,64]    FP32  pixel accumulator              256B
+VA_STAGING = 0x2F000  # [56,48]   input_dtype fp16 load stage         5376B
 # 0x2E000..0x2EE00 (3584B) retired: the old [28,32] staging region.
 
 
@@ -115,20 +116,20 @@ VA_STAGING = 0x2F000   # [56,48]   input_dtype fp16 load stage         5376B
 # ================================================================
 @dataclass
 class RoiExtractorTiling:
-    r: int               # R (rois rows)
-    n: int               # N (batch)
-    c: int               # C (channels)
-    l: int               # valid level count 1..8 (features prefix length)
-    pooled_h: int        # attr pooled_height
-    pooled_w: int        # attr pooled_width (independent of pooled_h)
-    sample_num: int      # attr sample_num (0 = adaptive ceil(bin))
-    finest_scale: int    # attr finest_scale
-    aligned: int         # attr aligned bool -> 0/1
-    is_fp16: int         # features dtype == fp16 ? 1 : 0
-    feat_h: "int[8]"     # per-level H_l; absent levels (l>=L) padded with 1
-    feat_w: "int[8]"     # per-level W_l; same padding
+    r: int  # R (rois rows)
+    n: int  # N (batch)
+    c: int  # C (channels)
+    l: int  # valid level count 1..8 (features prefix length)
+    pooled_h: int  # attr pooled_height
+    pooled_w: int  # attr pooled_width (independent of pooled_h)
+    sample_num: int  # attr sample_num (0 = adaptive ceil(bin))
+    finest_scale: int  # attr finest_scale
+    aligned: int  # attr aligned bool -> 0/1
+    is_fp16: int  # features dtype == fp16 ? 1 : 0
+    feat_h: "int[8]"  # per-level H_l; absent levels (l>=L) padded with 1
+    feat_w: "int[8]"  # per-level W_l; same padding
     spatial_scale: "float[8]"  # attr spatial_scale, first L entries valid
-    b_pow2: "float[9]"   # B[i] = 2^i * finest_scale, i=0..8 (fp16-exact fp32)
+    b_pow2: "float[9]"  # B[i] = 2^i * finest_scale, i=0..8 (fp16-exact fp32)
 
 
 # ================================================================
@@ -163,8 +164,9 @@ def _zero_acc_vf(acc_tile):
 
 
 @pl.vector_function
-def _bilinear_acc_vf(strip_tile, acc_tile, pitch, c_eff,
-                     pos00, pos01, pos10, pos11, w00, w01, w10, w11):
+def _bilinear_acc_vf(
+    strip_tile, acc_tile, pitch, c_eff, pos00, pos01, pos10, pos11, w00, w01, w10, w11
+):
     """One sample: 4-point gather + weighted fp32 accumulate."""
     preg = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
     preg_ch = vf.update_mask(c_eff, dtype=pl.DT_FP32)
@@ -197,11 +199,44 @@ def _bilinear_acc_vf(strip_tile, acc_tile, pitch, c_eff,
 
 
 @pl.vector_function
-def _bilinear_acc4_vf(strip_tile, acc_tile, pitch, c_eff,
-                      a00, a01, a10, a11, b00, b01, b10, b11,
-                      c00, c01, c10, c11, d00, d01, d10, d11,
-                      e00, e01, e10, e11, f00, f01, f10, f11,
-                      g00, g01, g10, g11, h00, h01, h10, h11):
+def _bilinear_acc4_vf(
+    strip_tile,
+    acc_tile,
+    pitch,
+    c_eff,
+    a00,
+    a01,
+    a10,
+    a11,
+    b00,
+    b01,
+    b10,
+    b11,
+    c00,
+    c01,
+    c10,
+    c11,
+    d00,
+    d01,
+    d10,
+    d11,
+    e00,
+    e01,
+    e10,
+    e11,
+    f00,
+    f01,
+    f10,
+    f11,
+    g00,
+    g01,
+    g10,
+    g11,
+    h00,
+    h01,
+    h10,
+    h11,
+):
     """Four samples (a..h = per-sample pos00..pos11/w00..w11 pairs).
 
     Layout: (a, b) = sample 1 (pos, w); (c, d) = sample 2; (e, f) = sample 3;
@@ -334,52 +369,89 @@ def roi_extractor_inner(
     rois_view = pl.make_tensor(rois, [tiling.r, 5], [5, 1], dtype=input_dtype)
     idx_view = pl.make_tensor(index, [tiling.r, 1], [1, 1], dtype=pl.DT_INT32)
     n_pxw = tiling.pooled_h * tiling.pooled_w
-    y_view = pl.make_tensor(y, [tiling.r * tiling.c, n_pxw], [n_pxw, 1],
-                            dtype=input_dtype)
+    y_view = pl.make_tensor(
+        y, [tiling.r * tiling.c, n_pxw], [n_pxw, 1], dtype=input_dtype
+    )
 
     # ---- tile groups (declared ONCE above the section; FA-05) ----
     strip_g = pl.make_tile_group(
-        type=pl.TileType(shape=[STRIP_ROWS, STRIP_COLS], dtype=pl.DT_FP32,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_STRIP, mutex_ids=[0])
+        type=pl.TileType(
+            shape=[STRIP_ROWS, STRIP_COLS],
+            dtype=pl.DT_FP32,
+            target_memory=pl.MemorySpace.Vec,
+        ),
+        addrs=VA_STRIP,
+        mutex_ids=[0],
+    )
     out_g = pl.make_tile_group(
-        type=pl.TileType(shape=[PX_PHYS, PX_PHYS], dtype=pl.DT_FP32,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_OUT, mutex_ids=[1])
+        type=pl.TileType(
+            shape=[PX_PHYS, PX_PHYS], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA_OUT,
+        mutex_ids=[1],
+    )
     # fp16 view of the same UB region (in-place fp32->fp16 RINT at S15);
     # shares mutex id 1 with the fp32 group (same-address serialisation).
     out16_g = pl.make_tile_group(
-        type=pl.TileType(shape=[PX_PHYS, PX_PHYS], dtype=input_dtype,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_OUT, mutex_ids=[1])
+        type=pl.TileType(
+            shape=[PX_PHYS, PX_PHYS],
+            dtype=input_dtype,
+            target_memory=pl.MemorySpace.Vec,
+        ),
+        addrs=VA_OUT,
+        mutex_ids=[1],
+    )
     stage_g = pl.make_tile_group(
-        type=pl.TileType(shape=[STAGE_ROWS, STAGE_COLS], dtype=input_dtype,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_STAGING, mutex_ids=[2])
+        type=pl.TileType(
+            shape=[STAGE_ROWS, STAGE_COLS],
+            dtype=input_dtype,
+            target_memory=pl.MemorySpace.Vec,
+        ),
+        addrs=VA_STAGING,
+        mutex_ids=[2],
+    )
     roisraw_g = pl.make_tile_group(
-        type=pl.TileType(shape=[1, 16], dtype=input_dtype,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_ROIS_RAW, mutex_ids=[3])
+        type=pl.TileType(
+            shape=[1, 16], dtype=input_dtype, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA_ROIS_RAW,
+        mutex_ids=[3],
+    )
     roisf32_g = pl.make_tile_group(
-        type=pl.TileType(shape=[1, 8], dtype=pl.DT_FP32,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_ROIS_F32, mutex_ids=[4])
+        type=pl.TileType(
+            shape=[1, 8], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA_ROIS_F32,
+        mutex_ids=[4],
+    )
     coorda_g = pl.make_tile_group(
-        type=pl.TileType(shape=[1, 8], dtype=pl.DT_FP32,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_COORD_A, mutex_ids=[5])
+        type=pl.TileType(
+            shape=[1, 8], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA_COORD_A,
+        mutex_ids=[5],
+    )
     coordi_g = pl.make_tile_group(
-        type=pl.TileType(shape=[1, 8], dtype=pl.DT_INT32,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_COORD_I, mutex_ids=[7])
+        type=pl.TileType(
+            shape=[1, 8], dtype=pl.DT_INT32, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA_COORD_I,
+        mutex_ids=[7],
+    )
     coordf16_g = pl.make_tile_group(
-        type=pl.TileType(shape=[1, 16], dtype=pl.DT_FP16,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_COORD_F16, mutex_ids=[8])
+        type=pl.TileType(
+            shape=[1, 16], dtype=pl.DT_FP16, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA_COORD_F16,
+        mutex_ids=[8],
+    )
     acc_g = pl.make_tile_group(
-        type=pl.TileType(shape=[1, CH_BLOCK], dtype=pl.DT_FP32,
-                         target_memory=pl.MemorySpace.Vec),
-        addrs=VA_ACC, mutex_ids=[11])
+        type=pl.TileType(
+            shape=[1, CH_BLOCK], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=VA_ACC,
+        mutex_ids=[11],
+    )
 
     with pl.section_vector():
         core_id = pl.get_block_idx()
@@ -520,7 +592,8 @@ def roi_extractor_inner(
                 feat_ptr,
                 [tiling.n * tiling.c * tiling.feat_h[lvl], tiling.feat_w[lvl]],
                 [tiling.feat_w[lvl], 1],
-                dtype=input_dtype)
+                dtype=input_dtype,
+            )
             lvl_w_m1 = (lvl_w - 1) + 0.0
             lvl_h_m1 = (lvl_h - 1) + 0.0
             lvl_w_f = lvl_w + 0.0
@@ -537,8 +610,9 @@ def roi_extractor_inner(
             # so floor(window_edge) can never round below the extreme
             # sample's x_lo and leave its hi tap outside the loaded window.
             xf = (x0 + 0 * bin_w) + (0.5 * inv_sw) * bin_w
-            xl = (x0 + (tiling.pooled_w - 1) * bin_w) \
-                + ((sw - 1 + 0.5) * inv_sw) * bin_w
+            xl = (x0 + (tiling.pooled_w - 1) * bin_w) + (
+                (sw - 1 + 0.5) * inv_sw
+            ) * bin_w
             xf_c = min(max(xf, 0.0), lvl_w_m1)
             xl_c = min(max(xl, 0.0), lvl_w_m1)
             coord_a[0, 0] = xf_c
@@ -570,8 +644,7 @@ def roi_extractor_inner(
                     # chunk y window from the group's first/last samples
                     # (bit-identical association to the per-sample y chain)
                     yf = (y0 + ph0 * bin_h) + (0.5 * inv_sh) * bin_h
-                    yl = (y0 + (ph1 - 1) * bin_h) \
-                        + ((sh - 1 + 0.5) * inv_sh) * bin_h
+                    yl = (y0 + (ph1 - 1) * bin_h) + ((sh - 1 + 0.5) * inv_sh) * bin_h
                     yf_c = min(max(yf, 0.0), lvl_h_m1)
                     yl_c = min(max(yl, 0.0), lvl_h_m1)
                     coord_a[0, 0] = yf_c
@@ -586,7 +659,7 @@ def roi_extractor_inner(
                     # ---- S11: strip load (per channel), whole-row-group window ----
                     pl.system.bar_mte2()
                     for c in pl.range(0, c_eff):
-                        sl = strip[c * ys_c:(c + 1) * ys_c, 0:xs_roi]
+                        sl = strip[c * ys_c : (c + 1) * ys_c, 0:xs_roi]
                         pl.set_validshape(sl, [ys_c, xs_roi])
                         row_off = b * tiling.c * lvl_h + (c0 + c) * lvl_h + yc0
                         if input_dtype == pl.DT_FP16:
@@ -611,8 +684,9 @@ def roi_extractor_inner(
                                         continue
                                     yc_c = min(max(yc, 0.0), lvl_h_m1)
                                     coord_a[0, 0] = yc_c
-                                    pl.cast(coord_i, coord_a,
-                                            mode=pl.RoundMode.CAST_FLOOR)
+                                    pl.cast(
+                                        coord_i, coord_a, mode=pl.RoundMode.CAST_FLOOR
+                                    )
                                     y_lo = pl.getval(coord_i, 0)
                                     y_hi = pl.min(y_lo + 1, lvl_h - 1)
                                     ly = yc_c - y_lo
@@ -633,8 +707,11 @@ def roi_extractor_inner(
                                         coord_a[0, 1] = xb_c
                                         coord_a[0, 2] = xc_c
                                         coord_a[0, 3] = xd_c
-                                        pl.cast(coord_i, coord_a,
-                                                mode=pl.RoundMode.CAST_FLOOR)
+                                        pl.cast(
+                                            coord_i,
+                                            coord_a,
+                                            mode=pl.RoundMode.CAST_FLOOR,
+                                        )
                                         xl_a = pl.getval(coord_i, 0)
                                         xl_b = pl.getval(coord_i, 1)
                                         xl_c2 = pl.getval(coord_i, 2)
@@ -720,54 +797,90 @@ def roi_extractor_inner(
                                             pd2 = py1 + (xl_d - xc0)
                                             pd3 = py1 + (xh_d - xc0)
                                         _bilinear_acc4_vf(
-                                            strip, acc, pitch, c_eff,
-                                            pa0, pa1, pa2, pa3,
-                                            hy * wa0, hy * wa1,
-                                            ly * wa0, ly * wa1,
-                                            pb0, pb1, pb2, pb3,
-                                            hy * wb0, hy * wb1,
-                                            ly * wb0, ly * wb1,
-                                            pc0, pc1, pc2, pc3,
-                                            hy * wc0, hy * wc1,
-                                            ly * wc0, ly * wc1,
-                                            pd0, pd1, pd2, pd3,
-                                            hy * wd0, hy * wd1,
-                                            ly * wd0, ly * wd1)
+                                            strip,
+                                            acc,
+                                            pitch,
+                                            c_eff,
+                                            pa0,
+                                            pa1,
+                                            pa2,
+                                            pa3,
+                                            hy * wa0,
+                                            hy * wa1,
+                                            ly * wa0,
+                                            ly * wa1,
+                                            pb0,
+                                            pb1,
+                                            pb2,
+                                            pb3,
+                                            hy * wb0,
+                                            hy * wb1,
+                                            ly * wb0,
+                                            ly * wb1,
+                                            pc0,
+                                            pc1,
+                                            pc2,
+                                            pc3,
+                                            hy * wc0,
+                                            hy * wc1,
+                                            ly * wc0,
+                                            ly * wc1,
+                                            pd0,
+                                            pd1,
+                                            pd2,
+                                            pd3,
+                                            hy * wd0,
+                                            hy * wd1,
+                                            ly * wd0,
+                                            ly * wd1,
+                                        )
                                     for j in pl.range(nj4, sw):
                                         x = xbase + (j + 0.5) * inv_sw * bin_w
                                         if x < -1.0 or x > lvl_w_f:
                                             continue
                                         xc_s = min(max(x, 0.0), lvl_w_m1)
                                         coord_a[0, 0] = xc_s
-                                        pl.cast(coord_i, coord_a,
-                                                mode=pl.RoundMode.CAST_FLOOR)
+                                        pl.cast(
+                                            coord_i,
+                                            coord_a,
+                                            mode=pl.RoundMode.CAST_FLOOR,
+                                        )
                                         x_lo = pl.getval(coord_i, 0)
                                         x_hi = pl.min(x_lo + 1, lvl_w - 1)
                                         lx = xc_s - x_lo
                                         hx = 1.0 - lx
                                         _bilinear_acc_vf(
-                                            strip, acc, pitch, c_eff,
+                                            strip,
+                                            acc,
+                                            pitch,
+                                            c_eff,
                                             py0 + (x_lo - xc0),
                                             py0 + (x_hi - xc0),
                                             py1 + (x_lo - xc0),
                                             py1 + (x_hi - xc0),
-                                            hy * hx, hy * lx,
-                                            ly * hx, ly * lx)
-                                _finish_pixel_vf(acc, out, inv_area,
-                                                 pw - pw0, c_eff)
+                                            hy * hx,
+                                            hy * lx,
+                                            ly * hx,
+                                            ly * lx,
+                                        )
+                                _finish_pixel_vf(acc, out, inv_area, pw - pw0, c_eff)
                             # ---- S15: per-row group tail cast + store ----
                             pl.set_validshape(out, [c_eff, n_cols])
                             if input_dtype == pl.DT_FP16:
                                 out16 = out16_g.current()
                                 pl.set_validshape(out16, [c_eff, n_cols])
                                 pl.cast(out16, out, mode=pl.RoundMode.CAST_RINT)
-                                pl.store(y_view, out16,
-                                         [y_row * tiling.c + c0,
-                                          ph * tiling.pooled_w + pw0])
+                                pl.store(
+                                    y_view,
+                                    out16,
+                                    [y_row * tiling.c + c0, ph * tiling.pooled_w + pw0],
+                                )
                             else:
-                                pl.store(y_view, out,
-                                         [y_row * tiling.c + c0,
-                                          ph * tiling.pooled_w + pw0])
+                                pl.store(
+                                    y_view,
+                                    out,
+                                    [y_row * tiling.c + c0, ph * tiling.pooled_w + pw0],
+                                )
             else:
                 # ---- fallback: per-pixel chunked windows (legacy geometry,
                 #      adapted to the wide strip view + runtime pitch) ----
@@ -797,20 +910,17 @@ def roi_extractor_inner(
                                     fj1 = (j_end - 1 + 0.5) * inv_sw
                                     fi0 = (i0 + 0.5) * inv_sh
                                     fi1 = (i_end - 1 + 0.5) * inv_sh
-                                    xf_c2 = min(max(xbase + fj0 * bin_w, 0.0),
-                                                lvl_w_m1)
-                                    xl_c3 = min(max(xbase + fj1 * bin_w, 0.0),
-                                                lvl_w_m1)
-                                    yf_c2 = min(max(ybase + fi0 * bin_h, 0.0),
-                                                lvl_h_m1)
-                                    yl_c2 = min(max(ybase + fi1 * bin_h, 0.0),
-                                                lvl_h_m1)
+                                    xf_c2 = min(max(xbase + fj0 * bin_w, 0.0), lvl_w_m1)
+                                    xl_c3 = min(max(xbase + fj1 * bin_w, 0.0), lvl_w_m1)
+                                    yf_c2 = min(max(ybase + fi0 * bin_h, 0.0), lvl_h_m1)
+                                    yl_c2 = min(max(ybase + fi1 * bin_h, 0.0), lvl_h_m1)
                                     coord_a[0, 0] = xf_c2
                                     coord_a[0, 1] = xl_c3
                                     coord_a[0, 2] = yf_c2
                                     coord_a[0, 3] = yl_c2
-                                    pl.cast(coord_i, coord_a,
-                                            mode=pl.RoundMode.CAST_FLOOR)
+                                    pl.cast(
+                                        coord_i, coord_a, mode=pl.RoundMode.CAST_FLOOR
+                                    )
                                     xc0 = pl.getval(coord_i, 0)
                                     xl_fl = pl.getval(coord_i, 1)
                                     yc0 = pl.getval(coord_i, 2)
@@ -823,21 +933,22 @@ def roi_extractor_inner(
 
                                     pl.system.bar_mte2()
                                     for c in pl.range(0, c_eff):
-                                        sl = strip[c * ys:(c + 1) * ys, 0:xs]
+                                        sl = strip[c * ys : (c + 1) * ys, 0:xs]
                                         pl.set_validshape(sl, [ys, xs])
-                                        row_off = (b * tiling.c * lvl_h
-                                                   + (c0 + c) * lvl_h + yc0)
+                                        row_off = (
+                                            b * tiling.c * lvl_h
+                                            + (c0 + c) * lvl_h
+                                            + yc0
+                                        )
                                         if input_dtype == pl.DT_FP16:
                                             pl.set_validshape(stage, [ys, xs])
-                                            pl.load(stage, lvl_view,
-                                                    [row_off, xc0])
-                                            pl.cast(sl, stage,
-                                                    mode=pl.RoundMode.CAST_NONE)
+                                            pl.load(stage, lvl_view, [row_off, xc0])
+                                            pl.cast(
+                                                sl, stage, mode=pl.RoundMode.CAST_NONE
+                                            )
                                         else:
-                                            pl.load(sl, lvl_view,
-                                                    [row_off, xc0])
-                                    pl.set_validshape(strip,
-                                                      [STRIP_ROWS, STRIP_COLS])
+                                            pl.load(sl, lvl_view, [row_off, xc0])
+                                    pl.set_validshape(strip, [STRIP_ROWS, STRIP_COLS])
 
                                     for i in pl.range(i0, i_end):
                                         yc = ybase + (i + 0.5) * inv_sh * bin_h
@@ -845,8 +956,11 @@ def roi_extractor_inner(
                                             continue
                                         yc_c = min(max(yc, 0.0), lvl_h_m1)
                                         coord_a[0, 0] = yc_c
-                                        pl.cast(coord_i, coord_a,
-                                                mode=pl.RoundMode.CAST_FLOOR)
+                                        pl.cast(
+                                            coord_i,
+                                            coord_a,
+                                            mode=pl.RoundMode.CAST_FLOOR,
+                                        )
                                         y_lo = pl.getval(coord_i, 0)
                                         y_hi = pl.min(y_lo + 1, lvl_h - 1)
                                         ly = yc_c - y_lo
@@ -854,41 +968,54 @@ def roi_extractor_inner(
                                         py0 = (y_lo - yc0) * STRIP_COLS
                                         py1 = (y_hi - yc0) * STRIP_COLS
                                         for j in pl.range(j0, j_end):
-                                            x = (xbase
-                                                 + (j + 0.5) * inv_sw * bin_w)
+                                            x = xbase + (j + 0.5) * inv_sw * bin_w
                                             if x < -1.0 or x > lvl_w_f:
                                                 continue
                                             xc_s = min(max(x, 0.0), lvl_w_m1)
                                             coord_a[0, 0] = xc_s
-                                            pl.cast(coord_i, coord_a,
-                                                    mode=pl.RoundMode.CAST_FLOOR)
+                                            pl.cast(
+                                                coord_i,
+                                                coord_a,
+                                                mode=pl.RoundMode.CAST_FLOOR,
+                                            )
                                             x_lo = pl.getval(coord_i, 0)
                                             x_hi = pl.min(x_lo + 1, lvl_w - 1)
                                             lx = xc_s - x_lo
                                             hx = 1.0 - lx
                                             _bilinear_acc_vf(
-                                                strip, acc, pitch, c_eff,
+                                                strip,
+                                                acc,
+                                                pitch,
+                                                c_eff,
                                                 py0 + (x_lo - xc0),
                                                 py0 + (x_hi - xc0),
                                                 py1 + (x_lo - xc0),
                                                 py1 + (x_hi - xc0),
-                                                hy * hx, hy * lx,
-                                                ly * hx, ly * lx)
-                            _finish_pixel_vf(acc, out, inv_area,
-                                             pw - pw0, c_eff)
+                                                hy * hx,
+                                                hy * lx,
+                                                ly * hx,
+                                                ly * lx,
+                                            )
+                            _finish_pixel_vf(acc, out, inv_area, pw - pw0, c_eff)
                         pl.set_validshape(out, [c_eff, n_cols])
                         if input_dtype == pl.DT_FP16:
                             out16 = out16_g.current()
                             pl.set_validshape(out16, [c_eff, n_cols])
                             pl.cast(out16, out, mode=pl.RoundMode.CAST_RINT)
-                            pl.store(y_view, out16,
-                                     [y_row * tiling.c + c0,
-                                      ph * tiling.pooled_w + pw0])
+                            pl.store(
+                                y_view,
+                                out16,
+                                [y_row * tiling.c + c0, ph * tiling.pooled_w + pw0],
+                            )
                         else:
-                            pl.store(y_view, out,
-                                     [y_row * tiling.c + c0,
-                                      ph * tiling.pooled_w + pw0])
+                            pl.store(
+                                y_view,
+                                out,
+                                [y_row * tiling.c + c0, ph * tiling.pooled_w + pw0],
+                            )
     return
+
+
 # ==== END INLINED KERNEL REGION ===============================================
 
 
@@ -920,13 +1047,22 @@ def roi_extractor(
     tiling: RoiExtractorTiling,
 ):
     roi_extractor_inner(
-        features_0, features_1, features_2, features_3,
-        features_4, features_5, features_6, features_7,
-        rois, index, y, tiling,
+        features_0,
+        features_1,
+        features_2,
+        features_3,
+        features_4,
+        features_5,
+        features_6,
+        features_7,
+        rois,
+        index,
+        y,
+        tiling,
     )
 
 
-MAX_LEVEL = 8                       # canndev MAX_NUM_FEATURE_MAP (SPEC §5)
+MAX_LEVEL = 8  # canndev MAX_NUM_FEATURE_MAP (SPEC §5)
 DEFAULT_SPATIAL_SCALE = [0.25, 0.125, 0.0625, 0.03125]  # SPEC §5 attr default
 # (CH_BLOCK = 64 由 INLINED KERNEL REGION 提供，kernel 与 wrapper 共用同一常量)
 
@@ -934,6 +1070,7 @@ DEFAULT_SPATIAL_SCALE = [0.25, 0.125, 0.0625, 0.03125]  # SPEC §5 attr default
 # ================================================================
 #  Wrapper — host 侧只做校验/元数据读取/纯 Python 推导/empty/一次 launch
 # ================================================================
+
 
 def _check_meta(t, name, ndim=None, dtype=None):
     if not isinstance(t, torch.Tensor):
@@ -985,15 +1122,24 @@ def roi_extractor_wrapper(
         raise ValueError(f"sample_num must be in [0, 1024], got {sample_num}")
     # roi_scale_factor 接受但不参与计算（canndev 一致）
 
-    feats = [features_0, features_1, features_2, features_3,
-             features_4, features_5, features_6, features_7]
+    feats = [
+        features_0,
+        features_1,
+        features_2,
+        features_3,
+        features_4,
+        features_5,
+        features_6,
+        features_7,
+    ]
     level = 0
     for i, t in enumerate(feats):
         if t is not None:
             if level != i:
                 raise ValueError(
                     f"features must be a contiguous prefix, features_{i} provided "
-                    f"while features_{level} is missing")
+                    f"while features_{level} is missing"
+                )
             level = i + 1
     if level < 1:
         raise ValueError("at least one feature level (features_0) is required")
@@ -1032,7 +1178,9 @@ def roi_extractor_wrapper(
     if spatial_scale is None:
         spatial_scale = DEFAULT_SPATIAL_SCALE
     if len(spatial_scale) < level:
-        raise ValueError(f"spatial_scale length must be >= L={level}, got {len(spatial_scale)}")
+        raise ValueError(
+            f"spatial_scale length must be >= L={level}, got {len(spatial_scale)}"
+        )
 
     # ---- TilingData 装配（纯 Python 整数/attr 派生；无地址字段） ----
     feat_h = [1] * MAX_LEVEL
@@ -1041,13 +1189,22 @@ def roi_extractor_wrapper(
         feat_h[i] = int(feats[i].shape[2])
         feat_w[i] = int(feats[i].shape[3])
     scales = [float(spatial_scale[i]) if i < level else 0.0 for i in range(MAX_LEVEL)]
-    b_pow2 = [float(finest_scale * (2 ** i)) for i in range(MAX_LEVEL + 1)]
+    b_pow2 = [float(finest_scale * (2**i)) for i in range(MAX_LEVEL + 1)]
     tiling = RoiExtractorTiling(
-        r=int(r_dim), n=int(n_dim), c=int(c_dim), l=int(level),
-        pooled_h=int(pooled_height), pooled_w=int(pooled_width),
-        sample_num=int(sample_num), finest_scale=int(finest_scale),
-        aligned=1 if aligned else 0, is_fp16=1 if dtype == torch.float16 else 0,
-        feat_h=feat_h, feat_w=feat_w, spatial_scale=scales, b_pow2=b_pow2,
+        r=int(r_dim),
+        n=int(n_dim),
+        c=int(c_dim),
+        l=int(level),
+        pooled_h=int(pooled_height),
+        pooled_w=int(pooled_width),
+        sample_num=int(sample_num),
+        finest_scale=int(finest_scale),
+        aligned=1 if aligned else 0,
+        is_fp16=1 if dtype == torch.float16 else 0,
+        feat_h=feat_h,
+        feat_w=feat_w,
+        spatial_scale=scales,
+        b_pow2=b_pow2,
     )
 
     # ---- block_dim = min(vector_core_num, R*ceil(C/64))，为 0 时置 1（FA-07） ----
@@ -1057,8 +1214,9 @@ def roi_extractor_wrapper(
     block_dim = int(min(vec_cores, total_tasks)) if total_tasks > 0 else 1
 
     # ---- 输出分配（wrapper 唯一允许的 torch.* 调用） ----
-    y = torch.empty((r_dim, c_dim, pooled_height, pooled_width),
-                    dtype=dtype, device=device)
+    y = torch.empty(
+        (r_dim, c_dim, pooled_height, pooled_width), dtype=dtype, device=device
+    )
 
     # ---- 缺席槽位复用真实张量占位（FA-06：不构造 dummy） ----
     pad = feats[0]
@@ -1068,9 +1226,18 @@ def roi_extractor_wrapper(
     # ---- 恰一次 kernel launch（host 循环外；FA-03） ----
     dt = pl.DT_FP16 if dtype == torch.float16 else pl.DT_FP32
     roi_extractor[None, block_dim, {"HasIndex": 1 if has_index else 0}, {"rois": dt}](
-        f_args[0], f_args[1], f_args[2], f_args[3],
-        f_args[4], f_args[5], f_args[6], f_args[7],
-        rois, index_arg, y, tiling,
+        f_args[0],
+        f_args[1],
+        f_args[2],
+        f_args[3],
+        f_args[4],
+        f_args[5],
+        f_args[6],
+        f_args[7],
+        rois,
+        index_arg,
+        y,
+        tiling,
     )
     return y
 
@@ -1123,8 +1290,10 @@ def _assert_precision(actual, feats, rois, index=None, label="", **kwargs):
     a = actual_cpu[valid_rows]
     g = golden[valid_rows]
     passed, summary = check_precision_with_params(
-        a, g,
-        atol=_ATOL, rtol=_RTOL,
+        a,
+        g,
+        atol=_ATOL,
+        rtol=_RTOL,
         required_matched_ratio=_REQUIRED_MATCHED_RATIO,
         max_abs_error_limit=_MAX_ABS_ERROR_LIMIT,
     )
@@ -1133,16 +1302,20 @@ def _assert_precision(actual, feats, rois, index=None, label="", **kwargs):
             f"[{label}] 精度不达标（方案A引擎 + SPEC tolerance "
             f"atol={_ATOL}/rtol={_RTOL}, required_matched_ratio="
             f"{_REQUIRED_MATCHED_RATIO}）: {summary}; "
-            f"don't-care rows {n_excluded}/{golden.shape[0]} excluded")
-    logging.info(f"[{label}] PASS ({summary}; atol={_ATOL}/rtol={_RTOL} "
-                 f"[SPEC], required_matched_ratio={_REQUIRED_MATCHED_RATIO}; "
-                 f"don't-care rows {n_excluded}/{golden.shape[0]} excluded)")
+            f"don't-care rows {n_excluded}/{golden.shape[0]} excluded"
+        )
+    logging.info(
+        f"[{label}] PASS ({summary}; atol={_ATOL}/rtol={_RTOL} "
+        f"[SPEC], required_matched_ratio={_REQUIRED_MATCHED_RATIO}; "
+        f"don't-care rows {n_excluded}/{golden.shape[0]} excluded)"
+    )
     return summary
 
 
 # ================================================================
 #  输入构造（确定性种子；沿用 roi_extractor_golden 的 SPEC §10 recipe）
 # ================================================================
+
 
 def _uniform(g, lo, hi):
     return lo + (hi - lo) * torch.rand(1, generator=g).item()
@@ -1157,8 +1330,12 @@ def _feats(shapes, dtype, seed, device):
 def _p0_cases(device):
     """P0-1..4（golden _make_inputs 同种子同 recipe 的独立复刻）。"""
     cases = []
-    fs1 = _feats([(1, 16, 16, 16), (1, 16, 9, 9), (1, 16, 8, 8), (1, 16, 4, 5)],
-                 torch.float16, 1001, device)
+    fs1 = _feats(
+        [(1, 16, 16, 16), (1, 16, 9, 9), (1, 16, 8, 8), (1, 16, 4, 5)],
+        torch.float16,
+        1001,
+        device,
+    )
     g = torch.Generator(device="cpu")
     g.manual_seed(1011)
     rows = []
@@ -1166,8 +1343,8 @@ def _p0_cases(device):
         for _ in range(240):  # rows 0..959: s covers all 4 level bands
             s = _uniform(g, lo, hi)
             u = _uniform(g, 0.64, 1.5625)  # sqrt(u) in [0.8, 1.25]
-            w = s * (u ** 0.5)
-            h = s / (u ** 0.5)
+            w = s * (u**0.5)
+            h = s / (u**0.5)
             x0 = _uniform(g, -0.5 * w, 48.0)
             y0 = _uniform(g, -0.5 * h, 48.0)
             rows.append([0.0, x0, y0, x0 + w, y0 + h])
@@ -1187,24 +1364,43 @@ def _p0_cases(device):
             rows.append([0.0, 10.0, 10.0, 10.0 + w, 10.0])
     for k in range(10):  # 980..989 partially out of bounds
         if k % 2 == 0:
-            rows.append([0.0, -_uniform(g, 4.0, 20.0), -_uniform(g, 4.0, 20.0),
-                         _uniform(g, 8.0, 40.0), _uniform(g, 8.0, 40.0)])
+            rows.append(
+                [
+                    0.0,
+                    -_uniform(g, 4.0, 20.0),
+                    -_uniform(g, 4.0, 20.0),
+                    _uniform(g, 8.0, 40.0),
+                    _uniform(g, 8.0, 40.0),
+                ]
+            )
         else:
             w = _uniform(g, 8.0, 40.0)
             h = _uniform(g, 8.0, 40.0)
-            rows.append([0.0, 63.0 - _uniform(g, 0.0, 10.0), 63.0 - _uniform(g, 0.0, 10.0),
-                         63.0 + w, 63.0 + h])
-    rows.append([0.0, 5.0, 5.0, 117.0, 117.0])     # s=112 -> level 0
-    rows.append([0.0, 5.0, 5.0, 229.0, 229.0])     # s=224 -> level 1
-    rows.append([0.0, 5.0, 5.0, 453.0, 453.0])     # s=448 -> level 2
+            rows.append(
+                [
+                    0.0,
+                    63.0 - _uniform(g, 0.0, 10.0),
+                    63.0 - _uniform(g, 0.0, 10.0),
+                    63.0 + w,
+                    63.0 + h,
+                ]
+            )
+    rows.append([0.0, 5.0, 5.0, 117.0, 117.0])  # s=112 -> level 0
+    rows.append([0.0, 5.0, 5.0, 229.0, 229.0])  # s=224 -> level 1
+    rows.append([0.0, 5.0, 5.0, 453.0, 453.0])  # s=448 -> level 2
     rows.append([0.0, -20.0, 5.0, 204.0, 229.0])
     rows.append([0.0, 5.0, -20.0, 453.0, 428.0])
     for k in range(5):  # 995..999 batch out of range (N=1) -> don't-care
         rows.append([-1.0 if k % 2 == 0 else 1.0, 4.0, 4.0, 20.0, 20.0])
     assert len(rows) == 1000
     rois1 = torch.tensor(rows, dtype=torch.float32).to(torch.float16).to(device)
-    kwargs1 = {"finest_scale": 56, "pooled_height": 7, "pooled_width": 7,
-               "sample_num": 0, "aligned": True}
+    kwargs1 = {
+        "finest_scale": 56,
+        "pooled_height": 7,
+        "pooled_width": 7,
+        "sample_num": 0,
+        "aligned": True,
+    }
     cases.append(("ut_multilevel_fp16", fs1, rois1, None, dict(kwargs1)))
 
     fs2 = _feats([(5, 64, 76, 76)], torch.float32, 1002, device)
@@ -1213,15 +1409,36 @@ def _p0_cases(device):
     for _ in range(140):
         x0 = _uniform(g, 0.0, 250.0)
         y0 = _uniform(g, 0.0, 250.0)
-        rows.append([float(int(_uniform(g, 0, 5))), x0, y0,
-                     x0 + _uniform(g, 4.0, 50.0), y0 + _uniform(g, 4.0, 50.0)])
+        rows.append(
+            [
+                float(int(_uniform(g, 0, 5))),
+                x0,
+                y0,
+                x0 + _uniform(g, 4.0, 50.0),
+                y0 + _uniform(g, 4.0, 50.0),
+            ]
+        )
     for k in range(10):
         if k % 2 == 0:
-            rows.append([float(k % 5), -_uniform(g, 4.0, 20.0), 0.0,
-                         _uniform(g, 8.0, 40.0), _uniform(g, 4.0, 40.0)])
+            rows.append(
+                [
+                    float(k % 5),
+                    -_uniform(g, 4.0, 20.0),
+                    0.0,
+                    _uniform(g, 8.0, 40.0),
+                    _uniform(g, 4.0, 40.0),
+                ]
+            )
         else:
-            rows.append([float(k % 5), 300.0, 300.0, 300.0 + _uniform(g, 4.0, 30.0),
-                         300.0 + _uniform(g, 4.0, 30.0)])
+            rows.append(
+                [
+                    float(k % 5),
+                    300.0,
+                    300.0,
+                    300.0 + _uniform(g, 4.0, 30.0),
+                    300.0 + _uniform(g, 4.0, 30.0),
+                ]
+            )
     assert len(rows) == 150
     rois2 = torch.tensor(rows, dtype=torch.float32).to(device)
     cases.append(("st_singlelevel_fp32", fs2, rois2, None, dict(kwargs1)))
@@ -1234,7 +1451,7 @@ def _p0_cases(device):
         if i % 5 < 4:  # ~80% small rois (s <= 112)
             w = _uniform(g, 2.0, 110.0)
             h = _uniform(g, 2.0, 110.0)
-        else:          # ~20% large rois -> L=1 drop (don't-care)
+        else:  # ~20% large rois -> L=1 drop (don't-care)
             w = _uniform(g, 120.0, 400.0)
             h = _uniform(g, 120.0, 400.0)
         x0 = _uniform(g, 0.0, 700.0)
@@ -1244,15 +1461,19 @@ def _p0_cases(device):
     index3 = torch.arange(1199, -1, -1, dtype=torch.int32).to(device)
     cases.append(("dynamic_singlelevel_fp16_index", fs3, rois3, index3, dict(kwargs1)))
 
-    fs4 = _feats([(2, 32, 48, 48), (2, 32, 24, 24), (2, 32, 12, 12), (2, 32, 6, 6)],
-                 torch.float16, 1004, device)
+    fs4 = _feats(
+        [(2, 32, 48, 48), (2, 32, 24, 24), (2, 32, 12, 12), (2, 32, 6, 6)],
+        torch.float16,
+        1004,
+        device,
+    )
     g.manual_seed(1014)
     rows = []
     for i in range(64):
         s = _uniform(g, 4.0, 600.0)
         u = _uniform(g, 0.64, 1.5625)
-        w = s * (u ** 0.5)
-        h = s / (u ** 0.5)
+        w = s * (u**0.5)
+        h = s / (u**0.5)
         x0 = _uniform(g, 0.0, 160.0)
         y0 = _uniform(g, 0.0, 160.0)
         rows.append([float(i % 2), x0, y0, x0 + w, y0 + h])
@@ -1272,8 +1493,12 @@ def _call_and_check(name, feats, rois, index, kwargs, label=None):
     padded = _pad_feats(feats)
     y = roi_extractor_wrapper(*padded, rois, index, **kwargs)
     torch.npu.synchronize()
-    assert y.shape == (rois.shape[0], feats[0].shape[1],
-                       kwargs.get("pooled_height", 7), kwargs.get("pooled_width", 7))
+    assert y.shape == (
+        rois.shape[0],
+        feats[0].shape[1],
+        kwargs.get("pooled_height", 7),
+        kwargs.get("pooled_width", 7),
+    )
     assert y.dtype == feats[0].dtype
     return _assert_precision(y, padded, rois, index, label=label, **kwargs)
 
@@ -1282,8 +1507,10 @@ def _call_and_check(name, feats, rois, index, kwargs, label=None):
 #  测试（DESIGN.md §8 目标 case 全集）
 # ================================================================
 
+
 def _device():
     from roi_extractor_golden import _get_device
+
     return _get_device()
 
 
@@ -1322,13 +1549,24 @@ def test_multilevel_n2_sample2():
 def test_s1_empty_roi():
     """s1: R=0 空工作（block_dim=1 单次空启动；FA-07）。"""
     dev = _device()
-    feats = _feats([(1, 16, 16, 16), (1, 16, 9, 9), (1, 16, 8, 8), (1, 16, 4, 5)],
-                   torch.float16, 1001, dev)
+    feats = _feats(
+        [(1, 16, 16, 16), (1, 16, 9, 9), (1, 16, 8, 8), (1, 16, 4, 5)],
+        torch.float16,
+        1001,
+        dev,
+    )
     rois = torch.zeros(0, 5, dtype=torch.float16, device=dev)
     padded = _pad_feats(feats)
-    y = roi_extractor_wrapper(*padded, rois, None,
-                              finest_scale=56, pooled_height=7, pooled_width=7,
-                              sample_num=0, aligned=True)
+    y = roi_extractor_wrapper(
+        *padded,
+        rois,
+        None,
+        finest_scale=56,
+        pooled_height=7,
+        pooled_width=7,
+        sample_num=0,
+        aligned=True,
+    )
     torch.npu.synchronize()
     assert tuple(y.shape) == (0, 16, 7, 7)
     logging.info("[s1_empty_roi] PASS (shape=(0, 16, 7, 7), empty launch returned)")
@@ -1337,19 +1575,41 @@ def test_s1_empty_roi():
 def test_s2_pooled_4x8():
     """s2: 非方形 pooled（独立 pH/pW，锁定 SPEC 决策 2）。"""
     dev = _device()
-    feats = _feats([(1, 16, 16, 16), (1, 16, 9, 9), (1, 16, 8, 8), (1, 16, 4, 5)],
-                   torch.float16, 1001, dev)
+    feats = _feats(
+        [(1, 16, 16, 16), (1, 16, 9, 9), (1, 16, 8, 8), (1, 16, 4, 5)],
+        torch.float16,
+        1001,
+        dev,
+    )
     g = torch.Generator(device="cpu")
     g.manual_seed(1021)
-    rows = [[0.0, 40.0 * torch.rand(1, generator=g).item(),
-             40.0 * torch.rand(1, generator=g).item(), 0.0, 0.0] for _ in range(256)]
+    rows = [
+        [
+            0.0,
+            40.0 * torch.rand(1, generator=g).item(),
+            40.0 * torch.rand(1, generator=g).item(),
+            0.0,
+            0.0,
+        ]
+        for _ in range(256)
+    ]
     for r in rows:
         r[3] = r[1] + 4.0 + 40.0 * torch.rand(1, generator=g).item()
         r[4] = r[2] + 4.0 + 40.0 * torch.rand(1, generator=g).item()
     rois = torch.tensor(rows, dtype=torch.float32).to(torch.float16).to(dev)
-    _call_and_check("s2_pooled_4x8", feats, rois, None,
-                    {"finest_scale": 56, "pooled_height": 4, "pooled_width": 8,
-                     "sample_num": 0, "aligned": True})
+    _call_and_check(
+        "s2_pooled_4x8",
+        feats,
+        rois,
+        None,
+        {
+            "finest_scale": 56,
+            "pooled_height": 4,
+            "pooled_width": 8,
+            "sample_num": 0,
+            "aligned": True,
+        },
+    )
 
 
 def test_s3_l1_drop():
@@ -1361,32 +1621,54 @@ def test_s3_l1_drop():
         w = h = (8.0 + i) if i < 8 else (150.0 + i)  # small: s<=112; large: dropped
         rows.append([0.0, 2.0, 2.0, 2.0 + w, 2.0 + h])
     rois = torch.tensor(rows, dtype=torch.float32).to(torch.float16).to(dev)
-    _call_and_check("s3_l1_drop", feats, rois, None,
-                    {"finest_scale": 56, "pooled_height": 7, "pooled_width": 7,
-                     "sample_num": 0, "aligned": True})
+    _call_and_check(
+        "s3_l1_drop",
+        feats,
+        rois,
+        None,
+        {
+            "finest_scale": 56,
+            "pooled_height": 7,
+            "pooled_width": 7,
+            "sample_num": 0,
+            "aligned": True,
+        },
+    )
 
 
 def test_s6_eight_level():
     """s6: L=8 全槽位（8-OPTIONAL ABI 满载，spatial_scale 8 项）。"""
     dev = _device()
-    shapes = [(1, 16, 512 // (2 ** i), 512 // (2 ** i)) for i in range(8)]
+    shapes = [(1, 16, 512 // (2**i), 512 // (2**i)) for i in range(8)]
     g = torch.Generator(device="cpu")
     g.manual_seed(1036)
-    fs8 = [(torch.randn(s, generator=g) * 0.5).to(torch.float16).to(dev) for s in shapes]
+    fs8 = [
+        (torch.randn(s, generator=g) * 0.5).to(torch.float16).to(dev) for s in shapes
+    ]
     rows = []
     for _ in range(512):
         s = 4.0 + (3000.0 - 4.0) * torch.rand(1, generator=g).item()
         u = 0.64 + (1.5625 - 0.64) * torch.rand(1, generator=g).item()
-        w = s * (u ** 0.5)
-        h = s / (u ** 0.5)
+        w = s * (u**0.5)
+        h = s / (u**0.5)
         x0 = 1500.0 * torch.rand(1, generator=g).item()
         y0 = 1500.0 * torch.rand(1, generator=g).item()
         rows.append([0.0, x0, y0, x0 + w, y0 + h])
     rois = torch.tensor(rows, dtype=torch.float32).to(torch.float16).to(dev)
-    _call_and_check("s6_eight_level", fs8, rois, None,
-                    {"finest_scale": 56, "pooled_height": 7, "pooled_width": 7,
-                     "sample_num": 0, "aligned": True,
-                     "spatial_scale": [0.25 / (2 ** i) for i in range(8)]})
+    _call_and_check(
+        "s6_eight_level",
+        fs8,
+        rois,
+        None,
+        {
+            "finest_scale": 56,
+            "pooled_height": 7,
+            "pooled_width": 7,
+            "sample_num": 0,
+            "aligned": True,
+            "spatial_scale": [0.25 / (2**i) for i in range(8)],
+        },
+    )
 
 
 def test_add_aligned():
@@ -1403,9 +1685,19 @@ def test_add_aligned():
         y0 = (224.0 - h) * torch.rand(1, generator=g).item()
         rows.append([float(i % 2), x0, y0, x0 + w, y0 + h])
     rois = torch.tensor(rows, dtype=torch.float32).to(torch.float16).to(dev)
-    _call_and_check("add_aligned", feats, rois, None,
-                    {"finest_scale": 56, "pooled_height": 7, "pooled_width": 7,
-                     "sample_num": 0, "aligned": True})
+    _call_and_check(
+        "add_aligned",
+        feats,
+        rois,
+        None,
+        {
+            "finest_scale": 56,
+            "pooled_height": 7,
+            "pooled_width": 7,
+            "sample_num": 0,
+            "aligned": True,
+        },
+    )
 
 
 def test_add_ctail():
@@ -1422,9 +1714,19 @@ def test_add_ctail():
         y0 = (224.0 - h) * torch.rand(1, generator=g).item()
         rows.append([float(i % 2), x0, y0, x0 + w, y0 + h])
     rois = torch.tensor(rows, dtype=torch.float32).to(torch.float16).to(dev)
-    _call_and_check("add_ctail", feats, rois, None,
-                    {"finest_scale": 56, "pooled_height": 7, "pooled_width": 7,
-                     "sample_num": 0, "aligned": True})
+    _call_and_check(
+        "add_ctail",
+        feats,
+        rois,
+        None,
+        {
+            "finest_scale": 56,
+            "pooled_height": 7,
+            "pooled_width": 7,
+            "sample_num": 0,
+            "aligned": True,
+        },
+    )
 
 
 def test_add_multitile():
@@ -1441,9 +1743,19 @@ def test_add_multitile():
         y0 = (800.0 - h) * torch.rand(1, generator=g).item()
         rows.append([float(i % 4), x0, y0, x0 + w, y0 + h])
     rois = torch.tensor(rows, dtype=torch.float32).to(torch.float16).to(dev)
-    _call_and_check("add_multitile", feats, rois, None,
-                    {"finest_scale": 56, "pooled_height": 7, "pooled_width": 7,
-                     "sample_num": 0, "aligned": True})
+    _call_and_check(
+        "add_multitile",
+        feats,
+        rois,
+        None,
+        {
+            "finest_scale": 56,
+            "pooled_height": 7,
+            "pooled_width": 7,
+            "sample_num": 0,
+            "aligned": True,
+        },
+    )
 
 
 def test_add_chunk_x():
@@ -1459,18 +1771,28 @@ def test_add_chunk_x():
     feats = _feats([(1, 64, 256, 256), (1, 64, 128, 128)], torch.float16, 1047, dev)
     g = torch.Generator(device="cpu")
     g.manual_seed(1048)
-    rows = [[0.0, 5.0, 5.0, 355.0, 45.0]]   # w=350,h=40: s=118>112 -> level 1
-    for _ in range(7):                       # s<=112 -> level 0, x-chunked
+    rows = [[0.0, 5.0, 5.0, 355.0, 45.0]]  # w=350,h=40: s=118>112 -> level 1
+    for _ in range(7):  # s<=112 -> level 0, x-chunked
         w = 280.0 + 70.0 * torch.rand(1, generator=g).item()
         h = 30.0 + 10.0 * torch.rand(1, generator=g).item()
         x0 = (1024.0 - w) * torch.rand(1, generator=g).item()
         y0 = (1024.0 - h) * torch.rand(1, generator=g).item()
         rows.append([0.0, x0, y0, x0 + w, y0 + h])
     rois = torch.tensor(rows, dtype=torch.float32).to(torch.float16).to(dev)
-    _call_and_check("add_chunk_x", feats, rois, None,
-                    {"finest_scale": 56, "pooled_height": 7, "pooled_width": 7,
-                     "sample_num": 0, "aligned": True,
-                     "spatial_scale": [0.25, 0.125]})
+    _call_and_check(
+        "add_chunk_x",
+        feats,
+        rois,
+        None,
+        {
+            "finest_scale": 56,
+            "pooled_height": 7,
+            "pooled_width": 7,
+            "sample_num": 0,
+            "aligned": True,
+            "spatial_scale": [0.25, 0.125],
+        },
+    )
 
 
 def test_add_chunk_xy():
@@ -1484,7 +1806,7 @@ def test_add_chunk_xy():
     feats = _feats([(1, 64, 256, 256), (1, 64, 128, 128)], torch.float16, 1049, dev)
     g = torch.Generator(device="cpu")
     g.manual_seed(1050)
-    rows = [[0.0, 5.0, 5.0, 805.0, 805.0]]   # DESIGN 的 800x800: s=800 -> level 1, sw=15
+    rows = [[0.0, 5.0, 5.0, 805.0, 805.0]]  # DESIGN 的 800x800: s=800 -> level 1, sw=15
     for _ in range(7):
         w = 900.0 + 100.0 * torch.rand(1, generator=g).item()
         h = 900.0 + 100.0 * torch.rand(1, generator=g).item()
@@ -1492,10 +1814,20 @@ def test_add_chunk_xy():
         y0 = (1024.0 - h) * torch.rand(1, generator=g).item()
         rows.append([0.0, x0, y0, x0 + w, y0 + h])
     rois = torch.tensor(rows, dtype=torch.float32).to(torch.float16).to(dev)
-    _call_and_check("add_chunk_xy", feats, rois, None,
-                    {"finest_scale": 56, "pooled_height": 7, "pooled_width": 7,
-                     "sample_num": 0, "aligned": True,
-                     "spatial_scale": [0.25, 0.125]})
+    _call_and_check(
+        "add_chunk_xy",
+        feats,
+        rois,
+        None,
+        {
+            "finest_scale": 56,
+            "pooled_height": 7,
+            "pooled_width": 7,
+            "sample_num": 0,
+            "aligned": True,
+            "spatial_scale": [0.25, 0.125],
+        },
+    )
 
 
 def test_add_frac_fallback():
@@ -1517,9 +1849,20 @@ def test_add_frac_fallback():
         y0 = (3840.0 - h) * torch.rand(1, generator=g).item()
         rows.append([0.0, x0, y0, x0 + w, y0 + h])
     rois = torch.tensor(rows, dtype=torch.float32).to(torch.float16).to(dev)
-    _call_and_check("add_frac_fallback", feats, rois, None,
-                    {"finest_scale": 56, "pooled_height": 7, "pooled_width": 7,
-                     "sample_num": 0, "aligned": True, "spatial_scale": [0.25]})
+    _call_and_check(
+        "add_frac_fallback",
+        feats,
+        rois,
+        None,
+        {
+            "finest_scale": 56,
+            "pooled_height": 7,
+            "pooled_width": 7,
+            "sample_num": 0,
+            "aligned": True,
+            "spatial_scale": [0.25],
+        },
+    )
 
 
 if __name__ == "__main__":
@@ -1533,11 +1876,20 @@ if __name__ == "__main__":
     except ImportError:
         pass
     _tests = [
-        test_ut_multilevel_fp16, test_st_singlelevel_fp32,
-        test_dynamic_singlelevel_fp16_index, test_multilevel_n2_sample2,
-        test_s1_empty_roi, test_s2_pooled_4x8, test_s3_l1_drop, test_s6_eight_level,
-        test_add_aligned, test_add_ctail, test_add_multitile, test_add_chunk_x,
-        test_add_chunk_xy, test_add_frac_fallback,
+        test_ut_multilevel_fp16,
+        test_st_singlelevel_fp32,
+        test_dynamic_singlelevel_fp16_index,
+        test_multilevel_n2_sample2,
+        test_s1_empty_roi,
+        test_s2_pooled_4x8,
+        test_s3_l1_drop,
+        test_s6_eight_level,
+        test_add_aligned,
+        test_add_ctail,
+        test_add_multitile,
+        test_add_chunk_x,
+        test_add_chunk_xy,
+        test_add_frac_fallback,
     ]
     failed = []
     for t in _tests:

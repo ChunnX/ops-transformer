@@ -21,6 +21,7 @@ _HAS_NPU = False
 
 try:
     import torch_npu
+
     _HAS_NPU = torch.npu.is_available() and torch.npu.device_count() > 0
 except ImportError:
     raise ImportError(
@@ -28,6 +29,7 @@ except ImportError:
         "  pip install torch_npu\n"
         "Refer to the CANN and PyPTO/PyPTO-Pro installation docs for the full NPU environment setup."
     )
+
 
 def _get_device() -> torch.device:
     global _DEVICE
@@ -46,7 +48,8 @@ def _get_device() -> torch.device:
 # ─────────────────────────────────────────────
 
 # Canonical mathematical semantics copied verbatim from the SPEC machine contract.
-_SPEC_FORMULA = 'y = roi_extract(features_0..features_{L-1}, rois, index) 逐 ROI n ∈ [0,R):\n(1) 层级选择: s = fp16(sqrt_fp32((rois[n,3]-rois[n,1])*(rois[n,4]-rois[n,2]))); 阈值 B[i]=2^i*finest_scale (i=0..L, fp16 精确表示); l=0 若 s<=B[1]; l=L-1 若 L>1 且 s>B[L-1]; 否则 l 为唯一满足 B[l]<s<=B[l+1] 的层 (1<=l<=L-2); L>=2 时任意 s 恰映射一层; L==1 且 s>2*finest_scale 时该 ROI 输出行不写入(内容未定义)\n(2) 坐标换算(fp32; fp16 输入先转 fp32): x0,y0,x1,y1 = rois[n,1..4]*spatial_scale[l]; aligned=true 时四坐标各减 0.5; roi_w=max(x1-x0,1.0); roi_h=max(y1-y0,1.0); bin_w=roi_w/pooled_width; bin_h=roi_h/pooled_height\n(3) 采样数: sample_num>0 时 sw=sh=sample_num; 否则 sw=ceil(bin_w), sh=ceil(bin_h)\n(4) batch 守卫: b=floor(rois[n,0]); 仅 0<=b<N 时计算, 否则该 ROI 输出行不写入(内容未定义)\n(5) 采样: 对 ph∈[0,pooled_height), pw∈[0,pooled_width), i∈[0,sh), j∈[0,sw): x=x0+(pw+(j+0.5)/sw)*bin_w; yc=y0+(ph+(i+0.5)/sh)*bin_h; acc[c]+=bilinear(features_l[b,c,:,:],x,yc)\n(6) 输出: y_row = (index 提供时) index[n] 否则 n; y[y_row,c,ph,pw] = acc[c]/(sh*sw) 对全部 c∈[0,C); 越界样本贡献 0 且仍计入分母 sh*sw\nbilinear(fm,x,y) (fm 空间尺寸 HxW, x 沿 W, y 沿 H, 输入为原始坐标): 若 x<-1 或 x>W 或 y<-1 或 y>H 返回 0; x=clamp(x,0,W-1); y=clamp(y,0,H-1); x_lo=min(floor(x),W-1); x_hi=min(x_lo+1,W-1); y_lo=min(floor(y),H-1); y_hi=min(y_lo+1,H-1); lx=x-x_lo; hx=1-lx; ly=y-y_lo; hy=1-ly; 返回 fm[y_lo,x_lo]*hy*hx+fm[y_lo,x_hi]*hy*lx+fm[y_hi,x_lo]*ly*hx+fm[y_hi,x_hi]*ly*lx'
+_SPEC_FORMULA = "y = roi_extract(features_0..features_{L-1}, rois, index) 逐 ROI n ∈ [0,R):\n(1) 层级选择: s = fp16(sqrt_fp32((rois[n,3]-rois[n,1])*(rois[n,4]-rois[n,2]))); 阈值 B[i]=2^i*finest_scale (i=0..L, fp16 精确表示); l=0 若 s<=B[1]; l=L-1 若 L>1 且 s>B[L-1]; 否则 l 为唯一满足 B[l]<s<=B[l+1] 的层 (1<=l<=L-2); L>=2 时任意 s 恰映射一层; L==1 且 s>2*finest_scale 时该 ROI 输出行不写入(内容未定义)\n(2) 坐标换算(fp32; fp16 输入先转 fp32): x0,y0,x1,y1 = rois[n,1..4]*spatial_scale[l]; aligned=true 时四坐标各减 0.5; roi_w=max(x1-x0,1.0); roi_h=max(y1-y0,1.0); bin_w=roi_w/pooled_width; bin_h=roi_h/pooled_height\n(3) 采样数: sample_num>0 时 sw=sh=sample_num; 否则 sw=ceil(bin_w), sh=ceil(bin_h)\n(4) batch 守卫: b=floor(rois[n,0]); 仅 0<=b<N 时计算, 否则该 ROI 输出行不写入(内容未定义)\n(5) 采样: 对 ph∈[0,pooled_height), pw∈[0,pooled_width), i∈[0,sh), j∈[0,sw): x=x0+(pw+(j+0.5)/sw)*bin_w; yc=y0+(ph+(i+0.5)/sh)*bin_h; acc[c]+=bilinear(features_l[b,c,:,:],x,yc)\n(6) 输出: y_row = (index 提供时) index[n] 否则 n; y[y_row,c,ph,pw] = acc[c]/(sh*sw) 对全部 c∈[0,C); 越界样本贡献 0 且仍计入分母 sh*sw\nbilinear(fm,x,y) (fm 空间尺寸 HxW, x 沿 W, y 沿 H, 输入为原始坐标): 若 x<-1 或 x>W 或 y<-1 或 y>H 返回 0; x=clamp(x,0,W-1); y=clamp(y,0,H-1); x_lo=min(floor(x),W-1); x_hi=min(x_lo+1,W-1); y_lo=min(floor(y),H-1); y_hi=min(y_lo+1,H-1); lx=x-x_lo; hx=1-lx; ly=y-y_lo; hy=1-ly; 返回 fm[y_lo,x_lo]*hy*hx+fm[y_lo,x_hi]*hy*lx+fm[y_hi,x_lo]*ly*hx+fm[y_hi,x_hi]*ly*lx"
+
 
 def _fp16(v: float) -> float:
     return float(torch.tensor(v).to(torch.float16))
@@ -67,8 +70,12 @@ def _bilinear_vec(fm32: torch.Tensor, x: float, yc: float) -> torch.Tensor:
     hx = 1.0 - lx
     ly = yc - y_lo
     hy = 1.0 - ly
-    return (fm32[:, y_lo, x_lo] * (hy * hx) + fm32[:, y_lo, x_hi] * (hy * lx)
-            + fm32[:, y_hi, x_lo] * (ly * hx) + fm32[:, y_hi, x_hi] * (ly * lx))
+    return (
+        fm32[:, y_lo, x_lo] * (hy * hx)
+        + fm32[:, y_lo, x_hi] * (hy * lx)
+        + fm32[:, y_hi, x_lo] * (ly * hx)
+        + fm32[:, y_hi, x_hi] * (ly * lx)
+    )
 
 
 def roi_extractor_golden(
@@ -87,7 +94,7 @@ def roi_extractor_golden(
     pooled_height: int = 7,
     pooled_width: int = 7,
     sample_num: int = 0,
-    pool_mode: object = 'avg',
+    pool_mode: object = "avg",
     aligned: bool = True,
 ):
     """PyTorch 参考实现。
@@ -103,8 +110,20 @@ def roi_extractor_golden(
         计算结果 tensor。
         根据实际算子需求调整返回值（可多输出、可返回 tuple）。
     """
-    feats = [t for t in (features_0, features_1, features_2, features_3,
-                         features_4, features_5, features_6, features_7) if t is not None]
+    feats = [
+        t
+        for t in (
+            features_0,
+            features_1,
+            features_2,
+            features_3,
+            features_4,
+            features_5,
+            features_6,
+            features_7,
+        )
+        if t is not None
+    ]
     if not feats or rois is None or rois.dim() != 2 or rois.shape[1] != 5:
         raise ValueError("need >=1 feature level and rois [R,5]")
     if pool_mode != "avg":
@@ -119,8 +138,12 @@ def roi_extractor_golden(
     feats = [t.to(device) for t in feats]
     feats32 = [t.float() for t in feats]
     rois = rois.to(device)
-    y = torch.full((R, C, pooled_height, pooled_width), float("nan"),
-                   dtype=feats[0].dtype, device=device)
+    y = torch.full(
+        (R, C, pooled_height, pooled_width),
+        float("nan"),
+        dtype=feats[0].dtype,
+        device=device,
+    )
     for n in range(R):
         roi = rois[n].float()
         b = int(torch.floor(roi[0]).item())
@@ -137,9 +160,12 @@ def roi_extractor_golden(
             lvl = L - 1
         else:
             lvl = 1
-            while lvl < L - 1 and not (s > _fp16(finest_scale * (2 ** lvl)) and s <= _fp16(finest_scale * (2 ** (lvl + 1)))):
+            while lvl < L - 1 and not (
+                s > _fp16(finest_scale * (2**lvl))
+                and s <= _fp16(finest_scale * (2 ** (lvl + 1)))
+            ):
                 lvl += 1
-        sc = 0.25 / (2 ** lvl)
+        sc = 0.25 / (2**lvl)
         x0, y0, x1, y1 = roi[1] * sc, roi[2] * sc, roi[3] * sc, roi[4] * sc
         if aligned:
             x0, y0, x1, y1 = x0 - 0.5, y0 - 0.5, x1 - 0.5, y1 - 0.5
@@ -170,6 +196,7 @@ def roi_extractor_golden(
 # 输入构造（供验证使用；启用性能采集时供 profiling --factory 复用）
 # ==========================================
 
+
 def _make_inputs(device):
     """Construct every P0 case from the validated machine contract (SPEC §10 recipe).
 
@@ -181,14 +208,19 @@ def _make_inputs(device):
     def feats(shapes, dtype, seed):
         g = torch.Generator(device="cpu")
         g.manual_seed(seed)
-        return [(torch.randn(s, generator=g) * 0.5).to(dtype).to(device) for s in shapes]
+        return [
+            (torch.randn(s, generator=g) * 0.5).to(dtype).to(device) for s in shapes
+        ]
 
     def uniform(g, lo, hi):
         return lo + (hi - lo) * torch.rand(1, generator=g).item()
 
     # ---- P0 1: ut_multilevel_fp16 ----
-    fs1 = feats([(1, 16, 16, 16), (1, 16, 9, 9), (1, 16, 8, 8), (1, 16, 4, 5)],
-                torch.float16, 1001)
+    fs1 = feats(
+        [(1, 16, 16, 16), (1, 16, 9, 9), (1, 16, 8, 8), (1, 16, 4, 5)],
+        torch.float16,
+        1001,
+    )
     g = torch.Generator(device="cpu")
     g.manual_seed(1011)
     rows = []
@@ -196,8 +228,8 @@ def _make_inputs(device):
         for _ in range(240):  # rows 0..959: s covers all 4 level bands
             s = uniform(g, lo, hi)
             u = uniform(g, 0.64, 1.5625)  # sqrt(u) in [0.8, 1.25]
-            w = s * (u ** 0.5)
-            h = s / (u ** 0.5)
+            w = s * (u**0.5)
+            h = s / (u**0.5)
             x0 = uniform(g, -0.5 * w, 48.0)
             y0 = uniform(g, -0.5 * h, 48.0)
             rows.append([0.0, x0, y0, x0 + w, y0 + h])
@@ -217,17 +249,31 @@ def _make_inputs(device):
             rows.append([0.0, 10.0, 10.0, 10.0 + w, 10.0])
     for k in range(10):  # 980..989 partially out of bounds
         if k % 2 == 0:
-            rows.append([0.0, -uniform(g, 4.0, 20.0), -uniform(g, 4.0, 20.0),
-                         uniform(g, 8.0, 40.0), uniform(g, 8.0, 40.0)])
+            rows.append(
+                [
+                    0.0,
+                    -uniform(g, 4.0, 20.0),
+                    -uniform(g, 4.0, 20.0),
+                    uniform(g, 8.0, 40.0),
+                    uniform(g, 8.0, 40.0),
+                ]
+            )
         else:
             w = uniform(g, 8.0, 40.0)
             h = uniform(g, 8.0, 40.0)
-            rows.append([0.0, 63.0 - uniform(g, 0.0, 10.0), 63.0 - uniform(g, 0.0, 10.0),
-                         63.0 + w, 63.0 + h])
+            rows.append(
+                [
+                    0.0,
+                    63.0 - uniform(g, 0.0, 10.0),
+                    63.0 - uniform(g, 0.0, 10.0),
+                    63.0 + w,
+                    63.0 + h,
+                ]
+            )
     # 990..994 integer-area s-boundary rows (exact in fp16)
-    rows.append([0.0, 5.0, 5.0, 117.0, 117.0])     # w=h=112 -> s=112 -> level 0
-    rows.append([0.0, 5.0, 5.0, 229.0, 229.0])     # s=224 -> level 1
-    rows.append([0.0, 5.0, 5.0, 453.0, 453.0])     # s=448 -> level 2
+    rows.append([0.0, 5.0, 5.0, 117.0, 117.0])  # w=h=112 -> s=112 -> level 0
+    rows.append([0.0, 5.0, 5.0, 229.0, 229.0])  # s=224 -> level 1
+    rows.append([0.0, 5.0, 5.0, 453.0, 453.0])  # s=448 -> level 2
     rows.append([0.0, -20.0, 5.0, 204.0, 229.0])
     rows.append([0.0, 5.0, -20.0, 453.0, 428.0])
     for k in range(5):  # 995..999 batch index out of range (N=1) -> don't-care
@@ -235,8 +281,15 @@ def _make_inputs(device):
     assert len(rows) == 1000
     rois1 = torch.tensor(rows, dtype=torch.float32).to(torch.float16).to(device)
     args1 = fs1 + [None] * (8 - len(fs1)) + [rois1, None]
-    kwargs1 = {"finest_scale": 56, "roi_scale_factor": 0.0, "pooled_height": 7,
-               "pooled_width": 7, "sample_num": 0, "pool_mode": "avg", "aligned": True}
+    kwargs1 = {
+        "finest_scale": 56,
+        "roi_scale_factor": 0.0,
+        "pooled_height": 7,
+        "pooled_width": 7,
+        "sample_num": 0,
+        "pool_mode": "avg",
+        "aligned": True,
+    }
     cases.append(("ut_multilevel_fp16", args1, kwargs1))
 
     # ---- P0 2: st_singlelevel_fp32 (image 304px) ----
@@ -246,15 +299,36 @@ def _make_inputs(device):
     for _ in range(140):  # normal rois within the image
         x0 = uniform(g, 0.0, 250.0)
         y0 = uniform(g, 0.0, 250.0)
-        rows.append([float(int(uniform(g, 0, 5))), x0, y0,
-                     x0 + uniform(g, 4.0, 50.0), y0 + uniform(g, 4.0, 50.0)])
+        rows.append(
+            [
+                float(int(uniform(g, 0, 5))),
+                x0,
+                y0,
+                x0 + uniform(g, 4.0, 50.0),
+                y0 + uniform(g, 4.0, 50.0),
+            ]
+        )
     for k in range(10):  # edge / out-of-bounds
         if k % 2 == 0:
-            rows.append([float(k % 5), -uniform(g, 4.0, 20.0), 0.0,
-                         uniform(g, 8.0, 40.0), uniform(g, 4.0, 40.0)])
+            rows.append(
+                [
+                    float(k % 5),
+                    -uniform(g, 4.0, 20.0),
+                    0.0,
+                    uniform(g, 8.0, 40.0),
+                    uniform(g, 4.0, 40.0),
+                ]
+            )
         else:
-            rows.append([float(k % 5), 300.0, 300.0, 300.0 + uniform(g, 4.0, 30.0),
-                         300.0 + uniform(g, 4.0, 30.0)])
+            rows.append(
+                [
+                    float(k % 5),
+                    300.0,
+                    300.0,
+                    300.0 + uniform(g, 4.0, 30.0),
+                    300.0 + uniform(g, 4.0, 30.0),
+                ]
+            )
     assert len(rows) == 150
     rois2 = torch.tensor(rows, dtype=torch.float32).to(device)
     args2 = fs2 + [None] * 7 + [rois2, None]
@@ -283,15 +357,18 @@ def _make_inputs(device):
     cases.append(("dynamic_singlelevel_fp16_index", args3, kwargs3))
 
     # ---- P0 4: multilevel_n2_sample2 (image 192px, 2 images) ----
-    fs4 = feats([(2, 32, 48, 48), (2, 32, 24, 24), (2, 32, 12, 12), (2, 32, 6, 6)],
-                torch.float16, 1004)
+    fs4 = feats(
+        [(2, 32, 48, 48), (2, 32, 24, 24), (2, 32, 12, 12), (2, 32, 6, 6)],
+        torch.float16,
+        1004,
+    )
     g.manual_seed(1014)
     rows = []
     for i in range(64):
         s = uniform(g, 4.0, 600.0)
         u = uniform(g, 0.64, 1.5625)
-        w = s * (u ** 0.5)
-        h = s / (u ** 0.5)
+        w = s * (u**0.5)
+        h = s / (u**0.5)
         x0 = uniform(g, 0.0, 160.0)
         y0 = uniform(g, 0.0, 160.0)
         rows.append([float(i % 2), x0, y0, x0 + w, y0 + h])
@@ -303,9 +380,11 @@ def _make_inputs(device):
 
     return cases
 
+
 # ==========================================
 # 验证
 # ==========================================
+
 
 def _validate():
     device = _get_device()
@@ -316,8 +395,12 @@ def _validate():
 
     cases = _make_inputs(device)
     names = [c[0] for c in cases]
-    assert names == ["ut_multilevel_fp16", "st_singlelevel_fp32",
-                     "dynamic_singlelevel_fp16_index", "multilevel_n2_sample2"], names
+    assert names == [
+        "ut_multilevel_fp16",
+        "st_singlelevel_fp32",
+        "dynamic_singlelevel_fp16_index",
+        "multilevel_n2_sample2",
+    ], names
 
     def s_of(roi_row):
         r = roi_row.float()
@@ -341,39 +424,67 @@ def _validate():
             assert n_nan == 0, (case_name, n_nan)
         elif case_name == "dynamic_singlelevel_fp16_index":
             idx = args[-1].long()
-            big = torch.tensor([s_of(rois[n]) > 112.0 for n in range(R)],
-                               device=y.device)
+            big = torch.tensor(
+                [s_of(rois[n]) > 112.0 for n in range(R)], device=y.device
+            )
             big_out = torch.empty_like(big)
             big_out[idx] = big
             assert torch.equal(nan_rows, big_out), (case_name, n_nan)
         else:
             assert n_nan == 0, (case_name, n_nan)
-        print(f"[case {case_name}] shape={tuple(y.shape)} dtype={y.dtype} "
-              f"finite_rows={R - n_nan}/{R} NaN_rows={n_nan} PASS")
+        print(
+            f"[case {case_name}] shape={tuple(y.shape)} dtype={y.dtype} "
+            f"finite_rows={R - n_nan}/{R} NaN_rows={n_nan} PASS"
+        )
 
     # ---- scenario s1: empty RoI ----
     fs = [t for t in cases[0][1][:8] if t is not None]
-    y = roi_extractor_golden(*(fs + [None] * (8 - len(fs)) +
-                                [torch.zeros(0, 5, dtype=torch.float16, device=device), None]),
-                             **cases[0][2])
+    y = roi_extractor_golden(
+        *(
+            fs
+            + [None] * (8 - len(fs))
+            + [torch.zeros(0, 5, dtype=torch.float16, device=device), None]
+        ),
+        **cases[0][2],
+    )
     assert tuple(y.shape) == (0, 16, 7, 7)
     print("[scenario s1 empty-roi] shape=", tuple(y.shape), "PASS")
 
     # ---- scenario s2: non-square pooled 4x8 ----
     g = torch.Generator(device="cpu")
     g.manual_seed(1021)
-    rows = [[0.0, 0.0 + 40.0 * torch.rand(1, generator=g).item(), 0.0 + 40.0 * torch.rand(1, generator=g).item(), 0.0, 0.0] for _ in range(256)]
+    rows = [
+        [
+            0.0,
+            0.0 + 40.0 * torch.rand(1, generator=g).item(),
+            0.0 + 40.0 * torch.rand(1, generator=g).item(),
+            0.0,
+            0.0,
+        ]
+        for _ in range(256)
+    ]
     for i, r in enumerate(rows):
         r[3] = r[1] + 4.0 + 40.0 * torch.rand(1, generator=g).item()
         r[4] = r[2] + 4.0 + 40.0 * torch.rand(1, generator=g).item()
     rois = torch.tensor(rows, dtype=torch.float32).to(torch.float16).to(device)
-    kw = dict(cases[0][2]); kw["pooled_height"] = 4; kw["pooled_width"] = 8
+    kw = dict(cases[0][2])
+    kw["pooled_height"] = 4
+    kw["pooled_width"] = 8
     y = roi_extractor_golden(*(fs + [None] * (8 - len(fs)) + [rois, None]), **kw)
     assert tuple(y.shape) == (256, 16, 4, 8) and torch.isfinite(y.float()).all().item()
     print("[scenario s2 pooled-4x8] shape=", tuple(y.shape), "PASS")
 
     # ---- scenario s3: L=1 large-roi drop ----
-    fs1lvl = [(torch.randn(1, 16, 32, 32, generator=torch.Generator(device='cpu').manual_seed(1031)) * 0.5).to(torch.float16).to(device)]
+    fs1lvl = [
+        (
+            torch.randn(
+                1, 16, 32, 32, generator=torch.Generator(device="cpu").manual_seed(1031)
+            )
+            * 0.5
+        )
+        .to(torch.float16)
+        .to(device)
+    ]
     rows = []
     for i in range(16):
         if i < 8:
@@ -388,15 +499,17 @@ def _validate():
     print("[scenario s3 L1-drop] NaN rows = 8/16 PASS")
 
     # ---- scenario s6: 8-level pyramid ----
-    shapes = [(1, 16, 512 // (2 ** i), 512 // (2 ** i)) for i in range(8)]
+    shapes = [(1, 16, 512 // (2**i), 512 // (2**i)) for i in range(8)]
     g.manual_seed(1036)
-    fs8 = [(torch.randn(s, generator=g) * 0.5).to(torch.float16).to(device) for s in shapes]
+    fs8 = [
+        (torch.randn(s, generator=g) * 0.5).to(torch.float16).to(device) for s in shapes
+    ]
     rows = []
     for i in range(512):
         s = 4.0 + (3000.0 - 4.0) * torch.rand(1, generator=g).item()
         u = 0.64 + (1.5625 - 0.64) * torch.rand(1, generator=g).item()
-        w = s * (u ** 0.5)
-        h = s / (u ** 0.5)
+        w = s * (u**0.5)
+        h = s / (u**0.5)
         x0 = 0.0 + 1500.0 * torch.rand(1, generator=g).item()
         y0 = 0.0 + 1500.0 * torch.rand(1, generator=g).item()
         rows.append([0.0, x0, y0, x0 + w, y0 + h])
@@ -408,6 +521,7 @@ def _validate():
     print("=" * 60)
     print("validation complete")
     print("=" * 60)
+
 
 if __name__ == "__main__":
     _validate()

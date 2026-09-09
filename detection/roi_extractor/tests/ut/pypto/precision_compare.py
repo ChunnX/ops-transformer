@@ -85,10 +85,15 @@ def _to_cpu(tensor):
 # 核心对比逻辑
 # ============================================================================
 
+
 def _compare_integer(actual, golden, total):
     passed = torch.equal(actual, golden)
     if passed:
-        return True, "exact match (integer)", {"matched_ratio": 1.0, "max_abs_error": 0.0}
+        return (
+            True,
+            "exact match (integer)",
+            {"matched_ratio": 1.0, "max_abs_error": 0.0},
+        )
     mismatch = (actual != golden).sum().item()
     metrics = {"matched_ratio": 1 - mismatch / total}
     return False, f"integer mismatch: {mismatch}/{total} elements differ", metrics
@@ -134,7 +139,9 @@ def _calculate_float_metrics(prepared, threshold, total):
     else:
         diff = (actual - golden).abs()
         element_pass = diff <= atol + rtol * golden.abs()
-        pass_count = (element_pass & compare_mask).sum().item() + match_mask.sum().item()
+        pass_count = (
+            element_pass & compare_mask
+        ).sum().item() + match_mask.sum().item()
         matched_ratio = pass_count / total
         max_abs_error = diff[compare_mask].max().item()
     return {
@@ -183,12 +190,24 @@ def _compare_single_tensor(
     actual = _to_cpu(actual)
     golden = _to_cpu(golden)
     if actual.shape != golden.shape:
-        return False, f"shape mismatch: actual={tuple(actual.shape)} vs golden={tuple(golden.shape)}", {}
+        return (
+            False,
+            f"shape mismatch: actual={tuple(actual.shape)} vs golden={tuple(golden.shape)}",
+            {},
+        )
     total = actual.numel()
     if actual.is_quantized or golden.is_quantized:
-        return False, f"unsupported quantized dtype pair: actual={actual.dtype}, golden={golden.dtype}", {}
+        return (
+            False,
+            f"unsupported quantized dtype pair: actual={actual.dtype}, golden={golden.dtype}",
+            {},
+        )
     if actual.is_complex() or golden.is_complex():
-        return False, f"unsupported complex dtype pair: actual={actual.dtype}, golden={golden.dtype}", {}
+        return (
+            False,
+            f"unsupported complex dtype pair: actual={actual.dtype}, golden={golden.dtype}",
+            {},
+        )
 
     comparison_dtype = threshold_dtype or actual.dtype
     threshold = threshold_override
@@ -196,7 +215,11 @@ def _compare_single_tensor(
         threshold = _get_threshold(comparison_dtype)
     if threshold is None:
         if actual.dtype != golden.dtype:
-            return False, f"dtype mismatch for exact comparison: actual={actual.dtype}, golden={golden.dtype}", {}
+            return (
+                False,
+                f"dtype mismatch for exact comparison: actual={actual.dtype}, golden={golden.dtype}",
+                {},
+            )
         if actual.is_floating_point() or golden.is_floating_point():
             return False, f"unsupported floating dtype: {comparison_dtype}", {}
         if actual.dtype != torch.bool:
@@ -258,7 +281,10 @@ def _check_precision_core(actual, golden, dtype_str=None, threshold_override=Non
         return False, str(error)
 
     if len(actuals) != len(goldens):
-        return False, f"output count mismatch: actual={len(actuals)} vs golden={len(goldens)}"
+        return (
+            False,
+            f"output count mismatch: actual={len(actuals)} vs golden={len(goldens)}",
+        )
     if dtype_str is not None and dtype_str not in _DTYPE_NAME_MAP:
         return False, f"unsupported dtype: {dtype_str}"
     threshold_dtype = _DTYPE_NAME_MAP.get(dtype_str)
@@ -276,7 +302,9 @@ def _check_precision_core(actual, golden, dtype_str=None, threshold_override=Non
             continue
 
         compared_tensors += 1
-        passed, summary, _ = _compare_single_tensor(a, g, threshold_dtype, threshold_override)
+        passed, summary, _ = _compare_single_tensor(
+            a, g, threshold_dtype, threshold_override
+        )
         if not passed:
             all_passed = False
         prefix = "" if len(actuals) == 1 else f"output[{i}]: "

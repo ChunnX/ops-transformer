@@ -27,10 +27,10 @@ using namespace ge;
 namespace optiling {
 
 // Input indices (matches roi_extractor_def.cpp registration order)
-constexpr uint32_t IDX_FEATURES_0 = 0;   // features_0 .. features_7: 0..7
+constexpr uint32_t IDX_FEATURES_0 = 0; // features_0 .. features_7: 0..7
 constexpr uint32_t IDX_ROIS = 8;
 constexpr uint32_t IDX_INDEX = 9;
-constexpr uint32_t IDX_Y = 0;            // output
+constexpr uint32_t IDX_Y = 0; // output
 
 // Attr indices (SPEC §5 fixed order)
 constexpr uint32_t ATTR_FINEST_SCALE = 0;
@@ -104,8 +104,7 @@ ge::graphStatus RoiExtractorCompileInfo::ParamCheck(gert::TilingContext *context
     auto firstShape = context->GetInputShape(IDX_FEATURES_0);
     OP_CHECK_NULL_WITH_CONTEXT(context, firstShape);
     OP_CHECK_IF(firstShape->GetStorageShape().GetDimNum() != 4,
-                OP_LOGE(nodeName, "features must be 4D NCHW, but got %ldD.",
-                        firstShape->GetStorageShape().GetDimNum()),
+                OP_LOGE(nodeName, "features must be 4D NCHW, but got %ldD.", firstShape->GetStorageShape().GetDimNum()),
                 return ge::GRAPH_PARAM_INVALID);
     const int64_t nDim = firstShape->GetStorageShape().GetDim(0);
     const int64_t cDim = firstShape->GetStorageShape().GetDim(1);
@@ -116,34 +115,30 @@ ge::graphStatus RoiExtractorCompileInfo::ParamCheck(gert::TilingContext *context
     auto firstDesc = context->GetInputDesc(IDX_FEATURES_0);
     OP_CHECK_NULL_WITH_CONTEXT(context, firstDesc);
     const ge::DataType featsDType = firstDesc->GetDataType();
-    OP_CHECK_IF(featsDType != ge::DT_FLOAT16 && featsDType != ge::DT_FLOAT,
-                OP_LOGE(nodeName, "features dtype must be float16 or float32, but got %d.",
-                        static_cast<int32_t>(featsDType)),
-                return ge::GRAPH_PARAM_INVALID);
+    OP_CHECK_IF(
+        featsDType != ge::DT_FLOAT16 && featsDType != ge::DT_FLOAT,
+        OP_LOGE(nodeName, "features dtype must be float16 or float32, but got %d.", static_cast<int32_t>(featsDType)),
+        return ge::GRAPH_PARAM_INVALID);
 
     for (int64_t i = 1; i < level; i++) {
         auto shape = context->GetInputShape(IDX_FEATURES_0 + i);
         OP_CHECK_NULL_WITH_CONTEXT(context, shape);
-        OP_CHECK_IF(shape->GetStorageShape().GetDimNum() != 4,
-                    OP_LOGE(nodeName, "features_%ld must be 4D NCHW.", i),
+        OP_CHECK_IF(shape->GetStorageShape().GetDimNum() != 4, OP_LOGE(nodeName, "features_%ld must be 4D NCHW.", i),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF(shape->GetStorageShape().GetDim(0) != nDim || shape->GetStorageShape().GetDim(1) != cDim,
                     OP_LOGE(nodeName,
                             "all feature levels must share N and C, but level %ld got N=%ld, C=%ld "
                             "while level 0 got N=%ld, C=%ld.",
-                            i, shape->GetStorageShape().GetDim(0), shape->GetStorageShape().GetDim(1),
-                            nDim, cDim),
+                            i, shape->GetStorageShape().GetDim(0), shape->GetStorageShape().GetDim(1), nDim, cDim),
                     return ge::GRAPH_PARAM_INVALID);
         auto desc = context->GetInputDesc(IDX_FEATURES_0 + i);
         OP_CHECK_NULL_WITH_CONTEXT(context, desc);
         OP_CHECK_IF(desc->GetDataType() != featsDType,
-                    OP_LOGE(nodeName, "all feature levels must share dtype, level %ld got %d vs %d.",
-                            i, static_cast<int32_t>(desc->GetDataType()),
-                            static_cast<int32_t>(featsDType)),
+                    OP_LOGE(nodeName, "all feature levels must share dtype, level %ld got %d vs %d.", i,
+                            static_cast<int32_t>(desc->GetDataType()), static_cast<int32_t>(featsDType)),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF(shape->GetStorageShape().GetDim(2) < 1 || shape->GetStorageShape().GetDim(3) < 1,
-                    OP_LOGE(nodeName, "features_%ld H/W must be positive.", i),
-                    return ge::GRAPH_PARAM_INVALID);
+                    OP_LOGE(nodeName, "features_%ld H/W must be positive.", i), return ge::GRAPH_PARAM_INVALID);
     }
 
     // ---- rois [R, 5], dtype coupled with features ----
@@ -169,27 +164,22 @@ ge::graphStatus RoiExtractorCompileInfo::ParamCheck(gert::TilingContext *context
     if (indexShape != nullptr) {
         auto indexDesc = context->GetOptionalInputDesc(IDX_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, indexDesc);
-        OP_CHECK_IF(indexDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE(nodeName, "index dtype must be int32, but got %d.",
-                            static_cast<int32_t>(indexDesc->GetDataType())),
-                    return ge::GRAPH_PARAM_INVALID);
-        OP_CHECK_IF(indexShape->GetStorageShape().GetDimNum() != 1 ||
-                        indexShape->GetStorageShape().GetDim(0) != rDim,
-                    OP_LOGE(nodeName, "index must be 1D with length R=%ld.", rDim),
-                    return ge::GRAPH_PARAM_INVALID);
+        OP_CHECK_IF(
+            indexDesc->GetDataType() != ge::DT_INT32,
+            OP_LOGE(nodeName, "index dtype must be int32, but got %d.", static_cast<int32_t>(indexDesc->GetDataType())),
+            return ge::GRAPH_PARAM_INVALID);
+        OP_CHECK_IF(indexShape->GetStorageShape().GetDimNum() != 1 || indexShape->GetStorageShape().GetDim(0) != rDim,
+                    OP_LOGE(nodeName, "index must be 1D with length R=%ld.", rDim), return ge::GRAPH_PARAM_INVALID);
     }
 
     // ---- y [R, C, pooled_h, pooled_w], dtype coupled ----
     auto yShape = context->GetOutputShape(IDX_Y);
     OP_CHECK_NULL_WITH_CONTEXT(context, yShape);
-    OP_CHECK_IF(yShape->GetStorageShape().GetDimNum() != 4 ||
-                    yShape->GetStorageShape().GetDim(0) != rDim ||
-                    yShape->GetStorageShape().GetDim(1) != cDim ||
-                    yShape->GetStorageShape().GetDim(2) != pooledH ||
+    OP_CHECK_IF(yShape->GetStorageShape().GetDimNum() != 4 || yShape->GetStorageShape().GetDim(0) != rDim ||
+                    yShape->GetStorageShape().GetDim(1) != cDim || yShape->GetStorageShape().GetDim(2) != pooledH ||
                     yShape->GetStorageShape().GetDim(3) != pooledW,
-                OP_LOGE(nodeName,
-                        "y must be [R, C, pooled_height, pooled_width] = [%ld, %ld, %ld, %ld].",
-                        rDim, cDim, pooledH, pooledW),
+                OP_LOGE(nodeName, "y must be [R, C, pooled_height, pooled_width] = [%ld, %ld, %ld, %ld].", rDim, cDim,
+                        pooledH, pooledW),
                 return ge::GRAPH_PARAM_INVALID);
     auto yDesc = context->GetOutputDesc(IDX_Y);
     OP_CHECK_NULL_WITH_CONTEXT(context, yDesc);
@@ -201,10 +191,10 @@ ge::graphStatus RoiExtractorCompileInfo::ParamCheck(gert::TilingContext *context
     // ---- spatial_scale list length >= L ----
     auto scaleList = attrs->GetListFloat(ATTR_SPATIAL_SCALE);
     OP_CHECK_NULL_WITH_CONTEXT(context, scaleList);
-    OP_CHECK_IF(static_cast<int64_t>(scaleList->GetSize()) < level,
-                OP_LOGE(nodeName, "spatial_scale length must be >= level count %ld, but got %zu.",
-                        level, scaleList->GetSize()),
-                return ge::GRAPH_PARAM_INVALID);
+    OP_CHECK_IF(
+        static_cast<int64_t>(scaleList->GetSize()) < level,
+        OP_LOGE(nodeName, "spatial_scale length must be >= level count %ld, but got %zu.", level, scaleList->GetSize()),
+        return ge::GRAPH_PARAM_INVALID);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -217,8 +207,7 @@ static ge::graphStatus RoiExtractorTilingFunc(gert::TilingContext *context)
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    OP_CHECK_IF(aivNum == 0,
-                OP_LOGE(context->GetNodeName(), "num of AIV core obtained is 0."),
+    OP_CHECK_IF(aivNum == 0, OP_LOGE(context->GetNodeName(), "num of AIV core obtained is 0."),
                 return ge::GRAPH_PARAM_INVALID);
 
     OP_CHECK_IF(context->GetWorkspaceSizes(1) == nullptr,
@@ -226,8 +215,7 @@ static ge::graphStatus RoiExtractorTilingFunc(gert::TilingContext *context)
                 return ge::GRAPH_PARAM_INVALID);
 
     auto ret = RoiExtractorCompileInfo::ParamCheck(context);
-    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS,
-                OP_LOGE(context->GetNodeName(), "RoiExtractor param check failed."),
+    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, OP_LOGE(context->GetNodeName(), "RoiExtractor param check failed."),
                 return ge::GRAPH_PARAM_INVALID);
 
     auto attrs = context->GetAttrs();
@@ -301,8 +289,8 @@ static ge::graphStatus RoiExtractorTilingFunc(gert::TilingContext *context)
     OP_LOGI(context->GetNodeName(),
             "RoiExtractor tiling completed: blockDim=%u, aivNum=%u, L=%ld, R=%ld, N=%ld, C=%ld, "
             "pooled=%ldx%ld, sampleNum=%ld, finestScale=%ld, aligned=%d, isFp16=%d, hasIndex=%d.",
-            blockDim, aivNum, level, rDim, nDim, cDim, pooledH, pooledW, sampleNum, finestScale,
-            aligned ? 1 : 0, isFp16 ? 1 : 0, hasIndex ? 1 : 0);
+            blockDim, aivNum, level, rDim, nDim, cDim, pooledH, pooledW, sampleNum, finestScale, aligned ? 1 : 0,
+            isFp16 ? 1 : 0, hasIndex ? 1 : 0);
     return ge::GRAPH_SUCCESS;
 }
 

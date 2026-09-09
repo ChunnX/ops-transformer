@@ -45,8 +45,8 @@ END_TILING_DATA_DEF
 
 REGISTER_TILING_DATA_CLASS(RoiExtractor, RoiExtractorTilingData)
 
-constexpr int64_t ROI_EXTRACTOR_MAX_LEVEL = 8;   // canndev MAX_NUM_FEATURE_MAP
-constexpr int64_t ROI_EXTRACTOR_CH_BLOCK = 64;   // kernel CH_BLOCK
+constexpr int64_t ROI_EXTRACTOR_MAX_LEVEL = 8; // canndev MAX_NUM_FEATURE_MAP
+constexpr int64_t ROI_EXTRACTOR_CH_BLOCK = 64; // kernel CH_BLOCK
 
 struct RoiExtractorCompileInfo {
     static ge::graphStatus ParamCheck(gert::TilingContext *context);
