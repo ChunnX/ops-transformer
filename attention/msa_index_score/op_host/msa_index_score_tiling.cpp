@@ -58,10 +58,10 @@ inline uint32_t RoundUpU32(uint32_t value, uint32_t align)
     return (value + align - 1) / align * align;
 }
 
-// 950 MIX：按估计 M-task 数启动 AIC，避免短 decode 打满空核（scheduler.Init GetValue / MODE4 VC 空转）。
+// MIX：按估计 M-task 数启动 AIC，避免短 decode 打满空核（scheduler.Init GetValue / MODE4 VC 空转）。
 // Host 读不到 per-request q_len。kernel TotalTasks = Σ CeilDiv(qLen_b * Hq, MSA_ROW_TILE_M)。
 // Σ ceil(x_i) <= ceil(Σ x_i) + B；B=1 时 packed == actual。B>1 用 packed+B 上界，避免少估把
-// 多 tile 请求串到已启动核上。A2/A3 仍打满 AIC。
+// 多 tile 请求串到已启动核上。多 M-tile / 大 batch 仍截到全量 AIC。
 inline uint32_t EstLaunchAic(const MsaIndexScoreInfo &info, uint32_t aicNum)
 {
     if (info.totalQ == 0U || aicNum == 0U) {
@@ -461,7 +461,7 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
     uint32_t launchAic = aicNum;
     if (info.totalQ == 0U) {
         launchAic = 1U;
-    } else if (info.isAscend950) {
+    } else {
         launchAic = EstLaunchAic(info, aicNum);
     }
 
@@ -518,18 +518,16 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
     // MIX 1AIC:2AIV：CalcTschBlockDim 的 sliceNum 按 AIV 计数，内部再 / (aiv/aic)。
     // 传入 aicNum 会再除一次得到 blockDim=aic/2，只能打一半 Cube。
     // 整 batch q_len=0：queryS==0 → BlockDim=1，避免 totalTaskNum=0。
-    // 950：sliceNum = launchAic * 2，短 decode 只起实际 M-task 对应的 MIX；
-    // 多 M-tile / 大 batch 仍打满 AIC。A2/A3 保持 sliceNum=aivNum。
+    // sliceNum = launchAic * 2：短 decode 只起实际 M-task 对应的 MIX；
+    // 多 M-tile / 大 batch 仍打满 AIC。
     if (info.totalQ == 0U) {
         context->SetBlockDim(1);
-    } else if (info.isAscend950) {
+    } else {
         uint32_t sliceAiv = launchAic * MSA_AIV_PER_AIC;
         if (sliceAiv > aivNum) {
             sliceAiv = aivNum;
         }
         context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(sliceAiv, aicNum, aivNum));
-    } else {
-        context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum));
     }
 
     size_t *workspaces = context->GetWorkspaceSizes(1);

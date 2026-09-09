@@ -53,7 +53,7 @@ bash build.sh --run_example msa_index_score eager cust --vendor_name=custom --so
 | `L1-stride-int8` | PA int8 dim0 gap=2 | 量化拷页 + stride |
 | `L0-wide-table-257` / `L1-wide-table-257-bf16` | PA `block_table` 宽 257 | 950 C2UB 256 列滑窗 flush |
 | `L0-fp8-wide-table-257` | 同上 + FP8 | score 末维 272，有效列与 fill 位 |
-| `L0-decode-q4-kv4` / `L0-decode-q4-kv4-b2` | 短 decode（Hq=4） | 950 按 M-task 启动 MIX |
+| `L0-decode-q4-kv4` / `L0-decode-q4-kv4-b2` | 短 decode（Hq=4） | 按估计 M-task 启动 MIX |
 | `L0-decode-q4-kv4-table275` | 短 decode + 宽表 275 | score 末维 288，滑窗 + `-inf` 尾 |
 | `L0-fp8-decode-q4-kv4` | 短 decode FP8 | 紧凑表 |
 | `L0-fp8-decode-q4-kv4-table275` / `q1` / `kv128` | 短 decode FP8 + 宽表 | 对齐 vLLM decode 类输入 |
