@@ -20,10 +20,10 @@ from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 class TurboQuantSparseFlashMlaOpBuilder(OpBuilder):
     def __init__(self):
         # Match the distributed torch-extension layout used by the base tree.
-        super().__init__("turbo_quant_sparse_flash_mla")
+        super().__init__("turbo_quant_sparse_flash_mla", category="attention")
 
     def sources(self):
-        return [os.path.join(os.path.dirname(__file__), "csrc/turbo_quant_sparse_flash_mla.cpp")]
+        return ["csrc/attention/turbo_quant_sparse_flash_mla.cpp"]
 
     def schema(self):
         return (
