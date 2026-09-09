@@ -50,6 +50,10 @@ QK 在 Cube 中累加为 INT32，经固定 `2^-11` DEQF16 转为 FP16，再乘�
 | `smooth_v` | bool，`False` | 量化前减去 V 均值，输出时加回 |
 | `return_lse` | bool，`False` | 返回 `(out, lse)`；LSE 为 FP32、shape `[B,Hq,Sq]` |
 
+本实现按 Ascend 950 的计算和执行模型提供接口：FP8 PV 使用 Cube 原生 FP32 累加，局部结果和持续累加的 O 均保留 FP32。先执行 FP32 MMA 再将局部结果转成 FP16，不能获得 GPU 原生 FP16 输出/累加 MMA 的吞吐收益，还会增加转换和舍入；最终 O 仍按输入 dtype 输出。
+
+Q/K 量化以 token 为独立 scale 单位。CUDA 的 per-thread/per-warp 分组依赖 lane、warp 和 MMA fragment 的映射，不能直接搬到 AscendC 的 AIV、向量寄存器和 Cube tile 上。当前接口只提供 per_token；如需复现 GPU 分组，需要另行设计分组、scale 布局与反量化映射，不能仅将参数名改成 per_thread/per_warp。
+
 支持 GQA（Hq 必须能被 Hkv 整除）、1≤D≤128、D padding、序列尾块、末维连续的 stride 输入。非因果模式支持 Sq≠Sk。LSE 包含 K smoothing 的行常数补偿。
 
 不支持任意 attention mask、dropout、varlen 和 autograd。
