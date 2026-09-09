@@ -811,7 +811,13 @@ class QuantLightningIndexerV2InputAdapter:
         batch_module = self.load_batch_consistency()
         with batch_module.CaseRandomContext(kwargs):
             data = pytest_golden.generate_qliv2_test_data(params, generate_golden=False)
-        batch_module.normalize_indexer_inputs(data, kwargs, "QLI_V2", quantized=True)
+        batch_module.normalize_indexer_inputs(
+            data,
+            kwargs,
+            "QLI_V2",
+            quantized=True,
+            hifloat8_encoder=pytest_golden.trans_float_tensor_to_hifuint8,
+        )
         for name, dst, src_name in (
             ("query", query, "query"),
             ("key", key, "key"),
