@@ -198,3 +198,21 @@ sparse_indices, sparse_values = result
 
 测试入口和转测用例说明见
 `test/quant_sparse_lightning_indexer/README.md`。
+
+
+## net Native wheel 调用
+
+DSL 实现统一维护在 `cannbot-arena-ds41/net/ops/`，三个算子通过
+`net/native_package/run-build.sh --group ds41` 编译到同一个
+`cannbot-arena-net-ops` wheel。先安装该 wheel，再构建并安装本仓的
+`cann_ops_transformer` wheel。torch_extension 仅保留 torch 注册和接口适配，
+运行时从已安装的 `ops` 包导入 host 入口，不再打包本目录的 DSL 副本。
+pytest 仍通过已安装的 torch wheel 调用 `torch.ops`。
+
+Native 包预编译范围由导出配置决定；默认覆盖已有单算子 smoke 配置，
+其他静态配置需通过 `CANNBOTDSL_DS41_PROFILES` 指定 JSON 后重新打包。
+详见 net 工程 `native_package/README.md`。
+
+2026-09-09 net 迁移 smoke：`pytest/test_quant_sparse_lightning_indexer_single.py
+-k qsli_decode` 结果 `1 passed, 9 deselected`；
+`CANNBOTDSL_NATIVE_BINARY_MODE=require` 下报告 `installed_hit=1`。

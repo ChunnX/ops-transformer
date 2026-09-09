@@ -173,7 +173,7 @@ mixed_quant_sparse_flash_mla_metadata(
 | `has_cmp_kv` | bool | True | 控制是否计入cmp侧固定负载 |
 | 返回 `metadata` | int32 Tensor `(x,)` | — | x=2*blocks；前半段起点、后半段数量 |
 
-上述取值检查与分核逻辑属于DSL单文件实现；torch_extension直接转发给同目录DSL实现，得到真实分核结果。DSL在两个topk_length所在NPU生成metadata；两者必须同形状、同设备。query长度信息若传入，派生T1必须与topk_length首维一致；未传时直接使用其首维。其他预留字段当前不解析、不校验内容，不参与分核。
+上述取值检查与分核逻辑属于DSL单文件实现；torch_extension直接转发给 net wheel 中的 `ops.mqsmla` 实现，得到真实分核结果。DSL在两个topk_length所在NPU生成metadata；两者必须同形状、同设备。query长度信息若传入，派生T1必须与topk_length首维一致；未传时直接使用其首维。其他预留字段当前不解析、不校验内容，不参与分核。
 
 `blocks`为设备Cube核数，通过`torch.npu.get_device_properties(...).cube_core_num`获取；metadata生成使用topk_length所在NPU，tiling使用`q.device`，调用方须使它们位于同一NPU。workspace容量和kernel发射核数均使用tiling查询结果。
 
@@ -228,7 +228,7 @@ byte_offset = physical_page * kv.stride(0) + (p % block_size) * row_bytes
 | :--- | :--- | :--- |
 | PyTorch API | `cann_ops_transformer.ops.ds41` | 分配输出，调用 DSL，返回 `(attn_out,softmax_lse)` |
 | torch.ops | `torch.ops.cann_ops_transformer.ds41` | 导入扩展完成注册后调用同名接口 |
-| DSL 直调 | [torch_extension/mqsmla.py](torch_extension/mqsmla.py) | 同序参数末尾增加必传 keyword `out`、`lse`；写入缓冲区，返回 None |
+| DSL 直调 | net wheel 的 `ops.mqsmla` | 同序参数末尾增加必传 keyword `out`、`lse`；写入缓冲区，返回 None |
 
 `ds41` 为与 compressor_v2 共用的实际模块名。MQSMLA 的 torch 调用为 `torch.ops.cann_ops_transformer.ds41.mixed_quant_sparse_flash_mla(...)`，metadata 同层；底层 schema 使用 `ds41.mixed_quant_sparse_flash_mla` 与 `ds41.mixed_quant_sparse_flash_mla_metadata`，与主线注册名互不冲突。下面的函数接收已按上述格式打包并置于 NPU 的输入，可用于 win-only 或 win+cmp；两侧 attention 长度均省略，使用全部 K 列：
 
@@ -351,3 +351,25 @@ bash experimental/attention/mixed_quant_sparse_flash_mla_dsl/tests/test.sh batch
 直接pytest也支持`--data-mode run/save/replay/save-run`与`--pt-dir`；默认run保持原测试行为。save模式仅执行CPU数据准备，replay模式完全以文件为用例来源。
 
 保存/回放验证：两个小用例（ORI_SPARSE连续KV、ORI_CMP_SPARSE非连续KV且开启LSE）保存2/2通过，读取保存文件后的真实NPU精度比较2/2通过。另验证了逐Tensor读写一致、回放不调用生成/golden、原子写失败保留旧文件、损坏/不兼容文件报错、跨目录和空格路径，以及默认60条用例收集。未执行完整60条NPU批跑。
+
+
+## net Native wheel 调用
+
+DSL 实现统一维护在 `cannbot-arena-ds41/net/ops/`，三个算子通过
+`net/native_package/run-build.sh --group ds41` 编译到同一个
+`cannbot-arena-net-ops` wheel。先安装该 wheel，再构建并安装本仓的
+`cann_ops_transformer` wheel。torch_extension 仅保留 torch 注册和接口适配，
+运行时从已安装的 `ops` 包导入 host 入口，不再打包本目录的 DSL 副本。
+pytest 仍通过已安装的 torch wheel 调用 `torch.ops`。
+
+Native 包预编译范围由导出配置决定；默认覆盖已有单算子 smoke 配置，
+其他静态配置需通过 `CANNBOTDSL_DS41_PROFILES` 指定 JSON 后重新打包。
+详见 net 工程 `native_package/README.md`。
+
+2026-09-09 net 迁移验证：上述默认 B=1、S2=8192、S2C=4096、K1=128、
+K2=512、连续 KV、关闭 LSE 用例通过已有 `tests/test_mqsmla.py` 精度比较。
+设置 `CANNBOTDSL_NATIVE_BINARY_MODE=require`，报告为 `installed_hit=1`，
+确认执行来自 net wheel 的预编译二进制。
+迁移同时适配 DSL 0.5.0 API，并修复 KV 两种 dtype Channel 别名的重复
+消费/加锁：统一字节槽，scale 在寄存器中按 BF16 解释。
+本次未执行全部静态配置或性能回归。
