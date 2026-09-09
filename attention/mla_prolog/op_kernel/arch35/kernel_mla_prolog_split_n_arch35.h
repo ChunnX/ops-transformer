@@ -845,7 +845,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Process()
         WaitFlag<HardEvent::FIX_M>(L0C_EVENT1);
 
         WaitFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT);
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+        CrossCoreWaitFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_VEC_CKVKR);
+#else
         CrossCoreWaitFlag(FINISH_VEC_CKVKR);
+#endif
     }
 }
 
@@ -873,12 +877,20 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
     // MatmulCkvKr ──> RmsNorm(Ckv)
     //            └──> Rope(Kr)
     // [32, 7168] * [7168, 512+64] = [32, 576]
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+    CrossCoreWaitFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE2>(FINISH_VEC_CKVKR);
+#else
     CrossCoreWaitFlag(FINISH_VEC_CKVKR);
+#endif
     MatmulSplitN<mmInputType, mmCkvKrOutputType, dequantScaleType, true>(
         mmCkvKrResGm_[aicOffset.ckvKrResOffset], tokenXGm_[tokenXOffset], weightDkvKrGm_[aicOffset.weightDkvKrOffset],
         mmCkvKrParam_, UsedBlockParams{0, baseParams_->mm2BlockNum}, scaleAGm, scaleBGmDkvKr);
     CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_CKVKR);
-    CrossCoreWaitFlag(FINISH_VEC_RMSNORM_CQ);
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+        CrossCoreWaitFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE2>(FINISH_VEC_RMSNORM_CQ);
+#else
+        CrossCoreWaitFlag(FINISH_VEC_RMSNORM_CQ);
+#endif
 
     if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
         MatmulQcQr(aicOffset);
@@ -921,7 +933,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
         CopyGlobalParams();
     }
     CopyInSinCos(tokenIndex, aivOffset.curVecToken, batchOffset, curStepBatchSize);
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+    CrossCoreWaitFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE2>(FINISH_MM_CQ);
+#else
     CrossCoreWaitFlag(FINISH_MM_CQ);
+#endif
     WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
     RmsNormCq(tokenIndex, aivOffset.rmsNormCqOffset, rmsNormCqResOffset, aivOffset.curVecToken,
               aivOffset.curBlockTokenOffset);
@@ -936,7 +952,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
                  ALIGN_BLOCK_SIZE / sizeof(float) * baseParams_->stepBatchSize);
     }
     CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_RMSNORM_CQ);
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+    CrossCoreWaitFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE2>(FINISH_MM_CKVKR);
+#else
     CrossCoreWaitFlag(FINISH_MM_CKVKR);
+#endif
     WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
     RmsNormRopeScatterCkvKr(tokenIndex, aivOffset.rmsNormCkvOffset, aivOffset.ropeKrOffset, aivOffset.curVecToken);
     CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_CKVKR);
@@ -1184,7 +1204,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQcQrSplitN(AicOffset &a
             }
         }
         if constexpr (MLAPT::enableDequantOpt) {
-            CrossCoreSetFlag<0x2, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
+            CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
         }
     }
 }
@@ -1203,7 +1223,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::PreloadQnAndSync(AicOffset &a
     }
 
     if constexpr (IsFullQuantMode<mmQcQrInputType, dequantScaleType, false>()) {
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+        CrossCoreWaitFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE2>(FINISH_VEC_DEQUANT_QC);
+#else
         CrossCoreWaitFlag(FINISH_VEC_DEQUANT_QC);
+#endif
     } else {
         WaitAllCore<SYNC_MODE_ALL_CUBE, PIPE_FIX>(FINISH_MM_ALL);
     }
@@ -1244,7 +1268,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQnSyncDynamicQuantAndMu
     for (int64_t i = 0; i < subLoopTimes; i++) {
         if constexpr (MLAPT::enableDequantOpt) {
             if (!needSparseSync || i % 2 == 0 || i == subLoopTimes - 1) {
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+                CrossCoreWaitFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE2>(FINISH_VEC_DEQUANT_QC_SPLIT_N);
+#else
                 CrossCoreWaitFlag(FINISH_VEC_DEQUANT_QC_SPLIT_N);
+#endif
             }
         }
         if (unlikely(mmQnParam_.baseK < mmQnParam_.k)) {
@@ -2172,7 +2200,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantAndRopeSplitNSyncMMQcQ
         if (colOffsetCube > oriCol) { // 当oriCol不被colCube整除时，mm最后一个base块需要刷新col end
             colOffsetCube = oriCol;
         }
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+        CrossCoreWaitFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE2>(FINISH_MM_QCQR_SPLIT_N);
+#else
         CrossCoreWaitFlag(FINISH_MM_QCQR_SPLIT_N);
+#endif
         DequantRopeSplitNDequantLoop(mmQnPreDequantOffset, mmQnPreDequantResOffset, colQc, colQr, colOffsetCube,
                                      srcStride, dstStride, inputOffset, outputOffset, totalDequantLoops, needSparseSync,
                                      colOffsetVec, dequantLoopCount);
@@ -2241,18 +2273,30 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQcAndRopeQc(AivOffset 
 {
     // 根据不同分支条件处理
     if constexpr (MLAPT::enableGroupComputeOpt) {
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+        CrossCoreWaitFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE2>(FINISH_MM_QC);
+#else
         CrossCoreWaitFlag(FINISH_MM_QC);
+#endif
         DequantQcSplitNGroupCase(aivOffset.mmQnPreDequantOffset, aivOffset.mmQnPreDequantResOffset,
                                  aivOffset.qcScaleOffsetSplitN);
         CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_DEQUANT_QC);
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+        CrossCoreWaitFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE2>(FINISH_MM_QR);
+#else
         CrossCoreWaitFlag(FINISH_MM_QR);
+#endif
         RopeQrSplitNGroupCase(aivOffset.ropeQrSplitNOffset, aivOffset.ropeQrResSplitNOffset);
     } else {
         if constexpr (MLAPT::enableDequantOpt) {
             DequantAndRopeSplitNSyncMMQcQr(aivOffset.mmQnPreDequantOffset, aivOffset.mmQnPreDequantResOffset,
                                            aivOffset.ropeQrOffset, aivOffset.ropeQrResOffset);
         } else if constexpr (IsFullQuantMode<mmQcQrInputType, dequantScaleType, true>()) {
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+            CrossCoreWaitFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE2>(FINISH_MM_QCQR);
+#else
             CrossCoreWaitFlag(FINISH_MM_QCQR);
+#endif
             WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
             DequantQc(aivOffset.mmQnPreDequantOffset, aivOffset.mmQnPreDequantResOffset, aivOffset.curVecToken,
                       aivOffset.curBlockTokenOffset);
@@ -2261,7 +2305,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQcAndRopeQc(AivOffset 
             RopeQr(aivOffset.ropeQrOffset, aivOffset.ropeQrResOffset, aivOffset.curVecToken,
                    aivOffset.curBlockTokenOffset);
         } else if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+            CrossCoreWaitFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE2>(FINISH_MM_QCQR);
+#else
             CrossCoreWaitFlag(FINISH_MM_QCQR);
+#endif
             WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
             CastQc(aivOffset.mmQnPreDequantOffset, aivOffset.mmQnPreDequantResOffset, aivOffset.curVecToken);
             WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
@@ -2269,7 +2317,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQcAndRopeQc(AivOffset 
             RopeQr(aivOffset.ropeQrOffset, aivOffset.ropeQrResOffset, aivOffset.curVecToken,
                    aivOffset.curBlockTokenOffset);
         } else {
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+            CrossCoreWaitFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE2>(FINISH_MM_QCQR);
+#else
             CrossCoreWaitFlag(FINISH_MM_QCQR);
+#endif
             WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
             RopeQr(aivOffset.ropeQrOffset, aivOffset.ropeQrResOffset, aivOffset.curVecToken,
                    aivOffset.curBlockTokenOffset);
@@ -2411,7 +2463,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DynamicQuantQnAndMulQrSyncMMQ
     SetFlag<HardEvent::V_MTE2>(MUL_QR_INPUT_COPY_READY);
     // per-head循环
     for (int64_t loopIdx = 0; loopIdx < mmQnLoops; loopIdx++) {
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
+        CrossCoreWaitFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE2>(FINISH_MM_QN_SPLIT_N);
+#else
         CrossCoreWaitFlag(FINISH_MM_QN_SPLIT_N);
+#endif
         DynamicQuantQnWithMulQr<ropeOutputType, dequantScaleQNopeType, queryOutputType>(
             dequantScaleQNopeGm_[scaleQueryNopeOffset], queryOutGm_[dynamicQuantQueryResOffset],
             qrOutGm_[qrPostProcessResOffset], mmQnResGm_[dynamicQuantQueryOffset], shareTmpUb, curStepBatchSizeVec,

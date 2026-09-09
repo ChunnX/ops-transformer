@@ -126,7 +126,7 @@ NpuArch MlaPrologTilingCheck::GetCurNpuArch() const
 bool MlaPrologTilingCheck::CheckAttrsRange() const
 {
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
-        if (GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (GetCurNpuArch() == NpuArch::DAV_3510 || GetCurNpuArch() == NpuArch::DAV_9201) {
             const std::unordered_set<uint32_t> supportedWeightQuantMode{0U, 1U, 2U, 3U, 4U, 5U};
             OP_CHECK_IF(supportedWeightQuantMode.find(*context_.weightQuantMode) == supportedWeightQuantMode.end(),
                         OP_LOGE_FOR_INVALID_VALUE(context_.opName, "WeightQuantMode",
@@ -275,7 +275,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
 
 ge::graphStatus MlaPrologTilingCheck::CheckQuantMode() const
 {
-    if (GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurNpuArch() == NpuArch::DAV_3510 || GetCurNpuArch() == NpuArch::DAV_9201) {
         const std::set<uint32_t> supportedQuantModes{
             static_cast<uint32_t>(QUANT_MODE::NO_QUANT),
             static_cast<uint32_t>(QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT),
@@ -297,7 +297,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckQuantMode() const
             supportedQuantModes.find(static_cast<uint32_t>(scenarioInfo_.quantMode_)) == supportedQuantModes.end(),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 context_.opName, "quantMode", std::to_string(static_cast<uint32_t>(scenarioInfo_.quantMode_)),
-                "On DAV3510, quantMode allows only " + ConvertContainerToStringV3(supportedQuantModes)),
+                "On DAV3510 and DAV9201, quantMode allows only " + ConvertContainerToStringV3(supportedQuantModes)),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -686,7 +686,7 @@ void MlaPrologTilingCheck::FillFullQuantParamInfo()
     expectedParamInfo_[WEIGHT_DQ_NAME].dtype = ge::DT_INT8;
     expectedParamInfo_[WEIGHT_DKV_KR_NAME].dtype = ge::DT_INT8;
 
-    if (GetCurNpuArch() == NpuArch::DAV_3510 && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+    if ((GetCurNpuArch() == NpuArch::DAV_3510 || GetCurNpuArch() == NpuArch::DAV_9201) && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FP8_FULL_QUANT)) {
             expectedParamInfo_[TOKEN_X_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
             expectedParamInfo_[WEIGHT_DQ_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
@@ -712,7 +712,7 @@ void MlaPrologTilingCheck::FillFullKVQuantParamInfo()
     expectedParamInfo_[QUERY_NAME].dtype = ge::DT_INT8;
     expectedParamInfo_[KV_CACHE_NAME].dtype = ge::DT_INT8;
     expectedParamInfo_[KV_CACHE_OUT_NAME].dtype = ge::DT_INT8;
-    if (GetCurNpuArch() == NpuArch::DAV_3510 && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+    if ((GetCurNpuArch() == NpuArch::DAV_3510 || GetCurNpuArch() == NpuArch::DAV_9201) && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FP8_FULL_QUANT)) {
             expectedParamInfo_[QUERY_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
             expectedParamInfo_[KV_CACHE_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
@@ -739,7 +739,7 @@ void MlaPrologTilingCheck::FillFullKVPertileQuantParamInfo()
     expectedParamInfo_.emplace(K_NOPE_CLIP_ALPHA_NAME, std::vector<uint32_t>{1});
     expectedParamInfo_[KV_CACHE_NAME].dtype = ge::DT_INT8;
     expectedParamInfo_[KV_CACHE_OUT_NAME].dtype = ge::DT_INT8;
-    if (GetCurNpuArch() == NpuArch::DAV_3510 && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
+    if ((GetCurNpuArch() == NpuArch::DAV_3510 || GetCurNpuArch() == NpuArch::DAV_9201) && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         if (*(context_.weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FP8_FULL_QUANT)) {
             expectedParamInfo_[KV_CACHE_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
             expectedParamInfo_[KV_CACHE_OUT_NAME].dtype = ge::DT_FLOAT8_E4M3FN;
@@ -962,7 +962,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckParamByScenario()
                         " under current configuration");
             }
             if (expectedParam.format != it.second.format) {
-                OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(
+                OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
                     context_.opName, it.first, std::string(ge::GetFormatName(it.second.format)),
                     "this parameter requires format " + std::string(ge::GetFormatName(expectedParam.format)) +
                         " under current configuration");
@@ -1069,7 +1069,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckSingleRequiredParam() const
 
 bool MlaPrologTilingCheck::CheckTokenX() const
 {
-    if (GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurNpuArch() == NpuArch::DAV_3510 || GetCurNpuArch() == NpuArch::DAV_9201) {
         return IsSingleParamValid(context_.tokenX, TOKEN_X_NAME,
                                   {ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8},
                                   {ge::FORMAT_ND, ge::FORMAT_NCHW}, {2, 3});
@@ -1081,7 +1081,7 @@ bool MlaPrologTilingCheck::CheckTokenX() const
 
 bool MlaPrologTilingCheck::CheckWDq() const
 {
-    if (GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurNpuArch() == NpuArch::DAV_3510 || GetCurNpuArch() == NpuArch::DAV_9201) {
         return IsSingleParamValid(context_.weightDq, WEIGHT_DQ_NAME,
                                   {ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8},
                                   {ge::FORMAT_FRACTAL_NZ}, {2, 4});
@@ -1093,7 +1093,7 @@ bool MlaPrologTilingCheck::CheckWDq() const
 
 bool MlaPrologTilingCheck::CheckWUqQr() const
 {
-    if (GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurNpuArch() == NpuArch::DAV_3510 || GetCurNpuArch() == NpuArch::DAV_9201) {
         return IsSingleParamValid(context_.weightUqQr, WEIGHT_UQ_QR_NAME,
                                   {ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8},
                                   {ge::FORMAT_FRACTAL_NZ}, {2, 4});
@@ -1105,7 +1105,7 @@ bool MlaPrologTilingCheck::CheckWUqQr() const
 
 bool MlaPrologTilingCheck::CheckWUk() const
 {
-    if (GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurNpuArch() == NpuArch::DAV_3510 || GetCurNpuArch() == NpuArch::DAV_9201) {
         return IsSingleParamValid(context_.weightUk, WEIGHT_UK_NAME, {ge::DT_BF16}, {ge::FORMAT_ND, ge::FORMAT_NCHW},
                                   {3});
     } else {
@@ -1116,7 +1116,7 @@ bool MlaPrologTilingCheck::CheckWUk() const
 
 bool MlaPrologTilingCheck::CheckWDkvKr() const
 {
-    if (GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurNpuArch() == NpuArch::DAV_3510 || GetCurNpuArch() == NpuArch::DAV_9201) {
         return IsSingleParamValid(context_.weightDkvKr, WEIGHT_DKV_KR_NAME,
                                   {ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8},
                                   {ge::FORMAT_FRACTAL_NZ}, {2, 4});
@@ -1175,7 +1175,7 @@ bool MlaPrologTilingCheck::CheckCacheIndex() const
 
 bool MlaPrologTilingCheck::CheckKvCache() const
 {
-    if (GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurNpuArch() == NpuArch::DAV_3510 || GetCurNpuArch() == NpuArch::DAV_9201) {
         if (!std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
             return IsSingleParamValid(context_.kvCache, KV_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8},
                                       {ge::FORMAT_ND, ge::FORMAT_NCHW}, {4});
@@ -1197,7 +1197,7 @@ bool MlaPrologTilingCheck::CheckKvCache() const
 
 bool MlaPrologTilingCheck::CheckKrCache() const
 {
-    if (GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurNpuArch() == NpuArch::DAV_3510 || GetCurNpuArch() == NpuArch::DAV_9201) {
         return IsSingleParamValid(context_.krCache, KR_CACHE_NAME, {ge::DT_BF16, ge::DT_INT8},
                                   {ge::FORMAT_ND, ge::FORMAT_NCHW}, {1, 3, 4});
     } else {
