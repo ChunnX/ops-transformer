@@ -21,15 +21,9 @@
 // 测试类：专门测试 BSASelectBlockMask 的 InferShape 逻辑
 class BSASelectBlockMaskInferShapeTest : public testing::Test {
 protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "--- BSASelectBlockMask InferShape UT SetUp ---" << std::endl;
-    }
+    static void SetUpTestCase() { std::cout << "--- BSASelectBlockMask InferShape UT SetUp ---" << std::endl; }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "--- BSASelectBlockMask InferShape UT TearDown ---" << std::endl;
-    }
+    static void TearDownTestCase() { std::cout << "--- BSASelectBlockMask InferShape UT TearDown ---" << std::endl; }
 };
 
 // ============================================================================
