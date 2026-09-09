@@ -93,6 +93,7 @@ public:
     static constexpr uint32_t L0C_PINGPONG_BUF_SIZE = L0C_HALF_BUF_SIZE / L0_STAGES;
 
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementA, fp8_e4m3fn_t>::value;
+    static constexpr bool FULL_QUANT_HIF8 = AscendC::IsSameType<ElementA, hifloat8_t>::value;
 
     __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart,
                                    Mm2L1TileHelper &mm2L1TileHelper)
@@ -335,7 +336,7 @@ public:
                 mFixPAligned = RoundUp(rowNum, 8);
             }
             uint32_t nFixPAligned8 = RoundUp(l0TileNAct, 8);
-            if constexpr (FULL_QUANT_FP8) {
+            if constexpr (FULL_QUANT_FP8 || FULL_QUANT_HIF8) {
                 CopyL0CToDst copyL0CToDstSub0;
                 CopyL0CToDst copyL0CToDstSub1;
                 uint32_t mPerSubCore = mFixPAligned / 2;

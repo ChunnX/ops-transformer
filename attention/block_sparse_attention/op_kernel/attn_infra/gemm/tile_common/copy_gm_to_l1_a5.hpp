@@ -266,6 +266,64 @@ struct TileCopyTla<Arch::AtlasA5,
     }
 };
 
+// HIF8 transposed-QK path: RowMajor Q is consumed as the nZ B operand.
+template <class LayoutSrc, class LayoutDst, class CoordSrc, class CoordDst>
+struct TileCopyTla<
+    Arch::AtlasA5, tla::Tensor<AscendC::GlobalTensor<hifloat8_t>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
+    tla::Tensor<AscendC::LocalTensor<hifloat8_t>, LayoutDst, CoordDst, AscendC::TPosition::A1>,
+    std::enable_if_t<tla::detail::isRowMajor<LayoutSrc>::value &&
+                     tla::detail::isnZ<hifloat8_t, LayoutDst>::value>> {
+    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<hifloat8_t>::value;
+
+    template <class TensorDst, class TensorSrc>
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor,
+                                      uint32_t ndNum = 1, uint32_t srcNdMatrixStride = 0,
+                                      uint32_t dstNzMatrixStride = 0)
+    {
+        AscendC::Nd2NzParams params;
+        params.ndNum = ndNum;
+        params.nValue = tla::get<0>(srcTensor.shape());
+        params.dValue = tla::get<1>(srcTensor.shape());
+        params.srcNdMatrixStride = srcNdMatrixStride;
+        params.srcDValue = tla::get<0>(srcTensor.stride());
+        params.dstNzC0Stride = tla::get<0, 1>(dstTensor.stride()) / ELE_NUM_PER_C0;
+        params.dstNzNStride = tla::get<1, 0>(dstTensor.stride()) / ELE_NUM_PER_C0;
+        params.dstNzMatrixStride = dstNzMatrixStride;
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+        AscendC::DataCopy(dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], params);
+    }
+};
+
+// HIF8 sparse K path: ColumnMajor K is consumed as the zN A operand.
+template <class LayoutSrc, class LayoutDst, class CoordSrc, class CoordDst>
+struct TileCopyTla<
+    Arch::AtlasA5, tla::Tensor<AscendC::GlobalTensor<hifloat8_t>, LayoutSrc, CoordSrc, AscendC::TPosition::GM>,
+    tla::Tensor<AscendC::LocalTensor<hifloat8_t>, LayoutDst, CoordDst, AscendC::TPosition::A1>,
+    std::enable_if_t<tla::detail::isColumnMajor<LayoutSrc>::value &&
+                     tla::detail::iszN<hifloat8_t, LayoutDst>::value>> {
+    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<hifloat8_t>::value;
+
+    template <class TensorDst, class TensorSrc>
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor,
+                                      uint32_t ndNum = 1, uint32_t srcNdMatrixStride = 0,
+                                      uint32_t dstNzMatrixStride = 0)
+    {
+        AscendC::Nd2NzParams params;
+        params.ndNum = ndNum;
+        params.nValue = tla::get<1>(srcTensor.shape());
+        params.dValue = tla::get<0>(srcTensor.shape());
+        params.srcNdMatrixStride = srcNdMatrixStride;
+        params.srcDValue = tla::get<1>(srcTensor.stride());
+        params.dstNzC0Stride = tla::get<1, 1>(dstTensor.stride()) / ELE_NUM_PER_C0;
+        params.dstNzNStride = tla::get<0, 0>(dstTensor.stride()) / ELE_NUM_PER_C0;
+        params.dstNzMatrixStride = dstNzMatrixStride;
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+        AscendC::DataCopy(dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], params);
+    }
+};
+
 } // namespace NpuArch::Gemm::Tile
 
 #endif // GEMM_TILE_COPY_GM_TO_L1_A5_HPP

@@ -32,7 +32,6 @@ constexpr int NUM_64 = 64;
 // mxfp4 默认 dstTypeMax:CX 方案 dstTypeMax=0 时默认 log2(6.0),OCP 方案固定 2.0
 constexpr float MXFP4_DEFAULT_DST_TYPE_MAX_LOG2 = 2.584962500721156f;
 constexpr float MXFP4_OCP_DST_TYPE_MAX = 2.0f;
-constexpr float HIF8_DEFAULT_P_SCALE = 16.0f;
 
 constexpr int DIM_0 = 0;
 constexpr int DIM_1 = 1;
@@ -1032,10 +1031,6 @@ ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
             ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
-        // 动态 pQuantScale Tensor 的数值留给 device 读取并计算 ln；空指针使用 host 预计算的 ln(16)。
-        if (pQuantScaleTensor == nullptr) {
-            defaultLnPScale_ = std::log(HIF8_DEFAULT_P_SCALE);
-        }
     } else if (pQuantScaleTensor != nullptr) {
         OP_LOGE(bsaContext->GetNodeName(), "pQuantScale must be nullptr unless quantMode is 5.");
         return ge::GRAPH_FAILED;
@@ -1498,7 +1493,6 @@ ge::graphStatus BSATiling::FillTilingData(gert::TilingContext *bsaContext)
     // V3 新增:填充量化参数
     tilingData_->set_log2Cx(log2Cx_);
     tilingData_->set_log2CxCeil(log2CxCeil_);
-    tilingData_->set_defaultLnPScale(defaultLnPScale_);
     // fill 950 mask2idx tile info
     tilingData_->BsaMask2IdxTileInfo.set_xBlockNumAligned(xBlockNumAligned_);
     tilingData_->BsaMask2IdxTileInfo.set_yBlockNumAligned(yBlockNumAligned_);

@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_ARCH35_REG_HIGH_PREC_S_TRANS_HPP
-#define EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_ARCH35_REG_HIGH_PREC_S_TRANS_HPP
+#ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_ARCH35_REG_HIGH_PREC_S_TRANS_HIF8_HPP
+#define EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_ARCH35_REG_HIGH_PREC_S_TRANS_HIF8_HPP
 
 #include "../../../attn_infra/bsa_base_defs.hpp"
 #include "../../../attn_infra/arch/bsa_resource.hpp"
@@ -23,19 +23,19 @@
 
 namespace NpuArch::Epilogue::Block {
 
-template <class OutputType_, class LayoutS_>
+template <class LayoutP_, class LayoutS_>
 class BlockEpilogue<
     // S is transposed, has shape [kvSTile, qSTile], softmax is done columnwise
     // P would be rearranged from [kvSTile, qSTile] to zN,
     // which can be viewed as from [qSTile, kvSTile] to nZ
-    EpilogueOnlineSoftmaxBsa<true>, OutputType_, Gemm::GemmType<float, LayoutS_>> {
+    EpilogueOnlineSoftmaxBsa<true>, Gemm::GemmType<hifloat8_t, LayoutP_>, Gemm::GemmType<float, LayoutS_>> {
 public:
     using DispatchPolicy = EpilogueOnlineSoftmaxBsa<true>;
     using ArchTag = typename DispatchPolicy::ArchTag;
-    using ElementOutput = typename OutputType_::Element;
+    using ElementOutput = hifloat8_t;
     using ElementInput = float;
 
-    using LayoutOutput = typename OutputType_::Layout;
+    using LayoutOutput = LayoutP_;
     using LayoutInput = LayoutS_;
 
     static constexpr uint32_t C0_NUM_PER_FRACTAL = 16;
@@ -43,7 +43,6 @@ public:
 
     static constexpr uint32_t UB_S_P_BUF_STAGES = 2;
     static constexpr uint32_t UB_DM_BUF_MAX_STAGES = 3;
-
     static constexpr ElementInput MIN_VALUE = -3.389531390315715675e+38f;
 
     __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_,
