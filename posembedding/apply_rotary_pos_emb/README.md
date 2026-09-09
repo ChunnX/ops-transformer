@@ -177,3 +177,4 @@
 |--------------|------------------------------------------------------------------------|----------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_apply_rotary_pos_emb.cpp](examples/test_aclnn_apply_rotary_pos_emb.cpp) | 通过[aclnnApplyRotaryPosEmb](./docs/aclnnApplyRotaryPosEmb.md)接口方式调用ApplyRotaryPosEmb算子。    |
 | aclnn调用 | [test_aclnn_apply_rotary_pos_emb_v2.cpp](examples/test_aclnn_apply_rotary_pos_emb_v2.cpp) | 通过[aclnnApplyRotaryPosEmbV2](./docs/aclnnApplyRotaryPosEmbV2.md)接口方式调用ApplyRotaryPosEmb算子。    |
+| PyTorch API | - | 通过[apply_rotary_pos_emb](../../posembedding/apply_rotary_pos_emb/docs/torchapi_apply_rotary_pos_emb.md)接口调用apply_rotary_pos_emb算子。 |
