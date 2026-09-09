@@ -141,7 +141,7 @@ public:
             cubeBlock_.InitBlock(query, key, value, blockTable);
         }
         if ASCEND_IS_AIV {
-            vecFaBlock_.InitBlock(attenMask, learnableSink, softmaxLse, attentionOut, workspace);
+            vecFaBlock_.InitBlock(attenMask, learnableSink, softmaxLse, attentionOut, workspace, query);
             vecFaBlock_.ClearOutput();
             if (constInfo_.enableFlashDecode) {
                 fdMetaDataGm_.SetGlobalBuffer(
