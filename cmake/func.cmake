@@ -555,6 +555,10 @@ function(add_ops_src_copy)
             get_filename_component(_ROOT_OPS_SRC_DIR    "${SRC_COPY_DST}" DIRECTORY)
             set(OPS_UTILS_INC_KERNEL_DIR ${_ROOT_OPS_SRC_DIR}/ascendc/common)
             set(UTILS_COPY_STAMP "${OPS_UTILS_INC_KERNEL_DIR}/.utils_copy.stamp")
+            # Extend the pinned upstream QGMM concat entry for MegaMoe's NZ weights and
+            # full-tile UB/GM output. Patch the build copy, leaving the dependency checkout intact.
+            find_program(OPS_PATCH_EXECUTABLE patch REQUIRED)
+            set(OPS_QGMM_CONCAT_PATCH "${PROJECT_SOURCE_DIR}/cmake/third_party/ops_tensor_qgmm_concat.patch")
             file(GLOB_RECURSE UTILS_FILES CONFIGURE_DEPENDS
                 ${OPS_ADV_UTILS_KERNEL_INC}/*
                 ${OPS_CGMCT}/*
@@ -574,12 +578,14 @@ function(add_ops_src_copy)
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_GMM_COMMON_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${CATLASS}/include ${OPS_UTILS_INC_KERNEL_DIR}/catlass/include
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${BLAZE} ${OPS_UTILS_INC_KERNEL_DIR}/blaze
+                COMMAND ${OPS_PATCH_EXECUTABLE} --batch --forward -p1
+                    -d ${OPS_UTILS_INC_KERNEL_DIR} -i ${OPS_QGMM_CONCAT_PATCH}
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/impl/tensor_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/impl/tensor_api
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/include/tensor_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/include/tensor_api
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/impl/c_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/impl/c_api
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/include/c_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/include/c_api
                 COMMAND ${CMAKE_COMMAND} -E touch ${UTILS_COPY_STAMP}
-                DEPENDS ${UTILS_FILES}
+                DEPENDS ${UTILS_FILES} ${OPS_QGMM_CONCAT_PATCH}
                 VERBATIM
             )
 
