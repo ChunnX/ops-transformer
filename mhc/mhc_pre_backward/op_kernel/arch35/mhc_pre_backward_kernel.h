@@ -303,14 +303,12 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
         globalUbOffset_ = 0;
         vecDealBSPeCore_ = totalLength_ / vecCoreNum_;
         if (vecDealBSPeCore_ == 0) {
-            vecDealBSPeCore_ = totalLength_;
-            usedVecCoreNum_ = 1;
-        } else {
-            vecDealBSPeCore_ =
-                MhcPreBackwardUtils::CeilAlign(vecDealBSPeCore_, static_cast<uint64_t>(CEIL_ALIGN_16));
-            uint64_t usedVecCoreNum = CeilDiv(totalLength_, vecDealBSPeCore_);
-            usedVecCoreNum_ = usedVecCoreNum > vecCoreNum_ ? vecCoreNum_ : static_cast<uint32_t>(usedVecCoreNum);
+            vecDealBSPeCore_ = 1;
         }
+        vecDealBSPeCore_ =
+            MhcPreBackwardUtils::CeilAlign(vecDealBSPeCore_, static_cast<uint64_t>(CEIL_ALIGN_16));
+        uint64_t usedVecCoreNum = CeilDiv(totalLength_, vecDealBSPeCore_);
+        usedVecCoreNum_ = usedVecCoreNum > vecCoreNum_ ? vecCoreNum_ : static_cast<uint32_t>(usedVecCoreNum);
         dealStartBS_ = vecDealBSPeCore_ * blockIdx_;
         dealEndBS_ = dealStartBS_ + vecDealBSPeCore_;
         if (dealEndBS_ > totalLength_ || blockIdx_ == usedVecCoreNum_ - 1) {
