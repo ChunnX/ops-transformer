@@ -700,6 +700,12 @@ static ge::graphStatus CheckAndSetQuantOutDtypes(const gert::TilingContext *cont
     auto sharedQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>(config.attrSharedExpertQuantOutDtypeIndex);
     ge::DataType sharedQuantOutDtype = static_cast<ge::DataType>(*sharedQuantOutDtypePtr);
     bool hasExplicitSharedQuantDtype = sharedQuantOutDtype != ge::DT_UNDEFINED;
+    // 预量化 x 只携带一份已定型的 data/scale，不能再为共享专家选择另一种量化类型。
+    OP_TILING_CHECK(isPreQuantizedX && hasExplicitSharedQuantDtype,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "shared_expert_quant_out_dtype",
+                                              std::to_string(*sharedQuantOutDtypePtr).c_str(),
+                                              "DT_UNDEFINED for pre-quantized x; its dtype is inferred from x"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(hasExplicitSharedQuantDtype && !IsSupportedExpertQuantDtype(sharedQuantOutDtype),
                     OP_LOGE_WITH_INVALID_ATTR(nodeName, "shared_expert_quant_out_dtype",
                                               std::to_string(*sharedQuantOutDtypePtr).c_str(),
