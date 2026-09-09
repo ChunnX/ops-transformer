@@ -44,7 +44,7 @@ using namespace AscendC;
     } while (0)
 
 template <int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int SPLIT_G, int QUANT_MODE, int KV_DTYPE,
-          int BATCH_CONSISTENCY, int IS_VEC_S2PHYADDR, int HIGH_PERF>
+          int BATCH_CONSISTENCY, int IS_VEC_S2PHYADDR, int HIGH_PERF, int IS_TOPK_OFFSET_MODE>
 __global__ __aicore__ void mixed_quant_sparse_flash_mla(
     __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *oriSparseIndices,
     __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
@@ -55,18 +55,22 @@ __global__ __aicore__ void mixed_quant_sparse_flash_mla(
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
+    constexpr TopkValueMode topkValueMode = IS_TOPK_OFFSET_MODE ? TopkValueMode::TOPK_OFFSET_MODE
+                                                                : TopkValueMode::TOPK_INDEX_MODE;
 
     if constexpr (KV_DTYPE == DTYPE_FP8_E4M3FN) {
         QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaCsa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
                       fp8_e4m3fn_t, float, bfloat16_t, FLASH_DECODE, KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND,
                       static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
                       static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G,
-                      static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE), BATCH_CONSISTENCY, IS_VEC_S2PHYADDR, HIGH_PERF);
+                      static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE), BATCH_CONSISTENCY, IS_VEC_S2PHYADDR, HIGH_PERF,
+                      topkValueMode);
     } else {
         QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaCsa, MixedQuantSparseFlashMlaTilingData, bfloat16_t, hifloat8_t,
                       float, bfloat16_t, FLASH_DECODE, KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND,
                       static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
                       static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G,
-                      static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE), BATCH_CONSISTENCY, IS_VEC_S2PHYADDR, HIGH_PERF);
+                      static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE), BATCH_CONSISTENCY, IS_VEC_S2PHYADDR, HIGH_PERF,
+                      topkValueMode);
     }
 }
