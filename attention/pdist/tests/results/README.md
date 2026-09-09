@@ -36,7 +36,7 @@
 ```bash
 source $ASCEND_CANN_PACKAGE_PATH/bin/setenv.bash
 export ASCEND_CUSTOM_OPP_PATH=<vendor 包路径>          # kernel/geir 必需
-export LD_LIBRARY_PATH=<vendor>/op_api/lib:$LD_LIBRARY_PATH  # aclnn 需追加
+# aclnn 入口为 CANN 内置 libopapi.so（setenv 后默认可见），无需追加 vendor op_api/lib
 cd ops-test-kit
 python3 -m ttk kernel -i <csv> --plugin <assets>       # kernel
 python3 -m ttk aclnn  -i <csv> --plugin <assets>       # aclnn

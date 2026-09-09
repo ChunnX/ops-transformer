@@ -29,7 +29,11 @@ at::Tensor pdist(const at::Tensor &x, double p)
         y = at::empty({outLen}, x.options());
     }
 
-    ACLNN_CMD(aclnnPdist, x, p, y);
+    // The built-in CANN aclnnPdist takes p as float; ACLNN_CMD forwards args verbatim
+    // (no implicit narrowing through the runtime-typed call), so narrow explicitly here.
+    // All supported p values (0, 0.5, 1, 2, inf, ...) are exactly representable in fp32.
+    const float pFp32 = static_cast<float>(p);
+    ACLNN_CMD(aclnnPdist, x, pFp32, y);
     return y;
 }
 

@@ -16,8 +16,9 @@ require_pypto_pro(pdist)
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
-    # aclnn_exclude: the hand-written op_api/ layer replaces the autogen aclnn_pdist.cpp, so the def
-    # joins op_host_aclnnExc (autogen only generates for defs listed in op_host_aclnn).
+    # aclnn_exclude: the def joins op_host_aclnnExc so the exc channel (OPS_ACLNN_GEN=0) still
+    # generates the vendor proto (op_proto/inc/pdist_proto.h + es registration); the aclnn entry
+    # itself is the built-in CANN aclnnPdist (libopapi.so) — no autogen and no hand-written op_api.
     target_sources(op_host_aclnnExc PRIVATE
     pdist_def.cpp
     )
@@ -53,13 +54,9 @@ else()
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(
-        # op_api 与 op_host 同级：手写两段式 aclnn 实现（aclnn_exclude：不参与 autogen 生成）
-        OP_API_INDEPENDENT ON
-        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
-        OPTYPE pdist
-        ACLNNTYPE aclnn_exclude
-    )
+    # aclnn 入口复用 CANN 内置 aclnnPdist（libopapi.so），本仓已删除手写 op_api；
+    # 旧结构路径下 op_host/op_api 不存在，opapi 源自动走 stub，仅注册 def/tiling/infershape。
+    add_modules_sources(OPTYPE pdist ACLNNTYPE aclnn_exclude)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)

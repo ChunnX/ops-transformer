@@ -25,7 +25,24 @@
 #include <limits>
 #include "securec.h"
 #include "acl/acl.h"
-#include "aclnnop/aclnn_pdist.h"
+#include "aclnn/aclnn_base.h"
+
+// aclnnPdist is provided by the built-in CANN libopapi.so; the CANN installs used here ship no
+// aclnnop/aclnn_pdist.h, so the two-stage entries are declared inline, matching the built-in
+// prototype exactly (note: p is float, out is non-const).
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+aclnnStatus aclnnPdistGetWorkspaceSize(const aclTensor *x, float p, aclTensor *out,
+                                       uint64_t *workspaceSize, aclOpExecutor **executor);
+
+aclnnStatus aclnnPdist(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                       aclrtStream stream);
+
+#ifdef __cplusplus
+}
+#endif
 
 #define CHECK_RET(cond, return_expr) \
     do { \

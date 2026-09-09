@@ -42,8 +42,19 @@
 #include "ge_api.h"
 #include "array_ops.h"
 #include "ge_ir_build.h"
+#include "graph/operator_reg.h"
+#include "graph/types.h"
 
-#include "../op_graph/pdist_proto.h"
+// Local GE IR registration for Pdist (the hand-written op_graph/pdist_proto.h was removed;
+// the built-in libopsproto.so already registers ge::op::Pdist, but ships no public proto
+// header, so the registration is inlined here for standalone compilation).
+namespace ge {
+REG_OP(Pdist)
+    .INPUT(x, TensorType({DT_FLOAT, DT_FLOAT16}))
+    .OUTPUT(y, TensorType({DT_FLOAT, DT_FLOAT16}))
+    .ATTR(p, Float, 2.0)
+    .OP_END_FACTORY_REG(Pdist)
+} // namespace ge
 
 #define FAILED -1
 #define SUCCESS 0

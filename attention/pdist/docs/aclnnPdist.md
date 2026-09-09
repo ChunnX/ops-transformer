@@ -25,6 +25,8 @@
 
 - 接口功能：Pdist算子计算行向量两两之间的p-范数距离，输出为上三角行优先的一维向量，等价于 `torch.nn.functional.pdist`。
 
+  两段式 aclnn 入口直接复用 CANN 内置 `aclnnPdist`（libopapi.so，本仓不再提供手写 op_api 实现与 `aclnnop/aclnn_pdist.h` 头文件）；本仓 vendor 包仅提供算子注册、tiling 与预编译二进制，覆盖内置实现的 dispatch。参数校验行为以内置实现为准（下述错误码表沿用本仓 kernel 合同的语义约束，供参考）。
+
   主要计算过程为：
   1. 按上三角行优先顺序枚举行对 (i, j)，0 ≤ i < j ≤ N-1。
   2. 逐维计算绝对差 d_k = |x_i,k − x_j,k|。
@@ -41,11 +43,13 @@
 
 算子执行接口为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnPdistGetWorkspaceSize"接口获取入参并根据计算流程计算所需 workspace 大小，再调用"aclnnPdist"接口执行计算。
 
+注意：与标准 aclnn 约定不同，内置 `aclnnPdist` 的范数阶参数 `p` 为 **float**（非 double），调用方传 double 会导致 ABI 不匹配（p 被读取为错误位模式）；torch_extension 侧已在 csrc 中显式窄化。
+
 ```c++
 aclnnStatus aclnnPdistGetWorkspaceSize(
     const aclTensor  *x,
-    double            p,
-    const aclTensor  *out,
+    float             p,
+    aclTensor        *out,
     uint64_t         *workspaceSize,
     aclOpExecutor   **executor);
 ```
@@ -96,7 +100,7 @@ aclnnStatus aclnnPdist(
       <td>×</td>
      </tr>
      <tr>
-      <td>p（double）</td>
+      <td>p（float）</td>
       <td>输入</td>
       <td>范数阶。</td>
       <td><ul><li>p≥0或+inf，默认2.0。</li><li>p=0：统计不相等维度数（NaN维度计为不相等）。</li><li>p=+inf：最大绝对差。</li><li>0<p<inf：幂和的1/p次方。</li><li>p<0或NaN报参数错误。</li></ul></td>
@@ -281,7 +285,22 @@ aclnnStatus aclnnPdist(
 #include <cmath>
 #include "securec.h"
 #include "acl/acl.h"
-#include "aclnnop/aclnn_pdist.h"
+#include "aclnn/aclnn_base.h"
+
+// aclnnPdist 由 CANN 内置 libopapi.so 提供；本仓不提供 aclnnop/aclnn_pdist.h，
+// 编译环境无该头文件时可直接声明两段式入口（注意 p 为 float）。
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+aclnnStatus aclnnPdistGetWorkspaceSize(const aclTensor *x, float p, aclTensor *out,
+                                       uint64_t *workspaceSize, aclOpExecutor **executor);
+aclnnStatus aclnnPdist(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                       aclrtStream stream);
+
+#ifdef __cplusplus
+}
+#endif
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \
