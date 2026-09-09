@@ -252,7 +252,6 @@ def ffn_to_attention(
         actual_token_num (Tensor): Actual token count to send, shape (1,), dtype int64.
         attn_rank_table (Tensor, optional): Maps attention worker id to rank id,
             shape (attnRankNum,), dtype int32. If None, worker id == rank id.
-
     Returns:
         None. Data is sent to peer ranks via the HCCL window; no host-visible output.
     """

@@ -47,7 +47,6 @@ void NpuFFNToAttention(const at::Tensor &context, const at::Tensor &x, const at:
     TORCH_CHECK((tokenIds.scalar_type() == at::kInt), "dtype of tokenIds should be int32.");
     TORCH_CHECK((expertOffsets.scalar_type() == at::kInt), "dtype of expertOffsets should be int32.");
     TORCH_CHECK((actualTokenNum.scalar_type() == at::kLong), "dtype of actualTokenNum should be int64.");
-
     // Set DeviceGuard on x (the first input tensor that lives on NPU)
     auto localDevice = c10::Device(x.device());
     const c10::OptionalDeviceGuard deviceGuard(localDevice);
