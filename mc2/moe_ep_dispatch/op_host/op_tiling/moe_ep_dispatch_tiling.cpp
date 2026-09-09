@@ -572,10 +572,14 @@ static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, cons
     uint32_t scalesSizeAlign32 = isXFp8 ? ((info.scalesBytes + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN : 0;
     info.perSlotBytes =
         ((hAlign32 + scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN + WIN_ADDR_ALIGN - 1) /
-         WIN_ADDR_ALIGN) *
-        WIN_ADDR_ALIGN;
+         WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    // stash 的元数据 slot：scales + topk + topkWeights + pad（不含 hidden）。
+    // 与共享布局 dispatchMetaPerSlotBytes 严格同构（窗口预留=步长基准），
+    // 且 ≤ perSlotBytes - hAlign32（远端槽 meta 区容量），WQE2 整槽搬运贴合不越界
+    info.metaSlotBytes = scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN;
     info.isTopkWeights = (context->GetOptionalInputShape(TOPK_WEIGHTS_INDEX) != nullptr) ? 1 : 0;
-    OP_LOGD(nodeName, "perSlotBytes = %u (hidden=%u)", info.perSlotBytes, info.cfg.hidden);
+    OP_LOGD(nodeName, "perSlotBytes = %u(hidden=%u), metaSlotBytes = %u", info.perSlotBytes, info.cfg.hidden,
+            info.metaSlotBytes);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -734,16 +738,30 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
     uint64_t aivNum = static_cast<uint64_t>(info.aivNum);
     uint64_t superNodeCount = static_cast<uint64_t>(info.hybrid.serverNum);
+    uint64_t numTokens = static_cast<uint64_t>(info.cfg.numTokens);
 
-    // counter 区: 两边都按每核一份, 多核并行写
-    uint64_t counterBytes = aivNum * AlignUpWin(epWorldSize * sizeof(int32_t));
+    // counter 区: [aivNum][epAlignWin] 布局，每核写自己的行，独占 cache line
+    uint64_t epAlignWinBytes = AlignUpWin(epWorldSize * sizeof(int32_t));
+    uint64_t counterBytes = aivNum * epAlignWinBytes;
+
+    // sendCntPerRank区
+    uint64_t sendCntPerRankBytes = epAlignWinBytes;
+
     // sendCntPerExpert 区: 两边一致
     uint64_t sendCntPerExpertBytes = AlignUpWin(moeExpertNumPerRank * epWorldSize * sizeof(int32_t));
 
-    // sendCntPerRank 按 512B/rank 对齐，前 8B 保存 state 和 dstRankRecvNum。
-    uint64_t sendCntPerRankBytes = epWorldSize * WIN_ADDR_ALIGN;
+    // dstRank 区 [BS][K]
+    uint64_t dstRankInfoBytes = AlignUpWin(numTokens * info.cfg.topK * sizeof(int16_t));
+
+    // tokenHit 发送列表区 [ep][bsAlign]：统一存 tokenId(int32)，
+    uint64_t srcTokenListBytes = AlignUpWin(numTokens * sizeof(int32_t));
+    uint64_t srcTokenTableBytes = epWorldSize * srcTokenListBytes;
 
     uint64_t sendCntBytes = counterBytes + sendCntPerRankBytes + sendCntPerExpertBytes;
+    info.workspace.dstRankInfoOffset = sendCntBytes;
+    info.workspace.srcTokenTableOffset = sendCntBytes + dstRankInfoBytes;
+    info.workspace.srcTokenListBytes = srcTokenListBytes;
+
     // scaleout counter 与 scaleup counter 一样按每 AIV 一份，SendPhase 用它做 slot prefix。
     uint64_t scaleoutCounterBytes =
         (info.networkMode == NETWORK_HYBRID) ? aivNum * AlignUpWin(superNodeCount * sizeof(int32_t)) : 0UL;
@@ -764,7 +782,7 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     info.workspace.routeWorkspaceOffset = 0UL;
     info.workspace.scaleoutSendEntryOffset = 0UL;
     info.workspace.scaleupSendEntryOffset = 0UL;
-    return SYSTEM_NEED_WORKSPACE + sendCntBytes + globalABytes;
+    return SYSTEM_NEED_WORKSPACE + sendCntBytes + dstRankInfoBytes + srcTokenTableBytes + globalABytes;
 }
 
 static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *context, MoeEpDispatchInfo &info,
@@ -789,6 +807,7 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     info.dispatchNotifyCount = layout.dispatchNotifyCount;
     info.window.cntWinStateOffset = layout.cntWinStateOffset;
     info.window.slotWinStateOffset = layout.slotWinStateOffset;
+    info.window.payloadWinStateOffset = layout.payloadWinStateOffset;
     info.window.winDataOffset = layout.winDataOffset;
     info.window.scaleoutRecvDataOffset = layout.scaleoutRecvDataOffset;
     info.window.scaleoutRecvStatusOffset = layout.scaleoutRecvStatusOffset;
