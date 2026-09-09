@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-source /usr/local/Ascend/cann-9.2.0/set_env.sh
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-PYTHON=/home/x00949573/.conda/envs/xwr/bin/python
+PYTHON=${PYTHON:-python3}
+PYTHON_SITE=$($PYTHON -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')
+export PYTHONPATH="$PYTHON_SITE${PYTHONPATH:+:$PYTHONPATH}"
 
 COMMAND=${1:-help}
 shift || true

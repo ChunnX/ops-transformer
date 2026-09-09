@@ -16,8 +16,10 @@ from qsli_test_utils import generate_qsli_test_data
 def _value(value):
     if pd.isna(value):
         return None
-    if isinstance(value, str) and value.strip() in ("True", "False", "None"):
-        return ast.literal_eval(value.strip())
+    if isinstance(value, str):
+        text = value.strip()
+        if text in ("True", "False", "None") or text.startswith(("[", "(", "{")):
+            return ast.literal_eval(text)
     return value
 
 
@@ -29,9 +31,16 @@ def main():
     args = parser.parse_args()
     frame = pd.read_excel(args.excel_path, sheet_name=args.sheet)
     required = [
-        "Testcase_Name", "batch_size", "query_length", "sequence_length",
-        "cmp_ratio", "storage_mode", "mask_mode", "topk",
-        "candidate_block_length", "output_idx_offset", "seed",
+        "Testcase_Name", "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size",
+        "q_head_num", "k_head_num", "head_dim", "block_size", "block_num",
+        "qk_dtype", "weight_dtype", "dequant_dtype", "actual_seq_dtype",
+        "cu_seqlens_q", "cu_seqlens_k", "seqused_q", "seqused_k",
+        "cmp_residual_k", "max_seqlen_q", "quant_mode", "layout_query",
+        "layout_key", "sparse_count", "sparse_mode", "query_datarange",
+        "key_datarange", "weights_datarange", "q_scale_datarange",
+        "k_scale_datarange", "cmp_ratio", "return_value", "output_idx_offset",
+        "candidate_block_indices", "candidate_block_length", "candidate_block_size",
+        "block_table", "storage_layout", "seed",
     ]
     missing = [name for name in required if name not in frame.columns]
     if missing:
