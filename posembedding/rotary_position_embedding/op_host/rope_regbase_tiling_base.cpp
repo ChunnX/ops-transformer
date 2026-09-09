@@ -18,6 +18,7 @@
 #include "op_host/tiling_base.h"
 #include "platform/platform_info.h"
 #include "rotary_position_embedding_tiling.h"
+#include "rope_tiling_log_utils.h"
 #include "log/log.h"
 
 namespace {
@@ -40,6 +41,8 @@ static const std::vector<std::string> inputNames = {"x", "cos", "sin", "rotate"}
 } // namespace
 
 namespace optiling {
+
+using rope_log::ShapeValue;
 using namespace Ops::Base;
 ge::graphStatus RopeRegBaseTilingClass::GetPlatformInfo()
 {
@@ -84,7 +87,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckShapeAllPositive(const int64_t idx)
         if (shape.GetDim(i) <= 0) {
             std::string reasonMsg = "The shape of input " + inputNames[idx] +
                                     " can not be an empty tensor or an invalid tensor with a negative dimension";
-            std::string shapeStr = ToString(shape);
+            std::string shapeStr = ShapeValue(shape);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), inputNames[idx].c_str(), shapeStr.c_str(),
                                                   reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -118,7 +121,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckShapeAllPositive() const
         if (yShape.GetDim(i) <= 0) {
             std::string reasonMsg = "The shape of output y can not be an empty tensor "
                                     "or an invalid tensor with a negative dimension";
-            std::string yShapeStr = ToString(yShape);
+            std::string yShapeStr = ShapeValue(yShape);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "y", yShapeStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
@@ -168,7 +171,7 @@ ge::graphStatus RopeRegBaseTilingClass::JudgeLayoutByShape(const gert::Shape &xS
         is1snd_ = true;
     } else {
         std::string shapeMsg = ToString(cosShape) + " and " + ToString(xShape);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
             context_->GetNodeName(), "cos and x", shapeMsg.c_str(),
             "Each axis of input cos except the last must be 1 or equal to the same axis of input x");
         return ge::GRAPH_FAILED;
@@ -280,7 +283,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckRotaryModeShapeRelation(const int64
     if (d > D_LIMIT) {
         std::string reasonMsg = "The D axis of input x can not be greater than " + std::to_string(D_LIMIT) +
                                 ", where D refers to the last dim";
-        std::string xShapeStr = ToString(xShape);
+        std::string xShapeStr = ShapeValue(xShape);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x", xShapeStr.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
@@ -291,7 +294,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckRotaryModeShapeRelation(const int64
                                     std::to_string(HALF_INTERLEAVE_MODE_COEF) +
                                     " when the attribute mode is half, interleave or interleave-half, "
                                     "where D refers to the last dim";
-            std::string xShapeStr = ToString(xShape);
+            std::string xShapeStr = ShapeValue(xShape);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x", xShapeStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
@@ -300,7 +303,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckRotaryModeShapeRelation(const int64
             std::string reasonMsg = "The D axis of input x should be divisible by " +
                                     std::to_string(QUARTER_MODE_COEF) +
                                     " when the attr mode is quarter, where D refers to the last dim";
-            std::string xShapeStr = ToString(xShape);
+            std::string xShapeStr = ShapeValue(xShape);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x", xShapeStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
