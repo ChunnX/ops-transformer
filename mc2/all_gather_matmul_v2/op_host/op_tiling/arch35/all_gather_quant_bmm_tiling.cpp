@@ -591,8 +591,8 @@ void AllGatherQuantBmmTiling::BuildWorkspaceLayout()
 
 #if MC2_DFX_ENABLE
     workspaceLayout_.segments[idx++] = {
-        offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE, static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
-    offset += Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+        offset, Mc2Tiling::STATE_DUMP_TOTAL_SIZE, static_cast<uint8_t>(Mc2Tiling::WS_SEG_STATE_DUMP), {}};
+    offset += Mc2Tiling::STATE_DUMP_TOTAL_SIZE;
 #endif
 
     workspaceLayout_.totalSize = offset;

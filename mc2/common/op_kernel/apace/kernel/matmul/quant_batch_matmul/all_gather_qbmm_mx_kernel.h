@@ -46,7 +46,12 @@ enum RegionTag {
     TAIL
 };
 
-template <typename AType, typename BType, typename CType>
+// 计算进度打点策略的默认实现: 空操作，未接线的实例化点零成本编译
+struct NullDumpPolicy {
+    __aicore__ inline void DoDump() {}
+};
+
+template <typename AType, typename BType, typename CType, class DumpPolicy = NullDumpPolicy>
 class AllGatherQbmmMxKernel {
 public:
     __aicore__ inline AllGatherQbmmMxKernel() {}
@@ -151,6 +156,11 @@ public:
         Run(params);
     }
 
+    __aicore__ inline DumpPolicy &GetDumpPolicy()
+    {
+        return dumpPolicy_;
+    }
+
 private:
     __aicore__ inline void Init(const Params &params);
     __aicore__ inline void Process(const Params &params, const ProblemShape &problemShape, BlockScheduler &bs,
@@ -183,6 +193,8 @@ private:
     };
     __aicore__ inline TileCtx ResolveTileCtx(int64_t mPos, int64_t headMainRows, int64_t mainRoundRows,
                                              int64_t mainSectionRows, uint32_t rankSize, uint32_t commTurn) const;
+
+    DumpPolicy dumpPolicy_;
 
     // ---- GM addresses ----
     __gm__ AType *aGmAddr_{nullptr};
@@ -232,8 +244,8 @@ private:
     uint64_t tileMCStride_{};
 };
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Init(const Params &params)
+template <typename AType, typename BType, typename CType, class DumpPolicy>
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, DumpPolicy>::Init(const Params &params)
 {
     if ASCEND_IS_AIV {
         return;
@@ -246,9 +258,9 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Init(const Pa
     biasGmAddr_ = reinterpret_cast<__gm__ float *>(params.biasGM);
 }
 
-template <typename AType, typename BType, typename CType>
+template <typename AType, typename BType, typename CType, class DumpPolicy>
 template <typename TensorB, typename TensorScaleB>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::SetL2Cache(const ProblemShape &problemShape,
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, DumpPolicy>::SetL2Cache(const ProblemShape &problemShape,
                                                                               int64_t baseM, int64_t baseN,
                                                                               TensorB &gmB, TensorScaleB &gmScaleB)
 {
@@ -273,8 +285,8 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::SetL2Cache(co
                                                                        asc::te::cache_mode::normal);
 }
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Run(const Params &params)
+template <typename AType, typename BType, typename CType, class DumpPolicy>
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, DumpPolicy>::Run(const Params &params)
 {
     Init(params);
 
@@ -318,8 +330,8 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Run(const Par
     Process(params, problemShape, sch, mmadFrag);
 }
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const Params &params,
+template <typename AType, typename BType, typename CType, class DumpPolicy>
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, DumpPolicy>::Process(const Params &params,
                                                                            const ProblemShape &problemShape,
                                                                            BlockScheduler &sch,
                                                                            BlockMmadFragC &mmadFrag)
@@ -364,6 +376,7 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
         if (curMtile <= 0 || curNtile <= 0) {
             break;
         }
+        dumpPolicy_.DoDump();
         sch.GetTileCoord(blockIdx, mPos, nPos);
 
         auto ctx = ResolveTileCtx(mPos, headMainRows, mainRoundRows, mainSectionRows, fp.rankSize, fp.commTurn);
@@ -412,9 +425,9 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
     }
 }
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline Apace::Basic::FragmentParam<AllGatherQbmmMxKernel<AType, BType, CType>::DIMS_NUM>
-AllGatherQbmmMxKernel<AType, BType, CType>::MakeFragParam(uint64_t fragSize, uint64_t realFragSize, uint32_t fragCnt,
+template <typename AType, typename BType, typename CType, class DumpPolicy>
+__aicore__ inline Apace::Basic::FragmentParam<AllGatherQbmmMxKernel<AType, BType, CType, DumpPolicy>::DIMS_NUM>
+AllGatherQbmmMxKernel<AType, BType, CType, DumpPolicy>::MakeFragParam(uint64_t fragSize, uint64_t realFragSize, uint32_t fragCnt,
                                                           uint64_t shape1) const
 {
     Apace::Basic::FragmentParam<DIMS_NUM> param{};
@@ -427,8 +440,8 @@ AllGatherQbmmMxKernel<AType, BType, CType>::MakeFragParam(uint64_t fragSize, uin
     return param;
 }
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::BuildFragmentTensors(const Params &params)
+template <typename AType, typename BType, typename CType, class DumpPolicy>
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, DumpPolicy>::BuildFragmentTensors(const Params &params)
 {
     const auto &fp = params.fragParams;
 
@@ -453,8 +466,8 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::BuildFragment
     // main / tail 的 fragment tensor 延迟到首次使用时构建，构建开销被 comm wait 掩盖。
 }
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::EnsureWinRankBasesReady(const Params &params)
+template <typename AType, typename BType, typename CType, class DumpPolicy>
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, DumpPolicy>::EnsureWinRankBasesReady(const Params &params)
 {
     if (winBasesReady_) {
         return;
@@ -467,8 +480,8 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::EnsureWinRank
     winBasesReady_ = true;
 }
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::BuildMainFragment(const Params &params,
+template <typename AType, typename BType, typename CType, class DumpPolicy>
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, DumpPolicy>::BuildMainFragment(const Params &params,
                                                                                      uint32_t roundIdx)
 {
     EnsureWinRankBasesReady(params);
@@ -497,8 +510,8 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::BuildMainFrag
     curMainRoundIdx_ = roundIdx;
 }
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::BuildTailFragment(const Params &params)
+template <typename AType, typename BType, typename CType, class DumpPolicy>
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, DumpPolicy>::BuildTailFragment(const Params &params)
 {
     EnsureWinRankBasesReady(params);
     const auto &fp = params.fragParams;
@@ -526,8 +539,8 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::BuildTailFrag
         MakeFragParam(fp.paddedTailM, fp.tailM, fp.rankSize, fp.n), tailAddrListC_);
 }
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::UpdateMainRoundAddrs(const Params &params,
+template <typename AType, typename BType, typename CType, class DumpPolicy>
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, DumpPolicy>::UpdateMainRoundAddrs(const Params &params,
                                                                                         uint32_t roundIdx)
 {
     const auto &fp = params.fragParams;
@@ -552,9 +565,9 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::UpdateMainRou
     curMainRoundIdx_ = roundIdx;
 }
 
-template <typename AType, typename BType, typename CType>
-__aicore__ inline typename AllGatherQbmmMxKernel<AType, BType, CType>::TileCtx
-AllGatherQbmmMxKernel<AType, BType, CType>::ResolveTileCtx(int64_t mPos, int64_t headMainRows, int64_t mainRoundRows,
+template <typename AType, typename BType, typename CType, class DumpPolicy>
+__aicore__ inline typename AllGatherQbmmMxKernel<AType, BType, CType, DumpPolicy>::TileCtx
+AllGatherQbmmMxKernel<AType, BType, CType, DumpPolicy>::ResolveTileCtx(int64_t mPos, int64_t headMainRows, int64_t mainRoundRows,
                                                            int64_t mainSectionRows, uint32_t rankSize,
                                                            uint32_t commTurn) const
 {

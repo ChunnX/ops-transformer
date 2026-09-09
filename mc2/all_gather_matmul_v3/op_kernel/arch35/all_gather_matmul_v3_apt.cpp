@@ -17,9 +17,7 @@
 #include "all_gather_matmul_v3_tiling_key.h"
 #include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_tiling_data.h"
 #include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_impl.h"
-#if MC2_DFX_ENABLE
-#include "mc2_runtime_info.h"
-#endif
+#include "apace/utils/op_state_dump.h"
 
 using namespace AscendC;
 using namespace Apace;
@@ -42,11 +40,9 @@ __global__ __aicore__ void all_gather_matmul_v3(GM_ADDR context, GM_ADDR x1, GM_
     using Impl = AllGatherMxMatmulUrmaImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y>;
 
     Impl impl;
-#if MC2_DFX_ENABLE
-    Mc2Kernel::Mc2RuntimeInfo runtimeInfo;
-    runtimeInfo.Init(workspaceGM, &tilingData.workspaceLayout, tilingData.mmTile.usedCoreNum);
-    impl.SetRuntimeInfo(&runtimeInfo);
-#endif
+    Mc2Kernel::OpStateDump opStateDump;
+    opStateDump.Init(workspaceGM, &tilingData.workspaceLayout, tilingData.mmTile.usedCoreNum);
+    impl.SetOpStateDump(&opStateDump);
     impl.Init(hcommCtx, x1, x1_scale, x2, x2_scale, y, bias, &tilingData);
     impl.Process();
 }

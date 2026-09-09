@@ -44,9 +44,7 @@
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 #include "../../matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel.h"
 #include "include/tensor_api/tensor.h"
-#if MC2_DFX_ENABLE
-#include "../../../../mc2_runtime_info.h"
-#endif
+#include "../../../utils/op_state_dump.h"
 
 namespace Apace {
 template <typename T>
@@ -73,38 +71,25 @@ struct HcommCommState {
 template <AscendC::HcclServerType ServerType>
 struct HcommCommWaitPolicy {
     HcommCommState<ServerType> *state_{nullptr};
-#if MC2_DFX_ENABLE
-    Mc2Kernel::Mc2RuntimeInfo *runtimeInfo_{nullptr};
-    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt)
+    // 状态打点指针，由外层 impl 的 Init 注入(先于 Run/WaitTile，保证非空)
+    Mc2Kernel::OpStateDump *opStateDump_{nullptr};
+    __aicore__ inline void SetOpStateDump(Mc2Kernel::OpStateDump *rt)
     {
-        runtimeInfo_ = rt;
+        opStateDump_ = rt;
     }
-#endif
 
     __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
         if (tileIdx == 0) {
             state_->hccl_.Wait(state_->scaleHandle_);
-#if MC2_DFX_ENABLE
-            if (runtimeInfo_ != nullptr) {
-                runtimeInfo_->IncWaitCount();
-            }
-#endif
+            opStateDump_->DoDump(DUMP_FIELD_WAIT);
         }
         if (tileIdx < state_->headTileCnt_) {
             state_->hccl_.Wait(state_->dataHeadHandle_);
-#if MC2_DFX_ENABLE
-            if (runtimeInfo_ != nullptr) {
-                runtimeInfo_->IncWaitCount();
-            }
-#endif
+            opStateDump_->DoDump(DUMP_FIELD_WAIT);
         } else {
             state_->hccl_.Wait(state_->dataTailHandle_);
-#if MC2_DFX_ENABLE
-            if (runtimeInfo_ != nullptr) {
-                runtimeInfo_->IncWaitCount();
-            }
-#endif
+            opStateDump_->DoDump(DUMP_FIELD_WAIT);
         }
     }
 };
@@ -136,7 +121,8 @@ public:
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, X1Type, LayoutA, X2Type, LayoutB, YType, LayoutC,
                                                     BiasType, LayoutBias>;
     using QuantMatmulKernelImpl = Blaze::Gemm::Kernel::AllToAllQbmmMxKernel<ProblemShape, BlockMmad, BlockScheduler,
-                                                                            HcommCommWaitPolicy<ServerType>>;
+                                                                            HcommCommWaitPolicy<ServerType>,
+                                                                            Mc2Kernel::TurnIncDumpPolicy>;
 
     // 参数类型
     using Params = typename QuantMatmulKernelImpl::Params;
@@ -151,12 +137,10 @@ public:
     HcommCommState<ServerType> commState_;
 
 private:
-#if MC2_DFX_ENABLE
     static constexpr uint8_t POS_COMM_BEFORE = 0U;
     static constexpr uint8_t POS_COMP_LOCAL_BEFORE = 1U;
     static constexpr uint8_t POS_COMP_REMOTE_BEFORE = 2U;
     static constexpr uint8_t POS_FINALIZE_BEFORE = 3U;
-#endif
     AlltoAllMatmulTilingDataType *tilingData_;
 
     GM_ADDR x1_;
@@ -181,10 +165,7 @@ private:
     static constexpr uint64_t MXFP_DATA_NUM_PER_BYTE = 2UL;
     static constexpr uint64_t ALIGN_NUM = 512UL;
 
-#if MC2_DFX_ENABLE
-    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
-    uint8_t execTurn_ = 0;
-#endif
+    Mc2Kernel::OpStateDump opStateDump_;
 
     __aicore__ inline void SetupParams(Params &out, MatmulMode matmulMode);
     __aicore__ inline void MatmulProcess(MatmulMode matmulMode);
@@ -216,13 +197,10 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
     if (all2all_out == nullptr) {
         commOutGM_ = workspaceGM + x1ScaleLen;
     }
-#if MC2_DFX_ENABLE
-    runtimeInfo_.Init(workspaceGM_, &tilingData_->workspaceLayout, tilingData_->tileQbmmTilingData.usedCoreNum);
-#endif
+    opStateDump_.Init(workspaceGM_, &tilingData_->workspaceLayout, tilingData_->tileQbmmTilingData.usedCoreNum);
     quantMatmulKernelImpl_.GetCommPolicy().state_ = &commState_;
-#if MC2_DFX_ENABLE
-    quantMatmulKernelImpl_.GetCommPolicy().SetRuntimeInfo(&runtimeInfo_);
-#endif
+    quantMatmulKernelImpl_.GetCommPolicy().SetOpStateDump(&opStateDump_);
+    quantMatmulKernelImpl_.GetDumpPolicy().SetOpStateDump(&opStateDump_);
     commState_.hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
     commState_.hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(AlltoAllMatmulTilingDataType, mc2CcTiling)));
     rankId_ = commState_.hccl_.GetRankId();
@@ -238,25 +216,18 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
 
     uint64_t dataStrideCount = static_cast<uint64_t>(splitAxisSize_) * rankForComm;
     uint64_t scaleSendCount = static_cast<uint64_t>(splitAxisSize_) * scaleKPerRank;
-#if MC2_DFX_ENABLE
-    execTurn_++;
-    runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMM_BEFORE,
-                                     static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
-#endif
+    opStateDump_.DoDump(DUMP_FIELD_STEP, POS_COMM_BEFORE,
+                        static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
     commState_.scaleHandle_ = commState_.hccl_.template AlltoAll<true>(
         x1Scale_, commX1ScaleGM1_, scaleSendCount, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_),
         scaleSendCount, 1);
-#if MC2_DFX_ENABLE
-    runtimeInfo_.IncCommitCount();
-#endif
+    opStateDump_.DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
     if (commTiling.splitAxisTileCnt > 0) {
         uint64_t headSendCount = static_cast<uint64_t>(commTiling.splitAxisTileSize) * rankForComm;
         commState_.dataHeadHandle_ = commState_.hccl_.template AlltoAll<true>(
             x1_, commOutGM_, headSendCount, static_cast<AscendC::HcclDataType>(x1HcclDataType_), dataStrideCount,
             static_cast<uint8_t>(commTiling.splitAxisTileCnt));
-#if MC2_DFX_ENABLE
-        runtimeInfo_.IncCommitCount();
-#endif
+        opStateDump_.DoDump(DUMP_FIELD_COMMIT, 0, 0, 0, commTiling.splitAxisTileCnt);
     }
 
     if (commTiling.splitAxisTailCnt > 0) {
@@ -267,9 +238,7 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
             x1_ + headOffset, commOutGM_ + headOffset, tailSendCount,
             static_cast<AscendC::HcclDataType>(x1HcclDataType_), dataStrideCount,
             static_cast<uint8_t>(commTiling.splitAxisTailCnt));
-#if MC2_DFX_ENABLE
-        runtimeInfo_.IncCommitCount();
-#endif
+        opStateDump_.DoDump(DUMP_FIELD_COMMIT, 0, 0, 0, commTiling.splitAxisTailCnt);
     }
     commState_.headTileCnt_ = static_cast<uint32_t>(commTiling.splitAxisTileCnt);
 }
@@ -280,24 +249,14 @@ __aicore__ inline void AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, Com
                                                       AlltoAllMatmulTilingDataType, ServerType, IsMxFp4>::Run()
 {
     if (tilingData_->localMatmul != 0) {
-#if MC2_DFX_ENABLE
-        execTurn_++;
-        runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMP_LOCAL_BEFORE,
-                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
-#endif
+        opStateDump_.DoDump(DUMP_FIELD_POSITION, POS_COMP_LOCAL_BEFORE);
         MatmulProcess(MatmulMode::LOCAL);
     }
-#if MC2_DFX_ENABLE
-    execTurn_++;
-    runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMP_REMOTE_BEFORE,
-                                     static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
-#endif
+    opStateDump_.DoDump(DUMP_FIELD_POSITION, POS_COMP_REMOTE_BEFORE);
     MatmulProcess(MatmulMode::REMOTE);
     AscendC::SyncAll();
     commState_.hccl_.Finalize();
-#if MC2_DFX_ENABLE
-    runtimeInfo_.WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
-#endif
+    opStateDump_.DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
 }
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,

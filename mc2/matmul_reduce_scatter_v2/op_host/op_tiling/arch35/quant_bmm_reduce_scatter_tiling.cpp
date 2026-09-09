@@ -638,16 +638,16 @@ ge::graphStatus QuantBmmReduceScatterTiling::BuildQuantWorkspaceLayout()
         offset += matmulWorkspaceSize;
     }
 #if MC2_DFX_ENABLE
-    // DFX: 运行时信息段前做512B对齐padding，再追加64KB RUNTIME_INFO段
-    const uint64_t alignment = Mc2Tiling::RUNTIME_INFO_PER_CORE_SIZE;
+    // DFX: 状态打点段前做512B对齐padding，再追加64KB STATE_DUMP段
+    const uint64_t alignment = Mc2Tiling::STATE_DUMP_PER_CORE_SIZE;
     const uint64_t padding = (alignment - offset % alignment) % alignment;
     if (padding != 0U) {
         workspaceLayout_.segments[idx++] = {offset, padding, static_cast<uint8_t>(Mc2Tiling::WS_SEG_RESERVED), {}};
         offset += padding;
     }
     workspaceLayout_.segments[idx++] = {
-        offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE, static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
-    offset += Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+        offset, Mc2Tiling::STATE_DUMP_TOTAL_SIZE, static_cast<uint8_t>(Mc2Tiling::WS_SEG_STATE_DUMP), {}};
+    offset += Mc2Tiling::STATE_DUMP_TOTAL_SIZE;
 #endif
     workspaceLayout_.totalSize = offset;
     workspaceLayout_.segCount = idx;

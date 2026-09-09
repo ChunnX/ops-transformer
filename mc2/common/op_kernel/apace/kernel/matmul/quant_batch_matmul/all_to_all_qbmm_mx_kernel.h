@@ -34,11 +34,16 @@ namespace Gemm {
 namespace Kernel {
 
 #define QBMM_MX_KERNEL_CLASS_TEM_PARAMS \
-    template <class ProblemShape, class BlockMmad, class BlockScheduler, class CommPolicy>
-#define QBMM_MX_KERNEL_FUNC_TEM_PARAMS ProblemShape, BlockMmad, BlockScheduler, CommPolicy
+    template <class ProblemShape, class BlockMmad, class BlockScheduler, class CommPolicy, class DumpPolicy>
+#define QBMM_MX_KERNEL_FUNC_TEM_PARAMS ProblemShape, BlockMmad, BlockScheduler, CommPolicy, DumpPolicy
 
 using namespace AscendC;
 using asc::te::get;
+
+// 计算进度打点策略的默认实现: 空操作，未接线的实例化点零成本编译
+struct NullDumpPolicy {
+    __aicore__ inline void DoDump() {}
+};
 
 /**
  * @brief SWAT MX 量化矩阵乘内核实现
@@ -46,9 +51,12 @@ using asc::te::get;
  * 通信等待逻辑经 CommPolicy 策略类注入（组合模式）：基类持 commPolicy_ 成员对象，
  * 调用点直接 commPolicy_.WaitTile(tileIdx)，编译期由模板参数绑定具体策略，
  * 无需继承与 static_cast。
+ * 计算进度打点逻辑经 DumpPolicy 策略类注入（同上组合模式）：tile 循环头调用
+ * dumpPolicy_.DoDump()，默认 NullDumpPolicy 空实现。
  */
 
-template <class ProblemShape, class BlockMmad, class BlockScheduler, class CommPolicy>
+template <class ProblemShape, class BlockMmad, class BlockScheduler, class CommPolicy,
+          class DumpPolicy = NullDumpPolicy>
 class AllToAllQbmmMxKernel {
 public:
     __aicore__ inline AllToAllQbmmMxKernel() {}
@@ -148,6 +156,11 @@ public:
         return commPolicy_;
     }
 
+    __aicore__ inline DumpPolicy &GetDumpPolicy()
+    {
+        return dumpPolicy_;
+    }
+
 private:
     __aicore__ inline void ResetGmAddr(const Params &params);
     __aicore__ inline void ProcessSingleBatch(const Params &params, BlockScheduler &bs, uint64_t restBatch,
@@ -165,6 +178,7 @@ private:
 private:
     BlockMmad mmadOp_;
     CommPolicy commPolicy_;
+    DumpPolicy dumpPolicy_;
 
     __gm__ AType *aGmAddr_;      // 远程数据基址（通信缓冲区）
     __gm__ AType *localAGmAddr_; // 本地数据基址
@@ -370,6 +384,7 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
             return;
         }
 
+        dumpPolicy_.DoDump();
         bs.GetTileCoord(blockIdx, mPos, nPos);
         // 切分输出块：地址基址已在外部按流水步偏移，此处仅按调度器位置切局部块
         auto gmBlockC =
