@@ -97,6 +97,8 @@ public:
         WaitFlag<HardEvent::FIX_M>(cSlot);
 
         AccumulateKRange(currentC, a, b, m, n, firstK, aGmStride, bGmStride, true, true);
+        // Mmad为异步发射；跨核等待前先完成前半段M流水，避免等待指令与未完成MMAD互相阻塞。
+        AscendC::PipeBarrier<PIPE_M>();
         CrossCoreWaitFlag(MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C1);
         AccumulateKRange(currentC, a[firstK * aGmStride], b[firstK * bGmStride], m, n, secondK,
                          aGmStride, bGmStride, true, false);
