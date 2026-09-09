@@ -515,7 +515,7 @@ __aicore__ inline void FlashAttentionScoreS1Bn2gs1<FA_S1BN2GS1_FUNCTION_PARAMS_T
     this->pipe->InitBuffer(this->softmaxMaxBuf, this->softmaxBufSize * this->blockBytes);
     this->pipe->InitBuffer(this->softmaxExpBuf, this->blockBytes);
     if constexpr (bmm2Source == TPosition::TSCM) {
-        this->pipe->InitBuffer(valueScm, 1, this->tilingData->inputParams.alignedS2 * d2Size * sizeof(INPUT_T));
+        this->pipe->InitBuffer(valueScm, 1, this->tilingData->inputParams.alignedS2 * d2SizeAlign16 * sizeof(INPUT_T));
     }
 }
 

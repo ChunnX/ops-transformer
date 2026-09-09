@@ -2942,7 +2942,7 @@ protected:
             return false;
         }
         if (tilingKeyBmm2Source == CubeInputSourceEnum::L1) {
-            l1SizeRemain = aicoreParams_.l1Size - alignedS2 * alignedD * elementSize;
+            l1SizeRemain = aicoreParams_.l1Size - alignedS2 * alignedD2 * elementSize;
         } else {
             l1SizeRemain = aicoreParams_.l1Size;
         }
