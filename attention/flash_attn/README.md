@@ -662,18 +662,18 @@ Process():       AIC（block_cube）                     AIV（block_vec / FD）
 
 FD 与 FA 通过 **workspace 槽位**衔接：FA 阶段每个跨核行的部分结果写入 `workspaceIdx` 槽（accumOut + lseSum + lseMax 三段布局），FD 阶段按 `fdWorkspaceIdx` 前缀和读回归约（详见 §10 的 workspace 槽位与 §4 的 section 内分核）。
 
-### 11. common 层：共享设施
+### 11. 算子内 Matmul 与 common 共享设施
 
-common 层位于 `attention/common/op_kernel/`，按功能分四类基础设施：
+**① L0 buffer 管理**：ND/DN block 直接保存 `l0aIdx_`、`l0bIdx_`，通过引用传入 matmul。
+`op_kernel/arch35/flash_attn_matmul.h` 在对应搬运位置手动翻转索引，直接构造固定 32 KiB 槽位的 LocalTensor，
+并通过固定基址加索引得到 mutex ID，不再封装 buffer 类。双 buffer 保持 pong→ping 的轮转顺序；
+ND 的 `L1_KV_LARGE_BUF` 场景中 L0B 索引固定为 0。L1、L0C、UB 和跨核同步继续由 block 层管理。
 
-**① buffer 管理（`buffer.h`、`buffer_manager.h`、`buffers_policy.h`）**：`fa_base_matmul` 命名空间下与 buffer 生命周期/同步策略相关的基础设施：
-- `BufferManager`（`buffer_manager.h`）：L0A/L0B/L0C buffer 的分配与管理（初始化、大小划分）。
-- `BuffersPolicy*`（`buffers_policy.h`）：buffer 使用策略——`BuffersPolicySingleBuffer`（单 buffer）、`BuffersPolicyDB`（双 buffer，LOCK_UNLOCK/外部 eventID，block_cube 的 L0A/L0B 即用此策略）、`BuffersPolicy3buff`（三 buffer）、`BuffersPolicy4buff`（四 buffer），决定 MTE1 搬运与 Matmul 计算的重叠方式。
-- 辅助工具：`buffer.h` 中与 buffer 访问/同步相关的通用函数。
-
-**② Matmul 封装（`matmul.h`）**：`fa_base_matmul` 命名空间的 Matmul 指令封装，供 block_cube 层调用：
-- 指令族：`MatmulBase`（K 维固定 128）、`MatmulK`（K 方向 128 分块循环）、`MatmulN`（N 方向 128 分块）、`MatmulFull`（全量一次算完）。
-- 配套：`ABLayout`（MK/KN 排布枚举）、`LoadDataToL0A/L0B`、`MakeMMParam`、MM 参数（M/N/K、转置标志），与 `BuffersPolicyDB` 配合完成 L1→L0 搬运与计算。
+**② Matmul 封装**：同一文件保留 FP16/BF16 的 `MatmulFull`、`MatmulK`、`MatmulN`，
+直接调用 `LoadData`、`Mutex`、`Mmad`。K/N/Full 分发在 ND/DN 的对应调用点展开，不再保留 `MatmulBase`。A/B 转置方向为模板参数，数据类型由 LocalTensor 推导。
+`MMParam` 只携带 M/N/K、realM、loadK/loadN；后两者区分实际计算宽度与非对齐尾块的搬运宽度。
+FlashAttn 不再使用 common 的 `matmul.h`、`BufferManager`、`Buffer`、`BuffersPolicy` 或跨核 ID 计数器。
+具体修改价值、编译产物对比和验证范围见 [Matmul 优化分析](docs/matmul_scalar_optimization.md)。
 
 **③ 数据搬移（`memcopy/`，含 `copy_gm_to_l1.h`、`copy_gm_to_ub.h`、`copy_ub_to_gm.h`）**：GM 与 L1/UB 间的拷贝封装：
 - `copy_gm_to_l1.h`：GM→L1 的 `DataCopy` 封装（含 ND→NZ 变换，配合 `offset_calculator_v2.h` 的 GM 坐标定位）。
