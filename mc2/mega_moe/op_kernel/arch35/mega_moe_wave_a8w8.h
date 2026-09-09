@@ -26,12 +26,11 @@ constexpr uint32_t GMM2_LAG_MIN_TOKEN_NUM = 4096U;
 #define TemplateMegaMoeA8W8WaveTypeClass \
     typename XType, typename OutputType, typename TopkWeightsType, typename MoeWeightType, int32_t MoeQuantMode, \
         typename SharedWeightType, int32_t SharedQuantMode, int32_t MoeWeight1Format, int32_t MoeWeight2Format, \
-        int32_t SharedWeight1Format, int32_t SharedWeight2Format, int32_t CombineQuantMode, bool TopkWeightsPrefetch, \
-        bool IsGmm1Interleaved
+        int32_t SharedWeight1Format, int32_t SharedWeight2Format, int32_t CombineQuantMode, bool TopkWeightsPrefetch
 #define TemplateMegaMoeA8W8WaveTypeFunc \
     XType, OutputType, TopkWeightsType, MoeWeightType, MoeQuantMode, SharedWeightType, SharedQuantMode, \
         MoeWeight1Format, MoeWeight2Format, SharedWeight1Format, SharedWeight2Format, CombineQuantMode, \
-        TopkWeightsPrefetch, IsGmm1Interleaved
+        TopkWeightsPrefetch
 
 /*
  * Init、输入准备、共享专家和 Unpermute 由 MegaMoe 基类统一实现；本类保留 A8W8 特有的
@@ -249,8 +248,7 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
         uint32_t waveTokenStartIndex =
             static_cast<uint32_t>(gmm1ExpertState.globalTokenStartIndex) + gmm1Position.tokenIndexInExpert;
         RunGmm1Generic<QuantOutType, ActivationType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                       MoeWeight1Format != FORMAT_ND, GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch, false,
-                       IsGmm1Interleaved, true>(
+                       MoeWeight1Format != FORMAT_ND, GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch, false, true>(
             epilogueOp_, params_, gmm1WaveProblemShape, gmm1AddrInfo, runtimeState.startBlockIdx,
             runtimeState.vecSetSyncCom, gmmExecutionConfig_.blockJob, waveTokenStartIndex, gmm1Position.expertIdx,
             runtimeState.pingpongIdx, nullptr, isWholeExpert);
@@ -336,10 +334,10 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             tileSequence = &gmmTileSequence;
         }
         RunGmm2Generic<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                       MoeWeight2Format != FORMAT_ND, false, GMM1_TILE_M, TopkWeightsPrefetch, false, IsGmm1Interleaved,
-                       true, CombineQuantMode == COMBINE_NO_QUANT>(
-            gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, nullptr, isWholeExpert,
-            gmm2Position.tokenIndexInExpert, &params_, tileSequence);
+                       MoeWeight2Format != FORMAT_ND, false, GMM1_TILE_M, TopkWeightsPrefetch, false, true,
+                       CombineQuantMode == COMBINE_NO_QUANT>(gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx,
+                                                             gmmExecutionConfig_.blockJob, nullptr, isWholeExpert,
+                                                             gmm2Position.tokenIndexInExpert, &params_, tileSequence);
 
         gmm2Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
         gmm2Position.globalTokenIndex += waveRowCount;
@@ -417,8 +415,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessMoeExpertStages()
 {
-    const uint32_t gmm1SchedulerWidth =
-        IsGmm1Interleaved ? commonConfig_.gmm1OutputDim : commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF;
+    const uint32_t gmm1SchedulerWidth = commonConfig_.gmm1OutputDim;
     gmm1TilesPerMGroup_ = Ops::Base::CeilDiv(gmm1SchedulerWidth, static_cast<uint32_t>(L1_TILE_N));
     gmm2TilesPerMGroup_ = Ops::Base::CeilDiv(commonConfig_.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
 
@@ -561,7 +558,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     }
 
     if constexpr (!TopkWeightsPrefetch) {
-        EndSync<IsGmm1Interleaved>(vecSetSyncCom, gmm1PingPongIdx_);
+        EndSync(vecSetSyncCom, gmm1PingPongIdx_);
     }
     gmm1PingPongIdx_ = 0;
 }

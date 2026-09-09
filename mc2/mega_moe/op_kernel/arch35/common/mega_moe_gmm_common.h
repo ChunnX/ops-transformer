@@ -66,10 +66,9 @@ struct QGmmL1Config {
 // 汇总 GMM1/GMM2 在不同量化路径下共用的类型、shape 和 layout 配置。
 template <bool IsA8W4, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool TopkWeightsPrefetch = false,
-          bool IsShared = false, bool IsLayered = false, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false,
-          bool ConcatGmm1 = false>
+          bool IsShared = false, bool IsLayered = false, bool IsWaveFlagGrained = false,
+          typename MmadPolicy = Blaze::Gemm::MatmulWithScaleMx<>>
 struct Config {
-    static constexpr bool CONCAT_GMM1 = ConcatGmm1;
     static constexpr bool IS_SHARED = IsShared;
     static constexpr bool IS_WEIGHT_NZ = IsWeightNZ;
     static constexpr bool TOPK_WEIGHTS_PREFETCH = TopkWeightsPrefetch;
@@ -92,9 +91,7 @@ struct Config {
     using LayoutScaleB = asc::te::scaleb_dn_layout_ptn;
 
     using LayoutBias = asc::te::nd_ext_layout_ptn;
-    using DispatchPolicy = Std::conditional_t<
-        IsA8W4, Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit,
-        Std::conditional_t<ConcatGmm1, Blaze::Gemm::GroupedMatmulWithScaleMx<>, Blaze::Gemm::MatmulWithScaleMx<>>>;
+    using DispatchPolicy = Std::conditional_t<IsA8W4, Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit, MmadPolicy>;
     using LayoutB = Std::conditional_t<IsA8W4, asc::te::zn_layout_ptn,
                                        Std::conditional_t<IsWeightNZ, asc::te::zn_layout_ptn, asc::te::dn_ext_layout_ptn>>;
 
@@ -116,7 +113,8 @@ struct Config {
     using LayoutScaleATrait = Te::get_layout_trait<LayoutScaleAType>;
 
     using BlockMmad = typename BlockMmadSelector<IsA8W4, Config>::type;
-    using L1Params = Std::conditional_t<ConcatGmm1, QGmmL1Config, typename BlockMmad::L1Params>;
+    using L1Params = Std::conditional_t<Std::is_same_v<DispatchPolicy, Blaze::Gemm::GroupedMatmulWithScaleMx<>>,
+                                        QGmmL1Config, typename BlockMmad::L1Params>;
     using BlockPrologue =
         Std::conditional_t<IsA8W4, Blaze::Gemm::Prologue::BlockPrologue<DispatchPolicy, ElementA, ElementB>, void>;
 
@@ -276,7 +274,6 @@ struct Config {
 
     struct ProblemConfig {
         using KernelConfig = Config;
-        static constexpr bool SOURCE_GMM1_INTERLEAVED = IsGmm1Interleaved;
         static constexpr bool IS_WAVE_FLAG_GRAINED = IsWaveFlagGrained;
 
         uint32_t m = 0;
@@ -319,7 +316,7 @@ struct Config {
         config.n = Get<N_VALUE>(problemShape);
         config.k = Get<K_VALUE>(problemShape);
         config.outputN = config.n / ACTIVATION_N_HALF;
-        config.schedulerN = IsGmm1Interleaved ? config.n : config.outputN;
+        config.schedulerN = config.n;
         config.tileM = gmm1TileM;
         FinalizeProblemConfig(config, blockJob, gmm1TileM);
         return config;
@@ -411,7 +408,7 @@ __aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &
         typename BlockMmad::BlockShape l0TileShape{tilingConfig.tileM, tilingConfig.tileN, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
         constexpr bool enableL0CPingPong = false;
-        if constexpr (ProblemConfig::KernelConfig::CONCAT_GMM1) {
+        if constexpr (Std::is_same_v<typename BlockMmad::DispatchPolicy, Blaze::Gemm::GroupedMatmulWithScaleMx<>>) {
             // Upstream concat takes the gate width and produces twice that many columns.
             Get<N_VALUE>(l0TileShape) /= ACTIVATION_N_HALF;
             typename BlockMmad::MmadParams params{
@@ -427,7 +424,7 @@ __aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &
         context.initConfig = requestedConfig;
         context.initialized = true;
     }
-    if constexpr (ProblemConfig::KernelConfig::CONCAT_GMM1) {
+    if constexpr (Std::is_same_v<typename BlockMmad::DispatchPolicy, Blaze::Gemm::GroupedMatmulWithScaleMx<>>) {
         context.blockMmad.UpdateParamsForNextProblem({config.m, config.n, config.k, 0});
     }
 }

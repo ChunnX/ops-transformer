@@ -303,22 +303,17 @@ __aicore__ inline void WaitForCube(uint16_t value = 0)
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + value);
 }
 
-template <bool IsPingPong = false>
-__aicore__ inline void EndSync(int32_t vecSetSyncCom, uint16_t pingpongIdx = 0)
+__aicore__ inline void EndSync(int32_t vecSetSyncCom, uint16_t pingpongIdx)
 {
     if (vecSetSyncCom == 0) {
         return;
     }
     if constexpr (g_coreType == AIC) {
-        if constexpr (IsPingPong) {
-            if (vecSetSyncCom == 1) {
-                WaitForVector(1U - pingpongIdx);
-            } else {
-                WaitForVector(pingpongIdx);
-                WaitForVector(1U - pingpongIdx);
-            }
+        if (vecSetSyncCom == 1) {
+            WaitForVector(1U - pingpongIdx);
         } else {
-            WaitForVector();
+            WaitForVector(pingpongIdx);
+            WaitForVector(1U - pingpongIdx);
         }
     }
 }
