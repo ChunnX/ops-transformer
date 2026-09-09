@@ -23,6 +23,8 @@
 
 Torch 接口、context 生命周期和 `aclnn_graph` 示例见
 [Torch Extension 说明](torch_extension/README.md)。
+单共享 Jetty 连接多个远端时的因素拆分、实验矩阵和结果解释见
+[单共享 Jetty 多对端带宽测试方案](docs/shared_jetty_multi_peer_benchmark_plan.md)。
 
 ```bash
 python bandwidth_test.py
