@@ -179,8 +179,6 @@ ge::graphStatus CommonChecker::CheckSingleParaShapeDim(const QuantFlashAttnTilin
 
     const gert::Tensor *metadataTensor = qfaInfo.opParamInfo.metadata.tensor;
     if (metadataTensor != nullptr) {
-        // shape dim 支持 1 或 2: 1D 为 (max_schedule_size,), 仅正向 FA 调度数据;
-        // 2D 为 (2, max_schedule_size), 第一维存正向 FA 调度数据, 第二维存反向 FAG 调度数据
         uint32_t dimNum = metadataTensor->GetStorageShape().GetDimNum();
         OP_CHECK_IF(dimNum != DIM_NUM_1 && dimNum != DIM_NUM_2,
                     OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, METADATA_NAME.c_str(),

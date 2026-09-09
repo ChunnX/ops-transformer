@@ -33,12 +33,11 @@ extern "C" {
 #endif
 
 static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
-                               const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-                               int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
-                               int64_t numHeadsKv, int64_t headDim, int64_t headDimV, int64_t quantMode,
-                               int64_t maskMode, int64_t winLeft, int64_t winRight, const char *layoutQ,
-                               const char *layoutQDescale, const char *layoutKv, const char *layoutOut,
-                               bool isGradEnabled, const aclTensor *metaData)
+                               const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional, int64_t batchSize,
+                               int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
+                               int64_t headDim, int64_t headDimV, int64_t quantMode, int64_t maskMode, int64_t winLeft,
+                               int64_t winRight, const char *layoutQ, const char *layoutQDescale, const char *layoutKv,
+                               const char *layoutOut, bool isGradEnabled, const aclTensor *metaData)
 {
     (void)isGradEnabled;
     (void)headDimV;
@@ -182,11 +181,11 @@ aclnnStatus aclnnQuantFlashAttnMetadataGetWorkspaceSize(
     uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
     const char *socVersion = npuInfo.GetSocLongVersion().c_str();
 
-    auto output = l0op::QuantFlashAttnMetadata(
-        cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional, batchSize, maxSeqlenQ,
-        maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, headDimV, quantMode, maskMode, winLeft, winRight, layoutQ,
-        layoutQDescale, layoutKv, layoutOut, isGradEnabled, socVersion, aicCoreNum, aivCoreNum, metaData,
-        uniqueExecutor.get());
+    auto output = l0op::QuantFlashAttnMetadata(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional,
+                                               sequsedKvOptional, batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ,
+                                               numHeadsKv, headDim, headDimV, quantMode, maskMode, winLeft, winRight,
+                                               layoutQ, layoutQDescale, layoutKv, layoutOut, isGradEnabled, socVersion,
+                                               aicCoreNum, aivCoreNum, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
