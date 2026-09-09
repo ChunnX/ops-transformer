@@ -196,7 +196,7 @@ ge::graphStatus QuantCompressorTiling::SetWorkSpaceInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantCompressorTiling::SetScenarioInfo()
+ge::graphStatus QuantCompressorTiling::SetScenarioInfo() const
 {
     return ge::GRAPH_SUCCESS;
 }
