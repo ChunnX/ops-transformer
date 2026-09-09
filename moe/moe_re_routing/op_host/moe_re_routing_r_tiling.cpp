@@ -18,13 +18,14 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "op_common/op_host/util/platform_util.h"
 #include "moe_re_routing_r_tiling.h"
+#include "../op_kernel/arch35/moe_re_routing_topk_weight_common.h"
 
 namespace optiling {
 constexpr int64_t NUM_TWO = 2;
 constexpr int64_t BYTE_LENGTH_FOUR = 4;
-constexpr int64_t TOPK_OFFSET_UB_SIZE = 256 * sizeof(int64_t);
-constexpr int64_t TOPK_COPY_UB_SIZE = 256 * 2 * sizeof(float);
-constexpr int64_t TOPK_GROUP_EXPERTS = 256;
+constexpr int64_t TOPK_OFFSET_UB_SIZE = MoeReRoutingTopk::TOPK_OFFSET_UB_SIZE;
+constexpr int64_t TOPK_COPY_UB_SIZE = MoeReRoutingTopk::TOPK_COPY_UB_SIZE;
+constexpr int64_t TOPK_GROUP_EXPERTS = MoeReRoutingTopk::TOPK_GROUP_EXPERTS;
 constexpr uint64_t MOE_RE_ROUTING_R_WITHOUT_SCALE = 210000;
 constexpr uint64_t MOE_RE_ROUTING_R_WITH_SCALE_FLOAT = 210100;
 /* Note: MOE_RE_ROUTING_R_WITH_SCALE_FLOAT8_E8M0 key is shared by multiple quantization types:
@@ -59,7 +60,7 @@ ge::graphStatus MoeReRoutingRTiling::SplitUb()
         const int64_t effectiveTokenSize = isFp4 ? Ops::Base::CeilDiv(tokenSize_, NUM_TWO) : tokenSize_;
         // H=1 with a small expert count uses the main queue and computes offsets
         // directly; neither auxiliary topk buffer is needed on this path.
-        const bool useH1DirectPath = effectiveTokenSize == 1 && expertNum_ <= TOPK_GROUP_EXPERTS;
+        const bool useH1DirectPath = MoeReRoutingTopk::UseDirectH1Path(effectiveTokenSize, expertNum_);
         if (effectiveTokenSize > 1) {
             reserveUbSize += TOPK_COPY_UB_SIZE;
         }

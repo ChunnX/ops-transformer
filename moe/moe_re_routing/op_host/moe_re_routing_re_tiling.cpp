@@ -19,14 +19,15 @@
 #include "log/log.h"
 #include "op_common/op_host/util/platform_util.h"
 #include "moe_re_routing_re_tiling.h"
+#include "../op_kernel/arch35/moe_re_routing_topk_weight_common.h"
 
 namespace optiling {
 
 constexpr int64_t NUM_TWO = 2;
 constexpr int64_t BYTE_LENGTH_FOUR = 4;
-constexpr int64_t TOPK_OFFSET_UB_SIZE = 256 * sizeof(int64_t);
-constexpr int64_t TOPK_COPY_UB_SIZE = 256 * 2 * sizeof(float);
-constexpr int64_t TOPK_GROUP_EXPERTS = 256;
+constexpr int64_t TOPK_OFFSET_UB_SIZE = MoeReRoutingTopk::TOPK_OFFSET_UB_SIZE;
+constexpr int64_t TOPK_COPY_UB_SIZE = MoeReRoutingTopk::TOPK_COPY_UB_SIZE;
+constexpr int64_t TOPK_GROUP_EXPERTS = MoeReRoutingTopk::TOPK_GROUP_EXPERTS;
 constexpr uint64_t MOE_RE_ROUTING_RE_WITHOUT_SCALE = 200000;
 constexpr uint64_t MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT = 200100;
 /* Note: MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT8_E8M0 key is shared by multiple quantization types:
@@ -69,7 +70,7 @@ ge::graphStatus MoeReRoutingReTiling::SplitUb()
         }
         // For H=1 and a small expert count, the grouped path recomputes offsets
         // from the count matrix and does not need the auxiliary offset buffer.
-        if (!(effectiveTokenSize == 1 && expertNum_ <= TOPK_GROUP_EXPERTS)) {
+        if (!MoeReRoutingTopk::UseDirectH1Path(effectiveTokenSize, expertNum_)) {
             reserveUbSize += TOPK_OFFSET_UB_SIZE;
         }
     }
