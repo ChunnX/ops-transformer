@@ -192,18 +192,18 @@ __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w,
                                                                       workspaceGM, tilingGM);
     }
 #elif ORIG_DTYPE_X == DT_FLOAT4_E1M2 || ORIG_DTYPE_X == DT_FLOAT4_E2M1
-    if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
+    if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
         RunGmmFrMx<0>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y,
                       workspaceGM, tilingGM);
-    } else if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
+    } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
         RunGmmFrMx<1>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y,
                       workspaceGM, tilingGM);
     }
 #else
-    if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
+    if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
         RunGmmFrMx<0>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y,
                       workspaceGM, tilingGM);
-    } else if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
+    } else if constexpr (ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
         RunGmmFrMx<1>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y,
                       workspaceGM, tilingGM);
     } else if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 1 && ROWINDEXTYPE == 0) {

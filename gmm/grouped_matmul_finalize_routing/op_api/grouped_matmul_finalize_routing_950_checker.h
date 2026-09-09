@@ -564,9 +564,10 @@ public:
                 gmmParams_.dtype == OUT_DTYPE_BF16 || gmmParams_.out->GetDataType() == DataType::DT_BF16;
             bool weightFormatInvalid = isBf16Output ?
                                            gmmParams_.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ :
-                                           op::IsPrivateFormat(gmmParams_.x2->GetStorageFormat());
+                                           (op::IsPrivateFormat(gmmParams_.x2->GetStorageFormat()) &&
+                                            gmmParams_.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ);
             if (weightFormatInvalid) {
-                const char *expectedFormatStr = isBf16Output ? "FRACTAL_NZ" : "ND";
+                const char *expectedFormatStr = isBf16Output ? "FRACTAL_NZ" : "ND or FRACTAL_NZ";
                 OP_LOGE_FOR_INVALID_FORMAT(GMMFR_ACLNN_OP_NAME, "weight",
                                            op::ToString(gmmParams_.x2->GetStorageFormat()).GetString(),
                                            expectedFormatStr);

@@ -528,10 +528,10 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
                         inputParams_.opType, "weight", ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
                         "when output is DT_BF16 in mx quant mode, the format of weight must be FRACTAL_NZ"),
                     return false);
-        OP_CHECK_IF(isFullMx && !isBf16Output && isWeightNz,
+        OP_CHECK_IF(isFullMx && !isBf16Output && inputParams_.bFormat != ge::FORMAT_ND && !isWeightNz,
                     OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(
                         inputParams_.opType, "weight", ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
-                        "when output is DT_FLOAT in mx quant mode, the format of weight must be ND"),
+                        "when output is DT_FLOAT in mx quant mode, the format of weight must be ND or FRACTAL_NZ"),
                     return false);
     } else {
         OP_CHECK_IF(inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ,
