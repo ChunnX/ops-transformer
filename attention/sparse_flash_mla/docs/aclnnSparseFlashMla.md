@@ -127,7 +127,7 @@ aclnnStatus aclnnSparseFlashMlaGetWorkspaceSize(
     char            *layoutKvOptional,
     int64_t          topkValueMode,
     bool             returnSoftmaxLse,
-    const aclTensor *attnOut,
+    const aclTensor *attnOutOut,
     const aclTensor *softmaxLseOutOptional,
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
