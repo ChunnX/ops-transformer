@@ -672,7 +672,8 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
     uint32_t vectorizeFlag = static_cast<uint32_t>((perfMode_ == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
                                                     perfMode_ == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                                                     perfMode_ == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
-                                                   (vectorizeUbSize <= UB_SIZE) && blocksizeFlag &&
+                                                   tilingInfo->topkValueMode == 1 && (vectorizeUbSize <= UB_SIZE) &&
+                                                   blocksizeFlag &&
                                                    (tilingInfo->kvLayout == QSMLALayout::PA_BBND));
     uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     if (tilingInfo->gSize > 64) {
@@ -730,7 +731,8 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
     uint32_t qLayout = static_cast<uint32_t>(tilingInfo->qLayout);
     uint32_t inputKvLayout = static_cast<uint32_t>(tilingInfo->kvLayout);
     uint32_t tilingKey = GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(perfMode_),
-                                            static_cast<uint32_t>(tilingInfo->gSize > 64), DTYPE_HIF8, vectorizeFlag);
+                                            static_cast<uint32_t>(tilingInfo->gSize > 64), DTYPE_HIF8, vectorizeFlag,
+                                            static_cast<uint32_t>(tilingInfo->topkValueMode));
     context_->SetTilingKey(tilingKey);
     context_->SetScheduleMode(1);
 
