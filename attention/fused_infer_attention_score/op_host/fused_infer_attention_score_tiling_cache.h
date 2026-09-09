@@ -16,8 +16,10 @@
  * tiling，导致同一 (shape, attr) 组合的 tiling 被重复执行，host 侧耗时显著增加。
  *
  * 方案：以影响 tiling 结果的全部输入信息为键，缓存 tiling 输出
- * （tiling data blob / tilingKey / blockDim / workspaceSize / scheduleMode），
+ * （tiling data blob / tilingKey / blockDim / workspaceSize），
  * 命中时直接恢复，跳过 tiling 计算。
+ * 仅在 A3（DAV_5102 / arch38 路由）启用；arch38 tiling 不设置 schedule mode，
+ * 缓存值无需包含该字段，因此不侵入 arch22/arch35（A5）代码路径。
  *
  * 键内容（影响 tiling 分支与结果的全部要素）：
  *   - npu 架构、缓存格式版本号
@@ -44,7 +46,6 @@
 #include "exe_graph/runtime/tiling_context.h"
 
 #include "fused_infer_attention_score_tiling_index.h"
-#include "../../common/op_host/fia_tiling_schedule_recorder.h"
 
 namespace optiling {
 
@@ -58,8 +59,6 @@ public:
         uint64_t tilingKey = 0;
         uint32_t blockDim = 0;
         uint64_t workspaceSize = 0;
-        bool scheduleModeSet = false; // 本次 tiling 是否设置过 schedule mode
-        uint32_t scheduleMode = 0;
     };
 
     static FusedInferAttentionScoreTilingCache &GetInstance()
@@ -153,7 +152,6 @@ public:
         result.tilingKey = context->GetTilingKey();
         result.blockDim = context->GetBlockDim();
         result.workspaceSize = workSpaces[0];
-        result.scheduleModeSet = FiaTilingScheduleRecorder::Get(result.scheduleMode);
         return true;
     }
 
@@ -177,9 +175,6 @@ public:
         context->SetTilingKey(result.tilingKey);
         context->SetBlockDim(result.blockDim);
         workSpaces[0] = result.workspaceSize;
-        if (result.scheduleModeSet) {
-            context->SetScheduleMode(result.scheduleMode);
-        }
         return ge::GRAPH_SUCCESS;
     }
 
