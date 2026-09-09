@@ -69,6 +69,7 @@ public:
     static constexpr uint32_t L0B_PINGPONG_BUF_SIZE = ArchTag::L0B_SIZE / L0_STAGES;
     static constexpr uint32_t L0C_HALF_BUF_SIZE = ArchTag::L0C_SIZE / 2;
     static constexpr uint32_t L0C_PINGPONG_BUF_SIZE = L0C_HALF_BUF_SIZE / L0_STAGES;
+    static constexpr bool FULL_QUANT_HIF8 = AscendC::IsSameType<ElementQ, hifloat8_t>::value;
 
     __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource, Mm1L1TileHelper &mm1L1TileHelper)
     {
@@ -175,7 +176,7 @@ public:
                                       uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen, uint32_t kvSBaseTile,
                                       uint32_t blockShapeY, uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
                                       uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
-                                      Arch::CrossCoreFlag mm1ToSmFlag)
+                                      Arch::CrossCoreFlag mm1ToSmFlag, uint64_t deqScalar = 0)
     {
         using CopyL0CToDst = typename TileCopy::template CopyL0CToDst<TensorS>;
 
@@ -289,7 +290,11 @@ public:
                 auto ubSTensorTlaTile = GetTile(ubSTensor, tla::MakeCoord(mL0Itr * L0_TILE_M, 0),
                                                 tla::MakeShape(mFixPAligned8, nFixPAligned8));
                 CopyL0CToDst copyL0CToDst;
-                copyL0CToDst(ubSTensorTlaTile, l0CTensorTla);
+                if constexpr (FULL_QUANT_HIF8) {
+                    copyL0CToDst(ubSTensorTlaTile, l0CTensorTla, deqScalar, false);
+                } else {
+                    copyL0CToDst(ubSTensorTlaTile, l0CTensorTla);
+                }
                 AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
             }
         }
