@@ -95,6 +95,7 @@ public:
     static constexpr uint32_t UNIT_FLAG_VALUE = 3U;
 
     bool useUnitFlag_ = false;
+    bool qPreScale_ = false;
 
     __aicore__ inline bool UseUnitFlag(const RunInfo &) const
     {
@@ -204,6 +205,15 @@ public:
                            qSeqLensTool_.GetActualSeqLength(0) % 128 == 0 && kvSeqLensTool_.GetActualSeqLength(0) > 0 &&
                            kvSeqLensTool_.GetActualSeqLength(0) % s2BaseSize == 0;
         }
+        if constexpr (SPLIT_MM_QUEUES && IsSameType<Q_T, bfloat16_t>::value && !PAGE_ATTENTION && !FA_T::hasMask &&
+                      LAYOUT_T == FA_LAYOUT::BNSD && LAYOUT_KV == FA_LAYOUT::BNSD &&
+                      FA_T::attnOutLayout == FA_LAYOUT::BNSD) {
+            qPreScale_ = constInfo_.bSize == 1 && constInfo_.gSize == 1 && constInfo_.dSize == 64 &&
+                         constInfo_.dSizeV == 64 && constInfo_.scaleValue == 0.125f && constInfo_.s1Size > 0 &&
+                         constInfo_.s1Size % 128 == 0 && constInfo_.s2Size > 0 && constInfo_.s2Size % 256 == 0 &&
+                         qSeqLensTool_.GetActualSeqLength(0) == constInfo_.s1Size &&
+                         kvSeqLensTool_.GetActualSeqLength(0) == constInfo_.s2Size;
+        }
     }
 
     __aicore__ inline void InitBuffers()
@@ -271,7 +281,13 @@ public:
         }
     }
 
-    __aicore__ inline void InitCrossCoreSync() {}
+    __aicore__ inline void InitCrossCoreSync()
+    {
+        if (qPreScale_) {
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(10);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(11);
+        }
+    }
 
     __aicore__ inline void UnInitCrossCoreSync()
     {
@@ -389,10 +405,14 @@ public:
     {
         LocalTensor<Q_T> qL1Tensor = l1QBuffers_[qL1BufId_ * L1_Q_BUF_BYTES].template ReinterpretCast<Q_T>();
         if (unlikely(runInfo.isFirstS2Loop)) {
-            Mutex::Lock<PIPE_MTE2>(Q_L1_BUFFER_ID0 + qL1BufId_);
-            CopyQuerySlice(qL1Tensor, 0, constInfo_.dSize, runInfo);
-            Mutex::Unlock<PIPE_MTE2>(Q_L1_BUFFER_ID0 + qL1BufId_);
-            Mutex::Lock<PIPE_MTE1>(Q_L1_BUFFER_ID0 + qL1BufId_);
+            if (qPreScale_) {
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(8 + qL1BufId_);
+            } else {
+                Mutex::Lock<PIPE_MTE2>(Q_L1_BUFFER_ID0 + qL1BufId_);
+                CopyQuerySlice(qL1Tensor, 0, constInfo_.dSize, runInfo);
+                Mutex::Unlock<PIPE_MTE2>(Q_L1_BUFFER_ID0 + qL1BufId_);
+                Mutex::Lock<PIPE_MTE1>(Q_L1_BUFFER_ID0 + qL1BufId_);
+            }
         }
 
         LocalTensor<KV_T> kL1Tensor = l1KvBuffers_[kvL1BufId_ * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
@@ -433,7 +453,11 @@ public:
         kvL1BufId_ = (kvL1BufId_ + 1) % L1_KV_BUFCNT;
 
         if (unlikely(runInfo.isLastS2Loop)) {
-            Mutex::Unlock<PIPE_MTE1>(Q_L1_BUFFER_ID0 + qL1BufId_);
+            if (qPreScale_) {
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(10 + qL1BufId_);
+            } else {
+                Mutex::Unlock<PIPE_MTE1>(Q_L1_BUFFER_ID0 + qL1BufId_);
+            }
             qL1BufId_ = (qL1BufId_ + 1) % L1_Q_BUFCNT;
         }
     }
@@ -474,9 +498,50 @@ public:
         CopyMmResult(dstTensor, l0C, fixpipeParams);
     }
 
+    __aicore__ inline void IterateBmm2DnOutput(LocalTensor<MM_T> &dst, LocalTensor<Q_T> &p, RunInfo &runInfo)
+    {
+        auto v = l1KvBuffers_[kvL1BufId_ * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
+        Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
+        CopyValueSlice(v, 0, 64, runInfo);
+        Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
+        Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
+        auto accum = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
+        MMParam param{};
+        param.singleM = 64;
+        param.singleN = 128;
+        param.singleK = 256;
+        param.isLeftTranspose = true;
+        param.isRightTranspose = false;
+        param.isOutKFisrt = true;
+        param.unitFlag = UNIT_FLAG_VALUE;
+        MatmulK<KV_T, Q_T, MM_T, 64, 128, 128, ABLayout::MK, ABLayout::KN>(v, p, mmL0APolicy_, mmL0BPolicy_, accum,
+                                                                           param);
+        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fix;
+        fix.nSize = 128;
+        fix.mSize = 64;
+        fix.srcStride = 64;
+        fix.dstStride = 64;
+        fix.dualDstCtl = 2;
+        fix.unitFlag = UNIT_FLAG_VALUE;
+        fix.params.ndNum = 1;
+        fix.params.srcNdStride = 0;
+        fix.params.dstNdStride = 0;
+        CopyMmResult(dst, accum, fix);
+        l0cBufId_ = (l0cBufId_ + 1U) % L0C_BUFCNT;
+        Mutex::Unlock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
+        kvL1BufId_ = (kvL1BufId_ + 1U) % L1_KV_BUFCNT;
+    }
+
     __aicore__ inline void IterateBmm2l0Split(LocalTensor<MM_T> &mm2ResUbTensor, LocalTensor<Q_T> &pL1Tensor,
                                               RunInfo &runInfo)
     {
+        if constexpr (SPLIT_MM_QUEUES && IsSameType<INPUT_T, bfloat16_t>::value &&
+                      IsSameType<OUTPUT_T, bfloat16_t>::value) {
+            if (qPreScale_ && !runInfo.isS2SplitCore) {
+                IterateBmm2DnOutput(mm2ResUbTensor, pL1Tensor, runInfo);
+                return;
+            }
+        }
         LocalTensor<KV_T> vL1Tensor = l1KvBuffers_[kvL1BufId_ * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
         Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         CopyValueSlice(vL1Tensor, 0, constInfo_.dSizeV, runInfo);
@@ -521,7 +586,8 @@ public:
                         MatmulFull<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(
                             pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
                     } else {
-                        MatmulBase<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(
+                        // K128 keeps the full 128-row BF16 A tile within a 32KiB L0A slot.
+                        MatmulK<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(
                             pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
                     }
                 }

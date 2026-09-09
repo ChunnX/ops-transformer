@@ -22,6 +22,95 @@ namespace FaVectorApi {
 static constexpr Reg::CastTrait castTraitFp16_32_update = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
                                                            Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 constexpr uint16_t REDUCE_SIZE = 1;
+
+// Full D64 rows only; other layouts and final normalization use the existing path.
+__simd_vf__ inline void FlashUpdateD64FullVF(__ubuf__ float *dst, __ubuf__ float *cur, __ubuf__ float *pre,
+                                             __ubuf__ float *expMax)
+{
+    MaskReg mask = CreateMask<float, MaskPattern::ALL>();
+    RegTensor<float> e0, p0, c0;
+    RegTensor<float> e1, p1, c1;
+    RegTensor<float> e2, p2, c2;
+    RegTensor<float> e3, p3, c3;
+    for (uint16_t i = 0; i < 16; ++i) {
+        LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(e0, expMax + i * 4 + 0);
+        LoadAlign(p0, pre + (i * 4 + 0) * 64);
+        LoadAlign(c0, cur + (i * 4 + 0) * 64);
+        LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(e1, expMax + i * 4 + 1);
+        LoadAlign(p1, pre + (i * 4 + 1) * 64);
+        LoadAlign(c1, cur + (i * 4 + 1) * 64);
+        LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(e2, expMax + i * 4 + 2);
+        LoadAlign(p2, pre + (i * 4 + 2) * 64);
+        LoadAlign(c2, cur + (i * 4 + 2) * 64);
+        LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(e3, expMax + i * 4 + 3);
+        LoadAlign(p3, pre + (i * 4 + 3) * 64);
+        LoadAlign(c3, cur + (i * 4 + 3) * 64);
+        MulAddDst(c0, p0, e0, mask);
+        MulAddDst(c1, p1, e1, mask);
+        MulAddDst(c2, p2, e2, mask);
+        MulAddDst(c3, p3, e3, mask);
+        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(dst + (i * 4 + 0) * 64, c0, mask);
+        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(dst + (i * 4 + 1) * 64, c1, mask);
+        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(dst + (i * 4 + 2) * 64, c2, mask);
+        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(dst + (i * 4 + 3) * 64, c3, mask);
+    }
+}
+
+// PV is DN: each vector holds64 query rows for one value column.
+template <bool last>
+__simd_vf__ inline void FlashUpdateD64DnVF(__ubuf__ float *accum, __ubuf__ float *cur, __ubuf__ float *factor)
+{
+    MaskReg mask = CreateMask<float, MaskPattern::ALL>();
+    RegTensor<float> scale, p0, p1, p2, p3, c0, c1, c2, c3;
+    LoadAlign(scale, factor);
+    for (uint16_t i = 0; i < 16; ++i) {
+        LoadAlign(p0, accum + (i * 4 + 0) * 64);
+        LoadAlign(c0, cur + (i * 4 + 0) * 64);
+        LoadAlign(p1, accum + (i * 4 + 1) * 64);
+        LoadAlign(c1, cur + (i * 4 + 1) * 64);
+        LoadAlign(p2, accum + (i * 4 + 2) * 64);
+        LoadAlign(c2, cur + (i * 4 + 2) * 64);
+        LoadAlign(p3, accum + (i * 4 + 3) * 64);
+        LoadAlign(c3, cur + (i * 4 + 3) * 64);
+        if constexpr (last) {
+            Mul(p0, p0, scale, mask);
+            Add(c0, c0, p0, mask);
+            Mul(p1, p1, scale, mask);
+            Add(c1, c1, p1, mask);
+            Mul(p2, p2, scale, mask);
+            Add(c2, c2, p2, mask);
+            Mul(p3, p3, scale, mask);
+            Add(c3, c3, p3, mask);
+        } else {
+            MulAddDst(c0, p0, scale, mask);
+            MulAddDst(c1, p1, scale, mask);
+            MulAddDst(c2, p2, scale, mask);
+            MulAddDst(c3, p3, scale, mask);
+        }
+        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(accum + (i * 4 + 0) * 64, c0, mask);
+        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(accum + (i * 4 + 1) * 64, c1, mask);
+        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(accum + (i * 4 + 2) * 64, c2, mask);
+        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(accum + (i * 4 + 3) * 64, c3, mask);
+    }
+}
+static constexpr Reg::CastTrait castDnOutput = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING,
+                                                RoundMode::CAST_ROUND};
+__simd_vf__ inline void FlashPackOutputD64DnVF(__ubuf__ bfloat16_t *out, __ubuf__ float *accum, __ubuf__ float *sum)
+{
+    MaskReg mf = CreateMask<float, MaskPattern::ALL>();
+    MaskReg half = CreateMask<uint16_t, MaskPattern::VL64>();
+    RegTensor<float> denominator, x;
+    RegTensor<bfloat16_t> cast, packed;
+    LoadAlign(denominator, sum);
+    for (uint16_t col = 0; col < 64; ++col) {
+        LoadAlign(x, accum + col * 64);
+        Div(x, x, denominator, mf);
+        Cast<bfloat16_t, float, castDnOutput>(cast, x, mf);
+        Pack<uint16_t, uint32_t, HighLowPart::LOWEST>((RegTensor<uint16_t> &)packed, (RegTensor<uint32_t> &)cast);
+        StoreAlign<bfloat16_t, Reg::StoreDist::DIST_NORM_B16>(out + col * 64, packed, half);
+    }
+}
+
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre,
           bool isMlaFullQuant>
 __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float *dstUb, __ubuf__ float *curUb, __ubuf__ float *preUb,

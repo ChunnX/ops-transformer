@@ -187,6 +187,9 @@ public:
     GlobalTensor<float> sinkGm_;
 
     T negativeFloatScalar_;
+    bool qPreScale_ = false;
+    uint32_t qPrescaleSlot_ = 0;
+    GlobalTensor<INPUT_T> queryScaleGm_;
 
     // ==================== Functions ======================
     __aicore__ inline FANoQuantGqaBlockVecDn(ConstInfo_t &constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool,
@@ -197,8 +200,18 @@ public:
 
     __aicore__ inline void InitBlock(__gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink,
                                      __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-                                     __gm__ uint8_t *workspace)
+                                     __gm__ uint8_t *workspace, __gm__ uint8_t *query)
     {
+        queryScaleGm_.SetGlobalBuffer((__gm__ INPUT_T *)query);
+        if constexpr (SPLIT_MM_QUEUES && IsSameType<INPUT_T, bfloat16_t>::value && !PAGE_ATTENTION && !FA_T::hasMask &&
+                      LAYOUT_T == FA_LAYOUT::BNSD && LAYOUT_KV == FA_LAYOUT::BNSD &&
+                      FA_T::attnOutLayout == FA_LAYOUT::BNSD) {
+            qPreScale_ = constInfo_.bSize == 1 && constInfo_.gSize == 1 && constInfo_.dSize == 64 &&
+                         constInfo_.dSizeV == 64 && constInfo_.scaleValue == 0.125f && constInfo_.s1Size > 0 &&
+                         constInfo_.s1Size % 128 == 0 && constInfo_.s2Size > 0 && constInfo_.s2Size % 256 == 0 &&
+                         qSeqLensTool_.GetActualSeqLength(0) == constInfo_.s1Size &&
+                         kvSeqLensTool_.GetActualSeqLength(0) == constInfo_.s2Size;
+        }
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
         this->negativeFloatScalar_ = *((T *)&tmp1);
 
@@ -314,11 +327,45 @@ public:
         }
     }
 
-    __aicore__ inline void UnInitCrossCoreSync() {}
+    __aicore__ inline void UnInitCrossCoreSync()
+    {
+        if (qPreScale_ && constInfo_.subBlockIdx == 0) {
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(10);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(11);
+        }
+    }
 
     __aicore__ inline void AllocEventID() {}
 
     __aicore__ inline void FreeEventID() {}
+
+    __aicore__ inline void PrepareScaledQuery(RunInfo &runInfo)
+    {
+        if constexpr (SPLIT_MM_QUEUES && IsSameType<INPUT_T, bfloat16_t>::value) {
+            if (!qPreScale_ || constInfo_.subBlockIdx != 0) {
+                return;
+            }
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(10 + qPrescaleSlot_);
+            Mutex::Lock<PIPE_MTE2>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
+            auto qUb = ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
+            uint64_t offset = (static_cast<uint64_t>(runInfo.n2Idx) * constInfo_.s1Size + runInfo.s1Idx) * 64U;
+            DataCopy(qUb, queryScaleGm_[offset], 8192U);
+            Mutex::Unlock<PIPE_MTE2>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
+            Mutex::Lock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
+            FaVectorApi::ScaleQueryD64VF((__ubuf__ bfloat16_t *)qUb.GetPhyAddr());
+            Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
+            Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
+            auto qL1 =
+                LocalTensor<uint8_t>(TPosition::A1, L1_P_BUFCNT * L1_P_BUF_BYTES + qPrescaleSlot_ * 16384U, 16384U)
+                    .template ReinterpretCast<INPUT_T>();
+            for (uint32_t c = 0; c < 4; ++c) {
+                DataCopy(qL1[c * 2048U], qUb[c * 16U], {128, 1, 3, 0});
+            }
+            Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(8 + qPrescaleSlot_);
+            qPrescaleSlot_ = (qPrescaleSlot_ + 1U) % 2U;
+        }
+    }
 
     __aicore__ inline void ProcessVec1(RunInfo runInfo)
     {
@@ -330,6 +377,7 @@ public:
         auto mm1ResUbTensor = ubMmResBuffers_[MmSlotOffset(mmResUbBufId)].template ReinterpretCast<T>();
 
         if (unlikely(runInfo.isFirstS2Loop)) {
+            PrepareScaledQuery(runInfo);
             ResetSoftmaxBuffer(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT, runInfo);
             AscendC::PipeBarrier<PIPE_V>();
         }
@@ -464,10 +512,27 @@ public:
 
         LocalTensor<INPUT_T> stage1CastTensor =
             ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
-        FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
-            stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb, runInfo.actMSizeAlign32 >> 1,
-            runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size, static_cast<T>(constInfo_.scaleValue),
-            descaleQK, negativeFloatScalar_, 0.0F, false);
+        // VEC1_COMPUTE_BEGIN
+        if constexpr (SPLIT_MM_QUEUES && IsSameType<INPUT_T, bfloat16_t>::value) {
+            if (qPreScale_ && runInfo.actVecMSize == 64 && (runInfo.actMSizeAlign32 >> 1) == 64 &&
+                runInfo.actSingleLoopS2Size == 256 && runInfo.actSingleLoopS2SizeAlign == 256) {
+                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, true, true>(
+                    stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
+                    runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
+                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false);
+            } else {
+                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
+                    stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
+                    runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
+                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false);
+            }
+        } else {
+            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
+                stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
+                runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
+                static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false);
+        }
+        // VEC1_COMPUTE_END
 
         Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
         Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
@@ -571,10 +636,67 @@ public:
         DataCopyPad(accumOutGm_[gmOffset], ubVec2Res, dataCopyParams);
     }
 
+    __aicore__ inline void ProcessVec2DnOutput(RunInfo &runInfo, uint32_t slot, uint32_t sync)
+    {
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(sync);
+        Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
+        auto cur = ubMmResBuffers_[MmSlotOffset(slot)].template ReinterpretCast<T>();
+        if (runInfo.isFirstS2Loop) {
+            DataCopy(ubVec2Res_, cur, 4096U);
+        } else {
+            auto factor =
+                softmaxExpBuf_[(runInfo.loop % UB_SOFTMAX_EXP_BUFCNT) * (UB_SOFTMAX_EXP_BUF_BYTES / sizeof(T))];
+            if (runInfo.isLastS2Loop) {
+                FaVectorApi::FlashUpdateD64DnVF<true>((__ubuf__ float *)ubVec2Res_.GetPhyAddr(),
+                                                      (__ubuf__ float *)cur.GetPhyAddr(),
+                                                      (__ubuf__ float *)factor.GetPhyAddr());
+            } else {
+                FaVectorApi::FlashUpdateD64DnVF<false>((__ubuf__ float *)ubVec2Res_.GetPhyAddr(),
+                                                       (__ubuf__ float *)cur.GetPhyAddr(),
+                                                       (__ubuf__ float *)factor.GetPhyAddr());
+            }
+        }
+        if (runInfo.isLastS2Loop) {
+            // Current PV is fully consumed; keep its slot owned until output MTE3 completes.
+            AscendC::PipeBarrier<PIPE_V>();
+            auto sum = softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) * (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
+            auto output = cur.template ReinterpretCast<OUTPUT_T>();
+            FaVectorApi::FlashPackOutputD64DnVF((__ubuf__ bfloat16_t *)output.GetPhyAddr(),
+                                                (__ubuf__ float *)ubVec2Res_.GetPhyAddr(),
+                                                (__ubuf__ float *)sum.GetPhyAddr());
+            AscendC::PipeBarrier<PIPE_V>();
+            auto finalOutput = ubVec2Res_.template ReinterpretCast<OUTPUT_T>();
+            uint64_t srcList[16], dstList[16];
+            for (uint32_t c = 0; c < 64; c += 16) {
+                for (uint32_t i = 0; i < 16; ++i) {
+                    srcList[i] = reinterpret_cast<uint64_t>(output.GetPhyAddr()) + ((c + i) * 64U) * sizeof(OUTPUT_T);
+                    dstList[i] =
+                        reinterpret_cast<uint64_t>(finalOutput.GetPhyAddr()) + (i * 64U + c) * sizeof(OUTPUT_T);
+                }
+                TransDataTo5HD<OUTPUT_T>(dstList, srcList, {false, false, 4, 64, 1});
+            }
+            Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
+            Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
+            Bmm2DataCopyOutTrans(runInfo, finalOutput, 0, 64);
+            Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(sync);
+        } else {
+            Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(sync);
+        }
+    }
+
     __aicore__ inline void ProcessVec2(RunInfo runInfo)
     {
         uint32_t mmResUbBufId = AcquireMmSlot(true);
         uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
+        if constexpr (SPLIT_MM_QUEUES && IsSameType<INPUT_T, bfloat16_t>::value &&
+                      IsSameType<OUTPUT_T, bfloat16_t>::value) {
+            if (qPreScale_ && !runInfo.isS2SplitCore) {
+                ProcessVec2DnOutput(runInfo, mmResUbBufId, mmSyncIdx);
+                return;
+            }
+        }
         if (unlikely(runInfo.actVecMSize == 0)) {
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
             CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
@@ -595,9 +717,22 @@ public:
 
                 float deSCalePreVValue = 1.0f;
                 if (!runInfo.isLastS2Loop) {
-                    FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                        ubVec2Res_, mm2ResUbTensor, ubVec2Res_, expUb, pScaleUb, runInfo.actVecMSize, dTemplateAlign64,
-                        1.0, 1.0);
+                    if constexpr (SPLIT_MM_QUEUES && IsSameType<INPUT_T, bfloat16_t>::value && dTemplateAlign64 == 64) {
+                        if (runInfo.actVecMSize == 64) {
+                            FaVectorApi::FlashUpdateD64FullVF((__ubuf__ float *)ubVec2Res_.GetPhyAddr(),
+                                                              (__ubuf__ float *)mm2ResUbTensor.GetPhyAddr(),
+                                                              (__ubuf__ float *)ubVec2Res_.GetPhyAddr(),
+                                                              (__ubuf__ float *)expUb.GetPhyAddr());
+                        } else {
+                            FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                                ubVec2Res_, mm2ResUbTensor, ubVec2Res_, expUb, pScaleUb, runInfo.actVecMSize,
+                                dTemplateAlign64, 1.0, 1.0);
+                        }
+                    } else {
+                        FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                            ubVec2Res_, mm2ResUbTensor, ubVec2Res_, expUb, pScaleUb, runInfo.actVecMSize,
+                            dTemplateAlign64, 1.0, 1.0);
+                    }
                 } else {
                     LocalTensor<float> sumUb = softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) *
                                                               (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
