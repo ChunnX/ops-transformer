@@ -39,13 +39,17 @@ class l2_ai_mhc_pre_backward_a5_test : public testing::Test {
 protected:
     void SetUp() override
     {
+        originalSocVersion_ = op::GetCurrentPlatformInfo().GetSocVersion();
         op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
     }
 
     void TearDown() override
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+        op::SetPlatformSocVersion(originalSocVersion_);
     }
+
+private:
+    op::SocVersion originalSocVersion_;
 };
 
 aclnnStatus RunMhcPreBackward(bool useFactorialGradHRes = false)
