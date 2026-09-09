@@ -959,7 +959,7 @@ uint64_t AllToAllMxQuantMatmulTilingBase::GetTilingKey() const
 
 /**
  * @brief 构建MX量化专属的workspace布局，与kernel侧实际存放顺序保持一致
- * 顺序: LIB_API → commX1Scale → commOut → transX1Scale → transOut → RUNTIME_INFO
+ * 顺序: LIB_API → commX1Scale → commOut → transX1Scale → transOut → STATE_DUMP
  */
 void AllToAllMxQuantMatmulTilingBase::BuildWorkspaceLayout()
 {
@@ -990,11 +990,11 @@ void AllToAllMxQuantMatmulTilingBase::BuildWorkspaceLayout()
             offset, inferredInfo_.permuteLen, static_cast<uint8_t>(Mc2Tiling::WS_SEG_PERMUTE_OUT), {}};
         offset += inferredInfo_.permuteLen;
     }
-    // [4] 运行时信息段 (64KB)
+    // [4] 状态打点段 (64KB)
 #if MC2_DFX_ENABLE
     workspaceLayout_.segments[idx++] = {
-        offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE, static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
-    offset += Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+        offset, Mc2Tiling::STATE_DUMP_TOTAL_SIZE, static_cast<uint8_t>(Mc2Tiling::WS_SEG_STATE_DUMP), {}};
+    offset += Mc2Tiling::STATE_DUMP_TOTAL_SIZE;
 #endif
 
     workspaceLayout_.totalSize = offset;
@@ -1003,7 +1003,7 @@ void AllToAllMxQuantMatmulTilingBase::BuildWorkspaceLayout()
 
 /**
  * @brief 构建apace(hcomm)路线专属的workspace布局，与kernel侧实际存放顺序保持一致
- * 顺序: LIB_API → commX1Scale → commOut → RUNTIME_INFO
+ * 顺序: LIB_API → commX1Scale → commOut → STATE_DUMP
  * 注意: apace是纯C核路线，无转置段(transX1Scale/transOut)
  */
 void AllToAllMxQuantMatmulTilingBase::BuildWorkspaceLayoutApace()
@@ -1023,11 +1023,11 @@ void AllToAllMxQuantMatmulTilingBase::BuildWorkspaceLayoutApace()
             offset, inferredInfo_.commLen, static_cast<uint8_t>(Mc2Tiling::WS_SEG_COMM_OUT), {}};
         offset += inferredInfo_.commLen;
     }
-    // [2] 运行时信息段 (64KB)
+    // [2] 状态打点段 (64KB)
 #if MC2_DFX_ENABLE
     workspaceLayout_.segments[idx++] = {
-        offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE, static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
-    offset += Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+        offset, Mc2Tiling::STATE_DUMP_TOTAL_SIZE, static_cast<uint8_t>(Mc2Tiling::WS_SEG_STATE_DUMP), {}};
+    offset += Mc2Tiling::STATE_DUMP_TOTAL_SIZE;
 #endif
 
     workspaceLayout_.totalSize = offset;
