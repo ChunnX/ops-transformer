@@ -28,6 +28,7 @@ constexpr uint32_t BUFFER_NUM = 1;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
 constexpr uint64_t CUBE_BLOCK_NUM = 16;
 constexpr uint64_t MAX_BASIC_BLOCK_SIZE = 256;
+constexpr uint64_t M_BLOCK_WINDOW_LEN = 4; // 与device侧Blaze::Gemm::WINDOW_LEN一致
 constexpr uint64_t UB_TOTAL_BYTES = 248UL * 1024UL;
 constexpr uint64_t UB_COST_FACTOR = 12UL; // sumfp32(4b)+localbf16(2b)+localfp32(4b)+sumbf16(2b)
 
@@ -186,7 +187,11 @@ static ge::graphStatus SetTilingData(
     // tilingEngine.SetMaxBaseM(128);
     uint64_t tpSizeM = M / rankSize;
     OP_TILING_CHECK(M % rankSize != 0, OP_LOGE(nodeName, "M must be divisble by rankSize!"), return ge::GRAPH_FAILED);
-    uint64_t dynMaxBaseM = std::min(MAX_BASIC_BLOCK_SIZE, (tpSizeM / CUBE_BLOCK_NUM) * CUBE_BLOCK_NUM);
+    // baseM取tpSizeM的ceil(rankSize/4)倍, 使mBlockCnt = rankSize/ceil(rankSize/4) <= 窗口宽4:
+    // 单窗口行线性走位, 每一轮分核都覆盖全部M块, alltoall全程喂满所有peer链路;
+    // rankSize <= 4时倍数为1, 退化为原有逻辑
+    uint64_t mSplitFactor = (rankSize + M_BLOCK_WINDOW_LEN - 1) / M_BLOCK_WINDOW_LEN;
+    uint64_t dynMaxBaseM = std::min(MAX_BASIC_BLOCK_SIZE, (mSplitFactor * tpSizeM / CUBE_BLOCK_NUM) * CUBE_BLOCK_NUM);
     if (dynMaxBaseM < CUBE_BLOCK_NUM) {
         dynMaxBaseM = std::min(MAX_BASIC_BLOCK_SIZE, (M / 2 / CUBE_BLOCK_NUM) * CUBE_BLOCK_NUM);
     }
