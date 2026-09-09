@@ -157,11 +157,13 @@ __aicore__ inline void Gmm1AicMmadTileA8W4(BlockMmad &blockMmad, TensorA &gmA, T
     auto gmBlockScaleA =
         gmScaleA.Slice(Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.scaleK));
 
-    for (uint32_t weightBlock = 0; weightBlock < ACTIVATION_N_HALF; ++weightBlock) {
-        uint32_t nOffset = nLoc + weightBlock * config.outputN;
+    constexpr uint32_t weightBlockCount = Config::SOURCE_GMM1_INTERLEAVED ? 1U : ACTIVATION_N_HALF;
+    for (uint32_t weightBlock = 0; weightBlock < weightBlockCount; ++weightBlock) {
+        uint32_t nOffset =
+            Config::SOURCE_GMM1_INTERLEAVED ? nLoc / ACTIVATION_N_HALF : nLoc + weightBlock * config.outputN;
         auto gmBlockScaleB =
             gmScaleB.Slice(Te::MakeCoord(0, nOffset), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
-        auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nOffset),
+        auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, Config::SOURCE_GMM1_INTERLEAVED ? nLoc : nOffset),
                                             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
     }
@@ -275,8 +277,11 @@ __aicore__ inline void Gmm1AicMmadA8W4(WorkSet &workSet, const Params &params, c
     BlockMmad blockMmad{};
     typename BlockMmad::BlockShape l0TileShape{config.blockMmadTiling.tileM, config.blockMmadTiling.tileN, L0_TILE_K,
                                                0};
-    typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
+    typename BlockMmad::ProblemShape matmulShape{config.m, config.schedulerN, config.k, 0};
     blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params);
+    if constexpr (Config::SOURCE_GMM1_INTERLEAVED) {
+        blockMmad.SetGmm1ConcatHalfN(config.outputN);
+    }
 
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
@@ -473,55 +478,62 @@ __aicore__ inline void Gmm1Aiv1PrefetchEpilogueTileA8W4(ActivationQuantOp &activ
                                                         const Config &config, const ActualShape &actualShape,
                                                         uint32_t mLoc, uint32_t nLoc, uint32_t expertBeforeCnt)
 {
-    uint32_t mLen = Get<M_VALUE>(actualShape);
-    if (mLen == 0U) {
-        return;
-    }
-
-    constexpr uint32_t subTileM = L1_TILE_M_128;
-    uint64_t firstMetaInfoRow = expertBeforeCnt + mLoc;
-    auto topkWeightTensor = activationQuantOp.GetTopkWeightTensor();
-    AscendC::DataCopy(topkWeightTensor, metaInfoGm[firstMetaInfoRow * INT32_PER_256B],
-                      static_cast<uint32_t>(mLen < subTileM ? mLen : subTileM) * INT32_PER_256B);
-    auto layoutL0cUb = MakeLayoutC{}(subTileM, L1_TILE_N);
-    int64_t ubOffsetFirst = 0;
-    int64_t ubOffsetSecond = static_cast<int64_t>(MAX_SINGLE_MN_ALIGN32_NUM_128) * sizeof(ElementC);
-    auto tensorBlockUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetFirst), layoutL0cUb);
-    auto tensorBlockUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetSecond), layoutL0cUb);
-    auto copyGm2Ub = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
-
-    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
-    for (uint32_t subOffset = 0; subOffset < mLen; subOffset += subTileM) {
-        uint32_t subM = mLen - subOffset < subTileM ? mLen - subOffset : subTileM;
-        uint32_t subMLoc = mLoc + subOffset;
-        uint64_t metaInfoRow = expertBeforeCnt + subMLoc;
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
-        if (subOffset != 0) {
-            AscendC::DataCopy(topkWeightTensor, metaInfoGm[metaInfoRow * INT32_PER_256B], subM * INT32_PER_256B);
+    if constexpr (Config::SOURCE_GMM1_INTERLEAVED) {
+        Gmm1Aiv0PrefetchInterleavedEpilogueTileGeneric<MakeLayoutC, ElementC, IsWaveFlagGrained>(
+            config, l0cOutGm, metaInfoGm, activationQuantOp, gmmAddrInfo, expertBeforeCnt, actualShape, mLoc, nLoc);
+    } else {
+        uint32_t mLen = Get<M_VALUE>(actualShape);
+        if (mLen == 0U) {
+            return;
         }
-        auto tensorBlockGmFirst =
-            l0cOutGm.Slice(Te::MakeCoord(subMLoc, nLoc), Te::MakeShape(subM, Get<N_VALUE>(actualShape)));
-        auto tensorBlockGmSecond = l0cOutGm.Slice(Te::MakeCoord(subMLoc, nLoc + config.outputN),
-                                                  Te::MakeShape(subM, Get<N_VALUE>(actualShape)));
-        AscendC::Te::Copy(copyGm2Ub, tensorBlockUbFirst, tensorBlockGmFirst);
-        AscendC::Te::Copy(copyGm2Ub, tensorBlockUbSecond, tensorBlockGmSecond);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
-        Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{subM, Get<N_VALUE>(actualShape), 0, 0};
-        Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
-            subMLoc * config.outputN + nLoc,
-            subMLoc * CeilDiv(config.outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
-                CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
-            0,
-            0,
-            static_cast<int64_t>(metaInfoRow),
-            0};
-        AscendC::SetCtrlSpr<60, 60>(0);
-        activationQuantOp(epilogueShape, epilogueOffset);
-        NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, subMLoc / L1_TILE_M_256);
+
+        constexpr uint32_t subTileM = L1_TILE_M_128;
+        uint64_t firstMetaInfoRow = expertBeforeCnt + mLoc;
+        auto topkWeightTensor = activationQuantOp.GetTopkWeightTensor();
+        AscendC::DataCopy(topkWeightTensor, metaInfoGm[firstMetaInfoRow * INT32_PER_256B],
+                          static_cast<uint32_t>(mLen < subTileM ? mLen : subTileM) * INT32_PER_256B);
+        auto layoutL0cUb = MakeLayoutC{}(subTileM, L1_TILE_N);
+        int64_t ubOffsetFirst = 0;
+        int64_t ubOffsetSecond = static_cast<int64_t>(MAX_SINGLE_MN_ALIGN32_NUM_128) * sizeof(ElementC);
+        auto tensorBlockUbFirst =
+            Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetFirst), layoutL0cUb);
+        auto tensorBlockUbSecond =
+            Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetSecond), layoutL0cUb);
+        auto copyGm2Ub = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
+
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+        for (uint32_t subOffset = 0; subOffset < mLen; subOffset += subTileM) {
+            uint32_t subM = mLen - subOffset < subTileM ? mLen - subOffset : subTileM;
+            uint32_t subMLoc = mLoc + subOffset;
+            uint64_t metaInfoRow = expertBeforeCnt + subMLoc;
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
+            if (subOffset != 0) {
+                AscendC::DataCopy(topkWeightTensor, metaInfoGm[metaInfoRow * INT32_PER_256B], subM * INT32_PER_256B);
+            }
+            auto tensorBlockGmFirst =
+                l0cOutGm.Slice(Te::MakeCoord(subMLoc, nLoc), Te::MakeShape(subM, Get<N_VALUE>(actualShape)));
+            auto tensorBlockGmSecond = l0cOutGm.Slice(Te::MakeCoord(subMLoc, nLoc + config.outputN),
+                                                      Te::MakeShape(subM, Get<N_VALUE>(actualShape)));
+            AscendC::Te::Copy(copyGm2Ub, tensorBlockUbFirst, tensorBlockGmFirst);
+            AscendC::Te::Copy(copyGm2Ub, tensorBlockUbSecond, tensorBlockGmSecond);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
+            Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{subM, Get<N_VALUE>(actualShape), 0, 0};
+            Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
+                subMLoc * config.outputN + nLoc,
+                subMLoc * CeilDiv(config.outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
+                    CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
+                0,
+                0,
+                static_cast<int64_t>(metaInfoRow),
+                0};
+            AscendC::SetCtrlSpr<60, 60>(0);
+            activationQuantOp(epilogueShape, epilogueOffset);
+            NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, subMLoc / L1_TILE_M_256);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+        }
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
     }
-    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
 }
 
 // 非 Prefetch 路径的 AIV1 从 GM 取回完整 A8W4 GMM1 tile 并执行 SwiGLU/量化。
@@ -531,50 +543,75 @@ __aicore__ inline void Gmm1Aiv1EpilogueTileA8W4(ActivationQuantOp &activationQua
                                                 const GMMAddrInfo &gmmAddrInfo, const Config &config,
                                                 const ActualShape &actualShape, uint32_t mLoc, uint32_t nLoc)
 {
-    if (Get<M_VALUE>(actualShape) == 0U) {
-        return;
+    if constexpr (Config::SOURCE_GMM1_INTERLEAVED) {
+        if (Get<M_VALUE>(actualShape) == 0U) {
+            return;
+        }
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
+        auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
+                                            Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+        auto layoutL0cUb = MakeLayoutC{}(config.tileM, L1_TILE_N);
+        auto tensorBlockUb = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(0), layoutL0cUb);
+        auto copyGm2Ub = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
+        AscendC::Te::Copy(copyGm2Ub, tensorBlockUb, tensorBlockGm);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
+        Gmm1Aiv0InterleavedEpilogueTileGeneric<IsWaveFlagGrained>(config, activationQuantOp, gmmAddrInfo, actualShape,
+                                                                  mLoc, nLoc, 0U);
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
+    } else {
+        if (Get<M_VALUE>(actualShape) == 0U) {
+            return;
+        }
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
+        auto tensorBlockGmFirst = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
+                                                 Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+        auto tensorBlockGmSecond = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc + config.outputN),
+                                                  Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+        auto layoutL0cUb = MakeLayoutC{}(config.tileM, L1_TILE_N);
+        int64_t ubOffsetFirst = 0;
+        uint32_t ubBufferSize =
+            config.tileM == L1_TILE_M_128 ? MAX_SINGLE_MN_ALIGN32_NUM_128 : MAX_SINGLE_MN_ALIGN32_NUM_256;
+        int64_t ubOffsetSecond = static_cast<int64_t>(ubBufferSize) * sizeof(ElementC);
+        auto tensorBlockUbFirst =
+            Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetFirst), layoutL0cUb);
+        auto tensorBlockUbSecond =
+            Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetSecond), layoutL0cUb);
+        auto copyGm2Ub = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
+        AscendC::Te::Copy(copyGm2Ub, tensorBlockUbFirst, tensorBlockGmFirst);
+        AscendC::Te::Copy(copyGm2Ub, tensorBlockUbSecond, tensorBlockGmSecond);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
+        Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<M_VALUE>(actualShape),
+                                                                     Get<N_VALUE>(actualShape), 0, 0};
+        Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
+            mLoc * config.outputN + nLoc,
+            mLoc * CeilDiv(config.outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
+                CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
+            0,
+            0,
+            0,
+            0};
+        AscendC::SetCtrlSpr<60, 60>(0);
+        activationQuantOp(epilogueShape, epilogueOffset);
+        NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, mLoc / L1_TILE_M_256);
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
     }
-    AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
-    auto tensorBlockGmFirst =
-        l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-    auto tensorBlockGmSecond = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc + config.outputN),
-                                              Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-    auto layoutL0cUb = MakeLayoutC{}(config.tileM, L1_TILE_N);
-    int64_t ubOffsetFirst = 0;
-    uint32_t ubBufferSize =
-        config.tileM == L1_TILE_M_128 ? MAX_SINGLE_MN_ALIGN32_NUM_128 : MAX_SINGLE_MN_ALIGN32_NUM_256;
-    int64_t ubOffsetSecond = static_cast<int64_t>(ubBufferSize) * sizeof(ElementC);
-    auto tensorBlockUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetFirst), layoutL0cUb);
-    auto tensorBlockUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetSecond), layoutL0cUb);
-    auto copyGm2Ub = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
-    AscendC::Te::Copy(copyGm2Ub, tensorBlockUbFirst, tensorBlockGmFirst);
-    AscendC::Te::Copy(copyGm2Ub, tensorBlockUbSecond, tensorBlockGmSecond);
-    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
-    Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
-                                                                 0, 0};
-    Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
-        mLoc * config.outputN + nLoc,
-        mLoc * CeilDiv(config.outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
-            CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
-        0,
-        0,
-        0,
-        0};
-    AscendC::SetCtrlSpr<60, 60>(0);
-    activationQuantOp(epilogueShape, epilogueOffset);
-    NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, mLoc / L1_TILE_M_256);
-    AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
 }
 
-// 为一个 GMM1 逻辑 block 的 AIV0 路径展开两段 A8W4 权重。
+// AIV0 在 UB 拼接 gate/up 并展开 A8W4 权重，每个配对 tile 只提交一次 prologue。
 template <typename BlockPrologue, typename Scheduler, typename TensorB, typename Config>
 __aicore__ inline void Gmm1Aiv0PrologueA8W4(Scheduler &scheduler, TensorB &gmB, const Config &config,
                                             uint32_t startLoopIdx, uint32_t tileNum)
 {
     BlockPrologue blockPrologue;
+    if constexpr (Config::SOURCE_GMM1_INTERLEAVED) {
+        blockPrologue.SetGmm1ConcatHalfN(config.outputN);
+    }
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -582,8 +619,10 @@ __aicore__ inline void Gmm1Aiv0PrologueA8W4(Scheduler &scheduler, TensorB &gmB, 
         auto mL1Size = Get<M_VALUE>(actualShape);
         auto nL1Size = Get<N_VALUE>(actualShape);
 
-        for (uint32_t weightBlock = 0; weightBlock < ACTIVATION_N_HALF; ++weightBlock) {
-            auto nOffset = nLoc + weightBlock * config.outputN;
+        constexpr uint32_t weightBlockCount = Config::SOURCE_GMM1_INTERLEAVED ? 1U : ACTIVATION_N_HALF;
+        for (uint32_t weightBlock = 0; weightBlock < weightBlockCount; ++weightBlock) {
+            auto nOffset =
+                Config::SOURCE_GMM1_INTERLEAVED ? nLoc / ACTIVATION_N_HALF : nLoc + weightBlock * config.outputN;
             blockPrologue(gmB, mL1Size, config.k, nL1Size, nOffset, config.n, config.blockMmadTiling.l1Params.kL1);
         }
     }
@@ -894,20 +933,19 @@ __aicore__ inline void RunGmm1Generic(
 // RunGmm1A8W4：执行 A8W4 prologue（W4→W8）、GMM1、SwiGLU 和量化。
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           uint32_t Gmm1TileM = L1_TILE_M_256, uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false,
-          bool IsShared = false, bool IsWaveFlagGrained = false, typename... LayoutArgs>
-__aicore__ inline void RunGmm1A8W4(BlockEpilogueActivationMxQuant<ElementA, ElementC, EpilogueTileM, L1_TILE_N,
-                                                                  TopkWeightsPrefetch> &activationQuantOp,
-                                   const Params &params,
-                                   const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
-                                   const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
-                                   int32_t &gmm1TileReadySequence, const BlockJobContext &blockJob,
-                                   uint32_t expertBeforeCnt, uint32_t expertIdx, const LayoutArgs &...layoutArgs)
+          bool IsShared = false, bool IsWaveFlagGrained = false, bool IsGmm1Interleaved = false, typename... LayoutArgs>
+__aicore__ inline void RunGmm1A8W4(
+    BlockEpilogueActivationMxQuant<ElementA, ElementC, EpilogueTileM, L1_TILE_N, TopkWeightsPrefetch, IsGmm1Interleaved>
+        &activationQuantOp,
+    const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmm1TileReadySequence,
+    const BlockJobContext &blockJob, uint32_t expertBeforeCnt, uint32_t expertIdx, const LayoutArgs &...layoutArgs)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
 
     using GmmConfig = GmmKernel::Config<true, 0, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, false,
-                                        TopkWeightsPrefetch, IsShared, false>;
+                                        TopkWeightsPrefetch, IsShared, false, IsGmm1Interleaved, IsWaveFlagGrained>;
     auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, blockJob, Gmm1TileM);
 
     if constexpr (g_coreType == AIV) {
@@ -918,7 +956,7 @@ __aicore__ inline void RunGmm1A8W4(BlockEpilogueActivationMxQuant<ElementA, Elem
     using BlockPrologue = typename GmmConfig::BlockPrologue;
     using MakeLayoutC = typename GmmConfig::MakeLayoutC;
 
-    GmmKernel::BlockScheduler scheduler({config.m, config.outputN, config.k},
+    GmmKernel::BlockScheduler scheduler({config.m, config.schedulerN, config.k},
                                         GmmKernel::BlockScheduler::Params{Te::MakeCoord(
                                             static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
@@ -940,20 +978,20 @@ __aicore__ inline void RunGmm1A8W4(BlockEpilogueActivationMxQuant<ElementA, Elem
 
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           uint32_t Gmm1TileM = L1_TILE_M_256, uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false,
-          bool IsShared = false, bool IsWaveFlagGrained = false>
-__aicore__ inline void RunGmm1A8W4(BlockEpilogueActivationMxQuant<ElementA, ElementC, EpilogueTileM, L1_TILE_N,
-                                                                  TopkWeightsPrefetch> &activationQuantOp,
-                                   const Params &params,
-                                   const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
-                                   const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
-                                   int32_t &gmm1TileReadySequence, uint32_t expertBeforeCnt, uint32_t expertIdx = 0)
+          bool IsShared = false, bool IsWaveFlagGrained = false, bool IsGmm1Interleaved = false>
+__aicore__ inline void RunGmm1A8W4(
+    BlockEpilogueActivationMxQuant<ElementA, ElementC, EpilogueTileM, L1_TILE_N, TopkWeightsPrefetch, IsGmm1Interleaved>
+        &activationQuantOp,
+    const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmm1TileReadySequence, uint32_t expertBeforeCnt,
+    uint32_t expertIdx = 0)
 {
     BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
                              static_cast<uint32_t>(GetBlockNum())};
     RunGmm1A8W4<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, Gmm1TileM, EpilogueTileM,
-                TopkWeightsPrefetch, IsShared, IsWaveFlagGrained>(activationQuantOp, params, problemShape, gmmAddrInfo,
-                                                                  startBlockIdx, gmm1TileReadySequence, blockJob,
-                                                                  expertBeforeCnt, expertIdx);
+                TopkWeightsPrefetch, IsShared, IsWaveFlagGrained, IsGmm1Interleaved>(
+        activationQuantOp, params, problemShape, gmmAddrInfo, startBlockIdx, gmm1TileReadySequence, blockJob,
+        expertBeforeCnt, expertIdx);
 }
 
 template <typename ActivationType, typename WeightType, typename ActivationOutType, typename QuantScaleType,

@@ -106,7 +106,8 @@ int main()
         for (size_t k : {256, 320, 768}) {
             for (size_t expert : {0, 1, 7}) {
                 Check(halfN, k, 32, 1, expert); // A8W8 NZ
-                cases += 1;
+                Check(halfN, k, 32, 2, expert); // A8W4 packed UB input
+                cases += 2;
             }
         }
     }
