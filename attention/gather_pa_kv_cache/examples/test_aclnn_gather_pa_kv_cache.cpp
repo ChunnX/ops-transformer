@@ -109,9 +109,9 @@ int main() {
   std::vector<uint16_t> valueHostData(1536, 0);
   std::vector<int32_t> seqOffsetHostData(4, 2);
 
-  char* cacheMode = "Norm";
+  char cacheMode[] = "Norm";
   const bool isSeqLensCumsum = false;
-  // 创建gradOut aclTensor
+  // 创建GatherPaKvCache的输入输出aclTensor
   ret = CreateAclTensor(keyCacheHostData, keyCacheShape, &keyCacheDeviceAddr, aclDataType::ACL_FLOAT16, &keyCache);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
@@ -149,14 +149,14 @@ int main() {
   }
   // 调用aclnnGatherPaKvCache第二段接口
   ret = aclnnGatherPaKvCache(workspaceAddr, workspaceSize, executor, stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnUnfoldGrad failed. ERROR: %d\n", ret); return ret);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGatherPaKvCache failed. ERROR: %d\n", ret); return ret);
 
   // 4. (固定写法)同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-  auto size = 256;
+  auto size = GetShapeSize(keyShape);
   std::vector<uint16_t> resultData(size, 0);
   ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), keyDeviceAddr,
                     size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
