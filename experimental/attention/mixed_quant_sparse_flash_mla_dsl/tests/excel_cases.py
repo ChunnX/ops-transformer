@@ -8,6 +8,7 @@ from test_case import DEFAULTS, MODES
 
 BOOL_FIELDS = {
     'return_softmax_lse', 'kv_axis0_noncontiguous',
+    'omit_win_topk_length', 'omit_cmp_topk_length',
 }
 INT_FIELDS = {
     'B', 'K1', 'K2', 'block_size1', 'block_size2', 'quant_mode', 'seed',

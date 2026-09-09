@@ -25,6 +25,8 @@ DEFAULTS = {
     "S2C": 2048,
     "K1": 128,
     "K2": 512,
+    "omit_win_topk_length": False,
+    "omit_cmp_topk_length": False,
     "win_topk_length": None,
     "cmp_topk_length": None,
     "ori_kv_topk_mode": "fullK",
@@ -60,6 +62,11 @@ def build_case(params):
         ori_kv_topk_mode=p["ori_kv_topk_mode"],
         cmp_kv_topk_mode=p["cmp_kv_topk_mode"],
     )
+    for side, ref_side in (("win", "ori"), ("cmp", "cmp")):
+        if p.get(f"omit_{side}_topk_length") and ref.get(f"{ref_side}_topk_length") is not None:
+            width = ref[f"{ref_side}_sparse_indices"].shape[-1]
+            if bool((ref[f"{ref_side}_topk_length"] != width).any()):
+                raise ValueError(f"omitting {side}_topk_length requires all K indices to be valid")
     if p.get("softmax_scale") is not None:
         ref["softmax_scale"] = float(p["softmax_scale"])
     pa = pack_pa_layout(ref, block_size=int(p["block_size1"]),
@@ -139,7 +146,10 @@ def run_prepared(p, case, expected, expected_lse):
         if kv is not None:
             print(f"{side}_kv shape={tuple(kv.shape)} stride={kv.stride()} "
                   f"storage_offset={kv.storage_offset()}")
-    actual, actual_lse = _call_public(kwargs, mode, case["t1"])
+    actual, actual_lse = _call_public(
+        kwargs, mode, case["t1"],
+        omit_win_length=p.get("omit_win_topk_length", False),
+        omit_cmp_length=p.get("omit_cmp_topk_length", False))
     if kwargs["return_softmax_lse"]:
         torch.testing.assert_close(actual_lse, expected_lse, rtol=1e-5, atol=1e-5)
     result, percent = check_result(expected, actual)
@@ -176,7 +186,7 @@ def _pa_tensor(pa, row_bytes, *, axis0_noncontiguous=False):
     return result
 
 
-def _call_public(kwargs, mode, t1):
+def _call_public(kwargs, mode, t1, *, omit_win_length=False, omit_cmp_length=False):
     """Run metadata and attention through the installed wheel's torch.ops."""
     # Explicit import surfaces DSL registration failures instead of testing another implementation.
     import cann_ops_transformer.ops.attention.mixed_quant_sparse_flash_mla_dsl  # noqa: F401
@@ -196,6 +206,11 @@ def _call_public(kwargs, mode, t1):
             cu_seqlens_q=kwargs["cu_seqlens_q"],
             num_heads_q=C.N1, num_heads_kv=1, head_dim=C.D,
             quant_mode=kwargs["quant_mode"], has_cmp_kv=(mode == "ORI_CMP_SPARSE"))
+    # Metadata keeps its required length inputs; attention can omit either side.
+    if omit_win_length:
+        kwargs.pop("win_topk_length")
+    if omit_cmp_length:
+        kwargs.pop("cmp_topk_length")
     want_lse = kwargs.get("return_softmax_lse", False)
     out, lse = mixed_quant_sparse_flash_mla(**kwargs)
     if want_lse:

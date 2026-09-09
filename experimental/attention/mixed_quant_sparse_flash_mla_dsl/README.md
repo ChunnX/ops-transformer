@@ -18,7 +18,7 @@ MixedQuantSparseFlashMla（MQSMLA）用于混合量化稀疏 MLA 注意力计算
 - `ORI_SPARSE`：仅使用 win 侧。
 - `ORI_CMP_SPARSE`：同时使用 win 与 cmp 侧，两侧 KV 一起参与 softmax。
 
-设 query 行 t、头 h 对应的有效 KV 集合为 I(t)，反量化后为 k_j=v_j，缩放系数为 s，sink 为 a_h（多 batch 时按 batch 选择），数学语义为：
+设 query 行 t、头 h 对应的有效 KV 集合为 I(t)，反量化后为 k_j=v_j，缩放系数为 s，sink 为 a_h（所有 batch/query 共用），数学语义为：
 
 $$
 z_{t,h,j}=s\langle q_{t,h},k_j\rangle,\quad
@@ -107,7 +107,7 @@ mixed_quant_sparse_flash_mla(
 | `seqused_cmp_kv` | Tensor | 可选 | 预留参数。上游语义为各batch中实际使用的压缩KV token数；当前实现仅校验其为`int32`且形状为`(B,)`，不解析、不消费其内容，传入与否不影响计算结果。 | `int32` | ND | `(B,)` |
 | `win_topk_length` | Tensor | 可选 | 默认None，使用全部K1列。 每个query实际使用的窗口稀疏索引数，是`win_sparse_indices`有效前缀的准确长度，取值范围为`[0, K1]`。两侧长度同时为0时不发射tile，输出保持调用方预填值。当前不支持空query；可不传（None）。 | `int32` | ND | `(T1, N2)` |
 | `cmp_topk_length` | Tensor | 可选 | 默认None，使用全部K2列。 每个query实际使用的压缩稀疏索引数，是`cmp_sparse_indices`有效前缀的准确长度，取值范围为`[0, K2]`。仅在`ORI_CMP_SPARSE`模式可传。 当前不支持空query；可不传（None）。 | `int32` | ND | `(T1, N2)` |
-| `sinks` | Tensor | 可选 | 各Q头的可学习attention sink，只进softmax分母。算子不生成缺省值，缺传时拦截报错；不需要sink时显式传入全0张量。 | `float32` | ND | `(B,N1)`；B=1时也支持`(N1,)` |
+| `sinks` | Tensor | 可选 | 各Q头的可学习attention sink，只进softmax分母。算子不生成缺省值，缺传时拦截报错；不需要sink时显式传入全0张量。 | `float32` | ND | `(N1,)`，所有 batch/query 共用 |
 | `metadata` | Tensor | 可选 | 分核任务表，驱动多核的query行划分。前blocks项为各核分到的首个query行序号（m-tile起点），后blocks项为各核分到的query行数；所有核的区间合起来必须恰好无缝无叠地覆盖`[0, T1)`。算子不生成缺省值，缺传时拦截报错；须先调用`mixed_quant_sparse_flash_mla_metadata(win_topk_length, cmp_topk_length, cu_seqlens_q=..., num_heads_q=64, num_heads_kv=1, head_dim=512, quant_mode=1, has_cmp_kv=...)`生成（两阶段调用）。 | `int32` | ND | `(2 * blocks,)` |
 | `quant_mode` | int | 必选 | 量化模式，必须显式传入`1`，无默认值。Q为BF16；`win_kv`为per-token-group FP8 E4M3、group size为32、scale为BF16；`cmp_kv`为per-token-group FP4 E2M1、group size为16、scale为BF16。 | `int32` | - | - |
 | `softmax_scale` | float | 可选 | Softmax前QK乘积的缩放系数。默认值为`None`，表示使用`1/sqrt(512)`。 | `float32` | - | - |
@@ -216,7 +216,7 @@ byte_offset = physical_page * kv.stride(0) + (p % block_size) * row_bytes
 - 各参数shape中使用相同符号的维度必须保持一致。
 
 
-- `sinks` 支持 `(B,64)`；B=1 时也支持 `(64,)`。
+- `sinks` 仅支持 `(64,)`，所有 batch/query 共用。
 - metadata 接口的两个 topk_length 始终必传，即使 has_cmp_kv=False 也需传同形状全零 cmp 长度。attention 省略长度时，调用方须为 metadata 单独准备全 K 长度；不使用的 cmp 侧准备全零长度。
 - torch 层只分配输出并调用 DSL，不做输入拦截；输入校验由 DSL host 完成。
 
@@ -282,7 +282,7 @@ python3 -m pytest -q -s experimental/attention/mixed_quant_sparse_flash_mla_dsl/
 
 [test_case_paramset.py](tests/test_case_paramset.py) 中的 `TEST_PARAMS` 定义命名参数组，`ENABLED_PARAMS` 选择运行组，各参数取值做笛卡尔积展开。所有用例统一通过已安装 wheel 的 `torch.ops` 调用 metadata 和 attention，不再按文件路径加载 DSL 源码；修改算子后须重新执行上述构建与安装命令。默认包含 decode 用例及 `torch_extension` 接口回归组，覆盖两模式与 LSE 开关。CPU golden 与输入生成使用测试侧独立常量，不导入 kernel。
 
-CPU golden 独立执行反量化、稀疏 gather 与注意力计算，使用测试侧契约常量。`kv_axis0_noncontiguous` 控制 KV 页间非连续输入，统一作用于所有活动KV侧，框架固定页间padding为64字节，storage起点为0；活动KV侧统一显式传入topk_length，手动指定长度优先，未指定的侧才按`fullK` / `random`生成全K长度/随机有效前缀。新增用例和形状组合可修改参数集或 Excel 表格。
+CPU golden 独立执行反量化、稀疏 gather 与注意力计算，使用测试侧契约常量。`kv_axis0_noncontiguous` 控制 KV 页间非连续输入，统一作用于所有活动KV侧，框架固定页间padding为64字节，storage起点为0；活动KV侧默认显式传入topk_length，可用omit_win_topk_length / omit_cmp_topk_length省略对应attention参数，手动指定长度优先，未指定的侧才按`fullK` / `random`生成全K长度/随机有效前缀。新增用例和形状组合可修改参数集或 Excel 表格。
 
 
 ### Excel 批量用例
@@ -366,10 +366,43 @@ Native 包预编译范围由导出配置决定；默认覆盖已有单算子 smo
 其他静态配置需通过 `CANNBOTDSL_DS41_PROFILES` 指定 JSON 后重新打包。
 详见 net 工程 `native_package/README.md`。
 
-2026-09-09 net 迁移验证：上述默认 B=1、S2=8192、S2C=4096、K1=128、
-K2=512、连续 KV、关闭 LSE 用例通过已有 `tests/test_mqsmla.py` 精度比较。
-设置 `CANNBOTDSL_NATIVE_BINARY_MODE=require`，报告为 `installed_hit=1`，
-确认执行来自 net wheel 的预编译二进制。
-迁移同时适配 DSL 0.5.0 API，并修复 KV 两种 dtype Channel 别名的重复
-消费/加锁：统一字节槽，scale 在寄存器中按 BF16 解释。
-本次未执行全部静态配置或性能回归。
+## 当前动态 native 调用方式
+
+与 net/ops/flash_kda.py 相同：使用 Dim + TensorSpec 编译动态契约，@register导出，
+运行时复用同一编译入口和进程内缓存。首次调用生成IR以匹配wheel内的二进制，
+命中后不执行后端编译；设置CANNBOTDSL_NATIVE_BINARY_MODE=require禁止未命中回退。
+CANNBOTDSL_NATIVE_BINARY_REPORT报告应包含installed_hit且没有backend_pipeline。
+
+T、B、S2/S2C、物理页数、两侧页大小和页距、scale及核数动态；页大小支持1..1024，
+含两侧不同、非2幂与页间padding。N1=64、N2=1固定，head_dim当前512，K1/K2静态。
+分页采用运行时标量查表，本次未做性能验收。
+
+默认wheel包含有cmp（K1/K2=128/512）及无cmp（K1=128）两种模式，均关闭LSE、
+一维sinks `[N1]`、活动侧length可独立传入或省略。无cmp attention的cmp输入全为None；metadata传零cmp
+length并设置has_cmp_kv=False。其他结构组合需要追加导出profile。
+既有pytest共7个用例覆盖两种模式、动态尺寸、页距和T超过核数的场景。
+
+### DS41 require 模式
+
+三个算子的 callable 缓存入口固定设置 `CANNBOTDSL_NATIVE_BINARY_MODE=require`，
+无需调用方 export。这是 DSL 的进程级策略；首次 `.compile()` 仍生成 IR 匹配
+native key，未命中报 `Native binary required but not found`，不回退后端编译。
+打包时 native collector 仍正常编译、收集二进制。
+
+MQSMLA 默认包含有 cmp（K1/K2=128/512）和无 cmp（K1=128）两种模式，
+均为一维 sinks `[N1]`、关闭 LSE、支持活动侧 topk_length 传入或省略。
+T、B、S2/S2C、物理页数、页大小（1..1024）、页距和 scale 动态；
+N1=64、N2=1、head_dim=512 固定。改变 K1/K2、开启 LSE，需要通过 `CANNBOTDSL_DS41_PROFILES` 额外导出对应配置。
+数值 topk_length 可变，但 Tensor 有无属于静态结构。
+
+当前 sinks 契约已对齐主线：仅接受连续 FP32 `[N1]`（N1=64），
+所有 batch/query 共用同一组 head sinks。kernel 不按 batch 偏移读取；
+默认有/无 cmp 的 native 二进制均使用一维 sinks。二维 `[B,N1]` 输入会校验报错。
+测试输入和独立 CPU golden 使用同一契约，旧二维 sinks 的 `.pt` 数据需重新 batch_save。
+
+当前默认 MQSMLA wheel 预编译 6 种 topk_length 结构：有 cmp 时 win/cmp
+长度分别可传 Tensor 或 None（4 种），无 cmp 时 win 长度可传 Tensor 或 None（2 种）。
+省略 attention 的某侧长度表示该侧全部 K 个索引有效，不允许 -1 填充；
+metadata 接口仍要求长度 Tensor，调用方可单独传全 K 长度，无 cmp 侧传零长度。
+测试参数 omit_win_topk_length / omit_cmp_topk_length 支持参数集及 Excel；
+测试先按完整长度计算 metadata，再省略对应 attention keyword。默认仍关闭 LSE。

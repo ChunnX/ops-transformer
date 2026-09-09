@@ -170,7 +170,7 @@ def mqsmla_cpu_benchmark(ref, scenario=None, quant_mode=None, return_softmax_lse
             print(f"[mqsmla CPU golden] query {row}/{ref['T1']}", flush=True)
         batch = int(ref["query_batch"][row])
         q = ref["q"][row].float()
-        row_max = ref["sinks"][batch].clone()
+        row_max = ref["sinks"].clone()
         row_sum = torch.ones(ref["n1"], dtype=torch.float32)
         acc = torch.zeros((ref["n1"], C.D), dtype=torch.float32)
         if not any(int(lengths[side][row]) for side in sides):
@@ -292,7 +292,7 @@ def make_inputs(scenario=C.Scenario.ORI_SPARSE, quant_mode=C.QuantMode.CONTIGUOU
         return torch.randn(*shape, generator=g)
 
     q = (_rand(T1, n1, D) * 0.5).to(torch.bfloat16)
-    sinks = _rand(batch_size, n1).float()
+    sinks = _rand(n1).float()
     ref = {
         "scenario": scenario, "quant_mode": quant_mode,
         "B": batch_size, "T1": T1, "D": D, "n1": n1,

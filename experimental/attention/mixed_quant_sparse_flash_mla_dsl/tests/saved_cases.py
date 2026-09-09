@@ -61,6 +61,8 @@ def load_case(path):
         golden, lse = data['golden'], data['golden_lse']
         if data['page_padding_bytes'] != KV_PAGE_PADDING_BYTES:
             raise ValueError('saved KV padding does not match the test framework')
+        if case['sinks'].shape != (N1,) or case['sinks'].dtype != torch.float32:
+            raise ValueError('saved sinks must be FP32 [N1]; regenerate old batch_save data')
         t1 = case['t1']
         if case['q'].shape != (t1, N1, D) or case['q'].dtype != torch.bfloat16:
             raise ValueError('invalid saved q shape/dtype')
