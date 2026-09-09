@@ -13,6 +13,7 @@
  * \brief MMAD block implementation for weight-quant grouped matmul split-M pipeline.
  */
 #pragma once
+#include "../tile/copy_gmm1_concat.h"
 
 #include "../policy/dispatch_policy_mega_moe.h"
 #include "blaze/gemm/tile/tile_trait.h"
@@ -106,6 +107,11 @@ public:
     constexpr static int32_t SCALE_C0 = 2;
     constexpr static int32_t L0C_C0 = 16;
 
+    __aicore__ inline void SetGmm1ConcatHalfN(uint64_t halfN)
+    {
+        concatHalfN_ = halfN;
+    }
+
     struct L1Params {
         uint64_t kL1;
         uint64_t scaleKL1;
@@ -172,6 +178,7 @@ private:
         typename asc::te::frame_layout_format<asc::te::nn_layout_ptn, AscendC::Std::Int<SCALE_C0>>;
 
     // Init state used by the Tensor-based operator() path.
+    uint64_t concatHalfN_{0};
     uint64_t k_{1};
     uint64_t kL1_{1};
     uint64_t scaleKL1_{MX_FP8FP4_SCALE_K_L1_SIZE};
@@ -411,7 +418,11 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyMxScaleGmToL1(co
     auto gmBlockScaleB =
         tensorScaleB.slice(asc::te::make_coord(CeilDiv(kbL1Offset, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE, 0),
                            asc::te::make_shape(scaleKL1RealSize, param.nL1Size));
-    asc::te::copy(CopyScaleGM2L1, tensorScaleBL1_, gmBlockScaleB);
+    if (concatHalfN_ != 0U) {
+        MegaMoeImpl::CopyGmm1ScaleConcatToL1(tensorScaleBL1_, gmBlockScaleB, concatHalfN_, k_);
+    } else {
+        asc::te::copy(CopyScaleGM2L1, tensorScaleBL1_, gmBlockScaleB);
+    }
 }
 
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS

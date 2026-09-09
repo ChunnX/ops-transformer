@@ -157,7 +157,7 @@ protected:
 
     using BlockEpilogue = BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, EPILOGUE_TILE_M, L1_TILE_N,
                                                          TopkWeightsPrefetch, IsGmm1Interleaved>;
-    static constexpr bool SHARED_GMM1_INTERLEAVED = IsGmm1Interleaved && SharedQuantConfig::AXW_MODE == AxWMode::A8W8;
+    static constexpr bool SHARED_GMM1_INTERLEAVED = IsGmm1Interleaved && SharedQuantConfig::AXW_MODE != AxWMode::A4W4;
     using SharedBlockEpilogue =
         BlockEpilogueActivationMxQuant<typename SharedQuantConfig::ActivationQuantOutType, bfloat16_t, L1_TILE_M_256,
                                        L1_TILE_N, false, SHARED_GMM1_INTERLEAVED>;
@@ -508,7 +508,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunSharedExpertGmm1Acti
     uint32_t expertBeforeCnt = sharedExpertIdx * commonConfig_.tokenNum;
     if constexpr (SharedQuantConfig::AXW_MODE == AxWMode::A8W4) {
         RunGmm1A8W4<typename SharedQuantConfig::QuantOutType, SharedWeightType, bfloat16_t, SharedQuantScaleType,
-                    SharedQuantScaleType, GMM1_TILE_M, L1_TILE_M_256, false, true, true>(
+                    SharedQuantScaleType, GMM1_TILE_M, L1_TILE_M_256, false, true, true, SHARED_GMM1_INTERLEAVED>(
             sharedEpilogueOp_, params_, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmTileSequence_,
             gmmConfig.blockJob, expertBeforeCnt, sharedExpertIdx, gmmConfig.inputLayout);
     } else {
@@ -577,9 +577,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunSharedExpertGmm2(con
     // TopK weight prefetch 仍关闭，权重 L2 bypass 仍仅用于 A8W8。
     if constexpr (SharedQuantConfig::AXW_MODE == AxWMode::A8W4 || SharedQuantConfig::AXW_MODE == AxWMode::A4W4) {
         RunGmm2A8W4<SharedActivationOutType, SharedWeightType, bfloat16_t, SharedQuantScaleType, SharedQuantScaleType,
-                    GMM1_TILE_M, false, true, false, true>(problemShape, gmmAddrInfo, startBlockIdx_,
-                                                           gmmExecutionConfig_.blockJob,
-                                                           static_cast<uint32_t>(Get<M_VALUE>(problemShape)), 0U);
+                    GMM1_TILE_M, false, true, false, true, false, SHARED_GMM1_INTERLEAVED>(
+            problemShape, gmmAddrInfo, startBlockIdx_, gmmExecutionConfig_.blockJob,
+            static_cast<uint32_t>(Get<M_VALUE>(problemShape)), 0U);
     } else {
         RunGmm2Generic<COMBINE_NO_QUANT, typename SharedQuantConfig::QuantOutType,
                        typename SharedQuantConfig::QuantOutType, bfloat16_t, SharedQuantScaleType, SharedQuantScaleType,
@@ -632,9 +632,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
             gmm2TileSequence = &gmmTileSequence;
         }
         RunGmm2A8W4<ActivationQuantOutType, MoeWeightType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
-                    GMM1_TILE_M, TopkWeightsPrefetch, false, false, true, CombineQuantMode == COMBINE_NO_QUANT>(
-            sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
-            tokenStartIndexInExpert, &params_, gmm2TileSequence);
+                    GMM1_TILE_M, TopkWeightsPrefetch, false, false, true, CombineQuantMode == COMBINE_NO_QUANT,
+                    IsGmm1Interleaved>(sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob,
+                                       expertTokenCount, tokenStartIndexInExpert, &params_, gmm2TileSequence);
     }
 
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {

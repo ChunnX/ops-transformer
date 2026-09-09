@@ -24,16 +24,17 @@ namespace MegaMoeImpl {
 #define TemplateMegaMoeA8W4WaveTypeClass \
     typename XType, typename OutputType, typename TopkWeightsType, typename MoeWeightType, int32_t MoeQuantMode, \
         typename SharedWeightType, int32_t SharedQuantMode, int32_t MoeWeight1Format, int32_t MoeWeight2Format, \
-        int32_t SharedWeight1Format, int32_t SharedWeight2Format, int32_t CombineQuantMode, bool TopkWeightsPrefetch
+        int32_t SharedWeight1Format, int32_t SharedWeight2Format, int32_t CombineQuantMode, bool TopkWeightsPrefetch, \
+        bool IsGmm1Interleaved
 #define TemplateMegaMoeA8W4WaveTypeFunc \
     XType, OutputType, TopkWeightsType, MoeWeightType, MoeQuantMode, SharedWeightType, SharedQuantMode, \
         MoeWeight1Format, MoeWeight2Format, SharedWeight1Format, SharedWeight2Format, CombineQuantMode, \
-        TopkWeightsPrefetch
+        TopkWeightsPrefetch, IsGmm1Interleaved
 
 template <TemplateMegaMoeA8W4WaveTypeClass>
-class MegaMoeA8W4Wave : public MegaMoe<TemplateMegaMoeA8W4WaveTypeFunc, false> {
+class MegaMoeA8W4Wave : public MegaMoe<TemplateMegaMoeA8W4WaveTypeFunc> {
 private:
-    using MegaMoeBase = MegaMoe<TemplateMegaMoeA8W4WaveTypeFunc, false>;
+    using MegaMoeBase = MegaMoe<TemplateMegaMoeA8W4WaveTypeFunc>;
     friend MegaMoeBase;
 
 public:
@@ -105,7 +106,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
     RunGmm1A8W4<typename MoeQuantConfig::QuantOutType, MoeWeightType, bfloat16_t,
                 typename MoeQuantConfig::QuantScaleType, typename MoeQuantConfig::QuantScaleType, GMM1_TILE_M,
-                EPILOGUE_TILE_M, TopkWeightsPrefetch, false, true>(
+                EPILOGUE_TILE_M, TopkWeightsPrefetch, false, true, IsGmm1Interleaved>(
         epilogueOp_, params_, sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmTileSequence_,
         gmmExecutionConfig_.blockJob, static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert,
         state.expertIdx);
@@ -270,8 +271,9 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
 
     // MoE GMM1 与 GMM2 沿用同一分核游标，按 tile 顺序持续滚动。
 
-    const uint32_t gmm1TilesPerMGroup =
-        Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF, static_cast<uint32_t>(L1_TILE_N));
+    const uint32_t gmm1TilesPerMGroup = Ops::Base::CeilDiv(
+        IsGmm1Interleaved ? commonConfig_.gmm1OutputDim : commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF,
+        static_cast<uint32_t>(L1_TILE_N));
 
     ExpertTokenPosition dispatchPosition = DispatchFirstWave();
     // GMM2 滞后一拍门控：与 A8W8 的 GMM2_LAG_MIN_TOKEN_NUM(4096) 同门槛；
