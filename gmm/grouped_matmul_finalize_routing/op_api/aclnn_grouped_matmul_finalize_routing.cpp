@@ -83,6 +83,8 @@ static const int ND_K_VALUE_ALIGN = 64;
 
 static const int64_t K_VALUE_2048 = 2048;
 static const int64_t K_VALUE_128 = 128;
+static const int64_t ACLNN_OUT_DTYPE_FLOAT32 = 0;
+static const int64_t ACLNN_OUT_DTYPE_BF16 = 2;
 
 static const int64_t N_VALUE_7168 = 7168;
 static const int64_t N_VALUE_256 = 256;
@@ -561,6 +563,21 @@ static bool IsMxA8W4(const GroupedMatmulParams &params)
            params.x2->GetDataType() == DataType::DT_FLOAT4_E2M1;
 }
 
+static bool IsMxFullQuant(const GroupedMatmulParams &params)
+{
+    return CheckType(params.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
+           CheckType(params.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX);
+}
+
+static int64_t GetL0OutputDtype(const GroupedMatmulParams &params)
+{
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && IsMxFullQuant(params) &&
+        params.out->GetDataType() == DataType::DT_BF16) {
+        return ACLNN_OUT_DTYPE_BF16;
+    }
+    return params.dtype;
+}
+
 static aclnnStatus CheckParams(GroupedMatmulParams &params)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
@@ -967,11 +984,12 @@ static aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProces
     int64_t outputBS = params.out->GetViewShape().GetDim(outDimNum - PENULTIMATE_DIM);
 
     // 调用l0算子GroupedMatmulFinalizeRouting进行计算，包含infershape
+    int64_t l0Dtype = GetL0OutputDtype(params2);
     auto matmulRet = l0op::GroupedMatmulFinalizeRouting(
         reformatedX1, params2.x2, params2.scale, reformatedBias, reformatedPertokenScaleOptional, reformatedGroupList,
-        reformatedShareInput, reformatedLogit, reformatedRowIndex, reformatedOffset, 0, params.shareInputWeight,
-        params.shareInputOffset, params.transposeX1, params.transposeX2, outputBS, params.groupListType,
-        params.tuningConfig, executor);
+        reformatedShareInput, reformatedLogit, reformatedRowIndex, reformatedOffset, l0Dtype,
+        params.shareInputWeight, params.shareInputOffset, params.transposeX1, params.transposeX2, outputBS,
+        params.groupListType, params.tuningConfig, executor);
     ret = PostMatmulCalcProcess(matmulRet, params, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     return ACLNN_SUCCESS;
@@ -1536,11 +1554,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
     CHECK_RET(ret0 == ACLNN_SUCCESS, ret0);
 
     int64_t viewDimNum = x2->GetViewShape().GetDimNum();
-    if (dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnGroupedMatmulFinalizeRoutingV3 dtype must be 0 (FLOAT32), but is %lld.",
-                dtype);
-        return ACLNN_ERR_PARAM_INVALID;
-    } else if (viewDimNum < MIN_DIM_NUM_ND) {
+    if (viewDimNum < MIN_DIM_NUM_ND) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "aclnnGroupedMatmulFinalizeRoutingV3 weightNd x2's view dimNum should be greater than 1, but is %lld.",
                 viewDimNum);
@@ -1582,6 +1596,12 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
             "for mx, the dtypes of x and weight must be within the range {FLOAT8_E5M2, FLOAT8_E4M3FN, FLOAT4_E2M1}");
         return ACLNN_ERR_PARAM_INVALID;
     }
+    if (dtype != ACLNN_OUT_DTYPE_FLOAT32 && !(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
+                                              isMXValid && dtype == ACLNN_OUT_DTYPE_BF16)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "aclnnGroupedMatmulFinalizeRoutingV3 dtype must be 0, or 2 for DAV_3510 mx quant, but is %lld.", dtype);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, x2, out)
@@ -1595,6 +1615,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
                                      .SetOffset(offsetOptional)
                                      .SetTuningConfig(tuningConfigOptional)
                                      .SetNumbers(sharedInputWeight, sharedInputOffset, groupListType)
+                                     .SetDtype(dtype)
                                      .SetTranspose(transposeX1, transposeX2)
                                      .Build();
     auto ret = aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProcess(params, uniqueExecutor.get());

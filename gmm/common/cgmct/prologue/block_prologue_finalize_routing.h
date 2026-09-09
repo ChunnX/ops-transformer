@@ -30,16 +30,26 @@ namespace Gemm {
 namespace Block {
 
 namespace {
-constexpr uint32_t UB_INIT_REZO_LEN = 1024 * 2;
 constexpr uint32_t UB_DOUBLE_BUFFER_LEN = 1024 * 8;
 constexpr uint32_t ONE_CORE_ALIGN_LEN = 512;
 constexpr uint32_t ONE_CORE_ALIGN_LEN_SMALL = 32;
 
 } // namespace
 
-static constexpr AscendC::Reg::CastTrait CAST_BF16_FP16_TO_FP32 = {
-    AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
+static constexpr AscendC::MicroAPI::CastTrait CAST_BF16_FP16_TO_FP32 = {
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::UNKNOWN};
+
+__aicore__ inline uint16_t FloatToBf16Bits(float value)
+{
+    union {
+        float f;
+        uint32_t u;
+    } converter{value};
+    uint32_t roundingBias = 0x7FFFU + ((converter.u >> 16) & 1U);
+    return static_cast<uint16_t>((converter.u + roundingBias) >> 16);
+}
 
 #define BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS template <typename DataTypeOut_, typename DataTypeIn_>
 #define BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS DataTypeOut_, DataTypeIn_
@@ -72,7 +82,6 @@ public:
 
 private:
     __aicore__ inline void InitAllLocalTensor();
-    __aicore__ inline void InitOutputWithZeros(uint64_t offset, uint64_t size);
     __aicore__ inline void Compute(uint64_t singleCount, uint64_t outOffset, uint64_t baseOffset, uint64_t curCount);
     __aicore__ inline void CopyInShareInput(LocalTensor<DataTypeIn> &residualLocal, uint64_t offset, uint64_t size);
     __aicore__ inline void CopyOutShareInput(LocalTensor<DataTypeOut> &yLocal, uint64_t offset, uint64_t size);
@@ -84,14 +93,12 @@ private:
     AscendC::GlobalTensor<DataTypeIn> residualGm_;
     AscendC::GlobalTensor<DataTypeOut> yGmAddr_;
     // local tensor
-    AscendC::LocalTensor<DataTypeOut> initWithZero_;
     AscendC::LocalTensor<DataTypeIn> shareInputUbPing_;
     AscendC::LocalTensor<DataTypeIn> shareInputUbPong_;
     AscendC::LocalTensor<DataTypeOut> UbOutPing_;
     AscendC::LocalTensor<DataTypeOut> UbOutPong_;
 
     uint32_t vectorCoreNum_ = 0;
-    bool isDataBlockInitialized_ = false; // initWithZero_ only needs to be initialized once
 };
 
 BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
@@ -103,7 +110,9 @@ __aicore__ inline void BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZ
     }
     params_ = &params;
     InitAllLocalTensor();
-    residualGm_.SetGlobalBuffer(reinterpret_cast<__gm__ DataTypeIn *>(params_->residualGm));
+    if (params_->sharedInputLen != 0) {
+        residualGm_.SetGlobalBuffer(reinterpret_cast<__gm__ DataTypeIn *>(params_->residualGm));
+    }
     yGmAddr_.SetGlobalBuffer(reinterpret_cast<__gm__ DataTypeOut *>(params_->yGmAddr));
 }
 
@@ -122,6 +131,9 @@ __aicore__ inline void
 BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::CopyOutShareInput(
     LocalTensor<DataTypeOut> &yLocal, uint64_t offset, uint64_t size)
 {
+    if (size == 0) {
+        return;
+    }
     DataCopyExtParams paramsOut{1, static_cast<uint32_t>(size * sizeof(DataTypeOut)), 1, 1, 0};
     DataCopyPad(yGmAddr_[offset], yLocal, paramsOut);
 }
@@ -130,8 +142,7 @@ BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
 __aicore__ inline void
 BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::InitAllLocalTensor()
 {
-    initWithZero_ = AscendC::LocalTensor<DataTypeOut>(AscendC::TPosition::VECCALC, 0, UB_INIT_REZO_LEN);
-    uint32_t shareInputUbPingOffset = UB_INIT_REZO_LEN * sizeof(DataTypeOut);
+    uint32_t shareInputUbPingOffset = 0;
     shareInputUbPing_ =
         AscendC::LocalTensor<DataTypeIn>(AscendC::TPosition::VECIN, shareInputUbPingOffset, UB_DOUBLE_BUFFER_LEN);
     uint32_t shareInputUbPongOffset = shareInputUbPingOffset + UB_DOUBLE_BUFFER_LEN * sizeof(DataTypeIn);
@@ -144,70 +155,47 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
 }
 
 BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockPrologueFinalizeRouting<
-    BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::InitOutputWithZeros(uint64_t outOffset, uint64_t totalLen)
-{
-    // may be sharedInput Offset = 0 or tail = batch
-    if (totalLen == 0) {
-        return;
-    }
-    // one core perSize
-    uint32_t singleCount = CeilDiv(totalLen, static_cast<uint64_t>(vectorCoreNum_));
-    singleCount = CeilDiv(singleCount, static_cast<uint64_t>(ONE_CORE_ALIGN_LEN)) * ONE_CORE_ALIGN_LEN;
-
-    uint64_t baseOffset = GetBlockIdx() * singleCount;
-    if (baseOffset > totalLen) {
-        return;
-    }
-
-    if (baseOffset + singleCount > totalLen) {
-        singleCount = totalLen - baseOffset;
-    }
-
-    if (!isDataBlockInitialized_) {
-        Duplicate<DataTypeOut>(initWithZero_, 0, UB_INIT_REZO_LEN);
-        isDataBlockInitialized_ = true;
-        AscendC::PipeBarrier<PIPE_ALL>();
-    }
-    // the baseOffset addr of cur vector core, copy out to GM
-    baseOffset += outOffset;
-    // singleCount smaller than UB_INIT_REZO_LEN, just copy one time
-    if (singleCount <= UB_INIT_REZO_LEN) {
-        CopyOutShareInput(initWithZero_, baseOffset, singleCount);
-        return;
-    }
-    // once copy size
-    uint32_t ubOnceCopyLen = UB_INIT_REZO_LEN;
-    for (uint32_t offset = 0; offset < singleCount; offset += ubOnceCopyLen) {
-        if (unlikely(offset + ubOnceCopyLen > singleCount)) {
-            ubOnceCopyLen = singleCount - offset;
-        }
-        CopyOutShareInput(initWithZero_, baseOffset + offset, ubOnceCopyLen);
-    }
-}
-
-BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
 __aicore__ inline void
 BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::VFDoSharedCastAndMuls(
     __ubuf__ DataTypeOut *dstPtr, __ubuf__ DataTypeIn *residualLocalUbAddr, float sharedWeight, uint64_t curCount)
 {
-    constexpr uint32_t vectorRegLen = VECTOR_REG_WIDTH / sizeof(DataTypeOut);
+    constexpr uint32_t vectorRegLen = IsSameType<DataTypeOut, bfloat16_t>::value ?
+                                          VECTOR_REG_WIDTH / sizeof(float) :
+                                          VECTOR_REG_WIDTH / sizeof(DataTypeOut);
     uint16_t loopNum = CeilDiv(static_cast<uint64_t>(curCount), static_cast<uint64_t>(vectorRegLen));
     __VEC_SCOPE__
     {
-        AscendC::Reg::RegTensor<DataTypeIn> vSrcReg;
-        AscendC::Reg::RegTensor<DataTypeOut> vRegCast;
-        AscendC::Reg::RegTensor<DataTypeOut> vDstReg;
         uint32_t elementNum = static_cast<uint32_t>(curCount);
-        AscendC::Reg::MaskReg mask;
+        AscendC::MicroAPI::MaskReg mask;
         uint16_t oneRepeatSize = vectorRegLen;
-        for (uint16_t i = 0; i < loopNum; ++i) {
-            mask = AscendC::Reg::UpdateMask<DataTypeOut>(elementNum);
-            AscendC::Reg::DataCopy<DataTypeIn, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(
-                vSrcReg, residualLocalUbAddr + i * oneRepeatSize);
-            AscendC::Reg::Cast<DataTypeOut, DataTypeIn, CAST_BF16_FP16_TO_FP32>(vRegCast, vSrcReg, mask);
-            AscendC::Reg::Muls(vDstReg, vRegCast, sharedWeight, mask);
-            AscendC::Reg::DataCopy(dstPtr + i * oneRepeatSize, vDstReg, mask);
+        if constexpr (IsSameType<DataTypeOut, bfloat16_t>::value) {
+            uint16_t sharedWeightBf16 = FloatToBf16Bits(sharedWeight);
+            for (uint16_t i = 0; i < loopNum; ++i) {
+                mask = AscendC::MicroAPI::UpdateMask<float>(elementNum);
+                AscendC::MicroAPI::RegTensor<DataTypeIn> vSrcReg;
+                AscendC::MicroAPI::RegTensor<uint16_t> vSharedWeightReg;
+                AscendC::MicroAPI::RegTensor<bfloat16_t> vDstReg;
+                AscendC::MicroAPI::Duplicate<uint16_t, AscendC::MicroAPI::MaskMergeMode::ZEROING>(
+                    vSharedWeightReg, sharedWeightBf16, mask);
+                AscendC::MicroAPI::DataCopy<DataTypeIn, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                    vSrcReg, residualLocalUbAddr + i * oneRepeatSize);
+                AscendC::MicroAPI::Mul<bfloat16_t, AscendC::MicroAPI::MaskMergeMode::ZEROING>(
+                    vDstReg, vSrcReg, (AscendC::MicroAPI::RegTensor<bfloat16_t> &)vSharedWeightReg, mask);
+                AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
+                    dstPtr + i * oneRepeatSize, vDstReg, mask);
+            }
+        } else {
+            for (uint16_t i = 0; i < loopNum; ++i) {
+                mask = AscendC::MicroAPI::UpdateMask<DataTypeOut>(elementNum);
+                AscendC::MicroAPI::RegTensor<DataTypeIn> vSrcReg;
+                AscendC::MicroAPI::RegTensor<DataTypeOut> vRegCast;
+                AscendC::MicroAPI::RegTensor<DataTypeOut> vDstReg;
+                AscendC::MicroAPI::DataCopy<DataTypeIn, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                    vSrcReg, residualLocalUbAddr + i * oneRepeatSize);
+                AscendC::MicroAPI::Cast<DataTypeOut, DataTypeIn, CAST_BF16_FP16_TO_FP32>(vRegCast, vSrcReg, mask);
+                AscendC::MicroAPI::Muls(vDstReg, vRegCast, sharedWeight, mask);
+                AscendC::MicroAPI::DataCopy(dstPtr + i * oneRepeatSize, vDstReg, mask);
+            }
         }
     }
 }
@@ -263,16 +251,10 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
     }
     auto sharedInputOffset = params_->sharedInputOffset;
     auto sharedInputLen = params_->sharedInputLen;
-    uint64_t firstZeroSize = params_->n * sharedInputOffset;
-    // sharedInput is None,only do InitOutputWithZeros, all shape(batch,n) ,then finish
+    uint64_t firstZeroSize = static_cast<uint64_t>(params_->n) * sharedInputOffset;
     if (sharedInputLen == 0) {
-        InitOutputWithZeros(0, params_->n * params_->batch);
         return;
     }
-
-    InitOutputWithZeros(0, firstZeroSize);
-    uint64_t tail = sharedInputOffset + sharedInputLen;
-    InitOutputWithZeros(tail * params_->n, params_->n * (params_->batch - tail));
 
     uint64_t totalOutput = static_cast<uint64_t>(params_->n) * sharedInputLen;
     uint64_t singleCount = CeilDiv(totalOutput, static_cast<uint64_t>(vectorCoreNum_));
