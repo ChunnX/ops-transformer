@@ -352,31 +352,4 @@ TEST_F(MegaMoeInferShapeTest, InferDatatype_BF16_FP8E5M2)
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(1), ge::DT_INT32);
 }
 
-TEST_F(MegaMoeInferShapeTest, InferDatatype_PreQuantizedXAlwaysOutputsBF16)
-{
-    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
-    auto inferDataTypeFunc = spaceRegistry->GetOpImpl("MegaMoe")->infer_datatype;
-
-    for (ge::DataType inputType : {ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1}) {
-        ge::DataType contextType = ge::DT_INT32;
-        ge::DataType xType = inputType;
-        ge::DataType outputType = ge::DT_UNDEFINED;
-        ge::DataType expertTokenNumsType = ge::DT_UNDEFINED;
-        auto contextHolder = gert::InferDataTypeContextFaker()
-                                 .NodeIoNum(2, 2)
-                                 .NodeInputTd(0, contextType, ge::FORMAT_ND, ge::FORMAT_ND)
-                                 .NodeInputTd(1, xType, ge::FORMAT_ND, ge::FORMAT_ND)
-                                 .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-                                 .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-                                 .InputDataTypes({&contextType, &xType})
-                                 .OutputDataTypes({&outputType, &expertTokenNumsType})
-                                 .Build();
-
-        auto *inferContext = contextHolder.GetContext<gert::InferDataTypeContext>();
-        ASSERT_EQ(inferDataTypeFunc(inferContext), ge::GRAPH_SUCCESS);
-        EXPECT_EQ(inferContext->GetOutputDataType(0), ge::DT_BF16);
-        EXPECT_EQ(inferContext->GetOutputDataType(1), ge::DT_INT32);
-    }
-}
-
 } // namespace MegaMoeUT

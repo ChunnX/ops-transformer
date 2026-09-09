@@ -20,12 +20,99 @@ from ..common import CommContextManager
 _CLAMP_DEFAULT = 3.4028234663852886e38
 _ALPHA_DEFAULT = 1.702
 _BETA_DEFAULT = 1.0
+_MX_SCALE_GROUP_SIZE = 32
 _ALLOWED_ACTIVATION_KEYS = {
     "swiglu": frozenset(),
     "swiglustep": frozenset(),
     "swigluoai": frozenset({"alpha", "beta"}),
     "situglu": frozenset({"beta", "linear_beta"}),
 }
+
+
+def _is_packed_fp4_x(x: torch.Tensor) -> bool:
+    float4_dtype = getattr(torch, "float4_e2m1fn_x2", None)
+    return x.dtype == torch.uint8 or (
+        float4_dtype is not None and x.dtype == float4_dtype
+    )
+
+
+def _is_pre_quantized_x(x: torch.Tensor) -> bool:
+    return x.dtype in (torch.float8_e5m2, torch.float8_e4m3fn) or _is_packed_fp4_x(
+        x
+    )
+
+
+def _logical_hidden_size(x: torch.Tensor):
+    return x.size(1) * 2 if _is_packed_fp4_x(x) else x.size(1)
+
+
+def _check_pre_quantized_x_contract(
+    x: torch.Tensor,
+    scales: Optional[torch.Tensor],
+    dispatch_quant_mode: int,
+    dispatch_quant_out_dtype: Optional[torch.dtype],
+    shared_expert_quant_out_dtype: Optional[torch.dtype],
+    topo_type: Optional[int],
+) -> None:
+    torch._check(x.dim() == 2, lambda: "x must be 2D.")
+    torch._check(x.is_contiguous(), lambda: "x must be contiguous.")
+    is_pre_quantized_x = _is_pre_quantized_x(x)
+    torch._check(
+        (scales is not None) == is_pre_quantized_x,
+        lambda: (
+            "scales is required for pre-quantized x."
+            if is_pre_quantized_x
+            else "scales must be None when x is bfloat16 or float16."
+        ),
+    )
+    if not is_pre_quantized_x:
+        return
+
+    torch._check(
+        dispatch_quant_mode == 4,
+        lambda: "dispatch_quant_mode must be 4 for pre-quantized x.",
+    )
+    torch._check(
+        dispatch_quant_out_dtype is None,
+        lambda: (
+            "dispatch_quant_out_dtype must be None for pre-quantized x; "
+            "the dispatch dtype is inferred from x."
+        ),
+    )
+    torch._check(
+        shared_expert_quant_out_dtype is None,
+        lambda: (
+            "shared_expert_quant_out_dtype must be None for pre-quantized x; "
+            "its dtype is inferred from x."
+        ),
+    )
+    torch._check(
+        topo_type in (None, 0),
+        lambda: "pre-quantized x is supported only by the A5 MTE path (topo_type=0).",
+    )
+    torch._check(
+        scales.dim() == 2,
+        lambda: "scales must be 2D [BS, CeilDiv(H, 32)].",
+    )
+    scale_e8m0_dtype = getattr(torch, "float8_e8m0fnu", None)
+    torch._check(
+        scales.dtype == torch.uint8
+        or (scale_e8m0_dtype is not None and scales.dtype == scale_e8m0_dtype),
+        lambda: "scales only supports torch.uint8 storage or torch.float8_e8m0fnu.",
+    )
+    logical_h = _logical_hidden_size(x)
+    expected_scale_width = (
+        logical_h + _MX_SCALE_GROUP_SIZE - 1
+    ) // _MX_SCALE_GROUP_SIZE
+    torch._check(
+        scales.size(0) == x.size(0) and scales.size(1) == expected_scale_width,
+        lambda: "scales shape must be [BS, CeilDiv(H, 32)].",
+    )
+    torch._check(
+        scales.device == x.device,
+        lambda: "scales must be on the same device as x.",
+    )
+    torch._check(scales.is_contiguous(), lambda: "scales must be contiguous.")
 
 
 def _normalize_activation_params(
@@ -80,6 +167,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             "Tensor[]? weight_scales1=None, Tensor[]? weight_scales2=None, "
             "Tensor[]? bias1=None, Tensor[]? bias2=None, "
             "Tensor? x_active_mask=None, "
+            "Tensor? scales=None, "
             "Tensor[]? shared_weight1=None, Tensor[]? shared_weight2=None, "
             "Tensor[]? shared_weight_scales1=None, Tensor[]? shared_weight_scales2=None, "
             "Tensor[]? shared_bias1=None, Tensor[]? shared_bias2=None, "
@@ -111,6 +199,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             bias1=None,
             bias2=None,
             x_active_mask=None,
+            scales=None,
             shared_weight1=None,
             shared_weight2=None,
             shared_weight_scales1=None,
@@ -140,10 +229,19 @@ class _MegaMoeOpBuilder(OpBuilder):
                 ep_world_size != 0,
                 lambda: (f"ep_world_size should not be 0, {ops_error(ErrCode.VALUE)}."),
             )
+            _check_pre_quantized_x_contract(
+                x,
+                scales,
+                dispatch_quant_mode,
+                dispatch_quant_out_dtype,
+                shared_expert_quant_out_dtype,
+                topo_type,
+            )
             bs = x.size(0)
-            h = x.size(1)
+            h = _logical_hidden_size(x)
             local_moe_expert_num = moe_expert_num // ep_world_size
-            y = x.new_empty(tuple([bs, h]), dtype=x.dtype)
+            output_dtype = torch.bfloat16 if _is_pre_quantized_x(x) else x.dtype
+            y = x.new_empty(tuple([bs, h]), dtype=output_dtype)
             expert_token_nums = x.new_empty((local_moe_expert_num), dtype=torch.int32)
             return (y, expert_token_nums)
 
@@ -168,6 +266,7 @@ def _npu_mega_moe(
     bias1=None,
     bias2=None,
     x_active_mask=None,
+    scales=None,
     shared_weight1=None,
     shared_weight2=None,
     shared_weight_scales1=None,
@@ -212,6 +311,7 @@ def _npu_mega_moe(
         bias1,
         bias2,
         x_active_mask,
+        scales,
         shared_weight1,
         shared_weight2,
         shared_weight_scales1,
@@ -568,6 +668,7 @@ def mega_moe(
     l1_bias: Optional[List[torch.Tensor]] = None,
     l2_bias: Optional[List[torch.Tensor]] = None,
     x_active_mask: Optional[torch.Tensor] = None,
+    scales: Optional[torch.Tensor] = None,
     activation: str = "swiglu",
     activation_clamp: Optional[float] = None,
     activation_params: Optional[Dict[str, float]] = None,
@@ -583,6 +684,22 @@ def mega_moe(
     shared_l1_bias: Optional[List[torch.Tensor]] = None,
     shared_l2_bias: Optional[List[torch.Tensor]] = None,
 ):
+    _check_pre_quantized_x_contract(
+        x,
+        scales,
+        sym_buffer.dispatch_quant_mode,
+        sym_buffer.dispatch_quant_out_dtype,
+        shared_expert_quant_out_dtype,
+        sym_buffer.topo_type,
+    )
+    logical_h = _logical_hidden_size(x)
+    torch._check(
+        logical_h == sym_buffer.hidden,
+        lambda: (
+            f"The logical hidden size of x must equal sym_buffer.hidden "
+            f"({sym_buffer.hidden}).{ops_error(ErrCode.VALUE)}"
+        ),
+    )
     shared_quant_dtype_int = _dtype_to_int(
         shared_expert_quant_out_dtype, "shared_expert_quant_out_dtype"
     )
@@ -601,6 +718,7 @@ def mega_moe(
         bias1=l1_bias,
         bias2=l2_bias,
         x_active_mask=x_active_mask,
+        scales=scales,
         shared_weight1=shared_l1_weights,
         shared_weight2=shared_l2_weights,
         shared_weight_scales1=shared_l1_weights_sf,
