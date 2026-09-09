@@ -764,21 +764,24 @@ ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
     if (attenMaskTensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    if (socVer_ != SOC_VER_950_CODE) {
-        OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) is only supported on chip 950.");
-        return ge::GRAPH_FAILED;
-    }
-    // FP8 下 attenMask(blockEffRows) 支持两种形态:
-    //   - per-tile(quantMode=1): kv tile 不跨量化块;
-    //   - per-head(quantMode=20): 跨块 gather(scale 与块无关)。
-    bool kvScalePerHead = IsKvScalePerHeadShape(bsaContext);
-    if (dataType_ != ge::DT_FLOAT8_E4M3FN || (quantMode_ != FP8_QUANT && quantMode_ != FP8_PERHEAD_QUANT) ||
-        (quantMode_ == FP8_PERHEAD_QUANT && !kvScalePerHead)) {
-        OP_LOGE(bsaContext->GetNodeName(),
-                "attenMask (blockEffRows) requires FP8 per-tile (quantMode=1) or per-head (quantMode=20, "
-                "k/v scale 2D), but got dtype=%s, blockShapeY=%u, perHeadKvScale=%d.",
-                DataTypeToString(dataType_).c_str(), blockShapeY_, static_cast<int>(kvScalePerHead));
-        return ge::GRAPH_FAILED;
+    // mxfp4 量化下 attenMask(blockEffRows) 已支持; 其余量化模式沿用 FP8 per-tile/per-head 的校验
+    if (!IsMxfp4Quant(quantMode_)) {
+        if (socVer_ != SOC_VER_950_CODE) {
+            OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) is only supported on chip 950.");
+            return ge::GRAPH_FAILED;
+        }
+        // FP8 下 attenMask(blockEffRows) 支持两种形态:
+        //   - per-tile(quantMode=1): kv tile 不跨量化块;
+        //   - per-head(quantMode=20): 跨块 gather(scale 与块无关)。
+        bool kvScalePerHead = IsKvScalePerHeadShape(bsaContext);
+        if (dataType_ != ge::DT_FLOAT8_E4M3FN || (quantMode_ != FP8_QUANT && quantMode_ != FP8_PERHEAD_QUANT) ||
+            (quantMode_ == FP8_PERHEAD_QUANT && !kvScalePerHead)) {
+            OP_LOGE(bsaContext->GetNodeName(),
+                    "attenMask (blockEffRows) requires FP8 per-tile (quantMode=1) or per-head (quantMode=20, "
+                    "k/v scale 2D), but got dtype=%s, blockShapeY=%u, perHeadKvScale=%d.",
+                    DataTypeToString(dataType_).c_str(), blockShapeY_, static_cast<int>(kvScalePerHead));
+            return ge::GRAPH_FAILED;
+        }
     }
 
     auto attenMaskDtype = attenMaskTensor->GetDataType();
