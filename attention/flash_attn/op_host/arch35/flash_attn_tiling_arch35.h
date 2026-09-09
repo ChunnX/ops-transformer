@@ -25,12 +25,11 @@
 namespace optiling {
 namespace flash_attn {
 
-// 5字段 tiling key
+// 4字段 tiling key
 struct FaTilingKeyInfo {
     uint64_t inputLayout = 0;
     uint64_t kvLayoutType = 0;
     bool hasAttenMask = false;
-    uint64_t templateId = 0;
     uint64_t config = 0;
 };
 
@@ -69,7 +68,6 @@ private:
     void UpdateTilingKeyConfig();
     void UpdateTilingKeyLayout();
     void UpdateTilingKeyKvLayout();
-    void UpdateTilingKeyTemplateId();
     void UpdateTilingKeyInfo();
     void SetFATilingData();
     void InitImplParam();

@@ -140,9 +140,7 @@ public:
 private:
     using MM = AscendC::MatmulImpl<AType, BType, CType, BiasType, staticTiling,
                                    AscendC::MatmulCallBackFunc<nullptr, nullptr, nullptr>, MatmulPolicyNew>;
-    // Value-initialize the matmul implementation so its runtime state is defined
-    // before Init/Iterate perform any read-modify-write updates.
-    MM matmul_{};
+    MM matmul_;
 };
 } // namespace Block
 } // namespace Gemm
