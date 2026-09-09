@@ -122,6 +122,25 @@ _LAYOUT_EXPECTED_NDIM = {
 }
 
 
+def _get_output_shape_sizes(q, v, layout_q, layout_kv):
+    """提取决定输出 shape 的维度: q 的 B/T、S、N 维度(D 恒为 q 最后一维, 不提取)
+    以及 v 的 D 维度; t_size/b_size/s_size 按各自 layout 有效, 不适用时为 None。
+    调用前需保证 q/v 维度数已通过 _LAYOUT_EXPECTED_NDIM 校验。"""
+    if layout_q == "TND":
+        t_size, b_size, s_size, n_size = q.size(0), None, None, q.size(1)
+    elif layout_q == "BSND":
+        t_size, b_size, s_size, n_size = None, q.size(0), q.size(1), q.size(2)
+    else:
+        t_size, b_size, s_size, n_size = None, q.size(0), q.size(2), q.size(1)
+    if layout_kv == "PA_NZ":
+        d_size = v.size(2) * v.size(4)
+    elif layout_kv == "TND":
+        d_size = v.size(2)
+    else:
+        d_size = v.size(3)
+    return t_size, b_size, s_size, n_size, d_size
+
+
 class QuantFlashAttnOpBuilder(OpBuilder):
     def __init__(self):
         super(QuantFlashAttnOpBuilder, self).__init__(
@@ -239,27 +258,13 @@ class QuantFlashAttnOpBuilder(OpBuilder):
                 v.dim() == kv_expected,
                 lambda: f"v with layout {layout_kv} expects {kv_expected} dims, but got {v.dim()} dims",
             )
+            t_size, b_size, s_size, n_size, d_size = _get_output_shape_sizes(
+                q, v, layout_q, layout_kv
+            )
             if layout_q == "TND":
-                t_size = q.size(0)
-                n_size = q.size(1)
                 softmax_out_size = (n_size, t_size)
-            elif layout_q == "BSND":
-                b_size = q.size(0)
-                s_size = q.size(1)
-                n_size = q.size(2)
-                softmax_out_size = (b_size, n_size, s_size)
             else:
-                b_size = q.size(0)
-                n_size = q.size(1)
-                s_size = q.size(2)
                 softmax_out_size = (b_size, n_size, s_size)
-
-            if layout_kv == "PA_NZ":
-                d_size = v.size(2) * v.size(4)
-            elif layout_kv == "TND":
-                d_size = v.size(2)
-            else:
-                d_size = v.size(3)
 
             if layout_out == "TND":
                 torch._check(
@@ -334,10 +339,6 @@ def quant_flash_attn_metadata(
     torch._check(
         is_grad_enabled is not True or quant_mode == 0,
         lambda: f"When is_grad_enabled is True, quant_mode must be 0, but got quant_mode={quant_mode}",
-    )
-    torch._check(
-        head_dim is not None and head_dim > 0,
-        lambda: f"The head_dim of quant_flash_attn_metadata must be greater than 0, but got {head_dim}",
     )
     batch_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
@@ -494,14 +495,22 @@ def quant_flash_attn(
         v.dim() == kv_expected,
         lambda: f"v with layout {layout_kv} expects {kv_expected} dims, but got {v.dim()} dims",
     )
-    # 异常拦截: 输入 q/k/v 的任一维度为 0 时报错, 避免空 shape 进入算子侧
-    for name, tensor in (("q", q), ("k", k), ("v", v)):
-        torch._check(
-            all(s > 0 for s in tensor.shape),
-            lambda name=name, tensor=tensor: (
-                f"The shape of {name} must not contain 0, but got {tuple(tensor.shape)}"
-            ),
-        )
+    # 异常拦截: 仅校验决定输出 shape 的维度(q 除 D 外的 B/T/S/N 维度及 v 的 D 维度),
+    # 其余维度(如 q 的 D 维)不影响输出 shape, 不在此拦截
+    t_size, b_size, s_size, n_size, d_size = _get_output_shape_sizes(
+        q, v, layout_q, layout_kv
+    )
+    torch._check(
+        all(
+            size > 0
+            for size in (t_size, b_size, s_size, n_size, d_size)
+            if size is not None
+        ),
+        lambda: (
+            f"The output-related dims of q (except D) and the D dim of v must not be 0, "
+            f"got q.shape={tuple(q.shape)}, v.shape={tuple(v.shape)}"
+        ),
+    )
     # QFA 不支持 k/v/kscale/vscale 的 stride 中含 0
     for name, tensor in (
         ("k", k),
