@@ -2510,11 +2510,7 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
                 return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
 
-    // 手写路径 tiling 结果缓存：同一 (shape, attr) 的 tiling 只执行一次，后续直接恢复结果。
-    // 手写框架的 GWS/Run 两阶段各自触发一次 tiling，缓存可消除第二次重复计算（可用环境变量
-    // FIA_TILING_CACHE_DISABLE=1 关闭）。
-    // 仅在 A3（DAV_5102 / arch38 路由）启用：劣化仅出现在 A3；arch38 tiling 不设置
-    // schedule mode，缓存值无需包含该字段，避免侵入 arch22/arch35（A5）代码路径。
+    // 仅在 A3（DAV_5102 / arch38 路由）启用
     const bool cacheEnabled = (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_5102) &&
                               !FusedInferAttentionScoreTilingCache::IsCacheDisabled();
     std::string cacheKey;
