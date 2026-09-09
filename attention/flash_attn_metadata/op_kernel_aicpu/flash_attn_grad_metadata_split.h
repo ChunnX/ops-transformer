@@ -243,9 +243,9 @@ void FlashAttnMetadataCpuKernel::SetFagSplitAxis()
     // isAllSame: all batches have same seq lengths (for TND)
     SupportTransBSND();
 
-    // Match old FAG SetSplitAxis + pypto host: single-block BN2 (S<=128) or
-    // MultiBlk (S in (128, 640] and BN gate). Kernel has no mask/TND/GQA/D>128
-    // BN2 path, so those stay on GS1S2 even if old FAG would try sparse MultiBlk.
+    // Match pypto host: single-block BN2 (S<=128) or MultiBlk (S in (128, 640]
+    // and BN gate). Mask 3/4 is allowed on BN2 (kernel skip_invalid / packed).
+    // GQA / D>128 / TND stay on GS1S2.
     fagIsBn2_ = (s1 <= 128 && s2 <= 128) && (n1 == n2) && (d <= 128) && !fagIsSeqExistZero_;
     constexpr int64_t BN2_MULTIBLK_SEQ = 640;
     constexpr int64_t BN2_MULTIBLK_BN_128 = 128;
@@ -256,7 +256,6 @@ void FlashAttnMetadataCpuKernel::SetFagSplitAxis()
                     (s2 % ALIGN128 == 0));
     fagIsBn2MultiBlk_ = bnLimit &&
                         !fagUseTndSplit_ &&
-                        !fagIsSparse_ &&
                         (s1 > 128 || s2 > 128) &&
                         (s1 <= BN2_MULTIBLK_SEQ && s2 <= BN2_MULTIBLK_SEQ) &&
                         (n1 == n2) && (d <= 128) && !fagIsSeqExistZero_;
@@ -936,12 +935,10 @@ bool FlashAttnMetadataCpuKernel::TryBn2MultiBlkSparse()
     if (fagUseTndSplit_) {
         return false;
     }
-    if (fagIsSparse_) {
-        return DoFagBn2SparseBlockInfo();
-    } else {
-        DoFagBn2DenseSplit();
-        return true;
-    }
+    // PyPTO BN2 线性路径按 dense [blockStart, blockEnd) + skip_invalid 消费，
+    // 与 GS1S2 mask 相同：AICPU 仍切 dense 矩形，不在这里做 packed 重映射。
+    DoFagBn2DenseSplit();
+    return true;
 }
 
 // ===== BN2 dense: BN 合轴多块均匀分核 =====

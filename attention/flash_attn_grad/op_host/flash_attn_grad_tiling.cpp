@@ -10,6 +10,8 @@
 
 #include "flash_attn_grad_tiling.h"
 #include <algorithm>
+#include <cstdint>
+#include <limits>
 #include <set>
 
 #include "flash_attn_grad_block_outer.h"
@@ -19,13 +21,148 @@
 
 namespace optiling {
 
+// Match ASC SparseType: 0=DENSE, 1=CASUAL, 2=BAND.
+constexpr int64_t FAG_SPARSE_DENSE = 0;
+constexpr int64_t FAG_SPARSE_CASUAL = 1;
+constexpr int64_t FAG_SPARSE_BAND = 2;
+constexpr int64_t FAG_MASK_CAUSAL = 3;
+constexpr int64_t FAG_MASK_BAND = 4;
+constexpr int64_t FAG_CUBE_BASE = 128;
+
 static bool HasAttenMask(gert::TilingContext *context, int64_t maskMode)
 {
-    if (maskMode == 0 || (maskMode != 3 && maskMode != 4)) {
+    if (maskMode == 0 || (maskMode != FAG_MASK_CAUSAL && maskMode != FAG_MASK_BAND)) {
         return false;
     }
     auto attnMaskShape = context->GetOptionalInputShape(ATTN_MASK_INDEX);
     return (attnMaskShape != nullptr) && (attnMaskShape->GetStorageShape().GetDimNum() > 0);
+}
+
+static void CorrectSparseTokens(int64_t maskMode, int64_t winLeft, int64_t winRight,
+                                int64_t s1, int64_t s2, int64_t &s1Token, int64_t &s2Token)
+{
+    // ProcessTokensInfo (non-TND): causal tokens then right-down pad correction.
+    if (maskMode == FAG_MASK_CAUSAL) {
+        s1Token = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+        s2Token = 0;
+    } else if (maskMode == FAG_MASK_BAND) {
+        s1Token = winLeft;
+        s2Token = winRight;
+    } else {
+        s1Token = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+        s2Token = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+        return;
+    }
+    s1Token = s1Token + s1 - s2;
+    s2Token = s2Token - s1 + s2;
+}
+
+static int64_t DecideSparseType(int64_t maskMode, int64_t s1, int64_t s2,
+                                int64_t s1Token, int64_t s2Token)
+{
+    // GetSparseType non-TND. Mode 3/4 only; no ALL_MASK / NO_MASK / TND.
+    if (maskMode != FAG_MASK_CAUSAL && maskMode != FAG_MASK_BAND) {
+        return FAG_SPARSE_DENSE;
+    }
+    const bool casualCondition =
+        (maskMode == FAG_MASK_CAUSAL && s1 <= s2) ||
+        (maskMode == FAG_MASK_BAND && s1Token >= s1 && s2Token == 0);
+    if (casualCondition) {
+        return FAG_SPARSE_CASUAL;
+    }
+    return FAG_SPARSE_BAND;
+}
+
+// ASC GetParseS1S2OuterInfo: empty s2 column or never-covered s1 row.
+// Host ORs the two; kernel pre zeros all three out tensors.
+static bool FagBn2HasInvalidOuter(int64_t s1, int64_t s2, int64_t s1Token, int64_t s2Token)
+{
+    int64_t s1Outer = 0;
+    int64_t s2Outer = 0;
+    FagS1S2Outer(s1, s2, s1Outer, s2Outer);
+    if (s1Outer <= 0 || s2Outer <= 0) {
+        return false;
+    }
+    constexpr int64_t kMaxOuter = 16;
+    if (s1Outer > kMaxOuter || s2Outer > kMaxOuter) {
+        return true;
+    }
+    int64_t s1CvInner = FagCvInner(s1, FAG_S1_INNER, FAG_S1CV_RATIO_DEFAULT);
+    int64_t cvS2Inner = FagCvInner(s2, FAG_S2_INNER, FAG_S2CV_RATIO_DEFAULT);
+    int64_t s2CvTail = s2 - (s2Outer - 1) * cvS2Inner;
+    if (s2CvTail <= 0) {
+        s2CvTail = cvS2Inner;
+    }
+    bool s1Seen[kMaxOuter] = {};
+    bool invalidCol = false;
+    for (int64_t i = 0; i < s2Outer; ++i) {
+        int64_t leftIntersectionPoint = std::max(int64_t(0), cvS2Inner * i - s2Token);
+        int64_t beginIdx = 0;
+        if (leftIntersectionPoint > s1) {
+            beginIdx = (s1 + s1CvInner - 1) / s1CvInner;
+        } else {
+            beginIdx = leftIntersectionPoint / s1CvInner;
+        }
+        int64_t cvBlockTail = (i == s2Outer - 1) ? s2CvTail : cvS2Inner;
+        int64_t endIdx =
+            (std::min(std::max(int64_t(0), cvS2Inner * i + cvBlockTail + s1Token), s1) +
+             s1CvInner - 1) /
+            s1CvInner;
+        if (beginIdx >= endIdx) {
+            invalidCol = true;
+        }
+        for (int64_t j = 0; j < s1Outer; ++j) {
+            if (j >= beginIdx && j < endIdx) {
+                s1Seen[j] = true;
+            }
+        }
+    }
+    for (int64_t j = 0; j < s1Outer; ++j) {
+        if (!s1Seen[j]) {
+            return true;
+        }
+    }
+    return invalidCol;
+}
+
+// ASC GetTotalPerBatchNum (tiling_common_regbase.cpp). sparseType is
+// GetSparseType; casual uses the closed-form triangle, band walks columns.
+static int64_t FagCeilDivideBy(int64_t num1, int64_t num2)
+{
+    if (num2 == 0) {
+        return 0;
+    }
+    return (num1 + num2 - 1) / num2;
+}
+
+static int64_t GetTotalPerBatchNum(int64_t s1, int64_t s2, int64_t s1Outer, int64_t s2Outer,
+                                   int64_t sparseType, int64_t maskMode,
+                                   int64_t s1Token, int64_t s2Token)
+{
+    if (sparseType == FAG_SPARSE_DENSE) {
+        return s1Outer * s2Outer;
+    }
+    if (sparseType == FAG_SPARSE_CASUAL) {
+        if (s1 < s2) {
+            if (maskMode == FAG_MASK_CAUSAL) {
+                return ((((s2Outer << 1) - s1Outer + 1) * s1Outer) >> 1) + (s1Outer - 1);
+            }
+            return (((s1Outer << 1) - s1Outer + 1) * s1Outer) >> 1;
+        }
+        return (((s1Outer << 1) - s2Outer + 1) * s2Outer) >> 1;
+    }
+    int64_t p = FagCeilDivideBy(s1Token, FAG_CUBE_BASE);
+    int64_t q = FagCeilDivideBy(s2Token, FAG_CUBE_BASE);
+    int64_t total = 0;
+    for (int64_t s2oIdx = 0; s2oIdx < s2Outer; ++s2oIdx) {
+        int64_t xMin = (s2oIdx - q) > 0 ? (s2oIdx - q) : 0;
+        int64_t xMax = (s1Outer - 1) > (s2oIdx + p) ? (s2oIdx + p) : (s1Outer - 1);
+        int64_t length = (xMax >= xMin) ? (xMax - xMin + 1) : 0;
+        if (length > 0) {
+            total += length;
+        }
+    }
+    return total;
 }
 
 static bool OptionalInputExists(gert::TilingContext *context, size_t index)
@@ -66,12 +203,18 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     int64_t maxSeqlenQ = -1;
     int64_t maxSeqlenKv = -1;
     int64_t maskMode = 0;
+    int64_t winLeft = -1;
+    int64_t winRight = -1;
     float scaleValue = 0.0f;
     if (attrs != nullptr) {
         auto scalePtr = attrs->GetAttrPointer<float>(0);
         if (scalePtr != nullptr) { scaleValue = *scalePtr; }
         auto maskModePtr = attrs->GetAttrPointer<int64_t>(1);
         if (maskModePtr != nullptr) { maskMode = *maskModePtr; }
+        auto winLeftPtr = attrs->GetAttrPointer<int64_t>(2);
+        if (winLeftPtr != nullptr) { winLeft = *winLeftPtr; }
+        auto winRightPtr = attrs->GetAttrPointer<int64_t>(3);
+        if (winRightPtr != nullptr) { winRight = *winRightPtr; }
         auto maxSeqlenQPtr = attrs->GetAttrPointer<int64_t>(4);
         if (maxSeqlenQPtr != nullptr) { maxSeqlenQ = *maxSeqlenQPtr; }
         auto maxSeqlenKvPtr = attrs->GetAttrPointer<int64_t>(5);
@@ -162,8 +305,7 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     if (!isTnd && n1Size == n2Size && dSize <= BN2_MAX_D) {
         if (s1Size <= BN2_MAX_S && s2Size <= BN2_MAX_S) {
             tmpl = 1;
-        } else if (maskMode == 0 &&
-                   (s1Size > BN2_MAX_S || s2Size > BN2_MAX_S) &&
+        } else if ((s1Size > BN2_MAX_S || s2Size > BN2_MAX_S) &&
                    s1Size <= BN2_MULTIBLK_SEQ && s2Size <= BN2_MULTIBLK_SEQ &&
                    dSize == dvSize) {
             const int64_t bn = bSize * n1Size;
@@ -186,6 +328,21 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     int64_t s1OuterMeta = 0;
     int64_t s2OuterMeta = 0;
     FagS1S2Outer(s1Size, s2Size, s1OuterMeta, s2OuterMeta);
+    int64_t s1Token = 0;
+    int64_t s2Token = 0;
+    CorrectSparseTokens(maskMode, winLeft, winRight, s1Size, s2Size, s1Token, s2Token);
+    int64_t sparseType = DecideSparseType(maskMode, s1Size, s2Size, s1Token, s2Token);
+    int64_t totalPerBatchNum = GetTotalPerBatchNum(
+        s1Size, s2Size, s1OuterMeta, s2OuterMeta, sparseType, maskMode, s1Token, s2Token);
+    if (totalPerBatchNum <= 0) {
+        totalPerBatchNum = s1OuterMeta * s2OuterMeta;
+    }
+    int64_t bn2NeedZero = 0;
+    if (isBn2MultiBlk == 1 &&
+        (maskMode == FAG_MASK_CAUSAL || maskMode == FAG_MASK_BAND) &&
+        FagBn2HasInvalidOuter(s1Size, s2Size, s1Token, s2Token)) {
+        bn2NeedZero = 1;
+    }
     const bool hasSeqused = OptionalInputExists(context, SEQUSED_Q_INDEX) ||
                             OptionalInputExists(context, SEQUSED_KV_INDEX);
     const bool useActualCores = (layout != 1) && (maskMode == 0) && !hasSeqused;
@@ -203,9 +360,9 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
                         usedCube, aicNum, aivNum),
                 return ge::GRAPH_PARAM_INVALID);
     context->SetBlockDim(blockDim);
-    // BN2GS1S2 pre/post uses sync_all; batch mode is required when the launched
-    // cube count is not the full chip. BN2 has no sync_all.
-    if (tmpl == 0) {
+    // BN2GS1S2 pre/post uses sync_all; BN2 仅 bn2NeedZero 那份二进制有
+    // sync_all。batch mode 在未满核启动时必须开，否则可能卡死。
+    if (tmpl == 0 || bn2NeedZero == 1) {
         context->SetScheduleMode(1);
     }
 
@@ -237,8 +394,9 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
         int64_t s2Outer = (s2Size + CUBE_BASE_N - 1) / CUBE_BASE_N;
         // Under GQA the block grid is b*n2*G*s1Outer*s2Outer and the fused batch
         // dimension is b*n2*G, so G simply multiplies the head count here (the
-        // kernel walks g inside n2, see set_run_info).
-        int64_t perHeadBlocks = s1Outer * s2Outer;
+        // kernel walks g inside n2, see set_run_info). Mask uses valid tiles
+        // (GetTotalPerBatchNum) so the L2 gate sees the real working set.
+        int64_t perHeadBlocks = totalPerBatchNum > 0 ? totalPerBatchNum : (s1Outer * s2Outer);
         int64_t fusedHeads = bSize * n2Size * gSize;
         int64_t totalBlocks = fusedHeads * perHeadBlocks;
         // Must use aicNum, not blockDim: blockDim is the mixed scheduling value
@@ -346,8 +504,23 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
         tilingData->coefN0 = 0;
         tilingData->coefN2 = 1;
     }
+    tilingData->maskMode = maskMode;
+    tilingData->winLeft = winLeft;
+    tilingData->winRight = winRight;
+    tilingData->sparseType = sparseType;
+    tilingData->s1Token = s1Token;
+    tilingData->s2Token = s2Token;
+    tilingData->totalPerBatchNum = totalPerBatchNum;
 
     bool hasAttenMask = HasAttenMask(context, maskMode);
+    // tilingkey mask_mode: host stores index 0/1/2, kernel TilingKeyField
+    // values=[0, 3, 4] so the kernel sees 0 / 3 / 4.
+    uint64_t maskModeBits = 0ULL;
+    if (hasAttenMask && maskMode == FAG_MASK_CAUSAL) {
+        maskModeBits = 1ULL;
+    } else if (hasAttenMask && maskMode == FAG_MASK_BAND) {
+        maskModeBits = 2ULL;
+    }
     // D bucket. Unlike layout and GQA -- which only change index arithmetic and
     // so are handled with runtime numbers -- D sets the *width of every on-chip
     // tile*, and tile shapes are trace-time constants in pypto. It therefore has
@@ -374,19 +547,21 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     // L1/L0 physically 128-wide and crops with compact=1 + set_validshape.
     // dvAlign stays 128: the tilingkey field has no 64 bucket.
     // TilingKey: bit[1:0]=template (0=BN2GS1S2, 1=BN2, 2=unused, 3=BN2S2 reserved),
-    //            bit2=layout, bit3=hasAttenMask,
-    //            bit4=swizzle (template=0 only),
-    //            bit[6:5]=d_align (0=64,1=128,2=192), bit7=dv_align (0=128,1=192),
-    //            bit8=isBn2MultiBlk (template=1 only; MultiBlk stays inside BN2)
+    //            bit2=layout, bit[4:3]=mask_mode (0=none, 1=causal/3, 2=band/4),
+    //            bit5=swizzle (template=0 only),
+    //            bit[7:6]=d_align (0=64,1=128,2=192), bit8=dv_align (0=128,1=192),
+    //            bit9=isBn2MultiBlk (template=1 only; MultiBlk stays inside BN2)
+    //            bit10=bn2NeedZero (template=1 MultiBlk + invalid row/col)
     uint64_t dAlignBits = (dAlign == 64) ? 0ULL : ((dAlign == 128) ? 1ULL : 2ULL);
     uint64_t dvAlignBit = (dvAlign == 192) ? 1ULL : 0ULL;
     uint64_t tilingKey = static_cast<uint64_t>(tmpl) |
                          (static_cast<uint64_t>(layout) << 2) |
-                         (static_cast<uint64_t>(hasAttenMask) << 3) |
-                         (static_cast<uint64_t>(swizzle) << 4) |
-                         (dAlignBits << 5) |
-                         (dvAlignBit << 7) |
-                         (static_cast<uint64_t>(isBn2MultiBlk) << 8);
+                         (maskModeBits << 3) |
+                         (static_cast<uint64_t>(swizzle) << 5) |
+                         (dAlignBits << 6) |
+                         (dvAlignBit << 8) |
+                         (static_cast<uint64_t>(isBn2MultiBlk) << 9) |
+                         (static_cast<uint64_t>(bn2NeedZero) << 10);
     context->SetTilingKey(tilingKey);
 
     // Workspace layout must match the kernel's make_ptr partitioning exactly:
@@ -400,19 +575,23 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     // stage applies scale and casts down to the fp16/bf16 outputs. dv gets no
     // scale (matches qkvIdx < 2 in the AscendC reference).
     // dq/dk are D wide, dv is Dv wide (D and Dv may differ, e.g. 192 vs 128).
+    // One extra 128-row sits after dv; dq/dk/dv bases stay compact B*S*N*D.
     constexpr size_t FP32_SIZE = 4;
     size_t libapiSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     size_t dqElems = static_cast<size_t>(bSize) * s1Size * n1Size * dSize;
     size_t dkElems = static_cast<size_t>(bSize) * s2Size * n2Size * dSize;
     size_t dvElems = static_cast<size_t>(bSize) * s2Size * n2Size * dvSize;
-    size_t workspaceSize = libapiSize + (dqElems + dkElems + dvElems) * FP32_SIZE;
+    size_t alignRowElems = static_cast<size_t>(FAG_CUBE_BASE) *
+                           static_cast<size_t>(std::max(dSize, dvSize));
+    size_t workspaceSize = libapiSize + (dqElems + dkElems + dvElems + alignRowElems) * FP32_SIZE;
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
     OP_LOGI(context->GetNodeName(),
-            "FlashAttnGrad tiling: usedCube=%u, usedBlockDim=%u, useActualCores=%d, s1Outer=%ld, s2Outer=%ld, layoutStr=%s, layout=%ld, maskMode=%ld, hasAttenMask=%d, template=%ld, isBn2MultiBlk=%ld, swizzle=%ld, dAlign=%ld, dvAlign=%ld, B=%ld, S1=%ld, S2=%ld, N1=%ld, N2=%ld, G=%ld, D=%ld, Dv=%ld, viewQ=[%ld,S,%ld,D] b0=%ld, viewKV=[%ld,S,%ld,D] b0=%ld, coefN=(%ld,%ld), tilingKey=%llu, workspaceSize=%zu.",
+            "FlashAttnGrad tiling: usedCube=%u, usedBlockDim=%u, useActualCores=%d, s1Outer=%ld, s2Outer=%ld, layoutStr=%s, layout=%ld, maskMode=%ld, win=(%ld,%ld), sparseType=%ld, totalPerBatch=%ld, hasAttenMask=%d, template=%ld, isBn2MultiBlk=%ld, bn2NeedZero=%ld, swizzle=%ld, dAlign=%ld, dvAlign=%ld, B=%ld, S1=%ld, S2=%ld, N1=%ld, N2=%ld, G=%ld, D=%ld, Dv=%ld, viewQ=[%ld,S,%ld,D] b0=%ld, viewKV=[%ld,S,%ld,D] b0=%ld, coefN=(%ld,%ld), tilingKey=%llu, workspaceSize=%zu.",
             usedCube, blockDim, static_cast<int>(useActualCores), s1OuterMeta, s2OuterMeta,
-            layoutQStr.c_str(), layout, maskMode, hasAttenMask, tmpl, isBn2MultiBlk, swizzle, dAlign, dvAlign, bSize, s1Size, s2Size, n1Size,
+            layoutQStr.c_str(), layout, maskMode, winLeft, winRight, sparseType, totalPerBatchNum,
+            hasAttenMask, tmpl, isBn2MultiBlk, bn2NeedZero, swizzle, dAlign, dvAlign, bSize, s1Size, s2Size, n1Size,
             n2Size, gSize, dSize, dvSize,
             tilingData->viewD0Q, tilingData->viewD2Q, tilingData->coefB0Q,
             tilingData->viewD0KV, tilingData->viewD2KV, tilingData->coefB0KV,
