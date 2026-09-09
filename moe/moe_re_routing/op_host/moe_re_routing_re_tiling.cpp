@@ -19,15 +19,13 @@
 #include "log/log.h"
 #include "op_common/op_host/util/platform_util.h"
 #include "moe_re_routing_re_tiling.h"
-#include "../op_kernel/arch35/moe_re_routing_topk_weight_common.h"
+#include "../op_kernel/arch35/moe_re_routing_common.h"
 
 namespace optiling {
 
 constexpr int64_t NUM_TWO = 2;
 constexpr int64_t BYTE_LENGTH_FOUR = 4;
 constexpr int64_t TOPK_OFFSET_UB_SIZE = MoeReRoutingTopk::TOPK_OFFSET_UB_SIZE;
-constexpr int64_t TOPK_COPY_UB_SIZE = MoeReRoutingTopk::TOPK_COPY_UB_SIZE;
-constexpr int64_t TOPK_GROUP_EXPERTS = MoeReRoutingTopk::TOPK_GROUP_EXPERTS;
 constexpr uint64_t MOE_RE_ROUTING_RE_WITHOUT_SCALE = 200000;
 constexpr uint64_t MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT = 200100;
 /* Note: MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT8_E8M0 key is shared by multiple quantization types:
@@ -63,16 +61,10 @@ ge::graphStatus MoeReRoutingReTiling::SplitUb()
     // 切分ub
     int64_t reserveUbSize = INDEX_UB_SIZE * DOUBLE_BUFFER * ge::GetSizeByDataType(expertDtype_);
     if (hasTopkWeight_) {
-        const bool isFp4 = tokenDtype_ == ge::DT_FLOAT4_E2M1 || tokenDtype_ == ge::DT_FLOAT4_E1M2;
-        const int64_t effectiveTokenSize = isFp4 ? Ops::Base::CeilDiv(tokenSize_, NUM_TWO) : tokenSize_;
-        if (effectiveTokenSize > 1) {
-            reserveUbSize += TOPK_COPY_UB_SIZE;
-        }
-        // For H=1 and a small expert count, the grouped path recomputes offsets
-        // from the count matrix and does not need the auxiliary offset buffer.
-        if (!MoeReRoutingTopk::UseDirectH1Path(effectiveTokenSize, expertNum_)) {
-            reserveUbSize += TOPK_OFFSET_UB_SIZE;
-        }
+        // The grouped topk path uses the main queue for the weight payload and
+        // one offset buffer for every group.  Reserve it uniformly for all
+        // shapes so kernel allocation and fallback behavior stay predictable.
+        reserveUbSize += TOPK_OFFSET_UB_SIZE;
     }
     int64_t canUseUbSize = (ubSize_ - reserveUbSize) / DOUBLE_BUFFER;
     ubFactor_ = Ops::Base::CeilAlign(canUseUbSize, static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_)));
