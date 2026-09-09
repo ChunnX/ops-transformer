@@ -14,6 +14,7 @@ INT_FIELDS = {
     'N1', 'N2', 'D', 'rope_head_dim', 'cmp_ratio',
 }
 LENGTH_FIELDS = {'S1', 'S2', 'S2C'}
+QUERY_FIELDS = {'cu_seqlens_q', 'seqused_q'}
 TOPK_FIELDS = {'win_topk_length', 'cmp_topk_length'}
 FIXED_FIELDS = {
     'layout_q': 'TND', 'layout_kv': 'PA_BBND',
@@ -70,6 +71,11 @@ def _normalize(values):
                 if isinstance(value, str) and value.startswith('['):
                     value = ast.literal_eval(value)
                 value = [_integer(x) for x in value] if isinstance(value, list) else _integer(value)
+            elif field in QUERY_FIELDS:
+                if isinstance(value, str):
+                    value = ast.literal_eval(value)
+                if not isinstance(value, list):
+                    raise ValueError("expected a one-dimensional integer list")
             elif field in TOPK_FIELDS:
                 if isinstance(value, str) and value.startswith('['):
                     value = ast.literal_eval(value)
@@ -96,6 +102,8 @@ def _normalize(values):
         if merged[field] <= 0:
             raise ValueError(f'{field} must be positive')
     for field in LENGTH_FIELDS:
+        if field == "S1" and any(merged[name] is not None for name in QUERY_FIELDS):
+            continue
         value = merged[field]
         values = value if isinstance(value, list) else [value]
         if not values or (isinstance(value, list) and len(value) != merged['B']) or any(x <= 0 for x in values):
@@ -110,9 +118,10 @@ def _normalize(values):
         if min(derived if isinstance(derived, list) else [derived]) <= 0:
             raise ValueError('S2 // cmp_ratio must be positive')
         p['S2C'] = derived
-    from mqsmla_golden import _topk_lengths
-    s1 = merged['S1']
-    t1 = sum(s1) if isinstance(s1, list) else merged['B'] * s1
+    from mqsmla_golden import _topk_lengths, query_lengths
+    _, cumulative, _ = query_lengths(
+        merged['B'], merged['S1'], merged['cu_seqlens_q'], merged['seqused_q'])
+    t1 = int(cumulative[-1])
     for field, width in (('win_topk_length', 'K1'), ('cmp_topk_length', 'K2')):
         if p.get(field) is not None:
             try:

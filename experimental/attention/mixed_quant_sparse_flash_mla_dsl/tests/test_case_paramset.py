@@ -1,3 +1,5 @@
+# Query 长度示例（外层列表为候选值）：B=[3], cu_seqlens_q=[[0, 1, 4, 6]],
+# seqused_q=[[1, 3, 2]]；可只传其中一项，两者都不传才使用 S1。
 # 所有用例通过已构建安装的wheel调用torch.ops。
 # kv_axis0_noncontiguous统一控制两侧，框架固定padding，默认False。
 # topk_length填写T个query的数量；候选列表需再包一层，如[[17,32,64]]。

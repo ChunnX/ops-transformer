@@ -204,13 +204,53 @@ def _validate_scenario(scenario):
         raise ValueError("only ORI_SPARSE and ORI_CMP_SPARSE are supported")
 
 
+
+def query_lengths(batch_size, seqlen_q, cu_seqlens_q=None, seqused_q=None):
+    """Resolve unpadded TND lengths; explicit query metadata overrides S1."""
+    torch = _torch()
+
+    def vector(value, name, size):
+        tensor = torch.as_tensor(value, device="cpu")
+        if tensor.ndim != 1 or tensor.numel() != size:
+            raise ValueError(f"{name} must be a one-dimensional vector of {size} integers")
+        if tensor.dtype not in (torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8):
+            raise ValueError(f"{name} must contain integers")
+        tensor = tensor.to(torch.int64)
+        if (tensor < 0).any() or (tensor > torch.iinfo(torch.int32).max).any():
+            raise ValueError(f"{name} must contain non-negative int32 values")
+        return tensor
+
+    used = None if seqused_q is None else vector(seqused_q, "seqused_q", batch_size)
+    if cu_seqlens_q is not None:
+        cumulative = vector(cu_seqlens_q, "cu_seqlens_q", batch_size + 1)
+        if cumulative[0] != 0:
+            raise ValueError("cu_seqlens_q must start at 0")
+        lengths = cumulative.diff()
+        if used is not None and not torch.equal(lengths, used):
+            raise ValueError("seqused_q must equal adjacent differences of cu_seqlens_q (no query padding)")
+    elif used is not None:
+        lengths = used
+    else:
+        value = torch.as_tensor(seqlen_q, device="cpu")
+        if value.ndim == 0:
+            value = value.repeat(batch_size)
+        lengths = vector(value, "S1", batch_size)
+    if (lengths <= 0).any():
+        raise ValueError("query lengths must be positive for every batch")
+    if lengths.sum() > torch.iinfo(torch.int32).max:
+        raise ValueError("total query length must fit in int32")
+    cumulative = torch.cat((torch.zeros(1, dtype=torch.int64), lengths.cumsum(0))).to(torch.int32)
+    return lengths.to(torch.int32), cumulative, None if used is None else used.to(torch.int32)
+
+
 def make_inputs(scenario=C.Scenario.ORI_SPARSE, quant_mode=C.QuantMode.CONTIGUOUS,
                 layout_q="TND", layout_kv="PA_BBND",
                 batch_size=1, seqlen_q=64, seqlen_kv=128, n1=64,
                 cmp_seqlen=128, cmp_topk=16, seed=0,
                 dist="norm", ori_topk=0,
                 ori_topk_length=None, cmp_topk_length=None,
-                ori_kv_topk_mode="fullK", cmp_kv_topk_mode="fullK"):
+                ori_kv_topk_mode="fullK", cmp_kv_topk_mode="fullK",
+                cu_seqlens_q=None, seqused_q=None):
     """Generate all batches together in TND order, including sparse tables.
 
     Sequence lengths accept a scalar or B lengths. KV pools contain the sum
@@ -234,7 +274,8 @@ def make_inputs(scenario=C.Scenario.ORI_SPARSE, quant_mode=C.QuantMode.CONTIGUOU
             raise ValueError("sequence lengths must be positive and contain B entries")
         return lengths
 
-    q_lengths = batch_lengths(seqlen_q)
+    q_lengths, cu_seqlens_q, seqused_q = query_lengths(
+        batch_size, seqlen_q, cu_seqlens_q, seqused_q)
     win_lengths = batch_lengths(seqlen_kv)
     query_batch = torch.repeat_interleave(torch.arange(batch_size), q_lengths.long())
     T1, D = int(q_lengths.sum()), C.D
@@ -249,13 +290,11 @@ def make_inputs(scenario=C.Scenario.ORI_SPARSE, quant_mode=C.QuantMode.CONTIGUOU
 
     q = (_rand(T1, n1, D) * 0.5).to(torch.bfloat16)
     sinks = _rand(batch_size, n1).float()
-    cu_seqlens_q = torch.zeros(batch_size + 1, dtype=torch.int32)
-    cu_seqlens_q[1:] = q_lengths.cumsum(0)
     ref = {
         "scenario": scenario, "quant_mode": quant_mode,
         "B": batch_size, "T1": T1, "D": D, "n1": n1,
         "q": q, "sinks": sinks, "softmax_scale": 1.0 / math.sqrt(D),
-        "cu_seqlens_q": cu_seqlens_q, "query_batch": query_batch,
+        "cu_seqlens_q": cu_seqlens_q, "seqused_q": seqused_q, "query_batch": query_batch,
     }
 
     def make_side(side, pool_lengths, width, topk_length, variant):
@@ -289,7 +328,7 @@ def make_inputs(scenario=C.Scenario.ORI_SPARSE, quant_mode=C.QuantMode.CONTIGUOU
         make_side("cmp", batch_lengths(cmp_seqlen), cmp_topk, cmp_topk_length, cmp_kv_topk_mode)
     inputs = {"q": q, "sinks": sinks, "quant_mode": int(quant_mode),
               "softmax_scale": ref["softmax_scale"], "cu_seqlens_q": cu_seqlens_q,
-              "layout_q": layout_q, "layout_kv": layout_kv}
+              "seqused_q": seqused_q, "layout_q": layout_q, "layout_kv": layout_kv}
     return inputs, ref
 
 

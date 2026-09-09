@@ -30,7 +30,7 @@ def _case_id(params, idx):
     if name is not None:
         return str(name)
     keys = ("template_run_mode", "B", "S1", "S2", "S2C", "K1", "K2",
-            "win_topk_length", "cmp_topk_length",
+            "cu_seqlens_q", "seqused_q", "win_topk_length", "cmp_topk_length",
             "ori_kv_topk_mode", "cmp_kv_topk_mode",
             "block_size1", "block_size2", "seed", "dist", "kv_axis0_noncontiguous")
     parts = [f"{k}{_fmt(params[k])}" for k in keys if k in params]
