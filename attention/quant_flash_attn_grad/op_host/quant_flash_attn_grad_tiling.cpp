@@ -74,8 +74,11 @@ static ge::graphStatus ParseAttrs(gert::TilingContext *context, const string &op
     int64_t winLeftValue = (winLeft != nullptr) ? *winLeft : -1;
     int64_t winRightValue = (winRight != nullptr) ? *winRight : -1;
     if (maskModeValue == 4) {
-        OP_CHECK_IF(winLeftValue < 0 || winRightValue < 0,
-                    OP_LOGE(opName, "maskMode 4 requires winLeft >= 0 and winRight >= 0, now is [%ld, %ld].",
+        // -1表示该方向不限窗, host后续按+inf处理; 其余负值对应的负token场景暂不支持
+        OP_CHECK_IF(winLeftValue < -1 || winRightValue < -1,
+                    OP_LOGE(opName,
+                            "maskMode 4 requires winLeft >= 0 and winRight >= 0, or -1 for unlimited, "
+                            "now is [%ld, %ld].",
                             winLeftValue, winRightValue),
                     return ge::GRAPH_FAILED);
     } else {

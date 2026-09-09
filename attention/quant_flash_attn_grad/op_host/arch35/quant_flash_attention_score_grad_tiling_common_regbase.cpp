@@ -653,7 +653,7 @@ void CalcleActualToken(FuzzyBaseInfoParamsRegbase &fBaseParams, int64_t batchIdx
          batchIdx != fBaseParams.bandIdx) ||
         (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND_LEFT_UP_CASUAL) &&
          batchIdx != fBaseParams.bandIdx)) {
-        actualCalcS1Token = INT32_MAX;
+        actualCalcS1Token = TOKEN_UNLIMITED;
         actualCalcS2Token = 0;
     }
     if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) ||
@@ -967,8 +967,18 @@ ge::graphStatus ProcessTokensInfo(FuzzyBaseInfoParamsRegbase &fBaseParams)
     // 自动校正left和right causal的token值，token信息仅用于sparse分核计算
     if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL) ||
         fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL)) {
-        fBaseParams.s1Token = INT32_MAX;
+        fBaseParams.s1Token = TOKEN_UNLIMITED;
         fBaseParams.s2Token = 0;
+    }
+
+    // band场景下winLeft/winRight传-1表示该方向不限窗，需在右下角校正之前替换
+    if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND)) {
+        if (fBaseParams.s1Token == -1) {
+            fBaseParams.s1Token = TOKEN_UNLIMITED;
+        }
+        if (fBaseParams.s2Token == -1) {
+            fBaseParams.s2Token = TOKEN_UNLIMITED;
+        }
     }
 
     // 对pad场景做校正
@@ -982,8 +992,8 @@ ge::graphStatus ProcessTokensInfo(FuzzyBaseInfoParamsRegbase &fBaseParams)
 
     if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::ALL_MASK) ||
         fBaseParams.attenMaskOptional == EMPTY_TENSOR) {
-        fBaseParams.s1Token = INT32_MAX;
-        fBaseParams.s2Token = INT32_MAX;
+        fBaseParams.s1Token = TOKEN_UNLIMITED;
+        fBaseParams.s2Token = TOKEN_UNLIMITED;
     }
 
     OP_LOGD("ProcessTokensInfo", " the corrected s1Token = %ld, s2Token %ld.", fBaseParams.s1Token,
