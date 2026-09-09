@@ -95,6 +95,33 @@ while changed:
             impact[h] = new
             changed = True
 
+# ---------- 5.5 CMake *_depends 反向闭包: 算子级依赖烙进最终影响面 ----------
+DEP_RE = re.compile(r'set\(\w+_depends\s+([^)]*)\)')
+dep_dependents = {}
+for op in sorted(os.listdir(MC2)):
+    if op in EXCLUDE_OPS or not os.path.isdir(os.path.join(MC2, op)):
+        continue
+    for dp, _, fs in os.walk(os.path.join(MC2, op)):
+        for f in fs:
+            if f != 'CMakeLists.txt':
+                continue
+            for m in DEP_RE.finditer(open(os.path.join(dp, f), errors='ignore').read()):
+                for t in m.group(1).split():
+                    if t.startswith('mc2/') and t.split('/')[1] in socs and t.split('/')[1] != op:
+                        dep_dependents.setdefault(t.split('/')[1], set()).add(op)
+
+def dep_closure(seeds):
+    out = set(seeds)
+    stack = list(seeds)
+    while stack:
+        cur = stack.pop()
+        for dp_ in dep_dependents.get(cur, ()):
+            if dp_ not in out:
+                out.add(dp_)
+                stack.append(dp_)
+    return out
+
+
 # ---------- 5. 分类: 全量(三种) / 部分算子 ----------
 used_by_all = set()    # ① 被全部算子使用
 no_reference = set()   # ② 无任何文件引用
@@ -102,7 +129,7 @@ partial = set()        # 其余: 影响部分算子
 for h in hdrs:
     if not referers[h]:
         no_reference.add(h)
-    elif impact[h] >= ALL_OPS:
+    elif dep_closure(impact[h]) >= ALL_OPS:
         used_by_all.add(h)
     else:
         partial.add(h)
@@ -137,7 +164,7 @@ for grp in ('common', '3rd'):
             '',
         ]
         for h in partial_g:
-            ops = sorted(o for o in impact[h] if soc in socs.get(o, set()))
+            ops = sorted(o for o in dep_closure(impact[h]) if soc in socs.get(o, set()))
             lines.append(f'{h}:')
             if ops:
                 lines.append('  ops:')

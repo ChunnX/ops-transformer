@@ -1,5 +1,5 @@
 # mc2/3rd 头文件影响范围映射表 - A3 (ascend910_93)
-# 生成: 2026-09-09  基线commit: 3a1f7c70a (clean)
+# 生成: 2026-09-09  基线commit: 949492ae4 (clean)
 # 生成器: mc2/tools/gen_common_impact_yaml.py (可对任意时期检出重新生成; 本yaml为生成物, 勿手改)
 # 键路径: 相对mc2目录(3rd/开头), 与PR修改文件列表中mc2/后的段落一致
 #
@@ -124,23 +124,35 @@
 3rd/grouped_matmul/op_kernel/grouped_matmul_tiling_data_apt.h:
   ops:
     - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
 3rd/grouped_matmul/op_kernel/mc2_3rd_gqmm_cube_on_the_fly.h:
-  ops: []
+  ops:
+    - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
 3rd/grouped_matmul/op_kernel/mc2_3rd_grouped_matmul_utils.h:
-  ops: []
+  ops:
+    - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
 3rd/grouped_matmul/op_kernel/mc2_3rd_quant_block_sch.h:
-  ops: []
+  ops:
+    - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
 3rd/grouped_matmul/op_kernel/mc2_3rd_quant_utils.h:
-  ops: []
+  ops:
+    - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
 3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h:
   ops:
     - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
 3rd/grouped_matmul/op_tiling/mc2_grouped_matmul_host_util.h:
   ops:
     - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
 3rd/grouped_matmul/op_tiling/mc2_grouped_matmul_tiling.h:
   ops:
     - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
 3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_base_tiling.h:
   ops:
     - all_gather_matmul
@@ -191,9 +203,12 @@
     - moe_distribute_dispatch_v3
 3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_tiling_registry.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
+    - grouped_mat_mul_allto_allv
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_asw_basic_tiling.h:
   ops: []
@@ -353,24 +368,29 @@
     - moe_distribute_dispatch_v3
 3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_strategy.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
 3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
     - batch_mat_mul_reduce_scatter_allto_all
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_common.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
     - batch_mat_mul_reduce_scatter_allto_all
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_compile_info.h:
   ops:
@@ -404,31 +424,39 @@
   ops: []
 3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_tuning.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
     - batch_mat_mul_reduce_scatter_allto_all
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/mat_mul_v3/op_kernel/arch35/block_scheduler_aswt.h:
   ops: []
 3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_block.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_kernel.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/mat_mul_v3/op_kernel/arch35/mat_mul_dasw_block.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/mat_mul_v3/op_kernel/arch35/mat_mul_stream_k_block.h:
   ops: []
@@ -479,6 +507,7 @@
     - batch_mat_mul_reduce_scatter_allto_all
 3rd/mat_mul_v3/op_kernel/mat_mul_v3_common.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
@@ -524,6 +553,8 @@
 3rd/ops_legacy/op_api/aclnn_kernels/transdata.h:
   ops:
     - allto_all_matmul
+    - allto_allv_grouped_mat_mul
+    - grouped_mat_mul_allto_allv
     - matmul_allto_all
 3rd/ops_legacy/op_api/aclnn_kernels/transpose.h:
   ops: []
@@ -539,33 +570,41 @@
   ops: []
 3rd/ops_legacy/op_tiling/op_cache_def_tiling.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
     - batch_mat_mul_reduce_scatter_allto_all
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/ops_legacy/op_tiling/op_cache_tiling.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
     - batch_mat_mul_reduce_scatter_allto_all
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/ops_legacy/op_tiling/register/tuning_bank_key_registry.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_all_gather_batch_mat_mul
     - allto_all_matmul
     - batch_mat_mul_reduce_scatter_allto_all
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/quant_batch_matmul_v3_checker.h:
   ops: []
@@ -575,19 +614,25 @@
   ops: []
 3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_compile_info.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling_base.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling_cache.h:
   ops: []
@@ -601,19 +646,25 @@
     - matmul_allto_all
 3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_api_utils.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_asw_block.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_cube_on_the_fly.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_mix_online_dynamic.h:
   ops:
@@ -621,29 +672,39 @@
     - matmul_allto_all
 3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_mix_perblock.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_perblock_api_param_utils.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_perblock_api_utils.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/quant_batch_matmul_v3/op_kernel/qbmv3_tiling_data.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3.h:
   ops: []
 3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_base.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_bf16.h:
   ops: []
@@ -657,315 +718,419 @@
   ops: []
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_arch.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_cross_core_sync.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_local_tensor_buffer.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_resource.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/tla_detail_alignment.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/tla_detail_callback.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/tla_detail_dependent_false.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/tla_detail_macros.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/block_epilogue_fa_rescal_o.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/block_epilogue_mla_fd_rescal_o.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/block_epilogue_mla_rescal_o.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/block_epilogue_mla_tp1_rescal_o.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/tla_block_epilogue.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/tla_block_epilogue_elemwise_one_source.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/tla_block_epilogue_fa_softmax.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/tla_block_epilogue_gemm.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/tla_block_epilogue_gemv.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/tla_block_epilogue_mla_softmax.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/tla_block_epilogue_mla_tp1_softmax.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/tla_block_epilogue_per_token_dequant.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_copy_gm_to_ub.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_copy_ub_to_gm.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_broadcast_mul.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_broadcast_one_blk.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_copy.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_swizzle.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tla_epilogue_dispatch_policy.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_fa_pv.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_fa_qk.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_gemm.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_mla_pv.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_mla_pv_tp1_spec.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_mla_qk.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_mla_qk_tp1_spec.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_pingpong.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_pingpong_bias.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_preload.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_preload_async.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad_preload_async_with_callback.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_swizzle.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_padding_matmul.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_copy_gm_to_l1.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_copy_l0c_to_gm.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_copy_l1_to_bt.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_copy_l1_to_l0a.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_copy_l1_to_l0b.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_tile_copy.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_tile_mmad.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_dispatch_policy.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_gemm_type.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_helper.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemv/block/tla_gemv_block_gemv_aic.hpp:
   ops: []
@@ -979,66 +1144,87 @@
   ops: []
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemv/tla_gemv_helper.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/tla_layout_layout.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/tla_layout_matrix.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/tla_layout_vector.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_catlass.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_coord.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_gemm_coord.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_gemv_coord.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_matrix_coord.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_numeric_size.hpp:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
     - allto_all_matmul
     - matmul_allto_all
+    - matmul_reduce_scatter
     - matmul_reduce_scatter_v2
 3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_status.hpp:
   ops:
+    - allto_all_matmul
     - matmul_allto_all
 3rd/weight_quant_batch_matmul_v2/op_host/op_api/weight_quant_batch_matmul_v2.h:
   ops: []
@@ -1058,6 +1244,7 @@
   ops: []
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom.h:
   ops: []
@@ -1067,6 +1254,7 @@
   ops: []
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_key.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd.h:
   ops: []
@@ -1076,6 +1264,7 @@
   ops: []
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_tool.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
 3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_weight_nz_tiling.h:
   ops: []
@@ -1181,6 +1370,7 @@
   ops: []
 3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_tiling_data.h:
   ops:
+    - all_gather_matmul
     - all_gather_matmul_v2
 3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_weight_nz_performance.h:
   ops: []
