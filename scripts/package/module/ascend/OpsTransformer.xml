@@ -6,7 +6,7 @@
         <path value="$(TARGET_ENV)/include/aclnn_kernels"/>
         <path value="$(TARGET_ENV)/include/aclnnop"/>
     </dir_info>
-    <file_info value="native_python" copy_type="delivery" src_path=""
+    <file_info value="cannbotdsl_python" copy_type="delivery" src_path=""
         dst_path="opp/built-in/op_impl" install_path="opp/built-in/op_impl" install_type="all">
         <file value="cannbotdsl" install_mod="550"/>
     </file_info>

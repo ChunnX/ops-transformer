@@ -103,8 +103,8 @@ for _subdir in ("csrc", "common"):
 _op_category_inits = {}
 _op_py_files = []
 _op_cpp_files = []
-_op_native_builds = []
-_native_build = "build_native" in sys.argv
+_op_cannbotdsl_builds = []
+_cannbotdsl_build = "build_cannbotdsl" in sys.argv
 
 
 @dataclass(frozen=True)
@@ -125,7 +125,7 @@ def _decorated_functions(declarations, decorator):
                     yield node.name
 
 
-def _build_native(task, output, target):
+def _build_cannbotdsl(task, output, target):
     operator = os.path.splitext(os.path.basename(task.kernel_file))[0]
     if task.frontend == "aicpu":
         from cannbotdsl.aicpu.toolchain import compile_aicpu_kernel
@@ -133,7 +133,7 @@ def _build_native(task, output, target):
         module_name = os.path.relpath(task.kernel_file, OPS_TRANSFORMER_ROOT)[:-3].replace(os.sep, ".")
         kernel = getattr(importlib.import_module(module_name), task.aicpu_function)
         os.makedirs(output, exist_ok=False)
-        with tempfile.TemporaryDirectory(prefix="native_aicpu_") as workdir:
+        with tempfile.TemporaryDirectory(prefix="cannbotdsl_aicpu_") as workdir:
             compiled = compile_aicpu_kernel(kernel, workdir=workdir,
                                            launch_mode="interface", npu_arch=target)
             shutil.copy2(compiled.so_path, os.path.join(output, operator + ".so"))
@@ -156,12 +156,12 @@ def _collect_op(op_cat, op_dir, te_dir):
         has_provider = any(_decorated_functions(declarations, "register"))
         if aicpu_functions or has_provider:
             # Native resources are installed directly by CMake, not in the legacy wheel.
-            if not _native_build:
+            if not _cannbotdsl_build:
                 return
             destination = os.path.join("ops", op_cat, op_dir)
             if len(aicpu_functions) > 1:
                 raise ValueError(f"Expected one public AICPU kernel in {kernel_file}")
-            _op_native_builds.append(_NativeBuildTask(
+            _op_cannbotdsl_builds.append(_NativeBuildTask(
                 kernel_file, destination,
                 "aicpu" if aicpu_functions else "provider",
                 aicpu_functions[0] if aicpu_functions else None))
@@ -251,7 +251,7 @@ class Clean(Command):
 class BuildPyWithOps(_build_py):
     def run(self):
         # CMake owns the Native staging directory; preserve the legacy wheel in dist.
-        if not _native_build:
+        if not _cannbotdsl_build:
             _clean_build_artifacts()
         super().run()
         build_pkg = os.path.join(self.build_lib, PACKAGE_NAME)
@@ -313,12 +313,12 @@ class BuildPyWithOps(_build_py):
             dst = os.path.join(build_pkg, rel_path)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copy2(src_abs, dst)
-        if _op_native_builds:
+        if _op_cannbotdsl_builds:
             sys.path.insert(0, OPS_TRANSFORMER_ROOT)
             try:
                 target = os.environ.get("CANNBOTDSL_NPU_ARCH", "dav-3510")
-                for task in _op_native_builds:
-                    _build_native(task, os.path.join(build_pkg, task.destination, "_native"), target)
+                for task in _op_cannbotdsl_builds:
+                    _build_cannbotdsl(task, os.path.join(build_pkg, task.destination, "_native"), target)
             finally:
                 sys.path.remove(OPS_TRANSFORMER_ROOT)
         common_src_dir = os.path.join(_src_path, "common")
@@ -377,7 +377,7 @@ else:
 
 _cmdclass = {
     "build_py": BuildPyWithOps,
-    "build_native": BuildPyWithOps,
+    "build_cannbotdsl": BuildPyWithOps,
     "sdist": SdistWithClean,
     "clean": Clean,
 }

@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-if(ASCENDC_SELECTED_OPS)
+if(ASCENDC_BUILD_OPS)
 if (BUILD_OPEN_PROJECT)
     set(CMAKE_MODULE_PATH
         ${CMAKE_MODULE_PATH}
@@ -1247,7 +1247,7 @@ endif ()
 endif()
 
 if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
-    if(TARGET ops_transformer_native AND NOT ASCENDC_SELECTED_OPS)
+    if(TARGET ops_transformer_cannbotdsl AND NOT ASCENDC_BUILD_OPS)
         add_cann_third_party(makeself-fetch)
     endif()
     add_custom_target(modify_vendor ALL
@@ -1256,7 +1256,7 @@ if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
 
     # modify VENDOR_NAME in install.sh and upgrade.sh
     if (EXISTS ${ASCEND_PROJECT_DIR}/fwk_modules/scripts AND
-        (NOT TARGET ops_transformer_native OR TARGET cust_opapi))
+        (NOT TARGET ops_transformer_cannbotdsl OR TARGET cust_opapi))
         set(ASCEND_PROJECT_DIR_SCRIPTS_PATH ${ASCEND_PROJECT_DIR}/fwk_modules/scripts)
     else()
         set(ASCEND_PROJECT_DIR_SCRIPTS_PATH ${CMAKE_SOURCE_DIR}/cmake/scripts/custom)
