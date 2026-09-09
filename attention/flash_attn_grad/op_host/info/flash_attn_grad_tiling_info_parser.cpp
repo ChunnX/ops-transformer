@@ -13,6 +13,7 @@
 #include <string>
 
 #include "../flash_attn_grad_tiling.h" // FlashAttnGradCompileInfo：platform 缺失时的回退来源
+#include "../plan/flash_attn_grad_sparse.h"
 #include "log/log.h"
 #include "op_host/tiling_util.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -77,6 +78,14 @@ ge::graphStatus ParseAttrs(gert::TilingContext *context, FagParsedInfo &info)
         const auto maskModePtr = attrs->GetAttrPointer<int64_t>(ATTR_MASK_MODE_INDEX);
         if (maskModePtr != nullptr) {
             info.maskMode = *maskModePtr;
+        }
+        const auto winLeftPtr = attrs->GetAttrPointer<int64_t>(ATTR_WIN_LEFT_INDEX);
+        if (winLeftPtr != nullptr) {
+            info.winLeft = *winLeftPtr;
+        }
+        const auto winRightPtr = attrs->GetAttrPointer<int64_t>(ATTR_WIN_RIGHT_INDEX);
+        if (winRightPtr != nullptr) {
+            info.winRight = *winRightPtr;
         }
         const auto maxSeqlenQPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_SEQLEN_Q_INDEX);
         if (maxSeqlenQPtr != nullptr) {
@@ -211,6 +220,7 @@ ge::graphStatus ParseFlashAttnGradInfo(gert::TilingContext *context, FagParsedIn
     info.hasSinks = OptionalInputExists(context, SINKS_INDEX);
 
     FillLayoutView(info);
+    FagFillSparseInfo(info);
     return ge::GRAPH_SUCCESS;
 }
 

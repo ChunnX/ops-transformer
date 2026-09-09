@@ -58,6 +58,16 @@ TILING_DATA_FIELD_DEF(int64_t, viewD2KV)
 TILING_DATA_FIELD_DEF(int64_t, coefB0KV)
 TILING_DATA_FIELD_DEF(int64_t, coefN0)
 TILING_DATA_FIELD_DEF(int64_t, coefN2)
+// mask_mode 3=causal / 4=band. sparseType is the host remap
+// (0=DENSE, 1=CASUAL, 2=BAND). s1Token/s2Token are ProcessTokensInfo
+// corrected windows. totalPerBatchNum is valid 128x128 tiles per head.
+TILING_DATA_FIELD_DEF(int64_t, maskMode)
+TILING_DATA_FIELD_DEF(int64_t, winLeft)
+TILING_DATA_FIELD_DEF(int64_t, winRight)
+TILING_DATA_FIELD_DEF(int64_t, sparseType)
+TILING_DATA_FIELD_DEF(int64_t, s1Token)
+TILING_DATA_FIELD_DEF(int64_t, s2Token)
+TILING_DATA_FIELD_DEF(int64_t, totalPerBatchNum)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(FlashAttnGrad, FlashAttnGradTilingDataTmp)
 

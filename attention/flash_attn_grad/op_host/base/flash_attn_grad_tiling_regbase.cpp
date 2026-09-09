@@ -30,29 +30,33 @@ namespace {
 // 布局钉死：改了 py 侧字段就会在这里断编译，逼着同步改 Tmp 和这些数字。
 // 注意 scaleValue 是唯一的 4 字节字段，它后面有 4 字节填充 —— 框架的
 // CheckAlignAndGenPlaceHolder 也会插同样的填充，两边才对得上。
-static_assert(sizeof(FlashAttnGradTilingData) == 136,
+static_assert(sizeof(FlashAttnGradTilingData) == 192,
               "TilingData layout changed; update FlashAttnGradTilingDataTmp in flash_attn_grad_tiling.h too.");
 static_assert(offsetof(FlashAttnGradTilingData, scaleValue) == 56, "scaleValue moved; re-check the 4-byte padding.");
 static_assert(offsetof(FlashAttnGradTilingData, gSize) == 64, "gSize moved; re-check the padding after scaleValue.");
-static_assert(offsetof(FlashAttnGradTilingData, coefN2) == 128, "trailing field moved; a field was added or removed.");
+static_assert(offsetof(FlashAttnGradTilingData, coefN2) == 128, "layout-view tail moved; a field was added or removed.");
+static_assert(offsetof(FlashAttnGradTilingData, totalPerBatchNum) == 184,
+              "trailing mask field moved; a field was added or removed.");
 
 void LogPlan(gert::TilingContext *context, const FagParsedInfo &info, const FagTilingPlan &plan,
              const FagRouteTrace &trace)
 {
     OP_LOGI(context->GetNodeName(),
             "FlashAttnGrad tiling: usedCube=%u, usedBlockDim=%u, useActualCores=%d, s1Outer=%ld, s2Outer=%ld, "
-            "layoutStr=%s, layout=%ld, maskMode=%ld, hasAttenMask=%d, hasSeqused=%d, hasSinks=%d, isEmptyShape=%d, "
-            "template=%ld, isBn2MultiBlk=%ld, swizzle=%ld, dAlign=%ld, dvAlign=%ld, "
+            "layoutStr=%s, layout=%ld, maskMode=%ld, win=(%ld,%ld), sparseType=%ld, totalPerBatch=%ld, "
+            "hasAttenMask=%d, hasSeqused=%d, hasSinks=%d, isEmptyShape=%d, "
+            "template=%ld, isBn2MultiBlk=%ld, bn2NeedZero=%ld, swizzle=%ld, dAlign=%ld, dvAlign=%ld, "
             "B=%ld, S1=%ld, S2=%ld, N1=%ld, N2=%ld, G=%ld, D=%ld, Dv=%ld, "
             "viewQ=[%ld,S,%ld,D] b0=%ld, viewKV=[%ld,S,%ld,D] b0=%ld, coefN=(%ld,%ld), "
             "tilingKey=%llu, workspaceSize=%zu.",
             plan.schedule.usedCube, plan.schedule.blockDim, static_cast<int>(plan.schedule.useActualCores),
             plan.schedule.s1Outer, plan.schedule.s2Outer, info.layoutQ.c_str(), info.layout, info.maskMode,
+            info.winLeft, info.winRight, info.sparseType, info.totalPerBatchNum,
             static_cast<int>(info.hasAttenMask), static_cast<int>(info.hasSeqused), static_cast<int>(info.hasSinks),
-            static_cast<int>(IsEmptyShape(info)), plan.kernel.tmpl, plan.kernel.isBn2MultiBlk, plan.schedule.swizzle,
-            plan.kernel.dAlign, plan.kernel.dvAlign, info.b, info.s1, info.s2, info.n1, info.n2, info.g, info.d,
-            info.dv, info.viewD0Q, info.viewD2Q, info.coefB0Q, info.viewD0KV, info.viewD2KV, info.coefB0KV,
-            info.coefN0, info.coefN2, plan.tilingKey, plan.workspace.totalSize);
+            static_cast<int>(IsEmptyShape(info)), plan.kernel.tmpl, plan.kernel.isBn2MultiBlk, plan.kernel.bn2NeedZero,
+            plan.schedule.swizzle, plan.kernel.dAlign, plan.kernel.dvAlign, info.b, info.s1, info.s2, info.n1, info.n2,
+            info.g, info.d, info.dv, info.viewD0Q, info.viewD2Q, info.coefB0Q, info.viewD0KV, info.viewD2KV,
+            info.coefB0KV, info.coefN0, info.coefN2, plan.tilingKey, plan.workspace.totalSize);
 
     // 决策追溯：上板发现别的模板更快时，先看这行就知道今天为什么选了它。
     // l2CacheSize 一起打出来：swizzle 的阈值以它为分母，各 ascend950 变体
@@ -98,9 +102,9 @@ ge::graphStatus FlashAttnGradTilingRegbase::DoOpTiling()
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
-    // BN2GS1S2 的 pre/post 用 sync_all，启动核数不是满片时必须 batch mode，
-    // 否则多流下可能卡死。BN2 没有 sync_all。
-    if (plan.kernel.tmpl == TMPL_BN2GS1S2) {
+    // BN2GS1S2 的 pre/post 用 sync_all；BN2 仅 bn2NeedZero 那份二进制有
+    // sync_all。batch mode 在未满核启动时必须开，否则可能卡死。
+    if (plan.kernel.tmpl == TMPL_BN2GS1S2 || plan.kernel.bn2NeedZero == 1) {
         ret = SetScheduleMode(FagScheduleMode::BATCH_MODE);
         if (ret != ge::GRAPH_SUCCESS) {
             return ret;
@@ -154,6 +158,13 @@ ge::graphStatus FlashAttnGradTilingRegbase::WriteTilingData(const FagParsedInfo 
     tilingData->coefB0KV = info.coefB0KV;
     tilingData->coefN0 = info.coefN0;
     tilingData->coefN2 = info.coefN2;
+    tilingData->maskMode = info.maskMode;
+    tilingData->winLeft = info.winLeft;
+    tilingData->winRight = info.winRight;
+    tilingData->sparseType = info.sparseType;
+    tilingData->s1Token = info.s1Token;
+    tilingData->s2Token = info.s2Token;
+    tilingData->totalPerBatchNum = info.totalPerBatchNum;
     return ge::GRAPH_SUCCESS;
 }
 

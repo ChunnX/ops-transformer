@@ -10,6 +10,7 @@
 
 #include "flash_attn_grad_tiling_route.h"
 
+#include "flash_attn_grad_sparse.h"
 #include "log/log.h"
 
 namespace optiling {
@@ -43,9 +44,10 @@ bool Feasible_Bn2Single(const FagParsedInfo &p)
 
 bool Feasible_Bn2MultiBlk(const FagParsedInfo &p)
 {
-    // S 落在 (128, 640] 且无 mask、D==Dv：这些都是 MultiBlk kernel 的实现前提。
-    return Bn2FamilyFeasible(p) && p.maskMode == MASK_MODE_NO_MASK && (p.s1 > BN2_MAX_S || p.s2 > BN2_MAX_S) &&
-           p.s1 <= BN2_MULTIBLK_SEQ && p.s2 <= BN2_MULTIBLK_SEQ && p.d == p.dv;
+    // S 落在 (128, 640] 且 D==Dv：这些都是 MultiBlk kernel 的实现前提。
+    // mask 3/4 也可以走 MultiBlk；无效行/列由 bn2NeedZero 另开一份二进制。
+    return Bn2FamilyFeasible(p) && (p.s1 > BN2_MAX_S || p.s2 > BN2_MAX_S) && p.s1 <= BN2_MULTIBLK_SEQ &&
+           p.s2 <= BN2_MULTIBLK_SEQ && p.d == p.dv;
 }
 
 // D5：BN2S2 是保留位，本轮不实现不编译，host 永不产生 template=3。
@@ -153,6 +155,12 @@ ge::graphStatus SelectKernelPlan(gert::TilingContext *context, const FagParsedIn
                         "route produced reserved template %ld, only %ld/%ld are implemented.", plan.tmpl,
                         TMPL_BN2GS1S2, TMPL_BN2),
                 return ge::GRAPH_FAILED);
+
+    if (plan.isBn2MultiBlk == 1 &&
+        (info.maskMode == MASK_MODE_CAUSAL || info.maskMode == MASK_MODE_WINDOW) &&
+        FagBn2HasInvalidOuter(info.s1, info.s2, info.s1Token, info.s2Token)) {
+        plan.bn2NeedZero = 1;
+    }
 
     return SelectDBucket(context, info, plan);
 }

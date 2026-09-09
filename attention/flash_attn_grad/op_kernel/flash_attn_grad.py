@@ -12,8 +12,9 @@
 一比一复刻 AscendC 实现 arch35/flash_attention_score_grad_kernel.h，
 本文件对应 SPLIT_AXIS == BN2GS1S2 模板，且为下述场景裁剪：
 
-  非 TND(layoutType == BSNGD)、无 sparse / attenMask / pse / dropout /
-  rope / sink / 确定性计算(DETER_SPARSE_TYPE == NO_DETER)、输入 FP16。
+  非 TND(layoutType == BSNGD)、FP16。mask_mode 0=dense，3=causal，4=band。
+  tilingkey `mask_mode` 取值 0/3/4（无 mask / causal / band），`swizzle`
+  区分线性 IsValid skip 与 packed 有效块分核。BN2 支持 mask，禁止 BN2+swizzle。
 
 在该配置下 AscendC 的编译期谓词取值为：
   IS_DQ_WRITE_UB = IS_DK_WRITE_UB = IS_DV_WRITE_UB = false
@@ -24,8 +25,8 @@
          「fixpipe 直出 GM + atomicAdd」，L0C 驻留作为后续优化单独叠加
   IS_DROP = false
       -> ComputeDqkvBn2gs1s2 走 ProcessBn2gs1s2LastVec 的 else 分支
-  IsValid() 恒为 true(无 attenMask)
-      -> GetNextValidIdx 退化为边界判断，无需扫描
+  IsValid() 按 tilingkey mask_mode 静态分支：0 恒真，3=CheckIsValidBlock，
+      4=band 区间。GetNextValidIdx 线性路径 skip 无效块。
 本文件实现 Process() 的两槽 taskId ping-pong。PRELOAD_TIMES=3 的
 ProcessPreloadTwoTimes 预取环按需求暂不实现。
 
@@ -59,9 +60,18 @@ transpose(UB) -> ND2NZ -> insert 到 [N,M] NZ 的 L1，再常规载入 L0A。
 from dataclasses import dataclass
 
 import os
+import sys
 
 import pypto_pro.language as pl
 from pypto_pro.runtime.tilingkey import TilingKeyField
+
+_KERNEL_DIR = os.path.dirname(os.path.abspath(__file__))
+if _KERNEL_DIR not in sys.path:
+    sys.path.insert(0, _KERNEL_DIR)
+from attenmask import (
+    copy_in_atten_mask,
+    muls_sel_simple_softmax_vf,
+)
 
 # `vf` 由 parser 按语法识别(_call_parser.py: attrs[0] == "vf")，无需 import
 
@@ -108,8 +118,12 @@ CV_CORE_RATIO = 2
 VECTOR_BASEM = CUBE_BASEM // CV_CORE_RATIO   # 64，每个 vector 子核处理半个 S1
 VECTOR_BASEN = CUBE_BASEN
 
-# 单个 VF 寄存器的 fp32 lane 数
+# 单个 VF 寄存器的 fp32 / fp16 lane 数
 VF_LANES = 64
+VF_LANES_FP16 = 128
+# ASC attenmask_arch35.h: 压缩 mask 边长 2048，minValue = 0xFF7FFFFF
+ATTEN_MASK_COMPRESS = 2048
+ATTEN_MASK_MIN = -3.4028234663852886e+38
 
 # 兼容测试脚本导出的别名
 TILE_M = CUBE_BASEM
@@ -134,11 +148,6 @@ SYNC_C3_TO_V5_FLAG = 6        # mm3 fp32 已进 mm1 UB，v5 可 Muls+Cast dQ
 SYNC_C4_TO_V6_FLAG = 7        # mm4 fp32 已进 mm2 UB，v6 可 Muls+Cast dK
 # cube 在下一轮 mm1/mm2 前等 v6 写完，避免覆写仍在用的 mm1/mm2 槽
 SYNC_DETER_FIX_FLAG = 14
-# MultiBlk：dQ workspace 的 MTE3 store 完成。与 DETER 分开：DETER 仍走
-# V/FIX（等 VF 用完 mm1），这条走 MTE3/MTE1（等 GM store 完成后再让
-# cube DualMode 复用同一块 mm1）。两拍前的 store 否则会跟下一拍 DualMode 打架，
-# 首 head 的 s1 片后半行会脏（s1_512 / s2_640 的 27–58 行、N=8k）。
-SYNC_DQ_WS_MTE3_FLAG = 15
 
 # cube 领先 vector 的 task 数。ASC 的 PRELOAD_TIMES=3：首轮连发两组
 # mm2+mm1(共四次 matmul)填满两个 UB 槽位，之后第 N 组的 cube 计算与
@@ -364,8 +373,9 @@ UB_Y       = UB_HEAD_RESERVE + 0x20000   # fp16[64,v1w] V1 前向输出 y
 def _build_ub(v1w):
     """按 V1 列宽铺排 y/dy/nzp/sfmg/lse。已删 prod/tmp。
 
-    返回 (y, dy, nzp, sfmg, lse0, lse1)。NZP 仍是 [65,128]，与 DualMode
-    dest / vsstb 无关。主循环 V1 不抢 248KB：它和 mm1/mm2/nzp 同相位。
+    返回 (y, dy, nzp, sfmg, lse0, lse1)。
+    attenmask 复用 y/dy 地址（ASC attenMaskOrYInQue / pseOrDyInQue）。
+    uint8[64,128]=8KB；y/dy 在 v1w>=64 时至少 8KB。NZP 仍是 [65,128]。
     """
     a = UB_HEAD_RESERVE + 0x20000
     y = a
@@ -422,15 +432,23 @@ class FlashAttnGradTilingData:
     coefB0KV: int
     coefN0: int
     coefN2: int
+    maskMode: int
+    winLeft: int
+    winRight: int
+    sparseType: int
+    s1Token: int
+    s2Token: int
+    totalPerBatchNum: int
 
 
 # 与 op_kernel/flash_attn_grad.py 的 FlashAttnGradTilingKey 一致
 class FlashAttnGradTilingKey:
-    # bit[1:0]：0=BN2GS1S2，1=BN2（含 MultiBlk，bit8 区分），
+    # bit[1:0]：0=BN2GS1S2，1=BN2（含 MultiBlk，bit9 区分），
     # 2=未用，3=BN2S2 预留（本轮不编、不进入口）。
     template = TilingKeyField(bits=2, values=[0, 1, 2, 3])
     layout = TilingKeyField(bits=1, values=[0, 1])
-    has_atten_mask = TilingKeyField(bits=1, values=[0, 1])
+    # 0=无 attenmask，3=causal，4=band。host 存 0/1/2 索引。
+    mask_mode = TilingKeyField(bits=2, values=[0, 3, 4])
     # 分核方式：0=线性均分，1=swizzle(按 s2 列跨核发放)。
     # 由 host 的 decide_swizzle() 依输入 shape 判定「同时在跑的核其工作集
     # 是否超 L2」后置位，两种分核各编译一份二进制，运行期零分支开销。
@@ -453,30 +471,38 @@ class FlashAttnGradTilingKey:
     # 这四块 UB 的宽度是 Dv 派生的，而 tile shape 必须是 trace 期常量，
     # 故同样要分档。(64, 128) 是例外：d_align=64 时 dv_align 强制 128。
     dv_align = TilingKeyField(bits=1, values=[128, 192])
-    # BN2 MultiBlk：S 在 (128, 640] 仍走 BN2 函数。bit8，不打乱已有 key。
+    # BN2 MultiBlk：S 在 (128, 640] 仍走 BN2 函数。bit9，不打乱已有 key。
     is_bn2_multiblk = TilingKeyField(bits=1, values=[0, 1])
+    # BN2 MultiBlk 且存在整行或整列无效 tile：pre 把 dq/dk/dv out 清零。
+    # 一行/一列共用这一位，kernel 不区分。
+    bn2_need_zero = TilingKeyField(bits=1, values=[0, 1])
 
     def is_valid(self, key):
         """剪掉本实现未走到的组合，控制二进制数量。"""
-        template, layout, has_atten_mask, swizzle, d_align, dv_align, is_bn2_multiblk = key
+        (template, layout, mask_mode, swizzle, d_align, dv_align,
+         is_bn2_multiblk, bn2_need_zero) = key
         # 2 未用；3 预留给 BN2S2。不剪会当 GS1S2 多编死二进制。
         if template != 0 and template != 1:
             return False
         if template == 1:
-            if d_align == 192 or swizzle != 0 or layout != 0 or has_atten_mask != 0:
+            if d_align == 192 or swizzle != 0 or layout != 0:
                 return False
             if d_align == 64 and dv_align != 128:
                 return False
+            if bn2_need_zero == 1:
+                return is_bn2_multiblk == 1 and mask_mode != 0
             return True
-        if is_bn2_multiblk == 1:
+        if is_bn2_multiblk == 1 or bn2_need_zero == 1:
             return False
         # GS1S2 + d_align=64：tilingkey 的 dv_align 没有 64 档，host 仍发 128。
         if d_align == 64:
             return dv_align == 128
         if dv_align > d_align:
             return False
+        # D=192 只编非 TND。mask 3/4 与 dense 共用 GS1S2 D-split；
+        # swizzle+mask 的 Group B 未迁，不编那几份。
         if d_align == 192:
-            return layout == 0 and has_atten_mask == 0
+            return layout == 0 and (mask_mode == 0 or swizzle == 0)
         return True
 
 
@@ -540,6 +566,15 @@ def set_const_info(tiling, coreNum, enableSwizzle):
         coefB0KV=tiling.coefB0KV,
         coefN0=tiling.coefN0,
         coefN2=tiling.coefN2,
+        maskMode=tiling.maskMode,
+        winLeft=tiling.winLeft,
+        winRight=tiling.winRight,
+        sparseType=tiling.sparseType,
+        s1Token=tiling.s1Token,
+        s2Token=tiling.s2Token,
+        totalPerBatchNum=tiling.totalPerBatchNum,
+        bandP=(pl.max(tiling.s1Token, 0) + CUBE_BASEM - 1) // CUBE_BASEM,
+        bandQ=(pl.max(tiling.s2Token, 0) + CUBE_BASEN - 1) // CUBE_BASEN,
     )
 
 
@@ -579,12 +614,15 @@ def make_run_infos():
         loadKV=0,
         dkvAcc=0,
         flushDkv=0,
+        gIdx=0,
+        dqFirst=1,
+        dqLast=1,
     )
 
 
 # ==================================================================
-#  IsValid + GetNextValidIdx —— 无 attenMask 时 IsValid 恒真，
-#  故仅剩 blockEnds 边界判断（对应 kernel_base.h 的 else 分支）
+#  IsValid + GetNextValidIdx —— 按 tilingkey mask_mode 静态分支
+#  对应 kernel_base.h::IsValid / CheckIsValidBlock
 # ==================================================================
 # ==================================================================
 #  Swizzle 分核 —— 让同时在跑的核落在同一 head 内，命中 L2
@@ -635,7 +673,7 @@ BN2_MULTIBLK_BN_256 = 256
 
 def decide_bn2_multiblk(b, n1, n2, s1, s2, d, dv=None, is_tnd=False, mask_mode=0):
     """老 FAG SetSplitAxis 的 MultiBlk 门。不满足则不要硬走 BN2。"""
-    if is_tnd or mask_mode != 0:
+    if is_tnd:
         return 0
     if n1 != n2 or d > BN2_MAX_D:
         return 0
@@ -684,8 +722,75 @@ def decide_dv_align(dv, d_align):
     return 128 if dv <= 128 else 192
 
 
+SPARSE_DENSE = 0
+SPARSE_CASUAL = 1
+SPARSE_BAND = 2
+INT32_MAX_TOKEN = 2147483647
+# Packed 反函数按列扫描的上限。S=8192 -> s2Outer=64；本轮不做 S>32768。
+PACKED_SCAN_MAX = 128
+
+
+def correct_sparse_tokens(mask_mode, win_left, win_right, s1, s2):
+    """对齐 ASC ProcessTokensInfo 非 TND：causal 填 token，再做右下 pad 校正。"""
+    if mask_mode == 3:
+        s1_token = INT32_MAX_TOKEN
+        s2_token = 0
+    elif mask_mode == 4:
+        s1_token = win_left
+        s2_token = win_right
+    else:
+        return INT32_MAX_TOKEN, INT32_MAX_TOKEN
+    return s1_token + s1 - s2, s2_token - s1 + s2
+
+
+def decide_sparse_type(mask_mode, s1, s2, win_left=-1, win_right=-1):
+    """对齐 GetSparseType 非 TND。1=CASUAL，2=BAND，0=DENSE。"""
+    if mask_mode != 3 and mask_mode != 4:
+        return SPARSE_DENSE
+    s1_token, s2_token = correct_sparse_tokens(mask_mode, win_left, win_right, s1, s2)
+    if (mask_mode == 3 and s1 <= s2) or (mask_mode == 4 and s1_token >= s1 and s2_token == 0):
+        return SPARSE_CASUAL
+    return SPARSE_BAND
+
+
+def _casual_packed_col_len(s2o, s1_outer, s1, s2):
+    """与 kernel packed_g_to_s1s2 同式。仅 packed 反函数使用，Group B 挂起。"""
+    need = s2o * CUBE_BASEN + 1
+    rhs = need - (s2 - s1)
+    s1_min = 0
+    if rhs >= 1:
+        s1_min = max((rhs + CUBE_BASEM - 1) // CUBE_BASEM - 1, 0)
+    return max(s1_outer - s1_min, 0)
+
+
+def total_per_batch_num(s1, s2, mask_mode=0, win_left=-1, win_right=-1):
+    """对齐 ASC GetTotalPerBatchNum：CASUAL 三角闭式，BAND 按列走 p/q。"""
+    s1_outer = (s1 + CUBE_BASEM - 1) // CUBE_BASEM
+    s2_outer = (s2 + CUBE_BASEN - 1) // CUBE_BASEN
+    sparse = decide_sparse_type(mask_mode, s1, s2, win_left, win_right)
+    if sparse == SPARSE_DENSE:
+        return s1_outer * s2_outer
+    if sparse == SPARSE_CASUAL:
+        if s1 < s2:
+            if mask_mode == 3:
+                return ((((s2_outer << 1) - s1_outer + 1) * s1_outer) >> 1) + (s1_outer - 1)
+            return (((s1_outer << 1) - s1_outer + 1) * s1_outer) >> 1
+        return (((s1_outer << 1) - s2_outer + 1) * s2_outer) >> 1
+    s1_token, s2_token = correct_sparse_tokens(mask_mode, win_left, win_right, s1, s2)
+    p = int((s1_token + CUBE_BASEM - 1) / CUBE_BASEM)
+    q = int((s2_token + CUBE_BASEN - 1) / CUBE_BASEN)
+    total = 0
+    for s2o in range(s2_outer):
+        x_min = s2o - q if (s2o - q) > 0 else 0
+        x_max = s2o + p if (s1_outer - 1) > (s2o + p) else (s1_outer - 1)
+        length = (x_max - x_min + 1) if x_max >= x_min else 0
+        if length > 0:
+            total += length
+    return total
+
+
 def decide_swizzle(b, n, s1, s2, d, core_num, dtype_bytes=2, g_size=1,
-                   l2_cache_bytes=L2_CACHE_BYTES):
+                   l2_cache_bytes=L2_CACHE_BYTES, mask_mode=0, win_left=-1, win_right=-1):
     """**host 判据的 Python 镜像**，仅供 JIT 脚本使用。
 
     生产路径上这个判据由 host 承担，权威实现是
@@ -707,12 +812,15 @@ def decide_swizzle(b, n, s1, s2, d, core_num, dtype_bytes=2, g_size=1,
                         缺省是标定机型 9599 的 128MB；换型号必须显式传，
                         否则与 host 分叉。0 表示平台没报，host 此时不开
                         swizzle，这里同样返回 0。
+      mask_mode/win  <- 属性；per_head_blocks 走 totalPerBatchNum。
     """
     if l2_cache_bytes == 0:
         return 0
     s1_outer = (s1 + CUBE_BASEM - 1) // CUBE_BASEM
     s2_outer = (s2 + CUBE_BASEN - 1) // CUBE_BASEN
-    per_head_blocks = s1_outer * s2_outer
+    per_head_blocks = total_per_batch_num(s1, s2, mask_mode, win_left, win_right)
+    if per_head_blocks <= 0:
+        per_head_blocks = s1_outer * s2_outer
     total = b * n * per_head_blocks
     per_core = (total + core_num - 1) // core_num
     live_heads = len({(c * per_core) // per_head_blocks
@@ -757,13 +865,118 @@ def swizzle_idx(constInfo, cBlockIdx, coreNum, localIdx):
     return head * constInfo.s1oS2o + s2Idx * constInfo.s1Outer + s1Idx
 
 
-def sel(flag, whenOne, whenZero):
-    """flag∈{0,1} 的算术选择：flag=1 取 whenOne，flag=0 取 whenZero。
+def is_block_valid_i(constInfo, index):
+    """块级 IsValid。mask_mode 是 tilingkey，只编一侧公式。
 
-    不用 if：解析器要求内联函数只能在末尾的顶层语句 return，且分支赋值
-    无法 phi 合并。两路都求值再线性插值，等价于 select 且无运行期跳转。
+    3：CheckIsValidBlock（s2Left < s2EndLen）。
+    4：band 区间相交。不要用 sparseType 抢因果分支。
+
+    比较做成 0/1 算术：此函数会内联进 skip_invalid 的 while，运行期
+    if/return 会在 while 里多出一个 IfStmt Yield，和 idx 的 loop-carried
+    拼成 1 vs 2（0902 `Loop-carried write-back`）。
     """
-    return whenZero + flag * (whenOne - whenZero)
+    if mask_mode == 0:
+        return 1
+    gDimTail = index % constInfo.s1oS2o
+    s2o = gDimTail // constInfo.s1Outer
+    s1o = gDimTail % constInfo.s1Outer
+    s2Left = s2o * CUBE_BASEN
+    if mask_mode == 3:
+        s2Ignored = constInfo.s1Size - CUBE_BASEM * (s1o + 1)
+        s2EndLen = pl.min(pl.max(constInfo.s2Size - s2Ignored, 0), constInfo.s2Size)
+        return pl.min(pl.max(s2EndLen - s2Left, 0), 1)
+    s2Right = pl.min((s2o + 1) * CUBE_BASEN, constInfo.s2Size)
+    s2SparseLeft = pl.max(CUBE_BASEM * s1o - constInfo.s1Token, 0)
+    s2SparseLeft = (s2SparseLeft // 64) * 64
+    rowEnd = pl.min(CUBE_BASEM * (s1o + 1), constInfo.s1Size)
+    s2SparseRight = ((rowEnd + constInfo.s2Token + 63) // 64) * 64
+    s2SparseRight = pl.min(s2SparseRight, constInfo.s2Size)
+    a = pl.min(pl.max(s2SparseRight - s2Left, 0), 1)
+    b = pl.min(pl.max(s2Right - s2SparseLeft, 0), 1)
+    return a * b
+
+
+def skip_invalid(constInfo, idx, blockEnd):
+    """ASC GetNextValidIdx 线性支：while (!IsValid) idx++，越界 -1。
+
+    0902：while 里不要 `return`，也不要把 runtime if/phi 当循环最后一句。
+    条件只用标量 `v==0`；越界折进 v，循环体只更新 idx 和 v。
+    """
+    v = is_block_valid_i(constInfo, idx)
+    over = pl.min(pl.max(idx + 1 - blockEnd, 0), 1)
+    v = pl.min(v + over, 1)
+    while v == 0:
+        idx = idx + 1
+        cur = is_block_valid_i(constInfo, idx)
+        over = pl.min(pl.max(idx + 1 - blockEnd, 0), 1)
+        v = pl.min(cur + over, 1)
+    if idx >= blockEnd:
+        return -1
+    return idx
+
+
+def next_work_gidx(constInfo, cBlockIdx, coreNum, blockStart, blockEnd,
+                   localIdx, denseCursor, numBlocks):
+    """下一块全局下标；本核没有活块时 -1。线性走 skip_invalid，swizzle 走公式。"""
+    if swizzle == 0:
+        return skip_invalid(constInfo, denseCursor, blockEnd)
+    if localIdx >= numBlocks:
+        return -1
+    return block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx)
+
+
+def packed_g_to_s1s2(constInfo, gDimTail):
+    """packed 有效块下标 -> (s1o, s2o)。按列扫描，与 kernel 既有 packed 同序。
+
+    Group B 暂缓：不改成 ASC GetNextValidIdxForSwizzleCasual 求根。
+    mask_mode 静态分支只编一侧长度公式。
+    """
+    acc = 0
+    s1Idx = 0
+    s2Idx = 0
+    found = 0
+    m = constInfo.s1Outer
+    n = constInfo.s2Outer
+    for s2 in pl.range(0, PACKED_SCAN_MAX):
+        if s2 < n:
+            active = 1
+        else:
+            active = 0
+        if mask_mode == 3:
+            need = s2 * CUBE_BASEN + 1
+            rhs = need - (constInfo.s2Size - constInfo.s1Size)
+            if rhs < 1:
+                s1Min = 0
+            else:
+                s1Min = pl.max((rhs + CUBE_BASEM - 1) // CUBE_BASEM - 1, 0)
+            length = pl.max(m - s1Min, 0) * active
+            s1Base = s1Min
+        elif mask_mode == 4:
+            xMin = pl.max(s2 - constInfo.bandQ, 0)
+            xMax = pl.min(m - 1, s2 + constInfo.bandP)
+            length = pl.max(xMax - xMin + 1, 0) * active
+            s1Base = xMin
+        else:
+            length = m * active
+            s1Base = 0
+        if found == 0:
+            if gDimTail >= acc:
+                if gDimTail < acc + length:
+                    s2Idx = s2
+                    s1Idx = s1Base + (gDimTail - acc)
+                    found = 1
+        acc = acc + length
+    return s1Idx, s2Idx
+
+
+def packed_to_dense_idx(constInfo, packedIdx):
+    total = constInfo.totalPerBatchNum
+    if total < 1:
+        total = constInfo.s1oS2o
+    bIdx = packedIdx // total
+    gDimTail = packedIdx % total
+    s1Idx, s2Idx = packed_g_to_s1s2(constInfo, gDimTail)
+    return bIdx * constInfo.s1oS2o + s2Idx * constInfo.s1Outer + s1Idx
 
 
 META_HEAD_FAG_START_INDEX = 7
@@ -781,19 +994,43 @@ META_VIEW_LEN = 8192
 
 
 def block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd):
-    """本核负责的块数。线性支读 metadata；swizzle 仍走列跨核公式。"""
+    """本核负责的块数。线性支读 metadata；swizzle 仍走列跨核公式。
+
+    mask+swizzle 按 packed 有效块跨核发，不再用整矩形列跨核。
+    """
     numColTasks = constInfo.bSize * constInfo.n2Size * constInfo.gSize * constInfo.s2Outer
     rem = pl.max(numColTasks - cBlockIdx, 0)
-    swz = ((rem + coreNum - 1) // coreNum) * constInfo.s1Outer
+    swzDense = ((rem + coreNum - 1) // coreNum) * constInfo.s1Outer
+    fused = constInfo.bSize * constInfo.n2Size * constInfo.gSize
+    tot = fused * constInfo.totalPerBatchNum
+    remP = pl.max(tot - cBlockIdx, 0)
+    swzPacked = (remP + coreNum - 1) // coreNum
+    if mask_mode == 0:
+        swz = swzDense
+    else:
+        swz = swzPacked
     lin = pl.max(blockEnd - blockStart, 0)
-    return sel(constInfo.enableSwizzle, swz, lin)
+    if constInfo.enableSwizzle:
+        if mask_mode == 0:
+            return swzDense
+        return swzPacked
+    return lin
 
 
 def block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx):
     """局部块序号 -> 全局块下标。线性支起点取自 metadata。"""
-    swz = swizzle_idx(constInfo, cBlockIdx, coreNum, localIdx)
+    swzDense = swizzle_idx(constInfo, cBlockIdx, coreNum, localIdx)
+    swzPacked = packed_to_dense_idx(constInfo, cBlockIdx + localIdx * coreNum)
+    if mask_mode == 0:
+        swz = swzDense
+    else:
+        swz = swzPacked
     lin = blockStart + localIdx
-    return sel(constInfo.enableSwizzle, swz, lin)
+    if constInfo.enableSwizzle:
+        if mask_mode == 0:
+            return swzDense
+        return swzPacked
+    return lin
 
 
 
@@ -821,7 +1058,9 @@ def need_load_kv(constInfo, gIdx, localIdx):
     gCur = s2_group_of(constInfo, gIdx)
     gPrev = s2_group_of(constInfo, pl.max(gIdx - 1, 0))
     lin = pl.max(isFirst, pl.min(gCur - gPrev, 1))
-    return sel(constInfo.enableSwizzle, swz, lin)
+    if constInfo.enableSwizzle:
+        return swz
+    return lin
 
 
 
@@ -830,7 +1069,9 @@ def next_s2_same(constInfo, gIdx, localIdx):
     swz = pl.min((localIdx + 1) % constInfo.s1Outer, 1)
     lin = 1 - pl.min(s2_group_of(constInfo, gIdx + 1)
                      - s2_group_of(constInfo, gIdx), 1)
-    return sel(constInfo.enableSwizzle, swz, lin)
+    if constInfo.enableSwizzle:
+        return swz
+    return lin
 
 
 def set_run_info(constInfo, runInfo, taskId, index, subIdx, localIdx):
@@ -846,8 +1087,7 @@ def set_run_info(constInfo, runInfo, taskId, index, subIdx, localIdx):
     runInfo.s2oIdx = gDimTail // constInfo.s1Outer
     runInfo.s1oIdx = gDimTail % constInfo.s1Outer
 
-    # 尾块真实大小。不能用分支赋值(IfStmt 无法 phi 合并)，也不能用比较结果
-    # 参与算术(bool dtype 不被 mul 接受)，故写成 min 截断的形式
+    # 尾块真实大小，对齐 ASC Min。
     s1Real = pl.min(CUBE_BASEM, constInfo.s1Size - runInfo.s1oIdx * CUBE_BASEM)
     s2Real = pl.min(CUBE_BASEN, constInfo.s2Size - runInfo.s2oIdx * CUBE_BASEN)
     runInfo.s1RealSize = s1Real
@@ -885,6 +1125,86 @@ def set_run_info(constInfo, runInfo, taskId, index, subIdx, localIdx):
     # 与 loadKV 互补：列首覆写 L0C，列中累加。消费点必须 == 1，不要用 == 0。
     runInfo.dkvAcc = 1 - runInfo.loadKV
     runInfo.flushDkv = 1 - next_s2_same(constInfo, index, localIdx)
+    runInfo.gIdx = index
+    runInfo.dqFirst = 1
+    runInfo.dqLast = 1
+    if is_bn2_multiblk == 1:
+        check_s1_range_in_bn2(constInfo, runInfo)
+
+
+def check_s1_range_in_bn2(constInfo, runInfo):
+    """ASC CheckS1RangeInBn2：本 s1 列的首/末有效 s2 块。"""
+    s2o = runInfo.s2oIdx
+    s1o = runInfo.s1oIdx
+    nextLeft = (s2o + 1) * CUBE_BASEN
+    nextRight = (s2o + 2) * CUBE_BASEN
+    if mask_mode == 0:
+        if s2o == constInfo.s2Outer - 1:
+            runInfo.dqLast = 1
+        else:
+            runInfo.dqLast = 0
+        if s2o == 0:
+            runInfo.dqFirst = 1
+        else:
+            runInfo.dqFirst = 0
+        return
+    if mask_mode == 3:
+        s2Ignored = constInfo.s1Size - CUBE_BASEM * (s1o + 1)
+        s2EndLen = pl.min(pl.max(constInfo.s2Size - s2Ignored, 0), constInfo.s2Size)
+        if nextLeft < s2EndLen:
+            runInfo.dqLast = 0
+        else:
+            runInfo.dqLast = 1
+        if s2o == 0:
+            runInfo.dqFirst = 1
+        else:
+            runInfo.dqFirst = 0
+        return
+    s2SparseLeft = pl.max(CUBE_BASEM * s1o - constInfo.s1Token, 0)
+    s2SparseLeft = (s2SparseLeft // 64) * 64
+    rowEnd = pl.min(CUBE_BASEM * (s1o + 1), constInfo.s1Size)
+    s2SparseRight = ((rowEnd + constInfo.s2Token + 63) // 64) * 64
+    s2SparseRight = pl.min(s2SparseRight, constInfo.s2Size)
+    if nextLeft < s2SparseRight:
+        if s2SparseLeft < nextRight:
+            runInfo.dqLast = 0
+        else:
+            runInfo.dqLast = 1
+    else:
+        runInfo.dqLast = 1
+    if s2o > 0:
+        preLeft = (s2o - 1) * CUBE_BASEN
+        preRight = s2o * CUBE_BASEN
+        if preLeft < s2SparseRight:
+            if s2SparseLeft < preRight:
+                runInfo.dqFirst = 0
+            else:
+                runInfo.dqFirst = 1
+        else:
+            runInfo.dqFirst = 1
+    else:
+        runInfo.dqFirst = 1
+
+
+def apply_s2_idx_no_change(runInfos, curInfo, taskId, ring):
+    """ASC isS2IdxNoChange：与上一有效块比 (s2o, b, n2)，不含 g。"""
+    prevR = runInfos[(taskId + ring - 1) % ring]
+    if taskId == 0:
+        curInfo.loadKV = 1
+        curInfo.dkvAcc = 0
+        curInfo.flushDkv = 1
+        return
+    if (prevR.s2oIdx == curInfo.s2oIdx and
+            prevR.boIdx == curInfo.boIdx and
+            prevR.n2oIdx == curInfo.n2oIdx):
+        curInfo.loadKV = 0
+        curInfo.dkvAcc = 1
+        prevR.flushDkv = 0
+    else:
+        curInfo.loadKV = 1
+        curInfo.dkvAcc = 0
+        prevR.flushDkv = 1
+    curInfo.flushDkv = 1
 
 
 # ==================================================================
@@ -1164,6 +1484,9 @@ UB_NZP_A = {w: _UB_TAB[w][2] for w in _UB_TAB}
 UB_SFMG_A = {w: _UB_TAB[w][3] for w in _UB_TAB}
 UB_LSE0_A = {w: _UB_TAB[w][4] for w in _UB_TAB}
 UB_LSE1_A = {w: _UB_TAB[w][5] for w in _UB_TAB}
+# attenmask 复用 y/dy 地址（vec1 之后 vec2 再用，与 ASC 队列复用同构）。
+UB_MASK_A = UB_Y_A
+UB_MASK_PRE_A = UB_DY_A
 
 
 def copy_ub2l1(l1_tile, nzp_ub, row_offset):
@@ -1304,48 +1627,19 @@ def process_vec1(constInfo, runInfo, subIdx, tensor_y, tensor_dy,
 
 
 # ==================================================================
-#  ProcessVec2 —— v2: P = simpleSoftmax(S * scale, max, sum)
-#  对应 vector_api/pse_atten_mask_muls_simple_softmax.h
-#  无 pse / attenMask，仅 muls + simpleSoftmax
+#  ProcessVec2 —— v2: P = simpleSoftmax(S * scale, lse)  [+ atten mask]
+#  VF / CopyInAttenMask 在 attenmask.py。tilingkey 决定搬不搬 mask。
 # ==================================================================
-@pl.vector_function
-def muls_simple_softmax_vf(mm2_ub, lse_ub, scale: pl.DT_FP32,
-                           srcM: pl.DT_INT64, rowShift: pl.DT_INT64):
-    """P = exp(S * scale - lse)，逐行处理。
-
-    对标 Dao-AILab/flash-attention 的 LSE 约定：前向输出
-      lse = max + log(sum(exp(s - max)))            (自然对数)
-    故反向只需一次 exp_sub 就得到归一化后的 P，行和恒为 1 ——
-    相比原先的 exp(S*scale - max) / sum 省掉一条 vf.div，
-    也少读一个 GM 张量。两式数值差异约 6e-08。
-
-    lse 用 BRC_B32 广播载入，S 按 VECTOR_BASEN=128 分两个 64 lane 寄存器。
-    """
-    pregFullExe = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
-    for m in pl.range(0, srcM):
-        # rowShift：lse 的 GM 读取起点被钳位到界内，逻辑第 m 行
-        # 实际落在 tile 的 m + rowShift 处（见 process_vec2）
-        vregLse = vf.load_align(lse_ub, m + rowShift, dist=pl.LoadDist.BRC_B32)
-        for n in pl.range(0, VECTOR_BASEN // VF_LANES):
-            vregSrc = vf.load_align(mm2_ub, m * VECTOR_BASEN + n * VF_LANES)
-            vregMuls = vf.muls(vregSrc, scale, pregFullExe)
-            vregExp = vf.exp_sub(vregMuls, vregLse, pregFullExe)
-            vf.store_align(mm2_ub + m * VECTOR_BASEN + n * VF_LANES,
-                           vregExp, pregFullExe)
-
-
-def process_vec2(constInfo, runInfo, subIdx, tensor_lse, mm2_ub, lse_ub):
-    # CopyLse: 前向的 lse 直接复用，无需再求极值或行和。
-    # loadBase/rowShift 与 vec1 同一套：S1 非对齐时起点钳位到界内，
-    # VF 用 rowShift 补偿逻辑行号（实测 AIV 507015）。
-    # lse 形状 [B,N1,S1]，按 (b, n2*G+g, s1) 三维索引 —— head 维用 Q 侧的
-    # n1，与 ASC 的 ((b*n2+n2o)*G+g)*S1 一致；order=[2,0] 指明搬运沿
-    # S1(轴 2) 展开、落到 tile 的行方向
+def process_vec2(constInfo, runInfo, subIdx, tensor_lse, mm2_ub, lse_ub,
+                 tensor_mask, mask_ub, mask_pre_ub):
     headQ = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx
     pl.load(lse_ub, tensor_lse,
             [runInfo.boIdx, headQ, runInfo.loadBase], order=[2, 0])
-    muls_simple_softmax_vf(mm2_ub, lse_ub, constInfo.scaleValue,
-                           runInfo.halfS1RealSize, runInfo.rowShift)
+    if mask_mode != 0:
+        copy_in_atten_mask(constInfo, runInfo, subIdx, tensor_mask, mask_ub,
+                           mask_pre_ub)
+    muls_sel_simple_softmax_vf(mm2_ub, lse_ub, mask_ub, constInfo.scaleValue,
+                               runInfo.halfS1RealSize, runInfo.rowShift)
 
 
 # ==================================================================
@@ -1423,6 +1717,15 @@ def fill_zero_vf(dst_ub, nvecs: pl.DT_INT64):
 
 
 @pl.vector_function
+def fill_zero_fp16_vf(dst_ub, nvecs: pl.DT_INT64):
+    """把 UB tile 的前 nvecs 个 vreg(每个 VF_LANES_FP16 个 fp16)填 0。"""
+    pregFullExe = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP16)
+    vregZero = vf.full(0.0, pregFullExe, dtype=pl.DT_FP16)
+    for i in pl.range(0, nvecs):
+        vf.store_align(dst_ub + i * VF_LANES_FP16, vregZero, pregFullExe)
+
+
+@pl.vector_function
 def add_fp32_vf(dst_ub, src_ub, nvecs: pl.DT_INT64):
     """dst += src，按 VF_LANES 个 fp32 一段。"""
     preg = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
@@ -1434,13 +1737,14 @@ def add_fp32_vf(dst_ub, src_ub, nvecs: pl.DT_INT64):
 
 
 def process_pre(tensor_ws, zt, elemStart, nElems):
-    """把一段连续 fp32 workspace 清零。对齐 ASC InitOutput 的一维切法。
+    """把一段连续 GM 清零。对齐 ASC InitOutput 的一维切法。
 
     tensor_ws 是 [1, totalElems] 的扁平视图（B*S*N*D 紧凑）。本核负责
     [elemStart, elemStart+nElems)。UB 按 PRE_ELEMS 切 full tile；尾块用
-    trip count 0/1 的第二个 pl.range，没有 `if r >= end` / `pl.min`。
+    trip count 0/1 的第二个 pl.range。
     PyPTO tile 必须是二维，故写成 [1, N]，语义仍是一维元素。
-    zt 已由调用方填零，本函数只 store。
+    zt 已由调用方填零，本函数只 store。dtype 跟 zt / tensor_ws（fp32 ws
+    或 fp16 out）。
     """
     chunk = PRE_ELEMS[d_align]
     nFull = nElems // chunk
@@ -1454,6 +1758,34 @@ def process_pre(tensor_ws, zt, elemStart, nElems):
     for _ in pl.range(0, nTail):
         pl.set_validshape(zt, [1, rem])
         pl.store(tensor_ws, zt, [0, off])
+
+
+def process_pre_from_meta(meta, fagOff, tensor_dq, tensor_dk, tensor_dv,
+                          dQ, dV, zt):
+    """按 metadata 行区间清 dq/dk/dv。GS1S2 清 fp32 workspace，bn2_need_zero 清 fp16 out。
+
+    AICPU FagSplitRows：dqRows=B*S1*N1、dkvRows=B*S2*N2，按 AIV 均分行。
+    元素起点 = rowStart * 行宽。填零 VF 跟 tilingkey：bn2_need_zero==1 走 fp16。
+    """
+    vBlockIdx = pl.get_block_idx()
+    dqRowStart = pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdx)
+    dqRowEnd = pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdx)
+    dkvRowStart = pl.getval(meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdx)
+    dkvRowEnd = pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdx)
+    dqNElems = (dqRowEnd - dqRowStart) * dQ
+    dkvNElems = (dkvRowEnd - dkvRowStart) * dQ
+    dvNElems = (dkvRowEnd - dkvRowStart) * dV
+    preElems = pl.min(PRE_ELEMS[d_align],
+                      pl.max(dqNElems, pl.max(dkvNElems, dvNElems)))
+    pl.set_validshape(zt, [1, PRE_ELEMS[d_align]])
+    if bn2_need_zero == 1:
+        fill_zero_fp16_vf(
+            zt, (preElems + VF_LANES_FP16 - 1) // VF_LANES_FP16)
+    else:
+        fill_zero_vf(zt, (preElems + VF_LANES - 1) // VF_LANES)
+    process_pre(tensor_dq, zt, dqRowStart * dQ, dqNElems)
+    process_pre(tensor_dk, zt, dkvRowStart * dQ, dkvNElems)
+    process_pre(tensor_dv, zt, dkvRowStart * dV, dvNElems)
 
 
 # ==================================================================
@@ -1500,7 +1832,7 @@ def process_post(tensor_ws, tensor_out, f32_ub, f16_ub, scale, elemStart, nElems
     """fp32 workspace -> muls(scale) -> cast fp16。对齐 ASC post 的一维 Muls/Cast。
 
     本核 [elemStart, elemStart+nElems)。full tile 的 VF 段数是编译期常量；
-    尾块同样用 trip count 0/1，没有 break / min。
+    尾块用 trip count 0/1 的第二个 pl.range。
     """
     chunk = POST_ELEMS[d_align]
     nFull = nElems // chunk
@@ -1621,10 +1953,9 @@ def flash_attn_grad_bn2gs1s2(
     dout: pl.Ptr[pl.DT_UINT8],
     attn_out: pl.Ptr[pl.DT_UINT8],
     softmax_lse: pl.Ptr[pl.DT_UINT8],
-    # 以下 6 个为可选输入。本实现只覆盖 BSND 非 sparse 无 mask 路径，
-    # 故 cu_seqlens/seqused(TND 变长)、sinks、attn_mask 均不读取；
+    # 以下 6 个为可选输入。cu_seqlens/seqused(TND)、sinks 本轮不读。
+    # attn_mask：mask_mode 3/4 时按 [2048,2048] uint8 压缩矩阵搬 UB。
     # metadata：FAG 区含分核 [start,end) 与 pre/post 行区间（412 int32）。
-    # 保留形参是为了与 host 的 13 输入按位对齐 —— 少一个都会错位。
     cu_seqlens_q: pl.Ptr[pl.DT_UINT8],
     cu_seqlens_kv: pl.Ptr[pl.DT_UINT8],
     seqused_q: pl.Ptr[pl.DT_UINT8],
@@ -1648,7 +1979,7 @@ def flash_attn_grad_bn2gs1s2(
     # metadata blockOuter），cube/vector 两侧同一口径，set/wait 才能配对。
     coreNum = pl.get_block_num()
     # swizzle 来自 tilingkey，是编译期常量 —— 每种分核各生成一份二进制，
-    # sel() 的两路分支在编译期被折叠掉，运行期没有判断开销。
+    # `if constInfo.enableSwizzle` 的两路在编译期折叠，运行期没有判断开销。
     constInfo = set_const_info(tiling, coreNum, swizzle)
 
     # ---- workspace 分区 ----
@@ -1656,6 +1987,7 @@ def flash_attn_grad_bn2gs1s2(
     # dq/dk/dv 三段累加区。三段大小必须与 host 的 CalcWorkSpace 逐一对齐。
     # dq 段按 n1(=n2*G) 个 head，dk/dv 段按 n2 —— 与 host 的 dqElems/dkvElems
     # 一致。GQA 下若这里误用 n2，dk/dv 的起始偏移就会算错。
+    # host 只在三段之后多留一行 128 对齐，不改这里的基地址。
     wsRowsQ = tiling.b * tiling.s1 * tiling.n1
     wsRowsKV = tiling.b * tiling.s2 * tiling.n2
     ws_ptr = pl.make_ptr(workspace, dtype=pl.DT_FP32)
@@ -1716,6 +2048,10 @@ def flash_attn_grad_bn2gs1s2(
         softmax_lse, [constInfo.bSize, n1Size, constInfo.s1Size],
         [n1Size * constInfo.s1Size, constInfo.s1Size, 1],
         dtype=pl.DT_FP32)
+    if mask_mode != 0:
+        tensor_mask = pl.make_tensor(
+            attn_mask, [ATTEN_MASK_COMPRESS, ATTEN_MASK_COMPRESS],
+            [ATTEN_MASK_COMPRESS, 1], dtype=pl.DT_UINT8)
     # dq/dk/dv workspace 为 fp32，供 atomicAdd 累加
     # dq/dk 是 D 宽，dv 是 Dv 宽 —— 与 workspace 的分段宽度一致
     tensor_dq_ws = pl.make_tensor(dq_workspace, [constInfo.viewD0Q, constInfo.s1Size, viewD2Q, dQ],
@@ -1804,11 +2140,6 @@ def flash_attn_grad_bn2gs1s2(
     # 对应 ASC presfmg_regbase.h:258 的 InitOutput / Duplicate。
     # 清完用 sync_all 隔开：主循环的 atomicAdd 必须看到已清零的 GM。
     with pl.section_vector():
-        vBlockIdx = pl.get_block_idx()
-        dqRowStart = pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdx)
-        dqRowEnd = pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdx)
-        dkvRowStart = pl.getval(meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdx)
-        dkvRowEnd = pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdx)
         # 单缓冲。mutex_ids 复用主循环的 id：pre 与主循环被 sync_all
         # 完全隔开，不会同时活跃。列宽/行数按 d_align 查表。
         zero_ub = pl.make_tile_group(
@@ -1817,19 +2148,8 @@ def flash_attn_grad_bn2gs1s2(
                              target_memory=pl.MemorySpace.Vec,
                              valid_shape=[-1, -1]),
             addrs=[UB_PRE_ZERO], mutex_ids=[19])
-        zt = zero_ub.current()
-        dqNElems = (dqRowEnd - dqRowStart) * dQ
-        dkvNElems = (dkvRowEnd - dkvRowStart) * dQ
-        dvNElems = (dkvRowEnd - dkvRowStart) * dV
-        # 只清本核真正要 store 的元素：小 shape 下每核只有几千个数，
-        # 填满 248KB 要上千条 vsts。三个张量共用这一次填零。
-        preElems = pl.min(PRE_ELEMS[d_align],
-                          pl.max(dqNElems, pl.max(dkvNElems, dvNElems)))
-        pl.set_validshape(zt, [1, PRE_ELEMS[d_align]])
-        fill_zero_vf(zt, (preElems + VF_LANES - 1) // VF_LANES)
-        process_pre(tensor_dq_ws_flat, zt, dqRowStart * dQ, dqNElems)
-        process_pre(tensor_dk_ws_flat, zt, dkvRowStart * dQ, dkvNElems)
-        process_pre(tensor_dv_ws_flat, zt, dkvRowStart * dV, dvNElems)
+        process_pre_from_meta(meta, fagOff, tensor_dq_ws_flat, tensor_dk_ws_flat,
+                              tensor_dv_ws_flat, dQ, dV, zero_ub.current())
     pl.system.sync_all()
 
     with pl.section_cube():
@@ -1932,10 +2252,12 @@ def flash_attn_grad_bn2gs1s2(
         # ---------------- Process() 主循环 (AIC 侧) ----------------
         taskId = 0
         localIdx = 0
-        # cube 领先 vector 两个 task，故循环要多跑两轮把流水排空：
-        # 前 numBlocks 轮发 mm1/mm2，后两轮只做 mm3/mm4/mm5。
-        for _ in pl.range(0, numBlocks + 2):
-            isLastLoop = localIdx >= numBlocks
+        denseCursor = blockStart
+        isLastLoop = 0
+        drainDone = 0
+        nFetched = 0
+        # cube 领先 vector 两个 task。ASC Process：while + GetNextValidIdx==-1 排空。
+        while True:
             # 无条件轮转，保证与 vector 侧步调一致（末轮不做 mm 也要转）
             mm2_cur = mm2_res.next()
             mm1_cur = mm1_res.next()
@@ -1944,36 +2266,46 @@ def flash_attn_grad_bn2gs1s2(
             # 游标视图，直接复用这里载入的数据(见其声明处说明)。
             q_cur = q_l1.next()
             do_cur = do_l1.next()
-            if not isLastLoop:
-                curInfo = runInfos[taskId % PRELOAD_TIMES]
-                gIdx = block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx)
-                set_run_info(constInfo, curInfo, taskId, gIdx, 0, localIdx)
+            if isLastLoop == 0:
+                gIdx = next_work_gidx(constInfo, cBlockIdx, coreNum,
+                                      blockStart, blockEnd, localIdx,
+                                      denseCursor, numBlocks)
+                if gIdx < 0:
+                    isLastLoop = 1
+                else:
+                    if swizzle == 0:
+                        denseCursor = gIdx + 1
+                    curInfo = runInfos[taskId % PRELOAD_TIMES]
+                    set_run_info(constInfo, curInfo, taskId, gIdx, 0, localIdx)
+                    nFetched = nFetched + 1
+                    if mask_mode != 0:
+                        apply_s2_idx_no_change(runInfos, curInfo, taskId, PRELOAD_TIMES)
 
-                # ---- mm2: Q@K^T ----
-                # 反向等待：mm2 只有 2 个 UB 槽位，task N 复用 task N-2 的
-                # 那块，必须等 vector 读完(ASC ProcessPreloadTwoTimes 里
-                # taskId>=1 时 wait SYNC_V2_TO_C2_FLAG)。
-                # taskId>=2 才有 N-2 存在；首两轮槽位是干净的，直接发。
-                # 这就是「首轮连发四次 matmul」：taskId 0/1 两轮各发
-                # mm2+mm1，累计 4 次，把两个槽位填满后 vector 才开始消费，
-                # 于是第 N 组 cube 计算与第 N-2 组 vector 计算重叠。
-                if taskId > 1:
-                    pl.system.wait_cross_core(
-                        pipe=pl.PipeType.FIX,
-                        event_id=SYNC_V2_TO_C2_FLAG[taskId % 2])
-                iterate_mm_qk(constInfo, curInfo, tensor_q, tensor_k,
-                              q_cur, k_l1, left, right, acc, mm2_cur, curInfo.loadKV)
-                pl.system.set_cross_core(pipe=pl.PipeType.FIX,
-                                         event_id=SYNC_C2_TO_V2_FLAG[taskId % 2])
-                # ---- mm1: dO@V^T ----
-                if taskId > 1:
-                    pl.system.wait_cross_core(
-                        pipe=pl.PipeType.FIX,
-                        event_id=SYNC_V2_TO_C1_FLAG[taskId % 2])
-                iterate_mm_dyv(constInfo, curInfo, tensor_dy, tensor_v,
-                               do_cur, v_l1, left, right, acc, mm1_cur, curInfo.loadKV)
-                pl.system.set_cross_core(pipe=pl.PipeType.FIX,
-                                         event_id=SYNC_C1_TO_V2_FLAG[taskId % 2])
+                    # ---- mm2: Q@K^T ----
+                    # 反向等待：mm2 只有 2 个 UB 槽位，task N 复用 task N-2 的
+                    # 那块，必须等 vector 读完(ASC ProcessPreloadTwoTimes 里
+                    # taskId>=1 时 wait SYNC_V2_TO_C2_FLAG)。
+                    # taskId>=2 才有 N-2 存在；首两轮槽位是干净的，直接发。
+                    # 这就是「首轮连发四次 matmul」：taskId 0/1 两轮各发
+                    # mm2+mm1，累计 4 次，把两个槽位填满后 vector 才开始消费，
+                    # 于是第 N 组 cube 计算与第 N-2 组 vector 计算重叠。
+                    if taskId > 1:
+                        pl.system.wait_cross_core(
+                            pipe=pl.PipeType.FIX,
+                            event_id=SYNC_V2_TO_C2_FLAG[taskId % 2])
+                    iterate_mm_qk(constInfo, curInfo, tensor_q, tensor_k,
+                                  q_cur, k_l1, left, right, acc, mm2_cur, curInfo.loadKV)
+                    pl.system.set_cross_core(pipe=pl.PipeType.FIX,
+                                             event_id=SYNC_C2_TO_V2_FLAG[taskId % 2])
+                    # ---- mm1: dO@V^T ----
+                    if taskId > 1:
+                        pl.system.wait_cross_core(
+                            pipe=pl.PipeType.FIX,
+                            event_id=SYNC_V2_TO_C1_FLAG[taskId % 2])
+                    iterate_mm_dyv(constInfo, curInfo, tensor_dy, tensor_v,
+                                   do_cur, v_l1, left, right, acc, mm1_cur, curInfo.loadKV)
+                    pl.system.set_cross_core(pipe=pl.PipeType.FIX,
+                                             event_id=SYNC_C1_TO_V2_FLAG[taskId % 2])
 
             # mm3/mm4/mm5 消费的是 vector 刚产出的 dS/P，对应 task N-2
             if taskId > 1:
@@ -1986,8 +2318,7 @@ def flash_attn_grad_bn2gs1s2(
                 # ---- mm5: dV = P^T@dO (L0C 驻留累加) ----
                 # dkvAcc=1: 与上一轮同一个 s2 块 -> 在 L0C 上累加
                 # prevInfo 对应 task N-2 的 block 下标。
-                # task N 处理局部序号 N，故 task N-2 是 taskId-2。
-                # 不能用 localIdx-2：排空阶段 localIdx 已停在 numBlocks。
+                # 排空阶段不再发新块，用 taskId-2 对应当年那一拍。
                 prevIdx = taskId - 2
                 # 延后游标在此推进：taskId>1 才走到这里，故它恒落后两拍
                 q_prev = q_l1_dk.next()
@@ -2010,7 +2341,7 @@ def flash_attn_grad_bn2gs1s2(
 
                 # s2 块即将切换(或已是最后一轮)时，把 L0C 上的 dK/dV 落 GM。
                 # 核可能在列中途结束，末块必须无条件落盘。
-                if prevIdx >= numBlocks - 1 or prevInfo.flushDkv == 1:
+                if prevIdx >= nFetched - 1 or prevInfo.flushDkv == 1:
                     flush_dkv(constInfo, prevInfo,
                               tensor_dk_ws, tensor_dv_ws,
                               dk_acc0, dk_acc1, dv_acc0, dv_acc1)
@@ -2018,12 +2349,12 @@ def flash_attn_grad_bn2gs1s2(
                 pl.system.set_cross_core(pipe=pl.PipeType.MTE1,
                                          event_id=SYNC_C4_TO_V3_FLAG)
 
-            # 处理完最后一个 block(task numBlocks-1，即 taskId==numBlocks+1)
-            # 才退出；isLastLoop 只用来停发 mm1/mm2
-            if taskId >= numBlocks + 1:
-                break
+            if isLastLoop == 1:
+                drainDone = drainDone + 1
+                if drainDone >= 2:
+                    break
             taskId = taskId + 1
-            localIdx = pl.min(localIdx + 1, numBlocks)
+            localIdx = localIdx + 1
 
     with pl.section_vector():
         subIdx = pl.get_subblock_idx()
@@ -2052,15 +2383,25 @@ def flash_attn_grad_bn2gs1s2(
             type=pl.TileType(shape=[VECTOR_BASEM, 1], dtype=pl.DT_FP32,
                              target_memory=pl.MemorySpace.Vec, layout=pl.DN),
             addrs=[UB_LSE0_A[v1w], UB_LSE1_A[v1w]], mutex_ids=[24, 25])
+        mask_ub = pl.make_tile_group(
+            type=pl.TileType(shape=[VECTOR_BASEM, VECTOR_BASEN], dtype=pl.DT_UINT8,
+                             target_memory=pl.MemorySpace.Vec,
+                             valid_shape=[-1, -1]),
+            addrs=[UB_Y_A[v1w]], mutex_ids=[15])
+        mask_pre_ub = pl.make_tile_group(
+            type=pl.TileType(shape=[VECTOR_BASEM, VECTOR_BASEN], dtype=pl.DT_UINT8,
+                             target_memory=pl.MemorySpace.Vec,
+                             valid_shape=[-1, -1]),
+            addrs=[UB_DY_A[v1w]], mutex_ids=[16])
 
         runInfos = make_run_infos()
         # ---------------- Process() 主循环 (AIV 侧) ----------------
         taskId = 0
         localIdx = 0
-        # 与 cube 侧同样多跑两轮排空(见 cube 侧说明)，保证两侧 taskId
-        # 逐轮一一对应，set/wait 才能配对
-        for _ in pl.range(0, numBlocks + 2):
-            isLastLoop = localIdx >= numBlocks
+        denseCursor = blockStart
+        isLastLoop = 0
+        drainDone = 0
+        while True:
             # 无条件轮转，与 cube 侧一一对应
             mm2_res.next()
             mm1_res.next()
@@ -2072,12 +2413,20 @@ def flash_attn_grad_bn2gs1s2(
                              y_ub.current(), dy_ub.current(),
                              sfmg_ub.current(), v1w)
 
-            if not isLastLoop:
-                curInfo = runInfos[taskId % PRELOAD_TIMES]
-                gIdx = block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx)
-                set_run_info(constInfo, curInfo, taskId, gIdx, subIdx, localIdx)
-                # CopyMaxSum：max/sum 双缓冲随 taskId 轮转
-                lse_ub.next()
+            if isLastLoop == 0:
+                gIdx = next_work_gidx(constInfo, cBlockIdx, coreNum,
+                                      blockStart, blockEnd, localIdx,
+                                      denseCursor, numBlocks)
+                if gIdx < 0:
+                    isLastLoop = 1
+                else:
+                    if swizzle == 0:
+                        denseCursor = gIdx + 1
+                    curInfo = runInfos[taskId % PRELOAD_TIMES]
+                    set_run_info(constInfo, curInfo, taskId, gIdx, subIdx, localIdx)
+                    if mask_mode != 0:
+                        apply_s2_idx_no_change(runInfos, curInfo, taskId, PRELOAD_TIMES)
+                    lse_ub.next()
 
             if taskId > 1:
                 prevInfo = runInfos[(taskId + 1) % PRELOAD_TIMES]
@@ -2091,8 +2440,14 @@ def flash_attn_grad_bn2gs1s2(
                 # 正向：等 mm2 结果
                 pl.system.wait_cross_core(
                     pipe=pl.PipeType.V, event_id=SYNC_C2_TO_V2_FLAG[taskId % 2])
-                process_vec2(constInfo, prevInfo, subIdx, tensor_lse,
-                             mm2_t, lse_ub.previous())
+                if mask_mode != 0:
+                    process_vec2(constInfo, prevInfo, subIdx, tensor_lse,
+                                 mm2_t, lse_ub.previous(),
+                                 tensor_mask, mask_ub.current(), mask_pre_ub.current())
+                else:
+                    process_vec2(constInfo, prevInfo, subIdx, tensor_lse,
+                                 mm2_t, lse_ub.previous(),
+                                 tensor_lse, mask_ub.current(), mask_pre_ub.current())
                 # 正向：等 mm1 结果
                 pl.system.wait_cross_core(
                     pipe=pl.PipeType.V, event_id=SYNC_C1_TO_V2_FLAG[taskId % 2])
@@ -2127,10 +2482,12 @@ def flash_attn_grad_bn2gs1s2(
                 pl.system.set_cross_core(pipe=pl.PipeType.MTE3,
                                          event_id=SYNC_V3_TO_C3_FLAG)
 
-            if taskId >= numBlocks + 1:
-                break
+            if isLastLoop == 1:
+                drainDone = drainDone + 1
+                if drainDone >= 2:
+                    break
             taskId = taskId + 1
-            localIdx = pl.min(localIdx + 1, numBlocks)
+            localIdx = localIdx + 1
 
     # ==== Post 阶段：dQ/dK/dV 的 scale + cast fp32->fp16 ====
     # scale 在矩阵乘之后、fp32 结果上施加(而非提前乘进 dS)：先乘会让
@@ -2183,13 +2540,9 @@ BN2_UB_NZP = UB_HEAD_RESERVE + 0x28000
 BN2_UB_SFMG = UB_HEAD_RESERVE + 0x2C200
 BN2_UB_LSE_0 = UB_HEAD_RESERVE + 0x2C400
 BN2_UB_LSE_1 = UB_HEAD_RESERVE + 0x2C600
-# v5/v6 Muls+Cast 的 fp16 目的必须是 128 宽：mm1/mm2 DualModeSplitM 落
-# [64,128]。宽度正好等于 muls_cast_vf 的段长，故 64 行就是 64 段；padding
-# 列会被一起算但被 store 的 valid_shape 挡在 UB 里。
+# attenmask 复用 y/dy。v5/v6 cast 仍单独一块。
 BN2_CAST_W = VECTOR_BASEN
-BN2_UB_CAST = UB_HEAD_RESERVE + 0x30000
-# MultiBlk dQ 跨 s2 的 fp32 载入缓冲。CAST 在 0x30000 占 16KB。
-BN2_UB_DQTMP = UB_HEAD_RESERVE + 0x34000
+BN2_UB_CAST = UB_HEAD_RESERVE + 0x2C800
 
 
 def process_vec1_bn2(constInfo, runInfo, subIdx, tensor_y, tensor_dy,
@@ -2336,8 +2689,14 @@ def process_vec3_bn2(constInfo, runInfo, subIdx, ds_l1,
 
 
 def iterate_mm_dsk_bn2(constInfo, runInfo, tensor_k_nt,
-                       ds_l1, k_l1_n, left, right, acc, mm1_ub, loadKV):
-    """MM3 MultiBlk：dQ = dS @ K，DualMode 进 mm1 UB（与单块同一条 CV 路径）。"""
+                       ds_l1, k_l1_n, left, right, acc,
+                       mm1_ub, tensor_dq_ws, cBlockIdx, loadKV):
+    """MM3：dQ = dS @ K。对齐 ASC IterateMmDsK，IS_WRITE_UB 由 is_bn2_multiblk 切。
+
+    单块：Fixpipe DualModeSplitM 进 mm1 UB。
+    MultiBlk：Fixpipe 到 workspace；needAtomic = !dqFirst。
+    dK/dV flush 与 SYNC_C3_TO_V5 仍在 caller。
+    """
     k_t3 = k_l1_n.current()
     pl.set_validshape(k_t3, [runInfo.s2RealSize, constInfo.dSize])
     if loadKV == 1:
@@ -2347,50 +2706,49 @@ def iterate_mm_dsk_bn2(constInfo, runInfo, tensor_k_nt,
     lt3 = left.next()
     rt3 = right.next()
     at3 = acc.next()
+    # M 用满 CUBE_BASEM，DualModeSplitM 固定在第 64 行切开。
     pl.set_validshape(lt3, [CUBE_BASEM, runInfo.s2RealSize])
     pl.set_validshape(rt3, [runInfo.s2RealSize, constInfo.dSize])
     pl.set_validshape(at3, [CUBE_BASEM, constInfo.dSize])
     pl.move(lt3, ds_l1.current())
     pl.move(rt3, k_t3)
     pl.matmul(at3, lt3, rt3)
-    pl.set_validshape(mm1_ub, [VECTOR_BASEM, VECTOR_BASEN])
-    pl.move(mm1_ub, at3, acc_to_vec_mode=pl.AccToVecMode.DualModeSplitM)
+    if is_bn2_multiblk == 1:
+        rowOff = (cBlockIdx * constInfo.s1Outer + runInfo.s1oIdx) * CUBE_BASEM
+        # 不要把 acc 收到 s1Real 再 store。L1/MM3 按 CUBE_BASEM 的 NZ 打包，
+        # L0C srcStride = AlignTo16(M)=128；valid_shape 改成 s1Real 后
+        # srcStride 变成 AlignTo16(s1Real)，尾块（64/72/1）和 L0C 错位。
+        # S=255 尾块 127 能过是因为 AlignTo16(127)=128 碰巧一致。
+        # ASC IterateMmDsK 的 singleM 就是 s1Real，因为那边 L1 nValue 也是
+        # s1Real。PTO 的 copy_ub2l1 / DualMode 固定切在 64，L1 恒 128 行，
+        # 所以 store 跟 L0C 走 128；输出行数由 last FromGM 的 halfS1RealSize 裁。
+        if runInfo.dqFirst == 1:
+            pl.store(tensor_dq_ws, at3, [rowOff, 0],
+                     atomic=pl.AtomicType.AtomicNone)
+        else:
+            pl.store(tensor_dq_ws, at3, [rowOff, 0],
+                     atomic=pl.AtomicType.AtomicAdd)
+    else:
+        pl.set_validshape(mm1_ub, [VECTOR_BASEM, VECTOR_BASEN])
+        pl.move(mm1_ub, at3,
+                acc_to_vec_mode=pl.AccToVecMode.DualModeSplitM)
 
 
-def process_dq_multiblk(tensor_dq, tensor_dq_ws, mm1_ub, tmp_ub, dst_ub,
+def process_dq_multiblk(tensor_dq, tensor_dq_ws, src_ub, dst_ub,
                         constInfo, runInfo, subIdx, cBlockIdx):
-    """MultiBlk v5：首 s2 覆盖写 workspace，之后 load+add 再覆盖，末 s2 用 UB 累加做 muls+cast。
+    """ASC DqkvMulsAndCastFromGM：只在 isLastS1Outer 从 workspace load。
 
-    对齐 ASC：needAtomic = IS_BN2_MULTIBLK && !isFirstS1Outer（第一次覆盖，之后累加）。
-    下一 head 的 s2o==0 再次覆盖，不必清零 workspace。
-
-    标志从 s2oIdx 现算（s2oIdx 是已验证字段），不用 struct 里另开一对首末列标记。
-    首列用 UB 加 0 而不是 skip-load，让每拍都走 add+store，避免 DualMode/MTE3 管线分叉。
-    不用 if/else：else 等于用 == 0 当开关。
+    累加已由 cube needAtomic 写在 GM 上。src_ub 对应 ASC inQue。
     """
     rows = runInfo.halfS1RealSize
     rowOff = (cBlockIdx * constInfo.s1Outer + runInfo.s1oIdx) * CUBE_BASEM + subIdx * VECTOR_BASEM
-    nvecs = VECTOR_BASEM * BN2_CAST_W // VF_LANES
-    isFirstS1Outer = 1 - pl.min(runInfo.s2oIdx, 1)
-    isRestS1Outer = pl.min(runInfo.s2oIdx, 1)
-    isLastS1Outer = 1 - pl.min(constInfo.s2Outer - 1 - runInfo.s2oIdx, 1)
-    pl.set_validshape(mm1_ub, [VECTOR_BASEM, BN2_CAST_W])
-    pl.set_validshape(tmp_ub, [VECTOR_BASEM, BN2_CAST_W])
+    pl.set_validshape(src_ub, [VECTOR_BASEM, BN2_CAST_W])
     if rows > 0:
-        if isFirstS1Outer == 1:
-            fill_zero_vf(tmp_ub, nvecs)
-        if isRestS1Outer == 1:
-            pl.set_validshape(tmp_ub, [rows, constInfo.dSize])
-            pl.load(tmp_ub, tensor_dq_ws, [rowOff, 0])
-            pl.set_validshape(tmp_ub, [VECTOR_BASEM, BN2_CAST_W])
-        add_fp32_vf(mm1_ub, tmp_ub, nvecs)
-        pl.set_validshape(mm1_ub, [rows, constInfo.dSize])
-        pl.store(tensor_dq_ws, mm1_ub, [rowOff, 0],
-                 atomic=pl.AtomicType.AtomicNone)
-        pl.set_validshape(mm1_ub, [VECTOR_BASEM, BN2_CAST_W])
-    if isLastS1Outer == 1:
-        process_muls_cast_dq_bn2(tensor_dq, mm1_ub, dst_ub,
-                                 constInfo, runInfo, subIdx)
+        pl.set_validshape(src_ub, [rows, constInfo.dSize])
+        pl.load(src_ub, tensor_dq_ws, [rowOff, 0])
+        pl.set_validshape(src_ub, [VECTOR_BASEM, BN2_CAST_W])
+    process_muls_cast_dq_bn2(tensor_dq, src_ub, dst_ub,
+                             constInfo, runInfo, subIdx)
 
 
 def flash_attn_grad_bn2(
@@ -2400,6 +2758,7 @@ def flash_attn_grad_bn2(
     dout: pl.Ptr[pl.DT_UINT8],
     attn_out: pl.Ptr[pl.DT_UINT8],
     softmax_lse: pl.Ptr[pl.DT_UINT8],
+    attn_mask: pl.Ptr[pl.DT_UINT8],
     metadata: pl.Ptr[pl.DT_UINT8],
     dq: pl.Ptr[pl.DT_UINT8],
     dk: pl.Ptr[pl.DT_UINT8],
@@ -2413,8 +2772,13 @@ def flash_attn_grad_bn2(
     单块（S1/S2<=128）：没有 pre、没有 post、没有 sync_all，也不读
     fp32 workspace。主循环对齐 ComputeDqkvBn2（1-ahead ping-pong）。
 
-    MultiBlk（is_bn2_multiblk）：仍无 pre/post/sync_all；dQ 用本核私有
-    workspace 跨 s2 累加，dK/dV 在 L0C 累加到换 s2 再写回。
+    MultiBlk（is_bn2_multiblk）：默认仍无 pre/post/sync_all。dQ 对齐 ASC
+    IterateMmDsKFixpout：cube 首有效 s2 覆盖 workspace，其余 AtomicAdd；
+    vector 只在 isLastS1Outer 从 GM Muls+Cast。dK/dV 在 L0C 累加到换 s2
+    再写回。
+
+    bn2_need_zero==1（整行或整列无效 tile）：pre 按 metadata 行区间把
+    dq/dk/dv 三个 out 全部清零，再 sync_all。不分行/列。不清 workspace。
     """
     coreNum = pl.get_block_num()
     # BN2 合轴分核，kernel 内不启用 swizzle
@@ -2443,6 +2807,10 @@ def flash_attn_grad_bn2(
         softmax_lse, [constInfo.bSize, constInfo.n2Size, constInfo.s1Size],
         [constInfo.n2Size * constInfo.s1Size, constInfo.s1Size, 1],
         dtype=pl.DT_FP32)
+    if mask_mode != 0:
+        tensor_mask = pl.make_tensor(
+            attn_mask, [ATTEN_MASK_COMPRESS, ATTEN_MASK_COMPRESS],
+            [ATTEN_MASK_COMPRESS, 1], dtype=pl.DT_UINT8)
     # 输出直接就是 fp16：单块路径没有 fp32 workspace，也就没有 pre/post
     tensor_dq_out = pl.make_tensor(dq, [constInfo.viewD0Q, constInfo.s1Size, viewD2, dSize],
                                    [s1nd, d2d, dSize, 1], dtype=pl.DT_FP16)
@@ -2452,13 +2820,13 @@ def flash_attn_grad_bn2(
                                    [s2nd, d2d, dSize, 1], dtype=pl.DT_FP16)
 
     cBlockIdx = pl.get_block_idx() // pl.get_subblock_num()
-    # MultiBlk 才读 workspace。整段 [coreNum * Align128(S1), D]，用行号编码核号。
-    if is_bn2_multiblk == 1:
-        alignS1 = constInfo.s1Outer * CUBE_BASEM
-        ws_ptr = pl.make_ptr(workspace, dtype=pl.DT_FP32)
-        tensor_dq_ws = pl.make_tensor(
-            ws_ptr, [constInfo.coreNum * alignS1, dSize], [dSize, 1],
-            dtype=pl.DT_FP32)
+    # workspace 视图两边都建：单块 iterate_mm_dsk_bn2 被 tilingkey 剪掉 store，
+    # 不能把 UB 或 fp16 out 冒充成 fp32 GM 参数。
+    alignS1 = constInfo.s1Outer * CUBE_BASEM
+    ws_ptr = pl.make_ptr(workspace, dtype=pl.DT_FP32)
+    tensor_dq_ws = pl.make_tensor(
+        ws_ptr, [constInfo.coreNum * alignS1, dSize], [dSize, 1],
+        dtype=pl.DT_FP32)
     coreNum = constInfo.coreNum
     # ---- 分核区间直接取自 metadata（AICPU DoFagBn2DenseSplit 的结果）----
     # BN2 下 s1Outer=s2Outer=1，一个块就是一个 (b,n2) head，与 metadata
@@ -2495,6 +2863,36 @@ def flash_attn_grad_bn2(
         type=pl.TileType(shape=[CUBE_BASEN, CUBE_BASEM], dtype=pl.DT_FP16,
                          target_memory=pl.MemorySpace.Mat, layout=pl.ZN, compact=1),
         addrs=[L1_P], mutex_ids=[11])
+
+    # skip_invalid 不写整行/整列无效 tile，out GM 会留脏数据。本编译位
+    # 下 pre 清 dq/dk/dv out（三个都清，不分行/列），再 sync_all。
+    # 行区间与 GS1S2 共用 metadata FagSplitRows，不在核内按元素 ceil 切。
+    # 不清 MultiBlk workspace：cube 首写仍是 AtomicNone。
+    if bn2_need_zero == 1:
+        with pl.section_vector():
+            n1Size = constInfo.n2Size * constInfo.gSize
+            dqElems = (constInfo.bSize * constInfo.s1Size *
+                       n1Size * constInfo.dSize)
+            dkElems = (constInfo.bSize * constInfo.s2Size *
+                       constInfo.n2Size * constInfo.dSize)
+            dvElems = (constInfo.bSize * constInfo.s2Size *
+                       constInfo.n2Size * constInfo.dvSize)
+            tensor_dq_flat = pl.make_tensor(
+                dq, [1, dqElems], [dqElems, 1], dtype=pl.DT_FP16)
+            tensor_dk_flat = pl.make_tensor(
+                dk, [1, dkElems], [dkElems, 1], dtype=pl.DT_FP16)
+            tensor_dv_flat = pl.make_tensor(
+                dv, [1, dvElems], [dvElems, 1], dtype=pl.DT_FP16)
+            zero_ub = pl.make_tile_group(
+                type=pl.TileType(shape=[1, PRE_ELEMS[d_align]],
+                                 dtype=pl.DT_FP16,
+                                 target_memory=pl.MemorySpace.Vec,
+                                 valid_shape=[-1, -1]),
+                addrs=[UB_PRE_ZERO], mutex_ids=[19])
+            process_pre_from_meta(
+                meta, fagOff, tensor_dq_flat, tensor_dk_flat, tensor_dv_flat,
+                constInfo.dSize, constInfo.dvSize, zero_ub.current())
+        pl.system.sync_all()
 
     with pl.section_cube():
         q_l1 = pl.make_tile_group(
@@ -2541,35 +2939,41 @@ def flash_attn_grad_bn2(
         runInfos = make_run_infos()
         taskId = 0
         localIdx = 0
-        # 1-ahead：numBlocks+1 轮。末轮只做 prev 的 mm3/mm4/mm5。
-        for _ in pl.range(0, numBlocks + 1):
-            isLastLoop = localIdx >= numBlocks
+        denseCursor = blockStart
+        isLastLoop = 0
+        drainDone = 0
+        # 1-ahead：ASC ComputeDqkvBn2 while + GetNextValidIdx==-1 排空 1 轮
+        while True:
             mm2_cur = mm2_res.next()
             mm1_cur = mm1_res.next()
             q_cur = q_l1.next()
             do_cur = do_l1.next()
-            if not isLastLoop:
-                curInfo = runInfos[taskId % 2]
-                gIdx = blockStart + localIdx
-                set_run_info(constInfo, curInfo, taskId, gIdx, 0, localIdx)
+            if isLastLoop == 0:
+                gIdx = next_work_gidx(constInfo, cBlockIdx, coreNum,
+                                      blockStart, blockEnd, localIdx,
+                                      denseCursor, numBlocks)
+                if gIdx < 0:
+                    isLastLoop = 1
+                else:
+                    denseCursor = gIdx + 1
+                    curInfo = runInfos[taskId % 2]
+                    set_run_info(constInfo, curInfo, taskId, gIdx, 0, localIdx)
+                    if mask_mode != 0:
+                        apply_s2_idx_no_change(runInfos, curInfo, taskId, 2)
 
-                if taskId > 1:
-                    pl.system.wait_cross_core(
-                        pipe=pl.PipeType.FIX,
-                        event_id=SYNC_DETER_FIX_FLAG)
-                    if is_bn2_multiblk == 1:
+                    if taskId > 1:
                         pl.system.wait_cross_core(
-                            pipe=pl.PipeType.MTE1,
-                            event_id=SYNC_DQ_WS_MTE3_FLAG)
-                iterate_mm_qk_bn2(constInfo, curInfo, tensor_q, tensor_k,
-                              q_cur, k_l1, left, right, acc, mm2_cur, curInfo.loadKV)
-                pl.system.set_cross_core(pipe=pl.PipeType.FIX,
-                                         event_id=SYNC_C2_TO_V2_FLAG[taskId % 2])
+                            pipe=pl.PipeType.FIX,
+                            event_id=SYNC_DETER_FIX_FLAG)
+                    iterate_mm_qk_bn2(constInfo, curInfo, tensor_q, tensor_k,
+                                  q_cur, k_l1, left, right, acc, mm2_cur, curInfo.loadKV)
+                    pl.system.set_cross_core(pipe=pl.PipeType.FIX,
+                                             event_id=SYNC_C2_TO_V2_FLAG[taskId % 2])
 
-                iterate_mm_dyv_bn2(constInfo, curInfo, tensor_dy, tensor_v,
-                               do_cur, v_l1, left, right, acc, mm1_cur, curInfo.loadKV)
-                pl.system.set_cross_core(pipe=pl.PipeType.FIX,
-                                         event_id=SYNC_C1_TO_V2_FLAG[taskId % 2])
+                    iterate_mm_dyv_bn2(constInfo, curInfo, tensor_dy, tensor_v,
+                                   do_cur, v_l1, left, right, acc, mm1_cur, curInfo.loadKV)
+                    pl.system.set_cross_core(pipe=pl.PipeType.FIX,
+                                             event_id=SYNC_C1_TO_V2_FLAG[taskId % 2])
 
             if taskId > 0:
                 prevInfo = runInfos[(taskId + 1) % 2]
@@ -2582,12 +2986,14 @@ def flash_attn_grad_bn2(
                 pl.system.wait_cross_core(pipe=pl.PipeType.MTE1,
                                           event_id=SYNC_V4_TO_C5_FLAG)
 
+                iterate_mm_dsk_bn2(constInfo, prevInfo, tensor_k_nt,
+                                   ds_l1, k_l1_n, left, right, acc,
+                                   mm1_prev, tensor_dq_ws, cBlockIdx,
+                                   prevInfo.loadKV)
                 if is_bn2_multiblk == 1:
-                    iterate_mm_dsk_bn2(constInfo, prevInfo, tensor_k_nt,
-                                       ds_l1, k_l1_n, left, right, acc,
-                                       mm1_prev, prevInfo.loadKV)
-                    pl.system.set_cross_core(pipe=pl.PipeType.FIX,
-                                             event_id=SYNC_C3_TO_V5_FLAG)
+                    if prevInfo.dqLast == 1:
+                        pl.system.set_cross_core(pipe=pl.PipeType.FIX,
+                                                 event_id=SYNC_C3_TO_V5_FLAG)
                     iterate_mm_dsq_bn2(constInfo, prevInfo,
                                        ds_t_l1.current(), q_prev,
                                        left, right, dk_acc, prevInfo.dkvAcc)
@@ -2605,34 +3011,9 @@ def flash_attn_grad_bn2(
                                  [prevInfo.idx0KV, prevInfo.keyOffset,
                                   prevInfo.idx2KV, 0],
                                  order=[1, 3], atomic=pl.AtomicType.AtomicNone)
-                    pl.system.set_cross_core(pipe=pl.PipeType.MTE1,
-                                             event_id=SYNC_C5_TO_V4_FLAG)
-                    pl.system.set_cross_core(pipe=pl.PipeType.MTE1,
-                                             event_id=SYNC_C4_TO_V3_FLAG)
                 else:
-                    # ---- mm3: dQ = dS@K，fp32 进 mm1 UB（不带 scale）----
-                    k_t3 = k_l1_n.current()
-                    pl.set_validshape(k_t3, [prevInfo.s2RealSize, constInfo.dSize])
-                    pl.load(k_t3, tensor_k_nt,
-                            [prevInfo.idx0KV, prevInfo.keyOffset, prevInfo.idx2KV, 0],
-                            order=[1, 3])
-                    lt3 = left.next()
-                    rt3 = right.next()
-                    at3 = acc.next()
-                    # M 用满 CUBE_BASEM，DualModeSplitM 固定在第 64 行切开。
-                    pl.set_validshape(lt3, [CUBE_BASEM, prevInfo.s2RealSize])
-                    pl.set_validshape(rt3, [prevInfo.s2RealSize, constInfo.dSize])
-                    pl.set_validshape(at3, [CUBE_BASEM, constInfo.dSize])
-                    pl.move(lt3, ds_l1.current())
-                    pl.move(rt3, k_t3)
-                    pl.matmul(at3, lt3, rt3)
-                    pl.set_validshape(mm1_prev, [VECTOR_BASEM, VECTOR_BASEN])
-                    pl.move(mm1_prev, at3,
-                            acc_to_vec_mode=pl.AccToVecMode.DualModeSplitM)
                     pl.system.set_cross_core(pipe=pl.PipeType.FIX,
                                              event_id=SYNC_C3_TO_V5_FLAG)
-
-                    # ---- mm4: dK = dS^T@Q，fp32 进 mm2 UB ----
                     iterate_mm_dsq_bn2(constInfo, prevInfo,
                                    ds_t_l1.current(), q_prev,
                                    left, right, dk_acc, 0)
@@ -2641,23 +3022,23 @@ def flash_attn_grad_bn2(
                             acc_to_vec_mode=pl.AccToVecMode.DualModeSplitM)
                     pl.system.set_cross_core(pipe=pl.PipeType.FIX,
                                              event_id=SYNC_C4_TO_V6_FLAG)
-
-                    # ---- mm5: dV = P^T@dO，直接 fp16 落 GM，不乘 scale ----
                     iterate_mm_pdy_bn2(constInfo, prevInfo,
                                    p_t_l1.current(), do_prev,
                                    left, right, dv_acc, 0)
                     pl.store(tensor_dv_out, dv_acc.current(),
                              [prevInfo.idx0KV, prevInfo.keyOffset, prevInfo.idx2KV, 0],
                              order=[1, 3], atomic=pl.AtomicType.AtomicNone)
-                    pl.system.set_cross_core(pipe=pl.PipeType.MTE1,
-                                             event_id=SYNC_C5_TO_V4_FLAG)
-                    pl.system.set_cross_core(pipe=pl.PipeType.MTE1,
-                                             event_id=SYNC_C4_TO_V3_FLAG)
+                pl.system.set_cross_core(pipe=pl.PipeType.MTE1,
+                                         event_id=SYNC_C5_TO_V4_FLAG)
+                pl.system.set_cross_core(pipe=pl.PipeType.MTE1,
+                                         event_id=SYNC_C4_TO_V3_FLAG)
 
-            if taskId >= numBlocks:
-                break
+            if isLastLoop == 1:
+                drainDone = drainDone + 1
+                if drainDone >= 1:
+                    break
             taskId = taskId + 1
-            localIdx = pl.min(localIdx + 1, numBlocks)
+            localIdx = localIdx + 1
 
     with pl.section_vector():
         subIdx = pl.get_subblock_idx()
@@ -2684,23 +3065,29 @@ def flash_attn_grad_bn2(
             type=pl.TileType(shape=[VECTOR_BASEM, 1], dtype=pl.DT_FP32,
                              target_memory=pl.MemorySpace.Vec, layout=pl.DN),
             addrs=[BN2_UB_LSE_0, BN2_UB_LSE_1], mutex_ids=[24, 25])
+        mask_ub = pl.make_tile_group(
+            type=pl.TileType(shape=[VECTOR_BASEM, VECTOR_BASEN], dtype=pl.DT_UINT8,
+                             target_memory=pl.MemorySpace.Vec,
+                             valid_shape=[-1, -1]),
+            addrs=[BN2_UB_Y], mutex_ids=[15])
+        mask_pre_ub = pl.make_tile_group(
+            type=pl.TileType(shape=[VECTOR_BASEM, VECTOR_BASEN], dtype=pl.DT_UINT8,
+                             target_memory=pl.MemorySpace.Vec,
+                             valid_shape=[-1, -1]),
+            addrs=[BN2_UB_DY], mutex_ids=[16])
         cast_ub = pl.make_tile_group(
             type=pl.TileType(shape=[VECTOR_BASEM, BN2_CAST_W], dtype=pl.DT_FP16,
                              target_memory=pl.MemorySpace.Vec,
                              valid_shape=[-1, -1]),
             addrs=[BN2_UB_CAST], mutex_ids=[20])
-        if is_bn2_multiblk == 1:
-            dqtmp_ub = pl.make_tile_group(
-                type=pl.TileType(shape=[VECTOR_BASEM, BN2_CAST_W], dtype=pl.DT_FP32,
-                                 target_memory=pl.MemorySpace.Vec,
-                                 valid_shape=[-1, -1]),
-                addrs=[BN2_UB_DQTMP], mutex_ids=[29])
 
         runInfos = make_run_infos()
         taskId = 0
         localIdx = 0
-        for _ in pl.range(0, numBlocks + 1):
-            isLastLoop = localIdx >= numBlocks
+        denseCursor = blockStart
+        isLastLoop = 0
+        drainDone = 0
+        while True:
             mm2_res.next()
             mm1_res.next()
             lse_ub.next()
@@ -2710,10 +3097,18 @@ def flash_attn_grad_bn2(
                              y_ub.current(), dy_ub.current(),
                              sfmg_ub.current(), d_align)
 
-            if not isLastLoop:
-                curInfo = runInfos[taskId % 2]
-                gIdx = blockStart + localIdx
-                set_run_info(constInfo, curInfo, taskId, gIdx, subIdx, localIdx)
+            if isLastLoop == 0:
+                gIdx = next_work_gidx(constInfo, cBlockIdx, coreNum,
+                                      blockStart, blockEnd, localIdx,
+                                      denseCursor, numBlocks)
+                if gIdx < 0:
+                    isLastLoop = 1
+                else:
+                    denseCursor = gIdx + 1
+                    curInfo = runInfos[taskId % 2]
+                    set_run_info(constInfo, curInfo, taskId, gIdx, subIdx, localIdx)
+                    if mask_mode != 0:
+                        apply_s2_idx_no_change(runInfos, curInfo, taskId, 2)
 
             if taskId > 0:
                 prevInfo = runInfos[(taskId + 1) % 2]
@@ -2723,8 +3118,14 @@ def flash_attn_grad_bn2(
                 pl.system.wait_cross_core(
                     pipe=pl.PipeType.V,
                     event_id=SYNC_C2_TO_V2_FLAG[(taskId + 1) % 2])
-                process_vec2(constInfo, prevInfo, subIdx, tensor_lse,
-                             mm2_t, lse_t)
+                if mask_mode != 0:
+                    process_vec2(constInfo, prevInfo, subIdx, tensor_lse,
+                                 mm2_t, lse_t,
+                                 tensor_mask, mask_ub.current(), mask_pre_ub.current())
+                else:
+                    process_vec2(constInfo, prevInfo, subIdx, tensor_lse,
+                                 mm2_t, lse_t,
+                                 tensor_lse, mask_ub.current(), mask_pre_ub.current())
                 pl.system.wait_cross_core(
                     pipe=pl.PipeType.V,
                     event_id=SYNC_C1_TO_V2_FLAG[(taskId + 1) % 2])
@@ -2745,11 +3146,13 @@ def flash_attn_grad_bn2(
                 pl.system.set_cross_core(pipe=pl.PipeType.MTE3,
                                          event_id=SYNC_V4_TO_C5_FLAG)
                 if is_bn2_multiblk == 1:
-                    pl.system.wait_cross_core(
-                        pipe=pl.PipeType.V, event_id=SYNC_C3_TO_V5_FLAG)
-                    process_dq_multiblk(
-                        tensor_dq_out, tensor_dq_ws, mm1_t, dqtmp_ub.current(),
-                        cast_ub.current(), constInfo, prevInfo, subIdx, cBlockIdx)
+                    if prevInfo.dqLast == 1:
+                        pl.system.wait_cross_core(
+                            pipe=pl.PipeType.MTE2, event_id=SYNC_C3_TO_V5_FLAG)
+                        process_dq_multiblk(
+                            tensor_dq_out, tensor_dq_ws, mm1_t,
+                            cast_ub.current(), constInfo, prevInfo, subIdx,
+                            cBlockIdx)
                     if prevInfo.flushDkv == 1:
                         pl.system.wait_cross_core(
                             pipe=pl.PipeType.V, event_id=SYNC_C4_TO_V6_FLAG)
@@ -2758,8 +3161,6 @@ def flash_attn_grad_bn2(
                             constInfo, prevInfo, subIdx)
                     pl.system.set_cross_core(pipe=pl.PipeType.V,
                                              event_id=SYNC_DETER_FIX_FLAG)
-                    pl.system.set_cross_core(pipe=pl.PipeType.MTE3,
-                                             event_id=SYNC_DQ_WS_MTE3_FLAG)
                 else:
                     pl.system.wait_cross_core(
                         pipe=pl.PipeType.V, event_id=SYNC_C3_TO_V5_FLAG)
@@ -2774,10 +3175,12 @@ def flash_attn_grad_bn2(
                     pl.system.set_cross_core(pipe=pl.PipeType.V,
                                              event_id=SYNC_DETER_FIX_FLAG)
 
-            if taskId >= numBlocks:
-                break
+            if isLastLoop == 1:
+                drainDone = drainDone + 1
+                if drainDone >= 1:
+                    break
             taskId = taskId + 1
-            localIdx = pl.min(localIdx + 1, numBlocks)
+            localIdx = localIdx + 1
 
 
 
@@ -2815,8 +3218,8 @@ def flash_attn_grad(
     BN2 不接 GQA / D=192。
     """
     if template == 1:
-        flash_attn_grad_bn2(q, k, v, dout, attn_out, softmax_lse, metadata,
-                            dq, dk, dv, workspace, tiling, d_align)
+        flash_attn_grad_bn2(q, k, v, dout, attn_out, softmax_lse, attn_mask,
+                            metadata, dq, dk, dv, workspace, tiling, d_align)
     else:
         flash_attn_grad_bn2gs1s2(q, k, v, dout, attn_out, softmax_lse,
                                  cu_seqlens_q, cu_seqlens_kv, seqused_q,

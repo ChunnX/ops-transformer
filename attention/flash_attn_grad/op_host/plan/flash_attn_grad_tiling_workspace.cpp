@@ -10,9 +10,12 @@
 
 #include "flash_attn_grad_tiling_workspace.h"
 
+#include <algorithm>
+
 namespace optiling {
 namespace {
 constexpr size_t FP32_SIZE = 4;
+constexpr int64_t FAG_WS_ALIGN_ROWS = 128;
 } // namespace
 
 // 分区必须与 kernel 的 make_ptr 切分完全一致：
@@ -45,6 +48,11 @@ FagWorkspacePlan BuildWorkspacePlan(const FagParsedInfo &info)
     plan.dv.offset = cursor;
     plan.dv.size = dvElems * FP32_SIZE;
     cursor += plan.dv.size;
+
+    // 一块 128 行对齐垫在 dv 后面；dq/dk/dv 基址仍是紧凑 B*S*N*D。
+    const size_t alignRowElems =
+        static_cast<size_t>(FAG_WS_ALIGN_ROWS) * static_cast<size_t>(std::max(info.d, info.dv));
+    cursor += alignRowElems * FP32_SIZE;
 
     plan.totalSize = cursor;
     return plan;

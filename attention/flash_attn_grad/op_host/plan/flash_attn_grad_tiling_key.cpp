@@ -14,11 +14,12 @@ namespace optiling {
 namespace {
 
 constexpr uint64_t KEY_SHIFT_LAYOUT = 2;
-constexpr uint64_t KEY_SHIFT_ATTEN_MASK = 3;
-constexpr uint64_t KEY_SHIFT_SWIZZLE = 4;
-constexpr uint64_t KEY_SHIFT_D_ALIGN = 5;
-constexpr uint64_t KEY_SHIFT_DV_ALIGN = 7;
-constexpr uint64_t KEY_SHIFT_BN2_MULTIBLK = 8;
+constexpr uint64_t KEY_SHIFT_MASK_MODE = 3;
+constexpr uint64_t KEY_SHIFT_SWIZZLE = 5;
+constexpr uint64_t KEY_SHIFT_D_ALIGN = 6;
+constexpr uint64_t KEY_SHIFT_DV_ALIGN = 8;
+constexpr uint64_t KEY_SHIFT_BN2_MULTIBLK = 9;
+constexpr uint64_t KEY_SHIFT_BN2_NEED_ZERO = 10;
 
 uint64_t DAlignBits(int64_t dAlign)
 {
@@ -32,12 +33,18 @@ uint64_t DAlignBits(int64_t dAlign)
 
 uint64_t EncodeTilingKey(const FagParsedInfo &info, const FagKernelPlan &kernel, const FagSchedulePlan &schedule)
 {
+    uint64_t maskModeBits = 0ULL;
+    if (info.hasAttenMask && info.maskMode == MASK_MODE_CAUSAL) {
+        maskModeBits = 1ULL;
+    } else if (info.hasAttenMask && info.maskMode == MASK_MODE_WINDOW) {
+        maskModeBits = 2ULL;
+    }
     const uint64_t dvAlignBit = (kernel.dvAlign == 192) ? 1ULL : 0ULL;
     return static_cast<uint64_t>(kernel.tmpl) | (static_cast<uint64_t>(info.layout) << KEY_SHIFT_LAYOUT) |
-           (static_cast<uint64_t>(info.hasAttenMask) << KEY_SHIFT_ATTEN_MASK) |
-           (static_cast<uint64_t>(schedule.swizzle) << KEY_SHIFT_SWIZZLE) |
+           (maskModeBits << KEY_SHIFT_MASK_MODE) | (static_cast<uint64_t>(schedule.swizzle) << KEY_SHIFT_SWIZZLE) |
            (DAlignBits(kernel.dAlign) << KEY_SHIFT_D_ALIGN) | (dvAlignBit << KEY_SHIFT_DV_ALIGN) |
-           (static_cast<uint64_t>(kernel.isBn2MultiBlk) << KEY_SHIFT_BN2_MULTIBLK);
+           (static_cast<uint64_t>(kernel.isBn2MultiBlk) << KEY_SHIFT_BN2_MULTIBLK) |
+           (static_cast<uint64_t>(kernel.bn2NeedZero) << KEY_SHIFT_BN2_NEED_ZERO);
 }
 
 } // namespace optiling

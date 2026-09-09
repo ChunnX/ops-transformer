@@ -76,6 +76,7 @@ private:
     int32_t numHeadsQ_ = 0;
     int32_t numHeadsKv_ = 0;
     int32_t headDim_ = 0;
+    int32_t headDimV_ = -1; // -1: unset, normalized to headDim_
     int32_t maskMode_ = 1;
     int32_t winLeft_ = -1;
     int32_t winRight_ = -1;

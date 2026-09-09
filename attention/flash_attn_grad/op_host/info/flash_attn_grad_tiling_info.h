@@ -64,6 +64,10 @@ constexpr size_t ATTR_LAYOUT_OUT_INDEX = 8;
 constexpr int64_t MASK_MODE_NO_MASK = 0;
 constexpr int64_t MASK_MODE_CAUSAL = 3;
 constexpr int64_t MASK_MODE_WINDOW = 4;
+// ASC SparseType remap of mask_mode 3/4. Written into TilingData for the kernel.
+constexpr int64_t FAG_SPARSE_TYPE_DENSE = 0;
+constexpr int64_t FAG_SPARSE_TYPE_CASUAL = 1;
+constexpr int64_t FAG_SPARSE_TYPE_BAND = 2;
 constexpr int64_t ATTN_MASK_DIM = 2048;
 
 // tilingkey bit[1:0] 的取值。2 与 3 是保留位，host 永不产生（见 route 的兜底断言）。
@@ -109,6 +113,12 @@ struct FagParsedInfo {
     // 属性
     float scaleValue = 0.0F;
     int64_t maskMode = MASK_MODE_NO_MASK;
+    int64_t winLeft = -1;
+    int64_t winRight = -1;
+    int64_t sparseType = FAG_SPARSE_TYPE_DENSE;
+    int64_t s1Token = 0;
+    int64_t s2Token = 0;
+    int64_t totalPerBatchNum = 0;
     int64_t maxSeqlenQ = -1;
     int64_t maxSeqlenKv = -1;
 
@@ -137,6 +147,8 @@ struct FagParsedInfo {
 struct FagKernelPlan {
     int64_t tmpl = TMPL_BN2GS1S2;
     int64_t isBn2MultiBlk = 0;
+    // BN2 MultiBlk + causal/band 且存在整行/整列无效 tile 时，kernel pre 清零 out。
+    int64_t bn2NeedZero = 0;
     int64_t dAlign = 128;
     int64_t dvAlign = 128;
 };

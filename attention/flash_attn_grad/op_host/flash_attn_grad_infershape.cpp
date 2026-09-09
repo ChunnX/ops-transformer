@@ -38,7 +38,5 @@ static ge::graphStatus InferDtypeFlashAttnGrad(gert::InferDataTypeContext *conte
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(FlashAttnGrad)
-    .InferShape(InferShapeFlashAttnGrad)
-    .InferDataType(InferDtypeFlashAttnGrad);
+IMPL_OP_INFERSHAPE(FlashAttnGrad).InferShape(InferShapeFlashAttnGrad).InferDataType(InferDtypeFlashAttnGrad);
 } // namespace ops
