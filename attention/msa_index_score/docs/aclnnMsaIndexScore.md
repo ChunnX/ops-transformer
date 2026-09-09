@@ -358,7 +358,7 @@ aclnnStatus aclnnMsaIndexScore(
     - 为 3 时，代表 rightDownCausal 模式，`attenMaskOptional` 必须传入，shape 为 $[2048, 2048]$，取值为 1 代表该位不参与计算，为 0 代表该位参与计算。
 - `initBlocks`、`localBlocks` 必须 $\ge 0$ 且不超过逻辑 block 数（PA 为 `blockTableOptional` 第二维；TND 为 score 末维对齐宽度）。两者均为 0 时跳过 $local\_mask$。
 - `q_len` / `kv_len` 允许为 0（含整 batch）。对应请求跳过 QK；空 KV 的 score 填 $-inf$；整 batch $T1=0$ 时 `SetBlockDim(1)`（对齐 FIA PR 9246）。
-- Ascend 950：按估计 M-task 数启动 MIX（单 batch 为 $\mathrm{CeilDiv}(T1\cdot N1,128)$；多 batch 取 packed+$B$ 上界并截到 AIC 数），短 decode 不打满空核。A2/A3 仍 `SetBlockDim` 为全量 AIC。
+- A2/A3 与 Ascend 950：按估计 M-task 数启动 MIX（单 batch 为 $\mathrm{CeilDiv}(T1\cdot N1,128)$；多 batch 取 packed+$B$ 上界并截到 AIC 数），短 decode 不打满空核。
 - PageAttention `key`（BBND/BNBD）允许首轴非连续（`key | gap | key | ...`），tiling 通过 `GetInputStride` 读取 dim0 元素 stride 写入 `strideKvBlock`；非首轴必须连续。TND `key` 不允许非连续。`scale` 仍按逻辑 page 紧凑布局。
 - PageAttention `blockTable` 第二维可以大于实际 KV 逻辑 block 数；score 末维为 $\mathrm{RoundUp}(width, 16)$。Ascend 950 C2UB 路径对超过 256 列的末维按 256 列滑窗 flush，并补写后续 $-inf$。
 - 精度自验证矩阵：39 条 fp16/bf16/int8（含 PA key dim0 stride、宽 `blockTable`、短 decode）+ 8 条 FP8。950 通过标准末行 `[PASS]: 47/47 cases passed`。A2/A3 跳过 FP8，期望 39/39（skipped 8）。容差 fp16/bf16/int8 为 $1\mathrm{e}{-3}$，FP8 为 $2\mathrm{e}{-2}$。
