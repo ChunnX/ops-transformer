@@ -16,6 +16,7 @@
 #include "platform/platform_ascendc.h"
 #include "op_host/tiling_util.h"
 #include "op_host/tiling_templates_registry.h"
+#include "version/metadef_version.h"
 #include "../../../op_kernel/arch35/scatter_pa_kv_cache_with_k_scale_tiling_data.h"
 #include "../../../op_kernel/arch35/scatter_pa_kv_cache_with_k_scale_tiling_key.h"
 
@@ -547,12 +548,18 @@ static int64_t GetKeyDtypeSize(gert::TilingContext *context)
 }
 
 // SIMD 模板使用 DataCopyPad 多行搬运，要求 headSize 不小于 128B、key/value/cache 尾轴连续且头间无重叠，
-// key_scale 走 DataCopyPad 分块拷贝（连续整行/非连续多块），要求尾轴 stride 为正
-static bool IsSimdCapable(const TensorParams &params, int64_t dtypeSize)
+// key_scale 走 DataCopyPad 分块拷贝（连续整行/非连续多块），要求尾轴 stride 为正；
+// PCIe through 场景下 tensor 布局由框架保证，直接选择 simd 模板
+static bool IsSimdCapable(gert::TilingContext *context, const TensorParams &params, int64_t dtypeSize)
 {
     if (dtypeSize <= 0) {
         return false;
     }
+#if defined(METADEF_VERSION_NUM) && METADEF_VERSION_NUM >= 90200000
+    if (context->GetPcieThroughFlag()) {
+        return true;
+    }
+#endif
     bool headSizeValid = params.kHeadSize * dtypeSize >= SIMD_MIN_HEAD_SIZE_BYTES &&
                          params.vHeadSize * dtypeSize >= SIMD_MIN_HEAD_SIZE_BYTES;
     bool lastAxisContiguous = params.keyStride[DIM_HEAD_SIZE] == 1 && params.valueStride[DIM_HEAD_SIZE] == 1 &&
@@ -609,7 +616,8 @@ static ge::graphStatus ScatterPaKvCacheWithKScaleTilingFunc(gert::TilingContext 
     }
 
     int64_t keyDtypeSize = GetKeyDtypeSize(context);
-    int64_t tplMode = IsSimdCapable(params, keyDtypeSize) ? SCATTER_KV_CACHE_TPL_SIMD : SCATTER_KV_CACHE_TPL_SIMT;
+    int64_t tplMode =
+        IsSimdCapable(context, params, keyDtypeSize) ? SCATTER_KV_CACHE_TPL_SIMD : SCATTER_KV_CACHE_TPL_SIMT;
 
     ScatterPaKvCacheWithKScaleTilingData *tiling = context->GetTilingData<ScatterPaKvCacheWithKScaleTilingData>();
     OP_CHECK_NULL_WITH_CONTEXT(context, tiling);
