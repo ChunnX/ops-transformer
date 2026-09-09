@@ -15,6 +15,10 @@
 
 struct ScatterPaKvCacheWithKScaleTilingData {
     int64_t needCoreNum;
+    int64_t usedCoreNum;
+    int64_t blockFactor;
+    int64_t tailBlockFactor;
+    int64_t ubSize;
     int64_t numTokens;
     int64_t numHead;
     int64_t kHeadSize;
