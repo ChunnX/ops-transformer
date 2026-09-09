@@ -498,7 +498,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKeyOffset(int64_t s2Idx, i
         int64_t blkTableIdx = s2Idx / blockSize;
         int64_t blkTableOffset = s2Idx % blockSize;
         int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKvStride : constInfo.oriKvStride;
-        int32_t physBlockId = blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx);
+        int64_t physBlockId = blkTableIdx;
+        if constexpr (TOPK_VALUE_MODE == TopkValueMode::TOPK_INDEX_MODE) {
+            physBlockId = blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx);
+        }
         if constexpr (QUANT_MODE == SCALE_CONTIGUOUS_MODE::CONTIGUOUS) {
             realKeyOffset = physBlockId * paBlockStride + blkTableOffset * constInfo.dSizeVInput;
         } else {

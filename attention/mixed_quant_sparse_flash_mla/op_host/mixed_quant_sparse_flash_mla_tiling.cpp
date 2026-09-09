@@ -715,10 +715,11 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
             ((perfMode_ == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) ? oriUbSize : std::max(oriUbSize, cmpUbSize));
     uint32_t vectorizeFlag = static_cast<uint32_t>((perfMode_ == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
                                                     perfMode_ == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
-                                                    perfMode_ == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
+                                                   perfMode_ == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) &&
                                                    tilingInfo->quantMode == QUANT_CONTIGUOUS_MODE &&
                                                    tilingInfo->kvLayout == MQSMLALayout::PA_BBND &&
-                                                   blockSizeSupported && vectorizeUbSize <= UB_SIZE);
+                                                   tilingInfo->topkValueMode == 1 && blockSizeSupported &&
+                                                   vectorizeUbSize <= UB_SIZE);
 
     size_t workspaceSize = static_cast<size_t>(ascendcPlatform.GetLibApiWorkSpaceSize());
     bool isSplitG = tilingInfo->gSize > 64; // gSize超过64时采用Split-G
@@ -802,7 +803,8 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
         0U, qLayout, inputKvLayout, static_cast<uint32_t>(perfMode_), static_cast<uint32_t>(isSplitG),
         static_cast<uint32_t>(tilingInfo->quantMode),
         ((oriKvType == ge::DT_FLOAT8_E4M3FN) ? DTYPE_FP8_E4M3FN : DTYPE_HIF8),
-        static_cast<uint32_t>(tilingInfo->batchConsistency), vectorizeFlag, static_cast<uint32_t>(highPerf));
+        static_cast<uint32_t>(tilingInfo->batchConsistency), vectorizeFlag, static_cast<uint32_t>(highPerf),
+        static_cast<uint32_t>(tilingInfo->topkValueMode));
     context_->SetTilingKey(tilingKey);
     context_->SetScheduleMode(1);
 

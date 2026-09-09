@@ -37,6 +37,11 @@ enum class SMLA_LAYOUT {
     PA_BBND = 2
 };
 
+enum class TopkValueMode {
+    TOPK_INDEX_MODE = 1,
+    TOPK_OFFSET_MODE = 2
+};
+
 #if (__CCE_AICORE__ != 310)
 // 将isCheckTiling设置为false, 输入输出的max&sum&exp的shape为(m, 1)
 constexpr SoftmaxConfig SMLA_SOFTMAX_FLASHV2_CFG_WITHOUT_BRC = {false, 0, 0, SoftmaxMode::SOFTMAX_OUTPUT_WITHOUT_BRC};

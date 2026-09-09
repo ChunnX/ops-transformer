@@ -54,10 +54,10 @@ ge::graphStatus SparseCompressionChecker::CheckSinglePara(const CheckContext &co
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(Op(context), "cmp_ratio", std::to_string(context.cmpRatio).c_str(),
                                               "Cmp_ratio must be in range [1, 128]"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        context.topkValueMode != 1,
-        OP_LOGE_FOR_INVALID_VALUE(Op(context), "topk_value_mode", std::to_string(context.topkValueMode).c_str(), "1"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context.topkValueMode != 1 && context.topkValueMode != 2,
+                OP_LOGE_FOR_INVALID_VALUE(Op(context), "topk_value_mode",
+                                          std::to_string(context.topkValueMode).c_str(), "1 or 2"),
+                return ge::GRAPH_FAILED);
     if (CheckIndex(context, context.oriSparseIndices, "ori_sparse_indices") != ge::GRAPH_SUCCESS ||
         CheckIndex(context, context.cmpSparseIndices, "cmp_sparse_indices") != ge::GRAPH_SUCCESS ||
         CheckTopkLength(context, context.oriTopkLength, "ori_topk_length") != ge::GRAPH_SUCCESS ||
