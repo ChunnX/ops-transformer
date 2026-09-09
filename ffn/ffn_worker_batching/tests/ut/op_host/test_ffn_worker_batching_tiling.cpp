@@ -135,6 +135,7 @@ void CheckArch35(int64_t dtype, int64_t mode, int64_t a, int64_t bs, int64_t k,
     EXPECT_EQ(d.Y, a * bs * k);
     EXPECT_EQ(d.H, 4096);
     EXPECT_EQ(d.tokenDtype, dtype);
+    EXPECT_EQ(d.syncFlag, 0);
     EXPECT_EQ(d.expertNum, experts);
     EXPECT_EQ(d.ubSize, ub - 32768);
     EXPECT_EQ(d.sortSegNum, expectedSegments);
@@ -449,6 +450,37 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_mx_rejected_on_legacy_soc)
                 "FfnWorkerBatching", {{scShape, ge::DT_INT8, ge::FORMAT_ND}}, MakeA5OutputDesc(),
                 MakeArch35Attrs(dtype, 0, 1, 1, 1, 64), &compileInfo, soc);
             ExecuteTestCase(para, ge::GRAPH_FAILED);
+        }
+    }
+}
+
+// 两种调度路径都校验属性域；合法值保持 key=100/101，不把 syncFlag 编入 key。
+// 对异步 RECV 再验证快照与 gather workspace 不重叠、按块对齐且总空间覆盖 A+1 个块。
+TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_sync_flag)
+{
+    gert::StorageShape scShape = {{1024}, {1024}};
+    FfnWorkerBatchingCompileInfo compileInfo = {};
+    for (int64_t mode : {0, 1}) {
+        for (int64_t syncFlag : {-1, 0, 1, 2}) {
+            auto attrs = MakeArch35Attrs(0, mode, 4, 3, 3, 66);
+            attrs.push_back({"sync_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(syncFlag)});
+            gert::TilingContextPara para(
+                "FfnWorkerBatching", {{scShape, ge::DT_INT8, ge::FORMAT_ND}}, MakeA5OutputDesc(),
+                attrs, &compileInfo, "Ascend950", kAivNum64, kArch35Ub248K);
+            if (syncFlag < 0 || syncFlag > 1) {
+                ExecuteTestCase(para, ge::GRAPH_FAILED);
+                continue;
+            }
+            TilingInfo info;
+            ASSERT_TRUE(ExecuteTiling(para, info));
+            const auto &d = *reinterpret_cast<const FfnWorkerBatchingArch35TilingData *>(info.tilingData.get());
+            EXPECT_EQ(d.syncFlag, syncFlag);
+            EXPECT_EQ(info.tilingKey, 100 + mode);
+            EXPECT_GE(d.wsReady, d.wsGatherIdx + d.Y);
+            EXPECT_EQ(d.wsReady % 8, 0);
+            if (mode == 1 && syncFlag == 1) {
+                EXPECT_GE(info.workspaceSizes[0], (d.wsReady + 5 * 8) * sizeof(int32_t));
+            }
         }
     }
 }
